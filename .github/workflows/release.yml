@@ -54,6 +54,38 @@ jobs:
       - name: Install dependencies
         run: npm install
 
+      - name: Build Sidecar Binary
+        shell: bash
+        run: |
+          mkdir -p src-tauri/binaries
+          cd sidecar
+          npm install
+          
+          # 针对不同构建矩阵选择对应的打包 Targets 及输出文件名
+          if [ "${{ matrix.platform }}" = "windows-latest" ]; then
+            PKG_TARGET="node20-win-x64"
+            OUTPUT_NAME="windsurf-byok-proxy-x86_64-pc-windows-msvc.exe"
+          elif [ "${{ matrix.platform }}" = "macos-latest" ]; then
+            if [[ "${{ matrix.args }}" == *"aarch64"* ]]; then
+              PKG_TARGET="node20-macos-arm64"
+              OUTPUT_NAME="windsurf-byok-proxy-aarch64-apple-darwin"
+            else
+              PKG_TARGET="node20-macos-x64"
+              OUTPUT_NAME="windsurf-byok-proxy-x86_64-apple-darwin"
+            fi
+          else
+            PKG_TARGET="node20-linux-x64"
+            OUTPUT_NAME="windsurf-byok-proxy-x86_64-unknown-linux-gnu"
+          fi
+          
+          echo "Building Sidecar Proxy: $PKG_TARGET -> $OUTPUT_NAME"
+          npx pkg proxy-entry.js --targets "$PKG_TARGET" --output "../src-tauri/binaries/$OUTPUT_NAME"
+          
+          # 非 Windows 平台赋予可执行权限，规避 Tauri 打包时的权限限制
+          if [ "${{ matrix.platform }}" != "windows-latest" ]; then
+            chmod +x "../src-tauri/binaries/$OUTPUT_NAME"
+          fi
+
       - name: Read app version
         id: app_version
         shell: bash
