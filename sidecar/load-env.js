@@ -1,0 +1,39 @@
+// load-env.js — Side-effect module: 加载杂项配置（MAX_TOKENS / 系统提示词等）到 process.env。
+// 必须在任何 server 模块之前 import，使 handler 能读到这些变量。
+//
+// 供应商路由不再走 env：sidecar 直接读 providers.json（全部供应商）+ model-map.json
+// 做按槽位故障转移（见 provider-pool.js）。「激活供应商」概念已废弃，此处不再处理它。
+
+import fs from 'node:fs';
+import path from 'node:path';
+import os from 'node:os';
+
+function configDir() {
+  if (process.env.BYOK_CONFIG_DIR) return process.env.BYOK_CONFIG_DIR;
+  return path.join(os.homedir(), 'AppData', 'Roaming', 'windsurf-byok');
+}
+
+function readJson(file) {
+  try {
+    if (!fs.existsSync(file)) return null;
+    return JSON.parse(fs.readFileSync(file, 'utf8'));
+  } catch (e) {
+    console.error(`[entry] failed to read ${file}: ${e.message}`);
+    return null;
+  }
+}
+
+function setEnv(key, val) {
+  if (val == null || val === '') return;
+  process.env[key] = String(val);
+}
+
+const dir = configDir();
+
+// ─── 杂项配置（MAX_TOKENS / 系统提示词 / VOYAGE 等）────────
+const cfg = readJson(path.join(dir, 'byok-config.json'));
+if (cfg && cfg.values && typeof cfg.values === 'object') {
+  for (const [key, val] of Object.entries(cfg.values)) {
+    setEnv(key, val);
+  }
+}

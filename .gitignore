@@ -1,0 +1,31 @@
+node_modules/
+captures/
+decompiled/
+templates/
+*.log
+.DS_Store
+.env
+certs/*.pem
+
+# 抓包/调试落盘(可能含账户数据)
+_dbg_*
+*.byok-tmp
+*.byok-bak
+*.byok-origin
+
+# Rust build artifacts
+src-tauri/target/
+
+# IDE / caches
+.claude/
+.vscode/
+
+# Sidecar build & runtime files
+sidecar/*.exe
+sidecar/certs/*
+!sidecar/certs/.gitkeep
+
+# Specs / Inner Docs
+spec/
+proto-schemas/
+REVERSE-ENGINEERING.md

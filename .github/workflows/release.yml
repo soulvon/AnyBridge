@@ -1,0 +1,166 @@
+name: Release
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+jobs:
+  release:
+    name: Build & Publish Multi-Platform Release
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Windows
+          - platform: "windows-latest"
+            args: ""
+          # macOS Apple Silicon
+          - platform: "macos-latest"
+            args: "--target aarch64-apple-darwin"
+          # macOS Intel
+          - platform: "macos-latest"
+            args: "--target x86_64-apple-darwin"
+          # Linux x86_64
+          - platform: "ubuntu-22.04"
+            args: ""
+
+    runs-on: ${{ matrix.platform }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install dependencies (Linux)
+        if: startsWith(matrix.platform, 'ubuntu')
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file libssl-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev patchelf pkg-config libsoup-3.0-dev javascriptcoregtk-4.1 libjavascriptcoregtk-4.1-dev
+          sudo apt-get install -y libnm-dev xdg-utils
+
+      - name: Rust setup
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.platform == 'macos-latest' && (contains(matrix.args, 'aarch64') && 'aarch64-apple-darwin' || 'x86_64-apple-darwin') || '' }}
+
+      - name: Node.js setup
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Read app version
+        id: app_version
+        shell: bash
+        run: |
+          VERSION="$(node -e "console.log(require('./package.json').version)")"
+          echo "VERSION=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Build the app
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          tagName: "v${{ steps.app_version.outputs.VERSION }}"
+          releaseName: "Windsurf BYOK v${{ steps.app_version.outputs.VERSION }}"
+          releaseBody: "Windsurf BYOK 自动发布包。"
+          releaseDraft: true
+          prerelease: false
+          args: ${{ matrix.args }}
+
+  rebuild-latest-json:
+    name: Rebuild merged latest.json
+    needs: release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Node.js setup
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Determine version
+        shell: bash
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          if [ -z "$VERSION" ] || [[ "$VERSION" == "refs/tags/"* ]]; then
+            VERSION="$(node -e "console.log(require('./package.json').version)")"
+          fi
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+
+      - name: Download release assets (retry)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p release-assets
+          TAG="v${VERSION}"
+          downloaded="false"
+          for i in $(seq 1 30); do
+            if gh release download "$TAG" --dir release-assets --pattern "*" --clobber; then
+              downloaded="true"
+              echo "Downloaded release assets from $TAG"
+              break
+            fi
+            echo "Release assets not ready yet (attempt $i/30). Sleeping 10s..."
+            sleep 10
+          done
+          if [ "$downloaded" != "true" ]; then
+            echo "Failed to download release assets from $TAG after retries."
+            exit 1
+          fi
+
+      - name: Read release metadata
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh release view "v${VERSION}" --json body --jq '.body' > release-notes.md
+          PUBLISHED_AT="$(gh release view "v${VERSION}" --json publishedAt,createdAt --jq '.publishedAt // .createdAt')"
+          if [ -z "${PUBLISHED_AT}" ] || [ "${PUBLISHED_AT}" = "null" ]; then
+            PUBLISHED_AT="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+          fi
+          echo "PUBLISHED_AT=${PUBLISHED_AT}" >> "$GITHUB_ENV"
+
+      - name: Build merged latest.json
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/release/build_merged_latest_json.cjs \
+            --version "${VERSION}" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --assets-dir "release-assets" \
+            --notes-file "release-notes.md" \
+            --published-at "${PUBLISHED_AT}" \
+            --output "latest.json"
+
+      - name: Upload merged latest.json
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh release upload "v${VERSION}" latest.json --clobber
+
+      - name: Publish draft release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh release edit "v${VERSION}" --draft=false --prerelease=false --latest

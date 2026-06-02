@@ -1,0 +1,34 @@
+{
+  "name": "windsurf-byok",
+  "version": "1.0.1",
+  "description": "Hybrid proxy for Windsurf IDE — intercepts chat, forwards everything else to Codeium",
+  "type": "module",
+  "main": "src/hybrid-server.js",
+  "scripts": {
+    "start": "node src/hybrid-server.js",
+    "start:inference": "node src/inference-proxy.js",
+    "start:both": "node src/hybrid-server.js & node src/inference-proxy.js",
+    "dev": "node --watch src/hybrid-server.js",
+    "dev:inference": "node --watch src/inference-proxy.js",
+    "tauri": "tauri",
+    "tauri:dev": "tauri dev",
+    "tauri:build": "tauri build"
+  },
+  "keywords": [
+    "windsurf",
+    "codeium",
+    "anthropic",
+    "proxy",
+    "connect-rpc",
+    "protobuf",
+    "reverse-engineering"
+  ],
+  "license": "MIT",
+  "devDependencies": {
+    "@tauri-apps/cli": "^2",
+    "jsdom": "^27.0.1"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}
