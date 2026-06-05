@@ -526,7 +526,12 @@ html[data-theme="dark"] .icon-btn .moon-icon {
 #page-dashboard.active {
   flex: 1 1 auto; min-height: 0;
   display: flex; flex-direction: column;
+  gap: 24px;
 }
+/* 仪表盘主区统一用 gap 控制间距，避免卡片贴连 */
+#page-dashboard > .control-bar,
+#page-dashboard > .stats-row,
+#page-dashboard > .glass-card { margin-bottom: 0 !important; }
 /* 控制栏、统计卡、流量路由保持固定高度 */
 #page-dashboard > .control-bar,
 #page-dashboard > .stats-row { flex: 0 0 auto; }
@@ -1222,6 +1227,17 @@ html[data-theme="dark"] .icon-btn .moon-icon {
   opacity: 1;
   pointer-events: auto;
 }
+
+/* 避免在无边框窗口中被拖拽区域吞点击 */
+.modal-overlay, .modal-container, .modal-btn {
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}
+
+/* 版本跃迁弹窗优先级高于普通更新提醒，避免层级抢占导致“点不动” */
+#update-jump-modal { z-index: 10020; }
+#updater-prompt-modal { z-index: 10010; }
+
 .modal-container {
   background: rgba(255, 255, 255, 0.95); /* 降低透明度，提升清晰度 */
   border: 1px solid rgba(0, 0, 0, 0.1);
@@ -4666,26 +4682,54 @@ async function changeUpdateInterval(val) {
   await saveUpdateSettings();
 }
 
+// 绑定升级成功弹窗的关闭动作（按钮/遮罩点击/Esc）
+function bindUpdateJumpModalHandlers() {
+  const modal = document.getElementById('update-jump-modal');
+  const closeBtn = document.getElementById('update-jump-close-btn');
+  if (!modal || !closeBtn) return;
+
+  closeBtn.onclick = closeUpdateJumpModal;
+  modal.addEventListener('click', (e) => {
+    if (e.target === modal) closeUpdateJumpModal();
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && modal.classList.contains('active')) {
+      closeUpdateJumpModal();
+    }
+  });
+}
+
 // 检查是否刚进行了版本更新
 async function checkVersionJump() {
-  if (!invoke) return;
+  if (!invoke) return false;
   try {
     const jump = await invoke('check_version_jump');
     if (jump) {
       document.getElementById('update-jump-version').textContent = 'v' + jump.current_version;
       document.getElementById('update-jump-prev-version').textContent = 'v' + jump.previous_version;
       document.getElementById('update-jump-notes').textContent = jump.release_notes_zh || jump.release_notes || '本次更新包含性能优化与稳定性提升。';
+
+      // 先收起其他同层弹窗，避免遮罩层级冲突导致无法点击
+      document.getElementById('updater-prompt-modal')?.classList.remove('active');
+      document.getElementById('custom-confirm-modal')?.classList.remove('active');
+
       document.getElementById('update-jump-modal').classList.add('active');
       addLog('ok', `程序已成功由 v${jump.previous_version} 升级至 v${jump.current_version}！`);
+      return true;
     }
   } catch (e) {
     console.error('check version jump error:', e);
   }
+  return false;
 }
 
 function closeUpdateJumpModal() {
-  document.getElementById('update-jump-modal').classList.remove('active');
+  document.getElementById('update-jump-modal')?.classList.remove('active');
+  // 关闭升级成功弹窗后再补做一次自动更新检查
+  setTimeout(() => { autoCheckUpdate().catch(() => {}); }, 50);
 }
+
+
 
 // 手动检查更新
 async function manualCheckUpdate() {
@@ -4882,14 +4926,19 @@ async function init() {
   await loadProviders();
   await refreshStatus();
 
- // 加载自动更新设置并更新 UI 开关状态
- await loadUpdateSettings();
- // 显示当前版本号
- try { const v = await invoke('get_app_version'); document.getElementById('current-version-display').textContent = 'v' + v; } catch { document.getElementById('current-version-display').textContent = 'v1.1.0'; }
- // 检查是否刚进行了版本更新
-  await checkVersionJump();
-  // 启动时自动检查更新
-  await autoCheckUpdate();
+  // 加载自动更新设置并更新 UI 开关状态
+  await loadUpdateSettings();
+  // 显示当前版本号
+  try { const v = await invoke('get_app_version'); document.getElementById('current-version-display').textContent = 'v' + v; } catch { document.getElementById('current-version-display').textContent = 'v1.1.0'; }
+
+  bindUpdateJumpModalHandlers();
+  // 检查是否刚进行了版本更新
+  const hasJumpModal = await checkVersionJump();
+  // 启动时自动检查更新（如果正在展示升级成功弹窗则延后，避免弹窗层级冲突）
+  if (!hasJumpModal) {
+    await autoCheckUpdate();
+  }
+
 
   if (tauriEvent?.listen) {
     await tauriEvent.listen('proxy-log', (e) => {

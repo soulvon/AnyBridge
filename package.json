@@ -12,7 +12,8 @@
     "dev:inference": "node --watch src/inference-proxy.js",
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
-    "tauri:build": "tauri build"
+    "tauri:build": "tauri build",
+    "tauri:build:local": "tauri build --config src-tauri/tauri.local.conf.json"
   },
   "keywords": [
     "ide-byok",
