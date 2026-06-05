@@ -108,13 +108,14 @@ jobs:
           args: ${{ matrix.args }}
 
   rebuild-latest-json:
-    name: Rebuild merged latest.json
+    name: Rebuild latest.json & Sync to public release repo
     needs: release
     runs-on: ubuntu-latest
     permissions:
-      contents: write
+      contents: read
     env:
-      GH_REPO: ${{ github.repository }}
+      SOURCE_REPO: ${{ github.repository }}
+      TARGET_REPO: soulvon/IDE-BYOK-Release
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -133,9 +134,9 @@ jobs:
           fi
           echo "VERSION=$VERSION" >> "$GITHUB_ENV"
 
-      - name: Download release assets (retry)
+      - name: Download source release assets (retry)
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.RELEASE_REPO_TOKEN }}
         shell: bash
         run: |
           set -euo pipefail
@@ -143,56 +144,74 @@ jobs:
           TAG="v${VERSION}"
           downloaded="false"
           for i in $(seq 1 30); do
-            if gh release download "$TAG" --dir release-assets --pattern "*" --clobber; then
+            if gh release download "$TAG" --repo "$SOURCE_REPO" --dir release-assets --pattern "*" --clobber; then
               downloaded="true"
-              echo "Downloaded release assets from $TAG"
+              echo "Downloaded release assets from $SOURCE_REPO:$TAG"
               break
             fi
             echo "Release assets not ready yet (attempt $i/30). Sleeping 10s..."
             sleep 10
           done
           if [ "$downloaded" != "true" ]; then
-            echo "Failed to download release assets from $TAG after retries."
+            echo "Failed to download release assets from $SOURCE_REPO:$TAG after retries."
             exit 1
           fi
 
-      - name: Read release metadata
+      - name: Read source release metadata
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.RELEASE_REPO_TOKEN }}
         shell: bash
         run: |
           set -euo pipefail
-          gh release view "v${VERSION}" --json body --jq '.body' > release-notes.md
-          PUBLISHED_AT="$(gh release view "v${VERSION}" --json publishedAt,createdAt --jq '.publishedAt // .createdAt')"
+          gh release view "v${VERSION}" --repo "$SOURCE_REPO" --json body --jq '.body' > release-notes.md
+          PUBLISHED_AT="$(gh release view "v${VERSION}" --repo "$SOURCE_REPO" --json publishedAt,createdAt --jq '.publishedAt // .createdAt')"
           if [ -z "${PUBLISHED_AT}" ] || [ "${PUBLISHED_AT}" = "null" ]; then
             PUBLISHED_AT="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
           fi
           echo "PUBLISHED_AT=${PUBLISHED_AT}" >> "$GITHUB_ENV"
 
-      - name: Build merged latest.json
+      - name: Build merged latest.json for public repo
         shell: bash
         run: |
           set -euo pipefail
           node scripts/release/build_merged_latest_json.cjs \
             --version "${VERSION}" \
-            --repo "${GITHUB_REPOSITORY}" \
+            --repo "${TARGET_REPO}" \
             --assets-dir "release-assets" \
             --notes-file "release-notes.md" \
             --published-at "${PUBLISHED_AT}" \
             --output "latest.json"
 
-      - name: Upload merged latest.json
+      - name: Ensure target release exists
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.RELEASE_REPO_TOKEN }}
         shell: bash
         run: |
           set -euo pipefail
-          gh release upload "v${VERSION}" latest.json --clobber
+          TAG="v${VERSION}"
+          if gh release view "$TAG" --repo "$TARGET_REPO" >/dev/null 2>&1; then
+            echo "Target release already exists: $TARGET_REPO:$TAG"
+          else
+            gh release create "$TAG" --repo "$TARGET_REPO" --title "IDE BYOK v${VERSION}" --notes-file release-notes.md --draft
+          fi
 
-      - name: Publish draft release
+      - name: Upload assets to target release
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.RELEASE_REPO_TOKEN }}
         shell: bash
         run: |
           set -euo pipefail
-          gh release edit "v${VERSION}" --draft=false --prerelease=false --latest
+          TAG="v${VERSION}"
+          gh release upload "$TAG" --repo "$TARGET_REPO" release-assets/* --clobber
+          gh release upload "$TAG" --repo "$TARGET_REPO" latest.json --clobber
+
+      - name: Publish target release
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_REPO_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh release edit "v${VERSION}" --repo "$TARGET_REPO" --draft=false --prerelease=false --latest
+
+
+
