@@ -27,9 +27,38 @@ pub struct ManagedChild {
 
 impl ManagedChild {
     fn kill(&self) -> Result<(), String> {
-        self.child
+        let mut child = self
+            .child
             .lock()
-            .unwrap_or_else(|e| e.into_inner())
+            .unwrap_or_else(|e| e.into_inner());
+
+        // Windows release 模式下 sidecar 以 CREATE_NEW_PROCESS_GROUP 启动，
+        // std::process::Child::kill() 只调用 TerminateProcess 杀单进程，
+        // 无法清理子进程树（pkg 打包的 Node.js 可能 spawn 了子进程）。
+        // 使用 taskkill /F /T /PID 可杀整个进程树。
+        #[cfg(target_os = "windows")]
+        {
+            let pid = child.id();
+            let out = std::process::Command::new("taskkill")
+                .args(["/F", "/T", "/PID", &pid.to_string()])
+                .creation_flags(CREATE_NO_WINDOW)
+                .output();
+            match out {
+                Ok(o) if o.status.success() => return Ok(()),
+                Ok(o) => {
+                    // taskkill 失败（进程可能已退出），尝试 TerminateProcess 兜底
+                    eprintln!(
+                        "[stop_proxy] taskkill 失败: {}, 尝试 TerminateProcess",
+                        String::from_utf8_lossy(&o.stderr).trim()
+                    );
+                }
+                Err(e) => {
+                    eprintln!("[stop_proxy] taskkill 执行失败: {}, 尝试 TerminateProcess", e);
+                }
+            }
+        }
+
+        child
             .kill()
             .map_err(|e| format!("停止失败: {}", e))
     }
@@ -48,9 +77,11 @@ pub struct ProxyState {
     pub child: Mutex<Option<ManagedChild>>,
     /// 占位标志：spawn 是 IO 不能持锁，用它防止 start_proxy 并发时双 spawn（TOCTOU）。
     pub starting: AtomicBool,
-    /// 串行化 Windsurf 配置/注入的还原：stop_proxy 与 Terminated 事件可能并发 restore，
+    /// 串行化 IDE 配置/注入的还原：stop_proxy 与 Terminated 事件可能并发 restore，
     /// 非原子的读-改-写会互相覆盖，用此锁串行化。
     pub restore_lock: Mutex<()>,
+    /// 当前目标 IDE（用于进程退出时的还原）
+    pub target_ide: Mutex<String>,
 }
 
 /// 取锁并容忍 poisoning：某线程持锁时 panic 不应让后续所有代理操作永久 panic。
@@ -58,11 +89,40 @@ fn lock_or_recover<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
     m.lock().unwrap_or_else(|e| e.into_inner())
 }
 
-/// 串行还原 Windsurf 配置与 workbench 注入（幂等）。
-fn restore_all(state: &ProxyState) {
+/// 还原结果：哪些步骤失败、哪些步骤找不到备份。
+#[derive(Serialize, Clone, Default)]
+pub struct RestoreReport {
+    /// IDE 代理配置还原结果
+    pub ide_config: String,
+    /// workbench.html 注入还原结果
+    pub workbench_inject: String,
+}
+
+impl RestoreReport {
+    fn has_warning(&self) -> bool {
+        self.ide_config != "ok" || self.workbench_inject != "ok"
+    }
+}
+
+/// 串行还原 IDE 配置与 workbench 注入（幂等）。
+/// 返回还原报告，调用方可据此向用户发出警告。
+fn restore_all(state: &ProxyState, target: &str) -> RestoreReport {
     let _guard = lock_or_recover(&state.restore_lock);
-    let _ = crate::commands::windsurf_config::restore();
-    let _ = crate::commands::workbench_inject::restore();
+    let mut report = RestoreReport::default();
+
+    match crate::commands::ide_config::restore(target) {
+        Ok(true) => report.ide_config = "ok".into(),
+        Ok(false) => report.ide_config = "未找到备份，IDE 代理配置可能未被还原".into(),
+        Err(e) => report.ide_config = format!("还原失败: {}", e),
+    }
+
+    match crate::commands::workbench_inject::restore(target) {
+        Ok(true) => report.workbench_inject = "ok".into(),
+        Ok(false) => report.workbench_inject = "ok（无需还原）".into(),
+        Err(e) => report.workbench_inject = format!("还原失败: {}", e),
+    }
+
+    report
 }
 
 #[derive(Serialize, Clone)]
@@ -132,7 +192,7 @@ pub fn get_proxy_status(state: State<ProxyState>) -> ProxyStatus {
 }
 
 #[tauri::command]
-pub fn start_proxy(app: AppHandle, state: State<ProxyState>) -> Result<bool, String> {
+pub fn start_proxy(app: AppHandle, state: State<ProxyState>, target_ide: Option<String>) -> Result<bool, String> {
     // TOCTOU 防护：检查"已运行 / 正在启动",并在同一临界区抢占 starting 标志。
     {
         let guard = lock_or_recover(&state.child);
@@ -191,20 +251,40 @@ pub fn start_proxy(app: AppHandle, state: State<ProxyState>) -> Result<bool, Str
     let stdout = child.stdout.take();
     let stderr = child.stderr.take();
 
+    // 解析目标 IDE（auto 模式需实际检测）
+    let target = match target_ide.as_deref() {
+        Some("auto") | None => {
+            // 自动检测：优先运行中的 IDE，其次默认 windsurf
+            let detected = crate::commands::system::detect_target_ide();
+            if detected != "windsurf" && detected != "devin" {
+                "windsurf".into()
+            } else {
+                detected
+            }
+        }
+        Some(t) => t.to_string(),
+    };
+
     // 写入 child 并清除 starting 标志
     *lock_or_recover(&state.child) = Some(ManagedChild {
         child: Mutex::new(child),
     });
+    *lock_or_recover(&state.target_ide) = target.clone();
     clear_starting();
 
-    // 打补丁：写入 Windsurf 代理配置（失败不阻断代理启动，仅记日志）。
-    let patched = match crate::commands::windsurf_config::patch() {
+    // 打补丁：写入 IDE 代理配置（失败不阻断代理启动，仅记日志）。
+    let ide_label = if target_ide.as_deref() == Some("auto") {
+        format!("自动检测→{}", target)
+    } else {
+        target.clone()
+    };
+    let patched = match crate::commands::ide_config::patch(&target) {
         Ok(true) => {
             let _ = app.emit(
                 "proxy-log",
                 LogLine {
                     level: "ok".into(),
-                    msg: "✅ 已写入 Windsurf 代理配置，请重启 Windsurf 生效".into(),
+                    msg: format!("✅ 已写入 {} 代理配置，请重启 IDE 生效", ide_label),
                 },
             );
             true
@@ -215,7 +295,7 @@ pub fn start_proxy(app: AppHandle, state: State<ProxyState>) -> Result<bool, Str
                 "proxy-log",
                 LogLine {
                     level: "warn".into(),
-                    msg: format!("⚠ 写入 Windsurf 配置失败: {}", e),
+                    msg: format!("⚠ 写入 {} 配置失败: {}", ide_label, e),
                 },
             );
             false
@@ -226,13 +306,13 @@ pub fn start_proxy(app: AppHandle, state: State<ProxyState>) -> Result<bool, Str
     if let Some(res) = &resource_dir {
         let script_path = res.join("byok-cards.js");
         match std::fs::read_to_string(&script_path) {
-            Ok(script) => match crate::commands::workbench_inject::inject(&script) {
+            Ok(script) => match crate::commands::workbench_inject::inject(&script, &target) {
                 Ok(true) => {
                     let _ = app.emit(
                         "proxy-log",
                         LogLine {
                             level: "ok".into(),
-                            msg: "✅ 已注入模型卡片改写脚本，请重启 Windsurf 生效".into(),
+                            msg: format!("✅ 已注入模型卡片改写脚本，请重启 {} 生效", ide_label),
                         },
                     );
                 }
@@ -305,17 +385,38 @@ pub fn start_proxy(app: AppHandle, state: State<ProxyState>) -> Result<bool, Str
             let guard = lock_or_recover(&state.child);
             match guard.as_ref() {
                 Some(managed) => managed.try_wait().ok().flatten().is_some(),
-                None => true, // child 已被清除
+                // child 为 None 说明 stop_proxy 已 take 走了 child 并负责清理，
+                // 这里直接退出循环，不再误判为进程退出。
+                None => {
+                    break;
+                }
             }
         } else {
-            true
+            break;
         };
 
         if exited {
-            // 进程退出后的清理
+            // 进程真正退出后的清理
             if let Some(state) = app_handle2.try_state::<ProxyState>() {
                 *lock_or_recover(&state.child) = None;
-                restore_all(&state);
+                let target = lock_or_recover(&state.target_ide).clone();
+                let report = restore_all(&state, &target);
+                if report.has_warning() {
+                    let mut warnings = Vec::new();
+                    if !report.ide_config.starts_with("ok") {
+                        warnings.push(report.ide_config.clone());
+                    }
+                    if !report.workbench_inject.starts_with("ok") {
+                        warnings.push(report.workbench_inject.clone());
+                    }
+                    let _ = app_handle2.emit(
+                        "proxy-log",
+                        LogLine {
+                            level: "warn".into(),
+                            msg: format!("⚠ 还原警告: {}", warnings.join("；")),
+                        },
+                    );
+                }
             }
             let _ = app_handle2.emit("proxy-stopped", ());
             break;
@@ -326,13 +427,42 @@ pub fn start_proxy(app: AppHandle, state: State<ProxyState>) -> Result<bool, Str
 }
 
 #[tauri::command]
-pub fn stop_proxy(state: State<ProxyState>) -> Result<(), String> {
+pub fn stop_proxy(app: AppHandle, state: State<ProxyState>, target_ide: Option<String>) -> Result<RestoreReport, String> {
     let child = lock_or_recover(&state.child).take();
     if let Some(child) = child {
-        child.kill()?;
-        // 还原 Windsurf 配置（幂等且与 Terminated 分支串行化，无备份则空操作）。
-        restore_all(&state);
-        Ok(())
+        // 无论 kill 是否成功，都必须还原配置；kill 失败仅记日志不阻断。
+        if let Err(e) = child.kill() {
+            eprintln!("[stop_proxy] kill 失败（进程可能已退出）: {}", e);
+        }
+        // 还原 IDE 配置（幂等且与 Terminated 分支串行化，无备份则空操作）。
+        let target = match target_ide.as_deref() {
+            Some("auto") | None => {
+                let detected = crate::commands::system::detect_target_ide();
+                if detected != "windsurf" && detected != "devin" { "windsurf".into() } else { detected }
+            }
+            Some(t) => t.to_string(),
+        };
+        let report = restore_all(&state, &target);
+
+        // 如果还原有警告，通过事件通知前端（同时返回值也携带报告）。
+        if report.has_warning() {
+            let mut warnings = Vec::new();
+            if !report.ide_config.starts_with("ok") {
+                warnings.push(report.ide_config.clone());
+            }
+            if !report.workbench_inject.starts_with("ok") {
+                warnings.push(report.workbench_inject.clone());
+            }
+            let _ = app.emit(
+                "proxy-log",
+                LogLine {
+                    level: "warn".into(),
+                    msg: format!("⚠ 还原警告: {}", warnings.join("；")),
+                },
+            );
+        }
+
+        Ok(report)
     } else {
         Err("代理未运行".into())
     }

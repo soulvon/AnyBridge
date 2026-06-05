@@ -1,8 +1,8 @@
-// windsurf_models.rs — Windsurf 模型清单：内置静态表 + 登录后从云端更新。
+// ide_models.rs — IDE 模型清单：内置静态表 + 登录后从云端更新。
 //
 // 默认用内置静态表（覆盖主流模型，带干净显示名），无需登录。
 // 用户在设置页「更新模型列表」时才登录 Windsurf 账户，从 GetUserStatus 拉取最新
-// clientModelConfigs（含官方 label），合并/覆盖内置表后持久化到 windsurf-models.json。
+// clientModelConfigs（含官方 label），合并/覆盖内置表后持久化到 ide-models.json。
 
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
@@ -11,7 +11,7 @@ use std::fs;
 // ─── 公共数据结构 ──────────────────────────────────────────
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct WindsurfModel {
+pub struct IdeModel {
     pub id: String,
     pub name: String,
     pub provider: String,
@@ -20,7 +20,7 @@ pub struct WindsurfModel {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct WindsurfAccountSummary {
+pub struct IdeAccountSummary {
     pub email: String,
     pub plan_name: String,
     pub teams_tier: String,
@@ -30,25 +30,25 @@ pub struct WindsurfAccountSummary {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct WindsurfModelsResult {
-    pub models: Vec<WindsurfModel>,
+pub struct IdeModelsResult {
+    pub models: Vec<IdeModel>,
     pub source: String,
     #[serde(default)]
     pub captured_at: Option<u64>,
     #[serde(default)]
-    pub account: Option<WindsurfAccountSummary>,
+    pub account: Option<IdeAccountSummary>,
 }
 
-/// refresh_windsurf_models 命令的返回值
+/// refresh_ide_models 命令的返回值
 #[derive(Debug, Clone, Serialize)]
-pub struct WindsurfAccountInfo {
+pub struct IdeAccountInfo {
     pub email: String,
     pub plan_name: String,
     pub teams_tier: String,
     pub daily_remaining: i32,
     pub weekly_remaining: i32,
     pub overage_balance_micros: i64,
-    pub models: Vec<WindsurfModel>,
+    pub models: Vec<IdeModel>,
 }
 
 // ─── 缓存文件反序列化 ──────────────────────────────────────
@@ -89,14 +89,14 @@ struct CacheFile {
 
 // ─── Session 读取 ──────────────────────────────────────────
 
-struct WindsurfSession {
+struct IdeSession {
     #[allow(dead_code)]
     email: String,
     api_key: String,
     api_server_url: String,
 }
 
-fn read_windsurf_session() -> Result<WindsurfSession, String> {
+fn read_ide_session() -> Result<IdeSession, String> {
     let mut db_path = dirs::config_dir().ok_or("无法定位配置目录")?;
     db_path.push("Windsurf");
     db_path.push("User");
@@ -140,7 +140,7 @@ fn read_windsurf_session() -> Result<WindsurfSession, String> {
         ));
     }
 
-    Ok(WindsurfSession { email, api_key, api_server_url })
+    Ok(IdeSession { email, api_key, api_server_url })
 }
 
 /// 从 vscdb 二进制内容中提取 session token
@@ -203,7 +203,7 @@ fn regex_extract_api_server_url(content: &str) -> Option<String> {
 
 // ─── 调用 GetUserStatus API ────────────────────────────────
 
-async fn fetch_windsurf_account_info(session: &WindsurfSession) -> Result<WindsurfAccountInfo, String> {
+async fn fetch_ide_account_info(session: &IdeSession) -> Result<IdeAccountInfo, String> {
     let client = reqwest::Client::new();
     let url = format!(
         "{}/exa.seat_management_pb.SeatManagementService/GetUserStatus",
@@ -261,7 +261,7 @@ fn should_skip_model(model_id: &str) -> bool {
         || model_id.is_empty()
 }
 
-fn parse_account_info(data: serde_json::Value) -> Result<WindsurfAccountInfo, String> {
+fn parse_account_info(data: serde_json::Value) -> Result<IdeAccountInfo, String> {
     let builtin = builtin_models();
 
     let email = data.pointer("/userStatus/email")
@@ -332,7 +332,7 @@ fn parse_account_info(data: serde_json::Value) -> Result<WindsurfAccountInfo, St
     }
 
     // 用 builtin 兜底 label / provider / common
-    let models: Vec<WindsurfModel> = ordered_ids
+    let models: Vec<IdeModel> = ordered_ids
         .iter()
         .map(|id| {
             let name = label_map.get(id).cloned()
@@ -344,11 +344,11 @@ fn parse_account_info(data: serde_json::Value) -> Result<WindsurfAccountInfo, St
             let common = builtin.iter().find(|m| m.id == *id)
                 .map(|m| m.common)
                 .unwrap_or(false);
-            WindsurfModel { id: id.clone(), name, provider, common }
+            IdeModel { id: id.clone(), name, provider, common }
         })
         .collect();
 
-    Ok(WindsurfAccountInfo {
+    Ok(IdeAccountInfo {
         email, plan_name, teams_tier,
         daily_remaining, weekly_remaining,
         overage_balance_micros, models,
@@ -361,9 +361,9 @@ fn parse_account_info(data: serde_json::Value) -> Result<WindsurfAccountInfo, St
 /// JSON API 只能拿当前账号的精简列表。直接覆盖会冲掉 sidecar 的数据，
 /// 所以这里读旧缓存 → 以 modelUid 去重合并 → 旧条目一律保留，只新增 API 带来的新模型。
 /// 账号信息（额度 / plan）始终用本次 API 结果刷新。
-fn save_windsurf_models_cache(info: &WindsurfAccountInfo) -> Result<Vec<WindsurfModel>, String> {
+fn save_ide_models_cache(info: &IdeAccountInfo) -> Result<Vec<IdeModel>, String> {
     let dir = super::config::config_dir_path();
-    let path = dir.join("windsurf-models.json");
+    let path = dir.join("ide-models.json");
 
     let now_ms = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -420,7 +420,7 @@ fn save_windsurf_models_cache(info: &WindsurfAccountInfo) -> Result<Vec<Windsurf
 
     // 返回合并后的完整列表，供 UI 展示（不止本次 API 的精简列表）
     let builtin = builtin_models();
-    let merged: Vec<WindsurfModel> = ordered
+    let merged: Vec<IdeModel> = ordered
         .into_iter()
         .map(|(id, label)| {
             let provider = builtin.iter().find(|m| m.id == id)
@@ -429,7 +429,7 @@ fn save_windsurf_models_cache(info: &WindsurfAccountInfo) -> Result<Vec<Windsurf
             let common = builtin.iter().find(|m| m.id == id)
                 .map(|m| m.common)
                 .unwrap_or(false);
-            WindsurfModel { id, name: label, provider, common }
+            IdeModel { id, name: label, provider, common }
         })
         .collect();
     Ok(merged)
@@ -437,16 +437,16 @@ fn save_windsurf_models_cache(info: &WindsurfAccountInfo) -> Result<Vec<Windsurf
 
 // ─── 内置静态表 ──────────────────────────────────────────────
 
-fn m(id: &str, name: &str, provider: &str, common: bool) -> WindsurfModel {
-    WindsurfModel { id: id.into(), name: name.into(), provider: provider.into(), common }
+fn m(id: &str, name: &str, provider: &str, common: bool) -> IdeModel {
+    IdeModel { id: id.into(), name: name.into(), provider: provider.into(), common }
 }
 
 /// 内置静态表：日常默认使用。基于实测 GetUserStatus + UID_PROTO_MAP 整理，
 /// 主流对话模型标 common=true，其余（含 effort 变体、内部代号）common=false 供搜索。
-pub fn builtin_models() -> Vec<WindsurfModel> {
+pub fn builtin_models() -> Vec<IdeModel> {
     vec![
         // ── Anthropic Claude（主流） ──
-        m("MODEL_PRIVATE_2", "Claude Sonnet 4.5", "anthropic", true),
+        m("MODEL_PRIVATE_2", "Claude 4.5 Sonnet", "anthropic", true),
         m("MODEL_PRIVATE_3", "Claude Sonnet 4.5 Thinking", "anthropic", true),
         m("MODEL_CLAUDE_4_5_OPUS", "Claude Opus 4.5", "anthropic", true),
         m("MODEL_CLAUDE_4_5_OPUS_THINKING", "Claude Opus 4.5 Thinking", "anthropic", true),
@@ -457,10 +457,40 @@ pub fn builtin_models() -> Vec<WindsurfModel> {
         m("MODEL_CLAUDE_4_1_OPUS", "Claude Opus 4.1", "anthropic", false),
         m("MODEL_CLAUDE_4_1_OPUS_THINKING", "Claude Opus 4.1 Thinking", "anthropic", false),
         m("MODEL_PRIVATE_11", "Claude Haiku 4.5", "anthropic", true),
+        m("MODEL_PRIVATE_1", "Claude 4.5 Opus", "anthropic", false),
         m("MODEL_CLAUDE_3_7_SONNET", "Claude 3.7 Sonnet", "anthropic", false),
         m("MODEL_CLAUDE_3_7_SONNET_THINKING", "Claude 3.7 Sonnet Thinking", "anthropic", false),
         m("MODEL_CLAUDE_3_5_SONNET", "Claude 3.5 Sonnet", "anthropic", false),
         m("MODEL_CLAUDE_3_5_HAIKU_20241022", "Claude 3.5 Haiku", "anthropic", false),
+        // Claude 4.6
+        m("claude-opus-4-6", "Claude Opus 4.6", "anthropic", true),
+        m("claude-opus-4-6-thinking", "Claude Opus 4.6 Thinking", "anthropic", true),
+        m("claude-sonnet-4-6", "Claude Sonnet 4.6", "anthropic", true),
+        m("claude-sonnet-4-6-thinking", "Claude Sonnet 4.6 Thinking", "anthropic", true),
+        m("claude-sonnet-4-6-1m", "Claude Sonnet 4.6 1M", "anthropic", false),
+        m("claude-sonnet-4-6-thinking-1m", "Claude Sonnet 4.6 Thinking 1M", "anthropic", false),
+        // Claude 4.7
+        m("claude-opus-4-7-low", "Claude Opus 4.7 Low", "anthropic", false),
+        m("claude-opus-4-7-medium", "Claude Opus 4.7 Medium", "anthropic", true),
+        m("claude-opus-4-7-high", "Claude Opus 4.7 High", "anthropic", false),
+        m("claude-opus-4-7-xhigh", "Claude Opus 4.7 XHigh", "anthropic", false),
+        m("claude-opus-4-7-max", "Claude Opus 4.7 Max", "anthropic", false),
+        m("claude-opus-4-7-low-fast", "Claude Opus 4.7 Low Fast", "anthropic", false),
+        m("claude-opus-4-7-medium-fast", "Claude Opus 4.7 Medium Fast", "anthropic", false),
+        m("claude-opus-4-7-high-fast", "Claude Opus 4.7 High Fast", "anthropic", false),
+        m("claude-opus-4-7-xhigh-fast", "Claude Opus 4.7 XHigh Fast", "anthropic", false),
+        m("claude-opus-4-7-max-fast", "Claude Opus 4.7 Max Fast", "anthropic", false),
+        // Claude 4.8
+        m("claude-opus-4-8-low", "Claude Opus 4.8 Low", "anthropic", false),
+        m("claude-opus-4-8-medium", "Claude Opus 4.8 Medium", "anthropic", true),
+        m("claude-opus-4-8-high", "Claude Opus 4.8 High", "anthropic", false),
+        m("claude-opus-4-8-xhigh", "Claude Opus 4.8 XHigh", "anthropic", false),
+        m("claude-opus-4-8-max", "Claude Opus 4.8 Max", "anthropic", false),
+        m("claude-opus-4-8-low-fast", "Claude Opus 4.8 Low Fast", "anthropic", false),
+        m("claude-opus-4-8-medium-fast", "Claude Opus 4.8 Medium Fast", "anthropic", false),
+        m("claude-opus-4-8-high-fast", "Claude Opus 4.8 High Fast", "anthropic", false),
+        m("claude-opus-4-8-xhigh-fast", "Claude Opus 4.8 XHigh Fast", "anthropic", false),
+        m("claude-opus-4-8-max-fast", "Claude Opus 4.8 Max Fast", "anthropic", false),
         // BYOK 变体
         m("MODEL_CLAUDE_4_SONNET_BYOK", "Claude Sonnet 4 (BYOK)", "anthropic", false),
         m("MODEL_CLAUDE_4_SONNET_THINKING_BYOK", "Claude Sonnet 4 Thinking (BYOK)", "anthropic", false),
@@ -475,7 +505,16 @@ pub fn builtin_models() -> Vec<WindsurfModel> {
         m("MODEL_PRIVATE_7", "GPT-5 Medium Thinking", "openai", true),
         m("MODEL_PRIVATE_8", "GPT-5 High Thinking", "openai", true),
         m("MODEL_PRIVATE_5", "GPT-5-Codex", "openai", true),
-        m("MODEL_PRIVATE_12", "GPT-5.1", "openai", true),
+        m("MODEL_PRIVATE_12", "GPT-5.1 No Thinking", "openai", true),
+        m("MODEL_PRIVATE_13", "GPT-5.1 Low Thinking", "openai", false),
+        m("MODEL_PRIVATE_14", "GPT-5.1 Medium Thinking", "openai", false),
+        m("MODEL_PRIVATE_15", "GPT-5.1 High Thinking", "openai", false),
+        m("MODEL_PRIVATE_9", "GPT-5.1-Codex Medium", "openai", false),
+        m("MODEL_PRIVATE_19", "GPT-5.1-Codex-Mini", "openai", false),
+        m("MODEL_PRIVATE_20", "GPT-5.1 No Thinking Fast", "openai", false),
+        m("MODEL_PRIVATE_21", "GPT-5.1 Low Thinking Fast", "openai", false),
+        m("MODEL_PRIVATE_22", "GPT-5.1 Medium Thinking Fast", "openai", false),
+        m("MODEL_PRIVATE_23", "GPT-5.1 High Thinking Fast", "openai", false),
         m("MODEL_CHAT_GPT_5_CODEX", "GPT-5 Codex", "openai", false),
         m("MODEL_CHAT_GPT_5_MINIMAL", "GPT-5 Minimal", "openai", false),
         m("MODEL_GPT_5_NANO", "GPT-5 Nano", "openai", false),
@@ -484,6 +523,56 @@ pub fn builtin_models() -> Vec<WindsurfModel> {
         m("MODEL_GPT_5_1_CODEX_MAX_LOW", "GPT-5.1 Codex Max Low", "openai", false),
         m("MODEL_GPT_5_1_CODEX_MAX_MEDIUM", "GPT-5.1 Codex Max Medium", "openai", false),
         m("MODEL_GPT_5_1_CODEX_MAX_HIGH", "GPT-5.1 Codex Max High", "openai", false),
+        // GPT-5.2
+        m("MODEL_GPT_5_2_NONE", "GPT-5.2", "openai", false),
+        m("MODEL_GPT_5_2_LOW", "GPT-5.2 Low Thinking", "openai", false),
+        m("MODEL_GPT_5_2_MEDIUM", "GPT-5.2 Medium Thinking", "openai", false),
+        m("MODEL_GPT_5_2_HIGH", "GPT-5.2 High Thinking", "openai", false),
+        m("MODEL_GPT_5_2_XHIGH", "GPT-5.2 XHigh Thinking", "openai", false),
+        m("MODEL_GPT_5_2_NONE_PRIORITY", "GPT-5.2 No Thinking Fast", "openai", false),
+        m("MODEL_GPT_5_2_LOW_PRIORITY", "GPT-5.2 Low Thinking Fast", "openai", false),
+        m("MODEL_GPT_5_2_MEDIUM_PRIORITY", "GPT-5.2 Medium Thinking Fast", "openai", false),
+        m("MODEL_GPT_5_2_HIGH_PRIORITY", "GPT-5.2 High Thinking Fast", "openai", false),
+        m("MODEL_GPT_5_2_XHIGH_PRIORITY", "GPT-5.2 XHigh Thinking Fast", "openai", false),
+        m("MODEL_GPT_5_2_CODEX_LOW", "GPT-5.2-Codex Low", "openai", false),
+        m("MODEL_GPT_5_2_CODEX_MEDIUM", "GPT-5.2-Codex Medium", "openai", false),
+        m("MODEL_GPT_5_2_CODEX_HIGH", "GPT-5.2-Codex High", "openai", false),
+        m("MODEL_GPT_5_2_CODEX_XHIGH", "GPT-5.2-Codex XHigh", "openai", false),
+        // GPT-5.3
+        m("gpt-5-3-codex-low", "GPT-5.3-Codex Low", "openai", false),
+        m("gpt-5-3-codex-medium", "GPT-5.3-Codex Medium", "openai", false),
+        m("gpt-5-3-codex-high", "GPT-5.3-Codex High", "openai", false),
+        m("gpt-5-3-codex-xhigh", "GPT-5.3-Codex XHigh", "openai", false),
+        m("gpt-5-3-codex-low-priority", "GPT-5.3-Codex Low Fast", "openai", false),
+        m("gpt-5-3-codex-medium-priority", "GPT-5.3-Codex Medium Fast", "openai", false),
+        m("gpt-5-3-codex-high-priority", "GPT-5.3-Codex High Fast", "openai", false),
+        m("gpt-5-3-codex-xhigh-priority", "GPT-5.3-Codex XHigh Fast", "openai", false),
+        // GPT-5.4
+        m("gpt-5-4-none", "GPT-5.4 No Thinking", "openai", true),
+        m("gpt-5-4-low", "GPT-5.4 Low Thinking", "openai", false),
+        m("gpt-5-4-medium", "GPT-5.4 Medium Thinking", "openai", false),
+        m("gpt-5-4-high", "GPT-5.4 High Thinking", "openai", false),
+        m("gpt-5-4-xhigh", "GPT-5.4 XHigh Thinking", "openai", false),
+        m("gpt-5-4-none-priority", "GPT-5.4 No Thinking Fast", "openai", false),
+        m("gpt-5-4-low-priority", "GPT-5.4 Low Thinking Fast", "openai", false),
+        m("gpt-5-4-medium-priority", "GPT-5.4 Medium Thinking Fast", "openai", false),
+        m("gpt-5-4-high-priority", "GPT-5.4 High Thinking Fast", "openai", false),
+        m("gpt-5-4-xhigh-priority", "GPT-5.4 XHigh Thinking Fast", "openai", false),
+        m("gpt-5-4-mini-low", "GPT-5.4 Mini Low Thinking", "openai", false),
+        m("gpt-5-4-mini-medium", "GPT-5.4 Mini Medium Thinking", "openai", false),
+        m("gpt-5-4-mini-high", "GPT-5.4 Mini High Thinking", "openai", false),
+        m("gpt-5-4-mini-xhigh", "GPT-5.4 Mini XHigh Thinking", "openai", false),
+        // GPT-5.5
+        m("gpt-5-5-none", "GPT-5.5 No Thinking", "openai", true),
+        m("gpt-5-5-low", "GPT-5.5 Low Thinking", "openai", false),
+        m("gpt-5-5-medium", "GPT-5.5 Medium Thinking", "openai", false),
+        m("gpt-5-5-high", "GPT-5.5 High Thinking", "openai", false),
+        m("gpt-5-5-xhigh", "GPT-5.5 XHigh Thinking", "openai", false),
+        m("gpt-5-5-none-priority", "GPT-5.5 No Thinking Fast", "openai", false),
+        m("gpt-5-5-low-priority", "GPT-5.5 Low Thinking Fast", "openai", false),
+        m("gpt-5-5-medium-priority", "GPT-5.5 Medium Thinking Fast", "openai", false),
+        m("gpt-5-5-high-priority", "GPT-5.5 High Thinking Fast", "openai", false),
+        m("gpt-5-5-xhigh-priority", "GPT-5.5 XHigh Thinking Fast", "openai", false),
         m("MODEL_CHAT_GPT_4O_2024_08_06", "GPT-4o", "openai", true),
         m("MODEL_CHAT_GPT_4O_MINI_2024_07_18", "GPT-4o mini", "openai", false),
         m("MODEL_CHAT_GPT_4_1_2025_04_14", "GPT-4.1", "openai", false),
@@ -500,20 +589,32 @@ pub fn builtin_models() -> Vec<WindsurfModel> {
         m("MODEL_GOOGLE_GEMINI_3_0_FLASH_LOW", "Gemini 3.0 Flash Low", "google", false),
         m("MODEL_GOOGLE_GEMINI_3_0_FLASH_MEDIUM", "Gemini 3.0 Flash", "google", true),
         m("MODEL_GOOGLE_GEMINI_3_0_FLASH_HIGH", "Gemini 3.0 Flash High", "google", false),
+        // Gemini 3.1
+        m("gemini-3-1-pro-low", "Gemini 3.1 Pro Low Thinking", "google", false),
+        m("gemini-3-1-pro-high", "Gemini 3.1 Pro High Thinking", "google", false),
+        // Gemini 3.5
+        m("gemini-3-5-flash-minimal", "Gemini 3.5 Flash Minimal", "google", false),
+        m("gemini-3-5-flash-low", "Gemini 3.5 Flash Low", "google", false),
+        m("gemini-3-5-flash-medium", "Gemini 3.5 Flash Medium", "google", true),
+        m("gemini-3-5-flash-high", "Gemini 3.5 Flash High", "google", false),
 
         // ── xAI Grok ──
-        m("MODEL_PRIVATE_4", "Grok Code Fast 1", "xai", true),
+        m("MODEL_PRIVATE_4", "Grok Code Fast 1", "xai", false),
         m("MODEL_XAI_GROK_3", "Grok 3", "xai", false),
         m("MODEL_XAI_GROK_3_MINI_REASONING", "Grok 3 mini Thinking", "xai", false),
 
         // ── 其他厂商 ──
-        m("MODEL_KIMI_K2", "Kimi K2", "other", false),
-        m("MODEL_MINIMAX_M2_1", "MiniMax M2", "other", false),
-        m("MODEL_GLM_4_7", "GLM-4.7", "other", false),
+        m("kimi-k2-5", "Kimi K2.5", "other", false),
+        m("kimi-k2-6", "Kimi K2.6", "other", false),
+        m("minimax-m2-5", "MiniMax M2.5", "other", false),
+        m("glm-5-1", "GLM-5.1", "other", false),
+        m("deepseek-v4", "DeepSeek V4 Pro", "other", false),
 
         // ── Windsurf 自研 ──
         m("MODEL_SWE_1_5", "SWE-1.5", "windsurf", true),
         m("MODEL_SWE_1_5_SLOW", "SWE-1.5 (Slow)", "windsurf", false),
+        m("swe-1-6", "SWE-1.6", "windsurf", true),
+        m("swe-1-6-fast", "SWE-1.6 Fast", "windsurf", false),
         m("MODEL_CHAT_11121", "Windsurf Fast", "windsurf", false),
     ]
 }
@@ -523,13 +624,13 @@ pub fn builtin_models() -> Vec<WindsurfModel> {
 /// 返回模型清单：优先缓存（API 拉取或代理拦截），其次内置静态表。
 /// 同时返回缓存中的账号信息（如有）。
 #[tauri::command]
-pub fn list_windsurf_models() -> Result<WindsurfModelsResult, String> {
-    let path = super::config::config_dir_path().join("windsurf-models.json");
+pub fn list_ide_models() -> Result<IdeModelsResult, String> {
+    let path = super::config::config_dir_path().join("ide-models.json");
     if let Ok(raw) = fs::read_to_string(&path) {
         if let Ok(parsed) = serde_json::from_str::<CacheFile>(&raw) {
             let source = if parsed.source.is_empty() { "captured".into() } else { parsed.source };
             let captured_at = parsed.captured_at;
-            let account = parsed.account.map(|a| WindsurfAccountSummary {
+            let account = parsed.account.map(|a| IdeAccountSummary {
                 email: a.email,
                 plan_name: a.plan_name,
                 teams_tier: a.teams_tier,
@@ -538,12 +639,12 @@ pub fn list_windsurf_models() -> Result<WindsurfModelsResult, String> {
                 overage_balance_micros: a.overage_balance_micros,
             });
             let mut seen = HashSet::new();
-            let models: Vec<WindsurfModel> = parsed
+            let models: Vec<IdeModel> = parsed
                 .models
                 .into_iter()
                 .filter(|e| !e.label.starts_with("http"))
                 .filter(|e| seen.insert(e.model_uid.clone()))
-                .map(|e| WindsurfModel {
+                .map(|e| IdeModel {
                     id: e.model_uid,
                     name: e.label,
                     provider: String::new(),
@@ -551,7 +652,7 @@ pub fn list_windsurf_models() -> Result<WindsurfModelsResult, String> {
                 })
                 .collect();
             if !models.is_empty() {
-                return Ok(WindsurfModelsResult {
+                return Ok(IdeModelsResult {
                     models,
                     source,
                     captured_at,
@@ -560,7 +661,7 @@ pub fn list_windsurf_models() -> Result<WindsurfModelsResult, String> {
             }
         }
     }
-    Ok(WindsurfModelsResult {
+    Ok(IdeModelsResult {
         models: builtin_models(),
         source: "builtin".into(),
         captured_at: None,
@@ -568,13 +669,13 @@ pub fn list_windsurf_models() -> Result<WindsurfModelsResult, String> {
     })
 }
 
-/// 从 Windsurf 本地 session 拉取最新模型列表 + 账号信息，缓存后返回。
+/// 从 IDE 本地 session 拉取最新模型列表 + 账号信息，缓存后返回。
 #[tauri::command]
-pub async fn refresh_windsurf_models() -> Result<WindsurfAccountInfo, String> {
-    let session = read_windsurf_session()?;
-    let mut info = fetch_windsurf_account_info(&session).await?;
+pub async fn refresh_ide_models() -> Result<IdeAccountInfo, String> {
+    let session = read_ide_session()?;
+    let mut info = fetch_ide_account_info(&session).await?;
     // 合并只增不减写回缓存，并取回合并后的完整列表回填给 UI
-    let merged = save_windsurf_models_cache(&info)?;
+    let merged = save_ide_models_cache(&info)?;
     info.models = merged;
     Ok(info)
 }

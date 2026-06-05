@@ -29,26 +29,26 @@ fn write_atomic(path: &PathBuf, content: &str) -> Result<(), String> {
     })
 }
 
-/// 从 Windsurf 可执行文件路径推出 workbench.html 路径。
-fn workbench_html_path() -> Option<PathBuf> {
+/// 从 IDE 可执行文件路径推出 workbench.html 路径。
+fn workbench_html_path(target: &str) -> Option<PathBuf> {
     #[cfg(target_os = "windows")]
     let app_root = {
-        // exe 在 <root>\Windsurf.exe，资源在 <root>\resources\app
-        let exe = crate::commands::system::find_windsurf_exe()?;
+        // exe 在 <root>\Windsurf.exe 或 <root>\Devin.exe，资源在 <root>\resources\app
+        let exe = crate::commands::system::find_ide_exe(target)?;
         exe.parent()?.join("resources").join("app")
     };
 
     #[cfg(target_os = "macos")]
     let app_root = {
-        // <Windsurf.app>/Contents/Resources/app
-        let app = crate::commands::system::find_windsurf_app()?;
+        // <Windsurf.app>/Contents/Resources/app 或 <Devin.app>/Contents/Resources/app
+        let app = crate::commands::system::find_ide_app(target)?;
         app.join("Contents").join("Resources").join("app")
     };
 
     #[cfg(target_os = "linux")]
     let app_root = {
-        // bin 通常在 <root>/windsurf，资源在 <root>/resources/app
-        let bin = crate::commands::system::find_windsurf_bin()?;
+        // bin 通常在 <root>/windsurf 或 <root>/devin，资源在 <root>/resources/app
+        let bin = crate::commands::system::find_ide_bin(target)?;
         bin.parent()?.join("resources").join("app")
     };
 
@@ -103,13 +103,12 @@ fn strip_byok_block(html: &str) -> String {
 }
 
 /// 注入 byok-cards.js（脚本内容由调用方提供，来自打包资源）。
-/// 返回 Ok(true) 表示发生了写入（需重启 Windsurf 生效）；Ok(false) 表示已是最新无需改动。
-pub fn inject(script: &str) -> Result<bool, String> {
-    let Some(path) = workbench_html_path() else {
+/// 返回 Ok(true) 表示发生了写入（需重启 IDE 生效）；Ok(false) 表示已是最新无需改动。
+pub fn inject(script: &str, target: &str) -> Result<bool, String> {
+    let Some(path) = workbench_html_path(target) else {
         return Err(
-            "未定位到 Windsurf 的 workbench.html（可能装在非默认目录且未运行）。\
-             请启动 Windsurf 后重试，或在设置页手动指定 Windsurf.exe 路径"
-                .into(),
+            format!("未定位到 {} 的 workbench.html（可能装在非默认目录且未运行）。\
+             请启动 {} 后重试，或在设置页手动指定路径", target, target)
         );
     };
 
@@ -148,8 +147,8 @@ pub fn inject(script: &str) -> Result<bool, String> {
 
 /// 还原 workbench.html：优先用备份整体覆盖，否则仅剥离 byok 块。
 /// 幂等：无注入痕迹时返回 Ok(false)。
-pub fn restore() -> Result<bool, String> {
-    let Some(path) = workbench_html_path() else {
+pub fn restore(target: &str) -> Result<bool, String> {
+    let Some(path) = workbench_html_path(target) else {
         return Ok(false);
     };
     let backup = PathBuf::from(format!("{}{}", path.to_string_lossy(), BACKUP_SUFFIX));

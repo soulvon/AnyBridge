@@ -3,8 +3,8 @@ pub mod model_map;
 pub mod proxy;
 pub mod system;
 pub mod update;
-pub mod windsurf_config;
-pub mod windsurf_models;
+pub mod ide_config;
+pub mod ide_models;
 pub mod workbench_inject;
 
 use std::path::Path;

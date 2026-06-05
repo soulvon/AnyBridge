@@ -1,4 +1,4 @@
-/* byok-cards.js — Windsurf 模型选择面板卡片的纯视觉改写。
+/* byok-cards.js — IDE 模型选择面板卡片的纯视觉改写。
  *
  * 由 BYOK 应用注入到 workbench.html（独立于汉化插件 ws-better）。
  * 目标：把冒名的 Claude Opus 4.6/4.7/4.8（实际复用 GPT-5.1 槽位）的列表项和

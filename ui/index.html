@@ -476,6 +476,43 @@ html[data-theme="dark"] .icon-btn .moon-icon {
 }
 .control-status { display: flex; align-items: center; gap: 14px; }
 .control-sub { font-size: 13px; color: var(--text-dim); }
+
+/* IDE 选择器 */
+.ide-selector {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.ide-selector select {
+  appearance: none;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 24px 6px 10px;
+  font-size: 11px;
+  font-weight: 500;
+  font-family: var(--font-mono);
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.ide-selector select:hover {
+  background: var(--bg-hover);
+  border-color: var(--accent);
+}
+.ide-selector select:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-glow);
+}
+.ide-selector-icon {
+  position: absolute;
+  right: 8px;
+  pointer-events: none;
+  color: var(--text-muted);
+}
+
 .control-bar .proxy-btn {
   height: 44px; padding: 0 28px; font-size: 15px; border-radius: var(--radius-md);
 }
@@ -1573,8 +1610,21 @@ html[data-theme="dark"] .icon-btn .moon-icon {
           <span class="status-pill offline" id="statusPill">
             <span class="status-dot"></span> 已停止
           </span>
-          <span class="control-sub" id="controlSub">代理未运行 · 端口 :7450 / :7451</span>
+          <span class="control-sub" id="controlSub">代理未运行 · 目标: Windsurf · 端口 :7450 / :7451</span>
         </div>
+        
+        <!-- IDE 选择器 -->
+        <div class="ide-selector">
+          <select id="targetIde" onchange="onTargetIdeChange()">
+            <option value="windsurf">Windsurf</option>
+            <option value="devin">Devin</option>
+            <option value="auto">自动检测</option>
+          </select>
+          <svg class="ide-selector-icon" width="12" height="12" viewBox="0 0 24 24">
+            <polyline points="6 9 12 15 18 9"></polyline>
+          </svg>
+        </div>
+        
         <button class="proxy-btn" id="proxyBtn" onclick="toggleProxy()">
           <svg class="proxy-btn-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="transition: transform 0.2s ease;">
             <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" fill="currentColor"/>
@@ -1617,7 +1667,7 @@ html[data-theme="dark"] .icon-btn .moon-icon {
                 <svg class="flow-svg" width="22" height="24" viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect><line x1="8" y1="21" x2="16" y2="21"></line><line x1="12" y1="17" x2="12" y2="21"></line></svg>
               </div>
               <div class="flow-label">IDE</div>
-              <div class="flow-sub">extension.js</div>
+              <div class="flow-sub" id="flowIdeTarget">IDE</div>
             </div>
             <div class="flow-arrow">→<span class="arr-label">HTTP</span></div>
             <div class="flow-node">
@@ -1859,7 +1909,7 @@ html[data-theme="dark"] .icon-btn .moon-icon {
               <span style="font-size:14px; font-weight:700; color:var(--text-primary);">选择模型</span>
               <div style="display:flex; align-items:center; gap:6px;">
                 <span class="brand-tag" id="slotCatalogCount" style="padding: 2px 8px; font-size: 10px; font-weight:700;">0 个可用</span>
-                <button id="btn-refresh-models" class="btn-ghost" onclick="refreshWindsurfModels()" style="padding: 0 10px; border-radius: 6px; display: flex; align-items: center; gap: 4px; height: 24px; font-size: 11px; font-weight: 600;" title="从 IDE 账号拉取最新模型列表">
+                <button id="btn-refresh-models" class="btn-ghost" onclick="refreshIdeModels()" style="padding: 0 10px; border-radius: 6px; display: flex; align-items: center; gap: 4px; height: 24px; font-size: 11px; font-weight: 600;" title="从 IDE 账号拉取最新模型列表">
                   <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
                     <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"></path>
                   </svg>
@@ -2432,6 +2482,52 @@ function navigateTo(pageId) {
 
 tabs.forEach(t => t.addEventListener('click', () => navigateTo(t.dataset.page)));
 
+// ═══════ IDE SELECTOR ═══════
+function getTargetIde() {
+  const select = document.getElementById('targetIde');
+  return select ? select.value : 'windsurf';
+}
+
+async function onTargetIdeChange() {
+  const ide = getTargetIde();
+  
+  // 保存配置到 BYOK config
+  try {
+    const config = await invoke('load_config') || {};
+    config.target_ide = ide;
+    await invoke('save_config', { values: config });
+  } catch (e) {
+    console.error('Failed to save target_ide:', e);
+  }
+  
+  // 如果是自动检测，执行检测
+  let displayIde = ide;
+  if (ide === 'auto') {
+    try {
+      const detected = await invoke('detect_target_ide');
+      if (detected && (detected === 'windsurf' || detected === 'devin')) {
+        displayIde = detected;
+      }
+    } catch (e) {
+      console.error('Auto-detect failed:', e);
+    }
+  }
+  
+  // 更新状态文本和 flow 图
+  updateFlowIdeTarget(displayIde);
+  setStatusPill(proxyRunning);
+  const displayLabel = displayIde === 'auto' ? '自动检测' : displayIde.charAt(0).toUpperCase() + displayIde.slice(1);
+  addLog('info', `目标 IDE 切换为: ${displayLabel}`);
+}
+
+function updateFlowIdeTarget(ide) {
+  const ideLabel = ide === 'auto' ? '自动检测' : ide.charAt(0).toUpperCase() + ide.slice(1);
+  const flowSub = document.getElementById('flowIdeTarget');
+  if (flowSub) {
+    flowSub.textContent = ideLabel;
+  }
+}
+
 // ═══════ PROXY TOGGLE ═══════
 let proxyRunning = false;
 
@@ -2467,9 +2563,11 @@ function setStatusPill(running) {
   }
   
   if (sub) {
+    const ide = getTargetIde();
+    const ideLabel = ide === 'auto' ? '自动检测' : ide.charAt(0).toUpperCase() + ide.slice(1);
     sub.textContent = running
-      ? '已接入 IDE · 端口 :7450 / :7451 · 重启 IDE 生效'
-      : '代理未运行 · 端口 :7450 / :7451';
+      ? `已接入 ${ideLabel} · 端口 :7450 / :7451 · 重启 IDE 生效`
+      : `代理未运行 · 目标: ${ideLabel} · 端口 :7450 / :7451`;
   }
   if (btn) {
     const icon = btn.querySelector('.proxy-btn-icon');
@@ -2501,6 +2599,7 @@ async function toggleProxy() {
   _diag('active overlays: ' + (activeOverlays.length ? activeOverlays.join(',') : 'none'));
 
   const btn = document.getElementById('proxyBtn');
+  const target = getTargetIde();
 
   if (btn) {
     btn.disabled = true;
@@ -2513,11 +2612,20 @@ async function toggleProxy() {
   }
   try {
     if (proxyRunning) {
-      await invoke('stop_proxy');
+      const report = await invoke('stop_proxy', { targetIde: target });
       setStatusPill(false);
-      // 停止后已还原 Windsurf 代理配置；但运行中的 Windsurf 仍在用旧代理设置，
-      // 不重启会一直指向已关闭的 localhost:7450 → 断网。必须提示重启。
-      await promptRestartWindsurf('已停止代理并还原配置。IDE 仍指向已关闭的代理，需重启才能恢复正常联网。');
+      // 检查还原报告，如果有警告则提示用户
+      const warnings = [];
+      if (report && report.ide_config && !report.ide_config.startsWith('ok')) {
+        warnings.push('IDE 代理配置: ' + report.ide_config);
+      }
+      if (warnings.length) {
+        addLog('warn', '⚠ 部分还原未成功: ' + warnings.join('；'));
+        alert('停止代理成功，但以下配置未能自动还原:\n\n• ' + warnings.join('\n• ') +
+              '\n\n请手动检查 IDE 设置中的 http.proxy 和 http.proxyStrictSSL，否则 IDE 可能无法联网。');
+      } else {
+        await promptRestartIde('已停止代理并还原配置。IDE 仍指向已关闭的代理，需重启才能恢复正常联网。');
+      }
     } else {
       // 启动前校验:启用的槽位若 targets 空或引用失效供应商，阻止带病启动。
       try {
@@ -2535,10 +2643,10 @@ async function toggleProxy() {
       } catch (e) {
         addLog('warn', '映射校验跳过: ' + e);
       }
-      await invoke('start_proxy');
+      await invoke('start_proxy', { targetIde: target });
       setStatusPill(true);
-      // 不论配置是否本次改动，运行中的 Windsurf 都可能尚未加载代理设置，统一提示重启生效。
-      await promptRestartWindsurf('代理已启动，需重启 IDE 才能生效。');
+      // 不论配置是否本次改动，运行中的 IDE 都可能尚未加载代理设置，统一提示重启生效。
+      await promptRestartIde('代理已启动，需重启 IDE 才能生效。');
     }
   } catch (e) {
     addLog('err', '代理操作失败: ' + e);
@@ -2562,10 +2670,11 @@ async function refreshStatus() {
   }
 }
 
-// 代理状态变更后，提示并询问是否一键重启 Windsurf 使其生效。
-function promptRestartWindsurf(leadText) {
+// 代理状态变更后，提示并询问是否一键重启 IDE 使其生效。
+function promptRestartIde(leadText) {
   if (!invoke) return Promise.resolve(false);
   const lead = leadText || '代理状态已变更，需重启 IDE 才能生效。';
+  const target = getTargetIde();
 
   return new Promise((resolve) => {
     const modal = document.getElementById('custom-confirm-modal');
@@ -2605,7 +2714,7 @@ function promptRestartWindsurf(leadText) {
     async function onConfirm() {
       cleanup(true);
       try {
-        const result = await invoke('restart_windsurf');
+        const result = await invoke('restart_ide', { target });
         addLog('ok', result);
       } catch (e) {
         addLog('err', '重启 IDE 失败: ' + e);
@@ -2616,6 +2725,7 @@ function promptRestartWindsurf(leadText) {
     btnConfirm.addEventListener('click', onConfirm);
   });
 }
+
 
 function fmtNum(n) {
   if (n == null) return '—';
@@ -2819,7 +2929,8 @@ async function detectIdePath() {
   const input = document.getElementById('idePath');
   const status = document.getElementById('ide-path-status');
   try {
-    const path = await invoke('detect_windsurf_path');
+    const target = getTargetIde();
+    const path = await invoke('detect_ide_path', { target });
     if (path) {
       if (input) input.value = path;
       if (status) status.textContent = '已自动定位 ✓';
@@ -2839,7 +2950,7 @@ async function saveIdePath() {
   const path = input ? input.value.trim() : '';
   if (!path) { if (status) status.textContent = '请先填写 IDE 可执行文件路径'; return; }
   try {
-    await invoke('set_windsurf_path', { path });
+    await invoke('set_ide_path', { path });
     if (status) status.textContent = '已保存路径 ✓（下次启动代理生效）';
     addLog('ok', 'IDE 路径已设置: ' + path);
   } catch (e) {
@@ -3970,39 +4081,39 @@ async function fetchModelsForEditor() {
 
 // ═══════ MODEL MAP (可编辑槽位映射 + 故障转移链) ═══════
 let modelMapStore = { slots: [] };       // load_model_map 结果
-let windsurfModels = null;               // list_windsurf_models 缓存（数组）
-let windsurfMeta = null;                 // { source, capturedAt, account } 元信息
+let ideModels = null;               // list_ide_models 缓存（数组）
+let ideMeta = null;                 // { source, capturedAt, account } 元信息
 
-async function ensureWindsurfModels() {
-  if (windsurfModels) return windsurfModels;
+async function ensureIdeModels() {
+  if (ideModels) return ideModels;
   try {
-    const res = await invoke('list_windsurf_models');
+    const res = await invoke('list_ide_models');
     if (res && Array.isArray(res.models)) {
-      windsurfModels = res.models;
-      windsurfMeta = { source: res.source || '', capturedAt: res.captured_at || null, account: res.account || null };
+      ideModels = res.models;
+      ideMeta = { source: res.source || '', capturedAt: res.captured_at || null, account: res.account || null };
     } else if (Array.isArray(res)) {
       // 兼容旧版返回数组格式
-      windsurfModels = res;
-      windsurfMeta = { source: '', capturedAt: null, account: null };
+      ideModels = res;
+      ideMeta = { source: '', capturedAt: null, account: null };
     } else {
-      windsurfModels = [];
-      windsurfMeta = { source: '', capturedAt: null, account: null };
+      ideModels = [];
+      ideMeta = { source: '', capturedAt: null, account: null };
     }
   } catch (e) {
     addLog('warn', '获取 IDE 模型清单失败: ' + e);
-    windsurfModels = [];
-    windsurfMeta = { source: '', capturedAt: null, account: null };
+    ideModels = [];
+    ideMeta = { source: '', capturedAt: null, account: null };
   }
-  return windsurfModels;
+  return ideModels;
 }
 
-async function refreshWindsurfModels() {
+async function refreshIdeModels() {
   const btn = document.getElementById('btn-refresh-models');
   try {
     if (btn) { btn.disabled = true; btn.querySelector('span') && (btn.querySelector('span').textContent = '拉取中...'); }
-    const info = await invoke('refresh_windsurf_models');
-    windsurfModels = info.models || [];
-    windsurfMeta = {
+    const info = await invoke('refresh_ide_models');
+    ideModels = info.models || [];
+    ideMeta = {
       source: 'api',
       capturedAt: Date.now(),
       account: {
@@ -4026,7 +4137,7 @@ async function refreshWindsurfModels() {
 
 // 由 modelUid 找原始名（查不到回退到 uid 本身）
 function originalNameOf(uid) {
-  const m = (windsurfModels || []).find(x => x.id === uid);
+  const m = (ideModels || []).find(x => x.id === uid);
   return m ? m.name : uid;
 }
 
@@ -4051,7 +4162,7 @@ function renderTargetChain(targets) {
 async function renderModelMap() {
   const body = document.getElementById('modelMapBody');
   if (!body) return;
-  await ensureWindsurfModels();
+  await ensureIdeModels();
   try {
     const res = await invoke('load_model_map');
     modelMapStore = (res && Array.isArray(res.slots)) ? res : { slots: [] };
@@ -4378,7 +4489,7 @@ function renderSlotCatalogList() {
   if (editingUid) used.delete(editingUid);
 
   // 1. 基于 query 搜索过滤
-  const filtered = (windsurfModels || []).filter(m => {
+  const filtered = (ideModels || []).filter(m => {
     return !query || m.name.toLowerCase().includes(query) || m.id.toLowerCase().includes(query);
   });
 
@@ -4445,9 +4556,9 @@ function filterSlotCatalog() {
 }
 
 async function openSlotEditor(uid) {
-  windsurfModels = null;
-  windsurfMeta = null;
-  await ensureWindsurfModels();
+  ideModels = null;
+  ideMeta = null;
+  await ensureIdeModels();
   const modal = document.getElementById('slotModal');
   const sel = document.getElementById('slot-uid-select');
   const editing = uid ? modelMapStore.slots.find(x => x.modelUid === uid) : null;
@@ -4458,7 +4569,7 @@ async function openSlotEditor(uid) {
   const used = new Set(modelMapStore.slots.map(x => x.modelUid));
   if (editing) used.delete(editing.modelUid);
   
-  const opts = (windsurfModels || []).map(m => {
+  const opts = (ideModels || []).map(m => {
     const taken = used.has(m.id) ? ' （已映射）' : '';
     return `<option value="${escAttr(m.id)}"${used.has(m.id) ? ' disabled' : ''}>${escAttr(m.name)} · ${escAttr(m.id)}${taken}</option>`;
   }).join('');
@@ -4475,8 +4586,8 @@ async function openSlotEditor(uid) {
     selectedSlotUid = editing.modelUid;
   } else {
     selectedSlotUid = '';
-    if (windsurfModels && windsurfModels.length > 0) {
-      const firstAvailable = windsurfModels.find(m => !used.has(m.id));
+    if (ideModels && ideModels.length > 0) {
+      const firstAvailable = ideModels.find(m => !used.has(m.id));
       if (firstAvailable) selectedSlotUid = firstAvailable.id;
     }
   }
@@ -5051,6 +5162,18 @@ async function init() {
   } catch {}
 
   await loadAndFillConfig();
+
+  // 加载保存的 target_ide 配置
+  try {
+    const config = await invoke('load_config') || {};
+    if (config.target_ide) {
+      const select = document.getElementById('targetIde');
+      if (select) select.value = config.target_ide;
+      updateFlowIdeTarget(config.target_ide);
+    }
+  } catch (e) {
+    console.error('Failed to load target_ide:', e);
+  }
 
   await loadProviders();
   await refreshStatus();

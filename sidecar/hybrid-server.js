@@ -208,9 +208,9 @@ function proxyToCodeium(req, res, body, id, opts = {}) {
             if (list && list.length) {
               const dir = process.env.BYOK_CONFIG_DIR;
               if (dir) {
-                const file = path.join(dir, 'windsurf-models.json');
+                const file = path.join(dir, 'ide-models.json');
                 fs.writeFileSync(file, JSON.stringify({ capturedAt: Date.now(), models: list }, null, 2));
-                console.log(`  [#${id}] 📋 captured ${list.length} Windsurf models → windsurf-models.json`);
+                console.log(`  [#${id}] 📋 captured ${list.length} Windsurf models → ide-models.json`);
               }
             }
           } catch (e) {

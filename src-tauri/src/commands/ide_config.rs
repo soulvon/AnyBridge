@@ -6,10 +6,14 @@ const PROXY_KEY: &str = "http.proxy";
 const STRICT_SSL_KEY: &str = "http.proxyStrictSSL";
 const PROXY_VALUE: &str = "http://localhost:7450";
 
-/// Windsurf 用户设置：%APPDATA%\Windsurf\User\settings.json
-fn settings_path() -> Option<PathBuf> {
+/// 根据目标 IDE 获取 settings.json 路径
+fn settings_path(target: &str) -> Option<PathBuf> {
     let mut dir = dirs::config_dir()?;
-    dir.push("Windsurf");
+    let ide_name = match target {
+        "devin" => "Devin",
+        _ => "Windsurf",
+    };
+    dir.push(ide_name);
     dir.push("User");
     dir.push("settings.json");
     Some(dir)
@@ -44,13 +48,13 @@ fn write_object(path: &PathBuf, obj: &Map<String, Value>) -> Result<(), String> 
 }
 
 /// 打补丁：备份原文件（幂等），写入代理配置。
-/// 返回是否实际改动了 Windsurf 配置（用于 UI 提示是否需重启）。
-pub fn patch() -> Result<bool, String> {
-    let Some(settings) = settings_path() else {
-        return Err("无法定位 Windsurf 配置目录".into());
+/// 返回是否实际改动了 IDE 配置（用于 UI 提示是否需重启）。
+pub fn patch(target: &str) -> Result<bool, String> {
+    let Some(settings) = settings_path(target) else {
+        return Err(format!("无法定位 {} 配置目录", target));
     };
     if !settings.exists() {
-        // Windsurf 没装或没生成过配置；不创建文件，跳过。
+        // IDE 没装或没生成过配置；不创建文件，跳过。
         return Ok(false);
     }
 
@@ -60,7 +64,7 @@ pub fn patch() -> Result<bool, String> {
     let backup = backup_path(&settings);
 
     // 已是目标配置则无需改写。但若备份缺失（崩溃/强杀导致备份被删而补丁残留），
-    // 必须补建备份，否则停止代理时 restore 会空操作，补丁永远删不掉 → Windsurf 断网。
+    // 必须补建备份，否则停止代理时 restore 会空操作，补丁永远删不掉 → IDE 断网。
     let already = obj.get(PROXY_KEY).and_then(|v| v.as_str()) == Some(PROXY_VALUE)
         && obj.get(STRICT_SSL_KEY) == Some(&Value::Bool(false));
     if already {
@@ -90,49 +94,89 @@ pub fn patch() -> Result<bool, String> {
 }
 
 /// 卸补丁：依据备份还原 http.proxy / http.proxyStrictSSL，再删除备份。
-/// 无备份视为未打补丁，直接返回。幂等。
-pub fn restore() -> Result<bool, String> {
-    let Some(settings) = settings_path() else {
+/// 无备份时，直接移除代理相关键（兜底清理，防止代理配置残留导致 IDE 断网）。
+/// 幂等。
+pub fn restore(target: &str) -> Result<bool, String> {
+    let Some(settings) = settings_path(target) else {
         return Ok(false);
     };
-    let backup = backup_path(&settings);
-    if !backup.exists() {
+    if !settings.exists() {
         return Ok(false);
     }
 
-    let backup_raw = fs::read_to_string(&backup).map_err(|e| e.to_string())?;
-    let orig = parse_object(&backup_raw)?;
+    let backup = backup_path(&settings);
 
-    // 当前文件可能已被用户进一步编辑，只还原这两个键，保留其余改动。
-    let mut current = if settings.exists() {
-        let raw = fs::read_to_string(&settings).map_err(|e| e.to_string())?;
-        parse_object(&raw)?
-    } else {
-        orig.clone()
-    };
+    if backup.exists() {
+        // 有备份：按备份还原，保留其余用户改动。
+        let backup_raw = fs::read_to_string(&backup).map_err(|e| e.to_string())?;
+        let orig = parse_object(&backup_raw)?;
 
-    for key in [PROXY_KEY, STRICT_SSL_KEY] {
-        match orig.get(key) {
-            Some(v) => {
-                current.insert(key.into(), v.clone());
-            }
-            None => {
-                current.remove(key);
+        let mut current = {
+            let raw = fs::read_to_string(&settings).map_err(|e| e.to_string())?;
+            parse_object(&raw)?
+        };
+
+        for key in [PROXY_KEY, STRICT_SSL_KEY] {
+            match orig.get(key) {
+                Some(v) => {
+                    current.insert(key.into(), v.clone());
+                }
+                None => {
+                    current.remove(key);
+                }
             }
         }
+
+        write_object(&settings, &current)?;
+        let _ = fs::remove_file(&backup);
+        Ok(true)
+    } else {
+        // 无备份：兜底清理——直接移除代理相关键，防止残留导致 IDE 断网。
+        let raw = fs::read_to_string(&settings).map_err(|e| e.to_string())?;
+        let mut current = parse_object(&raw)?;
+
+        let had_proxy = current.get(PROXY_KEY).and_then(|v| v.as_str()) == Some(PROXY_VALUE);
+        let had_ssl = current.get(STRICT_SSL_KEY) == Some(&Value::Bool(false));
+
+        if !had_proxy && !had_ssl {
+            // 配置中没有代理残留，无需操作。
+            return Ok(false);
+        }
+
+        if had_proxy {
+            current.remove(PROXY_KEY);
+        }
+        if had_ssl {
+            current.remove(STRICT_SSL_KEY);
+        }
+
+        write_object(&settings, &current)?;
+        Ok(true)
     }
-
-    write_object(&settings, &current)?;
-    let _ = fs::remove_file(&backup);
-    Ok(true)
 }
 
+// ═══════ TAURI COMMANDS ═══════
+
+/// 打补丁（向后兼容：默认 IDE）
 #[tauri::command]
-pub fn patch_windsurf_settings() -> Result<bool, String> {
-    patch()
+pub fn patch_ide_config() -> Result<bool, String> {
+    patch("windsurf")
 }
 
+/// 打补丁（支持目标 IDE）
 #[tauri::command]
-pub fn restore_windsurf_settings() -> Result<bool, String> {
-    restore()
+pub fn patch_ide_settings(target: String) -> Result<bool, String> {
+    patch(&target)
+}
+
+/// 卸补丁（向后兼容：默认 IDE）
+#[tauri::command]
+pub fn restore_ide_config() -> Result<bool, String> {
+    restore("windsurf")
+}
+
+/// 卸补丁（支持目标 IDE）
+#[tauri::command]
+pub fn restore_ide_settings(target: String) -> Result<bool, String> {
+    restore(&target)
 }

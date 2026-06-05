@@ -3,6 +3,7 @@ use tauri::{
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
     AppHandle, Manager,
 };
+use std::process::Command;
 
 pub fn build_tray(app: &AppHandle) -> tauri::Result<()> {
     let show = MenuItem::with_id(app, "show", "显示窗口", true, None::<&str>)?;
@@ -29,18 +30,20 @@ pub fn build_tray(app: &AppHandle) -> tauri::Result<()> {
             }
             "start" => {
                 if let Some(state) = app.try_state::<crate::commands::proxy::ProxyState>() {
-                    let _ = crate::commands::proxy::start_proxy(app.clone(), state);
+                    let _ = crate::commands::proxy::start_proxy(app.clone(), state, None);
                 }
             }
             "stop" => {
                 if let Some(state) = app.try_state::<crate::commands::proxy::ProxyState>() {
-                    let _ = crate::commands::proxy::stop_proxy(state);
+                    let _ = crate::commands::proxy::stop_proxy(app.clone(), state, None);
                 }
             }
             "quit" => {
-                // 退出前还原 Windsurf 配置。
-                let _ = crate::commands::windsurf_config::restore();
-                let _ = crate::commands::workbench_inject::restore();
+                // 退出前还原 IDE 配置（两个都尝试，幂等）。
+                let _ = crate::commands::ide_config::restore("windsurf");
+                let _ = crate::commands::ide_config::restore("devin");
+                let _ = crate::commands::workbench_inject::restore("windsurf");
+                let _ = crate::commands::workbench_inject::restore("devin");
                 app.exit(0);
             }
             _ => {}
@@ -76,12 +79,12 @@ pub fn set_autostart(enabled: bool) -> Result<(), String> {
         let key = r"HKCU\Software\Microsoft\Windows\CurrentVersion\Run";
         if enabled {
             Command::new("reg")
-                .args(["add", key, "/v", "WindsurfBYOK", "/t", "REG_SZ", "/d", &exe, "/f"])
+                .args(["add", key, "/v", "IDEBYOK", "/t", "REG_SZ", "/d", &exe, "/f"])
                 .output()
                 .map_err(|e| e.to_string())?;
         } else {
             let _ = Command::new("reg")
-                .args(["delete", key, "/v", "WindsurfBYOK", "/f"])
+                .args(["delete", key, "/v", "IDEBYOK", "/f"])
                 .output();
         }
         Ok(())
@@ -149,47 +152,71 @@ pub fn generate_certs() -> Result<String, String> {
     Ok(format!("已生成证书到 {}", certs_dir.to_string_lossy()))
 }
 
-/// 配置键：缓存上次探测成功的 Windsurf.exe 路径，
+/// 配置键：缓存上次探测成功的 IDE exe 路径，
 /// 也用作用户手动指定路径的入口（设置页可写入此键）。
 #[cfg(target_os = "windows")]
-const WINDSURF_EXE_KEY: &str = "windsurfExePath";
-
-/// 探测 Windsurf 安装路径（Windows）。
-///
-/// 探测顺序（任一命中即停，且会把结果回写配置缓存）：
-///   1. 配置缓存 / 用户手动指定路径（不受运行状态、安装盘符影响）
-///   2. 运行中进程的真实可执行路径
-///   3. 常见默认安装位置
-///   4. 注册表卸载项（覆盖自定义盘符安装，如装在 E:\）
+const IDE_EXE_KEY: &str = "ideExePath";
 #[cfg(target_os = "windows")]
-pub(crate) fn find_windsurf_exe() -> Option<std::path::PathBuf> {
+const DEVIN_EXE_KEY: &str = "devinExePath";
+
+/// 根据 target 返回配置键名。
+#[cfg(target_os = "windows")]
+fn ide_exe_key(target: &str) -> &'static str {
+    match target {
+        "devin" => DEVIN_EXE_KEY,
+        _ => IDE_EXE_KEY,
+    }
+}
+
+/// 根据 target 返回进程名（Windows）。
+#[cfg(target_os = "windows")]
+fn ide_process_name(target: &str) -> &'static str {
+    match target {
+        "devin" => "Devin.exe",
+        _ => "Windsurf.exe",
+    }
+}
+
+/// 根据 target 返回文件夹名（Windsurf/Devin）。
+fn ide_dir_name(target: &str) -> &'static str {
+    match target {
+        "devin" => "Devin",
+        _ => "Windsurf",
+    }
+}
+
+/// 探测 IDE 安装路径（Windows），支持 Windsurf 和 Devin。
+#[cfg(target_os = "windows")]
+pub(crate) fn find_ide_exe(target: &str) -> Option<std::path::PathBuf> {
     use std::path::PathBuf;
     use std::process::Command;
 
-    // 1. 配置缓存 / 用户手动指定：最高优先，绕过所有自动探测。
-    if let Some(cached) = crate::commands::config::read_config_value(WINDSURF_EXE_KEY) {
+    let key = ide_exe_key(target);
+    let proc_name = ide_process_name(target);
+    let dir_name = ide_dir_name(target);
+
+    // 1. 配置缓存 / 用户手动指定
+    if let Some(cached) = crate::commands::config::read_config_value(key) {
         let p = PathBuf::from(&cached);
         if p.exists() {
             return Some(p);
         }
     }
 
-    // 命中后回写缓存，下次即使 Windsurf 未运行也能直接命中。
     let cache_and_return = |p: PathBuf| -> Option<PathBuf> {
-        let _ = crate::commands::config::write_config_value(
-            WINDSURF_EXE_KEY,
-            &p.to_string_lossy(),
-        );
+        let _ = crate::commands::config::write_config_value(key, &p.to_string_lossy());
         Some(p)
     };
 
-    // 2. 运行中进程的真实路径（最可靠，不受自定义安装目录影响）。
+    // 2. 运行中进程的真实路径
+    // 注意：Get-Process Devin 会同时匹配 Devin.exe（IDE 主进程）和 devin.exe（CLI 子进程），
+    // 需过滤 Path 确保只取 IDE 主进程（路径含程序安装目录，不含 extensions/windsurf/devin/bin）
+    let ps_query = format!(
+        r#"Get-Process {} -ErrorAction SilentlyContinue | Where-Object {{ $_.Path -and $_.Path -notmatch 'extensions[/\\]windsurf[/\\]devin[/\\]bin' }} | Select-Object -First 1 -ExpandProperty Path"#,
+        proc_name.trim_end_matches(".exe")
+    );
     if let Ok(out) = Command::new("powershell")
-        .args([
-            "-NoProfile",
-            "-Command",
-            "Get-Process Windsurf -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty Path",
-        ])
+        .args(["-NoProfile", "-Command", &ps_query])
         .output()
     {
         let path = String::from_utf8_lossy(&out.stdout).trim().to_string();
@@ -201,25 +228,24 @@ pub(crate) fn find_windsurf_exe() -> Option<std::path::PathBuf> {
         }
     }
 
-    // 3. 常见默认安装位置。
+    // 3. 常见默认安装位置
     if let Some(local) = dirs::data_local_dir() {
-        let p = local.join("Programs").join("Windsurf").join("Windsurf.exe");
+        let p = local.join("Programs").join(dir_name).join(proc_name);
         if p.exists() {
             return cache_and_return(p);
         }
     }
     for var in ["ProgramFiles", "ProgramFiles(x86)"] {
         if let Ok(pf) = std::env::var(var) {
-            let p = PathBuf::from(pf).join("Windsurf").join("Windsurf.exe");
+            let p = PathBuf::from(pf).join(dir_name).join(proc_name);
             if p.exists() {
                 return cache_and_return(p);
             }
         }
     }
 
-    // 4. 注册表卸载项：Windsurf 安装器写在 HKCU/HKLM 的 Uninstall 下，
-    //    InstallLocation 指向安装根目录，覆盖装在非默认盘符（E:\ 等）的情况。
-    if let Some(p) = find_windsurf_exe_from_registry() {
+    // 4. 注册表卸载项
+    if let Some(p) = find_ide_exe_from_registry(target) {
         if p.exists() {
             return cache_and_return(p);
         }
@@ -228,37 +254,37 @@ pub(crate) fn find_windsurf_exe() -> Option<std::path::PathBuf> {
     None
 }
 
-/// 从注册表卸载项探测 Windsurf 安装目录。
-/// 遍历 HKCU/HKLM 的 Uninstall 项，匹配 DisplayName 含 "Windsurf" 的条目，
-/// 取其 InstallLocation 拼出 Windsurf.exe。
+/// 从注册表卸载项探测 IDE 安装目录（支持 Windsurf 和 Devin）。
 #[cfg(target_os = "windows")]
-fn find_windsurf_exe_from_registry() -> Option<std::path::PathBuf> {
+fn find_ide_exe_from_registry(target: &str) -> Option<std::path::PathBuf> {
     use std::process::Command;
 
-    // 一次 PowerShell 查询三处常见 Uninstall 根，输出首个匹配的 InstallLocation。
-    let script = r#"
+    let display_pattern = format!("*{}*", ide_dir_name(target));
+    let proc_name = ide_process_name(target);
+
+    let script = format!(r#"
 $roots = @(
   'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*',
   'HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*',
   'HKLM:\Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*'
 )
-foreach ($r in $roots) {
+foreach ($r in $roots) {{
   $hit = Get-ItemProperty $r -ErrorAction SilentlyContinue |
-    Where-Object { $_.DisplayName -like '*Windsurf*' -and $_.InstallLocation } |
+    Where-Object {{ $_.DisplayName -like '{}' -and $_.InstallLocation }} |
     Select-Object -First 1 -ExpandProperty InstallLocation
-  if ($hit) { Write-Output $hit; break }
-}
-"#;
+  if ($hit) {{ Write-Output $hit; break }}
+}}
+"#, display_pattern);
 
     let out = Command::new("powershell")
-        .args(["-NoProfile", "-Command", script])
+        .args(["-NoProfile", "-Command", &script])
         .output()
         .ok()?;
     let loc = String::from_utf8_lossy(&out.stdout).trim().to_string();
     if loc.is_empty() {
         return None;
     }
-    let exe = std::path::PathBuf::from(loc).join("Windsurf.exe");
+    let exe = std::path::PathBuf::from(loc).join(proc_name);
     if exe.exists() {
         Some(exe)
     } else {
@@ -266,17 +292,21 @@ foreach ($r in $roots) {
     }
 }
 
-/// 探测 Windsurf.app 路径（macOS）。
+/// 探测 IDE .app 路径（macOS），支持 Windsurf 和 Devin。
 #[cfg(target_os = "macos")]
-pub(crate) fn find_windsurf_app() -> Option<std::path::PathBuf> {
+pub(crate) fn find_ide_app(target: &str) -> Option<std::path::PathBuf> {
+    let app_name = match target {
+        "devin" => "Devin.app",
+        _ => "Windsurf.app",
+    };
     // 系统级安装
-    let system = std::path::PathBuf::from("/Applications/Windsurf.app");
+    let system = std::path::PathBuf::from(format!("/Applications/{}", app_name));
     if system.exists() {
         return Some(system);
     }
-    // 用户级安装：~/Applications/Windsurf.app
+    // 用户级安装
     if let Some(home) = dirs::home_dir() {
-        let user = home.join("Applications").join("Windsurf.app");
+        let user = home.join("Applications").join(app_name);
         if user.exists() {
             return Some(user);
         }
@@ -284,17 +314,21 @@ pub(crate) fn find_windsurf_app() -> Option<std::path::PathBuf> {
     None
 }
 
-/// 探测 windsurf 可执行文件（Linux）。
+/// 探测 IDE 可执行文件（Linux），支持 Windsurf 和 Devin。
 #[cfg(target_os = "linux")]
-pub(crate) fn find_windsurf_bin() -> Option<std::path::PathBuf> {
+pub(crate) fn find_ide_bin(target: &str) -> Option<std::path::PathBuf> {
+    let (dir_name, bin_name) = match target {
+        "devin" => ("Devin", "devin"),
+        _ => ("Windsurf", "windsurf"),
+    };
     let candidates = [
-        "/usr/share/windsurf/windsurf",
-        "/usr/bin/windsurf",
-        "/opt/Windsurf/windsurf",
-        "/snap/bin/windsurf",
+        format!("/usr/share/{}/{}", dir_name.to_lowercase(), bin_name),
+        format!("/usr/bin/{}", bin_name),
+        format!("/opt/{}/{}", dir_name, bin_name),
+        format!("/snap/bin/{}", bin_name),
     ];
     for c in candidates {
-        let p = std::path::PathBuf::from(c);
+        let p = std::path::PathBuf::from(&c);
         if p.exists() {
             return Some(p);
         }
@@ -302,46 +336,63 @@ pub(crate) fn find_windsurf_bin() -> Option<std::path::PathBuf> {
     None
 }
 
-/// 探测并返回当前定位到的 Windsurf.exe 路径（设置页展示用）。
+/// 探测并返回当前定位到的 IDE exe 路径（设置页展示用）。
 /// 返回 None 表示自动探测失败，需用户手动指定。
 #[tauri::command]
-pub fn detect_windsurf_path() -> Option<String> {
+pub fn detect_ide_path(target: Option<String>) -> Option<String> {
+    let t = target.unwrap_or_else(|| "windsurf".into());
     #[cfg(target_os = "windows")]
     {
-        find_windsurf_exe().map(|p| p.to_string_lossy().to_string())
+        find_ide_exe(&t).map(|p| p.to_string_lossy().to_string())
     }
     #[cfg(target_os = "macos")]
     {
-        find_windsurf_app().map(|p| p.to_string_lossy().to_string())
+        find_ide_app(&t).map(|p| p.to_string_lossy().to_string())
     }
     #[cfg(target_os = "linux")]
     {
-        find_windsurf_bin().map(|p| p.to_string_lossy().to_string())
+        find_ide_bin(&t).map(|p| p.to_string_lossy().to_string())
     }
     #[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux")))]
     {
+        let _ = t;
         None
     }
 }
 
-/// 手动设置 Windsurf.exe 路径（自动探测失败时的兜底，写入配置缓存）。
-/// 校验路径存在且文件名是 Windsurf.exe，避免写入错误路径导致后续误判。
+/// 向后兼容
 #[tauri::command]
-pub fn set_windsurf_path(path: String) -> Result<(), String> {
+pub fn detect_windsurf_path() -> Option<String> {
+    detect_ide_path(Some("windsurf".into()))
+}
+
+/// 手动设置 IDE exe 路径（自动探测失败时的兜底，写入配置缓存）。
+/// 校验路径存在且文件名是 Windsurf.exe 或 Devin.exe。
+#[tauri::command]
+pub fn set_ide_path(path: String) -> Result<(), String> {
     #[cfg(target_os = "windows")]
     {
         let p = std::path::PathBuf::from(&path);
         if !p.exists() {
             return Err("路径不存在".into());
         }
-        let is_exe = p
+        let is_ide_exe = p
             .file_name()
-            .map(|n| n.eq_ignore_ascii_case("Windsurf.exe"))
+            .map(|n| {
+                n.eq_ignore_ascii_case("Windsurf.exe")
+                    || n.eq_ignore_ascii_case("Devin.exe")
+            })
             .unwrap_or(false);
-        if !is_exe {
-            return Err("请指向 Windsurf.exe".into());
+        if !is_ide_exe {
+            return Err("请指向 Windsurf.exe 或 Devin.exe".into());
         }
-        crate::commands::config::write_config_value(WINDSURF_EXE_KEY, &path)
+        // 根据文件名判断是哪个 IDE，写入对应配置键
+        let key = if p.file_name().map(|n| n.eq_ignore_ascii_case("Devin.exe")).unwrap_or(false) {
+            DEVIN_EXE_KEY
+        } else {
+            IDE_EXE_KEY
+        };
+        crate::commands::config::write_config_value(key, &path)
     }
     #[cfg(not(target_os = "windows"))]
     {
@@ -350,71 +401,194 @@ pub fn set_windsurf_path(path: String) -> Result<(), String> {
     }
 }
 
-/// 强杀并重启 Windsurf，使写入的代理配置生效。
+/// 向后兼容
+#[tauri::command]
+pub fn set_windsurf_path(path: String) -> Result<(), String> {
+    set_ide_path(path)
+}
+
+/// 强杀并重启 IDE，使写入的代理配置生效。
 /// 注意：强杀会丢失未保存的工作，调用方需先提示用户保存。
 #[tauri::command]
-pub fn restart_windsurf() -> Result<String, String> {
-    use std::process::Command;
-
+pub fn restart_ide(target: String) -> Result<String, String> {
     #[cfg(target_os = "windows")]
     {
-        let exe = find_windsurf_exe()
-            .ok_or("未找到 Windsurf 安装位置，请手动重启 Windsurf")?;
+        let exe = find_ide_exe(&target)
+            .ok_or_else(|| format!("未找到 {} 安装位置，请手动重启", ide_dir_name(&target)))?;
+        let proc_name = ide_process_name(&target);
 
-        // 强杀所有 Windsurf 进程；未运行时 taskkill 返回非零，忽略错误。
         let _ = Command::new("taskkill")
-            .args(["/IM", "Windsurf.exe", "/F"])
+            .args(["/IM", proc_name, "/F"])
             .output();
 
-        // 稍等进程退出释放文件锁，再重新拉起。
         std::thread::sleep(std::time::Duration::from_millis(800));
 
         Command::new(&exe)
             .spawn()
-            .map_err(|e| format!("重启 Windsurf 失败: {}", e))?;
+            .map_err(|e| format!("重启 {} 失败: {}", ide_dir_name(&target), e))?;
 
-        Ok("已重启 Windsurf".into())
+        Ok(format!("已重启 {}", ide_dir_name(&target)))
     }
 
     #[cfg(target_os = "macos")]
     {
-        let app = find_windsurf_app()
-            .ok_or("未找到 Windsurf.app，请手动重启 Windsurf")?;
+        let app = find_ide_app(&target)
+            .ok_or_else(|| format!("未找到 {}.app，请手动重启", ide_dir_name(&target)))?;
+        let proc_name = match target.as_str() {
+            "devin" => "Devin",
+            _ => "Windsurf",
+        };
 
-        // 按可执行名精确匹配杀进程；未运行时返回非零，忽略。
-        let _ = Command::new("pkill").args(["-x", "Windsurf"]).output();
+        let _ = Command::new("pkill").args(["-x", proc_name]).output();
 
         std::thread::sleep(std::time::Duration::from_millis(800));
 
-        // open -a 通过 LaunchServices 重新打开 .app 包。
         Command::new("open")
             .args(["-a"])
             .arg(&app)
             .spawn()
-            .map_err(|e| format!("重启 Windsurf 失败: {}", e))?;
+            .map_err(|e| format!("重启 {} 失败: {}", ide_dir_name(&target), e))?;
 
-        Ok("已重启 Windsurf".into())
+        Ok(format!("已重启 {}", ide_dir_name(&target)))
     }
 
     #[cfg(target_os = "linux")]
     {
-        let bin = find_windsurf_bin()
-            .ok_or("未找到 windsurf 可执行文件，请手动重启 Windsurf")?;
+        let bin = find_ide_bin(&target)
+            .ok_or_else(|| format!("未找到 {} 可执行文件，请手动重启", ide_dir_name(&target)))?;
+        let proc_name = match target.as_str() {
+            "devin" => "devin",
+            _ => "windsurf",
+        };
 
-        // 精确匹配可执行名，避免误杀路径含 "windsurf" 的本应用自身。
-        let _ = Command::new("pkill").args(["-x", "windsurf"]).output();
+        let _ = Command::new("pkill").args(["-x", proc_name]).output();
 
         std::thread::sleep(std::time::Duration::from_millis(800));
 
         Command::new(&bin)
             .spawn()
-            .map_err(|e| format!("重启 Windsurf 失败: {}", e))?;
+            .map_err(|e| format!("重启 {} 失败: {}", ide_dir_name(&target), e))?;
 
-        Ok("已重启 Windsurf".into())
+        Ok(format!("已重启 {}", ide_dir_name(&target)))
     }
 
     #[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux")))]
     {
-        Err("当前平台不支持自动重启 Windsurf".into())
+        let _ = target;
+        Err("当前平台不支持自动重启 IDE".into())
     }
+}
+
+// ═══════ IDE DETECTION ═══════
+
+#[tauri::command]
+pub fn is_ide_running(name: String) -> bool {
+    #[cfg(target_os = "windows")]
+    {
+        let process_name = match name.as_str() {
+            "windsurf" => "Windsurf",
+            "devin" => "Devin",
+            _ => return false,
+        };
+        // Devin 特殊处理：Get-Process Devin 会匹配 devin.exe（CLI 子进程），
+        // 需过滤 Path 排除 extensions/windsurf/devin/bin 下的 CLI
+        let ps_query = if name == "devin" {
+            format!(
+                r#"Get-Process {} -ErrorAction SilentlyContinue | Where-Object {{ $_.Path -and $_.Path -notmatch 'extensions[/\\]windsurf[/\\]devin[/\\]bin' }} | Select-Object -First 1"#,
+                process_name
+            )
+        } else {
+            format!(
+                "Get-Process {} -ErrorAction SilentlyContinue | Select-Object -First 1",
+                process_name
+            )
+        };
+        if let Ok(out) = Command::new("powershell")
+            .args(["-NoProfile", "-Command", &ps_query])
+            .output()
+        {
+            !out.stdout.is_empty()
+        } else {
+            false
+        }
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        let process_name = match name.as_str() {
+            "windsurf" => "Windsurf",
+            "devin" => "Devin",
+            _ => return false,
+        };
+        if let Ok(out) = Command::new("pgrep")
+            .args(["-x", process_name])
+            .output()
+        {
+            !out.stdout.is_empty()
+        } else {
+            false
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        let process_name = match name.as_str() {
+            "windsurf" => "windsurf",
+            "devin" => "devin",
+            _ => return false,
+        };
+        if let Ok(out) = Command::new("pgrep")
+            .args(["-x", process_name])
+            .output()
+        {
+            !out.stdout.is_empty()
+        } else {
+            false
+        }
+    }
+
+    #[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux")))]
+    {
+        false
+    }
+}
+
+#[tauri::command]
+pub fn detect_target_ide() -> String {
+    let windsurf_running = is_ide_running("windsurf".into());
+    let devin_running = is_ide_running("devin".into());
+
+    // 优先选择正在运行的 IDE
+    if windsurf_running && !devin_running {
+        return "windsurf".into();
+    }
+    if devin_running && !windsurf_running {
+        return "devin".into();
+    }
+
+    // 两个都在运行或都不在运行，检查哪个有代理配置
+    #[cfg(target_os = "windows")]
+    {
+        use std::path::PathBuf;
+        let config_dir = dirs::config_dir().unwrap_or_else(|| PathBuf::from("."));
+        
+        // 检查 Windsurf 的 settings.json 是否有 http.proxy
+        let windsurf_settings = config_dir.join("Windsurf/User/settings.json");
+        if let Ok(content) = std::fs::read_to_string(&windsurf_settings) {
+            if content.contains("\"http.proxy\"") {
+                return "windsurf".into();
+            }
+        }
+
+        // 检查 Devin 的 settings.json 是否有 http.proxy
+        let devin_settings = config_dir.join("Devin/User/settings.json");
+        if let Ok(content) = std::fs::read_to_string(&devin_settings) {
+            if content.contains("\"http.proxy\"") {
+                return "devin".into();
+            }
+        }
+    }
+
+    // 默认返回 windsurf
+    "windsurf".into()
 }

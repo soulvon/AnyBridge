@@ -21,7 +21,7 @@ function configDir() {
   return path.join(os.homedir(), 'AppData', 'Roaming', 'ide-byok');
 }
 
-// 内置兜底:captured windsurf-models.json 不存在或缺某 modelUid 时，用这张已知表查原始 label。
+// 内置兜底:captured ide-models.json 不存在或缺某 modelUid 时，用这张已知表查原始 label。
 // 覆盖默认预设的 3 个槽位 + 常见可被改名的模型，确保新装(从未抓过 GetUserStatus)也能改名。
 const BUILTIN_LABELS = {
   MODEL_XAI_GROK_3: 'xAI Grok-3',
@@ -30,7 +30,7 @@ const BUILTIN_LABELS = {
 };
 
 // 改名表来源:model-map.json 的槽位（displayName 非空才改）。需要把「原始 label → 新名」
-// 配对，但 model-map 只有 modelUid+displayName，原始 label 来自 captured windsurf-models.json
+// 配对，但 model-map 只有 modelUid+displayName，原始 label 来自 captured ide-models.json
 // (优先) 或内置 BUILTIN_LABELS (兜底)。热加载，每次响应读最新配置。
 function buildRenameTable() {
   const dir = configDir();
@@ -42,7 +42,7 @@ function buildRenameTable() {
 
   let captured = new Map();
   try {
-    const c = JSON.parse(fs.readFileSync(path.join(dir, 'windsurf-models.json'), 'utf8'));
+    const c = JSON.parse(fs.readFileSync(path.join(dir, 'ide-models.json'), 'utf8'));
     for (const e of (c.models || [])) captured.set(e.modelUid, e.label);
   } catch { /* 无 captured → 退化为只用内置兜底表 */ }
 
