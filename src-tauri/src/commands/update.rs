@@ -8,6 +8,11 @@ use tauri_plugin_updater::UpdaterExt;
 const CURRENT_VERSION: &str = env!("CARGO_PKG_VERSION");
 const PENDING_UPDATE_NOTES_FILE: &str = "pending_update_notes.json";
 
+#[tauri::command]
+pub fn get_app_version() -> String {
+    CURRENT_VERSION.to_string()
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UpdateSettings {
     pub auto_check: bool,

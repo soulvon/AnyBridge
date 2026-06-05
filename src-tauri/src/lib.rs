@@ -49,6 +49,7 @@ pub fn run() {
             commands::update::save_update_settings,
             commands::update::save_pending_update_notes,
             commands::update::check_version_jump,
+ commands::update::get_app_version,
             commands::update::update_last_check_time,
             commands::update::check_for_update,
             commands::update::download_and_install_update,
