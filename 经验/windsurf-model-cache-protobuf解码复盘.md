@@ -216,5 +216,6 @@ message ModelConfig {
 
 ## 八、代码变更
 
-- `src-tauri/src/commands/windsurf_models.rs`：`builtin_models()` 新增 80+ 模型条目
-- `windsurf-models.json`：缓存更新至 182 个模型
+- `src-tauri/src/commands/ide_models.rs`：`builtin_models()` 新增 80+ 模型条目
+- `ide-models.json`：缓存更新至 182 个模型
+- 后续重命名：`windsurf_models.rs` → `ide_models.rs`，`WindsurfModel` → `IdeModel`，`windsurf-models.json` → `ide-models.json`

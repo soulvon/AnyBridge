@@ -402,7 +402,7 @@ API 合并有但代理拦截没有的 21 条：主要是 BYOK 变体、基础设
 1. 从 state.vscdb 读取 session token
 2. 调 GetUserStatus API
 3. 合并 cascadeAllowedModelsConfig + clientModelConfigs
-4. 缓存到 windsurf-models.json
+4. 缓存到 ide-models.json
 ```
 
 ### 9.2 合并逻辑
