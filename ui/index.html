@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Windsurf BYOK</title>
+<title>IDE BYOK</title>
 <style>
 /* ═══════ FONTS (本地，离线可用) ═══════ */
 @font-face {
@@ -1369,6 +1369,10 @@ html[data-theme="dark"] .icon-btn .moon-icon {
   transform: translateX(-3px);
 }
 
+/* 编辑弹窗遮罩：未打开时强制隐藏，压制内层 .fullscreen-modal 的 display:flex !important */
+.editor-overlay:not(.is-open) { display: none !important; }
+.editor-overlay.is-open { display: flex !important; }
+
 .fullscreen-modal {
   width: 100vw !important;
   height: 100vh !important;
@@ -1502,7 +1506,7 @@ html[data-theme="dark"] .icon-btn .moon-icon {
   <header class="topbar" data-tauri-drag-region>
     <div class="topbar-left">
       <div class="brand">
-        <div class="brand-name">Windsurf BYOK</div>
+        <div class="brand-name">IDE BYOK</div>
       </div>
     </div>
     <div class="tab-nav">
@@ -1596,7 +1600,7 @@ html[data-theme="dark"] .icon-btn .moon-icon {
               <div class="flow-icon">
                 <svg class="flow-svg" width="22" height="24" viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect><line x1="8" y1="21" x2="16" y2="21"></line><line x1="12" y1="17" x2="12" y2="21"></line></svg>
               </div>
-              <div class="flow-label">Windsurf IDE</div>
+              <div class="flow-label">IDE</div>
               <div class="flow-sub">extension.js</div>
             </div>
             <div class="flow-arrow">→<span class="arr-label">HTTP</span></div>
@@ -1652,7 +1656,7 @@ html[data-theme="dark"] .icon-btn .moon-icon {
     </div>
 
     <!-- 供应商编辑弹窗 -->
-    <div id="providerModal" style="display:none;position:fixed;inset:0;z-index:1000;background:rgba(0,0,0,0.45);align-items:center;justify-content:center;">
+    <div id="providerModal" class="editor-overlay" style="position:fixed;inset:0;z-index:1000;background:rgba(0,0,0,0.45);align-items:center;justify-content:center;">
       <div class="glass-card fullscreen-modal">
         <div class="card-header" style="display:flex; align-items:center; justify-content:space-between; width:100%;">
           <div style="display:flex; align-items:center; gap:8px;">
@@ -1665,7 +1669,7 @@ html[data-theme="dark"] .icon-btn .moon-icon {
             </button>
             <span id="providerModalTitle" style="font-size:14px; font-weight:700; color:var(--text-muted); margin-left: 12px; border-left: 1px solid var(--border-strong); padding-left: 12px;">新增供应商</span>
           </div>
-          <div style="font-size:12px; color:var(--text-muted); font-family:var(--font-mono);">Windsurf BYOK Control Panel</div>
+          <div style="font-size:12px; color:var(--text-muted); font-family:var(--font-mono);">IDE BYOK Control Panel</div>
         </div>
         <div class="card-body">
           <input type="hidden" id="pf-id">
@@ -1686,7 +1690,7 @@ html[data-theme="dark"] .icon-btn .moon-icon {
               </div>
               <div class="field" style="margin-bottom:0;">
                 <div class="field-label" style="font-size:13px; font-weight:600; margin-bottom:8px;">API Base URL</div>
-                <input class="field-input" id="pf-host" placeholder="https://api.anthropic.com/v1/messages" style="padding:10px 14px; font-size:13px; border-radius:10px; width:100%;">
+                <input class="field-input" id="pf-host" placeholder="https://api.openai.com" style="padding:10px 14px; font-size:13px; border-radius:10px; width:100%;">
               </div>
               <div class="field" style="margin-bottom:0;">
                 <div class="field-label" style="display:flex; justify-content:space-between; align-items:center; font-size:13px; font-weight:600; margin-bottom:8px;">
@@ -1696,6 +1700,17 @@ html[data-theme="dark"] .icon-btn .moon-icon {
                   </button>
                 </div>
                 <input class="field-input" id="pf-key" type="password" placeholder="sk-..." autocomplete="off" style="padding:10px 14px; font-size:13px; border-radius:10px; width:100%;">
+              </div>
+
+              <div class="field" style="margin-bottom:0; border-top:1px solid var(--border); padding-top:16px;">
+                <div class="field-label" style="font-size:13px; font-weight:600; margin-bottom:10px;">能力标记</div>
+                <div style="display:grid; grid-template-columns:1fr; gap:8px;">
+                  <label class="model-panel-btn" style="padding:9px 10px; border-radius:8px; display:flex; align-items:center; gap:8px; cursor:pointer; justify-content:flex-start;" title="压缩请求体绕过中转站 Cloudflare WAF，One-Hub 等不支持 gzip 的端点请勿开启">
+                    <input type="checkbox" id="pf-cap-gzip" style="margin:0;">
+                    <span style="font-size:12px;">Gzip 压缩</span>
+                  </label>
+                </div>
+                <div style="font-size:11px; color:var(--text-muted); line-height:1.5; margin-top:8px;">Gzip 仅用于需要绕过 WAF 的中转站。Vision / Tools 能力在测试连接时自动探测并标记到每个模型上。</div>
               </div>
               
               <!-- 已选择模型列表 (Cherry Studio 风格) -->
@@ -1806,7 +1821,7 @@ html[data-theme="dark"] .icon-btn .moon-icon {
     </div>
 
     <!-- 添加映射全屏模态框 (大师级左右分栏设计) -->
-    <div id="slotModal" style="display:none;position:fixed;inset:0;z-index:1000;background:rgba(0,0,0,0.45);align-items:center;justify-content:center;">
+    <div id="slotModal" class="editor-overlay" style="position:fixed;inset:0;z-index:1000;background:rgba(0,0,0,0.45);align-items:center;justify-content:center;">
       <div class="glass-card fullscreen-modal">
         <div class="card-header" style="display:flex; align-items:center; justify-content:space-between; width:100%;">
           <div style="display:flex; align-items:center; gap:8px;">
@@ -1819,18 +1834,26 @@ html[data-theme="dark"] .icon-btn .moon-icon {
             </button>
             <span id="slotModalTitle" style="font-size:14px; font-weight:700; color:var(--text-muted); margin-left: 12px; border-left: 1px solid var(--border-strong); padding-left: 12px;">添加映射</span>
           </div>
-          <div style="font-size:12px; color:var(--text-muted); font-family:var(--font-mono);">Windsurf BYOK Control Panel</div>
+          <div style="font-size:12px; color:var(--text-muted); font-family:var(--font-mono);">IDE BYOK Control Panel</div>
         </div>
         <div class="card-body" style="display:flex; flex-direction:row !important; gap:36px; align-items:stretch; flex:1; height:100%; padding: 24px 40px !important;">
-          <!-- Left Column: Windsurf Slots Catalog (平铺列表) -->
+          <!-- Left Column: 模型目录 (平铺列表) -->
           <div style="flex:1; display:flex; flex-direction:column; background:var(--bg-card); border:1px solid var(--border); border-radius:var(--radius-lg); overflow:hidden; box-shadow:var(--shadow-sm);">
             <div style="padding:16px 20px; border-bottom:1px solid var(--border); background:var(--bg-glass); display:flex; align-items:center; justify-content:space-between;">
-              <span style="font-size:14px; font-weight:700; color:var(--text-primary);">选择windsurf 模型</span>
-              <span class="brand-tag" id="slotCatalogCount" style="padding: 2px 8px; font-size: 10px; font-weight:700;">0 个可用</span>
+              <span style="font-size:14px; font-weight:700; color:var(--text-primary);">选择模型</span>
+              <div style="display:flex; align-items:center; gap:6px;">
+                <span class="brand-tag" id="slotCatalogCount" style="padding: 2px 8px; font-size: 10px; font-weight:700;">0 个可用</span>
+                <button id="btn-refresh-models" class="btn-ghost" onclick="refreshWindsurfModels()" style="padding: 0 10px; border-radius: 6px; display: flex; align-items: center; gap: 4px; height: 24px; font-size: 11px; font-weight: 600;" title="从 IDE 账号拉取最新模型列表">
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"></path>
+                  </svg>
+                  <span>刷新</span>
+                </button>
+              </div>
             </div>
             <!-- 槽位搜索栏 -->
             <div style="padding:12px 20px; border-bottom:1px solid var(--border); background:rgba(0,0,0,0.01);">
-              <input type="text" id="slotCatalogSearch" placeholder="搜索 Windsurf 模型 ID 或名称..." oninput="filterSlotCatalog()" style="padding:10px 14px; border-radius:10px; font-size:12px; width:100%; border:1px solid var(--border); background:var(--bg-input); outline:none; transition:all 0.2s;">
+              <input type="text" id="slotCatalogSearch" placeholder="搜索模型 ID 或名称..." oninput="filterSlotCatalog()" style="padding:10px 14px; border-radius:10px; font-size:12px; width:100%; border:1px solid var(--border); background:var(--bg-input); outline:none; transition:all 0.2s;">
             </div>
             <!-- 槽位行容器 -->
             <div id="slotCatalogBody" style="flex:1; overflow-y:auto; padding:16px 20px; display:flex; flex-direction:column; gap:8px;">
@@ -1860,6 +1883,10 @@ html[data-theme="dark"] .icon-btn .moon-icon {
                 <span style="font-size:12px; font-weight:600; color:var(--text-secondary);">映射自定义显示名（留空使用模型原始名）</span>
               </div>
               <input class="field-input" id="slot-display" placeholder="例如：我的 DeepSeek 映射..." style="padding:10px 14px; font-size:12px; border-radius:8px; width:100%;">
+              <label style="display:flex; align-items:center; gap:8px; font-size:12px; color:var(--text-secondary); cursor:pointer; user-select:none; margin-top:2px;">
+                <input type="checkbox" id="slot-supports-images" checked style="width:15px; height:15px; cursor:pointer;">
+                <span>支持图片识别（解锁后允许在该模型下发送图片，应与所选服务商能力一致）</span>
+              </label>
               <input type="hidden" id="slot-edit-uid">
               <select class="model-select" id="slot-uid-select" style="display:none;"></select>
             </div>
@@ -1876,7 +1903,7 @@ html[data-theme="dark"] .icon-btn .moon-icon {
     </div>
 
     <!-- 故障转移配置模态框 -->
-    <div id="failoverModal" style="display:none;position:fixed;inset:0;z-index:1000;background:rgba(0,0,0,0.45);align-items:center;justify-content:center;">
+    <div id="failoverModal" class="editor-overlay" style="position:fixed;inset:0;z-index:1000;background:rgba(0,0,0,0.45);align-items:center;justify-content:center;">
       <div class="glass-card" style="width:640px;max-width:95vw;">
         <div class="card-header">
           <div class="card-title"><span class="dot"></span> 故障转移配置 · <span id="failoverModalSlot"></span></div>
@@ -1896,241 +1923,6 @@ html[data-theme="dark"] .icon-btn .moon-icon {
       </div>
     </div>
 
-    <div style="display:none"><div class="provider-grid">
-
-            <!-- Anthropic -->
-            <div class="provider-card active">
-              <div class="provider-top">
-                <div class="provider-id">
-                  <div class="provider-logo logo-anthropic">A</div>
-                  <div>
-                    <div class="provider-name">Anthropic</div>
-                    <div class="provider-protocol">/v1/messages</div>
-                  </div>
-                </div>
-                <div class="toggle on" title="由是否配置密钥自动决定"></div>
-              </div>
-              <div class="provider-body">
-                <div class="field">
-                  <div class="field-label">API 地址</div>
-                  <input class="field-input" data-config-key="ANTHROPIC_API_HOST" value="api.anthropic.com" placeholder="api.anthropic.com">
-                </div>
-                <div class="field">
-                  <div class="field-label">API 密钥</div>
-                  <input class="field-input key-input" type="password" data-config-key="ANTHROPIC_API_KEY" value="" placeholder="sk-ant-...">
-                </div>
-                <div class="field">
-                  <div class="field-label">默认模型</div>
-                  <div class="model-row">
-                    <input class="field-input" list="anthropic-models" data-config-key="DEFAULT_MODEL" value="claude-sonnet-4-6" placeholder="claude-sonnet-4-6">
-                    <datalist id="anthropic-models">
-                      <option>claude-sonnet-4-6</option>
-                      <option>claude-opus-4-6</option>
-                      <option>claude-haiku-4-5</option>
-                    </datalist>
-                  </div>
-                </div>
-              </div>
-              <div class="provider-footer">
-                <div class="conn-dot no" id="conn-dot-anthropic"></div>
-                <span class="conn-text" id="conn-text-anthropic">未测试</span>
-                <button class="btn-ghost" style="margin-left:auto" onclick="testConn('anthropic')">测试连接</button>
-              </div>
-            </div>
-
-            <!-- OpenAI -->
-            <div class="provider-card">
-              <div class="provider-top">
-                <div class="provider-id">
-                  <div class="provider-logo logo-openai">O</div>
-                  <div>
-                    <div class="provider-name">OpenAI</div>
-                    <div class="provider-protocol">/v1/responses</div>
-                  </div>
-                </div>
-                <div class="toggle" title="由是否配置密钥自动决定"></div>
-              </div>
-              <div class="provider-body">
-                <div class="field">
-                  <div class="field-label">API 地址</div>
-                  <input class="field-input" data-config-key="OPENAI_API_HOST" value="api.openai.com" placeholder="api.openai.com">
-                </div>
-                <div class="field">
-                  <div class="field-label">API 密钥</div>
-                  <input class="field-input key-input" type="password" data-config-key="OPENAI_API_KEY" value="" placeholder="sk-...">
-                </div>
-                <div class="field">
-                  <div class="field-label">默认模型</div>
-                  <div class="model-row">
-                    <input class="field-input" list="openai-models" data-config-key="OPENAI_DEFAULT_MODEL" value="gpt-4o" placeholder="gpt-4o">
-                    <datalist id="openai-models">
-                      <option>gpt-4o</option>
-                      <option>gpt-4o-mini</option>
-                      <option>gpt-5.4</option>
-                      <option>o3</option>
-                      <option>o4-mini</option>
-                    </datalist>
-                  </div>
-                </div>
-              </div>
-              <div class="provider-footer">
-                <div class="conn-dot no" id="conn-dot-openai"></div>
-                <span class="conn-text" id="conn-text-openai">未测试</span>
-                <button class="btn-ghost" style="margin-left:auto" onclick="testConn('openai')">测试连接</button>
-              </div>
-            </div>
-
-            <!-- DeepSeek -->
-            <div class="provider-card">
-              <div class="provider-top">
-                <div class="provider-id">
-                  <div class="provider-logo logo-deepseek">D</div>
-                  <div>
-                    <div class="provider-name">DeepSeek</div>
-                    <div class="provider-protocol">规划中 · 暂未接入</div>
-                  </div>
-                </div>
-                <div class="toggle" title="由是否配置密钥自动决定"></div>
-              </div>
-              <div class="provider-body">
-                <div class="field">
-                  <div class="field-label">API 地址</div>
-                  <input class="field-input" value="api.deepseek.com" placeholder="api.deepseek.com">
-                </div>
-                <div class="field">
-                  <div class="field-label">API 密钥</div>
-                  <input class="field-input key-input" value="" placeholder="sk-...">
-                </div>
-                <div class="field">
-                  <div class="field-label">默认模型</div>
-                  <div class="model-row">
-                    <select class="model-select">
-                      <option>deepseek-chat</option>
-                      <option>deepseek-reasoner</option>
-                    </select>
-                  </div>
-                </div>
-              </div>
-              <div class="provider-footer">
-                <div class="conn-dot no"></div>
-                <span class="conn-text">未配置密钥</span>
-              </div>
-            </div>
-
-            <!-- Gemini -->
-            <div class="provider-card">
-              <div class="provider-top">
-                <div class="provider-id">
-                  <div class="provider-logo logo-gemini">G</div>
-                  <div>
-                    <div class="provider-name">Google Gemini</div>
-                    <div class="provider-protocol">规划中 · 暂未接入</div>
-                  </div>
-                </div>
-                <div class="toggle" title="由是否配置密钥自动决定"></div>
-              </div>
-              <div class="provider-body">
-                <div class="field">
-                  <div class="field-label">API 地址</div>
-                  <input class="field-input" value="generativelanguage.googleapis.com" placeholder="host">
-                </div>
-                <div class="field">
-                  <div class="field-label">API 密钥</div>
-                  <input class="field-input key-input" value="" placeholder="AIza...">
-                </div>
-                <div class="field">
-                  <div class="field-label">默认模型</div>
-                  <div class="model-row">
-                    <select class="model-select">
-                      <option>gemini-2.5-pro</option>
-                      <option>gemini-2.5-flash</option>
-                    </select>
-                  </div>
-                </div>
-              </div>
-              <div class="provider-footer">
-                <div class="conn-dot no"></div>
-                <span class="conn-text">未配置密钥</span>
-              </div>
-            </div>
-
-            <!-- Qwen -->
-            <div class="provider-card">
-              <div class="provider-top">
-                <div class="provider-id">
-                  <div class="provider-logo logo-qwen">Q</div>
-                  <div>
-                    <div class="provider-name">通义千问</div>
-                    <div class="provider-protocol">规划中 · 暂未接入</div>
-                  </div>
-                </div>
-                <div class="toggle" title="由是否配置密钥自动决定"></div>
-              </div>
-              <div class="provider-body">
-                <div class="field">
-                  <div class="field-label">API 地址</div>
-                  <input class="field-input" value="dashscope.aliyuncs.com" placeholder="host">
-                </div>
-                <div class="field">
-                  <div class="field-label">API 密钥</div>
-                  <input class="field-input key-input" value="" placeholder="sk-...">
-                </div>
-                <div class="field">
-                  <div class="field-label">默认模型</div>
-                  <div class="model-row">
-                    <select class="model-select">
-                      <option>qwen-max</option>
-                      <option>qwen-plus</option>
-                      <option>qwen-turbo</option>
-                    </select>
-                  </div>
-                </div>
-              </div>
-              <div class="provider-footer">
-                <div class="conn-dot no"></div>
-                <span class="conn-text">未配置密钥</span>
-              </div>
-            </div>
-
-            <!-- xAI -->
-            <div class="provider-card">
-              <div class="provider-top">
-                <div class="provider-id">
-                  <div class="provider-logo logo-xai">X</div>
-                  <div>
-                    <div class="provider-name">xAI (Grok)</div>
-                    <div class="provider-protocol">规划中 · 暂未接入</div>
-                  </div>
-                </div>
-                <div class="toggle" title="由是否配置密钥自动决定"></div>
-              </div>
-              <div class="provider-body">
-                <div class="field">
-                  <div class="field-label">API 地址</div>
-                  <input class="field-input" value="api.x.ai" placeholder="host">
-                </div>
-                <div class="field">
-                  <div class="field-label">API 密钥</div>
-                  <input class="field-input key-input" value="" placeholder="xai-...">
-                </div>
-                <div class="field">
-                  <div class="field-label">默认模型</div>
-                  <div class="model-row">
-                    <select class="model-select">
-                      <option>grok-3</option>
-                      <option>grok-3-mini</option>
-                    </select>
-                  </div>
-                </div>
-              </div>
-              <div class="provider-footer">
-                <div class="conn-dot no"></div>
-                <span class="conn-text">未配置密钥</span>
-              </div>
-            </div>
-
-          </div>
-        </div>
 
     <!-- ═══════ PAGE: MODEL MAP ═══════ -->
     <div class="page" id="page-models">
@@ -2162,8 +1954,8 @@ html[data-theme="dark"] .icon-btn .moon-icon {
 
         <!-- 右侧：刷新及操作按钮 -->
         <div style="display: flex; align-items: center; gap: 8px;">
-          <!-- 刷新按钮 -->
-          <button class="btn-ghost" onclick="renderModelMap(); addLog('info', '已刷新映射列表');" style="padding: 0 10px; border-radius: 8px; display: flex; align-items: center; justify-content: center; height: 28px; width: 32px;" title="刷新列表">
+          <!-- 刷新映射列表按钮 -->
+          <button class="btn-ghost" onclick="renderModelMap(); addLog('info', '已刷新映射列表');" style="padding: 0 10px; border-radius: 8px; display: flex; align-items: center; justify-content: center; height: 28px; width: 32px;" title="刷新映射列表">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
               <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"></path>
             </svg>
@@ -2184,7 +1976,7 @@ html[data-theme="dark"] .icon-btn .moon-icon {
             <tr>
               <th>原始名</th>
               <th>显示名</th>
-              <th>Windsurf 槽位</th>
+              <th>模型槽位</th>
               <th>目标（供应商/模型）</th>
               <th>劫持</th>
               <th>操作</th>
@@ -2199,14 +1991,14 @@ html[data-theme="dark"] .icon-btn .moon-icon {
     <div class="page" id="page-patches">
       <div class="glass-card" style="margin-bottom:20px">
         <div class="card-header">
-          <div class="card-title"><span class="dot"></span> 自动接入 Windsurf</div>
+          <div class="card-title"><span class="dot"></span> 自动接入 IDE</div>
         </div>
         <div class="card-body">
           <div class="patch-detail" style="line-height:1.7">
             启动代理时会自动把 <code>http.proxy</code> / <code>http.proxyStrictSSL</code>
-            写入 Windsurf 设置（写入前会备份原配置）；停止代理或退出本程序时自动还原，
+            写入 IDE 设置（写入前会备份原配置）；停止代理或退出本程序时自动还原，
             不会留下指向已关闭代理的死配置。<br>
-            首次使用只需在下方<b>生成 MITM 证书</b>。写入配置后请<b>重启 Windsurf</b> 生效。
+            首次使用只需在下方<b>生成 MITM 证书</b>。写入配置后请<b>重启 IDE</b> 生效。
           </div>
         </div>
       </div>
@@ -2233,21 +2025,21 @@ html[data-theme="dark"] .icon-btn .moon-icon {
               <code>http.proxyStrictSSL: false</code> 会在启动代理时自动写入。
             </div>
             <div class="patch-detail" style="margin-top:6px">
-              代理路径不修改 Windsurf 安装文件，Windsurf 升级后无需重新操作。
+              代理路径不修改 IDE 安装文件，IDE 升级后无需重新操作。
             </div>
           </div>
           <div class="field" style="margin-top:14px">
-            <div class="field-label">Windsurf 安装路径</div>
+            <div class="field-label">IDE 安装路径</div>
             <div class="patch-detail" style="margin-top:6px;margin-bottom:8px">
-              模型卡片改写需定位 Windsurf.exe。程序会自动探测（运行中进程 / 默认目录 / 注册表）；
+              模型卡片改写需定位 IDE 可执行文件。程序会自动探测（运行中进程 / 默认目录 / 注册表）；
               若装在非默认盘符且自动探测失败，可在此手动指定。
             </div>
             <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
-              <input class="input-sm" id="windsurfPath" style="flex:1;min-width:280px" placeholder="探测中…">
-              <button class="btn-ghost" onclick="detectWindsurfPath()">重新探测</button>
-              <button class="btn-ghost" onclick="saveWindsurfPath()">保存路径</button>
+              <input class="input-sm" id="idePath" style="flex:1;min-width:280px" placeholder="探测中…">
+              <button class="btn-ghost" onclick="detectIdePath()">重新探测</button>
+              <button class="btn-ghost" onclick="saveIdePath()">保存路径</button>
             </div>
-            <div class="patch-detail" id="windsurf-path-status" style="margin-top:8px"></div>
+            <div class="patch-detail" id="ide-path-status" style="margin-top:8px"></div>
           </div>
         </div>
       </div>
@@ -2325,7 +2117,7 @@ html[data-theme="dark"] .icon-btn .moon-icon {
             <div class="setting-row">
               <div>
                 <div class="setting-label">扩展思考</div>
-                <div class="setting-desc">将思考块传递给 Windsurf</div>
+                <div class="setting-desc">将思考块传递给 IDE</div>
               </div>
               <div class="setting-ctrl"><div class="toggle-sm on" data-config-toggle="EXTENDED_THINKING"></div></div>
             </div>
@@ -2454,11 +2246,11 @@ html[data-theme="dark"] .icon-btn .moon-icon {
             <line x1="12" y1="17" x2="12.01" y2="17"></line>
           </svg>
         </span>
-        需要重启 Windsurf
+        需要重启 IDE
       </div>
     </div>
     <div class="modal-body">
-      <p id="modal-lead">代理已启动，需重启 Windsurf 才能生效。</p>
+      <p id="modal-lead">代理已启动，需重启 IDE 才能生效。</p>
       <p>是否立即重启？</p>
       <div class="modal-warning">
         <span class="modal-warning-icon">
@@ -2468,7 +2260,7 @@ html[data-theme="dark"] .icon-btn .moon-icon {
             <line x1="12" y1="16" x2="12.01" y2="16"></line>
           </svg>
         </span>
-        <span>重启会<strong>强制关闭</strong> Windsurf，请先保存所有未保存的工作。</span>
+        <span>重启会<strong>强制关闭</strong> IDE，请先保存所有未保存的工作。</span>
       </div>
     </div>
     <div class="modal-footer">
@@ -2489,7 +2281,7 @@ html[data-theme="dark"] .icon-btn .moon-icon {
             <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path>
           </svg>
         </span>
-        Windsurf BYOK 升级成功！
+        IDE BYOK 升级成功！
       </div>
     </div>
     <div class="modal-body" style="max-height: 300px; overflow-y: auto; padding-right: 8px;">
@@ -2563,7 +2355,17 @@ const appWindow = TAURI?.window?.getCurrentWindow ? TAURI.window.getCurrentWindo
 const tabs = document.querySelectorAll('.tab-item[data-page]');
 const pages = document.querySelectorAll('.page');
 
+function hideAllEditorModals() {
+  ['providerModal', 'slotModal', 'failoverModal'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.classList.remove('is-open');
+  });
+}
+
 function navigateTo(pageId) {
+  // 切页前先收起所有编辑弹窗，避免弹层残留造成“仪表盘出现模型面板”
+  hideAllEditorModals();
+
   tabs.forEach(t => t.classList.remove('active'));
   pages.forEach(p => p.classList.remove('active'));
   const tab = document.querySelector(`.tab-item[data-page="${pageId}"]`);
@@ -2572,7 +2374,7 @@ function navigateTo(pageId) {
   if (page) page.classList.add('active');
   const main = document.querySelector('.main');
   if (main) main.classList.toggle('dashboard-active', pageId === 'dashboard');
-  if (pageId === 'patches') detectWindsurfPath();
+  if (pageId === 'patches') detectIdePath();
 }
 
 tabs.forEach(t => t.addEventListener('click', () => navigateTo(t.dataset.page)));
@@ -2613,7 +2415,7 @@ function setStatusPill(running) {
   
   if (sub) {
     sub.textContent = running
-      ? '已接入 Windsurf · 端口 :7450 / :7451 · 重启 Windsurf 生效'
+      ? '已接入 IDE · 端口 :7450 / :7451 · 重启 IDE 生效'
       : '代理未运行 · 端口 :7450 / :7451';
   }
   if (btn) {
@@ -2652,7 +2454,7 @@ async function toggleProxy() {
       setStatusPill(false);
       // 停止后已还原 Windsurf 代理配置；但运行中的 Windsurf 仍在用旧代理设置，
       // 不重启会一直指向已关闭的 localhost:7450 → 断网。必须提示重启。
-      await promptRestartWindsurf('已停止代理并还原配置。Windsurf 仍指向已关闭的代理，需重启才能恢复正常联网。');
+      await promptRestartWindsurf('已停止代理并还原配置。IDE 仍指向已关闭的代理，需重启才能恢复正常联网。');
     } else {
       // 启动前校验:启用的槽位若 targets 空或引用失效供应商，阻止带病启动。
       try {
@@ -2673,7 +2475,7 @@ async function toggleProxy() {
       await invoke('start_proxy');
       setStatusPill(true);
       // 不论配置是否本次改动，运行中的 Windsurf 都可能尚未加载代理设置，统一提示重启生效。
-      await promptRestartWindsurf('代理已启动，需重启 Windsurf 才能生效。');
+      await promptRestartWindsurf('代理已启动，需重启 IDE 才能生效。');
     }
   } catch (e) {
     addLog('err', '代理操作失败: ' + e);
@@ -2700,7 +2502,7 @@ async function refreshStatus() {
 // 代理状态变更后，提示并询问是否一键重启 Windsurf 使其生效。
 function promptRestartWindsurf(leadText) {
   if (!invoke) return Promise.resolve(false);
-  const lead = leadText || '代理状态已变更，需重启 Windsurf 才能生效。';
+  const lead = leadText || '代理状态已变更，需重启 IDE 才能生效。';
 
   return new Promise((resolve) => {
     const modal = document.getElementById('custom-confirm-modal');
@@ -2712,7 +2514,7 @@ function promptRestartWindsurf(leadText) {
       const ok = confirm(
         lead + '\n\n' +
         '是否立即重启？\n' +
-        '⚠ 重启会强制关闭 Windsurf，请先保存所有未保存的工作。\n\n' +
+        '⚠ 重启会强制关闭 IDE，请先保存所有未保存的工作。\n\n' +
         '点「取消」可稍后自行重启。'
       );
       resolve(ok);
@@ -2743,7 +2545,7 @@ function promptRestartWindsurf(leadText) {
         const result = await invoke('restart_windsurf');
         addLog('ok', result);
       } catch (e) {
-        addLog('err', '重启 Windsurf 失败: ' + e);
+        addLog('err', '重启 IDE 失败: ' + e);
       }
     }
     
@@ -2912,37 +2714,37 @@ async function generateCerts() {
   }
 }
 
-async function detectWindsurfPath() {
+async function detectIdePath() {
   if (!invoke) return;
-  const input = document.getElementById('windsurfPath');
-  const status = document.getElementById('windsurf-path-status');
+  const input = document.getElementById('idePath');
+  const status = document.getElementById('ide-path-status');
   try {
     const path = await invoke('detect_windsurf_path');
     if (path) {
       if (input) input.value = path;
       if (status) status.textContent = '已自动定位 ✓';
     } else {
-      if (input) { input.value = ''; input.placeholder = '未自动定位，请手动指定 Windsurf.exe'; }
-      if (status) status.textContent = '自动探测失败，请手动指定 Windsurf.exe 后保存';
+      if (input) { input.value = ''; input.placeholder = '未自动定位，请手动指定 IDE 可执行文件'; }
+      if (status) status.textContent = '自动探测失败，请手动指定 IDE 可执行文件后保存';
     }
   } catch (e) {
     if (status) status.textContent = '探测失败: ' + e;
   }
 }
 
-async function saveWindsurfPath() {
+async function saveIdePath() {
   if (!invoke) return;
-  const input = document.getElementById('windsurfPath');
-  const status = document.getElementById('windsurf-path-status');
+  const input = document.getElementById('idePath');
+  const status = document.getElementById('ide-path-status');
   const path = input ? input.value.trim() : '';
-  if (!path) { if (status) status.textContent = '请先填写 Windsurf.exe 路径'; return; }
+  if (!path) { if (status) status.textContent = '请先填写 IDE 可执行文件路径'; return; }
   try {
     await invoke('set_windsurf_path', { path });
     if (status) status.textContent = '已保存路径 ✓（下次启动代理生效）';
-    addLog('ok', 'Windsurf 路径已设置: ' + path);
+    addLog('ok', 'IDE 路径已设置: ' + path);
   } catch (e) {
     if (status) status.textContent = '保存失败: ' + e;
-    addLog('err', 'Windsurf 路径保存失败: ' + e);
+    addLog('err', 'IDE 路径保存失败: ' + e);
   }
 }
 
@@ -3019,6 +2821,45 @@ function escAttr(s) {
   return String(s || '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
 
+function providerCapabilities(p, modelId = null) {
+  const caps = p && p.capabilities && typeof p.capabilities === 'object' ? p.capabilities : {};
+  const path = String((p && p.apiPath) || '').toLowerCase();
+  const fmt = (p && p.apiFormat) || 'anthropic';
+  const modelCapsMap = p && p.modelCaps && typeof p.modelCaps === 'object' ? p.modelCaps : {};
+  const modelCaps = modelId ? (modelCapsMap[modelId] || {}) : null;
+  const hasModelVision = !!(modelCaps && Object.prototype.hasOwnProperty.call(modelCaps, 'vision'));
+  const hasModelTools = !!(modelCaps && Object.prototype.hasOwnProperty.call(modelCaps, 'tools'));
+  return {
+    text: caps.text !== false,
+    stream: caps.stream !== false,
+    vision: hasModelVision ? modelCaps.vision === true : caps.vision === true,
+    tools: hasModelTools ? modelCaps.tools === true : caps.tools === true,
+    gzip: caps.gzip === true,
+    toolSchemaCompatGemini: caps.toolSchemaCompat === 'gemini',
+    chat: fmt === 'openai' && path.includes('/chat/completions'),
+    responses: fmt === 'openai' && path.includes('/responses'),
+    anthropic: fmt === 'anthropic',
+  };
+}
+
+
+function capabilityBadges(p, compact = false, modelId = null) {
+  const c = providerCapabilities(p, modelId);
+  const showModelCaps = !!modelId;
+  const mk = (label, on, title) => `
+    <span class="tag" title="${escAttr(title || label)}" style="background:${on ? 'var(--success-dim)' : 'var(--bg-input)'}; color:${on ? 'var(--success)' : 'var(--text-muted)'}; border:1px solid ${on ? 'rgba(22,163,74,.22)' : 'var(--border)'}; font-size:${compact ? '10px' : '11px'}; padding:${compact ? '2px 6px' : '3px 8px'}; border-radius:7px;">${escAttr(label)}</span>`;
+  const protocol = c.responses ? mk('Responses', true) : (c.chat ? mk('Chat', true) : (c.anthropic ? mk('Anthropic', true) : ''));
+  return [
+    protocol,
+    mk('Stream', c.stream),
+    showModelCaps ? mk('Vision', c.vision, c.vision ? '该模型已标记支持图片理解' : '该模型未标记图片理解') : '',
+    showModelCaps ? mk('Tools', c.tools, c.tools ? '该模型已标记支持工具调用' : '该模型未标记工具调用') : '',
+    c.gzip ? mk('Gzip', true, '已启用请求体 gzip 压缩') : '',
+    c.toolSchemaCompatGemini ? mk('Schema兼容', true, '已启用 Gemini 工具 Schema 兼容模式（自动学习）') : '',
+  ].filter(Boolean).join('');
+}
+
+
 async function loadProviders() {
   if (!invoke) return;
   try {
@@ -3082,6 +2923,10 @@ function renderProviders() {
                 ? '<span class="tag tag-anthropic" style="background:var(--success-dim);color:var(--success)">● 已启用</span>'
                 : '<span class="tag" style="background:var(--text-muted);color:#fff;opacity:.6">○ 未启用</span>'}
             </div>
+          </div>
+          <div class="field" style="margin-bottom:0;">
+            <div class="field-label" style="margin-bottom:6px;">能力</div>
+            <div style="display:flex; flex-wrap:wrap; gap:6px;">${capabilityBadges(p)}</div>
           </div>
         </div>
         <div class="provider-footer">
@@ -3440,6 +3285,7 @@ function clearModelSearch() {
 }
 
 let selectedModels = [];
+let editorDraftModelCaps = {};
 
 function updateSelectedModelsUI() {
   const leftContainer = document.getElementById('leftSelectedModelsList');
@@ -3453,6 +3299,22 @@ function updateSelectedModelsUI() {
   
   if (leftCount) {
     leftCount.textContent = selectedModels.length;
+  }
+
+  // 获取当前编辑中供应商的 modelCaps（合并已有 + 弹窗内探测草稿）
+  const editId = document.getElementById('pf-id')?.value;
+  const editProvider = editId ? providerStore.providers.find(x => x.id === editId) : null;
+  const modelCaps = {
+    ...(editProvider?.modelCaps || {}),
+    ...editorDraftModelCaps,
+  };
+
+  function modelCapBadges(m) {
+    const mc = modelCaps[m] || {};
+    const badges = [];
+    if (mc.vision) badges.push('<span style="font-size:9px; padding:1px 5px; border-radius:4px; background:#10b98120; color:#10b981; font-weight:600;">视觉</span>');
+    if (mc.tools) badges.push('<span style="font-size:9px; padding:1px 5px; border-radius:4px; background:#8b5cf620; color:#8b5cf6; font-weight:600;">工具</span>');
+    return badges.join(' ');
   }
   
   if (leftContainer) {
@@ -3473,7 +3335,10 @@ function updateSelectedModelsUI() {
           <div style="display:flex; align-items:center; gap:10px; flex:1; min-width:0;">
             ${renderModelIcon(m)}
             <div style="display:flex; flex-direction:column; gap:2px; flex:1; min-width:0;">
-              <span style="font-size:12px; font-weight:600; color:var(--text-primary); font-family:var(--font-mono); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; cursor:pointer;" title="${escAttr(m)}">${escAttr(m)}</span>
+              <div style="display:flex; align-items:center; gap:5px; flex-wrap:wrap;">
+                <span style="font-size:12px; font-weight:600; color:var(--text-primary); font-family:var(--font-mono); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; cursor:pointer;" title="${escAttr(m)}">${escAttr(m)}</span>
+                ${modelCapBadges(m)}
+              </div>
               ${idx === 0 ? '<span style="font-size:9px; color:var(--accent); font-weight:700; display:inline-flex; align-items:center; gap:2px;">★ 默认模型</span>' : ''}
             </div>
           </div>
@@ -3683,12 +3548,12 @@ function onFormatChange() {
   // Always update placeholder based on format (it's just hint text)
   if (hostEl) {
     hostEl.placeholder = fmt === 'openai'
-      ? 'https://api.openai.com/v1/responses'
-      : 'https://api.anthropic.com/v1/messages';
+      ? 'https://api.openai.com'
+      : 'https://api.anthropic.com';
   }
 
   // Set default path
-  if (pathEl) pathEl.value = fmt === 'openai' ? '/v1/responses' : '/v1/messages';
+  if (pathEl) pathEl.value = fmt === 'openai' ? '/v1/chat/completions' : '/v1/messages';
 
   // Ensure current selected models are in the list
   selectedModels.forEach(m => {
@@ -3708,14 +3573,16 @@ function openProviderEditor(id) {
   document.getElementById('pf-name').value = p ? p.name : '';
   document.getElementById('pf-format').value = p ? (p.apiFormat || 'anthropic') : 'anthropic';
 
-  // Reconstruct full base URL from host + path
+  // Show only host (origin) in URL field; path is stored separately in pf-path
   const host = p ? p.apiHost : '';
   const path = p ? (p.apiPath || '') : '';
-  const fullUrl = host + path;
-  document.getElementById('pf-host').value = fullUrl;
-  document.getElementById('pf-path').value = path || (p && p.apiFormat === 'openai' ? '/v1/responses' : '/v1/messages');
+  document.getElementById('pf-host').value = host;
+  document.getElementById('pf-path').value = path || (p && p.apiFormat === 'openai' ? '/v1/chat/completions' : '/v1/messages');
   document.getElementById('pf-key').value = p ? p.apiKey : '';
   document.getElementById('pf-key').type = 'password';
+  const caps = providerCapabilities(p || { apiFormat: document.getElementById('pf-format').value, apiPath: document.getElementById('pf-path').value });
+  const gzipEl = document.getElementById('pf-cap-gzip');
+  if (gzipEl) gzipEl.checked = caps.gzip;
   const keyBtn = document.getElementById('pf-key-toggle');
   if (keyBtn) keyBtn.innerHTML = EYE_SVG_OPEN;
 
@@ -3728,6 +3595,7 @@ function openProviderEditor(id) {
     }
   } else {
     selectedModels = [];
+    editorDraftModelCaps = {};
   }
   updateSelectedModelsUI();
 
@@ -3754,7 +3622,7 @@ function openProviderEditor(id) {
   if (searchInput) searchInput.value = '';
 
   onFormatChange();
-  if (modal) modal.style.display = 'flex';
+  if (modal) modal.classList.add('is-open');
 
   // If existing provider has valid credentials, trigger background real-time fetch immediately
   if (p && p.apiHost && p.apiKey) {
@@ -3766,7 +3634,7 @@ function openProviderEditor(id) {
 
 function closeProviderEditor() {
   const modal = document.getElementById('providerModal');
-  if (modal) modal.style.display = 'none';
+  if (modal) modal.classList.remove('is-open');
 }
 
 async function saveProviderFromEditor() {
@@ -3787,18 +3655,35 @@ async function saveProviderFromEditor() {
   try {
     const url = new URL(baseUrl.startsWith('http') ? baseUrl : 'https://' + baseUrl);
     apiHost = url.origin;
-    apiPath = url.pathname.replace(/\/+$/, '') || '/';
+    apiPath = url.pathname.replace(/\/+$/, '') || '';
   } catch {
     // If URL parsing fails, use as-is
   }
+  if (!apiPath || apiPath === '/') {
+    apiPath = document.getElementById('pf-path').value
+      || (apiFormat === 'openai' ? '/v1/chat/completions' : '/v1/messages');
+  }
 
   const defaultModel = selectedModels[0] || '';
+  const existingCaps = id ? (providerStore.providers.find(x => x.id === id)?.capabilities || {}) : {};
+  const capabilities = {
+    ...existingCaps,
+    text: true,
+    stream: true,
+    gzip: !!document.getElementById('pf-cap-gzip')?.checked,
+  };
+
+  // 合并已有 modelCaps + 本次弹窗探测到的草稿能力
+  const existingModelCaps = id ? (providerStore.providers.find(x => x.id === id)?.modelCaps || {}) : {};
+  const mergedModelCaps = { ...existingModelCaps, ...editorDraftModelCaps };
   const provider = {
     id: id || `p-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
     name, apiHost, apiKey, defaultModel, apiFormat,
     apiPath: apiPath || null,
     enabled: true,
-    models: [...selectedModels] // Persist multi-selected models array
+    capabilities,
+    models: [...selectedModels],
+    modelCaps: mergedModelCaps,
   };
 
   if (id) {
@@ -3826,10 +3711,41 @@ async function testProvider(id) {
   const text = document.getElementById(`conn-text-${id}`);
   if (text) text.textContent = '测试中…';
   try {
-    const result = await invoke('test_connection', { args: { host: p.apiHost, api_key: p.apiKey, api_format: p.apiFormat || 'anthropic' } });
+    const result = await invoke('test_connection', {
+      args: {
+        host: p.apiHost, api_key: p.apiKey,
+        path: p.apiPath || null,
+        api_format: p.apiFormat || 'anthropic',
+        model: p.defaultModel || null,
+      }
+    });
+    const msg = typeof result === 'string' ? result : (result.message || '连通 ✓');
+    // 自动写入探测到的能力标记
+    if (result && typeof result === 'object' && result.capabilities) {
+      const idx = providerStore.providers.findIndex(x => x.id === id);
+      if (idx >= 0) {
+        const c = result.capabilities;
+        // gzip 是供应商级能力
+        if (c.gzip !== undefined) {
+          const caps = providerStore.providers[idx].capabilities || {};
+          caps.gzip = c.gzip;
+          providerStore.providers[idx].capabilities = caps;
+        }
+        // vision/tools 是模型级能力，写入 modelCaps
+        const testModel = p.defaultModel || (p.models && p.models[0]);
+        if (testModel && (c.vision !== undefined || c.tools !== undefined)) {
+          const mc = providerStore.providers[idx].modelCaps || {};
+          mc[testModel] = mc[testModel] || {};
+          if (c.vision !== undefined) mc[testModel].vision = c.vision;
+          if (c.tools !== undefined) mc[testModel].tools = c.tools;
+          providerStore.providers[idx].modelCaps = mc;
+        }
+        await persistProviders();
+      }
+    }
     if (dot) dot.className = 'conn-dot ok';
-    if (text) text.textContent = result;
-    addLog('ok', `${p.name} 连接测试: ${result}`);
+    if (text) text.textContent = msg;
+    addLog('ok', `${p.name} 连接测试: ${msg}`);
   } catch (e) {
     if (dot) dot.className = 'conn-dot no';
     if (text) text.textContent = String(e) || '失败';
@@ -3843,6 +3759,8 @@ async function testProviderInEditor() {
   const baseUrl = document.getElementById('pf-host').value.trim();
   const apiKey = document.getElementById('pf-key').value.trim();
   const fmt = document.getElementById('pf-format').value;
+  const apiPath = document.getElementById('pf-path').value || '';
+  const model = selectedModels[0] || null;
   const dot = document.getElementById('pf-conn-dot');
   const text = document.getElementById('pf-conn-text');
   if (!baseUrl || !apiKey) {
@@ -3850,8 +3768,7 @@ async function testProviderInEditor() {
     return;
   }
 
-  // Parse host from base URL — always test against /v1/models (GET endpoint),
-  // NOT the chat endpoint path (e.g. /v1/messages) which only accepts POST
+  // Parse host from base URL
   let host = baseUrl;
   try {
     const url = new URL(baseUrl.startsWith('http') ? baseUrl : 'https://' + baseUrl);
@@ -3860,10 +3777,38 @@ async function testProviderInEditor() {
 
   if (text) text.textContent = '测试中…';
   try {
-    const result = await invoke('test_connection', { args: { host, api_key: apiKey, api_format: fmt } });
+    const result = await invoke('test_connection', {
+      args: { host, api_key: apiKey, path: apiPath || null, api_format: fmt, model }
+    });
+    const msg = typeof result === 'string' ? result : (result.message || '连通 ✓');
+    // 自动设置探测到的能力标记
+    if (result && typeof result === 'object' && result.capabilities) {
+      const c = result.capabilities;
+      // gzip 是供应商级能力
+      const gzipEl = document.getElementById('pf-cap-gzip');
+      if (gzipEl && c.gzip !== undefined) gzipEl.checked = c.gzip;
+      // vision/tools 是模型级能力：先写入弹窗草稿，再按需同步到已存在供应商
+      if (model && (c.vision !== undefined || c.tools !== undefined)) {
+        editorDraftModelCaps[model] = editorDraftModelCaps[model] || {};
+        if (c.vision !== undefined) editorDraftModelCaps[model].vision = c.vision;
+        if (c.tools !== undefined) editorDraftModelCaps[model].tools = c.tools;
+
+        const editId = document.getElementById('pf-id')?.value;
+        if (editId) {
+          const idx = providerStore.providers.findIndex(x => x.id === editId);
+          if (idx >= 0) {
+            const mc = providerStore.providers[idx].modelCaps || {};
+            mc[model] = { ...(mc[model] || {}), ...editorDraftModelCaps[model] };
+            providerStore.providers[idx].modelCaps = mc;
+            await persistProviders();
+          }
+        }
+        updateSelectedModelsUI();
+      }
+    }
     if (dot) dot.className = 'conn-dot ok';
-    if (text) text.textContent = result;
-    addLog('ok', '连接测试: ' + result);
+    if (text) text.textContent = msg;
+    addLog('ok', '连接测试: ' + msg);
   } catch (e) {
     if (dot) dot.className = 'conn-dot no';
     if (text) text.textContent = String(e) || '失败';
@@ -3925,18 +3870,58 @@ async function fetchModelsForEditor() {
 
 // ═══════ MODEL MAP (可编辑槽位映射 + 故障转移链) ═══════
 let modelMapStore = { slots: [] };       // load_model_map 结果
-let windsurfModels = null;               // list_windsurf_models 缓存
+let windsurfModels = null;               // list_windsurf_models 缓存（数组）
+let windsurfMeta = null;                 // { source, capturedAt, account } 元信息
 
 async function ensureWindsurfModels() {
   if (windsurfModels) return windsurfModels;
   try {
-    const list = await invoke('list_windsurf_models');
-    windsurfModels = Array.isArray(list) ? list : [];
+    const res = await invoke('list_windsurf_models');
+    if (res && Array.isArray(res.models)) {
+      windsurfModels = res.models;
+      windsurfMeta = { source: res.source || '', capturedAt: res.captured_at || null, account: res.account || null };
+    } else if (Array.isArray(res)) {
+      // 兼容旧版返回数组格式
+      windsurfModels = res;
+      windsurfMeta = { source: '', capturedAt: null, account: null };
+    } else {
+      windsurfModels = [];
+      windsurfMeta = { source: '', capturedAt: null, account: null };
+    }
   } catch (e) {
-    addLog('warn', '获取 Windsurf 模型清单失败: ' + e);
+    addLog('warn', '获取 IDE 模型清单失败: ' + e);
     windsurfModels = [];
+    windsurfMeta = { source: '', capturedAt: null, account: null };
   }
   return windsurfModels;
+}
+
+async function refreshWindsurfModels() {
+  const btn = document.getElementById('btn-refresh-models');
+  try {
+    if (btn) { btn.disabled = true; btn.querySelector('span') && (btn.querySelector('span').textContent = '拉取中...'); }
+    const info = await invoke('refresh_windsurf_models');
+    windsurfModels = info.models || [];
+    windsurfMeta = {
+      source: 'api',
+      capturedAt: Date.now(),
+      account: {
+        email: info.email,
+        plan_name: info.plan_name,
+        teams_tier: info.teams_tier,
+        daily_remaining: info.daily_remaining,
+        weekly_remaining: info.weekly_remaining,
+        overage_balance_micros: info.overage_balance_micros,
+      },
+    };
+    // 刷新模态框内的槽位列表
+    renderSlotCatalogList();
+    addLog('info', `模型列表已更新：${info.email} (${info.plan_name})，${info.models.length} 个模型`);
+  } catch (e) {
+    addLog('error', '刷新模型列表失败: ' + e);
+  } finally {
+    if (btn) { btn.disabled = false; btn.querySelector('span') && (btn.querySelector('span').textContent = '刷新'); }
+  }
 }
 
 // 由 modelUid 找原始名（查不到回退到 uid 本身）
@@ -3956,9 +3941,10 @@ function renderTargetChain(targets) {
     const invalid = !p || p.enabled === false;
     const label = p ? p.name : (t.providerId || '?');
     const text = `${marks[i] || (i + 1) + '.'} ${escAttr(label)}/${escAttr(t.model || '')}`;
+    const badges = p ? `<span style="display:inline-flex;gap:4px;margin-left:4px;vertical-align:middle">${capabilityBadges(p, true, t.model || p.defaultModel || null)}</span>` : '';
     return invalid
       ? `<span style="color:#dc2626" title="供应商不存在或未启用">${text} ⚠</span>`
-      : `<span>${text}</span>`;
+      : `<span>${text}${badges}</span>`;
   }).join(' ');
 }
 
@@ -4360,6 +4346,7 @@ function filterSlotCatalog() {
 
 async function openSlotEditor(uid) {
   windsurfModels = null;
+  windsurfMeta = null;
   await ensureWindsurfModels();
   const modal = document.getElementById('slotModal');
   const sel = document.getElementById('slot-uid-select');
@@ -4413,24 +4400,28 @@ async function openSlotEditor(uid) {
   renderSlotCatalogList();
 
   document.getElementById('slot-display').value = editing ? (editing.displayName || '') : '';
-  if (modal) modal.style.display = 'flex';
+  // supportsImages 默认 true（多数视觉模型免勾），旧槽位无此字段时也视为 true
+  document.getElementById('slot-supports-images').checked = editing ? (editing.supportsImages !== false) : true;
+  if (modal) modal.classList.add('is-open');
 }
 
 function closeSlotEditor() {
   const modal = document.getElementById('slotModal');
-  if (modal) modal.style.display = 'none';
+  if (modal) modal.classList.remove('is-open');
 }
 
 async function saveSlotFromEditor() {
   const editUid = document.getElementById('slot-edit-uid').value;
   const uid = editUid || document.getElementById('slot-uid-select').value;
   const display = document.getElementById('slot-display').value.trim();
-  if (!uid) { addLog('warn', '请选择 Windsurf 槽位'); return; }
+  const supportsImages = document.getElementById('slot-supports-images').checked;
+  if (!uid) { addLog('warn', '请选择模型槽位'); return; }
 
   if (editUid) {
     const s = modelMapStore.slots.find(x => x.modelUid === editUid);
     if (s) {
       s.displayName = display;
+      s.supportsImages = supportsImages;
       s.targets = JSON.parse(JSON.stringify(selectedMappingTargets));
     }
   } else {
@@ -4442,6 +4433,7 @@ async function saveSlotFromEditor() {
       modelUid: uid,
       displayName: display,
       enabled: true,
+      supportsImages,
       targets: JSON.parse(JSON.stringify(selectedMappingTargets))
     });
   }
@@ -4471,12 +4463,12 @@ function openFailoverEditor(uid) {
   document.getElementById('failoverModalSlot').textContent = s.displayName || originalNameOf(uid);
   renderFailoverRows();
   const modal = document.getElementById('failoverModal');
-  if (modal) modal.style.display = 'flex';
+  if (modal) modal.classList.add('is-open');
 }
 
 function closeFailoverEditor() {
   const modal = document.getElementById('failoverModal');
-  if (modal) modal.style.display = 'none';
+  if (modal) modal.classList.remove('is-open');
 }
 
 function renderFailoverRows() {
@@ -4514,19 +4506,25 @@ function renderFailoverRows() {
     const modelOpts = modelsOfProv.map(m =>
       `<option value="${escAttr(m)}"${m === row.model ? ' selected' : ''}>${escAttr(m)}</option>`
     ).join('');
+    const capLine = cur
+      ? `<div style="margin-left:28px; display:flex; gap:4px; flex-wrap:wrap;">${capabilityBadges(cur, true, row.model || cur.defaultModel || null)}</div>`
+      : '';
 
     return `
-      <div style="display:flex;gap:8px;align-items:center" data-fo-idx="${i}">
-        <span style="width:20px;text-align:center;color:var(--text-muted)">${marks[i] || (i + 1)}</span>
-        <select class="input-sm" style="flex:1" onchange="updateFailoverRow(${i},'providerId',this.value)">${invalidOpt}${provOpts}</select>
-        <select class="input-sm" style="flex:1; text-align: left;" onchange="updateFailoverRow(${i},'model',this.value)">
-          <option value=""${!row.model ? ' selected' : ''}>默认模型</option>
-          ${modelOpts}
-          <option value="__custom__">+ 输入自定义模型...</option>
-        </select>
-        <button class="btn-ghost" title="上移" onclick="moveFailoverRow(${i},-1)" ${i === 0 ? 'disabled' : ''}>↑</button>
-        <button class="btn-ghost" title="下移" onclick="moveFailoverRow(${i},1)" ${i === failoverDraft.length - 1 ? 'disabled' : ''}>↓</button>
-        <button class="btn-ghost" title="删除" onclick="removeFailoverRow(${i})">✕</button>
+      <div style="display:flex;flex-direction:column;gap:6px" data-fo-idx="${i}">
+        <div style="display:flex;gap:8px;align-items:center">
+          <span style="width:20px;text-align:center;color:var(--text-muted)">${marks[i] || (i + 1)}</span>
+          <select class="input-sm" style="flex:1" onchange="updateFailoverRow(${i},'providerId',this.value)">${invalidOpt}${provOpts}</select>
+          <select class="input-sm" style="flex:1; text-align: left;" onchange="updateFailoverRow(${i},'model',this.value)">
+            <option value=""${!row.model ? ' selected' : ''}>默认模型</option>
+            ${modelOpts}
+            <option value="__custom__">+ 输入自定义模型...</option>
+          </select>
+          <button class="btn-ghost" title="上移" onclick="moveFailoverRow(${i},-1)" ${i === 0 ? 'disabled' : ''}>↑</button>
+          <button class="btn-ghost" title="下移" onclick="moveFailoverRow(${i},1)" ${i === failoverDraft.length - 1 ? 'disabled' : ''}>↓</button>
+          <button class="btn-ghost" title="删除" onclick="removeFailoverRow(${i})">✕</button>
+        </div>
+        ${capLine}
       </div>`;
   }).join('');
 }
@@ -4879,7 +4877,7 @@ async function init() {
   await loadAndFillConfig();
   await loadProviders();
   await refreshStatus();
-  
+
   // 加载自动更新设置并更新 UI 开关状态
   await loadUpdateSettings();
   // 检查是否刚进行了版本更新
@@ -4901,7 +4899,7 @@ async function init() {
   setInterval(refreshStatus, 3000);
   setInterval(refreshStats, 3000);
   await refreshStats();
-  addLog('info', 'Windsurf BYOK 就绪');
+  addLog('info', 'IDE BYOK 就绪');
 }
 
 init().catch(e => console.error('init failed:', e));

@@ -10,7 +10,7 @@ import os from 'node:os';
 
 function configDir() {
   if (process.env.BYOK_CONFIG_DIR) return process.env.BYOK_CONFIG_DIR;
-  return path.join(os.homedir(), 'AppData', 'Roaming', 'windsurf-byok');
+  return path.join(os.homedir(), 'AppData', 'Roaming', 'ide-byok');
 }
 
 function readJson(file) {

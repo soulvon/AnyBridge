@@ -1,7 +1,7 @@
 {
-  "name": "windsurf-byok",
+  "name": "ide-byok",
   "version": "1.0.2",
-  "description": "Hybrid proxy for Windsurf IDE — intercepts chat, forwards everything else to Codeium",
+  "description": "Hybrid proxy for IDE — intercepts chat, forwards everything else to Codeium",
   "type": "module",
   "main": "src/hybrid-server.js",
   "scripts": {
@@ -15,7 +15,7 @@
     "tauri:build": "tauri build"
   },
   "keywords": [
-    "windsurf",
+    "ide-byok",
     "codeium",
     "anthropic",
     "proxy",

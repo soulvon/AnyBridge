@@ -234,3 +234,97 @@ export class OpenAIStreamProcessor {
     }
   }
 }
+
+// ─── Chat Completions stream processor ─────────────────────
+
+export class OpenAIChatCompletionsStreamProcessor {
+  constructor(messageId, modelUid) {
+    this._messageId = messageId;
+    this._modelUid = modelUid;
+    this._tokenCount = 0;
+    this._done = false;
+    this._stopReason = null;
+    this._usage = { inputTokens: 0, outputTokens: 0 };
+    this._toolCalls = {};
+  }
+
+  get isDone() { return this._done; }
+  get stopReason() { return this._stopReason; }
+  get usage() { return this._usage; }
+
+  processEvent(event) {
+    if (event.done) return this._onDone();
+
+    const data = event.data;
+    const chunks = [];
+
+    if (data?.usage) {
+      if (data.usage.prompt_tokens != null) this._usage.inputTokens = data.usage.prompt_tokens;
+      if (data.usage.completion_tokens != null) this._usage.outputTokens = data.usage.completion_tokens;
+    }
+
+    const choice = data?.choices?.[0];
+    if (!choice) return chunks;
+
+    const delta = choice.delta || {};
+    const text = delta.content || delta.text || '';
+    if (text) {
+      this._tokenCount++;
+      chunks.push(buildTextDelta(this._messageId, text, this._tokenCount));
+    }
+
+    const thinking = delta.reasoning_content || delta.reasoning || '';
+    if (thinking) {
+      chunks.push(buildThinkingDelta(this._messageId, thinking));
+    }
+
+    if (Array.isArray(delta.tool_calls)) {
+      for (const tc of delta.tool_calls) {
+        const idx = tc.index ?? 0;
+        if (!this._toolCalls[idx]) {
+          this._toolCalls[idx] = { id: '', name: '', arguments: '' };
+        }
+        if (tc.id) this._toolCalls[idx].id = tc.id;
+        if (tc.function?.name) this._toolCalls[idx].name = tc.function.name;
+        if (tc.function?.arguments) this._toolCalls[idx].arguments += tc.function.arguments;
+      }
+    }
+
+    if (choice.finish_reason) {
+      this._stopReason = choice.finish_reason;
+    }
+
+    return chunks;
+  }
+
+  _onDone() {
+    if (this._done) return [];
+    const chunks = [];
+
+    const calls = Object.keys(this._toolCalls)
+      .sort((a, b) => Number(a) - Number(b))
+      .map(idx => ({
+        id: this._toolCalls[idx].id,
+        name: this._toolCalls[idx].name,
+        arguments_json: this._toolCalls[idx].arguments,
+      }))
+      .filter(tc => tc.id || tc.name || tc.arguments_json);
+
+    if (calls.length > 0) {
+      chunks.push(buildToolCallDelta(this._messageId, calls));
+    }
+
+    chunks.push(buildStopChunk(this._messageId, this._mapStopReason(this._stopReason), this._modelUid));
+    this._done = true;
+    return chunks;
+  }
+
+  _mapStopReason(reason) {
+    switch (reason) {
+      case 'tool_calls': return STOP_REASON.FUNCTION_CALL;
+      case 'length':     return STOP_REASON.MAX_TOKENS;
+      case 'stop':
+      default:           return STOP_REASON.STOP_PATTERN;
+    }
+  }
+}

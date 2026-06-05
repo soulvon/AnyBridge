@@ -89,7 +89,7 @@ pub fn start_proxy(app: AppHandle, state: State<ProxyState>) -> Result<bool, Str
 
     let sidecar_res = app
         .shell()
-        .sidecar("windsurf-byok-proxy");
+        .sidecar("ide-byok-proxy");
     let mut sidecar = match sidecar_res {
         Ok(s) => s.env("BYOK_CONFIG_DIR", config_dir.to_string_lossy().to_string()),
         Err(e) => {

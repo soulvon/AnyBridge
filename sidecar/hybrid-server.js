@@ -17,9 +17,23 @@ import { handleGetChatMessage, shouldIntercept } from './handlers/chat.js';
 import { parseFields, writeStringField, writeBytesField } from './proto.js';
 import { tryGunzip } from './connect.js';
 import { snapshot } from './stats.js';
-import { renameModels, extractModelList } from './rename-models.js';
+import { renameModels, extractModelList, unlockModels } from './rename-models.js';
 
 const PORT = parseInt(process.env.API_PORT || '7450', 10);
+
+// 遥测屏蔽：这些 gRPC 方法直接返回空 200 响应，不转发到服务端。
+// 保护隐私，避免 BYOK 使用行为暴露。
+const BLOCKED_TELEMETRY_METHODS = new Set([
+  'RecordCortexTrajectory',
+  'RecordCortexTrajectoryStep',
+  'RecordAsyncTelemetry',
+  'RecordStateInitialization',
+  'RecordCortexExecutionMeta',
+  'RecordCortexGeneratorMeta',
+  'RecordTrajectorySegment',
+  'RecordEvent',
+  'RecordCortexStateEvent',
+]);
 
 // Real Codeium servers
 const REAL_API_HOST = 'server.self-serve.windsurf.com';
@@ -213,6 +227,17 @@ function proxyToCodeium(req, res, body, id, opts = {}) {
           } catch (e) {
             console.error(`  [#${id}] rename models error: ${e.message}`);
           }
+          // 模型解锁：将 BYOK 槽位模型的 disabled=true 改为 disabled=false。
+          try {
+            const unlocked = unlockModels(resBody);
+            if (unlocked) {
+              resBody = unlocked.body;
+              if (unlocked.wasConnect) stripEncoding = true;
+              console.log(`  [#${id}] 🔓 unlocked ${unlocked.changed} model(s)`);
+            }
+          } catch (e) {
+            console.error(`  [#${id}] unlock models error: ${e.message}`);
+          }
         }
 
         const resHeaders = { ...proxyRes.headers };
@@ -285,6 +310,14 @@ function handleRequest(req, res) {
       return res.end();
     }
 
+    // ── Telemetry blocking: 返回空 200，不转发到服务端 ──
+    if (BLOCKED_TELEMETRY_METHODS.has(method)) {
+      console.log(`[${now()}] #${id} 🚫 ${method} → blocked`);
+      res.writeHead(200, { 'content-type': 'application/proto' });
+      res.end();
+      return;
+    }
+
     // ── Intercept: GetChatMessage → Anthropic API ──
     // TODO: GetWebSearchResults / GetWebSearchRedirect — currently forwarded to
     // Codeium, but can be intercepted here to route through own search API.
@@ -334,6 +367,14 @@ const mitmServer = http.createServer((req, res) => {
   req.on('data', c => chunks.push(c));
   req.on('end', () => {
     const body = Buffer.concat(chunks);
+
+    // ── Telemetry blocking ──
+    if (BLOCKED_TELEMETRY_METHODS.has(method)) {
+      console.log(`[${now()}] #${id} 🚫 MITM ${method} → blocked`);
+      res.writeHead(200, { 'content-type': 'application/proto' });
+      res.end();
+      return;
+    }
 
     // ── THE INTERCEPTION: GetChatMessage → Anthropic API ──
     if (method === 'GetChatMessage' && shouldIntercept(body, req.headers)) {

@@ -19,6 +19,7 @@ src-tauri/target/
 # IDE / caches
 .claude/
 .vscode/
+.codebuddy/
 
 # Sidecar build & runtime files
 sidecar/*.exe

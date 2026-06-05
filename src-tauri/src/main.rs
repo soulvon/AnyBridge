@@ -2,5 +2,5 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 fn main() {
-    windsurf_byok_lib::run()
+    ide_byok_lib::run()
 }

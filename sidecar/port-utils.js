@@ -5,7 +5,7 @@ import { execSync } from 'node:child_process';
 
 // 仅回收本应用的代理进程：校验 PID 的进程名是否为 node 系，避免误杀
 // 恰好占用 7450/7451 的其它无关程序（强杀用户进程会丢数据）。
-const SAFE_NAMES = ['node', 'windsurf-byok-proxy'];
+const SAFE_NAMES = ['node', 'ide-byok-proxy'];
 
 function isSafeToKill(pid) {
   try {

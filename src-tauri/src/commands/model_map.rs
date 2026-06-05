@@ -36,6 +36,10 @@ pub struct Slot {
     pub display_name: String,
     #[serde(default = "default_true")]
     pub enabled: bool,
+    /// 解锁后该模型是否允许发送图片。由 BYOK 槽位配置决定（应与所选服务商能力一致），
+    /// sidecar 据此改写 GetUserStatus 里的 supports_images 字段。默认 true。
+    #[serde(rename = "supportsImages", default = "default_true")]
+    pub supports_images: bool,
     #[serde(default)]
     pub targets: Vec<Target>,
 }
@@ -52,6 +56,7 @@ fn default_slots() -> Vec<Slot> {
         model_uid: uid.into(),
         display_name: name.into(),
         enabled: true,
+        supports_images: true,
         targets: Vec::new(),
     };
     vec![

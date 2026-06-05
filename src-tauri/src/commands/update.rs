@@ -66,7 +66,7 @@ pub struct DownloadProgressPayload {
 
 fn config_dir() -> PathBuf {
     let mut dir = dirs::config_dir().unwrap_or_else(|| PathBuf::from("."));
-    dir.push("windsurf-byok");
+    dir.push("ide-byok");
     dir
 }
 

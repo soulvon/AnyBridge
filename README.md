@@ -1,4 +1,4 @@
-# Windsurf BYOK
+# IDE BYOK
 
 一个基于 Tauri v2 + Rust 构建的桌面代理客户端。它可以将 Windsurf IDE 的 Cascade 聊天后端无缝替换为你自己的 Anthropic / OpenAI API 密钥，同时允许你继续使用 Codeium 免费账号自带的代码自动补全、代码库索引、登录认证以及其他所有原生功能。
 
@@ -54,14 +54,14 @@ Windsurf IDE ──(http.proxy = localhost:7450)──> BYOK 混合代理
 | 标签页 | 功能说明 |
 | :--- | :--- |
 | **仪表盘 Dashboard** | 实时请求总数、Token 流量计数、累计消费成本、错误计数统计（每日重置） |
-| **供应商 Providers** | 自定义 API 接入地址和密钥，提供实时的连通性检测 |
+| **供应商 Providers** | 自定义 API 接入地址和密钥，提供实时的连通性检测；支持 Gemini 等非标准 API 的工具 Schema 兼容自动探测与修复 |
 | **模型映射 Model Map** | 将 Windsurf 的模型 ID（如 `claude-sonnet-4-6-thinking`）灵活映射为您指定的真实模型，支持单行启用/禁用 |
 | **接入 Access** | 本地 MITM 证书一键生成、系统代理配置向导 |
 | **日志 Logs** | 实时输出代理服务器的流量细节与连接日志，支持日志级别筛选与一键导出 |
 | **设置 Settings** | 配置默认模型、最长 Token 限制、系统提示词覆盖、开机自启，以及**版本自动更新选项** |
 
-- 配置文件保存在：`%APPDATA%\windsurf-byok\byok-config.json` 与 `.env`
-- 本地 MITM 证书保存在：`%APPDATA%\windsurf-byok\certs\`
+- 配置文件保存在：`%APPDATA%\ide-byok\byok-config.json` 与 `.env`
+- 本地 MITM 证书保存在：`%APPDATA%\ide-byok\certs\`
 
 ---
 
@@ -74,9 +74,9 @@ Windsurf IDE ──(http.proxy = localhost:7450)──> BYOK 混合代理
 cd sidecar
 npm install
 # 将 JS 代理编译为独立的免运行环境的 EXE 文件：
-npx pkg proxy-entry.js --targets node22-win-x64 --output windsurf-byok-proxy.exe
+npx pkg proxy-entry.js --targets node22-win-x64 --output ide-byok-proxy.exe
 # 拷贝到 Tauri 的 sidecar 目录并命名为匹配当前平台的目标名称：
-cp windsurf-byok-proxy.exe ../src-tauri/binaries/windsurf-byok-proxy-x86_64-pc-windows-msvc.exe
+cp ide-byok-proxy.exe ../src-tauri/binaries/ide-byok-proxy-x86_64-pc-windows-msvc.exe
 ```
 
 ### 2. 运行 Tauri 开发环境
@@ -101,6 +101,17 @@ npx tauri build
 1. **自动编译**：每当向 GitHub 仓库推送符合 `v*` 格式的 tag（例如 `v1.0.2`），工作流会自动拉起 Windows-latest 构建环境编译出客户端资产。
 2. **签名与元数据合并**：利用打包出来的 `.zip` 更新分发包与 Minisign `.sig` 签名文件，由 Node.js 脚本全自动拼装出符合 Tauri 更新机制的 `latest.json` 自动更新配置文件。
 3. **闭环推送**：将 `latest.json` 附带上传到您的 GitHub Release 中，并将 Release 状态修正为正式发布，使客户端可以直接触发就地/静默自动更新。
+
+---
+
+## 🧠 工具 Schema 自动探测与修复
+
+当第三方供应商（如 Gemini OpenAI 兼容层）不支持 Windsurf 发送的工具参数 JSON Schema 中的某些字段（如 `exclusiveMinimum`、`propertyNames` 等）时，上游会返回 `HTTP 400`。本应用内置了自动探测与修复机制：
+
+1. **自动识别**：检测到 400 响应中包含 Schema 不兼容特征时，自动判定为工具参数兼容性问题
+2. **同请求重试**：立即以 Gemini 兼容模式重新发送请求（递归剔除不支持的 Schema 字段），用户无感知
+3. **持久化记忆**：将兼容模式写入供应商配置（`capabilities.toolSchemaCompat = 'gemini'`），后续同供应商请求直接走兼容路径，无需再次触发 400
+4. **界面可见**：供应商能力标签会显示 `Schema兼容` 标记，标识已自动学习
 
 ---
 

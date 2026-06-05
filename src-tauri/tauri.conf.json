@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Windsurf BYOK",
+  "productName": "IDE BYOK",
   "version": "1.0.2",
-  "identifier": "com.windsurfbyok.desktop",
+  "identifier": "com.idebyok.desktop",
   "build": {
     "frontendDist": "../ui"
   },
@@ -11,7 +11,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "Windsurf BYOK",
+        "title": "IDE BYOK",
         "width": 1400,
         "height": 900,
         "minWidth": 900,
@@ -29,7 +29,7 @@
     "active": true,
     "targets": "all",
     "createUpdaterArtifacts": true,
-    "externalBin": ["binaries/windsurf-byok-proxy"],
+    "externalBin": ["binaries/ide-byok-proxy"],
     "resources": ["resources/**/*"],
     "icon": [
       "icons/32x32.png",

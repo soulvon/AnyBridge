@@ -5,29 +5,437 @@
 // clientModelConfigs（含官方 label），合并/覆盖内置表后持久化到 windsurf-models.json。
 
 use serde::{Deserialize, Serialize};
+use std::collections::{HashMap, HashSet};
 use std::fs;
+
+// ─── 公共数据结构 ──────────────────────────────────────────
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WindsurfModel {
-    /// Windsurf 内部 enum，如 MODEL_PRIVATE_2
     pub id: String,
-    /// 干净显示名，如 "Claude Sonnet 4.5"
     pub name: String,
-    /// 厂商：anthropic / openai / google / xai / windsurf / other
     pub provider: String,
-    /// 是否常用主流（UI 默认展示，其余折叠进搜索）
     #[serde(default)]
     pub common: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ModelList {
-    pub models: Vec<WindsurfModel>,
-    /// 来源：builtin / updated
-    pub source: String,
-    /// 更新时间（ISO 字符串），内置为空
-    #[serde(default)]
-    pub updated_at: String,
+pub struct WindsurfAccountSummary {
+    pub email: String,
+    pub plan_name: String,
+    pub teams_tier: String,
+    pub daily_remaining: i32,
+    pub weekly_remaining: i32,
+    pub overage_balance_micros: i64,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WindsurfModelsResult {
+    pub models: Vec<WindsurfModel>,
+    pub source: String,
+    #[serde(default)]
+    pub captured_at: Option<u64>,
+    #[serde(default)]
+    pub account: Option<WindsurfAccountSummary>,
+}
+
+/// refresh_windsurf_models 命令的返回值
+#[derive(Debug, Clone, Serialize)]
+pub struct WindsurfAccountInfo {
+    pub email: String,
+    pub plan_name: String,
+    pub teams_tier: String,
+    pub daily_remaining: i32,
+    pub weekly_remaining: i32,
+    pub overage_balance_micros: i64,
+    pub models: Vec<WindsurfModel>,
+}
+
+// ─── 缓存文件反序列化 ──────────────────────────────────────
+
+#[derive(Debug, Deserialize)]
+struct CapturedEntry {
+    #[serde(rename = "modelUid")]
+    model_uid: String,
+    label: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct CacheAccount {
+    email: String,
+    #[serde(rename = "planName")]
+    plan_name: String,
+    #[serde(rename = "teamsTier", default)]
+    teams_tier: String,
+    #[serde(rename = "dailyRemaining")]
+    daily_remaining: i32,
+    #[serde(rename = "weeklyRemaining")]
+    weekly_remaining: i32,
+    #[serde(rename = "overageBalanceMicros")]
+    overage_balance_micros: i64,
+}
+
+#[derive(Debug, Deserialize)]
+struct CacheFile {
+    #[serde(default)]
+    models: Vec<CapturedEntry>,
+    #[serde(default)]
+    source: String,
+    #[serde(rename = "capturedAt", default)]
+    captured_at: Option<u64>,
+    #[serde(default)]
+    account: Option<CacheAccount>,
+}
+
+// ─── Session 读取 ──────────────────────────────────────────
+
+struct WindsurfSession {
+    #[allow(dead_code)]
+    email: String,
+    api_key: String,
+    api_server_url: String,
+}
+
+fn read_windsurf_session() -> Result<WindsurfSession, String> {
+    let mut db_path = dirs::config_dir().ok_or("无法定位配置目录")?;
+    db_path.push("Windsurf");
+    db_path.push("User");
+    db_path.push("globalStorage");
+    db_path.push("state.vscdb");
+
+    if !db_path.exists() {
+        return Err("Windsurf state.vscdb 不存在，请先启动 Windsurf".into());
+    }
+
+    // 与 windsurf-pool 相同的方案：直接读二进制文件 + 正则提取，
+    // 绕过 SQLite WAL 锁问题（Windsurf 运行时数据库被锁定，rusqlite 无法读取）
+    let buf = fs::read(&db_path)
+        .map_err(|e| format!("读取 vscdb 失败: {}", e))?;
+
+    // 限制文件大小（超过 10MB 跳过，避免内存问题）
+    if buf.len() > 10 * 1024 * 1024 {
+        return Err("state.vscdb 文件过大（>10MB），无法读取".into());
+    }
+
+    // SQLite 二进制文件中，JSON 值以 UTF-8 存储，直接转字符串后正则提取
+    let content = String::from_utf8_lossy(&buf);
+
+    // 提取 codeium.windsurf 对应的 JSON value（包含 pendingApiKeyMigration 等字段）
+    // SQLite 页面中 key-value 对的存储格式：key 和 value 相邻，value 是 JSON 字符串
+    // 匹配 "windsurf.pendingApiKeyMigration" 后面紧跟的 session token
+    let api_key = regex_extract_session_token(&content)
+        .ok_or("未在 state.vscdb 中找到 devin-session-token，Windsurf 可能未登录")?;
+
+    // 提取 email
+    let email = regex_extract_email(&content).unwrap_or_default();
+
+    // 提取 apiServerUrl
+    let api_server_url = regex_extract_api_server_url(&content)
+        .unwrap_or_else(|| "https://server.self-serve.windsurf.com".to_string());
+
+    if !api_key.starts_with("devin-session-token$") {
+        return Err(format!(
+            "session token 格式异常（期望 devin-session-token$ 前缀，实际: {}...）",
+            &api_key[..api_key.len().min(30)]
+        ));
+    }
+
+    Ok(WindsurfSession { email, api_key, api_server_url })
+}
+
+/// 从 vscdb 二进制内容中提取 session token
+/// 优先匹配 "windsurf.pendingApiKeyMigration"，回退到 "apiKey"（新版 Windsurf 改用此字段）
+/// 只接受 devin-session-token$ 前缀（唯一能成功调 GetUserStatus 的格式）
+fn regex_extract_session_token(content: &str) -> Option<String> {
+    let patterns = [
+        r#""windsurf\.pendingApiKeyMigration"\s*:\s*"(devin-session-token\$[^"]+)"#,
+        r#""apiKey"\s*:\s*"(devin-session-token\$[^"]+)"#,
+        r#""idToken"\s*:\s*"(devin-session-token\$[^"]+)"#,
+    ];
+    for pat in patterns {
+        let re = regex::Regex::new(pat).ok()?;
+        if let Some(caps) = re.captures(content) {
+            if let Some(m) = caps.get(1) {
+                let token = m.as_str().to_string();
+                if !token.is_empty() {
+                    return Some(token);
+                }
+            }
+        }
+    }
+    None
+}
+
+/// 从 vscdb 二进制内容中提取 email
+fn regex_extract_email(content: &str) -> Option<String> {
+    // 优先从 lastLoginEmail 提取
+    let pattern = regex::Regex::new(
+        r#""lastLoginEmail"\s*:\s*"([^"]+)""#
+    ).ok()?;
+
+    if let Some(caps) = pattern.captures(content) {
+        if let Some(m) = caps.get(1) {
+            let email = m.as_str().to_string();
+            if !email.is_empty() {
+                return Some(email);
+            }
+        }
+    }
+    None
+}
+
+/// 从 vscdb 二进制内容中提取 apiServerUrl
+fn regex_extract_api_server_url(content: &str) -> Option<String> {
+    let pattern = regex::Regex::new(
+        r#""apiServerUrl"\s*:\s*"([^"]+)""#
+    ).ok()?;
+
+    if let Some(caps) = pattern.captures(content) {
+        if let Some(m) = caps.get(1) {
+            let url = m.as_str().to_string();
+            if !url.is_empty() {
+                return Some(url);
+            }
+        }
+    }
+    None
+}
+
+// ─── 调用 GetUserStatus API ────────────────────────────────
+
+async fn fetch_windsurf_account_info(session: &WindsurfSession) -> Result<WindsurfAccountInfo, String> {
+    let client = reqwest::Client::new();
+    let url = format!(
+        "{}/exa.seat_management_pb.SeatManagementService/GetUserStatus",
+        session.api_server_url.trim_end_matches('/')
+    );
+
+    let body = serde_json::json!({
+        "metadata": {
+            "apiKey": session.api_key,
+            "ideName": "windsurf",
+            "ideVersion": "0.0.0",
+            "extensionName": "windsurf-next",
+            "extensionVersion": "1.0.0",
+            "locale": "en"
+        }
+    });
+
+    let resp = client
+        .post(&url)
+        .header("Content-Type", "application/json")
+        .header("Connect-Protocol-Version", "1")
+        .header("Accept", "application/json")
+        .json(&body)
+        .send()
+        .await
+        .map_err(|e| format!("请求 GetUserStatus 失败: {}", e))?;
+
+    let status = resp.status();
+    if status.as_u16() == 401 {
+        return Err("session token 已失效 (401)，请在 Windsurf 中重新登录".into());
+    }
+    if status.as_u16() == 403 {
+        return Err("账号无权限或被封禁 (403)".into());
+    }
+    if !status.is_success() {
+        return Err(format!("GetUserStatus 返回异常: HTTP {}", status));
+    }
+
+    let data: serde_json::Value = resp.json().await
+        .map_err(|e| format!("解析 GetUserStatus 响应失败: {}", e))?;
+
+    parse_account_info(data)
+}
+
+// ─── 解析 + 合并模型列表 ──────────────────────────────────
+
+fn should_skip_model(model_id: &str) -> bool {
+    model_id.starts_with("MODEL_SWE_")
+        || model_id.starts_with("MODEL_CODEMAP_")
+        || model_id.starts_with("MODEL_COGNITION_")
+        || model_id.starts_with("MODEL_LLAMA_FT_")
+        || model_id.ends_with("_BYOK")
+        || model_id.ends_with("_THINKING_BYOK")
+        || model_id.ends_with("_REDIRECT")
+        || model_id.is_empty()
+}
+
+fn parse_account_info(data: serde_json::Value) -> Result<WindsurfAccountInfo, String> {
+    let builtin = builtin_models();
+
+    let email = data.pointer("/userStatus/email")
+        .and_then(|v| v.as_str()).unwrap_or("").to_string();
+    let plan_name = data.pointer("/planInfo/planName")
+        .and_then(|v| v.as_str()).unwrap_or("Unknown").to_string();
+    let teams_tier = data.pointer("/userStatus/teamsTier")
+        .and_then(|v| v.as_str()).unwrap_or("").to_string();
+    let daily_remaining = data.pointer("/userStatus/planStatus/dailyQuotaRemainingPercent")
+        .and_then(|v| v.as_i64()).unwrap_or(-1) as i32;
+    let weekly_remaining = data.pointer("/userStatus/planStatus/weeklyQuotaRemainingPercent")
+        .and_then(|v| v.as_i64()).unwrap_or(-1) as i32;
+    let overage_balance_micros = data.pointer("/userStatus/planStatus/overageBalanceMicros")
+        .and_then(|v| v.as_str().and_then(|s| s.parse::<i64>().ok()).or(v.as_i64()))
+        .unwrap_or(0);
+
+    // 数据源 1：cascadeAllowedModelsConfig 权限全集（很多 model 为空，含 BYOK / 基础设施模型）
+    let allowed: HashSet<String> = data
+        .pointer("/planInfo/cascadeAllowedModelsConfig")
+        .and_then(|v| v.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|e| e.pointer("/modelOrAlias/model").and_then(|m| m.as_str()))
+                .filter(|s| !s.is_empty())
+                .map(|s| s.to_string())
+                .collect()
+        })
+        .unwrap_or_default();
+
+    // 数据源 2：clientModelConfigs —— Windsurf 客户端实际渲染到下拉框的模型，带官方 label。
+    // 这些是用户真正能选的热门模型，必须并入集合（且不走 should_skip 过滤）。
+    let client_configs = data
+        .pointer("/userStatus/cascadeModelConfigData/clientModelConfigs")
+        .and_then(|v| v.as_array())
+        .cloned()
+        .unwrap_or_default();
+
+    let mut label_map: HashMap<String, String> = HashMap::new();
+    let mut client_ids: Vec<String> = Vec::new();
+    for e in &client_configs {
+        let uid = match e.get("modelUid").and_then(|v| v.as_str()) {
+            Some(u) if !u.is_empty() => u.to_string(),
+            _ => continue,
+        };
+        if let Some(label) = e.get("label").and_then(|v| v.as_str()) {
+            if !label.is_empty() {
+                label_map.insert(uid.clone(), label.to_string());
+            }
+        }
+        client_ids.push(uid);
+    }
+
+    // 合并：clientModelConfigs（保留顺序、不过滤）打底，再追加 allowed 中通过过滤的补充模型。
+    let mut ordered_ids: Vec<String> = Vec::new();
+    let mut seen: HashSet<String> = HashSet::new();
+    for id in &client_ids {
+        if seen.insert(id.clone()) {
+            ordered_ids.push(id.clone());
+        }
+    }
+    for id in &allowed {
+        if should_skip_model(id) {
+            continue;
+        }
+        if seen.insert(id.clone()) {
+            ordered_ids.push(id.clone());
+        }
+    }
+
+    // 用 builtin 兜底 label / provider / common
+    let models: Vec<WindsurfModel> = ordered_ids
+        .iter()
+        .map(|id| {
+            let name = label_map.get(id).cloned()
+                .or_else(|| builtin.iter().find(|m| m.id == *id).map(|m| m.name.clone()))
+                .unwrap_or_else(|| id.clone());
+            let provider = builtin.iter().find(|m| m.id == *id)
+                .map(|m| m.provider.clone())
+                .unwrap_or_else(|| "other".to_string());
+            let common = builtin.iter().find(|m| m.id == *id)
+                .map(|m| m.common)
+                .unwrap_or(false);
+            WindsurfModel { id: id.clone(), name, provider, common }
+        })
+        .collect();
+
+    Ok(WindsurfAccountInfo {
+        email, plan_name, teams_tier,
+        daily_remaining, weekly_remaining,
+        overage_balance_micros, models,
+    })
+}
+
+// ─── 缓存读写 ──────────────────────────────────────────────
+
+/// 合并只增不减：sidecar 拦截 protobuf 抓到的完整列表（60+ 条）是权威源，
+/// JSON API 只能拿当前账号的精简列表。直接覆盖会冲掉 sidecar 的数据，
+/// 所以这里读旧缓存 → 以 modelUid 去重合并 → 旧条目一律保留，只新增 API 带来的新模型。
+/// 账号信息（额度 / plan）始终用本次 API 结果刷新。
+fn save_windsurf_models_cache(info: &WindsurfAccountInfo) -> Result<Vec<WindsurfModel>, String> {
+    let dir = super::config::config_dir_path();
+    let path = dir.join("windsurf-models.json");
+
+    let now_ms = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as u64;
+
+    // 读旧缓存的 models（保留顺序），按 modelUid 去重
+    let mut ordered: Vec<(String, String)> = Vec::new();
+    let mut seen: HashSet<String> = HashSet::new();
+    if let Ok(raw) = fs::read_to_string(&path) {
+        if let Ok(old) = serde_json::from_str::<CacheFile>(&raw) {
+            for e in old.models {
+                if e.label.starts_with("http") {
+                    continue; // 跳过拦截噪声（apiServerUrl 被误当 label）
+                }
+                if seen.insert(e.model_uid.clone()) {
+                    ordered.push((e.model_uid, e.label));
+                }
+            }
+        }
+    }
+
+    // 合并本次 API 模型：新 modelUid 追加；已存在的用 API 的 label 覆盖（模型改名时更新显示名）
+    for m in &info.models {
+        if seen.insert(m.id.clone()) {
+            ordered.push((m.id.clone(), m.name.clone()));
+        } else if let Some(slot) = ordered.iter_mut().find(|(id, _)| id == &m.id) {
+            slot.1 = m.name.clone();
+        }
+    }
+
+    let cache = serde_json::json!({
+        "capturedAt": now_ms,
+        "source": "api",
+        "account": {
+            "email": info.email,
+            "planName": info.plan_name,
+            "teamsTier": info.teams_tier,
+            "dailyRemaining": info.daily_remaining,
+            "weeklyRemaining": info.weekly_remaining,
+            "overageBalanceMicros": info.overage_balance_micros,
+        },
+        "models": ordered.iter().map(|(id, label)| serde_json::json!({
+            "modelUid": id,
+            "label": label,
+        })).collect::<Vec<_>>(),
+    });
+
+    let bytes = serde_json::to_string_pretty(&cache)
+        .map_err(|e| format!("序列化缓存失败: {}", e))?
+        .into_bytes();
+
+    super::write_atomic(&path, &bytes)?;
+
+    // 返回合并后的完整列表，供 UI 展示（不止本次 API 的精简列表）
+    let builtin = builtin_models();
+    let merged: Vec<WindsurfModel> = ordered
+        .into_iter()
+        .map(|(id, label)| {
+            let provider = builtin.iter().find(|m| m.id == id)
+                .map(|m| m.provider.clone())
+                .unwrap_or_else(|| "other".to_string());
+            let common = builtin.iter().find(|m| m.id == id)
+                .map(|m| m.common)
+                .unwrap_or(false);
+            WindsurfModel { id, name: label, provider, common }
+        })
+        .collect();
+    Ok(merged)
+}
+
+// ─── 内置静态表 ──────────────────────────────────────────────
 
 fn m(id: &str, name: &str, provider: &str, common: bool) -> WindsurfModel {
     WindsurfModel { id: id.into(), name: name.into(), provider: provider.into(), common }
@@ -110,30 +518,26 @@ pub fn builtin_models() -> Vec<WindsurfModel> {
     ]
 }
 
-// ─── 抓取的真实清单（windsurf-models.json）─────────────────────
-// 代理拦截 GetUserStatus 时 dump 的 [{modelUid, label}]，是「原始名下拉框」的首选数据源。
+// ─── Tauri 命令 ──────────────────────────────────────────────
 
-#[derive(Debug, Deserialize)]
-struct CapturedEntry {
-    #[serde(rename = "modelUid")]
-    model_uid: String,
-    label: String,
-}
-
-#[derive(Debug, Deserialize)]
-struct CapturedFile {
-    #[serde(default)]
-    models: Vec<CapturedEntry>,
-}
-
-/// 返回「原始名下拉框」用的模型清单:优先 captured（真实抓到的），其次内置静态表。
-/// 跳过 tokenizer 占位脏数据（label 形如 https://...）。返回 [{id, label}]。
+/// 返回模型清单：优先缓存（API 拉取或代理拦截），其次内置静态表。
+/// 同时返回缓存中的账号信息（如有）。
 #[tauri::command]
-pub fn list_windsurf_models() -> Result<Vec<WindsurfModel>, String> {
+pub fn list_windsurf_models() -> Result<WindsurfModelsResult, String> {
     let path = super::config::config_dir_path().join("windsurf-models.json");
     if let Ok(raw) = fs::read_to_string(&path) {
-        if let Ok(parsed) = serde_json::from_str::<CapturedFile>(&raw) {
-            let mut seen = std::collections::HashSet::new();
+        if let Ok(parsed) = serde_json::from_str::<CacheFile>(&raw) {
+            let source = if parsed.source.is_empty() { "captured".into() } else { parsed.source };
+            let captured_at = parsed.captured_at;
+            let account = parsed.account.map(|a| WindsurfAccountSummary {
+                email: a.email,
+                plan_name: a.plan_name,
+                teams_tier: a.teams_tier,
+                daily_remaining: a.daily_remaining,
+                weekly_remaining: a.weekly_remaining,
+                overage_balance_micros: a.overage_balance_micros,
+            });
+            let mut seen = HashSet::new();
             let models: Vec<WindsurfModel> = parsed
                 .models
                 .into_iter()
@@ -147,9 +551,30 @@ pub fn list_windsurf_models() -> Result<Vec<WindsurfModel>, String> {
                 })
                 .collect();
             if !models.is_empty() {
-                return Ok(models);
+                return Ok(WindsurfModelsResult {
+                    models,
+                    source,
+                    captured_at,
+                    account,
+                });
             }
         }
     }
-    Ok(builtin_models())
+    Ok(WindsurfModelsResult {
+        models: builtin_models(),
+        source: "builtin".into(),
+        captured_at: None,
+        account: None,
+    })
+}
+
+/// 从 Windsurf 本地 session 拉取最新模型列表 + 账号信息，缓存后返回。
+#[tauri::command]
+pub async fn refresh_windsurf_models() -> Result<WindsurfAccountInfo, String> {
+    let session = read_windsurf_session()?;
+    let mut info = fetch_windsurf_account_info(&session).await?;
+    // 合并只增不减写回缓存，并取回合并后的完整列表回填给 UI
+    let merged = save_windsurf_models_cache(&info)?;
+    info.models = merged;
+    Ok(info)
 }

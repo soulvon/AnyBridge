@@ -17,7 +17,7 @@ pub fn build_tray(app: &AppHandle) -> tauri::Result<()> {
         None => tray,
     };
     tray
-        .tooltip("Windsurf BYOK")
+        .tooltip("IDE BYOK")
         .menu(&menu)
         .show_menu_on_left_click(false)
         .on_menu_event(|app, event| match event.id.as_ref() {
@@ -132,7 +132,7 @@ pub fn generate_certs() -> Result<String, String> {
     ])
     .map_err(|e| e.to_string())?;
     let mut dn = DistinguishedName::new();
-    dn.push(DnType::CommonName, "Windsurf BYOK Local MITM");
+    dn.push(DnType::CommonName, "IDE BYOK Local MITM");
     params.distinguished_name = dn;
     params.subject_alt_names = vec![
         SanType::DnsName("server.self-serve.windsurf.com".try_into().map_err(|_| "bad san")?),

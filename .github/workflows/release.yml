@@ -64,18 +64,18 @@ jobs:
           # 针对不同构建矩阵选择对应的打包 Targets 及输出文件名
           if [ "${{ matrix.platform }}" = "windows-latest" ]; then
             PKG_TARGET="node20-win-x64"
-            OUTPUT_NAME="windsurf-byok-proxy-x86_64-pc-windows-msvc.exe"
+            OUTPUT_NAME="ide-byok-proxy-x86_64-pc-windows-msvc.exe"
           elif [ "${{ matrix.platform }}" = "macos-latest" ]; then
             if [[ "${{ matrix.args }}" == *"aarch64"* ]]; then
               PKG_TARGET="node20-macos-arm64"
-              OUTPUT_NAME="windsurf-byok-proxy-aarch64-apple-darwin"
+              OUTPUT_NAME="ide-byok-proxy-aarch64-apple-darwin"
             else
               PKG_TARGET="node20-macos-x64"
-              OUTPUT_NAME="windsurf-byok-proxy-x86_64-apple-darwin"
+              OUTPUT_NAME="ide-byok-proxy-x86_64-apple-darwin"
             fi
           else
             PKG_TARGET="node20-linux-x64"
-            OUTPUT_NAME="windsurf-byok-proxy-x86_64-unknown-linux-gnu"
+            OUTPUT_NAME="ide-byok-proxy-x86_64-unknown-linux-gnu"
           fi
           
           echo "Building Sidecar Proxy: $PKG_TARGET -> $OUTPUT_NAME"
@@ -101,8 +101,8 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           tagName: "v${{ steps.app_version.outputs.VERSION }}"
-          releaseName: "Windsurf BYOK v${{ steps.app_version.outputs.VERSION }}"
-          releaseBody: "Windsurf BYOK 自动发布包。"
+          releaseName: "IDE BYOK v${{ steps.app_version.outputs.VERSION }}"
+          releaseBody: "IDE BYOK 自动发布包。"
           releaseDraft: true
           prerelease: false
           args: ${{ matrix.args }}

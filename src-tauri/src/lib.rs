@@ -32,6 +32,7 @@ pub fn run() {
             commands::model_map::save_model_map,
             commands::model_map::validate_model_map,
             commands::windsurf_models::list_windsurf_models,
+            commands::windsurf_models::refresh_windsurf_models,
             commands::proxy::start_proxy,
             commands::proxy::stop_proxy,
             commands::proxy::get_proxy_status,

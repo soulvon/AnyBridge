@@ -8,10 +8,11 @@ import crypto from 'node:crypto';
 import { parseGetChatMessageRequest } from './parse-request.js';
 import { buildErrorChunk } from './build-response.js';
 import { AnthropicStreamProcessor, parseSSEChunk } from './anthropic-stream.js';
-import { OpenAIStreamProcessor, parseOpenAISSEChunk } from './openai-stream.js';
+import { OpenAIChatCompletionsStreamProcessor, OpenAIStreamProcessor, parseOpenAISSEChunk } from './openai-stream.js';
 import { wrapEnvelope, endOfStreamEnvelope, streamHeaders, gzipSync, unwrapRequest } from '../connect.js';
 import { recordRequest, recordUsage, recordError } from '../stats.js';
-import { getSlot, loadProviders, resolveTarget } from '../provider-pool.js';
+import { getSlot, loadProviders, resolveTarget, rememberProviderToolSchemaCompat } from '../provider-pool.js';
+import { mitmLog } from '../mitm-logger.js';
 
 // ─── Config ────────────────────────────────────────────────
 
@@ -50,7 +51,51 @@ function extractModelId(body, headers) {
   return '';
 }
 
+function messageHasImage(msg) {
+  if (!msg || typeof msg.content === 'string') return false;
+  if (!Array.isArray(msg.content)) return false;
+  return msg.content.some(block => block && block.type === 'image');
+}
+
+function isGeminiModel(model = '') {
+  return /gemini/i.test(String(model));
+}
+
+// Gemini(OpenAI 兼容层)对 JSON Schema 支持是子集。
+// 这里递归剔除常见不兼容关键字，避免 INVALID_ARGUMENT 400。
+function sanitizeJsonSchemaForGemini(schema) {
+  if (schema == null || typeof schema !== 'object') return schema;
+  if (Array.isArray(schema)) return schema.map(sanitizeJsonSchemaForGemini);
+
+  const allowed = new Set([
+    'type', 'properties', 'required', 'items', 'description', 'enum',
+    'nullable', 'format', 'minimum', 'maximum', 'minLength', 'maxLength',
+    'minItems', 'maxItems', 'additionalProperties', 'default', 'title'
+  ]);
+
+  const out = {};
+  for (const [k, v] of Object.entries(schema)) {
+    if (!allowed.has(k)) continue;
+    out[k] = sanitizeJsonSchemaForGemini(v);
+  }
+  return out;
+}
+
+function normalizeToolSchema(inputSchema, model, forceGeminiCompat = false) {
+  const raw = typeof inputSchema === 'string' ? JSON.parse(inputSchema) : (inputSchema || {});
+  return (forceGeminiCompat || isGeminiModel(model)) ? sanitizeJsonSchemaForGemini(raw) : raw;
+}
+
+function shouldAutoEnableGeminiSchemaCompat(statusCode, errBody = '') {
+  if (statusCode !== 400) return false;
+  const s = String(errBody || '');
+  return /Invalid JSON payload received/i.test(s)
+    && /(exclusiveMinimum|propertyNames|function_declarations)/i.test(s);
+}
+
+
 // 路由层判断:该 GetChatMessage 是否应被劫持转发到第三方 provider。
+
 // 命中「启用且配了 targets」的槽位才拦截;否则原样透传给 Codeium。
 export function shouldIntercept(body, headers) {
   const modelId = extractModelId(body, headers);
@@ -81,6 +126,17 @@ export function handleGetChatMessage(req, res, body) {
   console.log(`  🧠 Slot: ${requestedModel} (${slot.displayName || '原名'}) → ${slot.targets.length} target(s)`);
   console.log(`  📝 System: ${systemPrompt.length} chars  💬 Messages: ${messages.length}${tools ? `  🔧 Tools: ${tools.length}` : ''}`);
 
+  const hasImages = messages.some(messageHasImage);
+  const routingTargets = [...slot.targets].sort((a, b) => {
+    if (!hasImages) return 0;
+    const connA = resolveTarget(a, providers);
+    const connB = resolveTarget(b, providers);
+    const av = connA.capabilities?.vision === true ? 1 : 0;
+    const bv = connB.capabilities?.vision === true ? 1 : 0;
+    return bv - av;
+  });
+  if (hasImages) console.log(`  🖼️  Image request detected; preferring Vision-capable targets`);
+
   // 故障转移:按 targets 顺序逐个尝试。只要还没开始向客户端写流，失败就切下一个。
   let idx = 0;
   const errors = [];
@@ -94,7 +150,7 @@ export function handleGetChatMessage(req, res, body) {
   });
 
   function attemptNext() {
-    if (idx >= slot.targets.length) {
+    if (idx >= routingTargets.length) {
       // 全部失败 → 无兜底，直接报错（日志已逐条打印原因）。
       console.error(`  ❌ 所有目标均失败: ${errors.join(' | ')}`);
       recordError({ provider: 'failover', message: errors.join(' | ') });
@@ -107,7 +163,7 @@ export function handleGetChatMessage(req, res, body) {
       return;
     }
 
-    const target = slot.targets[idx];
+    const target = routingTargets[idx];
     const conn = resolveTarget(target, providers);
     idx++;
 
@@ -117,7 +173,13 @@ export function handleGetChatMessage(req, res, body) {
       return attemptNext();
     }
 
-    console.log(`  ➡️  目标#${idx}: ${conn.providerName} (${conn.format}) → ${conn.model}`);
+    if (hasImages && conn.capabilities?.vision === false) {
+      console.warn(`  ⚠️  目标#${idx} ${conn.providerName} 未标记支持 Vision → 切换下一个`);
+      errors.push(`${conn.providerName}: 不支持图片理解`);
+      return attemptNext();
+    }
+
+    console.log(`  ➡️  目标#${idx}: ${conn.providerName} (${conn.format}) → ${conn.model}${conn.capabilities?.gzip ? ' [gzip]' : ''}`);
     recordRequest({ provider: conn.providerName, requestedModel, resolvedModel: conn.model });
 
     const sys = `${systemPrompt}\n\nYou are powered by ${conn.model}.`;
@@ -127,7 +189,20 @@ export function handleGetChatMessage(req, res, body) {
       attemptNext();
     };
 
-    const opts = { systemPrompt: sys, messages, tools, toolChoice, resolvedModel: conn.model, serviceTier, messageId, conn, onFailover };
+    const opts = {
+      systemPrompt: sys,
+      messages,
+      tools,
+      toolChoice,
+      resolvedModel: conn.model,
+      serviceTier,
+      messageId,
+      conn,
+      onFailover,
+      schemaCompatRetry: false,
+      bindActiveReq: (r) => { currentApiReq = r; },
+    };
+
     currentApiReq = conn.format === 'openai'
       ? streamOpenAI(req, res, opts)
       : streamAnthropic(req, res, opts);
@@ -155,6 +230,21 @@ function streamAnthropic(req, res, { systemPrompt, messages, tools, toolChoice, 
   const processor = new AnthropicStreamProcessor(messageId, resolvedModel);
   let failed = false; // 防止 error+statusCode 双触发 onFailover
 
+  // ── MITM 日志：记录上游请求 ──
+  const mitmReqId = crypto.randomUUID();
+  mitmLog({
+    direction: 'upstream',
+    providerName: conn.providerName,
+    model: resolvedModel,
+    format: 'anthropic',
+    request: {
+      method: 'POST',
+      url: `https://${conn.host}${conn.apiPath}`,
+      headers: { 'content-type': 'application/json', 'anthropic-version': '2023-06-01', 'x-api-key': conn.apiKey },
+      body: apiBody,
+    },
+  });
+
   const apiReq = https.request({
     hostname: conn.host,
     port: 443,
@@ -177,6 +267,7 @@ function streamAnthropic(req, res, { systemPrompt, messages, tools, toolChoice, 
       apiRes.on('data', d => { if (errBody.length < 2000) errBody += d.slice(0, 2000 - errBody.length); });
       const fail = () => {
         console.error(`  ❌ Body: ${errBody.slice(0, 300)}`);
+        mitmLog({ direction: 'downstream', providerName: conn.providerName, model: resolvedModel, format: 'anthropic', request: { method: 'POST', url: `https://${conn.host}${conn.apiPath}` }, response: { statusCode: apiRes.statusCode, headers: apiRes.headers, body: errBody } });
         apiReq.destroy();
         if (!failed) { failed = true; onFailover(`HTTP ${apiRes.statusCode}`); }
       };
@@ -253,9 +344,16 @@ function streamAnthropic(req, res, { systemPrompt, messages, tools, toolChoice, 
 
 // ─── OpenAI Responses API streaming ─────────────────────────
 
-function streamOpenAI(req, res, { systemPrompt, messages, tools, toolChoice, resolvedModel, serviceTier, messageId, conn, onFailover }) {
+function streamOpenAI(req, res, { systemPrompt, messages, tools, toolChoice, resolvedModel, serviceTier, messageId, conn, onFailover, schemaCompatRetry = false, bindActiveReq = null }) {
+  if (conn.apiPath.includes('/chat/completions')) {
+    return streamOpenAIChatCompletions(req, res, { systemPrompt, messages, tools, toolChoice, resolvedModel, serviceTier, messageId, conn, onFailover, schemaCompatRetry, bindActiveReq });
+  }
+
+
   // Convert Anthropic-format messages to OpenAI format
   const openaiMessages = toOpenAIMessages(systemPrompt, messages);
+
+  const forceGeminiCompat = schemaCompatRetry || conn.capabilities?.toolSchemaCompat === 'gemini';
 
   // Responses API payload — uses `input` instead of `messages`
   const apiPayload = {
@@ -264,14 +362,17 @@ function streamOpenAI(req, res, { systemPrompt, messages, tools, toolChoice, res
     stream: true,
     reasoning: { effort: 'high', summary: 'auto' },
   };
+
   if (serviceTier) apiPayload.service_tier = serviceTier;
   if (tools && tools.length > 0) {
     apiPayload.tools = tools.map(t => ({
       type: 'function',
       name: t.name,
       description: t.description || '',
-      parameters: typeof t.input_schema === 'string' ? JSON.parse(t.input_schema) : t.input_schema,
+      parameters: normalizeToolSchema(t.input_schema, resolvedModel, forceGeminiCompat),
     }));
+
+
     if (toolChoice) {
       if (toolChoice.type === 'auto') apiPayload.tool_choice = 'auto';
       else if (toolChoice.type === 'any') apiPayload.tool_choice = 'required';
@@ -280,25 +381,30 @@ function streamOpenAI(req, res, { systemPrompt, messages, tools, toolChoice, res
   }
 
   const apiBody = JSON.stringify(apiPayload);
-  // gzip 压缩请求体：中转站的 Cloudflare WAF 会对明文 body 做命令注入特征
-  // 检测（提示/对话里出现 `python -c`、`bash -c`、`&&` 等会被判定为攻击 → 403）。
-  // 压缩后 WAF 不检查 body 内容，上游 API 仍能正常解压处理。
-  const apiBodyGz = gzipSync(Buffer.from(apiBody));
+  // MITM 日志：记录上游请求
+  mitmLog({ direction: 'upstream', providerName: conn.providerName, model: resolvedModel, format: 'openai-responses', request: { method: 'POST', url: `https://${conn.host}${conn.apiPath}`, headers: { 'content-type': 'application/json', 'authorization': `Bearer ${conn.apiKey}` }, body: apiBody } });
+  // gzip 可选：供应商标记了 capabilities.gzip=true 才压缩。
+  // 用于绕过中转站 Cloudflare WAF 对明文 body 的命令注入检测；
+  // One-Hub 等不支持 gzip 的端点保持明文。
+  const useGzip = conn.capabilities?.gzip === true;
+  const finalBody = useGzip ? gzipSync(Buffer.from(apiBody)) : Buffer.from(apiBody);
   const processor = new OpenAIStreamProcessor(messageId, resolvedModel);
   let failed = false;
+
+  const reqHeaders = {
+    'content-type': 'application/json',
+    'accept': 'text/event-stream',
+    'authorization': `Bearer ${conn.apiKey}`,
+    'content-length': finalBody.length,
+  };
+  if (useGzip) reqHeaders['content-encoding'] = 'gzip';
 
   const apiReq = https.request({
     hostname: conn.host,
     port: 443,
     path: conn.apiPath,
     method: 'POST',
-    headers: {
-      'content-type': 'application/json',
-      'accept': 'text/event-stream',
-      'authorization': `Bearer ${conn.apiKey}`,
-      'content-encoding': 'gzip',
-      'content-length': apiBodyGz.length,
-    },
+    headers: reqHeaders,
   }, (apiRes) => {
     let sseBuffer = '';
 
@@ -309,11 +415,40 @@ function streamOpenAI(req, res, { systemPrompt, messages, tools, toolChoice, res
       apiRes.on('data', d => { if (errBody.length < 2000) errBody += d.slice(0, 2000 - errBody.length); });
       const fail = () => {
         console.error(`  ❌ Body: ${errBody.slice(0, 300)}`);
+        mitmLog({ direction: 'downstream', providerName: conn.providerName, model: resolvedModel, format: 'openai-responses', request: { method: 'POST', url: `https://${conn.host}${conn.apiPath}` }, response: { statusCode: apiRes.statusCode, headers: apiRes.headers, body: errBody } });
+
+        if (!schemaCompatRetry && shouldAutoEnableGeminiSchemaCompat(apiRes.statusCode, errBody) && tools && tools.length > 0 && !res.headersSent) {
+          const remembered = rememberProviderToolSchemaCompat(conn.providerId, 'gemini');
+          if (remembered) {
+            console.log(`  🧠 已记住 ${conn.providerName} 的工具 Schema 兼容模式: gemini`);
+          }
+          console.warn(`  ♻️  检测到工具 Schema 不兼容，自动启用兼容模式并重试一次`);
+          apiReq.destroy();
+          if (!failed) {
+            failed = true;
+            return streamOpenAI(req, res, {
+              systemPrompt,
+              messages,
+              tools,
+              toolChoice,
+              resolvedModel,
+              serviceTier,
+              messageId,
+              conn: { ...conn, capabilities: { ...(conn.capabilities || {}), toolSchemaCompat: 'gemini' } },
+              onFailover,
+              schemaCompatRetry: true,
+              bindActiveReq,
+            });
+          }
+          return;
+        }
+
         apiReq.destroy();
         if (!failed) { failed = true; onFailover(`HTTP ${apiRes.statusCode}`); }
       };
-      apiRes.on('end', fail);
-      // 上游只发头不发 body 时 'end' 可能不来，加超时兜底避免请求挂死。
+
+    apiRes.on('end', fail);
+    // 上游只发头不发 body 时 'end' 可能不来，加超时兜底避免请求挂死。
       setTimeout(() => { if (!failed) fail(); }, 5000);
       return;
     }
@@ -372,7 +507,10 @@ function streamOpenAI(req, res, { systemPrompt, messages, tools, toolChoice, res
     });
   });
 
+  if (typeof bindActiveReq === 'function') bindActiveReq(apiReq);
+
   apiReq.on('error', (err) => {
+
     console.error(`  ❌ ${conn.providerName} 连接错误: ${err.message}`);
     if (!failed && !res.headersSent) { failed = true; onFailover(err.message); return; }
     if (!res.writableEnded) {
@@ -385,7 +523,172 @@ function streamOpenAI(req, res, { systemPrompt, messages, tools, toolChoice, res
   // 上游挂起防护：120s 无响应则断开（触发上面的 error handler 回写错误流或故障转移）。
   apiReq.setTimeout(120000, () => apiReq.destroy(new Error('upstream timeout')));
 
-  apiReq.end(apiBodyGz);
+  apiReq.end(finalBody);
+  return apiReq;
+}
+
+// ─── OpenAI Chat Completions API streaming ──────────────────
+
+function streamOpenAIChatCompletions(req, res, { systemPrompt, messages, tools, toolChoice, resolvedModel, serviceTier, messageId, conn, onFailover, schemaCompatRetry = false, bindActiveReq = null }) {
+  const forceGeminiCompat = schemaCompatRetry || conn.capabilities?.toolSchemaCompat === 'gemini';
+
+  const apiPayload = {
+    model: resolvedModel,
+    messages: toOpenAIChatMessages(systemPrompt, messages),
+    stream: true,
+    stream_options: { include_usage: true },
+  };
+
+  if (serviceTier) apiPayload.service_tier = serviceTier;
+  if (tools && tools.length > 0) {
+    apiPayload.tools = tools.map(t => ({
+      type: 'function',
+      function: {
+        name: t.name,
+        description: t.description || '',
+        parameters: normalizeToolSchema(t.input_schema, resolvedModel, forceGeminiCompat),
+      },
+    }));
+
+    if (toolChoice) {
+      if (toolChoice.type === 'auto') apiPayload.tool_choice = 'auto';
+      else if (toolChoice.type === 'any') apiPayload.tool_choice = 'required';
+      else if (toolChoice.type === 'tool') apiPayload.tool_choice = { type: 'function', function: { name: toolChoice.name } };
+    }
+  }
+
+  const apiBody = JSON.stringify(apiPayload);
+  // MITM 日志：记录上游请求
+  mitmLog({ direction: 'upstream', providerName: conn.providerName, model: resolvedModel, format: 'openai-chat', request: { method: 'POST', url: `https://${conn.host}${conn.apiPath}`, headers: { 'content-type': 'application/json', 'authorization': `Bearer ${conn.apiKey}` }, body: apiBody } });
+  const processor = new OpenAIChatCompletionsStreamProcessor(messageId, resolvedModel);
+  let failed = false;
+
+  const apiReq = https.request({
+    hostname: conn.host,
+    port: 443,
+    path: conn.apiPath,
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      'accept': 'text/event-stream',
+      'authorization': `Bearer ${conn.apiKey}`,
+      'content-length': Buffer.byteLength(apiBody),
+    },
+  }, (apiRes) => {
+    let sseBuffer = '';
+
+    if (apiRes.statusCode !== 200) {
+      console.error(`  ❌ ${conn.providerName} 返回 ${apiRes.statusCode}`);
+      let errBody = '';
+      apiRes.setEncoding('utf8');
+      apiRes.on('data', d => { if (errBody.length < 2000) errBody += d.slice(0, 2000 - errBody.length); });
+      const fail = () => {
+        console.error(`  ❌ Body: ${errBody.slice(0, 300)}`);
+        mitmLog({ direction: 'downstream', providerName: conn.providerName, model: resolvedModel, format: 'openai-chat', request: { method: 'POST', url: `https://${conn.host}${conn.apiPath}` }, response: { statusCode: apiRes.statusCode, headers: apiRes.headers, body: errBody } });
+
+        if (!schemaCompatRetry && shouldAutoEnableGeminiSchemaCompat(apiRes.statusCode, errBody) && tools && tools.length > 0 && !res.headersSent) {
+          const remembered = rememberProviderToolSchemaCompat(conn.providerId, 'gemini');
+          if (remembered) {
+            console.log(`  🧠 已记住 ${conn.providerName} 的工具 Schema 兼容模式: gemini`);
+          }
+          console.warn(`  ♻️  检测到工具 Schema 不兼容，自动启用兼容模式并重试一次`);
+          apiReq.destroy();
+          if (!failed) {
+            failed = true;
+            return streamOpenAIChatCompletions(req, res, {
+              systemPrompt,
+              messages,
+              tools,
+              toolChoice,
+              resolvedModel,
+              serviceTier,
+              messageId,
+              conn: { ...conn, capabilities: { ...(conn.capabilities || {}), toolSchemaCompat: 'gemini' } },
+              onFailover,
+              schemaCompatRetry: true,
+              bindActiveReq,
+            });
+          }
+          return;
+        }
+
+        apiReq.destroy();
+        if (!failed) { failed = true; onFailover(`HTTP ${apiRes.statusCode}`); }
+      };
+
+      apiRes.on('end', fail);
+      setTimeout(() => { if (!failed) fail(); }, 5000);
+      return;
+    }
+
+    res.writeHead(200, streamHeaders());
+    apiRes.setEncoding('utf8');
+
+    function processPart(part) {
+      const events = parseOpenAISSEChunk(part + '\n');
+      for (const evt of events) {
+        const protoChunks = processor.processEvent(evt);
+        for (const chunk of protoChunks) {
+          res.write(wrapEnvelope(chunk));
+        }
+      }
+      if (processor.isDone && !res.writableEnded) {
+        res.write(endOfStreamEnvelope());
+        res.end();
+        recordUsage(processor.usage);
+        console.log(`  ✅ OpenAI chat stream done (stop: ${processor.stopReason})`);
+      }
+    }
+
+    apiRes.on('data', (chunk) => {
+      sseBuffer += chunk;
+      const parts = sseBuffer.split('\n\n');
+      sseBuffer = parts.pop();
+      for (const part of parts) processPart(part);
+    });
+
+    apiRes.on('end', () => {
+      if (sseBuffer.trim()) processPart(sseBuffer);
+      if (!processor.isDone && !res.writableEnded) {
+        const finalChunks = processor.processEvent({ done: true, type: 'done', data: null });
+        for (const chunk of finalChunks) {
+          res.write(wrapEnvelope(chunk));
+        }
+      }
+      if (!res.writableEnded) {
+        res.write(endOfStreamEnvelope());
+        res.end();
+        recordUsage(processor.usage);
+        console.log(`  ✅ OpenAI chat stream ended (stop: ${processor.stopReason})`);
+      }
+    });
+
+    apiRes.on('error', (err) => {
+      console.error(`  ❌ OpenAI chat stream error: ${err.message}`);
+      if (!res.writableEnded) {
+        res.write(wrapEnvelope(buildErrorChunk(messageId, `[Stream Error]`)));
+        res.write(endOfStreamEnvelope());
+        res.end();
+      }
+    });
+  });
+
+  if (typeof bindActiveReq === 'function') bindActiveReq(apiReq);
+
+  apiReq.on('error', (err) => {
+
+    console.error(`  ❌ ${conn.providerName} 连接错误: ${err.message}`);
+    if (!failed && !res.headersSent) { failed = true; onFailover(err.message); return; }
+    if (!res.writableEnded) {
+      res.write(wrapEnvelope(buildErrorChunk(messageId, `[Connection Error]`)));
+      res.write(endOfStreamEnvelope());
+      res.end();
+    }
+  });
+
+  apiReq.setTimeout(120000, () => apiReq.destroy(new Error('upstream timeout')));
+
+  apiReq.end(apiBody);
   return apiReq;
 }
 
@@ -472,6 +775,77 @@ function toOpenAIMessages(systemPrompt, anthropicMessages) {
         } else {
           result.push({ role: 'user', content: contentParts.join('\n') });
         }
+      }
+    }
+  }
+
+  return result;
+}
+
+function toOpenAIChatMessages(systemPrompt, anthropicMessages) {
+  const result = [];
+
+  if (systemPrompt) {
+    result.push({ role: 'system', content: systemPrompt });
+  }
+
+  for (const msg of anthropicMessages) {
+    if (typeof msg.content === 'string') {
+      result.push({ role: msg.role, content: msg.content });
+      continue;
+    }
+
+    if (!Array.isArray(msg.content)) {
+      result.push({ role: msg.role, content: String(msg.content) });
+      continue;
+    }
+
+    if (msg.role === 'assistant') {
+      let textContent = '';
+      const toolCalls = [];
+      for (const block of msg.content) {
+        if (block.type === 'text') {
+          textContent += block.text;
+        } else if (block.type === 'tool_use') {
+          toolCalls.push({
+            id: block.id,
+            type: 'function',
+            function: {
+              name: block.name,
+              arguments: typeof block.input === 'string' ? block.input : JSON.stringify(block.input),
+            },
+          });
+        }
+      }
+      const out = { role: 'assistant', content: textContent || null };
+      if (toolCalls.length > 0) out.tool_calls = toolCalls;
+      result.push(out);
+      continue;
+    }
+
+    const contentParts = [];
+    for (const block of msg.content) {
+      if (block.type === 'text') {
+        contentParts.push({ type: 'text', text: block.text });
+      } else if (block.type === 'image') {
+        contentParts.push({
+          type: 'image_url',
+          image_url: { url: `data:${block.source?.media_type || 'image/png'};base64,${block.source?.data || ''}` },
+        });
+      } else if (block.type === 'tool_result') {
+        result.push({
+          role: 'tool',
+          tool_call_id: block.tool_use_id,
+          content: typeof block.content === 'string' ? block.content : JSON.stringify(block.content),
+        });
+      }
+    }
+
+    if (contentParts.length > 0) {
+      if (contentParts.length === 1 && contentParts[0].type === 'text') {
+        result.push({ role: msg.role, content: contentParts[0].text });
+      } else {
+        result.push({ role: msg.role, content: contentParts });
       }
     }
   }

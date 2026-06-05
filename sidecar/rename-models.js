@@ -1,10 +1,15 @@
-// rename-models.js — 改写 GetUserStatus 响应里的模型显示名（label）。
+// rename-models.js — 改写 GetUserStatus 响应里的模型显示名（label）+ 模型解锁（disabled→false）。
 // GetUserStatus body 是 JSON 文本，可能有三种封装：
 //   ① 裸明文 JSON（首字节 '{' = 0x7b）
 //   ② 裸 gzip（首两字节 1f 8b，HTTP content-encoding: gzip）
 //   ③ Connect 帧（flag(1)+len(4)+payload，payload 可能再 gzip）
 // 模型条目形如 {"label":"xAI Grok-3","modelUid":"MODEL_XAI_GROK_3",...}。
 // 改 label 即改下拉框显示名。改完按原封装方式重新打包，编码方式不变。
+//
+// 模型解锁：ClientModelConfig protobuf 中 field4=disabled (bool, wire type 0)。
+// Free 账号所有模型 disabled=true，解锁后改为 false，让下拉框可选。
+// 选中后走 MITM 劫持 BYOK API，不走 Windsurf 服务端，不触发权限校验。
+// 只解锁 model-map.json 中配了 BYOK 槽位的模型，未配槽位的保持 disabled=true。
 
 import { tryGunzip, gzipSync } from './connect.js';
 import fs from 'node:fs';
@@ -13,7 +18,7 @@ import os from 'node:os';
 
 function configDir() {
   if (process.env.BYOK_CONFIG_DIR) return process.env.BYOK_CONFIG_DIR;
-  return path.join(os.homedir(), 'AppData', 'Roaming', 'windsurf-byok');
+  return path.join(os.homedir(), 'AppData', 'Roaming', 'ide-byok');
 }
 
 // 内置兜底:captured windsurf-models.json 不存在或缺某 modelUid 时，用这张已知表查原始 label。
@@ -339,6 +344,338 @@ export function renameModels(resBody) {
     return { body: gzipSync(newPayload), changed, recompressed: true };
   }
   // connect: 重新封成未压缩帧（flag=0）
+  const envelope = Buffer.alloc(5 + newPayload.length);
+  envelope[0] = 0;
+  envelope.writeUInt32BE(newPayload.length, 1);
+  newPayload.copy(envelope, 5);
+  return { body: envelope, changed, recompressed: false, wasConnect: true };
+}
+
+// ─── 模型解锁 ──────────────────────────────────────────────
+// ClientModelConfig protobuf 字段映射（来自 Windsurf extension.js 逆向）：
+//   field1  = label (string, wire type 2)
+//   field2  = model_or_alias (message, wire type 2)
+//   field22 = model_uid (string, wire type 2)
+//   field3  = credit_multiplier (float, wire type 5)
+//   field13 = pricing_type (enum, wire type 0)
+//   field4  = disabled (bool, wire type 0) ← 解锁目标
+//   field5  = supports_images (bool, wire type 0)
+//   ...
+// 解锁策略：只解锁 model-map.json 中配了 BYOK 槽位的模型。
+
+// 构建解锁映射：modelUid → { supportsImages }。只含已启用且有 modelUid 的槽位。
+// 空 Map = 不解锁任何模型。
+function buildUnlockSet() {
+  const dir = configDir();
+  const map = new Map();
+  try {
+    const m = JSON.parse(fs.readFileSync(path.join(dir, 'model-map.json'), 'utf8'));
+    for (const s of (Array.isArray(m.slots) ? m.slots : [])) {
+      if (s.enabled === false) continue; // 未启用槽位不解锁
+      if (s.modelUid) {
+        // supportsImages 默认 true（多数视觉模型免勾），旧槽位无此字段时视为 true
+        map.set(s.modelUid, { supportsImages: s.supportsImages !== false });
+      }
+    }
+  } catch { /* 无配置 → 空 Map，不解锁任何模型 */ }
+  return map;
+}
+
+// 在一个 protobuf 子 message 中查找 field22 (model_uid) 的字符串值。
+// 返回字符串或 null。
+function findModelUid(buf) {
+  let i = 0;
+  try {
+    while (i < buf.length) {
+      const tagR = decVarint(buf, i);
+      const tag = tagR.value;
+      const fn = tag >>> 3, wt = tag & 7;
+      if (fn === 0) return null;
+      i = tagR.next;
+      if (wt === 0) { i = decVarint(buf, i).next; }
+      else if (wt === 1) { i += 8; }
+      else if (wt === 5) { i += 4; }
+      else if (wt === 2) {
+        const lr = decVarint(buf, i);
+        const start = lr.next, end = start + lr.value;
+        if (end > buf.length) return null;
+        if (fn === 22) {
+          // field22 = model_uid
+          const s = buf.subarray(start, end).toString('utf8');
+          if (s.length > 0) return s;
+        }
+        i = end;
+      } else return null;
+    }
+  } catch { /* ignore */ }
+  return null;
+}
+
+// 递归重写 protobuf，将 ClientModelConfig 条目中 field4(disabled) 删除（proto3 默认 false）。
+// 只对 unlockSet 中的模型改写。
+// 返回 { body: Buffer, changed: number } 或 null（无改动）。
+function unlockInProto(payload, unlockSet) {
+  const counter = { n: 0 };
+  const out = rewriteForUnlock(payload, counter, 8, unlockSet);
+  if (counter.n === 0) return null;
+  return { body: out, changed: counter.n };
+}
+
+// 递归遍历 protobuf message，识别 ClientModelConfig 条目并解锁 disabled 字段。
+// 识别逻辑：子 message 包含 field22 (model_uid) 字符串 → 视为 ClientModelConfig 条目。
+// 解锁逻辑：如果 modelUid 在 unlockSet 中，删除 field4(disabled) 字段（proto3 默认值 false）。
+// 如果 field4 不存在（proto3 默认值 false=不编码），说明已经 disabled=false，无需改。
+function rewriteForUnlock(buf, counter, depth, unlockSet) {
+  const parts = [];
+  let i = 0;
+  let mutated = false;
+  try {
+    while (i < buf.length) {
+      const tagR = decVarint(buf, i);
+      const tag = tagR.value;
+      const fn = tag >>> 3, wt = tag & 7;
+      if (fn === 0) return buf;
+      const tagBytes = buf.subarray(i, tagR.next);
+      i = tagR.next;
+
+      if (wt === 0) {
+        // varint 字段 — 检查是否是 field4(disabled)
+        const vr = decVarint(buf, i);
+        const valBytes = buf.subarray(tagR.next, vr.next);
+        // 在当前层级无法确定是否是 ClientModelConfig，需要在 wire-type-2 子 message 层面判断
+        // 所以这里先原样保留，改写在子 message 层面处理
+        parts.push(tagBytes, valBytes);
+        i = vr.next;
+      } else if (wt === 1) {
+        parts.push(tagBytes, buf.subarray(i, i + 8)); i += 8;
+      } else if (wt === 5) {
+        parts.push(tagBytes, buf.subarray(i, i + 4)); i += 4;
+      } else if (wt === 2) {
+        const lr = decVarint(buf, i);
+        const len = lr.value;
+        const start = lr.next, end = start + len;
+        if (end > buf.length) return buf;
+        let child = buf.subarray(start, end);
+
+        if (depth > 0 && len > 4) {
+          // 检查子 message 是否是 ClientModelConfig 条目（含 field22 = model_uid）
+          const uid = findModelUid(child);
+          if (uid && unlockSet.has(uid)) {
+            // 这是一个需要解锁的模型条目：删 field4(disabled) + 按槽位配置改写 field5(supports_images)
+            const opt = unlockSet.get(uid);
+            const rewritten = rewriteUnlockFields(child, opt.supportsImages);
+            if (rewritten !== child) {
+              child = rewritten;
+              counter.n++;
+              mutated = true;
+            }
+          } else if (depth > 0) {
+            // 不是模型条目或不在解锁集，递归下钻
+            const sub = rewriteForUnlock(child, counter, depth - 1, unlockSet);
+            if (sub !== child) { child = sub; mutated = true; }
+          }
+        }
+        parts.push(tagBytes, encVarint(child.length), child);
+        i = end;
+      } else {
+        return buf;
+      }
+    }
+  } catch {
+    return buf;
+  }
+  return mutated ? Buffer.concat(parts) : buf;
+}
+
+// 改写一个 ClientModelConfig 条目，解锁 + 对齐图片能力：
+//   field4 (disabled)        → 一律删除（proto3 bool 默认 false = 不禁用）
+//   field5 (supports_images) → 先删除原值，再按 wantImages 决定是否追加 field5=1
+//     wantImages=true  → 追加 field5=1（GLM 等原本不支持图的模型也强制可发图）
+//     wantImages=false → 不追加（proto3 默认 false，发图按钮置灰）
+// 外层 rewriteForUnlock 会用 encVarint(child.length) 重算长度前缀，故增删字段安全。
+function rewriteUnlockFields(buf, wantImages) {
+  const parts = [];
+  let i = 0;
+  let mutated = false;
+  try {
+    while (i < buf.length) {
+      const tagR = decVarint(buf, i);
+      const tag = tagR.value;
+      const fn = tag >>> 3, wt = tag & 7;
+      if (fn === 0) return buf;
+      const tagBytes = buf.subarray(i, tagR.next);
+      i = tagR.next;
+
+      if (wt === 0) {
+        const vr = decVarint(buf, i);
+        const valBytes = buf.subarray(tagR.next, vr.next);
+        if (fn === 4) {
+          // disabled → 删除（不论原值），由 proto3 默认值取 false
+          if (vr.value !== 0) mutated = true;
+        } else if (fn === 5) {
+          // supports_images → 删除原值，稍后按 wantImages 统一追加
+          mutated = true;
+        } else {
+          parts.push(tagBytes, valBytes);
+        }
+        i = vr.next;
+      } else if (wt === 1) {
+        parts.push(tagBytes, buf.subarray(i, i + 8)); i += 8;
+      } else if (wt === 5) {
+        parts.push(tagBytes, buf.subarray(i, i + 4)); i += 4;
+      } else if (wt === 2) {
+        const lr = decVarint(buf, i);
+        const start = lr.next, end = start + lr.value;
+        if (end > buf.length) return buf;
+        parts.push(tagBytes, encVarint(lr.value), buf.subarray(start, end));
+        i = end;
+      } else {
+        return buf;
+      }
+    }
+  } catch {
+    return buf;
+  }
+  // 追加 supports_images=true（field5, varint 1）。tag = (5<<3)|0 = 0x28。
+  if (wantImages) {
+    parts.push(Buffer.from([0x28, 0x01]));
+    mutated = true;
+  }
+  return mutated ? Buffer.concat(parts) : buf;
+}
+
+// JSON 文本中的模型解锁：将 "disabled":true 改为 "disabled":false。
+// 只对 unlockSet 中的模型改写。按 JSON 对象边界精确定位，避免误改相邻条目。
+function unlockInJson(text, unlockSet) {
+  let changed = 0;
+  const uidRe = /"modelUid"\s*:\s*"([^"]+)"/g;
+  let m;
+  while ((m = uidRe.exec(text)) !== null) {
+    const uid = m[1];
+    if (!unlockSet.has(uid)) continue;
+    const wantImages = unlockSet.get(uid).supportsImages;
+    // 从 modelUid 位置向前找最近的 '{'，向后找匹配的 '}'，确定该条目的 JSON 对象边界
+    const objStart = findObjectStart(text, m.index);
+    if (objStart === -1) continue;
+    const objEnd = findObjectEnd(text, objStart);
+    if (objEnd === -1) continue;
+    const obj = text.slice(objStart, objEnd + 1);
+    // 1) disabled:true → disabled:false（解锁）
+    let newObj = obj.replace(/"disabled"\s*:\s*true/g, '"disabled":false');
+    // 2) supportsImages 对齐：有该字段则改值；没有则在条目开头插入
+    const imgVal = wantImages ? 'true' : 'false';
+    if (/"supportsImages"\s*:\s*(true|false)/.test(newObj)) {
+      newObj = newObj.replace(/"supportsImages"\s*:\s*(true|false)/g, `"supportsImages":${imgVal}`);
+    } else {
+      // 紧跟开头的 '{' 插入字段（JSON 对象字段无序，安全）
+      newObj = newObj.replace(/^\{/, `{"supportsImages":${imgVal},`);
+    }
+    if (newObj !== obj) {
+      text = text.slice(0, objStart) + newObj + text.slice(objEnd + 1);
+      changed++;
+      // 更新 uidRe 的 lastIndex，因为 text 长度可能变了
+      uidRe.lastIndex = objStart + newObj.length;
+    }
+  }
+  return { text, changed };
+}
+
+// 从 pos 位置向前找最近的不在字符串内的 '{'。
+// 反向扫描时需要先判断当前是否在字符串内：从 pos 向前数引号，奇数个则在串内。
+function findObjectStart(text, pos) {
+  // 先判断 pos 位置是否在字符串内
+  let inStr = false;
+  for (let k = 0; k <= pos; k++) {
+    if (text[k] === '"' && (k === 0 || text[k - 1] !== '\\')) inStr = !inStr;
+  }
+  let depth = 0;
+  for (let i = pos; i >= 0; i--) {
+    const c = text[i];
+    // 跟踪字符串状态（反向）
+    if (c === '"' && (i === 0 || text[i - 1] !== '\\')) inStr = !inStr;
+    if (inStr) continue;
+    if (c === '}') depth++;
+    else if (c === '{') {
+      if (depth === 0) return i;
+      depth--;
+    }
+  }
+  return -1;
+}
+
+// 从 objStart 位置找匹配的 '}'（跳过嵌套对象和字符串）
+function findObjectEnd(text, objStart) {
+  let depth = 0;
+  let inStr = false;
+  let escape = false;
+  for (let i = objStart; i < text.length; i++) {
+    const c = text[i];
+    if (escape) { escape = false; continue; }
+    if (c === '\\' && inStr) { escape = true; continue; }
+    if (c === '"') { inStr = !inStr; continue; }
+    if (inStr) continue;
+    if (c === '{') depth++;
+    else if (c === '}') {
+      depth--;
+      if (depth === 0) return i;
+    }
+  }
+  return -1;
+}
+
+// 模型解锁主入口：输入 GetUserStatus 完整响应 body，返回改写后的 body。
+// 无改动/解析失败返回 null（调用方保持原 body）。
+export function unlockModels(resBody) {
+  if (!resBody || resBody.length < 2) return null;
+
+  const unlockSet = buildUnlockSet();
+  if (unlockSet.size === 0) return null; // 无槽位配置，不解锁
+
+  const b0 = resBody[0];
+  let kind, payload;
+
+  if (b0 === 0x7b) {
+    kind = 'plain';
+    payload = resBody;
+  } else if (b0 === 0x1f && resBody[1] === 0x8b) {
+    const d = tryGunzip(resBody);
+    if (!d) return null;
+    kind = 'gzip';
+    payload = d;
+  } else if ((b0 === 0 || b0 === 1) && resBody.length >= 5) {
+    const msgLen = resBody.readUInt32BE(1);
+    if (msgLen !== resBody.length - 5) return null;
+    let p = resBody.subarray(5);
+    if (b0 === 1) { const d = tryGunzip(p); if (!d) return null; p = d; }
+    kind = 'connect';
+    payload = p;
+  } else {
+    return null;
+  }
+
+  const isJson = payload[0] === 0x7b;
+  let newPayload, changed;
+
+  if (isJson) {
+    const text = payload.toString('utf8');
+    if (text.indexOf('"modelUid"') === -1) return null;
+    const r = unlockInJson(text, unlockSet);
+    if (r.changed === 0) return null;
+    newPayload = Buffer.from(r.text, 'utf8');
+    changed = r.changed;
+  } else {
+    const r = unlockInProto(payload, unlockSet);
+    if (!r) return null;
+    newPayload = r.body;
+    changed = r.changed;
+  }
+
+  if (kind === 'plain') {
+    return { body: newPayload, changed, recompressed: false };
+  }
+  if (kind === 'gzip') {
+    return { body: gzipSync(newPayload), changed, recompressed: true };
+  }
   const envelope = Buffer.alloc(5 + newPayload.length);
   envelope[0] = 0;
   envelope.writeUInt32BE(newPayload.length, 1);
