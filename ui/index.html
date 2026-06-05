@@ -297,7 +297,7 @@ body {
   -webkit-app-region: drag;
   app-region: drag;
 }
-.topbar button, .topbar .tab-nav, .topbar .status-pill {
+.topbar button, .topbar .tab-nav, .topbar .status-pill, .topbar .win-controls, .topbar .win-btn, .topbar .win-btn svg {
   -webkit-app-region: no-drag;
   app-region: no-drag;
 }
@@ -2317,7 +2317,7 @@ html[data-theme="dark"] .icon-btn .moon-icon {
       </div>
     </div>
     <div class="modal-footer">
-      <button onclick="closeUpdateJumpModal()" class="modal-btn modal-btn-confirm" style="width: 100%; text-align: center;">我知道了</button>
+      <button id="update-jump-close-btn" onclick="closeUpdateJumpModal()" class="modal-btn modal-btn-confirm" style="width: 100%; text-align: center;">我知道了</button>
     </div>
   </div>
 </div>
@@ -2366,10 +2366,43 @@ html[data-theme="dark"] .icon-btn .moon-icon {
 </div>
 
 <script>
-const TAURI = window.__TAURI__;
-const invoke = TAURI?.core?.invoke;
-const tauriEvent = TAURI?.event;
-const appWindow = TAURI?.window?.getCurrentWindow ? TAURI.window.getCurrentWindow() : null;
+// 运行期诊断输出（默认仅控制台，不在界面展示）
+function _diag(msg) { console.log('[DIAG]', msg); }
+window.addEventListener('error', e => _diag(`UNCAUGHT: ${e.message} @ ${e.filename}:${e.lineno}`));
+window.addEventListener('unhandledrejection', e => _diag(`UNHANDLED: ${e.reason}`));
+
+
+let TAURI = null;
+let invoke = null;
+let tauriEvent = null;
+let appWindow = null;
+
+function bindTauriBridge() {
+  TAURI = window.__TAURI__ || null;
+  invoke = TAURI?.core?.invoke || null;
+  tauriEvent = TAURI?.event || null;
+  try {
+    appWindow = TAURI?.window?.getCurrentWindow ? TAURI.window.getCurrentWindow() : null;
+  } catch { appWindow = null; }
+  _diag(`bindTauriBridge: __TAURI__=${!!TAURI} invoke=${!!invoke} appWindow=${!!appWindow}`);
+  return !!invoke;
+}
+
+async function ensureTauriBridge(maxWaitMs = 3000) {
+  _diag('ensureTauriBridge: start waiting...');
+  if (bindTauriBridge()) { _diag('ensureTauriBridge: immediate OK'); return true; }
+  let waited = 0;
+  const step = 100;
+  while (waited < maxWaitMs) {
+    await new Promise(resolve => setTimeout(resolve, step));
+    waited += step;
+    if (bindTauriBridge()) { _diag(`ensureTauriBridge: OK after ${waited}ms`); return true; }
+  }
+  _diag('ensureTauriBridge: FAILED - bridge never became available');
+  return false;
+}
+
+
 
 // ═══════ TAB NAVIGATION ═══════
 const tabs = document.querySelectorAll('.tab-item[data-page]');
@@ -2457,8 +2490,18 @@ function setStatusPill(running) {
 }
 
 async function toggleProxy() {
-  if (!invoke) return;
+  _diag('toggleProxy called');
+  if (!invoke && !bindTauriBridge()) {
+    _diag('toggleProxy abort: invoke unavailable');
+    addLog('err', 'Tauri 通道未就绪，代理操作不可用。请重启应用后重试。');
+    return;
+  }
+
+  const activeOverlays = Array.from(document.querySelectorAll('.modal-overlay.active')).map(el => el.id || '(no-id)');
+  _diag('active overlays: ' + (activeOverlays.length ? activeOverlays.join(',') : 'none'));
+
   const btn = document.getElementById('proxyBtn');
+
   if (btn) {
     btn.disabled = true;
     const text = btn.querySelector('.proxy-btn-text');
@@ -2614,15 +2657,52 @@ async function refreshStats() {
 
 // ═══════ WINDOW CONTROLS ═══════
 async function windowMinimize() {
-  if (appWindow) await appWindow.minimize();
+  if (!appWindow) bindTauriBridge();
+  if (appWindow) {
+    try { await appWindow.minimize(); } catch(e) { _diag('minimize error: ' + e); }
+  } else {
+    _diag('windowMinimize: appWindow unavailable');
+  }
 }
 async function windowMaximize() {
-  if (appWindow) await appWindow.toggleMaximize();
+  if (!appWindow) bindTauriBridge();
+  if (appWindow) {
+    try { await appWindow.toggleMaximize(); } catch(e) { _diag('maximize error: ' + e); }
+  } else {
+    _diag('windowMaximize: appWindow unavailable');
+  }
 }
 async function windowClose() {
   // Close request is intercepted by Rust → hides to tray.
-  if (appWindow) await appWindow.close();
+  if (!appWindow) bindTauriBridge();
+  if (appWindow) {
+    try { await appWindow.close(); } catch(e) { _diag('close error: ' + e); }
+  } else {
+    _diag('windowClose: appWindow unavailable');
+  }
 }
+
+function bindWindowControlHandlers() {
+  const minBtn = document.querySelector('.win-minimize');
+  const maxBtn = document.querySelector('.win-maximize');
+  const closeBtn = document.querySelector('.win-close');
+
+  const bind = (el, fn, label) => {
+    if (!el) { _diag(`WARN: ${label} button not found`); return; }
+    const handler = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      fn().catch(err => _diag(`${label} error: ` + err));
+    };
+    el.addEventListener('click', handler);
+    el.addEventListener('pointerup', handler);
+    _diag(`${label} handler bound`);
+  };
+  bind(minBtn, windowMinimize, 'minimize');
+  bind(maxBtn, windowMaximize, 'maximize');
+  bind(closeBtn, windowClose, 'close');
+}
+
 
 // ═══════ THEME TOGGLE ═══════
 function applyTheme(theme) {
@@ -4686,9 +4766,23 @@ async function changeUpdateInterval(val) {
 function bindUpdateJumpModalHandlers() {
   const modal = document.getElementById('update-jump-modal');
   const closeBtn = document.getElementById('update-jump-close-btn');
-  if (!modal || !closeBtn) return;
+  if (!modal) return;
 
-  closeBtn.onclick = closeUpdateJumpModal;
+  if (closeBtn) {
+    closeBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      closeUpdateJumpModal();
+    });
+    closeBtn.addEventListener('pointerup', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      closeUpdateJumpModal();
+    });
+  } else {
+    _diag('WARN: update-jump-close-btn not found');
+  }
+
   modal.addEventListener('click', (e) => {
     if (e.target === modal) closeUpdateJumpModal();
   });
@@ -4698,6 +4792,7 @@ function bindUpdateJumpModalHandlers() {
     }
   });
 }
+
 
 // 检查是否刚进行了版本更新
 async function checkVersionJump() {
@@ -4915,21 +5010,55 @@ async function startDownloadAndUpdate() {
   }
 }
 
+function bindProxyButtonHandlers() {
+  const btn = document.getElementById('proxyBtn');
+  if (!btn) {
+    _diag('proxyBtn not found');
+    return;
+  }
+  const handler = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    toggleProxy().catch(err => {
+      _diag('toggleProxy error: ' + err);
+      addLog('err', '代理操作异常: ' + err);
+    });
+  };
+  btn.addEventListener('click', handler);
+  btn.addEventListener('pointerup', handler);
+  _diag('proxyBtn handlers bound (click + pointerup)');
+}
+
 // ═══════ INIT ═══════
 async function init() {
+  const bridgeReady = await ensureTauriBridge();
+  if (!bridgeReady) {
+    console.error('[Init] Tauri bridge not ready');
+    alert('应用核心通道未就绪，按钮将无法响应。请从安装包版本启动，或重启应用后重试。');
+  }
+
+  // 启动时清理残留弹层状态，避免透明遮罩占用点击事件
+  document.querySelectorAll('.modal-overlay.active').forEach(el => el.classList.remove('active'));
+  _diag('cleared leftover active modal overlays');
+
+  bindProxyButtonHandlers();
+  bindWindowControlHandlers();
+
   try {
+
     const saved = localStorage.getItem('byok-theme');
     if (saved) applyTheme(saved);
   } catch {}
 
   await loadAndFillConfig();
+
   await loadProviders();
   await refreshStatus();
 
   // 加载自动更新设置并更新 UI 开关状态
   await loadUpdateSettings();
   // 显示当前版本号
-  try { const v = await invoke('get_app_version'); document.getElementById('current-version-display').textContent = 'v' + v; } catch { document.getElementById('current-version-display').textContent = 'v1.1.0'; }
+  try { const v = await invoke('get_app_version'); document.getElementById('current-version-display').textContent = 'v' + v; } catch { document.getElementById('current-version-display').textContent = 'v1.1.2'; }
 
   bindUpdateJumpModalHandlers();
   // 检查是否刚进行了版本更新
