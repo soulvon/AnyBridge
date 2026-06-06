@@ -41,7 +41,7 @@
   },
   "plugins": {
     "updater": {
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEY5QUZCOTkwNkJBNURGQ0IKUldUTDM2VnJrTG12K2ZKNURrWHA1a0toM1BXSDNQaGxVRXhrVHpyTkV2YTZnL3VvNmh0NzRWTkUK",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDM3MEEwQ0E3QTA3NzMwNUIKUldSYk1IZWdwd3dLTnprdDA4aTdFVkJUNEpKWW9PTVY0RmVWMCtCenFaU1poUUgrbmFNS1NxeGwK",
       "endpoints": [
         "https://github.com/soulvon/IDE-BYOK-Release/releases/latest/download/latest.json"
       ]

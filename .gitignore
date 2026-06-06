@@ -30,3 +30,6 @@ sidecar/certs/*
 spec/
 proto-schemas/
 REVERSE-ENGINEERING.md
+
+# Signing keys (private key must NEVER be committed)
+tauri-sign.key
