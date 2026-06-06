@@ -143,6 +143,7 @@ pub struct ProviderStore {
     pub providers: Vec<Provider>,
     // `current`/激活概念已废弃，改用每槽位 targets 故障转移。保留字段仅为兼容旧文件反序列化，不再读写。
     #[serde(default, skip_serializing)]
+    #[allow(dead_code)]
     pub current: String,
 }
 

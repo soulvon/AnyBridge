@@ -96,19 +96,23 @@ struct IdeSession {
     api_server_url: String,
 }
 
-fn read_ide_session() -> Result<IdeSession, String> {
+fn read_ide_session(target: &str) -> Result<IdeSession, String> {
     let mut db_path = dirs::config_dir().ok_or("无法定位配置目录")?;
-    db_path.push("Windsurf");
+    let ide_dir = match target {
+        "devin" => "Devin",
+        _ => "Windsurf",
+    };
+    db_path.push(ide_dir);
     db_path.push("User");
     db_path.push("globalStorage");
     db_path.push("state.vscdb");
 
     if !db_path.exists() {
-        return Err("Windsurf state.vscdb 不存在，请先启动 Windsurf".into());
+        return Err(format!("{} state.vscdb 不存在，请先启动 {}", ide_dir, ide_dir));
     }
 
     // 与 windsurf-pool 相同的方案：直接读二进制文件 + 正则提取，
-    // 绕过 SQLite WAL 锁问题（Windsurf 运行时数据库被锁定，rusqlite 无法读取）
+    // 绕过 SQLite WAL 锁问题（IDE 运行时数据库被锁定，rusqlite 无法读取）
     let buf = fs::read(&db_path)
         .map_err(|e| format!("读取 vscdb 失败: {}", e))?;
 
@@ -124,7 +128,7 @@ fn read_ide_session() -> Result<IdeSession, String> {
     // SQLite 页面中 key-value 对的存储格式：key 和 value 相邻，value 是 JSON 字符串
     // 匹配 "windsurf.pendingApiKeyMigration" 后面紧跟的 session token
     let api_key = regex_extract_session_token(&content)
-        .ok_or("未在 state.vscdb 中找到 devin-session-token，Windsurf 可能未登录")?;
+        .ok_or(format!("未在 {} state.vscdb 中找到 devin-session-token，{} 可能未登录", ide_dir, ide_dir))?;
 
     // 提取 email
     let email = regex_extract_email(&content).unwrap_or_default();
@@ -670,9 +674,14 @@ pub fn list_ide_models() -> Result<IdeModelsResult, String> {
 }
 
 /// 从 IDE 本地 session 拉取最新模型列表 + 账号信息，缓存后返回。
+/// target: "windsurf"、"devin" 或 "auto"（自动检测），决定从哪个 vscdb 读取 session。
 #[tauri::command]
-pub async fn refresh_ide_models() -> Result<IdeAccountInfo, String> {
-    let session = read_ide_session()?;
+pub async fn refresh_ide_models(target: Option<String>) -> Result<IdeAccountInfo, String> {
+    let t = match target.as_deref() {
+        Some("auto") | None => crate::commands::system::detect_target_ide(),
+        Some(s) => s.to_string(),
+    };
+    let session = read_ide_session(&t)?;
     let mut info = fetch_ide_account_info(&session).await?;
     // 合并只增不减写回缓存，并取回合并后的完整列表回填给 UI
     let merged = save_ide_models_cache(&info)?;

@@ -297,12 +297,12 @@ body {
   -webkit-app-region: drag;
   app-region: drag;
 }
-.topbar button, .topbar .tab-nav, .topbar .status-pill, .topbar .win-controls, .topbar .win-btn, .topbar .win-btn svg {
+.topbar button, .topbar .tab-nav, .topbar .status-pill, .topbar .win-controls, .topbar .win-btn, .topbar .win-btn svg, .ide-selector {
   -webkit-app-region: no-drag;
   app-region: no-drag;
 }
 
-.topbar-left { display: flex; align-items: center; justify-self: start; }
+.topbar-left { display: flex; align-items: center; justify-self: start; gap: 16px; }
 
 .brand {
   display: flex; align-items: center; gap: 10px;
@@ -477,40 +477,98 @@ html[data-theme="dark"] .icon-btn .moon-icon {
 .control-status { display: flex; align-items: center; gap: 14px; }
 .control-sub { font-size: 13px; color: var(--text-dim); }
 
-/* IDE 选择器 */
+/* 自定义 IDE 选择器 */
 .ide-selector {
   position: relative;
+  min-width: 105px;
+  user-select: none;
+}
+.custom-select-trigger {
   display: flex;
   align-items: center;
-  gap: 6px;
-}
-.ide-selector select {
-  appearance: none;
-  background: var(--bg-input);
+  justify-content: space-between;
+  background: var(--bg-card);
   border: 1px solid var(--border);
   border-radius: 6px;
-  padding: 6px 24px 6px 10px;
-  font-size: 11px;
+  padding: 5px 10px 5px 12px;
+  font-size: 12px;
   font-weight: 500;
-  font-family: var(--font-mono);
+  color: var(--text-primary);
+  cursor: pointer;
+  height: 28px;
+  box-sizing: border-box;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+}
+.custom-select-trigger:hover {
+  background: var(--bg-hover);
+  border-color: var(--text-muted);
+}
+.custom-select-trigger:focus, .ide-selector.open .custom-select-trigger {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-glow);
+}
+.custom-select-trigger .arrow-icon {
+  margin-left: 6px;
+  color: var(--text-muted);
+  transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.ide-selector.open .custom-select-trigger .arrow-icon {
+  transform: rotate(180deg);
+  color: var(--text-primary);
+}
+
+.custom-options-panel {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  background: var(--bg-card);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 3px;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.15), 0 8px 10px -6px rgba(0, 0, 0, 0.15);
+  z-index: 9999;
+  opacity: 0;
+  transform: translateY(-4px) scale(0.95);
+  pointer-events: none;
+  transition: opacity 0.15s ease, transform 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.ide-selector.open .custom-options-panel {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  pointer-events: auto;
+}
+
+.custom-option-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 10px;
+  font-size: 12px;
+  font-weight: 500;
+  border-radius: 5px;
   color: var(--text-primary);
   cursor: pointer;
   transition: all 0.15s ease;
 }
-.ide-selector select:hover {
+.custom-option-item:hover {
   background: var(--bg-hover);
-  border-color: var(--accent);
+  color: var(--accent);
 }
-.ide-selector select:focus {
-  outline: none;
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px var(--accent-glow);
+.custom-option-item.selected {
+  background: var(--accent-glow);
+  color: var(--accent);
 }
-.ide-selector-icon {
-  position: absolute;
-  right: 8px;
-  pointer-events: none;
-  color: var(--text-muted);
+.custom-option-item .check-mark {
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+.custom-option-item.selected .check-mark {
+  opacity: 1;
 }
 
 .control-bar .proxy-btn {
@@ -1561,6 +1619,35 @@ html[data-theme="dark"] .icon-btn .moon-icon {
       <div class="brand">
         <div class="brand-name">IDE BYOK</div>
       </div>
+      <!-- IDE 选择器 -->
+      <div class="ide-selector" id="customIdeSelector">
+        <div class="custom-select-trigger" onclick="toggleCustomSelector(event)">
+          <span id="customSelectedLabel">Windsurf</span>
+          <svg class="arrow-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="6 9 12 15 18 9"></polyline>
+          </svg>
+        </div>
+        <div class="custom-options-panel">
+          <div class="custom-option-item" data-value="windsurf" onclick="selectCustomOption('windsurf', 'Windsurf', event)">
+            <span>Windsurf</span>
+            <svg class="check-mark" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+          </div>
+          <div class="custom-option-item" data-value="devin" onclick="selectCustomOption('devin', 'Devin', event)">
+            <span>Devin</span>
+            <svg class="check-mark" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+          </div>
+          <div class="custom-option-item" data-value="auto" onclick="selectCustomOption('auto', '自动检测', event)">
+            <span>自动检测</span>
+            <svg class="check-mark" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+          </div>
+        </div>
+        <!-- 隐藏的原生 select 供已有 JS 数据流与 load_config / save_config 使用 -->
+        <select id="targetIde" onchange="onTargetIdeChange()" style="display: none !important;">
+          <option value="windsurf">Windsurf</option>
+          <option value="devin">Devin</option>
+          <option value="auto">自动检测</option>
+        </select>
+      </div>
     </div>
     <div class="tab-nav">
       <div class="tab-item active" data-page="dashboard">仪表盘</div>
@@ -1611,18 +1698,6 @@ html[data-theme="dark"] .icon-btn .moon-icon {
             <span class="status-dot"></span> 已停止
           </span>
           <span class="control-sub" id="controlSub">代理未运行 · 目标: Windsurf · 端口 :7450 / :7451</span>
-        </div>
-        
-        <!-- IDE 选择器 -->
-        <div class="ide-selector">
-          <select id="targetIde" onchange="onTargetIdeChange()">
-            <option value="windsurf">Windsurf</option>
-            <option value="devin">Devin</option>
-            <option value="auto">自动检测</option>
-          </select>
-          <svg class="ide-selector-icon" width="12" height="12" viewBox="0 0 24 24">
-            <polyline points="6 9 12 15 18 9"></polyline>
-          </svg>
         </div>
         
         <button class="proxy-btn" id="proxyBtn" onclick="toggleProxy()">
@@ -2488,6 +2563,64 @@ function getTargetIde() {
   return select ? select.value : 'windsurf';
 }
 
+function toggleCustomSelector(event) {
+  event.stopPropagation();
+  const container = document.getElementById('customIdeSelector');
+  if (container) {
+    container.classList.toggle('open');
+  }
+}
+
+function selectCustomOption(val, label, event) {
+  if (event) event.stopPropagation();
+  const select = document.getElementById('targetIde');
+  if (select) {
+    select.value = val;
+    // 触发原生 change 事件，让原本绑定的 onTargetIdeChange 完美执行
+    select.dispatchEvent(new Event('change'));
+  }
+  
+  // 关闭下拉面板
+  const container = document.getElementById('customIdeSelector');
+  if (container) {
+    container.classList.remove('open');
+  }
+  
+  // 同步高亮和触发器文案
+  syncCustomSelector();
+}
+
+function syncCustomSelector() {
+  const val = getTargetIde();
+  const labelMap = {
+    'windsurf': 'Windsurf',
+    'devin': 'Devin',
+    'auto': '自动检测'
+  };
+  
+  const labelEl = document.getElementById('customSelectedLabel');
+  if (labelEl) {
+    labelEl.textContent = labelMap[val] || val;
+  }
+  
+  const options = document.querySelectorAll('.custom-option-item');
+  options.forEach(item => {
+    if (item.getAttribute('data-value') === val) {
+      item.classList.add('selected');
+    } else {
+      item.classList.remove('selected');
+    }
+  });
+}
+
+// 监听全局点击事件，点击外部时收起下拉框
+window.addEventListener('click', () => {
+  const container = document.getElementById('customIdeSelector');
+  if (container) {
+    container.classList.remove('open');
+  }
+});
+
 async function onTargetIdeChange() {
   const ide = getTargetIde();
   
@@ -2518,6 +2651,9 @@ async function onTargetIdeChange() {
   setStatusPill(proxyRunning);
   const displayLabel = displayIde === 'auto' ? '自动检测' : displayIde.charAt(0).toUpperCase() + displayIde.slice(1);
   addLog('info', `目标 IDE 切换为: ${displayLabel}`);
+  
+  // 同步自定义下拉状态
+  syncCustomSelector();
 }
 
 function updateFlowIdeTarget(ide) {
@@ -4111,7 +4247,8 @@ async function refreshIdeModels() {
   const btn = document.getElementById('btn-refresh-models');
   try {
     if (btn) { btn.disabled = true; btn.querySelector('span') && (btn.querySelector('span').textContent = '拉取中...'); }
-    const info = await invoke('refresh_ide_models');
+    const target = getTargetIde();
+    const info = await invoke('refresh_ide_models', { target });
     ideModels = info.models || [];
     ideMeta = {
       source: 'api',
@@ -5174,6 +5311,8 @@ async function init() {
   } catch (e) {
     console.error('Failed to load target_ide:', e);
   }
+  // 同步初始化自定义选择器状态
+  syncCustomSelector();
 
   await loadProviders();
   await refreshStatus();
