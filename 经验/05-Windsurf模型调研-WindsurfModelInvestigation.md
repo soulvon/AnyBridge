@@ -825,3 +825,59 @@ model-map.json 槽位 supportsImages
 #### 备注
 
 未来若解锁的模型列表足够全（1:1 覆盖），可直接按真实模型能力逐一设置，体验最佳。当前先用槽位手动开关。
+
+---
+
+## 十四、隐藏 API ID 发现（2026-06-06 补充）
+
+### 14.1 问题
+
+之前从 `userStatusProtoBinaryBase64` 提取模型时，误将 field 3 当作 `api_id`，实际 field 3 是 `credit_multiplier`（float 类型）。导致旧模型（`MODEL_*` 枚举）被认为"没有原始 API ID"。
+
+### 14.2 发现
+
+**旧模型的 API ID 藏在 field 23 → sub-field 23**（ModelInfo 子消息）。
+
+| 路径 | 字段 | 说明 |
+|------|------|------|
+| field 22 | modelUid | 主 ID（新模型=API级ID，旧模型=MODEL_*枚举） |
+| field 23 → sub-field 23 | apiId | ★ 隐藏的 API 级 ID |
+| field 23 → sub-field 20 | sweApiId | SWE 模型的 API ID |
+| field 23 → sub-field 5 | tokenizer | 分词器名称 |
+| field 23 → sub-field 17 | modelUid | 重复 modelUid |
+| field 23 → sub-field 18 | serverUrl | 服务端 URL |
+
+### 14.3 验证数据
+
+从实例4 (`aade59d2ad77e57e`, `forbidut28@gmail.com`) 提取：
+
+| modelUid | label | 隐藏 API ID (f23.f23) |
+|----------|-------|----------------------|
+| MODEL_CLAUDE_4_5_OPUS | Claude Opus 4.5 | `claude-opus-4.5` |
+| MODEL_CLAUDE_4_5_OPUS_THINKING | Claude Opus 4.5 Thinking | `claude-opus-4.5` |
+| MODEL_PRIVATE_2 | Claude Sonnet 4.5 | `claude-sonnet-4.5` |
+| MODEL_PRIVATE_3 | Claude Sonnet 4.5 Thinking | `claude-sonnet-4.5` |
+| MODEL_CHAT_O3 | o3 | `o3` |
+| MODEL_CHAT_O3_HIGH | o3 High Reasoning | `o3` |
+| MODEL_GPT_5_2_* | GPT-5.2 系列 | `gpt-5.2` |
+| MODEL_SWE_1_5_SLOW | SWE-1.5 | `swe-1p5` (f23.f20) |
+| MODEL_SWE_1_5 | SWE-1.5 Fast | `swe-1p5` (f23.f20) |
+
+### 14.4 完整提取结果
+
+- **132 个模型**，**114 个有 API ID**（86%）
+- 71 个新模型：field 22 直接就是 API 级 ID
+- 43 个旧模型：通过隐藏的 f23.f23/f23.f20 获取 API ID
+- 18 个没有 API ID：4 BYOK（跳过）+ 14 旧模型（需手动映射）
+
+完整数据：`scripts/inst4_models_full.json`
+
+### 14.5 对模型解锁的影响
+
+解锁劫持时，sidecar 需要知道模型的**原始 API ID** 才能正确路由到 BYOK 服务商。之前只有 `MODEL_*` 枚举 ID，现在可以从 protobuf 中提取隐藏的 API ID，大幅提高映射覆盖率。
+
+**apiId 提取优先级**：
+1. field 22 不以 `MODEL_` 开头 → 直接用（新模型）
+2. field 23 → sub-field 23 存在 → 用隐藏 API ID（旧模型）
+3. field 23 → sub-field 20 存在 → 用 SWE API ID
+4. 都没有 → `builtin_models()` 手动映射兜底

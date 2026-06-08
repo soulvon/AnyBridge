@@ -1,15 +1,18 @@
 // provider-pool.js — 读取 providers.json（全部供应商）+ model-map.json（槽位表），
 // 为路由层提供:按 modelUid 查槽位、按 providerId 解析连接信息。
 //
-// 取代旧的「load-env 挑激活供应商写 env」方案:sidecar 直接读两份 JSON，
-// 按槽位 targets 做故障转移，不再有「激活」概念。
+// 性能优化：底层走 config-cache.js，进程内缓存 + mtime 失效，
+// 高并发不再每次 readFileSync。
 
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
+import { getProviders, getSlots, markProvidersDirty } from './config-cache.js';
 
 function configDir() {
   if (process.env.BYOK_CONFIG_DIR) return process.env.BYOK_CONFIG_DIR;
+  if (process.platform === 'darwin') return path.join(os.homedir(), 'Library', 'Application Support', 'ide-byok');
+  if (process.platform === 'linux') return path.join(os.homedir(), '.config', 'ide-byok');
   return path.join(os.homedir(), 'AppData', 'Roaming', 'ide-byok');
 }
 
@@ -35,32 +38,42 @@ function writeJsonAtomic(file, data) {
   fs.renameSync(tmp, file);
 }
 
-// 热加载:每次请求读最新文件（GUI 改了配置无需重启 sidecar）。配置文件很小，开销可忽略。
-function loadProviders() {
-  const store = readJson(providersPath());
-  const list = (store && Array.isArray(store.providers)) ? store.providers : [];
-  const map = new Map();
-  for (const p of list) map.set(p.id, p);
-  return map;
-}
-
-function loadSlots() {
-  const m = readJson(path.join(configDir(), 'model-map.json'));
-  const slots = (m && Array.isArray(m.slots)) ? m.slots : [];
-  const map = new Map();
-  for (const s of slots) map.set(s.modelUid, s);
-  return map;
+// 兼容旧 API：每次直接返回缓存的 providers Map（config-cache 已处理 mtime）。
+export function loadProviders() {
+  return getProviders();
 }
 
 // 返回该 modelUid 对应的槽位（启用且有 targets 才算可劫持），否则 null。
 export function getSlot(modelUid) {
   if (!modelUid) return null;
-  const slot = loadSlots().get(modelUid);
+  const entry = getSlots().get(modelUid);
+  if (!entry || entry.kind !== 'slot') return null;
+  const slot = entry.data;
   if (!slot || slot.enabled === false) return null;
   return slot;
 }
 
+// 返回该 modelUid 对应的注入项（任意时刻都返回，未配置也返回供 chat.js 报"未配置"），否则 null。
+// kind: 'unconfigured'（已注入但没配 providerId/model）/ 'configured'（可用）
+export function getInjectedByUid(modelUid) {
+  if (!modelUid) return null;
+  const entry = getSlots().get(modelUid);
+  if (!entry || entry.kind !== 'injected') return null;
+  const inj = entry.data;
+  const hasProvider = inj.providerId && inj.providerId.length > 0;
+  const hasModel = inj.model && inj.model.trim().length > 0;
+  return {
+    label: inj.label,
+    modelUid: inj.modelUid,
+    providerId: hasProvider ? inj.providerId : null,
+    model: hasModel ? inj.model : null,
+    supportsImages: inj.supportsImages !== false,
+    status: (hasProvider && hasModel) ? 'configured' : 'unconfigured',
+  };
+}
+
 // 记忆某个供应商的工具 schema 兼容模式（写回 providers.json）
+// 写完后通过 markProvidersDirty 通知 cache 失效。
 export function rememberProviderToolSchemaCompat(providerId, mode = 'gemini') {
   try {
     const file = providersPath();
@@ -73,6 +86,7 @@ export function rememberProviderToolSchemaCompat(providerId, mode = 'gemini') {
     if (p.capabilities.toolSchemaCompat === mode) return false;
     p.capabilities.toolSchemaCompat = mode;
     writeJsonAtomic(file, store);
+    markProvidersDirty();
     return true;
   } catch (e) {
     console.warn(`[pool] remember tool schema compat failed: ${e.message}`);
@@ -93,11 +107,14 @@ export function resolveTarget(target, providers) {
   // 合并供应商级 + 模型级能力标记
   const supplierCaps = p.capabilities || {};
   const modelCaps = (p.modelCaps || {})[modelId] || {};
+  const hasModelVision = Object.prototype.hasOwnProperty.call(modelCaps, 'vision');
+  const hasModelTools = Object.prototype.hasOwnProperty.call(modelCaps, 'tools');
   const capabilities = {
     ...supplierCaps,
-    // 模型级覆盖供应商级（vision/tools 是模型能力）
-    vision: modelCaps.vision !== undefined ? modelCaps.vision : supplierCaps.vision,
-    tools: modelCaps.tools !== undefined ? modelCaps.tools : supplierCaps.tools,
+    // 模型级覆盖供应商级（vision/tools 是模型能力）。
+    // Provider 级 vision=false 可能来自小图探测误判，不能作为图片请求硬拦截依据。
+    vision: hasModelVision ? modelCaps.vision : true,
+    tools: hasModelTools ? modelCaps.tools : supplierCaps.tools,
   };
   return {
     providerId: p.id,
@@ -111,4 +128,60 @@ export function resolveTarget(target, providers) {
   };
 }
 
-export { loadProviders };
+// 自动更新模型能力标记（使用成功后自动标记）
+// hasVision/hasTools 表示本次请求是否包含图片/工具
+// 性能优化：合并 5s 内的多次标记为一次落盘，避免高频 IO。
+const pendingCapsWrites = new Map(); // key: providerId/modelId -> {vision, tools, timer}
+let capsFlushTimer = null;
+const CAPS_FLUSH_DELAY_MS = 5000;
+
+function scheduleFlushCaps() {
+  if (capsFlushTimer) return;
+  capsFlushTimer = setTimeout(() => {
+    capsFlushTimer = null;
+    const writes = Array.from(pendingCapsWrites.entries());
+    pendingCapsWrites.clear();
+    if (writes.length === 0) return;
+    try {
+      const file = providersPath();
+      const store = readJson(file) || { providers: [] };
+      if (!Array.isArray(store.providers)) return;
+      let anyChanged = false;
+      for (const [key, add] of writes) {
+        const [providerId, modelId] = key.split('|');
+        const idx = store.providers.findIndex(p => p && p.id === providerId);
+        if (idx < 0) continue;
+        const p = store.providers[idx];
+        p.modelCaps = p.modelCaps || {};
+        p.modelCaps[modelId] = p.modelCaps[modelId] || {};
+        if (add.vision && p.modelCaps[modelId].vision !== true) {
+          p.modelCaps[modelId].vision = true; anyChanged = true;
+        }
+        if (add.tools && p.modelCaps[modelId].tools !== true) {
+          p.modelCaps[modelId].tools = true; anyChanged = true;
+        }
+      }
+      if (anyChanged) {
+        writeJsonAtomic(file, store);
+        markProvidersDirty();
+        console.log(`[pool] 批量更新 ${writes.length} 个模型能力标记`);
+      }
+    } catch (e) {
+      console.warn(`[pool] batch update model capabilities failed: ${e.message}`);
+    }
+  }, CAPS_FLUSH_DELAY_MS);
+}
+
+export function updateModelCapabilities(providerId, modelId, hasVision, hasTools) {
+  if (!providerId || !modelId) return false;
+  const key = `${providerId}|${modelId}`;
+  const cur = pendingCapsWrites.get(key) || { vision: false, tools: false };
+  let changed = false;
+  if (hasVision) { cur.vision = true; changed = true; }
+  if (hasTools) { cur.tools = true; changed = true; }
+  if (changed) {
+    pendingCapsWrites.set(key, cur);
+    scheduleFlushCaps();
+  }
+  return changed;
+}

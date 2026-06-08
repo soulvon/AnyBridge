@@ -8,11 +8,21 @@ const PROXY_VALUE: &str = "http://localhost:7450";
 
 /// 根据目标 IDE 获取 settings.json 路径
 fn settings_path(target: &str) -> Option<PathBuf> {
-    let mut dir = dirs::config_dir()?;
     let ide_name = match target {
         "devin" => "Devin",
         _ => "Windsurf",
     };
+
+    // macOS: VSCode 系 IDE 的配置在 ~/Library/Application Support/{IDE}/User/settings.json
+    // dirs::config_dir() 在 macOS 返回 ~/Library/Preferences（错误），
+    // 需要用 dirs::data_dir() 返回 ~/Library/Application Support
+    #[cfg(target_os = "macos")]
+    let mut dir = dirs::data_dir()?;
+
+    // Windows/Linux: dirs::config_dir() 正确
+    #[cfg(not(target_os = "macos"))]
+    let mut dir = dirs::config_dir()?;
+
     dir.push(ide_name);
     dir.push("User");
     dir.push("settings.json");
@@ -35,7 +45,8 @@ fn parse_object(raw: &str) -> Result<Map<String, Value>, String> {
     if trimmed.is_empty() {
         return Ok(Map::new());
     }
-    let value: Value = json5::from_str(trimmed).map_err(|e| format!("settings.json 解析失败: {}", e))?;
+    let value: Value =
+        json5::from_str(trimmed).map_err(|e| format!("settings.json 解析失败: {}", e))?;
     match value {
         Value::Object(m) => Ok(m),
         _ => Err("settings.json 顶层不是对象".into()),
@@ -43,7 +54,8 @@ fn parse_object(raw: &str) -> Result<Map<String, Value>, String> {
 }
 
 fn write_object(path: &PathBuf, obj: &Map<String, Value>) -> Result<(), String> {
-    let json = serde_json::to_string_pretty(&Value::Object(obj.clone())).map_err(|e| e.to_string())?;
+    let json =
+        serde_json::to_string_pretty(&Value::Object(obj.clone())).map_err(|e| e.to_string())?;
     super::write_atomic(path, json.as_bytes())
 }
 
@@ -74,8 +86,8 @@ pub fn patch(target: &str) -> Result<bool, String> {
             let mut orig = obj.clone();
             orig.remove(PROXY_KEY);
             orig.remove(STRICT_SSL_KEY);
-            let orig_json = serde_json::to_string_pretty(&Value::Object(orig))
-                .map_err(|e| e.to_string())?;
+            let orig_json =
+                serde_json::to_string_pretty(&Value::Object(orig)).map_err(|e| e.to_string())?;
             super::write_atomic(&backup, orig_json.as_bytes())
                 .map_err(|e| format!("补建备份失败: {}", e))?;
         }

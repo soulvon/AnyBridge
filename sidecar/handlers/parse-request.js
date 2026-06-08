@@ -23,6 +23,7 @@ import { unwrapRequest } from '../connect.js';
 
 const SYSTEM_PROMPT_OVERRIDE = process.env.SYSTEM_PROMPT_OVERRIDE === 'true';
 const SYSTEM_PROMPT_PATH     = process.env.SYSTEM_PROMPT_PATH || '';
+const DEBUG_IMAGES = /^(true|1|on)$/i.test(String(process.env.BYOK_DEBUG_IMAGES || 'false'));
 
 let _promptCache = { content: '', mtime: 0, path: '' };
 
@@ -423,21 +424,43 @@ export function parseGetChatMessageRequest(body, headers) {
   const protoBuf = unwrapRequest(body, headers);
   const fields   = parseFields(protoBuf);
 
-  // DEBUG: dump all field numbers and types (find user/agent distinction)
-  const knownFields = new Set([1, 2, 3, 10, 12, 21]);
-  const unknownFields = fields.filter(f => !knownFields.has(f.field));
-  if (unknownFields.length > 0) {
-    console.log(`  🔍 GetChatMessage unknown fields:`);
-    for (const f of unknownFields) {
-      if (f.wireType === 0) console.log(`    field ${f.field} (varint): ${f.value}`);
-      else if (f.wireType === 2) {
-        const str = f.value.toString('utf8');
-        const isPrintable = /^[\x20-\x7e\n\r\t]+$/.test(str.slice(0, 50));
-        console.log(`    field ${f.field} (bytes/${f.value.length}b): ${isPrintable ? str.slice(0, 120) : '[binary ' + f.value.toString('hex').slice(0, 40) + ']'}`);
+  if (DEBUG_IMAGES) {
+    // [DEBUG-IMG] dump field 3 (chat_message_prompts / chat_messages) 的子字段
+    const msgFields3 = getAllFields(fields, 3);
+    for (let mi = 0; mi < msgFields3.length; mi++) {
+      try {
+        const subFields = parseFields(msgFields3[mi].value);
+        const subFieldNums = [...new Set(subFields.map(f => f.field))].sort((a,b) => a-b);
+        const hasField10 = subFields.some(f => f.field === 10);
+        const field10Size = hasField10 ? subFields.filter(f => f.field === 10).reduce((s, f) => s + f.value.length, 0) : 0;
+        const sourceField = subFields.find(f => f.field === 2);
+        const source = sourceField ? sourceField.value : '?';
+        console.log(`  [DEBUG-IMG] msg[${mi}] source=${source} sub_fields=[${subFieldNums}] has_images_field10=${hasField10} field10_total_size=${field10Size}`);
+        if (hasField10) {
+          const imgFields10 = subFields.filter(f => f.field === 10);
+          for (let ii = 0; ii < imgFields10.length; ii++) {
+            try {
+              const imgSubFields = parseFields(imgFields10[ii].value);
+              const imgSubNums = [...new Set(imgSubFields.map(f => f.field))].sort((a,b) => a-b);
+              const b64Field = imgSubFields.find(f => f.field === 1);
+              const mimeField = imgSubFields.find(f => f.field === 2);
+              console.log(`    [DEBUG-IMG] img[${ii}] sub_fields=[${imgSubNums}] b64_len=${b64Field ? b64Field.value.length : 0} mime=${mimeField ? mimeField.value.toString('utf8') : '?'}`);
+            } catch(e) {
+              console.log(`    [DEBUG-IMG] img[${ii}] parse err: ${e.message}`);
+            }
+          }
+        }
+        const knownSubFields = new Set([1, 2, 3, 4, 6, 7, 9, 10, 11, 12]);
+        const unknownSub = subFields.filter(f => !knownSubFields.has(f.field));
+        if (unknownSub.length > 0) {
+          console.log(`    [DEBUG-IMG] unknown sub-fields: ${unknownSub.map(f => `${f.field}(wt${f.wireType})`).join(', ')}`);
+        }
+      } catch(e) {
+        console.log(`  [DEBUG-IMG] msg[${mi}] parse err: ${e.message}`);
       }
-      else console.log(`    field ${f.field} (wire ${f.wireType}): ${f.value?.toString?.('hex')?.slice(0, 40)}`);
     }
   }
+
   // field 2 = top-level system prompt string
   const systemField = getField(fields, 2, 2);
   let systemPrompt  = systemField ? systemField.value.toString('utf8') : '';

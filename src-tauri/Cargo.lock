@@ -1529,21 +1529,25 @@ checksum = "3d3067d79b975e8844ca9eb072e16b31c3c1c36928edf9c6789548c524d0d954"
 
 [[package]]
 name = "ide-byok"
-version = "1.1.4"
+version = "1.2.4"
 dependencies = [
  "dirs 5.0.1",
  "flate2",
+ "hex",
  "json5",
+ "libc",
  "rcgen",
  "regex",
  "reqwest 0.12.28",
  "serde",
  "serde_json",
+ "sha2",
  "tauri",
  "tauri-build",
  "tauri-plugin-shell",
  "tauri-plugin-updater",
  "tokio",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]

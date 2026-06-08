@@ -12,14 +12,29 @@ import net from 'node:net';
 import tls from 'node:tls';
 import fs from 'node:fs';
 import path from 'node:path';
+import os from 'node:os';
+import crypto from 'node:crypto';
 import { listenWithReclaim } from './port-utils.js';
 import { handleGetChatMessage, shouldIntercept } from './handlers/chat.js';
-import { parseFields, writeStringField, writeBytesField } from './proto.js';
+import { parseFields, writeStringField, writeBytesField, writeVarintField } from './proto.js';
 import { tryGunzip } from './connect.js';
 import { snapshot } from './stats.js';
-import { renameModels, extractModelList, unlockModels } from './rename-models.js';
+import { extractModelList, unlockModels } from './rename-models.js';
+import { mitmLog } from './mitm-logger.js';
 
-const PORT = parseInt(process.env.API_PORT || '7450', 10);
+function intEnv(name, fallback, min = 1) {
+  const n = parseInt(process.env[name] || '', 10);
+  return Number.isFinite(n) && n >= min ? n : fallback;
+}
+
+const PORT = intEnv('API_PORT', 7450, 1);
+const DEBUG_IMAGES = /^(true|1|on)$/i.test(String(process.env.BYOK_DEBUG_IMAGES || 'false'));
+const PROXY_HTTPS_AGENT = new https.Agent({
+  keepAlive: true,
+  keepAliveMsecs: 30_000,
+  maxSockets: intEnv('BYOK_PROXY_MAX_SOCKETS', 64, 1),
+  maxFreeSockets: intEnv('BYOK_PROXY_MAX_FREE_SOCKETS', 16, 1),
+});
 
 // 遥测屏蔽：这些 gRPC 方法直接返回空 200 响应，不转发到服务端。
 // 保护隐私，避免 BYOK 使用行为暴露。
@@ -59,6 +74,46 @@ try {
 }
 
 let requestCounter = 0;
+
+// MITM 连接的上游主机映射：记录每个 TLS socket 对应的原始 CONNECT 目标。
+// Devin 连 server.codeium.com，Windsurf 连 server.self-serve.windsurf.com，
+// 代理需要转发到各自的真实上游，不能一律发到 windsurf.com。
+const mitmUpstreamHost = new WeakMap();
+
+// 高频 GetUserStatus 去重：每 10s 至少只写一次 ide-models.json，
+// 每 5s 至少只打一次相关日志。避免每秒 8-10 次心跳把磁盘 IO 打满。
+let lastModelListSig = '';
+let lastModelListCapturedAt = 0;
+let lastModelCaptureLogAt = 0;
+let lastModelRewriteLogAt = 0;
+// unlockModels 结果缓存：同一秒内输入相同 → 复用上次结果
+let lastUnlockInputSig = '';
+let lastUnlockResult = null;
+
+function hashModelList(list) {
+  // 短签名：modelUid + label。够用——下游关心的是"清单是否变化"。
+  try {
+    const h = crypto.createHash('sha1');
+    for (const m of list) h.update(`${m.modelUid || ''}|${m.label || ''}\n`);
+    return h.digest('hex').slice(0, 16);
+  } catch {
+    return String(Date.now());
+  }
+}
+
+function rewriteConfigSignature() {
+  const dir = process.env.BYOK_CONFIG_DIR || path.join(os.homedir(), 'AppData', 'Roaming', 'ide-byok');
+  return ['model-map.json', 'providers.json', 'ide-models.json']
+    .map((name) => {
+      try {
+        const s = fs.statSync(path.join(dir, name));
+        return `${name}:${s.mtimeMs}:${s.size}`;
+      } catch {
+        return `${name}:missing`;
+      }
+    })
+    .join('|');
+}
 
 // ─── Helpers ──────────────────────────────────────────────
 
@@ -134,6 +189,43 @@ function rewriteRegisterUser(protoBuf) {
 
 // ─── Streaming RPCs that need to be piped through ─────────
 
+// ─── Rate limit bypass: 伪造限速检查响应 ──
+// 两个限速检查 API 都需要劫持：
+//
+// 1. CheckUserMessageRateLimitResponse (exa.api_server_pb)
+//    Proto 结构（逆向自 Devin 扩展 proto3 定义）：
+//      field 1: hasCapacity (bool)
+//      field 2: message (string)
+//      field 3: messagesRemaining (int32)
+//      field 4: maxMessages (int32)
+//      field 5: resetsInSeconds (int64)
+//
+// 2. CheckChatCapacityResponse (exa.language_server_pb)
+//    Proto 结构：
+//      field 1: has_capacity (bool)
+//      field 2: message (string)
+//      field 3: active_sessions (int32)
+//
+// BYOK 模式下用自己的 API，不走 Codeium 配额，所以直接返回 hasCapacity=true。
+// Proto3 默认值不编码（false/0/"" 不序列化），所以只编码非零字段即可。
+function buildRateLimitOkResponse(method) {
+  // hasCapacity = true → field 1, wire type 0 (varint), value = 1
+  const hasCapacity = writeVarintField(1, 1);
+  if (method === 'CheckChatCapacity') {
+    // activeSessions = 0 → proto3 默认值不编码
+    return Buffer.concat([hasCapacity]);
+  }
+  // CheckUserMessageRateLimit: 加上 messagesRemaining 和 maxMessages
+  // messagesRemaining = 9999 → field 3, wire type 0 (varint)
+  const messagesRemaining = writeVarintField(3, 9999);
+  // maxMessages = 9999 → field 4, wire type 0 (varint)
+  const maxMessages = writeVarintField(4, 9999);
+  return Buffer.concat([hasCapacity, messagesRemaining, maxMessages]);
+}
+
+// 需要劫持的限速检查方法集合
+const RATE_LIMIT_METHODS = new Set(['CheckUserMessageRateLimit', 'CheckChatCapacity']);
+
 const STREAMING_METHODS = new Set([
   'GetStreamingCompletions',
   'GetStreamingExternalChatCompletions',
@@ -143,7 +235,9 @@ const STREAMING_METHODS = new Set([
 
 function proxyToCodeium(req, res, body, id, opts = {}) {
   const method = getRpcMethod(req.url);
-  const upstream = getUpstreamHost(req.url);
+  // MITM 模式下优先使用 socket 记录的上游主机（Devin: server.codeium.com, Windsurf: server.self-serve.windsurf.com）
+  const socketUpstream = req.socket && mitmUpstreamHost.get(req.socket);
+  const upstream = opts.upstream || socketUpstream || getUpstreamHost(req.url);
   const upstreamPath = stripRoutePrefix(req.url);
   const isStreaming = STREAMING_METHODS.has(method);
 
@@ -154,6 +248,7 @@ function proxyToCodeium(req, res, body, id, opts = {}) {
   fwdHeaders.host = upstream;
 
   const proxyReq = https.request({
+    agent: PROXY_HTTPS_AGENT,
     hostname: upstream,
     port: 443,
     path: upstreamPath,
@@ -164,9 +259,19 @@ function proxyToCodeium(req, res, body, id, opts = {}) {
     if (isStreaming) {
       // Pipe streaming responses through
       console.log(`  [#${id}] ← ${proxyRes.statusCode} (streaming ${method})`);
+      // MITM 日志：GetChatMessage 透传到 Codeium 时记录
+      if (method === 'GetChatMessage') {
+        mitmLog({ direction: 'upstream', providerName: 'Codeium(透传)', model: '(未拦截)', format: 'connect-grpc', request: { method, url: `https://${upstream}${upstreamPath}` } });
+      }
       res.writeHead(proxyRes.statusCode, { ...proxyRes.headers });
       proxyRes.pipe(res);
       proxyRes.on('error', () => { if (!res.writableEnded) res.end(); });
+      // 透传的 GetChatMessage 响应日志
+      if (method === 'GetChatMessage') {
+        proxyRes.on('end', () => {
+          mitmLog({ direction: 'downstream', providerName: 'Codeium(透传)', model: '(未拦截)', format: 'connect-grpc', request: { method, url: `https://${upstream}${upstreamPath}` }, response: { statusCode: proxyRes.statusCode } });
+        });
+      }
     } else {
       // Buffer unary responses
       const chunks = [];
@@ -174,6 +279,11 @@ function proxyToCodeium(req, res, body, id, opts = {}) {
       proxyRes.on('end', () => {
         let resBody = Buffer.concat(chunks);
         console.log(`  [#${id}] ← ${proxyRes.statusCode} (${resBody.length}b)`);
+        // MITM 日志：GetChatMessage 透传（非流式分支）
+        if (method === 'GetChatMessage') {
+          mitmLog({ direction: 'upstream', providerName: 'Codeium(透传)', model: '(未拦截)', format: 'connect-grpc', request: { method, url: `https://${upstream}${upstreamPath}` } });
+          mitmLog({ direction: 'downstream', providerName: 'Codeium(透传)', model: '(未拦截)', format: 'connect-grpc', request: { method, url: `https://${upstream}${upstreamPath}` }, response: { statusCode: proxyRes.statusCode, body: resBody.length <= 4096 ? resBody.toString('utf8') : `[${resBody.length}b]` } });
+        }
 
         // Rewrite RegisterUser to keep extension pointed at us (HTTP mode only)
         if (!opts.skipRewrite && method === 'RegisterUser' && proxyRes.statusCode === 200 && resBody.length > 5) {
@@ -199,44 +309,61 @@ function proxyToCodeium(req, res, body, id, opts = {}) {
           }
         }
 
-        // 改写 GetUserStatus 响应里的模型显示名（下拉框 label）。
+        // 改写 GetUserStatus 响应（合并三件事：label 改名 + 注入项 + 全部解锁）。
+        // 阶段 4 改造后，unlockModels 一次性完成以下职责：
+        //   - 槽位改名（model-map.json 的 slots.displayName + namePrefix）
+        //   - 注入项（model-map.json 的 injected）→ label 改写为 "(BYOK) {label} (服务商/未配置)" + 解锁
+        //   - 全部解锁（删 field4 disabled = true）让下拉框灰色项可点
+        // 调用方仅需一次，替代之前 renameModels + unlockModels 两次调用。
         let stripEncoding = false;
         if (method === 'GetUserStatus' && proxyRes.statusCode === 200) {
           // 抓取原始模型清单(改名前)→ 缓存供 GUI 添加映射时选用。
+          // 性能优化：每秒 8-10 次心跳 → 节流到 30s 一次 + 签名比对
+          // 注意：unlockModels 仍然每次都做（必须做，下拉框要看到 BYOK 项）
+          const shouldCapture = (Date.now() - lastModelListCapturedAt) > 30000;
+          if (shouldCapture) {
+            try {
+              const list = extractModelList(resBody);
+              if (list && list.length) {
+                const dir = process.env.BYOK_CONFIG_DIR;
+                if (dir) {
+                  const file = path.join(dir, 'ide-models.json');
+                  const sig = hashModelList(list);
+                  if (sig !== lastModelListSig) {
+                    lastModelListSig = sig;
+                    fs.writeFileSync(file, JSON.stringify({ capturedAt: Date.now(), models: list }, null, 2));
+                    console.log(`  [#${id}] 📋 captured ${list.length} Windsurf models → ide-models.json`);
+                  }
+                }
+              }
+              lastModelListCapturedAt = Date.now();
+            } catch (e) {
+              console.error(`  [#${id}] capture models error: ${e.message}`);
+            }
+          }
           try {
-            const list = extractModelList(resBody);
-            if (list && list.length) {
-              const dir = process.env.BYOK_CONFIG_DIR;
-              if (dir) {
-                const file = path.join(dir, 'ide-models.json');
-                fs.writeFileSync(file, JSON.stringify({ capturedAt: Date.now(), models: list }, null, 2));
-                console.log(`  [#${id}] 📋 captured ${list.length} Windsurf models → ide-models.json`);
+            // 节流：unlockModels 是个 protobuf 完整改写。每秒 8-10 次心跳 → 1s 内只跑一次
+            // 用 resBody 的 sha1 短路——同一秒内上游响应没变，直接复用上次结果
+            const inputSig = `${crypto.createHash('sha1').update(resBody).digest('hex').slice(0, 16)}|${rewriteConfigSignature()}`;
+            if (inputSig === lastUnlockInputSig && lastUnlockResult) {
+              resBody = lastUnlockResult.body;
+              if (lastUnlockResult.wasConnect) stripEncoding = true;
+            } else {
+              const result = unlockModels(resBody);
+              if (result) {
+                resBody = result.body;
+                if (result.wasConnect) stripEncoding = true;
+                lastUnlockResult = result;
+                lastUnlockInputSig = inputSig;
+                // 5s 内只打一次 rewrite 日志
+                if (Date.now() - lastModelRewriteLogAt > 5000) {
+                  console.log(`  [#${id}] 🔄 rewrote ${result.changed} model(s) (rename+unlock+inject)`);
+                  lastModelRewriteLogAt = Date.now();
+                }
               }
             }
           } catch (e) {
-            console.error(`  [#${id}] capture models error: ${e.message}`);
-          }
-          try {
-            const renamed = renameModels(resBody);
-            if (renamed) {
-              resBody = renamed.body;
-              // Connect 帧被改成未压缩帧时清压缩头；gzip/plain 保持原编码。
-              if (renamed.wasConnect) stripEncoding = true;
-              console.log(`  [#${id}] 🏷️  renamed ${renamed.changed} model label(s)`);
-            }
-          } catch (e) {
-            console.error(`  [#${id}] rename models error: ${e.message}`);
-          }
-          // 模型解锁：将 BYOK 槽位模型的 disabled=true 改为 disabled=false。
-          try {
-            const unlocked = unlockModels(resBody);
-            if (unlocked) {
-              resBody = unlocked.body;
-              if (unlocked.wasConnect) stripEncoding = true;
-              console.log(`  [#${id}] 🔓 unlocked ${unlocked.changed} model(s)`);
-            }
-          } catch (e) {
-            console.error(`  [#${id}] unlock models error: ${e.message}`);
+            console.error(`  [#${id}] rewrite models error: ${e.message}`);
           }
         }
 
@@ -294,17 +421,25 @@ function handleRequest(req, res) {
   req.on('end', () => {
     const body = Buffer.concat(chunks);
 
+    // 仅浏览器网页导航 (GET + Accept: text/html) 才做 302 跳转。
+    // gRPC/Connect 调用是 POST + proto/connect，绝不满足，必须透传到 Codeium——
+    // 否则刷新额度 / 切换账号等请求会被 302 误伤而失败。
+    const accept = req.headers['accept'] || '';
+    const isBrowserNav = req.method === 'GET' && accept.includes('text/html');
+
     // ── Web/OAuth redirects → real Windsurf servers ──
-    if (req.url.startsWith('/profile') || req.url.startsWith('/login') ||
+    if (isBrowserNav && (
+        req.url.startsWith('/profile') || req.url.startsWith('/login') ||
         req.url.startsWith('/signup') || req.url.startsWith('/redirect/') ||
-        req.url.startsWith('/changelog') || req.url === '/favicon.ico') {
+        req.url.startsWith('/changelog') || req.url === '/favicon.ico')) {
       console.log(`[${now()}] #${id} → redirect ${req.url}`);
       res.writeHead(302, { location: `https://${REAL_WEBSITE}${req.url}` });
       return res.end();
     }
 
-    if (req.url.includes('prompt=login') || req.url.includes('scope=openid') ||
-        req.url.includes('authorize') || req.url.includes('client_id=codeium')) {
+    if (isBrowserNav && (
+        req.url.includes('prompt=login') || req.url.includes('scope=openid') ||
+        req.url.includes('authorize') || req.url.includes('client_id=codeium'))) {
       console.log(`[${now()}] #${id} → auth redirect`);
       res.writeHead(302, { location: `https://${REAL_REGISTER_HOST}${req.url}` });
       return res.end();
@@ -318,11 +453,62 @@ function handleRequest(req, res) {
       return;
     }
 
+    // ── Rate limit bypass: CheckUserMessageRateLimit → 伪造无限速响应 ──
+    // BYOK 模式下用自己的 API Key，不走 Codeium 配额，但客户端发消息前会先调限速检查 API。
+    // 如果透传到 Codeium 服务端，可能返回"限速"导致消息回弹（根本不调 GetChatMessage）。
+    // 所以直接伪造"无限速"响应，让客户端放行消息发送。
+    if (RATE_LIMIT_METHODS.has(method)) {
+      console.log(`[${now()}] #${id} 🔓 ${method} → bypass (unlimited)`);
+      const protoBody = buildRateLimitOkResponse(method);
+      const frame = Buffer.alloc(5 + protoBody.length);
+      frame[0] = 0; // flags
+      frame.writeUInt32BE(protoBody.length, 1);
+      protoBody.copy(frame, 5);
+      res.writeHead(200, {
+        'content-type': 'application/proto',
+        'content-length': frame.length,
+      });
+      res.end(frame);
+      return;
+    }
+
     // ── Intercept: GetChatMessage → Anthropic API ──
     // TODO: GetWebSearchResults / GetWebSearchRedirect — currently forwarded to
     // Codeium, but can be intercepted here to route through own search API.
     if (method === 'GetChatMessage' && shouldIntercept(body, req.headers)) {
       console.log(`[${now()}] #${id} ⚡ GetChatMessage → Anthropic API (${body.length}b)`);
+      if (DEBUG_IMAGES) {
+        try {
+          const dumpDir = path.join(os.homedir(), 'AppData', 'Roaming', 'ide-byok', 'debug-dumps');
+          fs.mkdirSync(dumpDir, { recursive: true });
+          const dumpPath = path.join(dumpDir, `getchat-${Date.now()}.bin`);
+          fs.writeFileSync(dumpPath, body);
+          console.log(`  [DEBUG-DUMP] raw body saved to ${dumpPath} (${body.length}b)`);
+        } catch(e) {
+          console.log(`  [DEBUG-DUMP] err: ${e.message}`);
+        }
+        try {
+          const bodyStr = body.toString('latin1');
+          const matches = [...bodyStr.matchAll(/base64_data[\x00-\xff]{0,5}([A-Za-z0-9+\/=]{50,})/g)];
+          for (const m of matches) {
+            const b64 = m[1];
+            const buf = Buffer.from(b64.slice(0, 100), 'base64');
+            let sizeStr = '';
+            if (buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e) {
+              const w = buf.readUInt32BE(16), h = buf.readUInt32BE(20);
+              sizeStr = `PNG ${w}x${h}`;
+            } else if (buf[0] === 0xff && buf[1] === 0xd8) {
+              sizeStr = 'JPEG (parse skipped)';
+            } else {
+              sizeStr = 'unknown format head=' + Array.from(buf.slice(0,4)).map(x=>x.toString(16)).join('');
+            }
+            console.log(`  [DEBUG-RAW-IMG] ${sizeStr} b64_len=${b64.length} decoded~=${Math.floor(b64.length*0.75)}b`);
+          }
+          if (matches.length === 0) console.log(`  [DEBUG-RAW-IMG] no base64_data in raw body`);
+        } catch (e) {
+          console.log(`  [DEBUG-RAW-IMG] scan err: ${e.message}`);
+        }
+      }
       try {
         const result = handleGetChatMessage(req, res, body);
         if (result && typeof result.catch === 'function') {
@@ -341,7 +527,11 @@ function handleRequest(req, res) {
     }
 
     // ── Everything else → forward to real Codeium ──
-    console.log(`[${now()}] #${id} → ${method || req.url.slice(0, 80)} (${body.length}b) → Codeium`);
+    if (method === 'GetUserStatus') {
+      statusLog.sample(id, method, body.length);
+    } else {
+      console.log(`[${now()}] #${id} → ${method || req.url.slice(0, 80)} (${body.length}b) → Codeium`);
+    }
     proxyToCodeium(req, res, body, id);
   });
 }
@@ -376,6 +566,22 @@ const mitmServer = http.createServer((req, res) => {
       return;
     }
 
+    // ── Rate limit bypass: 伪造无限速响应 ──
+    if (RATE_LIMIT_METHODS.has(method)) {
+      console.log(`[${now()}] #${id} 🔓 MITM ${method} → bypass (unlimited)`);
+      const protoBody = buildRateLimitOkResponse(method);
+      const frame = Buffer.alloc(5 + protoBody.length);
+      frame[0] = 0;
+      frame.writeUInt32BE(protoBody.length, 1);
+      protoBody.copy(frame, 5);
+      res.writeHead(200, {
+        'content-type': 'application/proto',
+        'content-length': frame.length,
+      });
+      res.end(frame);
+      return;
+    }
+
     // ── THE INTERCEPTION: GetChatMessage → Anthropic API ──
     if (method === 'GetChatMessage' && shouldIntercept(body, req.headers)) {
       console.log(`[${now()}] #${id} ⚡ MITM GetChatMessage → Anthropic (${body.length}b)`);
@@ -397,10 +603,31 @@ const mitmServer = http.createServer((req, res) => {
     }
 
     // ── Everything else → forward to real Codeium (skip RegisterUser rewrite) ──
-    console.log(`[${now()}] #${id} → MITM ${method || req.url.slice(0, 80)} (${body.length}b) → Codeium`);
+    // 高频心跳 GetUserStatus 不刷日志：每秒 8-10 条 → 仅每 N 条采样一次
+    if (method === 'GetUserStatus') {
+      statusLog.sample(id, method, body.length);
+    } else {
+      console.log(`[${now()}] #${id} → MITM ${method || req.url.slice(0, 80)} (${body.length}b) → Codeium`);
+    }
     proxyToCodeium(req, res, body, id, { skipRewrite: true });
   });
 });
+
+// 高频请求日志采样：避免每秒 10+ 条 GetUserStatus 把日志洪流。
+// 策略：每 5s 内最多打印 1 条。
+const statusLog = {
+  lastPrintAt: 0,
+  count: 0,
+  sample(id, method, size) {
+    this.count++;
+    const now = Date.now();
+    if (now - this.lastPrintAt >= 5000) {
+      console.log(`[${new Date().toISOString().slice(11, 23)}] #${id} → MITM ${method} (${size}b) → Codeium [过去 5s 共 ${this.count} 次心跳]`);
+      this.lastPrintAt = now;
+      this.count = 0;
+    }
+  },
+};
 
 // ─── CONNECT tunnel handler ───────────────────────────────
 // Two modes:
@@ -412,8 +639,9 @@ server.on('connect', (req, clientSocket, head) => {
   const [host, port] = req.url.split(':');
   const targetPort = parseInt(port) || 443;
 
-  // ── MITM for server.codeium.com (only if certs loaded) ──
-  if (host === REAL_API_HOST && MITM_CERT && MITM_KEY) {
+  // ── MITM for API hosts (Windsurf: server.self-serve.windsurf.com, Devin: server.codeium.com)
+  const MITM_HOSTS = new Set([REAL_API_HOST, 'server.codeium.com']);
+  if (MITM_HOSTS.has(host) && MITM_CERT && MITM_KEY) {
     console.log(`[${now()}] #${id} 🔓 MITM ${host}:${targetPort}`);
 
     // Tell client the tunnel is open
@@ -450,6 +678,8 @@ server.on('connect', (req, clientSocket, head) => {
     });
 
     // Feed the decrypted connection into our internal HTTP server
+    // 记录此 socket 的上游主机，MITM 内部服务器转发时需要知道原始目标
+    mitmUpstreamHost.set(tlsSocket, host);
     mitmServer.emit('connection', tlsSocket);
     return;
   }

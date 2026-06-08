@@ -9,19 +9,26 @@ certs/*.pem
 
 # 抓包/调试落盘(可能含账户数据)
 _dbg_*
+scripts/archive-temp/
+scripts/data/_real_*
+scripts/data/*request*.json
 *.byok-tmp
 *.byok-bak
 *.byok-origin
+src-tauri/$null
 
 # Rust build artifacts
 src-tauri/target/
 
 # IDE / caches
 .claude/
+.agent/
+.playwright-mcp/
 .vscode/
 .codebuddy/
 
 # Sidecar build & runtime files
+sidecar-build/
 sidecar/*.exe
 sidecar/certs/*
 !sidecar/certs/.gitkeep

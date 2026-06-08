@@ -1,10 +1,12 @@
 pub mod config;
+pub mod eval;
+pub mod ide_config;
+pub mod ide_models;
 pub mod model_map;
 pub mod proxy;
 pub mod system;
 pub mod update;
-pub mod ide_config;
-pub mod ide_models;
+pub mod windsurf_catalog;
 pub mod workbench_inject;
 
 use std::path::Path;

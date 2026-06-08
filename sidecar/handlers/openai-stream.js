@@ -204,6 +204,8 @@ export class OpenAIStreamProcessor {
   _onDone() {
     if (this._done) return [];
     const chunks = [];
+    let validToolCallCount = 0;
+    let droppedInvalidToolCall = false;
 
     // Flush accumulated tool calls
     const toolIndices = Object.keys(this._toolCalls);
@@ -214,11 +216,26 @@ export class OpenAIStreamProcessor {
           id: this._toolCalls[idx].id,
           name: this._toolCalls[idx].name,
           arguments_json: this._toolCalls[idx].arguments,
-        }));
-      chunks.push(buildToolCallDelta(this._messageId, calls));
+        }))
+        .filter(tc => {
+          if (!tc.arguments_json) return true;
+          try {
+            JSON.parse(tc.arguments_json);
+            return true;
+          } catch {
+            droppedInvalidToolCall = true;
+            console.warn(`  ⚠️  Drop incomplete tool call ${tc.name || tc.id || '(unknown)'}: invalid JSON arguments (${tc.arguments_json.length} chars)`);
+            return false;
+          }
+        });
+      validToolCallCount = calls.length;
+      if (calls.length > 0) {
+        chunks.push(buildToolCallDelta(this._messageId, calls));
+      }
     }
 
-    const protoStopReason = this._mapStopReason(this._stopReason);
+    const stopReason = droppedInvalidToolCall && validToolCallCount === 0 ? 'length' : this._stopReason;
+    const protoStopReason = this._mapStopReason(stopReason);
     chunks.push(buildStopChunk(this._messageId, protoStopReason, this._modelUid));
     this._done = true;
 
@@ -300,6 +317,7 @@ export class OpenAIChatCompletionsStreamProcessor {
   _onDone() {
     if (this._done) return [];
     const chunks = [];
+    let droppedInvalidToolCall = false;
 
     const calls = Object.keys(this._toolCalls)
       .sort((a, b) => Number(a) - Number(b))
@@ -308,13 +326,25 @@ export class OpenAIChatCompletionsStreamProcessor {
         name: this._toolCalls[idx].name,
         arguments_json: this._toolCalls[idx].arguments,
       }))
-      .filter(tc => tc.id || tc.name || tc.arguments_json);
+      .filter(tc => tc.id || tc.name || tc.arguments_json)
+      .filter(tc => {
+        if (!tc.arguments_json) return true;
+        try {
+          JSON.parse(tc.arguments_json);
+          return true;
+        } catch {
+          droppedInvalidToolCall = true;
+          console.warn(`  ⚠️  Drop incomplete tool call ${tc.name || tc.id || '(unknown)'}: invalid JSON arguments (${tc.arguments_json.length} chars)`);
+          return false;
+        }
+      });
 
     if (calls.length > 0) {
       chunks.push(buildToolCallDelta(this._messageId, calls));
     }
 
-    chunks.push(buildStopChunk(this._messageId, this._mapStopReason(this._stopReason), this._modelUid));
+    const stopReason = droppedInvalidToolCall && calls.length === 0 ? 'length' : this._stopReason;
+    chunks.push(buildStopChunk(this._messageId, this._mapStopReason(stopReason), this._modelUid));
     this._done = true;
     return chunks;
   }

@@ -103,11 +103,8 @@ fn remove_pending_update_notes_file() {
 /// Compare two semantic versions (e.g., "1.0.1" vs "1.0.0")
 /// Returns true if first > second
 fn compare_versions(latest: &str, current: &str) -> bool {
-    let parse_version = |v: &str| -> Vec<u32> {
-        v.split('.')
-            .filter_map(|s| s.parse::<u32>().ok())
-            .collect()
-    };
+    let parse_version =
+        |v: &str| -> Vec<u32> { v.split('.').filter_map(|s| s.parse::<u32>().ok()).collect() };
 
     let latest_parts = parse_version(latest);
     let current_parts = parse_version(current);
@@ -221,7 +218,7 @@ pub fn update_last_check_time() -> Result<(), String> {
 pub async fn check_for_update(app: AppHandle) -> Result<Option<UpdateInfo>, String> {
     let updater = app.updater().map_err(|e| e.to_string())?;
     let update = updater.check().await.map_err(|e| e.to_string())?;
-    
+
     if let Some(update) = update {
         Ok(Some(UpdateInfo {
             version: update.version,
@@ -237,33 +234,38 @@ pub async fn check_for_update(app: AppHandle) -> Result<Option<UpdateInfo>, Stri
 pub async fn download_and_install_update(app: AppHandle, relaunch: bool) -> Result<(), String> {
     let updater = app.updater().map_err(|e| e.to_string())?;
     let update = updater.check().await.map_err(|e| e.to_string())?;
-    
+
     if let Some(update) = update {
         let version = update.version.clone();
         let body = update.body.clone().unwrap_or_default();
-        
+
         let app_clone1 = app.clone();
         let app_clone2 = app.clone();
         let mut downloaded = 0;
-        
-        update.download_and_install(
-            move |chunk_length, total_length| {
-                downloaded += chunk_length as u64;
-                let percentage = total_length.map(|total| {
-                    (downloaded as f64 / total as f64) * 100.0
-                });
-                
-                let _ = app_clone1.emit("update-download-progress", DownloadProgressPayload {
-                    downloaded,
-                    total: total_length.map(|t| t as u64),
-                    percentage,
-                });
-            },
-            move || {
-                let _ = app_clone2.emit("update-download-complete", ());
-            }
-        ).await.map_err(|e| e.to_string())?;
-        
+
+        update
+            .download_and_install(
+                move |chunk_length, total_length| {
+                    downloaded += chunk_length as u64;
+                    let percentage =
+                        total_length.map(|total| (downloaded as f64 / total as f64) * 100.0);
+
+                    let _ = app_clone1.emit(
+                        "update-download-progress",
+                        DownloadProgressPayload {
+                            downloaded,
+                            total: total_length.map(|t| t as u64),
+                            percentage,
+                        },
+                    );
+                },
+                move || {
+                    let _ = app_clone2.emit("update-download-complete", ());
+                },
+            )
+            .await
+            .map_err(|e| e.to_string())?;
+
         // If not relaunching immediately, write pending update notes so we can show a changelog next time
         if !relaunch {
             let _ = save_pending_update_notes(version, body.clone(), body);
@@ -271,10 +273,37 @@ pub async fn download_and_install_update(app: AppHandle, relaunch: bool) -> Resu
             // Relaunch the application
             app.restart();
         }
-        
+
         Ok(())
     } else {
         Err("No update available".to_string())
     }
 }
 
+/// 打开下载页面（浏览器）
+#[tauri::command]
+pub fn open_download_page() -> Result<(), String> {
+    let url = "https://github.com/soulvon/IDE-BYOK-Release/releases";
+    #[cfg(target_os = "windows")]
+    {
+        std::process::Command::new("cmd")
+            .args(["/C", "start", url])
+            .spawn()
+            .map_err(|e| format!("打开浏览器失败: {}", e))?;
+    }
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("open")
+            .arg(url)
+            .spawn()
+            .map_err(|e| format!("打开浏览器失败: {}", e))?;
+    }
+    #[cfg(target_os = "linux")]
+    {
+        std::process::Command::new("xdg-open")
+            .arg(url)
+            .spawn()
+            .map_err(|e| format!("打开浏览器失败: {}", e))?;
+    }
+    Ok(())
+}

@@ -312,8 +312,8 @@ pub async fn test_connection(args: TestConnArgs) -> Result<TestConnResult, Strin
 
     let chat_url = format!("{}{}", host, chat_path);
 
-    // 1x1 透明 PNG (base64)
-    const TINY_PNG_B64: &str = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVQI12NgAAIABQABNjN9GQAAAABJRU5ErkJggg==";
+    // 128x128 PNG: some upstreams reject tiny 1x1 images even when vision works.
+    const VISION_TEST_PNG_B64: &str = "iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAYAAADDPmHLAAABpklEQVR4nO3SMRHDUBBDwcAxiIAwYoNI/bk4IFTc6GYL1a/Qfq77+yY74cb7T7YTbrr/GT9gug8AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAsBNA/YFpv/zAtA8AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAMBOAPUHpv3yA9M+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAOwHUH5j2yw9M+wAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAOwEcN2/N9kJN95/sp1w030AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAB2Aqg/MO2XH5j2AQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA2Amg/sC0X35g2gcAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAGAngPoD0375gWkfAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACAlQD+DY7JjtGCazMAAAAASUVORK5CYII=";
 
     // 发送请求的闭包：根据 use_gzip 决定是否压缩
     let send_req = |body: Vec<u8>, use_gzip: bool| {
@@ -386,7 +386,7 @@ pub async fn test_connection(args: TestConnArgs) -> Result<TestConnResult, Strin
             "model": test_model,
             "messages": [{"role": "user", "content": [
                 {"type": "text", "text": "describe"},
-                {"type": "image_url", "image_url": {"url": format!("data:image/png;base64,{}", TINY_PNG_B64)}}
+                {"type": "image_url", "image_url": {"url": format!("data:image/png;base64,{}", VISION_TEST_PNG_B64)}}
             ]}],
             "max_tokens": 16,
             "stream": false
@@ -403,14 +403,15 @@ pub async fn test_connection(args: TestConnArgs) -> Result<TestConnResult, Strin
             }}],
             "max_tokens": 64,
             "stream": false
-        })).unwrap();
+        }))
+        .unwrap();
         (v, t)
     } else {
         let v = serde_json::to_vec(&serde_json::json!({
             "model": test_model,
             "messages": [{"role": "user", "content": [
                 {"type": "text", "text": "describe"},
-                {"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": TINY_PNG_B64}}
+                {"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": VISION_TEST_PNG_B64}}
             ]}],
             "max_tokens": 16,
             "stream": false
@@ -425,33 +426,50 @@ pub async fn test_connection(args: TestConnArgs) -> Result<TestConnResult, Strin
             }],
             "max_tokens": 64,
             "stream": false
-        })).unwrap();
+        }))
+        .unwrap();
         (v, t)
     };
 
-    let mut caps = TestCapabilities { gzip: need_gzip, vision: false, tools: false };
+    let mut caps = TestCapabilities {
+        gzip: need_gzip,
+        vision: false,
+        tools: false,
+    };
 
     // Vision 探测
     match send_req(vision_body, need_gzip).send().await {
         Ok(r) if r.status().is_success() => caps.vision = true,
-        Ok(r) => { let _ = r.text().await; }
+        Ok(r) => {
+            let _ = r.text().await;
+        }
         Err(_) => {}
     }
 
     // Tools 探测
     match send_req(tools_body, need_gzip).send().await {
         Ok(r) if r.status().is_success() => caps.tools = true,
-        Ok(r) => { let _ = r.text().await; }
+        Ok(r) => {
+            let _ = r.text().await;
+        }
         Err(_) => {}
     }
 
     // 组装结果
     let mut parts = vec![];
-    if models_ok { parts.push("连通 ✓".to_string()); }
+    if models_ok {
+        parts.push("连通 ✓".to_string());
+    }
     parts.push("Chat ✓".to_string());
-    if caps.vision { parts.push("Vision ✓".to_string()); }
-    if caps.tools { parts.push("Tools ✓".to_string()); }
-    if need_gzip { parts.push("(需 Gzip)".to_string()); }
+    if caps.vision {
+        parts.push("Vision ✓".to_string());
+    }
+    if caps.tools {
+        parts.push("Tools ✓".to_string());
+    }
+    if need_gzip {
+        parts.push("(需 Gzip)".to_string());
+    }
     let msg = parts.join(" ");
 
     Ok(TestConnResult {

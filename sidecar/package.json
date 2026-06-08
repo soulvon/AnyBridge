@@ -1,1 +1,20 @@
-{"name":"ide-byok-sidecar","version":"1.0.0","type":"module","bin":"proxy-entry.js","devDependencies":{"@yao-pkg/pkg":"^6.20.0"}}
+{
+  "name": "ide-byok-sidecar",
+  "version": "1.0.0",
+  "type": "module",
+  "bin": "proxy-entry.js",
+  "devDependencies": {
+    "@yao-pkg/pkg": "^6.20.0",
+    "bytenode": "^1.5.7",
+    "javascript-obfuscator": "^5.4.3"
+  },
+  "pkg": {
+    "assets": [
+      "windsurf-catalog.json",
+      "package.json"
+    ],
+    "scripts": [
+      "*.js"
+    ]
+  }
+}

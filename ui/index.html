@@ -49,7 +49,8 @@
 
   --text-primary: #0A0A0F;
   --text-secondary: #3D3D50;
-  --text-muted: #8A8A97;
+  --text-muted: #5F6675;
+  --text-dim: #5F6675;
   --text-inverse: #FFFFFF;
 
   --border: rgba(10, 10, 15, 0.07);
@@ -109,7 +110,8 @@
 
   --text-primary: #F0F0F5;
   --text-secondary: #A0A0B0;
-  --text-muted: #55556A;
+  --text-muted: #8D93A8;
+  --text-dim: #8D93A8;
   --text-inverse: #0A0A0F;
 
   --border: rgba(255, 255, 255, 0.06);
@@ -359,6 +361,7 @@ body {
 }
 .status-pill.offline .status-dot { background: var(--danger); }
 @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+@keyframes spin { from{transform:rotate(0)} to{transform:rotate(360deg)} }
 
 .topbar-status {
   display: inline-flex; align-items: center; gap: 6px;
@@ -617,7 +620,8 @@ html[data-theme="dark"] .icon-btn .moon-icon {
 @keyframes fadeUp { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }
 
 /* 仪表盘优先铺满窗口，高度不足或小屏时自动支持弹性滚动 */
-.main.dashboard-active { overflow-y: auto; display: flex; flex-direction: column; }
+.main.dashboard-active,
+.main.logs-active { overflow-y: auto; display: flex; flex-direction: column; }
 #page-dashboard.active {
   flex: 1 1 auto; min-height: 0;
   display: flex; flex-direction: column;
@@ -627,7 +631,7 @@ html[data-theme="dark"] .icon-btn .moon-icon {
 #page-dashboard > .control-bar,
 #page-dashboard > .stats-row,
 #page-dashboard > .glass-card { margin-bottom: 0 !important; }
-/* 控制栏、统计卡、流量路由保持固定高度 */
+/* 控制栏、统计卡保持固定高度 */
 #page-dashboard > .control-bar,
 #page-dashboard > .stats-row { flex: 0 0 auto; }
 #page-dashboard > .glass-card:not(.control-bar):not(:last-child) { flex: 0 0 auto; }
@@ -639,6 +643,17 @@ html[data-theme="dark"] .icon-btn .moon-icon {
   flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column;
 }
 #page-dashboard > .glass-card:last-child .log-body {
+  flex: 1 1 auto; height: auto; min-height: 0;
+}
+
+/* 日志页：吸收主区剩余高度铺满窗口 */
+#page-logs.active {
+  display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0;
+}
+#page-logs.active .log-box {
+  flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column;
+}
+#page-logs.active .log-body {
   flex: 1 1 auto; height: auto; min-height: 0;
 }
 
@@ -693,6 +708,10 @@ html[data-theme="dark"] .icon-btn .moon-icon {
 .stat-card.c2::after { background: var(--accent-secondary); }
 .stat-card.c3::after { background: var(--accent-warm); }
 .stat-card.c4::after { background: var(--danger); }
+.stat-card.c5::after { background: #3b82f6; }
+.stat-card.c6::after { background: #06b6d4; }
+.stat-card.c7::after { background: #f59e0b; }
+.stat-card.c8::after { background: #8b5cf6; }
 
 .stat-label { font-size: 12px; color: var(--text-muted); font-weight: 500; }
 .stat-value {
@@ -703,6 +722,10 @@ html[data-theme="dark"] .icon-btn .moon-icon {
 .stat-value.c2 { color: var(--accent-secondary); }
 .stat-value.c3 { color: var(--accent-warm); }
 .stat-value.c4 { color: var(--danger); }
+.stat-value.c5 { color: #3b82f6; }
+.stat-value.c6 { color: #06b6d4; }
+.stat-value.c7 { color: #f59e0b; }
+.stat-value.c8 { color: #8b5cf6; }
 .stat-sub { font-size: 11px; color: var(--text-muted); margin-top: 4px; }
 
 /* ═══════ PROVIDER GRID ═══════ */
@@ -1090,6 +1113,13 @@ html[data-theme="dark"] .icon-btn .moon-icon {
   border-bottom: 1px solid var(--border);
   font-family: var(--font-mono);
 }
+.model-table .display-name-cell {
+  max-width: 240px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding-right: 32px;
+}
 .model-table tr:last-child td { border-bottom: none; }
 .model-table tr:hover td { background: var(--accent-light); }
 
@@ -1293,10 +1323,78 @@ html[data-theme="dark"] .icon-btn .moon-icon {
   color: var(--accent);
 }
 
+/* ═══════ EVALUATION ═══════ */
+.eval-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.45fr) minmax(300px, .75fr);
+  gap: 16px;
+}
+.eval-result-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.eval-stat {
+  padding: 14px 16px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+  min-width: 0;
+}
+.eval-stat-label {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+.eval-stat-value {
+  font-family: var(--font-mono);
+  font-size: 20px;
+  font-weight: 800;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.eval-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 800;
+  border: 1px solid transparent;
+}
+.eval-status.pass { color: var(--success); background: var(--success-dim); border-color: rgba(34,197,94,.18); }
+.eval-status.warn { color: var(--accent-warm); background: rgba(245,158,11,.12); border-color: rgba(245,158,11,.18); }
+.eval-status.fail, .eval-status.error { color: var(--danger); background: rgba(239,68,68,.12); border-color: rgba(239,68,68,.18); }
+.eval-status.skip { color: var(--text-muted); background: var(--bg-input); border-color: var(--border); }
+.eval-history-item {
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease);
+}
+.eval-history-item:hover { background: var(--bg-hover); }
+.eval-history-item.active { background: var(--accent-light); }
+.eval-evidence {
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  line-height: 1.55;
+  margin-top: 5px;
+  word-break: break-word;
+}
+
 /* ═══════ RESPONSIVE ═══════ */
 @media (max-width: 900px) {
   .stats-row { grid-template-columns: repeat(2, 1fr); }
   .settings-grid { grid-template-columns: 1fr; }
+  .eval-layout { grid-template-columns: 1fr; }
+  .eval-result-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .tab-nav { display: none; }
 }
 
@@ -1329,7 +1427,8 @@ html[data-theme="dark"] .icon-btn .moon-icon {
   app-region: no-drag;
 }
 
-/* 版本跃迁弹窗优先级高于普通更新提醒，避免层级抢占导致“点不动” */
+/* 版本跃迁弹窗优先级高于普通更新提醒，避免层级抢占导致"点不动" */
+#custom-alert-modal { z-index: 10030; }
 #update-jump-modal { z-index: 10020; }
 #updater-prompt-modal { z-index: 10010; }
 
@@ -1653,6 +1752,7 @@ html[data-theme="dark"] .icon-btn .moon-icon {
       <div class="tab-item active" data-page="dashboard">仪表盘</div>
       <div class="tab-item" data-page="providers">供应商</div>
       <div class="tab-item" data-page="models">模型映射</div>
+      <div class="tab-item" data-page="eval">评测</div>
       <div class="tab-item" data-page="patches">接入</div>
       <div class="tab-item" data-page="logs">日志</div>
       <div class="tab-item" data-page="settings">设置</div>
@@ -1700,7 +1800,7 @@ html[data-theme="dark"] .icon-btn .moon-icon {
           <span class="control-sub" id="controlSub">代理未运行 · 目标: Windsurf · 端口 :7450 / :7451</span>
         </div>
         
-        <button class="proxy-btn" id="proxyBtn" onclick="toggleProxy()">
+        <button class="proxy-btn" id="proxyBtn">
           <svg class="proxy-btn-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="transition: transform 0.2s ease;">
             <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" fill="currentColor"/>
           </svg>
@@ -1730,45 +1830,37 @@ html[data-theme="dark"] .icon-btn .moon-icon {
         </div>
       </div>
 
-      <!-- Flow -->
+      <!-- 速率指标第二排 -->
+      <div class="stats-row">
+        <div class="stat-card c5">
+          <div class="stat-label">请求速率</div>
+          <div class="stat-value c5" id="stat-rpm">—</div>
+          <div class="stat-sub">次/分钟 (RPM)</div>
+        </div>
+        <div class="stat-card c6">
+          <div class="stat-label">Token 速率</div>
+          <div class="stat-value c6" id="stat-tpm">—</div>
+          <div class="stat-sub">Token/分钟 (TPM)</div>
+        </div>
+        <div class="stat-card c7">
+          <div class="stat-label">平均响应耗时</div>
+          <div class="stat-value c7" id="stat-latency">—</div>
+          <div class="stat-sub">最近 60 秒均值</div>
+        </div>
+        <div class="stat-card c8">
+          <div class="stat-label">重试次数</div>
+          <div class="stat-value c8" id="stat-retries">—</div>
+          <div class="stat-sub" id="stat-retries-sub">本日累计</div>
+        </div>
+      </div>
+
+      <!-- Top 模型用量 -->
       <div class="glass-card" style="margin-bottom:24px">
         <div class="card-header">
-          <div class="card-title"><span class="dot"></span> 流量路由</div>
+          <div class="card-title"><span class="dot"></span> Top 模型用量</div>
         </div>
-        <div class="card-body">
-          <div class="flow">
-            <div class="flow-node">
-              <div class="flow-icon">
-                <svg class="flow-svg" width="22" height="24" viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect><line x1="8" y1="21" x2="16" y2="21"></line><line x1="12" y1="17" x2="12" y2="21"></line></svg>
-              </div>
-              <div class="flow-label">IDE</div>
-              <div class="flow-sub" id="flowIdeTarget">IDE</div>
-            </div>
-            <div class="flow-arrow">→<span class="arr-label">HTTP</span></div>
-            <div class="flow-node">
-              <div class="flow-icon">
-                <svg class="flow-svg" width="22" height="24" viewBox="0 0 24 24"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3M15.5 7.5L14 9M18.5 4.5L17 6"></path></svg>
-              </div>
-              <div class="flow-label">BYOK 代理</div>
-              <div class="flow-sub">:7450 / :7451</div>
-            </div>
-            <div class="flow-arrow">→<span class="arr-label">API</span></div>
-            <div class="flow-node">
-              <div class="flow-icon">
-                <svg class="flow-svg" width="22" height="24" viewBox="0 0 24 24" style="color: #A855F7;"><rect x="4" y="8" width="16" height="12" rx="2"></rect><path d="M12 8V4H8M2 14h2M20 14h2M15 13v2M9 13v2"></path></svg>
-              </div>
-              <div class="flow-label">LLM 供应商</div>
-              <div class="flow-sub">Anthropic / OpenAI</div>
-            </div>
-            <div class="flow-arrow">⟷</div>
-            <div class="flow-node">
-              <div class="flow-icon">
-                <svg class="flow-svg" width="22" height="24" viewBox="0 0 24 24"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"></rect><rect x="2" y="14" width="20" height="8" rx="2" ry="2"></rect><line x1="6" y1="6" x2="6.01" y2="6"></line><line x1="6" y1="18" x2="6.01" y2="18"></line><line x1="10" y1="6" x2="18" y2="6"></line><line x1="10" y1="18" x2="18" y2="18"></line></svg>
-              </div>
-              <div class="flow-label">Codeium</div>
-              <div class="flow-sub">补全 · 认证</div>
-            </div>
-          </div>
+        <div class="card-body" style="padding-top:12px;padding-bottom:12px;">
+          <div id="topModelsChart" style="min-height:24px;"></div>
         </div>
       </div>
 
@@ -1855,7 +1947,7 @@ html[data-theme="dark"] .icon-btn .moon-icon {
               </div>
               
               <!-- 已选择模型列表 (Cherry Studio 风格) -->
-              <div style="flex:1; display:flex; flex-direction:column; min-height:220px; border-top:1px solid var(--border); padding-top:16px; margin-top:4px;">
+              <div style="flex:1 0 220px; display:flex; flex-direction:column; min-height:220px; border-top:1px solid var(--border); padding-top:16px; margin-top:4px;">
                 <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
                   <span style="font-size:13px; font-weight:700; color:var(--text-primary);">已选模型列表</span>
                   <span class="brand-tag" id="leftSelectedCount" style="padding: 1px 8px; font-size: 10px;">0</span>
@@ -1981,9 +2073,9 @@ html[data-theme="dark"] .icon-btn .moon-icon {
           <!-- Left Column: 模型目录 (平铺列表) -->
           <div style="flex:1; display:flex; flex-direction:column; background:var(--bg-card); border:1px solid var(--border); border-radius:var(--radius-lg); overflow:hidden; box-shadow:var(--shadow-sm);">
             <div style="padding:16px 20px; border-bottom:1px solid var(--border); background:var(--bg-glass); display:flex; align-items:center; justify-content:space-between;">
-              <span style="font-size:14px; font-weight:700; color:var(--text-primary);">选择模型</span>
+              <span style="font-size:14px; font-weight:700; color:var(--text-primary);">选择 Windsurf 槽位</span>
               <div style="display:flex; align-items:center; gap:6px;">
-                <span class="brand-tag" id="slotCatalogCount" style="padding: 2px 8px; font-size: 10px; font-weight:700;">0 个可用</span>
+                <span class="brand-tag" id="slotCatalogCount" style="padding: 2px 8px; font-size: 10px; font-weight:700;">0 可用</span>
                 <button id="btn-refresh-models" class="btn-ghost" onclick="refreshIdeModels()" style="padding: 0 10px; border-radius: 6px; display: flex; align-items: center; gap: 4px; height: 24px; font-size: 11px; font-weight: 600;" title="从 IDE 账号拉取最新模型列表">
                   <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
                     <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"></path>
@@ -1992,9 +2084,15 @@ html[data-theme="dark"] .icon-btn .moon-icon {
                 </button>
               </div>
             </div>
+            <div id="slotCatalogScopeTabs" style="display:flex;align-items:center;gap:6px;padding:10px 20px;border-bottom:1px solid var(--border);background:var(--bg-card);">
+              <button class="slot-scope-tab" data-scope="account" onclick="setSlotCatalogScope('account')" style="height:26px;padding:0 10px;border-radius:7px;border:1px solid var(--border);background:var(--bg-input);color:var(--text-muted);font-size:11px;font-weight:700;cursor:pointer;">当前账号 <span id="slotScopeAccountCount">0</span></button>
+              <button class="slot-scope-tab" data-scope="extended" onclick="setSlotCatalogScope('extended')" style="height:26px;padding:0 10px;border-radius:7px;border:1px solid var(--border);background:var(--bg-input);color:var(--text-muted);font-size:11px;font-weight:700;cursor:pointer;">扩展槽位 <span id="slotScopeExtendedCount">0</span></button>
+              <button class="slot-scope-tab" data-scope="all" onclick="setSlotCatalogScope('all')" style="height:26px;padding:0 10px;border-radius:7px;border:1px solid var(--border);background:var(--bg-input);color:var(--text-muted);font-size:11px;font-weight:700;cursor:pointer;">全部 <span id="slotScopeAllCount">0</span></button>
+              <button class="slot-scope-tab" data-scope="bound" onclick="setSlotCatalogScope('bound')" style="height:26px;padding:0 10px;border-radius:7px;border:1px solid var(--border);background:var(--bg-input);color:var(--text-muted);font-size:11px;font-weight:700;cursor:pointer;">已绑定 <span id="slotScopeBoundCount">0</span></button>
+            </div>
             <!-- 槽位搜索栏 -->
             <div style="padding:12px 20px; border-bottom:1px solid var(--border); background:rgba(0,0,0,0.01);">
-              <input type="text" id="slotCatalogSearch" placeholder="搜索模型 ID 或名称..." oninput="filterSlotCatalog()" style="padding:10px 14px; border-radius:10px; font-size:12px; width:100%; border:1px solid var(--border); background:var(--bg-input); outline:none; transition:all 0.2s;">
+              <input type="text" id="slotCatalogSearch" placeholder="搜索槽位名 / modelUid..." oninput="filterSlotCatalog()" style="padding:10px 14px; border-radius:10px; font-size:12px; width:100%; border:1px solid var(--border); background:var(--bg-input); outline:none; transition:all 0.2s;">
             </div>
             <!-- 槽位行容器 -->
             <div id="slotCatalogBody" style="flex:1; overflow-y:auto; padding:16px 20px; display:flex; flex-direction:column; gap:8px;">
@@ -2024,9 +2122,12 @@ html[data-theme="dark"] .icon-btn .moon-icon {
                 <span style="font-size:12px; font-weight:600; color:var(--text-secondary);">映射自定义显示名（留空使用模型原始名）</span>
               </div>
               <input class="field-input" id="slot-display" placeholder="例如：我的 DeepSeek 映射..." style="padding:10px 14px; font-size:12px; border-radius:8px; width:100%;">
+              <div id="slot-vision-hint" style="border:1px solid var(--border); border-radius:8px; padding:9px 10px; font-size:11px; line-height:1.45; transition:all .2s;">
+                选择槽位和映射目标后显示图片能力判断
+              </div>
               <label style="display:flex; align-items:center; gap:8px; font-size:12px; color:var(--text-secondary); cursor:pointer; user-select:none; margin-top:2px;">
-                <input type="checkbox" id="slot-supports-images" checked style="width:15px; height:15px; cursor:pointer;">
-                <span>支持图片识别（解锁后允许在该模型下发送图片，应与所选服务商能力一致）</span>
+                <input type="checkbox" id="slot-supports-images" checked onchange="updateSlotVisionHint()" style="width:15px; height:15px; cursor:pointer;">
+                <span>向 Windsurf 声明支持图片（仅原生视觉槽位会稳定上传图片）</span>
               </label>
               <input type="hidden" id="slot-edit-uid">
               <select class="model-select" id="slot-uid-select" style="display:none;"></select>
@@ -2038,6 +2139,38 @@ html[data-theme="dark"] .icon-btn .moon-icon {
           <button class="btn-primary" onclick="saveSlotFromEditor()" style="padding:10px 24px; border-radius:10px; font-size:12px; font-weight:700; display:inline-flex; align-items:center; justify-content:center; gap:6px;">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>
             <span>保存映射</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 扩展槽位配置模态框（高级：解锁 Windsurf 灰色模型） -->
+    <div id="injectedModal" class="editor-overlay" style="position:fixed;inset:0;z-index:1000;background:rgba(0,0,0,0.45);display:none;align-items:center;justify-content:center;">
+      <div class="glass-card" style="width:880px;max-width:95vw;max-height:90vh;display:flex;flex-direction:column;">
+        <div class="card-header" style="display:flex;align-items:center;justify-content:space-between;gap:12px;">
+          <div class="card-title"><span class="dot"></span> 扩展槽位管理</div>
+          <div style="font-size:11px;color:var(--text-muted);">已配置 <span id="injected-configured-count">0</span> / 128</div>
+        </div>
+        <div class="card-body" style="padding:14px 18px;display:flex;flex-direction:column;gap:12px;flex:1;overflow:hidden;">
+          <div style="font-size:11px;color:var(--text-muted);line-height:1.6;">
+            这里是高级入口：把扩展槽位预先放进 IDE 下拉框，适合需要解锁灰色/不可见模型时使用。普通 BYOK 映射建议直接点「添加映射」。
+            已配置 BYOK 的扩展槽位会走你的供应商；未配置供应商的槽位被选中时会给出明确错误。
+          </div>
+          <div style="display:flex;gap:8px;align-items:center;">
+            <input type="text" id="injected-search" placeholder="搜索模型名 / modelUid / apiId..." oninput="renderInjectedList()" style="flex:1;padding:6px 10px;border:1px solid var(--border);background:var(--bg-input);color:var(--text-primary);border-radius:8px;font-size:12px;outline:none;">
+            <select id="injected-filter" onchange="renderInjectedList()" style="padding:6px 10px;border:1px solid var(--border);background:var(--bg-input);color:var(--text-primary);border-radius:8px;font-size:12px;outline:none;">
+              <option value="all">全部</option>
+              <option value="configured">已配置</option>
+              <option value="unconfigured">未配置</option>
+            </select>
+          </div>
+          <div id="injected-list" style="flex:1;overflow-y:auto;border:1px solid var(--border);border-radius:8px;"></div>
+        </div>
+        <div class="provider-footer" style="display:flex;justify-content:flex-end;gap:12px;padding:12px 18px;border-top:1px solid var(--border);">
+          <button class="btn-ghost" onclick="closeInjectedEditor()" style="padding:10px 20px;border-radius:10px;font-size:12px;font-weight:600;">关闭</button>
+          <button class="btn-primary" onclick="saveInjectedFromEditor()" style="padding:10px 24px;border-radius:10px;font-size:12px;font-weight:700;display:inline-flex;align-items:center;gap:6px;">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>
+            <span>保存</span>
           </button>
         </div>
       </div>
@@ -2064,25 +2197,78 @@ html[data-theme="dark"] .icon-btn .moon-icon {
       </div>
     </div>
 
+    <!-- 显示名设置（前缀/后缀 + 高级自定义） -->
+    <div id="modelMapSettingsModal" class="editor-overlay" style="position:fixed;inset:0;z-index:1000;background:rgba(0,0,0,0.45);align-items:center;justify-content:center;">
+      <div class="glass-card" style="width:680px;max-width:95vw;display:flex;flex-direction:column;max-height:90vh;">
+        <div class="card-header" style="display:flex;align-items:center;justify-content:space-between;gap:12px;">
+          <div>
+            <div class="card-title"><span class="dot"></span> 显示名设置</div>
+            <div style="font-size:11px;color:var(--text-muted);margin-top:4px;">决定 Windsurf / Devin 下拉框里看到的模型名字。</div>
+          </div>
+          <button class="btn-ghost" onclick="closeModelMapSettings()" style="border:none;background:transparent;cursor:pointer;font-size:18px;color:var(--text-muted);line-height:1;">×</button>
+        </div>
+        <div class="card-body" style="padding:16px 20px;display:flex;flex-direction:column;gap:14px;flex:1;overflow-y:auto;">
+          <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;">
+            <label style="display:flex;flex-direction:column;gap:7px;min-width:0;">
+              <span style="font-size:12px;font-weight:700;color:var(--text-primary);white-space:nowrap;">前缀</span>
+              <input type="text" id="model-name-prefix-modal" placeholder="例如 (BYOK)" oninput="onModalSimpleLabelInput()" style="width:100%;padding:10px 12px;border-radius:8px;font-size:12px;border:1px solid var(--border);background:var(--bg-input);color:var(--text-primary);outline:none;box-sizing:border-box;">
+            </label>
+            <label style="display:flex;flex-direction:column;gap:7px;min-width:0;">
+              <span style="font-size:12px;font-weight:700;color:var(--text-primary);white-space:nowrap;">后缀</span>
+              <input type="text" id="model-name-suffix-modal" placeholder="例如 (君の公益)" oninput="onModalSimpleLabelInput()" style="width:100%;padding:10px 12px;border-radius:8px;font-size:12px;border:1px solid var(--border);background:var(--bg-input);color:var(--text-primary);outline:none;box-sizing:border-box;">
+            </label>
+          </div>
+          <div style="font-size:11px;color:var(--text-muted);line-height:1.5;">
+            常用：前缀填 <code style="background:var(--bg-input);padding:1px 4px;border-radius:3px;">(BYOK)</code>；后缀可直接填固定文字，填 <code style="background:var(--bg-input);padding:1px 4px;border-radius:3px;">({provider})</code> 会自动换成供应商名。
+          </div>
+
+          <details id="label-template-advanced" ontoggle="onLabelTemplateAdvancedToggle()" style="border:1px solid var(--border);border-radius:9px;background:var(--bg-input);padding:10px 12px;">
+            <summary style="cursor:pointer;font-size:12px;font-weight:700;color:var(--text-secondary);">高级：自己写显示格式</summary>
+            <div style="margin-top:10px;display:flex;flex-direction:column;gap:7px;">
+              <input type="text" id="model-label-template-modal" placeholder="{prefix} {label} ({provider})" style="width:100%;padding:8px 12px;border-radius:8px;font-size:12px;border:1px solid var(--border);background:var(--bg-card);color:var(--text-primary);outline:none;box-sizing:border-box;font-family:monospace;" oninput="onModalAdvancedLabelTemplateInput()">
+              <div style="font-size:10px;color:var(--text-muted);line-height:1.5;">
+                可用字段：<code style="background:var(--bg-card);padding:1px 4px;border-radius:3px;">{prefix}</code> 前缀，
+                <code style="background:var(--bg-card);padding:1px 4px;border-radius:3px;">{label}</code> 显示名，
+                <code style="background:var(--bg-card);padding:1px 4px;border-radius:3px;">{provider}</code> 供应商，
+                <code style="background:var(--bg-card);padding:1px 4px;border-radius:3px;">{apiModel}</code> 接口模型名。
+              </div>
+            </div>
+          </details>
+
+          <div>
+            <div style="font-size:12px;font-weight:700;color:var(--text-primary);margin-bottom:6px;">实际效果</div>
+            <div id="label-template-preview" style="display:flex;flex-direction:column;gap:7px;padding:10px 12px;background:var(--bg-input);border:1px dashed var(--border);border-radius:8px;font-size:11px;"></div>
+          </div>
+        </div>
+        <div class="provider-footer" style="display:flex;justify-content:flex-end;gap:12px;padding:12px 20px;border-top:1px solid var(--border);">
+          <button class="btn-ghost" onclick="closeModelMapSettings()" style="padding:10px 20px;border-radius:10px;font-size:12px;font-weight:600;">取消</button>
+          <button class="btn-primary" onclick="saveModelMapSettingsFromModal()" style="padding:10px 24px;border-radius:10px;font-size:12px;font-weight:700;display:inline-flex;align-items:center;gap:6px;">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>
+            <span>保存</span>
+          </button>
+        </div>
+      </div>
+    </div>
 
     <!-- ═══════ PAGE: MODEL MAP ═══════ -->
     <div class="page" id="page-models">
       <!-- 极客风格的一体化胶囊控制栏 -->
       <div class="control-bar glass-card" style="padding: 14px 24px; margin-bottom: 20px; border-radius: 14px; display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between; min-height: 72px;">
-        
+
         <!-- 左侧：标题与搜索 -->
         <div style="display: flex; align-items: center; gap: 16px; flex-wrap: wrap;">
           <h2 style="font-size: 14px; font-weight: 700; color: var(--text-primary); display: flex; align-items: center; gap: 6px; margin: 0; user-select: none;">
             模型映射
           </h2>
-          
+          <div id="modelMapSummary" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;"></div>
+
           <!-- 搜索输入框 -->
           <div style="position: relative; display: flex; align-items: center;">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="position: absolute; left: 10px; color: var(--text-muted); pointer-events: none;">
               <circle cx="11" cy="11" r="8"></circle>
               <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
             </svg>
-            <input type="text" id="model-search-input" placeholder="搜索原始名/显示名/槽位..." style="width: 200px; padding: 5px 10px 5px 26px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg-input); color: var(--text-primary); font-size: 12px; outline: none; transition: all 0.2s;" oninput="filterModelTable()">
+            <input type="text" id="model-search-input" placeholder="搜索显示名/原模型名/原始模型ID..." style="width: 220px; padding: 5px 10px 5px 26px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg-input); color: var(--text-primary); font-size: 12px; outline: none; transition: all 0.2s;" oninput="filterModelTable()">
           </div>
         </div>
 
@@ -2091,6 +2277,7 @@ html[data-theme="dark"] .icon-btn .moon-icon {
           <button class="filter-tab-item active" data-filter="all" onclick="setModelFilter('all')" style="padding: 4px 12px; border-radius: 6px; border: none; font-size: 11px; font-weight: 600; cursor: pointer; transition: all 0.2s; background: var(--bg-card); color: var(--text-primary); box-shadow: var(--shadow-sm);">全部</button>
           <button class="filter-tab-item" data-filter="hijacked" onclick="setModelFilter('hijacked')" style="padding: 4px 12px; border-radius: 6px; border: none; font-size: 11px; font-weight: 500; cursor: pointer; transition: all 0.2s; background: transparent; color: var(--text-muted);">已劫持</button>
           <button class="filter-tab-item" data-filter="unset" onclick="setModelFilter('unset')" style="padding: 4px 12px; border-radius: 6px; border: none; font-size: 11px; font-weight: 500; cursor: pointer; transition: all 0.2s; background: transparent; color: var(--text-muted);">未设置</button>
+          <button class="filter-tab-item" data-filter="vision-risk" onclick="setModelFilter('vision-risk')" style="padding: 4px 12px; border-radius: 6px; border: none; font-size: 11px; font-weight: 500; cursor: pointer; transition: all 0.2s; background: transparent; color: var(--text-muted);">图片风险</button>
         </div>
 
         <!-- 右侧：刷新及操作按钮 -->
@@ -2109,22 +2296,125 @@ html[data-theme="dark"] .icon-btn .moon-icon {
             </svg>
             添加映射
           </button>
+          <!-- 扩展槽位管理按钮（高级：把扩展槽位预先注入到 IDE 下拉框） -->
+          <button class="btn-ghost" onclick="openInjectedEditor()" title="高级入口：把扩展槽位预先放进 IDE 下拉框。普通映射用「添加映射」即可。" style="border-radius: 8px; padding: 0 12px; font-size: 12px; font-weight: 600; height: 28px; display: flex; align-items: center; gap: 4px;">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 2L2 7l10 5 10-5-10-5z"></path>
+              <path d="M2 17l10 5 10-5"></path>
+              <path d="M2 12l10 5 10-5"></path>
+            </svg>
+            <span id="injected-count-badge">扩展槽位管理 (0)</span>
+          </button>
         </div>
       </div>
       <div class="glass-card" style="overflow: hidden;">
         <table class="model-table" style="border: none; box-shadow: none; border-radius: 0;">
           <thead>
             <tr>
-              <th>原始名</th>
-              <th>显示名</th>
-              <th>模型槽位</th>
+              <th>
+                <span style="display:inline-flex;align-items:center;gap:6px;">
+                  <span>显示名</span>
+                  <button class="btn-ghost" onclick="openModelMapSettings()" title="显示名设置：前缀 / 后缀" style="width:24px;height:24px;padding:0;border-radius:7px;display:inline-flex;align-items:center;justify-content:center;vertical-align:middle;">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
+                      <circle cx="12" cy="12" r="3"></circle>
+                      <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+                    </svg>
+                  </button>
+                </span>
+              </th>
+              <th>原模型名</th>
+              <th>原始模型ID</th>
               <th>目标（供应商/模型）</th>
+              <th>来源</th>
+              <th>图片</th>
               <th>劫持</th>
               <th>操作</th>
             </tr>
           </thead>
           <tbody id="modelMapBody"></tbody>
         </table>
+      </div>
+    </div>
+
+    <!-- ═══════ PAGE: EVALUATION ═══════ -->
+    <div class="page" id="page-eval">
+      <div class="control-bar glass-card" style="padding: 14px 24px; margin-bottom: 20px; border-radius: 14px; display:flex; flex-wrap:wrap; gap:12px; align-items:center; justify-content:space-between; min-height:72px;">
+        <div style="display:flex; align-items:center; gap:12px; min-width:180px;">
+          <h2 style="font-size:14px; font-weight:700; color:var(--text-primary); display:flex; align-items:center; gap:6px; margin:0; user-select:none;">
+            模型评测
+          </h2>
+          <span class="tag" id="evalReportCount" style="font-size:10px;">0 份报告</span>
+        </div>
+        <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+          <select class="model-select" id="eval-provider-select" onchange="renderEvalModelOptions()" style="width:190px; height:32px; padding:5px 28px 5px 10px; font-size:12px;"></select>
+          <select class="model-select" id="eval-model-select" style="width:230px; height:32px; padding:5px 28px 5px 10px; font-size:12px;"></select>
+          <select class="model-select" id="eval-mode-select" style="width:116px; height:32px; padding:5px 28px 5px 10px; font-size:12px;">
+            <option value="quick">快速</option>
+            <option value="standard">标准</option>
+          </select>
+          <button class="btn-primary" id="evalRunBtn" onclick="startEval()" style="height:32px; padding:0 14px; border-radius:8px; font-size:12px;">
+            开始评测
+          </button>
+        </div>
+      </div>
+
+      <div class="eval-layout">
+        <div style="min-width:0;">
+          <div class="eval-result-grid">
+            <div class="eval-stat">
+              <div class="eval-stat-label">总分</div>
+              <div class="eval-stat-value" id="eval-score">--</div>
+            </div>
+            <div class="eval-stat">
+              <div class="eval-stat-label">风险</div>
+              <div class="eval-stat-value" id="eval-risk">--</div>
+            </div>
+            <div class="eval-stat">
+              <div class="eval-stat-label">请求</div>
+              <div class="eval-stat-value" id="eval-requests">--</div>
+            </div>
+            <div class="eval-stat">
+              <div class="eval-stat-label">耗时</div>
+              <div class="eval-stat-value" id="eval-duration">--</div>
+            </div>
+          </div>
+
+          <div class="glass-card" style="overflow:hidden;">
+            <div class="card-header">
+              <div class="card-title"><span class="dot"></span> 评测报告</div>
+              <div id="eval-report-meta" style="font-size:11px; color:var(--text-muted); font-family:var(--font-mono);">--</div>
+            </div>
+            <div class="card-body" style="padding:0;">
+              <div id="eval-empty" style="padding:44px 20px; text-align:center; color:var(--text-muted); font-size:13px;">暂无报告</div>
+              <div id="eval-result" style="display:none;">
+                <div style="padding:16px 18px; border-bottom:1px solid var(--border); display:flex; flex-direction:column; gap:10px;">
+                  <div id="eval-verdict" style="font-size:14px; font-weight:700; color:var(--text-primary); line-height:1.5;"></div>
+                  <div id="eval-caps" style="display:flex; flex-wrap:wrap; gap:6px;"></div>
+                </div>
+                <table class="model-table" style="border:none; border-radius:0; box-shadow:none;">
+                  <thead>
+                    <tr>
+                      <th style="width:76px;">探针</th>
+                      <th style="width:86px;">状态</th>
+                      <th style="width:80px;">分数</th>
+                      <th style="width:90px;">延迟</th>
+                      <th>证据</th>
+                    </tr>
+                  </thead>
+                  <tbody id="eval-probe-body"></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="glass-card" style="overflow:hidden; align-self:start;">
+          <div class="card-header">
+            <div class="card-title"><span class="dot"></span> 历史记录</div>
+            <button class="btn-ghost" onclick="loadEvalReports()" style="height:28px; padding:0 10px; border-radius:8px;">刷新</button>
+          </div>
+          <div id="eval-history-list" style="max-height:620px; overflow:auto;"></div>
+        </div>
       </div>
     </div>
 
@@ -2181,6 +2471,34 @@ html[data-theme="dark"] .icon-btn .moon-icon {
               <button class="btn-ghost" onclick="saveIdePath()">保存路径</button>
             </div>
             <div class="patch-detail" id="ide-path-status" style="margin-top:8px"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 流量路由 -->
+      <div class="glass-card" style="margin-top:20px">
+        <div class="card-header">
+          <div class="card-title"><span class="dot"></span> 流量路由</div>
+        </div>
+        <div class="card-body">
+          <div class="patch-detail" style="line-height:1.7">
+            代理启动后，IDE 的 API 请求将通过本地代理转发至配置的供应商。<br>
+            请求 → <code>localhost:7450</code>（MITM 代理）→ 供应商 API<br>
+            支持多供应商负载均衡，相同请求自动路由到可用供应商。
+          </div>
+          <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;">
+            <div style="flex:1;min-width:180px;padding:10px 14px;background:var(--bg-input);border-radius:8px;">
+              <div style="font-size:11px;color:var(--text-muted);margin-bottom:4px;">MITM 代理</div>
+              <div style="font-size:14px;font-weight:600;font-family:var(--font-mono);" id="route-mitm">:7450</div>
+            </div>
+            <div style="flex:1;min-width:180px;padding:10px 14px;background:var(--bg-input);border-radius:8px;">
+              <div style="font-size:11px;color:var(--text-muted);margin-bottom:4px;">直连代理</div>
+              <div style="font-size:14px;font-weight:600;font-family:var(--font-mono);" id="route-direct">:7451</div>
+            </div>
+            <div style="flex:1;min-width:180px;padding:10px 14px;background:var(--bg-input);border-radius:8px;">
+              <div style="font-size:11px;color:var(--text-muted);margin-bottom:4px;">活跃供应商</div>
+              <div style="font-size:14px;font-weight:600;" id="route-providers">—</div>
+            </div>
           </div>
         </div>
       </div>
@@ -2261,6 +2579,49 @@ html[data-theme="dark"] .icon-btn .moon-icon {
                 <div class="setting-desc">将思考块传递给 IDE</div>
               </div>
               <div class="setting-ctrl"><div class="toggle-sm on" data-config-toggle="EXTENDED_THINKING"></div></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="glass-card">
+          <div class="card-header">
+            <div class="card-title"><svg class="title-svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"></path></svg>自动重试</div>
+          </div>
+          <div class="card-body">
+            <div class="setting-row">
+              <div>
+                <div class="setting-label">启用自动重试</div>
+                <div class="setting-desc">遇到 5xx/429/网络错误时自动重试（重启代理后生效）</div>
+              </div>
+              <div class="setting-ctrl"><div class="toggle-sm on" data-config-toggle="BYOK_RETRY"></div></div>
+            </div>
+            <div class="setting-row">
+              <div>
+                <div class="setting-label">最大重试次数</div>
+                <div class="setting-desc">每次请求最多重试几次（推荐 3-10）</div>
+              </div>
+              <div class="setting-ctrl"><input class="input-sm" data-config-key="BYOK_RETRY_MAX" type="number" min="0" max="20" value="5"></div>
+            </div>
+            <div class="setting-row">
+              <div>
+                <div class="setting-label">退避基准 (ms)</div>
+                <div class="setting-desc">首次重试等待基数，后续指数递增</div>
+              </div>
+              <div class="setting-ctrl"><input class="input-sm" data-config-key="BYOK_RETRY_BASE_MS" type="number" min="50" max="5000" step="50" value="600"></div>
+            </div>
+            <div class="setting-row">
+              <div>
+                <div class="setting-label">退避上限 (ms)</div>
+                <div class="setting-desc">单次重试最长等待</div>
+              </div>
+              <div class="setting-ctrl"><input class="input-sm" data-config-key="BYOK_RETRY_CAP_MS" type="number" min="1000" max="60000" step="1000" value="8000"></div>
+            </div>
+            <div class="setting-row">
+              <div>
+                <div class="setting-label">整体超时 (ms)</div>
+                <div class="setting-desc">重试总耗时上限，超时后停止重试</div>
+              </div>
+              <div class="setting-ctrl"><input class="input-sm" data-config-key="BYOK_RETRY_TOTAL_MS" type="number" min="10000" max="300000" step="5000" value="60000"></div>
             </div>
           </div>
         </div>
@@ -2379,6 +2740,30 @@ html[data-theme="dark"] .icon-btn .moon-icon {
   </main>
 </div>
 
+<!-- 自定义提示模态框 (替代 alert) -->
+<div id="custom-alert-modal" class="modal-overlay">
+  <div class="modal-container" style="max-width: 460px;">
+    <div class="modal-header">
+      <div class="modal-title">
+        <span class="modal-icon" id="custom-alert-icon" style="color: var(--accent);">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10"></circle>
+            <line x1="12" y1="8" x2="12" y2="12"></line>
+            <line x1="12" y1="16" x2="12.01" y2="16"></line>
+          </svg>
+        </span>
+        <span id="custom-alert-title">提示</span>
+      </div>
+    </div>
+    <div class="modal-body" style="max-height: 320px; overflow-y: auto;">
+      <div id="custom-alert-body" style="font-size: 14px; line-height: 1.6; white-space: pre-wrap; color: var(--text-secondary);"></div>
+    </div>
+    <div class="modal-footer">
+      <button id="custom-alert-ok-btn" class="modal-btn modal-btn-confirm" style="min-width: 80px;">确定</button>
+    </div>
+  </div>
+</div>
+
 <!-- 自定义模态弹窗 (Custom Modal Dialog) -->
 <div id="custom-confirm-modal" class="modal-overlay">
   <div class="modal-container">
@@ -2452,18 +2837,20 @@ html[data-theme="dark"] .icon-btn .moon-icon {
   <div class="modal-container" style="max-width: 500px;">
     <div class="modal-header">
       <div class="modal-title">
-        <span class="modal-icon" style="color: var(--accent);">
+        <span class="modal-icon" id="updater-modal-icon" style="color: var(--accent);">
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
             <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"></path>
           </svg>
         </span>
-        检测到新版本可用！
+        <span id="updater-modal-title-text">检测到新版本可用！</span>
       </div>
     </div>
-    <div class="modal-body" style="max-height: 300px; overflow-y: auto; padding-right: 8px;">
+    <div class="modal-body" style="max-height: 360px; overflow-y: auto; padding-right: 8px;">
+      <!-- 版本信息 -->
       <p style="font-weight: 600; font-size: 14px; margin-bottom: 8px;">
         新版本：<span id="updater-target-version" style="color: var(--accent); font-family: var(--font-mono);">v1.0.1</span>
       </p>
+      <!-- 更新内容 -->
       <div style="background: var(--bg-primary); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 12px 16px; font-size: 13px; margin-bottom: 12px;">
         <div style="font-weight: bold; margin-bottom: 6px; color: var(--text-primary);">更新内容：</div>
         <div id="updater-target-notes" style="white-space: pre-wrap; font-family: var(--font-body); line-height: 1.5; color: var(--text-secondary);">
@@ -2479,6 +2866,36 @@ html[data-theme="dark"] .icon-btn .moon-icon {
         </div>
         <div style="width: 100%; height: 8px; background: var(--bg-primary); border-radius: 4px; overflow: hidden; border: 1px solid var(--border);">
           <div id="updater-progress-bar" style="width: 0%; height: 100%; background: linear-gradient(90deg, var(--accent), var(--accent-secondary)); transition: width 0.1s ease;"></div>
+        </div>
+      </div>
+
+      <!-- 下载完成提示 -->
+      <div id="updater-ready-container" style="display: none; margin-top: 14px;">
+        <div style="display: flex; align-items: center; gap: 8px; padding: 10px 14px; background: rgba(34,197,94,0.08); border: 1px solid rgba(34,197,94,0.2); border-radius: 8px;">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--success)" stroke-width="2.5"><polyline points="9 11 12 14 22 4"></polyline><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path></svg>
+          <span style="font-size: 13px; color: var(--success);">更新已就绪，重启后即可生效</span>
+        </div>
+      </div>
+
+      <!-- 错误提示区 -->
+      <div id="updater-error-container" style="display: none; margin-top: 14px;">
+        <div style="padding: 10px 14px; background: rgba(239,68,68,0.08); border: 1px solid rgba(239,68,68,0.2); border-radius: 8px;">
+          <div style="display: flex; align-items: flex-start; gap: 8px;">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--error, #ef4444)" stroke-width="2.5" style="flex-shrink:0;margin-top:1px;"><circle cx="12" cy="12" r="10"></circle><line x1="15" y1="9" x2="9" y2="15"></line><line x1="9" y1="9" x2="15" y2="15"></line></svg>
+            <div style="flex:1;min-width:0;">
+              <div id="updater-error-message" style="font-size: 13px; color: var(--error, #ef4444); word-break: break-word;"></div>
+              <button id="updater-error-toggle" onclick="toggleUpdaterErrorDetails()" style="font-size: 11px; color: var(--text-muted); background: none; border: none; cursor: pointer; padding: 2px 0; margin-top: 4px; text-decoration: underline;"></button>
+              <div id="updater-error-details" style="display: none; font-size: 11px; color: var(--text-muted); margin-top: 4px; word-break: break-all; font-family: var(--font-mono); background: var(--bg-primary); padding: 6px 8px; border-radius: 4px; max-height: 80px; overflow-y: auto;"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 重试状态提示 -->
+      <div id="updater-retry-container" style="display: none; margin-top: 14px;">
+        <div style="display: flex; align-items: center; gap: 8px; padding: 8px 14px; background: rgba(59,130,246,0.08); border: 1px solid rgba(59,130,246,0.2); border-radius: 8px;">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" style="animation: spin 1s linear infinite;"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"></path></svg>
+          <span id="updater-retry-status" style="font-size: 12px; color: var(--accent);">正在重试...</span>
         </div>
       </div>
     </div>
@@ -2534,14 +2951,14 @@ const tabs = document.querySelectorAll('.tab-item[data-page]');
 const pages = document.querySelectorAll('.page');
 
 function hideAllEditorModals() {
-  ['providerModal', 'slotModal', 'failoverModal'].forEach(id => {
+  ['providerModal', 'slotModal', 'failoverModal', 'modelMapSettingsModal'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.classList.remove('is-open');
   });
 }
 
 function navigateTo(pageId) {
-  // 切页前先收起所有编辑弹窗，避免弹层残留造成“仪表盘出现模型面板”
+  // 切页前先收起所有编辑弹窗，避免弹层残留造成"仪表盘出现模型面板"
   hideAllEditorModals();
 
   tabs.forEach(t => t.classList.remove('active'));
@@ -2551,8 +2968,15 @@ function navigateTo(pageId) {
   if (tab) tab.classList.add('active');
   if (page) page.classList.add('active');
   const main = document.querySelector('.main');
-  if (main) main.classList.toggle('dashboard-active', pageId === 'dashboard');
+  if (main) {
+    main.classList.toggle('dashboard-active', pageId === 'dashboard');
+    main.classList.toggle('logs-active', pageId === 'logs');
+  }
   if (pageId === 'patches') detectIdePath();
+  if (pageId === 'eval') {
+    renderEvalProviderOptions();
+    loadEvalReports();
+  }
 }
 
 tabs.forEach(t => t.addEventListener('click', () => navigateTo(t.dataset.page)));
@@ -2664,6 +3088,111 @@ function updateFlowIdeTarget(ide) {
   }
 }
 
+// ═══════ CUSTOM ALERT (替代原生 alert) ═══════
+function showCustomAlert(message, title, iconType) {
+  title = title || '提示';
+  iconType = iconType || 'info'; // info | warn | error | success
+
+  const modal = document.getElementById('custom-alert-modal');
+  const titleEl = document.getElementById('custom-alert-title');
+  const bodyEl = document.getElementById('custom-alert-body');
+  const iconEl = document.getElementById('custom-alert-icon');
+  const okBtn = document.getElementById('custom-alert-ok-btn');
+  if (!modal || !bodyEl || !okBtn) {
+    // 降级为原生 alert
+    alert(message);
+    return;
+  }
+
+  titleEl.textContent = title;
+  bodyEl.textContent = message;
+
+  // 根据类型切换图标和颜色
+  const iconColorMap = { info: 'var(--accent)', warn: 'var(--accent-warm)', error: 'var(--danger)', success: 'var(--success)' };
+  const iconSvgMap = {
+    info: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>',
+    warn: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>',
+    error: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="15" y1="9" x2="9" y2="15"></line><line x1="9" y1="9" x2="15" y2="15"></line></svg>',
+    success: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 11 12 14 22 4"></polyline><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path></svg>'
+  };
+  iconEl.style.color = iconColorMap[iconType] || iconColorMap.info;
+  iconEl.innerHTML = iconSvgMap[iconType] || iconSvgMap.info;
+
+  modal.classList.add('active');
+
+  // 绑定一次性关闭
+  const close = () => {
+    modal.classList.remove('active');
+    okBtn.removeEventListener('click', close);
+    modal.removeEventListener('click', overlayClose);
+    document.removeEventListener('keydown', escClose);
+  };
+  okBtn.addEventListener('click', close);
+
+  // 点击遮罩关闭
+  const overlayClose = (e) => {
+    if (e.target === modal) close();
+  };
+  modal.addEventListener('click', overlayClose);
+
+  // Esc 关闭
+  const escClose = (e) => {
+    if (e.key === 'Escape' && modal.classList.contains('active')) close();
+  };
+  document.addEventListener('keydown', escClose);
+}
+
+// ═══════ CUSTOM CONFIRM (替代原生 confirm，返回 Promise<boolean>) ═══════
+function showCustomConfirm(message, title, iconType) {
+  title = title || '确认';
+  iconType = iconType || 'warn';
+
+  return new Promise((resolve) => {
+    const modal = document.getElementById('custom-confirm-modal');
+    const leadEl = document.getElementById('modal-lead');
+    const btnCancel = document.getElementById('modal-btn-cancel');
+    const btnConfirm = document.getElementById('modal-btn-confirm');
+
+    if (!modal || !btnCancel || !btnConfirm) {
+      // 降级为原生 confirm
+      resolve(confirm(message));
+      return;
+    }
+
+    if (leadEl) leadEl.textContent = message;
+
+    // 重置 footer 为确认/取消双按钮
+    const footer = modal.querySelector('.modal-footer');
+    if (footer) {
+      btnCancel.style.display = '';
+      btnCancel.textContent = '取消';
+      btnConfirm.style.display = '';
+      btnConfirm.textContent = '确定';
+      btnConfirm.style.width = '';
+    }
+
+    modal.classList.add('active');
+
+    const cleanup = () => {
+      modal.classList.remove('active');
+      btnCancel.removeEventListener('click', onCancel);
+      btnConfirm.removeEventListener('click', onConfirm);
+      modal.removeEventListener('click', onOverlay);
+      document.removeEventListener('keydown', onEsc);
+    };
+
+    const onConfirm = (e) => { e.preventDefault(); e.stopPropagation(); cleanup(); resolve(true); };
+    const onCancel = (e) => { e.preventDefault(); e.stopPropagation(); cleanup(); resolve(false); };
+    const onOverlay = (e) => { if (e.target === modal) { cleanup(); resolve(false); } };
+    const onEsc = (e) => { if (e.key === 'Escape' && modal.classList.contains('active')) { cleanup(); resolve(false); } };
+
+    btnCancel.addEventListener('click', onCancel);
+    btnConfirm.addEventListener('click', onConfirm);
+    modal.addEventListener('click', onOverlay);
+    document.addEventListener('keydown', onEsc);
+  });
+}
+
 // ═══════ PROXY TOGGLE ═══════
 let proxyRunning = false;
 
@@ -2723,8 +3252,12 @@ function setStatusPill(running) {
   }
 }
 
+let _toggling = false;
 async function toggleProxy() {
   _diag('toggleProxy called');
+  if (_toggling) { _diag('toggleProxy skipped: already in progress'); return; }
+  _toggling = true;
+  try {
   if (!invoke && !bindTauriBridge()) {
     _diag('toggleProxy abort: invoke unavailable');
     addLog('err', 'Tauri 通道未就绪，代理操作不可用。请重启应用后重试。');
@@ -2757,8 +3290,8 @@ async function toggleProxy() {
       }
       if (warnings.length) {
         addLog('warn', '⚠ 部分还原未成功: ' + warnings.join('；'));
-        alert('停止代理成功，但以下配置未能自动还原:\n\n• ' + warnings.join('\n• ') +
-              '\n\n请手动检查 IDE 设置中的 http.proxy 和 http.proxyStrictSSL，否则 IDE 可能无法联网。');
+        showCustomAlert('停止代理成功，但以下配置未能自动还原:\n\n• ' + warnings.join('\n• ') +
+              '\n\n请手动检查 IDE 设置中的 http.proxy 和 http.proxyStrictSSL，否则 IDE 可能无法联网。', '部分还原失败', 'warn');
       } else {
         await promptRestartIde('已停止代理并还原配置。IDE 仍指向已关闭的代理，需重启才能恢复正常联网。');
       }
@@ -2767,7 +3300,7 @@ async function toggleProxy() {
       try {
         const problems = await invoke('validate_model_map');
         if (problems && problems.length) {
-          alert('无法启动，请先修复模型映射配置:\n\n• ' + problems.join('\n• '));
+          showCustomAlert('无法启动，请先修复模型映射配置:\n\n• ' + problems.join('\n• '), '启动失败', 'error');
           addLog('err', '启动被拦截: ' + problems.join('; '));
           if (btn) {
             btn.disabled = false;
@@ -2790,6 +3323,7 @@ async function toggleProxy() {
   } finally {
     if (btn) btn.disabled = false;
   }
+  } finally { _toggling = false; }
 }
 
 let _statusFailStreak = 0;
@@ -2818,14 +3352,8 @@ function promptRestartIde(leadText) {
     const btnConfirm = document.getElementById('modal-btn-confirm');
 
     if (!modal || !btnCancel || !btnConfirm) {
-      // 降级使用原生 confirm
-      const ok = confirm(
-        lead + '\n\n' +
-        '是否立即重启？\n' +
-        '⚠ 重启会强制关闭 IDE，请先保存所有未保存的工作。\n\n' +
-        '点「取消」可稍后自行重启。'
-      );
-      resolve(ok);
+      // 降级使用 showCustomConfirm
+      showCustomConfirm(lead + '\n\n重启会强制关闭 IDE，请先保存所有未保存的工作。', '需要重启 IDE', 'warn').then(resolve);
       return;
     }
 
@@ -2884,10 +3412,16 @@ async function refreshStats() {
     setText('stat-provider', '—');
     setText('stat-model', '尚无请求');
     setText('stat-errors', '—');
+    setText('stat-rpm', '—');
+    setText('stat-tpm', '—');
+    setText('stat-latency', '—');
+    setText('stat-retries', '—');
+    setText('stat-retries-sub', '本日累计');
     return;
   }
   try {
     const s = await invoke('get_stats');
+    // 第一排：累计指标
     setText('stat-requests', fmtNum(s.requests));
     setText('stat-requests-sub', s.requests > 0 ? `运行 ${Math.floor(s.uptimeSec / 60)} 分钟` : '等待请求');
     setText('stat-tokens', fmtNum(s.totalTokens));
@@ -2896,9 +3430,49 @@ async function refreshStats() {
     setText('stat-model', s.lastModel || '尚无请求');
     setText('stat-errors', fmtNum(s.errors));
     setText('stat-errors-sub', s.lastError ? `最近: ${s.lastError}` : '本日累计');
+    // 第二排：速率指标
+    const r = s.rate || {};
+    setText('stat-rpm', r.rpm != null ? r.rpm : '—');
+    setText('stat-tpm', r.tpm != null ? fmtNum(r.tpm) : '—');
+    setText('stat-latency', r.avgLatencyMs != null ? `${r.avgLatencyMs}ms` : '—');
+    setText('stat-retries', fmtNum(s.retries || 0));
+    setText('stat-retries-sub', s.lastRetryReason ? `最近: ${s.lastRetryReason}` : '本日累计');
+    // Top 模型横向条形图
+    renderTopModels(s.byModel || {});
+    // 更新接入页流量路由信息
+    const rp = document.getElementById('route-providers');
+    if (rp) {
+      const activeCount = providerStore && providerStore.providers ? providerStore.providers.filter(p => p.enabled !== false).length : 0;
+      rp.textContent = activeCount > 0 ? `${activeCount} 个供应商` : '—';
+    }
   } catch (e) {
     // proxy running but stats endpoint not reachable yet — keep last values
   }
+}
+
+function renderTopModels(byModel) {
+  const container = document.getElementById('topModelsChart');
+  if (!container) return;
+  const entries = Object.entries(byModel).sort((a, b) => b[1] - a[1]).slice(0, 5);
+  if (entries.length === 0) {
+    container.innerHTML = '<div style="color:var(--text-muted);font-size:12px;text-align:center;padding:8px 0;">尚无数据</div>';
+    return;
+  }
+  const maxVal = entries[0][1];
+  const colors = ['#3b82f6', '#06b6d4', '#10b981', '#f59e0b', '#8b5cf6'];
+  let html = '';
+  entries.forEach(([model, count], i) => {
+    const pct = Math.max(4, (count / maxVal) * 100);
+    const color = colors[i % colors.length];
+    html += `<div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;">
+      <div style="width:120px;font-size:12px;color:var(--text-secondary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex-shrink:0;" title="${model}">${model}</div>
+      <div style="flex:1;height:18px;background:var(--bg-input);border-radius:4px;overflow:hidden;">
+        <div style="width:${pct}%;height:100%;background:${color};border-radius:4px;transition:width 0.4s ease;"></div>
+      </div>
+      <div style="width:40px;font-size:12px;color:var(--text-muted);text-align:right;flex-shrink:0;">${count}</div>
+    </div>`;
+  });
+  container.innerHTML = html;
 }
 
 // ═══════ WINDOW CONTROLS ═══════
@@ -3206,6 +3780,149 @@ function capabilityBadges(p, compact = false, modelId = null) {
   ].filter(Boolean).join('');
 }
 
+// Windsurf 是否真的上传图片，取决于“原生模型槽位”本身；仅把映射目标标成 Vision 不够。
+const IMAGE_UNSAFE_NATIVE_SLOT_IDS = new Set([
+  'MODEL_XAI_GROK_3',
+  'MODEL_XAI_GROK_3_MINI_REASONING',
+]);
+
+function catalogEntryOf(uid) {
+  return (injectedCatalog || []).find(x => x.modelUid === uid) || null;
+}
+
+function nativeVisionSlotInfo(uid) {
+  if (!uid) {
+    return { ok: null, state: 'unknown', label: '未选择', title: '请先选择一个 Windsurf 模型槽位' };
+  }
+  if (IMAGE_UNSAFE_NATIVE_SLOT_IDS.has(uid)) {
+    return {
+      ok: false,
+      state: 'risk',
+      label: '慎用图片',
+      title: '已实测该原生槽位不会稳定上传图片；请换用 GPT-4o、Claude Haiku 等原生视觉槽',
+    };
+  }
+  const m = catalogEntryOf(uid);
+  if (m && m.supportsImages === true) {
+    return { ok: true, state: 'ok', label: '原生视觉', title: '该 Windsurf 槽位原生支持图片上传' };
+  }
+  if (m && m.supportsImages === false) {
+    return { ok: false, state: 'risk', label: '非视觉槽', title: '该 Windsurf 槽位未标记原生图片能力' };
+  }
+  return { ok: null, state: 'unknown', label: '图片未知', title: '未在内置目录确认该槽位是否会上传图片' };
+}
+
+function targetSupportsVision(t) {
+  const p = (providerStore.providers || []).find(x => x.id === (t && t.providerId));
+  if (!p || p.enabled === false) return false;
+  return providerCapabilities(p, t.model || p.defaultModel || null).vision === true;
+}
+
+function targetsSupportVision(targets) {
+  return Array.isArray(targets) && targets.some(t => targetSupportsVision(t));
+}
+
+function visionStatusStyle(state) {
+  if (state === 'ok') return { bg: 'var(--success-dim)', color: 'var(--success)', border: 'rgba(22,163,74,.22)' };
+  if (state === 'risk') return { bg: 'rgba(217,119,6,.12)', color: 'var(--warn,#d97706)', border: 'rgba(217,119,6,.28)' };
+  if (state === 'off') return { bg: 'var(--bg-input)', color: 'var(--text-muted)', border: 'var(--border)' };
+  if (state === 'target-off') return { bg: 'var(--bg-input)', color: 'var(--text-muted)', border: 'var(--border)' };
+  return { bg: 'rgba(37,99,235,.10)', color: 'var(--accent)', border: 'rgba(37,99,235,.22)' };
+}
+
+function slotVisionAssessment(uid, targets, supportsImages = true) {
+  const hasTargets = Array.isArray(targets) && targets.length > 0;
+  if (!hasTargets) {
+    return { state: 'unset', label: '未设置', title: '还没有选择映射目标' };
+  }
+  const targetVision = targetsSupportVision(targets);
+  if (supportsImages === false) {
+    return { state: 'off', label: '图片关闭', title: '该映射未向 Windsurf 声明图片能力' };
+  }
+  if (!targetVision) {
+    return { state: 'target-off', label: '目标未标记', title: '所选供应商模型未标记 Vision；如实际支持，请先在供应商测试中校准能力' };
+  }
+  const native = nativeVisionSlotInfo(uid);
+  if (native.ok === true) {
+    return { state: 'ok', label: '图片可用', title: '原生槽位与映射目标都支持图片' };
+  }
+  if (native.ok === false) {
+    return { state: 'risk', label: '需换视觉槽', title: native.title };
+  }
+  return { state: 'unknown', label: '需确认槽位', title: native.title };
+}
+
+function renderVisionPill(info, compact = false) {
+  const s = visionStatusStyle(info.state);
+  return `<span class="tag" title="${escAttr(info.title || info.label)}" style="display:inline-flex;align-items:center;gap:5px;background:${s.bg};color:${s.color};border:1px solid ${s.border};font-size:${compact ? '10px' : '11px'};padding:${compact ? '2px 6px' : '3px 8px'};border-radius:7px;font-weight:700;white-space:nowrap;">${escAttr(info.label)}</span>`;
+}
+
+function isAccountSlotModel(m) {
+  return !!(m && m.origin === 'account');
+}
+
+function slotModelOf(uid) {
+  return (ideModels || []).find(x => x.id === uid) || null;
+}
+
+function slotSourceInfo(uidOrModel) {
+  const m = typeof uidOrModel === 'string' ? slotModelOf(uidOrModel) : uidOrModel;
+  if (isAccountSlotModel(m)) {
+    return {
+      state: 'account',
+      label: '当前账号',
+      title: '当前 IDE 账号实际返回的模型槽位，默认优先使用',
+    };
+  }
+  return {
+    state: 'extended',
+    label: '扩展槽位',
+    title: '来自内置全量槽位目录；启用代理改写后可用于 BYOK 映射',
+  };
+}
+
+function renderSourcePill(info, compact = false) {
+  const account = info.state === 'account';
+  const bg = account ? 'rgba(37,99,235,.10)' : 'var(--bg-input)';
+  const color = account ? 'var(--accent)' : 'var(--text-muted)';
+  const border = account ? 'rgba(37,99,235,.22)' : 'var(--border)';
+  return `<span class="tag" title="${escAttr(info.title)}" style="display:inline-flex;align-items:center;background:${bg};color:${color};border:1px solid ${border};font-size:${compact ? '10px' : '11px'};padding:${compact ? '2px 6px' : '3px 8px'};border-radius:7px;font-weight:700;white-space:nowrap;">${escAttr(info.label)}</span>`;
+}
+
+function visionSafeAlternatives(currentUid, limit = 3) {
+  const used = new Set((modelMapStore.slots || []).map(x => x.modelUid).filter(x => x && x !== currentUid));
+  return (ideModels || [])
+    .filter(m => !used.has(m.id) && nativeVisionSlotInfo(m.id).ok === true)
+    .slice(0, limit);
+}
+
+function updateSlotVisionHint() {
+  const box = document.getElementById('slot-vision-hint');
+  if (!box) return;
+  const uid = selectedSlotUid || document.getElementById('slot-uid-select')?.value || '';
+  const supportsImages = document.getElementById('slot-supports-images')?.checked !== false;
+  const native = nativeVisionSlotInfo(uid);
+  const targetVision = targetsSupportVision(selectedMappingTargets);
+  const assessment = slotVisionAssessment(uid, selectedMappingTargets, supportsImages);
+  const alts = visionSafeAlternatives(uid, 2).map(m => m.name).join(' / ');
+  const s = visionStatusStyle(assessment.state === 'unset' ? native.state : assessment.state);
+  let detail = assessment.title || native.title;
+  if (assessment.state === 'risk' && alts) detail += `。推荐改用：${alts}`;
+  if (!targetVision && selectedMappingTargets.length > 0) detail = '目标模型未标记 Vision；如果上游实际支持，请先测试供应商模型能力';
+  box.innerHTML = `
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;">
+      <div style="display:flex;align-items:center;gap:8px;min-width:0;">
+        ${renderVisionPill(native, true)}
+        ${renderVisionPill(assessment, true)}
+      </div>
+      ${targetVision ? '<span style="font-size:10px;color:var(--success);font-weight:700;">目标支持 Vision</span>' : '<span style="font-size:10px;color:var(--text-muted);font-weight:700;">目标未标记 Vision</span>'}
+    </div>
+    <div style="margin-top:6px;color:${s.color};font-size:11px;line-height:1.45;">${escAttr(detail)}</div>
+  `;
+  box.style.background = s.bg;
+  box.style.borderColor = s.border;
+}
+
 
 async function loadProviders() {
   if (!invoke) return;
@@ -3218,6 +3935,7 @@ async function loadProviders() {
     providerStore = { providers: [] };
   }
   renderProviders();
+  renderEvalProviderOptions();
   await renderModelMap();
 }
 
@@ -3238,10 +3956,10 @@ function renderProviders() {
       const key = getModelIconKey(m);
       const color = MODEL_ICON_COLORS[key] || '#888';
       return `
-        <span class="tag" style="background:${color}15; color:${color}; border:1px solid ${color}25; display:inline-flex; align-items:center; gap:6px; font-weight:600; padding:4px 10px; border-radius:8px; font-size:11px;">
+        <span class="tag" style="background:${color}15; color:${color}; border:1px solid ${color}25; display:flex; align-items:center; gap:6px; font-weight:600; padding:4px 10px; border-radius:8px; font-size:11px; min-width:0; max-width:100%;">
           ${renderModelIcon(m)}
-          <span>${escAttr(m)}</span>
-          ${idx === 0 ? '<span style="opacity:0.5; font-size:9px; font-weight:normal; margin-left:2px;">(默认)</span>' : ''}
+          <span style="flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escAttr(m)}</span>
+          ${idx === 0 ? '<span style="opacity:0.5; font-size:9px; font-weight:normal; margin-left:2px; flex-shrink:0;">(默认)</span>' : ''}
         </span>
       `;
     }).join('');
@@ -3258,9 +3976,9 @@ function renderProviders() {
           <div class="toggle ${enabled ? 'on' : ''}" title="${enabled ? '已启用，点击禁用' : '未启用，点击启用'}" onclick="toggleProviderEnabled('${escAttr(p.id)}')"></div>
         </div>
         <div class="provider-body" style="flex:1; display:flex; flex-direction:column; gap:14px; padding:16px 20px;">
-          <div class="field" style="margin-bottom:0;">
+          <div class="field" style="margin-bottom:0; min-height:0;">
             <div class="field-label" style="margin-bottom:6px;">已选模型</div>
-            <div style="display:flex; flex-wrap:wrap; gap:6px;">${modelsBadges || '<span style="color:var(--text-muted); font-size:12px;">未选择</span>'}</div>
+            <div style="display:flex; flex-direction:column; gap:6px; max-height:160px; overflow-y:auto; padding-right:2px;">${modelsBadges || '<span style="color:var(--text-muted); font-size:12px;">未选择</span>'}</div>
           </div>
           <div class="field" style="margin-bottom:0; margin-top:auto;">
             <div class="field-label" style="margin-bottom:6px;">配置格式</div>
@@ -3287,6 +4005,280 @@ function renderProviders() {
   }).join('');
 }
 
+// ═══════ MODEL EVALUATION ═══════
+let evalReports = [];
+let currentEvalReportId = '';
+let evalRunning = false;
+
+function getEvalProvider(id) {
+  return (providerStore.providers || []).find(p => p.id === id) || null;
+}
+
+function getEvalModelList(provider) {
+  if (!provider) return [];
+  const models = [];
+  if (provider.defaultModel) models.push(provider.defaultModel);
+  if (Array.isArray(provider.models)) models.push(...provider.models);
+  return [...new Set(models.map(m => String(m || '').trim()).filter(Boolean))];
+}
+
+function renderEvalProviderOptions() {
+  const select = document.getElementById('eval-provider-select');
+  if (!select) return;
+  const previous = select.value;
+  const providers = (providerStore.providers || []).filter(p => p.enabled !== false);
+  if (!providers.length) {
+    select.innerHTML = '<option value="">无启用供应商</option>';
+    renderEvalModelOptions();
+    return;
+  }
+  select.innerHTML = providers.map(p => {
+    const fmt = p.apiFormat === 'openai' ? 'OpenAI' : 'Anthropic';
+    return `<option value="${escAttr(p.id)}">${escAttr(p.name)} · ${fmt}</option>`;
+  }).join('');
+  select.value = providers.some(p => p.id === previous) ? previous : providers[0].id;
+  renderEvalModelOptions();
+}
+
+function renderEvalModelOptions() {
+  const providerSelect = document.getElementById('eval-provider-select');
+  const modelSelect = document.getElementById('eval-model-select');
+  if (!modelSelect) return;
+  const previous = modelSelect.value;
+  const provider = getEvalProvider(providerSelect ? providerSelect.value : '');
+  const models = getEvalModelList(provider);
+  if (!models.length) {
+    modelSelect.innerHTML = '<option value="">未配置模型</option>';
+    return;
+  }
+  modelSelect.innerHTML = models.map(m => `<option value="${escAttr(m)}">${escAttr(m)}</option>`).join('');
+  modelSelect.value = models.includes(previous) ? previous : models[0];
+}
+
+function evalStatusLabel(status) {
+  return {
+    pass: '通过',
+    warn: '警告',
+    fail: '失败',
+    error: '错误',
+    skip: '跳过'
+  }[status] || status || '--';
+}
+
+function evalStatusTag(status) {
+  const key = String(status || 'skip').toLowerCase();
+  return `<span class="eval-status ${escAttr(key)}">${escAttr(evalStatusLabel(key))}</span>`;
+}
+
+function evalRiskLabel(level) {
+  return {
+    low: '低风险',
+    'medium-low': '较低',
+    medium: '中风险',
+    high: '高风险',
+    critical: '严重'
+  }[level] || '--';
+}
+
+function evalRiskColor(level) {
+  return {
+    low: 'var(--success)',
+    'medium-low': 'var(--success)',
+    medium: 'var(--accent-warm)',
+    high: 'var(--danger)',
+    critical: 'var(--danger)'
+  }[level] || 'var(--text-primary)';
+}
+
+function evalFormatDuration(ms) {
+  const n = Number(ms || 0);
+  if (!n) return '--';
+  return n >= 1000 ? `${(n / 1000).toFixed(1)}s` : `${Math.round(n)}ms`;
+}
+
+function evalFormatTime(ts) {
+  const n = Number(ts || 0);
+  if (!n) return '--';
+  try {
+    return new Date(n).toLocaleString('zh-CN', { hour12: false });
+  } catch {
+    return '--';
+  }
+}
+
+function renderEvalReport(report) {
+  const empty = document.getElementById('eval-empty');
+  const result = document.getElementById('eval-result');
+  if (!report) {
+    currentEvalReportId = '';
+    if (empty) empty.style.display = 'block';
+    if (result) result.style.display = 'none';
+    ['eval-score', 'eval-risk', 'eval-requests', 'eval-duration'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.textContent = '--';
+    });
+    const meta = document.getElementById('eval-report-meta');
+    if (meta) meta.textContent = '--';
+    renderEvalHistory();
+    return;
+  }
+
+  currentEvalReportId = report.id || '';
+  if (empty) empty.style.display = 'none';
+  if (result) result.style.display = 'block';
+
+  const score = Number(report.score || 0);
+  const scoreEl = document.getElementById('eval-score');
+  if (scoreEl) scoreEl.textContent = score.toFixed(1);
+  const riskEl = document.getElementById('eval-risk');
+  if (riskEl) {
+    riskEl.textContent = evalRiskLabel(report.riskLevel);
+    riskEl.style.color = evalRiskColor(report.riskLevel);
+  }
+  const requestEl = document.getElementById('eval-requests');
+  if (requestEl) requestEl.textContent = String(report.usage?.requestCount || 0);
+  const durationEl = document.getElementById('eval-duration');
+  if (durationEl) durationEl.textContent = evalFormatDuration(report.durationMs);
+  const meta = document.getElementById('eval-report-meta');
+  if (meta) {
+    meta.textContent = `${report.providerName || '--'} / ${report.model || '--'} / ${evalFormatTime(report.createdAt)}`;
+  }
+  const verdict = document.getElementById('eval-verdict');
+  if (verdict) verdict.textContent = report.verdict || '--';
+
+  const caps = Array.isArray(report.caps) ? report.caps : [];
+  const capBox = document.getElementById('eval-caps');
+  if (capBox) {
+    capBox.innerHTML = caps.length
+      ? caps.map(c => `<span class="eval-status warn">${escAttr(c.rule)} ≤ ${Number(c.capValue || 0).toFixed(0)}</span>`).join('')
+      : '<span class="eval-status pass">无硬封顶</span>';
+  }
+
+  const body = document.getElementById('eval-probe-body');
+  if (body) {
+    const probes = Array.isArray(report.probes) ? report.probes : [];
+    body.innerHTML = probes.map(p => {
+      const evidence = Array.isArray(p.evidence) ? p.evidence : [];
+      const evidenceHtml = evidence.length
+        ? `<div class="eval-evidence">${evidence.map(x => escAttr(x)).join('<br>')}</div>`
+        : '';
+      const latency = p.latencyMs == null ? '--' : `${p.latencyMs}ms`;
+      const scoreText = p.status === 'skip' ? '--' : Number(p.score || 0).toFixed(1);
+      return `
+        <tr>
+          <td><span style="font-family:var(--font-mono);font-weight:800;">${escAttr(p.id || '')}</span><div style="font-size:10px;color:var(--text-muted);margin-top:3px;">${escAttr(p.name || '')}</div></td>
+          <td>${evalStatusTag(p.status)}</td>
+          <td style="font-family:var(--font-mono);font-weight:700;">${scoreText}</td>
+          <td style="font-family:var(--font-mono);color:var(--text-muted);">${latency}</td>
+          <td><div style="font-size:12px;color:var(--text-secondary);line-height:1.45;">${escAttr(p.summary || '')}</div>${evidenceHtml}</td>
+        </tr>`;
+    }).join('');
+  }
+  renderEvalHistory();
+}
+
+function renderEvalHistory() {
+  const list = document.getElementById('eval-history-list');
+  const count = document.getElementById('evalReportCount');
+  if (count) count.textContent = `${evalReports.length} 份报告`;
+  if (!list) return;
+  if (!evalReports.length) {
+    list.innerHTML = '<div style="padding:28px 16px;text-align:center;color:var(--text-muted);font-size:13px;">暂无历史</div>';
+    return;
+  }
+  list.innerHTML = evalReports.map(r => {
+    const active = r.id === currentEvalReportId ? ' active' : '';
+    return `
+      <div class="eval-history-item${active}" onclick="selectEvalReport('${escAttr(r.id)}')">
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;">
+          <div style="min-width:0;">
+            <div style="font-size:13px;font-weight:800;color:var(--text-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escAttr(r.providerName || '--')}</div>
+            <div style="font-size:11px;color:var(--text-muted);font-family:var(--font-mono);margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escAttr(r.model || '--')}</div>
+          </div>
+          <div style="font-family:var(--font-mono);font-weight:800;color:${evalRiskColor(r.riskLevel)};">${Number(r.score || 0).toFixed(1)}</div>
+        </div>
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:9px;">
+          <span style="font-size:11px;color:var(--text-muted);font-family:var(--font-mono);">${evalFormatTime(r.createdAt)}</span>
+          <button class="btn-ghost" onclick="deleteEvalReport('${escAttr(r.id)}', event)" style="height:24px;padding:0 8px;border-radius:7px;font-size:11px;">删除</button>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+function selectEvalReport(id) {
+  const report = evalReports.find(r => r.id === id);
+  if (report) renderEvalReport(report);
+}
+
+async function loadEvalReports() {
+  if (!invoke) {
+    evalReports = [];
+    renderEvalHistory();
+    return;
+  }
+  try {
+    evalReports = await invoke('list_eval_reports') || [];
+    const current = evalReports.find(r => r.id === currentEvalReportId);
+    renderEvalReport(current || evalReports[0] || null);
+  } catch (e) {
+    evalReports = [];
+    renderEvalHistory();
+    addLog('warn', '评测报告加载失败: ' + e);
+  }
+}
+
+function setEvalRunning(running) {
+  evalRunning = running;
+  const btn = document.getElementById('evalRunBtn');
+  if (!btn) return;
+  btn.disabled = running;
+  btn.textContent = running ? '评测中...' : '开始评测';
+  btn.style.opacity = running ? '.72' : '1';
+  btn.style.cursor = running ? 'default' : 'pointer';
+}
+
+async function startEval() {
+  if (evalRunning) return;
+  const providerId = document.getElementById('eval-provider-select')?.value || '';
+  const model = document.getElementById('eval-model-select')?.value || '';
+  const mode = document.getElementById('eval-mode-select')?.value || 'quick';
+  const provider = getEvalProvider(providerId);
+  if (!provider || !model) {
+    showCustomAlert('请选择已启用的供应商和模型。', '无法评测', 'warn');
+    return;
+  }
+
+  setEvalRunning(true);
+  addLog('info', `开始评测「${provider.name} / ${model}」`);
+  try {
+    const report = await invoke('run_provider_eval', {
+      request: { providerId, model, mode }
+    });
+    evalReports = [report, ...evalReports.filter(r => r.id !== report.id)].slice(0, 20);
+    renderEvalReport(report);
+    await loadEvalReports();
+    addLog('ok', `评测完成：${provider.name} / ${model}，得分 ${Number(report.score || 0).toFixed(1)}`);
+  } catch (e) {
+    addLog('err', '评测失败: ' + e);
+    showCustomAlert(String(e), '评测失败', 'error');
+  } finally {
+    setEvalRunning(false);
+  }
+}
+
+async function deleteEvalReport(id, event) {
+  if (event) event.stopPropagation();
+  if (!id) return;
+  if (!(await showCustomConfirm('确定删除这份评测报告？', '删除确认', 'warn'))) return;
+  try {
+    evalReports = await invoke('delete_eval_report', { id }) || [];
+    renderEvalReport(evalReports[0] || null);
+    addLog('info', '已删除评测报告');
+  } catch (e) {
+    addLog('err', '删除评测报告失败: ' + e);
+  }
+}
+
 async function toggleProviderEnabled(id) {
   if (!invoke) return;
   const key = 'provider:' + id;
@@ -3299,6 +4291,7 @@ async function toggleProviderEnabled(id) {
     await invoke('set_provider_enabled', { id, enabled: next });
     p.enabled = next;
     renderProviders();
+    renderEvalProviderOptions();
     await renderModelMap();
     addLog('ok', `供应商「${p.name}」已${next ? '启用' : '禁用'}`);
   } catch (e) {
@@ -3310,10 +4303,11 @@ async function toggleProviderEnabled(id) {
 
 async function deleteProvider(id) {
   const p = providerStore.providers.find(x => x.id === id);
-  if (!confirm(`确定删除供应商「${p ? p.name : id}」？`)) return;
+  if (!(await showCustomConfirm(`确定删除供应商「${p ? p.name : id}」？`, '删除确认', 'warn'))) return;
   providerStore.providers = providerStore.providers.filter(x => x.id !== id);
   await persistProviders();
   renderProviders();
+  renderEvalProviderOptions();
   await renderModelMap();
   addLog('info', '已删除供应商');
 }
@@ -4045,6 +5039,7 @@ async function saveProviderFromEditor() {
 
   await persistProviders();
   renderProviders();
+  renderEvalProviderOptions();
   await renderModelMap();
   closeProviderEditor();
   addLog('ok', `已保存供应商: ${name}`);
@@ -4078,13 +5073,14 @@ async function testProvider(id) {
           caps.gzip = c.gzip;
           providerStore.providers[idx].capabilities = caps;
         }
-        // vision/tools 是模型级能力，写入 modelCaps
+        // vision/tools 是模型级能力，仅保存正向探测结果（true）
+        // 探测失败(false)不保存，避免误标导致后续图片/工具请求被永久拦截
         const testModel = p.defaultModel || (p.models && p.models[0]);
-        if (testModel && (c.vision !== undefined || c.tools !== undefined)) {
+        if (testModel && (c.vision === true || c.tools === true)) {
           const mc = providerStore.providers[idx].modelCaps || {};
           mc[testModel] = mc[testModel] || {};
-          if (c.vision !== undefined) mc[testModel].vision = c.vision;
-          if (c.tools !== undefined) mc[testModel].tools = c.tools;
+          if (c.vision === true) mc[testModel].vision = true;
+          if (c.tools === true) mc[testModel].tools = true;
           providerStore.providers[idx].modelCaps = mc;
         }
         await persistProviders();
@@ -4134,11 +5130,11 @@ async function testProviderInEditor() {
       // gzip 是供应商级能力
       const gzipEl = document.getElementById('pf-cap-gzip');
       if (gzipEl && c.gzip !== undefined) gzipEl.checked = c.gzip;
-      // vision/tools 是模型级能力：先写入弹窗草稿，再按需同步到已存在供应商
-      if (model && (c.vision !== undefined || c.tools !== undefined)) {
+      // vision/tools 是模型级能力：仅保存正向探测（true），失败不覆盖已有标记
+      if (model && (c.vision === true || c.tools === true)) {
         editorDraftModelCaps[model] = editorDraftModelCaps[model] || {};
-        if (c.vision !== undefined) editorDraftModelCaps[model].vision = c.vision;
-        if (c.tools !== undefined) editorDraftModelCaps[model].tools = c.tools;
+        if (c.vision === true) editorDraftModelCaps[model].vision = true;
+        if (c.tools === true) editorDraftModelCaps[model].tools = true;
 
         const editId = document.getElementById('pf-id')?.value;
         if (editId) {
@@ -4263,7 +5259,9 @@ async function refreshIdeModels() {
       },
     };
     // 刷新模态框内的槽位列表
+    maybeAutoSelectRecommendedSlot();
     renderSlotCatalogList();
+    updateSlotVisionHint();
     addLog('info', `模型列表已更新：${info.email} (${info.plan_name})，${info.models.length} 个模型`);
   } catch (e) {
     addLog('error', '刷新模型列表失败: ' + e);
@@ -4296,10 +5294,27 @@ function renderTargetChain(targets) {
   }).join(' ');
 }
 
+function renderModelMapSummary(slots) {
+  const el = document.getElementById('modelMapSummary');
+  if (!el) return;
+  const accountCount = (ideModels || []).filter(isAccountSlotModel).length;
+  const extendedCount = (ideModels || []).filter(m => !isAccountSlotModel(m)).length;
+  const mappedCount = (slots || []).length;
+  const riskCount = (slots || []).filter(s => slotVisionAssessment(s.modelUid, s.targets || [], s.supportsImages !== false).state === 'risk').length;
+  const pill = (label, value, warn = false) => `<span class="tag" style="background:${warn ? 'rgba(217,119,6,.12)' : 'var(--bg-input)'};color:${warn ? 'var(--warn,#d97706)' : 'var(--text-muted)'};border:1px solid ${warn ? 'rgba(217,119,6,.28)' : 'var(--border)'};font-size:10px;padding:2px 7px;border-radius:7px;font-weight:700;white-space:nowrap;">${label} ${value}</span>`;
+  el.innerHTML = [
+    pill('当前账号槽位', accountCount),
+    pill('扩展槽位', extendedCount),
+    pill('已映射', mappedCount),
+    riskCount ? pill('图片风险', riskCount, true) : '',
+  ].filter(Boolean).join('');
+}
+
 async function renderModelMap() {
   const body = document.getElementById('modelMapBody');
   if (!body) return;
   await ensureIdeModels();
+  await ensureInjected();
   try {
     const res = await invoke('load_model_map');
     modelMapStore = (res && Array.isArray(res.slots)) ? res : { slots: [] };
@@ -4308,25 +5323,47 @@ async function renderModelMap() {
     addLog('warn', '加载模型映射失败: ' + e);
   }
 
+  // 同步 namePrefix 到输入框
+  // 兼容旧 model-map.json（无 injected 字段）
+  if (!Array.isArray(modelMapStore.injected)) modelMapStore.injected = [];
+  const badge = document.getElementById('injected-count-badge');
+  if (badge) badge.textContent = `扩展槽位管理 (${modelMapStore.injected.length})`;
+
   const slots = modelMapStore.slots || [];
+  renderModelMapSummary(slots);
   if (slots.length === 0) {
-    body.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--text-muted);padding:18px">暂无映射，点击右上角「+ 添加映射」</td></tr>';
+    body.innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--text-muted);padding:18px">暂无映射，点击右上角「+ 添加映射」</td></tr>';
     return;
   }
 
   body.innerHTML = slots.map(s => {
     const orig = originalNameOf(s.modelUid);
-    const display = s.displayName && s.displayName.trim() ? s.displayName : orig;
+    const customName = s.displayName && s.displayName.trim();
+    const baseName = customName || orig;
+    const prefix = (modelMapStore.namePrefix || '').trim();
+    const tpl = (modelMapStore.labelTemplate || '').trim();
+    // providerName/apiModel 仅作列表预览(非 100% 等于后端实际渲染,因为多 targets 优先级等细节),
+    // 后端改写时才决定最终值;这里给个合理近似
+    const firstTarget = (s.targets && s.targets[0]) || null;
+    const providerName = firstTarget ? providerNameOf(firstTarget.providerId) : '';
+    const apiModel = firstTarget ? firstTarget.model : '';
+    const display = renderLabelTemplate(tpl, {
+      prefix, label: baseName, provider: providerName, apiModel
+    });
     const enabled = s.enabled !== false;
     const chain = (s.targets && s.targets.length)
       ? renderTargetChain(s.targets)
       : `<span style="color:var(--warn,#d97706);cursor:pointer" onclick="openFailoverEditor('${escAttr(s.modelUid)}')">未设置 ⚠ [点击配置]</span>`;
+    const vision = slotVisionAssessment(s.modelUid, s.targets || [], s.supportsImages !== false);
+    const source = slotSourceInfo(s.modelUid);
     return `
-      <tr>
+      <tr data-vision-risk="${vision.state === 'risk' ? '1' : '0'}" data-source="${escAttr(source.state)}">
+        <td class="editable-cell display-name-cell" onclick="startEditDisplayName(this, '${escAttr(s.modelUid)}')" title="${escAttr(display)}">${escAttr(display)}</td>
         <td>${escAttr(orig)}</td>
-        <td class="editable-cell" onclick="startEditDisplayName(this, '${escAttr(s.modelUid)}')" title="点击编辑显示名">${escAttr(display)}</td>
         <td><code>${escAttr(s.modelUid)}</code></td>
         <td style="cursor:pointer" onclick="openFailoverEditor('${escAttr(s.modelUid)}')" title="配置故障转移分流目标">${chain}</td>
+        <td>${renderSourcePill(source, true)}</td>
+        <td>${renderVisionPill(vision, true)}</td>
         <td><div class="toggle ${enabled ? 'on' : ''}" onclick="toggleSlotEnabled('${escAttr(s.modelUid)}')"></div></td>
         <td>
           <button class="btn-ghost" onclick="openSlotEditor('${escAttr(s.modelUid)}')" style="margin-right: 4px;">编辑</button>
@@ -4342,8 +5379,11 @@ async function renderModelMap() {
 // ─── 双击/点击编辑显示名 ───
 function startEditDisplayName(td, uid) {
   if (td.querySelector('input')) return;
-  const currentText = td.textContent.trim();
-  td.innerHTML = `<input type="text" class="input-sm" style="width:100%; text-align:left; font-family:inherit; padding:4px 8px; border-radius:6px; box-shadow:none; outline:none; height:28px;" value="${escAttr(currentText)}">`;
+  // 编辑时只展示自定义名部分（不含前缀），便于用户修改
+  const s = modelMapStore.slots.find(x => x.modelUid === uid);
+  const orig = originalNameOf(uid);
+  const customName = s && s.displayName && s.displayName.trim() ? s.displayName : orig;
+  td.innerHTML = `<input type="text" class="input-sm" style="width:100%; text-align:left; font-family:inherit; padding:4px 8px; border-radius:6px; box-shadow:none; outline:none; height:28px;" value="${escAttr(customName)}">`;
   const input = td.querySelector('input');
   
   // 阻止 input 上的点击事件冒泡，防止重复触发 td.onclick
@@ -4424,12 +5464,12 @@ function filterModelTable() {
     const row = rows[i];
     
     // 跳过空数据提示行
-    if (row.cells.length === 1 && row.cells[0].colSpan === 6) {
+    if (row.cells.length === 1 && row.cells[0].colSpan >= 6) {
       continue;
     }
     
-    const orig = row.cells[0].textContent.toLowerCase();
-    const display = row.cells[1].textContent.toLowerCase();
+    const display = row.cells[0].textContent.toLowerCase();
+    const orig = row.cells[1].textContent.toLowerCase();
     const slot = row.cells[2].textContent.toLowerCase();
     
     // 搜索匹配
@@ -4441,12 +5481,15 @@ function filterModelTable() {
     // 状态过滤判断
     let matchesFilter = true;
     const isUnset = row.cells[3].textContent.includes('未设置');
-    const isHijacked = row.cells[4].querySelector('.toggle').classList.contains('on');
+    const isVisionRisk = row.dataset.visionRisk === '1';
+    const isHijacked = row.cells[6].querySelector('.toggle').classList.contains('on');
     
     if (currentModelFilter === 'hijacked') {
       matchesFilter = isHijacked;
     } else if (currentModelFilter === 'unset') {
       matchesFilter = isUnset;
+    } else if (currentModelFilter === 'vision-risk') {
+      matchesFilter = isVisionRisk;
     }
     
     if (matchesSearch && matchesFilter) {
@@ -4463,8 +5506,356 @@ async function persistModelMap() {
     return true;
   } catch (e) {
     addLog('err', '保存映射失败: ' + e);
-    alert('保存映射失败：' + e);
+    showCustomAlert('保存映射失败：' + e, '保存失败', 'error');
     return false;
+  }
+}
+
+// ─── 模型映射显示设置模态框（名称前缀 + 后缀 + 高级模板）───
+// 跟 sidecar renderTemplate 保持一致:占位符 {prefix} {label} {provider} {apiModel}
+// 模板含 {provider} 且 provider 空 → 「未设置」
+const DEFAULT_LABEL_TEMPLATE = '{prefix} {label} ({provider})';
+const SIMPLE_LABEL_TEMPLATE_BASE = '{prefix} {label}';
+const TEMPLATE_VAR_NAMES = ['prefix', 'label', 'provider', 'apiModel'];
+let labelTemplateModalMode = 'simple';
+
+function renderLabelTemplate(tpl, vars) {
+  const tmpl = (tpl && tpl.trim()) || DEFAULT_LABEL_TEMPLATE;
+  const hasProvider = /\bprovider\b/.test(tmpl);
+  const v = {
+    prefix:   vars.prefix   || '',
+    label:    vars.label    || '',
+    provider: vars.provider || (hasProvider ? '未设置' : ''),
+    apiModel: vars.apiModel || '',
+  };
+  let out = tmpl;
+  for (const k of TEMPLATE_VAR_NAMES) {
+    out = out.replace(new RegExp('\\{' + k + '\\}', 'g'), v[k]);
+  }
+  out = out.replace(/[ \t]{2,}/g, ' ').trim();
+  return out;
+}
+
+function normalizedLabelTemplate(tpl) {
+  return (tpl && tpl.trim()) || DEFAULT_LABEL_TEMPLATE;
+}
+
+function composeSimpleLabelTemplate(suffix) {
+  const cleanSuffix = (suffix || '').trim();
+  return cleanSuffix ? `${SIMPLE_LABEL_TEMPLATE_BASE} ${cleanSuffix}` : SIMPLE_LABEL_TEMPLATE_BASE;
+}
+
+function suffixFromSimpleLabelTemplate(tpl) {
+  const normalized = normalizedLabelTemplate(tpl);
+  const match = normalized.match(/^\{prefix\}\s+\{label\}(.*)$/);
+  if (!match) return null;
+  return (match[1] || '').trim();
+}
+
+function currentModalLabelTemplate() {
+  const tplInput = document.getElementById('model-label-template-modal');
+  if (labelTemplateModalMode === 'custom') {
+    return tplInput ? tplInput.value.trim() : '';
+  }
+  const suffixInput = document.getElementById('model-name-suffix-modal');
+  const suffix = suffixInput ? suffixInput.value.trim() : '';
+  return composeSimpleLabelTemplate(suffix);
+}
+
+function labelTemplateForStoreFromModal() {
+  const tpl = currentModalLabelTemplate();
+  return normalizedLabelTemplate(tpl) === DEFAULT_LABEL_TEMPLATE ? '' : tpl.trim();
+}
+
+// 取 provider 友好名(从当前 providerStore 找,失败回退 id)
+function providerNameOf(pid) {
+  if (!pid) return '';
+  try {
+    const list = (typeof providerStore !== 'undefined' && providerStore && Array.isArray(providerStore.providers)) ? providerStore.providers : [];
+    const p = list.find(x => x && x.id === pid);
+    return p ? (p.name || pid) : pid;
+  } catch { return pid; }
+}
+
+// 打开显示设置模态框
+function openModelMapSettings() {
+  const modal = document.getElementById('modelMapSettingsModal');
+  if (!modal) {
+    console.error('[openModelMapSettings] modal element not found');
+    return;
+  }
+  // 同步当前配置到 input
+  const prefixInput = document.getElementById('model-name-prefix-modal');
+  const suffixInput = document.getElementById('model-name-suffix-modal');
+  const tplInput = document.getElementById('model-label-template-modal');
+  if (prefixInput) prefixInput.value = modelMapStore.namePrefix || '';
+  const currentTpl = modelMapStore.labelTemplate || '';
+  const simpleSuffix = suffixFromSimpleLabelTemplate(currentTpl);
+  labelTemplateModalMode = simpleSuffix === null ? 'custom' : 'simple';
+  if (suffixInput) suffixInput.value = simpleSuffix === null ? '' : simpleSuffix;
+  if (tplInput) tplInput.value = simpleSuffix === null ? (currentTpl || DEFAULT_LABEL_TEMPLATE) : composeSimpleLabelTemplate(simpleSuffix);
+  const advanced = document.getElementById('label-template-advanced');
+  if (advanced) advanced.open = labelTemplateModalMode === 'custom';
+  // 渲染预览
+  updateModalLabelTemplatePreview();
+  modal.classList.add('is-open');
+}
+
+function closeModelMapSettings() {
+  const modal = document.getElementById('modelMapSettingsModal');
+  if (modal) modal.classList.remove('is-open');
+}
+
+function onModalSimpleLabelInput() {
+  labelTemplateModalMode = 'simple';
+  const tplInput = document.getElementById('model-label-template-modal');
+  const suffixInput = document.getElementById('model-name-suffix-modal');
+  if (tplInput) tplInput.value = composeSimpleLabelTemplate(suffixInput ? suffixInput.value : '');
+  updateModalLabelTemplatePreview();
+}
+
+function onModalAdvancedLabelTemplateInput() {
+  labelTemplateModalMode = 'custom';
+  updateModalLabelTemplatePreview();
+}
+
+function onLabelTemplateAdvancedToggle() {
+  const advanced = document.getElementById('label-template-advanced');
+  const tplInput = document.getElementById('model-label-template-modal');
+  if (advanced && advanced.open && labelTemplateModalMode !== 'custom' && tplInput) {
+    tplInput.value = currentModalLabelTemplate();
+  }
+}
+
+// 兼容旧的事件名
+function onModalLabelTemplateInput() {
+  updateModalLabelTemplatePreview();
+}
+
+// 模态框里输入变化 → 实时刷新预览
+function updateModalLabelTemplatePreview() {
+  const tplInput = document.getElementById('model-label-template-modal');
+  const tpl = currentModalLabelTemplate();
+  const preview = document.getElementById('label-template-preview');
+  if (!preview) return;
+  if (labelTemplateModalMode === 'simple' && tplInput) tplInput.value = tpl;
+  const prefixInput = document.getElementById('model-name-prefix-modal');
+  const prefix = prefixInput ? prefixInput.value.trim() : '';
+  const cases = [
+    { from: 'Claude Opus 4.8', label: 'Claude Opus 4.8', provider: '君の公益', apiModel: 'claude-opus-4-8' },
+    { from: 'Gemini 3 Flash', label: 'Gemini 3 Flash', provider: '黑鸟白', apiModel: 'gemini-3-flash' },
+    { from: 'GLM 5.1', label: 'GLM 5.1', provider: '', apiModel: 'glm-5-1' },
+  ];
+  const html = cases.map(c => {
+    const out = renderLabelTemplate(tpl, { prefix, ...c });
+    return `<div style="display:grid;grid-template-columns:minmax(120px,1fr) 16px minmax(220px,1.4fr);gap:8px;align-items:center;line-height:1.5;min-width:0;">
+      <span style="color:var(--text-muted);font-size:10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(c.from)}</span>
+      <span style="color:var(--text-muted);text-align:center;">→</span>
+      <span style="color:var(--text-primary);font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escapeHtml(out)}">${escapeHtml(out)}</span>
+    </div>`;
+  }).join('');
+  preview.innerHTML = `<div style="font-size:10px;color:var(--text-muted);margin-bottom:2px;">保存后列表会这样显示：</div>${html}`;
+}
+
+// 模态框保存按钮:同步两个字段 + 持久化 + 重新渲染列表
+async function saveModelMapSettingsFromModal() {
+  const prefixInput = document.getElementById('model-name-prefix-modal');
+  const suffixInput = document.getElementById('model-name-suffix-modal');
+  const tplInput = document.getElementById('model-label-template-modal');
+  const newPrefix = prefixInput ? prefixInput.value.trim() : '';
+  const newTpl = labelTemplateForStoreFromModal();
+  const prevPrefix = modelMapStore.namePrefix || '';
+  const prevTpl = modelMapStore.labelTemplate || '';
+  let changed = false;
+  if (newPrefix !== prevPrefix) { modelMapStore.namePrefix = newPrefix; changed = true; }
+  if (newTpl !== prevTpl) { modelMapStore.labelTemplate = newTpl; changed = true; }
+  if (!changed) {
+    addLog('info', '未改动');
+    closeModelMapSettings();
+    return;
+  }
+  if (await persistModelMap()) {
+    await renderModelMap();
+    const parts = [];
+    if (newPrefix !== prevPrefix) parts.push(newPrefix ? `前缀=${newPrefix}` : '清除前缀');
+    if (newTpl !== prevTpl) {
+      if (labelTemplateModalMode === 'custom') {
+        parts.push(newTpl ? `高级格式=${newTpl}` : '默认格式');
+      } else {
+        const suffix = suffixInput ? suffixInput.value.trim() : '';
+        parts.push(suffix ? `后缀=${suffix}` : '清除后缀');
+      }
+    }
+    addLog('ok', '已保存显示设置: ' + parts.join(' / '));
+    closeModelMapSettings();
+  } else {
+    // 持久化失败 → 回滚
+    modelMapStore.namePrefix = prevPrefix;
+    modelMapStore.labelTemplate = prevTpl;
+    if (prefixInput) prefixInput.value = prevPrefix;
+    if (tplInput) tplInput.value = prevTpl;
+    const prevSuffix = suffixFromSimpleLabelTemplate(prevTpl);
+    if (suffixInput) suffixInput.value = prevSuffix === null ? '' : prevSuffix;
+    labelTemplateModalMode = prevSuffix === null ? 'custom' : 'simple';
+  }
+}
+
+// ─── 扩展槽位配置（旧字段 injected，解锁 Windsurf 灰色模型）───
+// modelMapStore.injected: [{ label, modelUid, providerId, model, supportsImages }]
+// 加载时确保存在（兼容旧 model-map.json）
+let injectedCatalog = null;     // 128 模型内置目录（首次调用时加载）
+
+async function ensureInjected() {
+  if (injectedCatalog) return injectedCatalog;
+  try {
+    const res = await invoke('list_windsurf_catalog');
+    injectedCatalog = (res && Array.isArray(res.models)) ? res.models : [];
+  } catch (e) {
+    console.error('加载 Windsurf 模型目录失败:', e);
+    injectedCatalog = [];
+  }
+  return injectedCatalog;
+}
+
+async function openInjectedEditor() {
+  // 确保 modelMapStore.injected 存在
+  if (!Array.isArray(modelMapStore.injected)) modelMapStore.injected = [];
+  document.getElementById('injectedModal').style.display = 'flex';
+  document.getElementById('injected-search').value = '';
+  document.getElementById('injected-filter').value = 'all';
+  await renderInjectedList();
+}
+
+function closeInjectedEditor() {
+  document.getElementById('injectedModal').style.display = 'none';
+}
+
+async function renderInjectedList() {
+  const list = document.getElementById('injected-list');
+  if (!list) return;
+  const catalog = await ensureInjected();
+  const injected = modelMapStore.injected || [];
+  const injectedByUid = new Map(injected.map(i => [i.modelUid, i]));
+  const query = (document.getElementById('injected-search').value || '').toLowerCase().trim();
+  const filter = document.getElementById('injected-filter').value;
+
+  // 收集 provider 列表
+  let providers = [];
+  try {
+    const res = await invoke('list_providers');
+    providers = (res && Array.isArray(res.providers)) ? res.providers : [];
+  } catch (e) {
+    console.error('加载供应商列表失败:', e);
+  }
+  const providerOptions = providers.map(p => `<option value="${escAttr(p.id)}">${escAttr(p.name)}</option>`).join('');
+
+  // 过滤 + 渲染
+  const rows = catalog.filter(m => {
+    if (filter === 'configured' && !injectedByUid.has(m.modelUid)) return false;
+    if (filter === 'unconfigured' && injectedByUid.has(m.modelUid)) return false;
+    if (!query) return true;
+    return m.label.toLowerCase().includes(query)
+        || m.modelUid.toLowerCase().includes(query)
+        || (m.apiId || '').toLowerCase().includes(query);
+  });
+
+  // 已配置数量统计
+  document.getElementById('injected-configured-count').textContent = injected.length;
+  const badge = document.getElementById('injected-count-badge');
+  if (badge) badge.textContent = `扩展槽位管理 (${injected.length})`;
+
+  if (rows.length === 0) {
+    list.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text-muted);font-size:12px;">无匹配模型</div>';
+    return;
+  }
+
+  list.innerHTML = `<table style="width:100%;border-collapse:collapse;font-size:12px;">
+    <thead style="position:sticky;top:0;background:var(--bg-secondary,#1a1a1a);z-index:1;">
+      <tr style="border-bottom:1px solid var(--border);">
+        <th style="padding:8px;text-align:left;width:24px;"></th>
+        <th style="padding:8px;text-align:left;">模型名</th>
+        <th style="padding:8px;text-align:left;width:280px;">modelUid</th>
+        <th style="padding:8px;text-align:left;width:160px;">供应商</th>
+        <th style="padding:8px;text-align:left;width:160px;">model 字段</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${rows.map(m => {
+        const cur = injectedByUid.get(m.modelUid);
+        const isConfigured = !!(cur && cur.providerId);
+        const sel = isConfigured ? cur.providerId : '';
+        const mdl = (cur && cur.model) || m.apiId || '';
+        const hint = m.noApiIdHint ? `<span style="color:var(--warn,#d97706);font-size:10px;" title="${escAttr(m.noApiIdHint)}">需要手填</span>` : '';
+        return `<tr style="border-bottom:1px solid var(--border);">
+          <td style="padding:6px 8px;">
+            <input type="checkbox" data-uid="${escAttr(m.modelUid)}" ${isConfigured ? 'checked' : ''} onchange="onInjectedToggle('${escAttr(m.modelUid)}', this.checked)">
+          </td>
+          <td style="padding:6px 8px;">
+            <div style="font-weight:600;">${escAttr(m.label)}</div>
+            ${hint}
+          </td>
+          <td style="padding:6px 8px;font-family:var(--font-mono);font-size:11px;color:var(--text-muted);">${escAttr(m.modelUid)}</td>
+          <td style="padding:6px 8px;">
+            <select data-uid="${escAttr(m.modelUid)}" data-field="providerId" onchange="onInjectedFieldChange('${escAttr(m.modelUid)}', 'providerId', this.value)" style="width:100%;padding:3px 6px;border:1px solid var(--border);background:var(--bg-input);color:var(--text-primary);border-radius:6px;font-size:11px;">
+              <option value="">— 未配置 —</option>
+              ${providerOptions.replace(`value="${escAttr(sel)}"`, `value="${escAttr(sel)}" selected`)}
+            </select>
+          </td>
+          <td style="padding:6px 8px;">
+            <input type="text" data-uid="${escAttr(m.modelUid)}" data-field="model" value="${escAttr(mdl)}" placeholder="${m.apiId ? escAttr(m.apiId) : '如 claude-opus-4-8'}" onblur="onInjectedFieldChange('${escAttr(m.modelUid)}', 'model', this.value)" style="width:100%;padding:3px 6px;border:1px solid var(--border);background:var(--bg-input);color:var(--text-primary);border-radius:6px;font-size:11px;font-family:var(--font-mono);">
+          </td>
+        </tr>`;
+      }).join('')}
+    </tbody>
+  </table>`;
+}
+
+function onInjectedToggle(uid, checked) {
+  if (!Array.isArray(modelMapStore.injected)) modelMapStore.injected = [];
+  let entry = modelMapStore.injected.find(x => x.modelUid === uid);
+  if (checked && !entry) {
+    // 从 catalog 找
+    const m = (injectedCatalog || []).find(x => x.modelUid === uid);
+    if (!m) return;
+    entry = {
+      label: m.label,
+      modelUid: m.modelUid,
+      providerId: '',
+      model: m.apiId || '',
+      supportsImages: m.supportsImages !== false,
+    };
+    modelMapStore.injected.push(entry);
+  } else if (!checked && entry) {
+    // 取消勾选 = 删除扩展槽位配置
+    modelMapStore.injected = modelMapStore.injected.filter(x => x.modelUid !== uid);
+  }
+  // 实时更新计数
+  document.getElementById('injected-configured-count').textContent =
+    modelMapStore.injected.filter(x => x.providerId).length;
+  const badge = document.getElementById('injected-count-badge');
+  if (badge) badge.textContent = `扩展槽位管理 (${modelMapStore.injected.length})`;
+}
+
+function onInjectedFieldChange(uid, field, value) {
+  let entry = (modelMapStore.injected || []).find(x => x.modelUid === uid);
+  if (!entry) return;
+  entry[field] = value;
+  // 实时更新计数
+  document.getElementById('injected-configured-count').textContent =
+    (modelMapStore.injected || []).filter(x => x.providerId).length;
+}
+
+async function saveInjectedFromEditor() {
+  // 校验:已选 providerId 的必须有 model
+  for (const i of (modelMapStore.injected || [])) {
+    if (i.providerId && (!i.model || !i.model.trim())) {
+      showCustomAlert(`扩展槽位「${i.label}」已选供应商但 model 为空，请填写后再保存`, '保存失败', 'warn');
+      return;
+    }
+  }
+  if (await persistModelMap()) {
+    addLog('ok', `已保存 ${modelMapStore.injected.length} 个扩展槽位配置`);
+    closeInjectedEditor();
   }
 }
 
@@ -4485,7 +5876,7 @@ async function toggleSlotEnabled(uid) {
 
 async function deleteSlot(uid) {
   const s = modelMapStore.slots.find(x => x.modelUid === uid);
-  if (!confirm(`确定删除映射「${s ? (s.displayName || originalNameOf(uid)) : uid}」？`)) return;
+  if (!(await showCustomConfirm(`确定删除映射「${s ? (s.displayName || originalNameOf(uid)) : uid}」？`, '删除确认', 'warn'))) return;
   modelMapStore.slots = modelMapStore.slots.filter(x => x.modelUid !== uid);
   if (await persistModelMap()) { await renderModelMap(); addLog('info', '已删除映射'); }
 }
@@ -4493,6 +5884,8 @@ async function deleteSlot(uid) {
 // ─── 添加映射模态框 ───
 let selectedSlotUid = '';
 let selectedMappingTargets = []; // [{providerId, model}]
+let slotCatalogScope = 'account';
+let slotWasManuallySelected = false;
 
 function getAllProviderModels() {
   const list = [];
@@ -4612,6 +6005,109 @@ function toggleMappingModelTarget(providerId, model) {
     selectedMappingTargets.push({ providerId, model });
   }
   renderMappingModelCatalog();
+  maybeAutoSelectRecommendedSlot();
+  updateSlotVisionHint();
+}
+
+function slotCatalogStats(used) {
+  const list = ideModels || [];
+  return {
+    account: list.filter(isAccountSlotModel).length,
+    extended: list.filter(m => !isAccountSlotModel(m)).length,
+    all: list.length,
+    bound: list.filter(m => used.has(m.id)).length,
+  };
+}
+
+function updateSlotScopeTabs(used) {
+  const stats = slotCatalogStats(used);
+  const ids = {
+    account: 'slotScopeAccountCount',
+    extended: 'slotScopeExtendedCount',
+    all: 'slotScopeAllCount',
+    bound: 'slotScopeBoundCount',
+  };
+  Object.entries(ids).forEach(([key, id]) => {
+    const el = document.getElementById(id);
+    if (el) el.textContent = stats[key];
+  });
+  document.querySelectorAll('.slot-scope-tab').forEach(btn => {
+    const active = btn.dataset.scope === slotCatalogScope;
+    btn.style.background = active ? 'var(--bg-card)' : 'var(--bg-input)';
+    btn.style.color = active ? 'var(--text-primary)' : 'var(--text-muted)';
+    btn.style.borderColor = active ? 'var(--accent)' : 'var(--border)';
+    btn.style.boxShadow = active ? 'var(--shadow-sm)' : 'none';
+  });
+}
+
+function setSlotCatalogScope(scope) {
+  slotCatalogScope = scope || 'account';
+  const editUid = document.getElementById('slot-edit-uid')?.value || '';
+  if (!editUid) {
+    const used = new Set(modelMapStore.slots.map(x => x.modelUid));
+    const current = slotModelOf(selectedSlotUid);
+    if (!current || !slotMatchesScope(current, used)) {
+      const next = (ideModels || [])
+        .filter(m => !used.has(m.id) && slotMatchesScope(m, used))
+        .sort((a, b) => slotRecommendationRank(a, used) - slotRecommendationRank(b, used) || a.name.localeCompare(b.name))[0];
+      if (next) {
+        selectedSlotUid = next.id;
+        const selectEl = document.getElementById('slot-uid-select');
+        if (selectEl) selectEl.value = next.id;
+        slotWasManuallySelected = false;
+      }
+    }
+  }
+  renderSlotCatalogList();
+  updateSlotVisionHint();
+}
+
+function slotMatchesScope(m, used) {
+  if (slotCatalogScope === 'account') return isAccountSlotModel(m);
+  if (slotCatalogScope === 'extended') return !isAccountSlotModel(m);
+  if (slotCatalogScope === 'bound') return used.has(m.id);
+  return true;
+}
+
+function slotRecommendationRank(m, used) {
+  let score = 0;
+  if (used.has(m.id)) score += 1000;
+  if (isAccountSlotModel(m)) score -= 40;
+  const targetVision = targetsSupportVision(selectedMappingTargets);
+  const native = nativeVisionSlotInfo(m.id);
+  if (targetVision) {
+    if (native.ok === true) score -= 80;
+    else if (native.ok === false) score += 80;
+    else score += 20;
+  }
+  if (m.common) score -= 5;
+  return score;
+}
+
+function pickRecommendedSlot(used) {
+  const available = (ideModels || []).filter(m => !used.has(m.id));
+  const accountAvailable = available.filter(isAccountSlotModel);
+  const pool = accountAvailable.length ? accountAvailable : available;
+  return pool
+    .slice()
+    .sort((a, b) => slotRecommendationRank(a, used) - slotRecommendationRank(b, used) || a.name.localeCompare(b.name))
+    [0] || null;
+}
+
+function maybeAutoSelectRecommendedSlot() {
+  if (slotWasManuallySelected) return;
+  const editUid = document.getElementById('slot-edit-uid')?.value || '';
+  if (editUid) return;
+  const used = new Set(modelMapStore.slots.map(x => x.modelUid));
+  const recommended = pickRecommendedSlot(used);
+  if (!recommended) return;
+  selectedSlotUid = recommended.id;
+  const selectEl = document.getElementById('slot-uid-select');
+  if (selectEl) selectEl.value = recommended.id;
+  if (slotCatalogScope === 'account' && !isAccountSlotModel(recommended)) {
+    slotCatalogScope = 'extended';
+  }
+  renderSlotCatalogList();
 }
 
 function renderSlotCatalogList() {
@@ -4624,18 +6120,35 @@ function renderSlotCatalogList() {
   const editingUid = document.getElementById('slot-edit-uid').value;
   const used = new Set(modelMapStore.slots.map(x => x.modelUid));
   if (editingUid) used.delete(editingUid);
+  updateSlotScopeTabs(used);
 
   // 1. 基于 query 搜索过滤
-  const filtered = (ideModels || []).filter(m => {
-    return !query || m.name.toLowerCase().includes(query) || m.id.toLowerCase().includes(query);
-  });
+  const filtered = (ideModels || [])
+    .filter(m => slotMatchesScope(m, used))
+    .filter(m => {
+      const hay = `${m.name || ''} ${m.id || ''} ${m.api_id || ''}`.toLowerCase();
+      return !query || hay.includes(query);
+    })
+    .sort((a, b) => slotRecommendationRank(a, used) - slotRecommendationRank(b, used) || a.name.localeCompare(b.name));
 
   // 2. 统计可用未占用的槽位数量
   const availableCount = filtered.filter(m => !used.has(m.id)).length;
-  if (countEl) countEl.textContent = `${availableCount} 个可用`;
+  if (countEl) countEl.textContent = `${availableCount} 可用 / ${filtered.length} 显示`;
 
   if (filtered.length === 0) {
-    body.innerHTML = '<div style="text-align:center; color:var(--text-muted); padding:32px 0; font-size:12px;">暂无匹配的槽位</div>';
+    if (slotCatalogScope === 'account') {
+      body.innerHTML = `
+        <div style="display:flex;flex-direction:column;gap:12px;align-items:center;text-align:center;color:var(--text-muted);padding:30px 16px;font-size:12px;line-height:1.55;">
+          <div style="font-weight:700;color:var(--text-secondary);">还没有当前账号槽位数据</div>
+          <div>点击刷新可读取当前 IDE 账号实际模型；也可以先查看扩展槽位。</div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center;">
+            <button class="btn-ghost" onclick="refreshIdeModels()" style="height:30px;padding:0 12px;border-radius:8px;font-size:12px;font-weight:700;">刷新当前账号</button>
+            <button class="btn-primary" onclick="setSlotCatalogScope('extended')" style="height:30px;padding:0 12px;border-radius:8px;font-size:12px;font-weight:700;">启用扩展槽位</button>
+          </div>
+        </div>`;
+    } else {
+      body.innerHTML = '<div style="text-align:center; color:var(--text-muted); padding:32px 0; font-size:12px;">暂无匹配的槽位</div>';
+    }
     return;
   }
 
@@ -4643,6 +6156,11 @@ function renderSlotCatalogList() {
     const isSelected = selectedSlotUid === m.id;
     const taken = used.has(m.id);
     const takenTag = taken ? `<span class="brand-tag" style="background:var(--bg-secondary); color:var(--text-muted); border: 1px solid var(--border); padding: 1px 6px; font-size: 9px; font-weight:normal;">已绑定</span>` : '';
+    const displayId = m.api_id || m.id;
+    const visionTag = renderVisionPill(nativeVisionSlotInfo(m.id), true);
+    const sourceTag = renderSourcePill(slotSourceInfo(m), true);
+    const recommended = !taken && slotRecommendationRank(m, used) < 0;
+    const recommendedTag = recommended ? `<span class="brand-tag" style="background:rgba(37,99,235,.10);color:var(--accent);border:1px solid rgba(37,99,235,.22);padding:1px 6px;font-size:9px;font-weight:700;">推荐</span>` : '';
     
     // 渲染具有极致质感的左侧行卡片，支持选中态发光与锁定态置灰
     return `
@@ -4656,10 +6174,13 @@ function renderSlotCatalogList() {
           </div>
           <div style="display:flex; flex-direction:column; gap:2px; flex:1; min-width:0;">
             <span style="font-size:12px; font-weight:600; color:${isSelected ? 'var(--accent)' : 'var(--text-primary)'}; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; transition:all 0.2s;">${escAttr(m.name)}</span>
-            <span style="font-size:10px; color:var(--text-muted); font-family:var(--font-mono); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escAttr(m.id)}</span>
+            <span style="font-size:10px; color:var(--text-muted); font-family:var(--font-mono); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escAttr(displayId)}</span>
           </div>
         </div>
         <div style="flex-shrink:0; display:flex; align-items:center; gap:6px;">
+          ${sourceTag}
+          ${visionTag}
+          ${recommendedTag}
           ${takenTag}
           ${isSelected ? `<span style="font-size:13px; color:var(--accent); font-weight:bold; margin-left:4px;">✓</span>` : ''}
         </div>
@@ -4673,6 +6194,7 @@ function selectCatalogSlot(uid, name) {
   if (editingUid) return; // 编辑状态下，槽位只读（原逻辑 sel.disabled = true）
 
   selectedSlotUid = uid;
+  slotWasManuallySelected = true;
   
   // 更新隐藏的 select 元素的值，从而保证 saveSlotFromEditor 的无损兼容性！
   const selectEl = document.getElementById('slot-uid-select');
@@ -4686,6 +6208,7 @@ function selectCatalogSlot(uid, name) {
 
   // 重新绘制左侧以更新高亮
   renderSlotCatalogList();
+  updateSlotVisionHint();
 }
 
 function filterSlotCatalog() {
@@ -4696,6 +6219,7 @@ async function openSlotEditor(uid) {
   ideModels = null;
   ideMeta = null;
   await ensureIdeModels();
+  await ensureInjected();
   const modal = document.getElementById('slotModal');
   const sel = document.getElementById('slot-uid-select');
   const editing = uid ? modelMapStore.slots.find(x => x.modelUid === uid) : null;
@@ -4708,7 +6232,8 @@ async function openSlotEditor(uid) {
   
   const opts = (ideModels || []).map(m => {
     const taken = used.has(m.id) ? ' （已映射）' : '';
-    return `<option value="${escAttr(m.id)}"${used.has(m.id) ? ' disabled' : ''}>${escAttr(m.name)} · ${escAttr(m.id)}${taken}</option>`;
+    const displayId = m.api_id || m.id;
+    return `<option value="${escAttr(m.id)}"${used.has(m.id) ? ' disabled' : ''}>${escAttr(m.name)} · ${escAttr(displayId)}${taken}</option>`;
   }).join('');
   
   // 1. 重置搜索框
@@ -4721,10 +6246,16 @@ async function openSlotEditor(uid) {
   // 2. 槽位状态选中管理 (若是编辑态锁定自身，若是新建态默认选中首个空闲槽位)
   if (editing) {
     selectedSlotUid = editing.modelUid;
+    slotWasManuallySelected = true;
+    slotCatalogScope = slotSourceInfo(editing.modelUid).state === 'account' ? 'account' : 'extended';
   } else {
+    slotCatalogScope = 'account';
+    slotWasManuallySelected = false;
     selectedSlotUid = '';
     if (ideModels && ideModels.length > 0) {
-      const firstAvailable = ideModels.find(m => !used.has(m.id));
+      const firstAvailable = (ideModels || [])
+        .filter(m => isAccountSlotModel(m) && !used.has(m.id))
+        .sort((a, b) => slotRecommendationRank(a, used) - slotRecommendationRank(b, used) || a.name.localeCompare(b.name))[0];
       if (firstAvailable) selectedSlotUid = firstAvailable.id;
     }
   }
@@ -4751,6 +6282,7 @@ async function openSlotEditor(uid) {
   // supportsImages 默认 true（多数视觉模型免勾），旧槽位无此字段时也视为 true
   document.getElementById('slot-supports-images').checked = editing ? (editing.supportsImages !== false) : true;
   if (modal) modal.classList.add('is-open');
+  updateSlotVisionHint();
 }
 
 function closeSlotEditor() {
@@ -4765,6 +6297,18 @@ async function saveSlotFromEditor() {
   const supportsImages = document.getElementById('slot-supports-images').checked;
   if (!uid) { addLog('warn', '请选择模型槽位'); return; }
 
+  const vision = slotVisionAssessment(uid, selectedMappingTargets, supportsImages);
+  if (vision.state === 'risk') {
+    const alts = visionSafeAlternatives(uid, 3).map(m => `「${m.name}」`).join('、');
+    const suffix = alts ? `\n\n建议改用原生视觉槽：${alts}` : '';
+    const ok = await showCustomConfirm(
+      `当前槽位「${originalNameOf(uid)}」不适合图片任务，即使目标模型支持 Vision，Windsurf 也可能不会上传图片。\n\n继续保存后，文字聊天仍可用，但看图大概率失败。${suffix}`,
+      '图片能力提醒',
+      'warn'
+    );
+    if (!ok) return;
+  }
+
   if (editUid) {
     const s = modelMapStore.slots.find(x => x.modelUid === editUid);
     if (s) {
@@ -4774,7 +6318,7 @@ async function saveSlotFromEditor() {
     }
   } else {
     if (modelMapStore.slots.some(x => x.modelUid === uid)) {
-      alert('该槽位已存在映射，请勿重复添加。');
+      showCustomAlert('该槽位已存在映射，请勿重复添加。', '添加失败', 'warn');
       return;
     }
     modelMapStore.slots.push({
@@ -5092,32 +6636,39 @@ async function manualCheckUpdate() {
       document.getElementById('updater-target-version').textContent = 'v' + update.version;
       document.getElementById('updater-target-notes').textContent = update.body || '无详细更新说明。';
       
-      // 显示更新弹框
-      document.getElementById('updater-progress-container').style.display = 'none';
-      
-      // 重置脚部按钮
-      const footer = document.getElementById('updater-prompt-footer');
-      if (footer) {
-        footer.innerHTML = `
-          <button onclick="skipThisVersion()" class="modal-btn modal-btn-cancel" style="font-size: 12px; padding: 10px 16px;">跳过此版本</button>
-          <button onclick="closeUpdaterPromptModal()" class="modal-btn modal-btn-cancel" style="font-size: 12px; padding: 10px 16px;">稍后</button>
-          <button onclick="startDownloadAndUpdate()" class="modal-btn modal-btn-confirm" id="updater-confirm-btn" style="font-size: 12px; padding: 10px 20px;">立即更新</button>
-        `;
-      }
+      // 重置状态
+      isDownloading = false;
+      updaterRetryCount = 0;
+      setUpdaterUIState('available');
       
       document.getElementById('updater-prompt-modal').classList.add('active');
       addLog('info', `检测到新版本: v${update.version}`);
     } else {
-      alert('当前已是最新版本！');
       addLog('info', '检查更新完成，当前已是最新版本');
+      // 在按钮旁显示简短提示
+      if (btn) {
+        btn.textContent = '✓ 已是最新';
+        btn.style.color = 'var(--success)';
+        setTimeout(() => {
+          btn.textContent = '检查更新';
+          btn.style.color = '';
+        }, 2500);
+      }
     }
   } catch (e) {
     addLog('err', '检查更新失败: ' + e);
-    alert('检查更新失败: ' + e);
+    // 在按钮旁显示错误提示
+    if (btn) {
+      btn.textContent = '检查失败';
+      btn.style.color = 'var(--error, #ef4444)';
+      setTimeout(() => {
+        btn.textContent = '检查更新';
+        btn.style.color = '';
+      }, 3000);
+    }
   } finally {
     if (btn) {
       btn.disabled = false;
-      btn.textContent = '检查更新';
     }
   }
 }
@@ -5173,17 +6724,11 @@ async function autoCheckUpdate() {
         // 弹出前台提示
         document.getElementById('updater-target-version').textContent = 'v' + update.version;
         document.getElementById('updater-target-notes').textContent = update.body || '无详细更新说明。';
-        document.getElementById('updater-progress-container').style.display = 'none';
         
-        // 重置脚部按钮
-        const footer = document.getElementById('updater-prompt-footer');
-        if (footer) {
-          footer.innerHTML = `
-            <button onclick="skipThisVersion()" class="modal-btn modal-btn-cancel" style="font-size: 12px; padding: 10px 16px;">跳过此版本</button>
-            <button onclick="closeUpdaterPromptModal()" class="modal-btn modal-btn-cancel" style="font-size: 12px; padding: 10px 16px;">稍后</button>
-            <button onclick="startDownloadAndUpdate()" class="modal-btn modal-btn-confirm" id="updater-confirm-btn" style="font-size: 12px; padding: 10px 20px;">立即更新</button>
-          `;
-        }
+        // 重置状态
+        isDownloading = false;
+        updaterRetryCount = 0;
+        setUpdaterUIState('available');
         
         document.getElementById('updater-prompt-modal').classList.add('active');
       }
@@ -5195,18 +6740,133 @@ async function autoCheckUpdate() {
 
 // 点击立即更新开始下载
 let isDownloading = false;
+let updaterRetryCount = 0;
+const UPDATER_MAX_RETRIES = 3;
+const UPDATER_RETRY_DELAYS = [1000, 2500, 5000]; // 指数退避
+
+// 下载页 URL
+const UPDATER_DOWNLOAD_PAGE = 'https://github.com/soulvon/IDE-BYOK-Release/releases';
+
+// 判断是否为可重试的网络错误
+function isRetryableUpdateError(err) {
+  const msg = String(err || '').toLowerCase();
+  const nonRetryable = ['signature', 'checksum', 'hash mismatch', 'no matching platform', 'permission denied', 'no space left', 'disk full'];
+  if (nonRetryable.some(h => msg.includes(h))) return false;
+  const retryable = ['timeout', 'network', 'dns', 'connection reset', 'connection refused', 'connection aborted', 'broken pipe', 'unexpected eof', 'error sending request', 'failed to send request'];
+  return retryable.some(h => msg.includes(h));
+}
+
+// 显示/隐藏更新弹窗的各个状态区域
+function setUpdaterUIState(state) {
+  const progress = document.getElementById('updater-progress-container');
+  const ready = document.getElementById('updater-ready-container');
+  const error = document.getElementById('updater-error-container');
+  const retry = document.getElementById('updater-retry-container');
+  const footer = document.getElementById('updater-prompt-footer');
+  const icon = document.getElementById('updater-modal-icon');
+  const titleText = document.getElementById('updater-modal-title-text');
+
+  [progress, ready, error, retry].forEach(el => { if (el) el.style.display = 'none'; });
+
+  if (state === 'available') {
+    titleText.textContent = '检测到新版本可用！';
+    icon.style.color = 'var(--accent)';
+    if (footer) footer.innerHTML = `
+      <button onclick="skipThisVersion()" class="modal-btn modal-btn-cancel" style="font-size: 12px; padding: 10px 16px;">跳过此版本</button>
+      <button onclick="closeUpdaterPromptModal()" class="modal-btn modal-btn-cancel" style="font-size: 12px; padding: 10px 16px;">稍后</button>
+      <button onclick="startDownloadAndUpdate()" class="modal-btn modal-btn-confirm" style="font-size: 12px; padding: 10px 20px;">立即更新</button>
+    `;
+  } else if (state === 'downloading') {
+    titleText.textContent = '正在下载更新...';
+    icon.style.color = 'var(--accent)';
+    if (progress) progress.style.display = 'block';
+    if (footer) footer.innerHTML = `
+      <button onclick="cancelUpdateDownload()" class="modal-btn modal-btn-cancel" style="font-size: 12px; padding: 10px 16px;">取消下载</button>
+      <button class="modal-btn modal-btn-confirm" style="font-size: 12px; padding: 10px 20px; opacity: 0.6;" disabled id="updater-downloading-btn">下载中...</button>
+    `;
+  } else if (state === 'ready') {
+    titleText.textContent = '更新已就绪';
+    icon.style.color = 'var(--success)';
+    if (ready) ready.style.display = 'block';
+    if (footer) footer.innerHTML = `
+      <button onclick="closeUpdaterPromptModal()" class="modal-btn modal-btn-cancel" style="font-size: 12px; padding: 10px 16px;">稍后重启</button>
+      <button onclick="restartToUpdate()" class="modal-btn modal-btn-confirm" style="font-size: 12px; padding: 10px 20px;">立即重启</button>
+    `;
+  } else if (state === 'error') {
+    titleText.textContent = '更新失败';
+    icon.style.color = 'var(--error, #ef4444)';
+    if (error) error.style.display = 'block';
+    if (footer) footer.innerHTML = `
+      <button onclick="closeUpdaterPromptModal()" class="modal-btn modal-btn-cancel" style="font-size: 12px; padding: 10px 16px;">关闭</button>
+      <button onclick="retryUpdateDownload()" class="modal-btn modal-btn-cancel" style="font-size: 12px; padding: 10px 16px; color: var(--accent);">🔄 重试</button>
+      <button onclick="openDownloadPage()" class="modal-btn modal-btn-confirm" style="font-size: 12px; padding: 10px 20px;">前往下载页</button>
+    `;
+  } else if (state === 'retrying') {
+    titleText.textContent = '正在重试...';
+    icon.style.color = 'var(--accent)';
+    if (retry) retry.style.display = 'block';
+  }
+}
+
+function showUpdaterError(message, details) {
+  const msgEl = document.getElementById('updater-error-message');
+  const detailEl = document.getElementById('updater-error-details');
+  const toggleEl = document.getElementById('updater-error-toggle');
+  if (msgEl) msgEl.textContent = message;
+  if (detailEl) detailEl.textContent = details || '';
+  if (toggleEl) toggleEl.style.display = details ? 'inline' : 'none';
+  if (toggleEl) toggleEl.textContent = '查看详情';
+  if (detailEl) detailEl.style.display = 'none';
+}
+
+function toggleUpdaterErrorDetails() {
+  const detailEl = document.getElementById('updater-error-details');
+  const toggleEl = document.getElementById('updater-error-toggle');
+  if (!detailEl || !toggleEl) return;
+  const visible = detailEl.style.display !== 'none';
+  detailEl.style.display = visible ? 'none' : 'block';
+  toggleEl.textContent = visible ? '查看详情' : '收起详情';
+}
+
+function cancelUpdateDownload() {
+  isDownloading = false;
+  updaterRetryCount = 0;
+  setUpdaterUIState('available');
+}
+
+async function retryUpdateDownload() {
+  updaterRetryCount = 0;
+  await startDownloadAndUpdate();
+}
+
+async function openDownloadPage() {
+  closeUpdaterPromptModal();
+  if (invoke) {
+    try { await invoke('open_download_page'); return; } catch {}
+  }
+  window.open(UPDATER_DOWNLOAD_PAGE, '_blank');
+}
+
+async function restartToUpdate() {
+  if (!invoke) return;
+  try {
+    addLog('info', '正在重启应用以完成更新...');
+    await invoke('download_and_install_update', { relaunch: true });
+  } catch (e) {
+    addLog('err', '重启更新失败: ' + e);
+    // 如果重启失败，尝试直接 relaunch
+    try {
+      if (TAURI?.process?.relaunch) { TAURI.process.relaunch(); }
+    } catch {}
+  }
+}
+
 async function startDownloadAndUpdate() {
   if (!invoke || isDownloading) return;
   isDownloading = true;
+  updaterRetryCount = 0;
   
-  const progressContainer = document.getElementById('updater-progress-container');
-  const footer = document.getElementById('updater-prompt-footer');
-  
-  // 隐藏脚部按钮，显示进度条
-  if (footer) {
-    footer.innerHTML = `<button class="btn-ghost" style="width: 100%; text-align: center; border-color: transparent;" disabled id="updater-loading-btn">正在准备下载...</button>`;
-  }
-  if (progressContainer) progressContainer.style.display = 'block';
+  setUpdaterUIState('downloading');
   
   // 注册进度事件监听
   let unlistenProgress = null;
@@ -5214,45 +6874,99 @@ async function startDownloadAndUpdate() {
   
   if (tauriEvent?.listen) {
     unlistenProgress = await tauriEvent.listen('update-download-progress', (e) => {
+      if (!isDownloading) return;
       const payload = e.payload || {};
       const percent = payload.percentage ? Math.round(payload.percentage) : 0;
       
       const percentEl = document.getElementById('updater-progress-percent');
       const barEl = document.getElementById('updater-progress-bar');
       const statusEl = document.getElementById('updater-progress-status');
-      const loadingBtn = document.getElementById('updater-loading-btn');
+      const downloadingBtn = document.getElementById('updater-downloading-btn');
       
       if (percentEl) percentEl.textContent = percent + '%';
       if (barEl) barEl.style.width = percent + '%';
       if (statusEl) statusEl.textContent = `已下载: ${(payload.downloaded / 1024 / 1024).toFixed(2)} MB`;
-      if (loadingBtn) loadingBtn.textContent = `正在下载更新包 (${percent}%)`;
+      if (downloadingBtn) downloadingBtn.textContent = `下载中 (${percent}%)`;
     });
     
     unlistenComplete = await tauriEvent.listen('update-download-complete', () => {
-      const loadingBtn = document.getElementById('updater-loading-btn');
-      if (loadingBtn) loadingBtn.textContent = '下载完成，正在解压安装...';
-      addLog('ok', '更新包下载成功，正在应用解压并重启...');
+      addLog('ok', '更新包下载完成！');
     });
   }
   
   try {
     addLog('info', '正在下载更新包，请稍候...');
-    await invoke('download_and_install_update', { relaunch: true });
-  } catch (e) {
-    addLog('err', '更新下载与安装失败: ' + e);
-    alert('更新下载与安装失败: ' + e);
-    
-    // 恢复脚部
-    if (footer) {
-      footer.innerHTML = `
-        <button onclick="skipThisVersion()" class="modal-btn modal-btn-cancel" style="font-size: 12px; padding: 10px 16px;">跳过此版本</button>
-        <button onclick="closeUpdaterPromptModal()" class="modal-btn modal-btn-cancel" style="font-size: 12px; padding: 10px 16px;">稍后</button>
-        <button onclick="startDownloadAndUpdate()" class="modal-btn modal-btn-confirm" id="updater-confirm-btn" style="font-size: 12px; padding: 10px 20px;">立即更新</button>
-      `;
-    }
-    if (progressContainer) progressContainer.style.display = 'none';
-  } finally {
+    await invoke('download_and_install_update', { relaunch: false });
+    // 下载成功，保存更新说明以便下次启动展示
     isDownloading = false;
+    if (detectedUpdateInfo) {
+      try {
+        await invoke('save_pending_update_notes', {
+          version: detectedUpdateInfo.version,
+          releaseNotes: detectedUpdateInfo.body || '',
+          releaseNotesZh: detectedUpdateInfo.body || ''
+        });
+      } catch (e) { console.warn('save_pending_update_notes failed:', e); }
+    }
+    setUpdaterUIState('ready');
+    addLog('ok', '更新包已下载并安装就绪，等待重启生效');
+  } catch (e) {
+    isDownloading = false;
+    const errMsg = String(e || '未知错误');
+    addLog('err', '更新下载失败: ' + errMsg);
+
+    // 判断是否可重试，自动重试
+    if (isRetryableUpdateError(e) && updaterRetryCount < UPDATER_MAX_RETRIES) {
+      const delay = UPDATER_RETRY_DELAYS[Math.min(updaterRetryCount, UPDATER_RETRY_DELAYS.length - 1)];
+      updaterRetryCount++;
+      const retryStatus = document.getElementById('updater-retry-status');
+      if (retryStatus) retryStatus.textContent = `网络异常，第 ${updaterRetryCount}/${UPDATER_MAX_RETRIES} 次重试（${delay/1000}s 后）...`;
+      setUpdaterUIState('retrying');
+
+      await new Promise(r => setTimeout(r, delay));
+
+      if (isDownloading === false && updaterRetryCount > 0) {
+        // 没有被取消，继续重试
+        isDownloading = true;
+        try {
+          await invoke('download_and_install_update', { relaunch: false });
+          isDownloading = false;
+          updaterRetryCount = 0;
+          if (detectedUpdateInfo) {
+            try {
+              await invoke('save_pending_update_notes', {
+                version: detectedUpdateInfo.version,
+                releaseNotes: detectedUpdateInfo.body || '',
+                releaseNotesZh: detectedUpdateInfo.body || ''
+              });
+            } catch (e) { console.warn('save_pending_update_notes failed:', e); }
+          }
+          setUpdaterUIState('ready');
+          addLog('ok', '重试成功，更新包已就绪');
+        } catch (e2) {
+          isDownloading = false;
+          // 重试也失败了，如果还有次数则递归
+          if (updaterRetryCount < UPDATER_MAX_RETRIES) {
+            // 继续重试
+            await startDownloadAndUpdate();
+            return;
+          }
+          // 重试次数用完，显示错误
+          showUpdaterError('自动更新下载失败，可重试或前往下载页手动更新', String(e2));
+          setUpdaterUIState('error');
+        }
+      }
+    } else {
+      // 不可重试的错误，直接显示错误状态
+      const userMsg = errMsg.includes('signature') || errMsg.includes('checksum') || errMsg.includes('hash')
+        ? '更新包签名验证失败，请前往下载页手动下载'
+        : errMsg.includes('no matching platform')
+        ? '当前平台暂不支持自动更新，请手动下载'
+        : '自动更新失败，可重试或前往下载页手动更新';
+      showUpdaterError(userMsg, errMsg);
+      setUpdaterUIState('error');
+    }
+  } finally {
     if (unlistenProgress) unlistenProgress();
     if (unlistenComplete) unlistenComplete();
   }
@@ -5273,8 +6987,7 @@ function bindProxyButtonHandlers() {
     });
   };
   btn.addEventListener('click', handler);
-  btn.addEventListener('pointerup', handler);
-  _diag('proxyBtn handlers bound (click + pointerup)');
+  _diag('proxyBtn handler bound (click)');
 }
 
 // ═══════ INIT ═══════
@@ -5282,7 +6995,7 @@ async function init() {
   const bridgeReady = await ensureTauriBridge();
   if (!bridgeReady) {
     console.error('[Init] Tauri bridge not ready');
-    alert('应用核心通道未就绪，按钮将无法响应。请从安装包版本启动，或重启应用后重试。');
+    showCustomAlert('应用核心通道未就绪，按钮将无法响应。请从安装包版本启动，或重启应用后重试。', '启动异常', 'error');
   }
 
   // 启动时清理残留弹层状态，避免透明遮罩占用点击事件
@@ -5315,12 +7028,13 @@ async function init() {
   syncCustomSelector();
 
   await loadProviders();
+  await loadEvalReports();
   await refreshStatus();
 
   // 加载自动更新设置并更新 UI 开关状态
   await loadUpdateSettings();
   // 显示当前版本号
-  try { const v = await invoke('get_app_version'); document.getElementById('current-version-display').textContent = 'v' + v; } catch { document.getElementById('current-version-display').textContent = 'v1.1.2'; }
+  try { const v = await invoke('get_app_version'); document.getElementById('current-version-display').textContent = 'v' + v; } catch { document.getElementById('current-version-display').textContent = 'v1.2.4'; }
 
   bindUpdateJumpModalHandlers();
   // 检查是否刚进行了版本更新

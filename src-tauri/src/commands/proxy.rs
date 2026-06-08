@@ -26,11 +26,8 @@ pub struct ManagedChild {
 }
 
 impl ManagedChild {
-    fn kill(&self) -> Result<(), String> {
-        let mut child = self
-            .child
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
+    pub fn kill(&self) -> Result<(), String> {
+        let mut child = self.child.lock().unwrap_or_else(|e| e.into_inner());
 
         // Windows release 模式下 sidecar 以 CREATE_NEW_PROCESS_GROUP 启动，
         // std::process::Child::kill() 只调用 TerminateProcess 杀单进程，
@@ -53,14 +50,15 @@ impl ManagedChild {
                     );
                 }
                 Err(e) => {
-                    eprintln!("[stop_proxy] taskkill 执行失败: {}, 尝试 TerminateProcess", e);
+                    eprintln!(
+                        "[stop_proxy] taskkill 执行失败: {}, 尝试 TerminateProcess",
+                        e
+                    );
                 }
             }
         }
 
-        child
-            .kill()
-            .map_err(|e| format!("停止失败: {}", e))
+        child.kill().map_err(|e| format!("停止失败: {}", e))
     }
 
     fn try_wait(&self) -> Result<Option<std::process::ExitStatus>, String> {
@@ -85,7 +83,7 @@ pub struct ProxyState {
 }
 
 /// 取锁并容忍 poisoning：某线程持锁时 panic 不应让后续所有代理操作永久 panic。
-fn lock_or_recover<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
+pub fn lock_or_recover<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
     m.lock().unwrap_or_else(|e| e.into_inner())
 }
 
@@ -139,7 +137,10 @@ struct LogLine {
 }
 
 fn classify(line: &str) -> String {
-    if line.contains('❌') || line.contains("Error") || line.contains("ERROR") || line.contains("[ERR")
+    if line.contains('❌')
+        || line.contains("Error")
+        || line.contains("ERROR")
+        || line.contains("[ERR")
     {
         "err".into()
     } else if line.contains('⚠') || line.contains("Warn") || line.contains("WARN") {
@@ -183,7 +184,14 @@ fn resolve_sidecar_path() -> Result<std::path::PathBuf, String> {
 
 #[tauri::command]
 pub fn get_proxy_status(state: State<ProxyState>) -> ProxyStatus {
-    let running = lock_or_recover(&state.child).is_some();
+    let mut running = false;
+    {
+        let guard = lock_or_recover(&state.child);
+        if let Some(managed) = guard.as_ref() {
+            // child 存在但进程可能已退出（监控线程尚未清理），用 try_wait 确认
+            running = managed.try_wait().ok().flatten().is_none();
+        }
+    }
     ProxyStatus {
         running,
         api_port: 7450,
@@ -192,12 +200,23 @@ pub fn get_proxy_status(state: State<ProxyState>) -> ProxyStatus {
 }
 
 #[tauri::command]
-pub fn start_proxy(app: AppHandle, state: State<ProxyState>, target_ide: Option<String>) -> Result<bool, String> {
+pub fn start_proxy(
+    app: AppHandle,
+    state: State<ProxyState>,
+    target_ide: Option<String>,
+) -> Result<bool, String> {
     // TOCTOU 防护：检查"已运行 / 正在启动",并在同一临界区抢占 starting 标志。
+    // 注意：child 存在不代表进程还活着，需 try_wait 确认（进程意外退出但监控线程尚未清理时）。
     {
         let guard = lock_or_recover(&state.child);
-        if guard.is_some() {
-            return Err("代理已在运行".into());
+        if let Some(managed) = guard.as_ref() {
+            if managed.try_wait().ok().flatten().is_none() {
+                // 进程仍在运行
+                return Err("代理已在运行".into());
+            }
+            // 进程已退出但 child 未清理，先清理再允许启动
+            drop(guard);
+            *lock_or_recover(&state.child) = None;
         }
         if state.starting.swap(true, Ordering::SeqCst) {
             return Err("代理正在启动中".into());
@@ -207,11 +226,7 @@ pub fn start_proxy(app: AppHandle, state: State<ProxyState>, target_ide: Option<
 
     let config_dir = crate::commands::config::config_dir_path();
 
-    let resource_dir = app
-        .path()
-        .resource_dir()
-        .map(|p| p.join("resources"))
-        .ok();
+    let resource_dir = app.path().resource_dir().map(|p| p.join("resources")).ok();
 
     // 解析 sidecar 路径
     let sidecar_path = match resolve_sidecar_path() {
@@ -251,7 +266,7 @@ pub fn start_proxy(app: AppHandle, state: State<ProxyState>, target_ide: Option<
     let stdout = child.stdout.take();
     let stderr = child.stderr.take();
 
-    // 解析目标 IDE（auto 模式需实际检测）
+    // 解析目标 IDE（auto 模式需实际检测），校验只允许 windsurf/devin
     let target = match target_ide.as_deref() {
         Some("auto") | None => {
             // 自动检测：优先运行中的 IDE，其次默认 windsurf
@@ -262,7 +277,11 @@ pub fn start_proxy(app: AppHandle, state: State<ProxyState>, target_ide: Option<
                 detected
             }
         }
-        Some(t) => t.to_string(),
+        Some(t) if t == "windsurf" || t == "devin" => t.to_string(),
+        Some(t) => {
+            clear_starting();
+            return Err(format!("不支持的目标 IDE: {}（仅 windsurf/devin/auto）", t));
+        }
     };
 
     // 写入 child 并清除 starting 标志
@@ -400,22 +419,28 @@ pub fn start_proxy(app: AppHandle, state: State<ProxyState>, target_ide: Option<
             if let Some(state) = app_handle2.try_state::<ProxyState>() {
                 *lock_or_recover(&state.child) = None;
                 let target = lock_or_recover(&state.target_ide).clone();
-                let report = restore_all(&state, &target);
-                if report.has_warning() {
-                    let mut warnings = Vec::new();
-                    if !report.ide_config.starts_with("ok") {
-                        warnings.push(report.ide_config.clone());
+                // 清除 target_ide
+                *lock_or_recover(&state.target_ide) = String::new();
+                if target.is_empty() || (target != "windsurf" && target != "devin") {
+                    eprintln!("[monitor] target_ide 异常: '{}', 跳过还原", target);
+                } else {
+                    let report = restore_all(&state, &target);
+                    if report.has_warning() {
+                        let mut warnings = Vec::new();
+                        if !report.ide_config.starts_with("ok") {
+                            warnings.push(report.ide_config.clone());
+                        }
+                        if !report.workbench_inject.starts_with("ok") {
+                            warnings.push(report.workbench_inject.clone());
+                        }
+                        let _ = app_handle2.emit(
+                            "proxy-log",
+                            LogLine {
+                                level: "warn".into(),
+                                msg: format!("⚠ 还原警告: {}", warnings.join("；")),
+                            },
+                        );
                     }
-                    if !report.workbench_inject.starts_with("ok") {
-                        warnings.push(report.workbench_inject.clone());
-                    }
-                    let _ = app_handle2.emit(
-                        "proxy-log",
-                        LogLine {
-                            level: "warn".into(),
-                            msg: format!("⚠ 还原警告: {}", warnings.join("；")),
-                        },
-                    );
                 }
             }
             let _ = app_handle2.emit("proxy-stopped", ());
@@ -427,21 +452,27 @@ pub fn start_proxy(app: AppHandle, state: State<ProxyState>, target_ide: Option<
 }
 
 #[tauri::command]
-pub fn stop_proxy(app: AppHandle, state: State<ProxyState>, target_ide: Option<String>) -> Result<RestoreReport, String> {
+pub fn stop_proxy(
+    app: AppHandle,
+    state: State<ProxyState>,
+    _target_ide: Option<String>,
+) -> Result<RestoreReport, String> {
     let child = lock_or_recover(&state.child).take();
     if let Some(child) = child {
         // 无论 kill 是否成功，都必须还原配置；kill 失败仅记日志不阻断。
         if let Err(e) = child.kill() {
             eprintln!("[stop_proxy] kill 失败（进程可能已退出）: {}", e);
         }
-        // 还原 IDE 配置（幂等且与 Terminated 分支串行化，无备份则空操作）。
-        let target = match target_ide.as_deref() {
-            Some("auto") | None => {
-                let detected = crate::commands::system::detect_target_ide();
-                if detected != "windsurf" && detected != "devin" { "windsurf".into() } else { detected }
-            }
-            Some(t) => t.to_string(),
-        };
+        // 还原 IDE 配置：使用 start_proxy 时保存的 target_ide，
+        // 而非重新检测或参数传入值——确保还原目标与打补丁时一致。
+        let target = lock_or_recover(&state.target_ide).clone();
+        // 清除 target_ide，防止残留旧值被后续误用
+        *lock_or_recover(&state.target_ide) = String::new();
+        if target.is_empty() || (target != "windsurf" && target != "devin") {
+            eprintln!("[stop_proxy] target_ide 异常: '{}', 跳过还原", target);
+            let _ = app.emit("proxy-stopped", ());
+            return Ok(RestoreReport::default());
+        }
         let report = restore_all(&state, &target);
 
         // 如果还原有警告，通过事件通知前端（同时返回值也携带报告）。
@@ -462,9 +493,43 @@ pub fn stop_proxy(app: AppHandle, state: State<ProxyState>, target_ide: Option<S
             );
         }
 
+        // 通知前端代理已停止（与监控线程的 proxy-stopped 对齐）
+        let _ = app.emit("proxy-stopped", ());
+
         Ok(report)
     } else {
         Err("代理未运行".into())
+    }
+}
+
+/// 强杀所有名为 ide-byok-proxy 的孤儿进程（启动时 / 升级前调用）。
+/// 与 ManagedChild::kill() 不同：这里不依赖 state 里记录的 PID，
+/// 而是按进程名全盘扫描，确保上一轮崩溃或异常退出后残留的 sidecar 不会锁住 exe 文件。
+pub fn kill_sidecar_process() {
+    #[cfg(target_os = "windows")]
+    {
+        let out = std::process::Command::new("taskkill")
+            .args(["/F", "/T", "/IM", "ide-byok-proxy.exe"])
+            .creation_flags(CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP)
+            .output();
+        match out {
+            Ok(o) if o.status.success() => {
+                eprintln!("[cleanup] 已清理孤儿 sidecar 进程");
+            }
+            Ok(_) => {
+                // 进程不存在（taskkill 返回错误码 128），属正常情况
+            }
+            Err(e) => {
+                eprintln!("[cleanup] taskkill 执行失败: {}", e);
+            }
+        }
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = std::process::Command::new("pkill")
+            .args(["-f", "ide-byok-proxy"])
+            .output();
     }
 }
 

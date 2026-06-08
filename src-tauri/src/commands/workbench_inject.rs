@@ -106,10 +106,11 @@ fn strip_byok_block(html: &str) -> String {
 /// 返回 Ok(true) 表示发生了写入（需重启 IDE 生效）；Ok(false) 表示已是最新无需改动。
 pub fn inject(script: &str, target: &str) -> Result<bool, String> {
     let Some(path) = workbench_html_path(target) else {
-        return Err(
-            format!("未定位到 {} 的 workbench.html（可能装在非默认目录且未运行）。\
-             请启动 {} 后重试，或在设置页手动指定路径", target, target)
-        );
+        return Err(format!(
+            "未定位到 {} 的 workbench.html（可能装在非默认目录且未运行）。\
+             请启动 {} 后重试，或在设置页手动指定路径",
+            target, target
+        ));
     };
 
     let html = fs::read_to_string(&path).map_err(|e| format!("读取 workbench.html 失败: {}", e))?;

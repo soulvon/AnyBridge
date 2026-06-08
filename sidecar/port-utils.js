@@ -1,7 +1,7 @@
 // port-utils.js — 跨平台回收被占用端口。
 // Windows 无 lsof，旧代码只打印 lsof 提示后 exit(1)，导致 sidecar 一遇端口占用就退出。
 
-import { execSync } from 'node:child_process';
+import { execSync, spawnSync } from 'node:child_process';
 
 // 仅回收本应用的代理进程：校验 PID 的进程名是否为 node 系，避免误杀
 // 恰好占用 7450/7451 的其它无关程序（强杀用户进程会丢数据）。
@@ -11,8 +11,9 @@ function isSafeToKill(pid) {
   try {
     if (process.platform === 'win32') {
       // CSV 输出首列是镜像名，如 "node.exe","1234",...
-      const out = execSync(`tasklist /FI "PID eq ${pid}" /FO CSV /NH`, { encoding: 'utf8' });
-      const name = (out.match(/^"([^"]+)"/) || [])[1] || '';
+      const result = spawnSync('tasklist', ['/FI', `PID eq ${pid}`, '/FO', 'CSV', '/NH'], { encoding: 'utf8', windowsHide: true });
+      if (result.error) return false;
+      const name = (result.stdout.match(/^"([^"]+)"/) || [])[1] || '';
       const base = name.toLowerCase().replace(/\.exe$/, '');
       return SAFE_NAMES.some(n => base === n || base.startsWith(n));
     }
@@ -29,7 +30,9 @@ function isSafeToKill(pid) {
 export function killPortHolder(port) {
   try {
     if (process.platform === 'win32') {
-      const out = execSync('netstat -ano -p tcp', { encoding: 'utf8' });
+      const result = spawnSync('netstat', ['-ano', '-p', 'tcp'], { encoding: 'utf8', windowsHide: true });
+      if (result.error) return false;
+      const out = result.stdout;
       const pids = new Set();
       for (const line of out.split(/\r?\n/)) {
         if (!/LISTENING/i.test(line)) continue;
@@ -43,7 +46,7 @@ export function killPortHolder(port) {
           console.error(`⚠ [port] 端口 ${port} 被非本应用进程(PID ${pid})占用，跳过强杀`);
           continue;
         }
-        try { execSync(`taskkill /F /PID ${pid}`, { stdio: 'ignore' }); any = true; } catch {}
+        try { spawnSync('taskkill', ['/F', '/PID', pid], { stdio: 'ignore', windowsHide: true }); any = true; } catch {}
       }
       return any;
     } else {

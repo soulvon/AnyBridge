@@ -10,13 +10,67 @@ import { buildErrorChunk } from './build-response.js';
 import { AnthropicStreamProcessor, parseSSEChunk } from './anthropic-stream.js';
 import { OpenAIChatCompletionsStreamProcessor, OpenAIStreamProcessor, parseOpenAISSEChunk } from './openai-stream.js';
 import { wrapEnvelope, endOfStreamEnvelope, streamHeaders, gzipSync, unwrapRequest } from '../connect.js';
-import { recordRequest, recordUsage, recordError } from '../stats.js';
-import { getSlot, loadProviders, resolveTarget, rememberProviderToolSchemaCompat } from '../provider-pool.js';
+import { recordRequest, recordUsage, recordError, recordLatency } from '../stats.js';
+import { getSlot, loadProviders, resolveTarget, rememberProviderToolSchemaCompat, updateModelCapabilities } from '../provider-pool.js';
 import { mitmLog } from '../mitm-logger.js';
 
 // ─── Config ────────────────────────────────────────────────
 
-const MAX_TOKENS = parseInt(process.env.MAX_TOKENS || '16384', 10);
+function intEnv(names, fallback, min = 0) {
+  const keys = Array.isArray(names) ? names : [names];
+  for (const key of keys) {
+    const raw = process.env[key];
+    if (raw == null || raw === '') continue;
+    const n = parseInt(raw, 10);
+    if (Number.isFinite(n) && n >= min) return n;
+  }
+  return fallback;
+}
+
+const MAX_TOKENS = intEnv('MAX_TOKENS', 16384, 1);
+const UPSTREAM_TIMEOUT_MS = intEnv(['UPSTREAM_TIMEOUT_MS', 'API_TIMEOUT_MS'], 300000, 1000);
+const RETRY_ENABLED = !/^(false|0|off)$/i.test(String(process.env.BYOK_RETRY || 'true'));
+const RETRY_MAX = intEnv('BYOK_RETRY_MAX', 5, 0);
+const RETRY_BASE_MS = intEnv('BYOK_RETRY_BASE_MS', 600, 1);
+const RETRY_CAP_MS = intEnv('BYOK_RETRY_CAP_MS', 8000, 1);
+const RETRY_TOTAL_MS = intEnv('BYOK_RETRY_TOTAL_MS', 60000, 0);
+const OPENAI_REASONING_EFFORT = String(process.env.BYOK_REASONING_EFFORT || process.env.OPENAI_REASONING_EFFORT || '').trim();
+const OPENAI_REASONING_SUMMARY = String(process.env.BYOK_REASONING_SUMMARY || process.env.OPENAI_REASONING_SUMMARY || '').trim();
+const HTTPS_AGENT = new https.Agent({
+  keepAlive: true,
+  keepAliveMsecs: 30_000,
+  maxSockets: intEnv('BYOK_MAX_SOCKETS', 64, 1),
+  maxFreeSockets: intEnv('BYOK_MAX_FREE_SOCKETS', 16, 1),
+});
+const RETRYABLE_STATUS = new Set([408, 425, 429, 500, 502, 503, 504]);
+const RETRYABLE_CODES = new Set([
+  'ECONNRESET', 'ETIMEDOUT', 'ENOTFOUND', 'EAI_AGAIN',
+  'ECONNREFUSED', 'EPIPE', 'EHOSTUNREACH', 'ENETUNREACH',
+  'ERR_NETWORK', 'ERR_SOCKET_CLOSED', 'ERR_STREAM_DESTROYED',
+]);
+
+function retryAfterMs(headers = {}) {
+  const raw = headers['retry-after'];
+  if (!raw) return 0;
+  const val = Array.isArray(raw) ? raw[0] : raw;
+  const seconds = parseInt(val, 10);
+  if (Number.isFinite(seconds)) return Math.min(Math.max(seconds, 0) * 1000, RETRY_CAP_MS);
+  const at = Date.parse(val);
+  if (!Number.isNaN(at)) return Math.min(Math.max(at - Date.now(), 0), RETRY_CAP_MS);
+  return 0;
+}
+
+function isRetryableFailure(reason, meta = {}) {
+  if (!RETRY_ENABLED) return false;
+  if (meta.statusCode) return RETRYABLE_STATUS.has(meta.statusCode);
+  if (meta.code) return RETRYABLE_CODES.has(meta.code);
+  return /timeout|reset|socket hang up|econn|epipe|network|dns|eai_again/i.test(String(reason || ''));
+}
+
+function retryDelayMs(attempt, meta = {}) {
+  const exp = Math.min(RETRY_CAP_MS, RETRY_BASE_MS * Math.pow(2, Math.max(0, attempt - 1)));
+  return Math.max(Math.random() * exp, retryAfterMs(meta.headers));
+}
 
 // ─── Service tier (fast mode) ──────────────────────────────
 
@@ -55,6 +109,19 @@ function messageHasImage(msg) {
   if (!msg || typeof msg.content === 'string') return false;
   if (!Array.isArray(msg.content)) return false;
   return msg.content.some(block => block && block.type === 'image');
+}
+
+function markModelSuccess(conn, model, messages, tools) {
+  updateModelCapabilities(
+    conn.providerId,
+    model,
+    Array.isArray(messages) && messages.some(messageHasImage),
+    Array.isArray(tools) && tools.length > 0
+  );
+}
+
+function recordStreamLatency(startedAt) {
+  if (startedAt) recordLatency(Date.now() - startedAt);
 }
 
 function isGeminiModel(model = '') {
@@ -135,21 +202,36 @@ export function handleGetChatMessage(req, res, body) {
     const bv = connB.capabilities?.vision === true ? 1 : 0;
     return bv - av;
   });
-  if (hasImages) console.log(`  🖼️  Image request detected; preferring Vision-capable targets`);
+  if (hasImages) {
+    const imgCount = messages.reduce((n, m) => n + (Array.isArray(m.content) ? m.content.filter(b => b.type === 'image').length : 0), 0);
+    const sampleBlock = messages.find(m => Array.isArray(m.content) && m.content.some(b => b.type === 'image'));
+    const sampleImg = sampleBlock ? sampleBlock.content.find(b => b.type === 'image') : null;
+    const dataLen = sampleImg?.source?.data?.length || 0;
+    const mediaType = sampleImg?.source?.media_type || 'unknown';
+    console.log(`  🖼️  Image request detected: ${imgCount} image(s), data_len=${dataLen}, media_type=${mediaType}; preferring Vision-capable targets`);
+  }
 
   // 故障转移:按 targets 顺序逐个尝试。只要还没开始向客户端写流，失败就切下一个。
   let idx = 0;
   const errors = [];
   // 当前活跃的上游请求。客户端断开时只销毁它（避免给每个 target 重复注册 close 监听器泄漏）。
   let currentApiReq = null;
+  let retryTimer = null;
+  let clientClosed = false;
   res.on('close', () => {
-    if (!res.writableEnded && currentApiReq && !currentApiReq.destroyed) {
+    clientClosed = !res.writableEnded;
+    if (retryTimer) {
+      clearTimeout(retryTimer);
+      retryTimer = null;
+    }
+    if (clientClosed && currentApiReq && !currentApiReq.destroyed) {
       console.log(`  🔌 客户端断开，中止上游请求`);
       currentApiReq.destroy();
     }
   });
 
   function attemptNext() {
+    if (clientClosed || res.writableEnded) return;
     if (idx >= routingTargets.length) {
       // 全部失败 → 无兜底，直接报错（日志已逐条打印原因）。
       console.error(`  ❌ 所有目标均失败: ${errors.join(' | ')}`);
@@ -174,38 +256,59 @@ export function handleGetChatMessage(req, res, body) {
     }
 
     if (hasImages && conn.capabilities?.vision === false) {
-      console.warn(`  ⚠️  目标#${idx} ${conn.providerName} 未标记支持 Vision → 切换下一个`);
-      errors.push(`${conn.providerName}: 不支持图片理解`);
-      return attemptNext();
+      console.warn(`  ⚠️  目标#${idx} ${conn.providerName} 未标记支持 Vision，但仍尝试转发（探测可能误报）`);
     }
 
     console.log(`  ➡️  目标#${idx}: ${conn.providerName} (${conn.format}) → ${conn.model}${conn.capabilities?.gzip ? ' [gzip]' : ''}`);
     recordRequest({ provider: conn.providerName, requestedModel, resolvedModel: conn.model });
 
     const sys = `${systemPrompt}\n\nYou are powered by ${conn.model}.`;
-    const onFailover = (reason) => {
-      console.warn(`  ⚠️  ${conn.providerName} 失败(${reason}) → 切换下一个`);
-      errors.push(`${conn.providerName}: ${reason}`);
-      attemptNext();
+    const targetStartedAt = Date.now();
+    let retryCount = 0;
+
+    const startTargetRequest = () => {
+      retryTimer = null;
+      if (clientClosed || res.writableEnded) return;
+      const onFailover = (reason, meta = {}) => {
+        if (clientClosed || res.writableEnded) return;
+        const canRetry = !res.headersSent
+          && retryCount < RETRY_MAX
+          && (retryCount === 0 || (Date.now() - targetStartedAt) < RETRY_TOTAL_MS)
+          && isRetryableFailure(reason, meta);
+
+        if (canRetry) {
+          retryCount++;
+          const delay = Math.round(retryDelayMs(retryCount, meta));
+          console.warn(`  ⏳ ${conn.providerName} 失败(${reason})，${delay}ms 后重试 ${retryCount}/${RETRY_MAX}`);
+          retryTimer = setTimeout(startTargetRequest, delay);
+          return;
+        }
+
+        console.warn(`  ⚠️  ${conn.providerName} 失败(${reason}) → 切换下一个`);
+        errors.push(`${conn.providerName}: ${reason}`);
+        attemptNext();
+      };
+
+      const opts = {
+        systemPrompt: sys,
+        messages,
+        tools,
+        toolChoice,
+        resolvedModel: conn.model,
+        serviceTier,
+        messageId,
+        conn,
+        onFailover,
+        schemaCompatRetry: false,
+        bindActiveReq: (r) => { currentApiReq = r; },
+      };
+
+      currentApiReq = conn.format === 'openai'
+        ? streamOpenAI(req, res, opts)
+        : streamAnthropic(req, res, opts);
     };
 
-    const opts = {
-      systemPrompt: sys,
-      messages,
-      tools,
-      toolChoice,
-      resolvedModel: conn.model,
-      serviceTier,
-      messageId,
-      conn,
-      onFailover,
-      schemaCompatRetry: false,
-      bindActiveReq: (r) => { currentApiReq = r; },
-    };
-
-    currentApiReq = conn.format === 'openai'
-      ? streamOpenAI(req, res, opts)
-      : streamAnthropic(req, res, opts);
+    startTargetRequest();
   }
 
   attemptNext();
@@ -246,6 +349,7 @@ function streamAnthropic(req, res, { systemPrompt, messages, tools, toolChoice, 
   });
 
   const apiReq = https.request({
+    agent: HTTPS_AGENT,
     hostname: conn.host,
     port: 443,
     path: conn.apiPath,
@@ -269,7 +373,7 @@ function streamAnthropic(req, res, { systemPrompt, messages, tools, toolChoice, 
         console.error(`  ❌ Body: ${errBody.slice(0, 300)}`);
         mitmLog({ direction: 'downstream', providerName: conn.providerName, model: resolvedModel, format: 'anthropic', request: { method: 'POST', url: `https://${conn.host}${conn.apiPath}` }, response: { statusCode: apiRes.statusCode, headers: apiRes.headers, body: errBody } });
         apiReq.destroy();
-        if (!failed) { failed = true; onFailover(`HTTP ${apiRes.statusCode}`); }
+        if (!failed) { failed = true; onFailover(`HTTP ${apiRes.statusCode}`, { statusCode: apiRes.statusCode, headers: apiRes.headers }); }
       };
       apiRes.on('end', fail);
       // 上游只发头不发 body 时 'end' 可能不来，加超时兜底避免请求挂死。
@@ -278,6 +382,7 @@ function streamAnthropic(req, res, { systemPrompt, messages, tools, toolChoice, 
     }
 
     // 收到 200 → 确定用这个供应商，此刻才向客户端发流头（之前都还能切换）。
+    const streamStartedAt = Date.now();
     res.writeHead(200, streamHeaders());
     apiRes.setEncoding('utf8');
 
@@ -289,12 +394,14 @@ function streamAnthropic(req, res, { systemPrompt, messages, tools, toolChoice, 
           res.write(wrapEnvelope(chunk));
         }
       }
-      if (processor.isDone && !res.writableEnded) {
-        res.write(endOfStreamEnvelope());
-        res.end();
-        recordUsage(processor.usage);
-        console.log(`  ✅ Stream done (stop: ${processor.stopReason})`);
-      }
+        if (processor.isDone && !res.writableEnded) {
+          res.write(endOfStreamEnvelope());
+          res.end();
+          recordStreamLatency(streamStartedAt);
+          markModelSuccess(conn, resolvedModel, messages, tools);
+          recordUsage(processor.usage);
+          console.log(`  ✅ Stream done (stop: ${processor.stopReason})`);
+        }
     }
 
     apiRes.on('data', (chunk) => {
@@ -309,6 +416,8 @@ function streamAnthropic(req, res, { systemPrompt, messages, tools, toolChoice, 
       if (!res.writableEnded) {
         res.write(endOfStreamEnvelope());
         res.end();
+        recordStreamLatency(streamStartedAt);
+        markModelSuccess(conn, resolvedModel, messages, tools);
         recordUsage(processor.usage);
         console.log(`  ✅ Stream ended`);
       }
@@ -327,7 +436,7 @@ function streamAnthropic(req, res, { systemPrompt, messages, tools, toolChoice, 
   apiReq.on('error', (err) => {
     console.error(`  ❌ ${conn.providerName} 连接错误: ${err.message}`);
     // 连接阶段失败（headersSent=false）→ 还能切换下一个供应商。
-    if (!failed && !res.headersSent) { failed = true; onFailover(err.message); return; }
+    if (!failed && !res.headersSent) { failed = true; onFailover(err.message, { code: err.code }); return; }
     if (!res.writableEnded) {
       res.write(wrapEnvelope(buildErrorChunk(messageId, `[Connection Error]`)));
       res.write(endOfStreamEnvelope());
@@ -336,7 +445,11 @@ function streamAnthropic(req, res, { systemPrompt, messages, tools, toolChoice, 
   });
 
   // 上游挂起防护：120s 无响应则断开（触发上面的 error handler 回写错误流或故障转移）。
-  apiReq.setTimeout(120000, () => apiReq.destroy(new Error('upstream timeout')));
+  apiReq.setTimeout(UPSTREAM_TIMEOUT_MS, () => {
+    const err = new Error('upstream timeout');
+    err.code = 'ETIMEDOUT';
+    apiReq.destroy(err);
+  });
 
   apiReq.end(apiBody);
   return apiReq;
@@ -360,8 +473,14 @@ function streamOpenAI(req, res, { systemPrompt, messages, tools, toolChoice, res
     model: resolvedModel,
     input: openaiMessages,
     stream: true,
-    reasoning: { effort: 'high', summary: 'auto' },
+    max_output_tokens: MAX_TOKENS,
   };
+  if (OPENAI_REASONING_EFFORT && !/^(off|none|false|0)$/i.test(OPENAI_REASONING_EFFORT)) {
+    apiPayload.reasoning = { effort: OPENAI_REASONING_EFFORT };
+    if (OPENAI_REASONING_SUMMARY && !/^(off|none|false|0)$/i.test(OPENAI_REASONING_SUMMARY)) {
+      apiPayload.reasoning.summary = OPENAI_REASONING_SUMMARY;
+    }
+  }
 
   if (serviceTier) apiPayload.service_tier = serviceTier;
   if (tools && tools.length > 0) {
@@ -400,6 +519,7 @@ function streamOpenAI(req, res, { systemPrompt, messages, tools, toolChoice, res
   if (useGzip) reqHeaders['content-encoding'] = 'gzip';
 
   const apiReq = https.request({
+    agent: HTTPS_AGENT,
     hostname: conn.host,
     port: 443,
     path: conn.apiPath,
@@ -444,7 +564,7 @@ function streamOpenAI(req, res, { systemPrompt, messages, tools, toolChoice, res
         }
 
         apiReq.destroy();
-        if (!failed) { failed = true; onFailover(`HTTP ${apiRes.statusCode}`); }
+        if (!failed) { failed = true; onFailover(`HTTP ${apiRes.statusCode}`, { statusCode: apiRes.statusCode, headers: apiRes.headers }); }
       };
 
     apiRes.on('end', fail);
@@ -453,6 +573,7 @@ function streamOpenAI(req, res, { systemPrompt, messages, tools, toolChoice, res
       return;
     }
 
+    const streamStartedAt = Date.now();
     res.writeHead(200, streamHeaders());
     apiRes.setEncoding('utf8');
 
@@ -467,6 +588,8 @@ function streamOpenAI(req, res, { systemPrompt, messages, tools, toolChoice, res
       if (processor.isDone && !res.writableEnded) {
         res.write(endOfStreamEnvelope());
         res.end();
+        recordStreamLatency(streamStartedAt);
+        markModelSuccess(conn, resolvedModel, messages, tools);
         recordUsage(processor.usage);
         console.log(`  ✅ OpenAI stream done (stop: ${processor.stopReason})`);
       }
@@ -492,6 +615,8 @@ function streamOpenAI(req, res, { systemPrompt, messages, tools, toolChoice, res
       if (!res.writableEnded) {
         res.write(endOfStreamEnvelope());
         res.end();
+        recordStreamLatency(streamStartedAt);
+        markModelSuccess(conn, resolvedModel, messages, tools);
         recordUsage(processor.usage);
         console.log(`  ✅ OpenAI stream ended (stop: ${processor.stopReason})`);
       }
@@ -512,7 +637,7 @@ function streamOpenAI(req, res, { systemPrompt, messages, tools, toolChoice, res
   apiReq.on('error', (err) => {
 
     console.error(`  ❌ ${conn.providerName} 连接错误: ${err.message}`);
-    if (!failed && !res.headersSent) { failed = true; onFailover(err.message); return; }
+    if (!failed && !res.headersSent) { failed = true; onFailover(err.message, { code: err.code }); return; }
     if (!res.writableEnded) {
       res.write(wrapEnvelope(buildErrorChunk(messageId, `[Connection Error]`)));
       res.write(endOfStreamEnvelope());
@@ -521,7 +646,11 @@ function streamOpenAI(req, res, { systemPrompt, messages, tools, toolChoice, res
   });
 
   // 上游挂起防护：120s 无响应则断开（触发上面的 error handler 回写错误流或故障转移）。
-  apiReq.setTimeout(120000, () => apiReq.destroy(new Error('upstream timeout')));
+  apiReq.setTimeout(UPSTREAM_TIMEOUT_MS, () => {
+    const err = new Error('upstream timeout');
+    err.code = 'ETIMEDOUT';
+    apiReq.destroy(err);
+  });
 
   apiReq.end(finalBody);
   return apiReq;
@@ -537,6 +666,7 @@ function streamOpenAIChatCompletions(req, res, { systemPrompt, messages, tools, 
     messages: toOpenAIChatMessages(systemPrompt, messages),
     stream: true,
     stream_options: { include_usage: true },
+    max_tokens: MAX_TOKENS,
   };
 
   if (serviceTier) apiPayload.service_tier = serviceTier;
@@ -564,6 +694,7 @@ function streamOpenAIChatCompletions(req, res, { systemPrompt, messages, tools, 
   let failed = false;
 
   const apiReq = https.request({
+    agent: HTTPS_AGENT,
     hostname: conn.host,
     port: 443,
     path: conn.apiPath,
@@ -613,7 +744,7 @@ function streamOpenAIChatCompletions(req, res, { systemPrompt, messages, tools, 
         }
 
         apiReq.destroy();
-        if (!failed) { failed = true; onFailover(`HTTP ${apiRes.statusCode}`); }
+        if (!failed) { failed = true; onFailover(`HTTP ${apiRes.statusCode}`, { statusCode: apiRes.statusCode, headers: apiRes.headers }); }
       };
 
       apiRes.on('end', fail);
@@ -621,6 +752,7 @@ function streamOpenAIChatCompletions(req, res, { systemPrompt, messages, tools, 
       return;
     }
 
+    const streamStartedAt = Date.now();
     res.writeHead(200, streamHeaders());
     apiRes.setEncoding('utf8');
 
@@ -635,6 +767,8 @@ function streamOpenAIChatCompletions(req, res, { systemPrompt, messages, tools, 
       if (processor.isDone && !res.writableEnded) {
         res.write(endOfStreamEnvelope());
         res.end();
+        recordStreamLatency(streamStartedAt);
+        markModelSuccess(conn, resolvedModel, messages, tools);
         recordUsage(processor.usage);
         console.log(`  ✅ OpenAI chat stream done (stop: ${processor.stopReason})`);
       }
@@ -658,6 +792,8 @@ function streamOpenAIChatCompletions(req, res, { systemPrompt, messages, tools, 
       if (!res.writableEnded) {
         res.write(endOfStreamEnvelope());
         res.end();
+        recordStreamLatency(streamStartedAt);
+        markModelSuccess(conn, resolvedModel, messages, tools);
         recordUsage(processor.usage);
         console.log(`  ✅ OpenAI chat stream ended (stop: ${processor.stopReason})`);
       }
@@ -678,7 +814,7 @@ function streamOpenAIChatCompletions(req, res, { systemPrompt, messages, tools, 
   apiReq.on('error', (err) => {
 
     console.error(`  ❌ ${conn.providerName} 连接错误: ${err.message}`);
-    if (!failed && !res.headersSent) { failed = true; onFailover(err.message); return; }
+    if (!failed && !res.headersSent) { failed = true; onFailover(err.message, { code: err.code }); return; }
     if (!res.writableEnded) {
       res.write(wrapEnvelope(buildErrorChunk(messageId, `[Connection Error]`)));
       res.write(endOfStreamEnvelope());
@@ -686,7 +822,11 @@ function streamOpenAIChatCompletions(req, res, { systemPrompt, messages, tools, 
     }
   });
 
-  apiReq.setTimeout(120000, () => apiReq.destroy(new Error('upstream timeout')));
+  apiReq.setTimeout(UPSTREAM_TIMEOUT_MS, () => {
+    const err = new Error('upstream timeout');
+    err.code = 'ETIMEDOUT';
+    apiReq.destroy(err);
+  });
 
   apiReq.end(apiBody);
   return apiReq;

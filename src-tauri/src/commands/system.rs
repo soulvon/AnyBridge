@@ -1,9 +1,12 @@
+use std::process::Command;
 use tauri::{
     menu::{Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
     AppHandle, Manager,
 };
-use std::process::Command;
+
+#[cfg(target_os = "windows")]
+use std::os::windows::process::CommandExt;
 
 pub fn build_tray(app: &AppHandle) -> tauri::Result<()> {
     let show = MenuItem::with_id(app, "show", "显示窗口", true, None::<&str>)?;
@@ -17,8 +20,7 @@ pub fn build_tray(app: &AppHandle) -> tauri::Result<()> {
         Some(icon) => tray.icon(icon.clone()),
         None => tray,
     };
-    tray
-        .tooltip("IDE BYOK")
+    tray.tooltip("IDE BYOK")
         .menu(&menu)
         .show_menu_on_left_click(false)
         .on_menu_event(|app, event| match event.id.as_ref() {
@@ -79,20 +81,80 @@ pub fn set_autostart(enabled: bool) -> Result<(), String> {
         let key = r"HKCU\Software\Microsoft\Windows\CurrentVersion\Run";
         if enabled {
             Command::new("reg")
-                .args(["add", key, "/v", "IDEBYOK", "/t", "REG_SZ", "/d", &exe, "/f"])
+                .args([
+                    "add", key, "/v", "IDEBYOK", "/t", "REG_SZ", "/d", &exe, "/f",
+                ])
+                .creation_flags(0x0800_0000)
                 .output()
                 .map_err(|e| e.to_string())?;
         } else {
             let _ = Command::new("reg")
                 .args(["delete", key, "/v", "IDEBYOK", "/f"])
+                .creation_flags(0x0800_0000)
                 .output();
         }
         Ok(())
     }
-    #[cfg(not(target_os = "windows"))]
+    #[cfg(target_os = "macos")]
     {
-        let _ = enabled;
-        Err("仅支持 Windows".into())
+        let exe = std::env::current_exe()
+            .map_err(|e| e.to_string())?
+            .to_string_lossy()
+            .to_string();
+        let plist_name = "com.idebyok.desktop.plist";
+        let plist_path = dirs::home_dir()
+            .map(|h| h.join("Library/LaunchAgents").join(plist_name))
+            .ok_or("无法获取用户目录")?;
+
+        if enabled {
+            let plist_content = format!(
+                r#"<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.idebyok.desktop</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>{}</string>
+    </array>
+    <key>RunAtLoad</key>
+    <true/>
+</dict>
+</plist>"#,
+                exe
+            );
+            std::fs::write(&plist_path, plist_content)
+                .map_err(|e| format!("写入 launchd plist 失败: {}", e))?;
+        } else {
+            let _ = std::fs::remove_file(&plist_path);
+        }
+        Ok(())
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        let exe = std::env::current_exe()
+            .map_err(|e| e.to_string())?
+            .to_string_lossy()
+            .to_string();
+        let autostart_dir = dirs::config_dir()
+            .map(|d| d.join("autostart"))
+            .ok_or("无法获取配置目录")?;
+        let desktop_path = autostart_dir.join("ide-byok.desktop");
+
+        if enabled {
+            std::fs::create_dir_all(&autostart_dir).map_err(|e| e.to_string())?;
+            let desktop_content = format!(
+                "[Desktop Entry]\nType=Application\nName=IDE BYOK\nExec={}\nHidden=false\n",
+                exe
+            );
+            std::fs::write(&desktop_path, desktop_content)
+                .map_err(|e| format!("写入 .desktop 失败: {}", e))?;
+        } else {
+            let _ = std::fs::remove_file(&desktop_path);
+        }
+        Ok(())
     }
 }
 
@@ -108,6 +170,20 @@ pub fn open_config_dir(which: String) -> Result<(), String> {
     {
         std::process::Command::new("explorer")
             .arg(target.to_string_lossy().to_string())
+            .spawn()
+            .map_err(|e| e.to_string())?;
+    }
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("open")
+            .arg(&target)
+            .spawn()
+            .map_err(|e| e.to_string())?;
+    }
+    #[cfg(target_os = "linux")]
+    {
+        std::process::Command::new("xdg-open")
+            .arg(&target)
             .spawn()
             .map_err(|e| e.to_string())?;
     }
@@ -138,7 +214,11 @@ pub fn generate_certs() -> Result<String, String> {
     dn.push(DnType::CommonName, "IDE BYOK Local MITM");
     params.distinguished_name = dn;
     params.subject_alt_names = vec![
-        SanType::DnsName("server.self-serve.windsurf.com".try_into().map_err(|_| "bad san")?),
+        SanType::DnsName(
+            "server.self-serve.windsurf.com"
+                .try_into()
+                .map_err(|_| "bad san")?,
+        ),
         SanType::DnsName("server.codeium.com".try_into().map_err(|_| "bad san")?),
         SanType::DnsName("localhost".try_into().map_err(|_| "bad san")?),
     ];
@@ -224,9 +304,9 @@ pub(crate) fn find_ide_exe(target: &str) -> Option<std::path::PathBuf> {
     // Devin 的主进程名仍为 Windsurf.exe，需通过路径过滤区分；
     // Windsurf 的主进程也是 Windsurf.exe，无需额外过滤。
     let ps_query = if target == "devin" {
-        // Devin: 查找 Windsurf.exe 进程中 Path 包含 devin 目录的
+        // Devin: 同时查找 Windsurf.exe（来自 Devin 目录）和 Devin.exe 进程
         format!(
-            r#"Get-Process Windsurf -ErrorAction SilentlyContinue | Where-Object {{ $_.Path -and $_.Path -match '[\\/]devin[\\/]' -and $_.Path -notmatch 'extensions[/\\]windsurf[/\\]devin[/\\]bin' }} | Select-Object -First 1 -ExpandProperty Path"#
+            r#"$hit = $null; $hit = Get-Process Windsurf -ErrorAction SilentlyContinue | Where-Object {{ $_.Path -and $_.Path -match '[\\/]devin[\\/]' -and $_.Path -notmatch 'extensions[/\\]windsurf[/\\]devin' }} | Select-Object -First 1 -ExpandProperty Path; if (-not $hit) {{ $hit = Get-Process Devin -ErrorAction SilentlyContinue | Where-Object {{ $_.Path -and $_.Path -notmatch 'extensions[/\\]windsurf[/\\]devin' }} | Select-Object -First 1 -ExpandProperty Path }}; if ($hit) {{ Write-Output $hit }}"#
         )
     } else {
         format!(
@@ -235,6 +315,7 @@ pub(crate) fn find_ide_exe(target: &str) -> Option<std::path::PathBuf> {
     };
     if let Ok(out) = Command::new("powershell")
         .args(["-NoProfile", "-Command", &ps_query])
+        .creation_flags(0x0800_0000)
         .output()
     {
         let path = String::from_utf8_lossy(&out.stdout).trim().to_string();
@@ -292,7 +373,8 @@ fn find_ide_exe_from_registry(target: &str) -> Option<std::path::PathBuf> {
     let display_pattern = format!("*{}*", ide_dir_name(target));
     let exe_name = ide_exe_filename(target);
 
-    let script = format!(r#"
+    let script = format!(
+        r#"
 $roots = @(
   'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*',
   'HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*',
@@ -304,10 +386,13 @@ foreach ($r in $roots) {{
     Select-Object -First 1 -ExpandProperty InstallLocation
   if ($hit) {{ Write-Output $hit; break }}
 }}
-"#, display_pattern);
+"#,
+        display_pattern
+    );
 
     let out = Command::new("powershell")
         .args(["-NoProfile", "-Command", &script])
+        .creation_flags(0x0800_0000)
         .output()
         .ok()?;
     let loc = String::from_utf8_lossy(&out.stdout).trim().to_string();
@@ -411,26 +496,71 @@ pub fn set_ide_path(path: String) -> Result<(), String> {
         }
         let is_ide_exe = p
             .file_name()
-            .map(|n| {
-                n.eq_ignore_ascii_case("Windsurf.exe")
-                    || n.eq_ignore_ascii_case("Devin.exe")
-            })
+            .map(|n| n.eq_ignore_ascii_case("Windsurf.exe") || n.eq_ignore_ascii_case("Devin.exe"))
             .unwrap_or(false);
         if !is_ide_exe {
             return Err("请指向 Windsurf.exe 或 Devin.exe".into());
         }
         // 根据文件名判断是哪个 IDE，写入对应配置键
-        let key = if p.file_name().map(|n| n.eq_ignore_ascii_case("Devin.exe")).unwrap_or(false) {
+        let key = if p
+            .file_name()
+            .map(|n| n.eq_ignore_ascii_case("Devin.exe"))
+            .unwrap_or(false)
+        {
             DEVIN_EXE_KEY
         } else {
             IDE_EXE_KEY
         };
         crate::commands::config::write_config_value(key, &path)
     }
-    #[cfg(not(target_os = "windows"))]
+    #[cfg(target_os = "macos")]
     {
-        let _ = path;
-        Err("仅 Windows 支持手动指定路径".into())
+        let p = std::path::PathBuf::from(&path);
+        if !p.exists() {
+            return Err("路径不存在".into());
+        }
+        let is_ide_app = p
+            .file_name()
+            .map(|n| n.eq_ignore_ascii_case("Windsurf.app") || n.eq_ignore_ascii_case("Devin.app"))
+            .unwrap_or(false);
+        if !is_ide_app {
+            return Err("请指向 Windsurf.app 或 Devin.app".into());
+        }
+        let key = if p
+            .file_name()
+            .map(|n| n.eq_ignore_ascii_case("Devin.app"))
+            .unwrap_or(false)
+        {
+            "devinAppPath"
+        } else {
+            "windsurfAppPath"
+        };
+        crate::commands::config::write_config_value(key, &path)
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        let p = std::path::PathBuf::from(&path);
+        if !p.exists() {
+            return Err("路径不存在".into());
+        }
+        let is_ide_bin = p
+            .file_name()
+            .map(|n| n.eq_ignore_ascii_case("windsurf") || n.eq_ignore_ascii_case("devin"))
+            .unwrap_or(false);
+        if !is_ide_bin {
+            return Err("请指向 windsurf 或 devin 可执行文件".into());
+        }
+        let key = if p
+            .file_name()
+            .map(|n| n.eq_ignore_ascii_case("devin"))
+            .unwrap_or(false)
+        {
+            "devinBinPath"
+        } else {
+            "windsurfBinPath"
+        };
+        crate::commands::config::write_config_value(key, &path)
     }
 }
 
@@ -444,7 +574,11 @@ pub fn set_windsurf_path(path: String) -> Result<(), String> {
 /// 注意：强杀会丢失未保存的工作，调用方需先提示用户保存。
 #[tauri::command]
 pub fn restart_ide(target: String) -> Result<String, String> {
-    let t = if target == "auto" { detect_target_ide() } else { target };
+    let t = if target == "auto" {
+        detect_target_ide()
+    } else {
+        target
+    };
     #[cfg(target_os = "windows")]
     {
         let exe = find_ide_exe(&t)
@@ -454,25 +588,65 @@ pub fn restart_ide(target: String) -> Result<String, String> {
         // Windsurf 则直接杀所有 Windsurf.exe 进程。
         if t == "devin" {
             // 获取 Devin 安装目录，用于路径过滤
-            let install_dir = exe.parent()
+            let install_dir = exe
+                .parent()
                 .map(|p| p.to_string_lossy().to_string())
                 .unwrap_or_default();
-            let kill_script = format!(
-                r#"$dir = '{}'; Get-Process Windsurf -ErrorAction SilentlyContinue | Where-Object {{ $_.Path -and $_.Path.StartsWith($dir, 'CurrentCultureIgnoreCase') }} | Stop-Process -Force"#,
+            if install_dir.is_empty() {
+                return Err("无法确定 Devin 安装目录，请手动重启".into());
+            }
+            // PowerShell 仅负责筛选出目标 PID（按安装目录路径过滤，同时覆盖
+            // Windsurf.exe 和 Devin.exe 两个主进程名）。实际 kill 在 Rust 侧用
+            // taskkill /F /T 完成——避免在 PowerShell 内 `& taskkill` spawn 外部
+            // 子进程，每个进程都会弹一个 CMD 窗口。
+            let pid_script = format!(
+                r#"$dir = '{}'; foreach ($name in @('Windsurf','Devin')) {{ Get-Process $name -ErrorAction SilentlyContinue | Where-Object {{ $_.Path -and $_.Path.StartsWith($dir, 'CurrentCultureIgnoreCase') }} | ForEach-Object {{ $_.Id }} }}"#,
                 install_dir.replace('\'', "''")
             );
-            let _ = Command::new("powershell")
-                .args(["-NoProfile", "-Command", &kill_script])
-                .output();
+            if let Ok(out) = Command::new("powershell")
+                .args(["-NoProfile", "-Command", &pid_script])
+                .creation_flags(0x0800_0000)
+                .output()
+            {
+                for line in String::from_utf8_lossy(&out.stdout).lines() {
+                    let pid = line.trim();
+                    if pid.is_empty() {
+                        continue;
+                    }
+                    let _ = Command::new("taskkill")
+                        .args(["/F", "/T", "/PID", pid])
+                        .creation_flags(0x0800_0000)
+                        .output();
+                }
+            }
         } else {
+            // Windsurf: 用 taskkill /F /T /IM 杀整个进程树（含 renderer/GPU 子进程）
             let _ = Command::new("taskkill")
-                .args(["/IM", "Windsurf.exe", "/F"])
+                .args(["/IM", "Windsurf.exe", "/F", "/T"])
+                .creation_flags(0x0800_0000)
                 .output();
         }
 
-        std::thread::sleep(std::time::Duration::from_millis(800));
+        // 等待进程退出，最多 3 秒（验证是否真的杀死了）
+        let mut dead = false;
+        for _ in 0..6 {
+            std::thread::sleep(std::time::Duration::from_millis(500));
+            if !is_ide_running(t.clone()) {
+                dead = true;
+                break;
+            }
+        }
+        if !dead {
+            return Err(format!(
+                "{} 进程未能终止，请手动关闭后重试",
+                ide_dir_name(&t)
+            ));
+        }
 
+        // 启动新 IDE 进程，设置 CREATE_NO_WINDOW 防止 CMD 窗口弹出
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
         Command::new(&exe)
+            .creation_flags(CREATE_NO_WINDOW)
             .spawn()
             .map_err(|e| format!("重启 {} 失败: {}", ide_dir_name(&t), e))?;
 
@@ -488,9 +662,24 @@ pub fn restart_ide(target: String) -> Result<String, String> {
             _ => "Windsurf",
         };
 
-        let _ = Command::new("pkill").args(["-x", proc_name]).output();
+        // macOS: 用 killall 杀主进程及同名子进程，比 pkill -x 更可靠
+        let _ = Command::new("killall").args([proc_name]).output();
 
-        std::thread::sleep(std::time::Duration::from_millis(800));
+        // 等待进程退出，最多 3 秒
+        let mut dead = false;
+        for _ in 0..6 {
+            std::thread::sleep(std::time::Duration::from_millis(500));
+            if !is_ide_running(t.clone()) {
+                dead = true;
+                break;
+            }
+        }
+        if !dead {
+            return Err(format!(
+                "{} 进程未能终止，请手动关闭后重试",
+                ide_dir_name(&t)
+            ));
+        }
 
         Command::new("open")
             .args(["-a"])
@@ -512,7 +701,21 @@ pub fn restart_ide(target: String) -> Result<String, String> {
 
         let _ = Command::new("pkill").args(["-x", proc_name]).output();
 
-        std::thread::sleep(std::time::Duration::from_millis(800));
+        // 等待进程退出，最多 3 秒
+        let mut dead = false;
+        for _ in 0..6 {
+            std::thread::sleep(std::time::Duration::from_millis(500));
+            if !is_ide_running(t.clone()) {
+                dead = true;
+                break;
+            }
+        }
+        if !dead {
+            return Err(format!(
+                "{} 进程未能终止，请手动关闭后重试",
+                ide_dir_name(&t)
+            ));
+        }
 
         Command::new(&bin)
             .spawn()
@@ -532,15 +735,20 @@ pub fn restart_ide(target: String) -> Result<String, String> {
 
 #[tauri::command]
 pub fn is_ide_running(name: String) -> bool {
-    let n = if name == "auto" { detect_target_ide() } else { name };
+    let n = if name == "auto" {
+        detect_target_ide()
+    } else {
+        name
+    };
     #[cfg(target_os = "windows")]
     {
         // Devin 的主进程名仍为 Windsurf.exe，需通过路径过滤区分：
         // - Devin: 查找 Windsurf.exe 进程中 Path 包含 devin 目录的
         // - Windsurf: 查找 Windsurf.exe 进程中 Path 不含 devin 目录的
         let ps_query = if n == "devin" {
+            // Devin: 同时查找 Windsurf.exe（来自 Devin 目录）和 Devin.exe 进程
             format!(
-                r#"Get-Process Windsurf -ErrorAction SilentlyContinue | Where-Object {{ $_.Path -and $_.Path -match '[\\/]devin[\\/]' -and $_.Path -notmatch 'extensions[/\\]windsurf[/\\]devin[/\\]bin' }} | Select-Object -First 1"#
+                r#"$hit = Get-Process Windsurf -ErrorAction SilentlyContinue | Where-Object {{ $_.Path -and $_.Path -match '[\\/]devin[\\/]' -and $_.Path -notmatch 'extensions[/\\]windsurf[/\\]devin' }} | Select-Object -First 1; if (-not $hit) {{ $hit = Get-Process Devin -ErrorAction SilentlyContinue | Where-Object {{ $_.Path -and $_.Path -notmatch 'extensions[/\\]windsurf[/\\]devin' }} | Select-Object -First 1 }}; $hit"#
             )
         } else {
             format!(
@@ -549,6 +757,7 @@ pub fn is_ide_running(name: String) -> bool {
         };
         if let Ok(out) = Command::new("powershell")
             .args(["-NoProfile", "-Command", &ps_query])
+            .creation_flags(0x0800_0000)
             .output()
         {
             !out.stdout.is_empty()
@@ -564,10 +773,7 @@ pub fn is_ide_running(name: String) -> bool {
             "devin" => "Devin",
             _ => return false,
         };
-        if let Ok(out) = Command::new("pgrep")
-            .args(["-x", process_name])
-            .output()
-        {
+        if let Ok(out) = Command::new("pgrep").args(["-x", process_name]).output() {
             !out.stdout.is_empty()
         } else {
             false
@@ -581,10 +787,7 @@ pub fn is_ide_running(name: String) -> bool {
             "devin" => "devin",
             _ => return false,
         };
-        if let Ok(out) = Command::new("pgrep")
-            .args(["-x", process_name])
-            .output()
-        {
+        if let Ok(out) = Command::new("pgrep").args(["-x", process_name]).output() {
             !out.stdout.is_empty()
         } else {
             false
@@ -615,7 +818,7 @@ pub fn detect_target_ide() -> String {
     {
         use std::path::PathBuf;
         let config_dir = dirs::config_dir().unwrap_or_else(|| PathBuf::from("."));
-        
+
         // 检查 Windsurf 的 settings.json 是否有 http.proxy
         let windsurf_settings = config_dir.join("Windsurf/User/settings.json");
         if let Ok(content) = std::fs::read_to_string(&windsurf_settings) {
@@ -625,6 +828,50 @@ pub fn detect_target_ide() -> String {
         }
 
         // 检查 Devin 的 settings.json 是否有 http.proxy
+        let devin_settings = config_dir.join("Devin/User/settings.json");
+        if let Ok(content) = std::fs::read_to_string(&devin_settings) {
+            if content.contains("\"http.proxy\"") {
+                return "devin".into();
+            }
+        }
+    }
+
+    // macOS/Linux 同样检查代理配置
+    #[cfg(target_os = "macos")]
+    {
+        use std::path::PathBuf;
+        let config_dir = dirs::config_dir().unwrap_or_else(|| PathBuf::from("."));
+        // macOS: Windsurf/Devin 配置在 ~/Library/Application Support/
+        let support_dir = dirs::data_dir().unwrap_or_else(|| PathBuf::from("."));
+
+        let windsurf_settings = support_dir.join("Windsurf/User/settings.json");
+        if let Ok(content) = std::fs::read_to_string(&windsurf_settings) {
+            if content.contains("\"http.proxy\"") {
+                return "windsurf".into();
+            }
+        }
+
+        let devin_settings = support_dir.join("Devin/User/settings.json");
+        if let Ok(content) = std::fs::read_to_string(&devin_settings) {
+            if content.contains("\"http.proxy\"") {
+                return "devin".into();
+            }
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        use std::path::PathBuf;
+        let config_dir = dirs::config_dir().unwrap_or_else(|| PathBuf::from("."));
+
+        // Linux: Windsurf/Devin 配置在 ~/.config/
+        let windsurf_settings = config_dir.join("Windsurf/User/settings.json");
+        if let Ok(content) = std::fs::read_to_string(&windsurf_settings) {
+            if content.contains("\"http.proxy\"") {
+                return "windsurf".into();
+            }
+        }
+
         let devin_settings = config_dir.join("Devin/User/settings.json");
         if let Ok(content) = std::fs::read_to_string(&devin_settings) {
             if content.contains("\"http.proxy\"") {
