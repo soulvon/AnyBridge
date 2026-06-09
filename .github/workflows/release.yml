@@ -50,16 +50,20 @@ jobs:
         with:
           node-version: 20
           cache: "npm"
+          registry-url: "https://registry.npmjs.org"
+          cache-dependency-path: |
+            package-lock.json
+            sidecar/package-lock.json
 
       - name: Install dependencies
-        run: npm install
+        run: npm ci
 
       - name: Build Sidecar Binary
         shell: bash
         run: |
           mkdir -p src-tauri/binaries
           cd sidecar
-          npm install
+          npm ci
           
           # 针对不同构建矩阵选择对应的打包 Targets 及输出文件名
           if [ "${{ matrix.platform }}" = "windows-latest" ]; then
@@ -79,7 +83,7 @@ jobs:
           fi
           
           echo "Building Sidecar Proxy: $PKG_TARGET -> $OUTPUT_NAME"
-          npx pkg proxy-entry.js --targets "$PKG_TARGET" --output "../src-tauri/binaries/$OUTPUT_NAME"
+          ./node_modules/.bin/pkg proxy-entry.js --targets "$PKG_TARGET" --output "../src-tauri/binaries/$OUTPUT_NAME"
           
           # 非 Windows 平台赋予可执行权限，规避 Tauri 打包时的权限限制
           if [ "${{ matrix.platform }}" != "windows-latest" ]; then

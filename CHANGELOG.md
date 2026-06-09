@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.2.6 - 2026-06-09
+
+- 修复云端发布流水线：使用 `npm ci`、官方 npm registry 和本地 `pkg` 可执行文件构建 sidecar，避免 GitHub Actions 在 sidecar 依赖安装阶段卡住。
+- 同步根目录与 sidecar 锁文件的 registry 地址，提升 Windows、macOS 和 Linux 云端打包稳定性。
+
 ## v1.2.5 - 2026-06-09
 
 - 优化 UI 结构：将单文件前端拆分为按职责组织的 HTML、CSS 和 JS 文件，降低后续迭代成本。
