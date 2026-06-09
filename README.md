@@ -2,7 +2,7 @@
 
 一个基于 Tauri v2 + Rust 构建的桌面代理客户端。它可以将 Windsurf / Devin IDE 的 Cascade 聊天后端无缝替换为你自己的 Anthropic / OpenAI API 密钥，同时允许你继续使用 Codeium 免费账号自带的代码自动补全、代码库索引、登录认证以及其他所有原生功能。
 
-当前版本：`v1.2.6`。更新记录见 [CHANGELOG.md](CHANGELOG.md)。
+当前版本：`v1.2.7`。更新记录见 [CHANGELOG.md](CHANGELOG.md)。
 
 项目通过在本地运行一个 MITM 代理，优先接管 Cascade 聊天 RPC，并按配置改写模型列表、模型状态和部分限流/能力探测请求；登录、补全、代码库索引等非目标流量保持直连或透传。代理启动时会按需对 IDE 的 `workbench.html` 做可还原的前端注入，用于增强模型卡片展示；停止代理、退出应用或触发防误杀恢复逻辑时会自动还原。
 

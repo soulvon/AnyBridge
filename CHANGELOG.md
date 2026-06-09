@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.2.7 - 2026-06-09
+
+- 修复云端 sidecar 打包 target：从 `node20-*` 切换到 `node22-*`，并在 GitHub Actions 中显式预取对应的 `pkg` base binary，避免退回源码编译。
+
 ## v1.2.6 - 2026-06-09
 
 - 修复云端发布流水线：使用 `npm ci`、官方 npm registry 和本地 `pkg` 可执行文件构建 sidecar，避免 GitHub Actions 在 sidecar 依赖安装阶段卡住。
