@@ -1,7 +1,11 @@
 use serde::Serialize;
-use std::io::{BufRead, BufReader};
+use std::collections::HashSet;
+use std::io::{BufRead, BufReader, Read, Write};
+use std::net::{SocketAddr, TcpListener, TcpStream};
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
+use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter, Manager, State};
 
 #[cfg(target_os = "windows")]
@@ -136,6 +140,24 @@ struct LogLine {
     msg: String,
 }
 
+#[derive(Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct ProxyPreflightIssue {
+    pub level: String,
+    pub code: String,
+    pub message: String,
+}
+
+#[derive(Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct ProxyPreflightReport {
+    pub target_ide: String,
+    pub ok: bool,
+    pub errors: usize,
+    pub warnings: usize,
+    pub issues: Vec<ProxyPreflightIssue>,
+}
+
 fn classify(line: &str) -> String {
     if line.contains('❌')
         || line.contains("Error")
@@ -150,6 +172,784 @@ fn classify(line: &str) -> String {
     } else {
         "info".into()
     }
+}
+
+fn spawn_log_reader<R>(app: AppHandle, pipe: Option<R>)
+where
+    R: Read + Send + 'static,
+{
+    let Some(pipe) = pipe else {
+        return;
+    };
+    std::thread::spawn(move || {
+        let reader = BufReader::new(pipe);
+        for line in reader.lines().flatten() {
+            let trimmed = line.trim_end();
+            if trimmed.is_empty() {
+                continue;
+            }
+            let _ = app.emit(
+                "proxy-log",
+                LogLine {
+                    level: classify(trimmed),
+                    msg: trimmed.to_string(),
+                },
+            );
+        }
+    });
+}
+
+fn resolve_target_ide_arg(target_ide: Option<&str>) -> Result<String, String> {
+    match target_ide {
+        Some("auto") | None => {
+            let detected = crate::commands::system::detect_target_ide();
+            if detected != "windsurf" && detected != "devin" {
+                Ok("windsurf".into())
+            } else {
+                Ok(detected)
+            }
+        }
+        Some(t) if t == "windsurf" || t == "devin" => Ok(t.to_string()),
+        Some(t) => Err(format!("不支持的目标 IDE: {}（仅 windsurf/devin/auto）", t)),
+    }
+}
+
+fn push_issue(
+    issues: &mut Vec<ProxyPreflightIssue>,
+    level: &str,
+    code: &str,
+    message: impl Into<String>,
+) {
+    issues.push(ProxyPreflightIssue {
+        level: level.into(),
+        code: code.into(),
+        message: message.into(),
+    });
+}
+
+fn settings_backup_path(settings: &Path) -> PathBuf {
+    let mut p = settings.to_path_buf();
+    let name = p
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_else(|| "settings.json".into());
+    p.set_file_name(format!("{}.byok-bak", name));
+    p
+}
+
+fn is_port_free(port: u16) -> bool {
+    TcpListener::bind(("127.0.0.1", port)).is_ok()
+}
+
+fn can_connect_local(port: u16) -> bool {
+    let addr = SocketAddr::from(([127, 0, 0, 1], port));
+    TcpStream::connect_timeout(&addr, Duration::from_millis(150)).is_ok()
+}
+
+fn wait_for_ports(ports: &[u16], timeout: Duration) -> Vec<u16> {
+    let deadline = Instant::now() + timeout;
+    let mut missing = ports.to_vec();
+    while Instant::now() < deadline && !missing.is_empty() {
+        missing.retain(|p| !can_connect_local(*p));
+        if !missing.is_empty() {
+            std::thread::sleep(Duration::from_millis(120));
+        }
+    }
+    missing
+}
+
+fn probe_byok_stats(timeout: Duration) -> Result<(), String> {
+    let addr = SocketAddr::from(([127, 0, 0, 1], 7450));
+    let mut stream =
+        TcpStream::connect_timeout(&addr, timeout).map_err(|e| format!("无法连接 7450: {}", e))?;
+    let _ = stream.set_read_timeout(Some(timeout));
+    let _ = stream.set_write_timeout(Some(timeout));
+    stream
+        .write_all(b"GET /__byok/stats HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n")
+        .map_err(|e| format!("发送健康检查失败: {}", e))?;
+    let mut buf = String::new();
+    stream
+        .read_to_string(&mut buf)
+        .map_err(|e| format!("读取健康检查响应失败: {}", e))?;
+    if !buf.starts_with("HTTP/1.1 200") && !buf.starts_with("HTTP/1.0 200") {
+        return Err("7450 有响应，但不是 BYOK 健康检查 200".into());
+    }
+    if !buf.contains("\"requests\"") || !buf.contains("\"uptimeSec\"") {
+        return Err("7450 有响应，但不像 IDE BYOK 代理；可能被其它程序占用".into());
+    }
+    Ok(())
+}
+
+fn check_provider_route(
+    issues: &mut Vec<ProxyPreflightIssue>,
+    label: &str,
+    provider_id: &str,
+    model_override: Option<&str>,
+    store: &crate::commands::config::ProviderStore,
+) -> bool {
+    let provider_id = provider_id.trim();
+    if provider_id.is_empty() {
+        push_issue(
+            issues,
+            "err",
+            "route.provider_empty",
+            format!("「{}」未选择目标供应商", label),
+        );
+        return false;
+    }
+
+    let Some(provider) = store.providers.iter().find(|p| p.id == provider_id) else {
+        push_issue(
+            issues,
+            "err",
+            "route.provider_missing",
+            format!("「{}」引用了不存在的供应商: {}", label, provider_id),
+        );
+        return false;
+    };
+
+    let mut ok = true;
+    if provider.enabled == false {
+        push_issue(
+            issues,
+            "err",
+            "route.provider_disabled",
+            format!("「{}」引用的供应商「{}」已禁用", label, provider.name),
+        );
+        ok = false;
+    }
+    if provider.api_host.trim().is_empty() {
+        push_issue(
+            issues,
+            "err",
+            "route.provider_host_empty",
+            format!("供应商「{}」未填写 API Host", provider.name),
+        );
+        ok = false;
+    }
+    if provider.api_key.trim().is_empty() {
+        push_issue(
+            issues,
+            "err",
+            "route.provider_key_empty",
+            format!("供应商「{}」未填写 API Key", provider.name),
+        );
+        ok = false;
+    }
+
+    let override_model = model_override.unwrap_or("").trim();
+    let effective_model = if override_model.is_empty() {
+        provider.default_model.trim()
+    } else {
+        override_model
+    };
+    if effective_model.is_empty() {
+        push_issue(
+            issues,
+            "err",
+            "route.model_empty",
+            format!(
+                "「{}」未填写目标模型，且供应商「{}」也没有默认模型",
+                label, provider.name
+            ),
+        );
+        ok = false;
+    }
+    ok
+}
+
+fn load_cached_ide_model_uids(
+    config_dir: &Path,
+) -> Result<Option<(HashSet<String>, String, Option<u64>)>, String> {
+    let path = config_dir.join("ide-models.json");
+    if !path.exists() {
+        return Ok(None);
+    }
+    let raw =
+        std::fs::read_to_string(&path).map_err(|e| format!("读取 ide-models.json 失败: {}", e))?;
+    let json: serde_json::Value =
+        serde_json::from_str(&raw).map_err(|e| format!("解析 ide-models.json 失败: {}", e))?;
+    let source = json
+        .get("source")
+        .and_then(|v| v.as_str())
+        .unwrap_or("captured")
+        .to_string();
+    let captured_at = json.get("capturedAt").and_then(|v| v.as_u64());
+    let mut uids = HashSet::new();
+    if let Some(models) = json.get("models").and_then(|v| v.as_array()) {
+        for item in models {
+            if let Some(uid) = item.get("modelUid").and_then(|v| v.as_str()) {
+                if !uid.trim().is_empty() {
+                    uids.insert(uid.to_string());
+                }
+            }
+        }
+    }
+    Ok(Some((uids, source, captured_at)))
+}
+
+fn run_proxy_preflight(
+    target_ide: Option<&str>,
+    resource_dir: Option<&Path>,
+    repair: bool,
+) -> Result<ProxyPreflightReport, String> {
+    let target = resolve_target_ide_arg(target_ide)?;
+    let mut issues = Vec::new();
+    let config_dir = crate::commands::config::config_dir_path();
+
+    match std::fs::create_dir_all(&config_dir) {
+        Ok(()) => {
+            let probe = config_dir.join(".byok-write-test");
+            match std::fs::write(&probe, b"ok") {
+                Ok(()) => {
+                    let _ = std::fs::remove_file(&probe);
+                }
+                Err(e) => push_issue(
+                    &mut issues,
+                    "err",
+                    "config_dir.not_writable",
+                    format!("配置目录不可写: {} ({})", config_dir.to_string_lossy(), e),
+                ),
+            }
+        }
+        Err(e) => push_issue(
+            &mut issues,
+            "err",
+            "config_dir.create_failed",
+            format!("无法创建配置目录: {} ({})", config_dir.to_string_lossy(), e),
+        ),
+    }
+
+    if let Err(e) = resolve_sidecar_path() {
+        push_issue(&mut issues, "err", "sidecar.missing", e);
+    }
+
+    let cert_dir = config_dir.join("certs");
+    let cert_path = cert_dir.join("server.codeium.com.pem");
+    let key_path = cert_dir.join("server.codeium.com-key.pem");
+    let mut cert_ok = cert_path.metadata().map(|m| m.len() > 0).unwrap_or(false);
+    let mut key_ok = key_path.metadata().map(|m| m.len() > 0).unwrap_or(false);
+    if !cert_ok || !key_ok {
+        if repair {
+            match crate::commands::system::generate_certs() {
+                Ok(msg) => {
+                    cert_ok = cert_path.metadata().map(|m| m.len() > 0).unwrap_or(false);
+                    key_ok = key_path.metadata().map(|m| m.len() > 0).unwrap_or(false);
+                    if cert_ok && key_ok {
+                        push_issue(&mut issues, "ok", "certs.auto_generated", msg);
+                    } else {
+                        push_issue(
+                            &mut issues,
+                            "err",
+                            "certs.generate_incomplete",
+                            "已尝试自动生成 MITM 证书，但证书文件仍不完整。请到「设置 > IDE 接入」重新生成证书",
+                        );
+                    }
+                }
+                Err(e) => push_issue(
+                    &mut issues,
+                    "err",
+                    "certs.generate_failed",
+                    format!("自动生成 MITM 证书失败: {}。请到「设置 > IDE 接入」手动生成", e),
+                ),
+            }
+        } else {
+            push_issue(
+                &mut issues,
+                "err",
+                "certs.missing",
+                format!(
+                    "MITM 证书不完整，请先在「设置 > IDE 接入」生成证书（缺少或为空: {}, {}）",
+                    cert_path.to_string_lossy(),
+                    key_path.to_string_lossy()
+                ),
+            );
+        }
+    }
+
+    let ide_label = if target == "devin" {
+        "Devin"
+    } else {
+        "Windsurf"
+    };
+    let settings_candidate = match crate::commands::ide_config::settings_path(&target) {
+        Some(settings) if settings.exists() => Some(settings),
+        Some(settings) if repair => {
+            if crate::commands::system::detect_ide_path(Some(target.clone())).is_some() {
+                match crate::commands::ide_config::ensure_settings_file(&target) {
+                    Ok((path, true)) => {
+                        push_issue(
+                            &mut issues,
+                            "ok",
+                            "ide_settings.auto_created",
+                            format!(
+                                "已自动创建 {} settings.json: {}",
+                                ide_label,
+                                path.to_string_lossy()
+                            ),
+                        );
+                        Some(path)
+                    }
+                    Ok((path, false)) => Some(path),
+                    Err(e) => {
+                        push_issue(
+                            &mut issues,
+                            "err",
+                            "ide_settings.create_failed",
+                            format!("自动创建 {} settings.json 失败: {}", ide_label, e),
+                        );
+                        Some(settings)
+                    }
+                }
+            } else {
+                Some(settings)
+            }
+        }
+        other => other,
+    };
+    match settings_candidate {
+        Some(settings) if settings.exists() => {
+            if settings
+                .metadata()
+                .map(|m| m.permissions().readonly())
+                .unwrap_or(false)
+            {
+                push_issue(
+                    &mut issues,
+                    "err",
+                    "ide_settings.readonly",
+                    format!("{} settings.json 是只读文件，无法写入代理配置", ide_label),
+                );
+            }
+            match std::fs::read_to_string(&settings) {
+                Ok(raw) => match crate::commands::ide_config::parse_object(&raw) {
+                    Ok(obj) => {
+                        let proxy = obj.get("http.proxy").and_then(|v| v.as_str()).unwrap_or("");
+                        let strict_ssl = obj.get("http.proxyStrictSSL");
+                        if !proxy.is_empty() && proxy != "http://localhost:7450" {
+                            push_issue(
+                                &mut issues,
+                                "warn",
+                                "ide_settings.other_proxy",
+                                format!(
+                                    "{} 当前已有 http.proxy={}，启动时会备份并改写为 BYOK 代理",
+                                    ide_label, proxy
+                                ),
+                            );
+                        }
+                        if proxy == "http://localhost:7450"
+                            && strict_ssl != Some(&serde_json::Value::Bool(false))
+                        {
+                            push_issue(
+                                &mut issues,
+                                "warn",
+                                "ide_settings.strict_ssl",
+                                format!(
+                                    "{} 已指向 BYOK 代理，但 http.proxyStrictSSL 不是 false，启动时会修正",
+                                    ide_label
+                                ),
+                            );
+                        }
+                        let backup = settings_backup_path(&settings);
+                        if backup.exists() && proxy != "http://localhost:7450" {
+                            push_issue(
+                                &mut issues,
+                                "warn",
+                                "ide_settings.backup_exists",
+                                format!(
+                                    "{} 存在旧备份文件，将沿用它做停止代理时的还原基准",
+                                    backup.to_string_lossy()
+                                ),
+                            );
+                        }
+                    }
+                    Err(e) => push_issue(
+                        &mut issues,
+                        "err",
+                        "ide_settings.parse_failed",
+                        format!("{} settings.json 解析失败: {}", ide_label, e),
+                    ),
+                },
+                Err(e) => push_issue(
+                    &mut issues,
+                    "err",
+                    "ide_settings.read_failed",
+                    format!("读取 {} settings.json 失败: {}", ide_label, e),
+                ),
+            }
+        }
+        Some(settings) => push_issue(
+            &mut issues,
+            "err",
+            "ide_settings.missing",
+            format!(
+                "未找到 {} settings.json: {}。请先启动一次 {}，或在「设置 > IDE 接入」手动指定 IDE 路径后再启动代理",
+                ide_label,
+                settings.to_string_lossy(),
+                ide_label
+            ),
+        ),
+        None => push_issue(
+            &mut issues,
+            "err",
+            "ide_settings.path_failed",
+            format!("无法定位 {} 配置目录", ide_label),
+        ),
+    }
+
+    if crate::commands::system::is_ide_running(target.clone()) {
+        push_issue(
+            &mut issues,
+            "warn",
+            "ide.running",
+            format!(
+                "{} 正在运行；启动后必须重启 IDE 才能加载代理配置和模型改写",
+                ide_label
+            ),
+        );
+    }
+
+    match crate::commands::workbench_inject::workbench_html_path(&target) {
+        Some(path) => {
+            if std::fs::OpenOptions::new().write(true).open(&path).is_err() {
+                push_issue(
+                    &mut issues,
+                    "warn",
+                    "workbench.not_writable",
+                    format!(
+                        "无法写入 workbench.html，模型卡片视觉改写可能失败: {}",
+                        path.to_string_lossy()
+                    ),
+                );
+            }
+        }
+        None => push_issue(
+            &mut issues,
+            "warn",
+            "workbench.missing",
+            format!(
+                "未定位到 {} workbench.html，模型卡片视觉改写脚本可能无法注入",
+                ide_label
+            ),
+        ),
+    }
+
+    if let Some(res) = resource_dir {
+        let script = res.join("byok-cards.js");
+        if !script.exists() {
+            push_issue(
+                &mut issues,
+                "warn",
+                "resources.cards_missing",
+                format!("未找到 byok-cards.js 资源: {}", script.to_string_lossy()),
+            );
+        }
+    }
+
+    let store = match crate::commands::config::read_provider_store() {
+        Ok(store) => store,
+        Err(e) => {
+            push_issue(
+                &mut issues,
+                "err",
+                "providers.read_failed",
+                format!("读取供应商配置失败: {}", e),
+            );
+            crate::commands::config::ProviderStore::default()
+        }
+    };
+    if store.providers.is_empty() {
+        push_issue(
+            &mut issues,
+            "err",
+            "providers.empty",
+            "尚未配置任何供应商，代理没有可路由的 BYOK 目标",
+        );
+    }
+
+    let map = match crate::commands::model_map::read_map() {
+        Ok(map) => map,
+        Err(e) => {
+            push_issue(
+                &mut issues,
+                "err",
+                "model_map.read_failed",
+                format!("读取模型映射失败: {}", e),
+            );
+            crate::commands::model_map::ModelMap::default()
+        }
+    };
+
+    let mut seen_uids = HashSet::new();
+    let mut routed_count = 0usize;
+    let name_prefix = map.name_prefix.trim();
+
+    for slot in &map.slots {
+        let uid = slot.model_uid.trim();
+        let label = if slot.display_name.trim().is_empty() {
+            uid.to_string()
+        } else {
+            slot.display_name.trim().to_string()
+        };
+        if uid.is_empty() {
+            push_issue(
+                &mut issues,
+                "err",
+                "model_map.slot_uid_empty",
+                "存在空 modelUid 的映射槽位",
+            );
+            continue;
+        }
+        if !seen_uids.insert(uid.to_string()) {
+            push_issue(
+                &mut issues,
+                "err",
+                "model_map.uid_duplicate",
+                format!("modelUid 重复: {}", uid),
+            );
+        }
+        if !slot.enabled {
+            continue;
+        }
+        if slot.targets.is_empty() {
+            push_issue(
+                &mut issues,
+                "err",
+                "model_map.slot_target_empty",
+                format!("「{}」已启用但未配置目标供应商", label),
+            );
+            continue;
+        }
+        if slot.display_name.trim().is_empty() && name_prefix.is_empty() {
+            push_issue(
+                &mut issues,
+                "warn",
+                "model_map.slot_no_visible_name",
+                format!(
+                    "「{}」未设置显示名或全局前缀，IDE 下拉框仍会显示原始 Windsurf 名称",
+                    uid
+                ),
+            );
+        }
+        for target in &slot.targets {
+            if check_provider_route(
+                &mut issues,
+                &label,
+                &target.provider_id,
+                Some(&target.model),
+                &store,
+            ) {
+                routed_count += 1;
+            }
+        }
+    }
+
+    for inj in &map.injected {
+        let uid = inj.model_uid.trim();
+        if uid.is_empty() {
+            push_issue(
+                &mut issues,
+                "err",
+                "model_map.inject_uid_empty",
+                "存在空 modelUid 的模型槽位",
+            );
+            continue;
+        }
+        if !seen_uids.insert(uid.to_string()) {
+            push_issue(
+                &mut issues,
+                "err",
+                "model_map.uid_duplicate",
+                format!("modelUid 重复: {}", uid),
+            );
+        }
+
+        let provider_id = inj.provider_id.as_deref().unwrap_or("").trim();
+        if provider_id.is_empty() {
+            push_issue(
+                &mut issues,
+                "warn",
+                "model_map.inject_unconfigured",
+                format!(
+                    "模型槽位「{}」尚未配置供应商，可能会显示但无法调用",
+                    inj.label
+                ),
+            );
+            continue;
+        }
+        if inj.model.as_deref().unwrap_or("").trim().is_empty() {
+            push_issue(
+                &mut issues,
+                "err",
+                "model_map.inject_model_empty",
+                format!("模型槽位「{}」已选供应商但 model 为空", inj.label),
+            );
+        }
+        if check_provider_route(
+            &mut issues,
+            &format!("模型槽位「{}」", inj.label),
+            provider_id,
+            inj.model.as_deref(),
+            &store,
+        ) {
+            routed_count += 1;
+        }
+    }
+
+    if routed_count == 0 {
+        push_issue(
+            &mut issues,
+            "err",
+            "model_map.no_route",
+            "没有任何可用模型路由：请至少给一个启用槽位配置供应商和模型",
+        );
+    }
+
+    match load_cached_ide_model_uids(&config_dir) {
+        Ok(Some((cached_uids, source, captured_at))) => {
+            if cached_uids.is_empty() {
+                push_issue(
+                    &mut issues,
+                    "warn",
+                    "ide_models.empty_cache",
+                    "ide-models.json 里没有模型条目，无法判断映射槽位是否会出现在 IDE 下拉框",
+                );
+            } else {
+                if source != "captured" {
+                    push_issue(
+                        &mut issues,
+                        "warn",
+                        "ide_models.not_proxy_captured",
+                        format!(
+                            "ide-models.json 来源为 {}，不一定等于 IDE 实际下拉框；如模型不可见，请启动代理后重启 IDE 并打开一次模型选择器",
+                            source
+                        ),
+                    );
+                }
+                if let Some(ts) = captured_at {
+                    let now = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap_or_default()
+                        .as_millis() as u64;
+                    if now.saturating_sub(ts) > 7 * 24 * 60 * 60 * 1000 {
+                        push_issue(
+                            &mut issues,
+                            "warn",
+                            "ide_models.stale_cache",
+                            "最近抓取的 IDE 模型清单已超过 7 天，建议启动代理后重启 IDE 重新抓取",
+                        );
+                    }
+                }
+                for slot in map
+                    .slots
+                    .iter()
+                    .filter(|s| s.enabled && !s.targets.is_empty())
+                {
+                    if !cached_uids.contains(&slot.model_uid) {
+                        push_issue(
+                            &mut issues,
+                            "warn",
+                            "ide_models.slot_not_seen",
+                            format!(
+                                "最近抓到的 IDE 模型清单里没有「{}」，这个映射可能不会出现在下拉框",
+                                slot.model_uid
+                            ),
+                        );
+                    }
+                }
+                for inj in map
+                    .injected
+                    .iter()
+                    .filter(|i| i.provider_id.as_deref().unwrap_or("").trim().len() > 0)
+                {
+                    if !cached_uids.contains(&inj.model_uid) {
+                        push_issue(
+                            &mut issues,
+                            "warn",
+                            "ide_models.inject_not_seen",
+                            format!(
+                                "最近抓到的 IDE 模型清单里没有模型槽位「{}」({})，可能需要先更新/重新抓取 IDE 模型列表",
+                                inj.label, inj.model_uid
+                            ),
+                        );
+                    }
+                }
+            }
+        }
+        Ok(None) => push_issue(
+            &mut issues,
+            "warn",
+            "ide_models.cache_missing",
+            "尚未抓取 IDE 模型清单；首次启动后请重启 IDE 并打开模型选择器，代理会记录真实可见模型",
+        ),
+        Err(e) => push_issue(&mut issues, "warn", "ide_models.cache_read_failed", e),
+    }
+
+    for port in [7450u16, 7451u16] {
+        if !is_port_free(port) {
+            push_issue(
+                &mut issues,
+                "warn",
+                "port.occupied",
+                format!(
+                    "端口 {} 已被占用，sidecar 会尝试回收；如启动失败请关闭旧代理进程",
+                    port
+                ),
+            );
+        }
+    }
+
+    let errors = issues.iter().filter(|i| i.level == "err").count();
+    let warnings = issues.iter().filter(|i| i.level == "warn").count();
+    Ok(ProxyPreflightReport {
+        target_ide: target,
+        ok: errors == 0,
+        errors,
+        warnings,
+        issues,
+    })
+}
+
+fn emit_preflight_report(app: &AppHandle, report: &ProxyPreflightReport) {
+    if report.ok {
+        let _ = app.emit(
+            "proxy-log",
+            LogLine {
+                level: "ok".into(),
+                msg: format!(
+                    "✅ 启动自检通过（目标: {}，警告: {}）",
+                    report.target_ide, report.warnings
+                ),
+            },
+        );
+    }
+    for issue in &report.issues {
+        let _ = app.emit(
+            "proxy-log",
+            LogLine {
+                level: issue.level.clone(),
+                msg: format!("启动自检: {}", issue.message),
+            },
+        );
+    }
+}
+
+pub fn preflight_proxy_impl(
+    app: AppHandle,
+    target_ide: Option<String>,
+) -> Result<ProxyPreflightReport, String> {
+    let resource_dir = app.path().resource_dir().map(|p| p.join("resources")).ok();
+    run_proxy_preflight(target_ide.as_deref(), resource_dir.as_deref(), true)
+}
+
+#[tauri::command]
+pub async fn preflight_proxy(
+    app: AppHandle,
+    target_ide: Option<String>,
+) -> Result<ProxyPreflightReport, String> {
+    tauri::async_runtime::spawn_blocking(move || preflight_proxy_impl(app, target_ide))
+        .await
+        .map_err(|e| format!("启动自检任务失败: {}", e))?
 }
 
 /// 解析 sidecar 二进制路径。
@@ -199,12 +999,13 @@ pub fn get_proxy_status(state: State<ProxyState>) -> ProxyStatus {
     }
 }
 
-#[tauri::command]
-pub fn start_proxy(
+pub fn start_proxy_impl(
     app: AppHandle,
-    state: State<ProxyState>,
     target_ide: Option<String>,
+    skip_preflight: bool,
 ) -> Result<bool, String> {
+    let state = app.state::<ProxyState>();
+
     // TOCTOU 防护：检查"已运行 / 正在启动",并在同一临界区抢占 starting 标志。
     // 注意：child 存在不代表进程还活着，需 try_wait 确认（进程意外退出但监控线程尚未清理时）。
     {
@@ -224,9 +1025,42 @@ pub fn start_proxy(
     }
     let clear_starting = || state.starting.store(false, Ordering::SeqCst);
 
+    // 解析目标 IDE（auto 模式需实际检测），校验只允许 windsurf/devin。
+    let target = match resolve_target_ide_arg(target_ide.as_deref()) {
+        Ok(t) => t,
+        Err(e) => {
+            clear_starting();
+            return Err(e);
+        }
+    };
+
     let config_dir = crate::commands::config::config_dir_path();
 
     let resource_dir = app.path().resource_dir().map(|p| p.join("resources")).ok();
+
+    // 再清一次孤儿 sidecar，处理上一轮异常退出但主应用仍在的情况。
+    kill_sidecar_process();
+
+    if !skip_preflight {
+        let preflight = match run_proxy_preflight(Some(&target), resource_dir.as_deref(), true) {
+            Ok(r) => r,
+            Err(e) => {
+                clear_starting();
+                return Err(e);
+            }
+        };
+        emit_preflight_report(&app, &preflight);
+        if !preflight.ok {
+            clear_starting();
+            let first = preflight
+                .issues
+                .iter()
+                .find(|i| i.level == "err")
+                .map(|i| i.message.clone())
+                .unwrap_or_else(|| "存在启动自检错误".into());
+            return Err(format!("启动自检未通过: {}", first));
+        }
+    }
 
     // 解析 sidecar 路径
     let sidecar_path = match resolve_sidecar_path() {
@@ -265,24 +1099,6 @@ pub fn start_proxy(
     // 在写入 state 之前取出管道（避免锁竞争）
     let stdout = child.stdout.take();
     let stderr = child.stderr.take();
-
-    // 解析目标 IDE（auto 模式需实际检测），校验只允许 windsurf/devin
-    let target = match target_ide.as_deref() {
-        Some("auto") | None => {
-            // 自动检测：优先运行中的 IDE，其次默认 windsurf
-            let detected = crate::commands::system::detect_target_ide();
-            if detected != "windsurf" && detected != "devin" {
-                "windsurf".into()
-            } else {
-                detected
-            }
-        }
-        Some(t) if t == "windsurf" || t == "devin" => t.to_string(),
-        Some(t) => {
-            clear_starting();
-            return Err(format!("不支持的目标 IDE: {}（仅 windsurf/devin/auto）", t));
-        }
-    };
 
     // 写入 child 并清除 starting 标志
     *lock_or_recover(&state.child) = Some(ManagedChild {
@@ -358,42 +1174,10 @@ pub fn start_proxy(
         }
     }
 
-    // 启动后台线程：读取 stdout/stderr 并转发为 Tauri 事件
-    let app_handle = app.clone();
-    std::thread::spawn(move || {
-        if let Some(out) = stdout {
-            let reader = BufReader::new(out);
-            for line in reader.lines().flatten() {
-                let trimmed = line.trim_end();
-                if trimmed.is_empty() {
-                    continue;
-                }
-                let _ = app_handle.emit(
-                    "proxy-log",
-                    LogLine {
-                        level: classify(trimmed),
-                        msg: trimmed.to_string(),
-                    },
-                );
-            }
-        }
-        if let Some(err) = stderr {
-            let reader = BufReader::new(err);
-            for line in reader.lines().flatten() {
-                let trimmed = line.trim_end();
-                if trimmed.is_empty() {
-                    continue;
-                }
-                let _ = app_handle.emit(
-                    "proxy-log",
-                    LogLine {
-                        level: classify(trimmed),
-                        msg: trimmed.to_string(),
-                    },
-                );
-            }
-        }
-    });
+    // stdout/stderr 必须并行读取。sidecar 长期运行，stdout 不会 EOF；
+    // 若串行读取，stderr 管道填满后会反向阻塞代理进程。
+    spawn_log_reader(app.clone(), stdout);
+    spawn_log_reader(app.clone(), stderr);
 
     // 启动监控线程：轮询进程退出状态
     let app_handle2 = app.clone();
@@ -448,15 +1232,84 @@ pub fn start_proxy(
         }
     });
 
+    let missing_ports = wait_for_ports(&[7450, 7451], Duration::from_secs(5));
+    let health_error = if missing_ports.contains(&7450) {
+        Some("代理主端口 7450 未监听，IDE 无法接入 BYOK 代理".to_string())
+    } else {
+        probe_byok_stats(Duration::from_secs(2)).err()
+    };
+
+    if let Some(e) = health_error {
+        let child = lock_or_recover(&state.child).take();
+        if let Some(child) = child {
+            let _ = child.kill();
+        }
+        let report = restore_all(&state, &target);
+        *lock_or_recover(&state.target_ide) = String::new();
+        let _ = app.emit("proxy-stopped", ());
+        let mut msg = format!("代理启动失败: {}", e);
+        if report.has_warning() {
+            msg.push_str(&format!(
+                "；自动回滚时有警告: IDE配置={}, 卡片注入={}",
+                report.ide_config, report.workbench_inject
+            ));
+        }
+        let _ = app.emit(
+            "proxy-log",
+            LogLine {
+                level: "err".into(),
+                msg: msg.clone(),
+            },
+        );
+        return Err(msg);
+    }
+
+    if missing_ports.is_empty() {
+        let _ = app.emit(
+            "proxy-log",
+            LogLine {
+                level: "ok".into(),
+                msg: "✅ 代理健康检查通过: 7450 / 7451".into(),
+            },
+        );
+    } else {
+        let _ = app.emit(
+            "proxy-log",
+            LogLine {
+                level: "warn".into(),
+                msg: format!(
+                    "⚠ 代理主服务已就绪，但以下辅助端口暂未监听: {}",
+                    missing_ports
+                        .iter()
+                        .map(|p| p.to_string())
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                ),
+            },
+        );
+    }
+
     Ok(patched)
 }
 
 #[tauri::command]
-pub fn stop_proxy(
+pub async fn start_proxy(
     app: AppHandle,
-    state: State<ProxyState>,
+    target_ide: Option<String>,
+    skip_preflight: Option<bool>,
+) -> Result<bool, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        start_proxy_impl(app, target_ide, skip_preflight.unwrap_or(false))
+    })
+    .await
+    .map_err(|e| format!("启动代理任务失败: {}", e))?
+}
+
+pub fn stop_proxy_impl(
+    app: AppHandle,
     _target_ide: Option<String>,
 ) -> Result<RestoreReport, String> {
+    let state = app.state::<ProxyState>();
     let child = lock_or_recover(&state.child).take();
     if let Some(child) = child {
         // 无论 kill 是否成功，都必须还原配置；kill 失败仅记日志不阻断。
@@ -500,6 +1353,16 @@ pub fn stop_proxy(
     } else {
         Err("代理未运行".into())
     }
+}
+
+#[tauri::command]
+pub async fn stop_proxy(
+    app: AppHandle,
+    target_ide: Option<String>,
+) -> Result<RestoreReport, String> {
+    tauri::async_runtime::spawn_blocking(move || stop_proxy_impl(app, target_ide))
+        .await
+        .map_err(|e| format!("停止代理任务失败: {}", e))?
 }
 
 /// 强杀所有名为 ide-byok-proxy 的孤儿进程（启动时 / 升级前调用）。

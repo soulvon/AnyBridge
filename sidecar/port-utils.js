@@ -3,23 +3,55 @@
 
 import { execSync, spawnSync } from 'node:child_process';
 
-// 仅回收本应用的代理进程：校验 PID 的进程名是否为 node 系，避免误杀
-// 恰好占用 7450/7451 的其它无关程序（强杀用户进程会丢数据）。
-const SAFE_NAMES = ['node', 'ide-byok-proxy'];
+// 仅回收本应用的代理进程，避免误杀恰好占用 7450/7451 的其它 Node 程序。
+const SAFE_APP_NAMES = ['ide-byok-proxy'];
+const SAFE_NODE_SCRIPTS = [
+  '/sidecar/proxy-entry.js',
+  '/sidecar/hybrid-server.js',
+  '/sidecar/inference-proxy.js'
+];
+
+function normalizePid(pid) {
+  const value = String(pid || '').trim();
+  return /^\d+$/.test(value) ? value : '';
+}
+
+function getWindowsCommandLine(pid) {
+  const result = spawnSync('powershell.exe', [
+    '-NoProfile',
+    '-NonInteractive',
+    '-Command',
+    `$p = Get-CimInstance Win32_Process -Filter "ProcessId=${pid}"; if ($p) { $p.CommandLine }`
+  ], { encoding: 'utf8', windowsHide: true });
+  if (result.error) return '';
+  return result.stdout.trim();
+}
+
+function commandLooksLikeThisApp(commandLine) {
+  const normalized = String(commandLine || '').replace(/\\/g, '/').toLowerCase();
+  return SAFE_NODE_SCRIPTS.some(script => normalized.includes(script));
+}
 
 function isSafeToKill(pid) {
+  const safePid = normalizePid(pid);
+  if (!safePid) return false;
   try {
     if (process.platform === 'win32') {
       // CSV 输出首列是镜像名，如 "node.exe","1234",...
-      const result = spawnSync('tasklist', ['/FI', `PID eq ${pid}`, '/FO', 'CSV', '/NH'], { encoding: 'utf8', windowsHide: true });
+      const result = spawnSync('tasklist', ['/FI', `PID eq ${safePid}`, '/FO', 'CSV', '/NH'], { encoding: 'utf8', windowsHide: true });
       if (result.error) return false;
       const name = (result.stdout.match(/^"([^"]+)"/) || [])[1] || '';
       const base = name.toLowerCase().replace(/\.exe$/, '');
-      return SAFE_NAMES.some(n => base === n || base.startsWith(n));
+      if (SAFE_APP_NAMES.some(n => base === n || base.startsWith(n))) return true;
+      if (base !== 'node') return false;
+      return commandLooksLikeThisApp(getWindowsCommandLine(safePid));
     }
-    const out = execSync(`ps -p ${pid} -o comm=`, { encoding: 'utf8' }).trim().toLowerCase();
+    const out = execSync(`ps -p ${safePid} -o comm=`, { encoding: 'utf8' }).trim().toLowerCase();
     const base = out.split('/').pop();
-    return SAFE_NAMES.some(n => base === n || base.startsWith(n));
+    if (SAFE_APP_NAMES.some(n => base === n || base.startsWith(n))) return true;
+    if (base !== 'node') return false;
+    const args = execSync(`ps -p ${safePid} -o args=`, { encoding: 'utf8' });
+    return commandLooksLikeThisApp(args);
   } catch {
     return false; // 查不到进程名 → 保守不杀
   }
@@ -41,17 +73,18 @@ export function killPortHolder(port) {
       }
       let any = false;
       for (const pid of pids) {
-        if (pid === String(process.pid)) continue;
-        if (!isSafeToKill(pid)) {
-          console.error(`⚠ [port] 端口 ${port} 被非本应用进程(PID ${pid})占用，跳过强杀`);
+        const safePid = normalizePid(pid);
+        if (!safePid || safePid === String(process.pid)) continue;
+        if (!isSafeToKill(safePid)) {
+          console.error(`⚠ [port] 端口 ${port} 被非本应用进程(PID ${safePid})占用，跳过强杀`);
           continue;
         }
-        try { spawnSync('taskkill', ['/F', '/PID', pid], { stdio: 'ignore', windowsHide: true }); any = true; } catch {}
+        try { spawnSync('taskkill', ['/F', '/PID', safePid], { stdio: 'ignore', windowsHide: true }); any = true; } catch {}
       }
       return any;
     } else {
       const out = execSync(`lsof -ti tcp:${port} -s tcp:LISTEN`, { encoding: 'utf8' });
-      const pids = out.split(/\s+/).filter(Boolean).filter(p => p !== String(process.pid));
+      const pids = out.split(/\s+/).map(normalizePid).filter(Boolean).filter(p => p !== String(process.pid));
       let any = false;
       for (const pid of pids) {
         if (!isSafeToKill(pid)) {

@@ -14,7 +14,7 @@ import glob
 import sys
 import platform
 
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 SIDECAR_DIR = os.path.join(BASE_DIR, "sidecar")
 BUILD_DIR = os.path.join(BASE_DIR, "sidecar-build")
 JSC_DIR = os.path.join(BUILD_DIR, "jsc")

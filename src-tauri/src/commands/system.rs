@@ -31,14 +31,16 @@ pub fn build_tray(app: &AppHandle) -> tauri::Result<()> {
                 }
             }
             "start" => {
-                if let Some(state) = app.try_state::<crate::commands::proxy::ProxyState>() {
-                    let _ = crate::commands::proxy::start_proxy(app.clone(), state, None);
-                }
+                let app = app.clone();
+                tauri::async_runtime::spawn_blocking(move || {
+                    let _ = crate::commands::proxy::start_proxy_impl(app, None, false);
+                });
             }
             "stop" => {
-                if let Some(state) = app.try_state::<crate::commands::proxy::ProxyState>() {
-                    let _ = crate::commands::proxy::stop_proxy(app.clone(), state, None);
-                }
+                let app = app.clone();
+                tauri::async_runtime::spawn_blocking(move || {
+                    let _ = crate::commands::proxy::stop_proxy_impl(app, None);
+                });
             }
             "quit" => {
                 // 退出前还原 IDE 配置（两个都尝试，幂等）。
@@ -570,10 +572,7 @@ pub fn set_windsurf_path(path: String) -> Result<(), String> {
     set_ide_path(path)
 }
 
-/// 强杀并重启 IDE，使写入的代理配置生效。
-/// 注意：强杀会丢失未保存的工作，调用方需先提示用户保存。
-#[tauri::command]
-pub fn restart_ide(target: String) -> Result<String, String> {
+fn restart_ide_impl(target: String) -> Result<String, String> {
     let t = if target == "auto" {
         detect_target_ide()
     } else {
@@ -729,6 +728,15 @@ pub fn restart_ide(target: String) -> Result<String, String> {
         let _ = t;
         Err("当前平台不支持自动重启 IDE".into())
     }
+}
+
+/// 强杀并重启 IDE，使写入的代理配置生效。
+/// 注意：强杀会丢失未保存的工作，调用方需先提示用户保存。
+#[tauri::command]
+pub async fn restart_ide(target: String) -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move || restart_ide_impl(target))
+        .await
+        .map_err(|e| format!("重启 IDE 任务失败: {}", e))?
 }
 
 // ═══════ IDE DETECTION ═══════

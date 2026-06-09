@@ -21,6 +21,14 @@ fn default_true() -> bool {
     true
 }
 
+fn default_slot_display_mode() -> String {
+    "all".to_string()
+}
+
+fn default_unlock_scope() -> String {
+    "all".to_string()
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Target {
     #[serde(rename = "providerId")]
@@ -44,7 +52,7 @@ pub struct Slot {
     pub targets: Vec<Target>,
 }
 
-/// 注入项：解锁 Windsurf 灰色不可选模型（如 Claude Opus 4.8、SWE-1.6）。
+/// 模型槽位管理项：解锁 Windsurf 灰色不可选模型（如 Claude Opus 4.8、SWE-1.6）。
 /// 与 Slot 区别：Slot 劫持 Windsurf 已可选的 modelUid（保持 field22 不动 + 改名 label）；
 /// InjectedSlot 是 Windsurf 原本不可选（disabled=true）的模型，解锁后注入到下拉框。
 ///
@@ -80,6 +88,13 @@ pub struct ModelMap {
     /// 兄弟硬性规则:模板含 {provider} 且无 provider → 渲染为「未设置」。
     #[serde(rename = "labelTemplate", default)]
     pub label_template: String,
+    /// 模型槽位解锁范围：all/common/configured/claude/gpt/gemini/code。
+    /// all 默认全量解锁；common 只解锁常用模型族；configured 仅解锁已显式配置项。
+    #[serde(rename = "unlockScope", default = "default_unlock_scope")]
+    pub unlock_scope: String,
+    /// 旧字段，保留用于兼容旧配置和旧前端。新逻辑使用 unlockScope。
+    #[serde(rename = "slotDisplayMode", default = "default_slot_display_mode")]
+    pub slot_display_mode: String,
     #[serde(default)]
     pub slots: Vec<Slot>,
     /// 注入项列表:解锁 Windsurf 灰色不可选模型。详见 spec/08。
@@ -103,18 +118,31 @@ fn default_slots() -> Vec<Slot> {
     ]
 }
 
-fn read_map() -> Result<ModelMap, String> {
+pub(crate) fn read_map() -> Result<ModelMap, String> {
     let path = model_map_path();
     if !path.exists() {
         return Ok(ModelMap {
             name_prefix: String::new(),
             label_template: String::new(),
+            unlock_scope: default_unlock_scope(),
+            slot_display_mode: default_slot_display_mode(),
             slots: default_slots(),
             injected: Vec::new(),
         });
     }
     let raw = fs::read_to_string(&path).map_err(|e| e.to_string())?;
-    serde_json::from_str(&raw).map_err(|e| e.to_string())
+    let mut map: ModelMap = serde_json::from_str(&raw).map_err(|e| e.to_string())?;
+    // 兼容旧 model-map.json：老版本只有 slotDisplayMode。
+    if !raw.contains("\"unlockScope\"") {
+        map.unlock_scope = map.slot_display_mode.clone();
+    }
+    if map.unlock_scope.trim().is_empty() {
+        map.unlock_scope = default_unlock_scope();
+    }
+    if map.slot_display_mode.trim().is_empty() {
+        map.slot_display_mode = map.unlock_scope.clone();
+    }
+    Ok(map)
 }
 
 fn write_map(map: &ModelMap) -> Result<(), String> {
@@ -135,6 +163,19 @@ pub fn load_model_map() -> Result<ModelMap, String> {
 ///   注入项: modelUid 不可与槽位重复; modelUid+label 不可空; model 字段（一旦设了 providerId）必填
 #[tauri::command]
 pub fn save_model_map(map: ModelMap) -> Result<(), String> {
+    if !matches!(
+        map.unlock_scope.as_str(),
+        "all" | "common" | "configured" | "claude" | "gpt" | "gemini" | "code"
+    ) {
+        return Err("模型槽位解锁范围必须是 all/common/configured/claude/gpt/gemini/code".into());
+    }
+    if !matches!(
+        map.slot_display_mode.as_str(),
+        "all" | "common" | "configured" | "claude" | "gpt" | "gemini" | "code"
+    ) {
+        return Err("模型槽位兼容显示策略必须是 all/common/configured/claude/gpt/gemini/code".into());
+    }
+
     let mut seen = std::collections::HashSet::new();
     for slot in &map.slots {
         if slot.model_uid.trim().is_empty() {
@@ -148,23 +189,23 @@ pub fn save_model_map(map: ModelMap) -> Result<(), String> {
     let mut seen_inj = std::collections::HashSet::new();
     for inj in &map.injected {
         if inj.model_uid.trim().is_empty() {
-            return Err("扩展槽位 modelUid 不能为空".into());
+            return Err("模型槽位 modelUid 不能为空".into());
         }
         if inj.label.trim().is_empty() {
-            return Err("扩展槽位 label 不能为空".into());
+            return Err("模型槽位 label 不能为空".into());
         }
         if seen.contains(&inj.model_uid) {
-            return Err(format!("扩展槽位 modelUid 与槽位重复: {}", inj.model_uid));
+            return Err(format!("模型槽位 modelUid 与槽位重复: {}", inj.model_uid));
         }
         if !seen_inj.insert(inj.model_uid.clone()) {
-            return Err(format!("扩展槽位 modelUid 重复: {}", inj.model_uid));
+            return Err(format!("模型槽位 modelUid 重复: {}", inj.model_uid));
         }
         // 一旦配了 providerId，就必须填 model（BYOK 供应商端实际 API ID）
         if let Some(pid) = &inj.provider_id {
             if !pid.is_empty() {
                 if inj.model.as_deref().unwrap_or("").trim().is_empty() {
                     return Err(format!(
-                        "扩展槽位「{}」已选供应商但未填模型名（model 字段必填）",
+                        "模型槽位「{}」已选供应商但未填模型名（model 字段必填）",
                         inj.label
                     ));
                 }
@@ -174,7 +215,7 @@ pub fn save_model_map(map: ModelMap) -> Result<(), String> {
     write_map(&map)
 }
 
-/// 启动代理前校验:扫描启用的槽位 + 已配置 providerId 的注入项，若 targets/配置为空、
+/// 启动代理前校验:扫描启用的槽位 + 已配置 providerId 的模型槽位管理项，若 targets/配置为空、
 /// 或引用了不存在/未启用的供应商，返回问题描述列表（空列表 = 通过，可启动）。前端据此阻止带病启动。
 #[tauri::command]
 pub fn validate_model_map() -> Result<Vec<String>, String> {
@@ -216,15 +257,15 @@ pub fn validate_model_map() -> Result<Vec<String>, String> {
             continue;
         }
         match store.providers.iter().find(|p| p.id == *pid) {
-            None => problems.push(format!("扩展槽位「{}」引用了不存在的供应商", inj.label)),
+            None => problems.push(format!("模型槽位「{}」引用了不存在的供应商", inj.label)),
             Some(p) if !p.enabled => problems.push(format!(
-                "扩展槽位「{}」引用的供应商「{}」已禁用",
+                "模型槽位「{}」引用的供应商「{}」已禁用",
                 inj.label, p.name
             )),
             _ => {}
         }
         if inj.model.as_deref().unwrap_or("").trim().is_empty() {
-            problems.push(format!("扩展槽位「{}」已选供应商但 model 为空", inj.label));
+            problems.push(format!("模型槽位「{}」已选供应商但 model 为空", inj.label));
         }
     }
 

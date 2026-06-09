@@ -7,7 +7,7 @@ const STRICT_SSL_KEY: &str = "http.proxyStrictSSL";
 const PROXY_VALUE: &str = "http://localhost:7450";
 
 /// 根据目标 IDE 获取 settings.json 路径
-fn settings_path(target: &str) -> Option<PathBuf> {
+pub(crate) fn settings_path(target: &str) -> Option<PathBuf> {
     let ide_name = match target {
         "devin" => "Devin",
         _ => "Windsurf",
@@ -40,7 +40,7 @@ fn backup_path(settings: &PathBuf) -> PathBuf {
 }
 
 /// 容错解析（支持注释/尾逗号），返回顶层对象
-fn parse_object(raw: &str) -> Result<Map<String, Value>, String> {
+pub(crate) fn parse_object(raw: &str) -> Result<Map<String, Value>, String> {
     let trimmed = raw.trim();
     if trimmed.is_empty() {
         return Ok(Map::new());
@@ -59,16 +59,28 @@ fn write_object(path: &PathBuf, obj: &Map<String, Value>) -> Result<(), String> 
     super::write_atomic(path, json.as_bytes())
 }
 
-/// 打补丁：备份原文件（幂等），写入代理配置。
-/// 返回是否实际改动了 IDE 配置（用于 UI 提示是否需重启）。
-pub fn patch(target: &str) -> Result<bool, String> {
+/// 确保 settings.json 存在。VS Code 系 IDE 会接受预先创建的 User/settings.json，
+/// 这样首次安装但尚未生成配置文件的用户也能一键启动代理。
+pub(crate) fn ensure_settings_file(target: &str) -> Result<(PathBuf, bool), String> {
     let Some(settings) = settings_path(target) else {
         return Err(format!("无法定位 {} 配置目录", target));
     };
-    if !settings.exists() {
-        // IDE 没装或没生成过配置；不创建文件，跳过。
-        return Ok(false);
+    if settings.exists() {
+        return Ok((settings, false));
     }
+    let Some(parent) = settings.parent() else {
+        return Err("settings.json 路径无父目录".into());
+    };
+    fs::create_dir_all(parent).map_err(|e| format!("创建 IDE 配置目录失败: {}", e))?;
+    super::write_atomic(&settings, b"{}\n")
+        .map_err(|e| format!("创建 settings.json 失败: {}", e))?;
+    Ok((settings, true))
+}
+
+/// 打补丁：备份原文件（幂等），写入代理配置。
+/// 返回是否实际改动了 IDE 配置（用于 UI 提示是否需重启）。
+pub fn patch(target: &str) -> Result<bool, String> {
+    let (settings, _) = ensure_settings_file(target)?;
 
     let raw = fs::read_to_string(&settings).map_err(|e| e.to_string())?;
     let mut obj = parse_object(&raw)?;

@@ -11,8 +11,9 @@ import { AnthropicStreamProcessor, parseSSEChunk } from './anthropic-stream.js';
 import { OpenAIChatCompletionsStreamProcessor, OpenAIStreamProcessor, parseOpenAISSEChunk } from './openai-stream.js';
 import { wrapEnvelope, endOfStreamEnvelope, streamHeaders, gzipSync, unwrapRequest } from '../connect.js';
 import { recordRequest, recordUsage, recordError, recordLatency } from '../stats.js';
-import { getSlot, loadProviders, resolveTarget, rememberProviderToolSchemaCompat, updateModelCapabilities } from '../provider-pool.js';
+import { getInjectedByUid, getSlot, loadProviders, resolveTarget, rememberProviderToolSchemaCompat, updateModelCapabilities } from '../provider-pool.js';
 import { mitmLog } from '../mitm-logger.js';
+import { getRuntimeModelSlotStatus } from '../rename-models.js';
 
 // ─── Config ────────────────────────────────────────────────
 
@@ -163,11 +164,13 @@ function shouldAutoEnableGeminiSchemaCompat(statusCode, errBody = '') {
 
 // 路由层判断:该 GetChatMessage 是否应被劫持转发到第三方 provider。
 
-// 命中「启用且配了 targets」的槽位才拦截;否则原样透传给 Codeium。
+// 命中普通 BYOK 映射或模型槽位管理项才拦截;否则原样透传给 Codeium。
 export function shouldIntercept(body, headers) {
   const modelId = extractModelId(body, headers);
   const slot = getSlot(modelId);
-  return !!(slot && slot.targets && slot.targets.length > 0);
+  if (slot) return true;
+  if (getInjectedByUid(modelId)) return true;
+  return getRuntimeModelSlotStatus(modelId)?.status === 'unconfigured';
 }
 
 
@@ -177,20 +180,63 @@ export function handleGetChatMessage(req, res, body) {
   let { systemPrompt, messages, tools, toolChoice, requestedModel, initiator } =
     parseGetChatMessageRequest(body, req.headers);
 
-  const slot = getSlot(requestedModel);
-  // shouldIntercept 已保证命中槽位才进来；防御性兜底:无槽位/无 targets → 报错。
+  const messageId = crypto.randomUUID();
+  let slot = getSlot(requestedModel);
+  const injected = slot ? null : getInjectedByUid(requestedModel);
+  const runtimeSlot = slot || injected ? null : getRuntimeModelSlotStatus(requestedModel);
+
+  if (injected && injected.status !== 'configured') {
+    const label = injected.label || requestedModel;
+    const msg = `模型槽位「${label}」已解锁但尚未配置 BYOK 映射。请在「模型槽位管理」中选择供应商并填写 model 字段。`;
+    console.warn(`  ⚠️  ${msg}`);
+    recordError({ provider: 'model-slot', message: msg });
+    res.writeHead(200, streamHeaders());
+    res.write(wrapEnvelope(buildErrorChunk(messageId, msg)));
+    res.write(endOfStreamEnvelope());
+    res.end();
+    return;
+  }
+
+  if (runtimeSlot && runtimeSlot.status === 'unconfigured') {
+    const label = runtimeSlot.label || requestedModel;
+    const msg = `模型槽位「${label}」已解锁但尚未配置 BYOK 映射。请在「模型槽位管理」中选择供应商并填写 model 字段。`;
+    console.warn(`  ⚠️  ${msg}`);
+    recordError({ provider: 'model-slot', message: msg });
+    res.writeHead(200, streamHeaders());
+    res.write(wrapEnvelope(buildErrorChunk(messageId, msg)));
+    res.write(endOfStreamEnvelope());
+    res.end();
+    return;
+  }
+
+  if (injected) {
+    slot = {
+      modelUid: injected.modelUid,
+      displayName: injected.label,
+      supportsImages: injected.supportsImages !== false,
+      targets: [{ providerId: injected.providerId, model: injected.model }],
+      routeKind: 'injected',
+    };
+  }
+
+  // shouldIntercept 已保证命中槽位才进来；防御性兜底:无槽位/无 targets → 清晰报错。
   if (!slot || !slot.targets || slot.targets.length === 0) {
-    console.error(`  ❌ 无可用槽位/目标: ${requestedModel}`);
-    res.writeHead(500);
-    res.end('no slot/targets configured');
+    const label = slot?.displayName || requestedModel;
+    const msg = `模型映射「${label}」已启用但尚未配置目标供应商。请在「模型映射」中编辑该行并添加供应商/model。`;
+    console.warn(`  ⚠️  ${msg}`);
+    recordError({ provider: 'model-slot', message: msg });
+    res.writeHead(200, streamHeaders());
+    res.write(wrapEnvelope(buildErrorChunk(messageId, msg)));
+    res.write(endOfStreamEnvelope());
+    res.end();
     return;
   }
 
   const providers = loadProviders();
   const serviceTier = getServiceTier(requestedModel);
-  const messageId = crypto.randomUUID();
 
-  console.log(`  🧠 Slot: ${requestedModel} (${slot.displayName || '原名'}) → ${slot.targets.length} target(s)`);
+  const routeLabel = slot.routeKind === 'injected' ? 'Managed slot' : 'Slot';
+  console.log(`  🧠 ${routeLabel}: ${requestedModel} (${slot.displayName || '原名'}) → ${slot.targets.length} target(s)`);
   console.log(`  📝 System: ${systemPrompt.length} chars  💬 Messages: ${messages.length}${tools ? `  🔧 Tools: ${tools.length}` : ''}`);
 
   const hasImages = messages.some(messageHasImage);

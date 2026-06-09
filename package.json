@@ -1,6 +1,6 @@
 {
   "name": "ide-byok",
-  "version": "1.2.4",
+  "version": "1.2.5",
   "description": "Hybrid proxy for IDE — intercepts chat, forwards everything else to Codeium",
   "type": "module",
   "main": "sidecar/proxy-entry.js",
@@ -12,6 +12,7 @@
     "dev": "node --watch sidecar/proxy-entry.js",
     "dev:proxy": "node --watch sidecar/hybrid-server.js",
     "dev:inference": "node --watch sidecar/inference-proxy.js",
+    "check:ui": "node scripts/check-ui.mjs",
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
     "tauri:build": "tauri build",

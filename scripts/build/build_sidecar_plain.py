@@ -11,7 +11,7 @@ import json
 import sys
 import platform
 
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 SIDECAR_DIR = os.path.join(BASE_DIR, "sidecar")
 OUT_DIR = os.path.join(BASE_DIR, "src-tauri", "binaries")
 

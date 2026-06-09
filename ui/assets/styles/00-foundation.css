@@ -1,0 +1,279 @@
+/* ═══════ FONTS (本地，离线可用) ═══════ */
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-weight: 400;
+  font-display: swap;
+  src: url('../../fonts/jbm-400.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-weight: 500;
+  font-display: swap;
+  src: url('../../fonts/jbm-500.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-weight: 600;
+  font-display: swap;
+  src: url('../../fonts/jbm-600.woff2') format('woff2');
+}
+
+/* ═══════ TOKENS — Precision Workbench Light ═══════ */
+:root {
+  --bg-primary: #EEF1F5;
+  --bg-secondary: #E2E7EE;
+  --bg-card: rgba(250, 251, 253, 0.94);
+  --bg-hero: linear-gradient(135deg, #F8FAFC 0%, #EEF2F7 48%, #E3E8EF 100%);
+  --bg-glass: rgba(250, 251, 253, 0.78);
+  --bg-input: rgba(15, 23, 42, 0.055);
+  --bg-hover: rgba(15, 23, 42, 0.075);
+
+  --accent: #1261A6;
+  --accent-hover: #0B4D87;
+  --accent-secondary: #0E9F8B;
+  --accent-warm: #D97706;
+  --accent-light: rgba(18, 97, 166, 0.1);
+  --accent-glow: rgba(18, 97, 166, 0.2);
+  --success: #11875D;
+  --success-dim: rgba(17, 135, 93, 0.11);
+  --danger: #D43D3D;
+  --danger-dim: rgba(212, 61, 61, 0.11);
+  --warn: #D97706;
+  --accent-warm-dim: rgba(217, 119, 6, 0.11);
+
+  --text-primary: #111827;
+  --text-secondary: #344054;
+  --text-muted: #667085;
+  --text-dim: #667085;
+  --text-inverse: #FFFFFF;
+
+  --border: rgba(17, 24, 39, 0.09);
+  --border-strong: rgba(17, 24, 39, 0.18);
+  --table-th-bg: rgba(18, 97, 166, 0.055);
+
+  --shadow-sm:
+    0 1px 0 rgba(255, 255, 255, 0.7) inset,
+    0 1px 2px rgba(17, 24, 39, 0.06);
+  --shadow-md:
+    0 1px 0 rgba(255, 255, 255, 0.72) inset,
+    0 6px 16px rgba(17, 24, 39, 0.08),
+    0 1px 3px rgba(17, 24, 39, 0.06);
+  --shadow-card:
+    0 1px 0 rgba(255, 255, 255, 0.85) inset,
+    0 1px 2px rgba(17, 24, 39, 0.05),
+    0 12px 28px -18px rgba(17, 24, 39, 0.26);
+  --shadow-card-hover:
+    0 1px 0 rgba(255, 255, 255, 0.9) inset,
+    0 2px 5px rgba(17, 24, 39, 0.08),
+    0 18px 34px -20px rgba(18, 97, 166, 0.28);
+
+  --font-body: 'JetBrains Mono', 'Microsoft YaHei', 'SimHei', -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', Consolas, monospace;
+
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 8px;
+  --radius-xl: 10px;
+  --radius-pill: 100px;
+
+  --ease: cubic-bezier(0.4, 0, 0.2, 1);
+  --duration-fast: 120ms;
+  --duration-normal: 200ms;
+}
+
+/* ═══════ TOKENS — Precision Workbench Dark ═══════ */
+[data-theme="dark"] {
+  --bg-primary: #0B0F12;
+  --bg-secondary: #131A20;
+  --bg-card: rgba(22, 29, 35, 0.94);
+  --bg-hero: linear-gradient(135deg, #0B0F12 0%, #111820 52%, #0D1117 100%);
+  --bg-glass: rgba(18, 25, 31, 0.82);
+  --bg-input: rgba(255, 255, 255, 0.04);
+  --bg-hover: rgba(255, 255, 255, 0.07);
+
+  --accent: #5AB0E6;
+  --accent-hover: #87C9F2;
+  --accent-secondary: #37C7A5;
+  --accent-light: rgba(90, 176, 230, 0.12);
+  --accent-glow: rgba(90, 176, 230, 0.22);
+  --success: #48C78E;
+  --success-dim: rgba(72, 199, 142, 0.12);
+  --danger: #FF6B6B;
+  --danger-dim: rgba(255, 107, 107, 0.12);
+  --warn: #F5A524;
+
+  --text-primary: #F2F6FA;
+  --text-secondary: #B8C2CC;
+  --text-muted: #8A97A5;
+  --text-dim: #8A97A5;
+  --text-inverse: #071014;
+
+  --border: rgba(255, 255, 255, 0.06);
+  --border-strong: rgba(255, 255, 255, 0.12);
+  --table-th-bg: rgba(255, 255, 255, 0.045);
+
+  --shadow-sm:
+    0 1px 0 rgba(255, 255, 255, 0.04) inset,
+    0 1px 3px rgba(0, 0, 0, 0.28);
+  --shadow-md:
+    0 1px 0 rgba(255, 255, 255, 0.05) inset,
+    0 8px 20px rgba(0, 0, 0, 0.34);
+  --shadow-card:
+    0 1px 0 rgba(255, 255, 255, 0.04) inset,
+    0 1px 2px rgba(0, 0, 0, 0.25),
+    0 14px 30px -20px rgba(0, 0, 0, 0.68);
+  --shadow-card-hover:
+    0 1px 0 rgba(255, 255, 255, 0.06) inset,
+    0 2px 6px rgba(0, 0, 0, 0.32),
+    0 18px 38px -20px rgba(90, 176, 230, 0.18);
+}
+
+/* ═══════ SWITCH TOGGLE (开关样式) ═══════ */
+.toggle-sm {
+  width: 44px;
+  height: 22px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  position: relative;
+  cursor: pointer;
+  transition: all var(--duration-normal) var(--ease);
+  box-shadow: var(--shadow-sm);
+  display: inline-block;
+}
+.toggle-sm::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  background: var(--text-inverse);
+  border-radius: 50%;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.15);
+  transition: transform var(--duration-normal) var(--ease);
+}
+.toggle-sm.on {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.toggle-sm.on::after {
+  transform: translateX(22px);
+  background: #FFFFFF;
+}
+
+/* ═══════ MODAL DIALOGS (模态弹窗样式) ═══════ */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(10, 10, 15, 0.45);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  opacity: 0;
+  transition: opacity var(--duration-normal) var(--ease);
+}
+.modal-overlay.active {
+  display: flex;
+  opacity: 1;
+}
+.modal-container {
+  background: var(--bg-glass);
+  backdrop-filter: blur(24px) saturate(1.2);
+  -webkit-backdrop-filter: blur(24px) saturate(1.2);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  padding: 24px;
+  width: 90%;
+  max-width: 420px;
+  box-shadow: var(--shadow-card-hover);
+  transform: scale(0.95);
+  transition: transform var(--duration-normal) var(--ease);
+}
+.modal-overlay.active .modal-container {
+  transform: scale(1);
+}
+.modal-header {
+  margin-bottom: 16px;
+}
+.modal-title {
+  font-size: 16px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--text-primary);
+}
+.modal-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--accent);
+}
+.modal-body {
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+  margin-bottom: 20px;
+}
+.modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+.modal-btn {
+  padding: 8px 16px;
+  border-radius: var(--radius-md);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--duration-fast) var(--ease);
+  outline: none;
+  border: none;
+}
+.modal-btn-cancel {
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+}
+.modal-btn-cancel:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+.modal-btn-confirm {
+  background: var(--accent);
+  border: 1px solid var(--accent);
+  color: var(--text-inverse);
+  box-shadow: 0 2px 4px var(--accent-glow);
+}
+.modal-btn-confirm:hover {
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
+  transform: translateY(-1px);
+}
+.modal-btn-confirm:active {
+  transform: translateY(0);
+}
+
+/* ═══════ RESET ═══════ */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; overflow: hidden; }
+body {
+  font-family: var(--font-body);
+  background: var(--bg-hero);
+  background-size: auto;
+  color: var(--text-primary);
+  -webkit-font-smoothing: antialiased;
+  transition: background var(--duration-normal) var(--ease);
+}
+
+/* ═══════ LAYOUT ═══════ */
+.app {
+  display: flex; flex-direction: column; height: 100vh;
+}

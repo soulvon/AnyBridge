@@ -147,7 +147,7 @@ pub struct ProviderStore {
     pub current: String,
 }
 
-fn read_provider_store() -> Result<ProviderStore, String> {
+pub(crate) fn read_provider_store() -> Result<ProviderStore, String> {
     let path = providers_path();
     if !path.exists() {
         return Ok(ProviderStore::default());
@@ -156,7 +156,7 @@ fn read_provider_store() -> Result<ProviderStore, String> {
     serde_json::from_str(&raw).map_err(|e| e.to_string())
 }
 
-fn write_provider_store(store: &ProviderStore) -> Result<(), String> {
+pub(crate) fn write_provider_store(store: &ProviderStore) -> Result<(), String> {
     let dir = config_dir();
     fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     let json = serde_json::to_string_pretty(store).map_err(|e| e.to_string())?;

@@ -30,7 +30,7 @@ fn write_atomic(path: &PathBuf, content: &str) -> Result<(), String> {
 }
 
 /// 从 IDE 可执行文件路径推出 workbench.html 路径。
-fn workbench_html_path(target: &str) -> Option<PathBuf> {
+pub(crate) fn workbench_html_path(target: &str) -> Option<PathBuf> {
     #[cfg(target_os = "windows")]
     let app_root = {
         // exe 在 <root>\Windsurf.exe 或 <root>\Devin.exe，资源在 <root>\resources\app

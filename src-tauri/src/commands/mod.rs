@@ -3,6 +3,7 @@ pub mod eval;
 pub mod ide_config;
 pub mod ide_models;
 pub mod model_map;
+pub mod provider_import;
 pub mod proxy;
 pub mod system;
 pub mod update;
