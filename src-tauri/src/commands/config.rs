@@ -491,6 +491,8 @@ pub struct FetchModelsArgs {
 #[derive(Debug, Serialize)]
 pub struct FetchModelsResult {
     pub models: Vec<String>,
+    /// 实际命中并成功返回模型列表所用的协议（anthropic / openai）
+    pub api_format: String,
 }
 
 #[tauri::command]
@@ -576,5 +578,5 @@ pub async fn fetch_models(args: FetchModelsArgs) -> Result<FetchModelsResult, St
         }
     }
 
-    Ok(FetchModelsResult { models })
+    Ok(FetchModelsResult { models, api_format: fmt.to_string() })
 }

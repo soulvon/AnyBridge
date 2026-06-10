@@ -107,6 +107,13 @@ function adaptStreamForChatHandler(body, stream, headers) {
       headersSent = true;
       this.headersSent = true;
       const h2headers = { ':status': status, ...hdrs };
+      delete h2headers.connection;
+      delete h2headers['proxy-connection'];
+      delete h2headers['keep-alive'];
+      delete h2headers.te;
+      delete h2headers.trailer;
+      delete h2headers.upgrade;
+      delete h2headers['transfer-encoding'];
       try { stream.respond(h2headers); } catch {}
     },
     write(chunk) {

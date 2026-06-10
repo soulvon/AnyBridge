@@ -53,6 +53,13 @@ fn catalog_path() -> Option<PathBuf> {
     // 3) 可执行文件旁
     if let Ok(exe) = std::env::current_exe() {
         if let Some(parent) = exe.parent() {
+            let cand0 = parent
+                .join("resources")
+                .join("sidecar")
+                .join("windsurf-catalog.json");
+            if cand0.exists() {
+                return Some(cand0);
+            }
             let cand = parent.join("sidecar").join("windsurf-catalog.json");
             if cand.exists() {
                 return Some(cand);

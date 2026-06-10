@@ -169,6 +169,13 @@ struct StreamCall {
     body_text: String,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum OpenAiEndpoint {
+    Chat,
+    Responses,
+    GeminiOpenai,
+}
+
 #[tauri::command]
 pub async fn run_provider_eval(app: tauri::AppHandle, request: EvalRequest) -> Result<EvalReport, String> {
     let started = Instant::now();
@@ -505,13 +512,22 @@ fn probe_response_structure(ctx: &EvalContext, call: &JsonCall) -> EvalProbeResu
                 json.get("model").and_then(Value::as_str).is_some(),
                 "model",
             );
-            let msg = json.pointer("/choices/0/message");
-            add_check(
-                &mut checks,
-                &mut passed,
-                msg.and_then(|m| m.get("role")).and_then(Value::as_str) == Some("assistant"),
-                "assistant role",
-            );
+            if uses_openai_responses(ctx) {
+                add_check(
+                    &mut checks,
+                    &mut passed,
+                    json.get("output").and_then(|o| o.as_array()).map_or(false, |arr| arr.iter().any(|item| item.get("type").and_then(Value::as_str) == Some("message"))) || json.get("output_text").and_then(Value::as_str).is_some(),
+                    "response output",
+                );
+            } else {
+                let msg = json.pointer("/choices/0/message");
+                add_check(
+                    &mut checks,
+                    &mut passed,
+                    msg.and_then(|m| m.get("role")).and_then(Value::as_str) == Some("assistant"),
+                    "assistant role",
+                );
+            }
             add_check(
                 &mut checks,
                 &mut passed,
@@ -602,29 +618,44 @@ fn probe_response_signature(ctx: &EvalContext, call: &JsonCall) -> EvalProbeResu
             add_check(
                 &mut checks,
                 &mut passed,
-                id.starts_with("chatcmpl-") || id.starts_with("cmpl-"),
-                "OpenAI id prefix",
+                !id.trim().is_empty(),
+                "id present",
             );
             let obj = json.get("object").and_then(Value::as_str).unwrap_or("");
+            let object_ok = if uses_openai_responses(ctx) {
+                obj == "response" || obj.contains("response")
+            } else {
+                obj.contains("chat.completion") || obj.contains("completion")
+            };
             add_check(
                 &mut checks,
                 &mut passed,
-                obj.contains("chat.completion") || obj.contains("completion"),
+                object_ok,
                 "object literal",
             );
-            let finish = json
-                .pointer("/choices/0/finish_reason")
-                .and_then(Value::as_str)
-                .unwrap_or("");
-            add_check(
-                &mut checks,
-                &mut passed,
-                matches!(
-                    finish,
-                    "stop" | "length" | "tool_calls" | "content_filter" | ""
-                ),
-                "finish_reason enum",
-            );
+            if uses_openai_responses(ctx) {
+                let status = json.get("status").and_then(Value::as_str).unwrap_or("");
+                add_check(
+                    &mut checks,
+                    &mut passed,
+                    matches!(status, "completed" | "incomplete" | "failed" | ""),
+                    "status enum",
+                );
+            } else {
+                let finish = json
+                    .pointer("/choices/0/finish_reason")
+                    .and_then(Value::as_str)
+                    .unwrap_or("");
+                add_check(
+                    &mut checks,
+                    &mut passed,
+                    matches!(
+                        finish,
+                        "stop" | "length" | "tool_calls" | "content_filter" | ""
+                    ),
+                    "finish_reason enum",
+                );
+            }
             add_check(
                 &mut checks,
                 &mut passed,
@@ -748,6 +779,18 @@ async fn probe_canary(ctx: &mut EvalContext) -> EvalProbeResult {
     let body = chat_body(ctx, &prompt, false, 96, None);
     match call_json(ctx, body).await {
         Ok(call) => {
+            if !(200..300).contains(&call.status) {
+                return probe(
+                    "P4",
+                    "内容 Canary",
+                    "fail",
+                    0.0,
+                    8.0,
+                    Some(call.latency_ms),
+                    "Canary 请求返回非成功状态",
+                    vec![format!("HTTP {}", call.status), snippet(&call.body_text, 160)],
+                );
+            }
             let text = call
                 .json
                 .as_ref()
@@ -827,7 +870,10 @@ async fn probe_stream_integrity(ctx: &mut EvalContext) -> EvalProbeResult {
                 .content_type
                 .to_ascii_lowercase()
                 .contains("text/event-stream");
-            if ct_ok {
+            let event_count = sse_data_event_count(&call.body_text);
+            let text = stream_text(&call.body_text);
+            let done = stream_has_done(&call.body_text, &ctx.provider.api_format);
+            if ct_ok || event_count > 0 {
                 score += 20.0;
             }
             evidence.push(format!(
@@ -838,31 +884,32 @@ async fn probe_stream_integrity(ctx: &mut EvalContext) -> EvalProbeResult {
                     &call.content_type
                 }
             ));
-            if call.chunk_count >= 2 {
+            evidence.push(format!("sse_events: {}", event_count));
+            if event_count >= 2 {
                 score += 20.0;
+            } else if event_count == 1 {
+                score += 10.0;
             }
-            evidence.push(format!("chunks: {}", call.chunk_count));
+            evidence.push(format!("network_chunks: {}", call.chunk_count));
             if call.first_byte_ms.map(|ms| ms < 15_000).unwrap_or(false) {
                 score += 20.0;
+            } else if call.first_byte_ms.map(|ms| ms < 45_000).unwrap_or(false) {
+                score += 10.0;
             }
             evidence.push(format!(
                 "first_byte: {}ms",
                 call.first_byte_ms.unwrap_or(call.latency_ms)
             ));
-            if stream_has_done(&call.body_text, &ctx.provider.api_format) {
+            if done {
+                score += 20.0;
+            } else if event_count > 0 && !text.trim().is_empty() {
+                score += 10.0;
+            }
+            evidence.push(format!("done_signal: {}", done));
+            if !text.trim().is_empty() {
                 score += 20.0;
             }
-            evidence.push(format!(
-                "done_signal: {}",
-                stream_has_done(&call.body_text, &ctx.provider.api_format)
-            ));
-            if stream_text(&call.body_text).trim().len() > 0 {
-                score += 20.0;
-            }
-            evidence.push(format!(
-                "文本摘要: {}",
-                snippet(&stream_text(&call.body_text), 100)
-            ));
+            evidence.push(format!("文本摘要: {}", snippet(&text, 100)));
             probe(
                 "P5",
                 "流完整性",
@@ -893,6 +940,18 @@ async fn probe_tool_calling(ctx: &mut EvalContext) -> EvalProbeResult {
     let started = Instant::now();
     match call_json(ctx, tool_body).await {
         Ok(call) => {
+            if !(200..300).contains(&call.status) {
+                return probe(
+                    "P6",
+                    "工具调用",
+                    "fail",
+                    0.0,
+                    10.0,
+                    Some(call.latency_ms),
+                    "工具请求返回非成功状态",
+                    vec![format!("HTTP {}", call.status), snippet(&call.body_text, 160)],
+                );
+            }
             let Some(json) = call.json.as_ref() else {
                 return probe(
                     "P6",
@@ -1000,17 +1059,31 @@ async fn probe_protocol_compatibility(ctx: &mut EvalContext) -> EvalProbeResult 
     let started = Instant::now();
     let checks = run_protocol_checks(ctx).await;
     ctx.protocol_checks = checks.clone();
-    let supported = checks.iter().filter(|c| c.status == "supported").count();
-    let partial = checks.iter().filter(|c| c.status == "partial").count();
-    let score = if checks.is_empty() {
-        0.0
-    } else {
-        ((supported as f64 + partial as f64 * 0.55) / checks.len() as f64) * 100.0
+    let primary_key = provider_protocol_key(&ctx.provider);
+    let primary = checks.iter().find(|c| c.key == primary_key);
+    let score = match primary.map(|c| c.status.as_str()) {
+        Some("supported") => 100.0,
+        Some("partial") => 75.0,
+        Some("unsupported") => 0.0,
+        _ => 0.0,
     };
     let evidence = checks
         .iter()
         .map(|c| format!("{}: {} · {}", c.label, c.status, c.detail))
         .collect::<Vec<_>>();
+    let optional_supported = checks
+        .iter()
+        .filter(|c| c.key != primary_key && matches!(c.status.as_str(), "supported" | "partial"))
+        .count();
+    let optional_total = checks.iter().filter(|c| c.key != primary_key).count();
+    let summary = primary
+        .map(|c| {
+            format!(
+                "当前入口：{}；可选入口 {}/{} 可用",
+                c.detail, optional_supported, optional_total
+            )
+        })
+        .unwrap_or_else(|| "未找到当前配置入口".into());
     probe(
         "P13",
         "调用方式兼容",
@@ -1018,7 +1091,7 @@ async fn probe_protocol_compatibility(ctx: &mut EvalContext) -> EvalProbeResult 
         score,
         6.0,
         Some(started.elapsed().as_millis() as u64),
-        &format!("协议兼容覆盖 {:.0}%", score),
+        &summary,
         evidence,
     )
 }
@@ -1029,6 +1102,18 @@ async fn probe_prompt_injection(ctx: &mut EvalContext) -> EvalProbeResult {
     let started = Instant::now();
     match call_json(ctx, body).await {
         Ok(call) => {
+            if !(200..300).contains(&call.status) {
+                return probe(
+                    "P14",
+                    "提示词注入",
+                    "fail",
+                    0.0,
+                    8.0,
+                    Some(call.latency_ms),
+                    "注入探针返回非成功状态",
+                    vec![format!("HTTP {}", call.status), snippet(&call.body_text, 160)],
+                );
+            }
             let text = call
                 .json
                 .as_ref()
@@ -1164,6 +1249,18 @@ async fn probe_token_injection(ctx: &mut EvalContext) -> EvalProbeResult {
     let body = chat_body(ctx, "ping", false, 16, None);
     match call_json(ctx, body).await {
         Ok(call) => {
+            if !(200..300).contains(&call.status) {
+                return probe(
+                    "P8",
+                    "Token 注入粗测",
+                    "fail",
+                    0.0,
+                    7.0,
+                    Some(call.latency_ms),
+                    "Token 探针返回非成功状态",
+                    vec![format!("HTTP {}", call.status), snippet(&call.body_text, 160)],
+                );
+            }
             let input_tokens = call
                 .json
                 .as_ref()
@@ -1223,6 +1320,18 @@ async fn probe_json_mode(ctx: &mut EvalContext) -> EvalProbeResult {
     let started = Instant::now();
     match call_json(ctx, body).await {
         Ok(call) => {
+            if !(200..300).contains(&call.status) {
+                return probe(
+                    "P9",
+                    "JSON 模式",
+                    "fail",
+                    0.0,
+                    7.0,
+                    Some(call.latency_ms),
+                    "JSON 模式请求返回非成功状态",
+                    vec![format!("HTTP {}", call.status), snippet(&call.body_text, 160)],
+                );
+            }
             let text = call
                 .json
                 .as_ref()
@@ -1388,6 +1497,30 @@ fn api_url(provider: &Provider) -> String {
     format!("{}{}", host, path)
 }
 
+fn openai_endpoint(provider: &Provider) -> OpenAiEndpoint {
+    let endpoint = format!(
+        "{} {}",
+        provider.api_host.to_ascii_lowercase(),
+        provider
+            .api_path
+            .as_deref()
+            .unwrap_or_default()
+            .to_ascii_lowercase()
+    );
+    if endpoint.contains("/responses") {
+        OpenAiEndpoint::Responses
+    } else if endpoint.contains("/v1beta/openai/chat/completions") {
+        OpenAiEndpoint::GeminiOpenai
+    } else {
+        OpenAiEndpoint::Chat
+    }
+}
+
+fn uses_openai_responses(ctx: &EvalContext) -> bool {
+    matches!(ctx.provider.api_format, ApiFormat::Openai)
+        && openai_endpoint(&ctx.provider) == OpenAiEndpoint::Responses
+}
+
 fn chat_body(
     ctx: &EvalContext,
     prompt: &str,
@@ -1397,13 +1530,23 @@ fn chat_body(
 ) -> Value {
     match ctx.provider.api_format {
         ApiFormat::Openai => {
-            let mut body = serde_json::json!({
-                "model": ctx.model,
-                "messages": [{"role": "user", "content": prompt}],
-                "max_tokens": max_tokens,
-                "temperature": 0,
-                "stream": stream
-            });
+            let mut body = if uses_openai_responses(ctx) {
+                serde_json::json!({
+                    "model": ctx.model,
+                    "input": [{"role": "user", "content": prompt}],
+                    "max_output_tokens": max_tokens,
+                    "temperature": 0,
+                    "stream": stream
+                })
+            } else {
+                serde_json::json!({
+                    "model": ctx.model,
+                    "messages": [{"role": "user", "content": prompt}],
+                    "max_tokens": max_tokens,
+                    "temperature": 0,
+                    "stream": stream
+                })
+            };
             if let Some(extra) = extra {
                 merge_json(&mut body, extra);
             }
@@ -1679,6 +1822,7 @@ async fn send_protocol_json(
 
 async fn run_protocol_checks(ctx: &mut EvalContext) -> Vec<EvalCheck> {
     let base = protocol_base_url(&ctx.provider);
+    let primary_key = provider_protocol_key(&ctx.provider);
     let candidates = vec![
         (
             "openai_chat",
@@ -1701,6 +1845,7 @@ async fn run_protocol_checks(ctx: &mut EvalContext) -> Vec<EvalCheck> {
     ];
     let mut out = Vec::new();
     for (key, label, fmt, url) in candidates {
+        let is_primary = key == primary_key;
         let body = protocol_probe_body(&fmt, &ctx.model);
         let check = match send_protocol_json(ctx, &fmt, &url, body).await {
             Ok((status, text)) => {
@@ -1711,38 +1856,90 @@ async fn run_protocol_checks(ctx: &mut EvalContext) -> Vec<EvalCheck> {
                     .unwrap_or_default();
                 let ok_status = (200..300).contains(&status);
                 let has_text = !response_text.trim().is_empty();
-                let status_label = if ok_status && has_text {
+                let mut status_label = if ok_status && has_text {
                     "supported"
                 } else if ok_status && json.is_some() {
                     "partial"
                 } else {
                     "unsupported"
                 };
+                if !is_primary && status_label == "unsupported" {
+                    status_label = "optional";
+                }
                 EvalCheck {
                     key: key.into(),
                     label: label.into(),
                     status: status_label.into(),
                     detail: if ok_status && has_text {
                         format!("HTTP {}，响应文本正常", status)
+                    } else if !is_primary {
+                        format!("可选入口未适配（HTTP {}），不影响当前配置", status)
                     } else if ok_status {
                         format!("HTTP {}，但文本为空或结构不完整", status)
                     } else {
                         format!("HTTP {}", status)
                     },
-                    evidence: vec![url.clone(), snippet(&text, 180)],
+                    evidence: vec![
+                        url.clone(),
+                        if is_primary {
+                            "role=current".into()
+                        } else {
+                            "role=optional".into()
+                        },
+                        snippet(&text, 180),
+                    ],
                 }
             }
             Err(e) => EvalCheck {
                 key: key.into(),
                 label: label.into(),
-                status: "unsupported".into(),
-                detail: "请求失败".into(),
-                evidence: vec![url.clone(), redact(&ctx.provider, &e)],
+                status: if is_primary {
+                    "unsupported"
+                } else {
+                    "optional"
+                }
+                .into(),
+                detail: if is_primary {
+                    "当前入口请求失败".into()
+                } else {
+                    "可选入口请求失败，不影响当前配置".into()
+                },
+                evidence: vec![
+                    url.clone(),
+                    if is_primary {
+                        "role=current".into()
+                    } else {
+                        "role=optional".into()
+                    },
+                    redact(&ctx.provider, &e),
+                ],
             },
         };
         out.push(check);
     }
     out
+}
+
+fn provider_protocol_key(provider: &Provider) -> &'static str {
+    match provider.api_format {
+        ApiFormat::Anthropic => "anthropic_messages",
+        ApiFormat::Openai => {
+            let endpoint = format!(
+                "{} {}",
+                provider.api_host.to_ascii_lowercase(),
+                provider
+                    .api_path
+                    .as_deref()
+                    .unwrap_or_default()
+                    .to_ascii_lowercase()
+            );
+            if endpoint.contains("/v1beta/openai/chat/completions") {
+                "gemini_openai"
+            } else {
+                "openai_chat"
+            }
+        }
+    }
 }
 
 fn protocol_probe_body(fmt: &ApiFormat, model: &str) -> Value {
@@ -2309,11 +2506,29 @@ fn add_check(evidence: &mut Vec<String>, passed: &mut f64, ok: bool, label: &str
 
 fn stream_has_done(body: &str, fmt: &ApiFormat) -> bool {
     match fmt {
-        ApiFormat::Openai => body.contains("[DONE]"),
+        ApiFormat::Openai => {
+            body.contains("[DONE]")
+                || body.contains("response.completed")
+                || body.contains("\"type\":\"done\"")
+                || body.contains("\"type\":\"response.completed\"")
+        }
         ApiFormat::Anthropic => {
             body.contains("message_stop") || body.contains("\"type\":\"message_stop\"")
         }
     }
+}
+
+fn sse_data_event_count(body: &str) -> usize {
+    body.lines()
+        .filter_map(|line| {
+            let line = line.trim();
+            if !line.starts_with("data:") {
+                return None;
+            }
+            let data = line.trim_start_matches("data:").trim();
+            (!data.is_empty() && data != "[DONE]").then_some(())
+        })
+        .count()
 }
 
 fn stream_text(body: &str) -> String {
@@ -2332,6 +2547,21 @@ fn stream_text(body: &str) -> String {
                 .pointer("/choices/0/delta/content")
                 .and_then(Value::as_str)
             {
+                out.push_str(s);
+            }
+            if let Some(s) = v
+                .pointer("/choices/0/delta/reasoning_content")
+                .and_then(Value::as_str)
+            {
+                out.push_str(s);
+            }
+            if let Some(s) = v
+                .pointer("/choices/0/message/content")
+                .and_then(Value::as_str)
+            {
+                out.push_str(s);
+            }
+            if let Some(s) = v.get("delta").and_then(Value::as_str) {
                 out.push_str(s);
             }
             if let Some(s) = v

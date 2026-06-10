@@ -675,16 +675,25 @@ function toggleKeyVisibility() {
 }
 
 function onFormatChange() {
-  const fmt = document.getElementById('pf-format').value;
-  const hostEl = document.getElementById('pf-host');
+  const fmtEl = document.getElementById('pf-format');
+  if (!fmtEl) return;
+  const fmt = fmtEl.value;
   const pathEl = document.getElementById('pf-path');
+  const badge = document.getElementById('pf-format-badge');
 
-  // Always update placeholder based on format (it's just hint text)
-  if (hostEl) {
-    hostEl.placeholder = fmt === 'openai'
-      ? 'https://api.openai.com'
-      : 'https://api.anthropic.com';
+  // 同步 API 格式徽章（兼容旧版徽章元素）
+  if (badge) badge.textContent = fmt === 'openai' ? 'OpenAI' : 'Anthropic';
+
+  // 同步下拉按钮 UI（锁定态显示锁定值，自动态显示带"自动"后缀）
+  const lockKey = fmtEl.dataset ? fmtEl.dataset.locked : null;
+  if (lockKey === '1') {
+    syncFormatDropdownUi(fmt);
+  } else {
+    syncFormatDropdownUi('auto');
   }
+
+  // 不再根据格式自动改 placeholder（保留 HTML 里写的默认值）
+  // 也不主动改 apiPath —— 等用户提交保存时由 saveProviderFromEditor 推断
 
   // Set default path
   if (pathEl) pathEl.value = fmt === 'openai' ? '/v1/chat/completions' : '/v1/messages';
@@ -699,13 +708,130 @@ function onFormatChange() {
   filterModelPanel();
 }
 
+// 根据用户填写的 API 地址自动推断格式
+function autoDetectFormatFromHost(hostValue) {
+  if (!hostValue) return 'anthropic';
+  const v = hostValue.toLowerCase();
+  // 命中 OpenAI 特征：路径含 chat/completions、域名含 openai、含 /v1 路径
+  if (v.includes('openai')
+      || v.includes('chat/completions')
+      || v.includes('/v1/chat')
+      || /\/v1\/?(\?|$)/.test(v)) {
+    return 'openai';
+  }
+  return 'anthropic';
+}
+
+// 用户输入 URL 时自动识别 + 更新徽章
+function onHostChange() {
+  const hostEl = document.getElementById('pf-host');
+  const fmtEl = document.getElementById('pf-format');
+  if (!hostEl || !fmtEl) return;
+  // 用户手动锁定为 anthropic / openai 时，URL 变化不自动覆盖
+  const locked = fmtEl.dataset && fmtEl.dataset.locked === '1';
+  if (locked) return;
+  const detected = autoDetectFormatFromHost(hostEl.value);
+  if (fmtEl.value !== detected) {
+    fmtEl.value = detected;
+    onFormatChange();
+  }
+  // 同步下拉按钮的当前选中态（自动识别模式下随 URL 实时变）
+  syncFormatDropdownUi('auto');
+}
+
+// 切换下拉显隐
+function toggleFormatDropdown(event) {
+  if (event) event.stopPropagation();
+  const dd = document.getElementById('pfFormatDropdown');
+  const trigger = document.getElementById('pfFormatTrigger');
+  if (!dd) return;
+  const isOpen = dd.style.display === 'flex';
+  if (isOpen) {
+    dd.style.display = 'none';
+    if (trigger) trigger.setAttribute('aria-expanded', 'false');
+  } else {
+    dd.style.display = 'flex';
+    if (trigger) trigger.setAttribute('aria-expanded', 'true');
+  }
+}
+
+// 用户在下拉里选了某个格式
+function pickApiFormat(format, event) {
+  if (event) event.stopPropagation();
+  const fmtEl = document.getElementById('pf-format');
+  const hostEl = document.getElementById('pf-host');
+  if (!fmtEl) return;
+
+  if (format === 'auto') {
+    // 切回自动识别：解锁 + 立刻按 URL 重算
+    fmtEl.dataset.locked = '0';
+    if (hostEl) {
+      const detected = autoDetectFormatFromHost(hostEl.value);
+      fmtEl.value = detected;
+      onFormatChange();
+    }
+    syncFormatDropdownUi('auto');
+  } else {
+    // 锁定为 anthropic / openai
+    fmtEl.value = format;
+    fmtEl.dataset.locked = '1';
+    onFormatChange();
+    syncFormatDropdownUi(format);
+  }
+  // 关闭下拉
+  const dd = document.getElementById('pfFormatDropdown');
+  if (dd) dd.style.display = 'none';
+  const trigger = document.getElementById('pfFormatTrigger');
+  if (trigger) trigger.setAttribute('aria-expanded', 'false');
+}
+
+// 同步下拉按钮的显示（label + 选项高亮）
+function syncFormatDropdownUi(activeFormat) {
+  const fmtEl = document.getElementById('pf-format');
+  const labelEl = document.getElementById('pfFormatTriggerLabel');
+  if (!fmtEl || !labelEl) return;
+  // 决定 label 文本：auto 时按 URL 实时显示，锁定时显示锁定值
+  let display;
+  if (activeFormat === 'auto') {
+    fmtEl.dataset.locked = '0';
+    // 自动识别模式下只显示「自动」，不暴露具体协议
+    display = '自动';
+  } else {
+    display = activeFormat === 'openai' ? 'OpenAI' : 'Anthropic';
+  }
+  labelEl.textContent = display;
+  // 高亮下拉里被选中的项
+  document.querySelectorAll('.pf-format-option').forEach(opt => {
+    const optFmt = opt.getAttribute('data-format');
+    const check = opt.querySelector('.pf-format-check');
+    let isActive = false;
+    if (activeFormat === 'auto') {
+      isActive = optFmt === 'auto';
+    } else {
+      isActive = optFmt === activeFormat;
+    }
+    if (check) check.style.display = isActive ? 'inline-block' : 'none';
+    if (isActive) {
+      opt.style.background = 'var(--accent-light)';
+      opt.style.color = 'var(--accent)';
+    } else {
+      opt.style.background = 'transparent';
+      opt.style.color = 'var(--text-primary)';
+    }
+  });
+}
+
 function openProviderEditor(id) {
-  const modal = document.getElementById('providerModal');
   const title = document.getElementById('providerModalTitle');
   const p = id ? providerStore.providers.find(x => x.id === id) : null;
   document.getElementById('pf-id').value = p ? p.id : '';
   document.getElementById('pf-name').value = p ? p.name : '';
-  document.getElementById('pf-format').value = p ? (p.apiFormat || 'anthropic') : 'anthropic';
+  const fmtElInit = document.getElementById('pf-format');
+  if (fmtElInit) {
+    fmtElInit.value = p ? (p.apiFormat || 'anthropic') : 'anthropic';
+    // 编辑已有 provider：锁定为已存格式；新增：默认自动识别
+    fmtElInit.dataset.locked = p ? '1' : '0';
+  }
 
   // Show only host (origin) in URL field; path is stored separately in pf-path
   const host = p ? p.apiHost : '';
@@ -734,11 +860,8 @@ function openProviderEditor(id) {
   updateSelectedModelsUI();
 
   if (title) title.textContent = p ? '编辑供应商' : '新增供应商';
-  // reset connection status
-  const dot = document.getElementById('pf-conn-dot');
-  const text = document.getElementById('pf-conn-text');
-  if (dot) dot.className = 'conn-dot no';
-  if (text) text.textContent = '未测试';
+  const subtitleEl = document.getElementById('providerModalSubtitle');
+  if (subtitleEl) subtitleEl.textContent = p ? `正在编辑「${p.name}」` : '配置供应商信息和模型';
 
   // Start with configured models in list
   activeModelsList = [...selectedModels];
@@ -756,7 +879,24 @@ function openProviderEditor(id) {
   if (searchInput) searchInput.value = '';
 
   onFormatChange();
-  if (modal) modal.classList.add('is-open');
+  // 切到「新增/编辑供应商」普通 page，保持顶部 tab 栏可见
+  navigateTo('provider-editor');
+
+  // 注册全局点击关闭 API 格式下拉（首次进入时挂一次）
+  if (!window._pfFormatDropdownGlobalBound) {
+    window._pfFormatDropdownGlobalBound = true;
+    window.addEventListener('click', (e) => {
+      const dd = document.getElementById('pfFormatDropdown');
+      const select = document.getElementById('pfFormatSelect');
+      if (!dd || !select) return;
+      if (select.contains(e.target)) return;
+      if (dd.style.display === 'flex') {
+        dd.style.display = 'none';
+        const trigger = document.getElementById('pfFormatTrigger');
+        if (trigger) trigger.setAttribute('aria-expanded', 'false');
+      }
+    });
+  }
 
   // If existing provider has valid credentials, trigger background real-time fetch immediately
   if (p && p.apiHost && p.apiKey) {
@@ -767,8 +907,8 @@ function openProviderEditor(id) {
 }
 
 function closeProviderEditor() {
-  const modal = document.getElementById('providerModal');
-  if (modal) modal.classList.remove('is-open');
+  // 返回供应商列表
+  navigateTo('providers');
 }
 
 async function saveProviderFromEditor() {
@@ -957,13 +1097,13 @@ async function fetchModelsForEditor() {
   if (!invoke) return;
   const baseUrl = document.getElementById('pf-host').value.trim();
   const apiKey = document.getElementById('pf-key').value.trim();
-  const fmt = document.getElementById('pf-format').value;
+  const fmtEl = document.getElementById('pf-format');
+  const primaryFmt = fmtEl ? fmtEl.value : 'anthropic';
   const btn = document.getElementById('pf-fetch-btn');
   if (!baseUrl || !apiKey) {
     addLog('warn', '请先填写 API 地址和密钥');
     return;
   }
-  if (btn) { btn.disabled = true; btn.textContent = '⏳ 拉取中…'; }
 
   // Parse host from base URL
   let host = baseUrl;
@@ -972,22 +1112,55 @@ async function fetchModelsForEditor() {
     host = url.origin;
   } catch {}
 
+  // 计算尝试顺序：先按当前协议；如失败回退到另一种协议
+  const formatsToTry = primaryFmt === 'openai' ? ['openai', 'anthropic'] : ['anthropic', 'openai'];
+  const fmtLabel = (f) => f === 'openai' ? 'OpenAI' : 'Anthropic';
+
+  let succeeded = null;
+  let lastError = null;
+  for (let i = 0; i < formatsToTry.length; i++) {
+    const tryFmt = formatsToTry[i];
+    if (btn) { btn.disabled = true; btn.textContent = `⏳ 用 ${fmtLabel(tryFmt)} 协议拉取中…`; }
+    if (i > 0) {
+      addLog('info', `尝试用 ${fmtLabel(tryFmt)} 协议重新拉取…`);
+    } else {
+      addLog('info', `开始用 ${fmtLabel(tryFmt)} 协议拉取模型列表…`);
+    }
+    try {
+      const result = await invoke('fetch_models', { args: { host, api_key: apiKey, api_format: tryFmt } });
+      if (result.models && result.models.length > 0) {
+        succeeded = { fmt: tryFmt, models: result.models };
+        break;
+      } else {
+        lastError = new Error(`${fmtLabel(tryFmt)} 协议返回的模型列表为空`);
+      }
+    } catch (e) {
+      lastError = e;
+    }
+  }
+
   try {
-    const result = await invoke('fetch_models', { args: { host, api_key: apiKey, api_format: fmt } });
-    if (result.models && result.models.length > 0) {
-      activeModelsList = result.models;
+    if (succeeded) {
+      activeModelsList = succeeded.models;
+
+      // 拉取成功：把下拉/select 同步到真正命中的协议，并锁定（避免下次输入 URL 又被覆盖）
+      if (fmtEl) {
+        fmtEl.value = succeeded.fmt;
+        fmtEl.dataset.locked = '1';
+        if (typeof onFormatChange === 'function') onFormatChange();
+      }
 
       // Auto fill first model if empty
       const modelInput = document.getElementById('pf-model');
       if (modelInput && !modelInput.value) {
-        selectModel(result.models[0]);
+        selectModel(succeeded.models[0]);
       }
 
       modelGroupStates = {};
       filterModelPanel();
-      addLog('ok', `成功拉取到 ${result.models.length} 个模型`);
+      addLog('ok', `✅ 用 ${fmtLabel(succeeded.fmt)} 协议成功拉取到 ${succeeded.models.length} 个模型`);
     } else {
-      throw new Error('返回的模型列表为空');
+      throw lastError || new Error('未知错误');
     }
   } catch (e) {
     // No more default preset list overrides - strictly show what is configured

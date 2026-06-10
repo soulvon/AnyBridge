@@ -32,7 +32,12 @@ async function refreshIdeModels() {
     if (btn) { btn.disabled = true; btn.querySelector('span') && (btn.querySelector('span').textContent = '拉取中...'); }
     const target = getTargetIde();
     const info = await invoke('refresh_ide_models', { target });
-    ideModels = info.models || [];
+    const refreshed = await invoke('list_ide_models');
+    if (refreshed && Array.isArray(refreshed.models)) {
+      ideModels = refreshed.models;
+    } else {
+      ideModels = info.models || [];
+    }
     ideMeta = {
       source: 'api',
       capturedAt: Date.now(),
@@ -48,7 +53,6 @@ async function refreshIdeModels() {
     // 刷新模态框内的槽位列表
     maybeAutoSelectRecommendedSlot();
     renderSlotCatalogList();
-    updateSlotVisionHint();
     addLog('info', `模型列表已更新：${info.email} (${info.plan_name})，${info.models.length} 个模型`);
   } catch (e) {
     addLog('error', '刷新模型列表失败: ' + e);
@@ -62,6 +66,42 @@ function originalNameOf(uid) {
   const m = (ideModels || []).find(x => x.id === uid);
   return m ? m.name : uid;
 }
+
+// ── 品牌检测与快速筛选 ──
+const MODEL_BRANDS = [
+  { id: 'claude', label: 'Claude', match: /claude|opus|sonnet|haiku|fable/i },
+  { id: 'gpt', label: 'GPT', match: /gpt|o1\b|o3\b|o4\b|codex/i },
+  { id: 'gemini', label: 'Gemini', match: /gemini/i },
+  { id: 'grok', label: 'Grok', match: /grok|xai/i },
+  { id: 'deepseek', label: 'DeepSeek', match: /deepseek/i },
+  { id: 'kimi', label: 'Kimi', match: /kimi|moonshot/i },
+  { id: 'qwen', label: 'Qwen', match: /qwen|tongyi/i },
+  { id: 'minimax', label: 'MiniMax', match: /minimax/i },
+  { id: 'glm', label: 'GLM', match: /glm|chatglm|zhipu/i },
+];
+
+function detectModelBrand(name, uid) {
+  const hay = `${name || ''} ${uid || ''}`;
+  for (const b of MODEL_BRANDS) {
+    if (b.match.test(hay)) return b.id;
+  }
+  return 'other';
+}
+
+function getAvailableBrands(items, getName, getUid) {
+  const set = new Set();
+  items.forEach(item => {
+    const brand = detectModelBrand(getName(item), getUid(item));
+    if (brand !== 'other') set.add(brand);
+  });
+  return MODEL_BRANDS.filter(b => set.has(b.id));
+}
+
+// 排序/筛选状态
+let slotCatalogBrand = '';
+let slotCatalogSort = 'name-asc';
+let mappingCatalogProvider = '';
+let mappingCatalogSort = 'name-asc';
 
 // 渲染单个 target 链，失效（供应商不存在或未启用）的标红 ⚠
 function renderTargetChain(targets) {
@@ -87,22 +127,6 @@ function renderTargetChain(targets) {
   }).join('')}</div>`;
 }
 
-function renderModelMapSummary(slots) {
-  const el = document.getElementById('modelMapSummary');
-  if (!el) return;
-  const accountCount = (ideModels || []).filter(isAccountSlotModel).length;
-  const extendedCount = (ideModels || []).filter(m => !isAccountSlotModel(m)).length;
-  const mappedCount = (slots || []).length;
-  const riskCount = (slots || []).filter(s => slotVisionAssessment(s.modelUid, s.targets || [], s.supportsImages !== false).state === 'risk').length;
-  const pill = (label, value, warn = false) => `<span class="tag" style="background:${warn ? 'rgba(217,119,6,.12)' : 'var(--bg-input)'};color:${warn ? 'var(--warn,#d97706)' : 'var(--text-muted)'};border:1px solid ${warn ? 'rgba(217,119,6,.28)' : 'var(--border)'};font-size:10px;padding:2px 7px;border-radius:7px;font-weight:700;white-space:nowrap;">${label} ${value}</span>`;
-  el.innerHTML = [
-    pill('当前账号槽位', accountCount),
-    pill('内置槽位', extendedCount),
-    pill('已映射', mappedCount),
-    riskCount ? pill('图片风险', riskCount, true) : '',
-  ].filter(Boolean).join('');
-}
-
 async function renderModelMap() {
   const body = document.getElementById('modelMapBody');
   if (!body) return;
@@ -121,44 +145,43 @@ async function renderModelMap() {
   if (!Array.isArray(modelMapStore.injected)) modelMapStore.injected = [];
   modelMapStore.unlockScope = normalizeUnlockScope(modelMapStore.unlockScope || modelMapStore.slotDisplayMode);
   modelMapStore.slotDisplayMode = modelMapStore.unlockScope;
+  modelMapStore.slotVisibilityMode = normalizeSlotVisibilityMode(modelMapStore.slotVisibilityMode);
+  ensureSlotVisibilityArray();
   const badge = document.getElementById('injected-count-badge');
   if (badge) badge.textContent = '模型槽位管理';
 
   const slots = modelMapStore.slots || [];
-  renderModelMapSummary(slots);
-  if (slots.length === 0) {
-    body.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--text-muted);padding:18px">暂无映射，点击右上角「+ 添加映射」</td></tr>';
+  const rows = slots.map(s => ({ kind: 'mapped', slot: s, model: slotModelOf(s.modelUid) }));
+  if (rows.length === 0) {
+    body.innerHTML = '<tr><td colspan="4" style="text-align:center;color:var(--text-muted);padding:18px">暂无模型映射，点击「添加映射」创建第一条关系</td></tr>';
     return;
   }
 
-  body.innerHTML = slots.map(s => {
+  body.innerHTML = rows.map(row => {
+    const s = row.slot;
     const orig = originalNameOf(s.modelUid);
     const customName = s.displayName && s.displayName.trim();
     const baseName = customName || orig;
     const prefix = (modelMapStore.namePrefix || '').trim();
     const tpl = (modelMapStore.labelTemplate || '').trim();
-    // providerName/apiModel 仅作列表预览(非 100% 等于后端实际渲染,因为多 targets 优先级等细节),
-    // 后端改写时才决定最终值;这里给个合理近似
     const firstTarget = (s.targets && s.targets[0]) || null;
     const providerName = firstTarget ? providerNameOf(firstTarget.providerId) : '';
     const apiModel = firstTarget ? firstTarget.model : '';
     const display = renderLabelTemplate(tpl, {
       prefix, label: baseName, provider: providerName, apiModel
     });
-    const enabled = s.enabled !== false;
     const chain = (s.targets && s.targets.length)
       ? renderTargetChain(s.targets)
       : `<span style="color:var(--warn,#d97706);cursor:pointer" onclick="openFailoverEditor('${escAttr(s.modelUid)}')">未设置 ⚠ [点击配置]</span>`;
     const vision = slotVisionAssessment(s.modelUid, s.targets || [], s.supportsImages !== false);
     return `
-      <tr data-model-uid="${escAttr(s.modelUid)}" data-vision-risk="${vision.state === 'risk' ? '1' : '0'}">
+      <tr data-model-uid="${escAttr(s.modelUid)}" data-row-kind="mapped">
         <td class="editable-cell display-name-cell" onclick="startEditDisplayName(this, '${escAttr(s.modelUid)}')" title="${escAttr(display)}">${escAttr(display)}</td>
-        <td>${escAttr(orig)}</td>
-        <td class="model-raw-cell model-vision-cell" title="${escAttr(s.modelUid)}">
-          ${renderVisionPill(vision, true)}
+        <td>
+          <div>${escAttr(orig)}</div>
+          <div style="margin-top:3px;">${renderVisionPill(vision, true)}</div>
         </td>
         <td class="model-target-cell" onclick="openFailoverEditor('${escAttr(s.modelUid)}')" title="配置故障转移分流目标">${chain}</td>
-        <td><div class="toggle ${enabled ? 'on' : ''}" onclick="toggleSlotEnabled('${escAttr(s.modelUid)}')"></div></td>
         <td>
           <div class="model-map-actions">
             <button class="btn-ghost model-map-action-btn" onclick="openSlotEditor('${escAttr(s.modelUid)}')">编辑</button>
@@ -224,29 +247,6 @@ function startEditDisplayName(td, uid) {
 }
 
 // ═══════ MODEL FILTERING LOGIC ═══════
-let currentModelFilter = 'all';
-
-function setModelFilter(filter) {
-  currentModelFilter = filter;
-
-  // 更新 Tab 按钮的激活状态样式
-  document.querySelectorAll('.filter-tab-item').forEach(btn => {
-    if (btn.dataset.filter === filter) {
-      btn.classList.add('active');
-      btn.style.background = 'var(--bg-card)';
-      btn.style.color = 'var(--text-primary)';
-      btn.style.boxShadow = 'var(--shadow-sm)';
-    } else {
-      btn.classList.remove('active');
-      btn.style.background = 'transparent';
-      btn.style.color = 'var(--text-muted)';
-      btn.style.boxShadow = 'none';
-    }
-  });
-
-  filterModelTable();
-}
-
 function filterModelTable() {
   const searchInput = document.getElementById('model-search-input');
   const query = searchInput ? searchInput.value.toLowerCase().trim() : '';
@@ -260,7 +260,7 @@ function filterModelTable() {
     const row = rows[i];
 
     // 跳过空数据提示行
-    if (row.cells.length === 1 && row.cells[0].colSpan >= 6) {
+    if (row.cells.length === 1 && row.cells[0].colSpan >= 5) {
       continue;
     }
 
@@ -274,21 +274,7 @@ function filterModelTable() {
                           display.includes(query) ||
                           slot.includes(query);
 
-    // 状态过滤判断
-    let matchesFilter = true;
-    const isUnset = row.cells[3].textContent.includes('未设置');
-    const isVisionRisk = row.dataset.visionRisk === '1';
-    const isHijacked = row.cells[4].querySelector('.toggle').classList.contains('on');
-
-    if (currentModelFilter === 'hijacked') {
-      matchesFilter = isHijacked;
-    } else if (currentModelFilter === 'unset') {
-      matchesFilter = isUnset;
-    } else if (currentModelFilter === 'vision-risk') {
-      matchesFilter = isVisionRisk;
-    }
-
-    if (matchesSearch && matchesFilter) {
+    if (matchesSearch) {
       row.style.display = '';
     } else {
       row.style.display = 'none';
@@ -500,6 +486,8 @@ async function saveModelMapSettingsFromModal() {
 // modelMapStore.injected: [{ label, modelUid, providerId, model, supportsImages }]
 // 加载时确保存在（兼容旧 model-map.json）
 let injectedCatalog = null;     // 128 模型内置目录（首次调用时加载）
+let slotVisibilityRows = [];
+let slotVisibilityDirty = false;
 
 const UNLOCK_SCOPE_LABELS = {
   all: '全部槽位',
@@ -511,30 +499,211 @@ const UNLOCK_SCOPE_LABELS = {
   configured: '已配置 BYOK',
 };
 
+const SLOT_VISIBILITY_LABELS = {
+  mapped: '应用：仅显示已映射槽位',
+  official: '应用：已映射 + 官方模型',
+  all: '应用：已映射 + 官方模型 + 全部',
+};
+
+const SLOT_VISIBILITY_SHORT_LABELS = {
+  mapped: '仅已映射',
+  official: '已映射 + 官方',
+  all: '全部模型',
+};
+
 function normalizeUnlockScope(mode) {
   return Object.prototype.hasOwnProperty.call(UNLOCK_SCOPE_LABELS, mode) ? mode : 'all';
+}
+
+function normalizeSlotVisibilityMode(mode) {
+  return Object.prototype.hasOwnProperty.call(SLOT_VISIBILITY_LABELS, mode) ? mode : 'mapped';
+}
+
+function ensureSlotVisibilityArray() {
+  if (!Array.isArray(modelMapStore.slotVisibility)) modelMapStore.slotVisibility = [];
+  return modelMapStore.slotVisibility;
+}
+
+function slotVisibilityOverrideMap() {
+  const map = new Map();
+  ensureSlotVisibilityArray().forEach(item => {
+    if (item && item.modelUid) map.set(item.modelUid, item.visible !== false);
+  });
+  return map;
+}
+
+function baseSlotVisibleForMode(row, mode) {
+  const normalized = normalizeSlotVisibilityMode(mode);
+  if (row.isMapped) return true;
+  if (row.isOfficial) return normalized === 'official' || normalized === 'all';
+  return normalized === 'all';
+}
+
+function updateSlotPresetButtons(rows = slotVisibilityRows) {
+  const allRows = Array.isArray(rows) ? rows : [];
+  const counts = {
+    mapped: allRows.filter(row => baseSlotVisibleForMode(row, 'mapped')).length,
+    official: allRows.filter(row => baseSlotVisibleForMode(row, 'official')).length,
+    all: allRows.length,
+  };
+  const activeMode = normalizeSlotVisibilityMode(modelMapStore.slotVisibilityMode);
+  document.querySelectorAll('.model-slot-preset').forEach(btn => {
+    const mode = normalizeSlotVisibilityMode(btn.dataset.mode);
+    let labelEl = btn.querySelector('.model-slot-preset-label');
+    let countEl = btn.querySelector('.model-slot-preset-count');
+    if (!labelEl || !countEl) {
+      btn.textContent = '';
+      labelEl = document.createElement('span');
+      labelEl.className = 'model-slot-preset-label';
+      countEl = document.createElement('span');
+      countEl.className = 'model-slot-preset-count';
+      btn.append(labelEl, countEl);
+    }
+    const label = btn.dataset.label || SLOT_VISIBILITY_LABELS[mode] || mode;
+    const count = counts[mode] || 0;
+    labelEl.textContent = label;
+    countEl.textContent = String(count);
+    btn.classList.toggle('active', mode === activeMode);
+    btn.setAttribute('aria-pressed', mode === activeMode ? 'true' : 'false');
+    btn.title = `${label}：${count} 个槽位`;
+  });
+}
+
+function updateSlotFilterCounts(rows = slotVisibilityRows) {
+  const filterEl = document.getElementById('injected-filter');
+  if (!filterEl) return;
+  const allRows = Array.isArray(rows) ? rows : [];
+  const counts = {
+    all: allRows.length,
+    visible: allRows.filter(row => row.visible).length,
+    hidden: allRows.filter(row => !row.visible).length,
+    mapped: allRows.filter(row => row.isMapped).length,
+    official: allRows.filter(row => row.isOfficial).length,
+    unconfigured: allRows.filter(row => !row.isMapped && !row.isOfficial && !row.hasConfiguredByok).length,
+  };
+  const labels = {
+    all: '全部',
+    visible: '显示中',
+    hidden: '已隐藏',
+    mapped: '已映射',
+    official: '官方模型',
+    unconfigured: '未配置',
+  };
+  Array.from(filterEl.options).forEach(option => {
+    const value = option.value;
+    if (!Object.prototype.hasOwnProperty.call(labels, value)) return;
+    option.textContent = `${labels[value]} (${counts[value] || 0})`;
+  });
+}
+
+function setSlotVisibilityFilter(value) {
+  const filter = document.getElementById('injected-filter');
+  if (filter) filter.value = value;
+}
+
+function setSlotVisibilityDirty(dirty) {
+  slotVisibilityDirty = !!dirty;
+  const saveBtn = document.getElementById('slot-visibility-save-btn');
+  const saveLabel = document.getElementById('slot-visibility-save-label');
+  if (saveBtn) saveBtn.classList.toggle('has-pending', slotVisibilityDirty);
+  if (saveLabel) saveLabel.textContent = slotVisibilityDirty ? '保存更改' : '保存';
+  updateSlotPolicySummary();
 }
 
 function updateSlotPolicySummary() {
   const summary = document.getElementById('slot-policy-summary');
   if (!summary) return;
-  const injected = Array.isArray(modelMapStore.injected) ? modelMapStore.injected : [];
-  const byokCount = injected.filter(x => x && x.providerId && String(x.model || '').trim()).length;
-  const managedCount = injected.length;
-  const scope = normalizeUnlockScope(modelMapStore.unlockScope || modelMapStore.slotDisplayMode);
-  const parts = [`解锁范围：${UNLOCK_SCOPE_LABELS[scope] || UNLOCK_SCOPE_LABELS.all}`];
-  if (managedCount > 0) parts.push(`托管 ${managedCount}`);
-  if (byokCount > 0) parts.push(`BYOK ${byokCount}`);
-  summary.textContent = parts.join(' · ');
+  const visibility = normalizeSlotVisibilityMode(modelMapStore.slotVisibilityMode);
+  const rows = slotVisibilityRows || [];
+  const visibleCount = rows.filter(r => r.visible).length;
+  const overrideCount = ensureSlotVisibilityArray().length;
+  const shortLabel = SLOT_VISIBILITY_SHORT_LABELS[visibility] || SLOT_VISIBILITY_SHORT_LABELS.mapped;
+  summary.textContent = [
+    `当前策略：${shortLabel}`,
+    rows.length ? `已显示 ${visibleCount} / ${rows.length}` : '',
+    overrideCount ? `单独调整 ${overrideCount}` : '',
+    slotVisibilityDirty ? '未保存' : '',
+  ].filter(Boolean).join(' · ');
 }
 
-async function setSlotDisplayMode(mode) {
-  modelMapStore.unlockScope = normalizeUnlockScope(mode);
-  modelMapStore.slotDisplayMode = modelMapStore.unlockScope; // 兼容旧 sidecar / 旧配置
-  const select = document.getElementById('slot-display-mode');
-  if (select) select.value = modelMapStore.unlockScope;
-  updateSlotPolicySummary();
-  addLog('info', '模型槽位解锁范围已切换，保存后生效');
+async function setSlotVisibilityMode(mode) {
+  const nextMode = normalizeSlotVisibilityMode(mode);
+  const hadOverrides = ensureSlotVisibilityArray().length > 0;
+  const changed = normalizeSlotVisibilityMode(modelMapStore.slotVisibilityMode) !== nextMode || hadOverrides;
+  modelMapStore.slotVisibilityMode = nextMode;
+  modelMapStore.slotVisibility = [];
+  modelMapStore.unlockScope = 'all';
+  modelMapStore.slotDisplayMode = 'all';
+  // 保持当前筛选不变（默认全部），不自动切到 visible
+  if (changed) setSlotVisibilityDirty(true);
+  updateSlotPresetButtons();
+  // 点击 flash 动画：让按钮短暂闪烁表示已应用
+  const clickedBtn = document.querySelector(`.model-slot-preset[data-mode="${nextMode}"]`);
+  if (clickedBtn) {
+    clickedBtn.classList.add('just-applied');
+    setTimeout(() => clickedBtn.classList.remove('just-applied'), 600);
+  }
+  await renderInjectedList();
+  const shortLabel = SLOT_VISIBILITY_SHORT_LABELS[nextMode] || nextMode;
+  addLog('info', `策略「${shortLabel}」已应用，共 ${slotVisibilityRows.filter(r => r.visible).length} 个槽位显示，保存后生效`);
+}
+
+function setSlotVisibilityOverride(uid, visible) {
+  if (!uid) return;
+  modelMapStore.slotVisibility = ensureSlotVisibilityArray().filter(item => item && item.modelUid !== uid);
+  const row = (slotVisibilityRows || []).find(item => item.uid === uid);
+  if (row && row.baseVisible === !!visible) return;
+  modelMapStore.slotVisibility.push({ modelUid: uid, visible: !!visible });
+}
+
+function onSlotVisibilityToggle(uid, checked) {
+  setSlotVisibilityOverride(uid, checked);
+  setSlotVisibilityDirty(true);
+  renderInjectedList();
+}
+
+function toggleSlotVisibilitySelectAll(checked) {
+  document.querySelectorAll('.slot-visibility-row-check').forEach(input => {
+    const row = input.closest('tr');
+    if (!row || row.style.display === 'none') return;
+    input.checked = !!checked;
+  });
+  syncSlotVisibilitySelectionState();
+}
+
+function selectedSlotVisibilityUids() {
+  return Array.from(document.querySelectorAll('.slot-visibility-row-check:checked'))
+    .map(input => input.dataset.uid)
+    .filter(Boolean);
+}
+
+function syncSlotVisibilitySelectionState() {
+  const checks = Array.from(document.querySelectorAll('.slot-visibility-row-check'));
+  const selected = checks.filter(input => input.checked).length;
+  const selectAll = document.getElementById('slot-visibility-select-all');
+  if (selectAll) {
+    selectAll.checked = checks.length > 0 && selected === checks.length;
+    selectAll.indeterminate = selected > 0 && selected < checks.length;
+  }
+  const label = document.getElementById('slot-visibility-select-label');
+  if (label) label.textContent = selected ? `已选 ${selected}` : '选择';
+  const disabled = selected === 0;
+  const enableBtn = document.getElementById('slot-bulk-enable-btn');
+  const disableBtn = document.getElementById('slot-bulk-disable-btn');
+  if (enableBtn) enableBtn.disabled = disabled;
+  if (disableBtn) disableBtn.disabled = disabled;
+}
+
+function batchSetSlotVisibility(visible) {
+  const uids = selectedSlotVisibilityUids();
+  if (uids.length === 0) {
+    showCustomAlert('请先勾选要批量调整的模型槽位', '未选择槽位', 'info');
+    return;
+  }
+  uids.forEach(uid => setSlotVisibilityOverride(uid, visible));
+  setSlotVisibilityDirty(true);
+  renderInjectedList();
+  addLog('info', `已${visible ? '启用' : '禁用'} ${uids.length} 个模型槽位，保存后生效`);
 }
 
 function modelSlotSkeletonHtml(rows = 9) {
@@ -544,7 +713,7 @@ function modelSlotSkeletonHtml(rows = 9) {
       <span class="model-slot-skeleton-line name" style="--delay:${idx * 45 + 40}ms"></span>
       <span class="model-slot-skeleton-line uid" style="--delay:${idx * 45 + 80}ms"></span>
       <span class="model-slot-skeleton-line provider" style="--delay:${idx * 45 + 120}ms"></span>
-      <span class="model-slot-skeleton-line model" style="--delay:${idx * 45 + 160}ms"></span>
+      <span class="model-slot-skeleton-check" style="--delay:${idx * 45 + 160}ms"></span>
     </div>`).join('');
   return `
     <div class="model-slot-skeleton" role="status" aria-label="正在加载模型槽位目录">
@@ -552,8 +721,8 @@ function modelSlotSkeletonHtml(rows = 9) {
         <span></span>
         <span>模型名</span>
         <span>modelUid</span>
-        <span>供应商</span>
-        <span>model 字段</span>
+        <span>状态</span>
+        <span>显示</span>
       </div>
       ${body}
     </div>`;
@@ -572,19 +741,28 @@ async function ensureInjected() {
 }
 
 async function openInjectedEditor() {
+  const page = document.getElementById('page-model-slots');
+  if (!page) return;
+  navigateTo('model-slots');
+  try {
+    const res = await invoke('load_model_map');
+    if (res && Array.isArray(res.slots)) modelMapStore = res;
+  } catch (e) {
+    addLog('warn', '加载模型槽位配置失败: ' + e);
+  }
   // 确保 modelMapStore.injected 存在
   if (!Array.isArray(modelMapStore.injected)) modelMapStore.injected = [];
-  const modal = document.getElementById('injectedModal');
   const list = document.getElementById('injected-list');
-  if (!modal) return;
-  modal.classList.add('is-open');
+  await ensureIdeModels();
   document.getElementById('injected-search').value = '';
   document.getElementById('injected-filter').value = 'all';
   modelMapStore.unlockScope = normalizeUnlockScope(modelMapStore.unlockScope || modelMapStore.slotDisplayMode);
   modelMapStore.slotDisplayMode = modelMapStore.unlockScope;
-  const displayMode = document.getElementById('slot-display-mode');
-  if (displayMode) displayMode.value = modelMapStore.unlockScope;
-  updateSlotPolicySummary();
+  modelMapStore.slotVisibilityMode = normalizeSlotVisibilityMode(modelMapStore.slotVisibilityMode);
+  ensureSlotVisibilityArray();
+  slotVisibilityDirty = false;
+  updateSlotPresetButtons();
+  setSlotVisibilityDirty(false);
   if (list) {
     list.innerHTML = modelSlotSkeletonHtml();
   }
@@ -600,135 +778,174 @@ async function openInjectedEditor() {
 }
 
 function closeInjectedEditor() {
-  const modal = document.getElementById('injectedModal');
-  if (modal) modal.classList.remove('is-open');
+  navigateTo('models');
+}
+
+function buildSlotVisibilityRows() {
+  const rows = new Map();
+  const ensureRow = (uid, label, apiId = '', source = 'catalog') => {
+    if (!uid) return null;
+    const existing = rows.get(uid) || {
+      uid,
+      label: label || uid,
+      apiId: apiId || '',
+      isMapped: false,
+      isOfficial: false,
+      hasConfiguredByok: false,
+      source,
+    };
+    if (label && (!existing.label || existing.label === existing.uid)) existing.label = label;
+    if (apiId && !existing.apiId) existing.apiId = apiId;
+    if (source === 'account') existing.source = 'account';
+    rows.set(uid, existing);
+    return existing;
+  };
+
+  (ideModels || []).forEach(m => {
+    const row = ensureRow(m.id, m.name, m.api_id || '', isAccountSlotModel(m) ? 'account' : 'extended');
+    if (row && isAccountSlotModel(m)) row.isOfficial = true;
+  });
+  (injectedCatalog || []).forEach(m => {
+    ensureRow(m.modelUid, m.label, m.apiId || '', 'catalog');
+  });
+  (modelMapStore.injected || []).forEach(i => {
+    const row = ensureRow(i.modelUid, i.label, i.model || '', 'catalog');
+    if (row) row.hasConfiguredByok = !!(i.providerId && String(i.model || '').trim());
+  });
+  (modelMapStore.slots || []).forEach(s => {
+    const fallback = originalNameOf(s.modelUid);
+    const row = ensureRow(s.modelUid, s.displayName || fallback, '', 'mapped');
+    if (!row) return;
+    row.isMapped = true;
+    row.label = s.displayName || row.label || fallback;
+    row.mappingEnabled = s.enabled !== false;
+  });
+
+  const overrides = slotVisibilityOverrideMap();
+  const mode = normalizeSlotVisibilityMode(modelMapStore.slotVisibilityMode);
+  const statusOf = row => {
+    if (row.isMapped) return row.mappingEnabled === false ? 'mapped-off' : 'mapped';
+    if (row.isOfficial) return 'official';
+    if (row.hasConfiguredByok) return 'configured';
+    return 'unconfigured';
+  };
+
+  return Array.from(rows.values()).map(row => {
+    const baseVisible = baseSlotVisibleForMode(row, mode);
+    const hasOverride = overrides.has(row.uid);
+    return {
+      ...row,
+      originalName: originalNameOf(row.uid),
+      baseVisible,
+      visible: hasOverride ? overrides.get(row.uid) : baseVisible,
+      hasOverride,
+      status: statusOf(row),
+    };
+  }).sort((a, b) => {
+    const rank = row => row.isMapped ? 0 : (row.isOfficial ? 1 : 2);
+    return rank(a) - rank(b) || a.label.localeCompare(b.label);
+  });
+}
+
+function renderSlotStatusPill(row) {
+  const styles = {
+    mapped: ['已映射', 'rgba(37,99,235,.10)', 'var(--accent)', 'rgba(37,99,235,.24)'],
+    'mapped-off': ['已映射', 'var(--bg-input)', 'var(--text-muted)', 'var(--border)'],
+    official: ['官方', 'rgba(22,163,74,.10)', 'var(--success,#16a34a)', 'rgba(22,163,74,.24)'],
+    configured: ['已配置', 'rgba(13,148,136,.10)', 'var(--accent-secondary,#0d9488)', 'rgba(13,148,136,.24)'],
+    unconfigured: ['未配置', 'rgba(217,119,6,.10)', 'var(--warn,#d97706)', 'rgba(217,119,6,.24)'],
+  };
+  const s = styles[row.status] || styles.unconfigured;
+  return `<span class="tag" style="background:${s[1]};color:${s[2]};border:1px solid ${s[3]};font-size:10px;padding:2px 7px;border-radius:7px;font-weight:700;white-space:nowrap;">${s[0]}</span>`;
 }
 
 async function renderInjectedList() {
   const list = document.getElementById('injected-list');
   if (!list) return;
-  const catalog = await ensureInjected();
-  const injected = modelMapStore.injected || [];
-  const injectedByUid = new Map(injected.map(i => [i.modelUid, i]));
-  const query = (document.getElementById('injected-search').value || '').toLowerCase().trim();
-  const filter = document.getElementById('injected-filter').value;
+  await ensureInjected();
+  const query = (document.getElementById('injected-search')?.value || '').toLowerCase().trim();
+  const filter = document.getElementById('injected-filter')?.value || 'all';
+  slotVisibilityRows = buildSlotVisibilityRows();
+  updateSlotPresetButtons(slotVisibilityRows);
+  updateSlotFilterCounts(slotVisibilityRows);
 
-  // 收集 provider 列表
-  let providers = [];
-  try {
-    const res = await invoke('list_providers');
-    providers = (res && Array.isArray(res.providers)) ? res.providers : [];
-  } catch (e) {
-    console.error('加载供应商列表失败:', e);
-  }
-  const providerOptions = providers.map(p => `<option value="${escAttr(p.id)}">${escAttr(p.name)}</option>`).join('');
-
-  // 过滤 + 渲染
-  const rows = catalog.filter(m => {
-    const cur = injectedByUid.get(m.modelUid);
-    const byokConfigured = !!(cur && cur.providerId && String(cur.model || '').trim());
-    if (filter === 'configured' && !byokConfigured) return false;
-    if (filter === 'unconfigured' && byokConfigured) return false;
+  const rows = slotVisibilityRows.filter(row => {
+    if (filter === 'visible' && !row.visible) return false;
+    if (filter === 'hidden' && row.visible) return false;
+    if (filter === 'mapped' && !row.isMapped) return false;
+    if (filter === 'official' && !row.isOfficial) return false;
+    if (filter === 'unconfigured' && (row.isMapped || row.isOfficial || row.hasConfiguredByok)) return false;
     if (!query) return true;
-    return m.label.toLowerCase().includes(query)
-        || m.modelUid.toLowerCase().includes(query)
-        || (m.apiId || '').toLowerCase().includes(query);
+    const hay = `${row.label || ''} ${row.uid || ''} ${row.apiId || ''}`.toLowerCase();
+    return hay.includes(query);
   });
 
   updateSlotPolicySummary();
+  const selectAll = document.getElementById('slot-visibility-select-all');
+  if (selectAll) {
+    selectAll.checked = false;
+    selectAll.indeterminate = false;
+  }
   const badge = document.getElementById('injected-count-badge');
   if (badge) badge.textContent = '模型槽位管理';
 
   if (rows.length === 0) {
-    list.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text-muted);font-size:12px;">无匹配模型</div>';
+    list.innerHTML = '<div style="padding:28px;text-align:center;color:var(--text-muted);font-size:12px;">无匹配模型槽位</div>';
+    syncSlotVisibilitySelectionState();
     return;
   }
 
-  list.innerHTML = `<table style="width:100%;border-collapse:collapse;font-size:12px;">
-    <thead style="position:sticky;top:0;background:var(--bg-secondary,#1a1a1a);z-index:1;">
-      <tr style="border-bottom:1px solid var(--border);">
-        <th style="padding:8px;text-align:left;width:24px;"></th>
-        <th style="padding:8px;text-align:left;">模型名</th>
-        <th style="padding:8px;text-align:left;width:280px;">modelUid</th>
-        <th style="padding:8px;text-align:left;width:160px;">供应商</th>
-        <th style="padding:8px;text-align:left;width:160px;">model 字段</th>
+  list.innerHTML = `<table class="slot-visibility-table">
+    <thead>
+      <tr>
+        <th style="width:34px;"></th>
+        <th>模型名</th>
+        <th>原始模型名</th>
+        <th>modelUid</th>
+        <th style="width:120px;">状态</th>
+        <th style="width:96px;text-align:right;">显示</th>
       </tr>
     </thead>
     <tbody>
-      ${rows.map(m => {
-        const cur = injectedByUid.get(m.modelUid);
-        const isManaged = !!cur;
-        const sel = cur && cur.providerId ? cur.providerId : '';
-        const mdl = (cur && cur.model) || m.apiId || '';
-        const hint = m.noApiIdHint ? `<span style="color:var(--warn,#d97706);font-size:10px;" title="${escAttr(m.noApiIdHint)}">需要手填</span>` : '';
-        return `<tr style="border-bottom:1px solid var(--border);">
-          <td style="padding:6px 8px;">
-            <input type="checkbox" data-uid="${escAttr(m.modelUid)}" ${isManaged ? 'checked' : ''} onchange="onInjectedToggle('${escAttr(m.modelUid)}', this.checked)">
+      ${rows.map(row => `
+        <tr data-uid="${escAttr(row.uid)}" class="${row.visible ? '' : 'is-hidden'}">
+          <td>
+            <input class="slot-visibility-row-check" data-uid="${escAttr(row.uid)}" type="checkbox" onchange="syncSlotVisibilitySelectionState()">
           </td>
-          <td style="padding:6px 8px;">
-            <div style="font-weight:600;">${escAttr(m.label)}</div>
-            ${hint}
+          <td>
+            <div class="slot-visibility-name">${escAttr(row.label)}</div>
+            ${row.apiId ? `<div class="slot-visibility-sub">${escAttr(row.apiId)}</div>` : ''}
           </td>
-          <td style="padding:6px 8px;font-family:var(--font-mono);font-size:11px;color:var(--text-muted);">${escAttr(m.modelUid)}</td>
-          <td style="padding:6px 8px;">
-            <select data-uid="${escAttr(m.modelUid)}" data-field="providerId" onchange="onInjectedFieldChange('${escAttr(m.modelUid)}', 'providerId', this.value)" style="width:100%;padding:3px 6px;border:1px solid var(--border);background:var(--bg-input);color:var(--text-primary);border-radius:6px;font-size:11px;">
-              <option value="">— 未配置 —</option>
-              ${providerOptions.replace(`value="${escAttr(sel)}"`, `value="${escAttr(sel)}" selected`)}
-            </select>
+          <td class="slot-visibility-orig">${escAttr(row.originalName)}</td>
+          <td class="slot-visibility-uid">${escAttr(row.uid)}</td>
+          <td>
+            <div class="slot-visibility-status">
+              ${renderSlotStatusPill(row)}
+              ${row.hasOverride ? '<span class="slot-visibility-override">单独设置</span>' : ''}
+            </div>
           </td>
-          <td style="padding:6px 8px;">
-            <input type="text" data-uid="${escAttr(m.modelUid)}" data-field="model" value="${escAttr(mdl)}" placeholder="${m.apiId ? escAttr(m.apiId) : '如 claude-opus-4-8'}" onblur="onInjectedFieldChange('${escAttr(m.modelUid)}', 'model', this.value)" style="width:100%;padding:3px 6px;border:1px solid var(--border);background:var(--bg-input);color:var(--text-primary);border-radius:6px;font-size:11px;font-family:var(--font-mono);">
+          <td>
+            <label class="slot-visibility-switch" title="${row.visible ? '当前显示在 IDE 模型列表' : '当前不显示在 IDE 模型列表'}">
+              <input type="checkbox" ${row.visible ? 'checked' : ''} onchange="onSlotVisibilityToggle('${escAttr(row.uid)}', this.checked)">
+              <span></span>
+            </label>
           </td>
-        </tr>`;
-      }).join('')}
+      </tr>`).join('')}
     </tbody>
   </table>`;
-}
-
-function onInjectedToggle(uid, checked) {
-  if (!Array.isArray(modelMapStore.injected)) modelMapStore.injected = [];
-  let entry = modelMapStore.injected.find(x => x.modelUid === uid);
-  if (checked && !entry) {
-    // 从 catalog 找
-    const m = (injectedCatalog || []).find(x => x.modelUid === uid);
-    if (!m) return;
-    entry = {
-      label: m.label,
-      modelUid: m.modelUid,
-      providerId: '',
-      model: m.apiId || '',
-      supportsImages: m.supportsImages !== false,
-    };
-    modelMapStore.injected.push(entry);
-  } else if (!checked && entry) {
-    // 取消勾选 = 删除模型槽位配置
-    modelMapStore.injected = modelMapStore.injected.filter(x => x.modelUid !== uid);
-  }
-  updateSlotPolicySummary();
-  const badge = document.getElementById('injected-count-badge');
-  if (badge) badge.textContent = '模型槽位管理';
-}
-
-function onInjectedFieldChange(uid, field, value) {
-  let entry = (modelMapStore.injected || []).find(x => x.modelUid === uid);
-  if (!entry) return;
-  entry[field] = value;
-  updateSlotPolicySummary();
+  syncSlotVisibilitySelectionState();
 }
 
 async function saveInjectedFromEditor() {
-  // 校验:已选 providerId 的必须有 model
-  modelMapStore.unlockScope = normalizeUnlockScope(modelMapStore.unlockScope || modelMapStore.slotDisplayMode);
-  modelMapStore.slotDisplayMode = modelMapStore.unlockScope;
-  for (const i of (modelMapStore.injected || [])) {
-    if (i.providerId && (!i.model || !i.model.trim())) {
-      showCustomAlert(`模型槽位「${i.label}」已选供应商但 model 为空，请填写后再保存`, '保存失败', 'warn');
-      return;
-    }
-  }
+  modelMapStore.unlockScope = 'all';
+  modelMapStore.slotDisplayMode = 'all';
+  modelMapStore.slotVisibilityMode = normalizeSlotVisibilityMode(modelMapStore.slotVisibilityMode);
+  ensureSlotVisibilityArray();
   if (await persistModelMap()) {
-    addLog('ok', `已保存 ${modelMapStore.injected.length} 个模型槽位配置`);
-    closeInjectedEditor();
+    setSlotVisibilityDirty(false);
+    addLog('ok', '已保存模型槽位显示设置');
+    await renderInjectedList();
+    await renderModelMap();
   }
 }
 
@@ -796,11 +1013,41 @@ function renderMappingModelCatalog() {
   if (!body) return;
 
   const allModels = getAllProviderModels();
-  const filtered = allModels.filter(item => {
-    return !query ||
-           item.providerName.toLowerCase().includes(query) ||
-           item.model.toLowerCase().includes(query);
-  });
+
+  // 渲染供应商快速筛选栏
+  const providerBar = document.getElementById('mappingCatalogProviderBar');
+  const providerIds = [...new Set(allModels.map(m => m.providerId))];
+  if (providerBar) {
+    if (providerIds.length > 1) {
+      const providerNames = {};
+      allModels.forEach(m => { providerNames[m.providerId] = m.providerName; });
+      providerBar.innerHTML = `
+        <button onclick="mappingCatalogProvider='';renderMappingModelCatalog()" style="height:22px;padding:0 8px;border-radius:6px;border:1px solid ${!mappingCatalogProvider ? 'var(--accent)' : 'var(--border)'};background:${!mappingCatalogProvider ? 'var(--accent-light)' : 'transparent'};color:${!mappingCatalogProvider ? 'var(--accent)' : 'var(--text-muted)'};font-size:10px;font-weight:700;cursor:pointer;">全部 ${allModels.length}</button>
+        ${providerIds.map(pid => `
+          <button onclick="mappingCatalogProvider='${escAttr(pid)}';renderMappingModelCatalog()" style="height:22px;padding:0 8px;border-radius:6px;border:1px solid ${mappingCatalogProvider === pid ? 'var(--accent)' : 'var(--border)'};background:${mappingCatalogProvider === pid ? 'var(--accent-light)' : 'transparent'};color:${mappingCatalogProvider === pid ? 'var(--accent)' : 'var(--text-muted)'};font-size:10px;font-weight:700;cursor:pointer;">${escAttr(providerNames[pid] || pid)} ${allModels.filter(m => m.providerId === pid).length}</button>
+        `).join('')}
+      `;
+      providerBar.style.display = 'flex';
+    } else {
+      providerBar.style.display = 'none';
+    }
+  }
+
+  // 过滤 + 排序
+  const filtered = allModels
+    .filter(item => {
+      if (mappingCatalogProvider && item.providerId !== mappingCatalogProvider) return false;
+      return !query ||
+             item.providerName.toLowerCase().includes(query) ||
+             item.model.toLowerCase().includes(query);
+    });
+
+  const sortKey = mappingCatalogSort || 'name-asc';
+  if (sortKey === 'name-desc') {
+    filtered.sort((a, b) => b.model.localeCompare(a.model));
+  } else {
+    filtered.sort((a, b) => a.model.localeCompare(b.model));
+  }
 
   if (filtered.length === 0) {
     if (allModels.length === 0) {
@@ -858,7 +1105,7 @@ function renderMappingModelCatalog() {
         </div>
         <div style="flex-shrink:0; display:flex; align-items:center; gap:6px;">
           ${isSelected ? `
-            <span class="brand-tag" style="background:${badgeColor}; color:#fff; border:none; padding: 2px 8px; font-size: 10px; font-weight:700; border-radius: var(--radius-pill);">
+            <span class="brand-tag" style="background:${badgeColor}; color:#fff; border:none; padding: 3px 10px; font-size: 12px; font-weight:700; border-radius: var(--radius-pill);">
               ${badgeText}
             </span>
           ` : ''}
@@ -879,7 +1126,6 @@ function toggleMappingModelTarget(providerId, model) {
   }
   renderMappingModelCatalog();
   maybeAutoSelectRecommendedSlot();
-  updateSlotVisionHint();
 }
 
 function slotCatalogStats(used) {
@@ -932,7 +1178,6 @@ function setSlotCatalogScope(scope) {
     }
   }
   renderSlotCatalogList();
-  updateSlotVisionHint();
 }
 
 function slotMatchesScope(m, used) {
@@ -995,14 +1240,44 @@ function renderSlotCatalogList() {
   if (editingUid) used.delete(editingUid);
   updateSlotScopeTabs(used);
 
-  // 1. 基于 query 搜索过滤
-  const filtered = (ideModels || [])
-    .filter(m => slotMatchesScope(m, used))
+  // 0. 基于 scope 过滤基础集
+  const scoped = (ideModels || []).filter(m => slotMatchesScope(m, used));
+
+  // 渲染品牌快速筛选栏
+  const brandBar = document.getElementById('slotCatalogBrandBar');
+  const availableBrands = getAvailableBrands(scoped, m => m.name, m => m.id);
+  if (brandBar) {
+    if (availableBrands.length > 0) {
+      brandBar.innerHTML = `
+        <button onclick="slotCatalogBrand='';renderSlotCatalogList()" style="height:22px;padding:0 8px;border-radius:6px;border:1px solid ${!slotCatalogBrand ? 'var(--accent)' : 'var(--border)'};background:${!slotCatalogBrand ? 'var(--accent-light)' : 'transparent'};color:${!slotCatalogBrand ? 'var(--accent)' : 'var(--text-muted)'};font-size:10px;font-weight:700;cursor:pointer;">全部</button>
+        ${availableBrands.map(b => `
+          <button onclick="slotCatalogBrand='${b.id}';renderSlotCatalogList()" style="height:22px;padding:0 8px;border-radius:6px;border:1px solid ${slotCatalogBrand === b.id ? 'var(--accent)' : 'var(--border)'};background:${slotCatalogBrand === b.id ? 'var(--accent-light)' : 'transparent'};color:${slotCatalogBrand === b.id ? 'var(--accent)' : 'var(--text-muted)'};font-size:10px;font-weight:700;cursor:pointer;">${b.label}</button>
+        `).join('')}
+      `;
+      brandBar.style.display = 'flex';
+    } else {
+      brandBar.style.display = 'none';
+    }
+  }
+
+  // 1. 基于 query + 品牌 + 排序过滤
+  const filtered = scoped
     .filter(m => {
       const hay = `${m.name || ''} ${m.id || ''} ${m.api_id || ''}`.toLowerCase();
       return !query || hay.includes(query);
     })
-    .sort((a, b) => slotRecommendationRank(a, used) - slotRecommendationRank(b, used) || a.name.localeCompare(b.name));
+    .filter(m => {
+      if (!slotCatalogBrand) return true;
+      return detectModelBrand(m.name, m.id) === slotCatalogBrand;
+    });
+
+  // 排序
+  const sortKey = slotCatalogSort || 'name-asc';
+  if (sortKey === 'name-desc') {
+    filtered.sort((a, b) => slotRecommendationRank(a, used) - slotRecommendationRank(b, used) || b.name.localeCompare(a.name));
+  } else {
+    filtered.sort((a, b) => slotRecommendationRank(a, used) - slotRecommendationRank(b, used) || a.name.localeCompare(b.name));
+  }
 
   // 2. 统计可用未占用的槽位数量
   const availableCount = filtered.filter(m => !used.has(m.id)).length;
@@ -1035,16 +1310,20 @@ function renderSlotCatalogList() {
     const recommended = !taken && slotRecommendationRank(m, used) < 0;
     const recommendedTag = recommended ? `<span class="brand-tag" style="background:rgba(37,99,235,.10);color:var(--accent);border:1px solid rgba(37,99,235,.22);padding:1px 6px;font-size:9px;font-weight:700;">推荐</span>` : '';
 
+    // 选中态的对号放在左侧图标区（替换魔方），保持右侧 tag 队列结构稳定、所有卡片右对齐
+    const leftIcon = isSelected
+      ? `<div style="width:24px; height:24px; border-radius:6px; background:var(--accent); color:#fff; display:flex; align-items:center; justify-content:center; flex-shrink:0; transition:all 0.2s; font-size:14px; font-weight:800; line-height:1;">✓</div>`
+      : `<div style="width:24px; height:24px; border-radius:6px; background:${taken ? 'var(--bg-secondary)' : 'var(--bg-secondary)'}; color:${taken ? 'var(--text-muted)' : 'var(--text-secondary)'}; display:flex; align-items:center; justify-content:center; flex-shrink:0; transition:all 0.2s;">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg>
+          </div>`;
+
     // 渲染具有极致质感的左侧行卡片，支持选中态发光与锁定态置灰
     return `
       <div class="slot-catalog-item ${isSelected ? 'selected' : ''} ${taken ? 'taken' : ''}"
            onclick="${taken ? '' : `selectCatalogSlot('${escAttr(m.id)}', '${escAttr(m.name)}')`}"
            style="display:flex; align-items:center; justify-content:space-between; padding:12px 16px; border:1px solid ${isSelected ? 'var(--accent)' : 'var(--border)'}; background:${isSelected ? 'var(--accent-light)' : 'var(--bg-card)'}; opacity:${taken ? '0.5' : '1'}; cursor:${taken ? 'not-allowed' : 'pointer'}; border-radius:10px; gap:12px; transition:all 0.2s; box-shadow:${isSelected ? '0 0 12px var(--accent-glow)' : 'none'};">
         <div style="display:flex; align-items:center; gap:10px; flex:1; min-width:0;">
-          <!-- 槽位精致小魔方图标 -->
-          <div style="width:24px; height:24px; border-radius:6px; background:${isSelected ? 'var(--accent)' : 'var(--bg-secondary)'}; color:${isSelected ? '#fff' : 'var(--text-secondary)'}; display:flex; align-items:center; justify-content:center; flex-shrink:0; transition:all 0.2s;">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg>
-          </div>
+          ${leftIcon}
           <div style="display:flex; flex-direction:column; gap:2px; flex:1; min-width:0;">
             <span style="font-size:12px; font-weight:600; color:${isSelected ? 'var(--accent)' : 'var(--text-primary)'}; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; transition:all 0.2s;">${escAttr(m.name)}</span>
             <span style="font-size:10px; color:var(--text-muted); font-family:var(--font-mono); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escAttr(displayId)}</span>
@@ -1055,7 +1334,6 @@ function renderSlotCatalogList() {
           ${visionTag}
           ${recommendedTag}
           ${takenTag}
-          ${isSelected ? `<span style="font-size:13px; color:var(--accent); font-weight:bold; margin-left:4px;">✓</span>` : ''}
         </div>
       </div>
     `;
@@ -1064,7 +1342,6 @@ function renderSlotCatalogList() {
 
 function selectCatalogSlot(uid, name) {
   const editingUid = document.getElementById('slot-edit-uid').value;
-  if (editingUid) return; // 编辑状态下，槽位只读（原逻辑 sel.disabled = true）
 
   selectedSlotUid = uid;
   slotWasManuallySelected = true;
@@ -1079,9 +1356,14 @@ function selectCatalogSlot(uid, name) {
   if (nameEl) nameEl.textContent = name;
   if (idEl) idEl.textContent = uid;
 
+  // 同步显示名输入框为当前选中的模型名（方便用户基于原始名二次修改）
+  const displayInput = document.getElementById('slot-display');
+  if (displayInput) {
+    displayInput.value = name || '';
+  }
+
   // 重新绘制左侧以更新高亮
   renderSlotCatalogList();
-  updateSlotVisionHint();
 }
 
 function filterSlotCatalog() {
@@ -1093,10 +1375,11 @@ async function openSlotEditor(uid) {
   ideMeta = null;
   await ensureIdeModels();
   await ensureInjected();
-  const modal = document.getElementById('slotModal');
   const sel = document.getElementById('slot-uid-select');
   const editing = uid ? modelMapStore.slots.find(x => x.modelUid === uid) : null;
   document.getElementById('slotModalTitle').textContent = editing ? '编辑映射' : '添加映射';
+  const subtitleEl = document.getElementById('slotModalSubtitle');
+  if (subtitleEl) subtitleEl.textContent = editing ? `正在编辑「${originalNameOf(editing.modelUid)}」` : '选择槽位和映射目标';
   document.getElementById('slot-edit-uid').value = editing ? editing.modelUid : '';
 
   // 已被占用的 uid（编辑时排除自身）
@@ -1121,6 +1404,10 @@ async function openSlotEditor(uid) {
     selectedSlotUid = editing.modelUid;
     slotWasManuallySelected = true;
     slotCatalogScope = slotSourceInfo(editing.modelUid).state === 'account' ? 'account' : 'extended';
+  } else if (uid && (ideModels || []).some(m => m.id === uid) && !used.has(uid)) {
+    selectedSlotUid = uid;
+    slotWasManuallySelected = true;
+    slotCatalogScope = isAccountSlotModel(slotModelOf(uid)) ? 'account' : 'extended';
   } else {
     slotCatalogScope = 'account';
     slotWasManuallySelected = false;
@@ -1136,7 +1423,7 @@ async function openSlotEditor(uid) {
   // 3. 同步至隐藏 select 桥接器
   if (sel) {
     sel.innerHTML = opts || '<option value="">（无可用模型清单）</option>';
-    sel.disabled = !!editing;
+    sel.disabled = false;  // 编辑时也允许切换槽位
     if (selectedSlotUid) {
       sel.value = selectedSlotUid;
     } else {
@@ -1152,39 +1439,35 @@ async function openSlotEditor(uid) {
   renderSlotCatalogList();
 
   document.getElementById('slot-display').value = editing ? (editing.displayName || '') : '';
-  // supportsImages 默认 true（多数视觉模型免勾），旧槽位无此字段时也视为 true
-  document.getElementById('slot-supports-images').checked = editing ? (editing.supportsImages !== false) : true;
-  if (modal) modal.classList.add('is-open');
-  updateSlotVisionHint();
+  // 切到「添加/编辑映射」普通 page，保持顶部 tab 栏可见
+  navigateTo('slot-editor');
 }
 
 function closeSlotEditor() {
-  const modal = document.getElementById('slotModal');
-  if (modal) modal.classList.remove('is-open');
+  // 返回模型映射列表
+  navigateTo('models');
 }
 
 async function saveSlotFromEditor() {
   const editUid = document.getElementById('slot-edit-uid').value;
-  const uid = editUid || document.getElementById('slot-uid-select').value;
+  const selectedUid = document.getElementById('slot-uid-select').value;
+  const uid = selectedUid || editUid;
   const display = document.getElementById('slot-display').value.trim();
-  const supportsImages = document.getElementById('slot-supports-images').checked;
+  const supportsImages = true;  // 默认始终启用图片支持
   if (!uid) { addLog('warn', '请选择模型槽位'); return; }
 
-  const vision = slotVisionAssessment(uid, selectedMappingTargets, supportsImages);
-  if (vision.state === 'risk') {
-    const alts = visionSafeAlternatives(uid, 3).map(m => `「${m.name}」`).join('、');
-    const suffix = alts ? `\n\n建议改用原生视觉槽：${alts}` : '';
-    const ok = await showCustomConfirm(
-      `当前槽位「${originalNameOf(uid)}」不适合图片任务，即使目标模型支持 Vision，Windsurf 也可能不会上传图片。\n\n继续保存后，文字聊天仍可用，但看图大概率失败。${suffix}`,
-      '图片能力提醒',
-      'warn'
-    );
-    if (!ok) return;
-  }
-
   if (editUid) {
+    // 编辑模式：检查是否切换了槽位
+    if (uid !== editUid) {
+      // 用户选了不同的槽位，检查新槽位是否已被占用
+      if (modelMapStore.slots.some(x => x.modelUid === uid)) {
+        showCustomAlert('该槽位已存在映射，请勿重复添加。', '切换失败', 'warn');
+        return;
+      }
+    }
     const s = modelMapStore.slots.find(x => x.modelUid === editUid);
     if (s) {
+      s.modelUid = uid;  // 更新槽位 UID（可能和原来一样）
       s.displayName = display;
       s.supportsImages = supportsImages;
       s.targets = JSON.parse(JSON.stringify(selectedMappingTargets));

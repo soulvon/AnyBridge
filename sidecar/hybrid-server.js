@@ -138,6 +138,39 @@ function now() {
   return new Date().toISOString().slice(11, 23);
 }
 
+function sanitizeProxyRequestHeaders(headers, body) {
+  const out = { ...headers };
+  delete out.host;
+  delete out.connection;
+  delete out['proxy-connection'];
+  delete out['keep-alive'];
+  delete out.te;
+  delete out.trailer;
+  delete out.upgrade;
+  delete out['transfer-encoding'];
+  delete out['content-length'];
+  if (body && body.length > 0) out['content-length'] = String(body.length);
+  return out;
+}
+
+function sanitizeProxyResponseHeaders(headers, opts = {}) {
+  const out = { ...headers };
+  delete out.connection;
+  delete out['proxy-connection'];
+  delete out['keep-alive'];
+  delete out.te;
+  delete out.trailer;
+  delete out.upgrade;
+  delete out['transfer-encoding'];
+  delete out['content-length'];
+  if (opts.stripEncoding) {
+    delete out['content-encoding'];
+    delete out['connect-content-encoding'];
+  }
+  if (opts.contentLength !== undefined) out['content-length'] = String(opts.contentLength);
+  return out;
+}
+
 // ─── Varint encoder (for protobuf rewrite) ────────────────
 
 function encodeVarintBuf(value) {
@@ -241,10 +274,9 @@ function proxyToCodeium(req, res, body, id, opts = {}) {
   const upstreamPath = stripRoutePrefix(req.url);
   const isStreaming = STREAMING_METHODS.has(method);
 
-  // Forward headers — swap host, drop connection
-  const fwdHeaders = { ...req.headers };
-  delete fwdHeaders.host;
-  delete fwdHeaders.connection;
+  // Forward headers — swap host and normalize body framing.
+  // Node rejects responses/requests that carry both Content-Length and Transfer-Encoding.
+  const fwdHeaders = sanitizeProxyRequestHeaders(req.headers, body);
   fwdHeaders.host = upstream;
 
   const proxyReq = https.request({
@@ -263,7 +295,7 @@ function proxyToCodeium(req, res, body, id, opts = {}) {
       if (method === 'GetChatMessage') {
         mitmLog({ direction: 'upstream', providerName: 'Codeium(透传)', model: '(未拦截)', format: 'connect-grpc', request: { method, url: `https://${upstream}${upstreamPath}` } });
       }
-      res.writeHead(proxyRes.statusCode, { ...proxyRes.headers });
+      res.writeHead(proxyRes.statusCode, sanitizeProxyResponseHeaders(proxyRes.headers));
       proxyRes.pipe(res);
       proxyRes.on('error', () => { if (!res.writableEnded) res.end(); });
       // 透传的 GetChatMessage 响应日志
@@ -367,13 +399,10 @@ function proxyToCodeium(req, res, body, id, opts = {}) {
           }
         }
 
-        const resHeaders = { ...proxyRes.headers };
-        if (stripEncoding) {
-          delete resHeaders['content-encoding'];
-          delete resHeaders['connect-content-encoding'];
-        }
-        delete resHeaders['content-length'];
-        resHeaders['content-length'] = resBody.length;
+        const resHeaders = sanitizeProxyResponseHeaders(proxyRes.headers, {
+          stripEncoding,
+          contentLength: resBody.length,
+        });
         res.writeHead(proxyRes.statusCode, resHeaders);
         res.end(resBody);
       });

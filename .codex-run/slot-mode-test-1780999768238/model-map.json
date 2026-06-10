@@ -1,0 +1,13 @@
+{
+  "slotDisplayMode": "configured",
+  "slots": [],
+  "injected": [
+    {
+      "label": "Claude Opus 4.8",
+      "modelUid": "uid-config",
+      "providerId": "p1",
+      "model": "claude-opus-4-8",
+      "supportsImages": true
+    }
+  ]
+}

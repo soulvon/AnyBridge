@@ -49,12 +49,12 @@ function capabilityBadges(p, compact = false, modelId = null) {
   const showModelCaps = !!modelId;
   const mk = (label, on, title) => `
     <span class="tag" title="${escAttr(title || label)}" style="background:${on ? 'var(--success-dim)' : 'var(--bg-input)'}; color:${on ? 'var(--success)' : 'var(--text-muted)'}; border:1px solid ${on ? 'rgba(22,163,74,.22)' : 'var(--border)'}; font-size:${compact ? '10px' : '11px'}; padding:${compact ? '2px 6px' : '3px 8px'}; border-radius:7px;">${escAttr(label)}</span>`;
-  const protocol = c.responses ? mk('Responses', true) : (c.chat ? mk('Chat', true) : (c.anthropic ? mk('Anthropic', true) : ''));
+  const protocol = c.responses ? mk('Responses', true) : (c.chat ? mk('对话', true) : (c.anthropic ? mk('Anthropic', true) : ''));
   return [
     protocol,
-    mk('Stream', c.stream),
-    showModelCaps ? mk('Vision', c.vision, c.vision ? '该模型已标记支持图片理解' : '该模型未标记图片理解') : '',
-    showModelCaps ? mk('Tools', c.tools, c.tools ? '该模型已标记支持工具调用' : '该模型未标记工具调用') : '',
+    mk('流式', c.stream),
+    showModelCaps ? mk('视觉', c.vision, c.vision ? '该模型已标记支持图片理解' : '该模型未标记图片理解') : '',
+    showModelCaps ? mk('工具', c.tools, c.tools ? '该模型已标记支持工具调用' : '该模型未标记工具调用') : '',
     c.gzip ? mk('Gzip', true, '已启用请求体 gzip 压缩') : '',
     c.toolSchemaCompatGemini ? mk('Schema兼容', true, '已启用 Gemini 工具 Schema 兼容模式（自动学习）') : '',
   ].filter(Boolean).join('');
@@ -111,25 +111,10 @@ function visionStatusStyle(state) {
 }
 
 function slotVisionAssessment(uid, targets, supportsImages = true) {
-  const hasTargets = Array.isArray(targets) && targets.length > 0;
-  if (!hasTargets) {
-    return { state: 'unset', label: '未设置', title: '还没有选择映射目标' };
+  if (supportsImages) {
+    return { state: 'ok', label: '支持图片理解', title: '该槽位已启用图片理解' };
   }
-  const targetVision = targetsSupportVision(targets);
-  if (supportsImages === false) {
-    return { state: 'off', label: '图片关闭', title: '该映射未向 Windsurf 声明图片能力' };
-  }
-  if (!targetVision) {
-    return { state: 'target-off', label: '目标未标记', title: '所选供应商模型未标记 Vision；如实际支持，请先在供应商测试中校准能力' };
-  }
-  const native = nativeVisionSlotInfo(uid);
-  if (native.ok === true) {
-    return { state: 'ok', label: '图片可用', title: '原生槽位与映射目标都支持图片' };
-  }
-  if (native.ok === false) {
-    return { state: 'risk', label: '需换视觉槽', title: native.title };
-  }
-  return { state: 'unknown', label: '需确认槽位', title: native.title };
+  return { state: 'off', label: '不支持图片理解', title: '该槽位未启用图片理解' };
 }
 
 function renderVisionPill(info, compact = false) {
@@ -195,7 +180,7 @@ function updateSlotVisionHint() {
         ${renderVisionPill(native, true)}
         ${renderVisionPill(assessment, true)}
       </div>
-      ${targetVision ? '<span style="font-size:10px;color:var(--success);font-weight:700;">目标支持 Vision</span>' : '<span style="font-size:10px;color:var(--text-muted);font-weight:700;">目标未标记 Vision</span>'}
+      ${targetVision ? '<span style="font-size:10px;color:var(--success);font-weight:700;">目标支持视觉</span>' : '<span style="font-size:10px;color:var(--text-muted);font-weight:700;">目标未标记视觉</span>'}
     </div>
     <div style="margin-top:6px;color:${s.color};font-size:11px;line-height:1.45;">${escAttr(detail)}</div>
   `;
@@ -871,6 +856,7 @@ function evalStatusLabel(status) {
     supported: '支持',
     partial: '部分',
     unsupported: '不支持',
+    optional: '可选',
     unknown: '未测'
   }[status] || status || '--';
 }
@@ -915,6 +901,7 @@ function evalCheckStatusClass(status) {
   if (key === 'supported' || key === 'pass') return 'supported';
   if (key === 'partial' || key === 'warn') return 'partial';
   if (key === 'unsupported' || key === 'fail' || key === 'error') return 'unsupported';
+  if (key === 'optional') return 'unknown';
   return 'unknown';
 }
 
@@ -960,7 +947,7 @@ function evalFormatTime(ts) {
 }
 
 const EVAL_DIMENSIONS = [
-  { key: 'protocol', label: '协议合规', ids: ['P1', 'P2', 'P5'] },
+  { key: 'protocol', label: '协议合规', ids: ['P1', 'P2', 'P5', 'P13'] },
   { key: 'performance', label: '性能', ids: ['P10', 'P11'] },
   { key: 'safety', label: '安全性', ids: ['P8', 'P14'] },
   { key: 'content', label: '内容完整性', ids: ['P4'] },

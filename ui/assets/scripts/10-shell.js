@@ -3,7 +3,9 @@ const tabs = document.querySelectorAll('.tab-item[data-page], .community-nav-btn
 const pages = document.querySelectorAll('.page');
 
 function hideAllEditorModals() {
-  ['providerModal', 'slotModal', 'injectedModal', 'failoverModal', 'modelMapSettingsModal'].forEach(id => {
+  // providerModal / slotModal 已经被改造为普通 page（page-provider-editor / page-slot-editor），
+  // 关闭时由 navigateTo 切回列表页；这里只收起真正的弹窗
+  ['failoverModal', 'modelMapSettingsModal'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.classList.remove('is-open');
   });
@@ -13,7 +15,14 @@ function navigateTo(pageId) {
   // 切页前先收起所有编辑弹窗，避免弹层残留造成"仪表盘出现模型面板"
   hideAllEditorModals();
 
-  const activeTabPageId = pageId === 'eval-history' ? 'eval' : pageId;
+  // 编辑器 page 归属到对应的 tab：高亮对应的 tab，激活对应 page
+  const editorToTabMap = {
+    'provider-editor': 'providers',
+    'slot-editor': 'models'
+  };
+  const activeTabPageId = pageId === 'eval-history'
+    ? 'eval'
+    : (pageId === 'model-slots' ? 'models' : (editorToTabMap[pageId] || pageId));
   tabs.forEach(t => {
     const isActive = t.dataset.page === activeTabPageId;
     t.classList.toggle('active', isActive);
@@ -269,6 +278,12 @@ async function onTargetIdeChange() {
   setStatusPill(proxyRunning);
   const displayLabel = displayIde === 'auto' ? '自动检测' : displayIde.charAt(0).toUpperCase() + displayIde.slice(1);
   addLog('info', `目标 IDE 切换为: ${displayLabel}`);
+  if (proxyRunning && typeof activeProxyTarget !== 'undefined' && activeProxyTarget) {
+    const runningLabel = activeProxyTarget.charAt(0).toUpperCase() + activeProxyTarget.slice(1);
+    if (ide !== 'auto' && ide !== activeProxyTarget) {
+      addLog('warn', `当前代理仍接入 ${runningLabel}；新的 IDE 选择会在下次启动代理时生效`);
+    }
+  }
 
   // 同步自定义下拉状态
   syncCustomSelector();

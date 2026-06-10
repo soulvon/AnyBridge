@@ -5,6 +5,13 @@ use tauri::{
     AppHandle, Manager,
 };
 
+#[derive(serde::Deserialize)]
+pub struct ExportLogEntry {
+    ts: String,
+    level: String,
+    msg: String,
+}
+
 #[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
 
@@ -69,6 +76,33 @@ pub fn build_tray(app: &AppHandle) -> tauri::Result<()> {
         .build(app)?;
 
     Ok(())
+}
+
+#[tauri::command]
+pub fn export_proxy_logs(entries: Vec<ExportLogEntry>) -> Result<String, String> {
+    if entries.is_empty() {
+        return Err("暂无日志可导出".into());
+    }
+
+    let export_dir = crate::commands::config::config_dir_path().join("log-exports");
+    std::fs::create_dir_all(&export_dir).map_err(|e| format!("创建日志导出目录失败: {}", e))?;
+
+    let ts = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let path = export_dir.join(format!("byok-logs-{}.txt", ts));
+    let mut content = String::new();
+    for entry in entries {
+        content.push_str(&format!(
+            "[{}] {} {}\n",
+            entry.ts,
+            entry.level.to_uppercase(),
+            entry.msg
+        ));
+    }
+    std::fs::write(&path, content).map_err(|e| format!("写入日志文件失败: {}", e))?;
+    Ok(path.to_string_lossy().to_string())
 }
 
 #[tauri::command]
@@ -268,6 +302,85 @@ fn ide_dir_name(target: &str) -> &'static str {
     }
 }
 
+#[cfg(target_os = "windows")]
+fn path_has_component(path: &std::path::Path, name: &str) -> bool {
+    path.components()
+        .any(|c| c.as_os_str().to_string_lossy().eq_ignore_ascii_case(name))
+}
+
+#[cfg(target_os = "windows")]
+fn is_cli_subprocess_path(path: &std::path::Path) -> bool {
+    let s = path.to_string_lossy().replace('/', "\\").to_lowercase();
+    s.contains("\\extensions\\windsurf\\devin\\") && s.contains("\\bin\\")
+}
+
+#[cfg(target_os = "windows")]
+fn is_ide_exe_for_target(target: &str, path: &std::path::Path) -> bool {
+    if !path.exists() || is_cli_subprocess_path(path) {
+        return false;
+    }
+    let Some(file_name) = path.file_name().map(|n| n.to_string_lossy()) else {
+        return false;
+    };
+    let in_devin_dir = path_has_component(path, "Devin");
+    match target {
+        // Devin 的 Electron 主进程在部分版本里仍叫 Windsurf.exe，所以目录也要参与判断。
+        "devin" => {
+            file_name.eq_ignore_ascii_case("Devin.exe")
+                || (file_name.eq_ignore_ascii_case("Windsurf.exe") && in_devin_dir)
+        }
+        _ => file_name.eq_ignore_ascii_case("Windsurf.exe") && !in_devin_dir,
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn windows_drive_roots() -> Vec<std::path::PathBuf> {
+    let mut roots = Vec::new();
+    for letter in b'A'..=b'Z' {
+        let root = format!("{}:\\", letter as char);
+        let p = std::path::PathBuf::from(root);
+        if p.exists() {
+            roots.push(p);
+        }
+    }
+    roots
+}
+
+#[cfg(target_os = "windows")]
+fn common_ide_candidates(target: &str) -> Vec<std::path::PathBuf> {
+    use std::collections::BTreeSet;
+    use std::path::PathBuf;
+
+    let exe_name = ide_exe_filename(target);
+    let dir_name = ide_dir_name(target);
+    let mut out = Vec::new();
+    let mut seen = BTreeSet::new();
+
+    let mut push = |p: PathBuf| {
+        let key = p.to_string_lossy().to_lowercase();
+        if seen.insert(key) {
+            out.push(p);
+        }
+    };
+
+    if let Some(local) = dirs::data_local_dir() {
+        push(local.join("Programs").join(dir_name).join(exe_name));
+    }
+    for var in ["ProgramFiles", "ProgramFiles(x86)"] {
+        if let Ok(pf) = std::env::var(var) {
+            push(PathBuf::from(pf).join(dir_name).join(exe_name));
+        }
+    }
+    for root in windows_drive_roots() {
+        push(root.join("Program Files").join(dir_name).join(exe_name));
+        push(root.join("Program Files (x86)").join(dir_name).join(exe_name));
+        push(root.join("Programs").join(dir_name).join(exe_name));
+        push(root.join(dir_name).join(exe_name));
+    }
+
+    out
+}
+
 /// 探测 IDE 安装路径（Windows），支持 Windsurf 和 Devin。
 #[cfg(target_os = "windows")]
 pub(crate) fn find_ide_exe(target: &str) -> Option<std::path::PathBuf> {
@@ -275,25 +388,18 @@ pub(crate) fn find_ide_exe(target: &str) -> Option<std::path::PathBuf> {
     use std::process::Command;
 
     let key = ide_exe_key(target);
-    let exe_name = ide_exe_filename(target);
-    let dir_name = ide_dir_name(target);
 
     // 1. 配置缓存 / 用户手动指定
     //    注意：Devin 的缓存路径需排除 CLI 子进程路径（extensions/windsurf/devin/bin），
     //    旧版可能缓存了错误的 CLI 路径，此处做校验并清除。
     if let Some(cached) = crate::commands::config::read_config_value(key) {
         let p = PathBuf::from(&cached);
+        if is_ide_exe_for_target(target, &p) {
+            return Some(p);
+        }
         if p.exists() {
-            let is_cli_subprocess = cached.contains("extensions")
-                && cached.contains("windsurf")
-                && cached.contains("devin")
-                && cached.contains("bin");
-            if is_cli_subprocess {
-                // 清除错误缓存，继续探测
-                let _ = crate::commands::config::write_config_value(key, "");
-            } else {
-                return Some(p);
-            }
+            // 清除错误缓存，继续探测。旧版可能把 Devin CLI 子进程或另一个 IDE 的路径写进来。
+            let _ = crate::commands::config::write_config_value(key, "");
         }
     }
 
@@ -324,12 +430,12 @@ pub(crate) fn find_ide_exe(target: &str) -> Option<std::path::PathBuf> {
         if !path.is_empty() {
             // Devin 的运行进程是 Windsurf.exe，但安装路径应返回 Devin.exe
             let p = PathBuf::from(&path);
-            if p.exists() {
+            if is_ide_exe_for_target(target, &p) {
                 if target == "devin" {
                     // 从 Windsurf.exe 的路径推出 Devin.exe（同目录或上级）
                     if let Some(parent) = p.parent() {
                         let devin_exe = parent.join("Devin.exe");
-                        if devin_exe.exists() {
+                        if is_ide_exe_for_target(target, &devin_exe) {
                             return cache_and_return(devin_exe);
                         }
                     }
@@ -341,19 +447,10 @@ pub(crate) fn find_ide_exe(target: &str) -> Option<std::path::PathBuf> {
         }
     }
 
-    // 3. 常见默认安装位置
-    if let Some(local) = dirs::data_local_dir() {
-        let p = local.join("Programs").join(dir_name).join(exe_name);
-        if p.exists() {
+    // 3. 常见安装位置。除系统盘外，也扫描 D:/E: 等盘的浅层 Program Files。
+    for p in common_ide_candidates(target) {
+        if is_ide_exe_for_target(target, &p) {
             return cache_and_return(p);
-        }
-    }
-    for var in ["ProgramFiles", "ProgramFiles(x86)"] {
-        if let Ok(pf) = std::env::var(var) {
-            let p = PathBuf::from(pf).join(dir_name).join(exe_name);
-            if p.exists() {
-                return cache_and_return(p);
-            }
         }
     }
 
@@ -377,18 +474,56 @@ fn find_ide_exe_from_registry(target: &str) -> Option<std::path::PathBuf> {
 
     let script = format!(
         r#"
+$ErrorActionPreference = 'SilentlyContinue'
+$exeName = '{}'
 $roots = @(
   'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*',
   'HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*',
   'HKLM:\Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*'
 )
-foreach ($r in $roots) {{
-  $hit = Get-ItemProperty $r -ErrorAction SilentlyContinue |
-    Where-Object {{ $_.DisplayName -like '{}' -and $_.InstallLocation }} |
-    Select-Object -First 1 -ExpandProperty InstallLocation
-  if ($hit) {{ Write-Output $hit; break }}
+$candidates = New-Object System.Collections.Generic.List[string]
+function Add-Candidate([string]$p) {{
+  if (-not $p) {{ return }}
+  $s = $p.Trim()
+  if (-not $s) {{ return }}
+  if ($s.StartsWith('"')) {{
+    $m = [regex]::Match($s, '^"([^"]+)"')
+    if ($m.Success) {{ $s = $m.Groups[1].Value }}
+  }} else {{
+    $m = [regex]::Match($s, '^[A-Za-z]:\\.+?\.exe')
+    if ($m.Success) {{ $s = $m.Value }}
+  }}
+  $s = $s.Trim('"').Trim()
+  if ($s) {{ $candidates.Add($s) }}
+  try {{
+    $parent = Split-Path -Parent $s
+    if ($parent) {{ $candidates.Add((Join-Path $parent $exeName)) }}
+  }} catch {{}}
 }}
+foreach ($r in $roots) {{
+  Get-ItemProperty $r -ErrorAction SilentlyContinue |
+    Where-Object {{ $_.DisplayName -like '{}' }} |
+    ForEach-Object {{
+      if ($_.InstallLocation) {{
+        Add-Candidate (Join-Path $_.InstallLocation $exeName)
+        Add-Candidate $_.InstallLocation
+      }}
+      Add-Candidate $_.DisplayIcon
+      Add-Candidate $_.UninstallString
+      Add-Candidate $_.QuietUninstallString
+    }}
+}}
+$appPathRoots = @(
+  "HKCU:\Software\Microsoft\Windows\CurrentVersion\App Paths\$exeName",
+  "HKLM:\Software\Microsoft\Windows\CurrentVersion\App Paths\$exeName"
+)
+foreach ($r in $appPathRoots) {{
+  $item = Get-ItemProperty $r -ErrorAction SilentlyContinue
+  if ($item) {{ Add-Candidate $item.'(default)'; Add-Candidate $item.Path }}
+}}
+$candidates | Where-Object {{ $_ }} | Select-Object -Unique
 "#,
+        exe_name,
         display_pattern
     );
 
@@ -397,16 +532,17 @@ foreach ($r in $roots) {{
         .creation_flags(0x0800_0000)
         .output()
         .ok()?;
-    let loc = String::from_utf8_lossy(&out.stdout).trim().to_string();
-    if loc.is_empty() {
-        return None;
+    for line in String::from_utf8_lossy(&out.stdout).lines() {
+        let candidate = line.trim().trim_matches('"');
+        if candidate.is_empty() {
+            continue;
+        }
+        let p = std::path::PathBuf::from(candidate);
+        if is_ide_exe_for_target(target, &p) {
+            return Some(p);
+        }
     }
-    let exe = std::path::PathBuf::from(loc).join(exe_name);
-    if exe.exists() {
-        Some(exe)
-    } else {
-        None
-    }
+    None
 }
 
 /// 探测 IDE .app 路径（macOS），支持 Windsurf 和 Devin。
@@ -503,12 +639,9 @@ pub fn set_ide_path(path: String) -> Result<(), String> {
         if !is_ide_exe {
             return Err("请指向 Windsurf.exe 或 Devin.exe".into());
         }
-        // 根据文件名判断是哪个 IDE，写入对应配置键
-        let key = if p
-            .file_name()
-            .map(|n| n.eq_ignore_ascii_case("Devin.exe"))
-            .unwrap_or(false)
-        {
+        // 根据文件名 + 目录判断是哪个 IDE，写入对应配置键。
+        // Devin 的部分进程仍叫 Windsurf.exe，不能只看文件名。
+        let key = if is_ide_exe_for_target("devin", &p) {
             DEVIN_EXE_KEY
         } else {
             IDE_EXE_KEY
@@ -888,32 +1021,32 @@ pub fn detect_target_ide() -> String {
         }
     }
 
-    // 都没有代理配置，检查哪个安装了（优先 Devin）
+    // 都没有代理配置，检查哪个安装了。默认优先 Windsurf，避免双安装机器误接入 Devin。
     #[cfg(target_os = "windows")]
     {
-        if find_ide_exe("devin").is_some() {
-            return "devin".into();
-        }
         if find_ide_exe("windsurf").is_some() {
             return "windsurf".into();
+        }
+        if find_ide_exe("devin").is_some() {
+            return "devin".into();
         }
     }
     #[cfg(target_os = "macos")]
     {
-        if find_ide_app("devin").is_some() {
-            return "devin".into();
-        }
         if find_ide_app("windsurf").is_some() {
             return "windsurf".into();
+        }
+        if find_ide_app("devin").is_some() {
+            return "devin".into();
         }
     }
     #[cfg(target_os = "linux")]
     {
-        if find_ide_bin("devin").is_some() {
-            return "devin".into();
-        }
         if find_ide_bin("windsurf").is_some() {
             return "windsurf".into();
+        }
+        if find_ide_bin("devin").is_some() {
+            return "devin".into();
         }
     }
 

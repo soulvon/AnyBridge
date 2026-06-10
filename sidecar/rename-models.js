@@ -10,7 +10,7 @@
 // renameModels 保留作为旧 API(已 deprecated),GUI/旧测试可能还会引用。
 //
 // 模型解锁：ClientModelConfig protobuf 中 field4=disabled (bool, wire type 0)。
-// 任何"劫持已开启"的情况(任一 enabled 槽位 或 注入项)都解锁所有模型。
+// 槽位是否放出由 slotVisibilityMode 决定：mapped / official / all。
 
 import { tryGunzip, gzipSync } from './connect.js';
 import fs from 'node:fs';
@@ -51,10 +51,16 @@ function configDir() {
 const DEFAULT_LABEL_TEMPLATE = '{prefix} {label} ({provider})';
 const TEMPLATE_VARS = ['prefix', 'label', 'provider', 'apiModel'];
 const UNLOCK_SCOPES = new Set(['all', 'common', 'configured', 'claude', 'gpt', 'gemini', 'code']);
+const SLOT_VISIBILITY_MODES = new Set(['mapped', 'official', 'all']);
 
 function normalizeUnlockScope(mode) {
   const s = String(mode || '').trim();
   return UNLOCK_SCOPES.has(s) ? s : 'all';
+}
+
+function normalizeSlotVisibilityMode(mode) {
+  const s = String(mode || '').trim();
+  return SLOT_VISIBILITY_MODES.has(s) ? s : 'mapped';
 }
 
 function isCommonManagedSlot(uid, label = '') {
@@ -74,11 +80,26 @@ function slotMatchesUnlockScope(uid, label, unlockScope) {
   return false;
 }
 
-function shouldRewriteFallbackSlot(uid, label, unlockScope, wasDisabled) {
-  // 官方本来可用的槽位始终改名为 "(官方)"，避免用户误以为它走 BYOK。
-  // 解锁范围只控制原本 disabled 的模型是否被放出来并标成 "(未配置)"。
-  if (!wasDisabled) return true;
-  return slotMatchesUnlockScope(uid, label, unlockScope);
+function fallbackRewritePlan(uid, label, unlockScope, slotVisibilityMode, wasDisabled) {
+  const visibility = normalizeSlotVisibilityMode(slotVisibilityMode);
+  if (visibility === 'mapped') {
+    // 只显示已映射槽位：未映射但官方原本可用的项也禁用掉。
+    return wasDisabled ? null : { status: 'hidden', disabled: true };
+  }
+  if (visibility === 'official') {
+    // 映射槽位 + 官方模型：只标记并保留官方本来可用的项，不放出灰色项。
+    return wasDisabled ? null : { status: 'official', disabled: false };
+  }
+  // 全部模型：官方项标为「官方」，灰色项按解锁范围放出并标为「未配置」。
+  if (!wasDisabled) return { status: 'official', disabled: false };
+  if (!slotMatchesUnlockScope(uid, label, unlockScope)) return null;
+  return { status: 'unconfigured', disabled: false };
+}
+
+function visibleOverridePlan(uid, wasDisabled, slotVisibility) {
+  if (!slotVisibility || !slotVisibility.has(uid)) return null;
+  if (slotVisibility.get(uid) === false) return { status: 'hidden', disabled: true };
+  return { status: wasDisabled ? 'unconfigured' : 'official', disabled: false };
 }
 
 function renderTemplate(tpl, vars) {
@@ -141,15 +162,17 @@ function catalogLabels() {
   if (_catalogLabels !== null) return _catalogLabels;
   _catalogLabels = new Map();
   try {
-    // 1) 同目录 (sidecar/) → pkg 打包后保留
     let raw;
-    try { raw = fs.readFileSync('./windsurf-catalog.json', 'utf8'); } catch { /* ignore */ }
-    if (!raw) {
-      // 2) 资源目录
-      const resDir = process.env.BYOK_RESOURCE_DIR;
-      if (resDir) {
-        try { raw = fs.readFileSync(path.join(resDir, 'sidecar', 'windsurf-catalog.json'), 'utf8'); } catch { /* ignore */ }
-      }
+    const candidates = [];
+    const resDir = process.env.BYOK_RESOURCE_DIR;
+    if (resDir) candidates.push(path.join(resDir, 'sidecar', 'windsurf-catalog.json'));
+    candidates.push(new URL('./windsurf-catalog.json', import.meta.url));
+    candidates.push(path.join(process.cwd(), 'windsurf-catalog.json'));
+    for (const candidate of candidates) {
+      try {
+        raw = fs.readFileSync(candidate, 'utf8');
+        if (raw) break;
+      } catch { /* ignore */ }
     }
     if (raw) {
       const obj = JSON.parse(raw);
@@ -543,6 +566,8 @@ function buildUnlockSet() {
   let namePrefix = '';
   let labelTemplate = '';
   let unlockScope = 'all';
+  let slotVisibilityMode = 'mapped';
+  let slotVisibility = new Map();
   let slots = [];
   let injected = [];
   try {
@@ -550,9 +575,13 @@ function buildUnlockSet() {
     namePrefix = (m.namePrefix || '').trim();
     labelTemplate = (m.labelTemplate || '').trim();
     unlockScope = normalizeUnlockScope(m.unlockScope || m.slotDisplayMode);
+    slotVisibilityMode = normalizeSlotVisibilityMode(m.slotVisibilityMode);
+    for (const item of (Array.isArray(m.slotVisibility) ? m.slotVisibility : [])) {
+      if (item && item.modelUid) slotVisibility.set(item.modelUid, item.visible !== false);
+    }
     slots = Array.isArray(m.slots) ? m.slots : [];
     injected = Array.isArray(m.injected) ? m.injected : [];
-  } catch { /* 无配置 → 默认全量 fallback */ }
+  } catch { /* 无配置 → 使用默认槽位显示策略 */ }
 
   // 读取 captured ide-models.json (rename 需要原始 label)
   let captured = new Map();
@@ -629,7 +658,7 @@ function buildUnlockSet() {
     }
   } catch { /* 无 providers → 走 renderTemplate 的「未设置」兜底 */ }
 
-  return { unlockAll, byUid, defaultProviderName, labelTemplate, namePrefix, unlockScope };
+  return { unlockAll, byUid, defaultProviderName, labelTemplate, namePrefix, unlockScope, slotVisibilityMode, slotVisibility };
 }
 
 // 在一个 protobuf 子 message 中查找 field1 (label) 的字符串值。
@@ -721,9 +750,9 @@ function findVarintField(buf, fieldNo) {
 
 // 递归重写 protobuf，将 ClientModelConfig 条目按 byUid 配置改写 + 全部解锁（unlockAll）。
 // 返回 { body: Buffer, changed: number } 或 null（无改动）。
-function unlockInProto(payload, unlockAll, byUid, defaultProviderName, labelTemplate, namePrefix, unlockScope, runtimeStatus) {
+function unlockInProto(payload, unlockAll, byUid, defaultProviderName, labelTemplate, namePrefix, unlockScope, slotVisibilityMode, slotVisibility, runtimeStatus) {
   const counter = { n: 0 };
-  const out = rewriteForUnlock(payload, counter, 8, unlockAll, byUid, defaultProviderName, labelTemplate, namePrefix, unlockScope, runtimeStatus);
+  const out = rewriteForUnlock(payload, counter, 8, unlockAll, byUid, defaultProviderName, labelTemplate, namePrefix, unlockScope, slotVisibilityMode, slotVisibility, runtimeStatus);
   if (counter.n === 0) return null;
   return { body: out, changed: counter.n };
 }
@@ -735,7 +764,7 @@ function unlockInProto(payload, unlockAll, byUid, defaultProviderName, labelTemp
 //   byUid 中无该 modelUid 但 unlockAll=true → 仅解锁 + 自动读原 label 加 (BYOK) 前缀
 //     （如果原 label 已经有 (BYOK) 前缀就不重复加,避免 slot 已经处理过的项重复）
 //   其他情况 → 跳过
-function rewriteForUnlock(buf, counter, depth, unlockAll, byUid, defaultProviderName = '', labelTemplate = '', namePrefix = '', unlockScope = 'all', runtimeStatus = null) {
+function rewriteForUnlock(buf, counter, depth, unlockAll, byUid, defaultProviderName = '', labelTemplate = '', namePrefix = '', unlockScope = 'all', slotVisibilityMode = 'mapped', slotVisibility = null, runtimeStatus = null) {
   const parts = [];
   let i = 0;
   let mutated = false;
@@ -770,12 +799,21 @@ function rewriteForUnlock(buf, counter, depth, unlockAll, byUid, defaultProvider
           const uid = findModelUid(child);
           if (uid) {
             const cfg = byUid.get(uid);
-            if (cfg) {
+            const wasDisabled = findVarintField(child, 4) === 1;
+            const overridePlan = visibleOverridePlan(uid, wasDisabled, slotVisibility);
+            if (cfg && overridePlan && overridePlan.status === 'hidden') {
+              const rewritten = rewriteConfigFields(child, { newLabel: null, wantImages: undefined, disabled: true });
+              if (rewritten !== child) {
+                child = rewritten;
+                counter.n++;
+                mutated = true;
+              }
+            } else if (cfg) {
               // 已有显式配置（rename/injected/unlock-prefix），用 cfg
               const wantImages = cfg.wantImages;
               const fallbackLabel = findField1Label(child) || '';
               const newLabel = configuredLabelFromRuntime(cfg, fallbackLabel, uid, labelTemplate, namePrefix);
-              const rewritten = rewriteConfigFields(child, { newLabel, wantImages });
+              const rewritten = rewriteConfigFields(child, { newLabel, wantImages, disabled: false });
               if (rewritten !== child) {
                 child = rewritten;
                 counter.n++;
@@ -784,20 +822,20 @@ function rewriteForUnlock(buf, counter, depth, unlockAll, byUid, defaultProvider
             } else if (unlockAll) {
               // 没有任何 byUid 配置但 unlockAll=true → 按解锁范围和原账号权限做 fallback 标记。
               const origLabel = findField1Label(child) || '';
-              const wasDisabled = findVarintField(child, 4) === 1;
-              if (shouldRewriteFallbackSlot(uid, origLabel, unlockScope, wasDisabled)) {
+              const plan = overridePlan || fallbackRewritePlan(uid, origLabel, unlockScope, slotVisibilityMode, wasDisabled);
+              if (plan) {
                 const labelText = origLabel || uid;
-                const status = wasDisabled ? 'unconfigured' : 'official';
-                const newLabel = renderTemplate(labelTemplate, {
+                const newLabel = plan.status === 'hidden' ? null : renderTemplate(labelTemplate, {
                   prefix: '',
                   label: labelText,
-                  provider: status === 'unconfigured' ? '未配置' : '官方',
+                  provider: plan.status === 'unconfigured' ? '未配置' : '官方',
                   apiModel: '',
                 });
-                if (runtimeStatus) {
-                  runtimeStatus.set(uid, { label: labelText, status, source: 'fallback' });
+                if (runtimeStatus && plan.status === 'unconfigured') {
+                  runtimeStatus.set(uid, { label: labelText, status: plan.status, source: 'fallback' });
                 }
-                const rewritten = rewriteConfigFields(child, { newLabel, wantImages: canDeclareImagesForSlot(uid) });
+                const wantImages = plan.status === 'hidden' ? undefined : canDeclareImagesForSlot(uid);
+                const rewritten = rewriteConfigFields(child, { newLabel, wantImages, disabled: plan.disabled });
                 if (rewritten !== child) {
                   child = rewritten;
                   counter.n++;
@@ -806,12 +844,12 @@ function rewriteForUnlock(buf, counter, depth, unlockAll, byUid, defaultProvider
               }
             } else if (depth > 0) {
               // 未配置且未劫持 → 递归下钻查找内层条目
-              const sub = rewriteForUnlock(child, counter, depth - 1, unlockAll, byUid, defaultProviderName, labelTemplate, namePrefix, unlockScope, runtimeStatus);
+              const sub = rewriteForUnlock(child, counter, depth - 1, unlockAll, byUid, defaultProviderName, labelTemplate, namePrefix, unlockScope, slotVisibilityMode, slotVisibility, runtimeStatus);
               if (sub !== child) { child = sub; mutated = true; }
             }
           } else if (depth > 0) {
             // 不是模型条目 → 递归下钻
-            const sub = rewriteForUnlock(child, counter, depth - 1, unlockAll, byUid, defaultProviderName, labelTemplate, namePrefix, unlockScope, runtimeStatus);
+            const sub = rewriteForUnlock(child, counter, depth - 1, unlockAll, byUid, defaultProviderName, labelTemplate, namePrefix, unlockScope, slotVisibilityMode, slotVisibility, runtimeStatus);
             if (sub !== child) { child = sub; mutated = true; }
           }
         }
@@ -827,16 +865,18 @@ function rewriteForUnlock(buf, counter, depth, unlockAll, byUid, defaultProvider
   return mutated ? Buffer.concat(parts) : buf;
 }
 
-// 改写一个 ClientModelConfig 条目，解锁 + 对齐图片能力：
-//   field4 (disabled)        → 一律删除（proto3 bool 默认 false = 不禁用）
-//   field5 (supports_images) → 先删除原值，再按 wantImages 决定是否追加 field5=1
+// 改写一个 ClientModelConfig 条目，按策略设置 disabled + 对齐图片能力：
+//   field4 (disabled)        → disabled=false 时删除；disabled=true 时追加 field4=1
+//   field5 (supports_images) → wantImages 为布尔值时才重写；否则保持原值
 //     wantImages=true  → 追加 field5=1（GLM 等原本不支持图的模型也强制可发图）
 //     wantImages=false → 不追加（proto3 默认 false，发图按钮置灰）
 // 外层 rewriteForUnlock 会用 encVarint(child.length) 重算长度前缀，故增删字段安全。
-function rewriteConfigFields(buf, { newLabel, wantImages }) {
+function rewriteConfigFields(buf, { newLabel, wantImages, disabled }) {
   const parts = [];
   let i = 0;
   let mutated = false;
+  const manageDisabled = typeof disabled === 'boolean';
+  const manageImages = typeof wantImages === 'boolean';
   try {
     while (i < buf.length) {
       const tagR = decVarint(buf, i);
@@ -849,11 +889,11 @@ function rewriteConfigFields(buf, { newLabel, wantImages }) {
       if (wt === 0) {
         const vr = decVarint(buf, i);
         const valBytes = buf.subarray(tagR.next, vr.next);
-        if (fn === 4) {
-          // disabled → 删除（不论原值），由 proto3 默认值取 false
-          if (vr.value !== 0) mutated = true;
-        } else if (fn === 5) {
-          // supports_images → 删除原值，稍后按 wantImages 统一追加
+        if (fn === 4 && manageDisabled) {
+          // disabled 由函数末尾统一追加；false 使用 proto3 默认值。
+          mutated = true;
+        } else if (fn === 5 && manageImages) {
+          // supports_images 由函数末尾统一追加；false 使用 proto3 默认值。
           mutated = true;
         } else {
           parts.push(tagBytes, valBytes);
@@ -884,20 +924,25 @@ function rewriteConfigFields(buf, { newLabel, wantImages }) {
   } catch {
     return buf;
   }
+  // 追加 disabled=true（field4, varint 1）。tag = (4<<3)|0 = 0x20。
+  if (manageDisabled && disabled) {
+    parts.push(Buffer.from([0x20, 0x01]));
+    mutated = true;
+  }
   // 追加 supports_images=true（field5, varint 1）。tag = (5<<3)|0 = 0x28。
-  if (wantImages) {
+  if (manageImages && wantImages) {
     parts.push(Buffer.from([0x28, 0x01]));
     mutated = true;
   }
   return mutated ? Buffer.concat(parts) : buf;
 }
 
-// JSON 文本中的模型解锁：将 "disabled":true 改为 "disabled":false。
-// unlockAll=true 时对所有模型改写；否则只对 slots 中的模型改写。
+// JSON 文本中的模型槽位改写：按策略设置 disabled、label、supportsImages。
+// unlockAll=true 时按 slotVisibilityMode 处理未映射项；否则只处理 byUid 中的项。
 // 按 JSON 对象边界精确定位，避免误改相邻条目。
 // unlockAll=true 时所有 ClientModelConfig 条目都处理；否则只处理 byUid 中的项。
 // 每个条目可同时改 3 件事: label（rename/injected） / disabled（解锁） / supportsImages。
-function unlockInJson(text, unlockAll, byUid, defaultProviderName = '', labelTemplate = '', namePrefix = '', unlockScope = 'all', runtimeStatus = null) {
+function unlockInJson(text, unlockAll, byUid, defaultProviderName = '', labelTemplate = '', namePrefix = '', unlockScope = 'all', slotVisibilityMode = 'mapped', slotVisibility = null, runtimeStatus = null) {
   let changed = 0;
   const uidRe = /"modelUid"\s*:\s*"([^"]+)"/g;
   let m;
@@ -914,22 +959,29 @@ function unlockInJson(text, unlockAll, byUid, defaultProviderName = '', labelTem
     const lblM = obj.match(/"label"\s*:\s*"([^"]*)"/);
     const origLabel = lblM ? lblM[1] : '';
     const wasDisabled = /"disabled"\s*:\s*true/.test(obj);
-    if (!cfg && unlockAll && !shouldRewriteFallbackSlot(uid, origLabel, unlockScope, wasDisabled)) continue;
+    const overridePlan = visibleOverridePlan(uid, wasDisabled, slotVisibility);
+    const plan = (!cfg && unlockAll)
+      ? (overridePlan || fallbackRewritePlan(uid, origLabel, unlockScope, slotVisibilityMode, wasDisabled))
+      : null;
+    const hideConfigured = !!(cfg && overridePlan && overridePlan.status === 'hidden');
+    if (!cfg && unlockAll && !plan) continue;
 
-    // 取配置: 有 cfg 用 cfg；否则 unlockAll 默认开启图片，但排除已验证不传图的原生槽位。
-    const wantImages = cfg ? cfg.wantImages : canDeclareImagesForSlot(uid);
-    let newLabel = cfg ? configuredLabelFromRuntime(cfg, origLabel, uid, labelTemplate, namePrefix) : null;
-    if (!cfg && unlockAll) {
+    // 取配置: 有 cfg 用 cfg；否则按显示策略处理 fallback。
+    const wantImages = hideConfigured ? undefined : (cfg
+      ? cfg.wantImages
+      : (plan && plan.status !== 'hidden' ? canDeclareImagesForSlot(uid) : undefined));
+    let newLabel = cfg && !hideConfigured ? configuredLabelFromRuntime(cfg, origLabel, uid, labelTemplate, namePrefix) : null;
+    const nextDisabled = hideConfigured ? true : (cfg ? false : (plan ? plan.disabled : false));
+    if (!cfg && plan && plan.status !== 'hidden') {
       const labelText = origLabel || uid;
-      const status = wasDisabled ? 'unconfigured' : 'official';
       newLabel = renderTemplate(labelTemplate, {
         prefix: '',
         label: labelText,
-        provider: status === 'unconfigured' ? '未配置' : '官方',
+        provider: plan.status === 'unconfigured' ? '未配置' : '官方',
         apiModel: '',
       });
-      if (runtimeStatus) {
-        runtimeStatus.set(uid, { label: labelText, status, source: 'fallback' });
+      if (runtimeStatus && plan.status === 'unconfigured') {
+        runtimeStatus.set(uid, { label: labelText, status: plan.status, source: 'fallback' });
       }
     }
 
@@ -944,15 +996,21 @@ function unlockInJson(text, unlockAll, byUid, defaultProviderName = '', labelTem
         newObj = newObj.replace(/"label"\s*:\s*"[^"]*"/, `"label":"${escaped}"`);
       }
     }
-    // 2) disabled:true → disabled:false（解锁）
-    newObj = newObj.replace(/"disabled"\s*:\s*true/g, '"disabled":false');
-    // 3) supportsImages 对齐：有该字段则改值；没有则在条目开头插入
-    const imgVal = wantImages ? 'true' : 'false';
-    if (/"supportsImages"\s*:\s*(true|false)/.test(newObj)) {
-      newObj = newObj.replace(/"supportsImages"\s*:\s*(true|false)/g, `"supportsImages":${imgVal}`);
-    } else {
-      // 紧跟开头的 '{' 插入字段（JSON 对象字段无序，安全）
-      newObj = newObj.replace(/^\{/, `{"supportsImages":${imgVal},`);
+    // 2) disabled 按策略写入：false 可省略，true 需显式插入。
+    if (/"disabled"\s*:\s*(true|false)/.test(newObj)) {
+      newObj = newObj.replace(/"disabled"\s*:\s*(true|false)/g, `"disabled":${nextDisabled ? 'true' : 'false'}`);
+    } else if (nextDisabled) {
+      newObj = newObj.replace(/^\{/, '{"disabled":true,');
+    }
+    // 3) supportsImages 对齐：隐藏项保持原值，其它项显式对齐。
+    if (typeof wantImages === 'boolean') {
+      const imgVal = wantImages ? 'true' : 'false';
+      if (/"supportsImages"\s*:\s*(true|false)/.test(newObj)) {
+        newObj = newObj.replace(/"supportsImages"\s*:\s*(true|false)/g, `"supportsImages":${imgVal}`);
+      } else {
+        // 紧跟开头的 '{' 插入字段（JSON 对象字段无序，安全）
+        newObj = newObj.replace(/^\{/, `{"supportsImages":${imgVal},`);
+      }
     }
     if (newObj !== obj) {
       text = text.slice(0, objStart) + newObj + text.slice(objEnd + 1);
@@ -1017,7 +1075,7 @@ function findObjectEnd(text, objStart) {
 export function unlockModels(resBody) {
   if (!resBody || resBody.length < 2) return null;
 
-  const { unlockAll, byUid, defaultProviderName, labelTemplate, namePrefix, unlockScope } = buildUnlockSet();
+  const { unlockAll, byUid, defaultProviderName, labelTemplate, namePrefix, unlockScope, slotVisibilityMode, slotVisibility } = buildUnlockSet();
   if (!unlockAll && byUid.size === 0) return null; // 劫持未开启且无配置，不改
 
   const b0 = resBody[0];
@@ -1049,12 +1107,12 @@ export function unlockModels(resBody) {
   if (isJson) {
     const text = payload.toString('utf8');
     if (text.indexOf('"modelUid"') === -1) return null;
-    const r = unlockInJson(text, unlockAll, byUid, defaultProviderName, labelTemplate, namePrefix, unlockScope, runtimeStatus);
+    const r = unlockInJson(text, unlockAll, byUid, defaultProviderName, labelTemplate, namePrefix, unlockScope, slotVisibilityMode, slotVisibility, runtimeStatus);
     if (r.changed === 0) return null;
     newPayload = Buffer.from(r.text, 'utf8');
     changed = r.changed;
   } else {
-    const r = unlockInProto(payload, unlockAll, byUid, defaultProviderName, labelTemplate, namePrefix, unlockScope, runtimeStatus);
+    const r = unlockInProto(payload, unlockAll, byUid, defaultProviderName, labelTemplate, namePrefix, unlockScope, slotVisibilityMode, slotVisibility, runtimeStatus);
     if (!r) return null;
     newPayload = r.body;
     changed = r.changed;

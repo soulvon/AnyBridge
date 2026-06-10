@@ -4,8 +4,139 @@
 // Rate window: 60s sliding window divided into 6 buckets × 10s each.
 // On snapshot we sum the buckets that fell in the last 60s to produce RPM/TPM/avg latency.
 
+import fs from 'node:fs';
+import path from 'node:path';
+import os from 'node:os';
+
 function todayKey() {
   return new Date().toISOString().slice(0, 10);
+}
+
+const PERSIST_DEBOUNCE_MS = 500;
+const DEFAULT_STATS_RETENTION_DAYS = 365;
+let persistTimer = null;
+
+function configDir() {
+  if (process.env.BYOK_CONFIG_DIR) return process.env.BYOK_CONFIG_DIR;
+  if (process.platform === 'darwin') return path.join(os.homedir(), 'Library', 'Application Support', 'ide-byok');
+  if (process.platform === 'linux') return path.join(os.homedir(), '.config', 'ide-byok');
+  return path.join(os.homedir(), 'AppData', 'Roaming', 'ide-byok');
+}
+
+function statsPath() {
+  return path.join(configDir(), 'stats.json');
+}
+
+function configPath() {
+  return path.join(configDir(), 'byok-config.json');
+}
+
+function readStatsRetentionDays() {
+  try {
+    const file = configPath();
+    if (!fs.existsSync(file)) return DEFAULT_STATS_RETENTION_DAYS;
+    const json = JSON.parse(fs.readFileSync(file, 'utf8'));
+    const raw = json && json.values ? json.values.STATS_RETENTION_DAYS : null;
+    const n = parseInt(raw, 10);
+    if (!Number.isFinite(n)) return DEFAULT_STATS_RETENTION_DAYS;
+    return Math.max(1, Math.min(3650, n));
+  } catch {
+    return DEFAULT_STATS_RETENTION_DAYS;
+  }
+}
+
+function dailySnapshot() {
+  return {
+    day: state.day,
+    requests: state.requests,
+    errors: state.errors,
+    inputTokens: state.inputTokens,
+    outputTokens: state.outputTokens,
+    lastProvider: state.lastProvider,
+    lastModel: state.lastModel,
+    lastError: state.lastError,
+    byModel: state.byModel,
+    recent: state.recent,
+    retries: state.retries,
+    lastRetries: state.lastRetries,
+    lastRetryReason: state.lastRetryReason,
+  };
+}
+
+function pruneHistory(days, retentionDays) {
+  const cutoff = Date.now() - (retentionDays - 1) * 24 * 60 * 60 * 1000;
+  for (const day of Object.keys(days)) {
+    const ts = Date.parse(`${day}T00:00:00.000Z`);
+    if (!Number.isFinite(ts) || ts < cutoff) delete days[day];
+  }
+}
+
+function persistedSnapshot() {
+  const retentionDays = readStatsRetentionDays();
+  const days = { ...state.history, [state.day]: dailySnapshot() };
+  pruneHistory(days, retentionDays);
+  state.history = days;
+  return {
+    version: 2,
+    retentionDays,
+    days,
+  };
+}
+
+function persistNow() {
+  try {
+    fs.mkdirSync(configDir(), { recursive: true });
+    fs.writeFileSync(statsPath(), JSON.stringify(persistedSnapshot(), null, 2));
+  } catch (e) {
+    console.error(`[stats] failed to persist stats: ${e.message}`);
+  }
+}
+
+function schedulePersist() {
+  if (persistTimer) return;
+  persistTimer = setTimeout(() => {
+    persistTimer = null;
+    persistNow();
+  }, PERSIST_DEBOUNCE_MS);
+  if (persistTimer.unref) persistTimer.unref();
+}
+
+function loadPersistedState() {
+  try {
+    const file = statsPath();
+    if (!fs.existsSync(file)) return null;
+    const json = JSON.parse(fs.readFileSync(file, 'utf8'));
+    if (!json) return null;
+    if (json.version === 2 && json.days && typeof json.days === 'object' && !Array.isArray(json.days)) {
+      const days = { ...json.days };
+      pruneHistory(days, readStatsRetentionDays());
+      const current = days[todayKey()] || null;
+      return { ...(current || {}), day: todayKey(), history: days };
+    }
+    if (json.day !== todayKey()) return { day: todayKey(), history: { [json.day]: json } };
+    return { ...json, history: { [json.day]: json } };
+  } catch (e) {
+    console.error(`[stats] failed to load persisted stats: ${e.message}`);
+    return null;
+  }
+}
+
+function applyPersistedState(saved) {
+  if (!saved) return;
+  state.day = saved.day || todayKey();
+  state.requests = Number.isFinite(saved.requests) ? saved.requests : 0;
+  state.errors = Number.isFinite(saved.errors) ? saved.errors : 0;
+  state.inputTokens = Number.isFinite(saved.inputTokens) ? saved.inputTokens : 0;
+  state.outputTokens = Number.isFinite(saved.outputTokens) ? saved.outputTokens : 0;
+  state.lastProvider = saved.lastProvider || null;
+  state.lastModel = saved.lastModel || null;
+  state.lastError = saved.lastError || null;
+  state.byModel = saved.byModel && typeof saved.byModel === 'object' && !Array.isArray(saved.byModel) ? saved.byModel : {};
+  state.recent = Array.isArray(saved.recent) ? saved.recent.slice(0, 20) : [];
+  state.retries = Number.isFinite(saved.retries) ? saved.retries : 0;
+  state.lastRetries = Number.isFinite(saved.lastRetries) ? saved.lastRetries : 0;
+  state.lastRetryReason = saved.lastRetryReason || null;
+  state.history = saved.history && typeof saved.history === 'object' && !Array.isArray(saved.history) ? saved.history : {};
 }
 
 // 60s 滑窗：6 个 10s bucket，环形复用
@@ -52,11 +183,15 @@ const state = {
   retries: 0,           // 累计重试次数
   lastRetries: 0,       // 最近一次请求的重试次数
   lastRetryReason: null, // 最近一次重试原因
+  history: {},
 };
+
+applyPersistedState(loadPersistedState());
 
 function rollDayIfNeeded() {
   const t = todayKey();
   if (t !== state.day) {
+    state.history[state.day] = dailySnapshot();
     state.day = t;
     state.requests = 0;
     state.errors = 0;
@@ -66,6 +201,7 @@ function rollDayIfNeeded() {
     state.recent = [];
     state.lastError = null;
     state.retries = 0;
+    schedulePersist();
   }
 }
 
@@ -83,6 +219,7 @@ export function recordRequest({ provider, requestedModel, resolvedModel }) {
   state.byModel[k] = (state.byModel[k] || 0) + 1;
   activeBucket().requests += 1;
   pushRecent({ type: 'request', provider, requestedModel, resolvedModel });
+  schedulePersist();
 }
 
 export function recordUsage({ inputTokens = 0, outputTokens = 0 }) {
@@ -92,6 +229,7 @@ export function recordUsage({ inputTokens = 0, outputTokens = 0 }) {
   const b = activeBucket();
   b.inputTokens += inputTokens;
   b.outputTokens += outputTokens;
+  schedulePersist();
 }
 
 export function recordError({ provider, message }) {
@@ -100,6 +238,7 @@ export function recordError({ provider, message }) {
   state.lastError = message;
   activeBucket().errors += 1;
   pushRecent({ type: 'error', provider, message });
+  schedulePersist();
 }
 
 /**
@@ -119,6 +258,7 @@ export function recordRetry({ count, reason }) {
   state.lastRetries = count;
   state.lastRetryReason = reason || null;
   pushRecent({ type: 'retry', count, reason });
+  schedulePersist();
 }
 
 /**
@@ -141,16 +281,16 @@ function rateStats() {
     latencySumMs += b.latencySumMs;
     latencySamples += b.latencySamples;
   }
-  // RPM/TPM = per minute，按 60s 窗口真实长度归一化（避免短时误差）
+  // RPM = per minute；TPS = tokens per second，按 60s 窗口归一化
   // 实际可用时长：取每个 bucket 的"创建时间"到 now 的差
   const elapsedSec = WINDOW_MS / 1000; // 始终按 60s
   const rpm = (requests / elapsedSec) * 60;
-  const tpm = ((inputTokens + outputTokens) / elapsedSec) * 60;
+  const tpm = (inputTokens + outputTokens) / elapsedSec;
   const errorRate = requests > 0 ? (errors / requests) * 100 : 0;
   const avgLatencyMs = latencySamples > 0 ? latencySumMs / latencySamples : 0;
   return {
     rpm: Math.round(rpm * 10) / 10,
-    tpm: Math.round(tpm),
+    tpm: Math.round(tpm * 10) / 10,
     avgLatencyMs: Math.round(avgLatencyMs),
     errorRate: Math.round(errorRate * 10) / 10,
     windowRequests: requests,
@@ -180,6 +320,7 @@ export function snapshot() {
     retries: state.retries,
     lastRetries: state.lastRetries,
     lastRetryReason: state.lastRetryReason,
+    historyDays: Object.keys(state.history).length,
     rate: rateStats(),
   };
 }

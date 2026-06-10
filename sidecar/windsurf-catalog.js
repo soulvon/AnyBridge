@@ -1,6 +1,6 @@
 // windsurf-catalog.js — Windsurf 模型全量目录
-// 数据源: scripts/inst4_models_full.json (132 模型) → 过滤 BYOK 专属(4) + 无 modelUid 脏数据
-// 最终 128 条
+// 数据源: scripts/inst4_models_full.json + 本地 windsurfAuthStatus 增量抓取
+// 最终 129 条
 //
 // 字段:
 //   label          Windsurf 显示名 (GetUserStatus.field1)
@@ -13,6 +13,14 @@
 // 一一对应原则: 注入项的 modelUid 必须 == Windsurf 真实 ID，禁止共用骨架
 
 export const WINDSURF_CATALOG = [
+  {
+    "label": "Claude 5 Fable Medium",
+    "modelUid": "claude-5-fable-medium",
+    "apiId": "claude-5-fable",
+    "contextWindow": 1000000,
+    "supportsImages": true,
+    "noApiIdHint": null
+  },
   {
     "label": "Claude Haiku 4.5",
     "modelUid": "MODEL_PRIVATE_11",

@@ -152,32 +152,12 @@ pub fn clear_hardware_breakpoints() {
 pub fn clear_hardware_breakpoints() {}
 
 // ─── macOS ──────────────────────────────────────────────────
-// 通过 sysctl KERN_PROC 检查 P_TRACED 标志位
+// 通过 timing 检测保留轻量保护。P_TRACED 结构在不同 libc 版本中暴露不稳定，
+// 发布构建优先保证 macOS 可编译。
 
 #[cfg(target_os = "macos")]
 fn check_debugger() -> bool {
-    use std::mem;
-    unsafe {
-        // KERN_PROC = 14, KERN_PROC_PID = 1
-        let mut info: libc::kinfo_proc = mem::zeroed();
-        let mut size = mem::size_of::<libc::kinfo_proc>();
-        let mut mib: [libc::c_int; 4] = [libc::CTL_KERN, 14, 1, libc::getpid()];
-
-        let ret = libc::sysctl(
-            mib.as_mut_ptr(),
-            4,
-            &mut info as *mut _ as *mut libc::c_void,
-            &mut size,
-            std::ptr::null_mut(),
-            0,
-        );
-        if ret == 0 {
-            // P_TRACED = 0x00000800
-            (info.kp_proc.p_flag & 0x00000800) != 0
-        } else {
-            false
-        }
-    }
+    false
 }
 
 #[cfg(target_os = "macos")]
@@ -190,7 +170,7 @@ fn check_timing_anomaly() -> bool {
 #[cfg(target_os = "macos")]
 pub fn clear_hardware_breakpoints() {
     // macOS 硬件断点通过 thread_set_state 清除，需要更复杂的 Mach API 调用
-    // 此处留空，macOS 反调试主要依赖 P_TRACED 检测
+    // 此处留空。
 }
 
 // ─── Linux ──────────────────────────────────────────────────

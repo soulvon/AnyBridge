@@ -141,7 +141,7 @@
         <div class="stat-card c6">
           <div class="stat-label">Token 速率</div>
           <div class="stat-value c6" id="stat-tpm">—</div>
-          <div class="stat-sub">Token/分钟 (TPM)</div>
+          <div class="stat-sub">Token/s</div>
         </div>
         <div class="stat-card c7">
           <div class="stat-label">平均响应耗时</div>
@@ -261,23 +261,39 @@
       </div>
     </div>
 
-    <!-- 供应商编辑弹窗 -->
-    <div id="providerModal" class="editor-overlay" style="position:fixed;inset:0;z-index:1000;background:rgba(0,0,0,0.45);align-items:center;justify-content:center;">
-      <div class="glass-card fullscreen-modal">
-        <div class="card-header" style="display:flex; align-items:center; justify-content:space-between; width:100%;">
-          <div style="display:flex; align-items:center; gap:8px;">
-            <button class="modal-back-btn" onclick="closeProviderEditor()" style="display:inline-flex; align-items:center; gap:8px; background:var(--bg-input); border:1px solid var(--border); color:var(--text-primary); cursor:pointer; font-size:13px; font-weight:600; padding:8px 16px; border-radius:10px; transition:all 0.2s;">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                <line x1="19" y1="12" x2="5" y2="12"></line>
-                <polyline points="12 19 5 12 12 5"></polyline>
+    <!-- ═══════ PAGE: PROVIDER EDITOR (新增/编辑供应商) ═══════ -->
+    <div class="page provider-editor-page" id="page-provider-editor" role="tabpanel" aria-labelledby="tab-providers">
+      <div class="model-slots-page">
+        <div class="control-bar glass-card model-slots-head">
+          <div class="model-slots-title">
+            <button class="btn-ghost model-slots-back" onclick="closeProviderEditor()" title="返回供应商列表">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M19 12H5"></path>
+                <path d="M12 19l-7-7 7-7"></path>
               </svg>
-              <span>返回供应商列表</span>
             </button>
-            <span id="providerModalTitle" style="font-size:14px; font-weight:700; color:var(--text-muted); margin-left: 12px; border-left: 1px solid var(--border-strong); padding-left: 12px;">新增供应商</span>
+            <div>
+              <h2 id="providerModalTitle">新增供应商</h2>
+              <div id="providerModalSubtitle">配置供应商信息和模型</div>
+            </div>
           </div>
-          <div style="font-size:12px; color:var(--text-muted); font-family:var(--font-mono);">IDE BYOK Control Panel</div>
+          <div class="model-slots-actions">
+            <button class="btn-ghost" onclick="testProviderInEditor()" style="display:inline-flex; align-items:center; gap:6px;">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;"><path d="M4.5 3h15"></path><path d="M6 3v16a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V3"></path><path d="M6 14h12"></path></svg>
+              <span>测试</span>
+            </button>
+            <button class="btn-ghost" onclick="closeProviderEditor()">取消</button>
+            <button class="btn-primary" onclick="saveProviderFromEditor()">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>
+                <polyline points="17 21 17 13 7 13 7 21"></polyline>
+                <polyline points="7 3 7 8 15 8"></polyline>
+              </svg>
+              <span>保存</span>
+            </button>
+          </div>
         </div>
-        <div class="card-body">
+        <div class="glass-card model-slots-workspace provider-editor-workspace">
           <input type="hidden" id="pf-id">
           <input type="hidden" id="pf-path">
           <div class="provider-editor-layout" style="display:flex; gap:36px; align-items:stretch; flex:1; height:100%;">
@@ -287,16 +303,42 @@
                 <div class="field-label" style="font-size:13px; font-weight:600; margin-bottom:8px;">名称</div>
                 <input class="field-input" id="pf-name" placeholder="例如：我的中转站" style="padding:10px 14px; font-size:13px; border-radius:10px; width:100%;">
               </div>
-              <div class="field" style="margin-bottom:0;">
+              <div class="field" style="margin-bottom:0; display:none;">
                 <div class="field-label" style="font-size:13px; font-weight:600; margin-bottom:8px;">API 格式</div>
-                <select class="model-select" id="pf-format" onchange="onFormatChange()" style="padding:10px 14px; font-size:13px; border-radius:10px; height:42px; width:100%;">
+                <select class="model-select" id="pf-format" style="padding:10px 14px; font-size:13px; border-radius:10px; height:42px; width:100%;">
                   <option value="anthropic">Anthropic</option>
                   <option value="openai">OpenAI</option>
                 </select>
               </div>
               <div class="field" style="margin-bottom:0;">
-                <div class="field-label" style="font-size:13px; font-weight:600; margin-bottom:8px;">API Base URL</div>
-                <input class="field-input" id="pf-host" placeholder="https://api.openai.com" style="padding:10px 14px; font-size:13px; border-radius:10px; width:100%;">
+                <div class="field-label" style="display:flex; justify-content:space-between; align-items:center; font-size:13px; font-weight:600; margin-bottom:8px;">
+                  <span>API 地址</span>
+                  <!-- API 格式下拉按钮（Anthropic / OpenAI / 自动识别） -->
+                  <div class="pf-format-select" id="pfFormatSelect" style="position:relative;">
+                    <button type="button" class="pf-format-trigger" id="pfFormatTrigger" onclick="toggleFormatDropdown(event)" title="选择 API 格式（默认自动识别）" style="display:inline-flex; align-items:center; gap:5px; height:24px; padding:0 8px 0 10px; border-radius:7px; border:1px solid var(--border); background:var(--bg-input); color:var(--text-primary); font-size:11px; font-weight:700; cursor:pointer; transition:all 0.15s;">
+                      <span id="pfFormatTriggerLabel">自动识别</span>
+                      <svg class="pf-format-arrow" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" style="transition:transform 0.15s;"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                    </button>
+                    <div class="pf-format-dropdown" id="pfFormatDropdown" style="display:none; position:absolute; top:calc(100% + 4px); right:0; z-index:50; min-width:140px; background:var(--bg-card); border:1px solid var(--border); border-radius:9px; box-shadow:var(--shadow-md); padding:4px; flex-direction:column; gap:2px;">
+                      <button type="button" class="pf-format-option auto" data-format="auto" onclick="pickApiFormat('auto', event)" style="display:flex; align-items:center; gap:8px; width:100%; padding:7px 10px; border:none; background:transparent; color:var(--text-primary); font-size:12px; font-weight:600; text-align:left; border-radius:6px; cursor:pointer;">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;"><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"></path><circle cx="12" cy="12" r="4"></circle></svg>
+                        <span style="flex:1;">自动识别</span>
+                        <svg class="pf-format-check" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="display:none; color:var(--accent); flex-shrink:0;"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                      </button>
+                      <button type="button" class="pf-format-option" data-format="anthropic" onclick="pickApiFormat('anthropic', event)" style="display:flex; align-items:center; gap:8px; width:100%; padding:7px 10px; border:none; background:transparent; color:var(--text-primary); font-size:12px; font-weight:600; text-align:left; border-radius:6px; cursor:pointer;">
+                        <span style="display:inline-flex; align-items:center; justify-content:center; width:13px; height:13px; border-radius:3px; background:#d97706; color:#fff; font-size:8px; font-weight:800; flex-shrink:0;">A</span>
+                        <span style="flex:1;">Anthropic</span>
+                        <svg class="pf-format-check" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="display:none; color:var(--accent); flex-shrink:0;"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                      </button>
+                      <button type="button" class="pf-format-option" data-format="openai" onclick="pickApiFormat('openai', event)" style="display:flex; align-items:center; gap:8px; width:100%; padding:7px 10px; border:none; background:transparent; color:var(--text-primary); font-size:12px; font-weight:600; text-align:left; border-radius:6px; cursor:pointer;">
+                        <span style="display:inline-flex; align-items:center; justify-content:center; width:13px; height:13px; border-radius:3px; background:#10a37f; color:#fff; font-size:8px; font-weight:800; flex-shrink:0;">O</span>
+                        <span style="flex:1;">OpenAI</span>
+                        <svg class="pf-format-check" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="display:none; color:var(--accent); flex-shrink:0;"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+                <input class="field-input" id="pf-host" placeholder="https://api.anthropic.com" oninput="onHostChange()" style="padding:10px 14px; font-size:13px; border-radius:10px; width:100%;">
               </div>
               <div class="field" style="margin-bottom:0;">
                 <div class="field-label" style="display:flex; justify-content:space-between; align-items:center; font-size:13px; font-weight:600; margin-bottom:8px;">
@@ -308,24 +350,13 @@
                 <input class="field-input" id="pf-key" type="password" placeholder="sk-..." autocomplete="off" style="padding:10px 14px; font-size:13px; border-radius:10px; width:100%;">
               </div>
 
-              <div class="field provider-capability-field" style="margin-bottom:0; border-top:1px solid var(--border); padding-top:16px;">
-                <div class="field-label" style="font-size:13px; font-weight:600; margin-bottom:10px;">能力标记</div>
-                <div style="display:grid; grid-template-columns:1fr; gap:8px;">
-                  <label class="model-panel-btn" style="padding:9px 10px; border-radius:8px; display:flex; align-items:center; gap:8px; cursor:pointer; justify-content:flex-start;" title="压缩请求体绕过中转站 Cloudflare WAF，One-Hub 等不支持 gzip 的端点请勿开启">
-                    <input type="checkbox" id="pf-cap-gzip" style="margin:0;">
-                    <span style="font-size:12px;">Gzip 压缩</span>
-                  </label>
-                </div>
-                <div style="font-size:11px; color:var(--text-muted); line-height:1.5; margin-top:8px;">仅用于需要绕过 WAF 的中转站。</div>
-              </div>
-              
               <!-- 已选择模型列表 (Cherry Studio 风格) -->
-              <div class="provider-selected-section" style="flex:1 0 220px; display:flex; flex-direction:column; min-height:220px; border-top:1px solid var(--border); padding-top:16px; margin-top:4px;">
+              <div class="provider-selected-section" style="flex:1 1 0; display:flex; flex-direction:column; min-height:0; border-top:1px solid var(--border); padding-top:16px; margin-top:4px;">
                 <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
                   <span style="font-size:13px; font-weight:700; color:var(--text-primary);">已选模型列表</span>
                   <span class="brand-tag" id="leftSelectedCount" style="padding: 1px 8px; font-size: 10px;">0</span>
                 </div>
-                <div class="provider-selected-list" id="leftSelectedModelsList" style="flex:1; overflow-y:auto; display:flex; flex-direction:column; gap:8px; max-height: 280px; padding-right: 4px;">
+                <div class="provider-selected-list" id="leftSelectedModelsList" style="flex:1 1 0; min-height:0; overflow-y:auto; display:flex; flex-direction:column; gap:8px; padding-right: 4px;">
                   <!-- 动态加载 Cherry Studio 风格的已选模型行 -->
                 </div>
               </div>
@@ -406,47 +437,42 @@
             </div>
           </div>
         </div>
-        <div class="provider-footer">
-          <div style="display:flex; align-items:center; gap:8px">
-            <div class="conn-dot no" id="pf-conn-dot"></div>
-            <span class="conn-text" id="pf-conn-text" style="font-size:12px; font-weight:600;">未测试</span>
-          </div>
-          <div style="display:flex; gap:12px">
-            <button class="btn-ghost" onclick="testProviderInEditor()" style="padding:10px 20px; border-radius:10px; font-size:12px; font-weight:600; display:inline-flex; align-items:center; justify-content:center; gap:6px;">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;"><path d="M4.5 3h15"></path><path d="M6 3v16a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V3"></path><path d="M6 14h12"></path></svg>
-              <span>测试连接</span>
-            </button>
-            <button class="btn-ghost" onclick="closeProviderEditor()" style="padding:10px 20px; border-radius:10px; font-size:12px; font-weight:600;">取消</button>
-            <button class="btn-primary" onclick="saveProviderFromEditor()" style="padding:10px 24px; border-radius:10px; font-size:12px; font-weight:700; display:inline-flex; align-items:center; justify-content:center; gap:6px;">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>
-              <span>保存供应商</span>
-            </button>
-          </div>
-        </div>
       </div>
     </div>
 
-    <!-- 添加映射全屏模态框 (大师级左右分栏设计) -->
-    <div id="slotModal" class="editor-overlay" style="position:fixed;inset:0;z-index:1000;background:rgba(0,0,0,0.45);align-items:center;justify-content:center;">
-      <div class="glass-card fullscreen-modal">
-        <div class="card-header" style="display:flex; align-items:center; justify-content:space-between; width:100%;">
-          <div style="display:flex; align-items:center; gap:8px;">
-            <button class="modal-back-btn" onclick="closeSlotEditor()" style="display:inline-flex; align-items:center; gap:8px; background:var(--bg-input); border:1px solid var(--border); color:var(--text-primary); cursor:pointer; font-size:13px; font-weight:600; padding:8px 16px; border-radius:10px; transition:all 0.2s;">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                <line x1="19" y1="12" x2="5" y2="12"></line>
-                <polyline points="12 19 5 12 12 5"></polyline>
+    <!-- ═══════ PAGE: SLOT MAPPING EDITOR (添加/编辑映射) ═══════ -->
+    <div class="page slot-editor-page" id="page-slot-editor" role="tabpanel" aria-labelledby="tab-models">
+      <div class="model-slots-page">
+        <div class="control-bar glass-card model-slots-head">
+          <div class="model-slots-title">
+            <button class="btn-ghost model-slots-back" onclick="closeSlotEditor()" title="返回模型映射">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M19 12H5"></path>
+                <path d="M12 19l-7-7 7-7"></path>
               </svg>
-              <span>返回模型映射</span>
             </button>
-            <span id="slotModalTitle" style="font-size:14px; font-weight:700; color:var(--text-muted); margin-left: 12px; border-left: 1px solid var(--border-strong); padding-left: 12px;">添加映射</span>
+            <div>
+              <h2 id="slotModalTitle">添加映射</h2>
+              <div id="slotModalSubtitle">选择槽位和映射目标</div>
+            </div>
           </div>
-          <div style="font-size:12px; color:var(--text-muted); font-family:var(--font-mono);">IDE BYOK Control Panel</div>
+          <div class="model-slots-actions">
+            <button class="btn-ghost" onclick="closeSlotEditor()">取消</button>
+            <button class="btn-primary" onclick="saveSlotFromEditor()">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>
+                <polyline points="17 21 17 13 7 13 7 21"></polyline>
+                <polyline points="7 3 7 8 15 8"></polyline>
+              </svg>
+              <span>保存映射</span>
+            </button>
+          </div>
         </div>
-        <div class="card-body" style="display:flex; flex-direction:row !important; gap:36px; align-items:stretch; flex:1; height:100%; padding: 24px 40px !important;">
+        <div class="glass-card model-slots-workspace slot-editor-workspace">
           <!-- Left Column: 模型目录 (平铺列表) -->
           <div style="flex:1; display:flex; flex-direction:column; background:var(--bg-card); border:1px solid var(--border); border-radius:var(--radius-lg); overflow:hidden; box-shadow:var(--shadow-sm);">
             <div style="padding:16px 20px; border-bottom:1px solid var(--border); background:var(--bg-glass); display:flex; align-items:center; justify-content:space-between;">
-              <span style="font-size:14px; font-weight:700; color:var(--text-primary);">选择 Windsurf 槽位</span>
+              <span style="font-size:14px; font-weight:700; color:var(--text-primary);">选择 IDE 模型槽位</span>
               <div style="display:flex; align-items:center; gap:6px;">
                 <span class="brand-tag" id="slotCatalogCount" style="padding: 2px 8px; font-size: 10px; font-weight:700;">0 可用</span>
                 <button id="btn-refresh-models" class="btn-ghost" onclick="refreshIdeModels()" style="padding: 0 10px; border-radius: 6px; display: flex; align-items: center; gap: 4px; height: 24px; font-size: 11px; font-weight: 600;" title="从 IDE 账号拉取最新模型列表">
@@ -464,8 +490,15 @@
               <button class="slot-scope-tab" data-scope="bound" onclick="setSlotCatalogScope('bound')" style="height:26px;padding:0 10px;border-radius:7px;border:1px solid var(--border);background:var(--bg-input);color:var(--text-muted);font-size:11px;font-weight:700;cursor:pointer;">已绑定 <span id="slotScopeBoundCount">0</span></button>
             </div>
             <!-- 槽位搜索栏 -->
-            <div style="padding:12px 20px; border-bottom:1px solid var(--border); background:rgba(0,0,0,0.01);">
-              <input type="text" id="slotCatalogSearch" placeholder="搜索槽位名 / modelUid..." oninput="filterSlotCatalog()" style="padding:10px 14px; border-radius:10px; font-size:12px; width:100%; border:1px solid var(--border); background:var(--bg-input); outline:none; transition:all 0.2s;">
+            <div style="padding:12px 20px; border-bottom:1px solid var(--border); background:rgba(0,0,0,0.01); display:flex; gap:8px; align-items:center;">
+              <input type="text" id="slotCatalogSearch" placeholder="搜索槽位名 / modelUid..." oninput="filterSlotCatalog()" style="padding:10px 14px; border-radius:10px; font-size:12px; flex:1; min-width:0; border:1px solid var(--border); background:var(--bg-input); outline:none; transition:all 0.2s;">
+              <select id="slotCatalogSort" onchange="slotCatalogSort=this.value;filterSlotCatalog()" style="height:34px;padding:0 8px;border:1px solid var(--border);background:var(--bg-input);color:var(--text-primary);border-radius:8px;font-size:11px;outline:none;cursor:pointer;">
+                <option value="name-asc">名称 A→Z</option>
+                <option value="name-desc">名称 Z→A</option>
+              </select>
+            </div>
+            <!-- 槽位品牌快速筛选 -->
+            <div id="slotCatalogBrandBar" style="display:flex;align-items:center;gap:5px;padding:8px 20px;border-bottom:1px solid var(--border);background:var(--bg-card);flex-wrap:wrap;">
             </div>
             <!-- 槽位行容器 -->
             <div id="slotCatalogBody" style="flex:1; overflow-y:auto; padding:16px 20px; display:flex; flex-direction:column; gap:8px;">
@@ -482,8 +515,15 @@
               <span style="font-size:14px; font-weight:700; color:var(--text-primary);">选择映射模型</span>
             </div>
             <!-- 映射模型搜索栏 -->
-            <div style="padding:12px 20px; border-bottom:1px solid var(--border); background:rgba(0,0,0,0.01);">
-              <input type="text" id="mappingModelSearch" placeholder="搜索已配置的模型名称/供应商..." oninput="renderMappingModelCatalog()" style="padding:10px 14px; border-radius:10px; font-size:12px; width:100%; border:1px solid var(--border); background:var(--bg-input); outline:none; transition:all 0.2s;">
+            <div style="padding:12px 20px; border-bottom:1px solid var(--border); background:rgba(0,0,0,0.01); display:flex; gap:8px; align-items:center;">
+              <input type="text" id="mappingModelSearch" placeholder="搜索已配置的模型名称/供应商..." oninput="renderMappingModelCatalog()" style="padding:10px 14px; border-radius:10px; font-size:12px; flex:1; min-width:0; border:1px solid var(--border); background:var(--bg-input); outline:none; transition:all 0.2s;">
+              <select id="mappingCatalogSort" onchange="mappingCatalogSort=this.value;renderMappingModelCatalog()" style="height:34px;padding:0 8px;border:1px solid var(--border);background:var(--bg-input);color:var(--text-primary);border-radius:8px;font-size:11px;outline:none;cursor:pointer;">
+                <option value="name-asc">名称 A→Z</option>
+                <option value="name-desc">名称 Z→A</option>
+              </select>
+            </div>
+            <!-- 映射模型供应商快速筛选 -->
+            <div id="mappingCatalogProviderBar" style="display:flex;align-items:center;gap:5px;padding:8px 20px;border-bottom:1px solid var(--border);background:var(--bg-card);flex-wrap:wrap;">
             </div>
             <!-- 映射模型行容器 -->
             <div id="mappingModelCatalogBody" style="flex:1; overflow-y:auto; padding:16px 20px; display:flex; flex-direction:column; gap:8px;">
@@ -495,85 +535,103 @@
                 <span style="font-size:12px; font-weight:600; color:var(--text-secondary);">映射自定义显示名（留空使用模型原始名）</span>
               </div>
               <input class="field-input" id="slot-display" placeholder="例如：我的 DeepSeek 映射..." style="padding:10px 14px; font-size:12px; border-radius:8px; width:100%;">
-              <div id="slot-vision-hint" style="border:1px solid var(--border); border-radius:8px; padding:9px 10px; font-size:11px; line-height:1.45; transition:all .2s;">
-                选择槽位和映射目标后显示图片能力判断
-              </div>
-              <label style="display:flex; align-items:center; gap:8px; font-size:12px; color:var(--text-secondary); cursor:pointer; user-select:none; margin-top:2px;">
-                <input type="checkbox" id="slot-supports-images" checked onchange="updateSlotVisionHint()" style="width:15px; height:15px; cursor:pointer;">
-                <span>向 Windsurf 声明支持图片（仅原生视觉槽位会稳定上传图片）</span>
-              </label>
               <input type="hidden" id="slot-edit-uid">
               <select class="model-select" id="slot-uid-select" style="display:none;"></select>
             </div>
           </div>
         </div>
-        <div class="provider-footer" style="display:flex; justify-content:flex-end; gap:12px;">
-          <button class="btn-ghost" onclick="closeSlotEditor()" style="padding:10px 20px; border-radius:10px; font-size:12px; font-weight:600;">取消</button>
-          <button class="btn-primary" onclick="saveSlotFromEditor()" style="padding:10px 24px; border-radius:10px; font-size:12px; font-weight:700; display:inline-flex; align-items:center; justify-content:center; gap:6px;">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>
-            <span>保存映射</span>
-          </button>
-        </div>
       </div>
     </div>
 
-    <!-- 模型槽位管理模态框（解锁、显示策略、BYOK 槽位路由） -->
-    <div id="injectedModal" class="editor-overlay" style="position:fixed;inset:0;z-index:1000;background:rgba(0,0,0,0.45);display:none;align-items:center;justify-content:center;">
-      <div class="glass-card model-slot-modal" style="width:880px;max-width:95vw;height:min(720px,90vh);display:flex;flex-direction:column;">
-        <div class="card-header" style="display:flex;align-items:center;justify-content:space-between;gap:12px;">
-          <div class="card-title"><span class="dot"></span> 模型槽位管理</div>
-          <div id="slot-policy-summary" style="font-size:11px;color:var(--text-muted);">默认全量解锁</div>
-        </div>
-        <div class="card-body" style="padding:14px 18px;display:flex;flex-direction:column;gap:12px;flex:1;overflow:hidden;">
-          <div style="font-size:11px;color:var(--text-muted);line-height:1.6;">
-            管理 IDE 模型下拉框里的槽位显示和 BYOK 路由。已配置 BYOK 的槽位会走你的供应商；官方可用且未映射的槽位透传官方；解锁但未配置的槽位会显示为未配置并给出明确错误。
+    <!-- ═══════ PAGE: MODEL SLOT MANAGEMENT ═══════ -->
+    <div class="page" id="page-model-slots" role="tabpanel" aria-labelledby="tab-models">
+      <div class="model-slots-page">
+        <div class="control-bar glass-card model-slots-head">
+          <div class="model-slots-title">
+            <button class="btn-ghost model-slots-back" onclick="closeInjectedEditor()" title="返回模型映射">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M19 12H5"></path>
+                <path d="M12 19l-7-7 7-7"></path>
+              </svg>
+            </button>
+            <div>
+              <h2>模型槽位管理</h2>
+              <div id="slot-policy-summary">默认全量解锁</div>
+            </div>
           </div>
-          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
-            <select id="slot-display-mode" onchange="setSlotDisplayMode(this.value)" title="控制原本灰色不可选模型的解锁范围；官方本来可用的未映射模型仍会标记为官方。" style="padding:6px 10px;border:1px solid var(--border);background:var(--bg-input);color:var(--text-primary);border-radius:8px;font-size:12px;outline:none;">
-              <option value="all">解锁全部槽位</option>
-              <option value="common">解锁常用槽位</option>
-              <option value="claude">只解锁 Claude</option>
-              <option value="gpt">只解锁 GPT / Codex</option>
-              <option value="gemini">只解锁 Gemini</option>
-              <option value="code">只解锁 Code / SWE</option>
-              <option value="configured">只解锁已配置 BYOK</option>
-            </select>
-            <input type="text" id="injected-search" placeholder="搜索模型名 / modelUid / apiId..." oninput="renderInjectedList()" style="flex:1;padding:6px 10px;border:1px solid var(--border);background:var(--bg-input);color:var(--text-primary);border-radius:8px;font-size:12px;outline:none;">
-            <select id="injected-filter" onchange="renderInjectedList()" style="padding:6px 10px;border:1px solid var(--border);background:var(--bg-input);color:var(--text-primary);border-radius:8px;font-size:12px;outline:none;">
+          <div class="model-slots-actions">
+            <button class="btn-ghost" onclick="closeInjectedEditor()">返回映射</button>
+            <button class="btn-primary" id="slot-visibility-save-btn" onclick="saveInjectedFromEditor()">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>
+                <polyline points="17 21 17 13 7 13 7 21"></polyline>
+                <polyline points="7 3 7 8 15 8"></polyline>
+              </svg>
+              <span id="slot-visibility-save-label">保存</span>
+            </button>
+          </div>
+        </div>
+        <div class="glass-card model-slots-workspace">
+          <div class="model-slots-presets" role="group" aria-label="槽位显示快速设置">
+            <button class="model-slot-preset" data-mode="mapped" data-label="应用：仅显示已映射槽位" onclick="setSlotVisibilityMode('mapped')">应用：仅显示已映射槽位</button>
+            <button class="model-slot-preset" data-mode="official" data-label="应用：已映射 + 官方模型" onclick="setSlotVisibilityMode('official')">应用：已映射 + 官方模型</button>
+            <button class="model-slot-preset" data-mode="all" data-label="应用：已映射 + 官方 + 全部" onclick="setSlotVisibilityMode('all')">应用：已映射 + 官方 + 全部</button>
+          </div>
+          <div class="model-slots-toolbar">
+            <label class="slot-bulk-select" title="选择当前列表">
+              <input type="checkbox" id="slot-visibility-select-all" onchange="toggleSlotVisibilitySelectAll(this.checked)">
+              <span id="slot-visibility-select-label">选择</span>
+            </label>
+            <button class="btn-ghost" id="slot-bulk-enable-btn" onclick="batchSetSlotVisibility(true)">启用</button>
+            <button class="btn-ghost" id="slot-bulk-disable-btn" onclick="batchSetSlotVisibility(false)">禁用</button>
+            <input type="text" id="injected-search" placeholder="搜索模型名 / modelUid / apiId..." oninput="renderInjectedList()">
+            <select id="injected-filter" onchange="renderInjectedList()">
               <option value="all">全部</option>
-              <option value="configured">已配置</option>
+              <option value="visible">显示中</option>
+              <option value="hidden">已隐藏</option>
+              <option value="mapped">已映射</option>
+              <option value="official">官方模型</option>
               <option value="unconfigured">未配置</option>
             </select>
           </div>
-          <div id="injected-list" class="model-slot-list" style="flex:1;overflow-y:auto;border:1px solid var(--border);border-radius:8px;"></div>
-        </div>
-        <div class="provider-footer" style="display:flex;justify-content:flex-end;gap:12px;padding:12px 18px;border-top:1px solid var(--border);">
-          <button class="btn-ghost" onclick="closeInjectedEditor()" style="padding:10px 20px;border-radius:10px;font-size:12px;font-weight:600;">关闭</button>
-          <button class="btn-primary" onclick="saveInjectedFromEditor()" style="padding:10px 24px;border-radius:10px;font-size:12px;font-weight:700;display:inline-flex;align-items:center;gap:6px;">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>
-            <span>保存</span>
-          </button>
+          <div class="model-slots-list-section">
+            <div id="injected-list" class="model-slot-list"></div>
+          </div>
         </div>
       </div>
     </div>
 
     <!-- 故障转移配置模态框 -->
     <div id="failoverModal" class="editor-overlay" style="position:fixed;inset:0;z-index:1000;background:rgba(0,0,0,0.45);align-items:center;justify-content:center;">
-      <div class="glass-card" style="width:640px;max-width:95vw;">
-        <div class="card-header">
-          <div class="card-title"><span class="dot"></span> 故障转移配置 · <span id="failoverModalSlot"></span></div>
-          <button class="btn-ghost" onclick="addFailoverRow()">+ 添加备选</button>
+      <div class="glass-card" style="width:640px;max-width:95vw;display:flex;flex-direction:column;max-height:80vh;">
+        <div class="control-bar glass-card model-slots-head" style="border-radius:0;">
+          <div class="model-slots-title">
+            <button class="btn-ghost model-slots-back" onclick="closeFailoverEditor()" title="返回">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M19 12H5"></path>
+                <path d="M12 19l-7-7 7-7"></path>
+              </svg>
+            </button>
+            <div>
+              <h2>故障转移 · <span id="failoverModalSlot"></span></h2>
+              <div>配置多个目标分流</div>
+            </div>
+          </div>
+          <div class="model-slots-actions">
+            <button class="btn-ghost" onclick="addFailoverRow()">+ 添加备选</button>
+            <button class="btn-primary" onclick="saveFailoverFromEditor()">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>
+                <polyline points="17 21 17 13 7 13 7 21"></polyline>
+                <polyline points="7 3 7 8 15 8"></polyline>
+              </svg>
+              <span>保存</span>
+            </button>
+          </div>
         </div>
         <div class="card-body" style="padding:18px 22px;">
           <div id="failoverRows" style="display:flex;flex-direction:column;gap:10px;"></div>
           <div id="failoverEmpty" style="display:none;color:var(--text-muted);font-size:13px;padding:8px 0">尚无目标，点击「+ 添加备选」新增。</div>
-        </div>
-        <div class="provider-footer" style="display:flex; justify-content:flex-end; gap:12px;">
-          <button class="btn-ghost" onclick="closeFailoverEditor()" style="padding:10px 20px; border-radius:10px; font-size:12px; font-weight:600;">取消</button>
-          <button class="btn-primary" onclick="saveFailoverFromEditor()" style="padding:10px 24px; border-radius:10px; font-size:12px; font-weight:700; display:inline-flex; align-items:center; justify-content:center; gap:6px;">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>
-            <span>保存</span>
-          </button>
         </div>
       </div>
     </div>
@@ -641,7 +699,6 @@
           <h2 style="font-size: 14px; font-weight: 700; color: var(--text-primary); display: flex; align-items: center; gap: 6px; margin: 0; user-select: none;">
             模型映射
           </h2>
-          <div id="modelMapSummary" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;"></div>
 
           <!-- 搜索输入框 -->
           <div style="position: relative; display: flex; align-items: center;">
@@ -649,16 +706,8 @@
               <circle cx="11" cy="11" r="8"></circle>
               <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
             </svg>
-            <input type="text" id="model-search-input" placeholder="搜索显示名/原模型名/原始模型ID..." style="width: 220px; padding: 5px 10px 5px 26px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg-input); color: var(--text-primary); font-size: 12px; outline: none; transition: all 0.2s;" oninput="filterModelTable()">
+            <input type="text" id="model-search-input" placeholder="搜索已映射模型..." style="width: 220px; padding: 5px 10px 5px 26px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg-input); color: var(--text-primary); font-size: 12px; outline: none; transition: all 0.2s;" oninput="filterModelTable()">
           </div>
-        </div>
-
-        <!-- 中间：过滤 Tabs -->
-        <div class="filter-tabs" style="display: flex; background: var(--bg-input); padding: 2px; border-radius: 8px; border: 1px solid var(--border);">
-          <button class="filter-tab-item active" data-filter="all" onclick="setModelFilter('all')" style="padding: 4px 12px; border-radius: 6px; border: none; font-size: 11px; font-weight: 600; cursor: pointer; transition: all 0.2s; background: var(--bg-card); color: var(--text-primary); box-shadow: var(--shadow-sm);">全部</button>
-          <button class="filter-tab-item" data-filter="hijacked" onclick="setModelFilter('hijacked')" style="padding: 4px 12px; border-radius: 6px; border: none; font-size: 11px; font-weight: 500; cursor: pointer; transition: all 0.2s; background: transparent; color: var(--text-muted);">已劫持</button>
-          <button class="filter-tab-item" data-filter="unset" onclick="setModelFilter('unset')" style="padding: 4px 12px; border-radius: 6px; border: none; font-size: 11px; font-weight: 500; cursor: pointer; transition: all 0.2s; background: transparent; color: var(--text-muted);">未设置</button>
-          <button class="filter-tab-item" data-filter="vision-risk" onclick="setModelFilter('vision-risk')" style="padding: 4px 12px; border-radius: 6px; border: none; font-size: 11px; font-weight: 500; cursor: pointer; transition: all 0.2s; background: transparent; color: var(--text-muted);">图片风险</button>
         </div>
 
         <!-- 右侧：刷新及操作按钮 -->
@@ -693,9 +742,7 @@
           <colgroup>
             <col class="model-col-display">
             <col class="model-col-origin">
-            <col class="model-col-raw">
             <col class="model-col-target">
-            <col class="model-col-toggle">
             <col class="model-col-action">
           </colgroup>
           <thead>
@@ -712,9 +759,7 @@
                 </span>
               </th>
               <th>原模型名</th>
-              <th>图片理解</th>
               <th>目标（供应商/模型）</th>
-              <th>劫持</th>
               <th>操作</th>
             </tr>
           </thead>
@@ -1041,6 +1086,13 @@
               </div>
               <div class="setting-ctrl"><div class="toggle-sm" data-autostart></div></div>
             </div>
+            <div class="setting-row">
+              <div>
+                <div class="setting-label">统计保留天数</div>
+                <div class="setting-desc">长期保存每日请求、Token、错误和模型用量统计</div>
+              </div>
+              <div class="setting-ctrl"><input class="input-sm" data-config-key="STATS_RETENTION_DAYS" type="number" min="1" max="3650" value="365"></div>
+            </div>
           </div>
         </div>
 
@@ -1250,6 +1302,20 @@
                 <input class="field-input" id="idePath" placeholder="探测中...">
                 <button class="btn-ghost" onclick="detectIdePath()">探测</button>
                 <button class="btn-ghost" onclick="saveIdePath()">保存</button>
+              </div>
+            </div>
+            <div class="setting-row">
+              <div>
+                <div class="setting-label">环境体检</div>
+                <div class="setting-desc" id="env-check-summary">检查证书、端口、IDE 配置、Sidecar、资源文件、模型映射和供应商配置；可自动修复部分问题</div>
+              </div>
+              <div class="setting-ctrl">
+                <button class="btn-primary" id="env-check-btn" onclick="runSettingsEnvironmentCheck()">开始体检</button>
+              </div>
+            </div>
+            <div class="setting-row" style="display:block;">
+              <div id="env-check-results" style="width:100%;max-height:260px;overflow:auto;font-size:12px;">
+                <div class="setting-desc">点击「开始体检」查看详细结果。</div>
               </div>
             </div>
             <div class="setting-row">

@@ -130,6 +130,7 @@ fn restore_all(state: &ProxyState, target: &str) -> RestoreReport {
 #[derive(Serialize, Clone)]
 pub struct ProxyStatus {
     pub running: bool,
+    pub target_ide: String,
     pub api_port: u16,
     pub inference_port: u16,
 }
@@ -201,7 +202,20 @@ where
 
 fn resolve_target_ide_arg(target_ide: Option<&str>) -> Result<String, String> {
     match target_ide {
-        Some("auto") | None => {
+        Some("auto") => {
+            let detected = crate::commands::system::detect_target_ide();
+            if detected != "windsurf" && detected != "devin" {
+                Ok("windsurf".into())
+            } else {
+                Ok(detected)
+            }
+        }
+        None => {
+            if let Some(saved) = crate::commands::config::read_config_value("target_ide") {
+                if saved == "windsurf" || saved == "devin" {
+                    return Ok(saved);
+                }
+            }
             let detected = crate::commands::system::detect_target_ide();
             if detected != "windsurf" && detected != "devin" {
                 Ok("windsurf".into())
@@ -388,6 +402,18 @@ fn load_cached_ide_model_uids(
     Ok(Some((uids, source, captured_at)))
 }
 
+fn resolve_resources_root(resource_dir: Option<&Path>) -> Option<PathBuf> {
+    let dir = resource_dir?;
+    if dir.join("byok-cards.js").exists() || dir.join("sidecar").exists() {
+        return Some(dir.to_path_buf());
+    }
+    let nested = dir.join("resources");
+    if nested.join("byok-cards.js").exists() || nested.join("sidecar").exists() {
+        return Some(nested);
+    }
+    Some(dir.to_path_buf())
+}
+
 fn run_proxy_preflight(
     target_ide: Option<&str>,
     resource_dir: Option<&Path>,
@@ -396,6 +422,7 @@ fn run_proxy_preflight(
     let target = resolve_target_ide_arg(target_ide)?;
     let mut issues = Vec::new();
     let config_dir = crate::commands::config::config_dir_path();
+    let resources_root = resolve_resources_root(resource_dir);
 
     match std::fs::create_dir_all(&config_dir) {
         Ok(()) => {
@@ -450,7 +477,10 @@ fn run_proxy_preflight(
                     &mut issues,
                     "err",
                     "certs.generate_failed",
-                    format!("自动生成 MITM 证书失败: {}。请到「设置 > IDE 接入」手动生成", e),
+                    format!(
+                        "自动生成 MITM 证书失败: {}。请到「设置 > IDE 接入」手动生成",
+                        e
+                    ),
                 ),
             }
         } else {
@@ -472,10 +502,45 @@ fn run_proxy_preflight(
     } else {
         "Windsurf"
     };
+    let ide_exe_path = crate::commands::system::detect_ide_path(Some(target.clone()));
+    let settings_display = crate::commands::ide_config::settings_path(&target)
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or_else(|| "未定位".into());
+    push_issue(
+        &mut issues,
+        "ok",
+        "ide.target",
+        format!(
+            "目标 IDE: {}；配置文件: {}；程序路径: {}",
+            ide_label,
+            settings_display,
+            ide_exe_path.clone().unwrap_or_else(|| "未定位".into())
+        ),
+    );
+    let other_target = if target == "devin" { "windsurf" } else { "devin" };
+    let other_label = if other_target == "devin" {
+        "Devin"
+    } else {
+        "Windsurf"
+    };
+    if !crate::commands::system::is_ide_running(target.clone())
+        && crate::commands::system::is_ide_running(other_target.into())
+    {
+        push_issue(
+            &mut issues,
+            "warn",
+            "ide.target_mismatch",
+            format!(
+                "当前选择的是 {}，但检测到正在运行的是 {}。如果你实际使用 {}，请先切换顶部 IDE 选择器再启动代理",
+                ide_label, other_label, other_label
+            ),
+        );
+    }
+
     let settings_candidate = match crate::commands::ide_config::settings_path(&target) {
         Some(settings) if settings.exists() => Some(settings),
         Some(settings) if repair => {
-            if crate::commands::system::detect_ide_path(Some(target.clone())).is_some() {
+            if ide_exe_path.is_some() {
                 match crate::commands::ide_config::ensure_settings_file(&target) {
                     Ok((path, true)) => {
                         push_issue(
@@ -540,15 +605,32 @@ fn run_proxy_preflight(
                         if proxy == "http://localhost:7450"
                             && strict_ssl != Some(&serde_json::Value::Bool(false))
                         {
-                            push_issue(
-                                &mut issues,
-                                "warn",
-                                "ide_settings.strict_ssl",
-                                format!(
-                                    "{} 已指向 BYOK 代理，但 http.proxyStrictSSL 不是 false，启动时会修正",
-                                    ide_label
-                                ),
-                            );
+                            if repair {
+                                match crate::commands::ide_config::patch(&target) {
+                                    Ok(_) => push_issue(
+                                        &mut issues,
+                                        "ok",
+                                        "ide_settings.strict_ssl_fixed",
+                                        format!("已自动修正 {} http.proxyStrictSSL 为 false", ide_label),
+                                    ),
+                                    Err(e) => push_issue(
+                                        &mut issues,
+                                        "err",
+                                        "ide_settings.strict_ssl_fix_failed",
+                                        format!("自动修正 {} http.proxyStrictSSL 失败: {}", ide_label, e),
+                                    ),
+                                }
+                            } else {
+                                push_issue(
+                                    &mut issues,
+                                    "warn",
+                                    "ide_settings.strict_ssl",
+                                    format!(
+                                        "{} 已指向 BYOK 代理，但 http.proxyStrictSSL 不是 false，启动时会修正",
+                                        ide_label
+                                    ),
+                                );
+                            }
                         }
                         let backup = settings_backup_path(&settings);
                         if backup.exists() && proxy != "http://localhost:7450" {
@@ -634,7 +716,7 @@ fn run_proxy_preflight(
         ),
     }
 
-    if let Some(res) = resource_dir {
+    if let Some(res) = resources_root.as_deref() {
         let script = res.join("byok-cards.js");
         if !script.exists() {
             push_issue(
@@ -887,15 +969,28 @@ fn run_proxy_preflight(
 
     for port in [7450u16, 7451u16] {
         if !is_port_free(port) {
-            push_issue(
-                &mut issues,
-                "warn",
-                "port.occupied",
-                format!(
-                    "端口 {} 已被占用，sidecar 会尝试回收；如启动失败请关闭旧代理进程",
-                    port
-                ),
-            );
+            if repair {
+                kill_sidecar_process();
+                std::thread::sleep(std::time::Duration::from_millis(250));
+            }
+            if !is_port_free(port) {
+                push_issue(
+                    &mut issues,
+                    if repair { "err" } else { "warn" },
+                    "port.occupied",
+                    format!(
+                        "端口 {} 已被占用，自动回收旧代理后仍不可用；请关闭占用该端口的进程后重试",
+                        port
+                    ),
+                );
+            } else {
+                push_issue(
+                    &mut issues,
+                    "ok",
+                    "port.recovered",
+                    format!("端口 {} 已自动回收并恢复可用", port),
+                );
+            }
         }
     }
 
@@ -938,8 +1033,20 @@ pub fn preflight_proxy_impl(
     app: AppHandle,
     target_ide: Option<String>,
 ) -> Result<ProxyPreflightReport, String> {
-    let resource_dir = app.path().resource_dir().map(|p| p.join("resources")).ok();
-    run_proxy_preflight(target_ide.as_deref(), resource_dir.as_deref(), true)
+    let resource_dir = app
+        .path()
+        .resource_dir()
+        .ok()
+        .and_then(|p| resolve_resources_root(Some(&p)));
+    let proxy_running = app
+        .try_state::<ProxyState>()
+        .and_then(|state| {
+            lock_or_recover(&state.child)
+                .as_ref()
+                .map(|managed| managed.try_wait().ok().flatten().is_none())
+        })
+        .unwrap_or(false);
+    run_proxy_preflight(target_ide.as_deref(), resource_dir.as_deref(), !proxy_running)
 }
 
 #[tauri::command]
@@ -992,8 +1099,14 @@ pub fn get_proxy_status(state: State<ProxyState>) -> ProxyStatus {
             running = managed.try_wait().ok().flatten().is_none();
         }
     }
+    let target_ide = if running {
+        lock_or_recover(&state.target_ide).clone()
+    } else {
+        String::new()
+    };
     ProxyStatus {
         running,
+        target_ide,
         api_port: 7450,
         inference_port: 7451,
     }
@@ -1036,7 +1149,11 @@ pub fn start_proxy_impl(
 
     let config_dir = crate::commands::config::config_dir_path();
 
-    let resource_dir = app.path().resource_dir().map(|p| p.join("resources")).ok();
+    let resource_dir = app
+        .path()
+        .resource_dir()
+        .ok()
+        .and_then(|p| resolve_resources_root(Some(&p)));
 
     // 再清一次孤儿 sidecar，处理上一轮异常退出但主应用仍在的情况。
     kill_sidecar_process();
@@ -1124,7 +1241,16 @@ pub fn start_proxy_impl(
             );
             true
         }
-        Ok(false) => false,
+        Ok(false) => {
+            let _ = app.emit(
+                "proxy-log",
+                LogLine {
+                    level: "info".into(),
+                    msg: format!("{} 代理配置已存在，若模型仍是原样请重启 IDE 并确认当前目标 IDE 正确", ide_label),
+                },
+            );
+            false
+        },
         Err(e) => {
             let _ = app.emit(
                 "proxy-log",
@@ -1139,6 +1265,17 @@ pub fn start_proxy_impl(
 
     // 注入卡片改写脚本到 workbench.html（失败不阻断代理启动，仅记日志）。
     if let Some(res) = &resource_dir {
+        let _ = app.emit(
+            "proxy-log",
+            LogLine {
+                level: "info".into(),
+                msg: format!(
+                    "代理配置目录: {}；资源目录: {}",
+                    config_dir.to_string_lossy(),
+                    res.to_string_lossy()
+                ),
+            },
+        );
         let script_path = res.join("byok-cards.js");
         match std::fs::read_to_string(&script_path) {
             Ok(script) => match crate::commands::workbench_inject::inject(&script, &target) {

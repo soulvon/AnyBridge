@@ -177,22 +177,22 @@ fn read_ide_session(target: &str) -> Result<IdeSession, String> {
 }
 
 /// 从 vscdb 二进制内容中提取 session token
-/// 优先匹配 "windsurf.pendingApiKeyMigration"，回退到 "apiKey"（新版 Windsurf 改用此字段）
 /// 只接受 devin-session-token$ 前缀（唯一能成功调 GetUserStatus 的格式）
 fn regex_extract_session_token(content: &str) -> Option<String> {
     let patterns = [
-        r#""windsurf\.pendingApiKeyMigration"\s*:\s*"(devin-session-token\$[^"]+)"#,
         r#""apiKey"\s*:\s*"(devin-session-token\$[^"]+)"#,
+        r#""windsurf\.pendingApiKeyMigration"\s*:\s*"(devin-session-token\$[^"]+)"#,
         r#""idToken"\s*:\s*"(devin-session-token\$[^"]+)"#,
     ];
     for pat in patterns {
         let re = regex::Regex::new(pat).ok()?;
-        if let Some(caps) = re.captures(content) {
-            if let Some(m) = caps.get(1) {
-                let token = m.as_str().to_string();
-                if !token.is_empty() {
-                    return Some(token);
-                }
+        let last = re
+            .captures_iter(content)
+            .filter_map(|caps| caps.get(1).map(|m| m.as_str().to_string()))
+            .last();
+        if let Some(token) = last {
+            if !token.is_empty() {
+                return Some(token);
             }
         }
     }
@@ -201,33 +201,22 @@ fn regex_extract_session_token(content: &str) -> Option<String> {
 
 /// 从 vscdb 二进制内容中提取 email
 fn regex_extract_email(content: &str) -> Option<String> {
-    // 优先从 lastLoginEmail 提取
     let pattern = regex::Regex::new(r#""lastLoginEmail"\s*:\s*"([^"]+)""#).ok()?;
-
-    if let Some(caps) = pattern.captures(content) {
-        if let Some(m) = caps.get(1) {
-            let email = m.as_str().to_string();
-            if !email.is_empty() {
-                return Some(email);
-            }
-        }
-    }
-    None
+    pattern
+        .captures_iter(content)
+        .filter_map(|caps| caps.get(1).map(|m| m.as_str().to_string()))
+        .last()
+        .filter(|email| !email.is_empty())
 }
 
 /// 从 vscdb 二进制内容中提取 apiServerUrl
 fn regex_extract_api_server_url(content: &str) -> Option<String> {
     let pattern = regex::Regex::new(r#""apiServerUrl"\s*:\s*"([^"]+)""#).ok()?;
-
-    if let Some(caps) = pattern.captures(content) {
-        if let Some(m) = caps.get(1) {
-            let url = m.as_str().to_string();
-            if !url.is_empty() {
-                return Some(url);
-            }
-        }
-    }
-    None
+    pattern
+        .captures_iter(content)
+        .filter_map(|caps| caps.get(1).map(|m| m.as_str().to_string()))
+        .last()
+        .filter(|url| !url.is_empty())
 }
 
 // ─── 调用 GetUserStatus API ────────────────────────────────
@@ -301,6 +290,7 @@ fn parse_account_info(data: serde_json::Value) -> Result<IdeAccountInfo, String>
         .to_string();
     let plan_name = data
         .pointer("/planInfo/planName")
+        .or_else(|| data.pointer("/userStatus/planStatus/planInfo/planName"))
         .and_then(|v| v.as_str())
         .unwrap_or("Unknown")
         .to_string();
@@ -329,6 +319,7 @@ fn parse_account_info(data: serde_json::Value) -> Result<IdeAccountInfo, String>
     // 数据源 1：cascadeAllowedModelsConfig 权限全集（很多 model 为空，含 BYOK / 基础设施模型）
     let allowed: HashSet<String> = data
         .pointer("/planInfo/cascadeAllowedModelsConfig")
+        .or_else(|| data.pointer("/userStatus/planStatus/planInfo/cascadeAllowedModelsConfig"))
         .and_then(|v| v.as_array())
         .map(|arr| {
             arr.iter()
@@ -801,6 +792,14 @@ pub fn builtin_models() -> Vec<IdeModel> {
             "Claude Opus 4.8 Max Fast",
             "anthropic",
             false,
+        ),
+        // Claude 5
+        ma(
+            "claude-5-fable-medium",
+            "Claude 5 Fable Medium",
+            "anthropic",
+            true,
+            "claude-5-fable",
         ),
         // BYOK 变体
         m(
@@ -1404,9 +1403,7 @@ pub async fn refresh_ide_models(target: Option<String>) -> Result<IdeAccountInfo
         Some(s) => s.to_string(),
     };
     let session = read_ide_session(&t)?;
-    let mut info = fetch_ide_account_info(&session).await?;
-    // 合并只增不减写回缓存，并取回合并后的完整列表回填给 UI
-    let merged = save_ide_models_cache(&info)?;
-    info.models = merged;
+    let info = fetch_ide_account_info(&session).await?;
+    save_ide_models_cache(&info)?;
     Ok(info)
 }

@@ -163,6 +163,10 @@ def pkg_bundle(os_name, arch):
     pkg["pkg"] = {
         "assets": [
             "**/*.jsc",
+            "config-cache.js",
+            "retry.js",
+            "windsurf-catalog.json",
+            "windsurf-catalog.js",
             "node_modules/bytenode/**/*",
             "prompts/**/*",
             "certs/**/*",

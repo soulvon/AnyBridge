@@ -1,8 +1,18 @@
 // ═══════ PROXY TOGGLE ═══════
 let proxyRunning = false;
+let activeProxyTarget = '';
 
 // 防连点:记录进行中的 toggle key,同一目标的并发操作会被忽略,避免后写覆盖先写。
 const _inFlightToggles = new Set();
+
+function ideDisplayLabel(ide) {
+  const labels = { windsurf: 'Windsurf', devin: 'Devin', auto: '自动检测' };
+  return labels[ide] || (ide ? ide.charAt(0).toUpperCase() + ide.slice(1) : 'Windsurf');
+}
+
+function statusTargetIde() {
+  return proxyRunning && activeProxyTarget ? activeProxyTarget : getTargetIde();
+}
 
 function setStatusPill(running) {
   proxyRunning = running;
@@ -33,8 +43,8 @@ function setStatusPill(running) {
   }
 
   if (sub) {
-    const ide = getTargetIde();
-    const ideLabel = ide === 'auto' ? '自动检测' : ide.charAt(0).toUpperCase() + ide.slice(1);
+    const ide = statusTargetIde();
+    const ideLabel = ideDisplayLabel(ide);
     sub.textContent = running
       ? `已接入 ${ideLabel} · 端口 :7450 / :7451 · 重启 IDE 生效`
       : `代理未运行 · 目标: ${ideLabel} · 端口 :7450 / :7451`;
@@ -58,6 +68,43 @@ function setStatusPill(running) {
 }
 
 let _toggling = false;
+
+function renderPreflightReport(report, targetElId) {
+  const el = document.getElementById(targetElId || 'env-check-results');
+  if (!el) return;
+  const issues = report && Array.isArray(report.issues) ? report.issues : [];
+  if (!issues.length) {
+    el.innerHTML = '<div class="setting-desc">未返回体检结果</div>';
+    return;
+  }
+  const label = { ok: '通过', warn: '提示', err: '错误' };
+  el.innerHTML = issues.map(i => {
+    const level = i.level || 'info';
+    const color = level === 'err' ? 'var(--danger)' : (level === 'warn' ? 'var(--warning)' : 'var(--success)');
+    return `<div style="display:flex;gap:8px;align-items:flex-start;padding:6px 0;border-bottom:1px solid var(--border-subtle);">
+      <span style="min-width:42px;color:${color};font-weight:700;">${label[level] || level.toUpperCase()}</span>
+      <span style="color:var(--text-secondary);line-height:1.5;">${escapeHtml(i.message || String(i))}</span>
+    </div>`;
+  }).join('');
+}
+
+async function runEnvironmentCheck(options) {
+  if (!invoke && !bindTauriBridge()) throw new Error('Tauri 通道未就绪');
+  const opts = options || {};
+  const target = opts.target || getTargetIde();
+  const prefix = opts.prefix || '环境体检';
+  const report = await invoke('preflight_proxy', { targetIde: target });
+  const issues = report && Array.isArray(report.issues) ? report.issues : [];
+  const errors = issues.filter(i => i.level === 'err');
+  const warnings = issues.filter(i => i.level === 'warn');
+  const oks = issues.filter(i => i.level === 'ok');
+  oks.forEach(i => addLog('ok', `${prefix}: ` + (i.message || String(i))));
+  warnings.forEach(i => addLog('warn', `${prefix}: ` + (i.message || String(i))));
+  if (errors.length) addLog('err', `${prefix}未通过: ` + errors.map(i => i.message || String(i)).join('; '));
+  if (opts.renderTo) renderPreflightReport(report, opts.renderTo);
+  return { report, issues, errors, warnings, effectiveTarget: (report && (report.target_ide || report.targetIde)) || target };
+}
+
 async function toggleProxy() {
   _diag('toggleProxy called');
   if (_toggling) { _diag('toggleProxy skipped: already in progress'); return; }
@@ -86,7 +133,8 @@ async function toggleProxy() {
   }
   try {
     if (proxyRunning) {
-      const report = await invoke('stop_proxy', { targetIde: target });
+      const stoppedTarget = activeProxyTarget || target;
+      const report = await invoke('stop_proxy', { targetIde: stoppedTarget });
       setStatusPill(false);
       // 检查还原报告，如果有警告则提示用户
       const warnings = [];
@@ -98,39 +146,33 @@ async function toggleProxy() {
         showCustomAlert('停止代理成功，但以下配置未能自动还原:\n\n• ' + warnings.join('\n• ') +
               '\n\n请手动检查 IDE 设置中的 http.proxy 和 http.proxyStrictSSL，否则 IDE 可能无法联网。', '部分还原失败', 'warn');
       } else {
-        await promptRestartIde('已停止代理并还原配置。IDE 仍指向已关闭的代理，需重启才能恢复正常联网。');
+        await promptRestartIde('已停止代理并还原配置。IDE 仍指向已关闭的代理，需重启才能恢复正常联网。', stoppedTarget);
       }
+      activeProxyTarget = '';
     } else {
-      // 启动前自检:覆盖证书、IDE 配置、模型映射、供应商、端口和最近模型清单。
-      let preflightOk = false;
+      let effectiveTarget = target;
+      let check;
       try {
-        const report = await invoke('preflight_proxy', { targetIde: target });
-        const issues = report && Array.isArray(report.issues) ? report.issues : [];
-        const errors = issues.filter(i => i.level === 'err');
-        issues.filter(i => i.level === 'ok').forEach(i => addLog('ok', '启动自检: ' + (i.message || String(i))));
-        if (errors.length) {
-          const messages = errors.map(i => i.message || String(i));
-          showCustomAlert('无法启动，已自动处理能修复的部分。请先处理以下问题:\n\n• ' + messages.join('\n• '), '启动自检未通过', 'error');
-          addLog('err', '启动自检未通过: ' + messages.join('; '));
-          if (btn) {
-            btn.disabled = false;
-            const text = btn.querySelector('.proxy-btn-text');
-            if (text) text.textContent = '启动代理'; else btn.textContent = '启动代理';
-          }
-          return;
-        }
-        if (report && report.warnings) {
-          const warnings = issues.filter(i => i.level === 'warn').slice(0, 3).map(i => i.message || String(i));
-          addLog('warn', `启动自检通过，但有 ${report.warnings} 条提示: ${warnings.join('；')}`);
-        }
-        preflightOk = true;
+        check = await runEnvironmentCheck({ target, prefix: '启动自检' });
+        effectiveTarget = check.effectiveTarget;
       } catch (e) {
-        addLog('warn', '启动自检跳过: ' + e);
+        addLog('err', '启动自检执行失败，已阻止启动: ' + e);
+        showCustomAlert('启动自检执行失败，代理未启动。请先处理异常后重试:\n\n' + e, '启动自检失败', 'error');
+        return;
       }
-      await invoke('start_proxy', { targetIde: target, skipPreflight: preflightOk });
+      if (check.errors.length) {
+        const messages = check.errors.map(i => i.message || String(i));
+        showCustomAlert('无法启动，已自动处理能修复的部分。请先处理以下问题:\n\n• ' + messages.join('\n• '), '启动自检未通过', 'error');
+        return;
+      }
+      if (check.warnings.length) {
+        const messages = check.warnings.slice(0, 3).map(i => i.message || String(i));
+        addLog('warn', `启动自检通过，但有 ${check.warnings.length} 条提示: ${messages.join('；')}`);
+      }
+      await invoke('start_proxy', { targetIde: target, skipPreflight: true });
+      activeProxyTarget = effectiveTarget === 'auto' ? target : effectiveTarget;
       setStatusPill(true);
-      // 不论配置是否本次改动，运行中的 IDE 都可能尚未加载代理设置，统一提示重启生效。
-      await promptRestartIde('代理已启动，需重启 IDE 才能生效。');
+      await promptRestartIde('代理已启动，需重启 IDE 才能生效。', activeProxyTarget);
     }
   } catch (e) {
     addLog('err', '代理操作失败: ' + e);
@@ -150,7 +192,13 @@ async function refreshStatus() {
   _refreshStatusInFlight = true;
   try {
     const s = await invoke('get_proxy_status');
-    setStatusPill(!!s.running);
+    const running = !!s.running;
+    if (running) {
+      activeProxyTarget = s.target_ide || s.targetIde || activeProxyTarget;
+    } else {
+      activeProxyTarget = '';
+    }
+    setStatusPill(running);
     _statusFailStreak = 0;
   } catch (e) {
     // 轮询偶发失败不打扰用户；连续多次失败才告警一次，避免每 3 秒刷屏。
@@ -162,10 +210,10 @@ async function refreshStatus() {
 }
 
 // 代理状态变更后，提示并询问是否一键重启 IDE 使其生效。
-function promptRestartIde(leadText) {
+function promptRestartIde(leadText, targetOverride) {
   if (!invoke) return Promise.resolve(false);
   const lead = leadText || '代理状态已变更，需重启 IDE 才能生效。';
-  const target = getTargetIde();
+  const target = targetOverride || activeProxyTarget || getTargetIde();
 
   return new Promise((resolve) => {
     const modal = document.getElementById('custom-confirm-modal');
@@ -436,10 +484,19 @@ function cycleLogFilter() {
   renderLogs();
 }
 
-function exportLogs() {
+async function exportLogs() {
   if (logEntries.length === 0) {
     addLog('warn', '暂无日志可导出');
     return;
+  }
+  if (invoke || bindTauriBridge()) {
+    try {
+      const path = await invoke('export_proxy_logs', { entries: logEntries });
+      addLog('ok', `已导出 ${logEntries.length} 条日志: ${path}`);
+      return;
+    } catch (e) {
+      addLog('warn', '后端导出失败，尝试浏览器下载: ' + e);
+    }
   }
   const text = logEntries.map(e => `[${e.ts}] ${e.level.toUpperCase()} ${e.msg}`).join('\n');
   const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
@@ -447,7 +504,9 @@ function exportLogs() {
   const a = document.createElement('a');
   a.href = url;
   a.download = `byok-logs-${new Date().toISOString().slice(0, 10)}.txt`;
+  document.body.appendChild(a);
   a.click();
+  a.remove();
   URL.revokeObjectURL(url);
   addLog('ok', `已导出 ${logEntries.length} 条日志`);
 }
@@ -473,6 +532,29 @@ async function generateCerts() {
   } catch (e) {
     if (status) status.textContent = '生成失败: ' + e;
     addLog('err', '证书生成失败: ' + e);
+  }
+}
+
+async function runSettingsEnvironmentCheck() {
+  const btn = document.getElementById('env-check-btn');
+  const summary = document.getElementById('env-check-summary');
+  if (btn) btn.disabled = true;
+  if (summary) summary.textContent = '体检中，正在自动修复可处理的问题…';
+  try {
+    const result = await runEnvironmentCheck({ target: getTargetIde(), prefix: '手动体检', renderTo: 'env-check-results' });
+    if (summary) {
+      summary.textContent = result.errors.length
+        ? `体检未通过：${result.errors.length} 个错误，${result.warnings.length} 个提示`
+        : `体检通过：${result.warnings.length} 个提示`;
+    }
+    if (result.errors.length) {
+      showCustomAlert('环境体检未通过:\n\n• ' + result.errors.map(i => i.message || String(i)).join('\n• '), '环境体检', 'error');
+    }
+  } catch (e) {
+    if (summary) summary.textContent = '体检失败: ' + e;
+    addLog('err', '手动体检失败: ' + e);
+  } finally {
+    if (btn) btn.disabled = false;
   }
 }
 

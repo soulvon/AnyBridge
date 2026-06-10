@@ -29,6 +29,10 @@ fn default_unlock_scope() -> String {
     "all".to_string()
 }
 
+fn default_slot_visibility_mode() -> String {
+    "mapped".to_string()
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Target {
     #[serde(rename = "providerId")]
@@ -77,6 +81,14 @@ pub struct InjectedSlot {
     pub supports_images: bool,
 }
 
+/// 单模型槽位显示开关。slotVisibilityMode 是快速预设；这里记录用户逐项微调后的覆盖值。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SlotVisibility {
+    #[serde(rename = "modelUid")]
+    pub model_uid: String,
+    pub visible: bool,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct ModelMap {
     /// 全局显示名前缀,如 "(BYOK)"。拼接后显示为 "{prefix} {displayName}"。
@@ -95,6 +107,13 @@ pub struct ModelMap {
     /// 旧字段，保留用于兼容旧配置和旧前端。新逻辑使用 unlockScope。
     #[serde(rename = "slotDisplayMode", default = "default_slot_display_mode")]
     pub slot_display_mode: String,
+    /// 槽位显示策略：mapped=只显示已映射；official=已映射+官方；all=完整槽位列表。
+    /// 这是槽位管理里的产品概念，不等同于 unlockScope。
+    #[serde(rename = "slotVisibilityMode", default = "default_slot_visibility_mode")]
+    pub slot_visibility_mode: String,
+    /// 单模型显示覆盖。未出现在这里的模型按 slotVisibilityMode 推导。
+    #[serde(rename = "slotVisibility", default)]
+    pub slot_visibility: Vec<SlotVisibility>,
     #[serde(default)]
     pub slots: Vec<Slot>,
     /// 注入项列表:解锁 Windsurf 灰色不可选模型。详见 spec/08。
@@ -126,6 +145,8 @@ pub(crate) fn read_map() -> Result<ModelMap, String> {
             label_template: String::new(),
             unlock_scope: default_unlock_scope(),
             slot_display_mode: default_slot_display_mode(),
+            slot_visibility_mode: default_slot_visibility_mode(),
+            slot_visibility: Vec::new(),
             slots: default_slots(),
             injected: Vec::new(),
         });
@@ -141,6 +162,9 @@ pub(crate) fn read_map() -> Result<ModelMap, String> {
     }
     if map.slot_display_mode.trim().is_empty() {
         map.slot_display_mode = map.unlock_scope.clone();
+    }
+    if map.slot_visibility_mode.trim().is_empty() {
+        map.slot_visibility_mode = default_slot_visibility_mode();
     }
     Ok(map)
 }
@@ -160,7 +184,7 @@ pub fn load_model_map() -> Result<ModelMap, String> {
 /// 整体保存槽位表（增删改/排序/改 targets 统一走这里）。
 /// 校验:
 ///   槽位: modelUid 不可重复
-///   注入项: modelUid 不可与槽位重复; modelUid+label 不可空; model 字段（一旦设了 providerId）必填
+///   注入项: modelUid 不可与槽位重复; modelUid+label 不可空
 #[tauri::command]
 pub fn save_model_map(map: ModelMap) -> Result<(), String> {
     if !matches!(
@@ -173,7 +197,21 @@ pub fn save_model_map(map: ModelMap) -> Result<(), String> {
         map.slot_display_mode.as_str(),
         "all" | "common" | "configured" | "claude" | "gpt" | "gemini" | "code"
     ) {
-        return Err("模型槽位兼容显示策略必须是 all/common/configured/claude/gpt/gemini/code".into());
+        return Err(
+            "模型槽位兼容显示策略必须是 all/common/configured/claude/gpt/gemini/code".into(),
+        );
+    }
+    if !matches!(map.slot_visibility_mode.as_str(), "mapped" | "official" | "all") {
+        return Err("槽位显示策略必须是 mapped/official/all".into());
+    }
+    let mut seen_visibility = std::collections::HashSet::new();
+    for item in &map.slot_visibility {
+        if item.model_uid.trim().is_empty() {
+            return Err("槽位显示 modelUid 不能为空".into());
+        }
+        if !seen_visibility.insert(item.model_uid.clone()) {
+            return Err(format!("槽位显示 modelUid 重复: {}", item.model_uid));
+        }
     }
 
     let mut seen = std::collections::HashSet::new();
@@ -199,17 +237,6 @@ pub fn save_model_map(map: ModelMap) -> Result<(), String> {
         }
         if !seen_inj.insert(inj.model_uid.clone()) {
             return Err(format!("模型槽位 modelUid 重复: {}", inj.model_uid));
-        }
-        // 一旦配了 providerId，就必须填 model（BYOK 供应商端实际 API ID）
-        if let Some(pid) = &inj.provider_id {
-            if !pid.is_empty() {
-                if inj.model.as_deref().unwrap_or("").trim().is_empty() {
-                    return Err(format!(
-                        "模型槽位「{}」已选供应商但未填模型名（model 字段必填）",
-                        inj.label
-                    ));
-                }
-            }
         }
     }
     write_map(&map)
