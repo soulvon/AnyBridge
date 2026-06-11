@@ -305,24 +305,28 @@
   justify-content: center;
   gap: 7px;
   height: 36px;
+  width: 152px;
   min-width: 152px;
   padding: 0 14px;
   border-radius: var(--radius-md);
   font-size: 12px;
   font-weight: 800;
   white-space: nowrap;
+  box-sizing: border-box;
 }
 .eval-check-open-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   height: 36px;
-  min-width: 130px;
+  width: 152px;
+  min-width: 152px;
   padding: 0 14px;
   border-radius: var(--radius-md);
   font-size: 12px;
   font-weight: 800;
   white-space: nowrap;
+  box-sizing: border-box;
 }
 .eval-controls {
   display: flex;
@@ -1690,4 +1694,223 @@
     scroll-behavior: auto !important;
     transition-duration: 0.01ms !important;
   }
+}
+
+/* ═══════ ENVIRONMENT HEALTHCHECK ═══════ */
+.health-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.health-head-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.health-head-actions {
+  --health-action-button-width: 152px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.health-head-actions > button {
+  flex: 0 0 var(--health-action-button-width);
+  width: var(--health-action-button-width);
+  min-width: var(--health-action-button-width);
+  min-height: 36px;
+  padding: 0 14px;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  line-height: 1;
+  white-space: nowrap;
+}
+.health-head-actions > .health-danger-btn {
+  color: var(--danger);
+  border-color: rgba(212, 61, 61, 0.26);
+}
+.health-head-actions > .health-danger-btn:hover {
+  color: var(--danger);
+  background: var(--danger-dim);
+  border-color: rgba(212, 61, 61, 0.36);
+}
+.health-btn-icon {
+  display: inline-block;
+  margin-right: 4px;
+  font-size: 11px;
+}
+
+.health-install-progress {
+  margin-top: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-card);
+}
+.health-install-progress[hidden] {
+  display: none;
+}
+.health-install-progress-top {
+  display: grid;
+  grid-template-columns: 10px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.health-install-progress-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+}
+.health-install-progress.is-ok .health-install-progress-dot {
+  background: var(--success);
+  box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.14);
+}
+.health-install-progress.is-err .health-install-progress-dot {
+  background: var(--danger);
+  box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.14);
+}
+.health-install-progress.is-warn .health-install-progress-dot {
+  background: var(--warning);
+  box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.14);
+}
+.health-install-progress-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-primary);
+  font-weight: 600;
+}
+.health-install-progress-percent {
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+.health-install-progress-track {
+  height: 6px;
+  margin-top: 8px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--bg-secondary);
+}
+.health-install-progress-fill {
+  height: 100%;
+  width: 0%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--accent), var(--accent-secondary));
+  transition: width 180ms ease;
+}
+.health-install-progress.is-ok .health-install-progress-fill {
+  background: var(--success);
+}
+.health-install-progress.is-err .health-install-progress-fill {
+  background: var(--danger);
+}
+.health-install-progress.is-warn .health-install-progress-fill {
+  background: var(--warning);
+}
+
+.health-summary {
+  margin-top: 12px;
+  padding: 12px 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--bg-card);
+  box-shadow: var(--shadow-card);
+}
+.health-summary-empty {
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.6;
+}
+.health-summary-line {
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.5;
+}
+
+.health-groups {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.health-group-card {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--bg-card);
+  box-shadow: var(--shadow-card);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+.health-group-card.health-status-err {
+  border-left: 4px solid var(--danger);
+}
+.health-group-card.health-status-warn {
+  border-left: 4px solid var(--warning);
+}
+.health-group-card.health-status-ok {
+  border-left: 4px solid var(--success);
+}
+.health-group-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+  font-weight: 700;
+}
+.health-group-icon {
+  font-size: 16px;
+}
+.health-group-title {
+  flex: 1;
+}
+.health-group-status {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 800;
+}
+.health-group-issues {
+  display: flex;
+  flex-direction: column;
+  padding: 8px 0;
+  max-height: 320px;
+  overflow-y: auto;
+}
+.health-issue {
+  display: grid;
+  grid-template-columns: 48px 1fr;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--border-subtle);
+  font-size: 12px;
+  line-height: 1.55;
+}
+.health-issue:last-child {
+  border-bottom: 0;
+}
+.health-issue-level {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 800;
+  text-align: right;
+  padding-top: 1px;
+}
+.health-issue-msg {
+  color: var(--text-secondary);
+  word-break: break-word;
 }

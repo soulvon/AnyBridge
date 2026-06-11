@@ -1044,16 +1044,17 @@
     <div class="page" id="page-settings" role="tabpanel" aria-labelledby="tab-settings">
       <div class="settings-grid">
         <aside class="settings-sidebar" aria-label="设置分类">
-          <button type="button" class="settings-menu-item active" data-settings-panel="6">IDE 接入</button>
-          <button type="button" class="settings-menu-item" data-settings-panel="0">代理服务器</button>
-          <button type="button" class="settings-menu-item" data-settings-panel="1">模型默认值</button>
-          <button type="button" class="settings-menu-item" data-settings-panel="2">自动重试</button>
-          <button type="button" class="settings-menu-item" data-settings-panel="3">系统提示词</button>
-          <button type="button" class="settings-menu-item" data-settings-panel="4">安全</button>
-          <button type="button" class="settings-menu-item" data-settings-panel="5">版本更新</button>
+          <button type="button" class="settings-menu-item" data-settings-panel="0">环境检测</button>
+          <button type="button" class="settings-menu-item active" data-settings-panel="1">IDE 接入</button>
+          <button type="button" class="settings-menu-item" data-settings-panel="2">代理服务器</button>
+          <button type="button" class="settings-menu-item" data-settings-panel="3">模型默认值</button>
+          <button type="button" class="settings-menu-item" data-settings-panel="4">自动重试</button>
+          <button type="button" class="settings-menu-item" data-settings-panel="5">系统提示词</button>
+          <button type="button" class="settings-menu-item" data-settings-panel="6">安全</button>
+          <button type="button" class="settings-menu-item" data-settings-panel="7">版本更新</button>
         </aside>
         <div class="settings-detail">
-        <div class="glass-card">
+        <div class="glass-card" data-panel-id="2">
           <div class="card-header">
             <div class="card-title"><svg class="title-svg" width="16" height="16" viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2"></rect><path d="M9 20v2M15 20v2M9 2v2M15 2v2M20 9h2M20 15h2M2 9h2M2 15h2"></path></svg>代理服务器</div>
           </div>
@@ -1096,7 +1097,7 @@
           </div>
         </div>
 
-        <div class="glass-card">
+        <div class="glass-card" data-panel-id="3">
           <div class="card-header">
             <div class="card-title"><svg class="title-svg" width="16" height="16" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>模型默认值</div>
           </div>
@@ -1118,7 +1119,7 @@
           </div>
         </div>
 
-        <div class="glass-card">
+        <div class="glass-card" data-panel-id="4">
           <div class="card-header">
             <div class="card-title"><svg class="title-svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"></path></svg>自动重试</div>
           </div>
@@ -1161,7 +1162,7 @@
           </div>
         </div>
 
-        <div class="glass-card">
+        <div class="glass-card" data-panel-id="5">
           <div class="card-header">
             <div class="card-title"><svg class="title-svg" width="16" height="16" viewBox="0 0 24 24"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><line x1="10" y1="9" x2="8" y2="9"></line></svg>系统提示词</div>
           </div>
@@ -1185,7 +1186,7 @@
           </div>
         </div>
 
-        <div class="glass-card">
+        <div class="glass-card" data-panel-id="6">
           <div class="card-header">
             <div class="card-title"><svg class="title-svg" width="16" height="16" viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>安全</div>
           </div>
@@ -1214,7 +1215,7 @@
           </div>
         </div>
 
-        <div class="glass-card">
+        <div class="glass-card" data-panel-id="7">
           <div class="card-header">
             <div class="card-title">
               <svg class="title-svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
@@ -1270,7 +1271,7 @@
  </div>
  </div>
 
-        <div class="glass-card">
+        <div class="glass-card" data-panel-id="1">
           <div class="card-header">
             <div class="card-title"><span class="dot"></span> IDE 接入</div>
             <button class="btn-primary" onclick="generateCerts()">生成 MITM 证书</button>
@@ -1306,20 +1307,6 @@
             </div>
             <div class="setting-row">
               <div>
-                <div class="setting-label">环境体检</div>
-                <div class="setting-desc" id="env-check-summary">检查证书、端口、IDE 配置、Sidecar、资源文件、模型映射和供应商配置；可自动修复部分问题</div>
-              </div>
-              <div class="setting-ctrl">
-                <button class="btn-primary" id="env-check-btn" onclick="runSettingsEnvironmentCheck()">开始体检</button>
-              </div>
-            </div>
-            <div class="setting-row" style="display:block;">
-              <div id="env-check-results" style="width:100%;max-height:260px;overflow:auto;font-size:12px;">
-                <div class="setting-desc">点击「开始体检」查看详细结果。</div>
-              </div>
-            </div>
-            <div class="setting-row">
-              <div>
                 <div class="setting-label">流量路由</div>
                 <div class="setting-desc">MITM 代理 :7450 / 直连代理 :7451</div>
               </div>
@@ -1328,6 +1315,61 @@
                 <input class="input-sm" id="route-direct" value=":7451" readonly>
               </div>
             </div>
+          </div>
+        </div>
+
+        <!-- ═══════ PANEL: ENVIRONMENT HEALTHCHECK (settings panel 0) ═══════ -->
+        <div class="glass-card" data-panel-id="0">
+          <div class="card-header">
+            <div class="card-title">
+              <span class="dot"></span>
+              <span>环境检测</span>
+              <span class="tag" id="health-generated-at">尚未运行</span>
+            </div>
+          </div>
+          <div class="card-body">
+            <div class="control-bar glass-card health-head" style="margin-bottom: 12px;">
+              <div class="health-head-left">
+                <span class="card-title">诊断操作</span>
+              </div>
+              <div class="health-head-actions">
+                <button class="btn-primary" id="health-run-btn" onclick="runHealthcheck()">
+                  <span class="health-btn-icon">▶</span> 一键检测
+                </button>
+                <button class="btn-ghost" id="health-install-cert-btn" onclick="installCaFromHealth()">
+                  安装证书
+                </button>
+                <button class="btn-ghost health-danger-btn" id="health-uninstall-cert-btn" onclick="uninstallCaFromHealth()">
+                  卸载证书
+                </button>
+                <button class="btn-ghost" id="health-cleanup-legacy-btn" onclick="cleanupLegacyCaFromHealth()" style="display:none;">
+                  清理老证书
+                </button>
+                <button class="btn-ghost" id="health-export-md-btn" onclick="exportHealthMarkdown()" disabled>
+                  导出 Markdown 报告
+                </button>
+                <button class="btn-ghost" id="health-copy-md-btn" onclick="copyHealthMarkdown()" disabled>
+                  复制到剪贴板
+                </button>
+              </div>
+            </div>
+
+            <div class="health-install-progress" id="health-install-progress" hidden>
+              <div class="health-install-progress-top">
+                <span class="health-install-progress-dot"></span>
+                <span class="health-install-progress-text" id="health-install-progress-text">等待安装</span>
+                <span class="health-install-progress-percent" id="health-install-progress-percent">0%</span>
+              </div>
+              <div class="health-install-progress-track">
+                <div class="health-install-progress-fill" id="health-install-progress-fill" style="width:0%"></div>
+              </div>
+            </div>
+
+            <div class="health-summary" id="health-summary">
+              <div class="health-summary-empty">点击「一键检测」开始诊断 IDE BYOK 的运行环境（证书、路径、配置、Sidecar、端口、模型映射、供应商连通性）</div>
+            </div>
+
+            <div class="health-groups" id="health-groups"></div>
           </div>
         </div>
       </div>
@@ -1570,6 +1612,7 @@
 <script src="./assets/scripts/40-model-picker.js"></script>
 <script src="./assets/scripts/50-model-map.js"></script>
 <script src="./assets/scripts/60-updater.js"></script>
+<script src="./assets/scripts/70-healthcheck.js"></script>
 <script src="./assets/scripts/90-init.js"></script>
 </body>
 </html>

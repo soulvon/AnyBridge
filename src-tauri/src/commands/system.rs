@@ -5,6 +5,15 @@ use tauri::{
     AppHandle, Manager,
 };
 
+/// CA 证书 CommonName。当前版本统一使用 "ide-byok Local CA"，
+/// 跟 package.json 的 name 字段对齐，便于在 certmgr 中一眼辨识。
+/// 升级路径：旧版用 "IDE BYOK Local MITM"，新版用 "ide-byok Local CA"，
+/// 老证书清理逻辑见 `commands::cert_install::cleanup_legacy_cn`。
+pub const CA_COMMON_NAME: &str = "ide-byok Local CA";
+
+/// 老版本 CA 证书 CommonName（升级时需要清理掉）。
+pub const LEGACY_CA_COMMON_NAME: &str = "IDE BYOK Local MITM";
+
 #[derive(serde::Deserialize)]
 pub struct ExportLogEntry {
     ts: String,
@@ -236,36 +245,71 @@ pub fn generate_certs() -> Result<String, String> {
     let cert_path = certs_dir.join("server.codeium.com.pem");
     let key_path = certs_dir.join("server.codeium.com-key.pem");
 
-    if cert_path.exists() && key_path.exists() {
-        return Ok("证书已存在".into());
+    let already_exists = cert_path.exists() && key_path.exists();
+
+    if !already_exists {
+        let mut params = CertificateParams::new(vec![
+            "server.self-serve.windsurf.com".to_string(),
+            "server.codeium.com".to_string(),
+            "localhost".to_string(),
+        ])
+        .map_err(|e| e.to_string())?;
+        // CommonName 跟项目产品名 (tauri.conf.json productName="IDE BYOK",
+        // package.json name="ide-byok") 对齐, 便于在 certmgr 中一眼辨识。
+        // 升级路径: 旧版 "IDE BYOK Local MITM" → 新版 "ide-byok Local CA",
+        // 老证书清理逻辑见 cert_install::cleanup_legacy_cn。
+        // 说明: rcgen 0.13 的 DnType 不一定有 OrganizationName 变体, 这里只设
+        // CommonName (X.509 Subject 最显眼的字段), 配合 SAN 就能保证 Electron
+        // 进程的 TLS 校验通过。
+
+        let mut dn = DistinguishedName::new();
+        dn.push(DnType::CommonName, CA_COMMON_NAME);
+        params.distinguished_name = dn;
+        params.subject_alt_names = vec![
+            SanType::DnsName(
+                "server.self-serve.windsurf.com"
+                    .try_into()
+                    .map_err(|_| "bad san")?,
+            ),
+            SanType::DnsName("server.codeium.com".try_into().map_err(|_| "bad san")?),
+            SanType::DnsName("localhost".try_into().map_err(|_| "bad san")?),
+        ];
+
+        let key_pair = rcgen::KeyPair::generate().map_err(|e| e.to_string())?;
+        let cert = params.self_signed(&key_pair).map_err(|e| e.to_string())?;
+
+        std::fs::write(&cert_path, cert.pem()).map_err(|e| e.to_string())?;
+        std::fs::write(&key_path, key_pair.serialize_pem()).map_err(|e| e.to_string())?;
     }
 
-    let mut params = CertificateParams::new(vec![
-        "server.self-serve.windsurf.com".to_string(),
-        "server.codeium.com".to_string(),
-        "localhost".to_string(),
-    ])
-    .map_err(|e| e.to_string())?;
-    let mut dn = DistinguishedName::new();
-    dn.push(DnType::CommonName, "IDE BYOK Local MITM");
-    params.distinguished_name = dn;
-    params.subject_alt_names = vec![
-        SanType::DnsName(
-            "server.self-serve.windsurf.com"
-                .try_into()
-                .map_err(|_| "bad san")?,
-        ),
-        SanType::DnsName("server.codeium.com".try_into().map_err(|_| "bad san")?),
-        SanType::DnsName("localhost".try_into().map_err(|_| "bad san")?),
-    ];
-
-    let key_pair = rcgen::KeyPair::generate().map_err(|e| e.to_string())?;
-    let cert = params.self_signed(&key_pair).map_err(|e| e.to_string())?;
-
-    std::fs::write(&cert_path, cert.pem()).map_err(|e| e.to_string())?;
-    std::fs::write(&key_path, key_pair.serialize_pem()).map_err(|e| e.to_string())?;
-
-    Ok(format!("已生成证书到 {}", certs_dir.to_string_lossy()))
+    // 生成完（或已存在）自动调一次证书安装：
+    // - 首次装会触发 CurrentUser\Root 路径（零弹窗）
+    // - 已装会快速返回幂等
+    // 注意：这里只装证书，不返回错误——证书生成本身已成功，证书安装失败
+    // 也不影响 MITM 代理运行（仅影响 IDE 是否信任），由用户在「环境体检」
+    // 里查看具体状态。
+    match crate::commands::cert_install::install_ca() {
+        Ok(install_msg) => {
+            let gen_msg = if already_exists {
+                format!("证书已存在 ({})", certs_dir.to_string_lossy())
+            } else {
+                format!("已生成证书到 {}", certs_dir.to_string_lossy())
+            };
+            Ok(format!("{}\n{}", gen_msg, install_msg))
+        }
+        Err(e) => {
+            // 证书安装失败不影响证书生成结果，但要让用户知道
+            let gen_msg = if already_exists {
+                "证书已存在"
+            } else {
+                "已生成证书"
+            };
+            Ok(format!(
+                "{}。⚠ 证书安装到系统根证书库失败: {}。请在「环境体检」中点击「安装证书」",
+                gen_msg, e
+            ))
+        }
+    }
 }
 
 /// 配置键：缓存上次探测成功的 IDE exe 路径，
@@ -373,7 +417,11 @@ fn common_ide_candidates(target: &str) -> Vec<std::path::PathBuf> {
     }
     for root in windows_drive_roots() {
         push(root.join("Program Files").join(dir_name).join(exe_name));
-        push(root.join("Program Files (x86)").join(dir_name).join(exe_name));
+        push(
+            root.join("Program Files (x86)")
+                .join(dir_name)
+                .join(exe_name),
+        );
         push(root.join("Programs").join(dir_name).join(exe_name));
         push(root.join(dir_name).join(exe_name));
     }
@@ -523,8 +571,7 @@ foreach ($r in $appPathRoots) {{
 }}
 $candidates | Where-Object {{ $_ }} | Select-Object -Unique
 "#,
-        exe_name,
-        display_pattern
+        exe_name, display_pattern
     );
 
     let out = Command::new("powershell")

@@ -110,6 +110,13 @@ jobs:
           VERSION="$(node -e "console.log(require('./package.json').version)")"
           echo "VERSION=$VERSION" >> "$GITHUB_OUTPUT"
 
+      - name: Extract release notes
+        shell: bash
+        run: |
+          node scripts/release/extract_changelog_section.cjs \
+            --version "${{ steps.app_version.outputs.VERSION }}" \
+            --output release-notes.md
+
       - name: Build the app
         uses: tauri-apps/tauri-action@v0
         env:
@@ -119,7 +126,7 @@ jobs:
         with:
           tagName: "v${{ steps.app_version.outputs.VERSION }}"
           releaseName: "IDE BYOK v${{ steps.app_version.outputs.VERSION }}"
-          releaseBody: "IDE BYOK 自动发布包。"
+          releaseBodyPath: "release-notes.md"
           releaseDraft: true
           prerelease: false
           args: ${{ matrix.args }}

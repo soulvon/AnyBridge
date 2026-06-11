@@ -105,6 +105,99 @@ async function runEnvironmentCheck(options) {
   return { report, issues, errors, warnings, effectiveTarget: (report && (report.target_ide || report.targetIde)) || target };
 }
 
+function promptInstallCertificateBeforeProxy() {
+  const message = '启动代理前需要安装本地证书，IDE 才能信任本机代理。';
+  return new Promise((resolve) => {
+    const modal = document.getElementById('custom-confirm-modal');
+    const titleEl = modal?.querySelector('.modal-title');
+    const leadEl = document.getElementById('modal-lead');
+    const questionEl = leadEl?.nextElementSibling;
+    const warningEl = modal?.querySelector('.modal-warning');
+    const warningTextEl = warningEl?.querySelector('span:last-child');
+    const btnCancel = document.getElementById('modal-btn-cancel');
+    const btnConfirm = document.getElementById('modal-btn-confirm');
+
+    if (!modal || !btnCancel || !btnConfirm) {
+      resolve(confirm(message + '\n\n是否现在安装证书并继续启动代理？'));
+      return;
+    }
+
+    const prev = {
+      title: titleEl ? titleEl.innerHTML : '',
+      lead: leadEl ? leadEl.textContent : '',
+      question: questionEl ? questionEl.textContent : '',
+      warningDisplay: warningEl ? warningEl.style.display : '',
+      warningText: warningTextEl ? warningTextEl.innerHTML : '',
+      cancelText: btnCancel.textContent,
+      confirmText: btnConfirm.textContent,
+      confirmWidth: btnConfirm.style.width,
+    };
+
+    if (titleEl) {
+      titleEl.innerHTML =
+        '<span class="modal-icon" style="color: var(--accent);">' +
+        '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">' +
+        '<rect x="4" y="11" width="16" height="9" rx="2"></rect>' +
+        '<path d="M8 11V7a4 4 0 0 1 8 0v4"></path>' +
+        '<path d="M12 15v2"></path>' +
+        '</svg>' +
+        '</span>' +
+        '<span>需要安装证书</span>';
+    }
+    if (leadEl) leadEl.textContent = message;
+    if (questionEl) questionEl.textContent = '点击「安装证书并继续」后，应用会自动安装证书，安装成功就继续启动代理。';
+    if (warningEl) warningEl.style.display = '';
+    if (warningTextEl) {
+      warningTextEl.innerHTML = '如果系统弹出授权窗口，请选择<strong>是</strong>。这是本机代理证书，只用于让 IDE 信任当前电脑上的代理。';
+    }
+    btnCancel.textContent = '暂不启动';
+    btnConfirm.textContent = '安装证书并继续';
+    btnConfirm.style.width = '';
+
+    modal.classList.add('active');
+
+    const restore = () => {
+      if (titleEl) titleEl.innerHTML = prev.title;
+      if (leadEl) leadEl.textContent = prev.lead;
+      if (questionEl) questionEl.textContent = prev.question;
+      if (warningEl) warningEl.style.display = prev.warningDisplay;
+      if (warningTextEl) warningTextEl.innerHTML = prev.warningText;
+      btnCancel.textContent = prev.cancelText;
+      btnConfirm.textContent = prev.confirmText;
+      btnConfirm.style.width = prev.confirmWidth;
+    };
+    const cleanup = (result) => {
+      modal.classList.remove('active');
+      btnCancel.removeEventListener('click', onCancel);
+      btnConfirm.removeEventListener('click', onConfirm);
+      modal.removeEventListener('click', onOverlay);
+      document.removeEventListener('keydown', onEsc);
+      restore();
+      resolve(result);
+    };
+    const onConfirm = (e) => { e.preventDefault(); e.stopPropagation(); cleanup(true); };
+    const onCancel = (e) => { e.preventDefault(); e.stopPropagation(); cleanup(false); };
+    const onOverlay = (e) => { if (e.target === modal) cleanup(false); };
+    const onEsc = (e) => { if (e.key === 'Escape' && modal.classList.contains('active')) cleanup(false); };
+
+    btnCancel.addEventListener('click', onCancel);
+    btnConfirm.addEventListener('click', onConfirm);
+    modal.addEventListener('click', onOverlay);
+    document.addEventListener('keydown', onEsc);
+  });
+}
+
+function setProxyButtonBusyText(textValue) {
+  const btn = document.getElementById('proxyBtn');
+  if (!btn) return;
+  const text = btn.querySelector('.proxy-btn-text');
+  if (text) {
+    text.textContent = textValue;
+  } else {
+    btn.textContent = textValue;
+  }
+}
+
 async function toggleProxy() {
   _diag('toggleProxy called');
   if (_toggling) { _diag('toggleProxy skipped: already in progress'); return; }
@@ -159,6 +252,37 @@ async function toggleProxy() {
         addLog('err', '启动自检执行失败，已阻止启动: ' + e);
         showCustomAlert('启动自检执行失败，代理未启动。请先处理异常后重试:\n\n' + e, '启动自检失败', 'error');
         return;
+      }
+      const certNotTrusted = check.errors.find(i => i.code === 'cert.not_trusted');
+      if (certNotTrusted) {
+        const shouldInstall = await promptInstallCertificateBeforeProxy();
+        if (!shouldInstall) {
+          addLog('warn', '启动已取消：未安装证书');
+          return;
+        }
+        setProxyButtonBusyText('安装证书…');
+        try {
+          addLog('info', '正在安装本地证书，安装完成后会继续启动代理...');
+          const installMsg = await invoke('cert_install');
+          addLog('ok', '证书安装完成: ' + installMsg);
+        } catch (e) {
+          addLog('err', '证书安装失败，代理未启动: ' + e);
+          showCustomAlert(
+            '证书安装失败，代理未启动。\n\n你可以稍后再点「启动代理」重试，或到「设置 > 环境检测」里手动安装证书。\n\n错误详情:\n' + e,
+            '证书安装失败',
+            'error'
+          );
+          return;
+        }
+        setProxyButtonBusyText('复检中…');
+        try {
+          check = await runEnvironmentCheck({ target, prefix: '证书安装后复检' });
+          effectiveTarget = check.effectiveTarget;
+        } catch (e) {
+          addLog('err', '证书安装后复检失败，已阻止启动: ' + e);
+          showCustomAlert('证书已尝试安装，但复检失败。代理未启动。\n\n' + e, '复检失败', 'error');
+          return;
+        }
       }
       if (check.errors.length) {
         const messages = check.errors.map(i => i.message || String(i));

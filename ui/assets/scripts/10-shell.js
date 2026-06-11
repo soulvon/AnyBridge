@@ -88,21 +88,25 @@ tabs.forEach(t => {
 
 // ═══════ SETTINGS SUBNAV ═══════
 function activateSettingsPanel(index) {
-  const panelIndex = Number(index) || 0;
+  const panelIndex = String(index);
   const menuItems = document.querySelectorAll('.settings-menu-item[data-settings-panel]');
-  const panels = document.querySelectorAll('.settings-detail > .glass-card');
+  // 旧版用 DOM 顺序匹配, 新版用 panel 上 data-panel-id 匹配, 这样 menu 编号和
+  // panel DOM 顺序解耦, 加新 panel / 调顺序不需要重排大块 HTML。
+  const panels = document.querySelectorAll('.settings-detail > .glass-card[data-panel-id]');
   menuItems.forEach(item => {
-    const isActive = Number(item.dataset.settingsPanel) === panelIndex;
+    const isActive = String(item.dataset.settingsPanel) === panelIndex;
     item.classList.toggle('active', isActive);
     item.setAttribute('aria-selected', String(isActive));
   });
-  panels.forEach((panel, i) => panel.classList.toggle('active', i === panelIndex));
+  panels.forEach((panel) => {
+    panel.classList.toggle('active', panel.dataset.panelId === panelIndex);
+  });
 }
 
 document.querySelectorAll('.settings-menu-item[data-settings-panel]').forEach(item => {
   item.addEventListener('click', () => activateSettingsPanel(item.dataset.settingsPanel));
 });
-activateSettingsPanel(6);
+activateSettingsPanel('0');
 
 // ═══════ IDE SELECTOR ═══════
 function getTargetIde() {

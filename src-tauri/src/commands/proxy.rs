@@ -159,6 +159,149 @@ pub struct ProxyPreflightReport {
     pub issues: Vec<ProxyPreflightIssue>,
 }
 
+/// 体检报告按 8 大类分组（供独立「环境体检」tab 使用）。
+/// 分类规则基于 issue.code 前缀：
+///   - `path.*` / `ide.*` / `ide_settings.*` / `workbench.*` → 路径
+///   - `cert.*` / `certs.*`                                   → 证书
+///   - `port.*` / `proxy.health`                              → 端口
+///   - `config_dir.*`                                         → 配置
+///   - `sidecar.*`                                            → Sidecar
+///   - `resources.*`                                          → 资源
+///   - `model_map.*` / `ide_models.*`                         → 模型映射
+///   - `route.*` / `providers.*`                              → 供应商连通性
+#[derive(Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct GroupedHealthReport {
+    pub target_ide: String,
+    pub ok: bool,
+    pub generated_at: u64,
+    pub totals: HealthTotals,
+    pub groups: Vec<HealthGroup>,
+}
+
+#[derive(Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct HealthTotals {
+    pub ok: usize,
+    pub warn: usize,
+    pub err: usize,
+}
+
+#[derive(Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct HealthGroup {
+    /// 分类 id（前端 i18n 用）
+    pub id: String,
+    /// 中文显示名
+    pub title: String,
+    /// 分类图标 (emoji)
+    pub icon: String,
+    /// 该分类下所有 issue
+    pub issues: Vec<ProxyPreflightIssue>,
+    /// 该分类的错误数
+    pub errors: usize,
+    pub warnings: usize,
+    pub oks: usize,
+}
+
+fn issue_group_id(code: &str) -> &'static str {
+    // 注意顺序：先匹配更具体的前缀，最后兜底到 "other"
+    if code.starts_with("cert.") || code.starts_with("certs.") {
+        "cert"
+    } else if code.starts_with("port.") || code == "proxy.health" {
+        "port"
+    } else if code.starts_with("sidecar.") {
+        "sidecar"
+    } else if code.starts_with("resources.") {
+        "resources"
+    } else if code.starts_with("model_map.") || code.starts_with("ide_models.") {
+        "model_map"
+    } else if code.starts_with("route.") || code.starts_with("providers.") {
+        "providers"
+    } else if code.starts_with("config_dir.")
+        || code.starts_with("ide_settings.")
+        || code.starts_with("workbench.")
+        || code.starts_with("ide.")
+        || code.starts_with("path.")
+    {
+        "path"
+    } else {
+        "other"
+    }
+}
+
+fn group_meta(id: &str) -> (&'static str, &'static str) {
+    match id {
+        "path" => ("路径", "📁"),
+        "cert" => ("证书", "🔒"),
+        "port" => ("端口", "🔌"),
+        "sidecar" => ("Sidecar", "⚙️"),
+        "resources" => ("资源", "📦"),
+        "model_map" => ("模型映射", "🗺️"),
+        "providers" => ("供应商连通性", "🌐"),
+        _ => ("其他", "❓"),
+    }
+}
+
+pub fn group_report(report: &ProxyPreflightReport) -> GroupedHealthReport {
+    // 用稳定顺序初始化所有分类，避免 UI 渲染闪烁
+    let group_order = [
+        "path",
+        "cert",
+        "port",
+        "sidecar",
+        "resources",
+        "model_map",
+        "providers",
+        "other",
+    ];
+    let mut groups_map: std::collections::BTreeMap<&str, HealthGroup> =
+        std::collections::BTreeMap::new();
+    for id in &group_order {
+        let (title, icon) = group_meta(id);
+        groups_map.insert(
+            id,
+            HealthGroup {
+                id: id.to_string(),
+                title: title.to_string(),
+                icon: icon.to_string(),
+                issues: Vec::new(),
+                errors: 0,
+                warnings: 0,
+                oks: 0,
+            },
+        );
+    }
+    for issue in &report.issues {
+        let id = issue_group_id(&issue.code);
+        let g = groups_map.get_mut(id).expect("group must exist");
+        match issue.level.as_str() {
+            "err" => g.errors += 1,
+            "warn" => g.warnings += 1,
+            _ => g.oks += 1,
+        }
+        g.issues.push(issue.clone());
+    }
+    let groups: Vec<HealthGroup> = group_order
+        .iter()
+        .map(|id| groups_map.remove(id).unwrap())
+        .collect();
+    GroupedHealthReport {
+        target_ide: report.target_ide.clone(),
+        ok: report.ok,
+        generated_at: std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis() as u64)
+            .unwrap_or(0),
+        totals: HealthTotals {
+            ok: report.issues.iter().filter(|i| i.level == "ok").count(),
+            warn: report.warnings,
+            err: report.errors,
+        },
+        groups,
+    }
+}
+
 fn classify(line: &str) -> String {
     if line.contains('❌')
         || line.contains("Error")
@@ -495,6 +638,67 @@ fn run_proxy_preflight(
                 ),
             );
         }
+    }
+
+    // 证书信任状态检查（升级路径：用户在装了 BYOK 但没装证书的机器上会卡这里）
+    // 之前这里完全没做检查，导致 Devin/Windsurf 拿到 BYOK 伪证书时直接走 bad
+    // certificate 流程产生 30+ 条 SSL alert 42 错误。增加此检查后，体检报告
+    // 会直接告诉用户「证书未装到系统」并引导一键安装。
+    let ca_status = crate::commands::cert_install::check_ca_status();
+    match ca_status.effective_store {
+        crate::commands::cert_install::CaStore::CurrentUser => {
+            push_issue(
+                &mut issues,
+                "ok",
+                "cert.trust_current_user",
+                format!(
+                    "当前 CA 证书已装到 CurrentUser\\Root（无需管理员权限）。{}",
+                    ca_status
+                        .thumbprint
+                        .as_deref()
+                        .map(|t| format!("Thumbprint: {}", t))
+                        .unwrap_or_default()
+                ),
+            );
+        }
+        crate::commands::cert_install::CaStore::LocalMachine => {
+            push_issue(
+                &mut issues,
+                "ok",
+                "cert.trust_local_machine",
+                format!(
+                    "当前 CA 证书已装到 LocalMachine\\Root（系统级）。{}",
+                    ca_status
+                        .thumbprint
+                        .as_deref()
+                        .map(|t| format!("Thumbprint: {}", t))
+                        .unwrap_or_default()
+                ),
+            );
+        }
+        crate::commands::cert_install::CaStore::None => {
+            // 证书文件存在但没装到系统 → 提示用户一键安装（无管理员弹窗或 UAC 一次）
+            if ca_status.cert_exists {
+                push_issue(
+                    &mut issues,
+                    "err",
+                    "cert.not_trusted",
+                    "当前 CA 证书已生成但未安装到系统根证书库。点「环境体检」中的「一键安装证书」可自动装到 CurrentUser\\Root（无需管理员权限），失败才弹 UAC".to_string(),
+                );
+            }
+            // cert_exists=false 已经在上面 certs.missing 提示过了
+        }
+    }
+    if ca_status.legacy_residual {
+        push_issue(
+            &mut issues,
+            "warn",
+            "cert.legacy_residual",
+            format!(
+                "检测到老版本 CA \"{}\" 残留。建议点「环境体检 > 清理老证书」卸掉",
+                crate::commands::system::LEGACY_CA_COMMON_NAME
+            ),
+        );
     }
 
     let ide_label = if target == "devin" {
@@ -1057,6 +1261,17 @@ pub async fn preflight_proxy(
     tauri::async_runtime::spawn_blocking(move || preflight_proxy_impl(app, target_ide))
         .await
         .map_err(|e| format!("启动自检任务失败: {}", e))?
+}
+
+/// 环境体检（带分组）— 供独立「环境体检」tab 使用。
+/// 复用 preflight_proxy_impl 的检查逻辑，结果按 8 大类分组，方便 UI 卡片化展示。
+#[tauri::command]
+pub async fn healthcheck_grouped(
+    app: AppHandle,
+    target_ide: Option<String>,
+) -> Result<GroupedHealthReport, String> {
+    let report = preflight_proxy_impl(app.clone(), target_ide)?;
+    Ok(group_report(&report))
 }
 
 /// 解析 sidecar 二进制路径。

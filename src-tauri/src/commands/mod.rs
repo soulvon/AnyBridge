@@ -1,3 +1,4 @@
+pub mod cert_install;
 pub mod config;
 pub mod eval;
 pub mod ide_config;
