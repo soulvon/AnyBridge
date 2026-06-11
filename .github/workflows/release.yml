@@ -6,8 +6,57 @@ on:
   workflow_dispatch:
 
 jobs:
+  prepare-release:
+    name: Prepare source draft release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      version: ${{ steps.app_version.outputs.VERSION }}
+      release_id: ${{ steps.source_release.outputs.release_id }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Read app version
+        id: app_version
+        shell: bash
+        run: |
+          VERSION="$(node -e "console.log(require('./package.json').version)")"
+          echo "VERSION=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Extract release notes
+        shell: bash
+        run: |
+          node scripts/release/extract_changelog_section.cjs \
+            --version "${{ steps.app_version.outputs.VERSION }}" \
+            --output release-notes.md
+
+      - name: Ensure source draft release
+        id: source_release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ steps.app_version.outputs.VERSION }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG="v${VERSION}"
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Source release already exists: $TAG"
+          else
+            gh release create "$TAG" \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "IDE BYOK v${VERSION}" \
+              --notes-file release-notes.md \
+              --draft \
+              --verify-tag
+          fi
+          RELEASE_ID="$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json id --jq '.id')"
+          echo "release_id=${RELEASE_ID}" >> "$GITHUB_OUTPUT"
+
   release:
     name: Build & Publish Multi-Platform Release
+    needs: prepare-release
     permissions:
       contents: write
     strategy:
@@ -113,26 +162,6 @@ jobs:
             chmod +x "../src-tauri/binaries/$OUTPUT_NAME"
           fi
 
-      - name: Read app version
-        id: app_version
-        shell: bash
-        run: |
-          VERSION="$(node -e "console.log(require('./package.json').version)")"
-          echo "VERSION=$VERSION" >> "$GITHUB_OUTPUT"
-
-      - name: Extract release notes
-        id: release_notes
-        shell: bash
-        run: |
-          node scripts/release/extract_changelog_section.cjs \
-            --version "${{ steps.app_version.outputs.VERSION }}" \
-            --output release-notes.md
-          {
-            echo "body<<__RELEASE_NOTES__"
-            cat release-notes.md
-            echo "__RELEASE_NOTES__"
-          } >> "$GITHUB_OUTPUT"
-
       - name: Build the app
         uses: tauri-apps/tauri-action@v0
         env:
@@ -140,22 +169,25 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
-          tagName: "v${{ steps.app_version.outputs.VERSION }}"
-          releaseName: "IDE BYOK v${{ steps.app_version.outputs.VERSION }}"
-          releaseBody: ${{ steps.release_notes.outputs.body }}
+          releaseId: ${{ needs.prepare-release.outputs.release_id }}
+          tagName: "v${{ needs.prepare-release.outputs.version }}"
+          releaseName: "IDE BYOK v${{ needs.prepare-release.outputs.version }}"
           releaseDraft: true
           prerelease: false
           args: ${{ matrix.args }}
 
   rebuild-latest-json:
     name: Rebuild latest.json & Sync to public release repo
-    needs: release
+    needs:
+      - prepare-release
+      - release
     runs-on: ubuntu-latest
     permissions:
       contents: read
     env:
       SOURCE_REPO: ${{ github.repository }}
       TARGET_REPO: soulvon/IDE-BYOK-Release
+      VERSION: ${{ needs.prepare-release.outputs.version }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -164,15 +196,6 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
-
-      - name: Determine version
-        shell: bash
-        run: |
-          VERSION="${GITHUB_REF_NAME#v}"
-          if [ -z "$VERSION" ] || [[ "$VERSION" == "refs/tags/"* ]]; then
-            VERSION="$(node -e "console.log(require('./package.json').version)")"
-          fi
-          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
 
       - name: Download source release assets (retry)
         env:
