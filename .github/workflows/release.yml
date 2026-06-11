@@ -33,6 +33,16 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Validate updater signing secret
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+        shell: bash
+        run: |
+          if [ -z "${TAURI_SIGNING_PRIVATE_KEY}" ]; then
+            echo "::error::Missing GitHub Secret TAURI_SIGNING_PRIVATE_KEY. Add the contents of tauri-sign.key before running release builds."
+            exit 1
+          fi
+
       - name: Install dependencies (Linux)
         if: startsWith(matrix.platform, 'ubuntu')
         run: |
@@ -111,11 +121,17 @@ jobs:
           echo "VERSION=$VERSION" >> "$GITHUB_OUTPUT"
 
       - name: Extract release notes
+        id: release_notes
         shell: bash
         run: |
           node scripts/release/extract_changelog_section.cjs \
             --version "${{ steps.app_version.outputs.VERSION }}" \
             --output release-notes.md
+          {
+            echo "body<<__RELEASE_NOTES__"
+            cat release-notes.md
+            echo "__RELEASE_NOTES__"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Build the app
         uses: tauri-apps/tauri-action@v0
@@ -126,7 +142,7 @@ jobs:
         with:
           tagName: "v${{ steps.app_version.outputs.VERSION }}"
           releaseName: "IDE BYOK v${{ steps.app_version.outputs.VERSION }}"
-          releaseBodyPath: "release-notes.md"
+          releaseBody: ${{ steps.release_notes.outputs.body }}
           releaseDraft: true
           prerelease: false
           args: ${{ matrix.args }}
