@@ -1571,7 +1571,7 @@ checksum = "3d3067d79b975e8844ca9eb072e16b31c3c1c36928edf9c6789548c524d0d954"
 
 [[package]]
 name = "ide-byok"
-version = "1.2.8"
+version = "1.2.9"
 dependencies = [
  "dirs 5.0.1",
  "flate2",
