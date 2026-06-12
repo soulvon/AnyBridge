@@ -196,6 +196,83 @@ fn redact(msg: String, secret: &str) -> String {
     }
 }
 
+fn clean_api_path(path: Option<&str>) -> String {
+    let raw = path.unwrap_or_default().trim();
+    if raw.is_empty() || raw == "/" {
+        return String::new();
+    }
+    format!(
+        "/{}",
+        raw.trim_start_matches('/').trim_end_matches('/')
+    )
+}
+
+fn is_official_dashscope_host(host: &str) -> bool {
+    let hostname = reqwest::Url::parse(host)
+        .ok()
+        .and_then(|url| url.host_str().map(|h| h.to_ascii_lowercase()))
+        .unwrap_or_else(|| {
+            host.trim()
+                .trim_start_matches("https://")
+                .trim_start_matches("http://")
+                .split('/')
+                .next()
+                .unwrap_or_default()
+                .split(':')
+                .next()
+                .unwrap_or_default()
+                .to_ascii_lowercase()
+        });
+    matches!(
+        hostname.as_str(),
+        "dashscope.aliyuncs.com" | "dashscope-intl.aliyuncs.com" | "dashscope-us.aliyuncs.com"
+    )
+}
+
+fn normalize_openai_api_path(host: &str, path: Option<&str>) -> String {
+    let path = clean_api_path(path);
+    let lower = path.to_ascii_lowercase();
+
+    if is_official_dashscope_host(host) {
+        if lower.ends_with("/compatible-mode/v1/chat/completions")
+            || lower.ends_with("/compatible-mode/v1/responses")
+        {
+            return path;
+        }
+        if lower == "/v1/chat/completions" || lower == "/api/v1/chat/completions" {
+            return "/compatible-mode/v1/chat/completions".to_string();
+        }
+        if lower == "/v1/responses" || lower == "/api/v1/responses" {
+            return "/compatible-mode/v1/responses".to_string();
+        }
+        if path.is_empty()
+            || lower == "/v1"
+            || lower == "/api/v1"
+            || lower == "/compatible-mode"
+            || lower == "/compatible-mode/v1"
+        {
+            return "/compatible-mode/v1/chat/completions".to_string();
+        }
+        if lower.ends_with("/compatible-mode/v1") {
+            return format!("{}/chat/completions", path);
+        }
+        if lower.ends_with("/compatible-mode") {
+            return format!("{}/v1/chat/completions", path);
+        }
+    }
+
+    if lower.ends_with("/chat/completions") || lower.ends_with("/responses") {
+        return path;
+    }
+    if path.is_empty() {
+        return "/v1/chat/completions".to_string();
+    }
+    if lower.ends_with("/v1") {
+        return format!("{}/chat/completions", path);
+    }
+    path
+}
+
 #[derive(Debug, Deserialize)]
 pub struct TestConnArgs {
     pub host: String,
@@ -272,19 +349,33 @@ pub async fn test_connection(args: TestConnArgs) -> Result<TestConnResult, Strin
     }
 
     // ── Step 2: Chat 探测（发送 "今天几号" 验证实际调用能力）──
-    let chat_path = match args.path.as_deref() {
-        Some(p) if !p.is_empty() && p != "/" => p.to_string(),
-        _ => {
-            if fmt == "openai" {
-                "/v1/chat/completions".to_string()
-            } else {
-                "/v1/messages".to_string()
-            }
+    let chat_path = if fmt == "openai" {
+        normalize_openai_api_path(&host, args.path.as_deref())
+    } else {
+        let path = clean_api_path(args.path.as_deref());
+        if path.is_empty() {
+            "/v1/messages".to_string()
+        } else {
+            path
         }
     };
+    let uses_openai_responses = fmt == "openai"
+        && chat_path.to_ascii_lowercase().contains("/responses");
 
     let test_model = args.model.as_deref().unwrap_or("gpt-3.5-turbo");
-    let (chat_body, auth_header, auth_value) = if fmt == "openai" {
+    let (chat_body, auth_header, auth_value) = if fmt == "openai" && uses_openai_responses {
+        let body = serde_json::json!({
+            "model": test_model,
+            "input": [{"role": "user", "content": "今天几号"}],
+            "max_output_tokens": 32,
+            "stream": false
+        });
+        (
+            serde_json::to_vec(&body).unwrap(),
+            "Authorization".to_string(),
+            format!("Bearer {}", args.api_key),
+        )
+    } else if fmt == "openai" {
         let body = serde_json::json!({
             "model": test_model,
             "messages": [{"role": "user", "content": "今天几号"}],
@@ -381,7 +472,32 @@ pub async fn test_connection(args: TestConnArgs) -> Result<TestConnResult, Strin
 
     // ── Step 3: 能力探测（Vision / Tools）──────────────────────
     // 构建不同格式的测试 body
-    let (vision_body, tools_body) = if fmt == "openai" {
+    let (vision_body, tools_body) = if fmt == "openai" && uses_openai_responses {
+        let v = serde_json::to_vec(&serde_json::json!({
+            "model": test_model,
+            "input": [{"role": "user", "content": [
+                {"type": "input_text", "text": "describe"},
+                {"type": "input_image", "image_url": format!("data:image/png;base64,{}", VISION_TEST_PNG_B64)}
+            ]}],
+            "max_output_tokens": 16,
+            "stream": false
+        })).unwrap();
+        let t = serde_json::to_vec(&serde_json::json!({
+            "model": test_model,
+            "input": [{"role": "user", "content": "Add 1 and 2"}],
+            "tools": [{"type": "function",
+                "name": "add",
+                "description": "Add two numbers",
+                "parameters": {"type": "object", "properties": {
+                    "a": {"type": "number"}, "b": {"type": "number"}
+                }, "required": ["a", "b"]}
+            }],
+            "max_output_tokens": 64,
+            "stream": false
+        }))
+        .unwrap();
+        (v, t)
+    } else if fmt == "openai" {
         let v = serde_json::to_vec(&serde_json::json!({
             "model": test_model,
             "messages": [{"role": "user", "content": [

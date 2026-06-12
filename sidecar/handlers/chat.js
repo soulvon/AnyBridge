@@ -553,7 +553,10 @@ function streamOpenAI(req, res, { systemPrompt, messages, tools, toolChoice, res
   // One-Hub 等不支持 gzip 的端点保持明文。
   const useGzip = conn.capabilities?.gzip === true;
   const finalBody = useGzip ? gzipSync(Buffer.from(apiBody)) : Buffer.from(apiBody);
-  const processor = new OpenAIStreamProcessor(messageId, resolvedModel);
+  const responseProcessor = new OpenAIStreamProcessor(messageId, resolvedModel);
+  const chatFallbackProcessor = new OpenAIChatCompletionsStreamProcessor(messageId, resolvedModel);
+  let processorMode = 'responses';
+  const activeProcessor = () => processorMode === 'chat' ? chatFallbackProcessor : responseProcessor;
   let failed = false;
 
   const reqHeaders = {
@@ -626,11 +629,17 @@ function streamOpenAI(req, res, { systemPrompt, messages, tools, toolChoice, res
     function processPart(part) {
       const events = parseOpenAISSEChunk(part + '\n');
       for (const evt of events) {
+        if (processorMode === 'responses' && evt?.data?.choices) {
+          processorMode = 'chat';
+          console.warn(`  ⚠️  OpenAI endpoint returned chat.completion chunks; switching stream parser`);
+        }
+        const processor = activeProcessor();
         const protoChunks = processor.processEvent(evt);
         for (const chunk of protoChunks) {
           res.write(wrapEnvelope(chunk));
         }
       }
+      const processor = activeProcessor();
       if (processor.isDone && !res.writableEnded) {
         res.write(endOfStreamEnvelope());
         res.end();
@@ -650,9 +659,11 @@ function streamOpenAI(req, res, { systemPrompt, messages, tools, toolChoice, res
 
     apiRes.on('end', () => {
       if (sseBuffer.trim()) processPart(sseBuffer);
+      const processor = activeProcessor();
       // Force stop chunk if stream ended without response.completed
       if (!processor.isDone && !res.writableEnded) {
-        console.log(`  ⚠️  OpenAI stream ended without response.completed — forcing stop`);
+        const expectedDone = processorMode === 'chat' ? '[DONE]' : 'response.completed';
+        console.log(`  ⚠️  OpenAI stream ended without ${expectedDone} — forcing stop`);
         const finalChunks = processor.processEvent({ done: true, type: 'done', data: null });
         for (const chunk of finalChunks) {
           res.write(wrapEnvelope(chunk));

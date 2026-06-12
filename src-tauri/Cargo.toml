@@ -1,6 +1,6 @@
 [package]
 name = "ide-byok"
-version = "1.2.11"
+version = "1.2.12"
 description = "IDE BYOK desktop app"
 authors = ["soulvon"]
 edition = "2021"

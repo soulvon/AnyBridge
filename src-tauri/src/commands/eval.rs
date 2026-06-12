@@ -1478,6 +1478,83 @@ fn api_format_str(fmt: &ApiFormat) -> &'static str {
     }
 }
 
+fn clean_api_path(path: Option<&str>) -> String {
+    let raw = path.unwrap_or_default().trim();
+    if raw.is_empty() || raw == "/" {
+        return String::new();
+    }
+    format!(
+        "/{}",
+        raw.trim_start_matches('/').trim_end_matches('/')
+    )
+}
+
+fn is_official_dashscope_host(host: &str) -> bool {
+    let hostname = reqwest::Url::parse(host)
+        .ok()
+        .and_then(|url| url.host_str().map(|h| h.to_ascii_lowercase()))
+        .unwrap_or_else(|| {
+            host.trim()
+                .trim_start_matches("https://")
+                .trim_start_matches("http://")
+                .split('/')
+                .next()
+                .unwrap_or_default()
+                .split(':')
+                .next()
+                .unwrap_or_default()
+                .to_ascii_lowercase()
+        });
+    matches!(
+        hostname.as_str(),
+        "dashscope.aliyuncs.com" | "dashscope-intl.aliyuncs.com" | "dashscope-us.aliyuncs.com"
+    )
+}
+
+fn normalize_openai_api_path(host: &str, path: Option<&str>) -> String {
+    let path = clean_api_path(path);
+    let lower = path.to_ascii_lowercase();
+
+    if is_official_dashscope_host(host) {
+        if lower.ends_with("/compatible-mode/v1/chat/completions")
+            || lower.ends_with("/compatible-mode/v1/responses")
+        {
+            return path;
+        }
+        if lower == "/v1/chat/completions" || lower == "/api/v1/chat/completions" {
+            return "/compatible-mode/v1/chat/completions".to_string();
+        }
+        if lower == "/v1/responses" || lower == "/api/v1/responses" {
+            return "/compatible-mode/v1/responses".to_string();
+        }
+        if path.is_empty()
+            || lower == "/v1"
+            || lower == "/api/v1"
+            || lower == "/compatible-mode"
+            || lower == "/compatible-mode/v1"
+        {
+            return "/compatible-mode/v1/chat/completions".to_string();
+        }
+        if lower.ends_with("/compatible-mode/v1") {
+            return format!("{}/chat/completions", path);
+        }
+        if lower.ends_with("/compatible-mode") {
+            return format!("{}/v1/chat/completions", path);
+        }
+    }
+
+    if lower.ends_with("/chat/completions") || lower.ends_with("/responses") {
+        return path;
+    }
+    if path.is_empty() {
+        return "/v1/chat/completions".to_string();
+    }
+    if lower.ends_with("/v1") {
+        return format!("{}/chat/completions", path);
+    }
+    path
+}
+
 fn api_url(provider: &Provider) -> String {
     let host = provider.api_host.trim().trim_end_matches('/');
     let host = if host.starts_with("http://") || host.starts_with("https://") {
@@ -1485,27 +1562,31 @@ fn api_url(provider: &Provider) -> String {
     } else {
         format!("https://{}", host)
     };
-    let default_path = match provider.api_format {
-        ApiFormat::Openai => "/v1/chat/completions",
-        ApiFormat::Anthropic => "/v1/messages",
-    };
-    let path = provider
+    let configured_path = provider
         .api_path
         .as_deref()
-        .filter(|p| !p.trim().is_empty() && *p != "/")
-        .unwrap_or(default_path);
+        .filter(|p| !p.trim().is_empty() && *p != "/");
+    let path = match provider.api_format {
+        ApiFormat::Openai => normalize_openai_api_path(&host, configured_path),
+        ApiFormat::Anthropic => {
+            let path = clean_api_path(configured_path);
+            if path.is_empty() {
+                "/v1/messages".to_string()
+            } else {
+                path
+            }
+        }
+    };
     format!("{}{}", host, path)
 }
 
 fn openai_endpoint(provider: &Provider) -> OpenAiEndpoint {
+    let host = provider.api_host.trim().trim_end_matches('/');
+    let path = normalize_openai_api_path(host, provider.api_path.as_deref());
     let endpoint = format!(
         "{} {}",
         provider.api_host.to_ascii_lowercase(),
-        provider
-            .api_path
-            .as_deref()
-            .unwrap_or_default()
-            .to_ascii_lowercase()
+        path.to_ascii_lowercase()
     );
     if endpoint.contains("/responses") {
         OpenAiEndpoint::Responses

@@ -972,6 +972,28 @@ fn normalize_toml_section(section: &str) -> String {
         .join(".")
 }
 
+fn is_official_dashscope_host(host: &str) -> bool {
+    let hostname = reqwest::Url::parse(host)
+        .ok()
+        .and_then(|url| url.host_str().map(|h| h.to_ascii_lowercase()))
+        .unwrap_or_else(|| {
+            host.trim()
+                .trim_start_matches("https://")
+                .trim_start_matches("http://")
+                .split('/')
+                .next()
+                .unwrap_or_default()
+                .split(':')
+                .next()
+                .unwrap_or_default()
+                .to_ascii_lowercase()
+        });
+    matches!(
+        hostname.as_str(),
+        "dashscope.aliyuncs.com" | "dashscope-intl.aliyuncs.com" | "dashscope-us.aliyuncs.com"
+    )
+}
+
 fn normalize_endpoint(
     base_url: &str,
     api_format: &ApiFormat,
@@ -1007,7 +1029,35 @@ fn normalize_endpoint(
                 }
             }
             ApiFormat::Openai => {
-                if lower_path.ends_with("/responses") || lower_path.ends_with("/chat/completions") {
+                if is_official_dashscope_host(&host) {
+                    if lower_path.ends_with("/compatible-mode/v1/responses")
+                        || lower_path.ends_with("/compatible-mode/v1/chat/completions")
+                    {
+                        path
+                    } else if lower_path == "/v1/chat/completions"
+                        || lower_path == "/api/v1/chat/completions"
+                    {
+                        "/compatible-mode/v1/chat/completions".to_string()
+                    } else if lower_path == "/v1/responses" || lower_path == "/api/v1/responses" {
+                        "/compatible-mode/v1/responses".to_string()
+                    } else if lower_path.is_empty()
+                        || lower_path == "/"
+                        || lower_path == "/v1"
+                        || lower_path == "/api/v1"
+                        || lower_path == "/compatible-mode"
+                        || lower_path == "/compatible-mode/v1"
+                    {
+                        "/compatible-mode/v1/chat/completions".to_string()
+                    } else if lower_path.ends_with("/compatible-mode/v1") {
+                        format!("{}/chat/completions", path)
+                    } else if lower_path.ends_with("/compatible-mode") {
+                        format!("{}/v1/chat/completions", path)
+                    } else if lower_path.ends_with("/responses") || lower_path.ends_with("/chat/completions") {
+                        path
+                    } else {
+                        "/compatible-mode/v1/chat/completions".to_string()
+                    }
+                } else if lower_path.ends_with("/responses") || lower_path.ends_with("/chat/completions") {
                     path
                 } else if is_responses {
                     if lower_path.is_empty() || lower_path == "/" {

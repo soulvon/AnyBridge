@@ -674,6 +674,63 @@ function toggleKeyVisibility() {
   }
 }
 
+function cleanProviderApiPath(value) {
+  const raw = String(value || '').trim();
+  if (!raw || raw === '/') return '';
+  return '/' + raw.replace(/^\/+/, '').replace(/\/+$/, '');
+}
+
+function isOfficialDashScopeHost(apiHost) {
+  try {
+    const url = new URL(String(apiHost || '').startsWith('http') ? apiHost : 'https://' + apiHost);
+    return /^(dashscope|dashscope-intl|dashscope-us)\.aliyuncs\.com$/i.test(url.hostname);
+  } catch {
+    return /^(dashscope|dashscope-intl|dashscope-us)\.aliyuncs\.com$/i.test(String(apiHost || '').split('/')[0]);
+  }
+}
+
+function normalizeOpenAIProviderPath(apiHost, apiPath) {
+  const path = cleanProviderApiPath(apiPath);
+  const lower = path.toLowerCase();
+
+  if (isOfficialDashScopeHost(apiHost)) {
+    if (lower.endsWith('/compatible-mode/v1/chat/completions') || lower.endsWith('/compatible-mode/v1/responses')) return path;
+    if (lower === '/v1/chat/completions' || lower === '/api/v1/chat/completions') return '/compatible-mode/v1/chat/completions';
+    if (lower === '/v1/responses' || lower === '/api/v1/responses') return '/compatible-mode/v1/responses';
+    if (!path || lower === '/v1' || lower === '/api/v1' || lower === '/compatible-mode' || lower === '/compatible-mode/v1') {
+      return '/compatible-mode/v1/chat/completions';
+    }
+    if (lower.endsWith('/compatible-mode/v1')) return path + '/chat/completions';
+    if (lower.endsWith('/compatible-mode')) return path + '/v1/chat/completions';
+  }
+
+  if (lower.endsWith('/chat/completions') || lower.endsWith('/responses')) return path;
+  if (!path) return '/v1/chat/completions';
+  if (lower.endsWith('/v1')) return path + '/chat/completions';
+  return path;
+}
+
+function providerEndpointParts(baseUrl, apiFormat, pathValue) {
+  let apiHost = baseUrl;
+  let parsedPath = '';
+  try {
+    const url = new URL(String(baseUrl || '').startsWith('http') ? baseUrl : 'https://' + baseUrl);
+    apiHost = url.origin;
+    parsedPath = cleanProviderApiPath(url.pathname);
+  } catch {
+    // Keep the raw host; runtime normalization will still do a final guard.
+  }
+
+  let apiPath = parsedPath || pathValue || '';
+  if (apiFormat === 'openai') {
+    apiPath = normalizeOpenAIProviderPath(apiHost, apiPath);
+  } else {
+    apiPath = cleanProviderApiPath(apiPath) || '/v1/messages';
+  }
+
+  return { apiHost, apiPath };
+}
+
 function onFormatChange() {
   const fmtEl = document.getElementById('pf-format');
   if (!fmtEl) return;
@@ -695,8 +752,15 @@ function onFormatChange() {
   // 不再根据格式自动改 placeholder（保留 HTML 里写的默认值）
   // 也不主动改 apiPath —— 等用户提交保存时由 saveProviderFromEditor 推断
 
-  // Set default path
-  if (pathEl) pathEl.value = fmt === 'openai' ? '/v1/chat/completions' : '/v1/messages';
+  // Set default path without clobbering custom endpoints such as DashScope's
+  // /compatible-mode/v1/chat/completions.
+  if (pathEl) {
+    const defaultPath = fmt === 'openai' ? '/v1/chat/completions' : '/v1/messages';
+    const current = cleanProviderApiPath(pathEl.value);
+    if (!current || current === '/v1/chat/completions' || current === '/v1/messages') {
+      pathEl.value = defaultPath;
+    }
+  }
 
   // Ensure current selected models are in the list
   selectedModels.forEach(m => {
@@ -714,7 +778,10 @@ function autoDetectFormatFromHost(hostValue) {
   const v = hostValue.toLowerCase();
   // 命中 OpenAI 特征：路径含 chat/completions、域名含 openai、含 /v1 路径
   if (v.includes('openai')
+      || v.includes('dashscope')
+      || v.includes('qwen')
       || v.includes('chat/completions')
+      || v.includes('/compatible-mode')
       || v.includes('/v1/chat')
       || /\/v1\/?(\?|$)/.test(v)) {
     return 'openai';
@@ -923,20 +990,12 @@ async function saveProviderFromEditor() {
     return;
   }
 
-  // Parse base URL into host + path
-  let apiHost = baseUrl;
-  let apiPath = '';
-  try {
-    const url = new URL(baseUrl.startsWith('http') ? baseUrl : 'https://' + baseUrl);
-    apiHost = url.origin;
-    apiPath = url.pathname.replace(/\/+$/, '') || '';
-  } catch {
-    // If URL parsing fails, use as-is
-  }
-  if (!apiPath || apiPath === '/') {
-    apiPath = document.getElementById('pf-path').value
-      || (apiFormat === 'openai' ? '/v1/chat/completions' : '/v1/messages');
-  }
+  const { apiHost, apiPath } = providerEndpointParts(
+    baseUrl,
+    apiFormat,
+    document.getElementById('pf-path').value
+      || (apiFormat === 'openai' ? '/v1/chat/completions' : '/v1/messages')
+  );
 
   const defaultModel = selectedModels[0] || '';
   const existingCaps = id ? (providerStore.providers.find(x => x.id === id)?.capabilities || {}) : {};
@@ -1044,17 +1103,12 @@ async function testProviderInEditor() {
     return;
   }
 
-  // Parse host from base URL
-  let host = baseUrl;
-  try {
-    const url = new URL(baseUrl.startsWith('http') ? baseUrl : 'https://' + baseUrl);
-    host = url.origin;
-  } catch {}
+  const endpoint = providerEndpointParts(baseUrl, fmt, apiPath || null);
 
   if (text) text.textContent = '测试中…';
   try {
     const result = await invoke('test_connection', {
-      args: { host, api_key: apiKey, path: apiPath || null, api_format: fmt, model }
+      args: { host: endpoint.apiHost, api_key: apiKey, path: endpoint.apiPath || null, api_format: fmt, model }
     });
     const msg = typeof result === 'string' ? result : (result.message || '连通 ✓');
     // 自动设置探测到的能力标记

@@ -1,5 +1,12 @@
 # Changelog
 
+## v1.2.12 - 2026-06-12
+
+### 供应商兼容性
+- 修复 DashScope 官方 OpenAI 兼容接口路径归一化：自动使用 `/compatible-mode/v1/chat/completions` 或 `/compatible-mode/v1/responses`，避免保存、导入、测试和代理转发时误走原生 `/api/v1`。
+- 修复 OpenAI Responses 流式解析遇到 `chat.completion` SSE 分片时的兼容 fallback，避免部分兼容端点流式输出中断。
+- 优化供应商编辑器的格式自动识别和路径保存逻辑，减少 DashScope/Qwen/OpenAI 兼容地址被重写成错误路径的问题。
+
 ## v1.2.11 - 2026-06-12
 
 ### 模型槽位解锁

@@ -38,6 +38,49 @@ function writeJsonAtomic(file, data) {
   fs.renameSync(tmp, file);
 }
 
+function cleanApiPath(value) {
+  const raw = String(value || '').trim();
+  if (!raw || raw === '/') return '';
+  return `/${raw.replace(/^\/+/, '').replace(/\/+$/, '')}`;
+}
+
+function isOfficialDashScopeHost(host) {
+  const h = String(host || '')
+    .replace(/^https?:\/\//i, '')
+    .split('/')[0]
+    .split(':')[0]
+    .toLowerCase();
+  return /^(dashscope|dashscope-intl|dashscope-us)\.aliyuncs\.com$/.test(h);
+}
+
+function normalizeOpenAIApiPath(host, apiPath) {
+  const path = cleanApiPath(apiPath);
+  const lower = path.toLowerCase();
+
+  // DashScope's OpenAI-compatible BYOK endpoint is not the native /api/v1 API.
+  // Users usually paste the official base_url ending in /compatible-mode/v1.
+  if (isOfficialDashScopeHost(host)) {
+    if (lower.endsWith('/compatible-mode/v1/chat/completions') || lower.endsWith('/compatible-mode/v1/responses')) return path;
+    if (lower === '/v1/chat/completions' || lower === '/api/v1/chat/completions') {
+      return '/compatible-mode/v1/chat/completions';
+    }
+    if (lower === '/v1/responses' || lower === '/api/v1/responses') {
+      return '/compatible-mode/v1/responses';
+    }
+    if (!path || lower === '/v1' || lower === '/api/v1' || lower === '/compatible-mode' || lower === '/compatible-mode/v1') {
+      return '/compatible-mode/v1/chat/completions';
+    }
+    if (lower.endsWith('/compatible-mode/v1')) return `${path}/chat/completions`;
+    if (lower.endsWith('/compatible-mode')) return `${path}/v1/chat/completions`;
+  }
+
+  if (lower.endsWith('/chat/completions') || lower.endsWith('/responses')) return path;
+
+  if (!path) return '/v1/chat/completions';
+  if (lower.endsWith('/v1')) return `${path}/chat/completions`;
+  return path;
+}
+
 // 兼容旧 API：每次直接返回缓存的 providers Map（config-cache 已处理 mtime）。
 export function loadProviders() {
   return getProviders();
@@ -103,6 +146,7 @@ export function resolveTarget(target, providers) {
   const isOpenAI = p.apiFormat === 'openai';
   const host = (p.apiHost || '').replace(/^https?:\/\//, '').replace(/\/$/, '');
   const configuredPath = p.apiPath && p.apiPath !== '/' ? p.apiPath : null;
+  const apiPath = isOpenAI ? normalizeOpenAIApiPath(host, configuredPath) : (cleanApiPath(configuredPath) || '/v1/messages');
   const modelId = target.model || p.defaultModel;
   // 合并供应商级 + 模型级能力标记
   const supplierCaps = p.capabilities || {};
@@ -120,7 +164,7 @@ export function resolveTarget(target, providers) {
     providerId: p.id,
     providerName: p.name,
     host,
-    apiPath: configuredPath || (isOpenAI ? '/v1/chat/completions' : '/v1/messages'),
+    apiPath,
     apiKey: p.apiKey,
     format: isOpenAI ? 'openai' : 'anthropic',
     model: modelId,
