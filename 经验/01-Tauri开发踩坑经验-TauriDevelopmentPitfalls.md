@@ -290,6 +290,10 @@ subprocess.run(["powershell", "-Command", f"Remove-Item -Recurse -Force '{path}'
 | obfuscator 选项改名 | unknown option | `--string-array-rotate` |
 | Windows origin 变化 | LocalStorage 重置 | `useHttpsScheme: true` 或接受 http |
 | Sidecar configDir 硬编码 Windows | macOS/Linux 配置找不到 | 跨平台 configDir 判断 `process.platform` |
+| 云端签名私钥缺失 | 四平台包已生成后签名失败 | 先配置 `TAURI_SIGNING_PRIVATE_KEY` 并早期校验 |
+| 矩阵并发创建 Release | 同 tag 多个 draft，资产分散 | 先 `prepare-release`，再传 `releaseId` |
+| 公开仓库为空 | `Repository is empty`，无法标记 latest | 初始化只含 README 的 `main` 分支 |
+| `latest.json` 缺平台 | 只包含 macOS 或部分平台 | 按实际产物名匹配 `.exe/.msi/.AppImage/.deb` |
 
 ---
 
@@ -387,17 +391,22 @@ strategy:
 ```
 触发 (push tag v* / workflow_dispatch)
   │
-  ├─ 四平台并行构建
+  ├─ prepare-release
+  │   ├─ 读取 package.json 版本
+  │   ├─ 从 CHANGELOG.md 提取当前版本 release notes
+  │   └─ 创建唯一 source draft release，输出 releaseId
+  │
+  ├─ 四平台并行构建（共用 prepare-release 输出的 releaseId）
   │   ├─ Checkout → 安装 Rust/Node → npm install
   │   ├─ Build Sidecar Binary (pkg 按 platform 打包)
-  │   │   Windows → node20-win-x64 → ide-byok-proxy-x86_64-pc-windows-msvc.exe
-  │   │   macOS ARM → node20-macos-arm64 → ide-byok-proxy-aarch64-apple-darwin
-  │   │   macOS x64 → node20-macos-x64 → ide-byok-proxy-x86_64-apple-darwin
-  │   │   Linux → node20-linux-x64 → ide-byok-proxy-x86_64-unknown-linux-gnu
+  │   │   Windows → node22-win-x64 → ide-byok-proxy-x86_64-pc-windows-msvc.exe
+  │   │   macOS ARM → node22-macos-arm64 → ide-byok-proxy-aarch64-apple-darwin
+  │   │   macOS x64 → node22-macos-x64 → ide-byok-proxy-x86_64-apple-darwin
+  │   │   Linux → node22-linux-x64 → ide-byok-proxy-x86_64-unknown-linux-gnu
   │   ├─ chmod +x (非 Windows)
-  │   └─ tauri-action 构建 + 上传到 GitHub Release (draft)
+  │   └─ tauri-action 构建 + 上传到同一个 GitHub Release draft
   │
-  └─ rebuild-latest-json (单任务，依赖四平台构建完成)
+  └─ rebuild-latest-json (单任务，依赖 prepare-release + 四平台构建完成)
       ├─ 下载所有平台产物
       ├─ 合并生成 latest.json（含签名）
       ├─ 上传到公开 Release 仓库 (soulvon/IDE-BYOK-Release)
@@ -412,6 +421,20 @@ strategy:
 | `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | 签名私钥密码（如无密码可留空） |
 | `RELEASE_REPO_TOKEN` | 有 `contents:write` 权限的 PAT，用于向 IDE-BYOK-Release 仓库上传 |
 | `GITHUB_TOKEN` | 自动提供，用于当前仓库的 Release 操作 |
+
+检查 Secret：
+
+```powershell
+gh secret list --repo soulvon/IDE-BYOK
+```
+
+写入本地 updater 私钥：
+
+```powershell
+Get-Content -Raw tauri-sign.key | gh secret set TAURI_SIGNING_PRIVATE_KEY --repo soulvon/IDE-BYOK
+```
+
+如果私钥无密码，也要把 `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` 配成空字符串；非交互环境不应等待人工输入。
 
 #### 10.3.4 Linux 依赖
 
@@ -443,7 +466,7 @@ sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file \
 - [x] 进程创建标志：Windows 用 `DETACHED_PROCESS`，其他平台无需
 - [x] `port-utils.js` 已有 `process.platform === 'win32'` 分支
 - [x] user-agent 仍为 Windows 标识（HTTP 请求中的 UA，不影响功能）
-- [x] GitHub Actions workflow 已配置四平台并行构建 + latest.json 合并
+- [x] GitHub Actions workflow 已配置 `prepare-release` + 四平台并行构建 + latest.json 合并
 
 ### 10.5 签名打包卡死问题（重要）
 
@@ -474,6 +497,127 @@ IDE BYOK_1.2.1_x64_en-US.msi.sig   ← 签名文件
 ```
 
 > **CI/CD 注意**：GitHub Actions 中同样需要设置两个环境变量，否则也会卡死。
+
+### 10.6 v1.2.10 云端发布链路复盘（重要）
+
+> 踩坑时间：2026-06-12
+
+#### 10.6.1 `releaseBodyPath` 不是 `tauri-action@v0` 的有效输入
+
+**症状**：
+
+```text
+Unexpected input(s) 'releaseBodyPath'
+```
+
+**根因**：当前使用的 `tauri-apps/tauri-action@v0` 输入列表里没有 `releaseBodyPath`。直接传文件路径不会生效。
+
+**解决**：把 release notes 生成放到前置步骤，或由 `prepare-release` job 用 `gh release create --notes-file release-notes.md` 创建 draft release，再把 `releaseId` 传给 `tauri-action`。这样 release 正文和 `latest.json` 都能复用 `CHANGELOG.md` 当前版本段落。
+
+#### 10.6.2 云端缺少 `TAURI_SIGNING_PRIVATE_KEY`
+
+**症状**：四个平台都能编译出安装包，但最后签名失败：
+
+```text
+failed to decode secret key: incorrect updater private key password: Missing comment in secret key
+```
+
+日志里 `TAURI_SIGNING_PRIVATE_KEY` 为空时，实际根因通常是 Secret 根本没配，而不是密码真的错。
+
+**解决**：
+
+1. 用 `gh secret list --repo soulvon/IDE-BYOK` 确认 Secret 存在。
+2. 用 `Get-Content -Raw tauri-sign.key | gh secret set TAURI_SIGNING_PRIVATE_KEY --repo soulvon/IDE-BYOK` 写入私钥。
+3. 无密码私钥也设置 `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` 为空字符串。
+4. workflow 早期加 `Validate updater signing secret`，缺私钥时立即失败，不要等四个平台编译完才失败。
+
+本地验证空密码是否可用：
+
+```powershell
+npx tauri signer sign -f tauri-sign.key -p "" package.json
+```
+
+成功后会生成临时 `package.json.sig`，测试后删除即可。
+
+#### 10.6.3 矩阵并发创建 draft release 导致资产分裂
+
+**症状**：四个平台 job 都成功，但私有仓库出现多个同 tag draft release；公开仓库只同步到一部分资产，例如只有 macOS arm64、缺 Windows 或 macOS x64。
+
+**根因**：多个矩阵 job 同时执行 `tauri-action`，都在“找不到 release”时尝试创建同一个 tag 的 draft release。GitHub draft release 在并发场景下可能被分裂成多个 untagged draft，资产被上传到不同 draft。
+
+**解决**：
+
+- 新增 `prepare-release` 单任务，先创建唯一 source draft release。
+- 通过 `gh release view --json id` 取出 `releaseId`。
+- 四个平台 `tauri-action` 都传同一个 `releaseId`，只负责上传资产。
+
+失败后清理重复 draft：
+
+```powershell
+gh api repos/soulvon/IDE-BYOK/releases --jq '.[] | select(.tag_name=="v1.2.10" and .draft==true) | .id'
+gh api -X DELETE repos/soulvon/IDE-BYOK/releases/RELEASE_ID
+```
+
+公开仓库如果已经生成错误 draft，也按同样方式删除后重跑。
+
+#### 10.6.4 公开仓库为空导致无法发布 latest
+
+**症状**：
+
+```text
+HTTP 422: Validation Failed
+Repository is empty.
+```
+
+**根因**：`soulvon/IDE-BYOK-Release` 作为公开分发仓库，如果完全没有默认分支提交，GitHub API 可以创建 draft release，但无法正常 `--latest` 发布。
+
+**解决**：初始化一个只含 README 的 `main` 分支，不放源码：
+
+```powershell
+git init -b main
+git config user.name "IDE BYOK Release Bot"
+git config user.email "release-bot@users.noreply.github.com"
+Set-Content -Path README.md -Value "# IDE BYOK Release`n`nBinary release assets only. Source code remains private.`n"
+git add README.md
+git commit -m "Initialize release repository"
+git remote add origin https://github.com/soulvon/IDE-BYOK-Release
+git push origin main
+```
+
+#### 10.6.5 `latest.json` 只包含 macOS
+
+**症状**：公开 release 资产完整，包含 Windows、macOS、Linux，但下载 `latest.json` 后只看到：
+
+```json
+{
+  "platforms": {
+    "darwin-aarch64": {},
+    "darwin-x86_64": {}
+  }
+}
+```
+
+**根因**：`scripts/release/build_merged_latest_json.cjs` 仍按旧 updater 命名匹配 Windows `.zip` 和 Linux `.tar.gz`，但 Tauri v2 当前产物可能是直接的：
+
+```text
+IDE.BYOK_1.2.10_x64-setup.exe
+IDE.BYOK_1.2.10_x64_en-US.msi
+IDE.BYOK_1.2.10_amd64.AppImage
+IDE.BYOK_1.2.10_amd64.deb
+```
+
+这些文件各自配套 `.sig`，可以直接进入 updater 清单。
+
+**解决**：更新资产匹配正则，同时兼容旧 `.zip/.tar.gz` 和当前直接产物。修好脚本后可以只重新生成并覆盖上传 `latest.json`，不必重新打包安装包。
+
+线上验收：
+
+```powershell
+gh release download v1.2.10 --repo soulvon/IDE-BYOK-Release --pattern latest.json --dir $env:TEMP --clobber
+node -e "const fs=require('fs'); const j=JSON.parse(fs.readFileSync(process.env.TEMP+'\\\\latest.json','utf8')); console.log(Object.keys(j.platforms).sort())"
+```
+
+至少应看到 Windows、macOS 双架构、Linux x64 的平台 key。
 
 ---
 
