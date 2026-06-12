@@ -1,5 +1,13 @@
 # Changelog
 
+## v1.2.13 - 2026-06-13
+
+### 供应商兼容性
+- 修复 DeepSeek Anthropic 兼容地址保存与转发：`/anthropic` 会作为 base path 保留并补全为 `/anthropic/v1/messages`。
+- 优化 Anthropic 兼容地址归一化，支持自定义前缀路径自动补全 `/v1/messages`，避免保存、导入、测试、评测和代理转发路径不一致。
+- 针对 DeepSeek Anthropic 入口使用 Bearer 鉴权，避免误用原生 Anthropic `x-api-key` 导致认证失败。
+- 供应商编辑器重新打开时显示完整 endpoint，减少路径被隐藏造成的误判。
+
 ## v1.2.12 - 2026-06-12
 
 ### 供应商兼容性

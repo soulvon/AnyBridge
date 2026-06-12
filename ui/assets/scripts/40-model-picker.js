@@ -710,6 +710,15 @@ function normalizeOpenAIProviderPath(apiHost, apiPath) {
   return path;
 }
 
+function normalizeAnthropicProviderPath(apiPath) {
+  const path = cleanProviderApiPath(apiPath);
+  const lower = path.toLowerCase();
+  if (!path) return '/v1/messages';
+  if (lower.endsWith('/messages')) return path;
+  if (lower.endsWith('/v1')) return path + '/messages';
+  return path + '/v1/messages';
+}
+
 function providerEndpointParts(baseUrl, apiFormat, pathValue) {
   let apiHost = baseUrl;
   let parsedPath = '';
@@ -725,10 +734,19 @@ function providerEndpointParts(baseUrl, apiFormat, pathValue) {
   if (apiFormat === 'openai') {
     apiPath = normalizeOpenAIProviderPath(apiHost, apiPath);
   } else {
-    apiPath = cleanProviderApiPath(apiPath) || '/v1/messages';
+    apiPath = normalizeAnthropicProviderPath(apiPath);
   }
 
   return { apiHost, apiPath };
+}
+
+function providerEndpointDisplayUrl(apiHost, apiPath, apiFormat) {
+  const host = String(apiHost || '').trim().replace(/\/+$/, '');
+  if (!host) return '';
+  const path = apiFormat === 'openai'
+    ? normalizeOpenAIProviderPath(host, apiPath)
+    : normalizeAnthropicProviderPath(apiPath);
+  return `${host}${path}`;
 }
 
 function onFormatChange() {
@@ -776,6 +794,9 @@ function onFormatChange() {
 function autoDetectFormatFromHost(hostValue) {
   if (!hostValue) return 'anthropic';
   const v = hostValue.toLowerCase();
+  if (v.includes('anthropic') || v.includes('/v1/messages')) {
+    return 'anthropic';
+  }
   // 命中 OpenAI 特征：路径含 chat/completions、域名含 openai、含 /v1 路径
   if (v.includes('openai')
       || v.includes('dashscope')
@@ -900,10 +921,10 @@ function openProviderEditor(id) {
     fmtElInit.dataset.locked = p ? '1' : '0';
   }
 
-  // Show only host (origin) in URL field; path is stored separately in pf-path
+  // Show the full endpoint; internally it is still stored as apiHost + apiPath.
   const host = p ? p.apiHost : '';
   const path = p ? (p.apiPath || '') : '';
-  document.getElementById('pf-host').value = host;
+  document.getElementById('pf-host').value = p ? providerEndpointDisplayUrl(host, path, p.apiFormat || 'anthropic') : host;
   document.getElementById('pf-path').value = path || (p && p.apiFormat === 'openai' ? '/v1/chat/completions' : '/v1/messages');
   document.getElementById('pf-key').value = p ? p.apiKey : '';
   document.getElementById('pf-key').type = 'password';
@@ -1151,6 +1172,7 @@ async function fetchModelsForEditor() {
   if (!invoke) return;
   const baseUrl = document.getElementById('pf-host').value.trim();
   const apiKey = document.getElementById('pf-key').value.trim();
+  const apiPath = document.getElementById('pf-path').value || '';
   const fmtEl = document.getElementById('pf-format');
   const primaryFmt = fmtEl ? fmtEl.value : 'anthropic';
   const btn = document.getElementById('pf-fetch-btn');
@@ -1158,14 +1180,6 @@ async function fetchModelsForEditor() {
     addLog('warn', '请先填写 API 地址和密钥');
     return;
   }
-
-  // Parse host from base URL
-  let host = baseUrl;
-  try {
-    const url = new URL(baseUrl.startsWith('http') ? baseUrl : 'https://' + baseUrl);
-    host = url.origin;
-  } catch {}
-
   // 计算尝试顺序：先按当前协议；如失败回退到另一种协议
   const formatsToTry = primaryFmt === 'openai' ? ['openai', 'anthropic'] : ['anthropic', 'openai'];
   const fmtLabel = (f) => f === 'openai' ? 'OpenAI' : 'Anthropic';
@@ -1181,7 +1195,15 @@ async function fetchModelsForEditor() {
       addLog('info', `开始用 ${fmtLabel(tryFmt)} 协议拉取模型列表…`);
     }
     try {
-      const result = await invoke('fetch_models', { args: { host, api_key: apiKey, api_format: tryFmt } });
+      const endpoint = providerEndpointParts(baseUrl, tryFmt, apiPath || null);
+      const result = await invoke('fetch_models', {
+        args: {
+          host: endpoint.apiHost,
+          api_key: apiKey,
+          api_format: tryFmt,
+          path: endpoint.apiPath || null,
+        }
+      });
       if (result.models && result.models.length > 0) {
         succeeded = { fmt: tryFmt, models: result.models };
         break;

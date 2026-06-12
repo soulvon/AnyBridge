@@ -784,6 +784,7 @@ async function fetchEvalRemoteModels(provider) {
       args: {
         host: getEvalProviderFetchHost(provider),
         api_key: provider.apiKey,
+        path: provider.apiPath || null,
         api_format: provider.apiFormat || 'anthropic',
       }
     });

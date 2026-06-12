@@ -81,6 +81,21 @@ function normalizeOpenAIApiPath(host, apiPath) {
   return path;
 }
 
+function normalizeAnthropicApiPath(apiPath) {
+  const path = cleanApiPath(apiPath);
+  const lower = path.toLowerCase();
+  if (!path) return '/v1/messages';
+  if (lower.endsWith('/messages')) return path;
+  if (lower.endsWith('/v1')) return `${path}/messages`;
+  return `${path}/v1/messages`;
+}
+
+function shouldUseAnthropicBearerAuth(host, apiPath) {
+  const hostname = String(host || '').split('/')[0].split(':')[0].toLowerCase();
+  const path = normalizeAnthropicApiPath(apiPath).toLowerCase();
+  return hostname === 'api.deepseek.com' && path.startsWith('/anthropic/');
+}
+
 // 兼容旧 API：每次直接返回缓存的 providers Map（config-cache 已处理 mtime）。
 export function loadProviders() {
   return getProviders();
@@ -146,7 +161,7 @@ export function resolveTarget(target, providers) {
   const isOpenAI = p.apiFormat === 'openai';
   const host = (p.apiHost || '').replace(/^https?:\/\//, '').replace(/\/$/, '');
   const configuredPath = p.apiPath && p.apiPath !== '/' ? p.apiPath : null;
-  const apiPath = isOpenAI ? normalizeOpenAIApiPath(host, configuredPath) : (cleanApiPath(configuredPath) || '/v1/messages');
+  const apiPath = isOpenAI ? normalizeOpenAIApiPath(host, configuredPath) : normalizeAnthropicApiPath(configuredPath);
   const modelId = target.model || p.defaultModel;
   // 合并供应商级 + 模型级能力标记
   const supplierCaps = p.capabilities || {};
@@ -167,6 +182,7 @@ export function resolveTarget(target, providers) {
     apiPath,
     apiKey: p.apiKey,
     format: isOpenAI ? 'openai' : 'anthropic',
+    authScheme: isOpenAI || shouldUseAnthropicBearerAuth(host, apiPath) ? 'bearer' : 'x-api-key',
     model: modelId,
     capabilities,
   };

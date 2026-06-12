@@ -20,7 +20,7 @@ import { parseFields, writeStringField, writeBytesField, writeVarintField } from
 import { tryGunzip } from './connect.js';
 import { snapshot } from './stats.js';
 import { extractModelList, unlockModels } from './rename-models.js';
-import { mitmLog } from './mitm-logger.js';
+import { mitmLog, rpcAuditLog } from './mitm-logger.js';
 
 function intEnv(name, fallback, min = 1) {
   const n = parseInt(process.env[name] || '', 10);
@@ -273,6 +273,19 @@ function proxyToCodeium(req, res, body, id, opts = {}) {
   const upstream = opts.upstream || socketUpstream || getUpstreamHost(req.url);
   const upstreamPath = stripRoutePrefix(req.url);
   const isStreaming = STREAMING_METHODS.has(method);
+  const source = opts.source || 'http';
+
+  rpcAuditLog({
+    id,
+    phase: 'request',
+    source,
+    route: 'codeium',
+    method,
+    url: req.url,
+    upstream,
+    upstreamPath,
+    requestBytes: body ? body.length : 0,
+  });
 
   // Forward headers — swap host and normalize body framing.
   // Node rejects responses/requests that carry both Content-Length and Transfer-Encoding.
@@ -291,6 +304,8 @@ function proxyToCodeium(req, res, body, id, opts = {}) {
     if (isStreaming) {
       // Pipe streaming responses through
       console.log(`  [#${id}] ← ${proxyRes.statusCode} (streaming ${method})`);
+      let responseBytes = 0;
+      proxyRes.on('data', c => { responseBytes += c.length; });
       // MITM 日志：GetChatMessage 透传到 Codeium 时记录
       if (method === 'GetChatMessage') {
         mitmLog({ direction: 'upstream', providerName: 'Codeium(透传)', model: '(未拦截)', format: 'connect-grpc', request: { method, url: `https://${upstream}${upstreamPath}` } });
@@ -299,11 +314,23 @@ function proxyToCodeium(req, res, body, id, opts = {}) {
       proxyRes.pipe(res);
       proxyRes.on('error', () => { if (!res.writableEnded) res.end(); });
       // 透传的 GetChatMessage 响应日志
-      if (method === 'GetChatMessage') {
-        proxyRes.on('end', () => {
-          mitmLog({ direction: 'downstream', providerName: 'Codeium(透传)', model: '(未拦截)', format: 'connect-grpc', request: { method, url: `https://${upstream}${upstreamPath}` }, response: { statusCode: proxyRes.statusCode } });
+      proxyRes.on('end', () => {
+        rpcAuditLog({
+          id,
+          phase: 'response',
+          source,
+          route: 'codeium',
+          method,
+          url: req.url,
+          upstream,
+          upstreamPath,
+          statusCode: proxyRes.statusCode,
+          responseBytes,
         });
-      }
+        if (method === 'GetChatMessage') {
+          mitmLog({ direction: 'downstream', providerName: 'Codeium(透传)', model: '(未拦截)', format: 'connect-grpc', request: { method, url: `https://${upstream}${upstreamPath}` }, response: { statusCode: proxyRes.statusCode } });
+        }
+      });
     } else {
       // Buffer unary responses
       const chunks = [];
@@ -311,6 +338,18 @@ function proxyToCodeium(req, res, body, id, opts = {}) {
       proxyRes.on('end', () => {
         let resBody = Buffer.concat(chunks);
         console.log(`  [#${id}] ← ${proxyRes.statusCode} (${resBody.length}b)`);
+        rpcAuditLog({
+          id,
+          phase: 'response',
+          source,
+          route: 'codeium',
+          method,
+          url: req.url,
+          upstream,
+          upstreamPath,
+          statusCode: proxyRes.statusCode,
+          responseBytes: resBody.length,
+        });
         // MITM 日志：GetChatMessage 透传（非流式分支）
         if (method === 'GetChatMessage') {
           mitmLog({ direction: 'upstream', providerName: 'Codeium(透传)', model: '(未拦截)', format: 'connect-grpc', request: { method, url: `https://${upstream}${upstreamPath}` } });
@@ -408,6 +447,17 @@ function proxyToCodeium(req, res, body, id, opts = {}) {
       });
       proxyRes.on('error', (err) => {
         console.error(`  [#${id}] ← error: ${err.message}`);
+        rpcAuditLog({
+          id,
+          phase: 'error',
+          source,
+          route: 'codeium',
+          method,
+          url: req.url,
+          upstream,
+          upstreamPath,
+          error: err.message,
+        });
         if (!res.headersSent) res.writeHead(502);
         if (!res.writableEnded) res.end();
       });
@@ -416,6 +466,18 @@ function proxyToCodeium(req, res, body, id, opts = {}) {
 
   proxyReq.on('error', (err) => {
     console.error(`  [#${id}] ✗ upstream: ${err.message}`);
+    rpcAuditLog({
+      id,
+      phase: 'error',
+      source,
+      route: 'codeium',
+      method,
+      url: req.url,
+      upstream,
+      upstreamPath,
+      requestBytes: body ? body.length : 0,
+      error: err.message,
+    });
     if (!res.headersSent) res.writeHead(502);
     if (!res.writableEnded) res.end(`Upstream error: ${err.message}`);
   });
@@ -477,6 +539,17 @@ function handleRequest(req, res) {
     // ── Telemetry blocking: 返回空 200，不转发到服务端 ──
     if (BLOCKED_TELEMETRY_METHODS.has(method)) {
       console.log(`[${now()}] #${id} 🚫 ${method} → blocked`);
+      rpcAuditLog({
+        id,
+        phase: 'blocked',
+        source: 'http',
+        route: 'blocked',
+        method,
+        url: req.url,
+        requestBytes: body.length,
+        statusCode: 200,
+        responseBytes: 0,
+      });
       res.writeHead(200, { 'content-type': 'application/proto' });
       res.end();
       return;
@@ -493,6 +566,17 @@ function handleRequest(req, res) {
       frame[0] = 0; // flags
       frame.writeUInt32BE(protoBody.length, 1);
       protoBody.copy(frame, 5);
+      rpcAuditLog({
+        id,
+        phase: 'bypassed',
+        source: 'http',
+        route: 'rate-limit-bypass',
+        method,
+        url: req.url,
+        requestBytes: body.length,
+        statusCode: 200,
+        responseBytes: frame.length,
+      });
       res.writeHead(200, {
         'content-type': 'application/proto',
         'content-length': frame.length,
@@ -506,6 +590,15 @@ function handleRequest(req, res) {
     // Codeium, but can be intercepted here to route through own search API.
     if (method === 'GetChatMessage' && shouldIntercept(body, req.headers)) {
       console.log(`[${now()}] #${id} ⚡ GetChatMessage → Anthropic API (${body.length}b)`);
+      rpcAuditLog({
+        id,
+        phase: 'intercepted',
+        source: 'http',
+        route: 'byok',
+        method,
+        url: req.url,
+        requestBytes: body.length,
+      });
       if (DEBUG_IMAGES) {
         try {
           const dumpDir = path.join(os.homedir(), 'AppData', 'Roaming', 'ide-byok', 'debug-dumps');
@@ -590,6 +683,17 @@ const mitmServer = http.createServer((req, res) => {
     // ── Telemetry blocking ──
     if (BLOCKED_TELEMETRY_METHODS.has(method)) {
       console.log(`[${now()}] #${id} 🚫 MITM ${method} → blocked`);
+      rpcAuditLog({
+        id,
+        phase: 'blocked',
+        source: 'mitm',
+        route: 'blocked',
+        method,
+        url: req.url,
+        requestBytes: body.length,
+        statusCode: 200,
+        responseBytes: 0,
+      });
       res.writeHead(200, { 'content-type': 'application/proto' });
       res.end();
       return;
@@ -603,6 +707,17 @@ const mitmServer = http.createServer((req, res) => {
       frame[0] = 0;
       frame.writeUInt32BE(protoBody.length, 1);
       protoBody.copy(frame, 5);
+      rpcAuditLog({
+        id,
+        phase: 'bypassed',
+        source: 'mitm',
+        route: 'rate-limit-bypass',
+        method,
+        url: req.url,
+        requestBytes: body.length,
+        statusCode: 200,
+        responseBytes: frame.length,
+      });
       res.writeHead(200, {
         'content-type': 'application/proto',
         'content-length': frame.length,
@@ -614,6 +729,15 @@ const mitmServer = http.createServer((req, res) => {
     // ── THE INTERCEPTION: GetChatMessage → Anthropic API ──
     if (method === 'GetChatMessage' && shouldIntercept(body, req.headers)) {
       console.log(`[${now()}] #${id} ⚡ MITM GetChatMessage → Anthropic (${body.length}b)`);
+      rpcAuditLog({
+        id,
+        phase: 'intercepted',
+        source: 'mitm',
+        route: 'byok',
+        method,
+        url: req.url,
+        requestBytes: body.length,
+      });
       try {
         const result = handleGetChatMessage(req, res, body);
         if (result && typeof result.catch === 'function') {
@@ -638,7 +762,7 @@ const mitmServer = http.createServer((req, res) => {
     } else {
       console.log(`[${now()}] #${id} → MITM ${method || req.url.slice(0, 80)} (${body.length}b) → Codeium`);
     }
-    proxyToCodeium(req, res, body, id, { skipRewrite: true });
+    proxyToCodeium(req, res, body, id, { skipRewrite: true, source: 'mitm' });
   });
 });
 
@@ -672,6 +796,15 @@ server.on('connect', (req, clientSocket, head) => {
   const MITM_HOSTS = new Set([REAL_API_HOST, 'server.codeium.com']);
   if (MITM_HOSTS.has(host) && MITM_CERT && MITM_KEY) {
     console.log(`[${now()}] #${id} 🔓 MITM ${host}:${targetPort}`);
+    rpcAuditLog({
+      id,
+      phase: 'connect',
+      source: 'connect',
+      route: 'mitm',
+      url: req.url,
+      upstream: host,
+      statusCode: 200,
+    });
 
     // Tell client the tunnel is open
     clientSocket.write(
@@ -715,6 +848,15 @@ server.on('connect', (req, clientSocket, head) => {
 
   // ── Everything else: blind TCP pipe ──
   console.log(`[${now()}] #${id} CONNECT ${host}:${targetPort}`);
+  rpcAuditLog({
+    id,
+    phase: 'connect',
+    source: 'connect',
+    route: 'pipe',
+    url: req.url,
+    upstream: host,
+    statusCode: 200,
+  });
 
   const serverSocket = net.connect(targetPort, host, () => {
     clientSocket.write(

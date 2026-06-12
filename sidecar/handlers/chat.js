@@ -362,6 +362,18 @@ export function handleGetChatMessage(req, res, body) {
 
 // ─── Anthropic streaming ────────────────────────────────────
 
+function anthropicAuthHeaders(conn) {
+  const headers = {
+    'anthropic-version': '2023-06-01',
+  };
+  if (conn.authScheme === 'bearer') {
+    headers.authorization = `Bearer ${conn.apiKey}`;
+  } else {
+    headers['x-api-key'] = conn.apiKey;
+  }
+  return headers;
+}
+
 function streamAnthropic(req, res, { systemPrompt, messages, tools, toolChoice, resolvedModel, messageId, conn, onFailover }) {
   const apiPayload = {
     model: resolvedModel,
@@ -389,7 +401,7 @@ function streamAnthropic(req, res, { systemPrompt, messages, tools, toolChoice, 
     request: {
       method: 'POST',
       url: `https://${conn.host}${conn.apiPath}`,
-      headers: { 'content-type': 'application/json', 'anthropic-version': '2023-06-01', 'x-api-key': conn.apiKey },
+      headers: { 'content-type': 'application/json', ...anthropicAuthHeaders(conn) },
       body: apiBody,
     },
   });
@@ -403,8 +415,7 @@ function streamAnthropic(req, res, { systemPrompt, messages, tools, toolChoice, 
     headers: {
       'content-type': 'application/json',
       'accept': 'text/event-stream',
-      'anthropic-version': '2023-06-01',
-      'x-api-key': conn.apiKey,
+      ...anthropicAuthHeaders(conn),
       'content-length': Buffer.byteLength(apiBody),
     },
   }, (apiRes) => {

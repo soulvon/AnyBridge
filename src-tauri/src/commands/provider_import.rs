@@ -1022,10 +1022,14 @@ fn normalize_endpoint(
 
         let api_path = match api_format {
             ApiFormat::Anthropic => {
-                if lower_path.ends_with("/messages") {
-                    path
-                } else {
+                if lower_path.is_empty() || lower_path == "/" {
                     "/v1/messages".to_string()
+                } else if lower_path.ends_with("/messages") {
+                    path
+                } else if lower_path.ends_with("/v1") {
+                    format!("{}/messages", path)
+                } else {
+                    format!("{}/v1/messages", path)
                 }
             }
             ApiFormat::Openai => {

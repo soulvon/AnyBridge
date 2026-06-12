@@ -13,7 +13,9 @@ function configDir() {
 }
 
 const LOG_DIR = path.join(configDir(), 'mitm-logs');
+const RPC_AUDIT_DIR = path.join(configDir(), 'rpc-audit');
 const MITM_LOG_ENABLED = /^(true|1|on)$/i.test(String(process.env.BYOK_MITM_LOG || 'false'));
+const RPC_AUDIT_ENABLED = /^(true|1|on)$/i.test(String(process.env.BYOK_RPC_AUDIT || 'false'));
 const MITM_FULL_LOG = /^(true|1|on)$/i.test(String(process.env.BYOK_MITM_FULL_LOG || 'false'));
 const MITM_MAX_BODY_BYTES = parseInt(process.env.BYOK_MITM_MAX_BODY_BYTES || '8192', 10);
 
@@ -21,11 +23,19 @@ const MITM_MAX_BODY_BYTES = parseInt(process.env.BYOK_MITM_MAX_BODY_BYTES || '81
 if (MITM_LOG_ENABLED) {
   try { fs.mkdirSync(LOG_DIR, { recursive: true }); } catch {}
 }
+if (RPC_AUDIT_ENABLED) {
+  try { fs.mkdirSync(RPC_AUDIT_DIR, { recursive: true }); } catch {}
+}
 
 // 按日期滚动日志文件
 function logFile() {
   const d = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
   return path.join(LOG_DIR, `mitm-${d}.jsonl`);
+}
+
+function rpcAuditFile() {
+  const d = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+  return path.join(RPC_AUDIT_DIR, `rpc-${d}.jsonl`);
 }
 
 // 脱敏：把 Authorization / x-api-key 的值替换为 sk-***REDACTED***
@@ -108,6 +118,34 @@ export function mitmLog(entry) {
 }
 
 /**
+ * 记录轻量 RPC 方法审计日志。
+ * 只记录路由、方法、状态码和字节数，不记录请求/响应 body。
+ *
+ * @param {object} entry
+ * @param {string} entry.phase - request | response | intercepted | blocked | bypassed | error | connect
+ * @param {string} [entry.source] - http | mitm | connect
+ * @param {string} [entry.method] - RPC method
+ * @param {string} [entry.url] - request path or target URL
+ * @param {string} [entry.upstream] - upstream host
+ * @param {number} [entry.requestBytes]
+ * @param {number} [entry.responseBytes]
+ * @param {number} [entry.statusCode]
+ * @param {string} [entry.route] - codeium | byok | blocked | bypass | pipe
+ * @param {string} [entry.error]
+ */
+export function rpcAuditLog(entry) {
+  if (!RPC_AUDIT_ENABLED) return;
+  const record = {
+    ts: new Date().toISOString(),
+    ...entry,
+  };
+  const line = JSON.stringify(record) + '\n';
+  fs.appendFile(rpcAuditFile(), line, 'utf8', (e) => {
+    if (e) console.error(`[rpc-audit] 写日志失败: ${e.message}`);
+  });
+}
+
+/**
  * 读取最近的 MITM 日志
  * @param {number} count - 读取最近 N 条
  * @returns {object[]}
@@ -124,4 +162,4 @@ export function readRecentMitmLogs(count = 50) {
   }
 }
 
-export { LOG_DIR };
+export { LOG_DIR, RPC_AUDIT_DIR };

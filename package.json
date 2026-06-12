@@ -1,6 +1,6 @@
 {
   "name": "ide-byok",
-  "version": "1.2.12",
+  "version": "1.2.13",
   "description": "Hybrid proxy for IDE — intercepts chat, forwards everything else to Codeium",
   "type": "module",
   "main": "sidecar/proxy-entry.js",

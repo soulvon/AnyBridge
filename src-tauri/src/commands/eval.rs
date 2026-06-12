@@ -1555,6 +1555,59 @@ fn normalize_openai_api_path(host: &str, path: Option<&str>) -> String {
     path
 }
 
+fn normalize_anthropic_api_path(path: Option<&str>) -> String {
+    let path = clean_api_path(path);
+    let lower = path.to_ascii_lowercase();
+    if path.is_empty() {
+        return "/v1/messages".to_string();
+    }
+    if lower.ends_with("/messages") {
+        return path;
+    }
+    if lower.ends_with("/v1") {
+        return format!("{}/messages", path);
+    }
+    format!("{}/v1/messages", path)
+}
+
+fn is_deepseek_anthropic_url(url: &str) -> bool {
+    reqwest::Url::parse(url)
+        .ok()
+        .and_then(|parsed| {
+            let host = parsed.host_str()?.to_ascii_lowercase();
+            Some(
+                host == "api.deepseek.com"
+                    && parsed
+                        .path()
+                        .to_ascii_lowercase()
+                        .starts_with("/anthropic/"),
+            )
+        })
+        .unwrap_or(false)
+}
+
+fn is_deepseek_anthropic_provider(provider: &Provider) -> bool {
+    let host = provider.api_host.trim();
+    let hostname = reqwest::Url::parse(host)
+        .ok()
+        .and_then(|url| url.host_str().map(|h| h.to_ascii_lowercase()))
+        .unwrap_or_else(|| {
+            host.trim_start_matches("https://")
+                .trim_start_matches("http://")
+                .split('/')
+                .next()
+                .unwrap_or_default()
+                .split(':')
+                .next()
+                .unwrap_or_default()
+                .to_ascii_lowercase()
+        });
+    hostname == "api.deepseek.com"
+        && normalize_anthropic_api_path(provider.api_path.as_deref())
+            .to_ascii_lowercase()
+            .starts_with("/anthropic/")
+}
+
 fn api_url(provider: &Provider) -> String {
     let host = provider.api_host.trim().trim_end_matches('/');
     let host = if host.starts_with("http://") || host.starts_with("https://") {
@@ -1568,14 +1621,7 @@ fn api_url(provider: &Provider) -> String {
         .filter(|p| !p.trim().is_empty() && *p != "/");
     let path = match provider.api_format {
         ApiFormat::Openai => normalize_openai_api_path(&host, configured_path),
-        ApiFormat::Anthropic => {
-            let path = clean_api_path(configured_path);
-            if path.is_empty() {
-                "/v1/messages".to_string()
-            } else {
-                path
-            }
-        }
+        ApiFormat::Anthropic => normalize_anthropic_api_path(configured_path),
     };
     format!("{}{}", host, path)
 }
@@ -1886,16 +1932,27 @@ async fn send_protocol_json(
         .post(url)
         .header("Content-Type", "application/json");
     req = match fmt {
-        ApiFormat::Openai => req.header("Authorization", format!("Bearer {}", ctx.provider.api_key)),
-        ApiFormat::Anthropic => req
-            .header("x-api-key", &ctx.provider.api_key)
-            .header("anthropic-version", "2023-06-01"),
+        ApiFormat::Openai => {
+            req.header("Authorization", format!("Bearer {}", ctx.provider.api_key))
+        }
+        ApiFormat::Anthropic => {
+            let req = req.header("anthropic-version", "2023-06-01");
+            if is_deepseek_anthropic_url(url) {
+                req.header("Authorization", format!("Bearer {}", ctx.provider.api_key))
+            } else {
+                req.header("x-api-key", &ctx.provider.api_key)
+            }
+        }
     };
     if ctx.provider.capabilities.gzip {
         body_bytes = gzip_bytes(&body_bytes)?;
         req = req.header("Content-Encoding", "gzip");
     }
-    let res = req.body(body_bytes).send().await.map_err(|e| e.to_string())?;
+    let res = req
+        .body(body_bytes)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
     let status = res.status().as_u16();
     let text = res.text().await.map_err(|e| e.to_string())?;
     Ok((status, text))
@@ -2049,7 +2106,14 @@ fn protocol_base_url(provider: &Provider) -> String {
     } else {
         format!("https://{}", host)
     };
-    let path = provider.api_path.as_deref().unwrap_or_default();
+    let normalized_anthropic_path;
+    let path = match provider.api_format {
+        ApiFormat::Anthropic => {
+            normalized_anthropic_path = normalize_anthropic_api_path(provider.api_path.as_deref());
+            normalized_anthropic_path.as_str()
+        }
+        ApiFormat::Openai => provider.api_path.as_deref().unwrap_or_default(),
+    };
     let known_suffixes = [
         "/v1/chat/completions",
         "/v1beta/openai/chat/completions",
@@ -2061,7 +2125,10 @@ fn protocol_base_url(provider: &Provider) -> String {
             return format!("{}{}", host, keep);
         }
         if host.ends_with(suffix) {
-            return host.trim_end_matches(suffix).trim_end_matches('/').to_string();
+            return host
+                .trim_end_matches(suffix)
+                .trim_end_matches('/')
+                .to_string();
         }
     }
     host
@@ -2070,9 +2137,14 @@ fn protocol_base_url(provider: &Provider) -> String {
 fn auth_headers(req: reqwest::RequestBuilder, provider: &Provider) -> reqwest::RequestBuilder {
     match provider.api_format {
         ApiFormat::Openai => req.header("Authorization", format!("Bearer {}", provider.api_key)),
-        ApiFormat::Anthropic => req
-            .header("x-api-key", &provider.api_key)
-            .header("anthropic-version", "2023-06-01"),
+        ApiFormat::Anthropic => {
+            let req = req.header("anthropic-version", "2023-06-01");
+            if is_deepseek_anthropic_provider(provider) {
+                req.header("Authorization", format!("Bearer {}", provider.api_key))
+            } else {
+                req.header("x-api-key", &provider.api_key)
+            }
+        }
     }
 }
 

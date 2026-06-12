@@ -273,6 +273,57 @@ fn normalize_openai_api_path(host: &str, path: Option<&str>) -> String {
     path
 }
 
+fn normalize_anthropic_api_path(path: Option<&str>) -> String {
+    let path = clean_api_path(path);
+    let lower = path.to_ascii_lowercase();
+    if path.is_empty() {
+        return "/v1/messages".to_string();
+    }
+    if lower.ends_with("/messages") {
+        return path;
+    }
+    if lower.ends_with("/v1") {
+        return format!("{}/messages", path);
+    }
+    format!("{}/v1/messages", path)
+}
+
+fn is_deepseek_anthropic_endpoint(host: &str, path: Option<&str>) -> bool {
+    let hostname = reqwest::Url::parse(host)
+        .ok()
+        .and_then(|url| url.host_str().map(|h| h.to_ascii_lowercase()))
+        .unwrap_or_else(|| {
+            host.trim()
+                .trim_start_matches("https://")
+                .trim_start_matches("http://")
+                .split('/')
+                .next()
+                .unwrap_or_default()
+                .split(':')
+                .next()
+                .unwrap_or_default()
+                .to_ascii_lowercase()
+        });
+    hostname == "api.deepseek.com"
+        && normalize_anthropic_api_path(path)
+            .to_ascii_lowercase()
+            .starts_with("/anthropic/")
+}
+
+fn apply_anthropic_auth(
+    req: reqwest::RequestBuilder,
+    api_key: &str,
+    host: &str,
+    path: Option<&str>,
+) -> reqwest::RequestBuilder {
+    let req = req.header("anthropic-version", "2023-06-01");
+    if is_deepseek_anthropic_endpoint(host, path) {
+        req.header("Authorization", format!("Bearer {}", api_key))
+    } else {
+        req.header("x-api-key", api_key)
+    }
+}
+
 #[derive(Debug, Deserialize)]
 pub struct TestConnArgs {
     pub host: String,
@@ -326,9 +377,7 @@ pub async fn test_connection(args: TestConnArgs) -> Result<TestConnResult, Strin
         if fmt == "openai" {
             req = req.header("Authorization", format!("Bearer {}", args.api_key));
         } else {
-            req = req
-                .header("x-api-key", &args.api_key)
-                .header("anthropic-version", "2023-06-01");
+            req = apply_anthropic_auth(req, &args.api_key, &host, args.path.as_deref());
         }
         match req.send().await {
             Ok(r) => {
@@ -352,15 +401,10 @@ pub async fn test_connection(args: TestConnArgs) -> Result<TestConnResult, Strin
     let chat_path = if fmt == "openai" {
         normalize_openai_api_path(&host, args.path.as_deref())
     } else {
-        let path = clean_api_path(args.path.as_deref());
-        if path.is_empty() {
-            "/v1/messages".to_string()
-        } else {
-            path
-        }
+        normalize_anthropic_api_path(args.path.as_deref())
     };
-    let uses_openai_responses = fmt == "openai"
-        && chat_path.to_ascii_lowercase().contains("/responses");
+    let uses_openai_responses =
+        fmt == "openai" && chat_path.to_ascii_lowercase().contains("/responses");
 
     let test_model = args.model.as_deref().unwrap_or("gpt-3.5-turbo");
     let (chat_body, auth_header, auth_value) = if fmt == "openai" && uses_openai_responses {
@@ -394,11 +438,15 @@ pub async fn test_connection(args: TestConnArgs) -> Result<TestConnResult, Strin
             "max_tokens": 32,
             "stream": false
         });
-        (
-            serde_json::to_vec(&body).unwrap(),
-            "x-api-key".to_string(),
-            args.api_key.clone(),
-        )
+        let (auth_header, auth_value) = if is_deepseek_anthropic_endpoint(&host, Some(&chat_path)) {
+            (
+                "Authorization".to_string(),
+                format!("Bearer {}", args.api_key),
+            )
+        } else {
+            ("x-api-key".to_string(), args.api_key.clone())
+        };
+        (serde_json::to_vec(&body).unwrap(), auth_header, auth_value)
     };
 
     let chat_url = format!("{}{}", host, chat_path);
@@ -601,6 +649,8 @@ pub struct FetchModelsArgs {
     pub host: String,
     pub api_key: String,
     #[serde(default)]
+    pub path: Option<String>,
+    #[serde(default)]
     pub api_format: Option<String>,
 }
 
@@ -626,34 +676,47 @@ pub async fn fetch_models(args: FetchModelsArgs) -> Result<FetchModelsResult, St
         .map_err(|e| e.to_string())?;
 
     let fmt = args.api_format.as_deref().unwrap_or("anthropic");
-    // 按协议分发凭证头：OpenAI 用 Bearer，Anthropic 用 x-api-key。
+    let chat_path = if fmt == "openai" {
+        normalize_openai_api_path(&host, args.path.as_deref())
+    } else {
+        normalize_anthropic_api_path(args.path.as_deref())
+    };
+    // 按协议分发凭证头；DeepSeek 的 Anthropic 兼容入口使用 Bearer。
     // 避免把 key 同时塞进两种头发给非预期端点。
     let auth = |req: reqwest::RequestBuilder| {
         if fmt == "openai" {
             req.header("Authorization", format!("Bearer {}", args.api_key))
         } else {
-            req.header("x-api-key", &args.api_key)
-                .header("anthropic-version", "2023-06-01")
+            apply_anthropic_auth(req, &args.api_key, &host, Some(&chat_path))
         }
     };
 
-    // Try {host}/v1/models first
-    let url1 = format!("{}/v1/models", host);
-    let req1 = auth(client.get(&url1));
-
-    let response = req1.send().await;
-    let mut resp = match response {
-        Ok(r) if r.status().is_success() => Some(r),
-        _ => None,
+    let lower_path = chat_path.to_ascii_lowercase();
+    let base_path = if lower_path.ends_with("/chat/completions") {
+        chat_path.trim_end_matches("/chat/completions").to_string()
+    } else if lower_path.ends_with("/responses") {
+        chat_path.trim_end_matches("/responses").to_string()
+    } else if lower_path.ends_with("/messages") {
+        chat_path.trim_end_matches("/messages").to_string()
+    } else {
+        String::new()
     };
+    let mut model_paths = Vec::new();
+    if !base_path.is_empty() {
+        model_paths.push(format!("{}/models", base_path.trim_end_matches('/')));
+    }
+    model_paths.push("/v1/models".to_string());
+    model_paths.push("/models".to_string());
+    model_paths.dedup();
 
-    // If that fails, try {host}/models
-    if resp.is_none() {
-        let url2 = format!("{}/models", host);
-        let req2 = auth(client.get(&url2));
-        if let Ok(r) = req2.send().await {
+    let mut resp = None;
+    for path in model_paths {
+        let url = format!("{}{}", host, path);
+        let req = auth(client.get(&url));
+        if let Ok(r) = req.send().await {
             if r.status().is_success() {
                 resp = Some(r);
+                break;
             }
         }
     }
@@ -694,5 +757,8 @@ pub async fn fetch_models(args: FetchModelsArgs) -> Result<FetchModelsResult, St
         }
     }
 
-    Ok(FetchModelsResult { models, api_format: fmt.to_string() })
+    Ok(FetchModelsResult {
+        models,
+        api_format: fmt.to_string(),
+    })
 }
