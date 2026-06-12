@@ -134,6 +134,24 @@ function configuredLabelFromRuntime(cfg, fallbackLabel, uid, labelTemplate, name
   });
 }
 
+function configuredApiIdForUid(uid) {
+  const catalog = catalogByUid().get(uid);
+  return catalog?.apiId || (!String(uid || '').startsWith('MODEL_') ? uid : '');
+}
+
+function uniqueConfiguredApiId(apiId, uid) {
+  const base = String(apiId || '').trim();
+  if (!base) return '';
+  const s = String(uid || '').toLowerCase();
+  if (s.includes('thinking')) return `${base}-thinking`;
+  if (s.includes('xhigh')) return `${base}-xhigh`;
+  if (s.includes('high')) return `${base}-high`;
+  if (s.includes('medium')) return `${base}-medium`;
+  if (s.includes('low')) return `${base}-low`;
+  if (s.includes('fast')) return `${base}-fast`;
+  return `${base}-${s.replace(/^model_/, '').replace(/[^a-z0-9]+/g, '-')}`;
+}
+
 // 内置兜底:captured ide-models.json 不存在或缺某 modelUid 时，用这张已知表查原始 label。
 // 覆盖默认预设的 3 个槽位 + 常见可被改名的模型，确保新装(从未抓过 GetUserStatus)也能改名。
 const BUILTIN_LABELS = {
@@ -161,6 +179,27 @@ let _catalogLabels = null;
 function catalogLabels() {
   if (_catalogLabels !== null) return _catalogLabels;
   _catalogLabels = new Map();
+  for (const m of catalogModels()) {
+    if (m.modelUid && m.label) _catalogLabels.set(m.modelUid, m.label);
+  }
+  return _catalogLabels;
+}
+
+let _catalogModels = null;
+function catalogModels() {
+  if (_catalogModels !== null) return _catalogModels;
+  const byUid = new Map();
+  const add = (m) => {
+    if (!m || !m.modelUid) return;
+    const existing = byUid.get(m.modelUid) || {};
+    byUid.set(m.modelUid, {
+      label: m.label || existing.label || m.modelUid,
+      modelUid: m.modelUid,
+      apiId: m.apiId || existing.apiId || null,
+      supportsImages: m.supportsImages !== false,
+      contextWindow: m.contextWindow || existing.contextWindow || null,
+    });
+  };
   try {
     let raw;
     const candidates = [];
@@ -176,12 +215,38 @@ function catalogLabels() {
     }
     if (raw) {
       const obj = JSON.parse(raw);
-      for (const m of (obj.models || [])) {
-        if (m.modelUid && m.label) _catalogLabels.set(m.modelUid, m.label);
-      }
+      for (const m of (obj.models || [])) add(m);
     }
   } catch { /* ignore */ }
-  return _catalogLabels;
+  for (const m of WINDSURF_CATALOG || []) add(m);
+
+  // UI 侧 list_ide_models 会把缓存和内置表合并。sidecar 没有 Rust 内置表，
+  // 这里至少并入已缓存/已抓取的额外 modelUid，避免已出现在管理页的槽位无法合成。
+  for (const name of ['ide-models.json', 'windsurf-models.json']) {
+    try {
+      const c = JSON.parse(fs.readFileSync(path.join(configDir(), name), 'utf8'));
+      for (const e of (c.models || [])) {
+        if (!e.modelUid || !e.label || String(e.label).startsWith('http')) continue;
+        add({
+          modelUid: e.modelUid,
+          label: e.label,
+          apiId: e.apiId || null,
+          supportsImages: e.supportsImages !== false,
+        });
+      }
+    } catch { /* ignore */ }
+  }
+
+  _catalogModels = [...byUid.values()];
+  return _catalogModels;
+}
+
+let _catalogByUid = null;
+function catalogByUid() {
+  if (_catalogByUid !== null) return _catalogByUid;
+  _catalogByUid = new Map();
+  for (const m of catalogModels()) _catalogByUid.set(m.modelUid, m);
+  return _catalogByUid;
 }
 
 // 改名表来源:model-map.json 的槽位。需要把「原始 label → 新名」
@@ -643,6 +708,25 @@ function buildUnlockSet() {
     });
   }
 
+  // Devin/Windsurf 客户端会基于隐藏 apiId 做二次去重。若两个 BYOK 槽位
+  // 克隆同一个官方 apiId（例如 Claude 4.5 / Claude 4.5 Thinking），下拉框会少一项。
+  // 只对重复的已配置槽位写唯一 apiId，保持无冲突槽位继续使用 catalog 元数据。
+  const apiBuckets = new Map();
+  for (const [uid, cfg] of byUid) {
+    if (!cfg || cfg.source !== 'rename') continue;
+    const apiId = configuredApiIdForUid(uid);
+    if (!apiId) continue;
+    if (!apiBuckets.has(apiId)) apiBuckets.set(apiId, []);
+    apiBuckets.get(apiId).push(uid);
+  }
+  for (const [apiId, uids] of apiBuckets) {
+    if (uids.length <= 1) continue;
+    for (const uid of uids.slice(1)) {
+      const cfg = byUid.get(uid);
+      if (cfg) cfg.apiIdOverride = uniqueConfiguredApiId(apiId, uid);
+    }
+  }
+
   // 3) 不再单独预填 unlock-prefix 项;改由 rewriteForUnlock 在递归到
   //    每个 ClientModelConfig 时直接从原 label 读出 + 加 (BYOK) 前缀,
   //    这样即使 modelUid 不在 captured/catalog 里也能正确处理。
@@ -748,11 +832,197 @@ function findVarintField(buf, fieldNo) {
   return null;
 }
 
+function hiddenByVisibility(uid, slotVisibility) {
+  return !!(slotVisibility && slotVisibility.has(uid) && slotVisibility.get(uid) === false);
+}
+
+function visibleByOverride(uid, slotVisibility) {
+  return !!(slotVisibility && slotVisibility.has(uid) && slotVisibility.get(uid) !== false);
+}
+
+function markRuntime(runtimeStatus, uid, label, status, source) {
+  if (runtimeStatus && status === 'unconfigured') {
+    runtimeStatus.set(uid, { label: label || uid, status, source });
+  }
+}
+
+function existingRewriteSpec(uid, origLabel, wasDisabled, cfg, ctx) {
+  if (hiddenByVisibility(uid, ctx.slotVisibility)) return { keep: false };
+
+  if (cfg) {
+    return {
+      keep: true,
+      uid,
+      newLabel: configuredLabelFromRuntime(cfg, origLabel, uid, ctx.labelTemplate, ctx.namePrefix),
+      wantImages: cfg.wantImages,
+      apiIdOverride: cfg.apiIdOverride || '',
+      disabled: false,
+      status: 'configured',
+      source: cfg.source || 'rename',
+    };
+  }
+
+  if (!ctx.unlockAll) return { keep: false };
+
+  const overridePlan = visibleByOverride(uid, ctx.slotVisibility)
+    ? visibleOverridePlan(uid, wasDisabled, ctx.slotVisibility)
+    : null;
+  const plan = overridePlan || fallbackRewritePlan(
+    uid,
+    origLabel,
+    ctx.unlockScope,
+    ctx.slotVisibilityMode,
+    wasDisabled
+  );
+  if (!plan || plan.status === 'hidden') return { keep: false };
+
+  const labelText = origLabel || uid;
+  const newLabel = renderTemplate(ctx.labelTemplate, {
+    prefix: '',
+    label: labelText,
+    provider: plan.status === 'unconfigured' ? '未配置' : '官方',
+    apiModel: '',
+  });
+  markRuntime(ctx.runtimeStatus, uid, labelText, plan.status, 'fallback');
+  return {
+    keep: true,
+    uid,
+    newLabel,
+    wantImages: canDeclareImagesForSlot(uid),
+    disabled: plan.disabled,
+    status: plan.status,
+    source: 'fallback',
+  };
+}
+
+function configuredMissingSpecs(seenUids, ctx) {
+  const specs = [];
+  for (const [uid, cfg] of ctx.byUid) {
+    if (!uid || seenUids.has(uid) || hiddenByVisibility(uid, ctx.slotVisibility)) continue;
+    const catalog = catalogByUid().get(uid);
+    const fallbackLabel = catalog?.label || catalogLabels().get(uid) || BUILTIN_LABELS[uid] || uid;
+    specs.push({
+      uid,
+      newLabel: configuredLabelFromRuntime(cfg, fallbackLabel, uid, ctx.labelTemplate, ctx.namePrefix),
+      wantImages: cfg.wantImages,
+      apiIdOverride: cfg.apiIdOverride || '',
+      disabled: false,
+      status: 'configured',
+      source: cfg.source || 'rename',
+    });
+    seenUids.add(uid);
+  }
+  return specs;
+}
+
+function unconfiguredCatalogMissingSpecs(seenUids, ctx) {
+  const specs = [];
+  const visibility = normalizeSlotVisibilityMode(ctx.slotVisibilityMode);
+  for (const m of catalogModels()) {
+    const uid = m.modelUid;
+    if (!uid || seenUids.has(uid) || ctx.byUid.has(uid)) continue;
+    if (hiddenByVisibility(uid, ctx.slotVisibility)) continue;
+    if (visibility !== 'all' && !visibleByOverride(uid, ctx.slotVisibility)) continue;
+
+    const labelText = m.label || uid;
+    const newLabel = renderTemplate(ctx.labelTemplate, {
+      prefix: '',
+      label: labelText,
+      provider: '未配置',
+      apiModel: '',
+    });
+    markRuntime(ctx.runtimeStatus, uid, labelText, 'unconfigured', 'catalog');
+    specs.push({
+      uid,
+      newLabel,
+      wantImages: m.supportsImages !== false && canDeclareImagesForSlot(uid),
+      disabled: false,
+      status: 'unconfigured',
+      source: 'catalog',
+    });
+    seenUids.add(uid);
+  }
+  return specs;
+}
+
+function missingModelSpecs(seenUids, ctx) {
+  return [
+    ...configuredMissingSpecs(seenUids, ctx),
+    ...unconfiguredCatalogMissingSpecs(seenUids, ctx),
+  ];
+}
+
+function modelMetadataForUid(uid) {
+  const catalog = catalogByUid().get(uid) || {};
+  const apiId = catalog.apiId || (!String(uid || '').startsWith('MODEL_') ? uid : null);
+  return {
+    uid,
+    apiId,
+    contextWindow: catalog.contextWindow || null,
+  };
+}
+
+function writeStringFieldLocal(fieldNo, value) {
+  const data = Buffer.from(String(value), 'utf8');
+  return Buffer.concat([encVarint((fieldNo << 3) | 2), encVarint(data.length), data]);
+}
+
+function writeVarintFieldLocal(fieldNo, value) {
+  return Buffer.concat([encVarint((fieldNo << 3) | 0), encVarint(value)]);
+}
+
+function rewriteModelInfoFields(buf, meta) {
+  const parts = [];
+  let i = 0;
+  const apiId = meta?.apiId || '';
+  const useSweApiId = /^swe-/i.test(apiId);
+  try {
+    while (i < buf.length) {
+      const tagR = decVarint(buf, i);
+      const tag = tagR.value;
+      const fn = tag >>> 3, wt = tag & 7;
+      if (fn === 0) return buf;
+      const tagBytes = buf.subarray(i, tagR.next);
+      i = tagR.next;
+
+      if (wt === 0) {
+        const vr = decVarint(buf, i);
+        parts.push(tagBytes, buf.subarray(tagR.next, vr.next));
+        i = vr.next;
+      } else if (wt === 1) {
+        parts.push(tagBytes, buf.subarray(i, i + 8)); i += 8;
+      } else if (wt === 5) {
+        parts.push(tagBytes, buf.subarray(i, i + 4)); i += 4;
+      } else if (wt === 2) {
+        const lr = decVarint(buf, i);
+        const start = lr.next, end = start + lr.value;
+        if (end > buf.length) return buf;
+        // ModelInfo 里 field17 是内部 modelUid，field20/23 是真实 API ID。
+        // 克隆模板时必须重写或清掉这些字段，否则客户端会把合成槽位折叠成模板模型。
+        if (fn !== 17 && fn !== 20 && fn !== 23) {
+          parts.push(tagBytes, encVarint(lr.value), buf.subarray(start, end));
+        }
+        i = end;
+      } else {
+        return buf;
+      }
+    }
+  } catch {
+    return buf;
+  }
+
+  if (meta?.uid) parts.push(writeStringFieldLocal(17, meta.uid));
+  if (apiId) parts.push(writeStringFieldLocal(useSweApiId ? 20 : 23, apiId));
+  return Buffer.concat(parts);
+}
+
 // 递归重写 protobuf，将 ClientModelConfig 条目按 byUid 配置改写 + 全部解锁（unlockAll）。
 // 返回 { body: Buffer, changed: number } 或 null（无改动）。
 function unlockInProto(payload, unlockAll, byUid, defaultProviderName, labelTemplate, namePrefix, unlockScope, slotVisibilityMode, slotVisibility, runtimeStatus) {
   const counter = { n: 0 };
-  const out = rewriteForUnlock(payload, counter, 8, unlockAll, byUid, defaultProviderName, labelTemplate, namePrefix, unlockScope, slotVisibilityMode, slotVisibility, runtimeStatus);
+  const ctx = { unlockAll, byUid, defaultProviderName, labelTemplate, namePrefix, unlockScope, slotVisibilityMode, slotVisibility, runtimeStatus };
+  const state = { injected: false };
+  const out = rewriteForUnlock(payload, counter, 8, ctx, state);
   if (counter.n === 0) return null;
   return { body: out, changed: counter.n };
 }
@@ -764,10 +1034,13 @@ function unlockInProto(payload, unlockAll, byUid, defaultProviderName, labelTemp
 //   byUid 中无该 modelUid 但 unlockAll=true → 仅解锁 + 自动读原 label 加 (BYOK) 前缀
 //     （如果原 label 已经有 (BYOK) 前缀就不重复加,避免 slot 已经处理过的项重复）
 //   其他情况 → 跳过
-function rewriteForUnlock(buf, counter, depth, unlockAll, byUid, defaultProviderName = '', labelTemplate = '', namePrefix = '', unlockScope = 'all', slotVisibilityMode = 'mapped', slotVisibility = null, runtimeStatus = null) {
+function rewriteForUnlock(buf, counter, depth, ctx, state) {
   const parts = [];
   let i = 0;
   let mutated = false;
+  const directModelUids = new Set();
+  let templateTagBytes = null;
+  let templateChild = null;
   try {
     while (i < buf.length) {
       const tagR = decVarint(buf, i);
@@ -798,58 +1071,36 @@ function rewriteForUnlock(buf, counter, depth, unlockAll, byUid, defaultProvider
           // 检查子 message 是否是 ClientModelConfig 条目（含 field22 = model_uid）
           const uid = findModelUid(child);
           if (uid) {
-            const cfg = byUid.get(uid);
+            directModelUids.add(uid);
+            if (!templateTagBytes) templateTagBytes = tagBytes;
+            if (!templateChild) templateChild = child;
+
+            const cfg = ctx.byUid.get(uid);
             const wasDisabled = findVarintField(child, 4) === 1;
-            const overridePlan = visibleOverridePlan(uid, wasDisabled, slotVisibility);
-            if (cfg && overridePlan && overridePlan.status === 'hidden') {
-              const rewritten = rewriteConfigFields(child, { newLabel: null, wantImages: undefined, disabled: true });
-              if (rewritten !== child) {
-                child = rewritten;
-                counter.n++;
-                mutated = true;
-              }
-            } else if (cfg) {
-              // 已有显式配置（rename/injected/unlock-prefix），用 cfg
-              const wantImages = cfg.wantImages;
-              const fallbackLabel = findField1Label(child) || '';
-              const newLabel = configuredLabelFromRuntime(cfg, fallbackLabel, uid, labelTemplate, namePrefix);
-              const rewritten = rewriteConfigFields(child, { newLabel, wantImages, disabled: false });
-              if (rewritten !== child) {
-                child = rewritten;
-                counter.n++;
-                mutated = true;
-              }
-            } else if (unlockAll) {
-              // 没有任何 byUid 配置但 unlockAll=true → 按解锁范围和原账号权限做 fallback 标记。
-              const origLabel = findField1Label(child) || '';
-              const plan = overridePlan || fallbackRewritePlan(uid, origLabel, unlockScope, slotVisibilityMode, wasDisabled);
-              if (plan) {
-                const labelText = origLabel || uid;
-                const newLabel = plan.status === 'hidden' ? null : renderTemplate(labelTemplate, {
-                  prefix: '',
-                  label: labelText,
-                  provider: plan.status === 'unconfigured' ? '未配置' : '官方',
-                  apiModel: '',
-                });
-                if (runtimeStatus && plan.status === 'unconfigured') {
-                  runtimeStatus.set(uid, { label: labelText, status: plan.status, source: 'fallback' });
-                }
-                const wantImages = plan.status === 'hidden' ? undefined : canDeclareImagesForSlot(uid);
-                const rewritten = rewriteConfigFields(child, { newLabel, wantImages, disabled: plan.disabled });
-                if (rewritten !== child) {
-                  child = rewritten;
-                  counter.n++;
-                  mutated = true;
-                }
-              }
-            } else if (depth > 0) {
-              // 未配置且未劫持 → 递归下钻查找内层条目
-              const sub = rewriteForUnlock(child, counter, depth - 1, unlockAll, byUid, defaultProviderName, labelTemplate, namePrefix, unlockScope, slotVisibilityMode, slotVisibility, runtimeStatus);
-              if (sub !== child) { child = sub; mutated = true; }
+            const origLabel = findField1Label(child) || '';
+            const spec = existingRewriteSpec(uid, origLabel, wasDisabled, cfg, ctx);
+            if (!spec.keep) {
+              counter.n++;
+              mutated = true;
+              i = end;
+              continue;
+            }
+
+            const rewritten = rewriteConfigFields(child, {
+              modelUid: spec.status === 'configured' ? spec.uid : undefined,
+              apiIdOverride: spec.apiIdOverride || '',
+              newLabel: spec.newLabel,
+              wantImages: spec.wantImages,
+              disabled: spec.disabled,
+            });
+            if (rewritten !== child) {
+              child = rewritten;
+              counter.n++;
+              mutated = true;
             }
           } else if (depth > 0) {
             // 不是模型条目 → 递归下钻
-            const sub = rewriteForUnlock(child, counter, depth - 1, unlockAll, byUid, defaultProviderName, labelTemplate, namePrefix, unlockScope, slotVisibilityMode, slotVisibility, runtimeStatus);
+            const sub = rewriteForUnlock(child, counter, depth - 1, ctx, state);
             if (sub !== child) { child = sub; mutated = true; }
           }
         }
@@ -862,21 +1113,50 @@ function rewriteForUnlock(buf, counter, depth, unlockAll, byUid, defaultProvider
   } catch {
     return buf;
   }
+
+  if (!state.injected && templateTagBytes && templateChild) {
+    const specs = missingModelSpecs(new Set(directModelUids), ctx);
+    if (specs.length) {
+      for (const spec of specs) {
+        const synthetic = rewriteConfigFields(templateChild, {
+          modelUid: spec.uid,
+          apiIdOverride: spec.apiIdOverride || '',
+          newLabel: spec.newLabel,
+          wantImages: spec.wantImages,
+          disabled: spec.disabled,
+        });
+        parts.push(templateTagBytes, encVarint(synthetic.length), synthetic);
+        counter.n++;
+      }
+      state.injected = true;
+      mutated = true;
+    }
+  }
+
   return mutated ? Buffer.concat(parts) : buf;
 }
 
 // 改写一个 ClientModelConfig 条目，按策略设置 disabled + 对齐图片能力：
+//   field22(model_uid)       → 合成缺失条目时替换成目标 modelUid
 //   field4 (disabled)        → disabled=false 时删除；disabled=true 时追加 field4=1
 //   field5 (supports_images) → wantImages 为布尔值时才重写；否则保持原值
 //     wantImages=true  → 追加 field5=1（GLM 等原本不支持图的模型也强制可发图）
 //     wantImages=false → 不追加（proto3 默认 false，发图按钮置灰）
+//   field18(context_window)   → catalog 有记录时替换，避免合成条目沿用模板窗口
+//   field23(model_info)       → 同步内部 modelUid/API ID，避免客户端按模板模型折叠
 // 外层 rewriteForUnlock 会用 encVarint(child.length) 重算长度前缀，故增删字段安全。
-function rewriteConfigFields(buf, { newLabel, wantImages, disabled }) {
+function rewriteConfigFields(buf, { modelUid, apiIdOverride, newLabel, wantImages, disabled }) {
   const parts = [];
   let i = 0;
   let mutated = false;
   const manageDisabled = typeof disabled === 'boolean';
   const manageImages = typeof wantImages === 'boolean';
+  const manageModelUid = typeof modelUid === 'string' && modelUid.length > 0;
+  const manageLabel = typeof newLabel === 'string' && newLabel.length > 0;
+  const meta = manageModelUid ? modelMetadataForUid(modelUid) : null;
+  if (meta && apiIdOverride) meta.apiId = apiIdOverride;
+  const manageContextWindow = !!(meta && Number.isFinite(Number(meta.contextWindow)) && Number(meta.contextWindow) > 0);
+  let sawModelInfo = false;
   try {
     while (i < buf.length) {
       const tagR = decVarint(buf, i);
@@ -895,6 +1175,9 @@ function rewriteConfigFields(buf, { newLabel, wantImages, disabled }) {
         } else if (fn === 5 && manageImages) {
           // supports_images 由函数末尾统一追加；false 使用 proto3 默认值。
           mutated = true;
+        } else if (fn === 18 && manageContextWindow) {
+          // context_window 由函数末尾按 catalog 统一追加。
+          mutated = true;
         } else {
           parts.push(tagBytes, valBytes);
         }
@@ -908,10 +1191,20 @@ function rewriteConfigFields(buf, { newLabel, wantImages, disabled }) {
         const len = lr.value;
         const start = lr.next, end = start + len;
         if (end > buf.length) return buf;
-        if (fn === 1 && newLabel) {
+        if (fn === 1 && manageLabel) {
           // field1 label → 替换为新 label
           const newBuf = Buffer.from(newLabel, 'utf8');
           parts.push(tagBytes, encVarint(newBuf.length), newBuf);
+          mutated = true;
+        } else if (fn === 22 && manageModelUid) {
+          // field22 model_uid → 合成缺失模型条目时替换。
+          const newBuf = Buffer.from(modelUid, 'utf8');
+          parts.push(tagBytes, encVarint(newBuf.length), newBuf);
+          mutated = true;
+        } else if (fn === 23 && manageModelUid) {
+          const info = rewriteModelInfoFields(buf.subarray(start, end), meta);
+          parts.push(tagBytes, encVarint(info.length), info);
+          sawModelInfo = true;
           mutated = true;
         } else {
           parts.push(tagBytes, encVarint(len), buf.subarray(start, end));
@@ -934,6 +1227,15 @@ function rewriteConfigFields(buf, { newLabel, wantImages, disabled }) {
     parts.push(Buffer.from([0x28, 0x01]));
     mutated = true;
   }
+  if (manageContextWindow) {
+    parts.push(writeVarintFieldLocal(18, Number(meta.contextWindow)));
+    mutated = true;
+  }
+  if (manageModelUid && !sawModelInfo) {
+    const info = rewriteModelInfoFields(Buffer.alloc(0), meta);
+    parts.push(Buffer.concat([encVarint((23 << 3) | 2), encVarint(info.length), info]));
+    mutated = true;
+  }
   return mutated ? Buffer.concat(parts) : buf;
 }
 
@@ -943,6 +1245,48 @@ function rewriteConfigFields(buf, { newLabel, wantImages, disabled }) {
 // unlockAll=true 时所有 ClientModelConfig 条目都处理；否则只处理 byUid 中的项。
 // 每个条目可同时改 3 件事: label（rename/injected） / disabled（解锁） / supportsImages。
 function unlockInJson(text, unlockAll, byUid, defaultProviderName = '', labelTemplate = '', namePrefix = '', unlockScope = 'all', slotVisibilityMode = 'mapped', slotVisibility = null, runtimeStatus = null) {
+  const ctx = { unlockAll, byUid, defaultProviderName, labelTemplate, namePrefix, unlockScope, slotVisibilityMode, slotVisibility, runtimeStatus };
+  try {
+    const root = JSON.parse(text);
+    const arr = root?.userStatus?.cascadeModelConfigData?.clientModelConfigs;
+    if (Array.isArray(arr)) {
+      const seenUids = new Set();
+      const next = [];
+      for (const item of arr) {
+        const uid = item && typeof item.modelUid === 'string' ? item.modelUid : '';
+        if (!uid) {
+          next.push(item);
+          continue;
+        }
+        seenUids.add(uid);
+        const cfg = byUid.get(uid);
+        const spec = existingRewriteSpec(uid, item.label || uid, item.disabled === true, cfg, ctx);
+        if (!spec.keep) continue;
+        const out = { ...item };
+        if (spec.newLabel) out.label = spec.newLabel;
+        out.disabled = spec.disabled === true;
+        if (typeof spec.wantImages === 'boolean') out.supportsImages = spec.wantImages;
+        next.push(out);
+      }
+
+      const template = next[0] || arr[0] || {};
+      for (const spec of missingModelSpecs(seenUids, ctx)) {
+        const out = {
+          ...template,
+          label: spec.newLabel,
+          modelUid: spec.uid,
+          disabled: spec.disabled === true,
+        };
+        if (typeof spec.wantImages === 'boolean') out.supportsImages = spec.wantImages;
+        next.push(out);
+      }
+
+      root.userStatus.cascadeModelConfigData.clientModelConfigs = next;
+      const nextText = JSON.stringify(root);
+      return { text: nextText, changed: nextText === text ? 0 : 1 };
+    }
+  } catch { /* fall back to boundary-based rewrite below */ }
+
   let changed = 0;
   const uidRe = /"modelUid"\s*:\s*"([^"]+)"/g;
   let m;
@@ -1108,12 +1452,18 @@ export function unlockModels(resBody) {
     const text = payload.toString('utf8');
     if (text.indexOf('"modelUid"') === -1) return null;
     const r = unlockInJson(text, unlockAll, byUid, defaultProviderName, labelTemplate, namePrefix, unlockScope, slotVisibilityMode, slotVisibility, runtimeStatus);
-    if (r.changed === 0) return null;
+    if (r.changed === 0) {
+      RUNTIME_MODEL_SLOT_STATUS.clear();
+      return null;
+    }
     newPayload = Buffer.from(r.text, 'utf8');
     changed = r.changed;
   } else {
     const r = unlockInProto(payload, unlockAll, byUid, defaultProviderName, labelTemplate, namePrefix, unlockScope, slotVisibilityMode, slotVisibility, runtimeStatus);
-    if (!r) return null;
+    if (!r) {
+      RUNTIME_MODEL_SLOT_STATUS.clear();
+      return null;
+    }
     newPayload = r.body;
     changed = r.changed;
   }
