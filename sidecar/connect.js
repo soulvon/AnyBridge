@@ -53,11 +53,38 @@ export function wrapEnvelope(protoBuf, compress = true) {
  * Must contain at least `{}` for the client to parse successfully.
  */
 export function endOfStreamEnvelope() {
-  const jsonTrailers = gzipSync(Buffer.from('{}'));
+  return endOfStreamJsonEnvelope({});
+}
+
+function endOfStreamJsonEnvelope(payload) {
+  const jsonTrailers = gzipSync(Buffer.from(JSON.stringify(payload || {})));
   const header = Buffer.alloc(5);
   header[0] = 3; // flags = end-of-stream + compressed
   header.writeUInt32BE(jsonTrailers.length, 1);
   return Buffer.concat([header, jsonTrailers]);
+}
+
+/**
+ * Build a terminal Connect-RPC stream error.
+ *
+ * The payload of an end-of-stream frame is JSON, even for proto streams:
+ *   { "error": { "code": "unavailable", "message": "..." } }
+ *
+ * Sending this instead of a GetChatMessageResponse delta keeps provider
+ * failures out of the assistant message context and lets the IDE render its
+ * native stream error UI when supported.
+ */
+export function endOfStreamErrorEnvelope({ code = 'unavailable', message = 'Request failed', metadata } = {}) {
+  const payload = {
+    error: {
+      code: String(code || 'unknown'),
+      message: String(message || 'Request failed'),
+    },
+  };
+  if (metadata && typeof metadata === 'object' && Object.keys(metadata).length > 0) {
+    payload.metadata = metadata;
+  }
+  return endOfStreamJsonEnvelope(payload);
 }
 
 /**

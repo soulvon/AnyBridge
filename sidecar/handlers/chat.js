@@ -9,7 +9,7 @@ import { parseGetChatMessageRequest } from './parse-request.js';
 import { buildErrorChunk } from './build-response.js';
 import { AnthropicStreamProcessor, parseSSEChunk } from './anthropic-stream.js';
 import { OpenAIChatCompletionsStreamProcessor, OpenAIStreamProcessor, parseOpenAISSEChunk } from './openai-stream.js';
-import { wrapEnvelope, endOfStreamEnvelope, streamHeaders, gzipSync, unwrapRequest } from '../connect.js';
+import { wrapEnvelope, endOfStreamEnvelope, endOfStreamErrorEnvelope, streamHeaders, gzipSync, unwrapRequest } from '../connect.js';
 import { recordRequest, recordUsage, recordError, recordLatency } from '../stats.js';
 import { getInjectedByUid, getSlot, loadProviders, resolveTarget, rememberProviderToolSchemaCompat, updateModelCapabilities } from '../provider-pool.js';
 import { mitmLog } from '../mitm-logger.js';
@@ -35,6 +35,7 @@ const RETRY_MAX = intEnv('BYOK_RETRY_MAX', 5, 0);
 const RETRY_BASE_MS = intEnv('BYOK_RETRY_BASE_MS', 600, 1);
 const RETRY_CAP_MS = intEnv('BYOK_RETRY_CAP_MS', 8000, 1);
 const RETRY_TOTAL_MS = intEnv('BYOK_RETRY_TOTAL_MS', 60000, 0);
+const NATIVE_STREAM_ERRORS = !/^(false|0|off)$/i.test(String(process.env.BYOK_NATIVE_ERRORS || 'true'));
 const OPENAI_REASONING_EFFORT = String(process.env.BYOK_REASONING_EFFORT || process.env.OPENAI_REASONING_EFFORT || '').trim();
 const OPENAI_REASONING_SUMMARY = String(process.env.BYOK_REASONING_SUMMARY || process.env.OPENAI_REASONING_SUMMARY || '').trim();
 const HTTPS_AGENT = new https.Agent({
@@ -71,6 +72,112 @@ function isRetryableFailure(reason, meta = {}) {
 function retryDelayMs(attempt, meta = {}) {
   const exp = Math.min(RETRY_CAP_MS, RETRY_BASE_MS * Math.pow(2, Math.max(0, attempt - 1)));
   return Math.max(Math.random() * exp, retryAfterMs(meta.headers));
+}
+
+function clampText(value, max = 220) {
+  const text = String(value || '').replace(/\s+/g, ' ').trim();
+  if (text.length <= max) return text;
+  return `${text.slice(0, Math.max(0, max - 1))}…`;
+}
+
+function extractUpstreamMessage(body) {
+  if (!body) return '';
+  const raw = String(body).trim();
+  if (!raw) return '';
+  try {
+    const json = JSON.parse(raw);
+    const msg = json?.error?.message
+      || json?.error?.detail
+      || json?.message
+      || json?.detail
+      || (typeof json?.error === 'string' ? json.error : '');
+    if (msg) return clampText(msg.replace(/\s*\(request id:[^)]+\)/ig, ''));
+  } catch {
+    // Non-JSON provider bodies are still useful if they are short.
+  }
+  return clampText(raw.replace(/\s*\(request id:[^)]+\)/ig, ''));
+}
+
+function summarizeProviderMessage(message) {
+  const text = clampText(message, 180);
+  if (!text) return '';
+  if (/无可用渠道|no available channel/i.test(text)) return '该中转当前没有可用渠道';
+  if (/insufficient|quota|余额|额度|balance/i.test(text)) return '额度或余额不足';
+  if (/invalid api key|unauthorized|认证|鉴权|api key/i.test(text)) return 'API Key 无效或已过期';
+  if (/permission|forbidden|not allowed|无权限|未开通/i.test(text)) return '没有该模型权限或尚未开通';
+  if (/model.*not found|does not exist|模型.*不存在|unknown model/i.test(text)) return '模型名不可用或未开通';
+  if (/rate limit|too many requests|限流|频率/i.test(text)) return '触发上游限流';
+  if (/overloaded|temporarily|service unavailable|维护|不可用/i.test(text)) return '上游服务暂时不可用';
+  return text;
+}
+
+function targetLabel(failure = {}) {
+  const provider = failure.providerName || failure.providerId || '未知供应商';
+  const model = failure.model ? ` / ${failure.model}` : '';
+  return `「${provider}${model}」`;
+}
+
+function failureSummary(failure = {}) {
+  const status = failure.statusCode ? `返回 HTTP ${failure.statusCode}` : `失败：${failure.reason || failure.code || '未知错误'}`;
+  const upstream = summarizeProviderMessage(extractUpstreamMessage(failure.body));
+  return `${targetLabel(failure)} ${status}${upstream ? `（${upstream}）` : ''}`;
+}
+
+function failureLogLine(failure = {}) {
+  const upstream = summarizeProviderMessage(extractUpstreamMessage(failure.body));
+  return `${failure.providerName || failure.providerId || 'provider'}: ${failure.reason || failure.code || 'failed'}${upstream ? ` (${upstream})` : ''}`;
+}
+
+function failureHint(failures = []) {
+  const text = failures.map(f => `${f.reason || ''} ${extractUpstreamMessage(f.body)}`).join(' ');
+  if (failures.some(f => f.statusCode === 401) || /unauthorized|invalid api key|api key|认证|鉴权/i.test(text)) {
+    return '请检查 API Key、账户状态和模型权限。';
+  }
+  if (failures.some(f => f.statusCode === 403) || /permission|forbidden|无权限|未开通/i.test(text)) {
+    return '请检查模型权限，或换一个已开通的模型。';
+  }
+  if (failures.some(f => f.statusCode === 429) || /rate limit|too many requests|限流|频率/i.test(text)) {
+    return '请稍后重试，或降低并发/换备用供应商。';
+  }
+  if (/无可用渠道|no available channel/i.test(text)) {
+    return '请切换模型/供应商，或在模型映射里添加备用目标。';
+  }
+  if (failures.some(f => ['ENOTFOUND', 'EAI_AGAIN', 'ECONNREFUSED', 'EHOSTUNREACH', 'ENETUNREACH'].includes(f.code))) {
+    return '请检查网络、代理和 API Host 配置。';
+  }
+  return '请稍后重试，或在模型映射里添加备用目标。';
+}
+
+function connectCodeForFailures(failures = []) {
+  if (failures.some(f => f.statusCode === 401)) return 'unauthenticated';
+  if (failures.some(f => f.statusCode === 403)) return 'permission_denied';
+  if (failures.some(f => f.statusCode === 429)) return 'resource_exhausted';
+  if (failures.some(f => f.statusCode === 408 || f.statusCode === 504 || f.code === 'ETIMEDOUT')) return 'deadline_exceeded';
+  if (failures.some(f => f.statusCode >= 500 || f.code)) return 'unavailable';
+  return 'invalid_argument';
+}
+
+function providerFailureMessage(failures = []) {
+  if (failures.length === 0) {
+    return 'BYOK 暂时无法连接模型：没有可用的供应商目标。请检查模型映射，或添加备用目标。';
+  }
+  const summaries = failures.map(failureSummary);
+  const head = failures.length === 1
+    ? `BYOK 暂时无法连接模型：${summaries[0]}。`
+    : `BYOK 暂时无法连接模型，${failures.length} 个备用目标都不可用：${summaries.join('；')}。`;
+  return clampText(`${head}${failureHint(failures)}`, 520);
+}
+
+function sendTerminalError(res, messageId, message, code = 'unavailable') {
+  if (res.writableEnded) return;
+  if (!res.headersSent) res.writeHead(200, streamHeaders());
+  if (NATIVE_STREAM_ERRORS) {
+    res.write(endOfStreamErrorEnvelope({ code, message }));
+  } else {
+    res.write(wrapEnvelope(buildErrorChunk(messageId, message)));
+    res.write(endOfStreamEnvelope());
+  }
+  res.end();
 }
 
 // ─── Service tier (fast mode) ──────────────────────────────
@@ -190,10 +297,7 @@ export function handleGetChatMessage(req, res, body) {
     const msg = `模型槽位「${label}」已解锁但尚未配置 BYOK 映射。请在「模型槽位管理」中选择供应商并填写 model 字段。`;
     console.warn(`  ⚠️  ${msg}`);
     recordError({ provider: 'model-slot', message: msg });
-    res.writeHead(200, streamHeaders());
-    res.write(wrapEnvelope(buildErrorChunk(messageId, msg)));
-    res.write(endOfStreamEnvelope());
-    res.end();
+    sendTerminalError(res, messageId, msg, 'invalid_argument');
     return;
   }
 
@@ -202,10 +306,7 @@ export function handleGetChatMessage(req, res, body) {
     const msg = `模型槽位「${label}」已解锁但尚未配置 BYOK 映射。请在「模型槽位管理」中选择供应商并填写 model 字段。`;
     console.warn(`  ⚠️  ${msg}`);
     recordError({ provider: 'model-slot', message: msg });
-    res.writeHead(200, streamHeaders());
-    res.write(wrapEnvelope(buildErrorChunk(messageId, msg)));
-    res.write(endOfStreamEnvelope());
-    res.end();
+    sendTerminalError(res, messageId, msg, 'invalid_argument');
     return;
   }
 
@@ -225,10 +326,7 @@ export function handleGetChatMessage(req, res, body) {
     const msg = `模型映射「${label}」已启用但尚未配置目标供应商。请在「模型映射」中编辑该行并添加供应商/model。`;
     console.warn(`  ⚠️  ${msg}`);
     recordError({ provider: 'model-slot', message: msg });
-    res.writeHead(200, streamHeaders());
-    res.write(wrapEnvelope(buildErrorChunk(messageId, msg)));
-    res.write(endOfStreamEnvelope());
-    res.end();
+    sendTerminalError(res, messageId, msg, 'invalid_argument');
     return;
   }
 
@@ -260,6 +358,11 @@ export function handleGetChatMessage(req, res, body) {
   // 故障转移:按 targets 顺序逐个尝试。只要还没开始向客户端写流，失败就切下一个。
   let idx = 0;
   const errors = [];
+  const failures = [];
+  function rememberFailure(failure) {
+    failures.push(failure);
+    errors.push(failureLogLine(failure));
+  }
   // 当前活跃的上游请求。客户端断开时只销毁它（避免给每个 target 重复注册 close 监听器泄漏）。
   let currentApiReq = null;
   let retryTimer = null;
@@ -282,11 +385,8 @@ export function handleGetChatMessage(req, res, body) {
       // 全部失败 → 无兜底，直接报错（日志已逐条打印原因）。
       console.error(`  ❌ 所有目标均失败: ${errors.join(' | ')}`);
       recordError({ provider: 'failover', message: errors.join(' | ') });
-      if (!res.headersSent) res.writeHead(200, streamHeaders());
       if (!res.writableEnded) {
-        res.write(wrapEnvelope(buildErrorChunk(messageId, `[全部供应商失败] ${errors.join(' | ')}`)));
-        res.write(endOfStreamEnvelope());
-        res.end();
+        sendTerminalError(res, messageId, providerFailureMessage(failures), connectCodeForFailures(failures));
       }
       return;
     }
@@ -297,7 +397,11 @@ export function handleGetChatMessage(req, res, body) {
 
     if (conn.error) {
       console.warn(`  ⚠️  目标#${idx} ${target.providerId} 跳过: ${conn.error} → 切换下一个`);
-      errors.push(`${target.providerId}: ${conn.error}`);
+      rememberFailure({
+        providerId: target.providerId,
+        model: target.model,
+        reason: conn.error,
+      });
       return attemptNext();
     }
 
@@ -331,7 +435,15 @@ export function handleGetChatMessage(req, res, body) {
         }
 
         console.warn(`  ⚠️  ${conn.providerName} 失败(${reason}) → 切换下一个`);
-        errors.push(`${conn.providerName}: ${reason}`);
+        rememberFailure({
+          providerId: conn.providerId,
+          providerName: conn.providerName,
+          model: conn.model,
+          reason,
+          statusCode: meta.statusCode,
+          code: meta.code,
+          body: meta.body,
+        });
         attemptNext();
       };
 
@@ -430,7 +542,7 @@ function streamAnthropic(req, res, { systemPrompt, messages, tools, toolChoice, 
         console.error(`  ❌ Body: ${errBody.slice(0, 300)}`);
         mitmLog({ direction: 'downstream', providerName: conn.providerName, model: resolvedModel, format: 'anthropic', request: { method: 'POST', url: `https://${conn.host}${conn.apiPath}` }, response: { statusCode: apiRes.statusCode, headers: apiRes.headers, body: errBody } });
         apiReq.destroy();
-        if (!failed) { failed = true; onFailover(`HTTP ${apiRes.statusCode}`, { statusCode: apiRes.statusCode, headers: apiRes.headers }); }
+        if (!failed) { failed = true; onFailover(`HTTP ${apiRes.statusCode}`, { statusCode: apiRes.statusCode, headers: apiRes.headers, body: errBody }); }
       };
       apiRes.on('end', fail);
       // 上游只发头不发 body 时 'end' 可能不来，加超时兜底避免请求挂死。
@@ -483,9 +595,7 @@ function streamAnthropic(req, res, { systemPrompt, messages, tools, toolChoice, 
     apiRes.on('error', (err) => {
       console.error(`  ❌ Anthropic stream error: ${err.message}`);
       if (!res.writableEnded) {
-        res.write(wrapEnvelope(buildErrorChunk(messageId, `[Stream Error]`)));
-        res.write(endOfStreamEnvelope());
-        res.end();
+        sendTerminalError(res, messageId, `BYOK 上游流中断：${conn.providerName} / ${resolvedModel}（${clampText(err.message, 120)}）。请稍后重试或切换备用供应商。`, 'unavailable');
       }
     });
   });
@@ -495,9 +605,7 @@ function streamAnthropic(req, res, { systemPrompt, messages, tools, toolChoice, 
     // 连接阶段失败（headersSent=false）→ 还能切换下一个供应商。
     if (!failed && !res.headersSent) { failed = true; onFailover(err.message, { code: err.code }); return; }
     if (!res.writableEnded) {
-      res.write(wrapEnvelope(buildErrorChunk(messageId, `[Connection Error]`)));
-      res.write(endOfStreamEnvelope());
-      res.end();
+      sendTerminalError(res, messageId, `BYOK 连接上游失败：${conn.providerName} / ${resolvedModel}（${clampText(err.message, 120)}）。请检查网络、代理和 API Host。`, 'unavailable');
     }
   });
 
@@ -624,7 +732,7 @@ function streamOpenAI(req, res, { systemPrompt, messages, tools, toolChoice, res
         }
 
         apiReq.destroy();
-        if (!failed) { failed = true; onFailover(`HTTP ${apiRes.statusCode}`, { statusCode: apiRes.statusCode, headers: apiRes.headers }); }
+        if (!failed) { failed = true; onFailover(`HTTP ${apiRes.statusCode}`, { statusCode: apiRes.statusCode, headers: apiRes.headers, body: errBody }); }
       };
 
     apiRes.on('end', fail);
@@ -693,9 +801,7 @@ function streamOpenAI(req, res, { systemPrompt, messages, tools, toolChoice, res
     apiRes.on('error', (err) => {
       console.error(`  ❌ OpenAI stream error: ${err.message}`);
       if (!res.writableEnded) {
-        res.write(wrapEnvelope(buildErrorChunk(messageId, `[Stream Error]`)));
-        res.write(endOfStreamEnvelope());
-        res.end();
+        sendTerminalError(res, messageId, `BYOK 上游流中断：${conn.providerName} / ${resolvedModel}（${clampText(err.message, 120)}）。请稍后重试或切换备用供应商。`, 'unavailable');
       }
     });
   });
@@ -707,9 +813,7 @@ function streamOpenAI(req, res, { systemPrompt, messages, tools, toolChoice, res
     console.error(`  ❌ ${conn.providerName} 连接错误: ${err.message}`);
     if (!failed && !res.headersSent) { failed = true; onFailover(err.message, { code: err.code }); return; }
     if (!res.writableEnded) {
-      res.write(wrapEnvelope(buildErrorChunk(messageId, `[Connection Error]`)));
-      res.write(endOfStreamEnvelope());
-      res.end();
+      sendTerminalError(res, messageId, `BYOK 连接上游失败：${conn.providerName} / ${resolvedModel}（${clampText(err.message, 120)}）。请检查网络、代理和 API Host。`, 'unavailable');
     }
   });
 
@@ -812,7 +916,7 @@ function streamOpenAIChatCompletions(req, res, { systemPrompt, messages, tools, 
         }
 
         apiReq.destroy();
-        if (!failed) { failed = true; onFailover(`HTTP ${apiRes.statusCode}`, { statusCode: apiRes.statusCode, headers: apiRes.headers }); }
+        if (!failed) { failed = true; onFailover(`HTTP ${apiRes.statusCode}`, { statusCode: apiRes.statusCode, headers: apiRes.headers, body: errBody }); }
       };
 
       apiRes.on('end', fail);
@@ -870,9 +974,7 @@ function streamOpenAIChatCompletions(req, res, { systemPrompt, messages, tools, 
     apiRes.on('error', (err) => {
       console.error(`  ❌ OpenAI chat stream error: ${err.message}`);
       if (!res.writableEnded) {
-        res.write(wrapEnvelope(buildErrorChunk(messageId, `[Stream Error]`)));
-        res.write(endOfStreamEnvelope());
-        res.end();
+        sendTerminalError(res, messageId, `BYOK 上游流中断：${conn.providerName} / ${resolvedModel}（${clampText(err.message, 120)}）。请稍后重试或切换备用供应商。`, 'unavailable');
       }
     });
   });
@@ -884,9 +986,7 @@ function streamOpenAIChatCompletions(req, res, { systemPrompt, messages, tools, 
     console.error(`  ❌ ${conn.providerName} 连接错误: ${err.message}`);
     if (!failed && !res.headersSent) { failed = true; onFailover(err.message, { code: err.code }); return; }
     if (!res.writableEnded) {
-      res.write(wrapEnvelope(buildErrorChunk(messageId, `[Connection Error]`)));
-      res.write(endOfStreamEnvelope());
-      res.end();
+      sendTerminalError(res, messageId, `BYOK 连接上游失败：${conn.providerName} / ${resolvedModel}（${clampText(err.message, 120)}）。请检查网络、代理和 API Host。`, 'unavailable');
     }
   });
 
