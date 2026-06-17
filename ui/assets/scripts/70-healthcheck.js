@@ -12,6 +12,14 @@
   let _certInstallProgressUnlisten = null;
   let _lastCertProgressMessage = '';
 
+  // ── 上下文感知的元素查找 ──
+  // 当用户在「平台 → 接入设置 → 环境检测」面板操作时，getElementById 会找到
+  // 设置页面原始的那个元素而非克隆的。此函数优先从当前活跃的 mount 容器查找。
+  function _hEl(id) {
+    if (typeof _platformEl === 'function') return _platformEl(id);
+    return document.getElementById(id);
+  }
+
   // ──────────────────────────────────────────────
   // 入口：用户点「一键体检」按钮
   // ──────────────────────────────────────────────
@@ -22,7 +30,7 @@
     }
     const target = (typeof getTargetIde === 'function' ? getTargetIde() : 'devin');
 
-    const runBtn = document.getElementById('health-run-btn');
+    const runBtn = _hEl('health-run-btn');
     if (runBtn) {
       runBtn.disabled = true;
       const ic = runBtn.querySelector('.health-btn-icon');
@@ -183,7 +191,7 @@
   function renderGroupedReport(report) {
     if (!report) return;
     const ts = new Date(report.generatedAt || Date.now());
-    const genAtEl = document.getElementById('health-generated-at');
+    const genAtEl = _hEl('health-generated-at');
     if (genAtEl) genAtEl.textContent = '更新时间: ' + formatTs(ts);
 
     setHealthSummary(
@@ -192,7 +200,7 @@
       report.ok ? 'ok' : (report.totals.err > 0 ? 'err' : 'warn')
     );
 
-    const container = document.getElementById('health-groups');
+    const container = _hEl('health-groups');
     if (!container) return;
     container.innerHTML = report.groups
       .filter((g) => g.issues.length > 0)
@@ -202,7 +210,7 @@
     // 安装/卸载按钮常驻；只根据体检结果决定是否显示「清理老证书」按钮。
     const certGroup = report.groups.find((g) => g.id === 'cert');
     const hasLegacy = certGroup && certGroup.issues.some((i) => i.code === 'cert.legacy_residual');
-    const cleanupBtn = document.getElementById('health-cleanup-legacy-btn');
+    const cleanupBtn = _hEl('health-cleanup-legacy-btn');
     if (cleanupBtn) cleanupBtn.style.display = hasLegacy ? '' : 'none';
   }
 
@@ -234,7 +242,7 @@
   }
 
   function setHealthSummary(text, kind) {
-    const el = document.getElementById('health-summary');
+    const el = _hEl('health-summary');
     if (!el) return;
     const color = kind === 'err' ? 'var(--danger)' : kind === 'warn' ? 'var(--warning)' : kind === 'ok' ? 'var(--success)' : 'var(--text-secondary)';
     el.innerHTML = '<div class="health-summary-line" style="color:' + color + '">' + escapeHtml(text) + '</div>';
@@ -250,7 +258,7 @@
     }
     const ts = new Date(report.generatedAt || Date.now());
     const lines = [];
-    lines.push('# IDE BYOK 环境体检报告');
+    lines.push('# AnyBridge 环境体检报告');
     lines.push('');
     lines.push('- 体检时间: ' + ts.toLocaleString());
     lines.push('- 目标 IDE: ' + (report.targetIde || '(未指定)'));
@@ -283,8 +291,8 @@
   // 工具
   // ──────────────────────────────────────────────
   function setInstallCertButtonState(state) {
-    const btn = document.getElementById('health-install-cert-btn');
-    const uninstallBtn = document.getElementById('health-uninstall-cert-btn');
+    const btn = _hEl('health-install-cert-btn');
+    const uninstallBtn = _hEl('health-uninstall-cert-btn');
     if (state === 'busy') {
       if (btn) {
         btn.disabled = true;
@@ -300,8 +308,8 @@
     }
   }
   function setUninstallCertButtonState(state) {
-    const btn = document.getElementById('health-uninstall-cert-btn');
-    const installBtn = document.getElementById('health-install-cert-btn');
+    const btn = _hEl('health-uninstall-cert-btn');
+    const installBtn = _hEl('health-install-cert-btn');
     if (state === 'busy') {
       if (btn) {
         btn.disabled = true;
@@ -333,11 +341,11 @@
     }
   }
   function setCertInstallProgress(payload) {
-    const panel = document.getElementById('health-install-progress');
+    const panel = _hEl('health-install-progress');
     if (!panel) return;
-    const text = document.getElementById('health-install-progress-text');
-    const percentEl = document.getElementById('health-install-progress-percent');
-    const fill = document.getElementById('health-install-progress-fill');
+    const text = _hEl('health-install-progress-text');
+    const percentEl = _hEl('health-install-progress-percent');
+    const fill = _hEl('health-install-progress-fill');
     const percent = Math.max(0, Math.min(100, Number(payload?.percent ?? 0)));
     const level = payload?.level || 'info';
     panel.hidden = false;
@@ -349,8 +357,8 @@
     if (fill) fill.style.width = percent + '%';
   }
   function enableExportButtons(enabled) {
-    const a = document.getElementById('health-export-md-btn');
-    const b = document.getElementById('health-copy-md-btn');
+    const a = _hEl('health-export-md-btn');
+    const b = _hEl('health-copy-md-btn');
     if (a) a.disabled = !enabled;
     if (b) b.disabled = !enabled;
   }

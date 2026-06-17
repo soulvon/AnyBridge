@@ -16,49 +16,31 @@ function statusTargetIde() {
 
 function setStatusPill(running) {
   proxyRunning = running;
-  const pill = document.getElementById('statusPill');
-  const topPill = document.getElementById('topbarStatus');
   const btn = document.getElementById('proxyBtn');
   const sub = document.getElementById('controlSub');
+  const platformSubs = Array.from(document.querySelectorAll('[data-proxy-control-sub]'));
 
-  if (pill) {
-    if (running) {
-      pill.className = 'status-pill online';
-      pill.innerHTML = '<span class="status-dot"></span> 运行中';
-    } else {
-      pill.className = 'status-pill offline';
-      pill.innerHTML = '<span class="status-dot"></span> 已停止';
-    }
-  }
-
-  if (topPill) {
-    const statusText = topPill.querySelector('.status-text');
-    if (running) {
-      topPill.className = 'topbar-status online';
-      if (statusText) statusText.textContent = '运行中';
-    } else {
-      topPill.className = 'topbar-status offline';
-      if (statusText) statusText.textContent = '已停止';
-    }
-  }
-
-  if (sub) {
-    const ide = statusTargetIde();
-    const ideLabel = ideDisplayLabel(ide);
-    sub.textContent = running
-      ? `已接入 ${ideLabel} · 端口 :7450 / :7451 · 重启 IDE 生效`
-      : `代理未运行 · 目标: ${ideLabel} · 端口 :7450 / :7451`;
-  }
+  const ide = statusTargetIde();
+  const ideLabel = ideDisplayLabel(ide);
+  const subText = running
+    ? `已接入 ${ideLabel} · 端口 :7450 / :7451 · 重启 IDE 生效`
+    : `代理未运行 · 目标: ${ideLabel} · 端口 :7450 / :7451`;
+  [sub, ...platformSubs].filter(Boolean).forEach(el => { el.textContent = subText; });
   if (btn) {
     const icon = btn.querySelector('.proxy-btn-icon');
     const text = btn.querySelector('.proxy-btn-text');
+    const stateText = btn.querySelector('[data-proxy-state-text]');
     if (icon && text) {
       if (running) {
         icon.innerHTML = '<rect x="4" y="4" width="16" height="16" rx="2" fill="currentColor"/>';
         text.textContent = '停止代理';
+        if (stateText) stateText.textContent = '运行中';
+        btn.setAttribute('aria-label', '代理运行中，停止代理');
       } else {
         icon.innerHTML = '<polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" fill="currentColor"/>';
         text.textContent = '启动代理';
+        if (stateText) stateText.textContent = '已停止';
+        btn.setAttribute('aria-label', '代理已停止，启动代理');
       }
     } else {
       btn.textContent = running ? '■ 停止代理' : '⚡ 启动代理';
@@ -525,10 +507,13 @@ function bindWindowControlHandlers() {
 // ═══════ THEME TOGGLE ═══════
 function applyTheme(theme) {
   document.documentElement.setAttribute('data-theme', theme);
-  const btn = document.getElementById('themeBtn');
-  if (btn) {
-    btn.title = theme === 'dark' ? '切换至浅色主题' : '切换至深色主题';
-  }
+  const label = document.getElementById('theme-setting-label');
+  const desc = document.getElementById('theme-setting-desc');
+  const btn = document.getElementById('settings-theme-toggle');
+  const isDark = theme === 'dark';
+  if (label) label.textContent = isDark ? '切换至浅色' : '切换至深色';
+  if (desc) desc.textContent = isDark ? '当前使用深色主题' : '当前使用浅色主题';
+  if (btn) btn.title = isDark ? '切换至浅色主题' : '切换至深色主题';
 }
 function toggleTheme() {
   const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
@@ -648,7 +633,7 @@ async function openConfigDir() {
 }
 async function generateCerts() {
   if (!invoke) return;
-  const status = document.getElementById('cert-status');
+  const status = (typeof _platformEl === 'function' ? _platformEl('cert-status') : document.getElementById('cert-status'));
   try {
     const result = await invoke('generate_certs');
     if (status) status.textContent = result + '（重启代理后生效）';
@@ -684,8 +669,8 @@ async function runSettingsEnvironmentCheck() {
 
 async function detectIdePath() {
   if (!invoke) return;
-  const input = document.getElementById('idePath');
-  const status = document.getElementById('ide-path-status');
+  const input = (typeof _platformEl === 'function' ? _platformEl('idePath') : document.getElementById('idePath'));
+  const status = (typeof _platformEl === 'function' ? _platformEl('ide-path-status') : document.getElementById('ide-path-status'));
   try {
     const target = getTargetIde();
     const path = await invoke('detect_ide_path', { target });
@@ -703,8 +688,8 @@ async function detectIdePath() {
 
 async function saveIdePath() {
   if (!invoke) return;
-  const input = document.getElementById('idePath');
-  const status = document.getElementById('ide-path-status');
+  const input = (typeof _platformEl === 'function' ? _platformEl('idePath') : document.getElementById('idePath'));
+  const status = (typeof _platformEl === 'function' ? _platformEl('ide-path-status') : document.getElementById('ide-path-status'));
   const path = input ? input.value.trim() : '';
   if (!path) { if (status) status.textContent = '请先填写 IDE 可执行文件路径'; return; }
   try {

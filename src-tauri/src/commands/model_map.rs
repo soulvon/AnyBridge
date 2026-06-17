@@ -109,7 +109,10 @@ pub struct ModelMap {
     pub slot_display_mode: String,
     /// 槽位显示策略：mapped=只显示已映射；official=已映射+官方；all=完整槽位列表。
     /// 这是槽位管理里的产品概念，不等同于 unlockScope。
-    #[serde(rename = "slotVisibilityMode", default = "default_slot_visibility_mode")]
+    #[serde(
+        rename = "slotVisibilityMode",
+        default = "default_slot_visibility_mode"
+    )]
     pub slot_visibility_mode: String,
     /// 单模型显示覆盖。未出现在这里的模型按 slotVisibilityMode 推导。
     #[serde(rename = "slotVisibility", default)]
@@ -201,7 +204,10 @@ pub fn save_model_map(map: ModelMap) -> Result<(), String> {
             "模型槽位兼容显示策略必须是 all/common/configured/claude/gpt/gemini/code".into(),
         );
     }
-    if !matches!(map.slot_visibility_mode.as_str(), "mapped" | "official" | "all") {
+    if !matches!(
+        map.slot_visibility_mode.as_str(),
+        "mapped" | "official" | "all"
+    ) {
         return Err("槽位显示策略必须是 mapped/official/all".into());
     }
     let mut seen_visibility = std::collections::HashSet::new();

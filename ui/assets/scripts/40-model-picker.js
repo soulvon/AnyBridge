@@ -62,6 +62,7 @@ const MODEL_ICON_FILES = {
   aya: 'aya.svg',
   claude: 'claude.svg',
   codegeex: 'codegeex.svg',
+  deepseek: 'deepseek.svg',
   doubao: 'doubao.svg',
   gemini: 'gemini.svg',
   gemma: 'gemma.svg',
@@ -87,6 +88,7 @@ const MODEL_ICON_FILES = {
   ibm: 'ibm.svg',
   kimi: 'kimi.svg',
   ling: 'ling.svg',
+  minimax: 'minimax.svg',
   mimo: 'mimo.svg',
   nova: 'nova.svg',
   palm: 'palm.svg',
@@ -211,7 +213,7 @@ const MODEL_ICON_COLORS = {
   sora: '#000000',
   gemma: '#1a73e8',
   hailuo: '#ff6b35',
-  minimax: '#3370ff',
+  minimax: '#ff4f7b',
   baichuan: '#ff6933',
   yi: '#133426',
   baidu: '#0a51c3',
@@ -418,6 +420,21 @@ function clearModelSearch() {
   filterModelPanel();
 }
 
+function providerFetchButtonContent(label, loading = false) {
+  if (loading) {
+    return `
+      <span class="provider-fetch-spinner" aria-hidden="true"></span>
+      <span>${escAttr(label)}</span>
+    `;
+  }
+  return `
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"></path>
+    </svg>
+    <span>${escAttr(label)}</span>
+  `;
+}
+
 let selectedModels = [];
 let editorDraftModelCaps = {};
 
@@ -446,37 +463,37 @@ function updateSelectedModelsUI() {
   function modelCapBadges(m) {
     const mc = modelCaps[m] || {};
     const badges = [];
-    if (mc.vision) badges.push('<span style="font-size:9px; padding:1px 5px; border-radius:4px; background:#10b98120; color:#10b981; font-weight:600;">视觉</span>');
-    if (mc.tools) badges.push('<span style="font-size:9px; padding:1px 5px; border-radius:4px; background:#8b5cf620; color:#8b5cf6; font-weight:600;">工具</span>');
+    if (mc.vision) badges.push('<span class="selected-model-cap selected-model-cap-vision">视觉</span>');
+    if (mc.tools) badges.push('<span class="selected-model-cap selected-model-cap-tools">工具</span>');
     return badges.join(' ');
   }
 
   if (leftContainer) {
     if (selectedModels.length === 0) {
       leftContainer.innerHTML = `
-        <div style="flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; border:2px dashed var(--border); border-radius:12px; padding:20px; color:var(--text-muted); text-align:center; gap:8px; min-height: 180px;">
+        <div class="provider-selected-empty">
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="opacity:0.4;">
             <circle cx="12" cy="12" r="10"></circle>
             <line x1="12" y1="8" x2="12" y2="16"></line>
             <line x1="8" y1="12" x2="16" y2="12"></line>
           </svg>
-          <span style="font-size:12px;">请在右侧选择或添加支持的模型</span>
+          <span>请在右侧选择或添加支持的模型</span>
         </div>
       `;
     } else {
       leftContainer.innerHTML = selectedModels.map((m, idx) => `
-        <div class="selected-model-row" style="display:flex; align-items:center; justify-content:space-between; padding:10px 14px; background:var(--bg-card); border:1px solid var(--border); border-radius:10px; gap:10px; transition:all 0.2s;">
-          <div style="display:flex; align-items:center; gap:10px; flex:1; min-width:0;">
+        <div class="selected-model-row">
+          <div class="selected-model-main">
             ${renderModelIcon(m)}
-            <div style="display:flex; flex-direction:column; gap:2px; flex:1; min-width:0;">
-              <div style="display:flex; align-items:center; gap:5px; flex-wrap:wrap;">
-                <span style="font-size:12px; font-weight:600; color:var(--text-primary); font-family:var(--font-mono); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; cursor:pointer;" title="${escAttr(m)}">${escAttr(m)}</span>
+            <div class="selected-model-text">
+              <div class="selected-model-name-row">
+                <span class="selected-model-name" title="${escAttr(m)}">${escAttr(m)}</span>
+                ${idx === 0 ? '<span class="selected-model-default">默认</span>' : ''}
                 ${modelCapBadges(m)}
               </div>
-              ${idx === 0 ? '<span style="font-size:9px; color:var(--accent); font-weight:700; display:inline-flex; align-items:center; gap:2px;">★ 默认模型</span>' : ''}
             </div>
           </div>
-          <button class="model-panel-btn" onclick="selectModel('${escAttr(m)}')" style="padding:6px; border:none; background:transparent; color:var(--text-muted); cursor:pointer; transition:all 0.2s; display:flex; align-items:center; justify-content:center; border-radius:8px;" title="移除该模型">
+          <button class="model-panel-btn selected-model-remove" onclick="selectModel('${escAttr(m)}')" title="移除该模型">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <line x1="18" y1="6" x2="6" y2="18"></line>
               <line x1="6" y1="6" x2="18" y2="18"></line>
@@ -554,12 +571,12 @@ function filterModelPanel() {
         <div class="model-group-header ${isOpen ? 'open' : ''}" onclick="toggleModelGroup('${escAttr(groupName)}')">
           <div class="model-group-label">
             ${escAttr(groupName)}
-            <span class="model-group-count" style="margin-left:6px; background:var(--bg-input); padding:2px 8px; border-radius:10px;">${models.length}</span>
+            <span class="model-group-count">${models.length}</span>
           </div>
-          <div style="display:flex; align-items:center; gap:12px;" onclick="event.stopPropagation();">
-            <button class="model-panel-btn" onclick="toggleSelectGroup('${escAttr(groupName)}', true)" style="padding:2px 6px; font-size:10px; border-radius:6px; border: 1px solid var(--border); background: var(--bg-card); cursor: pointer;">＋ 全选</button>
-            <button class="model-panel-btn" onclick="toggleSelectGroup('${escAttr(groupName)}', false)" style="padding:2px 6px; font-size:10px; border-radius:6px; border: 1px solid var(--border); background: var(--bg-card); cursor: pointer;">－ 清空</button>
-            <span class="model-group-chevron" onclick="toggleModelGroup('${escAttr(groupName)}')" style="margin-left:4px;">▶</span>
+          <div class="model-group-tools" onclick="event.stopPropagation();">
+            <button class="model-panel-btn model-group-mini-btn" onclick="toggleSelectGroup('${escAttr(groupName)}', true)">＋ 全选</button>
+            <button class="model-panel-btn model-group-mini-btn" onclick="toggleSelectGroup('${escAttr(groupName)}', false)">－ 清空</button>
+            <span class="model-group-chevron" onclick="toggleModelGroup('${escAttr(groupName)}')">▶</span>
           </div>
         </div>
         <div class="model-group-body ${isOpen ? 'open' : ''}">
@@ -572,11 +589,11 @@ function filterModelPanel() {
                 <div style="display:flex; gap:4px; align-items:center; flex-shrink:0; margin-right:8px;">
                   ${getModelBadges(m)}
                 </div>
-                <div class="model-item-action" style="flex-shrink:0;">
+                <div class="model-item-action">
                   ${isSelected ? `
-                    <span style="display:inline-flex; align-items:center; justify-content:center; width:20px; height:20px; border-radius:50%; background:var(--success-dim); color:var(--success); font-size:12px; font-weight:bold;">✓</span>
+                    <span class="model-item-checkmark is-selected">✓</span>
                   ` : `
-                    <span style="display:inline-flex; align-items:center; justify-content:center; width:20px; height:20px; border-radius:50%; background:var(--bg-secondary); color:var(--text-muted); font-size:14px; font-weight:bold; transition:all 0.15s;">+</span>
+                    <span class="model-item-checkmark">+</span>
                   `}
                 </div>
               </div>
@@ -680,43 +697,23 @@ function cleanProviderApiPath(value) {
   return '/' + raw.replace(/^\/+/, '').replace(/\/+$/, '');
 }
 
-function isOfficialDashScopeHost(apiHost) {
-  try {
-    const url = new URL(String(apiHost || '').startsWith('http') ? apiHost : 'https://' + apiHost);
-    return /^(dashscope|dashscope-intl|dashscope-us)\.aliyuncs\.com$/i.test(url.hostname);
-  } catch {
-    return /^(dashscope|dashscope-intl|dashscope-us)\.aliyuncs\.com$/i.test(String(apiHost || '').split('/')[0]);
+function isGeneratedProviderApiPath(apiFormat, apiPath) {
+  const path = cleanProviderApiPath(apiPath).toLowerCase();
+  if (!path) return false;
+  if (apiFormat === 'openai') {
+    return [
+      '/v1/chat/completions',
+      '/api/v1/chat/completions',
+      '/v1/responses',
+      '/api/v1/responses',
+    ].includes(path);
   }
+  return path === '/v1/messages' || path === '/api/v1/messages';
 }
 
-function normalizeOpenAIProviderPath(apiHost, apiPath) {
+function displayProviderApiPath(apiFormat, apiPath) {
   const path = cleanProviderApiPath(apiPath);
-  const lower = path.toLowerCase();
-
-  if (isOfficialDashScopeHost(apiHost)) {
-    if (lower.endsWith('/compatible-mode/v1/chat/completions') || lower.endsWith('/compatible-mode/v1/responses')) return path;
-    if (lower === '/v1/chat/completions' || lower === '/api/v1/chat/completions') return '/compatible-mode/v1/chat/completions';
-    if (lower === '/v1/responses' || lower === '/api/v1/responses') return '/compatible-mode/v1/responses';
-    if (!path || lower === '/v1' || lower === '/api/v1' || lower === '/compatible-mode' || lower === '/compatible-mode/v1') {
-      return '/compatible-mode/v1/chat/completions';
-    }
-    if (lower.endsWith('/compatible-mode/v1')) return path + '/chat/completions';
-    if (lower.endsWith('/compatible-mode')) return path + '/v1/chat/completions';
-  }
-
-  if (lower.endsWith('/chat/completions') || lower.endsWith('/responses')) return path;
-  if (!path) return '/v1/chat/completions';
-  if (lower.endsWith('/v1')) return path + '/chat/completions';
-  return path;
-}
-
-function normalizeAnthropicProviderPath(apiPath) {
-  const path = cleanProviderApiPath(apiPath);
-  const lower = path.toLowerCase();
-  if (!path) return '/v1/messages';
-  if (lower.endsWith('/messages')) return path;
-  if (lower.endsWith('/v1')) return path + '/messages';
-  return path + '/v1/messages';
+  return isGeneratedProviderApiPath(apiFormat, path) ? '' : path;
 }
 
 function providerEndpointParts(baseUrl, apiFormat, pathValue) {
@@ -730,12 +727,7 @@ function providerEndpointParts(baseUrl, apiFormat, pathValue) {
     // Keep the raw host; runtime normalization will still do a final guard.
   }
 
-  let apiPath = parsedPath || pathValue || '';
-  if (apiFormat === 'openai') {
-    apiPath = normalizeOpenAIProviderPath(apiHost, apiPath);
-  } else {
-    apiPath = normalizeAnthropicProviderPath(apiPath);
-  }
+  const apiPath = parsedPath || displayProviderApiPath(apiFormat, pathValue);
 
   return { apiHost, apiPath };
 }
@@ -743,9 +735,7 @@ function providerEndpointParts(baseUrl, apiFormat, pathValue) {
 function providerEndpointDisplayUrl(apiHost, apiPath, apiFormat) {
   const host = String(apiHost || '').trim().replace(/\/+$/, '');
   if (!host) return '';
-  const path = apiFormat === 'openai'
-    ? normalizeOpenAIProviderPath(host, apiPath)
-    : normalizeAnthropicProviderPath(apiPath);
+  const path = displayProviderApiPath(apiFormat, apiPath);
   return `${host}${path}`;
 }
 
@@ -753,7 +743,6 @@ function onFormatChange() {
   const fmtEl = document.getElementById('pf-format');
   if (!fmtEl) return;
   const fmt = fmtEl.value;
-  const pathEl = document.getElementById('pf-path');
   const badge = document.getElementById('pf-format-badge');
 
   // 同步 API 格式徽章（兼容旧版徽章元素）
@@ -767,18 +756,7 @@ function onFormatChange() {
     syncFormatDropdownUi('auto');
   }
 
-  // 不再根据格式自动改 placeholder（保留 HTML 里写的默认值）
-  // 也不主动改 apiPath —— 等用户提交保存时由 saveProviderFromEditor 推断
-
-  // Set default path without clobbering custom endpoints such as DashScope's
-  // /compatible-mode/v1/chat/completions.
-  if (pathEl) {
-    const defaultPath = fmt === 'openai' ? '/v1/chat/completions' : '/v1/messages';
-    const current = cleanProviderApiPath(pathEl.value);
-    if (!current || current === '/v1/chat/completions' || current === '/v1/messages') {
-      pathEl.value = defaultPath;
-    }
-  }
+  // 不再根据格式自动改 apiPath；默认端点只在后端发起请求时临时推断。
 
   // Ensure current selected models are in the list
   selectedModels.forEach(m => {
@@ -921,11 +899,12 @@ function openProviderEditor(id) {
     fmtElInit.dataset.locked = p ? '1' : '0';
   }
 
-  // Show the full endpoint; internally it is still stored as apiHost + apiPath.
+  // Show only the user-facing API URL. Generated default paths stay internal.
   const host = p ? p.apiHost : '';
   const path = p ? (p.apiPath || '') : '';
-  document.getElementById('pf-host').value = p ? providerEndpointDisplayUrl(host, path, p.apiFormat || 'anthropic') : host;
-  document.getElementById('pf-path').value = path || (p && p.apiFormat === 'openai' ? '/v1/chat/completions' : '/v1/messages');
+  const apiFormat = p ? (p.apiFormat || 'anthropic') : 'anthropic';
+  document.getElementById('pf-host').value = p ? providerEndpointDisplayUrl(host, path, apiFormat) : host;
+  document.getElementById('pf-path').value = p ? displayProviderApiPath(apiFormat, path) : '';
   document.getElementById('pf-key').value = p ? p.apiKey : '';
   document.getElementById('pf-key').type = 'password';
   const caps = providerCapabilities(p || { apiFormat: document.getElementById('pf-format').value, apiPath: document.getElementById('pf-path').value });
@@ -934,13 +913,10 @@ function openProviderEditor(id) {
   const keyBtn = document.getElementById('pf-key-toggle');
   if (keyBtn) keyBtn.innerHTML = EYE_SVG_OPEN;
 
-  // Load selected models (supports fallback to defaultModel if models array is absent)
+  // Load selected models (supports fallback to defaultModel if models array is empty/absent)
   if (p) {
-    if (p.models && Array.isArray(p.models)) {
-      selectedModels = [...p.models];
-    } else {
-      selectedModels = p.defaultModel ? [p.defaultModel] : [];
-    }
+    selectedModels = providerSelectedModels(p);
+    editorDraftModelCaps = {};
   } else {
     selectedModels = [];
     editorDraftModelCaps = {};
@@ -986,12 +962,7 @@ function openProviderEditor(id) {
     });
   }
 
-  // If existing provider has valid credentials, trigger background real-time fetch immediately
-  if (p && p.apiHost && p.apiKey) {
-    setTimeout(() => {
-      fetchModelsForEditor();
-    }, 100);
-  }
+  // Remote model fetching is manual only. Opening the editor must not call provider APIs.
 }
 
 function closeProviderEditor() {
@@ -1015,7 +986,6 @@ async function saveProviderFromEditor() {
     baseUrl,
     apiFormat,
     document.getElementById('pf-path').value
-      || (apiFormat === 'openai' ? '/v1/chat/completions' : '/v1/messages')
   );
 
   const defaultModel = selectedModels[0] || '';
@@ -1058,13 +1028,22 @@ async function saveProviderFromEditor() {
   addLog('ok', `已保存供应商: ${name}`);
 }
 
+function setProviderConnectionText(id, value) {
+  const text = document.getElementById(`conn-text-${id}`);
+  if (!text) return;
+  const message = String(value || '失败');
+  text.textContent = message;
+  text.title = message;
+  const status = text.closest('.provider-conn-status');
+  if (status) status.title = message;
+}
+
 async function testProvider(id) {
   if (!invoke) return;
   const p = providerStore.providers.find(x => x.id === id);
   if (!p) return;
   const dot = document.getElementById(`conn-dot-${id}`);
-  const text = document.getElementById(`conn-text-${id}`);
-  if (text) text.textContent = '测试中…';
+  setProviderConnectionText(id, '测试中…');
   try {
     const result = await invoke('test_connection', {
       args: {
@@ -1088,7 +1067,7 @@ async function testProvider(id) {
         }
         // vision/tools 是模型级能力，仅保存正向探测结果（true）
         // 探测失败(false)不保存，避免误标导致后续图片/工具请求被永久拦截
-        const testModel = p.defaultModel || (p.models && p.models[0]);
+        const testModel = providerSelectedModels(p)[0] || null;
         if (testModel && (c.vision === true || c.tools === true)) {
           const mc = providerStore.providers[idx].modelCaps || {};
           mc[testModel] = mc[testModel] || {};
@@ -1100,33 +1079,57 @@ async function testProvider(id) {
       }
     }
     if (dot) dot.className = 'conn-dot ok';
-    if (text) text.textContent = msg;
+    setProviderConnectionText(id, msg);
     addLog('ok', `${p.name} 连接测试: ${msg}`);
   } catch (e) {
     if (dot) dot.className = 'conn-dot no';
-    if (text) text.textContent = String(e) || '失败';
+    setProviderConnectionText(id, String(e) || '失败');
     addLog('err', `${p.name} 连接测试失败: ${e}`);
   }
 }
 
 // ─── 弹窗内测试连接 ──────────────────────────────────────────────
+function setProviderEditorTestButtonState(loading) {
+  const btn = document.getElementById('provider-editor-test-btn');
+  if (!btn) return;
+  const label = btn.querySelector('.provider-editor-test-label') || btn.querySelector('span:last-child');
+  btn.disabled = !!loading;
+  btn.classList.toggle('is-loading', !!loading);
+  if (label) label.textContent = loading ? '测试中...' : '测试连接';
+}
+
+function showProviderEditorTestToast(message, type = 'info', options = {}) {
+  if (typeof showBottomToast === 'function') {
+    showBottomToast(message, type, options);
+  }
+}
+
 async function testProviderInEditor() {
-  if (!invoke) return;
+  if (!invoke) {
+    showProviderEditorTestToast('应用通道未就绪，无法测试连接', 'error');
+    addLog('err', '连接测试失败: Tauri 通道未就绪');
+    return;
+  }
   const baseUrl = document.getElementById('pf-host').value.trim();
   const apiKey = document.getElementById('pf-key').value.trim();
   const fmt = document.getElementById('pf-format').value;
   const apiPath = document.getElementById('pf-path').value || '';
   const model = selectedModels[0] || null;
-  const dot = document.getElementById('pf-conn-dot');
-  const text = document.getElementById('pf-conn-text');
   if (!baseUrl || !apiKey) {
+    showProviderEditorTestToast('请先填写 API 地址和密钥', 'warn');
     addLog('warn', '请先填写 API 地址和密钥');
+    return;
+  }
+  if (!model) {
+    showProviderEditorTestToast('请先选择一个模型作为测试目标', 'warn');
+    addLog('warn', '请先选择一个模型作为测试目标');
     return;
   }
 
   const endpoint = providerEndpointParts(baseUrl, fmt, apiPath || null);
 
-  if (text) text.textContent = '测试中…';
+  setProviderEditorTestButtonState(true);
+  showProviderEditorTestToast(`正在测试 ${model}...`, 'info', { duration: 1400 });
   try {
     const result = await invoke('test_connection', {
       args: { host: endpoint.apiHost, api_key: apiKey, path: endpoint.apiPath || null, api_format: fmt, model }
@@ -1157,18 +1160,23 @@ async function testProviderInEditor() {
         updateSelectedModelsUI();
       }
     }
-    if (dot) dot.className = 'conn-dot ok';
-    if (text) text.textContent = msg;
+    showProviderEditorTestToast(`连接测试通过：${msg}`, 'success', { duration: 3200 });
     addLog('ok', '连接测试: ' + msg);
   } catch (e) {
-    if (dot) dot.className = 'conn-dot no';
-    if (text) text.textContent = String(e) || '失败';
+    const message = String(e) || '失败';
+    if (typeof showCustomAlert === 'function') {
+      showCustomAlert(message, '连接测试失败', 'error');
+    } else {
+      showProviderEditorTestToast(`连接测试失败：${message}`, 'error', { duration: 4200 });
+    }
     addLog('err', '连接测试失败: ' + e);
+  } finally {
+    setProviderEditorTestButtonState(false);
   }
 }
 
 // ─── 弹窗内拉取模型列表 ──────────────────────────────────────────
-async function fetchModelsForEditor() {
+async function fetchModelsForEditor(options = {}) {
   if (!invoke) return;
   const baseUrl = document.getElementById('pf-host').value.trim();
   const apiKey = document.getElementById('pf-key').value.trim();
@@ -1176,19 +1184,30 @@ async function fetchModelsForEditor() {
   const fmtEl = document.getElementById('pf-format');
   const primaryFmt = fmtEl ? fmtEl.value : 'anthropic';
   const btn = document.getElementById('pf-fetch-btn');
+  const isBackground = !!options.background;
   if (!baseUrl || !apiKey) {
     addLog('warn', '请先填写 API 地址和密钥');
     return;
   }
+  if (btn?.dataset.loading === '1') return;
   // 计算尝试顺序：先按当前协议；如失败回退到另一种协议
-  const formatsToTry = primaryFmt === 'openai' ? ['openai', 'anthropic'] : ['anthropic', 'openai'];
+  const lockedFormat = fmtEl?.dataset?.locked === '1';
+  const formatsToTry = lockedFormat
+    ? [primaryFmt]
+    : (primaryFmt === 'openai' ? ['openai', 'anthropic'] : ['anthropic', 'openai']);
   const fmtLabel = (f) => f === 'openai' ? 'OpenAI' : 'Anthropic';
 
   let succeeded = null;
   let lastError = null;
   for (let i = 0; i < formatsToTry.length; i++) {
     const tryFmt = formatsToTry[i];
-    if (btn) { btn.disabled = true; btn.textContent = `⏳ 用 ${fmtLabel(tryFmt)} 协议拉取中…`; }
+    if (btn) {
+      btn.dataset.loading = '1';
+      btn.disabled = true;
+      btn.innerHTML = providerFetchButtonContent(isBackground
+        ? `同步 ${fmtLabel(tryFmt)} 模型…`
+        : `用 ${fmtLabel(tryFmt)} 协议拉取中…`, true);
+    }
     if (i > 0) {
       addLog('info', `尝试用 ${fmtLabel(tryFmt)} 协议重新拉取…`);
     } else {
@@ -1217,7 +1236,7 @@ async function fetchModelsForEditor() {
 
   try {
     if (succeeded) {
-      activeModelsList = succeeded.models;
+      activeModelsList = Array.from(new Set([...selectedModels, ...succeeded.models]));
 
       // 拉取成功：把下拉/select 同步到真正命中的协议，并锁定（避免下次输入 URL 又被覆盖）
       if (fmtEl) {
@@ -1241,13 +1260,17 @@ async function fetchModelsForEditor() {
   } catch (e) {
     // No more default preset list overrides - strictly show what is configured
     addLog('warn', `线上拉取失败 (${e})。你可检查配置、或使用底部输入框手动添加自定义模型 ID。`);
-    // Ensure the current selected model is still visible in the list
+    // Keep local selections visible; a transient remote failure should not make saved models disappear.
     const modelInput = document.getElementById('pf-model');
     const modelVal = modelInput ? modelInput.value : '';
-    activeModelsList = modelVal ? [modelVal] : [];
+    activeModelsList = Array.from(new Set([...selectedModels, modelVal].filter(Boolean)));
     modelGroupStates = {};
     filterModelPanel();
   } finally {
-    if (btn) { btn.disabled = false; btn.textContent = '🔄 拉取'; }
+    if (btn) {
+      btn.dataset.loading = '0';
+      btn.disabled = false;
+      btn.innerHTML = providerFetchButtonContent('获取模型列表');
+    }
   }
 }

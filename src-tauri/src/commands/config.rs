@@ -3,6 +3,8 @@ use std::collections::{BTreeMap, HashMap};
 use std::fs;
 use std::path::PathBuf;
 
+const APP_USER_AGENT: &str = concat!("AnyBridge/", env!("CARGO_PKG_VERSION"));
+
 fn config_dir() -> PathBuf {
     let mut dir = dirs::config_dir().unwrap_or_else(|| PathBuf::from("."));
     dir.push("ide-byok");
@@ -108,6 +110,168 @@ pub struct Provider {
     pub model_caps: HashMap<String, ModelCaps>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CodexConfig {
+    pub id: String,
+    pub name: String,
+    #[serde(rename = "apiHost")]
+    pub api_host: String,
+    #[serde(rename = "apiKey")]
+    pub api_key: String,
+    #[serde(rename = "apiPath", skip_serializing_if = "Option::is_none")]
+    pub api_path: Option<String>,
+    #[serde(rename = "defaultModel")]
+    pub default_model: String,
+    #[serde(default)]
+    pub models: Vec<String>,
+    #[serde(
+        rename = "sourceProviderId",
+        default,
+        skip_serializing_if = "String::is_empty"
+    )]
+    pub source_provider_id: String,
+    #[serde(
+        rename = "sourceProviderName",
+        default,
+        skip_serializing_if = "String::is_empty"
+    )]
+    pub source_provider_name: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ClaudeCodeConfig {
+    pub id: String,
+    pub name: String,
+    #[serde(rename = "apiHost")]
+    pub api_host: String,
+    #[serde(rename = "apiKey")]
+    pub api_key: String,
+    #[serde(rename = "apiPath", skip_serializing_if = "Option::is_none")]
+    pub api_path: Option<String>,
+    #[serde(rename = "defaultModel")]
+    pub default_model: String,
+    #[serde(default)]
+    pub models: Vec<String>,
+    #[serde(
+        rename = "settingsConfig",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub settings_config: Option<serde_json::Value>,
+    #[serde(
+        rename = "sourceProviderId",
+        default,
+        skip_serializing_if = "String::is_empty"
+    )]
+    pub source_provider_id: String,
+    #[serde(
+        rename = "sourceProviderName",
+        default,
+        skip_serializing_if = "String::is_empty"
+    )]
+    pub source_provider_name: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OpenCodeConfig {
+    pub id: String,
+    pub name: String,
+    #[serde(rename = "apiHost")]
+    pub api_host: String,
+    #[serde(rename = "apiKey")]
+    pub api_key: String,
+    #[serde(rename = "apiPath", skip_serializing_if = "Option::is_none")]
+    pub api_path: Option<String>,
+    #[serde(rename = "defaultModel")]
+    pub default_model: String,
+    #[serde(default)]
+    pub models: Vec<String>,
+    #[serde(
+        rename = "settingsConfig",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub settings_config: Option<serde_json::Value>,
+    #[serde(
+        rename = "sourceProviderId",
+        default,
+        skip_serializing_if = "String::is_empty"
+    )]
+    pub source_provider_id: String,
+    #[serde(
+        rename = "sourceProviderName",
+        default,
+        skip_serializing_if = "String::is_empty"
+    )]
+    pub source_provider_name: String,
+}
+
+impl From<CodexConfig> for Provider {
+    fn from(config: CodexConfig) -> Self {
+        Provider {
+            id: config.id,
+            name: config.name,
+            api_host: config.api_host,
+            api_key: config.api_key,
+            api_path: config.api_path,
+            default_model: config.default_model,
+            api_format: ApiFormat::Openai,
+            enabled: true,
+            models: config.models,
+            capabilities: ProviderCapabilities {
+                text: true,
+                stream: true,
+                ..ProviderCapabilities::default()
+            },
+            model_caps: HashMap::new(),
+        }
+    }
+}
+
+impl From<OpenCodeConfig> for Provider {
+    fn from(config: OpenCodeConfig) -> Self {
+        Provider {
+            id: config.id,
+            name: config.name,
+            api_host: config.api_host,
+            api_key: config.api_key,
+            api_path: config.api_path,
+            default_model: config.default_model,
+            api_format: ApiFormat::Openai,
+            enabled: true,
+            models: config.models,
+            capabilities: ProviderCapabilities {
+                text: true,
+                stream: true,
+                ..ProviderCapabilities::default()
+            },
+            model_caps: HashMap::new(),
+        }
+    }
+}
+
+impl From<ClaudeCodeConfig> for Provider {
+    fn from(config: ClaudeCodeConfig) -> Self {
+        Provider {
+            id: config.id,
+            name: config.name,
+            api_host: config.api_host,
+            api_key: config.api_key,
+            api_path: config.api_path,
+            default_model: config.default_model,
+            api_format: ApiFormat::Anthropic,
+            enabled: true,
+            models: config.models,
+            capabilities: ProviderCapabilities {
+                text: true,
+                stream: true,
+                ..ProviderCapabilities::default()
+            },
+            model_caps: HashMap::new(),
+        }
+    }
+}
+
 /// 单个模型的能力标记
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct ModelCaps {
@@ -137,14 +301,48 @@ fn default_true() -> bool {
     true
 }
 
+/// 「更多平台」每个平台的接管状态：记录当前应用了哪个供应商。
+/// key 为平台 id（"claude-code" | "codex"），随 providers.json 持久化。
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct PlatformState {
+    #[serde(rename = "providerId")]
+    pub provider_id: String,
+    #[serde(rename = "appliedAt", default)]
+    pub applied_at: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct ProviderStore {
     #[serde(default)]
     pub providers: Vec<Provider>,
+    /// Codex 专用配置。它们不是供应商，只是基于某个 OpenAI 供应商生成/编辑的 Codex 写入配置。
+    #[serde(
+        rename = "codexConfigs",
+        default,
+        skip_serializing_if = "Vec::is_empty"
+    )]
+    pub codex_configs: Vec<CodexConfig>,
+    /// OpenCode 专用配置。它们不是供应商，只是基于某个 OpenAI 供应商生成/编辑的 OpenCode live provider。
+    #[serde(
+        rename = "opencodeConfigs",
+        default,
+        skip_serializing_if = "Vec::is_empty"
+    )]
+    pub opencode_configs: Vec<OpenCodeConfig>,
+    /// Claude Code 专用配置。它们不是供应商，只是基于某个 Anthropic 供应商生成/编辑的写入配置。
+    #[serde(
+        rename = "claudeCodeConfigs",
+        default,
+        skip_serializing_if = "Vec::is_empty"
+    )]
+    pub claude_code_configs: Vec<ClaudeCodeConfig>,
     // `current`/激活概念已废弃，改用每槽位 targets 故障转移。保留字段仅为兼容旧文件反序列化，不再读写。
     #[serde(default, skip_serializing)]
     #[allow(dead_code)]
     pub current: String,
+    /// 「更多平台」状态：claude-code / codex 各自当前应用的供应商。空时不写入文件，向后兼容旧 providers.json。
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub platforms: BTreeMap<String, PlatformState>,
 }
 
 pub(crate) fn read_provider_store() -> Result<ProviderStore, String> {
@@ -153,7 +351,59 @@ pub(crate) fn read_provider_store() -> Result<ProviderStore, String> {
         return Ok(ProviderStore::default());
     }
     let raw = fs::read_to_string(&path).map_err(|e| e.to_string())?;
-    serde_json::from_str(&raw).map_err(|e| e.to_string())
+    let value: serde_json::Value = serde_json::from_str(&raw).map_err(|e| e.to_string())?;
+    let mut store: ProviderStore =
+        serde_json::from_value(value.clone()).map_err(|e| e.to_string())?;
+
+    // 迁移之前错误混入 providers 的 Codex 配置。优先识别 meta.codexConfig；
+    // 对已被 Rust 旧结构丢掉 meta 的记录，再识别本功能生成的 codex-<timestamp>-* ID。
+    if let Some(raw_providers) = value.get("providers").and_then(|v| v.as_array()) {
+        let mut migrated_ids = std::collections::BTreeSet::new();
+        let mut migrated_configs = Vec::new();
+        for raw_provider in raw_providers {
+            let id = raw_provider
+                .get("id")
+                .and_then(|v| v.as_str())
+                .unwrap_or_default();
+            let meta_codex = raw_provider
+                .get("meta")
+                .and_then(|m| m.get("codexConfig"))
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
+            let generated_codex_id = id
+                .strip_prefix("codex-")
+                .and_then(|rest| rest.chars().next())
+                .map(|ch| ch.is_ascii_digit())
+                .unwrap_or(false);
+            if !meta_codex && !generated_codex_id {
+                continue;
+            }
+
+            let mut config: CodexConfig =
+                serde_json::from_value(raw_provider.clone()).map_err(|e| e.to_string())?;
+            if config.source_provider_id.is_empty() {
+                config.source_provider_id = raw_provider
+                    .get("meta")
+                    .and_then(|m| m.get("sourceProviderId"))
+                    .and_then(|v| v.as_str())
+                    .unwrap_or_default()
+                    .to_string();
+            }
+            migrated_ids.insert(id.to_string());
+            migrated_configs.push(config);
+        }
+
+        if !migrated_ids.is_empty() {
+            store.providers.retain(|p| !migrated_ids.contains(&p.id));
+            for config in migrated_configs {
+                if !store.codex_configs.iter().any(|c| c.id == config.id) {
+                    store.codex_configs.push(config);
+                }
+            }
+        }
+    }
+
+    Ok(store)
 }
 
 pub(crate) fn write_provider_store(store: &ProviderStore) -> Result<(), String> {
@@ -201,10 +451,7 @@ fn clean_api_path(path: Option<&str>) -> String {
     if raw.is_empty() || raw == "/" {
         return String::new();
     }
-    format!(
-        "/{}",
-        raw.trim_start_matches('/').trim_end_matches('/')
-    )
+    format!("/{}", raw.trim_start_matches('/').trim_end_matches('/'))
 }
 
 fn is_official_dashscope_host(host: &str) -> bool {
@@ -360,10 +607,11 @@ pub async fn test_connection(args: TestConnArgs) -> Result<TestConnResult, Strin
     };
     let fmt = args.api_format.as_deref().unwrap_or("anthropic");
 
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(15))
-        .build()
-        .map_err(|e| e.to_string())?;
+    let client = super::apply_system_proxy(
+        reqwest::Client::builder().timeout(std::time::Duration::from_secs(15)),
+    )
+    .build()
+    .map_err(|e| e.to_string())?;
 
     // ── Step 1: 快速连通检查 (/v1/models) ──
     // 注意：很多中转站（One-Hub + Cloudflare）会屏蔽 /v1/models 返回 403，
@@ -670,10 +918,14 @@ pub async fn fetch_models(args: FetchModelsArgs) -> Result<FetchModelsResult, St
         format!("https://{}", host)
     };
 
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(10))
-        .build()
-        .map_err(|e| e.to_string())?;
+    let client = super::apply_system_proxy(
+        reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(10))
+            .connect_timeout(std::time::Duration::from_secs(8))
+            .user_agent(APP_USER_AGENT),
+    )
+    .build()
+    .map_err(|e| e.to_string())?;
 
     let fmt = args.api_format.as_deref().unwrap_or("anthropic");
     let chat_path = if fmt == "openai" {
@@ -710,19 +962,47 @@ pub async fn fetch_models(args: FetchModelsArgs) -> Result<FetchModelsResult, St
     model_paths.dedup();
 
     let mut resp = None;
+    let mut attempts = Vec::new();
     for path in model_paths {
         let url = format!("{}{}", host, path);
-        let req = auth(client.get(&url));
-        if let Ok(r) = req.send().await {
-            if r.status().is_success() {
+        let req = auth(client.get(&url).header("Accept", "application/json"));
+        match req.send().await {
+            Ok(r) if r.status().is_success() => {
                 resp = Some(r);
                 break;
+            }
+            Ok(r) => {
+                let status = r.status();
+                let body = r.text().await.unwrap_or_default();
+                let snippet: String = body.chars().take(180).collect();
+                if snippet.trim().is_empty() {
+                    attempts.push(format!("{}: HTTP {}", path, status.as_u16()));
+                } else {
+                    attempts.push(format!(
+                        "{}: HTTP {} {}",
+                        path,
+                        status.as_u16(),
+                        snippet.replace(char::is_whitespace, " ")
+                    ));
+                }
+            }
+            Err(e) => {
+                attempts.push(format!(
+                    "{}: 网络错误 {}",
+                    path,
+                    redact(e.to_string(), &args.api_key)
+                ));
             }
         }
     }
 
     let Some(r) = resp else {
-        return Err("API请求失败（尝试了 /v1/models 和 /models 都无法连通）".to_string());
+        let detail = if attempts.is_empty() {
+            "没有收到任何响应".to_string()
+        } else {
+            attempts.join("；")
+        };
+        return Err(format!("模型列表拉取失败：{}", detail));
     };
 
     let body: serde_json::Value = r.json().await.map_err(|e| format!("解析失败: {}", e))?;

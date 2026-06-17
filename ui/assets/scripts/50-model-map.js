@@ -153,7 +153,7 @@ async function renderModelMap() {
   const slots = modelMapStore.slots || [];
   const rows = slots.map(s => ({ kind: 'mapped', slot: s, model: slotModelOf(s.modelUid) }));
   if (rows.length === 0) {
-    body.innerHTML = '<tr><td colspan="4" style="text-align:center;color:var(--text-muted);padding:18px">暂无模型映射，点击「添加映射」创建第一条关系</td></tr>';
+    body.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--text-muted);padding:18px">暂无模型映射，点击「添加映射」创建第一条关系</td></tr>';
     return;
   }
 
@@ -174,6 +174,7 @@ async function renderModelMap() {
       ? renderTargetChain(s.targets)
       : `<span style="color:var(--warn,#d97706);cursor:pointer" onclick="openFailoverEditor('${escAttr(s.modelUid)}')">未设置 ⚠ [点击配置]</span>`;
     const vision = slotVisionAssessment(s.modelUid, s.targets || [], s.supportsImages !== false);
+    const enabled = s.enabled !== false;
     return `
       <tr data-model-uid="${escAttr(s.modelUid)}" data-row-kind="mapped">
         <td class="editable-cell display-name-cell" onclick="startEditDisplayName(this, '${escAttr(s.modelUid)}')" title="${escAttr(display)}">${escAttr(display)}</td>
@@ -184,9 +185,19 @@ async function renderModelMap() {
         <td class="model-target-cell" onclick="openFailoverEditor('${escAttr(s.modelUid)}')" title="配置故障转移分流目标">${chain}</td>
         <td>
           <div class="model-map-actions">
-            <button class="btn-ghost model-map-action-btn" onclick="openSlotEditor('${escAttr(s.modelUid)}')">编辑</button>
-            <button class="btn-ghost model-map-action-btn danger" onclick="deleteSlot('${escAttr(s.modelUid)}')">删除</button>
+            <button class="btn-icon model-map-action-btn" onclick="openSlotEditor('${escAttr(s.modelUid)}')" title="编辑映射" aria-label="编辑映射">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+            </button>
+            <button class="btn-icon model-map-action-btn danger" onclick="deleteSlot('${escAttr(s.modelUid)}')" title="删除映射" aria-label="删除映射">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"/></svg>
+            </button>
           </div>
+        </td>
+        <td class="model-map-toggle-cell">
+          <label class="toggle-switch" title="${enabled ? '已启用，点击停用' : '已停用，点击启用'}">
+            <input type="checkbox" ${enabled ? 'checked' : ''} onchange="toggleSlotEnabled('${escAttr(s.modelUid)}')">
+            <span class="toggle-slider"></span>
+          </label>
         </td>
       </tr>`;
   }).join('');
@@ -980,7 +991,7 @@ let slotWasManuallySelected = false;
 function getAllProviderModels() {
   const list = [];
   (providerStore.providers || []).forEach(p => {
-    if (p.enabled !== false) {
+    if (p.enabled !== false && p.meta?.codexConfig !== true) {
       const models = Array.isArray(p.models) && p.models.length > 0 ? p.models : (p.defaultModel ? [p.defaultModel] : []);
       models.forEach(m => {
         list.push({
@@ -1500,7 +1511,7 @@ let failoverEditUid = '';
 let failoverDraft = [];   // [{providerId, model}]
 
 function enabledProviders() {
-  return (providerStore.providers || []).filter(p => p.enabled !== false);
+  return (providerStore.providers || []).filter(p => p.enabled !== false && p.meta?.codexConfig !== true);
 }
 
 function openFailoverEditor(uid) {

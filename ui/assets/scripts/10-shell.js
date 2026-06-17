@@ -1,6 +1,88 @@
 // ═══════ TAB NAVIGATION ═══════
-const tabs = document.querySelectorAll('.tab-item[data-page], .community-nav-btn[data-page]');
+const tabs = document.querySelectorAll('.tab-item[data-page], .community-nav-btn[data-page], .topbar-nav-btn[data-page]');
 const pages = document.querySelectorAll('.page');
+let activePlatformSection = 'overview';
+
+const PLATFORM_SHELL_PAGES = new Set([
+  'platform-proxy',
+  'slot-editor',
+  'model-slots',
+  'models',
+  'logs',
+  'more-platforms',
+  'platform-cursor',
+  'platform-claude-code',
+  'platform-codex',
+  'platform-codebuddy',
+  'platform-codebuddy-add',
+  'platform-opencode',
+  'platform-zcode',
+  'platform-zcode-add',
+  'platform-workbuddy',
+  'platform-workbuddy-add'
+]);
+
+function normalizePlatformSection(section) {
+  return ['overview', 'models', 'logs', 'settings'].includes(section) ? section : 'overview';
+}
+
+function getPlatformSectionForPage(pageId) {
+  if (['models', 'model-slots', 'slot-editor'].includes(pageId)) return 'models';
+  if (pageId === 'logs') return 'logs';
+  if (pageId === 'platform-proxy') {
+    return activePlatformSection === 'settings' ? 'settings' : 'overview';
+  }
+  return null;
+}
+
+function setPlatformPanel(section) {
+  const panelId = normalizePlatformSection(section) === 'settings' ? 'settings' : 'overview';
+  document.querySelectorAll('.platform-panel[data-platform-panel]').forEach(panel => {
+    const isActive = panel.dataset.platformPanel === panelId;
+    panel.classList.toggle('active', isActive);
+  });
+}
+
+function syncPlatformSubtabsForPage(pageId) {
+  const section = getPlatformSectionForPage(pageId);
+  if (!section) return;
+  activePlatformSection = section;
+  document.querySelectorAll('.platform-subtab[data-platform-section]').forEach(tab => {
+    const isActive = tab.dataset.platformSection === section;
+    tab.classList.toggle('active', isActive);
+    tab.setAttribute('aria-selected', String(isActive));
+    tab.tabIndex = isActive ? 0 : -1;
+  });
+  if (pageId === 'platform-proxy') {
+    setPlatformPanel(section);
+  }
+}
+
+function openPlatformSection(section) {
+  const target = normalizePlatformSection(section);
+  activePlatformSection = target;
+  if (target === 'models') {
+    navigateTo('models');
+    syncPlatformConsoleHead();
+    return;
+  }
+  if (target === 'logs') {
+    navigateTo('logs');
+    syncPlatformConsoleHead();
+    return;
+  }
+  navigateTo('platform-proxy');
+  setPlatformPanel(target);
+  syncPlatformSubtabsForPage('platform-proxy');
+  syncPlatformConsoleHead();
+}
+
+function syncPlatformConsoleHead() {
+  const section = activePlatformSection;
+  document.querySelectorAll('.platform-console-head').forEach(head => {
+    head.style.display = section === 'overview' ? '' : 'none';
+  });
+}
 
 function hideAllEditorModals() {
   // providerModal / slotModal 已经被改造为普通 page（page-provider-editor / page-slot-editor），
@@ -18,11 +100,25 @@ function navigateTo(pageId) {
   // 编辑器 page 归属到对应的 tab：高亮对应的 tab，激活对应 page
   const editorToTabMap = {
     'provider-editor': 'providers',
-    'slot-editor': 'models'
+    'eval': 'providers',
+    'eval-history': 'providers',
+    'slot-editor': 'platform-proxy',
+    'model-slots': 'platform-proxy',
+    'models': 'platform-proxy',
+    'logs': 'platform-proxy',
+    'more-platforms': 'platform-proxy',
+    'platform-cursor': 'platform-proxy',
+    'platform-claude-code': 'platform-proxy',
+    'platform-codex': 'platform-proxy',
+    'platform-codebuddy': 'platform-proxy',
+    'platform-codebuddy-add': 'platform-proxy',
+    'platform-opencode': 'platform-proxy',
+    'platform-zcode': 'platform-proxy',
+    'platform-zcode-add': 'platform-proxy',
+    'platform-workbuddy': 'platform-proxy',
+    'platform-workbuddy-add': 'platform-proxy'
   };
-  const activeTabPageId = pageId === 'eval-history'
-    ? 'eval'
-    : (pageId === 'model-slots' ? 'models' : (editorToTabMap[pageId] || pageId));
+  const activeTabPageId = editorToTabMap[pageId] || pageId;
   tabs.forEach(t => {
     const isActive = t.dataset.page === activeTabPageId;
     t.classList.toggle('active', isActive);
@@ -34,16 +130,25 @@ function navigateTo(pageId) {
   if (page) page.classList.add('active');
   const main = document.querySelector('.main');
   if (main) {
-    main.classList.toggle('dashboard-active', pageId === 'dashboard');
     main.classList.toggle('logs-active', pageId === 'logs');
+    main.classList.toggle('settings-active', pageId === 'settings');
+  }
+  const shell = document.querySelector('.workspace-shell');
+  if (shell) {
+    shell.classList.toggle('without-platform-rail', !PLATFORM_SHELL_PAGES.has(pageId));
   }
   if (pageId === 'eval') {
-    renderEvalProviderOptions();
+    renderEvalProviderOptions({ fetchRemote: true });
     loadEvalReports();
   }
   if (pageId === 'eval-history') {
     loadEvalReports();
   }
+  if (pageId === 'more-platforms' && typeof refreshPlatforms === 'function') {
+    refreshPlatforms();
+  }
+  syncPlatformRailForPage(pageId);
+  syncPlatformSubtabsForPage(pageId);
 }
 
 function focusTabByOffset(currentTab, offset) {
@@ -86,13 +191,45 @@ tabs.forEach(t => {
   });
 });
 
+function focusPlatformSubtabByOffset(currentTab, offset) {
+  const tabList = Array.from(currentTab.closest('.platform-subtab-nav')?.querySelectorAll('.platform-subtab[data-platform-section]') || []);
+  const index = tabList.indexOf(currentTab);
+  if (index < 0) return;
+  const nextIndex = (index + offset + tabList.length) % tabList.length;
+  const nextTab = tabList[nextIndex];
+  const section = nextTab.dataset.platformSection;
+  openPlatformSection(section);
+  const activeVisibleTab = document.querySelector(`.page.active .platform-subtab[data-platform-section="${section}"]`);
+  (activeVisibleTab || nextTab).focus();
+}
+
+document.querySelectorAll('.platform-subtab[data-platform-section]').forEach(tab => {
+  tab.addEventListener('click', () => openPlatformSection(tab.dataset.platformSection));
+  tab.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      openPlatformSection(tab.dataset.platformSection);
+      return;
+    }
+    if (event.key === 'ArrowRight') {
+      event.preventDefault();
+      focusPlatformSubtabByOffset(tab, 1);
+      return;
+    }
+    if (event.key === 'ArrowLeft') {
+      event.preventDefault();
+      focusPlatformSubtabByOffset(tab, -1);
+    }
+  });
+});
+
 // ═══════ SETTINGS SUBNAV ═══════
 function activateSettingsPanel(index) {
   const panelIndex = String(index);
   const menuItems = document.querySelectorAll('.settings-menu-item[data-settings-panel]');
   // 旧版用 DOM 顺序匹配, 新版用 panel 上 data-panel-id 匹配, 这样 menu 编号和
   // panel DOM 顺序解耦, 加新 panel / 调顺序不需要重排大块 HTML。
-  const panels = document.querySelectorAll('.settings-detail > .glass-card[data-panel-id]');
+  const panels = document.querySelectorAll('.settings-detail > [data-panel-id]');
   menuItems.forEach(item => {
     const isActive = String(item.dataset.settingsPanel) === panelIndex;
     item.classList.toggle('active', isActive);
@@ -106,7 +243,182 @@ function activateSettingsPanel(index) {
 document.querySelectorAll('.settings-menu-item[data-settings-panel]').forEach(item => {
   item.addEventListener('click', () => activateSettingsPanel(item.dataset.settingsPanel));
 });
-activateSettingsPanel('0');
+mountPlatformOwnedSettings();
+activateSettingsPanel('appearance');
+syncPlatformSubtabsForPage('platform-proxy');
+
+// ═══════ PLATFORM RAIL ═══════
+const PROXY_PLATFORM_META = {
+  windsurf: {
+    label: 'Windsurf',
+    short: 'Windsurf',
+    icon: './assets/icons/platform-windsurf.svg',
+    subtitle: 'Cascade / 行内编辑通过本机代理接入供应商和模型映射。'
+  },
+  devin: {
+    label: 'Devin',
+    short: 'Devin',
+    icon: './assets/icons/platform-devin.svg',
+    subtitle: 'Devin 通过本机代理接入供应商、模型映射和会话日志。'
+  }
+};
+
+function normalizeProxyPlatform(platformId) {
+  return platformId === 'devin' || platformId === 'windsurf' ? platformId : 'windsurf';
+}
+
+function setPlatformRailActive(platformId) {
+  document.querySelectorAll('.platform-rail-item[data-platform-rail]').forEach(item => {
+    const isActive = item.dataset.platformRail === platformId;
+    item.classList.toggle('active', isActive);
+    item.setAttribute('aria-current', isActive ? 'page' : 'false');
+  });
+}
+
+function updateProxyPlatformCopy(platformId) {
+  const id = normalizeProxyPlatform(platformId);
+  const meta = PROXY_PLATFORM_META[id] || PROXY_PLATFORM_META.windsurf;
+  const title = document.getElementById('proxy-platform-title');
+  const subtitle = document.getElementById('proxy-platform-subtitle');
+  const icon = document.getElementById('proxy-platform-icon');
+  if (title) title.textContent = meta.label;
+  if (subtitle) subtitle.textContent = meta.subtitle;
+  if (icon) {
+    icon.src = meta.icon;
+    icon.alt = meta.label;
+  }
+}
+
+function syncPlatformRailForPage(pageId) {
+  const pageToPlatform = {
+    'platform-cursor': 'cursor',
+    'platform-claude-code': 'claude-code',
+    'platform-codex': 'codex',
+    'platform-codebuddy': 'codebuddy',
+    'platform-codebuddy-add': 'codebuddy',
+    'platform-opencode': 'opencode',
+    'platform-zcode': 'zcode',
+    'platform-zcode-add': 'zcode',
+    'platform-workbuddy': 'workbuddy',
+    'platform-workbuddy-add': 'workbuddy'
+  };
+  if (pageToPlatform[pageId]) {
+    setPlatformRailActive(pageToPlatform[pageId]);
+    return;
+  }
+  if (['platform-proxy', 'models', 'model-slots', 'slot-editor', 'logs'].includes(pageId)) {
+    const target = normalizeProxyPlatform(getTargetIde());
+    const select = document.getElementById('targetIde');
+    if (select && select.value !== target) select.value = target;
+    updateProxyPlatformCopy(target);
+    setPlatformRailActive(target);
+  }
+}
+
+function mountPlatformOwnedSettings() {
+  const moves = [
+    ['0', 'platform-health-mount'],
+    ['1', 'platform-access-mount'],
+    ['2', 'platform-proxy-server-mount']
+  ];
+  moves.forEach(([panelId, mountId]) => {
+    const source = document.querySelector(`.settings-detail > [data-panel-id="${panelId}"]`);
+    const mount = document.getElementById(mountId);
+    if (!source || !mount) return;
+    if (mount.firstElementChild) {
+      // 已挂载过，只需重置 active 状态
+      mount.classList.toggle('active', panelId === '0');
+      return;
+    }
+    const clone = source.cloneNode(true);
+    mount.classList.toggle('active', panelId === '0');
+
+    /* ── 根源处理：剥离克隆卡片自身的玻璃外壳 ── */
+    clone.classList.remove('glass-card', 'settings-panel', 'active');
+    clone.removeAttribute('style');
+    clone.removeAttribute('data-panel-id');
+    // 移除 card-header（标题栏已由左侧导航体现）
+    const header = clone.querySelector(':scope > .card-header');
+    if (header) header.remove();
+
+    /* ── 根源处理：剥离内部嵌套的 glass-card 外壳 ── */
+    clone.querySelectorAll('.glass-card').forEach(inner => {
+      inner.classList.remove('glass-card');
+      inner.removeAttribute('style');
+      const innerHeader = inner.querySelector(':scope > .card-header');
+      if (innerHeader) innerHeader.remove();
+    });
+    // .health-summary / .control-bar 自带边框/背景，用 .platform-inlined 剥离
+    clone.querySelectorAll('.health-summary, .control-bar').forEach(el => {
+      el.classList.add('platform-inlined');
+      el.removeAttribute('style');
+    });
+
+    /* ── 根源处理：解决 ID 重复——克隆中的 id 改为 data-oid ── */
+    // 这样 _platformEl() 可以通过 data-oid 在活跃 mount 中找到克隆的元素
+    clone.querySelectorAll('[id]').forEach(el => {
+      el.setAttribute('data-oid', el.id);
+      el.removeAttribute('id');
+    });
+
+    mount.appendChild(clone);
+  });
+  bindPlatformSettingsNav();
+}
+
+/**
+ * 上下文感知的元素查找：优先从平台接入设置的活跃 mount 中查找克隆元素，
+ * 回退到全局 getElementById。供 70-healthcheck.js 和 20-runtime.js 使用。
+ */
+function _platformEl(id) {
+  const activeMount = document.querySelector('#platform-panel-settings .platform-settings-mount.active');
+  if (activeMount) {
+    const el = activeMount.querySelector('[data-oid="' + id + '"]');
+    if (el) return el;
+  }
+  return document.getElementById(id);
+}
+
+function bindPlatformSettingsNav() {
+  const nav = document.querySelector('#platform-panel-settings .settings-sidebar');
+  if (!nav || nav.dataset.bound === '1') return;
+  nav.dataset.bound = '1';
+  const items = nav.querySelectorAll('.settings-menu-item[data-platform-settings-panel]');
+  const mounts = document.querySelectorAll('#platform-panel-settings .platform-settings-mount');
+  items.forEach(item => {
+    item.addEventListener('click', () => {
+      const idx = item.dataset.platformSettingsPanel;
+      items.forEach(i => i.classList.toggle('active', i === item));
+      mounts.forEach((m, i) => {
+        m.classList.toggle('active', String(i) === idx);
+      });
+    });
+  });
+}
+
+function openProxyPlatform(platformId) {
+  const target = normalizeProxyPlatform(platformId);
+  const select = document.getElementById('targetIde');
+  const changed = select && select.value !== target;
+  if (select) {
+    select.value = target;
+  }
+  updateProxyPlatformCopy(target);
+  setPlatformRailActive(target);
+  if (changed && typeof onTargetIdeChange === 'function') {
+    onTargetIdeChange();
+  }
+  if (typeof setStatusPill === 'function') {
+    setStatusPill(typeof proxyRunning !== 'undefined' ? proxyRunning : false);
+  }
+  activePlatformSection = 'overview';
+  navigateTo('platform-proxy');
+}
+
+function openPlaceholderPlatform(platformId) {
+  setPlatformRailActive(platformId);
+  navigateTo(`platform-${platformId}`);
+}
 
 // ═══════ IDE SELECTOR ═══════
 function getTargetIde() {
@@ -114,141 +426,7 @@ function getTargetIde() {
   return select ? select.value : 'windsurf';
 }
 
-function getCustomSelectorParts() {
-  const container = document.getElementById('customIdeSelector');
-  return {
-    container,
-    trigger: container ? container.querySelector('.custom-select-trigger') : null,
-    options: container ? Array.from(container.querySelectorAll('.custom-option-item')) : []
-  };
-}
-
-function focusCustomOptionAt(index) {
-  const { options } = getCustomSelectorParts();
-  if (!options.length) return;
-  const nextIndex = (index + options.length) % options.length;
-  options.forEach(option => { option.tabIndex = -1; });
-  options[nextIndex].tabIndex = 0;
-  options[nextIndex].focus();
-}
-
-function setCustomSelectorOpen(open, focusSelected = false) {
-  const { container, trigger, options } = getCustomSelectorParts();
-  if (!container || !trigger) return;
-  container.classList.toggle('open', open);
-  trigger.setAttribute('aria-expanded', String(open));
-  const selectedIndex = Math.max(0, options.findIndex(option => option.classList.contains('selected')));
-  options.forEach((option, index) => { option.tabIndex = open && index === selectedIndex ? 0 : -1; });
-  if (open && focusSelected) {
-    focusCustomOptionAt(selectedIndex);
-  }
-}
-
-function toggleCustomSelector(event) {
-  if (event) event.stopPropagation();
-  const container = document.getElementById('customIdeSelector');
-  if (container) {
-    setCustomSelectorOpen(!container.classList.contains('open'));
-  }
-}
-
-function selectCustomOption(val, label, event) {
-  if (event) event.stopPropagation();
-  const select = document.getElementById('targetIde');
-  if (select) {
-    select.value = val;
-    // 触发原生 change 事件，让原本绑定的 onTargetIdeChange 完美执行
-    select.dispatchEvent(new Event('change'));
-  }
-
-  // 关闭下拉面板
-  setCustomSelectorOpen(false);
-
-  // 同步高亮和触发器文案
-  syncCustomSelector();
-
-  const { trigger } = getCustomSelectorParts();
-  if (event && event.type === 'keydown' && trigger) trigger.focus();
-}
-
-function syncCustomSelector() {
-  const val = getTargetIde();
-  const labelMap = {
-    'windsurf': 'Windsurf',
-    'devin': 'Devin',
-    'auto': '自动检测'
-  };
-
-  const labelEl = document.getElementById('customSelectedLabel');
-  if (labelEl) {
-    labelEl.textContent = labelMap[val] || val;
-  }
-
-  const { container, trigger, options } = getCustomSelectorParts();
-  const isOpen = container ? container.classList.contains('open') : false;
-  if (trigger) {
-    trigger.setAttribute('aria-label', `选择目标 IDE，当前为 ${labelMap[val] || val}`);
-  }
-  options.forEach(item => {
-    const selected = item.getAttribute('data-value') === val;
-    item.classList.toggle('selected', selected);
-    item.setAttribute('aria-selected', String(selected));
-    item.tabIndex = selected && isOpen ? 0 : -1;
-  });
-}
-
-const customSelectorTrigger = document.querySelector('.custom-select-trigger');
-if (customSelectorTrigger) {
-  customSelectorTrigger.addEventListener('keydown', (event) => {
-    if (event.key === 'Enter' || event.key === ' ' || event.key === 'ArrowDown') {
-      event.preventDefault();
-      event.stopPropagation();
-      setCustomSelectorOpen(true, true);
-    }
-  });
-}
-
-document.querySelectorAll('.custom-option-item').forEach((option) => {
-  option.addEventListener('keydown', (event) => {
-    const { options, trigger } = getCustomSelectorParts();
-    const index = options.indexOf(option);
-    if (event.key === 'ArrowDown') {
-      event.preventDefault();
-      focusCustomOptionAt(index + 1);
-      return;
-    }
-    if (event.key === 'ArrowUp') {
-      event.preventDefault();
-      focusCustomOptionAt(index - 1);
-      return;
-    }
-    if (event.key === 'Home') {
-      event.preventDefault();
-      focusCustomOptionAt(0);
-      return;
-    }
-    if (event.key === 'End') {
-      event.preventDefault();
-      focusCustomOptionAt(options.length - 1);
-      return;
-    }
-    if (event.key === 'Escape') {
-      event.preventDefault();
-      setCustomSelectorOpen(false);
-      if (trigger) trigger.focus();
-      return;
-    }
-    if (event.key === 'Enter' || event.key === ' ') {
-      event.preventDefault();
-      selectCustomOption(option.dataset.value, option.textContent.trim(), event);
-    }
-  });
-});
-
-// 监听全局点击事件，点击外部时收起下拉框
-window.addEventListener('click', () => {
-  setCustomSelectorOpen(false);
-});
+function syncCustomSelector() {}
 
 async function onTargetIdeChange() {
   const ide = getTargetIde();
@@ -279,6 +457,10 @@ async function onTargetIdeChange() {
 
   // 更新状态文本和 flow 图
   updateFlowIdeTarget(displayIde);
+  if (displayIde === 'windsurf' || displayIde === 'devin') {
+    updateProxyPlatformCopy(displayIde);
+    setPlatformRailActive(displayIde);
+  }
   setStatusPill(proxyRunning);
   const displayLabel = displayIde === 'auto' ? '自动检测' : displayIde.charAt(0).toUpperCase() + displayIde.slice(1);
   addLog('info', `目标 IDE 切换为: ${displayLabel}`);
@@ -355,6 +537,32 @@ function showCustomAlert(message, title, iconType) {
   document.addEventListener('keydown', escClose);
 }
 
+function showBottomToast(message, iconType = 'info', options = {}) {
+  const text = String(message || '').trim();
+  if (!text) return;
+
+  let host = document.getElementById('app-toast-host');
+  if (!host) {
+    host = document.createElement('div');
+    host.id = 'app-toast-host';
+    host.setAttribute('aria-live', 'polite');
+    host.setAttribute('aria-atomic', 'true');
+    document.body.appendChild(host);
+  }
+
+  const toast = document.createElement('div');
+  toast.className = `app-toast app-toast-${iconType || 'info'}`;
+  toast.textContent = text;
+  host.appendChild(toast);
+
+  requestAnimationFrame(() => toast.classList.add('show'));
+  const duration = Number(options.duration || 2600);
+  window.setTimeout(() => {
+    toast.classList.remove('show');
+    window.setTimeout(() => toast.remove(), 220);
+  }, duration);
+}
+
 // ═══════ CUSTOM CONFIRM (替代原生 confirm，返回 Promise<boolean>) ═══════
 function showCustomConfirm(message, title, iconType) {
   title = title || '确认';
@@ -362,7 +570,10 @@ function showCustomConfirm(message, title, iconType) {
 
   return new Promise((resolve) => {
     const modal = document.getElementById('custom-confirm-modal');
+    const titleEl = document.getElementById('custom-confirm-title');
     const leadEl = document.getElementById('modal-lead');
+    const questionEl = leadEl?.nextElementSibling;
+    const warningEl = modal?.querySelector('.modal-warning');
     const btnCancel = document.getElementById('modal-btn-cancel');
     const btnConfirm = document.getElementById('modal-btn-confirm');
 
@@ -372,7 +583,20 @@ function showCustomConfirm(message, title, iconType) {
       return;
     }
 
+    const prev = {
+      title: titleEl ? titleEl.textContent : '',
+      lead: leadEl ? leadEl.textContent : '',
+      question: questionEl ? questionEl.textContent : '',
+      warningDisplay: warningEl ? warningEl.style.display : '',
+      cancelText: btnCancel.textContent,
+      confirmText: btnConfirm.textContent,
+      confirmWidth: btnConfirm.style.width,
+    };
+
+    if (titleEl) titleEl.textContent = title;
     if (leadEl) leadEl.textContent = message;
+    if (questionEl) questionEl.textContent = '';
+    if (warningEl) warningEl.style.display = 'none';
 
     // 重置 footer 为确认/取消双按钮
     const footer = modal.querySelector('.modal-footer');
@@ -392,6 +616,13 @@ function showCustomConfirm(message, title, iconType) {
       btnConfirm.removeEventListener('click', onConfirm);
       modal.removeEventListener('click', onOverlay);
       document.removeEventListener('keydown', onEsc);
+      if (titleEl) titleEl.textContent = prev.title;
+      if (leadEl) leadEl.textContent = prev.lead;
+      if (questionEl) questionEl.textContent = prev.question;
+      if (warningEl) warningEl.style.display = prev.warningDisplay;
+      btnCancel.textContent = prev.cancelText;
+      btnConfirm.textContent = prev.confirmText;
+      btnConfirm.style.width = prev.confirmWidth;
     };
 
     const onConfirm = (e) => { e.preventDefault(); e.stopPropagation(); cleanup(); resolve(true); };

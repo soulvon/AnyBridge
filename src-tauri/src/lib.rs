@@ -4,7 +4,7 @@ mod commands;
 #[allow(dead_code)]
 mod integrity;
 
-use commands::proxy::ProxyState;
+use commands::{provider_import::ProviderImportScanState, proxy::ProxyState};
 use tauri::{Manager, WindowEvent};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -19,6 +19,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .manage(ProxyState::default())
+        .manage(ProviderImportScanState::default())
         .setup(|app| {
             // 启动时先清理上一轮崩溃或异常退出后残留的孤儿 sidecar 进程，
             // 避免旧进程锁住 ide-byok-proxy.exe 导致升级安装失败。
@@ -57,6 +58,8 @@ pub fn run() {
             commands::config::test_connection,
             commands::config::fetch_models,
             commands::provider_import::scan_importable_providers,
+            commands::provider_import::start_provider_import_scan,
+            commands::provider_import::cancel_provider_import_scan,
             commands::provider_import::import_providers,
             commands::eval::run_provider_eval,
             commands::eval::list_eval_reports,
@@ -67,6 +70,16 @@ pub fn run() {
             commands::ide_models::list_ide_models,
             commands::ide_models::refresh_ide_models,
             commands::windsurf_catalog::list_windsurf_catalog,
+            commands::platforms::detect_platforms,
+            commands::platforms::preview_platform_switch,
+            commands::platforms::switch_platform,
+            commands::platforms::remove_opencode_config_from_live,
+            commands::platforms::restore_platform,
+            commands::platforms::restore_claude_official_config,
+            commands::platforms::restore_codex_official_config,
+            commands::platforms::load_codebuddy_models,
+            commands::platforms::save_codebuddy_models,
+            commands::platforms::list_provider_models,
             commands::proxy::preflight_proxy,
             commands::proxy::healthcheck_grouped,
             commands::proxy::start_proxy,

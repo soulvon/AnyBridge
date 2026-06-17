@@ -177,7 +177,10 @@ enum OpenAiEndpoint {
 }
 
 #[tauri::command]
-pub async fn run_provider_eval(app: tauri::AppHandle, request: EvalRequest) -> Result<EvalReport, String> {
+pub async fn run_provider_eval(
+    app: tauri::AppHandle,
+    request: EvalRequest,
+) -> Result<EvalReport, String> {
     let started = Instant::now();
     let report_id = format!("eval-{}", now_millis());
     let provider = find_provider(&request.provider_id)?;
@@ -193,11 +196,13 @@ pub async fn run_provider_eval(app: tauri::AppHandle, request: EvalRequest) -> R
         return Err("供应商未配置默认模型，请先选择一个模型".into());
     }
 
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(60))
-        .connect_timeout(std::time::Duration::from_secs(12))
-        .build()
-        .map_err(|e| e.to_string())?;
+    let client = super::apply_system_proxy(
+        reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(60))
+            .connect_timeout(std::time::Duration::from_secs(12)),
+    )
+    .build()
+    .map_err(|e| e.to_string())?;
 
     let mut ctx = EvalContext {
         provider,
@@ -253,8 +258,8 @@ pub async fn run_provider_eval(app: tauri::AppHandle, request: EvalRequest) -> R
         Err(p) => {
             caps.push(EvalCap {
                 rule: "protocol_offline".into(),
-                cap_value: 0.0,
-                reason: "协议连通性失败，无法完成后续模型检测".into(),
+                cap_value: 10.0,
+                reason: format!("协议连通性失败（{}），后续探针已跳过", p.summary),
             });
             push_probe(&app, &report_id, &mut probes, p, &mut completed, total);
             let p7 = skip_probe("P7", "模型回显", 8.0, "协议不可用，跳过");
@@ -301,37 +306,138 @@ pub async fn run_provider_eval(app: tauri::AppHandle, request: EvalRequest) -> R
 
         if matches!(request.mode, EvalMode::Standard) {
             if check_selected(&ctx, "P8") {
-            let p = probe_token_injection(&mut ctx).await;
-            if p.status == "fail" && p.score <= 40.0 {
-                caps.push(EvalCap {
-                    rule: "token_injection_suspect".into(),
-                    cap_value: 60.0,
-                    reason: "极短请求的输入 token 明显异常，疑似隐藏 prompt 注入或路由包装".into(),
-                });
-            }
-            push_probe(&app, &report_id, &mut probes, p, &mut completed, total);
+                let p = probe_token_injection(&mut ctx).await;
+                if p.status == "fail" && p.score <= 40.0 {
+                    caps.push(EvalCap {
+                        rule: "token_injection_suspect".into(),
+                        cap_value: 60.0,
+                        reason: "极短请求的输入 token 明显异常，疑似隐藏 prompt 注入或路由包装"
+                            .into(),
+                    });
+                }
+                push_probe(&app, &report_id, &mut probes, p, &mut completed, total);
             }
             if check_selected(&ctx, "P9") {
-            let p9 = probe_json_mode(&mut ctx).await;
-            push_probe(&app, &report_id, &mut probes, p9, &mut completed, total);
+                let p9 = probe_json_mode(&mut ctx).await;
+                push_probe(&app, &report_id, &mut probes, p9, &mut completed, total);
             }
             if check_selected(&ctx, "P11") {
-            let p11 = probe_output_throughput(&mut ctx).await;
-            push_probe(&app, &report_id, &mut probes, p11, &mut completed, total);
+                let p11 = probe_output_throughput(&mut ctx).await;
+                push_probe(&app, &report_id, &mut probes, p11, &mut completed, total);
             }
         }
     } else {
-        push_selected_skip(&app, &report_id, &ctx, &mut probes, &mut completed, total, "P4", "内容 Canary", 8.0);
-        push_selected_skip(&app, &report_id, &ctx, &mut probes, &mut completed, total, "P5", "流完整性", 8.0);
-        push_selected_skip(&app, &report_id, &ctx, &mut probes, &mut completed, total, "P6", "工具调用", 10.0);
-        push_selected_skip(&app, &report_id, &ctx, &mut probes, &mut completed, total, "P12", "图片理解", 8.0);
-        push_selected_skip(&app, &report_id, &ctx, &mut probes, &mut completed, total, "P13", "调用方式兼容", 6.0);
-        push_selected_skip(&app, &report_id, &ctx, &mut probes, &mut completed, total, "P14", "提示词注入", 8.0);
-        push_selected_skip(&app, &report_id, &ctx, &mut probes, &mut completed, total, "P10", "性能稳定性", 10.0);
+        push_selected_skip(
+            &app,
+            &report_id,
+            &ctx,
+            &mut probes,
+            &mut completed,
+            total,
+            "P4",
+            "内容 Canary",
+            8.0,
+        );
+        push_selected_skip(
+            &app,
+            &report_id,
+            &ctx,
+            &mut probes,
+            &mut completed,
+            total,
+            "P5",
+            "流完整性",
+            8.0,
+        );
+        push_selected_skip(
+            &app,
+            &report_id,
+            &ctx,
+            &mut probes,
+            &mut completed,
+            total,
+            "P6",
+            "工具调用",
+            10.0,
+        );
+        push_selected_skip(
+            &app,
+            &report_id,
+            &ctx,
+            &mut probes,
+            &mut completed,
+            total,
+            "P12",
+            "图片理解",
+            8.0,
+        );
+        push_selected_skip(
+            &app,
+            &report_id,
+            &ctx,
+            &mut probes,
+            &mut completed,
+            total,
+            "P13",
+            "调用方式兼容",
+            6.0,
+        );
+        push_selected_skip(
+            &app,
+            &report_id,
+            &ctx,
+            &mut probes,
+            &mut completed,
+            total,
+            "P14",
+            "提示词注入",
+            8.0,
+        );
+        push_selected_skip(
+            &app,
+            &report_id,
+            &ctx,
+            &mut probes,
+            &mut completed,
+            total,
+            "P10",
+            "性能稳定性",
+            10.0,
+        );
         if matches!(request.mode, EvalMode::Standard) {
-            push_selected_skip(&app, &report_id, &ctx, &mut probes, &mut completed, total, "P8", "Token 注入粗测", 7.0);
-            push_selected_skip(&app, &report_id, &ctx, &mut probes, &mut completed, total, "P9", "JSON 模式", 7.0);
-            push_selected_skip(&app, &report_id, &ctx, &mut probes, &mut completed, total, "P11", "输出吞吐", 8.0);
+            push_selected_skip(
+                &app,
+                &report_id,
+                &ctx,
+                &mut probes,
+                &mut completed,
+                total,
+                "P8",
+                "Token 注入粗测",
+                7.0,
+            );
+            push_selected_skip(
+                &app,
+                &report_id,
+                &ctx,
+                &mut probes,
+                &mut completed,
+                total,
+                "P9",
+                "JSON 模式",
+                7.0,
+            );
+            push_selected_skip(
+                &app,
+                &report_id,
+                &ctx,
+                &mut probes,
+                &mut completed,
+                total,
+                "P11",
+                "输出吞吐",
+                8.0,
+            );
         }
     }
 
@@ -388,12 +494,13 @@ pub fn delete_eval_report(id: String) -> Result<Vec<EvalReport>, String> {
     Ok(reports)
 }
 
-async fn probe_connectivity(
+/// 单次连通性尝试，返回 Ok(成功) 或 Err(失败探针结果)
+async fn try_connectivity_once(
     ctx: &mut EvalContext,
+    body: &Value,
 ) -> Result<(JsonCall, EvalProbeResult), EvalProbeResult> {
     let started = Instant::now();
-    let body = chat_body(ctx, "Reply with exactly: OK", false, 64, None);
-    match call_json(ctx, body).await {
+    match call_json(ctx, body.clone()).await {
         Ok(call) => {
             let status = call.status;
             let latency = call.latency_ms;
@@ -447,6 +554,7 @@ async fn probe_connectivity(
                     ),
                 ))
             } else {
+                let (summary, hint) = classify_http_failure(call.status, &call.body_text);
                 Err(probe(
                     "P1",
                     "协议连通性",
@@ -454,24 +562,280 @@ async fn probe_connectivity(
                     0.0,
                     12.0,
                     Some(latency),
-                    "最小推理请求失败",
+                    &summary,
                     vec![
                         format!("HTTP {}", call.status),
                         snippet(&call.body_text, 180),
+                        hint,
                     ],
                 ))
             }
         }
-        Err(e) => Err(probe(
-            "P1",
-            "协议连通性",
-            "fail",
-            0.0,
-            12.0,
-            Some(started.elapsed().as_millis() as u64),
-            "请求失败",
-            vec![redact(&ctx.provider, &e)],
-        )),
+        Err(e) => {
+            let (summary, hint) = classify_network_error(&e);
+            Err(probe(
+                "P1",
+                "协议连通性",
+                "fail",
+                0.0,
+                12.0,
+                Some(started.elapsed().as_millis() as u64),
+                &summary,
+                vec![redact(&ctx.provider, &e), hint],
+            ))
+        }
+    }
+}
+
+/// 判断 HTTP 错误是否值得重试（5xx / 429 / 502 / 503 / 504）
+fn is_retryable_http(probe_result: &EvalProbeResult) -> bool {
+    probe_result
+        .evidence
+        .first()
+        .map(|s| {
+            let status = s.trim_start_matches("HTTP ").parse::<u16>().unwrap_or(0);
+            status == 429 || (500..=504).contains(&status)
+        })
+        .unwrap_or(false)
+}
+
+/// 对 HTTP 响应失败进行分类，返回 (摘要, 排查提示)
+fn classify_http_failure(status: u16, body: &str) -> (String, String) {
+    let summary = match status {
+        401 => "认证失败（401 Unauthorized）".into(),
+        403 => "访问被拒绝（403 Forbidden）".into(),
+        404 => "接口地址不存在（404 Not Found）".into(),
+        429 => "请求过于频繁（429 Too Many Requests）".into(),
+        500 => "服务端内部错误（500）".into(),
+        502 => "网关错误（502 Bad Gateway）".into(),
+        503 => "服务暂不可用（503 Service Unavailable）".into(),
+        504 => "网关超时（504 Gateway Timeout）".into(),
+        s if s >= 400 && s < 500 => format!("客户端错误（HTTP {}）", s),
+        s if s >= 500 => format!("服务端错误（HTTP {}）", s),
+        s => format!("非标准响应（HTTP {}）", s),
+    };
+    let hint = match status {
+        401 => "请检查 API Key 是否正确、是否已过期".into(),
+        403 => "请确认该 API Key 有访问权限，或检查 IP 白名单设置".into(),
+        404 => {
+            let lower = body.to_ascii_lowercase();
+            if lower.contains("unknown endpoint")
+                || lower.contains("/v1/messages")
+                || lower.contains("/v1/chat/completions")
+            {
+                "接口路径不存在，常见原因是供应商协议选错；OpenAI 兼容站点通常应使用 OpenAI + /v1/chat/completions".into()
+            } else {
+                "请检查 API 地址和路径是否正确".into()
+            }
+        }
+        429 => "供应商限流，可稍后重试或降低请求频率".into(),
+        502 | 503 | 504 => "供应商服务暂时不可用，请稍后重试".into(),
+        _ => {
+            let lower = body.to_ascii_lowercase();
+            if lower.contains("invalid_api_key") || lower.contains("unauthorized") {
+                "响应提示认证失败，请检查 API Key".into()
+            } else if lower.contains("model_not_found") || lower.contains("does not exist") {
+                "响应提示模型不存在，请确认模型名称".into()
+            } else {
+                format!("HTTP {} — 请检查供应商配置", status)
+            }
+        }
+    };
+    (summary, hint)
+}
+
+/// 对网络层错误进行分类，返回 (摘要, 排查提示)
+fn classify_network_error(e: &str) -> (String, String) {
+    let lower = e.to_ascii_lowercase();
+    if lower.contains("timeout") || lower.contains("timed out") {
+        (
+            "连接超时".into(),
+            "请检查网络连接，或确认 API 地址是否可达".into(),
+        )
+    } else if lower.contains("dns")
+        || lower.contains("resolve")
+        || lower.contains("name resolution")
+    {
+        (
+            "DNS 解析失败".into(),
+            "请检查 API 域名是否正确，以及网络 DNS 设置".into(),
+        )
+    } else if lower.contains("connection refused") {
+        (
+            "连接被拒绝".into(),
+            "目标服务器拒绝连接，请确认 API 地址和端口是否正确".into(),
+        )
+    } else if lower.contains("tls") || lower.contains("ssl") || lower.contains("certificate") {
+        (
+            "TLS/SSL 证书错误".into(),
+            "HTTPS 证书验证失败，请检查证书或代理设置".into(),
+        )
+    } else if lower.contains("proxy") {
+        ("代理连接失败".into(), "请检查系统代理设置是否正确".into())
+    } else {
+        ("网络连接失败".into(), "请检查网络连接是否正常".into())
+    }
+}
+
+async fn probe_connectivity_with_retries(
+    ctx: &mut EvalContext,
+    body: &Value,
+) -> Result<(JsonCall, EvalProbeResult), EvalProbeResult> {
+    let max_retries = 2u32;
+
+    for attempt in 0..=max_retries {
+        if attempt > 0 {
+            tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+        }
+        match try_connectivity_once(ctx, body).await {
+            Ok(result) => return Ok(result),
+            Err(p) => {
+                // 仅在首次尝试且错误可重试时继续重试
+                if attempt < max_retries && is_retryable_http(&p) {
+                    continue;
+                }
+                // 网络错误（非 HTTP 响应）也重试
+                if attempt < max_retries
+                    && p.evidence
+                        .first()
+                        .map(|s| !s.starts_with("HTTP "))
+                        .unwrap_or(false)
+                {
+                    continue;
+                }
+                // 添加重试信息到 evidence
+                let mut final_probe = p;
+                if attempt > 0 {
+                    final_probe.evidence.push(format!("已重试 {} 次", attempt));
+                }
+                return Err(final_probe);
+            }
+        }
+    }
+    // 不可达
+    unreachable!()
+}
+
+/// 带重试的连通性探针；协议端点疑似配错时，尝试备用协议让检测继续跑完。
+async fn probe_connectivity(
+    ctx: &mut EvalContext,
+) -> Result<(JsonCall, EvalProbeResult), EvalProbeResult> {
+    let body = chat_body(ctx, "Reply with exactly: OK", false, 64, None);
+    match probe_connectivity_with_retries(ctx, &body).await {
+        Ok(result) => return Ok(result),
+        Err(mut primary_probe) => {
+            let original_provider = ctx.provider.clone();
+            let original_protocol = api_format_str(&original_provider.api_format);
+            for candidate in connectivity_fallback_providers(&original_provider) {
+                let candidate_protocol = api_format_str(&candidate.api_format);
+                let candidate_path = candidate.api_path.clone().unwrap_or_default();
+                ctx.provider = candidate;
+                let fallback_body = chat_body(ctx, "Reply with exactly: OK", false, 64, None);
+                match probe_connectivity_with_retries(ctx, &fallback_body).await {
+                    Ok((call, mut probe_result)) => {
+                        probe_result.status = "warn".into();
+                        probe_result.score = probe_result.score.min(80.0);
+                        probe_result.summary = format!(
+                            "当前配置为 {}，但 {} 兼容入口可用",
+                            original_protocol,
+                            protocol_display_name(&ctx.provider.api_format)
+                        );
+                        probe_result.evidence.push(format!(
+                            "自动试探协议: {} -> {}",
+                            original_protocol, candidate_protocol
+                        ));
+                        probe_result.evidence.push(format!(
+                            "建议配置: protocol={} path={}",
+                            candidate_protocol, candidate_path
+                        ));
+                        return Ok((call, probe_result));
+                    }
+                    Err(fallback_probe) => {
+                        primary_probe.evidence.push(format!(
+                            "备用协议 {} 也不可用: {}",
+                            candidate_protocol, fallback_probe.summary
+                        ));
+                    }
+                }
+            }
+            ctx.provider = original_provider;
+            Err(primary_probe)
+        }
+    }
+}
+
+fn protocol_display_name(fmt: &ApiFormat) -> &'static str {
+    match fmt {
+        ApiFormat::Anthropic => "Claude Messages",
+        ApiFormat::Openai => "OpenAI Chat",
+    }
+}
+
+fn connectivity_fallback_providers(provider: &Provider) -> Vec<Provider> {
+    let mut out = Vec::new();
+    match provider.api_format {
+        ApiFormat::Anthropic => {
+            let mut openai = provider.clone();
+            openai.api_format = ApiFormat::Openai;
+            openai.api_path = Some(fallback_openai_chat_path(provider));
+            out.push(openai);
+        }
+        ApiFormat::Openai => {
+            let mut anthropic = provider.clone();
+            anthropic.api_format = ApiFormat::Anthropic;
+            anthropic.api_path = Some(fallback_anthropic_messages_path(provider));
+            out.push(anthropic);
+        }
+    }
+    out
+}
+
+fn fallback_openai_chat_path(provider: &Provider) -> String {
+    let path = clean_api_path(provider.api_path.as_deref());
+    let lower = path.to_ascii_lowercase();
+    if lower.ends_with("/chat/completions") {
+        path
+    } else if lower.ends_with("/messages") {
+        format!(
+            "{}/chat/completions",
+            path.trim_end_matches("/messages").trim_end_matches('/')
+        )
+    } else if lower.ends_with("/responses") {
+        format!(
+            "{}/chat/completions",
+            path.trim_end_matches("/responses").trim_end_matches('/')
+        )
+    } else if path.is_empty() {
+        "/v1/chat/completions".into()
+    } else if lower.ends_with("/v1") {
+        format!("{}/chat/completions", path)
+    } else {
+        "/v1/chat/completions".into()
+    }
+}
+
+fn fallback_anthropic_messages_path(provider: &Provider) -> String {
+    let path = clean_api_path(provider.api_path.as_deref());
+    let lower = path.to_ascii_lowercase();
+    if lower.ends_with("/messages") {
+        path
+    } else if lower.ends_with("/chat/completions") {
+        format!(
+            "{}/messages",
+            path.trim_end_matches("/chat/completions")
+                .trim_end_matches('/')
+        )
+    } else if lower.ends_with("/responses") {
+        format!(
+            "{}/messages",
+            path.trim_end_matches("/responses").trim_end_matches('/')
+        )
+    } else if path.is_empty() {
+        "/v1/messages".into()
+    } else if lower.ends_with("/v1") {
+        format!("{}/messages", path)
+    } else {
+        "/v1/messages".into()
     }
 }
 
@@ -516,7 +880,14 @@ fn probe_response_structure(ctx: &EvalContext, call: &JsonCall) -> EvalProbeResu
                 add_check(
                     &mut checks,
                     &mut passed,
-                    json.get("output").and_then(|o| o.as_array()).map_or(false, |arr| arr.iter().any(|item| item.get("type").and_then(Value::as_str) == Some("message"))) || json.get("output_text").and_then(Value::as_str).is_some(),
+                    json.get("output")
+                        .and_then(|o| o.as_array())
+                        .map_or(false, |arr| {
+                            arr.iter().any(|item| {
+                                item.get("type").and_then(Value::as_str) == Some("message")
+                            })
+                        })
+                        || json.get("output_text").and_then(Value::as_str).is_some(),
                     "response output",
                 );
             } else {
@@ -627,12 +998,7 @@ fn probe_response_signature(ctx: &EvalContext, call: &JsonCall) -> EvalProbeResu
             } else {
                 obj.contains("chat.completion") || obj.contains("completion")
             };
-            add_check(
-                &mut checks,
-                &mut passed,
-                object_ok,
-                "object literal",
-            );
+            add_check(&mut checks, &mut passed, object_ok, "object literal");
             if uses_openai_responses(ctx) {
                 let status = json.get("status").and_then(Value::as_str).unwrap_or("");
                 add_check(
@@ -788,7 +1154,10 @@ async fn probe_canary(ctx: &mut EvalContext) -> EvalProbeResult {
                     8.0,
                     Some(call.latency_ms),
                     "Canary 请求返回非成功状态",
-                    vec![format!("HTTP {}", call.status), snippet(&call.body_text, 160)],
+                    vec![
+                        format!("HTTP {}", call.status),
+                        snippet(&call.body_text, 160),
+                    ],
                 );
             }
             let text = call
@@ -949,7 +1318,10 @@ async fn probe_tool_calling(ctx: &mut EvalContext) -> EvalProbeResult {
                     10.0,
                     Some(call.latency_ms),
                     "工具请求返回非成功状态",
-                    vec![format!("HTTP {}", call.status), snippet(&call.body_text, 160)],
+                    vec![
+                        format!("HTTP {}", call.status),
+                        snippet(&call.body_text, 160),
+                    ],
                 );
             }
             let Some(json) = call.json.as_ref() else {
@@ -1003,7 +1375,10 @@ async fn probe_vision_understanding(ctx: &mut EvalContext) -> EvalProbeResult {
                     8.0,
                     Some(call.latency_ms),
                     "图片请求返回非成功状态",
-                    vec![format!("HTTP {}", call.status), snippet(&call.body_text, 160)],
+                    vec![
+                        format!("HTTP {}", call.status),
+                        snippet(&call.body_text, 160),
+                    ],
                 );
             }
             let text = call
@@ -1020,9 +1395,11 @@ async fn probe_vision_understanding(ctx: &mut EvalContext) -> EvalProbeResult {
             } else {
                 evidence.push("json ×".into());
             }
-            let saw_image_words = ["red", "square", "image", "picture", "png", "红", "方", "图片"]
-                .iter()
-                .any(|w| text.contains(w));
+            let saw_image_words = [
+                "red", "square", "image", "picture", "png", "红", "方", "图片",
+            ]
+            .iter()
+            .any(|w| text.contains(w));
             if saw_image_words {
                 score += 55.0;
             }
@@ -1111,7 +1488,10 @@ async fn probe_prompt_injection(ctx: &mut EvalContext) -> EvalProbeResult {
                     8.0,
                     Some(call.latency_ms),
                     "注入探针返回非成功状态",
-                    vec![format!("HTTP {}", call.status), snippet(&call.body_text, 160)],
+                    vec![
+                        format!("HTTP {}", call.status),
+                        snippet(&call.body_text, 160),
+                    ],
                 );
             }
             let text = call
@@ -1258,7 +1638,10 @@ async fn probe_token_injection(ctx: &mut EvalContext) -> EvalProbeResult {
                     7.0,
                     Some(call.latency_ms),
                     "Token 探针返回非成功状态",
-                    vec![format!("HTTP {}", call.status), snippet(&call.body_text, 160)],
+                    vec![
+                        format!("HTTP {}", call.status),
+                        snippet(&call.body_text, 160),
+                    ],
                 );
             }
             let input_tokens = call
@@ -1329,7 +1712,10 @@ async fn probe_json_mode(ctx: &mut EvalContext) -> EvalProbeResult {
                     7.0,
                     Some(call.latency_ms),
                     "JSON 模式请求返回非成功状态",
-                    vec![format!("HTTP {}", call.status), snippet(&call.body_text, 160)],
+                    vec![
+                        format!("HTTP {}", call.status),
+                        snippet(&call.body_text, 160),
+                    ],
                 );
             }
             let text = call
@@ -1483,10 +1869,7 @@ fn clean_api_path(path: Option<&str>) -> String {
     if raw.is_empty() || raw == "/" {
         return String::new();
     }
-    format!(
-        "/{}",
-        raw.trim_start_matches('/').trim_end_matches('/')
-    )
+    format!("/{}", raw.trim_start_matches('/').trim_end_matches('/'))
 }
 
 fn is_official_dashscope_host(host: &str) -> bool {
@@ -2479,9 +2862,8 @@ fn build_capability_checks(ctx: &EvalContext, probes: &[EvalProbeResult]) -> Vec
         p.map(|p| p.summary.clone())
             .unwrap_or_else(|| "未检测".into())
     };
-    let evidence_from_probe = |p: Option<&EvalProbeResult>| {
-        p.map(|p| p.evidence.clone()).unwrap_or_default()
-    };
+    let evidence_from_probe =
+        |p: Option<&EvalProbeResult>| p.map(|p| p.evidence.clone()).unwrap_or_default();
     let usage_supported = ctx.usage.input_tokens > 0 || ctx.usage.output_tokens > 0;
     let reasoning_seen = probes.iter().any(|p| {
         p.evidence
@@ -2527,7 +2909,12 @@ fn build_capability_checks(ctx: &EvalContext, probes: &[EvalProbeResult]) -> Vec
         EvalCheck {
             key: "usage".into(),
             label: "Token 计量".into(),
-            status: if usage_supported { "supported" } else { "unknown" }.into(),
+            status: if usage_supported {
+                "supported"
+            } else {
+                "unknown"
+            }
+            .into(),
             detail: format!(
                 "input={} / output={}",
                 ctx.usage.input_tokens, ctx.usage.output_tokens
@@ -2559,7 +2946,12 @@ fn build_capability_checks(ctx: &EvalContext, probes: &[EvalProbeResult]) -> Vec
     checks.push(EvalCheck {
         key: "reasoning".into(),
         label: "Reasoning 内容".into(),
-        status: if reasoning_seen { "supported" } else { "unknown" }.into(),
+        status: if reasoning_seen {
+            "supported"
+        } else {
+            "unknown"
+        }
+        .into(),
         detail: if reasoning_seen {
             "响应中检测到 reasoning 字段".into()
         } else {
@@ -2947,8 +3339,8 @@ fn risk_level(score: f64) -> &'static str {
 }
 
 fn verdict(score: f64, caps: &[EvalCap]) -> String {
-    if caps.iter().any(|c| c.cap_value <= 0.0) {
-        "协议不可用，无法完成检测".into()
+    if caps.iter().any(|c| c.rule == "protocol_offline") {
+        "协议不可用，无法完成检测（请查看诊断结论中的排查提示）".into()
     } else if score >= 85.0 {
         "低风险：协议、能力与响应形态基本正常".into()
     } else if score >= 70.0 {

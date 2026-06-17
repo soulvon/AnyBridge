@@ -10,6 +10,12 @@ use sha2::{Digest, Sha256};
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc, Mutex,
+};
+use std::time::{SystemTime, UNIX_EPOCH};
+use tauri::{AppHandle, Emitter, State};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -52,6 +58,37 @@ pub struct ImportProvidersResult {
     pub messages: Vec<String>,
 }
 
+#[derive(Clone)]
+struct ProviderImportScanSession {
+    id: String,
+    cancelled: Arc<AtomicBool>,
+}
+
+#[derive(Default, Clone)]
+pub struct ProviderImportScanState {
+    active: Arc<Mutex<Option<ProviderImportScanSession>>>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImportScanProgressEvent {
+    pub scan_id: String,
+    pub phase: String,
+    pub source_key: String,
+    pub source_label: String,
+    pub status: String,
+    pub message: String,
+    pub completed: usize,
+    pub total: usize,
+    pub found: usize,
+    pub candidates: Vec<ImportProviderCandidate>,
+    pub notices: Vec<String>,
+    pub done: bool,
+    pub cancelled: bool,
+}
+
+const ALL_IMPORT_SOURCE_KEYS: [&str; 3] = ["cc-switch", "cockpit-tools", "cherry-studio"];
+
 #[tauri::command]
 pub fn scan_importable_providers(sources: Option<Vec<String>>) -> Result<ImportScanResult, String> {
     let mut candidates = Vec::new();
@@ -83,19 +120,277 @@ pub fn scan_importable_providers(sources: Option<Vec<String>>) -> Result<ImportS
     })
 }
 
+#[tauri::command]
+pub async fn start_provider_import_scan(
+    app: AppHandle,
+    state: State<'_, ProviderImportScanState>,
+    sources: Option<Vec<String>>,
+) -> Result<String, String> {
+    let selected_sources = selected_import_source_keys(sources);
+    if selected_sources.is_empty() {
+        return Err("没有可扫描的来源".to_string());
+    }
+
+    let scan_id = new_provider_import_scan_id();
+    let session = ProviderImportScanSession {
+        id: scan_id.clone(),
+        cancelled: Arc::new(AtomicBool::new(false)),
+    };
+
+    {
+        let mut active = state
+            .active
+            .lock()
+            .map_err(|_| "扫描状态锁定失败".to_string())?;
+        if let Some(previous) = active.take() {
+            previous.cancelled.store(true, Ordering::Relaxed);
+        }
+        *active = Some(session.clone());
+    }
+
+    let scan_state = state.inner().clone();
+    let app_handle = app.clone();
+    let scan_id_for_task = scan_id.clone();
+    tauri::async_runtime::spawn(async move {
+        run_provider_import_scan_task(app_handle, scan_state, session, selected_sources).await;
+    });
+
+    Ok(scan_id_for_task)
+}
+
+#[tauri::command]
+pub fn cancel_provider_import_scan(
+    state: State<'_, ProviderImportScanState>,
+) -> Result<(), String> {
+    let active = state
+        .active
+        .lock()
+        .map_err(|_| "扫描状态锁定失败".to_string())?;
+    if let Some(session) = active.as_ref() {
+        session.cancelled.store(true, Ordering::Relaxed);
+    }
+    Ok(())
+}
+
+async fn run_provider_import_scan_task(
+    app: AppHandle,
+    state: ProviderImportScanState,
+    session: ProviderImportScanSession,
+    sources: Vec<String>,
+) {
+    let total = sources.len();
+    let mut all_candidates = Vec::new();
+    let mut all_notices = Vec::new();
+
+    emit_provider_import_scan_event(
+        &app,
+        ImportScanProgressEvent {
+            scan_id: session.id.clone(),
+            phase: "started".to_string(),
+            source_key: String::new(),
+            source_label: String::new(),
+            status: "scanning".to_string(),
+            message: "开始扫描本机配置".to_string(),
+            completed: 0,
+            total,
+            found: 0,
+            candidates: Vec::new(),
+            notices: Vec::new(),
+            done: false,
+            cancelled: false,
+        },
+    );
+
+    for (idx, source_key) in sources.into_iter().enumerate() {
+        if session.cancelled.load(Ordering::Relaxed) {
+            emit_provider_import_cancelled(&app, &session.id, idx, total);
+            clear_provider_import_scan_session(&state, &session.id);
+            return;
+        }
+
+        let source_label = provider_import_source_label(&source_key).to_string();
+        emit_provider_import_scan_event(
+            &app,
+            ImportScanProgressEvent {
+                scan_id: session.id.clone(),
+                phase: "source-start".to_string(),
+                source_key: source_key.clone(),
+                source_label: source_label.clone(),
+                status: "scanning".to_string(),
+                message: format!("正在扫描 {}", source_label),
+                completed: idx,
+                total,
+                found: 0,
+                candidates: Vec::new(),
+                notices: Vec::new(),
+                done: false,
+                cancelled: false,
+            },
+        );
+
+        let source_for_worker = source_key.clone();
+        let scan_result =
+            tokio::task::spawn_blocking(move || scan_provider_import_source(&source_for_worker))
+                .await;
+        let (source_candidates, source_notices) = match scan_result {
+            Ok(result) => result,
+            Err(e) => (
+                Vec::new(),
+                vec![format!("{}：扫描任务异常：{}", source_label, e)],
+            ),
+        };
+
+        if session.cancelled.load(Ordering::Relaxed) {
+            emit_provider_import_cancelled(&app, &session.id, idx, total);
+            clear_provider_import_scan_session(&state, &session.id);
+            return;
+        }
+
+        let found = source_candidates.len();
+        all_candidates.extend(source_candidates.clone());
+        all_notices.extend(source_notices.clone());
+        emit_provider_import_scan_event(
+            &app,
+            ImportScanProgressEvent {
+                scan_id: session.id.clone(),
+                phase: "source-complete".to_string(),
+                source_key,
+                source_label: source_label.clone(),
+                status: if found > 0 { "found" } else { "empty" }.to_string(),
+                message: if found > 0 {
+                    format!("{}：找到 {} 个候选供应商", source_label, found)
+                } else {
+                    format!("{}：没有可直接导入的供应商", source_label)
+                },
+                completed: idx + 1,
+                total,
+                found,
+                candidates: source_candidates,
+                notices: source_notices,
+                done: false,
+                cancelled: false,
+            },
+        );
+    }
+
+    finalize_import_scan_candidates(&mut all_candidates);
+    emit_provider_import_scan_event(
+        &app,
+        ImportScanProgressEvent {
+            scan_id: session.id.clone(),
+            phase: "complete".to_string(),
+            source_key: String::new(),
+            source_label: String::new(),
+            status: "complete".to_string(),
+            message: format!("扫描完成：{} 个候选供应商", all_candidates.len()),
+            completed: total,
+            total,
+            found: all_candidates.len(),
+            candidates: all_candidates,
+            notices: all_notices,
+            done: true,
+            cancelled: false,
+        },
+    );
+    clear_provider_import_scan_session(&state, &session.id);
+}
+
+fn scan_provider_import_source(source_key: &str) -> (Vec<ImportProviderCandidate>, Vec<String>) {
+    let mut candidates = Vec::new();
+    let mut notices = Vec::new();
+    match source_key {
+        "cc-switch" => scan_cc_switch(&mut candidates, &mut notices),
+        "cockpit-tools" => scan_cockpit_tools(&mut candidates, &mut notices),
+        "cherry-studio" => scan_cherry_studio(&mut candidates, &mut notices),
+        _ => notices.push(format!("未知扫描来源：{}", source_key)),
+    }
+    (candidates, notices)
+}
+
+fn emit_provider_import_cancelled(app: &AppHandle, scan_id: &str, completed: usize, total: usize) {
+    emit_provider_import_scan_event(
+        app,
+        ImportScanProgressEvent {
+            scan_id: scan_id.to_string(),
+            phase: "cancelled".to_string(),
+            source_key: String::new(),
+            source_label: String::new(),
+            status: "cancelled".to_string(),
+            message: "扫描已取消".to_string(),
+            completed,
+            total,
+            found: 0,
+            candidates: Vec::new(),
+            notices: Vec::new(),
+            done: true,
+            cancelled: true,
+        },
+    );
+}
+
+fn emit_provider_import_scan_event(app: &AppHandle, payload: ImportScanProgressEvent) {
+    let _ = app.emit("provider-import-scan-progress", payload);
+}
+
+fn clear_provider_import_scan_session(state: &ProviderImportScanState, scan_id: &str) {
+    if let Ok(mut active) = state.active.lock() {
+        if active.as_ref().map(|s| s.id.as_str()) == Some(scan_id) {
+            *active = None;
+        }
+    }
+}
+
+fn new_provider_import_scan_id() -> String {
+    let millis = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_millis())
+        .unwrap_or_default();
+    format!("provider-import-{}", millis)
+}
+
 fn selected_import_sources(sources: Option<Vec<String>>) -> HashSet<String> {
-    const ALL: [&str; 3] = ["cc-switch", "cockpit-tools", "cherry-studio"];
+    selected_import_source_keys(sources).into_iter().collect()
+}
+
+fn selected_import_source_keys(sources: Option<Vec<String>>) -> Vec<String> {
     let selected: HashSet<String> = sources
         .unwrap_or_default()
         .into_iter()
         .map(|s| s.trim().to_ascii_lowercase())
-        .filter(|s| ALL.contains(&s.as_str()))
+        .filter(|s| ALL_IMPORT_SOURCE_KEYS.contains(&s.as_str()))
         .collect();
     if selected.is_empty() {
-        ALL.into_iter().map(str::to_string).collect()
+        ALL_IMPORT_SOURCE_KEYS
+            .into_iter()
+            .map(str::to_string)
+            .collect()
     } else {
-        selected
+        ALL_IMPORT_SOURCE_KEYS
+            .into_iter()
+            .filter(|key| selected.contains(*key))
+            .map(str::to_string)
+            .collect()
     }
+}
+
+fn provider_import_source_label(key: &str) -> &str {
+    match key {
+        "cc-switch" => "CC Switch",
+        "cockpit-tools" => "Cockpit Tools",
+        "cherry-studio" => "Cherry Studio",
+        _ => key,
+    }
+}
+
+fn finalize_import_scan_candidates(candidates: &mut Vec<ImportProviderCandidate>) {
+    let mut seen = HashSet::new();
+    candidates.retain(|c| seen.insert(candidate_signature(c)));
+    candidates.sort_by(|a, b| {
+        a.source
+            .cmp(&b.source)
+            .then_with(|| a.name.cmp(&b.name))
+            .then_with(|| a.api_host.cmp(&b.api_host))
+    });
 }
 
 #[tauri::command]
@@ -497,7 +792,7 @@ fn scan_cockpit_tools(candidates: &mut Vec<ImportProviderCandidate>, notices: &m
                 .get("supportsVision")
                 .and_then(Value::as_bool)
                 .unwrap_or(false);
-            let model = string_value(item, "model").unwrap_or_else(|| "gpt-5".to_string());
+            let model = string_value(item, "model").unwrap_or_default();
             let mut keys = api_key_entries(item.get("apiKeys").unwrap_or(&Value::Null));
             if keys.is_empty() {
                 if let Some(key) = string_value(item, "apiKeyUrl") {
@@ -529,10 +824,14 @@ fn scan_cockpit_tools(candidates: &mut Vec<ImportProviderCandidate>, notices: &m
                     default_model: model.clone(),
                     api_format: ApiFormat::Openai,
                     enabled: true,
-                    models: vec![model.clone()],
+                    models: if model.trim().is_empty() {
+                        Vec::new()
+                    } else {
+                        vec![model.clone()]
+                    },
                     capabilities: import_caps(supports_vision, false, false),
                     model_caps: HashMap::new(),
-                    warnings: vec!["源配置未提供模型列表，默认模型可在导入后编辑".to_string()],
+                    warnings: Vec::new(),
                 };
                 finalize_candidate(&mut candidate);
                 candidates.push(candidate);
@@ -560,21 +859,25 @@ fn scan_cherry_studio(candidates: &mut Vec<ImportProviderCandidate>, notices: &m
     add_named_file_matches(&mut paths, "cherrystudio.sqlite", 5, 30);
 
     let paths = existing_unique_paths(paths);
-    if paths.is_empty() {
-        notices.push(
-            "Cherry Studio：未发现 cherrystudio.sqlite；当前安装可能仍使用旧版 IndexedDB，暂未自动解析"
-                .to_string(),
-        );
-        return;
-    }
-
     let before = candidates.len();
-    for path in paths {
+    for path in &paths {
         scan_cherry_sqlite(&path, candidates, notices);
     }
+
+    let local_storage_paths = cherry_local_storage_leveldb_paths();
+    for path in &local_storage_paths {
+        scan_cherry_local_storage(path, candidates, notices);
+    }
+
     let found = candidates.len() - before;
     if found == 0 {
-        notices.push("Cherry Studio：已找到数据库，但没有可直接导入的供应商".to_string());
+        if paths.is_empty() && local_storage_paths.is_empty() {
+            notices.push(
+                "Cherry Studio：未发现 cherrystudio.sqlite 或 Local Storage/leveldb".to_string(),
+            );
+        } else {
+            notices.push("Cherry Studio：已找到本地数据，但没有可直接导入的供应商".to_string());
+        }
     }
 }
 
@@ -682,13 +985,7 @@ fn scan_cherry_sqlite(
         let (api_host, api_path) = normalize_endpoint(&base_url, &api_format, wire_api);
 
         let imported_models = model_map.get(&provider_id).cloned().unwrap_or_default();
-        let mut models: Vec<String> = imported_models.iter().map(|m| m.model_id.clone()).collect();
-        if models.is_empty() {
-            models.push(match api_format {
-                ApiFormat::Anthropic => "claude-sonnet-4-5".to_string(),
-                ApiFormat::Openai => "gpt-5".to_string(),
-            });
-        }
+        let models: Vec<String> = imported_models.iter().map(|m| m.model_id.clone()).collect();
         let vision = imported_models.iter().any(|m| m.vision);
         let tools = imported_models.iter().any(|m| m.tools);
         let mut model_caps = HashMap::new();
@@ -731,6 +1028,577 @@ fn scan_cherry_sqlite(
             candidates.push(candidate);
         }
     }
+}
+
+fn cherry_local_storage_leveldb_paths() -> Vec<PathBuf> {
+    let mut paths = Vec::new();
+    if let Some(data) = dirs::data_dir() {
+        paths.push(
+            data.join("CherryStudio")
+                .join("Local Storage")
+                .join("leveldb"),
+        );
+    }
+    if let Some(local) = dirs::data_local_dir() {
+        paths.push(
+            local
+                .join("CherryStudio")
+                .join("Local Storage")
+                .join("leveldb"),
+        );
+    }
+    if let Some(home) = dirs::home_dir() {
+        paths.push(
+            home.join(".cherrystudio")
+                .join("Local Storage")
+                .join("leveldb"),
+        );
+    }
+    existing_unique_dirs(paths)
+}
+
+fn scan_cherry_local_storage(
+    leveldb_dir: &Path,
+    candidates: &mut Vec<ImportProviderCandidate>,
+    notices: &mut Vec<String>,
+) {
+    let mut files = match fs::read_dir(leveldb_dir) {
+        Ok(entries) => entries
+            .flatten()
+            .map(|entry| entry.path())
+            .filter(|path| {
+                path.extension()
+                    .and_then(|ext| ext.to_str())
+                    .map(|ext| ext.eq_ignore_ascii_case("log") || ext.eq_ignore_ascii_case("ldb"))
+                    .unwrap_or(false)
+            })
+            .collect::<Vec<_>>(),
+        Err(e) => {
+            notices.push(format!("Cherry Studio：读取 Local Storage 目录失败：{}", e));
+            return;
+        }
+    };
+    files.sort();
+
+    let mut latest: Option<(PathBuf, Value)> = None;
+    for path in files {
+        match fs::read(&path) {
+            Ok(bytes) => {
+                let roots = match path
+                    .extension()
+                    .and_then(|ext| ext.to_str())
+                    .map(|ext| ext.to_ascii_lowercase())
+                    .as_deref()
+                {
+                    Some("ldb") => cherry_persist_roots_from_leveldb_table(&bytes),
+                    _ => cherry_persist_roots_from_leveldb_log(&bytes),
+                };
+                for root in roots {
+                    latest = Some((path.clone(), root));
+                }
+            }
+            Err(e) => notices.push(format!(
+                "Cherry Studio：读取 Local Storage 文件 {} 失败：{}",
+                path.display(),
+                e
+            )),
+        }
+    }
+
+    if let Some((source_path, root)) = latest {
+        scan_cherry_persisted_root(&source_path, &root, candidates);
+    }
+}
+
+const CHERRY_PERSIST_KEY: &[u8] = b"persist:cherry-studio";
+const LEVELDB_LOG_BLOCK_SIZE: usize = 32 * 1024;
+const LEVELDB_LOG_HEADER_SIZE: usize = 7;
+const LEVELDB_TABLE_FOOTER_SIZE: usize = 48;
+const LEVELDB_TABLE_TRAILER_SIZE: usize = 5;
+const LEVELDB_TABLE_MAGIC: u64 = 0xdb4775248b80fb57;
+
+fn cherry_persist_roots_from_leveldb_log(bytes: &[u8]) -> Vec<Value> {
+    let mut roots = Vec::new();
+    for record in leveldb_log_records(bytes) {
+        roots.extend(cherry_persist_roots_from_write_batch(&record));
+    }
+    roots
+}
+
+fn cherry_persist_roots_from_leveldb_table(bytes: &[u8]) -> Vec<Value> {
+    let mut roots = Vec::new();
+    for (key, value) in leveldb_table_entries(bytes) {
+        if bytes_contains(&key, CHERRY_PERSIST_KEY) {
+            if let Some(root) = parse_cherry_persist_value(&value) {
+                roots.push(root);
+            }
+        }
+    }
+    roots
+}
+
+fn leveldb_table_entries(bytes: &[u8]) -> Vec<(Vec<u8>, Vec<u8>)> {
+    if bytes.len() < LEVELDB_TABLE_FOOTER_SIZE {
+        return Vec::new();
+    }
+
+    let magic_offset = bytes.len() - 8;
+    if u64::from_le_bytes(bytes[magic_offset..].try_into().unwrap_or([0; 8])) != LEVELDB_TABLE_MAGIC
+    {
+        return Vec::new();
+    }
+
+    let footer = &bytes[bytes.len() - LEVELDB_TABLE_FOOTER_SIZE..];
+    let mut pos = 0;
+    if leveldb_read_block_handle(footer, &mut pos).is_none() {
+        return Vec::new();
+    }
+    let Some((index_offset, index_size)) = leveldb_read_block_handle(footer, &mut pos) else {
+        return Vec::new();
+    };
+    let Some(index_block) = leveldb_table_block(bytes, index_offset, index_size) else {
+        return Vec::new();
+    };
+
+    let mut entries = Vec::new();
+    for (_, handle_value) in leveldb_block_entries(&index_block) {
+        let mut handle_pos = 0;
+        let Some((data_offset, data_size)) =
+            leveldb_read_block_handle(&handle_value, &mut handle_pos)
+        else {
+            continue;
+        };
+        if let Some(data_block) = leveldb_table_block(bytes, data_offset, data_size) {
+            entries.extend(leveldb_block_entries(&data_block));
+        }
+    }
+    entries
+}
+
+fn leveldb_table_block(bytes: &[u8], offset: usize, size: usize) -> Option<Vec<u8>> {
+    let trailer_offset = offset.checked_add(size)?;
+    let trailer_end = trailer_offset.checked_add(LEVELDB_TABLE_TRAILER_SIZE)?;
+    if trailer_end > bytes.len() {
+        return None;
+    }
+    let block = &bytes[offset..trailer_offset];
+    match bytes[trailer_offset] {
+        0 => Some(block.to_vec()),
+        1 => snap::raw::Decoder::new().decompress_vec(block).ok(),
+        _ => None,
+    }
+}
+
+fn leveldb_read_block_handle(bytes: &[u8], pos: &mut usize) -> Option<(usize, usize)> {
+    let offset = read_varint_usize(bytes, pos)?;
+    let size = read_varint_usize(bytes, pos)?;
+    Some((offset, size))
+}
+
+fn leveldb_block_entries(block: &[u8]) -> Vec<(Vec<u8>, Vec<u8>)> {
+    let mut entries = Vec::new();
+    if block.len() < 4 {
+        return entries;
+    }
+
+    let restart_count_offset = block.len() - 4;
+    let restart_count =
+        u32::from_le_bytes(block[restart_count_offset..].try_into().unwrap_or([0; 4])) as usize;
+    let Some(restart_table_len) = restart_count.checked_mul(4) else {
+        return entries;
+    };
+    if restart_count_offset < restart_table_len {
+        return entries;
+    }
+    let entries_end = restart_count_offset - restart_table_len;
+
+    let mut pos = 0;
+    let mut previous_key: Vec<u8> = Vec::new();
+    while pos < entries_end {
+        let Some(shared) = read_varint_usize(block, &mut pos) else {
+            break;
+        };
+        let Some(non_shared) = read_varint_usize(block, &mut pos) else {
+            break;
+        };
+        let Some(value_len) = read_varint_usize(block, &mut pos) else {
+            break;
+        };
+        if shared > previous_key.len() {
+            break;
+        }
+        let Some(key_end) = pos.checked_add(non_shared) else {
+            break;
+        };
+        let Some(value_end) = key_end.checked_add(value_len) else {
+            break;
+        };
+        if value_end > entries_end {
+            break;
+        }
+
+        let mut key = previous_key[..shared].to_vec();
+        key.extend_from_slice(&block[pos..key_end]);
+        let value = block[key_end..value_end].to_vec();
+        previous_key = key.clone();
+        entries.push((key, value));
+        pos = value_end;
+    }
+    entries
+}
+
+fn leveldb_log_records(bytes: &[u8]) -> Vec<Vec<u8>> {
+    let mut records = Vec::new();
+    let mut partial = Vec::new();
+    let mut block_start = 0;
+
+    while block_start < bytes.len() {
+        let block_end = (block_start + LEVELDB_LOG_BLOCK_SIZE).min(bytes.len());
+        let mut pos = block_start;
+
+        while pos + LEVELDB_LOG_HEADER_SIZE <= block_end {
+            let len = u16::from_le_bytes([bytes[pos + 4], bytes[pos + 5]]) as usize;
+            let record_type = bytes[pos + 6];
+            pos += LEVELDB_LOG_HEADER_SIZE;
+
+            if len == 0 && record_type == 0 {
+                break;
+            }
+            if pos + len > block_end {
+                break;
+            }
+
+            let data = &bytes[pos..pos + len];
+            pos += len;
+
+            match record_type {
+                1 => records.push(data.to_vec()),
+                2 => {
+                    partial.clear();
+                    partial.extend_from_slice(data);
+                }
+                3 => {
+                    if !partial.is_empty() {
+                        partial.extend_from_slice(data);
+                    }
+                }
+                4 => {
+                    if !partial.is_empty() {
+                        partial.extend_from_slice(data);
+                        records.push(std::mem::take(&mut partial));
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        block_start += LEVELDB_LOG_BLOCK_SIZE;
+    }
+
+    records
+}
+
+fn cherry_persist_roots_from_write_batch(record: &[u8]) -> Vec<Value> {
+    let mut roots = Vec::new();
+    if record.len() < 12 {
+        return roots;
+    }
+
+    let mut pos = 12;
+    while pos < record.len() {
+        let tag = record[pos];
+        pos += 1;
+
+        let Some(key_len) = read_varint_usize(record, &mut pos) else {
+            break;
+        };
+        if pos + key_len > record.len() {
+            break;
+        }
+        let key = &record[pos..pos + key_len];
+        pos += key_len;
+
+        match tag {
+            0 => {}
+            1 => {
+                let Some(value_len) = read_varint_usize(record, &mut pos) else {
+                    break;
+                };
+                if pos + value_len > record.len() {
+                    break;
+                }
+                let value = &record[pos..pos + value_len];
+                pos += value_len;
+
+                if bytes_contains(key, CHERRY_PERSIST_KEY) {
+                    if let Some(root) = parse_cherry_persist_value(value) {
+                        roots.push(root);
+                    }
+                }
+            }
+            _ => break,
+        }
+    }
+
+    roots
+}
+
+fn read_varint_usize(bytes: &[u8], pos: &mut usize) -> Option<usize> {
+    let mut value: u64 = 0;
+    let mut shift = 0;
+    while *pos < bytes.len() && shift <= 63 {
+        let byte = bytes[*pos];
+        *pos += 1;
+        value |= ((byte & 0x7f) as u64) << shift;
+        if byte & 0x80 == 0 {
+            return usize::try_from(value).ok();
+        }
+        shift += 7;
+    }
+    None
+}
+
+fn bytes_contains(haystack: &[u8], needle: &[u8]) -> bool {
+    !needle.is_empty()
+        && haystack
+            .windows(needle.len())
+            .any(|window| window == needle)
+}
+
+fn parse_cherry_persist_value(value: &[u8]) -> Option<Value> {
+    let json = decode_cherry_local_storage_json(value)?;
+    serde_json::from_str(&json).ok().or_else(|| {
+        balanced_json_prefix(&json).and_then(|prefix| serde_json::from_str(prefix).ok())
+    })
+}
+
+fn decode_cherry_local_storage_json(value: &[u8]) -> Option<String> {
+    if let Some(start) = find_utf16_json_start(value) {
+        let units = value[start..]
+            .chunks_exact(2)
+            .map(|chunk| u16::from_le_bytes([chunk[0], chunk[1]]))
+            .collect::<Vec<_>>();
+        let decoded = String::from_utf16_lossy(&units);
+        return Some(decoded.trim_end_matches('\0').to_string());
+    }
+
+    let start = value.iter().position(|byte| *byte == b'{')?;
+    std::str::from_utf8(&value[start..])
+        .ok()
+        .map(|s| s.trim_end_matches('\0').to_string())
+}
+
+fn find_utf16_json_start(value: &[u8]) -> Option<usize> {
+    value.windows(2).position(|window| window == [b'{', 0])
+}
+
+fn balanced_json_prefix(value: &str) -> Option<&str> {
+    let mut depth = 0usize;
+    let mut in_string = false;
+    let mut escaped = false;
+    let mut started = false;
+
+    for (idx, ch) in value.char_indices() {
+        if in_string {
+            if escaped {
+                escaped = false;
+            } else if ch == '\\' {
+                escaped = true;
+            } else if ch == '"' {
+                in_string = false;
+            }
+            continue;
+        }
+
+        match ch {
+            '"' => in_string = true,
+            '{' => {
+                depth += 1;
+                started = true;
+            }
+            '}' => {
+                depth = depth.saturating_sub(1);
+                if started && depth == 0 {
+                    return value.get(..idx + ch.len_utf8());
+                }
+            }
+            _ => {}
+        }
+    }
+
+    None
+}
+
+fn scan_cherry_persisted_root(
+    source_path: &Path,
+    root: &Value,
+    candidates: &mut Vec<ImportProviderCandidate>,
+) {
+    let Some(llm) = cherry_llm_state(root) else {
+        return;
+    };
+    let Some(providers) = llm.get("providers").and_then(Value::as_array) else {
+        return;
+    };
+
+    for provider in providers {
+        scan_cherry_persisted_provider(source_path, provider, candidates);
+    }
+}
+
+fn cherry_llm_state(root: &Value) -> Option<Value> {
+    match root.get("llm")? {
+        Value::String(raw) => serde_json::from_str(raw).ok(),
+        value @ Value::Object(_) => Some(value.clone()),
+        _ => None,
+    }
+}
+
+fn scan_cherry_persisted_provider(
+    source_path: &Path,
+    provider: &Value,
+    candidates: &mut Vec<ImportProviderCandidate>,
+) {
+    let provider_id = string_value(provider, "id").unwrap_or_else(|| {
+        let mut hasher = Sha256::new();
+        hasher.update(provider.to_string().as_bytes());
+        format!("cherry-{}", &hex::encode(hasher.finalize())[..12])
+    });
+    let name = string_value(provider, "name").unwrap_or_else(|| provider_id.clone());
+    let Some(api_key) = string_value(provider, "apiKey")
+        .or_else(|| string_value(provider, "api_key"))
+        .or_else(|| string_value(provider, "key"))
+    else {
+        return;
+    };
+    let Some((api_format, wire_api)) = cherry_provider_api_format(provider) else {
+        return;
+    };
+    let Some(base_url) = cherry_provider_base_url(provider, &api_format) else {
+        return;
+    };
+
+    let (models, model_caps) = cherry_provider_models(provider);
+    let vision = model_caps.values().any(|caps| caps.vision);
+    let tools = model_caps.values().any(|caps| caps.tools);
+    let mut warnings = Vec::new();
+    if provider
+        .get("enabled")
+        .and_then(Value::as_bool)
+        .is_some_and(|enabled| !enabled)
+    {
+        warnings.push("源供应商在 Cherry Studio 中未启用，导入后默认启用".to_string());
+    }
+
+    let (api_host, api_path) = normalize_endpoint(&base_url, &api_format, wire_api.as_deref());
+    let mut candidate = ImportProviderCandidate {
+        id: String::new(),
+        source: "Cherry Studio".to_string(),
+        source_id: format!("cherry-local:{}", provider_id),
+        source_path: source_path.display().to_string(),
+        name,
+        api_host,
+        api_key,
+        api_path,
+        default_model: models.first().cloned().unwrap_or_default(),
+        api_format,
+        enabled: true,
+        models,
+        capabilities: import_caps(vision, tools, false),
+        model_caps,
+        warnings,
+    };
+    finalize_candidate(&mut candidate);
+    candidates.push(candidate);
+}
+
+fn cherry_provider_api_format(provider: &Value) -> Option<(ApiFormat, Option<String>)> {
+    let provider_type = string_value(provider, "type")
+        .unwrap_or_else(|| "openai".to_string())
+        .to_ascii_lowercase();
+    if provider_type.contains("anthropic") {
+        return Some((ApiFormat::Anthropic, None));
+    }
+
+    let openai_compatible = provider_type.is_empty()
+        || provider_type.contains("openai")
+        || matches!(
+            provider_type.as_str(),
+            "new-api" | "ollama" | "lmstudio" | "azure-openai"
+        );
+    if !openai_compatible {
+        return None;
+    }
+
+    let wire_api = if provider_type.contains("response") {
+        Some("responses".to_string())
+    } else {
+        None
+    };
+    Some((ApiFormat::Openai, wire_api))
+}
+
+fn cherry_provider_base_url(provider: &Value, api_format: &ApiFormat) -> Option<String> {
+    let keys: &[&str] = match api_format {
+        ApiFormat::Anthropic => &[
+            "anthropicApiHost",
+            "anthropic_api_host",
+            "apiHost",
+            "api_host",
+            "baseUrl",
+            "base_url",
+            "url",
+        ],
+        ApiFormat::Openai => &["apiHost", "api_host", "baseUrl", "base_url", "url"],
+    };
+
+    keys.iter()
+        .find_map(|key| string_value(provider, key))
+        .filter(|value| looks_like_url(value))
+}
+
+fn cherry_provider_models(provider: &Value) -> (Vec<String>, HashMap<String, ModelCaps>) {
+    let mut models = Vec::new();
+    let mut model_caps = HashMap::new();
+
+    let Some(items) = provider.get("models").and_then(Value::as_array) else {
+        return (models, model_caps);
+    };
+
+    for item in items {
+        if item
+            .get("enabled")
+            .and_then(Value::as_bool)
+            .is_some_and(|enabled| !enabled)
+        {
+            continue;
+        }
+        let Some(model_id) = item
+            .as_str()
+            .map(str::to_string)
+            .or_else(|| string_value(item, "id"))
+            .or_else(|| string_value(item, "modelId"))
+            .or_else(|| string_value(item, "name"))
+        else {
+            continue;
+        };
+        if model_id.trim().is_empty() {
+            continue;
+        }
+
+        let caps = ModelCaps {
+            vision: recursive_string_contains(item, "vision")
+                || recursive_string_contains(item, "image"),
+            tools: recursive_string_contains(item, "tool")
+                || recursive_string_contains(item, "function"),
+        };
+        if caps.vision || caps.tools {
+            model_caps.insert(model_id.clone(), caps);
+        }
+        models.push(model_id);
+    }
+
+    (unique_strings(models), model_caps)
 }
 
 #[derive(Debug, Clone)]
@@ -1056,12 +1924,16 @@ fn normalize_endpoint(
                         format!("{}/chat/completions", path)
                     } else if lower_path.ends_with("/compatible-mode") {
                         format!("{}/v1/chat/completions", path)
-                    } else if lower_path.ends_with("/responses") || lower_path.ends_with("/chat/completions") {
+                    } else if lower_path.ends_with("/responses")
+                        || lower_path.ends_with("/chat/completions")
+                    {
                         path
                     } else {
                         "/compatible-mode/v1/chat/completions".to_string()
                     }
-                } else if lower_path.ends_with("/responses") || lower_path.ends_with("/chat/completions") {
+                } else if lower_path.ends_with("/responses")
+                    || lower_path.ends_with("/chat/completions")
+                {
                     path
                 } else if is_responses {
                     if lower_path.is_empty() || lower_path == "/" {
@@ -1069,17 +1941,19 @@ fn normalize_endpoint(
                     } else if lower_path.ends_with("/v1") {
                         format!("{}/responses", path)
                     } else {
-                        "/v1/responses".to_string()
+                        format!("{}/v1/responses", path)
                     }
                 } else if lower_path.ends_with("/v1") {
                     format!("{}/chat/completions", path)
+                } else if !lower_path.is_empty() && lower_path != "/" {
+                    format!("{}/v1/chat/completions", path)
                 } else {
                     "/v1/chat/completions".to_string()
                 }
             }
         };
 
-        (host, Some(api_path))
+        split_endpoint_prefix(host, api_path, api_format)
     } else {
         let api_path = match api_format {
             ApiFormat::Anthropic => "/v1/messages",
@@ -1098,19 +1972,50 @@ fn normalize_endpoint(
     }
 }
 
+fn split_endpoint_prefix(
+    host: String,
+    api_path: String,
+    api_format: &ApiFormat,
+) -> (String, Option<String>) {
+    if matches!(api_format, ApiFormat::Openai) && is_official_dashscope_host(&host) {
+        return (host, Some(api_path));
+    }
+
+    let path = api_path.trim_end_matches('/').to_string();
+    if path.is_empty() || path == "/" {
+        return (host, None);
+    }
+
+    let segments: Vec<&str> = path.split('/').collect();
+    if let Some(v1_index) = segments
+        .iter()
+        .position(|segment| segment.eq_ignore_ascii_case("v1"))
+    {
+        let prefix = segments[..v1_index].join("/");
+        let suffix = segments[v1_index..].join("/");
+        let api_host = if prefix.trim_matches('/').is_empty() {
+            host
+        } else {
+            format!(
+                "{}{}",
+                host.trim_end_matches('/'),
+                format!("/{}", prefix.trim_matches('/'))
+            )
+        };
+        return (
+            api_host,
+            Some(format!("/{}", suffix.trim_start_matches('/'))),
+        );
+    }
+
+    (host, Some(path))
+}
+
 fn finalize_candidate(candidate: &mut ImportProviderCandidate) {
     candidate.api_host = candidate.api_host.trim_end_matches('/').to_string();
     candidate.models = unique_strings(candidate.models.clone());
-    if candidate.default_model.trim().is_empty() {
-        candidate.default_model = match candidate.api_format {
-            ApiFormat::Anthropic => "claude-sonnet-4-5".to_string(),
-            ApiFormat::Openai => "gpt-5".to_string(),
-        };
-        candidate
-            .warnings
-            .push("源配置未提供默认模型，已写入可编辑的兜底模型".to_string());
-    }
-    if !candidate.models.contains(&candidate.default_model) {
+    candidate.default_model = candidate.default_model.trim().to_string();
+    if !candidate.default_model.is_empty() && !candidate.models.contains(&candidate.default_model) {
         candidate.models.insert(0, candidate.default_model.clone());
     }
     candidate.capabilities = normalize_caps(candidate.capabilities.clone());
@@ -1353,4 +2258,207 @@ fn existing_unique_paths(paths: Vec<PathBuf>) -> Vec<PathBuf> {
         }
     }
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn parses_cherry_local_storage_leveldb_log() {
+        let value = cherry_persist_test_value();
+        let mut batch = Vec::new();
+        batch.extend_from_slice(&1u64.to_le_bytes());
+        batch.extend_from_slice(&1u32.to_le_bytes());
+        batch.push(1);
+        let key = b"_file://\0\x01persist:cherry-studio";
+        push_varint(&mut batch, key.len());
+        batch.extend_from_slice(key);
+        push_varint(&mut batch, value.len());
+        batch.extend_from_slice(&value);
+
+        let log = encode_leveldb_log(&batch);
+        let roots = cherry_persist_roots_from_leveldb_log(&log);
+        assert_eq!(roots.len(), 1);
+
+        let mut candidates = Vec::new();
+        scan_cherry_persisted_root(Path::new("000123.log"), &roots[0], &mut candidates);
+
+        assert_eq!(candidates.len(), 1);
+        let candidate = &candidates[0];
+        assert_eq!(candidate.name, "Custom OpenAI");
+        assert_eq!(candidate.api_format, ApiFormat::Openai);
+        assert_eq!(candidate.api_host, "https://api.example.com");
+        assert_eq!(candidate.api_path.as_deref(), Some("/v1/responses"));
+        assert_eq!(candidate.models, vec!["gpt-test"]);
+        assert!(candidate.capabilities.vision);
+        assert!(candidate.capabilities.tools);
+        assert!(candidate
+            .warnings
+            .iter()
+            .any(|warning| warning.contains("未启用")));
+    }
+
+    #[test]
+    fn parses_cherry_local_storage_leveldb_table() {
+        let key = b"_file://\0\x01persist:cherry-studio";
+        let value = cherry_persist_test_value();
+        let table = encode_leveldb_table(key, &value, true);
+
+        let roots = cherry_persist_roots_from_leveldb_table(&table);
+        assert_eq!(roots.len(), 1);
+
+        let mut candidates = Vec::new();
+        scan_cherry_persisted_root(Path::new("000123.ldb"), &roots[0], &mut candidates);
+        assert_eq!(candidates.len(), 1);
+        assert_eq!(candidates[0].name, "Custom OpenAI");
+        assert_eq!(candidates[0].api_path.as_deref(), Some("/v1/responses"));
+    }
+
+    fn cherry_persist_test_value() -> Vec<u8> {
+        let llm = json!({
+            "providers": [
+                {
+                    "id": "custom-openai",
+                    "name": "Custom OpenAI",
+                    "type": "openai-response",
+                    "apiKey": "sk-test",
+                    "apiHost": "https://api.example.com",
+                    "models": [
+                        { "id": "gpt-test", "capabilities": ["vision", "tools"] },
+                        { "id": "disabled-test", "enabled": false }
+                    ],
+                    "enabled": false
+                },
+                {
+                    "id": "gemini",
+                    "name": "Gemini",
+                    "type": "gemini",
+                    "apiKey": "AIza-test",
+                    "apiHost": "https://generativelanguage.googleapis.com",
+                    "models": [{ "id": "gemini-test" }]
+                }
+            ]
+        });
+        let root = json!({
+            "llm": llm.to_string(),
+            "_persist": "{\"version\":207,\"rehydrated\":true}"
+        });
+
+        let mut value = vec![0xad, 0x94, 0x1a, 0x00];
+        for unit in root.to_string().encode_utf16() {
+            value.extend_from_slice(&unit.to_le_bytes());
+        }
+        value
+    }
+
+    fn push_varint(out: &mut Vec<u8>, mut value: usize) {
+        while value >= 0x80 {
+            out.push((value as u8 & 0x7f) | 0x80);
+            value >>= 7;
+        }
+        out.push(value as u8);
+    }
+
+    fn encode_leveldb_log(logical_record: &[u8]) -> Vec<u8> {
+        let mut out = Vec::new();
+        let mut offset = 0;
+        let mut first = true;
+
+        while offset < logical_record.len() {
+            let block_offset = out.len() % LEVELDB_LOG_BLOCK_SIZE;
+            if LEVELDB_LOG_BLOCK_SIZE - block_offset <= LEVELDB_LOG_HEADER_SIZE {
+                out.resize(out.len() + LEVELDB_LOG_BLOCK_SIZE - block_offset, 0);
+            }
+
+            let block_offset = out.len() % LEVELDB_LOG_BLOCK_SIZE;
+            let available = LEVELDB_LOG_BLOCK_SIZE - block_offset - LEVELDB_LOG_HEADER_SIZE;
+            let chunk_len = available.min(logical_record.len() - offset);
+            let last = offset + chunk_len >= logical_record.len();
+            let record_type = match (first, last) {
+                (true, true) => 1,
+                (true, false) => 2,
+                (false, true) => 4,
+                (false, false) => 3,
+            };
+
+            out.extend_from_slice(&[0, 0, 0, 0]);
+            out.extend_from_slice(&(chunk_len as u16).to_le_bytes());
+            out.push(record_type);
+            out.extend_from_slice(&logical_record[offset..offset + chunk_len]);
+
+            offset += chunk_len;
+            first = false;
+        }
+
+        out
+    }
+
+    fn encode_leveldb_table(key: &[u8], value: &[u8], snappy: bool) -> Vec<u8> {
+        let data_block = encode_leveldb_block(&[(key.to_vec(), value.to_vec())]);
+        let data_block = if snappy {
+            snap::raw::Encoder::new()
+                .compress_vec(&data_block)
+                .expect("compress test block")
+        } else {
+            data_block
+        };
+        let data_offset = 0usize;
+        let data_size = data_block.len();
+
+        let mut out = Vec::new();
+        out.extend_from_slice(&data_block);
+        out.push(if snappy { 1 } else { 0 });
+        out.extend_from_slice(&[0, 0, 0, 0]);
+
+        let meta_offset = out.len();
+        let meta_block = encode_leveldb_block(&[]);
+        let meta_size = meta_block.len();
+        out.extend_from_slice(&meta_block);
+        out.push(0);
+        out.extend_from_slice(&[0, 0, 0, 0]);
+
+        let mut data_handle = Vec::new();
+        push_varint(&mut data_handle, data_offset);
+        push_varint(&mut data_handle, data_size);
+        let index_offset = out.len();
+        let index_block = encode_leveldb_block(&[(b"z".to_vec(), data_handle)]);
+        let index_size = index_block.len();
+        out.extend_from_slice(&index_block);
+        out.push(0);
+        out.extend_from_slice(&[0, 0, 0, 0]);
+
+        let mut footer = Vec::new();
+        push_varint(&mut footer, meta_offset);
+        push_varint(&mut footer, meta_size);
+        push_varint(&mut footer, index_offset);
+        push_varint(&mut footer, index_size);
+        footer.resize(LEVELDB_TABLE_FOOTER_SIZE - 8, 0);
+        footer.extend_from_slice(&LEVELDB_TABLE_MAGIC.to_le_bytes());
+        out.extend_from_slice(&footer);
+        out
+    }
+
+    fn encode_leveldb_block(entries: &[(Vec<u8>, Vec<u8>)]) -> Vec<u8> {
+        let mut out = Vec::new();
+        let mut previous = Vec::new();
+        let restart_offset = 0u32;
+        for (key, value) in entries {
+            let shared = previous
+                .iter()
+                .zip(key.iter())
+                .take_while(|(a, b)| a == b)
+                .count();
+            push_varint(&mut out, shared);
+            push_varint(&mut out, key.len() - shared);
+            push_varint(&mut out, value.len());
+            out.extend_from_slice(&key[shared..]);
+            out.extend_from_slice(value);
+            previous = key.clone();
+        }
+        out.extend_from_slice(&restart_offset.to_le_bytes());
+        out.extend_from_slice(&1u32.to_le_bytes());
+        out
+    }
 }

@@ -8,7 +8,9 @@ const scriptFiles = [
   'ui/assets/scripts/30-providers-eval.js',
   'ui/assets/scripts/40-model-picker.js',
   'ui/assets/scripts/50-model-map.js',
+  'ui/assets/scripts/55-platforms.js',
   'ui/assets/scripts/60-updater.js',
+  'ui/assets/scripts/70-healthcheck.js',
   'ui/assets/scripts/90-init.js',
 ];
 
@@ -18,6 +20,7 @@ const styleFiles = [
   'ui/assets/styles/20-providers-models.css',
   'ui/assets/styles/30-pages.css',
   'ui/assets/styles/40-modals.css',
+  'ui/assets/styles/50-platforms.css',
 ];
 
 function fail(message) {

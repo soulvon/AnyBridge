@@ -18,6 +18,7 @@ import {
   wrapEnvelope, endOfStreamEnvelope, streamHeaders,
   tryGunzip,
 } from '../connect.js';
+import { httpsAgentFor } from '../system-proxy.js';
 
 const VOYAGE_API_KEY = process.env.VOYAGE_API_KEY || '';
 const VOYAGE_MODEL = 'voyage-3-lite';  // 512 dims native, code-optimized
@@ -35,6 +36,7 @@ function callVoyageAPI(texts, inputType = 'document') {
     });
 
     const req = https.request({
+      agent: httpsAgentFor(),
       hostname: 'api.voyageai.com',
       path: '/v1/embeddings',
       method: 'POST',

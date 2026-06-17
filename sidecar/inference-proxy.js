@@ -10,6 +10,7 @@
 
 import http2 from 'node:http2';
 import https from 'node:https';
+import { httpsAgentFor } from './system-proxy.js';
 import { handleGetChatMessage } from './handlers/chat.js';
 import { listenWithReclaim } from './port-utils.js';
 
@@ -40,6 +41,7 @@ function forwardToCodeium(body, stream, headers, path, id) {
   fwdHeaders['content-length'] = body.length;
 
   const fwdReq = https.request({
+    agent: httpsAgentFor(),
     hostname: UPSTREAM,
     port: 443,
     path,

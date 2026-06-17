@@ -14,6 +14,7 @@ import { recordRequest, recordUsage, recordError, recordLatency } from '../stats
 import { getInjectedByUid, getSlot, loadProviders, resolveTarget, rememberProviderToolSchemaCompat, updateModelCapabilities } from '../provider-pool.js';
 import { mitmLog } from '../mitm-logger.js';
 import { getRuntimeModelSlotStatus } from '../rename-models.js';
+import { httpsAgentFor } from '../system-proxy.js';
 
 // ─── Config ────────────────────────────────────────────────
 
@@ -519,7 +520,7 @@ function streamAnthropic(req, res, { systemPrompt, messages, tools, toolChoice, 
   });
 
   const apiReq = https.request({
-    agent: HTTPS_AGENT,
+    agent: httpsAgentFor(HTTPS_AGENT),
     hostname: conn.host,
     port: 443,
     path: conn.apiPath,
@@ -687,7 +688,7 @@ function streamOpenAI(req, res, { systemPrompt, messages, tools, toolChoice, res
   if (useGzip) reqHeaders['content-encoding'] = 'gzip';
 
   const apiReq = https.request({
-    agent: HTTPS_AGENT,
+    agent: httpsAgentFor(HTTPS_AGENT),
     hostname: conn.host,
     port: 443,
     path: conn.apiPath,
@@ -866,7 +867,7 @@ function streamOpenAIChatCompletions(req, res, { systemPrompt, messages, tools, 
   let failed = false;
 
   const apiReq = https.request({
-    agent: HTTPS_AGENT,
+    agent: httpsAgentFor(HTTPS_AGENT),
     hostname: conn.host,
     port: 443,
     path: conn.apiPath,

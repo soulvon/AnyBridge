@@ -1,6 +1,6 @@
 // ═══════ INIT ═══════
 async function syncAppVersionDisplay() {
-  let label = 'v1.2.5';
+  let label = 'v1.2.16';
   try {
     const v = await invoke('get_app_version');
     if (v) label = 'v' + v;
@@ -33,24 +33,36 @@ async function init() {
 
   await loadAndFillConfig();
 
-  // 加载保存的 target_ide 配置
-  try {
-    const config = await invoke('load_config') || {};
-    if (config.target_ide) {
-      const select = document.getElementById('targetIde');
-      if (select) select.value = config.target_ide;
-      updateFlowIdeTarget(config.target_ide);
+  // 加载保存的 target_ide 配置；静态预览环境没有 Tauri invoke，保持默认值即可。
+  if (invoke) {
+    try {
+      const config = await invoke('load_config') || {};
+      if (config.target_ide) {
+        const select = document.getElementById('targetIde');
+        if (select) select.value = config.target_ide;
+        updateFlowIdeTarget(config.target_ide);
+      }
+    } catch (e) {
+      console.error('Failed to load target_ide:', e);
     }
-  } catch (e) {
-    console.error('Failed to load target_ide:', e);
   }
   // 同步初始化自定义选择器状态
   syncCustomSelector();
+  if (typeof updateProxyPlatformCopy === 'function') {
+    const target = typeof getTargetIde === 'function' ? getTargetIde() : 'windsurf';
+    updateProxyPlatformCopy(target);
+    if ((target === 'windsurf' || target === 'devin') && typeof setPlatformRailActive === 'function') {
+      setPlatformRailActive(target);
+    }
+  }
   if (typeof renderEvalCheckPicker === 'function') {
     renderEvalCheckPicker();
   }
 
   await loadProviders();
+  if (typeof refreshPlatforms === 'function') {
+    await refreshPlatforms({ silent: true });
+  }
   await loadEvalReports();
   await refreshStatus();
 
@@ -85,7 +97,7 @@ async function init() {
   setInterval(refreshStatus, 3000);
   setInterval(refreshStats, 3000);
   await refreshStats();
-  addLog('info', 'IDE BYOK 就绪');
+  addLog('info', 'AnyBridge 就绪');
 }
 
 init().catch(e => console.error('init failed:', e));

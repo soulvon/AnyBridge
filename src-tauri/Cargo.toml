@@ -1,7 +1,7 @@
 [package]
 name = "ide-byok"
-version = "1.2.14"
-description = "IDE BYOK desktop app"
+version = "1.2.17"
+description = "AnyBridge desktop app"
 authors = ["soulvon"]
 edition = "2021"
 
@@ -30,12 +30,14 @@ flate2 = "1"
 dirs = "5"
 rcgen = "0.13"
 json5 = "0.4"
+toml_edit = "0.22"
 tauri-plugin-updater = "2"
 regex = "1"
 sha2 = "0.10"
 sha1 = "0.10"
 hex = "0.4"
 rusqlite = { version = "0.32", features = ["bundled"] }
+snap = "1"
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.59", features = [

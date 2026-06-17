@@ -31,6 +31,7 @@ import {
   writeVarintField,
 } from '../proto.js';
 import { wrapUnary, unaryHeaders, unwrapRequest } from '../connect.js';
+import { httpsAgentFor } from '../system-proxy.js';
 
 // ─── Config ────────────────────────────────────────────────
 
@@ -231,6 +232,7 @@ function callAnthropicAPI(prefix, suffix) {
 
     const apiReq = https.request(
       {
+        agent: httpsAgentFor(),
         hostname: API_HOST,
         port:     443,
         path:     API_PATH,

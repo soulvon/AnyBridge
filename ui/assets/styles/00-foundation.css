@@ -1,5 +1,29 @@
 /* ═══════ FONTS (本地，离线可用) ═══════ */
 @font-face {
+  font-family: 'Inter';
+  font-weight: 400;
+  font-display: swap;
+  src: url('../../fonts/inter-400.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Inter';
+  font-weight: 500;
+  font-display: swap;
+  src: url('../../fonts/inter-500.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Inter';
+  font-weight: 600;
+  font-display: swap;
+  src: url('../../fonts/inter-600.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Inter';
+  font-weight: 700;
+  font-display: swap;
+  src: url('../../fonts/inter-700.woff2') format('woff2');
+}
+@font-face {
   font-family: 'JetBrains Mono';
   font-weight: 400;
   font-display: swap;
@@ -46,6 +70,7 @@
   --text-muted: #667085;
   --text-dim: #667085;
   --text-inverse: #FFFFFF;
+  --button-on-solid: #FFFFFF;
 
   --border: rgba(17, 24, 39, 0.09);
   --border-strong: rgba(17, 24, 39, 0.18);
@@ -59,21 +84,23 @@
     0 6px 16px rgba(17, 24, 39, 0.08),
     0 1px 3px rgba(17, 24, 39, 0.06);
   --shadow-card:
-    0 1px 0 rgba(255, 255, 255, 0.85) inset,
-    0 1px 2px rgba(17, 24, 39, 0.05),
-    0 12px 28px -18px rgba(17, 24, 39, 0.26);
-  --shadow-card-hover:
     0 1px 0 rgba(255, 255, 255, 0.9) inset,
-    0 2px 5px rgba(17, 24, 39, 0.08),
-    0 18px 34px -20px rgba(18, 97, 166, 0.28);
+    0 1px 2px rgba(17, 24, 39, 0.04),
+    0 6px 14px -4px rgba(17, 24, 39, 0.10);
+  --shadow-card-hover:
+    0 1px 0 rgba(255, 255, 255, 0.95) inset,
+    0 2px 4px rgba(17, 24, 39, 0.05),
+    0 10px 22px -6px rgba(18, 97, 166, 0.18);
 
-  --font-body: 'JetBrains Mono', 'Microsoft YaHei', 'SimHei', -apple-system, sans-serif;
-  --font-mono: 'JetBrains Mono', 'Fira Code', Consolas, monospace;
+  --font-sans: 'Inter', 'Microsoft YaHei UI', 'Microsoft YaHei', 'PingFang SC', 'Hiragino Sans GB', 'Noto Sans CJK SC', 'Source Han Sans SC', 'Segoe UI', sans-serif;
+  --font-body: var(--font-sans);
+  --font-cjk: 'Microsoft YaHei UI', 'Microsoft YaHei', 'PingFang SC', 'Hiragino Sans GB', 'Noto Sans CJK SC', 'Source Han Sans SC', sans-serif;
+  --font-mono: 'JetBrains Mono', 'Cascadia Mono', 'SFMono-Regular', Consolas, 'Microsoft YaHei UI', 'Microsoft YaHei', monospace;
 
-  --radius-sm: 6px;
-  --radius-md: 8px;
-  --radius-lg: 8px;
-  --radius-xl: 10px;
+  --radius-sm: 8px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-xl: 18px;
   --radius-pill: 100px;
 
   --ease: cubic-bezier(0.4, 0, 0.2, 1);
@@ -83,34 +110,35 @@
 
 /* ═══════ TOKENS — Precision Workbench Dark ═══════ */
 [data-theme="dark"] {
-  --bg-primary: #0B0F12;
-  --bg-secondary: #131A20;
-  --bg-card: rgba(22, 29, 35, 0.94);
-  --bg-hero: linear-gradient(135deg, #0B0F12 0%, #111820 52%, #0D1117 100%);
-  --bg-glass: rgba(18, 25, 31, 0.82);
-  --bg-input: rgba(255, 255, 255, 0.04);
-  --bg-hover: rgba(255, 255, 255, 0.07);
+  --bg-primary: #11171D;
+  --bg-secondary: #1A232B;
+  --bg-card: rgba(28, 36, 44, 0.96);
+  --bg-hero: linear-gradient(135deg, #11171D 0%, #161E26 52%, #131A20 100%);
+  --bg-glass: rgba(24, 32, 40, 0.86);
+  --bg-input: rgba(255, 255, 255, 0.06);
+  --bg-hover: rgba(255, 255, 255, 0.09);
 
   --accent: #5AB0E6;
   --accent-hover: #87C9F2;
   --accent-secondary: #37C7A5;
-  --accent-light: rgba(90, 176, 230, 0.12);
-  --accent-glow: rgba(90, 176, 230, 0.22);
+  --accent-light: rgba(90, 176, 230, 0.16);
+  --accent-glow: rgba(90, 176, 230, 0.28);
   --success: #48C78E;
-  --success-dim: rgba(72, 199, 142, 0.12);
+  --success-dim: rgba(72, 199, 142, 0.14);
   --danger: #FF6B6B;
-  --danger-dim: rgba(255, 107, 107, 0.12);
+  --danger-dim: rgba(255, 107, 107, 0.14);
   --warn: #F5A524;
 
-  --text-primary: #F2F6FA;
-  --text-secondary: #B8C2CC;
-  --text-muted: #8A97A5;
-  --text-dim: #8A97A5;
-  --text-inverse: #071014;
+  --text-primary: #F4F7FB;
+  --text-secondary: #C5CED8;
+  --text-muted: #A2AEBB;
+  --text-dim: #A2AEBB;
+  --text-inverse: #0B1117;
+  --button-on-solid: #FFFFFF;
 
-  --border: rgba(255, 255, 255, 0.06);
-  --border-strong: rgba(255, 255, 255, 0.12);
-  --table-th-bg: rgba(255, 255, 255, 0.045);
+  --border: rgba(255, 255, 255, 0.08);
+  --border-strong: rgba(255, 255, 255, 0.16);
+  --table-th-bg: rgba(255, 255, 255, 0.06);
 
   --shadow-sm:
     0 1px 0 rgba(255, 255, 255, 0.04) inset,
@@ -120,12 +148,12 @@
     0 8px 20px rgba(0, 0, 0, 0.34);
   --shadow-card:
     0 1px 0 rgba(255, 255, 255, 0.04) inset,
-    0 1px 2px rgba(0, 0, 0, 0.25),
-    0 14px 30px -20px rgba(0, 0, 0, 0.68);
+    0 1px 2px rgba(0, 0, 0, 0.22),
+    0 6px 14px -4px rgba(0, 0, 0, 0.45);
   --shadow-card-hover:
     0 1px 0 rgba(255, 255, 255, 0.06) inset,
-    0 2px 6px rgba(0, 0, 0, 0.32),
-    0 18px 38px -20px rgba(90, 176, 230, 0.18);
+    0 2px 4px rgba(0, 0, 0, 0.28),
+    0 10px 22px -6px rgba(90, 176, 230, 0.20);
 }
 
 /* ═══════ SWITCH TOGGLE (开关样式) ═══════ */
@@ -249,7 +277,7 @@
 .modal-btn-confirm {
   background: var(--accent);
   border: 1px solid var(--accent);
-  color: var(--text-inverse);
+  color: var(--button-on-solid);
   box-shadow: 0 2px 4px var(--accent-glow);
 }
 .modal-btn-confirm:hover {
@@ -269,8 +297,31 @@ body {
   background: var(--bg-hero);
   background-size: auto;
   color: var(--text-primary);
+  line-height: 1.6;
+  color-scheme: light;
   -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  font-synthesis-weight: none;
   transition: background var(--duration-normal) var(--ease);
+}
+
+button,
+input,
+select,
+textarea {
+  font-family: var(--font-body);
+}
+
+code,
+pre,
+kbd,
+samp {
+  font-family: var(--font-mono);
+}
+
+[data-theme="dark"] body,
+html[data-theme="dark"] body {
+  color-scheme: dark;
 }
 
 /* ═══════ LAYOUT ═══════ */

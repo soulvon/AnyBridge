@@ -49,6 +49,7 @@ import {
 import { wrapUnary, unaryHeaders, unwrapRequest } from '../connect.js';
 import net from 'node:net';
 import dns from 'node:dns';
+import { httpsAgentFor } from '../system-proxy.js';
 
 // ─── SSRF 防护 ────────────────────────────────────────────
 // 上游(Cascade)可控的 URL 会被本代理直接发请求并回传正文。
@@ -125,6 +126,7 @@ function searchDuckDuckGo(query, maxResults = 8) {
     const postData = `q=${encodeURIComponent(query)}`;
 
     const req = https.request({
+      agent: httpsAgentFor(),
       hostname: 'html.duckduckgo.com',
       path: '/html/',
       method: 'POST',
@@ -230,6 +232,7 @@ function resolveRedirectUrl(targetUrl, maxRedirects = 5) {
     const client = parsed.protocol === 'https:' ? https : http;
 
     const req = client.request({
+      agent: parsed.protocol === 'https:' ? httpsAgentFor() : undefined,
       hostname: parsed.hostname,
       port: parsed.port || (parsed.protocol === 'https:' ? 443 : 80),
       path: parsed.pathname + parsed.search,
@@ -269,6 +272,7 @@ function fetchUrlContent(targetUrl, maxBytes = 50000) {
     const client = parsed.protocol === 'https:' ? https : http;
 
     const req = client.request({
+      agent: parsed.protocol === 'https:' ? httpsAgentFor() : undefined,
       hostname: parsed.hostname,
       port: parsed.port || (parsed.protocol === 'https:' ? 443 : 80),
       path: parsed.pathname + parsed.search,

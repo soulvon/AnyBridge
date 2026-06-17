@@ -1,11 +1,17 @@
 // ═══════ PROVIDER PROFILES (多套供应商 + 启用开关) ═══════
-let providerStore = { providers: [] };
+let providerStore = { providers: [], codexConfigs: [], claudeCodeConfigs: [], opencodeConfigs: [] };
 let providerImportCandidates = [];
 let providerImportSelectedIds = new Set();
 let providerImportOpening = false;
 let providerImportHasScanned = false;
 let providerImportLastScannedSourceLabels = [];
 let providerImportScanSeq = 0;
+let providerImportScanRunning = false;
+let providerImportActiveScanId = '';
+let providerImportScanUnlisten = null;
+let providerImportFilter = 'all';
+let providerImportSourceStates = {};
+let providerImportStep = 'select';
 const PROVIDER_IMPORT_SOURCE_OPTIONS = [
   { key: 'cc-switch', label: 'CC Switch' },
   { key: 'cockpit-tools', label: 'Cockpit Tools' },
@@ -20,6 +26,15 @@ function providerLogoChar(name) {
 }
 function escAttr(s) {
   return String(s || '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+function providerSelectedModels(p) {
+  if (!p) return [];
+  if (Array.isArray(p.models) && p.models.length > 0) {
+    return p.models.map(m => String(m || '').trim()).filter(Boolean);
+  }
+  const fallback = String(p.defaultModel || '').trim();
+  return fallback ? [fallback] : [];
 }
 
 function providerCapabilities(p, modelId = null) {
@@ -194,10 +209,19 @@ async function loadProviders() {
   try {
     providerStore = await invoke('load_providers');
     if (!providerStore || !Array.isArray(providerStore.providers)) {
-      providerStore = { providers: [] };
+      providerStore = { providers: [], codexConfigs: [], claudeCodeConfigs: [], opencodeConfigs: [] };
+    }
+    if (!Array.isArray(providerStore.codexConfigs)) {
+      providerStore.codexConfigs = [];
+    }
+    if (!Array.isArray(providerStore.claudeCodeConfigs)) {
+      providerStore.claudeCodeConfigs = [];
+    }
+    if (!Array.isArray(providerStore.opencodeConfigs)) {
+      providerStore.opencodeConfigs = [];
     }
   } catch (e) {
-    providerStore = { providers: [] };
+    providerStore = { providers: [], codexConfigs: [], claudeCodeConfigs: [], opencodeConfigs: [] };
   }
   renderProviders();
   renderEvalProviderOptions();
@@ -208,7 +232,7 @@ function renderProviders() {
   const grid = document.getElementById('providerGrid');
   const empty = document.getElementById('providerEmpty');
   if (!grid) return;
-  const list = providerStore.providers || [];
+  const list = (providerStore.providers || []).filter(p => p?.meta?.codexConfig !== true);
   if (empty) empty.style.display = list.length ? 'none' : 'block';
 
   grid.innerHTML = list.map(p => {
@@ -216,7 +240,7 @@ function renderProviders() {
     const fmt = p.apiFormat || 'anthropic';
 
     // Keep model chip containers visually calm; icons retain their model-family colors.
-    const modelsList = (p.models && Array.isArray(p.models) && p.models.length) ? p.models : (p.defaultModel ? [p.defaultModel] : []);
+    const modelsList = providerSelectedModels(p);
     const modelsBadges = modelsList.map((m, idx) => {
       return `
         <span class="tag provider-model-chip" style="background:var(--bg-input); color:var(--text-primary); border:1px solid var(--border); display:flex; align-items:center; gap:6px; font-weight:600; padding:4px 10px; border-radius:8px; font-size:11px; min-width:0; max-width:100%;">
@@ -258,11 +282,15 @@ function renderProviders() {
           </div>
         </div>
         <div class="provider-footer">
-          <div class="conn-dot no" id="conn-dot-${escAttr(p.id)}"></div>
-          <span class="conn-text" id="conn-text-${escAttr(p.id)}">未测试</span>
-          <button class="btn-ghost" style="margin-left:auto" onclick="testProvider('${escAttr(p.id)}')">测试</button>
-          <button class="btn-ghost" onclick="openProviderEditor('${escAttr(p.id)}')">编辑</button>
-          <button class="btn-ghost" onclick="deleteProvider('${escAttr(p.id)}')">删除</button>
+          <div class="provider-conn-status" title="未测试">
+            <div class="conn-dot no" id="conn-dot-${escAttr(p.id)}"></div>
+            <span class="conn-text" id="conn-text-${escAttr(p.id)}" title="未测试">未测试</span>
+          </div>
+          <div class="provider-card-actions">
+            <button class="btn-ghost" onclick="testProvider('${escAttr(p.id)}')">测试</button>
+            <button class="btn-ghost" onclick="openProviderEditor('${escAttr(p.id)}')">编辑</button>
+            <button class="btn-ghost" onclick="deleteProvider('${escAttr(p.id)}')">删除</button>
+          </div>
         </div>
       </div>`;
   }).join('');
@@ -296,21 +324,57 @@ function setProviderImportSourceInputsDisabled(disabled) {
   });
 }
 
+function providerImportListSurface() {
+  if (providerImportStep === 'scanning') {
+    return document.getElementById('provider-import-scan-stage')
+      || document.getElementById('provider-import-list');
+  }
+  return document.getElementById('provider-import-list');
+}
+
+function setProviderImportStep(step) {
+  providerImportStep = ['scanning', 'results'].includes(step) ? step : 'select';
+  const modal = document.querySelector('#provider-import-modal .provider-import-modal');
+  if (modal) modal.dataset.importMode = providerImportStep;
+  const title = document.getElementById('provider-import-control-title');
+  if (title) {
+    title.textContent = providerImportStep === 'results'
+      ? '扫描结果'
+      : (providerImportStep === 'scanning' ? '正在扫描' : '选择来源');
+  }
+  updateProviderImportPrimaryState();
+}
+
 function syncProviderImportSourceState() {
   const btn = document.getElementById('provider-import-rescan-btn');
   const selected = providerImportSelectedSourceKeys();
-  if (btn && !btn.textContent.includes('扫描中')) {
-    btn.disabled = selected.length === 0;
+  if (btn) {
+    btn.disabled = !providerImportScanRunning && selected.length === 0;
+    btn.textContent = providerImportScanRunning ? '取消扫描' : (providerImportHasScanned ? '重新扫描' : '开始扫描');
   }
-  document.querySelectorAll('.provider-import-scan-btn').forEach(scanBtn => {
-    scanBtn.disabled = selected.length === 0;
-  });
   const summary = document.getElementById('provider-import-summary');
   if (!providerImportHasScanned && summary) {
     summary.textContent = selected.length
-      ? `需要扫描后显示候选供应商 · ${selected.map(providerImportSourceLabel).join(' / ')}`
+      ? `已选择 ${selected.length} 个来源：${selected.map(providerImportSourceLabel).join(' / ')}`
       : '请选择至少一个扫描来源';
   }
+  if (!providerImportScanRunning && !providerImportHasScanned) {
+    resetProviderImportSourceStates(selected);
+    renderProviderImportSourceStatus();
+  }
+  updateProviderImportPrimaryState();
+}
+
+function handleProviderImportScanAction() {
+  return providerImportScanRunning ? cancelProviderImportScan() : scanProviderImportCandidates();
+}
+
+function handleProviderImportPrimaryAction() {
+  if (providerImportStep !== 'results') {
+    if (providerImportScanRunning) return cancelProviderImportScan();
+    return scanProviderImportCandidates();
+  }
+  return importSelectedProviders();
 }
 
 async function openProviderImportModal() {
@@ -330,25 +394,187 @@ function closeProviderImportModal() {
   if (modal) modal.classList.remove('active');
 }
 
-function providerImportListHeaderHtml() {
-  return `
-    <div class="provider-import-list-header">
-      <span></span>
-      <span>来源</span>
-      <span>供应商</span>
-      <span>API</span>
-      <span>Key</span>
-    </div>`;
+function normalizeProviderImportHost(value) {
+  return String(value || '').trim().replace(/\/+$/, '').toLowerCase();
+}
+
+function normalizeProviderImportPath(value) {
+  return String(value || '').trim().toLowerCase();
+}
+
+function providerImportCandidateApiAddress(c) {
+  return String(c?.apiHost || '').replace(/\/+$/, '') || '--';
+}
+
+function providerImportCandidateWarnings(c) {
+  return Array.isArray(c?.warnings) ? c.warnings.map(x => String(x || '').trim()).filter(Boolean) : [];
+}
+
+function providerImportCandidateIsDuplicate(c) {
+  const host = normalizeProviderImportHost(c?.apiHost);
+  const path = normalizeProviderImportPath(c?.apiPath);
+  const key = String(c?.apiKey || '');
+  const fmt = String(c?.apiFormat || 'anthropic');
+  if (!host || !key) return false;
+  return (providerStore.providers || []).some(p => {
+    if (p?.meta?.codexConfig === true) return false;
+    return String(p.apiFormat || 'anthropic') === fmt
+      && normalizeProviderImportHost(p.apiHost) === host
+      && normalizeProviderImportPath(p.apiPath) === path
+      && String(p.apiKey || '') === key;
+  });
+}
+
+function providerImportCandidateStatus(c) {
+  if (!String(c?.apiHost || '').trim() || !String(c?.apiKey || '').trim()) {
+    return { state: 'invalid', label: '缺少信息', title: '缺少 API 地址或密钥，无法直接导入', selectable: false, autoSelect: false };
+  }
+  if (providerImportCandidateIsDuplicate(c)) {
+    return { state: 'duplicate', label: '已存在', title: '当前供应商列表中已有相同地址、路径和密钥', selectable: false, autoSelect: false };
+  }
+  const warnings = providerImportCandidateWarnings(c);
+  if (warnings.length) {
+    return { state: 'ready', label: '可导入', title: warnings.join('\n'), selectable: true, autoSelect: true };
+  }
+  return { state: 'ready', label: '可导入', title: '信息完整，默认选中导入', selectable: true, autoSelect: true };
+}
+
+function providerImportStatusPillHtml(status) {
+  return `<span class="provider-import-status-pill ${escAttr(status.state)}" title="${escAttr(status.title)}">${escAttr(status.label)}</span>`;
+}
+
+function providerImportStatusCounts() {
+  return providerImportCandidates.reduce((acc, c) => {
+    const status = providerImportCandidateStatus(c).state;
+    acc[status] = (acc[status] || 0) + 1;
+    return acc;
+  }, { ready: 0, warning: 0, duplicate: 0, invalid: 0 });
+}
+
+function updateProviderImportFooterSummary() {
+  const box = document.getElementById('provider-import-footer-summary');
+  if (!box) return;
+  if (providerImportScanRunning) {
+    const done = Object.values(providerImportSourceStates).filter(s => ['found', 'empty', 'error'].includes(s.status)).length;
+    const total = providerImportSelectedSourceKeys().length || PROVIDER_IMPORT_SOURCE_OPTIONS.length;
+    box.textContent = `正在扫描 ${done} / ${total} 个来源，可随时取消`;
+    return;
+  }
+  if (!providerImportHasScanned) {
+    const selected = providerImportSelectedSourceKeys().length;
+    box.textContent = selected ? `已选择 ${selected} 个来源` : '请选择扫描来源';
+    return;
+  }
+  const selectable = providerImportCandidates.filter(c => providerImportCandidateStatus(c).selectable).length;
+  const selected = providerImportCandidates.filter(c => providerImportSelectedIds.has(c.id)).length;
+  const skipped = Math.max(0, providerImportCandidates.length - selectable);
+  box.textContent = providerImportCandidates.length
+    ? `已选择 ${selected} / ${selectable} 个可选项${skipped ? ` · ${skipped} 个不可导入` : ''}`
+    : '没有可导入的候选供应商';
+}
+
+function updateProviderImportPrimaryState() {
+  const confirmBtn = document.getElementById('provider-import-confirm-btn');
+  if (!confirmBtn) return;
+  if (providerImportStep !== 'results') {
+    const selectedSources = providerImportSelectedSourceKeys();
+    confirmBtn.disabled = !providerImportScanRunning && selectedSources.length === 0;
+    if (providerImportScanRunning) {
+      confirmBtn.textContent = '取消扫描';
+    } else {
+      confirmBtn.textContent = '开始扫描';
+    }
+    return;
+  }
+
+  const selected = providerImportCandidates.filter(c => providerImportSelectedIds.has(c.id)).length;
+  confirmBtn.disabled = selected === 0 || providerImportScanRunning;
+  confirmBtn.textContent = selected ? `导入选中项 (${selected})` : '导入选中项';
+}
+
+function resetProviderImportSourceStates(selectedKeys = providerImportSelectedSourceKeys()) {
+  providerImportSourceStates = {};
+  PROVIDER_IMPORT_SOURCE_OPTIONS.forEach(source => {
+    const selected = selectedKeys.includes(source.key);
+    providerImportSourceStates[source.key] = {
+      key: source.key,
+      label: source.label,
+      selected,
+      status: selected ? 'queued' : 'off',
+      found: 0,
+      message: selected ? '等待扫描' : '未选择',
+    };
+  });
+}
+
+function providerImportSourceStatusText(state) {
+  if (!state) return '等待扫描';
+  if (state.status === 'scanning') return '扫描中';
+  if (state.status === 'found') return `找到 ${state.found || 0}`;
+  if (state.status === 'empty') return '无可导入';
+  if (state.status === 'error') return '出错';
+  if (state.status === 'cancelled') return '已取消';
+  if (state.status === 'off') return '未选择';
+  return '等待扫描';
+}
+
+function renderProviderImportSourceStatus() {
+  const box = document.getElementById('provider-import-source-status');
+  if (!box) return;
+  const states = PROVIDER_IMPORT_SOURCE_OPTIONS.map(source => providerImportSourceStates[source.key] || {
+    key: source.key,
+    label: source.label,
+    selected: providerImportSelectedSourceKeys().includes(source.key),
+    status: providerImportSelectedSourceKeys().includes(source.key) ? 'queued' : 'off',
+    found: 0,
+    message: '',
+  });
+  box.innerHTML = states.map(state => `
+    <div class="provider-import-source-state ${escAttr(state.status)}">
+      <span class="provider-import-source-state-name">${escAttr(state.label)}</span>
+      <span class="provider-import-source-state-text" title="${escAttr(state.message || providerImportSourceStatusText(state))}">${escAttr(providerImportSourceStatusText(state))}</span>
+    </div>
+  `).join('');
+}
+
+function renderProviderImportFilters() {
+  const box = document.getElementById('provider-import-filters');
+  if (!box) return;
+  const counts = providerImportStatusCounts();
+  const items = [
+    ['all', `全部 ${providerImportCandidates.length}`],
+    ['ready', `可导入 ${counts.ready || 0}`],
+    ['duplicate', `已存在 ${counts.duplicate || 0}`],
+  ];
+  box.innerHTML = items.map(([key, label]) => `
+    <button type="button" class="provider-import-filter ${providerImportFilter === key ? 'active' : ''}" onclick="setProviderImportFilter('${key}')">${escAttr(label)}</button>
+  `).join('');
+}
+
+function setProviderImportFilter(filter) {
+  providerImportFilter = filter || 'all';
+  renderProviderImportCandidates();
+}
+
+function providerImportFilteredCandidates() {
+  if (providerImportFilter === 'all') return providerImportCandidates;
+  return providerImportCandidates.filter(c => providerImportCandidateStatus(c).state === providerImportFilter);
 }
 
 function renderProviderImportScanPrompt() {
   providerImportScanSeq++;
+  providerImportStep = 'select';
   providerImportHasScanned = false;
   providerImportLastScannedSourceLabels = [];
   providerImportCandidates = [];
   providerImportSelectedIds = new Set();
+  providerImportFilter = 'all';
+  providerImportScanRunning = false;
+  providerImportActiveScanId = '';
 
-  const list = document.getElementById('provider-import-list');
+  setProviderImportStep('select');
+  const scanStage = document.getElementById('provider-import-scan-stage');
+  const resultList = document.getElementById('provider-import-list');
   const summary = document.getElementById('provider-import-summary');
   const btn = document.getElementById('provider-import-rescan-btn');
   const confirmBtn = document.getElementById('provider-import-confirm-btn');
@@ -358,7 +584,7 @@ function renderProviderImportScanPrompt() {
   renderProviderImportNotices([]);
   if (summary) {
     summary.textContent = selectedSources.length
-      ? `需要扫描后显示候选供应商 · ${selectedSources.join(' / ')}`
+      ? `已选择 ${selectedSources.length} 个来源：${selectedSources.join(' / ')}`
       : '请选择至少一个扫描来源';
   }
   if (btn) {
@@ -366,40 +592,31 @@ function renderProviderImportScanPrompt() {
     btn.textContent = '开始扫描';
   }
   if (confirmBtn) {
-    confirmBtn.disabled = true;
-    confirmBtn.textContent = '导入选中项';
+    confirmBtn.disabled = selectedSources.length === 0;
+    confirmBtn.textContent = '开始扫描';
   }
   if (selectAll) {
-    selectAll.checked = false;
-    selectAll.indeterminate = false;
     selectAll.disabled = true;
   }
-  if (list) {
-    list.classList.remove('is-scanning');
-    list.innerHTML = `
-      <div class="provider-import-empty provider-import-scan-prompt">
-        <div class="provider-import-scan-title">需要先扫描本机配置</div>
-        <div class="provider-import-scan-desc">先选择要扫描的工具来源，再从本地配置中查找可导入的 API 供应商。</div>
-        <button class="model-panel-btn provider-import-scan-btn" onclick="scanProviderImportCandidates()">开始扫描</button>
-      </div>`;
+  const clearBtn = document.getElementById('provider-import-clear-selection');
+  if (clearBtn) clearBtn.disabled = true;
+  resetProviderImportSourceStates(providerImportSelectedSourceKeys());
+  renderProviderImportSourceStatus();
+  renderProviderImportFilters();
+  renderProviderImportResultsSub();
+  updateProviderImportFooterSummary();
+  if (resultList) {
+    resultList.classList.remove('is-scanning');
+    resultList.classList.remove('has-results');
+    resultList.innerHTML = '<div class="provider-import-empty compact">扫描完成后在这里审核候选项。</div>';
+  }
+  if (scanStage) {
+    scanStage.classList.remove('is-scanning');
+    scanStage.classList.remove('has-results');
+    scanStage.innerHTML = '';
   }
   syncProviderImportSourceState();
-}
-
-function providerImportSkeletonHtml(rows = 6) {
-  const skeletonRows = Array.from({ length: rows }, (_, idx) => `
-    <div class="provider-import-item provider-import-skeleton-row" aria-hidden="true">
-      <span class="provider-import-skeleton-check"></span>
-      <span class="provider-import-skeleton-line source" style="--delay:${idx * 45 + 35}ms"></span>
-      <span class="provider-import-skeleton-line name" style="--delay:${idx * 45}ms"></span>
-      <span class="provider-import-skeleton-line api" style="--delay:${idx * 45 + 70}ms"></span>
-      <span class="provider-import-skeleton-line key" style="--delay:${idx * 45 + 120}ms"></span>
-    </div>`).join('');
-  return `${providerImportListHeaderHtml()}${skeletonRows}`;
-}
-
-function sleep(ms) {
-  return new Promise(resolve => setTimeout(resolve, ms));
+  updateProviderImportPrimaryState();
 }
 
 async function scanProviderImportCandidates(options = {}) {
@@ -415,124 +632,406 @@ async function scanProviderImportCandidates(options = {}) {
   providerImportLastScannedSourceLabels = selectedSourceNames;
   const scanSeq = ++providerImportScanSeq;
   providerImportHasScanned = true;
-  const list = document.getElementById('provider-import-list');
+  providerImportScanRunning = true;
+  providerImportActiveScanId = '';
+  providerImportCandidates = [];
+  providerImportSelectedIds = new Set();
+  providerImportFilter = 'all';
+  setProviderImportStep('scanning');
+  resetProviderImportSourceStates(selectedSources);
+  const list = providerImportListSurface();
   const summary = document.getElementById('provider-import-summary');
   const btn = document.getElementById('provider-import-rescan-btn');
   const confirmBtn = document.getElementById('provider-import-confirm-btn');
   const selectAll = document.getElementById('provider-import-select-all');
   if (list) {
     list.classList.add('is-scanning');
-    list.innerHTML = providerImportSkeletonHtml(Math.max(5, Math.min(providerImportCandidates.length || 6, 8)));
+    list.classList.remove('has-results');
+    list.innerHTML = providerImportScanProgressHtml();
   }
   if (summary) summary.textContent = `正在扫描：${selectedSourceNames.join(' / ')}`;
   if (btn) {
-    btn.disabled = true;
-    btn.textContent = '扫描中…';
+    btn.disabled = false;
+    btn.textContent = '取消扫描';
   }
-  if (confirmBtn) confirmBtn.disabled = true;
+  if (confirmBtn) {
+    confirmBtn.disabled = false;
+    confirmBtn.textContent = '取消扫描';
+  }
   if (selectAll) selectAll.disabled = true;
+  const clearBtn = document.getElementById('provider-import-clear-selection');
+  if (clearBtn) clearBtn.disabled = true;
+  renderProviderImportSourceStatus();
+  renderProviderImportFilters();
+  renderProviderImportResultsSub();
+  updateProviderImportFooterSummary();
   setProviderImportSourceInputsDisabled(true);
 
   try {
-    const [result] = await Promise.all([
-      invoke('scan_importable_providers', { sources: selectedSources }),
-      sleep(240),
-    ]);
+    await bindProviderImportScanListener();
+    const scanId = await invoke('start_provider_import_scan', { sources: selectedSources });
     if (scanSeq !== providerImportScanSeq) return false;
+    providerImportActiveScanId = String(scanId || '');
+    return true;
+  } catch (e) {
+    return scanProviderImportCandidatesFallback(e, selectedSources, scanSeq, logResult);
+  }
+}
+
+async function scanProviderImportCandidatesFallback(originalError, selectedSources, scanSeq, logResult = true) {
+  try {
+    const result = await invoke('scan_importable_providers', { sources: selectedSources });
+    if (scanSeq !== providerImportScanSeq) return false;
+    providerImportScanRunning = false;
     providerImportCandidates = Array.isArray(result?.candidates) ? result.candidates : [];
-    providerImportSelectedIds = new Set(providerImportCandidates.map(c => c.id));
+    providerImportSelectedIds = new Set(providerImportCandidates.filter(c => providerImportCandidateStatus(c).autoSelect).map(c => c.id));
+    selectedSources.forEach(key => {
+      const label = providerImportSourceLabel(key);
+      const count = providerImportCandidates.filter(c => c.source === label).length;
+      providerImportSourceStates[key] = { key, label, selected: true, status: count ? 'found' : 'empty', found: count, message: count ? `找到 ${count} 个候选` : '没有可导入项' };
+    });
     renderProviderImportNotices(Array.isArray(result?.notices) ? result.notices : []);
+    renderProviderImportSourceStatus();
+    setProviderImportStep('results');
     renderProviderImportCandidates();
+    finishProviderImportScanUi();
     if (logResult) addLog('ok', `本地扫描完成：${providerImportCandidates.length} 个候选供应商`);
     return true;
   } catch (e) {
-    if (scanSeq !== providerImportScanSeq) return false;
+    providerImportScanRunning = false;
     providerImportCandidates = [];
     providerImportSelectedIds = new Set();
     renderProviderImportNotices([]);
-    if (list) list.innerHTML = `<div class="provider-import-empty">扫描失败：${escAttr(e)}</div>`;
-    if (summary) summary.textContent = '扫描失败';
-    addLog('err', '本地供应商扫描失败: ' + e);
-    return false;
-  } finally {
-    if (scanSeq === providerImportScanSeq) {
-      if (list) list.classList.remove('is-scanning');
-      if (btn) {
-        btn.disabled = false;
-        btn.textContent = providerImportHasScanned ? '重新扫描' : '开始扫描';
-      }
-      if (selectAll) selectAll.disabled = false;
-      setProviderImportSourceInputsDisabled(false);
-      syncProviderImportSelectionState();
-      syncProviderImportSourceState();
+    const list = providerImportListSurface();
+    const summary = document.getElementById('provider-import-summary');
+    if (list) {
+      list.classList.remove('is-scanning');
+      list.classList.remove('has-results');
+      list.innerHTML = `<div class="provider-import-empty">扫描失败：${escAttr(e || originalError)}</div>`;
     }
+    if (summary) summary.textContent = '扫描失败';
+    finishProviderImportScanUi();
+    addLog('err', '本地供应商扫描失败: ' + (e || originalError));
+    return false;
   }
+}
+
+async function bindProviderImportScanListener() {
+  if (!tauriEvent?.listen || providerImportScanUnlisten) return;
+  providerImportScanUnlisten = await tauriEvent.listen('provider-import-scan-progress', (event) => {
+    applyProviderImportScanProgress(event.payload || {});
+  });
+}
+
+function applyProviderImportScanProgress(payload) {
+  const scanId = String(payload.scanId || '');
+  if (!providerImportActiveScanId && scanId) providerImportActiveScanId = scanId;
+  if (providerImportActiveScanId && scanId && providerImportActiveScanId !== scanId) return;
+
+  const sourceKey = payload.sourceKey || '';
+  if (sourceKey && providerImportSourceStates[sourceKey]) {
+    providerImportSourceStates[sourceKey] = {
+      ...providerImportSourceStates[sourceKey],
+      status: payload.status || providerImportSourceStates[sourceKey].status,
+      found: Number(payload.found || 0),
+      message: payload.message || '',
+    };
+  }
+
+  if (payload.phase === 'source-complete' && Array.isArray(payload.candidates)) {
+    mergeProviderImportCandidates(payload.candidates);
+    renderProviderImportNotices(Array.isArray(payload.notices) ? payload.notices : []);
+  }
+
+  if (payload.phase === 'complete') {
+    providerImportScanRunning = false;
+    providerImportCandidates = Array.isArray(payload.candidates) ? payload.candidates : providerImportCandidates;
+    providerImportSelectedIds = new Set(providerImportCandidates.filter(c => providerImportCandidateStatus(c).autoSelect).map(c => c.id));
+    renderProviderImportNotices(Array.isArray(payload.notices) ? payload.notices : []);
+    setProviderImportStep('results');
+    renderProviderImportCandidates();
+    finishProviderImportScanUi();
+    addLog('ok', `本地扫描完成：${providerImportCandidates.length} 个候选供应商`);
+    return;
+  }
+
+  if (payload.phase === 'cancelled') {
+    finishProviderImportCancelledScan(payload.message || '扫描已取消');
+    return;
+  }
+
+  renderProviderImportSourceStatus();
+  renderProviderImportCandidates();
+  updateProviderImportFooterSummary();
+  const summary = document.getElementById('provider-import-summary');
+  if (summary && payload.message) summary.textContent = payload.message;
+}
+
+function mergeProviderImportCandidates(candidates) {
+  (candidates || []).forEach(candidate => {
+    if (!candidate || !candidate.id) return;
+    const existing = providerImportCandidates.findIndex(c => c.id === candidate.id);
+    if (existing >= 0) providerImportCandidates[existing] = candidate;
+    else providerImportCandidates.push(candidate);
+    if (providerImportCandidateStatus(candidate).autoSelect) providerImportSelectedIds.add(candidate.id);
+  });
+}
+
+function finishProviderImportCancelledScan(message = '扫描已取消') {
+  providerImportScanRunning = false;
+  providerImportActiveScanId = '';
+  Object.keys(providerImportSourceStates).forEach(key => {
+    if (providerImportSourceStates[key].status === 'queued' || providerImportSourceStates[key].status === 'scanning') {
+      providerImportSourceStates[key].status = 'cancelled';
+      providerImportSourceStates[key].message = message;
+    }
+  });
+
+  if (providerImportCandidates.length) {
+    providerImportHasScanned = true;
+    setProviderImportStep('results');
+    renderProviderImportSourceStatus();
+    renderProviderImportCandidates();
+    finishProviderImportScanUi();
+    const summary = document.getElementById('provider-import-summary');
+    if (summary) summary.textContent = `扫描已取消，已保留 ${providerImportCandidates.length} 个候选`;
+    addLog('warn', `本地供应商扫描已取消，保留 ${providerImportCandidates.length} 个候选`);
+    return;
+  }
+
+  providerImportHasScanned = false;
+  setProviderImportStep('select');
+  const scanStage = document.getElementById('provider-import-scan-stage');
+  const resultList = document.getElementById('provider-import-list');
+  if (scanStage) {
+    scanStage.classList.remove('is-scanning');
+    scanStage.classList.remove('has-results');
+    scanStage.innerHTML = '';
+  }
+  if (resultList) {
+    resultList.classList.remove('is-scanning');
+    resultList.classList.remove('has-results');
+    resultList.innerHTML = '<div class="provider-import-empty compact">扫描完成后在这里审核候选项。</div>';
+  }
+  syncProviderImportSourceState();
+  finishProviderImportScanUi();
+  const summary = document.getElementById('provider-import-summary');
+  if (summary) summary.textContent = '扫描已取消，可重新开始';
+  addLog('warn', '本地供应商扫描已取消');
+}
+
+async function cancelProviderImportScan() {
+  if (!invoke || !providerImportScanRunning) return;
+  const btn = document.getElementById('provider-import-rescan-btn');
+  const confirmBtn = document.getElementById('provider-import-confirm-btn');
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = '取消中…';
+  }
+  if (confirmBtn) {
+    confirmBtn.disabled = true;
+    confirmBtn.textContent = '取消中…';
+  }
+  try {
+    await invoke('cancel_provider_import_scan');
+  } catch (e) {
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = '取消扫描';
+    }
+    if (confirmBtn) {
+      confirmBtn.disabled = false;
+      confirmBtn.textContent = '取消扫描';
+    }
+    addLog('err', '取消本地扫描失败: ' + e);
+  }
+}
+
+function finishProviderImportScanUi() {
+  const list = providerImportListSurface();
+  const btn = document.getElementById('provider-import-rescan-btn');
+  const selectAll = document.getElementById('provider-import-select-all');
+  if (list) list.classList.remove('is-scanning');
+  if (btn) {
+    btn.disabled = false;
+    btn.textContent = providerImportHasScanned ? '重新扫描' : '开始扫描';
+  }
+  if (selectAll) selectAll.disabled = providerImportCandidates.filter(c => providerImportCandidateStatus(c).selectable).length === 0;
+  const clearBtn = document.getElementById('provider-import-clear-selection');
+  if (clearBtn) clearBtn.disabled = providerImportCandidates.length === 0;
+  setProviderImportSourceInputsDisabled(false);
+  syncProviderImportSelectionState();
+  syncProviderImportSourceState();
+  renderProviderImportSourceStatus();
+  renderProviderImportResultsSub();
+  updateProviderImportPrimaryState();
 }
 
 function renderProviderImportNotices(notices) {
   const box = document.getElementById('provider-import-notices');
   if (!box) return;
   const clean = (notices || []).map(x => String(x || '').trim()).filter(Boolean);
-  if (providerImportCandidates.length > 0) {
-    box.classList.remove('has-items');
-    box.innerHTML = '';
-    return;
-  }
   box.classList.toggle('has-items', clean.length > 0);
   box.innerHTML = clean.map(n => `<div class="provider-import-notice">${escAttr(n)}</div>`).join('');
 }
 
+function renderProviderImportResultsSub() {
+  const box = document.getElementById('provider-import-results-sub');
+  if (!box) return;
+  if (providerImportScanRunning) {
+    box.textContent = '扫描过程中会逐步追加候选项';
+    return;
+  }
+  const counts = providerImportStatusCounts();
+  box.textContent = providerImportCandidates.length
+    ? `${providerImportCandidates.length} 个候选 · ${counts.ready || 0} 可导入 · ${counts.duplicate || 0} 已存在`
+    : '扫描后在这里审核候选项';
+}
+
+function providerImportScanProgressHtml(options = {}) {
+  const { inline = false } = options;
+  const states = PROVIDER_IMPORT_SOURCE_OPTIONS.map(source => providerImportSourceStates[source.key] || {
+    key: source.key,
+    label: source.label,
+    selected: providerImportSelectedSourceKeys().includes(source.key),
+    status: providerImportSelectedSourceKeys().includes(source.key) ? 'queued' : 'off',
+    found: 0,
+    message: '',
+  });
+  const selectedStates = states.filter(state => state.selected);
+  const activeState = selectedStates.find(state => state.status === 'scanning')
+    || selectedStates.find(state => state.status === 'queued')
+    || selectedStates[0]
+    || null;
+  const finished = selectedStates.filter(state => ['found', 'empty', 'error', 'cancelled'].includes(state.status)).length;
+  const total = selectedStates.length;
+  const found = providerImportCandidates.length;
+  const rows = selectedStates.map(state => {
+    const title = state.message || providerImportSourceStatusText(state);
+    return `
+      <div class="provider-import-scan-log-row ${escAttr(state.status)}">
+        <span class="provider-import-scan-log-dot" aria-hidden="true"></span>
+        <span class="provider-import-scan-log-name">${escAttr(state.label)}</span>
+        <span class="provider-import-scan-log-text" title="${escAttr(title)}">${escAttr(providerImportSourceStatusText(state))}</span>
+      </div>`;
+  }).join('');
+  const loadingLines = [0, 1, 2, 3, 4].map((_, index) => `
+    <div class="provider-import-loading-row" style="--row:${index}">
+      <span class="provider-import-loading-check"></span>
+      <span class="provider-import-loading-main"></span>
+      <span class="provider-import-loading-meta"></span>
+      <span class="provider-import-loading-state"></span>
+    </div>
+  `).join('');
+
+  return `
+    <div class="provider-import-scan-progress ${inline ? 'inline' : ''}" role="status" aria-live="polite">
+      <div class="provider-import-scan-progress-head">
+        <div class="provider-import-scan-icon is-running">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 12a9 9 0 1 1-3.2-6.9"></path>
+            <path d="M21 3v6h-6"></path>
+          </svg>
+        </div>
+        <div class="provider-import-scan-progress-copy">
+          <div class="provider-import-scan-title">${escAttr(activeState ? `正在扫描 ${activeState.label}` : '正在扫描本机配置')}</div>
+          <div class="provider-import-scan-desc">已完成 ${finished} / ${total || 0} 个来源${found ? ` · 已发现 ${found} 个候选` : ' · 正在等待候选结果'}</div>
+        </div>
+      </div>
+      <div class="provider-import-scan-log">${rows}</div>
+      ${inline ? '' : `<div class="provider-import-loading-lines" aria-hidden="true">${loadingLines}</div>`}
+    </div>`;
+}
+
 function renderProviderImportCandidates() {
-  const list = document.getElementById('provider-import-list');
+  const list = providerImportListSurface();
   const summary = document.getElementById('provider-import-summary');
+  renderProviderImportFilters();
+  renderProviderImportResultsSub();
   if (summary) {
-    const sources = [...new Set(providerImportCandidates.map(c => c.source).filter(Boolean))];
-    const scanned = providerImportLastScannedSourceLabels.length
-      ? providerImportLastScannedSourceLabels
-      : providerImportSelectedSourceLabels();
-    summary.textContent = providerImportCandidates.length
-      ? `${providerImportCandidates.length} 个候选 · 扫描列表：${scanned.join(' / ')} · 命中：${sources.join(' / ')}`
-      : `没有可导入的候选 · 扫描列表：${scanned.join(' / ')}`;
+    if (!providerImportScanRunning) {
+      summary.textContent = providerImportCandidates.length
+        ? `${providerImportCandidates.length} 个候选`
+        : '没有可导入的候选';
+    }
   }
   if (!list) return;
+  if (providerImportStep === 'scanning') {
+    list.classList.add('is-scanning');
+    list.classList.remove('has-results');
+    list.innerHTML = providerImportScanProgressHtml();
+    syncProviderImportSelectionState();
+    return;
+  }
+  if (providerImportScanRunning && !providerImportCandidates.length) {
+    list.classList.add('is-scanning');
+    list.classList.remove('has-results');
+    list.innerHTML = providerImportScanProgressHtml();
+    syncProviderImportSelectionState();
+    return;
+  }
   if (!providerImportCandidates.length) {
+    list.classList.remove('is-scanning');
+    list.classList.remove('has-results');
     list.innerHTML = `
       <div class="provider-import-empty provider-import-scan-prompt">
+        <div class="provider-import-scan-icon">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10"></circle>
+            <line x1="15" y1="9" x2="9" y2="15"></line>
+            <line x1="9" y1="9" x2="15" y2="15"></line>
+          </svg>
+        </div>
         <div class="provider-import-scan-title">没有扫到可直接导入的供应商</div>
-        <div class="provider-import-scan-desc">可以稍后重新扫描，或手动新增供应商。</div>
-        <button class="model-panel-btn provider-import-scan-btn" onclick="scanProviderImportCandidates()">重新扫描</button>
+        <div class="provider-import-scan-desc">可以稍后重新打开本地导入，或手动新增供应商。</div>
       </div>`;
     syncProviderImportSelectionState();
     return;
   }
+  list.classList.toggle('is-scanning', providerImportScanRunning);
+  list.classList.add('has-results');
 
-  const rows = providerImportCandidates.map(c => {
+  const visible = providerImportFilteredCandidates();
+  if (!visible.length) {
+    list.innerHTML = providerImportScanRunning
+      ? providerImportScanProgressHtml({ inline: true })
+      : `<div class="provider-import-empty compact">当前筛选下没有候选项。</div>`;
+    syncProviderImportSelectionState();
+    return;
+  }
+
+  const rows = visible.map(c => {
+    const status = providerImportCandidateStatus(c);
     const selected = providerImportSelectedIds.has(c.id);
-    const endpoint = `${c.apiHost || ''}${c.apiPath || ''}`;
     const sourceTitle = [c.source || '', c.sourcePath || '', c.sourceId || ''].filter(Boolean).join('\n');
+    const endpoint = providerImportCandidateApiAddress(c);
+    const warnings = providerImportCandidateWarnings(c);
+    const note = c.sourcePath || '';
+    const nextChecked = selected ? 'false' : 'true';
     return `
-      <label class="provider-import-item">
-        <input class="provider-import-check" type="checkbox" ${selected ? 'checked' : ''} onchange="toggleProviderImportCandidate('${escAttr(c.id)}', this.checked)">
-        <div class="provider-import-source-cell">
-          <span class="provider-import-source-pill" title="${escAttr(sourceTitle)}">${escAttr(c.source || '未知来源')}</span>
+      <div class="provider-import-row ${escAttr(status.state)} ${selected ? 'selected' : ''}" onclick="toggleProviderImportCandidate('${escAttr(c.id)}', ${nextChecked})">
+        <input class="provider-import-check" type="checkbox" ${selected ? 'checked' : ''} ${status.selectable ? '' : 'disabled'} onclick="event.stopPropagation()" onchange="toggleProviderImportCandidate('${escAttr(c.id)}', this.checked)">
+        <div class="provider-import-row-main">
+          <div class="provider-import-row-identity">
+            <span class="provider-import-name" title="${escAttr(c.name || '')}">${escAttr(c.name || '未命名供应商')}</span>
+            <span class="provider-import-source-pill" title="${escAttr(sourceTitle)}">${escAttr(c.source || '未知来源')}</span>
+          </div>
+          <span class="provider-import-row-endpoint" title="${escAttr(endpoint)}">${escAttr(endpoint || '--')}</span>
+          <span class="provider-import-row-state">${providerImportStatusPillHtml(status)}</span>
+          ${note ? `<div class="provider-import-row-note" title="${escAttr(note)}">${escAttr(note)}</div>` : ''}
         </div>
-        <div class="provider-import-name" title="${escAttr(c.name || '')}">
-          ${escAttr(c.name || '未命名供应商')}
-        </div>
-        <div class="provider-import-cell">
-          <div class="provider-import-cell-value provider-import-scroll-value" title="${escAttr(endpoint || '')}">${escAttr(endpoint || '--')}</div>
-        </div>
-        <div class="provider-import-cell">
-          <div class="provider-import-cell-value provider-import-key provider-import-scroll-value" title="${escAttr(c.apiKey || '')}">${escAttr(c.apiKey || '--')}</div>
-        </div>
-      </label>`;
+      </div>`;
   }).join('');
 
-  list.innerHTML = `${providerImportListHeaderHtml()}${rows}`;
+  list.innerHTML = providerImportScanRunning
+    ? `${rows}<div class="provider-import-scan-tail">${providerImportScanProgressHtml({ inline: true })}</div>`
+    : rows;
   syncProviderImportSelectionState();
 }
 
 function toggleProviderImportCandidate(id, checked) {
+  const candidate = providerImportCandidates.find(c => c.id === id);
+  if (candidate && !providerImportCandidateStatus(candidate).selectable) return;
   if (checked) {
     providerImportSelectedIds.add(id);
   } else {
@@ -542,31 +1041,32 @@ function toggleProviderImportCandidate(id, checked) {
 }
 
 function toggleAllProviderImportCandidates(checked) {
-  providerImportSelectedIds = checked
-    ? new Set(providerImportCandidates.map(c => c.id))
-    : new Set();
+  if (checked) {
+    providerImportSelectedIds = new Set(providerImportCandidates.filter(c => providerImportCandidateStatus(c).state === 'ready').map(c => c.id));
+  } else {
+    providerImportSelectedIds = new Set();
+  }
   renderProviderImportCandidates();
 }
 
 function syncProviderImportSelectionState() {
-  const total = providerImportCandidates.length;
+  const total = providerImportCandidates.filter(c => providerImportCandidateStatus(c).selectable).length;
   const selected = providerImportCandidates.filter(c => providerImportSelectedIds.has(c.id)).length;
-  const confirmBtn = document.getElementById('provider-import-confirm-btn');
   const selectAll = document.getElementById('provider-import-select-all');
-  if (confirmBtn) {
-    confirmBtn.disabled = selected === 0;
-    confirmBtn.textContent = selected ? `导入选中项 (${selected})` : '导入选中项';
-  }
+  const clearBtn = document.getElementById('provider-import-clear-selection');
   if (selectAll) {
-    selectAll.checked = total > 0 && selected === total;
-    selectAll.indeterminate = selected > 0 && selected < total;
-    selectAll.disabled = total === 0;
+    selectAll.disabled = total === 0 || providerImportScanRunning;
   }
+  if (clearBtn) {
+    clearBtn.disabled = selected === 0 || providerImportScanRunning;
+  }
+  updateProviderImportFooterSummary();
+  updateProviderImportPrimaryState();
 }
 
 async function importSelectedProviders() {
   if (!invoke) return;
-  const selected = providerImportCandidates.filter(c => providerImportSelectedIds.has(c.id));
+  const selected = providerImportCandidates.filter(c => providerImportSelectedIds.has(c.id) && providerImportCandidateStatus(c).selectable);
   if (!selected.length) {
     showCustomAlert('请先勾选要导入的供应商。', '没有选中项', 'warn');
     return;
@@ -591,9 +1091,9 @@ async function importSelectedProviders() {
     const imported = Number(result?.imported || 0);
     const skipped = Number(result?.skipped || 0);
     addLog('ok', `本地导入完成：新增 ${imported} 个，跳过 ${skipped} 个`);
-    if (skipped > 0) {
-      showCustomAlert(`已新增 ${imported} 个供应商，跳过 ${skipped} 个已存在或无效项。`, '导入完成', 'info');
-    }
+    const messages = Array.isArray(result?.messages) ? result.messages.filter(Boolean).slice(0, 3) : [];
+    const detail = messages.length ? `\n\n${messages.join('\n')}` : '';
+    showCustomAlert(`已新增 ${imported} 个供应商，跳过 ${skipped} 个。${detail}`, '导入完成', skipped ? 'info' : 'success');
   } catch (e) {
     addLog('err', '本地供应商导入失败: ' + e);
     showCustomAlert(String(e), '导入失败', 'error');
@@ -773,6 +1273,10 @@ function canFetchEvalModels(provider) {
   return !!(invoke && provider && provider.apiHost && provider.apiKey);
 }
 
+function shouldAutoFetchEvalModels() {
+  return !!document.getElementById('page-eval')?.classList.contains('active');
+}
+
 async function fetchEvalRemoteModels(provider) {
   if (!canFetchEvalModels(provider)) return;
   if (evalRemoteModelCache.has(provider.id) || evalRemoteModelPending.has(provider.id)) return;
@@ -805,14 +1309,15 @@ async function fetchEvalRemoteModels(provider) {
   }
 }
 
-function renderEvalProviderOptions() {
+function renderEvalProviderOptions(options = {}) {
+  const fetchRemote = options.fetchRemote ?? shouldAutoFetchEvalModels();
   const select = document.getElementById('eval-provider-select');
   if (!select) return;
   const previous = select.value;
-  const providers = (providerStore.providers || []).filter(p => p.enabled !== false);
+  const providers = (providerStore.providers || []).filter(p => p.enabled !== false && p.meta?.codexConfig !== true);
   if (!providers.length) {
     select.innerHTML = '<option value="">无启用供应商</option>';
-    renderEvalModelOptions();
+    renderEvalModelOptions({ fetchRemote });
     syncEvalCombos();
     return;
   }
@@ -820,12 +1325,12 @@ function renderEvalProviderOptions() {
     .map(p => `<option value="${escAttr(p.id)}">${escAttr(p.name)}</option>`)
     .join('');
   select.value = providers.some(p => p.id === previous) ? previous : providers[0].id;
-  renderEvalModelOptions();
+  renderEvalModelOptions({ fetchRemote });
   syncEvalCombos();
 }
 
 function renderEvalModelOptions(options = {}) {
-  const { fetchRemote = true } = options;
+  const fetchRemote = options.fetchRemote ?? shouldAutoFetchEvalModels();
   const providerSelect = document.getElementById('eval-provider-select');
   const modelSelect = document.getElementById('eval-model-select');
   if (!modelSelect) return;
@@ -1100,19 +1605,38 @@ function renderEvalDiagnosis(report, dimensions) {
   const caps = Array.isArray(report?.caps) ? report.caps : [];
   const metrics = report?.metrics || {};
   const items = [];
+
+  // 检测是否 protocol_offline
+  const protocolOffline = caps.some(c => c.rule === 'protocol_offline');
+  const p1 = probes.find(p => p.id === 'P1');
+
   if (caps.length) {
     items.push(`命中 ${caps.length} 条硬上限规则，最终综合分被压到 ${Math.min(...caps.map(c => Number(c.capValue || 0))).toFixed(0)} 分以内。`);
   }
+
+  // 协议不可用时，从 P1 探针 evidence 中提取排查提示
+  if (protocolOffline && p1) {
+    if (p1.summary) items.push(`P1 协议连通性：${p1.summary}`);
+    const hints = (p1.evidence || []).filter(e =>
+      e.startsWith('请') || e.startsWith('供应商') || e.startsWith('目标') || e.startsWith('HTTPS') || e.startsWith('响应')
+    );
+    hints.forEach(h => items.push(`💡 ${h}`));
+    const retryInfo = (p1.evidence || []).find(e => e.startsWith('已重试'));
+    if (retryInfo) items.push(retryInfo);
+  }
+
   const relation = metrics.modelRelation || 'unknown';
   const reported = report?.reportedModel || '';
   if (reported) {
     items.push(`响应模型字段为 ${reported}，与请求模型关系：${evalRelationLabel(relation)}。`);
   }
-  probes
-    .filter(p => p.status !== 'skip' && (p.status !== 'pass' || evalSafeScore(p.score) < 75))
-    .sort((a, b) => evalSafeScore(a.score) - evalSafeScore(b.score))
-    .slice(0, 4)
-    .forEach(p => items.push(`${p.id} ${p.name}: ${p.summary || evalStatusLabel(p.status)}`));
+  if (!protocolOffline) {
+    probes
+      .filter(p => p.status !== 'skip' && (p.status !== 'pass' || evalSafeScore(p.score) < 75))
+      .sort((a, b) => evalSafeScore(a.score) - evalSafeScore(b.score))
+      .slice(0, 4)
+      .forEach(p => items.push(`${p.id} ${p.name}: ${p.summary || evalStatusLabel(p.status)}`));
+  }
   if (!items.length && dimensions.length) {
     const weakest = [...dimensions].sort((a, b) => a.score - b.score)[0];
     items.push(`${weakest.label} 当前为 ${weakest.score}%，其它关键探针未发现明显异常。`);
@@ -1344,10 +1868,21 @@ function renderEvalReport(report) {
   setEvalText('eval-report-target', `${report.providerName || '--'} · ${report.model || '--'} · 全面检测`);
   setEvalText('eval-report-id', report.id || '--');
   setEvalText('eval-report-clock', evalFormatTime(report.createdAt));
-  setEvalText('eval-progress-text', '检测完成');
-  setEvalText('eval-progress-score', `${score.toFixed(0)} / 100`);
-  const state = document.getElementById('eval-report-state');
-  if (state) state.dataset.state = 'done';
+  const offlineCap = caps.find(c => c.rule === 'protocol_offline');
+  const allProbes = Array.isArray(report.probes) ? report.probes : [];
+  if (offlineCap) {
+    const p1probe = allProbes.find(p => p.id === 'P1');
+    const failSummary = p1probe?.summary || '协议不可用';
+    setEvalText('eval-progress-text', `协议失败：${failSummary}`);
+    setEvalText('eval-progress-score', `${score.toFixed(0)} / 100`);
+    const state = document.getElementById('eval-report-state');
+    if (state) state.dataset.state = 'warn';
+  } else {
+    setEvalText('eval-progress-text', '检测完成');
+    setEvalText('eval-progress-score', `${score.toFixed(0)} / 100`);
+    const state = document.getElementById('eval-report-state');
+    if (state) state.dataset.state = 'done';
+  }
   const fill = document.getElementById('eval-progress-fill');
   if (fill) fill.style.width = '100%';
   document.querySelector('.eval-progress-panel')?.classList.remove('is-running');
@@ -1507,6 +2042,10 @@ async function toggleProviderEnabled(id) {
   if (_inFlightToggles.has(key)) return;
   const p = providerStore.providers.find(x => x.id === id);
   if (!p) return;
+  if (p.meta?.codexConfig === true) {
+    showCustomAlert('这是 Codex 配置，不属于供应商启用状态。', '无法操作', 'warn');
+    return;
+  }
   const next = !(p.enabled !== false);
   _inFlightToggles.add(key);
   try {
@@ -1525,6 +2064,10 @@ async function toggleProviderEnabled(id) {
 
 async function deleteProvider(id) {
   const p = providerStore.providers.find(x => x.id === id);
+  if (p?.meta?.codexConfig === true) {
+    showCustomAlert('这是 Codex 配置，请在 Codex 配置页删除。', '无法删除供应商', 'warn');
+    return;
+  }
   if (!(await showCustomConfirm(`确定删除供应商「${p ? p.name : id}」？`, '删除确认', 'warn'))) return;
   providerStore.providers = providerStore.providers.filter(x => x.id !== id);
   await persistProviders();

@@ -21,6 +21,7 @@ import { tryGunzip } from './connect.js';
 import { snapshot } from './stats.js';
 import { extractModelList, unlockModels } from './rename-models.js';
 import { mitmLog, rpcAuditLog } from './mitm-logger.js';
+import { httpsAgentFor } from './system-proxy.js';
 
 function intEnv(name, fallback, min = 1) {
   const n = parseInt(process.env[name] || '', 10);
@@ -293,7 +294,7 @@ function proxyToCodeium(req, res, body, id, opts = {}) {
   fwdHeaders.host = upstream;
 
   const proxyReq = https.request({
-    agent: PROXY_HTTPS_AGENT,
+    agent: httpsAgentFor(PROXY_HTTPS_AGENT),
     hostname: upstream,
     port: 443,
     path: upstreamPath,

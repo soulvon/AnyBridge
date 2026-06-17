@@ -721,7 +721,11 @@ fn run_proxy_preflight(
             ide_exe_path.clone().unwrap_or_else(|| "未定位".into())
         ),
     );
-    let other_target = if target == "devin" { "windsurf" } else { "devin" };
+    let other_target = if target == "devin" {
+        "windsurf"
+    } else {
+        "devin"
+    };
     let other_label = if other_target == "devin" {
         "Devin"
     } else {
@@ -1250,7 +1254,11 @@ pub fn preflight_proxy_impl(
                 .map(|managed| managed.try_wait().ok().flatten().is_none())
         })
         .unwrap_or(false);
-    run_proxy_preflight(target_ide.as_deref(), resource_dir.as_deref(), !proxy_running)
+    run_proxy_preflight(
+        target_ide.as_deref(),
+        resource_dir.as_deref(),
+        !proxy_running,
+    )
 }
 
 #[tauri::command]
@@ -1461,11 +1469,14 @@ pub fn start_proxy_impl(
                 "proxy-log",
                 LogLine {
                     level: "info".into(),
-                    msg: format!("{} 代理配置已存在，若模型仍是原样请重启 IDE 并确认当前目标 IDE 正确", ide_label),
+                    msg: format!(
+                        "{} 代理配置已存在，若模型仍是原样请重启 IDE 并确认当前目标 IDE 正确",
+                        ide_label
+                    ),
                 },
             );
             false
-        },
+        }
         Err(e) => {
             let _ = app.emit(
                 "proxy-log",
