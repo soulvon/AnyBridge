@@ -1166,7 +1166,7 @@ function claudeCodeNormalizeSettingsConfig(settings, baseUrl, apiKey, model) {
   }
   const env = normalized.env;
   if (!env.ANTHROPIC_BASE_URL && baseUrl) env.ANTHROPIC_BASE_URL = baseUrl;
-  if (!env.ANTHROPIC_AUTH_TOKEN && !env.ANTHROPIC_API_KEY && apiKey) env.ANTHROPIC_AUTH_TOKEN = apiKey;
+  if (!env.ANTHROPIC_AUTH_TOKEN && !env.ANTHROPIC_API_KEY && !normalized.apiKey && apiKey) env.ANTHROPIC_AUTH_TOKEN = apiKey;
   const cleanModel = String(model || '').trim();
   if (cleanModel) {
     const fields = [
@@ -1218,6 +1218,14 @@ function claudeCodeApplyModelCandidates(settings) {
 
 function claudeCodeApiKeyFromEnv(env = {}) {
   return env.ANTHROPIC_AUTH_TOKEN || env.ANTHROPIC_API_KEY || env.OPENROUTER_API_KEY || env.GOOGLE_API_KEY || '';
+}
+
+function claudeCodeApiKeyFromSettings(settings) {
+  if (typeof settings?.apiKey === 'string' && settings.apiKey && !settings.apiKey.includes('${')) {
+    return settings.apiKey;
+  }
+  const env = settings && typeof settings === 'object' ? settings.env || {} : {};
+  return claudeCodeApiKeyFromEnv(env);
 }
 
 function claudeCodeBaseUrlFromEnv(env = {}) {
@@ -1598,7 +1606,7 @@ async function saveClaudeCodeConfigEditor(switchAfter = false) {
   settingsConfig = claudeCodeNormalizeSettingsConfig(settingsConfig, baseUrl, apiKey, defaultModel);
   const env = settingsConfig && typeof settingsConfig === 'object' ? settingsConfig.env || {} : {};
   baseUrl = claudeCodeBaseUrlFromEnv(env) || baseUrl;
-  apiKey = claudeCodeApiKeyFromEnv(env) || apiKey;
+  apiKey = claudeCodeApiKeyFromSettings(settingsConfig) || apiKey;
   defaultModel = claudeCodeEnvModel(settingsConfig) || defaultModel;
   const models = codexConfigNormalizeModels([
     ...claudeCodeModelCandidatesFromEnv(env),
@@ -1781,37 +1789,152 @@ function opencodeConfigDisplayBaseUrl(provider) {
   return opencodeTargetBaseUrl(provider) || platformJoinUrl(provider.apiHost, provider.apiPath);
 }
 
-function opencodeBuildSettingsConfig(name, baseUrl, apiKey, models) {
+function opencodeCurrentRawSettingsConfig() {
+  const raw = document.getElementById('opencode-config-raw-json')?.value || '';
+  if (!raw.trim()) return null;
+  try {
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function opencodeModelMapFromList(models, seedModels = {}) {
+  const out = {};
+  for (const modelId of codexConfigNormalizeModels(models)) {
+    const existing = seedModels && typeof seedModels === 'object' && !Array.isArray(seedModels)
+      ? seedModels[modelId]
+      : null;
+    const meta = existing && typeof existing === 'object' && !Array.isArray(existing)
+      ? JSON.parse(JSON.stringify(existing))
+      : {};
+    if (!meta.name) meta.name = modelId;
+    out[modelId] = meta;
+  }
+  return out;
+}
+
+function opencodeBuildSettingsConfig(name, baseUrl, apiKey, models, seed = null) {
   const cleanBaseUrl = opencodeConfigDisplayBaseUrl({
     apiHost: baseUrl,
     apiPath: '',
   }) || String(baseUrl || '').trim();
   const cleanName = String(name || '').trim() || 'AnyBridge';
-  const modelMap = {};
-  for (const modelId of codexConfigNormalizeModels(models)) {
-    modelMap[modelId] = {
-      name: cleanName ? `${cleanName} · ${modelId}` : modelId,
-    };
-  }
-  return {
-    npm: '@ai-sdk/openai-compatible',
-    name: cleanName,
-    options: {
-      baseURL: cleanBaseUrl,
-      apiKey: String(apiKey || '').trim(),
-      setCacheKey: true,
-    },
-    models: modelMap,
-  };
+  const base = seed && typeof seed === 'object' && !Array.isArray(seed)
+    ? JSON.parse(JSON.stringify(seed))
+    : {};
+  if (!base.npm) base.npm = '@ai-sdk/openai-compatible';
+  base.name = cleanName;
+  if (!base.options || typeof base.options !== 'object' || Array.isArray(base.options)) base.options = {};
+  base.options.baseURL = cleanBaseUrl;
+  base.options.apiKey = String(apiKey || '').trim();
+  if (!('setCacheKey' in base.options)) base.options.setCacheKey = true;
+  const seedModels = base.models && typeof base.models === 'object' && !Array.isArray(base.models)
+    ? base.models
+    : {};
+  base.models = opencodeModelMapFromList(models, seedModels);
+  return base;
 }
 
-function opencodeRawConfigTextFromFields() {
+function opencodeSettingsFromFields() {
   const name = document.getElementById('opencode-config-name')?.value || '';
   const baseUrl = document.getElementById('opencode-config-base-url')?.value || '';
   const apiKey = document.getElementById('opencode-config-api-key')?.value || '';
   const defaultModel = document.getElementById('opencode-config-model')?.value || '';
   const models = codexConfigParseModels(document.getElementById('opencode-config-models')?.value, defaultModel);
-  return JSON.stringify(opencodeBuildSettingsConfig(name, baseUrl, apiKey, models), null, 2);
+  return opencodeBuildSettingsConfig(name, baseUrl, apiKey, models, opencodeCurrentRawSettingsConfig());
+}
+
+function opencodeValidateSettingsConfig(settings) {
+  if (!settings || typeof settings !== 'object' || Array.isArray(settings)) {
+    return 'OpenCode provider 配置 JSON 顶层必须是对象。';
+  }
+  if ('options' in settings && (typeof settings.options !== 'object' || settings.options === null || Array.isArray(settings.options))) {
+    return 'OpenCode provider 配置 JSON 的 options 字段必须是对象。';
+  }
+  if ('models' in settings && (typeof settings.models !== 'object' || settings.models === null || Array.isArray(settings.models))) {
+    return 'OpenCode provider 配置 JSON 的 models 字段必须是对象。';
+  }
+  return '';
+}
+
+function opencodeNormalizeSettingsConfig(settings, name, baseUrl, apiKey, models) {
+  const normalized = settings && typeof settings === 'object' && !Array.isArray(settings)
+    ? settings
+    : {};
+  if (!normalized.npm) normalized.npm = '@ai-sdk/openai-compatible';
+  if (!normalized.name && name) normalized.name = name;
+  if (!normalized.options || typeof normalized.options !== 'object' || Array.isArray(normalized.options)) normalized.options = {};
+  if (!normalized.options.baseURL && baseUrl) normalized.options.baseURL = baseUrl;
+  if (!normalized.options.apiKey && apiKey) normalized.options.apiKey = apiKey;
+  if (!('setCacheKey' in normalized.options)) normalized.options.setCacheKey = true;
+  if (!normalized.models || typeof normalized.models !== 'object' || Array.isArray(normalized.models)) normalized.models = {};
+  for (const modelId of codexConfigNormalizeModels(models)) {
+    const meta = normalized.models[modelId];
+    if (!meta || typeof meta !== 'object' || Array.isArray(meta)) {
+      normalized.models[modelId] = { name: modelId };
+    } else if (!meta.name) {
+      meta.name = modelId;
+    }
+  }
+  return normalized;
+}
+
+function opencodeConfigObjectFromRawOrFields() {
+  const rawConfig = String(document.getElementById('opencode-config-raw-json')?.value || '').trim();
+  return rawConfig ? JSON.parse(rawConfig) : opencodeSettingsFromFields();
+}
+
+function opencodeBuildSettingsForProvider(provider, models = null) {
+  const modelList = models || codexConfigModelList(provider);
+  return opencodeNormalizeSettingsConfig(
+    opencodeBuildSettingsConfig(
+      provider?.name || '',
+      opencodeConfigDisplayBaseUrl(provider),
+      provider?.apiKey || '',
+      modelList,
+      provider?.settingsConfig || null
+    ),
+    provider?.name || '',
+    opencodeConfigDisplayBaseUrl(provider),
+    provider?.apiKey || '',
+    modelList
+  );
+}
+
+function opencodeSetRawSettings(settings) {
+  codexConfigSetInputValue('opencode-config-raw-json', JSON.stringify(settings, null, 2));
+}
+
+function opencodeModelKeysFromSettings(settings) {
+  return settings && settings.models && typeof settings.models === 'object' && !Array.isArray(settings.models)
+    ? Object.keys(settings.models).map(x => String(x || '').trim()).filter(Boolean)
+    : [];
+}
+
+function opencodeBaseUrlFromOptions(options = {}) {
+  return typeof options.baseURL === 'string'
+    ? options.baseURL
+    : typeof options.baseUrl === 'string'
+      ? options.baseUrl
+      : '';
+}
+
+function opencodeApiKeyFromOptions(options = {}) {
+  return typeof options.apiKey === 'string' ? options.apiKey : '';
+}
+
+function opencodeConfigNameFromSettings(settings) {
+  return typeof settings?.name === 'string' ? settings.name : '';
+}
+
+function opencodeRawConfigTextFromSettings(settings) {
+  return JSON.stringify(settings, null, 2);
+}
+
+function opencodeRawConfigTextFromFields() {
+  return opencodeRawConfigTextFromSettings(opencodeSettingsFromFields());
 }
 
 function syncOpenCodeRawConfigFromFields() {
@@ -1826,12 +1949,10 @@ function syncOpenCodeRawConfigFromFields() {
 function opencodeApplyRawConfigToFields(settings) {
   if (!settings || typeof settings !== 'object') return;
   const options = settings.options && typeof settings.options === 'object' ? settings.options : {};
-  const baseUrl = typeof options.baseURL === 'string' ? options.baseURL : '';
-  const apiKey = typeof options.apiKey === 'string' ? options.apiKey : '';
-  const name = typeof settings.name === 'string' ? settings.name : '';
-  const modelKeys = settings.models && typeof settings.models === 'object'
-    ? Object.keys(settings.models).map(x => String(x || '').trim()).filter(Boolean)
-    : [];
+  const baseUrl = opencodeBaseUrlFromOptions(options);
+  const apiKey = opencodeApiKeyFromOptions(options);
+  const name = opencodeConfigNameFromSettings(settings);
+  const modelKeys = opencodeModelKeysFromSettings(settings);
   const currentModel = String(document.getElementById('opencode-config-model')?.value || '').trim();
   const pickedModel = currentModel && modelKeys.includes(currentModel) ? currentModel : modelKeys[0] || currentModel;
 
@@ -1850,6 +1971,11 @@ function onOpenCodeRawConfigInput() {
   const raw = document.getElementById('opencode-config-raw-json')?.value || '';
   try {
     const parsed = JSON.parse(raw || '{}');
+    const validation = opencodeValidateSettingsConfig(parsed);
+    if (validation) {
+      opencodeConfigSetModelStatus(validation, 'error');
+      return;
+    }
     opencodeRawConfigSyncing = true;
     opencodeApplyRawConfigToFields(parsed);
     opencodeRawConfigSyncing = false;
@@ -1863,6 +1989,8 @@ function onOpenCodeDefaultModelInput() {
   renderOpenCodeConfigModelList();
   syncOpenCodeRawConfigFromFields();
 }
+
+// Active OpenCode raw-config helpers above preserve extra options/model metadata.
 
 function renderOpenCodeConfigSourceList(selectedId = '') {
   const list = document.getElementById('opencode-config-source-list');
@@ -2078,10 +2206,7 @@ function openOpenCodeConfigEditor(providerId = '') {
     codexConfigSetInputValue('opencode-config-api-key', provider.apiKey || '');
     codexConfigSetInputValue('opencode-config-model', provider.defaultModel || models[0] || '');
     opencodeConfigSetModels(models, provider.defaultModel || models[0] || '', models.length ? `已保存 ${models.length} 个模型` : '可重新拉取模型列表');
-    codexConfigSetInputValue(
-      'opencode-config-raw-json',
-      JSON.stringify(provider.settingsConfig || opencodeBuildSettingsConfig(provider.name || '', opencodeConfigDisplayBaseUrl(provider), provider.apiKey || '', models), null, 2)
-    );
+    opencodeSetRawSettings(opencodeBuildSettingsForProvider(provider, models));
   } else {
     codexConfigSetInputValue('opencode-config-name', '');
     codexConfigSetInputValue('opencode-config-base-url', '');
@@ -2118,33 +2243,31 @@ async function syncOpenCodeConfigUiAfterStoreChange() {
 async function saveOpenCodeConfigEditor(addAfter = false) {
   const editId = String(document.getElementById('opencode-config-edit-id')?.value || '').trim();
   const sourceId = String(document.getElementById('opencode-config-source-id')?.value || '').trim();
-  const name = String(document.getElementById('opencode-config-name')?.value || '').trim();
+  let name = String(document.getElementById('opencode-config-name')?.value || '').trim();
   let baseUrl = String(document.getElementById('opencode-config-base-url')?.value || '').trim();
   let apiKey = String(document.getElementById('opencode-config-api-key')?.value || '').trim();
   let defaultModel = String(document.getElementById('opencode-config-model')?.value || '').trim();
-  const rawConfig = String(document.getElementById('opencode-config-raw-json')?.value || '').trim();
   let settingsConfig = null;
   try {
-    settingsConfig = rawConfig
-      ? JSON.parse(rawConfig)
-      : opencodeBuildSettingsConfig(name, baseUrl, apiKey, codexConfigParseModels(document.getElementById('opencode-config-models')?.value, defaultModel));
+    settingsConfig = opencodeConfigObjectFromRawOrFields();
   } catch (e) {
     showCustomAlert(`原始配置 JSON 格式无效：${e}`, '配置不完整', 'warn');
     return;
   }
-  if (!settingsConfig || typeof settingsConfig !== 'object' || Array.isArray(settingsConfig)) {
-    showCustomAlert('OpenCode provider 配置 JSON 顶层必须是对象。', '配置不完整', 'warn');
+  const validation = opencodeValidateSettingsConfig(settingsConfig);
+  if (validation) {
+    showCustomAlert(validation, '配置不完整', 'warn');
     return;
   }
 
   const options = settingsConfig.options && typeof settingsConfig.options === 'object' ? settingsConfig.options : {};
-  const modelKeys = settingsConfig.models && typeof settingsConfig.models === 'object'
-    ? Object.keys(settingsConfig.models).map(x => String(x || '').trim()).filter(Boolean)
-    : [];
-  baseUrl = typeof options.baseURL === 'string' && options.baseURL.trim() ? options.baseURL.trim() : baseUrl;
-  apiKey = typeof options.apiKey === 'string' && options.apiKey.trim() ? options.apiKey.trim() : apiKey;
+  const modelKeys = opencodeModelKeysFromSettings(settingsConfig);
+  name = opencodeConfigNameFromSettings(settingsConfig) || name;
+  baseUrl = opencodeBaseUrlFromOptions(options).trim() || baseUrl;
+  apiKey = opencodeApiKeyFromOptions(options).trim() || apiKey;
   defaultModel = modelKeys.includes(defaultModel) ? defaultModel : modelKeys[0] || defaultModel;
   const models = codexConfigParseModels(modelKeys.length ? modelKeys.join('\n') : document.getElementById('opencode-config-models')?.value, defaultModel);
+  settingsConfig = opencodeNormalizeSettingsConfig(settingsConfig, name, baseUrl, apiKey, models);
 
   if (!editId && !sourceId) {
     showCustomAlert('请先选择一个现有供应商。', '没有配置来源', 'warn');

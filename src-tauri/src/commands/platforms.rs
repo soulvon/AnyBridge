@@ -1018,6 +1018,11 @@ fn claude_settings_from_config(config: &ClaudeCodeConfig, mask_token: bool) -> V
     if let Some(settings) = config.settings_config.as_ref() {
         let mut out = settings.clone();
         if mask_token {
+            if let Some(value) = out.get_mut("apiKey") {
+                if let Some(masked) = value.as_str().map(mask_key) {
+                    *value = Value::String(masked);
+                }
+            }
             if let Some(env) = out.get_mut("env").and_then(Value::as_object_mut) {
                 for key in [
                     "ANTHROPIC_AUTH_TOKEN",
@@ -1046,14 +1051,24 @@ fn claude_settings_from_config(config: &ClaudeCodeConfig, mask_token: bool) -> V
     };
 
     serde_json::json!({
+        "$schema": "https://json.schemastore.org/claude-code-settings.json",
+        "includeCoAuthoredBy": false,
         "env": {
             "ANTHROPIC_BASE_URL": base,
             "ANTHROPIC_AUTH_TOKEN": token,
             "ANTHROPIC_MODEL": model,
             "ANTHROPIC_DEFAULT_HAIKU_MODEL": model,
+            "ANTHROPIC_DEFAULT_HAIKU_MODEL_NAME": model,
             "ANTHROPIC_DEFAULT_SONNET_MODEL": model,
+            "ANTHROPIC_DEFAULT_SONNET_MODEL_NAME": model,
             "ANTHROPIC_DEFAULT_OPUS_MODEL": model,
-        }
+            "ANTHROPIC_DEFAULT_OPUS_MODEL_NAME": model,
+            "ANTHROPIC_DEFAULT_FABLE_MODEL": model,
+            "ANTHROPIC_DEFAULT_FABLE_MODEL_NAME": model,
+        },
+        "permissions": {},
+        "hooks": {},
+        "mcpServers": {},
     })
 }
 
@@ -1230,13 +1245,8 @@ fn opencode_provider_entry(p: &Provider) -> Value {
 
     let mut models = Map::new();
     for model_id in opencode_model_ids(p) {
-        let display_name = if p.name.trim().is_empty() {
-            model_id.clone()
-        } else {
-            format!("{} · {}", p.name.trim(), model_id)
-        };
         let mut model_meta = Map::new();
-        model_meta.insert("name".to_string(), Value::String(display_name));
+        model_meta.insert("name".to_string(), Value::String(model_id.clone()));
         models.insert(model_id, Value::Object(model_meta));
     }
 
