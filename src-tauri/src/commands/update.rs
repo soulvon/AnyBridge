@@ -69,18 +69,12 @@ pub struct DownloadProgressPayload {
     pub percentage: Option<f64>,
 }
 
-fn config_dir() -> PathBuf {
-    let mut dir = dirs::config_dir().unwrap_or_else(|| PathBuf::from("."));
-    dir.push("ide-byok");
-    dir
-}
-
 fn settings_path() -> PathBuf {
-    config_dir().join("update_settings.json")
+    crate::commands::config::config_dir_path().join("update_settings.json")
 }
 
 fn pending_update_notes_path() -> PathBuf {
-    config_dir().join(PENDING_UPDATE_NOTES_FILE)
+    crate::commands::config::config_dir_path().join(PENDING_UPDATE_NOTES_FILE)
 }
 
 fn load_pending_update_notes() -> Result<Option<PendingUpdateNotes>, String> {
@@ -136,7 +130,7 @@ pub fn get_update_settings() -> Result<UpdateSettings, String> {
 
 #[tauri::command]
 pub fn save_update_settings(settings: UpdateSettings) -> Result<(), String> {
-    let dir = config_dir();
+    let dir = crate::commands::config::config_dir_path();
     fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     let json = serde_json::to_string_pretty(&settings).map_err(|e| e.to_string())?;
     super::write_atomic(&settings_path(), json.as_bytes())
@@ -148,7 +142,7 @@ pub fn save_pending_update_notes(
     release_notes: String,
     release_notes_zh: String,
 ) -> Result<(), String> {
-    let dir = config_dir();
+    let dir = crate::commands::config::config_dir_path();
     fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     let payload = PendingUpdateNotes {
         version: version.trim().to_string(),
@@ -283,7 +277,7 @@ pub async fn download_and_install_update(app: AppHandle, relaunch: bool) -> Resu
 /// 打开下载页面（浏览器）
 #[tauri::command]
 pub fn open_download_page() -> Result<(), String> {
-    let url = "https://github.com/soulvon/IDE-BYOK-Release/releases";
+    let url = "https://github.com/soulvon/AnyBridge-Release/releases";
     #[cfg(target_os = "windows")]
     {
         std::process::Command::new("cmd")

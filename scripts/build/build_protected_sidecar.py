@@ -11,8 +11,8 @@ import shutil
 import os
 import json
 import glob
-import sys
 import platform
+import argparse
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 SIDECAR_DIR = os.path.join(BASE_DIR, "sidecar")
@@ -41,6 +41,48 @@ def detect_platform():
 
     return os_name, arch
 
+def normalize_platform(os_name, arch):
+    os_aliases = {
+        "win": "windows",
+        "win32": "windows",
+        "windows": "windows",
+        "darwin": "macos",
+        "mac": "macos",
+        "macos": "macos",
+        "linux": "linux",
+    }
+    arch_aliases = {
+        "amd64": "x64",
+        "x86_64": "x64",
+        "x64": "x64",
+        "arm64": "arm64",
+        "aarch64": "arm64",
+    }
+    normalized_os = os_aliases.get(os_name.lower())
+    normalized_arch = arch_aliases.get(arch.lower())
+    if not normalized_os:
+        raise ValueError(f"Unsupported platform OS: {os_name}")
+    if not normalized_arch:
+        raise ValueError(f"Unsupported platform arch: {arch}")
+    return normalized_os, normalized_arch
+
+def parse_platform(value):
+    value = value.strip().lower()
+    rust_triples = {
+        "x86_64-pc-windows-msvc": ("windows", "x64"),
+        "aarch64-pc-windows-msvc": ("windows", "arm64"),
+        "x86_64-apple-darwin": ("macos", "x64"),
+        "aarch64-apple-darwin": ("macos", "arm64"),
+        "x86_64-unknown-linux-gnu": ("linux", "x64"),
+        "aarch64-unknown-linux-gnu": ("linux", "arm64"),
+    }
+    if value in rust_triples:
+        return rust_triples[value]
+    parts = [p for p in value.replace("_", "-").split("-") if p]
+    if len(parts) != 2:
+        raise ValueError("Expected --platform like windows-x64, macos-arm64, linux-x64, or a Rust target triple")
+    return normalize_platform(parts[0], parts[1])
+
 def get_pkg_target(os_name, arch):
     """返回 pkg 的 target triple"""
     node_version = "22"
@@ -60,7 +102,7 @@ def get_tauri_triple(os_name, arch):
 
 def get_sidecar_filename(os_name, tauri_triple):
     """返回 Tauri binaries/ 目录下期望的 sidecar 文件名"""
-    base = f"ide-byok-proxy-{tauri_triple}"
+    base = f"anybridge-proxy-{tauri_triple}"
     if os_name == "windows":
         return f"{base}.exe"
     return base
@@ -189,6 +231,8 @@ def pkg_bundle(os_name, arch):
     new = os.path.join(OUT_DIR, sidecar_filename)
     if os.path.exists(old):
         shutil.move(old, new)
+        if os_name != "windows":
+            os.chmod(new, 0o755)
         print(f"[out] {new}")
     else:
         print(f"[warn] pkg output not found: {old}")
@@ -196,14 +240,18 @@ def pkg_bundle(os_name, arch):
             print(f"  found: {f}")
 
 def main():
-    # 解析 --platform 参数
+    parser = argparse.ArgumentParser(description="Build the protected bytenode/pkg sidecar for Tauri externalBin.")
+    parser.add_argument(
+        "--platform",
+        help="Target platform, e.g. windows-x64, macos-arm64, linux-x64, or x86_64-apple-darwin.",
+    )
+    args = parser.parse_args()
+
     os_name, arch = detect_platform()
-    for i, arg in enumerate(sys.argv[1:]):
-        if arg == "--platform" and i + 1 < len(sys.argv[1:]):
-            platform_str = sys.argv[i + 2]
-            parts = platform_str.split("-")
-            if len(parts) == 2:
-                os_name, arch = parts[0], parts[1]
+    if args.platform:
+        os_name, arch = parse_platform(args.platform)
+    else:
+        os_name, arch = normalize_platform(os_name, arch)
 
     print(f"[platform] os={os_name}, arch={arch}")
     print(f"[platform] pkg_target={get_pkg_target(os_name, arch)}")

@@ -1,13 +1,72 @@
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap};
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 const APP_USER_AGENT: &str = concat!("AnyBridge/", env!("CARGO_PKG_VERSION"));
+const APP_CONFIG_DIR_NAME: &str = "anybridge";
+const LEGACY_CONFIG_DIR_NAME: &str = "ide-byok";
+
+fn config_base_dir() -> PathBuf {
+    #[cfg(target_os = "macos")]
+    {
+        dirs::data_dir().unwrap_or_else(|| PathBuf::from("."))
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        dirs::config_dir().unwrap_or_else(|| PathBuf::from("."))
+    }
+}
+
+fn named_config_dir(name: &str) -> PathBuf {
+    config_base_dir().join(name)
+}
+
+fn copy_dir_missing(src: &Path, dst: &Path) -> Result<(), String> {
+    if !src.exists() {
+        return Ok(());
+    }
+    fs::create_dir_all(dst).map_err(|e| format!("创建配置目录失败: {}", e))?;
+    for entry in fs::read_dir(src).map_err(|e| format!("读取旧配置目录失败: {}", e))? {
+        let entry = entry.map_err(|e| format!("读取旧配置项失败: {}", e))?;
+        let src_path = entry.path();
+        let dst_path = dst.join(entry.file_name());
+        if dst_path.exists() {
+            continue;
+        }
+        let file_type = entry
+            .file_type()
+            .map_err(|e| format!("读取旧配置项类型失败: {}", e))?;
+        if file_type.is_dir() {
+            copy_dir_missing(&src_path, &dst_path)?;
+        } else if file_type.is_file() {
+            fs::copy(&src_path, &dst_path).map_err(|e| {
+                format!(
+                    "迁移配置文件失败: {} -> {} ({})",
+                    src_path.to_string_lossy(),
+                    dst_path.to_string_lossy(),
+                    e
+                )
+            })?;
+        }
+    }
+    Ok(())
+}
+
+fn migrate_legacy_config_dir(new_dir: &Path) {
+    let legacy_dir = named_config_dir(LEGACY_CONFIG_DIR_NAME);
+    if legacy_dir == new_dir || !legacy_dir.exists() {
+        return;
+    }
+    if let Err(e) = copy_dir_missing(&legacy_dir, new_dir) {
+        eprintln!("[config] legacy config migration skipped: {}", e);
+    }
+}
 
 fn config_dir() -> PathBuf {
-    let mut dir = dirs::config_dir().unwrap_or_else(|| PathBuf::from("."));
-    dir.push("ide-byok");
+    let dir = named_config_dir(APP_CONFIG_DIR_NAME);
+    migrate_legacy_config_dir(&dir);
     dir
 }
 

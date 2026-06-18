@@ -1,12 +1,12 @@
-# IDE BYOK 打包与更新发布指南
+# AnyBridge 打包与更新发布指南
 
-本文档作为后续固定打包流程。IDE BYOK 源码仓库保持私有，只把编译后的安装包、签名文件和 `latest.json` 同步到公开发布仓库。
+本文档作为后续固定打包流程。AnyBridge 源码仓库保持私有，只把编译后的安装包、签名文件和 `latest.json` 同步到公开发布仓库。
 
 ## 发布架构
 
-- 私有源码仓库：`soulvon/IDE-BYOK`，保存源码、CI、Tauri 配置和签名公钥。
-- 公开分发仓库：`soulvon/IDE-BYOK-Release`，只承载 GitHub Release 资产，不放私有源码。
-- 应用更新端点：`https://github.com/soulvon/IDE-BYOK-Release/releases/latest/download/latest.json`。
+- 私有源码仓库：`soulvon/AnyBridge`，保存源码、CI、Tauri 配置和签名公钥。
+- 公开分发仓库：`soulvon/AnyBridge-Release`，只承载 GitHub Release 资产，不放私有源码。
+- 应用更新端点：`https://github.com/soulvon/AnyBridge-Release/releases/latest/download/latest.json`。
 - Tauri updater 只信任 `src-tauri/tauri.conf.json` 中配置的 `pubkey`，安装包必须由对应私钥签名。
 
 ## 防篡改发布原则
@@ -39,7 +39,7 @@
 
 - Windows 11 本机测试：Node.js 20+、Rust stable、Tauri CLI、Visual Studio Build Tools、WiX/NSIS 依赖。
 - macOS/Linux 测试建议在对应系统本机或 GitHub Actions runner 上构建，不建议在 Windows 上交叉编译桌面包。
-- 打包前关闭正在运行的 IDE BYOK 和 `ide-byok-proxy`，避免安装包覆盖 sidecar 时文件被占用。
+- 打包前关闭正在运行的 AnyBridge 和 `anybridge-proxy`，避免安装包覆盖 sidecar 时文件被占用。
 
 ### 2. 同步版本号
 
@@ -77,7 +77,7 @@ python scripts/build/build_protected_sidecar.py
 Windows 本地输出应包含：
 
 ```text
-src-tauri/binaries/ide-byok-proxy-x86_64-pc-windows-msvc.exe
+src-tauri/binaries/anybridge-proxy-x86_64-pc-windows-msvc.exe
 ```
 
 ### 5. 构建本地安装包
@@ -103,8 +103,8 @@ src-tauri/target/release/bundle/
 ### 6. 本地验收清单
 
 - 安装包能安装并启动，窗口按钮、tab、设置页按钮可点击。
-- 代理能启动/停止，`ide-byok-proxy` 不弹出命令行窗口。
-- 关闭或退出应用后 sidecar 被清理，重新安装时不会提示 `ide-byok-proxy.exe` 被占用。
+- 代理能启动/停止，`anybridge-proxy` 不弹出命令行窗口。
+- 关闭或退出应用后 sidecar 被清理，重新安装时不会提示 `anybridge-proxy.exe` 被占用。
 - 设置页能显示当前版本，手动检查更新按钮不会导致前端报错。
 - 本地测试包不上传公开 Release，不覆盖正式 `latest.json`。
 - 如果本地验证 protected sidecar，必须确认代理核心功能、模型映射、供应商请求和日志仍正常。
@@ -126,13 +126,13 @@ src-tauri/target/release/bundle/
 发版前可用以下命令确认 Secret 是否存在：
 
 ```powershell
-gh secret list --repo soulvon/IDE-BYOK
+gh secret list --repo soulvon/AnyBridge
 ```
 
 如果 `TAURI_SIGNING_PRIVATE_KEY` 缺失，可从本地私钥文件写入。不要把私钥内容打印到终端或提交到仓库：
 
 ```powershell
-Get-Content -Raw tauri-sign.key | gh secret set TAURI_SIGNING_PRIVATE_KEY --repo soulvon/IDE-BYOK
+Get-Content -Raw tauri-sign.key | gh secret set TAURI_SIGNING_PRIVATE_KEY --repo soulvon/AnyBridge
 ```
 
 无密码私钥也建议显式配置 `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` 为空字符串，避免 CI 进入交互式密码等待。
@@ -140,7 +140,7 @@ Get-Content -Raw tauri-sign.key | gh secret set TAURI_SIGNING_PRIVATE_KEY --repo
 ### 2. 发版前检查
 
 - 私有仓库保持 private。
-- 公开仓库 `soulvon/IDE-BYOK-Release` 可访问，并且只用于 Release 资产。
+- 公开仓库 `soulvon/AnyBridge-Release` 可访问，并且只用于 Release 资产。
 - 公开仓库必须至少有一个默认分支提交，例如只包含 README 的 `main` 分支；空仓库无法把 Release 标记为 latest。
 - `src-tauri/tauri.conf.json` 的 updater endpoint 指向公开仓库。
 - 三处版本号一致，且 tag 使用同一版本：例如 `v1.2.6`。
@@ -195,7 +195,7 @@ git push origin v1.2.6
 打开公开仓库的：
 
 ```text
-https://github.com/soulvon/IDE-BYOK-Release/releases/latest/download/latest.json
+https://github.com/soulvon/AnyBridge-Release/releases/latest/download/latest.json
 ```
 
 确认 `version` 是当前版本，`platforms` 中包含目标平台 key。
@@ -278,8 +278,8 @@ linux-x86_64-deb
 失败后清理重复 draft release：
 
 ```powershell
-gh api repos/soulvon/IDE-BYOK/releases --jq '.[] | select(.tag_name=="v版本号" and .draft==true) | .id'
-gh api -X DELETE repos/soulvon/IDE-BYOK/releases/RELEASE_ID
+gh api repos/soulvon/AnyBridge/releases --jq '.[] | select(.tag_name=="v版本号" and .draft==true) | .id'
+gh api -X DELETE repos/soulvon/AnyBridge/releases/RELEASE_ID
 ```
 
 公开仓库如果也已经生成错误 draft，同样删除后再重跑。
@@ -290,12 +290,12 @@ gh api -X DELETE repos/soulvon/IDE-BYOK/releases/RELEASE_ID
 
 ```powershell
 git init -b main
-git config user.name "IDE BYOK Release Bot"
+git config user.name "AnyBridge Release Bot"
 git config user.email "release-bot@users.noreply.github.com"
-Set-Content -Path README.md -Value "# IDE BYOK Release`n`nBinary release assets only. Source code remains private.`n"
+Set-Content -Path README.md -Value "# AnyBridge Release`n`nBinary release assets only. Source code remains private.`n"
 git add README.md
 git commit -m "Initialize release repository"
-git remote add origin https://github.com/soulvon/IDE-BYOK-Release
+git remote add origin https://github.com/soulvon/AnyBridge-Release
 git push origin main
 ```
 
@@ -305,7 +305,7 @@ git push origin main
 
 ### 安装时报 sidecar 被占用
 
-关闭 IDE BYOK 和代理进程后重试。应用启动和退出路径已经会清理 sidecar，但测试旧包升级时仍要留意残留进程。
+关闭 AnyBridge 和代理进程后重试。应用启动和退出路径已经会清理 sidecar，但测试旧包升级时仍要留意残留进程。
 
 ### 公开仓库会不会泄露源码
 

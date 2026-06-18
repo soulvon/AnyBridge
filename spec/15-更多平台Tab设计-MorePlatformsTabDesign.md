@@ -20,7 +20,7 @@
 
 ### 定位
 
-「更多平台」是 IDE BYOK 的**扩展功能 tab**，专门承载**通过修改 IDE 自身配置文件**（而不是劫持代理）来接管 API 端点的工具集。
+「更多平台」是 AnyBridge 的**扩展功能 tab**，专门承载**通过修改 IDE 自身配置文件**（而不是劫持代理）来接管 API 端点的工具集。
 
 与现有 tab 的关系：
 | Tab | 接管方式 | 进程依赖 |
@@ -58,7 +58,7 @@
 ```
 ┌─ 更多平台 ────────────────────────────────────────────────┐
 │  通过修改 IDE 自身的配置文件来自定义 API 端点。           │
-│  切换后下次启动对应工具即可生效，无需保持 IDE BYOK 运行。 │
+│  切换后下次启动对应工具即可生效，无需保持 AnyBridge 运行。 │
 │                                                           │
 │  [检测到 2 个可用工具] [全部刷新]                         │
 │                                                           │
@@ -200,7 +200,7 @@ interface PlatformState {
 
 ### 4.2 文件存储
 
-- 持久化：每个平台单独存到 `~/.ide-byok/platforms/<platformId>.json`
+- 持久化：每个平台单独存到 `~/.anybridge/platforms/<platformId>.json`
 - 或者合并到现有的 `providerStore.json` 里，加 `platforms: { ... }` 字段
 
 **推荐：合并到 providerStore.json**，减少文件 IO 复杂度

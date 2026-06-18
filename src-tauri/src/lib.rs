@@ -22,7 +22,7 @@ pub fn run() {
         .manage(ProviderImportScanState::default())
         .setup(|app| {
             // 启动时先清理上一轮崩溃或异常退出后残留的孤儿 sidecar 进程，
-            // 避免旧进程锁住 ide-byok-proxy.exe 导致升级安装失败。
+            // 避免旧进程锁住 anybridge-proxy.exe 导致升级安装失败。
             commands::proxy::kill_sidecar_process();
 
             // 运行时完整性校验（仅 release 模式）

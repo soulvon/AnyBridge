@@ -17,9 +17,9 @@ pub fn hash_file(path: &Path) -> Result<String, String> {
 /// 所以运行时 sidecar 文件名不含 triple（与 proxy.rs 的 resolve_sidecar_path 一致）。
 fn sidecar_filename() -> String {
     #[cfg(target_os = "windows")]
-    return "ide-byok-proxy.exe".to_string();
+    return "anybridge-proxy.exe".to_string();
     #[cfg(not(target_os = "windows"))]
-    return "ide-byok-proxy".to_string();
+    return "anybridge-proxy".to_string();
 }
 
 /// 校验 sidecar 二进制是否被篡改
@@ -36,9 +36,7 @@ pub fn verify_sidecar() -> Result<(), String> {
         return Ok(()); // sidecar 可能还没打包进来，不报错
     }
 
-    let config_dir = dirs::config_dir()
-        .ok_or("无法获取配置目录")?
-        .join("ide-byok");
+    let config_dir = crate::commands::config::config_dir_path();
     let baseline_path = config_dir.join(".sidecar-hash");
 
     let current_hash = hash_file(&sidecar_path)?;
@@ -64,9 +62,7 @@ pub fn verify_sidecar() -> Result<(), String> {
 /// 校验失败时打印警告但不退出，避免开发/测试环境误杀
 pub fn verify_resources(resource_dir: &Path) -> Result<(), String> {
     let files = ["byok-cards.js"];
-    let config_dir = dirs::config_dir()
-        .ok_or("无法获取配置目录")?
-        .join("ide-byok");
+    let config_dir = crate::commands::config::config_dir_path();
 
     for file in &files {
         let file_path = resource_dir.join(file);

@@ -6,7 +6,7 @@
 
 ### 一、背景
 
-IDE-BYOK（Tauri v2 桌面应用）在 `tauri dev` 开发模式下一切正常，但 `cargo build --release` 或 `npx tauri build` 打包后，多个按钮点击无反应，且启动代理时会弹出 CMD 命令行窗口。
+AnyBridge（Tauri v2 桌面应用）在 `tauri dev` 开发模式下一切正常，但 `cargo build --release` 或 `npx tauri build` 打包后，多个按钮点击无反应，且启动代理时会弹出 CMD 命令行窗口。
 
 ---
 
@@ -123,7 +123,7 @@ document.querySelectorAll('.modal-overlay.active')
 
 #### 3.1 根因
 
-`ide-byok-proxy` 是用 `@yao-pkg/pkg` 打包的 Node.js 二进制，属于 **Windows Console Subsystem**。即使 `tauri_plugin_shell` 已设置 `CREATE_NO_WINDOW (0x08000000)`，这个标志只能阻止"为没有控制台的进程创建新窗口"——对于 Console Subsystem 的二进制，Windows 会在进程启动时**自动分配控制台**，`CREATE_NO_WINDOW` 无法阻止。
+`anybridge-proxy` 是用 `@yao-pkg/pkg` 打包的 Node.js 二进制，属于 **Windows Console Subsystem**。即使 `tauri_plugin_shell` 已设置 `CREATE_NO_WINDOW (0x08000000)`，这个标志只能阻止"为没有控制台的进程创建新窗口"——对于 Console Subsystem 的二进制，Windows 会在进程启动时**自动分配控制台**，`CREATE_NO_WINDOW` 无法阻止。
 
 | 标志 | 作用 | 对 Console Subsystem 二进制有效？ |
 |------|------|------|
@@ -152,13 +152,13 @@ cmd.creation_flags(DETACHED_PROCESS | CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROU
 **错误写法**：手动拼接 target triple 后缀
 ```rust
 // ❌ 打包后实际文件名不含 target triple
-let sidecar_file = format!("ide-byok-proxy-{}.exe", target_triple);
+let sidecar_file = format!("anybridge-proxy-{}.exe", target_triple);
 ```
 
-**正确写法**：Tauri 构建脚本会自动将 `binaries/ide-byok-proxy-x86_64-pc-windows-msvc.exe` 重命名为 `ide-byok-proxy.exe` 放在 exe 旁边
+**正确写法**：Tauri 构建脚本会自动将 `binaries/anybridge-proxy-x86_64-pc-windows-msvc.exe` 重命名为 `anybridge-proxy.exe` 放在 exe 旁边
 ```rust
 // ✅ 与 tauri_plugin_shell 的 relative_command_path 逻辑一致
-let sidecar_file = "ide-byok-proxy.exe";  // Windows
+let sidecar_file = "anybridge-proxy.exe";  // Windows
 ```
 
 路径解析逻辑：基于 `current_exe` 的父目录查找，与 `tauri_plugin_shell` 源码中的 `relative_command_path()` 完全一致。
@@ -170,13 +170,13 @@ let sidecar_file = "ide-byok-proxy.exe";  // Windows
 - [x] 手动解析 sidecar 路径时，基于 `current_exe` 父目录而非 `resource_dir`
 - [x] 自行管理子进程时需要手动处理 stdout/stderr 管道和退出监控
 - [x] `ManagedChild` 内部用 `Mutex<Child>` 避免多线程竞争
-- [x] **升级安装时 “Error opening file for writing: ide-byok-proxy.exe”**：旧的 sidecar 进程仍在跑，锁住了文件。必须在 App 退出和启动时主动杀进程（见 3.5）
+- [x] **升级安装时 “Error opening file for writing: anybridge-proxy.exe”**：旧的 sidecar 进程仍在跑，锁住了文件。必须在 App 退出和启动时主动杀进程（见 3.5）
 
 #### 3.5 升级安装文件锁问题（2026-06-06 补充）
 
-**现象**：重新安装时弹出 “Error opening file for writing: ide-byok-proxy.exe”，中止/重试/忽略三个按钮。
+**现象**：重新安装时弹出 “Error opening file for writing: anybridge-proxy.exe”，中止/重试/忽略三个按钮。
 
-**根因**：旧版 App 退出时没有杀 sidecar 进程（`RunEvent::ExitRequested` 里只还原了 IDE 配置，未清理子进程），导致 `ide-byok-proxy.exe` 被进程占用，安装程序无法覆盖。
+**根因**：旧版 App 退出时没有杀 sidecar 进程（`RunEvent::ExitRequested` 里只还原了 IDE 配置，未清理子进程），导致 `anybridge-proxy.exe` 被进程占用，安装程序无法覆盖。
 
 **修复**：
 
@@ -197,8 +197,8 @@ commands::proxy::kill_sidecar_process(); // 双保险：按进程名全盘清理
 ```rust
 // proxy.rs - 独立的全盘清理函数（不依赖 ProxyState）
 pub fn kill_sidecar_process() {
-    // Windows: taskkill /F /T /IM ide-byok-proxy.exe
-    // macOS/Linux: pkill -f ide-byok-proxy
+    // Windows: taskkill /F /T /IM anybridge-proxy.exe
+    // macOS/Linux: pkill -f anybridge-proxy
 }
 ```
 

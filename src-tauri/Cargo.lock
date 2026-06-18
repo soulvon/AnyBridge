@@ -54,6 +54,34 @@ dependencies = [
 ]
 
 [[package]]
+name = "anybridge"
+version = "1.2.17"
+dependencies = [
+ "chrono",
+ "dirs 5.0.1",
+ "flate2",
+ "hex",
+ "json5",
+ "libc",
+ "rcgen",
+ "regex",
+ "reqwest 0.12.28",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "sha1",
+ "sha2",
+ "snap",
+ "tauri",
+ "tauri-build",
+ "tauri-plugin-shell",
+ "tauri-plugin-updater",
+ "tokio",
+ "toml_edit 0.22.27",
+ "windows-sys 0.59.0",
+]
+
+[[package]]
 name = "anyhow"
 version = "1.0.102"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1570,34 +1598,6 @@ name = "id-arena"
 version = "2.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3d3067d79b975e8844ca9eb072e16b31c3c1c36928edf9c6789548c524d0d954"
-
-[[package]]
-name = "ide-byok"
-version = "1.2.17"
-dependencies = [
- "chrono",
- "dirs 5.0.1",
- "flate2",
- "hex",
- "json5",
- "libc",
- "rcgen",
- "regex",
- "reqwest 0.12.28",
- "rusqlite",
- "serde",
- "serde_json",
- "sha1",
- "sha2",
- "snap",
- "tauri",
- "tauri-build",
- "tauri-plugin-shell",
- "tauri-plugin-updater",
- "tokio",
- "toml_edit 0.22.27",
- "windows-sys 0.59.0",
-]
 
 [[package]]
 name = "ident_case"

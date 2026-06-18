@@ -10,7 +10,7 @@
   - 没有这个 → JS 动态 style 被阻塞
 - [ ] `tauri.conf.json` → `bundle.targets` 是字符串 `"all"`，不是数组
   - 数组格式 → schema 验证失败
-- [ ] Sidecar 文件名包含 target triple（如 `ide-byok-proxy-x86_64-pc-windows-msvc.exe`）
+- [ ] Sidecar 文件名包含 target triple（如 `anybridge-proxy-x86_64-pc-windows-msvc.exe`）
   - 缺 triple → Tauri 找不到 sidecar
 
 ## 🟡 常见坑

@@ -1,5 +1,5 @@
 // scripts/test_vision_api.cjs — 测试图片理解功能
-// 用于验证 IDE BYOK 是否正确将图片传递到 API
+// 用于验证 AnyBridge 是否正确将图片传递到 API
 
 const https = require('https');
 const fs = require('fs');

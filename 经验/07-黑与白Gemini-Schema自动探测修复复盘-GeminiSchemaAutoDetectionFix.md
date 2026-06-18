@@ -6,7 +6,7 @@
 
 ### 一、背景
 
-在 `IDE-BYOK` 的 Electron/Tauri 开发模式中，用户通过供应商 `黑与白` 调用 `gemini-3.5-flash` 时持续出现 `HTTP 400`，且重启后问题依旧。
+在 `AnyBridge` 的 Electron/Tauri 开发模式中，用户通过供应商 `黑与白` 调用 `gemini-3.5-flash` 时持续出现 `HTTP 400`，且重启后问题依旧。
 
 目标：
 - 快速定位 400 根因（非猜测）
@@ -22,7 +22,7 @@
 - 报错为“全部供应商失败，最后错误 HTTP 400”
 
 ### 2.2 证据来源
-- `mitm` 日志：`%APPDATA%\ide-byok\mitm-logs\mitm-2026-06-05.jsonl`
+- `mitm` 日志：`%APPDATA%\anybridge\mitm-logs\mitm-2026-06-05.jsonl`
 - 通过筛选 `providerName == 黑与白` 的 `downstream` 记录，确认上游真实响应体
 
 ### 2.3 核心结论
@@ -38,7 +38,7 @@ Gemini（OpenAI 兼容层）不接受 tools JSON Schema 中部分字段，典型
 ### 三、第一次修复后仍失败的真实原因
 
 已改 `sidecar` 源码后，仍然 400。排查后确认：
-- `tauri dev` 实际运行的是外置二进制 `ide-byok-proxy`（`src-tauri/binaries`）
+- `tauri dev` 实际运行的是外置二进制 `anybridge-proxy`（`src-tauri/binaries`）
 - 并非直接运行 `sidecar/*.js`
 
 所以“源码已改但运行仍旧逻辑”的原因是：**未重新打包 sidecar 二进制并替换**。
@@ -90,11 +90,11 @@ Gemini（OpenAI 兼容层）不接受 tools JSON Schema 中部分字段，典型
 ### 五、发布与运行注意事项
 
 本项目 dev 模式关键点：
-- 需要重打 sidecar 二进制：`npx pkg proxy-entry.js --targets node22-win-x64 --output ..\src-tauri\binaries\ide-byok-proxy-x86_64-pc-windows-msvc.exe`
+- 需要重打 sidecar 二进制：`npx pkg proxy-entry.js --targets node22-win-x64 --output ..\src-tauri\binaries\anybridge-proxy-x86_64-pc-windows-msvc.exe`
 - 然后重启 `tauri:dev`
 
 若出现 `os error 5`（可执行文件被占用）：
-- 结束 `ide-byok.exe` / `ide-byok-proxy.exe` 残留进程后再启动
+- 结束 `anybridge.exe` / `anybridge-proxy.exe` 残留进程后再启动
 
 ---
 

@@ -712,6 +712,10 @@ async function loadAndFillConfig() {
       if (k in values) el.value = values[k];
     });
     applyToggleStates(values);
+    if (window.ByokI18n) {
+      window.ByokI18n.initFromConfig(values);
+      window.ByokI18n.bindLanguageControls();
+    }
     return values;
   } catch (e) { return {}; }
 }

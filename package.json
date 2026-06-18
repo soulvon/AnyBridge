@@ -1,5 +1,5 @@
 {
-  "name": "ide-byok",
+  "name": "anybridge",
   "version": "1.2.17",
   "description": "AnyBridge multi-platform BYOK bridge for AI coding tools",
   "type": "module",
@@ -19,7 +19,7 @@
     "tauri:build:local": "tauri build --config src-tauri/tauri.local.conf.json"
   },
   "keywords": [
-    "ide-byok",
+    "anybridge",
     "codeium",
     "anthropic",
     "proxy",

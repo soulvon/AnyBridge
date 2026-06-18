@@ -248,7 +248,7 @@ const UPDATER_MAX_RETRIES = 3;
 const UPDATER_RETRY_DELAYS = [1000, 2500, 5000]; // 指数退避
 
 // 下载页 URL
-const UPDATER_DOWNLOAD_PAGE = 'https://github.com/soulvon/IDE-BYOK-Release/releases';
+const UPDATER_DOWNLOAD_PAGE = 'https://github.com/soulvon/AnyBridge-Release/releases';
 
 // 判断是否为可重试的网络错误
 function isRetryableUpdateError(err) {

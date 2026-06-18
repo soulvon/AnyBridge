@@ -37,6 +37,20 @@ const PROXY_HTTPS_AGENT = new https.Agent({
   maxFreeSockets: intEnv('BYOK_PROXY_MAX_FREE_SOCKETS', 16, 1),
 });
 
+function configDir() {
+  if (process.env.BYOK_CONFIG_DIR) return process.env.BYOK_CONFIG_DIR;
+  const next = appConfigDir('anybridge');
+  if (fs.existsSync(next)) return next;
+  const legacy = appConfigDir('ide-byok');
+  return fs.existsSync(legacy) ? legacy : next;
+}
+
+function appConfigDir(name) {
+  if (process.platform === 'darwin') return path.join(os.homedir(), 'Library', 'Application Support', name);
+  if (process.platform === 'linux') return path.join(process.env.XDG_CONFIG_HOME || path.join(os.homedir(), '.config'), name);
+  return path.join(os.homedir(), 'AppData', 'Roaming', name);
+}
+
 // 遥测屏蔽：这些 gRPC 方法直接返回空 200 响应，不转发到服务端。
 // 保护隐私，避免 BYOK 使用行为暴露。
 const BLOCKED_TELEMETRY_METHODS = new Set([
@@ -103,7 +117,7 @@ function hashModelList(list) {
 }
 
 function rewriteConfigSignature() {
-  const dir = process.env.BYOK_CONFIG_DIR || path.join(os.homedir(), 'AppData', 'Roaming', 'ide-byok');
+  const dir = configDir();
   return ['model-map.json', 'providers.json', 'ide-models.json']
     .map((name) => {
       try {
@@ -602,7 +616,7 @@ function handleRequest(req, res) {
       });
       if (DEBUG_IMAGES) {
         try {
-          const dumpDir = path.join(os.homedir(), 'AppData', 'Roaming', 'ide-byok', 'debug-dumps');
+          const dumpDir = path.join(configDir(), 'debug-dumps');
           fs.mkdirSync(dumpDir, { recursive: true });
           const dumpPath = path.join(dumpDir, `getchat-${Date.now()}.bin`);
           fs.writeFileSync(dumpPath, body);

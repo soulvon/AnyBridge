@@ -4,7 +4,7 @@
 import { execSync, spawnSync } from 'node:child_process';
 
 // 仅回收本应用的代理进程，避免误杀恰好占用 7450/7451 的其它 Node 程序。
-const SAFE_APP_NAMES = ['ide-byok-proxy'];
+const SAFE_APP_NAMES = ['anybridge-proxy', 'ide-byok-proxy'];
 const SAFE_NODE_SCRIPTS = [
   '/sidecar/proxy-entry.js',
   '/sidecar/hybrid-server.js',
@@ -57,6 +57,40 @@ function isSafeToKill(pid) {
   }
 }
 
+function collectUnixPortPids(port) {
+  const pids = new Set();
+
+  const addOutputPids = (output) => {
+    for (const pid of String(output || '').split(/\s+/).map(normalizePid).filter(Boolean)) {
+      pids.add(pid);
+    }
+  };
+
+  const lsof = spawnSync('lsof', ['-ti', `tcp:${port}`, '-s', 'tcp:LISTEN'], { encoding: 'utf8' });
+  if (!lsof.error && lsof.status === 0) {
+    addOutputPids(lsof.stdout);
+  }
+
+  if (pids.size === 0) {
+    const ss = spawnSync('ss', ['-ltnp', `sport = :${port}`], { encoding: 'utf8' });
+    if (!ss.error && ss.status === 0) {
+      const text = `${ss.stdout}\n${ss.stderr}`;
+      for (const match of text.matchAll(/pid=(\d+)/g)) {
+        pids.add(match[1]);
+      }
+    }
+  }
+
+  if (pids.size === 0) {
+    const fuser = spawnSync('fuser', ['-n', 'tcp', String(port)], { encoding: 'utf8' });
+    if (!fuser.error && (fuser.status === 0 || fuser.stdout || fuser.stderr)) {
+      addOutputPids(`${fuser.stdout}\n${fuser.stderr}`);
+    }
+  }
+
+  return [...pids];
+}
+
 // 杀掉监听指定端口的进程（跨平台）。返回是否真的杀到了进程。
 // 只杀 LISTENING 该端口、且进程名为本应用代理（node 系）的 PID，跳过自身。
 export function killPortHolder(port) {
@@ -83,15 +117,14 @@ export function killPortHolder(port) {
       }
       return any;
     } else {
-      const out = execSync(`lsof -ti tcp:${port} -s tcp:LISTEN`, { encoding: 'utf8' });
-      const pids = out.split(/\s+/).map(normalizePid).filter(Boolean).filter(p => p !== String(process.pid));
+      const pids = collectUnixPortPids(port).filter(p => p !== String(process.pid));
       let any = false;
       for (const pid of pids) {
         if (!isSafeToKill(pid)) {
           console.error(`⚠ [port] 端口 ${port} 被非本应用进程(PID ${pid})占用，跳过强杀`);
           continue;
         }
-        try { execSync(`kill -9 ${pid}`, { stdio: 'ignore' }); any = true; } catch {}
+        try { process.kill(Number(pid), 'SIGKILL'); any = true; } catch {}
       }
       return any;
     }

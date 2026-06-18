@@ -2,5 +2,5 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 fn main() {
-    ide_byok_lib::run()
+    anybridge_lib::run()
 }

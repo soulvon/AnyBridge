@@ -8,7 +8,7 @@
 //   4. 用户点"是" → 装到 LM → 完成
 //
 // 升级路径：
-//   旧版 CN = "IDE BYOK Local MITM" → 新版 CN = "ide-byok Local CA"
+//   旧版 CN = "IDE BYOK Local MITM" / "ide-byok Local CA" → 新版 CN = "AnyBridge Local CA"
 //   装新证书后自动调 `cleanup_legacy_cn()` 卸老证书，避免新老并存。
 
 use sha1::Digest;
@@ -16,7 +16,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use tauri::{AppHandle, Emitter};
 
-use crate::commands::system::{CA_COMMON_NAME, LEGACY_CA_COMMON_NAME};
+use crate::commands::system::{CA_COMMON_NAME, LEGACY_CA_COMMON_NAMES};
 
 /// 证书在系统中的安装位置
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
@@ -39,7 +39,7 @@ pub struct CaStatus {
     pub key_exists: bool,
     pub current_user: bool,         // 在 Cert:\CurrentUser\Root
     pub local_machine: bool,        // 在 Cert:\LocalMachine\Root
-    pub legacy_residual: bool,      // 老证书 "IDE BYOK Local MITM" 残留
+    pub legacy_residual: bool,      // 老版本 AnyBridge/IDE BYOK 证书残留
     pub thumbprint: Option<String>, // CA 的 SHA1 指纹
     pub effective_store: CaStore,   // 实际能用的位置
     pub message: String,            // 给人看的总体描述
@@ -355,7 +355,7 @@ mod platform {
     /// 把 PEM 装到 LocalMachine\Root（需要管理员权限）。
     ///
     /// 关键点：Rust 的 `std::process::Command` 走 `CreateProcess`，**不会**自动触发 UAC
-    /// 弹窗（因为 `ide-byok.exe` 的 manifest 是 asInvoker，无 requestedExecutionLevel）。
+    /// 弹窗（因为 `anybridge.exe` 的 manifest 是 asInvoker，无 requestedExecutionLevel）。
     /// 必须用 `ShellExecuteExW` + `runas` 动词，Windows 看到这个动词会主动拉起 consent UI。
     /// 返回值是 (exit_code, stderr)；让上层判断用户是点了"否"还是其它失败。
     pub fn install_local_machine_via_uac(cert_path: &Path) -> Result<(), String> {
@@ -487,8 +487,9 @@ pub fn check_ca_status() -> CaStatus {
         .as_deref()
         .map(|t| platform::is_thumbprint_in_store(t, false))
         .unwrap_or_else(|| platform::is_in_store(CA_COMMON_NAME, false));
-    let legacy_residual = platform::is_in_store(LEGACY_CA_COMMON_NAME, true)
-        || platform::is_in_store(LEGACY_CA_COMMON_NAME, false);
+    let legacy_residual = LEGACY_CA_COMMON_NAMES
+        .iter()
+        .any(|cn| platform::is_in_store(cn, true) || platform::is_in_store(cn, false));
 
     let effective_store = if current_user || local_machine {
         if current_user {
@@ -531,7 +532,7 @@ pub fn check_ca_status() -> CaStatus {
 }
 
 /// 一键安装 CA：先尝试 CurrentUser\Root（零弹窗），失败才走 UAC 兜底。
-/// 升级路径会自动清理老证书 "IDE BYOK Local MITM"。
+/// 升级路径会自动清理老证书。
 pub fn install_ca() -> Result<String, String> {
     install_ca_impl(None)
 }
@@ -563,8 +564,11 @@ fn install_ca_impl(app: Option<AppHandle>) -> Result<String, String> {
     eprintln!("[cert_install] install_ca: legacy cleanup done");
 
     // 阶段 1：先试 CurrentUser\Root（零弹窗，95% 用户走到这里就完事了）
-    // 调试 UAC 时可设置 IDE_BYOK_FORCE_UAC_CERT_INSTALL=1 强制跳过本阶段。
-    if std::env::var_os("IDE_BYOK_FORCE_UAC_CERT_INSTALL").is_none() {
+    // 调试 UAC 时可设置 ANYBRIDGE_FORCE_UAC_CERT_INSTALL=1 强制跳过本阶段。
+    // 旧变量保留兼容，方便复用历史调试脚本。
+    if std::env::var_os("ANYBRIDGE_FORCE_UAC_CERT_INSTALL").is_none()
+        && std::env::var_os("IDE_BYOK_FORCE_UAC_CERT_INSTALL").is_none()
+    {
         emit_cert_progress(
             app.as_ref(),
             "current_user",
@@ -607,7 +611,7 @@ fn install_ca_impl(app: Option<AppHandle>) -> Result<String, String> {
         }
     } else {
         eprintln!(
-            "[cert_install] install_ca: IDE_BYOK_FORCE_UAC_CERT_INSTALL is set, skip CurrentUser\\Root"
+            "[cert_install] install_ca: force UAC cert install is set, skip CurrentUser\\Root"
         );
     }
 
@@ -785,33 +789,29 @@ fn uninstall_ca_impl(app: Option<AppHandle>) -> Result<String, String> {
     }
 }
 
-/// 清理老版本 CN = "IDE BYOK Local MITM" 的证书残留。
-/// 升级 BYOK 时自动调，避免新老并存导致 certutil 行为不确定。
-/// 两个 store 都查（CurrentUser + LocalMachine），因为老版本 BYOK
+/// 清理老版本 CN 的证书残留。
+/// 升级 AnyBridge 时自动调，避免新老并存导致 certutil 行为不确定。
+/// 两个 store 都查（CurrentUser + LocalMachine），因为老版本
 /// 经常用 certutil -addstore Root 装到 LM。
 pub fn cleanup_legacy_cn() -> Result<String, String> {
     let mut msg = String::new();
 
-    // CurrentUser 先卸（不需要管理员）
-    if platform::is_in_store(LEGACY_CA_COMMON_NAME, true) {
-        if let Ok(()) = platform::uninstall_from_store(LEGACY_CA_COMMON_NAME, true) {
-            msg.push_str(&format!(
-                "已清理老 CA \"{}\"（CurrentUser）\n",
-                LEGACY_CA_COMMON_NAME
-            ));
+    for cn in LEGACY_CA_COMMON_NAMES {
+        // CurrentUser 先卸（不需要管理员）
+        if platform::is_in_store(cn, true) {
+            if let Ok(()) = platform::uninstall_from_store(cn, true) {
+                msg.push_str(&format!("已清理老 CA \"{}\"（CurrentUser）\n", cn));
+            }
         }
-    }
 
-    // LocalMachine 也查（老 BYOK 经常装到 LM）
-    if platform::is_in_store(LEGACY_CA_COMMON_NAME, false) {
-        // LM 卸需要 admin，会触发 UAC 弹窗，失败用户拒绝也无所谓
-        match platform::uninstall_from_store(LEGACY_CA_COMMON_NAME, false) {
-            Ok(()) => msg.push_str(&format!(
-                "已清理老 CA \"{}\"（LocalMachine）\n",
-                LEGACY_CA_COMMON_NAME
-            )),
-            Err(_) => {
-                // 用户拒绝 UAC 也没关系，老证书不会影响新证书使用
+        // LocalMachine 也查（老版本经常装到 LM）
+        if platform::is_in_store(cn, false) {
+            // LM 卸需要 admin，会触发 UAC 弹窗，失败用户拒绝也无所谓
+            match platform::uninstall_from_store(cn, false) {
+                Ok(()) => msg.push_str(&format!("已清理老 CA \"{}\"（LocalMachine）\n", cn)),
+                Err(_) => {
+                    // 用户拒绝 UAC 也没关系，老证书不会影响新证书使用
+                }
             }
         }
     }

@@ -2,6 +2,9 @@ import { readFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 
 const scriptFiles = [
+  'ui/assets/i18n/zh-CN.js',
+  'ui/assets/i18n/en-US.js',
+  'ui/assets/i18n/i18n.js',
   'ui/assets/scripts/00-bridge.js',
   'ui/assets/scripts/10-shell.js',
   'ui/assets/scripts/20-runtime.js',

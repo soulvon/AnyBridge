@@ -8,7 +8,7 @@
 // 关键约束：
 //   1. 只改我们关心的字段，保留文件内其余所有用户配置。
 //   2. 首次接管前幂等备份到 `<file>.byok-bak`，「还原」即回到接管前状态。
-//   3. 这是持久切换——退出 IDE BYOK 不回滚（不接入 lib.rs 的 ExitRequested）。
+//   3. 这是持久切换——退出 AnyBridge 不回滚（不接入 lib.rs 的 ExitRequested）。
 //
 // 复用：commands::write_atomic（原子写）、ide_config::parse_object（json5 容错解析）。
 
@@ -657,7 +657,7 @@ fn backup_path(path: &PathBuf) -> PathBuf {
 }
 
 /// 幂等备份：原文件存在则复制原文件；原文件不存在则写入缺失标记，
-/// 这样还原时能删除由 IDE BYOK 首次创建的配置文件。
+/// 这样还原时能删除由 AnyBridge 首次创建的配置文件。
 fn ensure_backup(path: &PathBuf) -> Result<(), String> {
     let bak = backup_path(path);
     if bak.exists() {
@@ -1849,9 +1849,11 @@ fn zcode_is_managed_provider(provider_id: &str, provider: &Value) -> bool {
         .get("source")
         .and_then(Value::as_str)
         .unwrap_or_default();
-    source == "ide-byok"
+    source == "anybridge"
+        || source == "ide-byok"
         || provider_id == ZCODE_PROVIDER_ID
         || provider_id.starts_with("AnyBridge-")
+        || provider_id.starts_with("anybridge")
         || provider_id.starts_with("ide-byok")
 }
 
@@ -2284,7 +2286,7 @@ pub fn remove_opencode_config_from_live(provider_id: String) -> Result<SwitchRes
     })
 }
 
-/// 从备份还原平台配置（回到 IDE BYOK 接管前的状态），并清除接管记录。
+/// 从备份还原平台配置（回到 AnyBridge 接管前的状态），并清除接管记录。
 #[tauri::command]
 pub fn restore_platform(platform: String) -> Result<bool, String> {
     let plat = Platform::from_id(&platform).ok_or_else(|| format!("未知平台: {platform}"))?;
@@ -2596,7 +2598,7 @@ mod tests {
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_nanos();
-        let dir = std::env::temp_dir().join(format!("ide-byok-{name}-{nanos}"));
+        let dir = std::env::temp_dir().join(format!("anybridge-{name}-{nanos}"));
         fs::create_dir_all(&dir).unwrap();
         dir.join("config.toml")
     }

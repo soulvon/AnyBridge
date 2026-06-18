@@ -1,4 +1,4 @@
-# 05-IDE-BYOK-支持 Claude Code 和 Codex 自定义 API 调研报告
+# 05-AnyBridge-支持 Claude Code 和 Codex 自定义 API 调研报告
 
 > 调研时间：2026-06-11
 > 调研人：CodeBuddy（用户授权深度调研 + 报告输出）
@@ -8,8 +8,8 @@
 
 ## 一、调研背景
 
-### 现有 IDE BYOK 能力
-当前 IDE BYOK 仅支持 **Windsurf** 和 **Devin** 两个 IDE 端，采用的方案是：
+### 现有 AnyBridge 能力
+当前 AnyBridge 仅支持 **Windsurf** 和 **Devin** 两个 IDE 端，采用的方案是：
 - **反向代理** + **`http.proxy` 劫持** 模式
 - 启动本地代理（sidecar），把 IDE 的 `http.proxy` 改成 `http://127.0.0.1:<port>`
 - 所有 IDE 出口请求被劫持到 sidecar，sidecar 再按 `providerStore` 里的配置转发到中转站
@@ -19,9 +19,9 @@
 **缺点**：依赖 proxy 进程常驻；只能劫持 HTTP/HTTPS 流量
 
 ### 用户新需求
-用户希望 IDE BYOK 也能像 **cc-switch**（Claude Code 专用）和 **cockpit-tools**（Codex 专用）那样：
+用户希望 AnyBridge 也能像 **cc-switch**（Claude Code 专用）和 **cockpit-tools**（Codex 专用）那样：
 - **直接接管** Claude Code 和 Codex 的 API 端点
-- 支持用户在 IDE BYOK 里配置 Claude Code / Codex 用的中转站
+- 支持用户在 AnyBridge 里配置 Claude Code / Codex 用的中转站
 - 用户在 Claude Code / Codex 里调用时自动走中转站
 
 ---
@@ -108,7 +108,7 @@ model_auto_compact_token_limit = 180000
 
 ---
 
-## 三、IDE BYOK 接入 Claude Code / Codex 的方案
+## 三、AnyBridge 接入 Claude Code / Codex 的方案
 
 ### 3.1 两种模式对比
 
@@ -121,27 +121,27 @@ model_auto_compact_token_limit = 180000
 | 故障转移 | ✅ 自动 fallback | ❌ 没有 |
 | 视觉一致性 | ✅ 完整支持 UI 自定义 | ❌ 看 IDE 自身 |
 | 部署复杂度 | 中（要带 sidecar） | 低（改两个文件） |
-| 用户感知 | 「我在用 IDE BYOK 的代理」 | 「我在用 cc-switch 改 Claude Code」 |
+| 用户感知 | 「我在用 AnyBridge 的代理」 | 「我在用 cc-switch 改 Claude Code」 |
 
 ### 3.2 关键差异（必须面对的难点）
 
 #### 难点 1：API 协议不一致
 - Claude Code 原生只支持 Anthropic Messages API
 - 中转站可能给的是 OpenAI Chat Completions / OpenAI Responses / Gemini Native
-- **cc-switch 解法**：内置一个**本地协议转换代理**（类似我们 IDE BYOK 的 sidecar）
-- **对 IDE BYOK 的影响**：可复用现有 sidecar 的转换能力
+- **cc-switch 解法**：内置一个**本地协议转换代理**（类似我们 AnyBridge 的 sidecar）
+- **对 AnyBridge 的影响**：可复用现有 sidecar 的转换能力
 
 #### 难点 2：Codex OAuth 认证
 - OpenAI 官方 Codex 走 ChatGPT 账号 OAuth 登录
 - 用户「自定义 API」需要完全绕过 OAuth，只用 API Key
 - **cc-switch 实现了 OAuth 反代**（`codex_oauth` provider type）— 这是另一个独立大功能
-- **对 IDE BYOK 的影响**：建议**先不做** OAuth 反代，只做"用户自己有 API Key"的纯自定义场景
+- **对 AnyBridge 的影响**：建议**先不做** OAuth 反代，只做"用户自己有 API Key"的纯自定义场景
 
 #### 难点 3：配置文件路径的平台差异
 - Windows / macOS / Linux 三套路径
 - 用户家目录可能因 `HOME` 环境变量错乱
 - **cc-switch 解法**：用 `dirs` crate + 兼容回退
-- **对 IDE BYOK 的影响**：可参考 cc-switch 的实现
+- **对 AnyBridge 的影响**：可参考 cc-switch 的实现
 
 #### 难点 4：现有 sidecar 的职责
 - 现有 sidecar 是"代理 + 协议转换 + 故障转移"一体
@@ -287,7 +287,7 @@ async fn read_codex_config() -> Result<CodexConfig, String>
 
 ### 不建议的方案
 - ❌ **完全照搬 cc-switch**：cc-switch 的协议转换层写得较浅，无法直接复用
-- ❌ **完全照搬 cockpit-tools**：cockpit 是 Tauri 2 + Rust 纯原生，与 IDE BYOK 架构差异大
+- ❌ **完全照搬 cockpit-tools**：cockpit 是 Tauri 2 + Rust 纯原生，与 AnyBridge 架构差异大
 - ❌ **做 OAuth 反代**（Phase 2 再说）：复杂度高、需求不确定
 
 ### 投入产出比
@@ -324,7 +324,7 @@ struct ApiProviderConfig {
 }
 ```
 
-### 8.3 IDE BYOK 现有的 http.proxy 反向代理（参考用）
+### 8.3 AnyBridge 现有的 http.proxy 反向代理（参考用）
 ```rust
 // src-tauri/src/commands/proxy.rs:551-650
 // 1. 找到 IDE 的 settings.json

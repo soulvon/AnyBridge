@@ -1,12 +1,12 @@
 [package]
-name = "ide-byok"
+name = "anybridge"
 version = "1.2.17"
 description = "AnyBridge desktop app"
 authors = ["soulvon"]
 edition = "2021"
 
 [lib]
-name = "ide_byok_lib"
+name = "anybridge_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [profile.release]

@@ -1,12 +1,12 @@
 # 反调试模块误杀导致 Release 闪退修复复盘
 
-> 项目：IDE-BYOK | 修复版本：v1.2.2 | 时间：2026-06-08
+> 项目：AnyBridge | 修复版本：v1.2.2 | 时间：2026-06-08
 
 ---
 
 ## 一、问题现象
 
-Release 模式运行 `ide-byok.exe` 出现两种闪退：
+Release 模式运行 `anybridge.exe` 出现两种闪退：
 
 | 场景 | 表现 |
 |------|------|
@@ -137,7 +137,7 @@ Release 闪退因为没有控制台窗口，很难直接看到错误。排查手
 
 ```powershell
 cd src-tauri\target\release
-Start-Process -FilePath ".\ide-byok.exe" -NoNewWindow -PassThru `
+Start-Process -FilePath ".\anybridge.exe" -NoNewWindow -PassThru `
     -RedirectStandardError ".\crash-stderr.log"
 # 等待一段时间后检查
 Get-Content .\crash-stderr.log -Encoding UTF8

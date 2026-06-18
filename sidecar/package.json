@@ -1,5 +1,5 @@
 {
-  "name": "ide-byok-sidecar",
+  "name": "anybridge-sidecar",
   "version": "1.0.0",
   "type": "module",
   "bin": "proxy-entry.js",

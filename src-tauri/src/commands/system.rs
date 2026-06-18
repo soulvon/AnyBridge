@@ -6,14 +6,14 @@ use tauri::{
     AppHandle, Manager,
 };
 
-/// CA 证书 CommonName。当前版本统一使用 "ide-byok Local CA"，
+/// CA 证书 CommonName。当前版本统一使用 "AnyBridge Local CA"，
 /// 跟 package.json 的 name 字段对齐，便于在 certmgr 中一眼辨识。
-/// 升级路径：旧版用 "IDE BYOK Local MITM"，新版用 "ide-byok Local CA"，
+/// 升级路径：旧版用 "IDE BYOK Local MITM" / "ide-byok Local CA"，
 /// 老证书清理逻辑见 `commands::cert_install::cleanup_legacy_cn`。
-pub const CA_COMMON_NAME: &str = "ide-byok Local CA";
+pub const CA_COMMON_NAME: &str = "AnyBridge Local CA";
 
 /// 老版本 CA 证书 CommonName（升级时需要清理掉）。
-pub const LEGACY_CA_COMMON_NAME: &str = "IDE BYOK Local MITM";
+pub const LEGACY_CA_COMMON_NAMES: &[&str] = &["IDE BYOK Local MITM", "ide-byok Local CA"];
 
 #[derive(serde::Deserialize)]
 pub struct ExportLogEntry {
@@ -33,14 +33,9 @@ pub fn build_tray(app: &AppHandle) -> tauri::Result<()> {
     let menu = Menu::with_items(app, &[&show, &start, &stop, &quit])?;
 
     let tray = TrayIconBuilder::with_id("main-tray");
-    let tray = match Image::from_bytes(include_bytes!("../../icons/tray-icon.png")) {
-        Ok(icon) => tray.icon(icon),
-        Err(_) => match app.default_window_icon() {
-            Some(icon) => tray.icon(icon.clone()),
-            None => tray,
-        },
-    };
-    tray.tooltip("IDE BYOK")
+    let tray_icon = Image::new(include_bytes!("../../icons/tray-icon.rgba"), 64, 64);
+    let tray = tray.icon(tray_icon);
+    tray.tooltip("AnyBridge")
         .menu(&menu)
         .show_menu_on_left_click(false)
         .on_menu_event(|app, event| match event.id.as_ref() {
@@ -131,16 +126,18 @@ pub fn set_autostart(enabled: bool) -> Result<(), String> {
         if enabled {
             Command::new("reg")
                 .args([
-                    "add", key, "/v", "IDEBYOK", "/t", "REG_SZ", "/d", &exe, "/f",
+                    "add", key, "/v", "AnyBridge", "/t", "REG_SZ", "/d", &exe, "/f",
                 ])
                 .creation_flags(0x0800_0000)
                 .output()
                 .map_err(|e| e.to_string())?;
         } else {
-            let _ = Command::new("reg")
-                .args(["delete", key, "/v", "IDEBYOK", "/f"])
-                .creation_flags(0x0800_0000)
-                .output();
+            for value_name in ["AnyBridge", "IDEBYOK"] {
+                let _ = Command::new("reg")
+                    .args(["delete", key, "/v", value_name, "/f"])
+                    .creation_flags(0x0800_0000)
+                    .output();
+            }
         }
         Ok(())
     }
@@ -150,7 +147,7 @@ pub fn set_autostart(enabled: bool) -> Result<(), String> {
             .map_err(|e| e.to_string())?
             .to_string_lossy()
             .to_string();
-        let plist_name = "com.idebyok.desktop.plist";
+        let plist_name = "com.anybridge.desktop.plist";
         let plist_path = dirs::home_dir()
             .map(|h| h.join("Library/LaunchAgents").join(plist_name))
             .ok_or("无法获取用户目录")?;
@@ -162,7 +159,7 @@ pub fn set_autostart(enabled: bool) -> Result<(), String> {
 <plist version="1.0">
 <dict>
     <key>Label</key>
-    <string>com.idebyok.desktop</string>
+    <string>com.anybridge.desktop</string>
     <key>ProgramArguments</key>
     <array>
         <string>{}</string>
@@ -177,6 +174,11 @@ pub fn set_autostart(enabled: bool) -> Result<(), String> {
                 .map_err(|e| format!("写入 launchd plist 失败: {}", e))?;
         } else {
             let _ = std::fs::remove_file(&plist_path);
+            let _ = std::fs::remove_file(
+                dirs::home_dir()
+                    .map(|h| h.join("Library/LaunchAgents/com.idebyok.desktop.plist"))
+                    .ok_or("无法获取用户目录")?,
+            );
         }
         Ok(())
     }
@@ -190,18 +192,19 @@ pub fn set_autostart(enabled: bool) -> Result<(), String> {
         let autostart_dir = dirs::config_dir()
             .map(|d| d.join("autostart"))
             .ok_or("无法获取配置目录")?;
-        let desktop_path = autostart_dir.join("ide-byok.desktop");
+        let desktop_path = autostart_dir.join("anybridge.desktop");
 
         if enabled {
             std::fs::create_dir_all(&autostart_dir).map_err(|e| e.to_string())?;
             let desktop_content = format!(
-                "[Desktop Entry]\nType=Application\nName=IDE BYOK\nExec={}\nHidden=false\n",
+                "[Desktop Entry]\nType=Application\nName=AnyBridge\nExec={}\nHidden=false\n",
                 exe
             );
             std::fs::write(&desktop_path, desktop_content)
                 .map_err(|e| format!("写入 .desktop 失败: {}", e))?;
         } else {
             let _ = std::fs::remove_file(&desktop_path);
+            let _ = std::fs::remove_file(autostart_dir.join("ide-byok.desktop"));
         }
         Ok(())
     }
@@ -258,9 +261,9 @@ pub fn generate_certs() -> Result<String, String> {
             "localhost".to_string(),
         ])
         .map_err(|e| e.to_string())?;
-        // CommonName 跟项目产品名 (tauri.conf.json productName="IDE BYOK",
-        // package.json name="ide-byok") 对齐, 便于在 certmgr 中一眼辨识。
-        // 升级路径: 旧版 "IDE BYOK Local MITM" → 新版 "ide-byok Local CA",
+        // CommonName 跟项目产品名 (tauri.conf.json productName="AnyBridge") 对齐，
+        // 便于在 certmgr 中一眼辨识。
+        // 升级路径: 旧版 "IDE BYOK Local MITM" / "ide-byok Local CA" → 新版 "AnyBridge Local CA",
         // 老证书清理逻辑见 cert_install::cleanup_legacy_cn。
         // 说明: rcgen 0.13 的 DnType 不一定有 OrganizationName 变体, 这里只设
         // CommonName (X.509 Subject 最显眼的字段), 配合 SAN 就能保证 Electron

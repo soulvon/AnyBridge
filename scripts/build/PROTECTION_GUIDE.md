@@ -1,6 +1,6 @@
-# IDE-BYOK EXE 加密保护方案
+# AnyBridge EXE 加密保护方案
 
-> 参考 WindsurfGate (Tauri 1.8.3) 保护体系，为 IDE-BYOK (Tauri 2.x) 构建多层防护。
+> 参考 WindsurfGate (Tauri 1.8.3) 保护体系，为 AnyBridge (Tauri 2.x) 构建多层防护。
 
 ## 保护层级
 
@@ -52,7 +52,7 @@
 ### 第一步：构建受保护的 Sidecar
 
 ```bash
-cd E:\project\IDE-BYOK\sidecar
+cd E:\project\AnyBridge\sidecar
 
 # 安装构建依赖
 npm install --save-dev bytenode javascript-obfuscator
@@ -61,12 +61,12 @@ npm install --save-dev bytenode javascript-obfuscator
 python ..\scripts\build_protected_sidecar.py
 ```
 
-输出：`src-tauri/binaries/ide-byok-proxy-x86_64-pc-windows-msvc.exe`
+输出：`src-tauri/binaries/anybridge-proxy-x86_64-pc-windows-msvc.exe`
 
 ### 第二步：构建加固的 Rust EXE
 
 ```bash
-cd E:\project\IDE-BYOK\src-tauri
+cd E:\project\AnyBridge\src-tauri
 
 # 安装新增依赖
 cargo fetch
@@ -84,8 +84,8 @@ Release 构建会自动应用：
 ### 第三步：发布
 
 构建产物在 `src-tauri/target/release/`：
-- `ide-byok.exe` — 加固后的主程序
-- `ide-byok-proxy-x86_64-pc-windows-msvc.exe` — 受保护的 sidecar
+- `anybridge.exe` — 加固后的主程序
+- `anybridge-proxy-x86_64-pc-windows-msvc.exe` — 受保护的 sidecar
 
 NSIS 安装包在 `src-tauri/target/release/bundle/nsis/`
 
@@ -114,7 +114,7 @@ NSIS 安装包在 `src-tauri/target/release/bundle/nsis/`
 
 ## 与 WindsurfGate 对比
 
-| 保护项 | WindsurfGate | IDE-BYOK (本方案) |
+| 保护项 | WindsurfGate | AnyBridge (本方案) |
 |--------|-------------|-------------------|
 | 框架 | Tauri 1.8.3 | Tauri 2.x |
 | 反调试 | 7 种方法 | 3 种核心方法 |

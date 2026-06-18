@@ -432,7 +432,7 @@ fn probe_byok_stats(timeout: Duration) -> Result<(), String> {
         return Err("7450 有响应，但不是 BYOK 健康检查 200".into());
     }
     if !buf.contains("\"requests\"") || !buf.contains("\"uptimeSec\"") {
-        return Err("7450 有响应，但不像 IDE BYOK 代理；可能被其它程序占用".into());
+        return Err("7450 有响应，但不像 AnyBridge 代理；可能被其它程序占用".into());
     }
     Ok(())
 }
@@ -696,7 +696,7 @@ fn run_proxy_preflight(
             "cert.legacy_residual",
             format!(
                 "检测到老版本 CA \"{}\" 残留。建议点「环境体检 > 清理老证书」卸掉",
-                crate::commands::system::LEGACY_CA_COMMON_NAME
+                crate::commands::system::LEGACY_CA_COMMON_NAMES.join("\" / \"")
             ),
         );
     }
@@ -1297,19 +1297,22 @@ fn resolve_sidecar_path() -> Result<std::path::PathBuf, String> {
         exe_dir
     };
 
-    let sidecar_name = "ide-byok-proxy";
-
     #[cfg(target_os = "windows")]
-    let sidecar_file = format!("{}.exe", sidecar_name);
+    let sidecar_files = ["anybridge-proxy.exe", "ide-byok-proxy.exe"];
     #[cfg(not(target_os = "windows"))]
-    let sidecar_file = sidecar_name.to_string();
+    let sidecar_files = ["anybridge-proxy", "ide-byok-proxy"];
 
-    let path = base_dir.join(&sidecar_file);
-    if path.exists() {
-        Ok(path)
-    } else {
-        Err(format!("sidecar 二进制不存在: {}", path.to_string_lossy()))
+    for sidecar_file in sidecar_files {
+        let path = base_dir.join(sidecar_file);
+        if path.exists() {
+            return Ok(path);
+        }
     }
+
+    Err(format!(
+        "sidecar 二进制不存在: {}",
+        base_dir.join(sidecar_files[0]).to_string_lossy()
+    ))
 }
 
 #[tauri::command]
@@ -1728,34 +1731,38 @@ pub async fn stop_proxy(
         .map_err(|e| format!("停止代理任务失败: {}", e))?
 }
 
-/// 强杀所有名为 ide-byok-proxy 的孤儿进程（启动时 / 升级前调用）。
+/// 强杀所有 AnyBridge sidecar 孤儿进程（启动时 / 升级前调用）。
 /// 与 ManagedChild::kill() 不同：这里不依赖 state 里记录的 PID，
 /// 而是按进程名全盘扫描，确保上一轮崩溃或异常退出后残留的 sidecar 不会锁住 exe 文件。
 pub fn kill_sidecar_process() {
     #[cfg(target_os = "windows")]
     {
-        let out = std::process::Command::new("taskkill")
-            .args(["/F", "/T", "/IM", "ide-byok-proxy.exe"])
-            .creation_flags(CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP)
-            .output();
-        match out {
-            Ok(o) if o.status.success() => {
-                eprintln!("[cleanup] 已清理孤儿 sidecar 进程");
-            }
-            Ok(_) => {
-                // 进程不存在（taskkill 返回错误码 128），属正常情况
-            }
-            Err(e) => {
-                eprintln!("[cleanup] taskkill 执行失败: {}", e);
+        for process_name in ["anybridge-proxy.exe", "ide-byok-proxy.exe"] {
+            let out = std::process::Command::new("taskkill")
+                .args(["/F", "/T", "/IM", process_name])
+                .creation_flags(CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP)
+                .output();
+            match out {
+                Ok(o) if o.status.success() => {
+                    eprintln!("[cleanup] 已清理孤儿 sidecar 进程: {}", process_name);
+                }
+                Ok(_) => {
+                    // 进程不存在（taskkill 返回错误码 128），属正常情况
+                }
+                Err(e) => {
+                    eprintln!("[cleanup] taskkill 执行失败: {}", e);
+                }
             }
         }
     }
 
     #[cfg(not(target_os = "windows"))]
     {
-        let _ = std::process::Command::new("pkill")
-            .args(["-f", "ide-byok-proxy"])
-            .output();
+        for process_name in ["anybridge-proxy", "ide-byok-proxy"] {
+            let _ = std::process::Command::new("pkill")
+                .args(["-f", process_name])
+                .output();
+        }
     }
 }
 

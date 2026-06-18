@@ -461,9 +461,9 @@ Free 账号的 `clientModelConfigs` 里 10 个模型全部 `disabled=true`，用
 
 关键问题：步骤2是否可行？答案是**已经实现了**！
 
-#### IDE-BYOK 已有的完整 MITM 劫持链路
+#### AnyBridge 已有的完整 MITM 劫持链路
 
-IDE-BYOK 的 `hybrid-server.js` 已经实现了对 `GetChatMessage` 的完整拦截和转发：
+AnyBridge 的 `hybrid-server.js` 已经实现了对 `GetChatMessage` 的完整拦截和转发：
 
 ```
 Windsurf 客户端
@@ -559,7 +559,7 @@ Windsurf 的模型权限确实分两层：
 | 改写 `disabled=false` 但不走 BYOK | ✅ 可行 | ❌ 无效 | 请求仍走 Windsurf 服务端，因 `cascadeAllowedModelsConfig` 不含该模型被拒绝 |
 | 注入额外模型条目 + MITM 劫持 | ✅ 可行 | ✅ 有效 | `inject-models.js` 已有基础，追加条目后配好槽位即可 |
 
-**最终结论：Free 账号通过"改写 disabled + MITM 劫持 BYOK API"的思路完全可行。IDE-BYOK 已有完整的 MITM 劫持链路，只需扩展 `renameModels` 或 `injectModels` 来解除 UI 限制即可。**
+**最终结论：Free 账号通过"改写 disabled + MITM 劫持 BYOK API"的思路完全可行。AnyBridge 已有完整的 MITM 劫持链路，只需扩展 `renameModels` 或 `injectModels` 来解除 UI 限制即可。**
 
 ---
 
@@ -589,7 +589,7 @@ WindsurfGate 是一个商业化的 Windsurf IDE MITM 代理工具（Tauri 1.8.3 
 
 ### 12.2 核心原理对比
 
-| | WindsurfGate | IDE-BYOK |
+| | WindsurfGate | AnyBridge |
 |---|---|---|
 | **核心思路** | Token 替换 — 用共享 Pro 账号的 `client_secret` 替换原始 Bearer Token | 路由劫持 — 拦截 GetChatMessage 转发到自定义 BYOK API |
 | **请求去向** | 仍然发到 Windsurf/Codeium 服务器 | 发到 Anthropic/OpenAI 等第三方 API |
@@ -620,7 +620,7 @@ WindsurfGate 屏蔽了以下 gRPC 调用，直接返回空响应：
 | `RecordTrajectorySegment` | BLOCKED | 轨迹片段 |
 | `RecordEvent` | BLOCKED | 通用事件 |
 
-**IDE-BYOK 目前全部透传给 Codeium**，这意味着 Windsurf 服务端能看到用户用了哪些模型、发了什么请求。对于 BYOK 场景，这些遥测数据可能暴露用户在用自定义 API。
+**AnyBridge 目前全部透传给 Codeium**，这意味着 Windsurf 服务端能看到用户用了哪些模型、发了什么请求。对于 BYOK 场景，这些遥测数据可能暴露用户在用自定义 API。
 
 **实施方案**：在 `hybrid-server.js` 的请求处理中，检测到这些 gRPC 方法名时直接返回空 200 响应，不转发给 Codeium。
 
@@ -628,9 +628,9 @@ WindsurfGate 屏蔽了以下 gRPC 调用，直接返回空响应：
 
 WindsurfGate 修改 Windsurf 的 `user_settings.pb`（protobuf 格式设置文件）自动开启 `detect_proxy` 设置。
 
-这确保 Windsurf 能正确走代理。IDE-BYOK 目前可能依赖用户手动设置或系统代理自动检测。
+这确保 Windsurf 能正确走代理。AnyBridge 目前可能依赖用户手动设置或系统代理自动检测。
 
-**实施方案**：在 IDE-BYOK 启动时，读取并修改 Windsurf 的 `user_settings.pb`，开启 `detect_proxy`。
+**实施方案**：在 AnyBridge 启动时，读取并修改 Windsurf 的 `user_settings.pb`，开启 `detect_proxy`。
 
 #### 12.3.3 argv.json 注入（⭐ 低优先级，低难度）
 
@@ -642,9 +642,9 @@ WindsurfGate 修改 `~/.windsurf/argv.json` 添加 DNS 映射规则：
 }
 ```
 
-这比 IDE-BYOK 的 MITM CONNECT 方式更轻量——不需要安装 CA 证书，不需要处理 TLS 解密。但缺点是只能映射域名到 IP，不能做更细粒度的请求拦截（如按 gRPC 方法名分流）。
+这比 AnyBridge 的 MITM CONNECT 方式更轻量——不需要安装 CA 证书，不需要处理 TLS 解密。但缺点是只能映射域名到 IP，不能做更细粒度的请求拦截（如按 gRPC 方法名分流）。
 
-**适用场景**：如果 IDE-BYOK 想提供一种"轻量模式"（不需要 CA 证书），可以借鉴此方式。但当前 MITM 模式功能更完整。
+**适用场景**：如果 AnyBridge 想提供一种"轻量模式"（不需要 CA 证书），可以借鉴此方式。但当前 MITM 模式功能更完整。
 
 #### 12.3.4 代理旁路处理（⭐ 低优先级，中难度）
 
@@ -659,7 +659,7 @@ WindsurfGate 的代理旁路处理很完善，处理了多种网络环境：
 | `ipconfig /flushdns` | DNS 缓存刷新 |
 | `WINDSURF_GATE_MARKER` | 追踪自己的修改，卸载时清理 |
 
-**适用场景**：IDE-BYOK 如果在某些网络环境下代理不生效（如公司 PAC 代理），可以借鉴这些处理。
+**适用场景**：AnyBridge 如果在某些网络环境下代理不生效（如公司 PAC 代理），可以借鉴这些处理。
 
 #### 12.3.5 进程管理（⭐ 低优先级，低难度）
 
@@ -672,7 +672,7 @@ WindsurfGate 的 Windsurf 进程管理策略：
 | 锁文件清理 | 删除 `SingletonLock`、`SingletonSocket`、`SingletonCookie` |
 | 多窗口管理 | 保留 N 个窗口，发送关闭命令给多余窗口 |
 
-**适用场景**：IDE-BYOK 如果需要自动启动 Windsurf 或管理进程，可以参考。
+**适用场景**：AnyBridge 如果需要自动启动 Windsurf 或管理进程，可以参考。
 
 ### 12.4 不借鉴的部分
 

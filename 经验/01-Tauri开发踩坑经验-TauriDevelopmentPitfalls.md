@@ -1,6 +1,6 @@
 # Tauri 2.x 开发踩坑经验
 
-> 项目：IDE-BYOK | 整理时间：2026-06-06
+> 项目：AnyBridge | 整理时间：2026-06-06
 
 ---
 
@@ -156,14 +156,14 @@ Tauri 的 `externalBin` 配置要求 sidecar 二进制文件名包含 target tri
 
 | 平台 | 文件名 |
 |------|--------|
-| Windows x86_64 | `ide-byok-proxy-x86_64-pc-windows-msvc.exe` |
-| macOS x86_64 | `ide-byok-proxy-x86_64-apple-darwin` |
-| macOS aarch64 | `ide-byok-proxy-aarch64-apple-darwin` |
-| Linux x86_64 | `ide-byok-proxy-x86_64-unknown-linux-gnu` |
+| Windows x86_64 | `anybridge-proxy-x86_64-pc-windows-msvc.exe` |
+| macOS x86_64 | `anybridge-proxy-x86_64-apple-darwin` |
+| macOS aarch64 | `anybridge-proxy-aarch64-apple-darwin` |
+| Linux x86_64 | `anybridge-proxy-x86_64-unknown-linux-gnu` |
 
 **tauri.conf.json** 配置：
 ```json
-"externalBin": ["binaries/ide-byok-proxy"]
+"externalBin": ["binaries/anybridge-proxy"]
 ```
 Tauri 自动追加 `-{target_triple}` 后缀和平台扩展名。
 
@@ -181,11 +181,11 @@ pkg . --target node18-linux-x64  # Linux
 ```rust
 fn sidecar_filename() -> String {
     if cfg!(target_os = "windows") {
-        format!("ide-byok-proxy-{}-pc-windows-msvc.exe", std::env::consts::ARCH)
+        format!("anybridge-proxy-{}-pc-windows-msvc.exe", std::env::consts::ARCH)
     } else if cfg!(target_os = "macos") {
-        format!("ide-byok-proxy-{}-apple-darwin", std::env::consts::ARCH)
+        format!("anybridge-proxy-{}-apple-darwin", std::env::consts::ARCH)
     } else if cfg!(target_os = "linux") {
-        format!("ide-byok-proxy-{}-unknown-linux-gnu", std::env::consts::ARCH)
+        format!("anybridge-proxy-{}-unknown-linux-gnu", std::env::consts::ARCH)
     } else {
         panic!("Unsupported platform")
     }
@@ -240,7 +240,7 @@ error: unknown option '--rotate-string-array'
 ### 7.1 问题
 
 ```
-error: failed to remove file `target\debug\ide-byok.exe`
+error: failed to remove file `target\debug\anybridge.exe`
 Caused by: 拒绝访问。 (os error 5)
 ```
 
@@ -248,12 +248,12 @@ Caused by: 拒绝访问。 (os error 5)
 
 先杀掉旧进程再编译：
 ```powershell
-Get-Process -Name "IDE BYOK" -ErrorAction SilentlyContinue | Stop-Process -Force
+Get-Process -Name "AnyBridge" -ErrorAction SilentlyContinue | Stop-Process -Force
 ```
 
 或用 `taskkill`：
 ```powershell
-taskkill /f /im "ide-byok.exe"
+taskkill /f /im "anybridge.exe"
 ```
 
 ---
@@ -309,7 +309,7 @@ subprocess.run(["powershell", "-Command", f"Remove-Item -Recurse -Force '{path}'
 // ❌ 修复前：macOS/Linux 上路径不存在，sidecar 读不到配置
 function configDir() {
   if (process.env.BYOK_CONFIG_DIR) return process.env.BYOK_CONFIG_DIR;
-  return path.join(os.homedir(), 'AppData', 'Roaming', 'ide-byok');
+  return path.join(os.homedir(), 'AppData', 'Roaming', 'anybridge');
 }
 ```
 
@@ -330,9 +330,9 @@ function configDir() {
 // ✅ 修复后：三平台配置目录一致
 function configDir() {
   if (process.env.BYOK_CONFIG_DIR) return process.env.BYOK_CONFIG_DIR;
-  if (process.platform === 'darwin') return path.join(os.homedir(), 'Library', 'Application Support', 'ide-byok');
-  if (process.platform === 'linux') return path.join(os.homedir(), '.config', 'ide-byok');
-  return path.join(os.homedir(), 'AppData', 'Roaming', 'ide-byok');
+  if (process.platform === 'darwin') return path.join(os.homedir(), 'Library', 'Application Support', 'anybridge');
+  if (process.platform === 'linux') return path.join(os.homedir(), '.config', 'anybridge');
+  return path.join(os.homedir(), 'AppData', 'Roaming', 'anybridge');
 }
 ```
 
@@ -340,9 +340,9 @@ function configDir() {
 
 | 平台 | 配置目录 |
 |------|----------|
-| Windows | `%APPDATA%/ide-byok`（`~/AppData/Roaming/ide-byok`） |
-| macOS | `~/Library/Application Support/ide-byok` |
-| Linux | `~/.config/ide-byok` |
+| Windows | `%APPDATA%/anybridge`（`~/AppData/Roaming/anybridge`） |
+| macOS | `~/Library/Application Support/anybridge` |
+| Linux | `~/.config/anybridge` |
 
 > **注意**：`BYOK_CONFIG_DIR` 环境变量是 Tauri 启动 sidecar 时注入的（`cmd.env("BYOK_CONFIG_DIR", ...)`），所以实际上云端构建后 Tauri 端能自动覆盖路径。但 sidecar 独立运行（调试模式）时必须依赖 `configDir()` 的正确判断，所以仍需修复。
 
@@ -362,7 +362,7 @@ function configDir() {
 | `ide_config.rs` — settings.json 路径 | `dirs::config_dir()` | `dirs::data_dir()` | `dirs::config_dir()` |
 | `workbench_inject.rs` — workbench.html | exe 同级 `resources/app` | `.app/Contents/Resources/app` | bin 同级 `resources/app` |
 | `antidebug.rs` — 反调试 | `IsDebuggerPresent` + 硬件断点清除 | `sysctl P_TRACED` | `/proc/self/status TracerPid` |
-| `integrity.rs` — sidecar 文件名 | `ide-byok-proxy.exe` | `ide-byok-proxy` | `ide-byok-proxy` |
+| `integrity.rs` — sidecar 文件名 | `anybridge-proxy.exe` | `anybridge-proxy` | `anybridge-proxy` |
 | `update.rs` — 打开下载页 | `cmd /C start` | `open` | `xdg-open` |
 
 ### 10.3 GitHub Actions 云端构建
@@ -399,17 +399,17 @@ strategy:
   ├─ 四平台并行构建（共用 prepare-release 输出的 releaseId）
   │   ├─ Checkout → 安装 Rust/Node → npm install
   │   ├─ Build Sidecar Binary (pkg 按 platform 打包)
-  │   │   Windows → node22-win-x64 → ide-byok-proxy-x86_64-pc-windows-msvc.exe
-  │   │   macOS ARM → node22-macos-arm64 → ide-byok-proxy-aarch64-apple-darwin
-  │   │   macOS x64 → node22-macos-x64 → ide-byok-proxy-x86_64-apple-darwin
-  │   │   Linux → node22-linux-x64 → ide-byok-proxy-x86_64-unknown-linux-gnu
+  │   │   Windows → node22-win-x64 → anybridge-proxy-x86_64-pc-windows-msvc.exe
+  │   │   macOS ARM → node22-macos-arm64 → anybridge-proxy-aarch64-apple-darwin
+  │   │   macOS x64 → node22-macos-x64 → anybridge-proxy-x86_64-apple-darwin
+  │   │   Linux → node22-linux-x64 → anybridge-proxy-x86_64-unknown-linux-gnu
   │   ├─ chmod +x (非 Windows)
   │   └─ tauri-action 构建 + 上传到同一个 GitHub Release draft
   │
   └─ rebuild-latest-json (单任务，依赖 prepare-release + 四平台构建完成)
       ├─ 下载所有平台产物
       ├─ 合并生成 latest.json（含签名）
-      ├─ 上传到公开 Release 仓库 (soulvon/IDE-BYOK-Release)
+      ├─ 上传到公开 Release 仓库 (soulvon/AnyBridge-Release)
       └─ 发布 Release (draft → public)
 ```
 
@@ -419,19 +419,19 @@ strategy:
 |--------|------|
 | `TAURI_SIGNING_PRIVATE_KEY` | 更新包签名私钥（`tauri-sign.key` 文件内容） |
 | `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | 签名私钥密码（如无密码可留空） |
-| `RELEASE_REPO_TOKEN` | 有 `contents:write` 权限的 PAT，用于向 IDE-BYOK-Release 仓库上传 |
+| `RELEASE_REPO_TOKEN` | 有 `contents:write` 权限的 PAT，用于向 AnyBridge-Release 仓库上传 |
 | `GITHUB_TOKEN` | 自动提供，用于当前仓库的 Release 操作 |
 
 检查 Secret：
 
 ```powershell
-gh secret list --repo soulvon/IDE-BYOK
+gh secret list --repo soulvon/AnyBridge
 ```
 
 写入本地 updater 私钥：
 
 ```powershell
-Get-Content -Raw tauri-sign.key | gh secret set TAURI_SIGNING_PRIVATE_KEY --repo soulvon/IDE-BYOK
+Get-Content -Raw tauri-sign.key | gh secret set TAURI_SIGNING_PRIVATE_KEY --repo soulvon/AnyBridge
 ```
 
 如果私钥无密码，也要把 `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` 配成空字符串；非交互环境不应等待人工输入。
@@ -478,22 +478,22 @@ sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file \
 
 ```powershell
 # ✅ 正确：同时设置密钥和密码（无密码则设空字符串）
-$env:TAURI_SIGNING_PRIVATE_KEY = [System.IO.File]::ReadAllText("E:\project\IDE-BYOK\tauri-sign.key").Trim()
+$env:TAURI_SIGNING_PRIVATE_KEY = [System.IO.File]::ReadAllText("E:\project\AnyBridge\tauri-sign.key").Trim()
 $env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD = ""
 npm run tauri:build
 
 # ❌ 错误：只设密钥不设密码 → 签名工具交互式等待输入 → 卡死
-$env:TAURI_SIGNING_PRIVATE_KEY = [System.IO.File]::ReadAllText("E:\project\IDE-BYOK\tauri-sign.key").Trim()
+$env:TAURI_SIGNING_PRIVATE_KEY = [System.IO.File]::ReadAllText("E:\project\AnyBridge\tauri-sign.key").Trim()
 npm run tauri:build
 ```
 
 **产出**：打包成功后会额外生成 `.sig` 签名文件，用于 `latest.json` 的自动更新校验：
 
 ```
-IDE BYOK_1.2.1_x64-setup.exe
-IDE BYOK_1.2.1_x64-setup.exe.sig    ← 签名文件
-IDE BYOK_1.2.1_x64_en-US.msi
-IDE BYOK_1.2.1_x64_en-US.msi.sig   ← 签名文件
+AnyBridge_1.2.1_x64-setup.exe
+AnyBridge_1.2.1_x64-setup.exe.sig    ← 签名文件
+AnyBridge_1.2.1_x64_en-US.msi
+AnyBridge_1.2.1_x64_en-US.msi.sig   ← 签名文件
 ```
 
 > **CI/CD 注意**：GitHub Actions 中同样需要设置两个环境变量，否则也会卡死。
@@ -526,8 +526,8 @@ failed to decode secret key: incorrect updater private key password: Missing com
 
 **解决**：
 
-1. 用 `gh secret list --repo soulvon/IDE-BYOK` 确认 Secret 存在。
-2. 用 `Get-Content -Raw tauri-sign.key | gh secret set TAURI_SIGNING_PRIVATE_KEY --repo soulvon/IDE-BYOK` 写入私钥。
+1. 用 `gh secret list --repo soulvon/AnyBridge` 确认 Secret 存在。
+2. 用 `Get-Content -Raw tauri-sign.key | gh secret set TAURI_SIGNING_PRIVATE_KEY --repo soulvon/AnyBridge` 写入私钥。
 3. 无密码私钥也设置 `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` 为空字符串。
 4. workflow 早期加 `Validate updater signing secret`，缺私钥时立即失败，不要等四个平台编译完才失败。
 
@@ -554,8 +554,8 @@ npx tauri signer sign -f tauri-sign.key -p "" package.json
 失败后清理重复 draft：
 
 ```powershell
-gh api repos/soulvon/IDE-BYOK/releases --jq '.[] | select(.tag_name=="v1.2.10" and .draft==true) | .id'
-gh api -X DELETE repos/soulvon/IDE-BYOK/releases/RELEASE_ID
+gh api repos/soulvon/AnyBridge/releases --jq '.[] | select(.tag_name=="v1.2.10" and .draft==true) | .id'
+gh api -X DELETE repos/soulvon/AnyBridge/releases/RELEASE_ID
 ```
 
 公开仓库如果已经生成错误 draft，也按同样方式删除后重跑。
@@ -569,18 +569,18 @@ HTTP 422: Validation Failed
 Repository is empty.
 ```
 
-**根因**：`soulvon/IDE-BYOK-Release` 作为公开分发仓库，如果完全没有默认分支提交，GitHub API 可以创建 draft release，但无法正常 `--latest` 发布。
+**根因**：`soulvon/AnyBridge-Release` 作为公开分发仓库，如果完全没有默认分支提交，GitHub API 可以创建 draft release，但无法正常 `--latest` 发布。
 
 **解决**：初始化一个只含 README 的 `main` 分支，不放源码：
 
 ```powershell
 git init -b main
-git config user.name "IDE BYOK Release Bot"
+git config user.name "AnyBridge Release Bot"
 git config user.email "release-bot@users.noreply.github.com"
-Set-Content -Path README.md -Value "# IDE BYOK Release`n`nBinary release assets only. Source code remains private.`n"
+Set-Content -Path README.md -Value "# AnyBridge Release`n`nBinary release assets only. Source code remains private.`n"
 git add README.md
 git commit -m "Initialize release repository"
-git remote add origin https://github.com/soulvon/IDE-BYOK-Release
+git remote add origin https://github.com/soulvon/AnyBridge-Release
 git push origin main
 ```
 
@@ -613,7 +613,7 @@ IDE.BYOK_1.2.10_amd64.deb
 线上验收：
 
 ```powershell
-gh release download v1.2.10 --repo soulvon/IDE-BYOK-Release --pattern latest.json --dir $env:TEMP --clobber
+gh release download v1.2.10 --repo soulvon/AnyBridge-Release --pattern latest.json --dir $env:TEMP --clobber
 node -e "const fs=require('fs'); const j=JSON.parse(fs.readFileSync(process.env.TEMP+'\\\\latest.json','utf8')); console.log(Object.keys(j.platforms).sort())"
 ```
 
@@ -637,7 +637,7 @@ node -e "const fs=require('fs'); const j=JSON.parse(fs.readFileSync(process.env.
 
 1. 修改 sidecar JS 代码（如 `handlers/chat.js`、`hybrid-server.js`）
 2. 执行 `python scripts/build_sidecar_plain.py` 重建二进制
-3. 新二进制覆盖旧文件 → 旧 `ide-byok-proxy.exe` 进程被杀
+3. 新二进制覆盖旧文件 → 旧 `anybridge-proxy.exe` 进程被杀
 4. Tauri 监控线程检测到进程退出 → 调用 `restore_all()`
 5. `restore_all()` 将 IDE 的 `settings.json` 还原（删除 `http.proxy` 和 `http.proxyStrictSSL`）
 6. `npx tauri dev` 启动新代理进程 → `start_proxy()` 的 `patch()` 重新写入代理配置

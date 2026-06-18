@@ -46,7 +46,7 @@ jobs:
           else
             gh release create "$TAG" \
               --repo "$GITHUB_REPOSITORY" \
-              --title "IDE BYOK v${VERSION}" \
+              --title "AnyBridge v${VERSION}" \
               --notes-file release-notes.md \
               --draft \
               --verify-tag
@@ -63,18 +63,30 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # Windows
           - platform: "windows-latest"
-            args: ""
-          # macOS Apple Silicon
+            rust_target: ""
+            tauri_args: ""
+            pkg_target: "node22-win-x64"
+            pkg_base: "node-v22.22.3-win-x64"
+            sidecar_output: "anybridge-proxy-x86_64-pc-windows-msvc.exe"
           - platform: "macos-latest"
-            args: "--target aarch64-apple-darwin"
-          # macOS Intel
+            rust_target: "aarch64-apple-darwin"
+            tauri_args: "--target aarch64-apple-darwin"
+            pkg_target: "node22-macos-arm64"
+            pkg_base: "node-v22.22.3-macos-arm64"
+            sidecar_output: "anybridge-proxy-aarch64-apple-darwin"
           - platform: "macos-latest"
-            args: "--target x86_64-apple-darwin"
-          # Linux x86_64
+            rust_target: "x86_64-apple-darwin"
+            tauri_args: "--target x86_64-apple-darwin"
+            pkg_target: "node22-macos-x64"
+            pkg_base: "node-v22.22.3-macos-x64"
+            sidecar_output: "anybridge-proxy-x86_64-apple-darwin"
           - platform: "ubuntu-22.04"
-            args: ""
+            rust_target: ""
+            tauri_args: ""
+            pkg_target: "node22-linux-x64"
+            pkg_base: "node-v22.22.3-linux-x64"
+            sidecar_output: "anybridge-proxy-x86_64-unknown-linux-gnu"
 
     runs-on: ${{ matrix.platform }}
 
@@ -102,7 +114,7 @@ jobs:
       - name: Rust setup
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: ${{ matrix.platform == 'macos-latest' && (contains(matrix.args, 'aarch64') && 'aarch64-apple-darwin' || 'x86_64-apple-darwin') || '' }}
+          targets: ${{ matrix.rust_target }}
 
       - name: Node.js setup
         uses: actions/setup-node@v4
@@ -119,6 +131,10 @@ jobs:
 
       - name: Build Sidecar Binary
         shell: bash
+        env:
+          PKG_TARGET: ${{ matrix.pkg_target }}
+          PKG_BASE: ${{ matrix.pkg_base }}
+          OUTPUT_NAME: ${{ matrix.sidecar_output }}
         run: |
           set -euo pipefail
           mkdir -p src-tauri/binaries
@@ -126,28 +142,7 @@ jobs:
           npm ci
           export PKG_CACHE_PATH="$(pwd)/../.pkg-cache"
           mkdir -p "${PKG_CACHE_PATH}/v3.6"
-          
-          # 针对不同构建矩阵选择对应的打包 Targets 及输出文件名
-          if [ "${{ matrix.platform }}" = "windows-latest" ]; then
-            PKG_TARGET="node22-win-x64"
-            PKG_BASE="node-v22.22.3-win-x64"
-            OUTPUT_NAME="ide-byok-proxy-x86_64-pc-windows-msvc.exe"
-          elif [ "${{ matrix.platform }}" = "macos-latest" ]; then
-            if [[ "${{ matrix.args }}" == *"aarch64"* ]]; then
-              PKG_TARGET="node22-macos-arm64"
-              PKG_BASE="node-v22.22.3-macos-arm64"
-              OUTPUT_NAME="ide-byok-proxy-aarch64-apple-darwin"
-            else
-              PKG_TARGET="node22-macos-x64"
-              PKG_BASE="node-v22.22.3-macos-x64"
-              OUTPUT_NAME="ide-byok-proxy-x86_64-apple-darwin"
-            fi
-          else
-            PKG_TARGET="node22-linux-x64"
-            PKG_BASE="node-v22.22.3-linux-x64"
-            OUTPUT_NAME="ide-byok-proxy-x86_64-unknown-linux-gnu"
-          fi
-          
+
           echo "Prefetching pkg base binary: $PKG_BASE"
           curl -L --fail --retry 5 --retry-delay 5 \
             "https://github.com/yao-pkg/pkg-fetch/releases/download/v3.6/${PKG_BASE}" \
@@ -156,11 +151,12 @@ jobs:
 
           echo "Building Sidecar Proxy: $PKG_TARGET -> $OUTPUT_NAME"
           ./node_modules/.bin/pkg proxy-entry.js --targets "$PKG_TARGET" --output "../src-tauri/binaries/$OUTPUT_NAME"
-          
-          # 非 Windows 平台赋予可执行权限，规避 Tauri 打包时的权限限制
+
+          test -s "../src-tauri/binaries/$OUTPUT_NAME"
           if [ "${{ matrix.platform }}" != "windows-latest" ]; then
             chmod +x "../src-tauri/binaries/$OUTPUT_NAME"
           fi
+          ls -lh "../src-tauri/binaries/$OUTPUT_NAME"
 
       - name: Build the app
         uses: tauri-apps/tauri-action@v0
@@ -171,10 +167,10 @@ jobs:
         with:
           releaseId: ${{ needs.prepare-release.outputs.release_id }}
           tagName: "v${{ needs.prepare-release.outputs.version }}"
-          releaseName: "IDE BYOK v${{ needs.prepare-release.outputs.version }}"
+          releaseName: "AnyBridge v${{ needs.prepare-release.outputs.version }}"
           releaseDraft: true
           prerelease: false
-          args: ${{ matrix.args }}
+          args: ${{ matrix.tauri_args }}
 
   rebuild-latest-json:
     name: Rebuild latest.json & Sync to public release repo
@@ -186,7 +182,7 @@ jobs:
       contents: read
     env:
       SOURCE_REPO: ${{ github.repository }}
-      TARGET_REPO: soulvon/IDE-BYOK-Release
+      TARGET_REPO: soulvon/AnyBridge-Release
       VERSION: ${{ needs.prepare-release.outputs.version }}
     steps:
       - name: Checkout repository
@@ -255,7 +251,7 @@ jobs:
           if gh release view "$TAG" --repo "$TARGET_REPO" >/dev/null 2>&1; then
             echo "Target release already exists: $TARGET_REPO:$TAG"
           else
-            gh release create "$TAG" --repo "$TARGET_REPO" --title "IDE BYOK v${VERSION}" --notes-file release-notes.md --draft
+            gh release create "$TAG" --repo "$TARGET_REPO" --title "AnyBridge v${VERSION}" --notes-file release-notes.md --draft
           fi
 
       - name: Upload assets to target release

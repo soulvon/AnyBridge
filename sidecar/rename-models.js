@@ -29,12 +29,16 @@ export function getRuntimeModelSlotStatus(modelUid) {
 
 function configDir() {
   if (process.env.BYOK_CONFIG_DIR) return process.env.BYOK_CONFIG_DIR;
-  // 跨平台配置目录：macOS → ~/Library/Application Support/ide-byok
-  //                    Linux → ~/.config/ide-byok
-  //                    Windows → %APPDATA%/ide-byok
-  if (process.platform === 'darwin') return path.join(os.homedir(), 'Library', 'Application Support', 'ide-byok');
-  if (process.platform === 'linux') return path.join(os.homedir(), '.config', 'ide-byok');
-  return path.join(os.homedir(), 'AppData', 'Roaming', 'ide-byok');
+  const next = appConfigDir('anybridge');
+  if (fs.existsSync(next)) return next;
+  const legacy = appConfigDir('ide-byok');
+  return fs.existsSync(legacy) ? legacy : next;
+}
+
+function appConfigDir(name) {
+  if (process.platform === 'darwin') return path.join(os.homedir(), 'Library', 'Application Support', name);
+  if (process.platform === 'linux') return path.join(process.env.XDG_CONFIG_HOME || path.join(os.homedir(), '.config'), name);
+  return path.join(os.homedir(), 'AppData', 'Roaming', name);
 }
 
 // 渲染显示模板。

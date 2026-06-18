@@ -66,7 +66,7 @@ Write-Host $output
 
 ### 2. 等待 PowerShell 提示符返回
 
-不要在命令还在运行时就检查输出目录。等到 `PS E:\project\IDE-BYOK>` 提示符重新出现。
+不要在命令还在运行时就检查输出目录。等到 `PS E:\project\AnyBridge>` 提示符重新出现。
 
 ### 3. 验证构建成功
 
@@ -80,8 +80,8 @@ Get-ChildItem "src-tauri\target\release\bundle" -Recurse -Include "*.exe","*.msi
 ```
 Name                            MB
 ----                            --
-IDE BYOK_1.2.1_x64-setup.exe  17.67
-IDE BYOK_1.2.1_x64_en-US.msi  25.24
+AnyBridge_1.2.1_x64-setup.exe  17.67
+AnyBridge_1.2.1_x64_en-US.msi  25.24
 ```
 
 ## 关键教训
@@ -114,7 +114,7 @@ npm run tauri:build:local
 npm run tauri build -- --no-bundle
 ```
 
-只生成 `ide-byok.exe`，不生成安装包。用于快速测试。
+只生成 `anybridge.exe`，不生成安装包。用于快速测试。
 
 ### 方法 3：增量构建
 

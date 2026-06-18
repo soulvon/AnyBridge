@@ -30,6 +30,8 @@ src-tauri/target/
 .codex-cargo-target/
 .codex-test-target*/
 src-tauri/target-test-codex-session*/
+__pycache__/
+icon-backups/
 
 # Sidecar build & runtime files
 sidecar-build/
