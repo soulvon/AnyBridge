@@ -1253,14 +1253,14 @@
   align-content: start;
   overflow-y: auto;
   overscroll-behavior: contain;
-  padding-right: 6px;
+  padding: 3px 6px 3px 3px;
 }
 
 .codex-config-field {
   display: flex;
   min-width: 0;
   flex-direction: column;
-  gap: 7px;
+  gap: 8px;
 }
 
 .codex-config-field-wide {
@@ -1271,6 +1271,13 @@
   color: var(--text-secondary);
   font-size: 12px;
   font-weight: 800;
+  line-height: 1.35;
+}
+
+.claude-code-config-modal .codex-config-field .field-input,
+.opencode-config-modal .codex-config-field .field-input {
+  box-sizing: border-box;
+  min-height: 36px;
 }
 
 .codex-config-model-panel {

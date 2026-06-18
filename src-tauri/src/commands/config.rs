@@ -909,6 +909,30 @@ pub struct FetchModelsResult {
     pub api_format: String,
 }
 
+const MODEL_FETCH_COMPAT_SUFFIXES: &[&str] = &[
+    "/api/claudecode",
+    "/api/anthropic",
+    "/apps/anthropic",
+    "/api/coding",
+    "/claudecode",
+    "/anthropic",
+    "/step_plan",
+    "/coding",
+    "/claude",
+];
+
+fn path_ends_with_version_segment(path: &str) -> bool {
+    let last = path.rsplit('/').next().unwrap_or_default();
+    last.strip_prefix('v')
+        .is_some_and(|digits| !digits.is_empty() && digits.bytes().all(|b| b.is_ascii_digit()))
+}
+
+fn strip_model_fetch_compat_suffix(path: &str) -> Option<&str> {
+    MODEL_FETCH_COMPAT_SUFFIXES
+        .iter()
+        .find_map(|suffix| path.strip_suffix(suffix))
+}
+
 #[tauri::command]
 pub async fn fetch_models(args: FetchModelsArgs) -> Result<FetchModelsResult, String> {
     let host = args.host.trim_end_matches('/');
@@ -956,6 +980,26 @@ pub async fn fetch_models(args: FetchModelsArgs) -> Result<FetchModelsResult, St
     let mut model_paths = Vec::new();
     if !base_path.is_empty() {
         model_paths.push(format!("{}/models", base_path.trim_end_matches('/')));
+    } else if fmt == "openai" && !chat_path.is_empty() {
+        let openai_base = chat_path.trim_end_matches('/');
+        if lower_path.ends_with("/models") {
+            model_paths.push(openai_base.to_string());
+        } else if path_ends_with_version_segment(openai_base) {
+            model_paths.push(format!("{}/models", openai_base));
+            if !openai_base.ends_with("/v1") {
+                model_paths.push(format!("{}/v1/models", openai_base));
+            }
+        } else {
+            model_paths.push(format!("{}/v1/models", openai_base));
+        }
+
+        if let Some(stripped) = strip_model_fetch_compat_suffix(openai_base) {
+            let stripped = stripped.trim_end_matches('/');
+            if !stripped.is_empty() {
+                model_paths.push(format!("{}/v1/models", stripped));
+                model_paths.push(format!("{}/models", stripped));
+            }
+        }
     }
     model_paths.push("/v1/models".to_string());
     model_paths.push("/models".to_string());

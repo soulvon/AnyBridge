@@ -1275,7 +1275,7 @@
                     <span>模型列表</span>
                     <em id="claude-code-config-model-status">选择供应商后拉取模型列表</em>
                   </div>
-                  <button type="button" class="codex-config-fetch-btn" id="claude-code-config-fetch-models-btn" onclick="event.stopPropagation(); fetchClaudeCodeConfigModels()">拉取模型列表</button>
+                  <button type="button" class="codex-config-fetch-btn" id="claude-code-config-fetch-models-btn" onclick="event.preventDefault(); event.stopPropagation(); fetchClaudeCodeConfigModels()">拉取模型列表</button>
                 </summary>
                 <div class="claude-code-collapse-body">
                   <div class="codex-config-model-list" id="claude-code-config-model-list">
@@ -1765,7 +1765,7 @@
                     <span>模型列表</span>
                     <em id="opencode-config-model-status">选择供应商后拉取模型列表</em>
                   </div>
-                  <button type="button" class="codex-config-fetch-btn" id="opencode-config-fetch-models-btn" onclick="event.stopPropagation(); fetchOpenCodeConfigModels()">拉取模型列表</button>
+                  <button type="button" class="codex-config-fetch-btn" id="opencode-config-fetch-models-btn" onclick="event.preventDefault(); event.stopPropagation(); fetchOpenCodeConfigModels()">拉取模型列表</button>
                 </summary>
                 <div class="claude-code-collapse-body">
                   <div class="codex-config-model-list" id="opencode-config-model-list">

@@ -1422,10 +1422,17 @@ function renderClaudeCodeConfigModelList(models = null) {
     return;
   }
   list.innerHTML = source.map(model => `
-    <button type="button" class="codex-config-model-option ${model === defaultModel ? 'active' : ''}" onclick="selectClaudeCodeConfigModel(${platformJsArg(model)})" title="${platformEsc(model)}">
+    <button type="button" class="codex-config-model-option ${model === defaultModel ? 'active' : ''}" data-model="${platformEsc(model)}" title="${platformEsc(model)}">
       ${platformEsc(model)}
     </button>
   `).join('');
+  list.onclick = (event) => {
+    const item = event.target.closest('.codex-config-model-option');
+    if (!item || !list.contains(item)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    selectClaudeCodeConfigModel(item.dataset.model || '');
+  };
 }
 
 function selectClaudeCodeConfigModel(model) {
@@ -1451,6 +1458,29 @@ function claudeCodeConfigEndpointParts(baseUrl) {
   }
 }
 
+function claudeCodeConfigModelEndpointParts(baseUrl, apiFormat) {
+  if (typeof providerEndpointParts === 'function') {
+    return providerEndpointParts(
+      baseUrl,
+      apiFormat,
+      apiFormat === 'openai' ? '/v1' : '/v1/messages'
+    );
+  }
+  return claudeCodeConfigEndpointParts(baseUrl);
+}
+
+async function fetchClaudeCodeConfigModelsWithFormat(baseUrl, apiKey, apiFormat) {
+  const endpoint = claudeCodeConfigModelEndpointParts(baseUrl, apiFormat);
+  return invoke('fetch_models', {
+    args: {
+      host: endpoint.apiHost,
+      api_key: apiKey,
+      api_format: apiFormat,
+      path: endpoint.apiPath || (apiFormat === 'openai' ? '/v1' : '/v1/messages'),
+    }
+  });
+}
+
 async function fetchClaudeCodeConfigModels() {
   if (!invoke) return;
   const seq = ++claudeCodeConfigModelFetchSeq;
@@ -1464,15 +1494,24 @@ async function fetchClaudeCodeConfigModels() {
   claudeCodeConfigSetFetchLoading(true);
   claudeCodeConfigSetModelStatus('正在拉取模型列表...', 'loading');
   try {
-    const endpoint = claudeCodeConfigEndpointParts(baseUrl);
-    const result = await invoke('fetch_models', {
-      args: {
-        host: endpoint.apiHost,
-        api_key: apiKey,
-        api_format: 'anthropic',
-        path: endpoint.apiPath || '/v1/messages',
+    let result = null;
+    let lastError = null;
+    for (const apiFormat of ['openai', 'anthropic']) {
+      try {
+        claudeCodeConfigSetModelStatus(
+          apiFormat === 'openai'
+            ? '正在按 /v1/models 拉取模型列表...'
+            : '正在按 Anthropic 鉴权重试模型列表...',
+          'loading'
+        );
+        result = await fetchClaudeCodeConfigModelsWithFormat(baseUrl, apiKey, apiFormat);
+        if (result?.models?.length) break;
+        lastError = new Error(`${apiFormat === 'openai' ? 'OpenAI' : 'Anthropic'} 协议返回的模型列表为空`);
+      } catch (e) {
+        lastError = e;
       }
-    });
+    }
+    if (!result?.models?.length) throw lastError || new Error('接口返回的模型列表为空');
     if (seq !== claudeCodeConfigModelFetchSeq) return;
     const models = codexConfigNormalizeModels(result?.models || []);
     if (!models.length) throw new Error('接口返回的模型列表为空');
@@ -2083,10 +2122,17 @@ function renderOpenCodeConfigModelList(models = null) {
     return;
   }
   list.innerHTML = source.map(model => `
-    <button type="button" class="codex-config-model-option ${model === defaultModel ? 'active' : ''}" onclick="selectOpenCodeConfigModel(${platformJsArg(model)})" title="${platformEsc(model)}">
+    <button type="button" class="codex-config-model-option ${model === defaultModel ? 'active' : ''}" data-model="${platformEsc(model)}" title="${platformEsc(model)}">
       ${platformEsc(model)}
     </button>
   `).join('');
+  list.onclick = (event) => {
+    const item = event.target.closest('.codex-config-model-option');
+    if (!item || !list.contains(item)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    selectOpenCodeConfigModel(item.dataset.model || '');
+  };
 }
 
 function selectOpenCodeConfigModel(model) {
