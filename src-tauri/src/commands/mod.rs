@@ -1,4 +1,5 @@
 pub mod cert_install;
+pub mod codex_session_visibility;
 pub mod config;
 pub mod eval;
 pub mod ide_config;

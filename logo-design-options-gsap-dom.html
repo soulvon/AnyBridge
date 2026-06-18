@@ -1,0 +1,425 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AnyBridge GSAP DOM Logo Options</title>
+<style>
+  :root {
+    --ink: #101827;
+    --muted: #667789;
+    --line: rgba(15, 23, 42, 0.12);
+    --panel: rgba(255, 255, 255, 0.78);
+    --blue: #48a9d4;
+    --blue-strong: #2382b2;
+    --teal: #52d4bd;
+    --teal-strong: #23a994;
+    --dark-panel: #1d2933;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    min-height: 100vh;
+    padding: 32px;
+    background:
+      radial-gradient(circle at 12% 10%, rgba(72, 169, 212, 0.14), transparent 24%),
+      radial-gradient(circle at 88% 12%, rgba(82, 212, 189, 0.14), transparent 24%),
+      linear-gradient(180deg, #f6f9fc, #e7eef6);
+    color: var(--ink);
+    font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
+  }
+
+  .wrap { max-width: 1280px; margin: 0 auto; }
+  header { margin-bottom: 24px; }
+  h1 { margin: 0; font-size: 26px; line-height: 1.1; letter-spacing: 0; }
+  .intro { max-width: 760px; margin: 8px 0 0; color: var(--muted); font-size: 13px; line-height: 1.7; }
+
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+    gap: 18px;
+  }
+
+  .card {
+    overflow: hidden;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: var(--panel);
+    box-shadow: 0 18px 40px -30px rgba(15, 23, 42, 0.45);
+  }
+
+  .card-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 13px 16px;
+    border-bottom: 1px solid var(--line);
+    background: rgba(255, 255, 255, 0.46);
+  }
+
+  .name { font-size: 13px; font-weight: 850; }
+  .tag { color: var(--muted); font-size: 11px; font-weight: 750; }
+
+  .previews { display: grid; gap: 12px; padding: 16px; }
+
+  .bar {
+    height: 74px;
+    display: flex;
+    align-items: center;
+    padding: 0 24px;
+    border-radius: 10px;
+    overflow: hidden;
+  }
+
+  .bar.light {
+    border: 1px solid rgba(37, 99, 235, 0.1);
+    background: linear-gradient(180deg, rgba(245, 248, 252, 0.98), rgba(235, 241, 248, 0.95));
+  }
+
+  .bar.dark {
+    border: 1px solid rgba(120, 170, 210, 0.15);
+    background: linear-gradient(180deg, rgba(38, 48, 58, 0.98), rgba(28, 38, 47, 0.96));
+  }
+
+  .logo {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    color: var(--ink);
+    user-select: none;
+  }
+
+  .dark .logo { color: #f8fafc; }
+
+  .word {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    color: currentColor;
+    font-size: 17px;
+    font-weight: 900;
+    line-height: 0.88;
+    letter-spacing: 0;
+  }
+
+  .word span { display: block; }
+
+  .dom-mark {
+    position: relative;
+    width: 54px;
+    height: 54px;
+    flex: 0 0 auto;
+    filter: drop-shadow(0 8px 13px rgba(35, 130, 178, 0.16));
+  }
+
+  .dom-mark .line,
+  .dom-mark .node,
+  .dom-mark .packet,
+  .dom-mark .halo,
+  .dom-mark .glint {
+    position: absolute;
+  }
+
+  .dom-mark .line {
+    z-index: 1;
+    height: 8px;
+    border-radius: 999px;
+    transform-origin: left center;
+    background: linear-gradient(90deg, var(--blue-strong), var(--teal-strong));
+  }
+
+  .dark .dom-mark .line {
+    background: linear-gradient(90deg, var(--blue), var(--teal));
+  }
+
+  .dom-mark .l1 { left: 23px; top: 18px; width: 26px; transform: rotate(28deg); }
+  .dom-mark .l2 { left: 24px; top: 35px; width: 27px; transform: rotate(-28deg); }
+  .dom-mark .l3 { left: 18px; top: 24px; width: 23px; transform: rotate(90deg); }
+
+  .dom-mark .node {
+    z-index: 2;
+    display: block;
+    border-radius: 999px;
+    background: linear-gradient(135deg, var(--blue-strong), var(--teal-strong));
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.35),
+      0 7px 16px -10px rgba(35, 130, 178, 0.75);
+  }
+
+  .dark .dom-mark .node {
+    background: linear-gradient(135deg, var(--blue), var(--teal));
+  }
+
+  .dom-mark .n1 { left: 5px; top: 4px; width: 24px; height: 24px; }
+  .dom-mark .n2 { left: 8px; top: 31px; width: 23px; height: 23px; }
+  .dom-mark .n3 { left: 33px; top: 20px; width: 22px; height: 22px; }
+
+  .dom-mark .packet {
+    z-index: 3;
+    width: 7px;
+    height: 7px;
+    border-radius: 999px;
+    background: #fff;
+    opacity: 0;
+    box-shadow: 0 0 10px rgba(255,255,255,.8);
+  }
+
+  .dom-mark .halo {
+    z-index: 0;
+    width: 30px;
+    height: 30px;
+    border: 2px solid rgba(72, 169, 212, 0.55);
+    border-radius: 999px;
+    opacity: 0;
+  }
+
+  .dom-mark .h1 { left: 2px; top: 1px; }
+  .dom-mark .h2 { left: 5px; top: 28px; }
+  .dom-mark .h3 { left: 29px; top: 16px; }
+
+  .dom-mark .glint {
+    z-index: 4;
+    left: -18px;
+    top: -8px;
+    width: 10px;
+    height: 72px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.38);
+    transform: rotate(-20deg);
+    opacity: 0;
+  }
+
+  .bars {
+    display: grid;
+    gap: 5px;
+    margin-right: 2px;
+  }
+
+  .bars i {
+    display: block;
+    width: 34px;
+    height: 5px;
+    border-radius: 999px;
+    background: var(--blue);
+  }
+
+  .bars i:nth-child(2) { width: 28px; background: var(--blue-strong); }
+  .bars i:nth-child(3) { width: 39px; background: var(--teal); }
+
+  .caption { padding: 0 16px 16px; color: var(--muted); font-size: 12px; line-height: 1.55; }
+
+  .dom-mark,
+  .dom-mark .line,
+  .dom-mark .node,
+  .dom-mark .packet,
+  .dom-mark .halo,
+  .word,
+  .bars i {
+    will-change: transform, opacity, filter;
+  }
+
+  @media (max-width: 720px) {
+    body { padding: 18px; }
+    .grid { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<main class="wrap">
+  <header>
+    <h1>AnyBridge GSAP DOM Logo Options</h1>
+    <p class="intro">Ten new motion directions built from HTML/CSS elements and animated with GSAP. No SVG is used for the mark itself: circles are nodes, rotated divs are links, and GSAP drives the behavior.</p>
+  </header>
+
+  <section class="grid">
+    <article class="card v1">
+      <div class="card-head"><div class="name">01 Pulse Nodes</div><div class="tag">clean default</div></div>
+      <div class="previews">
+        <div class="bar light"><div class="logo"><div class="dom-mark"><i class="halo h1"></i><i class="halo h2"></i><i class="halo h3"></i><i class="line l1"></i><i class="line l2"></i><i class="line l3"></i><i class="node n1"></i><i class="node n2"></i><i class="node n3"></i></div><div class="word"><span>Any</span><span>Bridge</span></div></div></div>
+        <div class="bar dark"><div class="logo"><div class="dom-mark"><i class="halo h1"></i><i class="halo h2"></i><i class="halo h3"></i><i class="line l1"></i><i class="line l2"></i><i class="line l3"></i><i class="node n1"></i><i class="node n2"></i><i class="node n3"></i></div><div class="word"><span>Any</span><span>Bridge</span></div></div></div>
+      </div>
+      <div class="caption">Closest to your SVG: a steady node-link mark with subtle pulse rings.</div>
+    </article>
+
+    <article class="card v2">
+      <div class="card-head"><div class="name">02 Route Packets</div><div class="tag">data flow</div></div>
+      <div class="previews">
+        <div class="bar light"><div class="logo"><div class="dom-mark"><i class="line l1"></i><i class="line l2"></i><i class="line l3"></i><i class="node n1"></i><i class="node n2"></i><i class="node n3"></i><i class="packet p1"></i><i class="packet p2"></i></div><div class="word"><span>Any</span><span>Bridge</span></div></div></div>
+        <div class="bar dark"><div class="logo"><div class="dom-mark"><i class="line l1"></i><i class="line l2"></i><i class="line l3"></i><i class="node n1"></i><i class="node n2"></i><i class="node n3"></i><i class="packet p1"></i><i class="packet p2"></i></div><div class="word"><span>Any</span><span>Bridge</span></div></div></div>
+      </div>
+      <div class="caption">White packets travel from left nodes to the right node. Very clear provider-routing metaphor.</div>
+    </article>
+
+    <article class="card v3">
+      <div class="card-head"><div class="name">03 Draw Links</div><div class="tag">startup feel</div></div>
+      <div class="previews">
+        <div class="bar light"><div class="logo"><div class="dom-mark"><i class="line l1"></i><i class="line l2"></i><i class="line l3"></i><i class="node n1"></i><i class="node n2"></i><i class="node n3"></i></div><div class="word"><span>Any</span><span>Bridge</span></div></div></div>
+        <div class="bar dark"><div class="logo"><div class="dom-mark"><i class="line l1"></i><i class="line l2"></i><i class="line l3"></i><i class="node n1"></i><i class="node n2"></i><i class="node n3"></i></div><div class="word"><span>Any</span><span>Bridge</span></div></div></div>
+      </div>
+      <div class="caption">Links draw in first, nodes pop afterward. Good for splash/first-load identity.</div>
+    </article>
+
+    <article class="card v4">
+      <div class="card-head"><div class="name">04 Magnetic Nodes</div><div class="tag">elastic</div></div>
+      <div class="previews">
+        <div class="bar light"><div class="logo"><div class="dom-mark"><i class="line l1"></i><i class="line l2"></i><i class="line l3"></i><i class="node n1"></i><i class="node n2"></i><i class="node n3"></i></div><div class="word"><span>Any</span><span>Bridge</span></div></div></div>
+        <div class="bar dark"><div class="logo"><div class="dom-mark"><i class="line l1"></i><i class="line l2"></i><i class="line l3"></i><i class="node n1"></i><i class="node n2"></i><i class="node n3"></i></div><div class="word"><span>Any</span><span>Bridge</span></div></div></div>
+      </div>
+      <div class="caption">Nodes gently pull apart and settle back. Feels more alive, still compact.</div>
+    </article>
+
+    <article class="card v5">
+      <div class="card-head"><div class="name">05 Glass Sweep</div><div class="tag">polished</div></div>
+      <div class="previews">
+        <div class="bar light"><div class="logo"><div class="dom-mark"><i class="line l1"></i><i class="line l2"></i><i class="line l3"></i><i class="node n1"></i><i class="node n2"></i><i class="node n3"></i><i class="glint"></i></div><div class="word"><span>Any</span><span>Bridge</span></div></div></div>
+        <div class="bar dark"><div class="logo"><div class="dom-mark"><i class="line l1"></i><i class="line l2"></i><i class="line l3"></i><i class="node n1"></i><i class="node n2"></i><i class="node n3"></i><i class="glint"></i></div><div class="word"><span>Any</span><span>Bridge</span></div></div></div>
+      </div>
+      <div class="caption">A quick glass highlight sweeps over the constructed mark. Premium but not too flashy.</div>
+    </article>
+
+    <article class="card v6">
+      <div class="card-head"><div class="name">06 Reference Bars</div><div class="tag">matches image 2</div></div>
+      <div class="previews">
+        <div class="bar light"><div class="logo"><div class="bars"><i></i><i></i><i></i></div><div class="word"><span>Any</span><span>Bridge</span></div></div></div>
+        <div class="bar dark"><div class="logo"><div class="bars"><i></i><i></i><i></i></div><div class="word"><span>Any</span><span>Bridge</span></div></div></div>
+      </div>
+      <div class="caption">A DOM version of the reference image's three-line mark, animated by GSAP.</div>
+    </article>
+
+    <article class="card v7">
+      <div class="card-head"><div class="name">07 Rotate Relay</div><div class="tag">active</div></div>
+      <div class="previews">
+        <div class="bar light"><div class="logo"><div class="dom-mark"><i class="line l1"></i><i class="line l2"></i><i class="line l3"></i><i class="node n1"></i><i class="node n2"></i><i class="node n3"></i></div><div class="word"><span>Any</span><span>Bridge</span></div></div></div>
+        <div class="bar dark"><div class="logo"><div class="dom-mark"><i class="line l1"></i><i class="line l2"></i><i class="line l3"></i><i class="node n1"></i><i class="node n2"></i><i class="node n3"></i></div><div class="word"><span>Any</span><span>Bridge</span></div></div></div>
+      </div>
+      <div class="caption">The whole mark pivots like a relay switch. Stronger motion for hover or loading moments.</div>
+    </article>
+
+    <article class="card v8">
+      <div class="card-head"><div class="name">08 Chroma Split</div><div class="tag">tech</div></div>
+      <div class="previews">
+        <div class="bar light"><div class="logo"><div class="dom-mark"><i class="line l1"></i><i class="line l2"></i><i class="line l3"></i><i class="node n1"></i><i class="node n2"></i><i class="node n3"></i></div><div class="word"><span>Any</span><span>Bridge</span></div></div></div>
+        <div class="bar dark"><div class="logo"><div class="dom-mark"><i class="line l1"></i><i class="line l2"></i><i class="line l3"></i><i class="node n1"></i><i class="node n2"></i><i class="node n3"></i></div><div class="word"><span>Any</span><span>Bridge</span></div></div></div>
+      </div>
+      <div class="caption">Tiny color separation via filter and movement. More technical and less conservative.</div>
+    </article>
+
+    <article class="card v9">
+      <div class="card-head"><div class="name">09 Breathing Word</div><div class="tag">brand text</div></div>
+      <div class="previews">
+        <div class="bar light"><div class="logo"><div class="dom-mark"><i class="line l1"></i><i class="line l2"></i><i class="line l3"></i><i class="node n1"></i><i class="node n2"></i><i class="node n3"></i></div><div class="word"><span>Any</span><span>Bridge</span></div></div></div>
+        <div class="bar dark"><div class="logo"><div class="dom-mark"><i class="line l1"></i><i class="line l2"></i><i class="line l3"></i><i class="node n1"></i><i class="node n2"></i><i class="node n3"></i></div><div class="word"><span>Any</span><span>Bridge</span></div></div></div>
+      </div>
+      <div class="caption">Mark stays calm, wordmark gets the animation. Good if icon motion feels distracting.</div>
+    </article>
+
+    <article class="card v10">
+      <div class="card-head"><div class="name">10 Timeline Build</div><div class="tag">lottie-like</div></div>
+      <div class="previews">
+        <div class="bar light"><div class="logo"><div class="dom-mark"><i class="line l1"></i><i class="line l2"></i><i class="line l3"></i><i class="node n1"></i><i class="node n2"></i><i class="node n3"></i></div><div class="word"><span>Any</span><span>Bridge</span></div></div></div>
+        <div class="bar dark"><div class="logo"><div class="dom-mark"><i class="line l1"></i><i class="line l2"></i><i class="line l3"></i><i class="node n1"></i><i class="node n2"></i><i class="node n3"></i></div><div class="word"><span>Any</span><span>Bridge</span></div></div></div>
+      </div>
+      <div class="caption">A full GSAP timeline: nodes appear, links connect, then the wordmark settles in.</div>
+    </article>
+  </section>
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
+<script>
+  const fallback = () => document.documentElement.classList.add('no-gsap');
+
+  function animateWithGsap() {
+    if (!window.gsap) {
+      fallback();
+      return;
+    }
+
+    const gsap = window.gsap;
+    gsap.defaults({ ease: "sine.inOut" });
+
+    document.querySelectorAll(".v1 .dom-mark").forEach(mark => {
+      gsap.timeline({ repeat: -1 })
+        .to(mark.querySelectorAll(".node"), { scale: 1.14, stagger: 0.12, duration: 0.42, transformOrigin: "50% 50%" })
+        .to(mark.querySelectorAll(".node"), { scale: 1, stagger: 0.08, duration: 0.38 }, "-=0.18");
+      gsap.to(mark.querySelectorAll(".halo"), { opacity: 0.7, scale: 1.28, duration: 1.25, repeat: -1, stagger: 0.22, yoyo: true, transformOrigin: "50% 50%" });
+    });
+
+    document.querySelectorAll(".v2 .dom-mark").forEach(mark => {
+      const packets = mark.querySelectorAll(".packet");
+      gsap.set(packets[0], { left: 20, top: 18 });
+      gsap.set(packets[1], { left: 20, top: 36 });
+      gsap.timeline({ repeat: -1, repeatDelay: 0.15 })
+        .to(packets[0], { opacity: 1, duration: 0.12 })
+        .to(packets[0], { left: 42, top: 27, duration: 0.75 })
+        .to(packets[0], { opacity: 0, duration: 0.18 }, "-=0.1")
+        .to(packets[1], { opacity: 1, duration: 0.12 }, "-=0.35")
+        .to(packets[1], { left: 42, top: 27, duration: 0.75 }, "-=0.2")
+        .to(packets[1], { opacity: 0, duration: 0.18 }, "-=0.1");
+    });
+
+    document.querySelectorAll(".v3 .dom-mark").forEach(mark => {
+      gsap.set(mark.querySelectorAll(".line"), { scaleX: 0, transformOrigin: "left center" });
+      gsap.set(mark.querySelectorAll(".node"), { scale: 0.78, opacity: 0.65, transformOrigin: "50% 50%" });
+      gsap.timeline({ repeat: -1, repeatDelay: 0.5 })
+        .to(mark.querySelectorAll(".line"), { scaleX: 1, duration: 0.42, stagger: 0.1 })
+        .to(mark.querySelectorAll(".node"), { scale: 1, opacity: 1, duration: 0.28, stagger: 0.08 }, "-=0.2")
+        .to(mark.querySelectorAll(".line,.node"), { opacity: 0.72, duration: 0.25 }, "+=0.65")
+        .to(mark.querySelectorAll(".line,.node"), { opacity: 1, duration: 0.25 });
+    });
+
+    document.querySelectorAll(".v4 .dom-mark").forEach(mark => {
+      gsap.to(mark.querySelector(".n1"), { x: -2, y: -2, duration: 1.1, repeat: -1, yoyo: true });
+      gsap.to(mark.querySelector(".n2"), { x: -3, y: 2, duration: 1.1, repeat: -1, yoyo: true });
+      gsap.to(mark.querySelector(".n3"), { x: 3, duration: 1.1, repeat: -1, yoyo: true });
+      gsap.to(mark.querySelectorAll(".line"), { scaleX: 1.05, duration: 1.1, repeat: -1, yoyo: true, transformOrigin: "left center" });
+    });
+
+    document.querySelectorAll(".v5 .dom-mark").forEach(mark => {
+      gsap.to(mark.querySelector(".glint"), { x: 92, opacity: 0.9, duration: 0.95, repeat: -1, repeatDelay: 1.35, ease: "power2.inOut" });
+      gsap.to(mark, { scale: 1.04, duration: 1.35, repeat: -1, yoyo: true });
+    });
+
+    document.querySelectorAll(".v6 .bars").forEach(bars => {
+      gsap.to(bars.querySelectorAll("i"), { x: 7, opacity: 0.78, duration: 0.72, repeat: -1, yoyo: true, stagger: 0.12 });
+    });
+
+    document.querySelectorAll(".v7 .dom-mark").forEach(mark => {
+      gsap.to(mark, { rotation: -9, duration: 1.15, repeat: -1, yoyo: true, transformOrigin: "50% 50%" });
+      gsap.to(mark.querySelectorAll(".node"), { scale: 1.08, duration: 0.8, repeat: -1, yoyo: true, stagger: 0.09, transformOrigin: "50% 50%" });
+    });
+
+    document.querySelectorAll(".v8 .dom-mark").forEach(mark => {
+      gsap.to(mark, { x: 1.5, y: -1, filter: "drop-shadow(3px 3px 0 rgba(82,212,189,.42)) drop-shadow(-3px -2px 0 rgba(72,169,212,.32))", duration: 1.2, repeat: -1, yoyo: true });
+    });
+
+    document.querySelectorAll(".v9 .logo").forEach(logo => {
+      gsap.to(logo.querySelector(".dom-mark"), { scale: 1.05, duration: 1.1, repeat: -1, yoyo: true, transformOrigin: "50% 50%" });
+      gsap.to(logo.querySelector(".word span:last-child"), { color: "#48a9d4", x: 4, duration: 1.1, repeat: -1, yoyo: true });
+    });
+
+    document.querySelectorAll(".v10 .logo").forEach(logo => {
+      const mark = logo.querySelector(".dom-mark");
+      const tl = gsap.timeline({ repeat: -1, repeatDelay: 0.55 });
+      gsap.set(mark.querySelectorAll(".node"), { scale: 0, transformOrigin: "50% 50%" });
+      gsap.set(mark.querySelectorAll(".line"), { scaleX: 0, transformOrigin: "left center" });
+      gsap.set(logo.querySelector(".word"), { opacity: 0, x: -8 });
+      tl.to(mark.querySelectorAll(".node"), { scale: 1, duration: 0.24, stagger: 0.1, ease: "back.out(2)" })
+        .to(mark.querySelectorAll(".line"), { scaleX: 1, duration: 0.34, stagger: 0.08 }, "-=0.1")
+        .to(logo.querySelector(".word"), { opacity: 1, x: 0, duration: 0.34 }, "-=0.08")
+        .to({}, { duration: 1.2 })
+        .to([mark.querySelectorAll(".node"), mark.querySelectorAll(".line"), logo.querySelector(".word")], { opacity: 0.55, duration: 0.2 })
+        .to([mark.querySelectorAll(".node"), mark.querySelectorAll(".line"), logo.querySelector(".word")], { opacity: 1, duration: 0.2 });
+    });
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", animateWithGsap);
+  } else {
+    animateWithGsap();
+  }
+</script>
+</body>
+</html>

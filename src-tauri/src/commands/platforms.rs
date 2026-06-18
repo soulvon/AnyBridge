@@ -17,13 +17,13 @@ use serde_json::{Map, Value};
 use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 use toml_edit::{value, DocumentMut, Item, Table};
 
 use super::config::{
-    read_provider_store, write_provider_store, ApiFormat, ClaudeCodeConfig, PlatformState,
-    OpenCodeConfig, Provider, ProviderStore,
+    read_provider_store, write_provider_store, ApiFormat, ClaudeCodeConfig, OpenCodeConfig,
+    PlatformState, Provider, ProviderStore,
 };
 
 const PLATFORM_CLAUDE_CODE: &str = "claude-code";
@@ -1290,7 +1290,10 @@ fn opencode_settings_from_config(config: &OpenCodeConfig, mask_token: bool) -> V
 
 fn opencode_preview_from_config(config: &OpenCodeConfig) -> Value {
     let mut provider_map = Map::new();
-    provider_map.insert(config.id.clone(), opencode_settings_from_config(config, true));
+    provider_map.insert(
+        config.id.clone(),
+        opencode_settings_from_config(config, true),
+    );
 
     serde_json::json!({
         "opencode.json": {
@@ -2232,6 +2235,9 @@ pub fn switch_platform(platform: String, provider_id: String) -> Result<SwitchRe
             plat.required_api_format()
         ));
     }
+    if matches!(plat, Platform::Codex) {
+        message.push_str(&repair_codex_session_visibility_message(&path));
+    }
 
     Ok(SwitchResult {
         ok: true,
@@ -2345,12 +2351,24 @@ pub fn restore_codex_official_config() -> Result<SwitchResult, String> {
 
     let config_path = path.to_string_lossy().to_string();
     let backup = backup_path(&path).to_string_lossy().to_string();
+    let mut message = "已切回 Codex 官方 OpenAI 配置，重启 Codex 后生效".to_string();
+    message.push_str(&repair_codex_session_visibility_message(&path));
     Ok(SwitchResult {
         ok: true,
-        message: "已切回 Codex 官方 OpenAI 配置，重启 Codex 后生效".to_string(),
+        message,
         config_path,
         backup_path: backup,
     })
+}
+
+/// 手动修复 Codex 历史会话可见性：对齐当前 config.toml 的 model_provider 与本地会话索引。
+#[tauri::command]
+pub fn repair_codex_session_visibility(
+) -> Result<super::codex_session_visibility::CodexSessionVisibilityRepairSummary, String> {
+    let path = Platform::Codex
+        .config_path()
+        .ok_or_else(|| "无法定位用户主目录".to_string())?;
+    super::codex_session_visibility::repair_default_codex_session_visibility(&path)
 }
 
 // ─── CodeBuddy 自定义模型管理命令 ────────────────────────────
@@ -2554,6 +2572,16 @@ pub fn list_provider_models() -> Result<Vec<ProviderModelsEntry>, String> {
         });
     }
     Ok(out)
+}
+
+fn repair_codex_session_visibility_message(path: &Path) -> String {
+    match super::codex_session_visibility::repair_default_codex_session_visibility(path) {
+        Ok(summary) => format!("。{}", summary.message),
+        Err(error) => format!(
+            "。但同步 Codex 历史会话可见性失败：{}。配置已写入，可关闭 Codex 后重试切换",
+            error
+        ),
+    }
 }
 
 #[cfg(test)]

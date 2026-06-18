@@ -1,5 +1,16 @@
 // ═══════ PROVIDER PROFILES (多套供应商 + 启用开关) ═══════
 let providerStore = { providers: [], codexConfigs: [], claudeCodeConfigs: [], opencodeConfigs: [] };
+const PROVIDER_VIEW_STORAGE_KEY = 'anybridge.providerViewMode';
+let providerViewMode = (() => {
+  try {
+    return localStorage.getItem(PROVIDER_VIEW_STORAGE_KEY) === 'list' ? 'list' : 'grid';
+  } catch (_) {
+    return 'grid';
+  }
+})();
+let providerSearchKeyword = '';
+let providerSelectedIds = new Set();
+let providerBulkRunning = false;
 let providerImportCandidates = [];
 let providerImportSelectedIds = new Set();
 let providerImportOpening = false;
@@ -18,12 +29,6 @@ const PROVIDER_IMPORT_SOURCE_OPTIONS = [
   { key: 'cherry-studio', label: 'Cherry Studio' },
 ];
 
-function providerLogoClass(fmt) {
-  return fmt === 'openai' ? 'logo-openai' : 'logo-anthropic';
-}
-function providerLogoChar(name) {
-  return (name || '?').trim().charAt(0).toUpperCase() || '?';
-}
 function escAttr(s) {
   return String(s || '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
@@ -228,57 +233,205 @@ async function loadProviders() {
   await renderModelMap();
 }
 
-function renderProviders() {
-  const grid = document.getElementById('providerGrid');
-  const empty = document.getElementById('providerEmpty');
-  if (!grid) return;
-  const list = (providerStore.providers || []).filter(p => p?.meta?.codexConfig !== true);
-  if (empty) empty.style.display = list.length ? 'none' : 'block';
+function providerListAll() {
+  return (providerStore.providers || []).filter(p => p?.meta?.codexConfig !== true);
+}
 
-  grid.innerHTML = list.map(p => {
+function providerSearchHaystack(p) {
+  return [
+    p?.name,
+    p?.id,
+    p?.apiHost,
+    p?.apiPath,
+    p?.apiFormat,
+    p?.defaultModel,
+    ...(Array.isArray(p?.models) ? p.models : []),
+    p?.enabled === false ? '未启用 disabled off' : '已启用 enabled on',
+  ].map(x => String(x || '').toLowerCase()).join(' ');
+}
+
+function providerVisibleList(list = providerListAll()) {
+  const terms = providerSearchKeyword.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  if (!terms.length) return list;
+  return list.filter(p => {
+    const text = providerSearchHaystack(p);
+    return terms.every(term => text.includes(term));
+  });
+}
+
+function cleanupProviderSelection(list = providerListAll()) {
+  const valid = new Set(list.map(p => p.id));
+  providerSelectedIds.forEach(id => {
+    if (!valid.has(id)) providerSelectedIds.delete(id);
+  });
+}
+
+function providerModelBadges(p, limit = Infinity) {
+  const modelsList = providerSelectedModels(p);
+  const shown = modelsList.slice(0, limit);
+  const chips = shown.map((m, idx) => {
+    return `
+      <span class="tag provider-model-chip">
+        ${renderModelIcon(m)}
+        <span class="provider-model-chip-text">${escAttr(m)}</span>
+        ${idx === 0 ? '<span class="provider-model-default">(默认)</span>' : ''}
+      </span>
+    `;
+  });
+  if (Number.isFinite(limit) && modelsList.length > limit) {
+    chips.push(`<span class="tag provider-model-more">+${modelsList.length - limit}</span>`);
+  }
+  return chips.join('');
+}
+
+function renderProviderToolbarState(total, visible) {
+  const search = document.getElementById('providerSearchInput');
+  if (search && search.value !== providerSearchKeyword) search.value = providerSearchKeyword;
+  const clear = document.getElementById('providerSearchClear');
+  if (clear) clear.style.display = providerSearchKeyword.trim() ? 'inline-flex' : 'none';
+
+  const gridBtn = document.getElementById('providerViewGridBtn');
+  const listBtn = document.getElementById('providerViewListBtn');
+  if (gridBtn) gridBtn.classList.toggle('active', providerViewMode !== 'list');
+  if (listBtn) listBtn.classList.toggle('active', providerViewMode === 'list');
+
+  const visibleIds = visible.map(p => p.id).filter(Boolean);
+  const selectedCount = providerSelectedIds.size;
+  const selectedVisibleCount = visibleIds.filter(id => providerSelectedIds.has(id)).length;
+  const bulkCount = document.getElementById('providerBulkCount');
+  if (bulkCount) {
+    bulkCount.textContent = selectedCount
+      ? `已选择 ${selectedCount}`
+      : (providerSearchKeyword.trim() ? `${visible.length}/${total} 个结果` : `共 ${total} 个`);
+  }
+
+  const selectVisibleBtn = document.getElementById('providerSelectVisibleBtn');
+  if (selectVisibleBtn) {
+    selectVisibleBtn.disabled = providerBulkRunning || visibleIds.length === 0;
+    selectVisibleBtn.textContent = visibleIds.length && selectedVisibleCount === visibleIds.length ? '取消当前' : '选择当前';
+  }
+  ['providerBulkEnableBtn', 'providerBulkDisableBtn', 'providerBulkDeleteBtn'].forEach(id => {
+    const btn = document.getElementById(id);
+    if (btn) btn.disabled = providerBulkRunning || selectedCount === 0;
+  });
+}
+
+function onProviderSearchInput(value) {
+  providerSearchKeyword = String(value || '');
+  renderProviders();
+}
+
+function clearProviderSearch() {
+  providerSearchKeyword = '';
+  const input = document.getElementById('providerSearchInput');
+  if (input) input.value = '';
+  renderProviders();
+}
+
+function setProviderViewMode(mode) {
+  providerViewMode = mode === 'list' ? 'list' : 'grid';
+  try {
+    localStorage.setItem(PROVIDER_VIEW_STORAGE_KEY, providerViewMode);
+  } catch (_) {}
+  renderProviders();
+}
+
+function toggleProviderSelection(id, checked, event) {
+  if (event) event.stopPropagation();
+  if (!id) return;
+  if (checked) providerSelectedIds.add(id);
+  else providerSelectedIds.delete(id);
+  renderProviders();
+}
+
+function toggleVisibleProvidersSelection() {
+  const visible = providerVisibleList();
+  const ids = visible.map(p => p.id).filter(Boolean);
+  if (!ids.length) return;
+  const allSelected = ids.every(id => providerSelectedIds.has(id));
+  ids.forEach(id => {
+    if (allSelected) providerSelectedIds.delete(id);
+    else providerSelectedIds.add(id);
+  });
+  renderProviders();
+}
+
+async function setSelectedProvidersEnabled(enabled) {
+  if (!invoke || providerBulkRunning) return;
+  const selected = new Set(providerSelectedIds);
+  const targets = (providerStore.providers || []).filter(p => selected.has(p.id) && p?.meta?.codexConfig !== true);
+  if (!targets.length) return;
+  providerBulkRunning = true;
+  renderProviderToolbarState(providerListAll().length, providerVisibleList());
+  let okCount = 0;
+  try {
+    for (const p of targets) {
+      await invoke('set_provider_enabled', { id: p.id, enabled });
+      p.enabled = enabled;
+      okCount += 1;
+    }
+    renderProviders();
+    renderEvalProviderOptions();
+    await renderModelMap();
+    addLog('ok', `已${enabled ? '启用' : '禁用'} ${okCount} 个供应商`);
+    if (typeof showBottomToast === 'function') {
+      showBottomToast(`已${enabled ? '启用' : '禁用'} ${okCount} 个供应商`, 'success');
+    }
+  } catch (e) {
+    addLog('err', '批量切换供应商失败: ' + e);
+    showCustomAlert(String(e), '批量操作失败', 'error');
+  } finally {
+    providerBulkRunning = false;
+    renderProviders();
+  }
+}
+
+async function deleteSelectedProviders() {
+  if (providerBulkRunning) return;
+  const selected = new Set(providerSelectedIds);
+  const targets = (providerStore.providers || []).filter(p => selected.has(p.id) && p?.meta?.codexConfig !== true);
+  if (!targets.length) return;
+  const names = targets.slice(0, 4).map(p => p.name || p.id).join('、');
+  const more = targets.length > 4 ? ` 等 ${targets.length} 个` : '';
+  if (!(await showCustomConfirm(`确定删除供应商「${names}${more}」？`, '批量删除确认', 'warn'))) return;
+  providerBulkRunning = true;
+  renderProviderToolbarState(providerListAll().length, providerVisibleList());
+  providerStore.providers = (providerStore.providers || []).filter(p => !selected.has(p.id) || p?.meta?.codexConfig === true);
+  targets.forEach(p => providerSelectedIds.delete(p.id));
+  await persistProviders();
+  providerBulkRunning = false;
+  renderProviders();
+  renderEvalProviderOptions();
+  await renderModelMap();
+  addLog('info', `已删除 ${targets.length} 个供应商`);
+  if (typeof showBottomToast === 'function') {
+    showBottomToast(`已删除 ${targets.length} 个供应商`, 'success');
+  }
+}
+
+function renderProviderCards(list) {
+  return list.map(p => {
     const enabled = p.enabled !== false;
-    const fmt = p.apiFormat || 'anthropic';
-
-    // Keep model chip containers visually calm; icons retain their model-family colors.
-    const modelsList = providerSelectedModels(p);
-    const modelsBadges = modelsList.map((m, idx) => {
-      return `
-        <span class="tag provider-model-chip" style="background:var(--bg-input); color:var(--text-primary); border:1px solid var(--border); display:flex; align-items:center; gap:6px; font-weight:600; padding:4px 10px; border-radius:8px; font-size:11px; min-width:0; max-width:100%;">
-          ${renderModelIcon(m)}
-          <span style="flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escAttr(m)}</span>
-          ${idx === 0 ? '<span style="opacity:0.5; font-size:9px; font-weight:normal; margin-left:2px; flex-shrink:0;">(默认)</span>' : ''}
-        </span>
-      `;
-    }).join('');
+    const selected = providerSelectedIds.has(p.id);
 
     return `
-      <div class="provider-card ${enabled ? 'active' : ''}" style="display:flex; flex-direction:column; min-height:220px;">
+      <div class="provider-card ${enabled ? 'active' : ''} ${selected ? 'selected' : ''}">
         <div class="provider-top">
+          <label class="provider-select-check" title="选择供应商" onclick="event.stopPropagation()">
+            <input type="checkbox" ${selected ? 'checked' : ''} onchange="toggleProviderSelection('${escAttr(p.id)}', this.checked, event)">
+            <span></span>
+          </label>
           <div class="provider-id">
-            <div class="provider-logo ${providerLogoClass(fmt)}">${escAttr(providerLogoChar(p.name))}</div>
             <div>
               <div class="provider-name">${escAttr(p.name)}</div>
             </div>
           </div>
           <div class="toggle ${enabled ? 'on' : ''}" title="${enabled ? '已启用，点击禁用' : '未启用，点击启用'}" onclick="toggleProviderEnabled('${escAttr(p.id)}')"></div>
         </div>
-        <div class="provider-body" style="flex:1; display:flex; flex-direction:column; gap:14px; padding:16px 20px;">
-          <div class="field" style="margin-bottom:0; min-height:0;">
-            <div class="field-label" style="margin-bottom:6px;">已选模型</div>
-            <div style="display:flex; flex-direction:column; gap:6px; max-height:160px; overflow-y:auto; padding-right:2px;">${modelsBadges || '<span style="color:var(--text-muted); font-size:12px;">未选择</span>'}</div>
-          </div>
-          <div class="field" style="margin-bottom:0; margin-top:auto;">
-            <div class="field-label" style="margin-bottom:6px;">配置格式</div>
-            <div style="display:flex; align-items:center; gap:6px;">
-              <span class="tag tag-${fmt}">${fmt === 'openai' ? 'OpenAI' : 'Anthropic'}</span>
-              ${enabled
-                ? '<span class="tag tag-anthropic" style="background:var(--success-dim);color:var(--success)">● 已启用</span>'
-                : '<span class="tag" style="background:var(--text-muted);color:#fff;opacity:.6">○ 未启用</span>'}
-            </div>
-          </div>
-          <div class="field" style="margin-bottom:0;">
-            <div class="field-label" style="margin-bottom:6px;">能力</div>
-            <div style="display:flex; flex-wrap:wrap; gap:6px;">${capabilityBadges(p)}</div>
+        <div class="provider-body">
+          <div class="field provider-model-field-block">
+            <div class="field-label">已选模型</div>
+            <div class="provider-model-chip-list">${providerModelBadges(p) || '<span class="provider-empty-text">未选择</span>'}</div>
           </div>
         </div>
         <div class="provider-footer">
@@ -294,6 +447,105 @@ function renderProviders() {
         </div>
       </div>`;
   }).join('');
+}
+
+function renderProviderListTable(list) {
+  return `
+    <div class="provider-list-shell">
+      <table class="provider-list-table">
+        <thead>
+          <tr>
+            <th class="provider-list-check-col"></th>
+            <th>供应商</th>
+            <th>格式 / 能力</th>
+            <th class="provider-list-action-col">操作</th>
+            <th class="provider-list-enabled-col">启用</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${list.map(p => {
+            const enabled = p.enabled !== false;
+            const fmt = p.apiFormat || 'anthropic';
+            const selected = providerSelectedIds.has(p.id);
+            return `
+              <tr class="${selected ? 'selected' : ''}">
+                <td class="provider-list-check-col">
+                  <label class="provider-select-check provider-select-check-table" title="选择供应商" onclick="event.stopPropagation()">
+                    <input type="checkbox" ${selected ? 'checked' : ''} onchange="toggleProviderSelection('${escAttr(p.id)}', this.checked, event)">
+                    <span></span>
+                  </label>
+                </td>
+                <td>
+                  <div class="provider-list-identity">
+                    <div class="provider-list-name-wrap">
+                      <div class="provider-name">${escAttr(p.name)}</div>
+                      <div class="provider-list-sub">${escAttr(p.apiHost || p.id || '')}</div>
+                    </div>
+                  </div>
+                </td>
+                <td>
+                  <div class="provider-inline-tags">
+                    <span class="tag tag-${fmt}">${fmt === 'openai' ? 'OpenAI' : 'Anthropic'}</span>
+                    ${capabilityBadges(p, true)}
+                  </div>
+                </td>
+                <td class="provider-list-action-col">
+                  <div class="provider-list-actions">
+                    <button class="provider-list-icon-btn" onclick="testProvider('${escAttr(p.id)}')" title="测试" aria-label="测试 ${escAttr(p.name || p.id)}">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <path d="M10 2v7.3a4 4 0 0 1-.54 2L4.2 20.1A1.3 1.3 0 0 0 5.32 22h13.36a1.3 1.3 0 0 0 1.12-1.9l-5.26-8.8a4 4 0 0 1-.54-2V2"></path>
+                        <path d="M8.5 2h7"></path>
+                        <path d="M7.5 15h9"></path>
+                      </svg>
+                    </button>
+                    <button class="provider-list-icon-btn" onclick="openProviderEditor('${escAttr(p.id)}')" title="编辑" aria-label="编辑 ${escAttr(p.name || p.id)}">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <path d="M12 20h9"></path>
+                        <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"></path>
+                      </svg>
+                    </button>
+                    <button class="provider-list-icon-btn danger" onclick="deleteProvider('${escAttr(p.id)}')" title="删除" aria-label="删除 ${escAttr(p.name || p.id)}">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <path d="M3 6h18"></path>
+                        <path d="M8 6V4h8v2"></path>
+                        <path d="M19 6l-1 14H6L5 6"></path>
+                        <path d="M10 11v5"></path>
+                        <path d="M14 11v5"></path>
+                      </svg>
+                    </button>
+                  </div>
+                </td>
+                <td class="provider-list-enabled-col">
+                  <div class="provider-list-status-cell">
+                    <div class="toggle ${enabled ? 'on' : ''}" title="${enabled ? '已启用，点击禁用' : '未启用，点击启用'}" onclick="toggleProviderEnabled('${escAttr(p.id)}')"></div>
+                  </div>
+                </td>
+              </tr>`;
+          }).join('')}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+function renderProviders() {
+  const grid = document.getElementById('providerGrid');
+  const empty = document.getElementById('providerEmpty');
+  if (!grid) return;
+  const all = providerListAll();
+  cleanupProviderSelection(all);
+  const list = providerVisibleList(all);
+  renderProviderToolbarState(all.length, list);
+  grid.classList.toggle('provider-grid-list', providerViewMode === 'list');
+  grid.innerHTML = providerViewMode === 'list'
+    ? renderProviderListTable(list)
+    : renderProviderCards(list);
+  if (empty) {
+    empty.style.display = list.length ? 'none' : 'block';
+    empty.textContent = all.length
+      ? '没有匹配的供应商。'
+      : '尚未配置任何供应商，点击右上角「新增供应商」开始。';
+  }
 }
 
 // ═══════ LOCAL PROVIDER IMPORT ═══════

@@ -14,8 +14,13 @@
   <header class="topbar" data-tauri-drag-region>
     <div class="topbar-left">
       <div class="brand">
-        <div class="brand-name">AnyBridge</div>
-        <span class="brand-version" id="topbar-version-display">v—</span>
+        <span class="brand-logo-frame" aria-hidden="true">
+          <img class="brand-logo" src="./assets/anybridge-logo.svg" alt="">
+        </span>
+        <div class="brand-name" aria-label="AnyBridge">
+          <span>Any</span>
+          <span>Bridge</span>
+        </div>
       </div>
       <!-- 隐藏的原生 select 供已有 JS 数据流与 load_config / save_config 使用 -->
       <select id="targetIde" onchange="onTargetIdeChange()" hidden aria-hidden="true">
@@ -229,32 +234,76 @@
 
     <!-- ═══════ PAGE: PROVIDERS ═══════ -->
     <div class="page" id="page-providers" role="tabpanel" aria-labelledby="tab-providers">
-      <div class="control-bar glass-card" style="padding: 14px 24px; margin-bottom: 20px; border-radius: 14px; min-height: 72px;">
-        <div class="card-title"><span class="dot"></span> API 供应商</div>
-        <div class="provider-toolbar-actions">
-          <button class="btn-ghost provider-toolbar-btn" onclick="openEvalWorkbenchPage()">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <path d="M10 2v7.3a4 4 0 0 1-.54 2L4.2 20.1A1.3 1.3 0 0 0 5.32 22h13.36a1.3 1.3 0 0 0 1.12-1.9l-5.26-8.8a4 4 0 0 1-.54-2V2"></path>
-              <path d="M8.5 2h7"></path>
-              <path d="M7.5 15h9"></path>
+      <div class="control-bar glass-card provider-control-bar">
+        <div class="provider-toolbar-main">
+          <div class="card-title"><span class="dot"></span> API 供应商</div>
+          <div class="provider-toolbar-actions">
+            <button class="btn-ghost provider-toolbar-btn" onclick="openEvalWorkbenchPage()">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M10 2v7.3a4 4 0 0 1-.54 2L4.2 20.1A1.3 1.3 0 0 0 5.32 22h13.36a1.3 1.3 0 0 0 1.12-1.9l-5.26-8.8a4 4 0 0 1-.54-2V2"></path>
+                <path d="M8.5 2h7"></path>
+                <path d="M7.5 15h9"></path>
+              </svg>
+              <span>模型检测</span>
+            </button>
+            <button class="btn-ghost provider-toolbar-btn" id="provider-import-open-btn" onclick="openProviderImportModal()">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                <polyline points="7 10 12 15 17 10"></polyline>
+                <line x1="12" y1="15" x2="12" y2="3"></line>
+              </svg>
+              <span class="provider-toolbar-label">本地导入</span>
+            </button>
+            <button class="btn-primary provider-toolbar-btn" onclick="openProviderEditor()">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="12" y1="5" x2="12" y2="19"></line>
+                <line x1="5" y1="12" x2="19" y2="12"></line>
+              </svg>
+              <span>新增供应商</span>
+            </button>
+          </div>
+        </div>
+        <div class="provider-toolbar-tools">
+          <div class="provider-search">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <circle cx="11" cy="11" r="8"></circle>
+              <path d="m21 21-4.35-4.35"></path>
             </svg>
-            <span>模型检测</span>
-          </button>
-          <button class="btn-ghost provider-toolbar-btn" id="provider-import-open-btn" onclick="openProviderImportModal()">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-              <polyline points="7 10 12 15 17 10"></polyline>
-              <line x1="12" y1="15" x2="12" y2="3"></line>
-            </svg>
-            <span class="provider-toolbar-label">本地导入</span>
-          </button>
-          <button class="btn-primary provider-toolbar-btn" onclick="openProviderEditor()">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
-              <line x1="12" y1="5" x2="12" y2="19"></line>
-              <line x1="5" y1="12" x2="19" y2="12"></line>
-            </svg>
-            <span>新增供应商</span>
-          </button>
+            <input type="text" id="providerSearchInput" placeholder="搜索供应商、模型、API 地址" oninput="onProviderSearchInput(this.value)">
+            <button type="button" class="provider-search-clear" id="providerSearchClear" onclick="clearProviderSearch()" title="清空搜索" aria-label="清空搜索">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M18 6 6 18"></path>
+                <path d="m6 6 12 12"></path>
+              </svg>
+            </button>
+          </div>
+          <div class="provider-view-toggle" role="group" aria-label="供应商视图">
+            <button type="button" class="provider-view-btn active" id="providerViewGridBtn" onclick="setProviderViewMode('grid')" title="卡片视图" aria-label="卡片视图">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="3" y="3" width="7" height="7" rx="1"></rect>
+                <rect x="14" y="3" width="7" height="7" rx="1"></rect>
+                <rect x="3" y="14" width="7" height="7" rx="1"></rect>
+                <rect x="14" y="14" width="7" height="7" rx="1"></rect>
+              </svg>
+            </button>
+            <button type="button" class="provider-view-btn" id="providerViewListBtn" onclick="setProviderViewMode('list')" title="列表视图" aria-label="列表视图">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="8" y1="6" x2="21" y2="6"></line>
+                <line x1="8" y1="12" x2="21" y2="12"></line>
+                <line x1="8" y1="18" x2="21" y2="18"></line>
+                <circle cx="4" cy="6" r="1"></circle>
+                <circle cx="4" cy="12" r="1"></circle>
+                <circle cx="4" cy="18" r="1"></circle>
+              </svg>
+            </button>
+          </div>
+          <div class="provider-bulk-actions">
+            <span class="provider-bulk-count" id="providerBulkCount">未选择</span>
+            <button class="btn-ghost provider-bulk-btn" id="providerSelectVisibleBtn" onclick="toggleVisibleProvidersSelection()" disabled>选择当前</button>
+            <button class="btn-ghost provider-bulk-btn" id="providerBulkEnableBtn" onclick="setSelectedProvidersEnabled(true)" disabled>启用</button>
+            <button class="btn-ghost provider-bulk-btn" id="providerBulkDisableBtn" onclick="setSelectedProvidersEnabled(false)" disabled>禁用</button>
+            <button class="btn-ghost provider-bulk-btn danger" id="providerBulkDeleteBtn" onclick="deleteSelectedProviders()" disabled>删除</button>
+          </div>
         </div>
       </div>
       <div class="provider-grid" id="providerGrid"></div>
@@ -1194,10 +1243,6 @@
               <span id="platform-claude-code-headline">管理 Claude Code 的官方环境和第三方 Anthropic API 配置，切换后重启 Claude Code 生效。</span>
             </div>
           </div>
-          <div class="platform-console-stats codex-manager-stats">
-            <div><span>配置</span><strong id="claude-code-config-count">0</strong></div>
-            <div><span>当前</span><strong id="claude-code-current-label">检测中</strong></div>
-          </div>
         </div>
 
         <div class="control-bar glass-card codex-manager-toolbar">
@@ -1324,10 +1369,6 @@
               <span id="platform-codex-headline">管理 Codex 的官方登录配置和第三方 API 配置，切换后重启 Codex 生效。</span>
             </div>
           </div>
-          <div class="platform-console-stats codex-manager-stats">
-            <div><span>配置</span><strong id="codex-config-count">0</strong></div>
-            <div><span>当前</span><strong id="codex-current-label">检测中</strong></div>
-          </div>
         </div>
 
         <div class="control-bar glass-card codex-manager-toolbar">
@@ -1439,10 +1480,6 @@
             <strong>CodeBuddy</strong>
             <span>腾讯云国际版 AI 编程 IDE · 管理 OpenAI Chat Completions 兼容配置</span>
           </div>
-        </div>
-        <div class="platform-console-stats">
-          <div><span>模型</span><strong id="cb-console-count">0</strong></div>
-          <div><span>供应商</span><strong id="cb-console-provider-count">0</strong></div>
         </div>
       </div>
 
@@ -1684,10 +1721,6 @@
               <span id="platform-opencode-headline">管理 OpenCode 的独立 provider 配置。应用时追加到 opencode.json，不覆盖其他 provider。</span>
             </div>
           </div>
-          <div class="platform-console-stats codex-manager-stats">
-            <div><span>配置</span><strong id="opencode-config-count">0</strong></div>
-            <div><span>Live</span><strong id="opencode-current-label">检测中</strong></div>
-          </div>
         </div>
 
         <div class="control-bar glass-card codex-manager-toolbar">
@@ -1812,10 +1845,6 @@
             <strong>ZCode</strong>
             <span>Z.AI 推出的 ADE 编程 IDE · 支持 OpenAI 兼容 API 协议</span>
           </div>
-        </div>
-        <div class="platform-console-stats">
-          <div><span>模型</span><strong id="zc-console-count">0</strong></div>
-          <div><span>供应商</span><strong id="zc-console-provider-count">0</strong></div>
         </div>
       </div>
 
@@ -2010,10 +2039,6 @@
             <strong>WorkBuddy</strong>
             <span>腾讯云企业办公 AI 工具 · 使用自定义协议接入</span>
           </div>
-        </div>
-        <div class="platform-console-stats">
-          <div><span>模型</span><strong id="wb-console-count">0</strong></div>
-          <div><span>供应商</span><strong id="wb-console-provider-count">0</strong></div>
         </div>
       </div>
 

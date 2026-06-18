@@ -26,6 +26,10 @@ src-tauri/target/
 .playwright-mcp/
 .vscode/
 .codebuddy/
+.codex-logs/
+.codex-cargo-target/
+.codex-test-target*/
+src-tauri/target-test-codex-session*/
 
 # Sidecar build & runtime files
 sidecar-build/

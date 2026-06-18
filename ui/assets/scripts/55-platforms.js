@@ -564,11 +564,8 @@ function renderCodexConfigSourceList(selectedId = '') {
     const active = p.id === picked;
     const name = p.name || p.id;
     const endpoint = codexConfigDisplayBaseUrl(p) || 'Base URL 未设置';
-    const avatar = codexConfigAvatarText(name, '商');
-    const avatarStyle = codexConfigAvatarStyle(name, 'third');
     return `
       <button type="button" class="codex-config-source-item ${active ? 'active' : ''}" data-source-id="${platformEsc(p.id)}">
-        <span class="codex-config-source-avatar" ${avatarStyle}>${platformEsc(avatar)}</span>
         <span class="codex-config-source-copy">
           <strong title="${platformEsc(name)}">${platformEsc(name)}</strong>
           <em title="${platformEsc(endpoint)}">${platformEsc(endpoint)}</em>
@@ -875,30 +872,6 @@ async function saveCodexConfigEditor(switchAfter = false) {
   if (switchAfter) await applyCodexProviderConfig(provider.id);
 }
 
-function codexConfigAvatarText(name, fallback = '配') {
-  const chars = Array.from(String(name || '').trim());
-  const first = chars.find(ch => /\S/.test(ch)) || fallback;
-  return /[a-z]/i.test(first) ? first.toUpperCase() : first;
-}
-
-function codexConfigAvatarStyle(seed, tone) {
-  if (tone && String(tone).includes('official')) return '';
-  const palettes = [
-    ['#e0f2fe', '#0284c7', 'rgba(14, 165, 233, 0.34)'],
-    ['#dcfce7', '#15803d', 'rgba(34, 197, 94, 0.30)'],
-    ['#fef3c7', '#b45309', 'rgba(245, 158, 11, 0.30)'],
-    ['#fee2e2', '#be123c', 'rgba(244, 63, 94, 0.28)'],
-    ['#ede9fe', '#6d28d9', 'rgba(124, 58, 237, 0.28)'],
-    ['#ccfbf1', '#0f766e', 'rgba(20, 184, 166, 0.30)'],
-    ['#fae8ff', '#a21caf', 'rgba(217, 70, 239, 0.28)'],
-  ];
-  const text = String(seed || '');
-  let hash = 0;
-  for (let i = 0; i < text.length; i++) hash = (hash * 31 + text.charCodeAt(i)) >>> 0;
-  const [bg, fg, border] = palettes[hash % palettes.length];
-  return `style="--codex-avatar-bg:${bg};--codex-avatar-fg:${fg};--codex-avatar-border:${border};"`;
-}
-
 function codexActionIcon(type) {
   if (type === 'delete') {
     return '<svg aria-hidden="true" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"></path><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path><path d="M10 11v6"></path><path d="M14 11v6"></path></svg>';
@@ -932,12 +905,8 @@ function renderCodexConfigCard(config) {
     config.endpoint || '-',
     config.protocol || 'responses',
   ]);
-  const avatarText = config.icon || codexConfigAvatarText(config.name);
-  const avatarStyle = codexConfigAvatarStyle(config.name || avatarText, config.tone);
-
   return `
     <article class="codex-config-card ${config.current ? 'current' : ''} ${platformEsc(config.tone || '')}">
-      <span class="codex-config-icon" ${avatarStyle}>${platformEsc(avatarText)}</span>
       <div class="codex-config-main">
         <div class="codex-config-title">
           <strong title="${platformEsc(config.name)}">${platformEsc(config.name)}</strong>
@@ -1020,7 +989,6 @@ function renderCodexConfigList(info) {
     items.push({
       name: info.currentProviderName || config.providerName || info.currentProviderId || '当前第三方配置',
       description: '由其他工具或手动配置写入。可以保留，也可以切换到下方任一配置。',
-      icon: codexConfigAvatarText(info.currentProviderName || config.providerName || info.currentProviderId, '三'),
       typeLabel: '第三方',
       tone: 'third external',
       current: true,
@@ -1036,7 +1004,6 @@ function renderCodexConfigList(info) {
     items.push({
       name: provider.name || provider.id,
       description: '第三方 OpenAI Responses 兼容配置。',
-      icon: codexConfigAvatarText(provider.name || provider.id, '三'),
       typeLabel: '第三方',
       tone: 'third',
       current,
@@ -1350,11 +1317,8 @@ function renderClaudeCodeConfigSourceList(selectedId = '') {
     const active = p.id === picked;
     const name = p.name || p.id;
     const endpoint = claudeCodeConfigDisplayBaseUrl(p) || 'Base URL 未设置';
-    const avatar = codexConfigAvatarText(name, '商');
-    const avatarStyle = codexConfigAvatarStyle(name, 'third');
     return `
       <button type="button" class="codex-config-source-item ${active ? 'active' : ''}" data-source-id="${platformEsc(p.id)}">
-        <span class="codex-config-source-avatar" ${avatarStyle}>${platformEsc(avatar)}</span>
         <span class="codex-config-source-copy">
           <strong title="${platformEsc(name)}">${platformEsc(name)}</strong>
           <em title="${platformEsc(endpoint)}">${platformEsc(endpoint)}</em>
@@ -1755,7 +1719,6 @@ function renderClaudeCodeConfigList(info) {
       platformId: 'claude-code',
       name: info.currentProviderName || '当前外部配置',
       description: '由其他工具或手动配置写入。可以保留，也可以切换到下方任一配置。',
-      icon: codexConfigAvatarText(info.currentProviderName || config.baseUrl || info.currentProviderId, '外'),
       typeLabel: '外部',
       tone: 'third external',
       current: true,
@@ -1772,7 +1735,6 @@ function renderClaudeCodeConfigList(info) {
       platformId: 'claude-code',
       name: provider.name || provider.id,
       description: '第三方 Anthropic API 兼容配置。',
-      icon: codexConfigAvatarText(provider.name || provider.id, '三'),
       typeLabel: '第三方',
       tone: 'third',
       current,
@@ -2050,11 +2012,8 @@ function renderOpenCodeConfigSourceList(selectedId = '') {
     const active = p.id === picked;
     const name = p.name || p.id;
     const endpoint = opencodeConfigDisplayBaseUrl(p) || 'Base URL 未设置';
-    const avatar = codexConfigAvatarText(name, '商');
-    const avatarStyle = codexConfigAvatarStyle(name, 'third');
     return `
       <button type="button" class="codex-config-source-item ${active ? 'active' : ''}" data-source-id="${platformEsc(p.id)}">
-        <span class="codex-config-source-avatar" ${avatarStyle}>${platformEsc(avatar)}</span>
         <span class="codex-config-source-copy">
           <strong title="${platformEsc(name)}">${platformEsc(name)}</strong>
           <em title="${platformEsc(endpoint)}">${platformEsc(endpoint)}</em>
@@ -2404,7 +2363,6 @@ function renderOpenCodeConfigList(info) {
         platformId: 'opencode',
         name: id,
         description: '由其他工具或手动配置写入。AnyBridge 不会修改这份外部配置。',
-        icon: codexConfigAvatarText(id, '外'),
         typeLabel: '外部',
         tone: 'third external',
         current: true,
@@ -2422,7 +2380,6 @@ function renderOpenCodeConfigList(info) {
       platformId: 'opencode',
       name: provider.name || provider.id,
       description: '独立 OpenCode provider 配置，应用时追加到 opencode.json。',
-      icon: codexConfigAvatarText(provider.name || provider.id, '三'),
       typeLabel: live ? '已加入' : '配置',
       tone: live ? 'third live' : 'third',
       current: live,
