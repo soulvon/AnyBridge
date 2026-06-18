@@ -38,6 +38,8 @@ sidecar-build/
 sidecar/*.exe
 sidecar/certs/*
 !sidecar/certs/.gitkeep
+/byok-icon.png
+/byok-icon.ico
 
 # Specs / Inner Docs
 spec/

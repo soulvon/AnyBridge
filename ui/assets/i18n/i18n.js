@@ -4,6 +4,10 @@
   const LOCAL_STORAGE_KEY = 'byok-language';
   const ATTRS = ['title', 'placeholder', 'aria-label'];
   const SKIP_TAGS = new Set(['SCRIPT', 'STYLE', 'TEXTAREA', 'CODE', 'PRE']);
+  const LANGUAGE_LABELS = {
+    'zh-CN': '简体中文',
+    'en-US': 'English'
+  };
   const textSources = new WeakMap();
   let currentLanguage = DEFAULT_LANGUAGE;
   let observer = null;
@@ -103,7 +107,95 @@
   function syncLanguageControls() {
     document.querySelectorAll('[data-i18n-language-select]').forEach((el) => {
       if (el.value !== currentLanguage) el.value = currentLanguage;
+      syncCustomLanguageSelect(el);
     });
+  }
+
+  function syncCustomLanguageSelect(select) {
+    const root = select.closest('[data-language-select]');
+    if (!root) return;
+    const value = normalizeLanguage(select.value || currentLanguage);
+    const valueEl = root.querySelector('[data-language-select-value]');
+    const trigger = root.querySelector('[data-language-select-trigger]');
+    if (valueEl) valueEl.textContent = LANGUAGE_LABELS[value] || value;
+    root.querySelectorAll('[data-language-option]').forEach((option) => {
+      const isSelected = normalizeLanguage(option.dataset.languageOption) === value;
+      option.setAttribute('aria-selected', String(isSelected));
+    });
+    if (trigger) trigger.setAttribute('aria-expanded', root.classList.contains('open') ? 'true' : 'false');
+  }
+
+  function closeCustomLanguageSelect(root) {
+    if (!root) return;
+    root.classList.remove('open');
+    const trigger = root.querySelector('[data-language-select-trigger]');
+    if (trigger) trigger.setAttribute('aria-expanded', 'false');
+  }
+
+  function closeAllCustomLanguageSelects(except) {
+    document.querySelectorAll('[data-language-select].open').forEach((root) => {
+      if (root !== except) closeCustomLanguageSelect(root);
+    });
+  }
+
+  function bindCustomLanguageSelect(select) {
+    const root = select.closest('[data-language-select]');
+    if (!root || root.dataset.languageSelectBound === 'true') return;
+    root.dataset.languageSelectBound = 'true';
+    const trigger = root.querySelector('[data-language-select-trigger]');
+    const menu = root.querySelector('[data-language-select-menu]');
+
+    if (trigger) {
+      trigger.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        const willOpen = !root.classList.contains('open');
+        closeAllCustomLanguageSelects(root);
+        root.classList.toggle('open', willOpen);
+        trigger.setAttribute('aria-expanded', willOpen ? 'true' : 'false');
+      });
+      trigger.addEventListener('keydown', (event) => {
+        if (event.key === 'ArrowDown' || event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          root.classList.add('open');
+          trigger.setAttribute('aria-expanded', 'true');
+          const selected = menu && menu.querySelector('[aria-selected="true"]');
+          (selected || (menu && menu.querySelector('[data-language-option]')))?.focus();
+        }
+      });
+    }
+
+    root.querySelectorAll('[data-language-option]').forEach((option) => {
+      option.addEventListener('click', (event) => {
+        event.preventDefault();
+        const next = normalizeLanguage(option.dataset.languageOption);
+        if (select.value !== next) {
+          select.value = next;
+          select.dispatchEvent(new Event('change', { bubbles: true }));
+        } else {
+          syncCustomLanguageSelect(select);
+        }
+        closeCustomLanguageSelect(root);
+        trigger?.focus();
+      });
+      option.addEventListener('keydown', (event) => {
+        const options = Array.from(root.querySelectorAll('[data-language-option]'));
+        const index = options.indexOf(option);
+        if (event.key === 'Escape') {
+          event.preventDefault();
+          closeCustomLanguageSelect(root);
+          trigger?.focus();
+        } else if (event.key === 'ArrowDown') {
+          event.preventDefault();
+          options[(index + 1) % options.length]?.focus();
+        } else if (event.key === 'ArrowUp') {
+          event.preventDefault();
+          options[(index - 1 + options.length) % options.length]?.focus();
+        }
+      });
+    });
+
+    syncCustomLanguageSelect(select);
   }
 
   function setLanguage(language, options) {
@@ -127,9 +219,13 @@
 
   function bindLanguageControls() {
     document.querySelectorAll('[data-i18n-language-select]').forEach((el) => {
+      bindCustomLanguageSelect(el);
       if (el.dataset.i18nBound === 'true') return;
       el.dataset.i18nBound = 'true';
-      el.addEventListener('change', () => setLanguage(el.value));
+      el.addEventListener('change', () => {
+        setLanguage(el.value);
+        syncCustomLanguageSelect(el);
+      });
     });
   }
 
@@ -167,5 +263,6 @@
     bindLanguageControls();
     initFromConfig(null);
     observeMutations();
+    document.addEventListener('click', () => closeAllCustomLanguageSelects());
   });
 })();
