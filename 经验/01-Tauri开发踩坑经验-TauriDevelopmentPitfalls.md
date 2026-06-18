@@ -600,10 +600,10 @@ git push origin main
 **根因**：`scripts/release/build_merged_latest_json.cjs` 仍按旧 updater 命名匹配 Windows `.zip` 和 Linux `.tar.gz`，但 Tauri v2 当前产物可能是直接的：
 
 ```text
-IDE.BYOK_1.2.10_x64-setup.exe
-IDE.BYOK_1.2.10_x64_en-US.msi
-IDE.BYOK_1.2.10_amd64.AppImage
-IDE.BYOK_1.2.10_amd64.deb
+AnyBridge_1.2.10_x64-setup.exe
+AnyBridge_1.2.10_x64_en-US.msi
+AnyBridge_1.2.10_amd64.AppImage
+AnyBridge_1.2.10_amd64.deb
 ```
 
 这些文件各自配套 `.sig`，可以直接进入 updater 清单。
@@ -651,7 +651,7 @@ node -e "const fs=require('fs'); const j=JSON.parse(fs.readFileSync(process.env.
 | Windsurf | `%APPDATA%\Windsurf\User\settings.json` |
 | Devin | `%APPDATA%\Devin\User\settings.json` |
 
-BYOK 的 `target_ide` 配置（保存在 `byok-config.json` 的 `target_ide` 字段）决定代理配置写入哪个文件。如果 `target_ide` 设为 `"devin"`，配置只会写入 Devin 的 settings.json，不会影响 Windsurf。
+AnyBridge 的 `target_ide` 配置（保存在 `byok-config.json` 的 `target_ide` 字段）决定代理配置写入哪个文件。如果 `target_ide` 设为 `"devin"`，配置只会写入 Devin 的 settings.json，不会影响 Windsurf。
 
 ### 11.4 恢复方法
 
@@ -673,9 +673,9 @@ BYOK 的 `target_ide` 配置（保存在 `byok-config.json` 的 `target_ide` 字
 
 然后重启 IDE。
 
-**方法三：在 BYOK 应用中重新启动代理**
+**方法三：在 AnyBridge 中重新启动代理**
 
-1. 打开 BYOK 应用
+1. 打开 AnyBridge
 2. 确认「目标 IDE」选择正确（Windsurf / Devin / 自动检测）
 3. 点击停止代理 → 再启动代理
 4. 点击「重启 IDE」按钮
@@ -691,7 +691,7 @@ python scripts/build_sidecar_plain.py
 npx tauri dev
 
 # 4. 重启 IDE（让 settings.json 生效）
-#    或在 BYOK 应用中点击「重启 IDE」按钮
+#    或在 AnyBridge 中点击「重启 IDE」按钮
 ```
 
 ### 11.6 自动检测逻辑

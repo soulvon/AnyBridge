@@ -805,7 +805,7 @@ fn run_proxy_preflight(
                                 "warn",
                                 "ide_settings.other_proxy",
                                 format!(
-                                    "{} 当前已有 http.proxy={}，启动时会备份并改写为 BYOK 代理",
+                                    "{} 当前已有 http.proxy={}，启动时会备份并改写为 AnyBridge 代理",
                                     ide_label, proxy
                                 ),
                             );
@@ -834,7 +834,7 @@ fn run_proxy_preflight(
                                     "warn",
                                     "ide_settings.strict_ssl",
                                     format!(
-                                        "{} 已指向 BYOK 代理，但 http.proxyStrictSSL 不是 false，启动时会修正",
+                                        "{} 已指向 AnyBridge 代理，但 http.proxyStrictSSL 不是 false，启动时会修正",
                                         ide_label
                                     ),
                                 );
@@ -1600,7 +1600,7 @@ pub fn start_proxy_impl(
 
     let missing_ports = wait_for_ports(&[7450, 7451], Duration::from_secs(5));
     let health_error = if missing_ports.contains(&7450) {
-        Some("代理主端口 7450 未监听，IDE 无法接入 BYOK 代理".to_string())
+        Some("代理主端口 7450 未监听，IDE 无法接入 AnyBridge 代理".to_string())
     } else {
         probe_byok_stats(Duration::from_secs(2)).err()
     };

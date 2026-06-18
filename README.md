@@ -20,7 +20,7 @@ Windsurf 的后端服务通过两个主要的域名与 Codeium 进行通信：
 本应用在本地启动两个代理端口，默认为 `:7450` (混合 MITM 代理) 和 `:7451` (推理/补全透传入口)。当您将 Windsurf / Devin 的 `http.proxy` 设置为本地代理端口 `:7450` 后，本地代理会智能识别 `GetChatMessage` RPC 请求，将其解析并桥接到您自己配置的 AI 提供商，同时处理模型列表、模型状态与部分能力探测请求；不属于接管范围的通信会直连 Codeium：
 
 ```
-Windsurf / Devin IDE ──(http.proxy = localhost:7450)──> BYOK 混合代理
+Windsurf / Devin IDE ──(http.proxy = localhost:7450)──> AnyBridge 混合代理
                                                      ├── GetChatMessage → 转发至您自建的 API 密钥 ✦
                                                      ├── 模型/能力请求   → 按本地配置改写或放行
                                                      ├── CONNECT 隧道    → 建立盲 TCP 管道 (登录、索引等)
