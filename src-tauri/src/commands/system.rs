@@ -1,5 +1,6 @@
 use std::process::Command;
 use tauri::{
+    image::Image,
     menu::{Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
     AppHandle, Manager,
@@ -32,9 +33,12 @@ pub fn build_tray(app: &AppHandle) -> tauri::Result<()> {
     let menu = Menu::with_items(app, &[&show, &start, &stop, &quit])?;
 
     let tray = TrayIconBuilder::with_id("main-tray");
-    let tray = match app.default_window_icon() {
-        Some(icon) => tray.icon(icon.clone()),
-        None => tray,
+    let tray = match Image::from_bytes(include_bytes!("../../icons/tray-icon.png")) {
+        Ok(icon) => tray.icon(icon),
+        Err(_) => match app.default_window_icon() {
+            Some(icon) => tray.icon(icon.clone()),
+            None => tray,
+        },
     };
     tray.tooltip("IDE BYOK")
         .menu(&menu)
