@@ -16,6 +16,32 @@ For each release, keep these versions aligned:
 
 The open-source line starts at `0.1.0`.
 
+## Legacy Updater Migration
+
+Existing `1.x` builds cannot update directly to `0.1.0` through the default
+Tauri updater comparison. `0.1.0` is lower than `1.2.18`, so old clients will
+consider it a downgrade and report no update.
+
+Use a bridge release when migrating installed users from the historical line:
+
+1. Build and publish a temporary bridge version higher than the last legacy
+   release, for example `1.2.19`.
+2. The bridge build must include the explicit version-line reset comparator in
+   `src-tauri/src/commands/update.rs`. It allows only `1.x -> 0.1.0`; it does
+   not enable arbitrary downgrades.
+3. Publish `v1.2.19` as the latest updater release first. Existing `1.2.18`
+   clients will see this as a normal update.
+4. After bridge adoption is verified, publish `v0.1.0` as the latest updater
+   release. Bridge clients will then detect the explicit reset target and
+   install it through the normal updater UI.
+5. Verify the full path on Windows before public rollout:
+   `1.2.18 -> 1.2.19 -> 0.1.0`.
+
+If Windows installer downgrade behavior blocks the final `1.2.19 -> 0.1.0`
+step on a real machine, keep `v1.2.19` as the updater latest release and direct
+users to the `v0.1.0` installer manually. Do not publish mixed or misleading
+`latest.json` metadata.
+
 ## Local Build
 
 Build the sidecar:

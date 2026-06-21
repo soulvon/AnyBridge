@@ -10,6 +10,17 @@ let updateSettings = {
 };
 let detectedUpdateInfo = null;
 
+function formatUpdaterTargetVersion(update) {
+  if (!update) return '';
+  return update.version_line_reset ? `v${update.version}（版本线迁移）` : `v${update.version}`;
+}
+
+function formatUpdaterNotes(update) {
+  const notes = update?.body || '无详细更新说明。';
+  if (!update?.version_line_reset) return notes;
+  return `这是从历史 1.x 版本线迁移到开源 0.x 版本线的过渡更新。\n\n${notes}`;
+}
+
 async function loadUpdateSettings() {
   if (!invoke) return;
   try {
@@ -136,8 +147,8 @@ async function manualCheckUpdate() {
 
     if (update) {
       detectedUpdateInfo = update;
-      document.getElementById('updater-target-version').textContent = 'v' + update.version;
-      document.getElementById('updater-target-notes').textContent = update.body || '无详细更新说明。';
+      document.getElementById('updater-target-version').textContent = formatUpdaterTargetVersion(update);
+      document.getElementById('updater-target-notes').textContent = formatUpdaterNotes(update);
 
       // 重置状态
       isDownloading = false;
@@ -145,7 +156,9 @@ async function manualCheckUpdate() {
       setUpdaterUIState('available');
 
       document.getElementById('updater-prompt-modal').classList.add('active');
-      addLog('info', `检测到新版本: v${update.version}`);
+      addLog('info', update.version_line_reset
+        ? `检测到版本线迁移: v${update.version}`
+        : `检测到新版本: v${update.version}`);
     } else {
       addLog('info', '检查更新完成，当前已是最新版本');
       // 在按钮旁显示简短提示
@@ -216,17 +229,21 @@ async function autoCheckUpdate() {
 
       if (updateSettings.auto_install) {
         // 后台静默下载，不 relaunch，等下次重启生效
-        addLog('info', `[后台自动更新] 检测到新版本 v${update.version}，开始后台静默下载...`);
+        addLog('info', update.version_line_reset
+          ? `[后台自动更新] 检测到版本线迁移 v${update.version}，开始后台静默下载...`
+          : `[后台自动更新] 检测到新版本 v${update.version}，开始后台静默下载...`);
         try {
           await invoke('download_and_install_update', { relaunch: false });
-          addLog('ok', `[后台自动更新] 新版本 v${update.version} 已静默下载并安装完成，待下次重启应用时生效！`);
+          addLog('ok', update.version_line_reset
+            ? `[后台自动更新] 迁移版本 v${update.version} 已静默下载并安装完成，待下次重启应用时生效！`
+            : `[后台自动更新] 新版本 v${update.version} 已静默下载并安装完成，待下次重启应用时生效！`);
         } catch (e) {
           addLog('err', `[后台自动更新] 下载失败: ${e}`);
         }
       } else if (updateSettings.remind_on_update) {
         // 弹出前台提示
-        document.getElementById('updater-target-version').textContent = 'v' + update.version;
-        document.getElementById('updater-target-notes').textContent = update.body || '无详细更新说明。';
+        document.getElementById('updater-target-version').textContent = formatUpdaterTargetVersion(update);
+        document.getElementById('updater-target-notes').textContent = formatUpdaterNotes(update);
 
         // 重置状态
         isDownloading = false;
@@ -272,12 +289,13 @@ function setUpdaterUIState(state) {
   [progress, ready, error, retry].forEach(el => { if (el) el.style.display = 'none'; });
 
   if (state === 'available') {
-    titleText.textContent = '检测到新版本可用！';
+    const isVersionReset = !!detectedUpdateInfo?.version_line_reset;
+    titleText.textContent = isVersionReset ? '检测到版本线迁移' : '检测到新版本可用！';
     icon.style.color = 'var(--accent)';
     if (footer) footer.innerHTML = `
       <button onclick="skipThisVersion()" class="modal-btn modal-btn-cancel" style="font-size: 12px; padding: 10px 16px;">跳过此版本</button>
       <button onclick="closeUpdaterPromptModal()" class="modal-btn modal-btn-cancel" style="font-size: 12px; padding: 10px 16px;">稍后</button>
-      <button onclick="startDownloadAndUpdate()" class="modal-btn modal-btn-confirm" style="font-size: 12px; padding: 10px 20px;">立即更新</button>
+      <button onclick="startDownloadAndUpdate()" class="modal-btn modal-btn-confirm" style="font-size: 12px; padding: 10px 20px;">${isVersionReset ? '安装迁移版本' : '立即更新'}</button>
     `;
   } else if (state === 'downloading') {
     titleText.textContent = '正在下载更新...';

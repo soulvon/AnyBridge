@@ -3,10 +3,12 @@ use std::fs;
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::{AppHandle, Emitter};
+use tauri_plugin_updater::Updater;
 use tauri_plugin_updater::UpdaterExt;
 
 const CURRENT_VERSION: &str = env!("CARGO_PKG_VERSION");
 const PENDING_UPDATE_NOTES_FILE: &str = "pending_update_notes.json";
+const VERSION_LINE_RESET_TARGET: &str = "0.1.0";
 
 #[tauri::command]
 pub fn get_app_version() -> String {
@@ -60,6 +62,7 @@ pub struct UpdateInfo {
     pub version: String,
     pub date: Option<String>,
     pub body: Option<String>,
+    pub version_line_reset: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -117,6 +120,26 @@ fn compare_versions(latest: &str, current: &str) -> bool {
     false
 }
 
+fn version_major(version: &str) -> Option<u32> {
+    version.split('.').next()?.parse::<u32>().ok()
+}
+
+fn is_version_line_reset_update(current: &str, candidate: &str) -> bool {
+    candidate == VERSION_LINE_RESET_TARGET && version_major(current).is_some_and(|major| major >= 1)
+}
+
+fn updater_with_version_reset(app: &AppHandle) -> Result<Updater, String> {
+    app.updater_builder()
+        .version_comparator(|current, release| {
+            let current_version = current.to_string();
+            let release_version = release.version.to_string();
+            release.version > current
+                || is_version_line_reset_update(&current_version, &release_version)
+        })
+        .build()
+        .map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 pub fn get_update_settings() -> Result<UpdateSettings, String> {
     let path = settings_path();
@@ -168,7 +191,8 @@ pub fn check_version_jump() -> Result<Option<VersionJumpInfo>, String> {
 
     let previous = settings.last_run_version.clone();
 
-    if !compare_versions(&current, &previous) {
+    if !compare_versions(&current, &previous) && !is_version_line_reset_update(&previous, &current)
+    {
         settings.last_run_version = current;
         save_update_settings(settings)?;
         return Ok(None);
@@ -182,7 +206,9 @@ pub fn check_version_jump() -> Result<Option<VersionJumpInfo>, String> {
             release_notes = pending.release_notes;
             release_notes_zh = pending.release_notes_zh;
             remove_pending_update_notes_file();
-        } else if compare_versions(&current, &pending.version) {
+        } else if compare_versions(&current, &pending.version)
+            || is_version_line_reset_update(&pending.version, &current)
+        {
             remove_pending_update_notes_file();
         }
     }
@@ -210,14 +236,16 @@ pub fn update_last_check_time() -> Result<(), String> {
 
 #[tauri::command]
 pub async fn check_for_update(app: AppHandle) -> Result<Option<UpdateInfo>, String> {
-    let updater = app.updater().map_err(|e| e.to_string())?;
+    let updater = updater_with_version_reset(&app)?;
     let update = updater.check().await.map_err(|e| e.to_string())?;
 
     if let Some(update) = update {
+        let version_line_reset = is_version_line_reset_update(CURRENT_VERSION, &update.version);
         Ok(Some(UpdateInfo {
             version: update.version,
             date: update.date.map(|d| d.to_string()),
             body: update.body,
+            version_line_reset,
         }))
     } else {
         Ok(None)
@@ -226,7 +254,7 @@ pub async fn check_for_update(app: AppHandle) -> Result<Option<UpdateInfo>, Stri
 
 #[tauri::command]
 pub async fn download_and_install_update(app: AppHandle, relaunch: bool) -> Result<(), String> {
-    let updater = app.updater().map_err(|e| e.to_string())?;
+    let updater = updater_with_version_reset(&app)?;
     let update = updater.check().await.map_err(|e| e.to_string())?;
 
     if let Some(update) = update {
