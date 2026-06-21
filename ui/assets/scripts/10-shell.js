@@ -1,10 +1,4 @@
 // ═══════ TAB NAVIGATION ═══════
-const sidebarNavMount = document.getElementById('sidebarNavMount');
-const topbarNav = document.querySelector('.topbar > .tab-nav');
-if (sidebarNavMount && topbarNav) {
-  sidebarNavMount.appendChild(topbarNav);
-}
-
 const tabs = document.querySelectorAll('.tab-item[data-page]');
 const pages = document.querySelectorAll('.page');
 let activePlatformSection = 'models';
