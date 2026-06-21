@@ -73,8 +73,12 @@ function getLocalProxyKeyValue() {
   return localProxyKey || '';
 }
 
-function getLocalProxyDefaultModel() {
+function getLocalProxyDefaultModel(format = 'openai') {
   try {
+    if (typeof getProxyRouteDefaultModel === 'function') {
+      const routeDefault = getProxyRouteDefaultModel(format);
+      if (routeDefault) return routeDefault;
+    }
     const slots = Array.isArray(modelMapStore?.slots) ? modelMapStore.slots : [];
     const mapped = slots.find(slot => slot && slot.enabled !== false && slot.modelUid && Array.isArray(slot.targets) && slot.targets.length > 0);
     if (mapped?.modelUid) return mapped.modelUid;
@@ -87,6 +91,16 @@ function getLocalProxyDefaultModel() {
   } catch (_) {
     return LOCAL_PROXY_DEFAULT_MODEL;
   }
+}
+
+function getLocalProxyModels(format = 'openai') {
+  try {
+    if (typeof getEnabledProxyRouteModels === 'function') {
+      const routeModels = getEnabledProxyRouteModels(format);
+      if (routeModels.length) return routeModels;
+    }
+  } catch (_) {}
+  return [getLocalProxyDefaultModel(format)].filter(Boolean);
 }
 
 function localProxyOrigin() {
@@ -109,7 +123,8 @@ function localProxyEndpointParts(format = 'openai') {
 function getLocalProxyRuntimeConfig(platformId = 'codex') {
   const format = platformId === 'claude-code' ? 'anthropic' : 'openai';
   const endpoint = localProxyEndpointParts(format);
-  const model = getLocalProxyDefaultModel();
+  const models = getLocalProxyModels(format);
+  const model = getLocalProxyDefaultModel(format) || models[0];
   return {
     id: `anybridge-local-proxy-${platformId}`,
     name: 'AnyBridge 本地代理',
@@ -117,7 +132,7 @@ function getLocalProxyRuntimeConfig(platformId = 'codex') {
     apiPath: endpoint.apiPath,
     apiKey: getLocalProxyKeyValue(),
     defaultModel: model,
-    models: [model],
+    models,
     sourceProviderId: 'local-proxy',
     sourceProviderName: 'AnyBridge',
     localProxy: true,

@@ -2,91 +2,12 @@
 const tabs = document.querySelectorAll('.tab-item[data-page]');
 const pages = document.querySelectorAll('.page');
 let activePlatformSection = 'models';
-let platformMenuExpanded = true;
-
-function getPlatformMenuParts() {
-  return {
-    tab: document.querySelector('.tab-item[data-page="models"]'),
-    submenu: document.getElementById('platform-submenu')
-  };
-}
-
-function setPlatformMenuExpanded(expanded) {
-  const { tab, submenu } = getPlatformMenuParts();
-  platformMenuExpanded = Boolean(expanded);
-  if (tab) {
-    tab.classList.toggle('submenu-open', platformMenuExpanded);
-    tab.setAttribute('aria-expanded', String(platformMenuExpanded));
-  }
-  if (submenu) {
-    submenu.hidden = !platformMenuExpanded;
-    submenu.classList.toggle('is-collapsed', !platformMenuExpanded);
-  }
-}
-
-function activatePlatformMenuTab(tab) {
-  const isActive = tab.classList.contains('active');
-  const nextExpanded = !isActive || !platformMenuExpanded;
-  setPlatformMenuExpanded(nextExpanded);
-  if (!isActive) {
-    navigateTo(tab.dataset.page);
-  }
-}
-
-function mountSideNavigation() {
-  const sidebar = document.querySelector('.app-sidebar') || document.querySelector('.platform-rail');
-  const navMount = document.getElementById('sidebarNavMount') || sidebar;
-  const platformRail = document.querySelector('.platform-rail');
-  const nav = document.querySelector('.tab-nav');
-  if (!sidebar || !nav) return;
-
-  nav.classList.add('side-primary-nav');
-  nav.setAttribute('aria-label', '左侧主菜单');
-
-  const platformTab = nav.querySelector('.tab-item[data-page="models"]');
-  if (platformTab) {
-    platformTab.classList.add('has-submenu');
-    platformTab.setAttribute('aria-controls', 'platform-submenu');
-    platformTab.setAttribute('aria-expanded', String(platformMenuExpanded));
-    if (!platformTab.querySelector('.tab-chevron')) {
-      const chevron = document.createElement('span');
-      chevron.className = 'tab-chevron';
-      chevron.setAttribute('aria-hidden', 'true');
-      chevron.innerHTML = '<svg viewBox="0 0 16 16" fill="none"><path d="M5.75 3.75 10.25 8l-4.5 4.25" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
-      platformTab.appendChild(chevron);
-    }
-  }
-
-  if (platformTab && platformRail) {
-    const submenu = document.getElementById('platform-submenu') || document.createElement('div');
-    submenu.className = 'platform-submenu';
-    submenu.id = 'platform-submenu';
-    submenu.setAttribute('aria-label', '接入平台');
-
-    submenu.appendChild(platformRail);
-    platformTab.insertAdjacentElement('afterend', submenu);
-  }
-
-  if (!navMount.contains(nav)) {
-    navMount.appendChild(nav);
-  }
-
-  const legacyPlatformBlock = document.querySelector('.sidebar-platforms');
-  if (legacyPlatformBlock && !legacyPlatformBlock.contains(platformRail)) {
-    legacyPlatformBlock.remove();
-  }
-
-  setPlatformMenuExpanded(platformMenuExpanded);
-}
-
-mountSideNavigation();
 
 const PLATFORM_SHELL_PAGES = new Set([
   'platform-proxy',
   'slot-editor',
   'model-slots',
   'models',
-  'logs',
   'more-platforms',
   'platform-cursor',
   'platform-claude-code',
@@ -101,12 +22,11 @@ const PLATFORM_SHELL_PAGES = new Set([
 ]);
 
 function normalizePlatformSection(section) {
-  return ['overview', 'models', 'logs', 'settings'].includes(section) ? section : 'models';
+  return ['overview', 'models', 'settings'].includes(section) ? section : 'models';
 }
 
 function getPlatformSectionForPage(pageId) {
   if (['models', 'model-slots', 'slot-editor'].includes(pageId)) return 'models';
-  if (pageId === 'logs') return 'logs';
   if (pageId === 'platform-proxy') {
     return activePlatformSection === 'settings' ? 'settings' : 'overview';
   }
@@ -141,11 +61,6 @@ function openPlatformSection(section) {
   activePlatformSection = target;
   if (target === 'models') {
     navigateTo('models');
-    syncPlatformConsoleHead();
-    return;
-  }
-  if (target === 'logs') {
-    navigateTo('logs');
     syncPlatformConsoleHead();
     return;
   }
@@ -186,7 +101,6 @@ function navigateTo(pageId) {
     'slot-editor': 'models',
     'model-slots': 'models',
     'models': 'models',
-    'logs': 'logs',
     'more-platforms': 'models',
     'platform-cursor': 'models',
     'platform-claude-code': 'models',
@@ -208,17 +122,11 @@ function navigateTo(pageId) {
     t.setAttribute('aria-selected', String(isActive));
     t.tabIndex = isActive ? 0 : -1;
   });
-  if (activeTabPageId === 'models') {
-    if (!platformMenuExpanded) setPlatformMenuExpanded(true);
-  } else if (platformMenuExpanded) {
-    setPlatformMenuExpanded(false);
-  }
   pages.forEach(p => p.classList.remove('active'));
   const page = document.getElementById(`page-${pageId}`);
   if (page) page.classList.add('active');
   const main = document.querySelector('.main');
   if (main) {
-    main.classList.toggle('logs-active', pageId === 'logs');
     main.classList.toggle('settings-active', pageId === 'settings');
   }
   const shell = document.querySelector('.workspace-shell');
@@ -255,16 +163,14 @@ function focusTabByOffset(currentTab, offset) {
 
 tabs.forEach(t => {
   t.addEventListener('click', () => {
-    if (t.dataset.page === 'models') activatePlatformMenuTab(t);
-    else if (t.dataset.platformSection) openPlatformSection(t.dataset.platformSection);
+    if (t.dataset.platformSection) openPlatformSection(t.dataset.platformSection);
     else if (t.dataset.page === 'proxy' && typeof openProxyPanel === 'function') openProxyPanel('overview');
     else navigateTo(t.dataset.page);
   });
   t.addEventListener('keydown', (event) => {
     if (event.key === 'Enter' || event.key === ' ') {
       event.preventDefault();
-      if (t.dataset.page === 'models') activatePlatformMenuTab(t);
-      else if (t.dataset.platformSection) openPlatformSection(t.dataset.platformSection);
+      if (t.dataset.platformSection) openPlatformSection(t.dataset.platformSection);
       else if (t.dataset.page === 'proxy' && typeof openProxyPanel === 'function') openProxyPanel('overview');
       else navigateTo(t.dataset.page);
       return;
@@ -346,7 +252,7 @@ function openSettingsPanel(panelId) {
 }
 
 function activateProxyPanel(panelId = 'overview') {
-  const target = panelId === 'enhancement' ? 'enhancement' : 'overview';
+  const target = panelId === 'routes' || panelId === 'enhancement' ? panelId : 'overview';
   document.querySelectorAll('.proxy-console-tab[data-proxy-panel]').forEach(tab => {
     const isActive = tab.dataset.proxyPanel === target;
     tab.classList.toggle('active', isActive);
@@ -357,6 +263,9 @@ function activateProxyPanel(panelId = 'overview') {
   });
   if (target === 'enhancement' && typeof renderProxyEnhancement === 'function') {
     renderProxyEnhancement();
+  }
+  if (target === 'routes' && typeof renderProxyRoutes === 'function') {
+    renderProxyRoutes();
   }
 }
 
@@ -473,7 +382,7 @@ function syncPlatformRailForPage(pageId) {
     setPlatformRailActive(pageToPlatform[pageId]);
     return;
   }
-  if (['platform-proxy', 'models', 'model-slots', 'slot-editor', 'logs'].includes(pageId)) {
+  if (['platform-proxy', 'models', 'model-slots', 'slot-editor'].includes(pageId)) {
     const target = normalizeProxyPlatform(getTargetIde());
     const select = document.getElementById('targetIde');
     if (select && select.value !== target) select.value = target;

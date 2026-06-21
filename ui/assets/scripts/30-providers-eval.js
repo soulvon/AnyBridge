@@ -1,5 +1,5 @@
 // ═══════ PROVIDER PROFILES (多套供应商 + 启用开关) ═══════
-let providerStore = { providers: [], codexConfigs: [], claudeCodeConfigs: [], opencodeConfigs: [] };
+let providerStore = { providers: [], codexConfigs: [], claudeCodeConfigs: [], opencodeConfigs: [], platformAccessModes: {} };
 const PROVIDER_VIEW_STORAGE_KEY = 'anybridge.providerViewMode';
 const PROVIDER_SORT_STORAGE_KEY = 'anybridge.providerSortMode';
 const PROVIDER_SORT_MODES = new Set(['default', 'name-asc', 'name-desc']);
@@ -221,7 +221,7 @@ async function loadProviders() {
   try {
     providerStore = await invoke('load_providers');
     if (!providerStore || !Array.isArray(providerStore.providers)) {
-      providerStore = { providers: [], codexConfigs: [], claudeCodeConfigs: [], opencodeConfigs: [] };
+      providerStore = { providers: [], codexConfigs: [], claudeCodeConfigs: [], opencodeConfigs: [], platformAccessModes: {} };
     }
     if (!Array.isArray(providerStore.codexConfigs)) {
       providerStore.codexConfigs = [];
@@ -232,9 +232,12 @@ async function loadProviders() {
     if (!Array.isArray(providerStore.opencodeConfigs)) {
       providerStore.opencodeConfigs = [];
     }
+    if (!providerStore.platformAccessModes || typeof providerStore.platformAccessModes !== 'object') {
+      providerStore.platformAccessModes = {};
+    }
     (providerStore.providers || []).forEach(normalizeProviderUnlocks);
   } catch (e) {
-    providerStore = { providers: [], codexConfigs: [], claudeCodeConfigs: [], opencodeConfigs: [] };
+    providerStore = { providers: [], codexConfigs: [], claudeCodeConfigs: [], opencodeConfigs: [], platformAccessModes: {} };
   }
   renderProviders();
   renderEvalProviderOptions();

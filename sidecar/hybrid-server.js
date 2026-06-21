@@ -238,11 +238,11 @@ function rewriteRegisterUser(protoBuf) {
 
 // ─── Streaming RPCs that need to be piped through ─────────
 
-// ─── Rate limit bypass: 伪造限速检查响应 ──
-// 两个限速检查 API 都需要劫持：
+// ─── BYOK preflight allowance: synthesize successful local capacity checks ──
+// These preflight RPCs are answered locally so configured BYOK chat routing can continue:
 //
 // 1. CheckUserMessageRateLimitResponse (exa.api_server_pb)
-//    Proto 结构（逆向自 Devin 扩展 proto3 定义）：
+//    Proto shape observed from the client schema:
 //      field 1: hasCapacity (bool)
 //      field 2: message (string)
 //      field 3: messagesRemaining (int32)
@@ -257,7 +257,7 @@ function rewriteRegisterUser(protoBuf) {
 //
 // BYOK 模式下用自己的 API，不走 Codeium 配额，所以直接返回 hasCapacity=true。
 // Proto3 默认值不编码（false/0/"" 不序列化），所以只编码非零字段即可。
-function buildRateLimitOkResponse(method) {
+function buildPreflightOkResponse(method) {
   // hasCapacity = true → field 1, wire type 0 (varint), value = 1
   const hasCapacity = writeVarintField(1, 1);
   if (method === 'CheckChatCapacity') {
@@ -272,8 +272,7 @@ function buildRateLimitOkResponse(method) {
   return Buffer.concat([hasCapacity, messagesRemaining, maxMessages]);
 }
 
-// 需要劫持的限速检查方法集合
-const RATE_LIMIT_METHODS = new Set(['CheckUserMessageRateLimit', 'CheckChatCapacity']);
+const PREFLIGHT_ALLOW_METHODS = new Set(['CheckUserMessageRateLimit', 'CheckChatCapacity']);
 
 const STREAMING_METHODS = new Set([
   'GetStreamingCompletions',
@@ -581,22 +580,19 @@ function handleRequest(req, res) {
       return;
     }
 
-    // ── Rate limit bypass: CheckUserMessageRateLimit → 伪造无限速响应 ──
-    // BYOK 模式下用自己的 API Key，不走 Codeium 配额，但客户端发消息前会先调限速检查 API。
-    // 如果透传到 Codeium 服务端，可能返回"限速"导致消息回弹（根本不调 GetChatMessage）。
-    // 所以直接伪造"无限速"响应，让客户端放行消息发送。
-    if (RATE_LIMIT_METHODS.has(method)) {
-      console.log(`[${now()}] #${id} 🔓 ${method} → bypass (unlimited)`);
-      const protoBody = buildRateLimitOkResponse(method);
+    // BYOK preflight allowance: return a successful local capacity response.
+    if (PREFLIGHT_ALLOW_METHODS.has(method)) {
+      console.log(`[${now()}] #${id} ${method} -> local preflight ok`);
+      const protoBody = buildPreflightOkResponse(method);
       const frame = Buffer.alloc(5 + protoBody.length);
       frame[0] = 0; // flags
       frame.writeUInt32BE(protoBody.length, 1);
       protoBody.copy(frame, 5);
       rpcAuditLog({
         id,
-        phase: 'bypassed',
+        phase: 'intercepted',
         source: 'http',
-        route: 'rate-limit-bypass',
+        route: 'byok-preflight-allow',
         method,
         url: req.url,
         requestBytes: body.length,
@@ -725,19 +721,19 @@ const mitmServer = http.createServer((req, res) => {
       return;
     }
 
-    // ── Rate limit bypass: 伪造无限速响应 ──
-    if (RATE_LIMIT_METHODS.has(method)) {
-      console.log(`[${now()}] #${id} 🔓 MITM ${method} → bypass (unlimited)`);
-      const protoBody = buildRateLimitOkResponse(method);
+    // BYOK preflight allowance: return a successful local capacity response.
+    if (PREFLIGHT_ALLOW_METHODS.has(method)) {
+      console.log(`[${now()}] #${id} MITM ${method} -> local preflight ok`);
+      const protoBody = buildPreflightOkResponse(method);
       const frame = Buffer.alloc(5 + protoBody.length);
       frame[0] = 0;
       frame.writeUInt32BE(protoBody.length, 1);
       protoBody.copy(frame, 5);
       rpcAuditLog({
         id,
-        phase: 'bypassed',
+        phase: 'intercepted',
         source: 'mitm',
-        route: 'rate-limit-bypass',
+        route: 'byok-preflight-allow',
         method,
         url: req.url,
         requestBytes: body.length,

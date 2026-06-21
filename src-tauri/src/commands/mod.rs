@@ -8,6 +8,7 @@ pub mod model_map;
 pub mod platforms;
 pub mod provider_import;
 pub mod proxy;
+pub mod proxy_routes;
 pub mod system;
 pub mod update;
 pub mod windsurf_catalog;

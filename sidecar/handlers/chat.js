@@ -333,9 +333,9 @@ function shouldAutoEnableGeminiSchemaCompat(statusCode, errBody = '') {
 }
 
 
-// 路由层判断:该 GetChatMessage 是否应被劫持转发到第三方 provider。
+// 路由层判断:该 GetChatMessage 是否应转发到第三方 provider。
 
-// 命中普通 BYOK 映射或模型槽位管理项才拦截;否则原样透传给 Codeium。
+// 命中普通 BYOK 映射或模型槽位管理项才接管;否则原样透传给 Codeium。
 export function shouldIntercept(body, headers) {
   const modelId = extractModelId(body, headers);
   const slot = getSlot(modelId);

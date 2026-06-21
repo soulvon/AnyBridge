@@ -62,26 +62,12 @@
           </svg>
           <span>统计</span>
         </button>
-        <button type="button" class="tab-item" id="tab-logs" data-page="logs" role="tab" aria-selected="false"
-          aria-controls="page-logs" tabindex="-1">
-          <svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"></path><path d="M14 2v6h6"></path><path d="M8 13h8"></path><path d="M8 17h6"></path>
-          </svg>
-          <span>日志</span>
-        </button>
         <button type="button" class="tab-item" id="tab-settings" data-page="settings" role="tab" aria-selected="false"
           aria-controls="page-settings" tabindex="-1">
           <svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <path d="M12 15.5A3.5 3.5 0 1 0 12 8a3.5 3.5 0 0 0 0 7.5Z"></path><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1 1.55V21a2 2 0 0 1-4 0v-.09a1.7 1.7 0 0 0-1-1.55 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.55-1H3a2 2 0 0 1 0-4h.09a1.7 1.7 0 0 0 1.55-1 1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-1.55V3a2 2 0 0 1 4 0v.09a1.7 1.7 0 0 0 1 1.55 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.7 1.7 0 0 0 19.4 9c.22.6.78 1 1.55 1H21a2 2 0 0 1 0 4h-.09A1.7 1.7 0 0 0 19.4 15Z"></path>
           </svg>
           <span>设置</span>
-        </button>
-        <button type="button" class="tab-item" id="tab-about" data-page="about" role="tab" aria-selected="false"
-          aria-controls="page-about" tabindex="-1">
-          <svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <circle cx="12" cy="12" r="10"></circle><path d="M12 16v-4"></path><path d="M12 8h.01"></path>
-          </svg>
-          <span>关于</span>
         </button>
       </nav>
       <div class="topbar-right">
@@ -342,6 +328,26 @@
                   </div>
                   <div id="topModelsChart" class="proxy-model-table">
                     <div class="proxy-empty-state">尚无模型请求数据</div>
+                  </div>
+                </section>
+
+                <section class="proxy-panel proxy-logs-panel">
+                  <div class="proxy-panel-head proxy-logs-head">
+                    <div class="proxy-logs-title">
+                      <div>
+                        <div class="proxy-panel-title">代理日志</div>
+                        <div class="proxy-panel-sub">代理运行事件、路由变更和错误输出</div>
+                      </div>
+                      <span class="tag log-count" id="logCount">0 条记录</span>
+                    </div>
+                    <div class="proxy-logs-actions">
+                      <button class="btn-ghost" onclick="clearLogs()">清空</button>
+                      <button class="btn-ghost" onclick="exportLogs()">导出</button>
+                      <button class="btn-ghost" onclick="cycleLogFilter()" id="logFilterBtn">筛选: 全部 ▾</button>
+                    </div>
+                  </div>
+                  <div class="log-box proxy-logs-box">
+                    <div class="log-body" id="fullLog"></div>
                   </div>
                 </section>
               </div>
@@ -1789,6 +1795,7 @@
 
             <div class="proxy-console-tabs" role="tablist" aria-label="代理配置">
               <button type="button" class="proxy-console-tab active" data-proxy-panel="overview" aria-selected="true">运行概览</button>
+              <button type="button" class="proxy-console-tab" data-proxy-panel="routes" aria-selected="false">模型路由</button>
               <button type="button" class="proxy-console-tab" data-proxy-panel="enhancement" aria-selected="false">代理增强</button>
             </div>
 
@@ -1817,6 +1824,21 @@
                     <code id="localProxyModelsUrl">http://127.0.0.1:{port}/v1/models</code>
                     <button class="btn-ghost" onclick="copyLocalProxyValue('models')">复制</button>
                   </div>
+                </div>
+                </section>
+
+                <section class="proxy-console-card glass-card proxy-route-summary-card">
+                <div class="proxy-console-card-head">
+                  <div>
+                    <h2>模型路由</h2>
+                    <p>/v1/models 对外暴露的模型列表与上游映射。</p>
+                  </div>
+                  <button class="btn-primary" onclick="openProxyPanel('routes')">管理</button>
+                </div>
+                <div class="proxy-route-overview-grid">
+                  <div><span>启用路由</span><strong id="proxy-page-route-enabled">0</strong></div>
+                  <div><span>全部路由</span><strong id="proxy-page-route-total">0</strong></div>
+                  <div><span>默认模型</span><strong id="proxy-page-route-default">未设置</strong></div>
                 </div>
                 </section>
 
@@ -1888,28 +1910,60 @@
               </div>
             </div>
 
+            <div class="proxy-console-section" data-proxy-section="routes">
+              <section class="proxy-console-card glass-card proxy-routes-card">
+                <div class="proxy-console-card-head proxy-routes-head">
+                  <div>
+                    <h2>模型路由</h2>
+                    <p>管理本地代理 /v1/models 暴露的模型，以及每个模型最终转发到哪个供应商。</p>
+                  </div>
+                  <div class="proxy-routes-actions">
+                    <button class="btn-ghost" onclick="importProxyRoutesFromModelMap()">从平台映射导入</button>
+                    <button class="btn-primary" onclick="openProxyRouteEditor()">添加路由</button>
+                  </div>
+                </div>
+                <div id="proxyRoutesCompatBanner" class="proxy-routes-banner" style="display:none;">
+                  当前本地代理仍处于兼容模式：/models 来自 Devin/Windsurf 模型映射。导入后会改为独立代理模型路由。
+                </div>
+                <div class="proxy-routes-toolbar">
+                  <input id="proxyRoutesSearch" class="field-input" type="text" placeholder="搜索模型 ID、显示名、供应商或目标模型..." oninput="renderProxyRoutes()">
+                  <label>
+                    <span>默认模型</span>
+                    <select id="proxyRoutesDefaultModel" onchange="setProxyRoutesDefault(this.value)"></select>
+                  </label>
+                  <button class="btn-ghost" onclick="loadProxyRoutes()">刷新</button>
+                  <button class="btn-primary" onclick="saveProxyRoutes()">保存</button>
+                </div>
+                <div class="proxy-routes-summary">
+                  <span id="proxyRoutesTotal">路由：0</span>
+                  <span id="proxyRoutesEnabled">启用：0</span>
+                  <span id="proxyRoutesDefault">默认：未设置</span>
+                </div>
+                <div class="proxy-routes-table-wrap">
+                  <table class="proxy-routes-table">
+                    <thead>
+                      <tr>
+                        <th>启用</th>
+                        <th>对外模型 ID</th>
+                        <th>显示名</th>
+                        <th>入口</th>
+                        <th>路由目标</th>
+                        <th>能力</th>
+                        <th>操作</th>
+                      </tr>
+                    </thead>
+                    <tbody id="proxyRoutesTableBody">
+                      <tr><td colspan="7" class="proxy-routes-empty">正在加载模型路由...</td></tr>
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+            </div>
+
             <div class="proxy-console-section" data-proxy-section="enhancement">
               <div id="proxyEnhancementMount"></div>
             </div>
           </section>
-        </div>
-
-        <!-- ═══════ PAGE: LOGS ═══════ -->
-        <div class="page" id="page-logs" role="tabpanel" aria-labelledby="tab-logs">
-          <div class="log-page-head control-bar glass-card">
-            <div class="log-page-title">
-              <span class="card-title"><span class="dot"></span>代理日志</span>
-              <span class="tag log-count" id="logCount">0 条记录</span>
-            </div>
-            <div class="log-page-actions">
-              <button class="btn-ghost" onclick="clearLogs()">清空</button>
-              <button class="btn-ghost" onclick="exportLogs()">导出</button>
-              <button class="btn-ghost" onclick="cycleLogFilter()" id="logFilterBtn">筛选: 全部 ▾</button>
-            </div>
-          </div>
-          <div class="log-box log-page-box">
-            <div class="log-body" id="fullLog"></div>
-          </div>
         </div>
 
         <!-- ═══════ PAGE: PLATFORM OVERVIEW ═══════ -->
@@ -2218,6 +2272,37 @@
             </div>
           </div>
 
+          <section class="platform-access-card glass-card" data-platform-access-card="codebuddy">
+            <div class="platform-access-head">
+              <div>
+                <h2>接入模式</h2>
+                <p>本地代理模式使用「代理 > 模型路由」；直连供应商模式保留 CodeBuddy 专用模型列表。</p>
+              </div>
+              <div class="platform-access-toggle" role="group" aria-label="CodeBuddy 接入模式">
+                <button type="button" data-access-mode="proxy"
+                  onclick="setPlatformAccessMode('codebuddy', 'proxy')">本地代理</button>
+                <button type="button" data-access-mode="direct"
+                  onclick="setPlatformAccessMode('codebuddy', 'direct')">直连供应商</button>
+              </div>
+            </div>
+            <div class="platform-proxy-mode-panel" id="codebuddy-proxy-mode-panel" style="display:none;">
+              <div class="platform-proxy-info-grid">
+                <div><span>OpenAI 地址</span><code id="codebuddy-proxy-endpoint">-</code></div>
+                <div><span>Key</span><code id="codebuddy-proxy-key">未生成</code></div>
+                <div><span>路由数量</span><strong id="codebuddy-proxy-route-count">0</strong></div>
+                <div><span>默认模型</span><code id="codebuddy-proxy-default-model">未设置</code></div>
+              </div>
+              <div class="platform-proxy-actions">
+                <button type="button" class="btn-primary" onclick="applyLocalProxyModelPlatform('codebuddy')">
+                  同步到 CodeBuddy
+                </button>
+                <button type="button" class="btn-ghost" onclick="openProxyRoutesFromPlatform()">前往模型路由</button>
+                <button type="button" class="btn-ghost" onclick="copyLocalProxyInfoPlatform('codebuddy')">复制代理信息</button>
+              </div>
+              <div class="platform-proxy-route-list" id="codebuddy-proxy-route-list"></div>
+            </div>
+          </section>
+
           <!-- 列表视图 -->
           <div id="cb-list-view">
             <!-- 控制栏 -->
@@ -2227,7 +2312,7 @@
               <div style="display: flex; align-items: center; gap: 16px; flex-wrap: wrap;">
                 <h2
                   style="font-size: 14px; font-weight: 700; color: var(--text-primary); display: flex; align-items: center; gap: 6px; margin: 0; user-select: none;">
-                  自定义模型列表
+                  直连自定义模型列表
                 </h2>
                 <!-- 搜索输入框 -->
                 <div style="position: relative; display: flex; align-items: center;">
@@ -2252,10 +2337,6 @@
                     <line x1="5" y1="12" x2="19" y2="12" />
                   </svg>
                   添加模型
-                </button>
-                <button class="btn-ghost" onclick="applyLocalProxyModelPlatform('codebuddy')"
-                  style="border-radius: 10px; padding: 0 14px; font-size: 13px; font-weight: 600; height: 36px; display: flex; align-items: center; gap: 6px;">
-                  AnyBridge 本地代理
                 </button>
                 <button class="btn-ghost cb-bulk-delete-btn" id="cb-delete-selected-btn"
                   onclick="deleteSelectedCbModels()" disabled title="删除勾选的模型">
@@ -2690,6 +2771,37 @@
             </div>
           </div>
 
+          <section class="platform-access-card glass-card" data-platform-access-card="zcode">
+            <div class="platform-access-head">
+              <div>
+                <h2>接入模式</h2>
+                <p>本地代理模式使用「代理 > 模型路由」；直连供应商模式保留 ZCode 专用模型列表。</p>
+              </div>
+              <div class="platform-access-toggle" role="group" aria-label="ZCode 接入模式">
+                <button type="button" data-access-mode="proxy"
+                  onclick="setPlatformAccessMode('zcode', 'proxy')">本地代理</button>
+                <button type="button" data-access-mode="direct"
+                  onclick="setPlatformAccessMode('zcode', 'direct')">直连供应商</button>
+              </div>
+            </div>
+            <div class="platform-proxy-mode-panel" id="zcode-proxy-mode-panel" style="display:none;">
+              <div class="platform-proxy-info-grid">
+                <div><span>OpenAI 地址</span><code id="zcode-proxy-endpoint">-</code></div>
+                <div><span>Key</span><code id="zcode-proxy-key">未生成</code></div>
+                <div><span>路由数量</span><strong id="zcode-proxy-route-count">0</strong></div>
+                <div><span>默认模型</span><code id="zcode-proxy-default-model">未设置</code></div>
+              </div>
+              <div class="platform-proxy-actions">
+                <button type="button" class="btn-primary" onclick="applyLocalProxyModelPlatform('zcode')">
+                  同步到 ZCode
+                </button>
+                <button type="button" class="btn-ghost" onclick="openProxyRoutesFromPlatform()">前往模型路由</button>
+                <button type="button" class="btn-ghost" onclick="copyLocalProxyInfoPlatform('zcode')">复制代理信息</button>
+              </div>
+              <div class="platform-proxy-route-list" id="zcode-proxy-route-list"></div>
+            </div>
+          </section>
+
           <!-- 列表视图 -->
           <div id="zc-list-view">
             <!-- 控制栏 -->
@@ -2699,7 +2811,7 @@
               <div style="display: flex; align-items: center; gap: 16px; flex-wrap: wrap;">
                 <h2
                   style="font-size: 14px; font-weight: 700; color: var(--text-primary); display: flex; align-items: center; gap: 6px; margin: 0; user-select: none;">
-                  自定义模型列表
+                  直连自定义模型列表
                 </h2>
                 <!-- 搜索输入框 -->
                 <div style="position: relative; display: flex; align-items: center;">
@@ -2724,10 +2836,6 @@
                     <line x1="5" y1="12" x2="19" y2="12" />
                   </svg>
                   添加模型
-                </button>
-                <button class="btn-ghost" onclick="applyLocalProxyModelPlatform('zcode')"
-                  style="border-radius: 10px; padding: 0 14px; font-size: 13px; font-weight: 600; height: 36px; display: flex; align-items: center; gap: 6px;">
-                  AnyBridge 本地代理
                 </button>
                 <button class="btn-ghost cb-bulk-delete-btn" id="zc-delete-selected-btn"
                   onclick="deleteSelectedZcModels()" disabled title="删除勾选的模型">
@@ -2959,6 +3067,37 @@
             </div>
           </div>
 
+          <section class="platform-access-card glass-card" data-platform-access-card="workbuddy">
+            <div class="platform-access-head">
+              <div>
+                <h2>接入模式</h2>
+                <p>本地代理模式使用「代理 > 模型路由」；直连供应商模式保留 WorkBuddy 专用模型列表。</p>
+              </div>
+              <div class="platform-access-toggle" role="group" aria-label="WorkBuddy 接入模式">
+                <button type="button" data-access-mode="proxy"
+                  onclick="setPlatformAccessMode('workbuddy', 'proxy')">本地代理</button>
+                <button type="button" data-access-mode="direct"
+                  onclick="setPlatformAccessMode('workbuddy', 'direct')">直连供应商</button>
+              </div>
+            </div>
+            <div class="platform-proxy-mode-panel" id="workbuddy-proxy-mode-panel" style="display:none;">
+              <div class="platform-proxy-info-grid">
+                <div><span>OpenAI 地址</span><code id="workbuddy-proxy-endpoint">-</code></div>
+                <div><span>Key</span><code id="workbuddy-proxy-key">未生成</code></div>
+                <div><span>路由数量</span><strong id="workbuddy-proxy-route-count">0</strong></div>
+                <div><span>默认模型</span><code id="workbuddy-proxy-default-model">未设置</code></div>
+              </div>
+              <div class="platform-proxy-actions">
+                <button type="button" class="btn-primary" onclick="applyLocalProxyModelPlatform('workbuddy')">
+                  同步到 WorkBuddy
+                </button>
+                <button type="button" class="btn-ghost" onclick="openProxyRoutesFromPlatform()">前往模型路由</button>
+                <button type="button" class="btn-ghost" onclick="copyLocalProxyInfoPlatform('workbuddy')">复制代理信息</button>
+              </div>
+              <div class="platform-proxy-route-list" id="workbuddy-proxy-route-list"></div>
+            </div>
+          </section>
+
           <!-- 列表视图 -->
           <div id="wb-list-view">
             <!-- 控制栏 -->
@@ -2968,7 +3107,7 @@
               <div style="display: flex; align-items: center; gap: 16px; flex-wrap: wrap;">
                 <h2
                   style="font-size: 14px; font-weight: 700; color: var(--text-primary); display: flex; align-items: center; gap: 6px; margin: 0; user-select: none;">
-                  自定义模型列表
+                  直连自定义模型列表
                 </h2>
                 <!-- 搜索输入框 -->
                 <div style="position: relative; display: flex; align-items: center;">
@@ -2993,10 +3132,6 @@
                     <line x1="5" y1="12" x2="19" y2="12" />
                   </svg>
                   添加模型
-                </button>
-                <button class="btn-ghost" onclick="applyLocalProxyModelPlatform('workbuddy')"
-                  style="border-radius: 10px; padding: 0 14px; font-size: 13px; font-weight: 600; height: 36px; display: flex; align-items: center; gap: 6px;">
-                  AnyBridge 本地代理
                 </button>
                 <button class="btn-ghost cb-bulk-delete-btn" id="wb-delete-selected-btn"
                   onclick="deleteSelectedWbModels()" disabled title="删除勾选的模型">
@@ -3369,6 +3504,7 @@
                 <button type="button" class="settings-menu-item" data-settings-panel="5">系统提示词</button>
                 <button type="button" class="settings-menu-item" data-settings-panel="6">安全</button>
                 <button type="button" class="settings-menu-item" data-settings-panel="7">版本更新</button>
+                <button type="button" class="settings-menu-item" data-settings-panel="about">关于</button>
               </aside>
               <div class="settings-detail">
                 <div class="settings-panel active" data-panel-id="appearance">
@@ -3852,42 +3988,54 @@
                     <div class="health-groups" id="health-groups"></div>
                   </div>
                 </div>
-              </div>
-            </div>
-          </section>
-        </div>
 
-        <!-- ═══════ PAGE: ABOUT ═══════ -->
-        <div class="page" id="page-about" role="tabpanel" aria-labelledby="tab-about">
-          <section class="about-panel glass-card" aria-label="关于 AnyBridge">
-            <div class="about-copy">
-              <div class="about-kicker">关于</div>
-              <h1 class="about-title">AnyBridge</h1>
-              <p class="about-desc">本地 BYOK 桥接工具，用于统一管理供应商、模型映射、本地代理和 IDE 接入配置。</p>
-              <div class="about-meta-grid" aria-label="项目概要">
-                <div class="about-meta-item">
-                  <span>当前版本</span>
-                  <strong id="about-version-display">—</strong>
-                </div>
-                <div class="about-meta-item">
-                  <span>项目名称</span>
-                  <strong>AnyBridge</strong>
-                </div>
-                <div class="about-meta-item">
-                  <span>交流群</span>
-                  <strong>1075342078</strong>
+                <div class="settings-panel" data-panel-id="about">
+                  <div class="card-header">
+                    <div class="card-title">
+                      <svg class="title-svg" width="16" height="16" viewBox="0 0 24 24" fill="none"
+                        stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="12" cy="12" r="10"></circle>
+                        <path d="M12 16v-4"></path>
+                        <path d="M12 8h.01"></path>
+                      </svg>
+                      关于
+                    </div>
+                  </div>
+                  <div class="card-body">
+                    <section class="about-panel settings-about-panel" aria-label="关于 AnyBridge">
+                      <div class="about-copy">
+                        <div class="about-kicker">关于</div>
+                        <h1 class="about-title">AnyBridge</h1>
+                        <p class="about-desc">本地 BYOK 桥接工具，用于统一管理供应商、模型映射、本地代理和 IDE 接入配置。</p>
+                        <div class="about-meta-grid" aria-label="项目概要">
+                          <div class="about-meta-item">
+                            <span>当前版本</span>
+                            <strong id="about-version-display">—</strong>
+                          </div>
+                          <div class="about-meta-item">
+                            <span>项目名称</span>
+                            <strong>AnyBridge</strong>
+                          </div>
+                          <div class="about-meta-item">
+                            <span>交流群</span>
+                            <strong>1075342078</strong>
+                          </div>
+                        </div>
+                        <div class="about-actions">
+                          <a class="btn-primary about-join-btn" href="https://qm.qq.com/q/nT5ApAtKiQ" target="_blank"
+                            rel="noopener noreferrer">加入交流群</a>
+                          <a class="btn-ghost about-link-btn" href="https://github.com/soulvon/AnyBridge-Release/releases" target="_blank"
+                            rel="noopener noreferrer">发布页</a>
+                        </div>
+                      </div>
+                      <div class="about-qr-wrap">
+                        <div class="about-qr-label">QQ 群二维码</div>
+                        <img class="about-qr" src="./assets/community-qq-group.png" alt="IDE 增强插件交流群二维码">
+                      </div>
+                    </section>
+                  </div>
                 </div>
               </div>
-              <div class="about-actions">
-                <a class="btn-primary about-join-btn" href="https://qm.qq.com/q/nT5ApAtKiQ" target="_blank"
-                  rel="noopener noreferrer">加入交流群</a>
-                <a class="btn-ghost about-link-btn" href="https://github.com/soulvon/AnyBridge-Release/releases" target="_blank"
-                  rel="noopener noreferrer">发布页</a>
-              </div>
-            </div>
-            <div class="about-qr-wrap">
-              <div class="about-qr-label">QQ 群二维码</div>
-              <img class="about-qr" src="./assets/community-qq-group.png" alt="IDE 增强插件交流群二维码">
             </div>
           </section>
         </div>
@@ -3988,6 +4136,78 @@
       <div class="modal-footer">
         <button id="modal-btn-cancel" class="modal-btn modal-btn-cancel">稍后重启</button>
         <button id="modal-btn-confirm" class="modal-btn modal-btn-confirm">立即重启</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 本地代理模型路由编辑 -->
+  <div id="proxy-route-editor-modal" class="modal-overlay">
+    <div class="modal-container proxy-route-editor-modal">
+      <div class="modal-header proxy-route-editor-header">
+        <div class="modal-title">
+          <span class="modal-icon">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"
+              stroke-linecap="round" stroke-linejoin="round">
+              <path d="M4 7h10"></path>
+              <path d="M4 17h10"></path>
+              <path d="M14 7l3-3 3 3"></path>
+              <path d="M14 17l3 3 3-3"></path>
+            </svg>
+          </span>
+          <span id="proxyRouteEditorTitle">添加模型路由</span>
+        </div>
+        <button type="button" class="modal-close-icon" onclick="closeProxyRouteEditor()" aria-label="关闭">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+            stroke-linecap="round" stroke-linejoin="round">
+            <path d="M18 6 6 18"></path>
+            <path d="m6 6 12 12"></path>
+          </svg>
+        </button>
+      </div>
+      <div class="modal-body proxy-route-editor-body">
+        <section class="proxy-route-editor-section">
+          <div class="proxy-route-editor-section-title">基础信息</div>
+          <div class="proxy-route-editor-grid">
+            <label>
+              <span>对外模型 ID</span>
+              <input id="proxyRouteIdInput" class="field-input" type="text" placeholder="例如 glm-5.1">
+            </label>
+            <label>
+              <span>显示名</span>
+              <input id="proxyRouteNameInput" class="field-input" type="text" placeholder="例如 GLM-5.1">
+            </label>
+          </div>
+          <div class="proxy-route-editor-options">
+            <label><input id="proxyRouteEnabledInput" type="checkbox" checked> 启用</label>
+            <label><input id="proxyRouteExposeOpenAiInput" type="checkbox" checked> OpenAI 入口</label>
+            <label><input id="proxyRouteExposeAnthropicInput" type="checkbox" checked> Claude 入口</label>
+          </div>
+        </section>
+
+        <section class="proxy-route-editor-section">
+          <div class="proxy-route-editor-section-head">
+            <div class="proxy-route-editor-section-title">路由目标</div>
+            <button class="btn-ghost" onclick="addProxyRouteTargetRow()">添加目标</button>
+          </div>
+          <div id="proxyRouteTargetsEditor" class="proxy-route-target-editor"></div>
+        </section>
+
+        <section class="proxy-route-editor-section">
+          <div class="proxy-route-editor-section-title">能力与增强</div>
+          <div class="proxy-route-editor-options">
+            <label><input id="proxyRouteCapStreamInput" type="checkbox" checked> 流式</label>
+            <label><input id="proxyRouteCapToolsInput" type="checkbox"> 工具</label>
+            <label><input id="proxyRouteCapVisionInput" type="checkbox"> 图片</label>
+            <label><input id="proxyRouteCapReasoningInput" type="checkbox"> 推理</label>
+            <label><input id="proxyRouteRetryInput" type="checkbox" checked> 重试</label>
+            <label><input id="proxyRouteAutoRoutingInput" type="checkbox" checked> 自动故障转移</label>
+            <label><input id="proxyRouteThirdPartyVisionInput" type="checkbox"> 第三方图片理解</label>
+          </div>
+        </section>
+      </div>
+      <div class="modal-footer">
+        <button class="modal-btn modal-btn-cancel" onclick="closeProxyRouteEditor()">取消</button>
+        <button class="modal-btn modal-btn-confirm" onclick="saveProxyRouteEditor()">保存路由</button>
       </div>
     </div>
   </div>
@@ -4193,6 +4413,7 @@
   <script src="./assets/scripts/30-providers-eval.js"></script>
   <script src="./assets/scripts/40-model-picker.js"></script>
   <script src="./assets/scripts/50-model-map.js"></script>
+  <script src="./assets/scripts/52-proxy-routes.js"></script>
   <script src="./assets/scripts/55-platforms.js"></script>
   <script src="./assets/scripts/60-updater.js"></script>
   <script src="./assets/scripts/70-healthcheck.js"></script>

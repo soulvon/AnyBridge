@@ -1,7 +1,7 @@
 [package]
 name = "anybridge"
-version = "1.2.18"
-description = "AnyBridge desktop app"
+version = "0.1.0"
+description = "AnyBridge desktop client"
 authors = ["soulvon"]
 edition = "2021"
 

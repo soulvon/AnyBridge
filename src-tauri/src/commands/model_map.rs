@@ -2,7 +2,7 @@
 //
 // 每个槽位把一个 Windsurf 模型 ID（modelUid）映射到:
 //   displayName  下拉框改名（可空，空=显示原始名）
-//   enabled      是否劫持该槽位的 GetChatMessage 转发到第三方
+//   enabled      是否将该槽位的 GetChatMessage 路由到第三方
 //   targets[]    故障转移链，按顺序尝试 {providerId, model}
 //
 // sidecar 直接读这份文件 + providers.json 做路由，不再有「激活供应商」概念。
@@ -138,7 +138,7 @@ pub struct Slot {
 }
 
 /// 模型槽位管理项：解锁 Windsurf 灰色不可选模型（如 Claude Opus 4.8、SWE-1.6）。
-/// 与 Slot 区别：Slot 劫持 Windsurf 已可选的 modelUid（保持 field22 不动 + 改名 label）；
+/// 与 Slot 区别：Slot 路由 Windsurf 已可选的 modelUid（保持 field22 不动 + 改名 label）；
 /// InjectedSlot 是 Windsurf 原本不可选（disabled=true）的模型，解锁后注入到下拉框。
 ///
 /// 注入项 field22(modelUid) = 真实 modelUid（一对一，不共用骨架），由 sidecar catalog 提供；
@@ -182,7 +182,7 @@ pub struct SlotVisibility {
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct ModelMap {
     /// 全局显示名前缀,如 "(BYOK)"。拼接后显示为 "{prefix} {displayName}"。
-    /// 适用于所有已劫持模型(无论是否自定义了 displayName)。注入项不使用此前缀(自带 "(BYOK)")。
+    /// 适用于所有已路由模型(无论是否自定义了 displayName)。注入项不使用此前缀(自带 "(BYOK)")。
     #[serde(rename = "namePrefix", default)]
     pub name_prefix: String,
     /// 显示模板,留空则用默认 "{prefix} {label} ({provider})"。

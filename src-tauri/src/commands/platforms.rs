@@ -1,6 +1,6 @@
 // platforms.rs — 「更多平台」：直接接管 Claude Code / Codex / CodeBuddy / OpenCode / ZCode 等 API 端点。
 //
-// 与 Windsurf/Devin 的「http.proxy 劫持 + 常驻 sidecar」模式不同，这里是
+// 与 Windsurf/Devin 的「http.proxy 代理接入 + 常驻 sidecar」模式不同，这里是
 // 「直接改 CLI 工具自己的配置文件」：从 providerStore 选一个供应商，把其
 // base_url / api_key / model 写入目标工具的配置文件，下次启动工具即生效，
 // 不依赖任何常驻进程。

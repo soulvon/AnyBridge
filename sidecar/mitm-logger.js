@@ -130,7 +130,7 @@ export function mitmLog(entry) {
  * 只记录路由、方法、状态码和字节数，不记录请求/响应 body。
  *
  * @param {object} entry
- * @param {string} entry.phase - request | response | intercepted | blocked | bypassed | error | connect
+ * @param {string} entry.phase - request | response | intercepted | blocked | error | connect
  * @param {string} [entry.source] - http | mitm | connect
  * @param {string} [entry.method] - RPC method
  * @param {string} [entry.url] - request path or target URL
@@ -138,7 +138,7 @@ export function mitmLog(entry) {
  * @param {number} [entry.requestBytes]
  * @param {number} [entry.responseBytes]
  * @param {number} [entry.statusCode]
- * @param {string} [entry.route] - codeium | byok | blocked | bypass | pipe
+ * @param {string} [entry.route] - codeium | byok | blocked | pipe | byok-preflight-allow
  * @param {string} [entry.error]
  */
 export function rpcAuditLog(entry) {

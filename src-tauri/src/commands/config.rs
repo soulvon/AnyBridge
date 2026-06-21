@@ -478,6 +478,13 @@ pub struct ProviderStore {
     /// 「更多平台」状态：claude-code / codex 各自当前应用的供应商。空时不写入文件，向后兼容旧 providers.json。
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub platforms: BTreeMap<String, PlatformState>,
+    /// 平台接入模式：codebuddy / workbuddy / zcode 等平台选择 local-proxy 或 direct。
+    #[serde(
+        rename = "platformAccessModes",
+        default,
+        skip_serializing_if = "BTreeMap::is_empty"
+    )]
+    pub platform_access_modes: BTreeMap<String, String>,
 }
 
 pub(crate) fn read_provider_store() -> Result<ProviderStore, String> {

@@ -112,7 +112,7 @@ export function loadModelMapConfig() {
   return getModelMapConfig();
 }
 
-// 返回该 modelUid 对应的槽位（启用且有 targets 才算可劫持），否则 null。
+// 返回该 modelUid 对应的槽位（启用且有 targets 才算可路由），否则 null。
 export function getSlot(modelUid) {
   if (!modelUid) return null;
   const entry = getSlots().get(modelUid);

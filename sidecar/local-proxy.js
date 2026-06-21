@@ -6,7 +6,7 @@ import fs from 'node:fs';
 import https from 'node:https';
 import os from 'node:os';
 import path from 'node:path';
-import { getSlots } from './config-cache.js';
+import { getProxyRoutes, getSlots } from './config-cache.js';
 import { loadModelMapConfig, loadProviders, resolveTarget } from './provider-pool.js';
 import { preprocessImagesWithThirdPartyVision } from './vision-fallback.js';
 import { httpsAgentFor } from './system-proxy.js';
@@ -92,7 +92,7 @@ function validateAuth(req) {
   return { ok: true };
 }
 
-function modelRows() {
+function legacyModelRows() {
   const rows = [];
   for (const [id, entry] of getSlots()) {
     if (!entry || !entry.data) continue;
@@ -110,9 +110,29 @@ function modelRows() {
   return rows.sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
 }
 
+function proxyRouteRows(kind) {
+  const store = getProxyRoutes();
+  if (store.loadError) throw new Error(`本地代理模型路由读取失败: ${store.loadError}`);
+  if (!store.fileExists) return legacyModelRows();
+  const requiredFormat = kind === 'anthropic' ? 'anthropic' : 'openai';
+  return (store.routes || [])
+    .filter(route => route.enabled !== false)
+    .filter(route => Array.isArray(route.targets) && route.targets.length > 0)
+    .filter(route => (route.exposedFormats || []).includes(requiredFormat))
+    .map(route => ({ id: route.id, name: route.displayName || route.id }))
+    .sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
+}
+
 function handleModels(req, res) {
-  const rows = modelRows();
-  if (pathnameOf(req).startsWith('/anthropic/')) {
+  const anthropic = pathnameOf(req).startsWith('/anthropic/');
+  let rows;
+  try {
+    rows = proxyRouteRows(anthropic ? 'anthropic' : 'openai');
+  } catch (e) {
+    sendError(res, 500, e.message || String(e), 'configuration_error');
+    return;
+  }
+  if (anthropic) {
     sendJson(res, 200, { data: rows.map(m => ({ id: m.id, type: 'model', display_name: m.name, created_at: '2026-01-01T00:00:00Z' })), has_more: false, first_id: rows[0]?.id || null, last_id: rows[rows.length - 1]?.id || null });
     return;
   }
@@ -214,7 +234,17 @@ function injectedAsSlot(item) {
   return { modelUid: item.modelUid, displayName: item.label || item.modelUid, useThirdPartyVision: item.useThirdPartyVision === true, targets: [{ providerId: item.providerId, model: item.model, apiFormat: item.apiFormat || item.api_format, apiPath: item.apiPath || item.api_path, unlock: item.unlock || null }] };
 }
 
-function resolveSlot(model) {
+function routeAsSlot(route) {
+  return {
+    modelUid: route.id,
+    displayName: route.displayName || route.id,
+    supportsImages: route.capabilities?.vision === true,
+    useThirdPartyVision: route.enhancement?.thirdPartyVision === true,
+    targets: Array.isArray(route.targets) ? route.targets : [],
+  };
+}
+
+function resolveLegacySlot(model) {
   const slots = getSlots();
   let entry = slots.get(model);
   if (!entry && (!model || model === 'anybridge-default')) {
@@ -234,6 +264,27 @@ function resolveSlot(model) {
   }
   const slot = injectedAsSlot(entry.data);
   return slot ? { slot } : { error: `模型槽位尚未配置目标: ${model}` };
+}
+
+function resolveProxyModel(model, kind) {
+  const store = getProxyRoutes();
+  if (store.loadError) return { error: `本地代理模型路由读取失败: ${store.loadError}` };
+  if (!store.fileExists) return resolveLegacySlot(model);
+
+  const requested = String(model || '').trim();
+  const modelId = (!requested || requested === 'anybridge-default') ? String(store.defaultModelId || '').trim() : requested;
+  if (!modelId) return { error: '本地代理尚未配置默认模型路由。请在「代理 > 模型路由」设置默认模型。' };
+  const route = (store.routes || []).find(item => item.id === modelId);
+  if (!route) return { error: `本地代理模型路由不存在: ${modelId}` };
+  if (route.enabled === false) return { error: `本地代理模型路由已禁用: ${modelId}` };
+  const requiredFormat = kind === 'anthropic' ? 'anthropic' : 'openai';
+  if (!(route.exposedFormats || []).includes(requiredFormat)) {
+    return { error: `本地代理模型路由 ${modelId} 未暴露 ${requiredFormat} 入口` };
+  }
+  if (!Array.isArray(route.targets) || route.targets.length === 0) {
+    return { error: `本地代理模型路由没有可用目标: ${modelId}` };
+  }
+  return { slot: routeAsSlot(route), route };
 }
 
 function hasImage(messages) {
@@ -351,12 +402,16 @@ async function maybeVisionFallback(ctx, slot, providers, mapConfig) {
 }
 
 async function execute(ctx) {
-  const resolved = resolveSlot(ctx.model);
+  const resolved = resolveProxyModel(ctx.model, ctx.kind);
   if (resolved.error) throw new Error(resolved.error);
   const providers = loadProviders();
   const mapConfig = loadModelMapConfig();
   const effective = await maybeVisionFallback(ctx, resolved.slot, providers, mapConfig);
-  const enhancement = mapConfig?.enhancement || {};
+  const enhancement = { ...(mapConfig?.enhancement || {}) };
+  if (resolved.route?.enhancement) {
+    if (resolved.route.enhancement.retry === false) enhancement.retry = false;
+    if (resolved.route.enhancement.autoRouting === false) enhancement.autoRouting = false;
+  }
   const targets = enhancement.autoRouting === false ? [resolved.slot.targets[0]] : [...resolved.slot.targets];
   const policy = retryPolicy(enhancement);
   const failures = [];

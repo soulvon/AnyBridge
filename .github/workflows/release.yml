@@ -7,7 +7,7 @@ on:
 
 jobs:
   prepare-release:
-    name: Prepare source draft release
+    name: Prepare draft release
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -32,7 +32,7 @@ jobs:
             --version "${{ steps.app_version.outputs.VERSION }}" \
             --output release-notes.md
 
-      - name: Ensure source draft release
+      - name: Ensure draft release
         id: source_release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -42,7 +42,7 @@ jobs:
           set -euo pipefail
           TAG="v${VERSION}"
           if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            echo "Source release already exists: $TAG"
+            echo "Release already exists: $TAG"
           else
             gh release create "$TAG" \
               --repo "$GITHUB_REPOSITORY" \
@@ -173,7 +173,7 @@ jobs:
           args: ${{ matrix.tauri_args }}
 
   rebuild-latest-json:
-    name: Rebuild latest.json & Sync to public release repo
+    name: Rebuild latest.json and sync release assets
     needs:
       - prepare-release
       - release
@@ -182,7 +182,7 @@ jobs:
       contents: read
     env:
       SOURCE_REPO: ${{ github.repository }}
-      TARGET_REPO: soulvon/AnyBridge-Release
+      TARGET_REPO: ${{ vars.RELEASE_REPO || 'soulvon/AnyBridge-Release' }}
       VERSION: ${{ needs.prepare-release.outputs.version }}
     steps:
       - name: Checkout repository
@@ -193,7 +193,7 @@ jobs:
         with:
           node-version: 20
 
-      - name: Download source release assets (retry)
+      - name: Download release assets (retry)
         env:
           GH_TOKEN: ${{ secrets.RELEASE_REPO_TOKEN }}
         shell: bash
@@ -216,7 +216,7 @@ jobs:
             exit 1
           fi
 
-      - name: Read source release metadata
+      - name: Read release metadata
         env:
           GH_TOKEN: ${{ secrets.RELEASE_REPO_TOKEN }}
         shell: bash

@@ -3,11 +3,13 @@ captures/
 decompiled/
 templates/
 *.log
+*.pyc
 .DS_Store
 .env
 certs/*.pem
+.local-archive/
 
-# 抓包/调试落盘(可能含账户数据)
+# Local capture/debug outputs that may contain account data
 _dbg_*
 scripts/archive-temp/
 scripts/data/_real_*
@@ -35,16 +37,18 @@ icon-backups/
 
 # Sidecar build & runtime files
 sidecar-build/
+src-tauri/binaries/
+.pkg-cache/
 sidecar/*.exe
 sidecar/certs/*
 !sidecar/certs/.gitkeep
 /byok-icon.png
 /byok-icon.ico
 
-# Specs / Inner Docs
+# Local specs / internal notes
 spec/
 proto-schemas/
-REVERSE-ENGINEERING.md
+PRIVATE_NOTES.md
 
 # Signing keys (private key must NEVER be committed)
 tauri-sign.key

@@ -257,7 +257,7 @@ function catalogByUid() {
 // 配对，但 model-map 只有 modelUid+displayName，原始 label 来自 captured ide-models.json
 // (优先) 或内置 BUILTIN_LABELS (兜底)。热加载，每次响应读最新配置。
 //
-// namePrefix（全局前缀）: 当 namePrefix 非空时，所有已劫持模型的显示名前面都会拼接该前缀。
+// namePrefix（全局前缀）: 当 namePrefix 非空时，所有已路由模型的显示名前面都会拼接该前缀。
 //   有自定义 displayName 的槽位: "{prefix} {displayName}"
 //   无自定义 displayName 的槽位: "{prefix} {原始label}"
 // namePrefix 为空时，行为与之前一致（只有 displayName 非空才改名）。
@@ -279,7 +279,7 @@ function buildRenameTable() {
 
   const pairs = [];
   for (const s of slots) {
-    if (s.enabled === false) continue; // 未劫持=保持原名（与 provider-pool 分流判断一致）
+    if (s.enabled === false) continue; // 未路由=保持原名（与 provider-pool 分流判断一致）
     const orig = captured.get(s.modelUid) || BUILTIN_LABELS[s.modelUid];
     if (!orig) continue;
     const customName = s.displayName && s.displayName.trim();
@@ -599,7 +599,7 @@ export function renameModels(resBody) {
 }
 
 // ─── 模型解锁 + 改名 + 注入（合并版）────────────────────────
-// ClientModelConfig protobuf 字段映射（来自 Windsurf extension.js 逆向）：
+// ClientModelConfig protobuf 字段映射（来自客户端 schema 观察）：
 //   field1  = label (string, wire type 2)
 //   field2  = model_or_alias (message, wire type 2)
 //   field22 = model_uid (string, wire type 2)
@@ -666,7 +666,7 @@ function buildUnlockSet() {
     for (const pv of (p.providers || [])) providerNames.set(pv.id, pv.name);
   } catch { /* 无 providers → 注入项显示"未配置" */ }
 
-  // 1) 槽位改名（劫持项）
+  // 1) 槽位改名（路由项）
   for (const s of slots) {
     if (s.enabled === false) continue;
     if (!s.modelUid) continue;
@@ -1424,7 +1424,7 @@ export function unlockModels(resBody) {
   if (!resBody || resBody.length < 2) return null;
 
   const { unlockAll, byUid, defaultProviderName, labelTemplate, namePrefix, unlockScope, slotVisibilityMode, slotVisibility } = buildUnlockSet();
-  if (!unlockAll && byUid.size === 0) return null; // 劫持未开启且无配置，不改
+  if (!unlockAll && byUid.size === 0) return null; // 路由未开启且无配置，不改
 
   const b0 = resBody[0];
   let kind, payload;

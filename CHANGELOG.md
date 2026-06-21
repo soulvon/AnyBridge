@@ -1,89 +1,9 @@
 # Changelog
 
-## v1.2.18 - 2026-06-19
+All notable changes to AnyBridge will be documented in this file.
 
-### 品牌迁移
-- 完成 AnyBridge 命名收尾，统一应用版本、打包配置、图标资产和项目说明。
-- 保留旧 `ide-byok` 配置目录、证书 CN 和 sidecar 进程名的升级兼容逻辑。
+## v0.1.0 - 2026-06-21
 
-## v1.2.14 - 2026-06-13
-
-### 错误提示
-- 将 BYOK 供应商失败、模型槽位未配置、上游连接中断等错误改为 Connect-RPC 原生终止错误，避免错误文字进入聊天上下文。
-- 优化供应商故障转移失败提示：展示供应商、模型、HTTP 状态和上游可读原因，并给出切换模型、供应商或添加备用目标的建议。
-- 新增 `BYOK_NATIVE_ERRORS=false` 兜底开关，可临时回退为旧版正文错误提示。
-
-## v1.2.13 - 2026-06-13
-
-### 供应商兼容性
-- 修复 DeepSeek Anthropic 兼容地址保存与转发：`/anthropic` 会作为 base path 保留并补全为 `/anthropic/v1/messages`。
-- 优化 Anthropic 兼容地址归一化，支持自定义前缀路径自动补全 `/v1/messages`，避免保存、导入、测试、评测和代理转发路径不一致。
-- 针对 DeepSeek Anthropic 入口使用 Bearer 鉴权，避免误用原生 Anthropic `x-api-key` 导致认证失败。
-- 供应商编辑器重新打开时显示完整 endpoint，减少路径被隐藏造成的误判。
-
-## v1.2.12 - 2026-06-12
-
-### 供应商兼容性
-- 修复 DashScope 官方 OpenAI 兼容接口路径归一化：自动使用 `/compatible-mode/v1/chat/completions` 或 `/compatible-mode/v1/responses`，避免保存、导入、测试和代理转发时误走原生 `/api/v1`。
-- 修复 OpenAI Responses 流式解析遇到 `chat.completion` SSE 分片时的兼容 fallback，避免部分兼容端点流式输出中断。
-- 优化供应商编辑器的格式自动识别和路径保存逻辑，减少 DashScope/Qwen/OpenAI 兼容地址被重写成错误路径的问题。
-
-## v1.2.11 - 2026-06-12
-
-### 模型槽位解锁
-- 修复 Devin/Windsurf 模型下拉中已配置槽位显示不全的问题：合成缺失 `ClientModelConfig` 时同步写入隐藏模型元数据，避免客户端过滤。
-- 修复 Claude Opus 4.5 与 Thinking 槽位隐藏 `apiId` 重复导致下拉去重后少显示一个模型的问题。
-
-## v1.2.10 - 2026-06-12
-
-### 证书安装与代理启动
-- 新增证书安装、卸载命令，环境检测页始终显示「安装证书」和「卸载证书」按钮，方便反复测试。
-- 证书安装流程改为先尝试当前用户信任根证书，必要时再触发管理员授权安装到本机信任根证书。
-- 安装和卸载证书时新增进度状态提示，避免按钮卡在「安装中...」但用户不知道发生了什么。
-- 修复证书信任检测：改为按当前证书真实 SHA1 thumbprint 校验，避免 CN 不一致或 PEM 文件哈希导致误判。
-- 启动代理前自动检查证书状态；如果证书缺失或未信任，会提示用户一键安装证书并继续启动代理。
-
-### 环境检测
-- 新增环境检测脚本和页面状态更新，集中展示代理端口、证书文件、证书信任和系统代理等结果。
-- 生成证书、安装证书、卸载证书后的检测结果会自动刷新，便于确认当前环境是否可用。
-
-### 打包
-- 版本号同步更新到 1.2.10，作为后续 GitHub Actions 云端多平台打包前的 Windows 本地验证版本。
-
-## v1.2.9 - 2026-06-11
-
-### UI 统一与改进
-- 新增/编辑供应商、添加映射页面重构为普通 page，与模型槽位管理样式统一，顶部 tab 栏常驻可见。
-- 三个编辑器页面（新增供应商、添加映射、模型槽位管理）按窗口高度自适应，内部列表独立滚动，移除整页滚动条。
-- API 格式下拉按钮：Anthropic / OpenAI / 自动识别三态切换，支持手动锁定与按 URL 实时自动识别。
-- 拉取模型列表显示协议来源徽章，并支持 Anthropic / OpenAI 双协议自动 fallback。
-- 添加映射页「映射自定义显示名」自动同步为当前选中模型的原始名，方便二次修改。
-- 添加映射页选中态的勾选对号移至左侧图标位，右侧 tag 队列稳定不挤偏。
-- 隐藏供应商编辑页的「能力标记 → Gzip 压缩」选项，已选模型列表区域高度自适应。
-
-### 后端
-- `fetch_models` 返回实际命中的 `api_format` 字段，前端可精准显示协议来源。
-
-## v1.2.8 - 2026-06-10
-
-- 内部版本号升至 1.2.8（无独立 release commit，CHANGELOG 追溯补录）。
-
-## v1.2.7 - 2026-06-09
-
-- 修复云端 sidecar 打包 target：从 `node20-*` 切换到 `node22-*`，并在 GitHub Actions 中显式预取对应的 `pkg` base binary，避免退回源码编译。
-
-## v1.2.6 - 2026-06-09
-
-- 修复云端发布流水线：使用 `npm ci`、官方 npm registry 和本地 `pkg` 可执行文件构建 sidecar，避免 GitHub Actions 在 sidecar 依赖安装阶段卡住。
-- 同步根目录与 sidecar 锁文件的 registry 地址，提升 Windows、macOS 和 Linux 云端打包稳定性。
-
-## v1.2.5 - 2026-06-09
-
-- 优化 UI 结构：将单文件前端拆分为按职责组织的 HTML、CSS 和 JS 文件，降低后续迭代成本。
-- 改进顶栏响应式和键盘交互：900px 最小窗口下导航保持可见，顶部 tab 与 IDE 选择器支持键盘和 ARIA 状态。
-- 新增 `npm run check:ui`，用于检查 UI 脚本加载顺序、CSS import 顺序和 JS 语法。
-- 收紧端口回收逻辑，避免误杀非本项目的 Node 进程。
-- 修复 sidecar 构建脚本的项目根目录定位，保证发布前能正确重建代理二进制。
-- 更新 README 和 UI 维护说明，使文档与当前 MITM 行为、日志策略和前端结构一致。
-- 新增打包与更新发布指南，固定本地测试、云端多平台打包和公开 Release 仓库同步流程。
-- 更新完成后弹出“更新成功”提示，并展示旧版本到新版本的升级结果。
+- Reset the open-source project line to `0.1.0`.
+- Cleaned historical notes, private diagnostics, temporary probes, screenshots, and legacy brand files out of the public tree.
+- Added standard open-source project files, GitHub templates, CI, security policy, and public documentation.

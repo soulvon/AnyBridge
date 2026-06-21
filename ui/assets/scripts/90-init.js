@@ -61,6 +61,9 @@ async function init() {
   }
 
   await loadProviders();
+  if (typeof loadProxyRoutes === 'function') {
+    await loadProxyRoutes();
+  }
   if (typeof refreshPlatforms === 'function') {
     await refreshPlatforms({ silent: true });
   }

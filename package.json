@@ -1,9 +1,18 @@
 {
   "name": "anybridge",
-  "version": "1.2.18",
-  "description": "AnyBridge multi-platform BYOK bridge for AI coding tools",
+  "version": "0.1.0",
+  "description": "Open-source desktop BYOK bridge for AI coding tools",
   "type": "module",
   "main": "sidecar/proxy-entry.js",
+  "author": "soulvon",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/soulvon/AnyBridge.git"
+  },
+  "bugs": {
+    "url": "https://github.com/soulvon/AnyBridge/issues"
+  },
+  "homepage": "https://github.com/soulvon/AnyBridge#readme",
   "scripts": {
     "start": "node sidecar/proxy-entry.js",
     "start:proxy": "node sidecar/hybrid-server.js",
@@ -20,12 +29,16 @@
   },
   "keywords": [
     "anybridge",
-    "codeium",
+    "byok",
+    "tauri",
+    "desktop",
+    "ai-tools",
+    "llm",
     "anthropic",
+    "openai-compatible",
     "proxy",
     "connect-rpc",
-    "protobuf",
-    "reverse-engineering"
+    "protobuf"
   ],
   "license": "MIT",
   "devDependencies": {

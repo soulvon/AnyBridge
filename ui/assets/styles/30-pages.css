@@ -331,6 +331,12 @@ html[data-theme="dark"] .theme-setting-moon {
   margin: 0 auto;
   padding: 34px;
 }
+
+.settings-about-panel {
+  max-width: none;
+  margin: 0;
+  padding: 4px 0 0;
+}
 .about-copy { min-width: 0; }
 .about-kicker {
   display: inline-flex;

@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security issue
+    url: https://github.com/soulvon/AnyBridge/security/advisories/new
+    about: Please do not report security issues in public issues.

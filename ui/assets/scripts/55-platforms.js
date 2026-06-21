@@ -117,6 +117,161 @@ function platformLocalProxyRuntime(platformId) {
   return getLocalProxyRuntimeConfig(platformId);
 }
 
+const PLATFORM_ACCESS_MODE_IDS = new Set(['codebuddy', 'workbuddy', 'zcode']);
+
+function platformSupportsAccessMode(platformId) {
+  return PLATFORM_ACCESS_MODE_IDS.has(platformId);
+}
+
+function normalizePlatformAccessMode(mode) {
+  return String(mode || '').trim() === 'proxy' ? 'proxy' : 'direct';
+}
+
+function platformModelList(platformId) {
+  if (platformId === 'codebuddy') return Array.isArray(cbModels) ? cbModels : [];
+  if (platformId === 'workbuddy') return Array.isArray(wbModels) ? wbModels : [];
+  if (platformId === 'zcode') return Array.isArray(zcModels) ? zcModels : [];
+  return [];
+}
+
+function platformAccessMode(platformId) {
+  const stored = providerStore?.platformAccessModes?.[platformId];
+  if (stored) return normalizePlatformAccessMode(stored);
+  return platformModelList(platformId).some(model => model?.localProxy) ? 'proxy' : 'direct';
+}
+
+async function setPlatformAccessMode(platformId, mode) {
+  if (!platformSupportsAccessMode(platformId)) return;
+  if (!providerStore || typeof providerStore !== 'object') return;
+  if (!providerStore.platformAccessModes || typeof providerStore.platformAccessModes !== 'object') {
+    providerStore.platformAccessModes = {};
+  }
+  providerStore.platformAccessModes[platformId] = normalizePlatformAccessMode(mode);
+  try {
+    if (typeof persistProviders === 'function') await persistProviders();
+    renderPlatformAccessModeUi(platformId);
+  } catch (e) {
+    showCustomAlert(String(e), '接入模式保存失败', 'error');
+  }
+}
+
+function platformProxyRoutes(format = 'openai') {
+  const fmt = format === 'anthropic' ? 'anthropic' : 'openai';
+  const routes = Array.isArray(proxyRoutesStore?.routes) ? proxyRoutesStore.routes : [];
+  return routes
+    .filter(route => route && route.enabled !== false)
+    .filter(route => Array.isArray(route.exposedFormats) && route.exposedFormats.includes(fmt))
+    .filter(route => Array.isArray(route.targets) && route.targets.length > 0);
+}
+
+function platformProxyRouteTargetText(route) {
+  const targets = Array.isArray(route?.targets) ? route.targets : [];
+  if (!targets.length) return '未配置目标';
+  return targets.map(target => {
+    if (typeof proxyRouteTargetLabel === 'function') return proxyRouteTargetLabel(target);
+    return `${target.providerId || '未选择供应商'} / ${target.model || '未填写模型'}`;
+  }).join(' -> ');
+}
+
+function platformProxyRouteCapabilities(route) {
+  const caps = [];
+  if (route?.capabilities?.stream) caps.push('流式');
+  if (route?.capabilities?.tools) caps.push('工具');
+  if (route?.capabilities?.vision) caps.push('图片');
+  if (route?.capabilities?.reasoning) caps.push('推理');
+  return caps;
+}
+
+function platformMaskKey(value) {
+  const key = String(value || '').trim();
+  if (!key) return '未生成';
+  if (key.length <= 14) return '***';
+  return `${key.slice(0, 10)}***${key.slice(-4)}`;
+}
+
+function renderPlatformProxyRouteList(platformId) {
+  const list = document.getElementById(`${platformId}-proxy-route-list`);
+  if (!list) return;
+  const routes = platformProxyRoutes('openai');
+  if (!routes.length) {
+    list.innerHTML = `
+      <div class="platform-proxy-route-empty">
+        尚未配置启用的 OpenAI 代理模型路由。请先到「代理 > 模型路由」添加或导入路由。
+      </div>
+    `;
+    return;
+  }
+  list.innerHTML = routes.map(route => {
+    const caps = platformProxyRouteCapabilities(route);
+    return `
+      <div class="platform-proxy-route-row">
+        <div class="platform-proxy-route-main">
+          <code>${platformEsc(route.id)}</code>
+          <span>${platformEsc(route.displayName || route.id)}</span>
+        </div>
+        <div class="platform-proxy-route-target">${platformEsc(platformProxyRouteTargetText(route))}</div>
+        <div class="platform-proxy-route-caps">
+          ${caps.length ? caps.map(cap => `<span>${platformEsc(cap)}</span>`).join('') : '<span class="muted">能力未确认</span>'}
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+function renderPlatformAccessModeUi(platformId) {
+  if (!platformSupportsAccessMode(platformId)) return;
+  const mode = platformAccessMode(platformId);
+  const routes = platformProxyRoutes('openai');
+  const runtime = platformLocalProxyRuntime(platformId);
+  const card = document.querySelector(`[data-platform-access-card="${platformId}"]`);
+  if (card) {
+    card.querySelectorAll('[data-access-mode]').forEach(btn => {
+      const active = btn.dataset.accessMode === mode;
+      btn.classList.toggle('active', active);
+      btn.setAttribute('aria-pressed', String(active));
+    });
+  }
+  const proxyPanel = document.getElementById(`${platformId}-proxy-mode-panel`);
+  const directPanel = document.getElementById(`${platformId === 'codebuddy' ? 'cb' : platformId === 'workbuddy' ? 'wb' : 'zc'}-list-view`);
+  if (proxyPanel) proxyPanel.style.display = mode === 'proxy' ? '' : 'none';
+  if (directPanel) directPanel.style.display = mode === 'direct' ? '' : 'none';
+  setText(`${platformId}-proxy-route-count`, String(routes.length));
+  setText(`${platformId}-proxy-default-model`, runtime?.defaultModel || '未设置');
+  setText(`${platformId}-proxy-endpoint`, runtime?.endpoint || '-');
+  setText(`${platformId}-proxy-key`, platformMaskKey(runtime?.apiKey));
+  renderPlatformProxyRouteList(platformId);
+}
+
+function renderAllPlatformAccessModeUi() {
+  PLATFORM_ACCESS_MODE_IDS.forEach(renderPlatformAccessModeUi);
+}
+
+function openProxyRoutesFromPlatform() {
+  if (typeof openProxyPanel === 'function') {
+    openProxyPanel('routes');
+  } else if (typeof navigateTo === 'function') {
+    navigateTo('proxy');
+  }
+}
+
+async function copyLocalProxyInfoPlatform(platformId) {
+  const runtime = platformLocalProxyRuntime(platformId);
+  if (!runtime) return;
+  const routes = platformProxyRoutes('openai').map(route => route.id);
+  const text = [
+    `Base URL: ${runtime.endpoint}`,
+    `API Key: ${runtime.apiKey || ''}`,
+    `Default Model: ${runtime.defaultModel || ''}`,
+    `Models: ${routes.join(', ')}`,
+  ].join('\n');
+  try {
+    await navigator.clipboard.writeText(text);
+    if (typeof showBottomToast === 'function') showBottomToast('本地代理信息已复制', 'success');
+  } catch (e) {
+    showCustomAlert(String(e), '复制失败', 'error');
+  }
+}
+
 function platformLocalProxyCard(platformId, info) {
   const runtime = platformLocalProxyRuntime(platformId);
   if (!runtime) return null;
@@ -160,7 +315,10 @@ async function ensureLocalProxyPlatformConfig(platformId) {
   const runtime = platformLocalProxyRuntime(platformId);
   if (!runtime) throw new Error('本地代理配置未初始化');
   if (!runtime.apiKey) throw new Error('本地代理 key 尚未生成');
-  const model = runtime.defaultModel || 'anybridge-default';
+  const models = Array.isArray(runtime.models) && runtime.models.length
+    ? runtime.models
+    : [runtime.defaultModel || 'anybridge-default'];
+  const model = runtime.defaultModel || models[0] || 'anybridge-default';
   const base = {
     id: platformLocalProxyConfigId(platformId),
     name: 'AnyBridge 本地代理',
@@ -168,7 +326,7 @@ async function ensureLocalProxyPlatformConfig(platformId) {
     apiPath: runtime.apiPath,
     apiKey: runtime.apiKey,
     defaultModel: model,
-    models: [model],
+    models,
     sourceProviderId: 'local-proxy',
     sourceProviderName: 'AnyBridge',
     localProxy: true,
@@ -181,7 +339,7 @@ async function ensureLocalProxyPlatformConfig(platformId) {
     providerStore.claudeCodeConfigs = upsertById(providerStore.claudeCodeConfigs, { ...base, settingsConfig });
   } else if (platformId === 'opencode') {
     const settingsConfig = typeof opencodeBuildSettingsConfig === 'function'
-      ? opencodeBuildSettingsConfig('AnyBridge 本地代理', runtime.endpoint, runtime.apiKey, [model], null)
+      ? opencodeBuildSettingsConfig('AnyBridge 本地代理', runtime.endpoint, runtime.apiKey, models, null)
       : null;
     providerStore.opencodeConfigs = upsertById(providerStore.opencodeConfigs, { ...base, settingsConfig });
   } else if (platformId === 'codex') {
@@ -194,7 +352,7 @@ async function ensureLocalProxyPlatformConfig(platformId) {
       apiPath: runtime.apiPath,
       apiKey: runtime.apiKey,
       defaultModel: model,
-      models: [model],
+      models,
       apiFormat: runtime.apiFormat || 'openai',
       enabled: true,
       localProxy: true,
@@ -2907,69 +3065,91 @@ const cbSelectedModelIds = {
 };
 
 const CB_PLATFORM = 'codebuddy';
-function localProxyModelEntryForPlatform(platformId) {
+function localProxyModelEntriesForPlatform(platformId) {
   const runtime = platformLocalProxyRuntime(platformId);
   if (!runtime) throw new Error('本地代理配置未初始化');
-  const modelId = runtime.defaultModel || 'anybridge-default';
+  if (!runtime.apiKey) throw new Error('本地代理 key 尚未生成');
+  const routes = platformProxyRoutes('openai');
+  if (!routes.length) throw new Error('尚未配置启用的 OpenAI 代理模型路由，请先到「代理 > 模型路由」添加或导入。');
   const endpoint = platformId === 'zcode'
     ? runtime.endpoint
     : `${String(runtime.endpoint || '').replace(/\/+$/, '')}/chat/completions`;
-  const entry = {
-    id: modelId,
-    name: 'AnyBridge 本地代理',
-    vendor: 'AnyBridge',
-    url: endpoint,
-    apiKey: runtime.apiKey,
-    maxInputTokens: 128000,
-    maxOutputTokens: 8192,
-    supportsToolCall: true,
-    supportsImages: true,
-    supportsReasoning: true,
-    enabled: true,
-    localProxy: true,
-  };
-  if (platformId === 'workbuddy') entry.useCustomProtocol = true;
-  if (platformId === 'zcode' && typeof zcProviderIdForModel === 'function') {
-    entry.providerId = zcProviderIdForModel(entry);
-  }
-  return entry;
+  return routes.map(route => {
+    const entry = {
+      id: route.id,
+      name: route.displayName || route.id,
+      vendor: 'AnyBridge',
+      url: endpoint,
+      apiKey: runtime.apiKey,
+      maxInputTokens: 128000,
+      maxOutputTokens: 8192,
+      supportsToolCall: route.capabilities?.tools === true,
+      supportsImages: route.capabilities?.vision === true,
+      supportsReasoning: route.capabilities?.reasoning === true,
+      enabled: true,
+      localProxy: true,
+      proxyRouteId: route.id,
+    };
+    if (platformId === 'workbuddy') entry.useCustomProtocol = true;
+    if (platformId === 'zcode' && typeof zcProviderIdForModel === 'function') {
+      entry.providerId = zcProviderIdForModel(entry);
+    }
+    return entry;
+  });
+}
+
+function localProxyModelEntryForPlatform(platformId) {
+  return localProxyModelEntriesForPlatform(platformId)[0];
 }
 
 async function applyLocalProxyModelPlatform(platformId) {
   if (typeof ensureLocalProxyConfig === 'function') await ensureLocalProxyConfig({});
-  const entry = localProxyModelEntryForPlatform(platformId);
   const def = platformDef(platformId);
+  let entries = [];
+  let runtime = null;
+  try {
+    entries = localProxyModelEntriesForPlatform(platformId);
+    runtime = platformLocalProxyRuntime(platformId);
+  } catch (e) {
+    if (typeof addLog === 'function') addLog('err', `${def.name} 本地代理配置不可用: ${e}`);
+    showCustomAlert(String(e), '无法同步本地代理', 'error');
+    return;
+  }
   const ok = await showCustomConfirm(
-    `将向 ${def.name} 写入「AnyBridge 本地代理」模型。\n\n模型：${entry.id}\n地址：${entry.url}\n\n请求会先进入 AnyBridge 全局代理服务；如果代理未启动，外部工具会连接失败。`,
-    '使用本地代理配置',
+    `将向 ${def.name} 写入 ${entries.length} 个「AnyBridge 本地代理」模型。\n\n来源：代理 > 模型路由\n地址：${runtime?.endpoint || ''}\n\n同名直连模型会被当前代理路由模型替换。请求会先进入 AnyBridge 全局代理服务；如果代理未启动，外部工具会连接失败。`,
+    '同步本地代理配置',
     'warn'
   );
   if (!ok) return;
 
-  const applyEntry = (models) => {
+  const applyEntries = (models) => {
     const list = Array.isArray(models) ? models : [];
-    const idx = list.findIndex(model => model && (model.localProxy || (model.vendor === 'AnyBridge' && model.name === 'AnyBridge 本地代理')));
-    if (idx >= 0) list[idx] = { ...list[idx], ...entry };
-    else list.unshift(entry);
-    return list;
+    const routeIds = new Set(entries.map(entry => entry.id));
+    const preserved = list.filter(model => {
+      if (!model) return false;
+      if (model.localProxy || (model.vendor === 'AnyBridge' && model.name === 'AnyBridge 本地代理')) return false;
+      return !routeIds.has(String(model.id || ''));
+    });
+    return [...entries, ...preserved];
   };
 
   try {
     if (platformId === 'codebuddy') {
-      cbModels = applyEntry(cbModels);
+      cbModels = applyEntries(cbModels);
       renderCodeBuddyModels();
       await saveCodeBuddyModels({ silent: true, throwOnError: true });
     } else if (platformId === 'workbuddy') {
-      wbModels = applyEntry(wbModels);
+      wbModels = applyEntries(wbModels);
       renderWbModels();
       await saveWbModels({ silent: true, throwOnError: true });
     } else if (platformId === 'zcode') {
-      zcModels = applyEntry(zcModels);
+      zcModels = applyEntries(zcModels);
       renderZcModels();
       await saveZcModels({ silent: true, throwOnError: true });
     }
-    if (typeof addLog === 'function') addLog('ok', `${def.name} 已写入 AnyBridge 本地代理模型`);
-    showCustomAlert(`${def.name} 已写入 AnyBridge 本地代理模型。`, '写入完成', 'success');
+    await setPlatformAccessMode(platformId, 'proxy');
+    if (typeof addLog === 'function') addLog('ok', `${def.name} 已同步 ${entries.length} 个 AnyBridge 本地代理模型`);
+    showCustomAlert(`${def.name} 已同步 ${entries.length} 个 AnyBridge 本地代理模型。`, '写入完成', 'success');
   } catch (e) {
     if (typeof addLog === 'function') addLog('err', `${def.name} 写入本地代理模型失败: ${e}`);
     showCustomAlert(String(e), '写入失败', 'error');
@@ -3568,6 +3748,7 @@ function renderCodeBuddyModels() {
     if (empty) empty.style.display = '';
     if (table) table.style.display = 'none';
     cbSyncSelectionState('Cb');
+    renderPlatformAccessModeUi('codebuddy');
     return;
   }
 
@@ -3578,6 +3759,7 @@ function renderCodeBuddyModels() {
     ? entries.map(({ model, index }) => cbModelRow(model, index)).join('')
     : cbNoResultRow('cb');
   cbSyncSelectionState('Cb');
+  renderPlatformAccessModeUi('codebuddy');
 }
 
 function editCbModel(index) { openCbEditModal('Cb', index); }
@@ -4175,6 +4357,7 @@ function renderWbModels() {
     if (empty) empty.style.display = '';
     if (table) table.style.display = 'none';
     cbSyncSelectionState('Wb');
+    renderPlatformAccessModeUi('workbuddy');
     return;
   }
 
@@ -4185,6 +4368,7 @@ function renderWbModels() {
     ? entries.map(({ model, index }) => wbModelRow(model, index)).join('')
     : cbNoResultRow('wb');
   cbSyncSelectionState('Wb');
+  renderPlatformAccessModeUi('workbuddy');
 }
 
 function editWbModel(index) { openCbEditModal('Wb', index); }
@@ -4422,6 +4606,7 @@ function renderZcModels() {
     if (empty) empty.style.display = '';
     if (table) table.style.display = 'none';
     cbSyncSelectionState('Zc');
+    renderPlatformAccessModeUi('zcode');
     return;
   }
 
@@ -4432,6 +4617,7 @@ function renderZcModels() {
     ? entries.map(({ model, index }) => zcModelRow(model, index)).join('')
     : cbNoResultRow('zc');
   cbSyncSelectionState('Zc');
+  renderPlatformAccessModeUi('zcode');
 }
 
 function editZcModel(index) { openCbEditModal('Zc', index); }

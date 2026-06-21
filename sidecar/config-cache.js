@@ -10,6 +10,7 @@
 // 接口：
 //   getProviders()  -> Map<id, provider>
 //   getSlots()      -> Map<modelUid, {kind, data}>
+//   getProxyRoutes()-> { fileExists, defaultModelId, routes }
 //   invalidate('providers' | 'slots' | 'all')
 //   markProvidersDirty()  // 写入方调用
 
@@ -38,6 +39,7 @@ function positiveInt(value, fallback, min = 0) {
 
 const PROVIDERS_PATH = () => path.join(configDir(), 'providers.json');
 const SLOTS_PATH = () => path.join(configDir(), 'model-map.json');
+const PROXY_ROUTES_PATH = () => path.join(configDir(), 'proxy-routes.json');
 
 const TTL_MS = 2000; // 兜底 TTL：2s 内不重新读盘（即便 mtime 变化）
 
@@ -45,6 +47,7 @@ const cache = {
   providers: { mtimeMs: 0, data: null, loadedAt: 0, dirty: true },
   slots:     { mtimeMs: 0, data: null, loadedAt: 0, dirty: true },
   modelMap:  { mtimeMs: 0, data: null, loadedAt: 0, dirty: true },
+  proxyRoutes: { mtimeMs: 0, data: null, loadedAt: 0, dirty: true },
 };
 
 function readJsonSafe(file) {
@@ -81,6 +84,46 @@ function loadEntry(entry, file, transform) {
   entry.data = transform ? transform(r.json) : r.json;
   entry.dirty = false;
   return entry.data;
+}
+
+function loadProxyRoutesEntry() {
+  const entry = cache.proxyRoutes;
+  const file = PROXY_ROUTES_PATH();
+  const now = Date.now();
+  if (!fs.existsSync(file)) {
+    if (entry.mtimeMs !== 0 && entry.data?.fileExists) {
+      console.info('[config-cache] proxy routes reloaded: file removed');
+    }
+    entry.mtimeMs = 0;
+    entry.loadedAt = now;
+    entry.data = transformProxyRoutes(null);
+    entry.dirty = false;
+    return entry.data;
+  }
+  try {
+    const stat = fs.statSync(file);
+    if (entry.data && stat.mtimeMs === entry.mtimeMs) {
+      entry.loadedAt = now;
+      entry.dirty = false;
+      return entry.data;
+    }
+    const previousMtime = entry.mtimeMs;
+    const raw = fs.readFileSync(file, 'utf8');
+    entry.mtimeMs = stat.mtimeMs;
+    entry.loadedAt = now;
+    entry.data = transformProxyRoutes(JSON.parse(raw));
+    entry.dirty = false;
+    if (previousMtime !== stat.mtimeMs) {
+      console.info('[config-cache] proxy routes reloaded');
+    }
+    return entry.data;
+  } catch (e) {
+    console.error(`[config-cache] failed to read ${file}: ${e.message}`);
+    entry.loadedAt = now;
+    entry.data = { fileExists: true, loadError: e.message || String(e), version: 1, defaultModelId: '', routes: [] };
+    entry.dirty = false;
+    return entry.data;
+  }
 }
 
 function transformProviders(json) {
@@ -129,6 +172,71 @@ function transformModelMap(json) {
   };
 }
 
+function normalizeProxyRouteTarget(target) {
+  return {
+    providerId: String(target?.providerId || target?.provider_id || '').trim(),
+    model: String(target?.model || '').trim(),
+    apiFormat: String(target?.apiFormat || target?.api_format || '').trim(),
+    apiPath: String(target?.apiPath || target?.api_path || '').trim(),
+    unlock: String(target?.unlock || '').trim(),
+  };
+}
+
+function validateProxyRoutes(routes, defaultModelId) {
+  const seen = new Set();
+  for (const route of routes) {
+    if (!route.id) throw new Error('本地代理模型路由 ID 不能为空');
+    if (seen.has(route.id)) throw new Error(`本地代理模型路由 ID 重复: ${route.id}`);
+    seen.add(route.id);
+    if (!route.exposedFormats.length) throw new Error(`模型路由 ${route.id} 至少需要暴露一个入口`);
+    for (const fmt of route.exposedFormats) {
+      if (fmt !== 'openai' && fmt !== 'anthropic') {
+        throw new Error(`模型路由 ${route.id} 的暴露入口必须是 openai 或 anthropic`);
+      }
+    }
+    if (route.enabled !== false && !route.targets.length) {
+      throw new Error(`模型路由 ${route.id} 已启用但没有目标`);
+    }
+    for (const target of route.targets) {
+      if (!target.providerId) throw new Error(`模型路由 ${route.id} 的目标供应商不能为空`);
+      if (!target.model) throw new Error(`模型路由 ${route.id} 的目标模型不能为空`);
+      if (target.apiFormat !== 'openai' && target.apiFormat !== 'anthropic') {
+        throw new Error(`模型路由 ${route.id} 的目标 apiFormat 必须是 openai 或 anthropic`);
+      }
+    }
+  }
+  if (defaultModelId && !routes.some(route => route.id === defaultModelId && route.enabled !== false)) {
+    throw new Error(`默认模型路由不存在或未启用: ${defaultModelId}`);
+  }
+}
+
+function transformProxyRoutes(json) {
+  if (!json || typeof json !== 'object') {
+    return { fileExists: false, version: 1, defaultModelId: '', routes: [] };
+  }
+  const defaultModelId = String(json.defaultModelId || '').trim();
+  const routes = Array.isArray(json.routes) ? json.routes : [];
+  const normalizedRoutes = routes.map(route => ({
+    id: String(route?.id || '').trim(),
+    displayName: String(route?.displayName || route?.display_name || '').trim(),
+    enabled: route?.enabled !== false,
+    exposedFormats: Array.isArray(route?.exposedFormats)
+      ? route.exposedFormats.map(x => String(x || '').trim()).filter(Boolean)
+      : ['openai', 'anthropic'],
+    source: String(route?.source || 'manual').trim() || 'manual',
+    capabilities: route?.capabilities && typeof route.capabilities === 'object' ? route.capabilities : {},
+    enhancement: route?.enhancement && typeof route.enhancement === 'object' ? route.enhancement : {},
+    targets: Array.isArray(route?.targets) ? route.targets.map(normalizeProxyRouteTarget) : [],
+  }));
+  validateProxyRoutes(normalizedRoutes, defaultModelId);
+  return {
+    fileExists: true,
+    version: Number(json.version) || 1,
+    defaultModelId,
+    routes: normalizedRoutes,
+  };
+}
+
 export function getProviders() {
   return loadEntry(cache.providers, PROVIDERS_PATH(), transformProviders);
 }
@@ -141,12 +249,17 @@ export function getModelMapConfig() {
   return loadEntry(cache.modelMap, SLOTS_PATH(), transformModelMap);
 }
 
+export function getProxyRoutes() {
+  return loadProxyRoutesEntry();
+}
+
 export function invalidate(what = 'all') {
   if (what === 'all' || what === 'providers') cache.providers.dirty = true;
   if (what === 'all' || what === 'slots') {
     cache.slots.dirty = true;
     cache.modelMap.dirty = true;
   }
+  if (what === 'all' || what === 'proxyRoutes') cache.proxyRoutes.dirty = true;
 }
 
 export function markProvidersDirty() { cache.providers.dirty = true; }
@@ -154,3 +267,4 @@ export function markSlotsDirty() {
   cache.slots.dirty = true;
   cache.modelMap.dirty = true;
 }
+export function markProxyRoutesDirty() { cache.proxyRoutes.dirty = true; }

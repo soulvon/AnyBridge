@@ -249,7 +249,7 @@ pub async fn run_provider_eval(
                 caps.push(EvalCap {
                     rule: "response_signature_invalid".into(),
                     cap_value: 40.0,
-                    reason: "关键响应签名字段不合规，疑似逆向中转或字段伪造".into(),
+                    reason: "关键响应签名字段不合规，疑似非预期中转或字段伪造".into(),
                 });
             }
             push_probe(&app, &report_id, &mut probes, p3, &mut completed, total);
@@ -3244,7 +3244,7 @@ fn verdict(score: f64, caps: &[EvalCap]) -> String {
     } else if score >= 50.0 {
         "可疑：存在协议偏差、能力缺失或响应不稳定".into()
     } else if score >= 30.0 {
-        "高风险：关键探针失败，疑似逆向、降级或字段伪造".into()
+        "高风险：关键探针失败，疑似协议偏差、降级或字段伪造".into()
     } else {
         "不建议使用：协议不可用或高度疑似非目标模型".into()
     }

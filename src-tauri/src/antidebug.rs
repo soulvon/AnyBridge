@@ -1,4 +1,4 @@
-// antidebug.rs — 反调试/反逆向保护模块
+// antidebug.rs - debugger and integrity protection module
 // 参考 WindsurfGate 实现，但精简到核心检测
 //
 // 防误杀策略：
