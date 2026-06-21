@@ -117,7 +117,7 @@ jobs:
           targets: ${{ matrix.rust_target }}
 
       - name: Node.js setup
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: 20
           cache: "npm"
@@ -189,7 +189,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Node.js setup
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: 20
 
