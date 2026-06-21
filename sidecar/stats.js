@@ -34,6 +34,14 @@ function statsPath() {
   return path.join(configDir(), 'stats.json');
 }
 
+function visionLogDir() {
+  return path.join(configDir(), 'vision-logs');
+}
+
+function visionLogPath() {
+  return path.join(visionLogDir(), 'vision-' + todayKey() + '.jsonl');
+}
+
 function configPath() {
   return path.join(configDir(), 'byok-config.json');
 }
@@ -59,6 +67,8 @@ function dailySnapshot() {
     errors: state.errors,
     inputTokens: state.inputTokens,
     outputTokens: state.outputTokens,
+    cachedTokens: state.cachedTokens,
+    cacheCreationInputTokens: state.cacheCreationInputTokens,
     lastProvider: state.lastProvider,
     lastModel: state.lastModel,
     lastError: state.lastError,
@@ -67,6 +77,7 @@ function dailySnapshot() {
     retries: state.retries,
     lastRetries: state.lastRetries,
     lastRetryReason: state.lastRetryReason,
+    visionFallback: state.visionFallback,
   };
 }
 
@@ -128,6 +139,41 @@ function loadPersistedState() {
   }
 }
 
+function emptyVisionFallback() {
+  return {
+    images: 0,
+    apiCalls: 0,
+    cacheHits: 0,
+    failures: 0,
+    byModel: {},
+    recent: [],
+  };
+}
+
+function normalizeVisionFallback(value) {
+  const base = emptyVisionFallback();
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return base;
+  return {
+    images: Number.isFinite(value.images) ? value.images : 0,
+    apiCalls: Number.isFinite(value.apiCalls) ? value.apiCalls : 0,
+    cacheHits: Number.isFinite(value.cacheHits) ? value.cacheHits : 0,
+    failures: Number.isFinite(value.failures) ? value.failures : 0,
+    byModel: value.byModel && typeof value.byModel === 'object' && !Array.isArray(value.byModel) ? value.byModel : {},
+    recent: Array.isArray(value.recent) ? value.recent.slice(0, 20) : [],
+  };
+}
+
+function appendVisionLog(record) {
+  try {
+    fs.mkdirSync(visionLogDir(), { recursive: true });
+    fs.appendFile(visionLogPath(), JSON.stringify(record) + '\n', 'utf8', (e) => {
+      if (e) console.error('[stats] failed to write vision log: ' + e.message);
+    });
+  } catch (e) {
+    console.error('[stats] failed to prepare vision log: ' + e.message);
+  }
+}
+
 function applyPersistedState(saved) {
   if (!saved) return;
   state.day = saved.day || todayKey();
@@ -135,6 +181,8 @@ function applyPersistedState(saved) {
   state.errors = Number.isFinite(saved.errors) ? saved.errors : 0;
   state.inputTokens = Number.isFinite(saved.inputTokens) ? saved.inputTokens : 0;
   state.outputTokens = Number.isFinite(saved.outputTokens) ? saved.outputTokens : 0;
+  state.cachedTokens = Number.isFinite(saved.cachedTokens) ? saved.cachedTokens : 0;
+  state.cacheCreationInputTokens = Number.isFinite(saved.cacheCreationInputTokens) ? saved.cacheCreationInputTokens : 0;
   state.lastProvider = saved.lastProvider || null;
   state.lastModel = saved.lastModel || null;
   state.lastError = saved.lastError || null;
@@ -143,6 +191,7 @@ function applyPersistedState(saved) {
   state.retries = Number.isFinite(saved.retries) ? saved.retries : 0;
   state.lastRetries = Number.isFinite(saved.lastRetries) ? saved.lastRetries : 0;
   state.lastRetryReason = saved.lastRetryReason || null;
+  state.visionFallback = normalizeVisionFallback(saved.visionFallback);
   state.history = saved.history && typeof saved.history === 'object' && !Array.isArray(saved.history) ? saved.history : {};
 }
 
@@ -152,7 +201,7 @@ const BUCKET_COUNT = 6;
 const WINDOW_MS = BUCKET_MS * BUCKET_COUNT;
 
 function emptyBucket() {
-  return { requests: 0, errors: 0, inputTokens: 0, outputTokens: 0, latencySumMs: 0, latencySamples: 0 };
+  return { requests: 0, errors: 0, inputTokens: 0, outputTokens: 0, cachedTokens: 0, latencySumMs: 0, latencySamples: 0 };
 }
 
 const buckets = new Array(BUCKET_COUNT).fill(null).map(() => emptyBucket());
@@ -182,6 +231,8 @@ const state = {
   errors: 0,
   inputTokens: 0,
   outputTokens: 0,
+  cachedTokens: 0,
+  cacheCreationInputTokens: 0,
   lastProvider: null,
   lastModel: null,
   lastError: null,
@@ -190,6 +241,7 @@ const state = {
   retries: 0,           // 累计重试次数
   lastRetries: 0,       // 最近一次请求的重试次数
   lastRetryReason: null, // 最近一次重试原因
+  visionFallback: emptyVisionFallback(),
   history: {},
 };
 
@@ -204,10 +256,13 @@ function rollDayIfNeeded() {
     state.errors = 0;
     state.inputTokens = 0;
     state.outputTokens = 0;
+    state.cachedTokens = 0;
+    state.cacheCreationInputTokens = 0;
     state.byModel = {};
     state.recent = [];
     state.lastError = null;
     state.retries = 0;
+    state.visionFallback = emptyVisionFallback();
     schedulePersist();
   }
 }
@@ -229,13 +284,18 @@ export function recordRequest({ provider, requestedModel, resolvedModel }) {
   schedulePersist();
 }
 
-export function recordUsage({ inputTokens = 0, outputTokens = 0 }) {
+export function recordUsage({ inputTokens = 0, outputTokens = 0, cachedTokens = 0, cacheReadInputTokens = 0, cacheCreationInputTokens = 0 } = {}) {
   rollDayIfNeeded();
+  const readTokens = Math.max(Number(cachedTokens) || 0, Number(cacheReadInputTokens) || 0);
+  const creationTokens = Number(cacheCreationInputTokens) || 0;
   state.inputTokens += inputTokens;
   state.outputTokens += outputTokens;
+  state.cachedTokens += readTokens;
+  state.cacheCreationInputTokens += creationTokens;
   const b = activeBucket();
   b.inputTokens += inputTokens;
   b.outputTokens += outputTokens;
+  b.cachedTokens += readTokens;
   schedulePersist();
 }
 
@@ -268,13 +328,94 @@ export function recordRetry({ count, reason }) {
   schedulePersist();
 }
 
+function pushVisionRecent(entry) {
+  state.visionFallback.recent.unshift(entry);
+  if (state.visionFallback.recent.length > 20) state.visionFallback.recent.length = 20;
+}
+
+export function recordVisionFallback(event = {}) {
+  rollDayIfNeeded();
+  const now = new Date().toISOString();
+  const ok = event.status !== 'error' && !event.error;
+  const providerName = event.providerName || null;
+  const model = event.model || null;
+  const modelKey = providerName || model ? (providerName || 'unknown') + '/' + (model || 'unknown') : 'unknown';
+
+  if (ok) {
+    state.visionFallback.images += 1;
+    if (event.cached) state.visionFallback.cacheHits += 1;
+    else state.visionFallback.apiCalls += Number.isFinite(event.apiCalls) ? event.apiCalls : 1;
+    state.visionFallback.byModel[modelKey] = (state.visionFallback.byModel[modelKey] || 0) + 1;
+  } else {
+    state.visionFallback.failures += 1;
+    if (Number.isFinite(event.apiCalls) && event.apiCalls > 0) {
+      state.visionFallback.apiCalls += event.apiCalls;
+    }
+  }
+
+  const description = typeof event.description === 'string' ? event.description : '';
+  const record = {
+    ts: now,
+    status: ok ? 'ok' : 'error',
+    requestId: event.requestId || null,
+    conversationKey: event.conversationKey || null,
+    requestedModel: event.requestedModel || null,
+    slotModelUid: event.slotModelUid || null,
+    slotDisplayName: event.slotDisplayName || null,
+    providerId: event.providerId || null,
+    providerName,
+    model,
+    protocol: event.protocol || null,
+    cached: !!event.cached,
+    imageRef: Number.isFinite(event.imageRef) ? event.imageRef : null,
+    duplicateInRequest: !!event.duplicateInRequest,
+    seenInConversation: !!event.seenInConversation,
+    apiCalls: Number.isFinite(event.apiCalls) ? event.apiCalls : (ok && !event.cached ? 1 : 0),
+    imageHash: event.imageHash || null,
+    imageBytes: event.imageBytes || 0,
+    base64Length: event.base64Length || 0,
+    mimeType: event.mimeType || 'image/png',
+    messageIndex: Number.isFinite(event.messageIndex) ? event.messageIndex : null,
+    blockIndex: Number.isFinite(event.blockIndex) ? event.blockIndex : null,
+    userTextPreview: event.userTextPreview || '',
+    descriptionLength: description.length,
+    description,
+    error: event.error || null,
+  };
+
+  pushVisionRecent({
+    ts: Date.now(),
+    status: record.status,
+    requestId: record.requestId,
+    conversationKey: record.conversationKey,
+    requestedModel: record.requestedModel,
+    slotModelUid: record.slotModelUid,
+    providerName: record.providerName,
+    model: record.model,
+    protocol: record.protocol,
+    cached: record.cached,
+    imageRef: record.imageRef,
+    duplicateInRequest: record.duplicateInRequest,
+    seenInConversation: record.seenInConversation,
+    apiCalls: record.apiCalls,
+    imageHash: record.imageHash,
+    imageBytes: record.imageBytes,
+    mimeType: record.mimeType,
+    descriptionLength: record.descriptionLength,
+    descriptionPreview: description.slice(0, 300),
+    error: record.error,
+  });
+  appendVisionLog(record);
+  schedulePersist();
+}
+
 /**
  * 计算 60s 滑窗汇总：丢弃过期的 bucket
  */
 function rateStats() {
   const now = Date.now();
   const cutoff = now - WINDOW_MS;
-  let requests = 0, errors = 0, inputTokens = 0, outputTokens = 0, latencySumMs = 0, latencySamples = 0;
+  let requests = 0, errors = 0, inputTokens = 0, outputTokens = 0, cachedTokens = 0, latencySumMs = 0, latencySamples = 0;
   for (const b of buckets) {
     if (!b) continue;
     // 简化：bucket 是 10s 切片，只要 bucketStart 在窗口内就算。
@@ -285,6 +426,7 @@ function rateStats() {
     errors += b.errors;
     inputTokens += b.inputTokens;
     outputTokens += b.outputTokens;
+    cachedTokens += b.cachedTokens || 0;
     latencySumMs += b.latencySumMs;
     latencySamples += b.latencySamples;
   }
@@ -302,6 +444,7 @@ function rateStats() {
     errorRate: Math.round(errorRate * 10) / 10,
     windowRequests: requests,
     windowErrors: errors,
+    cachedTokens,
   };
 }
 
@@ -317,6 +460,8 @@ export function snapshot() {
     errors: state.errors,
     inputTokens: state.inputTokens,
     outputTokens: state.outputTokens,
+    cachedTokens: state.cachedTokens,
+    cacheCreationInputTokens: state.cacheCreationInputTokens,
     totalTokens,
     estCostUsd: Number(estCost.toFixed(4)),
     lastProvider: state.lastProvider,
@@ -327,6 +472,8 @@ export function snapshot() {
     retries: state.retries,
     lastRetries: state.lastRetries,
     lastRetryReason: state.lastRetryReason,
+    visionFallback: state.visionFallback,
+    visionLogFile: visionLogPath(),
     historyDays: Object.keys(state.history).length,
     rate: rateStats(),
   };

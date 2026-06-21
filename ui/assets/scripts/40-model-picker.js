@@ -892,22 +892,22 @@ function openProviderEditor(id) {
   const p = id ? providerStore.providers.find(x => x.id === id) : null;
   document.getElementById('pf-id').value = p ? p.id : '';
   document.getElementById('pf-name').value = p ? p.name : '';
+  const host = p ? p.apiHost : '';
+  const path = p ? (p.apiPath || '') : '';
+  const detectedApiFormat = autoDetectFormatFromHost(`${host}${path}`);
   const fmtElInit = document.getElementById('pf-format');
   if (fmtElInit) {
-    fmtElInit.value = p ? (p.apiFormat || 'anthropic') : 'anthropic';
-    // 编辑已有 provider：锁定为已存格式；新增：默认自动识别
-    fmtElInit.dataset.locked = p ? '1' : '0';
+    fmtElInit.value = detectedApiFormat;
+    fmtElInit.dataset.locked = '0';
   }
 
   // Show only the user-facing API URL. Generated default paths stay internal.
-  const host = p ? p.apiHost : '';
-  const path = p ? (p.apiPath || '') : '';
-  const apiFormat = p ? (p.apiFormat || 'anthropic') : 'anthropic';
+  const apiFormat = detectedApiFormat;
   document.getElementById('pf-host').value = p ? providerEndpointDisplayUrl(host, path, apiFormat) : host;
   document.getElementById('pf-path').value = p ? displayProviderApiPath(apiFormat, path) : '';
   document.getElementById('pf-key').value = p ? p.apiKey : '';
   document.getElementById('pf-key').type = 'password';
-  const caps = providerCapabilities(p || { apiFormat: document.getElementById('pf-format').value, apiPath: document.getElementById('pf-path').value });
+  const caps = providerCapabilities(p || { apiPath: document.getElementById('pf-path').value });
   const gzipEl = document.getElementById('pf-cap-gzip');
   if (gzipEl) gzipEl.checked = caps.gzip;
   const keyBtn = document.getElementById('pf-key-toggle');
@@ -989,7 +989,8 @@ async function saveProviderFromEditor() {
   );
 
   const defaultModel = selectedModels[0] || '';
-  const existingCaps = id ? (providerStore.providers.find(x => x.id === id)?.capabilities || {}) : {};
+  const existingProvider = id ? providerStore.providers.find(x => x.id === id) : null;
+  const existingCaps = existingProvider?.capabilities || {};
   const capabilities = {
     ...existingCaps,
     text: true,
@@ -998,17 +999,19 @@ async function saveProviderFromEditor() {
   };
 
   // 合并已有 modelCaps + 本次弹窗探测到的草稿能力
-  const existingModelCaps = id ? (providerStore.providers.find(x => x.id === id)?.modelCaps || {}) : {};
+  const existingModelCaps = existingProvider?.modelCaps || {};
   const mergedModelCaps = { ...existingModelCaps, ...editorDraftModelCaps };
   const provider = {
     id: id || `p-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-    name, apiHost, apiKey, defaultModel, apiFormat,
+    name, apiHost, apiKey, defaultModel,
     apiPath: apiPath || null,
     enabled: true,
     capabilities,
     models: [...selectedModels],
     modelCaps: mergedModelCaps,
   };
+  if (existingProvider?.unlocks) provider.unlocks = existingProvider.unlocks;
+  if (existingProvider?.meta) provider.meta = existingProvider.meta;
 
   if (id) {
     const idx = providerStore.providers.findIndex(x => x.id === id);
@@ -1044,21 +1047,22 @@ async function testProvider(id) {
   if (!p) return;
   const dot = document.getElementById(`conn-dot-${id}`);
   setProviderConnectionText(id, '测试中…');
-  try {
+  const formats = ['openai', 'anthropic'];
+  const results = [];
+  for (const apiFormat of formats) {
     const result = await invoke('test_connection', {
       args: {
         host: p.apiHost, api_key: p.apiKey,
         path: p.apiPath || null,
-        api_format: p.apiFormat || 'anthropic',
+        api_format: apiFormat,
         model: p.defaultModel || null,
       }
-    });
-    const msg = typeof result === 'string' ? result : (result.message || '连通 ✓');
-    // 自动写入探测到的能力标记
-    if (result && typeof result === 'object' && result.capabilities) {
+    }).then(value => ({ apiFormat, ok: true, value }), error => ({ apiFormat, ok: false, error }));
+    results.push(result);
+    if (result.ok && result.value && typeof result.value === 'object' && result.value.capabilities) {
       const idx = providerStore.providers.findIndex(x => x.id === id);
       if (idx >= 0) {
-        const c = result.capabilities;
+        const c = result.value.capabilities;
         // gzip 是供应商级能力
         if (c.gzip !== undefined) {
           const caps = providerStore.providers[idx].capabilities || {};
@@ -1075,16 +1079,21 @@ async function testProvider(id) {
           if (c.tools === true) mc[testModel].tools = true;
           providerStore.providers[idx].modelCaps = mc;
         }
-        await persistProviders();
       }
     }
+  }
+  const okResults = results.filter(r => r.ok);
+  if (okResults.length) {
+    await persistProviders();
     if (dot) dot.className = 'conn-dot ok';
+    const msg = results.map(r => `${r.apiFormat === 'openai' ? 'OpenAI' : 'Anthropic'} ${r.ok ? '✓' : '✗'}`).join(' / ');
     setProviderConnectionText(id, msg);
-    addLog('ok', `${p.name} 连接测试: ${msg}`);
-  } catch (e) {
+    addLog('ok', `${p.name} 协议探测: ${msg}`);
+  } else {
     if (dot) dot.className = 'conn-dot no';
-    setProviderConnectionText(id, String(e) || '失败');
-    addLog('err', `${p.name} 连接测试失败: ${e}`);
+    const msg = results.map(r => `${r.apiFormat === 'openai' ? 'OpenAI' : 'Anthropic'}: ${String(r.error || '失败').slice(0, 80)}`).join('；');
+    setProviderConnectionText(id, '全部失败');
+    addLog('err', `${p.name} 协议探测失败: ${msg}`);
   }
 }
 

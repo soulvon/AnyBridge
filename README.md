@@ -2,7 +2,7 @@
 
 一个基于 Tauri v2 + Rust 构建的多平台 BYOK 桥接客户端。它可以将 Windsurf / Devin IDE 的 Cascade 聊天后端无缝替换为你自己的 Anthropic / OpenAI API 密钥，也可以把 Codex、Claude Code、CodeBuddy、OpenCode 等工具切换到你配置的供应商，同时保留原生登录、补全、代码库索引和工具自身配置。
 
-当前版本：`v1.2.17`。更新记录见 [CHANGELOG.md](CHANGELOG.md)。
+当前版本：`v1.2.18`。更新记录见 [CHANGELOG.md](CHANGELOG.md)。
 
 项目通过在本地运行一个 MITM 代理，优先接管 Cascade 聊天 RPC，并按配置改写模型列表、模型状态和部分限流/能力探测请求；登录、补全、代码库索引等非目标流量保持直连或透传。代理启动时会按需对 IDE 的 `workbench.html` 做可还原的前端注入，用于增强模型卡片展示；停止代理、退出应用或触发防误杀恢复逻辑时会自动还原。
 
@@ -30,7 +30,7 @@ Windsurf / Devin IDE ──(http.proxy = localhost:7450)──> AnyBridge 混合
 本桌面应用主要负责平台接入管理、本地配置的持久化存储、实时连接状态与日志的可视化展示、一键生成本地 MITM 解密证书，以及代理型平台启动/停止时的 IDE 注入与还原。
 
 > [!NOTE]
-> MITM 请求/响应体日志默认关闭。排障时可设置 `BYOK_MITM_LOG=true` 开启截断落盘，确需完整 body 再额外设置 `BYOK_MITM_FULL_LOG=true`。
+> MITM 请求/响应体日志默认开启（截断到 8192 字节）。需要关闭时设置 `BYOK_MITM_LOG=false`，需要完整 body 时设置 `BYOK_MITM_FULL_LOG=true`。
 
 ---
 

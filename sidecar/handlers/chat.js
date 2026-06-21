@@ -5,16 +5,24 @@
 
 import https from 'node:https';
 import crypto from 'node:crypto';
+import {
+  buildClaudeCodeUnlockPayload,
+  claudeCodeUnlockHeaders,
+  generateUUIDv7,
+  normalizeClaudeCodeUnlock,
+  normalizeCodexUnlock,
+} from '../lib/codex-unlock.js';
 import { parseGetChatMessageRequest } from './parse-request.js';
 import { buildErrorChunk } from './build-response.js';
 import { AnthropicStreamProcessor, parseSSEChunk } from './anthropic-stream.js';
 import { OpenAIChatCompletionsStreamProcessor, OpenAIStreamProcessor, parseOpenAISSEChunk } from './openai-stream.js';
 import { wrapEnvelope, endOfStreamEnvelope, endOfStreamErrorEnvelope, streamHeaders, gzipSync, unwrapRequest } from '../connect.js';
 import { recordRequest, recordUsage, recordError, recordLatency } from '../stats.js';
-import { getInjectedByUid, getSlot, loadProviders, resolveTarget, rememberProviderToolSchemaCompat, updateModelCapabilities } from '../provider-pool.js';
+import { getInjectedByUid, getSlot, loadModelMapConfig, loadProviders, resolveTarget, rememberProviderToolSchemaCompat, updateModelCapabilities } from '../provider-pool.js';
 import { mitmLog } from '../mitm-logger.js';
 import { getRuntimeModelSlotStatus } from '../rename-models.js';
 import { httpsAgentFor } from '../system-proxy.js';
+import { preprocessImagesWithThirdPartyVision } from '../vision-fallback.js';
 
 // ─── Config ────────────────────────────────────────────────
 
@@ -31,7 +39,6 @@ function intEnv(names, fallback, min = 0) {
 
 const MAX_TOKENS = intEnv('MAX_TOKENS', 16384, 1);
 const UPSTREAM_TIMEOUT_MS = intEnv(['UPSTREAM_TIMEOUT_MS', 'API_TIMEOUT_MS'], 300000, 1000);
-const RETRY_ENABLED = !/^(false|0|off)$/i.test(String(process.env.BYOK_RETRY || 'true'));
 const RETRY_MAX = intEnv('BYOK_RETRY_MAX', 5, 0);
 const RETRY_BASE_MS = intEnv('BYOK_RETRY_BASE_MS', 600, 1);
 const RETRY_CAP_MS = intEnv('BYOK_RETRY_CAP_MS', 8000, 1);
@@ -39,6 +46,7 @@ const RETRY_TOTAL_MS = intEnv('BYOK_RETRY_TOTAL_MS', 60000, 0);
 const NATIVE_STREAM_ERRORS = !/^(false|0|off)$/i.test(String(process.env.BYOK_NATIVE_ERRORS || 'true'));
 const OPENAI_REASONING_EFFORT = String(process.env.BYOK_REASONING_EFFORT || process.env.OPENAI_REASONING_EFFORT || '').trim();
 const OPENAI_REASONING_SUMMARY = String(process.env.BYOK_REASONING_SUMMARY || process.env.OPENAI_REASONING_SUMMARY || '').trim();
+const PROMPT_CACHE_ENABLED = !/^(false|0|off)$/i.test(String(process.env.BYOK_PROMPT_CACHE || 'true'));
 const HTTPS_AGENT = new https.Agent({
   keepAlive: true,
   keepAliveMsecs: 30_000,
@@ -64,14 +72,28 @@ function retryAfterMs(headers = {}) {
 }
 
 function isRetryableFailure(reason, meta = {}) {
-  if (!RETRY_ENABLED) return false;
   if (meta.statusCode) return RETRYABLE_STATUS.has(meta.statusCode);
   if (meta.code) return RETRYABLE_CODES.has(meta.code);
   return /timeout|reset|socket hang up|econn|epipe|network|dns|eai_again/i.test(String(reason || ''));
 }
 
-function retryDelayMs(attempt, meta = {}) {
-  const exp = Math.min(RETRY_CAP_MS, RETRY_BASE_MS * Math.pow(2, Math.max(0, attempt - 1)));
+function positiveInt(value, fallback, min = 0) {
+  const n = parseInt(value, 10);
+  return Number.isFinite(n) && n >= min ? n : fallback;
+}
+
+function retryPolicyFromEnhancement(enhancement = {}) {
+  return {
+    enabled: enhancement.retry !== false,
+    maxRetries: positiveInt(enhancement.retryMaxRetries, RETRY_MAX, 0),
+    baseMs: positiveInt(enhancement.retryBaseMs, RETRY_BASE_MS, 1),
+    capMs: positiveInt(enhancement.retryCapMs, RETRY_CAP_MS, 1),
+    totalMs: positiveInt(enhancement.retryTotalSeconds, Math.ceil(RETRY_TOTAL_MS / 1000), 1) * 1000,
+  };
+}
+
+function retryDelayMs(attempt, meta = {}, policy = retryPolicyFromEnhancement()) {
+  const exp = Math.min(policy.capMs, policy.baseMs * Math.pow(2, Math.max(0, attempt - 1)));
   return Math.max(Math.random() * exp, retryAfterMs(meta.headers));
 }
 
@@ -115,7 +137,8 @@ function summarizeProviderMessage(message) {
 function targetLabel(failure = {}) {
   const provider = failure.providerName || failure.providerId || '未知供应商';
   const model = failure.model ? ` / ${failure.model}` : '';
-  return `「${provider}${model}」`;
+  const route = [failure.routeMode, failure.apiPath].filter(Boolean).join(' ');
+  return `「${provider}${model}${route ? ` · ${route}` : ''}」`;
 }
 
 function failureSummary(failure = {}) {
@@ -126,7 +149,8 @@ function failureSummary(failure = {}) {
 
 function failureLogLine(failure = {}) {
   const upstream = summarizeProviderMessage(extractUpstreamMessage(failure.body));
-  return `${failure.providerName || failure.providerId || 'provider'}: ${failure.reason || failure.code || 'failed'}${upstream ? ` (${upstream})` : ''}`;
+  const route = [failure.routeMode, failure.apiPath].filter(Boolean).join(' ');
+  return `${failure.providerName || failure.providerId || 'provider'}${route ? ` [${route}]` : ''}: ${failure.reason || failure.code || 'failed'}${upstream ? ` (${upstream})` : ''}`;
 }
 
 function failureHint(failures = []) {
@@ -229,6 +253,45 @@ function markModelSuccess(conn, model, messages, tools) {
   );
 }
 
+function shouldUseAnthropicPromptCache(conn, claudeCodeUnlock, promptCacheRetry = false) {
+  if (!PROMPT_CACHE_ENABLED || promptCacheRetry || claudeCodeUnlock) return false;
+  return conn?.format === 'anthropic';
+}
+
+function cacheControl() {
+  return { type: 'ephemeral' };
+}
+
+function withAnthropicSystemCache(systemPrompt, enabled) {
+  if (!systemPrompt) return undefined;
+  if (!enabled) return systemPrompt;
+  return [{ type: 'text', text: systemPrompt, cache_control: cacheControl() }];
+}
+
+function withAnthropicToolsCache(tools, enabled) {
+  if (!enabled || !Array.isArray(tools) || tools.length === 0) return tools;
+  return tools.map((tool, idx) => {
+    if (idx !== tools.length - 1 || !tool || typeof tool !== 'object') return tool;
+    return { ...tool, cache_control: cacheControl() };
+  });
+}
+
+function withAnthropicPromptCacheHeaders(headers, enabled) {
+  if (!enabled) return headers;
+  const out = { ...headers };
+  const beta = 'prompt-caching-2024-07-31';
+  const existing = String(out['anthropic-beta'] || '').trim();
+  out['anthropic-beta'] = existing
+    ? (existing.split(',').map(x => x.trim()).includes(beta) ? existing : `${existing},${beta}`)
+    : beta;
+  return out;
+}
+
+function isPromptCacheRejected(statusCode, body = '') {
+  if (![400, 422].includes(statusCode)) return false;
+  return /cache[_ -]?control|prompt[_ -]?cache|prompt caching|anthropic-beta|unknown field|extra_forbidden|unrecognized|unsupported/i.test(String(body || ''));
+}
+
 function recordStreamLatency(startedAt) {
   if (startedAt) recordLatency(Date.now() - startedAt);
 }
@@ -316,7 +379,13 @@ export function handleGetChatMessage(req, res, body) {
       modelUid: injected.modelUid,
       displayName: injected.label,
       supportsImages: injected.supportsImages !== false,
-      targets: [{ providerId: injected.providerId, model: injected.model }],
+      targets: [{
+        providerId: injected.providerId,
+        model: injected.model,
+        apiFormat: injected.apiFormat,
+        apiPath: injected.apiPath,
+        unlock: injected.unlock,
+      }],
       routeKind: 'injected',
     };
   }
@@ -332,6 +401,10 @@ export function handleGetChatMessage(req, res, body) {
   }
 
   const providers = loadProviders();
+  const modelMapConfig = loadModelMapConfig();
+  const enhancement = modelMapConfig?.enhancement || {};
+  const autoRoutingEnabled = enhancement.autoRouting !== false;
+  const retryPolicy = retryPolicyFromEnhancement(enhancement);
   const serviceTier = getServiceTier(requestedModel);
 
   const routeLabel = slot.routeKind === 'injected' ? 'Managed slot' : 'Slot';
@@ -339,24 +412,20 @@ export function handleGetChatMessage(req, res, body) {
   console.log(`  📝 System: ${systemPrompt.length} chars  💬 Messages: ${messages.length}${tools ? `  🔧 Tools: ${tools.length}` : ''}`);
 
   const hasImages = messages.some(messageHasImage);
-  const routingTargets = [...slot.targets].sort((a, b) => {
-    if (!hasImages) return 0;
-    const connA = resolveTarget(a, providers);
-    const connB = resolveTarget(b, providers);
-    const av = connA.capabilities?.vision === true ? 1 : 0;
-    const bv = connB.capabilities?.vision === true ? 1 : 0;
-    return bv - av;
-  });
+  const routingTargets = autoRoutingEnabled ? [...slot.targets] : [slot.targets[0]];
+  if (!autoRoutingEnabled && slot.targets.length > 1) {
+    console.log(`  🧭 模型自动路由已关闭：只使用第 1 个目标，忽略其余 ${slot.targets.length - 1} 个备用目标`);
+  }
   if (hasImages) {
     const imgCount = messages.reduce((n, m) => n + (Array.isArray(m.content) ? m.content.filter(b => b.type === 'image').length : 0), 0);
     const sampleBlock = messages.find(m => Array.isArray(m.content) && m.content.some(b => b.type === 'image'));
     const sampleImg = sampleBlock ? sampleBlock.content.find(b => b.type === 'image') : null;
     const dataLen = sampleImg?.source?.data?.length || 0;
     const mediaType = sampleImg?.source?.media_type || 'unknown';
-    console.log(`  🖼️  Image request detected: ${imgCount} image(s), data_len=${dataLen}, media_type=${mediaType}; preferring Vision-capable targets`);
+    console.log(`  🖼️  Image request detected: ${imgCount} image(s), data_len=${dataLen}, media_type=${mediaType}`);
   }
 
-  // 故障转移:按 targets 顺序逐个尝试。只要还没开始向客户端写流，失败就切下一个。
+  // 自动路由开启时按 targets 顺序逐个尝试；关闭或单目标时失败即暴露错误。
   let idx = 0;
   const errors = [];
   const failures = [];
@@ -383,8 +452,8 @@ export function handleGetChatMessage(req, res, body) {
   function attemptNext() {
     if (clientClosed || res.writableEnded) return;
     if (idx >= routingTargets.length) {
-      // 全部失败 → 无兜底，直接报错（日志已逐条打印原因）。
-      console.error(`  ❌ 所有目标均失败: ${errors.join(' | ')}`);
+      const label = routingTargets.length > 1 ? `所有 ${routingTargets.length} 个目标均失败` : '目标失败';
+      console.error(`  ❌ ${label}: ${errors.join(' | ')}`);
       recordError({ provider: 'failover', message: errors.join(' | ') });
       if (!res.writableEnded) {
         sendTerminalError(res, messageId, providerFailureMessage(failures), connectCodeForFailures(failures));
@@ -397,7 +466,8 @@ export function handleGetChatMessage(req, res, body) {
     idx++;
 
     if (conn.error) {
-      console.warn(`  ⚠️  目标#${idx} ${target.providerId} 跳过: ${conn.error} → 切换下一个`);
+      const hasNextTarget = idx < routingTargets.length;
+      console.warn(`  ⚠️  目标#${idx} ${target.providerId} 跳过: ${conn.error}${hasNextTarget ? ' → 切换下一个' : ''}`);
       rememberFailure({
         providerId: target.providerId,
         model: target.model,
@@ -410,36 +480,90 @@ export function handleGetChatMessage(req, res, body) {
       console.warn(`  ⚠️  目标#${idx} ${conn.providerName} 未标记支持 Vision，但仍尝试转发（探测可能误报）`);
     }
 
-    console.log(`  ➡️  目标#${idx}: ${conn.providerName} (${conn.format}) → ${conn.model}${conn.capabilities?.gzip ? ' [gzip]' : ''}`);
+    const routeMode = conn.unlockKind ? `${conn.format}/${conn.unlockKind}` : conn.format;
+    console.log(`  ➡️  目标#${idx}: ${conn.providerName} (${routeMode}) → ${conn.model}${conn.capabilities?.gzip ? ' [gzip]' : ''}`);
     recordRequest({ provider: conn.providerName, requestedModel, resolvedModel: conn.model });
 
-    const sys = `${systemPrompt}\n\nYou are powered by ${conn.model}.`;
+    const sys = systemPrompt;
     const targetStartedAt = Date.now();
     let retryCount = 0;
+    // 多模态处理结果缓存（同目标重试时不重复转换）
+    let mmProcessedMessages = null;
+    let mmConversionCount = 0;
 
-    const startTargetRequest = () => {
+    const startTargetRequest = async () => {
       retryTimer = null;
       if (clientClosed || res.writableEnded) return;
+
+      let effectiveMessages = messages;
+      const imageFallbackEnabled = modelMapConfig?.enhancement?.imageFallback !== false;
+      const configuredVisionModels = modelMapConfig?.visionModels?.imageModels || [];
+      const thirdPartyVisionEnabled = hasImages
+        && slot.useThirdPartyVision === true
+        && imageFallbackEnabled;
+      if (thirdPartyVisionEnabled) {
+        if (configuredVisionModels.length === 0) {
+          const msg = `槽位「${slot.displayName || requestedModel}」已启用第三方图片理解，但代理增强里没有配置图片理解模型。`;
+          console.error(`  ❌ ${msg}`);
+          recordError({ provider: 'vision-fallback', message: msg });
+          sendTerminalError(res, messageId, msg, 'invalid_argument');
+          return;
+        }
+        const targetMessages = mmProcessedMessages || messages;
+        try {
+          const result = await preprocessImagesWithThirdPartyVision(
+            targetMessages,
+            configuredVisionModels,
+            providers,
+            {
+              requestId: messageId,
+              requestedModel,
+              slotModelUid: slot.modelUid || requestedModel,
+              slotDisplayName: slot.displayName || requestedModel,
+            },
+          );
+          if (result.conversions.length > 0) {
+            effectiveMessages = result.messages;
+            mmProcessedMessages = result.messages;
+            mmConversionCount = result.conversions.length;
+            const chain = result.conversions
+              .map(c => `${c.providerName}/${c.model}`)
+              .join(', ');
+            console.log(`  👁️  第三方图片理解: ${mmConversionCount} 张图片 → 文本描述 (${chain})`);
+          }
+        } catch (e) {
+          const msg = `第三方图片理解失败：${e.message}`;
+          console.error(`  ❌ ${msg}`);
+          recordError({ provider: 'vision-fallback', message: msg });
+          sendTerminalError(res, messageId, msg, 'unavailable');
+          return;
+        }
+      }
+
       const onFailover = (reason, meta = {}) => {
         if (clientClosed || res.writableEnded) return;
-        const canRetry = !res.headersSent
-          && retryCount < RETRY_MAX
-          && (retryCount === 0 || (Date.now() - targetStartedAt) < RETRY_TOTAL_MS)
+        const canRetry = retryPolicy.enabled
+          && !res.headersSent
+          && retryCount < retryPolicy.maxRetries
+          && (retryCount === 0 || (Date.now() - targetStartedAt) < retryPolicy.totalMs)
           && isRetryableFailure(reason, meta);
 
         if (canRetry) {
           retryCount++;
-          const delay = Math.round(retryDelayMs(retryCount, meta));
-          console.warn(`  ⏳ ${conn.providerName} 失败(${reason})，${delay}ms 后重试 ${retryCount}/${RETRY_MAX}`);
-          retryTimer = setTimeout(startTargetRequest, delay);
+          const delay = Math.round(retryDelayMs(retryCount, meta, retryPolicy));
+          console.warn(`  ⏳ ${conn.providerName} 失败(${reason})，${delay}ms 后重试 ${retryCount}/${retryPolicy.maxRetries}`);
+          retryTimer = setTimeout(() => startTargetRequest(), delay);
           return;
         }
 
-        console.warn(`  ⚠️  ${conn.providerName} 失败(${reason}) → 切换下一个`);
+        const hasNextTarget = idx < routingTargets.length;
+        console.warn(`  ⚠️  ${conn.providerName} 失败(${reason})${hasNextTarget ? ' → 切换下一个' : ''}`);
         rememberFailure({
           providerId: conn.providerId,
           providerName: conn.providerName,
           model: conn.model,
+          routeMode,
+          apiPath: conn.apiPath,
           reason,
           statusCode: meta.statusCode,
           code: meta.code,
@@ -450,10 +574,11 @@ export function handleGetChatMessage(req, res, body) {
 
       const opts = {
         systemPrompt: sys,
-        messages,
+        messages: effectiveMessages,
         tools,
         toolChoice,
         resolvedModel: conn.model,
+        requestedModel,
         serviceTier,
         messageId,
         conn,
@@ -467,7 +592,19 @@ export function handleGetChatMessage(req, res, body) {
         : streamAnthropic(req, res, opts);
     };
 
-    startTargetRequest();
+    startTargetRequest().catch(err => {
+      console.error(`  ❌ startTargetRequest 异常: ${err.message}`);
+      if (res.headersSent) return;
+      rememberFailure({
+        providerId: conn.providerId,
+        providerName: conn.providerName,
+        model: conn.model,
+        routeMode,
+        apiPath: conn.apiPath,
+        reason: `startTargetRequest 异常: ${err.message}`,
+      });
+      attemptNext();
+    });
   }
 
   attemptNext();
@@ -487,22 +624,34 @@ function anthropicAuthHeaders(conn) {
   return headers;
 }
 
-function streamAnthropic(req, res, { systemPrompt, messages, tools, toolChoice, resolvedModel, messageId, conn, onFailover }) {
-  const apiPayload = {
-    model: resolvedModel,
-    system: systemPrompt || undefined,
-    messages,
-    stream: true,
-    max_tokens: MAX_TOKENS,
-  };
-  if (tools && tools.length > 0) {
-    apiPayload.tools = tools;
+function streamAnthropic(req, res, { systemPrompt, messages, tools, toolChoice, resolvedModel, messageId, conn, onFailover, promptCacheRetry = false, bindActiveReq = null }) {
+  const claudeCodeUnlock = normalizeClaudeCodeUnlock(conn.unlocks?.claudeCode);
+  const targetPath = claudeCodeUnlock?.wireApi || conn.apiPath;
+  const usePromptCache = shouldUseAnthropicPromptCache(conn, claudeCodeUnlock, promptCacheRetry);
+  const authHeaders = withAnthropicPromptCacheHeaders(
+    claudeCodeUnlock ? claudeCodeUnlockHeaders(conn) : anthropicAuthHeaders(conn),
+    usePromptCache
+  );
+  const sentTools = claudeCodeUnlock ? undefined : withAnthropicToolsCache(tools, usePromptCache);
+  const apiPayload = claudeCodeUnlock
+    ? buildClaudeCodeUnlockPayload({ model: resolvedModel, messages, maxTokens: MAX_TOKENS })
+    : {
+        model: resolvedModel,
+        system: withAnthropicSystemCache(systemPrompt, usePromptCache),
+        messages,
+        stream: true,
+        max_tokens: MAX_TOKENS,
+      };
+  if (!claudeCodeUnlock && sentTools && sentTools.length > 0) {
+    apiPayload.tools = sentTools;
     if (toolChoice) apiPayload.tool_choice = toolChoice;
   }
-
   const apiBody = JSON.stringify(apiPayload);
   const processor = new AnthropicStreamProcessor(messageId, resolvedModel);
   let failed = false; // 防止 error+statusCode 双触发 onFailover
+  if (usePromptCache) {
+    console.log(`  🧊 Anthropic prompt cache enabled: system${sentTools?.length ? ' + tools' : ''}`);
+  }
 
   // ── MITM 日志：记录上游请求 ──
   const mitmReqId = crypto.randomUUID();
@@ -513,8 +662,8 @@ function streamAnthropic(req, res, { systemPrompt, messages, tools, toolChoice, 
     format: 'anthropic',
     request: {
       method: 'POST',
-      url: `https://${conn.host}${conn.apiPath}`,
-      headers: { 'content-type': 'application/json', ...anthropicAuthHeaders(conn) },
+      url: `https://${conn.host}${targetPath}`,
+      headers: { 'content-type': 'application/json', 'accept': 'text/event-stream', ...authHeaders },
       body: apiBody,
     },
   });
@@ -523,12 +672,12 @@ function streamAnthropic(req, res, { systemPrompt, messages, tools, toolChoice, 
     agent: httpsAgentFor(HTTPS_AGENT),
     hostname: conn.host,
     port: 443,
-    path: conn.apiPath,
+    path: targetPath,
     method: 'POST',
     headers: {
       'content-type': 'application/json',
       'accept': 'text/event-stream',
-      ...anthropicAuthHeaders(conn),
+      ...authHeaders,
       'content-length': Buffer.byteLength(apiBody),
     },
   }, (apiRes) => {
@@ -541,7 +690,29 @@ function streamAnthropic(req, res, { systemPrompt, messages, tools, toolChoice, 
       apiRes.on('data', d => { if (errBody.length < 2000) errBody += d.slice(0, 2000 - errBody.length); });
       const fail = () => {
         console.error(`  ❌ Body: ${errBody.slice(0, 300)}`);
-        mitmLog({ direction: 'downstream', providerName: conn.providerName, model: resolvedModel, format: 'anthropic', request: { method: 'POST', url: `https://${conn.host}${conn.apiPath}` }, response: { statusCode: apiRes.statusCode, headers: apiRes.headers, body: errBody } });
+        mitmLog({ direction: 'downstream', providerName: conn.providerName, model: resolvedModel, format: 'anthropic', request: { method: 'POST', url: `https://${conn.host}${targetPath}` }, response: { statusCode: apiRes.statusCode, headers: apiRes.headers, body: errBody } });
+
+        if (usePromptCache && !promptCacheRetry && isPromptCacheRejected(apiRes.statusCode, errBody) && !res.headersSent) {
+          console.warn(`  ♻️  ${conn.providerName} / ${resolvedModel} 不接受 cache_control，本次移除后重试一次`);
+          apiReq.destroy();
+          if (!failed) {
+            failed = true;
+            return streamAnthropic(req, res, {
+              systemPrompt,
+              messages,
+              tools,
+              toolChoice,
+              resolvedModel,
+              messageId,
+              conn,
+              onFailover,
+              promptCacheRetry: true,
+              bindActiveReq,
+            });
+          }
+          return;
+        }
+
         apiReq.destroy();
         if (!failed) { failed = true; onFailover(`HTTP ${apiRes.statusCode}`, { statusCode: apiRes.statusCode, headers: apiRes.headers, body: errBody }); }
       };
@@ -555,8 +726,10 @@ function streamAnthropic(req, res, { systemPrompt, messages, tools, toolChoice, 
     const streamStartedAt = Date.now();
     res.writeHead(200, streamHeaders());
     apiRes.setEncoding('utf8');
+    const rawOutput = [];
 
     function processPart(part) {
+      rawOutput.push(part);
       const events = parseSSEChunk(part + '\n\n');
       for (const evt of events) {
         const protoChunks = processor.processEvent(evt);
@@ -568,8 +741,9 @@ function streamAnthropic(req, res, { systemPrompt, messages, tools, toolChoice, 
           res.write(endOfStreamEnvelope());
           res.end();
           recordStreamLatency(streamStartedAt);
-          markModelSuccess(conn, resolvedModel, messages, tools);
+          markModelSuccess(conn, resolvedModel, messages, sentTools);
           recordUsage(processor.usage);
+          mitmLog({ direction: 'downstream', providerName: conn.providerName, model: resolvedModel, format: 'anthropic', request: { method: 'POST', url: `https://${conn.host}${targetPath}` }, response: { statusCode: 200, headers: { 'content-type': 'text/event-stream' }, body: `[USAGE] ${JSON.stringify(processor.usage)}\n\n${rawOutput.join('\n\n')}` } });
           console.log(`  ✅ Stream done (stop: ${processor.stopReason})`);
         }
     }
@@ -587,8 +761,9 @@ function streamAnthropic(req, res, { systemPrompt, messages, tools, toolChoice, 
         res.write(endOfStreamEnvelope());
         res.end();
         recordStreamLatency(streamStartedAt);
-        markModelSuccess(conn, resolvedModel, messages, tools);
+        markModelSuccess(conn, resolvedModel, messages, sentTools);
         recordUsage(processor.usage);
+        mitmLog({ direction: 'downstream', providerName: conn.providerName, model: resolvedModel, format: 'anthropic', request: { method: 'POST', url: `https://${conn.host}${targetPath}` }, response: { statusCode: 200, headers: { 'content-type': 'text/event-stream' }, body: `[USAGE] ${JSON.stringify(processor.usage)}\n\n${rawOutput.join('\n\n')}` } });
         console.log(`  ✅ Stream ended`);
       }
     });
@@ -600,6 +775,8 @@ function streamAnthropic(req, res, { systemPrompt, messages, tools, toolChoice, 
       }
     });
   });
+
+  if (typeof bindActiveReq === 'function') bindActiveReq(apiReq);
 
   apiReq.on('error', (err) => {
     console.error(`  ❌ ${conn.providerName} 连接错误: ${err.message}`);
@@ -623,11 +800,11 @@ function streamAnthropic(req, res, { systemPrompt, messages, tools, toolChoice, 
 
 // ─── OpenAI Responses API streaming ─────────────────────────
 
-function streamOpenAI(req, res, { systemPrompt, messages, tools, toolChoice, resolvedModel, serviceTier, messageId, conn, onFailover, schemaCompatRetry = false, bindActiveReq = null }) {
-  if (conn.apiPath.includes('/chat/completions')) {
+function streamOpenAI(req, res, { systemPrompt, messages, tools, toolChoice, resolvedModel, requestedModel, serviceTier, messageId, conn, onFailover, schemaCompatRetry = false, bindActiveReq = null }) {
+  const codexUnlock = normalizeCodexUnlock(conn.unlocks?.codex);
+  if (!codexUnlock && conn.apiPath.includes('/chat/completions')) {
     return streamOpenAIChatCompletions(req, res, { systemPrompt, messages, tools, toolChoice, resolvedModel, serviceTier, messageId, conn, onFailover, schemaCompatRetry, bindActiveReq });
   }
-
 
   // Convert Anthropic-format messages to OpenAI format
   const openaiMessages = toOpenAIMessages(systemPrompt, messages);
@@ -665,9 +842,15 @@ function streamOpenAI(req, res, { systemPrompt, messages, tools, toolChoice, res
     }
   }
 
+  if (codexUnlock) {
+    apiPayload.include = codexUnlock.include;
+    apiPayload.prompt_cache_key = generateUUIDv7();
+  }
+
+  const targetPath = codexUnlock?.wireApi || conn.apiPath;
   const apiBody = JSON.stringify(apiPayload);
   // MITM 日志：记录上游请求
-  mitmLog({ direction: 'upstream', providerName: conn.providerName, model: resolvedModel, format: 'openai-responses', request: { method: 'POST', url: `https://${conn.host}${conn.apiPath}`, headers: { 'content-type': 'application/json', 'authorization': `Bearer ${conn.apiKey}` }, body: apiBody } });
+  mitmLog({ direction: 'upstream', providerName: conn.providerName, model: resolvedModel, format: 'openai-responses', request: { method: 'POST', url: `https://${conn.host}${targetPath}`, headers: { 'content-type': 'application/json', 'authorization': `Bearer ${conn.apiKey}` }, body: apiBody } });
   // gzip 可选：供应商标记了 capabilities.gzip=true 才压缩。
   // 用于绕过中转站 Cloudflare WAF 对明文 body 的命令注入检测；
   // One-Hub 等不支持 gzip 的端点保持明文。
@@ -691,7 +874,7 @@ function streamOpenAI(req, res, { systemPrompt, messages, tools, toolChoice, res
     agent: httpsAgentFor(HTTPS_AGENT),
     hostname: conn.host,
     port: 443,
-    path: conn.apiPath,
+    path: targetPath,
     method: 'POST',
     headers: reqHeaders,
   }, (apiRes) => {
@@ -704,7 +887,7 @@ function streamOpenAI(req, res, { systemPrompt, messages, tools, toolChoice, res
       apiRes.on('data', d => { if (errBody.length < 2000) errBody += d.slice(0, 2000 - errBody.length); });
       const fail = () => {
         console.error(`  ❌ Body: ${errBody.slice(0, 300)}`);
-        mitmLog({ direction: 'downstream', providerName: conn.providerName, model: resolvedModel, format: 'openai-responses', request: { method: 'POST', url: `https://${conn.host}${conn.apiPath}` }, response: { statusCode: apiRes.statusCode, headers: apiRes.headers, body: errBody } });
+        mitmLog({ direction: 'downstream', providerName: conn.providerName, model: resolvedModel, format: 'openai-responses', request: { method: 'POST', url: `https://${conn.host}${targetPath}` }, response: { statusCode: apiRes.statusCode, headers: apiRes.headers, body: errBody } });
 
         if (!schemaCompatRetry && shouldAutoEnableGeminiSchemaCompat(apiRes.statusCode, errBody) && tools && tools.length > 0 && !res.headersSent) {
           const remembered = rememberProviderToolSchemaCompat(conn.providerId, 'gemini');
@@ -721,6 +904,7 @@ function streamOpenAI(req, res, { systemPrompt, messages, tools, toolChoice, res
               tools,
               toolChoice,
               resolvedModel,
+              requestedModel,
               serviceTier,
               messageId,
               conn: { ...conn, capabilities: { ...(conn.capabilities || {}), toolSchemaCompat: 'gemini' } },
@@ -745,8 +929,10 @@ function streamOpenAI(req, res, { systemPrompt, messages, tools, toolChoice, res
     const streamStartedAt = Date.now();
     res.writeHead(200, streamHeaders());
     apiRes.setEncoding('utf8');
+    const rawOutput = [];
 
     function processPart(part) {
+      rawOutput.push(part);
       const events = parseOpenAISSEChunk(part + '\n');
       for (const evt of events) {
         if (processorMode === 'responses' && evt?.data?.choices) {
@@ -766,6 +952,7 @@ function streamOpenAI(req, res, { systemPrompt, messages, tools, toolChoice, res
         recordStreamLatency(streamStartedAt);
         markModelSuccess(conn, resolvedModel, messages, tools);
         recordUsage(processor.usage);
+        mitmLog({ direction: 'downstream', providerName: conn.providerName, model: resolvedModel, format: 'openai-responses', request: { method: 'POST', url: `https://${conn.host}${targetPath}` }, response: { statusCode: 200, headers: { 'content-type': 'text/event-stream' }, body: `[USAGE] ${JSON.stringify(processor.usage)}\n\n${rawOutput.join('\n\n')}` } });
         console.log(`  ✅ OpenAI stream done (stop: ${processor.stopReason})`);
       }
     }
@@ -795,6 +982,7 @@ function streamOpenAI(req, res, { systemPrompt, messages, tools, toolChoice, res
         recordStreamLatency(streamStartedAt);
         markModelSuccess(conn, resolvedModel, messages, tools);
         recordUsage(processor.usage);
+        mitmLog({ direction: 'downstream', providerName: conn.providerName, model: resolvedModel, format: 'openai-responses', request: { method: 'POST', url: `https://${conn.host}${targetPath}` }, response: { statusCode: 200, headers: { 'content-type': 'text/event-stream' }, body: `[USAGE] ${JSON.stringify(processor.usage)}\n\n${rawOutput.join('\n\n')}` } });
         console.log(`  ✅ OpenAI stream ended (stop: ${processor.stopReason})`);
       }
     });
@@ -859,7 +1047,6 @@ function streamOpenAIChatCompletions(req, res, { systemPrompt, messages, tools, 
       else if (toolChoice.type === 'tool') apiPayload.tool_choice = { type: 'function', function: { name: toolChoice.name } };
     }
   }
-
   const apiBody = JSON.stringify(apiPayload);
   // MITM 日志：记录上游请求
   mitmLog({ direction: 'upstream', providerName: conn.providerName, model: resolvedModel, format: 'openai-chat', request: { method: 'POST', url: `https://${conn.host}${conn.apiPath}`, headers: { 'content-type': 'application/json', 'authorization': `Bearer ${conn.apiKey}` }, body: apiBody } });
@@ -928,8 +1115,10 @@ function streamOpenAIChatCompletions(req, res, { systemPrompt, messages, tools, 
     const streamStartedAt = Date.now();
     res.writeHead(200, streamHeaders());
     apiRes.setEncoding('utf8');
+    const rawOutput = [];
 
     function processPart(part) {
+      rawOutput.push(part);
       const events = parseOpenAISSEChunk(part + '\n');
       for (const evt of events) {
         const protoChunks = processor.processEvent(evt);
@@ -943,6 +1132,7 @@ function streamOpenAIChatCompletions(req, res, { systemPrompt, messages, tools, 
         recordStreamLatency(streamStartedAt);
         markModelSuccess(conn, resolvedModel, messages, tools);
         recordUsage(processor.usage);
+        mitmLog({ direction: 'downstream', providerName: conn.providerName, model: resolvedModel, format: 'openai-chat', request: { method: 'POST', url: `https://${conn.host}${conn.apiPath}` }, response: { statusCode: 200, headers: { 'content-type': 'text/event-stream' }, body: `[USAGE] ${JSON.stringify(processor.usage)}\n\n${rawOutput.join('\n\n')}` } });
         console.log(`  ✅ OpenAI chat stream done (stop: ${processor.stopReason})`);
       }
     }
@@ -968,6 +1158,7 @@ function streamOpenAIChatCompletions(req, res, { systemPrompt, messages, tools, 
         recordStreamLatency(streamStartedAt);
         markModelSuccess(conn, resolvedModel, messages, tools);
         recordUsage(processor.usage);
+        mitmLog({ direction: 'downstream', providerName: conn.providerName, model: resolvedModel, format: 'openai-chat', request: { method: 'POST', url: `https://${conn.host}${conn.apiPath}` }, response: { statusCode: 200, headers: { 'content-type': 'text/event-stream' }, body: `[USAGE] ${JSON.stringify(processor.usage)}\n\n${rawOutput.join('\n\n')}` } });
         console.log(`  ✅ OpenAI chat stream ended (stop: ${processor.stopReason})`);
       }
     });
@@ -1126,7 +1317,7 @@ function toOpenAIChatMessages(systemPrompt, anthropicMessages) {
           });
         }
       }
-      const out = { role: 'assistant', content: textContent || null };
+      const out = { role: 'assistant', content: textContent || '' };
       if (toolCalls.length > 0) out.tool_calls = toolCalls;
       result.push(out);
       continue;

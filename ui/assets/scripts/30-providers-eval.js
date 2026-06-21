@@ -1,11 +1,25 @@
 // ═══════ PROVIDER PROFILES (多套供应商 + 启用开关) ═══════
 let providerStore = { providers: [], codexConfigs: [], claudeCodeConfigs: [], opencodeConfigs: [] };
 const PROVIDER_VIEW_STORAGE_KEY = 'anybridge.providerViewMode';
+const PROVIDER_SORT_STORAGE_KEY = 'anybridge.providerSortMode';
+const PROVIDER_SORT_MODES = new Set(['default', 'name-asc', 'name-desc']);
+const PROVIDER_SORT_LABELS = {
+  default: '默认排序',
+  'name-asc': '名称正序',
+  'name-desc': '名称反序',
+};
 let providerViewMode = (() => {
   try {
     return localStorage.getItem(PROVIDER_VIEW_STORAGE_KEY) === 'list' ? 'list' : 'grid';
   } catch (_) {
     return 'grid';
+  }
+})();
+let providerSortMode = (() => {
+  try {
+    return normalizeProviderSortMode(localStorage.getItem(PROVIDER_SORT_STORAGE_KEY));
+  } catch (_) {
+    return 'default';
   }
 })();
 let providerSearchKeyword = '';
@@ -44,8 +58,6 @@ function providerSelectedModels(p) {
 
 function providerCapabilities(p, modelId = null) {
   const caps = p && p.capabilities && typeof p.capabilities === 'object' ? p.capabilities : {};
-  const path = String((p && p.apiPath) || '').toLowerCase();
-  const fmt = (p && p.apiFormat) || 'anthropic';
   const modelCapsMap = p && p.modelCaps && typeof p.modelCaps === 'object' ? p.modelCaps : {};
   const modelCaps = modelId ? (modelCapsMap[modelId] || {}) : null;
   const hasModelVision = !!(modelCaps && Object.prototype.hasOwnProperty.call(modelCaps, 'vision'));
@@ -57,9 +69,6 @@ function providerCapabilities(p, modelId = null) {
     tools: hasModelTools ? modelCaps.tools === true : caps.tools === true,
     gzip: caps.gzip === true,
     toolSchemaCompatGemini: caps.toolSchemaCompat === 'gemini',
-    chat: fmt === 'openai' && path.includes('/chat/completions'),
-    responses: fmt === 'openai' && path.includes('/responses'),
-    anthropic: fmt === 'anthropic',
   };
 }
 
@@ -69,9 +78,7 @@ function capabilityBadges(p, compact = false, modelId = null) {
   const showModelCaps = !!modelId;
   const mk = (label, on, title) => `
     <span class="tag" title="${escAttr(title || label)}" style="background:${on ? 'var(--success-dim)' : 'var(--bg-input)'}; color:${on ? 'var(--success)' : 'var(--text-muted)'}; border:1px solid ${on ? 'rgba(22,163,74,.22)' : 'var(--border)'}; font-size:${compact ? '10px' : '11px'}; padding:${compact ? '2px 6px' : '3px 8px'}; border-radius:7px;">${escAttr(label)}</span>`;
-  const protocol = c.responses ? mk('Responses', true) : (c.chat ? mk('对话', true) : (c.anthropic ? mk('Anthropic', true) : ''));
   return [
-    protocol,
     mk('流式', c.stream),
     showModelCaps ? mk('视觉', c.vision, c.vision ? '该模型已标记支持图片理解' : '该模型未标记图片理解') : '',
     showModelCaps ? mk('工具', c.tools, c.tools ? '该模型已标记支持工具调用' : '该模型未标记工具调用') : '',
@@ -162,7 +169,7 @@ function slotSourceInfo(uidOrModel) {
   return {
     state: 'extended',
     label: '内置槽位',
-    title: '来自内置全量槽位目录；启用代理改写后可用于 BYOK 映射',
+    title: '来自内置全量槽位目录；切换到代理后可用于 BYOK 映射',
   };
 }
 
@@ -225,6 +232,7 @@ async function loadProviders() {
     if (!Array.isArray(providerStore.opencodeConfigs)) {
       providerStore.opencodeConfigs = [];
     }
+    (providerStore.providers || []).forEach(normalizeProviderUnlocks);
   } catch (e) {
     providerStore = { providers: [], codexConfigs: [], claudeCodeConfigs: [], opencodeConfigs: [] };
   }
@@ -243,20 +251,50 @@ function providerSearchHaystack(p) {
     p?.id,
     p?.apiHost,
     p?.apiPath,
-    p?.apiFormat,
     p?.defaultModel,
     ...(Array.isArray(p?.models) ? p.models : []),
     p?.enabled === false ? '未启用 disabled off' : '已启用 enabled on',
   ].map(x => String(x || '').toLowerCase()).join(' ');
 }
 
+function normalizeProviderSortMode(mode) {
+  return PROVIDER_SORT_MODES.has(mode) ? mode : 'default';
+}
+
+function providerSortLabel(mode) {
+  return PROVIDER_SORT_LABELS[normalizeProviderSortMode(mode)] || PROVIDER_SORT_LABELS.default;
+}
+
+function providerSortText(p) {
+  return String(p?.name || p?.id || '').trim();
+}
+
+function compareProvidersByName(a, b) {
+  const primary = providerSortText(a).localeCompare(providerSortText(b), 'zh-CN', {
+    numeric: true,
+    sensitivity: 'base',
+  });
+  if (primary !== 0) return primary;
+  return String(a?.id || '').localeCompare(String(b?.id || ''), 'zh-CN', {
+    numeric: true,
+    sensitivity: 'base',
+  });
+}
+
+function providerSortedList(list = []) {
+  if (!Array.isArray(list)) return [];
+  if (providerSortMode === 'default') return list;
+  const sorted = [...list].sort(compareProvidersByName);
+  return providerSortMode === 'name-desc' ? sorted.reverse() : sorted;
+}
+
 function providerVisibleList(list = providerListAll()) {
   const terms = providerSearchKeyword.trim().toLowerCase().split(/\s+/).filter(Boolean);
-  if (!terms.length) return list;
-  return list.filter(p => {
+  const visible = terms.length ? list.filter(p => {
     const text = providerSearchHaystack(p);
     return terms.every(term => text.includes(term));
-  });
+  }) : list;
+  return providerSortedList(visible);
 }
 
 function cleanupProviderSelection(list = providerListAll()) {
@@ -294,6 +332,8 @@ function renderProviderToolbarState(total, visible) {
   const listBtn = document.getElementById('providerViewListBtn');
   if (gridBtn) gridBtn.classList.toggle('active', providerViewMode !== 'list');
   if (listBtn) listBtn.classList.toggle('active', providerViewMode === 'list');
+
+  syncProviderSortControl();
 
   const visibleIds = visible.map(p => p.id).filter(Boolean);
   const selectedCount = providerSelectedIds.size;
@@ -335,6 +375,58 @@ function setProviderViewMode(mode) {
   } catch (_) {}
   renderProviders();
 }
+
+function setProviderSortMode(mode) {
+  providerSortMode = normalizeProviderSortMode(mode);
+  try {
+    localStorage.setItem(PROVIDER_SORT_STORAGE_KEY, providerSortMode);
+  } catch (_) {}
+  renderProviders();
+}
+
+function syncProviderSortControl() {
+  const label = document.getElementById('providerSortLabel');
+  if (label) label.textContent = providerSortLabel(providerSortMode);
+  document.querySelectorAll('.provider-sort-option').forEach(btn => {
+    const selected = btn.dataset.sortMode === providerSortMode;
+    btn.classList.toggle('active', selected);
+    btn.setAttribute('aria-selected', selected ? 'true' : 'false');
+  });
+}
+
+function setProviderSortMenuOpen(open) {
+  const control = document.getElementById('providerSortControl');
+  const trigger = document.getElementById('providerSortTrigger');
+  if (!control || !trigger) return;
+  control.classList.toggle('open', !!open);
+  trigger.setAttribute('aria-expanded', open ? 'true' : 'false');
+}
+
+function toggleProviderSortMenu(event) {
+  if (event) event.stopPropagation();
+  const control = document.getElementById('providerSortControl');
+  syncProviderSortControl();
+  setProviderSortMenuOpen(!control?.classList.contains('open'));
+}
+
+function closeProviderSortMenu() {
+  setProviderSortMenuOpen(false);
+}
+
+function chooseProviderSortMode(mode) {
+  setProviderSortMode(mode);
+  closeProviderSortMenu();
+  document.getElementById('providerSortTrigger')?.focus();
+}
+
+document.addEventListener('click', event => {
+  const control = document.getElementById('providerSortControl');
+  if (control && !control.contains(event.target)) closeProviderSortMenu();
+});
+
+document.addEventListener('keydown', event => {
+  if (event.key === 'Escape') closeProviderSortMenu();
+});
 
 function toggleProviderSelection(id, checked, event) {
   if (event) event.stopPropagation();
@@ -409,6 +501,142 @@ async function deleteSelectedProviders() {
   }
 }
 
+function normalizeProviderUnlocks(p) {
+  if (!p) return {};
+  if (!p.unlocks || typeof p.unlocks !== 'object') p.unlocks = {};
+  return p.unlocks;
+}
+
+function providerUnlockEnabled(p, kind) {
+  const unlocks = normalizeProviderUnlocks(p);
+  return !!(unlocks[kind] && unlocks[kind].enabled !== false);
+}
+
+function providerUnlockLabels(p) {
+  const labels = [];
+  if (providerUnlockEnabled(p, 'codex')) labels.push('Codex');
+  if (providerUnlockEnabled(p, 'claudeCode')) labels.push('Claude Code');
+  return labels;
+}
+
+function providerUnlockSummaryHtml(p) {
+  const labels = providerUnlockLabels(p);
+  if (!labels.length) return '';
+  return `<div class="provider-unlock-summary active" title="已解锁限制：${escAttr(labels.join('、'))}">解锁限制：${escAttr(labels.join(' · '))}</div>`;
+}
+
+function providerUnlockTagsHtml(p) {
+  const labels = providerUnlockLabels(p);
+  if (!labels.length) return '';
+  return labels.map(label => `<span class="tag provider-unlock-tag active" title="已解锁限制 ${escAttr(label)}">解锁限制 ${escAttr(label)}</span>`).join('');
+}
+
+function providerUnlockIconSvg(p) {
+  const active = providerUnlockLabels(p).length > 0;
+  return active
+    ? `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="11" width="18" height="10" rx="2"></rect><path d="M7 11V7a5 5 0 0 1 9.5-2.2"></path></svg>`
+    : `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="11" width="18" height="10" rx="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>`;
+}
+
+function providerUnlockCardButtonHtml(p) {
+  const isUnlocked = providerUnlockLabels(p).length > 0;
+  return `<button class="btn-ghost provider-unlock-action ${isUnlocked ? 'active' : ''}" onclick="openProviderUnlockModal('${escAttr(p.id)}')" title="供应商解锁限制">${isUnlocked ? '已解锁限制' : '解锁限制'}</button>`;
+}
+
+function providerUnlockListButtonHtml(p) {
+  return `<button class="provider-list-icon-btn provider-unlock-list-btn ${providerUnlockLabels(p).length ? 'active' : ''}" onclick="openProviderUnlockModal('${escAttr(p.id)}')" title="解锁限制" aria-label="解锁限制 ${escAttr(p.name || p.id)}">${providerUnlockIconSvg(p)}</button>`;
+}
+
+
+function ensureProviderUnlockModal() {
+  let modal = document.getElementById('provider-unlock-modal');
+  if (modal) return modal;
+  document.body.insertAdjacentHTML('beforeend', `
+    <div class="modal-overlay" id="provider-unlock-modal" onclick="if(event.target.id==='provider-unlock-modal') closeProviderUnlockModal()">
+      <div class="modal-container provider-unlock-modal">
+        <div class="modal-header provider-unlock-head">
+          <div>
+            <div class="modal-title" id="provider-unlock-title">供应商解锁限制</div>
+            <div class="provider-unlock-sub" id="provider-unlock-sub">解锁限制后，该供应商可通过代理转发接入其他平台。</div>
+          </div>
+          <button class="modal-close-icon" onclick="closeProviderUnlockModal()" aria-label="关闭解锁限制弹窗">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"></path><path d="m6 6 12 12"></path></svg>
+          </button>
+        </div>
+        <div class="modal-body provider-unlock-body" id="provider-unlock-body"></div>
+        <div class="modal-footer provider-unlock-footer">
+          <button class="modal-btn modal-btn-confirm" onclick="closeProviderUnlockModal()">完成</button>
+        </div>
+      </div>
+    </div>`);
+  return document.getElementById('provider-unlock-modal');
+}
+
+let providerUnlockEditingId = '';
+
+function openProviderUnlockModal(providerId) {
+  providerUnlockEditingId = providerId;
+  const modal = ensureProviderUnlockModal();
+  renderProviderUnlockModal();
+  modal.classList.add('active');
+}
+
+function closeProviderUnlockModal() {
+  document.getElementById('provider-unlock-modal')?.classList.remove('active');
+  providerUnlockEditingId = '';
+}
+
+function providerUnlockRowHtml(p, kind, label, detail) {
+  const enabled = providerUnlockEnabled(p, kind);
+  return `
+    <label class="provider-unlock-row ${enabled ? 'enabled' : ''}">
+      <div class="provider-unlock-row-main">
+        <strong>${escAttr(label)}</strong>
+        <span>${escAttr(detail)}</span>
+      </div>
+      <input type="checkbox" ${enabled ? 'checked' : ''} onchange="setProviderUnlockFromModal('${kind}', this.checked)">
+      <span class="provider-unlock-switch" aria-hidden="true"></span>
+    </label>`;
+}
+
+function renderProviderUnlockModal() {
+  const p = (providerStore.providers || []).find(x => x.id === providerUnlockEditingId);
+  const body = document.getElementById('provider-unlock-body');
+  const title = document.getElementById('provider-unlock-title');
+  const sub = document.getElementById('provider-unlock-sub');
+  if (!body || !p) return;
+  normalizeProviderUnlocks(p);
+  if (title) title.textContent = `供应商解锁限制：${p.name || p.id}`;
+  if (sub) sub.textContent = '解锁限制后，该供应商可通过代理转发接入其他平台。';
+  body.innerHTML = `
+    <div class="provider-unlock-list">
+      ${providerUnlockRowHtml(p, 'codex', 'Codex', '使用 Responses API 解锁限制模板')}
+      ${providerUnlockRowHtml(p, 'claudeCode', 'Claude Code', '使用 Anthropic Messages 解锁限制模板')}
+    </div>`;
+}
+
+async function setProviderUnlockFromModal(kind, enabled) {
+  if (!invoke || !providerUnlockEditingId) return;
+  const p = (providerStore.providers || []).find(x => x.id === providerUnlockEditingId);
+  if (!p) return;
+  const key = `provider-unlock:${providerUnlockEditingId}:${kind}`;
+  if (_inFlightToggles.has(key)) return;
+  _inFlightToggles.add(key);
+  try {
+    const updated = await invoke('set_provider_unlock', { providerId: providerUnlockEditingId, kind, enabled });
+    const idx = providerStore.providers.findIndex(x => x.id === providerUnlockEditingId);
+    if (idx >= 0 && updated) providerStore.providers[idx] = updated;
+    if (idx >= 0) normalizeProviderUnlocks(providerStore.providers[idx]);
+    renderProviders();
+    renderProviderUnlockModal();
+    addLog('ok', `供应商「${p.name || p.id}」已${enabled ? '解锁限制' : '取消解锁限制'} ${kind === 'codex' ? 'Codex' : 'Claude Code'}`);
+  } catch (e) {
+    showCustomAlert(String(e), enabled ? '解锁限制失败' : '取消解锁限制失败', 'error');
+    renderProviderUnlockModal();
+  } finally {
+    _inFlightToggles.delete(key);
+  }
+}
 function renderProviderCards(list) {
   return list.map(p => {
     const enabled = p.enabled !== false;
@@ -441,6 +669,7 @@ function renderProviderCards(list) {
           </div>
           <div class="provider-card-actions">
             <button class="btn-ghost" onclick="testProvider('${escAttr(p.id)}')">测试</button>
+            ${providerUnlockCardButtonHtml(p)}
             <button class="btn-ghost" onclick="openProviderEditor('${escAttr(p.id)}')">编辑</button>
             <button class="btn-ghost" onclick="deleteProvider('${escAttr(p.id)}')">删除</button>
           </div>
@@ -457,7 +686,7 @@ function renderProviderListTable(list) {
           <tr>
             <th class="provider-list-check-col"></th>
             <th>供应商</th>
-            <th>格式 / 能力</th>
+            <th>能力 / 限制</th>
             <th class="provider-list-action-col">操作</th>
             <th class="provider-list-enabled-col">启用</th>
           </tr>
@@ -465,7 +694,6 @@ function renderProviderListTable(list) {
         <tbody>
           ${list.map(p => {
             const enabled = p.enabled !== false;
-            const fmt = p.apiFormat || 'anthropic';
             const selected = providerSelectedIds.has(p.id);
             return `
               <tr class="${selected ? 'selected' : ''}">
@@ -485,8 +713,8 @@ function renderProviderListTable(list) {
                 </td>
                 <td>
                   <div class="provider-inline-tags">
-                    <span class="tag tag-${fmt}">${fmt === 'openai' ? 'OpenAI' : 'Anthropic'}</span>
                     ${capabilityBadges(p, true)}
+                    ${providerUnlockTagsHtml(p)}
                   </div>
                 </td>
                 <td class="provider-list-action-col">
@@ -498,6 +726,7 @@ function renderProviderListTable(list) {
                         <path d="M7.5 15h9"></path>
                       </svg>
                     </button>
+                    ${providerUnlockListButtonHtml(p)}
                     <button class="provider-list-icon-btn" onclick="openProviderEditor('${escAttr(p.id)}')" title="编辑" aria-label="编辑 ${escAttr(p.name || p.id)}">
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                         <path d="M12 20h9"></path>
@@ -666,12 +895,10 @@ function providerImportCandidateIsDuplicate(c) {
   const host = normalizeProviderImportHost(c?.apiHost);
   const path = normalizeProviderImportPath(c?.apiPath);
   const key = String(c?.apiKey || '');
-  const fmt = String(c?.apiFormat || 'anthropic');
   if (!host || !key) return false;
   return (providerStore.providers || []).some(p => {
     if (p?.meta?.codexConfig === true) return false;
-    return String(p.apiFormat || 'anthropic') === fmt
-      && normalizeProviderImportHost(p.apiHost) === host
+    return normalizeProviderImportHost(p.apiHost) === host
       && normalizeProviderImportPath(p.apiPath) === path
       && String(p.apiKey || '') === key;
   });
@@ -1360,7 +1587,7 @@ let currentEvalReportId = '';
 let evalRunning = false;
 let currentEvalProgressId = '';
 let evalProgressUnlisten = null;
-const EVAL_COMBO_IDS = ['eval-provider-select', 'eval-model-select'];
+const EVAL_COMBO_IDS = ['eval-provider-select', 'eval-format-select', 'eval-model-select'];
 const evalRemoteModelCache = new Map();
 const evalRemoteModelPending = new Set();
 let evalModelFetchSeq = 0;
@@ -1497,6 +1724,30 @@ function normalizeEvalModels(models) {
   return [...new Set((models || []).map(m => String(m || '').trim()).filter(Boolean))];
 }
 
+function normalizeEvalApiFormat(value, allowAuto = true) {
+  const raw = String(value || '').trim().toLowerCase();
+  if (allowAuto && raw === 'auto') return 'auto';
+  if (raw === 'openai') return 'openai';
+  if (raw === 'anthropic') return 'anthropic';
+  return allowAuto ? 'auto' : 'openai';
+}
+
+function evalApiFormatLabel(value) {
+  const fmt = normalizeEvalApiFormat(value);
+  if (fmt === 'auto') return '自动';
+  if (fmt === 'openai') return 'OpenAI';
+  if (fmt === 'anthropic') return 'Anthropic';
+  return value || '--';
+}
+
+function getEvalApiFormat() {
+  return normalizeEvalApiFormat(document.getElementById('eval-format-select')?.value || 'auto');
+}
+
+function evalRemoteModelCacheKey(providerId, apiFormat) {
+  return `${String(providerId || '')}|${normalizeEvalApiFormat(apiFormat, false)}`;
+}
+
 function getEvalSavedModelList(provider) {
   if (!provider) return [];
   const models = [];
@@ -1505,9 +1756,15 @@ function getEvalSavedModelList(provider) {
   return normalizeEvalModels(models);
 }
 
-function getEvalModelList(provider) {
+function getEvalModelList(provider, apiFormat = getEvalApiFormat()) {
   if (!provider) return [];
-  const remoteModels = evalRemoteModelCache.get(provider.id) || [];
+  const fmt = normalizeEvalApiFormat(apiFormat);
+  const remoteModels = fmt === 'auto'
+    ? [
+        ...(evalRemoteModelCache.get(evalRemoteModelCacheKey(provider.id, 'openai')) || []),
+        ...(evalRemoteModelCache.get(evalRemoteModelCacheKey(provider.id, 'anthropic')) || []),
+      ]
+    : (evalRemoteModelCache.get(evalRemoteModelCacheKey(provider.id, fmt)) || []);
   return normalizeEvalModels([...getEvalSavedModelList(provider), ...remoteModels]);
 }
 
@@ -1531,33 +1788,53 @@ function shouldAutoFetchEvalModels() {
 
 async function fetchEvalRemoteModels(provider) {
   if (!canFetchEvalModels(provider)) return;
-  if (evalRemoteModelCache.has(provider.id) || evalRemoteModelPending.has(provider.id)) return;
+  const requestedFormat = getEvalApiFormat();
+  const formats = requestedFormat === 'auto' ? ['openai', 'anthropic'] : [requestedFormat];
   const seq = ++evalModelFetchSeq;
-  evalRemoteModelPending.add(provider.id);
   const modelSelect = document.getElementById('eval-model-select');
+  let lastError = null;
   try {
-    const result = await invoke('fetch_models', {
-      args: {
-        host: getEvalProviderFetchHost(provider),
-        api_key: provider.apiKey,
-        path: provider.apiPath || null,
-        api_format: provider.apiFormat || 'anthropic',
+    for (const apiFormat of formats) {
+      const cacheKey = evalRemoteModelCacheKey(provider.id, apiFormat);
+      if (evalRemoteModelCache.has(cacheKey)) return;
+      if (evalRemoteModelPending.has(cacheKey)) return;
+      evalRemoteModelPending.add(cacheKey);
+      try {
+        const result = await invoke('fetch_models', {
+          args: {
+            host: getEvalProviderFetchHost(provider),
+            api_key: provider.apiKey,
+            path: provider.apiPath || null,
+            api_format: apiFormat,
+          }
+        });
+        if (seq !== evalModelFetchSeq) return;
+        const remoteModels = normalizeEvalModels(result?.models || []);
+        if (!remoteModels.length) throw new Error('返回的模型列表为空');
+        evalRemoteModelCache.set(cacheKey, remoteModels);
+        renderEvalModelOptions({ fetchRemote: false });
+        lastError = null;
+        return;
+      } catch (e) {
+        lastError = e;
+        if (requestedFormat === 'auto' && apiFormat === 'openai') {
+          addLog('warn', `自动协议拉取模型：OpenAI 未通，尝试 Anthropic（${e}）`);
+        }
+      } finally {
+        evalRemoteModelPending.delete(cacheKey);
       }
-    });
-    if (seq !== evalModelFetchSeq) return;
-    const remoteModels = normalizeEvalModels(result?.models || []);
-    if (!remoteModels.length) throw new Error('返回的模型列表为空');
-    evalRemoteModelCache.set(provider.id, remoteModels);
-    renderEvalModelOptions({ fetchRemote: false });
+    }
   } catch (e) {
+    lastError = e;
+  } finally {
     if (seq !== evalModelFetchSeq) return;
-    if (modelSelect && !getEvalModelList(provider).length) {
+    if (lastError && modelSelect && !getEvalModelList(provider).length) {
       modelSelect.innerHTML = '<option value="">模型拉取失败</option>';
       syncEvalCombos();
     }
-    addLog('warn', `检测模型完整列表拉取失败：${provider.name} (${e})`);
-  } finally {
-    evalRemoteModelPending.delete(provider.id);
+    if (lastError) {
+      addLog('warn', `检测模型完整列表拉取失败：${provider.name} (${lastError})`);
+    }
   }
 }
 
@@ -1925,8 +2202,9 @@ function resetEvalReportChrome() {
   renderEvalChecks('eval-protocol-checks', [], '完整检测完成后显示调用方式兼容情况');
 }
 
-function renderEvalRunning(provider, model) {
+function renderEvalRunning(provider, model, apiFormat = getEvalApiFormat()) {
   currentEvalProgressId = '';
+  const protocol = evalApiFormatLabel(apiFormat);
   const empty = document.getElementById('eval-empty');
   const result = document.getElementById('eval-result');
   if (empty) {
@@ -1935,7 +2213,7 @@ function renderEvalRunning(provider, model) {
   }
   if (result) result.style.display = 'none';
   setEvalText('eval-report-state', '检测中');
-  setEvalText('eval-report-target', `${provider?.name || '--'} · ${model || '--'} · 全面检测`);
+  setEvalText('eval-report-target', `${provider?.name || '--'} · ${model || '--'} · ${protocol} · 全面检测`);
   setEvalText('eval-report-id', 'pending');
   setEvalText('eval-report-clock', evalFormatTime(Date.now()));
   setEvalText('eval-progress-text', '准备执行完整探针');
@@ -1947,7 +2225,8 @@ function renderEvalRunning(provider, model) {
   document.querySelector('.eval-progress-panel')?.classList.add('is-running');
 }
 
-function renderEvalFailure(provider, model, message) {
+function renderEvalFailure(provider, model, message, apiFormat = getEvalApiFormat()) {
+  const protocol = evalApiFormatLabel(apiFormat);
   const empty = document.getElementById('eval-empty');
   const result = document.getElementById('eval-result');
   if (empty) {
@@ -1956,7 +2235,7 @@ function renderEvalFailure(provider, model, message) {
   }
   if (result) result.style.display = 'none';
   setEvalText('eval-report-state', '失败');
-  setEvalText('eval-report-target', `${provider?.name || '--'} · ${model || '--'}`);
+  setEvalText('eval-report-target', `${provider?.name || '--'} · ${model || '--'} · ${protocol}`);
   setEvalText('eval-report-id', '--');
   setEvalText('eval-report-clock', evalFormatTime(Date.now()));
   setEvalText('eval-progress-text', String(message || '检测失败').slice(0, 80));
@@ -2073,10 +2352,11 @@ function renderEvalReport(report) {
   }
   const meta = document.getElementById('eval-report-meta');
   if (meta) {
+    const protocol = evalApiFormatLabel(report.apiFormat);
     const modelMeta = reportedModel && reportedModel !== report.model
       ? `${report.model || '--'} → ${reportedModel}`
       : (report.model || reportedModel || '--');
-    meta.textContent = `${report.providerName || '--'} · ${modelMeta} · 全面检测 · 触发 ${Array.isArray(report.caps) ? report.caps.length : 0} 条 cap`;
+    meta.textContent = `${report.providerName || '--'} · ${modelMeta} · ${protocol} · 全面检测 · 触发 ${Array.isArray(report.caps) ? report.caps.length : 0} 条 cap`;
   }
   const verdict = document.getElementById('eval-verdict');
   if (verdict) verdict.textContent = report.verdict || '--';
@@ -2117,7 +2397,7 @@ function renderEvalReport(report) {
   renderEvalChecks('eval-capability-checks', report.capabilityChecks, '该报告没有能力矩阵');
   renderEvalChecks('eval-protocol-checks', report.protocolChecks, '该报告没有协议矩阵');
   setEvalText('eval-report-state', '已完成');
-  setEvalText('eval-report-target', `${report.providerName || '--'} · ${report.model || '--'} · 全面检测`);
+  setEvalText('eval-report-target', `${report.providerName || '--'} · ${report.model || '--'} · ${evalApiFormatLabel(report.apiFormat)} · 全面检测`);
   setEvalText('eval-report-id', report.id || '--');
   setEvalText('eval-report-clock', evalFormatTime(report.createdAt));
   const offlineCap = caps.find(c => c.rule === 'protocol_offline');
@@ -2138,7 +2418,7 @@ function renderEvalReport(report) {
   const fill = document.getElementById('eval-progress-fill');
   if (fill) fill.style.width = '100%';
   document.querySelector('.eval-progress-panel')?.classList.remove('is-running');
-  setEvalText('eval-footnote-left', `报告 ID ${report.id || '--'} · ${report.providerName || '--'} · ${evalFormatTime(report.createdAt)}`);
+  setEvalText('eval-footnote-left', `报告 ID ${report.id || '--'} · ${report.providerName || '--'} · ${evalApiFormatLabel(report.apiFormat)} · ${evalFormatTime(report.createdAt)}`);
   setEvalText('eval-footnote-right', `本机检测 · 全面探针 · 请求 ${report.usage?.requestCount || 0} · 耗时 ${evalFormatDuration(report.durationMs)}`);
 
   const body = document.getElementById('eval-probe-body');
@@ -2182,12 +2462,13 @@ function renderEvalHistory() {
     const modelLine = reportedModel && reportedModel !== r.model
       ? `${r.model || '--'} → ${reportedModel}`
       : (r.model || reportedModel || '--');
+    const protocol = evalApiFormatLabel(r.apiFormat);
     return `
       <div class="eval-history-item${active}" onclick="selectEvalReport('${escAttr(r.id)}')">
         <div class="eval-history-top">
           <div class="eval-history-name">
             <div class="eval-history-provider">${escAttr(r.providerName || '--')}</div>
-            <div class="eval-history-model" title="${escAttr(modelLine)}">${escAttr(modelLine)}</div>
+            <div class="eval-history-model" title="${escAttr(`${modelLine} · ${protocol}`)}">${escAttr(modelLine)} · ${escAttr(protocol)}</div>
           </div>
           <div class="eval-history-score" style="color:${evalRiskColor(r.riskLevel)};">${Number(r.score || 0).toFixed(1)}</div>
         </div>
@@ -2243,10 +2524,33 @@ function setEvalRunning(running) {
   btn.style.cursor = running ? 'default' : 'pointer';
 }
 
+function evalReportProtocolConnected(report) {
+  const p1 = Array.isArray(report?.probes) ? report.probes.find(p => p.id === 'P1') : null;
+  const status = String(p1?.status || '').toLowerCase();
+  return status === 'pass' || status === 'warn';
+}
+
+function evalReportProtocolSummary(report) {
+  const p1 = Array.isArray(report?.probes) ? report.probes.find(p => p.id === 'P1') : null;
+  return p1?.summary || report?.verdict || '协议连通性未通过';
+}
+
+function rememberEvalReport(report) {
+  if (!report?.id) return;
+  evalReports = [report, ...evalReports.filter(r => r.id !== report.id)].slice(0, 20);
+}
+
+async function runProviderEvalRequest(providerId, model, mode, selectedChecks, apiFormat) {
+  return await invoke('run_provider_eval', {
+    request: { providerId, model, apiFormat, mode, selectedChecks }
+  });
+}
+
 async function startEval() {
   if (evalRunning) return;
   const providerId = document.getElementById('eval-provider-select')?.value || '';
   const model = document.getElementById('eval-model-select')?.value || '';
+  const apiFormat = getEvalApiFormat();
   const mode = 'standard';
   const selectedChecks = getSelectedEvalChecks();
   const provider = getEvalProvider(providerId);
@@ -2256,19 +2560,41 @@ async function startEval() {
   }
 
   setEvalRunning(true);
-  renderEvalRunning(provider, model);
-  addLog('info', `开始检测「${provider.name} / ${model}」`);
+  renderEvalRunning(provider, model, apiFormat);
+  addLog('info', `开始检测「${provider.name} / ${model}」· ${evalApiFormatLabel(apiFormat)}`);
   try {
-    const report = await invoke('run_provider_eval', {
-      request: { providerId, model, mode, selectedChecks }
-    });
-    evalReports = [report, ...evalReports.filter(r => r.id !== report.id)].slice(0, 20);
+    let report = null;
+    if (apiFormat === 'auto') {
+      renderEvalRunning(provider, model, 'openai');
+      addLog('info', '自动协议：先按 OpenAI 检测');
+      let openaiReport = null;
+      try {
+        openaiReport = await runProviderEvalRequest(providerId, model, mode, selectedChecks, 'openai');
+        rememberEvalReport(openaiReport);
+      } catch (e) {
+        addLog('warn', `自动协议：OpenAI 请求异常，尝试 Anthropic（${e}）`);
+      }
+      if (openaiReport && evalReportProtocolConnected(openaiReport)) {
+        report = openaiReport;
+        addLog('ok', '自动协议：OpenAI 已通过，不再尝试 Anthropic');
+      } else {
+        const reason = openaiReport ? evalReportProtocolSummary(openaiReport) : 'OpenAI 请求异常';
+        addLog('warn', `自动协议：OpenAI 未通（${reason}），尝试 Anthropic`);
+        renderEvalRunning(provider, model, 'anthropic');
+        report = await runProviderEvalRequest(providerId, model, mode, selectedChecks, 'anthropic');
+        rememberEvalReport(report);
+      }
+    } else {
+      report = await runProviderEvalRequest(providerId, model, mode, selectedChecks, apiFormat);
+      rememberEvalReport(report);
+    }
     renderEvalReport(report);
     await loadEvalReports();
-    addLog('ok', `检测完成：${provider.name} / ${model}，得分 ${Number(report.score || 0).toFixed(1)}`);
+    const doneLevel = evalReportProtocolConnected(report) ? 'ok' : 'warn';
+    addLog(doneLevel, `检测完成：${provider.name} / ${model} · ${evalApiFormatLabel(report.apiFormat)}，得分 ${Number(report.score || 0).toFixed(1)}`);
   } catch (e) {
     addLog('err', '检测失败: ' + e);
-    renderEvalFailure(provider, model, e);
+    renderEvalFailure(provider, model, e, apiFormat);
     showCustomAlert(String(e), '检测失败', 'error');
   } finally {
     setEvalRunning(false);
@@ -2339,3 +2665,4 @@ async function persistProviders() {
 }
 
 syncEvalCombos();
+

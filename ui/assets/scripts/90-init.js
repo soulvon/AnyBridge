@@ -5,7 +5,7 @@ async function syncAppVersionDisplay() {
     const v = await invoke('get_app_version');
     if (v) label = 'v' + v;
   } catch {}
-  ['current-version-display', 'topbar-version-display'].forEach(id => {
+  ['current-version-display', 'topbar-version-display', 'about-version-display'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.textContent = label;
   });
@@ -30,6 +30,7 @@ async function init() {
     const saved = localStorage.getItem('byok-theme');
     if (saved) applyTheme(saved);
   } catch {}
+  if (typeof syncIdeRestartPromptSetting === 'function') syncIdeRestartPromptSetting();
 
   await loadAndFillConfig();
 

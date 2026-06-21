@@ -48,21 +48,18 @@ pub fn build_tray(app: &AppHandle) -> tauri::Result<()> {
             "start" => {
                 let app = app.clone();
                 tauri::async_runtime::spawn_blocking(move || {
-                    let _ = crate::commands::proxy::start_proxy_impl(app, None, false);
+                    let _ = crate::commands::proxy::start_proxy_service_impl(app);
                 });
             }
             "stop" => {
                 let app = app.clone();
                 tauri::async_runtime::spawn_blocking(move || {
-                    let _ = crate::commands::proxy::stop_proxy_impl(app, None);
+                    let _ = crate::commands::proxy::stop_proxy_service_impl(app);
                 });
             }
             "quit" => {
-                // 退出前还原 IDE 配置（两个都尝试，幂等）。
-                let _ = crate::commands::ide_config::restore("windsurf");
-                let _ = crate::commands::ide_config::restore("devin");
-                let _ = crate::commands::workbench_inject::restore("windsurf");
-                let _ = crate::commands::workbench_inject::restore("devin");
+                // 退出只停止 AnyBridge sidecar；IDE 是否切到代理由平台页按钮管理。
+                let _ = crate::commands::proxy::stop_proxy_service_impl(app.clone());
                 app.exit(0);
             }
             _ => {}
@@ -126,7 +123,15 @@ pub fn set_autostart(enabled: bool) -> Result<(), String> {
         if enabled {
             Command::new("reg")
                 .args([
-                    "add", key, "/v", "AnyBridge", "/t", "REG_SZ", "/d", &exe, "/f",
+                    "add",
+                    key,
+                    "/v",
+                    "AnyBridge",
+                    "/t",
+                    "REG_SZ",
+                    "/d",
+                    &exe,
+                    "/f",
                 ])
                 .creation_flags(0x0800_0000)
                 .output()

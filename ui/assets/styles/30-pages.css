@@ -53,9 +53,9 @@
 
 /* ═══════ SETTINGS ═══════ */
 /* 全局 .settings-sidebar / .settings-menu-item 已被 .platform-settings-card .* 覆盖，
-   见下方『平台 / 总设置 → 接入设置 / 总设置页』区块。 */
+   见下方『平台设置 / 总设置页』区块。 */
 
-/* ═══════ 平台 / 总设置 → 接入设置 / 总设置页：合成一个玻璃卡片，左侧导航 + 右侧详情 ═══════ */
+/* ═══════ 平台设置 / 总设置页：合成一个玻璃卡片，左侧导航 + 右侧详情 ═══════ */
 
 /* 大卡片：去掉内边距，flex 撑满 */
 .platform-settings-card {
@@ -195,9 +195,24 @@
   padding: 12px 0; border-bottom: 1px solid var(--border);
 }
 .setting-row:last-child { border-bottom: none; }
+.setting-row-stacked {
+  align-items: stretch;
+  flex-direction: column;
+  gap: 10px;
+}
 .setting-label { font-size: 13px; color: var(--text-secondary); }
 .setting-desc { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
 .setting-ctrl { display: flex; align-items: center; gap: 8px; }
+.setting-restart-pref-ctrl {
+  display: grid;
+  grid-template-columns: 116px 88px;
+  gap: 8px;
+}
+.setting-restart-pref-ctrl .input-sm,
+.setting-restart-pref-ctrl .btn-ghost {
+  width: 100%;
+  min-width: 0;
+}
 .setting-path-ctrl {
   flex: 1 1 auto;
   justify-content: flex-end;
@@ -206,6 +221,42 @@
 .setting-path-ctrl .field-input {
   width: min(420px, 100%);
   min-width: 220px;
+}
+.setting-path-row .setting-path-ctrl {
+  width: 100%;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 84px 84px;
+  gap: 10px;
+}
+.setting-path-row .setting-path-ctrl .field-input {
+  width: 100%;
+  min-width: 0;
+}
+.setting-path-row .setting-path-ctrl .btn-ghost {
+  min-width: 84px;
+  justify-content: center;
+}
+.setting-route-ctrl {
+  align-items: stretch;
+}
+.route-port-stack {
+  display: grid;
+  grid-template-columns: minmax(150px, 1fr);
+  gap: 8px;
+  width: min(240px, 100%);
+}
+.route-port-stack label {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.route-port-stack span {
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 800;
+  white-space: nowrap;
 }
 .theme-setting-btn {
   height: 34px;
@@ -270,18 +321,18 @@ html[data-theme="dark"] .theme-setting-moon {
   transform: rotate(-90deg) scale(0.55);
 }
 
-/* ═══════ COMMUNITY ═══════ */
-.community-panel {
+/* ═══════ ABOUT ═══════ */
+.about-panel {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 34px;
   align-items: center;
-  max-width: 900px;
+  max-width: 980px;
   margin: 0 auto;
   padding: 34px;
 }
-.community-copy { min-width: 0; }
-.community-kicker {
+.about-copy { min-width: 0; }
+.about-kicker {
   display: inline-flex;
   align-items: center;
   height: 22px;
@@ -293,34 +344,63 @@ html[data-theme="dark"] .theme-setting-moon {
   font-size: 11px;
   font-weight: 800;
 }
-.community-title {
+.about-title {
   margin-top: 14px;
   color: var(--text-primary);
-  font-size: 28px;
-  line-height: 1.25;
+  font-size: 30px;
+  line-height: 1.2;
   letter-spacing: 0;
 }
-.community-desc {
-  max-width: 460px;
+.about-desc {
+  max-width: 560px;
   margin-top: 12px;
   color: var(--text-secondary);
   font-size: 13px;
   line-height: 1.8;
 }
-.community-actions {
+.about-meta-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  max-width: 640px;
+  margin-top: 22px;
+}
+.about-meta-item {
+  min-width: 0;
+  padding: 13px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-primary);
+}
+.about-meta-item span {
+  display: block;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+.about-meta-item strong {
+  display: block;
+  min-width: 0;
+  margin-top: 6px;
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+.about-actions {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
   gap: 12px;
   margin-top: 24px;
 }
-.community-join-btn { text-decoration: none; }
-.community-group-id {
-  color: var(--text-muted);
-  font-size: 12px;
-  font-family: var(--font-mono);
+.about-actions .btn-primary,
+.about-actions .btn-ghost {
+  --btn-min-width: 116px;
 }
-.community-qr-wrap {
+.about-join-btn,
+.about-link-btn { text-decoration: none; }
+.about-qr-wrap {
   width: min(280px, 34vw);
   min-width: 220px;
   padding: 14px;
@@ -329,7 +409,14 @@ html[data-theme="dark"] .theme-setting-moon {
   background: var(--bg-primary);
   box-shadow: var(--shadow-md);
 }
-.community-qr {
+.about-qr-label {
+  margin-bottom: 10px;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 800;
+  text-align: center;
+}
+.about-qr {
   display: block;
   width: 100%;
   height: auto;
@@ -588,6 +675,33 @@ html[data-theme="dark"] .theme-setting-moon {
   white-space: nowrap;
 }
 .btn-ghost:hover { background: var(--bg-hover); color: var(--text-primary); border-color: var(--border-strong); }
+
+/* Shared button geometry: primary/ghost buttons must not drift in height or text baseline. */
+.btn-primary,
+.btn-ghost {
+  box-sizing: border-box;
+  height: var(--btn-height, 36px);
+  min-height: var(--btn-height, 36px);
+  min-width: var(--btn-min-width, 84px);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--btn-gap, 8px);
+  padding: 0 var(--btn-padding-x, 16px);
+  border-radius: var(--radius-md);
+  font-family: var(--font-body);
+  font-size: var(--btn-font-size, 12px);
+  font-weight: var(--btn-font-weight, 750);
+  line-height: 1;
+  white-space: nowrap;
+  text-decoration: none;
+  vertical-align: middle;
+}
+
+.btn-primary :is(svg, span),
+.btn-ghost :is(svg, span) {
+  flex: 0 0 auto;
+}
 
 /* ═══════ FLOW DIAGRAM ═══════ */
 .flow {
@@ -2047,16 +2161,17 @@ html[data-theme="dark"] .theme-setting-moon {
     width: auto;
     white-space: nowrap;
   }
-  .community-panel {
+  .about-panel {
     grid-template-columns: 1fr;
     justify-items: center;
     padding: 24px;
     gap: 24px;
     text-align: center;
   }
-  .community-desc { max-width: 100%; }
-  .community-actions { justify-content: center; }
-  .community-qr-wrap {
+  .about-desc { max-width: 100%; }
+  .about-actions { justify-content: center; }
+  .about-meta-grid { grid-template-columns: 1fr; width: min(520px, 100%); }
+  .about-qr-wrap {
     width: min(280px, 100%);
     min-width: 0;
   }
@@ -2086,6 +2201,12 @@ html[data-theme="dark"] .theme-setting-moon {
 }
 
 @media (max-width: 640px) {
+  .setting-path-row .setting-path-ctrl {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .setting-path-row .setting-path-ctrl .field-input {
+    grid-column: 1 / -1;
+  }
   .eval-result-grid,
   #page-eval .eval-result-grid,
   .eval-check-grid,

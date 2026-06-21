@@ -172,6 +172,11 @@
       '外观': 'Appearance',
       '模型默认值': 'Model defaults',
       '自动重试': 'Auto retry',
+      '请求重试': 'Request retry',
+      '5xx / 429 / 网络错误时按配置重试': 'Retry 5xx / 429 / network errors using this config',
+      '基础等待 (ms)': 'Base delay (ms)',
+      '单次等待上限 (ms)': 'Per-attempt max delay (ms)',
+      '最大总耗时 (秒)': 'Max total time (sec)',
       '系统提示词': 'System prompt',
       '安全': 'Security',
       '版本更新': 'Updates',
@@ -233,10 +238,10 @@
       '检查更新': 'Check for updates',
       '当前版本': 'Current version',
       '生成 MITM 证书': 'Generate MITM certificate',
-      '自动接入': 'Auto access',
-      '启动代理时自动写入 http.proxy / http.proxyStrictSSL，停止代理或退出时自动还原': 'Write http.proxy / http.proxyStrictSSL when starting proxy, then restore when stopping or exiting',
+      '切换到代理': 'Switch to proxy',
+      '点击平台页「切换到代理」时写入 http.proxy / http.proxyStrictSSL；还原直连时恢复备份': 'Write http.proxy / http.proxyStrictSSL when switching an IDE to proxy, then restore from backup when returning to direct mode',
       'MITM 证书': 'MITM certificate',
-      '首次使用请生成证书；http.proxyStrictSSL: false 会在启动代理时自动写入': 'Generate a certificate before first use; http.proxyStrictSSL: false is written automatically when starting proxy',
+      '首次使用请生成证书；切换到代理时会写入 http.proxyStrictSSL: false': 'Generate a certificate before first use; http.proxyStrictSSL: false is written when switching to proxy',
       '证书目录': 'Certificate folder',
       '配置目录': 'Config folder',
       'IDE 安装路径': 'IDE install path',
@@ -303,3 +308,4 @@
     }
   };
 })();
+

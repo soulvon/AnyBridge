@@ -21,12 +21,13 @@ function appConfigDir(name) {
 
 const LOG_DIR = path.join(configDir(), 'mitm-logs');
 const RPC_AUDIT_DIR = path.join(configDir(), 'rpc-audit');
-const MITM_LOG_ENABLED = /^(true|1|on)$/i.test(String(process.env.BYOK_MITM_LOG || 'false'));
-const RPC_AUDIT_ENABLED = /^(true|1|on)$/i.test(String(process.env.BYOK_RPC_AUDIT || 'false'));
+// 本地工具默认开启日志，方便排障。可用 BYOK_MITM_LOG=false 显式关闭。
+const MITM_LOG_ENABLED = !/^(false|0|off)$/i.test(String(process.env.BYOK_MITM_LOG ?? 'true'));
+const RPC_AUDIT_ENABLED = !/^(false|0|off)$/i.test(String(process.env.BYOK_RPC_AUDIT ?? 'true'));
 const MITM_FULL_LOG = /^(true|1|on)$/i.test(String(process.env.BYOK_MITM_FULL_LOG || 'false'));
 const MITM_MAX_BODY_BYTES = parseInt(process.env.BYOK_MITM_MAX_BODY_BYTES || '8192', 10);
 
-// 仅在显式开启时创建日志目录，避免默认运行留下敏感调试痕迹。
+// 默认开启时创建日志目录。
 if (MITM_LOG_ENABLED) {
   try { fs.mkdirSync(LOG_DIR, { recursive: true }); } catch {}
 }

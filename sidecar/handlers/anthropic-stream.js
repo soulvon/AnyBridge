@@ -114,7 +114,13 @@ export class AnthropicStreamProcessor {
     this._signatureBuffer = '';
 
     // ── Token usage captured from message_start / message_delta ──
-    this._usage = { inputTokens: 0, outputTokens: 0 };
+    this._usage = {
+      inputTokens: 0,
+      outputTokens: 0,
+      cachedTokens: 0,
+      cacheCreationInputTokens: 0,
+      cacheReadInputTokens: 0,
+    };
   }
 
   // ── Public API ─────────────────────────────────────────────
@@ -151,6 +157,13 @@ export class AnthropicStreamProcessor {
         if (data?.usage?.output_tokens != null) {
           this._usage.outputTokens = data.usage.output_tokens;
         }
+        if (data?.usage?.cache_creation_input_tokens != null) {
+          this._usage.cacheCreationInputTokens = data.usage.cache_creation_input_tokens;
+        }
+        if (data?.usage?.cache_read_input_tokens != null) {
+          this._usage.cacheReadInputTokens = data.usage.cache_read_input_tokens;
+          this._usage.cachedTokens = data.usage.cache_read_input_tokens;
+        }
         break;
 
       case 'message_start':
@@ -159,6 +172,12 @@ export class AnthropicStreamProcessor {
             this._usage.inputTokens = data.message.usage.input_tokens;
           if (data.message.usage.output_tokens != null)
             this._usage.outputTokens = data.message.usage.output_tokens;
+          if (data.message.usage.cache_creation_input_tokens != null)
+            this._usage.cacheCreationInputTokens = data.message.usage.cache_creation_input_tokens;
+          if (data.message.usage.cache_read_input_tokens != null) {
+            this._usage.cacheReadInputTokens = data.message.usage.cache_read_input_tokens;
+            this._usage.cachedTokens = data.message.usage.cache_read_input_tokens;
+          }
         }
         break;
 
@@ -193,7 +212,7 @@ export class AnthropicStreamProcessor {
 
   /**
    * Token usage captured during the stream.
-   * @returns {{ inputTokens: number, outputTokens: number }}
+   * @returns {{ inputTokens: number, outputTokens: number, cachedTokens: number, cacheCreationInputTokens: number, cacheReadInputTokens: number }}
    */
   get usage() {
     return this._usage;

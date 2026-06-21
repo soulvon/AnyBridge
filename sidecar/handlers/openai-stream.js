@@ -80,7 +80,7 @@ export class OpenAIStreamProcessor {
     this._itemPhases = {};
 
     // Token usage captured from response.completed
-    this._usage = { inputTokens: 0, outputTokens: 0 };
+    this._usage = { inputTokens: 0, outputTokens: 0, cachedTokens: 0 };
   }
 
   get isDone() { return this._done; }
@@ -171,6 +171,9 @@ export class OpenAIStreamProcessor {
         if (resp?.usage) {
           if (resp.usage.input_tokens != null) this._usage.inputTokens = resp.usage.input_tokens;
           if (resp.usage.output_tokens != null) this._usage.outputTokens = resp.usage.output_tokens;
+          const cached = resp.usage.input_tokens_details?.cached_tokens
+            ?? resp.usage.prompt_tokens_details?.cached_tokens;
+          if (cached != null) this._usage.cachedTokens = cached;
         }
         // Flush everything on completed
         return this._onDone();
@@ -261,7 +264,7 @@ export class OpenAIChatCompletionsStreamProcessor {
     this._tokenCount = 0;
     this._done = false;
     this._stopReason = null;
-    this._usage = { inputTokens: 0, outputTokens: 0 };
+    this._usage = { inputTokens: 0, outputTokens: 0, cachedTokens: 0 };
     this._toolCalls = {};
   }
 
@@ -278,6 +281,9 @@ export class OpenAIChatCompletionsStreamProcessor {
     if (data?.usage) {
       if (data.usage.prompt_tokens != null) this._usage.inputTokens = data.usage.prompt_tokens;
       if (data.usage.completion_tokens != null) this._usage.outputTokens = data.usage.completion_tokens;
+      const cached = data.usage.prompt_tokens_details?.cached_tokens
+        ?? data.usage.input_tokens_details?.cached_tokens;
+      if (cached != null) this._usage.cachedTokens = cached;
     }
 
     const choice = data?.choices?.[0];

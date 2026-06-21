@@ -3,6 +3,103 @@ let modelMapStore = { slots: [] };       // load_model_map 结果
 let ideModels = null;               // list_ide_models 缓存（数组）
 let ideMeta = null;                 // { source, capturedAt, account } 元信息
 
+const DEFAULT_PROXY_ENHANCEMENT = Object.freeze({
+  retry: true,
+  retryMaxRetries: 5,
+  retryBaseMs: 600,
+  retryCapMs: 8000,
+  retryTotalSeconds: 60,
+  imageFallback: true,
+  autoRouting: true,
+  unlockModels: true,
+});
+const PROXY_VISION_TEST_FALLBACK_IMAGE_B64 = 'iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAYAAADDPmHLAAABpklEQVR4nO3SMRHDUBBDwcAxiIAwYoNI/bk4IFTc6GYL1a/Qfq77+yY74cb7T7YTbrr/GT9gug8AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAsBNA/YFpv/zAtA8AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAMBOAPUHpv3yA9M+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAOwHUH5j2yw9M+wAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAOwEcN2/N9kJN95/sp1w030AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAB2Aqg/MO2XH5j2AQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA2Amg/sC0X35g2gcAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAGAngPoD0375gWkfAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACAlQD+DY7JjtGCazMAAAAASUVORK5CYII=';
+let proxyVisionPickerOpen = false;
+let proxyVisionTestingKey = '';
+let proxyVisionTestImageB64 = '';
+
+function defaultProxyEnhancement() {
+  return { ...DEFAULT_PROXY_ENHANCEMENT };
+}
+
+async function getProxyVisionTestImageBase64() {
+  if (proxyVisionTestImageB64) return proxyVisionTestImageB64;
+  try {
+    const res = await fetch('./assets/vision-test-image.png', { cache: 'no-cache' });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const bytes = new Uint8Array(await res.arrayBuffer());
+    let binary = '';
+    for (let i = 0; i < bytes.length; i += 0x8000) {
+      binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+    }
+    proxyVisionTestImageB64 = btoa(binary);
+  } catch (e) {
+    addLog('warn', '读取固定图片测试素材失败，使用内置兜底图: ' + e);
+    proxyVisionTestImageB64 = PROXY_VISION_TEST_FALLBACK_IMAGE_B64;
+  }
+  return proxyVisionTestImageB64;
+}
+
+function ensureModelMapDefaults() {
+  if (!modelMapStore || typeof modelMapStore !== 'object') modelMapStore = { slots: [] };
+  if (!Array.isArray(modelMapStore.slots)) modelMapStore.slots = [];
+  if (!Array.isArray(modelMapStore.injected)) modelMapStore.injected = [];
+  const cur = modelMapStore.enhancement && typeof modelMapStore.enhancement === 'object' ? modelMapStore.enhancement : {};
+  modelMapStore.enhancement = {
+    retry: cur.retry !== false,
+    retryMaxRetries: normalizeEnhancementInt(cur.retryMaxRetries, DEFAULT_PROXY_ENHANCEMENT.retryMaxRetries, 0),
+    retryBaseMs: normalizeEnhancementInt(cur.retryBaseMs, DEFAULT_PROXY_ENHANCEMENT.retryBaseMs, 1),
+    retryCapMs: normalizeEnhancementInt(cur.retryCapMs, DEFAULT_PROXY_ENHANCEMENT.retryCapMs, 1),
+    retryTotalSeconds: normalizeEnhancementInt(cur.retryTotalSeconds, DEFAULT_PROXY_ENHANCEMENT.retryTotalSeconds, 1),
+    imageFallback: cur.imageFallback !== false,
+    autoRouting: cur.autoRouting !== false,
+    unlockModels: cur.unlockModels !== false,
+  };
+  if (!modelMapStore.visionModels || typeof modelMapStore.visionModels !== 'object') {
+    modelMapStore.visionModels = { imageModels: [] };
+  }
+  if (!Array.isArray(modelMapStore.visionModels.imageModels)) {
+    modelMapStore.visionModels.imageModels = [];
+  }
+  const seen = new Set();
+  modelMapStore.visionModels.imageModels = modelMapStore.visionModels.imageModels
+    .map(x => ({
+      providerId: String(x?.providerId || '').trim(),
+      model: String(x?.model || '').trim(),
+      apiFormat: normalizeMappingApiFormat(x?.apiFormat || x?.api_format) || 'openai'
+    }))
+    .filter(x => x.providerId && x.model)
+    .filter(x => {
+      const key = visionModelKey(x.providerId, x.model, x.apiFormat);
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  if (typeof syncProxyEnhancementSummary === 'function') syncProxyEnhancementSummary();
+}
+
+function normalizeEnhancementInt(value, fallback, min) {
+  const n = parseInt(value, 10);
+  return Number.isFinite(n) && n >= min ? n : fallback;
+}
+
+function visionModelKey(providerId, model, apiFormat = 'openai') {
+  return `${encodeURIComponent(providerId || '')}|${encodeURIComponent(model || '')}|${encodeURIComponent(normalizeMappingApiFormat(apiFormat) || 'openai')}`;
+}
+
+function decodeVisionModelKey(key) {
+  const [providerId = '', model = '', apiFormat = 'openai'] = String(key || '').split('|');
+  return {
+    providerId: decodeURIComponent(providerId),
+    model: decodeURIComponent(model),
+    apiFormat: normalizeMappingApiFormat(decodeURIComponent(apiFormat)) || 'openai'
+  };
+}
+
+function visionModelLabel(item) {
+  const p = (providerStore.providers || []).find(x => x.id === item.providerId);
+  return `${p ? (p.name || p.id) : (item.providerId || '未知供应商')} - ${item.model || '默认模型'} · ${targetRouteLabel(item)}`;
+}
 async function ensureIdeModels() {
   if (ideModels) return ideModels;
   try {
@@ -113,6 +210,7 @@ function renderTargetChain(targets) {
     const invalid = !p || p.enabled === false;
     const label = p ? p.name : (t.providerId || '?');
     const modelText = `${escAttr(label)}/${escAttr(t.model || '默认模型')}`;
+    const routeText = targetRouteLabel(t);
     const badges = p ? capabilityBadges(p, true, t.model || p.defaultModel || null) : '';
     const caps = badges || (invalid ? '<span class="target-cap-muted">供应商不可用</span>' : '<span class="target-cap-muted">未标记能力</span>');
     return `
@@ -120,6 +218,7 @@ function renderTargetChain(targets) {
         <div class="target-model-line">
           <span class="target-order">${i + 1}</span>
           <span class="target-model-text">${modelText}</span>
+          <span class="target-cap-muted">${escAttr(routeText)}</span>
           ${invalid ? '<span class="target-warning">⚠</span>' : ''}
         </div>
         <div class="target-cap-line">${caps}</div>
@@ -140,9 +239,10 @@ async function renderModelMap() {
     addLog('warn', '加载模型映射失败: ' + e);
   }
 
+  ensureModelMapDefaults();
+
   // 同步 namePrefix 到输入框
   // 兼容旧 model-map.json（无 injected 字段）
-  if (!Array.isArray(modelMapStore.injected)) modelMapStore.injected = [];
   modelMapStore.unlockScope = normalizeUnlockScope(modelMapStore.unlockScope || modelMapStore.slotDisplayMode);
   modelMapStore.slotDisplayMode = modelMapStore.unlockScope;
   modelMapStore.slotVisibilityMode = normalizeSlotVisibilityMode(modelMapStore.slotVisibilityMode);
@@ -153,7 +253,7 @@ async function renderModelMap() {
   const slots = modelMapStore.slots || [];
   const rows = slots.map(s => ({ kind: 'mapped', slot: s, model: slotModelOf(s.modelUid) }));
   if (rows.length === 0) {
-    body.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--text-muted);padding:18px">暂无模型映射，点击「添加映射」创建第一条关系</td></tr>';
+    body.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--text-muted);padding:18px">暂无模型映射，点击「添加映射」创建第一条关系</td></tr>';
     return;
   }
 
@@ -175,6 +275,12 @@ async function renderModelMap() {
       : `<span style="color:var(--warn,#d97706);cursor:pointer" onclick="openFailoverEditor('${escAttr(s.modelUid)}')">未设置 ⚠ [点击配置]</span>`;
     const vision = slotVisionAssessment(s.modelUid, s.targets || [], s.supportsImages !== false);
     const enabled = s.enabled !== false;
+    const hasVisionModels = (modelMapStore.visionModels?.imageModels?.length || 0) > 0;
+    const useThirdParty = s.useThirdPartyVision === true;
+    const visionDisabled = !hasVisionModels ? 'disabled' : '';
+    const visionTitle = !hasVisionModels
+      ? '请先在「代理增强」中配置图片理解模型'
+      : (useThirdParty ? '已启用第三方图片理解' : '启用后图片将使用第三方模型理解');
     return `
       <tr data-model-uid="${escAttr(s.modelUid)}" data-row-kind="mapped">
         <td class="editable-cell display-name-cell" onclick="startEditDisplayName(this, '${escAttr(s.modelUid)}')" title="${escAttr(display)}">${escAttr(display)}</td>
@@ -192,6 +298,12 @@ async function renderModelMap() {
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"/></svg>
             </button>
           </div>
+        </td>
+        <td class="model-map-toggle-cell">
+          <label class="toggle-switch" title="${escAttr(visionTitle)}">
+            <input type="checkbox" ${useThirdParty ? 'checked' : ''} ${visionDisabled} onchange="toggleSlotThirdPartyVision('${escAttr(s.modelUid)}', this.checked)">
+            <span class="toggle-slider"></span>
+          </label>
         </td>
         <td class="model-map-toggle-cell">
           <label class="toggle-switch" title="${enabled ? '已启用，点击停用' : '已停用，点击启用'}">
@@ -271,7 +383,7 @@ function filterModelTable() {
     const row = rows[i];
 
     // 跳过空数据提示行
-    if (row.cells.length === 1 && row.cells[0].colSpan >= 5) {
+    if (row.cells.length === 1 && row.cells[0].colSpan >= 6) {
       continue;
     }
 
@@ -281,9 +393,9 @@ function filterModelTable() {
 
     // 搜索匹配
     const matchesSearch = query === '' ||
-                          orig.includes(query) ||
-                          display.includes(query) ||
-                          slot.includes(query);
+      orig.includes(query) ||
+      display.includes(query) ||
+      slot.includes(query);
 
     if (matchesSearch) {
       row.style.display = '';
@@ -295,6 +407,7 @@ function filterModelTable() {
 
 async function persistModelMap() {
   try {
+    ensureModelMapDefaults();
     await invoke('save_model_map', { map: modelMapStore });
     return true;
   } catch (e) {
@@ -304,6 +417,280 @@ async function persistModelMap() {
   }
 }
 
+
+// ─── 代理增强配置面板 ───
+function renderProxyEnhancement() {
+  ensureModelMapDefaults();
+  ['retry', 'imageFallback', 'autoRouting', 'unlockModels'].forEach(key => {
+    const el = document.getElementById(`enhancement-${key}`);
+    if (el) el.checked = modelMapStore.enhancement[key] !== false;
+  });
+  ['retryMaxRetries', 'retryBaseMs', 'retryCapMs', 'retryTotalSeconds'].forEach(key => {
+    const el = document.getElementById(`enhancement-${key}`);
+    if (el) el.value = modelMapStore.enhancement[key];
+  });
+  setRetryConfigControlsEnabled(modelMapStore.enhancement.retry !== false);
+  renderProxyVisionModelList();
+  renderVisionModelPicker();
+}
+
+function openProxyEnhancement() {
+  ensureModelMapDefaults();
+  proxyVisionPickerOpen = false;
+  const picker = document.getElementById('proxyVisionModelPicker');
+  if (picker) {
+    picker.classList.remove('is-open');
+    picker.setAttribute('aria-hidden', 'true');
+  }
+  if (typeof openProxyPanel === 'function') {
+    openProxyPanel('enhancement');
+    renderProxyEnhancement();
+    return;
+  }
+  renderProxyEnhancement();
+  document.getElementById('proxyEnhancementModal')?.classList.add('is-open');
+}
+
+function closeProxyEnhancement() {
+  document.getElementById('proxyEnhancementModal')?.classList.remove('is-open');
+}
+
+function toggleEnhancement(input, key) {
+  ensureModelMapDefaults();
+  if (!Object.prototype.hasOwnProperty.call(DEFAULT_PROXY_ENHANCEMENT, key)) return;
+  modelMapStore.enhancement[key] = input.checked === true;
+  if (key === 'retry') setRetryConfigControlsEnabled(modelMapStore.enhancement.retry !== false);
+}
+
+function setRetryConfigControlsEnabled(enabled) {
+  ['retryMaxRetries', 'retryBaseMs', 'retryCapMs', 'retryTotalSeconds'].forEach(key => {
+    const el = document.getElementById(`enhancement-${key}`);
+    if (el) el.disabled = !enabled;
+  });
+}
+
+function updateEnhancementNumber(input, key) {
+  ensureModelMapDefaults();
+  if (!Object.prototype.hasOwnProperty.call(DEFAULT_PROXY_ENHANCEMENT, key)) return;
+  const min = key === 'retryMaxRetries' ? 0 : 1;
+  const value = normalizeEnhancementInt(input.value, DEFAULT_PROXY_ENHANCEMENT[key], min);
+  modelMapStore.enhancement[key] = value;
+  input.value = value;
+}
+
+async function saveProxyEnhancement() {
+  ensureModelMapDefaults();
+  if (await persistModelMap()) {
+    addLog('ok', '已保存代理增强配置');
+    await renderModelMap();
+    if (typeof syncProxyEnhancementSummary === 'function') syncProxyEnhancementSummary();
+    const modal = document.getElementById('proxyEnhancementModal');
+    if (modal?.classList.contains('editor-overlay')) closeProxyEnhancement();
+  }
+}
+
+function resetProxyEnhancementDefaults() {
+  ensureModelMapDefaults();
+  modelMapStore.enhancement = defaultProxyEnhancement();
+  renderProxyEnhancement();
+}
+
+function renderProxyVisionModelList() {
+  ensureModelMapDefaults();
+  const wrap = document.getElementById('proxyVisionModelList');
+  if (!wrap) return;
+  const items = modelMapStore.visionModels.imageModels;
+  if (!items.length) {
+    wrap.innerHTML = '<div style="padding:14px;border:1px dashed var(--border);border-radius:9px;color:var(--text-muted);font-size:12px;text-align:center;">尚未配置图片理解模型。添加后可在映射列表启用第三方图片理解。</div>';
+    return;
+  }
+  wrap.innerHTML = items.map((item, idx) => {
+    const p = (providerStore.providers || []).find(x => x.id === item.providerId);
+    const invalid = !p || p.enabled === false;
+    const caps = p ? providerCapabilities(p, item.model || p.defaultModel || null) : null;
+    const capText = caps?.vision === true ? '已知支持图片' : '未确认图片能力';
+    const capColor = caps?.vision === true ? 'var(--success)' : 'var(--text-muted)';
+    const key = visionModelKey(item.providerId, item.model, item.apiFormat);
+    const testing = proxyVisionTestingKey === key;
+    return `
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 12px;border:1px solid ${invalid ? 'rgba(217,119,6,.28)' : 'var(--border)'};border-radius:9px;background:var(--bg-card);">
+        <div style="display:flex;align-items:center;gap:10px;min-width:0;flex:1;">
+          <span style="width:22px;height:22px;border-radius:6px;background:var(--bg-input);color:var(--text-muted);font-size:11px;font-weight:800;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;">${idx + 1}</span>
+          <div style="display:flex;flex-direction:column;gap:3px;min-width:0;">
+            <strong style="font-size:12px;color:${invalid ? 'var(--warn,#d97706)' : 'var(--text-primary)'};overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escAttr(visionModelLabel(item))}</strong>
+            <span style="font-size:10px;color:${capColor};">${invalid ? '供应商不可用' : capText}</span>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:6px;flex-shrink:0;">
+          <button class="btn-ghost" onclick="moveVisionModel(${idx}, -1)" ${idx === 0 ? 'disabled' : ''} style="height:26px;padding:0 8px;border-radius:7px;font-size:11px;">↑</button>
+          <button class="btn-ghost" onclick="moveVisionModel(${idx}, 1)" ${idx === items.length - 1 ? 'disabled' : ''} style="height:26px;padding:0 8px;border-radius:7px;font-size:11px;">↓</button>
+          <button id="vision-test-btn-${idx}" class="btn-ghost" onclick="testVisionModel(${idx})" ${testing ? 'disabled' : ''} style="height:26px;padding:0 9px;border-radius:7px;font-size:11px;">${testing ? '测试中...' : '测试'}</button>
+          <button class="btn-ghost" onclick="removeVisionModel(${idx})" style="height:26px;padding:0 8px;border-radius:7px;font-size:11px;">✕</button>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+function toggleVisionModelPicker() {
+  setVisionModelPickerOpen(!proxyVisionPickerOpen);
+}
+
+function closeVisionModelPicker() {
+  setVisionModelPickerOpen(false);
+}
+
+function setVisionModelPickerOpen(open) {
+  proxyVisionPickerOpen = open === true;
+  const picker = document.getElementById('proxyVisionModelPicker');
+  if (picker) {
+    picker.classList.toggle('is-open', proxyVisionPickerOpen);
+    picker.setAttribute('aria-hidden', proxyVisionPickerOpen ? 'false' : 'true');
+  }
+  if (proxyVisionPickerOpen) {
+    const search = document.getElementById('proxyVisionModelSearch');
+    if (search) setTimeout(() => search.focus(), 0);
+  }
+  renderVisionModelPicker();
+}
+
+function collectVisionModelOptions() {
+  const options = [];
+  (providerStore.providers || []).forEach(p => {
+    if (!p || p.enabled === false || p.meta?.codexConfig === true) return;
+    providerSelectedModels(p).forEach(model => {
+      const caps = providerCapabilities(p, model);
+      ['openai', 'anthropic'].forEach(apiFormat => {
+        options.push({ providerId: p.id, providerName: p.name || p.id, model, apiFormat, vision: caps.vision === true });
+      });
+    });
+  });
+  return options.sort((a, b) => Number(b.vision) - Number(a.vision) || a.providerName.localeCompare(b.providerName) || a.model.localeCompare(b.model));
+}
+
+function renderVisionModelPicker() {
+  const list = document.getElementById('proxyVisionModelPickerList');
+  if (!list) return;
+  ensureModelMapDefaults();
+  const query = (document.getElementById('proxyVisionModelSearch')?.value || '').trim().toLowerCase();
+  const configured = new Set(modelMapStore.visionModels.imageModels.map(x => visionModelKey(x.providerId, x.model, x.apiFormat)));
+  const filtered = collectVisionModelOptions().filter(x => {
+    const hay = `${x.providerName} ${x.providerId} ${x.model} ${x.apiFormat}`.toLowerCase();
+    return !query || hay.includes(query);
+  });
+  if (!filtered.length) {
+    list.innerHTML = '<div style="padding:14px;text-align:center;color:var(--text-muted);font-size:12px;">暂无可选模型</div>';
+    return;
+  }
+  list.innerHTML = filtered.map(x => {
+    const key = visionModelKey(x.providerId, x.model, x.apiFormat);
+    const already = configured.has(key);
+    return `
+      <label style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 10px;border:1px solid var(--border);border-radius:8px;background:var(--bg-card);opacity:${already ? '.58' : '1'};">
+        <span style="display:flex;align-items:center;gap:8px;min-width:0;">
+          <input type="checkbox" data-provider-id="${escAttr(x.providerId)}" data-model="${escAttr(x.model)}" data-api-format="${escAttr(x.apiFormat)}" ${already ? 'checked disabled' : ''}>
+          <span style="font-size:12px;color:var(--text-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escAttr(x.providerName)} - ${escAttr(x.model)} · ${escAttr(x.apiFormat === 'openai' ? 'OpenAI' : 'Anthropic')}</span>
+        </span>
+        <span style="font-size:10px;color:${x.vision ? 'var(--success)' : 'var(--text-muted)'};flex-shrink:0;">${x.vision ? '已知支持图片' : '未确认图片能力'}</span>
+      </label>`;
+  }).join('');
+}
+
+function addSelectedVisionModels() {
+  ensureModelMapDefaults();
+  const existing = new Set(modelMapStore.visionModels.imageModels.map(x => visionModelKey(x.providerId, x.model, x.apiFormat)));
+  const checked = Array.from(document.querySelectorAll('#proxyVisionModelPickerList input[type="checkbox"]:checked:not(:disabled)'));
+  if (!checked.length) return;
+  checked.forEach(input => {
+    const providerId = input.dataset.providerId || '';
+    const model = input.dataset.model || '';
+    const apiFormat = normalizeMappingApiFormat(input.dataset.apiFormat) || 'openai';
+    const key = visionModelKey(providerId, model, apiFormat);
+    if (providerId && model && !existing.has(key)) {
+      modelMapStore.visionModels.imageModels.push({ providerId, model, apiFormat });
+      existing.add(key);
+    }
+  });
+  closeVisionModelPicker();
+  renderProxyEnhancement();
+}
+
+function removeVisionModel(idx) {
+  ensureModelMapDefaults();
+  modelMapStore.visionModels.imageModels.splice(idx, 1);
+  renderProxyEnhancement();
+}
+
+function moveVisionModel(idx, dir) {
+  ensureModelMapDefaults();
+  const list = modelMapStore.visionModels.imageModels;
+  const next = idx + dir;
+  if (next < 0 || next >= list.length) return;
+  const tmp = list[idx];
+  list[idx] = list[next];
+  list[next] = tmp;
+  renderProxyEnhancement();
+}
+
+function isMissingVisionTestCommandMessage(msg) {
+  const lower = String(msg || '').toLowerCase();
+  return lower.includes('unknown command') || lower.includes('command not found');
+}
+
+async function testVisionModel(idx) {
+  ensureModelMapDefaults();
+  const item = modelMapStore.visionModels.imageModels[idx];
+  if (!item) return;
+  const key = visionModelKey(item.providerId, item.model, item.apiFormat);
+  proxyVisionTestingKey = key;
+  const panel = document.getElementById('proxyVisionTestPanel');
+  const image = document.getElementById('proxyVisionTestImage');
+  const title = document.getElementById('proxyVisionTestTitle');
+  const resultEl = document.getElementById('proxyVisionTestResult');
+  const imageBase64 = await getProxyVisionTestImageBase64();
+  if (panel) panel.style.display = 'flex';
+  if (image) image.src = `data:image/png;base64,${imageBase64}`;
+  if (title) title.textContent = `图片测试 · ${visionModelLabel(item)}`;
+  if (resultEl) resultEl.textContent = '正在发送测试图片...';
+  renderProxyVisionModelList();
+  const started = Date.now();
+  try {
+    const res = await invoke('test_vision', {
+      args: { providerId: item.providerId, model: item.model, apiFormat: item.apiFormat, imageBase64 }
+    });
+    const duration = res?.durationMs ?? (Date.now() - started);
+    if (res?.ok === false) {
+      const err = res.error || '模型未返回有效图片理解结果';
+      if (resultEl) resultEl.textContent = isMissingVisionTestCommandMessage(err) ? '图片测试接口待实现，请重启应用加载新版后端。' : `失败：${err}`;
+    } else {
+      const text = String(res?.text || '测试成功').slice(0, 240);
+      if (resultEl) resultEl.textContent = `成功 · ${duration}ms · ${text}`;
+    }
+  } catch (e) {
+    const msg = String(e || '');
+    if (isMissingVisionTestCommandMessage(msg)) {
+      if (resultEl) resultEl.textContent = '图片测试接口待实现，请重启应用加载新版后端。';
+    } else if (resultEl) {
+      resultEl.textContent = `失败：${msg}`;
+    }
+  } finally {
+    proxyVisionTestingKey = '';
+    renderProxyVisionModelList();
+  }
+}
+
+async function toggleSlotThirdPartyVision(uid, enabled) {
+  ensureModelMapDefaults();
+  const s = modelMapStore.slots.find(x => x.modelUid === uid);
+  if (!s) return;
+  const prev = s.useThirdPartyVision === true;
+  s.useThirdPartyVision = enabled === true;
+  if (await persistModelMap()) {
+    addLog('ok', `已${enabled ? '启用' : '停用'}「${s.displayName || uid}」的第三方图片理解`);
+    await renderModelMap();
+  } else {
+    s.useThirdPartyVision = prev;
+  }
+}
 // ─── 模型映射显示设置模态框（名称前缀 + 后缀 + 高级模板）───
 // 跟 sidecar renderTemplate 保持一致:占位符 {prefix} {label} {provider} {apiModel}
 // 模板含 {provider} 且 provider 空 → 「未设置」
@@ -316,8 +703,8 @@ function renderLabelTemplate(tpl, vars) {
   const tmpl = (tpl && tpl.trim()) || DEFAULT_LABEL_TEMPLATE;
   const hasProvider = /\bprovider\b/.test(tmpl);
   const v = {
-    prefix:   vars.prefix   || '',
-    label:    vars.label    || '',
+    prefix: vars.prefix || '',
+    label: vars.label || '',
     provider: vars.provider || (hasProvider ? '未设置' : ''),
     apiModel: vars.apiModel || '',
   };
@@ -494,7 +881,7 @@ async function saveModelMapSettingsFromModal() {
 }
 
 // ─── 模型槽位管理（旧字段 injected，解锁 Windsurf 灰色模型）───
-// modelMapStore.injected: [{ label, modelUid, providerId, model, supportsImages }]
+// modelMapStore.injected: [{ label, modelUid, providerId, model, apiFormat, unlock, supportsImages }]
 // 加载时确保存在（兼容旧 model-map.json）
 let injectedCatalog = null;     // 128 模型内置目录（首次调用时加载）
 let slotVisibilityRows = [];
@@ -984,9 +1371,100 @@ async function deleteSlot(uid) {
 
 // ─── 添加映射模态框 ───
 let selectedSlotUid = '';
-let selectedMappingTargets = []; // [{providerId, model}]
+let selectedMappingTargets = []; // [{providerId, model, apiFormat, unlock?}]
 let slotCatalogScope = 'account';
 let slotWasManuallySelected = false;
+
+function normalizeMappingUnlock(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  if (raw === 'codex') return 'codex';
+  if (raw === 'claudeCode' || raw === 'claude-code' || raw === 'claude_code') return 'claudeCode';
+  return '';
+}
+
+function normalizeMappingApiFormat(value) {
+  const raw = String(value || '').trim().toLowerCase();
+  if (raw === 'openai') return 'openai';
+  if (raw === 'anthropic') return 'anthropic';
+  return '';
+}
+
+function apiFormatForMappingUnlock(unlock) {
+  if (unlock === 'codex') return 'openai';
+  if (unlock === 'claudeCode') return 'anthropic';
+  return '';
+}
+
+function mappingProviderUnlockEnabled(p, kind) {
+  const unlock = p?.unlocks?.[kind];
+  return !!(unlock && unlock.enabled !== false);
+}
+
+function targetRouteLabel(target) {
+  const unlock = normalizeMappingUnlock(target?.unlock);
+  if (unlock === 'codex') return 'Codex 解锁';
+  if (unlock === 'claudeCode') return 'Claude Code 解锁';
+  const fmt = normalizeMappingApiFormat(target?.apiFormat || target?.api_format);
+  if (fmt === 'openai') return 'OpenAI';
+  if (fmt === 'anthropic') return 'Anthropic';
+  return '未设置协议';
+}
+
+function unlockKindForSlotUid(uid) {
+  const provider = String(slotModelOf(uid)?.provider || '').trim().toLowerCase();
+  if (provider === 'openai') return 'codex';
+  if (provider === 'anthropic') return 'claudeCode';
+  return '';
+}
+
+function preferredRouteForSlotTarget(slotUid, providerId) {
+  const preferredUnlock = unlockKindForSlotUid(slotUid);
+  const p = (providerStore.providers || []).find(x => x.id === providerId);
+  if (preferredUnlock && mappingProviderUnlockEnabled(p, preferredUnlock)) return preferredUnlock;
+  if (preferredUnlock === 'codex') return 'openai';
+  if (preferredUnlock === 'claudeCode') return 'anthropic';
+  return normalizeMappingApiFormat(p?.apiFormat) || 'anthropic';
+}
+
+function applyRouteToTarget(out, routeValue) {
+  const unlock = normalizeMappingUnlock(routeValue);
+  if (unlock) {
+    out.unlock = unlock;
+    out.apiFormat = apiFormatForMappingUnlock(unlock);
+    return out;
+  }
+  const fmt = normalizeMappingApiFormat(routeValue);
+  if (fmt) {
+    delete out.unlock;
+    out.apiFormat = fmt;
+  }
+  return out;
+}
+
+function targetRouteValue(target, slotUid) {
+  const unlock = normalizeMappingUnlock(target?.unlock);
+  if (unlock) return unlock;
+  const fmt = normalizeMappingApiFormat(target?.apiFormat || target?.api_format);
+  if (fmt) return fmt;
+  return preferredRouteForSlotTarget(slotUid, target?.providerId);
+}
+
+function targetWithSlotRoute(target, slotUid) {
+  const providerId = String(target?.providerId || '').trim();
+  const model = String(target?.model || '').trim();
+  const out = { providerId, model };
+  applyRouteToTarget(out, targetRouteValue(target, slotUid));
+  const apiPath = String(target?.apiPath || target?.api_path || '').trim();
+  if (apiPath) out.apiPath = apiPath;
+  return out;
+}
+
+function targetsWithSlotRoute(targets, slotUid) {
+  return (Array.isArray(targets) ? targets : [])
+    .filter(t => t && t.providerId)
+    .map(t => targetWithSlotRoute(t, slotUid));
+}
 
 function getAllProviderModels() {
   const list = [];
@@ -1049,8 +1527,8 @@ function renderMappingModelCatalog() {
     .filter(item => {
       if (mappingCatalogProvider && item.providerId !== mappingCatalogProvider) return false;
       return !query ||
-             item.providerName.toLowerCase().includes(query) ||
-             item.model.toLowerCase().includes(query);
+        item.providerName.toLowerCase().includes(query) ||
+        item.model.toLowerCase().includes(query);
     });
 
   const sortKey = mappingCatalogSort || 'name-asc';
@@ -1133,7 +1611,7 @@ function toggleMappingModelTarget(providerId, model) {
     selectedMappingTargets.splice(idx, 1);
   } else {
     // Add
-    selectedMappingTargets.push({ providerId, model });
+    selectedMappingTargets.push(targetWithSlotRoute({ providerId, model }, selectedSlotUid));
   }
   renderMappingModelCatalog();
   maybeAutoSelectRecommendedSlot();
@@ -1220,7 +1698,7 @@ function pickRecommendedSlot(used) {
   return pool
     .slice()
     .sort((a, b) => slotRecommendationRank(a, used) - slotRecommendationRank(b, used) || a.name.localeCompare(b.name))
-    [0] || null;
+  [0] || null;
 }
 
 function maybeAutoSelectRecommendedSlot() {
@@ -1443,7 +1921,7 @@ async function openSlotEditor(uid) {
   }
 
   // 4. 加载已保存的映射列表并绘制右侧平铺目录
-  selectedMappingTargets = editing ? (editing.targets ? JSON.parse(JSON.stringify(editing.targets)) : []) : [];
+  selectedMappingTargets = editing ? targetsWithSlotRoute(editing.targets, editing.modelUid) : [];
   renderMappingModelCatalog();
 
   // 5. 重绘左侧平铺卡片目录
@@ -1481,7 +1959,7 @@ async function saveSlotFromEditor() {
       s.modelUid = uid;  // 更新槽位 UID（可能和原来一样）
       s.displayName = display;
       s.supportsImages = supportsImages;
-      s.targets = JSON.parse(JSON.stringify(selectedMappingTargets));
+      s.targets = targetsWithSlotRoute(selectedMappingTargets, uid);
     }
   } else {
     if (modelMapStore.slots.some(x => x.modelUid === uid)) {
@@ -1493,7 +1971,8 @@ async function saveSlotFromEditor() {
       displayName: display,
       enabled: true,
       supportsImages,
-      targets: JSON.parse(JSON.stringify(selectedMappingTargets))
+      useThirdPartyVision: false,
+      targets: targetsWithSlotRoute(selectedMappingTargets, uid)
     });
   }
   if (await persistModelMap()) {
@@ -1508,17 +1987,40 @@ async function saveSlotFromEditor() {
 
 // ─── 故障转移配置模态框 ───
 let failoverEditUid = '';
-let failoverDraft = [];   // [{providerId, model}]
+let failoverDraft = [];   // [{providerId, model, apiFormat, unlock?}]
 
 function enabledProviders() {
   return (providerStore.providers || []).filter(p => p.enabled !== false && p.meta?.codexConfig !== true);
+}
+
+function routeLabelForValue(value) {
+  const unlock = normalizeMappingUnlock(value);
+  if (unlock === 'codex') return 'Codex 解锁';
+  if (unlock === 'claudeCode') return 'Claude Code 解锁';
+  const fmt = normalizeMappingApiFormat(value);
+  if (fmt === 'openai') return 'OpenAI';
+  if (fmt === 'anthropic') return 'Anthropic';
+  return value || '未设置协议';
+}
+
+function targetRouteOptionsForProvider(provider, currentValue) {
+  const values = [];
+  const add = value => {
+    if (value && !values.includes(value)) values.push(value);
+  };
+  if (mappingProviderUnlockEnabled(provider, 'codex')) add('codex');
+  if (mappingProviderUnlockEnabled(provider, 'claudeCode')) add('claudeCode');
+  add('openai');
+  add('anthropic');
+  add(normalizeMappingUnlock(currentValue) || normalizeMappingApiFormat(currentValue));
+  return values.map(value => ({ value, label: routeLabelForValue(value) }));
 }
 
 function openFailoverEditor(uid) {
   const s = modelMapStore.slots.find(x => x.modelUid === uid);
   if (!s) return;
   failoverEditUid = uid;
-  failoverDraft = (s.targets || []).map(t => ({ providerId: t.providerId, model: t.model }));
+  failoverDraft = targetsWithSlotRoute(s.targets, uid);
   document.getElementById('failoverModalSlot').textContent = s.displayName || originalNameOf(uid);
   renderFailoverRows();
   const modal = document.getElementById('failoverModal');
@@ -1568,12 +2070,17 @@ function renderFailoverRows() {
     const capLine = cur
       ? `<div style="margin-left:28px; display:flex; gap:4px; flex-wrap:wrap;">${capabilityBadges(cur, true, row.model || cur.defaultModel || null)}</div>`
       : '';
+    const routeValue = targetRouteValue(row, failoverEditUid);
+    const routeOpts = targetRouteOptionsForProvider(cur, routeValue).map(opt =>
+      `<option value="${escAttr(opt.value)}"${opt.value === routeValue ? ' selected' : ''}>${escAttr(opt.label)}</option>`
+    ).join('');
 
     return `
       <div style="display:flex;flex-direction:column;gap:6px" data-fo-idx="${i}">
         <div style="display:flex;gap:8px;align-items:center">
           <span style="width:20px;text-align:center;color:var(--text-muted)">${marks[i] || (i + 1)}</span>
           <select class="input-sm" style="flex:1" onchange="updateFailoverRow(${i},'providerId',this.value)">${invalidOpt}${provOpts}</select>
+          <select class="input-sm" style="flex:0 0 132px" onchange="updateFailoverRow(${i},'route',this.value)">${routeOpts}</select>
           <select class="input-sm" style="flex:1; text-align: left;" onchange="updateFailoverRow(${i},'model',this.value)">
             <option value=""${!row.model ? ' selected' : ''}>默认模型</option>
             ${modelOpts}
@@ -1591,12 +2098,18 @@ function renderFailoverRows() {
 function addFailoverRow() {
   const provs = enabledProviders();
   const def = provs[0];
-  failoverDraft.push({ providerId: def ? def.id : '', model: def ? (def.defaultModel || '') : '' });
+  failoverDraft.push(targetWithSlotRoute({ providerId: def ? def.id : '', model: def ? (def.defaultModel || '') : '' }, failoverEditUid));
   renderFailoverRows();
 }
 
 function updateFailoverRow(idx, key, val) {
   if (!failoverDraft[idx]) return;
+
+  if (key === 'route') {
+    applyRouteToTarget(failoverDraft[idx], val);
+    renderFailoverRows();
+    return;
+  }
 
   if (key === 'model' && val === '__custom__') {
     const oldVal = failoverDraft[idx].model;
@@ -1620,6 +2133,7 @@ function updateFailoverRow(idx, key, val) {
   if (key === 'providerId') {
     const p = (providerStore.providers || []).find(x => x.id === val);
     if (p) {
+      applyRouteToTarget(failoverDraft[idx], preferredRouteForSlotTarget(failoverEditUid, val));
       const models = Array.isArray(p.models) && p.models.length > 0 ? p.models : (p.defaultModel ? [p.defaultModel] : []);
       // 如果当前模型不在新供应商的可用模型中，则自动切换到新供应商的默认/首个模型
       if (!failoverDraft[idx].model || !models.includes(failoverDraft[idx].model)) {
@@ -1651,7 +2165,7 @@ async function saveFailoverFromEditor() {
   if (!s) { closeFailoverEditor(); return; }
   const cleaned = failoverDraft
     .filter(r => r.providerId)
-    .map(r => ({ providerId: r.providerId, model: (r.model || '').trim() }));
+    .map(r => targetWithSlotRoute(r, failoverEditUid));
   const prev = s.targets;
   s.targets = cleaned;
   if (await persistModelMap()) {

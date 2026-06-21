@@ -1,7 +1,51 @@
 // ═══════ TAB NAVIGATION ═══════
-const tabs = document.querySelectorAll('.tab-item[data-page], .community-nav-btn[data-page], .topbar-nav-btn[data-page]');
+const sidebarNavMount = document.getElementById('sidebarNavMount');
+const topbarNav = document.querySelector('.topbar > .tab-nav');
+if (sidebarNavMount && topbarNav) {
+  sidebarNavMount.appendChild(topbarNav);
+}
+
+const tabs = document.querySelectorAll('.tab-item[data-page]');
 const pages = document.querySelectorAll('.page');
-let activePlatformSection = 'overview';
+let activePlatformSection = 'models';
+
+function mountSideNavigation() {
+  const sidebar = document.querySelector('.app-sidebar') || document.querySelector('.platform-rail');
+  const navMount = document.getElementById('sidebarNavMount') || sidebar;
+  const platformRail = document.querySelector('.platform-rail');
+  const nav = document.querySelector('.tab-nav');
+  if (!sidebar || !nav) return;
+  if (nav.classList.contains('side-primary-nav') && nav.querySelector('.platform-submenu')) return;
+
+  nav.classList.add('side-primary-nav');
+  nav.setAttribute('aria-label', '左侧主菜单');
+
+  const platformTab = nav.querySelector('.tab-item[data-page="models"]');
+  if (platformTab && platformRail) {
+    const submenu = document.createElement('div');
+    submenu.className = 'platform-submenu';
+    submenu.setAttribute('aria-label', '平台列表');
+
+    const label = document.createElement('div');
+    label.className = 'platform-submenu-label';
+    label.textContent = '平台列表';
+    submenu.appendChild(label);
+
+    submenu.appendChild(platformRail);
+    platformTab.insertAdjacentElement('afterend', submenu);
+  }
+
+  if (!navMount.contains(nav)) {
+    navMount.appendChild(nav);
+  }
+
+  const legacyPlatformBlock = document.querySelector('.sidebar-platforms');
+  if (legacyPlatformBlock && !legacyPlatformBlock.contains(platformRail)) {
+    legacyPlatformBlock.remove();
+  }
+}
+
+mountSideNavigation();
 
 const PLATFORM_SHELL_PAGES = new Set([
   'platform-proxy',
@@ -23,7 +67,7 @@ const PLATFORM_SHELL_PAGES = new Set([
 ]);
 
 function normalizePlatformSection(section) {
-  return ['overview', 'models', 'logs', 'settings'].includes(section) ? section : 'overview';
+  return ['overview', 'models', 'logs', 'settings'].includes(section) ? section : 'models';
 }
 
 function getPlatformSectionForPage(pageId) {
@@ -78,9 +122,8 @@ function openPlatformSection(section) {
 }
 
 function syncPlatformConsoleHead() {
-  const section = activePlatformSection;
   document.querySelectorAll('.platform-console-head').forEach(head => {
-    head.style.display = section === 'overview' ? '' : 'none';
+    head.style.display = '';
   });
 }
 
@@ -97,28 +140,34 @@ function navigateTo(pageId) {
   // 切页前先收起所有编辑弹窗，避免弹层残留造成"仪表盘出现模型面板"
   hideAllEditorModals();
 
+  if (pageId === 'platform-proxy' && activePlatformSection !== 'settings') {
+    activePlatformSection = 'overview';
+  }
+
   // 编辑器 page 归属到对应的 tab：高亮对应的 tab，激活对应 page
   const editorToTabMap = {
     'provider-editor': 'providers',
     'eval': 'providers',
     'eval-history': 'providers',
-    'slot-editor': 'platform-proxy',
-    'model-slots': 'platform-proxy',
-    'models': 'platform-proxy',
-    'logs': 'platform-proxy',
-    'more-platforms': 'platform-proxy',
-    'platform-cursor': 'platform-proxy',
-    'platform-claude-code': 'platform-proxy',
-    'platform-codex': 'platform-proxy',
-    'platform-codebuddy': 'platform-proxy',
-    'platform-codebuddy-add': 'platform-proxy',
-    'platform-opencode': 'platform-proxy',
-    'platform-zcode': 'platform-proxy',
-    'platform-zcode-add': 'platform-proxy',
-    'platform-workbuddy': 'platform-proxy',
-    'platform-workbuddy-add': 'platform-proxy'
+    'slot-editor': 'models',
+    'model-slots': 'models',
+    'models': 'models',
+    'logs': 'logs',
+    'more-platforms': 'models',
+    'platform-cursor': 'models',
+    'platform-claude-code': 'models',
+    'platform-codex': 'models',
+    'platform-codebuddy': 'models',
+    'platform-codebuddy-add': 'models',
+    'platform-opencode': 'models',
+    'platform-zcode': 'models',
+    'platform-zcode-add': 'models',
+    'platform-workbuddy': 'models',
+    'platform-workbuddy-add': 'models'
   };
-  const activeTabPageId = editorToTabMap[pageId] || pageId;
+  const activeTabPageId = pageId === 'platform-proxy' && activePlatformSection === 'settings'
+    ? 'models'
+    : editorToTabMap[pageId] || pageId;
   tabs.forEach(t => {
     const isActive = t.dataset.page === activeTabPageId;
     t.classList.toggle('active', isActive);
@@ -157,24 +206,34 @@ function focusTabByOffset(currentTab, offset) {
   if (index < 0) return;
   const nextIndex = (index + offset + tabList.length) % tabList.length;
   const nextTab = tabList[nextIndex];
-  navigateTo(nextTab.dataset.page);
+  if (nextTab.dataset.page === 'proxy' && typeof openProxyPanel === 'function') {
+    openProxyPanel('overview');
+  } else {
+    navigateTo(nextTab.dataset.page);
+  }
   nextTab.focus();
 }
 
 tabs.forEach(t => {
-  t.addEventListener('click', () => navigateTo(t.dataset.page));
+  t.addEventListener('click', () => {
+    if (t.dataset.platformSection) openPlatformSection(t.dataset.platformSection);
+    else if (t.dataset.page === 'proxy' && typeof openProxyPanel === 'function') openProxyPanel('overview');
+    else navigateTo(t.dataset.page);
+  });
   t.addEventListener('keydown', (event) => {
     if (event.key === 'Enter' || event.key === ' ') {
       event.preventDefault();
-      navigateTo(t.dataset.page);
+      if (t.dataset.platformSection) openPlatformSection(t.dataset.platformSection);
+      else if (t.dataset.page === 'proxy' && typeof openProxyPanel === 'function') openProxyPanel('overview');
+      else navigateTo(t.dataset.page);
       return;
     }
-    if (event.key === 'ArrowRight') {
+    if (event.key === 'ArrowRight' || event.key === 'ArrowDown') {
       event.preventDefault();
       focusTabByOffset(t, 1);
       return;
     }
-    if (event.key === 'ArrowLeft') {
+    if (event.key === 'ArrowLeft' || event.key === 'ArrowUp') {
       event.preventDefault();
       focusTabByOffset(t, -1);
       return;
@@ -240,11 +299,78 @@ function activateSettingsPanel(index) {
   });
 }
 
+function openSettingsPanel(panelId) {
+  navigateTo('settings');
+  activateSettingsPanel(panelId);
+}
+
+function activateProxyPanel(panelId = 'overview') {
+  const target = panelId === 'enhancement' ? 'enhancement' : 'overview';
+  document.querySelectorAll('.proxy-console-tab[data-proxy-panel]').forEach(tab => {
+    const isActive = tab.dataset.proxyPanel === target;
+    tab.classList.toggle('active', isActive);
+    tab.setAttribute('aria-selected', String(isActive));
+  });
+  document.querySelectorAll('.proxy-console-section[data-proxy-section]').forEach(section => {
+    section.classList.toggle('active', section.dataset.proxySection === target);
+  });
+  if (target === 'enhancement' && typeof renderProxyEnhancement === 'function') {
+    renderProxyEnhancement();
+  }
+}
+
+function openProxyPanel(panelId = 'overview') {
+  navigateTo('proxy');
+  activateProxyPanel(panelId);
+}
+
+function mountProxyEnhancementPanel() {
+  const source = document.getElementById('proxyEnhancementModal');
+  const mount = document.getElementById('proxyEnhancementMount');
+  if (!source || !mount || source.dataset.mounted === 'proxy') return;
+
+  source.dataset.mounted = 'proxy';
+  source.id = 'proxyEnhancementPanel';
+  source.classList.remove('editor-overlay', 'is-open');
+  source.classList.add('glass-card', 'proxy-enhancement-settings');
+  source.removeAttribute('style');
+  source.removeAttribute('data-panel-id');
+
+  const innerCard = source.querySelector(':scope > .glass-card');
+  if (innerCard) {
+    innerCard.removeAttribute('style');
+    innerCard.classList.remove('glass-card');
+    while (innerCard.firstChild) source.appendChild(innerCard.firstChild);
+    innerCard.remove();
+  }
+
+  source.querySelectorAll('button[onclick="closeProxyEnhancement()"]').forEach(btn => btn.remove());
+  const header = source.querySelector(':scope > .card-header');
+  if (header) header.removeAttribute('style');
+  const body = source.querySelector(':scope > .card-body');
+  if (body) {
+    body.classList.add('proxy-enhancement-body');
+    body.removeAttribute('style');
+  }
+  const footer = source.querySelector('.provider-footer');
+  if (footer) {
+    footer.classList.add('proxy-enhancement-footer');
+    footer.removeAttribute('style');
+  }
+
+  mount.appendChild(source);
+}
+
 document.querySelectorAll('.settings-menu-item[data-settings-panel]').forEach(item => {
   item.addEventListener('click', () => activateSettingsPanel(item.dataset.settingsPanel));
 });
+document.querySelectorAll('.proxy-console-tab[data-proxy-panel]').forEach(tab => {
+  tab.addEventListener('click', () => activateProxyPanel(tab.dataset.proxyPanel));
+});
+mountProxyEnhancementPanel();
 mountPlatformOwnedSettings();
 activateSettingsPanel('appearance');
+activateProxyPanel('overview');
 syncPlatformSubtabsForPage('platform-proxy');
 
 // ═══════ PLATFORM RAIL ═══════
@@ -318,8 +444,7 @@ function syncPlatformRailForPage(pageId) {
 function mountPlatformOwnedSettings() {
   const moves = [
     ['0', 'platform-health-mount'],
-    ['1', 'platform-access-mount'],
-    ['2', 'platform-proxy-server-mount']
+    ['1', 'platform-access-mount']
   ];
   moves.forEach(([panelId, mountId]) => {
     const source = document.querySelector(`.settings-detail > [data-panel-id="${panelId}"]`);
@@ -367,7 +492,7 @@ function mountPlatformOwnedSettings() {
 }
 
 /**
- * 上下文感知的元素查找：优先从平台接入设置的活跃 mount 中查找克隆元素，
+ * 上下文感知的元素查找：优先从平台设置的活跃 mount 中查找克隆元素，
  * 回退到全局 getElementById。供 70-healthcheck.js 和 20-runtime.js 使用。
  */
 function _platformEl(id) {
@@ -411,8 +536,8 @@ function openProxyPlatform(platformId) {
   if (typeof setStatusPill === 'function') {
     setStatusPill(typeof proxyRunning !== 'undefined' ? proxyRunning : false);
   }
-  activePlatformSection = 'overview';
-  navigateTo('platform-proxy');
+  activePlatformSection = 'models';
+  navigateTo('models');
 }
 
 function openPlaceholderPlatform(platformId) {
@@ -462,12 +587,13 @@ async function onTargetIdeChange() {
     setPlatformRailActive(displayIde);
   }
   setStatusPill(proxyRunning);
+  if (typeof refreshIdeProxyStatus === 'function') refreshIdeProxyStatus(displayIde).catch(() => {});
   const displayLabel = displayIde === 'auto' ? '自动检测' : displayIde.charAt(0).toUpperCase() + displayIde.slice(1);
   addLog('info', `目标 IDE 切换为: ${displayLabel}`);
   if (proxyRunning && typeof activeProxyTarget !== 'undefined' && activeProxyTarget) {
     const runningLabel = activeProxyTarget.charAt(0).toUpperCase() + activeProxyTarget.slice(1);
     if (ide !== 'auto' && ide !== activeProxyTarget) {
-      addLog('warn', `当前代理仍接入 ${runningLabel}；新的 IDE 选择会在下次启动代理时生效`);
+      addLog('warn', `全局代理服务正在运行；新的 IDE 选择只影响当前页面的切换按钮`);
     }
   }
 

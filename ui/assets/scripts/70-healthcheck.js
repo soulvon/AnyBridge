@@ -13,7 +13,7 @@
   let _lastCertProgressMessage = '';
 
   // ── 上下文感知的元素查找 ──
-  // 当用户在「平台 → 接入设置 → 环境检测」面板操作时，getElementById 会找到
+  // 当用户在「平台 → 设置 → 环境检测」面板操作时，getElementById 会找到
   // 设置页面原始的那个元素而非克隆的。此函数优先从当前活跃的 mount 容器查找。
   function _hEl(id) {
     if (typeof _platformEl === 'function') return _platformEl(id);

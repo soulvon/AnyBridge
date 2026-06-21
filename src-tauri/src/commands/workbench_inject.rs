@@ -8,7 +8,7 @@
 //   - 注入块用独立标记 BYOK_BLOCK_START/END，清理时只动自己的块
 //   - 只改文本 / 隐藏元素，不用 innerHTML，故无需放宽 Trusted-Types
 //
-// 注入时机：跟随代理服务启动；停止/退出时还原。需要写 Windsurf 安装目录
+// 注入时机：跟随 IDE 切换到代理；还原直连时还原。需要写 Windsurf 安装目录
 // （通常在 Program Files / LocalAppData），可能需要管理员权限。
 
 use std::fs;

@@ -429,6 +429,7 @@ pub fn import_providers(
             models: unique_strings(candidate.models),
             capabilities: normalize_caps(candidate.capabilities),
             model_caps: candidate.model_caps,
+            unlocks: Default::default(),
         };
         store.providers.push(provider);
         imported += 1;
@@ -2091,11 +2092,10 @@ fn make_candidate_id(candidate: &ImportProviderCandidate) -> String {
 
 fn provider_exists(store: &ProviderStore, candidate: &ImportProviderCandidate) -> bool {
     store.providers.iter().any(|provider| {
-        provider.api_format == candidate.api_format
-            && provider
-                .api_host
-                .trim_end_matches('/')
-                .eq_ignore_ascii_case(candidate.api_host.trim_end_matches('/'))
+        provider
+            .api_host
+            .trim_end_matches('/')
+            .eq_ignore_ascii_case(candidate.api_host.trim_end_matches('/'))
             && provider
                 .api_path
                 .as_deref()

@@ -33,11 +33,89 @@ fn default_slot_visibility_mode() -> String {
     "mapped".to_string()
 }
 
+fn default_enhancement() -> EnhancementConfig {
+    EnhancementConfig::default()
+}
+
+fn default_retry_max_retries() -> u32 {
+    5
+}
+
+fn default_retry_base_ms() -> u32 {
+    600
+}
+
+fn default_retry_cap_ms() -> u32 {
+    8000
+}
+
+fn default_retry_total_seconds() -> u32 {
+    60
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Target {
     #[serde(rename = "providerId")]
     pub provider_id: String,
     pub model: String,
+    /// 目标请求使用的协议。代理运行时按目标协议路由，不再按供应商全局 apiFormat 猜测。
+    #[serde(rename = "apiFormat", default, skip_serializing_if = "Option::is_none")]
+    pub api_format: Option<String>,
+    /// 目标级 API path。为空时使用供应商默认 path；解锁目标由 unlock.wireApi 接管。
+    #[serde(rename = "apiPath", default, skip_serializing_if = "Option::is_none")]
+    pub api_path: Option<String>,
+    /// 目标请求使用哪个供应商解锁模板。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub unlock: Option<String>,
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EnhancementConfig {
+    #[serde(default = "default_true")]
+    pub retry: bool,
+    #[serde(rename = "retryMaxRetries", default = "default_retry_max_retries")]
+    pub retry_max_retries: u32,
+    #[serde(rename = "retryBaseMs", default = "default_retry_base_ms")]
+    pub retry_base_ms: u32,
+    #[serde(rename = "retryCapMs", default = "default_retry_cap_ms")]
+    pub retry_cap_ms: u32,
+    #[serde(rename = "retryTotalSeconds", default = "default_retry_total_seconds")]
+    pub retry_total_seconds: u32,
+    #[serde(rename = "imageFallback", default = "default_true")]
+    pub image_fallback: bool,
+    #[serde(rename = "autoRouting", default = "default_true")]
+    pub auto_routing: bool,
+    #[serde(rename = "unlockModels", default = "default_true")]
+    pub unlock_models: bool,
+}
+
+impl Default for EnhancementConfig {
+    fn default() -> Self {
+        Self {
+            retry: true,
+            retry_max_retries: default_retry_max_retries(),
+            retry_base_ms: default_retry_base_ms(),
+            retry_cap_ms: default_retry_cap_ms(),
+            retry_total_seconds: default_retry_total_seconds(),
+            image_fallback: true,
+            auto_routing: true,
+            unlock_models: true,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct VisionModels {
+    #[serde(rename = "imageModels", default)]
+    pub image_models: Vec<VisionModelTarget>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VisionModelTarget {
+    #[serde(rename = "providerId")]
+    pub provider_id: String,
+    pub model: String,
+    #[serde(rename = "apiFormat")]
+    pub api_format: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -52,6 +130,9 @@ pub struct Slot {
     /// sidecar 据此改写 GetUserStatus 里的 supports_images 字段。默认 true。
     #[serde(rename = "supportsImages", default = "default_true")]
     pub supports_images: bool,
+    /// 是否对该槽位启用用户配置的第三方图片理解降级链。默认关闭。
+    #[serde(rename = "useThirdPartyVision", default)]
+    pub use_third_party_vision: bool,
     #[serde(default)]
     pub targets: Vec<Target>,
 }
@@ -76,6 +157,15 @@ pub struct InjectedSlot {
     /// BYOK 供应商 ID。无值或引用不存在 = 未配置（弹窗里显示"(未配置)"）。
     #[serde(rename = "providerId", default)]
     pub provider_id: Option<String>,
+    /// 注入槽位目标请求使用的协议。代理运行时按目标协议路由。
+    #[serde(rename = "apiFormat", default, skip_serializing_if = "Option::is_none")]
+    pub api_format: Option<String>,
+    /// 注入槽位目标级 API path。为空时使用供应商默认 path；解锁目标由 unlock.wireApi 接管。
+    #[serde(rename = "apiPath", default, skip_serializing_if = "Option::is_none")]
+    pub api_path: Option<String>,
+    /// 注入槽位目标请求使用哪个供应商解锁模板。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub unlock: Option<String>,
     /// 解锁后该模型是否允许发送图片。默认 true。
     #[serde(rename = "supportsImages", default = "default_true")]
     pub supports_images: bool,
@@ -122,6 +212,12 @@ pub struct ModelMap {
     /// 注入项列表:解锁 Windsurf 灰色不可选模型。详见 spec/08。
     #[serde(default)]
     pub injected: Vec<InjectedSlot>,
+    /// 代理增强功能开关。默认全开，具体请求链路后续由 sidecar 消费。
+    #[serde(default = "default_enhancement")]
+    pub enhancement: EnhancementConfig,
+    /// 第三方图片理解模型故障转移链。
+    #[serde(rename = "visionModels", default)]
+    pub vision_models: VisionModels,
 }
 
 /// 预设 3 槽位:已改名的 Grok 槽位 → Claude Opus 4.6/4.7/4.8。targets 留空（显示「未设置」）。
@@ -131,6 +227,7 @@ fn default_slots() -> Vec<Slot> {
         display_name: name.into(),
         enabled: true,
         supports_images: true,
+        use_third_party_vision: false,
         targets: Vec::new(),
     };
     vec![
@@ -152,6 +249,8 @@ pub(crate) fn read_map() -> Result<ModelMap, String> {
             slot_visibility: Vec::new(),
             slots: default_slots(),
             injected: Vec::new(),
+            enhancement: default_enhancement(),
+            vision_models: VisionModels::default(),
         });
     }
     let raw = fs::read_to_string(&path).map_err(|e| e.to_string())?;
@@ -182,6 +281,54 @@ fn write_map(map: &ModelMap) -> Result<(), String> {
 #[tauri::command]
 pub fn load_model_map() -> Result<ModelMap, String> {
     read_map()
+}
+
+fn normalize_target_unlock<'a>(value: Option<&'a str>) -> &'a str {
+    match value.unwrap_or("").trim() {
+        "codex" => "codex",
+        "claudeCode" | "claude-code" | "claude_code" => "claudeCode",
+        _ => value.unwrap_or("").trim(),
+    }
+}
+
+fn api_format_for_unlock(unlock: &str) -> Option<&'static str> {
+    match unlock {
+        "codex" => Some("openai"),
+        "claudeCode" => Some("anthropic"),
+        _ => None,
+    }
+}
+
+fn validate_target_route(slot_label: &str, target: &Target) -> Result<(), String> {
+    let unlock = normalize_target_unlock(target.unlock.as_deref());
+    if !unlock.is_empty() && !matches!(unlock, "codex" | "claudeCode") {
+        return Err(format!(
+            "槽位 {} 的目标解锁类型必须是 codex 或 claudeCode",
+            slot_label
+        ));
+    }
+    let api_format = target.api_format.as_deref().unwrap_or("").trim();
+    if api_format.is_empty() {
+        return Err(format!(
+            "槽位 {} 的目标必须设置 apiFormat(openai 或 anthropic)",
+            slot_label
+        ));
+    }
+    if !matches!(api_format, "openai" | "anthropic") {
+        return Err(format!(
+            "槽位 {} 的目标 apiFormat 必须是 openai 或 anthropic",
+            slot_label
+        ));
+    }
+    if let Some(expected) = api_format_for_unlock(unlock) {
+        if api_format != expected {
+            return Err(format!(
+                "槽位 {} 的目标 apiFormat={} 与 {} 解锁不匹配",
+                slot_label, api_format, unlock
+            ));
+        }
+    }
+    Ok(())
 }
 
 /// 整体保存槽位表（增删改/排序/改 targets 统一走这里）。
@@ -227,6 +374,9 @@ pub fn save_model_map(map: ModelMap) -> Result<(), String> {
         }
         if !seen.insert(slot.model_uid.clone()) {
             return Err(format!("槽位 modelUid 重复: {}", slot.model_uid));
+        }
+        for target in &slot.targets {
+            validate_target_route(&slot.model_uid, target)?;
         }
     }
     // 注入项校验
@@ -276,7 +426,37 @@ pub fn validate_model_map() -> Result<Vec<String>, String> {
                 Some(p) if !p.enabled => {
                     problems.push(format!("「{}」引用的供应商「{}」已禁用", label, p.name))
                 }
-                _ => {}
+                Some(p) => {
+                    if let Err(err) = validate_target_route(&label, t) {
+                        problems.push(err);
+                        continue;
+                    }
+                    let unlock = normalize_target_unlock(t.unlock.as_deref());
+                    if unlock == "codex" {
+                        let enabled = p.unlocks.codex.as_ref().map(|u| u.enabled).unwrap_or(false);
+                        if !enabled {
+                            problems.push(format!(
+                                "「{}」要求 Codex 解锁，但供应商「{}」未开启 Codex 解锁",
+                                label, p.name
+                            ));
+                        }
+                    } else if unlock == "claudeCode" {
+                        let enabled = p
+                            .unlocks
+                            .claude_code
+                            .as_ref()
+                            .map(|u| u.enabled)
+                            .unwrap_or(false);
+                        if !enabled {
+                            problems.push(format!(
+                                "「{}」要求 Claude Code 解锁，但供应商「{}」未开启 Claude Code 解锁",
+                                label, p.name
+                            ));
+                        }
+                    } else if !unlock.is_empty() {
+                        problems.push(format!("「{}」配置了未知解锁类型 {}", label, unlock));
+                    }
+                }
             }
         }
     }
@@ -299,6 +479,42 @@ pub fn validate_model_map() -> Result<Vec<String>, String> {
         }
         if inj.model.as_deref().unwrap_or("").trim().is_empty() {
             problems.push(format!("模型槽位「{}」已选供应商但 model 为空", inj.label));
+        }
+        let target = Target {
+            provider_id: pid.clone(),
+            model: inj.model.clone().unwrap_or_default(),
+            api_format: inj.api_format.clone(),
+            api_path: inj.api_path.clone(),
+            unlock: inj.unlock.clone(),
+        };
+        if let Err(err) = validate_target_route(&inj.label, &target) {
+            problems.push(err);
+            continue;
+        }
+        if let Some(p) = store.providers.iter().find(|p| p.id == *pid) {
+            let unlock = normalize_target_unlock(inj.unlock.as_deref());
+            if unlock == "codex" {
+                let enabled = p.unlocks.codex.as_ref().map(|u| u.enabled).unwrap_or(false);
+                if !enabled {
+                    problems.push(format!(
+                        "模型槽位「{}」要求 Codex 解锁，但供应商「{}」未开启 Codex 解锁",
+                        inj.label, p.name
+                    ));
+                }
+            } else if unlock == "claudeCode" {
+                let enabled = p
+                    .unlocks
+                    .claude_code
+                    .as_ref()
+                    .map(|u| u.enabled)
+                    .unwrap_or(false);
+                if !enabled {
+                    problems.push(format!(
+                        "模型槽位「{}」要求 Claude Code 解锁，但供应商「{}」未开启 Claude Code 解锁",
+                        inj.label, p.name
+                    ));
+                }
+            }
         }
     }
 

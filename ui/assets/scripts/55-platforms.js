@@ -103,25 +103,147 @@ function platformFormatLabel(fmt) {
   return fmt === 'openai' ? 'OpenAI' : 'Anthropic';
 }
 
+
+function platformLocalProxyConfigId(platformId) {
+  return `anybridge-local-proxy-${platformId}`;
+}
+
+function platformIsLocalProxyConfig(config) {
+  return !!(config && (config.localProxy || String(config.id || '').startsWith('anybridge-local-proxy-')));
+}
+
+function platformLocalProxyRuntime(platformId) {
+  if (typeof getLocalProxyRuntimeConfig !== 'function') return null;
+  return getLocalProxyRuntimeConfig(platformId);
+}
+
+function platformLocalProxyCard(platformId, info) {
+  const runtime = platformLocalProxyRuntime(platformId);
+  if (!runtime) return null;
+  const isClaude = platformId === 'claude-code';
+  const isOpenCode = platformId === 'opencode';
+  const current = isOpenCode
+    ? (Array.isArray(info?.liveProviderIds) && info.liveProviderIds.includes(platformLocalProxyConfigId(platformId)))
+    : isClaude
+      ? (typeof claudeCodeProviderIsCurrent === 'function' && claudeCodeProviderIsCurrent(runtime, info))
+      : (typeof codexProviderIsCurrent === 'function' && codexProviderIsCurrent(runtime, info));
+  return {
+    platformId,
+    name: 'AnyBridge 本地代理',
+    description: isClaude
+      ? '通过 AnyBridge Claude 兼容入口转发到模型映射、代理增强和日志统计。'
+      : '通过 AnyBridge OpenAI 兼容入口转发到模型映射、代理增强和日志统计。',
+    typeLabel: '本地',
+    tone: 'local',
+    current: !!current,
+    currentLabel: isOpenCode ? '已加入' : '当前使用',
+    model: runtime.defaultModel || 'AnyBridge 默认路由',
+    endpoint: runtime.endpoint,
+    protocol: isClaude ? 'anthropic-compatible' : (isOpenCode ? 'openai-compatible' : 'responses'),
+    action: `applyLocalProxyPlatformConfig(${platformJsArg(platformId)})`,
+    actionLabel: isOpenCode ? '加入' : '切换',
+    removeAction: isOpenCode && current ? `removeOpenCodeProviderConfig(${platformJsArg(platformLocalProxyConfigId(platformId))})` : '',
+    removeLabel: '移除',
+  };
+}
+
+function upsertById(list, item) {
+  const arr = Array.isArray(list) ? list : [];
+  const idx = arr.findIndex(x => x && x.id === item.id);
+  if (idx >= 0) arr[idx] = { ...arr[idx], ...item };
+  else arr.push(item);
+  return arr;
+}
+
+async function ensureLocalProxyPlatformConfig(platformId) {
+  if (typeof ensureLocalProxyConfig === 'function') await ensureLocalProxyConfig({});
+  const runtime = platformLocalProxyRuntime(platformId);
+  if (!runtime) throw new Error('本地代理配置未初始化');
+  if (!runtime.apiKey) throw new Error('本地代理 key 尚未生成');
+  const model = runtime.defaultModel || 'anybridge-default';
+  const base = {
+    id: platformLocalProxyConfigId(platformId),
+    name: 'AnyBridge 本地代理',
+    apiHost: runtime.apiHost,
+    apiPath: runtime.apiPath,
+    apiKey: runtime.apiKey,
+    defaultModel: model,
+    models: [model],
+    sourceProviderId: 'local-proxy',
+    sourceProviderName: 'AnyBridge',
+    localProxy: true,
+  };
+
+  if (platformId === 'claude-code') {
+    const settingsConfig = typeof claudeCodeBuildSettingsConfig === 'function'
+      ? claudeCodeBuildSettingsConfig(runtime.endpoint, runtime.apiKey, model, null)
+      : null;
+    providerStore.claudeCodeConfigs = upsertById(providerStore.claudeCodeConfigs, { ...base, settingsConfig });
+  } else if (platformId === 'opencode') {
+    const settingsConfig = typeof opencodeBuildSettingsConfig === 'function'
+      ? opencodeBuildSettingsConfig('AnyBridge 本地代理', runtime.endpoint, runtime.apiKey, [model], null)
+      : null;
+    providerStore.opencodeConfigs = upsertById(providerStore.opencodeConfigs, { ...base, settingsConfig });
+  } else if (platformId === 'codex') {
+    providerStore.codexConfigs = upsertById(providerStore.codexConfigs, base);
+  } else {
+    providerStore.providers = upsertById(providerStore.providers, {
+      id: platformLocalProxyConfigId(platformId),
+      name: 'AnyBridge 本地代理',
+      apiHost: runtime.apiHost,
+      apiPath: runtime.apiPath,
+      apiKey: runtime.apiKey,
+      defaultModel: model,
+      models: [model],
+      apiFormat: runtime.apiFormat || 'openai',
+      enabled: true,
+      localProxy: true,
+    });
+  }
+  if (typeof persistProviders === 'function') await persistProviders();
+  return platformLocalProxyConfigId(platformId);
+}
+
+async function applyLocalProxyPlatformConfig(platformId) {
+  const def = platformDef(platformId);
+  const providerId = await ensureLocalProxyPlatformConfig(platformId);
+  const runtime = platformLocalProxyRuntime(platformId);
+  const ok = await showCustomConfirm(
+    `将把 ${def.name} 切换到「AnyBridge 本地代理」。\n\n模型：${runtime.defaultModel || 'AnyBridge 默认路由'}\n地址：${runtime.endpoint}\n\n请求会先进入 AnyBridge 全局代理服务；如果代理未启动，外部工具会连接失败。`,
+    platformId === 'opencode' ? '加入本地代理配置' : '切换到本地代理',
+    'warn'
+  );
+  if (!ok) return;
+  setPlatformBusy(platformId, true);
+  try {
+    const result = await invoke('switch_platform', { platform: platformId, providerId });
+    if (typeof loadProviders === 'function') await loadProviders();
+    await refreshPlatforms({ silent: true });
+    if (typeof addLog === 'function') addLog('ok', result.message || `${def.name} 已切换到 AnyBridge 本地代理`);
+    showCustomAlert(result.message || `${def.name} 已切换到 AnyBridge 本地代理。`, '切换完成', 'success');
+  } catch (e) {
+    if (typeof addLog === 'function') addLog('err', `${def.name} 切换到本地代理失败: ${e}`);
+    showCustomAlert(String(e), '切换失败', 'error');
+  } finally {
+    setPlatformBusy(platformId, false);
+    renderPlatformDetailStatuses();
+  }
+}
 function platformProviderList(platformId) {
   const def = platformDef(platformId);
   if (platformId === 'claude-code') {
-    return Array.isArray(providerStore?.claudeCodeConfigs) ? providerStore.claudeCodeConfigs : [];
+    return Array.isArray(providerStore?.claudeCodeConfigs) ? providerStore.claudeCodeConfigs.filter(p => !platformIsLocalProxyConfig(p)) : [];
   }
   if (platformId === 'codex') {
-    return Array.isArray(providerStore?.codexConfigs) ? providerStore.codexConfigs : [];
+    return Array.isArray(providerStore?.codexConfigs) ? providerStore.codexConfigs.filter(p => !platformIsLocalProxyConfig(p)) : [];
   }
   if (platformId === 'opencode') {
-    return Array.isArray(providerStore?.opencodeConfigs) ? providerStore.opencodeConfigs : [];
+    return Array.isArray(providerStore?.opencodeConfigs) ? providerStore.opencodeConfigs.filter(p => !platformIsLocalProxyConfig(p)) : [];
   }
   const providers = (providerStore && Array.isArray(providerStore.providers))
     ? providerStore.providers
     : [];
-  return providers.filter(p =>
-    p &&
-    p.enabled !== false &&
-    (p.apiFormat || 'anthropic') === def.requiredApiFormat
-  );
+  return providers.filter(p => p && p.enabled !== false && !platformIsLocalProxyConfig(p));
 }
 
 function formatPlatformTime(value) {
@@ -492,9 +614,6 @@ function renderCodexTargetSummary(provider, message = '') {
   const current = info.currentProviderName || info.currentProviderId || '当前配置';
   const model = provider.defaultModel || '默认模型未设置';
   const baseUrl = codexTargetBaseUrl(provider);
-  const apiFormat = provider.apiFormat || 'anthropic';
-  const ok = apiFormat === 'openai';
-  const tone = ok ? 'ok' : 'warn';
 
   el.innerHTML = `
     <div class="codex-target-route">
@@ -508,8 +627,8 @@ function renderCodexTargetSummary(provider, message = '') {
       ${codexField('写入 provider', 'byok')}
       ${codexField('写入协议', 'responses')}
     </div>
-    <div class="codex-protocol-note ${tone}">
-      ${ok ? '可以应用：将按 Codex Responses 配置写入。' : '该配置不是 OpenAI 协议，不能应用到 Codex。'}
+    <div class="codex-protocol-note ok">
+      可以应用：将按 Codex Responses 配置写入。
     </div>
   `;
 }
@@ -983,6 +1102,9 @@ function renderCodexConfigList(info) {
     action: 'restoreCodexOfficialConfig()',
   });
 
+  const codexLocalCard = platformLocalProxyCard('codex', info);
+  if (codexLocalCard) items.push(codexLocalCard);
+
   const isExternal = !!info.currentProviderId && !config.isOfficial && !info.managedByAnyBridge
     && !providers.some(provider => codexProviderIsCurrent(provider, info));
   if (isExternal) {
@@ -1035,8 +1157,7 @@ function claudeCodeConfigProviderById(id) {
 function claudeCodeConfigSourceProviders() {
   return (providerStore.providers || []).filter(p =>
     p &&
-    p.enabled !== false &&
-    (p.apiFormat || 'anthropic') === 'anthropic'
+    p.enabled !== false
   );
 }
 
@@ -1712,6 +1833,9 @@ function renderClaudeCodeConfigList(info) {
     action: 'restoreClaudeCodeOfficialConfig()',
   });
 
+  const claudeLocalCard = platformLocalProxyCard('claude-code', info);
+  if (claudeLocalCard) items.push(claudeLocalCard);
+
   const isExternal = !!info.currentProviderId && !config.isOfficial && !info.managedByAnyBridge
     && !providers.some(provider => claudeCodeProviderIsCurrent(provider, info));
   if (isExternal) {
@@ -1773,8 +1897,7 @@ function opencodeConfigProviderById(id) {
 function opencodeConfigSourceProviders() {
   return (providerStore.providers || []).filter(p =>
     p &&
-    p.enabled !== false &&
-    (p.apiFormat || 'anthropic') === 'openai'
+    p.enabled !== false
   );
 }
 
@@ -2355,6 +2478,8 @@ function renderOpenCodeConfigList(info) {
   const providers = platformProviderList('opencode');
   const liveIds = Array.isArray(info?.liveProviderIds) ? info.liveProviderIds : [];
   const items = [];
+  const opencodeLocalCard = platformLocalProxyCard('opencode', info);
+  if (opencodeLocalCard) items.push(opencodeLocalCard);
 
   liveIds
     .filter(id => !providers.some(provider => provider.id === id))
@@ -2398,7 +2523,7 @@ function renderOpenCodeConfigList(info) {
 
   const filtered = items.filter(opencodeConfigMatchesSearch);
   const count = document.getElementById('opencode-config-count');
-  if (count) count.textContent = String(providers.length);
+  if (count) count.textContent = String(items.length);
 
   if (!filtered.length) {
     list.innerHTML = '<div class="codex-table-empty">没有匹配的配置</div>';
@@ -2626,14 +2751,6 @@ async function onPlatformProviderChange(platformId) {
     return;
   }
 
-  const actualFormat = platformId === 'codex' ? 'openai' : (provider.apiFormat || 'anthropic');
-  if (actualFormat !== def.requiredApiFormat) {
-    preview.textContent = `协议不匹配：${def.name} 需要 ${platformFormatLabel(def.requiredApiFormat)} 供应商。`;
-    if (applyBtn) applyBtn.disabled = true;
-    if (platformId === 'codex') renderCodexTargetSummary(provider);
-    return;
-  }
-
   if (applyBtn) applyBtn.disabled = platformBusy === platformId;
   if (platformId === 'codex') renderCodexTargetSummary(provider);
   preview.textContent = '正在生成预览...';
@@ -2685,12 +2802,6 @@ async function applyPlatform(platformId) {
     showCustomAlert(platformId === 'codex' ? 'Codex 配置不存在或尚未加载。' : '供应商不存在或尚未加载。', '无法切换', 'error');
     return;
   }
-  const actualFormat = platformId === 'codex' ? 'openai' : (provider.apiFormat || 'anthropic');
-  if (actualFormat !== def.requiredApiFormat) {
-    showCustomAlert(`${def.name} 需要 ${platformFormatLabel(def.requiredApiFormat)} 协议供应商。`, '协议不匹配', 'warn');
-    return;
-  }
-
   const confirmMessage = platformId === 'codex'
     ? codexApplyConfirmMessage(provider)
     : `将把「${provider.name}」写入 ${def.name} 配置文件，并在首次接管前创建 .byok-bak 备份。`;
@@ -2796,6 +2907,74 @@ const cbSelectedModelIds = {
 };
 
 const CB_PLATFORM = 'codebuddy';
+function localProxyModelEntryForPlatform(platformId) {
+  const runtime = platformLocalProxyRuntime(platformId);
+  if (!runtime) throw new Error('本地代理配置未初始化');
+  const modelId = runtime.defaultModel || 'anybridge-default';
+  const endpoint = platformId === 'zcode'
+    ? runtime.endpoint
+    : `${String(runtime.endpoint || '').replace(/\/+$/, '')}/chat/completions`;
+  const entry = {
+    id: modelId,
+    name: 'AnyBridge 本地代理',
+    vendor: 'AnyBridge',
+    url: endpoint,
+    apiKey: runtime.apiKey,
+    maxInputTokens: 128000,
+    maxOutputTokens: 8192,
+    supportsToolCall: true,
+    supportsImages: true,
+    supportsReasoning: true,
+    enabled: true,
+    localProxy: true,
+  };
+  if (platformId === 'workbuddy') entry.useCustomProtocol = true;
+  if (platformId === 'zcode' && typeof zcProviderIdForModel === 'function') {
+    entry.providerId = zcProviderIdForModel(entry);
+  }
+  return entry;
+}
+
+async function applyLocalProxyModelPlatform(platformId) {
+  if (typeof ensureLocalProxyConfig === 'function') await ensureLocalProxyConfig({});
+  const entry = localProxyModelEntryForPlatform(platformId);
+  const def = platformDef(platformId);
+  const ok = await showCustomConfirm(
+    `将向 ${def.name} 写入「AnyBridge 本地代理」模型。\n\n模型：${entry.id}\n地址：${entry.url}\n\n请求会先进入 AnyBridge 全局代理服务；如果代理未启动，外部工具会连接失败。`,
+    '使用本地代理配置',
+    'warn'
+  );
+  if (!ok) return;
+
+  const applyEntry = (models) => {
+    const list = Array.isArray(models) ? models : [];
+    const idx = list.findIndex(model => model && (model.localProxy || (model.vendor === 'AnyBridge' && model.name === 'AnyBridge 本地代理')));
+    if (idx >= 0) list[idx] = { ...list[idx], ...entry };
+    else list.unshift(entry);
+    return list;
+  };
+
+  try {
+    if (platformId === 'codebuddy') {
+      cbModels = applyEntry(cbModels);
+      renderCodeBuddyModels();
+      await saveCodeBuddyModels({ silent: true, throwOnError: true });
+    } else if (platformId === 'workbuddy') {
+      wbModels = applyEntry(wbModels);
+      renderWbModels();
+      await saveWbModels({ silent: true, throwOnError: true });
+    } else if (platformId === 'zcode') {
+      zcModels = applyEntry(zcModels);
+      renderZcModels();
+      await saveZcModels({ silent: true, throwOnError: true });
+    }
+    if (typeof addLog === 'function') addLog('ok', `${def.name} 已写入 AnyBridge 本地代理模型`);
+    showCustomAlert(`${def.name} 已写入 AnyBridge 本地代理模型。`, '写入完成', 'success');
+  } catch (e) {
+    if (typeof addLog === 'function') addLog('err', `${def.name} 写入本地代理模型失败: ${e}`);
+    showCustomAlert(String(e), '写入失败', 'error');
+  }
+}
 
 function cbApplyConfigMeta(prefix, data, fallbackPath) {
   const path = data && data._configPath ? String(data._configPath) : fallbackPath;

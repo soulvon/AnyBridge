@@ -7,7 +7,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
-import { getProviders, getSlots, markProvidersDirty } from './config-cache.js';
+import { getModelMapConfig, getProviders, getSlots, markProvidersDirty } from './config-cache.js';
 
 function configDir() {
   if (process.env.BYOK_CONFIG_DIR) return process.env.BYOK_CONFIG_DIR;
@@ -108,6 +108,10 @@ export function loadProviders() {
   return getProviders();
 }
 
+export function loadModelMapConfig() {
+  return getModelMapConfig();
+}
+
 // 返回该 modelUid 对应的槽位（启用且有 targets 才算可劫持），否则 null。
 export function getSlot(modelUid) {
   if (!modelUid) return null;
@@ -132,6 +136,9 @@ export function getInjectedByUid(modelUid) {
     modelUid: inj.modelUid,
     providerId: hasProvider ? inj.providerId : null,
     model: hasModel ? inj.model : null,
+    apiFormat: inj.apiFormat || inj.api_format || null,
+    apiPath: inj.apiPath || inj.api_path || null,
+    unlock: inj.unlock || null,
     supportsImages: inj.supportsImages !== false,
     status: (hasProvider && hasModel) ? 'configured' : 'unconfigured',
   };
@@ -159,16 +166,64 @@ export function rememberProviderToolSchemaCompat(providerId, mode = 'gemini') {
   }
 }
 
-// 把一个 target {providerId, model} 解析成实际连接信息。
+function normalizeTargetUnlock(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return null;
+  if (raw === 'codex') return 'codex';
+  if (raw === 'claudeCode' || raw === 'claude-code' || raw === 'claude_code') return 'claudeCode';
+  return { error: `未知解锁类型(${raw})` };
+}
+
+function normalizeTargetApiFormat(value) {
+  const raw = String(value || '').trim().toLowerCase();
+  if (!raw) return null;
+  if (raw === 'openai') return 'openai';
+  if (raw === 'anthropic') return 'anthropic';
+  return { error: `未知目标协议(${raw})` };
+}
+
+function apiFormatForUnlock(kind) {
+  if (kind === 'codex') return 'openai';
+  if (kind === 'claudeCode') return 'anthropic';
+  return null;
+}
+
+function providerUnlockEnabled(provider, kind) {
+  const unlock = provider?.unlocks?.[kind];
+  return !!(unlock && unlock.enabled !== false);
+}
+
+// 把一个 target {providerId, model, apiFormat, unlock?} 解析成实际连接信息。
 // 供应商不存在或被禁用 → 返回 {error}。
 export function resolveTarget(target, providers) {
   const p = providers.get(target.providerId);
   if (!p) return { error: `供应商不存在(${target.providerId})` };
   if (p.enabled === false) return { error: `供应商已禁用(${p.name})` };
-  const isOpenAI = p.apiFormat === 'openai';
+  const targetUnlock = normalizeTargetUnlock(target.unlock);
+  if (targetUnlock?.error) return { error: targetUnlock.error };
+  const targetApiFormat = normalizeTargetApiFormat(target.apiFormat || target.api_format);
+  if (targetApiFormat?.error) return { error: targetApiFormat.error };
+  if (targetUnlock && !providerUnlockEnabled(p, targetUnlock)) {
+    return { error: `目标要求${targetUnlock === 'codex' ? ' Codex' : ' Claude Code'} 解锁，但供应商「${p.name}」未开启该解锁` };
+  }
+  const unlockApiFormat = apiFormatForUnlock(targetUnlock);
+  if (targetApiFormat && unlockApiFormat && targetApiFormat !== unlockApiFormat) {
+    return { error: `目标协议 ${targetApiFormat} 与${targetUnlock === 'codex' ? ' Codex' : ' Claude Code'} 解锁不匹配` };
+  }
+  const routeFormat = unlockApiFormat || targetApiFormat;
+  if (!routeFormat) {
+    return { error: '目标缺少 apiFormat；请在模型映射目标上明确写入 openai 或 anthropic' };
+  }
   const host = (p.apiHost || '').replace(/^https?:\/\//, '').replace(/\/$/, '');
-  const configuredPath = p.apiPath && p.apiPath !== '/' ? p.apiPath : null;
-  const apiPath = isOpenAI ? normalizeOpenAIApiPath(host, configuredPath) : normalizeAnthropicApiPath(configuredPath);
+  const explicitPath = target.apiPath || target.api_path || null;
+  const unlockConfig = targetUnlock ? p.unlocks?.[targetUnlock] : null;
+  const unlockWireApi = unlockConfig?.wireApi || unlockConfig?.wire_api || null;
+  const configuredPath = (explicitPath || unlockWireApi || p.apiPath) && (explicitPath || unlockWireApi || p.apiPath) !== '/'
+    ? (explicitPath || unlockWireApi || p.apiPath)
+    : null;
+  const apiPath = unlockWireApi && !explicitPath
+    ? cleanApiPath(unlockWireApi)
+    : (routeFormat === 'openai' ? normalizeOpenAIApiPath(host, configuredPath) : normalizeAnthropicApiPath(configuredPath));
   const modelId = target.model || p.defaultModel;
   // 合并供应商级 + 模型级能力标记
   const supplierCaps = p.capabilities || {};
@@ -188,10 +243,12 @@ export function resolveTarget(target, providers) {
     host,
     apiPath,
     apiKey: p.apiKey,
-    format: isOpenAI ? 'openai' : 'anthropic',
-    authScheme: isOpenAI || shouldUseAnthropicBearerAuth(host, apiPath) ? 'bearer' : 'x-api-key',
+    format: routeFormat,
+    authScheme: routeFormat === 'openai' || shouldUseAnthropicBearerAuth(host, apiPath) ? 'bearer' : 'x-api-key',
     model: modelId,
     capabilities,
+    unlocks: p.unlocks || {},
+    unlockKind: targetUnlock,
   };
 }
 

@@ -84,6 +84,8 @@ pub struct ProxyState {
     pub restore_lock: Mutex<()>,
     /// 当前目标 IDE（用于进程退出时的还原）
     pub target_ide: Mutex<String>,
+    /// 本轮 sidecar 实际启动时使用的端口；配置热更新后，运行中的进程仍以这里为准。
+    ports: Mutex<Option<crate::commands::config::ConfiguredProxyPorts>>,
 }
 
 /// 取锁并容忍 poisoning：某线程持锁时 panic 不应让后续所有代理操作永久 panic。
@@ -415,10 +417,31 @@ fn wait_for_ports(ports: &[u16], timeout: Duration) -> Vec<u16> {
     missing
 }
 
-fn probe_byok_stats(timeout: Duration) -> Result<(), String> {
-    let addr = SocketAddr::from(([127, 0, 0, 1], 7450));
-    let mut stream =
-        TcpStream::connect_timeout(&addr, timeout).map_err(|e| format!("无法连接 7450: {}", e))?;
+fn configured_ports() -> crate::commands::config::ConfiguredProxyPorts {
+    crate::commands::config::configured_proxy_ports()
+}
+
+fn active_or_configured_ports(state: &ProxyState) -> crate::commands::config::ConfiguredProxyPorts {
+    let ports = *lock_or_recover(&state.ports);
+    ports.unwrap_or_else(|| configured_ports())
+}
+
+fn unique_proxy_ports(ports: crate::commands::config::ConfiguredProxyPorts) -> Vec<u16> {
+    if ports.api_port == ports.inference_port {
+        vec![ports.api_port]
+    } else {
+        vec![ports.api_port, ports.inference_port]
+    }
+}
+
+fn port_pair_text(ports: crate::commands::config::ConfiguredProxyPorts) -> String {
+    format!("{} / {}", ports.api_port, ports.inference_port)
+}
+
+fn probe_byok_stats(port: u16, timeout: Duration) -> Result<(), String> {
+    let addr = SocketAddr::from(([127, 0, 0, 1], port));
+    let mut stream = TcpStream::connect_timeout(&addr, timeout)
+        .map_err(|e| format!("无法连接 {}: {}", port, e))?;
     let _ = stream.set_read_timeout(Some(timeout));
     let _ = stream.set_write_timeout(Some(timeout));
     stream
@@ -429,10 +452,13 @@ fn probe_byok_stats(timeout: Duration) -> Result<(), String> {
         .read_to_string(&mut buf)
         .map_err(|e| format!("读取健康检查响应失败: {}", e))?;
     if !buf.starts_with("HTTP/1.1 200") && !buf.starts_with("HTTP/1.0 200") {
-        return Err("7450 有响应，但不是 BYOK 健康检查 200".into());
+        return Err(format!("{} 有响应，但不是 BYOK 健康检查 200", port));
     }
     if !buf.contains("\"requests\"") || !buf.contains("\"uptimeSec\"") {
-        return Err("7450 有响应，但不像 AnyBridge 代理；可能被其它程序占用".into());
+        return Err(format!(
+            "{} 有响应，但不像 AnyBridge 代理；可能被其它程序占用",
+            port
+        ));
     }
     Ok(())
 }
@@ -566,6 +592,19 @@ fn run_proxy_preflight(
     let mut issues = Vec::new();
     let config_dir = crate::commands::config::config_dir_path();
     let resources_root = resolve_resources_root(resource_dir);
+    let ports = configured_ports();
+    let proxy_value = crate::commands::ide_config::current_proxy_value();
+    if ports.api_port == ports.inference_port {
+        push_issue(
+            &mut issues,
+            "err",
+            "port.same",
+            format!(
+                "API 服务端口和推理服务端口不能相同（当前都是 {}）",
+                ports.api_port
+            ),
+        );
+    }
 
     match std::fs::create_dir_all(&config_dir) {
         Ok(()) => {
@@ -799,18 +838,18 @@ fn run_proxy_preflight(
                     Ok(obj) => {
                         let proxy = obj.get("http.proxy").and_then(|v| v.as_str()).unwrap_or("");
                         let strict_ssl = obj.get("http.proxyStrictSSL");
-                        if !proxy.is_empty() && proxy != "http://localhost:7450" {
+                        if !proxy.is_empty() && !crate::commands::ide_config::is_current_proxy_value(proxy) {
                             push_issue(
                                 &mut issues,
                                 "warn",
                                 "ide_settings.other_proxy",
                                 format!(
-                                    "{} 当前已有 http.proxy={}，启动时会备份并改写为 AnyBridge 代理",
-                                    ide_label, proxy
+                                    "{} 当前已有 http.proxy={}，切换到代理时会备份并改写为 AnyBridge 代理（{}）",
+                                    ide_label, proxy, proxy_value
                                 ),
                             );
                         }
-                        if proxy == "http://localhost:7450"
+                        if crate::commands::ide_config::is_current_proxy_value(proxy)
                             && strict_ssl != Some(&serde_json::Value::Bool(false))
                         {
                             if repair {
@@ -834,20 +873,20 @@ fn run_proxy_preflight(
                                     "warn",
                                     "ide_settings.strict_ssl",
                                     format!(
-                                        "{} 已指向 AnyBridge 代理，但 http.proxyStrictSSL 不是 false，启动时会修正",
+                                        "{} 已指向 AnyBridge 代理，但 http.proxyStrictSSL 不是 false，切换到代理时会修正",
                                         ide_label
                                     ),
                                 );
                             }
                         }
                         let backup = settings_backup_path(&settings);
-                        if backup.exists() && proxy != "http://localhost:7450" {
+                        if backup.exists() && !crate::commands::ide_config::is_current_proxy_value(proxy) {
                             push_issue(
                                 &mut issues,
                                 "warn",
                                 "ide_settings.backup_exists",
                                 format!(
-                                    "{} 存在旧备份文件，将沿用它做停止代理时的还原基准",
+                                    "{} 存在旧备份文件，将沿用它做还原直连时的还原基准",
                                     backup.to_string_lossy()
                                 ),
                             );
@@ -873,7 +912,7 @@ fn run_proxy_preflight(
             "err",
             "ide_settings.missing",
             format!(
-                "未找到 {} settings.json: {}。请先启动一次 {}，或在「设置 > IDE 接入」手动指定 IDE 路径后再启动代理",
+                "未找到 {} settings.json: {}。请先启动一次 {}，或在「设置 > IDE 接入」手动指定 IDE 路径后再切换到代理",
                 ide_label,
                 settings.to_string_lossy(),
                 ide_label
@@ -1175,7 +1214,7 @@ fn run_proxy_preflight(
         Err(e) => push_issue(&mut issues, "warn", "ide_models.cache_read_failed", e),
     }
 
-    for port in [7450u16, 7451u16] {
+    for port in unique_proxy_ports(ports) {
         if !is_port_free(port) {
             if repair {
                 kill_sidecar_process();
@@ -1213,6 +1252,7 @@ fn run_proxy_preflight(
     })
 }
 
+#[allow(dead_code)]
 fn emit_preflight_report(app: &AppHandle, report: &ProxyPreflightReport) {
     if report.ok {
         let _ = app.emit(
@@ -1330,14 +1370,20 @@ pub fn get_proxy_status(state: State<ProxyState>) -> ProxyStatus {
     } else {
         String::new()
     };
+    let ports = if running {
+        active_or_configured_ports(&state)
+    } else {
+        configured_ports()
+    };
     ProxyStatus {
         running,
         target_ide,
-        api_port: 7450,
-        inference_port: 7451,
+        api_port: ports.api_port,
+        inference_port: ports.inference_port,
     }
 }
 
+#[allow(dead_code)]
 pub fn start_proxy_impl(
     app: AppHandle,
     target_ide: Option<String>,
@@ -1374,6 +1420,7 @@ pub fn start_proxy_impl(
     };
 
     let config_dir = crate::commands::config::config_dir_path();
+    let ports = configured_ports();
 
     let resource_dir = app
         .path()
@@ -1423,6 +1470,8 @@ pub fn start_proxy_impl(
     }
 
     cmd.env("BYOK_CONFIG_DIR", config_dir.to_string_lossy().to_string());
+    cmd.env("API_PORT", ports.api_port.to_string());
+    cmd.env("INFERENCE_PORT", ports.inference_port.to_string());
     if let Some(res) = &resource_dir {
         cmd.env("BYOK_RESOURCE_DIR", res.to_string_lossy().to_string());
     }
@@ -1448,6 +1497,7 @@ pub fn start_proxy_impl(
         child: Mutex::new(child),
     });
     *lock_or_recover(&state.target_ide) = target.clone();
+    *lock_or_recover(&state.ports) = Some(ports);
     clear_starting();
 
     // 打补丁：写入 IDE 代理配置（失败不阻断代理启动，仅记日志）。
@@ -1571,6 +1621,7 @@ pub fn start_proxy_impl(
                 let target = lock_or_recover(&state.target_ide).clone();
                 // 清除 target_ide
                 *lock_or_recover(&state.target_ide) = String::new();
+                *lock_or_recover(&state.ports) = None;
                 if target.is_empty() || (target != "windsurf" && target != "devin") {
                     eprintln!("[monitor] target_ide 异常: '{}', 跳过还原", target);
                 } else {
@@ -1598,11 +1649,15 @@ pub fn start_proxy_impl(
         }
     });
 
-    let missing_ports = wait_for_ports(&[7450, 7451], Duration::from_secs(5));
-    let health_error = if missing_ports.contains(&7450) {
-        Some("代理主端口 7450 未监听，IDE 无法接入 AnyBridge 代理".to_string())
+    let expected_ports = unique_proxy_ports(ports);
+    let missing_ports = wait_for_ports(&expected_ports, Duration::from_secs(5));
+    let health_error = if missing_ports.contains(&ports.api_port) {
+        Some(format!(
+            "代理主端口 {} 未监听，IDE 无法接入 AnyBridge 代理",
+            ports.api_port
+        ))
     } else {
-        probe_byok_stats(Duration::from_secs(2)).err()
+        probe_byok_stats(ports.api_port, Duration::from_secs(2)).err()
     };
 
     if let Some(e) = health_error {
@@ -1612,6 +1667,7 @@ pub fn start_proxy_impl(
         }
         let report = restore_all(&state, &target);
         *lock_or_recover(&state.target_ide) = String::new();
+        *lock_or_recover(&state.ports) = None;
         let _ = app.emit("proxy-stopped", ());
         let mut msg = format!("代理启动失败: {}", e);
         if report.has_warning() {
@@ -1635,7 +1691,7 @@ pub fn start_proxy_impl(
             "proxy-log",
             LogLine {
                 level: "ok".into(),
-                msg: "✅ 代理健康检查通过: 7450 / 7451".into(),
+                msg: format!("✅ 代理健康检查通过: {}", port_pair_text(ports)),
             },
         );
     } else {
@@ -1658,19 +1714,263 @@ pub fn start_proxy_impl(
     Ok(patched)
 }
 
+pub fn start_proxy_service_impl(app: AppHandle) -> Result<bool, String> {
+    let state = app.state::<ProxyState>();
+
+    {
+        let guard = lock_or_recover(&state.child);
+        if let Some(managed) = guard.as_ref() {
+            if managed.try_wait().ok().flatten().is_none() {
+                return Err("代理已在运行".into());
+            }
+            drop(guard);
+            *lock_or_recover(&state.child) = None;
+        }
+        if state.starting.swap(true, Ordering::SeqCst) {
+            return Err("代理正在启动中".into());
+        }
+    }
+    let clear_starting = || state.starting.store(false, Ordering::SeqCst);
+
+    let config_dir = crate::commands::config::config_dir_path();
+    let ports = configured_ports();
+    let resource_dir = app
+        .path()
+        .resource_dir()
+        .ok()
+        .and_then(|p| resolve_resources_root(Some(&p)));
+
+    kill_sidecar_process();
+
+    let sidecar_path = match resolve_sidecar_path() {
+        Ok(p) => p,
+        Err(e) => {
+            clear_starting();
+            return Err(e);
+        }
+    };
+
+    let mut cmd = std::process::Command::new(&sidecar_path);
+    #[cfg(target_os = "windows")]
+    {
+        cmd.creation_flags(DETACHED_PROCESS | CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP);
+    }
+
+    cmd.env("BYOK_CONFIG_DIR", config_dir.to_string_lossy().to_string());
+    cmd.env("API_PORT", ports.api_port.to_string());
+    cmd.env("INFERENCE_PORT", ports.inference_port.to_string());
+    if let Some(res) = &resource_dir {
+        cmd.env("BYOK_RESOURCE_DIR", res.to_string_lossy().to_string());
+    }
+    cmd.stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped());
+
+    let mut child = match cmd.spawn() {
+        Ok(c) => c,
+        Err(e) => {
+            clear_starting();
+            return Err(format!("启动失败: {}", e));
+        }
+    };
+
+    let stdout = child.stdout.take();
+    let stderr = child.stderr.take();
+
+    *lock_or_recover(&state.child) = Some(ManagedChild {
+        child: Mutex::new(child),
+    });
+    *lock_or_recover(&state.target_ide) = String::new();
+    *lock_or_recover(&state.ports) = Some(ports);
+    clear_starting();
+
+    let _ = app.emit(
+        "proxy-log",
+        LogLine {
+            level: "info".into(),
+            msg: format!(
+                "代理服务启动中；配置目录: {}{}",
+                config_dir.to_string_lossy(),
+                resource_dir
+                    .as_ref()
+                    .map(|p| format!("；资源目录: {}", p.to_string_lossy()))
+                    .unwrap_or_default()
+            ),
+        },
+    );
+
+    spawn_log_reader(app.clone(), stdout);
+    spawn_log_reader(app.clone(), stderr);
+
+    let app_handle2 = app.clone();
+    std::thread::spawn(move || loop {
+        std::thread::sleep(std::time::Duration::from_secs(1));
+
+        let exited = if let Some(state) = app_handle2.try_state::<ProxyState>() {
+            let guard = lock_or_recover(&state.child);
+            match guard.as_ref() {
+                Some(managed) => managed.try_wait().ok().flatten().is_some(),
+                None => break,
+            }
+        } else {
+            break;
+        };
+
+        if exited {
+            if let Some(state) = app_handle2.try_state::<ProxyState>() {
+                *lock_or_recover(&state.child) = None;
+                *lock_or_recover(&state.target_ide) = String::new();
+                *lock_or_recover(&state.ports) = None;
+            }
+            let _ = app_handle2.emit("proxy-stopped", ());
+            break;
+        }
+    });
+
+    let expected_ports = unique_proxy_ports(ports);
+    let missing_ports = wait_for_ports(&expected_ports, Duration::from_secs(5));
+    let health_error = if missing_ports.contains(&ports.api_port) {
+        Some(format!(
+            "代理主端口 {} 未监听，本地代理入口不可用",
+            ports.api_port
+        ))
+    } else {
+        probe_byok_stats(ports.api_port, Duration::from_secs(2)).err()
+    };
+
+    if let Some(e) = health_error {
+        let child = lock_or_recover(&state.child).take();
+        if let Some(child) = child {
+            let _ = child.kill();
+        }
+        *lock_or_recover(&state.target_ide) = String::new();
+        *lock_or_recover(&state.ports) = None;
+        let _ = app.emit("proxy-stopped", ());
+        let msg = format!("代理服务启动失败: {}", e);
+        let _ = app.emit(
+            "proxy-log",
+            LogLine {
+                level: "err".into(),
+                msg: msg.clone(),
+            },
+        );
+        return Err(msg);
+    }
+
+    if missing_ports.is_empty() {
+        let _ = app.emit(
+            "proxy-log",
+            LogLine {
+                level: "ok".into(),
+                msg: format!("✅ 代理服务健康检查通过: {}", port_pair_text(ports)),
+            },
+        );
+    } else {
+        let _ = app.emit(
+            "proxy-log",
+            LogLine {
+                level: "warn".into(),
+                msg: format!(
+                    "⚠ 代理主服务已就绪，但以下辅助端口暂未监听: {}",
+                    missing_ports
+                        .iter()
+                        .map(|p| p.to_string())
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                ),
+            },
+        );
+    }
+
+    Ok(true)
+}
+
+pub fn stop_proxy_service_impl(app: AppHandle) -> Result<(), String> {
+    let state = app.state::<ProxyState>();
+    let child = lock_or_recover(&state.child).take();
+    if let Some(child) = child {
+        if let Err(e) = child.kill() {
+            eprintln!("[stop_proxy_service] kill 失败（进程可能已退出）: {}", e);
+        }
+        *lock_or_recover(&state.target_ide) = String::new();
+        *lock_or_recover(&state.ports) = None;
+        let _ = app.emit("proxy-stopped", ());
+        let _ = app.emit(
+            "proxy-log",
+            LogLine {
+                level: "ok".into(),
+                msg: "代理服务已停止，平台配置未改动".into(),
+            },
+        );
+        Ok(())
+    } else {
+        Err("代理未运行".into())
+    }
+}
+
+#[derive(Serialize, Clone, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct IdeProxyModeReport {
+    pub ide_config: String,
+    pub workbench_inject: String,
+}
+
+pub fn switch_ide_to_proxy_impl(
+    app: AppHandle,
+    target: String,
+) -> Result<IdeProxyModeReport, String> {
+    if target != "windsurf" && target != "devin" {
+        return Err(format!("暂不支持的 IDE: {}", target));
+    }
+    let mut report = IdeProxyModeReport::default();
+    report.ide_config = match crate::commands::ide_config::patch(&target) {
+        Ok(true) => "updated".into(),
+        Ok(false) => "ok".into(),
+        Err(e) => return Err(format!("写入 IDE 代理配置失败: {}", e)),
+    };
+
+    let resource_dir = app
+        .path()
+        .resource_dir()
+        .ok()
+        .and_then(|p| resolve_resources_root(Some(&p)));
+    report.workbench_inject = if let Some(res) = resource_dir {
+        let script_path = res.join("byok-cards.js");
+        match std::fs::read_to_string(&script_path) {
+            Ok(script) => match crate::commands::workbench_inject::inject(&script, &target) {
+                Ok(true) => "updated".into(),
+                Ok(false) => "ok".into(),
+                Err(e) => format!("warn: {}", e),
+            },
+            Err(e) => format!("warn: 读取 byok-cards.js 失败: {}", e),
+        }
+    } else {
+        "warn: 资源目录不可用".into()
+    };
+
+    Ok(report)
+}
+
+pub fn restore_ide_direct_impl(app: AppHandle, target: String) -> Result<RestoreReport, String> {
+    if target != "windsurf" && target != "devin" {
+        return Err(format!("暂不支持的 IDE: {}", target));
+    }
+    let state = app.state::<ProxyState>();
+    Ok(restore_all(&state, &target))
+}
 #[tauri::command]
 pub async fn start_proxy(
     app: AppHandle,
-    target_ide: Option<String>,
-    skip_preflight: Option<bool>,
+    _target_ide: Option<String>,
+    _skip_preflight: Option<bool>,
 ) -> Result<bool, String> {
-    tauri::async_runtime::spawn_blocking(move || {
-        start_proxy_impl(app, target_ide, skip_preflight.unwrap_or(false))
-    })
-    .await
-    .map_err(|e| format!("启动代理任务失败: {}", e))?
+    // 兼容旧前端命令名，但语义已经收敛为“只启动全局代理服务”。
+    // IDE 切换必须走 switch_ide_to_proxy，避免全局开关隐式改写 IDE 配置。
+    tauri::async_runtime::spawn_blocking(move || start_proxy_service_impl(app))
+        .await
+        .map_err(|e| format!("启动代理服务任务失败: {}", e))?
 }
 
+#[allow(dead_code)]
 pub fn stop_proxy_impl(
     app: AppHandle,
     _target_ide: Option<String>,
@@ -1687,6 +1987,7 @@ pub fn stop_proxy_impl(
         let target = lock_or_recover(&state.target_ide).clone();
         // 清除 target_ide，防止残留旧值被后续误用
         *lock_or_recover(&state.target_ide) = String::new();
+        *lock_or_recover(&state.ports) = None;
         if target.is_empty() || (target != "windsurf" && target != "devin") {
             eprintln!("[stop_proxy] target_ide 异常: '{}', 跳过还原", target);
             let _ = app.emit("proxy-stopped", ());
@@ -1724,13 +2025,62 @@ pub fn stop_proxy_impl(
 #[tauri::command]
 pub async fn stop_proxy(
     app: AppHandle,
-    target_ide: Option<String>,
+    _target_ide: Option<String>,
 ) -> Result<RestoreReport, String> {
-    tauri::async_runtime::spawn_blocking(move || stop_proxy_impl(app, target_ide))
-        .await
-        .map_err(|e| format!("停止代理任务失败: {}", e))?
+    // 兼容旧前端命令名，但停止全局代理时不再还原 IDE 配置。
+    // IDE 还原必须走 restore_ide_direct，由用户在平台页显式触发。
+    tauri::async_runtime::spawn_blocking(move || {
+        stop_proxy_service_impl(app)?;
+        Ok(RestoreReport::default())
+    })
+    .await
+    .map_err(|e| format!("停止代理服务任务失败: {}", e))?
 }
 
+#[tauri::command]
+pub async fn start_proxy_service(app: AppHandle) -> Result<bool, String> {
+    tauri::async_runtime::spawn_blocking(move || start_proxy_service_impl(app))
+        .await
+        .map_err(|e| format!("启动代理服务任务失败: {}", e))?
+}
+
+#[tauri::command]
+pub async fn stop_proxy_service(app: AppHandle) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || stop_proxy_service_impl(app))
+        .await
+        .map_err(|e| format!("停止代理服务任务失败: {}", e))?
+}
+
+#[tauri::command]
+pub async fn restart_proxy_service(app: AppHandle) -> Result<bool, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        match stop_proxy_service_impl(app.clone()) {
+            Ok(()) => {}
+            Err(e) if e == "代理未运行" => {}
+            Err(e) => return Err(e),
+        }
+        start_proxy_service_impl(app)
+    })
+    .await
+    .map_err(|e| format!("重启代理服务任务失败: {}", e))?
+}
+
+#[tauri::command]
+pub async fn switch_ide_to_proxy(
+    app: AppHandle,
+    target: String,
+) -> Result<IdeProxyModeReport, String> {
+    tauri::async_runtime::spawn_blocking(move || switch_ide_to_proxy_impl(app, target))
+        .await
+        .map_err(|e| format!("切换 IDE 到代理任务失败: {}", e))?
+}
+
+#[tauri::command]
+pub async fn restore_ide_direct(app: AppHandle, target: String) -> Result<RestoreReport, String> {
+    tauri::async_runtime::spawn_blocking(move || restore_ide_direct_impl(app, target))
+        .await
+        .map_err(|e| format!("还原 IDE 直连任务失败: {}", e))?
+}
 /// 强杀所有 AnyBridge sidecar 孤儿进程（启动时 / 升级前调用）。
 /// 与 ManagedChild::kill() 不同：这里不依赖 state 里记录的 PID，
 /// 而是按进程名全盘扫描，确保上一轮崩溃或异常退出后残留的 sidecar 不会锁住 exe 文件。
@@ -1767,13 +2117,14 @@ pub fn kill_sidecar_process() {
 }
 
 #[tauri::command]
-pub async fn get_stats() -> Result<serde_json::Value, String> {
+pub async fn get_stats(state: State<'_, ProxyState>) -> Result<serde_json::Value, String> {
+    let port = active_or_configured_ports(state.inner()).api_port;
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(3))
         .build()
         .map_err(|e| e.to_string())?;
     let resp = client
-        .get("http://127.0.0.1:7450/__byok/stats")
+        .get(format!("http://127.0.0.1:{}/__byok/stats", port))
         .send()
         .await
         .map_err(|e| format!("代理未响应: {}", e))?;

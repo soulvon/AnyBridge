@@ -1,10 +1,46 @@
+use serde::Serialize;
 use serde_json::{Map, Value};
 use std::fs;
 use std::path::PathBuf;
 
 const PROXY_KEY: &str = "http.proxy";
 const STRICT_SSL_KEY: &str = "http.proxyStrictSSL";
-const PROXY_VALUE: &str = "http://localhost:7450";
+fn configured_proxy_port() -> u16 {
+    crate::commands::config::configured_proxy_ports().api_port
+}
+
+pub(crate) fn proxy_value_for_port(port: u16) -> String {
+    format!("http://localhost:{}", port)
+}
+
+pub(crate) fn current_proxy_value() -> String {
+    proxy_value_for_port(configured_proxy_port())
+}
+
+pub(crate) fn is_current_proxy_value(value: &str) -> bool {
+    let port = configured_proxy_port();
+    value == proxy_value_for_port(port) || value == format!("http://127.0.0.1:{}", port)
+}
+
+fn is_known_anybridge_proxy_value(value: &str) -> bool {
+    is_current_proxy_value(value)
+        || value == proxy_value_for_port(crate::commands::config::DEFAULT_PROXY_PORT)
+        || value
+            == format!(
+                "http://127.0.0.1:{}",
+                crate::commands::config::DEFAULT_PROXY_PORT
+            )
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct IdeProxyStatus {
+    pub target: String,
+    pub patched: bool,
+    pub proxy_value: String,
+    pub strict_ssl: Option<bool>,
+    pub settings_path: String,
+}
 
 /// 根据目标 IDE 获取 settings.json 路径
 pub(crate) fn settings_path(target: &str) -> Option<PathBuf> {
@@ -88,8 +124,13 @@ pub fn patch(target: &str) -> Result<bool, String> {
     let backup = backup_path(&settings);
 
     // 已是目标配置则无需改写。但若备份缺失（崩溃/强杀导致备份被删而补丁残留），
-    // 必须补建备份，否则停止代理时 restore 会空操作，补丁永远删不掉 → IDE 断网。
-    let already = obj.get(PROXY_KEY).and_then(|v| v.as_str()) == Some(PROXY_VALUE)
+    // 必须补建备份，否则还原直连时 restore 会空操作，补丁永远删不掉 → IDE 断网。
+    let proxy_value = current_proxy_value();
+    let already = obj
+        .get(PROXY_KEY)
+        .and_then(|v| v.as_str())
+        .map(is_current_proxy_value)
+        .unwrap_or(false)
         && obj.get(STRICT_SSL_KEY) == Some(&Value::Bool(false));
     if already {
         if !backup.exists() {
@@ -111,7 +152,7 @@ pub fn patch(target: &str) -> Result<bool, String> {
         super::write_atomic(&backup, raw.as_bytes()).map_err(|e| format!("备份失败: {}", e))?;
     }
 
-    obj.insert(PROXY_KEY.into(), Value::String(PROXY_VALUE.into()));
+    obj.insert(PROXY_KEY.into(), Value::String(proxy_value));
     obj.insert(STRICT_SSL_KEY.into(), Value::Bool(false));
     write_object(&settings, &obj)?;
     Ok(true)
@@ -159,7 +200,11 @@ pub fn restore(target: &str) -> Result<bool, String> {
         let raw = fs::read_to_string(&settings).map_err(|e| e.to_string())?;
         let mut current = parse_object(&raw)?;
 
-        let had_proxy = current.get(PROXY_KEY).and_then(|v| v.as_str()) == Some(PROXY_VALUE);
+        let had_proxy = current
+            .get(PROXY_KEY)
+            .and_then(|v| v.as_str())
+            .map(is_known_anybridge_proxy_value)
+            .unwrap_or(false);
         let had_ssl = current.get(STRICT_SSL_KEY) == Some(&Value::Bool(false));
 
         if !had_proxy && !had_ssl {
@@ -179,6 +224,41 @@ pub fn restore(target: &str) -> Result<bool, String> {
     }
 }
 
+pub fn status(target: &str) -> Result<IdeProxyStatus, String> {
+    let Some(settings) = settings_path(target) else {
+        return Ok(IdeProxyStatus {
+            target: target.to_string(),
+            patched: false,
+            proxy_value: String::new(),
+            strict_ssl: None,
+            settings_path: String::new(),
+        });
+    };
+    if !settings.exists() {
+        return Ok(IdeProxyStatus {
+            target: target.to_string(),
+            patched: false,
+            proxy_value: String::new(),
+            strict_ssl: None,
+            settings_path: settings.to_string_lossy().to_string(),
+        });
+    }
+    let raw = fs::read_to_string(&settings).map_err(|e| e.to_string())?;
+    let obj = parse_object(&raw)?;
+    let proxy_value = obj
+        .get(PROXY_KEY)
+        .and_then(|v| v.as_str())
+        .unwrap_or_default()
+        .to_string();
+    let strict_ssl = obj.get(STRICT_SSL_KEY).and_then(|v| v.as_bool());
+    Ok(IdeProxyStatus {
+        target: target.to_string(),
+        patched: is_current_proxy_value(&proxy_value) && strict_ssl == Some(false),
+        proxy_value,
+        strict_ssl,
+        settings_path: settings.to_string_lossy().to_string(),
+    })
+}
 // ═══════ TAURI COMMANDS ═══════
 
 /// 打补丁（向后兼容：默认 IDE）
@@ -203,4 +283,8 @@ pub fn restore_ide_config() -> Result<bool, String> {
 #[tauri::command]
 pub fn restore_ide_settings(target: String) -> Result<bool, String> {
     restore(&target)
+}
+#[tauri::command]
+pub fn get_ide_proxy_status(target: String) -> Result<IdeProxyStatus, String> {
+    status(&target)
 }

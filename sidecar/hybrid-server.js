@@ -16,6 +16,7 @@ import os from 'node:os';
 import crypto from 'node:crypto';
 import { listenWithReclaim } from './port-utils.js';
 import { handleGetChatMessage, shouldIntercept } from './handlers/chat.js';
+import { handleLocalProxyRequest, isLocalProxyRequest } from './local-proxy.js';
 import { parseFields, writeStringField, writeBytesField, writeVarintField } from './proto.js';
 import { tryGunzip } from './connect.js';
 import { snapshot } from './stats.js';
@@ -527,6 +528,16 @@ function handleRequest(req, res) {
   req.on('end', () => {
     const body = Buffer.concat(chunks);
 
+    if (isLocalProxyRequest(req)) {
+      console.log(`[${now()}] #${id} local ${req.method} ${req.url}`);
+      Promise.resolve(handleLocalProxyRequest(req, res, body)).catch(err => {
+        console.error(`[${now()}] #${id} local proxy error: ${err.message}`);
+        if (!res.headersSent) res.writeHead(500, { 'content-type': 'application/json' });
+        if (!res.writableEnded) res.end(JSON.stringify({ error: { message: err.message || String(err) } }));
+      });
+      return;
+    }
+
     // 仅浏览器网页导航 (GET + Accept: text/html) 才做 302 跳转。
     // gRPC/Connect 调用是 POST + proto/connect，绝不满足，必须透传到 Codeium——
     // 否则刷新额度 / 切换账号等请求会被 302 误伤而失败。
@@ -903,6 +914,10 @@ function logBanner() {
   console.log(`\n   MITM → server.codeium.com:443`);
   console.log(`     GetChatMessage  → Anthropic API (your models, your key)`);
   console.log(`     Everything else → real Codeium (trial account)`);
+  console.log(`\n   LOCAL COMPATIBLE API:`);
+  console.log(`     OpenAI  -> http://localhost:${PORT}/v1`);
+  console.log(`     Claude  -> http://localhost:${PORT}/anthropic`);
+
   console.log(`\n   PASSTHROUGH (blind TCP pipe):`);
   console.log(`     All other CONNECT targets (login, telemetry, marketplace)`);
   console.log(`\n   Settings needed:`);
@@ -911,3 +926,4 @@ function logBanner() {
 }
 
 listenWithReclaim(server, PORT, logBanner, 'hybrid');
+

@@ -25,11 +25,8 @@ pub fn start_patrol() {
                 let strikes = STRIKE_COUNT.fetch_add(1, Ordering::SeqCst) + 1;
                 eprintln!("[antidebug] 异常检测 strike {}/{}", strikes, STRIKE_LIMIT);
                 if strikes >= STRIKE_LIMIT {
-                    // 先还原 IDE 配置，避免代理端口残留
-                    let _ = crate::commands::ide_config::restore("windsurf");
-                    let _ = crate::commands::ide_config::restore("devin");
-                    let _ = crate::commands::workbench_inject::restore("windsurf");
-                    let _ = crate::commands::workbench_inject::restore("devin");
+                    // 只清理 sidecar；IDE 是否切到代理由用户显式还原。
+                    crate::commands::proxy::kill_sidecar_process();
                     std::process::exit(1);
                 }
             } else {

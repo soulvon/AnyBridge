@@ -22,8 +22,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use toml_edit::{value, DocumentMut, Item, Table};
 
 use super::config::{
-    read_provider_store, write_provider_store, ApiFormat, ClaudeCodeConfig, OpenCodeConfig,
-    PlatformState, Provider, ProviderStore,
+    read_provider_store, write_provider_store, ClaudeCodeConfig, OpenCodeConfig, PlatformState,
+    Provider, ProviderStore,
 };
 
 const PLATFORM_CLAUDE_CODE: &str = "claude-code";
@@ -2195,12 +2195,6 @@ pub fn switch_platform(platform: String, provider_id: String) -> Result<SwitchRe
 
     let provider = resolve_platform_config(&plat, &store, &provider_id)?;
 
-    // 软校验协议匹配：不阻断（用户可能清楚自己在做什么），仅在提示里告知。
-    let mismatch = match (plat.required_api_format(), &provider.api_format) {
-        ("anthropic", ApiFormat::Openai) | ("openai", ApiFormat::Anthropic) => true,
-        _ => false,
-    };
-
     let path = plat.apply(&provider)?;
     let config_path = path.to_string_lossy().to_string();
     let backup = backup_path(&path).to_string_lossy().to_string();
@@ -2229,14 +2223,6 @@ pub fn switch_platform(platform: String, provider_id: String) -> Result<SwitchRe
             plat.display_name()
         )
     };
-    if mismatch {
-        message.push_str(&format!(
-            "。注意：该供应商协议为 {:?}，与 {} 需要的 {} 协议不一致，可能无法直接调用",
-            provider.api_format,
-            plat.display_name(),
-            plat.required_api_format()
-        ));
-    }
     if matches!(plat, Platform::Codex) {
         message.push_str(&repair_codex_session_visibility_message(&path));
     }
@@ -2541,7 +2527,7 @@ pub fn list_provider_models() -> Result<Vec<ProviderModelsEntry>, String> {
     let store = read_provider_store()?;
     let mut out = Vec::new();
     for p in &store.providers {
-        if p.enabled == false || !matches!(p.api_format, ApiFormat::Openai) {
+        if p.enabled == false {
             continue;
         }
         let model_ids = if p.models.is_empty() && !p.default_model.trim().is_empty() {
@@ -2570,7 +2556,7 @@ pub fn list_provider_models() -> Result<Vec<ProviderModelsEntry>, String> {
             api_key: p.api_key.clone(),
             api_path: p.api_path.clone(),
             chat_url: codebuddy_chat_url(p),
-            api_format: format!("{:?}", p.api_format).to_lowercase(),
+            api_format: "openai".to_string(),
         });
     }
     Ok(out)

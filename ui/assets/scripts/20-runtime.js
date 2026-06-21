@@ -1,7 +1,353 @@
 // ═══════ PROXY TOGGLE ═══════
 let proxyRunning = false;
 let activeProxyTarget = '';
+let ideProxyStatusByTarget = {};
+let localProxyKey = '';
+let localProxyPort = 7450;
+let localProxyInferencePort = 7451;
+const LOCAL_PROXY_DEFAULT_MODEL = 'anybridge-default';
+const IDE_RESTART_AFTER_SWITCH_KEY = 'anybridge.ideRestartAfterSwitch';
 
+function shouldAutoRestartIdeAfterSwitch() {
+  try {
+    return localStorage.getItem(IDE_RESTART_AFTER_SWITCH_KEY) === 'auto';
+  } catch (_) {
+    return false;
+  }
+}
+
+function setAutoRestartIdeAfterSwitch(enabled) {
+  try {
+    if (enabled) localStorage.setItem(IDE_RESTART_AFTER_SWITCH_KEY, 'auto');
+    else localStorage.removeItem(IDE_RESTART_AFTER_SWITCH_KEY);
+  } catch (_) {}
+  syncIdeRestartPromptSetting();
+}
+
+function resetIdeRestartPromptPreference() {
+  setAutoRestartIdeAfterSwitch(false);
+  if (typeof showBottomToast === 'function') {
+    showBottomToast('已恢复为每次询问是否重启 IDE', 'success');
+  }
+}
+
+function syncIdeRestartPromptSetting() {
+  const auto = shouldAutoRestartIdeAfterSwitch();
+  setText('ideRestartPromptMode', auto ? '自动立即重启' : '每次询问');
+  forEachElementAlias('ideRestartPromptResetBtn', btn => {
+    btn.disabled = !auto;
+  });
+}
+
+
+function normalizeIdeProxyTargetValue(value) {
+  const raw = String(value || '').trim().toLowerCase();
+  if (raw === 'devin') return 'devin';
+  if (raw === 'windsurf') return 'windsurf';
+  if (typeof normalizeProxyPlatform === 'function') return normalizeProxyPlatform(raw);
+  return 'windsurf';
+}
+
+async function resolveIdeProxyTarget(useDetect = false) {
+  const selected = typeof getTargetIde === 'function' ? getTargetIde() : 'windsurf';
+  if (selected === 'auto' && useDetect && invoke) {
+    try {
+      const detected = await invoke('detect_target_ide');
+      return normalizeIdeProxyTargetValue(detected);
+    } catch (e) {
+      addLog('warn', '自动检测 IDE 失败，使用 Windsurf: ' + e);
+    }
+  }
+  return normalizeIdeProxyTargetValue(selected);
+}
+
+function getLocalProxyPort() {
+  return Number(localProxyPort) || 7450;
+}
+
+function getLocalProxyInferencePort() {
+  return Number(localProxyInferencePort) || 7451;
+}
+
+function getLocalProxyKeyValue() {
+  return localProxyKey || '';
+}
+
+function getLocalProxyDefaultModel() {
+  try {
+    const slots = Array.isArray(modelMapStore?.slots) ? modelMapStore.slots : [];
+    const mapped = slots.find(slot => slot && slot.enabled !== false && slot.modelUid && Array.isArray(slot.targets) && slot.targets.length > 0);
+    if (mapped?.modelUid) return mapped.modelUid;
+    const anySlot = slots.find(slot => slot && slot.modelUid);
+    if (anySlot?.modelUid) return anySlot.modelUid;
+    const injected = Array.isArray(modelMapStore?.injected) ? modelMapStore.injected : [];
+    const configuredInjected = injected.find(item => item && item.modelUid && item.providerId && String(item.model || '').trim());
+    if (configuredInjected?.modelUid) return configuredInjected.modelUid;
+    return LOCAL_PROXY_DEFAULT_MODEL;
+  } catch (_) {
+    return LOCAL_PROXY_DEFAULT_MODEL;
+  }
+}
+
+function localProxyOrigin() {
+  return `http://127.0.0.1:${getLocalProxyPort()}`;
+}
+
+function localProxyBaseUrl(format = 'openai') {
+  return format === 'anthropic' ? `${localProxyOrigin()}/anthropic` : `${localProxyOrigin()}/v1`;
+}
+
+function localProxyModelsUrl() {
+  return `${localProxyBaseUrl('openai')}/models`;
+}
+
+function localProxyEndpointParts(format = 'openai') {
+  const url = new URL(localProxyBaseUrl(format));
+  return { apiHost: url.origin, apiPath: url.pathname };
+}
+
+function getLocalProxyRuntimeConfig(platformId = 'codex') {
+  const format = platformId === 'claude-code' ? 'anthropic' : 'openai';
+  const endpoint = localProxyEndpointParts(format);
+  const model = getLocalProxyDefaultModel();
+  return {
+    id: `anybridge-local-proxy-${platformId}`,
+    name: 'AnyBridge 本地代理',
+    apiHost: endpoint.apiHost,
+    apiPath: endpoint.apiPath,
+    apiKey: getLocalProxyKeyValue(),
+    defaultModel: model,
+    models: [model],
+    sourceProviderId: 'local-proxy',
+    sourceProviderName: 'AnyBridge',
+    localProxy: true,
+    apiFormat: format,
+    endpoint: localProxyBaseUrl(format),
+  };
+}
+
+function generateLocalProxyKeyValue() {
+  const bytes = new Uint8Array(18);
+  if (crypto?.getRandomValues) crypto.getRandomValues(bytes);
+  else for (let i = 0; i < bytes.length; i++) bytes[i] = Math.floor(Math.random() * 256);
+  return 'abk-local-' + Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+function syncProxyEnhancementSummary() {
+  try {
+    if (typeof modelMapStore === 'undefined') return;
+    const enhancement = modelMapStore.enhancement || {};
+    setText('proxyEnhancementRetryState', `重试：${enhancement.retry === false ? '关闭' : '开启'}`);
+    setText('proxyEnhancementImageState', `图片理解：${enhancement.imageFallback === false ? '关闭' : '开启'}`);
+    setText('proxyEnhancementVisionCount', `图片模型：${modelMapStore.visionModels?.imageModels?.length || 0}`);
+  } catch (_) {}
+}
+
+function syncLocalProxyUi() {
+  setText('globalProxyStatusText', proxyRunning ? '代理运行中' : '代理未启动');
+  setText('localProxyOpenAiUrl', localProxyBaseUrl('openai'));
+  setText('localProxyClaudeUrl', localProxyBaseUrl('anthropic'));
+  setText('localProxyModelsUrl', localProxyModelsUrl());
+  setText('localProxyKeyValue', localProxyKey || '未生成');
+  ['localProxyPortInput', 'settingsProxyPortInput'].forEach(id => {
+    forEachElementAlias(id, input => {
+      input.value = String(getLocalProxyPort());
+    });
+  });
+  ['localProxyInferencePortInput', 'settingsInferencePortInput'].forEach(id => {
+    forEachElementAlias(id, input => {
+      input.value = String(getLocalProxyInferencePort());
+    });
+  });
+  forEachElementAlias('route-mitm', el => {
+    el.value = `:${getLocalProxyPort()}`;
+  });
+  forEachElementAlias('route-direct', el => {
+    el.value = `:${getLocalProxyInferencePort()}`;
+  });
+  setText('route-port-desc', `MITM 代理 :${getLocalProxyPort()} / 直连代理 :${getLocalProxyInferencePort()}`);
+  syncProxyEnhancementSummary();
+}
+
+function updateGlobalProxyStatusPill(running, tone = '') {
+  const pill = document.getElementById('globalProxyStatusPill');
+  if (!pill) return;
+  pill.classList.remove('running', 'starting', 'error', 'off');
+  pill.classList.add(tone || (running ? 'running' : 'off'));
+}
+
+function updateProxyPageState(running, tone = '') {
+  const state = document.getElementById('proxyConsoleState');
+  const textEl = document.getElementById('proxyPageStateText');
+  const subEl = document.getElementById('proxyPageStateSub');
+  if (state) {
+    state.classList.remove('running', 'starting', 'error');
+    if (tone) state.classList.add(tone);
+    else if (running) state.classList.add('running');
+  }
+  if (textEl) textEl.textContent = running ? '代理运行中' : '代理未启动';
+  if (subEl) subEl.textContent = running ? '本地入口已启动' : '本地入口等待启动';
+}
+
+function syncIdeProxyButton() {
+  const btn = document.getElementById('proxyBtn');
+  if (!btn) return;
+  const target = normalizeIdeProxyTargetValue(typeof getTargetIde === 'function' ? getTargetIde() : 'windsurf');
+  const status = ideProxyStatusByTarget[target] || {};
+  const patched = !!status.patched;
+  const icon = btn.querySelector('.proxy-btn-icon');
+  const text = btn.querySelector('.proxy-btn-text');
+  const stateText = btn.querySelector('[data-proxy-state-text]');
+  const label = ideDisplayLabel(target);
+  btn.classList.toggle('running', patched);
+  btn.classList.toggle('warning', patched && !proxyRunning);
+  if (icon) {
+    icon.innerHTML = patched
+      ? '<rect x="4" y="4" width="16" height="16" rx="2" fill="currentColor"/>'
+      : '<polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" fill="currentColor"/>';
+  }
+  if (text) text.textContent = patched ? '还原直连' : '切换到代理';
+  if (stateText) stateText.textContent = patched ? (proxyRunning ? '已切到代理' : '代理未运行') : '未切换';
+  btn.setAttribute('aria-label', patched ? `${label} 已切到代理，点击还原直连` : `${label} 未切到代理，点击切换到代理`);
+}
+
+async function refreshIdeProxyStatus(targetOverride = '') {
+  if (!invoke) return null;
+  const target = normalizeIdeProxyTargetValue(targetOverride || (typeof getTargetIde === 'function' ? getTargetIde() : 'windsurf'));
+  try {
+    const status = await invoke('get_ide_proxy_status', { target });
+    ideProxyStatusByTarget[target] = status || { target, patched: false };
+    syncIdeProxyButton();
+    return ideProxyStatusByTarget[target];
+  } catch (e) {
+    addLog('warn', `${ideDisplayLabel(target)} 代理切换状态读取失败: ${e}`);
+    syncIdeProxyButton();
+    return null;
+  }
+}
+
+async function ensureLocalProxyConfig(values = {}) {
+  localProxyPort = parseInt(values.PROXY_PORT || values.LOCAL_PROXY_PORT || localProxyPort || '7450', 10) || 7450;
+  localProxyInferencePort = parseInt(values.INFERENCE_PORT || values.LOCAL_INFERENCE_PORT || localProxyInferencePort || '7451', 10) || 7451;
+  localProxyKey = String(values.LOCAL_PROXY_KEY || localProxyKey || '').trim();
+  if (!localProxyKey && invoke) {
+    localProxyKey = generateLocalProxyKeyValue();
+    try {
+      const current = await invoke('load_config') || {};
+      current.LOCAL_PROXY_KEY = localProxyKey;
+      current.PROXY_PORT = String(localProxyPort);
+      current.INFERENCE_PORT = String(localProxyInferencePort);
+      await invoke('save_config', { values: current });
+    } catch (e) {
+      addLog('warn', '生成本地代理 key 后保存失败: ' + e);
+    }
+  }
+  syncLocalProxyUi();
+}
+
+async function persistLocalProxyConfig() {
+  if (!invoke) return false;
+  try {
+    const current = await invoke('load_config') || {};
+    current.LOCAL_PROXY_KEY = localProxyKey;
+    current.PROXY_PORT = String(localProxyPort);
+    current.INFERENCE_PORT = String(localProxyInferencePort);
+    await invoke('save_config', { values: current });
+    return true;
+  } catch (e) {
+    addLog('err', '保存本地代理配置失败: ' + e);
+    return false;
+  }
+}
+
+function parseProxyPortInputValue(value, label) {
+  const n = Number.parseInt(String(value || '').trim(), 10);
+  if (!Number.isInteger(n) || n < 1 || n > 65535) {
+    throw new Error(`${label} 必须是 1-65535 之间的端口号`);
+  }
+  return n;
+}
+
+function proxyPortInputIds(source = 'proxy') {
+  return source === 'settings'
+    ? { api: 'settingsProxyPortInput', inference: 'settingsInferencePortInput' }
+    : { api: 'localProxyPortInput', inference: 'localProxyInferencePortInput' };
+}
+
+async function saveLocalProxyPorts(source = 'proxy') {
+  if (!invoke && !bindTauriBridge()) return;
+  const ids = proxyPortInputIds(source);
+  const apiInput = document.getElementById(ids.api);
+  const inferenceInput = document.getElementById(ids.inference);
+  try {
+    const nextApiPort = parseProxyPortInputValue(apiInput?.value || getLocalProxyPort(), 'API 服务端口');
+    const nextInferencePort = parseProxyPortInputValue(inferenceInput?.value || getLocalProxyInferencePort(), '推理服务端口');
+    if (nextApiPort === nextInferencePort) {
+      throw new Error('API 服务端口和推理服务端口不能相同');
+    }
+    const changed = nextApiPort !== getLocalProxyPort() || nextInferencePort !== getLocalProxyInferencePort();
+    if (proxyRunning && changed) {
+      const ok = await showCustomConfirm(
+        '修改端口需要重启全局代理服务。保存后会立即重启代理，已经写入外部工具的本地代理地址需要重新应用或复制。',
+        '保存端口并重启',
+        'warn'
+      );
+      if (!ok) {
+        syncLocalProxyUi();
+        return;
+      }
+    }
+    localProxyPort = nextApiPort;
+    localProxyInferencePort = nextInferencePort;
+    const saved = await persistLocalProxyConfig();
+    if (!saved) return;
+    syncLocalProxyUi();
+    if (typeof renderPlatformDetailStatuses === 'function') renderPlatformDetailStatuses();
+    addLog('ok', `本地代理端口已保存: ${nextApiPort} / ${nextInferencePort}`);
+    if (proxyRunning && changed) {
+      await restartGlobalProxyService();
+    } else {
+      showCustomAlert('本地代理端口已保存。', '保存完成', 'success');
+    }
+  } catch (e) {
+    syncLocalProxyUi();
+    addLog('err', '保存本地代理端口失败: ' + e);
+    showCustomAlert(String(e.message || e), '保存失败', 'error');
+  }
+}
+async function copyTextToClipboard(text, label) {
+  try {
+    await navigator.clipboard.writeText(text);
+    addLog('ok', `已复制${label || ''}`);
+  } catch (e) {
+    addLog('err', `复制失败: ${e}`);
+  }
+}
+
+async function copyLocalProxyValue(kind) {
+  const value = kind === 'key'
+    ? getLocalProxyKeyValue()
+    : kind === 'claude'
+      ? localProxyBaseUrl('anthropic')
+      : kind === 'models'
+        ? localProxyModelsUrl()
+        : localProxyBaseUrl('openai');
+  if (!value) {
+    addLog('warn', '本地代理 key 尚未生成');
+    return;
+  }
+  await copyTextToClipboard(value, kind === 'key' ? '本地 key' : '本地代理地址');
+}
+
+async function regenerateLocalProxyKey() {
+  const ok = await showCustomConfirm('重新生成后，已经写入外部工具的本地代理 key 需要重新应用。', '重新生成本地 key', 'warn');
+  if (!ok) return;
+  localProxyKey = generateLocalProxyKeyValue();
+  await persistLocalProxyConfig();
+  syncLocalProxyUi();
+  if (typeof renderPlatformDetailStatuses === 'function') renderPlatformDetailStatuses();
+  addLog('ok', '本地代理 key 已重新生成');
+}
 // 防连点:记录进行中的 toggle key,同一目标的并发操作会被忽略,避免后写覆盖先写。
 const _inFlightToggles = new Set();
 
@@ -14,41 +360,28 @@ function statusTargetIde() {
   return proxyRunning && activeProxyTarget ? activeProxyTarget : getTargetIde();
 }
 
-function setStatusPill(running) {
-  proxyRunning = running;
-  const btn = document.getElementById('proxyBtn');
+function setStatusPill(running, status = {}) {
+  proxyRunning = !!running;
+  if (status && (status.api_port || status.apiPort)) {
+    localProxyPort = Number(status.api_port || status.apiPort) || localProxyPort || 7450;
+  }
+  if (status && (status.inference_port || status.inferencePort)) {
+    localProxyInferencePort = Number(status.inference_port || status.inferencePort) || localProxyInferencePort || 7451;
+  }
   const sub = document.getElementById('controlSub');
   const platformSubs = Array.from(document.querySelectorAll('[data-proxy-control-sub]'));
-
-  const ide = statusTargetIde();
+  const ide = normalizeIdeProxyTargetValue(typeof getTargetIde === 'function' ? getTargetIde() : 'windsurf');
   const ideLabel = ideDisplayLabel(ide);
-  const subText = running
-    ? `已接入 ${ideLabel} · 端口 :7450 / :7451 · 重启 IDE 生效`
-    : `代理未运行 · 目标: ${ideLabel} · 端口 :7450 / :7451`;
+  const ideStatus = ideProxyStatusByTarget[ide] || {};
+  const subText = ideStatus.patched
+    ? (proxyRunning ? `已切到代理 · ${ideLabel} · ${getLocalProxyPort()}` : `已切到代理，代理未运行 · ${ideLabel}`)
+    : `未切到代理 · ${ideLabel} · ${getLocalProxyPort()}`;
   [sub, ...platformSubs].filter(Boolean).forEach(el => { el.textContent = subText; });
-  if (btn) {
-    const icon = btn.querySelector('.proxy-btn-icon');
-    const text = btn.querySelector('.proxy-btn-text');
-    const stateText = btn.querySelector('[data-proxy-state-text]');
-    if (icon && text) {
-      if (running) {
-        icon.innerHTML = '<rect x="4" y="4" width="16" height="16" rx="2" fill="currentColor"/>';
-        text.textContent = '停止代理';
-        if (stateText) stateText.textContent = '运行中';
-        btn.setAttribute('aria-label', '代理运行中，停止代理');
-      } else {
-        icon.innerHTML = '<polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" fill="currentColor"/>';
-        text.textContent = '启动代理';
-        if (stateText) stateText.textContent = '已停止';
-        btn.setAttribute('aria-label', '代理已停止，启动代理');
-      }
-    } else {
-      btn.textContent = running ? '■ 停止代理' : '⚡ 启动代理';
-    }
-    btn.classList.toggle('running', running);
-  }
+  updateGlobalProxyStatusPill(proxyRunning);
+  updateProxyPageState(proxyRunning);
+  syncLocalProxyUi();
+  syncIdeProxyButton();
 }
-
 let _toggling = false;
 
 function renderPreflightReport(report, targetElId) {
@@ -88,7 +421,7 @@ async function runEnvironmentCheck(options) {
 }
 
 function promptInstallCertificateBeforeProxy() {
-  const message = '启动代理前需要安装本地证书，IDE 才能信任本机代理。';
+  const message = '切换到代理前需要安装本地证书，IDE 才能信任本机代理。';
   return new Promise((resolve) => {
     const modal = document.getElementById('custom-confirm-modal');
     const titleEl = modal?.querySelector('.modal-title');
@@ -100,7 +433,7 @@ function promptInstallCertificateBeforeProxy() {
     const btnConfirm = document.getElementById('modal-btn-confirm');
 
     if (!modal || !btnCancel || !btnConfirm) {
-      resolve(confirm(message + '\n\n是否现在安装证书并继续启动代理？'));
+      resolve(confirm(message + '\n\n是否现在安装证书并继续切换到代理？'));
       return;
     }
 
@@ -127,12 +460,12 @@ function promptInstallCertificateBeforeProxy() {
         '<span>需要安装证书</span>';
     }
     if (leadEl) leadEl.textContent = message;
-    if (questionEl) questionEl.textContent = '点击「安装证书并继续」后，应用会自动安装证书，安装成功就继续启动代理。';
+    if (questionEl) questionEl.textContent = '点击「安装证书并继续」后，应用会自动安装证书，安装成功就继续切换到代理。';
     if (warningEl) warningEl.style.display = '';
     if (warningTextEl) {
       warningTextEl.innerHTML = '如果系统弹出授权窗口，请选择<strong>是</strong>。这是本机代理证书，只用于让 IDE 信任当前电脑上的代理。';
     }
-    btnCancel.textContent = '暂不启动';
+    btnCancel.textContent = '暂不切换';
     btnConfirm.textContent = '安装证书并继续';
     btnConfirm.style.width = '';
 
@@ -184,184 +517,262 @@ async function toggleProxy() {
   _diag('toggleProxy called');
   if (_toggling) { _diag('toggleProxy skipped: already in progress'); return; }
   _toggling = true;
-  try {
-  if (!invoke && !bindTauriBridge()) {
-    _diag('toggleProxy abort: invoke unavailable');
-    addLog('err', 'Tauri 通道未就绪，代理操作不可用。请重启应用后重试。');
-    return;
-  }
-
-  const activeOverlays = Array.from(document.querySelectorAll('.modal-overlay.active')).map(el => el.id || '(no-id)');
-  _diag('active overlays: ' + (activeOverlays.length ? activeOverlays.join(',') : 'none'));
-
   const btn = document.getElementById('proxyBtn');
-  const target = getTargetIde();
-
-  if (btn) {
-    btn.disabled = true;
-    const text = btn.querySelector('.proxy-btn-text');
-    if (text) {
-      text.textContent = proxyRunning ? '停止中…' : '启动中…';
-    } else {
-      btn.textContent = proxyRunning ? '停止中…' : '启动中…';
-    }
-  }
   try {
-    if (proxyRunning) {
-      const stoppedTarget = activeProxyTarget || target;
-      const report = await invoke('stop_proxy', { targetIde: stoppedTarget });
-      setStatusPill(false);
-      // 检查还原报告，如果有警告则提示用户
-      const warnings = [];
-      if (report && report.ide_config && !report.ide_config.startsWith('ok')) {
-        warnings.push('IDE 代理配置: ' + report.ide_config);
-      }
-      if (warnings.length) {
-        addLog('warn', '⚠ 部分还原未成功: ' + warnings.join('；'));
-        showCustomAlert('停止代理成功，但以下配置未能自动还原:\n\n• ' + warnings.join('\n• ') +
-              '\n\n请手动检查 IDE 设置中的 http.proxy 和 http.proxyStrictSSL，否则 IDE 可能无法联网。', '部分还原失败', 'warn');
-      } else {
-        await promptRestartIde('已停止代理并还原配置。IDE 仍指向已关闭的代理，需重启才能恢复正常联网。', stoppedTarget);
-      }
-      activeProxyTarget = '';
-    } else {
-      let effectiveTarget = target;
-      let check;
-      try {
-        check = await runEnvironmentCheck({ target, prefix: '启动自检' });
-        effectiveTarget = check.effectiveTarget;
-      } catch (e) {
-        addLog('err', '启动自检执行失败，已阻止启动: ' + e);
-        showCustomAlert('启动自检执行失败，代理未启动。请先处理异常后重试:\n\n' + e, '启动自检失败', 'error');
-        return;
-      }
-      const certNotTrusted = check.errors.find(i => i.code === 'cert.not_trusted');
-      if (certNotTrusted) {
-        const shouldInstall = await promptInstallCertificateBeforeProxy();
-        if (!shouldInstall) {
-          addLog('warn', '启动已取消：未安装证书');
-          return;
-        }
-        setProxyButtonBusyText('安装证书…');
-        try {
-          addLog('info', '正在安装本地证书，安装完成后会继续启动代理...');
-          const installMsg = await invoke('cert_install');
-          addLog('ok', '证书安装完成: ' + installMsg);
-        } catch (e) {
-          addLog('err', '证书安装失败，代理未启动: ' + e);
-          showCustomAlert(
-            '证书安装失败，代理未启动。\n\n你可以稍后再点「启动代理」重试，或到「设置 > 环境检测」里手动安装证书。\n\n错误详情:\n' + e,
-            '证书安装失败',
-            'error'
-          );
-          return;
-        }
-        setProxyButtonBusyText('复检中…');
-        try {
-          check = await runEnvironmentCheck({ target, prefix: '证书安装后复检' });
-          effectiveTarget = check.effectiveTarget;
-        } catch (e) {
-          addLog('err', '证书安装后复检失败，已阻止启动: ' + e);
-          showCustomAlert('证书已尝试安装，但复检失败。代理未启动。\n\n' + e, '复检失败', 'error');
-          return;
-        }
-      }
-      if (check.errors.length) {
-        const messages = check.errors.map(i => i.message || String(i));
-        showCustomAlert('无法启动，已自动处理能修复的部分。请先处理以下问题:\n\n• ' + messages.join('\n• '), '启动自检未通过', 'error');
-        return;
-      }
-      if (check.warnings.length) {
-        const messages = check.warnings.slice(0, 3).map(i => i.message || String(i));
-        addLog('warn', `启动自检通过，但有 ${check.warnings.length} 条提示: ${messages.join('；')}`);
-      }
-      await invoke('start_proxy', { targetIde: target, skipPreflight: true });
-      activeProxyTarget = effectiveTarget === 'auto' ? target : effectiveTarget;
-      setStatusPill(true);
-      await promptRestartIde('代理已启动，需重启 IDE 才能生效。', activeProxyTarget);
+    if (!invoke && !bindTauriBridge()) {
+      _diag('toggleProxy abort: invoke unavailable');
+      addLog('err', 'Tauri 通道未就绪，代理切换不可用。请重启应用后重试。');
+      return;
     }
+
+    const target = await resolveIdeProxyTarget(true);
+    const label = ideDisplayLabel(target);
+    const status = await refreshIdeProxyStatus(target);
+    const patched = !!status?.patched;
+
+    if (btn) {
+      btn.disabled = true;
+      setProxyButtonBusyText(patched ? '还原中...' : '切换中...');
+    }
+
+    if (patched) {
+      const ok = await showCustomConfirm(`将把 ${label} 从 AnyBridge 本地代理还原为直连配置。`, '还原直连', 'warn');
+      if (!ok) return;
+      const report = await invoke('restore_ide_direct', { target });
+      const warnings = [];
+      if (report && report.ideConfig && !String(report.ideConfig).startsWith('ok')) warnings.push('IDE 配置: ' + report.ideConfig);
+      if (report && report.workbenchInject && !String(report.workbenchInject).startsWith('ok')) warnings.push('卡片注入: ' + report.workbenchInject);
+      await refreshIdeProxyStatus(target);
+      setStatusPill(proxyRunning);
+      if (warnings.length) {
+        addLog('warn', `${label} 还原直连完成，但有提示: ${warnings.join('；')}`);
+        showCustomAlert(warnings.join('\n'), '还原提示', 'warn');
+      } else {
+        addLog('ok', `${label} 已还原直连`);
+        await promptRestartIde(`${label} 已还原直连，重启 IDE 后生效。`, target, { mode: 'direct' });
+      }
+      return;
+    }
+
+    if (!proxyRunning) {
+      setProxyButtonBusyText('启动代理...');
+      setGlobalProxyBusy(true, '代理启动中');
+      try {
+        await invoke('start_proxy_service');
+        addLog('ok', '全局代理服务已自动启动');
+      } catch (e) {
+        if (String(e).includes('代理已在运行')) {
+          addLog('warn', '代理服务已在运行，已刷新状态后继续切换');
+        } else {
+          updateGlobalProxyStatusPill(false, 'error');
+          updateProxyPageState(false, 'error');
+          throw new Error('自动启动全局代理服务失败: ' + e);
+        }
+      } finally {
+        setGlobalProxyBusy(false);
+      }
+      await refreshStatus();
+    }
+
+    setProxyButtonBusyText('切换中...');
+    const report = await invoke('switch_ide_to_proxy', { target });
+    await refreshIdeProxyStatus(target);
+    setStatusPill(proxyRunning);
+    const injectWarn = report && report.workbenchInject && String(report.workbenchInject).startsWith('warn:')
+      ? report.workbenchInject.replace(/^warn:\s*/, '')
+      : '';
+    addLog('ok', `${label} 已切换到 AnyBridge 本地代理`);
+    if (injectWarn) addLog('warn', `${label} 卡片注入提示: ${injectWarn}`);
+    await promptRestartIde(`${label} 已切到代理，本地代理已启动，重启 IDE 后生效。`, target, {
+      mode: 'proxy',
+      detail: injectWarn
+    });
   } catch (e) {
-    addLog('err', '代理操作失败: ' + e);
+    addLog('err', '平台代理切换失败: ' + e);
+    showCustomAlert(String(e), '切换失败', 'error');
     setStatusPill(proxyRunning);
   } finally {
     if (btn) btn.disabled = false;
+    _toggling = false;
+    syncIdeProxyButton();
   }
-  } finally { _toggling = false; }
 }
 
+function setGlobalProxyBusy(busy, label = '') {
+  ['globalProxyStartBtn', 'globalProxyStopBtn', 'globalProxyRestartBtn'].forEach(id => {
+    const btn = document.getElementById(id);
+    if (btn) btn.disabled = !!busy;
+  });
+  if (busy) {
+    updateGlobalProxyStatusPill(false, 'starting');
+    updateProxyPageState(false, 'starting');
+    if (label) setText('proxyPageStateText', label);
+  }
+}
+
+async function startGlobalProxyService() {
+  if (!invoke && !bindTauriBridge()) return;
+  setGlobalProxyBusy(true, '代理启动中');
+  try {
+    await invoke('start_proxy_service');
+    await refreshStatus();
+    addLog('ok', '全局代理服务已启动');
+  } catch (e) {
+    updateGlobalProxyStatusPill(false, 'error');
+    updateProxyPageState(false, 'error');
+    addLog('err', '启动全局代理服务失败: ' + e);
+    showCustomAlert(String(e), '启动失败', 'error');
+  } finally {
+    setGlobalProxyBusy(false);
+  }
+}
+
+async function stopGlobalProxyService() {
+  if (!invoke && !bindTauriBridge()) return;
+  setGlobalProxyBusy(true, '代理停止中');
+  try {
+    await invoke('stop_proxy_service');
+    setStatusPill(false);
+    addLog('ok', '全局代理服务已停止');
+  } catch (e) {
+    if (String(e).includes('代理未运行')) setStatusPill(false);
+    else {
+      addLog('err', '停止全局代理服务失败: ' + e);
+      showCustomAlert(String(e), '停止失败', 'error');
+    }
+  } finally {
+    setGlobalProxyBusy(false);
+  }
+}
+
+async function restartGlobalProxyService() {
+  if (!invoke && !bindTauriBridge()) return;
+  setGlobalProxyBusy(true, '代理重启中');
+  try {
+    await invoke('restart_proxy_service');
+    await refreshStatus();
+    addLog('ok', '全局代理服务已重启');
+  } catch (e) {
+    updateGlobalProxyStatusPill(false, 'error');
+    updateProxyPageState(false, 'error');
+    addLog('err', '重启全局代理服务失败: ' + e);
+    showCustomAlert(String(e), '重启失败', 'error');
+  } finally {
+    setGlobalProxyBusy(false);
+  }
+}
 let _statusFailStreak = 0;
 let _refreshStatusInFlight = false;
 async function refreshStatus() {
   if (!invoke) return;
-  if (_toggling) return;
   if (_refreshStatusInFlight) return;
   _refreshStatusInFlight = true;
   try {
     const s = await invoke('get_proxy_status');
     const running = !!s.running;
-    if (running) {
-      activeProxyTarget = s.target_ide || s.targetIde || activeProxyTarget;
-    } else {
-      activeProxyTarget = '';
-    }
-    setStatusPill(running);
+    activeProxyTarget = running ? (s.target_ide || s.targetIde || '') : '';
+    setStatusPill(running, s);
     _statusFailStreak = 0;
+    refreshIdeProxyStatus().catch(() => {});
   } catch (e) {
-    // 轮询偶发失败不打扰用户；连续多次失败才告警一次，避免每 3 秒刷屏。
     _statusFailStreak++;
     if (_statusFailStreak === 5) addLog('warn', '无法获取代理状态(已连续失败5次): ' + e);
   } finally {
     _refreshStatusInFlight = false;
   }
 }
+async function restartIdeNow(target) {
+  try {
+    const result = await invoke('restart_ide', { target });
+    addLog('ok', result);
+    return true;
+  } catch (e) {
+    addLog('err', '重启 IDE 失败: ' + e);
+    showCustomAlert(String(e), '重启失败', 'error');
+    return false;
+  }
+}
 
-// 代理状态变更后，提示并询问是否一键重启 IDE 使其生效。
-function promptRestartIde(leadText, targetOverride) {
+// 代理/直连切换后，提示并询问是否一键重启 IDE 使其生效。
+function promptRestartIde(leadText, targetOverride, options = {}) {
   if (!invoke) return Promise.resolve(false);
-  const lead = leadText || '代理状态已变更，需重启 IDE 才能生效。';
   const target = targetOverride || activeProxyTarget || getTargetIde();
+  const label = ideDisplayLabel(target);
+  const mode = options.mode === 'direct' ? 'direct' : 'proxy';
+  const lead = leadText || `${label} 代理状态已变更，需重启 IDE 才能生效。`;
+  const detail = String(options.detail || '').trim();
+
+  if (shouldAutoRestartIdeAfterSwitch()) {
+    addLog('info', `按偏好自动重启 ${label}`);
+    return restartIdeNow(target);
+  }
 
   return new Promise((resolve) => {
-    const modal = document.getElementById('custom-confirm-modal');
-    const btnCancel = document.getElementById('modal-btn-cancel');
-    const btnConfirm = document.getElementById('modal-btn-confirm');
+    const modal = document.getElementById('ide-restart-modal');
+    const titleEl = document.getElementById('ide-restart-title');
+    const leadEl = document.getElementById('ide-restart-lead');
+    const statusEl = document.getElementById('ide-restart-status');
+    const detailEl = document.getElementById('ide-restart-detail');
+    const autoInput = document.getElementById('ide-restart-auto-checkbox');
+    const btnLater = document.getElementById('ide-restart-later-btn');
+    const btnNow = document.getElementById('ide-restart-now-btn');
 
-    if (!modal || !btnCancel || !btnConfirm) {
-      // 降级使用 showCustomConfirm
-      showCustomConfirm(lead + '\n\n重启会强制关闭 IDE，请先保存所有未保存的工作。', '需要重启 IDE', 'warn').then(resolve);
+    if (!modal || !btnLater || !btnNow) {
+      showCustomConfirm(lead + '\n\n重启会强制关闭 IDE，请先保存所有未保存的工作。', '需要重启 IDE', 'warn')
+        .then(async ok => resolve(ok ? await restartIdeNow(target) : false));
       return;
     }
 
-    const leadEl = document.getElementById('modal-lead');
+    if (titleEl) titleEl.textContent = `重启 ${label} 以应用${mode === 'direct' ? '直连' : '代理'}`;
     if (leadEl) leadEl.textContent = lead;
+    if (statusEl) {
+      statusEl.textContent = mode === 'direct'
+        ? '已恢复直连配置，重启后 IDE 不再经过 AnyBridge。'
+        : '已写入 AnyBridge 代理配置，本地代理服务已启动。';
+    }
+    if (detailEl) {
+      detailEl.textContent = detail ? `提示：${detail}` : '';
+      detailEl.style.display = detail ? '' : 'none';
+    }
+    if (autoInput) autoInput.checked = false;
+    btnLater.disabled = false;
+    btnNow.disabled = false;
+    btnNow.textContent = '立即重启';
 
-    // 显示自定义 Modal
     modal.classList.add('active');
 
     const cleanup = (result) => {
       modal.classList.remove('active');
-      // 移除事件监听，防止内存泄露和事件重复绑定
-      btnCancel.removeEventListener('click', onCancel);
-      btnConfirm.removeEventListener('click', onConfirm);
+      btnLater.removeEventListener('click', onLater);
+      btnNow.removeEventListener('click', onNow);
+      modal.removeEventListener('click', onOverlay);
+      document.removeEventListener('keydown', onEsc);
       resolve(result);
     };
 
-    function onCancel() {
+    const onLater = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
       cleanup(false);
-    }
+    };
+    const onNow = async (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const rememberAuto = !!autoInput?.checked;
+      btnLater.disabled = true;
+      btnNow.disabled = true;
+      btnNow.textContent = '重启中...';
+      const restarted = await restartIdeNow(target);
+      if (restarted && rememberAuto) setAutoRestartIdeAfterSwitch(true);
+      cleanup(restarted);
+    };
+    const onOverlay = (e) => { if (e.target === modal) cleanup(false); };
+    const onEsc = (e) => { if (e.key === 'Escape' && modal.classList.contains('active')) cleanup(false); };
 
-    async function onConfirm() {
-      cleanup(true);
-      try {
-        const result = await invoke('restart_ide', { target });
-        addLog('ok', result);
-      } catch (e) {
-        addLog('err', '重启 IDE 失败: ' + e);
-      }
-    }
-
-    btnCancel.addEventListener('click', onCancel);
-    btnConfirm.addEventListener('click', onConfirm);
+    btnLater.addEventListener('click', onLater);
+    btnNow.addEventListener('click', onNow);
+    modal.addEventListener('click', onOverlay);
+    document.addEventListener('keydown', onEsc);
   });
 }
 
@@ -373,9 +784,98 @@ function fmtNum(n) {
   return String(n);
 }
 
+function forEachElementAlias(id, cb) {
+  const seen = new Set();
+  const direct = document.getElementById(id);
+  if (direct) {
+    seen.add(direct);
+    cb(direct);
+  }
+  document.querySelectorAll(`[data-oid="${id}"]`).forEach(el => {
+    if (seen.has(el)) return;
+    seen.add(el);
+    cb(el);
+  });
+}
+
 function setText(id, v) {
+  forEachElementAlias(id, el => {
+    el.textContent = v;
+  });
+}
+
+function setBar(id, pct) {
   const el = document.getElementById(id);
-  if (el) el.textContent = v;
+  if (!el) return;
+  const safe = Number.isFinite(pct) ? Math.max(0, Math.min(100, pct)) : 0;
+  el.style.width = safe + '%';
+}
+
+function pctOf(value, total) {
+  if (!Number.isFinite(value) || !Number.isFinite(total) || total <= 0) return 0;
+  return (value / total) * 100;
+}
+
+function resetStatsUi() {
+  setText('stat-requests', '—');
+  setText('stat-requests-sub', '代理未运行');
+  setText('stat-tokens', '—');
+  setText('stat-tokens-sub', '输入 / 输出 / 缓存');
+  setText('stat-success-rate', '—');
+  setText('stat-errors-sub', '等待请求');
+  setText('stat-provider', '—');
+  setText('stat-model', '尚无请求');
+  setText('stat-rpm', '—');
+  setText('stat-tpm', '—');
+  setText('stat-latency', '—');
+  setText('stat-retries', '—');
+  setText('stat-retries-sub', '本日累计');
+  setText('stat-error-rate', '—');
+  setText('stat-window-errors', '最近窗口');
+  setText('stat-window-requests', '0');
+  setText('stat-window-tokens', '0');
+  setText('stat-window-errors-count', '0');
+  setText('stat-cost', '—');
+  setText('proxy-page-requests', '—');
+  setText('proxy-page-tokens', '—');
+  setText('proxy-page-success-rate', '—');
+  setText('proxy-page-latency', '—');
+  setText('stat-health-pill', '等待流量');
+  setText('stat-input-tokens', '—');
+  setText('stat-output-tokens', '—');
+  setText('stat-cached-tokens', '—');
+  setText('stat-vision-images', '0');
+  setText('stat-vision-api-calls', '0');
+  setText('stat-vision-cache-hits', '0');
+  setText('stat-vision-failures', '0');
+  setText('proxy-page-vision-images', '0');
+  setText('proxy-page-vision-api-calls', '0');
+  setText('proxy-page-vision-cache-hits', '0');
+  setText('proxy-page-vision-failures', '0');
+  ['stat-window-requests-bar', 'stat-window-tokens-bar', 'stat-window-errors-bar', 'stat-input-token-bar', 'stat-output-token-bar', 'stat-cached-token-bar'].forEach(id => setBar(id, 0));
+  renderTopModels({}, 0);
+}
+
+function updateHealthPill(errorRate, latencyMs, windowRequests) {
+  const el = document.getElementById('stat-health-pill');
+  if (!el) return;
+  el.classList.remove('ok', 'warn', 'danger');
+  if (!windowRequests) {
+    el.textContent = '等待流量';
+    return;
+  }
+  if (errorRate >= 5) {
+    el.textContent = '错误偏高';
+    el.classList.add('danger');
+    return;
+  }
+  if (errorRate >= 1 || latencyMs >= 8000) {
+    el.textContent = '需要关注';
+    el.classList.add('warn');
+    return;
+  }
+  el.textContent = '运行正常';
+  el.classList.add('ok');
 }
 
 async function refreshStats() {
@@ -383,41 +883,73 @@ async function refreshStats() {
   if (_toggling) return;
   if (refreshStats._inFlight) return;
   if (!proxyRunning) {
-    setText('stat-requests', '—');
-    setText('stat-requests-sub', '代理未运行');
-    setText('stat-tokens', '—');
-    setText('stat-provider', '—');
-    setText('stat-model', '尚无请求');
-    setText('stat-errors', '—');
-    setText('stat-rpm', '—');
-    setText('stat-tpm', '—');
-    setText('stat-latency', '—');
-    setText('stat-retries', '—');
-    setText('stat-retries-sub', '本日累计');
+    resetStatsUi();
     return;
   }
   refreshStats._inFlight = true;
   try {
     const s = await invoke('get_stats');
-    // 第一排：累计指标
+    const r = s.rate || {};
+    const totalTokens = Number(s.totalTokens) || 0;
+    const inputTokens = Number(s.inputTokens) || 0;
+    const outputTokens = Number(s.outputTokens) || 0;
+    const cachedTokens = Number(s.cachedTokens) || 0;
+    const totalTokenParts = Math.max(1, inputTokens + outputTokens + cachedTokens);
+    const errors = Number(s.errors) || 0;
+    const requests = Number(s.requests) || 0;
+    const successRate = requests > 0 ? Math.max(0, 100 - (errors / requests) * 100) : null;
+    const windowRequests = Number(r.windowRequests) || 0;
+    const windowErrors = Number(r.windowErrors) || 0;
+    const windowTokens = (Number(r.tpm) || 0) * 60;
+    const errorRate = Number(r.errorRate) || 0;
+    const avgLatency = Number(r.avgLatencyMs) || 0;
+
     setText('stat-requests', fmtNum(s.requests));
+    setText('proxy-page-requests', fmtNum(s.requests));
     setText('stat-requests-sub', s.requests > 0 ? `运行 ${Math.floor(s.uptimeSec / 60)} 分钟` : '等待请求');
     setText('stat-tokens', fmtNum(s.totalTokens));
-    setText('stat-tokens-sub', `↑${fmtNum(s.inputTokens)} ↓${fmtNum(s.outputTokens)} · ≈$${s.estCostUsd}`);
+    setText('proxy-page-tokens', fmtNum(s.totalTokens));
+    const cachedPart = s.cachedTokens ? ` 缓存${fmtNum(s.cachedTokens)} ·` : '';
+    setText('stat-tokens-sub', `↑${fmtNum(s.inputTokens)} ↓${fmtNum(s.outputTokens)} ·${cachedPart} ≈$${s.estCostUsd}`);
+    setText('stat-success-rate', successRate == null ? '—' : `${successRate.toFixed(successRate >= 99 ? 1 : 0)}%`);
     setText('stat-provider', s.lastProvider || '—');
     setText('stat-model', s.lastModel || '尚无请求');
-    setText('stat-errors', fmtNum(s.errors));
-    setText('stat-errors-sub', s.lastError ? `最近: ${s.lastError}` : '本日累计');
-    // 第二排：速率指标
-    const r = s.rate || {};
+    setText('stat-errors-sub', s.lastError ? `${fmtNum(errors)} 次错误 · 最近: ${s.lastError}` : `${fmtNum(errors)} 次错误`);
     setText('stat-rpm', r.rpm != null ? r.rpm : '—');
     setText('stat-tpm', r.tpm != null ? fmtNum(r.tpm) : '—');
     setText('stat-latency', r.avgLatencyMs != null ? `${r.avgLatencyMs}ms` : '—');
     setText('stat-retries', fmtNum(s.retries || 0));
     setText('stat-retries-sub', s.lastRetryReason ? `最近: ${s.lastRetryReason}` : '本日累计');
-    // Top 模型横向条形图
-    renderTopModels(s.byModel || {});
-    // 更新 IDE 接入设置里的流量路由信息
+    setText('stat-error-rate', r.errorRate != null ? `${r.errorRate}%` : '—');
+    setText('stat-window-errors', `${windowErrors} 个错误`);
+    setText('stat-window-requests', fmtNum(windowRequests));
+    setText('stat-window-tokens', fmtNum(Math.round(windowTokens)));
+    setText('stat-window-errors-count', fmtNum(windowErrors));
+    setText('stat-cost', s.estCostUsd != null ? `$${s.estCostUsd}` : '—');
+    setText('stat-input-tokens', fmtNum(inputTokens));
+    setText('stat-output-tokens', fmtNum(outputTokens));
+    setText('stat-cached-tokens', fmtNum(cachedTokens));
+
+    setBar('stat-window-requests-bar', Math.min(100, (windowRequests / 60) * 100));
+    setBar('stat-window-tokens-bar', Math.min(100, (windowTokens / 120000) * 100));
+    setBar('stat-window-errors-bar', Math.min(100, (windowErrors / Math.max(1, windowRequests)) * 100));
+    setBar('stat-input-token-bar', pctOf(inputTokens, totalTokenParts));
+    setBar('stat-output-token-bar', pctOf(outputTokens, totalTokenParts));
+    setBar('stat-cached-token-bar', pctOf(cachedTokens, totalTokenParts));
+    updateHealthPill(errorRate, avgLatency, windowRequests);
+
+    const vision = s.visionFallback || {};
+    setText('stat-vision-images', fmtNum(vision.images || 0));
+    setText('stat-vision-api-calls', fmtNum(vision.apiCalls || 0));
+    setText('stat-vision-cache-hits', fmtNum(vision.cacheHits || 0));
+    setText('stat-vision-failures', fmtNum(vision.failures || 0));
+    setText('proxy-page-vision-images', fmtNum(vision.images || 0));
+    setText('proxy-page-vision-api-calls', fmtNum(vision.apiCalls || 0));
+    setText('proxy-page-vision-cache-hits', fmtNum(vision.cacheHits || 0));
+    setText('proxy-page-vision-failures', fmtNum(vision.failures || 0));
+
+    renderTopModels(s.byModel || {}, requests);
+    // 更新平台设置里的流量路由信息
     const rp = document.getElementById('route-providers');
     if (rp) {
       const activeCount = providerStore && providerStore.providers ? providerStore.providers.filter(p => p.enabled !== false).length : 0;
@@ -430,26 +962,26 @@ async function refreshStats() {
   }
 }
 
-function renderTopModels(byModel) {
+function renderTopModels(byModel, totalRequests = 0) {
   const container = document.getElementById('topModelsChart');
   if (!container) return;
-  const entries = Object.entries(byModel).sort((a, b) => b[1] - a[1]).slice(0, 5);
+  const entries = Object.entries(byModel).sort((a, b) => b[1] - a[1]).slice(0, 8);
   if (entries.length === 0) {
-    container.innerHTML = '<div style="color:var(--text-muted);font-size:12px;text-align:center;padding:8px 0;">尚无数据</div>';
+    container.innerHTML = '<div class="proxy-empty-state">尚无模型请求数据</div>';
     return;
   }
   const maxVal = entries[0][1];
   const colors = ['#3b82f6', '#06b6d4', '#10b981', '#f59e0b', '#8b5cf6'];
-  let html = '';
+  let html = '<div class="proxy-model-head"><span>模型</span><span>请求</span><span>占比</span><span>分布</span></div>';
   entries.forEach(([model, count], i) => {
     const pct = Math.max(4, (count / maxVal) * 100);
+    const share = totalRequests > 0 ? (count / totalRequests) * 100 : 0;
     const color = colors[i % colors.length];
-    html += `<div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;">
-      <div style="width:120px;font-size:12px;color:var(--text-secondary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex-shrink:0;" title="${model}">${model}</div>
-      <div style="flex:1;height:18px;background:var(--bg-input);border-radius:4px;overflow:hidden;">
-        <div style="width:${pct}%;height:100%;background:${color};border-radius:4px;transition:width 0.4s ease;"></div>
-      </div>
-      <div style="width:40px;font-size:12px;color:var(--text-muted);text-align:right;flex-shrink:0;">${count}</div>
+    html += `<div class="proxy-model-row">
+      <span class="proxy-model-name" title="${escapeHtml(model)}">${escapeHtml(model)}</span>
+      <strong>${fmtNum(count)}</strong>
+      <span>${share ? share.toFixed(1) : '0.0'}%</span>
+      <div class="proxy-model-bar"><i style="width:${pct}%;background:${color};"></i></div>
     </div>`;
   });
   container.innerHTML = html;
@@ -712,6 +1244,7 @@ async function loadAndFillConfig() {
       if (k in values) el.value = values[k];
     });
     applyToggleStates(values);
+    await ensureLocalProxyConfig(values);
     if (window.ByokI18n) {
       window.ByokI18n.initFromConfig(values);
       window.ByokI18n.bindLanguageControls();

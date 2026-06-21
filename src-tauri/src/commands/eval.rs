@@ -27,6 +27,7 @@ impl Default for EvalMode {
 #[serde(rename_all = "camelCase")]
 pub struct EvalRequest {
     pub provider_id: String,
+    pub api_format: String,
     #[serde(default)]
     pub model: Option<String>,
     #[serde(default)]
@@ -183,10 +184,11 @@ pub async fn run_provider_eval(
 ) -> Result<EvalReport, String> {
     let started = Instant::now();
     let report_id = format!("eval-{}", now_millis());
-    let provider = find_provider(&request.provider_id)?;
+    let mut provider = find_provider(&request.provider_id)?;
     if !provider.enabled {
         return Err(format!("供应商已禁用: {}", provider.name));
     }
+    provider.api_format = parse_eval_api_format(&request.api_format)?;
     let model = request
         .model
         .clone()
@@ -716,127 +718,12 @@ async fn probe_connectivity_with_retries(
     unreachable!()
 }
 
-/// 带重试的连通性探针；协议端点疑似配错时，尝试备用协议让检测继续跑完。
+/// 带重试的连通性探针。协议由本次评测请求显式指定；失败时直接暴露。
 async fn probe_connectivity(
     ctx: &mut EvalContext,
 ) -> Result<(JsonCall, EvalProbeResult), EvalProbeResult> {
     let body = chat_body(ctx, "Reply with exactly: OK", false, 64, None);
-    match probe_connectivity_with_retries(ctx, &body).await {
-        Ok(result) => return Ok(result),
-        Err(mut primary_probe) => {
-            let original_provider = ctx.provider.clone();
-            let original_protocol = api_format_str(&original_provider.api_format);
-            for candidate in connectivity_fallback_providers(&original_provider) {
-                let candidate_protocol = api_format_str(&candidate.api_format);
-                let candidate_path = candidate.api_path.clone().unwrap_or_default();
-                ctx.provider = candidate;
-                let fallback_body = chat_body(ctx, "Reply with exactly: OK", false, 64, None);
-                match probe_connectivity_with_retries(ctx, &fallback_body).await {
-                    Ok((call, mut probe_result)) => {
-                        probe_result.status = "warn".into();
-                        probe_result.score = probe_result.score.min(80.0);
-                        probe_result.summary = format!(
-                            "当前配置为 {}，但 {} 兼容入口可用",
-                            original_protocol,
-                            protocol_display_name(&ctx.provider.api_format)
-                        );
-                        probe_result.evidence.push(format!(
-                            "自动试探协议: {} -> {}",
-                            original_protocol, candidate_protocol
-                        ));
-                        probe_result.evidence.push(format!(
-                            "建议配置: protocol={} path={}",
-                            candidate_protocol, candidate_path
-                        ));
-                        return Ok((call, probe_result));
-                    }
-                    Err(fallback_probe) => {
-                        primary_probe.evidence.push(format!(
-                            "备用协议 {} 也不可用: {}",
-                            candidate_protocol, fallback_probe.summary
-                        ));
-                    }
-                }
-            }
-            ctx.provider = original_provider;
-            Err(primary_probe)
-        }
-    }
-}
-
-fn protocol_display_name(fmt: &ApiFormat) -> &'static str {
-    match fmt {
-        ApiFormat::Anthropic => "Claude Messages",
-        ApiFormat::Openai => "OpenAI Chat",
-    }
-}
-
-fn connectivity_fallback_providers(provider: &Provider) -> Vec<Provider> {
-    let mut out = Vec::new();
-    match provider.api_format {
-        ApiFormat::Anthropic => {
-            let mut openai = provider.clone();
-            openai.api_format = ApiFormat::Openai;
-            openai.api_path = Some(fallback_openai_chat_path(provider));
-            out.push(openai);
-        }
-        ApiFormat::Openai => {
-            let mut anthropic = provider.clone();
-            anthropic.api_format = ApiFormat::Anthropic;
-            anthropic.api_path = Some(fallback_anthropic_messages_path(provider));
-            out.push(anthropic);
-        }
-    }
-    out
-}
-
-fn fallback_openai_chat_path(provider: &Provider) -> String {
-    let path = clean_api_path(provider.api_path.as_deref());
-    let lower = path.to_ascii_lowercase();
-    if lower.ends_with("/chat/completions") {
-        path
-    } else if lower.ends_with("/messages") {
-        format!(
-            "{}/chat/completions",
-            path.trim_end_matches("/messages").trim_end_matches('/')
-        )
-    } else if lower.ends_with("/responses") {
-        format!(
-            "{}/chat/completions",
-            path.trim_end_matches("/responses").trim_end_matches('/')
-        )
-    } else if path.is_empty() {
-        "/v1/chat/completions".into()
-    } else if lower.ends_with("/v1") {
-        format!("{}/chat/completions", path)
-    } else {
-        "/v1/chat/completions".into()
-    }
-}
-
-fn fallback_anthropic_messages_path(provider: &Provider) -> String {
-    let path = clean_api_path(provider.api_path.as_deref());
-    let lower = path.to_ascii_lowercase();
-    if lower.ends_with("/messages") {
-        path
-    } else if lower.ends_with("/chat/completions") {
-        format!(
-            "{}/messages",
-            path.trim_end_matches("/chat/completions")
-                .trim_end_matches('/')
-        )
-    } else if lower.ends_with("/responses") {
-        format!(
-            "{}/messages",
-            path.trim_end_matches("/responses").trim_end_matches('/')
-        )
-    } else if path.is_empty() {
-        "/v1/messages".into()
-    } else if lower.ends_with("/v1") {
-        format!("{}/messages", path)
-    } else {
-        "/v1/messages".into()
-    }
+    probe_connectivity_with_retries(ctx, &body).await
 }
 
 fn probe_response_structure(ctx: &EvalContext, call: &JsonCall) -> EvalProbeResult {
@@ -1861,6 +1748,15 @@ fn api_format_str(fmt: &ApiFormat) -> &'static str {
     match fmt {
         ApiFormat::Anthropic => "anthropic",
         ApiFormat::Openai => "openai",
+    }
+}
+
+fn parse_eval_api_format(value: &str) -> Result<ApiFormat, String> {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "openai" => Ok(ApiFormat::Openai),
+        "anthropic" => Ok(ApiFormat::Anthropic),
+        "" => Err("请选择本次评测协议(openai 或 anthropic)".to_string()),
+        other => Err(format!("未知评测协议: {}", other)),
     }
 }
 

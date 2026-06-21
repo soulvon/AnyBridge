@@ -31,6 +31,11 @@ function appConfigDir(name) {
   return path.join(os.homedir(), 'AppData', 'Roaming', name);
 }
 
+function positiveInt(value, fallback, min = 0) {
+  const n = parseInt(value, 10);
+  return Number.isFinite(n) && n >= min ? n : fallback;
+}
+
 const PROVIDERS_PATH = () => path.join(configDir(), 'providers.json');
 const SLOTS_PATH = () => path.join(configDir(), 'model-map.json');
 
@@ -39,6 +44,7 @@ const TTL_MS = 2000; // 兜底 TTL：2s 内不重新读盘（即便 mtime 变化
 const cache = {
   providers: { mtimeMs: 0, data: null, loadedAt: 0, dirty: true },
   slots:     { mtimeMs: 0, data: null, loadedAt: 0, dirty: true },
+  modelMap:  { mtimeMs: 0, data: null, loadedAt: 0, dirty: true },
 };
 
 function readJsonSafe(file) {
@@ -99,6 +105,30 @@ function transformSlots(json) {
   return m;
 }
 
+function transformModelMap(json) {
+  const enhancement = (json && json.enhancement && typeof json.enhancement === 'object')
+    ? json.enhancement
+    : {};
+  const visionModels = (json && json.visionModels && typeof json.visionModels === 'object')
+    ? json.visionModels
+    : {};
+  return {
+    enhancement: {
+      retry: enhancement.retry !== false,
+      retryMaxRetries: positiveInt(enhancement.retryMaxRetries, 5, 0),
+      retryBaseMs: positiveInt(enhancement.retryBaseMs, 600, 1),
+      retryCapMs: positiveInt(enhancement.retryCapMs, 8000, 1),
+      retryTotalSeconds: positiveInt(enhancement.retryTotalSeconds, 60, 1),
+      imageFallback: enhancement.imageFallback !== false,
+      autoRouting: enhancement.autoRouting !== false,
+      unlockModels: enhancement.unlockModels !== false,
+    },
+    visionModels: {
+      imageModels: Array.isArray(visionModels.imageModels) ? visionModels.imageModels : [],
+    },
+  };
+}
+
 export function getProviders() {
   return loadEntry(cache.providers, PROVIDERS_PATH(), transformProviders);
 }
@@ -107,10 +137,20 @@ export function getSlots() {
   return loadEntry(cache.slots, SLOTS_PATH(), transformSlots);
 }
 
+export function getModelMapConfig() {
+  return loadEntry(cache.modelMap, SLOTS_PATH(), transformModelMap);
+}
+
 export function invalidate(what = 'all') {
   if (what === 'all' || what === 'providers') cache.providers.dirty = true;
-  if (what === 'all' || what === 'slots') cache.slots.dirty = true;
+  if (what === 'all' || what === 'slots') {
+    cache.slots.dirty = true;
+    cache.modelMap.dirty = true;
+  }
 }
 
 export function markProvidersDirty() { cache.providers.dirty = true; }
-export function markSlotsDirty() { cache.slots.dirty = true; }
+export function markSlotsDirty() {
+  cache.slots.dirty = true;
+  cache.modelMap.dirty = true;
+}

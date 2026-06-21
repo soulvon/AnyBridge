@@ -55,7 +55,9 @@ pub fn run() {
             commands::config::load_providers,
             commands::config::save_providers,
             commands::config::set_provider_enabled,
+            commands::config::set_provider_unlock,
             commands::config::test_connection,
+            commands::config::test_vision,
             commands::config::fetch_models,
             commands::provider_import::scan_importable_providers,
             commands::provider_import::start_provider_import_scan,
@@ -84,6 +86,11 @@ pub fn run() {
             commands::proxy::preflight_proxy,
             commands::proxy::healthcheck_grouped,
             commands::proxy::start_proxy,
+            commands::proxy::start_proxy_service,
+            commands::proxy::stop_proxy_service,
+            commands::proxy::restart_proxy_service,
+            commands::proxy::switch_ide_to_proxy,
+            commands::proxy::restore_ide_direct,
             commands::proxy::stop_proxy,
             commands::proxy::get_proxy_status,
             commands::proxy::get_stats,
@@ -106,6 +113,7 @@ pub fn run() {
             commands::ide_config::restore_ide_config,
             commands::ide_config::patch_ide_settings,
             commands::ide_config::restore_ide_settings,
+            commands::ide_config::get_ide_proxy_status,
             commands::update::get_update_settings,
             commands::update::save_update_settings,
             commands::update::save_pending_update_notes,
@@ -121,8 +129,8 @@ pub fn run() {
         .expect("error while running tauri application")
         .run(|app, event| {
             if let tauri::RunEvent::ExitRequested { .. } = event {
-                // App 退出兆底：先杀 sidecar，再还原 IDE 配置。
-                // 顺序重要——必须先杀进程再还原，否则 IDE 可能指向死端口。
+                // App 退出兜底：只清理 sidecar。IDE 是否切到代理由平台页按钮管理。
+                // 不在退出时自动还原 IDE 配置，避免撤销用户显式的“切换到代理”。
                 if let Some(state) = app.try_state::<ProxyState>() {
                     let child = commands::proxy::lock_or_recover(&state.child).take();
                     if let Some(c) = child {
@@ -131,11 +139,6 @@ pub fn run() {
                 }
                 // 双保险：按进程名全盘清理，确保不残留
                 commands::proxy::kill_sidecar_process();
-                // 两个 IDE 都尝试还原（幂等，无备份则空操作）
-                let _ = commands::ide_config::restore("windsurf");
-                let _ = commands::ide_config::restore("devin");
-                let _ = commands::workbench_inject::restore("windsurf");
-                let _ = commands::workbench_inject::restore("devin");
             }
         });
 }
