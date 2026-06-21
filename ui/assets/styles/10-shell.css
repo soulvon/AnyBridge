@@ -734,16 +734,6 @@ textarea:focus-visible,
   overflow: visible;
 }
 
-.platform-submenu-label {
-  padding: 0 10px 2px 9px;
-  color: var(--text-tertiary);
-  font-size: 10px;
-  font-weight: 780;
-  line-height: 1.4;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
 .platform-submenu .platform-rail-item {
   min-height: 34px;
   grid-template-columns: 26px minmax(0, 1fr);

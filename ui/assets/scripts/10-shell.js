@@ -2,6 +2,36 @@
 const tabs = document.querySelectorAll('.tab-item[data-page]');
 const pages = document.querySelectorAll('.page');
 let activePlatformSection = 'models';
+let platformMenuExpanded = true;
+
+function getPlatformMenuParts() {
+  return {
+    tab: document.querySelector('.tab-item[data-page="models"]'),
+    submenu: document.getElementById('platform-submenu')
+  };
+}
+
+function setPlatformMenuExpanded(expanded) {
+  const { tab, submenu } = getPlatformMenuParts();
+  platformMenuExpanded = Boolean(expanded);
+  if (tab) {
+    tab.classList.toggle('submenu-open', platformMenuExpanded);
+    tab.setAttribute('aria-expanded', String(platformMenuExpanded));
+  }
+  if (submenu) {
+    submenu.hidden = !platformMenuExpanded;
+    submenu.classList.toggle('is-collapsed', !platformMenuExpanded);
+  }
+}
+
+function activatePlatformMenuTab(tab) {
+  const isActive = tab.classList.contains('active');
+  const nextExpanded = !isActive || !platformMenuExpanded;
+  setPlatformMenuExpanded(nextExpanded);
+  if (!isActive) {
+    navigateTo(tab.dataset.page);
+  }
+}
 
 function mountSideNavigation() {
   const sidebar = document.querySelector('.app-sidebar') || document.querySelector('.platform-rail');
@@ -9,21 +39,29 @@ function mountSideNavigation() {
   const platformRail = document.querySelector('.platform-rail');
   const nav = document.querySelector('.tab-nav');
   if (!sidebar || !nav) return;
-  if (nav.classList.contains('side-primary-nav') && nav.querySelector('.platform-submenu')) return;
 
   nav.classList.add('side-primary-nav');
   nav.setAttribute('aria-label', '左侧主菜单');
 
   const platformTab = nav.querySelector('.tab-item[data-page="models"]');
-  if (platformTab && platformRail) {
-    const submenu = document.createElement('div');
-    submenu.className = 'platform-submenu';
-    submenu.setAttribute('aria-label', '平台列表');
+  if (platformTab) {
+    platformTab.classList.add('has-submenu');
+    platformTab.setAttribute('aria-controls', 'platform-submenu');
+    platformTab.setAttribute('aria-expanded', String(platformMenuExpanded));
+    if (!platformTab.querySelector('.tab-chevron')) {
+      const chevron = document.createElement('span');
+      chevron.className = 'tab-chevron';
+      chevron.setAttribute('aria-hidden', 'true');
+      chevron.innerHTML = '<svg viewBox="0 0 16 16" fill="none"><path d="M5.75 3.75 10.25 8l-4.5 4.25" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+      platformTab.appendChild(chevron);
+    }
+  }
 
-    const label = document.createElement('div');
-    label.className = 'platform-submenu-label';
-    label.textContent = '平台列表';
-    submenu.appendChild(label);
+  if (platformTab && platformRail) {
+    const submenu = document.getElementById('platform-submenu') || document.createElement('div');
+    submenu.className = 'platform-submenu';
+    submenu.id = 'platform-submenu';
+    submenu.setAttribute('aria-label', '接入平台');
 
     submenu.appendChild(platformRail);
     platformTab.insertAdjacentElement('afterend', submenu);
@@ -37,6 +75,8 @@ function mountSideNavigation() {
   if (legacyPlatformBlock && !legacyPlatformBlock.contains(platformRail)) {
     legacyPlatformBlock.remove();
   }
+
+  setPlatformMenuExpanded(platformMenuExpanded);
 }
 
 mountSideNavigation();
@@ -168,6 +208,11 @@ function navigateTo(pageId) {
     t.setAttribute('aria-selected', String(isActive));
     t.tabIndex = isActive ? 0 : -1;
   });
+  if (activeTabPageId === 'models') {
+    if (!platformMenuExpanded) setPlatformMenuExpanded(true);
+  } else if (platformMenuExpanded) {
+    setPlatformMenuExpanded(false);
+  }
   pages.forEach(p => p.classList.remove('active'));
   const page = document.getElementById(`page-${pageId}`);
   if (page) page.classList.add('active');
@@ -210,14 +255,16 @@ function focusTabByOffset(currentTab, offset) {
 
 tabs.forEach(t => {
   t.addEventListener('click', () => {
-    if (t.dataset.platformSection) openPlatformSection(t.dataset.platformSection);
+    if (t.dataset.page === 'models') activatePlatformMenuTab(t);
+    else if (t.dataset.platformSection) openPlatformSection(t.dataset.platformSection);
     else if (t.dataset.page === 'proxy' && typeof openProxyPanel === 'function') openProxyPanel('overview');
     else navigateTo(t.dataset.page);
   });
   t.addEventListener('keydown', (event) => {
     if (event.key === 'Enter' || event.key === ' ') {
       event.preventDefault();
-      if (t.dataset.platformSection) openPlatformSection(t.dataset.platformSection);
+      if (t.dataset.page === 'models') activatePlatformMenuTab(t);
+      else if (t.dataset.platformSection) openPlatformSection(t.dataset.platformSection);
       else if (t.dataset.page === 'proxy' && typeof openProxyPanel === 'function') openProxyPanel('overview');
       else navigateTo(t.dataset.page);
       return;
