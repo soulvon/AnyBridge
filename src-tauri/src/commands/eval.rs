@@ -2039,7 +2039,7 @@ fn vision_body(ctx: &EvalContext) -> Value {
                     {"type": "text", "text": prompt},
                     {"type": "image_url", "image_url": {"url": format!("data:image/png;base64,{}", VISION_TEST_PNG_B64)}}
                 ]}],
-                "max_tokens": 64,
+                "max_tokens": 1024,
                 "temperature": 0,
                 "stream": false
             })
@@ -2050,7 +2050,7 @@ fn vision_body(ctx: &EvalContext) -> Value {
                 {"type": "text", "text": prompt},
                 {"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": VISION_TEST_PNG_B64}}
             ]}],
-            "max_tokens": 64,
+            "max_tokens": 1024,
             "temperature": 0,
             "stream": false
         }),

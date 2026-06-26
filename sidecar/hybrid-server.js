@@ -117,6 +117,40 @@ function hashModelList(list) {
   }
 }
 
+function writeCapturedModelList(file, list) {
+  let existing = {};
+  try {
+    existing = JSON.parse(fs.readFileSync(file, 'utf8'));
+  } catch {
+    existing = {};
+  }
+
+  const existingByUid = new Map();
+  for (const item of (Array.isArray(existing.models) ? existing.models : [])) {
+    if (item && item.modelUid) existingByUid.set(item.modelUid, item);
+  }
+
+  const models = list.map(item => {
+    const prev = existingByUid.get(item.modelUid) || {};
+    const out = {
+      modelUid: item.modelUid,
+      label: item.label || item.modelUid,
+    };
+    const apiId = item.apiId || prev.apiId;
+    if (apiId) out.apiId = apiId;
+    return out;
+  });
+
+  const next = {
+    capturedAt: Date.now(),
+    source: 'captured',
+    models,
+  };
+  if (Array.isArray(existing.accountModelIds)) next.accountModelIds = existing.accountModelIds;
+  if (existing.account && typeof existing.account === 'object') next.account = existing.account;
+  fs.writeFileSync(file, JSON.stringify(next, null, 2));
+}
+
 function rewriteConfigSignature() {
   const dir = configDir();
   return ['model-map.json', 'providers.json', 'ide-models.json']
@@ -417,7 +451,7 @@ function proxyToCodeium(req, res, body, id, opts = {}) {
                   const sig = hashModelList(list);
                   if (sig !== lastModelListSig) {
                     lastModelListSig = sig;
-                    fs.writeFileSync(file, JSON.stringify({ capturedAt: Date.now(), models: list }, null, 2));
+                    writeCapturedModelList(file, list);
                     console.log(`  [#${id}] 📋 captured ${list.length} Windsurf models → ide-models.json`);
                   }
                 }

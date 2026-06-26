@@ -6,8 +6,11 @@
 import https from 'node:https';
 import crypto from 'node:crypto';
 import {
+  buildCodexUnlockClientMetadata,
+  buildCodexPromptCacheKey,
   buildClaudeCodeUnlockPayload,
   claudeCodeUnlockHeaders,
+  codexUnlockHeaders,
   generateUUIDv7,
   normalizeClaudeCodeUnlock,
   normalizeCodexUnlock,
@@ -43,7 +46,7 @@ const RETRY_MAX = intEnv('BYOK_RETRY_MAX', 5, 0);
 const RETRY_BASE_MS = intEnv('BYOK_RETRY_BASE_MS', 600, 1);
 const RETRY_CAP_MS = intEnv('BYOK_RETRY_CAP_MS', 8000, 1);
 const RETRY_TOTAL_MS = intEnv('BYOK_RETRY_TOTAL_MS', 60000, 0);
-const NATIVE_STREAM_ERRORS = !/^(false|0|off)$/i.test(String(process.env.BYOK_NATIVE_ERRORS || 'true'));
+const NATIVE_STREAM_ERRORS = /^(true|1|on)$/i.test(String(process.env.BYOK_NATIVE_ERRORS || 'false'));
 const OPENAI_REASONING_EFFORT = String(process.env.BYOK_REASONING_EFFORT || process.env.OPENAI_REASONING_EFFORT || '').trim();
 const OPENAI_REASONING_SUMMARY = String(process.env.BYOK_REASONING_SUMMARY || process.env.OPENAI_REASONING_SUMMARY || '').trim();
 const PROMPT_CACHE_ENABLED = !/^(false|0|off)$/i.test(String(process.env.BYOK_PROMPT_CACHE || 'true'));
@@ -53,7 +56,7 @@ const HTTPS_AGENT = new https.Agent({
   maxSockets: intEnv('BYOK_MAX_SOCKETS', 64, 1),
   maxFreeSockets: intEnv('BYOK_MAX_FREE_SOCKETS', 16, 1),
 });
-const RETRYABLE_STATUS = new Set([408, 425, 429, 500, 502, 503, 504]);
+const RETRYABLE_STATUS = new Set([408, 425, 429, 500, 502, 503, 504, 529]);
 const RETRYABLE_CODES = new Set([
   'ECONNRESET', 'ETIMEDOUT', 'ENOTFOUND', 'EAI_AGAIN',
   'ECONNREFUSED', 'EPIPE', 'EHOSTUNREACH', 'ENETUNREACH',
@@ -129,8 +132,8 @@ function summarizeProviderMessage(message) {
   if (/invalid api key|unauthorized|认证|鉴权|api key/i.test(text)) return 'API Key 无效或已过期';
   if (/permission|forbidden|not allowed|无权限|未开通/i.test(text)) return '没有该模型权限或尚未开通';
   if (/model.*not found|does not exist|模型.*不存在|unknown model/i.test(text)) return '模型名不可用或未开通';
-  if (/rate limit|too many requests|限流|频率/i.test(text)) return '触发上游限流';
-  if (/overloaded|temporarily|service unavailable|维护|不可用/i.test(text)) return '上游服务暂时不可用';
+  if (/rate limit|too many requests|限流|频率|负载.*上限|达到上限|get_channel_failed|overloaded|service unavailable/i.test(text)) return '上游模型高负载或限流';
+  if (/temporarily|维护|不可用/i.test(text)) return '上游服务暂时不可用';
   return text;
 }
 
@@ -161,7 +164,9 @@ function failureHint(failures = []) {
   if (failures.some(f => f.statusCode === 403) || /permission|forbidden|无权限|未开通/i.test(text)) {
     return '请检查模型权限，或换一个已开通的模型。';
   }
-  if (failures.some(f => f.statusCode === 429) || /rate limit|too many requests|限流|频率/i.test(text)) {
+  if (failures.some(f => f.statusCode === 429 || f.statusCode === 529)
+      || (failures.some(f => f.statusCode === 503) && /service unavailable|overloaded|temporarily/i.test(text))
+      || /rate limit|too many requests|限流|频率|负载.*上限|达到上限|get_channel_failed|overloaded/i.test(text)) {
     return '请稍后重试，或降低并发/换备用供应商。';
   }
   if (/无可用渠道|no available channel/i.test(text)) {
@@ -176,7 +181,10 @@ function failureHint(failures = []) {
 function connectCodeForFailures(failures = []) {
   if (failures.some(f => f.statusCode === 401)) return 'unauthenticated';
   if (failures.some(f => f.statusCode === 403)) return 'permission_denied';
-  if (failures.some(f => f.statusCode === 429)) return 'resource_exhausted';
+  const text = failures.map(f => `${f.reason || ''} ${extractUpstreamMessage(f.body)}`).join(' ');
+  if (failures.some(f => f.statusCode === 429 || f.statusCode === 529)) return 'resource_exhausted';
+  if (failures.some(f => f.statusCode === 503) && /service unavailable|overloaded|temporarily/i.test(text)) return 'resource_exhausted';
+  if (/负载.*上限|达到上限|get_channel_failed|rate limit|too many requests|限流|频率|overloaded/i.test(text)) return 'resource_exhausted';
   if (failures.some(f => f.statusCode === 408 || f.statusCode === 504 || f.code === 'ETIMEDOUT')) return 'deadline_exceeded';
   if (failures.some(f => f.statusCode >= 500 || f.code)) return 'unavailable';
   return 'invalid_argument';
@@ -186,6 +194,8 @@ function providerFailureMessage(failures = []) {
   if (failures.length === 0) {
     return 'BYOK 暂时无法连接模型：没有可用的供应商目标。请检查模型映射，或添加备用目标。';
   }
+  const lastUpstreamBody = [...failures].reverse().find(f => typeof f.body === 'string' && f.body.length > 0)?.body;
+  if (lastUpstreamBody) return lastUpstreamBody;
   const summaries = failures.map(failureSummary);
   const head = failures.length === 1
     ? `BYOK 暂时无法连接模型：${summaries[0]}。`
@@ -480,7 +490,9 @@ export function handleGetChatMessage(req, res, body) {
       console.warn(`  ⚠️  目标#${idx} ${conn.providerName} 未标记支持 Vision，但仍尝试转发（探测可能误报）`);
     }
 
-    const routeMode = conn.unlockKind ? `${conn.format}/${conn.unlockKind}` : conn.format;
+    const routeMode = conn.unlockKind
+      ? `${conn.format}/${conn.unlockKind}`
+      : (conn.routeSource && conn.routeSource !== 'target-apiFormat' ? `${conn.format}/${conn.routeSource}` : conn.format);
     console.log(`  ➡️  目标#${idx}: ${conn.providerName} (${routeMode}) → ${conn.model}${conn.capabilities?.gzip ? ' [gzip]' : ''}`);
     recordRequest({ provider: conn.providerName, requestedModel, resolvedModel: conn.model });
 
@@ -816,9 +828,24 @@ function streamOpenAI(req, res, { systemPrompt, messages, tools, toolChoice, res
     model: resolvedModel,
     input: openaiMessages,
     stream: true,
-    max_output_tokens: MAX_TOKENS,
   };
-  if (OPENAI_REASONING_EFFORT && !/^(off|none|false|0)$/i.test(OPENAI_REASONING_EFFORT)) {
+
+  if (codexUnlock) {
+    const promptCacheKey = buildCodexPromptCacheKey(openaiMessages);
+    apiPayload.parallel_tool_calls = true;
+    apiPayload.reasoning = {
+      effort: OPENAI_REASONING_EFFORT && !/^(off|none|false|0)$/i.test(OPENAI_REASONING_EFFORT)
+        ? OPENAI_REASONING_EFFORT
+        : 'medium',
+    };
+    apiPayload.store = false;
+    apiPayload.text = { verbosity: 'low' };
+    apiPayload.client_metadata = buildCodexUnlockClientMetadata(promptCacheKey);
+  } else {
+    apiPayload.max_output_tokens = MAX_TOKENS;
+  }
+
+  if (!codexUnlock && OPENAI_REASONING_EFFORT && !/^(off|none|false|0)$/i.test(OPENAI_REASONING_EFFORT)) {
     apiPayload.reasoning = { effort: OPENAI_REASONING_EFFORT };
     if (OPENAI_REASONING_SUMMARY && !/^(off|none|false|0)$/i.test(OPENAI_REASONING_SUMMARY)) {
       apiPayload.reasoning.summary = OPENAI_REASONING_SUMMARY;
@@ -841,16 +868,20 @@ function streamOpenAI(req, res, { systemPrompt, messages, tools, toolChoice, res
       else if (toolChoice.type === 'tool') apiPayload.tool_choice = { type: 'function', name: toolChoice.name };
     }
   }
+  if (codexUnlock && !apiPayload.tool_choice) {
+    apiPayload.tool_choice = 'auto';
+  }
 
   if (codexUnlock) {
     apiPayload.include = codexUnlock.include;
-    apiPayload.prompt_cache_key = generateUUIDv7();
+    apiPayload.prompt_cache_key = apiPayload.client_metadata.session_id;
   }
 
   const targetPath = codexUnlock?.wireApi || conn.apiPath;
   const apiBody = JSON.stringify(apiPayload);
+  const authHeaders = codexUnlock ? codexUnlockHeaders(conn) : { authorization: `Bearer ${conn.apiKey}` };
   // MITM 日志：记录上游请求
-  mitmLog({ direction: 'upstream', providerName: conn.providerName, model: resolvedModel, format: 'openai-responses', request: { method: 'POST', url: `https://${conn.host}${targetPath}`, headers: { 'content-type': 'application/json', 'authorization': `Bearer ${conn.apiKey}` }, body: apiBody } });
+  mitmLog({ direction: 'upstream', providerName: conn.providerName, model: resolvedModel, format: 'openai-responses', request: { method: 'POST', url: `https://${conn.host}${targetPath}`, headers: { 'content-type': 'application/json', 'accept': 'text/event-stream', ...authHeaders }, body: apiBody } });
   // gzip 可选：供应商标记了 capabilities.gzip=true 才压缩。
   // 用于绕过中转站 Cloudflare WAF 对明文 body 的命令注入检测；
   // One-Hub 等不支持 gzip 的端点保持明文。
@@ -865,7 +896,7 @@ function streamOpenAI(req, res, { systemPrompt, messages, tools, toolChoice, res
   const reqHeaders = {
     'content-type': 'application/json',
     'accept': 'text/event-stream',
-    'authorization': `Bearer ${conn.apiKey}`,
+    ...authHeaders,
     'content-length': finalBody.length,
   };
   if (useGzip) reqHeaders['content-encoding'] = 'gzip';

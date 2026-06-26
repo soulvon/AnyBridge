@@ -84,16 +84,16 @@
 
 /* ═══════ TOP TABS ═══════ */
 .tab-nav {
-  width: min(560px, 100%);
-  height: 46px;
+  width: min(400px, 100%);
+  height: 40px;
   justify-self: center;
   align-self: center;
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 0;
   padding: 0;
-  border: 1px solid rgba(18, 97, 166, 0.14);
-  border-radius: 10px;
+  border: 1px solid rgba(18, 97, 166, 0.08);
+  border-radius: 14px;
   background:
     linear-gradient(180deg, rgba(238, 244, 250, 0.9), rgba(225, 234, 244, 0.76));
   box-shadow:
@@ -158,25 +158,25 @@
 
 .tab-nav .tab-icon-fill {
   width: 17px;
-  height: 17px;
+  height: 20px;
   fill: currentColor;
   stroke: none;
 }
 
 .tab-nav .tab-item:hover {
   color: var(--accent);
-  background: rgba(18, 97, 166, 0.08);
+  background: rgba(18, 97, 166, 0.07);
   border-color: rgba(18, 97, 166, 0.12);
 }
 
 .tab-nav .tab-item:hover .tab-icon {
   opacity: 1;
-  transform: translateY(-0.5px);
+  transform: translateY(0.5px);
 }
 
 [data-theme="dark"] .tab-nav .tab-item:hover {
   color: #eaf5ff;
-  background: rgba(255, 255, 255, 0.055);
+  background: rgba(255, 255, 255, 0.07);
   border-color: rgba(90, 176, 230, 0.16);
 }
 
@@ -186,18 +186,18 @@
   overflow: hidden;
   background:
     radial-gradient(ellipse 90% 70% at 18% 0%, rgba(255, 255, 255, 0.34), transparent 62%),
-    radial-gradient(ellipse 70% 80% at 100% 100%, rgba(55, 199, 165, 0.34), transparent 64%),
+    radial-gradient(ellipse 70% 80% at 100% 100%, rgba(55, 199, 165, 0.50), transparent 64%),
     linear-gradient(135deg, rgba(18, 97, 166, 0.95), rgba(14, 159, 139, 0.95)),
     rgba(255, 255, 255, 0.2);
-  border-color: rgba(255, 255, 255, 0.38);
-  backdrop-filter: blur(16px) saturate(1.35);
-  -webkit-backdrop-filter: blur(16px) saturate(1.35);
+  border-color: rgba(255, 255, 255, 0.56);
+  backdrop-filter: blur(18px) saturate(1.70);
+  -webkit-backdrop-filter: blur(18px) saturate(1.70);
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.46),
     inset 0 -1px 0 rgba(0, 0, 0, 0.08),
-    0 10px 24px -14px rgba(18, 97, 166, 0.68),
+    0 9px 22px -13px rgba(18, 97, 166, 0.68),
     0 0 0 1px rgba(18, 97, 166, 0.12);
-  text-shadow: 0 1px 1px rgba(0, 50, 65, 0.22);
+  text-shadow: 0 1px 1px rgba(0, 50, 65, 0.24);
 }
 
 .tab-nav .tab-item.active .tab-icon {
@@ -205,11 +205,11 @@
 }
 
 [data-theme="dark"] .tab-nav .tab-item.active {
-  border-color: rgba(255, 255, 255, 0.35);
+  border-color: rgba(255, 255, 255, 0.56);
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.44),
     inset 0 -1px 0 rgba(0, 0, 0, 0.12),
-    0 12px 26px -18px rgba(90, 176, 230, 0.76);
+    0 11px 24px -17px rgba(90, 176, 230, 0.68);
 }
 
 .topbar-right { display: flex; align-items: center; gap: 10px; justify-self: end; }

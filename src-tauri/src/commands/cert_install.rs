@@ -510,7 +510,7 @@ pub fn check_ca_status() -> CaStatus {
         }
         CaStore::None => {
             if !cert_exists {
-                "证书文件未生成，请先在「环境体检」中点击「生成证书」".to_string()
+                "证书文件未生成；点击「安装证书」会自动生成并安装".to_string()
             } else {
                 "当前 CA 证书尚未安装到系统根证书库，IDE 会拒绝连接".to_string()
             }
@@ -540,12 +540,36 @@ pub fn install_ca() -> Result<String, String> {
 fn install_ca_impl(app: Option<AppHandle>) -> Result<String, String> {
     eprintln!("[cert_install] install_ca: start");
     emit_cert_progress(app.as_ref(), "start", "开始安装 CA 证书", 5, "info");
-    let (cert_path, _key_path) = cert_paths()?;
+    let (cert_path, key_path) = cert_paths()?;
 
-    if !cert_path.exists() {
+    let cert_ok = cert_path.metadata().map(|m| m.len() > 0).unwrap_or(false);
+    let key_ok = key_path.metadata().map(|m| m.len() > 0).unwrap_or(false);
+    let auto_generate_msg = if !cert_ok || !key_ok {
+        emit_cert_progress(
+            app.as_ref(),
+            "auto_generate",
+            "证书文件缺失或为空，正在自动生成 MITM 证书",
+            8,
+            "info",
+        );
+        let (certs_dir, generated) = crate::commands::system::ensure_mitm_certs()
+            .map_err(|e| format!("自动生成证书失败: {}", e))?;
+        Some(if generated {
+            format!("已自动生成证书到 {}", certs_dir.to_string_lossy())
+        } else {
+            "证书文件已存在".to_string()
+        })
+    } else {
+        None
+    };
+
+    let cert_ok = cert_path.metadata().map(|m| m.len() > 0).unwrap_or(false);
+    let key_ok = key_path.metadata().map(|m| m.len() > 0).unwrap_or(false);
+    if !cert_ok || !key_ok {
         return Err(format!(
-            "证书文件不存在: {}。请先在「环境体检」中点击「生成证书」",
-            cert_path.to_string_lossy()
+            "证书文件自动生成后仍不完整: {}, {}",
+            cert_path.to_string_lossy(),
+            key_path.to_string_lossy()
         ));
     }
     let thumbprint =
@@ -598,10 +622,14 @@ fn install_ca_impl(app: Option<AppHandle>) -> Result<String, String> {
                         100,
                         "ok",
                     );
-                    return Ok(format!(
+                    let install_msg = format!(
                         "CA 已安装到 CurrentUser\\Root（无需管理员权限）。Thumbprint: {}",
                         thumbprint
-                    ));
+                    );
+                    return Ok(match auto_generate_msg {
+                        Some(prefix) => format!("{}\n{}", prefix, install_msg),
+                        None => install_msg,
+                    });
                 }
                 // 装完查不到，说明 GPO 拦截了，降级
             }
@@ -652,10 +680,14 @@ fn install_ca_impl(app: Option<AppHandle>) -> Result<String, String> {
         100,
         "ok",
     );
-    Ok(format!(
+    let install_msg = format!(
         "CA 已通过 UAC 授权安装到 LocalMachine\\Root。Thumbprint: {}",
         thumbprint
-    ))
+    );
+    Ok(match auto_generate_msg {
+        Some(prefix) => format!("{}\n{}", prefix, install_msg),
+        None => install_msg,
+    })
 }
 
 /// 一键卸载 CA：两个 store 都尝试，幂等。

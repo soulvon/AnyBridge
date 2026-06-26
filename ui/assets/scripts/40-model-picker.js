@@ -888,6 +888,13 @@ function syncFormatDropdownUi(activeFormat) {
 }
 
 function openProviderEditor(id) {
+  if (id) {
+    const existing = providerStore.providers.find(x => x.id === id);
+    if (existing && isBuiltinProvider(existing)) {
+      showCustomAlert('内置供应商不可编辑。', '无法编辑', 'warn');
+      return;
+    }
+  }
   const title = document.getElementById('providerModalTitle');
   const p = id ? providerStore.providers.find(x => x.id === id) : null;
   document.getElementById('pf-id').value = p ? p.id : '';
@@ -972,6 +979,13 @@ function closeProviderEditor() {
 
 async function saveProviderFromEditor() {
   const id = document.getElementById('pf-id').value;
+  if (id) {
+    const existing = providerStore.providers.find(x => x.id === id);
+    if (existing && isBuiltinProvider(existing)) {
+      showCustomAlert('内置供应商不可编辑。', '无法保存', 'warn');
+      return;
+    }
+  }
   const name = document.getElementById('pf-name').value.trim();
   const apiFormat = document.getElementById('pf-format').value;
   const baseUrl = document.getElementById('pf-host').value.trim();
@@ -995,6 +1009,8 @@ async function saveProviderFromEditor() {
     ...existingCaps,
     text: true,
     stream: true,
+    vision: existingCaps.vision !== false,
+    tools: existingCaps.tools !== false,
     gzip: !!document.getElementById('pf-cap-gzip')?.checked,
   };
 

@@ -165,6 +165,15 @@ function transformModelMap(json) {
       imageFallback: enhancement.imageFallback !== false,
       autoRouting: enhancement.autoRouting !== false,
       unlockModels: enhancement.unlockModels !== false,
+      systemPromptPrefix: String(enhancement.systemPromptPrefix || ''),
+      customHeaders: Array.isArray(enhancement.customHeaders) ? enhancement.customHeaders.filter(h => h && h.key) : [],
+      responseHeaders: Array.isArray(enhancement.responseHeaders) ? enhancement.responseHeaders.filter(h => h && h.key) : [],
+      paramOverrides: enhancement.paramOverrides && typeof enhancement.paramOverrides === 'object' ? enhancement.paramOverrides : {},
+      toolFilterMode: String(enhancement.toolFilterMode || ''),
+      toolFilterList: Array.isArray(enhancement.toolFilterList) ? enhancement.toolFilterList.map(String) : [],
+      forceToolChoice: String(enhancement.forceToolChoice || ''),
+      rateLimitRpm: positiveInt(enhancement.rateLimitRpm, 0, 0),
+      requestLogging: enhancement.requestLogging === true,
     },
     visionModels: {
       imageModels: Array.isArray(visionModels.imageModels) ? visionModels.imageModels : [],
@@ -173,40 +182,38 @@ function transformModelMap(json) {
 }
 
 function normalizeProxyRouteTarget(target) {
+  const rawApiFormat = String(target?.apiFormat || target?.api_format || '').trim();
   return {
     providerId: String(target?.providerId || target?.provider_id || '').trim(),
     model: String(target?.model || '').trim(),
-    apiFormat: String(target?.apiFormat || target?.api_format || '').trim(),
+    apiFormat: rawApiFormat.toLowerCase() === 'auto' ? '' : rawApiFormat,
     apiPath: String(target?.apiPath || target?.api_path || '').trim(),
     unlock: String(target?.unlock || '').trim(),
   };
 }
 
-function validateProxyRoutes(routes, defaultModelId) {
+function validateProxyRoutes(routes) {
   const seen = new Set();
   for (const route of routes) {
-    if (!route.id) throw new Error('本地代理模型路由 ID 不能为空');
-    if (seen.has(route.id)) throw new Error(`本地代理模型路由 ID 重复: ${route.id}`);
+    if (!route.id) throw new Error('本地代理模型名不能为空');
+    if (seen.has(route.id)) throw new Error(`本地代理模型名重复: ${route.id}`);
     seen.add(route.id);
-    if (!route.exposedFormats.length) throw new Error(`模型路由 ${route.id} 至少需要暴露一个入口`);
+    if (!route.exposedFormats.length) throw new Error(`模型 ${route.id} 至少需要暴露一个入口`);
     for (const fmt of route.exposedFormats) {
       if (fmt !== 'openai' && fmt !== 'anthropic') {
-        throw new Error(`模型路由 ${route.id} 的暴露入口必须是 openai 或 anthropic`);
+        throw new Error(`模型 ${route.id} 的暴露入口必须是 openai 或 anthropic`);
       }
     }
     if (route.enabled !== false && !route.targets.length) {
-      throw new Error(`模型路由 ${route.id} 已启用但没有目标`);
+      throw new Error(`模型 ${route.id} 已启用但没有上游目标`);
     }
     for (const target of route.targets) {
-      if (!target.providerId) throw new Error(`模型路由 ${route.id} 的目标供应商不能为空`);
-      if (!target.model) throw new Error(`模型路由 ${route.id} 的目标模型不能为空`);
-      if (target.apiFormat !== 'openai' && target.apiFormat !== 'anthropic') {
-        throw new Error(`模型路由 ${route.id} 的目标 apiFormat 必须是 openai 或 anthropic`);
+      if (!target.providerId) throw new Error(`模型 ${route.id} 的目标供应商不能为空`);
+      if (!target.model) throw new Error(`模型 ${route.id} 的上游模型不能为空`);
+      if (target.apiFormat && target.apiFormat !== 'openai' && target.apiFormat !== 'anthropic' && target.apiFormat !== 'gemini') {
+        throw new Error(`模型 ${route.id} 的目标 apiFormat 必须是 openai、anthropic、gemini 或留空自动`);
       }
     }
-  }
-  if (defaultModelId && !routes.some(route => route.id === defaultModelId && route.enabled !== false)) {
-    throw new Error(`默认模型路由不存在或未启用: ${defaultModelId}`);
   }
 }
 
@@ -214,7 +221,6 @@ function transformProxyRoutes(json) {
   if (!json || typeof json !== 'object') {
     return { fileExists: false, version: 1, defaultModelId: '', routes: [] };
   }
-  const defaultModelId = String(json.defaultModelId || '').trim();
   const routes = Array.isArray(json.routes) ? json.routes : [];
   const normalizedRoutes = routes.map(route => ({
     id: String(route?.id || '').trim(),
@@ -228,11 +234,11 @@ function transformProxyRoutes(json) {
     enhancement: route?.enhancement && typeof route.enhancement === 'object' ? route.enhancement : {},
     targets: Array.isArray(route?.targets) ? route.targets.map(normalizeProxyRouteTarget) : [],
   }));
-  validateProxyRoutes(normalizedRoutes, defaultModelId);
+  validateProxyRoutes(normalizedRoutes);
   return {
     fileExists: true,
     version: Number(json.version) || 1,
-    defaultModelId,
+    defaultModelId: '',
     routes: normalizedRoutes,
   };
 }

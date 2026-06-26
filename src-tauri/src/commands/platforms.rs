@@ -2521,7 +2521,7 @@ pub fn save_codebuddy_models(
     Ok(path.to_string_lossy().to_string())
 }
 
-/// 返回所有供应商及其模型列表，供 CodeBuddy「从供应商添加模型」弹窗使用。
+/// 返回所有供应商及其真实模型列表，供平台和本地代理的「从供应商添加」使用。
 #[tauri::command]
 pub fn list_provider_models() -> Result<Vec<ProviderModelsEntry>, String> {
     let store = read_provider_store()?;
@@ -2530,11 +2530,7 @@ pub fn list_provider_models() -> Result<Vec<ProviderModelsEntry>, String> {
         if p.enabled == false {
             continue;
         }
-        let model_ids = if p.models.is_empty() && !p.default_model.trim().is_empty() {
-            vec![p.default_model.trim().to_string()]
-        } else {
-            p.models.clone()
-        };
+        let model_ids = p.models.clone();
         let models: Vec<ProviderModelItem> = model_ids
             .iter()
             .map(|m| {

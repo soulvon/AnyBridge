@@ -103,6 +103,47 @@ function shouldUseAnthropicBearerAuth(host, apiPath) {
   return hostname === 'api.deepseek.com' && path.startsWith('/anthropic/');
 }
 
+function inferApiFormatFromPath(apiPath) {
+  const path = cleanApiPath(apiPath).toLowerCase();
+  if (!path) return null;
+  if (path.includes(':generatecontent') || path.includes('/v1beta/models/')) {
+    return { error: '检测到 Gemini 原生 generateContent 路径，但聊天代理尚未接入 Gemini 原生协议' };
+  }
+  if (path.endsWith('/messages') || path.includes('/messages/')) return 'anthropic';
+  if (path.endsWith('/chat/completions') || path.endsWith('/responses')) return 'openai';
+  if (path.includes('/openai/') || path.includes('/compatible-mode/')) return 'openai';
+  return null;
+}
+
+function inferApiFormatFromHost(host) {
+  const hostname = String(host || '')
+    .replace(/^https?:\/\//i, '')
+    .split('/')[0]
+    .split(':')[0]
+    .toLowerCase();
+  if (hostname === 'api.anthropic.com') return 'anthropic';
+  if (hostname === 'api.openai.com' || hostname.endsWith('.openai.azure.com')) return 'openai';
+  return null;
+}
+
+function inferTargetRouteFormat({ targetApiFormat, unlockApiFormat, targetUnlock, explicitPath, providerPath, host }) {
+  if (unlockApiFormat) return { format: unlockApiFormat, source: targetUnlock };
+  if (targetApiFormat) return { format: targetApiFormat, source: 'target-apiFormat' };
+
+  const targetPathFormat = inferApiFormatFromPath(explicitPath);
+  if (targetPathFormat?.error) return targetPathFormat;
+  if (targetPathFormat) return { format: targetPathFormat, source: 'target-apiPath' };
+
+  const providerPathFormat = inferApiFormatFromPath(providerPath);
+  if (providerPathFormat?.error) return providerPathFormat;
+  if (providerPathFormat) return { format: providerPathFormat, source: 'provider-apiPath' };
+
+  const hostFormat = inferApiFormatFromHost(host);
+  if (hostFormat) return { format: hostFormat, source: 'host' };
+
+  return { format: 'openai', source: 'auto-default-openai' };
+}
+
 // 兼容旧 API：每次直接返回缓存的 providers Map（config-cache 已处理 mtime）。
 export function loadProviders() {
   return getProviders();
@@ -177,8 +218,10 @@ function normalizeTargetUnlock(value) {
 function normalizeTargetApiFormat(value) {
   const raw = String(value || '').trim().toLowerCase();
   if (!raw) return null;
+  if (raw === 'auto') return null;
   if (raw === 'openai') return 'openai';
   if (raw === 'anthropic') return 'anthropic';
+  if (raw === 'gemini') return { error: '聊天代理尚未接入 Gemini 原生协议；请使用 OpenAI/Anthropic 兼容入口或留空自动识别' };
   return { error: `未知目标协议(${raw})` };
 }
 
@@ -210,16 +253,16 @@ export function resolveTarget(target, providers) {
   if (targetApiFormat && unlockApiFormat && targetApiFormat !== unlockApiFormat) {
     return { error: `目标协议 ${targetApiFormat} 与${targetUnlock === 'codex' ? ' Codex' : ' Claude Code'} 解锁不匹配` };
   }
-  const routeFormat = unlockApiFormat || targetApiFormat;
-  if (!routeFormat) {
-    return { error: '目标缺少 apiFormat；请在模型映射目标上明确写入 openai 或 anthropic' };
-  }
   const host = (p.apiHost || '').replace(/^https?:\/\//, '').replace(/\/$/, '');
   const explicitPath = target.apiPath || target.api_path || null;
   const unlockConfig = targetUnlock ? p.unlocks?.[targetUnlock] : null;
   const unlockWireApi = unlockConfig?.wireApi || unlockConfig?.wire_api || null;
-  const configuredPath = (explicitPath || unlockWireApi || p.apiPath) && (explicitPath || unlockWireApi || p.apiPath) !== '/'
-    ? (explicitPath || unlockWireApi || p.apiPath)
+  const providerPath = p.apiPath || p.api_path || null;
+  const route = inferTargetRouteFormat({ targetApiFormat, unlockApiFormat, targetUnlock, explicitPath, providerPath, host });
+  if (route?.error) return { error: route.error };
+  const routeFormat = route.format;
+  const configuredPath = (explicitPath || unlockWireApi || providerPath) && (explicitPath || unlockWireApi || providerPath) !== '/'
+    ? (explicitPath || unlockWireApi || providerPath)
     : null;
   const apiPath = unlockWireApi && !explicitPath
     ? cleanApiPath(unlockWireApi)
@@ -244,6 +287,7 @@ export function resolveTarget(target, providers) {
     apiPath,
     apiKey: p.apiKey,
     format: routeFormat,
+    routeSource: route.source,
     authScheme: routeFormat === 'openai' || shouldUseAnthropicBearerAuth(host, apiPath) ? 'bearer' : 'x-api-key',
     model: modelId,
     capabilities,

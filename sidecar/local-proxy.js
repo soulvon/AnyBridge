@@ -6,14 +6,23 @@ import fs from 'node:fs';
 import https from 'node:https';
 import os from 'node:os';
 import path from 'node:path';
-import { getProxyRoutes, getSlots } from './config-cache.js';
+import {
+  buildClaudeCodeUnlockPayload,
+  buildCodexPromptCacheKey,
+  buildCodexUnlockClientMetadata,
+  claudeCodeUnlockHeaders,
+  codexUnlockHeaders,
+  normalizeClaudeCodeUnlock,
+  normalizeCodexUnlock,
+} from './lib/codex-unlock.js';
+import { getProxyRoutes } from './config-cache.js';
 import { loadModelMapConfig, loadProviders, resolveTarget } from './provider-pool.js';
 import { preprocessImagesWithThirdPartyVision } from './vision-fallback.js';
 import { httpsAgentFor } from './system-proxy.js';
 import { recordError, recordLatency, recordRequest, recordRetry, recordUsage } from './stats.js';
 
 const AGENT = new https.Agent({ keepAlive: true, maxSockets: 64, maxFreeSockets: 16 });
-const RETRYABLE_STATUS = new Set([408, 425, 429, 500, 502, 503, 504]);
+const RETRYABLE_STATUS = new Set([408, 425, 429, 500, 502, 503, 504, 529]);
 const RETRYABLE_CODES = new Set(['ECONNRESET', 'ETIMEDOUT', 'ENOTFOUND', 'EAI_AGAIN', 'ECONNREFUSED', 'EPIPE', 'EHOSTUNREACH', 'ENETUNREACH']);
 
 function appConfigDir(name) {
@@ -74,8 +83,29 @@ function sendJson(res, status, body, headers = {}) {
   res.end(text);
 }
 
+function sendRaw(res, status, body, headers = {}) {
+  const text = typeof body === 'string' ? body : String(body || '');
+  const contentType = headers['content-type'] || headers['Content-Type'] || 'application/json; charset=utf-8';
+  res.writeHead(status, cors({ 'content-type': contentType, 'content-length': Buffer.byteLength(text) }));
+  res.end(text);
+}
+
 function sendError(res, status, message, type = 'invalid_request_error') {
-  sendJson(res, status, { error: { message, type, code: type } });
+  sendJson(res, status, { error: { message, type, code: type, status } });
+}
+
+function sendAnthropicError(res, status, message, type = 'api_error') {
+  sendJson(res, status, { type: 'error', error: { type, message } });
+}
+
+class LocalProxyUpstreamError extends Error {
+  constructor(message, { status = 502, type = 'upstream_error', upstreamResponse = null } = {}) {
+    super(message);
+    this.name = 'LocalProxyUpstreamError';
+    this.status = status;
+    this.type = type;
+    this.upstreamResponse = upstreamResponse;
+  }
 }
 
 function authToken(req) {
@@ -92,34 +122,14 @@ function validateAuth(req) {
   return { ok: true };
 }
 
-function legacyModelRows() {
-  const rows = [];
-  for (const [id, entry] of getSlots()) {
-    if (!entry || !entry.data) continue;
-    if (entry.kind === 'slot') {
-      const slot = entry.data;
-      if (slot.enabled === false) continue;
-      if (!Array.isArray(slot.targets) || slot.targets.length === 0) continue;
-      rows.push({ id, name: slot.displayName || id });
-    } else if (entry.kind === 'injected') {
-      const item = entry.data;
-      if (!item.providerId || !String(item.model || '').trim()) continue;
-      rows.push({ id, name: item.label || id });
-    }
-  }
-  return rows.sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
-}
-
 function proxyRouteRows(kind) {
   const store = getProxyRoutes();
-  if (store.loadError) throw new Error(`本地代理模型路由读取失败: ${store.loadError}`);
-  if (!store.fileExists) return legacyModelRows();
-  const requiredFormat = kind === 'anthropic' ? 'anthropic' : 'openai';
+  if (store.loadError) throw new Error(`本地代理模型列表读取失败: ${store.loadError}`);
+  if (!store.fileExists) return [];
   return (store.routes || [])
     .filter(route => route.enabled !== false)
     .filter(route => Array.isArray(route.targets) && route.targets.length > 0)
-    .filter(route => (route.exposedFormats || []).includes(requiredFormat))
-    .map(route => ({ id: route.id, name: route.displayName || route.id }))
+    .map(route => ({ id: route.id, name: route.id }))
     .sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
 }
 
@@ -213,7 +223,7 @@ function normalizeRequest(kind, body) {
   const base = kind === 'anthropic' ? normalizeAnthropic(body) : normalizeOpenAI(body);
   return {
     kind,
-    model: String(body.model || '').trim() || 'anybridge-default',
+    model: String(body.model || '').trim(),
     system: base.system,
     messages: base.messages,
     tools: Array.isArray(body.tools) ? body.tools : [],
@@ -221,7 +231,47 @@ function normalizeRequest(kind, body) {
     stream: body.stream === true,
     maxTokens: Number(body.max_tokens || body.max_output_tokens || body.max_completion_tokens) || 4096,
     temperature: Number.isFinite(Number(body.temperature)) ? Number(body.temperature) : undefined,
+    extraParams: passthroughParams(kind, body),
   };
+}
+
+function isPlainObject(value) {
+  return value && typeof value === 'object' && !Array.isArray(value);
+}
+
+function passthroughParams(kind, body = {}) {
+  if (!body || typeof body !== 'object') return {};
+  const blocked = new Set([
+    'model',
+    'messages',
+    'input',
+    'instructions',
+    'system',
+    'stream',
+    'max_tokens',
+    'max_output_tokens',
+    'max_completion_tokens',
+    'temperature',
+    'tools',
+    'tool_choice',
+    'toolChoice',
+    'extra_body',
+    // thinking/reasoning 由 sidecar 根据上游格式重新构建，不能透传
+    // Codex Desktop 发 thinking.type: "enabled"，但 MiniMax 只接受 "adaptive"/"disabled"
+    'thinking',
+    'reasoning',
+  ]);
+  const out = isPlainObject(body.extra_body) ? { ...body.extra_body } : {};
+  for (const [key, value] of Object.entries(body)) {
+    if (blocked.has(key)) continue;
+    out[key] = value;
+  }
+  return out;
+}
+
+function cleanBody(body) {
+  Object.keys(body).forEach(key => body[key] === undefined && delete body[key]);
+  return body;
 }
 
 function estimateTokens(messages, system = '') {
@@ -229,60 +279,29 @@ function estimateTokens(messages, system = '') {
   return Math.max(1, Math.ceil(text.length / 4));
 }
 
-function injectedAsSlot(item) {
-  if (!item || !item.providerId || !String(item.model || '').trim()) return null;
-  return { modelUid: item.modelUid, displayName: item.label || item.modelUid, useThirdPartyVision: item.useThirdPartyVision === true, targets: [{ providerId: item.providerId, model: item.model, apiFormat: item.apiFormat || item.api_format, apiPath: item.apiPath || item.api_path, unlock: item.unlock || null }] };
-}
-
 function routeAsSlot(route) {
   return {
     modelUid: route.id,
-    displayName: route.displayName || route.id,
+    displayName: route.id,
     supportsImages: route.capabilities?.vision === true,
     useThirdPartyVision: route.enhancement?.thirdPartyVision === true,
     targets: Array.isArray(route.targets) ? route.targets : [],
   };
 }
 
-function resolveLegacySlot(model) {
-  const slots = getSlots();
-  let entry = slots.get(model);
-  if (!entry && (!model || model === 'anybridge-default')) {
-    for (const [, candidate] of slots) {
-      if (candidate?.kind === 'slot' && candidate.data?.enabled !== false && Array.isArray(candidate.data?.targets) && candidate.data.targets.length) {
-        entry = candidate;
-        break;
-      }
-    }
-  }
-  if (!entry) return { error: `模型映射不存在: ${model}` };
-  if (entry.kind === 'slot') {
-    const slot = entry.data;
-    if (slot.enabled === false) return { error: `模型映射已禁用: ${model}` };
-    if (!Array.isArray(slot.targets) || slot.targets.length === 0) return { error: `模型映射没有配置目标: ${model}` };
-    return { slot };
-  }
-  const slot = injectedAsSlot(entry.data);
-  return slot ? { slot } : { error: `模型槽位尚未配置目标: ${model}` };
-}
-
 function resolveProxyModel(model, kind) {
   const store = getProxyRoutes();
-  if (store.loadError) return { error: `本地代理模型路由读取失败: ${store.loadError}` };
-  if (!store.fileExists) return resolveLegacySlot(model);
+  if (store.loadError) return { error: `本地代理模型列表读取失败: ${store.loadError}` };
+  if (!store.fileExists) return { error: '本地代理模型列表为空。请在「代理 > 模型列表」添加模型。' };
 
   const requested = String(model || '').trim();
-  const modelId = (!requested || requested === 'anybridge-default') ? String(store.defaultModelId || '').trim() : requested;
-  if (!modelId) return { error: '本地代理尚未配置默认模型路由。请在「代理 > 模型路由」设置默认模型。' };
+  if (!requested) return { error: '请求缺少 model，无法匹配本地代理模型列表。' };
+  const modelId = requested;
   const route = (store.routes || []).find(item => item.id === modelId);
-  if (!route) return { error: `本地代理模型路由不存在: ${modelId}` };
-  if (route.enabled === false) return { error: `本地代理模型路由已禁用: ${modelId}` };
-  const requiredFormat = kind === 'anthropic' ? 'anthropic' : 'openai';
-  if (!(route.exposedFormats || []).includes(requiredFormat)) {
-    return { error: `本地代理模型路由 ${modelId} 未暴露 ${requiredFormat} 入口` };
-  }
+  if (!route) return { error: `模型不在本地代理模型列表中: ${modelId}` };
+  if (route.enabled === false) return { error: `本地代理模型已禁用: ${modelId}` };
   if (!Array.isArray(route.targets) || route.targets.length === 0) {
-    return { error: `本地代理模型路由没有可用目标: ${modelId}` };
+    return { error: `本地代理模型没有可用上游目标: ${modelId}` };
   }
   return { slot: routeAsSlot(route), route };
 }
@@ -337,34 +356,78 @@ function openAITools(tools) {
 }
 
 function upstreamBody(conn, ctx) {
+  const extras = ctx.preserveExtraParams === true ? (ctx.extraParams || {}) : {};
   if (conn.format === 'anthropic') {
-    return { model: conn.model, system: ctx.system || undefined, messages: ctx.messages, max_tokens: ctx.maxTokens, temperature: ctx.temperature, stream: false, tools: anthropicTools(ctx.tools) };
+    const claudeCodeUnlock = conn.unlockKind === 'claudeCode' ? normalizeClaudeCodeUnlock(conn.unlocks?.claudeCode) : null;
+    if (claudeCodeUnlock) {
+      return buildClaudeCodeUnlockPayload({
+        model: conn.model,
+        messages: ctx.messages,
+        maxTokens: ctx.maxTokens,
+        stream: false,
+      });
+    }
+    return cleanBody({ ...extras, model: conn.model, system: ctx.system || undefined, messages: ctx.messages, max_tokens: ctx.maxTokens, temperature: ctx.temperature, stream: false, tools: anthropicTools(ctx.tools), tool_choice: ctx.toolChoice || undefined });
   }
   const useResponses = String(conn.apiPath || '').toLowerCase().includes('/responses');
-  if (useResponses) return { model: conn.model, input: openAIResponsesInput(ctx.messages), instructions: ctx.system || undefined, max_output_tokens: ctx.maxTokens, temperature: ctx.temperature, stream: false, tools: openAITools(ctx.tools) };
-  return { model: conn.model, messages: openAIChatMessages(ctx.system, ctx.messages), max_tokens: ctx.maxTokens, temperature: ctx.temperature, stream: false, tools: openAITools(ctx.tools) };
+  const codexUnlock = conn.unlockKind === 'codex' ? normalizeCodexUnlock(conn.unlocks?.codex) : null;
+  if (useResponses) {
+    const input = openAIResponsesInput(ctx.messages);
+    const body = {
+      ...extras,
+      model: conn.model,
+      input,
+      instructions: ctx.system || undefined,
+      max_output_tokens: codexUnlock ? undefined : ctx.maxTokens,
+      temperature: ctx.temperature,
+      stream: false,
+      tools: openAITools(ctx.tools),
+      tool_choice: ctx.toolChoice || undefined,
+    };
+    if (codexUnlock) {
+      const promptCacheKey = buildCodexPromptCacheKey(input);
+      body.include = codexUnlock.include;
+      body.prompt_cache_key = promptCacheKey;
+      body.parallel_tool_calls = true;
+      body.reasoning = { effort: 'medium' };
+      body.store = false;
+      body.text = { verbosity: 'low' };
+      body.client_metadata = buildCodexUnlockClientMetadata(promptCacheKey);
+      body.tool_choice = body.tools ? 'auto' : undefined;
+    }
+    return cleanBody(body);
+  }
+  return cleanBody({ ...extras, model: conn.model, messages: openAIChatMessages(ctx.system, ctx.messages), max_tokens: ctx.maxTokens, temperature: ctx.temperature, stream: false, tools: openAITools(ctx.tools), tool_choice: ctx.toolChoice || undefined });
 }
 
 function authHeaders(conn) {
+  if (conn.format === 'openai' && conn.unlockKind === 'codex') return codexUnlockHeaders(conn);
   if (conn.format === 'openai') return { authorization: `Bearer ${conn.apiKey}` };
+  if (conn.format === 'anthropic' && conn.unlockKind === 'claudeCode') return claudeCodeUnlockHeaders(conn);
   const h = { 'anthropic-version': '2023-06-01' };
   if (conn.authScheme === 'bearer') h.authorization = `Bearer ${conn.apiKey}`;
   else h['x-api-key'] = conn.apiKey;
   return h;
 }
 
-function requestUpstream(conn, payload) {
+function requestUpstream(conn, payload, enhancement = {}) {
   return new Promise((resolve, reject) => {
     const body = Buffer.from(JSON.stringify(payload));
     const started = Date.now();
-    const req = https.request({ agent: httpsAgentFor(AGENT), hostname: conn.host, port: 443, path: conn.apiPath, method: 'POST', headers: { 'content-type': 'application/json', 'content-length': body.length, ...authHeaders(conn) } }, apiRes => {
+    const extraHeaders = {};
+    if (enhancement.customHeadersEnabled === true && Array.isArray(enhancement.customHeaders)) {
+      for (const h of enhancement.customHeaders) {
+        if (h && h.key) extraHeaders[h.key] = h.value;
+      }
+    }
+    const req = https.request({ agent: httpsAgentFor(AGENT), hostname: conn.host, port: 443, path: conn.apiPath, method: 'POST', headers: { 'content-type': 'application/json', 'content-length': body.length, ...authHeaders(conn), ...extraHeaders } }, apiRes => {
       const chunks = [];
       apiRes.on('data', c => chunks.push(c));
       apiRes.on('end', () => {
         const text = Buffer.concat(chunks).toString('utf8');
         let json = null;
         try { json = text ? JSON.parse(text) : null; } catch {}
-        resolve({ statusCode: apiRes.statusCode || 0, text, json, durationMs: Date.now() - started });
+        resolve({ statusCode: apiRes.statusCode || 0, headers: apiRes.headers || {}, text, json, durationMs: Date.now() - started });
       });
     });
     req.on('timeout', () => req.destroy(new Error('ETIMEDOUT')));
@@ -393,6 +456,43 @@ function usageFrom(conn, json, fallbackIn, fallbackOut) {
 
 function upstreamMessage(r) { return r.json?.error?.message || r.json?.message || r.json?.detail || r.text || `HTTP ${r.statusCode}`; }
 
+function compactText(value, max = 500) {
+  const text = String(value || '').replace(/\s+/g, ' ').trim();
+  return text.length > max ? `${text.slice(0, max - 1)}…` : text;
+}
+
+function isRateLimitOrHighLoad(failure = {}) {
+  const status = Number(failure.statusCode) || 0;
+  const text = `${failure.reason || ''} ${failure.message || ''}`;
+  if (status === 429 || status === 529) return true;
+  if (status === 503 && /service unavailable|overloaded|temporarily|rate limit|too many requests/i.test(text)) return true;
+  return /负载.*上限|达到上限|get_channel_failed|rate limit|too many requests|限流|频率|overloaded/i.test(text);
+}
+
+function classifyFailures(failures = []) {
+  const text = failures.map(f => `${f.reason || ''} ${f.message || ''}`).join(' ');
+  if (failures.some(f => f.statusCode === 401) || /unauthorized|invalid api key|api key|认证|鉴权/i.test(text)) {
+    return { status: 401, type: 'authentication_error' };
+  }
+  if (failures.some(f => f.statusCode === 403) || /permission|forbidden|无权限|未开通/i.test(text)) {
+    return { status: 403, type: 'permission_error' };
+  }
+  if (failures.some(isRateLimitOrHighLoad)) {
+    return { status: 429, type: 'rate_limit_error' };
+  }
+  if (failures.some(f => f.statusCode === 400)) return { status: 400, type: 'invalid_request_error' };
+  if (failures.some(f => f.statusCode === 404)) return { status: 404, type: 'not_found_error' };
+  if (failures.some(f => f.statusCode >= 500)) return { status: 503, type: 'api_error' };
+  return { status: 502, type: 'upstream_error' };
+}
+
+function failureMessage(failure = {}) {
+  if (typeof failure === 'string') return failure;
+  const status = failure.statusCode ? `HTTP ${failure.statusCode}` : (failure.code || '失败');
+  const details = failure.message ? `: ${failure.message}` : '';
+  return `${failure.providerName || 'provider'}: ${status}${details}`;
+}
+
 async function maybeVisionFallback(ctx, slot, providers, mapConfig) {
   if (!hasImage(ctx.messages) || slot.useThirdPartyVision !== true || mapConfig?.enhancement?.imageFallback === false) return ctx;
   const visionModels = mapConfig?.visionModels?.imageModels || [];
@@ -401,96 +501,229 @@ async function maybeVisionFallback(ctx, slot, providers, mapConfig) {
   return { ...ctx, messages: result.messages };
 }
 
+// ── 速率限制 ──
+const rateLimitBuckets = new Map();
+function checkRateLimit(model, rpm) {
+  const now = Date.now();
+  const windowMs = 60000;
+  const bucket = rateLimitBuckets.get(model);
+  if (!bucket || now > bucket.resetAt) {
+    rateLimitBuckets.set(model, { count: 1, resetAt: now + windowMs });
+    return true;
+  }
+  if (bucket.count >= rpm) return false;
+  bucket.count++;
+  return true;
+}
+
+// ── 请求日志 ──
+function logRequest(ctx, phase) {
+  try {
+    const dir = path.join(configDir(), 'proxy-logs');
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    const date = new Date().toISOString().slice(0, 10);
+    const file = path.join(dir, `proxy-${date}.jsonl`);
+    const entry = JSON.stringify({
+      ts: new Date().toISOString(),
+      phase,
+      model: ctx.model,
+      kind: ctx.kind,
+      ...(phase === 'request' ? { system: ctx.system?.slice(0, 200), messageCount: ctx.messages?.length } : {}),
+      ...(ctx._response ? { statusCode: ctx._response.statusCode, textPreview: ctx._response.text?.slice(0, 500) } : {}),
+    });
+    fs.appendFileSync(file, entry + '\n');
+  } catch {}
+}
+
 async function execute(ctx) {
   const resolved = resolveProxyModel(ctx.model, ctx.kind);
   if (resolved.error) throw new Error(resolved.error);
   const providers = loadProviders();
   const mapConfig = loadModelMapConfig();
-  const effective = await maybeVisionFallback(ctx, resolved.slot, providers, mapConfig);
   const enhancement = { ...(mapConfig?.enhancement || {}) };
   if (resolved.route?.enhancement) {
     if (resolved.route.enhancement.retry === false) enhancement.retry = false;
     if (resolved.route.enhancement.autoRouting === false) enhancement.autoRouting = false;
   }
+  const preserveExtraParams = resolved.route?.enhancement?.preserveExtraParams === true;
+  const rawProviderErrors = resolved.route?.enhancement?.rawProviderErrors !== false;
+  const effective = await maybeVisionFallback(ctx, resolved.slot, providers, mapConfig);
+  effective.preserveExtraParams = preserveExtraParams;
+
+  // ── 系统提示词注入 ──
+  if (enhancement.systemPromptPrefixEnabled === true && enhancement.systemPromptPrefix) {
+    effective.system = [enhancement.systemPromptPrefix, effective.system].filter(Boolean).join('\n\n') || undefined;
+  }
+
+  // ── 工具过滤 ──
+  if (enhancement.toolFilterEnabled === true && enhancement.toolFilterMode && Array.isArray(effective.tools) && effective.tools.length) {
+    const filterSet = new Set(enhancement.toolFilterList.map(n => String(n || '').trim()).filter(Boolean));
+    if (filterSet.size) {
+      effective.tools = effective.tools.filter(tool => {
+        const name = tool?.name || tool?.function?.name || '';
+        if (enhancement.toolFilterMode === 'allow') return filterSet.has(name);
+        if (enhancement.toolFilterMode === 'deny') return !filterSet.has(name);
+        return true;
+      });
+    }
+  }
+
+  // ── 强制 tool_choice ──
+  if (enhancement.toolFilterEnabled === true && enhancement.forceToolChoice) {
+    effective.toolChoice = enhancement.forceToolChoice;
+  }
+
+  // ── 请求参数覆盖 ──
+  if (enhancement.paramOverridesEnabled === true && enhancement.paramOverrides && typeof enhancement.paramOverrides === 'object') {
+    Object.assign(effective, enhancement.paramOverrides);
+  }
+
+  // ── 速率限制 ──
+  if (enhancement.rateLimitEnabled === true && enhancement.rateLimitRpm > 0) {
+    const allowed = checkRateLimit(ctx.model, enhancement.rateLimitRpm);
+    if (!allowed) {
+      throw new LocalProxyUpstreamError(`请求频率超限：${enhancement.rateLimitRpm} RPM`, {
+        status: 429, type: 'rate_limit_error',
+      });
+    }
+  }
+
+  // ── 请求日志 ──
+  if (enhancement.requestLogging) {
+    logRequest(ctx, 'request');
+  }
+
   const targets = enhancement.autoRouting === false ? [resolved.slot.targets[0]] : [...resolved.slot.targets];
   const policy = retryPolicy(enhancement);
   const failures = [];
   for (const target of targets) {
     const conn = resolveTarget(target, providers);
-    if (conn.error) { failures.push(conn.error); continue; }
+    if (conn.error) { failures.push({ providerName: target.providerId, message: conn.error }); continue; }
     recordRequest({ provider: conn.providerName, requestedModel: ctx.model, resolvedModel: conn.model });
     const payload = upstreamBody(conn, effective);
     const started = Date.now();
     let retryCount = 0;
     while (true) {
       try {
-        const r = await requestUpstream(conn, payload);
+        const r = await requestUpstream(conn, payload, enhancement);
         recordLatency(r.durationMs);
         if (r.statusCode >= 200 && r.statusCode < 300) {
           const text = extractText(conn, r.json);
           const usage = usageFrom(conn, r.json, estimateTokens(effective.messages, effective.system), Math.ceil(text.length / 4));
           recordUsage(usage);
-          return { conn, text, json: r.json, usage };
+          if (enhancement.requestLogging) {
+            logRequest({ ...ctx, _response: { statusCode: r.statusCode, text } }, 'response');
+          }
+          // ── 自定义响应头 ──
+          const extraRespHeaders = {};
+          if (enhancement.customHeadersEnabled === true && Array.isArray(enhancement.responseHeaders)) {
+            for (const h of enhancement.responseHeaders) {
+              if (h && h.key) extraRespHeaders[h.key] = h.value;
+            }
+          }
+          return { conn, text, json: r.json, usage, extraHeaders: extraRespHeaders };
         }
-        const msg = `HTTP ${r.statusCode}: ${upstreamMessage(r)}`;
+        const msg = compactText(upstreamMessage(r));
         if (policy.enabled && retryCount < policy.maxRetries && retryable(r.statusCode) && Date.now() - started < policy.totalMs) {
-          retryCount++; recordRetry({ count: 1, reason: msg }); await sleep(retryDelay(retryCount, policy)); continue;
+          retryCount++; recordRetry({ count: 1, reason: `HTTP ${r.statusCode}: ${msg}` }); await sleep(retryDelay(retryCount, policy)); continue;
         }
-        failures.push(`${conn.providerName}: ${msg}`); break;
+        failures.push({
+          providerName: conn.providerName,
+          statusCode: r.statusCode,
+          headers: r.headers,
+          body: r.text,
+          message: msg,
+        });
+        break;
       } catch (e) {
         const code = e?.code || e?.message;
         if (policy.enabled && retryCount < policy.maxRetries && retryable(0, code) && Date.now() - started < policy.totalMs) {
           retryCount++; recordRetry({ count: 1, reason: code || 'network error' }); await sleep(retryDelay(retryCount, policy)); continue;
         }
-        failures.push(`${conn.providerName}: ${e.message || e}`); break;
+        failures.push({ providerName: conn.providerName, code, message: e.message || String(e) }); break;
       }
     }
   }
-  const message = failures.length ? `AnyBridge 本地代理没有可用目标：${failures.join('；')}` : 'AnyBridge 本地代理没有可用目标。';
+  const lastUpstreamResponse = [...failures].reverse().find(f => f.statusCode && typeof f.body === 'string');
+  if (lastUpstreamResponse && rawProviderErrors) {
+    const classification = classifyFailures([lastUpstreamResponse]);
+    recordError({
+      provider: 'local-proxy',
+      message: `${lastUpstreamResponse.providerName || 'provider'}: HTTP ${lastUpstreamResponse.statusCode}: ${lastUpstreamResponse.message || ''}`,
+    });
+    throw new LocalProxyUpstreamError(`upstream HTTP ${lastUpstreamResponse.statusCode}`, {
+      status: classification.status,
+      type: classification.type,
+      upstreamResponse: {
+        statusCode: classification.status,
+        headers: lastUpstreamResponse.headers || {},
+        body: lastUpstreamResponse.body,
+      },
+    });
+  }
+
+  const classification = classifyFailures(failures);
+  const message = failures.length ? `AnyBridge 本地代理没有可用目标：${failures.map(failureMessage).join('；')}` : 'AnyBridge 本地代理没有可用目标。';
   recordError({ provider: 'local-proxy', message });
-  throw new Error(message);
+  throw new LocalProxyUpstreamError(message, classification);
 }
 
 function openAIUsage(usage = {}) {
   const prompt = Number(usage.inputTokens) || 0, completion = Number(usage.outputTokens) || 0;
-  return { prompt_tokens: prompt, completion_tokens: completion, total_tokens: prompt + completion };
+  const cached = Number(usage.cachedTokens) || 0;
+  const out = { prompt_tokens: prompt, completion_tokens: completion, total_tokens: prompt + completion };
+  if (cached > 0) out.prompt_tokens_details = { cached_tokens: cached };
+  return out;
 }
-function anthropicUsage(usage = {}) { return { input_tokens: Number(usage.inputTokens) || 0, output_tokens: Number(usage.outputTokens) || 0 }; }
+function anthropicUsage(usage = {}) {
+  const out = { input_tokens: Number(usage.inputTokens) || 0, output_tokens: Number(usage.outputTokens) || 0 };
+  const cached = Number(usage.cachedTokens) || 0;
+  if (cached > 0) out.cache_read_input_tokens = cached;
+  return out;
+}
 function sse(res, event, data) { if (event) res.write(`event: ${event}\n`); res.write(`data: ${JSON.stringify(data)}\n\n`); }
 
 function sendOpenAIChat(ctx, res, result) {
   const id = `chatcmpl-${crypto.randomUUID()}`;
+  const extra = result.extraHeaders || {};
   if (ctx.stream) {
-    res.writeHead(200, cors({ 'content-type': 'text/event-stream; charset=utf-8' }));
+    res.writeHead(200, cors({ 'content-type': 'text/event-stream; charset=utf-8', ...extra }));
     sse(res, null, { id, object: 'chat.completion.chunk', created: Math.floor(Date.now() / 1000), model: ctx.model, choices: [{ index: 0, delta: { role: 'assistant' }, finish_reason: null }] });
     if (result.text) sse(res, null, { id, object: 'chat.completion.chunk', created: Math.floor(Date.now() / 1000), model: ctx.model, choices: [{ index: 0, delta: { content: result.text }, finish_reason: null }] });
     sse(res, null, { id, object: 'chat.completion.chunk', created: Math.floor(Date.now() / 1000), model: ctx.model, choices: [{ index: 0, delta: {}, finish_reason: 'stop' }] });
     res.write('data: [DONE]\n\n'); res.end(); return;
   }
-  sendJson(res, 200, { id, object: 'chat.completion', created: Math.floor(Date.now() / 1000), model: ctx.model, choices: [{ index: 0, message: { role: 'assistant', content: result.text }, finish_reason: 'stop' }], usage: openAIUsage(result.usage) });
+  sendJson(res, 200, { id, object: 'chat.completion', created: Math.floor(Date.now() / 1000), model: ctx.model, choices: [{ index: 0, message: { role: 'assistant', content: result.text }, finish_reason: 'stop' }], usage: openAIUsage(result.usage) }, extra);
 }
 
 function responseObject(ctx, result, id) {
-  return { id, object: 'response', created_at: Math.floor(Date.now() / 1000), status: 'completed', model: ctx.model, output_text: result.text, output: [{ type: 'message', id: `msg-${crypto.randomUUID()}`, status: 'completed', role: 'assistant', content: [{ type: 'output_text', text: result.text }] }], usage: { input_tokens: Number(result.usage?.inputTokens) || 0, output_tokens: Number(result.usage?.outputTokens) || 0, total_tokens: (Number(result.usage?.inputTokens) || 0) + (Number(result.usage?.outputTokens) || 0) } };
+  const input = Number(result.usage?.inputTokens) || 0;
+  const output = Number(result.usage?.outputTokens) || 0;
+  const usage = { input_tokens: input, output_tokens: output, total_tokens: input + output };
+  const cached = Number(result.usage?.cachedTokens) || 0;
+  if (cached > 0) usage.input_tokens_details = { cached_tokens: cached };
+  return { id, object: 'response', created_at: Math.floor(Date.now() / 1000), status: 'completed', model: ctx.model, output_text: result.text, output: [{ type: 'message', id: `msg-${crypto.randomUUID()}`, status: 'completed', role: 'assistant', content: [{ type: 'output_text', text: result.text }] }], usage };
 }
 
 function sendOpenAIResponses(ctx, res, result) {
   const id = `resp-${crypto.randomUUID()}`;
   const obj = responseObject(ctx, result, id);
+  const extra = result.extraHeaders || {};
   if (ctx.stream) {
-    res.writeHead(200, cors({ 'content-type': 'text/event-stream; charset=utf-8' }));
+    res.writeHead(200, cors({ 'content-type': 'text/event-stream; charset=utf-8', ...extra }));
     sse(res, null, { type: 'response.created', response: { ...obj, output: [], output_text: '' } });
     sse(res, null, { type: 'response.output_text.delta', item_id: obj.output[0].id, output_index: 0, content_index: 0, delta: result.text });
     sse(res, null, { type: 'response.completed', response: obj });
     res.write('data: [DONE]\n\n'); res.end(); return;
   }
-  sendJson(res, 200, obj);
+  sendJson(res, 200, obj, extra);
 }
 
 function sendAnthropic(ctx, res, result) {
   const message = { id: `msg_${crypto.randomUUID().replace(/-/g, '')}`, type: 'message', role: 'assistant', model: ctx.model, content: [{ type: 'text', text: result.text }], stop_reason: 'end_turn', stop_sequence: null, usage: anthropicUsage(result.usage) };
+  const extra = result.extraHeaders || {};
   if (ctx.stream) {
-    res.writeHead(200, cors({ 'content-type': 'text/event-stream; charset=utf-8' }));
+    res.writeHead(200, cors({ 'content-type': 'text/event-stream; charset=utf-8', ...extra }));
     sse(res, 'message_start', { type: 'message_start', message: { ...message, content: [] } });
     sse(res, 'content_block_start', { type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } });
     if (result.text) sse(res, 'content_block_delta', { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: result.text } });
@@ -499,7 +732,7 @@ function sendAnthropic(ctx, res, result) {
     sse(res, 'message_stop', { type: 'message_stop' });
     res.end(); return;
   }
-  sendJson(res, 200, message);
+  sendJson(res, 200, message, extra);
 }
 
 function handleCountTokens(body, res) {
@@ -523,6 +756,17 @@ export async function handleLocalProxyRequest(req, res, body) {
     if (p === '/anthropic/v1/messages' || p === '/anthropic/messages') { const ctx = normalizeRequest('anthropic', json); sendAnthropic(ctx, res, await execute(ctx)); return; }
     sendError(res, 404, `未知本地代理路径: ${p}`);
   } catch (e) {
-    sendError(res, 502, e.message || String(e), 'upstream_error');
+    if (e.upstreamResponse) {
+      sendRaw(res, e.upstreamResponse.statusCode || e.status || 502, e.upstreamResponse.body, e.upstreamResponse.headers);
+      return;
+    }
+    const status = Number(e.status) || 502;
+    const type = e.type || 'upstream_error';
+    const message = e.message || String(e);
+    if (p.startsWith('/anthropic/')) {
+      sendAnthropicError(res, status, message, type);
+      return;
+    }
+    sendError(res, status, message, type);
   }
 }

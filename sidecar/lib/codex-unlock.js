@@ -11,6 +11,10 @@ const CLAUDE_CODE_BETA = [
 const CLAUDE_CODE_SESSION_ID = crypto.randomUUID();
 const CLAUDE_CODE_DEVICE_ID = crypto.randomBytes(32).toString('hex');
 const CLAUDE_CODE_SYSTEM_PROMPT = "You are Claude Code, Anthropic's official CLI for Claude.";
+const CODEX_INSTALLATION_ID = crypto.randomUUID();
+const CODEX_SESSION_ID = generateUUIDv7();
+const CODEX_DESKTOP_USER_AGENT = 'Codex Desktop/0.142.0-alpha.1 (Windows 10.0.26200; x86_64)';
+const CODEX_CACHE_KEYS = new Map();
 export function generateUUIDv7() {
   const bytes = crypto.randomBytes(16);
   const ts = BigInt(Date.now());
@@ -42,6 +46,58 @@ export function normalizeCodexUnlock(unlock) {
   };
 }
 
+function codexInputCacheSeed(input) {
+  if (Array.isArray(input)) {
+    const firstUser = input.find(item => item?.role === 'user');
+    if (firstUser) return JSON.stringify(firstUser).slice(0, 8192);
+  }
+  return JSON.stringify(input || '').slice(0, 8192);
+}
+
+export function buildCodexPromptCacheKey(input) {
+  const seed = codexInputCacheSeed(input);
+  if (!seed) return CODEX_SESSION_ID;
+  const hash = crypto.createHash('sha256').update(seed).digest('hex');
+  let key = CODEX_CACHE_KEYS.get(hash);
+  if (!key) {
+    key = generateUUIDv7();
+    CODEX_CACHE_KEYS.set(hash, key);
+  }
+  return key;
+}
+
+export function buildCodexUnlockClientMetadata(sessionId = CODEX_SESSION_ID) {
+  const turnId = generateUUIDv7();
+  const windowId = `${sessionId}:0`;
+  const turnMetadata = {
+    installation_id: CODEX_INSTALLATION_ID,
+    session_id: sessionId,
+    thread_id: sessionId,
+    turn_id: turnId,
+    window_id: windowId,
+    request_kind: 'turn',
+    sandbox: 'none',
+    turn_started_at_unix_ms: Date.now(),
+    workspace_kind: 'project',
+  };
+  return {
+    'x-codex-window-id': windowId,
+    thread_id: sessionId,
+    'x-codex-turn-metadata': JSON.stringify(turnMetadata),
+    'x-codex-installation-id': CODEX_INSTALLATION_ID,
+    session_id: sessionId,
+    turn_id: turnId,
+  };
+}
+
+export function codexUnlockHeaders(conn) {
+  return {
+    authorization: `Bearer ${conn.apiKey}`,
+    originator: 'Codex Desktop',
+    'user-agent': CODEX_DESKTOP_USER_AGENT,
+  };
+}
+
 function stainlessArch() {
   if (process.arch === 'x64') return 'x64';
   if (process.arch === 'arm64') return 'arm64';
@@ -65,7 +121,7 @@ export function normalizeClaudeCodeUnlock(unlock) {
   };
 }
 
-export function buildClaudeCodeUnlockPayload({ model, messages, maxTokens }) {
+export function buildClaudeCodeUnlockPayload({ model, messages, maxTokens, stream = true }) {
   return {
     model,
     system: [{
@@ -84,7 +140,7 @@ export function buildClaudeCodeUnlockPayload({ model, messages, maxTokens }) {
     max_tokens: maxTokens,
     thinking: { type: 'adaptive' },
     output_config: { effort: 'high' },
-    stream: true,
+    stream,
   };
 }
 

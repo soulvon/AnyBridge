@@ -11,6 +11,7 @@ const scriptFiles = [
   'ui/assets/scripts/30-providers-eval.js',
   'ui/assets/scripts/40-model-picker.js',
   'ui/assets/scripts/50-model-map.js',
+  'ui/assets/scripts/52-proxy-routes.js',
   'ui/assets/scripts/55-platforms.js',
   'ui/assets/scripts/60-updater.js',
   'ui/assets/scripts/70-healthcheck.js',

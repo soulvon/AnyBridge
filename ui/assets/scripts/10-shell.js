@@ -302,13 +302,21 @@ function mountProxyEnhancementPanel() {
     body.classList.add('proxy-enhancement-body');
     body.removeAttribute('style');
   }
-  const footer = source.querySelector('.provider-footer');
-  if (footer) {
-    footer.classList.add('proxy-enhancement-footer');
-    footer.removeAttribute('style');
-  }
 
   mount.appendChild(source);
+}
+
+function activateEnhancementPanel(panelId) {
+  const tabs = document.querySelectorAll('.proxy-enhancement-tab[data-enhancement-panel]');
+  const panes = document.querySelectorAll('.proxy-enhancement-pane[data-enhancement-pane]');
+  tabs.forEach(tab => {
+    const isActive = tab.dataset.enhancementPanel === panelId;
+    tab.classList.toggle('active', isActive);
+    tab.setAttribute('aria-selected', String(isActive));
+  });
+  panes.forEach(pane => {
+    pane.classList.toggle('active', pane.dataset.enhancementPane === panelId);
+  });
 }
 
 document.querySelectorAll('.settings-menu-item[data-settings-panel]').forEach(item => {
@@ -318,6 +326,9 @@ document.querySelectorAll('.proxy-console-tab[data-proxy-panel]').forEach(tab =>
   tab.addEventListener('click', () => activateProxyPanel(tab.dataset.proxyPanel));
 });
 mountProxyEnhancementPanel();
+document.querySelectorAll('.proxy-enhancement-tab[data-enhancement-panel]').forEach(tab => {
+  tab.addEventListener('click', () => activateEnhancementPanel(tab.dataset.enhancementPanel));
+});
 mountPlatformOwnedSettings();
 activateSettingsPanel('appearance');
 activateProxyPanel('overview');

@@ -1,10 +1,9 @@
 use serde::{Deserialize, Serialize};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::PathBuf;
 
 use super::config::config_dir_path;
-use super::model_map;
 
 fn proxy_routes_path() -> PathBuf {
     config_dir_path().join("proxy-routes.json")
@@ -35,8 +34,6 @@ pub struct ProxyRoutes {
     pub default_model_id: String,
     #[serde(default)]
     pub routes: Vec<ProxyRoute>,
-    #[serde(default, skip_serializing)]
-    pub compat_from_model_map: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -72,6 +69,15 @@ pub struct ProxyRouteCapabilities {
     pub reasoning: bool,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct HeaderPair {
+    #[serde(default)]
+    pub key: String,
+    #[serde(default)]
+    pub value: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ProxyRouteEnhancement {
@@ -81,6 +87,37 @@ pub struct ProxyRouteEnhancement {
     pub auto_routing: bool,
     #[serde(default)]
     pub third_party_vision: bool,
+    #[serde(default)]
+    pub preserve_extra_params: bool,
+    #[serde(default = "default_true")]
+    pub raw_provider_errors: bool,
+    /// 系统提示词前缀，注入到请求的 system prompt 之前
+    #[serde(default)]
+    pub system_prompt_prefix: String,
+    /// 自定义请求头，注入到上游请求
+    #[serde(default)]
+    pub custom_headers: Vec<HeaderPair>,
+    /// 自定义响应头，注入到返回给客户端的响应
+    #[serde(default)]
+    pub response_headers: Vec<HeaderPair>,
+    /// 请求参数覆盖，合并到上游请求体
+    #[serde(default)]
+    pub param_overrides: HashMap<String, serde_json::Value>,
+    /// 工具过滤模式："" / "allow" / "deny"
+    #[serde(default)]
+    pub tool_filter_mode: String,
+    /// 工具过滤名单
+    #[serde(default)]
+    pub tool_filter_list: Vec<String>,
+    /// 强制 tool_choice（"" = 不覆盖）
+    #[serde(default)]
+    pub force_tool_choice: String,
+    /// 每分钟请求数限制（0 = 不限制）
+    #[serde(default)]
+    pub rate_limit_rpm: u32,
+    /// 是否记录请求/响应日志到文件
+    #[serde(default)]
+    pub request_logging: bool,
 }
 
 impl Default for ProxyRouteEnhancement {
@@ -89,6 +126,17 @@ impl Default for ProxyRouteEnhancement {
             retry: true,
             auto_routing: true,
             third_party_vision: false,
+            preserve_extra_params: false,
+            raw_provider_errors: true,
+            system_prompt_prefix: String::new(),
+            custom_headers: Vec::new(),
+            response_headers: Vec::new(),
+            param_overrides: HashMap::new(),
+            tool_filter_mode: String::new(),
+            tool_filter_list: Vec::new(),
+            force_tool_choice: String::new(),
+            rate_limit_rpm: 0,
+            request_logging: false,
         }
     }
 }
@@ -98,19 +146,15 @@ impl Default for ProxyRouteEnhancement {
 pub struct ProxyRouteTarget {
     pub provider_id: String,
     pub model: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
     pub api_format: String,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub api_path: String,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub unlock: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ProxyRoutesImportResult {
-    pub store: ProxyRoutes,
-    pub imported: usize,
-    pub skipped: usize,
+    /// 可选：覆盖供应商 API Key 的密钥列表，多个时轮换使用
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub api_keys: Vec<String>,
 }
 
 pub(crate) fn read_routes() -> Result<ProxyRoutes, String> {
@@ -120,7 +164,6 @@ pub(crate) fn read_routes() -> Result<ProxyRoutes, String> {
             version: default_version(),
             default_model_id: String::new(),
             routes: Vec::new(),
-            compat_from_model_map: true,
         });
     }
     let raw = fs::read_to_string(&path).map_err(|e| e.to_string())?;
@@ -134,6 +177,7 @@ pub(crate) fn read_routes() -> Result<ProxyRoutes, String> {
 }
 
 fn normalize_routes(routes: &mut ProxyRoutes) {
+    routes.default_model_id.clear();
     for route in &mut routes.routes {
         route.id = route.id.trim().to_string();
         route.display_name = route.display_name.trim().to_string();
@@ -147,12 +191,24 @@ fn normalize_routes(routes: &mut ProxyRoutes) {
             .map(|x| x.trim().to_string())
             .filter(|x| !x.is_empty())
             .collect();
+        if route.exposed_formats.is_empty() {
+            route.exposed_formats = default_exposed_formats();
+        }
         for target in &mut route.targets {
             target.provider_id = target.provider_id.trim().to_string();
             target.model = target.model.trim().to_string();
             target.api_format = target.api_format.trim().to_string();
+            if target.api_format == "auto" {
+                target.api_format.clear();
+            }
             target.api_path = target.api_path.trim().to_string();
             target.unlock = target.unlock.trim().to_string();
+            target.api_keys = target
+                .api_keys
+                .iter()
+                .map(|k| k.trim().to_string())
+                .filter(|k| !k.is_empty())
+                .collect();
         }
     }
 }
@@ -161,50 +217,38 @@ fn validate_routes(routes: &ProxyRoutes) -> Result<(), String> {
     let mut seen = HashSet::new();
     for route in &routes.routes {
         if route.id.trim().is_empty() {
-            return Err("本地代理模型路由 ID 不能为空".into());
+            return Err("本地代理模型 ID 不能为空".into());
         }
         if !seen.insert(route.id.clone()) {
-            return Err(format!("本地代理模型路由 ID 重复: {}", route.id));
-        }
-        if route.exposed_formats.is_empty() {
-            return Err(format!("模型路由 {} 至少需要暴露一个入口", route.id));
+            return Err(format!("本地代理模型 ID 重复: {}", route.id));
         }
         for fmt in &route.exposed_formats {
-            if !matches!(fmt.as_str(), "openai" | "anthropic") {
+            if !matches!(fmt.as_str(), "openai" | "anthropic" | "gemini") {
                 return Err(format!(
-                    "模型路由 {} 的暴露入口必须是 openai 或 anthropic",
+                    "模型 {} 的接口兼容格式必须是 openai、anthropic 或 gemini",
                     route.id
                 ));
             }
         }
         if route.enabled && route.targets.is_empty() {
-            return Err(format!("模型路由 {} 已启用但没有目标", route.id));
+            return Err(format!("模型 {} 已启用但没有上游目标", route.id));
         }
         for target in &route.targets {
             if target.provider_id.trim().is_empty() {
-                return Err(format!("模型路由 {} 的目标供应商不能为空", route.id));
+                return Err(format!("模型 {} 的目标供应商不能为空", route.id));
             }
             if target.model.trim().is_empty() {
-                return Err(format!("模型路由 {} 的目标模型不能为空", route.id));
+                return Err(format!("模型 {} 的上游模型不能为空", route.id));
             }
-            if !matches!(target.api_format.as_str(), "openai" | "anthropic") {
+            if !target.api_format.is_empty()
+                && !matches!(target.api_format.as_str(), "openai" | "anthropic" | "gemini")
+            {
                 return Err(format!(
-                    "模型路由 {} 的目标 apiFormat 必须是 openai 或 anthropic",
+                    "模型 {} 的目标 apiFormat 必须是 openai、anthropic、gemini 或留空自动",
                     route.id
                 ));
             }
         }
-    }
-    if !routes.default_model_id.trim().is_empty()
-        && !routes
-            .routes
-            .iter()
-            .any(|route| route.id == routes.default_model_id && route.enabled)
-    {
-        return Err(format!(
-            "默认模型路由不存在或未启用: {}",
-            routes.default_model_id
-        ));
     }
     Ok(())
 }
@@ -214,18 +258,6 @@ fn write_routes(routes: &ProxyRoutes) -> Result<(), String> {
     fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     let json = serde_json::to_string_pretty(routes).map_err(|e| e.to_string())?;
     super::write_atomic(&proxy_routes_path(), json.as_bytes())
-}
-
-fn imported_api_format(api_format: Option<&String>, unlock: Option<&String>) -> String {
-    let fmt = api_format.map(|v| v.trim()).unwrap_or("");
-    if matches!(fmt, "openai" | "anthropic") {
-        return fmt.to_string();
-    }
-    match unlock.map(|v| v.trim()).unwrap_or("") {
-        "codex" => "openai".into(),
-        "claudeCode" | "claude-code" | "claude_code" => "anthropic".into(),
-        _ => String::new(),
-    }
 }
 
 #[tauri::command]
@@ -239,125 +271,4 @@ pub fn save_proxy_routes(mut store: ProxyRoutes) -> Result<(), String> {
     normalize_routes(&mut store);
     validate_routes(&store)?;
     write_routes(&store)
-}
-
-fn route_from_slot(slot: &model_map::Slot) -> Option<ProxyRoute> {
-    if slot.enabled == false || slot.targets.is_empty() {
-        return None;
-    }
-    let targets = slot
-        .targets
-        .iter()
-        .map(|target| ProxyRouteTarget {
-            provider_id: target.provider_id.clone(),
-            model: target.model.clone(),
-            api_format: imported_api_format(target.api_format.as_ref(), target.unlock.as_ref()),
-            api_path: target.api_path.clone().unwrap_or_default(),
-            unlock: target.unlock.clone().unwrap_or_default(),
-        })
-        .collect::<Vec<_>>();
-    Some(ProxyRoute {
-        id: slot.model_uid.clone(),
-        display_name: if slot.display_name.trim().is_empty() {
-            slot.model_uid.clone()
-        } else {
-            slot.display_name.clone()
-        },
-        enabled: true,
-        exposed_formats: default_exposed_formats(),
-        source: "imported:model-map".into(),
-        capabilities: ProxyRouteCapabilities {
-            stream: true,
-            tools: false,
-            vision: slot.supports_images,
-            reasoning: false,
-        },
-        enhancement: ProxyRouteEnhancement {
-            retry: true,
-            auto_routing: true,
-            third_party_vision: slot.use_third_party_vision,
-        },
-        targets,
-    })
-}
-
-fn route_from_injected(item: &model_map::InjectedSlot) -> Option<ProxyRoute> {
-    let provider_id = item.provider_id.as_deref().unwrap_or("").trim();
-    let model = item.model.as_deref().unwrap_or("").trim();
-    if provider_id.is_empty() || model.is_empty() {
-        return None;
-    }
-    Some(ProxyRoute {
-        id: item.model_uid.clone(),
-        display_name: item.label.clone(),
-        enabled: true,
-        exposed_formats: default_exposed_formats(),
-        source: "imported:model-map".into(),
-        capabilities: ProxyRouteCapabilities {
-            stream: true,
-            tools: false,
-            vision: item.supports_images,
-            reasoning: false,
-        },
-        enhancement: ProxyRouteEnhancement::default(),
-        targets: vec![ProxyRouteTarget {
-            provider_id: provider_id.to_string(),
-            model: model.to_string(),
-            api_format: imported_api_format(item.api_format.as_ref(), item.unlock.as_ref()),
-            api_path: item.api_path.clone().unwrap_or_default(),
-            unlock: item.unlock.clone().unwrap_or_default(),
-        }],
-    })
-}
-
-#[tauri::command]
-pub fn import_proxy_routes_from_model_map() -> Result<ProxyRoutesImportResult, String> {
-    let map = model_map::read_map()?;
-    let mut store = read_routes()?;
-    store.compat_from_model_map = false;
-    let mut seen = store
-        .routes
-        .iter()
-        .map(|route| route.id.clone())
-        .collect::<HashSet<_>>();
-    let mut imported = 0usize;
-    let mut skipped = 0usize;
-
-    for slot in &map.slots {
-        let Some(route) = route_from_slot(slot) else {
-            continue;
-        };
-        if seen.insert(route.id.clone()) {
-            store.routes.push(route);
-            imported += 1;
-        } else {
-            skipped += 1;
-        }
-    }
-
-    for item in &map.injected {
-        let Some(route) = route_from_injected(item) else {
-            continue;
-        };
-        if seen.insert(route.id.clone()) {
-            store.routes.push(route);
-            imported += 1;
-        } else {
-            skipped += 1;
-        }
-    }
-
-    if store.default_model_id.trim().is_empty() {
-        if let Some(first) = store.routes.iter().find(|route| route.enabled) {
-            store.default_model_id = first.id.clone();
-        }
-    }
-    normalize_routes(&mut store);
-    validate_routes(&store)?;
-    write_routes(&store)?;
-    Ok(ProxyRoutesImportResult {
-        store,
-        imported,
-        skipped,
-    })
 }

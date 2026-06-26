@@ -247,8 +247,7 @@ pub fn open_config_dir(which: String) -> Result<(), String> {
     Ok(())
 }
 
-#[tauri::command]
-pub fn generate_certs() -> Result<String, String> {
+pub fn ensure_mitm_certs() -> Result<(std::path::PathBuf, bool), String> {
     use rcgen::{CertificateParams, DistinguishedName, DnType, SanType};
 
     let certs_dir = crate::commands::config::config_dir_path().join("certs");
@@ -257,9 +256,11 @@ pub fn generate_certs() -> Result<String, String> {
     let cert_path = certs_dir.join("server.codeium.com.pem");
     let key_path = certs_dir.join("server.codeium.com-key.pem");
 
-    let already_exists = cert_path.exists() && key_path.exists();
+    let cert_ok = cert_path.metadata().map(|m| m.len() > 0).unwrap_or(false);
+    let key_ok = key_path.metadata().map(|m| m.len() > 0).unwrap_or(false);
+    let already_complete = cert_ok && key_ok;
 
-    if !already_exists {
+    if !already_complete {
         let mut params = CertificateParams::new(vec![
             "server.self-serve.windsurf.com".to_string(),
             "server.codeium.com".to_string(),
@@ -294,6 +295,13 @@ pub fn generate_certs() -> Result<String, String> {
         std::fs::write(&key_path, key_pair.serialize_pem()).map_err(|e| e.to_string())?;
     }
 
+    Ok((certs_dir, !already_complete))
+}
+
+#[tauri::command]
+pub fn generate_certs() -> Result<String, String> {
+    let (certs_dir, generated) = ensure_mitm_certs()?;
+
     // 生成完（或已存在）自动调一次证书安装：
     // - 首次装会触发 CurrentUser\Root 路径（零弹窗）
     // - 已装会快速返回幂等
@@ -302,22 +310,22 @@ pub fn generate_certs() -> Result<String, String> {
     // 里查看具体状态。
     match crate::commands::cert_install::install_ca() {
         Ok(install_msg) => {
-            let gen_msg = if already_exists {
-                format!("证书已存在 ({})", certs_dir.to_string_lossy())
-            } else {
+            let gen_msg = if generated {
                 format!("已生成证书到 {}", certs_dir.to_string_lossy())
+            } else {
+                format!("证书已存在 ({})", certs_dir.to_string_lossy())
             };
             Ok(format!("{}\n{}", gen_msg, install_msg))
         }
         Err(e) => {
             // 证书安装失败不影响证书生成结果，但要让用户知道
-            let gen_msg = if already_exists {
-                "证书已存在"
-            } else {
+            let gen_msg = if generated {
                 "已生成证书"
+            } else {
+                "证书已存在"
             };
             Ok(format!(
-                "{}。⚠ 证书安装到系统根证书库失败: {}。请在「环境体检」中点击「安装证书」",
+                "{}。⚠ 证书安装到系统根证书库失败: {}。请在「平台 > 设置 > 环境检测」点击「安装证书」",
                 gen_msg, e
             ))
         }

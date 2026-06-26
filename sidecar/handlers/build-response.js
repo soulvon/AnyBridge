@@ -88,6 +88,25 @@ function writeDoubleField(fieldNum, value) {
   return writeFixed64Field(fieldNum, buf);
 }
 
+function toNonNegativeInt(value) {
+  const n = Number(value) || 0;
+  if (!Number.isFinite(n) || n <= 0) return 0;
+  return Math.floor(n);
+}
+
+function buildUsageStats(usage = {}) {
+  const inputTokens = toNonNegativeInt(usage.inputTokens);
+  const outputTokens = toNonNegativeInt(usage.outputTokens);
+  const cachedTokens = toNonNegativeInt(usage.cachedTokens ?? usage.cacheReadInputTokens);
+  const cacheCreationInputTokens = toNonNegativeInt(usage.cacheCreationInputTokens);
+  const parts = [];
+  if (inputTokens > 0) parts.push(writeVarintField(1, inputTokens));
+  if (outputTokens > 0) parts.push(writeVarintField(2, outputTokens));
+  if (cachedTokens > 0) parts.push(writeVarintField(3, cachedTokens));
+  if (cacheCreationInputTokens > 0) parts.push(writeVarintField(4, cacheCreationInputTokens));
+  return Buffer.concat(parts);
+}
+
 // ─── Public builders ───────────────────────────────────────
 
 /**
@@ -193,14 +212,22 @@ export function buildToolCallDelta(messageId, toolCalls) {
  * @param {number} [latencyMs]   — elapsed ms; encoded as double in field 12
  * @returns {Buffer}
  */
-export function buildStopChunk(messageId, stopReason, modelUid, latencyMs) {
+export function buildStopChunk(messageId, stopReason, modelUid, latencyMs, usage, requestId = messageId) {
   const parts = [
     writeStringField(1, messageId),
     writeMessageField(2, buildTimestamp()),
     writeVarintField(5, stopReason),
   ];
+  const usageStats = buildUsageStats(usage);
+  if (usageStats.length > 0) {
+    parts.push(writeMessageField(7, usageStats));
+  }
   if (latencyMs !== undefined && latencyMs !== null) {
     parts.push(writeDoubleField(12, latencyMs));
+  }
+  parts.push(writeVarintField(14, 0));
+  if (requestId) {
+    parts.push(writeStringField(17, requestId));
   }
   if (modelUid) {
     parts.push(writeStringField(20, modelUid));

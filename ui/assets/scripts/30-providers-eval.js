@@ -1,5 +1,5 @@
 // ═══════ PROVIDER PROFILES (多套供应商 + 启用开关) ═══════
-let providerStore = { providers: [], codexConfigs: [], claudeCodeConfigs: [], opencodeConfigs: [], platformAccessModes: {} };
+let providerStore = { providers: [], codexConfigs: [], claudeCodeConfigs: [], opencodeConfigs: [] };
 const PROVIDER_VIEW_STORAGE_KEY = 'anybridge.providerViewMode';
 const PROVIDER_SORT_STORAGE_KEY = 'anybridge.providerSortMode';
 const PROVIDER_SORT_MODES = new Set(['default', 'name-asc', 'name-desc']);
@@ -65,8 +65,8 @@ function providerCapabilities(p, modelId = null) {
   return {
     text: caps.text !== false,
     stream: caps.stream !== false,
-    vision: hasModelVision ? modelCaps.vision === true : caps.vision === true,
-    tools: hasModelTools ? modelCaps.tools === true : caps.tools === true,
+    vision: hasModelVision ? modelCaps.vision === true : caps.vision !== false,
+    tools: hasModelTools ? modelCaps.tools === true : caps.tools !== false,
     gzip: caps.gzip === true,
     toolSchemaCompatGemini: caps.toolSchemaCompat === 'gemini',
   };
@@ -87,7 +87,7 @@ function capabilityBadges(p, compact = false, modelId = null) {
   ].filter(Boolean).join('');
 }
 
-// Windsurf 是否真的上传图片，取决于“原生模型槽位”本身；仅把映射目标标成 Vision 不够。
+// Windsurf 是否真的上传图片，取决于"原生模型槽位"本身；仅把映射目标标成 Vision 不够。
 const IMAGE_UNSAFE_NATIVE_SLOT_IDS = new Set([
   'MODEL_XAI_GROK_3',
   'MODEL_XAI_GROK_3_MINI_REASONING',
@@ -216,13 +216,78 @@ function updateSlotVisionHint() {
 }
 
 
+function isBuiltinProvider(p) {
+  return !!(p && p.meta?.builtin === true);
+}
+
+const LOCAL_PROXY_PROVIDER_ID = 'anybridge-local-proxy';
+
+/** 构建 AnyBridge 本地代理供应商的模型列表条目（供各「添加模型」页面使用） */
+function localProxyProviderModelsEntry() {
+  const port = (typeof getLocalProxyPort === 'function') ? getLocalProxyPort() : 7450;
+  const apiKey = (typeof getLocalProxyKeyValue === 'function') ? getLocalProxyKeyValue() : '';
+  const models = (typeof getLocalProxyModels === 'function') ? getLocalProxyModels('openai') : [];
+  return {
+    providerId: LOCAL_PROXY_PROVIDER_ID,
+    providerName: 'AnyBridge',
+    models: models.map(m => ({
+      id: m,
+      name: m,
+      supports_tool_call: true,
+      supports_images: true,
+      supports_reasoning: false,
+    })),
+    apiHost: `http://127.0.0.1:${port}`,
+    apiKey,
+    apiPath: '/v1/chat/completions',
+    chatUrl: `http://127.0.0.1:${port}/v1/chat/completions`,
+    apiFormat: 'openai',
+    enabled: true,
+    isLocalProxy: true,
+  };
+}
+
+/** 判断供应商条目是否为 AnyBridge 本地代理 */
+function isLocalProxyProviderEntry(p) {
+  return !!(p && (p.providerId === LOCAL_PROXY_PROVIDER_ID || p.isLocalProxy === true));
+}
+
+function syncLocalProxyProvider() {
+  if (!providerStore || !Array.isArray(providerStore.providers)) return;
+  const port = (typeof getLocalProxyPort === 'function') ? getLocalProxyPort() : 7450;
+  const apiKey = (typeof getLocalProxyKeyValue === 'function') ? getLocalProxyKeyValue() : '';
+  const models = (typeof getLocalProxyModels === 'function') ? getLocalProxyModels('openai') : [];
+  const defaultModel = (typeof getLocalProxyDefaultModel === 'function') ? getLocalProxyDefaultModel('openai') : '';
+  const provider = {
+    id: LOCAL_PROXY_PROVIDER_ID,
+    name: 'AnyBridge',
+    apiHost: `http://127.0.0.1:${port}`,
+    apiKey,
+    apiPath: '/v1/chat/completions',
+    defaultModel: defaultModel || (models[0] || ''),
+    apiFormat: 'openai',
+    enabled: true,
+    models,
+    capabilities: { tools: true, vision: true },
+    modelCaps: {},
+    unlocks: {},
+    meta: { builtin: true, localProxy: true },
+  };
+  const idx = providerStore.providers.findIndex(p => p.id === LOCAL_PROXY_PROVIDER_ID);
+  if (idx >= 0) {
+    providerStore.providers.splice(idx, 1);
+  }
+  providerStore.providers.unshift(provider);
+}
+
 async function loadProviders() {
   if (!invoke) return;
   try {
     providerStore = await invoke('load_providers');
     if (!providerStore || !Array.isArray(providerStore.providers)) {
-      providerStore = { providers: [], codexConfigs: [], claudeCodeConfigs: [], opencodeConfigs: [], platformAccessModes: {} };
+      providerStore = { providers: [], codexConfigs: [], claudeCodeConfigs: [], opencodeConfigs: [] };
     }
+    syncLocalProxyProvider();
     if (!Array.isArray(providerStore.codexConfigs)) {
       providerStore.codexConfigs = [];
     }
@@ -232,12 +297,9 @@ async function loadProviders() {
     if (!Array.isArray(providerStore.opencodeConfigs)) {
       providerStore.opencodeConfigs = [];
     }
-    if (!providerStore.platformAccessModes || typeof providerStore.platformAccessModes !== 'object') {
-      providerStore.platformAccessModes = {};
-    }
     (providerStore.providers || []).forEach(normalizeProviderUnlocks);
   } catch (e) {
-    providerStore = { providers: [], codexConfigs: [], claudeCodeConfigs: [], opencodeConfigs: [], platformAccessModes: {} };
+    providerStore = { providers: [], codexConfigs: [], claudeCodeConfigs: [], opencodeConfigs: [] };
   }
   renderProviders();
   renderEvalProviderOptions();
@@ -286,9 +348,18 @@ function compareProvidersByName(a, b) {
 
 function providerSortedList(list = []) {
   if (!Array.isArray(list)) return [];
-  if (providerSortMode === 'default') return list;
-  const sorted = [...list].sort(compareProvidersByName);
-  return providerSortMode === 'name-desc' ? sorted.reverse() : sorted;
+  let result = list;
+  if (providerSortMode !== 'default') {
+    const sorted = [...list].sort(compareProvidersByName);
+    result = providerSortMode === 'name-desc' ? sorted.reverse() : sorted;
+  }
+  // 本地代理供应商始终排在第一位，不受排序影响
+  const lpIdx = result.findIndex(p => p.id === LOCAL_PROXY_PROVIDER_ID);
+  if (lpIdx > 0) {
+    const [lp] = result.splice(lpIdx, 1);
+    result.unshift(lp);
+  }
+  return result;
 }
 
 function providerVisibleList(list = providerListAll()) {
@@ -390,7 +461,7 @@ function setProviderSortMode(mode) {
 function syncProviderSortControl() {
   const label = document.getElementById('providerSortLabel');
   if (label) label.textContent = providerSortLabel(providerSortMode);
-  document.querySelectorAll('.provider-sort-option').forEach(btn => {
+  document.querySelectorAll('#providerSortMenu .provider-sort-option').forEach(btn => {
     const selected = btn.dataset.sortMode === providerSortMode;
     btn.classList.toggle('active', selected);
     btn.setAttribute('aria-selected', selected ? 'true' : 'false');
@@ -454,7 +525,7 @@ function toggleVisibleProvidersSelection() {
 async function setSelectedProvidersEnabled(enabled) {
   if (!invoke || providerBulkRunning) return;
   const selected = new Set(providerSelectedIds);
-  const targets = (providerStore.providers || []).filter(p => selected.has(p.id) && p?.meta?.codexConfig !== true);
+  const targets = (providerStore.providers || []).filter(p => selected.has(p.id) && p?.meta?.codexConfig !== true && !isBuiltinProvider(p));
   if (!targets.length) return;
   providerBulkRunning = true;
   renderProviderToolbarState(providerListAll().length, providerVisibleList());
@@ -484,14 +555,11 @@ async function setSelectedProvidersEnabled(enabled) {
 async function deleteSelectedProviders() {
   if (providerBulkRunning) return;
   const selected = new Set(providerSelectedIds);
-  const targets = (providerStore.providers || []).filter(p => selected.has(p.id) && p?.meta?.codexConfig !== true);
+  const targets = (providerStore.providers || []).filter(p => selected.has(p.id) && p?.meta?.codexConfig !== true && !isBuiltinProvider(p));
   if (!targets.length) return;
-  const names = targets.slice(0, 4).map(p => p.name || p.id).join('、');
-  const more = targets.length > 4 ? ` 等 ${targets.length} 个` : '';
-  if (!(await showCustomConfirm(`确定删除供应商「${names}${more}」？`, '批量删除确认', 'warn'))) return;
   providerBulkRunning = true;
   renderProviderToolbarState(providerListAll().length, providerVisibleList());
-  providerStore.providers = (providerStore.providers || []).filter(p => !selected.has(p.id) || p?.meta?.codexConfig === true);
+  providerStore.providers = (providerStore.providers || []).filter(p => !selected.has(p.id) || p?.meta?.codexConfig === true || isBuiltinProvider(p));
   targets.forEach(p => providerSelectedIds.delete(p.id));
   await persistProviders();
   providerBulkRunning = false;
@@ -644,20 +712,46 @@ function renderProviderCards(list) {
   return list.map(p => {
     const enabled = p.enabled !== false;
     const selected = providerSelectedIds.has(p.id);
+    const builtin = isBuiltinProvider(p);
+    const builtinBadge = builtin ? '<span class="provider-builtin-badge">本地代理</span>' : '';
+    const toggleHtml = builtin
+      ? ''
+      : `<div class="toggle ${enabled ? 'on' : ''}" title="${enabled ? '已启用，点击禁用' : '未启用，点击启用'}" onclick="toggleProviderEnabled('${escAttr(p.id)}')"></div>`;
+    const actionsHtml = builtin
+      ? `<button class="btn-ghost" onclick="testProvider('${escAttr(p.id)}')">测试</button>
+         ${providerUnlockCardButtonHtml(p)}
+         <button class="btn-ghost" onclick="navigateToProxyModels()">编辑</button>`
+      : `<button class="btn-ghost" onclick="testProvider('${escAttr(p.id)}')">测试</button>
+         ${providerUnlockCardButtonHtml(p)}
+         <button class="btn-ghost" onclick="openProviderEditor('${escAttr(p.id)}')">编辑</button>
+         <button class="btn-ghost" onclick="deleteProvider('${escAttr(p.id)}')">删除</button>`;
 
-    return `
-      <div class="provider-card ${enabled ? 'active' : ''} ${selected ? 'selected' : ''}">
-        <div class="provider-top">
-          <label class="provider-select-check" title="选择供应商" onclick="event.stopPropagation()">
+    const selectCheckHtml = builtin
+      ? ''
+      : `<label class="provider-select-check" title="选择供应商" onclick="event.stopPropagation()">
             <input type="checkbox" ${selected ? 'checked' : ''} onchange="toggleProviderSelection('${escAttr(p.id)}', this.checked, event)">
             <span></span>
-          </label>
+          </label>`;
+    const connStatusHtml = builtin
+      ? `<div class="provider-conn-status" title="未测试">
+            <div class="conn-dot no" id="conn-dot-${escAttr(p.id)}"></div>
+            <span class="conn-text" id="conn-text-${escAttr(p.id)}" title="未测试">未测试</span>
+          </div>`
+      : `<div class="provider-conn-status" title="未测试">
+            <div class="conn-dot no" id="conn-dot-${escAttr(p.id)}"></div>
+            <span class="conn-text" id="conn-text-${escAttr(p.id)}" title="未测试">未测试</span>
+          </div>`;
+
+    return `
+      <div class="provider-card ${enabled ? 'active' : ''} ${selected ? 'selected' : ''} ${builtin ? 'provider-card-builtin' : ''}">
+        <div class="provider-top">
+          ${selectCheckHtml}
           <div class="provider-id">
             <div>
-              <div class="provider-name">${escAttr(p.name)}</div>
+              <div class="provider-name">${escAttr(p.name)} ${builtinBadge}</div>
             </div>
           </div>
-          <div class="toggle ${enabled ? 'on' : ''}" title="${enabled ? '已启用，点击禁用' : '未启用，点击启用'}" onclick="toggleProviderEnabled('${escAttr(p.id)}')"></div>
+          ${toggleHtml}
         </div>
         <div class="provider-body">
           <div class="field provider-model-field-block">
@@ -666,15 +760,9 @@ function renderProviderCards(list) {
           </div>
         </div>
         <div class="provider-footer">
-          <div class="provider-conn-status" title="未测试">
-            <div class="conn-dot no" id="conn-dot-${escAttr(p.id)}"></div>
-            <span class="conn-text" id="conn-text-${escAttr(p.id)}" title="未测试">未测试</span>
-          </div>
+          ${connStatusHtml}
           <div class="provider-card-actions">
-            <button class="btn-ghost" onclick="testProvider('${escAttr(p.id)}')">测试</button>
-            ${providerUnlockCardButtonHtml(p)}
-            <button class="btn-ghost" onclick="openProviderEditor('${escAttr(p.id)}')">编辑</button>
-            <button class="btn-ghost" onclick="deleteProvider('${escAttr(p.id)}')">删除</button>
+            ${actionsHtml}
           </div>
         </div>
       </div>`;
@@ -698,18 +786,61 @@ function renderProviderListTable(list) {
           ${list.map(p => {
             const enabled = p.enabled !== false;
             const selected = providerSelectedIds.has(p.id);
+            const builtin = isBuiltinProvider(p);
+            const builtinBadge = builtin ? '<span class="provider-builtin-badge">本地代理</span>' : '';
+            const actionButtons = builtin
+              ? `<button class="provider-list-icon-btn" onclick="testProvider('${escAttr(p.id)}')" title="测试" aria-label="测试 ${escAttr(p.name || p.id)}">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M10 2v7.3a4 4 0 0 1-.54 2L4.2 20.1A1.3 1.3 0 0 0 5.32 22h13.36a1.3 1.3 0 0 0 1.12-1.9l-5.26-8.8a4 4 0 0 1-.54-2V2"></path>
+                    <path d="M8.5 2h7"></path>
+                    <path d="M7.5 15h9"></path>
+                  </svg>
+                </button>
+                ${providerUnlockListButtonHtml(p)}
+                <button class="provider-list-icon-btn" onclick="navigateToProxyModels()" title="编辑" aria-label="编辑">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M12 20h9"></path>
+                    <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"></path>
+                  </svg>
+                </button>`
+              : `<button class="provider-list-icon-btn" onclick="testProvider('${escAttr(p.id)}')" title="测试" aria-label="测试 ${escAttr(p.name || p.id)}">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M10 2v7.3a4 4 0 0 1-.54 2L4.2 20.1A1.3 1.3 0 0 0 5.32 22h13.36a1.3 1.3 0 0 0 1.12-1.9l-5.26-8.8a4 4 0 0 1-.54-2V2"></path>
+                    <path d="M8.5 2h7"></path>
+                    <path d="M7.5 15h9"></path>
+                  </svg>
+                </button>
+                ${providerUnlockListButtonHtml(p)}
+                <button class="provider-list-icon-btn" onclick="openProviderEditor('${escAttr(p.id)}')" title="编辑" aria-label="编辑 ${escAttr(p.name || p.id)}">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M12 20h9"></path>
+                    <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"></path>
+                  </svg>
+                </button>
+                <button class="provider-list-icon-btn danger" onclick="deleteProvider('${escAttr(p.id)}')" title="删除" aria-label="删除 ${escAttr(p.name || p.id)}">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M3 6h18"></path>
+                    <path d="M8 6V4h8v2"></path>
+                    <path d="M19 6l-1 14H6L5 6"></path>
+                    <path d="M10 11v5"></path>
+                    <path d="M14 11v5"></path>
+                  </svg>
+                </button>`;
+            const toggleHtml = builtin
+              ? ''
+              : `<div class="toggle ${enabled ? 'on' : ''}" title="${enabled ? '已启用，点击禁用' : '未启用，点击启用'}" onclick="toggleProviderEnabled('${escAttr(p.id)}')"></div>`;
             return `
-              <tr class="${selected ? 'selected' : ''}">
+              <tr class="${selected ? 'selected' : ''} ${builtin ? 'provider-list-row-builtin' : ''}">
                 <td class="provider-list-check-col">
-                  <label class="provider-select-check provider-select-check-table" title="选择供应商" onclick="event.stopPropagation()">
+                  ${builtin ? '' : `<label class="provider-select-check provider-select-check-table" title="选择供应商" onclick="event.stopPropagation()">
                     <input type="checkbox" ${selected ? 'checked' : ''} onchange="toggleProviderSelection('${escAttr(p.id)}', this.checked, event)">
                     <span></span>
-                  </label>
+                  </label>`}
                 </td>
                 <td>
                   <div class="provider-list-identity">
                     <div class="provider-list-name-wrap">
-                      <div class="provider-name">${escAttr(p.name)}</div>
+                      <div class="provider-name">${escAttr(p.name)} ${builtinBadge}</div>
                       <div class="provider-list-sub">${escAttr(p.apiHost || p.id || '')}</div>
                     </div>
                   </div>
@@ -722,34 +853,12 @@ function renderProviderListTable(list) {
                 </td>
                 <td class="provider-list-action-col">
                   <div class="provider-list-actions">
-                    <button class="provider-list-icon-btn" onclick="testProvider('${escAttr(p.id)}')" title="测试" aria-label="测试 ${escAttr(p.name || p.id)}">
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                        <path d="M10 2v7.3a4 4 0 0 1-.54 2L4.2 20.1A1.3 1.3 0 0 0 5.32 22h13.36a1.3 1.3 0 0 0 1.12-1.9l-5.26-8.8a4 4 0 0 1-.54-2V2"></path>
-                        <path d="M8.5 2h7"></path>
-                        <path d="M7.5 15h9"></path>
-                      </svg>
-                    </button>
-                    ${providerUnlockListButtonHtml(p)}
-                    <button class="provider-list-icon-btn" onclick="openProviderEditor('${escAttr(p.id)}')" title="编辑" aria-label="编辑 ${escAttr(p.name || p.id)}">
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                        <path d="M12 20h9"></path>
-                        <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"></path>
-                      </svg>
-                    </button>
-                    <button class="provider-list-icon-btn danger" onclick="deleteProvider('${escAttr(p.id)}')" title="删除" aria-label="删除 ${escAttr(p.name || p.id)}">
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                        <path d="M3 6h18"></path>
-                        <path d="M8 6V4h8v2"></path>
-                        <path d="M19 6l-1 14H6L5 6"></path>
-                        <path d="M10 11v5"></path>
-                        <path d="M14 11v5"></path>
-                      </svg>
-                    </button>
+                    ${actionButtons}
                   </div>
                 </td>
                 <td class="provider-list-enabled-col">
                   <div class="provider-list-status-cell">
-                    <div class="toggle ${enabled ? 'on' : ''}" title="${enabled ? '已启用，点击禁用' : '未启用，点击启用'}" onclick="toggleProviderEnabled('${escAttr(p.id)}')"></div>
+                    ${toggleHtml}
                   </div>
                 </td>
               </tr>`;
@@ -761,6 +870,7 @@ function renderProviderListTable(list) {
 }
 
 function renderProviders() {
+  syncLocalProxyProvider();
   const grid = document.getElementById('providerGrid');
   const empty = document.getElementById('providerEmpty');
   if (!grid) return;
@@ -1846,7 +1956,7 @@ function renderEvalProviderOptions(options = {}) {
   const select = document.getElementById('eval-provider-select');
   if (!select) return;
   const previous = select.value;
-  const providers = (providerStore.providers || []).filter(p => p.enabled !== false && p.meta?.codexConfig !== true);
+  const providers = (providerStore.providers || []).filter(p => p.enabled !== false && p.meta?.codexConfig !== true && !isBuiltinProvider(p));
   if (!providers.length) {
     select.innerHTML = '<option value="">无启用供应商</option>';
     renderEvalModelOptions({ fetchRemote });
@@ -2607,7 +2717,6 @@ async function startEval() {
 async function deleteEvalReport(id, event) {
   if (event) event.stopPropagation();
   if (!id) return;
-  if (!(await showCustomConfirm('确定删除这份检测报告？', '删除确认', 'warn'))) return;
   try {
     evalReports = await invoke('delete_eval_report', { id }) || [];
     renderEvalReport(evalReports[0] || null);
@@ -2625,6 +2734,10 @@ async function toggleProviderEnabled(id) {
   if (!p) return;
   if (p.meta?.codexConfig === true) {
     showCustomAlert('这是 Codex 配置，不属于供应商启用状态。', '无法操作', 'warn');
+    return;
+  }
+  if (isBuiltinProvider(p)) {
+    showCustomAlert('内置供应商不可禁用。', '无法操作', 'warn');
     return;
   }
   const next = !(p.enabled !== false);
@@ -2649,7 +2762,10 @@ async function deleteProvider(id) {
     showCustomAlert('这是 Codex 配置，请在 Codex 配置页删除。', '无法删除供应商', 'warn');
     return;
   }
-  if (!(await showCustomConfirm(`确定删除供应商「${p ? p.name : id}」？`, '删除确认', 'warn'))) return;
+  if (isBuiltinProvider(p)) {
+    showCustomAlert('内置供应商不可删除。', '无法删除供应商', 'warn');
+    return;
+  }
   providerStore.providers = providerStore.providers.filter(x => x.id !== id);
   await persistProviders();
   renderProviders();
@@ -2661,11 +2777,45 @@ async function deleteProvider(id) {
 async function persistProviders() {
   if (!invoke) return;
   try {
-    await invoke('save_providers', { store: providerStore });
+    const storeToSave = {
+      ...providerStore,
+      providers: (providerStore.providers || []).filter(p => !isBuiltinProvider(p)),
+    };
+    await invoke('save_providers', { store: storeToSave });
   } catch (e) {
     addLog('err', '保存供应商失败: ' + e);
   }
 }
 
+function copyLocalProxyInfo() {
+  const p = providerStore.providers.find(x => x.id === LOCAL_PROXY_PROVIDER_ID);
+  if (!p) return;
+  const info = [
+    `名称: ${p.name}`,
+    `API Host: ${p.apiHost}`,
+    `API Path: ${p.apiPath}`,
+    `API Key: ${p.apiKey || '(空)'}`,
+    `默认模型: ${p.defaultModel || '(无)'}`,
+    `可用模型: ${(p.models || []).join(', ') || '(无)'}`,
+  ].join('\n');
+  navigator.clipboard?.writeText(info).then(() => {
+    showCustomAlert('连接信息已复制到剪贴板。', '复制成功', 'info');
+  }).catch(() => {
+    showCustomAlert(info, '连接信息', 'info');
+  });
+}
+
+function navigateToProxyModels() {
+  navigateTo('proxy');
+  activateProxyPanel('routes');
+}
+
+function navigateToProxyEnhancement() {
+  navigateTo('proxy');
+  activateProxyPanel('enhancement');
+  activateEnhancementPanel('vision');
+}
+
 syncEvalCombos();
+
 

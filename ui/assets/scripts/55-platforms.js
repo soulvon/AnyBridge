@@ -117,158 +117,12 @@ function platformLocalProxyRuntime(platformId) {
   return getLocalProxyRuntimeConfig(platformId);
 }
 
-const PLATFORM_ACCESS_MODE_IDS = new Set(['codebuddy', 'workbuddy', 'zcode']);
-
-function platformSupportsAccessMode(platformId) {
-  return PLATFORM_ACCESS_MODE_IDS.has(platformId);
-}
-
-function normalizePlatformAccessMode(mode) {
-  return String(mode || '').trim() === 'proxy' ? 'proxy' : 'direct';
-}
-
-function platformModelList(platformId) {
-  if (platformId === 'codebuddy') return Array.isArray(cbModels) ? cbModels : [];
-  if (platformId === 'workbuddy') return Array.isArray(wbModels) ? wbModels : [];
-  if (platformId === 'zcode') return Array.isArray(zcModels) ? zcModels : [];
-  return [];
-}
-
-function platformAccessMode(platformId) {
-  const stored = providerStore?.platformAccessModes?.[platformId];
-  if (stored) return normalizePlatformAccessMode(stored);
-  return platformModelList(platformId).some(model => model?.localProxy) ? 'proxy' : 'direct';
-}
-
-async function setPlatformAccessMode(platformId, mode) {
-  if (!platformSupportsAccessMode(platformId)) return;
-  if (!providerStore || typeof providerStore !== 'object') return;
-  if (!providerStore.platformAccessModes || typeof providerStore.platformAccessModes !== 'object') {
-    providerStore.platformAccessModes = {};
-  }
-  providerStore.platformAccessModes[platformId] = normalizePlatformAccessMode(mode);
-  try {
-    if (typeof persistProviders === 'function') await persistProviders();
-    renderPlatformAccessModeUi(platformId);
-  } catch (e) {
-    showCustomAlert(String(e), '接入模式保存失败', 'error');
-  }
-}
-
-function platformProxyRoutes(format = 'openai') {
-  const fmt = format === 'anthropic' ? 'anthropic' : 'openai';
-  const routes = Array.isArray(proxyRoutesStore?.routes) ? proxyRoutesStore.routes : [];
-  return routes
-    .filter(route => route && route.enabled !== false)
-    .filter(route => Array.isArray(route.exposedFormats) && route.exposedFormats.includes(fmt))
-    .filter(route => Array.isArray(route.targets) && route.targets.length > 0);
-}
-
-function platformProxyRouteTargetText(route) {
-  const targets = Array.isArray(route?.targets) ? route.targets : [];
-  if (!targets.length) return '未配置目标';
-  return targets.map(target => {
-    if (typeof proxyRouteTargetLabel === 'function') return proxyRouteTargetLabel(target);
-    return `${target.providerId || '未选择供应商'} / ${target.model || '未填写模型'}`;
-  }).join(' -> ');
-}
-
-function platformProxyRouteCapabilities(route) {
-  const caps = [];
-  if (route?.capabilities?.stream) caps.push('流式');
-  if (route?.capabilities?.tools) caps.push('工具');
-  if (route?.capabilities?.vision) caps.push('图片');
-  if (route?.capabilities?.reasoning) caps.push('推理');
-  return caps;
-}
-
-function platformMaskKey(value) {
-  const key = String(value || '').trim();
-  if (!key) return '未生成';
-  if (key.length <= 14) return '***';
-  return `${key.slice(0, 10)}***${key.slice(-4)}`;
-}
-
-function renderPlatformProxyRouteList(platformId) {
-  const list = document.getElementById(`${platformId}-proxy-route-list`);
-  if (!list) return;
-  const routes = platformProxyRoutes('openai');
-  if (!routes.length) {
-    list.innerHTML = `
-      <div class="platform-proxy-route-empty">
-        尚未配置启用的 OpenAI 代理模型路由。请先到「代理 > 模型路由」添加或导入路由。
-      </div>
-    `;
-    return;
-  }
-  list.innerHTML = routes.map(route => {
-    const caps = platformProxyRouteCapabilities(route);
-    return `
-      <div class="platform-proxy-route-row">
-        <div class="platform-proxy-route-main">
-          <code>${platformEsc(route.id)}</code>
-          <span>${platformEsc(route.displayName || route.id)}</span>
-        </div>
-        <div class="platform-proxy-route-target">${platformEsc(platformProxyRouteTargetText(route))}</div>
-        <div class="platform-proxy-route-caps">
-          ${caps.length ? caps.map(cap => `<span>${platformEsc(cap)}</span>`).join('') : '<span class="muted">能力未确认</span>'}
-        </div>
-      </div>
-    `;
-  }).join('');
-}
-
-function renderPlatformAccessModeUi(platformId) {
-  if (!platformSupportsAccessMode(platformId)) return;
-  const mode = platformAccessMode(platformId);
-  const routes = platformProxyRoutes('openai');
-  const runtime = platformLocalProxyRuntime(platformId);
-  const card = document.querySelector(`[data-platform-access-card="${platformId}"]`);
-  if (card) {
-    card.querySelectorAll('[data-access-mode]').forEach(btn => {
-      const active = btn.dataset.accessMode === mode;
-      btn.classList.toggle('active', active);
-      btn.setAttribute('aria-pressed', String(active));
-    });
-  }
-  const proxyPanel = document.getElementById(`${platformId}-proxy-mode-panel`);
-  const directPanel = document.getElementById(`${platformId === 'codebuddy' ? 'cb' : platformId === 'workbuddy' ? 'wb' : 'zc'}-list-view`);
-  if (proxyPanel) proxyPanel.style.display = mode === 'proxy' ? '' : 'none';
-  if (directPanel) directPanel.style.display = mode === 'direct' ? '' : 'none';
-  setText(`${platformId}-proxy-route-count`, String(routes.length));
-  setText(`${platformId}-proxy-default-model`, runtime?.defaultModel || '未设置');
-  setText(`${platformId}-proxy-endpoint`, runtime?.endpoint || '-');
-  setText(`${platformId}-proxy-key`, platformMaskKey(runtime?.apiKey));
-  renderPlatformProxyRouteList(platformId);
-}
-
-function renderAllPlatformAccessModeUi() {
-  PLATFORM_ACCESS_MODE_IDS.forEach(renderPlatformAccessModeUi);
-}
 
 function openProxyRoutesFromPlatform() {
   if (typeof openProxyPanel === 'function') {
     openProxyPanel('routes');
   } else if (typeof navigateTo === 'function') {
     navigateTo('proxy');
-  }
-}
-
-async function copyLocalProxyInfoPlatform(platformId) {
-  const runtime = platformLocalProxyRuntime(platformId);
-  if (!runtime) return;
-  const routes = platformProxyRoutes('openai').map(route => route.id);
-  const text = [
-    `Base URL: ${runtime.endpoint}`,
-    `API Key: ${runtime.apiKey || ''}`,
-    `Default Model: ${runtime.defaultModel || ''}`,
-    `Models: ${routes.join(', ')}`,
-  ].join('\n');
-  try {
-    await navigator.clipboard.writeText(text);
-    if (typeof showBottomToast === 'function') showBottomToast('本地代理信息已复制', 'success');
-  } catch (e) {
-    showCustomAlert(String(e), '复制失败', 'error');
   }
 }
 
@@ -286,15 +140,17 @@ function platformLocalProxyCard(platformId, info) {
     platformId,
     name: 'AnyBridge 本地代理',
     description: isClaude
-      ? '通过 AnyBridge Claude 兼容入口转发到模型映射、代理增强和日志统计。'
-      : '通过 AnyBridge OpenAI 兼容入口转发到模型映射、代理增强和日志统计。',
+      ? '通过 AnyBridge Claude 兼容入口转发到代理模型列表、代理增强和日志统计。'
+      : '通过 AnyBridge OpenAI 兼容入口转发到代理模型列表、代理增强和日志统计。',
     typeLabel: '本地',
     tone: 'local',
     current: !!current,
     currentLabel: isOpenCode ? '已加入' : '当前使用',
-    model: runtime.defaultModel || 'AnyBridge 默认路由',
+    model: runtime.defaultModel || '未配置',
     endpoint: runtime.endpoint,
     protocol: isClaude ? 'anthropic-compatible' : (isOpenCode ? 'openai-compatible' : 'responses'),
+    configAction: isOpenCode ? '' : 'openProxyRoutesFromPlatform()',
+    configLabel: '配置模型',
     action: `applyLocalProxyPlatformConfig(${platformJsArg(platformId)})`,
     actionLabel: isOpenCode ? '加入' : '切换',
     removeAction: isOpenCode && current ? `removeOpenCodeProviderConfig(${platformJsArg(platformLocalProxyConfigId(platformId))})` : '',
@@ -317,8 +173,11 @@ async function ensureLocalProxyPlatformConfig(platformId) {
   if (!runtime.apiKey) throw new Error('本地代理 key 尚未生成');
   const models = Array.isArray(runtime.models) && runtime.models.length
     ? runtime.models
-    : [runtime.defaultModel || 'anybridge-default'];
-  const model = runtime.defaultModel || models[0] || 'anybridge-default';
+    : [];
+  if (!models.length) {
+    throw new Error('尚未配置启用的本地代理模型，请先到「代理 > 模型列表」添加模型。');
+  }
+  const model = runtime.defaultModel || models[0];
   const base = {
     id: platformLocalProxyConfigId(platformId),
     name: 'AnyBridge 本地代理',
@@ -367,7 +226,7 @@ async function applyLocalProxyPlatformConfig(platformId) {
   const providerId = await ensureLocalProxyPlatformConfig(platformId);
   const runtime = platformLocalProxyRuntime(platformId);
   const ok = await showCustomConfirm(
-    `将把 ${def.name} 切换到「AnyBridge 本地代理」。\n\n模型：${runtime.defaultModel || 'AnyBridge 默认路由'}\n地址：${runtime.endpoint}\n\n请求会先进入 AnyBridge 全局代理服务；如果代理未启动，外部工具会连接失败。`,
+    `将把 ${def.name} 切换到「AnyBridge 本地代理」。\n\n模型列表：${(runtime.models || []).join(', ') || '未配置'}\n地址：${runtime.endpoint}\n\n请求会先进入 AnyBridge 全局代理服务；如果代理未启动，外部工具会连接失败。`,
     platformId === 'opencode' ? '加入本地代理配置' : '切换到本地代理',
     'warn'
   );
@@ -1171,12 +1030,15 @@ function renderCodexConfigCard(config) {
   const removeButton = config.removeAction
     ? `<button class="btn-ghost codex-card-action" type="button" title="从 live 配置移除" aria-label="从 live 配置移除 ${platformEsc(config.name)}" ${disabled ? 'disabled' : ''} onclick="${platformEsc(config.removeAction)}">${platformEsc(config.removeLabel || '移除')}</button>`
     : '';
+  const configButton = config.configAction
+    ? `<button class="btn-ghost codex-card-action" type="button" aria-label="${platformEsc(config.configLabel || '配置')} ${platformEsc(config.name)}" ${disabled ? 'disabled' : ''} onclick="${platformEsc(config.configAction)}">${platformEsc(config.configLabel || '配置')}</button>`
+    : '';
   const switchButton = config.current || !config.action
     ? ''
     : `<button class="btn-primary codex-card-action codex-switch-action" ${disabled ? 'disabled' : ''} onclick="${platformEsc(config.action)}">${platformEsc(config.actionLabel || '切换')}</button>`;
   const actions = config.current
-    ? `<div class="codex-config-actions">${editButton}${deleteButton}${removeButton}${codexCurrentAction(config.currentLabel || '当前使用')}</div>`
-    : (editButton || deleteButton || switchButton ? `<div class="codex-config-actions">${editButton}${deleteButton}${switchButton}</div>` : '<span class="codex-row-muted">-</span>');
+    ? `<div class="codex-config-actions">${editButton}${deleteButton}${configButton}${removeButton}${codexCurrentAction(config.currentLabel || '当前使用')}</div>`
+    : (editButton || deleteButton || configButton || switchButton ? `<div class="codex-config-actions">${editButton}${deleteButton}${configButton}${switchButton}</div>` : '<span class="codex-row-muted">-</span>');
   const meta = codexConfigMetaLine([
     config.model || '-',
     config.endpoint || '-',
@@ -1210,8 +1072,6 @@ async function deleteCodexProviderConfig(providerId) {
     showCustomAlert('当前正在使用的配置不能直接删除，请先切换到其他配置或官方配置。', '无法删除当前配置', 'warn');
     return;
   }
-  const ok = await showCustomConfirm(`确定删除配置「${provider.name || provider.id}」？只会删除这份 Codex 配置，不会删除来源供应商。`, '删除配置', 'warn');
-  if (!ok) return;
   providerStore.codexConfigs = (providerStore.codexConfigs || []).filter(p => p.id !== providerId);
   await syncCodexConfigUiAfterStoreChange();
   if (typeof addLog === 'function') addLog('info', `已删除 Codex 配置: ${provider.name || provider.id}`);
@@ -1962,8 +1822,6 @@ async function deleteClaudeCodeProviderConfig(providerId) {
     showCustomAlert('当前正在使用的配置不能直接删除，请先切换到其他配置或官方配置。', '无法删除当前配置', 'warn');
     return;
   }
-  const ok = await showCustomConfirm(`确定删除配置「${provider.name || provider.id}」？只会删除这份 Claude Code 配置，不会删除来源供应商。`, '删除配置', 'warn');
-  if (!ok) return;
   providerStore.claudeCodeConfigs = (providerStore.claudeCodeConfigs || []).filter(p => p.id !== providerId);
   await syncClaudeCodeConfigUiAfterStoreChange();
   if (typeof addLog === 'function') addLog('info', `已删除 Claude Code 配置: ${provider.name || provider.id}`);
@@ -2055,7 +1913,8 @@ function opencodeConfigProviderById(id) {
 function opencodeConfigSourceProviders() {
   return (providerStore.providers || []).filter(p =>
     p &&
-    p.enabled !== false
+    p.enabled !== false &&
+    !isBuiltinProvider(p)
   );
 }
 
@@ -2622,8 +2481,6 @@ async function deleteOpenCodeProviderConfig(providerId) {
     showCustomAlert('这份配置已加入 OpenCode live 配置，请先从 OpenCode 移除后再删除。', '无法删除已加入配置', 'warn');
     return;
   }
-  const ok = await showCustomConfirm(`确定删除配置「${provider.name || provider.id}」？只会删除这份 OpenCode 配置，不会删除来源供应商。`, '删除配置', 'warn');
-  if (!ok) return;
   providerStore.opencodeConfigs = (providerStore.opencodeConfigs || []).filter(p => p.id !== providerId);
   await syncOpenCodeConfigUiAfterStoreChange();
   if (typeof addLog === 'function') addLog('info', `已删除 OpenCode 配置: ${provider.name || provider.id}`);
@@ -3058,103 +2915,170 @@ let cbProviderModels = [];
 let cbEditingIndex = -1;
 let cbAddSelectedProvider = null; // 当前在「添加」页面选中的供应商
 let cbAddSearchKw = '';
+const TENCENT_BUDDY_SYNC_STORAGE_KEY = 'anybridge.tencentBuddyModelSyncEnabled';
+let tencentBuddySyncEnabled = localStorage.getItem(TENCENT_BUDDY_SYNC_STORAGE_KEY) === 'true';
+const PLATFORM_ADD_PROVIDER_SORT_STORAGE_KEY = 'anybridge.platformAddProviderSortMode';
+const PLATFORM_ADD_PROVIDER_SORT_MODES = new Set(['default', 'name-asc', 'name-desc']);
+const PLATFORM_ADD_PROVIDER_SORT_LABELS = {
+  default: '默认排序',
+  'name-asc': '名称正序',
+  'name-desc': '名称反序',
+};
+const PLATFORM_ADD_SORT_PREFIXES = ['cb', 'wb', 'zc'];
+let platformAddProviderSortMode = (() => {
+  try {
+    return normalizePlatformAddProviderSortMode(localStorage.getItem(PLATFORM_ADD_PROVIDER_SORT_STORAGE_KEY));
+  } catch (_) {
+    return 'default';
+  }
+})();
 const cbSelectedModelIds = {
   Cb: new Set(),
   Wb: new Set(),
   Zc: new Set(),
 };
 
-const CB_PLATFORM = 'codebuddy';
-function localProxyModelEntriesForPlatform(platformId) {
-  const runtime = platformLocalProxyRuntime(platformId);
-  if (!runtime) throw new Error('本地代理配置未初始化');
-  if (!runtime.apiKey) throw new Error('本地代理 key 尚未生成');
-  const routes = platformProxyRoutes('openai');
-  if (!routes.length) throw new Error('尚未配置启用的 OpenAI 代理模型路由，请先到「代理 > 模型路由」添加或导入。');
-  const endpoint = platformId === 'zcode'
-    ? runtime.endpoint
-    : `${String(runtime.endpoint || '').replace(/\/+$/, '')}/chat/completions`;
-  return routes.map(route => {
-    const entry = {
-      id: route.id,
-      name: route.displayName || route.id,
-      vendor: 'AnyBridge',
-      url: endpoint,
-      apiKey: runtime.apiKey,
-      maxInputTokens: 128000,
-      maxOutputTokens: 8192,
-      supportsToolCall: route.capabilities?.tools === true,
-      supportsImages: route.capabilities?.vision === true,
-      supportsReasoning: route.capabilities?.reasoning === true,
-      enabled: true,
-      localProxy: true,
-      proxyRouteId: route.id,
-    };
-    if (platformId === 'workbuddy') entry.useCustomProtocol = true;
-    if (platformId === 'zcode' && typeof zcProviderIdForModel === 'function') {
-      entry.providerId = zcProviderIdForModel(entry);
-    }
-    return entry;
+function normalizePlatformAddProviderSortMode(mode) {
+  return PLATFORM_ADD_PROVIDER_SORT_MODES.has(mode) ? mode : 'default';
+}
+
+function platformAddProviderSortLabel(mode) {
+  return PLATFORM_ADD_PROVIDER_SORT_LABELS[normalizePlatformAddProviderSortMode(mode)]
+    || PLATFORM_ADD_PROVIDER_SORT_LABELS.default;
+}
+
+function platformAddProviderSortText(p) {
+  return String(p?.providerName || p?.providerId || '').trim();
+}
+
+function comparePlatformAddProvidersByName(a, b) {
+  const primary = platformAddProviderSortText(a).localeCompare(platformAddProviderSortText(b), 'zh-CN', {
+    numeric: true,
+    sensitivity: 'base',
+  });
+  if (primary !== 0) return primary;
+  return String(a?.providerId || '').localeCompare(String(b?.providerId || ''), 'zh-CN', {
+    numeric: true,
+    sensitivity: 'base',
   });
 }
 
-function localProxyModelEntryForPlatform(platformId) {
-  return localProxyModelEntriesForPlatform(platformId)[0];
+function platformAddProviderSortedList(list = []) {
+  if (!Array.isArray(list)) return [];
+  let result = list;
+  if (platformAddProviderSortMode !== 'default') {
+    const sorted = [...list].sort(comparePlatformAddProvidersByName);
+    result = platformAddProviderSortMode === 'name-desc' ? sorted.reverse() : sorted;
+  }
+  // AnyBridge 本地代理始终排在第一位，不受排序影响
+  const lpIdx = result.findIndex(p => isLocalProxyProviderEntry(p));
+  if (lpIdx > 0) {
+    const [lp] = result.splice(lpIdx, 1);
+    result.unshift(lp);
+  }
+  return result;
 }
 
-async function applyLocalProxyModelPlatform(platformId) {
-  if (typeof ensureLocalProxyConfig === 'function') await ensureLocalProxyConfig({});
-  const def = platformDef(platformId);
-  let entries = [];
-  let runtime = null;
-  try {
-    entries = localProxyModelEntriesForPlatform(platformId);
-    runtime = platformLocalProxyRuntime(platformId);
-  } catch (e) {
-    if (typeof addLog === 'function') addLog('err', `${def.name} 本地代理配置不可用: ${e}`);
-    showCustomAlert(String(e), '无法同步本地代理', 'error');
-    return;
-  }
-  const ok = await showCustomConfirm(
-    `将向 ${def.name} 写入 ${entries.length} 个「AnyBridge 本地代理」模型。\n\n来源：代理 > 模型路由\n地址：${runtime?.endpoint || ''}\n\n同名直连模型会被当前代理路由模型替换。请求会先进入 AnyBridge 全局代理服务；如果代理未启动，外部工具会连接失败。`,
-    '同步本地代理配置',
-    'warn'
-  );
-  if (!ok) return;
+function platformAddProviderSearchHaystack(p) {
+  return [
+    p?.providerName,
+    p?.providerId,
+  ].map(x => String(x || '').toLowerCase()).join(' ');
+}
 
-  const applyEntries = (models) => {
-    const list = Array.isArray(models) ? models : [];
-    const routeIds = new Set(entries.map(entry => entry.id));
-    const preserved = list.filter(model => {
-      if (!model) return false;
-      if (model.localProxy || (model.vendor === 'AnyBridge' && model.name === 'AnyBridge 本地代理')) return false;
-      return !routeIds.has(String(model.id || ''));
+function platformAddVisibleProviders(list = [], keyword = '') {
+  const source = Array.isArray(list) ? list : [];
+  const terms = String(keyword || '').trim().toLowerCase().split(/\s+/).filter(Boolean);
+  const filtered = terms.length
+    ? source.filter(p => {
+        const haystack = platformAddProviderSearchHaystack(p);
+        return terms.every(term => haystack.includes(term));
+      })
+    : source;
+  return platformAddProviderSortedList(filtered);
+}
+
+function renderPlatformAddProviderLists() {
+  renderCbAddProviderList();
+  renderWbAddProviderList();
+  renderZcAddProviderList();
+}
+
+function setPlatformAddProviderSortMode(mode) {
+  platformAddProviderSortMode = normalizePlatformAddProviderSortMode(mode);
+  try {
+    localStorage.setItem(PLATFORM_ADD_PROVIDER_SORT_STORAGE_KEY, platformAddProviderSortMode);
+  } catch (_) {}
+  renderPlatformAddProviderLists();
+}
+
+function syncPlatformAddSortControl(prefix) {
+  const label = document.getElementById(`${prefix}AddSortLabel`);
+  if (label) label.textContent = platformAddProviderSortLabel(platformAddProviderSortMode);
+  const menu = document.getElementById(`${prefix}AddSortMenu`);
+  menu?.querySelectorAll('.provider-sort-option').forEach(btn => {
+    const selected = btn.dataset.sortMode === platformAddProviderSortMode;
+    btn.classList.toggle('active', selected);
+    btn.setAttribute('aria-selected', selected ? 'true' : 'false');
+  });
+}
+
+function syncAllPlatformAddSortControls() {
+  PLATFORM_ADD_SORT_PREFIXES.forEach(syncPlatformAddSortControl);
+}
+
+function setPlatformAddSortMenuOpen(prefix, open) {
+  if (open) {
+    PLATFORM_ADD_SORT_PREFIXES.forEach(otherPrefix => {
+      if (otherPrefix !== prefix) setPlatformAddSortMenuOpen(otherPrefix, false);
     });
-    return [...entries, ...preserved];
-  };
-
-  try {
-    if (platformId === 'codebuddy') {
-      cbModels = applyEntries(cbModels);
-      renderCodeBuddyModels();
-      await saveCodeBuddyModels({ silent: true, throwOnError: true });
-    } else if (platformId === 'workbuddy') {
-      wbModels = applyEntries(wbModels);
-      renderWbModels();
-      await saveWbModels({ silent: true, throwOnError: true });
-    } else if (platformId === 'zcode') {
-      zcModels = applyEntries(zcModels);
-      renderZcModels();
-      await saveZcModels({ silent: true, throwOnError: true });
-    }
-    await setPlatformAccessMode(platformId, 'proxy');
-    if (typeof addLog === 'function') addLog('ok', `${def.name} 已同步 ${entries.length} 个 AnyBridge 本地代理模型`);
-    showCustomAlert(`${def.name} 已同步 ${entries.length} 个 AnyBridge 本地代理模型。`, '写入完成', 'success');
-  } catch (e) {
-    if (typeof addLog === 'function') addLog('err', `${def.name} 写入本地代理模型失败: ${e}`);
-    showCustomAlert(String(e), '写入失败', 'error');
+    if (typeof closeProviderSortMenu === 'function') closeProviderSortMenu();
   }
+  const control = document.getElementById(`${prefix}AddSortControl`);
+  const trigger = document.getElementById(`${prefix}AddSortTrigger`);
+  if (!control || !trigger) return;
+  control.classList.toggle('open', !!open);
+  trigger.setAttribute('aria-expanded', open ? 'true' : 'false');
 }
+
+function togglePlatformAddSortMenu(prefix, event) {
+  if (event) event.stopPropagation();
+  syncPlatformAddSortControl(prefix);
+  const control = document.getElementById(`${prefix}AddSortControl`);
+  setPlatformAddSortMenuOpen(prefix, !control?.classList.contains('open'));
+}
+
+function closePlatformAddSortMenus() {
+  PLATFORM_ADD_SORT_PREFIXES.forEach(prefix => setPlatformAddSortMenuOpen(prefix, false));
+}
+
+function choosePlatformAddSortMode(prefix, mode) {
+  setPlatformAddProviderSortMode(mode);
+  closePlatformAddSortMenus();
+  document.getElementById(`${prefix}AddSortTrigger`)?.focus();
+}
+
+function toggleCbAddSort(event) { togglePlatformAddSortMenu('cb', event); }
+function chooseCbAddSortMode(mode) { choosePlatformAddSortMode('cb', mode); }
+function toggleWbAddSort(event) { togglePlatformAddSortMenu('wb', event); }
+function chooseWbAddSortMode(mode) { choosePlatformAddSortMode('wb', mode); }
+function toggleZcAddSort(event) { togglePlatformAddSortMenu('zc', event); }
+function chooseZcAddSortMode(mode) { choosePlatformAddSortMode('zc', mode); }
+
+document.addEventListener('click', event => {
+  const insideSortControl = PLATFORM_ADD_SORT_PREFIXES.some(prefix => {
+    const control = document.getElementById(`${prefix}AddSortControl`);
+    return control && control.contains(event.target);
+  });
+  if (!insideSortControl) closePlatformAddSortMenus();
+});
+
+document.addEventListener('keydown', event => {
+  if (event.key === 'Escape') closePlatformAddSortMenus();
+});
+
+const CB_PLATFORM = 'codebuddy';
+const WB_PLATFORM = 'workbuddy';
 
 function cbApplyConfigMeta(prefix, data, fallbackPath) {
   const path = data && data._configPath ? String(data._configPath) : fallbackPath;
@@ -3180,6 +3104,221 @@ function cbMergeAvailableModels(available, models) {
     ...(Array.isArray(available) ? available : []),
     ...(Array.isArray(models) ? models.map(m => m && m.id) : []),
   ]);
+}
+
+function tencentBuddyPlatformLabel(platform) {
+  return platform === WB_PLATFORM ? 'WorkBuddy' : 'CodeBuddy';
+}
+
+function cloneTencentBuddyJson(value) {
+  return JSON.parse(JSON.stringify(value));
+}
+
+function syncTencentBuddySyncButtons() {
+  document.querySelectorAll('[data-buddy-sync-toggle]').forEach(btn => {
+    btn.classList.toggle('is-active', tencentBuddySyncEnabled);
+    btn.setAttribute('aria-pressed', tencentBuddySyncEnabled ? 'true' : 'false');
+    const platform = btn.getAttribute('onclick') || '';
+    const isCodeBuddy = platform.includes("'codebuddy'");
+    const targetName = isCodeBuddy ? 'WorkBuddy' : 'CodeBuddy';
+    btn.title = tencentBuddySyncEnabled
+      ? `同步 ${targetName} 已开启，点击关闭`
+      : `开启同步 ${targetName}`;
+  });
+}
+
+function setTencentBuddySyncEnabled(enabled) {
+  tencentBuddySyncEnabled = !!enabled;
+  localStorage.setItem(TENCENT_BUDDY_SYNC_STORAGE_KEY, tencentBuddySyncEnabled ? 'true' : 'false');
+  syncTencentBuddySyncButtons();
+}
+
+function tencentBuddyModelId(model, sourceLabel, index, seen) {
+  const id = String(model?.id || '').trim();
+  if (!id) {
+    throw new Error(`${sourceLabel} models[${index}] 缺少 id，无法双端同步`);
+  }
+  if (seen.has(id)) {
+    throw new Error(`${sourceLabel} models 中存在重复模型 ID：${id}`);
+  }
+  seen.add(id);
+  return id;
+}
+
+function mergeTencentBuddyModelObject(secondary, primary) {
+  const merged = { ...(secondary || {}) };
+  Object.entries(primary || {}).forEach(([key, value]) => {
+    if (value !== undefined) merged[key] = value;
+  });
+  return merged;
+}
+
+function mergeTencentBuddyModelState(primaryData, secondaryData) {
+  const primaryLabel = tencentBuddyPlatformLabel(primaryData.platform);
+  const secondaryLabel = tencentBuddyPlatformLabel(secondaryData.platform);
+  const byId = new Map();
+  const order = [];
+  const primarySeen = new Set();
+  const secondarySeen = new Set();
+  let conflictCount = 0;
+
+  (primaryData.models || []).forEach((model, index) => {
+    const id = tencentBuddyModelId(model, primaryLabel, index, primarySeen);
+    byId.set(id, cloneTencentBuddyJson(model));
+    order.push(id);
+  });
+
+  (secondaryData.models || []).forEach((model, index) => {
+    const id = tencentBuddyModelId(model, secondaryLabel, index, secondarySeen);
+    const cloned = cloneTencentBuddyJson(model);
+    if (byId.has(id)) {
+      conflictCount++;
+      byId.set(id, mergeTencentBuddyModelObject(cloned, byId.get(id)));
+      return;
+    }
+    byId.set(id, cloned);
+    order.push(id);
+  });
+
+  const models = order.map(id => byId.get(id));
+  const availableModels = cbMergeAvailableModels(
+    cbUniqueStrings([
+      ...(Array.isArray(primaryData.availableModels) ? primaryData.availableModels : []),
+      ...(Array.isArray(secondaryData.availableModels) ? secondaryData.availableModels : []),
+    ]),
+    models
+  );
+
+  return { models, availableModels, conflictCount };
+}
+
+async function readTencentBuddyModels(platform) {
+  if (!invoke) throw new Error('Tauri invoke 未初始化，无法同步 CodeBuddy / WorkBuddy');
+  const data = await invoke('load_codebuddy_models', { platform });
+  return {
+    platform,
+    models: Array.isArray(data.models) ? data.models : [],
+    availableModels: Array.isArray(data.availableModels) ? data.availableModels : [],
+    path: data && data._configPath ? String(data._configPath) : PLATFORM_DEFS[platform]?.configHint || '',
+    scope: data && data._configScope ? String(data._configScope) : 'user',
+  };
+}
+
+function memoryTencentBuddyModels(platform) {
+  if (platform === WB_PLATFORM) {
+    const availableModels = cbMergeAvailableModels(wbAvailableModels, wbModels);
+    return {
+      platform,
+      models: wbModels,
+      availableModels,
+      path: wbConfigPath,
+      scope: wbConfigScope,
+    };
+  }
+  const availableModels = cbMergeAvailableModels(cbAvailableModels, cbModels);
+  return {
+    platform,
+    models: cbModels,
+    availableModels,
+    path: cbConfigPath,
+    scope: cbConfigScope,
+  };
+}
+
+async function persistTencentBuddyModels(platform, models, availableModels, scope) {
+  if (!invoke) throw new Error('Tauri invoke 未初始化，无法保存 CodeBuddy / WorkBuddy 配置');
+  return invoke('save_codebuddy_models', {
+    platform,
+    models,
+    availableModels,
+    scope,
+  });
+}
+
+function applyTencentBuddySyncedState(models, availableModels, codebuddyMeta, workbuddyMeta) {
+  cbModels = cloneTencentBuddyJson(models);
+  wbModels = cloneTencentBuddyJson(models);
+  cbAvailableModels = cbUniqueStrings(availableModels);
+  wbAvailableModels = cbUniqueStrings(availableModels);
+
+  cbConfigPath = codebuddyMeta.path;
+  wbConfigPath = workbuddyMeta.path;
+  cbConfigScope = codebuddyMeta.scope;
+  wbConfigScope = workbuddyMeta.scope;
+  cbApplyConfigMeta('cb', { _configPath: cbConfigPath, _configScope: cbConfigScope }, cbConfigPath);
+  cbApplyConfigMeta('wb', { _configPath: wbConfigPath, _configScope: wbConfigScope }, wbConfigPath);
+
+  renderCodeBuddyModels();
+  renderWbModels();
+}
+
+async function syncTencentBuddyModels(primaryPlatform, options = {}) {
+  const primary = primaryPlatform === WB_PLATFORM ? WB_PLATFORM : CB_PLATFORM;
+  const secondary = primary === CB_PLATFORM ? WB_PLATFORM : CB_PLATFORM;
+  const primaryData = options.useCurrentPrimary
+    ? memoryTencentBuddyModels(primary)
+    : await readTencentBuddyModels(primary);
+  const secondaryData = await readTencentBuddyModels(secondary);
+  const codebuddyData = primary === CB_PLATFORM ? primaryData : secondaryData;
+  const workbuddyData = primary === WB_PLATFORM ? primaryData : secondaryData;
+  const merged = mergeTencentBuddyModelState(primaryData, secondaryData);
+
+  const codebuddyPath = await persistTencentBuddyModels(
+    CB_PLATFORM,
+    cloneTencentBuddyJson(merged.models),
+    cbUniqueStrings(merged.availableModels),
+    codebuddyData.scope
+  );
+  const workbuddyPath = await persistTencentBuddyModels(
+    WB_PLATFORM,
+    cloneTencentBuddyJson(merged.models),
+    cbUniqueStrings(merged.availableModels),
+    workbuddyData.scope
+  );
+
+  const codebuddyMeta = { path: codebuddyPath, scope: codebuddyData.scope };
+  const workbuddyMeta = { path: workbuddyPath, scope: workbuddyData.scope };
+  applyTencentBuddySyncedState(merged.models, merged.availableModels, codebuddyMeta, workbuddyMeta);
+  syncTencentBuddySyncButtons();
+
+  if (typeof addLog === 'function') {
+    const conflictText = merged.conflictCount ? `，${merged.conflictCount} 个同 ID 模型按 ${tencentBuddyPlatformLabel(primary)} 保留` : '';
+    addLog('ok', `CodeBuddy / WorkBuddy 已同步 ${merged.models.length} 个模型${conflictText}`);
+  }
+  if (!options.silent) {
+    const conflictText = merged.conflictCount ? `\n同 ID 冲突：${merged.conflictCount} 个，已保留 ${tencentBuddyPlatformLabel(primary)} 版本。` : '';
+    showCustomAlert(
+      `已同步 ${merged.models.length} 个模型到 CodeBuddy 与 WorkBuddy。${conflictText}`,
+      '双端同步完成',
+      'success'
+    );
+  }
+
+  return { ...merged, paths: { codebuddy: codebuddyPath, workbuddy: workbuddyPath } };
+}
+
+async function toggleTencentBuddySync(primaryPlatform) {
+  if (tencentBuddySyncEnabled) {
+    setTencentBuddySyncEnabled(false);
+    if (typeof addLog === 'function') addLog('info', 'CodeBuddy / WorkBuddy 双端同步已关闭');
+    showCustomAlert('CodeBuddy / WorkBuddy 双端同步已关闭。', '同步已关闭', 'info');
+    return;
+  }
+
+  const ok = await showCustomConfirm(
+    `开启后会合并 CodeBuddy 与 WorkBuddy 的 models.json，并同时写入两个配置文件。\n\n之后打开或保存任一页面都会继续自动同步。相同模型 ID 冲突时保留当前页面的版本。`,
+    '开启双端同步',
+    'warn'
+  );
+  if (!ok) return;
+
+  try {
+    await syncTencentBuddyModels(primaryPlatform, { useCurrentPrimary: true });
+    setTencentBuddySyncEnabled(true);
+  } catch (e) {
+    if (typeof addLog === 'function') addLog('err', '开启 CodeBuddy / WorkBuddy 双端同步失败: ' + e);
+    showCustomAlert(String(e), '同步失败', 'error');
+  }
 }
 
 function cbRemoveAvailableModel(available, modelId) {
@@ -3225,6 +3364,29 @@ function zcProviderIdForModel(model) {
   const existing = String(model?.providerId || '').trim();
   if (existing && !zcProviderIdNeedsMigration(existing, model)) return existing;
   return `AnyBridge-${zcHashId(`${model?.vendor || 'Custom'}|${zcNormalizeBaseUrl(model?.url || '')}`)}`;
+}
+
+function zcProviderIdForProvider(provider) {
+  return zcProviderIdForModel({
+    vendor: provider?.providerName || 'Custom',
+    url: zcProviderBaseUrl(provider),
+    apiKey: cbProviderApiKey(provider),
+  });
+}
+
+function zcProviderModelKeyParts(providerId, modelId) {
+  const pid = String(providerId || '').trim();
+  const mid = String(modelId || '').trim();
+  return pid && mid ? JSON.stringify([pid, mid]) : '';
+}
+
+function zcProviderModelKey(model) {
+  return zcProviderModelKeyParts(zcProviderIdForModel(model), model?.id);
+}
+
+function cbModelSelectionKey(prefix, model) {
+  if (prefix === 'Zc') return zcProviderModelKey(model);
+  return String(model?.id || '').trim();
 }
 
 function cbProviderApiKey(provider) {
@@ -3289,6 +3451,14 @@ function cbApplyProviderModelSelection(prefix, provider, checkSelector, platform
   const currentModels = ref.getModels();
   const providerModels = Array.isArray(provider?.models) ? provider.models : [];
   const providerIds = new Set(providerModels.map(m => String(m?.id || '')).filter(Boolean));
+  const isZcode = prefix === 'Zc' || platformId === ZC_PLATFORM;
+  const zcodeProviderId = isZcode ? zcProviderIdForProvider(provider) : '';
+  const isCurrentProviderModel = (model) => {
+    const modelId = String(model?.id || '');
+    if (!providerIds.has(modelId)) return false;
+    if (!isZcode) return true;
+    return zcProviderModelKey(model) === zcProviderModelKeyParts(zcodeProviderId, modelId);
+  };
   const selectedIds = new Set(
     Array.from(document.querySelectorAll(`${checkSelector}:checked`))
       .map(chk => String(chk.dataset.modelId || '').trim())
@@ -3299,8 +3469,8 @@ function cbApplyProviderModelSelection(prefix, provider, checkSelector, platform
     supportsImages: cbSelectedCapability(ref.domPrefix, 'images'),
     supportsReasoning: cbSelectedCapability(ref.domPrefix, 'reasoning'),
   };
-  const previousSelectedCount = currentModels.filter(model => providerIds.has(String(model?.id || ''))).length;
-  const preservedModels = currentModels.filter(model => !providerIds.has(String(model?.id || '')));
+  const previousSelectedCount = currentModels.filter(isCurrentProviderModel).length;
+  const preservedModels = currentModels.filter(model => !isCurrentProviderModel(model));
   const selectedModels = providerModels
     .filter(model => selectedIds.has(String(model?.id || '')))
     .map(model => {
@@ -3524,6 +3694,8 @@ function cbUpdateConsoleStats(prefix, models) {
   platformSetText(`${prefix}-console-count`, String(list.length));
   platformSetText(`${prefix}-console-provider-count`, String(providerCount));
   platformSetText(`${prefix}-console-cap-count`, String(capCount));
+  // 更新标题旁的模型计数文字
+  platformSetText(`${prefix}-model-count`, `共 ${list.length} 个`);
 }
 
 function cbButtonLabelEl(btn) {
@@ -3590,7 +3762,7 @@ function cbSelectedVisibleEntries(prefix) {
 
 function cbPruneSelection(prefix) {
   const ref = cbModelListRef(prefix);
-  const ids = new Set(ref.getModels().map(model => String(model?.id || '')).filter(Boolean));
+  const ids = new Set(ref.getModels().map(model => cbModelSelectionKey(prefix, model)).filter(Boolean));
   const selected = cbSelectionSet(prefix);
   Array.from(selected).forEach(id => {
     if (!ids.has(id)) selected.delete(id);
@@ -3602,7 +3774,7 @@ function cbSyncSelectionState(prefix) {
   const ref = cbModelListRef(prefix);
   const selected = cbSelectionSet(prefix);
   const visibleEntries = cbSelectedVisibleEntries(prefix);
-  const visibleIds = visibleEntries.map(({ model }) => String(model?.id || '')).filter(Boolean);
+  const visibleIds = visibleEntries.map(({ model }) => cbModelSelectionKey(prefix, model)).filter(Boolean);
   const visibleSelected = visibleIds.filter(id => selected.has(id)).length;
   const domPrefix = ref.domPrefix;
   const selectAll = document.getElementById(`${domPrefix}-select-all`);
@@ -3623,7 +3795,7 @@ function cbSyncSelectionState(prefix) {
 function toggleCbModelSelection(prefix, index, checked) {
   const ref = cbModelListRef(prefix);
   const model = ref.getModels()[index];
-  const id = String(model?.id || '');
+  const id = cbModelSelectionKey(prefix, model);
   if (!id) return;
   const selected = cbSelectionSet(prefix);
   if (checked) selected.add(id);
@@ -3634,7 +3806,7 @@ function toggleCbModelSelection(prefix, index, checked) {
 function toggleCbModelSelectAll(prefix, checked) {
   const selected = cbSelectionSet(prefix);
   cbSelectedVisibleEntries(prefix).forEach(({ model }) => {
-    const id = String(model?.id || '');
+    const id = cbModelSelectionKey(prefix, model);
     if (!id) return;
     if (checked) selected.add(id);
     else selected.delete(id);
@@ -3665,9 +3837,10 @@ async function cbDeleteModelByIndex(prefix, index) {
   const previousModels = models.slice();
   const previousAvailable = ref.getAvailable().slice();
   const id = String(model.id || '');
+  const selectionKey = cbModelSelectionKey(prefix, model);
   ref.setAvailable(cbRemoveAvailableModel(ref.getAvailable(), id));
   models.splice(index, 1);
-  cbSelectionSet(prefix).delete(id);
+  cbSelectionSet(prefix).delete(selectionKey);
   ref.render();
   await cbPersistModelDeletion(prefix, previousModels, previousAvailable, 1);
 }
@@ -3680,9 +3853,13 @@ async function cbDeleteSelectedModels(prefix) {
   const previousModels = ref.getModels().slice();
   const previousAvailable = ref.getAvailable().slice();
   const deletedCount = selectedIds.size;
-  const nextModels = ref.getModels().filter(model => !selectedIds.has(String(model?.id || '')));
+  const nextModels = ref.getModels().filter(model => !selectedIds.has(cbModelSelectionKey(prefix, model)));
   ref.setModels(nextModels);
-  ref.setAvailable(cbUniqueStrings(ref.getAvailable()).filter(id => !selectedIds.has(String(id || ''))));
+  if (prefix === 'Zc') {
+    ref.setAvailable(cbMergeAvailableModels([], nextModels));
+  } else {
+    ref.setAvailable(cbUniqueStrings(ref.getAvailable()).filter(id => !selectedIds.has(String(id || ''))));
+  }
   selected.clear();
   ref.render();
   await cbPersistModelDeletion(prefix, previousModels, previousAvailable, deletedCount);
@@ -3722,6 +3899,11 @@ function cbModelRow(model, index) {
 async function loadCodeBuddyModels() {
   if (!invoke) return;
   try {
+    if (tencentBuddySyncEnabled) {
+      await syncTencentBuddyModels(CB_PLATFORM, { silent: true });
+      if (typeof addLog === 'function') addLog('ok', 'CodeBuddy 打开时已自动同步 WorkBuddy');
+      return;
+    }
     const data = await invoke('load_codebuddy_models', { platform: CB_PLATFORM });
     cbModels = Array.isArray(data.models) ? data.models : [];
     cbAvailableModels = Array.isArray(data.availableModels) ? data.availableModels : [];
@@ -3731,8 +3913,9 @@ async function loadCodeBuddyModels() {
     renderCodeBuddyModels();
     if (typeof addLog === 'function') addLog('ok', 'CodeBuddy 模型列表已加载');
   } catch (e) {
-    if (typeof addLog === 'function') addLog('err', '加载 CodeBuddy 模型失败: ' + e);
-    showCustomAlert(String(e), '加载失败', 'error');
+    const action = tencentBuddySyncEnabled ? '同步 CodeBuddy / WorkBuddy' : '加载 CodeBuddy 模型';
+    if (typeof addLog === 'function') addLog('err', `${action}失败: ` + e);
+    showCustomAlert(String(e), tencentBuddySyncEnabled ? '双端同步失败' : '加载失败', 'error');
   }
 }
 
@@ -3748,7 +3931,7 @@ function renderCodeBuddyModels() {
     if (empty) empty.style.display = '';
     if (table) table.style.display = 'none';
     cbSyncSelectionState('Cb');
-    renderPlatformAccessModeUi('codebuddy');
+    syncTencentBuddySyncButtons();
     return;
   }
 
@@ -3759,7 +3942,7 @@ function renderCodeBuddyModels() {
     ? entries.map(({ model, index }) => cbModelRow(model, index)).join('')
     : cbNoResultRow('cb');
   cbSyncSelectionState('Cb');
-  renderPlatformAccessModeUi('codebuddy');
+  syncTencentBuddySyncButtons();
 }
 
 function editCbModel(index) { openCbEditModal('Cb', index); }
@@ -3782,6 +3965,16 @@ async function saveCodeBuddyModels(options = {}) {
   if (!invoke) return;
   try {
     cbAvailableModels = cbMergeAvailableModels(cbAvailableModels, cbModels);
+    if (tencentBuddySyncEnabled && !options.skipBuddySync) {
+      const result = await syncTencentBuddyModels(CB_PLATFORM, {
+        useCurrentPrimary: true,
+        silent: true,
+      });
+      if (!options.silent) {
+        showCustomAlert(`配置已同步保存到 ${result.paths.codebuddy} 与 ${result.paths.workbuddy}`, '保存成功', 'success');
+      }
+      return result.paths.codebuddy;
+    }
     const path = await invoke('save_codebuddy_models', {
       platform: CB_PLATFORM,
       models: cbModels,
@@ -3795,8 +3988,9 @@ async function saveCodeBuddyModels(options = {}) {
     if (!options.silent) showCustomAlert(`配置已保存到 ${path}`, '保存成功', 'success');
     return path;
   } catch (e) {
-    if (typeof addLog === 'function') addLog('err', '保存 CodeBuddy 配置失败: ' + e);
-    if (!options.silent) showCustomAlert(String(e), '保存失败', 'error');
+    const action = tencentBuddySyncEnabled ? '同步保存 CodeBuddy / WorkBuddy 配置' : '保存 CodeBuddy 配置';
+    if (typeof addLog === 'function') addLog('err', `${action}失败: ` + e);
+    if (!options.silent) showCustomAlert(String(e), tencentBuddySyncEnabled ? '双端同步失败' : '保存失败', 'error');
     if (options.throwOnError) throw e;
   }
 }
@@ -3815,6 +4009,12 @@ async function initCbAddPage() {
   } catch (e) {
     cbProviderModels = [];
   }
+  // 注入 AnyBridge 本地代理供应商到列表首位
+  if (typeof localProxyProviderModelsEntry === 'function') {
+    const lp = localProxyProviderModelsEntry();
+    cbProviderModels = cbProviderModels.filter(p => !isLocalProxyProviderEntry(p));
+    cbProviderModels.unshift(lp);
+  }
   cbAddSelectedProvider = null;
   cbAddSearchKw = '';
   const searchInput = document.getElementById('cb-add-search');
@@ -3832,14 +4032,13 @@ function onCbAddSearch() {
 
 function renderCbAddProviderList() {
   const list = document.getElementById('cb-add-provider-list');
+  syncPlatformAddSortControl('cb');
   if (!list) return;
   if (!cbProviderModels.length) {
     list.innerHTML = '<div class="cb-add-prov-empty">暂无供应商，请先在「供应商」页添加</div>';
     return;
   }
-  const filtered = cbProviderModels.filter(p =>
-    (p.providerName || '').toLowerCase().includes(cbAddSearchKw)
-  );
+  const filtered = platformAddVisibleProviders(cbProviderModels, cbAddSearchKw);
   if (!filtered.length) {
     list.innerHTML = '<div class="cb-add-prov-empty">没有匹配的供应商</div>';
     return;
@@ -3848,11 +4047,11 @@ function renderCbAddProviderList() {
     const initial = (p.providerName || '?').charAt(0).toUpperCase();
     const enabled = p.enabled !== false;
     const isActive = cbAddSelectedProvider === p.providerId;
+    const isLP = isLocalProxyProviderEntry(p);
     return `
-      <div class="cb-add-prov-item ${isActive ? 'active' : ''} ${enabled ? '' : 'disabled'}" onclick="selectCbAddProvider('${platformEsc(p.providerId)}')">
+      <div class="cb-add-prov-item ${isActive ? 'active' : ''} ${enabled ? '' : 'disabled'} ${isLP ? 'is-local-proxy' : ''}" onclick="selectCbAddProvider('${platformEsc(p.providerId)}')">
         <span class="cb-add-prov-icon">${platformEsc(initial)}</span>
-        <span class="cb-add-prov-name">${platformEsc(p.providerName)}</span>
-        <span class="cb-add-prov-status ${enabled ? 'on' : 'off'}">${enabled ? 'ON' : 'OFF'}</span>
+        <span class="cb-add-prov-name">${platformEsc(p.providerName)}${isLP ? '<span class="cb-add-prov-badge">本地</span>' : ''}</span>
         <span class="cb-add-prov-count">${p.models.length}</span>
       </div>
     `;
@@ -3991,7 +4190,7 @@ function createCbRowFactory(prefix) {
 
   return function modelRow(model, index) {
     const displayName = model.vendor || model.name || model.id || '未命名';
-    const selected = cbSelectionSet(prefix).has(String(model.id || ''));
+    const selected = cbSelectionSet(prefix).has(cbModelSelectionKey(prefix, model));
     const caps = [];
     if (model.supportsToolCall) caps.push(cbCapabilityPill(cls, 'tool', '工具'));
     if (model.supportsImages) caps.push(cbCapabilityPill(cls, 'image', '图片'));
@@ -4006,7 +4205,14 @@ function createCbRowFactory(prefix) {
       <td class="cb-select-cell">
         <input type="checkbox" class="cb-model-row-check" aria-label="选择 ${esc(model.id || '模型')}" ${selected ? 'checked' : ''} onchange="toggleCbModelSelection('${prefix}', ${index}, this.checked)">
       </td>
-      <td><span class="display-name-cell" title="${esc(model.id || '')}">${esc(model.id || '-')}</span></td>
+      <td>
+        <div class="model-id-copy-wrap">
+          <span class="display-name-cell" title="${esc(model.id || '')}">${esc(model.id || '-')}</span>
+          <button class="btn-icon model-id-copy-btn" onclick="copyTextToClipboard('${esc(model.id || '')}', '模型 ID')" title="复制模型 ID">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+          </button>
+        </div>
+      </td>
       <td><span title="${esc(displayName)}">${esc(displayName)}</span></td>
       <td><div style="display:flex; gap:6px; flex-wrap:wrap;">${caps.join('') || '<span style="color:var(--text-muted);font-size:12px;">—</span>'}</div></td>
       <td style="text-align:center;">
@@ -4084,11 +4290,12 @@ function createCbDropHandlers(prefix, modelsGetter, modelsSetter, availableGette
           return;
         }
         const current = modelsGetter();
-        const existingIds = new Set(current.map(m => m.id));
+        const existingIds = new Set(current.map(m => cbModelSelectionKey(prefix, m)).filter(Boolean));
         let added = 0;
         incoming.forEach(m => {
-          if (!m.id || existingIds.has(m.id)) return;
-          existingIds.add(m.id);
+          const key = cbModelSelectionKey(prefix, m);
+          if (!m.id || !key || existingIds.has(key)) return;
+          existingIds.add(key);
           current.push(m);
           added++;
         });
@@ -4200,11 +4407,12 @@ function createCbIoHandlers(prefix, platform, modelsGetter, modelsSetter, availa
           return;
         }
         const current = modelsGetter();
-        const existingIds = new Set(current.map(m => m.id));
+        const existingIds = new Set(current.map(m => cbModelSelectionKey(prefix, m)).filter(Boolean));
         let added = 0;
         incoming.forEach(m => {
-          if (!m.id || existingIds.has(m.id)) return;
-          existingIds.add(m.id);
+          const key = cbModelSelectionKey(prefix, m);
+          if (!m.id || !key || existingIds.has(key)) return;
+          existingIds.add(key);
           current.push(m);
           added++;
         });
@@ -4322,8 +4530,6 @@ let wbEditingIndex = -1;
 let wbAddSelectedProvider = null;
 let wbAddSearchKw = '';
 
-const WB_PLATFORM = 'workbuddy';
-
 function wbModelRow(model, index) {
   return wbRowFactory(model, index);
 }
@@ -4331,6 +4537,11 @@ function wbModelRow(model, index) {
 async function loadWbModels() {
   if (!invoke) return;
   try {
+    if (tencentBuddySyncEnabled) {
+      await syncTencentBuddyModels(WB_PLATFORM, { silent: true });
+      if (typeof addLog === 'function') addLog('ok', 'WorkBuddy 打开时已自动同步 CodeBuddy');
+      return;
+    }
     const data = await invoke('load_codebuddy_models', { platform: WB_PLATFORM });
     wbModels = Array.isArray(data.models) ? data.models : [];
     wbAvailableModels = Array.isArray(data.availableModels) ? data.availableModels : [];
@@ -4340,8 +4551,9 @@ async function loadWbModels() {
     renderWbModels();
     if (typeof addLog === 'function') addLog('ok', 'WorkBuddy 模型列表已加载');
   } catch (e) {
-    if (typeof addLog === 'function') addLog('err', '加载 WorkBuddy 模型失败: ' + e);
-    showCustomAlert(String(e), '加载失败', 'error');
+    const action = tencentBuddySyncEnabled ? '同步 CodeBuddy / WorkBuddy' : '加载 WorkBuddy 模型';
+    if (typeof addLog === 'function') addLog('err', `${action}失败: ` + e);
+    showCustomAlert(String(e), tencentBuddySyncEnabled ? '双端同步失败' : '加载失败', 'error');
   }
 }
 
@@ -4357,7 +4569,7 @@ function renderWbModels() {
     if (empty) empty.style.display = '';
     if (table) table.style.display = 'none';
     cbSyncSelectionState('Wb');
-    renderPlatformAccessModeUi('workbuddy');
+    syncTencentBuddySyncButtons();
     return;
   }
 
@@ -4368,7 +4580,7 @@ function renderWbModels() {
     ? entries.map(({ model, index }) => wbModelRow(model, index)).join('')
     : cbNoResultRow('wb');
   cbSyncSelectionState('Wb');
-  renderPlatformAccessModeUi('workbuddy');
+  syncTencentBuddySyncButtons();
 }
 
 function editWbModel(index) { openCbEditModal('Wb', index); }
@@ -4391,6 +4603,16 @@ async function saveWbModels(options = {}) {
   if (!invoke) return;
   try {
     wbAvailableModels = cbMergeAvailableModels(wbAvailableModels, wbModels);
+    if (tencentBuddySyncEnabled && !options.skipBuddySync) {
+      const result = await syncTencentBuddyModels(WB_PLATFORM, {
+        useCurrentPrimary: true,
+        silent: true,
+      });
+      if (!options.silent) {
+        showCustomAlert(`配置已同步保存到 ${result.paths.codebuddy} 与 ${result.paths.workbuddy}`, '保存成功', 'success');
+      }
+      return result.paths.workbuddy;
+    }
     const path = await invoke('save_codebuddy_models', {
       platform: WB_PLATFORM,
       models: wbModels,
@@ -4404,8 +4626,9 @@ async function saveWbModels(options = {}) {
     if (!options.silent) showCustomAlert(`配置已保存到 ${path}`, '保存成功', 'success');
     return path;
   } catch (e) {
-    if (typeof addLog === 'function') addLog('err', '保存 WorkBuddy 配置失败: ' + e);
-    if (!options.silent) showCustomAlert(String(e), '保存失败', 'error');
+    const action = tencentBuddySyncEnabled ? '同步保存 CodeBuddy / WorkBuddy 配置' : '保存 WorkBuddy 配置';
+    if (typeof addLog === 'function') addLog('err', `${action}失败: ` + e);
+    if (!options.silent) showCustomAlert(String(e), tencentBuddySyncEnabled ? '双端同步失败' : '保存失败', 'error');
     if (options.throwOnError) throw e;
   }
 }
@@ -4426,6 +4649,12 @@ async function initWbAddPage() {
   } catch (e) {
     wbProviderModels = [];
   }
+  // 注入 AnyBridge 本地代理供应商到列表首位
+  if (typeof localProxyProviderModelsEntry === 'function') {
+    const lp = localProxyProviderModelsEntry();
+    wbProviderModels = wbProviderModels.filter(p => !isLocalProxyProviderEntry(p));
+    wbProviderModels.unshift(lp);
+  }
   wbAddSelectedProvider = null;
   wbAddSearchKw = '';
   const searchInput = document.getElementById('wb-add-search');
@@ -4443,14 +4672,13 @@ function onWbAddSearch() {
 
 function renderWbAddProviderList() {
   const list = document.getElementById('wb-add-provider-list');
+  syncPlatformAddSortControl('wb');
   if (!list) return;
   if (!wbProviderModels.length) {
     list.innerHTML = '<div class="wb-add-prov-empty">暂无供应商，请先在「供应商」页添加</div>';
     return;
   }
-  const filtered = wbProviderModels.filter(p =>
-    (p.providerName || '').toLowerCase().includes(wbAddSearchKw)
-  );
+  const filtered = platformAddVisibleProviders(wbProviderModels, wbAddSearchKw);
   if (!filtered.length) {
     list.innerHTML = '<div class="wb-add-prov-empty">没有匹配的供应商</div>';
     return;
@@ -4459,11 +4687,11 @@ function renderWbAddProviderList() {
     const initial = (p.providerName || '?').charAt(0).toUpperCase();
     const enabled = p.enabled !== false;
     const isActive = wbAddSelectedProvider === p.providerId;
+    const isLP = isLocalProxyProviderEntry(p);
     return `
-      <div class="wb-add-prov-item ${isActive ? 'active' : ''} ${enabled ? '' : 'disabled'}" onclick="selectWbAddProvider('${platformEsc(p.providerId)}')">
+      <div class="wb-add-prov-item ${isActive ? 'active' : ''} ${enabled ? '' : 'disabled'} ${isLP ? 'is-local-proxy' : ''}" onclick="selectWbAddProvider('${platformEsc(p.providerId)}')">
         <span class="wb-add-prov-icon">${platformEsc(initial)}</span>
-        <span class="wb-add-prov-name">${platformEsc(p.providerName)}</span>
-        <span class="wb-add-prov-status ${enabled ? 'on' : 'off'}">${enabled ? 'ON' : 'OFF'}</span>
+        <span class="wb-add-prov-name">${platformEsc(p.providerName)}${isLP ? '<span class="wb-add-prov-badge">本地</span>' : ''}</span>
         <span class="wb-add-prov-count">${p.models.length}</span>
       </div>
     `;
@@ -4606,7 +4834,6 @@ function renderZcModels() {
     if (empty) empty.style.display = '';
     if (table) table.style.display = 'none';
     cbSyncSelectionState('Zc');
-    renderPlatformAccessModeUi('zcode');
     return;
   }
 
@@ -4617,7 +4844,6 @@ function renderZcModels() {
     ? entries.map(({ model, index }) => zcModelRow(model, index)).join('')
     : cbNoResultRow('zc');
   cbSyncSelectionState('Zc');
-  renderPlatformAccessModeUi('zcode');
 }
 
 function editZcModel(index) { openCbEditModal('Zc', index); }
@@ -4675,6 +4901,12 @@ async function initZcAddPage() {
   } catch (e) {
     zcProviderModels = [];
   }
+  // 注入 AnyBridge 本地代理供应商到列表首位
+  if (typeof localProxyProviderModelsEntry === 'function') {
+    const lp = localProxyProviderModelsEntry();
+    zcProviderModels = zcProviderModels.filter(p => !isLocalProxyProviderEntry(p));
+    zcProviderModels.unshift(lp);
+  }
   zcAddSelectedProvider = null;
   zcAddSearchKw = '';
   const searchInput = document.getElementById('zc-add-search');
@@ -4692,14 +4924,13 @@ function onZcAddSearch() {
 
 function renderZcAddProviderList() {
   const list = document.getElementById('zc-add-provider-list');
+  syncPlatformAddSortControl('zc');
   if (!list) return;
   if (!zcProviderModels.length) {
     list.innerHTML = '<div class="wb-add-prov-empty zc-add-prov-empty">暂无供应商，请先在「供应商」页添加</div>';
     return;
   }
-  const filtered = zcProviderModels.filter(p =>
-    (p.providerName || '').toLowerCase().includes(zcAddSearchKw)
-  );
+  const filtered = platformAddVisibleProviders(zcProviderModels, zcAddSearchKw);
   if (!filtered.length) {
     list.innerHTML = '<div class="wb-add-prov-empty zc-add-prov-empty">没有匹配的供应商</div>';
     return;
@@ -4708,11 +4939,11 @@ function renderZcAddProviderList() {
     const initial = (p.providerName || '?').charAt(0).toUpperCase();
     const enabled = p.enabled !== false;
     const isActive = zcAddSelectedProvider === p.providerId;
+    const isLP = isLocalProxyProviderEntry(p);
     return `
-      <div class="wb-add-prov-item zc-add-prov-item ${isActive ? 'active' : ''} ${enabled ? '' : 'disabled'}" onclick="selectZcAddProvider('${platformEsc(p.providerId)}')">
+      <div class="wb-add-prov-item zc-add-prov-item ${isActive ? 'active' : ''} ${enabled ? '' : 'disabled'} ${isLP ? 'is-local-proxy' : ''}" onclick="selectZcAddProvider('${platformEsc(p.providerId)}')">
         <span class="wb-add-prov-icon zc-add-prov-icon">${platformEsc(initial)}</span>
-        <span class="wb-add-prov-name zc-add-prov-name">${platformEsc(p.providerName)}</span>
-        <span class="wb-add-prov-status zc-add-prov-status ${enabled ? 'on' : 'off'}">${enabled ? 'ON' : 'OFF'}</span>
+        <span class="wb-add-prov-name zc-add-prov-name">${platformEsc(p.providerName)}${isLP ? '<span class="wb-add-prov-badge zc-add-prov-badge">本地</span>' : ''}</span>
         <span class="wb-add-prov-count zc-add-prov-count">${p.models.length}</span>
       </div>
     `;
@@ -4750,8 +4981,9 @@ function renderZcAddModels() {
     body.innerHTML = '<div class="wb-add-models-empty zc-add-models-empty">该供应商暂无模型</div>';
     return;
   }
+  const zcodeProviderId = zcProviderIdForProvider(provider);
   body.innerHTML = provider.models.map((m) => {
-    const exists = zcModels.some(model => model.id === m.id);
+    const exists = zcModels.some(model => zcProviderModelKey(model) === zcProviderModelKeyParts(zcodeProviderId, m.id));
     return `
       <label class="wb-add-model-row zc-add-model-row ${exists ? 'already-added' : ''}" data-existing="${exists ? 'true' : 'false'}">
         <input type="checkbox" class="zc-add-model-check" data-model-id="${platformEsc(m.id)}" data-model-name="${platformEsc(m.name || m.id)}" ${exists ? 'checked' : ''} onchange="cbOnAddModelCheckChanged(this, updateZcAddConfirmButton)">
@@ -4980,11 +5212,11 @@ window.importZcModels = function(event) {
         showCustomAlert('导入文件中没有可识别的 ZCode provider/models 配置', '导入失败', 'warn');
         return;
       }
-      const existingIds = new Set(zcModels.map(m => `${zcProviderIdForModel(m)}:${m.id}`));
+      const existingIds = new Set(zcModels.map(zcProviderModelKey).filter(Boolean));
       let added = 0;
       incoming.forEach(model => {
-        const key = `${zcProviderIdForModel(model)}:${model.id}`;
-        if (!model.id || existingIds.has(key)) return;
+        const key = zcProviderModelKey(model);
+        if (!model.id || !key || existingIds.has(key)) return;
         existingIds.add(key);
         zcModels.push(model);
         added++;

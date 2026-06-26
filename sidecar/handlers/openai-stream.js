@@ -239,7 +239,7 @@ export class OpenAIStreamProcessor {
 
     const stopReason = droppedInvalidToolCall && validToolCallCount === 0 ? 'length' : this._stopReason;
     const protoStopReason = this._mapStopReason(stopReason);
-    chunks.push(buildStopChunk(this._messageId, protoStopReason, this._modelUid));
+    chunks.push(buildStopChunk(this._messageId, protoStopReason, this._modelUid, undefined, this._usage));
     this._done = true;
 
     return chunks;
@@ -350,7 +350,7 @@ export class OpenAIChatCompletionsStreamProcessor {
     }
 
     const stopReason = droppedInvalidToolCall && calls.length === 0 ? 'length' : this._stopReason;
-    chunks.push(buildStopChunk(this._messageId, this._mapStopReason(stopReason), this._modelUid));
+    chunks.push(buildStopChunk(this._messageId, this._mapStopReason(stopReason), this._modelUid, undefined, this._usage));
     this._done = true;
     return chunks;
   }

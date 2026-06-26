@@ -914,9 +914,6 @@
                 </div>
                 <div id="slotCatalogScopeTabs"
                   style="display:flex;align-items:center;gap:6px;padding:10px 20px;border-bottom:1px solid var(--border);background:var(--bg-card);">
-                  <button class="slot-scope-tab" data-scope="account" onclick="setSlotCatalogScope('account')"
-                    style="height:26px;padding:0 10px;border-radius:7px;border:1px solid var(--border);background:var(--bg-input);color:var(--text-muted);font-size:11px;font-weight:700;cursor:pointer;">当前账号
-                    <span id="slotScopeAccountCount">0</span></button>
                   <button class="slot-scope-tab" data-scope="extended" onclick="setSlotCatalogScope('extended')"
                     style="height:26px;padding:0 10px;border-radius:7px;border:1px solid var(--border);background:var(--bg-input);color:var(--text-muted);font-size:11px;font-weight:700;cursor:pointer;">内置槽位
                     <span id="slotScopeExtendedCount">0</span></button>
@@ -926,6 +923,9 @@
                   <button class="slot-scope-tab" data-scope="bound" onclick="setSlotCatalogScope('bound')"
                     style="height:26px;padding:0 10px;border-radius:7px;border:1px solid var(--border);background:var(--bg-input);color:var(--text-muted);font-size:11px;font-weight:700;cursor:pointer;">已绑定
                     <span id="slotScopeBoundCount">0</span></button>
+                  <button class="slot-scope-tab" data-scope="account" onclick="setSlotCatalogScope('account')"
+                    style="height:26px;padding:0 10px;border-radius:7px;border:1px solid var(--border);background:var(--bg-input);color:var(--text-muted);font-size:11px;font-weight:700;cursor:pointer;">当前账号
+                    <span id="slotScopeAccountCount">0</span></button>
                 </div>
                 <!-- 槽位搜索栏 -->
                 <div
@@ -987,6 +987,13 @@
                   <div style="display:flex; align-items:center; justify-content:space-between;">
                     <span
                       style="font-size:12px; font-weight:600; color:var(--text-secondary);">映射自定义显示名（留空使用模型原始名）</span>
+                  </div>
+                  <!-- 快速填充显示名按钮 -->
+                  <div style="display:flex; gap:6px; align-items:center;">
+                    <button id="btn-use-original-name" onclick="useOriginalModelName()"
+                      style="height:26px;padding:0 10px;border-radius:7px;border:1px solid var(--accent);background:var(--accent);color:#fff;font-size:11px;font-weight:600;cursor:pointer;">使用原始模型名</button>
+                    <button id="btn-use-mapped-name" onclick="useMappedModelName()"
+                      style="height:26px;padding:0 10px;border-radius:7px;border:1px solid var(--border);background:var(--bg-input);color:var(--text-muted);font-size:11px;font-weight:600;cursor:pointer;">使用映射模型名</button>
                   </div>
                   <input class="field-input" id="slot-display" placeholder="例如：我的 DeepSeek 映射..."
                     style="padding:10px 14px; font-size:12px; border-radius:8px; width:100%;">
@@ -1210,129 +1217,246 @@
                 <div class="card-title"><span class="dot"></span> 代理增强</div>
                 <div style="font-size:11px;color:var(--text-muted);margin-top:4px;">配置手动增强能力和第三方图片理解故障转移链。</div>
               </div>
-              <button class="btn-ghost" onclick="closeProxyEnhancement()"
-                style="border:none;background:transparent;cursor:pointer;font-size:18px;color:var(--text-muted);line-height:1;">×</button>
-            </div>
-            <div class="card-body"
-              style="padding:16px 20px;display:flex;flex-direction:column;gap:16px;flex:1;overflow-y:auto;">
-              <section style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;">
-                <label
-                  style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px;border:1px solid var(--border);border-radius:9px;background:var(--bg-input);">
-                  <span style="display:flex;flex-direction:column;gap:3px;min-width:0;"><strong
-                      style="font-size:12px;color:var(--text-primary);">请求重试</strong><small
-                      style="font-size:10px;color:var(--text-muted);">5xx / 429 / 网络错误时按配置重试</small></span>
-                  <span class="toggle-switch"><input id="enhancement-retry" type="checkbox"
-                      onchange="toggleEnhancement(this, 'retry')"><span class="toggle-slider"></span></span>
-                </label>
-                <label
-                  style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px;border:1px solid var(--border);border-radius:9px;background:var(--bg-input);">
-                  <span style="display:flex;flex-direction:column;gap:3px;min-width:0;"><strong
-                      style="font-size:12px;color:var(--text-primary);">图片理解降级</strong><small
-                      style="font-size:10px;color:var(--text-muted);">目标不支持时转第三方理解</small></span>
-                  <span class="toggle-switch"><input id="enhancement-imageFallback" type="checkbox"
-                      onchange="toggleEnhancement(this, 'imageFallback')"><span class="toggle-slider"></span></span>
-                </label>
-                <label
-                  style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px;border:1px solid var(--border);border-radius:9px;background:var(--bg-input);">
-                  <span style="display:flex;flex-direction:column;gap:3px;min-width:0;"><strong
-                      style="font-size:12px;color:var(--text-primary);">模型自动路由</strong><small
-                      style="font-size:10px;color:var(--text-muted);">主备模型按顺序切换</small></span>
-                  <span class="toggle-switch"><input id="enhancement-autoRouting" type="checkbox"
-                      onchange="toggleEnhancement(this, 'autoRouting')"><span class="toggle-slider"></span></span>
-                </label>
-                <label
-                  style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px;border:1px solid var(--border);border-radius:9px;background:var(--bg-input);">
-                  <span style="display:flex;flex-direction:column;gap:3px;min-width:0;"><strong
-                      style="font-size:12px;color:var(--text-primary);">解锁模型列表</strong><small
-                      style="font-size:10px;color:var(--text-muted);">IDE 显示所有可用模型</small></span>
-                  <span class="toggle-switch"><input id="enhancement-unlockModels" type="checkbox"
-                      onchange="toggleEnhancement(this, 'unlockModels')"><span class="toggle-slider"></span></span>
-                </label>
-              </section>
-
-              <section style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;">
-                <label
-                  style="display:flex;flex-direction:column;gap:6px;padding:12px;border:1px solid var(--border);border-radius:9px;background:var(--bg-input);">
-                  <span style="font-size:11px;font-weight:800;color:var(--text-primary);">最大重试次数</span>
-                  <input id="enhancement-retryMaxRetries" type="number" min="0" step="1"
-                    onchange="updateEnhancementNumber(this, 'retryMaxRetries')"
-                    style="width:100%;height:32px;padding:0 9px;border-radius:8px;border:1px solid var(--border);background:var(--bg-card);color:var(--text-primary);font-size:12px;outline:none;">
-                </label>
-                <label
-                  style="display:flex;flex-direction:column;gap:6px;padding:12px;border:1px solid var(--border);border-radius:9px;background:var(--bg-input);">
-                  <span style="font-size:11px;font-weight:800;color:var(--text-primary);">基础等待 (ms)</span>
-                  <input id="enhancement-retryBaseMs" type="number" min="1" step="100"
-                    onchange="updateEnhancementNumber(this, 'retryBaseMs')"
-                    style="width:100%;height:32px;padding:0 9px;border-radius:8px;border:1px solid var(--border);background:var(--bg-card);color:var(--text-primary);font-size:12px;outline:none;">
-                </label>
-                <label
-                  style="display:flex;flex-direction:column;gap:6px;padding:12px;border:1px solid var(--border);border-radius:9px;background:var(--bg-input);">
-                  <span style="font-size:11px;font-weight:800;color:var(--text-primary);">单次等待上限 (ms)</span>
-                  <input id="enhancement-retryCapMs" type="number" min="1" step="100"
-                    onchange="updateEnhancementNumber(this, 'retryCapMs')"
-                    style="width:100%;height:32px;padding:0 9px;border-radius:8px;border:1px solid var(--border);background:var(--bg-card);color:var(--text-primary);font-size:12px;outline:none;">
-                </label>
-                <label
-                  style="display:flex;flex-direction:column;gap:6px;padding:12px;border:1px solid var(--border);border-radius:9px;background:var(--bg-input);">
-                  <span style="font-size:11px;font-weight:800;color:var(--text-primary);">最大总耗时 (秒)</span>
-                  <input id="enhancement-retryTotalSeconds" type="number" min="1" step="1"
-                    onchange="updateEnhancementNumber(this, 'retryTotalSeconds')"
-                    style="width:100%;height:32px;padding:0 9px;border-radius:8px;border:1px solid var(--border);background:var(--bg-card);color:var(--text-primary);font-size:12px;outline:none;">
-                </label>
-              </section>
-
-              <section style="display:flex;flex-direction:column;gap:10px;">
-                <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;">
-                  <div>
-                    <div style="font-size:12px;font-weight:800;color:var(--text-primary);">图片理解模型</div>
-                    <div style="font-size:10px;color:var(--text-muted);margin-top:3px;">按列表顺序故障转移，名称显示为“供应商名 - 模型名”。
-                    </div>
-                  </div>
-                  <button class="btn-ghost" onclick="toggleVisionModelPicker()"
-                    style="height:30px;padding:0 12px;border-radius:8px;font-size:12px;font-weight:700;">+ 添加模型</button>
-                </div>
-                <div id="proxyVisionModelList" style="display:flex;flex-direction:column;gap:8px;"></div>
-                <div id="proxyVisionModelPicker" class="proxy-vision-picker-modal" aria-hidden="true"
-                  onclick="if (event.target === this) closeVisionModelPicker()">
-                  <div class="proxy-vision-picker-dialog" role="dialog" aria-modal="true" aria-labelledby="proxyVisionPickerTitle">
-                    <div class="proxy-vision-picker-head">
-                      <div>
-                        <div id="proxyVisionPickerTitle" class="proxy-vision-picker-title">添加图片理解模型</div>
-                        <div class="proxy-vision-picker-desc">选择支持图片理解的模型，按列表顺序作为第三方降级链。</div>
-                      </div>
-                      <button type="button" class="btn-ghost proxy-vision-picker-close" onclick="closeVisionModelPicker()" aria-label="关闭">×</button>
-                    </div>
-                    <div class="proxy-vision-picker-toolbar">
-                      <input id="proxyVisionModelSearch" type="text" placeholder="搜索供应商或模型..."
-                        oninput="renderVisionModelPicker()">
-                      <button class="btn-primary" onclick="addSelectedVisionModels()">添加</button>
-                    </div>
-                    <div id="proxyVisionModelPickerList" class="proxy-vision-picker-list"></div>
-                  </div>
-                </div>
-              </section>
-
-              <section id="proxyVisionTestPanel"
-                style="display:none;border:1px solid var(--border);border-radius:9px;background:var(--bg-input);padding:12px;gap:10px;align-items:flex-start;">
-                <img id="proxyVisionTestImage" alt="vision test"
-                  style="width:96px;height:96px;border-radius:8px;border:1px solid var(--border);background:var(--bg-card);object-fit:cover;flex-shrink:0;">
-                <div style="display:flex;flex-direction:column;gap:6px;min-width:0;flex:1;">
-                  <div id="proxyVisionTestTitle" style="font-size:12px;font-weight:800;color:var(--text-primary);">图片测试
-                  </div>
-                  <div id="proxyVisionTestResult"
-                    style="font-size:11px;color:var(--text-muted);line-height:1.5;word-break:break-word;">等待测试</div>
-                </div>
-              </section>
-            </div>
-            <div class="provider-footer"
-              style="display:flex;justify-content:space-between;gap:12px;padding:12px 20px;border-top:1px solid var(--border);">
-              <button class="btn-ghost" onclick="resetProxyEnhancementDefaults()"
-                style="padding:10px 16px;border-radius:10px;font-size:12px;font-weight:600;">重置默认</button>
-              <div style="display:flex;gap:10px;">
+              <div style="display:flex;align-items:center;gap:8px;">
+                <button class="btn-ghost" onclick="resetProxyEnhancementDefaults()"
+                  style="padding:7px 14px;border-radius:8px;font-size:12px;font-weight:600;">重置默认</button>
+                <button class="btn-primary" onclick="closeProxyEnhancement()"
+                  style="padding:7px 18px;border-radius:8px;font-size:12px;font-weight:700;">完成</button>
                 <button class="btn-ghost" onclick="closeProxyEnhancement()"
-                  style="padding:10px 18px;border-radius:10px;font-size:12px;font-weight:600;">关闭</button>
-                <button class="btn-primary" onclick="saveProxyEnhancement()"
-                  style="padding:10px 22px;border-radius:10px;font-size:12px;font-weight:700;">保存</button>
+                  style="border:none;background:transparent;cursor:pointer;font-size:18px;color:var(--text-muted);line-height:1;padding:0 4px;">×</button>
+              </div>
+            </div>
+            <div class="card-body proxy-enhancement-body"
+              style="padding:0;flex:1;overflow:hidden;display:flex;flex-direction:column;">
+              <div class="proxy-enhancement-layout">
+                <aside class="proxy-enhancement-sidebar">
+                  <button type="button" class="proxy-enhancement-tab active" data-enhancement-panel="vision">第三方图片理解</button>
+                  <button type="button" class="proxy-enhancement-tab" data-enhancement-panel="general">通用设置</button>
+                  <button type="button" class="proxy-enhancement-tab" data-enhancement-panel="retry">请求重试</button>
+                  <button type="button" class="proxy-enhancement-tab" data-enhancement-panel="prompt">提示词注入</button>
+                  <button type="button" class="proxy-enhancement-tab" data-enhancement-panel="headers">自定义请求头</button>
+                  <button type="button" class="proxy-enhancement-tab" data-enhancement-panel="tools">工具过滤</button>
+                  <button type="button" class="proxy-enhancement-tab" data-enhancement-panel="advanced">高级</button>
+                </aside>
+                <div class="proxy-enhancement-detail">
+                  <!-- Panel: Vision -->
+                  <div class="proxy-enhancement-pane active" data-enhancement-pane="vision">
+                    <label style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px;border:1px solid var(--border);border-radius:9px;background:var(--bg-input);margin-bottom:10px;">
+                      <span style="display:flex;flex-direction:column;gap:3px;min-width:0;"><strong style="font-size:12px;color:var(--text-primary);">模型增强</strong><small style="font-size:10px;color:var(--text-muted);">给不支持图片理解的模型添加图片理解的功能</small></span>
+                      <span class="toggle-switch"><input id="enhancement-imageFallback" type="checkbox" onchange="toggleEnhancement(this, 'imageFallback')"><span class="toggle-slider"></span></span>
+                    </label>
+
+                    <div style="display:flex;flex-direction:column;gap:10px;">
+                      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;">
+                        <div>
+                          <div style="font-size:12px;font-weight:800;color:var(--text-primary);">图片理解模型</div>
+                          <div style="font-size:10px;color:var(--text-muted);margin-top:3px;">按列表顺序故障转移，名称显示为"供应商名 - 模型名"。</div>
+                        </div>
+                        <button class="btn-ghost" onclick="toggleVisionModelPicker()" style="height:30px;padding:0 12px;border-radius:8px;font-size:12px;font-weight:700;">+ 添加模型</button>
+                      </div>
+                      <div id="proxyVisionModelList" style="display:flex;flex-direction:column;gap:8px;"></div>
+                    </div>
+                  </div>
+                  <!-- Panel: General -->
+                  <div class="proxy-enhancement-pane" data-enhancement-pane="general">
+                    <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;">
+                      <label style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px;border:1px solid var(--border);border-radius:9px;background:var(--bg-input);">
+                        <span style="display:flex;flex-direction:column;gap:3px;min-width:0;"><strong style="font-size:12px;color:var(--text-primary);">模型自动路由</strong><small style="font-size:10px;color:var(--text-muted);">主备模型按顺序切换</small></span>
+                        <span class="toggle-switch"><input id="enhancement-autoRouting" type="checkbox" onchange="toggleEnhancement(this, 'autoRouting')"><span class="toggle-slider"></span></span>
+                      </label>
+                    </div>
+                  </div>
+                  <!-- Panel: Retry -->
+                  <div class="proxy-enhancement-pane" data-enhancement-pane="retry">
+                    <label style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px;border:1px solid var(--border);border-radius:9px;background:var(--bg-input);margin-bottom:10px;">
+                      <span style="display:flex;flex-direction:column;gap:3px;min-width:0;"><strong style="font-size:12px;color:var(--text-primary);">请求重试</strong><small style="font-size:10px;color:var(--text-muted);">5xx / 429 / 网络错误时按配置重试</small></span>
+                      <span class="toggle-switch"><input id="enhancement-retry" type="checkbox" onchange="toggleEnhancement(this, 'retry')"><span class="toggle-slider"></span></span>
+                    </label>
+
+                    <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;">
+                      <label style="display:flex;flex-direction:column;gap:6px;padding:12px;border:1px solid var(--border);border-radius:9px;background:var(--bg-input);">
+                        <span style="font-size:11px;font-weight:800;color:var(--text-primary);">最大重试次数</span>
+                        <input id="enhancement-retryMaxRetries" type="number" min="0" step="1" onchange="updateEnhancementNumber(this, 'retryMaxRetries')" style="width:100%;height:32px;padding:0 9px;border-radius:8px;border:1px solid var(--border);background:var(--bg-card);color:var(--text-primary);font-size:12px;outline:none;">
+                      </label>
+                      <label style="display:flex;flex-direction:column;gap:6px;padding:12px;border:1px solid var(--border);border-radius:9px;background:var(--bg-input);">
+                        <span style="font-size:11px;font-weight:800;color:var(--text-primary);">基础等待 (ms)</span>
+                        <input id="enhancement-retryBaseMs" type="number" min="1" step="100" onchange="updateEnhancementNumber(this, 'retryBaseMs')" style="width:100%;height:32px;padding:0 9px;border-radius:8px;border:1px solid var(--border);background:var(--bg-card);color:var(--text-primary);font-size:12px;outline:none;">
+                      </label>
+                      <label style="display:flex;flex-direction:column;gap:6px;padding:12px;border:1px solid var(--border);border-radius:9px;background:var(--bg-input);">
+                        <span style="font-size:11px;font-weight:800;color:var(--text-primary);">单次等待上限 (ms)</span>
+                        <input id="enhancement-retryCapMs" type="number" min="1" step="100" onchange="updateEnhancementNumber(this, 'retryCapMs')" style="width:100%;height:32px;padding:0 9px;border-radius:8px;border:1px solid var(--border);background:var(--bg-card);color:var(--text-primary);font-size:12px;outline:none;">
+                      </label>
+                      <label style="display:flex;flex-direction:column;gap:6px;padding:12px;border:1px solid var(--border);border-radius:9px;background:var(--bg-input);">
+                        <span style="font-size:11px;font-weight:800;color:var(--text-primary);">最大总耗时 (秒)</span>
+                        <input id="enhancement-retryTotalSeconds" type="number" min="1" step="1" onchange="updateEnhancementNumber(this, 'retryTotalSeconds')" style="width:100%;height:32px;padding:0 9px;border-radius:8px;border:1px solid var(--border);background:var(--bg-card);color:var(--text-primary);font-size:12px;outline:none;">
+                      </label>
+                    </div>
+                  </div>
+                  <!-- Panel: Prompt Injection -->
+                  <div class="proxy-enhancement-pane" data-enhancement-pane="prompt">
+                    <label style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px;border:1px solid var(--border);border-radius:9px;background:var(--bg-input);margin-bottom:10px;">
+                      <span style="display:flex;flex-direction:column;gap:3px;min-width:0;"><strong style="font-size:12px;color:var(--text-primary);">提示词注入</strong><small style="font-size:10px;color:var(--text-muted);">在 system prompt 前注入自定义内容</small></span>
+                      <span class="toggle-switch"><input id="enhancement-systemPromptPrefixEnabled" type="checkbox" onchange="toggleEnhancement(this, 'systemPromptPrefixEnabled')"><span class="toggle-slider"></span></span>
+                    </label>
+                    <label style="display:flex;flex-direction:column;gap:6px;padding:12px;border:1px solid var(--border);border-radius:9px;background:var(--bg-input);">
+                      <span style="font-size:11px;font-weight:800;color:var(--text-primary);">系统提示词前缀</span>
+                      <small style="font-size:10px;color:var(--text-muted);">注入到所有请求的 system prompt 之前，用换行分隔。留空则不注入。</small>
+                      <textarea id="enhancement-systemPromptPrefix" rows="6" onchange="updateEnhancementText(this, 'systemPromptPrefix')" placeholder="例如：你是一个专业的编程助手，请用中文回答。" style="width:100%;padding:8px 9px;border-radius:8px;border:1px solid var(--border);background:var(--bg-card);color:var(--text-primary);font-size:12px;outline:none;resize:vertical;font-family:inherit;"></textarea>
+                    </label>
+                  </div>
+                  <!-- Panel: Custom Headers -->
+                  <div class="proxy-enhancement-pane" data-enhancement-pane="headers">
+                    <label style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px;border:1px solid var(--border);border-radius:9px;background:var(--bg-input);margin-bottom:10px;">
+                      <span style="display:flex;flex-direction:column;gap:3px;min-width:0;"><strong style="font-size:12px;color:var(--text-primary);">自定义请求头</strong><small style="font-size:10px;color:var(--text-muted);">注入自定义请求头和响应头</small></span>
+                      <span class="toggle-switch"><input id="enhancement-customHeadersEnabled" type="checkbox" onchange="toggleEnhancement(this, 'customHeadersEnabled')"><span class="toggle-slider"></span></span>
+                    </label>
+                    <div style="margin-bottom:14px;">
+                      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:8px;">
+                        <div>
+                          <div style="font-size:12px;font-weight:800;color:var(--text-primary);">请求头</div>
+                          <div style="font-size:10px;color:var(--text-muted);margin-top:3px;">注入到发往上游 API 的请求头</div>
+                        </div>
+                        <button class="btn-ghost" onclick="addHeaderPair('customHeaders')" style="height:30px;padding:0 12px;border-radius:8px;font-size:12px;font-weight:700;">+ 添加</button>
+                      </div>
+                      <div id="enhancement-customHeaders-list"></div>
+                    </div>
+                    <div style="border-top:1px solid var(--border);padding-top:14px;">
+                      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:8px;">
+                        <div>
+                          <div style="font-size:12px;font-weight:800;color:var(--text-primary);">响应头</div>
+                          <div style="font-size:10px;color:var(--text-muted);margin-top:3px;">注入到返回给客户端的响应头</div>
+                        </div>
+                        <button class="btn-ghost" onclick="addHeaderPair('responseHeaders')" style="height:30px;padding:0 12px;border-radius:8px;font-size:12px;font-weight:700;">+ 添加</button>
+                      </div>
+                      <div id="enhancement-responseHeaders-list"></div>
+                    </div>
+                  </div>
+                  <!-- Panel: Tool Filter -->
+                  <div class="proxy-enhancement-pane" data-enhancement-pane="tools">
+                    <label style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px;border:1px solid var(--border);border-radius:9px;background:var(--bg-input);margin-bottom:10px;">
+                      <span style="display:flex;flex-direction:column;gap:3px;min-width:0;"><strong style="font-size:12px;color:var(--text-primary);">工具过滤</strong><small style="font-size:10px;color:var(--text-muted);">过滤、限制工具调用</small></span>
+                      <span class="toggle-switch"><input id="enhancement-toolFilterEnabled" type="checkbox" onchange="toggleEnhancement(this, 'toolFilterEnabled')"><span class="toggle-slider"></span></span>
+                    </label>
+                    <label style="display:flex;flex-direction:column;gap:6px;padding:12px;border:1px solid var(--border);border-radius:9px;background:var(--bg-input);margin-bottom:10px;">
+                      <span style="font-size:11px;font-weight:800;color:var(--text-primary);">工具过滤模式</span>
+                      <select id="enhancement-toolFilterMode" onchange="updateEnhancementSelect(this, 'toolFilterMode')" style="width:100%;height:32px;padding:0 9px;border-radius:8px;border:1px solid var(--border);background:var(--bg-card);color:var(--text-primary);font-size:12px;outline:none;">
+                        <option value="">不过滤</option>
+                        <option value="allow">白名单（仅允许列表中的工具）</option>
+                        <option value="deny">黑名单（禁止列表中的工具）</option>
+                      </select>
+                    </label>
+                    <label style="display:flex;flex-direction:column;gap:6px;padding:12px;border:1px solid var(--border);border-radius:9px;background:var(--bg-input);margin-bottom:10px;">
+                      <span style="font-size:11px;font-weight:800;color:var(--text-primary);">工具名称列表</span>
+                      <small style="font-size:10px;color:var(--text-muted);">用英文逗号分隔，如：code_interpreter, web_search</small>
+                      <input id="enhancement-toolFilterList" type="text" onchange="updateToolFilterList(this)" placeholder="tool_a, tool_b" style="width:100%;height:32px;padding:0 9px;border-radius:8px;border:1px solid var(--border);background:var(--bg-card);color:var(--text-primary);font-size:12px;outline:none;">
+                    </label>
+                    <label style="display:flex;flex-direction:column;gap:6px;padding:12px;border:1px solid var(--border);border-radius:9px;background:var(--bg-input);">
+                      <span style="font-size:11px;font-weight:800;color:var(--text-primary);">强制 tool_choice</span>
+                      <small style="font-size:10px;color:var(--text-muted);">覆盖请求中的 tool_choice 参数。留空则不覆盖。可选值：auto / none / required</small>
+                      <input id="enhancement-forceToolChoice" type="text" onchange="updateEnhancementText(this, 'forceToolChoice')" placeholder="auto" style="width:100%;height:32px;padding:0 9px;border-radius:8px;border:1px solid var(--border);background:var(--bg-card);color:var(--text-primary);font-size:12px;outline:none;">
+                    </label>
+                  </div>
+                  <!-- Panel: Advanced -->
+                  <div class="proxy-enhancement-pane" data-enhancement-pane="advanced">
+                    <label style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px;border:1px solid var(--border);border-radius:9px;background:var(--bg-input);margin-bottom:10px;">
+                      <span style="display:flex;flex-direction:column;gap:3px;min-width:0;"><strong style="font-size:12px;color:var(--text-primary);">请求参数覆盖</strong><small style="font-size:10px;color:var(--text-muted);">覆盖请求中的参数值</small></span>
+                      <span class="toggle-switch"><input id="enhancement-paramOverridesEnabled" type="checkbox" onchange="toggleEnhancement(this, 'paramOverridesEnabled')"><span class="toggle-slider"></span></span>
+                    </label>
+                    <label style="display:flex;flex-direction:column;gap:6px;padding:12px;border:1px solid var(--border);border-radius:9px;background:var(--bg-input);margin-bottom:10px;">
+                      <span style="font-size:11px;font-weight:800;color:var(--text-primary);">参数列表</span>
+                      <small style="font-size:10px;color:var(--text-muted);">每行一个，格式：key=value。值用 JSON 格式，如：temperature=0 或 max_tokens=4096</small>
+                      <textarea id="enhancement-paramOverrides" rows="5" onchange="updateParamOverrides(this)" placeholder="temperature=0&#10;max_tokens=4096" style="width:100%;padding:8px 9px;border-radius:8px;border:1px solid var(--border);background:var(--bg-card);color:var(--text-primary);font-size:12px;outline:none;resize:vertical;font-family:inherit;"></textarea>
+                    </label>
+                    <label style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px;border:1px solid var(--border);border-radius:9px;background:var(--bg-input);margin-bottom:10px;">
+                      <span style="display:flex;flex-direction:column;gap:3px;min-width:0;"><strong style="font-size:12px;color:var(--text-primary);">速率限制</strong><small style="font-size:10px;color:var(--text-muted);">每分钟最大请求数</small></span>
+                      <span class="toggle-switch"><input id="enhancement-rateLimitEnabled" type="checkbox" onchange="toggleEnhancement(this, 'rateLimitEnabled')"><span class="toggle-slider"></span></span>
+                    </label>
+                    <label style="display:flex;flex-direction:column;gap:6px;padding:12px;border:1px solid var(--border);border-radius:9px;background:var(--bg-input);margin-bottom:10px;">
+                      <span style="font-size:11px;font-weight:800;color:var(--text-primary);">RPM (每分钟请求数)</span>
+                      <small style="font-size:10px;color:var(--text-muted);">0 表示不限制</small>
+                      <input id="enhancement-rateLimitRpm" type="number" min="0" step="1" onchange="updateEnhancementNumber(this, 'rateLimitRpm')" style="width:100%;height:32px;padding:0 9px;border-radius:8px;border:1px solid var(--border);background:var(--bg-card);color:var(--text-primary);font-size:12px;outline:none;">
+                    </label>
+                    <label style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px;border:1px solid var(--border);border-radius:9px;background:var(--bg-input);">
+                      <span style="display:flex;flex-direction:column;gap:3px;min-width:0;"><strong style="font-size:12px;color:var(--text-primary);">请求日志</strong><small style="font-size:10px;color:var(--text-muted);">记录请求和响应到文件，方便调试</small></span>
+                      <span class="toggle-switch"><input id="enhancement-requestLogging" type="checkbox" onchange="toggleEnhancement(this, 'requestLogging')"><span class="toggle-slider"></span></span>
+                    </label>
+                  </div>
+                </div>
+              </div>
+              <div id="proxyVisionModelPicker" class="proxy-vision-picker-modal" onclick="if (event.target === this) closeVisionModelPicker()">
+                <div class="proxy-vision-picker-dialog" role="dialog" aria-modal="true" aria-labelledby="proxyVisionPickerTitle">
+                  <div class="proxy-vision-picker-head">
+                    <div>
+                      <div id="proxyVisionPickerTitle" class="proxy-vision-picker-title">添加第三方图片理解模型</div>
+                      <div class="proxy-vision-picker-desc">左侧选择供应商，右侧选择要加入第三方图片理解链的模型。</div>
+                    </div>
+                    <button type="button" class="btn-ghost proxy-vision-picker-close" onclick="closeVisionModelPicker()" aria-label="关闭">×</button>
+                  </div>
+                  <div class="proxy-vision-picker-body proxy-route-pick-layout">
+                    <aside class="proxy-route-provider-pane">
+                      <label class="proxy-route-provider-search">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                          <circle cx="11" cy="11" r="8"></circle>
+                          <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                        </svg>
+                        <input id="proxyVisionModelSearch" type="text" placeholder="搜索供应商或模型" oninput="onVisionModelPickerSearch()">
+                      </label>
+                      <div id="proxyVisionProviderList" class="proxy-route-provider-list"></div>
+                    </aside>
+                    <section class="proxy-route-model-pane">
+                      <div class="proxy-route-model-head">
+                        <div>
+                          <strong id="proxyVisionModelProviderTitle">请选择供应商</strong>
+                          <span id="proxyVisionModelProviderSub">右侧会展示可加入图片理解链的模型</span>
+                        </div>
+                        <div class="proxy-route-model-actions">
+                          <button type="button" class="btn-ghost" id="proxyVisionSelectAllBtn" onclick="selectAllVisionModels()" disabled>全选</button>
+                          <button type="button" class="btn-ghost" id="proxyVisionSelectNoneBtn" onclick="selectNoVisionModels()" disabled>全不选</button>
+                        </div>
+                      </div>
+                      <div id="proxyVisionModelPickerList" class="proxy-route-model-list proxy-vision-picker-list"></div>
+                    </section>
+                  </div>
+                  <div class="proxy-vision-picker-footer">
+                    <span id="proxyVisionPickedSummary">未选择模型</span>
+                    <div>
+                      <button class="modal-btn modal-btn-cancel" onclick="closeVisionModelPicker()">取消</button>
+                      <button class="modal-btn modal-btn-confirm" id="proxyVisionAddSelectedBtn" onclick="addSelectedVisionModels()" disabled>添加到列表</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div id="proxyVisionTestModal" class="modal-overlay" onclick="if (event.target === this) closeVisionTestModal()">
+                <div class="modal-container proxy-vision-test-modal" role="dialog" aria-modal="true" aria-labelledby="proxyVisionTestTitle">
+                  <div class="modal-header proxy-vision-test-head">
+                    <div>
+                      <div class="proxy-route-editor-kicker">代理增强 / 图片理解测试</div>
+                      <div id="proxyVisionTestTitle" class="modal-title">图片测试</div>
+                    </div>
+                    <button type="button" class="modal-close-icon" onclick="closeVisionTestModal()" aria-label="关闭测试结果">
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M18 6 6 18"></path>
+                        <path d="m6 6 12 12"></path>
+                      </svg>
+                    </button>
+                  </div>
+                  <div class="modal-body proxy-vision-test-body">
+                    <div class="proxy-vision-test-image-wrap">
+                      <img id="proxyVisionTestImage" alt="vision test">
+                    </div>
+                    <div class="proxy-vision-test-content">
+                      <div class="proxy-vision-test-status-row">
+                        <span id="proxyVisionTestStatus" class="proxy-vision-test-status is-running">测试中</span>
+                        <span id="proxyVisionTestMeta" class="proxy-vision-test-meta">正在发送测试图片...</span>
+                      </div>
+                      <div id="proxyVisionTestResult" class="proxy-vision-test-result">等待测试</div>
+                    </div>
+                  </div>
+                  <div class="modal-footer proxy-vision-test-footer">
+                    <button class="modal-btn modal-btn-confirm" onclick="closeVisionTestModal()">关闭</button>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -1365,79 +1489,78 @@
               </button>
             </div>
           </section>
-          <!-- 极客风格的一体化胶囊控制栏 -->
-          <div class="control-bar glass-card"
-            style="padding: 14px 24px; margin-bottom: 20px; border-radius: 14px; display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between; min-height: 72px;">
-
-            <!-- 左侧：标题与搜索 -->
-            <div style="display: flex; align-items: center; gap: 16px; flex-wrap: wrap;">
-              <h2
-                style="font-size: 14px; font-weight: 700; color: var(--text-primary); display: flex; align-items: center; gap: 6px; margin: 0; user-select: none;">
-                模型映射
-              </h2>
-
-              <!-- 搜索输入框 -->
-              <div style="position: relative; display: flex; align-items: center;">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
-                  stroke-linecap="round" stroke-linejoin="round"
-                  style="position: absolute; left: 10px; color: var(--text-muted); pointer-events: none;">
+          <div class="control-bar glass-card model-map-control-bar">
+            <div class="model-map-toolbar-main">
+              <div class="model-map-title-block">
+                <h2>模型映射</h2>
+                <span>Devin / Windsurf 槽位路由，模型名只服务对应平台。</span>
+              </div>
+              <div class="model-map-toolbar-actions">
+                <button class="btn-primary model-map-command-btn" onclick="openSlotEditor('')">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="12" y1="5" x2="12" y2="19"></line>
+                    <line x1="5" y1="12" x2="19" y2="12"></line>
+                  </svg>
+                  添加映射
+                </button>
+                <button class="btn-ghost model-map-command-btn" id="modelMapBulkDeleteBtn"
+                  onclick="batchDeleteSelectedSlots()" disabled>
+                  删除选中
+                </button>
+                <button class="btn-ghost platform-model-btn-icon" onclick="renderModelMap(); addLog('info', '已刷新映射列表');"
+                  title="刷新映射列表" aria-label="刷新映射列表">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="23 4 23 10 17 10"></polyline>
+                    <polyline points="1 20 1 14 7 14"></polyline>
+                    <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+                  </svg>
+                </button>
+                <button class="btn-ghost model-map-command-btn" onclick="openInjectedEditor()" title="管理模型槽位的解锁、显示范围和 BYOK 路由。">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M12 2L2 7l10 5 10-5-10-5z"></path>
+                    <path d="M2 17l10 5 10-5"></path>
+                    <path d="M2 12l10 5 10-5"></path>
+                  </svg>
+                  <span id="injected-count-badge">槽位管理</span>
+                </button>
+                <button class="btn-ghost platform-model-btn-icon" onclick="openPlatformSection('settings')" title="设置" aria-label="设置">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="3"></circle>
+                    <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.2a1.7 1.7 0 0 0-1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.2a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3 1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.2a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8 1.7 1.7 0 0 0 1.5 1h.2a2 2 0 1 1 0 4h-.2a1.7 1.7 0 0 0-1.5 1z"></path>
+                  </svg>
+                </button>
+              </div>
+            </div>
+            <div class="model-map-bulk-row">
+              <label class="model-map-search">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"
+                  stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                   <circle cx="11" cy="11" r="8"></circle>
                   <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
                 </svg>
-                <input type="text" id="model-search-input" placeholder="搜索已映射模型..."
-                  style="width: 260px; padding: 8px 12px 8px 30px; border-radius: 10px; border: 1px solid var(--border); background: var(--bg-input); color: var(--text-primary); font-size: 13px; outline: none; transition: all 0.2s;"
-                  oninput="filterModelTable()">
+                <input type="text" id="model-search-input" placeholder="搜索已映射模型、槽位或供应商" oninput="filterModelTable()">
+              </label>
+              <span class="model-map-count-pill" id="modelMapBulkCount">共 0 个</span>
+              <div class="model-map-bulk-actions">
+                <button class="btn-ghost provider-bulk-btn" id="modelMapSelectVisibleBtn"
+                  onclick="toggleVisibleModelMapSelection()" disabled>选择当前</button>
+                <button class="btn-ghost provider-bulk-btn" id="modelMapBulkEnableBtn"
+                  onclick="batchSetSelectedSlotsEnabled(true)" disabled>启用</button>
+                <button class="btn-ghost provider-bulk-btn" id="modelMapBulkDisableBtn"
+                  onclick="batchSetSelectedSlotsEnabled(false)" disabled>停用</button>
+                <button class="btn-ghost provider-bulk-btn" id="modelMapBulkVisionBtn"
+                  onclick="batchSetSelectedSlotsThirdPartyVision(true)" disabled>启用第三方图片</button>
               </div>
             </div>
-
-            <!-- 右侧：刷新及操作按钮 -->
-            <div style="display: flex; align-items: center; gap: 8px;">
-              <!-- 刷新映射列表按钮 -->
-              <button class="btn-ghost" onclick="renderModelMap(); addLog('info', '已刷新映射列表');"
-                style="padding: 0 12px; border-radius: 10px; display: flex; align-items: center; justify-content: center; height: 36px; width: 40px;"
-                title="刷新映射列表">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
-                  stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"></path>
-                </svg>
-              </button>
-              <!-- 添加映射按钮 -->
-              <button class="btn-primary" onclick="openSlotEditor('')"
-                style="border-radius: 10px; padding: 0 16px; font-size: 13px; font-weight: 600; height: 36px; display: flex; align-items: center; gap: 6px;">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
-                  stroke-linecap="round" stroke-linejoin="round">
-                  <line x1="12" y1="5" x2="12" y2="19"></line>
-                  <line x1="5" y1="12" x2="19" y2="12"></line>
-                </svg>
-                添加映射
-              </button>
-              <!-- 模型槽位管理按钮（解锁/显示策略/未配置槽位） -->
-              <button class="btn-ghost" onclick="openInjectedEditor()" title="管理模型槽位的解锁、显示范围和 BYOK 路由。普通映射也可以继续用「添加映射」。"
-                style="border-radius: 10px; padding: 0 16px; font-size: 13px; font-weight: 600; height: 36px; display: flex; align-items: center; gap: 6px;">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
-                  stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M12 2L2 7l10 5 10-5-10-5z"></path>
-                  <path d="M2 17l10 5 10-5"></path>
-                  <path d="M2 12l10 5 10-5"></path>
-                </svg>
-                <span id="injected-count-badge">模型槽位管理</span>
-              </button>
-              <button class="btn-ghost" onclick="openPlatformSection('settings')" title="设置"
-                style="border-radius: 10px; padding: 0 16px; font-size: 13px; font-weight: 600; height: 36px; display: flex; align-items: center; gap: 6px;">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
-                  stroke-linecap="round" stroke-linejoin="round">
-                  <circle cx="12" cy="12" r="3"></circle>
-                  <path
-                    d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z">
-                  </path>
-                </svg>
-                <span>设置</span>
-              </button>
-            </div>
           </div>
-          <div class="glass-card" style="overflow: hidden;">
+          <div class="glass-card" style="overflow: hidden; margin-bottom: 20px;">
             <table class="model-table model-map-table" style="border: none; box-shadow: none; border-radius: 0;">
               <colgroup>
+                <col class="model-col-select" style="width:42px;">
                 <col class="model-col-display">
                 <col class="model-col-origin">
                 <col class="model-col-target">
@@ -1447,6 +1570,12 @@
               </colgroup>
               <thead>
                 <tr>
+                  <th class="model-map-select-head">
+                    <label class="provider-select-check provider-select-check-table" title="选择当前列表" onclick="event.stopPropagation()">
+                      <input type="checkbox" id="modelMapSelectAll" aria-label="选择当前列表" onchange="toggleVisibleModelMapSelectionFromHeader(this.checked)">
+                      <span></span>
+                    </label>
+                  </th>
                   <th>
                     <span class="model-map-display-head">
                       <span>显示名</span>
@@ -1465,7 +1594,21 @@
                   <th>原模型名</th>
                   <th>目标（供应商/模型）</th>
                   <th>操作</th>
-                  <th>第三方图片理解</th>
+                  <th>
+                    <span class="model-map-display-head">
+                      <span>第三方图片理解</span>
+                      <button class="btn-ghost model-map-settings-btn" onclick="navigateToProxyEnhancement()"
+                        title="配置图片理解模型" aria-label="配置图片理解模型">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                          stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
+                          <circle cx="12" cy="12" r="3"></circle>
+                          <path
+                            d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z">
+                          </path>
+                        </svg>
+                      </button>
+                    </span>
+                  </th>
                   <th>启用</th>
                 </tr>
               </thead>
@@ -1794,166 +1937,200 @@
             </div>
 
             <div class="proxy-console-tabs" role="tablist" aria-label="代理配置">
-              <button type="button" class="proxy-console-tab active" data-proxy-panel="overview" aria-selected="true">运行概览</button>
-              <button type="button" class="proxy-console-tab" data-proxy-panel="routes" aria-selected="false">模型路由</button>
+              <button type="button" class="proxy-console-tab active" data-proxy-panel="overview" aria-selected="true">概览</button>
+              <button type="button" class="proxy-console-tab" data-proxy-panel="routes" aria-selected="false">模型列表</button>
               <button type="button" class="proxy-console-tab" data-proxy-panel="enhancement" aria-selected="false">代理增强</button>
             </div>
 
             <div class="proxy-console-section active" data-proxy-section="overview">
-              <div class="proxy-console-grid">
-                <section class="proxy-console-card glass-card">
-                <div class="proxy-console-card-head">
-                  <div>
-                    <h2>兼容入口</h2>
-                    <p>给 Codex、Claude Code、OpenCode 等本地客户端使用。</p>
+              <div class="proxy-console-grid proxy-console-grid-single">
+
+                <section class="proxy-console-card glass-card ">
+                  <div class="proxy-console-card-head">
+                    <div>
+                      <h2>连接配置</h2>
+                      <p>兼容入口、本地 key 与端口。</p>
+                    </div>
                   </div>
-                </div>
-                <div class="proxy-endpoint-list">
-                  <div class="proxy-endpoint-row">
-                    <span>OpenAI</span>
-                    <code id="localProxyOpenAiUrl">http://127.0.0.1:{port}/v1</code>
-                    <button class="btn-ghost" onclick="copyLocalProxyValue('openai')">复制</button>
+
+                  <div class="proxy-section">
+                    <div class="proxy-section-title">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path>
+                        <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>
+                      </svg>
+                      兼容入口
+                    </div>
+                    <div class="proxy-endpoint-list">
+                      <div class="proxy-endpoint-row">
+                        <span class="endpoint-label">
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <circle cx="12" cy="12" r="10"></circle>
+                            <path d="M12 16v-4"></path>
+                            <path d="M12 8h.01"></path>
+                          </svg>
+                          OpenAI
+                        </span>
+                        <code id="localProxyOpenAiUrl">http://127.0.0.1:{port}/v1</code>
+                        <button class="btn-ghost" onclick="copyLocalProxyValue('openai')">复制</button>
+                      </div>
+                      <div class="proxy-endpoint-row">
+                        <span class="endpoint-label">
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <path d="M12 2a10 10 0 1 0 10 10 4 4 0 0 1-5-5 4 4 0 0 1-5-5"></path>
+                            <path d="M8.5 8.5v.01"></path>
+                            <path d="M16 15.5v.01"></path>
+                            <path d="M12 12v.01"></path>
+                            <path d="M8 16v.01"></path>
+                            <path d="M16 8v.01"></path>
+                          </svg>
+                          Claude
+                        </span>
+                        <code id="localProxyClaudeUrl">http://127.0.0.1:{port}/anthropic</code>
+                        <button class="btn-ghost" onclick="copyLocalProxyValue('claude')">复制</button>
+                      </div>
+                      <div class="proxy-endpoint-row">
+                        <span class="endpoint-label">
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <rect x="3" y="4" width="18" height="6" rx="2"></rect>
+                            <rect x="3" y="14" width="18" height="6" rx="2"></rect>
+                            <path d="M7 7h.01"></path>
+                            <path d="M7 17h.01"></path>
+                          </svg>
+                          Models
+                        </span>
+                        <code id="localProxyModelsUrl">http://127.0.0.1:{port}/v1/models</code>
+                        <button class="btn-ghost" onclick="copyLocalProxyValue('models')">复制</button>
+                      </div>
+                    </div>
                   </div>
-                  <div class="proxy-endpoint-row">
-                    <span>Claude</span>
-                    <code id="localProxyClaudeUrl">http://127.0.0.1:{port}/anthropic</code>
-                    <button class="btn-ghost" onclick="copyLocalProxyValue('claude')">复制</button>
+
+                  <div class="proxy-section-divider"></div>
+
+                  <div class="proxy-section">
+                    <div class="proxy-section-title">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 0 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3-1.5 1.5"></path>
+                      </svg>
+                      本地认证
+                    </div>
+                    <div class="proxy-local-key-box">
+                      <div>
+                        <span>当前 key</span>
+                        <strong id="localProxyKeyValue">未生成</strong>
+                      </div>
+                      <div class="proxy-local-key-actions">
+                        <button class="btn-ghost" onclick="copyLocalProxyValue('key')">复制 key</button>
+                        <button class="btn-primary" onclick="regenerateLocalProxyKey()">重新生成</button>
+                      </div>
+                    </div>
+                    <div class="proxy-ports-grid proxy-ports-grid-single">
+                      <div class="proxy-port-field">
+                        <label>API 服务端口</label>
+                        <input id="localProxyPortInput" class="input-sm" type="number" min="1" max="65535" value="7450">
+                      </div>
+                      <button class="btn-primary" onclick="saveLocalProxyPorts('proxy')">保存端口</button>
+                    </div>
                   </div>
-                  <div class="proxy-endpoint-row">
-                    <span>Models</span>
-                    <code id="localProxyModelsUrl">http://127.0.0.1:{port}/v1/models</code>
-                    <button class="btn-ghost" onclick="copyLocalProxyValue('models')">复制</button>
-                  </div>
-                </div>
                 </section>
 
-                <section class="proxy-console-card glass-card proxy-route-summary-card">
-                <div class="proxy-console-card-head">
-                  <div>
-                    <h2>模型路由</h2>
-                    <p>/v1/models 对外暴露的模型列表与上游映射。</p>
-                  </div>
-                  <button class="btn-primary" onclick="openProxyPanel('routes')">管理</button>
-                </div>
-                <div class="proxy-route-overview-grid">
-                  <div><span>启用路由</span><strong id="proxy-page-route-enabled">0</strong></div>
-                  <div><span>全部路由</span><strong id="proxy-page-route-total">0</strong></div>
-                  <div><span>默认模型</span><strong id="proxy-page-route-default">未设置</strong></div>
-                </div>
-                </section>
-
-                <section class="proxy-console-card glass-card">
-                <div class="proxy-console-card-head">
-                  <div>
-                    <h2>本地 key</h2>
-                    <p>用于本机客户端访问 AnyBridge 本地代理。</p>
-                  </div>
-                </div>
-                <div class="proxy-local-key-box">
-                  <div>
-                    <span>当前 key</span>
-                    <strong id="localProxyKeyValue">未生成</strong>
-                  </div>
-                  <div class="proxy-local-key-actions">
-                    <button class="btn-ghost" onclick="copyLocalProxyValue('key')">复制 key</button>
-                    <button class="btn-primary" onclick="regenerateLocalProxyKey()">重新生成</button>
-                  </div>
-                </div>
-                <div class="proxy-port-row">
-                  <label>API 服务端口</label>
-                  <input id="localProxyPortInput" class="input-sm" type="number" min="1" max="65535" value="7450">
-                </div>
-                <div class="proxy-port-row">
-                  <label>推理服务端口</label>
-                  <input id="localProxyInferencePortInput" class="input-sm" type="number" min="1" max="65535" value="7451">
-                </div>
-                <div class="proxy-local-key-actions">
-                  <button class="btn-primary" onclick="saveLocalProxyPorts('proxy')">保存端口</button>
-                </div>
-                </section>
-
-                <section class="proxy-console-card glass-card proxy-enhancement-card">
-                <div class="proxy-console-card-head">
-                  <div>
-                    <h2>代理增强</h2>
-                    <p>自动路由、重试、模型解锁和第三方图片理解。</p>
-                  </div>
-                  <button class="btn-primary" onclick="openProxyEnhancement()">设置</button>
-                </div>
-                <div class="proxy-enhancement-summary">
-                  <span id="proxyEnhancementRetryState">重试：开启</span>
-                  <span id="proxyEnhancementImageState">图片理解：开启</span>
-                  <span id="proxyEnhancementVisionCount">图片模型：0</span>
-                </div>
-                <div class="proxy-vision-mini-stats">
-                  <div><span>图片</span><strong id="proxy-page-vision-images">0</strong></div>
-                  <div><span>API 调用</span><strong id="proxy-page-vision-api-calls">0</strong></div>
-                  <div><span>缓存命中</span><strong id="proxy-page-vision-cache-hits">0</strong></div>
-                  <div><span>失败</span><strong id="proxy-page-vision-failures">0</strong></div>
-                </div>
-                </section>
-
-                <section class="proxy-console-card glass-card">
-                <div class="proxy-console-card-head">
-                  <div>
-                    <h2>当前负载</h2>
-                    <p>来自 sidecar 统计接口。</p>
-                  </div>
-                </div>
-                <div class="proxy-runtime-grid">
-                  <div><span>今日请求</span><strong id="proxy-page-requests">—</strong></div>
-                  <div><span>Token</span><strong id="proxy-page-tokens">—</strong></div>
-                  <div><span>成功率</span><strong id="proxy-page-success-rate">—</strong></div>
-                  <div><span>平均耗时</span><strong id="proxy-page-latency">—</strong></div>
-                </div>
-                </section>
-              </div>
+            </div>
             </div>
 
             <div class="proxy-console-section" data-proxy-section="routes">
               <section class="proxy-console-card glass-card proxy-routes-card">
-                <div class="proxy-console-card-head proxy-routes-head">
-                  <div>
-                    <h2>模型路由</h2>
-                    <p>管理本地代理 /v1/models 暴露的模型，以及每个模型最终转发到哪个供应商。</p>
+                <div class="proxy-routes-hero">
+                  <div class="proxy-routes-title">
+                    <h2>模型列表</h2>
+                    <p>管理本地代理对外暴露的模型。请求里的 model 必须命中这里的模型 ID。</p>
                   </div>
-                  <div class="proxy-routes-actions">
-                    <button class="btn-ghost" onclick="importProxyRoutesFromModelMap()">从平台映射导入</button>
-                    <button class="btn-primary" onclick="openProxyRouteEditor()">添加路由</button>
-                  </div>
-                </div>
-                <div id="proxyRoutesCompatBanner" class="proxy-routes-banner" style="display:none;">
-                  当前本地代理仍处于兼容模式：/models 来自 Devin/Windsurf 模型映射。导入后会改为独立代理模型路由。
                 </div>
                 <div class="proxy-routes-toolbar">
-                  <input id="proxyRoutesSearch" class="field-input" type="text" placeholder="搜索模型 ID、显示名、供应商或目标模型..." oninput="renderProxyRoutes()">
-                  <label>
-                    <span>默认模型</span>
-                    <select id="proxyRoutesDefaultModel" onchange="setProxyRoutesDefault(this.value)"></select>
+                  <label class="proxy-routes-search">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                      stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                      <circle cx="11" cy="11" r="8"></circle>
+                      <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                    </svg>
+                    <input id="proxyRoutesSearch" type="text" placeholder="搜索模型 ID、供应商或上游模型"
+                      oninput="renderProxyRoutes()">
                   </label>
-                  <button class="btn-ghost" onclick="loadProxyRoutes()">刷新</button>
-                  <button class="btn-primary" onclick="saveProxyRoutes()">保存</button>
-                </div>
-                <div class="proxy-routes-summary">
-                  <span id="proxyRoutesTotal">路由：0</span>
-                  <span id="proxyRoutesEnabled">启用：0</span>
-                  <span id="proxyRoutesDefault">默认：未设置</span>
+                  <span class="model-map-count-pill" id="proxyRoutesBulkCount">共 0 个</span>
+                  <div class="proxy-routes-command-group model-map-bulk-actions">
+                    <button class="btn-primary proxy-route-add-btn" onclick="openProxyRouteEditor()">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                        stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                        <line x1="12" y1="5" x2="12" y2="19"></line>
+                        <line x1="5" y1="12" x2="19" y2="12"></line>
+                      </svg>
+                      添加模型
+                    </button>
+                    <button class="btn-ghost provider-bulk-btn" id="proxyRoutesSelectVisibleBtn"
+                      onclick="toggleVisibleProxyRouteSelection()" disabled>选择当前</button>
+                    <button class="btn-ghost provider-bulk-btn" id="proxyRoutesBulkEnableBtn"
+                      onclick="batchSetSelectedProxyRoutesEnabled(true)" disabled>启用</button>
+                    <button class="btn-ghost provider-bulk-btn" id="proxyRoutesBulkDisableBtn"
+                      onclick="batchSetSelectedProxyRoutesEnabled(false)" disabled>停用</button>
+                    <button class="btn-ghost provider-bulk-btn" id="proxyRoutesBulkVisionBtn"
+                      onclick="batchSetSelectedProxyRoutesThirdPartyVision(true)" disabled>启用第三方图片</button>
+                    <button class="btn-ghost provider-bulk-btn danger proxy-routes-delete-selected" id="proxyRoutesDeleteSelectedBtn"
+                      onclick="deleteSelectedProxyRoutes()" disabled>
+                      <span class="proxy-routes-delete-label">删除选中</span>
+                    </button>
+                    <button class="btn-ghost proxy-route-icon-btn" onclick="loadProxyRoutes()" title="刷新"
+                      aria-label="刷新模型列表">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                        stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="23 4 23 10 17 10"></polyline>
+                        <polyline points="1 20 1 14 7 14"></polyline>
+                        <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+                      </svg>
+                    </button>
+                  </div>
                 </div>
                 <div class="proxy-routes-table-wrap">
                   <table class="proxy-routes-table">
+                    <colgroup>
+                      <col class="proxy-route-col-select">
+                      <col class="proxy-route-col-id">
+                      <col class="proxy-route-col-upstream">
+                      <col class="proxy-route-col-capabilities">
+                      <col class="proxy-route-col-actions">
+                      <col class="proxy-route-col-vision">
+                      <col class="proxy-route-col-enabled">
+                    </colgroup>
                     <thead>
                       <tr>
-                        <th>启用</th>
-                        <th>对外模型 ID</th>
-                        <th>显示名</th>
-                        <th>入口</th>
-                        <th>路由目标</th>
+                        <th class="proxy-route-select-head model-map-select-head">
+                          <label class="provider-select-check provider-select-check-table" title="选择当前列表" onclick="event.stopPropagation()">
+                            <input type="checkbox" id="proxyRoutesSelectAll" aria-label="选择当前列表" onchange="toggleProxyRoutesSelectAll(this.checked)">
+                            <span></span>
+                          </label>
+                        </th>
+                        <th>模型 ID</th>
+                        <th>上游</th>
                         <th>能力</th>
                         <th>操作</th>
+                        <th>
+                          <span class="model-map-display-head">
+                            <span>第三方图片理解</span>
+                            <button class="btn-ghost model-map-settings-btn" onclick="navigateToProxyEnhancement()"
+                              title="配置图片理解模型" aria-label="配置图片理解模型">
+                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
+                                <circle cx="12" cy="12" r="3"></circle>
+                                <path
+                                  d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z">
+                                </path>
+                              </svg>
+                            </button>
+                          </span>
+                        </th>
+                        <th>启用</th>
                       </tr>
                     </thead>
                     <tbody id="proxyRoutesTableBody">
-                      <tr><td colspan="7" class="proxy-routes-empty">正在加载模型路由...</td></tr>
+                      <tr><td colspan="7" class="proxy-routes-empty">正在加载模型列表...</td></tr>
                     </tbody>
                   </table>
                 </div>
@@ -2272,65 +2449,18 @@
             </div>
           </div>
 
-          <section class="platform-access-card glass-card" data-platform-access-card="codebuddy">
-            <div class="platform-access-head">
-              <div>
-                <h2>接入模式</h2>
-                <p>本地代理模式使用「代理 > 模型路由」；直连供应商模式保留 CodeBuddy 专用模型列表。</p>
-              </div>
-              <div class="platform-access-toggle" role="group" aria-label="CodeBuddy 接入模式">
-                <button type="button" data-access-mode="proxy"
-                  onclick="setPlatformAccessMode('codebuddy', 'proxy')">本地代理</button>
-                <button type="button" data-access-mode="direct"
-                  onclick="setPlatformAccessMode('codebuddy', 'direct')">直连供应商</button>
-              </div>
-            </div>
-            <div class="platform-proxy-mode-panel" id="codebuddy-proxy-mode-panel" style="display:none;">
-              <div class="platform-proxy-info-grid">
-                <div><span>OpenAI 地址</span><code id="codebuddy-proxy-endpoint">-</code></div>
-                <div><span>Key</span><code id="codebuddy-proxy-key">未生成</code></div>
-                <div><span>路由数量</span><strong id="codebuddy-proxy-route-count">0</strong></div>
-                <div><span>默认模型</span><code id="codebuddy-proxy-default-model">未设置</code></div>
-              </div>
-              <div class="platform-proxy-actions">
-                <button type="button" class="btn-primary" onclick="applyLocalProxyModelPlatform('codebuddy')">
-                  同步到 CodeBuddy
-                </button>
-                <button type="button" class="btn-ghost" onclick="openProxyRoutesFromPlatform()">前往模型路由</button>
-                <button type="button" class="btn-ghost" onclick="copyLocalProxyInfoPlatform('codebuddy')">复制代理信息</button>
-              </div>
-              <div class="platform-proxy-route-list" id="codebuddy-proxy-route-list"></div>
-            </div>
-          </section>
-
           <!-- 列表视图 -->
           <div id="cb-list-view">
             <!-- 控制栏 -->
-            <div class="control-bar glass-card"
-              style="padding: 14px 24px; margin-bottom: 20px; border-radius: 14px; display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between; min-height: 72px;">
-              <!-- 左侧：标题与搜索 -->
-              <div style="display: flex; align-items: center; gap: 16px; flex-wrap: wrap;">
-                <h2
-                  style="font-size: 14px; font-weight: 700; color: var(--text-primary); display: flex; align-items: center; gap: 6px; margin: 0; user-select: none;">
-                  直连自定义模型列表
-                </h2>
-                <!-- 搜索输入框 -->
-                <div style="position: relative; display: flex; align-items: center;">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
-                    stroke-linecap="round" stroke-linejoin="round"
-                    style="position: absolute; left: 10px; color: var(--text-muted); pointer-events: none;">
-                    <circle cx="11" cy="11" r="8"></circle>
-                    <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-                  </svg>
-                  <input type="text" id="cb-model-search" placeholder="搜索模型、供应商或 URL"
-                    style="width: 260px; padding: 8px 12px 8px 30px; border-radius: 10px; border: 1px solid var(--border); background: var(--bg-input); color: var(--text-primary); font-size: 13px; outline: none; transition: all 0.2s;"
-                    oninput="onCbModelSearch()">
+            <div class="control-bar glass-card platform-model-toolbar">
+              <!-- 第一行：标题 + 操作按钮 -->
+              <div class="platform-model-toolbar-main">
+                <div class="platform-model-title-block">
+                  <h2>自定义模型列表</h2>
+                  <span>CodeBuddy 自定义模型，支持添加、编辑、导入导出。</span>
                 </div>
-              </div>
-              <!-- 右侧：操作按钮 -->
-              <div style="display: flex; align-items: center; gap: 8px;">
-                <button class="btn-primary" onclick="openCodeBuddyAddModal()"
-                  style="border-radius: 10px; padding: 0 16px; font-size: 13px; font-weight: 600; height: 36px; display: flex; align-items: center; gap: 6px;">
+                <div class="platform-model-toolbar-actions">
+                <button class="btn-primary platform-model-btn" onclick="openCodeBuddyAddModal()">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
                     stroke-linecap="round" stroke-linejoin="round">
                     <line x1="12" y1="5" x2="12" y2="19" />
@@ -2349,8 +2479,7 @@
                   </svg>
                   <span class="cb-bulk-delete-label">删除选中</span>
                 </button>
-                <button class="btn-ghost" onclick="saveCodeBuddyModels()"
-                  style="border-radius: 10px; padding: 0 14px; font-size: 13px; font-weight: 600; height: 36px; display: flex; align-items: center; gap: 6px;">
+                <button class="btn-ghost platform-model-btn" onclick="saveCodeBuddyModels()">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
                     stroke-linecap="round" stroke-linejoin="round">
                     <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
@@ -2359,29 +2488,32 @@
                   </svg>
                   保存
                 </button>
-                <button class="btn-ghost" onclick="loadCodeBuddyModels()"
-                  style="border-radius: 10px; padding: 0 12px; font-size: 13px; font-weight: 600; height: 36px; display: flex; align-items: center; justify-content: center; width: 40px;"
-                  title="刷新">
+                <button class="btn-ghost buddy-sync-toggle platform-model-btn" id="cb-sync-buddy-btn" data-buddy-sync-toggle
+                  aria-pressed="false" onclick="toggleTencentBuddySync('codebuddy')"
+                  title="开启同步 WorkBuddy">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
                     stroke-linecap="round" stroke-linejoin="round">
-                    <polyline points="23 4 23 10 17 10" />
-                    <polyline points="1 20 1 14 7 14" />
-                    <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
+                    <path d="M10 13a5 5 0 0 0 7.07 0l3-3a5 5 0 0 0-7.07-7.07l-1.7 1.7" />
+                    <path d="M14 11a5 5 0 0 0-7.07 0l-3 3A5 5 0 0 0 11 21.07l1.7-1.7" />
                   </svg>
+                  <span class="model-action-label">同步 WorkBuddy</span>
                 </button>
-                <span style="width:1px; height:20px; background:var(--border); margin:0 2px;"></span>
-                <button class="btn-ghost" onclick="exportCbModels()"
-                  style="border-radius: 10px; padding: 0 12px; font-size: 13px; font-weight: 600; height: 36px; display: flex; align-items: center; gap: 6px;"
-                  title="导出">
+                </div>
+              </div>
+              <!-- 第二行：搜索 + 计数 + 工具按钮 -->
+              <div class="platform-model-bulk-row">
+                <label class="platform-model-search">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
                     stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                    <polyline points="7 10 12 15 17 10" />
-                    <line x1="12" y1="15" x2="12" y2="3" />
+                    <circle cx="11" cy="11" r="8"></circle>
+                    <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
                   </svg>
-                </button>
-                <button class="btn-ghost" onclick="document.getElementById('cb-import-file').click()"
-                  style="border-radius: 10px; padding: 0 12px; font-size: 13px; font-weight: 600; height: 36px; display: flex; align-items: center; gap: 6px;"
+                  <input type="text" id="cb-model-search" placeholder="搜索模型、供应商或 URL"
+                    oninput="onCbModelSearch()">
+                </label>
+                <span class="platform-model-count-pill" id="cb-model-count">共 0 个</span>
+                <span class="platform-model-divider"></span>
+                <button class="btn-ghost platform-model-btn-icon" onclick="document.getElementById('cb-import-file').click()"
                   title="导入">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
                     stroke-linecap="round" stroke-linejoin="round">
@@ -2392,13 +2524,30 @@
                 </button>
                 <input type="file" id="cb-import-file" accept=".json" style="display:none;"
                   onchange="importCbModels(event)">
-                <button class="btn-ghost" data-json-toggle="cb" aria-pressed="false" onclick="toggleCbJsonEditor()"
-                  style="border-radius: 10px; padding: 0 12px; font-size: 13px; font-weight: 600; height: 36px; display: flex; align-items: center; gap: 6px;"
+                <button class="btn-ghost platform-model-btn-icon" onclick="exportCbModels()"
+                  title="导出">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                    <polyline points="7 10 12 15 17 10" />
+                    <line x1="12" y1="15" x2="12" y2="3" />
+                  </svg>
+                </button>
+                <button class="btn-ghost platform-model-btn-icon" data-json-toggle="cb" aria-pressed="false" onclick="toggleCbJsonEditor()"
                   title="JSON 编辑">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
                     stroke-linecap="round" stroke-linejoin="round">
                     <polyline points="16 18 22 12 16 6" />
                     <polyline points="8 6 2 12 8 18" />
+                  </svg>
+                </button>
+                <button class="btn-ghost platform-model-btn-icon" onclick="loadCodeBuddyModels()"
+                  title="刷新">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="23 4 23 10 17 10" />
+                    <polyline points="1 20 1 14 7 14" />
+                    <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
                   </svg>
                 </button>
               </div>
@@ -2562,6 +2711,35 @@
                   <line x1="21" y1="21" x2="16.65" y2="16.65" />
                 </svg>
                 <input type="text" id="cb-add-search" placeholder="搜索供应商…" oninput="onCbAddSearch()">
+                <div class="provider-sort-control platform-add-sort-control" id="cbAddSortControl">
+                  <button type="button" class="provider-sort-trigger platform-add-sort-trigger" id="cbAddSortTrigger"
+                    onclick="toggleCbAddSort(event)" aria-haspopup="listbox" aria-expanded="false"
+                    aria-controls="cbAddSortMenu" aria-label="供应商排序" title="供应商排序">
+                    <svg class="provider-sort-icon" width="14" height="14" viewBox="0 0 24 24" fill="none"
+                      stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"
+                      aria-hidden="true">
+                      <path d="M8 3v18"></path>
+                      <path d="m4 7 4-4 4 4"></path>
+                      <path d="M16 21V3"></path>
+                      <path d="m20 17-4 4-4-4"></path>
+                    </svg>
+                    <span id="cbAddSortLabel">默认排序</span>
+                    <svg class="provider-sort-caret" width="13" height="13" viewBox="0 0 24 24" fill="none"
+                      stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"
+                      aria-hidden="true">
+                      <path d="m6 9 6 6 6-6"></path>
+                    </svg>
+                  </button>
+                  <div class="provider-sort-menu platform-add-sort-menu" id="cbAddSortMenu" role="listbox"
+                    aria-label="供应商排序">
+                    <button type="button" class="provider-sort-option platform-add-sort-option" role="option"
+                      data-sort-mode="default" onclick="chooseCbAddSortMode('default')">默认排序</button>
+                    <button type="button" class="provider-sort-option platform-add-sort-option" role="option"
+                      data-sort-mode="name-asc" onclick="chooseCbAddSortMode('name-asc')">名称正序</button>
+                    <button type="button" class="provider-sort-option platform-add-sort-option" role="option"
+                      data-sort-mode="name-desc" onclick="chooseCbAddSortMode('name-desc')">名称反序</button>
+                  </div>
+                </div>
               </div>
               <div class="cb-add-provider-list" id="cb-add-provider-list"></div>
             </aside>
@@ -2771,65 +2949,18 @@
             </div>
           </div>
 
-          <section class="platform-access-card glass-card" data-platform-access-card="zcode">
-            <div class="platform-access-head">
-              <div>
-                <h2>接入模式</h2>
-                <p>本地代理模式使用「代理 > 模型路由」；直连供应商模式保留 ZCode 专用模型列表。</p>
-              </div>
-              <div class="platform-access-toggle" role="group" aria-label="ZCode 接入模式">
-                <button type="button" data-access-mode="proxy"
-                  onclick="setPlatformAccessMode('zcode', 'proxy')">本地代理</button>
-                <button type="button" data-access-mode="direct"
-                  onclick="setPlatformAccessMode('zcode', 'direct')">直连供应商</button>
-              </div>
-            </div>
-            <div class="platform-proxy-mode-panel" id="zcode-proxy-mode-panel" style="display:none;">
-              <div class="platform-proxy-info-grid">
-                <div><span>OpenAI 地址</span><code id="zcode-proxy-endpoint">-</code></div>
-                <div><span>Key</span><code id="zcode-proxy-key">未生成</code></div>
-                <div><span>路由数量</span><strong id="zcode-proxy-route-count">0</strong></div>
-                <div><span>默认模型</span><code id="zcode-proxy-default-model">未设置</code></div>
-              </div>
-              <div class="platform-proxy-actions">
-                <button type="button" class="btn-primary" onclick="applyLocalProxyModelPlatform('zcode')">
-                  同步到 ZCode
-                </button>
-                <button type="button" class="btn-ghost" onclick="openProxyRoutesFromPlatform()">前往模型路由</button>
-                <button type="button" class="btn-ghost" onclick="copyLocalProxyInfoPlatform('zcode')">复制代理信息</button>
-              </div>
-              <div class="platform-proxy-route-list" id="zcode-proxy-route-list"></div>
-            </div>
-          </section>
-
           <!-- 列表视图 -->
           <div id="zc-list-view">
             <!-- 控制栏 -->
-            <div class="control-bar glass-card"
-              style="padding: 14px 24px; margin-bottom: 20px; border-radius: 14px; display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between; min-height: 72px;">
-              <!-- 左侧：标题与搜索 -->
-              <div style="display: flex; align-items: center; gap: 16px; flex-wrap: wrap;">
-                <h2
-                  style="font-size: 14px; font-weight: 700; color: var(--text-primary); display: flex; align-items: center; gap: 6px; margin: 0; user-select: none;">
-                  直连自定义模型列表
-                </h2>
-                <!-- 搜索输入框 -->
-                <div style="position: relative; display: flex; align-items: center;">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
-                    stroke-linecap="round" stroke-linejoin="round"
-                    style="position: absolute; left: 10px; color: var(--text-muted); pointer-events: none;">
-                    <circle cx="11" cy="11" r="8"></circle>
-                    <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-                  </svg>
-                  <input type="text" id="zc-model-search" placeholder="搜索模型、供应商或 Base URL"
-                    style="width: 260px; padding: 8px 12px 8px 30px; border-radius: 10px; border: 1px solid var(--border); background: var(--bg-input); color: var(--text-primary); font-size: 13px; outline: none; transition: all 0.2s;"
-                    oninput="onZcModelSearch()">
+            <div class="control-bar glass-card platform-model-toolbar">
+              <!-- 第一行：标题 + 操作按钮 -->
+              <div class="platform-model-toolbar-main">
+                <div class="platform-model-title-block">
+                  <h2>自定义模型列表</h2>
+                  <span>Z.AI 自定义模型，支持添加、编辑、导入导出。</span>
                 </div>
-              </div>
-              <!-- 右侧：操作按钮 -->
-              <div style="display: flex; align-items: center; gap: 8px;">
-                <button class="btn-primary" onclick="openZcAddModal()"
-                  style="border-radius: 10px; padding: 0 16px; font-size: 13px; font-weight: 600; height: 36px; display: flex; align-items: center; gap: 6px;">
+                <div class="platform-model-toolbar-actions">
+                <button class="btn-primary platform-model-btn" onclick="openZcAddModal()">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
                     stroke-linecap="round" stroke-linejoin="round">
                     <line x1="12" y1="5" x2="12" y2="19" />
@@ -2848,8 +2979,7 @@
                   </svg>
                   <span class="cb-bulk-delete-label">删除选中</span>
                 </button>
-                <button class="btn-ghost" onclick="saveZcModels()"
-                  style="border-radius: 10px; padding: 0 14px; font-size: 13px; font-weight: 600; height: 36px; display: flex; align-items: center; gap: 6px;">
+                <button class="btn-ghost platform-model-btn" onclick="saveZcModels()">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
                     stroke-linecap="round" stroke-linejoin="round">
                     <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
@@ -2858,29 +2988,22 @@
                   </svg>
                   保存
                 </button>
-                <button class="btn-ghost" onclick="loadZcModels()"
-                  style="border-radius: 10px; padding: 0 12px; font-size: 13px; font-weight: 600; height: 36px; display: flex; align-items: center; justify-content: center; width: 40px;"
-                  title="刷新">
+                </div>
+              </div>
+              <!-- 第二行：搜索 + 计数 + 工具按钮 -->
+              <div class="platform-model-bulk-row">
+                <label class="platform-model-search">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
                     stroke-linecap="round" stroke-linejoin="round">
-                    <polyline points="23 4 23 10 17 10" />
-                    <polyline points="1 20 1 14 7 14" />
-                    <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
+                    <circle cx="11" cy="11" r="8"></circle>
+                    <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
                   </svg>
-                </button>
-                <span style="width:1px; height:20px; background:var(--border); margin:0 2px;"></span>
-                <button class="btn-ghost" onclick="exportZcModels()"
-                  style="border-radius: 10px; padding: 0 12px; font-size: 13px; font-weight: 600; height: 36px; display: flex; align-items: center; gap: 6px;"
-                  title="导出">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
-                    stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                    <polyline points="7 10 12 15 17 10" />
-                    <line x1="12" y1="15" x2="12" y2="3" />
-                  </svg>
-                </button>
-                <button class="btn-ghost" onclick="document.getElementById('zc-import-file').click()"
-                  style="border-radius: 10px; padding: 0 12px; font-size: 13px; font-weight: 600; height: 36px; display: flex; align-items: center; gap: 6px;"
+                  <input type="text" id="zc-model-search" placeholder="搜索模型、供应商或 Base URL"
+                    oninput="onZcModelSearch()">
+                </label>
+                <span class="platform-model-count-pill" id="zc-model-count">共 0 个</span>
+                <span class="platform-model-divider"></span>
+                <button class="btn-ghost platform-model-btn-icon" onclick="document.getElementById('zc-import-file').click()"
                   title="导入">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
                     stroke-linecap="round" stroke-linejoin="round">
@@ -2891,13 +3014,30 @@
                 </button>
                 <input type="file" id="zc-import-file" accept=".json" style="display:none;"
                   onchange="importZcModels(event)">
-                <button class="btn-ghost" data-json-toggle="zc" aria-pressed="false" onclick="toggleZcJsonEditor()"
-                  style="border-radius: 10px; padding: 0 12px; font-size: 13px; font-weight: 600; height: 36px; display: flex; align-items: center; gap: 6px;"
+                <button class="btn-ghost platform-model-btn-icon" onclick="exportZcModels()"
+                  title="导出">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                    <polyline points="7 10 12 15 17 10" />
+                    <line x1="12" y1="15" x2="12" y2="3" />
+                  </svg>
+                </button>
+                <button class="btn-ghost platform-model-btn-icon" data-json-toggle="zc" aria-pressed="false" onclick="toggleZcJsonEditor()"
                   title="JSON 编辑">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
                     stroke-linecap="round" stroke-linejoin="round">
                     <polyline points="16 18 22 12 16 6" />
                     <polyline points="8 6 2 12 8 18" />
+                  </svg>
+                </button>
+                <button class="btn-ghost platform-model-btn-icon" onclick="loadZcModels()"
+                  title="刷新">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="23 4 23 10 17 10" />
+                    <polyline points="1 20 1 14 7 14" />
+                    <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
                   </svg>
                 </button>
               </div>
@@ -3005,6 +3145,35 @@
                   <line x1="21" y1="21" x2="16.65" y2="16.65" />
                 </svg>
                 <input type="text" id="zc-add-search" placeholder="搜索供应商…" oninput="onZcAddSearch()">
+                <div class="provider-sort-control platform-add-sort-control" id="zcAddSortControl">
+                  <button type="button" class="provider-sort-trigger platform-add-sort-trigger" id="zcAddSortTrigger"
+                    onclick="toggleZcAddSort(event)" aria-haspopup="listbox" aria-expanded="false"
+                    aria-controls="zcAddSortMenu" aria-label="供应商排序" title="供应商排序">
+                    <svg class="provider-sort-icon" width="14" height="14" viewBox="0 0 24 24" fill="none"
+                      stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"
+                      aria-hidden="true">
+                      <path d="M8 3v18"></path>
+                      <path d="m4 7 4-4 4 4"></path>
+                      <path d="M16 21V3"></path>
+                      <path d="m20 17-4 4-4-4"></path>
+                    </svg>
+                    <span id="zcAddSortLabel">默认排序</span>
+                    <svg class="provider-sort-caret" width="13" height="13" viewBox="0 0 24 24" fill="none"
+                      stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"
+                      aria-hidden="true">
+                      <path d="m6 9 6 6 6-6"></path>
+                    </svg>
+                  </button>
+                  <div class="provider-sort-menu platform-add-sort-menu" id="zcAddSortMenu" role="listbox"
+                    aria-label="供应商排序">
+                    <button type="button" class="provider-sort-option platform-add-sort-option" role="option"
+                      data-sort-mode="default" onclick="chooseZcAddSortMode('default')">默认排序</button>
+                    <button type="button" class="provider-sort-option platform-add-sort-option" role="option"
+                      data-sort-mode="name-asc" onclick="chooseZcAddSortMode('name-asc')">名称正序</button>
+                    <button type="button" class="provider-sort-option platform-add-sort-option" role="option"
+                      data-sort-mode="name-desc" onclick="chooseZcAddSortMode('name-desc')">名称反序</button>
+                  </div>
+                </div>
               </div>
               <div class="wb-add-provider-list" id="zc-add-provider-list"></div>
             </aside>
@@ -3067,65 +3236,18 @@
             </div>
           </div>
 
-          <section class="platform-access-card glass-card" data-platform-access-card="workbuddy">
-            <div class="platform-access-head">
-              <div>
-                <h2>接入模式</h2>
-                <p>本地代理模式使用「代理 > 模型路由」；直连供应商模式保留 WorkBuddy 专用模型列表。</p>
-              </div>
-              <div class="platform-access-toggle" role="group" aria-label="WorkBuddy 接入模式">
-                <button type="button" data-access-mode="proxy"
-                  onclick="setPlatformAccessMode('workbuddy', 'proxy')">本地代理</button>
-                <button type="button" data-access-mode="direct"
-                  onclick="setPlatformAccessMode('workbuddy', 'direct')">直连供应商</button>
-              </div>
-            </div>
-            <div class="platform-proxy-mode-panel" id="workbuddy-proxy-mode-panel" style="display:none;">
-              <div class="platform-proxy-info-grid">
-                <div><span>OpenAI 地址</span><code id="workbuddy-proxy-endpoint">-</code></div>
-                <div><span>Key</span><code id="workbuddy-proxy-key">未生成</code></div>
-                <div><span>路由数量</span><strong id="workbuddy-proxy-route-count">0</strong></div>
-                <div><span>默认模型</span><code id="workbuddy-proxy-default-model">未设置</code></div>
-              </div>
-              <div class="platform-proxy-actions">
-                <button type="button" class="btn-primary" onclick="applyLocalProxyModelPlatform('workbuddy')">
-                  同步到 WorkBuddy
-                </button>
-                <button type="button" class="btn-ghost" onclick="openProxyRoutesFromPlatform()">前往模型路由</button>
-                <button type="button" class="btn-ghost" onclick="copyLocalProxyInfoPlatform('workbuddy')">复制代理信息</button>
-              </div>
-              <div class="platform-proxy-route-list" id="workbuddy-proxy-route-list"></div>
-            </div>
-          </section>
-
           <!-- 列表视图 -->
           <div id="wb-list-view">
             <!-- 控制栏 -->
-            <div class="control-bar glass-card"
-              style="padding: 14px 24px; margin-bottom: 20px; border-radius: 14px; display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between; min-height: 72px;">
-              <!-- 左侧：标题与搜索 -->
-              <div style="display: flex; align-items: center; gap: 16px; flex-wrap: wrap;">
-                <h2
-                  style="font-size: 14px; font-weight: 700; color: var(--text-primary); display: flex; align-items: center; gap: 6px; margin: 0; user-select: none;">
-                  直连自定义模型列表
-                </h2>
-                <!-- 搜索输入框 -->
-                <div style="position: relative; display: flex; align-items: center;">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
-                    stroke-linecap="round" stroke-linejoin="round"
-                    style="position: absolute; left: 10px; color: var(--text-muted); pointer-events: none;">
-                    <circle cx="11" cy="11" r="8"></circle>
-                    <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-                  </svg>
-                  <input type="text" id="wb-model-search" placeholder="搜索模型、供应商或 URL"
-                    style="width: 260px; padding: 8px 12px 8px 30px; border-radius: 10px; border: 1px solid var(--border); background: var(--bg-input); color: var(--text-primary); font-size: 13px; outline: none; transition: all 0.2s;"
-                    oninput="onWbModelSearch()">
+            <div class="control-bar glass-card platform-model-toolbar">
+              <!-- 第一行：标题 + 操作按钮 -->
+              <div class="platform-model-toolbar-main">
+                <div class="platform-model-title-block">
+                  <h2>自定义模型列表</h2>
+                  <span>WorkBuddy 自定义模型，支持添加、编辑、导入导出。</span>
                 </div>
-              </div>
-              <!-- 右侧：操作按钮 -->
-              <div style="display: flex; align-items: center; gap: 8px;">
-                <button class="btn-primary" onclick="openWbAddModal()"
-                  style="border-radius: 10px; padding: 0 16px; font-size: 13px; font-weight: 600; height: 36px; display: flex; align-items: center; gap: 6px;">
+                <div class="platform-model-toolbar-actions">
+                <button class="btn-primary platform-model-btn" onclick="openWbAddModal()">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
                     stroke-linecap="round" stroke-linejoin="round">
                     <line x1="12" y1="5" x2="12" y2="19" />
@@ -3144,8 +3266,7 @@
                   </svg>
                   <span class="cb-bulk-delete-label">删除选中</span>
                 </button>
-                <button class="btn-ghost" onclick="saveWbModels()"
-                  style="border-radius: 10px; padding: 0 14px; font-size: 13px; font-weight: 600; height: 36px; display: flex; align-items: center; gap: 6px;">
+                <button class="btn-ghost platform-model-btn" onclick="saveWbModels()">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
                     stroke-linecap="round" stroke-linejoin="round">
                     <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
@@ -3154,8 +3275,17 @@
                   </svg>
                   保存
                 </button>
-                <button class="btn-ghost" onclick="loadWbModels()"
-                  style="border-radius: 10px; padding: 0 12px; font-size: 13px; font-weight: 600; height: 36px; display: flex; align-items: center; justify-content: center; width: 40px;"
+                <button class="btn-ghost buddy-sync-toggle platform-model-btn" id="wb-sync-buddy-btn" data-buddy-sync-toggle
+                  aria-pressed="false" onclick="toggleTencentBuddySync('workbuddy')"
+                  title="开启同步 CodeBuddy">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M10 13a5 5 0 0 0 7.07 0l3-3a5 5 0 0 0-7.07-7.07l-1.7 1.7" />
+                    <path d="M14 11a5 5 0 0 0-7.07 0l-3 3A5 5 0 0 0 11 21.07l1.7-1.7" />
+                  </svg>
+                  <span class="model-action-label">同步 CodeBuddy</span>
+                </button>
+                <button class="btn-ghost platform-model-btn-icon" onclick="loadWbModels()"
                   title="刷新">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
                     stroke-linecap="round" stroke-linejoin="round">
@@ -3164,9 +3294,8 @@
                     <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
                   </svg>
                 </button>
-                <span style="width:1px; height:20px; background:var(--border); margin:0 2px;"></span>
-                <button class="btn-ghost" onclick="exportWbModels()"
-                  style="border-radius: 10px; padding: 0 12px; font-size: 13px; font-weight: 600; height: 36px; display: flex; align-items: center; gap: 6px;"
+                <span class="platform-model-divider"></span>
+                <button class="btn-ghost platform-model-btn" onclick="exportWbModels()"
                   title="导出">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
                     stroke-linecap="round" stroke-linejoin="round">
@@ -3175,8 +3304,7 @@
                     <line x1="12" y1="15" x2="12" y2="3" />
                   </svg>
                 </button>
-                <button class="btn-ghost" onclick="document.getElementById('wb-import-file').click()"
-                  style="border-radius: 10px; padding: 0 12px; font-size: 13px; font-weight: 600; height: 36px; display: flex; align-items: center; gap: 6px;"
+                <button class="btn-ghost platform-model-btn" onclick="document.getElementById('wb-import-file').click()"
                   title="导入">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
                     stroke-linecap="round" stroke-linejoin="round">
@@ -3187,8 +3315,7 @@
                 </button>
                 <input type="file" id="wb-import-file" accept=".json" style="display:none;"
                   onchange="importWbModels(event)">
-                <button class="btn-ghost" data-json-toggle="wb" aria-pressed="false" onclick="toggleWbJsonEditor()"
-                  style="border-radius: 10px; padding: 0 12px; font-size: 13px; font-weight: 600; height: 36px; display: flex; align-items: center; gap: 6px;"
+                <button class="btn-ghost platform-model-btn-icon" data-json-toggle="wb" aria-pressed="false" onclick="toggleWbJsonEditor()"
                   title="JSON 编辑">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
                     stroke-linecap="round" stroke-linejoin="round">
@@ -3196,6 +3323,20 @@
                     <polyline points="8 6 2 12 8 18" />
                   </svg>
                 </button>
+                </div>
+              </div>
+              <!-- 第二行：搜索 + 计数 -->
+              <div class="platform-model-bulk-row">
+                <label class="platform-model-search">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="11" cy="11" r="8"></circle>
+                    <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                  </svg>
+                  <input type="text" id="wb-model-search" placeholder="搜索模型、供应商或 URL"
+                    oninput="onWbModelSearch()">
+                </label>
+                <span class="platform-model-count-pill" id="wb-model-count">共 0 个</span>
               </div>
             </div>
 
@@ -3444,6 +3585,35 @@
                   <line x1="21" y1="21" x2="16.65" y2="16.65" />
                 </svg>
                 <input type="text" id="wb-add-search" placeholder="搜索供应商…" oninput="onWbAddSearch()">
+                <div class="provider-sort-control platform-add-sort-control" id="wbAddSortControl">
+                  <button type="button" class="provider-sort-trigger platform-add-sort-trigger" id="wbAddSortTrigger"
+                    onclick="toggleWbAddSort(event)" aria-haspopup="listbox" aria-expanded="false"
+                    aria-controls="wbAddSortMenu" aria-label="供应商排序" title="供应商排序">
+                    <svg class="provider-sort-icon" width="14" height="14" viewBox="0 0 24 24" fill="none"
+                      stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"
+                      aria-hidden="true">
+                      <path d="M8 3v18"></path>
+                      <path d="m4 7 4-4 4 4"></path>
+                      <path d="M16 21V3"></path>
+                      <path d="m20 17-4 4-4-4"></path>
+                    </svg>
+                    <span id="wbAddSortLabel">默认排序</span>
+                    <svg class="provider-sort-caret" width="13" height="13" viewBox="0 0 24 24" fill="none"
+                      stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"
+                      aria-hidden="true">
+                      <path d="m6 9 6 6 6-6"></path>
+                    </svg>
+                  </button>
+                  <div class="provider-sort-menu platform-add-sort-menu" id="wbAddSortMenu" role="listbox"
+                    aria-label="供应商排序">
+                    <button type="button" class="provider-sort-option platform-add-sort-option" role="option"
+                      data-sort-mode="default" onclick="chooseWbAddSortMode('default')">默认排序</button>
+                    <button type="button" class="provider-sort-option platform-add-sort-option" role="option"
+                      data-sort-mode="name-asc" onclick="chooseWbAddSortMode('name-asc')">名称正序</button>
+                    <button type="button" class="provider-sort-option platform-add-sort-option" role="option"
+                      data-sort-mode="name-desc" onclick="chooseWbAddSortMode('name-desc')">名称反序</button>
+                  </div>
+                </div>
               </div>
               <div class="wb-add-provider-list" id="wb-add-provider-list"></div>
             </aside>
@@ -3927,6 +4097,15 @@
                         </div>
                       </div>
                     </div>
+                    <div class="setting-row">
+                      <div>
+                        <div class="setting-label">解锁模型列表</div>
+                        <div class="setting-desc">拦截 GetUserStatus 响应，解除 IDE 下拉框中灰色锁定项的限制。仅对 Windsurf / Devin 生效。</div>
+                      </div>
+                      <div class="setting-ctrl">
+                        <span class="toggle-switch"><input id="enhancement-unlockModels" type="checkbox" onchange="toggleEnhancement(this, 'unlockModels'); saveProxyEnhancement()"><span class="toggle-slider"></span></span>
+                      </div>
+                    </div>
                   </div>
                 </div>
 
@@ -3947,6 +4126,9 @@
                       <div class="health-head-actions">
                         <button class="btn-primary" id="health-run-btn" onclick="runHealthcheck()">
                           <span class="health-btn-icon">▶</span> 一键检测
+                        </button>
+                        <button class="btn-ghost" id="health-generate-cert-btn" onclick="generateCertsFromHealth()">
+                          生成证书
                         </button>
                         <button class="btn-ghost" id="health-install-cert-btn" onclick="installCaFromHealth()">
                           安装证书
@@ -4140,12 +4322,12 @@
     </div>
   </div>
 
-  <!-- 本地代理模型路由编辑 -->
+  <!-- 本地代理模型编辑 -->
   <div id="proxy-route-editor-modal" class="modal-overlay">
     <div class="modal-container proxy-route-editor-modal">
       <div class="modal-header proxy-route-editor-header">
-        <div class="modal-title">
-          <span class="modal-icon">
+        <div class="proxy-route-editor-title-wrap">
+          <span class="modal-icon proxy-route-editor-icon">
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"
               stroke-linecap="round" stroke-linejoin="round">
               <path d="M4 7h10"></path>
@@ -4154,7 +4336,13 @@
               <path d="M14 17l3 3 3-3"></path>
             </svg>
           </span>
-          <span id="proxyRouteEditorTitle">添加模型路由</span>
+          <div>
+            <div class="proxy-route-editor-kicker">本地代理 / 模型列表</div>
+            <div class="modal-title">
+              <span id="proxyRouteEditorTitle">添加模型</span>
+            </div>
+            <div id="proxyRouteEditorSubtitle" class="proxy-route-editor-subtitle">从供应商模型中选择要暴露到本地代理的模型。</div>
+          </div>
         </div>
         <button type="button" class="modal-close-icon" onclick="closeProxyRouteEditor()" aria-label="关闭">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
@@ -4165,49 +4353,176 @@
         </button>
       </div>
       <div class="modal-body proxy-route-editor-body">
-        <section class="proxy-route-editor-section">
-          <div class="proxy-route-editor-section-title">基础信息</div>
-          <div class="proxy-route-editor-grid">
-            <label>
-              <span>对外模型 ID</span>
-              <input id="proxyRouteIdInput" class="field-input" type="text" placeholder="例如 glm-5.1">
-            </label>
-            <label>
-              <span>显示名</span>
-              <input id="proxyRouteNameInput" class="field-input" type="text" placeholder="例如 GLM-5.1">
-            </label>
+        <section class="proxy-route-editor-section proxy-route-add-only">
+          <div class="proxy-route-editor-section-head">
+            <div>
+              <div class="proxy-route-editor-section-title">从供应商添加</div>
+              <div class="proxy-route-editor-section-desc">左侧选择供应商，右侧选择要添加到列表的模型。</div>
+            </div>
           </div>
-          <div class="proxy-route-editor-options">
-            <label><input id="proxyRouteEnabledInput" type="checkbox" checked> 启用</label>
-            <label><input id="proxyRouteExposeOpenAiInput" type="checkbox" checked> OpenAI 入口</label>
-            <label><input id="proxyRouteExposeAnthropicInput" type="checkbox" checked> Claude 入口</label>
+          <div class="proxy-route-pick-layout">
+            <aside class="proxy-route-provider-pane">
+              <label class="proxy-route-provider-search">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                  stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                  <circle cx="11" cy="11" r="8"></circle>
+                  <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                </svg>
+                <input id="proxyRouteProviderSearch" type="text" placeholder="搜索供应商" oninput="onProxyRouteProviderSearch()">
+              </label>
+              <div id="proxyRouteProviderList" class="proxy-route-provider-list"></div>
+            </aside>
+            <section class="proxy-route-model-pane">
+              <div class="proxy-route-model-head">
+                <div>
+                  <strong id="proxyRouteModelProviderTitle">请选择供应商</strong>
+                  <span id="proxyRouteModelProviderSub">右侧会展示该供应商的模型</span>
+                </div>
+                <div class="proxy-route-model-actions">
+                  <button type="button" class="btn-ghost" id="proxyRouteSelectAllBtn" onclick="selectAllProxyRouteModels()" disabled>全选</button>
+                  <button type="button" class="btn-ghost" id="proxyRouteSelectNoneBtn" onclick="selectNoProxyRouteModels()" disabled>全不选</button>
+                </div>
+              </div>
+              <div id="proxyRouteModelList" class="proxy-route-model-list"></div>
+            </section>
           </div>
         </section>
 
-        <section class="proxy-route-editor-section">
+        <section class="proxy-route-edit-only proxy-route-editor-section proxy-route-editor-main-form">
+          <div class="proxy-route-editor-option-group proxy-route-editor-option-group-plain">
+            <div class="proxy-route-editor-grid proxy-route-editor-model-grid">
+              <label>
+                <span>模型 ID</span>
+                <input id="proxyRouteIdInput" class="field-input" type="text" placeholder="下游软件请求时使用的 ID">
+              </label>
+            </div>
+          </div>
+
+          <div class="proxy-route-editor-option-group">
+            <div class="proxy-route-editor-grid proxy-route-editor-upstream-grid">
+              <label>
+                <span>上游供应商</span>
+                <select id="proxyRoutePrimaryProviderInput" onchange="updateProxyRouteTarget(0, 'providerId', this.value)"></select>
+              </label>
+              <label>
+                <span>实际模型</span>
+                <input id="proxyRoutePrimaryModelInput" class="field-input" type="text" placeholder="真正发给供应商的模型" onchange="updateProxyRouteTarget(0, 'model', this.value)">
+              </label>
+            </div>
+          </div>
+
+          <div class="proxy-route-editor-option-group">
+            <div class="proxy-route-editor-options proxy-route-editor-chip-options">
+              <label><input id="proxyRouteCapStreamInput" type="checkbox" checked><span>流式输出</span></label>
+              <label><input id="proxyRouteCapToolsInput" type="checkbox" checked><span>工具调用</span></label>
+              <label><input id="proxyRouteCapVisionInput" type="checkbox" checked><span>图片输入</span></label>
+              <label><input id="proxyRouteCapReasoningInput" type="checkbox" checked><span>推理</span></label>
+            </div>
+          </div>
+        </section>
+
+        <section class="proxy-route-edit-only proxy-route-editor-section proxy-route-backup-section">
           <div class="proxy-route-editor-section-head">
-            <div class="proxy-route-editor-section-title">路由目标</div>
-            <button class="btn-ghost" onclick="addProxyRouteTargetRow()">添加目标</button>
+            <div>
+              <div class="proxy-route-editor-section-title">备用模型</div>
+              <div class="proxy-route-editor-section-desc">主模型失败后按顺序尝试，当前主模型也会显示在链路顶部。</div>
+            </div>
+            <button type="button" class="btn-ghost proxy-route-add-target-btn" onclick="openProxyRouteBackupPicker()">添加备用模型</button>
           </div>
           <div id="proxyRouteTargetsEditor" class="proxy-route-target-editor"></div>
         </section>
 
-        <section class="proxy-route-editor-section">
-          <div class="proxy-route-editor-section-title">能力与增强</div>
-          <div class="proxy-route-editor-options">
-            <label><input id="proxyRouteCapStreamInput" type="checkbox" checked> 流式</label>
-            <label><input id="proxyRouteCapToolsInput" type="checkbox"> 工具</label>
-            <label><input id="proxyRouteCapVisionInput" type="checkbox"> 图片</label>
-            <label><input id="proxyRouteCapReasoningInput" type="checkbox"> 推理</label>
-            <label><input id="proxyRouteRetryInput" type="checkbox" checked> 重试</label>
-            <label><input id="proxyRouteAutoRoutingInput" type="checkbox" checked> 自动故障转移</label>
-            <label><input id="proxyRouteThirdPartyVisionInput" type="checkbox"> 第三方图片理解</label>
+        <details class="proxy-route-advanced">
+          <summary>
+            <span>高级选项</span>
+            <small>额外参数、原始错误和失败处理</small>
+          </summary>
+          <div class="proxy-route-advanced-body">
+            <div class="proxy-route-editor-option-group">
+              <div class="proxy-route-editor-option-group-title">接口格式</div>
+              <div class="proxy-route-format-seg" id="proxyRoutePrimaryFormatInput">
+                <button type="button" class="proxy-route-format-seg-btn" data-value="" onclick="updateProxyRouteTarget(0, 'apiFormat', ''); syncProxyRouteFormatSeg('')">自动</button>
+                <button type="button" class="proxy-route-format-seg-btn" data-value="openai" onclick="updateProxyRouteTarget(0, 'apiFormat', 'openai'); syncProxyRouteFormatSeg('openai')">OpenAI</button>
+                <button type="button" class="proxy-route-format-seg-btn" data-value="anthropic" onclick="updateProxyRouteTarget(0, 'apiFormat', 'anthropic'); syncProxyRouteFormatSeg('anthropic')">Claude</button>
+              </div>
+            </div>
+            <div class="proxy-route-editor-option-group">
+              <div class="proxy-route-editor-option-group-title">请求和错误</div>
+              <div class="proxy-route-editor-options proxy-route-editor-chip-options">
+                <label><input id="proxyRoutePreserveExtraParamsInput" type="checkbox"><span>保留软件传来的额外参数</span></label>
+                <label><input id="proxyRouteRawProviderErrorsInput" type="checkbox" checked><span>显示供应商原始错误</span></label>
+              </div>
+            </div>
+            <div class="proxy-route-editor-option-group">
+              <div class="proxy-route-editor-option-group-title">失败处理</div>
+              <div class="proxy-route-editor-options proxy-route-editor-chip-options">
+                <label><input id="proxyRouteRetryInput" type="checkbox" checked><span>失败后再试一次</span></label>
+                <label><input id="proxyRouteAutoRoutingInput" type="checkbox" checked><span>失败后换备用模型</span></label>
+              </div>
+            </div>
           </div>
-        </section>
+        </details>
       </div>
-      <div class="modal-footer">
+      <div class="modal-footer proxy-route-editor-footer">
         <button class="modal-btn modal-btn-cancel" onclick="closeProxyRouteEditor()">取消</button>
-        <button class="modal-btn modal-btn-confirm" onclick="saveProxyRouteEditor()">保存路由</button>
+        <button class="modal-btn modal-btn-confirm" id="proxyRouteEditorConfirmBtn" onclick="saveProxyRouteEditor()">添加到列表</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 备用模型选择模态框（叠加在编辑器之上） -->
+  <div id="proxy-route-backup-picker-modal" class="modal-overlay">
+    <div class="modal-container proxy-route-backup-picker-modal">
+      <div class="modal-header proxy-route-backup-picker-header">
+        <div class="proxy-route-backup-picker-title-wrap">
+          <span class="modal-icon">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+              stroke-linecap="round" stroke-linejoin="round">
+              <path d="M8 2v4"></path><path d="M16 2v4"></path>
+              <rect x="3" y="4" width="18" height="18" rx="2"></rect>
+              <path d="M3 10h18"></path>
+            </svg>
+          </span>
+          <div>
+            <div class="modal-title">选择备用模型</div>
+            <div class="modal-subtitle">从供应商列表中选择模型添加到备用链路</div>
+          </div>
+        </div>
+        <button type="button" class="modal-close-icon" onclick="closeProxyRouteBackupPicker()" aria-label="关闭">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+            stroke-linecap="round" stroke-linejoin="round">
+            <path d="M18 6 6 18"></path>
+            <path d="m6 6 12 12"></path>
+          </svg>
+        </button>
+      </div>
+      <div class="proxy-route-backup-picker-body">
+        <div class="proxy-route-pick-layout proxy-route-backup-pick-layout">
+          <aside class="proxy-route-provider-pane">
+            <label class="proxy-route-provider-search">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="11" cy="11" r="8"></circle>
+                <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+              </svg>
+              <input id="proxyRouteBackupProviderSearch" type="text" placeholder="搜索供应商" oninput="onProxyRouteBackupProviderSearch()">
+            </label>
+            <div id="proxyRouteBackupProviderList" class="proxy-route-provider-list"></div>
+          </aside>
+          <section class="proxy-route-model-pane">
+            <div class="proxy-route-model-head">
+              <div>
+                <strong id="proxyRouteBackupProviderTitle">请选择供应商</strong>
+                <span id="proxyRouteBackupProviderSub">右侧选择要加入备用链路的模型</span>
+              </div>
+            </div>
+            <div id="proxyRouteBackupModelList" class="proxy-route-model-list"></div>
+          </section>
+        </div>
+      </div>
+      <div class="modal-footer proxy-route-backup-picker-footer">
+        <button class="modal-btn modal-btn-cancel" onclick="closeProxyRouteBackupPicker()">取消</button>
+        <button class="modal-btn modal-btn-confirm" id="proxyRouteAddBackupConfirmBtn" onclick="addSelectedProxyRouteBackupModel()" disabled>添加到链路</button>
       </div>
     </div>
   </div>

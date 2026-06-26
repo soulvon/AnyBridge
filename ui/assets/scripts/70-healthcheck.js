@@ -59,6 +59,44 @@
   };
 
   // ──────────────────────────────────────────────
+  // 入口：用户点「生成证书」按钮
+  // generate_certs 会写入 certs/server.codeium.com.pem 和 key，并尝试顺手安装 CA。
+  // ──────────────────────────────────────────────
+  window.generateCertsFromHealth = async function () {
+    if (!invoke) {
+      try { if (typeof bindTauriBridge === 'function') bindTauriBridge(); } catch (_) {}
+      if (!invoke) {
+        setCertInstallProgress({ message: 'Tauri 通道未就绪，无法生成证书', percent: 100, level: 'err' });
+        addLog && addLog('err', '证书生成失败: Tauri 通道未就绪');
+        return;
+      }
+    }
+    const btn = _hEl('health-generate-cert-btn');
+    if (btn) {
+      btn.disabled = true;
+      btn.dataset.oldText = btn.textContent;
+      btn.textContent = '生成中...';
+    }
+    setCertInstallProgress({ message: '正在生成 MITM 证书', percent: 10, level: 'info' });
+    addLog && addLog('ok', '正在生成 MITM 证书...');
+    try {
+      const msg = await invoke('generate_certs');
+      setCertInstallProgress({ message: msg || '证书已生成', percent: 100, level: 'ok' });
+      addLog && addLog('ok', '证书生成: ' + msg);
+      await window.runHealthcheck();
+    } catch (e) {
+      const errMsg = String(e);
+      setCertInstallProgress({ message: '生成失败: ' + errMsg, percent: 100, level: 'err' });
+      addLog && addLog('err', '证书生成失败: ' + errMsg);
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = btn.dataset.oldText || '生成证书';
+      }
+    }
+  };
+
+  // ──────────────────────────────────────────────
   // 入口：用户点「一键安装证书」按钮
   // 后端 install_ca 已经做了"CurrentUser 优先，UAC 兜底"的两阶段逻辑
   // ──────────────────────────────────────────────

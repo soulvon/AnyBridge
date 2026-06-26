@@ -58,7 +58,7 @@ pub struct Target {
     #[serde(rename = "providerId")]
     pub provider_id: String,
     pub model: String,
-    /// 目标请求使用的协议。代理运行时按目标协议路由，不再按供应商全局 apiFormat 猜测。
+    /// 目标请求使用的协议。为空时由代理按解锁、目标 path、供应商 path/host 自动识别。
     #[serde(rename = "apiFormat", default, skip_serializing_if = "Option::is_none")]
     pub api_format: Option<String>,
     /// 目标级 API path。为空时使用供应商默认 path；解锁目标由 unlock.wireApi 接管。
@@ -157,7 +157,7 @@ pub struct InjectedSlot {
     /// BYOK 供应商 ID。无值或引用不存在 = 未配置（弹窗里显示"(未配置)"）。
     #[serde(rename = "providerId", default)]
     pub provider_id: Option<String>,
-    /// 注入槽位目标请求使用的协议。代理运行时按目标协议路由。
+    /// 注入槽位目标请求使用的协议。为空时由代理按解锁、目标 path、供应商 path/host 自动识别。
     #[serde(rename = "apiFormat", default, skip_serializing_if = "Option::is_none")]
     pub api_format: Option<String>,
     /// 注入槽位目标级 API path。为空时使用供应商默认 path；解锁目标由 unlock.wireApi 接管。
@@ -308,11 +308,8 @@ fn validate_target_route(slot_label: &str, target: &Target) -> Result<(), String
         ));
     }
     let api_format = target.api_format.as_deref().unwrap_or("").trim();
-    if api_format.is_empty() {
-        return Err(format!(
-            "槽位 {} 的目标必须设置 apiFormat(openai 或 anthropic)",
-            slot_label
-        ));
+    if api_format.is_empty() || api_format.eq_ignore_ascii_case("auto") {
+        return Ok(());
     }
     if !matches!(api_format, "openai" | "anthropic") {
         return Err(format!(

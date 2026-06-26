@@ -5,7 +5,6 @@ let ideProxyStatusByTarget = {};
 let localProxyKey = '';
 let localProxyPort = 7450;
 let localProxyInferencePort = 7451;
-const LOCAL_PROXY_DEFAULT_MODEL = 'anybridge-default';
 const IDE_RESTART_AFTER_SWITCH_KEY = 'anybridge.ideRestartAfterSwitch';
 
 function shouldAutoRestartIdeAfterSwitch() {
@@ -79,17 +78,9 @@ function getLocalProxyDefaultModel(format = 'openai') {
       const routeDefault = getProxyRouteDefaultModel(format);
       if (routeDefault) return routeDefault;
     }
-    const slots = Array.isArray(modelMapStore?.slots) ? modelMapStore.slots : [];
-    const mapped = slots.find(slot => slot && slot.enabled !== false && slot.modelUid && Array.isArray(slot.targets) && slot.targets.length > 0);
-    if (mapped?.modelUid) return mapped.modelUid;
-    const anySlot = slots.find(slot => slot && slot.modelUid);
-    if (anySlot?.modelUid) return anySlot.modelUid;
-    const injected = Array.isArray(modelMapStore?.injected) ? modelMapStore.injected : [];
-    const configuredInjected = injected.find(item => item && item.modelUid && item.providerId && String(item.model || '').trim());
-    if (configuredInjected?.modelUid) return configuredInjected.modelUid;
-    return LOCAL_PROXY_DEFAULT_MODEL;
+    return '';
   } catch (_) {
-    return LOCAL_PROXY_DEFAULT_MODEL;
+    return '';
   }
 }
 
@@ -286,20 +277,22 @@ function parseProxyPortInputValue(value, label) {
 function proxyPortInputIds(source = 'proxy') {
   return source === 'settings'
     ? { api: 'settingsProxyPortInput', inference: 'settingsInferencePortInput' }
-    : { api: 'localProxyPortInput', inference: 'localProxyInferencePortInput' };
+    : { api: 'localProxyPortInput' };
 }
 
 async function saveLocalProxyPorts(source = 'proxy') {
   if (!invoke && !bindTauriBridge()) return;
   const ids = proxyPortInputIds(source);
   const apiInput = document.getElementById(ids.api);
-  const inferenceInput = document.getElementById(ids.inference);
+  const inferenceInput = ids.inference ? document.getElementById(ids.inference) : null;
   try {
     const nextApiPort = parseProxyPortInputValue(apiInput?.value || getLocalProxyPort(), 'API 服务端口');
-    const nextInferencePort = parseProxyPortInputValue(inferenceInput?.value || getLocalProxyInferencePort(), '推理服务端口');
-    if (nextApiPort === nextInferencePort) {
+    if (nextApiPort === getLocalProxyInferencePort()) {
       throw new Error('API 服务端口和推理服务端口不能相同');
     }
+    const nextInferencePort = inferenceInput
+      ? parseProxyPortInputValue(inferenceInput.value || getLocalProxyInferencePort(), '推理服务端口')
+      : getLocalProxyInferencePort();
     const changed = nextApiPort !== getLocalProxyPort() || nextInferencePort !== getLocalProxyInferencePort();
     if (proxyRunning && changed) {
       const ok = await showCustomConfirm(

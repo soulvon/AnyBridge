@@ -2,6 +2,8 @@
 let modelMapStore = { slots: [] };       // load_model_map 结果
 let ideModels = null;               // list_ide_models 缓存（数组）
 let ideMeta = null;                 // { source, capturedAt, account } 元信息
+let modelMapSelectedIds = new Set(); // 批量勾选：modelUid
+let modelMapBulkRunning = false;     // 批量操作防并发
 
 const DEFAULT_PROXY_ENHANCEMENT = Object.freeze({
   retry: true,
@@ -12,11 +14,28 @@ const DEFAULT_PROXY_ENHANCEMENT = Object.freeze({
   imageFallback: true,
   autoRouting: true,
   unlockModels: true,
+  systemPromptPrefix: '',
+  systemPromptPrefixEnabled: false,
+  customHeaders: [],
+  customHeadersEnabled: false,
+  responseHeaders: [],
+  paramOverrides: {},
+  paramOverridesEnabled: false,
+  toolFilterMode: '',
+  toolFilterList: [],
+  forceToolChoice: '',
+  toolFilterEnabled: false,
+  rateLimitRpm: 0,
+  rateLimitEnabled: false,
+  requestLogging: false,
 });
 const PROXY_VISION_TEST_FALLBACK_IMAGE_B64 = 'iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAYAAADDPmHLAAABpklEQVR4nO3SMRHDUBBDwcAxiIAwYoNI/bk4IFTc6GYL1a/Qfq77+yY74cb7T7YTbrr/GT9gug8AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAsBNA/YFpv/zAtA8AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAMBOAPUHpv3yA9M+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAOwHUH5j2yw9M+wAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAOwEcN2/N9kJN95/sp1w030AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAB2Aqg/MO2XH5j2AQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA2Amg/sC0X35g2gcAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAGAngPoD0375gWkfAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACAlQD+DY7JjtGCazMAAAAASUVORK5CYII=';
 let proxyVisionPickerOpen = false;
 let proxyVisionTestingKey = '';
 let proxyVisionTestImageB64 = '';
+let proxyVisionProviderSearch = '';
+let proxyVisionSelectedProviderId = '';
+let proxyVisionPickedModels = new Map();
 
 function defaultProxyEnhancement() {
   return { ...DEFAULT_PROXY_ENHANCEMENT };
@@ -54,6 +73,20 @@ function ensureModelMapDefaults() {
     imageFallback: cur.imageFallback !== false,
     autoRouting: cur.autoRouting !== false,
     unlockModels: cur.unlockModels !== false,
+    systemPromptPrefix: String(cur.systemPromptPrefix || ''),
+    systemPromptPrefixEnabled: cur.systemPromptPrefixEnabled === true,
+    customHeaders: Array.isArray(cur.customHeaders) ? cur.customHeaders.filter(h => h && h.key) : [],
+    customHeadersEnabled: cur.customHeadersEnabled === true,
+    responseHeaders: Array.isArray(cur.responseHeaders) ? cur.responseHeaders.filter(h => h && h.key) : [],
+    paramOverrides: cur.paramOverrides && typeof cur.paramOverrides === 'object' ? cur.paramOverrides : {},
+    paramOverridesEnabled: cur.paramOverridesEnabled === true,
+    toolFilterMode: String(cur.toolFilterMode || ''),
+    toolFilterList: Array.isArray(cur.toolFilterList) ? cur.toolFilterList.map(String) : [],
+    forceToolChoice: String(cur.forceToolChoice || ''),
+    toolFilterEnabled: cur.toolFilterEnabled === true,
+    rateLimitRpm: normalizeEnhancementInt(cur.rateLimitRpm, 0, 0),
+    rateLimitEnabled: cur.rateLimitEnabled === true,
+    requestLogging: cur.requestLogging === true,
   };
   if (!modelMapStore.visionModels || typeof modelMapStore.visionModels !== 'object') {
     modelMapStore.visionModels = { imageModels: [] };
@@ -100,8 +133,9 @@ function visionModelLabel(item) {
   const p = (providerStore.providers || []).find(x => x.id === item.providerId);
   return `${p ? (p.name || p.id) : (item.providerId || '未知供应商')} - ${item.model || '默认模型'} · ${targetRouteLabel(item)}`;
 }
-async function ensureIdeModels() {
-  if (ideModels) return ideModels;
+async function ensureIdeModels(options = {}) {
+  const force = options === true || !!(options && options.force);
+  if (ideModels && !force) return ideModels;
   try {
     const res = await invoke('list_ide_models');
     if (res && Array.isArray(res.models)) {
@@ -123,8 +157,10 @@ async function ensureIdeModels() {
   return ideModels;
 }
 
-async function refreshIdeModels() {
-  const btn = document.getElementById('btn-refresh-models');
+async function refreshIdeModels(options = {}) {
+  const quiet = !!(options && options.quiet);
+  const rerender = !(options && options.rerender === false);
+  const btn = quiet ? null : document.getElementById('btn-refresh-models');
   try {
     if (btn) { btn.disabled = true; btn.querySelector('span') && (btn.querySelector('span').textContent = '拉取中...'); }
     const target = getTargetIde();
@@ -147,15 +183,27 @@ async function refreshIdeModels() {
         overage_balance_micros: info.overage_balance_micros,
       },
     };
-    // 刷新模态框内的槽位列表
-    maybeAutoSelectRecommendedSlot();
-    renderSlotCatalogList();
-    addLog('info', `模型列表已更新：${info.email} (${info.plan_name})，${info.models.length} 个模型`);
+    if (rerender) {
+      maybeAutoSelectRecommendedSlot();
+      renderSlotCatalogList();
+      if (document.getElementById('page-model-slots')?.classList.contains('active')) {
+        await renderInjectedList();
+      }
+    }
+    if (!quiet) addLog('info', `模型列表已更新：${info.email} (${info.plan_name})，${info.models.length} 个模型`);
+    return true;
   } catch (e) {
-    addLog('error', '刷新模型列表失败: ' + e);
+    addLog(quiet ? 'warn' : 'error', `${quiet ? '自动同步当前账号模型列表失败' : '刷新模型列表失败'}: ${e}`);
+    return false;
   } finally {
     if (btn) { btn.disabled = false; btn.querySelector('span') && (btn.querySelector('span').textContent = '刷新'); }
   }
+}
+
+async function syncCurrentIdeModels(options = {}) {
+  const ok = await refreshIdeModels({ quiet: true, rerender: false, ...(options || {}) });
+  if (!ok) await ensureIdeModels({ force: true });
+  return ok;
 }
 
 // 由 modelUid 找原始名（查不到回退到 uid 本身）
@@ -229,7 +277,7 @@ function renderTargetChain(targets) {
 async function renderModelMap() {
   const body = document.getElementById('modelMapBody');
   if (!body) return;
-  await ensureIdeModels();
+  await ensureIdeModels({ force: true });
   await ensureInjected();
   try {
     const res = await invoke('load_model_map');
@@ -248,12 +296,13 @@ async function renderModelMap() {
   modelMapStore.slotVisibilityMode = normalizeSlotVisibilityMode(modelMapStore.slotVisibilityMode);
   ensureSlotVisibilityArray();
   const badge = document.getElementById('injected-count-badge');
-  if (badge) badge.textContent = '模型槽位管理';
+  if (badge) badge.textContent = '槽位管理';
 
   const slots = modelMapStore.slots || [];
   const rows = slots.map(s => ({ kind: 'mapped', slot: s, model: slotModelOf(s.modelUid) }));
   if (rows.length === 0) {
-    body.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--text-muted);padding:18px">暂无模型映射，点击「添加映射」创建第一条关系</td></tr>';
+    body.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--text-muted);padding:18px">暂无模型映射，点击「添加映射」创建第一条关系</td></tr>';
+    syncModelMapSelectionState();
     return;
   }
 
@@ -281,8 +330,15 @@ async function renderModelMap() {
     const visionTitle = !hasVisionModels
       ? '请先在「代理增强」中配置图片理解模型'
       : (useThirdParty ? '已启用第三方图片理解' : '启用后图片将使用第三方模型理解');
+    const selected = modelMapSelectedIds.has(s.modelUid);
     return `
-      <tr data-model-uid="${escAttr(s.modelUid)}" data-row-kind="mapped">
+      <tr data-model-uid="${escAttr(s.modelUid)}" data-row-kind="mapped" class="${selected ? 'is-selected' : ''}">
+        <td class="model-map-select-cell" onclick="event.stopPropagation()">
+          <label class="provider-select-check provider-select-check-table" title="选择此映射" onclick="event.stopPropagation()">
+            <input type="checkbox" class="model-map-row-check" data-uid="${escAttr(s.modelUid)}" ${selected ? 'checked' : ''} onchange="toggleModelMapSelection('${escAttr(s.modelUid)}', this.checked, event)">
+            <span></span>
+          </label>
+        </td>
         <td class="editable-cell display-name-cell" onclick="startEditDisplayName(this, '${escAttr(s.modelUid)}')" title="${escAttr(display)}">${escAttr(display)}</td>
         <td>
           <div>${escAttr(orig)}</div>
@@ -316,6 +372,7 @@ async function renderModelMap() {
 
   // 渲染后立即应用当前的过滤器与搜索关键字
   filterModelTable();
+  syncModelMapSelectionState();
 }
 
 // ─── 双击/点击编辑显示名 ───
@@ -383,12 +440,13 @@ function filterModelTable() {
     const row = rows[i];
 
     // 跳过空数据提示行
-    if (row.cells.length === 1 && row.cells[0].colSpan >= 6) {
+    if (row.cells.length === 1 && row.cells[0].colSpan >= 7) {
       continue;
     }
 
-    const display = row.cells[0].textContent.toLowerCase();
-    const orig = row.cells[1].textContent.toLowerCase();
+    // cells[0]=复选框 cells[1]=显示名 cells[2]=原模型名
+    const display = (row.cells[1]?.textContent || '').toLowerCase();
+    const orig = (row.cells[2]?.textContent || '').toLowerCase();
     const slot = (row.dataset.modelUid || '').toLowerCase();
 
     // 搜索匹配
@@ -403,6 +461,7 @@ function filterModelTable() {
       row.style.display = 'none';
     }
   }
+  syncModelMapSelectionState();
 }
 
 async function persistModelMap() {
@@ -418,20 +477,333 @@ async function persistModelMap() {
 }
 
 
+// ─── 模型映射批量勾选 / 批量操作 ───
+// 选区：仅包含 modelMapStore.slots 中真实存在的 modelUid（避免指向已删除行）
+function cleanupModelMapSelection() {
+  const valid = new Set((modelMapStore.slots || []).map(s => s.modelUid));
+  modelMapSelectedIds.forEach(uid => {
+    if (!valid.has(uid)) modelMapSelectedIds.delete(uid);
+  });
+}
+
+function toggleModelMapSelection(uid, checked, event) {
+  if (event) event.stopPropagation();
+  if (!uid) return;
+  if (checked) modelMapSelectedIds.add(uid);
+  else modelMapSelectedIds.delete(uid);
+  // 同步行高亮
+  const row = document.querySelector(`#modelMapBody tr[data-model-uid="${CSS.escape(uid)}"]`);
+  if (row) row.classList.toggle('is-selected', checked);
+  syncModelMapSelectionState();
+}
+
+function visibleModelMapSlots() {
+  // 搜索/过滤后仍可见的行
+  return Array.from(document.querySelectorAll('#modelMapBody tr[data-row-kind="mapped"]'))
+    .filter(row => row.style.display !== 'none')
+    .map(row => row.dataset.modelUid)
+    .filter(Boolean);
+}
+
+function toggleVisibleModelMapSelectionFromHeader(checked) {
+  // 表头全选框的勾选态由 syncModelMapSelectionState 校正，传入的 checked 仅作参考
+  const visible = visibleModelMapSlots();
+  if (!visible.length) return;
+  const allSelected = visible.length > 0 && visible.every(uid => modelMapSelectedIds.has(uid));
+  visible.forEach(uid => {
+    if (allSelected) modelMapSelectedIds.delete(uid);
+    else modelMapSelectedIds.add(uid);
+  });
+  renderModelMap();
+}
+
+function toggleVisibleModelMapSelection() {
+  // 工具栏的「选择当前」按钮：若当前可见行已全选则取消，否则全选当前
+  const visible = visibleModelMapSlots();
+  if (!visible.length) return;
+  const allSelected = visible.every(uid => modelMapSelectedIds.has(uid));
+  visible.forEach(uid => {
+    if (allSelected) modelMapSelectedIds.delete(uid);
+    else modelMapSelectedIds.add(uid);
+  });
+  renderModelMap();
+}
+
+function syncModelMapSelectionState() {
+  cleanupModelMapSelection();
+  const total = (modelMapStore.slots || []).length;
+  const selected = modelMapSelectedIds.size;
+  const countEl = document.getElementById('modelMapBulkCount');
+  if (countEl) {
+    countEl.textContent = selected
+      ? `已选择 ${selected} / ${total}`
+      : `共 ${total} 个`;
+    countEl.classList.toggle('is-active', selected > 0);
+  }
+  const disabled = modelMapBulkRunning || selected === 0;
+  ['modelMapBulkEnableBtn', 'modelMapBulkDisableBtn', 'modelMapBulkVisionBtn', 'modelMapBulkDeleteBtn'].forEach(id => {
+    const btn = document.getElementById(id);
+    if (btn) btn.disabled = disabled;
+  });
+  // 工具栏的「选择当前」按钮
+  const selectVisibleBtn = document.getElementById('modelMapSelectVisibleBtn');
+  const visibleIds = visibleModelMapSlots();
+  if (selectVisibleBtn) {
+    selectVisibleBtn.disabled = modelMapBulkRunning || visibleIds.length === 0;
+    selectVisibleBtn.textContent = visibleIds.length && visibleIds.every(uid => modelMapSelectedIds.has(uid))
+      ? '取消当前'
+      : '选择当前';
+  }
+  // 表头全选框的 indeterminate 与 checked 态
+  const selectAll = document.getElementById('modelMapSelectAll');
+  if (selectAll) {
+    const visibleSelectedCount = visibleIds.filter(uid => modelMapSelectedIds.has(uid)).length;
+    if (visibleIds.length === 0) {
+      selectAll.checked = false;
+      selectAll.indeterminate = false;
+      selectAll.disabled = true;
+    } else {
+      selectAll.disabled = false;
+      selectAll.checked = visibleSelectedCount === visibleIds.length;
+      selectAll.indeterminate = visibleSelectedCount > 0 && visibleSelectedCount < visibleIds.length;
+    }
+  }
+}
+
+async function batchSetSelectedSlotsEnabled(enabled) {
+  if (modelMapBulkRunning) return;
+  cleanupModelMapSelection();
+  const targets = (modelMapStore.slots || []).filter(s => modelMapSelectedIds.has(s.modelUid));
+  if (!targets.length) return;
+  modelMapBulkRunning = true;
+  syncModelMapSelectionState();
+  const prevMap = new Map(targets.map(s => [s.modelUid, s.enabled !== false]));
+  let okCount = 0;
+  try {
+    targets.forEach(s => { s.enabled = enabled === true; });
+    if (await persistModelMap()) {
+      okCount = targets.length;
+      addLog('ok', `已${enabled ? '启用' : '停用'} ${okCount} 个模型映射`);
+      if (typeof showBottomToast === 'function') {
+        showBottomToast(`已${enabled ? '启用' : '停用'} ${okCount} 个模型映射`, 'success');
+      }
+    } else {
+      prevMap.forEach((prev, uid) => {
+        const s = modelMapStore.slots.find(x => x.modelUid === uid);
+        if (s) s.enabled = prev;
+      });
+    }
+  } catch (e) {
+    prevMap.forEach((prev, uid) => {
+      const s = modelMapStore.slots.find(x => x.modelUid === uid);
+      if (s) s.enabled = prev;
+    });
+    addLog('err', `批量${enabled ? '启用' : '停用'}失败: ` + e);
+    showCustomAlert(String(e), '批量操作失败', 'error');
+  } finally {
+    modelMapBulkRunning = false;
+    await renderModelMap();
+  }
+}
+
+async function batchSetSelectedSlotsThirdPartyVision(enabled) {
+  if (modelMapBulkRunning) return;
+  cleanupModelMapSelection();
+  const hasVisionModels = (modelMapStore.visionModels?.imageModels?.length || 0) > 0;
+  if (!hasVisionModels) {
+    showCustomAlert('请先在「代理增强」中配置图片理解模型。', '无法启用', 'warn');
+    return;
+  }
+  const targets = (modelMapStore.slots || []).filter(s => modelMapSelectedIds.has(s.modelUid));
+  if (!targets.length) return;
+  modelMapBulkRunning = true;
+  syncModelMapSelectionState();
+  const prevMap = new Map(targets.map(s => [s.modelUid, s.useThirdPartyVision === true]));
+  let okCount = 0;
+  try {
+    targets.forEach(s => { s.useThirdPartyVision = enabled === true; });
+    if (await persistModelMap()) {
+      okCount = targets.length;
+      addLog('ok', `已为 ${okCount} 个映射${enabled ? '启用' : '关闭'}第三方图片理解`);
+      if (typeof showBottomToast === 'function') {
+        showBottomToast(`已${enabled ? '启用' : '关闭'} ${okCount} 个映射的第三方图片理解`, 'success');
+      }
+    } else {
+      prevMap.forEach((prev, uid) => {
+        const s = modelMapStore.slots.find(x => x.modelUid === uid);
+        if (s) s.useThirdPartyVision = prev;
+      });
+    }
+  } catch (e) {
+    prevMap.forEach((prev, uid) => {
+      const s = modelMapStore.slots.find(x => x.modelUid === uid);
+      if (s) s.useThirdPartyVision = prev;
+    });
+    addLog('err', `批量${enabled ? '启用' : '关闭'}第三方图片理解失败: ` + e);
+    showCustomAlert(String(e), '批量操作失败', 'error');
+  } finally {
+    modelMapBulkRunning = false;
+    await renderModelMap();
+  }
+}
+
+async function batchDeleteSelectedSlots() {
+  if (modelMapBulkRunning) return;
+  cleanupModelMapSelection();
+  const targets = (modelMapStore.slots || []).filter(s => modelMapSelectedIds.has(s.modelUid));
+  if (!targets.length) return;
+  modelMapBulkRunning = true;
+  syncModelMapSelectionState();
+  const removedUids = new Set(targets.map(s => s.modelUid));
+  const prev = modelMapStore.slots.slice();
+  let okCount = 0;
+  try {
+    modelMapStore.slots = modelMapStore.slots.filter(s => !removedUids.has(s.modelUid));
+    if (await persistModelMap()) {
+      okCount = targets.length;
+      removedUids.forEach(uid => modelMapSelectedIds.delete(uid));
+      addLog('info', `已删除 ${okCount} 个模型映射`);
+      if (typeof showBottomToast === 'function') {
+        showBottomToast(`已删除 ${okCount} 个模型映射`, 'success');
+      }
+    } else {
+      modelMapStore.slots = prev;
+    }
+  } catch (e) {
+    modelMapStore.slots = prev;
+    addLog('err', '批量删除失败: ' + e);
+    showCustomAlert(String(e), '批量操作失败', 'error');
+  } finally {
+    modelMapBulkRunning = false;
+    await renderModelMap();
+  }
+}
+
+
+
+
+
 // ─── 代理增强配置面板 ───
 function renderProxyEnhancement() {
   ensureModelMapDefaults();
-  ['retry', 'imageFallback', 'autoRouting', 'unlockModels'].forEach(key => {
+  const e = modelMapStore.enhancement;
+  ['retry', 'imageFallback', 'autoRouting', 'unlockModels', 'requestLogging',
+   'systemPromptPrefixEnabled', 'customHeadersEnabled', 'toolFilterEnabled',
+   'paramOverridesEnabled', 'rateLimitEnabled'].forEach(key => {
     const el = document.getElementById(`enhancement-${key}`);
-    if (el) el.checked = modelMapStore.enhancement[key] !== false;
+    if (el) el.checked = e[key] === true;
   });
-  ['retryMaxRetries', 'retryBaseMs', 'retryCapMs', 'retryTotalSeconds'].forEach(key => {
+  ['retryMaxRetries', 'retryBaseMs', 'retryCapMs', 'retryTotalSeconds', 'rateLimitRpm'].forEach(key => {
     const el = document.getElementById(`enhancement-${key}`);
-    if (el) el.value = modelMapStore.enhancement[key];
+    if (el) el.value = e[key];
   });
-  setRetryConfigControlsEnabled(modelMapStore.enhancement.retry !== false);
+  setRetryConfigControlsEnabled(e.retry !== false);
+  setPanelControlsEnabled('systemPromptPrefix', e.systemPromptPrefixEnabled === true);
+  setPanelControlsEnabled('customHeaders', e.customHeadersEnabled === true);
+  setPanelControlsEnabled('toolFilter', e.toolFilterEnabled === true);
+  setPanelControlsEnabled('paramOverrides', e.paramOverridesEnabled === true);
+  setPanelControlsEnabled('rateLimit', e.rateLimitEnabled === true);
+
+  const sp = document.getElementById('enhancement-systemPromptPrefix');
+  if (sp) sp.value = e.systemPromptPrefix || '';
+
+  const tfm = document.getElementById('enhancement-toolFilterMode');
+  if (tfm) tfm.value = e.toolFilterMode || '';
+  const tfl = document.getElementById('enhancement-toolFilterList');
+  if (tfl) tfl.value = (e.toolFilterList || []).join(', ');
+
+  const ftc = document.getElementById('enhancement-forceToolChoice');
+  if (ftc) ftc.value = e.forceToolChoice || '';
+
+  const po = document.getElementById('enhancement-paramOverrides');
+  if (po) {
+    const obj = e.paramOverrides || {};
+    const keys = Object.keys(obj);
+    po.value = keys.length ? keys.map(k => `${k}=${JSON.stringify(obj[k])}`).join('\n') : '';
+  }
+
+  renderHeaderList('customHeaders', modelMapStore.enhancement.customHeaders);
+  renderHeaderList('responseHeaders', modelMapStore.enhancement.responseHeaders);
+
   renderProxyVisionModelList();
   renderVisionModelPicker();
+}
+
+function renderHeaderList(field, headers) {
+  const wrap = document.getElementById(`enhancement-${field}-list`);
+  if (!wrap) return;
+  const items = Array.isArray(headers) ? headers : [];
+  if (!items.length) {
+    wrap.innerHTML = '<div style="padding:10px;color:var(--text-muted);font-size:12px;">暂无自定义头部</div>';
+    return;
+  }
+  wrap.innerHTML = items.map((h, i) =>
+    '<div class="header-pair-row" style="display:flex;gap:6px;align-items:center;margin-bottom:6px;">' +
+    '<input type="text" value="' + escapeHtml(h.key || '') + '" placeholder="Header 名" style="flex:1;min-width:0;" onchange="updateHeaderPair(\'' + field + '\', ' + i + ', \'key\', this.value)" />' +
+    '<input type="text" value="' + escapeHtml(h.value || '') + '" placeholder="Header 值" style="flex:1;min-width:0;" onchange="updateHeaderPair(\'' + field + '\', ' + i + ', \'value\', this.value)" />' +
+    '<button class="btn btn-sm btn-danger" onclick="removeHeaderPair(\'' + field + '\', ' + i + ')" title="删除">✕</button>' +
+    '</div>'
+  ).join('');
+}
+
+function escapeHtml(s) {
+  return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+function addHeaderPair(field) {
+  ensureModelMapDefaults();
+  if (!Array.isArray(modelMapStore.enhancement[field])) modelMapStore.enhancement[field] = [];
+  modelMapStore.enhancement[field].push({ key: '', value: '' });
+  renderHeaderList(field, modelMapStore.enhancement[field]);
+  autoSaveEnhancement();
+}
+
+function updateHeaderPair(field, idx, prop, value) {
+  ensureModelMapDefaults();
+  const arr = modelMapStore.enhancement[field];
+  if (arr && arr[idx]) arr[idx][prop] = value;
+  autoSaveEnhancement();
+}
+
+function removeHeaderPair(field, idx) {
+  ensureModelMapDefaults();
+  const arr = modelMapStore.enhancement[field];
+  if (arr) { arr.splice(idx, 1); renderHeaderList(field, arr); }
+  autoSaveEnhancement();
+}
+
+function updateEnhancementText(input, key) {
+  ensureModelMapDefaults();
+  modelMapStore.enhancement[key] = input.value;
+  autoSaveEnhancement();
+}
+
+function updateEnhancementSelect(select, key) {
+  ensureModelMapDefaults();
+  modelMapStore.enhancement[key] = select.value;
+  autoSaveEnhancement();
+}
+
+function updateParamOverrides(textarea) {
+  ensureModelMapDefaults();
+  const text = textarea.value.trim();
+  if (!text) { modelMapStore.enhancement.paramOverrides = {}; autoSaveEnhancement(); return; }
+  const obj = {};
+  for (const line of text.split('\n')) {
+    const m = line.match(/^(\w+)\s*=\s*(.+)$/);
+    if (m) {
+      try { obj[m[1]] = JSON.parse(m[2]); }
+      catch { obj[m[1]] = m[2]; }
+    }
+  }
+  modelMapStore.enhancement.paramOverrides = obj;
+  autoSaveEnhancement();
+}
+
+function updateToolFilterList(input) {
+  ensureModelMapDefaults();
+  modelMapStore.enhancement.toolFilterList = input.value.split(',').map(s => s.trim()).filter(Boolean);
+  autoSaveEnhancement();
 }
 
 function openProxyEnhancement() {
@@ -460,6 +832,32 @@ function toggleEnhancement(input, key) {
   if (!Object.prototype.hasOwnProperty.call(DEFAULT_PROXY_ENHANCEMENT, key)) return;
   modelMapStore.enhancement[key] = input.checked === true;
   if (key === 'retry') setRetryConfigControlsEnabled(modelMapStore.enhancement.retry !== false);
+  // 面板开关：切换时启用/禁用对应输入控件
+  if (key === 'systemPromptPrefixEnabled') setPanelControlsEnabled('systemPromptPrefix', input.checked);
+  if (key === 'customHeadersEnabled') setPanelControlsEnabled('customHeaders', input.checked);
+  if (key === 'toolFilterEnabled') setPanelControlsEnabled('toolFilter', input.checked);
+  if (key === 'paramOverridesEnabled') setPanelControlsEnabled('paramOverrides', input.checked);
+  if (key === 'rateLimitEnabled') setPanelControlsEnabled('rateLimit', input.checked);
+  autoSaveEnhancement();
+}
+
+function setPanelControlsEnabled(panel, enabled) {
+  const map = {
+    systemPromptPrefix: ['enhancement-systemPromptPrefix'],
+    customHeaders: ['enhancement-customHeaders-list', 'enhancement-responseHeaders-list'],
+    toolFilter: ['enhancement-toolFilterMode', 'enhancement-toolFilterList', 'enhancement-forceToolChoice'],
+    paramOverrides: ['enhancement-paramOverrides'],
+    rateLimit: ['enhancement-rateLimitRpm'],
+  };
+  const ids = map[panel] || [];
+  ids.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.disabled = !enabled;
+  });
+  // 自定义请求头的添加按钮
+  if (panel === 'customHeaders') {
+    document.querySelectorAll('[onclick^="addHeaderPair"]').forEach(btn => { btn.disabled = !enabled; });
+  }
 }
 
 function setRetryConfigControlsEnabled(enabled) {
@@ -472,14 +870,28 @@ function setRetryConfigControlsEnabled(enabled) {
 function updateEnhancementNumber(input, key) {
   ensureModelMapDefaults();
   if (!Object.prototype.hasOwnProperty.call(DEFAULT_PROXY_ENHANCEMENT, key)) return;
-  const min = key === 'retryMaxRetries' ? 0 : 1;
+  const min = (key === 'retryMaxRetries' || key === 'rateLimitRpm') ? 0 : 1;
   const value = normalizeEnhancementInt(input.value, DEFAULT_PROXY_ENHANCEMENT[key], min);
   modelMapStore.enhancement[key] = value;
   input.value = value;
+  autoSaveEnhancement();
+}
+
+let _enhancementSaveTimer = null;
+async function autoSaveEnhancement() {
+  ensureModelMapDefaults();
+  if (_enhancementSaveTimer) clearTimeout(_enhancementSaveTimer);
+  _enhancementSaveTimer = setTimeout(async () => {
+    _enhancementSaveTimer = null;
+    if (await persistModelMap()) {
+      if (typeof syncProxyEnhancementSummary === 'function') syncProxyEnhancementSummary();
+    }
+  }, 400);
 }
 
 async function saveProxyEnhancement() {
   ensureModelMapDefaults();
+  if (_enhancementSaveTimer) { clearTimeout(_enhancementSaveTimer); _enhancementSaveTimer = null; }
   if (await persistModelMap()) {
     addLog('ok', '已保存代理增强配置');
     await renderModelMap();
@@ -493,6 +905,7 @@ function resetProxyEnhancementDefaults() {
   ensureModelMapDefaults();
   modelMapStore.enhancement = defaultProxyEnhancement();
   renderProxyEnhancement();
+  autoSaveEnhancement();
 }
 
 function renderProxyVisionModelList() {
@@ -547,7 +960,14 @@ function setVisionModelPickerOpen(open) {
     picker.setAttribute('aria-hidden', proxyVisionPickerOpen ? 'false' : 'true');
   }
   if (proxyVisionPickerOpen) {
+    proxyVisionProviderSearch = '';
+    proxyVisionPickedModels = new Map();
     const search = document.getElementById('proxyVisionModelSearch');
+    if (search) search.value = '';
+    const providers = visionModelProviderEntries();
+    if (!providers.some(provider => provider.providerId === proxyVisionSelectedProviderId)) {
+      proxyVisionSelectedProviderId = providers[0]?.providerId || '';
+    }
     if (search) setTimeout(() => search.focus(), 0);
   }
   renderVisionModelPicker();
@@ -557,6 +977,8 @@ function collectVisionModelOptions() {
   const options = [];
   (providerStore.providers || []).forEach(p => {
     if (!p || p.enabled === false || p.meta?.codexConfig === true) return;
+    // AnyBridge 本地代理供应商也参与图片理解模型选择
+    if (isBuiltinProvider(p) && !isLocalProxyProviderEntry(p)) return;
     providerSelectedModels(p).forEach(model => {
       const caps = providerCapabilities(p, model);
       ['openai', 'anthropic'].forEach(apiFormat => {
@@ -567,49 +989,217 @@ function collectVisionModelOptions() {
   return options.sort((a, b) => Number(b.vision) - Number(a.vision) || a.providerName.localeCompare(b.providerName) || a.model.localeCompare(b.model));
 }
 
-function renderVisionModelPicker() {
-  const list = document.getElementById('proxyVisionModelPickerList');
-  if (!list) return;
-  ensureModelMapDefaults();
-  const query = (document.getElementById('proxyVisionModelSearch')?.value || '').trim().toLowerCase();
-  const configured = new Set(modelMapStore.visionModels.imageModels.map(x => visionModelKey(x.providerId, x.model, x.apiFormat)));
-  const filtered = collectVisionModelOptions().filter(x => {
-    const hay = `${x.providerName} ${x.providerId} ${x.model} ${x.apiFormat}`.toLowerCase();
-    return !query || hay.includes(query);
+function visionFormatLabel(apiFormat) {
+  return normalizeMappingApiFormat(apiFormat) === 'anthropic' ? 'Anthropic' : 'OpenAI';
+}
+
+function visionOptionKey(option) {
+  return visionModelKey(option.providerId, option.model, option.apiFormat);
+}
+
+function visionModelIcon(modelId) {
+  if (typeof renderModelIcon === 'function') return renderModelIcon(modelId);
+  const initial = String(modelId || '?').trim().charAt(0).toUpperCase() || '?';
+  return `<div class="model-item-icon fallback">${escAttr(initial)}</div>`;
+}
+
+function visionModelProviderEntries() {
+  const groups = new Map();
+  collectVisionModelOptions().forEach(option => {
+    if (!groups.has(option.providerId)) {
+      groups.set(option.providerId, {
+        providerId: option.providerId,
+        providerName: option.providerName || option.providerId,
+        models: [],
+      });
+    }
+    groups.get(option.providerId).models.push(option);
   });
-  if (!filtered.length) {
-    list.innerHTML = '<div style="padding:14px;text-align:center;color:var(--text-muted);font-size:12px;">暂无可选模型</div>';
+  return Array.from(groups.values()).sort((a, b) => a.providerName.localeCompare(b.providerName) || a.providerId.localeCompare(b.providerId));
+}
+
+function visionProviderSearchHaystack(provider) {
+  return [
+    provider?.providerName,
+    provider?.providerId,
+    ...(provider?.models || []).flatMap(model => [model.model, model.apiFormat, visionFormatLabel(model.apiFormat)]),
+  ].map(x => String(x || '').toLowerCase()).join(' ');
+}
+
+function visibleVisionModelProviders() {
+  const terms = String(proxyVisionProviderSearch || '').trim().toLowerCase().split(/\s+/).filter(Boolean);
+  const list = visionModelProviderEntries();
+  if (!terms.length) return list;
+  return list.filter(provider => {
+    const haystack = visionProviderSearchHaystack(provider);
+    return terms.every(term => haystack.includes(term));
+  });
+}
+
+function visionModelProviderEntry(providerId) {
+  return visionModelProviderEntries().find(provider => provider.providerId === providerId) || null;
+}
+
+function totalPickedVisionModelCount() {
+  let total = 0;
+  proxyVisionPickedModels.forEach(bucket => { total += bucket.size; });
+  return total;
+}
+
+function currentVisionProviderPickedCount() {
+  return proxyVisionPickedModels.get(proxyVisionSelectedProviderId)?.size || 0;
+}
+
+function onVisionModelPickerSearch() {
+  proxyVisionProviderSearch = document.getElementById('proxyVisionModelSearch')?.value || '';
+  const providers = visibleVisionModelProviders();
+  if (!providers.some(provider => provider.providerId === proxyVisionSelectedProviderId)) {
+    proxyVisionSelectedProviderId = providers[0]?.providerId || '';
+  }
+  renderVisionModelPicker();
+}
+
+function selectVisionModelProvider(providerId) {
+  proxyVisionSelectedProviderId = String(providerId || '').trim();
+  renderVisionModelPicker();
+}
+
+function toggleVisionModelOption(providerId, optionKey) {
+  const provider = visionModelProviderEntry(providerId);
+  const option = (provider?.models || []).find(item => visionOptionKey(item) === optionKey);
+  if (!option) return;
+  const configured = new Set(modelMapStore.visionModels.imageModels.map(x => visionModelKey(x.providerId, x.model, x.apiFormat)));
+  if (configured.has(optionKey)) return;
+  let bucket = proxyVisionPickedModels.get(providerId);
+  if (!bucket) {
+    bucket = new Set();
+    proxyVisionPickedModels.set(providerId, bucket);
+  }
+  if (bucket.has(optionKey)) {
+    bucket.delete(optionKey);
+    if (!bucket.size) proxyVisionPickedModels.delete(providerId);
+  } else {
+    bucket.add(optionKey);
+  }
+  renderVisionModelPicker();
+}
+
+function selectAllVisionModels() {
+  const provider = visionModelProviderEntry(proxyVisionSelectedProviderId);
+  if (!provider) return;
+  const configured = new Set(modelMapStore.visionModels.imageModels.map(x => visionModelKey(x.providerId, x.model, x.apiFormat)));
+  const available = (provider.models || []).map(visionOptionKey).filter(key => !configured.has(key));
+  if (!available.length) return;
+  proxyVisionPickedModels.set(provider.providerId, new Set(available));
+  renderVisionModelPicker();
+}
+
+function selectNoVisionModels() {
+  proxyVisionPickedModels.delete(proxyVisionSelectedProviderId);
+  renderVisionModelPicker();
+}
+
+function syncVisionModelPickerActions() {
+  const provider = visionModelProviderEntry(proxyVisionSelectedProviderId);
+  const configured = new Set(modelMapStore.visionModels.imageModels.map(x => visionModelKey(x.providerId, x.model, x.apiFormat)));
+  const available = provider ? (provider.models || []).filter(option => !configured.has(visionOptionKey(option))) : [];
+  const picked = totalPickedVisionModelCount();
+  const currentPicked = currentVisionProviderPickedCount();
+  const allBtn = document.getElementById('proxyVisionSelectAllBtn');
+  const noneBtn = document.getElementById('proxyVisionSelectNoneBtn');
+  const addBtn = document.getElementById('proxyVisionAddSelectedBtn');
+  const summary = document.getElementById('proxyVisionPickedSummary');
+  if (allBtn) allBtn.disabled = !available.length || currentPicked === available.length;
+  if (noneBtn) noneBtn.disabled = currentPicked === 0;
+  if (addBtn) addBtn.disabled = picked === 0;
+  if (summary) summary.textContent = picked ? `已选择 ${picked} 个模型` : '未选择模型';
+}
+
+function renderVisionModelPicker() {
+  const providerList = document.getElementById('proxyVisionProviderList');
+  const modelList = document.getElementById('proxyVisionModelPickerList');
+  const title = document.getElementById('proxyVisionModelProviderTitle');
+  const sub = document.getElementById('proxyVisionModelProviderSub');
+  if (!providerList || !modelList) return;
+  ensureModelMapDefaults();
+  const configured = new Set(modelMapStore.visionModels.imageModels.map(x => visionModelKey(x.providerId, x.model, x.apiFormat)));
+  const providers = visibleVisionModelProviders();
+  if (!providers.some(provider => provider.providerId === proxyVisionSelectedProviderId)) {
+    proxyVisionSelectedProviderId = providers[0]?.providerId || '';
+  }
+
+  if (!providers.length) {
+    providerList.innerHTML = `<div class="proxy-route-picker-empty">${visionModelProviderEntries().length ? '没有匹配的供应商或模型' : '暂无可用供应商'}</div>`;
+  } else {
+    providerList.innerHTML = providers.map(provider => {
+      const active = provider.providerId === proxyVisionSelectedProviderId;
+      const isLP = isLocalProxyProviderEntry(provider);
+      return `
+        <button type="button" class="proxy-route-provider-item ${active ? 'active' : ''} ${isLP ? 'is-local-proxy' : ''}" onclick="selectVisionModelProvider('${escAttr(provider.providerId)}')">
+          <span class="proxy-route-provider-icon">${escAttr(String(provider.providerName || provider.providerId || '?').trim().charAt(0).toUpperCase() || '?')}</span>
+          <span class="proxy-route-provider-name">${escAttr(provider.providerName || provider.providerId)}${isLP ? '<span class="proxy-route-prov-badge">本地</span>' : ''}</span>
+          <span class="proxy-route-provider-count">${provider.models.length}</span>
+        </button>
+      `;
+    }).join('');
+  }
+
+  const selectedProvider = visionModelProviderEntry(proxyVisionSelectedProviderId);
+  if (!selectedProvider) {
+    if (title) title.textContent = '请选择供应商';
+    if (sub) sub.textContent = '右侧会展示可加入图片理解链的模型';
+    modelList.innerHTML = '<div class="proxy-route-picker-empty">先从左侧选择供应商</div>';
+    syncVisionModelPickerActions();
     return;
   }
-  list.innerHTML = filtered.map(x => {
-    const key = visionModelKey(x.providerId, x.model, x.apiFormat);
+
+  const pickedCount = currentVisionProviderPickedCount();
+  if (title) title.textContent = selectedProvider.providerName || selectedProvider.providerId;
+  if (sub) sub.textContent = `共 ${selectedProvider.models.length} 个模型，当前已选 ${pickedCount} 个`;
+  if (!selectedProvider.models.length) {
+    modelList.innerHTML = '<div class="proxy-route-picker-empty">该供应商暂无可选模型</div>';
+    syncVisionModelPickerActions();
+    return;
+  }
+
+  const bucket = proxyVisionPickedModels.get(selectedProvider.providerId) || new Set();
+  modelList.innerHTML = selectedProvider.models.map(option => {
+    const key = visionOptionKey(option);
     const already = configured.has(key);
+    const active = already || bucket.has(key);
     return `
-      <label style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 10px;border:1px solid var(--border);border-radius:8px;background:var(--bg-card);opacity:${already ? '.58' : '1'};">
-        <span style="display:flex;align-items:center;gap:8px;min-width:0;">
-          <input type="checkbox" data-provider-id="${escAttr(x.providerId)}" data-model="${escAttr(x.model)}" data-api-format="${escAttr(x.apiFormat)}" ${already ? 'checked disabled' : ''}>
-          <span style="font-size:12px;color:var(--text-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escAttr(x.providerName)} - ${escAttr(x.model)} · ${escAttr(x.apiFormat === 'openai' ? 'OpenAI' : 'Anthropic')}</span>
+      <button type="button" class="proxy-route-model-item proxy-vision-model-item ${active ? 'active' : ''} ${already ? 'is-disabled' : ''}"
+        ${already ? 'disabled' : ''} onclick="toggleVisionModelOption('${escAttr(selectedProvider.providerId)}', '${escAttr(key)}')">
+        <span class="proxy-route-model-check">${active ? '&#10003;' : ''}</span>
+        ${visionModelIcon(option.model)}
+        <span class="proxy-route-model-name">
+          <strong>${escAttr(option.model)}</strong>
+          <small>${escAttr(visionFormatLabel(option.apiFormat))} · ${option.vision ? '已知支持图片' : '未确认图片能力'}</small>
         </span>
-        <span style="font-size:10px;color:${x.vision ? 'var(--success)' : 'var(--text-muted)'};flex-shrink:0;">${x.vision ? '已知支持图片' : '未确认图片能力'}</span>
-      </label>`;
+      </button>`;
   }).join('');
+  syncVisionModelPickerActions();
 }
 
 function addSelectedVisionModels() {
   ensureModelMapDefaults();
   const existing = new Set(modelMapStore.visionModels.imageModels.map(x => visionModelKey(x.providerId, x.model, x.apiFormat)));
-  const checked = Array.from(document.querySelectorAll('#proxyVisionModelPickerList input[type="checkbox"]:checked:not(:disabled)'));
-  if (!checked.length) return;
-  checked.forEach(input => {
-    const providerId = input.dataset.providerId || '';
-    const model = input.dataset.model || '';
-    const apiFormat = normalizeMappingApiFormat(input.dataset.apiFormat) || 'openai';
-    const key = visionModelKey(providerId, model, apiFormat);
+  let added = 0;
+  proxyVisionPickedModels.forEach(bucket => {
+    bucket.forEach(key => {
+      const decoded = decodeVisionModelKey(key);
+      const providerId = decoded.providerId || '';
+      const model = decoded.model || '';
+      const apiFormat = normalizeMappingApiFormat(decoded.apiFormat) || 'openai';
     if (providerId && model && !existing.has(key)) {
       modelMapStore.visionModels.imageModels.push({ providerId, model, apiFormat });
       existing.add(key);
+        added += 1;
     }
+    });
   });
+  if (!added) return;
+  proxyVisionPickedModels = new Map();
   closeVisionModelPicker();
   renderProxyEnhancement();
 }
@@ -636,21 +1226,37 @@ function isMissingVisionTestCommandMessage(msg) {
   return lower.includes('unknown command') || lower.includes('command not found');
 }
 
+function closeVisionTestModal() {
+  document.getElementById('proxyVisionTestModal')?.classList.remove('active');
+}
+
+function setVisionTestState(state, meta, result) {
+  const statusEl = document.getElementById('proxyVisionTestStatus');
+  const metaEl = document.getElementById('proxyVisionTestMeta');
+  const resultEl = document.getElementById('proxyVisionTestResult');
+  const statusText = state === 'success' ? '测试通过' : (state === 'error' ? '测试失败' : '测试中');
+  if (statusEl) {
+    statusEl.className = `proxy-vision-test-status is-${state}`;
+    statusEl.textContent = statusText;
+  }
+  if (metaEl) metaEl.textContent = meta || '';
+  if (resultEl) resultEl.textContent = result || '';
+}
+
 async function testVisionModel(idx) {
   ensureModelMapDefaults();
   const item = modelMapStore.visionModels.imageModels[idx];
   if (!item) return;
   const key = visionModelKey(item.providerId, item.model, item.apiFormat);
   proxyVisionTestingKey = key;
-  const panel = document.getElementById('proxyVisionTestPanel');
+  const modal = document.getElementById('proxyVisionTestModal');
   const image = document.getElementById('proxyVisionTestImage');
   const title = document.getElementById('proxyVisionTestTitle');
-  const resultEl = document.getElementById('proxyVisionTestResult');
   const imageBase64 = await getProxyVisionTestImageBase64();
-  if (panel) panel.style.display = 'flex';
+  if (modal) modal.classList.add('active');
   if (image) image.src = `data:image/png;base64,${imageBase64}`;
   if (title) title.textContent = `图片测试 · ${visionModelLabel(item)}`;
-  if (resultEl) resultEl.textContent = '正在发送测试图片...';
+  setVisionTestState('running', '正在发送测试图片...', '等待供应商返回图片理解结果。');
   renderProxyVisionModelList();
   const started = Date.now();
   try {
@@ -660,17 +1266,18 @@ async function testVisionModel(idx) {
     const duration = res?.durationMs ?? (Date.now() - started);
     if (res?.ok === false) {
       const err = res.error || '模型未返回有效图片理解结果';
-      if (resultEl) resultEl.textContent = isMissingVisionTestCommandMessage(err) ? '图片测试接口待实现，请重启应用加载新版后端。' : `失败：${err}`;
+      const message = isMissingVisionTestCommandMessage(err) ? '图片测试接口待实现，请重启应用加载新版后端。' : err;
+      setVisionTestState('error', `失败 · ${duration}ms`, message);
     } else {
-      const text = String(res?.text || '测试成功').slice(0, 240);
-      if (resultEl) resultEl.textContent = `成功 · ${duration}ms · ${text}`;
+      const text = String(res?.text || '测试成功').slice(0, 1200);
+      setVisionTestState('success', `成功 · ${duration}ms`, text);
     }
   } catch (e) {
     const msg = String(e || '');
     if (isMissingVisionTestCommandMessage(msg)) {
-      if (resultEl) resultEl.textContent = '图片测试接口待实现，请重启应用加载新版后端。';
-    } else if (resultEl) {
-      resultEl.textContent = `失败：${msg}`;
+      setVisionTestState('error', '失败', '图片测试接口待实现，请重启应用加载新版后端。');
+    } else {
+      setVisionTestState('error', '失败', msg);
     }
   } finally {
     proxyVisionTestingKey = '';
@@ -1032,7 +1639,8 @@ async function setSlotVisibilityMode(mode) {
   modelMapStore.slotVisibility = [];
   modelMapStore.unlockScope = 'all';
   modelMapStore.slotDisplayMode = 'all';
-  // 保持当前筛选不变（默认全部），不自动切到 visible
+  // 预设按钮表示最终 IDE 模型列表策略；应用后直接展示策略命中的槽位。
+  setSlotVisibilityFilter('visible');
   if (changed) setSlotVisibilityDirty(true);
   updateSlotPresetButtons();
   // 点击 flash 动画：让按钮短暂闪烁表示已应用
@@ -1151,7 +1759,10 @@ async function openInjectedEditor() {
   // 确保 modelMapStore.injected 存在
   if (!Array.isArray(modelMapStore.injected)) modelMapStore.injected = [];
   const list = document.getElementById('injected-list');
-  await ensureIdeModels();
+  if (list) {
+    list.innerHTML = modelSlotSkeletonHtml();
+  }
+  await syncCurrentIdeModels();
   document.getElementById('injected-search').value = '';
   document.getElementById('injected-filter').value = 'all';
   modelMapStore.unlockScope = normalizeUnlockScope(modelMapStore.unlockScope || modelMapStore.slotDisplayMode);
@@ -1161,9 +1772,6 @@ async function openInjectedEditor() {
   slotVisibilityDirty = false;
   updateSlotPresetButtons();
   setSlotVisibilityDirty(false);
-  if (list) {
-    list.innerHTML = modelSlotSkeletonHtml();
-  }
   try {
     await renderInjectedList();
   } catch (e) {
@@ -1363,17 +1971,16 @@ async function toggleSlotEnabled(uid) {
 }
 
 async function deleteSlot(uid) {
-  const s = modelMapStore.slots.find(x => x.modelUid === uid);
-  if (!(await showCustomConfirm(`确定删除映射「${s ? (s.displayName || originalNameOf(uid)) : uid}」？`, '删除确认', 'warn'))) return;
   modelMapStore.slots = modelMapStore.slots.filter(x => x.modelUid !== uid);
   if (await persistModelMap()) { await renderModelMap(); addLog('info', '已删除映射'); }
 }
 
 // ─── 添加映射模态框 ───
 let selectedSlotUid = '';
-let selectedMappingTargets = []; // [{providerId, model, apiFormat, unlock?}]
+let selectedMappingTargets = []; // [{providerId, model, apiFormat?, unlock?}]
 let slotCatalogScope = 'account';
 let slotWasManuallySelected = false;
+const AUTO_ROUTE_VALUE = 'auto';
 
 function normalizeMappingUnlock(value) {
   const raw = String(value || '').trim();
@@ -1408,7 +2015,7 @@ function targetRouteLabel(target) {
   const fmt = normalizeMappingApiFormat(target?.apiFormat || target?.api_format);
   if (fmt === 'openai') return 'OpenAI';
   if (fmt === 'anthropic') return 'Anthropic';
-  return '未设置协议';
+  return '自动';
 }
 
 function unlockKindForSlotUid(uid) {
@@ -1424,10 +2031,15 @@ function preferredRouteForSlotTarget(slotUid, providerId) {
   if (preferredUnlock && mappingProviderUnlockEnabled(p, preferredUnlock)) return preferredUnlock;
   if (preferredUnlock === 'codex') return 'openai';
   if (preferredUnlock === 'claudeCode') return 'anthropic';
-  return normalizeMappingApiFormat(p?.apiFormat) || 'anthropic';
+  return AUTO_ROUTE_VALUE;
 }
 
 function applyRouteToTarget(out, routeValue) {
+  if (!routeValue || routeValue === AUTO_ROUTE_VALUE) {
+    delete out.unlock;
+    delete out.apiFormat;
+    return out;
+  }
   const unlock = normalizeMappingUnlock(routeValue);
   if (unlock) {
     out.unlock = unlock;
@@ -1447,7 +2059,7 @@ function targetRouteValue(target, slotUid) {
   if (unlock) return unlock;
   const fmt = normalizeMappingApiFormat(target?.apiFormat || target?.api_format);
   if (fmt) return fmt;
-  return preferredRouteForSlotTarget(slotUid, target?.providerId);
+  return AUTO_ROUTE_VALUE;
 }
 
 function targetWithSlotRoute(target, slotUid) {
@@ -1460,6 +2072,12 @@ function targetWithSlotRoute(target, slotUid) {
   return out;
 }
 
+function targetWithPreferredRoute(target, slotUid) {
+  const providerId = String(target?.providerId || '').trim();
+  const out = targetWithSlotRoute(target, slotUid);
+  return applyRouteToTarget(out, preferredRouteForSlotTarget(slotUid, providerId));
+}
+
 function targetsWithSlotRoute(targets, slotUid) {
   return (Array.isArray(targets) ? targets : [])
     .filter(t => t && t.providerId)
@@ -1469,7 +2087,7 @@ function targetsWithSlotRoute(targets, slotUid) {
 function getAllProviderModels() {
   const list = [];
   (providerStore.providers || []).forEach(p => {
-    if (p.enabled !== false && p.meta?.codexConfig !== true) {
+    if (p.enabled !== false && p.meta?.codexConfig !== true && !isBuiltinProvider(p)) {
       const models = Array.isArray(p.models) && p.models.length > 0 ? p.models : (p.defaultModel ? [p.defaultModel] : []);
       models.forEach(m => {
         list.push({
@@ -1611,7 +2229,7 @@ function toggleMappingModelTarget(providerId, model) {
     selectedMappingTargets.splice(idx, 1);
   } else {
     // Add
-    selectedMappingTargets.push(targetWithSlotRoute({ providerId, model }, selectedSlotUid));
+    selectedMappingTargets.push(targetWithPreferredRoute({ providerId, model }, selectedSlotUid));
   }
   renderMappingModelCatalog();
   maybeAutoSelectRecommendedSlot();
@@ -1850,9 +2468,45 @@ function selectCatalogSlot(uid, name) {
   if (displayInput) {
     displayInput.value = name || '';
   }
+  updateDisplayNameButtons('original');
 
   // 重新绘制左侧以更新高亮
   renderSlotCatalogList();
+}
+
+function useOriginalModelName() {
+  const uid = selectedSlotUid || document.getElementById('slot-uid-select')?.value || document.getElementById('slot-edit-uid')?.value;
+  const name = uid ? originalNameOf(uid) : '';
+  const displayInput = document.getElementById('slot-display');
+  if (displayInput) {
+    displayInput.value = name;
+  }
+  updateDisplayNameButtons('original');
+}
+
+function useMappedModelName() {
+  const firstTarget = selectedMappingTargets && selectedMappingTargets[0];
+  const name = firstTarget ? firstTarget.model : '';
+  const displayInput = document.getElementById('slot-display');
+  if (displayInput) {
+    displayInput.value = name;
+  }
+  updateDisplayNameButtons('mapped');
+}
+
+function updateDisplayNameButtons(active) {
+  const origBtn = document.getElementById('btn-use-original-name');
+  const mappedBtn = document.getElementById('btn-use-mapped-name');
+  if (origBtn) {
+    origBtn.style.background = active === 'original' ? 'var(--accent)' : 'var(--bg-input)';
+    origBtn.style.color = active === 'original' ? '#fff' : 'var(--text-muted)';
+    origBtn.style.borderColor = active === 'original' ? 'var(--accent)' : 'var(--border)';
+  }
+  if (mappedBtn) {
+    mappedBtn.style.background = active === 'mapped' ? 'var(--accent)' : 'var(--bg-input)';
+    mappedBtn.style.color = active === 'mapped' ? '#fff' : 'var(--text-muted)';
+    mappedBtn.style.borderColor = active === 'mapped' ? 'var(--accent)' : 'var(--border)';
+  }
 }
 
 function filterSlotCatalog() {
@@ -1860,9 +2514,7 @@ function filterSlotCatalog() {
 }
 
 async function openSlotEditor(uid) {
-  ideModels = null;
-  ideMeta = null;
-  await ensureIdeModels();
+  await syncCurrentIdeModels();
   await ensureInjected();
   const sel = document.getElementById('slot-uid-select');
   const editing = uid ? modelMapStore.slots.find(x => x.modelUid === uid) : null;
@@ -1927,7 +2579,20 @@ async function openSlotEditor(uid) {
   // 5. 重绘左侧平铺卡片目录
   renderSlotCatalogList();
 
-  document.getElementById('slot-display').value = editing ? (editing.displayName || '') : '';
+  // 设置显示名：编辑态用已保存的自定义名，新建态默认使用原始模型名
+  if (editing) {
+    document.getElementById('slot-display').value = editing.displayName || '';
+    if (editing.displayName && editing.displayName.trim()) {
+      updateDisplayNameButtons('mapped');
+    } else {
+      updateDisplayNameButtons('original');
+    }
+  } else {
+    // 默认使用原始模型名
+    const defaultName = selectedSlotUid ? originalNameOf(selectedSlotUid) : '';
+    document.getElementById('slot-display').value = defaultName;
+    updateDisplayNameButtons('original');
+  }
   // 切到「添加/编辑映射」普通 page，保持顶部 tab 栏可见
   navigateTo('slot-editor');
 }
@@ -1987,13 +2652,14 @@ async function saveSlotFromEditor() {
 
 // ─── 故障转移配置模态框 ───
 let failoverEditUid = '';
-let failoverDraft = [];   // [{providerId, model, apiFormat, unlock?}]
+let failoverDraft = [];   // [{providerId, model, apiFormat?, unlock?}]
 
 function enabledProviders() {
-  return (providerStore.providers || []).filter(p => p.enabled !== false && p.meta?.codexConfig !== true);
+  return (providerStore.providers || []).filter(p => p.enabled !== false && p.meta?.codexConfig !== true && !isBuiltinProvider(p));
 }
 
 function routeLabelForValue(value) {
+  if (!value || value === AUTO_ROUTE_VALUE) return '自动';
   const unlock = normalizeMappingUnlock(value);
   if (unlock === 'codex') return 'Codex 解锁';
   if (unlock === 'claudeCode') return 'Claude Code 解锁';
@@ -2008,11 +2674,12 @@ function targetRouteOptionsForProvider(provider, currentValue) {
   const add = value => {
     if (value && !values.includes(value)) values.push(value);
   };
+  add(AUTO_ROUTE_VALUE);
   if (mappingProviderUnlockEnabled(provider, 'codex')) add('codex');
   if (mappingProviderUnlockEnabled(provider, 'claudeCode')) add('claudeCode');
   add('openai');
   add('anthropic');
-  add(normalizeMappingUnlock(currentValue) || normalizeMappingApiFormat(currentValue));
+  add(currentValue === AUTO_ROUTE_VALUE ? AUTO_ROUTE_VALUE : (normalizeMappingUnlock(currentValue) || normalizeMappingApiFormat(currentValue)));
   return values.map(value => ({ value, label: routeLabelForValue(value) }));
 }
 
@@ -2098,7 +2765,7 @@ function renderFailoverRows() {
 function addFailoverRow() {
   const provs = enabledProviders();
   const def = provs[0];
-  failoverDraft.push(targetWithSlotRoute({ providerId: def ? def.id : '', model: def ? (def.defaultModel || '') : '' }, failoverEditUid));
+  failoverDraft.push(targetWithPreferredRoute({ providerId: def ? def.id : '', model: def ? (def.defaultModel || '') : '' }, failoverEditUid));
   renderFailoverRows();
 }
 

@@ -532,8 +532,8 @@ fn check_provider_route(
             "err",
             "route.model_empty",
             format!(
-                "「{}」未填写目标模型，且供应商「{}」也没有默认模型",
-                label, provider.name
+                "「{}」未填写目标模型，请在模型列表里选择明确的上游模型",
+                label
             ),
         );
         ok = false;
@@ -651,7 +651,7 @@ fn run_proxy_preflight(
                             &mut issues,
                             "err",
                             "certs.generate_incomplete",
-                            "已尝试自动生成 MITM 证书，但证书文件仍不完整。请到「设置 > IDE 接入」重新生成证书",
+                            "已尝试自动生成 MITM 证书，但证书文件仍不完整。请在「平台 > 设置 > 环境检测」点击「生成证书」",
                         );
                     }
                 }
@@ -660,7 +660,7 @@ fn run_proxy_preflight(
                     "err",
                     "certs.generate_failed",
                     format!(
-                        "自动生成 MITM 证书失败: {}。请到「设置 > IDE 接入」手动生成",
+                        "自动生成 MITM 证书失败: {}。请在「平台 > 设置 > 环境检测」点击「生成证书」",
                         e
                     ),
                 ),
@@ -671,7 +671,7 @@ fn run_proxy_preflight(
                 "err",
                 "certs.missing",
                 format!(
-                    "MITM 证书不完整，请先在「设置 > IDE 接入」生成证书（缺少或为空: {}, {}）",
+                    "MITM 证书不完整；点击「安装证书」会自动生成并安装，也可以点击「生成证书」单独生成（缺少或为空: {}, {}）",
                     cert_path.to_string_lossy(),
                     key_path.to_string_lossy()
                 ),
@@ -912,7 +912,7 @@ fn run_proxy_preflight(
             "err",
             "ide_settings.missing",
             format!(
-                "未找到 {} settings.json: {}。请先启动一次 {}，或在「设置 > IDE 接入」手动指定 IDE 路径后再切换到代理",
+                "未找到 {} settings.json: {}。请先启动一次 {}，或在「平台 > 设置」手动指定 IDE 路径后再切换到代理",
                 ide_label,
                 settings.to_string_lossy(),
                 ide_label
@@ -1130,7 +1130,7 @@ fn run_proxy_preflight(
             &mut issues,
             "err",
             "model_map.no_route",
-            "没有任何可用模型路由：请至少给一个启用槽位配置供应商和模型",
+            "没有任何可用模型：请至少给一个启用槽位配置供应商和目标模型",
         );
     }
 

@@ -289,7 +289,7 @@ export class AnthropicStreamProcessor {
 
   _onMessageStop(chunks) {
     const protoStopReason = this._mapStopReason(this._stopReason);
-    chunks.push(buildStopChunk(this._messageId, protoStopReason, this._modelUid));
+    chunks.push(buildStopChunk(this._messageId, protoStopReason, this._modelUid, undefined, this._usage));
     this._done = true;
   }
 

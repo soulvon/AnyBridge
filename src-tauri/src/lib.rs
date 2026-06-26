@@ -71,7 +71,6 @@ pub fn run() {
             commands::model_map::validate_model_map,
             commands::proxy_routes::load_proxy_routes,
             commands::proxy_routes::save_proxy_routes,
-            commands::proxy_routes::import_proxy_routes_from_model_map,
             commands::ide_models::list_ide_models,
             commands::ide_models::refresh_ide_models,
             commands::windsurf_catalog::list_windsurf_catalog,

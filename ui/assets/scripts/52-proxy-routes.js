@@ -1,7 +1,19 @@
 // ═══════ LOCAL PROXY MODEL ROUTES ═══════
-let proxyRoutesStore = { version: 1, defaultModelId: '', routes: [], compatFromModelMap: false };
+let proxyRoutesStore = { version: 1, defaultModelId: '', routes: [] };
 let proxyRouteEditingId = '';
 let proxyRouteDraftTargets = [];
+let proxyRouteSelectedIds = new Set();
+let proxyRouteProviderModels = [];
+let proxyRouteProviderSearch = '';
+let proxyRouteSelectedProviderId = '';
+let proxyRouteSelectedModelId = '';
+let proxyRouteBackupProviderSearch = '';
+let proxyRouteBackupSelectedProviderId = '';
+let proxyRouteBackupSelectedModelId = '';
+let proxyRouteBackupPickerOpen = false;
+// 弹窗内多选状态：Map<providerId, Set<modelId>>，编辑单模型时退化为空
+let proxyRoutePickedModels = new Map();
+let proxyRouteCustomNameTouched = false;
 
 function proxyRouteEsc(value) {
   return String(value ?? '')
@@ -14,39 +26,40 @@ function proxyRouteEsc(value) {
 
 function normalizeProxyRouteFormat(value) {
   const raw = String(value || '').trim().toLowerCase();
-  return raw === 'anthropic' ? 'anthropic' : raw === 'openai' ? 'openai' : '';
+  if (raw === 'auto') return '';
+  if (raw === 'anthropic' || raw === 'openai' || raw === 'gemini') return raw;
+  return '';
 }
 
 function normalizeProxyRouteTarget(target = {}) {
   return {
     providerId: String(target.providerId || target.provider_id || '').trim(),
     model: String(target.model || '').trim(),
-    apiFormat: normalizeProxyRouteFormat(target.apiFormat || target.api_format) || 'openai',
+    apiFormat: normalizeProxyRouteFormat(target.apiFormat || target.api_format),
     apiPath: String(target.apiPath || target.api_path || '').trim(),
     unlock: String(target.unlock || '').trim()
   };
 }
 
 function normalizeProxyRoute(route = {}) {
-  const exposed = Array.isArray(route.exposedFormats)
-    ? route.exposedFormats.map(normalizeProxyRouteFormat).filter(Boolean)
-    : ['openai', 'anthropic'];
   return {
     id: String(route.id || '').trim(),
-    displayName: String(route.displayName || route.display_name || '').trim(),
+    displayName: String(route.id || '').trim(),
     enabled: route.enabled !== false,
-    exposedFormats: [...new Set(exposed.length ? exposed : ['openai', 'anthropic'])],
+    exposedFormats: ['openai', 'anthropic'],
     source: String(route.source || 'manual').trim() || 'manual',
     capabilities: {
-      stream: route.capabilities?.stream === true,
-      tools: route.capabilities?.tools === true,
-      vision: route.capabilities?.vision === true,
-      reasoning: route.capabilities?.reasoning === true,
+      stream: route.capabilities?.stream !== false,
+      tools: route.capabilities?.tools !== false,
+      vision: route.capabilities?.vision !== false,
+      reasoning: route.capabilities?.reasoning !== false,
     },
     enhancement: {
       retry: route.enhancement?.retry !== false,
       autoRouting: route.enhancement?.autoRouting !== false,
       thirdPartyVision: route.enhancement?.thirdPartyVision === true,
+      preserveExtraParams: route.enhancement?.preserveExtraParams === true,
+      rawProviderErrors: route.enhancement?.rawProviderErrors !== false,
     },
     targets: Array.isArray(route.targets) ? route.targets.map(normalizeProxyRouteTarget).filter(t => t.providerId || t.model) : [],
   };
@@ -54,13 +67,10 @@ function normalizeProxyRoute(route = {}) {
 
 function normalizeProxyRoutesStore(store = {}) {
   const routes = Array.isArray(store.routes) ? store.routes.map(normalizeProxyRoute).filter(route => route.id) : [];
-  const enabled = routes.filter(route => route.enabled !== false);
-  const defaultModelId = String(store.defaultModelId || '').trim();
   return {
     version: Number(store.version) || 1,
-    defaultModelId: enabled.some(route => route.id === defaultModelId) ? defaultModelId : (enabled[0]?.id || ''),
+    defaultModelId: '',
     routes,
-    compatFromModelMap: store.compatFromModelMap === true,
   };
 }
 
@@ -73,25 +83,101 @@ function proxyRouteProviderName(providerId) {
   return provider ? (provider.name || provider.id) : (providerId || '未选择供应商');
 }
 
+function proxyRouteProviderInitial(name) {
+  return String(name || '?').trim().charAt(0).toUpperCase() || '?';
+}
+
+function proxyRouteProviderEntry(providerId) {
+  return (proxyRouteProviderModels || []).find(item => item.providerId === providerId) || null;
+}
+
+function proxyRouteProviderModel(providerId, modelId) {
+  const provider = proxyRouteProviderEntry(providerId);
+  return (provider?.models || []).find(model => String(model?.id || '') === String(modelId || '')) || null;
+}
+
+function proxyRouteModelIcon(modelId) {
+  if (typeof renderModelIcon === 'function') return renderModelIcon(modelId);
+  const initial = String(modelId || '?').trim().charAt(0).toUpperCase() || '?';
+  return `<div class="model-item-icon fallback">${proxyRouteEsc(initial)}</div>`;
+}
+
+function proxyRouteProviderSearchHaystack(provider) {
+  return [provider?.providerName, provider?.providerId].map(x => String(x || '').toLowerCase()).join(' ');
+}
+
+function proxyRouteVisibleProviders() {
+  const terms = String(proxyRouteProviderSearch || '').trim().toLowerCase().split(/\s+/).filter(Boolean);
+  const list = Array.isArray(proxyRouteProviderModels) ? proxyRouteProviderModels : [];
+  if (!terms.length) return list;
+  return list.filter(provider => {
+    const haystack = proxyRouteProviderSearchHaystack(provider);
+    return terms.every(term => haystack.includes(term));
+  });
+}
+
+function proxyRouteBackupVisibleProviders() {
+  const terms = String(proxyRouteBackupProviderSearch || '').trim().toLowerCase().split(/\s+/).filter(Boolean);
+  const list = Array.isArray(proxyRouteProviderModels) ? proxyRouteProviderModels : [];
+  if (!terms.length) return list;
+  return list.filter(provider => {
+    const haystack = [
+      proxyRouteProviderSearchHaystack(provider),
+      ...(provider?.models || []).map(model => `${model?.id || ''} ${model?.name || ''}`),
+    ].join(' ').toLowerCase();
+    return terms.every(term => haystack.includes(term));
+  });
+}
+
+function proxyRouteProviderModelsFromStore() {
+  const providers = (providerStore.providers || []).filter(p => p.enabled !== false && p.meta?.codexConfig !== true && !isBuiltinProvider(p));
+  return providers.map(provider => {
+    const models = Array.isArray(provider.models) ? provider.models : [];
+    return {
+      providerId: provider.id,
+      providerName: provider.name || provider.id,
+      models: models.map(model => ({
+        id: String(model || '').trim(),
+        name: String(model || '').trim(),
+        supportsToolCall: provider.capabilities?.tools === true,
+        supportsImages: provider.capabilities?.vision === true,
+        supportsReasoning: /reason|thinking|r1|o\d|glm|claude|gpt-5/i.test(String(model || '')),
+      })).filter(model => model.id),
+    };
+  });
+}
+
+async function loadProxyRouteProviderModels() {
+  if (invoke) {
+    proxyRouteProviderModels = await invoke('list_provider_models') || [];
+  } else {
+    proxyRouteProviderModels = proxyRouteProviderModelsFromStore();
+  }
+  // 注入 AnyBridge 本地代理供应商到列表首位
+  if (typeof localProxyProviderModelsEntry === 'function') {
+    const lp = localProxyProviderModelsEntry();
+    proxyRouteProviderModels = proxyRouteProviderModels.filter(p => !isLocalProxyProviderEntry(p));
+    proxyRouteProviderModels.unshift(lp);
+  }
+}
+
 function proxyRouteTargetLabel(target) {
   const provider = proxyRouteProviderName(target.providerId);
   const model = target.model || '未填写模型';
-  const format = normalizeProxyRouteFormat(target.apiFormat) === 'anthropic' ? 'Claude' : 'OpenAI';
+  const fmt = normalizeProxyRouteFormat(target.apiFormat);
+  const format = fmt === 'anthropic' ? 'Claude' : (fmt === 'openai' ? 'OpenAI' : '自动');
   return `${provider} / ${model} · ${format}`;
 }
 
 function getEnabledProxyRouteModels(format = 'openai') {
-  const fmt = normalizeProxyRouteFormat(format) || 'openai';
   const routes = Array.isArray(proxyRoutesStore.routes) ? proxyRoutesStore.routes : [];
   return routes
     .filter(route => route.enabled !== false)
-    .filter(route => (route.exposedFormats || []).includes(fmt))
     .map(route => route.id);
 }
 
 function getProxyRouteDefaultModel(format = 'openai') {
   const models = getEnabledProxyRouteModels(format);
-  if (models.includes(proxyRoutesStore.defaultModelId)) return proxyRoutesStore.defaultModelId;
   return models[0] || '';
 }
 
@@ -102,77 +188,222 @@ async function loadProxyRoutes() {
     proxyRoutesStore = normalizeProxyRoutesStore(store);
     renderProxyRoutes();
     if (typeof syncLocalProxyUi === 'function') syncLocalProxyUi();
-    if (typeof renderAllPlatformAccessModeUi === 'function') renderAllPlatformAccessModeUi();
+    if (typeof syncLocalProxyProvider === 'function') syncLocalProxyProvider();
+    if (typeof renderProviders === 'function') renderProviders();
   } catch (e) {
-    addLog('err', '加载本地代理模型路由失败: ' + e);
+    addLog('err', '加载本地代理模型列表失败: ' + e);
   }
 }
 
 async function saveProxyRoutes(options = {}) {
-  if (!invoke) return false;
+  if (!invoke) {
+    const message = '当前环境缺少 Tauri invoke，无法保存本地代理模型列表';
+    addLog('err', message);
+    showCustomAlert(message, '保存失败', 'error');
+    return false;
+  }
   try {
     proxyRoutesStore = normalizeProxyRoutesStore(proxyRoutesStore);
     await invoke('save_proxy_routes', { store: proxyRoutesStore });
-    proxyRoutesStore.compatFromModelMap = false;
     renderProxyRoutes();
     if (typeof syncLocalProxyUi === 'function') syncLocalProxyUi();
-    if (typeof renderAllPlatformAccessModeUi === 'function') renderAllPlatformAccessModeUi();
     if (!options.silent) {
-      addLog('ok', `本地代理模型路由已保存: ${proxyRoutesStore.routes.length} 条`);
-      showBottomToast('本地代理模型路由已保存', 'success');
+      addLog('ok', `本地代理模型列表已保存: ${proxyRoutesStore.routes.length} 个模型`);
+      showBottomToast('本地代理模型列表已保存', 'success');
     }
     return true;
   } catch (e) {
-    addLog('err', '保存本地代理模型路由失败: ' + e);
+    addLog('err', '保存本地代理模型列表失败: ' + e);
     showCustomAlert(String(e), '保存失败', 'error');
     return false;
   }
 }
 
-async function importProxyRoutesFromModelMap() {
-  if (!invoke) return;
-  try {
-    const result = await invoke('import_proxy_routes_from_model_map');
-    proxyRoutesStore = normalizeProxyRoutesStore(result?.store || {});
-    renderProxyRoutes();
-    if (typeof syncLocalProxyUi === 'function') syncLocalProxyUi();
-    if (typeof renderAllPlatformAccessModeUi === 'function') renderAllPlatformAccessModeUi();
-    const imported = Number(result?.imported || 0);
-    const skipped = Number(result?.skipped || 0);
-    addLog('ok', `已从平台模型映射导入代理模型路由: 新增 ${imported} 条，跳过 ${skipped} 条`);
-    showCustomAlert(`已新增 ${imported} 条代理模型路由，跳过 ${skipped} 条重复路由。`, '导入完成', skipped ? 'info' : 'success');
-  } catch (e) {
-    addLog('err', '导入代理模型路由失败: ' + e);
-    showCustomAlert(String(e), '导入失败', 'error');
-  }
-}
-
-function setProxyRoutesDefault(modelId) {
-  proxyRoutesStore.defaultModelId = String(modelId || '').trim();
-  renderProxyRoutes();
-  if (typeof syncLocalProxyUi === 'function') syncLocalProxyUi();
-  if (typeof renderAllPlatformAccessModeUi === 'function') renderAllPlatformAccessModeUi();
-}
-
-function toggleProxyRouteEnabled(routeId, checked) {
+async function toggleProxyRouteEnabled(routeId, checked) {
   const route = proxyRoutesStore.routes.find(item => item.id === routeId);
   if (!route) return;
+  const previous = cloneProxyRoutesStore();
   route.enabled = checked === true;
-  if (!route.enabled && proxyRoutesStore.defaultModelId === route.id) {
-    proxyRoutesStore.defaultModelId = getEnabledProxyRouteModels('openai').find(id => id !== route.id) || '';
+  const ok = await saveProxyRoutes({ silent: true });
+  if (!ok) {
+    proxyRoutesStore = normalizeProxyRoutesStore(previous);
+    renderProxyRoutes();
+    return;
   }
+  showBottomToast(route.enabled ? '已启用模型' : '已停用模型', 'success');
+}
+
+async function toggleProxyRouteThirdPartyVision(routeId, checked) {
+  const route = proxyRoutesStore.routes.find(item => item.id === routeId);
+  if (!route) return;
+  const previous = cloneProxyRoutesStore();
+  route.enhancement = route.enhancement && typeof route.enhancement === 'object' ? route.enhancement : {};
+  route.enhancement.thirdPartyVision = checked === true;
+  const ok = await saveProxyRoutes({ silent: true });
+  if (!ok) {
+    proxyRoutesStore = normalizeProxyRoutesStore(previous);
+    renderProxyRoutes();
+    return;
+  }
+  showBottomToast(route.enhancement.thirdPartyVision ? '已启用第三方图片理解' : '已关闭第三方图片理解', 'success');
+}
+
+function cloneProxyRoutesStore(store = proxyRoutesStore) {
+  return JSON.parse(JSON.stringify(store || { version: 1, defaultModelId: '', routes: [] }));
+}
+
+async function deleteProxyRoute(routeId) {
+  const route = proxyRoutesStore.routes.find(item => item.id === routeId);
+  if (!route) return;
+  const previous = cloneProxyRoutesStore();
+  proxyRoutesStore.routes = proxyRoutesStore.routes.filter(item => item.id !== routeId);
+  proxyRouteSelectedIds.delete(routeId);
+  proxyRoutesStore.defaultModelId = '';
+  const ok = await saveProxyRoutes({ silent: true });
+  if (!ok) {
+    proxyRoutesStore = normalizeProxyRoutesStore(previous);
+    renderProxyRoutes();
+    return;
+  }
+  showBottomToast('已删除模型', 'success');
+}
+
+function pruneProxyRouteSelection() {
+  const valid = new Set((proxyRoutesStore.routes || []).map(route => route.id));
+  proxyRouteSelectedIds.forEach(id => {
+    if (!valid.has(id)) proxyRouteSelectedIds.delete(id);
+  });
+}
+
+function visibleProxyRouteIds() {
+  return Array.from(document.querySelectorAll('#proxyRoutesTableBody tr[data-proxy-route-id]'))
+    .filter(row => row.style.display !== 'none')
+    .map(row => row.dataset.proxyRouteId)
+    .filter(Boolean);
+}
+
+function syncProxyRouteSelectionState() {
+  pruneProxyRouteSelection();
+  const selected = proxyRouteSelectedIds.size;
+  const deleteBtn = document.getElementById('proxyRoutesDeleteSelectedBtn');
+  if (deleteBtn) {
+    deleteBtn.disabled = selected === 0;
+    const label = deleteBtn.querySelector('.proxy-routes-delete-label');
+    if (label) label.textContent = selected ? `删除选中 (${selected})` : '删除选中';
+  }
+  const visibleIds = visibleProxyRouteIds();
+  const selectedVisible = visibleIds.filter(id => proxyRouteSelectedIds.has(id)).length;
+  const selectAll = document.getElementById('proxyRoutesSelectAll');
+  if (selectAll) {
+    selectAll.disabled = visibleIds.length === 0;
+    selectAll.checked = visibleIds.length > 0 && selectedVisible === visibleIds.length;
+    selectAll.indeterminate = selectedVisible > 0 && selectedVisible < visibleIds.length;
+  }
+  // 批量操作按钮
+  const hasSelection = selected > 0;
+  const selectVisibleBtn = document.getElementById('proxyRoutesSelectVisibleBtn');
+  if (selectVisibleBtn) {
+    selectVisibleBtn.disabled = visibleIds.length === 0;
+    const allSelected = visibleIds.length > 0 && selectedVisible === visibleIds.length;
+    selectVisibleBtn.textContent = allSelected ? '取消选择' : '选择当前';
+  }
+  const enableBtn = document.getElementById('proxyRoutesBulkEnableBtn');
+  if (enableBtn) enableBtn.disabled = !hasSelection;
+  const disableBtn = document.getElementById('proxyRoutesBulkDisableBtn');
+  if (disableBtn) disableBtn.disabled = !hasSelection;
+  const visionBtn = document.getElementById('proxyRoutesBulkVisionBtn');
+  if (visionBtn) visionBtn.disabled = !hasSelection;
+  // 计数
+  const countPill = document.getElementById('proxyRoutesBulkCount');
+  if (countPill) {
+    const total = proxyRoutesStore.routes?.length || 0;
+    countPill.textContent = selected > 0 ? `已选 ${selected} / 共 ${total} 个` : `共 ${total} 个`;
+  }
+}
+
+function toggleProxyRouteSelection(routeId, checked) {
+  if (!routeId) return;
+  if (checked) proxyRouteSelectedIds.add(routeId);
+  else proxyRouteSelectedIds.delete(routeId);
+  const row = Array.from(document.querySelectorAll('#proxyRoutesTableBody tr[data-proxy-route-id]'))
+    .find(item => item.dataset.proxyRouteId === routeId);
+  if (row) row.classList.toggle('is-selected', checked);
+  syncProxyRouteSelectionState();
+}
+
+function toggleProxyRoutesSelectAll(checked) {
+  const ids = visibleProxyRouteIds();
+  ids.forEach(id => {
+    if (checked) proxyRouteSelectedIds.add(id);
+    else proxyRouteSelectedIds.delete(id);
+  });
   renderProxyRoutes();
 }
 
-function deleteProxyRoute(routeId) {
-  const route = proxyRoutesStore.routes.find(item => item.id === routeId);
-  if (!route) return;
-  showCustomConfirm(`将删除本地代理模型路由「${route.displayName || route.id}」。`, '删除模型路由', 'warn').then(ok => {
-    if (!ok) return;
-    proxyRoutesStore.routes = proxyRoutesStore.routes.filter(item => item.id !== routeId);
-    if (proxyRoutesStore.defaultModelId === routeId) proxyRoutesStore.defaultModelId = getEnabledProxyRouteModels('openai')[0] || '';
+async function deleteSelectedProxyRoutes() {
+  pruneProxyRouteSelection();
+  if (!proxyRouteSelectedIds.size) return;
+  const previous = cloneProxyRoutesStore();
+  const removed = new Set(proxyRouteSelectedIds);
+  proxyRoutesStore.routes = (proxyRoutesStore.routes || []).filter(route => !removed.has(route.id));
+  proxyRouteSelectedIds.clear();
+  proxyRoutesStore.defaultModelId = '';
+  const ok = await saveProxyRoutes({ silent: true });
+  if (!ok) {
+    proxyRoutesStore = normalizeProxyRoutesStore(previous);
     renderProxyRoutes();
+    return;
+  }
+  showBottomToast(`已删除 ${removed.size} 个模型`, 'success');
+}
+
+function toggleVisibleProxyRouteSelection() {
+  const visible = visibleProxyRouteIds();
+  if (!visible.length) return;
+  const allSelected = visible.every(id => proxyRouteSelectedIds.has(id));
+  visible.forEach(id => {
+    if (allSelected) proxyRouteSelectedIds.delete(id);
+    else proxyRouteSelectedIds.add(id);
   });
+  renderProxyRoutes();
+}
+
+async function batchSetSelectedProxyRoutesEnabled(enabled) {
+  pruneProxyRouteSelection();
+  if (!proxyRouteSelectedIds.size) return;
+  const previous = cloneProxyRoutesStore();
+  const targets = (proxyRoutesStore.routes || []).filter(r => proxyRouteSelectedIds.has(r.id));
+  targets.forEach(r => { r.enabled = enabled === true; });
+  const ok = await saveProxyRoutes({ silent: true });
+  if (!ok) {
+    proxyRoutesStore = normalizeProxyRoutesStore(previous);
+    renderProxyRoutes();
+    return;
+  }
+  showBottomToast(`已${enabled ? '启用' : '停用'} ${targets.length} 个模型`, 'success');
+}
+
+async function batchSetSelectedProxyRoutesThirdPartyVision(enabled) {
+  pruneProxyRouteSelection();
+  if (!proxyRouteSelectedIds.size) return;
+  const hasVisionModels = (modelMapStore?.visionModels?.imageModels?.length || 0) > 0;
+  if (enabled && !hasVisionModels) {
+    showCustomAlert('请先在「代理增强」中配置第三方图片理解模型。', '无法启用', 'warn');
+    return;
+  }
+  const previous = cloneProxyRoutesStore();
+  const targets = (proxyRoutesStore.routes || []).filter(r => proxyRouteSelectedIds.has(r.id));
+  targets.forEach(r => {
+    r.enhancement = r.enhancement && typeof r.enhancement === 'object' ? r.enhancement : {};
+    r.enhancement.thirdPartyVision = enabled === true;
+  });
+  const ok = await saveProxyRoutes({ silent: true });
+  if (!ok) {
+    proxyRoutesStore = normalizeProxyRoutesStore(previous);
+    renderProxyRoutes();
+    return;
+  }
+  showBottomToast(`已${enabled ? '启用' : '关闭'} ${targets.length} 个模型的第三方图片理解`, 'success');
 }
 
 function proxyRouteBadges(route) {
@@ -181,118 +412,190 @@ function proxyRouteBadges(route) {
   if (route.capabilities?.tools) caps.push('工具');
   if (route.capabilities?.vision) caps.push('图片');
   if (route.capabilities?.reasoning) caps.push('推理');
-  if (route.enhancement?.thirdPartyVision) caps.push('第三方图片');
   return caps.length
     ? caps.map(label => `<span class="proxy-route-badge">${proxyRouteEsc(label)}</span>`).join('')
     : '<span class="proxy-route-muted">未确认</span>';
-}
-
-function renderProxyRouteDefaultSelect() {
-  const select = document.getElementById('proxyRoutesDefaultModel');
-  if (!select) return;
-  const enabled = proxyRoutesStore.routes.filter(route => route.enabled !== false);
-  select.innerHTML = [
-    '<option value="">未设置</option>',
-    ...enabled.map(route => `<option value="${proxyRouteEsc(route.id)}">${proxyRouteEsc(route.displayName || route.id)}</option>`)
-  ].join('');
-  select.value = proxyRoutesStore.defaultModelId || '';
 }
 
 function renderProxyRoutes() {
   proxyRoutesStore = normalizeProxyRoutesStore(proxyRoutesStore);
   const body = document.getElementById('proxyRoutesTableBody');
   if (!body) return;
+  const card = document.querySelector('.proxy-routes-card');
+  const tableWrap = document.querySelector('.proxy-routes-table-wrap');
   const query = (document.getElementById('proxyRoutesSearch')?.value || '').trim().toLowerCase();
   const routes = proxyRoutesStore.routes.filter(route => {
     const hay = [
       route.id,
-      route.displayName,
       route.source,
       ...(route.targets || []).flatMap(t => [t.providerId, proxyRouteProviderName(t.providerId), t.model, t.apiFormat])
     ].join(' ').toLowerCase();
     return !query || hay.includes(query);
   });
+  pruneProxyRouteSelection();
   const enabledCount = proxyRoutesStore.routes.filter(route => route.enabled !== false).length;
-  const banner = document.getElementById('proxyRoutesCompatBanner');
-  if (banner) banner.style.display = proxyRoutesStore.compatFromModelMap ? '' : 'none';
-  setText('proxyRoutesTotal', `路由：${proxyRoutesStore.routes.length}`);
-  setText('proxyRoutesEnabled', `启用：${enabledCount}`);
-  setText('proxyRoutesDefault', `默认：${proxyRoutesStore.defaultModelId || '未设置'}`);
+  setText('proxyRoutesTotal', String(proxyRoutesStore.routes.length));
+  setText('proxyRoutesEnabled', String(enabledCount));
   setText('proxy-page-route-total', String(proxyRoutesStore.routes.length));
   setText('proxy-page-route-enabled', String(enabledCount));
-  setText('proxy-page-route-default', proxyRoutesStore.defaultModelId || '未设置');
-  renderProxyRouteDefaultSelect();
-  if (typeof renderAllPlatformAccessModeUi === 'function') renderAllPlatformAccessModeUi();
+  if (card) card.classList.toggle('is-empty-store', proxyRoutesStore.routes.length === 0);
 
   if (!routes.length) {
-    const text = proxyRoutesStore.routes.length
-      ? '没有匹配的模型路由'
-      : '尚未配置本地代理模型路由。可以从平台模型映射导入，或手动添加第一条路由。';
-    body.innerHTML = `<tr><td colspan="7" class="proxy-routes-empty">${proxyRouteEsc(text)}</td></tr>`;
+    if (tableWrap) tableWrap.classList.add('is-empty');
+    const isFiltered = proxyRoutesStore.routes.length > 0;
+    body.innerHTML = `<tr class="proxy-routes-empty-row"><td colspan="7">
+      <div class="proxy-routes-empty-state">
+        <div class="proxy-routes-empty-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"
+            stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="3" width="18" height="18" rx="2" />
+            <line x1="9" y1="9" x2="15" y2="9" />
+            <line x1="9" y1="13" x2="15" y2="13" />
+            <line x1="9" y1="17" x2="13" y2="17" />
+          </svg>
+        </div>
+        <div class="proxy-routes-empty-title">${isFiltered ? '没有匹配的模型' : '尚未配置本地代理模型'}</div>
+        <div class="proxy-routes-empty-subtitle">${isFiltered ? '换个关键词再试。' : '从供应商模型中添加到本地代理模型列表。'}</div>
+        ${isFiltered ? '' : '<button type="button" class="btn-primary proxy-routes-empty-action" onclick="openProxyRouteEditor()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>添加模型</button>'}
+      </div>
+    </td></tr>`;
+    syncProxyRouteSelectionState();
     return;
   }
 
+  if (tableWrap) tableWrap.classList.remove('is-empty');
   body.innerHTML = routes.map(route => {
     const targetText = route.targets?.length
       ? route.targets.map((target, idx) => `<div class="proxy-route-target-line"><span>${idx + 1}</span>${proxyRouteEsc(proxyRouteTargetLabel(target))}</div>`).join('')
       : '<span class="proxy-route-muted">未配置目标</span>';
-    const formats = (route.exposedFormats || []).map(fmt => fmt === 'anthropic' ? 'Claude' : 'OpenAI').join(' / ');
+    const selected = proxyRouteSelectedIds.has(route.id);
+    const thirdPartyVision = route.enhancement?.thirdPartyVision === true;
     return `
-      <tr>
+      <tr data-proxy-route-id="${proxyRouteEsc(route.id)}" class="${selected ? 'is-selected' : ''}">
+        <td class="proxy-route-select-cell model-map-select-cell" onclick="event.stopPropagation()">
+          <label class="provider-select-check provider-select-check-table" title="选择此模型" onclick="event.stopPropagation()">
+            <input type="checkbox" class="proxy-route-row-check" aria-label="选择 ${proxyRouteEsc(route.id)}" ${selected ? 'checked' : ''} onchange="toggleProxyRouteSelection('${proxyRouteEsc(route.id)}', this.checked)">
+            <span></span>
+          </label>
+        </td>
+        <td><code class="proxy-route-model-id">${proxyRouteEsc(route.id)}</code></td>
+        <td>${targetText}</td>
+        <td><div class="proxy-route-badges">${proxyRouteBadges(route)}</div></td>
         <td>
+          <div class="model-map-actions proxy-route-row-actions">
+            <button class="btn-icon model-map-action-btn" onclick="openProxyRouteEditor('${proxyRouteEsc(route.id)}')" title="编辑模型" aria-label="编辑模型">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+            </button>
+            <button class="btn-icon model-map-action-btn danger" onclick="deleteProxyRoute('${proxyRouteEsc(route.id)}')" title="删除模型" aria-label="删除模型">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"/></svg>
+            </button>
+          </div>
+        </td>
+        <td class="proxy-route-toggle-cell model-map-toggle-cell">
+          <label class="toggle-switch" title="${thirdPartyVision ? '已启用第三方图片理解' : '已关闭第三方图片理解'}">
+            <input type="checkbox" ${thirdPartyVision ? 'checked' : ''} onchange="toggleProxyRouteThirdPartyVision('${proxyRouteEsc(route.id)}', this.checked)">
+            <span class="toggle-slider"></span>
+          </label>
+        </td>
+        <td class="proxy-route-enabled-cell model-map-toggle-cell">
           <label class="toggle-switch" title="${route.enabled ? '已启用' : '已禁用'}">
             <input type="checkbox" ${route.enabled ? 'checked' : ''} onchange="toggleProxyRouteEnabled('${proxyRouteEsc(route.id)}', this.checked)">
             <span class="toggle-slider"></span>
           </label>
         </td>
-        <td><code>${proxyRouteEsc(route.id)}</code></td>
-        <td>
-          <div class="proxy-route-name">${proxyRouteEsc(route.displayName || route.id)}</div>
-          <div class="proxy-route-source">${proxyRouteEsc(route.source || 'manual')}</div>
-        </td>
-        <td>${proxyRouteEsc(formats || '未设置')}</td>
-        <td>${targetText}</td>
-        <td><div class="proxy-route-badges">${proxyRouteBadges(route)}</div></td>
-        <td>
-          <div class="proxy-route-row-actions">
-            <button class="btn-ghost" onclick="openProxyRouteEditor('${proxyRouteEsc(route.id)}')">编辑</button>
-            <button class="btn-ghost danger" onclick="deleteProxyRoute('${proxyRouteEsc(route.id)}')">删除</button>
-          </div>
-        </td>
       </tr>`;
   }).join('');
+  syncProxyRouteSelectionState();
 }
 
-function openProxyRouteEditor(routeId = '') {
+async function openProxyRouteEditor(routeId = '') {
   proxyRouteEditingId = String(routeId || '').trim();
   const route = proxyRouteEditingId
     ? proxyRoutesStore.routes.find(item => item.id === proxyRouteEditingId)
     : null;
+  if (proxyRouteEditingId && !route) {
+    showCustomAlert(`模型不存在或已被删除: ${proxyRouteEditingId}`, '打开失败', 'error');
+    proxyRouteEditingId = '';
+    return;
+  }
+  const modal = document.getElementById('proxy-route-editor-modal');
+  modal?.classList.toggle('is-editing', !!route);
+  modal?.classList.toggle('is-adding', !route);
   const draft = route ? normalizeProxyRoute(route) : normalizeProxyRoute({
     id: '',
     displayName: '',
     enabled: true,
     exposedFormats: ['openai', 'anthropic'],
-    capabilities: { stream: true },
+    capabilities: { stream: true, tools: true, vision: true, reasoning: true },
     targets: []
   });
-  proxyRouteDraftTargets = draft.targets.length ? draft.targets : [normalizeProxyRouteTarget({ apiFormat: 'openai' })];
-  setText('proxyRouteEditorTitle', route ? '编辑模型路由' : '添加模型路由');
+  proxyRouteDraftTargets = draft.targets.length ? draft.targets : [normalizeProxyRouteTarget({})];
+  const primaryTarget = proxyRouteDraftTargets[0] || normalizeProxyRouteTarget({});
+  proxyRouteProviderSearch = '';
+  proxyRouteSelectedProviderId = primaryTarget.providerId || '';
+  proxyRouteSelectedModelId = primaryTarget.model || '';
+  proxyRouteBackupProviderSearch = '';
+  proxyRouteBackupSelectedProviderId = '';
+  proxyRouteBackupSelectedModelId = '';
+  proxyRouteBackupPickerOpen = false;
+  // 编辑模式保持单选语义；新建模式清空多选桶
+  proxyRoutePickedModels = new Map();
+  if (!route && primaryTarget.providerId && primaryTarget.model) {
+    const bucket = new Set();
+    bucket.add(primaryTarget.model);
+    proxyRoutePickedModels.set(primaryTarget.providerId, bucket);
+  }
+  proxyRouteCustomNameTouched = !!route;
+  setText('proxyRouteEditorTitle', route ? '编辑模型' : '添加模型');
+  setText('proxyRouteEditorSubtitle', route ? '默认同名转发，需要伪装或替换时再改实际模型。' : '从供应商模型中选择要暴露到本地代理的模型。');
+  setText('proxyRouteEditorConfirmBtn', route ? '保存模型' : '添加到列表');
+  updateProxyRouteEditorConfirmText();
   document.getElementById('proxyRouteIdInput').value = draft.id;
-  document.getElementById('proxyRouteIdInput').disabled = !!route;
-  document.getElementById('proxyRouteNameInput').value = draft.displayName;
-  document.getElementById('proxyRouteEnabledInput').checked = draft.enabled !== false;
-  document.getElementById('proxyRouteExposeOpenAiInput').checked = draft.exposedFormats.includes('openai');
-  document.getElementById('proxyRouteExposeAnthropicInput').checked = draft.exposedFormats.includes('anthropic');
-  document.getElementById('proxyRouteCapStreamInput').checked = draft.capabilities.stream === true;
-  document.getElementById('proxyRouteCapToolsInput').checked = draft.capabilities.tools === true;
-  document.getElementById('proxyRouteCapVisionInput').checked = draft.capabilities.vision === true;
-  document.getElementById('proxyRouteCapReasoningInput').checked = draft.capabilities.reasoning === true;
+  document.getElementById('proxyRouteIdInput').disabled = false;
+  document.getElementById('proxyRouteIdInput').oninput = () => {
+    proxyRouteCustomNameTouched = true;
+    syncProxyRouteEditorConfirmState();
+  };
+  document.getElementById('proxyRouteCapStreamInput').checked = draft.capabilities.stream !== false;
+  document.getElementById('proxyRouteCapToolsInput').checked = draft.capabilities.tools !== false;
+  document.getElementById('proxyRouteCapVisionInput').checked = draft.capabilities.vision !== false;
+  document.getElementById('proxyRouteCapReasoningInput').checked = draft.capabilities.reasoning !== false;
   document.getElementById('proxyRouteRetryInput').checked = draft.enhancement.retry !== false;
   document.getElementById('proxyRouteAutoRoutingInput').checked = draft.enhancement.autoRouting !== false;
-  document.getElementById('proxyRouteThirdPartyVisionInput').checked = draft.enhancement.thirdPartyVision === true;
-  renderProxyRouteTargetsEditor();
-  document.getElementById('proxy-route-editor-modal')?.classList.add('active');
+  document.getElementById('proxyRoutePreserveExtraParamsInput').checked = draft.enhancement.preserveExtraParams === true;
+  document.getElementById('proxyRouteRawProviderErrorsInput').checked = draft.enhancement.rawProviderErrors !== false;
+  const searchInput = document.getElementById('proxyRouteProviderSearch');
+  if (searchInput) searchInput.value = '';
+  const backupSearchInput = document.getElementById('proxyRouteBackupProviderSearch');
+  if (backupSearchInput) backupSearchInput.value = '';
+  if (!route) {
+    try {
+      await loadProxyRouteProviderModels();
+    } catch (e) {
+      proxyRouteProviderModels = [];
+      addLog('err', '加载供应商模型列表失败: ' + e);
+    }
+    if (!proxyRouteSelectedProviderId && proxyRouteProviderModels.length) {
+      const firstWithModels = proxyRouteProviderModels.find(provider => Array.isArray(provider.models) && provider.models.length);
+      proxyRouteSelectedProviderId = (firstWithModels || proxyRouteProviderModels[0]).providerId;
+    }
+    renderProxyRouteProviderPicker();
+  } else {
+    try {
+      await loadProxyRouteProviderModels();
+    } catch (e) {
+      proxyRouteProviderModels = [];
+      addLog('err', '加载供应商模型列表失败: ' + e);
+    }
+    proxyRouteBackupSelectedProviderId = proxyRouteSelectedProviderId || proxyRouteProviderModels[0]?.providerId || '';
+    renderProxyRoutePrimaryTargetEditor();
+    renderProxyRouteTargetsEditor();
+    renderProxyRouteBackupPicker();
+  }
+  const advanced = document.querySelector('#proxy-route-editor-modal .proxy-route-advanced');
+  if (advanced) advanced.open = false;
+  syncProxyRouteEditorAdvancedVisibility();
+  modal?.classList.add('active');
 }
 
 function closeProxyRouteEditor() {
@@ -300,46 +603,472 @@ function closeProxyRouteEditor() {
 }
 
 function providerOptions(selectedId) {
-  const providers = (providerStore.providers || []).filter(p => p.enabled !== false && p.meta?.codexConfig !== true);
+  const providers = (providerStore.providers || []).filter(p => p.enabled !== false && p.meta?.codexConfig !== true && !isBuiltinProvider(p));
   return [
     '<option value="">选择供应商</option>',
     ...providers.map(p => `<option value="${proxyRouteEsc(p.id)}" ${p.id === selectedId ? 'selected' : ''}>${proxyRouteEsc(p.name || p.id)}</option>`)
   ].join('');
 }
 
+function renderProxyRoutePrimaryTargetEditor() {
+  const target = proxyRouteDraftTargets[0] || normalizeProxyRouteTarget({});
+  const providerInput = document.getElementById('proxyRoutePrimaryProviderInput');
+  const modelInput = document.getElementById('proxyRoutePrimaryModelInput');
+  if (providerInput) providerInput.innerHTML = providerOptions(target.providerId);
+  if (modelInput) modelInput.value = target.model || '';
+  syncProxyRouteFormatSeg(normalizeProxyRouteFormat(target.apiFormat));
+}
+
+function syncProxyRouteFormatSeg(value) {
+  const container = document.getElementById('proxyRoutePrimaryFormatInput');
+  if (!container) return;
+  const normalized = normalizeProxyRouteFormat(value);
+  container.querySelectorAll('.proxy-route-format-seg-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.value === normalized);
+  });
+}
+
+function onProxyRouteProviderSearch() {
+  proxyRouteProviderSearch = document.getElementById('proxyRouteProviderSearch')?.value || '';
+  renderProxyRouteProviderPicker();
+}
+
+function syncProxyRouteEditorConfirmState() {
+  const btn = document.getElementById('proxyRouteEditorConfirmBtn');
+  if (!btn) return;
+  if (proxyRouteEditingId) {
+    const id = String(document.getElementById('proxyRouteIdInput')?.value || '').trim();
+    const hasTarget = proxyRouteDraftTargets
+      .map(normalizeProxyRouteTarget)
+      .some(target => target.providerId && target.model);
+    btn.disabled = !id || !hasTarget;
+    return;
+  }
+  // 新建模式：只要勾选了任意模型即可保存
+  btn.disabled = totalPickedModelCount() === 0;
+}
+
+function updateProxyRouteEditorConfirmText() {
+  if (proxyRouteEditingId) return;
+  const n = totalPickedModelCount();
+  setText('proxyRouteEditorConfirmBtn', n > 1 ? `添加 ${n} 个到列表` : '添加到列表');
+}
+
+function totalPickedModelCount() {
+  let n = 0;
+  proxyRoutePickedModels.forEach(set => { n += set.size; });
+  return n;
+}
+
+function currentProxyRouteProviderModels() {
+  const provider = proxyRouteProviderEntry(proxyRouteSelectedProviderId);
+  if (!provider || !Array.isArray(provider.models)) return [];
+  return provider.models
+    .map(model => String(model?.id || '').trim())
+    .filter(Boolean);
+}
+
+function currentProxyRouteProviderPickedCount() {
+  const modelIds = new Set(currentProxyRouteProviderModels());
+  const picked = proxyRoutePickedModels.get(proxyRouteSelectedProviderId);
+  if (!picked || !modelIds.size) return 0;
+  let count = 0;
+  picked.forEach(modelId => {
+    if (modelIds.has(modelId)) count++;
+  });
+  return count;
+}
+
+function syncProxyRouteBulkSelectionState() {
+  const modelIds = currentProxyRouteProviderModels();
+  const pickedCount = currentProxyRouteProviderPickedCount();
+  const selectAllBtn = document.getElementById('proxyRouteSelectAllBtn');
+  const selectNoneBtn = document.getElementById('proxyRouteSelectNoneBtn');
+  if (selectAllBtn) selectAllBtn.disabled = !!proxyRouteEditingId || !modelIds.length || pickedCount === modelIds.length;
+  if (selectNoneBtn) selectNoneBtn.disabled = !!proxyRouteEditingId || !modelIds.length || pickedCount === 0;
+}
+
+function setCurrentProxyRouteProviderModelsPicked(checked) {
+  if (proxyRouteEditingId) return;
+  const provider = proxyRouteProviderEntry(proxyRouteSelectedProviderId);
+  const modelIds = currentProxyRouteProviderModels();
+  if (!provider || !modelIds.length) return;
+
+  if (checked) {
+    proxyRoutePickedModels.set(provider.providerId, new Set(modelIds));
+  } else {
+    proxyRoutePickedModels.delete(provider.providerId);
+  }
+  const total = totalPickedModelCount();
+  proxyRouteSelectedModelId = total === 1
+    ? Array.from(proxyRoutePickedModels.values()).find(set => set.size)?.values().next().value || ''
+    : '';
+  syncProxyRouteEditorAdvancedVisibility();
+  renderProxyRouteProviderPicker();
+  updateProxyRouteEditorConfirmText();
+  syncProxyRouteEditorConfirmState();
+}
+
+function selectAllProxyRouteModels() {
+  setCurrentProxyRouteProviderModelsPicked(true);
+}
+
+function selectNoProxyRouteModels() {
+  setCurrentProxyRouteProviderModelsPicked(false);
+}
+
+function syncProxyRouteEditorAdvancedVisibility() {
+  // 新建只负责从供应商模型列表添加；改名和上游目标调整统一走编辑表单。
+  const hide = !proxyRouteEditingId;
+  document.querySelectorAll('#proxy-route-editor-modal .proxy-route-advanced-single-only').forEach(el => {
+    el.style.display = hide ? 'none' : '';
+  });
+}
+
+function selectProxyRouteProvider(providerId) {
+  proxyRouteSelectedProviderId = String(providerId || '').trim();
+  const provider = proxyRouteProviderEntry(proxyRouteSelectedProviderId);
+  const stillValid = provider?.models?.some(model => String(model?.id || '') === proxyRouteSelectedModelId);
+  if (!stillValid) proxyRouteSelectedModelId = '';
+  renderProxyRouteProviderPicker();
+  updateProxyRouteEditorConfirmText();
+}
+
+function selectProxyRouteModel(providerId, modelId) {
+  const provider = proxyRouteProviderEntry(providerId);
+  const model = proxyRouteProviderModel(providerId, modelId);
+  if (!provider || !model) return;
+  // 编辑模式：单选替换，保持原有行为
+  if (proxyRouteEditingId) {
+    const previousModelId = proxyRouteSelectedModelId;
+    const previousModel = proxyRouteProviderModel(proxyRouteSelectedProviderId, previousModelId);
+    proxyRouteSelectedProviderId = providerId;
+    proxyRouteSelectedModelId = modelId;
+    const target = normalizeProxyRouteTarget({
+      providerId,
+      model: model.id,
+      apiFormat: '',
+    });
+    proxyRouteDraftTargets[0] = target;
+    const idInput = document.getElementById('proxyRouteIdInput');
+    const currentId = String(idInput?.value || '').trim();
+    const previousName = String(previousModel?.name || previousModelId || '').trim();
+    if (idInput && !idInput.disabled && (!proxyRouteCustomNameTouched || !currentId || currentId === previousModelId || currentId === previousName)) {
+      idInput.value = model.id;
+    }
+    if (document.getElementById('proxyRouteCapToolsInput')) document.getElementById('proxyRouteCapToolsInput').checked = model.supportsToolCall === true;
+    if (document.getElementById('proxyRouteCapVisionInput')) document.getElementById('proxyRouteCapVisionInput').checked = model.supportsImages === true;
+    if (document.getElementById('proxyRouteCapReasoningInput')) document.getElementById('proxyRouteCapReasoningInput').checked = model.supportsReasoning === true;
+    renderProxyRoutePrimaryTargetEditor();
+    renderProxyRouteTargetsEditor();
+    renderProxyRouteBackupPicker();
+  } else {
+    // 新建模式：多选切换
+    proxyRouteSelectedProviderId = providerId;
+    let bucket = proxyRoutePickedModels.get(providerId);
+    if (!bucket) {
+      bucket = new Set();
+      proxyRoutePickedModels.set(providerId, bucket);
+    }
+    if (bucket.has(modelId)) {
+      bucket.delete(modelId);
+      if (!bucket.size) proxyRoutePickedModels.delete(providerId);
+    } else {
+      bucket.add(modelId);
+    }
+    const total = totalPickedModelCount();
+    proxyRouteSelectedModelId = total === 1 ? modelId : '';
+  }
+  syncProxyRouteEditorAdvancedVisibility();
+  renderProxyRouteProviderPicker();
+  if (proxyRouteEditingId) renderProxyRouteTargetsEditor();
+  updateProxyRouteEditorConfirmText();
+  syncProxyRouteEditorConfirmState();
+}
+
+function renderProxyRouteProviderPicker() {
+  const providerList = document.getElementById('proxyRouteProviderList');
+  const modelList = document.getElementById('proxyRouteModelList');
+  const title = document.getElementById('proxyRouteModelProviderTitle');
+  const sub = document.getElementById('proxyRouteModelProviderSub');
+  if (!providerList || !modelList) return;
+
+  const providers = proxyRouteVisibleProviders();
+  if (!providers.length) {
+    providerList.innerHTML = `<div class="proxy-route-picker-empty">${proxyRouteProviderModels.length ? '没有匹配的供应商' : '暂无可用供应商'}</div>`;
+  } else {
+    providerList.innerHTML = providers.map(provider => {
+      const active = provider.providerId === proxyRouteSelectedProviderId;
+      const isLP = isLocalProxyProviderEntry(provider);
+      return `
+        <button type="button" class="proxy-route-provider-item ${active ? 'active' : ''} ${isLP ? 'is-local-proxy' : ''}" onclick="selectProxyRouteProvider('${proxyRouteEsc(provider.providerId)}')">
+          <span class="proxy-route-provider-icon">${proxyRouteEsc(proxyRouteProviderInitial(provider.providerName))}</span>
+          <span class="proxy-route-provider-name">${proxyRouteEsc(provider.providerName || provider.providerId)}${isLP ? '<span class="proxy-route-prov-badge">本地</span>' : ''}</span>
+          <span class="proxy-route-provider-count">${Array.isArray(provider.models) ? provider.models.length : 0}</span>
+        </button>
+      `;
+    }).join('');
+  }
+
+  const selectedProvider = proxyRouteProviderEntry(proxyRouteSelectedProviderId);
+  if (!selectedProvider) {
+    if (title) title.textContent = '请选择供应商';
+    if (sub) sub.textContent = '右侧会展示该供应商的模型';
+    modelList.innerHTML = '<div class="proxy-route-picker-empty">先从左侧选择供应商</div>';
+    syncProxyRouteBulkSelectionState();
+    syncProxyRouteEditorConfirmState();
+    return;
+  }
+
+  const models = Array.isArray(selectedProvider.models) ? selectedProvider.models : [];
+  const pickedCount = currentProxyRouteProviderPickedCount();
+  if (title) title.textContent = selectedProvider.providerName || selectedProvider.providerId;
+  if (sub) sub.textContent = `共 ${models.length} 个模型，当前已选 ${pickedCount} 个`;
+  if (!models.length) {
+    modelList.innerHTML = '<div class="proxy-route-picker-empty">该供应商暂无模型</div>';
+    syncProxyRouteBulkSelectionState();
+    syncProxyRouteEditorConfirmState();
+    return;
+  }
+  const bucket = proxyRoutePickedModels.get(selectedProvider.providerId) || new Set();
+  modelList.innerHTML = models.map(model => {
+    const id = String(model?.id || '').trim();
+    const isMulti = !proxyRouteEditingId;
+    const active = isMulti
+      ? bucket.has(id)
+      : (selectedProvider.providerId === proxyRouteSelectedProviderId && id === proxyRouteSelectedModelId);
+    return `
+      <button type="button" class="proxy-route-model-item ${active ? 'active' : ''}" onclick="selectProxyRouteModel('${proxyRouteEsc(selectedProvider.providerId)}', '${proxyRouteEsc(id)}')">
+        <span class="proxy-route-model-check">${active ? '&#10003;' : ''}</span>
+        ${proxyRouteModelIcon(id)}
+        <span class="proxy-route-model-name">${proxyRouteEsc(model?.name || id)}</span>
+      </button>
+    `;
+  }).join('');
+  syncProxyRouteBulkSelectionState();
+  syncProxyRouteEditorConfirmState();
+}
+
+function proxyRouteFormatLabel(value) {
+  const fmt = normalizeProxyRouteFormat(value);
+  if (fmt === 'anthropic') return 'Claude';
+  if (fmt === 'openai') return 'OpenAI';
+  if (fmt === 'gemini') return 'Gemini';
+  return '自动';
+}
+
+function proxyRouteTargetCard(target, idx) {
+  const isPrimary = idx === 0;
+  const provider = proxyRouteProviderName(target.providerId);
+  const model = target.model || '未填写模型';
+  const format = proxyRouteFormatLabel(target.apiFormat);
+  return `
+    <div class="proxy-route-chain-item ${isPrimary ? 'is-primary' : ''}">
+      <div class="proxy-route-chain-index">${isPrimary ? '主' : idx}</div>
+      <div class="proxy-route-chain-main">
+        <strong>${proxyRouteEsc(provider)} / ${proxyRouteEsc(model)}</strong>
+        <span>${proxyRouteEsc(format)}${isPrimary ? ' · 当前模型' : ' · 备用模型'}</span>
+      </div>
+      <div class="proxy-route-chain-actions">
+        ${isPrimary ? '' : `
+          <button type="button" class="btn-icon model-map-action-btn" onclick="moveProxyRouteTarget(${idx}, -1)" ${idx === 1 ? 'disabled' : ''} title="上移" aria-label="上移备用模型">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="m18 15-6-6-6 6"/></svg>
+          </button>
+          <button type="button" class="btn-icon model-map-action-btn" onclick="moveProxyRouteTarget(${idx}, 1)" ${idx === proxyRouteDraftTargets.length - 1 ? 'disabled' : ''} title="下移" aria-label="下移备用模型">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+          </button>
+          <button type="button" class="btn-icon model-map-action-btn danger" onclick="removeProxyRouteTarget(${idx})" title="移除" aria-label="移除备用模型">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"/></svg>
+          </button>
+        `}
+      </div>
+    </div>
+  `;
+}
+
 function renderProxyRouteTargetsEditor() {
   const wrap = document.getElementById('proxyRouteTargetsEditor');
   if (!wrap) return;
-  if (!proxyRouteDraftTargets.length) proxyRouteDraftTargets.push(normalizeProxyRouteTarget({ apiFormat: 'openai' }));
-  wrap.innerHTML = proxyRouteDraftTargets.map((target, idx) => `
-    <div class="proxy-route-target-editor-row">
-      <span class="proxy-route-target-index">${idx + 1}</span>
-      <select onchange="updateProxyRouteTarget(${idx}, 'providerId', this.value)">${providerOptions(target.providerId)}</select>
-      <input class="field-input" value="${proxyRouteEsc(target.model)}" placeholder="上游模型 ID" onchange="updateProxyRouteTarget(${idx}, 'model', this.value)">
-      <select onchange="updateProxyRouteTarget(${idx}, 'apiFormat', this.value)">
-        <option value="openai" ${target.apiFormat === 'openai' ? 'selected' : ''}>OpenAI</option>
-        <option value="anthropic" ${target.apiFormat === 'anthropic' ? 'selected' : ''}>Claude</option>
-      </select>
-      <button class="btn-ghost" onclick="moveProxyRouteTarget(${idx}, -1)" ${idx === 0 ? 'disabled' : ''}>上移</button>
-      <button class="btn-ghost" onclick="moveProxyRouteTarget(${idx}, 1)" ${idx === proxyRouteDraftTargets.length - 1 ? 'disabled' : ''}>下移</button>
-      <button class="btn-ghost danger" onclick="removeProxyRouteTarget(${idx})">删除</button>
+  if (!proxyRouteDraftTargets.length) proxyRouteDraftTargets.push(normalizeProxyRouteTarget({}));
+  const backups = proxyRouteDraftTargets
+    .map((target, idx) => ({ target, idx }))
+    .filter(item => item.idx > 0);
+  const primary = proxyRouteDraftTargets[0] || normalizeProxyRouteTarget({});
+  wrap.innerHTML = `
+    <div class="proxy-route-chain-list">
+      ${proxyRouteTargetCard(primary, 0)}
+      ${backups.length
+        ? backups.map(({ target, idx }) => proxyRouteTargetCard(target, idx)).join('')
+        : '<div class="proxy-route-backup-empty">还没有备用模型。添加后会在主模型失败时按顺序尝试。</div>'}
     </div>
-  `).join('');
+  `;
+  syncProxyRouteEditorConfirmState();
+}
+
+function openProxyRouteBackupPicker() {
+  proxyRouteBackupPickerOpen = true;
+  const providers = proxyRouteBackupVisibleProviders();
+  if (!providers.some(provider => provider.providerId === proxyRouteBackupSelectedProviderId)) {
+    proxyRouteBackupSelectedProviderId = providers[0]?.providerId || proxyRouteProviderModels[0]?.providerId || '';
+  }
+  if (!proxyRouteBackupSelectedModelId) {
+    const provider = proxyRouteProviderEntry(proxyRouteBackupSelectedProviderId);
+    proxyRouteBackupSelectedModelId = provider?.models?.[0]?.id || '';
+  }
+  renderProxyRouteBackupPicker();
+  document.getElementById('proxy-route-backup-picker-modal')?.classList.add('active');
+}
+
+function closeProxyRouteBackupPicker() {
+  proxyRouteBackupPickerOpen = false;
+  document.getElementById('proxy-route-backup-picker-modal')?.classList.remove('active');
+}
+
+function onProxyRouteBackupProviderSearch() {
+  proxyRouteBackupProviderSearch = document.getElementById('proxyRouteBackupProviderSearch')?.value || '';
+  const providers = proxyRouteBackupVisibleProviders();
+  if (!providers.some(provider => provider.providerId === proxyRouteBackupSelectedProviderId)) {
+    proxyRouteBackupSelectedProviderId = providers[0]?.providerId || '';
+    proxyRouteBackupSelectedModelId = '';
+  }
+  renderProxyRouteBackupPicker();
+}
+
+function selectProxyRouteBackupProvider(providerId) {
+  proxyRouteBackupSelectedProviderId = String(providerId || '').trim();
+  const provider = proxyRouteProviderEntry(proxyRouteBackupSelectedProviderId);
+  if (!provider?.models?.some(model => model.id === proxyRouteBackupSelectedModelId)) {
+    proxyRouteBackupSelectedModelId = provider?.models?.[0]?.id || '';
+  }
+  renderProxyRouteBackupPicker();
+}
+
+function selectProxyRouteBackupModel(providerId, modelId) {
+  proxyRouteBackupSelectedProviderId = String(providerId || '').trim();
+  proxyRouteBackupSelectedModelId = String(modelId || '').trim();
+  renderProxyRouteBackupPicker();
+}
+
+function proxyRouteTargetKey(target) {
+  return `${target.providerId || ''}\n${target.model || ''}`;
+}
+
+function addSelectedProxyRouteBackupModel() {
+  const provider = proxyRouteProviderEntry(proxyRouteBackupSelectedProviderId);
+  const model = proxyRouteProviderModel(proxyRouteBackupSelectedProviderId, proxyRouteBackupSelectedModelId);
+  if (!provider || !model) return;
+  const target = normalizeProxyRouteTarget({ providerId: provider.providerId, model: model.id, apiFormat: '' });
+  const existing = new Set(proxyRouteDraftTargets.map(t => proxyRouteTargetKey(normalizeProxyRouteTarget(t))));
+  if (existing.has(proxyRouteTargetKey(target))) {
+    showBottomToast('该模型已在当前链路中', 'warn');
+    return;
+  }
+  proxyRouteDraftTargets.push(target);
+  proxyRouteBackupSelectedModelId = '';
+  renderProxyRouteTargetsEditor();
+  closeProxyRouteBackupPicker();
+}
+
+function renderProxyRouteBackupPicker() {
+  const providerList = document.getElementById('proxyRouteBackupProviderList');
+  const modelList = document.getElementById('proxyRouteBackupModelList');
+  const title = document.getElementById('proxyRouteBackupProviderTitle');
+  const sub = document.getElementById('proxyRouteBackupProviderSub');
+  const confirm = document.getElementById('proxyRouteAddBackupConfirmBtn');
+  if (!providerList || !modelList) return;
+  const providers = proxyRouteBackupVisibleProviders();
+  if (!providers.some(provider => provider.providerId === proxyRouteBackupSelectedProviderId)) {
+    proxyRouteBackupSelectedProviderId = providers[0]?.providerId || '';
+  }
+  if (!providers.length) {
+    providerList.innerHTML = `<div class="proxy-route-picker-empty">${proxyRouteProviderModels.length ? '没有匹配的供应商或模型' : '暂无可用供应商'}</div>`;
+  } else {
+    providerList.innerHTML = providers.map(provider => {
+      const active = provider.providerId === proxyRouteBackupSelectedProviderId;
+      const isLP = isLocalProxyProviderEntry(provider);
+      return `
+        <button type="button" class="proxy-route-provider-item ${active ? 'active' : ''} ${isLP ? 'is-local-proxy' : ''}" onclick="selectProxyRouteBackupProvider('${proxyRouteEsc(provider.providerId)}')">
+          <span class="proxy-route-provider-icon">${proxyRouteEsc(proxyRouteProviderInitial(provider.providerName))}</span>
+          <span class="proxy-route-provider-name">${proxyRouteEsc(provider.providerName || provider.providerId)}${isLP ? '<span class="proxy-route-prov-badge">本地</span>' : ''}</span>
+          <span class="proxy-route-provider-count">${Array.isArray(provider.models) ? provider.models.length : 0}</span>
+        </button>
+      `;
+    }).join('');
+  }
+  const provider = proxyRouteProviderEntry(proxyRouteBackupSelectedProviderId);
+  if (!provider) {
+    if (title) title.textContent = '请选择供应商';
+    if (sub) sub.textContent = '右侧选择要加入备用链路的模型';
+    modelList.innerHTML = '<div class="proxy-route-picker-empty">先从左侧选择供应商</div>';
+    if (confirm) confirm.disabled = true;
+    return;
+  }
+  const models = Array.isArray(provider.models) ? provider.models : [];
+  if (!models.some(model => model.id === proxyRouteBackupSelectedModelId)) {
+    proxyRouteBackupSelectedModelId = models[0]?.id || '';
+  }
+  if (title) title.textContent = provider.providerName || provider.providerId;
+  if (sub) sub.textContent = `共 ${models.length} 个模型，选择后添加到备用链路`;
+  if (!models.length) {
+    modelList.innerHTML = '<div class="proxy-route-picker-empty">该供应商暂无模型</div>';
+    if (confirm) confirm.disabled = true;
+    return;
+  }
+  const existing = new Set(proxyRouteDraftTargets.map(t => proxyRouteTargetKey(normalizeProxyRouteTarget(t))));
+  modelList.innerHTML = models.map(model => {
+    const id = String(model?.id || '').trim();
+    const targetKey = proxyRouteTargetKey(normalizeProxyRouteTarget({ providerId: provider.providerId, model: id }));
+    const used = existing.has(targetKey);
+    const active = id === proxyRouteBackupSelectedModelId;
+    return `
+      <button type="button" class="proxy-route-model-item ${active ? 'active' : ''} ${used ? 'is-disabled' : ''}"
+        ${used ? 'disabled' : ''} onclick="selectProxyRouteBackupModel('${proxyRouteEsc(provider.providerId)}', '${proxyRouteEsc(id)}')">
+        <span class="proxy-route-model-check">${active || used ? '&#10003;' : ''}</span>
+        ${proxyRouteModelIcon(id)}
+        <span class="proxy-route-model-name">
+          <strong>${proxyRouteEsc(model?.name || id)}</strong>
+          <small>${used ? '已在当前链路中' : '添加为备用模型'}</small>
+        </span>
+      </button>
+    `;
+  }).join('');
+  if (confirm) {
+    const selectedKey = proxyRouteTargetKey(normalizeProxyRouteTarget({ providerId: provider.providerId, model: proxyRouteBackupSelectedModelId }));
+    confirm.disabled = !proxyRouteBackupSelectedModelId || existing.has(selectedKey);
+  }
 }
 
 function updateProxyRouteTarget(index, field, value) {
   if (!proxyRouteDraftTargets[index]) return;
-  proxyRouteDraftTargets[index][field] = field === 'apiFormat' ? normalizeProxyRouteFormat(value) || 'openai' : String(value || '').trim();
+  proxyRouteDraftTargets[index][field] = field === 'apiFormat' ? normalizeProxyRouteFormat(value) : String(value || '').trim();
+  // 手动输入模型名时，自动推断能力
+  if (field === 'model' && index === 0) {
+    const modelId = String(value || '').trim();
+    const providerId = proxyRouteDraftTargets[0]?.providerId || '';
+    const knownModel = proxyRouteProviderModel(providerId, modelId);
+    if (knownModel) {
+      if (document.getElementById('proxyRouteCapToolsInput')) document.getElementById('proxyRouteCapToolsInput').checked = knownModel.supportsToolCall === true;
+      if (document.getElementById('proxyRouteCapVisionInput')) document.getElementById('proxyRouteCapVisionInput').checked = knownModel.supportsImages === true;
+      if (document.getElementById('proxyRouteCapReasoningInput')) document.getElementById('proxyRouteCapReasoningInput').checked = knownModel.supportsReasoning === true;
+    } else {
+      const reasoningRe = /reason|thinking|r1|o\d|glm|claude|gpt-5/i;
+      if (document.getElementById('proxyRouteCapReasoningInput')) document.getElementById('proxyRouteCapReasoningInput').checked = reasoningRe.test(modelId);
+    }
+  }
+  if (index === 0) renderProxyRoutePrimaryTargetEditor();
+  renderProxyRouteTargetsEditor();
+  renderProxyRouteBackupPicker();
+  syncProxyRouteEditorConfirmState();
 }
 
 function addProxyRouteTargetRow() {
-  proxyRouteDraftTargets.push(normalizeProxyRouteTarget({ apiFormat: 'openai' }));
-  renderProxyRouteTargetsEditor();
+  openProxyRouteBackupPicker();
 }
 
 function removeProxyRouteTarget(index) {
   proxyRouteDraftTargets.splice(index, 1);
   renderProxyRouteTargetsEditor();
+  renderProxyRouteBackupPicker();
 }
 
 function moveProxyRouteTarget(index, delta) {
@@ -349,58 +1078,143 @@ function moveProxyRouteTarget(index, delta) {
   proxyRouteDraftTargets[index] = proxyRouteDraftTargets[next];
   proxyRouteDraftTargets[next] = item;
   renderProxyRouteTargetsEditor();
+  renderProxyRouteBackupPicker();
 }
 
-function saveProxyRouteEditor() {
-  const id = String(document.getElementById('proxyRouteIdInput')?.value || '').trim();
-  if (!id) {
-    showCustomAlert('对外模型 ID 不能为空。', '保存失败', 'error');
+async function saveProxyRouteEditor() {
+  // 编辑模式：单条保存
+  if (proxyRouteEditingId) {
+    const id = String(document.getElementById('proxyRouteIdInput')?.value || '').trim();
+    if (!id) {
+      showCustomAlert('请填写模型 ID。', '保存失败', 'error');
+      return;
+    }
+    if (proxyRoutesStore.routes.some(route => route.id === id && route.id !== proxyRouteEditingId)) {
+      showCustomAlert(`模型已在列表中: ${id}`, '保存失败', 'error');
+      return;
+    }
+    const exposedFormats = ['openai', 'anthropic'];
+    const targets = proxyRouteDraftTargets.map(normalizeProxyRouteTarget).filter(t => t.providerId || t.model);
+    if (!targets.length) {
+      showCustomAlert('请填写上游目标。', '保存失败', 'error');
+      return;
+    }
+    const invalid = targets.find(t => !t.providerId || !t.model);
+    if (invalid) {
+      showCustomAlert('每个上游目标都必须包含供应商和上游模型。API 格式可以留空自动识别。', '保存失败', 'error');
+      return;
+    }
+    const existingRoute = proxyRoutesStore.routes.find(item => item.id === proxyRouteEditingId);
+    const route = normalizeProxyRoute({
+      id,
+      displayName: id,
+      enabled: existingRoute?.enabled !== false,
+      exposedFormats,
+      source: proxyRoutesStore.routes.find(item => item.id === proxyRouteEditingId)?.source || 'manual',
+      capabilities: {
+        stream: document.getElementById('proxyRouteCapStreamInput')?.checked === true,
+        tools: document.getElementById('proxyRouteCapToolsInput')?.checked === true,
+        vision: document.getElementById('proxyRouteCapVisionInput')?.checked === true,
+        reasoning: document.getElementById('proxyRouteCapReasoningInput')?.checked === true,
+      },
+      enhancement: {
+        retry: document.getElementById('proxyRouteRetryInput')?.checked === true,
+        autoRouting: document.getElementById('proxyRouteAutoRoutingInput')?.checked === true,
+        thirdPartyVision: existingRoute?.enhancement?.thirdPartyVision === true,
+        preserveExtraParams: document.getElementById('proxyRoutePreserveExtraParamsInput')?.checked === true,
+        rawProviderErrors: document.getElementById('proxyRouteRawProviderErrorsInput')?.checked !== false,
+      },
+      targets,
+    });
+    const previous = cloneProxyRoutesStore();
+    const btn = document.getElementById('proxyRouteEditorConfirmBtn');
+    const originalText = btn?.textContent || '保存模型';
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = '保存中...';
+    }
+    const idx = proxyRoutesStore.routes.findIndex(item => item.id === proxyRouteEditingId);
+    if (idx >= 0) proxyRoutesStore.routes[idx] = route;
+    else proxyRoutesStore.routes.push(route);
+    proxyRoutesStore.defaultModelId = '';
+    const ok = await saveProxyRoutes({ silent: true });
+    if (!ok) {
+      proxyRoutesStore = normalizeProxyRoutesStore(previous);
+      renderProxyRoutes();
+      if (btn) btn.textContent = originalText;
+      syncProxyRouteEditorConfirmState();
+      return;
+    }
+    closeProxyRouteEditor();
+    showBottomToast('模型已保存', 'success');
     return;
   }
-  if (!proxyRouteEditingId && proxyRoutesStore.routes.some(route => route.id === id)) {
-    showCustomAlert(`模型路由 ID 已存在: ${id}`, '保存失败', 'error');
+
+  // 新建模式：多选批量保存
+  if (totalPickedModelCount() === 0) {
+    showCustomAlert('请至少勾选一个模型。', '保存失败', 'error');
     return;
   }
-  const exposedFormats = [];
-  if (document.getElementById('proxyRouteExposeOpenAiInput')?.checked) exposedFormats.push('openai');
-  if (document.getElementById('proxyRouteExposeAnthropicInput')?.checked) exposedFormats.push('anthropic');
-  if (!exposedFormats.length) {
-    showCustomAlert('至少需要暴露一个入口。', '保存失败', 'error');
-    return;
-  }
-  const targets = proxyRouteDraftTargets.map(normalizeProxyRouteTarget).filter(t => t.providerId || t.model);
-  if (!targets.length) {
-    showCustomAlert('至少需要配置一个路由目标。', '保存失败', 'error');
-    return;
-  }
-  const invalid = targets.find(t => !t.providerId || !t.model || !t.apiFormat);
-  if (invalid) {
-    showCustomAlert('每个路由目标都必须包含供应商、上游模型 ID 和 API 格式。', '保存失败', 'error');
-    return;
-  }
-  const route = normalizeProxyRoute({
-    id,
-    displayName: document.getElementById('proxyRouteNameInput')?.value || id,
-    enabled: document.getElementById('proxyRouteEnabledInput')?.checked === true,
-    exposedFormats,
-    source: proxyRouteEditingId ? (proxyRoutesStore.routes.find(item => item.id === proxyRouteEditingId)?.source || 'manual') : 'manual',
-    capabilities: {
-      stream: document.getElementById('proxyRouteCapStreamInput')?.checked === true,
-      tools: document.getElementById('proxyRouteCapToolsInput')?.checked === true,
-      vision: document.getElementById('proxyRouteCapVisionInput')?.checked === true,
-      reasoning: document.getElementById('proxyRouteCapReasoningInput')?.checked === true,
-    },
-    enhancement: {
-      retry: document.getElementById('proxyRouteRetryInput')?.checked === true,
-      autoRouting: document.getElementById('proxyRouteAutoRoutingInput')?.checked === true,
-      thirdPartyVision: document.getElementById('proxyRouteThirdPartyVisionInput')?.checked === true,
-    },
-    targets,
+  const exposedFormats = ['openai', 'anthropic'];
+  const capabilities = {
+    stream: document.getElementById('proxyRouteCapStreamInput')?.checked === true,
+    tools: document.getElementById('proxyRouteCapToolsInput')?.checked === true,
+    vision: document.getElementById('proxyRouteCapVisionInput')?.checked === true,
+    reasoning: document.getElementById('proxyRouteCapReasoningInput')?.checked === true,
+  };
+  const enhancement = {
+    retry: document.getElementById('proxyRouteRetryInput')?.checked === true,
+    autoRouting: document.getElementById('proxyRouteAutoRoutingInput')?.checked === true,
+    thirdPartyVision: false,
+    preserveExtraParams: document.getElementById('proxyRoutePreserveExtraParamsInput')?.checked === true,
+    rawProviderErrors: document.getElementById('proxyRouteRawProviderErrorsInput')?.checked !== false,
+  };
+  const previous = cloneProxyRoutesStore();
+  let added = 0, skipped = 0;
+  proxyRoutePickedModels.forEach((bucket, providerId) => {
+    bucket.forEach(modelId => {
+      const model = proxyRouteProviderModel(providerId, modelId);
+      if (!model) { skipped++; return; }
+      if (proxyRoutesStore.routes.some(route => route.id === modelId)) { skipped++; return; }
+      const route = normalizeProxyRoute({
+        id: modelId,
+        displayName: modelId,
+        enabled: true,
+        exposedFormats,
+        source: 'manual',
+        capabilities: {
+          stream: capabilities.stream !== false,
+          tools: model.supportsToolCall === true || capabilities.tools === true,
+          vision: model.supportsImages === true || capabilities.vision === true,
+          reasoning: model.supportsReasoning === true || capabilities.reasoning === true,
+        },
+        enhancement,
+        targets: [normalizeProxyRouteTarget({ providerId, model: modelId, apiFormat: '' })],
+      });
+      proxyRoutesStore.routes.push(route);
+      added++;
+    });
   });
-  const idx = proxyRoutesStore.routes.findIndex(item => item.id === (proxyRouteEditingId || id));
-  if (idx >= 0) proxyRoutesStore.routes[idx] = route;
-  else proxyRoutesStore.routes.push(route);
-  if (!proxyRoutesStore.defaultModelId && route.enabled) proxyRoutesStore.defaultModelId = route.id;
+  proxyRoutesStore.defaultModelId = '';
+  if (!added) {
+    closeProxyRouteEditor();
+    if (skipped) showBottomToast('所选模型均已在列表中', 'warn');
+    return;
+  }
+  const btn = document.getElementById('proxyRouteEditorConfirmBtn');
+  const originalText = btn?.textContent || '添加到列表';
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = '保存中...';
+  }
+  const ok = await saveProxyRoutes({ silent: true });
+  if (!ok) {
+    proxyRoutesStore = normalizeProxyRoutesStore(previous);
+    renderProxyRoutes();
+    if (btn) btn.textContent = originalText;
+    syncProxyRouteEditorConfirmState();
+    return;
+  }
   closeProxyRouteEditor();
-  renderProxyRoutes();
+  showBottomToast(`已添加 ${added} 个模型${skipped ? `（跳过 ${skipped} 个重复）` : ''}`, 'success');
 }
