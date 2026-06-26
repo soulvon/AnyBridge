@@ -17,6 +17,7 @@ import crypto from 'node:crypto';
 import { listenWithReclaim } from './port-utils.js';
 import { handleGetChatMessage, shouldIntercept } from './handlers/chat.js';
 import { handleLocalProxyRequest, isLocalProxyRequest } from './local-proxy.js';
+import { injectPatches, listTargets, isAlreadyInjected, readInjectableModels } from './lib/codex-desktop-cdp.js';
 import { parseFields, writeStringField, writeBytesField, writeVarintField } from './proto.js';
 import { tryGunzip } from './connect.js';
 import { snapshot } from './stats.js';
@@ -551,6 +552,31 @@ function handleRequest(req, res) {
     return;
   }
 
+  // -- BYOK control endpoint: injection module version (no body) --
+  if (req.url.split('?')[0] === '/__byok/codex-cdp/version') {
+    res.writeHead(200, { 'content-type': 'application/json', 'access-control-allow-origin': '*' });
+    res.end(JSON.stringify({ ok: true, version: '20260627-v6-proven', patchKey: '__ccSwitchCodexModelPickerUnlockV6' }));
+    return;
+  }
+
+  // ── BYOK control endpoint: Codex Desktop CDP status (no body) ──
+  if (req.url.split('?')[0] === '/__byok/codex-cdp/status') {
+    (async () => {
+      try {
+        const search = req.url.split('?')[1] || '';
+        const params = new URLSearchParams(search);
+        const port = parseInt(params.get('port') || '9229', 10);
+        const targets = await listTargets(port);
+        res.writeHead(200, { 'content-type': 'application/json', 'access-control-allow-origin': '*' });
+        res.end(JSON.stringify({ ok: true, reachable: true, targets: targets.length }));
+      } catch (err) {
+        res.writeHead(200, { 'content-type': 'application/json', 'access-control-allow-origin': '*' });
+        res.end(JSON.stringify({ ok: true, reachable: false, error: err.message }));
+      }
+    })();
+    return;
+  }
+
   const chunks = [];
   req.on('error', err => {
     console.error(`[${now()}] #${id} REQ ERROR: ${err.message}`);
@@ -560,6 +586,49 @@ function handleRequest(req, res) {
   req.on('data', c => chunks.push(c));
   req.on('end', () => {
     const body = Buffer.concat(chunks);
+
+    // ── BYOK control endpoint: inject CDP patches into Codex Desktop ──
+    if (req.url === '/__byok/codex-cdp/inject' && req.method === 'POST') {
+      (async () => {
+        try {
+          const payload = body.length ? JSON.parse(body.toString('utf8')) : {};
+          const port = parseInt(payload.port || '9229', 10);
+          const models = Array.isArray(payload.models) && payload.models.length
+            ? payload.models
+            : readInjectableModels();
+          // models_cache.json 由 Rust write_models_cache 在 Codex 启动前写入
+          //（带 anybridge_managed 标记、slug 无前缀）。此处不再写 models_cache：
+          // CDP inject 发生在 Codex 启动之后，启动后改 models_cache 对已加载的 Desktop
+          // 无效，且会与 Rust 注入产生重复/前缀不一致的条目（历史 bug 根因）。
+          console.log(`[${now()}] #${id} CDP inject → port ${port}, ${models.length} models`);
+          const result = await injectPatches(port, models);
+          res.writeHead(result.ok ? 200 : 502, { 'content-type': 'application/json', 'access-control-allow-origin': '*' });
+          res.end(JSON.stringify(result));
+        } catch (err) {
+          console.error(`[${now()}] #${id} CDP inject error: ${err.message}`);
+          res.writeHead(500, { 'content-type': 'application/json', 'access-control-allow-origin': '*' });
+          res.end(JSON.stringify({ ok: false, message: err.message || String(err) }));
+        }
+      })();
+      return;
+    }
+
+    // ── BYOK control endpoint: check if CDP injection is present ──
+    if (req.url === '/__byok/codex-cdp/check' && req.method === 'POST') {
+      (async () => {
+        try {
+          const payload = body.length ? JSON.parse(body.toString('utf8')) : {};
+          const port = parseInt(payload.port || '9229', 10);
+          const injected = await isAlreadyInjected(port);
+          res.writeHead(200, { 'content-type': 'application/json', 'access-control-allow-origin': '*' });
+          res.end(JSON.stringify({ ok: true, injected }));
+        } catch (err) {
+          res.writeHead(200, { 'content-type': 'application/json', 'access-control-allow-origin': '*' });
+          res.end(JSON.stringify({ ok: true, injected: false, error: err.message }));
+        }
+      })();
+      return;
+    }
 
     if (isLocalProxyRequest(req)) {
       console.log(`[${now()}] #${id} local ${req.method} ${req.url}`);

@@ -20,6 +20,12 @@ import { loadModelMapConfig, loadProviders, resolveTarget } from './provider-poo
 import { preprocessImagesWithThirdPartyVision } from './vision-fallback.js';
 import { httpsAgentFor } from './system-proxy.js';
 import { recordError, recordLatency, recordRequest, recordRetry, recordUsage } from './stats.js';
+import {
+  responsesToChatCompletions,
+  chatCompletionToResponse,
+  chatErrorToResponseError,
+  createResponsesSSEFromChat,
+} from './lib/responses-chat-transform.js';
 
 const AGENT = new https.Agent({ keepAlive: true, maxSockets: 64, maxFreeSockets: 16 });
 const RETRYABLE_STATUS = new Set([408, 425, 429, 500, 502, 503, 504, 529]);
@@ -133,6 +139,26 @@ function proxyRouteRows(kind) {
     .sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
 }
 
+function readCodexModelCatalog() {
+  try {
+    const home = os.homedir();
+    const codexDir = path.join(home, '.codex');
+    const catalogFile = path.join(codexDir, 'anybridge-model-catalog.json');
+    if (!fs.existsSync(catalogFile)) return [];
+    const raw = fs.readFileSync(catalogFile, 'utf8');
+    const parsed = JSON.parse(raw);
+    // Codex 模型目录为 ModelsResponse 格式 {"models": [...]}；
+    // 兼容旧版顶层数组 [...] 写法。
+    const arr = Array.isArray(parsed)
+      ? parsed
+      : (parsed && Array.isArray(parsed.models) ? parsed.models : []);
+    if (!Array.isArray(arr)) return [];
+    return arr.map(e => ({ id: e.slug || e.model || '', name: e.display_name || e.slug || e.model || '' })).filter(e => e.id);
+  } catch {
+    return [];
+  }
+}
+
 function handleModels(req, res) {
   const anthropic = pathnameOf(req).startsWith('/anthropic/');
   let rows;
@@ -141,6 +167,15 @@ function handleModels(req, res) {
   } catch (e) {
     sendError(res, 500, e.message || String(e), 'configuration_error');
     return;
+  }
+  // 合并 Codex 模型目录（如果存在）
+  const catalogModels = readCodexModelCatalog();
+  const seen = new Set(rows.map(r => r.id));
+  for (const cm of catalogModels) {
+    if (!seen.has(cm.id)) {
+      rows.push(cm);
+      seen.add(cm.id);
+    }
   }
   if (anthropic) {
     sendJson(res, 200, { data: rows.map(m => ({ id: m.id, type: 'model', display_name: m.name, created_at: '2026-01-01T00:00:00Z' })), has_more: false, first_id: rows[0]?.id || null, last_id: rows[rows.length - 1]?.id || null });
@@ -232,6 +267,7 @@ function normalizeRequest(kind, body) {
     maxTokens: Number(body.max_tokens || body.max_output_tokens || body.max_completion_tokens) || 4096,
     temperature: Number.isFinite(Number(body.temperature)) ? Number(body.temperature) : undefined,
     extraParams: passthroughParams(kind, body),
+    rawBody: body,
   };
 }
 
@@ -369,6 +405,12 @@ function upstreamBody(conn, ctx) {
     }
     return cleanBody({ ...extras, model: conn.model, system: ctx.system || undefined, messages: ctx.messages, max_tokens: ctx.maxTokens, temperature: ctx.temperature, stream: false, tools: anthropicTools(ctx.tools), tool_choice: ctx.toolChoice || undefined });
   }
+  // wireApi=chat: 仅当客户端发来 Responses API 请求时，才做 Responses→Chat 转换
+  if (conn.wireApi === 'chat' && ctx.kind === 'responses' && ctx.rawBody) {
+    const chatBody = responsesToChatCompletions(ctx.rawBody, conn.codexChatReasoning);
+    chatBody.model = conn.model;
+    return cleanBody({ ...extras, ...chatBody });
+  }
   const useResponses = String(conn.apiPath || '').toLowerCase().includes('/responses');
   const codexUnlock = conn.unlockKind === 'codex' ? normalizeCodexUnlock(conn.unlocks?.codex) : null;
   if (useResponses) {
@@ -437,6 +479,61 @@ function requestUpstream(conn, payload, enhancement = {}) {
   });
 }
 
+// ── 流式请求：返回 response stream 供调用方逐块消费 ──
+function requestUpstreamStream(conn, payload, enhancement = {}) {
+  return new Promise((resolve, reject) => {
+    const body = Buffer.from(JSON.stringify(payload));
+    const started = Date.now();
+    const extraHeaders = {};
+    if (enhancement.customHeadersEnabled === true && Array.isArray(enhancement.customHeaders)) {
+      for (const h of enhancement.customHeaders) {
+        if (h && h.key) extraHeaders[h.key] = h.value;
+      }
+    }
+    const req = https.request({ agent: httpsAgentFor(AGENT), hostname: conn.host, port: 443, path: conn.apiPath, method: 'POST', headers: { 'content-type': 'application/json', 'content-length': body.length, ...authHeaders(conn), ...extraHeaders } }, apiRes => {
+      resolve({
+        statusCode: apiRes.statusCode || 0,
+        headers: apiRes.headers || {},
+        response: apiRes,
+        durationMs: Date.now() - started,
+      });
+    });
+    req.on('timeout', () => req.destroy(new Error('ETIMEDOUT')));
+    req.on('error', reject);
+    req.setTimeout(300000);
+    req.end(body);
+  });
+}
+
+// 读取完整 error response body（非 2xx 时收集错误信息）
+async function collectStreamBody(response) {
+  const chunks = [];
+  for await (const chunk of response) chunks.push(chunk);
+  return Buffer.concat(chunks).toString('utf8');
+}
+
+// 解析上游 SSE 流，逐块 yield JSON 对象
+async function* parseSSEStream(response) {
+  let buffer = '';
+  for await (const chunk of response) {
+    buffer += chunk.toString('utf8');
+    const lines = buffer.split('\n');
+    buffer = lines.pop() || '';
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed || !trimmed.startsWith('data: ')) continue;
+      const data = trimmed.slice(6);
+      if (data === '[DONE]') return;
+      try { yield JSON.parse(data); } catch {}
+    }
+  }
+  const trimmed = buffer.trim();
+  if (trimmed.startsWith('data: ')) {
+    const data = trimmed.slice(6);
+    if (data !== '[DONE]') { try { yield JSON.parse(data); } catch {} }
+  }
+}
+
 function extractText(conn, json) {
   if (!json) return '';
   if (conn.format === 'anthropic') return (json.content || []).map(p => p?.text || '').filter(Boolean).join('');
@@ -459,6 +556,10 @@ function upstreamMessage(r) { return r.json?.error?.message || r.json?.message |
 function compactText(value, max = 500) {
   const text = String(value || '').replace(/\s+/g, ' ').trim();
   return text.length > max ? `${text.slice(0, max - 1)}…` : text;
+}
+
+function safeParse(text) {
+  try { return JSON.parse(text); } catch { return { error: { message: String(text || '') } }; }
 }
 
 function isRateLimitOrHighLoad(failure = {}) {
@@ -605,6 +706,37 @@ async function execute(ctx) {
     let retryCount = 0;
     while (true) {
       try {
+        // ── 真流式路径：wireApi=chat 且客户端请求 stream（仅 Responses API）──
+        if (conn.wireApi === 'chat' && ctx.kind === 'responses' && effective.stream === true) {
+          const r = await requestUpstreamStream(conn, payload, enhancement);
+          recordLatency(r.durationMs);
+          if (r.statusCode >= 200 && r.statusCode < 300) {
+            const extraRespHeaders = {};
+            if (enhancement.customHeadersEnabled === true && Array.isArray(enhancement.responseHeaders)) {
+              for (const h of enhancement.responseHeaders) {
+                if (h && h.key) extraRespHeaders[h.key] = h.value;
+              }
+            }
+            return { conn, stream: true, upstreamResponse: r.response, extraHeaders: extraRespHeaders };
+          }
+          // 非 2xx：收集错误 body，走重试逻辑
+          const errorText = await collectStreamBody(r.response);
+          const errorJson = safeParse(errorText);
+          const msg = compactText(upstreamMessage({ statusCode: r.statusCode, json: errorJson, text: errorText }));
+          if (policy.enabled && retryCount < policy.maxRetries && retryable(r.statusCode) && Date.now() - started < policy.totalMs) {
+            retryCount++; recordRetry({ count: 1, reason: `HTTP ${r.statusCode}: ${msg}` }); await sleep(retryDelay(retryCount, policy)); continue;
+          }
+          failures.push({
+            providerName: conn.providerName,
+            statusCode: r.statusCode,
+            headers: r.headers,
+            body: errorText,
+            message: msg,
+            wireApi: conn.wireApi,
+          });
+          break;
+        }
+        // ── 非流式路径（原有逻辑）──
         const r = await requestUpstream(conn, payload, enhancement);
         recordLatency(r.durationMs);
         if (r.statusCode >= 200 && r.statusCode < 300) {
@@ -621,7 +753,11 @@ async function execute(ctx) {
               if (h && h.key) extraRespHeaders[h.key] = h.value;
             }
           }
-          return { conn, text, json: r.json, usage, extraHeaders: extraRespHeaders };
+          // wireApi=chat: 用 chatCompletionToResponse 转换完整响应（含 reasoning/tool_calls）
+          const responseObj = conn.wireApi === 'chat' && r.json
+            ? chatCompletionToResponse(r.json, conn.model)
+            : null;
+          return { conn, text, json: r.json, usage, extraHeaders: extraRespHeaders, responseObj };
         }
         const msg = compactText(upstreamMessage(r));
         if (policy.enabled && retryCount < policy.maxRetries && retryable(r.statusCode) && Date.now() - started < policy.totalMs) {
@@ -633,6 +769,7 @@ async function execute(ctx) {
           headers: r.headers,
           body: r.text,
           message: msg,
+          wireApi: conn.wireApi,
         });
         break;
       } catch (e) {
@@ -657,7 +794,9 @@ async function execute(ctx) {
       upstreamResponse: {
         statusCode: classification.status,
         headers: lastUpstreamResponse.headers || {},
-        body: lastUpstreamResponse.body,
+        body: lastUpstreamResponse.wireApi === 'chat' && lastUpstreamResponse.body
+          ? JSON.stringify(chatErrorToResponseError(safeParse(lastUpstreamResponse.body)))
+          : lastUpstreamResponse.body,
       },
     });
   }
@@ -706,14 +845,47 @@ function responseObject(ctx, result, id) {
 }
 
 function sendOpenAIResponses(ctx, res, result) {
-  const id = `resp-${crypto.randomUUID()}`;
-  const obj = responseObject(ctx, result, id);
   const extra = result.extraHeaders || {};
+
+  // ── 真流式：wireApi=chat 且 stream=true，逐块转换 Chat SSE → Responses SSE ──
+  if (result.stream === true && result.conn?.wireApi === 'chat') {
+    res.writeHead(200, cors({ 'content-type': 'text/event-stream; charset=utf-8', ...extra }));
+    const converter = createResponsesSSEFromChat(ctx.model, result.conn?.codexChatReasoning?.outputFormat);
+    (async () => {
+      try {
+        for await (const chunk of parseSSEStream(result.upstreamResponse)) {
+          const events = converter.write(chunk);
+          for (const ev of events) sse(res, ev.type, ev);
+        }
+        const finalEvents = converter.flush();
+        for (const ev of finalEvents) sse(res, ev.type, ev);
+        // 从最终响应中记录 usage
+        const finalResp = converter.getResponse();
+        const usage = usageFrom(result.conn, { usage: finalResp.usage }, 0, 0);
+        recordUsage(usage);
+      } catch (e) {
+        // 流中途出错，尽量优雅结束
+        try { sse(res, 'error', { type: 'error', message: e?.message || 'stream error' }); } catch {}
+      } finally {
+        res.write('data: [DONE]\n\n');
+        res.end();
+      }
+    })();
+    return;
+  }
+
+  // ── 非流式或假流式（原有逻辑）──
+  const id = `resp-${crypto.randomUUID()}`;
+  // wireApi=chat 时使用预转换的完整响应对象（含 reasoning/tool_calls）
+  const obj = result.responseObj || responseObject(ctx, result, id);
   if (ctx.stream) {
     res.writeHead(200, cors({ 'content-type': 'text/event-stream; charset=utf-8', ...extra }));
-    sse(res, null, { type: 'response.created', response: { ...obj, output: [], output_text: '' } });
-    sse(res, null, { type: 'response.output_text.delta', item_id: obj.output[0].id, output_index: 0, content_index: 0, delta: result.text });
-    sse(res, null, { type: 'response.completed', response: obj });
+    sse(res, 'response.created', { type: 'response.created', response: { ...obj, output: [], output_text: '' } });
+    sse(res, 'response.output_item.added', { type: 'response.output_item.added', output_index: 0, item: { type: 'message', id: obj.output[0].id, status: 'in_progress', role: 'assistant', content: [] } });
+    sse(res, 'response.output_text.delta', { type: 'response.output_text.delta', item_id: obj.output[0].id, output_index: 0, content_index: 0, delta: result.text });
+    sse(res, 'response.output_text.done', { type: 'response.output_text.done', item_id: obj.output[0].id, output_index: 0, content_index: 0, text: result.text });
+    sse(res, 'response.output_item.done', { type: 'response.output_item.done', output_index: 0, item: obj.output[0] });
+    sse(res, 'response.completed', { type: 'response.completed', response: obj });
     res.write('data: [DONE]\n\n'); res.end(); return;
   }
   sendJson(res, 200, obj, extra);

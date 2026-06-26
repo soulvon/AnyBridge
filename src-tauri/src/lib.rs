@@ -5,7 +5,7 @@ mod commands;
 mod integrity;
 
 use commands::{provider_import::ProviderImportScanState, proxy::ProxyState};
-use tauri::{Manager, WindowEvent};
+use tauri::{Emitter, Manager, WindowEvent};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -39,6 +39,29 @@ pub fn run() {
             }
 
             commands::system::build_tray(app.handle())?;
+
+            // 启动 Codex Desktop 常驻 watcher：检测到 Codex 在跑但无 CDP 时自动接管注入。
+            // 仅在自定义供应商态下工作，官方态空闲。
+            commands::codex_desktop::spawn_codex_desktop_watcher(app.handle().clone());
+
+            // 默认启动代理（AUTO_START_PROXY 默认为 true，可在设置里关闭）。
+            // 启动前已通过 kill_sidecar_process 清理孤儿 sidecar，
+            // dev 模式额外清理残留 node 进程。
+            if commands::config::is_auto_start_proxy_enabled() {
+                let app_handle = app.handle().clone();
+                tauri::async_runtime::spawn_blocking(move || {
+                    if let Err(e) = commands::proxy::start_proxy_service_impl(app_handle.clone()) {
+                        eprintln!("[auto-start] 启动代理失败: {}", e);
+                        let _ = app_handle.emit(
+                            "proxy-log",
+                            commands::proxy::LogLine {
+                                level: "warn".into(),
+                                msg: format!("⚠ 自动启动代理失败: {}", e),
+                            },
+                        );
+                    }
+                });
+            }
             Ok(())
         })
         .on_window_event(|window, event| {
@@ -82,6 +105,7 @@ pub fn run() {
             commands::platforms::restore_claude_official_config,
             commands::platforms::restore_codex_official_config,
             commands::platforms::repair_codex_session_visibility,
+            commands::codex_desktop::restart_codex_desktop,
             commands::platforms::load_codebuddy_models,
             commands::platforms::save_codebuddy_models,
             commands::platforms::list_provider_models,

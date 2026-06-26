@@ -25,6 +25,9 @@ async function init() {
   bindProxyButtonHandlers();
   bindWindowControlHandlers();
 
+  // 恢复/初始化侧边栏接入平台顺序，并启用拖拽
+  if (typeof initPlatformRailOrder === 'function') initPlatformRailOrder();
+
   try {
 
     const saved = localStorage.getItem('byok-theme');
@@ -70,6 +73,24 @@ async function init() {
   await loadEvalReports();
   await refreshStatus();
 
+  // 自动启动代理（AUTO_START_PROXY 默认为 true）
+  if (invoke) {
+    try {
+      const cfg = await invoke('load_config') || {};
+      if (cfg.AUTO_START_PROXY !== 'false') {
+        const s = await invoke('get_proxy_status');
+        if (!s.running) {
+          addLog('info', '正在自动启动代理…');
+          await invoke('start_proxy_service');
+          await refreshStatus();
+          addLog('ok', '代理已自动启动');
+        }
+      }
+    } catch (e) {
+      addLog('warn', '自动启动代理失败: ' + e);
+    }
+  }
+
   // 加载自动更新设置并更新 UI 开关状态
   await loadUpdateSettings();
   // 显示当前版本号
@@ -95,6 +116,9 @@ async function init() {
     });
     if (typeof bindEvalProgressListener === 'function') {
       await bindEvalProgressListener();
+    }
+    if (typeof bindSwitchProgressListener === 'function') {
+      await bindSwitchProgressListener();
     }
   }
 

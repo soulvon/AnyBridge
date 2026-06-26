@@ -91,6 +91,17 @@ pub fn config_dir_path() -> PathBuf {
     config_dir()
 }
 
+/// 是否默认启动代理。byok-config.json 里 AUTO_START_PROXY=true 时返回 true，
+/// 没设置或解析失败默认 true（用户期望默认启动）。
+pub fn is_auto_start_proxy_enabled() -> bool {
+    read_config_value("AUTO_START_PROXY")
+        .map(|v| {
+            let v = v.trim().to_ascii_lowercase();
+            !(v == "false" || v == "0" || v == "off" || v == "no")
+        })
+        .unwrap_or(true)
+}
+
 fn parse_port(value: Option<&String>, fallback: u16) -> u16 {
     value
         .and_then(|v| v.trim().parse::<u16>().ok())
@@ -211,6 +222,15 @@ pub struct Provider {
     /// 供应商解锁配置：解锁后可被代理转发链路复用到其他平台。
     #[serde(default, skip_serializing_if = "ProviderUnlocks::is_empty")]
     pub unlocks: ProviderUnlocks,
+    /// Codex 专有：wire_api 模式 ("responses" 或 "chat")
+    #[serde(rename = "wireApi", default, skip_serializing_if = "String::is_empty")]
+    pub wire_api: String,
+    /// Codex 专有：自定义模型目录
+    #[serde(rename = "modelCatalog", default, skip_serializing_if = "Vec::is_empty")]
+    pub model_catalog: Vec<ModelCatalogEntry>,
+    /// Codex 专有：Chat 模式 reasoning 配置
+    #[serde(rename = "codexChatReasoning", default, skip_serializing_if = "Option::is_none")]
+    pub codex_chat_reasoning: Option<CodexChatReasoningConfig>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -268,6 +288,61 @@ pub struct CodexConfig {
         skip_serializing_if = "String::is_empty"
     )]
     pub source_provider_name: String,
+    /// Codex wire_api: "responses" (默认) 或 "chat"。
+    /// chat 模式下，本地代理将 Responses 请求转为 Chat Completions 格式发往上游。
+    #[serde(rename = "wireApi", default = "default_wire_api")]
+    pub wire_api: String,
+    /// 自定义模型目录，让 Codex 显示自定义模型列表。
+    #[serde(rename = "modelCatalog", default, skip_serializing_if = "Vec::is_empty")]
+    pub model_catalog: Vec<ModelCatalogEntry>,
+    /// Codex Chat 模式的 reasoning 推理参数配置。
+    #[serde(
+        rename = "codexChatReasoning",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub codex_chat_reasoning: Option<CodexChatReasoningConfig>,
+}
+
+fn default_wire_api() -> String {
+    "responses".to_string()
+}
+
+/// 模型目录条目：让 Codex 显示自定义模型列表。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ModelCatalogEntry {
+    /// 模型 ID（如 "deepseek-v4-flash"）
+    pub model: String,
+    /// 显示名称（可选，与 model 相同时省略）
+    #[serde(rename = "displayName", default, skip_serializing_if = "Option::is_none")]
+    pub display_name: Option<String>,
+    /// 上下文窗口大小（可选，默认 128000）
+    #[serde(rename = "contextWindow", default, skip_serializing_if = "Option::is_none")]
+    pub context_window: Option<u64>,
+}
+
+/// Codex Chat 模式的 reasoning 推理参数配置。
+/// 控制将 Codex Responses 格式的 reasoning.effort 转换为上游 Chat API 期望的参数。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CodexChatReasoningConfig {
+    /// 是否支持 thinking 参数注入
+    #[serde(rename = "supportsThinking", default)]
+    pub supports_thinking: Option<bool>,
+    /// 是否支持 reasoning_effort 参数
+    #[serde(rename = "supportsEffort", default)]
+    pub supports_effort: Option<bool>,
+    /// thinking 参数名："thinking" / "enable_thinking" / "reasoning_split" / "none"
+    #[serde(rename = "thinkingParam", default, skip_serializing_if = "Option::is_none")]
+    pub thinking_param: Option<String>,
+    /// effort 参数名："reasoning_effort" / "reasoning.effort" / "none"
+    #[serde(rename = "effortParam", default, skip_serializing_if = "Option::is_none")]
+    pub effort_param: Option<String>,
+    /// effort 值映射模式："passthrough" / "deepseek" / "low_high" / "openrouter"
+    #[serde(rename = "effortValueMode", default, skip_serializing_if = "Option::is_none")]
+    pub effort_value_mode: Option<String>,
+    /// reasoning 输出格式："reasoning_content" / "reasoning" / "reasoning_details" / "auto"
+    #[serde(rename = "outputFormat", default, skip_serializing_if = "Option::is_none")]
+    pub output_format: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -357,6 +432,9 @@ impl From<CodexConfig> for Provider {
             },
             model_caps: HashMap::new(),
             unlocks: ProviderUnlocks::default(),
+            wire_api: config.wire_api,
+            model_catalog: config.model_catalog,
+            codex_chat_reasoning: config.codex_chat_reasoning,
         }
     }
 }
@@ -380,6 +458,9 @@ impl From<OpenCodeConfig> for Provider {
             },
             model_caps: HashMap::new(),
             unlocks: ProviderUnlocks::default(),
+            wire_api: String::new(),
+            model_catalog: Vec::new(),
+            codex_chat_reasoning: None,
         }
     }
 }
@@ -403,6 +484,9 @@ impl From<ClaudeCodeConfig> for Provider {
             },
             model_caps: HashMap::new(),
             unlocks: ProviderUnlocks::default(),
+            wire_api: String::new(),
+            model_catalog: Vec::new(),
+            codex_chat_reasoning: None,
         }
     }
 }

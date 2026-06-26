@@ -675,6 +675,69 @@
   max-height: 260px;
 }
 
+/* ═══════ 切换进度提示 ═══════ */
+
+.switch-progress-toast {
+  position: fixed;
+  top: 20px;
+  left: 50%;
+  transform: translateX(-50%) translateY(-20px);
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 20px;
+  border-radius: 12px;
+  background: var(--bg-card, #1e1e2e);
+  border: 1px solid var(--border, #333346);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.25s ease, transform 0.25s ease;
+}
+
+.switch-progress-toast.show {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+
+.switch-progress-spinner {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  border: 2.5px solid var(--border, #333346);
+  border-top-color: var(--accent, #6366f1);
+  border-radius: 50%;
+  animation: switch-progress-spin 0.7s linear infinite;
+}
+
+@keyframes switch-progress-spin {
+  to { transform: rotate(360deg); }
+}
+
+.switch-progress-content {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.switch-progress-title {
+  color: var(--text-primary, #e4e4e7);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.switch-progress-message {
+  color: var(--text-secondary, #a1a1aa);
+  font-size: 11px;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 320px;
+}
+
 .platform-console-card {
   min-height: 166px;
 }
@@ -1479,27 +1542,16 @@
   color: var(--text-muted);
 }
 
-.codex-config-modal {
-  width: min(920px, calc(100vw - 48px));
-  max-width: 920px;
-  padding: 0;
-  overflow: hidden;
-}
-
-.claude-code-config-modal {
-  display: flex;
-  width: min(1080px, calc(100vw - 40px));
-  max-width: 1080px;
-  max-height: calc(100vh - 48px);
-  flex-direction: column;
-}
-
+.codex-config-modal,
+.claude-code-config-modal,
 .opencode-config-modal {
   display: flex;
-  width: min(1120px, calc(100vw - 40px));
-  max-width: 1120px;
-  max-height: min(760px, calc(100vh - 48px));
+  width: min(960px, calc(100vw - 48px));
+  max-width: 960px;
+  max-height: calc(100vh - 48px);
   flex-direction: column;
+  padding: 0;
+  overflow: hidden;
 }
 
 .codex-config-modal-head {
@@ -1515,25 +1567,25 @@
 .codex-config-modal-sub {
   margin-top: 5px;
   color: var(--text-muted);
-  font-size: 12px;
-  font-weight: 650;
+  font-size: 13px;
+  font-weight: 500;
   line-height: 1.45;
 }
 
 .codex-config-modal-body {
   display: flex;
   min-height: 0;
+  flex: 1 1 auto;
   flex-direction: column;
   gap: 16px;
   margin: 0;
+  overflow: hidden;
+  overscroll-behavior: contain;
   padding: 18px 24px 20px;
 }
 
 .claude-code-config-modal .codex-config-modal-body,
 .opencode-config-modal .codex-config-modal-body {
-  flex: 1 1 auto;
-  overflow: hidden;
-  overscroll-behavior: contain;
   padding-bottom: 18px;
 }
 
@@ -1541,14 +1593,14 @@
   display: grid;
   grid-template-columns: minmax(220px, 280px) minmax(0, 1fr);
   gap: 18px;
-  align-items: stretch;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .claude-code-config-modal .codex-config-editor-layout,
 .opencode-config-modal .codex-config-editor-layout {
-  flex: 1 1 auto;
-  min-height: 0;
-  overflow: hidden;
+  /* flex/min-height/overflow 已从通用选择器继承 */;
 }
 
 .codex-config-editor-layout.is-editing {
@@ -1562,12 +1614,13 @@
   gap: 10px;
   border-right: 1px solid var(--border);
   padding-right: 18px;
+  overflow: hidden;
+  overscroll-behavior: contain;
 }
 
 .claude-code-config-modal .codex-config-source,
 .opencode-config-modal .codex-config-source {
-  overflow-y: auto;
-  overscroll-behavior: contain;
+  overflow: visible;
 }
 
 .codex-config-source.is-hidden {
@@ -1583,8 +1636,8 @@
 
 .codex-config-source-head span {
   color: var(--text-secondary);
-  font-size: 12px;
-  font-weight: 850;
+  font-size: 13px;
+  font-weight: 700;
 }
 
 .codex-config-source-head strong {
@@ -1597,14 +1650,14 @@
   border-radius: 999px;
   background: var(--bg-input);
   color: var(--text-secondary);
-  font-size: 11px;
-  font-weight: 850;
+  font-size: 12px;
+  font-weight: 700;
 }
 
 .codex-config-source-list {
   display: flex;
-  max-height: 360px;
-  min-height: 184px;
+  flex: 1 1 auto;
+  min-height: 0;
   flex-direction: column;
   gap: 8px;
   overflow-y: auto;
@@ -1619,30 +1672,45 @@
 }
 
 .codex-config-source-item {
+  position: relative;
   display: grid;
   width: 100%;
   grid-template-columns: minmax(0, 1fr);
   align-items: center;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 10px;
   background: var(--bg-input);
   color: var(--text-primary);
   cursor: pointer;
   font: inherit;
-  padding: 10px;
+  padding: 10px 12px;
   text-align: left;
-  transition: border-color 0.16s ease, background 0.16s ease, box-shadow 0.16s ease;
+  transition: border-color 0.18s ease, background 0.18s ease, box-shadow 0.18s ease, transform 0.18s ease;
 }
 
 .codex-config-source-item:hover {
-  border-color: rgba(14, 165, 233, 0.34);
+  border-color: rgba(18, 97, 166, 0.3);
   background: var(--bg-hover);
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px -2px rgba(0, 0, 0, 0.08);
 }
 
 .codex-config-source-item.active {
-  border-color: rgba(14, 165, 233, 0.52);
-  background: rgba(14, 165, 233, 0.08);
-  box-shadow: inset 0 0 0 1px rgba(14, 165, 233, 0.12);
+  border-color: rgba(18, 97, 166, 0.4);
+  background: linear-gradient(135deg, rgba(18, 97, 166, 0.08) 0%, rgba(18, 97, 166, 0.03) 100%);
+  box-shadow: inset 0 0 0 1px rgba(18, 97, 166, 0.1);
+}
+
+.codex-config-source-item.active::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 3px;
+  height: 60%;
+  border-radius: 0 2px 2px 0;
+  background: var(--accent);
 }
 
 .codex-config-source-copy {
@@ -1661,16 +1729,16 @@
 }
 
 .codex-config-source-copy strong {
-  color: #3d98c9;
+  color: var(--accent);
   font-size: 14px;
-  font-weight: 850;
+  font-weight: 700;
 }
 
 .codex-config-source-copy em {
   color: var(--text-muted);
-  font-size: 11px;
+  font-size: 12px;
   font-style: normal;
-  font-weight: 650;
+  font-weight: 500;
 }
 
 .codex-config-source-empty {
@@ -1688,31 +1756,77 @@
 
 .codex-config-source-hint {
   color: var(--text-muted);
-  font-size: 11px;
-  font-weight: 650;
-  line-height: 1.45;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.5;
 }
 
 .codex-config-form-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .claude-code-config-modal .codex-config-form-grid,
 .opencode-config-modal .codex-config-form-grid {
-  min-height: 0;
   align-content: start;
-  overflow-y: auto;
-  overscroll-behavior: contain;
   padding: 3px 6px 3px 3px;
+}
+
+/* ── 表单分区卡片 ── */
+.config-section {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg-card);
+  padding: 16px 18px;
+}
+
+.config-section-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+
+.config-section-title::before {
+  content: '';
+  width: 3px;
+  height: 14px;
+  flex: 0 0 auto;
+  border-radius: 2px;
+  background: var(--accent);
+}
+
+.config-section-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.config-section-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.config-section-row > .codex-config-field {
+  grid-column: auto;
 }
 
 .codex-config-field {
   display: flex;
   min-width: 0;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
 }
 
 .codex-config-field-wide {
@@ -1721,9 +1835,9 @@
 
 .codex-config-field > span {
   color: var(--text-secondary);
-  font-size: 12px;
-  font-weight: 800;
-  line-height: 1.35;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.4;
 }
 
 .claude-code-config-modal .codex-config-field .field-input,
@@ -1741,9 +1855,293 @@
   padding: 12px;
 }
 
+/* ── 模型目录编辑 ── */
+.codex-config-model-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.codex-config-model-head > span {
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.codex-config-fetch-btn {
+  display: inline-flex;
+  align-items: center;
+  height: 30px;
+  padding: 0 12px;
+  border: 1px solid rgba(18, 97, 166, 0.3);
+  border-radius: 6px;
+  background: rgba(18, 97, 166, 0.06);
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background .15s, border-color .15s;
+}
+
+.codex-config-fetch-btn:hover {
+  background: rgba(18, 97, 166, 0.12);
+  border-color: rgba(18, 97, 166, 0.5);
+}
+
+.codex-config-model-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.codex-config-model-empty {
+  padding: 16px 12px;
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+/* ── Codex 模型管理（复用 model-option / catalog-row 样式）── */
+.codex-model-batch-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 14px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-input);
+  font-size: 12px;
+}
+
+.codex-model-batch-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.codex-model-batch-label {
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+.codex-model-batch-btn {
+  height: 26px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-card);
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+}
+
+.codex-model-batch-btn:hover {
+  border-color: rgba(18, 97, 166, 0.4);
+  color: var(--accent);
+  background: rgba(18, 97, 166, 0.06);
+}
+
+#codex-config-model-list {
+  grid-template-columns: 1fr;
+  max-height: 280px;
+}
+
+#codex-config-model-list .codex-config-model-option {
+  height: auto;
+  min-height: 34px;
+  padding: 4px 8px;
+  cursor: default;
+  position: relative;
+  gap: 6px;
+}
+
+#codex-config-model-list .codex-config-model-option::before {
+  display: none;
+}
+
+#codex-config-model-list .codex-config-model-option input[type="checkbox"],
+#codex-config-model-list .codex-config-model-option input[type="radio"] {
+  width: 14px;
+  height: 14px;
+  cursor: pointer;
+  accent-color: var(--accent);
+  flex: 0 0 auto;
+  margin: 0;
+}
+
+#codex-config-model-list .codex-config-model-option::after {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  pointer-events: none;
+  transition: border-color 0.16s ease;
+}
+
+#codex-config-model-list .codex-config-model-option:hover::after {
+  border-color: rgba(18, 97, 166, 0.18);
+}
+
+#codex-config-model-list .codex-config-model-option.active::after {
+  border-color: rgba(18, 97, 166, 0.5);
+}
+
+#codex-config-model-list .codex-config-model-option input[type="radio"]:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+#codex-config-model-list .codex-config-model-option > span + span {
+  flex: 0 0 auto;
+  color: var(--text-muted);
+  font-weight: 500;
+  font-size: 11px;
+}
+
+#codex-config-model-list .codex-config-model-option .codex-config-catalog-del,
+#codex-config-model-list .codex-config-model-option .codex-config-fetch-btn {
+  height: 26px;
+  padding: 0 8px;
+  font-size: 11px;
+}
+
+.codex-model-default-btn {
+  height: 26px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-card);
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  flex: 0 0 auto;
+  white-space: nowrap;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+}
+
+.codex-model-default-btn:hover:not(:disabled):not(.is-default) {
+  border-color: rgba(18, 97, 166, 0.5);
+  color: var(--accent);
+  background: rgba(18, 97, 166, 0.08);
+}
+
+.codex-model-default-btn.is-default {
+  border-color: rgba(18, 97, 166, 0.55);
+  background: var(--accent);
+  color: #fff;
+  cursor: pointer;
+}
+
+.codex-model-default-btn.is-default:hover {
+  background: #dc2626;
+  border-color: #dc2626;
+  color: #fff;
+}
+
+.codex-config-catalog-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) 100px auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.codex-config-catalog-row .field-input {
+  min-height: 32px;
+  font-size: 12px;
+}
+
+.codex-config-catalog-del {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 32px;
+  padding: 0 10px;
+  border: 1px solid rgba(239, 68, 68, 0.25);
+  border-radius: 6px;
+  background: rgba(239, 68, 68, 0.06);
+  color: #dc2626;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background .15s;
+}
+
+.codex-config-catalog-del:hover {
+  background: rgba(239, 68, 68, 0.14);
+}
+
+.codex-config-reasoning-panel {
+  margin-top: 0;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg-card);
+  padding: 14px 18px;
+}
+
+.codex-config-reasoning-head {
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-muted);
+  padding: 8px 0;
+  list-style: none;
+  user-select: none;
+}
+
+.codex-config-reasoning-head::-webkit-details-marker {
+  display: none;
+}
+
+.codex-config-reasoning-head::before {
+  content: '▶';
+  display: inline-block;
+  margin-right: 6px;
+  font-size: 10px;
+  transition: transform .15s;
+}
+
+.codex-config-reasoning-panel[open] .codex-config-reasoning-head::before {
+  transform: rotate(90deg);
+}
+
+.codex-config-reasoning-body {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 12px;
+  padding: 10px 0 4px;
+}
+
+.codex-config-reasoning-body .codex-config-field {
+  flex-direction: column;
+  gap: 4px;
+}
+
+.codex-config-reasoning-body .codex-config-field span {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.codex-config-reasoning-body .field-input {
+  min-height: 32px;
+  font-size: 12px;
+}
+
 .claude-code-collapsible,
 .claude-code-json-panel {
   min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg-card);
+  padding: 14px 18px;
 }
 
 .claude-code-collapsible[open],
@@ -1791,16 +2189,16 @@
 
 .claude-code-collapse-head span {
   color: var(--text-secondary);
-  font-size: 12px;
-  font-weight: 850;
+  font-size: 13px;
+  font-weight: 700;
 }
 
 .claude-code-collapse-head em {
   overflow: hidden;
   color: var(--text-muted);
-  font-size: 11px;
+  font-size: 12px;
   font-style: normal;
-  font-weight: 650;
+  font-weight: 500;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -1820,6 +2218,7 @@
 .claude-code-collapse-body {
   display: grid;
   gap: 12px;
+  padding: 10px 0 4px;
 }
 
 .codex-config-model-head {
@@ -1837,16 +2236,16 @@
 
 .codex-config-model-head span {
   color: var(--text-secondary);
-  font-size: 12px;
-  font-weight: 850;
+  font-size: 13px;
+  font-weight: 700;
 }
 
 .codex-config-model-head em {
   overflow: hidden;
   color: var(--text-muted);
-  font-size: 11px;
+  font-size: 12px;
   font-style: normal;
-  font-weight: 650;
+  font-weight: 500;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -1865,25 +2264,25 @@
 
 .codex-config-fetch-btn {
   display: inline-flex;
-  height: 34px;
+  height: 32px;
   flex: 0 0 auto;
   align-items: center;
   justify-content: center;
-  border: 1px solid rgba(14, 165, 233, 0.34);
+  border: 1px solid rgba(18, 97, 166, 0.3);
   border-radius: 8px;
-  background: rgba(14, 165, 233, 0.08);
+  background: rgba(18, 97, 166, 0.06);
   color: var(--accent);
   cursor: pointer;
   font: inherit;
   font-size: 12px;
-  font-weight: 850;
-  padding: 0 12px;
+  font-weight: 600;
+  padding: 0 14px;
   transition: border-color 0.16s ease, background 0.16s ease, transform 0.16s ease;
 }
 
 .codex-config-fetch-btn:hover:not(:disabled) {
-  border-color: rgba(14, 165, 233, 0.56);
-  background: rgba(14, 165, 233, 0.13);
+  border-color: rgba(18, 97, 166, 0.5);
+  background: rgba(18, 97, 166, 0.12);
 }
 
 .codex-config-fetch-btn:active:not(:disabled) {
@@ -1896,52 +2295,85 @@
 }
 
 .codex-config-model-list {
-  display: flex;
-  min-height: 96px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  min-height: 74px;
   max-height: 178px;
-  flex-wrap: wrap;
-  align-content: flex-start;
   gap: 8px;
   overflow-y: auto;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 10px;
   background: var(--bg-card);
   padding: 10px;
 }
 
 .claude-code-config-modal .codex-config-model-list,
 .opencode-config-modal .codex-config-model-list {
-  min-height: 74px;
+  min-height: 64px;
   max-height: 126px;
 }
 
 .codex-config-model-option {
-  display: inline-flex;
-  max-width: 100%;
-  height: 30px;
+  position: relative;
+  display: flex;
+  min-width: 0;
+  height: 34px;
   align-items: center;
+  gap: 8px;
   border: 1px solid var(--border);
-  border-radius: 7px;
+  border-radius: 8px;
   background: var(--bg-input);
   color: var(--text-secondary);
   cursor: pointer;
   font: inherit;
   font-family: var(--font-mono);
-  font-size: 11px;
-  font-weight: 700;
-  padding: 0 9px;
-  transition: border-color 0.16s ease, background 0.16s ease, color 0.16s ease;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 0 10px 0 8px;
+  transition: border-color 0.16s ease, background 0.16s ease, color 0.16s ease, transform 0.16s ease;
+}
+
+.codex-config-model-option::before {
+  content: '';
+  flex: 0 0 auto;
+  width: 14px;
+  height: 14px;
+  border: 1.5px solid var(--border-strong);
+  border-radius: 50%;
+  background: var(--bg-card);
+  box-sizing: border-box;
+  transition: border-color 0.16s ease, background 0.16s ease, box-shadow 0.16s ease;
+}
+
+.codex-config-model-option > span {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .codex-config-model-option:hover {
-  border-color: rgba(14, 165, 233, 0.34);
+  border-color: rgba(18, 97, 166, 0.3);
   color: var(--text-primary);
+  transform: translateY(-1px);
+}
+
+.codex-config-model-option:hover::before {
+  border-color: rgba(18, 97, 166, 0.5);
 }
 
 .codex-config-model-option.active {
-  border-color: rgba(14, 165, 233, 0.58);
-  background: rgba(14, 165, 233, 0.10);
+  border-color: rgba(18, 97, 166, 0.55);
+  background: rgba(18, 97, 166, 0.08);
   color: var(--accent);
+  font-weight: 700;
+}
+
+.codex-config-model-option.active::before {
+  border-color: var(--accent);
+  background: var(--accent);
+  box-shadow: inset 0 0 0 3px var(--bg-card);
 }
 
 .codex-config-model-empty {
@@ -1987,21 +2419,48 @@
 }
 
 .codex-config-editor-note {
-  border: 1px solid rgba(14, 165, 233, 0.18);
-  border-radius: 10px;
-  background: rgba(14, 165, 233, 0.07);
-  color: var(--text-secondary);
-  padding: 10px 12px;
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-muted);
   font-size: 12px;
-  font-weight: 650;
-  line-height: 1.55;
+  font-weight: 500;
+  line-height: 1.45;
+}
+
+.codex-config-editor-note::before {
+  content: '💡';
+  flex: 0 0 auto;
+  font-size: 13px;
 }
 
 .codex-config-modal-footer {
+  display: flex;
+  align-items: center;
+  gap: 12px;
   flex: 0 0 auto;
   margin: 0;
-  padding: 14px 24px 22px;
+  padding: 14px 24px 18px;
   border-top: 1px solid var(--border);
+}
+
+.codex-config-modal-footer .modal-btn {
+  flex: 0 0 auto;
+  min-width: 96px;
+}
+
+.codex-config-modal-footer .modal-btn-ghost {
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--text-muted);
+  min-width: 64px;
+}
+
+.codex-config-modal-footer .modal-btn-ghost:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
 }
 
 @media (max-width: 560px) {
@@ -2076,6 +2535,10 @@
 
   .codex-config-fetch-btn {
     width: 100%;
+  }
+
+  .codex-config-catalog-row {
+    grid-template-columns: 1fr;
   }
 }
 

@@ -1302,7 +1302,13 @@ document.querySelectorAll('[data-autostart]').forEach(el => {
 function applyToggleStates(config) {
   document.querySelectorAll('[data-config-toggle]').forEach(el => {
     const key = el.getAttribute('data-config-toggle');
-    if (config[key] === 'true') el.classList.add('on');
-    else if (config[key] === 'false') el.classList.remove('on');
+    // AUTO_START_PROXY 默认为 true（未配置时也开启）
+    if (key === 'AUTO_START_PROXY') {
+      if (config[key] !== 'false') el.classList.add('on');
+      else el.classList.remove('on');
+    } else {
+      if (config[key] === 'true') el.classList.add('on');
+      else if (config[key] === 'false') el.classList.remove('on');
+    }
   });
 }

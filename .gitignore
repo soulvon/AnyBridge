@@ -52,3 +52,12 @@ PRIVATE_NOTES.md
 
 # Signing keys (private key must NEVER be committed)
 tauri-sign.key
+
+# Temp/debug files
+cargo-check-err*.txt
+cargo-check-final.txt
+test-output.txt
+.qoder/
+
+# Cursor byok 调研资料
+cursor byok调研/

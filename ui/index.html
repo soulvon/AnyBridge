@@ -106,56 +106,66 @@
         </div>
 
         <div class="sidebar-platforms">
-          <div class="sidebar-section-label">接入平台</div>
           <div class="platform-rail" role="navigation" aria-label="接入平台">
-        <button type="button" class="platform-rail-item active" data-platform-rail="devin"
+        <button type="button" class="platform-rail-item active" data-platform-rail="devin" draggable="true"
           onclick="openProxyPlatform('devin')">
+          <span class="platform-rail-handle" draggable="true" aria-hidden="true"></span>
           <span class="platform-rail-icon"><img src="./assets/icons/platform-devin.svg" alt=""
               aria-hidden="true"></span>
           <span class="platform-rail-label">Devin</span>
         </button>
-        <button type="button" class="platform-rail-item" data-platform-rail="windsurf"
+        <button type="button" class="platform-rail-item" data-platform-rail="windsurf" draggable="true"
           onclick="openProxyPlatform('windsurf')">
+          <span class="platform-rail-handle" draggable="true" aria-hidden="true"></span>
           <span class="platform-rail-icon"><img src="./assets/icons/platform-windsurf.svg" alt=""
               aria-hidden="true"></span>
           <span class="platform-rail-label">Windsurf</span>
         </button>
-        <button type="button" class="platform-rail-item" data-platform-rail="codex" onclick="openPlatformPage('codex')">
+        <button type="button" class="platform-rail-item" data-platform-rail="codex" draggable="true"
+          onclick="openPlatformPage('codex')">
+          <span class="platform-rail-handle" draggable="true" aria-hidden="true"></span>
           <span class="platform-rail-icon"><img src="./assets/icons/platform-codex.svg" alt=""
               aria-hidden="true"></span>
           <span class="platform-rail-label">Codex</span>
         </button>
-        <button type="button" class="platform-rail-item is-placeholder" data-platform-rail="cursor"
+        <button type="button" class="platform-rail-item is-placeholder" data-platform-rail="cursor" draggable="true"
           onclick="openPlaceholderPlatform('cursor')">
+          <span class="platform-rail-handle" draggable="true" aria-hidden="true"></span>
           <span class="platform-rail-icon"><img src="./assets/icons/platform-cursor.svg" alt=""
               aria-hidden="true"></span>
           <span class="platform-rail-label">Cursor</span>
         </button>
-        <button type="button" class="platform-rail-item" data-platform-rail="claude-code"
+        <button type="button" class="platform-rail-item" data-platform-rail="claude-code" draggable="true"
           onclick="openPlatformPage('claude-code')">
+          <span class="platform-rail-handle" draggable="true" aria-hidden="true"></span>
           <span class="platform-rail-icon"><img src="./assets/icons/platform-claude-code.svg" alt=""
               aria-hidden="true"></span>
           <span class="platform-rail-label">Claude Code</span>
         </button>
-        <button type="button" class="platform-rail-item" data-platform-rail="codebuddy"
+        <button type="button" class="platform-rail-item" data-platform-rail="codebuddy" draggable="true"
           onclick="openPlatformPage('codebuddy')">
+          <span class="platform-rail-handle" draggable="true" aria-hidden="true"></span>
           <span class="platform-rail-icon"><img src="./assets/icons/platform-codebuddy.png" alt=""
               aria-hidden="true"></span>
           <span class="platform-rail-label">CodeBuddy</span>
         </button>
-        <button type="button" class="platform-rail-item" data-platform-rail="workbuddy"
+        <button type="button" class="platform-rail-item" data-platform-rail="workbuddy" draggable="true"
           onclick="openPlatformPage('workbuddy')">
+          <span class="platform-rail-handle" draggable="true" aria-hidden="true"></span>
           <span class="platform-rail-icon"><img src="./assets/icons/platform-workbuddy.png" alt=""
               aria-hidden="true"></span>
           <span class="platform-rail-label">WorkBuddy</span>
         </button>
-        <button type="button" class="platform-rail-item" data-platform-rail="opencode"
+        <button type="button" class="platform-rail-item" data-platform-rail="opencode" draggable="true"
           onclick="openPlatformPage('opencode')">
+          <span class="platform-rail-handle" draggable="true" aria-hidden="true"></span>
           <span class="platform-rail-icon"><img src="./assets/icons/platform-opencode.svg" alt=""
               aria-hidden="true"></span>
           <span class="platform-rail-label">OpenCode</span>
         </button>
-        <button type="button" class="platform-rail-item" data-platform-rail="zcode" onclick="openPlatformPage('zcode')">
+        <button type="button" class="platform-rail-item" data-platform-rail="zcode" draggable="true"
+          onclick="openPlatformPage('zcode')">
+          <span class="platform-rail-handle" draggable="true" aria-hidden="true"></span>
           <span class="platform-rail-icon"><img src="./assets/icons/platform-zcode.svg" alt=""
               aria-hidden="true"></span>
           <span class="platform-rail-label">ZCode</span>
@@ -2249,31 +2259,37 @@
                     协议供应商，右侧会自动带入地址和密钥。</div>
                 </aside>
                 <div class="codex-config-form-grid">
-                  <label class="codex-config-field codex-config-field-wide">
-                    <span>配置名称</span>
-                    <input id="claude-code-config-name" class="field-input" placeholder="例如：AnyRouter Claude"
-                      oninput="syncClaudeCodeRawConfigFromFields()">
-                  </label>
-                  <label class="codex-config-field codex-config-field-wide">
-                    <span>Base URL</span>
-                    <input id="claude-code-config-base-url" class="field-input" placeholder="https://api.example.com"
-                      oninput="syncClaudeCodeRawConfigFromFields()">
-                  </label>
-                  <label class="codex-config-field codex-config-field-wide">
-                    <span>API Key</span>
-                    <input id="claude-code-config-api-key" class="field-input" type="password" placeholder="sk-..."
-                      autocomplete="off" oninput="syncClaudeCodeRawConfigFromFields()">
-                  </label>
-                  <details class="codex-config-model-panel codex-config-field-wide claude-code-collapsible" open>
-                    <summary class="claude-code-collapse-head">
-                      <div>
-                        <span>模型列表</span>
-                        <em id="claude-code-config-model-status">选择供应商后拉取模型列表</em>
+                  <section class="config-section">
+                    <div class="config-section-title">基础信息</div>
+                    <div class="config-section-body">
+                      <label class="codex-config-field">
+                        <span>配置名称</span>
+                        <input id="claude-code-config-name" class="field-input" placeholder="例如：AnyRouter Claude"
+                          oninput="syncClaudeCodeRawConfigFromFields()">
+                      </label>
+                      <label class="codex-config-field">
+                        <span>Base URL</span>
+                        <input id="claude-code-config-base-url" class="field-input" placeholder="https://api.example.com"
+                          oninput="syncClaudeCodeRawConfigFromFields()">
+                      </label>
+                      <label class="codex-config-field">
+                        <span>API Key</span>
+                        <input id="claude-code-config-api-key" class="field-input" type="password" placeholder="sk-..."
+                          autocomplete="off" oninput="syncClaudeCodeRawConfigFromFields()">
+                      </label>
+                    </div>
+                  </section>
+                  <section class="config-section">
+                    <div class="config-section-title">模型列表</div>
+                    <div class="config-section-body">
+                      <div class="codex-config-model-head">
+                        <div>
+                          <span>可用模型</span>
+                          <em id="claude-code-config-model-status">选择供应商后拉取模型列表</em>
+                        </div>
+                        <button type="button" class="codex-config-fetch-btn" id="claude-code-config-fetch-models-btn"
+                          onclick="event.preventDefault(); event.stopPropagation(); fetchClaudeCodeConfigModels()">拉取模型列表</button>
                       </div>
-                      <button type="button" class="codex-config-fetch-btn" id="claude-code-config-fetch-models-btn"
-                        onclick="event.preventDefault(); event.stopPropagation(); fetchClaudeCodeConfigModels()">拉取模型列表</button>
-                    </summary>
-                    <div class="claude-code-collapse-body">
                       <div class="codex-config-model-list" id="claude-code-config-model-list">
                         <div class="codex-config-model-empty">还没有模型，点击右上角按钮拉取。</div>
                       </div>
@@ -2285,7 +2301,7 @@
                       <textarea id="claude-code-config-models" class="codex-config-models-input" aria-hidden="true"
                         tabindex="-1"></textarea>
                     </div>
-                  </details>
+                  </section>
                   <details class="codex-config-field codex-config-field-wide claude-code-json-panel">
                     <summary class="claude-code-collapse-head">
                       <div>
@@ -2301,15 +2317,13 @@
                   </details>
                 </div>
               </div>
-              <div class="codex-config-editor-note">
-                这是一份 Claude Code 配置方案。保存后会出现在 Claude Code 配置列表中，点击「切换」才会写入 Claude Code 当前配置文件。
-              </div>
             </div>
             <div class="modal-footer codex-config-modal-footer">
-              <button class="modal-btn modal-btn-cancel" onclick="closeClaudeCodeConfigEditor()">取消</button>
-              <button class="modal-btn modal-btn-cancel" id="claude-code-config-save-switch-btn"
+              <div class="codex-config-editor-note">保存后出现在配置列表中，点击「切换」才会写入 Claude Code 当前配置文件。</div>
+              <button class="modal-btn modal-btn-ghost" onclick="closeClaudeCodeConfigEditor()">取消</button>
+              <button class="modal-btn modal-btn-cancel" onclick="saveClaudeCodeConfigEditor(false)">保存配置</button>
+              <button class="modal-btn modal-btn-confirm" id="claude-code-config-save-switch-btn"
                 onclick="saveClaudeCodeConfigEditor(true)">保存并切换</button>
-              <button class="modal-btn modal-btn-confirm" onclick="saveClaudeCodeConfigEditor(false)">保存配置</button>
             </div>
           </div>
         </div>
@@ -2389,50 +2403,114 @@
                   <div class="codex-config-source-hint" id="codex-config-source-hint">选择一个已保存的供应商，右侧只会带入名称、地址和密钥。</div>
                 </aside>
                 <div class="codex-config-form-grid">
-                  <label class="codex-config-field codex-config-field-wide">
-                    <span>配置名称</span>
-                    <input id="codex-config-name" class="field-input" placeholder="例如：AnyRouter">
-                  </label>
-                  <label class="codex-config-field codex-config-field-wide">
-                    <span>Base URL</span>
-                    <input id="codex-config-base-url" class="field-input" placeholder="https://api.example.com/v1">
-                  </label>
-                  <label class="codex-config-field codex-config-field-wide">
-                    <span>API Key</span>
-                    <input id="codex-config-api-key" class="field-input" type="password" placeholder="sk-..."
-                      autocomplete="off">
-                  </label>
-                  <section class="codex-config-model-panel codex-config-field-wide">
-                    <div class="codex-config-model-head">
-                      <div>
-                        <span>模型列表</span>
-                        <em id="codex-config-model-status">选择供应商后拉取模型列表</em>
+                  <section class="config-section">
+                    <div class="config-section-title">基础信息</div>
+                    <div class="config-section-body">
+                      <div class="config-section-row">
+                        <label class="codex-config-field">
+                          <span>配置名称</span>
+                          <input id="codex-config-name" class="field-input" placeholder="例如：AnyRouter">
+                        </label>
+                        <label class="codex-config-field">
+                          <span>API 协议</span>
+                          <select id="codex-config-wire-api" class="field-input">
+                            <option value="responses">Responses API（默认，OpenAI 原生）</option>
+                            <option value="chat">Chat Completions（兼容第三方模型）</option>
+                          </select>
+                        </label>
                       </div>
-                      <button type="button" class="codex-config-fetch-btn" id="codex-config-fetch-models-btn"
-                        onclick="fetchCodexConfigModels()">拉取模型列表</button>
+                      <label class="codex-config-field">
+                        <span>Base URL</span>
+                        <input id="codex-config-base-url" class="field-input" placeholder="https://api.example.com/v1">
+                      </label>
+                      <label class="codex-config-field">
+                        <span>API Key</span>
+                        <input id="codex-config-api-key" class="field-input" type="password" placeholder="sk-..."
+                          autocomplete="off">
+                      </label>
                     </div>
-                    <div class="codex-config-model-list" id="codex-config-model-list">
-                      <div class="codex-config-model-empty">还没有模型，点击右上角按钮拉取。</div>
-                    </div>
-                    <label class="codex-config-field codex-config-default-model">
-                      <span>默认模型</span>
-                      <input id="codex-config-model" class="field-input" placeholder="可从上方点选，也可以手动输入"
-                        oninput="renderCodexConfigModelList()">
-                    </label>
-                    <textarea id="codex-config-models" class="codex-config-models-input" aria-hidden="true"
-                      tabindex="-1"></textarea>
                   </section>
+                  <section class="config-section">
+                    <div class="config-section-title">模型管理</div>
+                    <div class="config-section-body">
+                      <div class="codex-config-model-head">
+                        <div>
+                          <span>模型列表</span>
+                          <em id="codex-config-model-status">选择供应商后拉取模型列表</em>
+                        </div>
+                        <div style="display:flex;gap:6px;flex:0 0 auto">
+                          <button type="button" class="codex-config-fetch-btn" id="codex-config-fetch-models-btn"
+                            onclick="fetchCodexConfigModels()">拉取模型</button>
+                          <button type="button" class="codex-config-fetch-btn" onclick="addCodexModelEntry()">+ 添加</button>
+                        </div>
+                      </div>
+                      <div class="codex-model-batch-bar">
+                        <div class="codex-model-batch-group">
+                          <span class="codex-model-batch-label">目录：</span>
+                          <button type="button" class="codex-model-batch-btn" onclick="batchSetCodexModelCatalog(true)">全选</button>
+                          <button type="button" class="codex-model-batch-btn" onclick="batchSetCodexModelCatalog(false)">清空</button>
+                        </div>
+                        <div class="codex-model-batch-group">
+                          <span class="codex-model-batch-label">默认：</span>
+                          <button type="button" class="codex-model-batch-btn" onclick="batchSetCodexDefaultModel('clear')">清空默认</button>
+                        </div>
+                      </div>
+                      <div class="codex-config-model-list" id="codex-config-model-list">
+                        <div class="codex-config-model-empty">还没有模型，点击右上角拉取或手动添加。</div>
+                      </div>
+                      <textarea id="codex-config-models" class="codex-config-models-input" aria-hidden="true"
+                        tabindex="-1"></textarea>
+                    </div>
+                  </section>
+                  <details class="codex-config-field codex-config-field-wide codex-config-reasoning-panel">
+                    <summary class="codex-config-reasoning-head">Reasoning 推理参数配置（Chat 模式专用）</summary>
+                    <div class="codex-config-reasoning-body">
+                      <label class="codex-config-field">
+                        <span>Thinking 参数注入</span>
+                        <select id="codex-config-reasoning-thinking" class="field-input">
+                          <option value="none">不注入</option>
+                          <option value="thinking">thinking</option>
+                          <option value="enable_thinking">enable_thinking</option>
+                          <option value="reasoning_split">reasoning_split</option>
+                        </select>
+                      </label>
+                      <label class="codex-config-field">
+                        <span>Effort 参数注入</span>
+                        <select id="codex-config-reasoning-effort" class="field-input">
+                          <option value="none">不注入</option>
+                          <option value="reasoning_effort">reasoning_effort</option>
+                          <option value="reasoning.effort">reasoning.effort</option>
+                        </select>
+                      </label>
+                      <label class="codex-config-field">
+                        <span>Effort 值映射</span>
+                        <select id="codex-config-reasoning-effort-mode" class="field-input">
+                          <option value="passthrough">passthrough（原样透传）</option>
+                          <option value="deepseek">deepseek（max/xhigh → max，其余 → high）</option>
+                          <option value="low_high">low_high（minimal/low → low，其余 → high）</option>
+                          <option value="openrouter">openrouter（max/xhigh → xhigh，其余原样）</option>
+                        </select>
+                      </label>
+                      <label class="codex-config-field">
+                        <span>Reasoning 输出格式</span>
+                        <select id="codex-config-reasoning-output" class="field-input">
+                          <option value="auto">auto（自动检测）</option>
+                          <option value="reasoning_content">reasoning_content</option>
+                          <option value="reasoning">reasoning</option>
+                          <option value="reasoning_details">reasoning_details</option>
+                        </select>
+                      </label>
+                    </div>
+                  </details>
                 </div>
-              </div>
-              <div class="codex-config-editor-note">
-                这是一份 Codex 配置方案。保存后会出现在 Codex 配置列表中，点击「切换」才会写入 Codex 当前配置文件。
               </div>
             </div>
             <div class="modal-footer codex-config-modal-footer">
-              <button class="modal-btn modal-btn-cancel" onclick="closeCodexConfigEditor()">取消</button>
-              <button class="modal-btn modal-btn-cancel" id="codex-config-save-switch-btn"
+              <div class="codex-config-editor-note">保存后出现在配置列表中，点击「切换」才会写入 Codex 当前配置文件。</div>
+              <button class="modal-btn modal-btn-ghost" onclick="closeCodexConfigEditor()">取消</button>
+              <button class="modal-btn modal-btn-cancel" onclick="saveCodexConfigEditor(false)">保存配置</button>
+              <button class="modal-btn modal-btn-confirm" id="codex-config-save-switch-btn"
                 onclick="saveCodexConfigEditor(true)">保存并切换</button>
-              <button class="modal-btn modal-btn-confirm" onclick="saveCodexConfigEditor(false)">保存配置</button>
             </div>
           </div>
         </div>
@@ -2872,31 +2950,37 @@
                   </div>
                 </aside>
                 <div class="codex-config-form-grid">
-                  <label class="codex-config-field codex-config-field-wide">
-                    <span>配置名称</span>
-                    <input id="opencode-config-name" class="field-input" placeholder="例如：AnyRouter"
-                      oninput="syncOpenCodeRawConfigFromFields()">
-                  </label>
-                  <label class="codex-config-field codex-config-field-wide">
-                    <span>Base URL</span>
-                    <input id="opencode-config-base-url" class="field-input" placeholder="https://api.example.com/v1"
-                      oninput="syncOpenCodeRawConfigFromFields()">
-                  </label>
-                  <label class="codex-config-field codex-config-field-wide">
-                    <span>API Key</span>
-                    <input id="opencode-config-api-key" class="field-input" type="password" placeholder="sk-..."
-                      autocomplete="off" oninput="syncOpenCodeRawConfigFromFields()">
-                  </label>
-                  <details class="codex-config-model-panel codex-config-field-wide claude-code-collapsible" open>
-                    <summary class="claude-code-collapse-head">
-                      <div>
-                        <span>模型列表</span>
-                        <em id="opencode-config-model-status">选择供应商后拉取模型列表</em>
+                  <section class="config-section">
+                    <div class="config-section-title">基础信息</div>
+                    <div class="config-section-body">
+                      <label class="codex-config-field">
+                        <span>配置名称</span>
+                        <input id="opencode-config-name" class="field-input" placeholder="例如：AnyRouter"
+                          oninput="syncOpenCodeRawConfigFromFields()">
+                      </label>
+                      <label class="codex-config-field">
+                        <span>Base URL</span>
+                        <input id="opencode-config-base-url" class="field-input" placeholder="https://api.example.com/v1"
+                          oninput="syncOpenCodeRawConfigFromFields()">
+                      </label>
+                      <label class="codex-config-field">
+                        <span>API Key</span>
+                        <input id="opencode-config-api-key" class="field-input" type="password" placeholder="sk-..."
+                          autocomplete="off" oninput="syncOpenCodeRawConfigFromFields()">
+                      </label>
+                    </div>
+                  </section>
+                  <section class="config-section">
+                    <div class="config-section-title">模型列表</div>
+                    <div class="config-section-body">
+                      <div class="codex-config-model-head">
+                        <div>
+                          <span>可用模型</span>
+                          <em id="opencode-config-model-status">选择供应商后拉取模型列表</em>
+                        </div>
+                        <button type="button" class="codex-config-fetch-btn" id="opencode-config-fetch-models-btn"
+                          onclick="event.preventDefault(); event.stopPropagation(); fetchOpenCodeConfigModels()">拉取模型列表</button>
                       </div>
-                      <button type="button" class="codex-config-fetch-btn" id="opencode-config-fetch-models-btn"
-                        onclick="event.preventDefault(); event.stopPropagation(); fetchOpenCodeConfigModels()">拉取模型列表</button>
-                    </summary>
-                    <div class="claude-code-collapse-body">
                       <div class="codex-config-model-list" id="opencode-config-model-list">
                         <div class="codex-config-model-empty">还没有模型，点击右上角按钮拉取。</div>
                       </div>
@@ -2908,7 +2992,7 @@
                       <textarea id="opencode-config-models" class="codex-config-models-input" aria-hidden="true"
                         tabindex="-1"></textarea>
                     </div>
-                  </details>
+                  </section>
                   <details class="codex-config-field codex-config-field-wide claude-code-json-panel">
                     <summary class="claude-code-collapse-head">
                       <div>
@@ -2924,15 +3008,13 @@
                   </details>
                 </div>
               </div>
-              <div class="codex-config-editor-note">
-                这是一份 OpenCode 配置方案。保存后会出现在 OpenCode 配置列表中，点击「加入」才会写入 opencode.json 的 provider 列表。
-              </div>
             </div>
             <div class="modal-footer codex-config-modal-footer">
-              <button class="modal-btn modal-btn-cancel" onclick="closeOpenCodeConfigEditor()">取消</button>
-              <button class="modal-btn modal-btn-cancel" id="opencode-config-save-switch-btn"
+              <div class="codex-config-editor-note">保存后出现在配置列表中，点击「加入」才会写入 opencode.json 的 provider 列表。</div>
+              <button class="modal-btn modal-btn-ghost" onclick="closeOpenCodeConfigEditor()">取消</button>
+              <button class="modal-btn modal-btn-cancel" onclick="saveOpenCodeConfigEditor(false)">保存配置</button>
+              <button class="modal-btn modal-btn-confirm" id="opencode-config-save-switch-btn"
                 onclick="saveOpenCodeConfigEditor(true)">保存并加入</button>
-              <button class="modal-btn modal-btn-confirm" onclick="saveOpenCodeConfigEditor(false)">保存配置</button>
             </div>
           </div>
         </div>
@@ -4733,6 +4815,146 @@
   <script src="./assets/scripts/60-updater.js"></script>
   <script src="./assets/scripts/70-healthcheck.js"></script>
   <script src="./assets/scripts/90-init.js"></script>
+  <script src="./assets/scripts/99-handle-tuner.js"></script>
+
+  <!-- ═══════ 临时手柄调参面板（开发用，上线时删除） ═══════ -->
+  <div id="handle-tuner" hidden>
+    <div class="ht-header">
+      <div class="ht-title"><span class="ht-dot"></span>手柄参数调节</div>
+      <div class="ht-actions">
+        <button type="button" class="ht-icon-btn" data-ht-action="reset" title="重置默认值">↻</button>
+        <button type="button" class="ht-icon-btn" data-ht-action="copy" title="复制最终 CSS">⧉</button>
+        <button type="button" class="ht-icon-btn" data-ht-action="close" title="关闭 (Ctrl+Shift+H)">×</button>
+      </div>
+    </div>
+    <div class="ht-body">
+      <div class="ht-section">
+        <div class="ht-section-title">尺寸</div>
+        <div class="ht-row">
+          <label>宽度</label>
+          <input type="range" min="10" max="40" step="1" data-ht="--handle-width" data-ht-unit="px">
+          <input type="number" min="10" max="40" step="1" data-ht-num="--handle-width" data-ht-unit="px">
+        </div>
+        <div class="ht-row">
+          <label>高度</label>
+          <input type="range" min="10" max="40" step="1" data-ht="--handle-height" data-ht-unit="px">
+          <input type="number" min="10" max="40" step="1" data-ht-num="--handle-height" data-ht-unit="px">
+        </div>
+      </div>
+
+      <div class="ht-section">
+        <div class="ht-section-title">位置</div>
+        <div class="ht-row">
+          <label>横向</label>
+          <select data-ht="--handle-justify-self">
+            <option value="start">左</option>
+            <option value="center">中</option>
+            <option value="end">右</option>
+          </select>
+        </div>
+        <div class="ht-row">
+          <label>纵向</label>
+          <select data-ht="--handle-align-self">
+            <option value="start">上</option>
+            <option value="center">中</option>
+            <option value="end">下</option>
+          </select>
+        </div>
+        <div class="ht-row">
+          <label>左边距</label>
+          <input type="range" min="0" max="20" step="0.5" data-ht="--handle-dot-padding-x" data-ht-unit="px">
+          <input type="number" min="0" max="20" step="0.5" data-ht-num="--handle-dot-padding-x" data-ht-unit="px">
+        </div>
+        <div class="ht-row">
+          <label>上边距</label>
+          <input type="range" min="0" max="20" step="0.5" data-ht="--handle-dot-padding-y" data-ht-unit="px">
+          <input type="number" min="0" max="20" step="0.5" data-ht-num="--handle-dot-padding-y" data-ht-unit="px">
+        </div>
+      </div>
+
+      <div class="ht-section">
+        <div class="ht-section-title">圆点</div>
+        <div class="ht-row">
+          <label>半径</label>
+          <input type="range" min="0.5" max="4" step="0.1" data-ht="--handle-dot-radius" data-ht-unit="px">
+          <input type="number" min="0.5" max="4" step="0.1" data-ht-num="--handle-dot-radius" data-ht-unit="px">
+        </div>
+        <div class="ht-row">
+          <label>列间距</label>
+          <input type="range" min="2" max="20" step="0.5" data-ht="--handle-dot-col-spacing" data-ht-unit="px">
+          <input type="number" min="2" max="20" step="0.5" data-ht-num="--handle-dot-col-spacing" data-ht-unit="px">
+        </div>
+        <div class="ht-row">
+          <label>行间距</label>
+          <input type="range" min="2" max="20" step="0.5" data-ht="--handle-dot-row-spacing" data-ht-unit="px">
+          <input type="number" min="2" max="20" step="0.5" data-ht-num="--handle-dot-row-spacing" data-ht-unit="px">
+        </div>
+        <div class="ht-color-row">
+          <span class="ht-color-label">浅色默认</span>
+          <input type="color" data-ht-color="--handle-dot-color" data-ht-alpha="0.7">
+          <input type="range" min="0" max="100" step="1" data-ht-alpha-range="--handle-dot-color" data-ht-alpha-default="0.7">
+        </div>
+        <div class="ht-color-row">
+          <span class="ht-color-label">浅色拖拽</span>
+          <input type="color" data-ht-color="--handle-dot-color-drag" data-ht-alpha="0.85">
+          <input type="range" min="0" max="100" step="1" data-ht-alpha-range="--handle-dot-color-drag" data-ht-alpha-default="0.85">
+        </div>
+        <div class="ht-color-row">
+          <span class="ht-color-label">深色默认</span>
+          <input type="color" data-ht-color="--handle-dot-color-dark" data-ht-alpha="0.7">
+          <input type="range" min="0" max="100" step="1" data-ht-alpha-range="--handle-dot-color-dark" data-ht-alpha-default="0.7">
+        </div>
+        <div class="ht-color-row">
+          <span class="ht-color-label">深色拖拽</span>
+          <input type="color" data-ht-color="--handle-dot-color-drag-dark" data-ht-alpha="0.9">
+          <input type="range" min="0" max="100" step="1" data-ht-alpha-range="--handle-dot-color-drag-dark" data-ht-alpha-default="0.9">
+        </div>
+      </div>
+
+      <div class="ht-section">
+        <div class="ht-section-title">透明度</div>
+        <div class="ht-row">
+          <label>默认</label>
+          <input type="range" min="0" max="1" step="0.05" data-ht="--handle-opacity">
+          <input type="number" min="0" max="1" step="0.05" data-ht-num="--handle-opacity">
+        </div>
+        <div class="ht-row">
+          <label>悬停</label>
+          <input type="range" min="0" max="1" step="0.05" data-ht="--handle-opacity-hover">
+          <input type="number" min="0" max="1" step="0.05" data-ht-num="--handle-opacity-hover">
+        </div>
+      </div>
+
+      <div class="ht-section">
+        <div class="ht-section-title">阴影</div>
+        <div class="ht-row ht-row-check">
+          <label>启用</label>
+          <input type="checkbox" data-ht-toggle="--handle-shadow-on">
+        </div>
+        <div class="ht-color-row">
+          <span class="ht-color-label">颜色</span>
+          <input type="color" data-ht-color="--handle-shadow-color" data-ht-alpha="0.08">
+          <input type="range" min="0" max="100" step="1" data-ht-alpha-range="--handle-shadow-color" data-ht-alpha-default="0.08">
+        </div>
+        <div class="ht-row">
+          <label>X 偏移</label>
+          <input type="range" min="-10" max="10" step="0.5" data-ht="--handle-shadow-offset-x" data-ht-unit="px">
+          <input type="number" min="-10" max="10" step="0.5" data-ht-num="--handle-shadow-offset-x" data-ht-unit="px">
+        </div>
+        <div class="ht-row">
+          <label>Y 偏移</label>
+          <input type="range" min="-10" max="10" step="0.5" data-ht="--handle-shadow-offset-y" data-ht-unit="px">
+          <input type="number" min="-10" max="10" step="0.5" data-ht-num="--handle-shadow-offset-y" data-ht-unit="px">
+        </div>
+        <div class="ht-row">
+          <label>模糊</label>
+          <input type="range" min="0" max="20" step="0.5" data-ht="--handle-shadow-blur" data-ht-unit="px">
+          <input type="number" min="0" max="20" step="0.5" data-ht-num="--handle-shadow-blur" data-ht-unit="px">
+        </div>
+      </div>
+    </div>
+  </div>
+  <button type="button" id="handle-tuner-toggle" title="手柄调参 (Ctrl+Shift+H)">⚙</button>
 </body>
 
 </html>

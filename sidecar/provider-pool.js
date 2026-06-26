@@ -267,6 +267,10 @@ export function resolveTarget(target, providers) {
   const apiPath = unlockWireApi && !explicitPath
     ? cleanApiPath(unlockWireApi)
     : (routeFormat === 'openai' ? normalizeOpenAIApiPath(host, configuredPath) : normalizeAnthropicApiPath(configuredPath));
+  // wireApi=chat 时，上游只支持 Chat Completions，强制使用 /chat/completions 路径
+  const finalApiPath = (p.wireApi === 'chat' && !explicitPath)
+    ? apiPath.replace(/\/responses$/, '/chat/completions')
+    : apiPath;
   const modelId = target.model || p.defaultModel;
   // 合并供应商级 + 模型级能力标记
   const supplierCaps = p.capabilities || {};
@@ -284,7 +288,7 @@ export function resolveTarget(target, providers) {
     providerId: p.id,
     providerName: p.name,
     host,
-    apiPath,
+    apiPath: finalApiPath,
     apiKey: p.apiKey,
     format: routeFormat,
     routeSource: route.source,
@@ -293,6 +297,8 @@ export function resolveTarget(target, providers) {
     capabilities,
     unlocks: p.unlocks || {},
     unlockKind: targetUnlock,
+    wireApi: p.wireApi || '',
+    codexChatReasoning: p.codexChatReasoning || null,
   };
 }
 

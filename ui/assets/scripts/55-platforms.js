@@ -232,6 +232,7 @@ async function applyLocalProxyPlatformConfig(platformId) {
   );
   if (!ok) return;
   setPlatformBusy(platformId, true);
+  showSwitchProgress(platformId, '正在准备切换到本地代理…');
   try {
     const result = await invoke('switch_platform', { platform: platformId, providerId });
     if (typeof loadProviders === 'function') await loadProviders();
@@ -242,6 +243,7 @@ async function applyLocalProxyPlatformConfig(platformId) {
     if (typeof addLog === 'function') addLog('err', `${def.name} 切换到本地代理失败: ${e}`);
     showCustomAlert(String(e), '切换失败', 'error');
   } finally {
+    hideSwitchProgress();
     setPlatformBusy(platformId, false);
     renderPlatformDetailStatuses();
   }
@@ -333,6 +335,9 @@ async function refreshPlatforms(options = {}) {
   }
 
   try {
+    if (typeof loadProviders === 'function') {
+      await loadProviders();
+    }
     platformInfos = await invoke('detect_platforms') || [];
     renderPlatformCards();
     renderPlatformDetailStatuses();
@@ -725,8 +730,13 @@ function applyCodexConfigSource(providerId) {
   codexConfigSetInputValue('codex-config-name', source.name || '');
   codexConfigSetInputValue('codex-config-base-url', codexConfigDisplayBaseUrl(source));
   codexConfigSetInputValue('codex-config-api-key', source.apiKey || '');
-  codexConfigSetInputValue('codex-config-model', '');
-  codexConfigSetModels([], '', '已带入来源信息，请拉取模型列表。');
+  codexConfigSetInputValue('codex-config-wire-api', source.wireApi || 'responses');
+  renderReasoningConfig(source.codexChatReasoning);
+  // 合并 catalog 和 provider models 到统一列表
+  const catalog = source.modelCatalog || [];
+  const providerModels = codexConfigModelList(source);
+  const merged = mergeCatalogAndModels(catalog, providerModels);
+  renderCodexModelManager(merged, '', '已带入来源信息，请拉取模型列表。');
 }
 
 function selectCodexConfigSource(providerId) {
@@ -765,6 +775,35 @@ function codexConfigNormalizeModels(models, defaultModel = '') {
   return [...new Set(first ? [first, ...list] : list)];
 }
 
+// ── 统一模型管理 ──
+// 数据结构: { model, displayName, contextWindow, inCatalog, isDefault }
+
+function mergeCatalogAndModels(catalog, models) {
+  const result = [];
+  const seen = new Set();
+  // 先放 catalog 里的（已勾选）
+  for (const entry of (catalog || [])) {
+    const model = String(entry?.model || '').trim();
+    if (!model || seen.has(model)) continue;
+    seen.add(model);
+    result.push({
+      model,
+      displayName: entry?.displayName || '',
+      contextWindow: entry?.contextWindow || '',
+      inCatalog: true,
+      isDefault: false,
+    });
+  }
+  // 再放 provider models 里不在 catalog 的（未勾选）
+  for (const model of (models || [])) {
+    const m = String(model || '').trim();
+    if (!m || seen.has(m)) continue;
+    seen.add(m);
+    result.push({ model: m, displayName: '', contextWindow: '', inCatalog: false, isDefault: false });
+  }
+  return result;
+}
+
 function codexConfigSetModelStatus(text, tone = '') {
   const el = document.getElementById('codex-config-model-status');
   if (!el) return;
@@ -777,47 +816,180 @@ function codexConfigSetFetchLoading(loading) {
   if (!btn) return;
   btn.disabled = !!loading;
   btn.classList.toggle('is-loading', !!loading);
-  btn.textContent = loading ? '拉取中...' : '拉取模型列表';
+  btn.textContent = loading ? '拉取中...' : '拉取模型';
 }
 
-function codexConfigSetModels(models, defaultModel = '', status = '') {
-  const normalized = codexConfigNormalizeModels(models, defaultModel);
-  codexConfigSetInputValue('codex-config-models', normalized.join('\n'));
-  codexConfigSetInputValue('codex-config-model', defaultModel || normalized[0] || '');
-  renderCodexConfigModelList(normalized);
+function renderCodexModelManager(entries, defaultModel = '', status = '') {
+  const container = document.getElementById('codex-config-model-list');
+  if (!container) return;
+  const list = Array.isArray(entries) ? entries : [];
+  if (defaultModel) {
+    list.forEach(e => { e.isDefault = (e.model === defaultModel); });
+  }
+  codexConfigSetInputValue('codex-config-models', list.map(e => e.model).join('\n'));
+  codexConfigSetInputValue('codex-config-model', defaultModel || '');
+
+  if (!list.length) {
+    container.innerHTML = '<div class="codex-config-model-empty">还没有模型，点击右上角拉取或手动添加。</div>';
+    if (status) codexConfigSetModelStatus(status);
+    return;
+  }
+  // 不传 status 时：自动显示"目录 x/总数 · 默认 xxx"
+  if (!status) {
+    const total = list.length;
+    const inCat = list.filter(e => e.inCatalog).length;
+    const dflt = list.find(e => e.isDefault)?.model || '';
+    const parts = [`目录 ${inCat}/${total}`];
+    if (dflt) parts.push(`默认 ${dflt}`);
+    codexConfigSetModelStatus(parts.join(' · '));
+  }
+  container.innerHTML = list.map((entry, i) => {
+    const model = platformEsc(entry.model || '');
+    const displayName = platformEsc(entry.displayName || '');
+    const ctx = platformEsc(String(entry.contextWindow || ''));
+    const checked = entry.inCatalog ? 'checked' : '';
+    const isDefault = entry.isDefault;
+    const activeClass = isDefault ? ' active' : '';
+    const defaultBtnClass = isDefault ? 'codex-model-default-btn is-default' : 'codex-model-default-btn';
+    const defaultBtnText = isDefault ? '默认 ✓' : '设为默认';
+    const defaultBtnClick = isDefault
+      ? `selectCodexDefaultModel('')`
+      : `selectCodexDefaultModel('${model}')`;
+    return `<div class="codex-config-model-option${activeClass}" data-idx="${i}" data-model="${model}" data-display="${displayName}" data-ctx="${ctx}">
+      <input type="checkbox" ${checked} onchange="toggleCodexModelCatalog(${i})" title="加入模型目录">
+      <span title="${model}">${model}</span>
+      ${displayName ? `<span>${displayName}</span>` : ''}
+      ${ctx ? `<span>${ctx}</span>` : ''}
+      <button type="button" class="${defaultBtnClass}" onclick="${defaultBtnClick}">${defaultBtnText}</button>
+      <button type="button" class="codex-config-fetch-btn" onclick="editCodexModelEntry(${i})">编辑</button>
+      <button type="button" class="codex-config-catalog-del" onclick="removeCodexModelEntry(${i})">删除</button>
+    </div>`;
+  }).join('');
   if (status) codexConfigSetModelStatus(status);
 }
 
-function renderCodexConfigModelList(models = null) {
-  const list = document.getElementById('codex-config-model-list');
-  if (!list) return;
-  const defaultModel = String(document.getElementById('codex-config-model')?.value || '').trim();
-  const source = models || codexConfigParseModels(document.getElementById('codex-config-models')?.value, defaultModel);
-  if (!source.length) {
-    list.innerHTML = '<div class="codex-config-model-empty">还没有模型，点击右上角按钮拉取。</div>';
-    return;
+function getCodexModelEntries() {
+  const container = document.getElementById('codex-config-model-list');
+  if (!container) return [];
+  const rows = container.querySelectorAll('.codex-config-model-option[data-idx]');
+  const entries = [];
+  for (const row of rows) {
+    const checkbox = row.querySelector('input[type="checkbox"]');
+    if (!checkbox) continue;
+    const model = row.dataset.model || '';
+    if (!model) continue;
+    const displayName = row.dataset.display || '';
+    const ctxStr = row.dataset.ctx || '';
+    const inCatalog = checkbox.checked || false;
+    const isDefault = row.classList.contains('active');
+    const entry = { model, inCatalog, isDefault };
+    if (displayName) entry.displayName = displayName;
+    if (ctxStr) {
+      const ctx = Number(ctxStr);
+      if (Number.isFinite(ctx) && ctx > 0) entry.contextWindow = ctx;
+    }
+    entries.push(entry);
   }
-  list.innerHTML = source.map(model => `
-    <button type="button" class="codex-config-model-option ${model === defaultModel ? 'active' : ''}" data-model="${platformEsc(model)}" title="${platformEsc(model)}">
-      ${platformEsc(model)}
-    </button>
-  `).join('');
-  list.onclick = (event) => {
-    const option = event.target.closest('.codex-config-model-option');
-    if (!option || !list.contains(option)) return;
-    event.preventDefault();
-    selectCodexConfigModel(option.dataset.model || option.textContent || '');
-  };
+  return entries;
 }
 
-function selectCodexConfigModel(model) {
-  const picked = String(model || '').trim();
-  if (!picked) return;
-  codexConfigSetInputValue('codex-config-model', picked);
-  const models = codexConfigNormalizeModels(document.getElementById('codex-config-models')?.value, picked);
-  codexConfigSetInputValue('codex-config-models', models.join('\n'));
-  renderCodexConfigModelList(models);
-  codexConfigSetModelStatus(`已选择默认模型：${picked}`, 'success');
+function toggleCodexModelCatalog(idx) {
+  const entries = getCodexModelEntries();
+  if (!entries[idx]) return;
+  entries[idx].inCatalog = !entries[idx].inCatalog;
+  if (!entries[idx].inCatalog) entries[idx].isDefault = false;
+  const defaultModel = entries.find(e => e.isDefault)?.model || '';
+  renderCodexModelManager(entries, defaultModel);
+}
+
+function selectCodexDefaultModel(model) {
+  const entries = getCodexModelEntries();
+  const defaultModel = String(model || '').trim();
+  entries.forEach(e => { e.isDefault = (e.model === defaultModel); });
+  renderCodexModelManager(entries, defaultModel);
+  codexConfigSetModelStatus(defaultModel ? `默认模型：${defaultModel}` : '已清空默认模型', defaultModel ? 'success' : '');
+}
+
+function addCodexModelEntry() {
+  const entries = getCodexModelEntries();
+  entries.push({ model: '', displayName: '', contextWindow: '', inCatalog: true, isDefault: false });
+  renderCodexModelManager(entries, entries.find(e => e.isDefault)?.model || '');
+  editCodexModelEntry(entries.length - 1);
+}
+
+function editCodexModelEntry(idx) {
+  const container = document.getElementById('codex-config-model-list');
+  if (!container) return;
+  const row = container.querySelectorAll('.codex-config-model-option[data-idx]')[idx];
+  if (!row) return;
+  const entries = getCodexModelEntries();
+  const entry = entries[idx];
+  if (!entry) return;
+  row.classList.remove('active');
+  row.innerHTML = `<div class="codex-config-catalog-row" style="width:100%">
+    <input class="field-input" placeholder="模型 ID" value="${platformEsc(entry.model)}">
+    <input class="field-input" placeholder="显示名（可选）" value="${platformEsc(entry.displayName)}">
+    <input class="field-input" placeholder="上下文窗口" value="${platformEsc(String(entry.contextWindow || ''))}">
+    <div style="display:flex;gap:4px">
+      <button type="button" class="codex-config-fetch-btn" onclick="saveCodexModelEdit(${idx})">确定</button>
+      <button type="button" class="codex-config-catalog-del" onclick="renderCodexModelManager(getCodexModelEntries(), getCodexModelEntries().find(e=>e.isDefault)?.model||'')">取消</button>
+    </div>
+  </div>`;
+  row.querySelector('.field-input')?.focus();
+}
+
+function saveCodexModelEdit(idx) {
+  const container = document.getElementById('codex-config-model-list');
+  if (!container) return;
+  const row = container.querySelectorAll('.codex-config-model-option[data-idx]')[idx];
+  if (!row) return;
+  const entries = getCodexModelEntries();
+  const inputs = row.querySelectorAll('.field-input');
+  const model = inputs[0]?.value?.trim() || '';
+  if (!model) return;
+  entries[idx].model = model;
+  entries[idx].displayName = inputs[1]?.value?.trim() || '';
+  const ctxStr = inputs[2]?.value?.trim() || '';
+  if (ctxStr) {
+    const ctx = Number(ctxStr);
+    if (Number.isFinite(ctx) && ctx > 0) entries[idx].contextWindow = ctx;
+  }
+  const defaultModel = entries.find(e => e.isDefault)?.model || '';
+  renderCodexModelManager(entries, defaultModel);
+}
+
+function removeCodexModelEntry(idx) {
+  const entries = getCodexModelEntries();
+  if (!entries[idx]) return;
+  entries.splice(idx, 1);
+  const defaultModel = entries.find(e => e.isDefault)?.model || '';
+  renderCodexModelManager(entries, defaultModel);
+}
+
+function batchSetCodexModelCatalog(inCatalog) {
+  const entries = getCodexModelEntries();
+  if (!entries.length) return;
+  entries.forEach(e => {
+    e.inCatalog = inCatalog;
+    if (!inCatalog) e.isDefault = false;
+  });
+  const defaultModel = entries.find(e => e.isDefault)?.model || '';
+  renderCodexModelManager(entries, defaultModel);
+  codexConfigSetModelStatus(inCatalog ? `已加入 ${entries.length} 个模型到目录` : `已清空目录`, inCatalog ? 'success' : '');
+  setTimeout(() => renderCodexModelManager(getCodexModelEntries(), codexConfigGetDefaultModel()), 1500);
+}
+
+function batchSetCodexDefaultModel() {
+  const entries = getCodexModelEntries();
+  if (!entries.length) return;
+  entries.forEach(e => { e.isDefault = false; });
+  renderCodexModelManager(entries, '');
+  codexConfigSetModelStatus('已清空默认模型', '');
+  setTimeout(() => renderCodexModelManager(getCodexModelEntries(), ''), 1500);
+}
+
+function codexConfigGetDefaultModel() {
+  return String(document.getElementById('codex-config-model')?.value || '').trim();
 }
 
 function codexConfigEndpointParts(baseUrl) {
@@ -858,16 +1030,29 @@ async function fetchCodexConfigModels() {
       }
     });
     if (seq !== codexConfigModelFetchSeq) return;
-    const models = codexConfigNormalizeModels(result?.models || []);
-    if (!models.length) throw new Error('接口返回的模型列表为空');
-    const current = String(document.getElementById('codex-config-model')?.value || '').trim();
-    const picked = current && models.includes(current) ? current : models[0];
-    codexConfigSetModels(models, picked, `已拉取 ${models.length} 个模型`);
-    codexConfigSetModelStatus(`已拉取 ${models.length} 个模型`, 'success');
-    if (typeof addLog === 'function') addLog('ok', `Codex 配置模型拉取成功: ${models.length} 个`);
+    const fetchedModels = (result?.models || []).map(m => String(m || '').trim()).filter(Boolean);
+    if (!fetchedModels.length) throw new Error('接口返回的模型列表为空');
+    // 合并到已有列表：已有的保留状态，新拉取的默认不勾选
+    const existing = getCodexModelEntries();
+    const existingMap = new Map(existing.map(e => [e.model, e]));
+    const merged = [];
+    // 先放已有的
+    for (const entry of existing) {
+      merged.push({ ...entry });
+    }
+    // 再放新拉取的
+    for (const model of fetchedModels) {
+      if (!existingMap.has(model)) {
+        merged.push({ model, displayName: '', contextWindow: '', inCatalog: false, isDefault: false });
+      }
+    }
+    const currentDefault = existing.find(e => e.isDefault)?.model || '';
+    renderCodexModelManager(merged, currentDefault, `已拉取 ${fetchedModels.length} 个模型`);
+    codexConfigSetModelStatus(`已拉取 ${fetchedModels.length} 个模型`, 'success');
+    if (typeof addLog === 'function') addLog('ok', `Codex 配置模型拉取成功: ${fetchedModels.length} 个`);
   } catch (e) {
     if (seq !== codexConfigModelFetchSeq) return;
-    codexConfigSetModelStatus('拉取失败，可手动输入默认模型', 'error');
+    codexConfigSetModelStatus('拉取失败，可手动添加模型', 'error');
     if (typeof addLog === 'function') addLog('warn', `Codex 配置模型拉取失败: ${e}`);
     showCustomAlert(String(e), '模型拉取失败', 'error');
   } finally {
@@ -883,6 +1068,31 @@ function codexConfigDisplayBaseUrl(provider) {
 function codexConfigSetInputValue(id, value) {
   const el = document.getElementById(id);
   if (el) el.value = value == null ? '' : String(value);
+}
+
+// ── Reasoning 配置编辑 ──
+function renderReasoningConfig(config) {
+  const r = config || {};
+  codexConfigSetInputValue('codex-config-reasoning-thinking', r.thinkingParam || 'none');
+  codexConfigSetInputValue('codex-config-reasoning-effort', r.effortParam || 'none');
+  codexConfigSetInputValue('codex-config-reasoning-effort-mode', r.effortValueMode || 'passthrough');
+  codexConfigSetInputValue('codex-config-reasoning-output', r.outputFormat || 'auto');
+}
+
+function getReasoningConfig() {
+  const thinkingParam = String(document.getElementById('codex-config-reasoning-thinking')?.value || 'none').trim();
+  const effortParam = String(document.getElementById('codex-config-reasoning-effort')?.value || 'none').trim();
+  const effortValueMode = String(document.getElementById('codex-config-reasoning-effort-mode')?.value || 'passthrough').trim();
+  const outputFormat = String(document.getElementById('codex-config-reasoning-output')?.value || 'auto').trim();
+  if (thinkingParam === 'none' && effortParam === 'none') return undefined;
+  return {
+    supportsThinking: thinkingParam !== 'none',
+    supportsEffort: effortParam !== 'none',
+    thinkingParam: thinkingParam !== 'none' ? thinkingParam : undefined,
+    effortParam: effortParam !== 'none' ? effortParam : undefined,
+    effortValueMode: effortValueMode !== 'passthrough' ? effortValueMode : undefined,
+    outputFormat: outputFormat !== 'auto' ? outputFormat : undefined,
+  };
 }
 
 function openCodexConfigEditor(providerId = '') {
@@ -917,14 +1127,26 @@ function openCodexConfigEditor(providerId = '') {
     codexConfigSetInputValue('codex-config-name', provider.name || '');
     codexConfigSetInputValue('codex-config-base-url', codexConfigDisplayBaseUrl(provider));
     codexConfigSetInputValue('codex-config-api-key', provider.apiKey || '');
-    codexConfigSetInputValue('codex-config-model', provider.defaultModel || models[0] || '');
-    codexConfigSetModels(models, provider.defaultModel || models[0] || '', models.length ? `已保存 ${models.length} 个模型` : '可重新拉取模型列表');
+    codexConfigSetInputValue('codex-config-wire-api', provider.wireApi || 'responses');
+    renderReasoningConfig(provider.codexChatReasoning);
+    // 合并 catalog 和 models 到统一列表
+    const catalog = provider.modelCatalog || [];
+    const providerModels = codexConfigModelList(provider);
+    const merged = mergeCatalogAndModels(catalog, providerModels);
+    const defaultModel = provider.defaultModel || '';
+    // 标记默认模型
+    if (defaultModel) {
+      const dm = merged.find(e => e.model === defaultModel);
+      if (dm) dm.isDefault = true;
+    }
+    renderCodexModelManager(merged, defaultModel, merged.length ? `已保存 ${merged.length} 个模型` : '可重新拉取模型列表');
   } else {
     codexConfigSetInputValue('codex-config-name', '');
     codexConfigSetInputValue('codex-config-base-url', '');
     codexConfigSetInputValue('codex-config-api-key', '');
-    codexConfigSetInputValue('codex-config-model', '');
-    codexConfigSetModels([], '', '选择供应商后拉取模型列表');
+    codexConfigSetInputValue('codex-config-wire-api', 'responses');
+    renderReasoningConfig(null);
+    renderCodexModelManager([], '', '选择供应商后拉取模型列表');
     const picked = renderCodexConfigSourceList('');
     if (picked) applyCodexConfigSource(picked);
   }
@@ -957,19 +1179,34 @@ async function saveCodexConfigEditor(switchAfter = false) {
   const name = String(document.getElementById('codex-config-name')?.value || '').trim();
   const baseUrl = String(document.getElementById('codex-config-base-url')?.value || '').trim();
   const apiKey = String(document.getElementById('codex-config-api-key')?.value || '').trim();
-  const defaultModel = String(document.getElementById('codex-config-model')?.value || '').trim();
-  const models = codexConfigParseModels(document.getElementById('codex-config-models')?.value, defaultModel);
+  const wireApi = String(document.getElementById('codex-config-wire-api')?.value || 'responses').trim();
+  // 从统一模型管理器读取数据
+  const allEntries = getCodexModelEntries();
+  const defaultModel = allEntries.find(e => e.isDefault)?.model || '';
+  const models = allEntries.map(e => e.model).filter(Boolean);
+  const modelCatalog = allEntries
+    .filter(e => e.inCatalog)
+    .map(e => {
+      const entry = { model: e.model };
+      if (e.displayName) entry.displayName = e.displayName;
+      if (e.contextWindow) entry.contextWindow = e.contextWindow;
+      return entry;
+    });
 
   if (!editId && !sourceId) {
     showCustomAlert('请先选择一个现有供应商。', '没有配置来源', 'warn');
     return;
   }
-  if (!name || !baseUrl || !apiKey || !defaultModel) {
-    showCustomAlert('请填写配置名称、Base URL、API Key 和默认模型。', '配置不完整', 'warn');
+  if (!name || !baseUrl || !apiKey) {
+    showCustomAlert('请填写配置名称、Base URL 和 API Key。', '配置不完整', 'warn');
     return;
   }
   if (!models.length) {
-    showCustomAlert('请至少填写一个模型。', '配置不完整', 'warn');
+    showCustomAlert('请至少添加一个模型。', '配置不完整', 'warn');
+    return;
+  }
+  if (!defaultModel) {
+    showCustomAlert('请选择一个默认模型（勾选后点击单选按钮）。', '未选择默认模型', 'warn');
     return;
   }
 
@@ -989,6 +1226,9 @@ async function saveCodexConfigEditor(switchAfter = false) {
     apiKey,
     defaultModel,
     models,
+    wireApi,
+    modelCatalog: modelCatalog.length ? modelCatalog : undefined,
+    codexChatReasoning: getReasoningConfig(),
     sourceProviderId: sourceId || existing?.sourceProviderId || '',
     sourceProviderName: source?.name || existing?.sourceProviderName || '',
   };
@@ -1149,7 +1389,7 @@ function renderCodexConfigList(info) {
       current,
       model: provider.defaultModel || '默认模型未设置',
       endpoint: baseUrl,
-      protocol: 'responses',
+      protocol: provider.wireApi || 'responses',
       action: `applyCodexProviderConfig(${platformJsArg(provider.id)})`,
       editAction: `editCodexProviderConfig(${platformJsArg(provider.id)})`,
       deleteAction: current ? '' : `deleteCodexProviderConfig(${platformJsArg(provider.id)})`,
@@ -1525,10 +1765,11 @@ function renderClaudeCodeConfigModelList(models = null) {
     return;
   }
   list.innerHTML = source.map(model => `
-    <button type="button" class="codex-config-model-option ${model === defaultModel ? 'active' : ''}" data-model="${platformEsc(model)}" title="${platformEsc(model)}">
-      ${platformEsc(model)}
+    <button type="button" class="codex-config-model-option ${model === defaultModel ? 'active' : ''}" data-model="${platformEsc(model)}" title="${platformEsc(model)}" role="radio" aria-checked="${model === defaultModel ? 'true' : 'false'}">
+      <span>${platformEsc(model)}</span>
     </button>
   `).join('');
+  list.setAttribute('role', 'radiogroup');
   list.onclick = (event) => {
     const item = event.target.closest('.codex-config-model-option');
     if (!item || !list.contains(item)) return;
@@ -2221,10 +2462,11 @@ function renderOpenCodeConfigModelList(models = null) {
     return;
   }
   list.innerHTML = source.map(model => `
-    <button type="button" class="codex-config-model-option ${model === defaultModel ? 'active' : ''}" data-model="${platformEsc(model)}" title="${platformEsc(model)}">
-      ${platformEsc(model)}
+    <button type="button" class="codex-config-model-option ${model === defaultModel ? 'active' : ''}" data-model="${platformEsc(model)}" title="${platformEsc(model)}" role="radio" aria-checked="${model === defaultModel ? 'true' : 'false'}">
+      <span>${platformEsc(model)}</span>
     </button>
   `).join('');
+  list.setAttribute('role', 'radiogroup');
   list.onclick = (event) => {
     const item = event.target.closest('.codex-config-model-option');
     if (!item || !list.contains(item)) return;
@@ -2572,6 +2814,7 @@ async function applyOpenCodeProviderConfig(providerId) {
   if (!ok) return;
 
   setPlatformBusy('opencode', true);
+  showSwitchProgress('opencode', '正在准备加入 OpenCode 配置…');
   try {
     const result = await invoke('switch_platform', { platform: 'opencode', providerId });
     if (typeof loadProviders === 'function') await loadProviders();
@@ -2582,6 +2825,7 @@ async function applyOpenCodeProviderConfig(providerId) {
     if (typeof addLog === 'function') addLog('err', `OpenCode 配置加入失败: ${e}`);
     showCustomAlert(String(e), '加入失败', 'error');
   } finally {
+    hideSwitchProgress();
     setPlatformBusy('opencode', false);
     renderPlatformDetailStatuses();
   }
@@ -2623,6 +2867,7 @@ async function restoreClaudeCodeOfficialConfig() {
   if (!ok) return;
 
   setPlatformBusy('claude-code', true);
+  showSwitchProgress('claude-code', '正在准备切回官方配置…');
   try {
     const result = await invoke('restore_claude_official_config');
     if (typeof loadProviders === 'function') await loadProviders();
@@ -2633,6 +2878,7 @@ async function restoreClaudeCodeOfficialConfig() {
     if (typeof addLog === 'function') addLog('err', `Claude Code 切回官方失败: ${e}`);
     showCustomAlert(String(e), '切回官方失败', 'error');
   } finally {
+    hideSwitchProgress();
     setPlatformBusy('claude-code', false);
     renderPlatformDetailStatuses();
   }
@@ -2655,6 +2901,7 @@ async function applyClaudeCodeProviderConfig(providerId) {
   if (!ok) return;
 
   setPlatformBusy('claude-code', true);
+  showSwitchProgress('claude-code', '正在准备切换 Claude Code 配置…');
   try {
     const result = await invoke('switch_platform', { platform: 'claude-code', providerId });
     if (typeof loadProviders === 'function') await loadProviders();
@@ -2665,6 +2912,7 @@ async function applyClaudeCodeProviderConfig(providerId) {
     if (typeof addLog === 'function') addLog('err', `Claude Code 切换失败: ${e}`);
     showCustomAlert(String(e), '切换失败', 'error');
   } finally {
+    hideSwitchProgress();
     setPlatformBusy('claude-code', false);
     renderPlatformDetailStatuses();
   }
@@ -2688,16 +2936,26 @@ async function applyCodexProviderConfig(providerId) {
   if (!ok) return;
 
   setPlatformBusy('codex', true);
+  showSwitchProgress('codex', '正在准备切换 Codex 配置…');
   try {
     const result = await invoke('switch_platform', { platform: 'codex', providerId });
     if (typeof loadProviders === 'function') await loadProviders();
     await refreshPlatforms({ silent: true });
+    // 切换配置后重启 Codex 桌面版并注入自定义模型（CDP 解除 Statsig 白名单）
+    showSwitchProgress('codex', '正在重启 Codex 桌面版并注入自定义模型…');
+    try {
+      const restart = await invoke('restart_codex_desktop', { managed: true });
+      if (typeof addLog === 'function') addLog('ok', restart.message || 'Codex 桌面版已重启');
+    } catch (re) {
+      if (typeof addLog === 'function') addLog('warn', `Codex 桌面版自动重启未完成: ${re}`);
+    }
     if (typeof addLog === 'function') addLog('ok', result.message || 'Codex 配置已切换');
     showCustomAlert(result.message || 'Codex 配置已切换。', '切换完成', 'success');
   } catch (e) {
     if (typeof addLog === 'function') addLog('err', `Codex 切换失败: ${e}`);
     showCustomAlert(String(e), '切换失败', 'error');
   } finally {
+    hideSwitchProgress();
     setPlatformBusy('codex', false);
     renderPlatformDetailStatuses();
   }
@@ -2803,6 +3061,65 @@ function setPlatformBusy(platformId, busy) {
   if (select) select.disabled = busy;
 }
 
+// ═══════ 切换进度提示 ═══════
+
+let _switchProgressUnlisten = null;
+let _switchProgressPlatform = null;
+
+function showSwitchProgress(platformId, initialMessage) {
+  _switchProgressPlatform = platformId;
+  let toast = document.getElementById('switch-progress-toast');
+  if (!toast) {
+    toast = document.createElement('div');
+    toast.id = 'switch-progress-toast';
+    toast.className = 'switch-progress-toast';
+    toast.innerHTML = `
+      <div class="switch-progress-spinner"></div>
+      <div class="switch-progress-content">
+        <div class="switch-progress-title">正在切换配置…</div>
+        <div class="switch-progress-message"></div>
+      </div>
+    `;
+    document.body.appendChild(toast);
+  }
+  const msgEl = toast.querySelector('.switch-progress-message');
+  if (msgEl) msgEl.textContent = initialMessage || '正在处理…';
+  toast.classList.add('show');
+}
+
+function updateSwitchProgress(payload) {
+  if (!payload || !payload.platform) return;
+  if (_switchProgressPlatform && payload.platform !== _switchProgressPlatform) return;
+  const toast = document.getElementById('switch-progress-toast');
+  if (!toast) return;
+  const msgEl = toast.querySelector('.switch-progress-message');
+  if (msgEl) msgEl.textContent = payload.message || '正在处理…';
+  const titleEl = toast.querySelector('.switch-progress-title');
+  if (titleEl) {
+    if (payload.step === 'done') {
+      titleEl.textContent = '完成';
+    } else {
+      titleEl.textContent = '正在切换配置…';
+    }
+  }
+}
+
+function hideSwitchProgress() {
+  const toast = document.getElementById('switch-progress-toast');
+  if (toast) {
+    toast.classList.remove('show');
+    setTimeout(() => { toast.remove(); }, 300);
+  }
+  _switchProgressPlatform = null;
+}
+
+async function bindSwitchProgressListener() {
+  if (!tauriEvent?.listen || _switchProgressUnlisten) return;
+  _switchProgressUnlisten = await tauriEvent.listen('platform-switch-progress', (event) => {
+    updateSwitchProgress(event.payload || {});
+  });
+}
+
 async function applyPlatform(platformId) {
   const def = platformDef(platformId);
   const select = document.getElementById(`platform-${platformId}-select`);
@@ -2824,6 +3141,7 @@ async function applyPlatform(platformId) {
   if (!ok) return;
 
   setPlatformBusy(platformId, true);
+  showSwitchProgress(platformId, '正在准备切换…');
   try {
     const result = await invoke('switch_platform', { platform: platformId, providerId });
     if (typeof loadProviders === 'function') await loadProviders();
@@ -2834,6 +3152,7 @@ async function applyPlatform(platformId) {
     if (typeof addLog === 'function') addLog('err', `${def.name} 切换失败: ${e}`);
     showCustomAlert(String(e), '切换失败', 'error');
   } finally {
+    hideSwitchProgress();
     setPlatformBusy(platformId, false);
     if (platformId === 'codex' || platformId === 'opencode') renderPlatformDetailStatuses();
     else onPlatformProviderChange(platformId);
@@ -2845,7 +3164,7 @@ function codexApplyConfirmMessage(provider) {
   const from = info.currentProviderName || info.currentProviderId || '当前配置';
   const to = provider.name || provider.id || '目标配置';
   const model = provider.defaultModel || '默认模型';
-  return `将把 Codex 从「${from}」切换到配置「${to}」。\n\n模型：${model}\n写入 provider：byok\n\n切换后需要重启 Codex 才会生效。`;
+  return `将把 Codex 从「${from}」切换到配置「${to}」。\n\n模型：${model}\n写入 provider：byok\n\n切换后将自动重启 Codex 桌面版并注入自定义模型。`;
 }
 
 async function restoreCodexOfficialConfig() {
@@ -2853,21 +3172,31 @@ async function restoreCodexOfficialConfig() {
   const alreadyOfficial = !!(info.codexConfig && info.codexConfig.isOfficial);
   const message = alreadyOfficial
     ? 'Codex 当前已经是 OpenAI 官方配置。仍要清理 AnyBridge 的 byok 配置片段吗？'
-    : '将把 Codex 切回 OpenAI 官方配置。\n\n这会移除当前第三方 provider 指针和 AnyBridge 的 byok 配置，但不会修改 auth.json。切换后需要重启 Codex 才会生效。';
+    : '将把 Codex 切回 OpenAI 官方配置。\n\n这会移除当前第三方 provider 指针和 AnyBridge 的 byok 配置，但不会修改 auth.json。切换后将自动重启 Codex 桌面版（官方模式，清理注入）。';
   const ok = await showCustomConfirm(message, '切回官方配置', 'warn');
   if (!ok) return;
 
   setPlatformBusy('codex', true);
+  showSwitchProgress('codex', '正在准备切回官方配置…');
   try {
     const result = await invoke('restore_codex_official_config');
     if (typeof loadProviders === 'function') await loadProviders();
     await refreshPlatforms({ silent: true });
+    // 切回官方后重启 Codex 桌面版（普通模式，清理 CDP 注入）
+    showSwitchProgress('codex', '正在重启 Codex 桌面版（官方模式）…');
+    try {
+      const restart = await invoke('restart_codex_desktop', { managed: false });
+      if (typeof addLog === 'function') addLog('ok', restart.message || 'Codex 桌面版已重启');
+    } catch (re) {
+      if (typeof addLog === 'function') addLog('warn', `Codex 桌面版自动重启未完成: ${re}`);
+    }
     if (typeof addLog === 'function') addLog('ok', result.message || 'Codex 已切回官方配置');
     showCustomAlert(result.message || 'Codex 已切回官方配置。', '切换完成', 'success');
   } catch (e) {
     if (typeof addLog === 'function') addLog('err', `Codex 切回官方失败: ${e}`);
     showCustomAlert(String(e), '切回官方失败', 'error');
   } finally {
+    hideSwitchProgress();
     setPlatformBusy('codex', false);
     renderPlatformDetailStatuses();
   }
@@ -2883,6 +3212,7 @@ async function restorePlatform(platformId) {
   if (!ok) return;
 
   setPlatformBusy(platformId, true);
+  showSwitchProgress(platformId, '正在准备还原配置…');
   try {
     const restored = await invoke('restore_platform', { platform: platformId });
     if (typeof loadProviders === 'function') await loadProviders();
@@ -2894,6 +3224,7 @@ async function restorePlatform(platformId) {
     if (typeof addLog === 'function') addLog('err', `${def.name} 还原失败: ${e}`);
     showCustomAlert(String(e), '还原失败', 'error');
   } finally {
+    hideSwitchProgress();
     setPlatformBusy(platformId, false);
     if (platformId === 'codex' || platformId === 'opencode') renderPlatformDetailStatuses();
     else onPlatformProviderChange(platformId);

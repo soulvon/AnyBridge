@@ -430,6 +430,9 @@ pub fn import_providers(
             capabilities: normalize_caps(candidate.capabilities),
             model_caps: candidate.model_caps,
             unlocks: Default::default(),
+            wire_api: String::new(),
+            model_catalog: Vec::new(),
+            codex_chat_reasoning: None,
         };
         store.providers.push(provider);
         imported += 1;

@@ -19,11 +19,12 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
+use tauri::{AppHandle, Emitter};
 use toml_edit::{value, DocumentMut, Item, Table};
 
 use super::config::{
-    read_provider_store, write_provider_store, ClaudeCodeConfig, OpenCodeConfig, PlatformState,
-    Provider, ProviderStore,
+    read_provider_store, write_provider_store, ClaudeCodeConfig, ModelCatalogEntry, OpenCodeConfig,
+    PlatformState, Provider, ProviderStore,
 };
 
 const PLATFORM_CLAUDE_CODE: &str = "claude-code";
@@ -34,6 +35,26 @@ const PLATFORM_WORKBUDDY: &str = "workbuddy";
 const PLATFORM_ZCODE: &str = "zcode";
 const ABSENT_BACKUP_SENTINEL: &[u8] = b"__IDE_BYOK_ORIGINAL_FILE_ABSENT__\n";
 const ZCODE_PROVIDER_ID: &str = "AnyBridge";
+
+// ─── 切换进度事件 ──────────────────────────────────────────────
+
+#[derive(Clone, Serialize)]
+struct SwitchProgressPayload {
+    platform: String,
+    step: String,
+    message: String,
+}
+
+fn emit_switch_progress(app: &AppHandle, platform: &str, step: &str, message: &str) {
+    let _ = app.emit(
+        "platform-switch-progress",
+        SwitchProgressPayload {
+            platform: platform.to_string(),
+            step: step.to_string(),
+            message: message.to_string(),
+        },
+    );
+}
 
 // ─── 返回给前端的结构 ──────────────────────────────────────────
 
@@ -308,12 +329,21 @@ impl Platform {
                 serde_json::to_string_pretty(&preview).map_err(|e| e.to_string())
             }
             Platform::Codex => {
-                let base = codex_base_url(p);
+                let base = codex_base_url();
                 let model = toml_escape(p.default_model.trim());
-                let masked = mask_key(&p.api_key);
+                // preview 显示本地代理 key（与写入一致），不显示 provider 真 key
+                let bearer_for_preview = codex_bearer_token().unwrap_or_default();
+                let masked = mask_key(&bearer_for_preview);
                 let name = toml_escape(&p.name);
+                // wire_api 始终为 "responses"：Codex 始终用 Responses API 与本地代理通信，
+                // 由代理根据 provider 的 wireApi 配置决定是否转换为 Chat Completions。
+                let catalog_line = if !p.model_catalog.is_empty() {
+                    format!("\nmodel_catalog_json = \"{CODEX_MODEL_CATALOG_FILENAME}\"")
+                } else {
+                    String::new()
+                };
                 Ok(format!(
-                    "model = \"{model}\"\nmodel_provider = \"byok\"\n\n[model_providers.byok]\nname = \"{name}\"\nbase_url = \"{base}\"\nwire_api = \"responses\"\nrequires_openai_auth = true\nexperimental_bearer_token = \"{masked}\""
+                    "model = \"{model}\"\nmodel_provider = \"byok\"{catalog_line}\n\n[model_providers.byok]\nname = \"{name}\"\nbase_url = \"{base}\"\nwire_api = \"responses\"\nrequires_openai_auth = true\nexperimental_bearer_token = \"{masked}\""
                 ))
             }
             Platform::CodeBuddy => {
@@ -453,7 +483,8 @@ impl Platform {
             .parse::<DocumentMut>()
             .map_err(|e| format!("config.toml 解析失败: {e}"))?;
 
-        let base = codex_base_url(p);
+        let base = codex_base_url();
+        let bearer = codex_bearer_token()?;
         let model = p.default_model.trim();
 
         if !model.is_empty() {
@@ -477,9 +508,26 @@ impl Platform {
             .ok_or_else(|| "config.toml 的 model_providers.byok 不是表".to_string())?;
         byok["name"] = value(p.name.clone());
         byok["base_url"] = value(base);
+        // wire_api 始终为 "responses"：Codex 始终用 Responses API 与本地代理通信，
+        // 由代理根据 provider 的 wireApi 配置决定是否转换为 Chat Completions。
         byok["wire_api"] = value("responses");
         byok["requires_openai_auth"] = value(true);
-        byok["experimental_bearer_token"] = value(p.api_key.clone());
+        // bearer_token 写任何bridge 本地代理 key（不是 provider 真 key）—— 代理鉴权后查路由表转发。
+        // 真实 provider api_key 永远留在 proxy-routes.json 里。
+        byok["experimental_bearer_token"] = value(bearer);
+
+        // ── 模型目录：让 Codex 显示自定义模型列表 ──
+        if !p.model_catalog.is_empty() {
+            let catalog_json = generate_model_catalog_json(&p.model_catalog)?;
+            let catalog_dir = path.parent().unwrap_or_else(|| Path::new("."));
+            let catalog_path = catalog_dir.join(CODEX_MODEL_CATALOG_FILENAME);
+            super::write_atomic(&catalog_path, catalog_json.as_bytes())?;
+            doc["model_catalog_json"] = value(CODEX_MODEL_CATALOG_FILENAME);
+        } else {
+            doc.as_table_mut().remove("model_catalog_json");
+            let catalog_dir = path.parent().unwrap_or_else(|| Path::new("."));
+            let _ = fs::remove_file(catalog_dir.join(CODEX_MODEL_CATALOG_FILENAME));
+        }
 
         super::write_atomic(path, doc.to_string().as_bytes())
     }
@@ -498,6 +546,11 @@ impl Platform {
         // Keep common settings, but remove the active third-party pointer.
         doc.as_table_mut().remove("model");
         doc.as_table_mut().remove("model_provider");
+        doc.as_table_mut().remove("model_catalog_json");
+
+        // 删除可能存在的模型目录文件
+        let catalog_dir = path.parent().unwrap_or_else(|| Path::new("."));
+        let _ = fs::remove_file(catalog_dir.join(CODEX_MODEL_CATALOG_FILENAME));
 
         let providers_empty = doc["model_providers"]
             .as_table_mut()
@@ -822,17 +875,99 @@ fn claude_base_url(p: &Provider) -> String {
     )
 }
 
-/// Codex 的 base_url：OpenAI 风格，需要以 /v1 结尾。
-fn codex_base_url(p: &Provider) -> String {
-    let base = strip_first_matching_suffix(
-        &provider_endpoint_url(p),
-        &["/chat/completions", "/responses"],
-    );
-    if base.to_ascii_lowercase().ends_with("/v1") {
-        base
-    } else {
-        format!("{base}/v1")
-    }
+/// Codex config.toml 里的 base_url：永远指向本地 anybridge 代理（不写上游 URL）。
+///
+/// 关键设计决策：Codex 客户端只与 anybridge 代理通信，**绝不直连 provider 上游**。
+/// 原因：
+///   1. 真实 provider 上游 URL + apiKey 存到 `proxy-routes.json`（由 7450 代理查表），
+///      避免上游 key 暴露给 Codex 客户端。
+///   2. 代理负责 Chat↔Responses 格式转换、retry、token 统计、错误归一。
+///   3. 任何 supplier 走代理，统一可观测（统计、debug）。
+///
+/// provider 的 `apiHost` 不再用作 Codex 直连 URL——它只用作"由 7450 代理 + proxy-routes.json 转发"的上游目标。
+fn codex_base_url() -> String {
+    use crate::commands::config::configured_proxy_ports;
+    let port = configured_proxy_ports().api_port;
+    format!("http://127.0.0.1:{port}/v1")
+}
+
+/// Codex config.toml 里的 bearer_token：永远写 anybridge 本地代理 key（不是 provider.apiKey）。
+///
+/// 代理收到请求后用 `validateAuth` 验证该 token（与 byok-config.json 的 LOCAL_PROXY_KEY 比对），
+/// 通过后由 7450 代理查 proxy-routes.json 找到真实 provider + 上游 apiKey 转发。
+/// **provider 的真 apiKey 永远不会出现在 config.toml 里**。
+fn codex_bearer_token() -> Result<String, String> {
+    crate::commands::config::read_config_value("LOCAL_PROXY_KEY")
+        .filter(|s| !s.is_empty())
+        .ok_or_else(|| {
+            "byok-config.json 的 LOCAL_PROXY_KEY 尚未生成。\n\
+             请启动 AnyBridge 触发一次代理页（首次启动会自动生成 LOCAL_PROXY_KEY），然后重试。"
+                .to_string()
+        })
+}
+
+/// 模型目录文件名
+const CODEX_MODEL_CATALOG_FILENAME: &str = "anybridge-model-catalog.json";
+
+/// 读取 `~/.codex/models_cache.json` 的第一个模型条目作为 deep-clone 模板。
+///
+/// Codex CLI 对模型目录做严格 schema 校验（30+ 字段：base_instructions、
+/// model_messages、supports_reasoning_summaries、comp_hash、input_modalities…），
+/// 任何缺字段都会导致 `codex exec` 启动时报 "missing field `xxx`"。
+///
+/// 治本方案：直接复用官方 gpt-5.5 条目作为模板，避免手写 schema 错漏。
+/// models_cache.json 由 Codex 首次运行时自动生成，读取它不需要启动 Codex。
+pub(crate) fn read_codex_model_template() -> Option<serde_json::Value> {
+    let path = dirs::home_dir()?.join(".codex").join("models_cache.json");
+    let raw = std::fs::read_to_string(&path).ok()?;
+    let parsed: serde_json::Value = serde_json::from_str(&raw).ok()?;
+    parsed.get("models")?.as_array()?.first().cloned()
+}
+
+/// 生成 Codex 模型目录 JSON 内容。
+///
+/// 从 `~/.codex/models_cache.json` 读取官方 gpt-5.5 完整条目作为模板，
+/// 对每个自定义模型做 deep-clone 后**只覆盖** 6 个字段：
+///   slug, display_name, description, context_window, max_context_window, priority
+/// 其它 26 个字段（base_instructions / model_messages / comp_hash / input_modalities 等）
+/// 全部从官方模板继承，保证 Codex CLI 严格校验通过。
+///
+/// 返回 Err 让上层（apply_codex → UI）显示明确错误：
+/// 失败时**不静默退化**（debug-first 原则），用户能立即看到"models_cache.json 不可读"。
+fn generate_model_catalog_json(entries: &[ModelCatalogEntry]) -> Result<String, String> {
+    let template = read_codex_model_template().ok_or_else(|| {
+        "无法读取 ~/.codex/models_cache.json（Codex 官方模型缓存）。\n\
+         请先启动一次 Codex CLI 让其生成此文件，然后重新切换供应商。\n\
+         路径: ~/.codex/models_cache.json"
+            .to_string()
+    })?;
+
+    let models: Vec<serde_json::Value> = entries
+        .iter()
+        .enumerate()
+        .map(|(i, e)| {
+            let mut obj = template.clone();
+            let display_name = e.display_name.as_deref().unwrap_or(e.model.as_str());
+            let ctx = e.context_window.unwrap_or(
+                obj.get("context_window")
+                    .and_then(|v| v.as_u64())
+                    .unwrap_or(128000),
+            );
+            // 只覆盖这 6 个字段，其余 26+ 字段（base_instructions / model_messages /
+            // comp_hash / input_modalities / supports_search_tool 等）从官方模板继承。
+            obj["slug"] = serde_json::json!(e.model);
+            obj["display_name"] = serde_json::json!(display_name);
+            obj["description"] = serde_json::json!(display_name);
+            obj["context_window"] = serde_json::json!(ctx);
+            obj["max_context_window"] = serde_json::json!(ctx);
+            obj["priority"] = serde_json::json!(1000 + i);
+            obj
+        })
+        .collect();
+
+    let catalog = serde_json::json!({ "models": models });
+    serde_json::to_string_pretty(&catalog)
+        .map_err(|e| format!("catalog 序列化失败: {e}"))
 }
 
 fn toml_item_string(item: &Item) -> Option<String> {
@@ -2121,8 +2256,13 @@ pub fn preview_platform_switch(platform: String, provider_id: String) -> Result<
 
 /// 切换平台供应商：备份 + 写入配置文件，并记录到 providerStore.platforms。
 #[tauri::command]
-pub fn switch_platform(platform: String, provider_id: String) -> Result<SwitchResult, String> {
+pub fn switch_platform(
+    app: AppHandle,
+    platform: String,
+    provider_id: String,
+) -> Result<SwitchResult, String> {
     let plat = Platform::from_id(&platform).ok_or_else(|| format!("未知平台: {platform}"))?;
+    emit_switch_progress(&app, plat.id(), "reading", "正在读取供应商配置…");
     let mut store = read_provider_store()?;
 
     if matches!(plat, Platform::ClaudeCode) {
@@ -2135,14 +2275,17 @@ pub fn switch_platform(platform: String, provider_id: String) -> Result<SwitchRe
         let path = plat
             .config_path()
             .ok_or_else(|| "无法定位用户主目录".to_string())?;
+        emit_switch_progress(&app, plat.id(), "backup", "正在备份原配置文件…");
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent).map_err(|e| format!("创建配置目录失败: {e}"))?;
         }
         ensure_backup(&path)?;
+        emit_switch_progress(&app, plat.id(), "writing", "正在写入 Claude Code 配置…");
         apply_claude_config_file(&path, &config)?;
 
         let config_path = path.to_string_lossy().to_string();
         let backup = backup_path(&path).to_string_lossy().to_string();
+        emit_switch_progress(&app, plat.id(), "saving", "正在保存接管状态…");
         store.platforms.insert(
             plat.id().to_string(),
             PlatformState {
@@ -2151,6 +2294,7 @@ pub fn switch_platform(platform: String, provider_id: String) -> Result<SwitchRe
             },
         );
         write_provider_store(&store)?;
+        emit_switch_progress(&app, plat.id(), "done", "切换完成");
 
         return Ok(SwitchResult {
             ok: true,
@@ -2173,14 +2317,17 @@ pub fn switch_platform(platform: String, provider_id: String) -> Result<SwitchRe
         let path = plat
             .config_path()
             .ok_or_else(|| "无法定位用户主目录".to_string())?;
+        emit_switch_progress(&app, plat.id(), "backup", "正在备份原配置文件…");
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent).map_err(|e| format!("创建配置目录失败: {e}"))?;
         }
         ensure_backup(&path)?;
+        emit_switch_progress(&app, plat.id(), "writing", "正在写入 OpenCode 配置…");
         apply_opencode_config_file(&path, &config)?;
 
         let config_path = path.to_string_lossy().to_string();
         let backup = backup_path(&path).to_string_lossy().to_string();
+        emit_switch_progress(&app, plat.id(), "done", "加入完成");
 
         return Ok(SwitchResult {
             ok: true,
@@ -2193,13 +2340,16 @@ pub fn switch_platform(platform: String, provider_id: String) -> Result<SwitchRe
         });
     }
 
+    emit_switch_progress(&app, plat.id(), "resolving", "正在解析供应商信息…");
     let provider = resolve_platform_config(&plat, &store, &provider_id)?;
 
+    emit_switch_progress(&app, plat.id(), "backup", "正在备份原配置文件…");
     let path = plat.apply(&provider)?;
     let config_path = path.to_string_lossy().to_string();
     let backup = backup_path(&path).to_string_lossy().to_string();
 
     if !matches!(plat, Platform::OpenCode) {
+        emit_switch_progress(&app, plat.id(), "saving", "正在保存接管状态…");
         store.platforms.insert(
             plat.id().to_string(),
             PlatformState {
@@ -2227,6 +2377,7 @@ pub fn switch_platform(platform: String, provider_id: String) -> Result<SwitchRe
         message.push_str(&repair_codex_session_visibility_message(&path));
     }
 
+    emit_switch_progress(&app, plat.id(), "done", "切换完成");
     Ok(SwitchResult {
         ok: true,
         message,
@@ -2274,23 +2425,27 @@ pub fn remove_opencode_config_from_live(provider_id: String) -> Result<SwitchRes
 
 /// 从备份还原平台配置（回到 AnyBridge 接管前的状态），并清除接管记录。
 #[tauri::command]
-pub fn restore_platform(platform: String) -> Result<bool, String> {
+pub fn restore_platform(app: AppHandle, platform: String) -> Result<bool, String> {
     let plat = Platform::from_id(&platform).ok_or_else(|| format!("未知平台: {platform}"))?;
+    emit_switch_progress(&app, plat.id(), "backup", "正在从备份还原配置…");
     let restored = plat.restore()?;
 
+    emit_switch_progress(&app, plat.id(), "saving", "正在清除接管记录…");
     // 无论是否有备份，都清除接管记录（接管状态以备份为准）。
     if let Ok(mut store) = read_provider_store() {
         if store.platforms.remove(plat.id()).is_some() {
             let _ = write_provider_store(&store);
         }
     }
+    emit_switch_progress(&app, plat.id(), "done", "还原完成");
     Ok(restored)
 }
 
 /// 切回 Claude Code 官方环境：清理 AnyBridge 写入的 ANTHROPIC_* env 字段，保留其他设置。
 #[tauri::command]
-pub fn restore_claude_official_config() -> Result<SwitchResult, String> {
+pub fn restore_claude_official_config(app: AppHandle) -> Result<SwitchResult, String> {
     let plat = Platform::ClaudeCode;
+    emit_switch_progress(&app, plat.id(), "backup", "正在备份当前配置…");
     let path = plat
         .config_path()
         .ok_or_else(|| "无法定位用户主目录".to_string())?;
@@ -2300,8 +2455,10 @@ pub fn restore_claude_official_config() -> Result<SwitchResult, String> {
     if path.exists() {
         ensure_backup(&path)?;
     }
+    emit_switch_progress(&app, plat.id(), "writing", "正在写入官方配置…");
     plat.apply_claude_official(&path)?;
 
+    emit_switch_progress(&app, plat.id(), "saving", "正在清除接管记录…");
     if let Ok(mut store) = read_provider_store() {
         if store.platforms.remove(plat.id()).is_some() {
             let _ = write_provider_store(&store);
@@ -2310,6 +2467,7 @@ pub fn restore_claude_official_config() -> Result<SwitchResult, String> {
 
     let config_path = path.to_string_lossy().to_string();
     let backup = backup_path(&path).to_string_lossy().to_string();
+    emit_switch_progress(&app, plat.id(), "done", "已切回官方配置");
     Ok(SwitchResult {
         ok: true,
         message: "已切回 Claude Code 官方配置，重启 Claude Code 后生效".to_string(),
@@ -2320,8 +2478,9 @@ pub fn restore_claude_official_config() -> Result<SwitchResult, String> {
 
 /// 切回 Codex 官方 OpenAI 配置：不依赖 .byok-bak，不修改 auth.json。
 #[tauri::command]
-pub fn restore_codex_official_config() -> Result<SwitchResult, String> {
+pub fn restore_codex_official_config(app: AppHandle) -> Result<SwitchResult, String> {
     let plat = Platform::Codex;
+    emit_switch_progress(&app, plat.id(), "backup", "正在备份当前配置…");
     let path = plat
         .config_path()
         .ok_or_else(|| "无法定位用户主目录".to_string())?;
@@ -2329,8 +2488,10 @@ pub fn restore_codex_official_config() -> Result<SwitchResult, String> {
         fs::create_dir_all(parent).map_err(|e| format!("创建配置目录失败: {e}"))?;
     }
     ensure_backup(&path)?;
+    emit_switch_progress(&app, plat.id(), "writing", "正在写入官方配置…");
     plat.apply_codex_official(&path)?;
 
+    emit_switch_progress(&app, plat.id(), "saving", "正在清除接管记录…");
     if let Ok(mut store) = read_provider_store() {
         if store.platforms.remove(plat.id()).is_some() {
             let _ = write_provider_store(&store);
@@ -2341,6 +2502,7 @@ pub fn restore_codex_official_config() -> Result<SwitchResult, String> {
     let backup = backup_path(&path).to_string_lossy().to_string();
     let mut message = "已切回 Codex 官方 OpenAI 配置，重启 Codex 后生效".to_string();
     message.push_str(&repair_codex_session_visibility_message(&path));
+    emit_switch_progress(&app, plat.id(), "done", "已切回官方配置");
     Ok(SwitchResult {
         ok: true,
         message,
@@ -2604,6 +2766,10 @@ mod tests {
                 gzip: false,
             },
             model_caps: HashMap::new(),
+            unlocks: ProviderUnlocks::default(),
+            wire_api: String::new(),
+            model_catalog: Vec::new(),
+            codex_chat_reasoning: None,
         }
     }
 

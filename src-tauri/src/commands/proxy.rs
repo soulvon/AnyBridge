@@ -138,9 +138,9 @@ pub struct ProxyStatus {
 }
 
 #[derive(Serialize, Clone)]
-struct LogLine {
-    level: String,
-    msg: String,
+pub struct LogLine {
+    pub level: String,
+    pub msg: String,
 }
 
 #[derive(Serialize, Clone)]
@@ -1452,22 +1452,45 @@ pub fn start_proxy_impl(
         }
     }
 
-    // 解析 sidecar 路径
-    let sidecar_path = match resolve_sidecar_path() {
-        Ok(p) => p,
-        Err(e) => {
-            clear_starting();
-            return Err(e);
+    // 解析 sidecar 启动方式
+    // dev 模式 (debug_assertions): 直接 node 跑源码 sidecar,改 js 立即生效,免去每次打包 exe
+    // release 模式: spawn pkg 打包的 anybridge-proxy.exe
+    let mut cmd = {
+        #[cfg(debug_assertions)]
+        {
+            let manifest_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+            let sidecar_dir = manifest_dir.parent().unwrap().join("sidecar");
+            if !sidecar_dir.join("proxy-entry.js").exists() {
+                clear_starting();
+                return Err(format!(
+                    "dev 模式找不到 sidecar 源码: {}",
+                    sidecar_dir.display()
+                ));
+            }
+            let mut c = std::process::Command::new("node");
+            c.current_dir(&sidecar_dir);
+            c.arg("proxy-entry.js");
+            // Windows: 设置进程创建标志，阻止 CMD 窗口弹出
+            #[cfg(target_os = "windows")]
+            c.creation_flags(DETACHED_PROCESS | CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP);
+            c
+        }
+        #[cfg(not(debug_assertions))]
+        {
+            let sidecar_path = match resolve_sidecar_path() {
+                Ok(p) => p,
+                Err(e) => {
+                    clear_starting();
+                    return Err(e);
+                }
+            };
+            let mut c = std::process::Command::new(&sidecar_path);
+            // Windows: 设置进程创建标志，阻止 CMD 窗口弹出
+            #[cfg(target_os = "windows")]
+            c.creation_flags(DETACHED_PROCESS | CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP);
+            c
         }
     };
-
-    let mut cmd = std::process::Command::new(&sidecar_path);
-
-    // Windows: 设置进程创建标志，阻止 CMD 窗口弹出
-    #[cfg(target_os = "windows")]
-    {
-        cmd.creation_flags(DETACHED_PROCESS | CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP);
-    }
 
     cmd.env("BYOK_CONFIG_DIR", config_dir.to_string_lossy().to_string());
     cmd.env("API_PORT", ports.api_port.to_string());
@@ -1742,19 +1765,41 @@ pub fn start_proxy_service_impl(app: AppHandle) -> Result<bool, String> {
 
     kill_sidecar_process();
 
-    let sidecar_path = match resolve_sidecar_path() {
-        Ok(p) => p,
-        Err(e) => {
-            clear_starting();
-            return Err(e);
+    // 解析 sidecar 启动方式(dev 模式跑源码 node,release 模式跑 pkg exe)
+    let mut cmd = {
+        #[cfg(debug_assertions)]
+        {
+            let manifest_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+            let sidecar_dir = manifest_dir.parent().unwrap().join("sidecar");
+            if !sidecar_dir.join("proxy-entry.js").exists() {
+                clear_starting();
+                return Err(format!(
+                    "dev 模式找不到 sidecar 源码: {}",
+                    sidecar_dir.display()
+                ));
+            }
+            let mut c = std::process::Command::new("node");
+            c.current_dir(&sidecar_dir);
+            c.arg("proxy-entry.js");
+            #[cfg(target_os = "windows")]
+            c.creation_flags(DETACHED_PROCESS | CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP);
+            c
+        }
+        #[cfg(not(debug_assertions))]
+        {
+            let sidecar_path = match resolve_sidecar_path() {
+                Ok(p) => p,
+                Err(e) => {
+                    clear_starting();
+                    return Err(e);
+                }
+            };
+            let mut c = std::process::Command::new(&sidecar_path);
+            #[cfg(target_os = "windows")]
+            c.creation_flags(DETACHED_PROCESS | CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP);
+            c
         }
     };
-
-    let mut cmd = std::process::Command::new(&sidecar_path);
-    #[cfg(target_os = "windows")]
-    {
-        cmd.creation_flags(DETACHED_PROCESS | CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP);
-    }
 
     cmd.env("BYOK_CONFIG_DIR", config_dir.to_string_lossy().to_string());
     cmd.env("API_PORT", ports.api_port.to_string());
@@ -2101,6 +2146,44 @@ pub fn kill_sidecar_process() {
                 }
                 Err(e) => {
                     eprintln!("[cleanup] taskkill 执行失败: {}", e);
+                }
+            }
+        }
+        // dev 模式:额外清理跑 sidecar/proxy-entry.js 的 node 进程
+        // (release 模式这步是多余的,因为 node 进程由 exe 启动,exe 退出时 node 也会退出)
+        #[cfg(debug_assertions)]
+        {
+            let out = std::process::Command::new("wmic")
+                .args([
+                    "process",
+                    "where",
+                    "name='node.exe'",
+                    "get",
+                    "CommandLine,ProcessId",
+                    "/format:csv",
+                ])
+                .creation_flags(CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP)
+                .output();
+            if let Ok(o) = out {
+                if o.status.success() {
+                    let text = String::from_utf8_lossy(&o.stdout);
+                    for line in text.lines() {
+                        // CommandLine 含 "proxy-entry.js" 或 "sidecar\\" 的是 dev sidecar
+                        if line.contains("proxy-entry.js")
+                            || line.contains("sidecar\\hybrid-server.js")
+                        {
+                            // 提 ProcessId (CSV 第二列,索引 1)
+                            if let Some(pid_str) = line.split(',').nth(1) {
+                                if let Ok(pid) = pid_str.trim().parse::<u32>() {
+                                    let _ = std::process::Command::new("taskkill")
+                                        .args(["/F", "/T", "/PID", &pid.to_string()])
+                                        .creation_flags(CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP)
+                                        .output();
+                                    eprintln!("[cleanup] 已清理 dev 模式 sidecar node 进程: PID {}", pid);
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }

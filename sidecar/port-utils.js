@@ -29,7 +29,14 @@ function getWindowsCommandLine(pid) {
 
 function commandLooksLikeThisApp(commandLine) {
   const normalized = String(commandLine || '').replace(/\\/g, '/').toLowerCase();
-  return SAFE_NODE_SCRIPTS.some(script => normalized.includes(script));
+  // dev 模式跑源码 sidecar 时命令行是裸文件名 (node proxy-entry.js)，
+  // 不带 /sidecar/ 前缀。所以同时匹配全路径和裸文件名。
+  return SAFE_NODE_SCRIPTS.some((script) => {
+    if (normalized.includes(script)) return true;
+    // 裸文件名: /sidecar/proxy-entry.js → proxy-entry.js
+    const basename = script.split('/').pop();
+    return basename && normalized.includes(basename);
+  });
 }
 
 function isSafeToKill(pid) {
