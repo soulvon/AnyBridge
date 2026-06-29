@@ -117,6 +117,14 @@ def run(cmd, cwd=None):
         raise RuntimeError(f"Command failed: {cmd}")
     return r
 
+def local_bin(name):
+    """返回 sidecar/node_modules/.bin 下的本地工具路径（Windows 加 .cmd）"""
+    ext = ".cmd" if os.name == "nt" else ""
+    p = os.path.join(SIDECAR_DIR, "node_modules", ".bin", name + ext)
+    if not os.path.exists(p):
+        raise FileNotFoundError(f"local bin not found: {p}")
+    return p
+
 def clean():
     if os.path.exists(BUILD_DIR):
         shutil.rmtree(BUILD_DIR)
@@ -140,7 +148,10 @@ def copy_source():
             shutil.copy2(src, dst)
 
 def bytenode_compile():
-    """将 JS 编译成 V8 bytecode (.jsc)，删除原始 .js"""
+    """先经 esbuild 把 ESM 转为 CJS，再编译为 V8 bytecode (.jsc)，删除原始 .js。
+
+    bytenode 1.5.x 通过 vm.Script 编译，依赖 CommonJS 语法；sidecar 源码是
+    "type":"module" 的 ESM，因此必须先用 esbuild 转 CJS。"""
     # 需要编译的入口和模块文件
     entries = ["hybrid-server.js", "inference-proxy.js", "proxy-entry.js"]
     modules = [
@@ -157,13 +168,44 @@ def bytenode_compile():
             all_js.append(p)
     all_js.extend(handlers)
 
+    esbuild_bin = local_bin("esbuild")
+    bytenode_bin = local_bin("bytenode")
+
     for src in all_js:
-        jsc_path = src.replace('.js', '.jsc')
-        run(f'npx bytenode --compile "{src}" -o "{jsc_path}"')
+        # 1. esbuild ESM -> CJS（写到临时文件，避免污染原文件再失败回滚）
+        cjs_tmp = src[:-3] + ".cjs.tmp.js"
+        run(f'"{esbuild_bin}" --log-level=error --format=cjs --platform=node --target=node18 "{src}" --outfile="{cjs_tmp}"')
+        # 2. bytenode-compile the CJS
+        jsc_path = src[:-3] + ".jsc"
+        run(f'"{bytenode_bin}" --compile "{cjs_tmp}" -o "{jsc_path}"')
         rel = os.path.relpath(src, JSC_DIR)
         print(f"[jsc] {rel} -> .jsc")
-        # 编译成功后删除原始 .js
+        # 3. clean up
         os.remove(src)
+        os.remove(cjs_tmp)
+
+
+def transform_remaining_to_cjs():
+    """将构建目录里剩下的 .js 源文件（未被 bytenode 编译的、loader、test 之外）经
+    esbuild 转成 CJS，让运行时统一为 CJS。"""
+    esbuild_bin = local_bin("esbuild")
+    skip_suffixes = (".test.js", ".cjs.tmp.js")
+    skip_dirs_prefix = ("node_modules",)
+
+    for root, dirs, files in os.walk(JSC_DIR):
+        rel_root = os.path.relpath(root, JSC_DIR)
+        first = rel_root.split(os.sep)[0] if rel_root != "." else ""
+        if first in skip_dirs_prefix:
+            dirs[:] = []
+            continue
+        for name in files:
+            if not name.endswith(".js") or name.endswith(skip_suffixes):
+                continue
+            src = os.path.join(root, name)
+            tmp_out = src + ".cjs.tmp"
+            run(f'"{esbuild_bin}" --log-level=error --format=cjs --platform=node --target=node18 "{src}" --outfile="{tmp_out}"')
+            shutil.move(tmp_out, src)
+            print(f"[cjs] {os.path.relpath(src, JSC_DIR)}")
 
 def create_loader():
     """创建自定义 loader：加载 .jsc 字节码"""
@@ -197,50 +239,42 @@ def pkg_bundle(os_name, arch):
     tauri_triple = get_tauri_triple(os_name, arch)
     sidecar_filename = get_sidecar_filename(os_name, tauri_triple)
 
-    # 修改 package.json 指向 loader
+    # 修改 package.json 指向 loader，并覆盖 sidecar 源码的 "type": "module"
+    # 让运行时（loader + .jsc + 残留 .js）统一为 CJS。
     pkg_json = os.path.join(JSC_DIR, "package.json")
     with open(pkg_json, "r", encoding="utf-8") as f:
         pkg = json.load(f)
     pkg["bin"] = "__loader.js"
+    pkg["type"] = "commonjs"
     pkg["pkg"] = {
         "assets": [
             "**/*.jsc",
-            "config-cache.js",
-            "cursor-proxy.js",
-            "local-proxy.js",
-            "retry.js",
-            "system-proxy.js",
-            "vision-fallback.js",
-            "windsurf-catalog.json",
-            "windsurf-catalog.js",
-            "lib/**/*.js",
+            "**/*.js",
+            "**/*.json",
             "node_modules/bytenode/**/*",
             "prompts/**/*",
-            "certs/**/*",
-            "handlers/**/*.jsc"
+            "certs/**/*"
         ],
         "targets": [pkg_target]
     }
     with open(pkg_json, "w", encoding="utf-8") as f:
         json.dump(pkg, f, indent=2)
 
-    run(f'npx pkg "{JSC_DIR}" --out-path "{OUT_DIR}"', cwd=JSC_DIR)
+    # 直接调用本地 @yao-pkg/pkg，避免 npx 在 JSC_DIR 找不到本地 pkg
+    # 跑去 npm registry 拉过时的 pkg@5.x。@yao-pkg/pkg v6.20 中 --output 与
+    # --out-path 互斥，所以 --output 传完整路径。原脚本从 bin 字段取名是错的
+    # —— @yao-pkg/pkg 默认用 name 字段产出 anybridge-sidecar.exe。
+    pkg_bin = local_bin("pkg")
+    pkg_output_full = os.path.join(OUT_DIR, sidecar_filename)
+    run(f'"{pkg_bin}" "{JSC_DIR}" --output "{pkg_output_full}"', cwd=SIDECAR_DIR)
 
-    # 重命名为 Tauri 期望的名称
-    if os_name == "windows":
-        old_name = "__loader.exe"
-    else:
-        old_name = "__loader"
-
-    old = os.path.join(OUT_DIR, old_name)
-    new = os.path.join(OUT_DIR, sidecar_filename)
-    if os.path.exists(old):
-        shutil.move(old, new)
+    # 验证输出并加可执行位 (非 Windows)
+    if os.path.exists(pkg_output_full):
         if os_name != "windows":
-            os.chmod(new, 0o755)
-        print(f"[out] {new}")
+            os.chmod(pkg_output_full, 0o755)
+        print(f"[out] {pkg_output_full}")
     else:
-        print(f"[warn] pkg output not found: {old}")
+        print(f"[warn] pkg output not found: {pkg_output_full}")
         for f in os.listdir(OUT_DIR):
             print(f"  found: {f}")
 
@@ -266,6 +300,7 @@ def main():
     clean()
     copy_source()
     bytenode_compile()
+    transform_remaining_to_cjs()
     create_loader()
     pkg_bundle(os_name, arch)
     print("\n[done] Protected sidecar built successfully.")

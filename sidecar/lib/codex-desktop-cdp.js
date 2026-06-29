@@ -28,7 +28,16 @@ import { buildInjectionScript } from './codex-desktop-inject.js';
 
 // WebSocket: 优先 Node 22+ 全局 WebSocket（release pkg exe 内置）；
 // 回退 ws 包（dev 模式 node 20 无全局 WebSocket，typeof 检查避免 ReferenceError）。
-const WSImpl = typeof WebSocket === 'function' ? WebSocket : (await import('ws')).default;
+// 用 IIFE 包住以避免 top-level await —— 保护构建经 esbuild 走 CJS 时不支持顶层 await，
+// 行为等价：两个都没有时立即抛错。
+const WSImpl = (() => {
+  if (typeof WebSocket === 'function') return WebSocket;
+  try {
+    return require('ws').default || require('ws');
+  } catch (e) {
+    throw new Error(`WebSocket not available: ${e.message}. Use Node 22+ or install ws.`);
+  }
+})();
 const CDP_TIMEOUT_MS = 8000;
 
 /**
