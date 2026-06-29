@@ -225,6 +225,12 @@ pub struct Provider {
     /// Codex 专有：wire_api 模式 ("responses" 或 "chat")
     #[serde(rename = "wireApi", default, skip_serializing_if = "String::is_empty")]
     pub wire_api: String,
+    /// Codex 专有：是否走本地代理（默认 true）
+    #[serde(rename = "routeThroughProxy", default = "default_true")]
+    pub route_through_proxy: bool,
+    /// Codex 专有：是否 CDP 注入让 Desktop 显示所有模型（默认 true）
+    #[serde(rename = "injectModels", default = "default_true")]
+    pub inject_models: bool,
     /// Codex 专有：自定义模型目录
     #[serde(rename = "modelCatalog", default, skip_serializing_if = "Vec::is_empty")]
     pub model_catalog: Vec<ModelCatalogEntry>,
@@ -292,6 +298,14 @@ pub struct CodexConfig {
     /// chat 模式下，本地代理将 Responses 请求转为 Chat Completions 格式发往上游。
     #[serde(rename = "wireApi", default = "default_wire_api")]
     pub wire_api: String,
+    /// 是否走本地代理（默认 true）。
+    /// 关 = Codex 直接连接供应商原 URL；开 = 走 AnyBridge 本地代理（127.0.0.1:7450）。
+    #[serde(rename = "routeThroughProxy", default = "default_true")]
+    pub route_through_proxy: bool,
+    /// Codex Desktop 注入解锁脚本让所有模型在 picker 显示（默认 true）。
+    /// 关 = Desktop 只能切换默认模型；CLI 不受影响。
+    #[serde(rename = "injectModels", default = "default_true")]
+    pub inject_models: bool,
     /// 自定义模型目录，让 Codex 显示自定义模型列表。
     #[serde(rename = "modelCatalog", default, skip_serializing_if = "Vec::is_empty")]
     pub model_catalog: Vec<ModelCatalogEntry>,
@@ -306,6 +320,10 @@ pub struct CodexConfig {
 
 fn default_wire_api() -> String {
     "responses".to_string()
+}
+
+fn default_true() -> bool {
+    true
 }
 
 /// 模型目录条目：让 Codex 显示自定义模型列表。
@@ -433,6 +451,8 @@ impl From<CodexConfig> for Provider {
             model_caps: HashMap::new(),
             unlocks: ProviderUnlocks::default(),
             wire_api: config.wire_api,
+            route_through_proxy: config.route_through_proxy,
+            inject_models: config.inject_models,
             model_catalog: config.model_catalog,
             codex_chat_reasoning: config.codex_chat_reasoning,
         }
@@ -459,6 +479,8 @@ impl From<OpenCodeConfig> for Provider {
             model_caps: HashMap::new(),
             unlocks: ProviderUnlocks::default(),
             wire_api: String::new(),
+            route_through_proxy: true,
+            inject_models: true,
             model_catalog: Vec::new(),
             codex_chat_reasoning: None,
         }
@@ -485,6 +507,8 @@ impl From<ClaudeCodeConfig> for Provider {
             model_caps: HashMap::new(),
             unlocks: ProviderUnlocks::default(),
             wire_api: String::new(),
+            route_through_proxy: true,
+            inject_models: true,
             model_catalog: Vec::new(),
             codex_chat_reasoning: None,
         }
@@ -526,10 +550,6 @@ impl Default for ProviderCapabilities {
     fn default() -> Self {
         Self { text: true, stream: true, vision: true, tools: true, gzip: false }
     }
-}
-
-fn default_true() -> bool {
-    true
 }
 
 /// 「更多平台」每个平台的接管状态：记录当前应用了哪个供应商。
@@ -1043,6 +1063,27 @@ fn vision_content_hit_count(text: &str) -> usize {
     .count()
 }
 
+fn strip_think_blocks(text: &str) -> String {
+    let mut out = String::new();
+    let mut rest = text;
+    loop {
+        let lower = rest.to_ascii_lowercase();
+        let Some(open) = lower.find("<think>") else {
+            out.push_str(rest);
+            break;
+        };
+        out.push_str(&rest[..open]);
+        let after_open = open + "<think>".len();
+        let after = &rest[after_open..];
+        let after_lower = after.to_ascii_lowercase();
+        let Some(close) = after_lower.find("</think>") else {
+            break;
+        };
+        rest = &after[close + "</think>".len()..];
+    }
+    out.trim().to_string()
+}
+
 fn vision_body(
     fmt: &ApiFormat,
     uses_openai_responses: bool,
@@ -1058,7 +1099,7 @@ fn vision_body(
                 {"type": "input_image", "image_url": data_url},
                 {"type": "input_text", "text": prompt}
             ]}],
-            "max_output_tokens": 80,
+            "max_output_tokens": 1024,
             "temperature": 0,
             "stream": false
         })
@@ -1069,7 +1110,7 @@ fn vision_body(
                 {"type": "image_url", "image_url": {"url": data_url}},
                 {"type": "text", "text": prompt}
             ]}],
-            "max_tokens": 80,
+            "max_tokens": 1024,
             "temperature": 0,
             "stream": false
         })
@@ -1080,7 +1121,7 @@ fn vision_body(
                 {"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": image_b64}},
                 {"type": "text", "text": prompt}
             ]}],
-            "max_tokens": 80,
+            "max_tokens": 1024,
             "temperature": 0,
             "stream": false
         })
@@ -1219,7 +1260,24 @@ pub async fn test_vision(args: TestVisionArgs) -> Result<TestVisionResult, Strin
             });
         }
     };
-    let text = extract_vision_text(&api_format, &json);
+    let raw_text = extract_vision_text(&api_format, &json);
+    let text = strip_think_blocks(&raw_text);
+    let text = if text.trim().is_empty() {
+        if raw_text.to_ascii_lowercase().contains("<think>") {
+            return Ok(TestVisionResult {
+                ok: false,
+                duration_ms,
+                text: snippet(&raw_text, 240),
+                error: Some(format!(
+                    "模型只返回了推理内容，未输出最终图片判断：{}",
+                    snippet(&raw_text, 180)
+                )),
+            });
+        }
+        raw_text.trim().to_string()
+    } else {
+        text
+    };
     if text.trim().is_empty() {
         return Ok(TestVisionResult {
             ok: false,

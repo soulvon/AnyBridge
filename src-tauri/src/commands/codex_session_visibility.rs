@@ -17,6 +17,8 @@ const SESSION_INDEX_FILE: &str = "session_index.jsonl";
 const SESSION_DIRS: [&str; 2] = ["sessions", "archived_sessions"];
 const BACKUP_PREFIX: &str = "backup-";
 const BACKUP_SUFFIX: &str = "-session-visibility-repair";
+/// 最多保留几个历史备份（学 cockpit：只留 1 份，避免每次切换 2G 撑爆磁盘）。
+const MAX_BACKUPS: usize = 1;
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -51,6 +53,15 @@ struct SqliteThreadIndexRow {
     updated_at: Option<i64>,
 }
 
+/// 修复 Codex 历史会话可见性。
+///
+/// 设计参考 cockpit Quick 模式：
+///   - **不改 rollout 文件**：保留各会话原始 model_provider 标记，不破坏
+///     供应商间的会话隔离（旧实现把所有 rollout 改成当前 provider，导致
+///     切换后用其他工具看不到历史会话）。
+///   - **只修 official state db（sqlite）**：更新 model_provider 列让会话在
+///     当前供应商下可见，这是 Codex 侧边栏列表的可见性来源。
+///   - **备份后清理旧备份**：只保留 MAX_BACKUPS=1 份，避免每次切换 2G 撑爆磁盘。
 pub fn repair_default_codex_session_visibility(
     codex_config_path: &Path,
 ) -> Result<CodexSessionVisibilityRepairSummary, String> {
@@ -58,47 +69,29 @@ pub fn repair_default_codex_session_visibility(
         .parent()
         .ok_or_else(|| format!("无法定位 Codex 配置目录: {}", codex_config_path.display()))?;
     let target_provider = read_target_provider(data_dir)?;
-    let rollout_changes = collect_rollout_provider_changes(data_dir, &target_provider)?;
+    // 只修 sqlite，不修 rollout（保留会话原始 provider 标记）
     let sqlite_rows_to_update = count_sqlite_rows_to_update(data_dir, &target_provider)?;
-    let missing_session_index_entries = count_missing_session_index_entries(data_dir)?;
 
-    if rollout_changes.is_empty()
-        && sqlite_rows_to_update == 0
-        && missing_session_index_entries == 0
-    {
+    if sqlite_rows_to_update == 0 {
         return Ok(CodexSessionVisibilityRepairSummary {
             target_provider,
             changed_rollout_file_count: 0,
             updated_sqlite_row_count: 0,
             added_session_index_entry_count: 0,
             backup_dir: None,
-            message: "Codex 历史会话 provider 元数据已与当前配置一致".to_string(),
+            message: "历史会话可见性已正常".to_string(),
         });
     }
 
-    let backup_dir = backup_codex_session_visibility_files(
-        data_dir,
-        &rollout_changes,
-        sqlite_rows_to_update > 0,
-        missing_session_index_entries > 0,
-        &target_provider,
-    )?;
+    // 备份 sqlite（只备份要改的 official state db，不 VACUUM 整个目录）
+    let backup_dir = backup_sqlite_only(data_dir, &target_provider)?;
+    // 清理旧备份，只留 MAX_BACKUPS 份
+    prune_old_backups(data_dir);
 
-    let repaired = repair_codex_session_visibility(
-        data_dir,
-        &target_provider,
-        &rollout_changes,
-        sqlite_rows_to_update > 0,
-        missing_session_index_entries > 0,
-    );
-    let (updated_sqlite_row_count, added_session_index_entry_count) = match repaired {
-        Ok(value) => value,
+    let updated_sqlite_row_count = match update_sqlite_provider(data_dir, &target_provider) {
+        Ok(n) => n,
         Err(error) => {
-            let restore_result = restore_codex_session_visibility_backup(
-                data_dir,
-                &backup_dir,
-                sqlite_rows_to_update > 0,
-            );
+            let restore_result = restore_sqlite_from_backup(data_dir, &backup_dir);
             if let Err(restore_error) = restore_result {
                 return Err(format!(
                     "修复 Codex 历史会话可见性失败: {}；自动回滚也失败: {}；备份目录: {}",
@@ -115,17 +108,16 @@ pub fn repair_default_codex_session_visibility(
         }
     };
 
-    let changed_rollout_file_count = rollout_changes.len();
     let message = format!(
-        "已修复 Codex 历史会话可见性：改写 {} 个会话文件，更新 {} 条 SQLite 记录，补写 {} 条 session_index 记录",
-        changed_rollout_file_count, updated_sqlite_row_count, added_session_index_entry_count
+        "已恢复 {} 条历史会话的可见性",
+        updated_sqlite_row_count
     );
 
     Ok(CodexSessionVisibilityRepairSummary {
         target_provider,
-        changed_rollout_file_count,
+        changed_rollout_file_count: 0,
         updated_sqlite_row_count,
-        added_session_index_entry_count,
+        added_session_index_entry_count: 0,
         backup_dir: Some(backup_dir.to_string_lossy().to_string()),
         message,
     })
@@ -709,6 +701,63 @@ fn existing_state_db_paths(data_dir: &Path) -> Vec<PathBuf> {
         .into_iter()
         .map(|relative_path| data_dir.join(relative_path))
         .collect()
+}
+
+/// 只备份 sqlite（official state db），不备份 rollout/session_index。
+/// rollout 不再修改，无需备份；session_index 不再补写，也无需备份。
+fn backup_sqlite_only(data_dir: &Path, _target_provider: &str) -> Result<PathBuf, String> {
+    let backup_dir = data_dir.join(format!(
+        "{}{}{}",
+        BACKUP_PREFIX,
+        now_epoch_millis(),
+        BACKUP_SUFFIX
+    ));
+    fs::create_dir_all(&backup_dir)
+        .map_err(|error| format!("创建备份目录失败 ({}): {}", backup_dir.display(), error))?;
+    backup_sqlite_database(data_dir, &backup_dir)?;
+    Ok(backup_dir)
+}
+
+/// 清理旧备份目录，只保留最近 MAX_BACKUPS 份。
+/// 学 cockpit 的 prune_session_visibility_repair_backups。
+fn prune_old_backups(data_dir: &Path) {
+    let entries = match fs::read_dir(data_dir) {
+        Ok(e) => e,
+        Err(_) => return,
+    };
+    let mut backups: Vec<(String, PathBuf)> = Vec::new();
+    for entry in entries.flatten() {
+        let Ok(file_type) = entry.file_type() else { continue };
+        if !file_type.is_dir() { continue }
+        let file_name = entry.file_name();
+        let name = match file_name.to_str() { Some(n) => n.to_string(), None => continue };
+        // 匹配 backup-{timestamp}-session-visibility-repair
+        if !name.starts_with(BACKUP_PREFIX) || !name.ends_with(BACKUP_SUFFIX) { continue }
+        let timestamp = &name[BACKUP_PREFIX.len()..name.len() - BACKUP_SUFFIX.len()];
+        backups.push((timestamp.to_string(), entry.path()));
+    }
+    if backups.len() <= MAX_BACKUPS { return }
+    // 按 timestamp 降序，保留前 MAX_BACKUPS 份，删旧的
+    backups.sort_by(|a, b| b.0.cmp(&a.0));
+    for (_, path) in backups.into_iter().skip(MAX_BACKUPS) {
+        let _ = fs::remove_dir_all(&path);
+    }
+}
+
+/// 从备份恢复 sqlite（修复失败时回滚用）。
+fn restore_sqlite_from_backup(data_dir: &Path, backup_dir: &Path) -> Result<(), String> {
+    for relative_path in existing_state_db_relative_paths(data_dir) {
+        let backup_db = backup_dir.join("files").join(&relative_path);
+        if !backup_db.exists() { continue }
+        let target = data_dir.join(&relative_path);
+        if let Some(parent) = target.parent() {
+            let _ = fs::create_dir_all(parent);
+        }
+        fs::copy(&backup_db, &target).map_err(|error| {
+            format!("恢复 SQLite 失败 ({} -> {}): {}", backup_db.display(), target.display(), error)
+        })?;
+    }
+    Ok(())
 }
 
 fn backup_codex_session_visibility_files(

@@ -1029,6 +1029,9 @@ async function saveProviderFromEditor() {
   if (existingProvider?.unlocks) provider.unlocks = existingProvider.unlocks;
   if (existingProvider?.meta) provider.meta = existingProvider.meta;
 
+  const previous = typeof cloneProviderStore === 'function'
+    ? cloneProviderStore()
+    : JSON.parse(JSON.stringify(providerStore || { version: 1, providers: [] }));
   if (id) {
     const idx = providerStore.providers.findIndex(x => x.id === id);
     if (idx >= 0) {
@@ -1039,7 +1042,13 @@ async function saveProviderFromEditor() {
     providerStore.providers.push(provider);
   }
 
-  await persistProviders();
+  const ok = await persistProviders();
+  if (!ok) {
+    providerStore = typeof cloneProviderStore === 'function'
+      ? cloneProviderStore(previous)
+      : JSON.parse(JSON.stringify(previous));
+    return;
+  }
   renderProviders();
   renderEvalProviderOptions();
   await renderModelMap();
@@ -1065,6 +1074,10 @@ async function testProvider(id) {
   setProviderConnectionText(id, '测试中…');
   const formats = ['openai', 'anthropic'];
   const results = [];
+  const previous = typeof cloneProviderStore === 'function'
+    ? cloneProviderStore()
+    : JSON.parse(JSON.stringify(providerStore || { version: 1, providers: [] }));
+  let storeChanged = false;
   for (const apiFormat of formats) {
     const result = await invoke('test_connection', {
       args: {
@@ -1095,12 +1108,21 @@ async function testProvider(id) {
           if (c.tools === true) mc[testModel].tools = true;
           providerStore.providers[idx].modelCaps = mc;
         }
+        storeChanged = true;
       }
     }
   }
   const okResults = results.filter(r => r.ok);
   if (okResults.length) {
-    await persistProviders();
+    const saved = storeChanged ? await persistProviders() : true;
+    if (!saved) {
+      providerStore = typeof cloneProviderStore === 'function'
+        ? cloneProviderStore(previous)
+        : JSON.parse(JSON.stringify(previous));
+      if (dot) dot.className = 'conn-dot no';
+      setProviderConnectionText(id, '能力保存失败');
+      return;
+    }
     if (dot) dot.className = 'conn-dot ok';
     const msg = results.map(r => `${r.apiFormat === 'openai' ? 'OpenAI' : 'Anthropic'} ${r.ok ? '✓' : '✗'}`).join(' / ');
     setProviderConnectionText(id, msg);
@@ -1176,10 +1198,19 @@ async function testProviderInEditor() {
         if (editId) {
           const idx = providerStore.providers.findIndex(x => x.id === editId);
           if (idx >= 0) {
+            const previous = typeof cloneProviderStore === 'function'
+              ? cloneProviderStore()
+              : JSON.parse(JSON.stringify(providerStore || { version: 1, providers: [] }));
             const mc = providerStore.providers[idx].modelCaps || {};
             mc[model] = { ...(mc[model] || {}), ...editorDraftModelCaps[model] };
             providerStore.providers[idx].modelCaps = mc;
-            await persistProviders();
+            const saved = await persistProviders();
+            if (!saved) {
+              providerStore = typeof cloneProviderStore === 'function'
+                ? cloneProviderStore(previous)
+                : JSON.parse(JSON.stringify(previous));
+              return;
+            }
           }
         }
         updateSelectedModelsUI();

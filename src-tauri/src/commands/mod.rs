@@ -2,6 +2,7 @@ pub mod cert_install;
 pub mod codex_desktop;
 pub mod codex_session_visibility;
 pub mod config;
+pub mod cursor_auth;
 pub mod eval;
 pub mod ide_config;
 pub mod ide_models;

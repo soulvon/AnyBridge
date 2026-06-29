@@ -7,7 +7,11 @@
 - Tauri v2 CLI through `@tauri-apps/cli`
 - Platform-specific Tauri native dependencies
 
-On Linux, install WebKitGTK, GTK, AppIndicator, OpenSSL, and related build packages before running Tauri.
+Linux needs WebKitGTK 4.1, GTK 3, AppIndicator, OpenSSL, librsvg, patchelf, pkg-config, libnm, and xdg-utils before running Tauri.
+
+macOS needs Xcode Command Line Tools. Certificate installation uses the login keychain first and requests administrator authorization only for the System keychain path.
+
+Windows certificate installation uses CurrentUser\Root first and requests UAC only for the LocalMachine\Root path.
 
 ## Install
 
@@ -45,6 +49,14 @@ python scripts/build/build_sidecar_plain.py
 ```
 
 The output goes to `src-tauri/binaries/`, which is ignored by Git.
+
+Build for an explicit target when preparing cross-platform release assets:
+
+```bash
+python scripts/build/build_sidecar_plain.py --platform x86_64-pc-windows-msvc
+python scripts/build/build_sidecar_plain.py --platform aarch64-apple-darwin
+python scripts/build/build_sidecar_plain.py --platform x86_64-unknown-linux-gnu
+```
 
 ## Local Archive
 

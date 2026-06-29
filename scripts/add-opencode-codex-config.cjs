@@ -1,10 +1,9 @@
 // 直接往 providers.json 的 codexConfigs 数组添加一个基于 OpenCode 供应商的 Codex 配置
 const fs = require('fs');
 const path = require('path');
+const { configDir } = require('./lib/config-dir.cjs');
 
-const configDir = process.env.BYOK_CONFIG_DIR
-  || path.join(process.env.APPDATA || '', 'anybridge');
-const providersPath = path.join(configDir, 'providers.json');
+const providersPath = path.join(configDir(), 'providers.json');
 
 const data = JSON.parse(fs.readFileSync(providersPath, 'utf8'));
 

@@ -1,6 +1,6 @@
 {
   "name": "anybridge",
-  "version": "0.1.6",
+  "version": "0.2.1",
   "description": "Open-source desktop BYOK bridge for AI coding tools",
   "type": "module",
   "main": "sidecar/proxy-entry.js",
@@ -21,6 +21,7 @@
     "dev": "node --watch sidecar/proxy-entry.js",
     "dev:proxy": "node --watch sidecar/hybrid-server.js",
     "dev:inference": "node --watch sidecar/inference-proxy.js",
+    "check:cursor": "node scripts/check-cursor-proxy.mjs",
     "check:ui": "node scripts/check-ui.mjs",
     "tauri": "tauri",
     "tauri:dev": "tauri dev",

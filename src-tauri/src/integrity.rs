@@ -3,7 +3,7 @@
 
 use sha2::{Digest, Sha256};
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 /// 计算文件 SHA-256 哈希，返回 hex 字符串
 pub fn hash_file(path: &Path) -> Result<String, String> {
@@ -12,25 +12,67 @@ pub fn hash_file(path: &Path) -> Result<String, String> {
     Ok(hex::encode(hash))
 }
 
-/// 返回当前平台的 sidecar 二进制文件名
-/// Tauri 打包时自动去掉 target triple 后缀复制到 exe 旁边，
-/// 所以运行时 sidecar 文件名不含 triple（与 proxy.rs 的 resolve_sidecar_path 一致）。
-fn sidecar_filename() -> String {
-    #[cfg(target_os = "windows")]
-    return "anybridge-proxy.exe".to_string();
-    #[cfg(not(target_os = "windows"))]
-    return "anybridge-proxy".to_string();
+fn current_target_triple() -> Option<&'static str> {
+    #[cfg(all(target_os = "windows", target_arch = "x86_64"))]
+    {
+        return Some("x86_64-pc-windows-msvc");
+    }
+    #[cfg(all(target_os = "windows", target_arch = "aarch64"))]
+    {
+        return Some("aarch64-pc-windows-msvc");
+    }
+    #[cfg(all(target_os = "macos", target_arch = "x86_64"))]
+    {
+        return Some("x86_64-apple-darwin");
+    }
+    #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+    {
+        return Some("aarch64-apple-darwin");
+    }
+    #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+    {
+        return Some("x86_64-unknown-linux-gnu");
+    }
+    #[cfg(all(target_os = "linux", target_arch = "aarch64"))]
+    {
+        return Some("aarch64-unknown-linux-gnu");
+    }
+    #[allow(unreachable_code)]
+    None
+}
+
+fn sidecar_filenames() -> Vec<String> {
+    let exe_suffix = if cfg!(target_os = "windows") {
+        ".exe"
+    } else {
+        ""
+    };
+    let mut files = vec![format!("anybridge-proxy{}", exe_suffix)];
+    if let Some(triple) = current_target_triple() {
+        files.push(format!("anybridge-proxy-{}{}", triple, exe_suffix));
+    }
+    files
+}
+
+fn sidecar_path_in(exe_dir: &Path) -> Option<PathBuf> {
+    sidecar_filenames()
+        .into_iter()
+        .map(|name| exe_dir.join(name))
+        .find(|path| path.exists())
 }
 
 /// 校验 sidecar 二进制是否被篡改
 /// 首次启动时记录基准哈希，后续启动比对
 /// 校验失败时打印警告但不退出，避免开发/测试环境误杀
 pub fn verify_sidecar() -> Result<(), String> {
-    let sidecar_path = std::env::current_exe()
+    let exe_dir = std::env::current_exe()
         .map_err(|e| e.to_string())?
         .parent()
         .ok_or("无法定位可执行文件目录")?
-        .join(sidecar_filename());
+        .to_path_buf();
+    let Some(sidecar_path) = sidecar_path_in(&exe_dir) else {
+        return Ok(()); // sidecar 可能还没打包进来，不报错
+    };
 
     if !sidecar_path.exists() {
         return Ok(()); // sidecar 可能还没打包进来，不报错

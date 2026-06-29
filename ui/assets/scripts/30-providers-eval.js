@@ -443,18 +443,28 @@ function clearProviderSearch() {
 }
 
 function setProviderViewMode(mode) {
+  const previous = providerViewMode;
   providerViewMode = mode === 'list' ? 'list' : 'grid';
   try {
     localStorage.setItem(PROVIDER_VIEW_STORAGE_KEY, providerViewMode);
-  } catch (_) {}
+  } catch (e) {
+    providerViewMode = previous;
+    addLog('err', '保存供应商视图偏好失败: ' + e);
+    if (typeof showCustomAlert === 'function') showCustomAlert(String(e), '保存失败', 'error');
+  }
   renderProviders();
 }
 
 function setProviderSortMode(mode) {
+  const previous = providerSortMode;
   providerSortMode = normalizeProviderSortMode(mode);
   try {
     localStorage.setItem(PROVIDER_SORT_STORAGE_KEY, providerSortMode);
-  } catch (_) {}
+  } catch (e) {
+    providerSortMode = previous;
+    addLog('err', '保存供应商排序偏好失败: ' + e);
+    if (typeof showCustomAlert === 'function') showCustomAlert(String(e), '保存失败', 'error');
+  }
   renderProviders();
 }
 
@@ -559,9 +569,19 @@ async function deleteSelectedProviders() {
   if (!targets.length) return;
   providerBulkRunning = true;
   renderProviderToolbarState(providerListAll().length, providerVisibleList());
+  const previous = cloneProviderStore();
   providerStore.providers = (providerStore.providers || []).filter(p => !selected.has(p.id) || p?.meta?.codexConfig === true || isBuiltinProvider(p));
   targets.forEach(p => providerSelectedIds.delete(p.id));
-  await persistProviders();
+  const ok = await persistProviders();
+  if (!ok) {
+    providerStore = cloneProviderStore(previous);
+    targets.forEach(p => providerSelectedIds.add(p.id));
+    providerBulkRunning = false;
+    renderProviders();
+    renderEvalProviderOptions();
+    await renderModelMap();
+    return;
+  }
   providerBulkRunning = false;
   renderProviders();
   renderEvalProviderOptions();
@@ -2766,24 +2786,44 @@ async function deleteProvider(id) {
     showCustomAlert('内置供应商不可删除。', '无法删除供应商', 'warn');
     return;
   }
+  const previous = cloneProviderStore();
   providerStore.providers = providerStore.providers.filter(x => x.id !== id);
-  await persistProviders();
+  const ok = await persistProviders();
+  if (!ok) {
+    providerStore = cloneProviderStore(previous);
+    renderProviders();
+    renderEvalProviderOptions();
+    await renderModelMap();
+    return;
+  }
   renderProviders();
   renderEvalProviderOptions();
   await renderModelMap();
   addLog('info', '已删除供应商');
 }
 
+function cloneProviderStore(store = providerStore) {
+  return JSON.parse(JSON.stringify(store || { version: 1, providers: [] }));
+}
+
 async function persistProviders() {
-  if (!invoke) return;
+  if (!invoke) {
+    const message = '当前环境缺少 Tauri invoke，无法保存供应商配置';
+    addLog('err', message);
+    if (typeof showCustomAlert === 'function') showCustomAlert(message, '保存失败', 'error');
+    return false;
+  }
   try {
     const storeToSave = {
       ...providerStore,
       providers: (providerStore.providers || []).filter(p => !isBuiltinProvider(p)),
     };
     await invoke('save_providers', { store: storeToSave });
+    return true;
   } catch (e) {
     addLog('err', '保存供应商失败: ' + e);
+    if (typeof showCustomAlert === 'function') showCustomAlert(String(e), '保存供应商失败', 'error');
+    return false;
   }
 }
 
@@ -2817,5 +2857,3 @@ function navigateToProxyEnhancement() {
 }
 
 syncEvalCombos();
-
-

@@ -1,11 +1,11 @@
 const fs = require('fs');
 const path = require('path');
+const { configDir } = require('./lib/config-dir.cjs');
 
-const configDir = process.env.BYOK_CONFIG_DIR || 
-  path.join(process.env.APPDATA || '', 'anybridge');
+const anybridgeConfigDir = configDir();
 
 // Check MITM log structure
-const mitmDir = path.join(configDir, 'mitm-logs');
+const mitmDir = path.join(anybridgeConfigDir, 'mitm-logs');
 try {
   const files = fs.readdirSync(mitmDir).sort();
   if (files.length > 0) {
@@ -24,14 +24,14 @@ try {
 // Check for proxy log files
 console.log('\n=== Looking for proxy logs ===');
 try {
-  const allFiles = fs.readdirSync(configDir);
+  const allFiles = fs.readdirSync(anybridgeConfigDir);
   console.log('Config dir files:', allFiles.filter(f => f.includes('log') || f.includes('proxy')));
 } catch (e) {
   console.log('Err:', e.message);
 }
 
 // Check sidecar log
-const sidecarLog = path.join(configDir, 'sidecar.log');
+const sidecarLog = path.join(anybridgeConfigDir, 'sidecar.log');
 try {
   const data = fs.readFileSync(sidecarLog, 'utf8');
   const lines = data.trim().split('\n');

@@ -46,13 +46,22 @@ users to the `v0.1.0` installer manually. Do not publish mixed or misleading
 
 Build the sidecar:
 
-```powershell
+```bash
 python scripts/build/build_sidecar_plain.py
+```
+
+Build a sidecar for a specific release target:
+
+```bash
+python scripts/build/build_sidecar_plain.py --platform x86_64-pc-windows-msvc
+python scripts/build/build_sidecar_plain.py --platform aarch64-apple-darwin
+python scripts/build/build_sidecar_plain.py --platform x86_64-apple-darwin
+python scripts/build/build_sidecar_plain.py --platform x86_64-unknown-linux-gnu
 ```
 
 Build a local package without updater artifacts:
 
-```powershell
+```bash
 npm run tauri:build:local
 ```
 
@@ -72,7 +81,7 @@ The private key file `tauri-sign.key` must never be committed.
 2. Commit the release changes.
 3. Create and push a tag:
 
-   ```powershell
+   ```bash
    git tag v0.1.0
    git push origin v0.1.0
    ```

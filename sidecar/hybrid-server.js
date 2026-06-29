@@ -17,7 +17,8 @@ import crypto from 'node:crypto';
 import { listenWithReclaim } from './port-utils.js';
 import { handleGetChatMessage, shouldIntercept } from './handlers/chat.js';
 import { handleLocalProxyRequest, isLocalProxyRequest } from './local-proxy.js';
-import { injectPatches, listTargets, isAlreadyInjected, readInjectableModels } from './lib/codex-desktop-cdp.js';
+import { handleCursorRequest } from './cursor-proxy.js';
+import { injectWithRetry, listTargets, isAlreadyInjected, readInjectableModels } from './lib/codex-desktop-cdp.js';
 import { parseFields, writeStringField, writeBytesField, writeVarintField } from './proto.js';
 import { tryGunzip } from './connect.js';
 import { snapshot } from './stats.js';
@@ -601,13 +602,16 @@ function handleRequest(req, res) {
           // CDP inject 发生在 Codex 启动之后，启动后改 models_cache 对已加载的 Desktop
           // 无效，且会与 Rust 注入产生重复/前缀不一致的条目（历史 bug 根因）。
           console.log(`[${now()}] #${id} CDP inject → port ${port}, ${models.length} models`);
-          const result = await injectPatches(port, models);
-          res.writeHead(result.ok ? 200 : 502, { 'content-type': 'application/json', 'access-control-allow-origin': '*' });
-          res.end(JSON.stringify(result));
+          const result = await injectWithRetry(port, models);
+          const json = JSON.stringify(result);
+          // 显式 Content-Length 避免 chunked 编码（Rust 端 http_post_local 不解析 chunked）
+          res.writeHead(result.ok ? 200 : 502, { 'content-type': 'application/json', 'access-control-allow-origin': '*', 'content-length': Buffer.byteLength(json) });
+          res.end(json);
         } catch (err) {
           console.error(`[${now()}] #${id} CDP inject error: ${err.message}`);
-          res.writeHead(500, { 'content-type': 'application/json', 'access-control-allow-origin': '*' });
-          res.end(JSON.stringify({ ok: false, message: err.message || String(err) }));
+          const json = JSON.stringify({ ok: false, message: err.message || String(err) });
+          res.writeHead(500, { 'content-type': 'application/json', 'access-control-allow-origin': '*', 'content-length': Buffer.byteLength(json) });
+          res.end(json);
         }
       })();
       return;
@@ -620,11 +624,13 @@ function handleRequest(req, res) {
           const payload = body.length ? JSON.parse(body.toString('utf8')) : {};
           const port = parseInt(payload.port || '9229', 10);
           const injected = await isAlreadyInjected(port);
-          res.writeHead(200, { 'content-type': 'application/json', 'access-control-allow-origin': '*' });
-          res.end(JSON.stringify({ ok: true, injected }));
+          const json = JSON.stringify({ ok: true, injected });
+          res.writeHead(200, { 'content-type': 'application/json', 'access-control-allow-origin': '*', 'content-length': Buffer.byteLength(json) });
+          res.end(json);
         } catch (err) {
-          res.writeHead(200, { 'content-type': 'application/json', 'access-control-allow-origin': '*' });
-          res.end(JSON.stringify({ ok: true, injected: false, error: err.message }));
+          const json = JSON.stringify({ ok: true, injected: false, error: err.message });
+          res.writeHead(200, { 'content-type': 'application/json', 'access-control-allow-origin': '*', 'content-length': Buffer.byteLength(json) });
+          res.end(json);
         }
       })();
       return;
@@ -637,6 +643,14 @@ function handleRequest(req, res) {
         if (!res.headersSent) res.writeHead(500, { 'content-type': 'application/json' });
         if (!res.writableEnded) res.end(JSON.stringify({ error: { message: err.message || String(err) } }));
       });
+      return;
+    }
+
+    if (handleCursorRequest(req, res, body, {
+      id,
+      source: 'http',
+      log: (line) => console.log(`[${now()}] #${id} ${line}`),
+    })) {
       return;
     }
 
@@ -804,6 +818,16 @@ const mitmServer = http.createServer((req, res) => {
   req.on('data', c => chunks.push(c));
   req.on('end', () => {
     const body = Buffer.concat(chunks);
+    const upstreamHost = req.socket && mitmUpstreamHost.get(req.socket);
+
+    if (handleCursorRequest(req, res, body, {
+      id,
+      source: 'mitm',
+      upstreamHost,
+      log: (line) => console.log(`[${now()}] #${id} ${line}`),
+    })) {
+      return;
+    }
 
     // ── Telemetry blocking ──
     if (BLOCKED_TELEMETRY_METHODS.has(method)) {
@@ -917,8 +941,14 @@ server.on('connect', (req, clientSocket, head) => {
   const [host, port] = req.url.split(':');
   const targetPort = parseInt(port) || 443;
 
-  // ── MITM for API hosts (Windsurf: server.self-serve.windsurf.com, Devin: server.codeium.com)
-  const MITM_HOSTS = new Set([REAL_API_HOST, 'server.codeium.com']);
+  // ── MITM for API hosts (Windsurf/Devin/experimental Cursor)
+  const MITM_HOSTS = new Set([
+    REAL_API_HOST,
+    'server.codeium.com',
+    'api2.cursor.sh',
+    'authentication.cursor.sh',
+    'prod.authentication.cursor.sh',
+  ]);
   if (MITM_HOSTS.has(host) && MITM_CERT && MITM_KEY) {
     console.log(`[${now()}] #${id} 🔓 MITM ${host}:${targetPort}`);
     rpcAuditLog({
@@ -1025,4 +1055,3 @@ function logBanner() {
 }
 
 listenWithReclaim(server, PORT, logBanner, 'hybrid');
-

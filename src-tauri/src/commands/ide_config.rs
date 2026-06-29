@@ -5,6 +5,12 @@ use std::path::PathBuf;
 
 const PROXY_KEY: &str = "http.proxy";
 const STRICT_SSL_KEY: &str = "http.proxyStrictSSL";
+const PROXY_SUPPORT_KEY: &str = "http.proxySupport";
+const SYSTEM_CERTS_V2_KEY: &str = "http.experimental.systemCertificatesV2";
+const USE_HTTP1_KEY: &str = "cursor.general.useHttp1";
+const DISABLE_HTTP2_KEY: &str = "cursor.general.disableHttp2";
+const PROXY_KERBEROS_KEY: &str = "http.proxyKerberosServicePrincipal";
+const LEGACY_CURSOR_PROXY_KEYS: &[&str] = &["systemCertificatesV2", "useHttp1", "disableHttp2"];
 fn configured_proxy_port() -> u16 {
     crate::commands::config::configured_proxy_ports().api_port
 }
@@ -46,6 +52,7 @@ pub struct IdeProxyStatus {
 pub(crate) fn settings_path(target: &str) -> Option<PathBuf> {
     let ide_name = match target {
         "devin" => "Devin",
+        "cursor" => "Cursor",
         _ => "Windsurf",
     };
 
@@ -63,6 +70,41 @@ pub(crate) fn settings_path(target: &str) -> Option<PathBuf> {
     dir.push("User");
     dir.push("settings.json");
     Some(dir)
+}
+
+fn managed_proxy_keys(target: &str) -> Vec<&'static str> {
+    let mut keys = vec![PROXY_KEY, STRICT_SSL_KEY];
+    if target == "cursor" {
+        keys.extend([
+            PROXY_SUPPORT_KEY,
+            SYSTEM_CERTS_V2_KEY,
+            USE_HTTP1_KEY,
+            DISABLE_HTTP2_KEY,
+            PROXY_KERBEROS_KEY,
+        ]);
+    }
+    keys
+}
+
+fn cursor_extra_settings_ok(obj: &Map<String, Value>) -> bool {
+    obj.get(PROXY_SUPPORT_KEY).and_then(|v| v.as_str()) == Some("on")
+        && obj.get(SYSTEM_CERTS_V2_KEY) == Some(&Value::Bool(true))
+        && obj.get(USE_HTTP1_KEY) == Some(&Value::Bool(true))
+        && obj.get(DISABLE_HTTP2_KEY) == Some(&Value::Bool(true))
+        && obj
+            .get(PROXY_KERBEROS_KEY)
+            .and_then(|v| v.as_str())
+            .map(is_current_proxy_value)
+            .unwrap_or(false)
+}
+
+fn remove_cursor_proxy_keys(obj: &mut Map<String, Value>) {
+    for key in managed_proxy_keys("cursor")
+        .into_iter()
+        .chain(LEGACY_CURSOR_PROXY_KEYS.iter().copied())
+    {
+        obj.remove(key);
+    }
 }
 
 fn backup_path(settings: &PathBuf) -> PathBuf {
@@ -101,8 +143,13 @@ pub(crate) fn ensure_settings_file(target: &str) -> Result<(PathBuf, bool), Stri
     let Some(settings) = settings_path(target) else {
         return Err(format!("无法定位 {} 配置目录", target));
     };
+    let created = ensure_settings_path(&settings)?;
+    Ok((settings, created))
+}
+
+fn ensure_settings_path(settings: &PathBuf) -> Result<bool, String> {
     if settings.exists() {
-        return Ok((settings, false));
+        return Ok(false);
     }
     let Some(parent) = settings.parent() else {
         return Err("settings.json 路径无父目录".into());
@@ -110,13 +157,18 @@ pub(crate) fn ensure_settings_file(target: &str) -> Result<(PathBuf, bool), Stri
     fs::create_dir_all(parent).map_err(|e| format!("创建 IDE 配置目录失败: {}", e))?;
     super::write_atomic(&settings, b"{}\n")
         .map_err(|e| format!("创建 settings.json 失败: {}", e))?;
-    Ok((settings, true))
+    Ok(true)
 }
 
 /// 打补丁：备份原文件（幂等），写入代理配置。
 /// 返回是否实际改动了 IDE 配置（用于 UI 提示是否需重启）。
 pub fn patch(target: &str) -> Result<bool, String> {
     let (settings, _) = ensure_settings_file(target)?;
+    patch_settings_file(target, &settings)
+}
+
+fn patch_settings_file(target: &str, settings: &PathBuf) -> Result<bool, String> {
+    ensure_settings_path(settings)?;
 
     let raw = fs::read_to_string(&settings).map_err(|e| e.to_string())?;
     let mut obj = parse_object(&raw)?;
@@ -131,14 +183,20 @@ pub fn patch(target: &str) -> Result<bool, String> {
         .and_then(|v| v.as_str())
         .map(is_current_proxy_value)
         .unwrap_or(false)
-        && obj.get(STRICT_SSL_KEY) == Some(&Value::Bool(false));
+        && obj.get(STRICT_SSL_KEY) == Some(&Value::Bool(false))
+        && (target != "cursor" || cursor_extra_settings_ok(&obj));
     if already {
         if !backup.exists() {
             // 原始值已被补丁覆盖、无从恢复，备份成「移除这两个键」的状态:
             // 复制当前配置但删掉代理键，作为还原目标。
             let mut orig = obj.clone();
-            orig.remove(PROXY_KEY);
-            orig.remove(STRICT_SSL_KEY);
+            if target == "cursor" {
+                remove_cursor_proxy_keys(&mut orig);
+            } else {
+                for key in managed_proxy_keys(target) {
+                    orig.remove(key);
+                }
+            }
             let orig_json =
                 serde_json::to_string_pretty(&Value::Object(orig)).map_err(|e| e.to_string())?;
             super::write_atomic(&backup, orig_json.as_bytes())
@@ -152,8 +210,18 @@ pub fn patch(target: &str) -> Result<bool, String> {
         super::write_atomic(&backup, raw.as_bytes()).map_err(|e| format!("备份失败: {}", e))?;
     }
 
-    obj.insert(PROXY_KEY.into(), Value::String(proxy_value));
+    obj.insert(PROXY_KEY.into(), Value::String(proxy_value.clone()));
     obj.insert(STRICT_SSL_KEY.into(), Value::Bool(false));
+    if target == "cursor" {
+        obj.insert(PROXY_SUPPORT_KEY.into(), Value::String("on".into()));
+        obj.insert(SYSTEM_CERTS_V2_KEY.into(), Value::Bool(true));
+        obj.insert(USE_HTTP1_KEY.into(), Value::Bool(true));
+        obj.insert(DISABLE_HTTP2_KEY.into(), Value::Bool(true));
+        obj.insert(PROXY_KERBEROS_KEY.into(), Value::String(proxy_value));
+        for key in LEGACY_CURSOR_PROXY_KEYS {
+            obj.remove(*key);
+        }
+    }
     write_object(&settings, &obj)?;
     Ok(true)
 }
@@ -165,6 +233,10 @@ pub fn restore(target: &str) -> Result<bool, String> {
     let Some(settings) = settings_path(target) else {
         return Ok(false);
     };
+    restore_settings_file(target, &settings)
+}
+
+fn restore_settings_file(target: &str, settings: &PathBuf) -> Result<bool, String> {
     if !settings.exists() {
         return Ok(false);
     }
@@ -181,7 +253,7 @@ pub fn restore(target: &str) -> Result<bool, String> {
             parse_object(&raw)?
         };
 
-        for key in [PROXY_KEY, STRICT_SSL_KEY] {
+        for key in managed_proxy_keys(target) {
             match orig.get(key) {
                 Some(v) => {
                     current.insert(key.into(), v.clone());
@@ -189,6 +261,11 @@ pub fn restore(target: &str) -> Result<bool, String> {
                 None => {
                     current.remove(key);
                 }
+            }
+        }
+        if target == "cursor" {
+            for key in LEGACY_CURSOR_PROXY_KEYS {
+                current.remove(*key);
             }
         }
 
@@ -217,6 +294,9 @@ pub fn restore(target: &str) -> Result<bool, String> {
         }
         if had_ssl {
             current.remove(STRICT_SSL_KEY);
+        }
+        if target == "cursor" {
+            remove_cursor_proxy_keys(&mut current);
         }
 
         write_object(&settings, &current)?;
@@ -253,7 +333,9 @@ pub fn status(target: &str) -> Result<IdeProxyStatus, String> {
     let strict_ssl = obj.get(STRICT_SSL_KEY).and_then(|v| v.as_bool());
     Ok(IdeProxyStatus {
         target: target.to_string(),
-        patched: is_current_proxy_value(&proxy_value) && strict_ssl == Some(false),
+        patched: is_current_proxy_value(&proxy_value)
+            && strict_ssl == Some(false)
+            && (target != "cursor" || cursor_extra_settings_ok(&obj)),
         proxy_value,
         strict_ssl,
         settings_path: settings.to_string_lossy().to_string(),
@@ -287,4 +369,232 @@ pub fn restore_ide_settings(target: String) -> Result<bool, String> {
 #[tauri::command]
 pub fn get_ide_proxy_status(target: String) -> Result<IdeProxyStatus, String> {
     status(&target)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn temp_settings_path(name: &str) -> PathBuf {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        std::env::temp_dir()
+            .join(format!(
+                "anybridge-ide-config-{}-{}-{}",
+                std::process::id(),
+                unique,
+                name
+            ))
+            .join("Cursor")
+            .join("User")
+            .join("settings.json")
+    }
+
+    fn read_settings(path: &PathBuf) -> Map<String, Value> {
+        let raw = fs::read_to_string(path).unwrap();
+        parse_object(&raw).unwrap()
+    }
+
+    #[test]
+    fn cursor_patch_and_restore_preserve_user_settings() {
+        let settings = temp_settings_path("patch-restore");
+        fs::create_dir_all(settings.parent().unwrap()).unwrap();
+        fs::write(
+            &settings,
+            r#"{
+                "editor.fontSize": 14,
+                "http.proxy": "https://corp-proxy.example:8443",
+                "http.proxyStrictSSL": true,
+                "http.proxySupport": "off",
+                "http.experimental.systemCertificatesV2": false,
+                "cursor.general.useHttp1": false,
+                "cursor.general.disableHttp2": false,
+                "http.proxyKerberosServicePrincipal": "https://corp-proxy.example:8443",
+                "systemCertificatesV2": true,
+                "useHttp1": true,
+                "disableHttp2": true
+            }"#,
+        )
+        .unwrap();
+
+        assert_eq!(patch_settings_file("cursor", &settings).unwrap(), true);
+        let patched = read_settings(&settings);
+        assert_eq!(patched.get("editor.fontSize"), Some(&Value::from(14)));
+        assert!(patched
+            .get(PROXY_KEY)
+            .and_then(|v| v.as_str())
+            .map(is_current_proxy_value)
+            .unwrap_or(false));
+        assert_eq!(patched.get(STRICT_SSL_KEY), Some(&Value::Bool(false)));
+        assert!(cursor_extra_settings_ok(&patched));
+
+        let mut current = patched.clone();
+        current.insert("window.zoomLevel".into(), Value::from(1));
+        write_object(&settings, &current).unwrap();
+
+        assert_eq!(restore_settings_file("cursor", &settings).unwrap(), true);
+        let restored = read_settings(&settings);
+        assert_eq!(restored.get("editor.fontSize"), Some(&Value::from(14)));
+        assert_eq!(
+            restored.get(PROXY_KEY),
+            Some(&Value::String("https://corp-proxy.example:8443".into()))
+        );
+        assert_eq!(restored.get(STRICT_SSL_KEY), Some(&Value::Bool(true)));
+        assert_eq!(
+            restored.get(PROXY_SUPPORT_KEY),
+            Some(&Value::String("off".into()))
+        );
+        assert_eq!(restored.get(SYSTEM_CERTS_V2_KEY), Some(&Value::Bool(false)));
+        assert_eq!(restored.get(USE_HTTP1_KEY), Some(&Value::Bool(false)));
+        assert_eq!(restored.get(DISABLE_HTTP2_KEY), Some(&Value::Bool(false)));
+        assert_eq!(
+            restored.get(PROXY_KERBEROS_KEY),
+            Some(&Value::String("https://corp-proxy.example:8443".into()))
+        );
+        for key in LEGACY_CURSOR_PROXY_KEYS {
+            assert!(
+                restored.get(*key).is_none(),
+                "expected legacy {} to be removed",
+                key
+            );
+        }
+        assert_eq!(restored.get("window.zoomLevel"), Some(&Value::from(1)));
+        assert!(!backup_path(&settings).exists());
+
+        let _ = fs::remove_dir_all(
+            settings
+                .parent()
+                .unwrap()
+                .parent()
+                .unwrap()
+                .parent()
+                .unwrap(),
+        );
+    }
+
+    #[test]
+    fn cursor_restore_without_backup_removes_anybridge_proxy_keys() {
+        let settings = temp_settings_path("restore-without-backup");
+        fs::create_dir_all(settings.parent().unwrap()).unwrap();
+        fs::write(
+            &settings,
+            format!(
+                r#"{{
+                    "editor.fontSize": 13,
+                    "http.proxy": "{}",
+                    "http.proxyStrictSSL": false,
+                    "http.proxySupport": "on",
+                    "http.experimental.systemCertificatesV2": true,
+                    "cursor.general.useHttp1": true,
+                    "cursor.general.disableHttp2": true,
+                    "http.proxyKerberosServicePrincipal": "{}",
+                    "systemCertificatesV2": true,
+                    "useHttp1": true,
+                    "disableHttp2": true
+                }}"#,
+                current_proxy_value(),
+                current_proxy_value()
+            ),
+        )
+        .unwrap();
+
+        assert_eq!(restore_settings_file("cursor", &settings).unwrap(), true);
+        let restored = read_settings(&settings);
+        assert_eq!(restored.get("editor.fontSize"), Some(&Value::from(13)));
+        for key in managed_proxy_keys("cursor") {
+            assert!(
+                restored.get(key).is_none(),
+                "expected {} to be removed",
+                key
+            );
+        }
+        for key in LEGACY_CURSOR_PROXY_KEYS {
+            assert!(
+                restored.get(*key).is_none(),
+                "expected legacy {} to be removed",
+                key
+            );
+        }
+
+        let _ = fs::remove_dir_all(
+            settings
+                .parent()
+                .unwrap()
+                .parent()
+                .unwrap()
+                .parent()
+                .unwrap(),
+        );
+    }
+
+    #[test]
+    fn cursor_restore_with_existing_backup_removes_legacy_proxy_keys() {
+        let settings = temp_settings_path("restore-existing-backup");
+        fs::create_dir_all(settings.parent().unwrap()).unwrap();
+        fs::write(
+            backup_path(&settings),
+            r#"{
+                "editor.fontSize": 15,
+                "http.proxy": "https://corp-proxy.example:8080",
+                "http.proxyStrictSSL": true
+            }"#,
+        )
+        .unwrap();
+        fs::write(
+            &settings,
+            format!(
+                r#"{{
+                    "editor.fontSize": 15,
+                    "http.proxy": "{}",
+                    "http.proxyStrictSSL": false,
+                    "http.proxySupport": "on",
+                    "http.experimental.systemCertificatesV2": true,
+                    "cursor.general.useHttp1": true,
+                    "cursor.general.disableHttp2": true,
+                    "http.proxyKerberosServicePrincipal": "{}",
+                    "systemCertificatesV2": true,
+                    "useHttp1": true,
+                    "disableHttp2": true,
+                    "window.zoomLevel": 2
+                }}"#,
+                current_proxy_value(),
+                current_proxy_value()
+            ),
+        )
+        .unwrap();
+
+        assert_eq!(restore_settings_file("cursor", &settings).unwrap(), true);
+        let restored = read_settings(&settings);
+        assert_eq!(
+            restored.get(PROXY_KEY),
+            Some(&Value::String("https://corp-proxy.example:8080".into()))
+        );
+        assert_eq!(restored.get(STRICT_SSL_KEY), Some(&Value::Bool(true)));
+        assert!(restored.get(PROXY_SUPPORT_KEY).is_none());
+        assert!(restored.get(SYSTEM_CERTS_V2_KEY).is_none());
+        assert!(restored.get(USE_HTTP1_KEY).is_none());
+        assert!(restored.get(DISABLE_HTTP2_KEY).is_none());
+        assert!(restored.get(PROXY_KERBEROS_KEY).is_none());
+        for key in LEGACY_CURSOR_PROXY_KEYS {
+            assert!(
+                restored.get(*key).is_none(),
+                "expected legacy {} to be removed",
+                key
+            );
+        }
+        assert_eq!(restored.get("window.zoomLevel"), Some(&Value::from(2)));
+
+        let _ = fs::remove_dir_all(
+            settings
+                .parent()
+                .unwrap()
+                .parent()
+                .unwrap()
+                .parent()
+                .unwrap(),
+        );
+    }
 }

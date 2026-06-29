@@ -28,6 +28,7 @@
         <select id="targetIde" onchange="onTargetIdeChange()" hidden aria-hidden="true">
           <option value="devin">Devin</option>
           <option value="windsurf">Windsurf</option>
+          <option value="cursor">Cursor</option>
           <option value="auto">自动检测</option>
         </select>
       </div>
@@ -128,8 +129,8 @@
               aria-hidden="true"></span>
           <span class="platform-rail-label">Codex</span>
         </button>
-        <button type="button" class="platform-rail-item is-placeholder" data-platform-rail="cursor" draggable="true"
-          onclick="openPlaceholderPlatform('cursor')">
+        <button type="button" class="platform-rail-item" data-platform-rail="cursor" draggable="true"
+          onclick="openPlatformPage('cursor')">
           <span class="platform-rail-handle" draggable="true" aria-hidden="true"></span>
           <span class="platform-rail-icon"><img src="./assets/icons/platform-cursor.svg" alt=""
               aria-hidden="true"></span>
@@ -1301,6 +1302,25 @@
                         <input id="enhancement-retryTotalSeconds" type="number" min="1" step="1" onchange="updateEnhancementNumber(this, 'retryTotalSeconds')" style="width:100%;height:32px;padding:0 9px;border-radius:8px;border:1px solid var(--border);background:var(--bg-card);color:var(--text-primary);font-size:12px;outline:none;">
                       </label>
                     </div>
+
+                    <label style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px;border:1px solid var(--border);border-radius:9px;background:var(--bg-input);margin:14px 0 10px;">
+                      <span style="display:flex;flex-direction:column;gap:3px;min-width:0;"><strong style="font-size:12px;color:var(--text-primary);">智能重试</strong><small style="font-size:10px;color:var(--text-muted);">Anthropic 上游返回可恢复错误时，修复请求体后重发</small></span>
+                      <span class="toggle-switch"><input id="enhancement-selfHeal-enabled" type="checkbox" onchange="toggleSelfHeal(this, 'enabled')"><span class="toggle-slider"></span></span>
+                    </label>
+                    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;">
+                      <label style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px;border:1px solid var(--border);border-radius:9px;background:var(--bg-input);">
+                        <span style="font-size:11px;font-weight:800;color:var(--text-primary);">签名自愈</span>
+                        <span class="toggle-switch"><input id="enhancement-selfHeal-signature" type="checkbox" onchange="toggleSelfHeal(this, 'signature')"><span class="toggle-slider"></span></span>
+                      </label>
+                      <label style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px;border:1px solid var(--border);border-radius:9px;background:var(--bg-input);">
+                        <span style="font-size:11px;font-weight:800;color:var(--text-primary);">预算自愈</span>
+                        <span class="toggle-switch"><input id="enhancement-selfHeal-budget" type="checkbox" onchange="toggleSelfHeal(this, 'budget')"><span class="toggle-slider"></span></span>
+                      </label>
+                      <label style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px;border:1px solid var(--border);border-radius:9px;background:var(--bg-input);">
+                        <span style="font-size:11px;font-weight:800;color:var(--text-primary);">媒体自愈</span>
+                        <span class="toggle-switch"><input id="enhancement-selfHeal-media" type="checkbox" onchange="toggleSelfHeal(this, 'media')"><span class="toggle-slider"></span></span>
+                      </label>
+                    </div>
                   </div>
                   <!-- Panel: Prompt Injection -->
                   <div class="proxy-enhancement-pane" data-enhancement-pane="prompt">
@@ -1479,24 +1499,22 @@
                 <img id="proxy-platform-icon" src="./assets/icons/platform-devin.svg" alt="Devin">
               </div>
               <div class="platform-console-copy">
-                <h1 id="proxy-platform-title">Devin</h1>
-                <p id="proxy-platform-subtitle">Devin 通过本机代理接入供应商和模型映射。</p>
+                <h1 id="proxy-platform-title">Devin 接入控制台</h1>
+                <p id="proxy-platform-subtitle">本机代理、MITM 证书、Devin 配置和模型路由集中管理。</p>
               </div>
             </div>
             <div class="platform-console-actions">
-              <button class="proxy-btn" id="proxyBtn" aria-label="未切到代理，切换到代理">
-                <span class="proxy-state">
-                  <span class="proxy-state-dot" aria-hidden="true"></span>
-                  <span class="proxy-state-text" data-proxy-state-text>未切换</span>
-                </span>
+              <button class="btn-primary platform-proxy-primary" id="proxyBtn" data-proxy-action="proxy" aria-label="一键接入 Devin">
                 <span class="proxy-btn-action">
                   <svg class="proxy-btn-icon" width="14" height="14" viewBox="0 0 24 24" fill="none"
                     stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
                     <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" fill="currentColor" />
                   </svg>
-                  <span class="proxy-btn-text">切换到代理</span>
+                  <span class="proxy-btn-text">一键接入</span>
                 </span>
               </button>
+              <button class="btn-ghost" id="proxyRefreshBtn" onclick="refreshCurrentProxyPlatformStatus()">刷新状态</button>
+              <button class="btn-ghost platform-stop-proxy" id="proxyRestoreBtn" onclick="restoreCurrentProxyPlatformDirect()">停止接入</button>
             </div>
           </section>
           <div class="control-bar glass-card model-map-control-bar">
@@ -2042,6 +2060,25 @@
                       <button class="btn-primary" onclick="saveLocalProxyPorts('proxy')">保存端口</button>
                     </div>
                   </div>
+
+                  <div class="proxy-section-divider"></div>
+
+                  <div class="proxy-section">
+                    <div class="proxy-section-title">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <path d="M5 12h14"></path>
+                        <path d="m12 5 7 7-7 7"></path>
+                      </svg>
+                      启动偏好
+                    </div>
+                    <div class="proxy-preference-row">
+                      <div>
+                        <span>启动时自动运行</span>
+                        <strong>应用打开时自动启动本地代理</strong>
+                      </div>
+                      <div class="toggle-sm" data-config-toggle="AUTO_START_PROXY" role="switch" aria-label="启动时自动运行代理"></div>
+                    </div>
+                  </div>
                 </section>
 
             </div>
@@ -2167,16 +2204,142 @@
           </div>
         </div>
 
-        <!-- ═══════ PAGE: PLATFORM · CURSOR PLACEHOLDER ═══════ -->
+        <!-- ═══════ PAGE: PLATFORM · CURSOR ═══════ -->
         <div class="page" id="page-platform-cursor" role="tabpanel" aria-labelledby="tab-platforms">
-          <section class="platform-placeholder glass-card platform-hero-card">
-            <div class="platform-console-titlebar">
-              <div class="platform-console-icon"><img src="assets/icons/platform-cursor.svg" alt="Cursor"></div>
-              <div class="platform-console-titlewrap">
-                <strong>Cursor</strong>
-                <span>暂时只保留入口，占位展示；接入方式、模型配置和代理行为调研完成后再开启。</span>
+          <section class="cursor-console">
+            <div class="cursor-console-hero glass-card platform-hero-card">
+              <div class="platform-console-titlebar">
+                <div class="platform-console-icon"><img src="assets/icons/platform-cursor.svg" alt="Cursor"></div>
+                <div class="platform-console-copy">
+                  <h1>Cursor 接入控制台</h1>
+                  <p>本机代理、MITM 证书、Cursor 配置和模型路由集中管理。</p>
+                </div>
+              </div>
+              <div class="platform-console-actions cursor-hero-actions">
+                <button class="btn-primary cursor-primary-action" onclick="cursorSwitchToProxy()">
+                  <span class="cursor-btn-icon" aria-hidden="true">↯</span>
+                  一键接入
+                </button>
+                <button class="btn-ghost" onclick="cursorRefreshConsole()">刷新状态</button>
+                <button class="btn-ghost" onclick="cursorRestoreDirect()">还原直连</button>
               </div>
             </div>
+
+            <div class="cursor-status-grid">
+              <article class="cursor-status-card" id="cursor-card-proxy">
+                <div class="cursor-status-top">
+                  <span class="cursor-status-dot"></span>
+                  <span>本地代理</span>
+                </div>
+                <strong id="cursor-proxy-state">读取中</strong>
+                <p id="cursor-proxy-detail">正在读取 AnyBridge 服务状态</p>
+                <button class="cursor-card-action" onclick="cursorStartProxy()">启动代理</button>
+              </article>
+              <article class="cursor-status-card" id="cursor-card-settings">
+                <div class="cursor-status-top">
+                  <span class="cursor-status-dot"></span>
+                  <span>Cursor 配置</span>
+                </div>
+                <strong id="cursor-settings-state">读取中</strong>
+                <p id="cursor-settings-detail">正在检查代理设置</p>
+                <button class="cursor-card-action" onclick="cursorSwitchToProxy()">写入配置</button>
+              </article>
+              <article class="cursor-status-card" id="cursor-card-auth">
+                <div class="cursor-status-top">
+                  <span class="cursor-status-dot"></span>
+                  <span>账号与模型</span>
+                </div>
+                <strong id="cursor-auth-state">读取中</strong>
+                <p id="cursor-auth-detail">正在检查 state.vscdb 和默认模型</p>
+                <button class="cursor-card-action" onclick="cursorOpenProxyModels()">管理模型</button>
+              </article>
+              <article class="cursor-status-card" id="cursor-card-cert">
+                <div class="cursor-status-top">
+                  <span class="cursor-status-dot"></span>
+                  <span>MITM 证书</span>
+                </div>
+                <strong id="cursor-cert-state">读取中</strong>
+                <p id="cursor-cert-detail">正在检查 Cursor 域名 SAN</p>
+                <button class="cursor-card-action" onclick="cursorInstallCert()">安装证书</button>
+              </article>
+            </div>
+
+            <div class="cursor-main-grid">
+              <section class="cursor-panel glass-card">
+                <div class="cursor-panel-head">
+                  <div>
+                    <h2>接入流程</h2>
+                    <p>按顺序完成，失败项会直接显示原因。</p>
+                  </div>
+                  <button class="btn-ghost cursor-mini-btn" onclick="cursorRunHealthcheck()">环境检测</button>
+                </div>
+                <div class="cursor-step-list">
+                  <div class="cursor-step">
+                    <span class="cursor-step-index">1</span>
+                    <div>
+                      <strong>准备代理模型</strong>
+                      <p>至少启用一个 OpenAI 兼容模型，Cursor 模型选择器会读取这里的路由。</p>
+                    </div>
+                    <button class="cursor-step-action" onclick="cursorOpenProxyModels()">模型列表</button>
+                  </div>
+                  <div class="cursor-step">
+                    <span class="cursor-step-index">2</span>
+                    <div>
+                      <strong>写入 Cursor 状态</strong>
+                      <p>备份 Cursor 原状态后写入 BYOK 会话、默认模型和代理设置。</p>
+                    </div>
+                    <button class="cursor-step-action" onclick="cursorSwitchToProxy()">写入</button>
+                  </div>
+                  <div class="cursor-step">
+                    <span class="cursor-step-index">3</span>
+                    <div>
+                      <strong>启动本机代理</strong>
+                      <p>保持 AnyBridge 后台服务运行，Cursor 的请求会进入本机 MITM 入口。</p>
+                    </div>
+                    <button class="cursor-step-action" onclick="cursorStartProxy()">启动</button>
+                  </div>
+                  <div class="cursor-step">
+                    <span class="cursor-step-index">4</span>
+                    <div>
+                      <strong>重启 Cursor</strong>
+                      <p>重启后 Cursor 才会重新读取 settings.json 和 state.vscdb。</p>
+                    </div>
+                    <button class="cursor-step-action" onclick="cursorRestartIde()">重启</button>
+                  </div>
+                </div>
+              </section>
+
+              <aside class="cursor-panel glass-card">
+                <div class="cursor-panel-head">
+                  <div>
+                    <h2>能力覆盖</h2>
+                    <p>当前版本的实现范围。</p>
+                  </div>
+                </div>
+                <div class="cursor-capability-list">
+                  <div class="cursor-capability ok"><span></span><strong>Agent / Ask / Plan</strong><em>主聊天与多轮工具循环</em></div>
+                  <div class="cursor-capability ok"><span></span><strong>文件与命令工具</strong><em>Read、Grep、Shell、Write、MCP</em></div>
+                  <div class="cursor-capability ok"><span></span><strong>Background Composer</strong><em>可流式运行并落盘 turn summary</em></div>
+                  <div class="cursor-capability warn"><span></span><strong>BugBot</strong><em>已支持基础审查，工具循环待补齐</em></div>
+                  <div class="cursor-capability muted"><span></span><strong>Tab Completion</strong><em>官方 BYOK 也不覆盖，继续走 Cursor 内置模型</em></div>
+                </div>
+              </aside>
+            </div>
+
+            <section class="cursor-foot-grid">
+              <div class="cursor-note glass-card">
+                <strong>隐私边界</strong>
+                <p>AnyBridge 方案在本机代理内构造请求，不把你的 provider key 交给 Cursor 后端；但 Cursor 客户端仍会把编辑器上下文发到本机代理处理。</p>
+              </div>
+              <div class="cursor-note glass-card">
+                <strong>排障入口</strong>
+                <p>遇到模型不显示、证书报错、Cursor 无响应时，先跑环境检测，再查看代理日志和 turn artifacts。</p>
+                <div class="cursor-note-actions">
+                  <button class="btn-ghost cursor-mini-btn" onclick="cursorOpenStats()">统计日志</button>
+                  <button class="btn-ghost cursor-mini-btn" onclick="cursorRunHealthcheck()">环境检测</button>
+                </div>
+              </div>
+            </section>
           </section>
         </div>
 
@@ -2411,13 +2574,6 @@
                           <span>配置名称</span>
                           <input id="codex-config-name" class="field-input" placeholder="例如：AnyRouter">
                         </label>
-                        <label class="codex-config-field">
-                          <span>API 协议</span>
-                          <select id="codex-config-wire-api" class="field-input">
-                            <option value="responses">Responses API（默认，OpenAI 原生）</option>
-                            <option value="chat">Chat Completions（兼容第三方模型）</option>
-                          </select>
-                        </label>
                       </div>
                       <label class="codex-config-field">
                         <span>Base URL</span>
@@ -2428,6 +2584,27 @@
                         <input id="codex-config-api-key" class="field-input" type="password" placeholder="sk-..."
                           autocomplete="off">
                       </label>
+                    </div>
+                  </section>
+                  <section class="config-section">
+                    <div class="config-section-title">高级选项</div>
+                    <div class="config-section-body">
+                      <label class="codex-config-toggle-row">
+                        <span class="codex-config-toggle-label">路由模式（本地代理）</span>
+                        <label class="switch">
+                          <input type="checkbox" id="codex-config-route-through-proxy" checked>
+                          <span class="slider"></span>
+                        </label>
+                      </label>
+                      <p class="codex-config-toggle-hint">开启后 Codex 通过 AnyBridge 本地代理转发请求（127.0.0.1:7450），适合供应商只支持 Chat Completions 或需要协议转换的场景。关闭后 Codex 直接连接供应商的 Responses 端点。</p>
+                      <label class="codex-config-toggle-row">
+                        <span class="codex-config-toggle-label">桌面版显示所有模型</span>
+                        <label class="switch">
+                          <input type="checkbox" id="codex-config-inject-models" checked>
+                          <span class="slider"></span>
+                        </label>
+                      </label>
+                      <p class="codex-config-toggle-hint">开启后 AnyBridge 向 Codex 桌面版注入解锁脚本，让所有模型在模型选择器里显示。关闭后 Codex 桌面版只能切换到默认模型，CLI 不受影响。</p>
                     </div>
                   </section>
                   <section class="config-section">
@@ -2508,9 +2685,7 @@
             <div class="modal-footer codex-config-modal-footer">
               <div class="codex-config-editor-note">保存后出现在配置列表中，点击「切换」才会写入 Codex 当前配置文件。</div>
               <button class="modal-btn modal-btn-ghost" onclick="closeCodexConfigEditor()">取消</button>
-              <button class="modal-btn modal-btn-cancel" onclick="saveCodexConfigEditor(false)">保存配置</button>
-              <button class="modal-btn modal-btn-confirm" id="codex-config-save-switch-btn"
-                onclick="saveCodexConfigEditor(true)">保存并切换</button>
+              <button class="modal-btn modal-btn-confirm" onclick="saveCodexConfigEditor(false)">保存配置</button>
             </div>
           </div>
         </div>
@@ -4815,146 +4990,6 @@
   <script src="./assets/scripts/60-updater.js"></script>
   <script src="./assets/scripts/70-healthcheck.js"></script>
   <script src="./assets/scripts/90-init.js"></script>
-  <script src="./assets/scripts/99-handle-tuner.js"></script>
-
-  <!-- ═══════ 临时手柄调参面板（开发用，上线时删除） ═══════ -->
-  <div id="handle-tuner" hidden>
-    <div class="ht-header">
-      <div class="ht-title"><span class="ht-dot"></span>手柄参数调节</div>
-      <div class="ht-actions">
-        <button type="button" class="ht-icon-btn" data-ht-action="reset" title="重置默认值">↻</button>
-        <button type="button" class="ht-icon-btn" data-ht-action="copy" title="复制最终 CSS">⧉</button>
-        <button type="button" class="ht-icon-btn" data-ht-action="close" title="关闭 (Ctrl+Shift+H)">×</button>
-      </div>
-    </div>
-    <div class="ht-body">
-      <div class="ht-section">
-        <div class="ht-section-title">尺寸</div>
-        <div class="ht-row">
-          <label>宽度</label>
-          <input type="range" min="10" max="40" step="1" data-ht="--handle-width" data-ht-unit="px">
-          <input type="number" min="10" max="40" step="1" data-ht-num="--handle-width" data-ht-unit="px">
-        </div>
-        <div class="ht-row">
-          <label>高度</label>
-          <input type="range" min="10" max="40" step="1" data-ht="--handle-height" data-ht-unit="px">
-          <input type="number" min="10" max="40" step="1" data-ht-num="--handle-height" data-ht-unit="px">
-        </div>
-      </div>
-
-      <div class="ht-section">
-        <div class="ht-section-title">位置</div>
-        <div class="ht-row">
-          <label>横向</label>
-          <select data-ht="--handle-justify-self">
-            <option value="start">左</option>
-            <option value="center">中</option>
-            <option value="end">右</option>
-          </select>
-        </div>
-        <div class="ht-row">
-          <label>纵向</label>
-          <select data-ht="--handle-align-self">
-            <option value="start">上</option>
-            <option value="center">中</option>
-            <option value="end">下</option>
-          </select>
-        </div>
-        <div class="ht-row">
-          <label>左边距</label>
-          <input type="range" min="0" max="20" step="0.5" data-ht="--handle-dot-padding-x" data-ht-unit="px">
-          <input type="number" min="0" max="20" step="0.5" data-ht-num="--handle-dot-padding-x" data-ht-unit="px">
-        </div>
-        <div class="ht-row">
-          <label>上边距</label>
-          <input type="range" min="0" max="20" step="0.5" data-ht="--handle-dot-padding-y" data-ht-unit="px">
-          <input type="number" min="0" max="20" step="0.5" data-ht-num="--handle-dot-padding-y" data-ht-unit="px">
-        </div>
-      </div>
-
-      <div class="ht-section">
-        <div class="ht-section-title">圆点</div>
-        <div class="ht-row">
-          <label>半径</label>
-          <input type="range" min="0.5" max="4" step="0.1" data-ht="--handle-dot-radius" data-ht-unit="px">
-          <input type="number" min="0.5" max="4" step="0.1" data-ht-num="--handle-dot-radius" data-ht-unit="px">
-        </div>
-        <div class="ht-row">
-          <label>列间距</label>
-          <input type="range" min="2" max="20" step="0.5" data-ht="--handle-dot-col-spacing" data-ht-unit="px">
-          <input type="number" min="2" max="20" step="0.5" data-ht-num="--handle-dot-col-spacing" data-ht-unit="px">
-        </div>
-        <div class="ht-row">
-          <label>行间距</label>
-          <input type="range" min="2" max="20" step="0.5" data-ht="--handle-dot-row-spacing" data-ht-unit="px">
-          <input type="number" min="2" max="20" step="0.5" data-ht-num="--handle-dot-row-spacing" data-ht-unit="px">
-        </div>
-        <div class="ht-color-row">
-          <span class="ht-color-label">浅色默认</span>
-          <input type="color" data-ht-color="--handle-dot-color" data-ht-alpha="0.7">
-          <input type="range" min="0" max="100" step="1" data-ht-alpha-range="--handle-dot-color" data-ht-alpha-default="0.7">
-        </div>
-        <div class="ht-color-row">
-          <span class="ht-color-label">浅色拖拽</span>
-          <input type="color" data-ht-color="--handle-dot-color-drag" data-ht-alpha="0.85">
-          <input type="range" min="0" max="100" step="1" data-ht-alpha-range="--handle-dot-color-drag" data-ht-alpha-default="0.85">
-        </div>
-        <div class="ht-color-row">
-          <span class="ht-color-label">深色默认</span>
-          <input type="color" data-ht-color="--handle-dot-color-dark" data-ht-alpha="0.7">
-          <input type="range" min="0" max="100" step="1" data-ht-alpha-range="--handle-dot-color-dark" data-ht-alpha-default="0.7">
-        </div>
-        <div class="ht-color-row">
-          <span class="ht-color-label">深色拖拽</span>
-          <input type="color" data-ht-color="--handle-dot-color-drag-dark" data-ht-alpha="0.9">
-          <input type="range" min="0" max="100" step="1" data-ht-alpha-range="--handle-dot-color-drag-dark" data-ht-alpha-default="0.9">
-        </div>
-      </div>
-
-      <div class="ht-section">
-        <div class="ht-section-title">透明度</div>
-        <div class="ht-row">
-          <label>默认</label>
-          <input type="range" min="0" max="1" step="0.05" data-ht="--handle-opacity">
-          <input type="number" min="0" max="1" step="0.05" data-ht-num="--handle-opacity">
-        </div>
-        <div class="ht-row">
-          <label>悬停</label>
-          <input type="range" min="0" max="1" step="0.05" data-ht="--handle-opacity-hover">
-          <input type="number" min="0" max="1" step="0.05" data-ht-num="--handle-opacity-hover">
-        </div>
-      </div>
-
-      <div class="ht-section">
-        <div class="ht-section-title">阴影</div>
-        <div class="ht-row ht-row-check">
-          <label>启用</label>
-          <input type="checkbox" data-ht-toggle="--handle-shadow-on">
-        </div>
-        <div class="ht-color-row">
-          <span class="ht-color-label">颜色</span>
-          <input type="color" data-ht-color="--handle-shadow-color" data-ht-alpha="0.08">
-          <input type="range" min="0" max="100" step="1" data-ht-alpha-range="--handle-shadow-color" data-ht-alpha-default="0.08">
-        </div>
-        <div class="ht-row">
-          <label>X 偏移</label>
-          <input type="range" min="-10" max="10" step="0.5" data-ht="--handle-shadow-offset-x" data-ht-unit="px">
-          <input type="number" min="-10" max="10" step="0.5" data-ht-num="--handle-shadow-offset-x" data-ht-unit="px">
-        </div>
-        <div class="ht-row">
-          <label>Y 偏移</label>
-          <input type="range" min="-10" max="10" step="0.5" data-ht="--handle-shadow-offset-y" data-ht-unit="px">
-          <input type="number" min="-10" max="10" step="0.5" data-ht-num="--handle-shadow-offset-y" data-ht-unit="px">
-        </div>
-        <div class="ht-row">
-          <label>模糊</label>
-          <input type="range" min="0" max="20" step="0.5" data-ht="--handle-shadow-blur" data-ht-unit="px">
-          <input type="number" min="0" max="20" step="0.5" data-ht-num="--handle-shadow-blur" data-ht-unit="px">
-        </div>
-      </div>
-    </div>
-  </div>
-  <button type="button" id="handle-tuner-toggle" title="手柄调参 (Ctrl+Shift+H)">⚙</button>
 </body>
 
 </html>

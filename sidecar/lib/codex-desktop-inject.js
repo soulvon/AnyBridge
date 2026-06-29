@@ -45,17 +45,16 @@ export function buildInjectionScript(models) {
   const safeModels = Array.isArray(models) ? models : [];
   const modelsJson = JSON.stringify(safeModels);
   return `(function(){
-  if (window.${PATCH_KEY}) { return 'already'; }
-  window.${PATCH_KEY} = true;
   window.__anybridgeInjectVersion = '${INJECT_VERSION}';
-  var CUSTOM_MODELS = ${modelsJson};
-  if (!CUSTOM_MODELS || !CUSTOM_MODELS.length) { return 'no-models'; }
-
-  // OpenAI /v1/models list-format objects (for HTTP response patching).
-  var CUSTOM_MODELS_API = CUSTOM_MODELS.map(function(m){
-    return { id: m.slug, object: 'model', created: 0, owned_by: 'anybridge' };
-  });
-  var CUSTOM_SLUGS = CUSTOM_MODELS.map(function(m){ return m.slug; });
+  // 模型列表挂到 window,支持切换渠道时热更新:
+  // 二次注入只刷新模型并立即重跑 patch(不重启 Codex、不重复安装定时器/全局 hook)。
+  window.__anybridgeCustomModels = ${modelsJson};
+  function getCustomModels(){ return window.__anybridgeCustomModels || []; }
+  function getCustomSlugs(){ return getCustomModels().map(function(m){ return m.slug; }); }
+  if (!getCustomModels().length) { return 'no-models'; }
+  // 已注入过 → 热更新:刷新模型并立即重跑 patch,然后返回(不重复装定时器)。
+  if (window.${PATCH_KEY}) { try { runAll(); } catch(e){} return 'updated'; }
+  window.${PATCH_KEY} = true;
 
   function mergeUnique(existing, additions, keyFn){
     var seen = {};
@@ -74,107 +73,76 @@ export function buildInjectionScript(models) {
   // It lives in _store._values.dynamic_configs, NOT feature_gates.
   // Codex calls getDynamicConfig('107580212') to read the model list.
   // Value structure: { available_models: [...], use_hidden_models: bool, default_model: string }
+  // 动态构造 Statsig 107580212 配置(每次读 window 上最新模型,支持切换渠道热更新)。
+  function buildStatsigConfigWrapper(){
+    var slugs = getCustomSlugs();
+    return {
+      name: '107580212',
+      value: { available_models: slugs.slice(), use_hidden_models: false, default_model: slugs[0] || 'gpt-5.5' },
+      rule_id: 'cc-override', group: 'cc-override',
+      is_device_based: false, passed: true, id_type: 'userID', secondary_exposures: []
+    };
+  }
   function patchStatsigGate(){
     try {
       var statsig = window.__STATSIG__;
       if (!statsig) return;
-      // Build the dynamic config value with custom model slugs
-      var configValue = {
-        available_models: CUSTOM_SLUGS.slice(),
-        use_hidden_models: false,
-        default_model: CUSTOM_SLUGS[0] || 'gpt-5.5'
-      };
-      // Full wrapper object matching Statsig internal format
-      var configWrapper = {
-        name: '107580212',
-        value: configValue,
-        rule_id: 'cc-override',
-        group: 'cc-override',
-        is_device_based: false,
-        passed: true,
-        id_type: 'userID',
-        secondary_exposures: []
-      };
-      // Patch both firstInstance and instance() result for robustness
+      // 每次刷新共享 wrapper;包裹函数动态读它,切换渠道后即返回新模型。
+      window.__ccStatsigConfigWrapper = buildStatsigConfigWrapper();
+      var wrap = function(){ return window.__ccStatsigConfigWrapper; };
       var instances = [];
-      if (statsig.firstInstance && !statsig.firstInstance.__ccPatched) {
-        instances.push(statsig.firstInstance);
-      }
+      if (statsig.firstInstance) instances.push(statsig.firstInstance);
       try {
         var inst = statsig.instance && statsig.instance();
-        if (inst && !inst.__ccPatched && instances.indexOf(inst) === -1) {
-          instances.push(inst);
-        }
+        if (inst && instances.indexOf(inst) === -1) instances.push(inst);
       } catch(e){}
       if (Array.isArray(statsig.instances)) {
         statsig.instances.forEach(function(item){
           var obj = item && item.instance ? item.instance : item;
-          if (obj && !obj.__ccPatched && instances.indexOf(obj) === -1) {
-            instances.push(obj);
-          }
+          if (obj && instances.indexOf(obj) === -1) instances.push(obj);
         });
       }
-      for (var i = 0; i < instances.length; i++) {
-        var target = instances[i];
-        // --- Dynamic Config patches (PRIMARY: Codex reads from here) ---
-        if (typeof target.getDynamicConfig === 'function') {
+      // forEach 隔离每个 target 的闭包(原 for+var 在多 instance 下会共享 origGetDC)。
+      instances.forEach(function(target){
+        if (!target) return;
+        // --- Dynamic Config(PRIMARY)+ Feature Gate:各只包裹一次,返回时动态读最新 wrapper ---
+        if (typeof target.getDynamicConfig === 'function' && !target.__ccGetDCPatched) {
           var origGetDC = target.getDynamicConfig;
-          target.getDynamicConfig = function(name){
-            if (String(name) === '107580212') return configWrapper;
-            return origGetDC.apply(this, arguments);
-          };
+          target.getDynamicConfig = function(name){ if (String(name) === '107580212') return wrap(); return origGetDC.apply(this, arguments); };
+          target.__ccGetDCPatched = true;
         }
-        if (typeof target._getDynamicConfigImpl === 'function') {
+        if (typeof target._getDynamicConfigImpl === 'function' && !target.__ccGetDCImplPatched) {
           var origDCImpl = target._getDynamicConfigImpl;
-          target._getDynamicConfigImpl = function(name){
-            if (String(name) === '107580212') return configWrapper;
-            return origDCImpl.apply(this, arguments);
-          };
+          target._getDynamicConfigImpl = function(name){ if (String(name) === '107580212') return wrap(); return origDCImpl.apply(this, arguments); };
+          target.__ccGetDCImplPatched = true;
         }
-        // --- Feature Gate patches (secondary, for robustness) ---
-        if (typeof target.checkGate === 'function') {
+        if (typeof target.checkGate === 'function' && !target.__ccCheckGatePatched) {
           var origCheckGate = target.checkGate;
-          target.checkGate = function(name){
-            if (String(name) === '107580212') return configValue;
-            return origCheckGate.apply(this, arguments);
-          };
+          target.checkGate = function(name){ if (String(name) === '107580212') return wrap().value; return origCheckGate.apply(this, arguments); };
+          target.__ccCheckGatePatched = true;
         }
-        if (typeof target.getFeatureGate === 'function') {
+        if (typeof target.getFeatureGate === 'function' && !target.__ccGetGatePatched) {
           var origGetGate = target.getFeatureGate;
-          target.getFeatureGate = function(name){
-            if (String(name) === '107580212') return configWrapper;
-            return origGetGate.apply(this, arguments);
-          };
+          target.getFeatureGate = function(name){ if (String(name) === '107580212') return wrap(); return origGetGate.apply(this, arguments); };
+          target.__ccGetGatePatched = true;
         }
-        if (typeof target._getFeatureGateImpl === 'function') {
+        if (typeof target._getFeatureGateImpl === 'function' && !target.__ccGetGateImplPatched) {
           var origImpl = target._getFeatureGateImpl;
-          target._getFeatureGateImpl = function(name){
-            if (String(name) === '107580212') return configWrapper;
-            return origImpl.apply(this, arguments);
-          };
+          target._getFeatureGateImpl = function(name){ if (String(name) === '107580212') return wrap(); return origImpl.apply(this, arguments); };
+          target.__ccGetGateImplPatched = true;
         }
-        // --- MemoCache pre-population ---
+        // --- MemoCache / _store:每次刷新写入最新 wrapper ---
+        var wrapper = window.__ccStatsigConfigWrapper;
         if (target._memoCache && typeof target._memoCache === 'object') {
-          function djb2(str) {
-            var hash = 5381;
-            for (var j = 0; j < str.length; j++) {
-              hash = ((hash << 5) + hash) + str.charCodeAt(j);
-              hash = hash & hash;
-            }
-            return (hash >>> 0);
-          }
-          target._memoCache['c|' + djb2('107580212')] = configWrapper;
-          target._memoCache['g|' + djb2('107580212')] = configWrapper;
+          var djb2 = function(str){ var hash = 5381; for (var j = 0; j < str.length; j++) { hash = ((hash << 5) + hash) + str.charCodeAt(j); hash = hash & hash; } return (hash >>> 0); };
+          target._memoCache['c|' + djb2('107580212')] = wrapper;
+          target._memoCache['g|' + djb2('107580212')] = wrapper;
         }
-        // --- Direct _store injection ---
         if (target._store && target._store._values) {
           var inner = target._store._values._values || target._store._values;
-          if (inner.dynamic_configs) {
-            inner.dynamic_configs['107580212'] = configWrapper;
-          }
+          if (inner.dynamic_configs) inner.dynamic_configs['107580212'] = wrapper;
         }
-        target.__ccPatched = true;
-      }
+      });
     } catch(e){}
   }
 
@@ -190,6 +158,7 @@ export function buildInjectionScript(models) {
   }
   function patchModelArray(arr){
     if (!Array.isArray(arr)) return false;
+    var CUSTOM_SLUGS = getCustomSlugs();
     var seen = {};
     arr.forEach(function(x){
       if (x && typeof x === 'object') seen[x.model||x.slug||x.id||x.name] = true;
@@ -205,6 +174,7 @@ export function buildInjectionScript(models) {
   }
   function patchModelContainer(v){
     if (!v || typeof v !== 'object') return;
+    var CUSTOM_SLUGS = getCustomSlugs();
     if (Array.isArray(v)) { patchModelArray(v); return; }
     if (Array.isArray(v.models)) patchModelArray(v.models);
     if (Array.isArray(v.data)) patchModelArray(v.data);
@@ -278,6 +248,7 @@ export function buildInjectionScript(models) {
   // for method 'model/list' and splice in custom models.
   function patchMcp(){
     try {
+      var CUSTOM_MODELS = getCustomModels();
       var mcp = window.__mcp__ || window.__mcpClient;
       if (!mcp || mcp.__ccPatched) return;
       var orig = mcp.request || mcp.sendRequest;
@@ -371,6 +342,7 @@ export function buildInjectionScript(models) {
 
   function patchReactState(){
     try {
+      var CUSTOM_MODELS = getCustomModels();
       var fiber = getFiberRoot();
       if (!fiber) return;
       var visited = {};
@@ -464,54 +436,36 @@ export function buildInjectionScript(models) {
   }
 
   // ── Run all patches ────────────────────────────────────────────────
+  // 不做 patchReactState：遍历 10000 fiber 节点是性能杀手，导致黑屏和刷新慢。
+  // cockpit 和 CodexPlusPlus 都不做——Statsig patch + app-server 拦截足够让模型显示。
   function runAll(){
     patchStatsigGate();
     patchAppServer();
     patchMcp();
     patchResponseJson();
     installFetchPatch();
-    patchReactState();
     patchAuthMethod();
   }
 
-  // Immediate run
-  patchStatsigGate();
-  patchResponseJson();
-  installFetchPatch();
-  void installAppServerPatch();
+  // tick: 轻量补 patch（只 Statsig + app-server），学 cockpit 的 tick 策略
+  function tick(){
+    patchStatsigGate();
+    patchAppServer();
+    void installAppServerPatch();
+  }
 
-  // Delayed runs: 2s / 5s / 10s
-  [2000, 5000, 10000].forEach(function(delay){
-    setTimeout(function(){
-      patchStatsigGate();
-      patchAppServer();
-      void installAppServerPatch();
-    }, delay);
-  });
+  // 立即 + 300ms + 1s（学 cockpit），快速命中 renderer 加载完成
+  tick();
+  setTimeout(tick, 300);
+  setTimeout(tick, 1000);
 
-  // MutationObserver: 200ms debounce, re-patch when picker opens
-  try {
-    var debounceTimer = null;
-    var observer = new MutationObserver(function(){
-      if (debounceTimer) return;
-      debounceTimer = setTimeout(function(){
-        debounceTimer = null;
-        try {
-          var picker = document.querySelector('[role="dialog"], [role="menu"], [data-radix-popper-content-wrapper]');
-          if (picker) {
-            patchStatsigGate();
-            patchAuthMethod();
-            void installAppServerPatch();
-          }
-        } catch(e){}
-      }, 200);
-    });
-    observer.observe(document.body, { childList: true, subtree: true });
-    setTimeout(function(){ observer.disconnect(); }, 120000);
-  } catch(e){}
-
-  // Lightweight Statsig refresh (5s interval)
-  setInterval(function(){ patchStatsigGate(); }, 5000);
+  // 2.5s interval 直到 app-server patch 装上后停（学 cockpit）
+  var tickCount = 0;
+  var interval = setInterval(function(){
+    tickCount++;
+    tick();
+    if (tickCount >= 40) clearInterval(interval); // 最多 100s 兜底
+  }, 2500);
 
   return 'ok';
 })();`;

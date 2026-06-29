@@ -100,11 +100,15 @@ pub struct RestoreReport {
     pub ide_config: String,
     /// workbench.html 注入还原结果
     pub workbench_inject: String,
+    /// Cursor state.vscdb auth/model 恢复结果
+    pub cursor_auth: String,
 }
 
 impl RestoreReport {
     fn has_warning(&self) -> bool {
-        self.ide_config != "ok" || self.workbench_inject != "ok"
+        !self.ide_config.starts_with("ok")
+            || !self.workbench_inject.starts_with("ok")
+            || !self.cursor_auth.starts_with("ok")
     }
 }
 
@@ -120,10 +124,20 @@ fn restore_all(state: &ProxyState, target: &str) -> RestoreReport {
         Err(e) => report.ide_config = format!("还原失败: {}", e),
     }
 
-    match crate::commands::workbench_inject::restore(target) {
-        Ok(true) => report.workbench_inject = "ok".into(),
-        Ok(false) => report.workbench_inject = "ok（无需还原）".into(),
-        Err(e) => report.workbench_inject = format!("还原失败: {}", e),
+    if target == "cursor" {
+        report.workbench_inject = "ok（Cursor 无需 workbench 注入）".into();
+        report.cursor_auth = match crate::commands::cursor_auth::restore_cursor_auth() {
+            Ok(true) => "ok".into(),
+            Ok(false) => "ok（无需还原）".into(),
+            Err(e) => format!("还原失败: {}", e),
+        };
+    } else {
+        report.cursor_auth = "ok（无需 Cursor auth）".into();
+        match crate::commands::workbench_inject::restore(target) {
+            Ok(true) => report.workbench_inject = "ok".into(),
+            Ok(false) => report.workbench_inject = "ok（无需还原）".into(),
+            Err(e) => report.workbench_inject = format!("还原失败: {}", e),
+        }
     }
 
     report
@@ -357,7 +371,7 @@ fn resolve_target_ide_arg(target_ide: Option<&str>) -> Result<String, String> {
         }
         None => {
             if let Some(saved) = crate::commands::config::read_config_value("target_ide") {
-                if saved == "windsurf" || saved == "devin" {
+                if saved == "windsurf" || saved == "devin" || saved == "cursor" {
                     return Ok(saved);
                 }
             }
@@ -368,8 +382,11 @@ fn resolve_target_ide_arg(target_ide: Option<&str>) -> Result<String, String> {
                 Ok(detected)
             }
         }
-        Some(t) if t == "windsurf" || t == "devin" => Ok(t.to_string()),
-        Some(t) => Err(format!("不支持的目标 IDE: {}（仅 windsurf/devin/auto）", t)),
+        Some(t) if t == "windsurf" || t == "devin" || t == "cursor" => Ok(t.to_string()),
+        Some(t) => Err(format!(
+            "不支持的目标 IDE: {}（仅 windsurf/devin/cursor/auto）",
+            t
+        )),
     }
 }
 
@@ -636,15 +653,22 @@ fn run_proxy_preflight(
     let cert_dir = config_dir.join("certs");
     let cert_path = cert_dir.join("server.codeium.com.pem");
     let key_path = cert_dir.join("server.codeium.com-key.pem");
+    let san_marker_path = cert_dir.join("san-version");
     let mut cert_ok = cert_path.metadata().map(|m| m.len() > 0).unwrap_or(false);
     let mut key_ok = key_path.metadata().map(|m| m.len() > 0).unwrap_or(false);
+    let mut san_ok = std::fs::read_to_string(&san_marker_path)
+        .map(|s| s.trim() == crate::commands::system::mitm_cert_san_version())
+        .unwrap_or(false);
     if !cert_ok || !key_ok {
         if repair {
             match crate::commands::system::generate_certs() {
                 Ok(msg) => {
                     cert_ok = cert_path.metadata().map(|m| m.len() > 0).unwrap_or(false);
                     key_ok = key_path.metadata().map(|m| m.len() > 0).unwrap_or(false);
-                    if cert_ok && key_ok {
+                    san_ok = std::fs::read_to_string(&san_marker_path)
+                        .map(|s| s.trim() == crate::commands::system::mitm_cert_san_version())
+                        .unwrap_or(false);
+                    if cert_ok && key_ok && san_ok {
                         push_issue(&mut issues, "ok", "certs.auto_generated", msg);
                     } else {
                         push_issue(
@@ -675,6 +699,42 @@ fn run_proxy_preflight(
                     cert_path.to_string_lossy(),
                     key_path.to_string_lossy()
                 ),
+            );
+        }
+    } else if !san_ok {
+        if repair {
+            match crate::commands::system::generate_certs() {
+                Ok(msg) => {
+                    san_ok = std::fs::read_to_string(&san_marker_path)
+                        .map(|s| s.trim() == crate::commands::system::mitm_cert_san_version())
+                        .unwrap_or(false);
+                    if san_ok {
+                        push_issue(&mut issues, "ok", "certs.san_regenerated", msg);
+                    } else {
+                        push_issue(
+                            &mut issues,
+                            "err",
+                            "certs.san_regenerate_failed",
+                            "已尝试重新生成 MITM 证书，但 SAN 标记仍不是当前版本。请在「平台 > 设置 > 环境检测」点击「生成证书」",
+                        );
+                    }
+                }
+                Err(e) => push_issue(
+                    &mut issues,
+                    "err",
+                    "certs.san_generate_failed",
+                    format!(
+                        "MITM 证书缺少 Cursor 所需 SAN，且自动重新生成失败: {}。请在「平台 > 设置 > 环境检测」点击「生成证书」",
+                        e
+                    ),
+                ),
+            }
+        } else {
+            push_issue(
+                &mut issues,
+                "warn",
+                "certs.san_outdated",
+                "MITM 证书缺少 Cursor 所需 SAN；点击「生成证书」或「安装证书」会重新生成。",
             );
         }
     }
@@ -740,10 +800,10 @@ fn run_proxy_preflight(
         );
     }
 
-    let ide_label = if target == "devin" {
-        "Devin"
-    } else {
-        "Windsurf"
+    let ide_label = match target.as_str() {
+        "devin" => "Devin",
+        "cursor" => "Cursor",
+        _ => "Windsurf",
     };
     let ide_exe_path = crate::commands::system::detect_ide_path(Some(target.clone()));
     let settings_display = crate::commands::ide_config::settings_path(&target)
@@ -760,28 +820,30 @@ fn run_proxy_preflight(
             ide_exe_path.clone().unwrap_or_else(|| "未定位".into())
         ),
     );
-    let other_target = if target == "devin" {
-        "windsurf"
-    } else {
-        "devin"
-    };
-    let other_label = if other_target == "devin" {
-        "Devin"
-    } else {
-        "Windsurf"
-    };
-    if !crate::commands::system::is_ide_running(target.clone())
-        && crate::commands::system::is_ide_running(other_target.into())
-    {
-        push_issue(
-            &mut issues,
-            "warn",
-            "ide.target_mismatch",
-            format!(
-                "当前选择的是 {}，但检测到正在运行的是 {}。如果你实际使用 {}，请先切换顶部 IDE 选择器再启动代理",
-                ide_label, other_label, other_label
-            ),
-        );
+    if target != "cursor" {
+        let other_target = if target == "devin" {
+            "windsurf"
+        } else {
+            "devin"
+        };
+        let other_label = if other_target == "devin" {
+            "Devin"
+        } else {
+            "Windsurf"
+        };
+        if !crate::commands::system::is_ide_running(target.clone())
+            && crate::commands::system::is_ide_running(other_target.into())
+        {
+            push_issue(
+                &mut issues,
+                "warn",
+                "ide.target_mismatch",
+                format!(
+                    "当前选择的是 {}，但检测到正在运行的是 {}。如果你实际使用 {}，请先切换顶部 IDE 选择器再启动代理",
+                    ide_label, other_label, other_label
+                ),
+            );
+        }
     }
 
     let settings_candidate = match crate::commands::ide_config::settings_path(&target) {
@@ -938,40 +1000,81 @@ fn run_proxy_preflight(
         );
     }
 
-    match crate::commands::workbench_inject::workbench_html_path(&target) {
-        Some(path) => {
-            if std::fs::OpenOptions::new().write(true).open(&path).is_err() {
+    if target == "cursor" {
+        match crate::commands::cursor_auth::cursor_state_db_path() {
+            Some(path) if path.exists() => push_issue(
+                &mut issues,
+                "ok",
+                "cursor.state_db",
+                format!("Cursor state.vscdb 已定位: {}", path.to_string_lossy()),
+            ),
+            Some(path) => push_issue(
+                &mut issues,
+                "err",
+                "cursor.state_db_missing",
+                format!(
+                    "未找到 Cursor state.vscdb: {}。请先启动一次 Cursor 到主界面后再切换",
+                    path.to_string_lossy()
+                ),
+            ),
+            None => push_issue(
+                &mut issues,
+                "err",
+                "cursor.state_db_path_failed",
+                "无法定位 Cursor state.vscdb 路径",
+            ),
+        }
+        match crate::commands::cursor_auth::first_cursor_model_stable_id() {
+            Ok(model) => push_issue(
+                &mut issues,
+                "ok",
+                "cursor.model_pin",
+                format!("Cursor 默认 BYOK 模型可写入: {}", model),
+            ),
+            Err(e) => push_issue(&mut issues, "err", "cursor.model_pin_failed", e),
+        }
+        push_issue(
+            &mut issues,
+            "ok",
+            "workbench.skipped",
+            "Cursor 接入不需要 workbench.html 模型卡片注入",
+        );
+    } else {
+        match crate::commands::workbench_inject::workbench_html_path(&target) {
+            Some(path) => {
+                if std::fs::OpenOptions::new().write(true).open(&path).is_err() {
+                    push_issue(
+                        &mut issues,
+                        "warn",
+                        "workbench.not_writable",
+                        format!(
+                            "无法写入 workbench.html，模型卡片视觉改写可能失败: {}",
+                            path.to_string_lossy()
+                        ),
+                    );
+                }
+            }
+            None => push_issue(
+                &mut issues,
+                "warn",
+                "workbench.missing",
+                format!(
+                    "未定位到 {} workbench.html，模型卡片视觉改写脚本可能无法注入",
+                    ide_label
+                ),
+            ),
+        }
+
+        if let Some(res) = resources_root.as_deref() {
+            let script = res.join("byok-cards.js");
+            if !script.exists() {
                 push_issue(
                     &mut issues,
                     "warn",
-                    "workbench.not_writable",
-                    format!(
-                        "无法写入 workbench.html，模型卡片视觉改写可能失败: {}",
-                        path.to_string_lossy()
-                    ),
+                    "resources.cards_missing",
+                    format!("未找到 byok-cards.js 资源: {}", script.to_string_lossy()),
                 );
             }
-        }
-        None => push_issue(
-            &mut issues,
-            "warn",
-            "workbench.missing",
-            format!(
-                "未定位到 {} workbench.html，模型卡片视觉改写脚本可能无法注入",
-                ide_label
-            ),
-        ),
-    }
-
-    if let Some(res) = resources_root.as_deref() {
-        let script = res.join("byok-cards.js");
-        if !script.exists() {
-            push_issue(
-                &mut issues,
-                "warn",
-                "resources.cards_missing",
-                format!("未找到 byok-cards.js 资源: {}", script.to_string_lossy()),
-            );
         }
     }
 
@@ -1326,6 +1429,52 @@ pub async fn healthcheck_grouped(
 /// 与 tauri_plugin_shell 的 relative_command_path 逻辑一致：
 /// 基于 current_exe 所在目录查找，文件名不带 target triple 后缀
 /// （Tauri 构建脚本会自动将 binaries/ 下带后缀的文件重命名后复制到 exe 旁边）。
+fn current_target_triple() -> Option<&'static str> {
+    #[cfg(all(target_os = "windows", target_arch = "x86_64"))]
+    {
+        return Some("x86_64-pc-windows-msvc");
+    }
+    #[cfg(all(target_os = "windows", target_arch = "aarch64"))]
+    {
+        return Some("aarch64-pc-windows-msvc");
+    }
+    #[cfg(all(target_os = "macos", target_arch = "x86_64"))]
+    {
+        return Some("x86_64-apple-darwin");
+    }
+    #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+    {
+        return Some("aarch64-apple-darwin");
+    }
+    #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+    {
+        return Some("x86_64-unknown-linux-gnu");
+    }
+    #[cfg(all(target_os = "linux", target_arch = "aarch64"))]
+    {
+        return Some("aarch64-unknown-linux-gnu");
+    }
+    #[allow(unreachable_code)]
+    None
+}
+
+fn sidecar_file_candidates() -> Vec<String> {
+    let exe_suffix = if cfg!(target_os = "windows") {
+        ".exe"
+    } else {
+        ""
+    };
+    let mut files = vec![
+        format!("anybridge-proxy{}", exe_suffix),
+        format!("ide-byok-proxy{}", exe_suffix),
+    ];
+    if let Some(triple) = current_target_triple() {
+        files.push(format!("anybridge-proxy-{}{}", triple, exe_suffix));
+        files.push(format!("ide-byok-proxy-{}{}", triple, exe_suffix));
+    }
+    files
+}
+
 fn resolve_sidecar_path() -> Result<std::path::PathBuf, String> {
     let exe_path = std::env::current_exe().map_err(|e| format!("获取当前 exe 路径失败: {}", e))?;
     let exe_dir = exe_path.parent().ok_or("当前 exe 路径无父目录")?;
@@ -1337,13 +1486,9 @@ fn resolve_sidecar_path() -> Result<std::path::PathBuf, String> {
         exe_dir
     };
 
-    #[cfg(target_os = "windows")]
-    let sidecar_files = ["anybridge-proxy.exe", "ide-byok-proxy.exe"];
-    #[cfg(not(target_os = "windows"))]
-    let sidecar_files = ["anybridge-proxy", "ide-byok-proxy"];
-
+    let sidecar_files = sidecar_file_candidates();
     for sidecar_file in sidecar_files {
-        let path = base_dir.join(sidecar_file);
+        let path = base_dir.join(&sidecar_file);
         if path.exists() {
             return Ok(path);
         }
@@ -1351,7 +1496,9 @@ fn resolve_sidecar_path() -> Result<std::path::PathBuf, String> {
 
     Err(format!(
         "sidecar 二进制不存在: {}",
-        base_dir.join(sidecar_files[0]).to_string_lossy()
+        base_dir
+            .join(&sidecar_file_candidates()[0])
+            .to_string_lossy()
     ))
 }
 
@@ -1566,7 +1713,15 @@ pub fn start_proxy_impl(
     };
 
     // 注入卡片改写脚本到 workbench.html（失败不阻断代理启动，仅记日志）。
-    if let Some(res) = &resource_dir {
+    if target == "cursor" {
+        let _ = app.emit(
+            "proxy-log",
+            LogLine {
+                level: "info".into(),
+                msg: "Cursor 接入不需要 workbench.html 模型卡片注入".into(),
+            },
+        );
+    } else if let Some(res) = &resource_dir {
         let _ = app.emit(
             "proxy-log",
             LogLine {
@@ -1645,7 +1800,9 @@ pub fn start_proxy_impl(
                 // 清除 target_ide
                 *lock_or_recover(&state.target_ide) = String::new();
                 *lock_or_recover(&state.ports) = None;
-                if target.is_empty() || (target != "windsurf" && target != "devin") {
+                if target.is_empty()
+                    || (target != "windsurf" && target != "devin" && target != "cursor")
+                {
                     eprintln!("[monitor] target_ide 异常: '{}', 跳过还原", target);
                 } else {
                     let report = restore_all(&state, &target);
@@ -1656,6 +1813,9 @@ pub fn start_proxy_impl(
                         }
                         if !report.workbench_inject.starts_with("ok") {
                             warnings.push(report.workbench_inject.clone());
+                        }
+                        if !report.cursor_auth.starts_with("ok") {
+                            warnings.push(report.cursor_auth.clone());
                         }
                         let _ = app_handle2.emit(
                             "proxy-log",
@@ -1695,8 +1855,8 @@ pub fn start_proxy_impl(
         let mut msg = format!("代理启动失败: {}", e);
         if report.has_warning() {
             msg.push_str(&format!(
-                "；自动回滚时有警告: IDE配置={}, 卡片注入={}",
-                report.ide_config, report.workbench_inject
+                "；自动回滚时有警告: IDE配置={}, 卡片注入={}, Cursor状态={}",
+                report.ide_config, report.workbench_inject, report.cursor_auth
             ));
         }
         let _ = app.emit(
@@ -1957,16 +2117,34 @@ pub fn stop_proxy_service_impl(app: AppHandle) -> Result<(), String> {
 pub struct IdeProxyModeReport {
     pub ide_config: String,
     pub workbench_inject: String,
+    pub cursor_auth: String,
 }
 
 pub fn switch_ide_to_proxy_impl(
     app: AppHandle,
     target: String,
 ) -> Result<IdeProxyModeReport, String> {
-    if target != "windsurf" && target != "devin" {
+    if target != "windsurf" && target != "devin" && target != "cursor" {
         return Err(format!("暂不支持的 IDE: {}", target));
     }
     let mut report = IdeProxyModeReport::default();
+
+    if target == "cursor" {
+        report.cursor_auth = crate::commands::cursor_auth::apply_cursor_auth_and_model()
+            .map_err(|e| format!("写入 Cursor BYOK auth/model 失败: {}", e))?;
+        report.ide_config = match crate::commands::ide_config::patch(&target) {
+            Ok(true) => "updated".into(),
+            Ok(false) => "ok".into(),
+            Err(e) => {
+                let _ = crate::commands::cursor_auth::restore_cursor_auth();
+                return Err(format!("写入 Cursor 代理配置失败: {}", e));
+            }
+        };
+        report.workbench_inject = "ok（Cursor 无需 workbench 注入）".into();
+        return Ok(report);
+    }
+
+    report.cursor_auth = "ok（无需 Cursor auth）".into();
     report.ide_config = match crate::commands::ide_config::patch(&target) {
         Ok(true) => "updated".into(),
         Ok(false) => "ok".into(),
@@ -1996,7 +2174,7 @@ pub fn switch_ide_to_proxy_impl(
 }
 
 pub fn restore_ide_direct_impl(app: AppHandle, target: String) -> Result<RestoreReport, String> {
-    if target != "windsurf" && target != "devin" {
+    if target != "windsurf" && target != "devin" && target != "cursor" {
         return Err(format!("暂不支持的 IDE: {}", target));
     }
     let state = app.state::<ProxyState>();
@@ -2033,7 +2211,7 @@ pub fn stop_proxy_impl(
         // 清除 target_ide，防止残留旧值被后续误用
         *lock_or_recover(&state.target_ide) = String::new();
         *lock_or_recover(&state.ports) = None;
-        if target.is_empty() || (target != "windsurf" && target != "devin") {
+        if target.is_empty() || (target != "windsurf" && target != "devin" && target != "cursor") {
             eprintln!("[stop_proxy] target_ide 异常: '{}', 跳过还原", target);
             let _ = app.emit("proxy-stopped", ());
             return Ok(RestoreReport::default());
@@ -2048,6 +2226,9 @@ pub fn stop_proxy_impl(
             }
             if !report.workbench_inject.starts_with("ok") {
                 warnings.push(report.workbench_inject.clone());
+            }
+            if !report.cursor_auth.starts_with("ok") {
+                warnings.push(report.cursor_auth.clone());
             }
             let _ = app.emit(
                 "proxy-log",
@@ -2179,7 +2360,10 @@ pub fn kill_sidecar_process() {
                                         .args(["/F", "/T", "/PID", &pid.to_string()])
                                         .creation_flags(CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP)
                                         .output();
-                                    eprintln!("[cleanup] 已清理 dev 模式 sidecar node 进程: PID {}", pid);
+                                    eprintln!(
+                                        "[cleanup] 已清理 dev 模式 sidecar node 进程: PID {}",
+                                        pid
+                                    );
                                 }
                             }
                         }
@@ -2195,6 +2379,19 @@ pub fn kill_sidecar_process() {
             let _ = std::process::Command::new("pkill")
                 .args(["-f", process_name])
                 .output();
+        }
+
+        #[cfg(debug_assertions)]
+        {
+            for script_name in [
+                "sidecar/proxy-entry.js",
+                "sidecar/hybrid-server.js",
+                "sidecar/inference-proxy.js",
+            ] {
+                let _ = std::process::Command::new("pkill")
+                    .args(["-f", script_name])
+                    .output();
+            }
         }
     }
 }

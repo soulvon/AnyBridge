@@ -1,10 +1,10 @@
 const fs = require('fs');
 const path = require('path');
+const { configDir } = require('./lib/config-dir.cjs');
 
-const configDir = process.env.BYOK_CONFIG_DIR || 
-  path.join(process.env.APPDATA || '', 'anybridge');
+const anybridgeConfigDir = configDir();
 
-const providersFile = path.join(configDir, 'providers.json');
+const providersFile = path.join(anybridgeConfigDir, 'providers.json');
 const data = JSON.parse(fs.readFileSync(providersFile, 'utf8'));
 
 const opencode = data.providers.find(p => p.id === 'p-1782238927068-ipois');

@@ -46,6 +46,23 @@ export function normalizeCodexUnlock(unlock) {
   };
 }
 
+export function codexUnlockForTarget(conn) {
+  // Provider unlocks are capability records only. A route must opt in with
+  // target.unlock="codex"; otherwise ordinary OpenAI routes through the same
+  // supplier would be silently rewritten into the Codex-only wire contract.
+  if (conn?.unlockKind !== 'codex') return null;
+  return normalizeCodexUnlock(conn.unlocks?.codex);
+}
+
+export function applyCodexUnlockRequiredFields(payload, unlock) {
+  // Keep this intentionally minimal. AnyRouter's Codex-only channels were
+  // validated against spec/23 with model/input/stream/include/prompt_cache_key;
+  // fabricated Desktop-only metadata fields have broken routing before.
+  payload.include = unlock.include;
+  payload.prompt_cache_key = generateUUIDv7();
+  return payload;
+}
+
 function codexInputCacheSeed(input) {
   if (Array.isArray(input)) {
     const firstUser = input.find(item => item?.role === 'user');

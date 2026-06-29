@@ -7,6 +7,8 @@ This directory keeps only reusable project automation that is safe to publish.
 - `build/build_sidecar_plain.py` builds the sidecar binary for the current or selected platform.
 - `build/build_protected_sidecar.py` builds a protected sidecar variant for release validation.
 
+Both build scripts accept `--platform` values such as `windows-x64`, `macos-arm64`, `linux-x64`, or Rust target triples such as `x86_64-apple-darwin`.
+
 ## Release
 
 - `release/extract_changelog_section.cjs` extracts release notes for a version.

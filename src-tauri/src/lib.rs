@@ -106,6 +106,7 @@ pub fn run() {
             commands::platforms::restore_codex_official_config,
             commands::platforms::repair_codex_session_visibility,
             commands::codex_desktop::restart_codex_desktop,
+            commands::codex_desktop::start_codex_with_cdp,
             commands::platforms::load_codebuddy_models,
             commands::platforms::save_codebuddy_models,
             commands::platforms::list_provider_models,

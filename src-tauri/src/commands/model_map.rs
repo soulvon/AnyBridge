@@ -68,6 +68,31 @@ pub struct Target {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub unlock: Option<String>,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SelfHealConfig {
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    #[serde(default = "default_true")]
+    pub signature: bool,
+    #[serde(default = "default_true")]
+    pub budget: bool,
+    #[serde(default = "default_true")]
+    pub media: bool,
+}
+
+impl Default for SelfHealConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            signature: true,
+            budget: true,
+            media: true,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EnhancementConfig {
     #[serde(default = "default_true")]
@@ -80,6 +105,8 @@ pub struct EnhancementConfig {
     pub retry_cap_ms: u32,
     #[serde(rename = "retryTotalSeconds", default = "default_retry_total_seconds")]
     pub retry_total_seconds: u32,
+    #[serde(rename = "selfHeal", default)]
+    pub self_heal: SelfHealConfig,
     #[serde(rename = "imageFallback", default = "default_true")]
     pub image_fallback: bool,
     #[serde(rename = "autoRouting", default = "default_true")]
@@ -96,6 +123,7 @@ impl Default for EnhancementConfig {
             retry_base_ms: default_retry_base_ms(),
             retry_cap_ms: default_retry_cap_ms(),
             retry_total_seconds: default_retry_total_seconds(),
+            self_heal: SelfHealConfig::default(),
             image_fallback: true,
             auto_routing: true,
             unlock_models: true,

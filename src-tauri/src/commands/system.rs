@@ -15,6 +15,24 @@ pub const CA_COMMON_NAME: &str = "AnyBridge Local CA";
 /// 老版本 CA 证书 CommonName（升级时需要清理掉）。
 pub const LEGACY_CA_COMMON_NAMES: &[&str] = &["IDE BYOK Local MITM", "ide-byok Local CA"];
 
+const MITM_CERT_SAN_VERSION: &str = "2";
+const MITM_DNS_NAMES: &[&str] = &[
+    "server.self-serve.windsurf.com",
+    "server.codeium.com",
+    "api2.cursor.sh",
+    "authentication.cursor.sh",
+    "prod.authentication.cursor.sh",
+    "localhost",
+];
+
+pub(crate) fn mitm_cert_san_version() -> &'static str {
+    MITM_CERT_SAN_VERSION
+}
+
+pub(crate) fn mitm_dns_names() -> &'static [&'static str] {
+    MITM_DNS_NAMES
+}
+
 #[derive(serde::Deserialize)]
 pub struct ExportLogEntry {
     ts: String,
@@ -255,17 +273,22 @@ pub fn ensure_mitm_certs() -> Result<(std::path::PathBuf, bool), String> {
 
     let cert_path = certs_dir.join("server.codeium.com.pem");
     let key_path = certs_dir.join("server.codeium.com-key.pem");
+    let san_marker_path = certs_dir.join("san-version");
 
     let cert_ok = cert_path.metadata().map(|m| m.len() > 0).unwrap_or(false);
     let key_ok = key_path.metadata().map(|m| m.len() > 0).unwrap_or(false);
-    let already_complete = cert_ok && key_ok;
+    let san_ok = std::fs::read_to_string(&san_marker_path)
+        .map(|s| s.trim() == MITM_CERT_SAN_VERSION)
+        .unwrap_or(false);
+    let already_complete = cert_ok && key_ok && san_ok;
 
     if !already_complete {
-        let mut params = CertificateParams::new(vec![
-            "server.self-serve.windsurf.com".to_string(),
-            "server.codeium.com".to_string(),
-            "localhost".to_string(),
-        ])
+        let mut params = CertificateParams::new(
+            mitm_dns_names()
+                .iter()
+                .map(|name| (*name).to_string())
+                .collect::<Vec<String>>(),
+        )
         .map_err(|e| e.to_string())?;
         // CommonName 跟项目产品名 (tauri.conf.json productName="AnyBridge") 对齐，
         // 便于在 certmgr 中一眼辨识。
@@ -278,21 +301,24 @@ pub fn ensure_mitm_certs() -> Result<(std::path::PathBuf, bool), String> {
         let mut dn = DistinguishedName::new();
         dn.push(DnType::CommonName, CA_COMMON_NAME);
         params.distinguished_name = dn;
-        params.subject_alt_names = vec![
-            SanType::DnsName(
-                "server.self-serve.windsurf.com"
-                    .try_into()
-                    .map_err(|_| "bad san")?,
-            ),
-            SanType::DnsName("server.codeium.com".try_into().map_err(|_| "bad san")?),
-            SanType::DnsName("localhost".try_into().map_err(|_| "bad san")?),
-        ];
+        params.subject_alt_names = mitm_dns_names()
+            .iter()
+            .map(|name| {
+                Ok(SanType::DnsName(
+                    (*name)
+                        .try_into()
+                        .map_err(|_| format!("bad san: {}", name))?,
+                ))
+            })
+            .collect::<Result<Vec<_>, String>>()?;
 
         let key_pair = rcgen::KeyPair::generate().map_err(|e| e.to_string())?;
         let cert = params.self_signed(&key_pair).map_err(|e| e.to_string())?;
 
         std::fs::write(&cert_path, cert.pem()).map_err(|e| e.to_string())?;
         std::fs::write(&key_path, key_pair.serialize_pem()).map_err(|e| e.to_string())?;
+        std::fs::write(&san_marker_path, format!("{}\n", MITM_CERT_SAN_VERSION))
+            .map_err(|e| e.to_string())?;
     }
 
     Ok((certs_dir, !already_complete))
@@ -338,12 +364,15 @@ pub fn generate_certs() -> Result<String, String> {
 const IDE_EXE_KEY: &str = "ideExePath";
 #[cfg(target_os = "windows")]
 const DEVIN_EXE_KEY: &str = "devinExePath";
+#[cfg(target_os = "windows")]
+const CURSOR_EXE_KEY: &str = "cursorExePath";
 
 /// 根据 target 返回配置键名。
 #[cfg(target_os = "windows")]
 fn ide_exe_key(target: &str) -> &'static str {
     match target {
         "devin" => DEVIN_EXE_KEY,
+        "cursor" => CURSOR_EXE_KEY,
         _ => IDE_EXE_KEY,
     }
 }
@@ -354,6 +383,7 @@ fn ide_exe_key(target: &str) -> &'static str {
 fn ide_exe_filename(target: &str) -> &'static str {
     match target {
         "devin" => "Devin.exe",
+        "cursor" => "Cursor.exe",
         _ => "Windsurf.exe",
     }
 }
@@ -362,6 +392,7 @@ fn ide_exe_filename(target: &str) -> &'static str {
 fn ide_dir_name(target: &str) -> &'static str {
     match target {
         "devin" => "Devin",
+        "cursor" => "Cursor",
         _ => "Windsurf",
     }
 }
@@ -393,6 +424,7 @@ fn is_ide_exe_for_target(target: &str, path: &std::path::Path) -> bool {
             file_name.eq_ignore_ascii_case("Devin.exe")
                 || (file_name.eq_ignore_ascii_case("Windsurf.exe") && in_devin_dir)
         }
+        "cursor" => file_name.eq_ignore_ascii_case("Cursor.exe"),
         _ => file_name.eq_ignore_ascii_case("Windsurf.exe") && !in_devin_dir,
     }
 }
@@ -483,6 +515,10 @@ pub(crate) fn find_ide_exe(target: &str) -> Option<std::path::PathBuf> {
         // Devin: 同时查找 Windsurf.exe（来自 Devin 目录）和 Devin.exe 进程
         format!(
             r#"$hit = $null; $hit = Get-Process Windsurf -ErrorAction SilentlyContinue | Where-Object {{ $_.Path -and $_.Path -match '[\\/]devin[\\/]' -and $_.Path -notmatch 'extensions[/\\]windsurf[/\\]devin' }} | Select-Object -First 1 -ExpandProperty Path; if (-not $hit) {{ $hit = Get-Process Devin -ErrorAction SilentlyContinue | Where-Object {{ $_.Path -and $_.Path -notmatch 'extensions[/\\]windsurf[/\\]devin' }} | Select-Object -First 1 -ExpandProperty Path }}; if ($hit) {{ Write-Output $hit }}"#
+        )
+    } else if target == "cursor" {
+        format!(
+            r#"Get-Process Cursor -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty Path"#
         )
     } else {
         format!(
@@ -617,6 +653,7 @@ $candidates | Where-Object {{ $_ }} | Select-Object -Unique
 pub(crate) fn find_ide_app(target: &str) -> Option<std::path::PathBuf> {
     let app_name = match target {
         "devin" => "Devin.app",
+        "cursor" => "Cursor.app",
         _ => "Windsurf.app",
     };
     // 系统级安装
@@ -639,6 +676,7 @@ pub(crate) fn find_ide_app(target: &str) -> Option<std::path::PathBuf> {
 pub(crate) fn find_ide_bin(target: &str) -> Option<std::path::PathBuf> {
     let (dir_name, bin_name) = match target {
         "devin" => ("Devin", "devin"),
+        "cursor" => ("Cursor", "cursor"),
         _ => ("Windsurf", "windsurf"),
     };
     let candidates = [
@@ -690,7 +728,7 @@ pub fn detect_windsurf_path() -> Option<String> {
 }
 
 /// 手动设置 IDE exe 路径（自动探测失败时的兜底，写入配置缓存）。
-/// 校验路径存在且文件名是 Windsurf.exe 或 Devin.exe。
+/// 校验路径存在且文件名是 Windsurf.exe、Devin.exe 或 Cursor.exe。
 #[tauri::command]
 pub fn set_ide_path(path: String) -> Result<(), String> {
     #[cfg(target_os = "windows")]
@@ -701,14 +739,20 @@ pub fn set_ide_path(path: String) -> Result<(), String> {
         }
         let is_ide_exe = p
             .file_name()
-            .map(|n| n.eq_ignore_ascii_case("Windsurf.exe") || n.eq_ignore_ascii_case("Devin.exe"))
+            .map(|n| {
+                n.eq_ignore_ascii_case("Windsurf.exe")
+                    || n.eq_ignore_ascii_case("Devin.exe")
+                    || n.eq_ignore_ascii_case("Cursor.exe")
+            })
             .unwrap_or(false);
         if !is_ide_exe {
-            return Err("请指向 Windsurf.exe 或 Devin.exe".into());
+            return Err("请指向 Windsurf.exe、Devin.exe 或 Cursor.exe".into());
         }
         // 根据文件名 + 目录判断是哪个 IDE，写入对应配置键。
         // Devin 的部分进程仍叫 Windsurf.exe，不能只看文件名。
-        let key = if is_ide_exe_for_target("devin", &p) {
+        let key = if is_ide_exe_for_target("cursor", &p) {
+            CURSOR_EXE_KEY
+        } else if is_ide_exe_for_target("devin", &p) {
             DEVIN_EXE_KEY
         } else {
             IDE_EXE_KEY
@@ -723,12 +767,22 @@ pub fn set_ide_path(path: String) -> Result<(), String> {
         }
         let is_ide_app = p
             .file_name()
-            .map(|n| n.eq_ignore_ascii_case("Windsurf.app") || n.eq_ignore_ascii_case("Devin.app"))
+            .map(|n| {
+                n.eq_ignore_ascii_case("Windsurf.app")
+                    || n.eq_ignore_ascii_case("Devin.app")
+                    || n.eq_ignore_ascii_case("Cursor.app")
+            })
             .unwrap_or(false);
         if !is_ide_app {
-            return Err("请指向 Windsurf.app 或 Devin.app".into());
+            return Err("请指向 Windsurf.app、Devin.app 或 Cursor.app".into());
         }
         let key = if p
+            .file_name()
+            .map(|n| n.eq_ignore_ascii_case("Cursor.app"))
+            .unwrap_or(false)
+        {
+            "cursorAppPath"
+        } else if p
             .file_name()
             .map(|n| n.eq_ignore_ascii_case("Devin.app"))
             .unwrap_or(false)
@@ -748,12 +802,22 @@ pub fn set_ide_path(path: String) -> Result<(), String> {
         }
         let is_ide_bin = p
             .file_name()
-            .map(|n| n.eq_ignore_ascii_case("windsurf") || n.eq_ignore_ascii_case("devin"))
+            .map(|n| {
+                n.eq_ignore_ascii_case("windsurf")
+                    || n.eq_ignore_ascii_case("devin")
+                    || n.eq_ignore_ascii_case("cursor")
+            })
             .unwrap_or(false);
         if !is_ide_bin {
-            return Err("请指向 windsurf 或 devin 可执行文件".into());
+            return Err("请指向 windsurf、devin 或 cursor 可执行文件".into());
         }
         let key = if p
+            .file_name()
+            .map(|n| n.eq_ignore_ascii_case("cursor"))
+            .unwrap_or(false)
+        {
+            "cursorBinPath"
+        } else if p
             .file_name()
             .map(|n| n.eq_ignore_ascii_case("devin"))
             .unwrap_or(false)
@@ -819,9 +883,14 @@ fn restart_ide_impl(target: String) -> Result<String, String> {
                 }
             }
         } else {
-            // Windsurf: 用 taskkill /F /T /IM 杀整个进程树（含 renderer/GPU 子进程）
+            let image = if t == "cursor" {
+                "Cursor.exe"
+            } else {
+                "Windsurf.exe"
+            };
+            // 用 taskkill /F /T /IM 杀整个进程树（含 renderer/GPU 子进程）
             let _ = Command::new("taskkill")
-                .args(["/IM", "Windsurf.exe", "/F", "/T"])
+                .args(["/IM", image, "/F", "/T"])
                 .creation_flags(0x0800_0000)
                 .output();
         }
@@ -858,6 +927,7 @@ fn restart_ide_impl(target: String) -> Result<String, String> {
             .ok_or_else(|| format!("未找到 {}.app，请手动重启", ide_dir_name(&t)))?;
         let proc_name = match t.as_str() {
             "devin" => "Devin",
+            "cursor" => "Cursor",
             _ => "Windsurf",
         };
 
@@ -895,6 +965,7 @@ fn restart_ide_impl(target: String) -> Result<String, String> {
             .ok_or_else(|| format!("未找到 {} 可执行文件，请手动重启", ide_dir_name(&t)))?;
         let proc_name = match t.as_str() {
             "devin" => "devin",
+            "cursor" => "cursor",
             _ => "windsurf",
         };
 
@@ -958,6 +1029,8 @@ pub fn is_ide_running(name: String) -> bool {
             format!(
                 r#"$hit = Get-Process Windsurf -ErrorAction SilentlyContinue | Where-Object {{ $_.Path -and $_.Path -match '[\\/]devin[\\/]' -and $_.Path -notmatch 'extensions[/\\]windsurf[/\\]devin' }} | Select-Object -First 1; if (-not $hit) {{ $hit = Get-Process Devin -ErrorAction SilentlyContinue | Where-Object {{ $_.Path -and $_.Path -notmatch 'extensions[/\\]windsurf[/\\]devin' }} | Select-Object -First 1 }}; $hit"#
             )
+        } else if n == "cursor" {
+            format!(r#"Get-Process Cursor -ErrorAction SilentlyContinue | Select-Object -First 1"#)
         } else {
             format!(
                 r#"Get-Process Windsurf -ErrorAction SilentlyContinue | Where-Object {{ $_.Path -and $_.Path -notmatch '[\\/]devin[\\/]' }} | Select-Object -First 1"#
@@ -979,6 +1052,7 @@ pub fn is_ide_running(name: String) -> bool {
         let process_name = match n.as_str() {
             "windsurf" => "Windsurf",
             "devin" => "Devin",
+            "cursor" => "Cursor",
             _ => return false,
         };
         if let Ok(out) = Command::new("pgrep").args(["-x", process_name]).output() {
@@ -993,6 +1067,7 @@ pub fn is_ide_running(name: String) -> bool {
         let process_name = match n.as_str() {
             "windsurf" => "windsurf",
             "devin" => "devin",
+            "cursor" => "cursor",
             _ => return false,
         };
         if let Ok(out) = Command::new("pgrep").args(["-x", process_name]).output() {
@@ -1012,13 +1087,17 @@ pub fn is_ide_running(name: String) -> bool {
 pub fn detect_target_ide() -> String {
     let windsurf_running = is_ide_running("windsurf".into());
     let devin_running = is_ide_running("devin".into());
+    let cursor_running = is_ide_running("cursor".into());
 
     // 优先选择正在运行的 IDE
-    if windsurf_running && !devin_running {
+    if windsurf_running && !devin_running && !cursor_running {
         return "windsurf".into();
     }
-    if devin_running && !windsurf_running {
+    if devin_running && !windsurf_running && !cursor_running {
         return "devin".into();
+    }
+    if cursor_running && !windsurf_running && !devin_running {
+        return "cursor".into();
     }
 
     // 两个都在运行或都不在运行，检查哪个有代理配置
@@ -1040,6 +1119,13 @@ pub fn detect_target_ide() -> String {
         if let Ok(content) = std::fs::read_to_string(&devin_settings) {
             if content.contains("\"http.proxy\"") {
                 return "devin".into();
+            }
+        }
+
+        let cursor_settings = config_dir.join("Cursor/User/settings.json");
+        if let Ok(content) = std::fs::read_to_string(&cursor_settings) {
+            if content.contains("\"http.proxy\"") {
+                return "cursor".into();
             }
         }
     }
@@ -1065,6 +1151,13 @@ pub fn detect_target_ide() -> String {
                 return "devin".into();
             }
         }
+
+        let cursor_settings = support_dir.join("Cursor/User/settings.json");
+        if let Ok(content) = std::fs::read_to_string(&cursor_settings) {
+            if content.contains("\"http.proxy\"") {
+                return "cursor".into();
+            }
+        }
     }
 
     #[cfg(target_os = "linux")]
@@ -1086,6 +1179,13 @@ pub fn detect_target_ide() -> String {
                 return "devin".into();
             }
         }
+
+        let cursor_settings = config_dir.join("Cursor/User/settings.json");
+        if let Ok(content) = std::fs::read_to_string(&cursor_settings) {
+            if content.contains("\"http.proxy\"") {
+                return "cursor".into();
+            }
+        }
     }
 
     // 都没有代理配置，检查哪个安装了。默认优先 Windsurf，避免双安装机器误接入 Devin。
@@ -1097,6 +1197,9 @@ pub fn detect_target_ide() -> String {
         if find_ide_exe("devin").is_some() {
             return "devin".into();
         }
+        if find_ide_exe("cursor").is_some() {
+            return "cursor".into();
+        }
     }
     #[cfg(target_os = "macos")]
     {
@@ -1105,6 +1208,9 @@ pub fn detect_target_ide() -> String {
         }
         if find_ide_app("devin").is_some() {
             return "devin".into();
+        }
+        if find_ide_app("cursor").is_some() {
+            return "cursor".into();
         }
     }
     #[cfg(target_os = "linux")]
@@ -1115,8 +1221,40 @@ pub fn detect_target_ide() -> String {
         if find_ide_bin("devin").is_some() {
             return "devin".into();
         }
+        if find_ide_bin("cursor").is_some() {
+            return "cursor".into();
+        }
     }
 
     // 都没安装，默认返回 windsurf
     "windsurf".into()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::BTreeSet;
+
+    #[test]
+    fn mitm_dns_names_include_cursor_hosts_without_duplicates() {
+        let names = mitm_dns_names();
+        let unique = names.iter().copied().collect::<BTreeSet<_>>();
+        assert_eq!(unique.len(), names.len(), "MITM SAN list has duplicates");
+
+        for expected in [
+            "server.self-serve.windsurf.com",
+            "server.codeium.com",
+            "api2.cursor.sh",
+            "authentication.cursor.sh",
+            "prod.authentication.cursor.sh",
+            "localhost",
+        ] {
+            assert!(
+                unique.contains(expected),
+                "MITM SAN list is missing {}",
+                expected
+            );
+        }
+        assert_eq!(MITM_CERT_SAN_VERSION, "2");
+    }
 }

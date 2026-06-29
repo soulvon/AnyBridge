@@ -338,20 +338,28 @@ syncPlatformSubtabsForPage('platform-proxy');
 const PROXY_PLATFORM_META = {
   windsurf: {
     label: 'Windsurf',
+    title: 'Windsurf 接入控制台',
     short: 'Windsurf',
     icon: './assets/icons/platform-windsurf.svg',
-    subtitle: 'Cascade / 行内编辑通过本机代理接入供应商和模型映射。'
+    subtitle: '本机代理、MITM 证书、Windsurf 配置和模型路由集中管理。'
   },
   devin: {
     label: 'Devin',
+    title: 'Devin 接入控制台',
     short: 'Devin',
     icon: './assets/icons/platform-devin.svg',
-    subtitle: 'Devin 通过本机代理接入供应商、模型映射和会话日志。'
+    subtitle: '本机代理、MITM 证书、Devin 配置和模型路由集中管理。'
+  },
+  cursor: {
+    label: 'Cursor',
+    short: 'Cursor',
+    icon: './assets/icons/platform-cursor.svg',
+    subtitle: 'Cursor 通过本机 MITM 入口接入代理模型、对话工具流、Background Composer 和会话落盘。'
   }
 };
 
 function normalizeProxyPlatform(platformId) {
-  return platformId === 'devin' || platformId === 'windsurf' ? platformId : 'windsurf';
+  return platformId === 'devin' || platformId === 'windsurf' || platformId === 'cursor' ? platformId : 'windsurf';
 }
 
 function setPlatformRailActive(platformId) {
@@ -368,7 +376,7 @@ function updateProxyPlatformCopy(platformId) {
   const title = document.getElementById('proxy-platform-title');
   const subtitle = document.getElementById('proxy-platform-subtitle');
   const icon = document.getElementById('proxy-platform-icon');
-  if (title) title.textContent = meta.label;
+  if (title) title.textContent = meta.title || meta.label;
   if (subtitle) subtitle.textContent = meta.subtitle;
   if (icon) {
     icon.src = meta.icon;
@@ -429,7 +437,12 @@ function readPlatformRailOrder() {
 function writePlatformRailOrder(order) {
   try {
     localStorage.setItem(PLATFORM_RAIL_ORDER_KEY, JSON.stringify(order));
-  } catch (_) {}
+    return true;
+  } catch (e) {
+    if (typeof addLog === 'function') addLog('err', '保存平台栏顺序失败: ' + e);
+    if (typeof showCustomAlert === 'function') showCustomAlert(String(e), '保存失败', 'error');
+    return false;
+  }
 }
 
 function applyPlatformRailOrder(order, { persist = false } = {}) {
@@ -494,8 +507,7 @@ function bindPlatformRailDragAndDrop() {
       const val = cs.getPropertyValue(v).trim();
       if (val) target.style.setProperty(v, val);
     });
-    // 克隆体上手柄常显 + 用拖拽色
-    target.style.setProperty('--handle-opacity', '1');
+    // 手柄跟随 rail 当前 opacity（默认 0 = 隐藏，不强制显示）
     target.style.setProperty('--handle-dot-color', cs.getPropertyValue('--handle-dot-color-drag').trim());
     target.style.setProperty('--handle-dot-color-dark', cs.getPropertyValue('--handle-dot-color-drag-dark').trim());
   }
@@ -527,9 +539,36 @@ function bindPlatformRailDragAndDrop() {
     };
   });
 
-  // ── pointermove：超阈值才启动，克隆体跟鼠标 ──
-  document.addEventListener('pointermove', (e) => {
-    if (!drag) return;
+  // ── pointermove：超阈值才启动，rAF 节流防抖 ──
+  let dragRafPending = false;
+  let lastMoveEvent = null;
+  let shiftDebounceTimer = null;
+  const SHIFT_DEBOUNCE_MS = 70;
+
+  function applyShiftNow() {
+    if (!lastMoveEvent) return;
+    const drop = findDropTarget(lastMoveEvent.clientY);
+    clearPlatformRailDragMarkers();
+    clearDragShift();
+    if (drop) {
+      drop.item.classList.toggle('is-drag-over-top', drop.placeAbove);
+      drop.item.classList.toggle('is-drag-over-bottom', !drop.placeAbove);
+      applyDragShift(drop.item, drop.placeAbove);
+    }
+  }
+
+  function scheduleShift() {
+    if (shiftDebounceTimer) clearTimeout(shiftDebounceTimer);
+    shiftDebounceTimer = setTimeout(() => {
+      shiftDebounceTimer = null;
+      applyShiftNow();
+    }, SHIFT_DEBOUNCE_MS);
+  }
+
+  function processDragMove() {
+    dragRafPending = false;
+    if (!drag || !lastMoveEvent) return;
+    const e = lastMoveEvent;
     if (!drag.started) {
       if (Math.abs(e.clientX - drag.startX) < 5 && Math.abs(e.clientY - drag.startY) < 5) return;
       drag.started = true;
@@ -549,23 +588,25 @@ function bindPlatformRailDragAndDrop() {
       drag.item.style.opacity = '0';
       platformRailDragging = drag.item;
     }
-    // 克隆体跟随鼠标
-    drag.clone.style.left = (e.clientX - drag.offsetX) + 'px';
+    // 克隆体跟随鼠标（仅垂直方向，水平锁定在原位）—— 每帧更新，不防抖
     drag.clone.style.top = (e.clientY - drag.offsetY) + 'px';
-    // 检测落点 + 自然流动
-    const drop = findDropTarget(e.clientY);
-    clearPlatformRailDragMarkers();
-    clearDragShift();
-    if (drop) {
-      drop.item.classList.toggle('is-drag-over-top', drop.placeAbove);
-      drop.item.classList.toggle('is-drag-over-bottom', !drop.placeAbove);
-      applyDragShift(drop.item, drop.placeAbove);
-    }
+    // 按钮变动防抖：光标停 70ms 才重排，避免快速移动时抖动
+    scheduleShift();
+  }
+
+  document.addEventListener('pointermove', (e) => {
+    if (!drag) return;
+    lastMoveEvent = e;
+    if (dragRafPending) return;
+    dragRafPending = true;
+    requestAnimationFrame(processDragMove);
   });
 
   // ── pointerup / pointercancel：归位 ──
   function finishDrag(e, cancelled) {
     if (!drag) return;
+    // 清理未触发的 shift 防抖定时器
+    if (shiftDebounceTimer) { clearTimeout(shiftDebounceTimer); shiftDebounceTimer = null; }
     if (!drag.started) { drag = null; return; }
 
     const drop = cancelled ? null : findDropTarget(e.clientY);
@@ -763,6 +804,8 @@ function getTargetIde() {
 function syncCustomSelector() {}
 
 async function onTargetIdeChange() {
+  const select = document.getElementById('targetIde');
+  const previousIde = select?.dataset.persistedValue || 'windsurf';
   const ide = getTargetIde();
 
   // 保存配置到 BYOK config
@@ -771,8 +814,15 @@ async function onTargetIdeChange() {
       const config = await invoke('load_config') || {};
       config.target_ide = ide;
       await invoke('save_config', { values: config });
+      if (select) select.dataset.persistedValue = ide;
     } catch (e) {
-      console.error('Failed to save target_ide:', e);
+      if (select) select.value = previousIde;
+      updateProxyPlatformCopy(previousIde);
+      setPlatformRailActive(previousIde);
+      syncCustomSelector();
+      addLog('err', '目标 IDE 保存失败: ' + e);
+      showCustomAlert(String(e), '保存失败', 'error');
+      return;
     }
   }
 
@@ -781,7 +831,7 @@ async function onTargetIdeChange() {
   if (ide === 'auto' && invoke) {
     try {
       const detected = await invoke('detect_target_ide');
-      if (detected && (detected === 'windsurf' || detected === 'devin')) {
+      if (detected && (detected === 'windsurf' || detected === 'devin' || detected === 'cursor')) {
         displayIde = detected;
       }
     } catch (e) {
@@ -791,7 +841,7 @@ async function onTargetIdeChange() {
 
   // 更新状态文本和 flow 图
   updateFlowIdeTarget(displayIde);
-  if (displayIde === 'windsurf' || displayIde === 'devin') {
+  if (displayIde === 'windsurf' || displayIde === 'devin' || displayIde === 'cursor') {
     updateProxyPlatformCopy(displayIde);
     setPlatformRailActive(displayIde);
   }

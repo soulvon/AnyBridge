@@ -152,29 +152,39 @@ function transformModelMap(json) {
   const enhancement = (json && json.enhancement && typeof json.enhancement === 'object')
     ? json.enhancement
     : {};
+  const selfHeal = (enhancement.selfHeal && typeof enhancement.selfHeal === 'object')
+    ? {
+        enabled: enhancement.selfHeal.enabled !== false,
+        signature: enhancement.selfHeal.signature !== false,
+        budget: enhancement.selfHeal.budget !== false,
+        media: enhancement.selfHeal.media !== false,
+      }
+    : undefined;
   const visionModels = (json && json.visionModels && typeof json.visionModels === 'object')
     ? json.visionModels
     : {};
+  const normalizedEnhancement = {
+    retry: enhancement.retry !== false,
+    retryMaxRetries: positiveInt(enhancement.retryMaxRetries, 5, 0),
+    retryBaseMs: positiveInt(enhancement.retryBaseMs, 600, 1),
+    retryCapMs: positiveInt(enhancement.retryCapMs, 8000, 1),
+    retryTotalSeconds: positiveInt(enhancement.retryTotalSeconds, 60, 1),
+    imageFallback: enhancement.imageFallback !== false,
+    autoRouting: enhancement.autoRouting !== false,
+    unlockModels: enhancement.unlockModels !== false,
+    systemPromptPrefix: String(enhancement.systemPromptPrefix || ''),
+    customHeaders: Array.isArray(enhancement.customHeaders) ? enhancement.customHeaders.filter(h => h && h.key) : [],
+    responseHeaders: Array.isArray(enhancement.responseHeaders) ? enhancement.responseHeaders.filter(h => h && h.key) : [],
+    paramOverrides: enhancement.paramOverrides && typeof enhancement.paramOverrides === 'object' ? enhancement.paramOverrides : {},
+    toolFilterMode: String(enhancement.toolFilterMode || ''),
+    toolFilterList: Array.isArray(enhancement.toolFilterList) ? enhancement.toolFilterList.map(String) : [],
+    forceToolChoice: String(enhancement.forceToolChoice || ''),
+    rateLimitRpm: positiveInt(enhancement.rateLimitRpm, 0, 0),
+    requestLogging: enhancement.requestLogging === true,
+  };
+  if (selfHeal) normalizedEnhancement.selfHeal = selfHeal;
   return {
-    enhancement: {
-      retry: enhancement.retry !== false,
-      retryMaxRetries: positiveInt(enhancement.retryMaxRetries, 5, 0),
-      retryBaseMs: positiveInt(enhancement.retryBaseMs, 600, 1),
-      retryCapMs: positiveInt(enhancement.retryCapMs, 8000, 1),
-      retryTotalSeconds: positiveInt(enhancement.retryTotalSeconds, 60, 1),
-      imageFallback: enhancement.imageFallback !== false,
-      autoRouting: enhancement.autoRouting !== false,
-      unlockModels: enhancement.unlockModels !== false,
-      systemPromptPrefix: String(enhancement.systemPromptPrefix || ''),
-      customHeaders: Array.isArray(enhancement.customHeaders) ? enhancement.customHeaders.filter(h => h && h.key) : [],
-      responseHeaders: Array.isArray(enhancement.responseHeaders) ? enhancement.responseHeaders.filter(h => h && h.key) : [],
-      paramOverrides: enhancement.paramOverrides && typeof enhancement.paramOverrides === 'object' ? enhancement.paramOverrides : {},
-      toolFilterMode: String(enhancement.toolFilterMode || ''),
-      toolFilterList: Array.isArray(enhancement.toolFilterList) ? enhancement.toolFilterList.map(String) : [],
-      forceToolChoice: String(enhancement.forceToolChoice || ''),
-      rateLimitRpm: positiveInt(enhancement.rateLimitRpm, 0, 0),
-      requestLogging: enhancement.requestLogging === true,
-    },
+    enhancement: normalizedEnhancement,
     visionModels: {
       imageModels: Array.isArray(visionModels.imageModels) ? visionModels.imageModels : [],
     },

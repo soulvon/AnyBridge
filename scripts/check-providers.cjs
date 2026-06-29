@@ -1,12 +1,12 @@
 const fs = require('fs');
 const path = require('path');
+const { configDir } = require('./lib/config-dir.cjs');
 
-const configDir = process.env.BYOK_CONFIG_DIR || 
-  path.join(process.env.APPDATA || '', 'anybridge');
+const anybridgeConfigDir = configDir();
 
 // Check proxy-routes.json
 try {
-  const f = path.join(configDir, 'proxy-routes.json');
+  const f = path.join(anybridgeConfigDir, 'proxy-routes.json');
   const data = JSON.parse(fs.readFileSync(f, 'utf8'));
   console.log('=== Proxy Routes ===');
   const routes = Array.isArray(data) ? data : (data.routes || []);
@@ -25,7 +25,7 @@ try {
 
 // Check the specific model deepseek-v4-flash
 try {
-  const f = path.join(configDir, 'proxy-routes.json');
+  const f = path.join(anybridgeConfigDir, 'proxy-routes.json');
   const data = JSON.parse(fs.readFileSync(f, 'utf8'));
   const routes = Array.isArray(data) ? data : (data.routes || []);
   const flash = routes.find(r => r.id === 'deepseek-v4-flash');

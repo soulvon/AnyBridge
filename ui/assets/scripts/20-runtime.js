@@ -19,12 +19,18 @@ function setAutoRestartIdeAfterSwitch(enabled) {
   try {
     if (enabled) localStorage.setItem(IDE_RESTART_AFTER_SWITCH_KEY, 'auto');
     else localStorage.removeItem(IDE_RESTART_AFTER_SWITCH_KEY);
-  } catch (_) {}
+  } catch (e) {
+    addLog('err', '保存 IDE 重启偏好失败: ' + e);
+    if (typeof showCustomAlert === 'function') showCustomAlert(String(e), '保存失败', 'error');
+    return false;
+  }
   syncIdeRestartPromptSetting();
+  return true;
 }
 
 function resetIdeRestartPromptPreference() {
-  setAutoRestartIdeAfterSwitch(false);
+  const saved = setAutoRestartIdeAfterSwitch(false);
+  if (!saved) return;
   if (typeof showBottomToast === 'function') {
     showBottomToast('已恢复为每次询问是否重启 IDE', 'success');
   }
@@ -43,6 +49,7 @@ function normalizeIdeProxyTargetValue(value) {
   const raw = String(value || '').trim().toLowerCase();
   if (raw === 'devin') return 'devin';
   if (raw === 'windsurf') return 'windsurf';
+  if (raw === 'cursor') return 'cursor';
   if (typeof normalizeProxyPlatform === 'function') return normalizeProxyPlatform(raw);
   return 'windsurf';
 }
@@ -198,6 +205,7 @@ function updateProxyPageState(running, tone = '') {
 function syncIdeProxyButton() {
   const btn = document.getElementById('proxyBtn');
   if (!btn) return;
+  const restoreBtn = document.getElementById('proxyRestoreBtn');
   const target = normalizeIdeProxyTargetValue(typeof getTargetIde === 'function' ? getTargetIde() : 'windsurf');
   const status = ideProxyStatusByTarget[target] || {};
   const patched = !!status.patched;
@@ -205,16 +213,29 @@ function syncIdeProxyButton() {
   const text = btn.querySelector('.proxy-btn-text');
   const stateText = btn.querySelector('[data-proxy-state-text]');
   const label = ideDisplayLabel(target);
-  btn.classList.toggle('running', patched);
-  btn.classList.toggle('warning', patched && !proxyRunning);
-  if (icon) {
-    icon.innerHTML = patched
-      ? '<rect x="4" y="4" width="16" height="16" rx="2" fill="currentColor"/>'
-      : '<polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" fill="currentColor"/>';
+  btn.classList.remove('running', 'warning', 'is-connected');
+  if (restoreBtn) {
+    restoreBtn.textContent = '停止接入';
+    restoreBtn.classList.toggle('is-danger', patched);
+    restoreBtn.disabled = !patched;
+    restoreBtn.setAttribute('aria-label', patched ? `停止 ${label} 接入 AnyBridge` : `${label} 当前未接入`);
   }
-  if (text) text.textContent = patched ? '还原直连' : '切换到代理';
-  if (stateText) stateText.textContent = patched ? (proxyRunning ? '已切到代理' : '代理未运行') : '未切换';
-  btn.setAttribute('aria-label', patched ? `${label} 已切到代理，点击还原直连` : `${label} 未切到代理，点击切换到代理`);
+  if (patched) {
+    btn.classList.add('is-connected');
+    if (icon) {
+      icon.innerHTML = '<path d="M20 6 9 17l-5-5" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"/>';
+    }
+    if (text) text.textContent = '已接入';
+    if (stateText) stateText.textContent = proxyRunning ? '代理运行中' : '代理未运行';
+    btn.setAttribute('aria-label', `${label} 已接入 AnyBridge`);
+    return;
+  }
+  if (icon) {
+    icon.innerHTML = '<polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" fill="currentColor"/>';
+  }
+  if (text) text.textContent = '一键接入';
+  if (stateText) stateText.textContent = '未接入';
+  btn.setAttribute('aria-label', `${label} 一键接入 AnyBridge`);
 }
 
 async function refreshIdeProxyStatus(targetOverride = '') {
@@ -237,6 +258,7 @@ async function ensureLocalProxyConfig(values = {}) {
   localProxyInferencePort = parseInt(values.INFERENCE_PORT || values.LOCAL_INFERENCE_PORT || localProxyInferencePort || '7451', 10) || 7451;
   localProxyKey = String(values.LOCAL_PROXY_KEY || localProxyKey || '').trim();
   if (!localProxyKey && invoke) {
+    const previousKey = localProxyKey;
     localProxyKey = generateLocalProxyKeyValue();
     try {
       const current = await invoke('load_config') || {};
@@ -245,7 +267,11 @@ async function ensureLocalProxyConfig(values = {}) {
       current.INFERENCE_PORT = String(localProxyInferencePort);
       await invoke('save_config', { values: current });
     } catch (e) {
-      addLog('warn', '生成本地代理 key 后保存失败: ' + e);
+      localProxyKey = previousKey;
+      addLog('err', '生成本地代理 key 后保存失败: ' + e);
+      if (typeof showCustomAlert === 'function') {
+        showCustomAlert(String(e), '本地代理 key 保存失败', 'error');
+      }
     }
   }
   syncLocalProxyUi();
@@ -305,10 +331,18 @@ async function saveLocalProxyPorts(source = 'proxy') {
         return;
       }
     }
+    const previousApiPort = localProxyPort;
+    const previousInferencePort = localProxyInferencePort;
     localProxyPort = nextApiPort;
     localProxyInferencePort = nextInferencePort;
     const saved = await persistLocalProxyConfig();
-    if (!saved) return;
+    if (!saved) {
+      localProxyPort = previousApiPort;
+      localProxyInferencePort = previousInferencePort;
+      syncLocalProxyUi();
+      showCustomAlert('本地代理端口保存失败，已恢复原端口。', '保存失败', 'error');
+      return;
+    }
     syncLocalProxyUi();
     if (typeof renderPlatformDetailStatuses === 'function') renderPlatformDetailStatuses();
     addLog('ok', `本地代理端口已保存: ${nextApiPort} / ${nextInferencePort}`);
@@ -350,8 +384,15 @@ async function copyLocalProxyValue(kind) {
 async function regenerateLocalProxyKey() {
   const ok = await showCustomConfirm('重新生成后，已经写入外部工具的本地代理 key 需要重新应用。', '重新生成本地 key', 'warn');
   if (!ok) return;
+  const previousKey = localProxyKey;
   localProxyKey = generateLocalProxyKeyValue();
-  await persistLocalProxyConfig();
+  const saved = await persistLocalProxyConfig();
+  if (!saved) {
+    localProxyKey = previousKey;
+    syncLocalProxyUi();
+    showCustomAlert('本地代理 key 保存失败，已恢复原 key。', '保存失败', 'error');
+    return;
+  }
   syncLocalProxyUi();
   if (typeof renderPlatformDetailStatuses === 'function') renderPlatformDetailStatuses();
   addLog('ok', '本地代理 key 已重新生成');
@@ -360,7 +401,7 @@ async function regenerateLocalProxyKey() {
 const _inFlightToggles = new Set();
 
 function ideDisplayLabel(ide) {
-  const labels = { windsurf: 'Windsurf', devin: 'Devin', auto: '自动检测' };
+  const labels = { windsurf: 'Windsurf', devin: 'Devin', cursor: 'Cursor', auto: '自动检测' };
   return labels[ide] || (ide ? ide.charAt(0).toUpperCase() + ide.slice(1) : 'Windsurf');
 }
 
@@ -521,7 +562,26 @@ function setProxyButtonBusyText(textValue) {
   }
 }
 
-async function toggleProxy() {
+function setProxyPlatformActionBusy(busy) {
+  ['proxyBtn', 'proxyRefreshBtn', 'proxyRestoreBtn'].forEach(id => {
+    const btn = document.getElementById(id);
+    if (btn) btn.disabled = !!busy;
+  });
+}
+
+async function refreshCurrentProxyPlatformStatus() {
+  if (!invoke && !bindTauriBridge()) return;
+  const target = await resolveIdeProxyTarget(false);
+  await refreshStatus();
+  await refreshIdeProxyStatus(target);
+  addLog('info', `${ideDisplayLabel(target)} 状态已刷新`);
+}
+
+async function restoreCurrentProxyPlatformDirect() {
+  return toggleProxy('direct');
+}
+
+async function toggleProxy(mode = 'toggle') {
   _diag('toggleProxy called');
   if (_toggling) { _diag('toggleProxy skipped: already in progress'); return; }
   _toggling = true;
@@ -538,26 +598,57 @@ async function toggleProxy() {
     const status = await refreshIdeProxyStatus(target);
     const patched = !!status?.patched;
 
-    if (btn) {
-      btn.disabled = true;
-      setProxyButtonBusyText(patched ? '还原中...' : '切换中...');
+    if (mode === 'proxy' && patched) {
+      if (!proxyRunning) {
+        setProxyPlatformActionBusy(true);
+        setProxyButtonBusyText('启动代理...');
+        setGlobalProxyBusy(true, '代理启动中');
+        try {
+          await invoke('start_proxy_service');
+          addLog('ok', '全局代理服务已自动启动');
+        } catch (e) {
+          if (String(e).includes('代理已在运行')) {
+            addLog('warn', '代理服务已在运行，已刷新状态');
+          } else {
+            updateGlobalProxyStatusPill(false, 'error');
+            updateProxyPageState(false, 'error');
+            throw new Error('自动启动全局代理服务失败: ' + e);
+          }
+        } finally {
+          setGlobalProxyBusy(false);
+        }
+        await refreshStatus();
+      }
+      addLog('info', `${label} 已接入 AnyBridge`);
+      if (typeof showBottomToast === 'function') showBottomToast(`${label} 已接入 AnyBridge`, 'info');
+      return;
     }
 
-    if (patched) {
-      const ok = await showCustomConfirm(`将把 ${label} 从 AnyBridge 本地代理还原为直连配置。`, '还原直连', 'warn');
+    if (mode === 'direct' && !patched) {
+      addLog('info', `${label} 当前未接入代理，无需还原`);
+      if (typeof showBottomToast === 'function') showBottomToast(`${label} 当前未接入代理`, 'info');
+      return;
+    }
+
+    setProxyPlatformActionBusy(true);
+    setProxyButtonBusyText(mode === 'direct' || patched ? '停止中...' : '接入中...');
+
+    if (mode === 'direct' || (mode === 'toggle' && patched)) {
+      const ok = await showCustomConfirm(`将停止 ${label} 接入 AnyBridge，并恢复为直连配置。`, '停止接入', 'warn');
       if (!ok) return;
       const report = await invoke('restore_ide_direct', { target });
       const warnings = [];
       if (report && report.ideConfig && !String(report.ideConfig).startsWith('ok')) warnings.push('IDE 配置: ' + report.ideConfig);
       if (report && report.workbenchInject && !String(report.workbenchInject).startsWith('ok')) warnings.push('卡片注入: ' + report.workbenchInject);
+      if (report && report.cursorAuth && !String(report.cursorAuth).startsWith('ok')) warnings.push('Cursor 状态: ' + report.cursorAuth);
       await refreshIdeProxyStatus(target);
       setStatusPill(proxyRunning);
       if (warnings.length) {
-        addLog('warn', `${label} 还原直连完成，但有提示: ${warnings.join('；')}`);
-        showCustomAlert(warnings.join('\n'), '还原提示', 'warn');
+        addLog('warn', `${label} 停止接入完成，但有提示: ${warnings.join('；')}`);
+        showCustomAlert(warnings.join('\n'), '停止接入提示', 'warn');
       } else {
-        addLog('ok', `${label} 已还原直连`);
-        await promptRestartIde(`${label} 已还原直连，重启 IDE 后生效。`, target, { mode: 'direct' });
+        addLog('ok', `${label} 已停止接入`);
+        await promptRestartIde(`${label} 已停止接入并恢复直连，重启 IDE 后生效。`, target, { mode: 'direct' });
       }
       return;
     }
@@ -582,15 +673,19 @@ async function toggleProxy() {
       await refreshStatus();
     }
 
-    setProxyButtonBusyText('切换中...');
+    setProxyButtonBusyText('接入中...');
     const report = await invoke('switch_ide_to_proxy', { target });
     await refreshIdeProxyStatus(target);
     setStatusPill(proxyRunning);
     const injectWarn = report && report.workbenchInject && String(report.workbenchInject).startsWith('warn:')
       ? report.workbenchInject.replace(/^warn:\s*/, '')
       : '';
+    const cursorState = report && report.cursorAuth && String(report.cursorAuth).startsWith('ok')
+      ? report.cursorAuth
+      : '';
     addLog('ok', `${label} 已切换到 AnyBridge 本地代理`);
     if (injectWarn) addLog('warn', `${label} 卡片注入提示: ${injectWarn}`);
+    if (cursorState && target === 'cursor') addLog('ok', `Cursor 状态已写入: ${cursorState}`);
     await promptRestartIde(`${label} 已切到代理，本地代理已启动，重启 IDE 后生效。`, target, {
       mode: 'proxy',
       detail: injectWarn
@@ -600,7 +695,7 @@ async function toggleProxy() {
     showCustomAlert(String(e), '切换失败', 'error');
     setStatusPill(proxyRunning);
   } finally {
-    if (btn) btn.disabled = false;
+    setProxyPlatformActionBusy(false);
     _toggling = false;
     syncIdeProxyButton();
   }
@@ -1059,7 +1154,13 @@ function toggleTheme() {
   const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
   const next = isDark ? 'light' : 'dark';
   applyTheme(next);
-  try { localStorage.setItem('byok-theme', next); } catch {}
+  try {
+    localStorage.setItem('byok-theme', next);
+  } catch (e) {
+    applyTheme(isDark ? 'dark' : 'light');
+    addLog('err', '保存主题偏好失败: ' + e);
+    if (typeof showCustomAlert === 'function') showCustomAlert(String(e), '保存失败', 'error');
+  }
 }
 
 // ═══════ LOG STREAM ═══════
@@ -1250,9 +1351,12 @@ async function loadAndFillConfig() {
     document.querySelectorAll('[data-config-key]').forEach(el => {
       const k = el.getAttribute('data-config-key');
       if (k in values) el.value = values[k];
+      el.dataset.persistedValue = el.value;
     });
     applyToggleStates(values);
     await ensureLocalProxyConfig(values);
+    const targetSelect = document.getElementById('targetIde');
+    if (targetSelect) targetSelect.dataset.persistedValue = targetSelect.value;
     if (window.ByokI18n) {
       window.ByokI18n.initFromConfig(values);
       window.ByokI18n.bindLanguageControls();
@@ -1262,7 +1366,10 @@ async function loadAndFillConfig() {
 }
 
 async function saveConfigField(key, value) {
-  if (!invoke) return false;
+  if (!invoke) {
+    if (typeof showCustomAlert === 'function') showCustomAlert('当前环境缺少 Tauri invoke，无法保存配置。', '保存失败', 'error');
+    return false;
+  }
   try {
     const current = await invoke('load_config');
     current[key] = value;
@@ -1270,21 +1377,32 @@ async function saveConfigField(key, value) {
     return true;
   } catch (e) {
     addLog('err', '保存配置失败: ' + e);
+    if (typeof showCustomAlert === 'function') showCustomAlert(String(e), '保存配置失败', 'error');
     return false;
   }
 }
 
 document.querySelectorAll('[data-config-key]').forEach(el => {
-  el.addEventListener('change', () => saveConfigField(el.getAttribute('data-config-key'), el.value));
+  el.addEventListener('change', async () => {
+    const previous = el.dataset.persistedValue ?? el.defaultValue ?? '';
+    const ok = await saveConfigField(el.getAttribute('data-config-key'), el.value);
+    if (ok) {
+      el.dataset.persistedValue = el.value;
+    } else {
+      el.value = previous;
+    }
+  });
 });
 
 // ═══════ TOGGLE SWITCHES (persisted as config) ═══════
 document.querySelectorAll('[data-config-toggle]').forEach(el => {
   el.addEventListener('click', async () => {
-    el.classList.toggle('on');
     const key = el.getAttribute('data-config-toggle');
-    const ok = await saveConfigField(key, el.classList.contains('on') ? 'true' : 'false');
-    if (!ok) el.classList.toggle('on'); // 保存失败，回滚 UI 状态
+    const previous = el.classList.contains('on');
+    const next = !previous;
+    setConfigToggleState(key, next);
+    const ok = await saveConfigField(key, next ? 'true' : 'false');
+    if (!ok) setConfigToggleState(key, previous);
   });
 });
 
@@ -1304,11 +1422,22 @@ function applyToggleStates(config) {
     const key = el.getAttribute('data-config-toggle');
     // AUTO_START_PROXY 默认为 true（未配置时也开启）
     if (key === 'AUTO_START_PROXY') {
-      if (config[key] !== 'false') el.classList.add('on');
-      else el.classList.remove('on');
+      setConfigToggleElementState(el, config[key] !== 'false');
     } else {
-      if (config[key] === 'true') el.classList.add('on');
-      else if (config[key] === 'false') el.classList.remove('on');
+      if (config[key] === 'true') setConfigToggleElementState(el, true);
+      else if (config[key] === 'false') setConfigToggleElementState(el, false);
     }
+  });
+}
+
+function setConfigToggleElementState(el, enabled) {
+  el.classList.toggle('on', !!enabled);
+  el.setAttribute('aria-pressed', enabled ? 'true' : 'false');
+  el.setAttribute('aria-checked', enabled ? 'true' : 'false');
+}
+
+function setConfigToggleState(key, enabled) {
+  document.querySelectorAll(`[data-config-toggle="${key}"]`).forEach(el => {
+    setConfigToggleElementState(el, enabled);
   });
 }

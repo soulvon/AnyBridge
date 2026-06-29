@@ -6,14 +6,12 @@
 import https from 'node:https';
 import crypto from 'node:crypto';
 import {
-  buildCodexUnlockClientMetadata,
-  buildCodexPromptCacheKey,
+  applyCodexUnlockRequiredFields,
   buildClaudeCodeUnlockPayload,
   claudeCodeUnlockHeaders,
+  codexUnlockForTarget,
   codexUnlockHeaders,
-  generateUUIDv7,
   normalizeClaudeCodeUnlock,
-  normalizeCodexUnlock,
 } from '../lib/codex-unlock.js';
 import { parseGetChatMessageRequest } from './parse-request.js';
 import { buildErrorChunk } from './build-response.js';
@@ -813,7 +811,7 @@ function streamAnthropic(req, res, { systemPrompt, messages, tools, toolChoice, 
 // ─── OpenAI Responses API streaming ─────────────────────────
 
 function streamOpenAI(req, res, { systemPrompt, messages, tools, toolChoice, resolvedModel, requestedModel, serviceTier, messageId, conn, onFailover, schemaCompatRetry = false, bindActiveReq = null }) {
-  const codexUnlock = normalizeCodexUnlock(conn.unlocks?.codex);
+  const codexUnlock = codexUnlockForTarget(conn);
   if (!codexUnlock && conn.apiPath.includes('/chat/completions')) {
     return streamOpenAIChatCompletions(req, res, { systemPrompt, messages, tools, toolChoice, resolvedModel, serviceTier, messageId, conn, onFailover, schemaCompatRetry, bindActiveReq });
   }
@@ -830,18 +828,7 @@ function streamOpenAI(req, res, { systemPrompt, messages, tools, toolChoice, res
     stream: true,
   };
 
-  if (codexUnlock) {
-    const promptCacheKey = buildCodexPromptCacheKey(openaiMessages);
-    apiPayload.parallel_tool_calls = true;
-    apiPayload.reasoning = {
-      effort: OPENAI_REASONING_EFFORT && !/^(off|none|false|0)$/i.test(OPENAI_REASONING_EFFORT)
-        ? OPENAI_REASONING_EFFORT
-        : 'medium',
-    };
-    apiPayload.store = false;
-    apiPayload.text = { verbosity: 'low' };
-    apiPayload.client_metadata = buildCodexUnlockClientMetadata(promptCacheKey);
-  } else {
+  if (!codexUnlock) {
     apiPayload.max_output_tokens = MAX_TOKENS;
   }
 
@@ -868,13 +855,8 @@ function streamOpenAI(req, res, { systemPrompt, messages, tools, toolChoice, res
       else if (toolChoice.type === 'tool') apiPayload.tool_choice = { type: 'function', name: toolChoice.name };
     }
   }
-  if (codexUnlock && !apiPayload.tool_choice) {
-    apiPayload.tool_choice = 'auto';
-  }
-
   if (codexUnlock) {
-    apiPayload.include = codexUnlock.include;
-    apiPayload.prompt_cache_key = apiPayload.client_metadata.session_id;
+    applyCodexUnlockRequiredFields(apiPayload, codexUnlock);
   }
 
   const targetPath = codexUnlock?.wireApi || conn.apiPath;

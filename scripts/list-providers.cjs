@@ -1,6 +1,8 @@
 const fs = require('fs');
 const path = require('path');
-const p = path.join(process.env.APPDATA, 'anybridge', 'providers.json');
+const { configDir } = require('./lib/config-dir.cjs');
+
+const p = path.join(configDir(), 'providers.json');
 const data = JSON.parse(fs.readFileSync(p, 'utf8'));
 const providers = data.providers || [];
 console.log('=== 供应商列表 ===');

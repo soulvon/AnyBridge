@@ -73,21 +73,17 @@ async function init() {
   await loadEvalReports();
   await refreshStatus();
 
-  // 自动启动代理（AUTO_START_PROXY 默认为 true）
+  // 后端 setup 已按 AUTO_START_PROXY 启动代理；前端只同步状态，避免双启动误报。
   if (invoke) {
     try {
       const cfg = await invoke('load_config') || {};
       if (cfg.AUTO_START_PROXY !== 'false') {
+        await refreshStatus();
         const s = await invoke('get_proxy_status');
-        if (!s.running) {
-          addLog('info', '正在自动启动代理…');
-          await invoke('start_proxy_service');
-          await refreshStatus();
-          addLog('ok', '代理已自动启动');
-        }
+        if (s.running) addLog('ok', '代理已随应用启动');
       }
     } catch (e) {
-      addLog('warn', '自动启动代理失败: ' + e);
+      addLog('warn', '读取代理自动启动状态失败: ' + e);
     }
   }
 

@@ -37,12 +37,14 @@ pub struct CaStatus {
     pub cert_file: String,
     pub cert_exists: bool,
     pub key_exists: bool,
-    pub current_user: bool,         // 在 Cert:\CurrentUser\Root
-    pub local_machine: bool,        // 在 Cert:\LocalMachine\Root
-    pub legacy_residual: bool,      // 老版本 AnyBridge/IDE BYOK 证书残留
-    pub thumbprint: Option<String>, // CA 的 SHA1 指纹
-    pub effective_store: CaStore,   // 实际能用的位置
-    pub message: String,            // 给人看的总体描述
+    pub san_version: Option<String>, // MITM 证书 SAN 版本标记
+    pub san_current: bool,           // 是否包含当前 IDE 兼容所需 SAN
+    pub current_user: bool,          // 在 Cert:\CurrentUser\Root
+    pub local_machine: bool,         // 在 Cert:\LocalMachine\Root
+    pub legacy_residual: bool,       // 老版本 AnyBridge/IDE BYOK 证书残留
+    pub thumbprint: Option<String>,  // CA 的 SHA1 指纹
+    pub effective_store: CaStore,    // 实际能用的位置
+    pub message: String,             // 给人看的总体描述
 }
 
 #[derive(Debug, Clone, serde::Serialize)]
@@ -80,6 +82,90 @@ fn cert_paths() -> Result<(PathBuf, PathBuf), String> {
     let cert_path = certs_dir.join("server.codeium.com.pem");
     let key_path = certs_dir.join("server.codeium.com-key.pem");
     Ok((cert_path, key_path))
+}
+
+fn san_marker_path(cert_path: &Path) -> Result<PathBuf, String> {
+    let certs_dir = cert_path
+        .parent()
+        .ok_or_else(|| format!("证书路径缺少父目录: {}", cert_path.to_string_lossy()))?;
+    Ok(certs_dir.join("san-version"))
+}
+
+fn read_san_version(cert_path: &Path) -> Option<String> {
+    let marker = san_marker_path(cert_path).ok()?;
+    let value = std::fs::read_to_string(marker).ok()?;
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        None
+    } else {
+        Some(trimmed.to_string())
+    }
+}
+
+fn is_san_current(cert_path: &Path, cert_exists: bool, key_exists: bool) -> bool {
+    cert_exists
+        && key_exists
+        && read_san_version(cert_path)
+            .as_deref()
+            .map(|version| version == crate::commands::system::mitm_cert_san_version())
+            .unwrap_or(false)
+}
+
+fn current_user_store_label() -> &'static str {
+    #[cfg(target_os = "windows")]
+    {
+        "CurrentUser\\Root"
+    }
+    #[cfg(target_os = "macos")]
+    {
+        "login keychain"
+    }
+    #[cfg(target_os = "linux")]
+    {
+        "user CA trust store"
+    }
+    #[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux")))]
+    {
+        "user trust store"
+    }
+}
+
+fn local_machine_store_label() -> &'static str {
+    #[cfg(target_os = "windows")]
+    {
+        "LocalMachine\\Root"
+    }
+    #[cfg(target_os = "macos")]
+    {
+        "System keychain"
+    }
+    #[cfg(target_os = "linux")]
+    {
+        "system CA trust store"
+    }
+    #[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux")))]
+    {
+        "system trust store"
+    }
+}
+
+fn admin_prompt_label() -> &'static str {
+    #[cfg(target_os = "windows")]
+    {
+        "UAC"
+    }
+    #[cfg(target_os = "macos")]
+    {
+        "administrator authorization"
+    }
+    #[cfg(target_os = "linux")]
+    {
+        "pkexec"
+    }
+    #[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux")))]
+    {
+        "administrator authorization"
+    }
 }
 
 /// 计算 PEM 证书的 SHA1 Thumbprint。
@@ -430,7 +516,358 @@ mod platform {
     }
 }
 
-#[cfg(not(target_os = "windows"))]
+#[cfg(target_os = "macos")]
+mod platform {
+    use super::*;
+
+    fn login_keychain() -> Result<PathBuf, String> {
+        let home = dirs::home_dir().ok_or("无法获取用户目录")?;
+        let modern = home
+            .join("Library")
+            .join("Keychains")
+            .join("login.keychain-db");
+        if modern.exists() {
+            return Ok(modern);
+        }
+        Ok(home
+            .join("Library")
+            .join("Keychains")
+            .join("login.keychain"))
+    }
+
+    fn system_keychain() -> PathBuf {
+        PathBuf::from("/Library/Keychains/System.keychain")
+    }
+
+    fn keychain(current_user_only: bool) -> Result<PathBuf, String> {
+        if current_user_only {
+            login_keychain()
+        } else {
+            Ok(system_keychain())
+        }
+    }
+
+    fn command_text(out: std::process::Output) -> String {
+        let stderr = String::from_utf8_lossy(&out.stderr).trim().to_string();
+        let stdout = String::from_utf8_lossy(&out.stdout).trim().to_string();
+        if stderr.is_empty() {
+            stdout
+        } else {
+            stderr
+        }
+    }
+
+    fn run_security(args: &[&str], path_args: &[&Path]) -> Result<String, String> {
+        let mut command = Command::new("security");
+        command.args(args);
+        for path in path_args {
+            command.arg(path);
+        }
+        let out = command
+            .output()
+            .map_err(|e| format!("security 启动失败: {}", e))?;
+        if out.status.success() {
+            Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
+        } else {
+            Err(command_text(out))
+        }
+    }
+
+    fn apple_script_string(value: &str) -> String {
+        format!("\"{}\"", value.replace('\\', "\\\\").replace('"', "\\\""))
+    }
+
+    fn shell_quote(value: &str) -> String {
+        format!("'{}'", value.replace('\'', "'\\''"))
+    }
+
+    fn run_admin_shell(command: &str) -> Result<(), String> {
+        let script = format!(
+            "do shell script {} with administrator privileges",
+            apple_script_string(command)
+        );
+        let out = Command::new("osascript")
+            .args(["-e", &script])
+            .output()
+            .map_err(|e| format!("osascript 启动失败: {}", e))?;
+        if out.status.success() {
+            Ok(())
+        } else {
+            Err(command_text(out))
+        }
+    }
+
+    pub fn is_in_store(_cn: &str, _current_user_only: bool) -> bool {
+        let Ok(kc) = keychain(_current_user_only) else {
+            return false;
+        };
+        Command::new("security")
+            .args(["find-certificate", "-c", _cn])
+            .arg(kc)
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false)
+    }
+
+    pub fn is_thumbprint_in_store(thumbprint: &str, current_user_only: bool) -> bool {
+        let Ok(kc) = keychain(current_user_only) else {
+            return false;
+        };
+        let normalized = thumbprint
+            .chars()
+            .filter(|c| c.is_ascii_hexdigit())
+            .collect::<String>()
+            .to_ascii_uppercase();
+        if normalized.len() != 40 {
+            return false;
+        }
+        let out = Command::new("security")
+            .args(["find-certificate", "-a", "-Z"])
+            .arg(kc)
+            .output();
+        match out {
+            Ok(o) if o.status.success() => String::from_utf8_lossy(&o.stdout)
+                .to_ascii_uppercase()
+                .contains(&normalized),
+            _ => false,
+        }
+    }
+
+    pub fn install_current_user(cert_path: &Path) -> Result<(), String> {
+        let kc = login_keychain()?;
+        run_security(
+            &["add-trusted-cert", "-d", "-r", "trustRoot", "-k"],
+            &[&kc, cert_path],
+        )?;
+        Ok(())
+    }
+
+    pub fn install_local_machine_via_uac(cert_path: &Path) -> Result<(), String> {
+        let command = format!(
+            "security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain {}",
+            shell_quote(&cert_path.to_string_lossy())
+        );
+        run_admin_shell(&command)
+    }
+
+    pub fn uninstall_from_store(cn: &str, current_user: bool) -> Result<(), String> {
+        let kc = keychain(current_user)?;
+        if current_user {
+            run_security(&["delete-certificate", "-c", cn], &[&kc])?;
+        } else {
+            let command = format!(
+                "security delete-certificate -c {} {}",
+                shell_quote(cn),
+                shell_quote(&kc.to_string_lossy())
+            );
+            run_admin_shell(&command)?;
+        }
+        Ok(())
+    }
+
+    pub fn uninstall_local_machine_thumbprint_via_uac(thumbprint: &str) -> Result<(), String> {
+        let normalized = thumbprint
+            .chars()
+            .filter(|c| c.is_ascii_hexdigit())
+            .collect::<String>();
+        if normalized.len() != 40 {
+            return Err("证书指纹格式异常，无法卸载".to_string());
+        }
+        let command = format!(
+            "security delete-certificate -Z {} /Library/Keychains/System.keychain",
+            shell_quote(&normalized)
+        );
+        run_admin_shell(&command)
+    }
+    pub fn uninstall_thumbprint_from_store(
+        thumbprint: &str,
+        current_user: bool,
+    ) -> Result<(), String> {
+        let normalized = thumbprint
+            .chars()
+            .filter(|c| c.is_ascii_hexdigit())
+            .collect::<String>();
+        if normalized.len() != 40 {
+            return Err("证书指纹格式异常，无法卸载".to_string());
+        }
+        let kc = keychain(current_user)?;
+        if current_user {
+            run_security(&["delete-certificate", "-Z", &normalized], &[&kc])?;
+        } else {
+            let command = format!(
+                "security delete-certificate -Z {} {}",
+                shell_quote(&normalized),
+                shell_quote(&kc.to_string_lossy())
+            );
+            run_admin_shell(&command)?;
+        }
+        Ok(())
+    }
+}
+
+#[cfg(target_os = "linux")]
+mod platform {
+    use super::*;
+
+    fn user_anchor_path() -> Result<PathBuf, String> {
+        let base = std::env::var_os("XDG_DATA_HOME")
+            .map(PathBuf::from)
+            .or_else(|| dirs::home_dir().map(|h| h.join(".local").join("share")))
+            .ok_or("无法获取用户数据目录")?;
+        Ok(base.join("ca-certificates").join("anybridge-local-ca.crt"))
+    }
+
+    fn system_anchor_path() -> PathBuf {
+        PathBuf::from("/usr/local/share/ca-certificates/anybridge-local-ca.crt")
+    }
+
+    fn command_text(out: std::process::Output) -> String {
+        let stderr = String::from_utf8_lossy(&out.stderr).trim().to_string();
+        let stdout = String::from_utf8_lossy(&out.stdout).trim().to_string();
+        if stderr.is_empty() {
+            stdout
+        } else {
+            stderr
+        }
+    }
+
+    fn shell_quote(value: &str) -> String {
+        format!("'{}'", value.replace('\'', "'\\''"))
+    }
+
+    fn cert_matches_thumbprint(path: &Path, thumbprint: &str) -> bool {
+        let normalized = thumbprint
+            .chars()
+            .filter(|c| c.is_ascii_hexdigit())
+            .collect::<String>()
+            .to_ascii_lowercase();
+        if normalized.len() != 40 || !path.exists() {
+            return false;
+        }
+        compute_thumbprint(path)
+            .map(|t| t.eq_ignore_ascii_case(&normalized))
+            .unwrap_or(false)
+    }
+
+    fn cert_matches_cn(path: &Path, cn: &str) -> bool {
+        if !path.exists() {
+            return false;
+        }
+        let out = Command::new("openssl")
+            .args(["x509", "-in"])
+            .arg(path)
+            .args(["-noout", "-subject"])
+            .output();
+        match out {
+            Ok(o) if o.status.success() => String::from_utf8_lossy(&o.stdout).contains(cn),
+            _ => false,
+        }
+    }
+
+    fn run_pkexec_script(script: &str) -> Result<(), String> {
+        let out = Command::new("pkexec")
+            .args(["sh", "-c", script])
+            .output()
+            .map_err(|e| format!("pkexec 启动失败: {}", e))?;
+        if out.status.success() {
+            Ok(())
+        } else {
+            Err(command_text(out))
+        }
+    }
+
+    pub fn is_in_store(cn: &str, current_user_only: bool) -> bool {
+        let path = if current_user_only {
+            match user_anchor_path() {
+                Ok(p) => p,
+                Err(_) => return false,
+            }
+        } else {
+            system_anchor_path()
+        };
+        cert_matches_cn(&path, cn)
+    }
+
+    pub fn is_thumbprint_in_store(thumbprint: &str, current_user_only: bool) -> bool {
+        let path = if current_user_only {
+            match user_anchor_path() {
+                Ok(p) => p,
+                Err(_) => return false,
+            }
+        } else {
+            system_anchor_path()
+        };
+        cert_matches_thumbprint(&path, thumbprint)
+    }
+
+    pub fn install_current_user(cert_path: &Path) -> Result<(), String> {
+        let anchor = user_anchor_path()?;
+        if let Some(parent) = anchor.parent() {
+            std::fs::create_dir_all(parent).map_err(|e| format!("创建用户证书目录失败: {}", e))?;
+        }
+        let out = Command::new("trust")
+            .args(["anchor", "--user"])
+            .arg(cert_path)
+            .output()
+            .map_err(|e| format!("trust 启动失败: {}", e))?;
+        if !out.status.success() {
+            return Err(format!("trust anchor --user 失败: {}", command_text(out)));
+        }
+        std::fs::copy(cert_path, &anchor)
+            .map_err(|e| format!("记录用户级 CA 证书失败 {}: {}", anchor.to_string_lossy(), e))?;
+        Ok(())
+    }
+
+    pub fn install_local_machine_via_uac(cert_path: &Path) -> Result<(), String> {
+        let anchor = system_anchor_path();
+        let script = format!(
+            "install -m 0644 {} {} && update-ca-certificates",
+            shell_quote(&cert_path.to_string_lossy()),
+            shell_quote(&anchor.to_string_lossy())
+        );
+        run_pkexec_script(&script)
+    }
+
+    pub fn uninstall_from_store(_cn: &str, current_user: bool) -> Result<(), String> {
+        if current_user {
+            let anchor = user_anchor_path()?;
+            if anchor.exists() {
+                let _ = Command::new("trust")
+                    .args(["anchor", "--remove", "--user"])
+                    .arg(&anchor)
+                    .output();
+                std::fs::remove_file(&anchor)
+                    .map_err(|e| format!("删除用户级 CA 证书失败: {}", e))?;
+            }
+            Ok(())
+        } else {
+            let anchor = system_anchor_path();
+            let script = format!(
+                "rm -f {} && update-ca-certificates",
+                shell_quote(&anchor.to_string_lossy())
+            );
+            run_pkexec_script(&script)
+        }
+    }
+
+    pub fn uninstall_local_machine_thumbprint_via_uac(_thumbprint: &str) -> Result<(), String> {
+        let anchor = system_anchor_path();
+        let script = format!(
+            "rm -f {} && update-ca-certificates",
+            shell_quote(&anchor.to_string_lossy())
+        );
+        run_pkexec_script(&script)
+    }
+
+    pub fn uninstall_thumbprint_from_store(
+        _thumbprint: &str,
+        current_user: bool,
+    ) -> Result<(), String> {
+        uninstall_from_store(CA_COMMON_NAME, current_user)
+    }
+}
+
+#[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux")))]
 mod platform {
     use super::*;
     pub fn is_in_store(_cn: &str, _current_user_only: bool) -> bool {
@@ -440,22 +877,22 @@ mod platform {
         false
     }
     pub fn install_current_user(_cert_path: &Path) -> Result<(), String> {
-        Err("非 Windows 平台暂不支持自动安装 CA 证书".to_string())
+        Err("当前平台暂不支持自动安装 CA 证书".to_string())
     }
     pub fn install_local_machine_via_uac(_cert_path: &Path) -> Result<(), String> {
-        Err("非 Windows 平台暂不支持自动安装 CA 证书".to_string())
+        Err("当前平台暂不支持自动安装 CA 证书".to_string())
     }
     pub fn uninstall_from_store(_cn: &str, _current_user: bool) -> Result<(), String> {
-        Err("非 Windows 平台暂不支持".to_string())
+        Err("当前平台暂不支持".to_string())
     }
     pub fn uninstall_local_machine_thumbprint_via_uac(_thumbprint: &str) -> Result<(), String> {
-        Err("非 Windows 平台暂不支持".to_string())
+        Err("当前平台暂不支持".to_string())
     }
     pub fn uninstall_thumbprint_from_store(
         _thumbprint: &str,
         _current_user: bool,
     ) -> Result<(), String> {
-        Err("非 Windows 平台暂不支持".to_string())
+        Err("当前平台暂不支持".to_string())
     }
 }
 
@@ -473,6 +910,8 @@ pub fn check_ca_status() -> CaStatus {
     });
     let cert_exists = cert_path.exists();
     let key_exists = key_path.exists();
+    let san_version = read_san_version(&cert_path);
+    let san_current = is_san_current(&cert_path, cert_exists, key_exists);
 
     let thumbprint = if cert_exists {
         compute_thumbprint(&cert_path).ok()
@@ -501,18 +940,28 @@ pub fn check_ca_status() -> CaStatus {
         CaStore::None
     };
 
-    let message = match effective_store {
-        CaStore::CurrentUser => {
-            format!("当前 CA 证书已装到 CurrentUser\\Root（无需管理员权限），IDE 可信")
-        }
-        CaStore::LocalMachine => {
-            "当前 CA 证书已装到 LocalMachine\\Root（系统级，IDE 可信）".to_string()
-        }
-        CaStore::None => {
-            if !cert_exists {
-                "证书文件未生成；点击「安装证书」会自动生成并安装".to_string()
-            } else {
-                "当前 CA 证书尚未安装到系统根证书库，IDE 会拒绝连接".to_string()
+    let message = if cert_exists && key_exists && !san_current {
+        format!(
+            "MITM 证书缺少 Cursor 所需 SAN（当前标记: {}，需要: {}）；点击「生成 MITM 证书」或「安装证书」会重新生成",
+            san_version.as_deref().unwrap_or("missing"),
+            crate::commands::system::mitm_cert_san_version()
+        )
+    } else {
+        match effective_store {
+            CaStore::CurrentUser => format!(
+                "当前 CA 证书已装到 {}（无需管理员权限），IDE 可信",
+                current_user_store_label()
+            ),
+            CaStore::LocalMachine => format!(
+                "当前 CA 证书已装到 {}（系统级，IDE 可信）",
+                local_machine_store_label()
+            ),
+            CaStore::None => {
+                if !cert_exists {
+                    "证书文件未生成；点击「安装证书」会自动生成并安装".to_string()
+                } else {
+                    "当前 CA 证书尚未安装到系统根证书库，IDE 会拒绝连接".to_string()
+                }
             }
         }
     };
@@ -522,6 +971,8 @@ pub fn check_ca_status() -> CaStatus {
         cert_file: cert_path.to_string_lossy().to_string(),
         cert_exists,
         key_exists,
+        san_version,
+        san_current,
         current_user,
         local_machine,
         legacy_residual,
@@ -544,14 +995,14 @@ fn install_ca_impl(app: Option<AppHandle>) -> Result<String, String> {
 
     let cert_ok = cert_path.metadata().map(|m| m.len() > 0).unwrap_or(false);
     let key_ok = key_path.metadata().map(|m| m.len() > 0).unwrap_or(false);
-    let auto_generate_msg = if !cert_ok || !key_ok {
-        emit_cert_progress(
-            app.as_ref(),
-            "auto_generate",
-            "证书文件缺失或为空，正在自动生成 MITM 证书",
-            8,
-            "info",
-        );
+    let san_current = is_san_current(&cert_path, cert_ok, key_ok);
+    let auto_generate_msg = if !cert_ok || !key_ok || !san_current {
+        let reason = if !cert_ok || !key_ok {
+            "证书文件缺失或为空，正在自动生成 MITM 证书"
+        } else {
+            "MITM 证书缺少 Cursor 所需 SAN，正在重新生成"
+        };
+        emit_cert_progress(app.as_ref(), "auto_generate", reason, 8, "info");
         let (certs_dir, generated) = crate::commands::system::ensure_mitm_certs()
             .map_err(|e| format!("自动生成证书失败: {}", e))?;
         Some(if generated {
@@ -565,11 +1016,13 @@ fn install_ca_impl(app: Option<AppHandle>) -> Result<String, String> {
 
     let cert_ok = cert_path.metadata().map(|m| m.len() > 0).unwrap_or(false);
     let key_ok = key_path.metadata().map(|m| m.len() > 0).unwrap_or(false);
-    if !cert_ok || !key_ok {
+    let san_current = is_san_current(&cert_path, cert_ok, key_ok);
+    if !cert_ok || !key_ok || !san_current {
         return Err(format!(
-            "证书文件自动生成后仍不完整: {}, {}",
+            "证书文件自动生成后仍不完整或 SAN 标记未更新: {}, {} (san_current={})",
             cert_path.to_string_lossy(),
-            key_path.to_string_lossy()
+            key_path.to_string_lossy(),
+            san_current
         ));
     }
     let thumbprint =
@@ -596,7 +1049,10 @@ fn install_ca_impl(app: Option<AppHandle>) -> Result<String, String> {
         emit_cert_progress(
             app.as_ref(),
             "current_user",
-            "正在安装到 CurrentUser\\Root（无需管理员权限）",
+            &format!(
+                "正在安装到 {}（无需管理员权限）",
+                current_user_store_label()
+            ),
             35,
             "info",
         );
@@ -614,16 +1070,20 @@ fn install_ca_impl(app: Option<AppHandle>) -> Result<String, String> {
                     "info",
                 );
                 if platform::is_thumbprint_in_store(&thumbprint, true) {
-                    eprintln!("[cert_install] install_ca: installed to CurrentUser\\Root");
+                    eprintln!(
+                        "[cert_install] install_ca: installed to {}",
+                        current_user_store_label()
+                    );
                     emit_cert_progress(
                         app.as_ref(),
                         "done",
-                        "CA 证书已安装到 CurrentUser\\Root",
+                        &format!("CA 证书已安装到 {}", current_user_store_label()),
                         100,
                         "ok",
                     );
                     let install_msg = format!(
-                        "CA 已安装到 CurrentUser\\Root（无需管理员权限）。Thumbprint: {}",
+                        "CA 已安装到 {}（无需管理员权限）。Thumbprint: {}",
+                        current_user_store_label(),
                         thumbprint
                     );
                     return Ok(match auto_generate_msg {
@@ -634,21 +1094,36 @@ fn install_ca_impl(app: Option<AppHandle>) -> Result<String, String> {
                 // 装完查不到，说明 GPO 拦截了，降级
             }
             Err(e) => {
-                eprintln!("[cert_install] CurrentUser\\Root 失败: {}，降级到 UAC", e);
+                eprintln!(
+                    "[cert_install] {} 失败: {}，继续请求 {}",
+                    current_user_store_label(),
+                    e,
+                    admin_prompt_label()
+                );
             }
         }
     } else {
         eprintln!(
-            "[cert_install] install_ca: force UAC cert install is set, skip CurrentUser\\Root"
+            "[cert_install] install_ca: force admin cert install is set, skip {}",
+            current_user_store_label()
         );
     }
 
-    // 阶段 2：UAC 兜底，弹窗让用户授权装到 LocalMachine\Root
-    eprintln!("[cert_install] install_ca: fallback to LocalMachine\\Root via UAC");
+    // 阶段 2：管理员授权，装到系统级根证书库。
+    eprintln!(
+        "[cert_install] install_ca: install to {} via {}",
+        local_machine_store_label(),
+        admin_prompt_label()
+    );
     emit_cert_progress(
         app.as_ref(),
-        "uac",
-        "CurrentUser 验证未通过，正在请求 UAC 授权安装到 LocalMachine\\Root",
+        "admin",
+        &format!(
+            "{} 验证未通过，正在请求 {} 授权安装到 {}",
+            current_user_store_label(),
+            admin_prompt_label(),
+            local_machine_store_label()
+        ),
         65,
         "warn",
     );
@@ -664,24 +1139,30 @@ fn install_ca_impl(app: Option<AppHandle>) -> Result<String, String> {
         emit_cert_progress(
             app.as_ref(),
             "error",
-            "certutil 已退出但未在 LocalMachine\\Root 查到同一证书指纹",
+            &format!(
+                "安装命令已退出但未在 {} 查到同一证书指纹",
+                local_machine_store_label()
+            ),
             100,
             "err",
         );
         return Err(format!(
-            "certutil 已返回成功，但 LocalMachine\\Root 未查到当前证书 Thumbprint: {}",
+            "安装命令已返回成功，但 {} 未查到当前证书 Thumbprint: {}",
+            local_machine_store_label(),
             thumbprint
         ));
     }
     emit_cert_progress(
         app.as_ref(),
         "done",
-        "CA 证书已安装到 LocalMachine\\Root",
+        &format!("CA 证书已安装到 {}", local_machine_store_label()),
         100,
         "ok",
     );
     let install_msg = format!(
-        "CA 已通过 UAC 授权安装到 LocalMachine\\Root。Thumbprint: {}",
+        "CA 已通过 {} 授权安装到 {}。Thumbprint: {}",
+        admin_prompt_label(),
+        local_machine_store_label(),
         thumbprint
     );
     Ok(match auto_generate_msg {
@@ -713,7 +1194,7 @@ fn uninstall_ca_impl(app: Option<AppHandle>) -> Result<String, String> {
     emit_cert_progress(
         app.as_ref(),
         "uninstall_current_user",
-        "正在检查并卸载 CurrentUser\\Root 中的证书",
+        &format!("正在检查并卸载 {} 中的证书", current_user_store_label()),
         25,
         "info",
     );
@@ -727,13 +1208,13 @@ fn uninstall_ca_impl(app: Option<AppHandle>) -> Result<String, String> {
         } else {
             platform::uninstall_from_store(CA_COMMON_NAME, true)?;
         }
-        removed.push("CurrentUser\\Root");
+        removed.push(current_user_store_label());
     }
     // LocalMachine 卸（需要 admin，触发 UAC 弹窗）
     emit_cert_progress(
         app.as_ref(),
         "uninstall_local_machine",
-        "正在检查 LocalMachine\\Root 中的证书",
+        &format!("正在检查 {} 中的证书", local_machine_store_label()),
         55,
         "info",
     );
@@ -745,7 +1226,10 @@ fn uninstall_ca_impl(app: Option<AppHandle>) -> Result<String, String> {
         emit_cert_progress(
             app.as_ref(),
             "uninstall_uac",
-            "检测到系统级证书，正在请求 UAC 授权卸载",
+            &format!(
+                "检测到系统级证书，正在请求 {} 授权卸载",
+                admin_prompt_label()
+            ),
             70,
             "warn",
         );
@@ -755,7 +1239,7 @@ fn uninstall_ca_impl(app: Option<AppHandle>) -> Result<String, String> {
             platform::uninstall_from_store(CA_COMMON_NAME, false)
         };
         match uninstall_result {
-            Ok(()) => removed.push("LocalMachine\\Root"),
+            Ok(()) => removed.push(local_machine_store_label()),
             Err(e) => eprintln!("[cert_install] 卸 LocalMachine 失败: {}", e),
         }
     }
@@ -781,12 +1265,12 @@ fn uninstall_ca_impl(app: Option<AppHandle>) -> Result<String, String> {
             return Err(format!(
                 "证书仍残留在: {}{}",
                 if still_current_user {
-                    "CurrentUser\\Root "
+                    current_user_store_label()
                 } else {
                     ""
                 },
                 if still_local_machine {
-                    "LocalMachine\\Root"
+                    local_machine_store_label()
                 } else {
                     ""
                 }
@@ -913,4 +1397,48 @@ pub async fn cert_uninstall(app: AppHandle) -> Result<String, String> {
 #[tauri::command]
 pub async fn cert_cleanup_legacy() -> Result<String, String> {
     run_cert_task("老证书清理", cleanup_legacy_cn).await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn unique_temp_dir() -> PathBuf {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system clock before unix epoch")
+            .as_nanos();
+        std::env::temp_dir().join(format!(
+            "anybridge-cert-install-test-{}-{}",
+            std::process::id(),
+            nanos
+        ))
+    }
+
+    #[test]
+    fn san_marker_requires_current_version_and_cert_files() {
+        let dir = unique_temp_dir();
+        std::fs::create_dir_all(&dir).expect("create temp dir");
+        let cert_path = dir.join("server.codeium.com.pem");
+        let marker_path = san_marker_path(&cert_path).expect("marker path");
+
+        assert_eq!(read_san_version(&cert_path), None);
+        assert!(!is_san_current(&cert_path, true, true));
+
+        std::fs::write(&marker_path, "1\n").expect("write old marker");
+        assert_eq!(read_san_version(&cert_path).as_deref(), Some("1"));
+        assert!(!is_san_current(&cert_path, true, true));
+
+        std::fs::write(
+            &marker_path,
+            format!("{}\n", crate::commands::system::mitm_cert_san_version()),
+        )
+        .expect("write current marker");
+        assert!(is_san_current(&cert_path, true, true));
+        assert!(!is_san_current(&cert_path, false, true));
+        assert!(!is_san_current(&cert_path, true, false));
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }

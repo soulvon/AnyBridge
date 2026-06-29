@@ -425,6 +425,8 @@ pub fn import_providers(
             api_path: candidate.api_path.filter(|p| !p.trim().is_empty()),
             default_model: candidate.default_model,
             api_format: candidate.api_format,
+            route_through_proxy: true,
+            inject_models: true,
             enabled: true,
             models: unique_strings(candidate.models),
             capabilities: normalize_caps(candidate.capabilities),

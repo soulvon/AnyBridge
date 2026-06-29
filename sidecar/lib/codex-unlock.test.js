@@ -1,0 +1,46 @@
+import { describe, it } from 'node:test';
+import assert from 'node:assert/strict';
+
+import {
+  applyCodexUnlockRequiredFields,
+  codexUnlockForTarget,
+} from './codex-unlock.js';
+
+const providerUnlocks = {
+  codex: {
+    enabled: true,
+    wireApi: '/v1/responses',
+    include: ['reasoning.encrypted_content'],
+  },
+};
+
+describe('Codex supplier unlock routing', () => {
+  it('does not apply provider-level Codex unlock unless the target opts in', () => {
+    assert.equal(codexUnlockForTarget({ unlocks: providerUnlocks, unlockKind: null }), null);
+    assert.equal(codexUnlockForTarget({ unlocks: providerUnlocks, unlockKind: 'claudeCode' }), null);
+  });
+
+  it('applies Codex unlock only for target.unlock="codex"', () => {
+    assert.deepEqual(codexUnlockForTarget({ unlocks: providerUnlocks, unlockKind: 'codex' }), {
+      include: ['reasoning.encrypted_content'],
+      wireApi: '/v1/responses',
+    });
+  });
+
+  it('adds only the required Codex unlock fields', () => {
+    const payload = {
+      model: 'gpt-5.5',
+      input: [{ role: 'user', content: 'hello' }],
+      stream: true,
+    };
+
+    applyCodexUnlockRequiredFields(payload, codexUnlockForTarget({
+      unlocks: providerUnlocks,
+      unlockKind: 'codex',
+    }));
+
+    assert.deepEqual(Object.keys(payload).sort(), ['include', 'input', 'model', 'prompt_cache_key', 'stream']);
+    assert.deepEqual(payload.include, ['reasoning.encrypted_content']);
+    assert.match(payload.prompt_cache_key, /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+  });
+});

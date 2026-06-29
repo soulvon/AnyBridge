@@ -42,11 +42,14 @@ async function loadUpdateSettings() {
 }
 
 async function saveUpdateSettings() {
-  if (!invoke) return;
+  if (!invoke) return false;
   try {
     await invoke('save_update_settings', { settings: updateSettings });
+    return true;
   } catch (e) {
     addLog('err', '保存更新配置失败: ' + e);
+    if (typeof showCustomAlert === 'function') showCustomAlert(String(e), '保存更新配置失败', 'error');
+    return false;
   }
 }
 
@@ -54,17 +57,28 @@ async function toggleUpdateSetting(key) {
   const toggleId = 'updater-' + (key === 'remind_on_update' ? 'remind' : key.replace(/_/g, '-'));
   const toggle = document.getElementById(toggleId);
   if (toggle) {
+    const previous = updateSettings[key];
     toggle.classList.toggle('on');
     updateSettings[key] = toggle.classList.contains('on');
-    await saveUpdateSettings();
+    const saved = await saveUpdateSettings();
+    if (!saved) {
+      updateSettings[key] = previous;
+      toggle.classList.toggle('on', !!previous);
+    }
   }
 }
 
 async function changeUpdateInterval(val) {
   const parsed = parseInt(val);
   if (isNaN(parsed) || parsed < 1) return;
+  const previous = updateSettings.check_interval_hours || 1;
   updateSettings.check_interval_hours = parsed;
-  await saveUpdateSettings();
+  const saved = await saveUpdateSettings();
+  if (!saved) {
+    updateSettings.check_interval_hours = previous;
+    const input = document.getElementById('updater-check-interval');
+    if (input) input.value = previous;
+  }
 }
 
 // 绑定升级成功弹窗的关闭动作（按钮/遮罩点击/Esc）
@@ -195,8 +209,13 @@ function closeUpdaterPromptModal() {
 
 async function skipThisVersion() {
   if (detectedUpdateInfo) {
+    const previous = updateSettings.skipped_version || '';
     updateSettings.skipped_version = detectedUpdateInfo.version;
-    await saveUpdateSettings();
+    const saved = await saveUpdateSettings();
+    if (!saved) {
+      updateSettings.skipped_version = previous;
+      return;
+    }
     addLog('info', `已跳过版本 v${detectedUpdateInfo.version}`);
   }
   closeUpdaterPromptModal();
@@ -502,7 +521,7 @@ function bindProxyButtonHandlers() {
   const handler = (e) => {
     e.preventDefault();
     e.stopPropagation();
-    toggleProxy().catch(err => {
+    toggleProxy(btn.dataset.proxyAction || 'toggle').catch(err => {
       _diag('toggleProxy error: ' + err);
       addLog('err', '代理操作异常: ' + err);
     });

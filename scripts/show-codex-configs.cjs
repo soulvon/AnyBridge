@@ -1,10 +1,9 @@
 // 显示 providers.json 的 codexConfigs
 const fs = require('fs');
 const path = require('path');
+const { configDir } = require('./lib/config-dir.cjs');
 
-const configDir = process.env.BYOK_CONFIG_DIR
-  || path.join(process.env.APPDATA || '', 'anybridge');
-const providersPath = path.join(configDir, 'providers.json');
+const providersPath = path.join(configDir(), 'providers.json');
 
 console.log('config dir:', configDir);
 console.log('providers path:', providersPath);

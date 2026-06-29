@@ -131,8 +131,12 @@ function platformLocalProxyCard(platformId, info) {
   if (!runtime) return null;
   const isClaude = platformId === 'claude-code';
   const isOpenCode = platformId === 'opencode';
+  const localProxyId = platformLocalProxyConfigId(platformId);
+  const live = isOpenCode
+    ? (Array.isArray(info?.liveProviderIds) && info.liveProviderIds.includes(localProxyId))
+    : false;
   const current = isOpenCode
-    ? (Array.isArray(info?.liveProviderIds) && info.liveProviderIds.includes(platformLocalProxyConfigId(platformId)))
+    ? info?.currentProviderId === localProxyId
     : isClaude
       ? (typeof claudeCodeProviderIsCurrent === 'function' && claudeCodeProviderIsCurrent(runtime, info))
       : (typeof codexProviderIsCurrent === 'function' && codexProviderIsCurrent(runtime, info));
@@ -142,18 +146,18 @@ function platformLocalProxyCard(platformId, info) {
     description: isClaude
       ? '通过 AnyBridge Claude 兼容入口转发到代理模型列表、代理增强和日志统计。'
       : '通过 AnyBridge OpenAI 兼容入口转发到代理模型列表、代理增强和日志统计。',
-    typeLabel: '本地',
-    tone: 'local',
+    typeLabel: isOpenCode && live ? (current ? '当前使用' : '已加入') : '本地',
+    tone: isOpenCode && live ? (current ? 'local live' : 'local') : 'local',
     current: !!current,
-    currentLabel: isOpenCode ? '已加入' : '当前使用',
+    currentLabel: '当前使用',
     model: runtime.defaultModel || '未配置',
     endpoint: runtime.endpoint,
     protocol: isClaude ? 'anthropic-compatible' : (isOpenCode ? 'openai-compatible' : 'responses'),
     configAction: isOpenCode ? '' : 'openProxyRoutesFromPlatform()',
     configLabel: '配置模型',
     action: `applyLocalProxyPlatformConfig(${platformJsArg(platformId)})`,
-    actionLabel: isOpenCode ? '加入' : '切换',
-    removeAction: isOpenCode && current ? `removeOpenCodeProviderConfig(${platformJsArg(platformLocalProxyConfigId(platformId))})` : '',
+    actionLabel: isOpenCode ? (live ? '设为当前' : '加入并设为当前') : '切换',
+    removeAction: isOpenCode && live ? `removeOpenCodeProviderConfig(${platformJsArg(localProxyId)})` : '',
     removeLabel: '移除',
   };
 }
@@ -167,6 +171,9 @@ function upsertById(list, item) {
 }
 
 async function ensureLocalProxyPlatformConfig(platformId) {
+  const previous = typeof cloneProviderStore === 'function'
+    ? cloneProviderStore()
+    : JSON.parse(JSON.stringify(providerStore || { version: 1, providers: [] }));
   if (typeof ensureLocalProxyConfig === 'function') await ensureLocalProxyConfig({});
   const runtime = platformLocalProxyRuntime(platformId);
   if (!runtime) throw new Error('本地代理配置未初始化');
@@ -217,7 +224,15 @@ async function ensureLocalProxyPlatformConfig(platformId) {
       localProxy: true,
     });
   }
-  if (typeof persistProviders === 'function') await persistProviders();
+  if (typeof persistProviders === 'function') {
+    const ok = await persistProviders();
+    if (!ok) {
+      providerStore = typeof cloneProviderStore === 'function'
+        ? cloneProviderStore(previous)
+        : JSON.parse(JSON.stringify(previous));
+      throw new Error('本地代理平台配置保存失败');
+    }
+  }
   return platformLocalProxyConfigId(platformId);
 }
 
@@ -225,9 +240,12 @@ async function applyLocalProxyPlatformConfig(platformId) {
   const def = platformDef(platformId);
   const providerId = await ensureLocalProxyPlatformConfig(platformId);
   const runtime = platformLocalProxyRuntime(platformId);
+  const isOpenCode = platformId === 'opencode';
+  const info = platformInfoOf(platformId) || {};
+  const live = isOpenCode && Array.isArray(info.liveProviderIds) && info.liveProviderIds.includes(providerId);
   const ok = await showCustomConfirm(
-    `将把 ${def.name} 切换到「AnyBridge 本地代理」。\n\n模型列表：${(runtime.models || []).join(', ') || '未配置'}\n地址：${runtime.endpoint}\n\n请求会先进入 AnyBridge 全局代理服务；如果代理未启动，外部工具会连接失败。`,
-    platformId === 'opencode' ? '加入本地代理配置' : '切换到本地代理',
+    `${isOpenCode ? (live ? '将把 AnyBridge 本地代理设为 OpenCode 当前 model。' : '将把 AnyBridge 本地代理加入 OpenCode live provider 列表，并设为当前 model。') : `将把 ${def.name} 切换到「AnyBridge 本地代理」。`}\n\n模型列表：${(runtime.models || []).join(', ') || '未配置'}\n地址：${runtime.endpoint}\n\n请求会先进入 AnyBridge 全局代理服务；如果代理未启动，外部工具会连接失败。`,
+    isOpenCode ? (live ? '设为当前' : '加入并设为当前') : '切换到本地代理',
     'warn'
   );
   if (!ok) return;
@@ -238,10 +256,10 @@ async function applyLocalProxyPlatformConfig(platformId) {
     if (typeof loadProviders === 'function') await loadProviders();
     await refreshPlatforms({ silent: true });
     if (typeof addLog === 'function') addLog('ok', result.message || `${def.name} 已切换到 AnyBridge 本地代理`);
-    showCustomAlert(result.message || `${def.name} 已切换到 AnyBridge 本地代理。`, '切换完成', 'success');
+    showCustomAlert(result.message || `${def.name} 已切换到 AnyBridge 本地代理。`, isOpenCode ? '设置完成' : '切换完成', 'success');
   } catch (e) {
     if (typeof addLog === 'function') addLog('err', `${def.name} 切换到本地代理失败: ${e}`);
-    showCustomAlert(String(e), '切换失败', 'error');
+    showCustomAlert(String(e), isOpenCode ? '设置失败' : '切换失败', 'error');
   } finally {
     hideSwitchProgress();
     setPlatformBusy(platformId, false);
@@ -549,6 +567,9 @@ function claudeCodeStatusMeta(info) {
 
 function openCodeStatusMeta(info) {
   const liveIds = Array.isArray(info?.liveProviderIds) ? info.liveProviderIds : [];
+  if (info?.currentProviderId) {
+    return { label: `当前：${info.currentProviderName || info.currentProviderId}`, tone: info.managedByAnyBridge ? 'info' : 'warn' };
+  }
   if (liveIds.length) {
     return { label: `已加入 ${liveIds.length} 个`, tone: info.managedByAnyBridge ? 'info' : 'warn' };
   }
@@ -602,7 +623,7 @@ function renderOpenCodePageStatus(info) {
   const configPathLabel = document.getElementById('opencode-config-path-label');
   const meta = openCodeStatusMeta(info);
 
-  if (headline) headline.textContent = '管理 OpenCode 的独立 provider 配置。应用时追加到 opencode.json，不覆盖其他 provider。';
+  if (headline) headline.textContent = '管理 OpenCode 的独立 provider 配置。应用时追加到 opencode.json，并可设为当前 model，不覆盖其他 provider。';
   if (currentLabel) currentLabel.textContent = meta.label;
   if (configPathLabel) configPathLabel.textContent = info.configPath || platformDef('opencode').configHint;
   renderOpenCodeConfigList(info);
@@ -730,7 +751,6 @@ function applyCodexConfigSource(providerId) {
   codexConfigSetInputValue('codex-config-name', source.name || '');
   codexConfigSetInputValue('codex-config-base-url', codexConfigDisplayBaseUrl(source));
   codexConfigSetInputValue('codex-config-api-key', source.apiKey || '');
-  codexConfigSetInputValue('codex-config-wire-api', source.wireApi || 'responses');
   renderReasoningConfig(source.codexChatReasoning);
   // 合并 catalog 和 provider models 到统一列表
   const catalog = source.modelCatalog || [];
@@ -794,12 +814,12 @@ function mergeCatalogAndModels(catalog, models) {
       isDefault: false,
     });
   }
-  // 再放 provider models 里不在 catalog 的（未勾选）
+  // 再放 provider models 里不在 catalog 的（默认勾选）
   for (const model of (models || [])) {
     const m = String(model || '').trim();
     if (!m || seen.has(m)) continue;
     seen.add(m);
-    result.push({ model: m, displayName: '', contextWindow: '', inCatalog: false, isDefault: false });
+    result.push({ model: m, displayName: '', contextWindow: '', inCatalog: true, isDefault: false });
   }
   return result;
 }
@@ -832,8 +852,10 @@ function renderCodexModelManager(entries, defaultModel = '', status = '') {
   if (!list.length) {
     container.innerHTML = '<div class="codex-config-model-empty">还没有模型，点击右上角拉取或手动添加。</div>';
     if (status) codexConfigSetModelStatus(status);
+    setCodexModelEntriesState([]);
     return;
   }
+  setCodexModelEntriesState(list);
   // 不传 status 时：自动显示"目录 x/总数 · 默认 xxx"
   if (!status) {
     const total = list.length;
@@ -868,7 +890,12 @@ function renderCodexModelManager(entries, defaultModel = '', status = '') {
   if (status) codexConfigSetModelStatus(status);
 }
 
+// 从状态缓存读（避免 re-render 时 DOM 已被替换导致读到旧值）
 function getCodexModelEntries() {
+  if (codexModelEntriesState.length) {
+    return codexModelEntriesState.map(e => ({ ...e }));
+  }
+  // 状态为空时回退到 DOM 读取（首次进入编辑器等场景）
   const container = document.getElementById('codex-config-model-list');
   if (!container) return [];
   const rows = container.querySelectorAll('.codex-config-model-option[data-idx]');
@@ -893,13 +920,20 @@ function getCodexModelEntries() {
   return entries;
 }
 
+// 独立的 entries 状态缓存，避免 onchange 时从 DOM checkbox.checked 读到
+// 已变化的值（导致"点取消→又变回勾上"的反向 bug）
+let codexModelEntriesState = [];
+
+function setCodexModelEntriesState(entries) {
+  codexModelEntriesState = entries.map(e => ({ ...e }));
+}
+
 function toggleCodexModelCatalog(idx) {
-  const entries = getCodexModelEntries();
-  if (!entries[idx]) return;
-  entries[idx].inCatalog = !entries[idx].inCatalog;
-  if (!entries[idx].inCatalog) entries[idx].isDefault = false;
-  const defaultModel = entries.find(e => e.isDefault)?.model || '';
-  renderCodexModelManager(entries, defaultModel);
+  if (!codexModelEntriesState[idx]) return;
+  codexModelEntriesState[idx].inCatalog = !codexModelEntriesState[idx].inCatalog;
+  if (!codexModelEntriesState[idx].inCatalog) codexModelEntriesState[idx].isDefault = false;
+  const defaultModel = codexModelEntriesState.find(e => e.isDefault)?.model || '';
+  renderCodexModelManager(codexModelEntriesState, defaultModel);
 }
 
 function selectCodexDefaultModel(model) {
@@ -1105,7 +1139,6 @@ function openCodexConfigEditor(providerId = '') {
   const modal = document.getElementById('codex-config-modal');
   const title = document.getElementById('codex-config-modal-title');
   const sub = document.getElementById('codex-config-modal-sub');
-  const saveSwitchBtn = document.getElementById('codex-config-save-switch-btn');
   const sourceWrap = document.getElementById('codex-config-source-wrap');
   const layout = document.getElementById('codex-config-editor-layout');
   const models = codexConfigModelList(provider);
@@ -1114,7 +1147,6 @@ function openCodexConfigEditor(providerId = '') {
   if (sub) sub.textContent = provider
     ? `正在编辑「${provider.name || provider.id}」这份 Codex 配置。`
     : '从现有供应商创建一份可切换的 Codex Responses 配置。';
-  if (saveSwitchBtn) saveSwitchBtn.textContent = provider ? '保存并切换' : '保存并切换';
   if (sourceWrap) sourceWrap.classList.toggle('is-hidden', !!provider);
   if (layout) {
     layout.classList.toggle('is-editing', !!provider);
@@ -1127,7 +1159,8 @@ function openCodexConfigEditor(providerId = '') {
     codexConfigSetInputValue('codex-config-name', provider.name || '');
     codexConfigSetInputValue('codex-config-base-url', codexConfigDisplayBaseUrl(provider));
     codexConfigSetInputValue('codex-config-api-key', provider.apiKey || '');
-    codexConfigSetInputValue('codex-config-wire-api', provider.wireApi || 'responses');
+    document.getElementById('codex-config-route-through-proxy').checked = provider.routeThroughProxy !== false;
+    document.getElementById('codex-config-inject-models').checked = provider.injectModels !== false;
     renderReasoningConfig(provider.codexChatReasoning);
     // 合并 catalog 和 models 到统一列表
     const catalog = provider.modelCatalog || [];
@@ -1139,12 +1172,21 @@ function openCodexConfigEditor(providerId = '') {
       const dm = merged.find(e => e.model === defaultModel);
       if (dm) dm.isDefault = true;
     }
+    // 编辑模式：不在 saved catalog 里的模型默认不勾选（保留用户之前取消的选择）
+    // 创建模式：所有模型默认勾选
+    const catalogSet = new Set(catalog.map(e => e.model));
+    for (const e of merged) {
+      if (!catalogSet.has(e.model)) {
+        e.inCatalog = false;
+      }
+    }
     renderCodexModelManager(merged, defaultModel, merged.length ? `已保存 ${merged.length} 个模型` : '可重新拉取模型列表');
   } else {
     codexConfigSetInputValue('codex-config-name', '');
     codexConfigSetInputValue('codex-config-base-url', '');
     codexConfigSetInputValue('codex-config-api-key', '');
-    codexConfigSetInputValue('codex-config-wire-api', 'responses');
+    document.getElementById('codex-config-route-through-proxy').checked = true;
+    document.getElementById('codex-config-inject-models').checked = true;
     renderReasoningConfig(null);
     renderCodexModelManager([], '', '选择供应商后拉取模型列表');
     const picked = renderCodexConfigSourceList('');
@@ -1165,12 +1207,16 @@ function closeCodexConfigEditor() {
 }
 
 async function syncCodexConfigUiAfterStoreChange() {
-  if (typeof persistProviders === 'function') await persistProviders();
+  if (typeof persistProviders === 'function') {
+    const ok = await persistProviders();
+    if (!ok) return false;
+  }
   if (typeof renderProviders === 'function') renderProviders();
   if (typeof renderEvalProviderOptions === 'function') renderEvalProviderOptions();
   if (typeof renderModelMap === 'function') await renderModelMap();
   renderCodexConfigList(platformInfoOf('codex') || {});
   renderPlatformProviderOptions();
+  return true;
 }
 
 async function saveCodexConfigEditor(switchAfter = false) {
@@ -1179,7 +1225,6 @@ async function saveCodexConfigEditor(switchAfter = false) {
   const name = String(document.getElementById('codex-config-name')?.value || '').trim();
   const baseUrl = String(document.getElementById('codex-config-base-url')?.value || '').trim();
   const apiKey = String(document.getElementById('codex-config-api-key')?.value || '').trim();
-  const wireApi = String(document.getElementById('codex-config-wire-api')?.value || 'responses').trim();
   // 从统一模型管理器读取数据
   const allEntries = getCodexModelEntries();
   const defaultModel = allEntries.find(e => e.isDefault)?.model || '';
@@ -1217,6 +1262,11 @@ async function saveCodexConfigEditor(switchAfter = false) {
   const source = sourceId
     ? (providerStore.providers || []).find(p => p && p.id === sourceId)
     : null;
+  // wireApi 从来源供应商自动继承（用户不在 UI 上选，编辑时保留原值）
+  const wireApi = source?.wireApi || existing?.wireApi || 'responses';
+  const routeThroughProxy = document.getElementById('codex-config-route-through-proxy')?.checked !== false;
+  const injectModels = document.getElementById('codex-config-inject-models')?.checked !== false;
+
   const provider = {
     ...(existing || {}),
     id: editId || `codex-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
@@ -1229,10 +1279,15 @@ async function saveCodexConfigEditor(switchAfter = false) {
     wireApi,
     modelCatalog: modelCatalog.length ? modelCatalog : undefined,
     codexChatReasoning: getReasoningConfig(),
+    routeThroughProxy,
+    injectModels,
     sourceProviderId: sourceId || existing?.sourceProviderId || '',
     sourceProviderName: source?.name || existing?.sourceProviderName || '',
   };
 
+  const previous = typeof cloneProviderStore === 'function'
+    ? cloneProviderStore()
+    : JSON.parse(JSON.stringify(providerStore || { version: 1, providers: [] }));
   if (!Array.isArray(providerStore.codexConfigs)) providerStore.codexConfigs = [];
   if (editId) {
     const idx = providerStore.codexConfigs.findIndex(p => p.id === editId);
@@ -1242,7 +1297,14 @@ async function saveCodexConfigEditor(switchAfter = false) {
     providerStore.codexConfigs.push(provider);
   }
 
-  await syncCodexConfigUiAfterStoreChange();
+  const ok = await syncCodexConfigUiAfterStoreChange();
+  if (!ok) {
+    providerStore = typeof cloneProviderStore === 'function'
+      ? cloneProviderStore(previous)
+      : JSON.parse(JSON.stringify(previous));
+    renderCodexConfigList(platformInfoOf('codex') || {});
+    return;
+  }
   closeCodexConfigEditor();
   if (typeof addLog === 'function') addLog('ok', `已保存 Codex 配置: ${name}`);
   if (switchAfter) await applyCodexProviderConfig(provider.id);
@@ -1251,6 +1313,9 @@ async function saveCodexConfigEditor(switchAfter = false) {
 function codexActionIcon(type) {
   if (type === 'delete') {
     return '<svg aria-hidden="true" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"></path><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path><path d="M10 11v6"></path><path d="M14 11v6"></path></svg>';
+  }
+  if (type === 'start') {
+    return '<svg aria-hidden="true" width="15" height="15" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="0.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="6 4 20 12 6 20 6 4"></polygon></svg>';
   }
   return '<svg aria-hidden="true" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"></path><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"></path></svg>';
 }
@@ -1273,12 +1338,15 @@ function renderCodexConfigCard(config) {
   const configButton = config.configAction
     ? `<button class="btn-ghost codex-card-action" type="button" aria-label="${platformEsc(config.configLabel || '配置')} ${platformEsc(config.name)}" ${disabled ? 'disabled' : ''} onclick="${platformEsc(config.configAction)}">${platformEsc(config.configLabel || '配置')}</button>`
     : '';
+  const startButton = config.startAction
+    ? `<button class="btn-ghost codex-card-action codex-icon-action" type="button" title="重启 Codex 桌面版" aria-label="启动 Codex ${platformEsc(config.name)}" ${disabled ? 'disabled' : ''} onclick="${platformEsc(config.startAction)}">${codexActionIcon('start')}</button>`
+    : '';
   const switchButton = config.current || !config.action
     ? ''
     : `<button class="btn-primary codex-card-action codex-switch-action" ${disabled ? 'disabled' : ''} onclick="${platformEsc(config.action)}">${platformEsc(config.actionLabel || '切换')}</button>`;
   const actions = config.current
-    ? `<div class="codex-config-actions">${editButton}${deleteButton}${configButton}${removeButton}${codexCurrentAction(config.currentLabel || '当前使用')}</div>`
-    : (editButton || deleteButton || configButton || switchButton ? `<div class="codex-config-actions">${editButton}${deleteButton}${configButton}${switchButton}</div>` : '<span class="codex-row-muted">-</span>');
+    ? `<div class="codex-config-actions">${editButton}${deleteButton}${configButton}${removeButton}${startButton}${codexCurrentAction(config.currentLabel || '当前使用')}</div>`
+    : (editButton || deleteButton || configButton || removeButton || switchButton || startButton ? `<div class="codex-config-actions">${editButton}${deleteButton}${configButton}${removeButton}${switchButton}${startButton}</div>` : '<span class="codex-row-muted">-</span>');
   const meta = codexConfigMetaLine([
     config.model || '-',
     config.endpoint || '-',
@@ -1290,6 +1358,11 @@ function renderCodexConfigCard(config) {
         <div class="codex-config-title">
           <strong title="${platformEsc(config.name)}">${platformEsc(config.name)}</strong>
           ${codexConfigBadge(config.typeLabel || '第三方', config.tone)}
+          ${config.injectBadge === 'success'
+            ? '<span class="codex-config-badge-success">✓ codex 桌面版正确显示模型</span>'
+            : config.injectBadge === 'muted'
+              ? '<span class="codex-config-badge-muted">codex 桌面版使用默认模型</span>'
+              : ''}
         </div>
         <p>${platformEsc(config.description || '')}</p>
         <div class="codex-config-meta">${meta}</div>
@@ -1312,8 +1385,18 @@ async function deleteCodexProviderConfig(providerId) {
     showCustomAlert('当前正在使用的配置不能直接删除，请先切换到其他配置或官方配置。', '无法删除当前配置', 'warn');
     return;
   }
+  const previous = typeof cloneProviderStore === 'function'
+    ? cloneProviderStore()
+    : JSON.parse(JSON.stringify(providerStore || { version: 1, providers: [] }));
   providerStore.codexConfigs = (providerStore.codexConfigs || []).filter(p => p.id !== providerId);
-  await syncCodexConfigUiAfterStoreChange();
+  const ok = await syncCodexConfigUiAfterStoreChange();
+  if (!ok) {
+    providerStore = typeof cloneProviderStore === 'function'
+      ? cloneProviderStore(previous)
+      : JSON.parse(JSON.stringify(previous));
+    renderCodexConfigList(platformInfoOf('codex') || {});
+    return;
+  }
   if (typeof addLog === 'function') addLog('info', `已删除 Codex 配置: ${provider.name || provider.id}`);
 }
 
@@ -1381,17 +1464,22 @@ function renderCodexConfigList(info) {
   providers.forEach(provider => {
     const baseUrl = codexTargetBaseUrl(provider);
     const current = codexProviderIsCurrent(provider, info);
+    const typeLabel = provider.routeThroughProxy === false ? '直连' : '代理';
+    const injectModels = provider.injectModels !== false; // 默认 true
+    const isOfficialModel = /^gpt-/i.test(String(provider.defaultModel || '').trim());
     items.push({
       name: provider.name || provider.id,
       description: '第三方 OpenAI Responses 兼容配置。',
-      typeLabel: '第三方',
+      typeLabel: isOfficialModel ? `${typeLabel}（官方模型）` : typeLabel,
       tone: 'third',
       current,
       model: provider.defaultModel || '默认模型未设置',
       endpoint: baseUrl,
       protocol: provider.wireApi || 'responses',
+      injectBadge: injectModels ? 'success' : 'muted',
       action: `applyCodexProviderConfig(${platformJsArg(provider.id)})`,
       editAction: `editCodexProviderConfig(${platformJsArg(provider.id)})`,
+      startAction: current ? `startCodexWithCdp(${injectModels ? 'true' : 'false'})` : '',
       deleteAction: current ? '' : `deleteCodexProviderConfig(${platformJsArg(provider.id)})`,
     });
   });
@@ -1959,12 +2047,16 @@ function closeClaudeCodeConfigEditor() {
 }
 
 async function syncClaudeCodeConfigUiAfterStoreChange() {
-  if (typeof persistProviders === 'function') await persistProviders();
+  if (typeof persistProviders === 'function') {
+    const ok = await persistProviders();
+    if (!ok) return false;
+  }
   if (typeof renderProviders === 'function') renderProviders();
   if (typeof renderEvalProviderOptions === 'function') renderEvalProviderOptions();
   if (typeof renderModelMap === 'function') await renderModelMap();
   renderClaudeCodeConfigList(platformInfoOf('claude-code') || {});
   renderPlatformProviderOptions();
+  return true;
 }
 
 async function saveClaudeCodeConfigEditor(switchAfter = false) {
@@ -2028,6 +2120,9 @@ async function saveClaudeCodeConfigEditor(switchAfter = false) {
     sourceProviderName: source?.name || existing?.sourceProviderName || '',
   };
 
+  const previous = typeof cloneProviderStore === 'function'
+    ? cloneProviderStore()
+    : JSON.parse(JSON.stringify(providerStore || { version: 1, providers: [] }));
   if (!Array.isArray(providerStore.claudeCodeConfigs)) providerStore.claudeCodeConfigs = [];
   if (editId) {
     const idx = providerStore.claudeCodeConfigs.findIndex(p => p.id === editId);
@@ -2037,7 +2132,14 @@ async function saveClaudeCodeConfigEditor(switchAfter = false) {
     providerStore.claudeCodeConfigs.push(provider);
   }
 
-  await syncClaudeCodeConfigUiAfterStoreChange();
+  const ok = await syncClaudeCodeConfigUiAfterStoreChange();
+  if (!ok) {
+    providerStore = typeof cloneProviderStore === 'function'
+      ? cloneProviderStore(previous)
+      : JSON.parse(JSON.stringify(previous));
+    renderClaudeCodeConfigList(platformInfoOf('claude-code') || {});
+    return;
+  }
   closeClaudeCodeConfigEditor();
   if (typeof addLog === 'function') addLog('ok', `已保存 Claude Code 配置: ${name}`);
   if (switchAfter) await applyClaudeCodeProviderConfig(provider.id);
@@ -2063,8 +2165,18 @@ async function deleteClaudeCodeProviderConfig(providerId) {
     showCustomAlert('当前正在使用的配置不能直接删除，请先切换到其他配置或官方配置。', '无法删除当前配置', 'warn');
     return;
   }
+  const previous = typeof cloneProviderStore === 'function'
+    ? cloneProviderStore()
+    : JSON.parse(JSON.stringify(providerStore || { version: 1, providers: [] }));
   providerStore.claudeCodeConfigs = (providerStore.claudeCodeConfigs || []).filter(p => p.id !== providerId);
-  await syncClaudeCodeConfigUiAfterStoreChange();
+  const ok = await syncClaudeCodeConfigUiAfterStoreChange();
+  if (!ok) {
+    providerStore = typeof cloneProviderStore === 'function'
+      ? cloneProviderStore(previous)
+      : JSON.parse(JSON.stringify(previous));
+    renderClaudeCodeConfigList(platformInfoOf('claude-code') || {});
+    return;
+  }
   if (typeof addLog === 'function') addLog('info', `已删除 Claude Code 配置: ${provider.name || provider.id}`);
 }
 
@@ -2619,12 +2731,16 @@ function closeOpenCodeConfigEditor() {
 }
 
 async function syncOpenCodeConfigUiAfterStoreChange() {
-  if (typeof persistProviders === 'function') await persistProviders();
+  if (typeof persistProviders === 'function') {
+    const ok = await persistProviders();
+    if (!ok) return false;
+  }
   if (typeof renderProviders === 'function') renderProviders();
   if (typeof renderEvalProviderOptions === 'function') renderEvalProviderOptions();
   if (typeof renderModelMap === 'function') await renderModelMap();
   renderOpenCodeConfigList(platformInfoOf('opencode') || {});
   renderPlatformProviderOptions();
+  return true;
 }
 
 async function saveOpenCodeConfigEditor(addAfter = false) {
@@ -2688,6 +2804,9 @@ async function saveOpenCodeConfigEditor(addAfter = false) {
     sourceProviderName: source?.name || existing?.sourceProviderName || '',
   };
 
+  const previous = typeof cloneProviderStore === 'function'
+    ? cloneProviderStore()
+    : JSON.parse(JSON.stringify(providerStore || { version: 1, providers: [] }));
   if (!Array.isArray(providerStore.opencodeConfigs)) providerStore.opencodeConfigs = [];
   if (editId) {
     const idx = providerStore.opencodeConfigs.findIndex(p => p.id === editId);
@@ -2697,7 +2816,14 @@ async function saveOpenCodeConfigEditor(addAfter = false) {
     providerStore.opencodeConfigs.push(provider);
   }
 
-  await syncOpenCodeConfigUiAfterStoreChange();
+  const ok = await syncOpenCodeConfigUiAfterStoreChange();
+  if (!ok) {
+    providerStore = typeof cloneProviderStore === 'function'
+      ? cloneProviderStore(previous)
+      : JSON.parse(JSON.stringify(previous));
+    renderOpenCodeConfigList(platformInfoOf('opencode') || {});
+    return;
+  }
   closeOpenCodeConfigEditor();
   if (typeof addLog === 'function') addLog('ok', `已保存 OpenCode 配置: ${name}`);
   if (addAfter) await applyOpenCodeProviderConfig(provider.id);
@@ -2723,8 +2849,18 @@ async function deleteOpenCodeProviderConfig(providerId) {
     showCustomAlert('这份配置已加入 OpenCode live 配置，请先从 OpenCode 移除后再删除。', '无法删除已加入配置', 'warn');
     return;
   }
+  const previous = typeof cloneProviderStore === 'function'
+    ? cloneProviderStore()
+    : JSON.parse(JSON.stringify(providerStore || { version: 1, providers: [] }));
   providerStore.opencodeConfigs = (providerStore.opencodeConfigs || []).filter(p => p.id !== providerId);
-  await syncOpenCodeConfigUiAfterStoreChange();
+  const ok = await syncOpenCodeConfigUiAfterStoreChange();
+  if (!ok) {
+    providerStore = typeof cloneProviderStore === 'function'
+      ? cloneProviderStore(previous)
+      : JSON.parse(JSON.stringify(previous));
+    renderOpenCodeConfigList(platformInfoOf('opencode') || {});
+    return;
+  }
   if (typeof addLog === 'function') addLog('info', `已删除 OpenCode 配置: ${provider.name || provider.id}`);
 }
 
@@ -2741,14 +2877,15 @@ function renderOpenCodeConfigList(info) {
   liveIds
     .filter(id => !providers.some(provider => provider.id === id))
     .forEach(id => {
+      const active = info?.currentProviderId === id;
       items.push({
         platformId: 'opencode',
         name: id,
         description: '由其他工具或手动配置写入。AnyBridge 不会修改这份外部配置。',
-        typeLabel: '外部',
-        tone: 'third external',
-        current: true,
-        currentLabel: '已加入',
+        typeLabel: active ? '当前使用' : '外部',
+        tone: active ? 'third live' : 'third external',
+        current: active,
+        currentLabel: '当前使用',
         model: '外部配置',
         endpoint: '~/.config/opencode/opencode.json',
         protocol: 'openai-compatible',
@@ -2758,19 +2895,20 @@ function renderOpenCodeConfigList(info) {
   providers.forEach(provider => {
     const baseUrl = opencodeTargetBaseUrl(provider);
     const live = openCodeProviderIsLive(provider, info);
+    const active = info?.currentProviderId === provider.id;
     items.push({
       platformId: 'opencode',
       name: provider.name || provider.id,
-      description: '独立 OpenCode provider 配置，应用时追加到 opencode.json。',
-      typeLabel: live ? '已加入' : '配置',
-      tone: live ? 'third live' : 'third',
-      current: live,
-      currentLabel: '已加入',
+      description: '独立 OpenCode provider 配置，应用时追加到 opencode.json 并可设为当前 model。',
+      typeLabel: active ? '当前使用' : (live ? '已加入' : '配置'),
+      tone: active ? 'third live' : 'third',
+      current: active,
+      currentLabel: '当前使用',
       model: provider.defaultModel || '默认模型未设置',
       endpoint: baseUrl,
       protocol: 'openai-compatible',
       action: `applyOpenCodeProviderConfig(${platformJsArg(provider.id)})`,
-      actionLabel: '加入',
+      actionLabel: live ? '设为当前' : '加入并设为当前',
       editAction: `editOpenCodeProviderConfig(${platformJsArg(provider.id)})`,
       deleteAction: live ? '' : `deleteOpenCodeProviderConfig(${platformJsArg(provider.id)})`,
       removeAction: live ? `removeOpenCodeProviderConfig(${platformJsArg(provider.id)})` : '',
@@ -2806,24 +2944,26 @@ async function applyOpenCodeProviderConfig(providerId) {
 
   const model = provider.defaultModel || '默认模型';
   const baseUrl = opencodeTargetBaseUrl(provider);
+  const info = platformInfoOf('opencode') || {};
+  const live = openCodeProviderIsLive(provider, info);
   const ok = await showCustomConfirm(
-    `将把 OpenCode 配置「${provider.name || provider.id}」加入 live provider 列表。\n\n模型：${model}\n地址：${baseUrl}\n\n不会覆盖其他 OpenCode provider。新会话或重启 OpenCode 后可使用。`,
-    '加入 OpenCode 配置',
+    `将把 OpenCode 配置「${provider.name || provider.id}」${live ? '设为当前 model' : '加入 live provider 列表，并设为当前 model'}。\n\n模型：${model}\n地址：${baseUrl}\n\n不会覆盖其他 OpenCode provider。新会话或重启 OpenCode 后生效。`,
+    live ? '设为当前 OpenCode 配置' : '加入并设为当前',
     'warn'
   );
   if (!ok) return;
 
   setPlatformBusy('opencode', true);
-  showSwitchProgress('opencode', '正在准备加入 OpenCode 配置…');
+  showSwitchProgress('opencode', live ? '正在准备设置当前 OpenCode 配置…' : '正在准备加入 OpenCode 配置…');
   try {
     const result = await invoke('switch_platform', { platform: 'opencode', providerId });
     if (typeof loadProviders === 'function') await loadProviders();
     await refreshPlatforms({ silent: true });
-    if (typeof addLog === 'function') addLog('ok', result.message || 'OpenCode 配置已加入');
-    showCustomAlert(result.message || 'OpenCode 配置已加入。', '加入完成', 'success');
+    if (typeof addLog === 'function') addLog('ok', result.message || 'OpenCode 配置已设置');
+    showCustomAlert(result.message || 'OpenCode 配置已设置。', '设置完成', 'success');
   } catch (e) {
-    if (typeof addLog === 'function') addLog('err', `OpenCode 配置加入失败: ${e}`);
-    showCustomAlert(String(e), '加入失败', 'error');
+    if (typeof addLog === 'function') addLog('err', `OpenCode 配置设置失败: ${e}`);
+    showCustomAlert(String(e), '设置失败', 'error');
   } finally {
     hideSwitchProgress();
     setPlatformBusy('opencode', false);
@@ -2932,32 +3072,65 @@ async function applyCodexProviderConfig(providerId) {
     return;
   }
 
-  const ok = await showCustomConfirm(codexApplyConfirmMessage(provider), '切换 Codex 配置', 'warn');
-  if (!ok) return;
+  const flow = await runSwitchFlow({
+    title: '切换 Codex 配置',
+    lead: codexApplyConfirmMessage(provider),
+    confirmText: '确认切换',
+    platform: 'codex',
+    runningMessage: '正在准备切换 Codex 配置…',
+    successTitle: '切换完成',
+    failureTitle: '切换失败',
+    skipConfirm: true,
+    task: async ({ setMessage }) => {
+      setPlatformBusy('codex', true);
+      try {
+        setMessage('正在写入 Codex 配置…');
+        const result = assertSwitchResultOk(
+          await invoke('switch_platform', { platform: 'codex', providerId }),
+          'Codex 配置切换失败'
+        );
+        if (typeof loadProviders === 'function') await loadProviders();
+        await refreshPlatforms({ silent: true });
 
-  setPlatformBusy('codex', true);
-  showSwitchProgress('codex', '正在准备切换 Codex 配置…');
-  try {
-    const result = await invoke('switch_platform', { platform: 'codex', providerId });
-    if (typeof loadProviders === 'function') await loadProviders();
-    await refreshPlatforms({ silent: true });
-    // 切换配置后重启 Codex 桌面版并注入自定义模型（CDP 解除 Statsig 白名单）
-    showSwitchProgress('codex', '正在重启 Codex 桌面版并注入自定义模型…');
-    try {
-      const restart = await invoke('restart_codex_desktop', { managed: true });
-      if (typeof addLog === 'function') addLog('ok', restart.message || 'Codex 桌面版已重启');
-    } catch (re) {
-      if (typeof addLog === 'function') addLog('warn', `Codex 桌面版自动重启未完成: ${re}`);
+        setMessage('正在重启 Codex 桌面版并注入自定义模型…');
+        const restart = assertSwitchResultOk(
+          await invoke('restart_codex_desktop', { managed: true, model: provider.defaultModel || null, injectModels: provider.injectModels !== false }),
+          'Codex 桌面版重启或注入失败'
+        );
+
+        if (typeof addLog === 'function') {
+          addLog('ok', result.message || 'Codex 配置已切换');
+          addLog('ok', restart.message || 'Codex 桌面版已重启并完成注入');
+        }
+        return {
+          message: `${result.message || 'Codex 配置已切换。'}\n\n${restart.message || 'Codex 桌面版已重启并完成注入。'}`
+        };
+      } finally {
+        setPlatformBusy('codex', false);
+        renderPlatformDetailStatuses();
+      }
     }
-    if (typeof addLog === 'function') addLog('ok', result.message || 'Codex 配置已切换');
-    showCustomAlert(result.message || 'Codex 配置已切换。', '切换完成', 'success');
+  });
+  if (flow.confirmed && !flow.ok && typeof addLog === 'function') {
+    addLog('err', `Codex 切换失败: ${switchFlowErrorText(flow.error)}`);
+  }
+}
+
+async function startCodexWithCdp(injectModels = false) {
+  setPlatformBusy('codex', true);
+  try {
+    const result = await invoke('start_codex_with_cdp', { injectModels: !!injectModels });
+    if (typeof addLog === 'function') addLog(result.ok ? 'ok' : 'err', result.message || '');
+    showCustomAlert(
+      (result.message || '').replace(/^Error:\s*/i, ''),
+      result.ok ? '提示' : '启动失败',
+      result.ok ? 'success' : 'error'
+    );
   } catch (e) {
-    if (typeof addLog === 'function') addLog('err', `Codex 切换失败: ${e}`);
-    showCustomAlert(String(e), '切换失败', 'error');
+    if (typeof addLog === 'function') addLog('err', `启动 Codex 失败: ${e}`);
+    showCustomAlert(String(e).replace(/^Error:\s*/i, ''), '启动失败', 'error');
   } finally {
-    hideSwitchProgress();
     setPlatformBusy('codex', false);
-    renderPlatformDetailStatuses();
   }
 }
 
@@ -2995,10 +3168,355 @@ function renderPlatformProviderOptions() {
   });
 }
 
+// ═══════ Cursor BYOK Console ═══════
+
+let cursorConsoleBusy = false;
+
+function cursorPageRoot() {
+  return document.getElementById('page-platform-cursor');
+}
+
+function cursorEnsureBridge() {
+  if (!invoke && typeof bindTauriBridge === 'function') bindTauriBridge();
+  if (!invoke) throw new Error('Tauri 通道未就绪，Cursor 接入操作不可用。请从安装包版本启动，或重启应用后重试。');
+}
+
+function cursorSetText(id, value) {
+  const el = document.getElementById(id);
+  if (el) el.textContent = value;
+}
+
+function cursorSetCard(kind, tone, state, detail) {
+  const card = document.getElementById(`cursor-card-${kind}`);
+  if (card) {
+    card.classList.remove('ok', 'warn', 'err');
+    if (tone) card.classList.add(tone);
+  }
+  cursorSetText(`cursor-${kind}-state`, state || '未知');
+  cursorSetText(`cursor-${kind}-detail`, detail || '');
+}
+
+function cursorSetBusy(busy) {
+  cursorConsoleBusy = !!busy;
+  const root = cursorPageRoot();
+  if (!root) return;
+  root
+    .querySelectorAll('.cursor-primary-action, .cursor-mini-btn, .cursor-step-action, .cursor-card-action, .cursor-hero-actions .btn-ghost')
+    .forEach(btn => { btn.disabled = !!busy; });
+}
+
+function cursorIssueList(report) {
+  return report && Array.isArray(report.issues) ? report.issues : [];
+}
+
+function cursorIssueMatches(issue, prefixes) {
+  const code = String(issue?.code || '');
+  return prefixes.some(prefix => code === prefix || code.startsWith(prefix));
+}
+
+function cursorIssueDetail(issues, prefixes, fallback) {
+  const matched = issues.filter(issue => cursorIssueMatches(issue, prefixes));
+  const ranked = matched
+    .filter(issue => issue.level === 'err')
+    .concat(matched.filter(issue => issue.level === 'warn'))
+    .concat(matched.filter(issue => issue.level === 'ok'));
+  const messages = ranked
+    .map(issue => String(issue.message || '').trim())
+    .filter(Boolean)
+    .slice(0, 2);
+  return messages.length ? messages.join('；') : fallback;
+}
+
+function cursorIssueTone(issues, prefixes, okTone = 'ok') {
+  const matched = issues.filter(issue => cursorIssueMatches(issue, prefixes));
+  if (matched.some(issue => issue.level === 'err')) return 'err';
+  if (matched.some(issue => issue.level === 'warn')) return 'warn';
+  return okTone;
+}
+
+function cursorReportErrorMessage(e) {
+  return String(e?.message || e || '未知错误');
+}
+
+function cursorExtractReport(result) {
+  if (result && result.status === 'fulfilled') return result.value;
+  throw new Error(cursorReportErrorMessage(result && result.reason));
+}
+
+async function cursorRefreshConsole() {
+  const root = cursorPageRoot();
+  if (!root) return;
+  cursorSetBusy(true);
+  try {
+    cursorEnsureBridge();
+    cursorSetCard('proxy', '', '读取中', '正在读取 AnyBridge 服务状态');
+    cursorSetCard('settings', '', '读取中', '正在检查 Cursor settings.json');
+    cursorSetCard('auth', '', '读取中', '正在检查 state.vscdb 和模型路由');
+    cursorSetCard('cert', '', '读取中', '正在检查证书和系统信任状态');
+
+    const [proxyResult, ideResult, preflightResult, certResult] = await Promise.allSettled([
+      invoke('get_proxy_status'),
+      typeof refreshIdeProxyStatus === 'function' ? refreshIdeProxyStatus('cursor') : invoke('get_ide_proxy_status', { target: 'cursor' }),
+      invoke('preflight_proxy', { targetIde: 'cursor' }),
+      invoke('cert_check_status')
+    ]);
+
+    let report = null;
+    try {
+      report = cursorExtractReport(preflightResult);
+    } catch (e) {
+      cursorSetCard('auth', 'err', '体检失败', cursorReportErrorMessage(e));
+      if (typeof addLog === 'function') addLog('err', 'Cursor 环境体检失败: ' + e);
+    }
+    const issues = cursorIssueList(report);
+
+    try {
+      const proxy = cursorExtractReport(proxyResult) || {};
+      const running = !!proxy.running;
+      const target = proxy.target_ide || proxy.targetIde || '';
+      const targetLabel = target ? (typeof ideDisplayLabel === 'function' ? ideDisplayLabel(target) : target) : '未绑定 IDE';
+      const port = proxy.api_port || proxy.apiPort || (typeof getLocalProxyPort === 'function' ? getLocalProxyPort() : 7450);
+      if (!running) {
+        cursorSetCard('proxy', 'warn', '未启动', `本机代理未运行，Cursor 请求还不会进入 AnyBridge。API 端口 ${port}`);
+      } else if (target && target !== 'cursor') {
+        cursorSetCard('proxy', 'warn', '运行中', `代理已启动，但当前服务目标是 ${targetLabel}。建议从 Cursor 页重新接入。`);
+      } else {
+        cursorSetCard('proxy', 'ok', '运行中', `AnyBridge 代理已就绪。API 端口 ${port}`);
+      }
+    } catch (e) {
+      cursorSetCard('proxy', 'err', '读取失败', cursorReportErrorMessage(e));
+      if (typeof addLog === 'function') addLog('err', 'Cursor 本地代理状态读取失败: ' + e);
+    }
+
+    try {
+      const ide = cursorExtractReport(ideResult) || {};
+      if (ide.patched) {
+        const strict = ide.strictSsl === false || ide.strict_ssl === false ? 'StrictSSL 已关闭' : 'StrictSSL 待确认';
+        cursorSetCard('settings', 'ok', '已接入', `${strict}；${ide.proxyValue || ide.proxy_value || '已写入 AnyBridge 代理'}`);
+      } else {
+        const detail = cursorIssueDetail(issues, ['ide_settings.'], ide.settingsPath || ide.settings_path || 'Cursor 尚未写入 AnyBridge 代理配置');
+        cursorSetCard('settings', cursorIssueTone(issues, ['ide_settings.'], 'warn'), '未接入', detail);
+      }
+    } catch (e) {
+      cursorSetCard('settings', 'err', '读取失败', cursorReportErrorMessage(e));
+      if (typeof addLog === 'function') addLog('err', 'Cursor 配置状态读取失败: ' + e);
+    }
+
+    if (report) {
+      const authPrefixes = ['cursor.', 'model_map.', 'route.', 'providers.'];
+      const authTone = cursorIssueTone(issues, authPrefixes);
+      const authDetail = cursorIssueDetail(issues, authPrefixes, 'Cursor state.vscdb、默认模型和模型路由已通过检查');
+      cursorSetCard('auth', authTone, authTone === 'ok' ? '就绪' : (authTone === 'warn' ? '有提示' : '未就绪'), authDetail);
+    }
+
+    try {
+      const cert = cursorExtractReport(certResult) || {};
+      const store = cert.effective_store || cert.effectiveStore || 'none';
+      if (!cert.cert_exists && cert.certExists === undefined) cert.certExists = false;
+      const certExists = cert.cert_exists ?? cert.certExists;
+      const keyExists = cert.key_exists ?? cert.keyExists;
+      const sanCurrent = cert.san_current ?? cert.sanCurrent;
+      const trusted = store === 'current_user' || store === 'local_machine' || cert.current_user || cert.currentUser || cert.local_machine || cert.localMachine;
+      const detail = cert.message || cursorIssueDetail(issues, ['cert.', 'certs.'], '证书状态已读取');
+      if (!certExists || !keyExists || !trusted) {
+        cursorSetCard('cert', 'err', '需安装', detail);
+      } else if (!sanCurrent) {
+        cursorSetCard('cert', 'warn', '需更新', detail);
+      } else {
+        cursorSetCard('cert', 'ok', '已信任', detail);
+      }
+    } catch (e) {
+      cursorSetCard('cert', 'err', '读取失败', cursorReportErrorMessage(e));
+      if (typeof addLog === 'function') addLog('err', 'Cursor 证书状态读取失败: ' + e);
+    }
+  } finally {
+    cursorSetBusy(false);
+  }
+}
+
+async function cursorStartProxy() {
+  if (cursorConsoleBusy) return;
+  cursorSetBusy(true);
+  try {
+    cursorEnsureBridge();
+    try {
+      await invoke('start_proxy_service');
+      if (typeof addLog === 'function') addLog('ok', 'Cursor: 本地代理服务已启动');
+    } catch (e) {
+      if (String(e).includes('代理已在运行')) {
+        if (typeof addLog === 'function') addLog('warn', 'Cursor: 本地代理服务已在运行');
+      } else {
+        throw e;
+      }
+    }
+    if (typeof refreshStatus === 'function') await refreshStatus();
+    await cursorRefreshConsole();
+  } catch (e) {
+    if (typeof addLog === 'function') addLog('err', 'Cursor 启动代理失败: ' + e);
+    showCustomAlert(String(e), '启动失败', 'error');
+  } finally {
+    cursorSetBusy(false);
+  }
+}
+
+async function cursorSwitchToProxy() {
+  if (cursorConsoleBusy) return;
+  cursorSetBusy(true);
+  try {
+    cursorEnsureBridge();
+    let proxy = await invoke('get_proxy_status');
+    if (!proxy?.running) {
+      try {
+        await invoke('start_proxy_service');
+        if (typeof addLog === 'function') addLog('ok', 'Cursor: 本地代理服务已自动启动');
+      } catch (e) {
+        if (!String(e).includes('代理已在运行')) throw new Error('自动启动本地代理失败: ' + e);
+      }
+      if (typeof refreshStatus === 'function') await refreshStatus();
+      proxy = await invoke('get_proxy_status');
+    }
+
+    const report = await invoke('switch_ide_to_proxy', { target: 'cursor' });
+    if (typeof refreshIdeProxyStatus === 'function') await refreshIdeProxyStatus('cursor');
+    if (typeof setStatusPill === 'function') setStatusPill(!!proxy?.running, proxy);
+    if (typeof addLog === 'function') {
+      addLog('ok', 'Cursor 已切换到 AnyBridge 本机代理');
+      if (report?.cursorAuth) addLog(String(report.cursorAuth).startsWith('ok') ? 'ok' : 'warn', 'Cursor 状态写入: ' + report.cursorAuth);
+      if (report?.ideConfig) addLog(String(report.ideConfig).startsWith('ok') || report.ideConfig === 'updated' ? 'ok' : 'warn', 'Cursor settings 写入: ' + report.ideConfig);
+    }
+    await cursorRefreshConsole();
+    if (typeof promptRestartIde === 'function') {
+      await promptRestartIde('Cursor 已接入 AnyBridge，本机代理已启动。重启 Cursor 后会重新读取代理和 BYOK 状态。', 'cursor', { mode: 'proxy' });
+    } else {
+      showCustomAlert('Cursor 已接入 AnyBridge。请重启 Cursor 使配置生效。', '接入完成', 'success');
+    }
+  } catch (e) {
+    if (typeof addLog === 'function') addLog('err', 'Cursor 一键接入失败: ' + e);
+    showCustomAlert(String(e), '接入失败', 'error');
+    await cursorRefreshConsole().catch(() => {});
+  } finally {
+    cursorSetBusy(false);
+  }
+}
+
+async function cursorRestoreDirect() {
+  if (cursorConsoleBusy) return;
+  const ok = await showCustomConfirm('将把 Cursor 的 settings.json 和 state.vscdb 从 AnyBridge 接入状态还原为直连状态。全局代理服务不会停止。', '还原 Cursor 直连', 'warn');
+  if (!ok) return;
+  cursorSetBusy(true);
+  try {
+    cursorEnsureBridge();
+    const report = await invoke('restore_ide_direct', { target: 'cursor' });
+    if (typeof refreshIdeProxyStatus === 'function') await refreshIdeProxyStatus('cursor');
+    const warnings = [];
+    if (report?.ideConfig && !String(report.ideConfig).startsWith('ok')) warnings.push('配置: ' + report.ideConfig);
+    if (report?.cursorAuth && !String(report.cursorAuth).startsWith('ok')) warnings.push('状态: ' + report.cursorAuth);
+    await cursorRefreshConsole();
+    if (warnings.length) {
+      if (typeof addLog === 'function') addLog('warn', 'Cursor 还原直连完成但有提示: ' + warnings.join('；'));
+      showCustomAlert(warnings.join('\n'), '还原提示', 'warn');
+    } else {
+      if (typeof addLog === 'function') addLog('ok', 'Cursor 已还原直连');
+      if (typeof promptRestartIde === 'function') {
+        await promptRestartIde('Cursor 已还原直连。重启 Cursor 后会重新读取配置。', 'cursor', { mode: 'direct' });
+      } else {
+        showCustomAlert('Cursor 已还原直连。请重启 Cursor 使配置生效。', '还原完成', 'success');
+      }
+    }
+  } catch (e) {
+    if (typeof addLog === 'function') addLog('err', 'Cursor 还原直连失败: ' + e);
+    showCustomAlert(String(e), '还原失败', 'error');
+  } finally {
+    cursorSetBusy(false);
+  }
+}
+
+async function cursorRestartIde() {
+  if (typeof restartIdeNow === 'function') {
+    await restartIdeNow('cursor');
+    return;
+  }
+  cursorEnsureBridge();
+  try {
+    const result = await invoke('restart_ide', { target: 'cursor' });
+    if (typeof addLog === 'function') addLog('ok', result);
+  } catch (e) {
+    if (typeof addLog === 'function') addLog('err', 'Cursor 重启失败: ' + e);
+    showCustomAlert(String(e), '重启失败', 'error');
+  }
+}
+
+async function cursorRunHealthcheck() {
+  if (cursorConsoleBusy) return;
+  cursorSetBusy(true);
+  try {
+    cursorEnsureBridge();
+    const result = typeof runEnvironmentCheck === 'function'
+      ? await runEnvironmentCheck({ target: 'cursor', prefix: 'Cursor 环境体检' })
+      : { report: await invoke('preflight_proxy', { targetIde: 'cursor' }) };
+    const report = result.report || {};
+    const issues = cursorIssueList(report);
+    const errors = issues.filter(issue => issue.level === 'err');
+    const warnings = issues.filter(issue => issue.level === 'warn');
+    await cursorRefreshConsole();
+    if (errors.length) {
+      showCustomAlert(errors.map(issue => issue.message || String(issue)).join('\n'), 'Cursor 体检未通过', 'error');
+    } else if (warnings.length) {
+      showCustomAlert(warnings.map(issue => issue.message || String(issue)).join('\n'), 'Cursor 体检提示', 'warn');
+    } else {
+      showCustomAlert('Cursor 接入环境检查通过。', '体检通过', 'success');
+    }
+  } catch (e) {
+    if (typeof addLog === 'function') addLog('err', 'Cursor 环境检测失败: ' + e);
+    showCustomAlert(String(e), '检测失败', 'error');
+  } finally {
+    cursorSetBusy(false);
+  }
+}
+
+async function cursorInstallCert() {
+  if (cursorConsoleBusy) return;
+  cursorSetBusy(true);
+  try {
+    cursorEnsureBridge();
+    const result = await invoke('cert_install');
+    if (typeof addLog === 'function') addLog('ok', 'Cursor 证书安装: ' + result);
+    await cursorRefreshConsole();
+    showCustomAlert(result || '证书已安装。', '证书完成', 'success');
+  } catch (e) {
+    if (typeof addLog === 'function') addLog('err', 'Cursor 证书安装失败: ' + e);
+    showCustomAlert(String(e), '证书失败', 'error');
+  } finally {
+    cursorSetBusy(false);
+  }
+}
+
+function cursorOpenProxyModels() {
+  if (typeof openProxyPanel === 'function') {
+    openProxyPanel('routes');
+  } else {
+    navigateTo('proxy');
+  }
+}
+
+function cursorOpenStats() {
+  if (typeof openProxyPanel === 'function') {
+    openProxyPanel('overview');
+  } else {
+    navigateTo('proxy');
+  }
+}
+
 function openPlatformPage(platformId) {
   navigateTo(`platform-${platformId}`);
   renderPlatformDetailStatuses();
   renderPlatformProviderOptions();
+  if (platformId === 'cursor') {
+    cursorRefreshConsole().catch(e => {
+      if (typeof addLog === 'function') addLog('err', 'Cursor 控制台刷新失败: ' + e);
+      showCustomAlert(String(e), 'Cursor 状态读取失败', 'error');
+    });
+  }
 }
 
 async function onPlatformProviderChange(platformId) {
@@ -3065,6 +3583,230 @@ function setPlatformBusy(platformId, busy) {
 
 let _switchProgressUnlisten = null;
 let _switchProgressPlatform = null;
+let _switchFlowState = null;
+
+function switchFlowErrorText(e) {
+  return String(e?.message || e || '未知错误');
+}
+
+function assertSwitchResultOk(result, fallbackMessage) {
+  if (result && result.ok === false) {
+    throw new Error(result.message || fallbackMessage || '操作失败');
+  }
+  return result;
+}
+
+async function runSwitchFlow(options) {
+  const {
+    title = '确认切换',
+    lead = '',
+    confirmText = '确定',
+    platform,
+    runningMessage = '正在处理…',
+    successTitle = '切换完成',
+    failureTitle = '切换失败',
+    skipConfirm = false,
+    task,
+  } = options || {};
+
+  if (_switchFlowState) {
+    throw new Error('已有切换任务正在进行，请等待完成。');
+  }
+  if (typeof task !== 'function') {
+    throw new Error('切换任务未配置。');
+  }
+
+  const modal = document.getElementById('custom-confirm-modal');
+  const bodyEl = modal?.querySelector('.modal-body');
+  const titleEl = document.getElementById('custom-confirm-title');
+  const leadEl = document.getElementById('modal-lead');
+  const questionEl = leadEl?.nextElementSibling;
+  const warningEl = modal?.querySelector('.modal-warning');
+  const btnCancel = document.getElementById('modal-btn-cancel');
+  const btnConfirm = document.getElementById('modal-btn-confirm');
+  if (!modal || !bodyEl || !titleEl || !leadEl || !btnCancel || !btnConfirm) {
+    throw new Error('切换确认弹窗 DOM 未初始化。');
+  }
+
+  return new Promise((resolve) => {
+    const prev = {
+      title: titleEl.textContent,
+      lead: leadEl.textContent,
+      leadDisplay: leadEl.style.display,
+      leadWhiteSpace: leadEl.style.whiteSpace,
+      question: questionEl ? questionEl.textContent : '',
+      questionDisplay: questionEl ? questionEl.style.display : '',
+      warningDisplay: warningEl ? warningEl.style.display : '',
+      cancelText: btnCancel.textContent,
+      cancelDisplay: btnCancel.style.display,
+      cancelDisabled: btnCancel.disabled,
+      confirmText: btnConfirm.textContent,
+      confirmDisplay: btnConfirm.style.display,
+      confirmDisabled: btnConfirm.disabled,
+      confirmWidth: btnConfirm.style.width,
+      confirmMinWidth: btnConfirm.style.minWidth,
+    };
+
+    let flowResult = { confirmed: false };
+    const flowEl = document.createElement('div');
+    flowEl.className = 'switch-flow-state';
+    flowEl.setAttribute('aria-live', 'polite');
+    flowEl.style.display = 'none';
+    bodyEl.appendChild(flowEl);
+
+    const renderProgress = (message) => {
+      flowEl.className = 'switch-flow-state is-running';
+      flowEl.style.display = '';
+      flowEl.innerHTML = `
+        <span class="switch-progress-spinner" aria-hidden="true"></span>
+        <span class="switch-flow-msg"></span>
+      `;
+      const msgEl = flowEl.querySelector('.switch-flow-msg');
+      if (msgEl) msgEl.textContent = message || '正在处理…';
+    };
+
+    const setMessage = (message) => {
+      if (!message) return;
+      const msgEl = flowEl.querySelector('.switch-flow-msg');
+      if (msgEl) msgEl.textContent = message;
+    };
+
+    const renderResult = (ok, message) => {
+      titleEl.textContent = ok ? successTitle : failureTitle;
+      leadEl.style.display = 'none';
+      flowEl.className = `switch-flow-state is-result ${ok ? 'is-success' : 'is-error'}`;
+      flowEl.style.display = '';
+      flowEl.innerHTML = `
+        <span class="switch-flow-icon" aria-hidden="true">${ok ? '✓' : '!'}</span>
+        <span class="switch-flow-msg"></span>
+      `;
+      const msgEl = flowEl.querySelector('.switch-flow-msg');
+      if (msgEl) msgEl.textContent = message || (ok ? '已完成。' : '操作失败。');
+      btnCancel.style.display = 'none';
+      btnConfirm.style.display = '';
+      btnConfirm.disabled = false;
+      btnConfirm.textContent = ok ? '完成' : '关闭';
+      btnConfirm.style.minWidth = '88px';
+      btnConfirm.addEventListener('click', onDone);
+    };
+
+    const flowState = {
+      platform,
+      setProgress: (message) => {
+        if (message) setMessage(message);
+      },
+    };
+
+    const cleanup = () => {
+      modal.classList.remove('active');
+      btnCancel.removeEventListener('click', onCancel);
+      btnConfirm.removeEventListener('click', onConfirm);
+      btnConfirm.removeEventListener('click', onDone);
+      modal.removeEventListener('click', onOverlay);
+      document.removeEventListener('keydown', onEsc);
+      if (_switchFlowState === flowState) _switchFlowState = null;
+      flowEl.remove();
+      titleEl.textContent = prev.title;
+      leadEl.textContent = prev.lead;
+      leadEl.style.display = prev.leadDisplay;
+      leadEl.style.whiteSpace = prev.leadWhiteSpace;
+      if (questionEl) {
+        questionEl.textContent = prev.question;
+        questionEl.style.display = prev.questionDisplay;
+      }
+      if (warningEl) warningEl.style.display = prev.warningDisplay;
+      btnCancel.textContent = prev.cancelText;
+      btnCancel.style.display = prev.cancelDisplay;
+      btnCancel.disabled = prev.cancelDisabled;
+      btnConfirm.textContent = prev.confirmText;
+      btnConfirm.style.display = prev.confirmDisplay;
+      btnConfirm.disabled = prev.confirmDisabled;
+      btnConfirm.style.width = prev.confirmWidth;
+      btnConfirm.style.minWidth = prev.confirmMinWidth;
+    };
+
+    const finish = (result) => {
+      cleanup();
+      resolve(result);
+    };
+
+    const start = async () => {
+      btnCancel.removeEventListener('click', onCancel);
+      btnConfirm.removeEventListener('click', onConfirm);
+      // skipConfirm 时 modal 可能还没 add active（确认态没显示）
+      if (!modal.classList.contains('active')) modal.classList.add('active');
+      modal.removeEventListener('click', onOverlay);
+      document.removeEventListener('keydown', onEsc);
+      btnCancel.style.display = 'none';
+      btnConfirm.style.display = 'none';
+      btnCancel.disabled = true;
+      btnConfirm.disabled = true;
+      _switchFlowState = flowState;
+      renderProgress(runningMessage);
+
+      try {
+        const result = await task({ setMessage });
+        flowResult = { confirmed: true, ok: true, result };
+        renderResult(true, result?.message || '已完成。');
+      } catch (e) {
+        flowResult = { confirmed: true, ok: false, error: e };
+        renderResult(false, switchFlowErrorText(e));
+      } finally {
+        if (_switchFlowState === flowState) _switchFlowState = null;
+      }
+    };
+
+    function onConfirm(e) {
+      e.preventDefault();
+      e.stopPropagation();
+      start();
+    }
+    function onCancel(e) {
+      e.preventDefault();
+      e.stopPropagation();
+      finish({ confirmed: false });
+    }
+    function onDone(e) {
+      e.preventDefault();
+      e.stopPropagation();
+      finish(flowResult);
+    }
+    function onOverlay(e) {
+      if (e.target === modal) finish({ confirmed: false });
+    }
+    function onEsc(e) {
+      if (e.key === 'Escape' && modal.classList.contains('active')) finish({ confirmed: false });
+    }
+
+    titleEl.textContent = title;
+    leadEl.textContent = lead;
+    leadEl.style.display = '';
+    leadEl.style.whiteSpace = 'pre-line';
+    if (questionEl) {
+      questionEl.textContent = '';
+      questionEl.style.display = 'none';
+    }
+    if (warningEl) warningEl.style.display = 'none';
+    btnCancel.style.display = '';
+    btnCancel.disabled = false;
+    btnCancel.textContent = '取消';
+    btnConfirm.style.display = '';
+    btnConfirm.disabled = false;
+    btnConfirm.textContent = confirmText;
+    btnConfirm.style.width = '';
+    if (skipConfirm) {
+      // 跳过确认态，直接进进度态（用户已在卡片上看到信息，无需再确认）
+      start();
+    } else {
+      modal.classList.add('active');
+    }
+
+    btnCancel.addEventListener('click', onCancel);
+    btnConfirm.addEventListener('click', onConfirm);
+    modal.addEventListener('click', onOverlay);
+    document.addEventListener('keydown', onEsc);
+  });
+}
 
 function showSwitchProgress(platformId, initialMessage) {
   _switchProgressPlatform = platformId;
@@ -3089,6 +3831,9 @@ function showSwitchProgress(platformId, initialMessage) {
 
 function updateSwitchProgress(payload) {
   if (!payload || !payload.platform) return;
+  if (_switchFlowState && payload.platform === _switchFlowState.platform) {
+    _switchFlowState.setProgress(payload.message || '正在处理…');
+  }
   if (_switchProgressPlatform && payload.platform !== _switchProgressPlatform) return;
   const toast = document.getElementById('switch-progress-toast');
   if (!toast) return;
@@ -3164,41 +3909,62 @@ function codexApplyConfirmMessage(provider) {
   const from = info.currentProviderName || info.currentProviderId || '当前配置';
   const to = provider.name || provider.id || '目标配置';
   const model = provider.defaultModel || '默认模型';
-  return `将把 Codex 从「${from}」切换到配置「${to}」。\n\n模型：${model}\n写入 provider：byok\n\n切换后将自动重启 Codex 桌面版并注入自定义模型。`;
+  // 官方模型(gpt-*)在 Codex 白名单内，切换后直接可用；
+  // 非官方模型需要注入补丁才能在模型选择器显示。
+  const needsInject = !/^gpt-/i.test(String(model || '').trim());
+  const hint = needsInject
+    ? '切换后会自动重启 Codex，并解锁模型选择器中的第三方模型。'
+    : '切换后会自动重启 Codex 生效。';
+  return `将把 Codex 从「${from}」切换到「${to}」。\n\n供应商：${to}\n默认模型：${model}\n\n${hint}`;
 }
 
 async function restoreCodexOfficialConfig() {
   const info = platformInfoOf('codex') || {};
   const alreadyOfficial = !!(info.codexConfig && info.codexConfig.isOfficial);
   const message = alreadyOfficial
-    ? 'Codex 当前已经是 OpenAI 官方配置。仍要清理 AnyBridge 的 byok 配置片段吗？'
-    : '将把 Codex 切回 OpenAI 官方配置。\n\n这会移除当前第三方 provider 指针和 AnyBridge 的 byok 配置，但不会修改 auth.json。切换后将自动重启 Codex 桌面版（官方模式，清理注入）。';
-  const ok = await showCustomConfirm(message, '切回官方配置', 'warn');
-  if (!ok) return;
+    ? 'Codex 当前已经是 OpenAI 官方配置。仍要清理第三方配置吗？'
+    : '将把 Codex 切回 OpenAI 官方配置。\n\n切换后会自动重启 Codex（官方模式）。';
+  const flow = await runSwitchFlow({
+    title: '切回官方配置',
+    lead: message,
+    confirmText: '确认切回',
+    platform: 'codex',
+    runningMessage: '正在准备切回官方配置…',
+    successTitle: '切换完成',
+    failureTitle: '切回官方失败',
+    skipConfirm: true,
+    task: async ({ setMessage }) => {
+      setPlatformBusy('codex', true);
+      try {
+        setMessage('正在写入 Codex 官方配置…');
+        const result = assertSwitchResultOk(
+          await invoke('restore_codex_official_config'),
+          'Codex 官方配置还原失败'
+        );
+        if (typeof loadProviders === 'function') await loadProviders();
+        await refreshPlatforms({ silent: true });
 
-  setPlatformBusy('codex', true);
-  showSwitchProgress('codex', '正在准备切回官方配置…');
-  try {
-    const result = await invoke('restore_codex_official_config');
-    if (typeof loadProviders === 'function') await loadProviders();
-    await refreshPlatforms({ silent: true });
-    // 切回官方后重启 Codex 桌面版（普通模式，清理 CDP 注入）
-    showSwitchProgress('codex', '正在重启 Codex 桌面版（官方模式）…');
-    try {
-      const restart = await invoke('restart_codex_desktop', { managed: false });
-      if (typeof addLog === 'function') addLog('ok', restart.message || 'Codex 桌面版已重启');
-    } catch (re) {
-      if (typeof addLog === 'function') addLog('warn', `Codex 桌面版自动重启未完成: ${re}`);
+        setMessage('正在重启 Codex 桌面版（官方模式）…');
+        const restart = assertSwitchResultOk(
+          await invoke('restart_codex_desktop', { managed: false, model: null }),
+          'Codex 桌面版官方模式重启失败'
+        );
+
+        if (typeof addLog === 'function') {
+          addLog('ok', result.message || 'Codex 已切回官方配置');
+          addLog('ok', restart.message || 'Codex 桌面版已按官方模式重启');
+        }
+        return {
+          message: `${result.message || 'Codex 已切回官方配置。'}\n\n${restart.message || 'Codex 桌面版已按官方模式重启。'}`
+        };
+      } finally {
+        setPlatformBusy('codex', false);
+        renderPlatformDetailStatuses();
+      }
     }
-    if (typeof addLog === 'function') addLog('ok', result.message || 'Codex 已切回官方配置');
-    showCustomAlert(result.message || 'Codex 已切回官方配置。', '切换完成', 'success');
-  } catch (e) {
-    if (typeof addLog === 'function') addLog('err', `Codex 切回官方失败: ${e}`);
-    showCustomAlert(String(e), '切回官方失败', 'error');
-  } finally {
-    hideSwitchProgress();
-    setPlatformBusy('codex', false);
-    renderPlatformDetailStatuses();
+  });
+  if (flow.confirmed && !flow.ok && typeof addLog === 'function') {
+    addLog('err', `Codex 切回官方失败: ${switchFlowErrorText(flow.error)}`);
   }
 }
 
@@ -3336,10 +4102,15 @@ function renderPlatformAddProviderLists() {
 }
 
 function setPlatformAddProviderSortMode(mode) {
+  const previous = platformAddProviderSortMode;
   platformAddProviderSortMode = normalizePlatformAddProviderSortMode(mode);
   try {
     localStorage.setItem(PLATFORM_ADD_PROVIDER_SORT_STORAGE_KEY, platformAddProviderSortMode);
-  } catch (_) {}
+  } catch (e) {
+    platformAddProviderSortMode = previous;
+    if (typeof addLog === 'function') addLog('err', '保存添加模型排序偏好失败: ' + e);
+    if (typeof showCustomAlert === 'function') showCustomAlert(String(e), '保存失败', 'error');
+  }
   renderPlatformAddProviderLists();
 }
 
@@ -3459,8 +4230,15 @@ function syncTencentBuddySyncButtons() {
 }
 
 function setTencentBuddySyncEnabled(enabled) {
+  const previous = tencentBuddySyncEnabled;
   tencentBuddySyncEnabled = !!enabled;
-  localStorage.setItem(TENCENT_BUDDY_SYNC_STORAGE_KEY, tencentBuddySyncEnabled ? 'true' : 'false');
+  try {
+    localStorage.setItem(TENCENT_BUDDY_SYNC_STORAGE_KEY, tencentBuddySyncEnabled ? 'true' : 'false');
+  } catch (e) {
+    tencentBuddySyncEnabled = previous;
+    if (typeof addLog === 'function') addLog('err', '保存双端同步开关失败: ' + e);
+    if (typeof showCustomAlert === 'function') showCustomAlert(String(e), '保存失败', 'error');
+  }
   syncTencentBuddySyncButtons();
 }
 
@@ -3910,10 +4688,11 @@ function closeCbEditModal() {
   cbEditCurrent = { prefix: null, index: -1 };
 }
 
-function saveCbEditFromModal() {
+async function saveCbEditFromModal() {
   const { prefix, index } = cbEditCurrent;
   if (!prefix || index < 0) return;
   const ref = cbEditModelsRef(prefix);
+  const listRef = cbModelListRef(prefix);
   const model = ref.models[index];
   if (!model) return;
 
@@ -3973,10 +4752,21 @@ function saveCbEditFromModal() {
   if (model.useCustomProtocol) entry.useCustomProtocol = true;
   if (prefix === 'Zc') entry.providerId = zcProviderIdForModel({ ...model, ...entry });
 
+  const previousModels = listRef.getModels().slice();
+  const previousAvailable = listRef.getAvailable().slice();
   ref.models[index] = entry;
   ref.replace(oldId, id);
   ref.render();
-  closeCbEditModal();
+  try {
+    await listRef.save({ silent: true, throwOnError: true });
+    closeCbEditModal();
+    if (typeof showBottomToast === 'function') showBottomToast('模型已保存', 'success');
+  } catch (e) {
+    listRef.setModels(previousModels);
+    listRef.setAvailable(previousAvailable);
+    listRef.render();
+    showCustomAlert(`保存失败，已恢复编辑前状态：${e}`, '保存失败', 'error');
+  }
 }
 
 function cbModelsByClass(cls) {
@@ -4284,16 +5074,26 @@ function deleteCbModel(index) {
   cbDeleteModelByIndex('Cb', index);
 }
 
-function toggleCbModelEnabled(index, checked) {
+async function toggleCbModelEnabled(index, checked) {
   const model = cbModels[index];
   if (!model) return;
+  const previous = model.enabled !== false;
   model.enabled = checked;
   renderCodeBuddyModels();
-  saveCodeBuddyModels({ silent: true });
+  const saved = await saveCodeBuddyModels({ silent: true });
+  if (!saved) {
+    model.enabled = previous;
+    renderCodeBuddyModels();
+  }
 }
 
 async function saveCodeBuddyModels(options = {}) {
-  if (!invoke) return;
+  if (!invoke) {
+    const error = new Error('当前环境缺少 Tauri invoke，无法保存 CodeBuddy 配置');
+    if (!options.silent) showCustomAlert(error.message, '保存失败', 'error');
+    if (options.throwOnError) throw error;
+    return false;
+  }
   try {
     cbAvailableModels = cbMergeAvailableModels(cbAvailableModels, cbModels);
     if (tencentBuddySyncEnabled && !options.skipBuddySync) {
@@ -4323,6 +5123,7 @@ async function saveCodeBuddyModels(options = {}) {
     if (typeof addLog === 'function') addLog('err', `${action}失败: ` + e);
     if (!options.silent) showCustomAlert(String(e), tencentBuddySyncEnabled ? '双端同步失败' : '保存失败', 'error');
     if (options.throwOnError) throw e;
+    return false;
   }
 }
 
@@ -4922,16 +5723,26 @@ function deleteWbModel(index) {
   cbDeleteModelByIndex('Wb', index);
 }
 
-function toggleWbModelEnabled(index, checked) {
+async function toggleWbModelEnabled(index, checked) {
   const model = wbModels[index];
   if (!model) return;
+  const previous = model.enabled !== false;
   model.enabled = checked;
   renderWbModels();
-  saveWbModels({ silent: true });
+  const saved = await saveWbModels({ silent: true });
+  if (!saved) {
+    model.enabled = previous;
+    renderWbModels();
+  }
 }
 
 async function saveWbModels(options = {}) {
-  if (!invoke) return;
+  if (!invoke) {
+    const error = new Error('当前环境缺少 Tauri invoke，无法保存 WorkBuddy 配置');
+    if (!options.silent) showCustomAlert(error.message, '保存失败', 'error');
+    if (options.throwOnError) throw error;
+    return false;
+  }
   try {
     wbAvailableModels = cbMergeAvailableModels(wbAvailableModels, wbModels);
     if (tencentBuddySyncEnabled && !options.skipBuddySync) {
@@ -4961,6 +5772,7 @@ async function saveWbModels(options = {}) {
     if (typeof addLog === 'function') addLog('err', `${action}失败: ` + e);
     if (!options.silent) showCustomAlert(String(e), tencentBuddySyncEnabled ? '双端同步失败' : '保存失败', 'error');
     if (options.throwOnError) throw e;
+    return false;
   }
 }
 
@@ -5185,16 +5997,26 @@ function deleteZcModel(index) {
   cbDeleteModelByIndex('Zc', index);
 }
 
-function toggleZcModelEnabled(index, checked) {
+async function toggleZcModelEnabled(index, checked) {
   const model = zcModels[index];
   if (!model) return;
+  const previous = model.enabled !== false;
   model.enabled = checked;
   renderZcModels();
-  saveZcModels({ silent: true });
+  const saved = await saveZcModels({ silent: true });
+  if (!saved) {
+    model.enabled = previous;
+    renderZcModels();
+  }
 }
 
 async function saveZcModels(options = {}) {
-  if (!invoke) return;
+  if (!invoke) {
+    const error = new Error('当前环境缺少 Tauri invoke，无法保存 ZCode 配置');
+    if (!options.silent) showCustomAlert(error.message, '保存失败', 'error');
+    if (options.throwOnError) throw error;
+    return false;
+  }
   try {
     zcAvailableModels = cbMergeAvailableModels(zcAvailableModels, zcModels);
     const path = await invoke('save_codebuddy_models', {
@@ -5213,6 +6035,7 @@ async function saveZcModels(options = {}) {
     if (typeof addLog === 'function') addLog('err', '保存 ZCode 配置失败: ' + e);
     if (!options.silent) showCustomAlert(String(e), '保存失败', 'error');
     if (options.throwOnError) throw e;
+    return false;
   }
 }
 

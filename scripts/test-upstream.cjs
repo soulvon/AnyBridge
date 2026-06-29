@@ -3,10 +3,10 @@ const https = require('https');
 const API_KEY = 'sk-cqweLq7bV2P5'; // Will be read from provider config
 const fs = require('fs');
 const path = require('path');
+const { configDir } = require('./lib/config-dir.cjs');
 
 // Read full API key
-const configDir = path.join(process.env.APPDATA || '', 'anybridge');
-const providersFile = path.join(configDir, 'providers.json');
+const providersFile = path.join(configDir(), 'providers.json');
 const data = JSON.parse(fs.readFileSync(providersFile, 'utf8'));
 const opencode = data.providers.find(p => p.id === 'p-1782238927068-ipois');
 const apiKey = opencode.apiKey;

@@ -15,7 +15,7 @@
 use serde::Serialize;
 use serde_json::{Map, Value};
 use sha2::{Digest, Sha256};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -33,6 +33,43 @@ const PLATFORM_CODEBUDDY: &str = "codebuddy";
 const PLATFORM_OPENCODE: &str = "opencode";
 const PLATFORM_WORKBUDDY: &str = "workbuddy";
 const PLATFORM_ZCODE: &str = "zcode";
+const CLAUDE_MODEL_ENV_KEYS: &[&str] = &[
+    "ANTHROPIC_MODEL",
+    "ANTHROPIC_REASONING_MODEL",
+    "ANTHROPIC_SMALL_FAST_MODEL",
+    "ANTHROPIC_DEFAULT_HAIKU_MODEL",
+    "ANTHROPIC_DEFAULT_HAIKU_MODEL_NAME",
+    "ANTHROPIC_DEFAULT_SONNET_MODEL",
+    "ANTHROPIC_DEFAULT_SONNET_MODEL_NAME",
+    "ANTHROPIC_DEFAULT_OPUS_MODEL",
+    "ANTHROPIC_DEFAULT_OPUS_MODEL_NAME",
+    "ANTHROPIC_DEFAULT_FABLE_MODEL",
+    "ANTHROPIC_DEFAULT_FABLE_MODEL_NAME",
+];
+const CLAUDE_AUTH_ENV_KEYS: &[&str] = &[
+    "ANTHROPIC_AUTH_TOKEN",
+    "ANTHROPIC_API_KEY",
+    "OPENROUTER_API_KEY",
+    "GOOGLE_API_KEY",
+];
+const CLAUDE_MANAGED_ENV_KEYS: &[&str] = &[
+    "ANTHROPIC_BASE_URL",
+    "ANTHROPIC_AUTH_TOKEN",
+    "ANTHROPIC_API_KEY",
+    "OPENROUTER_API_KEY",
+    "GOOGLE_API_KEY",
+    "ANTHROPIC_MODEL",
+    "ANTHROPIC_REASONING_MODEL",
+    "ANTHROPIC_SMALL_FAST_MODEL",
+    "ANTHROPIC_DEFAULT_HAIKU_MODEL",
+    "ANTHROPIC_DEFAULT_HAIKU_MODEL_NAME",
+    "ANTHROPIC_DEFAULT_SONNET_MODEL",
+    "ANTHROPIC_DEFAULT_SONNET_MODEL_NAME",
+    "ANTHROPIC_DEFAULT_OPUS_MODEL",
+    "ANTHROPIC_DEFAULT_OPUS_MODEL_NAME",
+    "ANTHROPIC_DEFAULT_FABLE_MODEL",
+    "ANTHROPIC_DEFAULT_FABLE_MODEL_NAME",
+];
 const ABSENT_BACKUP_SENTINEL: &[u8] = b"__IDE_BYOK_ORIGINAL_FILE_ABSENT__\n";
 const ZCODE_PROVIDER_ID: &str = "AnyBridge";
 
@@ -45,7 +82,7 @@ struct SwitchProgressPayload {
     message: String,
 }
 
-fn emit_switch_progress(app: &AppHandle, platform: &str, step: &str, message: &str) {
+pub(crate) fn emit_switch_progress(app: &AppHandle, platform: &str, step: &str, message: &str) {
     let _ = app.emit(
         "platform-switch-progress",
         SwitchProgressPayload {
@@ -94,6 +131,8 @@ pub struct PlatformInfo {
 #[derive(Serialize, Clone)]
 pub struct ClaudeConfigInfo {
     pub model: Option<String>,
+    #[serde(skip)]
+    pub model_candidates: Vec<String>,
     #[serde(rename = "baseUrl")]
     pub base_url: Option<String>,
     #[serde(rename = "hasAuthToken")]
@@ -421,16 +460,7 @@ impl Platform {
             "ANTHROPIC_AUTH_TOKEN".into(),
             Value::String(p.api_key.clone()),
         );
-        env_obj.insert("ANTHROPIC_MODEL".into(), Value::String(model.clone()));
-        env_obj.insert(
-            "ANTHROPIC_DEFAULT_HAIKU_MODEL".into(),
-            Value::String(model.clone()),
-        );
-        env_obj.insert(
-            "ANTHROPIC_DEFAULT_SONNET_MODEL".into(),
-            Value::String(model.clone()),
-        );
-        env_obj.insert("ANTHROPIC_DEFAULT_OPUS_MODEL".into(), Value::String(model));
+        set_claude_model_env(env_obj, &model);
 
         let json = serde_json::to_string_pretty(&Value::Object(obj)).map_err(|e| e.to_string())?;
         super::write_atomic(path, json.as_bytes())
@@ -448,16 +478,8 @@ impl Platform {
 
         let mut obj = super::ide_config::parse_object(&raw)?;
         let remove_env = if let Some(env) = obj.get_mut("env").and_then(Value::as_object_mut) {
-            for key in [
-                "ANTHROPIC_BASE_URL",
-                "ANTHROPIC_AUTH_TOKEN",
-                "ANTHROPIC_API_KEY",
-                "ANTHROPIC_MODEL",
-                "ANTHROPIC_DEFAULT_HAIKU_MODEL",
-                "ANTHROPIC_DEFAULT_SONNET_MODEL",
-                "ANTHROPIC_DEFAULT_OPUS_MODEL",
-            ] {
-                env.remove(key);
+            for key in CLAUDE_MANAGED_ENV_KEYS {
+                env.remove(*key);
             }
             env.is_empty()
         } else {
@@ -483,7 +505,14 @@ impl Platform {
             .parse::<DocumentMut>()
             .map_err(|e| format!("config.toml 解析失败: {e}"))?;
 
-        let base = codex_base_url();
+        let base = if p.route_through_proxy {
+            codex_base_url()
+        } else {
+            // 直连供应商：拼接 apiHost + apiPath（不写 localhost 代理地址）
+            let host = p.api_host.trim().trim_end_matches('/');
+            let path = p.api_path.as_deref().unwrap_or("/v1").trim().trim_start_matches('/');
+            format!("{}/{}", host, path)
+        };
         let bearer = codex_bearer_token()?;
         let model = p.default_model.trim();
 
@@ -908,6 +937,8 @@ fn codex_bearer_token() -> Result<String, String> {
 
 /// 模型目录文件名
 const CODEX_MODEL_CATALOG_FILENAME: &str = "anybridge-model-catalog.json";
+const CODEX_ANYBRIDGE_MANAGED_FLAG: &str = "anybridge_managed";
+const CODEX_LEGACY_ANYBRIDGE_SLUG_PREFIX: &str = "anybridge:";
 
 /// 读取 `~/.codex/models_cache.json` 的第一个模型条目作为 deep-clone 模板。
 ///
@@ -921,7 +952,86 @@ pub(crate) fn read_codex_model_template() -> Option<serde_json::Value> {
     let path = dirs::home_dir()?.join(".codex").join("models_cache.json");
     let raw = std::fs::read_to_string(&path).ok()?;
     let parsed: serde_json::Value = serde_json::from_str(&raw).ok()?;
-    parsed.get("models")?.as_array()?.first().cloned()
+    let models = parsed.get("models")?.as_array()?;
+    let catalog_slugs = read_codex_catalog_slugs_for_template();
+    models
+        .iter()
+        .find(|m| is_codex_official_template_candidate(m, &catalog_slugs, true, true))
+        .or_else(|| {
+            models
+                .iter()
+                .find(|m| is_codex_official_template_candidate(m, &catalog_slugs, true, false))
+        })
+        .or_else(|| {
+            models
+                .iter()
+                .find(|m| is_codex_official_template_candidate(m, &catalog_slugs, false, true))
+        })
+        .or_else(|| {
+            models
+                .iter()
+                .find(|m| is_codex_official_template_candidate(m, &catalog_slugs, false, false))
+        })
+        .cloned()
+}
+
+fn read_codex_catalog_slugs_for_template() -> HashSet<String> {
+    let Some(home) = dirs::home_dir() else {
+        return HashSet::new();
+    };
+    let path = home.join(".codex").join(CODEX_MODEL_CATALOG_FILENAME);
+    let Ok(raw) = std::fs::read_to_string(path) else {
+        return HashSet::new();
+    };
+    let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&raw) else {
+        return HashSet::new();
+    };
+    let arr = if parsed.is_array() {
+        parsed.as_array()
+    } else {
+        parsed.get("models").and_then(|m| m.as_array())
+    };
+    arr.map(|items| {
+        items
+            .iter()
+            .filter_map(|m| {
+                m.get("slug")
+                    .and_then(Value::as_str)
+                    .or_else(|| m.get("model").and_then(Value::as_str))
+                    .map(str::trim)
+                    .filter(|s| !s.is_empty())
+                    .map(ToString::to_string)
+            })
+            .collect()
+    })
+    .unwrap_or_default()
+}
+
+fn is_codex_official_template_candidate(
+    model: &serde_json::Value,
+    catalog_slugs: &HashSet<String>,
+    prefer_openai_slug: bool,
+    skip_catalog_slug: bool,
+) -> bool {
+    if model
+        .get(CODEX_ANYBRIDGE_MANAGED_FLAG)
+        .and_then(Value::as_bool)
+        .unwrap_or(false)
+    {
+        return false;
+    }
+    let slug = model
+        .get("slug")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .trim();
+    if slug.is_empty() || slug.starts_with(CODEX_LEGACY_ANYBRIDGE_SLUG_PREFIX) {
+        return false;
+    }
+    if skip_catalog_slug && catalog_slugs.contains(slug) {
+        return false;
+    }
+    !prefer_openai_slug || slug.starts_with("gpt-")
 }
 
 /// 生成 Codex 模型目录 JSON 内容。
@@ -966,8 +1076,7 @@ fn generate_model_catalog_json(entries: &[ModelCatalogEntry]) -> Result<String, 
         .collect();
 
     let catalog = serde_json::json!({ "models": models });
-    serde_json::to_string_pretty(&catalog)
-        .map_err(|e| format!("catalog 序列化失败: {e}"))
+    serde_json::to_string_pretty(&catalog).map_err(|e| format!("catalog 序列化失败: {e}"))
 }
 
 fn toml_item_string(item: &Item) -> Option<String> {
@@ -1098,6 +1207,101 @@ fn first_json_string(map: Option<&Map<String, Value>>, keys: &[&str]) -> Option<
     keys.iter().find_map(|key| json_string(map, key))
 }
 
+fn json_string_candidates(map: Option<&Map<String, Value>>, keys: &[&str]) -> Vec<String> {
+    let Some(map) = map else {
+        return Vec::new();
+    };
+    let mut out = Vec::new();
+    for key in keys {
+        if let Some(value) = json_string(map, key) {
+            if !out.iter().any(|existing| existing == &value) {
+                out.push(value);
+            }
+        }
+    }
+    out
+}
+
+fn set_claude_model_env(env: &mut Map<String, Value>, model: &str) {
+    for key in [
+        "ANTHROPIC_MODEL",
+        "ANTHROPIC_DEFAULT_HAIKU_MODEL",
+        "ANTHROPIC_DEFAULT_HAIKU_MODEL_NAME",
+        "ANTHROPIC_DEFAULT_SONNET_MODEL",
+        "ANTHROPIC_DEFAULT_SONNET_MODEL_NAME",
+        "ANTHROPIC_DEFAULT_OPUS_MODEL",
+        "ANTHROPIC_DEFAULT_OPUS_MODEL_NAME",
+        "ANTHROPIC_DEFAULT_FABLE_MODEL",
+        "ANTHROPIC_DEFAULT_FABLE_MODEL_NAME",
+    ] {
+        env.insert(key.to_string(), Value::String(model.to_string()));
+    }
+    env.remove("ANTHROPIC_SMALL_FAST_MODEL");
+}
+
+fn clone_claude_env_string(env: &Map<String, Value>, key: &str) -> Option<String> {
+    env.get(key)
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
+}
+
+fn set_claude_env_if_missing(env: &mut Map<String, Value>, key: &str, value: Option<String>) {
+    if env.get(key).and_then(Value::as_str).is_some() {
+        return;
+    }
+    if let Some(value) = value {
+        env.insert(key.to_string(), Value::String(value));
+    }
+}
+
+fn normalize_claude_settings_model_env(settings: &mut Value, fallback_model: &str) {
+    let Some(env) = settings.get_mut("env").and_then(Value::as_object_mut) else {
+        return;
+    };
+
+    let fallback = {
+        let fallback_model = fallback_model.trim();
+        if fallback_model.is_empty() {
+            None
+        } else {
+            Some(fallback_model.to_string())
+        }
+    };
+    let primary = clone_claude_env_string(env, "ANTHROPIC_MODEL").or_else(|| fallback.clone());
+    set_claude_env_if_missing(env, "ANTHROPIC_MODEL", primary.clone());
+
+    let small_fast = clone_claude_env_string(env, "ANTHROPIC_SMALL_FAST_MODEL");
+    let haiku = clone_claude_env_string(env, "ANTHROPIC_DEFAULT_HAIKU_MODEL")
+        .or_else(|| clone_claude_env_string(env, "ANTHROPIC_DEFAULT_HAIKU_MODEL_NAME"))
+        .or_else(|| small_fast.clone())
+        .or_else(|| primary.clone());
+    let sonnet = clone_claude_env_string(env, "ANTHROPIC_DEFAULT_SONNET_MODEL")
+        .or_else(|| clone_claude_env_string(env, "ANTHROPIC_DEFAULT_SONNET_MODEL_NAME"))
+        .or_else(|| primary.clone())
+        .or_else(|| small_fast.clone());
+    let opus = clone_claude_env_string(env, "ANTHROPIC_DEFAULT_OPUS_MODEL")
+        .or_else(|| clone_claude_env_string(env, "ANTHROPIC_DEFAULT_OPUS_MODEL_NAME"))
+        .or_else(|| primary.clone())
+        .or_else(|| small_fast.clone());
+    let fable = clone_claude_env_string(env, "ANTHROPIC_DEFAULT_FABLE_MODEL")
+        .or_else(|| clone_claude_env_string(env, "ANTHROPIC_DEFAULT_FABLE_MODEL_NAME"))
+        .or_else(|| primary.clone())
+        .or_else(|| opus.clone());
+
+    set_claude_env_if_missing(env, "ANTHROPIC_DEFAULT_HAIKU_MODEL", haiku.clone());
+    set_claude_env_if_missing(env, "ANTHROPIC_DEFAULT_HAIKU_MODEL_NAME", haiku);
+    set_claude_env_if_missing(env, "ANTHROPIC_DEFAULT_SONNET_MODEL", sonnet.clone());
+    set_claude_env_if_missing(env, "ANTHROPIC_DEFAULT_SONNET_MODEL_NAME", sonnet);
+    set_claude_env_if_missing(env, "ANTHROPIC_DEFAULT_OPUS_MODEL", opus.clone());
+    set_claude_env_if_missing(env, "ANTHROPIC_DEFAULT_OPUS_MODEL_NAME", opus);
+    set_claude_env_if_missing(env, "ANTHROPIC_DEFAULT_FABLE_MODEL", fable.clone());
+    set_claude_env_if_missing(env, "ANTHROPIC_DEFAULT_FABLE_MODEL_NAME", fable);
+
+    env.remove("ANTHROPIC_SMALL_FAST_MODEL");
+}
+
 fn read_claude_config_info(path: &PathBuf) -> Result<Option<ClaudeConfigInfo>, String> {
     if !path.exists() {
         return Ok(None);
@@ -1107,6 +1311,7 @@ fn read_claude_config_info(path: &PathBuf) -> Result<Option<ClaudeConfigInfo>, S
     if raw.trim().is_empty() {
         return Ok(Some(ClaudeConfigInfo {
             model: None,
+            model_candidates: Vec::new(),
             base_url: None,
             has_auth_token: false,
             auth_token_masked: None,
@@ -1118,29 +1323,15 @@ fn read_claude_config_info(path: &PathBuf) -> Result<Option<ClaudeConfigInfo>, S
     let obj = parse_json_object(&raw, "settings.json")?;
     let env = obj.get("env").and_then(Value::as_object);
     let base_url = first_json_string(env, &["ANTHROPIC_BASE_URL"]);
-    let auth_token = first_json_string(
-        env,
-        &[
-            "ANTHROPIC_AUTH_TOKEN",
-            "ANTHROPIC_API_KEY",
-            "OPENROUTER_API_KEY",
-            "GOOGLE_API_KEY",
-        ],
-    );
-    let model = first_json_string(
-        env,
-        &[
-            "ANTHROPIC_MODEL",
-            "ANTHROPIC_DEFAULT_SONNET_MODEL",
-            "ANTHROPIC_DEFAULT_OPUS_MODEL",
-            "ANTHROPIC_DEFAULT_HAIKU_MODEL",
-        ],
-    );
+    let auth_token = first_json_string(env, CLAUDE_AUTH_ENV_KEYS);
+    let model_candidates = json_string_candidates(env, CLAUDE_MODEL_ENV_KEYS);
+    let model = model_candidates.first().cloned();
     let has_auth_token = auth_token.is_some();
     let is_official = base_url.is_none() && auth_token.is_none();
 
     Ok(Some(ClaudeConfigInfo {
         model,
+        model_candidates,
         base_url,
         has_auth_token,
         auth_token_masked: auth_token.as_deref().map(mask_key),
@@ -1152,6 +1343,7 @@ fn read_claude_config_info(path: &PathBuf) -> Result<Option<ClaudeConfigInfo>, S
 fn claude_settings_from_config(config: &ClaudeCodeConfig, mask_token: bool) -> Value {
     if let Some(settings) = config.settings_config.as_ref() {
         let mut out = settings.clone();
+        normalize_claude_settings_model_env(&mut out, &config.default_model);
         if mask_token {
             if let Some(value) = out.get_mut("apiKey") {
                 if let Some(masked) = value.as_str().map(mask_key) {
@@ -1159,13 +1351,8 @@ fn claude_settings_from_config(config: &ClaudeCodeConfig, mask_token: bool) -> V
                 }
             }
             if let Some(env) = out.get_mut("env").and_then(Value::as_object_mut) {
-                for key in [
-                    "ANTHROPIC_AUTH_TOKEN",
-                    "ANTHROPIC_API_KEY",
-                    "OPENROUTER_API_KEY",
-                    "GOOGLE_API_KEY",
-                ] {
-                    if let Some(value) = env.get_mut(key) {
+                for key in CLAUDE_AUTH_ENV_KEYS {
+                    if let Some(value) = env.get_mut(*key) {
                         if let Some(masked) = value.as_str().map(mask_key) {
                             *value = Value::String(masked);
                         }
@@ -1252,11 +1439,13 @@ fn claude_provider_matches_config(config: &ClaudeConfigInfo, provider: &Provider
     let target_base = claude_compare_base_url(&claude_base_url(provider));
     let current_base = claude_compare_base_url(current_base);
     let same_base = !target_base.is_empty() && target_base == current_base;
-    let same_model = config
-        .model
-        .as_deref()
-        .map(|model| provider.default_model.trim().is_empty() || model == provider.default_model)
-        .unwrap_or(true);
+    let provider_model = provider.default_model.trim();
+    let same_model = provider_model.is_empty()
+        || config.model_candidates.is_empty()
+        || config
+            .model_candidates
+            .iter()
+            .any(|model| model == provider_model);
 
     same_base && same_model
 }
@@ -1423,6 +1612,34 @@ fn opencode_settings_from_config(config: &OpenCodeConfig, mask_token: bool) -> V
     entry
 }
 
+fn opencode_default_model_key(config: &OpenCodeConfig, settings: &Value) -> Result<String, String> {
+    let default_model = config.default_model.trim();
+    if let Some(models) = settings.get("models").and_then(Value::as_object) {
+        if !default_model.is_empty() && models.contains_key(default_model) {
+            return Ok(default_model.to_string());
+        }
+        if let Some(model) = models.keys().find_map(|key| {
+            let trimmed = key.trim();
+            (!trimmed.is_empty()).then(|| trimmed.to_string())
+        }) {
+            return Ok(model);
+        }
+    }
+
+    if !default_model.is_empty() {
+        return Ok(default_model.to_string());
+    }
+
+    config
+        .models
+        .iter()
+        .find_map(|model| {
+            let trimmed = model.trim();
+            (!trimmed.is_empty()).then(|| trimmed.to_string())
+        })
+        .ok_or_else(|| "OpenCode 配置缺少默认模型，无法设置当前 model".to_string())
+}
+
 fn opencode_preview_from_config(config: &OpenCodeConfig) -> Value {
     let mut provider_map = Map::new();
     provider_map.insert(
@@ -1463,18 +1680,23 @@ fn apply_opencode_config_file(path: &PathBuf, config: &OpenCodeConfig) -> Result
     obj.entry("$schema")
         .or_insert_with(|| Value::String("https://opencode.ai/config.json".to_string()));
 
+    let settings = opencode_settings_from_config(config, false);
+    if !settings.is_object() {
+        return Err("OpenCode provider 配置 JSON 顶层必须是对象".to_string());
+    }
+    let model_key = opencode_default_model_key(config, &settings)?;
+
     let provider_value = obj
         .entry("provider")
         .or_insert_with(|| Value::Object(Map::new()));
     let provider_obj = provider_value
         .as_object_mut()
         .ok_or_else(|| "opencode.json 的 provider 字段不是对象".to_string())?;
-
-    let settings = opencode_settings_from_config(config, false);
-    if !settings.is_object() {
-        return Err("OpenCode provider 配置 JSON 顶层必须是对象".to_string());
-    }
     provider_obj.insert(config.id.clone(), settings);
+    obj.insert(
+        "model".to_string(),
+        Value::String(format!("{}/{}", config.id, model_key)),
+    );
 
     let json = serde_json::to_string_pretty(&Value::Object(obj)).map_err(|e| e.to_string())?;
     super::write_atomic(path, json.as_bytes())
@@ -2327,12 +2549,12 @@ pub fn switch_platform(
 
         let config_path = path.to_string_lossy().to_string();
         let backup = backup_path(&path).to_string_lossy().to_string();
-        emit_switch_progress(&app, plat.id(), "done", "加入完成");
+        emit_switch_progress(&app, plat.id(), "done", "设置完成");
 
         return Ok(SwitchResult {
             ok: true,
             message: format!(
-                "已将 OpenCode 配置「{}」加入 live provider 列表，新会话或重启 OpenCode 后可使用",
+                "已将 OpenCode 配置「{}」加入 live provider 列表，并设为当前 model，新会话或重启 OpenCode 后生效",
                 config.name
             ),
             config_path,
@@ -2362,7 +2584,7 @@ pub fn switch_platform(
 
     let mut message = if matches!(plat, Platform::OpenCode) {
         format!(
-            "已将 OpenCode 配置「{}」加入 live provider 列表，新会话或重启 OpenCode 后可使用",
+            "已将 OpenCode 配置「{}」加入 live provider 列表，并设为当前 model，新会话或重启 OpenCode 后生效",
             provider.name
         )
     } else {
@@ -2409,6 +2631,14 @@ pub fn remove_opencode_config_from_live(provider_id: String) -> Result<SwitchRes
     if let Some(providers) = obj.get_mut("provider").and_then(Value::as_object_mut) {
         providers.remove(&provider_id);
     }
+    let cleared_current_model = obj
+        .get("model")
+        .and_then(Value::as_str)
+        .map(|model| model.starts_with(&format!("{provider_id}/")))
+        .unwrap_or(false);
+    if cleared_current_model {
+        obj.remove("model");
+    }
 
     let json = serde_json::to_string_pretty(&Value::Object(obj)).map_err(|e| e.to_string())?;
     super::write_atomic(&path, json.as_bytes())?;
@@ -2417,7 +2647,11 @@ pub fn remove_opencode_config_from_live(provider_id: String) -> Result<SwitchRes
     let backup = backup_path(&path).to_string_lossy().to_string();
     Ok(SwitchResult {
         ok: true,
-        message: format!("已从 OpenCode live 配置移除「{}」", provider_id),
+        message: if cleared_current_model {
+            format!("已从 OpenCode live 配置移除「{}」，并清除指向它的当前 model", provider_id)
+        } else {
+            format!("已从 OpenCode live 配置移除「{}」", provider_id)
+        },
         config_path,
         backup_path: backup,
     })
@@ -2488,6 +2722,7 @@ pub fn restore_codex_official_config(app: AppHandle) -> Result<SwitchResult, Str
         fs::create_dir_all(parent).map_err(|e| format!("创建配置目录失败: {e}"))?;
     }
     ensure_backup(&path)?;
+    crate::commands::codex_desktop::clean_models_cache()?;
     emit_switch_progress(&app, plat.id(), "writing", "正在写入官方配置…");
     plat.apply_codex_official(&path)?;
 
@@ -2722,9 +2957,16 @@ pub fn list_provider_models() -> Result<Vec<ProviderModelsEntry>, String> {
 
 fn repair_codex_session_visibility_message(path: &Path) -> String {
     match super::codex_session_visibility::repair_default_codex_session_visibility(path) {
-        Ok(summary) => format!("。{}", summary.message),
+        Ok(summary) => {
+            // 没有改动时不追加冗余信息
+            if summary.updated_sqlite_row_count == 0 {
+                String::new()
+            } else {
+                format!("。{}", summary.message)
+            }
+        }
         Err(error) => format!(
-            "。但同步 Codex 历史会话可见性失败：{}。配置已写入，可关闭 Codex 后重试切换",
+            "。但恢复历史会话可见性失败：{}。配置已写入，可关闭 Codex 后重试切换",
             error
         ),
     }
@@ -2733,7 +2975,7 @@ fn repair_codex_session_visibility_message(path: &Path) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::commands::config::ProviderCapabilities;
+    use crate::commands::config::{ApiFormat, ProviderCapabilities, ProviderUnlocks};
     use std::collections::HashMap;
     use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -2745,6 +2987,16 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("anybridge-{name}-{nanos}"));
         fs::create_dir_all(&dir).unwrap();
         dir.join("config.toml")
+    }
+
+    fn temp_json_path(name: &str) -> PathBuf {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let dir = std::env::temp_dir().join(format!("anybridge-{name}-{nanos}"));
+        fs::create_dir_all(&dir).unwrap();
+        dir.join("settings.json")
     }
 
     fn test_openai_provider() -> Provider {
@@ -2771,6 +3023,215 @@ mod tests {
             model_catalog: Vec::new(),
             codex_chat_reasoning: None,
         }
+    }
+
+    fn test_claude_provider() -> Provider {
+        Provider {
+            id: "claude-provider-1".to_string(),
+            name: "Claude Test Provider".to_string(),
+            api_host: "https://anthropic.example.com".to_string(),
+            api_key: "sk-ant-test-secret".to_string(),
+            api_path: None,
+            default_model: "claude-test-model".to_string(),
+            api_format: ApiFormat::Anthropic,
+            enabled: true,
+            models: Vec::new(),
+            capabilities: ProviderCapabilities {
+                text: true,
+                stream: true,
+                vision: false,
+                tools: false,
+                gzip: false,
+            },
+            model_caps: HashMap::new(),
+            unlocks: ProviderUnlocks::default(),
+            wire_api: String::new(),
+            model_catalog: Vec::new(),
+            codex_chat_reasoning: None,
+        }
+    }
+
+    #[test]
+    fn apply_claude_writes_complete_model_env_and_preserves_settings() {
+        let path = temp_json_path("claude-apply");
+        fs::write(
+            &path,
+            r#"{
+  "language": "zh-CN",
+  "permissions": { "allow": ["Bash"] },
+  "hooks": { "PostToolUse": [] },
+  "env": {
+    "ANTHROPIC_SMALL_FAST_MODEL": "legacy-fast",
+    "MCP_TIMEOUT": "120000"
+  }
+}"#,
+        )
+        .unwrap();
+
+        Platform::ClaudeCode
+            .apply_claude(&path, &test_claude_provider())
+            .unwrap();
+
+        let raw = fs::read_to_string(&path).unwrap();
+        let value: Value = serde_json::from_str(&raw).unwrap();
+        let env = value.get("env").and_then(Value::as_object).unwrap();
+        assert_eq!(
+            env.get("ANTHROPIC_BASE_URL").and_then(Value::as_str),
+            Some("https://anthropic.example.com")
+        );
+        assert_eq!(
+            env.get("ANTHROPIC_AUTH_TOKEN").and_then(Value::as_str),
+            Some("sk-ant-test-secret")
+        );
+        for key in [
+            "ANTHROPIC_MODEL",
+            "ANTHROPIC_DEFAULT_HAIKU_MODEL",
+            "ANTHROPIC_DEFAULT_HAIKU_MODEL_NAME",
+            "ANTHROPIC_DEFAULT_SONNET_MODEL",
+            "ANTHROPIC_DEFAULT_SONNET_MODEL_NAME",
+            "ANTHROPIC_DEFAULT_OPUS_MODEL",
+            "ANTHROPIC_DEFAULT_OPUS_MODEL_NAME",
+            "ANTHROPIC_DEFAULT_FABLE_MODEL",
+            "ANTHROPIC_DEFAULT_FABLE_MODEL_NAME",
+        ] {
+            assert_eq!(
+                env.get(key).and_then(Value::as_str),
+                Some("claude-test-model"),
+                "{key} should be written"
+            );
+        }
+        assert!(env.get("ANTHROPIC_SMALL_FAST_MODEL").is_none());
+        assert_eq!(
+            env.get("MCP_TIMEOUT").and_then(Value::as_str),
+            Some("120000")
+        );
+        assert_eq!(value.get("language").and_then(Value::as_str), Some("zh-CN"));
+        assert!(value.get("permissions").is_some());
+        assert!(value.get("hooks").is_some());
+
+        let _ = fs::remove_dir_all(path.parent().unwrap());
+    }
+
+    #[test]
+    fn apply_claude_config_file_normalizes_old_saved_settings_config() {
+        let path = temp_json_path("claude-settings-config");
+        fs::write(
+            &path,
+            r#"{
+  "env": {
+    "ANTHROPIC_DEFAULT_FABLE_MODEL": "stale-fable",
+    "ANTHROPIC_DEFAULT_FABLE_MODEL_NAME": "stale-fable"
+  },
+  "permissions": { "allow": ["Read"] }
+}"#,
+        )
+        .unwrap();
+
+        let config = ClaudeCodeConfig {
+            id: "claude-config-1".to_string(),
+            name: "Saved Claude".to_string(),
+            api_host: "https://saved.example.com".to_string(),
+            api_key: "sk-saved".to_string(),
+            api_path: None,
+            default_model: "claude-saved-model".to_string(),
+            models: Vec::new(),
+            settings_config: Some(serde_json::json!({
+                "env": {
+                    "ANTHROPIC_BASE_URL": "https://saved.example.com",
+                    "ANTHROPIC_AUTH_TOKEN": "sk-saved",
+                    "ANTHROPIC_MODEL": "claude-saved-model"
+                }
+            })),
+            source_provider_id: String::new(),
+            source_provider_name: String::new(),
+        };
+
+        apply_claude_config_file(&path, &config).unwrap();
+
+        let raw = fs::read_to_string(&path).unwrap();
+        let value: Value = serde_json::from_str(&raw).unwrap();
+        let env = value.get("env").and_then(Value::as_object).unwrap();
+        assert_eq!(
+            env.get("ANTHROPIC_DEFAULT_FABLE_MODEL")
+                .and_then(Value::as_str),
+            Some("claude-saved-model")
+        );
+        assert_eq!(
+            env.get("ANTHROPIC_DEFAULT_FABLE_MODEL_NAME")
+                .and_then(Value::as_str),
+            Some("claude-saved-model")
+        );
+        assert_eq!(
+            env.get("ANTHROPIC_DEFAULT_SONNET_MODEL_NAME")
+                .and_then(Value::as_str),
+            Some("claude-saved-model")
+        );
+        assert!(value.get("permissions").is_some());
+
+        let _ = fs::remove_dir_all(path.parent().unwrap());
+    }
+
+    #[test]
+    fn restore_claude_official_removes_all_managed_env_fields() {
+        let path = temp_json_path("claude-restore");
+        fs::write(
+            &path,
+            r#"{
+  "language": "zh-CN",
+  "env": {
+    "ANTHROPIC_BASE_URL": "https://third-party.example.com",
+    "ANTHROPIC_AUTH_TOKEN": "sk-token",
+    "ANTHROPIC_API_KEY": "sk-api",
+    "OPENROUTER_API_KEY": "sk-openrouter",
+    "GOOGLE_API_KEY": "sk-google",
+    "ANTHROPIC_MODEL": "claude-third-party",
+    "ANTHROPIC_REASONING_MODEL": "claude-reasoning",
+    "ANTHROPIC_SMALL_FAST_MODEL": "legacy-fast",
+    "ANTHROPIC_DEFAULT_HAIKU_MODEL": "claude-haiku",
+    "ANTHROPIC_DEFAULT_HAIKU_MODEL_NAME": "claude-haiku",
+    "ANTHROPIC_DEFAULT_SONNET_MODEL": "claude-sonnet",
+    "ANTHROPIC_DEFAULT_SONNET_MODEL_NAME": "claude-sonnet",
+    "ANTHROPIC_DEFAULT_OPUS_MODEL": "claude-opus",
+    "ANTHROPIC_DEFAULT_OPUS_MODEL_NAME": "claude-opus",
+    "ANTHROPIC_DEFAULT_FABLE_MODEL": "claude-fable",
+    "ANTHROPIC_DEFAULT_FABLE_MODEL_NAME": "claude-fable",
+    "MCP_TIMEOUT": "120000"
+  }
+}"#,
+        )
+        .unwrap();
+
+        Platform::ClaudeCode.apply_claude_official(&path).unwrap();
+
+        let raw = fs::read_to_string(&path).unwrap();
+        let value: Value = serde_json::from_str(&raw).unwrap();
+        let env = value.get("env").and_then(Value::as_object).unwrap();
+        for key in CLAUDE_MANAGED_ENV_KEYS {
+            assert!(env.get(*key).is_none(), "{key} should be removed");
+        }
+        assert_eq!(
+            env.get("MCP_TIMEOUT").and_then(Value::as_str),
+            Some("120000")
+        );
+        assert_eq!(value.get("language").and_then(Value::as_str), Some("zh-CN"));
+
+        let _ = fs::remove_dir_all(path.parent().unwrap());
+    }
+
+    #[test]
+    fn claude_provider_match_uses_all_model_candidates() {
+        let provider = test_claude_provider();
+        let info = ClaudeConfigInfo {
+            model: Some("stale-primary".to_string()),
+            model_candidates: vec!["stale-primary".to_string(), "claude-test-model".to_string()],
+            base_url: Some("https://anthropic.example.com/v1/messages".to_string()),
+            has_auth_token: true,
+            auth_token_masked: Some("sk-...cret".to_string()),
+            is_official: false,
+            managed_by_any_bridge: false,
+        };
+
+        assert!(claude_provider_matches_config(&info, &provider));
     }
 
     #[test]
@@ -2800,15 +3261,17 @@ wire_api = "responses"
 
         let raw = fs::read_to_string(&path).unwrap();
         let doc = raw.parse::<DocumentMut>().unwrap();
+        let expected_codex_base = codex_base_url();
+        let expected_codex_bearer = codex_bearer_token().unwrap();
         assert_eq!(doc["model"].as_str(), Some("gpt-test"));
         assert_eq!(doc["model_provider"].as_str(), Some("byok"));
         assert_eq!(
             doc["model_providers"]["byok"]["base_url"].as_str(),
-            Some("https://example.com/v1")
+            Some(expected_codex_base.as_str())
         );
         assert_eq!(
             doc["model_providers"]["byok"]["experimental_bearer_token"].as_str(),
-            Some("sk-test-secret")
+            Some(expected_codex_bearer.as_str())
         );
         assert_eq!(
             doc["model_providers"]["old"]["base_url"].as_str(),

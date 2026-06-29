@@ -241,7 +241,10 @@ fn validate_routes(routes: &ProxyRoutes) -> Result<(), String> {
                 return Err(format!("模型 {} 的上游模型不能为空", route.id));
             }
             if !target.api_format.is_empty()
-                && !matches!(target.api_format.as_str(), "openai" | "anthropic" | "gemini")
+                && !matches!(
+                    target.api_format.as_str(),
+                    "openai" | "anthropic" | "gemini"
+                )
             {
                 return Err(format!(
                     "模型 {} 的目标 apiFormat 必须是 openai、anthropic、gemini 或留空自动",
