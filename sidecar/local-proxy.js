@@ -7,13 +7,12 @@ import https from 'node:https';
 import os from 'node:os';
 import path from 'node:path';
 import {
+  applyCodexUnlockRequiredFields,
   buildClaudeCodeUnlockPayload,
-  buildCodexPromptCacheKey,
-  buildCodexUnlockClientMetadata,
   claudeCodeUnlockHeaders,
+  codexUnlockForTarget,
   codexUnlockHeaders,
   normalizeClaudeCodeUnlock,
-  normalizeCodexUnlock,
 } from './lib/codex-unlock.js';
 import { getProxyRoutes } from './config-cache.js';
 import { loadModelMapConfig, loadProviders, resolveTarget } from './provider-pool.js';
@@ -26,6 +25,7 @@ import {
   chatErrorToResponseError,
   createResponsesSSEFromChat,
 } from './lib/responses-chat-transform.js';
+import { DEFAULT_SELF_HEAL_CONFIG, tryHeal } from './lib/self-heal.js';
 
 const AGENT = new https.Agent({ keepAlive: true, maxSockets: 64, maxFreeSockets: 16 });
 const RETRYABLE_STATUS = new Set([408, 425, 429, 500, 502, 503, 504, 529]);
@@ -403,7 +403,7 @@ function upstreamBody(conn, ctx) {
         stream: false,
       });
     }
-    return cleanBody({ ...extras, model: conn.model, system: ctx.system || undefined, messages: ctx.messages, max_tokens: ctx.maxTokens, temperature: ctx.temperature, stream: false, tools: anthropicTools(ctx.tools), tool_choice: ctx.toolChoice || undefined });
+    return cleanBody({ ...extras, model: conn.model, system: ctx.system || undefined, messages: ctx.messages, max_tokens: ctx.maxTokens, temperature: ctx.temperature, stream: false, thinking: ctx.rawBody?.thinking || undefined, tools: anthropicTools(ctx.tools), tool_choice: ctx.toolChoice || undefined });
   }
   // wireApi=chat: 仅当客户端发来 Responses API 请求时，才做 Responses→Chat 转换
   if (conn.wireApi === 'chat' && ctx.kind === 'responses' && ctx.rawBody) {
@@ -412,7 +412,7 @@ function upstreamBody(conn, ctx) {
     return cleanBody({ ...extras, ...chatBody });
   }
   const useResponses = String(conn.apiPath || '').toLowerCase().includes('/responses');
-  const codexUnlock = conn.unlockKind === 'codex' ? normalizeCodexUnlock(conn.unlocks?.codex) : null;
+  const codexUnlock = codexUnlockForTarget(conn);
   if (useResponses) {
     const input = openAIResponsesInput(ctx.messages);
     const body = {
@@ -427,15 +427,7 @@ function upstreamBody(conn, ctx) {
       tool_choice: ctx.toolChoice || undefined,
     };
     if (codexUnlock) {
-      const promptCacheKey = buildCodexPromptCacheKey(input);
-      body.include = codexUnlock.include;
-      body.prompt_cache_key = promptCacheKey;
-      body.parallel_tool_calls = true;
-      body.reasoning = { effort: 'medium' };
-      body.store = false;
-      body.text = { verbosity: 'low' };
-      body.client_metadata = buildCodexUnlockClientMetadata(promptCacheKey);
-      body.tool_choice = body.tools ? 'auto' : undefined;
+      applyCodexUnlockRequiredFields(body, codexUnlock);
     }
     return cleanBody(body);
   }
@@ -598,8 +590,56 @@ async function maybeVisionFallback(ctx, slot, providers, mapConfig) {
   if (!hasImage(ctx.messages) || slot.useThirdPartyVision !== true || mapConfig?.enhancement?.imageFallback === false) return ctx;
   const visionModels = mapConfig?.visionModels?.imageModels || [];
   if (!visionModels.length) throw new Error(`模型「${slot.displayName || slot.modelUid || ctx.model}」启用了第三方图片理解，但代理增强里没有配置图片理解模型。`);
-  const result = await preprocessImagesWithThirdPartyVision(ctx.messages, visionModels, providers, { requestId: crypto.randomUUID(), requestedModel: ctx.model, slotModelUid: slot.modelUid || ctx.model, slotDisplayName: slot.displayName || ctx.model });
-  return { ...ctx, messages: result.messages };
+  const fbCtx = { requestId: crypto.randomUUID(), requestedModel: ctx.model, slotModelUid: slot.modelUid || ctx.model, slotDisplayName: slot.displayName || ctx.model };
+  const result = await preprocessImagesWithThirdPartyVision(ctx.messages, visionModels, providers, fbCtx);
+
+  // 同步降级原始请求体：Responses→Chat 旁路会直接用 ctx.rawBody 重建上游请求
+  // (responsesToChatCompletions(ctx.rawBody))，若不降级 rawBody，图片会被绕过。
+  // 这里复用 preprocessImagesWithThirdPartyVision 的图片缓存，不重复调用第三方图片理解 API。
+  let rawBody = ctx.rawBody;
+  if (rawBody) {
+    if (ctx.kind === 'responses' && Array.isArray(rawBody.input)) {
+      rawBody = { ...rawBody, input: await fallbackResponsesInput(rawBody.input, visionModels, providers, fbCtx) };
+    } else if (ctx.kind === 'openai' && Array.isArray(rawBody.messages)) {
+      const r = await preprocessImagesWithThirdPartyVision(rawBody.messages, visionModels, providers, fbCtx);
+      rawBody = { ...rawBody, messages: r.messages };
+    }
+  }
+  return { ...ctx, messages: result.messages, rawBody };
+}
+
+// 降级 Responses API 的 input 数组。
+// input 的 item 有两种形态：
+//   1) message item: { type:'message', role:'user', content:[input_text/input_image] }
+//      ——结构兼容 {role, content}，直接复用 preprocessImagesWithThirdPartyVision；
+//   2) loose input part: { type:'input_image', image_url } / { type:'input_text', text }
+//      ——聚合成临时 user message 降级后再按原序回填（每个 block 1:1 替换，数量不变）。
+async function fallbackResponsesInput(input, visionModels, providers, fbCtx) {
+  const out = input.slice();
+  const messageItemIndices = [];
+  const looseIndices = [];
+  input.forEach((item, i) => {
+    if (item && item.type === 'message' && Array.isArray(item.content)) {
+      messageItemIndices.push(i);
+    } else if (item && item.type === 'input_image') {
+      looseIndices.push(i);
+    }
+  });
+
+  if (messageItemIndices.length) {
+    const msgs = messageItemIndices.map(i => input[i]);
+    const r = await preprocessImagesWithThirdPartyVision(msgs, visionModels, providers, fbCtx);
+    r.messages.forEach((m, k) => { out[messageItemIndices[k]] = m; });
+  }
+
+  if (looseIndices.length) {
+    const looseMsg = { role: 'user', content: looseIndices.map(i => input[i]) };
+    const r = await preprocessImagesWithThirdPartyVision([looseMsg], visionModels, providers, fbCtx);
+    const newContent = r.messages[0]?.content || looseMsg.content;
+    looseIndices.forEach((idx, k) => { out[idx] = newContent[k] ?? input[idx]; });
+  }
+
+  return out;
 }
 
 // ── 速率限制 ──
@@ -636,7 +676,7 @@ function logRequest(ctx, phase) {
   } catch {}
 }
 
-async function execute(ctx) {
+export async function execute(ctx) {
   const resolved = resolveProxyModel(ctx.model, ctx.kind);
   if (resolved.error) throw new Error(resolved.error);
   const providers = loadProviders();
@@ -648,6 +688,8 @@ async function execute(ctx) {
   }
   const preserveExtraParams = resolved.route?.enhancement?.preserveExtraParams === true;
   const rawProviderErrors = resolved.route?.enhancement?.rawProviderErrors !== false;
+  // 智能重试配置：默认全开，可通过 model-map.json enhancement.selfHeal 覆盖
+  const selfHealCfg = { ...DEFAULT_SELF_HEAL_CONFIG, ...(enhancement.selfHeal || {}) };
   const effective = await maybeVisionFallback(ctx, resolved.slot, providers, mapConfig);
   effective.preserveExtraParams = preserveExtraParams;
 
@@ -701,9 +743,11 @@ async function execute(ctx) {
     const conn = resolveTarget(target, providers);
     if (conn.error) { failures.push({ providerName: target.providerId, message: conn.error }); continue; }
     recordRequest({ provider: conn.providerName, requestedModel: ctx.model, resolvedModel: conn.model });
-    const payload = upstreamBody(conn, effective);
+    let payload = upstreamBody(conn, effective);
     const started = Date.now();
     let retryCount = 0;
+    // 智能重试状态：每个 target 独立，每个整流器最多触发一次防无限循环
+    const healState = { signatureHealed: false, budgetHealed: false, mediaHealed: false };
     while (true) {
       try {
         // ── 真流式路径：wireApi=chat 且客户端请求 stream（仅 Responses API）──
@@ -723,6 +767,14 @@ async function execute(ctx) {
           const errorText = await collectStreamBody(r.response);
           const errorJson = safeParse(errorText);
           const msg = compactText(upstreamMessage({ statusCode: r.statusCode, json: errorJson, text: errorText }));
+          // ── 智能重试：错误驱动的请求自愈（仅 anthropic 格式上游）──
+          if (conn.format === 'anthropic' && selfHealCfg.enabled) {
+            const healed = tryHeal(payload, r.statusCode, errorText, selfHealCfg, healState);
+            if (healed.healed) {
+              console.log(`[local-proxy] [self-heal] ${healed.kind} triggered, retrying`);
+              continue;
+            }
+          }
           if (policy.enabled && retryCount < policy.maxRetries && retryable(r.statusCode) && Date.now() - started < policy.totalMs) {
             retryCount++; recordRetry({ count: 1, reason: `HTTP ${r.statusCode}: ${msg}` }); await sleep(retryDelay(retryCount, policy)); continue;
           }
@@ -760,6 +812,14 @@ async function execute(ctx) {
           return { conn, text, json: r.json, usage, extraHeaders: extraRespHeaders, responseObj };
         }
         const msg = compactText(upstreamMessage(r));
+        // ── 智能重试：错误驱动的请求自愈（仅 anthropic 格式上游）──
+        if (conn.format === 'anthropic' && selfHealCfg.enabled) {
+          const healed = tryHeal(payload, r.statusCode, r.text, selfHealCfg, healState);
+          if (healed.healed) {
+            console.log(`[local-proxy] [self-heal] ${healed.kind} triggered, retrying`);
+            continue;
+          }
+        }
         if (policy.enabled && retryCount < policy.maxRetries && retryable(r.statusCode) && Date.now() - started < policy.totalMs) {
           retryCount++; recordRetry({ count: 1, reason: `HTTP ${r.statusCode}: ${msg}` }); await sleep(retryDelay(retryCount, policy)); continue;
         }

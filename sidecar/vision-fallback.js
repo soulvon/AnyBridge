@@ -335,14 +335,52 @@ function blockType(block) {
   return block?.type || null;
 }
 
+// 从 data: URL 解析 mimeType + base64 数据；非 data: URL 返回 null。
+function parseDataImageUrl(url) {
+  const m = String(url || '').trim().match(/^data:([^;,]+);base64,(.+)$/is);
+  if (!m) return null;
+  return { mimeType: m[1] || 'image/png', data: m[2] || '' };
+}
+
+// 识别三种协议的图片 block，统一返回 { data, mimeType, textBlockType }。
+//   - Anthropic:  { type:'image',         source:{ media_type, data } }
+//   - OpenAI Chat: { type:'image_url',    image_url:{ url } | image_url }
+//   - OpenAI Resp: { type:'input_image',  image_url:'data:...' | image_url:{ url } }
+// textBlockType 指明替换图片时应生成哪种文本 block，保证与原协议一致。
 function imageFromBlock(block) {
-  if (blockType(block) !== 'image') return null;
-  const data = block?.source?.data || block?.data || block?.base64_data || '';
-  if (!data) return null;
-  return {
-    data,
-    mimeType: block?.source?.media_type || block?.media_type || block?.mime_type || 'image/png',
-  };
+  if (!block || typeof block !== 'object') return null;
+  const type = block.type;
+
+  if (type === 'image') {
+    const data = block.source?.data || block.data || block.base64_data || '';
+    if (!data) return null;
+    return {
+      data,
+      mimeType: block.source?.media_type || block.media_type || block.mime_type || 'image/png',
+      textBlockType: 'text',
+    };
+  }
+
+  if (type === 'image_url') {
+    const url = typeof block.image_url === 'string' ? block.image_url : block.image_url?.url;
+    const parsed = parseDataImageUrl(url);
+    if (!parsed) return null;
+    return { data: parsed.data, mimeType: parsed.mimeType, textBlockType: 'text' };
+  }
+
+  if (type === 'input_image') {
+    const url = typeof block.image_url === 'string' ? block.image_url : block.image_url?.url;
+    const parsed = parseDataImageUrl(url);
+    if (!parsed) return null;
+    return { data: parsed.data, mimeType: parsed.mimeType, textBlockType: 'input_text' };
+  }
+
+  return null;
+}
+
+function isTextBlock(block) {
+  const t = blockType(block);
+  return t === 'text' || t === 'input_text' || t === 'output_text';
 }
 
 function textFromMessage(msg) {
@@ -350,7 +388,7 @@ function textFromMessage(msg) {
   if (typeof msg.content === 'string') return msg.content;
   if (!Array.isArray(msg.content)) return '';
   return msg.content
-    .filter(block => blockType(block) === 'text')
+    .filter(isTextBlock)
     .map(block => block.text || '')
     .filter(Boolean)
     .join('\n');
@@ -358,7 +396,7 @@ function textFromMessage(msg) {
 
 export function hasImageBlocks(messages) {
   return Array.isArray(messages)
-    && messages.some(msg => Array.isArray(msg?.content) && msg.content.some(block => blockType(block) === 'image'));
+    && messages.some(msg => Array.isArray(msg?.content) && msg.content.some(block => imageFromBlock(block) !== null));
 }
 
 const conversationImageMemory = new Map();
@@ -370,7 +408,7 @@ function messageTextParts(msg) {
   if (typeof msg.content === 'string') return [msg.content];
   if (!Array.isArray(msg.content)) return [];
   return msg.content
-    .filter(block => blockType(block) === 'text')
+    .filter(isTextBlock)
     .map(block => block.text || '')
     .filter(Boolean);
 }
@@ -449,18 +487,18 @@ function rememberConversationImage(memory, hash, data = {}) {
   return entry;
 }
 
-function imageDescriptionBlock({ ref, description, imageHash, messageIndex, blockIndex, cached, seenInConversation }) {
+function imageDescriptionBlock({ ref, description, imageHash, messageIndex, blockIndex, cached, seenInConversation, textBlockType = 'text' }) {
   const seen = seenInConversation ? '；此前在本会话出现过，本次复用已有描述' : '';
   const cache = cached ? '；未重新调用图片理解模型' : '';
   return {
-    type: 'text',
+    type: textBlockType,
     text: `\n\n[第三方图片理解：图片 #${ref}]\n来源：第 ${messageIndex + 1} 条用户消息，第 ${blockIndex + 1} 张图片；imageHash=${imageHash}${seen}${cache}\n内容：\n${description}`,
   };
 }
 
-function repeatedImageBlock({ ref, imageHash, messageIndex, blockIndex }) {
+function repeatedImageBlock({ ref, imageHash, messageIndex, blockIndex, textBlockType = 'text' }) {
   return {
-    type: 'text',
+    type: textBlockType,
     text: `\n\n[第三方图片理解：图片 #${ref}]\n来源：第 ${messageIndex + 1} 条用户消息，第 ${blockIndex + 1} 张图片；imageHash=${imageHash}\n这张图片与本次请求中前面出现的图片 #${ref} 相同，沿用上方描述。`,
   };
 }
@@ -488,16 +526,12 @@ export async function preprocessImagesWithThirdPartyVision(messages, imageModels
     const userText = textFromMessage(msg);
     for (let blockIndex = 0; blockIndex < msg.content.length; blockIndex++) {
       const block = msg.content[blockIndex];
-      if (blockType(block) !== 'image') {
-        keptBlocks.push(block);
-        continue;
-      }
-
       const image = imageFromBlock(block);
       if (!image) {
         keptBlocks.push(block);
         continue;
       }
+      const textBlockType = image.textBlockType || 'text';
 
       const meta = imageMeta(image);
       const remembered = memory.images.get(meta.imageHash);
@@ -515,6 +549,7 @@ export async function preprocessImagesWithThirdPartyVision(messages, imageModels
           duplicateInRequest: true,
           seenInConversation: true,
           imageRef: duplicateInRequest.ref,
+          textBlockType,
         };
         conversions.push(conversion);
         recordVisionFallback({
@@ -529,6 +564,7 @@ export async function preprocessImagesWithThirdPartyVision(messages, imageModels
           imageHash: meta.imageHash,
           messageIndex,
           blockIndex,
+          textBlockType,
         }));
         continue;
       }
@@ -557,6 +593,7 @@ export async function preprocessImagesWithThirdPartyVision(messages, imageModels
           duplicateInRequest: false,
           seenInConversation: true,
           imageRef: remembered.ref,
+          textBlockType,
         };
       } else {
         for (const target of targets) {
@@ -585,6 +622,7 @@ export async function preprocessImagesWithThirdPartyVision(messages, imageModels
               blockIndex,
               duplicateInRequest: false,
               seenInConversation: false,
+              textBlockType,
             };
             break;
           } catch (e) {
@@ -636,6 +674,7 @@ export async function preprocessImagesWithThirdPartyVision(messages, imageModels
         blockIndex,
         cached: conversion.cached,
         seenInConversation,
+        textBlockType,
       }));
     }
 
