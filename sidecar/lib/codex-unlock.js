@@ -138,6 +138,13 @@ export function normalizeClaudeCodeUnlock(unlock) {
   };
 }
 
+export function claudeCodeUnlockForTarget(conn) {
+  // Same opt-in rule as Codex unlock: provider-level unlocks only describe
+  // capability. A concrete target must request the platform-specific contract.
+  if (conn?.unlockKind !== 'claudeCode') return null;
+  return normalizeClaudeCodeUnlock(conn.unlocks?.claudeCode);
+}
+
 export function buildClaudeCodeUnlockPayload({ model, messages, maxTokens, stream = true }) {
   return {
     model,

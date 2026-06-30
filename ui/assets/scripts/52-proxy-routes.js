@@ -31,13 +31,21 @@ function normalizeProxyRouteFormat(value) {
   return '';
 }
 
+function normalizeProxyRouteUnlock(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  if (raw === 'codex') return 'codex';
+  if (raw === 'claudeCode' || raw === 'claude-code' || raw === 'claude_code') return 'claudeCode';
+  return '';
+}
+
 function normalizeProxyRouteTarget(target = {}) {
   return {
     providerId: String(target.providerId || target.provider_id || '').trim(),
     model: String(target.model || '').trim(),
     apiFormat: normalizeProxyRouteFormat(target.apiFormat || target.api_format),
     apiPath: String(target.apiPath || target.api_path || '').trim(),
-    unlock: String(target.unlock || '').trim()
+    unlock: normalizeProxyRouteUnlock(target.unlock)
   };
 }
 
@@ -82,6 +90,45 @@ function proxyRouteProvider(providerId) {
 function proxyRouteProviderName(providerId) {
   const provider = proxyRouteProvider(providerId);
   return provider ? (provider.name || provider.id) : (providerId || '未选择供应商');
+}
+
+function proxyRouteProviderUnlockEnabled(providerId, kind) {
+  const provider = proxyRouteProvider(providerId);
+  const unlock = provider?.unlocks?.[kind];
+  return !!(unlock && unlock.enabled !== false);
+}
+
+function proxyRouteApiFormatForUnlock(unlock) {
+  if (unlock === 'codex') return 'openai';
+  if (unlock === 'claudeCode') return 'anthropic';
+  return '';
+}
+
+function proxyRouteDefaultUnlockForTarget(providerId, apiFormat = '') {
+  const fmt = normalizeProxyRouteFormat(apiFormat);
+  if (fmt === 'anthropic') {
+    return proxyRouteProviderUnlockEnabled(providerId, 'claudeCode') ? 'claudeCode' : '';
+  }
+  if (fmt === 'openai') {
+    return proxyRouteProviderUnlockEnabled(providerId, 'codex') ? 'codex' : '';
+  }
+  if (proxyRouteProviderUnlockEnabled(providerId, 'codex')) return 'codex';
+  if (proxyRouteProviderUnlockEnabled(providerId, 'claudeCode')) return 'claudeCode';
+  return '';
+}
+
+function proxyRouteTargetWithDefaultUnlock(target = {}) {
+  const out = normalizeProxyRouteTarget(target);
+  const currentUnlock = normalizeProxyRouteUnlock(out.unlock);
+  if (currentUnlock && proxyRouteProviderUnlockEnabled(out.providerId, currentUnlock)) {
+    out.unlock = currentUnlock;
+    out.apiFormat = proxyRouteApiFormatForUnlock(currentUnlock);
+    return out;
+  }
+  const nextUnlock = proxyRouteDefaultUnlockForTarget(out.providerId, out.apiFormat);
+  out.unlock = nextUnlock;
+  if (nextUnlock) out.apiFormat = proxyRouteApiFormatForUnlock(nextUnlock);
+  return out;
 }
 
 function proxyRouteProviderInitial(name) {
@@ -163,8 +210,13 @@ async function loadProxyRouteProviderModels() {
 function proxyRouteTargetLabel(target) {
   const provider = proxyRouteProviderName(target.providerId);
   const model = target.model || '未填写模型';
+  const unlock = normalizeProxyRouteUnlock(target.unlock);
   const fmt = normalizeProxyRouteFormat(target.apiFormat);
-  const format = fmt === 'anthropic' ? 'Claude' : (fmt === 'openai' ? 'OpenAI' : '自动');
+  const format = unlock === 'codex'
+    ? 'Codex 解锁'
+    : (unlock === 'claudeCode'
+      ? 'Claude Code 解锁'
+      : (fmt === 'anthropic' ? 'Claude' : (fmt === 'openai' ? 'OpenAI' : '自动')));
   return `${provider} / ${model} · ${format}`;
 }
 
@@ -455,7 +507,7 @@ function renderProxyRoutes() {
       route.id,
       renderedId,
       route.source,
-      ...(route.targets || []).flatMap(t => [t.providerId, proxyRouteProviderName(t.providerId), t.model, t.apiFormat])
+      ...(route.targets || []).flatMap(t => [t.providerId, proxyRouteProviderName(t.providerId), t.model, t.apiFormat, t.unlock, proxyRouteTargetRouteLabel(t)])
     ].join(' ').toLowerCase();
     return !query || hay.includes(query);
   });
@@ -803,7 +855,7 @@ function selectProxyRouteModel(providerId, modelId) {
       model: model.id,
       apiFormat: '',
     });
-    proxyRouteDraftTargets[0] = target;
+    proxyRouteDraftTargets[0] = proxyRouteTargetWithDefaultUnlock(target);
     const idInput = document.getElementById('proxyRouteIdInput');
     const currentId = String(idInput?.value || '').trim();
     const previousName = String(previousModel?.name || previousModelId || '').trim();
@@ -911,11 +963,18 @@ function proxyRouteFormatLabel(value) {
   return '自动';
 }
 
+function proxyRouteTargetRouteLabel(target) {
+  const unlock = normalizeProxyRouteUnlock(target?.unlock);
+  if (unlock === 'codex') return 'Codex 解锁';
+  if (unlock === 'claudeCode') return 'Claude Code 解锁';
+  return proxyRouteFormatLabel(target?.apiFormat);
+}
+
 function proxyRouteTargetCard(target, idx) {
   const isPrimary = idx === 0;
   const provider = proxyRouteProviderName(target.providerId);
   const model = target.model || '未填写模型';
-  const format = proxyRouteFormatLabel(target.apiFormat);
+  const format = proxyRouteTargetRouteLabel(target);
   return `
     <div class="proxy-route-chain-item ${isPrimary ? 'is-primary' : ''}">
       <div class="proxy-route-chain-index">${isPrimary ? '主' : idx}</div>
@@ -1011,7 +1070,7 @@ function addSelectedProxyRouteBackupModel() {
   const provider = proxyRouteProviderEntry(proxyRouteBackupSelectedProviderId);
   const model = proxyRouteProviderModel(proxyRouteBackupSelectedProviderId, proxyRouteBackupSelectedModelId);
   if (!provider || !model) return;
-  const target = normalizeProxyRouteTarget({ providerId: provider.providerId, model: model.id, apiFormat: '' });
+  const target = proxyRouteTargetWithDefaultUnlock({ providerId: provider.providerId, model: model.id, apiFormat: '' });
   const existing = new Set(proxyRouteDraftTargets.map(t => proxyRouteTargetKey(normalizeProxyRouteTarget(t))));
   if (existing.has(proxyRouteTargetKey(target))) {
     showBottomToast('该模型已在当前链路中', 'warn');
@@ -1095,6 +1154,9 @@ function renderProxyRouteBackupPicker() {
 function updateProxyRouteTarget(index, field, value) {
   if (!proxyRouteDraftTargets[index]) return;
   proxyRouteDraftTargets[index][field] = field === 'apiFormat' ? normalizeProxyRouteFormat(value) : String(value || '').trim();
+  if (field === 'providerId' || field === 'apiFormat') {
+    proxyRouteDraftTargets[index] = proxyRouteTargetWithDefaultUnlock(proxyRouteDraftTargets[index]);
+  }
   // 手动输入模型名时，自动推断能力
   if (field === 'model' && index === 0) {
     const modelId = String(value || '').trim();
@@ -1148,7 +1210,7 @@ async function saveProxyRouteEditor() {
       return;
     }
     const exposedFormats = ['openai', 'anthropic'];
-    const targets = proxyRouteDraftTargets.map(normalizeProxyRouteTarget).filter(t => t.providerId || t.model);
+    const targets = proxyRouteDraftTargets.map(proxyRouteTargetWithDefaultUnlock).filter(t => t.providerId || t.model);
     if (!targets.length) {
       showCustomAlert('请填写上游目标。', '保存失败', 'error');
       return;
@@ -1247,7 +1309,7 @@ async function saveProxyRouteEditor() {
           reasoning: model.supportsReasoning === true || capabilities.reasoning === true,
         },
         enhancement,
-        targets: [normalizeProxyRouteTarget({ providerId, model: modelId, apiFormat: '' })],
+        targets: [proxyRouteTargetWithDefaultUnlock({ providerId, model: modelId, apiFormat: '' })],
       });
       proxyRoutesStore.routes.push(route);
       added++;

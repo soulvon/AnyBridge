@@ -49,6 +49,36 @@ test('paramOverrides are emitted even when route passthrough is disabled', () =>
   assert.equal(body.top_p, 0.7);
 });
 
+test('Codex unlock keeps Responses payload even when provider wireApi is chat', () => {
+  const ctx = __localProxyTest.normalizeRequest('responses', {
+    model: 'local-model',
+    input: 'hello',
+    max_output_tokens: 128,
+  });
+
+  const body = __localProxyTest.upstreamBody({
+    format: 'openai',
+    model: 'gpt-5.5',
+    apiPath: '/v1/responses',
+    wireApi: 'chat',
+    unlockKind: 'codex',
+    unlocks: {
+      codex: {
+        enabled: true,
+        wireApi: '/v1/responses',
+        include: ['reasoning.encrypted_content'],
+      },
+    },
+  }, ctx);
+
+  assert.equal(body.model, 'gpt-5.5');
+  assert.ok(Array.isArray(body.input));
+  assert.deepEqual(body.include, ['reasoning.encrypted_content']);
+  assert.match(body.prompt_cache_key, /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+  assert.equal('messages' in body, false);
+  assert.equal('max_tokens' in body, false);
+});
+
 test('tool filtering rejects stale tool_choice references', () => {
   const ctx = {
     tools: [

@@ -9,10 +9,10 @@ import path from 'node:path';
 import {
   applyCodexUnlockRequiredFields,
   buildClaudeCodeUnlockPayload,
+  claudeCodeUnlockForTarget,
   claudeCodeUnlockHeaders,
   codexUnlockForTarget,
   codexUnlockHeaders,
-  normalizeClaudeCodeUnlock,
 } from './lib/codex-unlock.js';
 import { getCodexProxyRoutes, getProxyRoutes } from './config-cache.js';
 import { loadModelMapConfig, loadProviders, resolveTarget } from './provider-pool.js';
@@ -529,7 +529,7 @@ function upstreamBody(conn, ctx) {
     ...(ctx.paramOverrideExtras || {}),
   };
   if (conn.format === 'anthropic') {
-    const claudeCodeUnlock = conn.unlockKind === 'claudeCode' ? normalizeClaudeCodeUnlock(conn.unlocks?.claudeCode) : null;
+    const claudeCodeUnlock = claudeCodeUnlockForTarget(conn);
     if (claudeCodeUnlock) {
       return buildClaudeCodeUnlockPayload({
         model: conn.model,
@@ -540,14 +540,14 @@ function upstreamBody(conn, ctx) {
     }
     return cleanBody({ ...extras, model: conn.model, system: ctx.system || undefined, messages: ctx.messages, max_tokens: ctx.maxTokens, temperature: ctx.temperature, stream: false, thinking: ctx.rawBody?.thinking || undefined, tools: anthropicTools(ctx.tools), tool_choice: ctx.toolChoice || undefined });
   }
+  const codexUnlock = codexUnlockForTarget(conn);
   // wireApi=chat: 仅当客户端发来 Responses API 请求时，才做 Responses→Chat 转换
-  if (conn.wireApi === 'chat' && ctx.kind === 'responses' && ctx.rawBody) {
+  if (!codexUnlock && conn.wireApi === 'chat' && ctx.kind === 'responses' && ctx.rawBody) {
     const chatBody = responsesToChatCompletions(ctx.rawBody, conn.codexChatReasoning);
     chatBody.model = conn.model;
     return cleanBody({ ...extras, ...chatBody });
   }
   const useResponses = String(conn.apiPath || '').toLowerCase().includes('/responses');
-  const codexUnlock = codexUnlockForTarget(conn);
   if (useResponses) {
     const input = openAIResponsesInput(ctx.messages);
     const body = {

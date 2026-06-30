@@ -11,10 +11,10 @@ import path from 'node:path';
 import {
   applyCodexUnlockRequiredFields,
   buildClaudeCodeUnlockPayload,
+  claudeCodeUnlockForTarget,
   claudeCodeUnlockHeaders,
   codexUnlockForTarget,
   codexUnlockHeaders,
-  normalizeClaudeCodeUnlock,
 } from '../lib/codex-unlock.js';
 import { parseGetChatMessageRequest } from './parse-request.js';
 import { buildErrorChunk } from './build-response.js';
@@ -827,7 +827,7 @@ function anthropicAuthHeaders(conn) {
 }
 
 function streamAnthropic(req, res, { systemPrompt, messages, tools, toolChoice, resolvedModel, messageId, conn, enhancement = {}, onFailover, promptCacheRetry = false, bindActiveReq = null }) {
-  const claudeCodeUnlock = normalizeClaudeCodeUnlock(conn.unlocks?.claudeCode);
+  const claudeCodeUnlock = claudeCodeUnlockForTarget(conn);
   const targetPath = claudeCodeUnlock?.wireApi || conn.apiPath;
   const usePromptCache = shouldUseAnthropicPromptCache(conn, claudeCodeUnlock, promptCacheRetry);
   const authHeaders = withAnthropicPromptCacheHeaders(

@@ -1,133 +1,585 @@
-# AnyBridge
+<div align="center">
+
+# 🚀 AnyBridge
+
+**用自己的 API Key，用自己喜欢的模型，用自己顺手的 AI 编程工具。**
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![Tauri](https://img.shields.io/badge/Tauri-v2-24c8db.svg)](https://tauri.app/)
-[![Node.js](https://img.shields.io/badge/Node.js-20%2B-43853d.svg)](https://nodejs.org/)
+[![Tauri v2](https://img.shields.io/badge/Tauri-v2-24c8db.svg?logo=tauri)](https://tauri.app/)
+[![Node.js 20+](https://img.shields.io/badge/Node.js-20%2B-43853d.svg?logo=node.js)](https://nodejs.org/)
+[![Rust](https://img.shields.io/badge/Rust-2021-edition-orange?logo=rust)](https://www.rust-lang.org/)
+[![GitHub release](https://img.shields.io/github/v/release/soulvon/AnyBridge?include_prereleases)](https://github.com/soulvon/AnyBridge/releases)
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
 
-AnyBridge 是一个开源桌面 BYOK (Bring Your Own Key) 桥接客户端，用于把 AI 编程工具的聊天请求路由到用户自己配置的 Anthropic / OpenAI 兼容供应商。
+[快速开始](#-快速开始) •
+[功能特点](#-功能特点) •
+[特色功能](#-特色功能) •
+[怎么用](#-怎么用) •
+[支持哪些工具](#-支持哪些工具) •
+[参与贡献](#-参与贡献)
 
-当前版本：`v0.1.0`。更新记录见 [CHANGELOG.md](CHANGELOG.md)。
+</div>
 
-AnyBridge 的目标是提供一个本地、可观察、可回滚的配置和代理管理层。它尽量保留目标工具原有登录、补全、代码库索引和配置体验，只接管已配置的聊天与模型路由流量。
+---
 
-> AnyBridge is not affiliated with Windsurf, Devin, OpenAI, Anthropic, or any other third-party tool or provider.
+## 这玩意是干啥的
 
-## Features
+现在 AI 编程工具很多（Windsurf、Cursor、Claude Code 之类的），但每个都有各自的收费和模型锁定——你想用 GPT-5.5 但工具只给了 Claude 的选项？你想用自己的 Anthropic Key 省一份订阅费？AnyBridge 就是解决这个问题的。
 
-- 多供应商配置：Anthropic、OpenAI 兼容 API、自建或第三方兼容服务。
-- 多平台接入：Windsurf、Devin、Codex、Claude Code、CodeBuddy、OpenCode，Cursor 暂作占位。
-- 本地代理模式：为代理型平台提供本地 MITM / CONNECT 代理、证书管理、日志和运行状态。
-- 配置切换模式：为 CLI / IDE 类工具生成和写入目标配置。
-- 模型映射：将目标工具中的模型槽位映射到用户配置的真实模型。
-- 连通性检测：检查供应商 API、模型列表、流式响应、工具调用和视觉能力。
-- 本地可观察性：桌面仪表盘展示请求量、Token、错误、成本估算和活动模型。
+**它干的事情很简单：**
 
-## Status
+1. 跑在你电脑上，拦截 AI 编程工具的聊天请求
+2. 把请求转到你自己配置的 API 供应商（Anthropic、OpenAI 或者任何兼容服务）
+3. 这样你就可以**用自己的 Key、选自己的模型**，不用被工具厂商绑定
 
-This repository is being prepared as a clean open-source project. The first public-ready version starts from `0.1.0`.
+**两种工作模式：**
 
-Supported targets:
+- **代理模式** —— 对 Windsurf、Devin、Cursor 这些桌面 IDE，AnyBridge 跑一个本地 HTTP 代理。它只拦截聊天请求，其他流量（代码补全、索引等）正常放行，不影响工具的其他功能。
+- **配置模式** —— 对 Claude Code、Codex 这些命令行工具，AnyBridge 直接把 API Key 和接口地址写进它们的配置文件里，不需要走代理。
 
-- Windows 11
-- macOS 13+
-- Linux desktop distributions with WebKitGTK 4.1 / GTK 3
+---
 
-CI validates Node/UI/Rust checks on Windows, macOS, and Ubuntu. Release packaging builds Windows, macOS arm64/x64, and Linux x64 assets.
+## ✨ 功能特点
 
-## Safety And Scope
+### 🔑 自带 Key，不买套餐
 
-AnyBridge modifies local tool configuration and can run a local MITM proxy for explicitly selected platforms. Use it only with accounts, API keys, tools, and networks you are authorized to use.
+每个 AI 编程工具都要单独付费，而且都不便宜。AnyBridge 让你用自己已有的 API Key，不用再给每个工具交一份钱。
 
-- Do not commit API keys, session tokens, certificates, signing keys, or captured traffic.
-- Keep `tauri-sign.key`, `.env`, logs, captures, and local archives outside Git.
-- Review target tool terms and your organization policy before enabling proxy mode.
-- Report security issues through [SECURITY.md](SECURITY.md), not public issues.
+- 支持 Anthropic 格式的 Key（`sk-ant-...`）
+- 支持 OpenAI 格式的 Key（`sk-...`）
+- 支持任何兼容 OpenAI 或 Anthropic 接口的自建服务、第三方代理
 
-## Quick Start
+### 🔀 统一管理供应商，便捷接入多个平台
 
-Install dependencies:
+在 AnyBridge 里配一次供应商，就能同时用到 Windsurf、Devin、Cursor、Claude Code、Codex 等多个工具上。不用每个工具单独配 Key。
 
-```bash
-npm install
-cd sidecar
-npm install
-cd ..
+```json
+[
+  {
+    "name": "Anthropic 直连",
+    "format": "anthropic",
+    "api_key": "sk-ant-xxxx",
+    "base_url": "https://api.anthropic.com",
+    "enabled": true,
+    "models": ["claude-sonnet-4-6", "claude-opus-4-8"]
+  },
+  {
+    "name": "OpenAI",
+    "format": "openai",
+    "api_key": "sk-xxxx",
+    "base_url": "https://api.openai.com/v1",
+    "enabled": true,
+    "models": ["gpt-5.5", "o4-mini"]
+  },
+  {
+    "name": "智谱 GLM",
+    "format": "openai",
+    "api_key": "zhipu-xxxx",
+    "base_url": "https://open.bigmodel.cn/api/paas/v4",
+    "enabled": true,
+    "models": ["glm-5.2", "glm-5.1"]
+  },
+  {
+    "name": "DeepSeek",
+    "format": "openai",
+    "api_key": "sk-xxxx",
+    "base_url": "https://api.deepseek.com",
+    "enabled": true,
+    "models": ["deepseek-v4-pro", "deepseek-v4-flash"]
+  }
+]
 ```
 
-Run the Node sidecar only:
+每个供应商可以单独启用/禁用。AnyBridge 会自动从启用的供应商里选一个来处理请求，你不用管底层是哪个供应商在响应。
+
+### 🌐 聚合上游供应商，统一为 OpenAI 兼容格式输出
+
+AnyBridge 可以把多个上游供应商聚合成一个统一的本地 API 端点。不管你配的是 Anthropic、DeepSeek 还是智谱，对外都暴露成标准的 OpenAI 兼容格式（`http://localhost:7450/v1/chat/completions`）。
+
+这意味着：
+
+- **所有模型一个接口** —— 不管背后是 Claude、GPT 还是国产模型，都用同一套 OpenAI 格式调用
+- **接入更多工具** —— 只要是支持 OpenAI 兼容 API 的工具（比如 OpenCode、Cline、Continue 等），都能直接用 AnyBridge 的本地接口
+- **格式自动转换** —— AnyBridge 会自动处理不同供应商之间的协议差异（比如 Anthropic 的 Messages API 转成 OpenAI 的 Chat Completions 格式）
 
 ```bash
+# 所有模型都走同一个地址，换模型名就行
+curl http://localhost:7450/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{"model": "deepseek-v4-pro", "messages": [{"role": "user", "content": "你好"}]}'
+
+curl http://localhost:7450/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{"model": "glm-5.2", "messages": [{"role": "user", "content": "你好"}]}'
+
+curl http://localhost:7450/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{"model": "claude-sonnet-4-6", "messages": [{"role": "user", "content": "你好"}]}'
+```
+
+### 🔄 故障转移与智能重试
+
+AnyBridge 会自动处理供应商不可用的情况：
+
+- **故障转移** —— 如果一个供应商挂了（比如 API 超时、返回 5xx），AnyBridge 会自动切换到另一个启用的供应商，不影响你的使用
+- **智能重试** —— 对临时性失败（网络抖动、限流），会自动重试，重试间隔递增，避免打爆 API
+- **零配置** —— 只要配了多个供应商，这些能力默认就生效，不需要额外设置
+
+### 🧩 模型映射
+
+Windsurf 里写死了几个模型槽位（比如 "Claude Sonnet"、"Claude Opus"），但你完全可以用 AnyBridge 把这些槽位映射到你实际想用的模型上。
+
+举个例子：
+- Windsurf 里的 "Claude Sonnet" 槽位 → 实际走你的 **GPT-5.5**
+- Windsurf 里的 "Claude Opus" 槽位 → 实际走你的 **DeepSeek-V4-Pro**
+- 你还可以**解锁隐藏槽位**，或者**自己加新的模型选项**进去
+
+### ⚙️ 两种工作模式，适配不同工具
+
+**代理模式** —— 对 Windsurf、Devin、Cursor 这些桌面 IDE，AnyBridge 跑一个本地 HTTP 代理。只拦截聊天请求，其他流量（代码补全、索引、登录）正常放行。
+
+**配置模式** —— 对 Claude Code、Codex 等命令行工具，AnyBridge 直接把 API Key 和接口地址写进它们的配置文件里，不需要跑代理。切换回来的时候一键恢复原始配置。
+
+### 📊 实时监控面板
+
+桌面端有个仪表盘，能看到：
+
+- 发了多少请求
+- 用了多少 Token（输入/输出分开统计）
+- 有多少错误
+- 大概花了多少钱
+- 当前在用哪些模型
+
+### 🧪 配好了先测试一下
+
+配置完供应商后，可以直接在 UI 里点「测试」，看看：
+
+1. API 能不能连上
+2. 能不能拉模型列表
+3. 流式响应正不正常
+4. 工具调用能不能用
+5. 视觉功能（看图）有没有
+
+### 🛡️ 一键证书管理
+
+代理模式需要本机 HTTPS 证书来做流量拦截。AnyBridge 提供一键生成、安装和清理的功能，不用自己折腾 OpenSSL。
+
+### 🔄 自动更新
+
+桌面端有自动更新功能，新版本发布后会提示你更新。
+
+---
+
+## 🎯 特色功能
+
+### 🖼️ 第三方图片理解（Vision Fallback）
+
+很多国产模型（如 DeepSeek-V4-Pro、GLM-5.2、Qwen 3.7 Max 等）本身不支持看图，但你的 AI 编程工具可能会发图片过来（比如截图问 Bug）。AnyBridge 的 **Vision Fallback** 功能可以解决这个问题。
+
+**工作原理：**
+
+```
+用户的图片请求
+    ↓
+AnyBridge 判断目标模型是否支持多模态
+    ↓
+  ┌─ 支持 → 直接发给目标模型处理
+  │
+  └─ 不支持 → 自动转给第三方多模态模型（如 Mimo 2.5、MiniMax M3）
+              ↓
+              多模态模型分析图片，生成文字描述
+              ↓
+              AnyBridge 把文字描述注入到原请求中
+              ↓
+              目标模型收到带图片描述的文本，正常回复
+```
+
+**举个例子：** 你在 OpenCode 里用的是 DeepSeek-V4-Pro（不支持看图），但你截图报错信息问了它。AnyBridge 自动把截图发给配置好的多模态模型（比如 Mimo 2.5），得到图片描述后再发给 DeepSeek，整个过程无感。
+
+**怎么配：** 在供应商配置里指定一个「视觉备用模型」，AnyBridge 会自动处理转发逻辑。
+
+### 🖥️ Codex 桌面版：CDP 注入解锁模型列表
+
+Codex Desktop 的模型选择器默认只显示官方支持的模型列表，你自己配的供应商模型不会出现在下拉菜单里。
+
+AnyBridge 通过 **Chrome DevTools Protocol (CDP)** 注入的方式解决这个问题：
+
+**工作原理：**
+
+```
+1. AnyBridge 启动 Codex Desktop 时附加 --remote-debugging-port 参数
+2. 通过 CDP 连接到 Codex 的浏览器实例
+3. 注入 JavaScript 脚本，动态修改模型选择器的下拉列表
+4. 把你配的所有模型都加到选项里，按供应商分组展示
+5. 选好模型后，请求走 AnyBridge 本地代理出去
+```
+
+- 不修改 Codex 二进制文件
+- 不修改 Codex 的配置文件
+- 纯运行时注入，重启 Codex 后自动恢复
+- AnyBridge 退出时自动清理注入
+
+### 🔌 Devin / Windsurf：MITM 劫持实现自定义模型接入
+
+Devin 和 Windsurf 使用 Connect-RPC 协议（基于 HTTP/1.1 和 HTTP/2）与服务端通信，聊天请求走的也是这套协议。AnyBridge 通过 **MITM CONNECT 代理** 来实现自定义模型接入：
+
+**工作原理：**
+
+```
+1. 把 IDE 的代理设置指向 AnyBridge（localhost:7450）
+2. IDE 发出的所有 HTTPS 请求先经过 AnyBridge
+3. AnyBridge 解析请求内容，识别出 GetChatMessage 等聊天 RPC 调用
+4. 把聊天请求的参数提取出来，转换成目标供应商的格式
+5. 发给你配的供应商（Anthropic、OpenAI、DeepSeek 等）
+6. 拿到响应后，再转回 IDE 能识别的格式返回
+7. 非聊天流量（登录、补全、遥测等）直接透传，不做任何处理
+```
+
+- **只劫聊天，其他不管** —— 不影响 IDE 的正常功能
+- **自动证书管理** —— 一键生成和安装 MITM 所需的 CA 证书
+- **协议转换** —— 自动处理 Connect-RPC 和标准 OpenAI/Anthropic 格式之间的互转
+- **流式支持** —— SSE 流式响应正常
+
+---
+
+## 💻 怎么用
+
+下面分几种场景，你可以根据自己的需求选一种。
+
+### 场景一：只用命令行工具（Claude Code / Codex 等）
+
+如果你只用命令行工具，不需要桌面界面，只需要跑代理服务。
+
+```bash
+# 1. 装依赖
+git clone https://github.com/soulvon/AnyBridge.git
+cd AnyBridge
+npm install
+cd sidecar && npm install && cd ..
+
+# 2. 启动代理
 npm run start
 ```
 
-Run the Tauri desktop app:
+代理启动后，打开桌面 UI 配一下供应商和平台切换。或者你也可以直接写配置文件：
 
 ```bash
+# 配置文件在 %APPDATA%/com.anybridge/providers.json（Windows）
+# 或者 ~/.config/com.anybridge/providers.json（Linux/Mac）
+```
+
+然后在桌面 UI 里点一下对应平台的「切换」，AnyBridge 就会自动把 API Key 写到那个工具的配置文件里。
+
+> **小提示：** 配置模式下，切换完成后代理就可以关掉了。工具会直连你的供应商，不经过 AnyBridge。
+
+### 场景二：用 Windsurf / Devin / Cursor（需要代理模式）
+
+这些桌面 IDE 需要用代理模式，因为它们是走网络请求的。
+
+```bash
+# 1. 装依赖并启动代理
+git clone https://github.com/soulvon/AnyBridge.git
+cd AnyBridge
+npm install
+cd sidecar && npm install && cd ..
+npm run start
+
+# 2. 在桌面 UI 里配置供应商
+# 3. 在 UI 里点「切换到代理模式」
+# 4. 重启 IDE
+```
+
+你也可以直接写配置文件（`%APPDATA%/com.anybridge/providers.json`），支持混搭各种模型：
+
+```json
+[
+  {
+    "id": "my-anthropic",
+    "name": "Anthropic",
+    "format": "anthropic",
+    "api_key": "sk-ant-你的key",
+    "base_url": "https://api.anthropic.com",
+    "enabled": true,
+    "models": ["claude-sonnet-4-6", "claude-opus-4-8"]
+  },
+  {
+    "id": "my-deepseek",
+    "name": "DeepSeek",
+    "format": "openai",
+    "api_key": "sk-你的key",
+    "base_url": "https://api.deepseek.com",
+    "enabled": true,
+    "models": ["deepseek-v4-pro", "deepseek-v4-flash"]
+  },
+  {
+    "id": "my-zhipu",
+    "name": "智谱 GLM",
+    "format": "openai",
+    "api_key": "zhipu-你的key",
+    "base_url": "https://open.bigmodel.cn/api/paas/v4",
+    "enabled": true,
+    "models": ["glm-5.2", "glm-5.1"]
+  }
+]
+```
+
+切换后，你的 IDE 聊天请求就会走 AnyBridge 的本地代理了。
+
+**怎么验证是不是生效了？**
+
+```bash
+# 看看代理的健康状态
+curl http://localhost:7450/__byok/health
+
+# 看看统计数据
+curl http://localhost:7450/__byok/stats
+```
+
+如果健康检查返回 `{"status":"ok"}` 说明代理在跑。
+
+### 场景三：把 AnyBridge 当本地 API 网关用
+
+AnyBridge 可以把你的模型暴露成标准 API，这样任何工具都能调用：
+
+```bash
+# OpenAI 兼容格式 —— 用 Claude 模型
+curl http://localhost:7450/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "claude-sonnet-4-6",
+    "messages": [{"role": "user", "content": "你好"}]
+  }'
+
+# OpenAI 兼容格式 —— 用 DeepSeek 模型
+curl http://localhost:7450/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "deepseek-v4-pro",
+    "messages": [{"role": "user", "content": "写一段快速排序"}]
+  }'
+
+# OpenAI 兼容格式 —— 用智谱 GLM-5.2
+curl http://localhost:7450/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "glm-5.2",
+    "messages": [{"role": "user", "content": "解释一下量子计算"}]
+  }'
+
+# Anthropic 兼容格式
+curl http://localhost:7450/anthropic/v1/messages \
+  -H "Content-Type: application/json" \
+  -H "x-api-key: sk-ant-你的key" \
+  -d '{
+    "model": "claude-opus-4-8",
+    "max_tokens": 1024,
+    "messages": [{"role": "user", "content": "写一个冒泡排序"}]
+  }'
+```
+
+这样你可以在任何支持自定义 API 的工具里，把接口地址填成 `http://localhost:7450/v1`，就能用到你配的所有模型。
+
+### 场景四：同时用桌面端和代理（最完整体验）
+
+```bash
+# 装依赖
+npm install
+cd sidecar && npm install && cd ..
+
+# 启动桌面应用（会自动启动代理）
 npm run tauri:dev
 ```
 
-Check the split UI files and JavaScript syntax:
+桌面 UI 打开后，你可以在一个界面里完成所有操作：
+
+1. **供应商管理** — 添加、编辑、启用/禁用供应商
+2. **模型映射** — 配好 IDE 槽位和实际模型的对应关系
+3. **代理路由** — 把模型暴露成本地 API
+4. **平台切换** — 一键切换到 AnyBridge 模式 / 恢复原始配置
+5. **监控面板** — 看实时流量和统计
+6. **连通性测试** — 点一下测试按钮
+
+### 常见操作
+
+**添加一个新供应商：**
+
+在 UI 里点「添加供应商」，填这几个东西就行：
+
+| 字段 | 说明 | 例子 |
+|---|---|---|
+| 名称 | 你自己起的名字 | "我的 Anthropic" / "智谱 GLM" / "DeepSeek" |
+| 格式 | `anthropic` 或 `openai` | `openai`（国产模型全是 OpenAI 兼容格式） |
+| API Key | 你的密钥 | `sk-ant-xxxx` / `zhipu-xxxx` |
+| 接口地址 | API 的地址 | `https://api.anthropic.com` / `https://open.bigmodel.cn/api/paas/v4` / `https://api.deepseek.com` |
+| 模型列表 | 你想用哪些模型 | `["claude-sonnet-4-6", "glm-5.2", "deepseek-v4-pro"]` |
+
+**切换平台：**
+
+在 UI 里找到你想用的工具，点「切换到 AnyBridge」。想恢复原来的配置，点「恢复原始配置」。
+
+**查看代理日志：**
 
 ```bash
-npm run check:ui
+# 导出日志
+# 在桌面 UI 里点「导出日志」
+# 或者直接去配置目录找
 ```
 
-## Build
+---
 
-Build the current platform sidecar:
+## 🎯 支持哪些工具
+
+| 工具 | 接入方式 | 状态 |
+|---|---|---|
+| Windsurf | 本地代理 | ✅ 能用 |
+| Devin | 本地代理 | ✅ 能用 |
+| Cursor | 本地代理 | ✅ 能用 |
+| Claude Code | 配置切换 | ✅ 能用 |
+| Codex | 配置切换 | ✅ 能用 |
+| CodeBuddy | 配置切换 | ✅ 能用 |
+| OpenCode | 配置切换 | ✅ 能用 |
+| ZCode | 配置切换 | ✅ 能用 |
+| WorkBuddy | 配置切换 | ✅ 能用 |
+
+---
+
+## 📦 快速开始（简洁版）
+
+### 环境要求
+
+- **Node.js** >= 20
+- 编译桌面端需要 **Rust** 工具链
+- 编译代理程序需要 **Python 3**
+
+### 一条龙
 
 ```bash
-python scripts/build/build_sidecar_plain.py
+git clone https://github.com/soulvon/AnyBridge.git
+cd AnyBridge
+npm install
+cd sidecar && npm install && cd ..
+npm run start
 ```
 
-Build a sidecar for a specific Tauri target triple:
+### 常用命令
 
 ```bash
-python scripts/build/build_sidecar_plain.py --platform x86_64-unknown-linux-gnu
-python scripts/build/build_sidecar_plain.py --platform aarch64-apple-darwin
-python scripts/build/build_sidecar_plain.py --platform x86_64-pc-windows-msvc
+npm run start              # 启动代理
+npm run dev                # 启动代理（带文件监听）
+npm run tauri:dev          # 启动桌面应用
+npm run tauri:build        # 打包发布版
+python scripts/build/build_sidecar_plain.py  # 编译代理程序
 ```
 
-Build a local Tauri package without updater artifacts:
+---
 
-```bash
-npm run tauri:build:local
+## 📂 项目结构
+
+```
+AnyBridge/
+├── sidecar/                # Node.js 代理（核心逻辑）
+│   ├── proxy-entry.js      # 入口文件
+│   ├── hybrid-server.js    # HTTP/1.1 代理
+│   ├── inference-proxy.js  # HTTP/2 推理代理
+│   ├── local-proxy.js      # 本地反向代理
+│   ├── cursor-proxy.js     # Cursor 专用代理
+│   ├── handlers/           # 请求处理
+│   │   ├── chat.js         # 聊天拦截与路由
+│   │   ├── anthropic-stream.js
+│   │   └── openai-stream.js
+│   ├── lib/                # 工具库
+│   ├── provider-pool.js    # 供应商路由选择
+│   ├── stats.js            # 统计
+│   └── vision-fallback.js  # 视觉降级
+├── src-tauri/              # Rust 桌面应用
+│   ├── src/
+│   │   ├── main.rs         # 入口
+│   │   ├── lib.rs          # 初始化
+│   │   ├── antidebug.rs    # 反调试
+│   │   ├── integrity.rs    # 完整性校验
+│   │   └── commands/       # 各功能模块
+│   └── tauri.conf.json     # 配置
+├── ui/                     # 前端界面
+│   ├── index.html          # 单页应用
+│   └── assets/             # CSS + JS
+├── scripts/                # 构建脚本
+├── docs/                   # 文档
+├── CHANGELOG.md            # 更新日志
+├── CONTRIBUTING.md         # 贡献指南
+├── SECURITY.md             # 安全策略
+└── LICENSE                 # MIT
 ```
 
-Build a release package with updater artifacts:
+---
 
-```bash
-npm run tauri:build
-```
+## 🛠️ 技术特点
 
-Release signing requires GitHub Secrets described in [docs/RELEASE.md](docs/RELEASE.md).
+| 层面 | 选型 | 说明 |
+|---|---|---|
+| 桌面框架 | Tauri v2 | 比 Electron 更轻量，安装包小，内存占用低 |
+| 后端语言 | Rust | 主要负责系统级操作：进程管理、文件读写、证书生成、配置持久化 |
+| 前端 | 纯 HTML/CSS/JS | 没有 React/Vue，不需要构建步骤，打开就直接跑 |
+| 代理服务 | Node.js | 独立进程，负责 HTTP 代理、请求路由、协议转换 |
+| 代理打包 | pkg | 把 Node.js 代码编译成单文件 exe，用户不需要装 Node |
+| 存储 | SQLite | 缓存模型列表、统计数据和测试报告 |
 
-## Repository Layout
+### 后端（Rust）主要职责
 
-```text
-.
-├─ .github/                 GitHub workflows and community templates
-├─ docs/                    Public project documentation
-├─ scripts/                 Build, release, and validation scripts
-├─ sidecar/                 Node.js local proxy sidecar
-├─ src-tauri/               Tauri / Rust desktop app
-├─ ui/                      Static frontend
-├─ CHANGELOG.md             Release notes
-├─ CONTRIBUTING.md          Contribution guide
-├─ SECURITY.md              Security policy
-└─ README.md
-```
+- 读写配置文件
+- 启动/停止代理进程
+- 管理 HTTPS 证书
+- 检测已安装的工具
+- 修改目标工具的配置文件
+- 提供 IPC 接口给前端调用
 
-Historical notes, private research, temporary scripts, old screenshots, and legacy brand assets are kept locally under `.local-archive/` and are intentionally ignored by Git.
+### 代理（Node.js）主要职责
 
-## Documentation
+- 运行 HTTP/HTTPS 代理
+- 拦截并识别聊天请求
+- 把请求转换成目标供应商的格式
+- 把供应商的响应转回工具能识别的格式
+- 处理流式响应（SSE）
+- 记录请求和 Token 统计
 
-- [Development](docs/DEVELOPMENT.md)
-- [Architecture](docs/ARCHITECTURE.md)
-- [Release](docs/RELEASE.md)
-- [Contributing](CONTRIBUTING.md)
-- [Support](SUPPORT.md)
+---
 
-## License
+## 🤝 参与贡献
 
-MIT. See [LICENSE](LICENSE).
+欢迎来帮忙！不管是修 Bug、加功能、还是改进文档，都欢迎。
+
+- 🐛 发现 Bug → [提 Issue](https://github.com/soulvon/AnyBridge/issues)
+- 💡 有想法 → 发 [Discussion](https://github.com/soulvon/AnyBridge/discussions)
+- 🔧 想写代码 → 先看[贡献指南](CONTRIBUTING.md)
+- 🛡️ 安全漏洞 → 看 [SECURITY.md](SECURITY.md)
+
+> **注意：** 别把 API Key、证书、抓包数据提交到 Git 里。
+
+---
+
+## ⚠️ 注意事项
+
+AnyBridge 会修改本地工具的配置，代理模式会拦截 HTTPS 流量。请确保你有权使用这些工具和 API Key。
+
+- 用代理模式前，看看工具的服务条款和公司的安全规定
+- 你的 API Key 只留在本地，AnyBridge 不会往外传
+- **本项目与 Windsurf、Devin、OpenAI、Anthropic 等公司没有关系**
+
+---
+
+## 📄 开源协议
+
+[MIT](LICENSE) © 2026 [soulvon](https://github.com/soulvon)
+
+---
+
+<div align="center">
+
+**AnyBridge —— 打破锁定，自带密钥。**
+
+<p align="center">
+  <a href="https://github.com/soulvon/AnyBridge/issues">报 Bug</a> •
+  <a href="https://github.com/soulvon/AnyBridge/discussions">提建议</a> •
+  <a href="https://github.com/soulvon/AnyBridge">GitHub 主页</a>
+</p>
+
+</div>

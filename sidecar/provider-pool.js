@@ -270,6 +270,9 @@ export function resolveTarget(target, providers) {
   const explicitPath = target.apiPath || target.api_path || null;
   const unlockConfig = targetUnlock ? p.unlocks?.[targetUnlock] : null;
   const unlockWireApi = unlockConfig?.wireApi || unlockConfig?.wire_api || null;
+  if (targetUnlock && explicitPath && unlockWireApi && cleanApiPath(explicitPath) !== cleanApiPath(unlockWireApi)) {
+    return { error: `${targetUnlock === 'codex' ? 'Codex' : 'Claude Code'} 解锁目标不支持覆盖 apiPath；请留空并使用供应商解锁模板 ${cleanApiPath(unlockWireApi)}` };
+  }
   const providerPath = p.apiPath || p.api_path || null;
   const route = inferTargetRouteFormat({ targetApiFormat, unlockApiFormat, targetUnlock, explicitPath, providerPath, host });
   if (route?.error) return { error: route.error };
@@ -280,8 +283,8 @@ export function resolveTarget(target, providers) {
   const apiPath = unlockWireApi && !explicitPath
     ? cleanApiPath(unlockWireApi)
     : (routeFormat === 'openai' ? normalizeOpenAIApiPath(host, configuredPath) : normalizeAnthropicApiPath(configuredPath));
-  // wireApi=chat 时，上游只支持 Chat Completions，强制使用 /chat/completions 路径
-  const finalApiPath = (p.wireApi === 'chat' && !explicitPath)
+  // wireApi=chat 是普通 OpenAI 兼容供应商的提示；平台解锁目标使用自己的 wireApi，不应被覆盖。
+  const finalApiPath = (p.wireApi === 'chat' && !explicitPath && !targetUnlock)
     ? apiPath.replace(/\/responses$/, '/chat/completions')
     : apiPath;
   const modelId = target.model || p.defaultModel;

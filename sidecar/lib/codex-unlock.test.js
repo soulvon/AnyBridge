@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 
 import {
   applyCodexUnlockRequiredFields,
+  claudeCodeUnlockForTarget,
   codexUnlockForTarget,
 } from './codex-unlock.js';
 
@@ -11,6 +12,10 @@ const providerUnlocks = {
     enabled: true,
     wireApi: '/v1/responses',
     include: ['reasoning.encrypted_content'],
+  },
+  claudeCode: {
+    enabled: true,
+    wireApi: '/v1/messages?beta=true',
   },
 };
 
@@ -24,6 +29,14 @@ describe('Codex supplier unlock routing', () => {
     assert.deepEqual(codexUnlockForTarget({ unlocks: providerUnlocks, unlockKind: 'codex' }), {
       include: ['reasoning.encrypted_content'],
       wireApi: '/v1/responses',
+    });
+  });
+
+  it('applies Claude Code unlock only for target.unlock="claudeCode"', () => {
+    assert.equal(claudeCodeUnlockForTarget({ unlocks: providerUnlocks, unlockKind: null }), null);
+    assert.equal(claudeCodeUnlockForTarget({ unlocks: providerUnlocks, unlockKind: 'codex' }), null);
+    assert.deepEqual(claudeCodeUnlockForTarget({ unlocks: providerUnlocks, unlockKind: 'claudeCode' }), {
+      wireApi: '/v1/messages?beta=true',
     });
   });
 

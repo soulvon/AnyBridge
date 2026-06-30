@@ -219,7 +219,10 @@ fn normalize_routes(routes: &mut ProxyRoutes) {
                 target.api_format.clear();
             }
             target.api_path = target.api_path.trim().to_string();
-            target.unlock = target.unlock.trim().to_string();
+            target.unlock = match target.unlock.trim() {
+                "claude-code" | "claude_code" => "claudeCode".to_string(),
+                other => other.to_string(),
+            };
             target.api_keys = target
                 .api_keys
                 .iter()
@@ -265,6 +268,32 @@ fn validate_routes(routes: &ProxyRoutes) -> Result<(), String> {
             {
                 return Err(format!(
                     "模型 {} 的目标 apiFormat 必须是 openai、anthropic、gemini 或留空自动",
+                    route.id
+                ));
+            }
+            if !target.unlock.is_empty()
+                && !matches!(target.unlock.as_str(), "codex" | "claudeCode")
+            {
+                return Err(format!(
+                    "模型 {} 的目标解锁类型必须是 codex、claudeCode 或留空",
+                    route.id
+                ));
+            }
+            if target.unlock == "codex"
+                && !target.api_format.is_empty()
+                && target.api_format != "openai"
+            {
+                return Err(format!(
+                    "模型 {} 的 Codex 解锁目标必须使用 openai 协议或留空自动",
+                    route.id
+                ));
+            }
+            if target.unlock == "claudeCode"
+                && !target.api_format.is_empty()
+                && target.api_format != "anthropic"
+            {
+                return Err(format!(
+                    "模型 {} 的 Claude Code 解锁目标必须使用 anthropic 协议或留空自动",
                     route.id
                 ));
             }
