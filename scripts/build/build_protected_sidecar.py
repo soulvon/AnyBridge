@@ -125,6 +125,59 @@ def local_bin(name):
         raise FileNotFoundError(f"local bin not found: {p}")
     return p
 
+def find_matching_node(pkg_target_node_major):
+    """为 bytenode 找与 pkg target 同主版本的 Node 二进制。
+
+    bytenode 生成的 V8 字节码跟编译时使用的 Node 绑定。如果宿主 Node 主版本
+    与 pkg target (如 node22) 不一致，二进制运行时会报
+    \"Invalid or incompatible cached data (cachedDataRejected)\"。
+
+    优先顺序：
+    1. 环境变量 BYTENODE_NODE_BIN
+    2. ~/.pkg-cache/v3.6/fetched-v{VERSION}-win-x64  (与 pkg target Node 同源，最准)
+    3. ~/.workbuddy/binaries/node/versions/<{MAJOR}.*>/node.exe  (项目内惯例)
+    4. 扫描 PATH 上的 node（仅当主版本匹配）
+    """
+    env_override = os.environ.get("BYTENODE_NODE_BIN")
+    if env_override and os.path.exists(env_override):
+        return env_override
+    # 与 pkg target Node 同源：~/.pkg-cache/v3.6/fetched-v{VER}-win-x64
+    pkg_cache = os.path.join(os.path.expanduser("~"), ".pkg-cache", "v3.6")
+    if os.path.isdir(pkg_cache):
+        candidates = []
+        for entry in os.listdir(pkg_cache):
+            # 文件名形如 fetched-v22.22.3-win-x64
+            if entry.startswith(f"fetched-v{pkg_target_node_major}.") and "win-x64" in entry \
+                    and not entry.endswith(".downloading"):
+                p = os.path.join(pkg_cache, entry)
+                if os.path.isfile(p):
+                    candidates.append(p)
+        if candidates:
+            return sorted(candidates)[-1]
+    # 项目内惯例位置：扫 ~/.workbuddy/binaries/node/versions/ 下 {MAJOR}.* 的子目录
+    base = os.path.join(os.path.expanduser("~"), ".workbuddy", "binaries", "node", "versions")
+    if os.path.isdir(base):
+        candidates = []
+        for entry in os.listdir(base):
+            stripped = entry.lstrip("v")
+            if stripped.startswith(f"{pkg_target_node_major}."):
+                p = os.path.join(base, entry, "node.exe")
+                if os.path.exists(p):
+                    candidates.append(p)
+        if candidates:
+            return sorted(candidates)[-1]
+    # 兜底：扫描 PATH 上 node 的主版本
+    import shutil as _shutil
+    on_path = _shutil.which("node")
+    if on_path:
+        try:
+            r = subprocess.run([on_path, "--version"], capture_output=True, text=True, timeout=5)
+            if r.stdout.strip().startswith(f"v{pkg_target_node_major}."):
+                return on_path
+        except Exception:
+            pass
+    return None
+
 def clean():
     if os.path.exists(BUILD_DIR):
         shutil.rmtree(BUILD_DIR)
@@ -169,15 +222,30 @@ def bytenode_compile():
     all_js.extend(handlers)
 
     esbuild_bin = local_bin("esbuild")
-    bytenode_bin = local_bin("bytenode")
+    bytenode_cli = os.path.join(SIDECAR_DIR, "node_modules", "bytenode", "lib", "cli.js")
+    pkg_target_node_major = int(get_pkg_target("windows", "x64").split("-")[0].replace("node", ""))
+
+    node_bin = find_matching_node(pkg_target_node_major)
+    if node_bin is None:
+        raise FileNotFoundError(
+            f"no Node {pkg_target_node_major}.x binary found. Set BYTENODE_NODE_BIN env var "
+            f"to a matching node.exe so bytenode emits V8 bytecode compatible with the "
+            f"pkg target node{pkg_target_node_major}-*-*."
+        )
+    print(f"[bytenode] using {node_bin} (target node{pkg_target_node_major})")
 
     for src in all_js:
         # 1. esbuild ESM -> CJS（写到临时文件，避免污染原文件再失败回滚）
         cjs_tmp = src[:-3] + ".cjs.tmp.js"
         run(f'"{esbuild_bin}" --log-level=error --format=cjs --platform=node --target=node18 "{src}" --outfile="{cjs_tmp}"')
-        # 2. bytenode-compile the CJS
+        # 2. bytenode-compile —— 用与 pkg target 同主版本的 Node，避免 V8 字节码
+        #    在运行时被 V8 拒绝。bytenode 不支持 -o，它直接在源旁生成 <src>.jsc。
+        cjs_dir = os.path.dirname(cjs_tmp)
+        run(f'"{node_bin}" "{bytenode_cli}" --compile "{cjs_tmp}"', cwd=cjs_dir)
+        produced_jsc = cjs_tmp[:-3] + ".jsc"  # <src_basename>.cjs.tmp.jsc
         jsc_path = src[:-3] + ".jsc"
-        run(f'"{bytenode_bin}" --compile "{cjs_tmp}" -o "{jsc_path}"')
+        if os.path.exists(produced_jsc):
+            shutil.move(produced_jsc, jsc_path)
         rel = os.path.relpath(src, JSC_DIR)
         print(f"[jsc] {rel} -> .jsc")
         # 3. clean up
@@ -208,27 +276,47 @@ def transform_remaining_to_cjs():
             print(f"[cjs] {os.path.relpath(src, JSC_DIR)}")
 
 def create_loader():
-    """创建自定义 loader：加载 .jsc 字节码"""
+    """创建自定义 loader：安装 .js → .jsc 的 require 钩子，然后加载 entry。
+
+    bytenode 编译后的 .jsc 字节码里依然写着 require('./foo.js') 这种字面量
+    (esbuild 不会改后缀，bytenode 也不会)。pkg 静态分析时只看 JS 源码
+    里的 require，字节码里的 require 它看不见，所以 ./foo.js 不在 snapshot 里
+    会直接 MODULE_NOT_FOUND。在 loader 入口处装一个 Module._resolveFilename
+    钩子把 .js 解析为 .jsc，问题就解决了。
+    """
     loader_js = os.path.join(JSC_DIR, "__loader.js")
     with open(loader_js, "w", encoding="utf-8") as f:
         f.write(r'''// BYOK Protected Sidecar Loader — V8 Bytecode
+// 1. 装 require 钩子：把 ./foo.js 解析为 ./foo.jsc（bytenode 字节码里
+//    的 require 字面量还带 .js 后缀，pkg 静态分析看不见，必须在运行时改）。
+// 2. 静态 require 入口 .jsc：让 pkg 把这三个 .jsc 打进 snapshot。
+const Module = require('module');
 const bytenode = require('bytenode');
-const path = require('path');
 
-const ENTRY_MAP = {
-  'hybrid-server': './hybrid-server.jsc',
-  'inference-proxy': './inference-proxy.jsc',
-  'proxy-entry': './proxy-entry.jsc',
+const _origResolveFilename = Module._resolveFilename;
+Module._resolveFilename = function (request, parent, isMain, options) {
+  if (typeof request === 'string' && request.endsWith('.js')) {
+    const jscRequest = request.slice(0, -3) + '.jsc';
+    try {
+      return _origResolveFilename.call(this, jscRequest, parent, isMain, options);
+    } catch (e) {
+      // .jsc 不存在则退回 .js
+    }
+  }
+  return _origResolveFilename.call(this, request, parent, isMain, options);
 };
 
 const target = process.argv[2] || 'proxy-entry';
-const entry = ENTRY_MAP[target];
-if (!entry) {
+if (target === 'hybrid-server') {
+  require('./hybrid-server.jsc');
+} else if (target === 'inference-proxy') {
+  require('./inference-proxy.jsc');
+} else if (target === 'proxy-entry') {
+  require('./proxy-entry.jsc');
+} else {
   console.error('Unknown entry:', target);
   process.exit(1);
 }
-
-require(path.resolve(__dirname, entry));
 ''')
 
 def pkg_bundle(os_name, arch):
@@ -249,8 +337,12 @@ def pkg_bundle(os_name, arch):
     pkg["pkg"] = {
         "assets": [
             "**/*.jsc",
-            "**/*.js",
+            "*.jsc",
+            "handlers/*.jsc",
+            "*.js",
+            "lib/**/*.js",
             "**/*.json",
+            "windsurf-catalog.json",
             "node_modules/bytenode/**/*",
             "prompts/**/*",
             "certs/**/*"
