@@ -4,10 +4,10 @@ All notable changes to AnyBridge will be documented in this file.
 
 ## v0.2.6 - 2026-06-30
 
-- Added richer README screenshots, project positioning, and Kite plugin introduction for Devin/Windsurf enhancement workflows.
-- Restored the QQ group and sponsor QR code assets while removing unrelated root-level docs and temporary promo images.
-- Fixed GitHub CI by building the platform sidecar before Tauri `cargo check`, matching the release packaging path.
-- Synchronized release version across npm, sidecar, Cargo and Tauri metadata from `0.2.5` to `0.2.6`.
+- 完善项目说明与截图展示，帮助新用户更快了解 AnyBridge 的使用场景和主要能力。
+- 补充 Kite 插件介绍，支持配合 Devin / Windsurf 使用，提供号池、界面汉化和体验增强等扩展能力。
+- 优化多平台安装包发布信息，Windows、macOS、Linux 用户可通过自动更新或下载页获取新版。
+- 改进更新弹窗展示文案，公开更新说明仅保留面向用户的功能变化。
 
 ## v0.2.5 - 2026-06-30
 
