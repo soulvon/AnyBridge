@@ -1,0 +1,1540 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#111418" />
+  <meta name="color-scheme" content="light" />
+  <meta name="author" content="soulvon" />
+  <meta name="generator" content="AnyBridge" />
+  <title>AnyBridge - 自定义 API 工具 | 统一接入 AI 编程工具</title>
+  <meta
+    name="description"
+    content="AnyBridge 是开源桌面自定义 API 工具，用本机代理、模型映射和配置切换，把你的 API Key、模型供应商和 Codex、Cursor、Claude Code、Windsurf、Devin、OpenCode 等 AI 编程工具统一接起来。"
+  />
+  <meta
+    name="keywords"
+    content="AnyBridge, BYOK, AI 编程工具, Codex, Cursor, Claude Code, Windsurf, Devin, OpenCode, 本地代理, OpenAI 兼容接口, Anthropic, 模型路由, Tauri"
+  />
+  <link rel="canonical" href="https://soulvon.github.io/AnyBridge/" />
+  <meta property="og:site_name" content="AnyBridge" />
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content="https://soulvon.github.io/AnyBridge/" />
+  <meta property="og:title" content="AnyBridge - 自定义 API 工具" />
+  <meta
+    property="og:description"
+    content="把自己的 API Key、模型供应商和 AI 编程工具统一接起来。支持本地代理、配置切换、本地 OpenAI 兼容网关、模型映射、视觉降级和实时诊断。"
+  />
+  <meta property="og:image" content="https://soulvon.github.io/AnyBridge/assets/anybridge-platform-console.png" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="AnyBridge - 自定义 API 工具" />
+  <meta name="twitter:description" content="用一套本地控制面连接 Codex、Cursor、Claude Code、Windsurf、Devin、OpenCode 和你的模型供应商。" />
+  <meta name="twitter:image" content="https://soulvon.github.io/AnyBridge/assets/anybridge-platform-console.png" />
+  <link
+    rel="icon"
+    href="assets/anybridge-logo.svg"
+  />
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #14171c;
+      --ink-soft: #343b46;
+      --muted: #69717d;
+      --paper: #fffaf0;
+      --paper-2: #fffdf8;
+      --band: #edf8fb;
+      --charcoal: #111418;
+      --charcoal-2: #1a1f27;
+      --line: rgba(20, 23, 28, 0.13);
+      --line-dark: rgba(255, 255, 255, 0.14);
+      --cyan: #35aede;
+      --teal: #37c7a5;
+      --pink: #fb7299;
+      --pink-dark: #c4366a;
+      --yellow: #e0a92f;
+      --green: #4fb66a;
+      --red: #d94a3a;
+      --radius: 10px;
+      --radius-lg: 22px;
+      --max: 1180px;
+      --shadow: 0 22px 60px rgba(24, 31, 42, 0.14);
+      --display: Georgia, "Songti SC", "STSong", "SimSun", serif;
+      --body: "Aptos", "Microsoft YaHei UI", "PingFang SC", "Noto Sans CJK SC", sans-serif;
+      --mono: "JetBrains Mono", "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html {
+      scroll-behavior: smooth;
+    }
+
+    body {
+      margin: 0;
+      min-width: 320px;
+      background: var(--paper);
+      color: var(--ink);
+      font-family: var(--body);
+      -webkit-font-smoothing: antialiased;
+      text-rendering: optimizeLegibility;
+    }
+
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      z-index: -2;
+      background:
+        radial-gradient(circle at 8% 14%, rgba(251, 114, 153, 0.13), transparent 28%),
+        radial-gradient(circle at 90% 12%, rgba(53, 174, 222, 0.16), transparent 30%),
+        linear-gradient(180deg, #fffaf0 0%, #f7fbfb 46%, #fffaf0 100%);
+    }
+
+    body::after {
+      content: "";
+      position: fixed;
+      inset: 0;
+      z-index: -1;
+      opacity: 0.38;
+      pointer-events: none;
+      background-image:
+        linear-gradient(rgba(20, 23, 28, 0.045) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(20, 23, 28, 0.045) 1px, transparent 1px);
+      background-size: 42px 42px;
+      mask-image: linear-gradient(to bottom, transparent 0, #000 12%, #000 82%, transparent 100%);
+    }
+
+    img {
+      display: block;
+      max-width: 100%;
+    }
+
+    a {
+      color: inherit;
+    }
+
+    button {
+      border: 0;
+      font: inherit;
+      cursor: pointer;
+    }
+
+    .topbar {
+      position: sticky;
+      top: 0;
+      z-index: 30;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+      background: rgba(17, 20, 24, 0.88);
+      color: #fff;
+      backdrop-filter: blur(18px) saturate(1.25);
+      -webkit-backdrop-filter: blur(18px) saturate(1.25);
+    }
+
+    .topbar-inner {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 22px;
+      width: min(var(--max), calc(100% - 40px));
+      min-height: 70px;
+      margin: 0 auto;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      min-width: 0;
+      text-decoration: none;
+    }
+
+    .mark {
+      display: grid;
+      place-items: center;
+      width: 40px;
+      height: 40px;
+      flex: 0 0 auto;
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      border-radius: 12px;
+      background:
+        radial-gradient(circle at 18% 0%, rgba(255, 255, 255, 0.22), transparent 44%),
+        linear-gradient(145deg, rgba(53, 174, 222, 0.24), rgba(251, 114, 153, 0.22)),
+        #171c24;
+      box-shadow: 0 14px 34px -22px rgba(53, 174, 222, 0.9);
+    }
+
+    .mark img {
+      width: 40px;
+      height: 40px;
+    }
+
+    .brand strong,
+    .brand span {
+      display: block;
+      white-space: nowrap;
+    }
+
+    .brand strong {
+      font-size: 16px;
+      font-weight: 900;
+      line-height: 1.1;
+    }
+
+    .brand span {
+      margin-top: 3px;
+      color: rgba(255, 255, 255, 0.64);
+      font-family: var(--mono);
+      font-size: 11px;
+      font-weight: 700;
+    }
+
+    .nav {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      overflow-x: auto;
+      scrollbar-width: none;
+    }
+
+    .nav::-webkit-scrollbar {
+      display: none;
+    }
+
+    .nav a {
+      display: inline-flex;
+      align-items: center;
+      min-height: 36px;
+      padding: 0 12px;
+      border-radius: 999px;
+      color: rgba(255, 255, 255, 0.7);
+      font-size: 13px;
+      font-weight: 850;
+      text-decoration: none;
+      white-space: nowrap;
+    }
+
+    .nav a:hover,
+    .nav a:focus-visible {
+      color: #fff;
+      background: rgba(255, 255, 255, 0.08);
+      outline: 0;
+    }
+
+    .topbar-actions {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex: 0 0 auto;
+    }
+
+    .star-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      min-height: 36px;
+      padding: 0 13px;
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.08);
+      color: #fff;
+      font-size: 13px;
+      font-weight: 900;
+      text-decoration: none;
+    }
+
+    .section {
+      position: relative;
+      overflow: hidden;
+      padding: 88px 0;
+      scroll-margin-top: 88px;
+    }
+
+    .section.dark {
+      background:
+        linear-gradient(90deg, rgba(255, 255, 255, 0.045) 1px, transparent 1px),
+        linear-gradient(180deg, rgba(255, 255, 255, 0.04) 1px, transparent 1px),
+        radial-gradient(circle at 84% 12%, rgba(53, 174, 222, 0.22), transparent 28%),
+        var(--charcoal);
+      background-size: 48px 48px, 48px 48px, auto, auto;
+      color: #fff;
+    }
+
+    .section.band {
+      background: var(--band);
+    }
+
+    .inner {
+      width: min(var(--max), calc(100% - 40px));
+      margin: 0 auto;
+    }
+
+    .hero {
+      min-height: calc(100vh - 70px);
+      padding: 0;
+      background:
+        linear-gradient(90deg, rgba(255, 255, 255, 0.045) 1px, transparent 1px),
+        linear-gradient(180deg, rgba(255, 255, 255, 0.04) 1px, transparent 1px),
+        radial-gradient(circle at 18% 18%, rgba(251, 114, 153, 0.30), transparent 28%),
+        radial-gradient(circle at 92% 16%, rgba(53, 174, 222, 0.25), transparent 30%),
+        linear-gradient(135deg, #111418 0%, #171c24 58%, #0f1217 100%);
+      background-size: 52px 52px, 52px 52px, auto, auto, auto;
+      color: #fff;
+    }
+
+    .hero-inner {
+      position: relative;
+      display: grid;
+      grid-template-columns: minmax(0, 0.95fr) minmax(360px, 1.05fr);
+      gap: 48px;
+      align-items: center;
+      min-height: calc(100vh - 70px);
+      padding: 78px 0 64px;
+    }
+
+    .hero-copy {
+      min-width: 0;
+    }
+
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      margin: 0 0 18px;
+      color: var(--cyan);
+      font-family: var(--mono);
+      font-size: 12px;
+      font-weight: 950;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+
+    .eyebrow::before {
+      content: "";
+      width: 34px;
+      height: 2px;
+      border-radius: 999px;
+      background: currentColor;
+    }
+
+    h1,
+    h2,
+    h3,
+    p {
+      margin: 0;
+    }
+
+    h1 {
+      max-width: 680px;
+      font-family: var(--display);
+      font-size: clamp(44px, 5.6vw, 78px);
+      font-weight: 900;
+      letter-spacing: -0.062em;
+      line-height: 0.98;
+    }
+
+    h2 {
+      max-width: 860px;
+      font-family: var(--display);
+      font-size: clamp(34px, 4.4vw, 60px);
+      font-weight: 900;
+      letter-spacing: -0.052em;
+      line-height: 1.04;
+    }
+
+    h3 {
+      font-size: 22px;
+      font-weight: 920;
+      line-height: 1.22;
+    }
+
+    .lead {
+      max-width: 760px;
+      margin-top: 22px;
+      color: var(--muted);
+      font-size: clamp(17px, 1.75vw, 22px);
+      font-weight: 540;
+      line-height: 1.72;
+    }
+
+    .hero .lead,
+    .dark .lead {
+      color: rgba(255, 255, 255, 0.74);
+    }
+
+    .hero-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-top: 34px;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 44px;
+      padding: 0 17px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: var(--paper-2);
+      color: var(--ink);
+      font-size: 14px;
+      font-weight: 900;
+      text-decoration: none;
+      transition: transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease, background 180ms ease;
+    }
+
+    .btn:hover,
+    .btn:focus-visible {
+      transform: translateY(-1px);
+      box-shadow: 0 12px 28px rgba(24, 31, 42, 0.13);
+      outline: 0;
+    }
+
+    .btn.primary {
+      border-color: rgba(251, 114, 153, 0.68);
+      background:
+        radial-gradient(circle at 18% 0%, rgba(255, 255, 255, 0.36), transparent 48%),
+        linear-gradient(135deg, var(--pink-dark), var(--pink));
+      color: #fff;
+      box-shadow: 0 16px 32px -20px rgba(251, 114, 153, 0.95);
+    }
+
+    .btn.dark {
+      border-color: rgba(255, 255, 255, 0.16);
+      background: rgba(255, 255, 255, 0.08);
+      color: #fff;
+    }
+
+    .hero-metrics {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+      margin-top: 42px;
+    }
+
+    .metric {
+      min-height: 92px;
+      padding: 16px;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: var(--radius);
+      background: rgba(255, 255, 255, 0.075);
+    }
+
+    .metric b,
+    .metric span {
+      display: block;
+    }
+
+    .metric b {
+      color: #fff;
+      font-size: 18px;
+      font-weight: 920;
+      line-height: 1.18;
+    }
+
+    .metric span {
+      margin-top: 8px;
+      color: rgba(255, 255, 255, 0.64);
+      font-size: 12px;
+      line-height: 1.45;
+    }
+
+    .hero-visual {
+      position: relative;
+      min-width: 0;
+    }
+
+    .hero-shot {
+      position: relative;
+      overflow: hidden;
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      border-radius: 28px;
+      background: #fff;
+      box-shadow: 0 38px 100px rgba(0, 0, 0, 0.42);
+      transform: rotate(1.5deg);
+    }
+
+    .hero-shot::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      z-index: 1;
+      pointer-events: none;
+      background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.16), transparent 28%),
+        radial-gradient(circle at 18% 0%, rgba(53, 174, 222, 0.16), transparent 34%);
+    }
+
+    .hero-shot img {
+      width: 100%;
+      aspect-ratio: 16 / 10;
+      object-fit: cover;
+      object-position: top left;
+    }
+
+    .route-card {
+      position: absolute;
+      left: -24px;
+      bottom: -34px;
+      z-index: 2;
+      width: min(370px, 78%);
+      padding: 18px;
+      border: 1px solid rgba(255, 255, 255, 0.16);
+      border-radius: 18px;
+      background: rgba(17, 20, 24, 0.88);
+      box-shadow: 0 28px 70px rgba(0, 0, 0, 0.38);
+      backdrop-filter: blur(18px);
+      -webkit-backdrop-filter: blur(18px);
+    }
+
+    .route-card-title {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      color: rgba(255, 255, 255, 0.72);
+      font-family: var(--mono);
+      font-size: 11px;
+      font-weight: 850;
+      text-transform: uppercase;
+    }
+
+    .route-lines {
+      display: grid;
+      gap: 9px;
+      margin-top: 14px;
+    }
+
+    .route-line {
+      display: grid;
+      grid-template-columns: 24px minmax(0, 1fr) auto;
+      gap: 10px;
+      align-items: center;
+      min-height: 36px;
+      padding: 8px 10px;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 10px;
+      background: rgba(255, 255, 255, 0.07);
+      color: #fff;
+      font-size: 12px;
+      font-weight: 800;
+    }
+
+    .route-line span:first-child {
+      display: grid;
+      place-items: center;
+      width: 22px;
+      height: 22px;
+      border-radius: 7px;
+      background: rgba(53, 174, 222, 0.18);
+      color: var(--cyan);
+      font-family: var(--mono);
+      font-size: 10px;
+      font-weight: 950;
+    }
+
+    .route-line small {
+      color: rgba(255, 255, 255, 0.58);
+      font-family: var(--mono);
+      font-size: 10px;
+      font-weight: 700;
+    }
+
+    .section-head {
+      margin-bottom: 34px;
+    }
+
+    .install-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 0.92fr) minmax(380px, 1.08fr);
+      gap: 24px;
+      align-items: stretch;
+    }
+
+    .install-card,
+    .note-card,
+    .feature-card,
+    .mode-card,
+    .screen-card,
+    .faq-card {
+      border: 1px solid var(--line);
+      border-radius: var(--radius-lg);
+      background: rgba(255, 253, 248, 0.82);
+      box-shadow: var(--shadow);
+    }
+
+    .install-card {
+      padding: 22px;
+    }
+
+    .download-card {
+      position: relative;
+      overflow: hidden;
+      padding: 24px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius-lg);
+      background:
+        radial-gradient(circle at 100% 0%, rgba(53, 174, 222, 0.13), transparent 36%),
+        rgba(255, 253, 248, 0.86);
+      box-shadow: var(--shadow);
+    }
+
+    .download-card h3 {
+      font-size: 24px;
+    }
+
+    .download-card p {
+      margin-top: 12px;
+      color: var(--muted);
+      font-size: 15px;
+      line-height: 1.72;
+    }
+
+    .download-steps {
+      display: grid;
+      gap: 10px;
+      margin: 20px 0 0;
+      padding: 0;
+      list-style: none;
+    }
+
+    .download-steps li {
+      display: grid;
+      grid-template-columns: 34px minmax(0, 1fr);
+      gap: 12px;
+      align-items: start;
+      padding: 12px;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: rgba(255, 255, 255, 0.52);
+      color: var(--ink-soft);
+      font-size: 14px;
+      font-weight: 760;
+      line-height: 1.62;
+    }
+
+    .download-steps span {
+      display: grid;
+      place-items: center;
+      width: 32px;
+      height: 32px;
+      border-radius: 10px;
+      background: var(--charcoal);
+      color: #fff;
+      font-family: var(--mono);
+      font-size: 12px;
+      font-weight: 950;
+    }
+
+    .download-platforms {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+      margin-top: 16px;
+    }
+
+    .download-platform {
+      padding: 14px;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: rgba(255, 255, 255, 0.58);
+    }
+
+    .download-platform strong {
+      display: block;
+      color: var(--ink);
+      font-size: 14px;
+      font-weight: 920;
+    }
+
+    .download-platform span {
+      display: block;
+      margin-top: 6px;
+      color: var(--muted);
+      font-family: var(--mono);
+      font-size: 11px;
+      font-weight: 760;
+      line-height: 1.45;
+    }
+
+    .code-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      color: var(--ink-soft);
+      font-size: 13px;
+      font-weight: 900;
+    }
+
+    pre {
+      margin: 14px 0 0;
+      overflow-x: auto;
+      border-radius: 14px;
+      background: #15181d;
+      color: #f5f7fa;
+      scrollbar-width: thin;
+    }
+
+    code {
+      font-family: var(--mono);
+      font-size: 13px;
+      line-height: 1.72;
+    }
+
+    pre code {
+      display: block;
+      min-width: 0;
+      padding: 18px;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    .copy-btn {
+      min-height: 32px;
+      padding: 0 11px;
+      border-radius: 999px;
+      background: rgba(251, 114, 153, 0.12);
+      color: var(--pink-dark);
+      font-size: 12px;
+      font-weight: 900;
+    }
+
+    .developer-note {
+      margin-top: 14px;
+    }
+
+    .developer-note summary {
+      color: var(--ink-soft);
+      font-size: 13px;
+      font-weight: 900;
+      cursor: pointer;
+    }
+
+    .install-notes {
+      display: grid;
+      gap: 12px;
+    }
+
+    .note-card {
+      padding: 20px;
+    }
+
+    .note-card h3 {
+      font-size: 18px;
+    }
+
+    .note-card p {
+      margin-top: 9px;
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.72;
+    }
+
+    .mode-grid,
+    .feature-grid,
+    .screen-grid,
+    .faq-grid {
+      display: grid;
+      gap: 14px;
+    }
+
+    .mode-grid {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .mode-card {
+      min-height: 270px;
+      padding: 24px;
+    }
+
+    .mode-card b,
+    .feature-card b {
+      display: block;
+      color: var(--pink-dark);
+      font-family: var(--mono);
+      font-size: 12px;
+      font-weight: 950;
+      letter-spacing: 0.03em;
+      text-transform: uppercase;
+    }
+
+    .mode-card h3,
+    .feature-card h3 {
+      margin-top: 18px;
+    }
+
+    .mode-card p,
+    .feature-card p {
+      margin-top: 12px;
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.72;
+    }
+
+    .mode-card ul {
+      display: grid;
+      gap: 8px;
+      margin: 18px 0 0;
+      padding: 0;
+      list-style: none;
+    }
+
+    .mode-card li {
+      position: relative;
+      padding-left: 18px;
+      color: var(--ink-soft);
+      font-size: 13px;
+      font-weight: 760;
+      line-height: 1.5;
+    }
+
+    .mode-card li::before {
+      content: "";
+      position: absolute;
+      left: 0;
+      top: 0.72em;
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--cyan);
+    }
+
+    .feature-grid {
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+
+    .feature-card {
+      min-height: 236px;
+      padding: 22px;
+      border-color: var(--line-dark);
+      background: rgba(255, 255, 255, 0.075);
+      color: #fff;
+    }
+
+    .feature-card b {
+      color: var(--cyan);
+    }
+
+    .feature-card p {
+      color: rgba(255, 255, 255, 0.70);
+    }
+
+    .screens {
+      padding-bottom: 0;
+    }
+
+    .screen-grid {
+      grid-template-columns: 1.15fr 0.85fr;
+      align-items: start;
+    }
+
+    .screen-card {
+      overflow: hidden;
+      background: var(--paper-2);
+    }
+
+    .screen-card.large {
+      grid-row: span 2;
+    }
+
+    .screen-card img {
+      width: 100%;
+      aspect-ratio: 16 / 10;
+      object-fit: cover;
+      object-position: top left;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .screen-card-body {
+      padding: 18px 20px 20px;
+    }
+
+    .screen-card-body p {
+      margin-top: 8px;
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.7;
+    }
+
+    .tech-layout {
+      display: grid;
+      grid-template-columns: minmax(0, 0.78fr) minmax(380px, 1.22fr);
+      gap: 34px;
+      align-items: start;
+    }
+
+    .tech-stack {
+      display: grid;
+      gap: 10px;
+    }
+
+    .tech-item {
+      display: grid;
+      grid-template-columns: 70px minmax(0, 1fr);
+      gap: 14px;
+      align-items: start;
+      min-height: 112px;
+      padding: 17px;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      background: var(--paper-2);
+    }
+
+    .tech-tag {
+      display: grid;
+      place-items: center;
+      min-height: 58px;
+      border-radius: 14px;
+      background: var(--charcoal);
+      color: #fff;
+      font-family: var(--mono);
+      font-size: 11px;
+      font-weight: 950;
+      text-transform: uppercase;
+    }
+
+    .tech-item p {
+      margin-top: 6px;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.68;
+    }
+
+    .tools-strip {
+      display: grid;
+      grid-template-columns: repeat(9, minmax(0, 1fr));
+      gap: 8px;
+      margin-top: 30px;
+    }
+
+    .tool-pill {
+      display: grid;
+      place-items: center;
+      min-height: 48px;
+      padding: 0 10px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: rgba(255, 253, 248, 0.72);
+      color: var(--ink-soft);
+      font-size: 12px;
+      font-weight: 900;
+      text-align: center;
+    }
+
+    .community-panel {
+      position: relative;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(220px, 260px);
+      gap: 28px;
+      align-items: center;
+      overflow: hidden;
+      padding: 34px;
+      border: 1px solid var(--line);
+      border-radius: 26px;
+      background:
+        radial-gradient(circle at 0% 0%, rgba(251, 114, 153, 0.14), transparent 34%),
+        radial-gradient(circle at 100% 0%, rgba(53, 174, 222, 0.16), transparent 32%),
+        rgba(255, 253, 248, 0.86);
+      box-shadow: var(--shadow);
+    }
+
+    .community-panel p {
+      margin-top: 15px;
+      color: var(--muted);
+      font-size: 16px;
+      line-height: 1.75;
+    }
+
+    .qr-card {
+      padding: 14px;
+      border: 1px solid var(--line);
+      border-radius: 20px;
+      background: #fff;
+      box-shadow: 0 16px 34px rgba(24, 31, 42, 0.10);
+    }
+
+    .qr-card span {
+      display: block;
+      margin-bottom: 10px;
+      color: var(--muted);
+      font-family: var(--mono);
+      font-size: 11px;
+      font-weight: 900;
+      text-align: center;
+      text-transform: uppercase;
+    }
+
+    .qr-card img {
+      border-radius: 14px;
+    }
+
+    .faq-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .faq-card {
+      padding: 22px;
+    }
+
+    .faq-card p {
+      margin-top: 10px;
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.72;
+    }
+
+    .footer {
+      padding: 32px 0;
+      background: var(--charcoal);
+      color: rgba(255, 255, 255, 0.66);
+      font-size: 13px;
+    }
+
+    .footer-inner {
+      display: flex;
+      justify-content: space-between;
+      gap: 18px;
+      width: min(var(--max), calc(100% - 40px));
+      margin: 0 auto;
+    }
+
+    .footer a {
+      color: #fff;
+      text-decoration: none;
+    }
+
+    .reveal {
+      opacity: 0;
+      transform: translateY(18px);
+      transition: opacity 560ms ease, transform 560ms ease;
+    }
+
+    .reveal.visible {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    @media (max-width: 1040px) {
+      .topbar-inner {
+        align-items: stretch;
+        flex-direction: column;
+        justify-content: center;
+        padding: 12px 0;
+      }
+
+      .nav {
+        width: 100%;
+      }
+
+      .topbar-actions {
+        display: none;
+      }
+
+      .hero-inner,
+      .install-grid,
+      .tech-layout {
+        grid-template-columns: 1fr;
+      }
+
+      .hero-shot {
+        transform: none;
+      }
+
+      .mode-grid,
+      .feature-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .tools-strip {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+    }
+
+    @media (max-width: 760px) {
+      .section {
+        padding: 66px 0;
+      }
+
+      .topbar-inner,
+      .inner,
+      .footer-inner {
+        width: min(var(--max), calc(100% - 28px));
+      }
+
+      .hero-inner {
+        padding: 56px 0 70px;
+      }
+
+      .hero-metrics,
+      .mode-grid,
+      .feature-grid,
+      .screen-grid,
+      .faq-grid,
+      .community-panel {
+        grid-template-columns: 1fr;
+      }
+
+      .route-card {
+        position: relative;
+        left: auto;
+        bottom: auto;
+        width: 100%;
+        margin-top: 14px;
+      }
+
+      .install-grid {
+        gap: 14px;
+      }
+
+      .install-card,
+      .note-card,
+      .mode-card,
+      .feature-card,
+      .community-panel {
+        padding: 20px;
+      }
+
+      .tech-item {
+        grid-template-columns: 1fr;
+      }
+
+      .tools-strip {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .hero-actions,
+      .community-panel .hero-actions {
+        align-items: stretch;
+        flex-direction: column;
+      }
+
+      .btn {
+        width: 100%;
+      }
+
+      .download-platforms {
+        grid-template-columns: 1fr;
+      }
+
+      .footer-inner {
+        flex-direction: column;
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *,
+      *::before,
+      *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        scroll-behavior: auto !important;
+        transition-duration: 0.01ms !important;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <a class="brand" href="#top" aria-label="AnyBridge 首页">
+        <span class="mark" aria-hidden="true">
+          <img src="assets/anybridge-logo.svg" alt="" />
+        </span>
+        <span>
+          <strong>AnyBridge</strong>
+          <span>自定义 API 工具</span>
+        </span>
+      </a>
+      <nav class="nav" aria-label="页面导航">
+        <a href="#install">下载安装</a>
+        <a href="#modes">接入方式</a>
+        <a href="#features">特色功能</a>
+        <a href="#screens">界面</a>
+        <a href="#tech">工作方式</a>
+        <a href="#community">社区</a>
+      </nav>
+      <div class="topbar-actions">
+        <a class="star-link" href="https://github.com/soulvon/AnyBridge" target="_blank" rel="noopener noreferrer">GitHub</a>
+      </div>
+    </div>
+  </header>
+
+  <main id="top">
+    <section class="section hero">
+      <div class="inner hero-inner">
+        <div class="hero-copy reveal">
+          <div class="eyebrow">开源 · 本地优先 · 自带密钥</div>
+          <h1>把自己的模型接进所有 AI 编程工具。</h1>
+          <p class="lead">
+            AnyBridge 是本地运行的 BYOK 桥接工作台。它把你的 API Key、模型供应商、本地代理、模型映射和 IDE 配置切换集中到一个桌面控制面里。
+          </p>
+          <div class="hero-actions" aria-label="主要操作">
+            <a class="btn primary" href="https://github.com/soulvon/AnyBridge/releases/latest" target="_blank" rel="noopener noreferrer">下载桌面安装包</a>
+            <a class="btn dark" href="#install">看怎么安装</a>
+            <a class="btn dark" href="#features">看看特色功能</a>
+          </div>
+          <div class="hero-metrics" aria-label="项目关键词">
+            <div class="metric">
+              <b>本地代理</b>
+              <span>Windsurf / Devin / Cursor 的聊天请求走本机路由，其他流量正常放行。</span>
+            </div>
+            <div class="metric">
+              <b>配置切换</b>
+              <span>Claude Code / Codex / OpenCode 等工具可一键写入 BYOK 配置。</span>
+            </div>
+            <div class="metric">
+              <b>统一网关</b>
+              <span>暴露 OpenAI 兼容端点，让更多工具直接调用你的模型池。</span>
+            </div>
+            <div class="metric">
+              <b>可见诊断</b>
+              <span>日志、统计、健康检查和模型检测把问题直接暴露出来。</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="hero-visual reveal">
+          <div class="hero-shot">
+            <img src="assets/anybridge-platform-console.png" alt="AnyBridge 平台接入控制台截图" />
+          </div>
+          <div class="route-card" aria-label="本地链路示意">
+            <div class="route-card-title">
+              <span>本地链路</span>
+              <span>127.0.0.1:7450</span>
+            </div>
+            <div class="route-lines">
+              <div class="route-line"><span>01</span><strong>工具请求</strong><small>Codex / Cursor</small></div>
+              <div class="route-line"><span>02</span><strong>AnyBridge 本地代理</strong><small>模型映射</small></div>
+              <div class="route-line"><span>03</span><strong>你的模型供应商</strong><small>自带密钥</small></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="install">
+      <div class="inner">
+        <div class="section-head reveal">
+          <div class="eyebrow">下载安装</div>
+          <h2>大多数人只需要下载安装包，双击运行就行。</h2>
+          <p class="lead">不用命令行，不用折腾开发环境。打开发布页，按系统下载对应安装包，安装后在桌面端里添加供应商并切换工具。</p>
+        </div>
+        <div class="install-grid">
+          <article class="download-card reveal">
+            <h3>三步开始使用</h3>
+            <p>先安装 AnyBridge，再把你的模型供应商填进去，最后选择要接入的 AI 编程工具。</p>
+            <ol class="download-steps">
+              <li><span>1</span><strong>去发布页下载最新版安装包。Windows 用户一般选择带 <code>Setup.exe</code> 的文件。</strong></li>
+              <li><span>2</span><strong>打开 AnyBridge，添加你的 API Key、接口地址和模型列表。</strong></li>
+              <li><span>3</span><strong>在平台页选择 Codex、Cursor、Windsurf、Devin 等工具，一键切换到 AnyBridge。</strong></li>
+            </ol>
+            <div class="hero-actions">
+              <a class="btn primary" href="https://github.com/soulvon/AnyBridge/releases/latest" target="_blank" rel="noopener noreferrer">打开下载页</a>
+            </div>
+          </article>
+          <div class="install-notes">
+            <article class="note-card reveal">
+              <h3>按系统选择文件</h3>
+              <p>发布页会放多个系统的安装包。普通用户优先选择安装器，下载后按系统提示安装即可。</p>
+              <div class="download-platforms">
+                <div class="download-platform">
+                  <strong>Windows</strong>
+                  <span>优先下载 Setup.exe</span>
+                </div>
+                <div class="download-platform">
+                  <strong>macOS</strong>
+                  <span>优先下载 .dmg</span>
+                </div>
+                <div class="download-platform">
+                  <strong>Linux</strong>
+                  <span>按发行版选择包</span>
+                </div>
+              </div>
+            </article>
+            <article class="note-card reveal">
+              <h3>打开后怎么用</h3>
+              <p>先添加供应商和模型，再到平台页选择你正在用的工具，点击切换。需要代理模式的工具按提示重启一次即可。</p>
+            </article>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section band" id="modes">
+      <div class="inner">
+        <div class="section-head reveal">
+          <div class="eyebrow">三种接入方式</div>
+          <h2>三种接入方式，覆盖不同类型的 AI 编程工具。</h2>
+          <p class="lead">不强迫所有工具走同一条路。AnyBridge 根据工具特性选择代理、配置写入或标准 API 网关。</p>
+        </div>
+        <div class="mode-grid">
+          <article class="mode-card reveal">
+            <b>01 本地代理</b>
+            <h3>本地代理模式</h3>
+            <p>适合不直接开放 BYOK 的桌面 IDE，通过本机代理识别并转发聊天请求。</p>
+            <ul>
+              <li>Windsurf / Devin / Cursor</li>
+              <li>聊天请求转发到你的模型</li>
+              <li>登录、索引、补全等流量正常放行</li>
+            </ul>
+          </article>
+          <article class="mode-card reveal">
+            <b>02 配置切换</b>
+            <h3>配置切换模式</h3>
+            <p>适合原生支持自定义 API 的工具，自动写入正确配置文件，避免手写 JSON。</p>
+            <ul>
+              <li>Codex / Claude Code / OpenCode</li>
+              <li>一键切换或恢复</li>
+              <li>平台专属解锁边界清晰</li>
+            </ul>
+          </article>
+          <article class="mode-card reveal">
+            <b>03 本地网关</b>
+            <h3>本地 API 网关</h3>
+            <p>把不同上游供应商统一暴露成 OpenAI 兼容接口，任何支持自定义 API 的工具都能接入。</p>
+            <ul>
+              <li><code>/v1/chat/completions</code></li>
+              <li>Anthropic / OpenAI 格式互转</li>
+              <li>统一模型 ID 与备用链路</li>
+            </ul>
+          </article>
+        </div>
+        <div class="tools-strip reveal" aria-label="支持工具">
+          <div class="tool-pill">Windsurf</div>
+          <div class="tool-pill">Devin</div>
+          <div class="tool-pill">Cursor</div>
+          <div class="tool-pill">Codex</div>
+          <div class="tool-pill">Claude Code</div>
+          <div class="tool-pill">OpenCode</div>
+          <div class="tool-pill">CodeBuddy</div>
+          <div class="tool-pill">ZCode</div>
+          <div class="tool-pill">WorkBuddy</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section dark" id="features">
+      <div class="inner">
+        <div class="section-head reveal">
+          <div class="eyebrow">特色功能</div>
+          <h2>不只是转发请求，AnyBridge 解决的是日常真会碰到的卡点。</h2>
+          <p class="lead">看图模型不足、Codex 模型列表受限、多个工具重复配置、代理出错难排查，这些都放进了同一个控制台。</p>
+        </div>
+        <div class="feature-grid">
+          <article class="feature-card reveal">
+            <b>模型映射</b>
+            <h3>模型映射</h3>
+            <p>把工具固定的模型槽位映射到你真正想用的模型，也可以统一命名对外暴露的模型 ID。</p>
+          </article>
+          <article class="feature-card reveal">
+            <b>图片理解降级</b>
+            <h3>让“不会看图”的模型也能处理截图</h3>
+            <p>把截图先交给视觉备用模型分析，再把文字描述交给 DeepSeek、GLM、Qwen 等文本模型继续回答。</p>
+          </article>
+          <article class="feature-card reveal">
+            <b>Codex 增强</b>
+            <h3>解锁 Codex 桌面模型列表</h3>
+            <p>通过运行时注入把你配置的模型加入 Codex Desktop 下拉列表，不需要改二进制文件。</p>
+          </article>
+          <article class="feature-card reveal">
+            <b>Kite 联动</b>
+            <h3>Devin / Windsurf 体验增强</h3>
+            <p>内置 Kite 插件入口，适合和 AnyBridge 一起使用，补齐账号、界面和日常增强能力。</p>
+          </article>
+          <article class="feature-card reveal">
+            <b>故障切换</b>
+            <h3>故障转移</h3>
+            <p>主模型失败后按备用链路切换，配合重试策略处理临时网络错误和供应商不可用。</p>
+          </article>
+          <article class="feature-card reveal">
+            <b>统一供应商</b>
+            <h3>一次配置，多工具复用</h3>
+            <p>Anthropic、OpenAI、DeepSeek、智谱或自建接口都可以统一管理，不用每个工具重复填密钥。</p>
+          </article>
+          <article class="feature-card reveal">
+            <b>本地网关</b>
+            <h3>统一 OpenAI 兼容入口</h3>
+            <p>把 AnyBridge 作为本地接口给更多工具调用，地址就是 <code>http://localhost:7450/v1</code>。</p>
+          </article>
+          <article class="feature-card reveal">
+            <b>可见诊断</b>
+            <h3>环境体检</h3>
+            <p>检测证书、路径、配置、Sidecar、端口和供应商连通性，避免隐性失败。</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="section screens" id="screens">
+      <div class="inner">
+        <div class="section-head reveal">
+          <div class="eyebrow">界面预览</div>
+          <h2>桌面控制台负责所有配置，不需要手写复杂规则。</h2>
+          <p class="lead">日常使用就是添加供应商、选择模型、切换平台、观察日志和统计。</p>
+        </div>
+        <div class="screen-grid">
+          <article class="screen-card large reveal">
+            <img src="assets/anybridge-provider-console.png" alt="AnyBridge 供应商管理界面截图" />
+            <div class="screen-card-body">
+              <h3>供应商统一管理</h3>
+              <p>集中维护 API Key、Base URL、协议格式、模型列表和启用状态。</p>
+            </div>
+          </article>
+          <article class="screen-card reveal">
+            <img src="assets/anybridge-proxy-routes.png" alt="AnyBridge 本地代理模型路由截图" />
+            <div class="screen-card-body">
+              <h3>本地代理模型路由</h3>
+              <p>把供应商模型添加到本地代理列表，配置能力标签、备用模型和命名规则。</p>
+            </div>
+          </article>
+          <article class="screen-card reveal">
+            <img src="assets/anybridge-kite-plugin.png" alt="AnyBridge 内置 Kite 插件入口截图" />
+            <div class="screen-card-body">
+              <h3>Kite 插件联动</h3>
+              <p>面向 Devin / Windsurf 的增强入口，可与 AnyBridge 的模型接入能力配合使用。</p>
+            </div>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="section band" id="tech">
+      <div class="inner">
+        <div class="tech-layout">
+          <div class="section-head reveal">
+            <div class="eyebrow">本机工作方式</div>
+            <h2>你的密钥和配置留在本机，AnyBridge 只负责接线和转发。</h2>
+            <p class="lead">普通用户只要知道：桌面端负责配置，本地代理负责转发，上游模型供应商由你自己填写。</p>
+          </div>
+          <div class="tech-stack">
+            <article class="tech-item reveal">
+              <div class="tech-tag">桌面端</div>
+              <div>
+                <h3>负责可视化配置</h3>
+                <p>添加供应商、选择模型、切换工具、安装证书、查看日志和统计，都在桌面端里完成。</p>
+              </div>
+            </article>
+            <article class="tech-item reveal">
+              <div class="tech-tag">本地代理</div>
+              <div>
+                <h3>负责请求转发</h3>
+                <p>工具发来的聊天请求会进入本机代理，再按你的模型映射发到对应供应商。</p>
+              </div>
+            </article>
+            <article class="tech-item reveal">
+              <div class="tech-tag">模型池</div>
+              <div>
+                <h3>由你自己控制</h3>
+                <p>可以接 Anthropic、OpenAI、DeepSeek、智谱、MiniMax 或任何兼容接口。</p>
+              </div>
+            </article>
+            <article class="tech-item reveal">
+              <div class="tech-tag">诊断</div>
+              <div>
+                <h3>出问题直接看原因</h3>
+                <p>请求统计、错误日志、连通性测试和环境体检会帮你定位到底是哪一层出错。</p>
+              </div>
+            </article>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="community">
+      <div class="inner">
+        <div class="community-panel reveal">
+          <div>
+            <div class="eyebrow">社区支持</div>
+            <h2>遇到接入、路由或模型调试问题，来群里一起排。</h2>
+            <p>QQ 群 1075342078 会同步最新版本、使用帮助和配置经验。你也可以在 GitHub 提问题或参与讨论。</p>
+            <div class="hero-actions">
+              <a class="btn primary" href="https://qm.qq.com/q/nT5ApAtKiQ" target="_blank" rel="noopener noreferrer">加入交流群</a>
+              <a class="btn" href="https://github.com/soulvon/AnyBridge/issues" target="_blank" rel="noopener noreferrer">反馈问题</a>
+              <a class="btn" href="https://github.com/soulvon/AnyBridge/discussions" target="_blank" rel="noopener noreferrer">参与讨论</a>
+            </div>
+          </div>
+          <div class="qr-card">
+            <span>QQ 交流群</span>
+            <img src="qq-group-qrcode.png" alt="AnyBridge QQ 群二维码" />
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section band" id="faq">
+      <div class="inner">
+        <div class="section-head reveal">
+          <div class="eyebrow">常见问题</div>
+          <h2>普通用户最关心的几个问题。</h2>
+        </div>
+        <div class="faq-grid">
+          <article class="faq-card reveal">
+            <h3>Windows 应该下载哪个文件？</h3>
+            <p>一般选择发布页里带 <code>Setup.exe</code> 的安装包。下载后双击运行，按安装向导继续即可。</p>
+          </article>
+          <article class="faq-card reveal">
+            <h3>我的 API Key 会上传到云端吗？</h3>
+            <p>不会。AnyBridge 是本地运行的桥接工具，运行时配置保存在你电脑的应用数据目录里。</p>
+          </article>
+          <article class="faq-card reveal">
+            <h3>必须会命令行吗？</h3>
+            <p>不需要。下载安装包后打开桌面端，在界面里添加供应商、选择工具并点击切换即可。</p>
+          </article>
+          <article class="faq-card reveal">
+            <h3>支持哪些 AI 编程工具？</h3>
+            <p>目前覆盖 Windsurf、Devin、Cursor、Codex、Claude Code、OpenCode、CodeBuddy、ZCode 和 WorkBuddy 等工具。</p>
+          </article>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="footer-inner">
+      <span>AnyBridge · 打破锁定，自带密钥。</span>
+      <span>
+        <a href="https://github.com/soulvon/AnyBridge" target="_blank" rel="noopener noreferrer">GitHub</a>
+        ·
+        <a href="https://github.com/soulvon/AnyBridge/releases/latest" target="_blank" rel="noopener noreferrer">发布页</a>
+        · MIT © 2026 soulvon
+      </span>
+    </div>
+  </footer>
+
+  <script>
+    const revealObserver = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (!entry.isIntersecting) return;
+          entry.target.classList.add("visible");
+          revealObserver.unobserve(entry.target);
+        });
+      },
+      { threshold: 0.12 }
+    );
+
+    document.querySelectorAll(".reveal").forEach((node) => revealObserver.observe(node));
+
+    document.querySelectorAll("[data-copy]").forEach((button) => {
+      button.addEventListener("click", async () => {
+        const target = document.querySelector(button.getAttribute("data-copy"));
+        if (!target) return;
+        const text = target.textContent.trim();
+        try {
+          await navigator.clipboard.writeText(text);
+          button.textContent = "已复制";
+        } catch (error) {
+          button.textContent = "请手动复制";
+        }
+        window.setTimeout(() => {
+          button.textContent = "复制";
+        }, 1500);
+      });
+    });
+  </script>
+</body>
+</html>
