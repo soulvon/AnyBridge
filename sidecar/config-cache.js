@@ -11,6 +11,7 @@
 //   getProviders()  -> Map<id, provider>
 //   getSlots()      -> Map<modelUid, {kind, data}>
 //   getProxyRoutes()-> { fileExists, defaultModelId, routes }
+//   getCodexProxyRoutes()-> { fileExists, defaultModelId, routes }
 //   invalidate('providers' | 'slots' | 'all')
 //   markProvidersDirty()  // 写入方调用
 
@@ -40,6 +41,7 @@ function positiveInt(value, fallback, min = 0) {
 const PROVIDERS_PATH = () => path.join(configDir(), 'providers.json');
 const SLOTS_PATH = () => path.join(configDir(), 'model-map.json');
 const PROXY_ROUTES_PATH = () => path.join(configDir(), 'proxy-routes.json');
+const CODEX_PROXY_ROUTES_PATH = () => path.join(configDir(), 'codex-proxy-routes.json');
 
 const TTL_MS = 2000; // 兜底 TTL：2s 内不重新读盘（即便 mtime 变化）
 
@@ -48,6 +50,7 @@ const cache = {
   slots:     { mtimeMs: 0, data: null, loadedAt: 0, dirty: true },
   modelMap:  { mtimeMs: 0, data: null, loadedAt: 0, dirty: true },
   proxyRoutes: { mtimeMs: 0, data: null, loadedAt: 0, dirty: true },
+  codexProxyRoutes: { mtimeMs: 0, data: null, loadedAt: 0, dirty: true },
 };
 
 function readJsonSafe(file) {
@@ -86,13 +89,11 @@ function loadEntry(entry, file, transform) {
   return entry.data;
 }
 
-function loadProxyRoutesEntry() {
-  const entry = cache.proxyRoutes;
-  const file = PROXY_ROUTES_PATH();
+function loadProxyRoutesEntry(entry, file, label = 'proxy routes') {
   const now = Date.now();
   if (!fs.existsSync(file)) {
     if (entry.mtimeMs !== 0 && entry.data?.fileExists) {
-      console.info('[config-cache] proxy routes reloaded: file removed');
+      console.info(`[config-cache] ${label} reloaded: file removed`);
     }
     entry.mtimeMs = 0;
     entry.loadedAt = now;
@@ -114,7 +115,7 @@ function loadProxyRoutesEntry() {
     entry.data = transformProxyRoutes(JSON.parse(raw));
     entry.dirty = false;
     if (previousMtime !== stat.mtimeMs) {
-      console.info('[config-cache] proxy routes reloaded');
+      console.info(`[config-cache] ${label} reloaded`);
     }
     return entry.data;
   } catch (e) {
@@ -126,11 +127,34 @@ function loadProxyRoutesEntry() {
   }
 }
 
+function loadDefaultProxyRoutesEntry() {
+  return loadProxyRoutesEntry(cache.proxyRoutes, PROXY_ROUTES_PATH(), 'proxy routes');
+}
+
+function loadCodexProxyRoutesEntry() {
+  return loadProxyRoutesEntry(cache.codexProxyRoutes, CODEX_PROXY_ROUTES_PATH(), 'codex proxy routes');
+}
+
 function transformProviders(json) {
   const list = (json && Array.isArray(json.providers)) ? json.providers : [];
   const m = new Map();
   for (const p of list) {
     if (p && p.id) m.set(p.id, p);
+  }
+  const codexConfigs = (json && Array.isArray(json.codexConfigs)) ? json.codexConfigs : [];
+  for (const config of codexConfigs) {
+    if (!config || !config.id) continue;
+    m.set(config.id, {
+      ...config,
+      apiFormat: 'openai',
+      enabled: true,
+      capabilities: {
+        text: true,
+        stream: true,
+        ...(config.capabilities && typeof config.capabilities === 'object' ? config.capabilities : {}),
+      },
+      modelCaps: config.modelCaps && typeof config.modelCaps === 'object' ? config.modelCaps : {},
+    });
   }
   return m;
 }
@@ -163,6 +187,9 @@ function transformModelMap(json) {
   const visionModels = (json && json.visionModels && typeof json.visionModels === 'object')
     ? json.visionModels
     : {};
+  const renameRule = (json && json.proxyRouteRenameRule && typeof json.proxyRouteRenameRule === 'object')
+    ? json.proxyRouteRenameRule
+    : {};
   const normalizedEnhancement = {
     retry: enhancement.retry !== false,
     retryMaxRetries: positiveInt(enhancement.retryMaxRetries, 5, 0),
@@ -170,16 +197,30 @@ function transformModelMap(json) {
     retryCapMs: positiveInt(enhancement.retryCapMs, 8000, 1),
     retryTotalSeconds: positiveInt(enhancement.retryTotalSeconds, 60, 1),
     imageFallback: enhancement.imageFallback !== false,
+    visionMaxTokens: positiveInt(enhancement.visionMaxTokens, 2048, 64),
+    visionContextMode: ['current', 'summary', 'full'].includes(String(enhancement.visionContextMode || ''))
+      ? String(enhancement.visionContextMode)
+      : 'current',
+    visionContextMaxChars: positiveInt(enhancement.visionContextMaxChars, 8000, 500),
+    visionMultiImageMode: ['single', 'batch', 'chunk'].includes(String(enhancement.visionMultiImageMode || ''))
+      ? String(enhancement.visionMultiImageMode)
+      : 'single',
+    visionBatchSize: positiveInt(enhancement.visionBatchSize, 3, 1),
     autoRouting: enhancement.autoRouting !== false,
     unlockModels: enhancement.unlockModels !== false,
     systemPromptPrefix: String(enhancement.systemPromptPrefix || ''),
+    systemPromptPrefixEnabled: enhancement.systemPromptPrefixEnabled === true,
     customHeaders: Array.isArray(enhancement.customHeaders) ? enhancement.customHeaders.filter(h => h && h.key) : [],
+    customHeadersEnabled: enhancement.customHeadersEnabled === true,
     responseHeaders: Array.isArray(enhancement.responseHeaders) ? enhancement.responseHeaders.filter(h => h && h.key) : [],
     paramOverrides: enhancement.paramOverrides && typeof enhancement.paramOverrides === 'object' ? enhancement.paramOverrides : {},
+    paramOverridesEnabled: enhancement.paramOverridesEnabled === true,
     toolFilterMode: String(enhancement.toolFilterMode || ''),
     toolFilterList: Array.isArray(enhancement.toolFilterList) ? enhancement.toolFilterList.map(String) : [],
     forceToolChoice: String(enhancement.forceToolChoice || ''),
+    toolFilterEnabled: enhancement.toolFilterEnabled === true,
     rateLimitRpm: positiveInt(enhancement.rateLimitRpm, 0, 0),
+    rateLimitEnabled: enhancement.rateLimitEnabled === true,
     requestLogging: enhancement.requestLogging === true,
   };
   if (selfHeal) normalizedEnhancement.selfHeal = selfHeal;
@@ -187,6 +228,13 @@ function transformModelMap(json) {
     enhancement: normalizedEnhancement,
     visionModels: {
       imageModels: Array.isArray(visionModels.imageModels) ? visionModels.imageModels : [],
+    },
+    proxyRouteRenameRule: {
+      enabled: renameRule.enabled !== false,
+      mode: String(renameRule.mode || ''),
+      prefix: String(renameRule.prefix || ''),
+      suffix: String(renameRule.suffix || ''),
+      template: String(renameRule.template || ''),
     },
   };
 }
@@ -199,6 +247,9 @@ function normalizeProxyRouteTarget(target) {
     apiFormat: rawApiFormat.toLowerCase() === 'auto' ? '' : rawApiFormat,
     apiPath: String(target?.apiPath || target?.api_path || '').trim(),
     unlock: String(target?.unlock || '').trim(),
+    apiKeys: Array.isArray(target?.apiKeys || target?.api_keys)
+      ? (target.apiKeys || target.api_keys).map(k => String(k || '').trim()).filter(Boolean)
+      : [],
   };
 }
 
@@ -210,8 +261,8 @@ function validateProxyRoutes(routes) {
     seen.add(route.id);
     if (!route.exposedFormats.length) throw new Error(`模型 ${route.id} 至少需要暴露一个入口`);
     for (const fmt of route.exposedFormats) {
-      if (fmt !== 'openai' && fmt !== 'anthropic') {
-        throw new Error(`模型 ${route.id} 的暴露入口必须是 openai 或 anthropic`);
+      if (fmt !== 'openai' && fmt !== 'anthropic' && fmt !== 'gemini') {
+        throw new Error(`模型 ${route.id} 的暴露入口必须是 openai、anthropic 或 gemini`);
       }
     }
     if (route.enabled !== false && !route.targets.length) {
@@ -235,6 +286,7 @@ function transformProxyRoutes(json) {
   const normalizedRoutes = routes.map(route => ({
     id: String(route?.id || '').trim(),
     displayName: String(route?.displayName || route?.display_name || '').trim(),
+    idFromRenameRule: route?.idFromRenameRule === true || route?.id_from_rename_rule === true,
     enabled: route?.enabled !== false,
     exposedFormats: Array.isArray(route?.exposedFormats)
       ? route.exposedFormats.map(x => String(x || '').trim()).filter(Boolean)
@@ -266,7 +318,11 @@ export function getModelMapConfig() {
 }
 
 export function getProxyRoutes() {
-  return loadProxyRoutesEntry();
+  return loadDefaultProxyRoutesEntry();
+}
+
+export function getCodexProxyRoutes() {
+  return loadCodexProxyRoutesEntry();
 }
 
 export function invalidate(what = 'all') {
@@ -276,6 +332,7 @@ export function invalidate(what = 'all') {
     cache.modelMap.dirty = true;
   }
   if (what === 'all' || what === 'proxyRoutes') cache.proxyRoutes.dirty = true;
+  if (what === 'all' || what === 'codexProxyRoutes') cache.codexProxyRoutes.dirty = true;
 }
 
 export function markProvidersDirty() { cache.providers.dirty = true; }
@@ -284,3 +341,4 @@ export function markSlotsDirty() {
   cache.modelMap.dirty = true;
 }
 export function markProxyRoutesDirty() { cache.proxyRoutes.dirty = true; }
+export function markCodexProxyRoutesDirty() { cache.codexProxyRoutes.dirty = true; }

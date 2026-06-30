@@ -236,6 +236,19 @@ function providerUnlockEnabled(provider, kind) {
   return !!(unlock && unlock.enabled !== false);
 }
 
+const targetKeyRotation = new Map();
+
+function apiKeyForTarget(target, fallbackKey) {
+  const keys = Array.isArray(target?.apiKeys || target?.api_keys)
+    ? (target.apiKeys || target.api_keys).map(k => String(k || '').trim()).filter(Boolean)
+    : [];
+  if (!keys.length) return fallbackKey;
+  const rotationKey = `${target.providerId || target.provider_id || ''}|${target.model || ''}`;
+  const next = targetKeyRotation.get(rotationKey) || 0;
+  targetKeyRotation.set(rotationKey, (next + 1) % keys.length);
+  return keys[next % keys.length];
+}
+
 // 把一个 target {providerId, model, apiFormat, unlock?} 解析成实际连接信息。
 // 供应商不存在或被禁用 → 返回 {error}。
 export function resolveTarget(target, providers) {
@@ -289,7 +302,7 @@ export function resolveTarget(target, providers) {
     providerName: p.name,
     host,
     apiPath: finalApiPath,
-    apiKey: p.apiKey,
+    apiKey: apiKeyForTarget(target, p.apiKey),
     format: routeFormat,
     routeSource: route.source,
     authScheme: routeFormat === 'openai' || shouldUseAnthropicBearerAuth(host, apiPath) ? 'bearer' : 'x-api-key',

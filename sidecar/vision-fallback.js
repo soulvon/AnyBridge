@@ -10,7 +10,8 @@ import { httpsAgentFor } from './system-proxy.js';
 import { recordVisionFallback } from './stats.js';
 
 const VISION_TIMEOUT_MS = parseInt(process.env.BYOK_VISION_FALLBACK_TIMEOUT_MS || '120000', 10);
-const VISION_MAX_TOKENS = parseInt(process.env.BYOK_VISION_FALLBACK_MAX_TOKENS || '1200', 10);
+const DEFAULT_VISION_MAX_TOKENS = parseInt(process.env.BYOK_VISION_FALLBACK_MAX_TOKENS || '2048', 10);
+const DEFAULT_VISION_CONTEXT_MAX_CHARS = parseInt(process.env.BYOK_VISION_CONTEXT_MAX_CHARS || '8000', 10);
 const HTTPS_AGENT = new https.Agent({
   keepAlive: true,
   keepAliveMsecs: 30_000,
@@ -48,13 +49,48 @@ function textPreview(value, max = 500) {
   return String(value || '').replace(/\s+/g, ' ').trim().slice(0, max);
 }
 
-function cacheKey(target, data) {
+function positiveInt(value, fallback, min = 1) {
+  const n = parseInt(value, 10);
+  return Number.isFinite(n) && n >= min ? n : fallback;
+}
+
+function normalizeVisionOptions(options = {}) {
+  const contextMode = ['current', 'summary', 'full'].includes(String(options.contextMode || ''))
+    ? String(options.contextMode)
+    : 'current';
+  const multiImageMode = ['single', 'batch', 'chunk'].includes(String(options.multiImageMode || ''))
+    ? String(options.multiImageMode)
+    : 'single';
+  return {
+    maxTokens: positiveInt(options.maxTokens, DEFAULT_VISION_MAX_TOKENS, 64),
+    contextMode,
+    multiImageMode,
+    batchSize: positiveInt(options.batchSize, 3, 1),
+    contextMaxChars: positiveInt(options.contextMaxChars, DEFAULT_VISION_CONTEXT_MAX_CHARS, 500),
+  };
+}
+
+function cacheKey(target, data, prompt = '', options = {}) {
   return crypto
     .createHash('sha256')
-    .update(`${target.providerId || ''}|${target.model || ''}|`)
+    .update(`${target.providerId || ''}|${target.model || ''}|${options.maxTokens || ''}|`)
+    .update(prompt || '')
+    .update('|')
     .update(data || '')
     .digest('hex')
     .slice(0, 40);
+}
+
+function batchCacheKey(target, images, prompt, options) {
+  const hash = crypto
+    .createHash('sha256')
+    .update(`${target.providerId || ''}|${target.model || ''}|batch|${options.maxTokens || ''}|`)
+    .update(prompt || '');
+  for (const image of images || []) {
+    hash.update('|');
+    hash.update(image?.data || '');
+  }
+  return hash.digest('hex').slice(0, 40);
 }
 
 function cacheGet(key) {
@@ -207,107 +243,206 @@ function usefulDescription(text) {
   return s.length >= 12 && !looksLikeMissingImage(s);
 }
 
-function visionPrompt(userText = '') {
-  const prefix = userText
-    ? `用户围绕图片提出的问题是：\n${userText}\n\n`
+function clipContextText(text, maxChars, labelMaxChars = maxChars) {
+  const value = String(text || '').trim();
+  if (maxChars <= 0) return '';
+  if (!value || value.length <= maxChars) return value;
+  return `${value.slice(0, maxChars)}\n[上下文已按 visionContextMaxChars=${labelMaxChars} 截断]`;
+}
+
+function roleLabel(role) {
+  if (role === 'assistant') return '助手';
+  if (role === 'system') return '系统';
+  return '用户';
+}
+
+function buildPriorContext(messages, messageIndex, mode, maxChars) {
+  if (mode === 'current') return '';
+  const rows = [];
+  const source = Array.isArray(messages) ? messages.slice(0, messageIndex) : [];
+  for (const msg of source) {
+    const rawText = textFromMessage(msg);
+    const text = mode === 'full' ? String(rawText || '').trim() : textPreview(rawText, 1200);
+    if (!text) continue;
+    rows.push(`${roleLabel(msg.role)}：${text}`);
+  }
+  if (!rows.length) return '';
+  const title = mode === 'full'
+    ? '以下是图片之前的完整文本上下文（不含图片二进制）：'
+    : '以下是图片之前的最近文本上下文（由历史文本摘取，供图片理解聚焦）：';
+  if (mode === 'summary') {
+    const picked = [];
+    let size = title.length;
+    for (let i = rows.length - 1; i >= 0; i--) {
+      const row = rows[i];
+      if (size + row.length + 2 > maxChars && picked.length) break;
+      picked.unshift(row);
+      size += row.length + 2;
+    }
+    return clipContextText(`${title}\n${picked.join('\n')}`, maxChars);
+  }
+  return clipContextText(`${title}\n${rows.join('\n')}`, maxChars);
+}
+
+function visionContextForMessage(messages, messageIndex, userText, options) {
+  const mode = options.contextMode || 'current';
+  const prior = buildPriorContext(messages, messageIndex, mode, options.contextMaxChars);
+  const current = String(userText || '').trim();
+  if (!prior) return current;
+  const currentBlock = `当前用户围绕图片提出的问题是：\n${current || '(当前消息没有额外文字)'}`;
+  const maxChars = options.contextMaxChars;
+  const joined = `${prior}\n\n${currentBlock}`;
+  if (joined.length <= maxChars) return joined;
+  const priorBudget = maxChars - currentBlock.length - 2;
+  if (priorBudget <= 0) {
+    return `${currentBlock}\n[前文因 visionContextMaxChars=${maxChars} 过小未发送给图片理解模型]`;
+  }
+  return `${clipContextText(prior, priorBudget, maxChars)}\n\n${currentBlock}`;
+}
+
+function visionPrompt(contextText = '', { imageCount = 1 } = {}) {
+  const prefix = contextText
+    ? `用户围绕图片提出的问题和可用上下文是：\n${contextText}\n\n`
     : '';
+  if (imageCount > 1) {
+    return `${prefix}你会收到 ${imageCount} 张图片。请用中文按图片顺序输出结构化理解结果，供另一个不能直接看图的文本模型回答用户问题。要求：
+1. 必须逐张输出，使用“图片 #1”“图片 #2”等编号，不要合并或跳过任何图片。
+2. 逐字抄录每张图片中所有可见文字。
+3. 描述颜色、布局、位置关系、UI 元素和重要细节。
+4. 如果是代码、表格、图表或网页截图，请尽量保留结构。
+5. 结合用户问题和上下文，指出每张图片里最相关的细节。
+6. 如果某张图片看不清，请保留编号并明确说明不确定点。
+7. 不要说“我看不到图片”，除非确实没有收到图片。
+
+建议输出格式：
+图片 #1：
+- 可见文字：
+- 布局与元素：
+- 与问题相关的细节：
+- 不确定点：
+
+图片 #2：
+...`;
+  }
   return `${prefix}请用中文详细描述这张图片，供另一个不能直接看图的文本模型回答用户问题。要求：
 1. 逐字抄录图片中所有可见文字。
 2. 描述颜色、布局、位置关系、UI 元素和重要细节。
 3. 如果是代码、表格、图表或网页截图，请尽量保留结构。
-4. 不要说“我看不到图片”，除非确实没有收到图片。`;
+4. 结合用户问题和上下文，指出最相关的图像细节。
+5. 不确定或看不清的地方要明确说明。
+6. 不要说“我看不到图片”，除非确实没有收到图片。
+
+建议输出格式：
+- 可见文字：
+- 布局与元素：
+- 与问题相关的细节：
+- 不确定点：`;
 }
 
-function openAIChatBody(model, image, prompt, imageFirst = false) {
-  const imagePart = {
+function imageUrlPart(image) {
+  return {
     type: 'image_url',
     image_url: { url: `data:${image.mimeType || 'image/png'};base64,${image.data}` },
   };
+}
+
+function openAIChatBody(model, images, prompt, imageFirst = false, maxTokens = DEFAULT_VISION_MAX_TOKENS) {
+  const imageParts = (Array.isArray(images) ? images : [images]).map(imageUrlPart);
   const textPart = { type: 'text', text: prompt };
   return {
     model,
-    messages: [{ role: 'user', content: imageFirst ? [imagePart, textPart] : [textPart, imagePart] }],
-    max_tokens: VISION_MAX_TOKENS,
+    messages: [{ role: 'user', content: imageFirst ? [...imageParts, textPart] : [textPart, ...imageParts] }],
+    max_tokens: maxTokens,
     temperature: 0,
     stream: false,
   };
 }
 
-function openAIResponsesBody(model, image, prompt) {
+function inputImagePart(image) {
+  return { type: 'input_image', image_url: `data:${image.mimeType || 'image/png'};base64,${image.data}` };
+}
+
+function openAIResponsesBody(model, images, prompt, maxTokens = DEFAULT_VISION_MAX_TOKENS) {
   return {
     model,
     input: [{ role: 'user', content: [
       { type: 'input_text', text: prompt },
-      { type: 'input_image', image_url: `data:${image.mimeType || 'image/png'};base64,${image.data}` },
+      ...(Array.isArray(images) ? images : [images]).map(inputImagePart),
     ] }],
-    max_output_tokens: VISION_MAX_TOKENS,
+    max_output_tokens: maxTokens,
     temperature: 0,
     stream: false,
   };
 }
 
-function anthropicBody(model, image, prompt) {
+function anthropicImagePart(image) {
+  return { type: 'image', source: { type: 'base64', media_type: image.mimeType || 'image/png', data: image.data } };
+}
+
+function anthropicBody(model, images, prompt, maxTokens = DEFAULT_VISION_MAX_TOKENS) {
   return {
     model,
     messages: [{ role: 'user', content: [
       { type: 'text', text: prompt },
-      { type: 'image', source: { type: 'base64', media_type: image.mimeType || 'image/png', data: image.data } },
+      ...(Array.isArray(images) ? images : [images]).map(anthropicImagePart),
     ] }],
-    max_tokens: VISION_MAX_TOKENS,
+    max_tokens: maxTokens,
     temperature: 0,
     stream: false,
   };
 }
 
-function protocolCandidates(provider, target, image, prompt) {
+function protocolCandidates(provider, target, images, prompt, options = {}) {
   const model = target.model || provider.defaultModel;
   const chatPath = openAIChatPath(provider, target);
   const responsesPath = openAIResponsesPath(provider, target);
   const messagesPath = anthropicPath(provider, target);
+  const maxTokens = normalizeVisionOptions(options).maxTokens;
   return [
     {
       label: 'openai-chat',
       url: fullUrl(provider, chatPath),
       headers: { authorization: `Bearer ${provider.apiKey}` },
-      body: openAIChatBody(model, image, prompt, false),
+      body: openAIChatBody(model, images, prompt, false, maxTokens),
     },
     {
       label: 'openai-chat-image-first',
       url: fullUrl(provider, chatPath),
       headers: { authorization: `Bearer ${provider.apiKey}` },
-      body: openAIChatBody(model, image, prompt, true),
+      body: openAIChatBody(model, images, prompt, true, maxTokens),
     },
     {
       label: 'openai-responses',
       url: fullUrl(provider, responsesPath),
       headers: { authorization: `Bearer ${provider.apiKey}` },
-      body: openAIResponsesBody(model, image, prompt),
+      body: openAIResponsesBody(model, images, prompt, maxTokens),
     },
     {
       label: 'anthropic-messages',
       url: fullUrl(provider, messagesPath),
       headers: { 'x-api-key': provider.apiKey, 'anthropic-version': '2023-06-01' },
-      body: anthropicBody(model, image, prompt),
+      body: anthropicBody(model, images, prompt, maxTokens),
     },
     {
       label: 'anthropic-messages-bearer',
       url: fullUrl(provider, messagesPath),
       headers: { authorization: `Bearer ${provider.apiKey}`, 'anthropic-version': '2023-06-01' },
-      body: anthropicBody(model, image, prompt),
+      body: anthropicBody(model, images, prompt, maxTokens),
     },
   ];
 }
 
-async function describeImageWithTarget(provider, target, image, userText) {
-  const key = cacheKey(target, image.data);
+async function describeImageWithTarget(provider, target, image, contextText, options = {}) {
+  const opts = normalizeVisionOptions(options);
   const meta = imageMeta(image);
+  const prompt = visionPrompt(contextText, { imageCount: 1 });
+  const key = cacheKey(target, image.data, prompt, opts);
   const cached = cacheGet(key);
   if (cached) return { text: cached, cached: true, protocol: 'cache', ...meta };
 
-  const prompt = visionPrompt(userText);
   const errors = [];
   let apiCalls = 0;
-  for (const candidate of protocolCandidates(provider, target, image, prompt)) {
+  for (const candidate of protocolCandidates(provider, target, image, prompt, opts)) {
     try {
       apiCalls++;
       const res = await requestJson(candidate.url, candidate.headers, candidate.body);
@@ -320,6 +455,60 @@ async function describeImageWithTarget(provider, target, image, userText) {
         cacheSet(key, text);
         console.log(`  👁️  图片理解命中: ${provider.name}/${target.model || provider.defaultModel} (${candidate.label})`);
         return { text, cached: false, protocol: candidate.label, apiCalls, ...meta };
+      }
+      errors.push(`${candidate.label}: empty/missing-image`);
+    } catch (e) {
+      errors.push(`${candidate.label}: ${e.message}`);
+    }
+  }
+  const err = new Error(errors.join(' | ') || 'no protocol candidate worked');
+  err.apiCalls = apiCalls;
+  throw err;
+}
+
+async function describeImageBatchWithTarget(provider, target, images, contextText, options = {}) {
+  const opts = normalizeVisionOptions(options);
+  const prompt = visionPrompt(contextText, { imageCount: images.length });
+  const key = batchCacheKey(target, images, prompt, opts);
+  const cached = cacheGet(key);
+  const metas = images.map(imageMeta);
+  const totalBytes = metas.reduce((sum, meta) => sum + meta.imageBytes, 0);
+  const base64Length = metas.reduce((sum, meta) => sum + meta.base64Length, 0);
+  if (cached) {
+    return {
+      text: cached,
+      cached: true,
+      protocol: 'cache',
+      imageHashes: metas.map(meta => meta.imageHash),
+      imageBytes: totalBytes,
+      base64Length,
+      apiCalls: 0,
+    };
+  }
+
+  const errors = [];
+  let apiCalls = 0;
+  for (const candidate of protocolCandidates(provider, target, images, prompt, opts)) {
+    try {
+      apiCalls++;
+      const res = await requestJson(candidate.url, candidate.headers, candidate.body);
+      if (res.statusCode < 200 || res.statusCode >= 300) {
+        errors.push(`${candidate.label}: HTTP ${res.statusCode}`);
+        continue;
+      }
+      const text = extractText(res.json);
+      if (usefulDescription(text)) {
+        cacheSet(key, text);
+        console.log(`  👁️  批量图片理解命中: ${provider.name}/${target.model || provider.defaultModel} (${candidate.label}, ${images.length} images)`);
+        return {
+          text,
+          cached: false,
+          protocol: candidate.label,
+          imageHashes: metas.map(meta => meta.imageHash),
+          imageBytes: totalBytes,
+          base64Length,
+          apiCalls,
+        };
       }
       errors.push(`${candidate.label}: empty/missing-image`);
     } catch (e) {
@@ -503,10 +692,89 @@ function repeatedImageBlock({ ref, imageHash, messageIndex, blockIndex, textBloc
   };
 }
 
+function formatRefList(refs = []) {
+  const unique = [...new Set(refs)].filter(ref => Number.isFinite(ref));
+  if (unique.length === 0) return '';
+  if (unique.length === 1) return `#${unique[0]}`;
+  const contiguous = unique.every((ref, idx) => idx === 0 || ref === unique[idx - 1] + 1);
+  return contiguous ? `#${unique[0]}-#${unique[unique.length - 1]}` : unique.map(ref => `#${ref}`).join('、');
+}
+
+function batchImageDescriptionBlock({ refs, description, imageHashes, messageIndex, blockIndexes, cached, textBlockType = 'text' }) {
+  const refLabel = formatRefList(refs);
+  const cache = cached ? '；未重新调用图片理解模型' : '';
+  const sources = blockIndexes.map((idx, i) => `图片 #${refs[i]}=第 ${messageIndex + 1} 条用户消息，第 ${idx + 1} 张图片，imageHash=${imageHashes[i]}`).join('；');
+  return {
+    type: textBlockType,
+    text: `\n\n[第三方图片理解：批量图片 ${refLabel}]\n来源：${sources}${cache}\n内容：\n${description}`,
+  };
+}
+
+function batchImageReferenceBlock({ ref, batchRefs, imageHash, messageIndex, blockIndex, textBlockType = 'text' }) {
+  const refLabel = formatRefList(batchRefs);
+  return {
+    type: textBlockType,
+    text: `\n\n[第三方图片理解：图片 #${ref}]\n来源：第 ${messageIndex + 1} 条用户消息，第 ${blockIndex + 1} 张图片；imageHash=${imageHash}\n这张图片已包含在上方批量图片 ${refLabel} 的描述中。`,
+  };
+}
+
+function chunkArray(items, size) {
+  const out = [];
+  for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size));
+  return out;
+}
+
+async function describeWithTargets(targets, providers, image, contextText, options) {
+  let failedApiCalls = 0;
+  const targetErrors = [];
+  for (const target of targets) {
+    const provider = providers.get(target.providerId);
+    if (!provider || provider.enabled === false) {
+      targetErrors.push(`${target.providerId}: provider unavailable`);
+      continue;
+    }
+    try {
+      const outcome = await describeImageWithTarget(provider, target, image, contextText, options);
+      return { provider, target, outcome, failedApiCalls, targetErrors };
+    } catch (e) {
+      failedApiCalls += Number.isFinite(e.apiCalls) ? e.apiCalls : 0;
+      targetErrors.push(`${provider.name}/${target.model}: ${e.message}`);
+    }
+  }
+  const err = new Error(targetErrors.join(' | '));
+  err.apiCalls = failedApiCalls;
+  err.targetErrors = targetErrors;
+  throw err;
+}
+
+async function describeBatchWithTargets(targets, providers, images, contextText, options) {
+  let failedApiCalls = 0;
+  const targetErrors = [];
+  for (const target of targets) {
+    const provider = providers.get(target.providerId);
+    if (!provider || provider.enabled === false) {
+      targetErrors.push(`${target.providerId}: provider unavailable`);
+      continue;
+    }
+    try {
+      const outcome = await describeImageBatchWithTarget(provider, target, images, contextText, options);
+      return { provider, target, outcome, failedApiCalls, targetErrors };
+    } catch (e) {
+      failedApiCalls += Number.isFinite(e.apiCalls) ? e.apiCalls : 0;
+      targetErrors.push(`${provider.name}/${target.model}: ${e.message}`);
+    }
+  }
+  const err = new Error(targetErrors.join(' | '));
+  err.apiCalls = failedApiCalls;
+  err.targetErrors = targetErrors;
+  throw err;
+}
+
 export async function preprocessImagesWithThirdPartyVision(messages, imageModels, providers, context = {}) {
   if (!hasImageBlocks(messages)) return { messages, conversions: [] };
   const targets = Array.isArray(imageModels) ? imageModels.filter(t => t?.providerId && t?.model) : [];
   if (targets.length === 0) throw new Error('没有有效的第三方图片理解目标');
+  const options = normalizeVisionOptions(context.visionOptions || context);
 
   const conversions = [];
   const processed = [];
@@ -524,6 +792,121 @@ export async function preprocessImagesWithThirdPartyVision(messages, imageModels
 
     const keptBlocks = [];
     const userText = textFromMessage(msg);
+    const messageContext = visionContextForMessage(sourceMessages, messageIndex, userText, options);
+    const imageEntries = [];
+    for (let blockIndex = 0; blockIndex < msg.content.length; blockIndex++) {
+      const block = msg.content[blockIndex];
+      const image = imageFromBlock(block);
+      if (image) {
+        imageEntries.push({ blockIndex, image, textBlockType: image.textBlockType || 'text' });
+      }
+    }
+
+    if (imageEntries.length > 1 && options.multiImageMode !== 'single') {
+      const replacements = new Map();
+      const groups = options.multiImageMode === 'chunk'
+        ? chunkArray(imageEntries, options.batchSize)
+        : [imageEntries];
+      for (const group of groups) {
+        const images = group.map(entry => entry.image);
+        const metas = images.map(imageMeta);
+        try {
+          const { provider, target, outcome } = await describeBatchWithTargets(targets, providers, images, messageContext, options);
+          const imageHashes = outcome.imageHashes || metas.map(meta => meta.imageHash);
+          const memoryEntries = group.map((entry, idx) => rememberConversationImage(memory, metas[idx].imageHash, {
+            description: `这张图片属于一次批量图片理解，完整批量描述如下：\n${outcome.text}`,
+            providerId: provider.id,
+            providerName: provider.name,
+            model: target.model || provider.defaultModel,
+            mimeType: entry.image.mimeType,
+          }));
+          const refs = memoryEntries.map(entry => entry.ref);
+          const conversion = {
+            kind: 'image_batch',
+            providerId: provider.id,
+            providerName: provider.name,
+            model: target.model || provider.defaultModel,
+            protocol: outcome.protocol,
+            cached: outcome.cached,
+            mimeType: images.map(image => image.mimeType).join(','),
+            imageHashes,
+            imageBytes: outcome.imageBytes,
+            base64Length: outcome.base64Length,
+            apiCalls: outcome.apiCalls || 0,
+            textLength: outcome.text.length,
+            messageIndex,
+            blockIndexes: group.map(entry => entry.blockIndex),
+            imageRefs: refs,
+            textBlockType: group[0].textBlockType || 'text',
+            batchSize: group.length,
+          };
+          conversions.push(conversion);
+          recordVisionFallback({
+            ...context,
+            conversationKey,
+            ...conversion,
+            description: outcome.text,
+            userTextPreview: textPreview(userText),
+          });
+          group.forEach((entry, idx) => {
+            requestImages.set(metas[idx].imageHash, {
+              ref: refs[idx],
+              description: `这张图片属于一次批量图片理解，完整批量描述如下：\n${outcome.text}`,
+              conversion: {
+                ...conversion,
+                kind: 'image_batch_reference',
+                imageHash: imageHashes[idx],
+                imageRef: refs[idx],
+                blockIndex: entry.blockIndex,
+              },
+            });
+            if (idx === 0) {
+              replacements.set(entry.blockIndex, batchImageDescriptionBlock({
+                refs,
+                description: outcome.text,
+                imageHashes,
+                messageIndex,
+                blockIndexes: conversion.blockIndexes,
+                cached: outcome.cached,
+                textBlockType: entry.textBlockType,
+              }));
+            } else {
+              replacements.set(entry.blockIndex, batchImageReferenceBlock({
+                ref: refs[idx],
+                batchRefs: refs,
+                imageHash: imageHashes[idx],
+                messageIndex,
+                blockIndex: entry.blockIndex,
+                textBlockType: entry.textBlockType,
+              }));
+            }
+          });
+        } catch (e) {
+          const error = `第三方批量图片理解目标全部失败: ${e.targetErrors?.join(' | ') || e.message}`;
+          recordVisionFallback({
+            ...context,
+            conversationKey,
+            status: 'error',
+            kind: 'image_batch',
+            apiCalls: Number.isFinite(e.apiCalls) ? e.apiCalls : 0,
+            messageIndex,
+            blockIndexes: group.map(entry => entry.blockIndex),
+            imageHashes: metas.map(meta => meta.imageHash),
+            userTextPreview: textPreview(userText),
+            error,
+          });
+          throw new Error(error);
+        }
+      }
+      if (replacements.size > 0) {
+        for (let blockIndex = 0; blockIndex < msg.content.length; blockIndex++) {
+          keptBlocks.push(replacements.get(blockIndex) || msg.content[blockIndex]);
+        }
+        processed.push({ ...msg, content: keptBlocks });
+        continue;
+      }
+    }
+
     for (let blockIndex = 0; blockIndex < msg.content.length; blockIndex++) {
       const block = msg.content[blockIndex];
       const image = imageFromBlock(block);
@@ -570,8 +953,6 @@ export async function preprocessImagesWithThirdPartyVision(messages, imageModels
       }
 
       let description = remembered?.description || '';
-      let failedApiCalls = 0;
-      const targetErrors = [];
       let conversion = null;
 
       if (description) {
@@ -596,50 +977,55 @@ export async function preprocessImagesWithThirdPartyVision(messages, imageModels
           textBlockType,
         };
       } else {
-        for (const target of targets) {
-          const provider = providers.get(target.providerId);
-          if (!provider || provider.enabled === false) {
-            targetErrors.push(`${target.providerId}: provider unavailable`);
-            continue;
-          }
-          try {
-            const outcome = await describeImageWithTarget(provider, target, image, userText);
-            description = outcome.text;
-            conversion = {
-              kind: 'image',
-              providerId: provider.id,
-              providerName: provider.name,
-              model: target.model || provider.defaultModel,
-              protocol: outcome.protocol,
-              cached: outcome.cached,
-              mimeType: image.mimeType,
-              imageHash: outcome.imageHash,
-              imageBytes: outcome.imageBytes,
-              base64Length: outcome.base64Length,
-              apiCalls: outcome.apiCalls || 0,
-              textLength: description.length,
-              messageIndex,
-              blockIndex,
-              duplicateInRequest: false,
-              seenInConversation: false,
-              textBlockType,
-            };
-            break;
-          } catch (e) {
-            failedApiCalls += Number.isFinite(e.apiCalls) ? e.apiCalls : 0;
-            targetErrors.push(`${provider.name}/${target.model}: ${e.message}`);
-          }
+        try {
+          const { provider, target, outcome } = await describeWithTargets(targets, providers, image, messageContext, options);
+          description = outcome.text;
+          conversion = {
+            kind: 'image',
+            providerId: provider.id,
+            providerName: provider.name,
+            model: target.model || provider.defaultModel,
+            protocol: outcome.protocol,
+            cached: outcome.cached,
+            mimeType: image.mimeType,
+            imageHash: outcome.imageHash,
+            imageBytes: outcome.imageBytes,
+            base64Length: outcome.base64Length,
+            apiCalls: outcome.apiCalls || 0,
+            textLength: description.length,
+            messageIndex,
+            blockIndex,
+            duplicateInRequest: false,
+            seenInConversation: false,
+            textBlockType,
+          };
+        } catch (e) {
+          const targetErrors = e.targetErrors || [e.message];
+          const failedApiCalls = Number.isFinite(e.apiCalls) ? e.apiCalls : 0;
+          const error = `第三方图片理解目标全部失败: ${targetErrors.join(' | ')}`;
+          recordVisionFallback({
+            ...context,
+            conversationKey,
+            ...meta,
+            status: 'error',
+            apiCalls: failedApiCalls,
+            messageIndex,
+            blockIndex,
+            userTextPreview: textPreview(userText),
+            error,
+          });
+          throw new Error(error);
         }
       }
 
       if (!description || !conversion) {
-        const error = `第三方图片理解目标全部失败: ${targetErrors.join(' | ')}`;
+        const error = '第三方图片理解目标全部失败: 未返回有效描述';
         recordVisionFallback({
           ...context,
           conversationKey,
           ...meta,
           status: 'error',
-          apiCalls: failedApiCalls,
+          apiCalls: 0,
           messageIndex,
           blockIndex,
           userTextPreview: textPreview(userText),

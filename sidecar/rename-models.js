@@ -645,6 +645,7 @@ function buildUnlockSet() {
     labelTemplate = (m.labelTemplate || '').trim();
     unlockScope = normalizeUnlockScope(m.unlockScope || m.slotDisplayMode);
     slotVisibilityMode = normalizeSlotVisibilityMode(m.slotVisibilityMode);
+    unlockAll = !(m.enhancement && typeof m.enhancement === 'object' && m.enhancement.unlockModels === false);
     for (const item of (Array.isArray(m.slotVisibility) ? m.slotVisibility : [])) {
       if (item && item.modelUid) slotVisibility.set(item.modelUid, item.visible !== false);
     }
@@ -866,7 +867,7 @@ function existingRewriteSpec(uid, origLabel, wasDisabled, cfg, ctx) {
     };
   }
 
-  if (!ctx.unlockAll) return { keep: false };
+  if (!ctx.unlockAll) return { keep: true, passthrough: true };
 
   const overridePlan = visibleByOverride(uid, ctx.slotVisibility)
     ? visibleOverridePlan(uid, wasDisabled, ctx.slotVisibility)
@@ -952,7 +953,7 @@ function unconfiguredCatalogMissingSpecs(seenUids, ctx) {
 function missingModelSpecs(seenUids, ctx) {
   return [
     ...configuredMissingSpecs(seenUids, ctx),
-    ...unconfiguredCatalogMissingSpecs(seenUids, ctx),
+    ...(ctx.unlockAll ? unconfiguredCatalogMissingSpecs(seenUids, ctx) : []),
   ];
 }
 
@@ -1083,6 +1084,11 @@ function rewriteForUnlock(buf, counter, depth, ctx, state) {
             const wasDisabled = findVarintField(child, 4) === 1;
             const origLabel = findField1Label(child) || '';
             const spec = existingRewriteSpec(uid, origLabel, wasDisabled, cfg, ctx);
+            if (spec.passthrough) {
+              parts.push(tagBytes, encVarint(child.length), child);
+              i = end;
+              continue;
+            }
             if (!spec.keep) {
               counter.n++;
               mutated = true;
@@ -1265,6 +1271,10 @@ function unlockInJson(text, unlockAll, byUid, defaultProviderName = '', labelTem
         seenUids.add(uid);
         const cfg = byUid.get(uid);
         const spec = existingRewriteSpec(uid, item.label || uid, item.disabled === true, cfg, ctx);
+        if (spec.passthrough) {
+          next.push(item);
+          continue;
+        }
         if (!spec.keep) continue;
         const out = { ...item };
         if (spec.newLabel) out.label = spec.newLabel;

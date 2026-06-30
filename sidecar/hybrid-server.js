@@ -1045,6 +1045,7 @@ function logBanner() {
   console.log(`     Everything else → real Codeium (trial account)`);
   console.log(`\n   LOCAL COMPATIBLE API:`);
   console.log(`     OpenAI  -> http://localhost:${PORT}/v1`);
+  console.log(`     Codex   -> http://localhost:${PORT}/codex/v1`);
   console.log(`     Claude  -> http://localhost:${PORT}/anthropic`);
 
   console.log(`\n   PASSTHROUGH (blind TCP pipe):`);

@@ -14,7 +14,7 @@ import {
   codexUnlockHeaders,
   normalizeClaudeCodeUnlock,
 } from './lib/codex-unlock.js';
-import { getProxyRoutes } from './config-cache.js';
+import { getCodexProxyRoutes, getProxyRoutes } from './config-cache.js';
 import { loadModelMapConfig, loadProviders, resolveTarget } from './provider-pool.js';
 import { preprocessImagesWithThirdPartyVision } from './vision-fallback.js';
 import { httpsAgentFor } from './system-proxy.js';
@@ -67,11 +67,22 @@ export function isLocalProxyRequest(req) {
   return p === '/v1/models'
     || p === '/v1/chat/completions'
     || p === '/v1/responses'
+    || p === '/codex/v1/models'
+    || p === '/codex/v1/chat/completions'
+    || p === '/codex/v1/responses'
     || p === '/anthropic/v1/models'
     || p === '/anthropic/v1/messages'
     || p === '/anthropic/messages'
     || p === '/anthropic/v1/messages/count_tokens'
     || p === '/anthropic/messages/count_tokens';
+}
+
+function proxyScopeForPath(pathname) {
+  return String(pathname || '').startsWith('/codex/') ? 'codex' : 'default';
+}
+
+function isCodexProxyScope(scope) {
+  return scope === 'codex';
 }
 
 function cors(extra = {}) {
@@ -128,54 +139,147 @@ function validateAuth(req) {
   return { ok: true };
 }
 
-function proxyRouteRows(kind) {
-  const store = getProxyRoutes();
-  if (store.loadError) throw new Error(`本地代理模型列表读取失败: ${store.loadError}`);
+// ─── 本地代理模型 ID 命名规则(跟 Devin 显示名设置一样:只存规则,运行时套用,不硬写 route.id)───
+const RENAME_TEMPLATE_VARS = ['prefix', 'model', 'provider', 'suffix'];
+
+function renderProxyRouteIdTemplate(tpl, vars) {
+  // 多次扫描直到稳定,支持"占位符的值里再嵌占位符"(例如后缀 ({provider}))
+  let out = String(tpl || '');
+  const MAX = 8;
+  for (let pass = 0; pass < MAX; pass++) {
+    let prev = out;
+    for (const k of RENAME_TEMPLATE_VARS) {
+      out = out.replace(new RegExp('\\{' + k + '\\}', 'g'), vars[k] == null ? '' : String(vars[k]));
+    }
+    if (out === prev) break;
+  }
+  return out.trim();
+}
+
+/** 获取命名规则(从 model-map.json 的 proxyRouteRenameRule 字段)。*/
+function proxyRouteRenameRule() {
+  const map = loadModelMapConfig();
+  const rule = map && map.proxyRouteRenameRule;
+  if (!rule || typeof rule !== 'object') return null;
+  // 规则被禁用 → 不改名
+  if (rule.enabled === false) return null;
+  const prefix = String(rule.prefix || '');
+  const suffix = String(rule.suffix || '');
+  const template = String(rule.template || '');
+  // 空规则 = 不改名
+  if (!prefix && !suffix && !template) return null;
+  const mode = String(rule.mode || 'simple');
+  const tpl = mode === 'custom' && template ? template : '{prefix}{model}{suffix}';
+  return { mode, prefix, suffix, template, tpl };
+}
+
+/** 获取供应商名(从 providers.json 的 id→name 映射)。*/
+function providerNameById(providerId) {
+  const providers = loadProviders();
+  const p = providers instanceof Map
+    ? providers.get(providerId)
+    : (Array.isArray(providers) ? providers.find(p => p.id === providerId) : null);
+  return p ? (p.name || p.id || '') : '';
+}
+
+/** 把 route.id 按命名规则渲染成"对外暴露的新 ID"。规则为空时返回原始 id。*/
+function renderedProxyRouteId(route, options = {}) {
+  if (options.applyRename === false) return route.id;
+  if (route?.idFromRenameRule === true || route?.id_from_rename_rule === true) return route.id;
+  const rule = proxyRouteRenameRule();
+  if (!rule) return route.id;
+  const firstTarget = Array.isArray(route.targets) && route.targets.length > 0 ? route.targets[0] : null;
+  const providerName = firstTarget ? providerNameById(firstTarget.providerId) : '';
+  const newId = renderProxyRouteIdTemplate(rule.tpl, {
+    prefix: rule.prefix,
+    model: route.id,
+    provider: providerName,
+    suffix: rule.suffix,
+  });
+  return newId || route.id;
+}
+
+function routeExposedFormats(route) {
+  const formats = Array.isArray(route?.exposedFormats) ? route.exposedFormats : [];
+  const normalized = formats.map(fmt => String(fmt || '').trim().toLowerCase()).filter(Boolean);
+  return normalized.length ? normalized : ['openai', 'anthropic'];
+}
+
+function localProxyKind(kind) {
+  return kind === 'anthropic' ? 'anthropic' : 'openai';
+}
+
+function routeSupportsKind(route, kind) {
+  return routeExposedFormats(route).includes(localProxyKind(kind));
+}
+
+function routeAliases(route, options = {}) {
+  const aliases = [String(route.id || '').trim()].filter(Boolean);
+  const exposed = renderedProxyRouteId(route, options);
+  if (exposed && exposed !== route.id) aliases.push(exposed);
+  return aliases;
+}
+
+/** 构建"对外暴露 ID → 原始 route"查找表,供 resolveProxyModel 做反向解析。*/
+function buildExposedIdLookup(routes, options = {}) {
+  const lookup = new Map();
+  for (const route of routes) {
+    for (const alias of routeAliases(route, options)) {
+      const previous = lookup.get(alias);
+      if (previous && previous !== route) {
+        throw new Error(`本地代理暴露模型 ID 冲突: ${alias} 同时匹配 ${previous.id} 和 ${route.id}。请调整模型 ID 或命名规则。`);
+      }
+      lookup.set(alias, route);
+    }
+  }
+  return lookup;
+}
+
+function proxyRouteStore(scope) {
+  return isCodexProxyScope(scope) ? getCodexProxyRoutes() : getProxyRoutes();
+}
+
+function proxyRouteStoreMissingMessage(scope) {
+  return isCodexProxyScope(scope)
+    ? 'Codex 专用代理模型列表为空。请在「更多平台 > Codex」重新切换第三方配置。'
+    : '本地代理模型列表为空。请在「代理 > 模型列表」添加模型。';
+}
+
+function proxyRouteStoreReadErrorPrefix(scope) {
+  return isCodexProxyScope(scope) ? 'Codex 专用代理模型列表读取失败' : '本地代理模型列表读取失败';
+}
+
+function proxyRouteRows(kind, options = {}) {
+  const store = proxyRouteStore(options.scope);
+  if (store.loadError) throw new Error(`${proxyRouteStoreReadErrorPrefix(options.scope)}: ${store.loadError}`);
   if (!store.fileExists) return [];
-  return (store.routes || [])
+  const lookupOptions = { applyRename: options.applyRename !== false };
+  const candidates = (store.routes || [])
     .filter(route => route.enabled !== false)
     .filter(route => Array.isArray(route.targets) && route.targets.length > 0)
-    .map(route => ({ id: route.id, name: route.id }))
+    .filter(route => routeSupportsKind(route, kind));
+  buildExposedIdLookup(candidates, lookupOptions);
+  return candidates
+    .map(route => {
+      const exposedId = renderedProxyRouteId(route, lookupOptions);
+      return { id: exposedId, name: exposedId };
+    })
     .sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
 }
 
-function readCodexModelCatalog() {
-  try {
-    const home = os.homedir();
-    const codexDir = path.join(home, '.codex');
-    const catalogFile = path.join(codexDir, 'anybridge-model-catalog.json');
-    if (!fs.existsSync(catalogFile)) return [];
-    const raw = fs.readFileSync(catalogFile, 'utf8');
-    const parsed = JSON.parse(raw);
-    // Codex 模型目录为 ModelsResponse 格式 {"models": [...]}；
-    // 兼容旧版顶层数组 [...] 写法。
-    const arr = Array.isArray(parsed)
-      ? parsed
-      : (parsed && Array.isArray(parsed.models) ? parsed.models : []);
-    if (!Array.isArray(arr)) return [];
-    return arr.map(e => ({ id: e.slug || e.model || '', name: e.display_name || e.slug || e.model || '' })).filter(e => e.id);
-  } catch {
-    return [];
-  }
-}
-
 function handleModels(req, res) {
-  const anthropic = pathnameOf(req).startsWith('/anthropic/');
+  const pathname = pathnameOf(req);
+  const anthropic = pathname.startsWith('/anthropic/');
+  const scope = proxyScopeForPath(pathname);
   let rows;
   try {
-    rows = proxyRouteRows(anthropic ? 'anthropic' : 'openai');
+    rows = proxyRouteRows(anthropic ? 'anthropic' : 'openai', {
+      scope,
+      applyRename: !isCodexProxyScope(scope),
+    });
   } catch (e) {
     sendError(res, 500, e.message || String(e), 'configuration_error');
     return;
-  }
-  // 合并 Codex 模型目录（如果存在）
-  const catalogModels = readCodexModelCatalog();
-  const seen = new Set(rows.map(r => r.id));
-  for (const cm of catalogModels) {
-    if (!seen.has(cm.id)) {
-      rows.push(cm);
-      seen.add(cm.id);
-    }
   }
   if (anthropic) {
     sendJson(res, 200, { data: rows.map(m => ({ id: m.id, type: 'model', display_name: m.name, created_at: '2026-01-01T00:00:00Z' })), has_more: false, first_id: rows[0]?.id || null, last_id: rows[rows.length - 1]?.id || null });
@@ -325,22 +429,50 @@ function routeAsSlot(route) {
   };
 }
 
-function resolveProxyModel(model, kind) {
-  const store = getProxyRoutes();
-  if (store.loadError) return { error: `本地代理模型列表读取失败: ${store.loadError}` };
-  if (!store.fileExists) return { error: '本地代理模型列表为空。请在「代理 > 模型列表」添加模型。' };
+function resolveProxyModel(model, kind, options = {}) {
+  const scope = options.scope || 'default';
+  const store = proxyRouteStore(scope);
+  if (store.loadError) return { error: `${proxyRouteStoreReadErrorPrefix(scope)}: ${store.loadError}` };
+  if (!store.fileExists) return { error: proxyRouteStoreMissingMessage(scope) };
 
   const requested = String(model || '').trim();
   if (!requested) return { error: '请求缺少 model，无法匹配本地代理模型列表。' };
-  const modelId = requested;
-  const route = (store.routes || []).find(item => item.id === modelId);
-  if (!route) return { error: `模型不在本地代理模型列表中: ${modelId}` };
-  if (route.enabled === false) return { error: `本地代理模型已禁用: ${modelId}` };
+
+  // 反向解析:先在"对外暴露 ID → 原始 route"查找表里找
+  // (支持命名规则渲染后的新 ID,也兼容原始 ID)
+  const routes = store.routes || [];
+  const candidates = routes.filter(route => routeSupportsKind(route, kind));
+  let lookup;
+  const lookupOptions = { applyRename: options.applyRename !== false };
+  try {
+    lookup = buildExposedIdLookup(candidates, lookupOptions);
+  } catch (e) {
+    return { error: e.message || String(e) };
+  }
+  const route = lookup.get(requested);
+  if (!route) {
+    const routeWithOtherFormat = routes.find(route => routeAliases(route, lookupOptions).includes(requested));
+    if (routeWithOtherFormat) {
+      return { error: `模型 ${requested} 未暴露为 ${localProxyKind(kind)} 兼容入口。` };
+    }
+    return { error: `模型不在本地代理模型列表中: ${requested}` };
+  }
+  if (route.enabled === false) return { error: `本地代理模型已禁用: ${requested}` };
   if (!Array.isArray(route.targets) || route.targets.length === 0) {
-    return { error: `本地代理模型没有可用上游目标: ${modelId}` };
+    return { error: `本地代理模型没有可用上游目标: ${requested}` };
   }
   return { slot: routeAsSlot(route), route };
 }
+
+export const __localProxyTest = {
+  buildExposedIdLookup,
+  renderedProxyRouteId,
+  routeSupportsKind,
+  normalizeRequest,
+  applyParamOverrides,
+  applyToolEnhancement,
+  upstreamBody,
+};
 
 function hasImage(messages) {
   return messages.some(m => Array.isArray(m.content) && m.content.some(p => p.type === 'image'));
@@ -392,7 +524,10 @@ function openAITools(tools) {
 }
 
 function upstreamBody(conn, ctx) {
-  const extras = ctx.preserveExtraParams === true ? (ctx.extraParams || {}) : {};
+  const extras = {
+    ...(ctx.preserveExtraParams === true ? (ctx.extraParams || {}) : {}),
+    ...(ctx.paramOverrideExtras || {}),
+  };
   if (conn.format === 'anthropic') {
     const claudeCodeUnlock = conn.unlockKind === 'claudeCode' ? normalizeClaudeCodeUnlock(conn.unlocks?.claudeCode) : null;
     if (claudeCodeUnlock) {
@@ -590,7 +725,14 @@ async function maybeVisionFallback(ctx, slot, providers, mapConfig) {
   if (!hasImage(ctx.messages) || slot.useThirdPartyVision !== true || mapConfig?.enhancement?.imageFallback === false) return ctx;
   const visionModels = mapConfig?.visionModels?.imageModels || [];
   if (!visionModels.length) throw new Error(`模型「${slot.displayName || slot.modelUid || ctx.model}」启用了第三方图片理解，但代理增强里没有配置图片理解模型。`);
-  const fbCtx = { requestId: crypto.randomUUID(), requestedModel: ctx.model, slotModelUid: slot.modelUid || ctx.model, slotDisplayName: slot.displayName || ctx.model };
+  const visionOptions = {
+    maxTokens: mapConfig?.enhancement?.visionMaxTokens,
+    contextMode: mapConfig?.enhancement?.visionContextMode,
+    contextMaxChars: mapConfig?.enhancement?.visionContextMaxChars,
+    multiImageMode: mapConfig?.enhancement?.visionMultiImageMode,
+    batchSize: mapConfig?.enhancement?.visionBatchSize,
+  };
+  const fbCtx = { requestId: crypto.randomUUID(), requestedModel: ctx.model, slotModelUid: slot.modelUid || ctx.model, slotDisplayName: slot.displayName || ctx.model, visionOptions };
   const result = await preprocessImagesWithThirdPartyVision(ctx.messages, visionModels, providers, fbCtx);
 
   // 同步降级原始请求体：Responses→Chat 旁路会直接用 ctx.rawBody 重建上游请求
@@ -657,6 +799,101 @@ function checkRateLimit(model, rpm) {
   return true;
 }
 
+function toolName(tool) {
+  return String(tool?.name || tool?.function?.name || '').trim();
+}
+
+function toolChoiceName(choice) {
+  if (!choice || typeof choice !== 'object') return '';
+  if (choice.type === 'tool') return String(choice.name || '').trim();
+  if (choice.type === 'function') return String(choice.function?.name || choice.name || '').trim();
+  return '';
+}
+
+function applyToolEnhancement(effective, enhancement = {}) {
+  if (enhancement.toolFilterEnabled !== true) return;
+
+  if (enhancement.toolFilterMode && Array.isArray(effective.tools) && effective.tools.length) {
+    const filterSet = new Set((enhancement.toolFilterList || []).map(n => String(n || '').trim()).filter(Boolean));
+    if (filterSet.size) {
+      effective.tools = effective.tools.filter(tool => {
+        const name = toolName(tool);
+        if (enhancement.toolFilterMode === 'allow') return filterSet.has(name);
+        if (enhancement.toolFilterMode === 'deny') return !filterSet.has(name);
+        return true;
+      });
+    }
+  }
+
+  if (enhancement.forceToolChoice) {
+    effective.toolChoice = enhancement.forceToolChoice;
+  }
+
+  const chosenTool = toolChoiceName(effective.toolChoice);
+  if (chosenTool) {
+    const available = new Set((effective.tools || []).map(toolName).filter(Boolean));
+    if (!available.has(chosenTool)) {
+      throw new LocalProxyUpstreamError(`工具过滤后 tool_choice 指向不可用工具: ${chosenTool}`, {
+        status: 400,
+        type: 'invalid_request_error',
+      });
+    }
+  }
+}
+
+function assignPositiveInteger(target, key, value, label) {
+  const n = Number(value);
+  if (!Number.isInteger(n) || n < 1) {
+    throw new LocalProxyUpstreamError(`${label} 必须是大于 0 的整数`, {
+      status: 400,
+      type: 'invalid_request_error',
+    });
+  }
+  target[key] = n;
+}
+
+function applyParamOverrides(effective, enhancement = {}) {
+  if (enhancement.paramOverridesEnabled !== true) return;
+  const overrides = enhancement.paramOverrides;
+  if (!overrides || typeof overrides !== 'object' || Array.isArray(overrides)) return;
+
+  const extras = { ...(effective.paramOverrideExtras || {}) };
+  for (const [key, value] of Object.entries(overrides)) {
+    if (['max_tokens', 'max_output_tokens', 'max_completion_tokens', 'maxTokens'].includes(key)) {
+      assignPositiveInteger(effective, 'maxTokens', value, key);
+    } else if (key === 'temperature') {
+      const n = Number(value);
+      if (!Number.isFinite(n)) {
+        throw new LocalProxyUpstreamError('temperature 必须是数字', {
+          status: 400,
+          type: 'invalid_request_error',
+        });
+      }
+      effective.temperature = n;
+    } else if (key === 'tool_choice' || key === 'toolChoice') {
+      effective.toolChoice = value;
+    } else if (key === 'system' || key === 'instructions') {
+      effective.system = String(value || '');
+    } else if (key === 'tools') {
+      if (!Array.isArray(value)) {
+        throw new LocalProxyUpstreamError('tools 覆盖值必须是数组', {
+          status: 400,
+          type: 'invalid_request_error',
+        });
+      }
+      effective.tools = value;
+    } else if (['model', 'messages', 'input', 'stream'].includes(key)) {
+      throw new LocalProxyUpstreamError(`请求参数覆盖不支持修改 ${key}`, {
+        status: 400,
+        type: 'invalid_request_error',
+      });
+    } else {
+      extras[key] = value;
+    }
+  }
+  effective.paramOverrideExtras = extras;
+}
+
 // ── 请求日志 ──
 function logRequest(ctx, phase) {
   try {
@@ -677,7 +914,11 @@ function logRequest(ctx, phase) {
 }
 
 export async function execute(ctx) {
-  const resolved = resolveProxyModel(ctx.model, ctx.kind);
+  const scope = ctx.proxyRouteScope || 'default';
+  const resolved = resolveProxyModel(ctx.model, ctx.kind, {
+    scope,
+    applyRename: !isCodexProxyScope(scope),
+  });
   if (resolved.error) throw new Error(resolved.error);
   const providers = loadProviders();
   const mapConfig = loadModelMapConfig();
@@ -698,28 +939,11 @@ export async function execute(ctx) {
     effective.system = [enhancement.systemPromptPrefix, effective.system].filter(Boolean).join('\n\n') || undefined;
   }
 
-  // ── 工具过滤 ──
-  if (enhancement.toolFilterEnabled === true && enhancement.toolFilterMode && Array.isArray(effective.tools) && effective.tools.length) {
-    const filterSet = new Set(enhancement.toolFilterList.map(n => String(n || '').trim()).filter(Boolean));
-    if (filterSet.size) {
-      effective.tools = effective.tools.filter(tool => {
-        const name = tool?.name || tool?.function?.name || '';
-        if (enhancement.toolFilterMode === 'allow') return filterSet.has(name);
-        if (enhancement.toolFilterMode === 'deny') return !filterSet.has(name);
-        return true;
-      });
-    }
-  }
-
-  // ── 强制 tool_choice ──
-  if (enhancement.toolFilterEnabled === true && enhancement.forceToolChoice) {
-    effective.toolChoice = enhancement.forceToolChoice;
-  }
-
   // ── 请求参数覆盖 ──
-  if (enhancement.paramOverridesEnabled === true && enhancement.paramOverrides && typeof enhancement.paramOverrides === 'object') {
-    Object.assign(effective, enhancement.paramOverrides);
-  }
+  applyParamOverrides(effective, enhancement);
+
+  // ── 工具过滤 / 强制 tool_choice ──
+  applyToolEnhancement(effective, enhancement);
 
   // ── 速率限制 ──
   if (enhancement.rateLimitEnabled === true && enhancement.rateLimitRpm > 0) {
@@ -977,14 +1201,19 @@ export async function handleLocalProxyRequest(req, res, body) {
   const auth = validateAuth(req);
   if (!auth.ok) { sendError(res, auth.status, auth.message, 'authentication_error'); return; }
   const p = pathnameOf(req);
-  if (req.method === 'GET' && (p === '/v1/models' || p === '/anthropic/v1/models')) { handleModels(req, res); return; }
+  const scope = proxyScopeForPath(p);
+  const attachScope = (ctx) => {
+    ctx.proxyRouteScope = scope;
+    return ctx;
+  };
+  if (req.method === 'GET' && (p === '/v1/models' || p === '/codex/v1/models' || p === '/anthropic/v1/models')) { handleModels(req, res); return; }
   let json;
   try { json = body && body.length ? JSON.parse(body.toString('utf8')) : {}; }
   catch (e) { sendError(res, 400, `请求 JSON 解析失败: ${e.message}`); return; }
   if (p.endsWith('/messages/count_tokens')) { handleCountTokens(json, res); return; }
   try {
-    if (p === '/v1/chat/completions') { const ctx = normalizeRequest('openai', json); sendOpenAIChat(ctx, res, await execute(ctx)); return; }
-    if (p === '/v1/responses') { const ctx = normalizeRequest('responses', json); sendOpenAIResponses(ctx, res, await execute(ctx)); return; }
+    if (p === '/v1/chat/completions' || p === '/codex/v1/chat/completions') { const ctx = attachScope(normalizeRequest('openai', json)); sendOpenAIChat(ctx, res, await execute(ctx)); return; }
+    if (p === '/v1/responses' || p === '/codex/v1/responses') { const ctx = attachScope(normalizeRequest('responses', json)); sendOpenAIResponses(ctx, res, await execute(ctx)); return; }
     if (p === '/anthropic/v1/messages' || p === '/anthropic/messages') { const ctx = normalizeRequest('anthropic', json); sendAnthropic(ctx, res, await execute(ctx)); return; }
     sendError(res, 404, `未知本地代理路径: ${p}`);
   } catch (e) {
