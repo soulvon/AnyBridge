@@ -2396,6 +2396,72 @@ pub fn kill_sidecar_process() {
     }
 }
 
+pub fn stop_sidecar_for_update(app: AppHandle) -> Result<(), String> {
+    match stop_proxy_service_impl(app.clone()) {
+        Ok(()) => {}
+        Err(e) if e == "代理未运行" => {}
+        Err(e) => return Err(format!("停止代理服务失败，无法继续安装更新: {}", e)),
+    }
+
+    kill_sidecar_process();
+    std::thread::sleep(Duration::from_millis(1000));
+
+    let leftovers = running_sidecar_process_names();
+    if !leftovers.is_empty() {
+        return Err(format!(
+            "更新前无法停止后台代理进程: {}。请退出 AnyBridge 后重试，或手动结束这些进程。",
+            leftovers.join(", ")
+        ));
+    }
+
+    let _ = app.emit(
+        "proxy-log",
+        LogLine {
+            level: "info".into(),
+            msg: "更新安装前已暂停本地代理服务".into(),
+        },
+    );
+    Ok(())
+}
+
+#[cfg(target_os = "windows")]
+fn running_sidecar_process_names() -> Vec<String> {
+    let mut running = Vec::new();
+    for process_name in ["anybridge-proxy.exe", "ide-byok-proxy.exe"] {
+        let output = std::process::Command::new("tasklist")
+            .args([
+                "/FI",
+                &format!("IMAGENAME eq {}", process_name),
+                "/FO",
+                "CSV",
+                "/NH",
+            ])
+            .creation_flags(CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP)
+            .output();
+        if let Ok(output) = output {
+            let stdout = String::from_utf8_lossy(&output.stdout).to_lowercase();
+            if stdout.contains(&process_name.to_lowercase()) {
+                running.push(process_name.to_string());
+            }
+        }
+    }
+    running
+}
+
+#[cfg(not(target_os = "windows"))]
+fn running_sidecar_process_names() -> Vec<String> {
+    let mut running = Vec::new();
+    for process_name in ["anybridge-proxy", "ide-byok-proxy"] {
+        let output = std::process::Command::new("pgrep")
+            .args(["-x", process_name])
+            .output();
+        if output.is_ok_and(|output| output.status.success()) {
+            running.push(process_name.to_string());
+        }
+    }
+    running
+}
+
 #[tauri::command]
 pub async fn get_stats(state: State<'_, ProxyState>) -> Result<serde_json::Value, String> {
     let port = active_or_configured_ports(state.inner()).api_port;

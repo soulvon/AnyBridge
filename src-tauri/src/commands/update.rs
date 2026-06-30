@@ -261,6 +261,8 @@ pub async fn download_and_install_update(app: AppHandle, relaunch: bool) -> Resu
         let version = update.version.clone();
         let body = update.body.clone().unwrap_or_default();
 
+        crate::commands::proxy::stop_sidecar_for_update(app.clone())?;
+
         let app_clone1 = app.clone();
         let app_clone2 = app.clone();
         let mut downloaded = 0;
