@@ -2202,8 +2202,9 @@ html[data-theme="dark"] .theme-setting-moon {
   .topbar-left { gap: 8px; }
   .brand-name { font-size: 15px; }
   .tab-item { padding: 6px 9px; font-size: 12px; }
-  .win-controls { gap: 4px; margin-left: 4px; padding-left: 8px; }
-  .icon-btn, .win-btn { width: 32px; height: 32px; }
+  .win-controls { gap: 6px; margin-left: 4px; padding: 0; }
+  .icon-btn { width: 32px; height: 32px; }
+  .win-btn { width: 18px; height: 18px; }
 }
 
 @media (max-width: 640px) {

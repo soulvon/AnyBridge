@@ -716,7 +716,10 @@ mod tests {
 
         let value = serde_json::to_value(&cfg).unwrap();
         assert_eq!(value["systemPromptPrefixEnabled"], serde_json::json!(true));
-        assert_eq!(value["customHeaders"][0]["key"], serde_json::json!("x-test"));
+        assert_eq!(
+            value["customHeaders"][0]["key"],
+            serde_json::json!("x-test")
+        );
         assert_eq!(value["paramOverrides"]["temperature"], serde_json::json!(0));
         assert_eq!(value["unlockModels"], serde_json::json!(false));
     }

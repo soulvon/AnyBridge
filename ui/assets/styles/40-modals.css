@@ -239,6 +239,204 @@
   background: rgba(16, 185, 129, 0.12);
   border-color: rgba(52, 211, 153, 0.24);
 }
+
+.kite-plugin-modal {
+  max-width: 560px;
+  padding: 26px;
+}
+
+.kite-plugin-modal-header {
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.kite-plugin-title {
+  gap: 10px;
+}
+
+.kite-plugin-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 54px;
+  height: 28px;
+  padding: 0 10px;
+  border-radius: var(--radius-pill);
+  color: #FFFFFF;
+  background: linear-gradient(135deg, #D97706, #0E9F8B);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  box-shadow: 0 10px 24px -16px rgba(217, 119, 6, 0.88);
+}
+
+.kite-plugin-close {
+  flex: 0 0 auto;
+}
+
+.kite-plugin-body {
+  margin-bottom: 0;
+}
+
+.kite-plugin-body code {
+  padding: 1px 5px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-input);
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.kite-plugin-choice-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.kite-plugin-choice {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 82px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  color: var(--text-primary);
+  text-align: left;
+  text-decoration: none;
+  font: inherit;
+  cursor: pointer;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.66), rgba(255, 255, 255, 0.28)),
+    var(--bg-card);
+  box-shadow: var(--shadow-sm);
+  appearance: none;
+  -webkit-appearance: none;
+  transition:
+    transform var(--duration-normal) var(--ease),
+    border-color var(--duration-normal) var(--ease),
+    box-shadow var(--duration-normal) var(--ease);
+}
+
+.kite-plugin-choice:hover,
+.kite-plugin-choice:focus-visible {
+  transform: translateY(-2px);
+  border-color: rgba(18, 97, 166, 0.28);
+  box-shadow: var(--shadow-card-hover);
+}
+
+.kite-plugin-choice:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
+.kite-plugin-choice:disabled {
+  cursor: wait;
+  opacity: 0.72;
+  transform: none;
+}
+
+.kite-plugin-choice-install {
+  border-color: rgba(14, 159, 139, 0.28);
+  background:
+    radial-gradient(circle at 12% 18%, rgba(14, 159, 139, 0.15), transparent 36%),
+    linear-gradient(135deg, rgba(236, 253, 245, 0.86), rgba(255, 247, 237, 0.74)),
+    var(--bg-card);
+}
+
+.kite-plugin-choice-project {
+  border-color: rgba(18, 97, 166, 0.22);
+}
+
+.kite-plugin-choice-icon {
+  flex: 0 0 auto;
+  width: 38px;
+  height: 38px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 12px;
+  color: var(--accent);
+  background: rgba(18, 97, 166, 0.09);
+}
+
+.kite-plugin-choice-install .kite-plugin-choice-icon {
+  color: var(--success);
+  background: rgba(17, 135, 93, 0.12);
+}
+
+.kite-plugin-choice strong,
+.kite-plugin-choice small {
+  display: block;
+}
+
+.kite-plugin-choice strong {
+  font-size: 14px;
+  font-weight: 800;
+  line-height: 1.25;
+}
+
+.kite-plugin-choice small {
+  margin-top: 4px;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.kite-plugin-choice.is-loading .kite-plugin-choice-icon {
+  animation: kiteInstallPulse 0.9s ease-in-out infinite alternate;
+}
+
+.kite-plugin-note {
+  margin-top: 14px;
+  padding: 10px 12px;
+  border: 1px solid rgba(217, 119, 6, 0.22);
+  border-radius: 12px;
+  background: rgba(217, 119, 6, 0.08);
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+[data-theme="dark"] .kite-plugin-choice {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.045), rgba(255, 255, 255, 0.015)),
+    var(--bg-card);
+}
+
+[data-theme="dark"] .kite-plugin-choice-install {
+  background:
+    radial-gradient(circle at 12% 18%, rgba(55, 199, 165, 0.18), transparent 36%),
+    linear-gradient(135deg, rgba(12, 72, 62, 0.42), rgba(67, 46, 18, 0.34)),
+    var(--bg-card);
+}
+
+[data-theme="dark"] .kite-plugin-note {
+  background: rgba(245, 165, 36, 0.1);
+  border-color: rgba(245, 165, 36, 0.22);
+}
+
+@keyframes kiteInstallPulse {
+  from {
+    transform: translateY(0);
+  }
+  to {
+    transform: translateY(-2px);
+  }
+}
+
+@media (max-width: 560px) {
+  .kite-plugin-choice-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 .modal-footer {
   display: flex;
   justify-content: flex-end;

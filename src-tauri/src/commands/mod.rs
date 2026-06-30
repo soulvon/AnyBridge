@@ -6,6 +6,7 @@ pub mod cursor_auth;
 pub mod eval;
 pub mod ide_config;
 pub mod ide_models;
+pub mod kite_plugin;
 pub mod model_map;
 pub mod platforms;
 pub mod provider_import;

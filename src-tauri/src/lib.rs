@@ -96,6 +96,7 @@ pub fn run() {
             commands::proxy_routes::save_proxy_routes,
             commands::ide_models::list_ide_models,
             commands::ide_models::refresh_ide_models,
+            commands::kite_plugin::install_kite_plugin,
             commands::windsurf_catalog::list_windsurf_catalog,
             commands::platforms::detect_platforms,
             commands::platforms::preview_platform_switch,

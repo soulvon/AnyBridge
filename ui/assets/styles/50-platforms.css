@@ -96,6 +96,154 @@
   background: transparent;
 }
 
+.platform-kite-ad {
+  position: relative;
+  isolation: isolate;
+  flex: 0 1 278px;
+  min-width: 218px;
+  max-width: 320px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  padding: 8px 10px;
+  border: 1px solid rgba(217, 119, 6, 0.32);
+  border-radius: var(--radius-pill);
+  color: var(--text-primary);
+  font: inherit;
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+  background:
+    linear-gradient(135deg, rgba(255, 247, 237, 0.94), rgba(236, 253, 245, 0.72)),
+    var(--bg-card);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.86),
+    0 12px 26px -20px rgba(217, 119, 6, 0.7);
+  overflow: hidden;
+  transition:
+    transform var(--duration-normal) var(--ease),
+    border-color var(--duration-normal) var(--ease),
+    box-shadow var(--duration-normal) var(--ease);
+}
+
+.platform-kite-ad[hidden] {
+  display: none !important;
+}
+
+.platform-kite-ad::before {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  z-index: -1;
+  background:
+    radial-gradient(circle at 18% 18%, rgba(217, 119, 6, 0.18), transparent 34%),
+    linear-gradient(110deg, transparent 0%, rgba(255, 255, 255, 0.6) 44%, transparent 58%);
+  transform: translateX(-68%);
+  animation: kiteAdSweep 4.8s var(--ease) infinite;
+}
+
+.platform-kite-ad:hover,
+.platform-kite-ad:focus-visible {
+  transform: translateY(-1px);
+  border-color: rgba(14, 159, 139, 0.48);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.9),
+    0 16px 30px -20px rgba(14, 159, 139, 0.74);
+}
+
+.platform-kite-ad:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
+.platform-kite-ad-badge,
+.platform-kite-ad-arrow {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.platform-kite-ad-badge {
+  min-width: 42px;
+  height: 22px;
+  padding: 0 8px;
+  border-radius: var(--radius-pill);
+  color: #FFFFFF;
+  background: linear-gradient(135deg, #D97706, #0E9F8B);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 750;
+  letter-spacing: 0.02em;
+  box-shadow: 0 7px 16px -12px rgba(217, 119, 6, 0.9);
+}
+
+.platform-kite-ad-copy {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  line-height: 1.12;
+}
+
+.platform-kite-ad-copy strong {
+  color: var(--text-primary);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.platform-kite-ad-copy span {
+  color: var(--text-muted);
+  font-size: 10px;
+  font-weight: 650;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.platform-kite-ad-arrow {
+  width: 20px;
+  height: 20px;
+  border-radius: 999px;
+  color: var(--accent);
+  background: rgba(18, 97, 166, 0.08);
+  font-size: 11px;
+  font-weight: 900;
+}
+
+[data-theme="dark"] .platform-kite-ad {
+  border-color: rgba(245, 165, 36, 0.28);
+  background:
+    linear-gradient(135deg, rgba(67, 46, 18, 0.42), rgba(11, 67, 58, 0.36)),
+    var(--bg-card);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.06),
+    0 14px 28px -20px rgba(245, 165, 36, 0.75);
+}
+
+[data-theme="dark"] .platform-kite-ad::before {
+  background:
+    radial-gradient(circle at 18% 18%, rgba(245, 165, 36, 0.22), transparent 34%),
+    linear-gradient(110deg, transparent 0%, rgba(255, 255, 255, 0.16) 44%, transparent 58%);
+}
+
+[data-theme="dark"] .platform-kite-ad-arrow {
+  color: var(--accent-hover);
+  background: rgba(90, 176, 230, 0.12);
+}
+
+@keyframes kiteAdSweep {
+  0%, 46% {
+    transform: translateX(-68%);
+  }
+  64%, 100% {
+    transform: translateX(68%);
+  }
+}
+
 .platform-subtab-shell {
   display: flex;
   justify-content: center;
@@ -6389,6 +6537,13 @@ td.display-name-cell {
     flex-direction: column;
   }
 
+  .platform-kite-ad {
+    width: 100%;
+    max-width: none;
+    align-self: stretch;
+    justify-content: flex-start;
+  }
+
   .platform-console-stats {
     width: 100%;
     min-width: 0;
@@ -6431,6 +6586,12 @@ td.display-name-cell {
   .platform-console-titlebar {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .platform-kite-ad {
+    min-width: 0;
+    border-radius: var(--radius-lg);
+    padding: 10px 12px;
   }
 
   .platform-console-stats {

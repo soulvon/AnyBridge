@@ -86,14 +86,11 @@ function bindUpdateJumpModalHandlers() {
   const modal = document.getElementById('update-jump-modal');
   const closeBtn = document.getElementById('update-jump-close-btn');
   if (!modal) return;
+  if (modal.dataset.updateJumpHandlersBound === '1') return;
+  modal.dataset.updateJumpHandlersBound = '1';
 
   if (closeBtn) {
     closeBtn.addEventListener('click', (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      closeUpdateJumpModal();
-    });
-    closeBtn.addEventListener('pointerup', (e) => {
       e.preventDefault();
       e.stopPropagation();
       closeUpdateJumpModal();

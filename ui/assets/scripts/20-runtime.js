@@ -1124,13 +1124,14 @@ function bindWindowControlHandlers() {
 
   const bind = (el, fn, label) => {
     if (!el) { _diag(`WARN: ${label} button not found`); return; }
+    if (el.dataset.windowControlBound === '1') return;
+    el.dataset.windowControlBound = '1';
     const handler = (e) => {
       e.preventDefault();
       e.stopPropagation();
       fn().catch(err => _diag(`${label} error: ` + err));
     };
     el.addEventListener('click', handler);
-    el.addEventListener('pointerup', handler);
     _diag(`${label} handler bound`);
   };
   bind(minBtn, windowMinimize, 'minimize');

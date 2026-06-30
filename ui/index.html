@@ -77,18 +77,18 @@
           <span id="globalProxyStatusText">代理未启动</span>
         </button>
         <div class="win-controls">
-          <button class="win-btn win-minimize" title="最小化" onclick="windowMinimize()">
+          <button type="button" class="win-btn win-minimize" title="最小化">
             <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
               <line x1="1.5" y1="5" x2="8.5" y2="5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" />
             </svg>
           </button>
-          <button class="win-btn win-maximize" title="最大化" onclick="windowMaximize()" id="maxBtn">
+          <button type="button" class="win-btn win-maximize" title="最大化" id="maxBtn">
             <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
               <rect x="1.5" y="1.5" width="7" height="7" rx="1" stroke="currentColor" stroke-width="1.3"
                 stroke-linecap="round" stroke-linejoin="round" />
             </svg>
           </button>
-          <button class="win-btn win-close" title="关闭" onclick="windowClose()">
+          <button type="button" class="win-btn win-close" title="关闭">
             <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
               <line x1="2" y1="2" x2="8" y2="8" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" />
               <line x1="8" y1="2" x2="2" y2="8" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" />
@@ -1628,6 +1628,15 @@
                 <p id="proxy-platform-subtitle">本机代理、MITM 证书、Devin 配置和模型路由集中管理。</p>
               </div>
             </div>
+            <button type="button" class="platform-kite-ad" id="proxy-platform-kite-ad"
+              onclick="openKitePluginModal()" aria-label="打开 Kite 插件安装选项">
+              <span class="platform-kite-ad-badge">Kite</span>
+              <span class="platform-kite-ad-copy">
+                <strong>插件推荐</strong>
+                <span id="proxy-platform-kite-ad-copy">Kite 插件：Devin 增强入口</span>
+              </span>
+              <span class="platform-kite-ad-arrow" aria-hidden="true">↗</span>
+            </button>
             <div class="platform-console-actions">
               <button class="btn-primary platform-proxy-primary" id="proxyBtn" data-proxy-action="proxy" aria-label="一键接入 Devin">
                 <span class="proxy-btn-action">
@@ -4680,6 +4689,67 @@
     </div>
   </div>
 
+  <!-- Kite 插件安装选择 -->
+  <div id="kite-plugin-modal" class="modal-overlay" onclick="if (event.target === this) closeKitePluginModal()">
+    <div class="modal-container kite-plugin-modal">
+      <div class="modal-header kite-plugin-modal-header">
+        <div class="modal-title kite-plugin-title">
+          <span class="kite-plugin-mark">Kite</span>
+          <span>安装 Kite 插件</span>
+        </div>
+        <button type="button" class="modal-close-icon kite-plugin-close" onclick="closeKitePluginModal()"
+          aria-label="关闭 Kite 插件安装弹窗">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+            stroke-linecap="round" stroke-linejoin="round">
+            <path d="M18 6 6 18"></path>
+            <path d="m6 6 12 12"></path>
+          </svg>
+        </button>
+      </div>
+      <div class="modal-body kite-plugin-body">
+        <p>
+          为 <strong id="kite-plugin-platform-label">Devin</strong> 安装 Kite 增强插件。安装会下载 GitHub latest release
+          中的 <code>.vsix</code> 文件，并调用对应 IDE 的扩展安装命令。
+        </p>
+        <div class="kite-plugin-choice-grid">
+          <button type="button" class="kite-plugin-choice kite-plugin-choice-install" id="kite-plugin-install-btn"
+            onclick="installKitePlugin()">
+            <span class="kite-plugin-choice-icon">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"
+                stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 3v12"></path>
+                <path d="m7 10 5 5 5-5"></path>
+                <path d="M5 21h14"></path>
+              </svg>
+            </span>
+            <span>
+              <strong>一键安装</strong>
+              <small>直接安装到当前平台</small>
+            </span>
+          </button>
+          <a class="kite-plugin-choice kite-plugin-choice-project" href="https://github.com/soulvon/Kite"
+            target="_blank" rel="noopener noreferrer" onclick="closeKitePluginModal()">
+            <span class="kite-plugin-choice-icon">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"
+                stroke-linecap="round" stroke-linejoin="round">
+                <path d="M7 17 17 7"></path>
+                <path d="M8 7h9v9"></path>
+                <path d="M5 5v14h14"></path>
+              </svg>
+            </span>
+            <span>
+              <strong>项目页面</strong>
+              <small>查看源码和说明</small>
+            </span>
+          </a>
+        </div>
+        <div class="kite-plugin-note">
+          如果安装失败，AnyBridge 会显示 GitHub 下载或 IDE 安装命令的原始错误，方便继续排查。
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- 自定义模态弹窗 (Custom Modal Dialog) -->
   <div id="custom-confirm-modal" class="modal-overlay">
     <div class="modal-container">
@@ -5009,7 +5079,7 @@
         </div>
       </div>
       <div class="modal-footer">
-        <button id="update-jump-close-btn" onclick="closeUpdateJumpModal()"
+        <button id="update-jump-close-btn" type="button"
           class="modal-btn modal-btn-confirm update-success-confirm">我知道了</button>
       </div>
     </div>
