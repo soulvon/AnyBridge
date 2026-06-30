@@ -1,0 +1,37 @@
+ M .github/workflows/ci.yml
+ M README.md
+ M docs/DEVELOPMENT.md
+ M docs/RELEASE.md
+ M package.json
+ M scripts/README.md
+ M scripts/add-opencode-codex-config.cjs
+ M scripts/check-mitm-logs.cjs
+ M scripts/check-opencode.cjs
+ M scripts/check-providers.cjs
+ M scripts/find-codex-format.cjs
+ M scripts/list-providers.cjs
+ M scripts/show-codex-configs.cjs
+ M scripts/test-upstream.cjs
+ M sidecar/hybrid-server.js
+ M sidecar/lib/codex-desktop-inject.js
+ M sidecar/local-proxy.js
+ M src-tauri/src/commands/cert_install.rs
+ M src-tauri/src/commands/codex_desktop.rs
+ M src-tauri/src/commands/ide_config.rs
+ M src-tauri/src/commands/mod.rs
+ M src-tauri/src/commands/platforms.rs
+ M src-tauri/src/commands/proxy.rs
+ M src-tauri/src/commands/system.rs
+ M src-tauri/src/integrity.rs
+ M ui/assets/scripts/10-shell.js
+ M ui/assets/scripts/20-runtime.js
+ D ui/assets/scripts/99-handle-tuner.js
+ M ui/assets/styles/10-shell.css
+ M ui/index.html
+?? _codex_mon.mjs
+?? _gs.txt
+?? scripts/check-cursor-proxy.mjs
+?? scripts/lib/
+?? sidecar/cursor-proxy.js
+?? src-tauri/src/commands/cursor_auth.rs
+main
