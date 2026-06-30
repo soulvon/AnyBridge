@@ -2,6 +2,10 @@
 
 All notable changes to AnyBridge will be documented in this file.
 
+## v0.2.3 - 2026-06-30
+
+- Prepared a new packaged build and synchronized the release version across npm, sidecar, Cargo and Tauri metadata from `0.2.1` to `0.2.3`.
+
 ## v0.2.1 - 2026-06-29
 
 - Fixed third-party image understanding being bypassed under the Codex/Responses protocol so the Codex desktop, Codex CLI, OpenAI Chat, Anthropic and Cursor/Windsurf paths now all reach the image-understanding provider as expected.
