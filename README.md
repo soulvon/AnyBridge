@@ -754,32 +754,6 @@ AnyBridge 会修改本地工具的配置，代理模式会拦截 HTTPS 流量。
 - 你的 API Key 只留在本地，AnyBridge 不会往外传
 - **本项目与 Windsurf、Devin、OpenAI、Anthropic 等公司没有关系**
 
----
-
-## ☕ 支持一下
-
-如果 AnyBridge 帮你省了时间，欢迎请我喝杯咖啡～
-
-<div align="center">
-
-<img src="https://raw.githubusercontent.com/soulvon/windsurf-pool-releases/main/wechat-reward.webp" width="200" alt="微信赞赏码">
-
-</div>
-
-### 💬 交流群
-
-**QQ 群：1075342078**（注明 "AnyBridge"）
-
-群里有最新版本通知、使用帮助、配置分享。
-
-<div align="center">
-
-<img src="docs/qq-group-qrcode.png" width="200" alt="QQ 群二维码">
-
-</div>
-
----
-
 ## 📄 开源协议
 
 [MIT](LICENSE) © 2026 [soulvon](https://github.com/soulvon)
