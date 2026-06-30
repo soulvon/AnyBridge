@@ -735,6 +735,22 @@ mod platform {
         format!("'{}'", value.replace('\'', "'\\''"))
     }
 
+    fn command_exists(name: &str) -> bool {
+        Command::new("sh")
+            .args(["-c", &format!("command -v {} >/dev/null 2>&1", name)])
+            .status()
+            .map(|s| s.success())
+            .unwrap_or(false)
+    }
+
+    fn require_command(name: &str, hint: &str) -> Result<(), String> {
+        if command_exists(name) {
+            Ok(())
+        } else {
+            Err(format!("缺少 Linux CA 安装工具 `{}`。{}", name, hint))
+        }
+    }
+
     fn cert_matches_thumbprint(path: &Path, thumbprint: &str) -> bool {
         let normalized = thumbprint
             .chars()
@@ -765,6 +781,10 @@ mod platform {
     }
 
     fn run_pkexec_script(script: &str) -> Result<(), String> {
+        require_command(
+            "pkexec",
+            "请安装 polkit/pkexec，或改用发行版提供的证书信任管理方式后重试。",
+        )?;
         let out = Command::new("pkexec")
             .args(["sh", "-c", script])
             .output()
@@ -801,6 +821,10 @@ mod platform {
     }
 
     pub fn install_current_user(cert_path: &Path) -> Result<(), String> {
+        require_command(
+            "trust",
+            "请安装 p11-kit/trust 工具；Debian/Ubuntu 通常是 p11-kit，Fedora/RHEL 通常随 p11-kit 提供。",
+        )?;
         let anchor = user_anchor_path()?;
         if let Some(parent) = anchor.parent() {
             std::fs::create_dir_all(parent).map_err(|e| format!("创建用户证书目录失败: {}", e))?;
@@ -819,6 +843,14 @@ mod platform {
     }
 
     pub fn install_local_machine_via_uac(cert_path: &Path) -> Result<(), String> {
+        require_command(
+            "update-ca-certificates",
+            "当前实现使用 Debian/Ubuntu 风格的 update-ca-certificates；其他发行版请先安装对应工具或手动导入 CA。",
+        )?;
+        require_command(
+            "install",
+            "缺少 coreutils install 命令，无法复制系统级 CA 文件。",
+        )?;
         let anchor = system_anchor_path();
         let script = format!(
             "install -m 0644 {} {} && update-ca-certificates",
@@ -841,6 +873,10 @@ mod platform {
             }
             Ok(())
         } else {
+            require_command(
+                "update-ca-certificates",
+                "当前实现使用 Debian/Ubuntu 风格的 update-ca-certificates；其他发行版请先安装对应工具或手动更新 CA。",
+            )?;
             let anchor = system_anchor_path();
             let script = format!(
                 "rm -f {} && update-ca-certificates",
@@ -851,6 +887,10 @@ mod platform {
     }
 
     pub fn uninstall_local_machine_thumbprint_via_uac(_thumbprint: &str) -> Result<(), String> {
+        require_command(
+            "update-ca-certificates",
+            "当前实现使用 Debian/Ubuntu 风格的 update-ca-certificates；其他发行版请先安装对应工具或手动更新 CA。",
+        )?;
         let anchor = system_anchor_path();
         let script = format!(
             "rm -f {} && update-ca-certificates",

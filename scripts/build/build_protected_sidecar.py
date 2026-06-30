@@ -125,7 +125,48 @@ def local_bin(name):
         raise FileNotFoundError(f"local bin not found: {p}")
     return p
 
-def find_matching_node(pkg_target_node_major):
+def assert_bytenode_host_matches_target(os_name, arch):
+    """bytenode bytecode must be generated on the target OS/arch.
+
+    pkg can cross-package plain JavaScript, but bytenode emits V8 cached data for
+    the Node binary used at compile time. Building protected sidecars for a
+    different OS/arch would create artifacts that may fail at runtime.
+    """
+    host_os, host_arch = normalize_platform(*detect_platform())
+    if (host_os, host_arch) != (os_name, arch):
+        raise RuntimeError(
+            "Protected sidecar cross-build is not supported: "
+            f"host={host_os}-{host_arch}, target={os_name}-{arch}. "
+            "Run this script on the matching target runner, or use "
+            "build_sidecar_plain.py for cross-platform plain pkg builds."
+        )
+
+def node_executable_name(os_name):
+    return "node.exe" if os_name == "windows" else "node"
+
+def pkg_cache_platform_fragment(os_name, arch):
+    os_map = {"windows": "win", "macos": "macos", "linux": "linux"}
+    return f"{os_map.get(os_name, os_name)}-{arch}"
+
+def pkg_cache_dirs():
+    dirs = []
+    env_cache = os.environ.get("PKG_CACHE_PATH")
+    if env_cache:
+        if os.path.basename(os.path.normpath(env_cache)) == "v3.6":
+            dirs.append(env_cache)
+        else:
+            dirs.append(os.path.join(env_cache, "v3.6"))
+    dirs.append(os.path.join(os.path.expanduser("~"), ".pkg-cache", "v3.6"))
+    seen = set()
+    out = []
+    for d in dirs:
+        key = os.path.abspath(d)
+        if key not in seen:
+            seen.add(key)
+            out.append(d)
+    return out
+
+def find_matching_node(pkg_target_node_major, os_name, arch):
     """为 bytenode 找与 pkg target 同主版本的 Node 二进制。
 
     bytenode 生成的 V8 字节码跟编译时使用的 Node 绑定。如果宿主 Node 主版本
@@ -134,21 +175,24 @@ def find_matching_node(pkg_target_node_major):
 
     优先顺序：
     1. 环境变量 BYTENODE_NODE_BIN
-    2. ~/.pkg-cache/v3.6/fetched-v{VERSION}-win-x64  (与 pkg target Node 同源，最准)
+    2. ~/.pkg-cache/v3.6 中与目标 OS/arch 匹配的 pkg Node 二进制
     3. ~/.workbuddy/binaries/node/versions/<{MAJOR}.*>/node.exe  (项目内惯例)
     4. 扫描 PATH 上的 node（仅当主版本匹配）
     """
     env_override = os.environ.get("BYTENODE_NODE_BIN")
     if env_override and os.path.exists(env_override):
         return env_override
-    # 与 pkg target Node 同源：~/.pkg-cache/v3.6/fetched-v{VER}-win-x64
-    pkg_cache = os.path.join(os.path.expanduser("~"), ".pkg-cache", "v3.6")
-    if os.path.isdir(pkg_cache):
+    # 与 pkg target Node 同源：PKG_CACHE_PATH/v3.6 或 ~/.pkg-cache/v3.6
+    for pkg_cache in pkg_cache_dirs():
+        if not os.path.isdir(pkg_cache):
+            continue
         candidates = []
+        platform_fragment = pkg_cache_platform_fragment(os_name, arch)
         for entry in os.listdir(pkg_cache):
-            # 文件名形如 fetched-v22.22.3-win-x64
-            if entry.startswith(f"fetched-v{pkg_target_node_major}.") and "win-x64" in entry \
-                    and not entry.endswith(".downloading"):
+            # 文件名形如 fetched-v22.22.3-win-x64 或 node-v22.22.3-macos-arm64
+            version_match = entry.startswith(f"fetched-v{pkg_target_node_major}.") \
+                or entry.startswith(f"node-v{pkg_target_node_major}.")
+            if version_match and platform_fragment in entry and not entry.endswith(".downloading"):
                 p = os.path.join(pkg_cache, entry)
                 if os.path.isfile(p):
                     candidates.append(p)
@@ -161,7 +205,7 @@ def find_matching_node(pkg_target_node_major):
         for entry in os.listdir(base):
             stripped = entry.lstrip("v")
             if stripped.startswith(f"{pkg_target_node_major}."):
-                p = os.path.join(base, entry, "node.exe")
+                p = os.path.join(base, entry, node_executable_name(os_name))
                 if os.path.exists(p):
                     candidates.append(p)
         if candidates:
@@ -200,11 +244,13 @@ def copy_source():
         else:
             shutil.copy2(src, dst)
 
-def bytenode_compile():
+def bytenode_compile(os_name, arch):
     """先经 esbuild 把 ESM 转为 CJS，再编译为 V8 bytecode (.jsc)，删除原始 .js。
 
     bytenode 1.5.x 通过 vm.Script 编译，依赖 CommonJS 语法；sidecar 源码是
     "type":"module" 的 ESM，因此必须先用 esbuild 转 CJS。"""
+    assert_bytenode_host_matches_target(os_name, arch)
+
     # 需要编译的入口和模块文件
     entries = ["hybrid-server.js", "inference-proxy.js", "proxy-entry.js"]
     modules = [
@@ -223,14 +269,14 @@ def bytenode_compile():
 
     esbuild_bin = local_bin("esbuild")
     bytenode_cli = os.path.join(SIDECAR_DIR, "node_modules", "bytenode", "lib", "cli.js")
-    pkg_target_node_major = int(get_pkg_target("windows", "x64").split("-")[0].replace("node", ""))
+    pkg_target_node_major = int(get_pkg_target(os_name, arch).split("-")[0].replace("node", ""))
 
-    node_bin = find_matching_node(pkg_target_node_major)
+    node_bin = find_matching_node(pkg_target_node_major, os_name, arch)
     if node_bin is None:
         raise FileNotFoundError(
             f"no Node {pkg_target_node_major}.x binary found. Set BYTENODE_NODE_BIN env var "
-            f"to a matching node.exe so bytenode emits V8 bytecode compatible with the "
-            f"pkg target node{pkg_target_node_major}-*-*."
+            f"to a matching Node binary so bytenode emits V8 bytecode compatible with the "
+            f"pkg target {get_pkg_target(os_name, arch)}."
         )
     print(f"[bytenode] using {node_bin} (target node{pkg_target_node_major})")
 
@@ -391,7 +437,7 @@ def main():
 
     clean()
     copy_source()
-    bytenode_compile()
+    bytenode_compile(os_name, arch)
     transform_remaining_to_cjs()
     create_loader()
     pkg_bundle(os_name, arch)

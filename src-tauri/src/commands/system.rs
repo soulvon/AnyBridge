@@ -366,6 +366,18 @@ const IDE_EXE_KEY: &str = "ideExePath";
 const DEVIN_EXE_KEY: &str = "devinExePath";
 #[cfg(target_os = "windows")]
 const CURSOR_EXE_KEY: &str = "cursorExePath";
+#[cfg(target_os = "macos")]
+const WINDSURF_APP_KEY: &str = "windsurfAppPath";
+#[cfg(target_os = "macos")]
+const DEVIN_APP_KEY: &str = "devinAppPath";
+#[cfg(target_os = "macos")]
+const CURSOR_APP_KEY: &str = "cursorAppPath";
+#[cfg(target_os = "linux")]
+const WINDSURF_BIN_KEY: &str = "windsurfBinPath";
+#[cfg(target_os = "linux")]
+const DEVIN_BIN_KEY: &str = "devinBinPath";
+#[cfg(target_os = "linux")]
+const CURSOR_BIN_KEY: &str = "cursorBinPath";
 
 /// 根据 target 返回配置键名。
 #[cfg(target_os = "windows")]
@@ -374,6 +386,24 @@ fn ide_exe_key(target: &str) -> &'static str {
         "devin" => DEVIN_EXE_KEY,
         "cursor" => CURSOR_EXE_KEY,
         _ => IDE_EXE_KEY,
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn ide_app_key(target: &str) -> &'static str {
+    match target {
+        "devin" => DEVIN_APP_KEY,
+        "cursor" => CURSOR_APP_KEY,
+        _ => WINDSURF_APP_KEY,
+    }
+}
+
+#[cfg(target_os = "linux")]
+fn ide_bin_key(target: &str) -> &'static str {
+    match target {
+        "devin" => DEVIN_BIN_KEY,
+        "cursor" => CURSOR_BIN_KEY,
+        _ => WINDSURF_BIN_KEY,
     }
 }
 
@@ -388,6 +418,24 @@ fn ide_exe_filename(target: &str) -> &'static str {
     }
 }
 
+#[cfg(target_os = "macos")]
+fn ide_app_filename(target: &str) -> &'static str {
+    match target {
+        "devin" => "Devin.app",
+        "cursor" => "Cursor.app",
+        _ => "Windsurf.app",
+    }
+}
+
+#[cfg(target_os = "linux")]
+fn ide_bin_filename(target: &str) -> &'static str {
+    match target {
+        "devin" => "devin",
+        "cursor" => "cursor",
+        _ => "windsurf",
+    }
+}
+
 /// 根据 target 返回文件夹名（Windsurf/Devin）。
 fn ide_dir_name(target: &str) -> &'static str {
     match target {
@@ -395,6 +443,24 @@ fn ide_dir_name(target: &str) -> &'static str {
         "cursor" => "Cursor",
         _ => "Windsurf",
     }
+}
+
+#[cfg(target_os = "macos")]
+fn is_ide_app_for_target(target: &str, path: &std::path::Path) -> bool {
+    path.exists()
+        && path
+            .file_name()
+            .map(|n| n.eq_ignore_ascii_case(ide_app_filename(target)))
+            .unwrap_or(false)
+}
+
+#[cfg(target_os = "linux")]
+fn is_ide_bin_for_target(target: &str, path: &std::path::Path) -> bool {
+    path.exists()
+        && path
+            .file_name()
+            .map(|n| n.eq_ignore_ascii_case(ide_bin_filename(target)))
+            .unwrap_or(false)
 }
 
 #[cfg(target_os = "windows")]
@@ -651,21 +717,35 @@ $candidates | Where-Object {{ $_ }} | Select-Object -Unique
 /// 探测 IDE .app 路径（macOS），支持 Windsurf 和 Devin。
 #[cfg(target_os = "macos")]
 pub(crate) fn find_ide_app(target: &str) -> Option<std::path::PathBuf> {
-    let app_name = match target {
-        "devin" => "Devin.app",
-        "cursor" => "Cursor.app",
-        _ => "Windsurf.app",
+    use std::path::PathBuf;
+
+    let key = ide_app_key(target);
+    let app_name = ide_app_filename(target);
+    if let Some(cached) = crate::commands::config::read_config_value(key) {
+        let p = PathBuf::from(&cached);
+        if is_ide_app_for_target(target, &p) {
+            return Some(p);
+        }
+        if p.exists() {
+            let _ = crate::commands::config::write_config_value(key, "");
+        }
+    }
+
+    let cache_and_return = |p: PathBuf| -> Option<PathBuf> {
+        let _ = crate::commands::config::write_config_value(key, &p.to_string_lossy());
+        Some(p)
     };
+
     // 系统级安装
-    let system = std::path::PathBuf::from(format!("/Applications/{}", app_name));
+    let system = PathBuf::from(format!("/Applications/{}", app_name));
     if system.exists() {
-        return Some(system);
+        return cache_and_return(system);
     }
     // 用户级安装
     if let Some(home) = dirs::home_dir() {
         let user = home.join("Applications").join(app_name);
         if user.exists() {
-            return Some(user);
+            return cache_and_return(user);
         }
     }
     None
@@ -674,11 +754,26 @@ pub(crate) fn find_ide_app(target: &str) -> Option<std::path::PathBuf> {
 /// 探测 IDE 可执行文件（Linux），支持 Windsurf 和 Devin。
 #[cfg(target_os = "linux")]
 pub(crate) fn find_ide_bin(target: &str) -> Option<std::path::PathBuf> {
-    let (dir_name, bin_name) = match target {
-        "devin" => ("Devin", "devin"),
-        "cursor" => ("Cursor", "cursor"),
-        _ => ("Windsurf", "windsurf"),
+    use std::path::PathBuf;
+
+    let key = ide_bin_key(target);
+    let dir_name = ide_dir_name(target);
+    let bin_name = ide_bin_filename(target);
+    if let Some(cached) = crate::commands::config::read_config_value(key) {
+        let p = PathBuf::from(&cached);
+        if is_ide_bin_for_target(target, &p) {
+            return Some(p);
+        }
+        if p.exists() {
+            let _ = crate::commands::config::write_config_value(key, "");
+        }
+    }
+
+    let cache_and_return = |p: PathBuf| -> Option<PathBuf> {
+        let _ = crate::commands::config::write_config_value(key, &p.to_string_lossy());
+        Some(p)
     };
+
     let candidates = [
         format!("/usr/share/{}/{}", dir_name.to_lowercase(), bin_name),
         format!("/usr/bin/{}", bin_name),
@@ -686,9 +781,9 @@ pub(crate) fn find_ide_bin(target: &str) -> Option<std::path::PathBuf> {
         format!("/snap/bin/{}", bin_name),
     ];
     for c in candidates {
-        let p = std::path::PathBuf::from(&c);
+        let p = PathBuf::from(&c);
         if p.exists() {
-            return Some(p);
+            return cache_and_return(p);
         }
     }
     None
@@ -776,20 +871,12 @@ pub fn set_ide_path(path: String) -> Result<(), String> {
         if !is_ide_app {
             return Err("请指向 Windsurf.app、Devin.app 或 Cursor.app".into());
         }
-        let key = if p
-            .file_name()
-            .map(|n| n.eq_ignore_ascii_case("Cursor.app"))
-            .unwrap_or(false)
-        {
-            "cursorAppPath"
-        } else if p
-            .file_name()
-            .map(|n| n.eq_ignore_ascii_case("Devin.app"))
-            .unwrap_or(false)
-        {
-            "devinAppPath"
+        let key = if is_ide_app_for_target("cursor", &p) {
+            CURSOR_APP_KEY
+        } else if is_ide_app_for_target("devin", &p) {
+            DEVIN_APP_KEY
         } else {
-            "windsurfAppPath"
+            WINDSURF_APP_KEY
         };
         crate::commands::config::write_config_value(key, &path)
     }
@@ -811,20 +898,12 @@ pub fn set_ide_path(path: String) -> Result<(), String> {
         if !is_ide_bin {
             return Err("请指向 windsurf、devin 或 cursor 可执行文件".into());
         }
-        let key = if p
-            .file_name()
-            .map(|n| n.eq_ignore_ascii_case("cursor"))
-            .unwrap_or(false)
-        {
-            "cursorBinPath"
-        } else if p
-            .file_name()
-            .map(|n| n.eq_ignore_ascii_case("devin"))
-            .unwrap_or(false)
-        {
-            "devinBinPath"
+        let key = if is_ide_bin_for_target("cursor", &p) {
+            CURSOR_BIN_KEY
+        } else if is_ide_bin_for_target("devin", &p) {
+            DEVIN_BIN_KEY
         } else {
-            "windsurfBinPath"
+            WINDSURF_BIN_KEY
         };
         crate::commands::config::write_config_value(key, &path)
     }

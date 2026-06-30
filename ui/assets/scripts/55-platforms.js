@@ -99,6 +99,15 @@ function platformDef(platformId) {
   };
 }
 
+function codexDesktopAutomationSupported() {
+  const ua = `${navigator.userAgent || ''} ${navigator.platform || ''}`;
+  return /\bWindows\b|Win32|Win64/i.test(ua);
+}
+
+function codexDesktopUnsupportedMessage() {
+  return 'Codex Desktop 自动启动和模型注入当前仅支持 Windows。配置已写入后，请在本机手动重启 Codex 使其生效。';
+}
+
 function platformFormatLabel(fmt) {
   return fmt === 'openai' ? 'OpenAI' : 'Anthropic';
 }
@@ -1349,8 +1358,11 @@ function renderCodexConfigCard(config) {
   const configButton = config.configAction
     ? `<button class="btn-ghost codex-card-action" type="button" aria-label="${platformEsc(config.configLabel || '配置')} ${platformEsc(config.name)}" ${disabled ? 'disabled' : ''} onclick="${platformEsc(config.configAction)}">${platformEsc(config.configLabel || '配置')}</button>`
     : '';
+  const desktopSupported = codexDesktopAutomationSupported();
+  const startDisabled = disabled || !desktopSupported;
+  const startTitle = desktopSupported ? '重启 Codex 桌面版' : '仅 Windows 支持自动启动 / 注入 Codex Desktop';
   const startButton = config.startAction
-    ? `<button class="btn-ghost codex-card-action codex-icon-action" type="button" title="重启 Codex 桌面版" aria-label="启动 Codex ${platformEsc(config.name)}" ${disabled ? 'disabled' : ''} onclick="${platformEsc(config.startAction)}">${codexActionIcon('start')}</button>`
+    ? `<button class="btn-ghost codex-card-action codex-icon-action" type="button" title="${platformEsc(startTitle)}" aria-label="启动 Codex ${platformEsc(config.name)}" ${startDisabled ? 'disabled' : ''} onclick="${platformEsc(config.startAction)}">${codexActionIcon('start')}</button>`
     : '';
   const switchButton = config.current || !config.action
     ? ''
@@ -3103,18 +3115,24 @@ async function applyCodexProviderConfig(providerId) {
         if (typeof loadProviders === 'function') await loadProviders();
         await refreshPlatforms({ silent: true });
 
-        setMessage('正在重启 Codex 桌面版并注入自定义模型…');
-        const restart = assertSwitchResultOk(
-          await invoke('restart_codex_desktop', { managed: true, model: provider.defaultModel || null, injectModels: provider.injectModels !== false }),
-          'Codex 桌面版重启或注入失败'
-        );
+        let restart = null;
+        if (codexDesktopAutomationSupported()) {
+          setMessage('正在重启 Codex 桌面版并注入自定义模型…');
+          restart = assertSwitchResultOk(
+            await invoke('restart_codex_desktop', { managed: true, model: provider.defaultModel || null, injectModels: provider.injectModels !== false }),
+            'Codex 桌面版重启或注入失败'
+          );
+        } else {
+          setMessage('当前平台不支持自动重启 Codex Desktop，已跳过桌面注入。');
+        }
 
         if (typeof addLog === 'function') {
           addLog('ok', result.message || 'Codex 配置已切换');
-          addLog('ok', restart.message || 'Codex 桌面版已重启并完成注入');
+          if (restart) addLog('ok', restart.message || 'Codex 桌面版已重启并完成注入');
+          else addLog('warn', codexDesktopUnsupportedMessage());
         }
         return {
-          message: `${result.message || 'Codex 配置已切换。'}\n\n${restart.message || 'Codex 桌面版已重启并完成注入。'}`
+          message: `${result.message || 'Codex 配置已切换。'}\n\n${restart ? (restart.message || 'Codex 桌面版已重启并完成注入。') : codexDesktopUnsupportedMessage()}`
         };
       } finally {
         setPlatformBusy('codex', false);
@@ -3128,6 +3146,12 @@ async function applyCodexProviderConfig(providerId) {
 }
 
 async function startCodexWithCdp(injectModels = false) {
+  if (!codexDesktopAutomationSupported()) {
+    const msg = codexDesktopUnsupportedMessage();
+    if (typeof addLog === 'function') addLog('warn', msg);
+    showCustomAlert(msg, '当前平台不支持', 'warn');
+    return;
+  }
   setPlatformBusy('codex', true);
   try {
     const result = await invoke('start_codex_with_cdp', { injectModels: !!injectModels });
@@ -3923,18 +3947,23 @@ function codexApplyConfirmMessage(provider) {
   // 官方模型(gpt-*)在 Codex 白名单内，切换后直接可用；
   // 非官方模型需要注入补丁才能在模型选择器显示。
   const needsInject = !/^gpt-/i.test(String(model || '').trim());
-  const hint = needsInject
-    ? '切换后会自动重启 Codex，并解锁模型选择器中的第三方模型。'
-    : '切换后会自动重启 Codex 生效。';
+  const hint = codexDesktopAutomationSupported()
+    ? (needsInject
+      ? '切换后会自动重启 Codex，并解锁模型选择器中的第三方模型。'
+      : '切换后会自动重启 Codex 生效。')
+    : '切换后会写入 Codex 配置；当前平台不支持自动重启 / 桌面注入，请手动重启 Codex 生效。';
   return `将把 Codex 从「${from}」切换到「${to}」。\n\n供应商：${to}\n默认模型：${model}\n\n${hint}`;
 }
 
 async function restoreCodexOfficialConfig() {
   const info = platformInfoOf('codex') || {};
   const alreadyOfficial = !!(info.codexConfig && info.codexConfig.isOfficial);
+  const autoRestartHint = codexDesktopAutomationSupported()
+    ? '切换后会自动重启 Codex（官方模式）。'
+    : '切换后请手动重启 Codex；自动重启 Codex Desktop 仅支持 Windows。';
   const message = alreadyOfficial
     ? 'Codex 当前已经是 OpenAI 官方配置。仍要清理第三方配置吗？'
-    : '将把 Codex 切回 OpenAI 官方配置。\n\n切换后会自动重启 Codex（官方模式）。';
+    : `将把 Codex 切回 OpenAI 官方配置。\n\n${autoRestartHint}`;
   const flow = await runSwitchFlow({
     title: '切回官方配置',
     lead: message,
@@ -3955,18 +3984,24 @@ async function restoreCodexOfficialConfig() {
         if (typeof loadProviders === 'function') await loadProviders();
         await refreshPlatforms({ silent: true });
 
-        setMessage('正在重启 Codex 桌面版（官方模式）…');
-        const restart = assertSwitchResultOk(
-          await invoke('restart_codex_desktop', { managed: false, model: null }),
-          'Codex 桌面版官方模式重启失败'
-        );
+        let restart = null;
+        if (codexDesktopAutomationSupported()) {
+          setMessage('正在重启 Codex 桌面版（官方模式）…');
+          restart = assertSwitchResultOk(
+            await invoke('restart_codex_desktop', { managed: false, model: null }),
+            'Codex 桌面版官方模式重启失败'
+          );
+        } else {
+          setMessage('当前平台不支持自动重启 Codex Desktop，已跳过桌面重启。');
+        }
 
         if (typeof addLog === 'function') {
           addLog('ok', result.message || 'Codex 已切回官方配置');
-          addLog('ok', restart.message || 'Codex 桌面版已按官方模式重启');
+          if (restart) addLog('ok', restart.message || 'Codex 桌面版已按官方模式重启');
+          else addLog('warn', codexDesktopUnsupportedMessage());
         }
         return {
-          message: `${result.message || 'Codex 已切回官方配置。'}\n\n${restart.message || 'Codex 桌面版已按官方模式重启。'}`
+          message: `${result.message || 'Codex 已切回官方配置。'}\n\n${restart ? (restart.message || 'Codex 桌面版已按官方模式重启。') : codexDesktopUnsupportedMessage()}`
         };
       } finally {
         setPlatformBusy('codex', false);

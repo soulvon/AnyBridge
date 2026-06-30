@@ -37,6 +37,21 @@ function setEnv(key, val) {
   process.env[key] = String(val);
 }
 
+function resolveSystemPromptPath(value, resourceDir) {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  if (path.isAbsolute(raw)) return raw;
+
+  const normalized = raw.replace(/\\/g, '/').replace(/^\.\//, '');
+  if (normalized === 'prompts/system-prompt.md' && resourceDir) {
+    return path.join(resourceDir, 'prompts', 'system-prompt.md');
+  }
+  if (normalized === 'prompts/system-prompt.md') {
+    return path.resolve(process.cwd(), raw);
+  }
+  return path.resolve(configDir(), raw);
+}
+
 const dir = configDir();
 
 // ─── 杂项配置（MAX_TOKENS / 系统提示词 / VOYAGE 等）────────
@@ -45,4 +60,11 @@ if (cfg && cfg.values && typeof cfg.values === 'object') {
   for (const [key, val] of Object.entries(cfg.values)) {
     setEnv(key, val);
   }
+}
+
+if (process.env.SYSTEM_PROMPT_PATH) {
+  process.env.SYSTEM_PROMPT_PATH = resolveSystemPromptPath(
+    process.env.SYSTEM_PROMPT_PATH,
+    process.env.BYOK_RESOURCE_DIR || ''
+  );
 }

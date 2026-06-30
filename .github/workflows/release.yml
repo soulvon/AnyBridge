@@ -66,25 +66,25 @@ jobs:
           - platform: "windows-latest"
             rust_target: ""
             tauri_args: ""
-            pkg_target: "node22-win-x64"
+            sidecar_platform: "x86_64-pc-windows-msvc"
             pkg_base: "node-v22.22.3-win-x64"
             sidecar_output: "anybridge-proxy-x86_64-pc-windows-msvc.exe"
           - platform: "macos-latest"
             rust_target: "aarch64-apple-darwin"
             tauri_args: "--target aarch64-apple-darwin"
-            pkg_target: "node22-macos-arm64"
+            sidecar_platform: "aarch64-apple-darwin"
             pkg_base: "node-v22.22.3-macos-arm64"
             sidecar_output: "anybridge-proxy-aarch64-apple-darwin"
           - platform: "macos-latest"
             rust_target: "x86_64-apple-darwin"
             tauri_args: "--target x86_64-apple-darwin"
-            pkg_target: "node22-macos-x64"
+            sidecar_platform: "x86_64-apple-darwin"
             pkg_base: "node-v22.22.3-macos-x64"
             sidecar_output: "anybridge-proxy-x86_64-apple-darwin"
           - platform: "ubuntu-22.04"
             rust_target: ""
             tauri_args: ""
-            pkg_target: "node22-linux-x64"
+            sidecar_platform: "x86_64-unknown-linux-gnu"
             pkg_base: "node-v22.22.3-linux-x64"
             sidecar_output: "anybridge-proxy-x86_64-unknown-linux-gnu"
 
@@ -132,15 +132,14 @@ jobs:
       - name: Build Sidecar Binary
         shell: bash
         env:
-          PKG_TARGET: ${{ matrix.pkg_target }}
+          SIDECAR_PLATFORM: ${{ matrix.sidecar_platform }}
           PKG_BASE: ${{ matrix.pkg_base }}
           OUTPUT_NAME: ${{ matrix.sidecar_output }}
         run: |
           set -euo pipefail
           mkdir -p src-tauri/binaries
-          cd sidecar
-          npm ci
-          export PKG_CACHE_PATH="$(pwd)/../.pkg-cache"
+          npm ci --prefix sidecar
+          export PKG_CACHE_PATH="$(pwd)/.pkg-cache"
           mkdir -p "${PKG_CACHE_PATH}/v3.6"
 
           echo "Prefetching pkg base binary: $PKG_BASE"
@@ -149,14 +148,13 @@ jobs:
             -o "${PKG_CACHE_PATH}/v3.6/${PKG_BASE}"
           chmod +x "${PKG_CACHE_PATH}/v3.6/${PKG_BASE}"
 
-          echo "Building Sidecar Proxy: $PKG_TARGET -> $OUTPUT_NAME"
-          ./node_modules/.bin/pkg proxy-entry.js --targets "$PKG_TARGET" --output "../src-tauri/binaries/$OUTPUT_NAME"
-
-          test -s "../src-tauri/binaries/$OUTPUT_NAME"
+          echo "Building Sidecar Proxy: $SIDECAR_PLATFORM -> $OUTPUT_NAME"
+          python scripts/build/build_sidecar_plain.py --platform "$SIDECAR_PLATFORM"
+          test -s "src-tauri/binaries/$OUTPUT_NAME"
           if [ "${{ matrix.platform }}" != "windows-latest" ]; then
-            chmod +x "../src-tauri/binaries/$OUTPUT_NAME"
+            chmod +x "src-tauri/binaries/$OUTPUT_NAME"
           fi
-          ls -lh "../src-tauri/binaries/$OUTPUT_NAME"
+          ls -lh "src-tauri/binaries/$OUTPUT_NAME"
 
       - name: Build the app
         uses: tauri-apps/tauri-action@v0
@@ -271,6 +269,4 @@ jobs:
         run: |
           set -euo pipefail
           gh release edit "v${VERSION}" --repo "$TARGET_REPO" --draft=false --prerelease=false --latest
-
-
 
