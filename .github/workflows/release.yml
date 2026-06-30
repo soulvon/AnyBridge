@@ -16,7 +16,7 @@ jobs:
       release_id: ${{ steps.source_release.outputs.release_id }}
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Read app version
         id: app_version
@@ -92,7 +92,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Validate updater signing secret
         env:
@@ -184,7 +184,7 @@ jobs:
       VERSION: ${{ needs.prepare-release.outputs.version }}
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Node.js setup
         uses: actions/setup-node@v4
