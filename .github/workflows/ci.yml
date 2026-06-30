@@ -50,5 +50,12 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Build sidecar for Cargo check
+        shell: bash
+        run: |
+          set -euo pipefail
+          HOST="$(rustc -vV | awk '/^host: / {print $2}')"
+          python scripts/build/build_sidecar_plain.py --platform "$HOST"
+
       - name: Cargo check
         run: cargo check --manifest-path src-tauri/Cargo.toml
