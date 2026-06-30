@@ -9,7 +9,6 @@
 [![Node.js 20+](https://img.shields.io/badge/Node.js-20%2B-43853d.svg?logo=node.js)](https://nodejs.org/)
 [![Rust](https://img.shields.io/badge/Rust-2021-edition-orange?logo=rust)](https://www.rust-lang.org/)
 [![GitHub release](https://img.shields.io/github/v/release/soulvon/AnyBridge?include_prereleases)](https://github.com/soulvon/AnyBridge/releases)
-[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
 
 [快速开始](#-快速开始) •
 [功能特点](#-功能特点) •
@@ -695,8 +694,6 @@ AnyBridge/
 ├── scripts/                # 构建脚本
 ├── docs/                   # 文档
 ├── CHANGELOG.md            # 更新日志
-├── CONTRIBUTING.md         # 贡献指南
-├── SECURITY.md             # 安全策略
 └── LICENSE                 # MIT
 ```
 
@@ -739,8 +736,7 @@ AnyBridge/
 
 - 🐛 发现 Bug → [提 Issue](https://github.com/soulvon/AnyBridge/issues)
 - 💡 有想法 → 发 [Discussion](https://github.com/soulvon/AnyBridge/discussions)
-- 🔧 想写代码 → 先看[贡献指南](CONTRIBUTING.md)
-- 🛡️ 安全漏洞 → 看 [SECURITY.md](SECURITY.md)
+- 🔧 想写代码 → 直接开 Pull Request 或先开 Issue 对齐方案
 
 > **注意：** 别把 API Key、证书、抓包数据提交到 Git 里。
 
@@ -753,6 +749,30 @@ AnyBridge 会修改本地工具的配置，代理模式会拦截 HTTPS 流量。
 - 用代理模式前，看看工具的服务条款和公司的安全规定
 - 你的 API Key 只留在本地，AnyBridge 不会往外传
 - **本项目与 Windsurf、Devin、OpenAI、Anthropic 等公司没有关系**
+
+---
+
+## ☕ 支持一下
+
+如果 AnyBridge 帮你省了时间，欢迎请我喝杯咖啡～
+
+<div align="center">
+
+<img src="https://raw.githubusercontent.com/soulvon/windsurf-pool-releases/main/wechat-reward.webp" width="200" alt="微信赞赏码">
+
+</div>
+
+### 💬 交流群
+
+**QQ 群：1075342078**（注明 "AnyBridge"）
+
+群里有最新版本通知、使用帮助、配置分享。
+
+<div align="center">
+
+<img src="docs/qq-group-qrcode.png" width="200" alt="QQ 群二维码">
+
+</div>
 
 ## 📄 开源协议
 
