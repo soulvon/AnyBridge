@@ -10,11 +10,11 @@
   <title>AnyBridge - 自定义 API 工具 | 统一接入 AI 编程工具</title>
   <meta
     name="description"
-    content="AnyBridge 是开源桌面自定义 API 工具，用本机代理、模型映射和配置切换，把你的 API Key、模型供应商和 Codex、Cursor、Claude Code、Windsurf、Devin、OpenCode 等 AI 编程工具统一接起来。"
+    content="AnyBridge 是开源桌面自定义 API 工具，用本机代理、模型映射和配置切换，把你的 API 密钥、模型供应商和 Codex、Cursor、Claude Code、Windsurf、Devin、OpenCode 等 AI 编程工具统一接起来。"
   />
   <meta
     name="keywords"
-    content="AnyBridge, BYOK, AI 编程工具, Codex, Cursor, Claude Code, Windsurf, Devin, OpenCode, 本地代理, OpenAI 兼容接口, Anthropic, 模型路由, Tauri"
+    content="AnyBridge, 自带密钥, AI 编程工具, Codex, Cursor, Claude Code, Windsurf, Devin, OpenCode, 本地代理, OpenAI 兼容接口, Anthropic, 模型路由, 桌面应用"
   />
   <link rel="canonical" href="https://soulvon.github.io/AnyBridge/" />
   <meta property="og:site_name" content="AnyBridge" />
@@ -23,7 +23,7 @@
   <meta property="og:title" content="AnyBridge - 自定义 API 工具" />
   <meta
     property="og:description"
-    content="把自己的 API Key、模型供应商和 AI 编程工具统一接起来。支持本地代理、配置切换、本地 OpenAI 兼容网关、模型映射、视觉降级和实时诊断。"
+    content="把自己的 API 密钥、模型供应商和 AI 编程工具统一接起来。支持本地代理、配置切换、本地 OpenAI 兼容网关、模型映射、视觉降级和实时诊断。"
   />
   <meta property="og:image" content="https://soulvon.github.io/AnyBridge/assets/anybridge-platform-console.png" />
   <meta name="twitter:card" content="summary_large_image" />
@@ -925,6 +925,243 @@
       text-align: center;
     }
 
+    .tool-choice-panel {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 14px;
+      margin-bottom: 18px;
+    }
+
+    .choice-card {
+      min-height: 190px;
+      padding: 22px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius-lg);
+      background:
+        radial-gradient(circle at 100% 0%, rgba(53, 174, 222, 0.12), transparent 38%),
+        rgba(255, 253, 248, 0.84);
+      box-shadow: var(--shadow);
+    }
+
+    .choice-card.proxy {
+      background:
+        radial-gradient(circle at 100% 0%, rgba(251, 114, 153, 0.14), transparent 38%),
+        rgba(255, 253, 248, 0.84);
+    }
+
+    .choice-card b,
+    .tool-card-kicker {
+      display: block;
+      color: var(--pink-dark);
+      font-family: var(--mono);
+      font-size: 12px;
+      font-weight: 950;
+      letter-spacing: 0.03em;
+      text-transform: uppercase;
+    }
+
+    .choice-card h3 {
+      margin-top: 12px;
+    }
+
+    .choice-card p {
+      margin-top: 10px;
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.72;
+    }
+
+    .tool-guide-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 14px;
+    }
+
+    .tool-card {
+      display: flex;
+      min-height: 470px;
+      flex-direction: column;
+      padding: 22px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius-lg);
+      background: rgba(255, 253, 248, 0.86);
+      box-shadow: var(--shadow);
+    }
+
+    .tool-card.featured {
+      background:
+        radial-gradient(circle at 100% 0%, rgba(53, 174, 222, 0.14), transparent 34%),
+        rgba(255, 253, 248, 0.88);
+    }
+
+    .tool-card-head {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .tool-title {
+      display: flex;
+      min-width: 0;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .tool-logo {
+      display: grid;
+      flex: 0 0 auto;
+      width: 44px;
+      height: 44px;
+      place-items: center;
+      border: 1px solid rgba(31, 55, 77, 0.1);
+      border-radius: 15px;
+      background:
+        linear-gradient(145deg, rgba(255, 255, 255, 0.88), rgba(247, 242, 228, 0.72)),
+        rgba(255, 255, 255, 0.72);
+      box-shadow: 0 14px 24px rgba(31, 55, 77, 0.12);
+    }
+
+    .tool-logo img {
+      width: 28px;
+      height: 28px;
+      object-fit: contain;
+      display: block;
+    }
+
+    .tool-logo img.is-photo {
+      width: 100%;
+      height: 100%;
+      border-radius: 14px;
+      object-fit: cover;
+    }
+
+    .tool-card h3 {
+      margin-top: 2px;
+      font-size: 24px;
+    }
+
+    .tool-status {
+      display: inline-flex;
+      align-items: center;
+      min-height: 26px;
+      padding: 0 9px;
+      border-radius: 999px;
+      background: rgba(55, 199, 165, 0.14);
+      color: #087e72;
+      font-size: 12px;
+      font-weight: 900;
+      white-space: nowrap;
+    }
+
+    .tool-tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 7px;
+      margin-top: 14px;
+    }
+
+    .tool-tags span {
+      display: inline-flex;
+      align-items: center;
+      min-height: 26px;
+      padding: 0 9px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.58);
+      color: var(--ink-soft);
+      font-size: 12px;
+      font-weight: 850;
+    }
+
+    .tool-desc {
+      margin-top: 14px;
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.72;
+    }
+
+    .tool-mode-list {
+      display: grid;
+      gap: 9px;
+      margin-top: 16px;
+    }
+
+    .tool-mode {
+      padding: 12px;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: rgba(255, 255, 255, 0.54);
+    }
+
+    .tool-mode strong {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--ink);
+      font-size: 13px;
+      font-weight: 920;
+    }
+
+    .tool-mode strong::before {
+      content: "";
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--cyan);
+    }
+
+    .tool-mode.proxy strong::before {
+      background: var(--pink);
+    }
+
+    .tool-mode.direct strong::before {
+      background: var(--green);
+    }
+
+    .tool-mode p {
+      margin-top: 7px;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.62;
+    }
+
+    .tool-card ul {
+      display: grid;
+      gap: 8px;
+      margin: 16px 0 0;
+      padding: 0;
+      list-style: none;
+    }
+
+    .tool-card li {
+      position: relative;
+      padding-left: 17px;
+      color: var(--ink-soft);
+      font-size: 13px;
+      line-height: 1.55;
+    }
+
+    .tool-card li::before {
+      content: "";
+      position: absolute;
+      left: 0;
+      top: 0.7em;
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--teal);
+    }
+
+    .tool-card-foot {
+      margin-top: auto;
+      padding-top: 16px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 850;
+      line-height: 1.5;
+    }
+
     .community-panel {
       position: relative;
       display: grid;
@@ -1045,7 +1282,8 @@
       }
 
       .mode-grid,
-      .feature-grid {
+      .feature-grid,
+      .tool-guide-grid {
         grid-template-columns: repeat(2, minmax(0, 1fr));
       }
 
@@ -1074,6 +1312,8 @@
       .feature-grid,
       .screen-grid,
       .faq-grid,
+      .tool-choice-panel,
+      .tool-guide-grid,
       .community-panel {
         grid-template-columns: 1fr;
       }
@@ -1152,6 +1392,7 @@
       <nav class="nav" aria-label="页面导航">
         <a href="#install">下载安装</a>
         <a href="#modes">接入方式</a>
+        <a href="#tools">工具用法</a>
         <a href="#features">特色功能</a>
         <a href="#screens">界面</a>
         <a href="#tech">工作方式</a>
@@ -1170,7 +1411,7 @@
           <div class="eyebrow">开源 · 本地优先 · 自带密钥</div>
           <h1>把自己的模型接进所有 AI 编程工具。</h1>
           <p class="lead">
-            AnyBridge 是本地运行的 BYOK 桥接工作台。它把你的 API Key、模型供应商、本地代理、模型映射和 IDE 配置切换集中到一个桌面控制面里。
+            AnyBridge 是本地运行的自带密钥接入工作台。它把你的 API 密钥、模型供应商、本地代理、模型映射和编程工具配置切换集中到一个桌面控制面里。
           </p>
           <div class="hero-actions" aria-label="主要操作">
             <a class="btn primary" href="https://github.com/soulvon/AnyBridge/releases/latest" target="_blank" rel="noopener noreferrer">下载桌面安装包</a>
@@ -1184,7 +1425,7 @@
             </div>
             <div class="metric">
               <b>配置切换</b>
-              <span>Claude Code / Codex / OpenCode 等工具可一键写入 BYOK 配置。</span>
+              <span>Claude Code / Codex / OpenCode 等工具可一键写入自带密钥配置。</span>
             </div>
             <div class="metric">
               <b>统一网关</b>
@@ -1229,7 +1470,7 @@
             <p>先安装 AnyBridge，再把你的模型供应商填进去，最后选择要接入的 AI 编程工具。</p>
             <ol class="download-steps">
               <li><span>1</span><strong>去发布页下载最新版安装包。Windows 用户一般选择带 <code>Setup.exe</code> 的文件。</strong></li>
-              <li><span>2</span><strong>打开 AnyBridge，添加你的 API Key、接口地址和模型列表。</strong></li>
+              <li><span>2</span><strong>打开 AnyBridge，添加你的 API 密钥、接口地址和模型列表。</strong></li>
               <li><span>3</span><strong>在平台页选择 Codex、Cursor、Windsurf、Devin 等工具，一键切换到 AnyBridge。</strong></li>
             </ol>
             <div class="hero-actions">
@@ -1275,7 +1516,7 @@
           <article class="mode-card reveal">
             <b>01 本地代理</b>
             <h3>本地代理模式</h3>
-            <p>适合不直接开放 BYOK 的桌面 IDE，通过本机代理识别并转发聊天请求。</p>
+            <p>适合不直接开放自定义密钥的桌面编程工具，通过本机代理识别并转发聊天请求。</p>
             <ul>
               <li>Windsurf / Devin / Cursor</li>
               <li>聊天请求转发到你的模型</li>
@@ -1313,6 +1554,338 @@
           <div class="tool-pill">CodeBuddy</div>
           <div class="tool-pill">ZCode</div>
           <div class="tool-pill">WorkBuddy</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="tools">
+      <div class="inner">
+        <div class="section-head reveal">
+          <div class="eyebrow">按工具使用</div>
+          <h2>每个 AI 工具适合的接入方式不一样，AnyBridge 会按工具处理。</h2>
+          <p class="lead">有的工具只能通过本机代理接入，有的工具可以写配置直连，也可以统一走 AnyBridge 代理来获得聚合、备用模型和代理增强。</p>
+        </div>
+
+        <div class="tool-choice-panel">
+          <article class="choice-card reveal">
+            <b>什么时候选直连</b>
+            <h3>稳定、省心、切换后不依赖 AnyBridge 常驻。</h3>
+            <p>适合本身支持自定义 API 的工具。AnyBridge 把供应商地址、密钥和模型写进工具配置后，工具可以直接连上游供应商。优点是链路短，适合固定使用某一个供应商。</p>
+          </article>
+          <article class="choice-card proxy reveal">
+            <b>什么时候选代理</b>
+            <h3>需要聚合、备用模型、图片降级和统一增强时选它。</h3>
+            <p>工具请求先到 AnyBridge 本地代理，再由 AnyBridge 转给上游模型。这样可以使用模型聚合、故障切换、代理增强、图片理解降级、统一统计和日志诊断。</p>
+          </article>
+        </div>
+
+        <div class="tool-guide-grid" aria-label="各 AI 工具接入说明">
+          <article class="tool-card featured reveal">
+            <div class="tool-card-head">
+              <div class="tool-title">
+                <span class="tool-logo"><img src="assets/icons/platform-windsurf.svg" alt="" /></span>
+                <div>
+                  <span class="tool-card-kicker">本机代理</span>
+                  <h3>Windsurf</h3>
+                </div>
+              </div>
+              <span class="tool-status">推荐代理</span>
+            </div>
+            <div class="tool-tags">
+              <span>聊天请求转发</span>
+              <span>模型列表替换</span>
+              <span>Kite 可搭配</span>
+            </div>
+            <p class="tool-desc">Windsurf 不适合手动填自定义 API。AnyBridge 通过本机代理接管聊天相关请求，并把你配置的模型展示给 Windsurf 使用。</p>
+            <div class="tool-mode-list">
+              <div class="tool-mode proxy">
+                <strong>代理接入</strong>
+                <p>在 Windsurf 页面一键接入，按提示安装证书并重启 Windsurf。聊天走 AnyBridge，登录、索引、补全等非聊天流量正常放行。</p>
+              </div>
+            </div>
+            <ul>
+              <li>适合把 Windsurf 的固定模型槽位换成自己的模型。</li>
+              <li>可以配合模型映射、备用模型和代理增强。</li>
+              <li>Kite 插件适合补充 Windsurf 的界面和体验增强。</li>
+            </ul>
+            <div class="tool-card-foot">适合人群：想继续用 Windsurf，但希望模型和接口密钥由自己控制。</div>
+          </article>
+
+          <article class="tool-card featured reveal">
+            <div class="tool-card-head">
+              <div class="tool-title">
+                <span class="tool-logo"><img src="assets/icons/platform-devin.svg" alt="" /></span>
+                <div>
+                  <span class="tool-card-kicker">本机代理</span>
+                  <h3>Devin</h3>
+                </div>
+              </div>
+              <span class="tool-status">推荐代理</span>
+            </div>
+            <div class="tool-tags">
+              <span>Connect-RPC</span>
+              <span>只处理聊天</span>
+              <span>Kite 可搭配</span>
+            </div>
+            <p class="tool-desc">Devin 的聊天请求适合通过 AnyBridge 本机代理接入。AnyBridge 会识别聊天调用，转换为你配置的供应商格式。</p>
+            <div class="tool-mode-list">
+              <div class="tool-mode proxy">
+                <strong>代理接入</strong>
+                <p>在 Devin 页面点击接入，AnyBridge 写入代理设置并启动本机代理。之后重启 Devin，让新的代理配置生效。</p>
+              </div>
+            </div>
+            <ul>
+              <li>可以使用自己的 Anthropic、OpenAI 或兼容模型。</li>
+              <li>代理层可以做重试、故障切换和日志统计。</li>
+              <li>非聊天请求不强行接管，降低对原工具功能的影响。</li>
+            </ul>
+            <div class="tool-card-foot">适合人群：想在 Devin 中使用自己的模型池，同时保留 Devin 原有体验。</div>
+          </article>
+
+          <article class="tool-card reveal">
+            <div class="tool-card-head">
+              <div class="tool-title">
+                <span class="tool-logo"><img src="assets/icons/platform-cursor.svg" alt="" /></span>
+                <div>
+                  <span class="tool-card-kicker">本机代理</span>
+                  <h3>Cursor</h3>
+                </div>
+              </div>
+              <span class="tool-status">推荐代理</span>
+            </div>
+            <div class="tool-tags">
+              <span>代理配置</span>
+              <span>可还原直连</span>
+              <span>需要重启</span>
+            </div>
+            <p class="tool-desc">Cursor 通过本机代理接入更合适。AnyBridge 会集中管理代理、证书、模型路由和状态检查。</p>
+            <div class="tool-mode-list">
+              <div class="tool-mode proxy">
+                <strong>代理接入</strong>
+                <p>在 Cursor 页面启动代理并写入接入配置，重启 Cursor 后请求会进入 AnyBridge。</p>
+              </div>
+              <div class="tool-mode direct">
+                <strong>还原直连</strong>
+                <p>如果想恢复 Cursor 原始状态，可以在页面里一键还原直连配置。</p>
+              </div>
+            </div>
+            <ul>
+              <li>适合统一走 AnyBridge 本地 API 入口。</li>
+              <li>代理增强、统计和日志对 Cursor 请求同样可用。</li>
+              <li>出问题时可以通过环境体检看代理和配置是否写入成功。</li>
+            </ul>
+            <div class="tool-card-foot">适合人群：想让 Cursor 使用 AnyBridge 统一模型入口。</div>
+          </article>
+
+          <article class="tool-card reveal">
+            <div class="tool-card-head">
+              <div class="tool-title">
+                <span class="tool-logo"><img src="assets/icons/platform-codex.svg" alt="" /></span>
+                <div>
+                  <span class="tool-card-kicker">配置切换 + 桌面增强</span>
+                  <h3>Codex</h3>
+                </div>
+              </div>
+              <span class="tool-status">多能力</span>
+            </div>
+            <div class="tool-tags">
+              <span>配置写入</span>
+              <span>桌面注入</span>
+              <span>模型解锁</span>
+            </div>
+            <p class="tool-desc">Codex 支持通过配置切换接入供应商。Codex Desktop 还可以通过运行时注入，把第三方模型加入模型选择器。</p>
+            <div class="tool-mode-list">
+              <div class="tool-mode direct">
+                <strong>直连供应商</strong>
+                <p>适合固定使用某个兼容供应商，配置写入后可以直接由 Codex 调用上游。</p>
+              </div>
+              <div class="tool-mode proxy">
+                <strong>走 AnyBridge 代理</strong>
+                <p>适合需要聚合模型、备用模型、代理增强和统一日志时使用，请求通过本地代理再转发。</p>
+              </div>
+            </div>
+            <ul>
+              <li>桌面版可自动重启并解锁模型选择器中的第三方模型。</li>
+              <li>可以一键切回 OpenAI 官方配置。</li>
+              <li>Codex 专用解锁能力只在 Codex 目标中启用，边界清晰。</li>
+            </ul>
+            <div class="tool-card-foot">适合人群：想在 Codex Desktop 中看到并使用自己的模型列表。</div>
+          </article>
+
+          <article class="tool-card reveal">
+            <div class="tool-card-head">
+              <div class="tool-title">
+                <span class="tool-logo"><img src="assets/icons/platform-claude-code.svg" alt="" /></span>
+                <div>
+                  <span class="tool-card-kicker">配置切换</span>
+                  <h3>Claude Code</h3>
+                </div>
+              </div>
+              <span class="tool-status">推荐配置</span>
+            </div>
+            <div class="tool-tags">
+              <span>自动写配置</span>
+              <span>可恢复</span>
+              <span>专用解锁</span>
+            </div>
+            <p class="tool-desc">Claude Code 本身支持自定义接口，但手动配置路径和字段比较麻烦。AnyBridge 会帮你写入和恢复配置。</p>
+            <div class="tool-mode-list">
+              <div class="tool-mode direct">
+                <strong>直连供应商</strong>
+                <p>适合使用稳定的 Anthropic 兼容供应商，切换完成后 Claude Code 可以直接请求上游。</p>
+              </div>
+              <div class="tool-mode proxy">
+                <strong>走 AnyBridge 代理</strong>
+                <p>适合想统一模型池、看统计日志、使用备用模型和代理增强的场景。</p>
+              </div>
+            </div>
+            <ul>
+              <li>无需手动找配置文件。</li>
+              <li>支持切换和恢复，适合频繁试供应商。</li>
+              <li>Claude Code 专用解锁不会混到普通接口里。</li>
+            </ul>
+            <div class="tool-card-foot">适合人群：想减少 Claude Code 配置成本，同时保留可回滚能力。</div>
+          </article>
+
+          <article class="tool-card reveal">
+            <div class="tool-card-head">
+              <div class="tool-title">
+                <span class="tool-logo"><img src="assets/icons/platform-opencode.svg" alt="" /></span>
+                <div>
+                  <span class="tool-card-kicker">配置追加</span>
+                  <h3>OpenCode</h3>
+                </div>
+              </div>
+              <span class="tool-status">灵活</span>
+            </div>
+            <div class="tool-tags">
+              <span>追加供应商</span>
+              <span>不覆盖原配置</span>
+              <span>可直连可代理</span>
+            </div>
+            <p class="tool-desc">OpenCode 使用供应商配置。AnyBridge 会把新配置追加到 opencode.json，不覆盖你已有的其他供应商。</p>
+            <div class="tool-mode-list">
+              <div class="tool-mode direct">
+                <strong>直连供应商</strong>
+                <p>适合把某个 OpenAI 兼容供应商直接加入 OpenCode，链路短，配置清晰。</p>
+              </div>
+              <div class="tool-mode proxy">
+                <strong>走 AnyBridge 代理</strong>
+                <p>适合把 OpenCode 接到 AnyBridge 的聚合模型池，获得备用链路、图片降级和统一日志。</p>
+              </div>
+            </div>
+            <ul>
+              <li>可以保留 OpenCode 原来的供应商配置。</li>
+              <li>配置方案保存在 AnyBridge，方便添加或移除。</li>
+              <li>本地代理方式适合多供应商统一管理。</li>
+            </ul>
+            <div class="tool-card-foot">适合人群：已经有 OpenCode 配置，但想更方便地追加自己的模型。</div>
+          </article>
+
+          <article class="tool-card featured reveal">
+            <div class="tool-card-head">
+              <div class="tool-title">
+                <span class="tool-logo"><img class="is-photo" src="assets/icons/platform-codebuddy.png" alt="" /></span>
+                <div>
+                  <span class="tool-card-kicker">自定义模型列表</span>
+                  <h3>CodeBuddy</h3>
+                </div>
+              </div>
+              <span class="tool-status">双模式</span>
+            </div>
+            <div class="tool-tags">
+              <span>models.json</span>
+              <span>能力标签</span>
+              <span>直连 / 代理</span>
+            </div>
+            <p class="tool-desc">CodeBuddy 可以管理自定义模型列表。AnyBridge 支持从供应商添加模型，也会把“AnyBridge 本地代理”放在供应商列表首位。</p>
+            <div class="tool-mode-list">
+              <div class="tool-mode direct">
+                <strong>直连模式</strong>
+                <p>把模型直接写成某个供应商的接口地址和密钥。优点是链路简单，保存后 CodeBuddy 直接请求上游。</p>
+              </div>
+              <div class="tool-mode proxy">
+                <strong>代理模式</strong>
+                <p>选择 AnyBridge 本地代理作为供应商。CodeBuddy 只连本地入口，聚合、备用模型、代理增强、图片理解降级都由 AnyBridge 处理。</p>
+              </div>
+            </div>
+            <ul>
+              <li>添加模型时可以标记图片、工具调用、推理能力。</li>
+              <li>代理模式适合多个上游供应商统一成一个 CodeBuddy 入口。</li>
+              <li>保存前会自动备份原 models.json。</li>
+            </ul>
+            <div class="tool-card-foot">适合人群：想让 CodeBuddy 同时拥有直连稳定性和 AnyBridge 聚合能力。</div>
+          </article>
+
+          <article class="tool-card featured reveal">
+            <div class="tool-card-head">
+              <div class="tool-title">
+                <span class="tool-logo"><img class="is-photo" src="assets/icons/platform-workbuddy.png" alt="" /></span>
+                <div>
+                  <span class="tool-card-kicker">自定义模型列表</span>
+                  <h3>WorkBuddy</h3>
+                </div>
+              </div>
+              <span class="tool-status">双模式</span>
+            </div>
+            <div class="tool-tags">
+              <span>可同步 CodeBuddy</span>
+              <span>直连 / 代理</span>
+              <span>能力标签</span>
+            </div>
+            <p class="tool-desc">WorkBuddy 和 CodeBuddy 的配置管理方式接近，AnyBridge 支持单独管理，也支持与 CodeBuddy 双端同步。</p>
+            <div class="tool-mode-list">
+              <div class="tool-mode direct">
+                <strong>直连模式</strong>
+                <p>适合 WorkBuddy 固定使用某几个供应商模型，配置写入后不依赖 AnyBridge 常驻。</p>
+              </div>
+              <div class="tool-mode proxy">
+                <strong>代理模式</strong>
+                <p>适合团队或多模型场景。WorkBuddy 请求统一进 AnyBridge，获得模型聚合、故障切换和代理增强。</p>
+              </div>
+            </div>
+            <ul>
+              <li>可以与 CodeBuddy 合并并同步模型列表。</li>
+              <li>本地代理供应商会排在添加列表前面，方便选择。</li>
+              <li>适合一套模型配置同时供两个工具使用。</li>
+            </ul>
+            <div class="tool-card-foot">适合人群：CodeBuddy / WorkBuddy 都用，并希望减少重复维护。</div>
+          </article>
+
+          <article class="tool-card reveal">
+            <div class="tool-card-head">
+              <div class="tool-title">
+                <span class="tool-logo"><img src="assets/icons/platform-zcode.svg" alt="" /></span>
+                <div>
+                  <span class="tool-card-kicker">自定义模型列表</span>
+                  <h3>ZCode</h3>
+                </div>
+              </div>
+              <span class="tool-status">双模式</span>
+            </div>
+            <div class="tool-tags">
+              <span>命令行配置</span>
+              <span>JSON 编辑</span>
+              <span>直连 / 代理</span>
+            </div>
+            <p class="tool-desc">ZCode 使用更偏原生嵌套的供应商和模型配置。AnyBridge 提供列表管理和 JSON 编辑器，方便导入导出。</p>
+            <div class="tool-mode-list">
+              <div class="tool-mode direct">
+                <strong>直连模式</strong>
+                <p>适合给 ZCode 写入某个供应商的原生配置，让 ZCode 直接请求上游。</p>
+              </div>
+              <div class="tool-mode proxy">
+                <strong>代理模式</strong>
+                <p>适合统一走 AnyBridge 本地接口，把多个供应商、备用模型和增强能力聚合给 ZCode 使用。</p>
+              </div>
+            </div>
+            <ul>
+              <li>保存时会同步写入 CLI 配置。</li>
+              <li>JSON 编辑器展示 ZCode 原生嵌套格式。</li>
+              <li>代理模式适合统一管理多模型、多供应商。</li>
+            </ul>
+            <div class="tool-card-foot">适合人群：希望 ZCode 配置可视化，同时保留原生 JSON 控制权。</div>
+          </article>
         </div>
       </div>
     </section>
@@ -1381,7 +1954,7 @@
             <img src="assets/anybridge-provider-console.png" alt="AnyBridge 供应商管理界面截图" />
             <div class="screen-card-body">
               <h3>供应商统一管理</h3>
-              <p>集中维护 API Key、Base URL、协议格式、模型列表和启用状态。</p>
+              <p>集中维护 API 密钥、接口地址、协议格式、模型列表和启用状态。</p>
             </div>
           </article>
           <article class="screen-card reveal">
@@ -1477,7 +2050,7 @@
             <p>一般选择发布页里带 <code>Setup.exe</code> 的安装包。下载后双击运行，按安装向导继续即可。</p>
           </article>
           <article class="faq-card reveal">
-            <h3>我的 API Key 会上传到云端吗？</h3>
+            <h3>我的 API 密钥会上传到云端吗？</h3>
             <p>不会。AnyBridge 是本地运行的桥接工具，运行时配置保存在你电脑的应用数据目录里。</p>
           </article>
           <article class="faq-card reveal">
