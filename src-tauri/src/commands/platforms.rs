@@ -368,10 +368,24 @@ impl Platform {
                 serde_json::to_string_pretty(&preview).map_err(|e| e.to_string())
             }
             Platform::Codex => {
-                let base = codex_base_url();
+                let base = if p.route_through_proxy {
+                    codex_base_url()
+                } else {
+                    let host = p.api_host.trim().trim_end_matches('/');
+                    let path = p
+                        .api_path
+                        .as_deref()
+                        .unwrap_or("/v1")
+                        .trim()
+                        .trim_start_matches('/');
+                    format!("{}/{}", host, path)
+                };
                 let model = toml_escape(p.default_model.trim());
-                // preview 显示本地代理 key（与写入一致），不显示 provider 真 key
-                let bearer_for_preview = codex_bearer_token().unwrap_or_default();
+                let bearer_for_preview = if p.route_through_proxy {
+                    codex_bearer_token().unwrap_or_default()
+                } else {
+                    p.api_key.clone()
+                };
                 let masked = mask_key(&bearer_for_preview);
                 let name = toml_escape(&p.name);
                 // wire_api 始终为 "responses"：Codex 始终用 Responses API 与本地代理通信，
@@ -382,7 +396,7 @@ impl Platform {
                     String::new()
                 };
                 Ok(format!(
-                    "model = \"{model}\"\nmodel_provider = \"byok\"{catalog_line}\n\n[model_providers.byok]\nname = \"{name}\"\nbase_url = \"{base}\"\nwire_api = \"responses\"\nrequires_openai_auth = true\nexperimental_bearer_token = \"{masked}\""
+                    "model = \"{model}\"\nmodel_provider = \"{CODEX_RUNTIME_MODEL_PROVIDER_ID}\"{catalog_line}\n\n[model_providers.{CODEX_RUNTIME_MODEL_PROVIDER_ID}]\nname = \"{name}\"\nbase_url = \"{base}\"\nwire_api = \"responses\"\nrequires_openai_auth = true\nexperimental_bearer_token = \"{masked}\"\n{CODEX_ANYBRIDGE_MANAGED_FLAG} = true"
                 ))
             }
             Platform::CodeBuddy => {
@@ -510,18 +524,31 @@ impl Platform {
         } else {
             // 直连供应商：拼接 apiHost + apiPath（不写 localhost 代理地址）
             let host = p.api_host.trim().trim_end_matches('/');
-            let path = p.api_path.as_deref().unwrap_or("/v1").trim().trim_start_matches('/');
+            let path = p
+                .api_path
+                .as_deref()
+                .unwrap_or("/v1")
+                .trim()
+                .trim_start_matches('/');
             format!("{}/{}", host, path)
         };
-        let bearer = codex_bearer_token()?;
+        let bearer = if p.route_through_proxy {
+            codex_bearer_token()?
+        } else {
+            let key = p.api_key.trim();
+            if key.is_empty() {
+                return Err("Codex 直连供应商缺少 API Key".to_string());
+            }
+            key.to_string()
+        };
         let model = p.default_model.trim();
 
         if !model.is_empty() {
             doc["model"] = value(model);
         }
-        doc["model_provider"] = value("byok");
+        doc["model_provider"] = value(CODEX_RUNTIME_MODEL_PROVIDER_ID);
 
-        // 确保 [model_providers] 是表，再写入 byok 子表。
+        // 确保 [model_providers] 是表，再写入统一的 Codex local access 子表。
         let providers = doc
             .entry("model_providers")
             .or_insert(Item::Table(Table::new()))
@@ -529,21 +556,25 @@ impl Platform {
             .ok_or_else(|| "config.toml 的 model_providers 不是表".to_string())?;
         // 让 [model_providers] 表头在已有子表时不重复输出。
         providers.set_implicit(true);
+        // 清理 AnyBridge 旧版 provider id，避免 byok/codex_local_access 并存导致历史过滤混乱。
+        providers.remove(CODEX_LEGACY_MODEL_PROVIDER_ID);
 
-        let byok = providers
-            .entry("byok")
+        let provider_table = providers
+            .entry(CODEX_RUNTIME_MODEL_PROVIDER_ID)
             .or_insert(Item::Table(Table::new()))
             .as_table_mut()
-            .ok_or_else(|| "config.toml 的 model_providers.byok 不是表".to_string())?;
-        byok["name"] = value(p.name.clone());
-        byok["base_url"] = value(base);
+            .ok_or_else(|| {
+                format!("config.toml 的 model_providers.{CODEX_RUNTIME_MODEL_PROVIDER_ID} 不是表")
+            })?;
+        provider_table["name"] = value(p.name.clone());
+        provider_table["base_url"] = value(base);
         // wire_api 始终为 "responses"：Codex 始终用 Responses API 与本地代理通信，
         // 由代理根据 provider 的 wireApi 配置决定是否转换为 Chat Completions。
-        byok["wire_api"] = value("responses");
-        byok["requires_openai_auth"] = value(true);
-        // bearer_token 写任何bridge 本地代理 key（不是 provider 真 key）—— 代理鉴权后查路由表转发。
-        // 真实 provider api_key 永远留在 proxy-routes.json 里。
-        byok["experimental_bearer_token"] = value(bearer);
+        provider_table["wire_api"] = value("responses");
+        provider_table["requires_openai_auth"] = value(true);
+        // 代理模式写 AnyBridge 本地代理 key；直连模式必须写供应商真实 key。
+        provider_table["experimental_bearer_token"] = value(bearer);
+        provider_table[CODEX_ANYBRIDGE_MANAGED_FLAG] = value(true);
 
         // ── 模型目录：让 Codex 显示自定义模型列表 ──
         if !p.model_catalog.is_empty() {
@@ -584,7 +615,15 @@ impl Platform {
         let providers_empty = doc["model_providers"]
             .as_table_mut()
             .map(|providers| {
-                providers.remove("byok");
+                providers.remove(CODEX_LEGACY_MODEL_PROVIDER_ID);
+                let should_remove_runtime = providers
+                    .get(CODEX_RUNTIME_MODEL_PROVIDER_ID)
+                    .and_then(Item::as_table)
+                    .map(|table| toml_table_bool(table, CODEX_ANYBRIDGE_MANAGED_FLAG))
+                    .unwrap_or(false);
+                if should_remove_runtime {
+                    providers.remove(CODEX_RUNTIME_MODEL_PROVIDER_ID);
+                }
                 providers.is_empty()
             })
             .unwrap_or(false);
@@ -904,27 +943,26 @@ fn claude_base_url(p: &Provider) -> String {
     )
 }
 
-/// Codex config.toml 里的 base_url：永远指向本地 anybridge 代理（不写上游 URL）。
+/// Codex config.toml 里的 base_url：永远指向本地 anybridge 的 Codex 专用代理入口（不写上游 URL）。
 ///
 /// 关键设计决策：Codex 客户端只与 anybridge 代理通信，**绝不直连 provider 上游**。
 /// 原因：
-///   1. 真实 provider 上游 URL + apiKey 存到 `proxy-routes.json`（由 7450 代理查表），
+///   1. 真实 provider 上游 URL + apiKey 存到 `codex-proxy-routes.json`（由 7450 代理查表），
 ///      避免上游 key 暴露给 Codex 客户端。
 ///   2. 代理负责 Chat↔Responses 格式转换、retry、token 统计、错误归一。
 ///   3. 任何 supplier 走代理，统一可观测（统计、debug）。
 ///
-/// provider 的 `apiHost` 不再用作 Codex 直连 URL——它只用作"由 7450 代理 + proxy-routes.json 转发"的上游目标。
+/// provider 的 `apiHost` 不再用作 Codex 直连 URL——它只用作"由 7450 代理 + codex-proxy-routes.json 转发"的上游目标。
 fn codex_base_url() -> String {
     use crate::commands::config::configured_proxy_ports;
     let port = configured_proxy_ports().api_port;
-    format!("http://127.0.0.1:{port}/v1")
+    format!("http://127.0.0.1:{port}/codex/v1")
 }
 
-/// Codex config.toml 里的 bearer_token：永远写 anybridge 本地代理 key（不是 provider.apiKey）。
+/// Codex config.toml 里的 bearer_token：代理模式写 anybridge 本地代理 key。
 ///
 /// 代理收到请求后用 `validateAuth` 验证该 token（与 byok-config.json 的 LOCAL_PROXY_KEY 比对），
-/// 通过后由 7450 代理查 proxy-routes.json 找到真实 provider + 上游 apiKey 转发。
-/// **provider 的真 apiKey 永远不会出现在 config.toml 里**。
+/// 通过后由 7450 代理查 codex-proxy-routes.json 找到真实 provider + 上游 apiKey 转发。
 fn codex_bearer_token() -> Result<String, String> {
     crate::commands::config::read_config_value("LOCAL_PROXY_KEY")
         .filter(|s| !s.is_empty())
@@ -939,6 +977,9 @@ fn codex_bearer_token() -> Result<String, String> {
 const CODEX_MODEL_CATALOG_FILENAME: &str = "anybridge-model-catalog.json";
 const CODEX_ANYBRIDGE_MANAGED_FLAG: &str = "anybridge_managed";
 const CODEX_LEGACY_ANYBRIDGE_SLUG_PREFIX: &str = "anybridge:";
+const CODEX_RUNTIME_MODEL_PROVIDER_ID: &str = "codex_local_access";
+const CODEX_LEGACY_MODEL_PROVIDER_ID: &str = "byok";
+const CODEX_PROXY_ROUTE_SOURCE_PREFIX: &str = "codex:";
 
 /// 读取 `~/.codex/models_cache.json` 的第一个模型条目作为 deep-clone 模板。
 ///
@@ -1079,6 +1120,179 @@ fn generate_model_catalog_json(entries: &[ModelCatalogEntry]) -> Result<String, 
     serde_json::to_string_pretty(&catalog).map_err(|e| format!("catalog 序列化失败: {e}"))
 }
 
+fn codex_proxy_route_source(provider_id: &str) -> String {
+    format!("{CODEX_PROXY_ROUTE_SOURCE_PREFIX}{provider_id}")
+}
+
+fn codex_proxy_model_ids(provider: &Provider) -> Vec<String> {
+    let mut seen = HashSet::new();
+    let mut out = Vec::new();
+    let mut push = |value: &str| {
+        let model = value.trim();
+        if !model.is_empty() && seen.insert(model.to_string()) {
+            out.push(model.to_string());
+        }
+    };
+
+    push(&provider.default_model);
+    for entry in &provider.model_catalog {
+        push(&entry.model);
+    }
+    for model in &provider.models {
+        push(model);
+    }
+    out
+}
+
+fn codex_proxy_route_display_name(provider: &Provider, model: &str) -> String {
+    provider
+        .model_catalog
+        .iter()
+        .find(|entry| entry.model == model)
+        .and_then(|entry| entry.display_name.clone())
+        .filter(|name| !name.trim().is_empty())
+        .unwrap_or_else(|| model.to_string())
+}
+
+fn codex_proxy_target_api_path(provider: &Provider) -> String {
+    let raw = provider
+        .api_path
+        .as_deref()
+        .unwrap_or("/v1")
+        .trim()
+        .trim_end_matches('/');
+    let base = if raw.is_empty() || raw == "/" {
+        "/v1"
+    } else {
+        raw
+    };
+    let lower = base.to_ascii_lowercase();
+    if lower.ends_with("/responses") || lower.ends_with("/chat/completions") {
+        return base.to_string();
+    }
+    if provider.wire_api.trim().eq_ignore_ascii_case("chat") {
+        format!("{base}/chat/completions")
+    } else {
+        format!("{base}/responses")
+    }
+}
+
+fn plan_codex_proxy_routes(
+    provider: &Provider,
+) -> Result<super::proxy_routes::ProxyRoutes, String> {
+    let models = codex_proxy_model_ids(provider);
+    if models.is_empty() {
+        return Err("Codex 代理模式至少需要一个模型，无法生成本地代理路由".to_string());
+    }
+
+    let mut routes = super::proxy_routes::read_codex_routes()?;
+    let target_api_path = codex_proxy_target_api_path(provider);
+    routes
+        .routes
+        .retain(|route| !route.source.starts_with(CODEX_PROXY_ROUTE_SOURCE_PREFIX));
+
+    for model in models {
+        if let Some(existing) = routes.routes.iter().find(|route| route.id == model) {
+            return Err(format!(
+                "Codex 模型「{}」与现有本地代理模型冲突（source: {}）。请先在「代理 > 模型列表」改名或删除该模型，再切换 Codex。",
+                model,
+                existing.source
+            ));
+        }
+
+        routes.routes.push(super::proxy_routes::ProxyRoute {
+            id: model.clone(),
+            display_name: codex_proxy_route_display_name(provider, &model),
+            id_from_rename_rule: false,
+            enabled: true,
+            exposed_formats: vec!["openai".to_string()],
+            source: codex_proxy_route_source(&provider.id),
+            capabilities: super::proxy_routes::ProxyRouteCapabilities {
+                stream: provider.capabilities.stream,
+                tools: provider.capabilities.tools,
+                vision: provider.capabilities.vision,
+                reasoning: true,
+            },
+            enhancement: super::proxy_routes::ProxyRouteEnhancement::default(),
+            targets: vec![super::proxy_routes::ProxyRouteTarget {
+                provider_id: provider.id.clone(),
+                model,
+                api_format: "openai".to_string(),
+                api_path: target_api_path.clone(),
+                unlock: String::new(),
+                api_keys: Vec::new(),
+            }],
+        });
+    }
+
+    Ok(routes)
+}
+
+fn plan_clear_codex_proxy_routes() -> Result<super::proxy_routes::ProxyRoutes, String> {
+    let mut routes = super::proxy_routes::read_codex_routes()?;
+    routes
+        .routes
+        .retain(|route| !route.source.starts_with(CODEX_PROXY_ROUTE_SOURCE_PREFIX));
+    Ok(routes)
+}
+
+struct LegacyGlobalCodexProxyRouteCleanupPlan {
+    routes: Option<super::proxy_routes::ProxyRoutes>,
+    warnings: Vec<String>,
+}
+
+fn legacy_global_codex_proxy_route_cleanup_warning(action: &str, error: &str) -> String {
+    format!(
+        "旧版 Codex 全局代理路由未清理：{action} proxy-routes.json 失败（{error}）。\
+         Codex 现在使用独立 codex-proxy-routes.json，不影响本次 Codex 切换；\
+         如需清理旧数据，请先修复「代理 > 模型列表」后重试。"
+    )
+}
+
+fn plan_clear_legacy_global_codex_proxy_routes_from(
+    routes: Result<super::proxy_routes::ProxyRoutes, String>,
+) -> LegacyGlobalCodexProxyRouteCleanupPlan {
+    let mut routes = match routes {
+        Ok(routes) => routes,
+        Err(e) => {
+            return LegacyGlobalCodexProxyRouteCleanupPlan {
+                routes: None,
+                warnings: vec![legacy_global_codex_proxy_route_cleanup_warning("读取", &e)],
+            }
+        }
+    };
+    let before = routes.routes.len();
+    routes
+        .routes
+        .retain(|route| !route.source.starts_with(CODEX_PROXY_ROUTE_SOURCE_PREFIX));
+    if routes.routes.len() == before {
+        LegacyGlobalCodexProxyRouteCleanupPlan {
+            routes: None,
+            warnings: Vec::new(),
+        }
+    } else {
+        LegacyGlobalCodexProxyRouteCleanupPlan {
+            routes: Some(routes),
+            warnings: Vec::new(),
+        }
+    }
+}
+
+fn plan_clear_legacy_global_codex_proxy_routes() -> LegacyGlobalCodexProxyRouteCleanupPlan {
+    plan_clear_legacy_global_codex_proxy_routes_from(super::proxy_routes::read_routes())
+}
+
+fn append_switch_warnings(message: &mut String, warnings: &[String]) {
+    if warnings.is_empty() {
+        return;
+    }
+    message.push_str("\n\n提示：");
+    for warning in warnings {
+        message.push_str("\n- ");
+        message.push_str(warning);
+    }
+}
+
 fn toml_item_string(item: &Item) -> Option<String> {
     item.as_value()
         .and_then(|v| v.as_str())
@@ -1087,6 +1301,14 @@ fn toml_item_string(item: &Item) -> Option<String> {
 
 fn toml_table_string(table: &Table, key: &str) -> Option<String> {
     table.get(key).and_then(toml_item_string)
+}
+
+fn toml_table_bool(table: &Table, key: &str) -> bool {
+    table
+        .get(key)
+        .and_then(Item::as_value)
+        .and_then(|value| value.as_bool())
+        .unwrap_or(false)
 }
 
 fn read_codex_config_info(path: &PathBuf) -> Result<Option<CodexConfigInfo>, String> {
@@ -1145,7 +1367,11 @@ fn read_codex_config_info(path: &PathBuf) -> Result<Option<CodexConfigInfo>, Str
             .unwrap_or(false)
             && base_url.is_none()
             && !has_bearer_token);
-    let managed_by_any_bridge = model_provider_id.as_deref() == Some("byok");
+    let managed_by_any_bridge = model_provider_id.as_deref()
+        == Some(CODEX_LEGACY_MODEL_PROVIDER_ID)
+        || provider_table
+            .map(|table| toml_table_bool(table, CODEX_ANYBRIDGE_MANAGED_FLAG))
+            .unwrap_or(false);
 
     Ok(Some(CodexConfigInfo {
         model,
@@ -2564,11 +2790,49 @@ pub fn switch_platform(
 
     emit_switch_progress(&app, plat.id(), "resolving", "正在解析供应商信息…");
     let provider = resolve_platform_config(&plat, &store, &provider_id)?;
+    let planned_codex_routes = if matches!(plat, Platform::Codex) {
+        emit_switch_progress(&app, plat.id(), "routing", "正在校验 Codex 本地代理路由…");
+        Some(if provider.route_through_proxy {
+            plan_codex_proxy_routes(&provider)?
+        } else {
+            plan_clear_codex_proxy_routes()?
+        })
+    } else {
+        None
+    };
+    let (planned_legacy_global_codex_routes, mut codex_cleanup_warnings) =
+        if matches!(plat, Platform::Codex) {
+            let plan = plan_clear_legacy_global_codex_proxy_routes();
+            for warning in &plan.warnings {
+                emit_switch_progress(&app, plat.id(), "warning", warning);
+            }
+            (plan.routes, plan.warnings)
+        } else {
+            (None, Vec::new())
+        };
 
     emit_switch_progress(&app, plat.id(), "backup", "正在备份原配置文件…");
     let path = plat.apply(&provider)?;
     let config_path = path.to_string_lossy().to_string();
     let backup = backup_path(&path).to_string_lossy().to_string();
+
+    if let Some(routes) = planned_codex_routes.as_ref() {
+        emit_switch_progress(&app, plat.id(), "routing", "正在写入 Codex 本地代理路由…");
+        super::proxy_routes::write_codex_routes(routes)?;
+    }
+    if let Some(routes) = planned_legacy_global_codex_routes.as_ref() {
+        emit_switch_progress(
+            &app,
+            plat.id(),
+            "routing",
+            "正在清理旧版 Codex 全局代理路由…",
+        );
+        if let Err(e) = super::proxy_routes::write_routes(routes) {
+            let warning = legacy_global_codex_proxy_route_cleanup_warning("写入", &e);
+            emit_switch_progress(&app, plat.id(), "warning", &warning);
+            codex_cleanup_warnings.push(warning);
+        }
+    }
 
     if !matches!(plat, Platform::OpenCode) {
         emit_switch_progress(&app, plat.id(), "saving", "正在保存接管状态…");
@@ -2597,6 +2861,7 @@ pub fn switch_platform(
     };
     if matches!(plat, Platform::Codex) {
         message.push_str(&repair_codex_session_visibility_message(&path));
+        append_switch_warnings(&mut message, &codex_cleanup_warnings);
     }
 
     emit_switch_progress(&app, plat.id(), "done", "切换完成");
@@ -2648,7 +2913,10 @@ pub fn remove_opencode_config_from_live(provider_id: String) -> Result<SwitchRes
     Ok(SwitchResult {
         ok: true,
         message: if cleared_current_model {
-            format!("已从 OpenCode live 配置移除「{}」，并清除指向它的当前 model", provider_id)
+            format!(
+                "已从 OpenCode live 配置移除「{}」，并清除指向它的当前 model",
+                provider_id
+            )
         } else {
             format!("已从 OpenCode live 配置移除「{}」", provider_id)
         },
@@ -2723,8 +2991,23 @@ pub fn restore_codex_official_config(app: AppHandle) -> Result<SwitchResult, Str
     }
     ensure_backup(&path)?;
     crate::commands::codex_desktop::clean_models_cache()?;
+    emit_switch_progress(&app, plat.id(), "routing", "正在清理 Codex 本地代理路由…");
+    let planned_routes = plan_clear_codex_proxy_routes()?;
+    let legacy_cleanup_plan = plan_clear_legacy_global_codex_proxy_routes();
+    let mut codex_cleanup_warnings = legacy_cleanup_plan.warnings;
+    for warning in &codex_cleanup_warnings {
+        emit_switch_progress(&app, plat.id(), "warning", warning);
+    }
     emit_switch_progress(&app, plat.id(), "writing", "正在写入官方配置…");
     plat.apply_codex_official(&path)?;
+    super::proxy_routes::write_codex_routes(&planned_routes)?;
+    if let Some(routes) = legacy_cleanup_plan.routes.as_ref() {
+        if let Err(e) = super::proxy_routes::write_routes(routes) {
+            let warning = legacy_global_codex_proxy_route_cleanup_warning("写入", &e);
+            emit_switch_progress(&app, plat.id(), "warning", &warning);
+            codex_cleanup_warnings.push(warning);
+        }
+    }
 
     emit_switch_progress(&app, plat.id(), "saving", "正在清除接管记录…");
     if let Ok(mut store) = read_provider_store() {
@@ -2737,6 +3020,7 @@ pub fn restore_codex_official_config(app: AppHandle) -> Result<SwitchResult, Str
     let backup = backup_path(&path).to_string_lossy().to_string();
     let mut message = "已切回 Codex 官方 OpenAI 配置，重启 Codex 后生效".to_string();
     message.push_str(&repair_codex_session_visibility_message(&path));
+    append_switch_warnings(&mut message, &codex_cleanup_warnings);
     emit_switch_progress(&app, plat.id(), "done", "已切回官方配置");
     Ok(SwitchResult {
         ok: true,
@@ -3020,6 +3304,8 @@ mod tests {
             model_caps: HashMap::new(),
             unlocks: ProviderUnlocks::default(),
             wire_api: String::new(),
+            route_through_proxy: true,
+            inject_models: true,
             model_catalog: Vec::new(),
             codex_chat_reasoning: None,
         }
@@ -3046,9 +3332,76 @@ mod tests {
             model_caps: HashMap::new(),
             unlocks: ProviderUnlocks::default(),
             wire_api: String::new(),
+            route_through_proxy: true,
+            inject_models: true,
             model_catalog: Vec::new(),
             codex_chat_reasoning: None,
         }
+    }
+
+    #[test]
+    fn codex_proxy_target_api_path_matches_wire_api() {
+        let mut provider = test_openai_provider();
+        provider.api_path = Some("/v1".to_string());
+        provider.wire_api = "responses".to_string();
+        assert_eq!(codex_proxy_target_api_path(&provider), "/v1/responses");
+
+        provider.wire_api = "chat".to_string();
+        assert_eq!(
+            codex_proxy_target_api_path(&provider),
+            "/v1/chat/completions"
+        );
+
+        provider.api_path = Some("/custom/responses".to_string());
+        provider.wire_api = "chat".to_string();
+        assert_eq!(codex_proxy_target_api_path(&provider), "/custom/responses");
+    }
+
+    fn test_proxy_route(id: &str, source: &str) -> crate::commands::proxy_routes::ProxyRoute {
+        crate::commands::proxy_routes::ProxyRoute {
+            id: id.to_string(),
+            display_name: id.to_string(),
+            enabled: true,
+            exposed_formats: vec!["openai".to_string()],
+            source: source.to_string(),
+            targets: vec![crate::commands::proxy_routes::ProxyRouteTarget {
+                provider_id: "provider-1".to_string(),
+                model: id.to_string(),
+                api_format: "openai".to_string(),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn legacy_global_codex_cleanup_read_error_warns_without_blocking() {
+        let plan = plan_clear_legacy_global_codex_proxy_routes_from(Err("bad json".to_string()));
+
+        assert!(plan.routes.is_none());
+        assert_eq!(plan.warnings.len(), 1);
+        assert!(plan.warnings[0].contains("读取 proxy-routes.json 失败"));
+        assert!(plan.warnings[0].contains("不影响本次 Codex 切换"));
+    }
+
+    #[test]
+    fn legacy_global_codex_cleanup_removes_only_old_codex_routes() {
+        let plan = plan_clear_legacy_global_codex_proxy_routes_from(Ok(
+            crate::commands::proxy_routes::ProxyRoutes {
+                version: 1,
+                default_model_id: String::new(),
+                routes: vec![
+                    test_proxy_route("deepseek-v4-flash", "codex:deepseek"),
+                    test_proxy_route("manual-model", "manual"),
+                ],
+            },
+        ));
+
+        assert!(plan.warnings.is_empty());
+        let routes = plan.routes.expect("旧版 codex:* route 应触发清理写回");
+        assert_eq!(routes.routes.len(), 1);
+        assert_eq!(routes.routes[0].id, "manual-model");
+        assert_eq!(routes.routes[0].source, "manual");
     }
 
     #[test]
@@ -3264,14 +3617,23 @@ wire_api = "responses"
         let expected_codex_base = codex_base_url();
         let expected_codex_bearer = codex_bearer_token().unwrap();
         assert_eq!(doc["model"].as_str(), Some("gpt-test"));
-        assert_eq!(doc["model_provider"].as_str(), Some("byok"));
         assert_eq!(
-            doc["model_providers"]["byok"]["base_url"].as_str(),
+            doc["model_provider"].as_str(),
+            Some(CODEX_RUNTIME_MODEL_PROVIDER_ID)
+        );
+        assert_eq!(
+            doc["model_providers"][CODEX_RUNTIME_MODEL_PROVIDER_ID]["base_url"].as_str(),
             Some(expected_codex_base.as_str())
         );
         assert_eq!(
-            doc["model_providers"]["byok"]["experimental_bearer_token"].as_str(),
+            doc["model_providers"][CODEX_RUNTIME_MODEL_PROVIDER_ID]["experimental_bearer_token"]
+                .as_str(),
             Some(expected_codex_bearer.as_str())
+        );
+        assert_eq!(
+            doc["model_providers"][CODEX_RUNTIME_MODEL_PROVIDER_ID][CODEX_ANYBRIDGE_MANAGED_FLAG]
+                .as_bool(),
+            Some(true)
         );
         assert_eq!(
             doc["model_providers"]["old"]["base_url"].as_str(),
@@ -3281,6 +3643,44 @@ wire_api = "responses"
         assert_eq!(
             doc["projects"]["E:/project/demo"]["trust_level"].as_str(),
             Some("trusted")
+        );
+
+        let _ = fs::remove_dir_all(path.parent().unwrap());
+    }
+
+    #[test]
+    fn apply_codex_direct_provider_writes_provider_api_key() {
+        let path = temp_config_path("codex-direct");
+        fs::write(
+            &path,
+            r#"
+model = "old-model"
+
+[model_providers.old]
+base_url = "https://old.example.com/v1"
+wire_api = "responses"
+"#,
+        )
+        .unwrap();
+
+        let mut provider = test_openai_provider();
+        provider.route_through_proxy = false;
+        Platform::Codex.apply_codex(&path, &provider).unwrap();
+
+        let raw = fs::read_to_string(&path).unwrap();
+        let doc = raw.parse::<DocumentMut>().unwrap();
+        assert_eq!(
+            doc["model_provider"].as_str(),
+            Some(CODEX_RUNTIME_MODEL_PROVIDER_ID)
+        );
+        assert_eq!(
+            doc["model_providers"][CODEX_RUNTIME_MODEL_PROVIDER_ID]["base_url"].as_str(),
+            Some("https://example.com/v1/responses")
+        );
+        assert_eq!(
+            doc["model_providers"][CODEX_RUNTIME_MODEL_PROVIDER_ID]["experimental_bearer_token"]
+                .as_str(),
+            Some("sk-test-secret")
         );
 
         let _ = fs::remove_dir_all(path.parent().unwrap());
@@ -3353,6 +3753,36 @@ experimental_bearer_token = "sk-test-secret"
     }
 
     #[test]
+    fn read_codex_config_info_marks_anybridge_local_access_as_managed() {
+        let path = temp_config_path("codex-managed-local-access");
+        fs::write(
+            &path,
+            r#"
+model = "gpt-test"
+model_provider = "codex_local_access"
+
+[model_providers.codex_local_access]
+name = "AnyRouter"
+base_url = "https://anyrouter.top/v1"
+wire_api = "responses"
+experimental_bearer_token = "sk-test-secret"
+anybridge_managed = true
+"#,
+        )
+        .unwrap();
+
+        let info = read_codex_config_info(&path).unwrap().unwrap();
+        assert_eq!(
+            info.model_provider_id.as_deref(),
+            Some(CODEX_RUNTIME_MODEL_PROVIDER_ID)
+        );
+        assert_eq!(info.provider_name.as_deref(), Some("AnyRouter"));
+        assert!(info.managed_by_any_bridge);
+
+        let _ = fs::remove_dir_all(path.parent().unwrap());
+    }
+
+    #[test]
     fn read_codex_config_info_without_provider_is_official() {
         let path = temp_config_path("codex-official");
         fs::write(
@@ -3412,6 +3842,53 @@ wire_api = "responses"
         assert_eq!(
             doc["model_providers"]["codex_local_access"]["base_url"].as_str(),
             Some("https://anyrouter.top/v1")
+        );
+        assert_eq!(doc["mcp_servers"]["docs"]["command"].as_str(), Some("node"));
+
+        let _ = fs::remove_dir_all(path.parent().unwrap());
+    }
+
+    #[test]
+    fn apply_codex_official_removes_anybridge_managed_local_access() {
+        let path = temp_config_path("codex-restore-managed-local-access");
+        fs::write(
+            &path,
+            r#"
+model = "third-party-model"
+model_provider = "codex_local_access"
+
+[mcp_servers.docs]
+command = "node"
+
+[model_providers.codex_local_access]
+name = "AnyBridge"
+base_url = "http://127.0.0.1:7450/v1"
+wire_api = "responses"
+experimental_bearer_token = "sk-test"
+anybridge_managed = true
+
+[model_providers.manual]
+name = "Manual"
+base_url = "https://manual.example.com/v1"
+wire_api = "responses"
+"#,
+        )
+        .unwrap();
+
+        Platform::Codex.apply_codex_official(&path).unwrap();
+
+        let raw = fs::read_to_string(&path).unwrap();
+        let doc = raw.parse::<DocumentMut>().unwrap();
+        assert!(doc.get("model").is_none());
+        assert!(doc.get("model_provider").is_none());
+        assert!(doc["model_providers"]
+            .as_table()
+            .unwrap()
+            .get(CODEX_RUNTIME_MODEL_PROVIDER_ID)
+            .is_none());
+        assert_eq!(
+            doc["model_providers"]["manual"]["base_url"].as_str(),
+            Some("https://manual.example.com/v1")
         );
         assert_eq!(doc["mcp_servers"]["docs"]["command"].as_str(), Some("node"));
 

@@ -108,10 +108,7 @@ pub fn repair_default_codex_session_visibility(
         }
     };
 
-    let message = format!(
-        "已恢复 {} 条历史会话的可见性",
-        updated_sqlite_row_count
-    );
+    let message = format!("已恢复 {} 条历史会话的可见性", updated_sqlite_row_count);
 
     Ok(CodexSessionVisibilityRepairSummary {
         target_provider,
@@ -727,16 +724,27 @@ fn prune_old_backups(data_dir: &Path) {
     };
     let mut backups: Vec<(String, PathBuf)> = Vec::new();
     for entry in entries.flatten() {
-        let Ok(file_type) = entry.file_type() else { continue };
-        if !file_type.is_dir() { continue }
+        let Ok(file_type) = entry.file_type() else {
+            continue;
+        };
+        if !file_type.is_dir() {
+            continue;
+        }
         let file_name = entry.file_name();
-        let name = match file_name.to_str() { Some(n) => n.to_string(), None => continue };
+        let name = match file_name.to_str() {
+            Some(n) => n.to_string(),
+            None => continue,
+        };
         // 匹配 backup-{timestamp}-session-visibility-repair
-        if !name.starts_with(BACKUP_PREFIX) || !name.ends_with(BACKUP_SUFFIX) { continue }
+        if !name.starts_with(BACKUP_PREFIX) || !name.ends_with(BACKUP_SUFFIX) {
+            continue;
+        }
         let timestamp = &name[BACKUP_PREFIX.len()..name.len() - BACKUP_SUFFIX.len()];
         backups.push((timestamp.to_string(), entry.path()));
     }
-    if backups.len() <= MAX_BACKUPS { return }
+    if backups.len() <= MAX_BACKUPS {
+        return;
+    }
     // 按 timestamp 降序，保留前 MAX_BACKUPS 份，删旧的
     backups.sort_by(|a, b| b.0.cmp(&a.0));
     for (_, path) in backups.into_iter().skip(MAX_BACKUPS) {
@@ -748,13 +756,20 @@ fn prune_old_backups(data_dir: &Path) {
 fn restore_sqlite_from_backup(data_dir: &Path, backup_dir: &Path) -> Result<(), String> {
     for relative_path in existing_state_db_relative_paths(data_dir) {
         let backup_db = backup_dir.join("files").join(&relative_path);
-        if !backup_db.exists() { continue }
+        if !backup_db.exists() {
+            continue;
+        }
         let target = data_dir.join(&relative_path);
         if let Some(parent) = target.parent() {
             let _ = fs::create_dir_all(parent);
         }
         fs::copy(&backup_db, &target).map_err(|error| {
-            format!("恢复 SQLite 失败 ({} -> {}): {}", backup_db.display(), target.display(), error)
+            format!(
+                "恢复 SQLite 失败 ({} -> {}): {}",
+                backup_db.display(),
+                target.display(),
+                error
+            )
         })?;
     }
     Ok(())

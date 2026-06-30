@@ -44,9 +44,7 @@ fn select_available_cdp_port() -> u16 {
     }
     // 9229 被占 → 让 OS 分配一个随机可用端口
     match std::net::TcpListener::bind(("127.0.0.1", 0)) {
-        Ok(listener) => listener.local_addr()
-            .map(|a| a.port())
-            .unwrap_or(CDP_PORT),
+        Ok(listener) => listener.local_addr().map(|a| a.port()).unwrap_or(CDP_PORT),
         Err(_) => CDP_PORT,
     }
 }
@@ -134,14 +132,20 @@ fn http_get_local(port: u16, path: &str, timeout: Duration) -> Result<String, St
                 loop {
                     let mut chunk = [0u8; 4096];
                     match stream.read(&mut chunk) {
-                        Ok(0) => break,           // 连接关闭
+                        Ok(0) => break, // 连接关闭
                         Ok(n) => {
                             buf.extend_from_slice(&chunk[..n]);
                             // 已有数据，短暂等待看是否还有更多（避免 keep-alive 挂死）
-                            stream.set_read_timeout(Some(Duration::from_millis(40))).ok();
+                            stream
+                                .set_read_timeout(Some(Duration::from_millis(40)))
+                                .ok();
                         }
-                        Err(e) if e.kind() == std::io::ErrorKind::WouldBlock
-                            || e.kind() == std::io::ErrorKind::TimedOut => break,
+                        Err(e)
+                            if e.kind() == std::io::ErrorKind::WouldBlock
+                                || e.kind() == std::io::ErrorKind::TimedOut =>
+                        {
+                            break
+                        }
                         Err(e) => return Err(format!("读取响应失败: {e}")),
                     }
                 }
@@ -194,7 +198,10 @@ fn http_post_local(
                     .map(|(h, b)| (h.to_string(), b.to_string()))
                     .unwrap_or((String::new(), String::new()));
                 // chunked 解码：body 形如 "b4\r\n{json}\r\n0\r\n\r\n"
-                let body = if headers.to_ascii_lowercase().contains("transfer-encoding: chunked") {
+                let body = if headers
+                    .to_ascii_lowercase()
+                    .contains("transfer-encoding: chunked")
+                {
                     decode_chunked(&body)
                 } else {
                     body
@@ -218,14 +225,28 @@ fn decode_chunked(body: &str) -> String {
             Some(p) => p,
             None => break,
         };
-        let size = usize::from_str_radix(size_line.trim().split(';').next().unwrap_or("0").trim(), 16).unwrap_or(0);
-        if size == 0 { break; }
-        if after.len() < size { break; }
+        let size =
+            usize::from_str_radix(size_line.trim().split(';').next().unwrap_or("0").trim(), 16)
+                .unwrap_or(0);
+        if size == 0 {
+            break;
+        }
+        if after.len() < size {
+            break;
+        }
         out.push_str(&after[..size]);
         // 跳过 size 字节后的 \r\n
-        rest = if after.len() >= size + 2 { &after[size + 2..] } else { "" };
+        rest = if after.len() >= size + 2 {
+            &after[size + 2..]
+        } else {
+            ""
+        };
     }
-    if out.is_empty() { body.to_string() } else { out }
+    if out.is_empty() {
+        body.to_string()
+    } else {
+        out
+    }
 }
 
 // ─── MSIX 检测 ────────────────────────────────────────────────────────
@@ -316,7 +337,11 @@ fn kill_codex() -> Result<(), String> {
         let pids = remaining_codex_pids();
         Err(format!(
             "Codex 旧进程未能在 16s 内退出。残留 PID: {}。请手动结束这些进程后重试切换。",
-            if pids.is_empty() { "无（异常状态）".to_string() } else { pids }
+            if pids.is_empty() {
+                "无（异常状态）".to_string()
+            } else {
+                pids
+            }
         ))
     }
     #[cfg(not(target_os = "windows"))]
@@ -574,12 +599,8 @@ fn read_anybridge_catalog_slugs_if_present() -> Result<HashSet<String>, String> 
         .map_err(|e| format!("读取 Codex 模型目录失败 ({}): {e}", catalog_file.display()))?;
     let parsed = serde_json::from_str::<serde_json::Value>(&raw)
         .map_err(|e| format!("解析 Codex 模型目录失败 ({}): {e}", catalog_file.display()))?;
-    let models = catalog_models_array(&parsed).ok_or_else(|| {
-        format!(
-            "Codex 模型目录缺少 models 数组: {}",
-            catalog_file.display()
-        )
-    })?;
+    let models = catalog_models_array(&parsed)
+        .ok_or_else(|| format!("Codex 模型目录缺少 models 数组: {}", catalog_file.display()))?;
     Ok(models.iter().filter_map(extract_model_slug).collect())
 }
 
@@ -789,7 +810,14 @@ fn inject_via_sidecar_on_port(cdp_port: u16) -> Result<String, String> {
             Ok(msg)
         } else {
             // ok=false 时 message 可能为空，补充原始响应便于定位，不伪造"注入完成"
-            Err(format!("sidecar 注入返回失败: {}", if msg.is_empty() { format!("ok=false, body={text}") } else { msg }))
+            Err(format!(
+                "sidecar 注入返回失败: {}",
+                if msg.is_empty() {
+                    format!("ok=false, body={text}")
+                } else {
+                    msg
+                }
+            ))
         }
     } else {
         Err(format!("sidecar 注入 {status}: {text}"))
@@ -837,7 +865,11 @@ fn codex_running() -> bool {
 fn remaining_codex_pids() -> String {
     let script = r#"Get-CimInstance Win32_Process -Filter "Name='Codex.exe' OR Name='codex.exe'" -ErrorAction SilentlyContinue | Select-Object -ExpandProperty ProcessId"#;
     match run_powershell(script) {
-        Ok(s) => s.lines().filter(|l| l.trim().parse::<u32>().is_ok()).collect::<Vec<_>>().join(","),
+        Ok(s) => s
+            .lines()
+            .filter(|l| l.trim().parse::<u32>().is_ok())
+            .collect::<Vec<_>>()
+            .join(","),
         Err(_) => String::new(),
     }
 }
@@ -895,7 +927,12 @@ fn needs_cdp(inject_models: bool) -> bool {
 ///
 /// 就绪判断不用 poll /json（/json 200 ≠ renderer 就绪）。非官方模型路径由
 /// injectWithRetry 自带 renderer 就绪重试，拿到 page target 并装上 patch 才算成功。
-async fn restart_codex_desktop_impl(app: Option<&AppHandle>, managed: bool, model: &str, inject_models: bool) -> CodexDesktopResult {
+async fn restart_codex_desktop_impl(
+    app: Option<&AppHandle>,
+    managed: bool,
+    model: &str,
+    inject_models: bool,
+) -> CodexDesktopResult {
     let progress = |step: &str, msg: &str| {
         if let Some(app) = app {
             crate::commands::platforms::emit_switch_progress(app, "codex", step, msg);
@@ -905,13 +942,23 @@ async fn restart_codex_desktop_impl(app: Option<&AppHandle>, managed: bool, mode
         // 1. 写 models_cache.json
         progress("models", "正在写入模型缓存…");
         if let Err(e) = write_models_cache() {
-            return CodexDesktopResult { ok: false, message: format!("写入 Codex 模型缓存失败: {e}"), managed, pid: None };
+            return CodexDesktopResult {
+                ok: false,
+                message: format!("写入 Codex 模型缓存失败: {e}"),
+                managed,
+                pid: None,
+            };
         }
 
         // 2. kill + 确认退出
         progress("stopping", "正在停止 Codex…");
         if let Err(e) = kill_codex() {
-            return CodexDesktopResult { ok: false, message: format!("停止 Codex 失败: {e}"), managed, pid: None };
+            return CodexDesktopResult {
+                ok: false,
+                message: format!("停止 Codex 失败: {e}"),
+                managed,
+                pid: None,
+            };
         }
 
         // 3. 按模型分流：官方模型(gpt-*)不需要 CDP；非官方需要 CDP+inject
@@ -919,7 +966,14 @@ async fn restart_codex_desktop_impl(app: Option<&AppHandle>, managed: bool, mode
             progress("starting", "正在以调试模式启动 Codex…");
             let (pid, cdp_port) = match launch_with_cdp() {
                 Ok(v) => v,
-                Err(e) => return CodexDesktopResult { ok: false, message: format!("启动 Codex Desktop (CDP) 失败: {e}"), managed, pid: None },
+                Err(e) => {
+                    return CodexDesktopResult {
+                        ok: false,
+                        message: format!("启动 Codex Desktop (CDP) 失败: {e}"),
+                        managed,
+                        pid: None,
+                    }
+                }
             };
             progress("injecting", "正在等待 Codex 渲染进程就绪并注入…");
             match inject_via_sidecar_on_port(cdp_port) {
@@ -957,11 +1011,21 @@ async fn restart_codex_desktop_impl(app: Option<&AppHandle>, managed: bool, mode
         // 清理注入项
         progress("cleaning", "正在清理注入项…");
         if let Err(e) = clean_models_cache() {
-            return CodexDesktopResult { ok: false, message: format!("清理 Codex 模型缓存失败: {e}"), managed, pid: None };
+            return CodexDesktopResult {
+                ok: false,
+                message: format!("清理 Codex 模型缓存失败: {e}"),
+                managed,
+                pid: None,
+            };
         }
         progress("stopping", "正在停止 Codex…");
         if let Err(e) = kill_codex() {
-            return CodexDesktopResult { ok: false, message: format!("停止 Codex 失败: {e}"), managed, pid: None };
+            return CodexDesktopResult {
+                ok: false,
+                message: format!("停止 Codex 失败: {e}"),
+                managed,
+                pid: None,
+            };
         }
         progress("starting", "正在启动 Codex（官方模式）…");
         match launch_plain() {
@@ -987,7 +1051,12 @@ async fn restart_codex_desktop_impl(app: Option<&AppHandle>, managed: bool, mode
 /// model = 切换的目标模型名（managed=true 时用于 needs_cdp 判断）
 /// inject_models = 是否启用桌面版 CDP 注入（用户配置项，false 时永不 CDP）
 #[tauri::command]
-pub async fn restart_codex_desktop(app: AppHandle, managed: bool, model: Option<String>, inject_models: Option<bool>) -> CodexDesktopResult {
+pub async fn restart_codex_desktop(
+    app: AppHandle,
+    managed: bool,
+    model: Option<String>,
+    inject_models: Option<bool>,
+) -> CodexDesktopResult {
     let model = model.unwrap_or_default();
     let inject_models = inject_models.unwrap_or(true);
     restart_codex_desktop_impl(Some(&app), managed, &model, inject_models).await
@@ -1013,7 +1082,14 @@ pub async fn start_codex_with_cdp(inject_models: Option<bool>) -> CodexDesktopRe
         // 带 CDP 启动 + 注入
         let (pid, cdp_port) = match launch_with_cdp() {
             Ok(v) => v,
-            Err(e) => return CodexDesktopResult { ok: false, message: format!("启动 Codex (CDP) 失败: {e}"), managed: false, pid: None },
+            Err(e) => {
+                return CodexDesktopResult {
+                    ok: false,
+                    message: format!("启动 Codex (CDP) 失败: {e}"),
+                    managed: false,
+                    pid: None,
+                }
+            }
         };
         let deadline = Instant::now() + Duration::from_secs(15);
         while Instant::now() < deadline {
@@ -1023,24 +1099,54 @@ pub async fn start_codex_with_cdp(inject_models: Option<bool>) -> CodexDesktopRe
             std::thread::sleep(Duration::from_millis(300));
         }
         if !cdp_listening_on_port(cdp_port, Duration::from_millis(500)) {
-            return CodexDesktopResult { ok: false, message: format!("Codex 已启动 (PID {pid})，但 {cdp_port} 在 15s 内未就绪"), managed: false, pid: Some(pid) };
+            return CodexDesktopResult {
+                ok: false,
+                message: format!("Codex 已启动 (PID {pid})，但 {cdp_port} 在 15s 内未就绪"),
+                managed: false,
+                pid: Some(pid),
+            };
         }
         return match inject_via_sidecar_on_port(cdp_port) {
-            Ok(_) => CodexDesktopResult { ok: true, message: "已启动 Codex（带 CDP）并解锁第三方模型".to_string(), managed: false, pid: Some(pid) },
-            Err(e) => CodexDesktopResult { ok: false, message: format!("Codex 已启动 (PID {pid})，但注入失败: {e}"), managed: false, pid: Some(pid) },
+            Ok(_) => CodexDesktopResult {
+                ok: true,
+                message: "已启动 Codex（带 CDP）并解锁第三方模型".to_string(),
+                managed: false,
+                pid: Some(pid),
+            },
+            Err(e) => CodexDesktopResult {
+                ok: false,
+                message: format!("Codex 已启动 (PID {pid})，但注入失败: {e}"),
+                managed: false,
+                pid: Some(pid),
+            },
         };
     }
     // 普通启动（不 CDP、不注入）
     match launch_plain() {
-        Ok(pid) => CodexDesktopResult { ok: true, message: "已启动 Codex".to_string(), managed: false, pid: Some(pid) },
-        Err(e) => CodexDesktopResult { ok: false, message: format!("启动 Codex 失败: {e}"), managed: false, pid: None },
+        Ok(pid) => CodexDesktopResult {
+            ok: true,
+            message: "已启动 Codex".to_string(),
+            managed: false,
+            pid: Some(pid),
+        },
+        Err(e) => CodexDesktopResult {
+            ok: false,
+            message: format!("启动 Codex 失败: {e}"),
+            managed: false,
+            pid: None,
+        },
     }
 }
 
 #[cfg(not(target_os = "windows"))]
 #[tauri::command]
 pub async fn start_codex_with_cdp(_inject_models: Option<bool>) -> CodexDesktopResult {
-    CodexDesktopResult { ok: false, message: "Codex Desktop 启动仅支持 Windows".to_string(), managed: false, pid: None }
+    CodexDesktopResult {
+        ok: false,
+        message: "Codex Desktop 启动仅支持 Windows".to_string(),
+        managed: false,
+        pid: None,
+    }
 }
 
 // ─── 常驻 watcher（spec/31）────────────────────────────────────────────
@@ -1101,7 +1207,12 @@ fn run_watcher_tick(app: &AppHandle, cooldown_until: &mut Option<Instant>) {
             return; // 一切正常
         }
         // patch 没了 → 直接补 inject（不 kill）
-        crate::commands::platforms::emit_switch_progress(app, "codex", "injecting", "正在自动补注入…");
+        crate::commands::platforms::emit_switch_progress(
+            app,
+            "codex",
+            "injecting",
+            "正在自动补注入…",
+        );
         match inject_via_sidecar() {
             Ok(_) => {
                 eprintln!("[codex-desktop watcher] 已补注入自定义模型");
@@ -1119,10 +1230,16 @@ fn run_watcher_tick(app: &AppHandle, cooldown_until: &mut Option<Instant>) {
     eprintln!("[codex-desktop watcher] 检测到 Codex 未以 CDP 模式运行，自动接管…");
     let ok = takeover(app);
     if ok {
-        eprintln!("[codex-desktop watcher] 接管完成，设冷却 {}s", WATCHER_COOLDOWN_AFTER_SUCCESS.as_secs());
+        eprintln!(
+            "[codex-desktop watcher] 接管完成，设冷却 {}s",
+            WATCHER_COOLDOWN_AFTER_SUCCESS.as_secs()
+        );
         *cooldown_until = Some(Instant::now() + WATCHER_COOLDOWN_AFTER_SUCCESS);
     } else {
-        eprintln!("[codex-desktop watcher] 接管失败，退避 {}s", WATCHER_COOLDOWN_AFTER_FAILURE.as_secs());
+        eprintln!(
+            "[codex-desktop watcher] 接管失败，退避 {}s",
+            WATCHER_COOLDOWN_AFTER_FAILURE.as_secs()
+        );
         *cooldown_until = Some(Instant::now() + WATCHER_COOLDOWN_AFTER_FAILURE);
     }
 }
@@ -1130,14 +1247,24 @@ fn run_watcher_tick(app: &AppHandle, cooldown_until: &mut Option<Instant>) {
 /// 接管：kill + 等 AppX 复位 + launch_with_cdp + 等CDP起来。
 /// inject 后台异步做（不阻塞 watcher），学 CodexPlusPlus 的 launcher 模式。
 fn takeover(app: &AppHandle) -> bool {
-    crate::commands::platforms::emit_switch_progress(app, "codex", "stopping", "正在自动停止 Codex…");
+    crate::commands::platforms::emit_switch_progress(
+        app,
+        "codex",
+        "stopping",
+        "正在自动停止 Codex…",
+    );
     if let Err(e) = kill_codex() {
         eprintln!("[codex-desktop watcher] takeover kill 失败: {e}");
         return false;
     }
     // MSIX 应用 kill 后 AppX 状态需要复位，不等就 launch 可能失败（学 CodexPlusPlus）
     std::thread::sleep(Duration::from_millis(1500));
-    crate::commands::platforms::emit_switch_progress(app, "codex", "starting", "正在以调试模式重启 Codex…");
+    crate::commands::platforms::emit_switch_progress(
+        app,
+        "codex",
+        "starting",
+        "正在以调试模式重启 Codex…",
+    );
     let (_pid, cdp_port) = match launch_with_cdp() {
         Ok(v) => v,
         Err(e) => {
@@ -1160,7 +1287,12 @@ fn takeover(app: &AppHandle) -> bool {
     // inject 后台异步做，不阻塞 watcher（学 CodexPlusPlus launcher 异步 inject）
     let app_clone = app.clone();
     std::thread::spawn(move || {
-        crate::commands::platforms::emit_switch_progress(&app_clone, "codex", "injecting", "正在注入自定义模型…");
+        crate::commands::platforms::emit_switch_progress(
+            &app_clone,
+            "codex",
+            "injecting",
+            "正在注入自定义模型…",
+        );
         match inject_via_sidecar_on_port(cdp_port) {
             Ok(_) => eprintln!("[codex-desktop watcher] 后台注入完成"),
             Err(e) => eprintln!("[codex-desktop watcher] 后台注入失败: {e}"),

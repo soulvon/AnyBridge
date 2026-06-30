@@ -232,10 +232,18 @@ pub struct Provider {
     #[serde(rename = "injectModels", default = "default_true")]
     pub inject_models: bool,
     /// Codex 专有：自定义模型目录
-    #[serde(rename = "modelCatalog", default, skip_serializing_if = "Vec::is_empty")]
+    #[serde(
+        rename = "modelCatalog",
+        default,
+        skip_serializing_if = "Vec::is_empty"
+    )]
     pub model_catalog: Vec<ModelCatalogEntry>,
     /// Codex 专有：Chat 模式 reasoning 配置
-    #[serde(rename = "codexChatReasoning", default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        rename = "codexChatReasoning",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
     pub codex_chat_reasoning: Option<CodexChatReasoningConfig>,
 }
 
@@ -307,7 +315,11 @@ pub struct CodexConfig {
     #[serde(rename = "injectModels", default = "default_true")]
     pub inject_models: bool,
     /// 自定义模型目录，让 Codex 显示自定义模型列表。
-    #[serde(rename = "modelCatalog", default, skip_serializing_if = "Vec::is_empty")]
+    #[serde(
+        rename = "modelCatalog",
+        default,
+        skip_serializing_if = "Vec::is_empty"
+    )]
     pub model_catalog: Vec<ModelCatalogEntry>,
     /// Codex Chat 模式的 reasoning 推理参数配置。
     #[serde(
@@ -332,10 +344,18 @@ pub struct ModelCatalogEntry {
     /// 模型 ID（如 "deepseek-v4-flash"）
     pub model: String,
     /// 显示名称（可选，与 model 相同时省略）
-    #[serde(rename = "displayName", default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        rename = "displayName",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
     pub display_name: Option<String>,
     /// 上下文窗口大小（可选，默认 128000）
-    #[serde(rename = "contextWindow", default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        rename = "contextWindow",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
     pub context_window: Option<u64>,
 }
 
@@ -350,16 +370,32 @@ pub struct CodexChatReasoningConfig {
     #[serde(rename = "supportsEffort", default)]
     pub supports_effort: Option<bool>,
     /// thinking 参数名："thinking" / "enable_thinking" / "reasoning_split" / "none"
-    #[serde(rename = "thinkingParam", default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        rename = "thinkingParam",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
     pub thinking_param: Option<String>,
     /// effort 参数名："reasoning_effort" / "reasoning.effort" / "none"
-    #[serde(rename = "effortParam", default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        rename = "effortParam",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
     pub effort_param: Option<String>,
     /// effort 值映射模式："passthrough" / "deepseek" / "low_high" / "openrouter"
-    #[serde(rename = "effortValueMode", default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        rename = "effortValueMode",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
     pub effort_value_mode: Option<String>,
     /// reasoning 输出格式："reasoning_content" / "reasoning" / "reasoning_details" / "auto"
-    #[serde(rename = "outputFormat", default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        rename = "outputFormat",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
     pub output_format: Option<String>,
 }
 
@@ -526,7 +562,10 @@ pub struct ModelCaps {
 
 impl Default for ModelCaps {
     fn default() -> Self {
-        Self { vision: true, tools: true }
+        Self {
+            vision: true,
+            tools: true,
+        }
     }
 }
 
@@ -548,7 +587,13 @@ pub struct ProviderCapabilities {
 
 impl Default for ProviderCapabilities {
     fn default() -> Self {
-        Self { text: true, stream: true, vision: true, tools: true, gzip: false }
+        Self {
+            text: true,
+            stream: true,
+            vision: true,
+            tools: true,
+            gzip: false,
+        }
     }
 }
 

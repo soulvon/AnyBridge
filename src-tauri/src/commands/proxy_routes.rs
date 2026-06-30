@@ -9,6 +9,10 @@ fn proxy_routes_path() -> PathBuf {
     config_dir_path().join("proxy-routes.json")
 }
 
+fn codex_proxy_routes_path() -> PathBuf {
+    config_dir_path().join("codex-proxy-routes.json")
+}
+
 fn default_version() -> u32 {
     1
 }
@@ -42,6 +46,8 @@ pub struct ProxyRoute {
     pub id: String,
     #[serde(default)]
     pub display_name: String,
+    #[serde(default)]
+    pub id_from_rename_rule: bool,
     #[serde(default = "default_true")]
     pub enabled: bool,
     #[serde(default = "default_exposed_formats")]
@@ -157,14 +163,17 @@ pub struct ProxyRouteTarget {
     pub api_keys: Vec<String>,
 }
 
-pub(crate) fn read_routes() -> Result<ProxyRoutes, String> {
-    let path = proxy_routes_path();
+fn empty_routes() -> ProxyRoutes {
+    ProxyRoutes {
+        version: default_version(),
+        default_model_id: String::new(),
+        routes: Vec::new(),
+    }
+}
+
+fn read_routes_from(path: PathBuf) -> Result<ProxyRoutes, String> {
     if !path.exists() {
-        return Ok(ProxyRoutes {
-            version: default_version(),
-            default_model_id: String::new(),
-            routes: Vec::new(),
-        });
+        return Ok(empty_routes());
     }
     let raw = fs::read_to_string(&path).map_err(|e| e.to_string())?;
     let mut routes: ProxyRoutes = serde_json::from_str(&raw).map_err(|e| e.to_string())?;
@@ -174,6 +183,14 @@ pub(crate) fn read_routes() -> Result<ProxyRoutes, String> {
     normalize_routes(&mut routes);
     validate_routes(&routes)?;
     Ok(routes)
+}
+
+pub(crate) fn read_routes() -> Result<ProxyRoutes, String> {
+    read_routes_from(proxy_routes_path())
+}
+
+pub(crate) fn read_codex_routes() -> Result<ProxyRoutes, String> {
+    read_routes_from(codex_proxy_routes_path())
 }
 
 fn normalize_routes(routes: &mut ProxyRoutes) {
@@ -256,11 +273,19 @@ fn validate_routes(routes: &ProxyRoutes) -> Result<(), String> {
     Ok(())
 }
 
-fn write_routes(routes: &ProxyRoutes) -> Result<(), String> {
+fn write_routes_to(path: PathBuf, routes: &ProxyRoutes) -> Result<(), String> {
     let dir = config_dir_path();
     fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     let json = serde_json::to_string_pretty(routes).map_err(|e| e.to_string())?;
-    super::write_atomic(&proxy_routes_path(), json.as_bytes())
+    super::write_atomic(&path, json.as_bytes())
+}
+
+pub(crate) fn write_routes(routes: &ProxyRoutes) -> Result<(), String> {
+    write_routes_to(proxy_routes_path(), routes)
+}
+
+pub(crate) fn write_codex_routes(routes: &ProxyRoutes) -> Result<(), String> {
+    write_routes_to(codex_proxy_routes_path(), routes)
 }
 
 #[tauri::command]

@@ -8,6 +8,7 @@
 // sidecar 直接读这份文件 + providers.json 做路由，不再有「激活供应商」概念。
 
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
 
@@ -53,6 +54,26 @@ fn default_retry_total_seconds() -> u32 {
     60
 }
 
+fn default_vision_max_tokens() -> u32 {
+    2048
+}
+
+fn default_vision_context_mode() -> String {
+    "current".to_string()
+}
+
+fn default_vision_context_max_chars() -> u32 {
+    8000
+}
+
+fn default_vision_multi_image_mode() -> String {
+    "single".to_string()
+}
+
+fn default_vision_batch_size() -> u32 {
+    3
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Target {
     #[serde(rename = "providerId")]
@@ -93,6 +114,15 @@ impl Default for SelfHealConfig {
     }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct HeaderPair {
+    #[serde(default)]
+    pub key: String,
+    #[serde(default)]
+    pub value: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EnhancementConfig {
     #[serde(default = "default_true")]
@@ -109,10 +139,54 @@ pub struct EnhancementConfig {
     pub self_heal: SelfHealConfig,
     #[serde(rename = "imageFallback", default = "default_true")]
     pub image_fallback: bool,
+    #[serde(rename = "visionMaxTokens", default = "default_vision_max_tokens")]
+    pub vision_max_tokens: u32,
+    #[serde(rename = "visionContextMode", default = "default_vision_context_mode")]
+    pub vision_context_mode: String,
+    #[serde(
+        rename = "visionContextMaxChars",
+        default = "default_vision_context_max_chars"
+    )]
+    pub vision_context_max_chars: u32,
+    #[serde(
+        rename = "visionMultiImageMode",
+        default = "default_vision_multi_image_mode"
+    )]
+    pub vision_multi_image_mode: String,
+    #[serde(rename = "visionBatchSize", default = "default_vision_batch_size")]
+    pub vision_batch_size: u32,
     #[serde(rename = "autoRouting", default = "default_true")]
     pub auto_routing: bool,
     #[serde(rename = "unlockModels", default = "default_true")]
     pub unlock_models: bool,
+    #[serde(rename = "systemPromptPrefix", default)]
+    pub system_prompt_prefix: String,
+    #[serde(rename = "systemPromptPrefixEnabled", default)]
+    pub system_prompt_prefix_enabled: bool,
+    #[serde(rename = "customHeaders", default)]
+    pub custom_headers: Vec<HeaderPair>,
+    #[serde(rename = "customHeadersEnabled", default)]
+    pub custom_headers_enabled: bool,
+    #[serde(rename = "responseHeaders", default)]
+    pub response_headers: Vec<HeaderPair>,
+    #[serde(rename = "paramOverrides", default)]
+    pub param_overrides: HashMap<String, serde_json::Value>,
+    #[serde(rename = "paramOverridesEnabled", default)]
+    pub param_overrides_enabled: bool,
+    #[serde(rename = "toolFilterMode", default)]
+    pub tool_filter_mode: String,
+    #[serde(rename = "toolFilterList", default)]
+    pub tool_filter_list: Vec<String>,
+    #[serde(rename = "forceToolChoice", default)]
+    pub force_tool_choice: String,
+    #[serde(rename = "toolFilterEnabled", default)]
+    pub tool_filter_enabled: bool,
+    #[serde(rename = "rateLimitRpm", default)]
+    pub rate_limit_rpm: u32,
+    #[serde(rename = "rateLimitEnabled", default)]
+    pub rate_limit_enabled: bool,
+    #[serde(rename = "requestLogging", default)]
+    pub request_logging: bool,
 }
 
 impl Default for EnhancementConfig {
@@ -125,8 +199,27 @@ impl Default for EnhancementConfig {
             retry_total_seconds: default_retry_total_seconds(),
             self_heal: SelfHealConfig::default(),
             image_fallback: true,
+            vision_max_tokens: default_vision_max_tokens(),
+            vision_context_mode: default_vision_context_mode(),
+            vision_context_max_chars: default_vision_context_max_chars(),
+            vision_multi_image_mode: default_vision_multi_image_mode(),
+            vision_batch_size: default_vision_batch_size(),
             auto_routing: true,
             unlock_models: true,
+            system_prompt_prefix: String::new(),
+            system_prompt_prefix_enabled: false,
+            custom_headers: Vec::new(),
+            custom_headers_enabled: false,
+            response_headers: Vec::new(),
+            param_overrides: HashMap::new(),
+            param_overrides_enabled: false,
+            tool_filter_mode: String::new(),
+            tool_filter_list: Vec::new(),
+            force_tool_choice: String::new(),
+            tool_filter_enabled: false,
+            rate_limit_rpm: 0,
+            rate_limit_enabled: false,
+            request_logging: false,
         }
     }
 }
@@ -246,6 +339,44 @@ pub struct ModelMap {
     /// 第三方图片理解模型故障转移链。
     #[serde(rename = "visionModels", default)]
     pub vision_models: VisionModels,
+    /// 本地代理模型 ID 批量重命名规则(由「模型列表」列头齿轮按钮设置)。
+    /// 保存后下次打开弹窗自动回填,避免重复输入造成规则叠加。
+    #[serde(rename = "proxyRouteRenameRule", default)]
+    pub proxy_route_rename_rule: ProxyRouteRenameRule,
+}
+
+/// 本地代理模型 ID 批量重命名规则。
+///  - mode: "simple" = 用 prefix/model/suffix 拼; "custom" = 用 template 模板
+///  - prefix/suffix: 简单模式下的前后缀(可空,支持中文/特殊字符/emoji,可含占位符 {provider})
+///  - template: 高级模式下的完整模板,支持 {prefix} {model} {provider} {suffix}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProxyRouteRenameRule {
+    #[serde(default = "default_rename_enabled", rename = "enabled")]
+    pub enabled: bool,
+    #[serde(default, rename = "mode")]
+    pub mode: String,
+    #[serde(default, rename = "prefix")]
+    pub prefix: String,
+    #[serde(default, rename = "suffix")]
+    pub suffix: String,
+    #[serde(default, rename = "template")]
+    pub template: String,
+}
+
+fn default_rename_enabled() -> bool {
+    true
+}
+
+impl Default for ProxyRouteRenameRule {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            mode: String::new(),
+            prefix: String::new(),
+            suffix: String::new(),
+            template: String::new(),
+        }
+    }
 }
 
 /// 预设 3 槽位:已改名的 Grok 槽位 → Claude Opus 4.6/4.7/4.8。targets 留空（显示「未设置」）。
@@ -279,6 +410,7 @@ pub(crate) fn read_map() -> Result<ModelMap, String> {
             injected: Vec::new(),
             enhancement: default_enhancement(),
             vision_models: VisionModels::default(),
+            proxy_route_rename_rule: ProxyRouteRenameRule::default(),
         });
     }
     let raw = fs::read_to_string(&path).map_err(|e| e.to_string())?;
@@ -544,4 +676,48 @@ pub fn validate_model_map() -> Result<Vec<String>, String> {
     }
 
     Ok(problems)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn enhancement_config_round_trips_advanced_proxy_fields() {
+        let raw = r#"{
+            "systemPromptPrefix": "prefix",
+            "systemPromptPrefixEnabled": true,
+            "customHeaders": [{"key": "x-test", "value": "1"}],
+            "customHeadersEnabled": true,
+            "responseHeaders": [{"key": "x-response", "value": "2"}],
+            "paramOverrides": {"max_tokens": 4096, "temperature": 0},
+            "paramOverridesEnabled": true,
+            "toolFilterMode": "allow",
+            "toolFilterList": ["read_file"],
+            "forceToolChoice": "auto",
+            "toolFilterEnabled": true,
+            "rateLimitRpm": 12,
+            "rateLimitEnabled": true,
+            "requestLogging": true,
+            "unlockModels": false
+        }"#;
+
+        let cfg: EnhancementConfig = serde_json::from_str(raw).unwrap();
+        assert!(cfg.system_prompt_prefix_enabled);
+        assert!(cfg.custom_headers_enabled);
+        assert!(cfg.param_overrides_enabled);
+        assert!(cfg.tool_filter_enabled);
+        assert!(cfg.rate_limit_enabled);
+        assert!(cfg.request_logging);
+        assert!(!cfg.unlock_models);
+        assert_eq!(cfg.custom_headers[0].key, "x-test");
+        assert_eq!(cfg.response_headers[0].value, "2");
+        assert_eq!(cfg.param_overrides["max_tokens"], serde_json::json!(4096));
+
+        let value = serde_json::to_value(&cfg).unwrap();
+        assert_eq!(value["systemPromptPrefixEnabled"], serde_json::json!(true));
+        assert_eq!(value["customHeaders"][0]["key"], serde_json::json!("x-test"));
+        assert_eq!(value["paramOverrides"]["temperature"], serde_json::json!(0));
+        assert_eq!(value["unlockModels"], serde_json::json!(false));
+    }
 }
