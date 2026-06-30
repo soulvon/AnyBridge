@@ -1218,6 +1218,90 @@
         </div>
 
 
+        <!-- 代理模型列表 - 批量重命名弹窗 -->
+        <div id="proxyRouteRenameModal" class="editor-overlay"
+          style="position:fixed;inset:0;z-index:1000;background:rgba(0,0,0,0.45);align-items:center;justify-content:center;">
+          <div class="glass-card"
+            style="width:720px;max-width:95vw;display:flex;flex-direction:column;max-height:90vh;">
+            <div class="card-header" style="display:flex;align-items:center;justify-content:space-between;gap:12px;">
+              <div>
+                <div class="card-title"><span class="dot"></span> 模型命名</div>
+                <div style="font-size:11px;color:var(--text-muted);margin-top:4px;">
+                  保存命名规则,客户端看到的 model ID 会实时套用规则(不改原始 ID,不会叠加)。旧 ID 请求也仍然可用。
+                </div>
+                <label style="display:flex;align-items:center;gap:7px;margin-top:8px;cursor:pointer;user-select:none;">
+                  <input type="checkbox" id="proxyRouteRenameEnabled" checked onchange="onProxyRouteRenameEnabledChange()">
+                  <span style="font-size:12px;font-weight:700;color:var(--text-primary);">重写模型 ID(启用规则)</span>
+                </label>
+              </div>
+              <button class="btn-ghost" onclick="closeProxyRouteRenameModal()"
+                style="border:none;background:transparent;cursor:pointer;font-size:18px;color:var(--text-muted);line-height:1;">×</button>
+            </div>
+            <div class="card-body"
+              style="padding:16px 20px;display:flex;flex-direction:column;gap:14px;flex:1;overflow-y:auto;">
+              <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;">
+                <label style="display:flex;flex-direction:column;gap:7px;min-width:0;">
+                  <span style="font-size:12px;font-weight:700;color:var(--text-primary);white-space:nowrap;">前缀</span>
+                  <input type="text" id="proxyRouteRenamePrefix" placeholder="例如 OpenCode-"
+                    oninput="onProxyRouteRenameInput()"
+                    style="width:100%;padding:10px 12px;border-radius:8px;font-size:12px;border:1px solid var(--border);background:var(--bg-input);color:var(--text-primary);outline:none;box-sizing:border-box;font-family:var(--font-mono);">
+                </label>
+                <label style="display:flex;flex-direction:column;gap:7px;min-width:0;">
+                  <span style="font-size:12px;font-weight:700;color:var(--text-primary);white-space:nowrap;">后缀</span>
+                  <input type="text" id="proxyRouteRenameSuffix" placeholder="例如 (OpenCode) 或 ({provider})"
+                    oninput="onProxyRouteRenameInput()"
+                    style="width:100%;padding:10px 12px;border-radius:8px;font-size:12px;border:1px solid var(--border);background:var(--bg-input);color:var(--text-primary);outline:none;box-sizing:border-box;font-family:var(--font-mono);">
+                </label>
+              </div>
+                <div style="font-size:11px;color:var(--text-muted);line-height:1.5;">
+                  保存规则后立即生效:客户端请求里的 model 字段将看到改名后的 ID,旧 ID 也仍然可用。
+                  改规则不会叠加——规则是全局模板,改一次就替换前一次。
+              </div>
+
+              <details id="proxyRouteRenameAdvanced" ontoggle="onProxyRouteRenameAdvancedToggle()"
+                style="border:1px solid var(--border);border-radius:9px;background:var(--bg-input);padding:10px 12px;">
+                <summary style="cursor:pointer;font-size:12px;font-weight:700;color:var(--text-secondary);">高级: 自定义完整模板</summary>
+                <div style="margin-top:10px;display:flex;flex-direction:column;gap:7px;">
+                  <input type="text" id="proxyRouteRenameTemplate" placeholder="{prefix}{provider}-{model}{suffix}"
+                    style="width:100%;padding:8px 12px;border-radius:8px;font-size:12px;border:1px solid var(--border);background:var(--bg-card);color:var(--text-primary);outline:none;box-sizing:border-box;font-family:var(--font-mono);"
+                    oninput="onProxyRouteRenameTemplateInput()">
+                  <div style="font-size:10px;color:var(--text-muted);line-height:1.5;">
+                    展开高级模式后,前缀/后缀 input 失效,新 ID 完全由模板决定。可用字段: {prefix} {model} {provider} {suffix}。
+                  </div>
+                </div>
+              </details>
+
+              <div>
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+                  <div style="font-size:12px;font-weight:700;color:var(--text-primary);">实际效果</div>
+                  <div id="proxyRouteRenameStats" style="font-size:11px;color:var(--text-muted);"></div>
+                </div>
+                <div id="proxyRouteRenamePreview"
+                  style="display:flex;flex-direction:column;gap:4px;padding:8px 10px;background:var(--bg-input);border:1px dashed var(--border);border-radius:8px;font-size:11px;max-height:260px;overflow-y:auto;">
+                </div>
+                <div id="proxyRouteRenameError" style="display:none;margin-top:8px;padding:8px 10px;border-radius:8px;background:rgba(220,80,80,0.12);color:#c44;font-size:11px;line-height:1.5;">
+                </div>
+              </div>
+            </div>
+            <div class="provider-footer"
+              style="display:flex;justify-content:flex-end;gap:12px;padding:12px 20px;border-top:1px solid var(--border);">
+              <button class="btn-ghost" onclick="closeProxyRouteRenameModal()"
+                style="padding:10px 20px;border-radius:10px;font-size:12px;font-weight:600;">取消</button>
+              <button class="btn-primary" id="proxyRouteRenameSaveBtn" onclick="saveProxyRouteRenameFromModal()"
+                style="padding:10px 24px;border-radius:10px;font-size:12px;font-weight:700;display:inline-flex;align-items:center;gap:6px;">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+                  stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;">
+                  <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>
+                  <polyline points="17 21 17 13 7 13 7 21"></polyline>
+                  <polyline points="7 3 7 8 15 8"></polyline>
+                </svg>
+                <span>保存</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+
         <!-- 代理增强配置 -->
         <div id="proxyEnhancementModal" class="editor-overlay"
           style="position:fixed;inset:0;z-index:1000;background:rgba(0,0,0,0.45);align-items:center;justify-content:center;">
@@ -1256,6 +1340,47 @@
                       <span style="display:flex;flex-direction:column;gap:3px;min-width:0;"><strong style="font-size:12px;color:var(--text-primary);">模型增强</strong><small style="font-size:10px;color:var(--text-muted);">给不支持图片理解的模型添加图片理解的功能</small></span>
                       <span class="toggle-switch"><input id="enhancement-imageFallback" type="checkbox" onchange="toggleEnhancement(this, 'imageFallback')"><span class="toggle-slider"></span></span>
                     </label>
+
+                    <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-bottom:12px;">
+                      <label style="display:flex;flex-direction:column;gap:6px;padding:12px;border:1px solid var(--border);border-radius:9px;background:var(--bg-input);">
+                        <span style="font-size:11px;font-weight:800;color:var(--text-primary);">图片理解输出长度</span>
+                        <small style="font-size:10px;color:var(--text-muted);">限制视觉模型输出描述的最大 token，复杂截图建议 2048 以上。</small>
+                        <select id="enhancement-visionMaxTokens" onchange="updateEnhancementNumber(this, 'visionMaxTokens')" style="width:100%;height:32px;padding:0 9px;border-radius:8px;border:1px solid var(--border);background:var(--bg-card);color:var(--text-primary);font-size:12px;outline:none;">
+                          <option value="1024">省钱 · 1024</option>
+                          <option value="2048">标准 · 2048</option>
+                          <option value="4096">详细 · 4096</option>
+                          <option value="8192">极详细 · 8192</option>
+                        </select>
+                      </label>
+                      <label style="display:flex;flex-direction:column;gap:6px;padding:12px;border:1px solid var(--border);border-radius:9px;background:var(--bg-input);">
+                        <span style="font-size:11px;font-weight:800;color:var(--text-primary);">图片理解上下文</span>
+                        <small style="font-size:10px;color:var(--text-muted);">控制发送给视觉模型的文本上下文，越多越贵且隐私暴露越多；不会额外调用总结模型。</small>
+                        <select id="enhancement-visionContextMode" onchange="updateEnhancementSelect(this, 'visionContextMode')" style="width:100%;height:32px;padding:0 9px;border-radius:8px;border:1px solid var(--border);background:var(--bg-card);color:var(--text-primary);font-size:12px;outline:none;">
+                          <option value="current">当前消息</option>
+                          <option value="summary">最近前文 + 当前消息</option>
+                          <option value="full">完整前文 + 当前消息</option>
+                        </select>
+                      </label>
+                      <label style="display:flex;flex-direction:column;gap:6px;padding:12px;border:1px solid var(--border);border-radius:9px;background:var(--bg-input);">
+                        <span style="font-size:11px;font-weight:800;color:var(--text-primary);">多图处理方式</span>
+                        <small style="font-size:10px;color:var(--text-muted);">逐张最稳；批量适合对比；分批适合很多张图。</small>
+                        <select id="enhancement-visionMultiImageMode" onchange="updateVisionMultiImageMode(this)" style="width:100%;height:32px;padding:0 9px;border-radius:8px;border:1px solid var(--border);background:var(--bg-card);color:var(--text-primary);font-size:12px;outline:none;">
+                          <option value="single">逐张识别</option>
+                          <option value="batch">多图一次识别</option>
+                          <option value="chunk">多图分批识别</option>
+                        </select>
+                      </label>
+                      <label style="display:flex;flex-direction:column;gap:6px;padding:12px;border:1px solid var(--border);border-radius:9px;background:var(--bg-input);">
+                        <span style="font-size:11px;font-weight:800;color:var(--text-primary);">分批大小</span>
+                        <small style="font-size:10px;color:var(--text-muted);">仅“多图分批识别”生效，每批发送几张图片。</small>
+                        <input id="enhancement-visionBatchSize" type="number" min="1" step="1" onchange="updateEnhancementNumber(this, 'visionBatchSize')" style="width:100%;height:32px;padding:0 9px;border-radius:8px;border:1px solid var(--border);background:var(--bg-card);color:var(--text-primary);font-size:12px;outline:none;">
+                      </label>
+                      <label style="display:flex;flex-direction:column;gap:6px;padding:12px;border:1px solid var(--border);border-radius:9px;background:var(--bg-input);grid-column:1 / -1;">
+                        <span style="font-size:11px;font-weight:800;color:var(--text-primary);">上下文字符上限</span>
+                        <small style="font-size:10px;color:var(--text-muted);">完整/压缩前文模式下的显式上限，超出会在发给视觉模型前截断并标注。</small>
+                        <input id="enhancement-visionContextMaxChars" type="number" min="500" step="500" onchange="updateEnhancementNumber(this, 'visionContextMaxChars')" style="width:100%;height:32px;padding:0 9px;border-radius:8px;border:1px solid var(--border);background:var(--bg-card);color:var(--text-primary);font-size:12px;outline:none;">
+                      </label>
+                    </div>
 
                     <div style="display:flex;flex-direction:column;gap:10px;">
                       <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;">
@@ -2154,7 +2279,21 @@
                             <span></span>
                           </label>
                         </th>
-                        <th>模型 ID</th>
+                        <th>
+                          <span class="model-map-display-head">
+                            <span>模型 ID</span>
+                            <button class="btn-ghost model-map-settings-btn" onclick="openProxyRouteRenameModal()"
+                              title="批量重命名模型 ID（加前后缀/换名）" aria-label="批量重命名模型 ID">
+                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
+                                <circle cx="12" cy="12" r="3"></circle>
+                                <path
+                                  d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z">
+                                </path>
+                              </svg>
+                            </button>
+                          </span>
+                        </th>
                         <th>上游</th>
                         <th>能力</th>
                         <th>操作</th>
@@ -4719,6 +4858,10 @@
             </div>
           </div>
         </details>
+        <label class="proxy-route-editor-rename-toggle" id="proxyRouteEditorRenameToggle" style="margin-top:8px;display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text-secondary);cursor:pointer;">
+          <input type="checkbox" id="proxyRouteEditorRenameApply" checked onchange="onProxyRouteEditorRenameApplyChange()">
+          <span>按「模型 ID 命名规则」重写模型 ID</span>
+        </label>
       </div>
       <div class="modal-footer proxy-route-editor-footer">
         <button class="modal-btn modal-btn-cancel" onclick="closeProxyRouteEditor()">取消</button>

@@ -18,6 +18,11 @@ const DEFAULT_PROXY_ENHANCEMENT = Object.freeze({
     media: true,
   }),
   imageFallback: true,
+  visionMaxTokens: 2048,
+  visionContextMode: 'current',
+  visionContextMaxChars: 8000,
+  visionMultiImageMode: 'single',
+  visionBatchSize: 3,
   autoRouting: true,
   unlockModels: true,
   systemPromptPrefix: '',
@@ -56,6 +61,30 @@ function cloneProxyEnhancement(enhancement = modelMapStore?.enhancement) {
   return JSON.parse(JSON.stringify(enhancement || defaultProxyEnhancement()));
 }
 
+function normalizeHeaderPair(header) {
+  return {
+    key: String(header?.key || ''),
+    value: String(header?.value || ''),
+  };
+}
+
+function sanitizeHeaderPairsForPersist(headers) {
+  return (Array.isArray(headers) ? headers : [])
+    .map(normalizeHeaderPair)
+    .map(h => ({ key: h.key.trim(), value: h.value }))
+    .filter(h => h.key);
+}
+
+function modelMapForPersist() {
+  const payload = cloneModelMapStore();
+  if (!payload.enhancement || typeof payload.enhancement !== 'object') {
+    payload.enhancement = defaultProxyEnhancement();
+  }
+  payload.enhancement.customHeaders = sanitizeHeaderPairsForPersist(payload.enhancement.customHeaders);
+  payload.enhancement.responseHeaders = sanitizeHeaderPairsForPersist(payload.enhancement.responseHeaders);
+  return payload;
+}
+
 async function getProxyVisionTestImageBase64() {
   if (proxyVisionTestImageB64) return proxyVisionTestImageB64;
   try {
@@ -78,6 +107,17 @@ function ensureModelMapDefaults() {
   if (!modelMapStore || typeof modelMapStore !== 'object') modelMapStore = { slots: [] };
   if (!Array.isArray(modelMapStore.slots)) modelMapStore.slots = [];
   if (!Array.isArray(modelMapStore.injected)) modelMapStore.injected = [];
+  // 本地代理"模型 ID 批量重命名"规则(由代理 tab → 模型列表列头齿轮按钮设置)
+  const curRule = modelMapStore.proxyRouteRenameRule && typeof modelMapStore.proxyRouteRenameRule === 'object'
+    ? modelMapStore.proxyRouteRenameRule : {};
+  modelMapStore.proxyRouteRenameRule = {
+    // 缺字段时默认 true:旧配置文件/老用户数据都按"启用规则"处理
+    enabled: curRule.enabled !== false,
+    mode: String(curRule.mode || ''),
+    prefix: String(curRule.prefix || ''),
+    suffix: String(curRule.suffix || ''),
+    template: String(curRule.template || ''),
+  };
   const cur = modelMapStore.enhancement && typeof modelMapStore.enhancement === 'object' ? modelMapStore.enhancement : {};
   const curSelfHeal = cur.selfHeal && typeof cur.selfHeal === 'object' ? cur.selfHeal : {};
   modelMapStore.enhancement = {
@@ -93,13 +133,18 @@ function ensureModelMapDefaults() {
       media: curSelfHeal.media !== false,
     },
     imageFallback: cur.imageFallback !== false,
+    visionMaxTokens: normalizeEnhancementInt(cur.visionMaxTokens, DEFAULT_PROXY_ENHANCEMENT.visionMaxTokens, 64),
+    visionContextMode: ['current', 'summary', 'full'].includes(String(cur.visionContextMode || '')) ? String(cur.visionContextMode) : DEFAULT_PROXY_ENHANCEMENT.visionContextMode,
+    visionContextMaxChars: normalizeEnhancementInt(cur.visionContextMaxChars, DEFAULT_PROXY_ENHANCEMENT.visionContextMaxChars, 500),
+    visionMultiImageMode: ['single', 'batch', 'chunk'].includes(String(cur.visionMultiImageMode || '')) ? String(cur.visionMultiImageMode) : DEFAULT_PROXY_ENHANCEMENT.visionMultiImageMode,
+    visionBatchSize: normalizeEnhancementInt(cur.visionBatchSize, DEFAULT_PROXY_ENHANCEMENT.visionBatchSize, 1),
     autoRouting: cur.autoRouting !== false,
     unlockModels: cur.unlockModels !== false,
     systemPromptPrefix: String(cur.systemPromptPrefix || ''),
     systemPromptPrefixEnabled: cur.systemPromptPrefixEnabled === true,
-    customHeaders: Array.isArray(cur.customHeaders) ? cur.customHeaders.filter(h => h && h.key) : [],
+    customHeaders: Array.isArray(cur.customHeaders) ? cur.customHeaders.map(normalizeHeaderPair) : [],
     customHeadersEnabled: cur.customHeadersEnabled === true,
-    responseHeaders: Array.isArray(cur.responseHeaders) ? cur.responseHeaders.filter(h => h && h.key) : [],
+    responseHeaders: Array.isArray(cur.responseHeaders) ? cur.responseHeaders.map(normalizeHeaderPair) : [],
     paramOverrides: cur.paramOverrides && typeof cur.paramOverrides === 'object' ? cur.paramOverrides : {},
     paramOverridesEnabled: cur.paramOverridesEnabled === true,
     toolFilterMode: String(cur.toolFilterMode || ''),
@@ -490,7 +535,7 @@ function filterModelTable() {
 async function persistModelMap() {
   try {
     ensureModelMapDefaults();
-    await invoke('save_model_map', { map: modelMapStore });
+    await invoke('save_model_map', { map: modelMapForPersist() });
     lastSavedProxyEnhancement = cloneProxyEnhancement();
     return true;
   } catch (e) {
@@ -717,9 +762,13 @@ function renderProxyEnhancement() {
     const el = document.getElementById(`enhancement-${key}`);
     if (el) el.checked = e[key] === true;
   });
-  ['retryMaxRetries', 'retryBaseMs', 'retryCapMs', 'retryTotalSeconds', 'rateLimitRpm'].forEach(key => {
+  ['retryMaxRetries', 'retryBaseMs', 'retryCapMs', 'retryTotalSeconds', 'rateLimitRpm', 'visionBatchSize', 'visionContextMaxChars'].forEach(key => {
     const el = document.getElementById(`enhancement-${key}`);
     if (el) el.value = e[key];
+  });
+  ['visionMaxTokens', 'visionContextMode', 'visionMultiImageMode'].forEach(key => {
+    const el = document.getElementById(`enhancement-${key}`);
+    if (el) el.value = String(e[key] || DEFAULT_PROXY_ENHANCEMENT[key]);
   });
   ['enabled', 'signature', 'budget', 'media'].forEach(key => {
     const el = document.getElementById(`enhancement-selfHeal-${key}`);
@@ -732,6 +781,8 @@ function renderProxyEnhancement() {
   setPanelControlsEnabled('toolFilter', e.toolFilterEnabled === true);
   setPanelControlsEnabled('paramOverrides', e.paramOverridesEnabled === true);
   setPanelControlsEnabled('rateLimit', e.rateLimitEnabled === true);
+  setVisionOptionControlsEnabled(e.imageFallback !== false);
+  setVisionBatchSizeEnabled(e.visionMultiImageMode === 'chunk' && e.imageFallback !== false);
 
   const sp = document.getElementById('enhancement-systemPromptPrefix');
   if (sp) sp.value = e.systemPromptPrefix || '';
@@ -753,6 +804,7 @@ function renderProxyEnhancement() {
 
   renderHeaderList('customHeaders', modelMapStore.enhancement.customHeaders);
   renderHeaderList('responseHeaders', modelMapStore.enhancement.responseHeaders);
+  setPanelControlsEnabled('customHeaders', e.customHeadersEnabled === true);
 
   renderProxyVisionModelList();
   renderVisionModelPicker();
@@ -867,6 +919,10 @@ function toggleEnhancement(input, key) {
   if (key === 'toolFilterEnabled') setPanelControlsEnabled('toolFilter', input.checked);
   if (key === 'paramOverridesEnabled') setPanelControlsEnabled('paramOverrides', input.checked);
   if (key === 'rateLimitEnabled') setPanelControlsEnabled('rateLimit', input.checked);
+  if (key === 'imageFallback') {
+    setVisionOptionControlsEnabled(input.checked === true);
+    setVisionBatchSizeEnabled(input.checked === true && modelMapStore.enhancement.visionMultiImageMode === 'chunk');
+  }
   autoSaveEnhancement();
 }
 
@@ -889,12 +945,28 @@ function setPanelControlsEnabled(panel, enabled) {
   const ids = map[panel] || [];
   ids.forEach(id => {
     const el = document.getElementById(id);
-    if (el) el.disabled = !enabled;
+    if (!el) return;
+    if ('disabled' in el) el.disabled = !enabled;
+    el.querySelectorAll?.('input, textarea, select, button').forEach(child => {
+      child.disabled = !enabled;
+    });
   });
   // 自定义请求头的添加按钮
   if (panel === 'customHeaders') {
     document.querySelectorAll('[onclick^="addHeaderPair"]').forEach(btn => { btn.disabled = !enabled; });
   }
+}
+
+function setVisionOptionControlsEnabled(enabled) {
+  ['visionMaxTokens', 'visionContextMode', 'visionMultiImageMode', 'visionContextMaxChars'].forEach(key => {
+    const el = document.getElementById(`enhancement-${key}`);
+    if (el) el.disabled = !enabled;
+  });
+}
+
+function setVisionBatchSizeEnabled(enabled) {
+  const el = document.getElementById('enhancement-visionBatchSize');
+  if (el) el.disabled = !enabled;
 }
 
 function setRetryConfigControlsEnabled(enabled) {
@@ -914,11 +986,18 @@ function setSelfHealControlsEnabled(enabled) {
 function updateEnhancementNumber(input, key) {
   ensureModelMapDefaults();
   if (!Object.prototype.hasOwnProperty.call(DEFAULT_PROXY_ENHANCEMENT, key)) return;
-  const min = (key === 'retryMaxRetries' || key === 'rateLimitRpm') ? 0 : 1;
+  const min = key === 'visionMaxTokens' ? 64
+    : key === 'visionContextMaxChars' ? 500
+      : (key === 'retryMaxRetries' || key === 'rateLimitRpm') ? 0 : 1;
   const value = normalizeEnhancementInt(input.value, DEFAULT_PROXY_ENHANCEMENT[key], min);
   modelMapStore.enhancement[key] = value;
   input.value = value;
   autoSaveEnhancement();
+}
+
+function updateVisionMultiImageMode(select) {
+  updateEnhancementSelect(select, 'visionMultiImageMode');
+  setVisionBatchSizeEnabled(select.value === 'chunk' && modelMapStore.enhancement.imageFallback !== false);
 }
 
 let _enhancementSaveTimer = null;

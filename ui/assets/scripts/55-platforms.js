@@ -127,6 +127,7 @@ function openProxyRoutesFromPlatform() {
 }
 
 function platformLocalProxyCard(platformId, info) {
+  if (platformId === 'codex') return null;
   const runtime = platformLocalProxyRuntime(platformId);
   if (!runtime) return null;
   const isClaude = platformId === 'claude-code';
@@ -171,6 +172,9 @@ function upsertById(list, item) {
 }
 
 async function ensureLocalProxyPlatformConfig(platformId) {
+  if (platformId === 'codex') {
+    throw new Error('Codex 已使用独立配置的「路由模式（本地代理）」接入 AnyBridge 本地代理，不再支持旧版本地代理快捷卡片。');
+  }
   const previous = typeof cloneProviderStore === 'function'
     ? cloneProviderStore()
     : JSON.parse(JSON.stringify(providerStore || { version: 1, providers: [] }));
@@ -679,6 +683,7 @@ function renderCodexTargetSummary(provider, message = '') {
 function codexProviderIsCurrent(provider, info) {
   const config = (info && info.codexConfig) || {};
   if (!provider || !config || config.isOfficial) return false;
+  if (info && info.currentProviderId && info.currentProviderId === provider.id) return true;
   const targetBase = codexTargetBaseUrl(provider).replace(/\/+$/, '').toLowerCase();
   const currentBase = String(config.baseUrl || '').replace(/\/+$/, '').toLowerCase();
   const sameBase = targetBase && currentBase && targetBase === currentBase;
@@ -704,7 +709,13 @@ function codexConfigProviderById(id) {
 }
 
 function codexConfigSourceProviders() {
-  return (providerStore.providers || []).filter(Boolean);
+  return (providerStore.providers || []).filter(p => {
+    if (!p || p.enabled === false) return false;
+    const fmt = String(p.apiFormat || p.api_format || '').trim().toLowerCase();
+    if (fmt) return fmt === 'openai';
+    const endpoint = platformJoinUrl(p.apiHost, p.apiPath).toLowerCase();
+    return !endpoint.includes('/messages') && !endpoint.includes('anthropic');
+  });
 }
 
 function renderCodexConfigSourceList(selectedId = '') {
@@ -715,8 +726,8 @@ function renderCodexConfigSourceList(selectedId = '') {
   const sources = codexConfigSourceProviders();
   if (count) count.textContent = String(sources.length);
   if (!sources.length) {
-    list.innerHTML = '<div class="codex-config-source-empty">暂无供应商</div>';
-    if (hint) hint.textContent = '请先在「供应商」页添加供应商，再回来创建 Codex 配置。';
+    list.innerHTML = '<div class="codex-config-source-empty">暂无 OpenAI 兼容供应商</div>';
+    if (hint) hint.textContent = '请先在「供应商」页添加 OpenAI 兼容供应商，再回来创建 Codex 配置。';
     codexConfigSetInputValue('codex-config-source-id', '');
     return '';
   }
@@ -3080,7 +3091,7 @@ async function applyCodexProviderConfig(providerId) {
     runningMessage: '正在准备切换 Codex 配置…',
     successTitle: '切换完成',
     failureTitle: '切换失败',
-    skipConfirm: true,
+    skipConfirm: false,
     task: async ({ setMessage }) => {
       setPlatformBusy('codex', true);
       try {
@@ -3932,7 +3943,7 @@ async function restoreCodexOfficialConfig() {
     runningMessage: '正在准备切回官方配置…',
     successTitle: '切换完成',
     failureTitle: '切回官方失败',
-    skipConfirm: true,
+    skipConfirm: false,
     task: async ({ setMessage }) => {
       setPlatformBusy('codex', true);
       try {
