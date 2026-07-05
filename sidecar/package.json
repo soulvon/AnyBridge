@@ -6,7 +6,7 @@
   "bin": "proxy-entry.js",
   "license": "MIT",
   "devDependencies": {
-    "@yao-pkg/pkg": "^6.20.0",
+    "@yao-pkg/pkg": "^6.21.0",
     "bytenode": "^1.5.7",
     "javascript-obfuscator": "^5.4.3"
   },
