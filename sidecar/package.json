@@ -7,7 +7,7 @@
   "license": "MIT",
   "devDependencies": {
     "@yao-pkg/pkg": "^6.20.0",
-    "bytenode": "^1.5.7",
+    "bytenode": "^1.6.0",
     "javascript-obfuscator": "^5.4.3"
   },
   "pkg": {
