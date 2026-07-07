@@ -23,6 +23,9 @@ const DEFAULT_PROXY_ENHANCEMENT = Object.freeze({
   visionContextMaxChars: 8000,
   visionMultiImageMode: 'single',
   visionBatchSize: 3,
+  webSearchEnabled: false,
+  webSearchMaxResults: 5,
+  webSearchMaxRounds: 3,
   autoRouting: true,
   unlockModels: true,
   systemPromptPrefix: '',
@@ -47,6 +50,8 @@ let proxyVisionTestImageB64 = '';
 let proxyVisionProviderSearch = '';
 let proxyVisionSelectedProviderId = '';
 let proxyVisionPickedModels = new Map();
+let proxySearchSourcePickerOpen = false;
+let proxySearchTestingId = '';
 let lastSavedProxyEnhancement = null;
 
 function defaultProxyEnhancement() {
@@ -138,6 +143,9 @@ function ensureModelMapDefaults() {
     visionContextMaxChars: normalizeEnhancementInt(cur.visionContextMaxChars, DEFAULT_PROXY_ENHANCEMENT.visionContextMaxChars, 500),
     visionMultiImageMode: ['single', 'batch', 'chunk'].includes(String(cur.visionMultiImageMode || '')) ? String(cur.visionMultiImageMode) : DEFAULT_PROXY_ENHANCEMENT.visionMultiImageMode,
     visionBatchSize: normalizeEnhancementInt(cur.visionBatchSize, DEFAULT_PROXY_ENHANCEMENT.visionBatchSize, 1),
+    webSearchEnabled: cur.webSearchEnabled === true,
+    webSearchMaxResults: normalizeEnhancementInt(cur.webSearchMaxResults, DEFAULT_PROXY_ENHANCEMENT.webSearchMaxResults, 1),
+    webSearchMaxRounds: normalizeEnhancementInt(cur.webSearchMaxRounds, DEFAULT_PROXY_ENHANCEMENT.webSearchMaxRounds, 1),
     autoRouting: cur.autoRouting !== false,
     unlockModels: cur.unlockModels !== false,
     systemPromptPrefix: String(cur.systemPromptPrefix || ''),
@@ -173,6 +181,36 @@ function ensureModelMapDefaults() {
       const key = visionModelKey(x.providerId, x.model, x.apiFormat);
       if (seen.has(key)) return false;
       seen.add(key);
+      return true;
+    });
+  if (!modelMapStore.searchModels || typeof modelMapStore.searchModels !== 'object') {
+    modelMapStore.searchModels = { searchSources: [] };
+  }
+  if (!Array.isArray(modelMapStore.searchModels.searchSources)) {
+    modelMapStore.searchModels.searchSources = [];
+  }
+  const seenSearchSources = new Set();
+  modelMapStore.searchModels.searchSources = modelMapStore.searchModels.searchSources
+    .map((x, idx) => {
+      const provider = String(x?.provider || x?.engine || '').trim().toLowerCase();
+      const engine = String(x?.engine || '').trim().toLowerCase();
+      const kind = String(x?.type || (engine ? 'engine' : 'api')).trim().toLowerCase();
+      return {
+        id: String(x?.id || `src-${Date.now()}-${idx}`).trim(),
+        name: String(x?.name || searchSourceDisplayName(provider || engine)).trim(),
+        type: kind === 'engine' ? 'engine' : 'api',
+        provider: provider && kind !== 'engine' ? provider : '',
+        engine: engine || (kind === 'engine' ? provider : ''),
+        apiKey: String(x?.apiKey || '').trim(),
+        apiHost: String(x?.apiHost || '').trim(),
+        enabled: x?.enabled !== false,
+      };
+    })
+    .filter(x => x.id && (x.provider || x.engine))
+    .filter(x => {
+      const key = x.id;
+      if (seenSearchSources.has(key)) return false;
+      seenSearchSources.add(key);
       return true;
     });
   if (typeof syncProxyEnhancementSummary === 'function') syncProxyEnhancementSummary();
@@ -757,12 +795,12 @@ function renderProxyEnhancement() {
   ensureModelMapDefaults();
   const e = modelMapStore.enhancement;
   ['retry', 'imageFallback', 'autoRouting', 'unlockModels', 'requestLogging',
-   'systemPromptPrefixEnabled', 'customHeadersEnabled', 'toolFilterEnabled',
-   'paramOverridesEnabled', 'rateLimitEnabled'].forEach(key => {
+    'systemPromptPrefixEnabled', 'customHeadersEnabled', 'toolFilterEnabled',
+    'paramOverridesEnabled', 'rateLimitEnabled', 'webSearchEnabled'].forEach(key => {
     const el = document.getElementById(`enhancement-${key}`);
     if (el) el.checked = e[key] === true;
   });
-  ['retryMaxRetries', 'retryBaseMs', 'retryCapMs', 'retryTotalSeconds', 'rateLimitRpm', 'visionBatchSize', 'visionContextMaxChars'].forEach(key => {
+  ['retryMaxRetries', 'retryBaseMs', 'retryCapMs', 'retryTotalSeconds', 'rateLimitRpm', 'visionBatchSize', 'visionContextMaxChars', 'webSearchMaxResults', 'webSearchMaxRounds'].forEach(key => {
     const el = document.getElementById(`enhancement-${key}`);
     if (el) el.value = e[key];
   });
@@ -808,6 +846,8 @@ function renderProxyEnhancement() {
 
   renderProxyVisionModelList();
   renderVisionModelPicker();
+  renderProxySearchSourceList();
+  renderSearchSourcePicker();
 }
 
 function renderHeaderList(field, headers) {
@@ -1372,6 +1412,197 @@ async function moveVisionModel(idx, dir) {
     if (typeof syncProxyEnhancementSummary === 'function') syncProxyEnhancementSummary();
   } else {
     modelMapStore.visionModels.imageModels = prev;
+    renderProxyEnhancement();
+  }
+}
+
+const SEARCH_SOURCE_PRESETS = Object.freeze([
+  { key: 'tavily', type: 'api', label: 'Tavily', needsKey: true, defaultHost: 'https://api.tavily.com' },
+  { key: 'serper', type: 'api', label: 'Serper', needsKey: true, defaultHost: 'https://google.serper.dev' },
+  { key: 'bravesearch', type: 'api', label: 'Brave Search', needsKey: true, defaultHost: 'https://api.search.brave.com' },
+  { key: 'duckduckgo', type: 'engine', label: 'DuckDuckGo', needsKey: false, defaultHost: '' },
+  { key: 'searxng', type: 'engine', label: 'SearXNG', needsKey: false, defaultHost: '' },
+]);
+
+function searchSourceDisplayName(key) {
+  const preset = SEARCH_SOURCE_PRESETS.find(x => x.key === String(key || '').toLowerCase());
+  return preset?.label || String(key || 'Search');
+}
+
+function searchSourcePreset(key) {
+  return SEARCH_SOURCE_PRESETS.find(x => x.key === String(key || '').toLowerCase()) || null;
+}
+
+function searchSourceKey(src) {
+  return String(src?.engine || src?.provider || '').trim().toLowerCase();
+}
+
+function renderProxySearchSourceList() {
+  ensureModelMapDefaults();
+  const wrap = document.getElementById('proxySearchSourceList');
+  if (!wrap) return;
+  const items = modelMapStore.searchModels.searchSources;
+  if (!items.length) {
+    wrap.innerHTML = '<div style="padding:14px;border:1px dashed var(--border);border-radius:9px;color:var(--text-muted);font-size:12px;text-align:center;">尚未配置搜索源。目标模型无内置搜索时，需要至少一个启用的搜索源。</div>';
+    return;
+  }
+  wrap.innerHTML = items.map((src, idx) => {
+    const key = searchSourceKey(src);
+    const preset = searchSourcePreset(key);
+    const needsKey = preset?.needsKey === true;
+    const isEngine = src.type === 'engine';
+    const testing = proxySearchTestingId === src.id;
+    return `
+      <div style="display:flex;flex-direction:column;gap:9px;padding:12px;border:1px solid var(--border);border-radius:10px;background:var(--bg-card);">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;">
+          <div style="display:flex;align-items:center;gap:9px;min-width:0;">
+            <span style="width:24px;height:24px;border-radius:7px;background:var(--bg-input);color:var(--text-muted);font-size:11px;font-weight:800;display:inline-flex;align-items:center;justify-content:center;">${idx + 1}</span>
+            <div style="display:flex;flex-direction:column;gap:2px;min-width:0;">
+              <strong style="font-size:12px;color:var(--text-primary);">${escAttr(src.name || searchSourceDisplayName(key))}</strong>
+              <small style="font-size:10px;color:var(--text-muted);">${isEngine ? '搜索引擎' : '搜索 API'} · ${escAttr(key)}</small>
+            </div>
+          </div>
+          <label class="toggle-switch" title="启用搜索源">
+            <input type="checkbox" ${src.enabled !== false ? 'checked' : ''} onchange="toggleSearchSourceEnabled(${idx}, this.checked)">
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;">
+          <label style="display:flex;flex-direction:column;gap:5px;font-size:10px;color:var(--text-muted);">
+            API Key
+            <input type="password" value="${escAttr(src.apiKey || '')}" ${needsKey ? '' : 'disabled'} placeholder="${needsKey ? '必填' : '无需 API Key'}" onchange="updateSearchSourceField(${idx}, 'apiKey', this.value)" style="height:30px;padding:0 9px;border-radius:8px;border:1px solid var(--border);background:var(--bg-input);color:var(--text-primary);">
+          </label>
+          <label style="display:flex;flex-direction:column;gap:5px;font-size:10px;color:var(--text-muted);">
+            API Host
+            <input type="text" value="${escAttr(src.apiHost || '')}" placeholder="${escAttr(preset?.defaultHost || (key === 'searxng' ? 'https://your-searxng.example.com' : '默认'))}" ${key === 'duckduckgo' ? 'disabled' : ''} onchange="updateSearchSourceField(${idx}, 'apiHost', this.value)" style="height:30px;padding:0 9px;border-radius:8px;border:1px solid var(--border);background:var(--bg-input);color:var(--text-primary);">
+          </label>
+        </div>
+        <div style="display:flex;align-items:center;justify-content:flex-end;gap:6px;">
+          <button class="btn-ghost" onclick="moveSearchSource(${idx}, -1)" ${idx === 0 ? 'disabled' : ''} style="height:26px;padding:0 8px;border-radius:7px;font-size:11px;">↑</button>
+          <button class="btn-ghost" onclick="moveSearchSource(${idx}, 1)" ${idx === items.length - 1 ? 'disabled' : ''} style="height:26px;padding:0 8px;border-radius:7px;font-size:11px;">↓</button>
+          <button class="btn-ghost" onclick="testSearchSource(${idx})" ${testing ? 'disabled' : ''} style="height:26px;padding:0 9px;border-radius:7px;font-size:11px;">${testing ? '测试中...' : '测试'}</button>
+          <button class="btn-ghost" onclick="removeSearchSource(${idx})" style="height:26px;padding:0 8px;border-radius:7px;font-size:11px;">删除</button>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+function toggleSearchSourcePicker() {
+  proxySearchSourcePickerOpen = !proxySearchSourcePickerOpen;
+  renderSearchSourcePicker();
+}
+
+function closeSearchSourcePicker() {
+  proxySearchSourcePickerOpen = false;
+  renderSearchSourcePicker();
+}
+
+function renderSearchSourcePicker() {
+  const wrap = document.getElementById('proxySearchSourcePicker');
+  if (!wrap) return;
+  wrap.style.display = proxySearchSourcePickerOpen ? 'block' : 'none';
+  if (!proxySearchSourcePickerOpen) {
+    wrap.innerHTML = '';
+    return;
+  }
+  wrap.innerHTML = `
+    <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:10px;">
+      ${SEARCH_SOURCE_PRESETS.map(preset => `
+        <button type="button" class="btn-ghost" onclick="addSearchSource('${escAttr(preset.key)}')" style="text-align:left;padding:10px;border-radius:9px;border:1px solid var(--border);background:var(--bg-card);display:flex;flex-direction:column;gap:3px;">
+          <strong style="font-size:12px;color:var(--text-primary);">${escAttr(preset.label)}</strong>
+          <small style="font-size:10px;color:var(--text-muted);">${preset.type === 'api' ? 'API' : 'Engine'} · ${preset.needsKey ? '需要 Key' : '无需 Key'}</small>
+        </button>`).join('')}
+    </div>`;
+}
+
+async function addSearchSource(key) {
+  ensureModelMapDefaults();
+  const preset = searchSourcePreset(key);
+  if (!preset) return;
+  const prev = modelMapStore.searchModels.searchSources.slice();
+  modelMapStore.searchModels.searchSources.push({
+    id: `src-${preset.key}-${Date.now().toString(36)}`,
+    name: preset.label,
+    type: preset.type,
+    provider: preset.type === 'api' ? preset.key : '',
+    engine: preset.type === 'engine' ? preset.key : '',
+    apiKey: '',
+    apiHost: preset.defaultHost,
+    enabled: true,
+  });
+  closeSearchSourcePicker();
+  renderProxyEnhancement();
+  if (!(await persistModelMap())) {
+    modelMapStore.searchModels.searchSources = prev;
+    renderProxyEnhancement();
+  }
+}
+
+async function updateSearchSourceField(idx, field, value) {
+  ensureModelMapDefaults();
+  const src = modelMapStore.searchModels.searchSources[idx];
+  if (!src || !['apiKey', 'apiHost'].includes(field)) return;
+  src[field] = String(value || '').trim();
+  await persistModelMap();
+}
+
+async function toggleSearchSourceEnabled(idx, enabled) {
+  ensureModelMapDefaults();
+  const src = modelMapStore.searchModels.searchSources[idx];
+  if (!src) return;
+  src.enabled = enabled === true;
+  await persistModelMap();
+}
+
+async function removeSearchSource(idx) {
+  ensureModelMapDefaults();
+  const prev = modelMapStore.searchModels.searchSources.slice();
+  modelMapStore.searchModels.searchSources.splice(idx, 1);
+  renderProxyEnhancement();
+  if (!(await persistModelMap())) {
+    modelMapStore.searchModels.searchSources = prev;
+    renderProxyEnhancement();
+  }
+}
+
+async function moveSearchSource(idx, dir) {
+  ensureModelMapDefaults();
+  const list = modelMapStore.searchModels.searchSources;
+  const next = idx + dir;
+  if (next < 0 || next >= list.length) return;
+  const prev = list.slice();
+  [list[idx], list[next]] = [list[next], list[idx]];
+  renderProxyEnhancement();
+  if (!(await persistModelMap())) {
+    modelMapStore.searchModels.searchSources = prev;
+    renderProxyEnhancement();
+  }
+}
+
+async function testSearchSource(idx) {
+  ensureModelMapDefaults();
+  const src = modelMapStore.searchModels.searchSources[idx];
+  if (!src) return;
+  const query = window.prompt('输入测试搜索关键词', '今日新闻');
+  if (!query) return;
+  proxySearchTestingId = src.id;
+  renderProxyEnhancement();
+  try {
+    const runtime = typeof getLocalProxyRuntimeConfig === 'function' ? getLocalProxyRuntimeConfig('codex') : null;
+    const port = typeof getLocalProxyPort === 'function' ? getLocalProxyPort() : 7450;
+    const res = await fetch(`http://127.0.0.1:${port}/__byok/web-search/test`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', ...(runtime?.apiKey ? { authorization: `Bearer ${runtime.apiKey}` } : {}) },
+      body: JSON.stringify({ source: src, query, maxResults: 3 }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+    const count = Array.isArray(data.results) ? data.results.length : 0;
+    showCustomAlert((data.results || []).map((r, i) => `${i + 1}. ${r.title}\n${r.url}\n${r.snippet || ''}`).join('\n\n') || '没有结果', `搜索测试成功 (${count})`, 'success');
+  } catch (e) {
+    showCustomAlert(String(e?.message || e), '搜索测试失败', 'error');
+  } finally {
+    proxySearchTestingId = '';
     renderProxyEnhancement();
   }
 }

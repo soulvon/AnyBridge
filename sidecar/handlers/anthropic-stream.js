@@ -109,6 +109,7 @@ export class AnthropicStreamProcessor {
     this._toolId = null;
     this._toolName = null;
     this._toolArgsBuffer = '';
+    this._toolCalls = [];
 
     // ── Signature accumulator (reset per thinking block) ──
     this._signatureBuffer = '';
@@ -218,6 +219,10 @@ export class AnthropicStreamProcessor {
     return this._usage;
   }
 
+  get toolCalls() {
+    return this._toolCalls.map(tc => ({ ...tc }));
+  }
+
   // ── Private event handlers ─────────────────────────────────
 
   _onContentBlockStart(data, chunks) {
@@ -263,13 +268,16 @@ export class AnthropicStreamProcessor {
 
   _onContentBlockStop(data, chunks) {
     if (this._currentBlockType === 'tool_use') {
-      // Arguments are now complete — emit the tool call chunk
-      // field 6 = repeated ChatToolCall delta_tool_calls
-      chunks.push(buildToolCallDelta(this._messageId, [{
+      const toolCall = {
         id: this._toolId ?? '',
         name: this._toolName ?? '',
         arguments_json: this._toolArgsBuffer,
-      }]));
+      };
+      this._toolCalls.push(toolCall);
+
+      // Arguments are now complete — emit the tool call chunk
+      // field 6 = repeated ChatToolCall delta_tool_calls
+      chunks.push(buildToolCallDelta(this._messageId, [toolCall]));
 
       // Reset accumulator for the next tool_use block (if any)
       this._toolId = null;

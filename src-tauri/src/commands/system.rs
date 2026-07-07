@@ -139,7 +139,8 @@ pub fn set_autostart(enabled: bool) -> Result<(), String> {
             .to_string();
         let key = r"HKCU\Software\Microsoft\Windows\CurrentVersion\Run";
         if enabled {
-            Command::new("reg")
+            let run_value = format!("\"{}\"", exe);
+            let output = Command::new("reg")
                 .args([
                     "add",
                     key,
@@ -148,12 +149,18 @@ pub fn set_autostart(enabled: bool) -> Result<(), String> {
                     "/t",
                     "REG_SZ",
                     "/d",
-                    &exe,
+                    &run_value,
                     "/f",
                 ])
                 .creation_flags(0x0800_0000)
                 .output()
                 .map_err(|e| e.to_string())?;
+            if !output.status.success() {
+                return Err(format!(
+                    "写入开机自启注册表失败: {}",
+                    String::from_utf8_lossy(&output.stderr).trim()
+                ));
+            }
         } else {
             for value_name in ["AnyBridge", "IDEBYOK"] {
                 let _ = Command::new("reg")
@@ -230,6 +237,42 @@ pub fn set_autostart(enabled: bool) -> Result<(), String> {
             let _ = std::fs::remove_file(autostart_dir.join("ide-byok.desktop"));
         }
         Ok(())
+    }
+}
+
+#[tauri::command]
+pub fn get_autostart() -> Result<bool, String> {
+    #[cfg(target_os = "windows")]
+    {
+        let key = r"HKCU\Software\Microsoft\Windows\CurrentVersion\Run";
+        for value_name in ["AnyBridge", "IDEBYOK"] {
+            let output = Command::new("reg")
+                .args(["query", key, "/v", value_name])
+                .creation_flags(0x0800_0000)
+                .output()
+                .map_err(|e| e.to_string())?;
+            if output.status.success() {
+                return Ok(true);
+            }
+        }
+        Ok(false)
+    }
+    #[cfg(target_os = "macos")]
+    {
+        let launch_agents = dirs::home_dir()
+            .map(|h| h.join("Library/LaunchAgents"))
+            .ok_or("无法获取用户目录")?;
+        Ok(launch_agents.join("com.anybridge.desktop.plist").exists()
+            || launch_agents.join("com.idebyok.desktop.plist").exists())
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        let autostart_dir = dirs::config_dir()
+            .map(|d| d.join("autostart"))
+            .ok_or("无法获取配置目录")?;
+        Ok(autostart_dir.join("anybridge.desktop").exists()
+            || autostart_dir.join("ide-byok.desktop").exists())
     }
 }
 

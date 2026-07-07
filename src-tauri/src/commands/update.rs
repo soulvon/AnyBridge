@@ -307,7 +307,7 @@ pub async fn download_and_install_update(app: AppHandle, relaunch: bool) -> Resu
 /// 打开下载页面（浏览器）
 #[tauri::command]
 pub fn open_download_page() -> Result<(), String> {
-    let url = "https://github.com/soulvon/AnyBridge-Release/releases";
+    let url = "https://github.com/soulvon/AnyBridge/releases/latest";
     #[cfg(target_os = "windows")]
     {
         std::process::Command::new("cmd")

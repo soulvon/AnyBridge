@@ -21,6 +21,84 @@ function formatUpdaterNotes(update) {
   return `这是从历史 1.x 版本线迁移到开源 0.x 版本线的过渡更新。\n\n${notes}`;
 }
 
+function currentVersionLabel() {
+  return document.getElementById('current-version-display')?.textContent
+    || document.getElementById('about-version-display')?.textContent
+    || '—';
+}
+
+function syncNotificationCenter() {
+  const dot = document.getElementById('topbarNotificationDot');
+  if (dot) dot.hidden = !detectedUpdateInfo;
+
+  const current = document.getElementById('notificationCurrentVersion');
+  if (current) current.textContent = currentVersionLabel();
+
+  const title = document.getElementById('notificationUpdateTitle');
+  const desc = document.getElementById('notificationUpdateDesc');
+  const notes = document.getElementById('notificationUpdateNotes');
+  const notesText = document.getElementById('notificationUpdateNotesText');
+  const icon = document.getElementById('notificationUpdateIcon');
+
+  if (detectedUpdateInfo) {
+    if (title) title.textContent = `发现 ${formatUpdaterTargetVersion(detectedUpdateInfo)}`;
+    if (desc) desc.textContent = '有新的发布版本可用，可以查看说明后前往更新。';
+    if (notes) notes.hidden = false;
+    if (notesText) notesText.textContent = formatUpdaterNotes(detectedUpdateInfo);
+    if (icon) icon.classList.add('has-update');
+    return;
+  }
+
+  if (title) title.textContent = '暂无新的通知';
+  if (desc) {
+    const last = updateSettings?.last_check_time
+      ? new Date(updateSettings.last_check_time * 1000).toLocaleString()
+      : '';
+    desc.textContent = last
+      ? `最近检查时间：${last}。当前没有检测到可用更新。`
+      : '还没有检测到可用更新。你可以手动检查 GitHub 发布页。';
+  }
+  if (notes) notes.hidden = true;
+  if (notesText) notesText.textContent = '';
+  if (icon) icon.classList.remove('has-update');
+}
+
+function openNotificationCenter() {
+  const modal = document.getElementById('notification-center-modal');
+  if (!modal) throw new Error('notification-center-modal not found');
+  syncNotificationCenter();
+  modal.classList.add('active');
+  document.addEventListener('keydown', closeNotificationCenterOnEsc);
+}
+
+function closeNotificationCenter() {
+  const modal = document.getElementById('notification-center-modal');
+  if (!modal) throw new Error('notification-center-modal not found');
+  modal.classList.remove('active');
+  document.removeEventListener('keydown', closeNotificationCenterOnEsc);
+}
+
+function closeNotificationCenterOnEsc(event) {
+  if (event.key === 'Escape') closeNotificationCenter();
+}
+
+async function checkUpdateFromNotificationCenter() {
+  const btn = document.getElementById('notificationCheckUpdateBtn');
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = '检查中...';
+  }
+  try {
+    await manualCheckUpdate();
+    syncNotificationCenter();
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = '检查更新';
+    }
+  }
+}
+
 async function loadUpdateSettings() {
   if (!invoke) return;
   try {
@@ -38,6 +116,8 @@ async function loadUpdateSettings() {
     if (checkIntervalInput) checkIntervalInput.value = updateSettings.check_interval_hours || 1;
   } catch (e) {
     addLog('err', '加载更新配置失败: ' + e);
+  } finally {
+    syncNotificationCenter();
   }
 }
 
@@ -158,6 +238,7 @@ async function manualCheckUpdate() {
 
     if (update) {
       detectedUpdateInfo = update;
+      syncNotificationCenter();
       document.getElementById('updater-target-version').textContent = formatUpdaterTargetVersion(update);
       document.getElementById('updater-target-notes').textContent = formatUpdaterNotes(update);
 
@@ -171,6 +252,8 @@ async function manualCheckUpdate() {
         ? `检测到版本线迁移: v${update.version}`
         : `检测到新版本: v${update.version}`);
     } else {
+      detectedUpdateInfo = null;
+      syncNotificationCenter();
       addLog('info', '检查更新完成，当前已是最新版本');
       // 在按钮旁显示简短提示
       if (btn) {
@@ -197,6 +280,7 @@ async function manualCheckUpdate() {
     if (btn) {
       btn.disabled = false;
     }
+    syncNotificationCenter();
   }
 }
 
@@ -238,10 +322,13 @@ async function autoCheckUpdate() {
     if (update) {
       if (updateSettings.skipped_version === update.version) {
         console.log('[Updater] Version skipped:', update.version);
+        detectedUpdateInfo = null;
+        syncNotificationCenter();
         return;
       }
 
       detectedUpdateInfo = update;
+      syncNotificationCenter();
 
       if (updateSettings.auto_install) {
         // 后台静默下载，不 relaunch，等下次重启生效
@@ -268,6 +355,9 @@ async function autoCheckUpdate() {
 
         document.getElementById('updater-prompt-modal').classList.add('active');
       }
+    } else {
+      detectedUpdateInfo = null;
+      syncNotificationCenter();
     }
   } catch (e) {
     console.error('Auto check update failed:', e);
@@ -281,7 +371,7 @@ const UPDATER_MAX_RETRIES = 3;
 const UPDATER_RETRY_DELAYS = [1000, 2500, 5000]; // 指数退避
 
 // 下载页 URL
-const UPDATER_DOWNLOAD_PAGE = 'https://github.com/soulvon/AnyBridge-Release/releases';
+const UPDATER_DOWNLOAD_PAGE = 'https://github.com/soulvon/AnyBridge/releases/latest';
 
 // 判断是否为可重试的网络错误
 function isRetryableUpdateError(err) {

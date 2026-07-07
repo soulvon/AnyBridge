@@ -49,6 +49,63 @@ test('paramOverrides are emitted even when route passthrough is disabled', () =>
   assert.equal(body.top_p, 0.7);
 });
 
+test('OpenAI exposed routes also accept Responses API requests', () => {
+  const route = {
+    id: 'local-model',
+    exposedFormats: ['openai'],
+    targets: [{ providerId: 'provider-1', model: 'upstream-model' }],
+  };
+
+  assert.equal(__localProxyTest.routeSupportsKind(route, 'openai'), true);
+  assert.equal(__localProxyTest.routeSupportsKind(route, 'responses'), true);
+  assert.equal(__localProxyTest.routeSupportsKind(route, 'anthropic'), false);
+});
+
+test('Gemini Native requests convert to Gemini upstream payloads', () => {
+  const ctx = __localProxyTest.normalizeRequest('gemini', {
+    model: 'local-model',
+    systemInstruction: { parts: [{ text: 'You are concise.' }] },
+    contents: [{
+      role: 'user',
+      parts: [
+        { text: 'hello' },
+        { inlineData: { mimeType: 'image/png', data: 'aW1n' } },
+      ],
+    }],
+    generationConfig: {
+      maxOutputTokens: 256,
+      temperature: 0.2,
+      topP: 0.9,
+    },
+    tools: [{
+      functionDeclarations: [{
+        name: 'read_file',
+        description: 'Read a file',
+        parameters: { type: 'object', properties: { path: { type: 'string' } } },
+      }],
+    }],
+    toolConfig: { functionCallingConfig: { mode: 'ANY', allowedFunctionNames: ['read_file'] } },
+  });
+
+  const body = __localProxyTest.upstreamBody({
+    format: 'gemini',
+    model: 'gemini-2.5-pro',
+    apiPath: '/v1beta/models/gemini-2.5-pro:generateContent',
+  }, ctx);
+
+  assert.deepEqual(body.systemInstruction, { parts: [{ text: 'You are concise.' }] });
+  assert.equal(body.contents[0].role, 'user');
+  assert.deepEqual(body.contents[0].parts[0], { text: 'hello' });
+  assert.deepEqual(body.contents[0].parts[1], { inlineData: { mimeType: 'image/png', data: 'aW1n' } });
+  assert.equal(body.generationConfig.maxOutputTokens, 256);
+  assert.equal(body.generationConfig.temperature, 0.2);
+  assert.equal(body.generationConfig.topP, 0.9);
+  assert.equal(body.tools[0].functionDeclarations[0].name, 'read_file');
+  assert.deepEqual(body.toolConfig, {
+    functionCallingConfig: { mode: 'ANY', allowedFunctionNames: ['read_file'] },
+  });
+});
+
 test('Codex unlock keeps Responses payload even when provider wireApi is chat', () => {
   const ctx = __localProxyTest.normalizeRequest('responses', {
     model: 'local-model',

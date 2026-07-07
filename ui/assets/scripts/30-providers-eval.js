@@ -916,7 +916,7 @@ function setProviderImportOpenButtonBusy(isBusy) {
   if (!btn) return;
   const label = btn.querySelector('.provider-toolbar-label');
   btn.disabled = isBusy;
-  if (label) label.textContent = isBusy ? '扫描中…' : '本地导入';
+  if (label) label.textContent = isBusy ? '扫描中…' : '一键导入';
 }
 
 function providerImportSourceLabel(key) {
@@ -1307,7 +1307,7 @@ async function scanProviderImportCandidatesFallback(originalError, selectedSourc
     setProviderImportStep('results');
     renderProviderImportCandidates();
     finishProviderImportScanUi();
-    if (logResult) addLog('ok', `本地扫描完成：${providerImportCandidates.length} 个候选供应商`);
+    if (logResult) addLog('ok', `一键导入扫描完成：${providerImportCandidates.length} 个候选供应商`);
     return true;
   } catch (e) {
     providerImportScanRunning = false;
@@ -1363,7 +1363,7 @@ function applyProviderImportScanProgress(payload) {
     setProviderImportStep('results');
     renderProviderImportCandidates();
     finishProviderImportScanUi();
-    addLog('ok', `本地扫描完成：${providerImportCandidates.length} 个候选供应商`);
+    addLog('ok', `一键导入扫描完成：${providerImportCandidates.length} 个候选供应商`);
     return;
   }
 
@@ -1595,7 +1595,7 @@ function renderProviderImportCandidates() {
           </svg>
         </div>
         <div class="provider-import-scan-title">没有扫到可直接导入的供应商</div>
-        <div class="provider-import-scan-desc">可以稍后重新打开本地导入，或手动新增供应商。</div>
+        <div class="provider-import-scan-desc">可以稍后重新打开一键导入，或手动新增供应商。</div>
       </div>`;
     syncProviderImportSelectionState();
     return;
@@ -1702,7 +1702,7 @@ async function importSelectedProviders() {
     closeProviderImportModal();
     const imported = Number(result?.imported || 0);
     const skipped = Number(result?.skipped || 0);
-    addLog('ok', `本地导入完成：新增 ${imported} 个，跳过 ${skipped} 个`);
+    addLog('ok', `一键导入完成：新增 ${imported} 个，跳过 ${skipped} 个`);
     const messages = Array.isArray(result?.messages) ? result.messages.filter(Boolean).slice(0, 3) : [];
     const detail = messages.length ? `\n\n${messages.join('\n')}` : '';
     showCustomAlert(`已新增 ${imported} 个供应商，跳过 ${skipped} 个。${detail}`, '导入完成', skipped ? 'info' : 'success');

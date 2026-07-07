@@ -22,7 +22,7 @@ fn default_true() -> bool {
 }
 
 fn default_exposed_formats() -> Vec<String> {
-    vec!["openai".into(), "anthropic".into()]
+    vec!["openai".into(), "anthropic".into(), "gemini".into()]
 }
 
 fn default_source() -> String {

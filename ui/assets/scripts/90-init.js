@@ -122,6 +122,9 @@ async function init() {
   setInterval(refreshStats, 3000);
   await refreshStats();
   addLog('info', 'AnyBridge 就绪');
+  if (typeof maybeShowOnboardingGuide === 'function') {
+    maybeShowOnboardingGuide();
+  }
 }
 
 init().catch(e => console.error('init failed:', e));

@@ -123,6 +123,7 @@ pub fn run() {
             commands::proxy::get_proxy_status,
             commands::proxy::get_stats,
             commands::system::set_autostart,
+            commands::system::get_autostart,
             commands::system::export_proxy_logs,
             commands::system::open_config_dir,
             commands::system::generate_certs,

@@ -187,6 +187,40 @@ function updateGlobalProxyStatusPill(running, tone = '') {
   if (!pill) return;
   pill.classList.remove('running', 'starting', 'error', 'off');
   pill.classList.add(tone || (running ? 'running' : 'off'));
+  syncTopbarProxyControls(running, tone);
+}
+
+function syncTopbarProxyControls(running, tone = '') {
+  const primary = document.getElementById('topbarProxyPrimaryBtn');
+  const primaryText = document.getElementById('topbarProxyPrimaryText');
+  const primaryIcon = primary?.querySelector('.topbar-proxy-action-icon');
+  const restart = document.getElementById('topbarProxyRestartBtn');
+  const isBusy = tone === 'starting';
+  const isRunning = !!running && !isBusy;
+  if (primary) {
+    primary.classList.toggle('running', isRunning);
+    primary.disabled = isBusy;
+    const label = isBusy ? '处理中' : (isRunning ? '停止代理' : '启动代理');
+    primary.title = label;
+    primary.setAttribute('aria-label', label);
+  }
+  if (primaryText) {
+    primaryText.textContent = isBusy ? '处理中' : (isRunning ? '停止' : '启动');
+  }
+  if (primaryIcon) {
+    primaryIcon.setAttribute('fill', 'currentColor');
+    primaryIcon.innerHTML = isRunning
+      ? '<path d="M7 6.25A1.25 1.25 0 0 1 8.25 5h7.5A1.25 1.25 0 0 1 17 6.25v11.5A1.25 1.25 0 0 1 15.75 19h-7.5A1.25 1.25 0 0 1 7 17.75V6.25Z"></path>'
+      : '<path d="M8 5.6v12.8c0 .7.77 1.13 1.37.76l10.08-6.4a.9.9 0 0 0 0-1.52L9.37 4.84A.9.9 0 0 0 8 5.6Z"></path>';
+  }
+  if (restart) {
+    restart.disabled = isBusy || !isRunning;
+  }
+}
+
+async function toggleGlobalProxyFromTopbar() {
+  if (proxyRunning) return stopGlobalProxyService();
+  return startGlobalProxyService();
 }
 
 function updateProxyPageState(running, tone = '') {
@@ -303,7 +337,7 @@ function parseProxyPortInputValue(value, label) {
 function proxyPortInputIds(source = 'proxy') {
   return source === 'settings'
     ? { api: 'settingsProxyPortInput', inference: 'settingsInferencePortInput' }
-    : { api: 'localProxyPortInput' };
+    : { api: 'localProxyPortInput', inference: 'localProxyInferencePortInput' };
 }
 
 async function saveLocalProxyPorts(source = 'proxy') {
@@ -313,12 +347,12 @@ async function saveLocalProxyPorts(source = 'proxy') {
   const inferenceInput = ids.inference ? document.getElementById(ids.inference) : null;
   try {
     const nextApiPort = parseProxyPortInputValue(apiInput?.value || getLocalProxyPort(), 'API 服务端口');
-    if (nextApiPort === getLocalProxyInferencePort()) {
-      throw new Error('API 服务端口和推理服务端口不能相同');
-    }
     const nextInferencePort = inferenceInput
       ? parseProxyPortInputValue(inferenceInput.value || getLocalProxyInferencePort(), '推理服务端口')
       : getLocalProxyInferencePort();
+    if (nextApiPort === nextInferencePort) {
+      throw new Error('API 服务端口和推理服务端口不能相同');
+    }
     const changed = nextApiPort !== getLocalProxyPort() || nextInferencePort !== getLocalProxyInferencePort();
     if (proxyRunning && changed) {
       const ok = await showCustomConfirm(
@@ -702,7 +736,7 @@ async function toggleProxy(mode = 'toggle') {
 }
 
 function setGlobalProxyBusy(busy, label = '') {
-  ['globalProxyStartBtn', 'globalProxyStopBtn', 'globalProxyRestartBtn'].forEach(id => {
+  ['globalProxyStartBtn', 'globalProxyStopBtn', 'globalProxyRestartBtn', 'topbarProxyPrimaryBtn', 'topbarProxyRestartBtn'].forEach(id => {
     const btn = document.getElementById(id);
     if (btn) btn.disabled = !!busy;
   });
@@ -710,6 +744,8 @@ function setGlobalProxyBusy(busy, label = '') {
     updateGlobalProxyStatusPill(false, 'starting');
     updateProxyPageState(false, 'starting');
     if (label) setText('proxyPageStateText', label);
+  } else {
+    syncTopbarProxyControls(proxyRunning);
   }
 }
 
@@ -1146,10 +1182,16 @@ function applyTheme(theme) {
   const label = document.getElementById('theme-setting-label');
   const desc = document.getElementById('theme-setting-desc');
   const btn = document.getElementById('settings-theme-toggle');
+  const topbarBtn = document.getElementById('topbarThemeToggle');
   const isDark = theme === 'dark';
   if (label) label.textContent = isDark ? '切换至浅色' : '切换至深色';
   if (desc) desc.textContent = isDark ? '当前使用深色主题' : '当前使用浅色主题';
   if (btn) btn.title = isDark ? '切换至浅色主题' : '切换至深色主题';
+  if (topbarBtn) {
+    const nextLabel = isDark ? '切换至浅色主题' : '切换至深色主题';
+    topbarBtn.title = nextLabel;
+    topbarBtn.setAttribute('aria-label', nextLabel);
+  }
 }
 function toggleTheme() {
   const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
@@ -1194,6 +1236,10 @@ function renderLogs() {
   if (dash) dash.innerHTML = logEntries.slice(-5).map(renderLogLine).join('');
   const count = document.getElementById('logCount');
   if (count) count.textContent = `${filtered.length} 条记录`;
+  const analyticsCount = document.getElementById('analyticsLogEntryCount');
+  if (analyticsCount) analyticsCount.textContent = `${logEntries.length} 条记录`;
+  const modal = document.getElementById('log-viewer-modal');
+  if (modal?.classList.contains('active')) renderLogViewer();
 }
 
 function scheduleLogRender(scrollToBottom) {
@@ -1213,7 +1259,8 @@ function scheduleLogRender(scrollToBottom) {
 }
 
 function addLog(level, msg) {
-  logEntries.push({ ts: nowTs(), level, msg });
+  const normalizedLevel = level === 'error' ? 'err' : level;
+  logEntries.push({ ts: nowTs(), level: normalizedLevel, msg });
   if (logEntries.length > MAX_LOGS) logEntries = logEntries.slice(-MAX_LOGS);
   scheduleLogRender(true);
 }
@@ -1226,6 +1273,14 @@ function clearLogs() {
 let logFilter = 'all';
 const LOG_FILTERS = ['all', 'ok', 'info', 'warn', 'err'];
 const LOG_FILTER_LABELS = { all: '全部', ok: 'OK', info: 'INFO', warn: 'WARN', err: 'ERR' };
+const LOG_VIEWER_LEVELS = ['ok', 'info', 'warn', 'err'];
+const logViewerFilters = {
+  levels: new Set(LOG_VIEWER_LEVELS),
+  query: '',
+  limit: 200,
+  order: 'desc',
+  autoScroll: true
+};
 
 function cycleLogFilter() {
   const i = LOG_FILTERS.indexOf(logFilter);
@@ -1233,6 +1288,130 @@ function cycleLogFilter() {
   const btn = document.getElementById('logFilterBtn');
   if (btn) btn.textContent = `筛选: ${LOG_FILTER_LABELS[logFilter]} ▾`;
   renderLogs();
+}
+
+function openLogViewerModal() {
+  const modal = document.getElementById('log-viewer-modal');
+  if (!modal) throw new Error('log-viewer-modal not found');
+  modal.classList.add('active');
+  syncLogViewerControls();
+  renderLogViewer();
+  document.addEventListener('keydown', closeLogViewerOnEsc);
+}
+
+function closeLogViewerModal() {
+  const modal = document.getElementById('log-viewer-modal');
+  if (!modal) throw new Error('log-viewer-modal not found');
+  modal.classList.remove('active');
+  document.removeEventListener('keydown', closeLogViewerOnEsc);
+}
+
+function closeLogViewerOnEsc(event) {
+  if (event.key === 'Escape') closeLogViewerModal();
+}
+
+function syncLogViewerControls() {
+  LOG_VIEWER_LEVELS.forEach(level => {
+    const input = document.querySelector(`.log-viewer-level[data-level="${level}"] input`);
+    const label = input?.closest('.log-viewer-level');
+    const checked = logViewerFilters.levels.has(level);
+    if (input) input.checked = checked;
+    if (label) label.classList.toggle('active', checked);
+  });
+  const search = document.getElementById('logViewerSearchInput');
+  if (search && search.value !== logViewerFilters.query) search.value = logViewerFilters.query;
+  const limit = document.getElementById('logViewerLimitSelect');
+  if (limit) limit.value = String(logViewerFilters.limit);
+  const order = document.getElementById('logViewerOrderSelect');
+  if (order) order.value = logViewerFilters.order;
+  const auto = document.getElementById('logViewerAutoScrollInput');
+  if (auto) auto.checked = logViewerFilters.autoScroll;
+}
+
+function onLogViewerLevelChange(level, checked) {
+  if (!LOG_VIEWER_LEVELS.includes(level)) throw new Error(`Unknown log level: ${level}`);
+  if (checked) logViewerFilters.levels.add(level);
+  else logViewerFilters.levels.delete(level);
+  syncLogViewerControls();
+  renderLogViewer();
+}
+
+function setLogViewerLevelPreset(preset) {
+  if (preset === 'all') {
+    logViewerFilters.levels = new Set(LOG_VIEWER_LEVELS);
+  } else if (preset === 'important') {
+    logViewerFilters.levels = new Set(['warn', 'err']);
+  } else if (preset === 'errors') {
+    logViewerFilters.levels = new Set(['err']);
+  } else {
+    throw new Error(`Unknown log level preset: ${preset}`);
+  }
+  syncLogViewerControls();
+  renderLogViewer();
+}
+
+function onLogViewerSearchInput(value) {
+  logViewerFilters.query = String(value || '').trim();
+  renderLogViewer();
+}
+
+function onLogViewerLimitChange(value) {
+  const next = Number.parseInt(value, 10);
+  if (![50, 100, 200, 500].includes(next)) throw new Error(`Unknown log limit: ${value}`);
+  logViewerFilters.limit = next;
+  renderLogViewer();
+}
+
+function onLogViewerOrderChange(value) {
+  if (value !== 'asc' && value !== 'desc') throw new Error(`Unknown log order: ${value}`);
+  logViewerFilters.order = value;
+  renderLogViewer();
+}
+
+function onLogViewerAutoScrollChange(checked) {
+  logViewerFilters.autoScroll = !!checked;
+}
+
+function logViewerFilteredEntries() {
+  const q = logViewerFilters.query.toLowerCase();
+  let rows = logEntries.filter(e => {
+    if (!logViewerFilters.levels.has(e.level)) return false;
+    if (!q) return true;
+    return `${e.ts} ${e.level} ${e.msg}`.toLowerCase().includes(q);
+  });
+  rows = rows.slice(-logViewerFilters.limit);
+  if (logViewerFilters.order === 'desc') rows = rows.slice().reverse();
+  return rows;
+}
+
+function renderLogViewerLine(e) {
+  return `<div class="log-viewer-line">
+    <span class="log-viewer-ts">${escapeHtml(e.ts)}</span>
+    <span class="log-viewer-lv ${escapeHtml(e.level)}">${escapeHtml(String(e.level).toUpperCase())}</span>
+    <span class="log-viewer-msg">${escapeHtml(e.msg)}</span>
+  </div>`;
+}
+
+function renderLogViewer() {
+  const body = document.getElementById('logViewerBody');
+  if (!body) return;
+  const rows = logViewerFilteredEntries();
+  body.innerHTML = rows.length
+    ? rows.map(renderLogViewerLine).join('')
+    : '<div class="log-viewer-empty">没有匹配当前过滤条件的日志。</div>';
+  const visible = document.getElementById('logViewerVisibleCount');
+  if (visible) visible.textContent = `${rows.length} 条匹配 / 共 ${logEntries.length} 条`;
+  const counts = LOG_VIEWER_LEVELS.reduce((acc, level) => {
+    acc[level] = logEntries.filter(e => e.level === level).length;
+    return acc;
+  }, {});
+  const summary = document.getElementById('logViewerLevelSummary');
+  if (summary) {
+    summary.textContent = `OK ${counts.ok || 0} · INFO ${counts.info || 0} · WARN ${counts.warn || 0} · ERR ${counts.err || 0}`;
+  }
+  if (logViewerFilters.autoScroll) {
+    body.scrollTop = logViewerFilters.order === 'desc' ? 0 : body.scrollHeight;
+  }
 }
 
 async function exportLogs() {
@@ -1362,6 +1541,7 @@ async function loadAndFillConfig() {
       window.ByokI18n.initFromConfig(values);
       window.ByokI18n.bindLanguageControls();
     }
+    await syncAutostartState();
     return values;
   } catch (e) { return {}; }
 }
@@ -1409,14 +1589,39 @@ document.querySelectorAll('[data-config-toggle]').forEach(el => {
 
 document.querySelectorAll('[data-autostart]').forEach(el => {
   el.addEventListener('click', async () => {
-    el.classList.toggle('on');
-    const enabled = el.classList.contains('on');
+    const previous = el.classList.contains('on');
+    const enabled = !previous;
+    setAutostartToggleState(enabled);
     if (invoke) {
       try { await invoke('set_autostart', { enabled }); addLog('ok', enabled ? '已设置开机自启' : '已取消开机自启'); }
-      catch (e) { el.classList.toggle('on'); addLog('err', '自启设置失败: ' + e); }
+      catch (e) {
+        setAutostartToggleState(previous);
+        addLog('err', '自启设置失败: ' + e);
+        if (typeof showCustomAlert === 'function') showCustomAlert(String(e), '自启设置失败', 'error');
+      }
+    } else {
+      setAutostartToggleState(previous);
     }
   });
 });
+
+async function syncAutostartState() {
+  if (!invoke) return;
+  try {
+    const enabled = await invoke('get_autostart');
+    setAutostartToggleState(!!enabled);
+  } catch (e) {
+    addLog('warn', '读取开机自启状态失败: ' + e);
+  }
+}
+
+function setAutostartToggleState(enabled) {
+  document.querySelectorAll('[data-autostart]').forEach(el => {
+    el.classList.toggle('on', !!enabled);
+    el.setAttribute('aria-pressed', enabled ? 'true' : 'false');
+    el.setAttribute('aria-checked', enabled ? 'true' : 'false');
+  });
+}
 
 function applyToggleStates(config) {
   document.querySelectorAll('[data-config-toggle]').forEach(el => {

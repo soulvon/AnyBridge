@@ -86,6 +86,16 @@ export class OpenAIStreamProcessor {
   get isDone() { return this._done; }
   get stopReason() { return this._stopReason; }
   get usage() { return this._usage; }
+  get toolCalls() {
+    return Object.keys(this._toolCalls)
+      .sort((a, b) => Number(a) - Number(b))
+      .map(idx => ({
+        id: this._toolCalls[idx].id,
+        name: this._toolCalls[idx].name,
+        arguments_json: this._toolCalls[idx].arguments,
+      }))
+      .filter(tc => tc.id || tc.name || tc.arguments_json);
+  }
 
   /**
    * Process a single parsed SSE event and return proto buffers to send.
@@ -271,6 +281,16 @@ export class OpenAIChatCompletionsStreamProcessor {
   get isDone() { return this._done; }
   get stopReason() { return this._stopReason; }
   get usage() { return this._usage; }
+  get toolCalls() {
+    return Object.keys(this._toolCalls)
+      .sort((a, b) => Number(a) - Number(b))
+      .map(idx => ({
+        id: this._toolCalls[idx].id,
+        name: this._toolCalls[idx].name,
+        arguments_json: this._toolCalls[idx].arguments,
+      }))
+      .filter(tc => tc.id || tc.name || tc.arguments_json);
+  }
 
   processEvent(event) {
     if (event.done) return this._onDone();

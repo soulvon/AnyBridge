@@ -129,6 +129,10 @@ function navigateTo(pageId) {
   if (main) {
     main.classList.toggle('settings-active', pageId === 'settings');
   }
+  const topbarSettingsBtn = document.getElementById('topbarSettingsBtn');
+  if (topbarSettingsBtn) {
+    topbarSettingsBtn.classList.toggle('active', pageId === 'settings');
+  }
   const shell = document.querySelector('.workspace-shell');
   if (shell) {
     shell.classList.toggle('without-platform-rail', !PLATFORM_SHELL_PAGES.has(pageId));
@@ -249,6 +253,43 @@ function activateSettingsPanel(index) {
 function openSettingsPanel(panelId) {
   navigateTo('settings');
   activateSettingsPanel(panelId);
+}
+
+// ═══════ QUICK START GUIDE ═══════
+const ONBOARDING_GUIDE_SEEN_KEY = 'anybridge.onboardingGuideSeen';
+
+function markOnboardingGuideSeen() {
+  localStorage.setItem(ONBOARDING_GUIDE_SEEN_KEY, '1');
+}
+
+function openOnboardingGuide(options = {}) {
+  const modal = document.getElementById('onboarding-guide-modal');
+  if (!modal) throw new Error('onboarding-guide-modal not found');
+  modal.classList.add('active');
+  if (!options.manual) markOnboardingGuideSeen();
+  document.addEventListener('keydown', closeOnboardingGuideOnEsc);
+}
+
+function closeOnboardingGuide() {
+  const modal = document.getElementById('onboarding-guide-modal');
+  if (!modal) throw new Error('onboarding-guide-modal not found');
+  modal.classList.remove('active');
+  markOnboardingGuideSeen();
+  document.removeEventListener('keydown', closeOnboardingGuideOnEsc);
+}
+
+function finishOnboardingGuide() {
+  closeOnboardingGuide();
+  navigateTo('models');
+}
+
+function closeOnboardingGuideOnEsc(event) {
+  if (event.key === 'Escape') closeOnboardingGuide();
+}
+
+function maybeShowOnboardingGuide() {
+  if (localStorage.getItem(ONBOARDING_GUIDE_SEEN_KEY) === '1') return;
+  openOnboardingGuide();
 }
 
 function activateProxyPanel(panelId = 'overview') {

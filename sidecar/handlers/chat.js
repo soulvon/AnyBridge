@@ -3,6 +3,7 @@
 // Parses Windsurf's protobuf request → calls Anthropic Messages API → streams
 // back Connect-RPC protobuf using the correct exa.api_server_pb schema.
 
+import http from 'node:http';
 import https from 'node:https';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
@@ -27,6 +28,12 @@ import { mitmLog } from '../mitm-logger.js';
 import { getRuntimeModelSlotStatus } from '../rename-models.js';
 import { httpsAgentFor } from '../system-proxy.js';
 import { preprocessImagesWithThirdPartyVision } from '../vision-fallback.js';
+import {
+  buildToolErrorContent,
+  buildToolResultContent,
+  enabledSearchSources,
+  executeSearchWithFailover,
+} from './search-sources.js';
 
 // ─── Config ────────────────────────────────────────────────
 
@@ -52,6 +59,12 @@ const OPENAI_REASONING_EFFORT = String(process.env.BYOK_REASONING_EFFORT || proc
 const OPENAI_REASONING_SUMMARY = String(process.env.BYOK_REASONING_SUMMARY || process.env.OPENAI_REASONING_SUMMARY || '').trim();
 const PROMPT_CACHE_ENABLED = !/^(false|0|off)$/i.test(String(process.env.BYOK_PROMPT_CACHE || 'true'));
 const HTTPS_AGENT = new https.Agent({
+  keepAlive: true,
+  keepAliveMsecs: 30_000,
+  maxSockets: intEnv('BYOK_MAX_SOCKETS', 64, 1),
+  maxFreeSockets: intEnv('BYOK_MAX_FREE_SOCKETS', 16, 1),
+});
+const HTTP_AGENT = new http.Agent({
   keepAlive: true,
   keepAliveMsecs: 30_000,
   maxSockets: intEnv('BYOK_MAX_SOCKETS', 64, 1),
@@ -105,6 +118,31 @@ function clampText(value, max = 220) {
   const text = String(value || '').replace(/\s+/g, ' ').trim();
   if (text.length <= max) return text;
   return `${text.slice(0, Math.max(0, max - 1))}…`;
+}
+
+function upstreamUrl(conn, apiPath) {
+  const protocol = conn.protocol === 'http' ? 'http' : 'https';
+  const hostname = conn.hostname || conn.host;
+  const defaultPort = protocol === 'http' ? 80 : 443;
+  const port = Number(conn.port || defaultPort);
+  const portPart = port && port !== defaultPort ? `:${port}` : '';
+  return `${protocol}://${hostname}${portPart}${apiPath}`;
+}
+
+function upstreamRequestOptions(conn, apiPath, headers) {
+  const protocol = conn.protocol === 'http' ? 'http' : 'https';
+  const defaultPort = protocol === 'http' ? 80 : 443;
+  return {
+    module: protocol === 'http' ? http : https,
+    options: {
+      agent: protocol === 'http' ? HTTP_AGENT : httpsAgentFor(HTTPS_AGENT),
+      hostname: conn.hostname || conn.host,
+      port: Number(conn.port || defaultPort),
+      path: apiPath,
+      method: 'POST',
+      headers,
+    },
+  };
 }
 
 function extractUpstreamMessage(body) {
@@ -290,7 +328,11 @@ function applySystemPromptEnhancement(systemPrompt, enhancement = {}) {
 }
 
 function chatToolName(tool) {
-  return String(tool?.name || tool?.function?.name || '').trim();
+  const functionName = String(tool?.name || tool?.function?.name || '').trim();
+  if (functionName) return functionName;
+  if (tool?.google_search && typeof tool.google_search === 'object') return 'google_search';
+  if (typeof tool?.type === 'string' && tool.type && tool.type !== 'function') return tool.type.trim();
+  return '';
 }
 
 function chatToolChoiceName(choice) {
@@ -334,6 +376,187 @@ function applyChatToolEnhancement(tools, toolChoice, enhancement = {}) {
   }
 
   return { tools: nextTools, toolChoice: nextToolChoice };
+}
+
+const BUILTIN_SEARCH_TOOLS = [
+  {
+    match: (conn) =>
+      (conn.providerId === 'google' || /^gemini/i.test(conn.model || '')) &&
+      conn.format === 'openai',
+    injectTool: () => ({ google_search: {} }),
+  },
+  {
+    match: (conn) =>
+      (conn.providerId === 'xai' || /^grok/i.test(conn.model || '')) &&
+      conn.format === 'openai',
+    injectTool: () => ({ type: 'web_search' }),
+  },
+  {
+    match: (conn) =>
+      conn.providerId === 'openai' &&
+      conn.format === 'openai' &&
+      /search-preview/i.test(conn.model || ''),
+    injectTool: (conn) => isOpenAIResponsesPath(conn.apiPath)
+      ? ({ type: 'web_search_preview' })
+      : null,
+  },
+];
+
+function isOpenAIResponsesPath(apiPath = '') {
+  return /\/responses(?:$|\?)/i.test(String(apiPath || ''));
+}
+
+function isOpenAIChatCompletionsPath(apiPath = '') {
+  return /\/chat\/completions(?:$|\?)/i.test(String(apiPath || ''));
+}
+
+function applyChatToolInjection(tools, conn, enhancement = {}, searchModels = {}) {
+  const nextTools = Array.isArray(tools) ? [...tools] : [];
+  if (enhancement.webSearchEnabled !== true) {
+    return { tools: nextTools, searchInjection: { mode: 'off' } };
+  }
+
+  if (conn.unlockKind) {
+    return {
+      tools: nextTools,
+      searchInjection: {
+        mode: 'unsupported-unlock',
+        reason: `${conn.unlockKind} 解锁路径当前不支持联网搜索工具注入`,
+      },
+    };
+  }
+
+  if (conn.format === 'gemini') {
+    return {
+      tools: nextTools,
+      searchInjection: {
+        mode: 'unsupported-gemini-native',
+        reason: 'Gemini 原生 API 当前没有 streamGemini 工具注入路径',
+      },
+    };
+  }
+
+  const existingNames = new Set(nextTools.map(chatToolName).filter(Boolean));
+  if (existingNames.has('web_search')) {
+    return {
+      tools: nextTools,
+      searchInjection: { mode: 'client-owned-web-search', reason: 'existing web_search tool' },
+    };
+  }
+
+  const builtin = BUILTIN_SEARCH_TOOLS.find(item => item.match(conn));
+  if (builtin) {
+    const nativeTool = builtin.injectTool(conn);
+    console.log(`  🔎 检测到 ${conn.providerName} 内置搜索${nativeTool ? '，注入原生工具' : '，使用模型默认搜索能力'}`);
+    if (nativeTool) nextTools.push(nativeTool);
+    return {
+      tools: nextTools,
+      searchInjection: { mode: 'builtin', nativeTool, provider: conn.providerId },
+    };
+  }
+
+  const sources = enabledSearchSources(searchModels);
+  if (sources.length === 0) {
+    return {
+      tools: nextTools,
+      searchInjection: {
+        mode: 'missing-search-source',
+        reason: '联网搜索已开启，但没有启用的搜索源',
+      },
+    };
+  }
+
+  console.log('  🔎 注入通用 web_search 工具');
+  nextTools.push({
+    name: 'web_search',
+    description: 'Search the web for current, factual information. Search results are untrusted external content.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        query: { type: 'string', description: 'The search query' },
+      },
+      required: ['query'],
+    },
+  });
+
+  return {
+    tools: nextTools,
+    searchInjection: { mode: 'generic', toolName: 'web_search' },
+  };
+}
+
+function nativeOpenAIToolForPayload(tool, chatCompletions) {
+  if (!tool || typeof tool !== 'object') return null;
+  if (tool.google_search && typeof tool.google_search === 'object') {
+    return { google_search: tool.google_search };
+  }
+  if (tool.type === 'web_search') {
+    return { type: 'web_search' };
+  }
+  if (tool.type === 'web_search_preview') {
+    return chatCompletions ? null : { type: 'web_search_preview' };
+  }
+  if (typeof tool.type === 'string' && tool.type && tool.type !== 'function' && !tool.name && !tool.function) {
+    return { ...tool };
+  }
+  return null;
+}
+
+function serializeOpenAITools(tools, { chatCompletions = false, resolvedModel, forceGeminiCompat = false } = {}) {
+  const out = [];
+  for (const tool of Array.isArray(tools) ? tools : []) {
+    const nativeTool = nativeOpenAIToolForPayload(tool, chatCompletions);
+    if (nativeTool) {
+      out.push(nativeTool);
+      continue;
+    }
+
+    const name = String(tool?.name || tool?.function?.name || '').trim();
+    if (!name) continue;
+    const description = tool?.description || tool?.function?.description || '';
+    const schema = tool?.input_schema || tool?.function?.parameters || tool?.parameters || {};
+    const parameters = normalizeToolSchema(schema, resolvedModel, forceGeminiCompat);
+    if (chatCompletions) {
+      out.push({ type: 'function', function: { name, description, parameters } });
+    } else {
+      out.push({ type: 'function', name, description, parameters });
+    }
+  }
+  return out;
+}
+
+function parseToolArguments(argumentsJson = '') {
+  if (!argumentsJson) return {};
+  try {
+    const parsed = JSON.parse(argumentsJson);
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function searchQueryFromToolCall(call) {
+  const input = parseToolArguments(call.arguments_json || call.arguments || '');
+  return String(input.query || input.q || input.search || '').trim();
+}
+
+function appendToolExchange(messages, toolCalls, toolResults) {
+  const assistantBlocks = toolCalls.map(call => ({
+    type: 'tool_use',
+    id: call.id,
+    name: call.name,
+    input: parseToolArguments(call.arguments_json || call.arguments || ''),
+  }));
+  const resultBlocks = toolResults.map(result => ({
+    type: 'tool_result',
+    tool_use_id: result.id,
+    content: result.content,
+  }));
+  return [
+    ...messages,
+    { role: 'assistant', content: assistantBlocks },
+    { role: 'user', content: resultBlocks },
+  ];
 }
 
 function positiveOverrideInt(value, label) {
@@ -565,6 +788,7 @@ export function handleGetChatMessage(req, res, body) {
   const providers = loadProviders();
   const modelMapConfig = loadModelMapConfig();
   const enhancement = modelMapConfig?.enhancement || {};
+  const searchModels = modelMapConfig?.searchModels || {};
   const autoRoutingEnabled = enhancement.autoRouting !== false;
   const retryPolicy = retryPolicyFromEnhancement(enhancement);
   const serviceTier = getServiceTier(requestedModel);
@@ -773,10 +997,30 @@ export function handleGetChatMessage(req, res, body) {
         attemptNext();
       };
 
+      const toolInjection = applyChatToolInjection(tools, conn, enhancement, searchModels);
+      if (toolInjection.searchInjection?.mode === 'missing-search-source'
+          || toolInjection.searchInjection?.mode === 'unsupported-gemini-native'
+          || toolInjection.searchInjection?.mode === 'unsupported-unlock') {
+        const reason = toolInjection.searchInjection.reason || '当前目标不支持联网搜索';
+        const hasNextTarget = idx < routingTargets.length;
+        console.warn(`  ⚠️  ${conn.providerName} 跳过: ${reason}${hasNextTarget ? ' → 切换下一个' : ''}`);
+        rememberFailure({
+          providerId: conn.providerId,
+          providerName: conn.providerName,
+          model: conn.model,
+          routeMode,
+          apiPath: conn.apiPath,
+          reason,
+        });
+        attemptNext();
+        return;
+      }
+      const targetTools = toolInjection.tools;
+
       const opts = {
         systemPrompt: sys,
         messages: effectiveMessages,
-        tools,
+        tools: targetTools,
         toolChoice,
         resolvedModel: conn.model,
         requestedModel,
@@ -787,11 +1031,17 @@ export function handleGetChatMessage(req, res, body) {
         onFailover,
         schemaCompatRetry: false,
         bindActiveReq: (r) => { currentApiReq = r; },
+        searchModels,
+        searchInjection: toolInjection.searchInjection,
       };
 
-      currentApiReq = conn.format === 'openai'
-        ? streamOpenAI(req, res, opts)
-        : streamAnthropic(req, res, opts);
+      if (toolInjection.searchInjection?.mode === 'generic') {
+        await streamSearchAgentLoop(req, res, opts);
+      } else {
+        currentApiReq = conn.format === 'openai'
+          ? streamOpenAI(req, res, opts)
+          : streamAnthropic(req, res, opts);
+      }
     };
 
     startTargetRequest().catch(err => {
@@ -824,6 +1074,638 @@ function anthropicAuthHeaders(conn) {
     headers['x-api-key'] = conn.apiKey;
   }
   return headers;
+}
+
+function flushBufferedStreamResult(res, result, { enhancement, conn, resolvedModel, messages, tools }) {
+  if (res.writableEnded) return;
+  if (!res.headersSent) {
+    res.writeHead(200, { ...streamHeaders(), ...enhancementResponseHeaders(enhancement) });
+  }
+  for (const chunk of result.protoChunks || []) {
+    res.write(wrapEnvelope(chunk));
+  }
+  res.write(endOfStreamEnvelope());
+  res.end();
+  recordStreamLatency(result.streamStartedAt);
+  markModelSuccess(conn, resolvedModel, messages, tools);
+  recordUsage(result.processor?.usage || {});
+  logEnhancedChatResponse(enhancement, conn, resolvedModel, result.processor);
+  mitmLog({
+    direction: 'downstream',
+    providerName: conn.providerName,
+    model: resolvedModel,
+    format: result.format,
+    request: { method: 'POST', url: result.requestUrl },
+    response: {
+      statusCode: 200,
+      headers: { 'content-type': 'text/event-stream' },
+      body: `[USAGE] ${JSON.stringify(result.processor?.usage || {})}\n\n${(result.rawOutput || []).join('\n\n')}`,
+    },
+  });
+}
+
+async function streamSearchAgentLoop(req, res, opts) {
+  const {
+    conn,
+    enhancement = {},
+    messageId,
+    searchInjection = {},
+    searchModels = {},
+    onFailover,
+    resolvedModel,
+    tools,
+  } = opts;
+  const toolName = searchInjection.toolName || 'web_search';
+  const sources = enabledSearchSources(searchModels);
+  if (sources.length === 0) {
+    sendTerminalError(res, messageId, '联网搜索已开启，但没有启用的搜索源。请先在代理增强中添加搜索源。', 'invalid_argument');
+    return;
+  }
+
+  let loopMessages = opts.messages;
+  let searchRounds = 0;
+  const maxRounds = positiveInt(enhancement.webSearchMaxRounds, 3, 1);
+  const maxResults = positiveInt(enhancement.webSearchMaxResults, 5, 1);
+
+  while (!res.writableEnded) {
+    const result = conn.format === 'openai'
+      ? await requestOpenAIBuffered(req, res, { ...opts, messages: loopMessages })
+      : await requestAnthropicBuffered(req, res, { ...opts, messages: loopMessages });
+
+    if (!result) return;
+    if (result.kind === 'failover') {
+      onFailover(result.reason, result.meta || {});
+      return;
+    }
+    if (result.kind === 'terminal-error') {
+      sendTerminalError(res, messageId, result.message, result.code || 'unavailable');
+      return;
+    }
+    if (result.kind !== 'success') {
+      sendTerminalError(res, messageId, `联网搜索 agent loop 收到未知上游结果: ${result.kind || 'unknown'}`, 'unavailable');
+      return;
+    }
+
+    const toolCalls = Array.isArray(result.toolCalls) ? result.toolCalls : [];
+    const webSearchCalls = toolCalls.filter(call => call.name === toolName);
+    const otherToolCalls = toolCalls.filter(call => call.name !== toolName);
+
+    if (webSearchCalls.length === 0) {
+      flushBufferedStreamResult(res, result, { enhancement, conn, resolvedModel, messages: loopMessages, tools });
+      return;
+    }
+
+    if (otherToolCalls.length > 0) {
+      const names = otherToolCalls.map(call => call.name || call.id || '(unknown)').join(', ');
+      sendTerminalError(res, messageId, `模型同时请求联网搜索和客户端工具（${names}），AnyBridge 无法同时接管并透传，已中止以避免未处理的 web_search 泄漏。`, 'invalid_argument');
+      return;
+    }
+
+    searchRounds += 1;
+    if (searchRounds > maxRounds) {
+      sendTerminalError(res, messageId, `联网搜索 agent loop 超过最大轮次 ${maxRounds}。模型仍在请求 web_search，已中止。`, 'resource_exhausted');
+      return;
+    }
+
+    const toolResults = [];
+    for (const call of webSearchCalls) {
+      const query = searchQueryFromToolCall(call);
+      if (!query) {
+        toolResults.push({
+          id: call.id,
+          content: buildToolErrorContent(new Error('web_search 缺少 query 参数')),
+        });
+        continue;
+      }
+      try {
+        console.log(`  🔎 web_search(${searchRounds}/${maxRounds}): ${clampText(query, 120)}`);
+        const search = await executeSearchWithFailover(sources, query, maxResults);
+        toolResults.push({
+          id: call.id,
+          content: buildToolResultContent(search.results),
+        });
+      } catch (e) {
+        toolResults.push({
+          id: call.id,
+          content: buildToolErrorContent(e),
+        });
+      }
+    }
+
+    loopMessages = appendToolExchange(loopMessages, webSearchCalls, toolResults);
+  }
+}
+
+function requestAnthropicBuffered(req, res, { systemPrompt, messages, tools, toolChoice, resolvedModel, messageId, conn, enhancement = {}, promptCacheRetry = false, bindActiveReq = null }) {
+  return new Promise((resolve) => {
+    const claudeCodeUnlock = claudeCodeUnlockForTarget(conn);
+    if (claudeCodeUnlock) {
+      resolve({
+        kind: 'terminal-error',
+        code: 'invalid_argument',
+        message: 'Claude Code 解锁路径当前不支持 AnyBridge 通用联网搜索 agent loop。',
+      });
+      return;
+    }
+
+    const targetPath = conn.apiPath;
+    const usePromptCache = shouldUseAnthropicPromptCache(conn, false, promptCacheRetry);
+    const authHeaders = withAnthropicPromptCacheHeaders(anthropicAuthHeaders(conn), usePromptCache);
+    const extraHeaders = enhancementRequestHeaders(enhancement);
+    const sentTools = withAnthropicToolsCache(tools, usePromptCache);
+    const apiPayload = {
+      model: resolvedModel,
+      system: withAnthropicSystemCache(systemPrompt, usePromptCache),
+      messages,
+      stream: true,
+      max_tokens: MAX_TOKENS,
+    };
+    if (sentTools && sentTools.length > 0) {
+      apiPayload.tools = sentTools;
+      if (toolChoice) apiPayload.tool_choice = toolChoice;
+    }
+    applyPayloadParamOverrides(apiPayload, enhancement, 'max_tokens');
+
+    const apiBody = JSON.stringify(apiPayload);
+    const requestUrl = upstreamUrl(conn, targetPath);
+    mitmLog({
+      direction: 'upstream',
+      providerName: conn.providerName,
+      model: resolvedModel,
+      format: 'anthropic',
+      request: {
+        method: 'POST',
+        url: requestUrl,
+        headers: { 'content-type': 'application/json', 'accept': 'text/event-stream', ...authHeaders, ...extraHeaders },
+        body: apiBody,
+      },
+    });
+
+    const reqHeaders = {
+      'content-type': 'application/json',
+      'accept': 'text/event-stream',
+      ...authHeaders,
+      ...extraHeaders,
+      'content-length': Buffer.byteLength(apiBody),
+    };
+    const requestConfig = upstreamRequestOptions(conn, targetPath, reqHeaders);
+    let failed = false;
+    let streamStarted = false;
+    const apiReq = requestConfig.module.request(requestConfig.options, (apiRes) => {
+      let sseBuffer = '';
+
+      if (apiRes.statusCode !== 200) {
+        let errBody = '';
+        apiRes.setEncoding('utf8');
+        apiRes.on('data', d => { if (errBody.length < 2000) errBody += d.slice(0, 2000 - errBody.length); });
+        const fail = () => {
+          if (failed) return;
+          failed = true;
+          mitmLog({ direction: 'downstream', providerName: conn.providerName, model: resolvedModel, format: 'anthropic', request: { method: 'POST', url: requestUrl }, response: { statusCode: apiRes.statusCode, headers: apiRes.headers, body: errBody } });
+          if (usePromptCache && !promptCacheRetry && isPromptCacheRejected(apiRes.statusCode, errBody)) {
+            console.warn(`  ♻️  ${conn.providerName} / ${resolvedModel} 不接受 cache_control，本次移除后重试一次`);
+            apiReq.destroy();
+            requestAnthropicBuffered(req, res, {
+              systemPrompt,
+              messages,
+              tools,
+              toolChoice,
+              resolvedModel,
+              messageId,
+              conn,
+              enhancement,
+              promptCacheRetry: true,
+              bindActiveReq,
+            }).then(resolve);
+            return;
+          }
+          apiReq.destroy();
+          resolve({ kind: 'failover', reason: `HTTP ${apiRes.statusCode}`, meta: { statusCode: apiRes.statusCode, headers: apiRes.headers, body: errBody } });
+        };
+        apiRes.on('end', fail);
+        setTimeout(fail, 5000);
+        return;
+      }
+
+      streamStarted = true;
+      const processor = new AnthropicStreamProcessor(messageId, resolvedModel);
+      const streamStartedAt = Date.now();
+      const rawOutput = [];
+      const protoChunks = [];
+      apiRes.setEncoding('utf8');
+
+      function processPart(part) {
+        rawOutput.push(part);
+        const events = parseSSEChunk(part + '\n\n');
+        for (const evt of events) {
+          protoChunks.push(...processor.processEvent(evt));
+        }
+      }
+
+      apiRes.on('data', (chunk) => {
+        sseBuffer += chunk;
+        const parts = sseBuffer.split('\n\n');
+        sseBuffer = parts.pop();
+        for (const part of parts) processPart(part);
+      });
+
+      apiRes.on('end', () => {
+        if (failed) return;
+        failed = true;
+        if (sseBuffer.trim()) processPart(sseBuffer);
+        resolve({
+          kind: 'success',
+          format: 'anthropic',
+          requestUrl,
+          streamStartedAt,
+          rawOutput,
+          protoChunks,
+          processor,
+          toolCalls: processor.toolCalls,
+        });
+      });
+
+      apiRes.on('error', (err) => {
+        if (failed) return;
+        failed = true;
+        resolve({
+          kind: streamStarted ? 'terminal-error' : 'failover',
+          reason: err.message,
+          meta: { code: err.code },
+          code: 'unavailable',
+          message: `BYOK 上游流中断：${conn.providerName} / ${resolvedModel}（${clampText(err.message, 120)}）。请稍后重试或切换备用供应商。`,
+        });
+      });
+    });
+
+    if (typeof bindActiveReq === 'function') bindActiveReq(apiReq);
+    apiReq.on('error', (err) => {
+      if (failed) return;
+      failed = true;
+      resolve({
+        kind: streamStarted ? 'terminal-error' : 'failover',
+        reason: err.message,
+        meta: { code: err.code },
+        code: 'unavailable',
+        message: `BYOK 连接上游失败：${conn.providerName} / ${resolvedModel}（${clampText(err.message, 120)}）。请检查网络、代理和 API Host。`,
+      });
+    });
+    apiReq.setTimeout(UPSTREAM_TIMEOUT_MS, () => {
+      const err = new Error('upstream timeout');
+      err.code = 'ETIMEDOUT';
+      apiReq.destroy(err);
+    });
+    apiReq.end(apiBody);
+  });
+}
+
+function requestOpenAIBuffered(req, res, opts) {
+  if (isOpenAIChatCompletionsPath(opts.conn.apiPath)) {
+    return requestOpenAIChatCompletionsBuffered(req, res, opts);
+  }
+  return requestOpenAIResponsesBuffered(req, res, opts);
+}
+
+function requestOpenAIResponsesBuffered(req, res, { systemPrompt, messages, tools, toolChoice, resolvedModel, requestedModel, serviceTier, messageId, conn, enhancement = {}, schemaCompatRetry = false, bindActiveReq = null }) {
+  return new Promise((resolve) => {
+    const codexUnlock = codexUnlockForTarget(conn);
+    if (codexUnlock) {
+      resolve({
+        kind: 'terminal-error',
+        code: 'invalid_argument',
+        message: 'Codex 解锁路径当前不支持 AnyBridge 通用联网搜索 agent loop。',
+      });
+      return;
+    }
+
+    const openaiMessages = toOpenAIMessages(systemPrompt, messages);
+    const forceGeminiCompat = schemaCompatRetry || conn.capabilities?.toolSchemaCompat === 'gemini';
+    const apiPayload = {
+      model: resolvedModel,
+      input: openaiMessages,
+      stream: true,
+      max_output_tokens: MAX_TOKENS,
+    };
+    if (OPENAI_REASONING_EFFORT && !/^(off|none|false|0)$/i.test(OPENAI_REASONING_EFFORT)) {
+      apiPayload.reasoning = { effort: OPENAI_REASONING_EFFORT };
+      if (OPENAI_REASONING_SUMMARY && !/^(off|none|false|0)$/i.test(OPENAI_REASONING_SUMMARY)) {
+        apiPayload.reasoning.summary = OPENAI_REASONING_SUMMARY;
+      }
+    }
+    if (serviceTier) apiPayload.service_tier = serviceTier;
+    if (tools && tools.length > 0) {
+      const serializedTools = serializeOpenAITools(tools, { chatCompletions: false, resolvedModel, forceGeminiCompat });
+      if (serializedTools.length > 0) apiPayload.tools = serializedTools;
+      if (toolChoice) {
+        if (toolChoice.type === 'auto') apiPayload.tool_choice = 'auto';
+        else if (toolChoice.type === 'any') apiPayload.tool_choice = 'required';
+        else if (toolChoice.type === 'tool') apiPayload.tool_choice = { type: 'function', name: toolChoice.name };
+      }
+    }
+    applyPayloadParamOverrides(apiPayload, enhancement, 'max_output_tokens');
+
+    const apiBody = JSON.stringify(apiPayload);
+    const authHeaders = { authorization: `Bearer ${conn.apiKey}` };
+    const extraHeaders = enhancementRequestHeaders(enhancement);
+    const requestUrl = upstreamUrl(conn, conn.apiPath);
+    mitmLog({
+      direction: 'upstream',
+      providerName: conn.providerName,
+      model: resolvedModel,
+      format: 'openai-responses',
+      request: { method: 'POST', url: requestUrl, headers: { 'content-type': 'application/json', 'accept': 'text/event-stream', ...authHeaders, ...extraHeaders }, body: apiBody },
+    });
+
+    const useGzip = conn.capabilities?.gzip === true;
+    const finalBody = useGzip ? gzipSync(Buffer.from(apiBody)) : Buffer.from(apiBody);
+    const reqHeaders = {
+      'content-type': 'application/json',
+      'accept': 'text/event-stream',
+      ...authHeaders,
+      ...extraHeaders,
+      'content-length': finalBody.length,
+    };
+    if (useGzip) reqHeaders['content-encoding'] = 'gzip';
+
+    const requestConfig = upstreamRequestOptions(conn, conn.apiPath, reqHeaders);
+    let failed = false;
+    let streamStarted = false;
+    const apiReq = requestConfig.module.request(requestConfig.options, (apiRes) => {
+      let sseBuffer = '';
+      if (apiRes.statusCode !== 200) {
+        let errBody = '';
+        apiRes.setEncoding('utf8');
+        apiRes.on('data', d => { if (errBody.length < 2000) errBody += d.slice(0, 2000 - errBody.length); });
+        const fail = () => {
+          if (failed) return;
+          failed = true;
+          mitmLog({ direction: 'downstream', providerName: conn.providerName, model: resolvedModel, format: 'openai-responses', request: { method: 'POST', url: requestUrl }, response: { statusCode: apiRes.statusCode, headers: apiRes.headers, body: errBody } });
+          if (!schemaCompatRetry && shouldAutoEnableGeminiSchemaCompat(apiRes.statusCode, errBody) && tools && tools.length > 0) {
+            const remembered = rememberProviderToolSchemaCompat(conn.providerId, 'gemini');
+            if (remembered) console.log(`  🧠 已记住 ${conn.providerName} 的工具 Schema 兼容模式: gemini`);
+            console.warn(`  ♻️  检测到工具 Schema 不兼容，自动启用兼容模式并重试一次`);
+            apiReq.destroy();
+            requestOpenAIResponsesBuffered(req, res, {
+              systemPrompt,
+              messages,
+              tools,
+              toolChoice,
+              resolvedModel,
+              requestedModel,
+              serviceTier,
+              messageId,
+              conn: { ...conn, capabilities: { ...(conn.capabilities || {}), toolSchemaCompat: 'gemini' } },
+              enhancement,
+              schemaCompatRetry: true,
+              bindActiveReq,
+            }).then(resolve);
+            return;
+          }
+          apiReq.destroy();
+          resolve({ kind: 'failover', reason: `HTTP ${apiRes.statusCode}`, meta: { statusCode: apiRes.statusCode, headers: apiRes.headers, body: errBody } });
+        };
+        apiRes.on('end', fail);
+        setTimeout(fail, 5000);
+        return;
+      }
+
+      streamStarted = true;
+      const responseProcessor = new OpenAIStreamProcessor(messageId, resolvedModel);
+      const chatFallbackProcessor = new OpenAIChatCompletionsStreamProcessor(messageId, resolvedModel);
+      let processorMode = 'responses';
+      const activeProcessor = () => processorMode === 'chat' ? chatFallbackProcessor : responseProcessor;
+      const streamStartedAt = Date.now();
+      const rawOutput = [];
+      const protoChunks = [];
+      apiRes.setEncoding('utf8');
+
+      function processPart(part) {
+        rawOutput.push(part);
+        const events = parseOpenAISSEChunk(part + '\n');
+        for (const evt of events) {
+          if (processorMode === 'responses' && evt?.data?.choices) {
+            processorMode = 'chat';
+            console.warn(`  ⚠️  OpenAI endpoint returned chat.completion chunks; switching stream parser`);
+          }
+          protoChunks.push(...activeProcessor().processEvent(evt));
+        }
+      }
+
+      apiRes.on('data', (chunk) => {
+        sseBuffer += chunk;
+        const parts = sseBuffer.split('\n\n');
+        sseBuffer = parts.pop();
+        for (const part of parts) processPart(part);
+      });
+
+      apiRes.on('end', () => {
+        if (failed) return;
+        failed = true;
+        if (sseBuffer.trim()) processPart(sseBuffer);
+        const processor = activeProcessor();
+        if (!processor.isDone) {
+          protoChunks.push(...processor.processEvent({ done: true, type: 'done', data: null }));
+        }
+        resolve({
+          kind: 'success',
+          format: processorMode === 'chat' ? 'openai-chat' : 'openai-responses',
+          requestUrl,
+          streamStartedAt,
+          rawOutput,
+          protoChunks,
+          processor,
+          toolCalls: processor.toolCalls,
+        });
+      });
+
+      apiRes.on('error', (err) => {
+        if (failed) return;
+        failed = true;
+        resolve({
+          kind: streamStarted ? 'terminal-error' : 'failover',
+          reason: err.message,
+          meta: { code: err.code },
+          code: 'unavailable',
+          message: `BYOK 上游流中断：${conn.providerName} / ${resolvedModel}（${clampText(err.message, 120)}）。请稍后重试或切换备用供应商。`,
+        });
+      });
+    });
+
+    if (typeof bindActiveReq === 'function') bindActiveReq(apiReq);
+    apiReq.on('error', (err) => {
+      if (failed) return;
+      failed = true;
+      resolve({
+        kind: streamStarted ? 'terminal-error' : 'failover',
+        reason: err.message,
+        meta: { code: err.code },
+        code: 'unavailable',
+        message: `BYOK 连接上游失败：${conn.providerName} / ${resolvedModel}（${clampText(err.message, 120)}）。请检查网络、代理和 API Host。`,
+      });
+    });
+    apiReq.setTimeout(UPSTREAM_TIMEOUT_MS, () => {
+      const err = new Error('upstream timeout');
+      err.code = 'ETIMEDOUT';
+      apiReq.destroy(err);
+    });
+    apiReq.end(finalBody);
+  });
+}
+
+function requestOpenAIChatCompletionsBuffered(req, res, { systemPrompt, messages, tools, toolChoice, resolvedModel, serviceTier, messageId, conn, enhancement = {}, schemaCompatRetry = false, bindActiveReq = null }) {
+  return new Promise((resolve) => {
+    const forceGeminiCompat = schemaCompatRetry || conn.capabilities?.toolSchemaCompat === 'gemini';
+    const apiPayload = {
+      model: resolvedModel,
+      messages: toOpenAIChatMessages(systemPrompt, messages),
+      stream: true,
+      stream_options: { include_usage: true },
+      max_tokens: MAX_TOKENS,
+    };
+    if (serviceTier) apiPayload.service_tier = serviceTier;
+    if (tools && tools.length > 0) {
+      const serializedTools = serializeOpenAITools(tools, { chatCompletions: true, resolvedModel, forceGeminiCompat });
+      if (serializedTools.length > 0) apiPayload.tools = serializedTools;
+      if (toolChoice) {
+        if (toolChoice.type === 'auto') apiPayload.tool_choice = 'auto';
+        else if (toolChoice.type === 'any') apiPayload.tool_choice = 'required';
+        else if (toolChoice.type === 'tool') apiPayload.tool_choice = { type: 'function', function: { name: toolChoice.name } };
+      }
+    }
+    applyPayloadParamOverrides(apiPayload, enhancement, 'max_tokens');
+
+    const apiBody = JSON.stringify(apiPayload);
+    const extraHeaders = enhancementRequestHeaders(enhancement);
+    const requestUrl = upstreamUrl(conn, conn.apiPath);
+    mitmLog({
+      direction: 'upstream',
+      providerName: conn.providerName,
+      model: resolvedModel,
+      format: 'openai-chat',
+      request: { method: 'POST', url: requestUrl, headers: { 'content-type': 'application/json', authorization: `Bearer ${conn.apiKey}`, ...extraHeaders }, body: apiBody },
+    });
+
+    const reqHeaders = {
+      'content-type': 'application/json',
+      'accept': 'text/event-stream',
+      authorization: `Bearer ${conn.apiKey}`,
+      ...extraHeaders,
+      'content-length': Buffer.byteLength(apiBody),
+    };
+    const requestConfig = upstreamRequestOptions(conn, conn.apiPath, reqHeaders);
+    let failed = false;
+    let streamStarted = false;
+    const apiReq = requestConfig.module.request(requestConfig.options, (apiRes) => {
+      let sseBuffer = '';
+      if (apiRes.statusCode !== 200) {
+        let errBody = '';
+        apiRes.setEncoding('utf8');
+        apiRes.on('data', d => { if (errBody.length < 2000) errBody += d.slice(0, 2000 - errBody.length); });
+        const fail = () => {
+          if (failed) return;
+          failed = true;
+          mitmLog({ direction: 'downstream', providerName: conn.providerName, model: resolvedModel, format: 'openai-chat', request: { method: 'POST', url: requestUrl }, response: { statusCode: apiRes.statusCode, headers: apiRes.headers, body: errBody } });
+          if (!schemaCompatRetry && shouldAutoEnableGeminiSchemaCompat(apiRes.statusCode, errBody) && tools && tools.length > 0) {
+            const remembered = rememberProviderToolSchemaCompat(conn.providerId, 'gemini');
+            if (remembered) console.log(`  🧠 已记住 ${conn.providerName} 的工具 Schema 兼容模式: gemini`);
+            console.warn(`  ♻️  检测到工具 Schema 不兼容，自动启用兼容模式并重试一次`);
+            apiReq.destroy();
+            requestOpenAIChatCompletionsBuffered(req, res, {
+              systemPrompt,
+              messages,
+              tools,
+              toolChoice,
+              resolvedModel,
+              serviceTier,
+              messageId,
+              conn: { ...conn, capabilities: { ...(conn.capabilities || {}), toolSchemaCompat: 'gemini' } },
+              enhancement,
+              schemaCompatRetry: true,
+              bindActiveReq,
+            }).then(resolve);
+            return;
+          }
+          apiReq.destroy();
+          resolve({ kind: 'failover', reason: `HTTP ${apiRes.statusCode}`, meta: { statusCode: apiRes.statusCode, headers: apiRes.headers, body: errBody } });
+        };
+        apiRes.on('end', fail);
+        setTimeout(fail, 5000);
+        return;
+      }
+
+      streamStarted = true;
+      const processor = new OpenAIChatCompletionsStreamProcessor(messageId, resolvedModel);
+      const streamStartedAt = Date.now();
+      const rawOutput = [];
+      const protoChunks = [];
+      apiRes.setEncoding('utf8');
+
+      function processPart(part) {
+        rawOutput.push(part);
+        const events = parseOpenAISSEChunk(part + '\n');
+        for (const evt of events) {
+          protoChunks.push(...processor.processEvent(evt));
+        }
+      }
+
+      apiRes.on('data', (chunk) => {
+        sseBuffer += chunk;
+        const parts = sseBuffer.split('\n\n');
+        sseBuffer = parts.pop();
+        for (const part of parts) processPart(part);
+      });
+
+      apiRes.on('end', () => {
+        if (failed) return;
+        failed = true;
+        if (sseBuffer.trim()) processPart(sseBuffer);
+        if (!processor.isDone) {
+          protoChunks.push(...processor.processEvent({ done: true, type: 'done', data: null }));
+        }
+        resolve({
+          kind: 'success',
+          format: 'openai-chat',
+          requestUrl,
+          streamStartedAt,
+          rawOutput,
+          protoChunks,
+          processor,
+          toolCalls: processor.toolCalls,
+        });
+      });
+
+      apiRes.on('error', (err) => {
+        if (failed) return;
+        failed = true;
+        resolve({
+          kind: streamStarted ? 'terminal-error' : 'failover',
+          reason: err.message,
+          meta: { code: err.code },
+          code: 'unavailable',
+          message: `BYOK 上游流中断：${conn.providerName} / ${resolvedModel}（${clampText(err.message, 120)}）。请稍后重试或切换备用供应商。`,
+        });
+      });
+    });
+
+    if (typeof bindActiveReq === 'function') bindActiveReq(apiReq);
+    apiReq.on('error', (err) => {
+      if (failed) return;
+      failed = true;
+      resolve({
+        kind: streamStarted ? 'terminal-error' : 'failover',
+        reason: err.message,
+        meta: { code: err.code },
+        code: 'unavailable',
+        message: `BYOK 连接上游失败：${conn.providerName} / ${resolvedModel}（${clampText(err.message, 120)}）。请检查网络、代理和 API Host。`,
+      });
+    });
+    apiReq.setTimeout(UPSTREAM_TIMEOUT_MS, () => {
+      const err = new Error('upstream timeout');
+      err.code = 'ETIMEDOUT';
+      apiReq.destroy(err);
+    });
+    apiReq.end(apiBody);
+  });
 }
 
 function streamAnthropic(req, res, { systemPrompt, messages, tools, toolChoice, resolvedModel, messageId, conn, enhancement = {}, onFailover, promptCacheRetry = false, bindActiveReq = null }) {
@@ -859,6 +1741,7 @@ function streamAnthropic(req, res, { systemPrompt, messages, tools, toolChoice, 
 
   // ── MITM 日志：记录上游请求 ──
   const mitmReqId = crypto.randomUUID();
+  const requestUrl = upstreamUrl(conn, targetPath);
   mitmLog({
     direction: 'upstream',
     providerName: conn.providerName,
@@ -866,26 +1749,21 @@ function streamAnthropic(req, res, { systemPrompt, messages, tools, toolChoice, 
     format: 'anthropic',
     request: {
       method: 'POST',
-      url: `https://${conn.host}${targetPath}`,
+      url: requestUrl,
       headers: { 'content-type': 'application/json', 'accept': 'text/event-stream', ...authHeaders, ...extraHeaders },
       body: apiBody,
     },
   });
 
-  const apiReq = https.request({
-    agent: httpsAgentFor(HTTPS_AGENT),
-    hostname: conn.host,
-    port: 443,
-    path: targetPath,
-    method: 'POST',
-    headers: {
-      'content-type': 'application/json',
-      'accept': 'text/event-stream',
-      ...authHeaders,
-      ...extraHeaders,
-      'content-length': Buffer.byteLength(apiBody),
-    },
-  }, (apiRes) => {
+  const reqHeaders = {
+    'content-type': 'application/json',
+    'accept': 'text/event-stream',
+    ...authHeaders,
+    ...extraHeaders,
+    'content-length': Buffer.byteLength(apiBody),
+  };
+  const requestConfig = upstreamRequestOptions(conn, targetPath, reqHeaders);
+  const apiReq = requestConfig.module.request(requestConfig.options, (apiRes) => {
     let sseBuffer = '';
 
     if (apiRes.statusCode !== 200) {
@@ -895,7 +1773,7 @@ function streamAnthropic(req, res, { systemPrompt, messages, tools, toolChoice, 
       apiRes.on('data', d => { if (errBody.length < 2000) errBody += d.slice(0, 2000 - errBody.length); });
       const fail = () => {
         console.error(`  ❌ Body: ${errBody.slice(0, 300)}`);
-        mitmLog({ direction: 'downstream', providerName: conn.providerName, model: resolvedModel, format: 'anthropic', request: { method: 'POST', url: `https://${conn.host}${targetPath}` }, response: { statusCode: apiRes.statusCode, headers: apiRes.headers, body: errBody } });
+        mitmLog({ direction: 'downstream', providerName: conn.providerName, model: resolvedModel, format: 'anthropic', request: { method: 'POST', url: requestUrl }, response: { statusCode: apiRes.statusCode, headers: apiRes.headers, body: errBody } });
 
         if (usePromptCache && !promptCacheRetry && isPromptCacheRejected(apiRes.statusCode, errBody) && !res.headersSent) {
           console.warn(`  ♻️  ${conn.providerName} / ${resolvedModel} 不接受 cache_control，本次移除后重试一次`);
@@ -950,7 +1828,7 @@ function streamAnthropic(req, res, { systemPrompt, messages, tools, toolChoice, 
           markModelSuccess(conn, resolvedModel, messages, sentTools);
           recordUsage(processor.usage);
           logEnhancedChatResponse(enhancement, conn, resolvedModel, processor);
-          mitmLog({ direction: 'downstream', providerName: conn.providerName, model: resolvedModel, format: 'anthropic', request: { method: 'POST', url: `https://${conn.host}${targetPath}` }, response: { statusCode: 200, headers: { 'content-type': 'text/event-stream' }, body: `[USAGE] ${JSON.stringify(processor.usage)}\n\n${rawOutput.join('\n\n')}` } });
+          mitmLog({ direction: 'downstream', providerName: conn.providerName, model: resolvedModel, format: 'anthropic', request: { method: 'POST', url: requestUrl }, response: { statusCode: 200, headers: { 'content-type': 'text/event-stream' }, body: `[USAGE] ${JSON.stringify(processor.usage)}\n\n${rawOutput.join('\n\n')}` } });
           console.log(`  ✅ Stream done (stop: ${processor.stopReason})`);
         }
     }
@@ -971,7 +1849,7 @@ function streamAnthropic(req, res, { systemPrompt, messages, tools, toolChoice, 
         markModelSuccess(conn, resolvedModel, messages, sentTools);
         recordUsage(processor.usage);
         logEnhancedChatResponse(enhancement, conn, resolvedModel, processor);
-        mitmLog({ direction: 'downstream', providerName: conn.providerName, model: resolvedModel, format: 'anthropic', request: { method: 'POST', url: `https://${conn.host}${targetPath}` }, response: { statusCode: 200, headers: { 'content-type': 'text/event-stream' }, body: `[USAGE] ${JSON.stringify(processor.usage)}\n\n${rawOutput.join('\n\n')}` } });
+        mitmLog({ direction: 'downstream', providerName: conn.providerName, model: resolvedModel, format: 'anthropic', request: { method: 'POST', url: requestUrl }, response: { statusCode: 200, headers: { 'content-type': 'text/event-stream' }, body: `[USAGE] ${JSON.stringify(processor.usage)}\n\n${rawOutput.join('\n\n')}` } });
         console.log(`  ✅ Stream ended`);
       }
     });
@@ -1039,13 +1917,12 @@ function streamOpenAI(req, res, { systemPrompt, messages, tools, toolChoice, res
 
   if (serviceTier) apiPayload.service_tier = serviceTier;
   if (tools && tools.length > 0) {
-    apiPayload.tools = tools.map(t => ({
-      type: 'function',
-      name: t.name,
-      description: t.description || '',
-      parameters: normalizeToolSchema(t.input_schema, resolvedModel, forceGeminiCompat),
-    }));
-
+    const serializedTools = serializeOpenAITools(tools, {
+      chatCompletions: false,
+      resolvedModel,
+      forceGeminiCompat,
+    });
+    if (serializedTools.length > 0) apiPayload.tools = serializedTools;
 
     if (toolChoice) {
       if (toolChoice.type === 'auto') apiPayload.tool_choice = 'auto';
@@ -1062,8 +1939,9 @@ function streamOpenAI(req, res, { systemPrompt, messages, tools, toolChoice, res
   const apiBody = JSON.stringify(apiPayload);
   const authHeaders = codexUnlock ? codexUnlockHeaders(conn) : { authorization: `Bearer ${conn.apiKey}` };
   const extraHeaders = enhancementRequestHeaders(enhancement);
+  const requestUrl = upstreamUrl(conn, targetPath);
   // MITM 日志：记录上游请求
-  mitmLog({ direction: 'upstream', providerName: conn.providerName, model: resolvedModel, format: 'openai-responses', request: { method: 'POST', url: `https://${conn.host}${targetPath}`, headers: { 'content-type': 'application/json', 'accept': 'text/event-stream', ...authHeaders, ...extraHeaders }, body: apiBody } });
+  mitmLog({ direction: 'upstream', providerName: conn.providerName, model: resolvedModel, format: 'openai-responses', request: { method: 'POST', url: requestUrl, headers: { 'content-type': 'application/json', 'accept': 'text/event-stream', ...authHeaders, ...extraHeaders }, body: apiBody } });
   // gzip 可选：供应商标记了 capabilities.gzip=true 才压缩。
   // 用于绕过中转站 Cloudflare WAF 对明文 body 的命令注入检测；
   // One-Hub 等不支持 gzip 的端点保持明文。
@@ -1084,14 +1962,8 @@ function streamOpenAI(req, res, { systemPrompt, messages, tools, toolChoice, res
   };
   if (useGzip) reqHeaders['content-encoding'] = 'gzip';
 
-  const apiReq = https.request({
-    agent: httpsAgentFor(HTTPS_AGENT),
-    hostname: conn.host,
-    port: 443,
-    path: targetPath,
-    method: 'POST',
-    headers: reqHeaders,
-  }, (apiRes) => {
+  const requestConfig = upstreamRequestOptions(conn, targetPath, reqHeaders);
+  const apiReq = requestConfig.module.request(requestConfig.options, (apiRes) => {
     let sseBuffer = '';
 
     if (apiRes.statusCode !== 200) {
@@ -1101,7 +1973,7 @@ function streamOpenAI(req, res, { systemPrompt, messages, tools, toolChoice, res
       apiRes.on('data', d => { if (errBody.length < 2000) errBody += d.slice(0, 2000 - errBody.length); });
       const fail = () => {
         console.error(`  ❌ Body: ${errBody.slice(0, 300)}`);
-        mitmLog({ direction: 'downstream', providerName: conn.providerName, model: resolvedModel, format: 'openai-responses', request: { method: 'POST', url: `https://${conn.host}${targetPath}` }, response: { statusCode: apiRes.statusCode, headers: apiRes.headers, body: errBody } });
+        mitmLog({ direction: 'downstream', providerName: conn.providerName, model: resolvedModel, format: 'openai-responses', request: { method: 'POST', url: requestUrl }, response: { statusCode: apiRes.statusCode, headers: apiRes.headers, body: errBody } });
 
         if (!schemaCompatRetry && shouldAutoEnableGeminiSchemaCompat(apiRes.statusCode, errBody) && tools && tools.length > 0 && !res.headersSent) {
           const remembered = rememberProviderToolSchemaCompat(conn.providerId, 'gemini');
@@ -1168,7 +2040,7 @@ function streamOpenAI(req, res, { systemPrompt, messages, tools, toolChoice, res
         markModelSuccess(conn, resolvedModel, messages, tools);
         recordUsage(processor.usage);
         logEnhancedChatResponse(enhancement, conn, resolvedModel, processor);
-        mitmLog({ direction: 'downstream', providerName: conn.providerName, model: resolvedModel, format: 'openai-responses', request: { method: 'POST', url: `https://${conn.host}${targetPath}` }, response: { statusCode: 200, headers: { 'content-type': 'text/event-stream' }, body: `[USAGE] ${JSON.stringify(processor.usage)}\n\n${rawOutput.join('\n\n')}` } });
+        mitmLog({ direction: 'downstream', providerName: conn.providerName, model: resolvedModel, format: 'openai-responses', request: { method: 'POST', url: requestUrl }, response: { statusCode: 200, headers: { 'content-type': 'text/event-stream' }, body: `[USAGE] ${JSON.stringify(processor.usage)}\n\n${rawOutput.join('\n\n')}` } });
         console.log(`  ✅ OpenAI stream done (stop: ${processor.stopReason})`);
       }
     }
@@ -1199,7 +2071,7 @@ function streamOpenAI(req, res, { systemPrompt, messages, tools, toolChoice, res
         markModelSuccess(conn, resolvedModel, messages, tools);
         recordUsage(processor.usage);
         logEnhancedChatResponse(enhancement, conn, resolvedModel, processor);
-        mitmLog({ direction: 'downstream', providerName: conn.providerName, model: resolvedModel, format: 'openai-responses', request: { method: 'POST', url: `https://${conn.host}${targetPath}` }, response: { statusCode: 200, headers: { 'content-type': 'text/event-stream' }, body: `[USAGE] ${JSON.stringify(processor.usage)}\n\n${rawOutput.join('\n\n')}` } });
+        mitmLog({ direction: 'downstream', providerName: conn.providerName, model: resolvedModel, format: 'openai-responses', request: { method: 'POST', url: requestUrl }, response: { statusCode: 200, headers: { 'content-type': 'text/event-stream' }, body: `[USAGE] ${JSON.stringify(processor.usage)}\n\n${rawOutput.join('\n\n')}` } });
         console.log(`  ✅ OpenAI stream ended (stop: ${processor.stopReason})`);
       }
     });
@@ -1249,14 +2121,12 @@ function streamOpenAIChatCompletions(req, res, { systemPrompt, messages, tools, 
 
   if (serviceTier) apiPayload.service_tier = serviceTier;
   if (tools && tools.length > 0) {
-    apiPayload.tools = tools.map(t => ({
-      type: 'function',
-      function: {
-        name: t.name,
-        description: t.description || '',
-        parameters: normalizeToolSchema(t.input_schema, resolvedModel, forceGeminiCompat),
-      },
-    }));
+    const serializedTools = serializeOpenAITools(tools, {
+      chatCompletions: true,
+      resolvedModel,
+      forceGeminiCompat,
+    });
+    if (serializedTools.length > 0) apiPayload.tools = serializedTools;
 
     if (toolChoice) {
       if (toolChoice.type === 'auto') apiPayload.tool_choice = 'auto';
@@ -1267,25 +2137,21 @@ function streamOpenAIChatCompletions(req, res, { systemPrompt, messages, tools, 
   applyPayloadParamOverrides(apiPayload, enhancement, 'max_tokens');
   const apiBody = JSON.stringify(apiPayload);
   const extraHeaders = enhancementRequestHeaders(enhancement);
+  const requestUrl = upstreamUrl(conn, conn.apiPath);
   // MITM 日志：记录上游请求
-  mitmLog({ direction: 'upstream', providerName: conn.providerName, model: resolvedModel, format: 'openai-chat', request: { method: 'POST', url: `https://${conn.host}${conn.apiPath}`, headers: { 'content-type': 'application/json', 'authorization': `Bearer ${conn.apiKey}`, ...extraHeaders }, body: apiBody } });
+  mitmLog({ direction: 'upstream', providerName: conn.providerName, model: resolvedModel, format: 'openai-chat', request: { method: 'POST', url: requestUrl, headers: { 'content-type': 'application/json', 'authorization': `Bearer ${conn.apiKey}`, ...extraHeaders }, body: apiBody } });
   const processor = new OpenAIChatCompletionsStreamProcessor(messageId, resolvedModel);
   let failed = false;
 
-  const apiReq = https.request({
-    agent: httpsAgentFor(HTTPS_AGENT),
-    hostname: conn.host,
-    port: 443,
-    path: conn.apiPath,
-    method: 'POST',
-    headers: {
-      'content-type': 'application/json',
-      'accept': 'text/event-stream',
-      'authorization': `Bearer ${conn.apiKey}`,
-      ...extraHeaders,
-      'content-length': Buffer.byteLength(apiBody),
-    },
-  }, (apiRes) => {
+  const reqHeaders = {
+    'content-type': 'application/json',
+    'accept': 'text/event-stream',
+    'authorization': `Bearer ${conn.apiKey}`,
+    ...extraHeaders,
+    'content-length': Buffer.byteLength(apiBody),
+  };
+  const requestConfig = upstreamRequestOptions(conn, conn.apiPath, reqHeaders);
+  const apiReq = requestConfig.module.request(requestConfig.options, (apiRes) => {
     let sseBuffer = '';
 
     if (apiRes.statusCode !== 200) {
@@ -1295,7 +2161,7 @@ function streamOpenAIChatCompletions(req, res, { systemPrompt, messages, tools, 
       apiRes.on('data', d => { if (errBody.length < 2000) errBody += d.slice(0, 2000 - errBody.length); });
       const fail = () => {
         console.error(`  ❌ Body: ${errBody.slice(0, 300)}`);
-        mitmLog({ direction: 'downstream', providerName: conn.providerName, model: resolvedModel, format: 'openai-chat', request: { method: 'POST', url: `https://${conn.host}${conn.apiPath}` }, response: { statusCode: apiRes.statusCode, headers: apiRes.headers, body: errBody } });
+        mitmLog({ direction: 'downstream', providerName: conn.providerName, model: resolvedModel, format: 'openai-chat', request: { method: 'POST', url: requestUrl }, response: { statusCode: apiRes.statusCode, headers: apiRes.headers, body: errBody } });
 
         if (!schemaCompatRetry && shouldAutoEnableGeminiSchemaCompat(apiRes.statusCode, errBody) && tools && tools.length > 0 && !res.headersSent) {
           const remembered = rememberProviderToolSchemaCompat(conn.providerId, 'gemini');
@@ -1354,7 +2220,7 @@ function streamOpenAIChatCompletions(req, res, { systemPrompt, messages, tools, 
         markModelSuccess(conn, resolvedModel, messages, tools);
         recordUsage(processor.usage);
         logEnhancedChatResponse(enhancement, conn, resolvedModel, processor);
-        mitmLog({ direction: 'downstream', providerName: conn.providerName, model: resolvedModel, format: 'openai-chat', request: { method: 'POST', url: `https://${conn.host}${conn.apiPath}` }, response: { statusCode: 200, headers: { 'content-type': 'text/event-stream' }, body: `[USAGE] ${JSON.stringify(processor.usage)}\n\n${rawOutput.join('\n\n')}` } });
+        mitmLog({ direction: 'downstream', providerName: conn.providerName, model: resolvedModel, format: 'openai-chat', request: { method: 'POST', url: requestUrl }, response: { statusCode: 200, headers: { 'content-type': 'text/event-stream' }, body: `[USAGE] ${JSON.stringify(processor.usage)}\n\n${rawOutput.join('\n\n')}` } });
         console.log(`  ✅ OpenAI chat stream done (stop: ${processor.stopReason})`);
       }
     }
@@ -1381,7 +2247,7 @@ function streamOpenAIChatCompletions(req, res, { systemPrompt, messages, tools, 
         markModelSuccess(conn, resolvedModel, messages, tools);
         recordUsage(processor.usage);
         logEnhancedChatResponse(enhancement, conn, resolvedModel, processor);
-        mitmLog({ direction: 'downstream', providerName: conn.providerName, model: resolvedModel, format: 'openai-chat', request: { method: 'POST', url: `https://${conn.host}${conn.apiPath}` }, response: { statusCode: 200, headers: { 'content-type': 'text/event-stream' }, body: `[USAGE] ${JSON.stringify(processor.usage)}\n\n${rawOutput.join('\n\n')}` } });
+        mitmLog({ direction: 'downstream', providerName: conn.providerName, model: resolvedModel, format: 'openai-chat', request: { method: 'POST', url: requestUrl }, response: { statusCode: 200, headers: { 'content-type': 'text/event-stream' }, body: `[USAGE] ${JSON.stringify(processor.usage)}\n\n${rawOutput.join('\n\n')}` } });
         console.log(`  ✅ OpenAI chat stream ended (stop: ${processor.stopReason})`);
       }
     });

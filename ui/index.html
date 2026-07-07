@@ -63,19 +63,60 @@
           </svg>
           <span>统计</span>
         </button>
-        <button type="button" class="tab-item" id="tab-settings" data-page="settings" role="tab" aria-selected="false"
-          aria-controls="page-settings" tabindex="-1">
-          <svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <path d="M12 15.5A3.5 3.5 0 1 0 12 8a3.5 3.5 0 0 0 0 7.5Z"></path><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1 1.55V21a2 2 0 0 1-4 0v-.09a1.7 1.7 0 0 0-1-1.55 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.55-1H3a2 2 0 0 1 0-4h.09a1.7 1.7 0 0 0 1.55-1 1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-1.55V3a2 2 0 0 1 4 0v.09a1.7 1.7 0 0 0 1 1.55 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.7 1.7 0 0 0 19.4 9c.22.6.78 1 1.55 1H21a2 2 0 0 1 0 4h-.09A1.7 1.7 0 0 0 19.4 15Z"></path>
-          </svg>
-          <span>设置</span>
-        </button>
       </nav>
       <div class="topbar-right">
         <button type="button" class="global-proxy-pill off" id="globalProxyStatusPill" onclick="navigateTo('proxy')" title="打开代理控制台">
           <span class="global-proxy-dot" aria-hidden="true"></span>
           <span id="globalProxyStatusText">代理未启动</span>
         </button>
+        <div class="topbar-action-cluster" aria-label="快捷操作">
+          <button type="button" class="topbar-action-btn topbar-action-theme" id="topbarThemeToggle"
+            onclick="toggleTheme()" title="切换主题" aria-label="切换主题">
+            <svg class="topbar-theme-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1"
+              stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <circle cx="12" cy="12" r="4"></circle>
+              <path d="M12 2v2"></path><path d="M12 20v2"></path><path d="m4.93 4.93 1.41 1.41"></path>
+              <path d="m17.66 17.66 1.41 1.41"></path><path d="M2 12h2"></path><path d="M20 12h2"></path>
+              <path d="m6.34 17.66-1.41 1.41"></path><path d="m19.07 4.93-1.41 1.41"></path>
+            </svg>
+            <svg class="topbar-theme-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1"
+              stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M20.5 14.4A8.5 8.5 0 1 1 9.6 3.5 7 7 0 0 0 20.5 14.4Z"></path>
+            </svg>
+          </button>
+          <a class="topbar-action-btn" href="https://github.com/soulvon/AnyBridge" target="_blank"
+            rel="noreferrer" title="打开 GitHub" aria-label="打开 GitHub">
+            <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+              <path d="M12 2.25a10 10 0 0 0-3.16 19.49c.5.09.68-.22.68-.48v-1.7c-2.78.6-3.37-1.2-3.37-1.2-.46-1.14-1.11-1.45-1.11-1.45-.91-.62.07-.61.07-.61 1 .07 1.53 1.03 1.53 1.03.9 1.52 2.35 1.08 2.92.83.09-.64.35-1.08.63-1.33-2.22-.25-4.55-1.1-4.55-4.92 0-1.09.39-1.98 1.03-2.68-.1-.25-.45-1.27.1-2.64 0 0 .84-.27 2.75 1.02A9.45 9.45 0 0 1 12 7.27c.85 0 1.7.11 2.5.34 1.9-1.29 2.74-1.02 2.74-1.02.55 1.37.2 2.39.1 2.64.64.7 1.03 1.59 1.03 2.68 0 3.83-2.34 4.67-4.57 4.92.36.31.68.92.68 1.86v2.57c0 .26.18.57.69.48A10 10 0 0 0 12 2.25Z"></path>
+            </svg>
+          </a>
+          <button type="button" class="topbar-action-btn topbar-action-guide"
+            onclick="openOnboardingGuide({ manual: true })" title="打开快速指南" aria-label="打开快速指南">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round"
+              stroke-linejoin="round" aria-hidden="true">
+              <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path>
+              <path d="M4 4.5A2.5 2.5 0 0 1 6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15Z"></path>
+              <path d="M8 7h8"></path><path d="M8 11h6"></path>
+            </svg>
+          </button>
+          <button type="button" class="topbar-action-btn topbar-action-notify"
+            onclick="openNotificationCenter()" title="通知与更新" aria-label="通知与更新">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round"
+              stroke-linejoin="round" aria-hidden="true">
+              <path d="M18 8a6 6 0 1 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9"></path>
+              <path d="M10 21h4"></path>
+            </svg>
+            <span class="topbar-notification-dot" id="topbarNotificationDot" hidden></span>
+          </button>
+          <button type="button" class="topbar-action-btn topbar-action-settings" id="topbarSettingsBtn"
+            onclick="navigateTo('settings')" title="打开设置" aria-label="打开设置">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round"
+              stroke-linejoin="round" aria-hidden="true">
+              <path d="M12 15.5A3.5 3.5 0 1 0 12 8a3.5 3.5 0 0 0 0 7.5Z"></path>
+              <path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1 1.55V21a2 2 0 0 1-4 0v-.09a1.7 1.7 0 0 0-1-1.55 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.55-1H3a2 2 0 0 1 0-4h.09a1.7 1.7 0 0 0 1.55-1 1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-1.55V3a2 2 0 0 1 4 0v.09a1.7 1.7 0 0 0 1 1.55 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.7 1.7 0 0 0 19.4 9c.22.6.78 1 1.55 1H21a2 2 0 0 1 0 4h-.09A1.7 1.7 0 0 0 19.4 15Z"></path>
+            </svg>
+          </button>
+        </div>
         <div class="win-controls">
           <button type="button" class="win-btn win-minimize" title="最小化">
             <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
@@ -1326,6 +1367,7 @@
               <div class="proxy-enhancement-layout">
                 <aside class="proxy-enhancement-sidebar">
                   <button type="button" class="proxy-enhancement-tab active" data-enhancement-panel="vision">第三方图片理解</button>
+                  <button type="button" class="proxy-enhancement-tab" data-enhancement-panel="search">联网搜索</button>
                   <button type="button" class="proxy-enhancement-tab" data-enhancement-panel="general">通用设置</button>
                   <button type="button" class="proxy-enhancement-tab" data-enhancement-panel="retry">请求重试</button>
                   <button type="button" class="proxy-enhancement-tab" data-enhancement-panel="prompt">提示词注入</button>
@@ -1391,6 +1433,36 @@
                         <button class="btn-ghost" onclick="toggleVisionModelPicker()" style="height:30px;padding:0 12px;border-radius:8px;font-size:12px;font-weight:700;">+ 添加模型</button>
                       </div>
                       <div id="proxyVisionModelList" style="display:flex;flex-direction:column;gap:8px;"></div>
+                    </div>
+                  </div>
+                  <!-- Panel: Search -->
+                  <div class="proxy-enhancement-pane" data-enhancement-pane="search">
+                    <label style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px;border:1px solid var(--border);border-radius:9px;background:var(--bg-input);margin-bottom:10px;">
+                      <span style="display:flex;flex-direction:column;gap:3px;min-width:0;"><strong style="font-size:12px;color:var(--text-primary);">为代理模型添加联网搜索</strong><small style="font-size:10px;color:var(--text-muted);">优先使用 Gemini / Grok / OpenAI 原生搜索；无内置搜索时由 AnyBridge 搜索源接管。</small></span>
+                      <span class="toggle-switch"><input id="enhancement-webSearchEnabled" type="checkbox" onchange="toggleEnhancement(this, 'webSearchEnabled')"><span class="toggle-slider"></span></span>
+                    </label>
+                    <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-bottom:12px;">
+                      <label style="display:flex;flex-direction:column;gap:6px;padding:12px;border:1px solid var(--border);border-radius:9px;background:var(--bg-input);">
+                        <span style="font-size:11px;font-weight:800;color:var(--text-primary);">最大搜索结果数</span>
+                        <small style="font-size:10px;color:var(--text-muted);">每次 web_search 回填给模型的结果条数。</small>
+                        <input id="enhancement-webSearchMaxResults" type="number" min="1" step="1" onchange="updateEnhancementNumber(this, 'webSearchMaxResults')" style="width:100%;height:32px;padding:0 9px;border-radius:8px;border:1px solid var(--border);background:var(--bg-card);color:var(--text-primary);font-size:12px;outline:none;">
+                      </label>
+                      <label style="display:flex;flex-direction:column;gap:6px;padding:12px;border:1px solid var(--border);border-radius:9px;background:var(--bg-input);">
+                        <span style="font-size:11px;font-weight:800;color:var(--text-primary);">最大搜索轮次</span>
+                        <small style="font-size:10px;color:var(--text-muted);">防止模型反复搜索；超限会返回明确错误。</small>
+                        <input id="enhancement-webSearchMaxRounds" type="number" min="1" step="1" onchange="updateEnhancementNumber(this, 'webSearchMaxRounds')" style="width:100%;height:32px;padding:0 9px;border-radius:8px;border:1px solid var(--border);background:var(--bg-card);color:var(--text-primary);font-size:12px;outline:none;">
+                      </label>
+                    </div>
+                    <div style="display:flex;flex-direction:column;gap:10px;">
+                      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;">
+                        <div>
+                          <div style="font-size:12px;font-weight:800;color:var(--text-primary);">搜索源</div>
+                          <div style="font-size:10px;color:var(--text-muted);margin-top:3px;">按列表顺序故障转移；所有失败会显式暴露给模型和日志。</div>
+                        </div>
+                        <button class="btn-ghost" onclick="toggleSearchSourcePicker()" style="height:30px;padding:0 12px;border-radius:8px;font-size:12px;font-weight:700;">+ 添加搜索源</button>
+                      </div>
+                      <div id="proxySearchSourceList" style="display:flex;flex-direction:column;gap:8px;"></div>
+                      <div id="proxySearchSourcePicker"></div>
                     </div>
                   </div>
                   <!-- Panel: General -->
@@ -2787,6 +2859,33 @@
                         tabindex="-1"></textarea>
                     </div>
                   </section>
+                  <details class="codex-config-field codex-config-field-wide codex-config-reasoning-panel codex-agents-panel">
+                    <summary class="codex-config-reasoning-head">
+                      Codex 子代理
+                      <span class="codex-agents-count-pill">已配置 <b id="codex-agents-count">0</b></span>
+                    </summary>
+                    <div class="codex-config-agents-body">
+                      <div class="codex-agent-global-grid">
+                        <label class="codex-config-field">
+                          <span>最大并发</span>
+                          <input id="codex-agents-max-threads" class="field-input" type="number" min="1" step="1" value="6">
+                        </label>
+                        <label class="codex-config-field">
+                          <span>最大嵌套深度</span>
+                          <input id="codex-agents-max-depth" class="field-input" type="number" min="1" step="1" value="1">
+                        </label>
+                        <label class="codex-config-field">
+                          <span>任务超时（秒）</span>
+                          <input id="codex-agents-job-timeout" class="field-input" type="number" min="1" step="1" value="1800">
+                        </label>
+                      </div>
+                      <div class="codex-agents-toolbar">
+                        <span>子代理只会在用户明确要求 Codex 调用时使用。</span>
+                        <button type="button" class="codex-config-fetch-btn" onclick="addCodexAgent()">+ 添加子代理</button>
+                      </div>
+                      <div class="codex-agents-list" id="codex-agents-list"></div>
+                    </div>
+                  </details>
                   <details class="codex-config-field codex-config-field-wide codex-config-reasoning-panel">
                     <summary class="codex-config-reasoning-head">Reasoning 推理参数配置（Chat 模式专用）</summary>
                     <div class="codex-config-reasoning-body">
@@ -4070,7 +4169,7 @@
         </div>
 
         <!-- ═══════ PAGE: SETTINGS ═══════ -->
-        <div class="page" id="page-settings" role="tabpanel" aria-labelledby="tab-settings">
+        <div class="page" id="page-settings" role="tabpanel" aria-label="设置">
           <section class="glass-card platform-settings-card">
             <div class="platform-settings-inner">
               <aside class="settings-sidebar" aria-label="设置分类">
@@ -4993,6 +5092,200 @@
       <div class="modal-footer proxy-route-backup-picker-footer">
         <button class="modal-btn modal-btn-cancel" onclick="closeProxyRouteBackupPicker()">取消</button>
         <button class="modal-btn modal-btn-confirm" id="proxyRouteAddBackupConfirmBtn" onclick="addSelectedProxyRouteBackupModel()" disabled>添加到链路</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 通知中心 -->
+  <div id="notification-center-modal" class="modal-overlay notification-center-overlay">
+    <div class="modal-container notification-center-modal">
+      <div class="notification-center-header">
+        <div>
+          <div class="notification-center-kicker">Notifications</div>
+          <h2>通知与更新</h2>
+          <p>查看版本状态、GitHub 发布信息和更新提醒。</p>
+        </div>
+        <button type="button" class="modal-close-icon" onclick="closeNotificationCenter()" aria-label="关闭通知中心">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+            stroke-linecap="round" stroke-linejoin="round">
+            <path d="M18 6 6 18"></path>
+            <path d="m6 6 12 12"></path>
+          </svg>
+        </button>
+      </div>
+      <div class="notification-center-body">
+        <article class="notification-status-card">
+          <div class="notification-status-icon" id="notificationUpdateIcon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round"
+              stroke-linejoin="round" aria-hidden="true">
+              <path d="M21.5 2v6h-6"></path>
+              <path d="M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"></path>
+            </svg>
+          </div>
+          <div class="notification-status-main">
+            <div class="notification-status-row">
+              <span>当前版本</span>
+              <strong id="notificationCurrentVersion">—</strong>
+            </div>
+            <h3 id="notificationUpdateTitle">暂无新的通知</h3>
+            <p id="notificationUpdateDesc">还没有检测到可用更新。你可以手动检查 GitHub 发布页。</p>
+            <div class="notification-update-notes" id="notificationUpdateNotes" hidden>
+              <div class="notification-section-title">更新说明</div>
+              <pre id="notificationUpdateNotesText"></pre>
+            </div>
+          </div>
+        </article>
+        <div class="notification-changelog">
+          <article>
+            <span>Release Channel</span>
+            <ul>
+              <li>更新检查会连接 GitHub latest release。</li>
+              <li>如果网络不可达，错误会显示在设置页和代理日志中。</li>
+            </ul>
+          </article>
+        </div>
+      </div>
+      <div class="notification-center-footer">
+        <a class="modal-btn modal-btn-cancel notification-release-link"
+          href="https://github.com/soulvon/AnyBridge/releases/latest" target="_blank" rel="noreferrer">打开发布页</a>
+        <button type="button" class="modal-btn modal-btn-cancel" id="notificationCheckUpdateBtn"
+          onclick="checkUpdateFromNotificationCenter()">检查更新</button>
+        <button type="button" class="modal-btn modal-btn-confirm" onclick="closeNotificationCenter()">完成</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 日志查看器 -->
+  <div id="log-viewer-modal" class="modal-overlay log-viewer-overlay">
+    <div class="modal-container log-viewer-modal">
+      <div class="log-viewer-header">
+        <div>
+          <div class="log-viewer-kicker">Runtime Logs</div>
+          <h2>代理日志查看器</h2>
+          <p>按级别、关键词和时间顺序查看 AnyBridge 运行日志。</p>
+        </div>
+        <button type="button" class="modal-close-icon" onclick="closeLogViewerModal()" aria-label="关闭日志查看器">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+            stroke-linecap="round" stroke-linejoin="round">
+            <path d="M18 6 6 18"></path>
+            <path d="m6 6 12 12"></path>
+          </svg>
+        </button>
+      </div>
+      <div class="log-viewer-filterbar">
+        <label class="log-viewer-search">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+            stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="11" cy="11" r="7"></circle>
+            <path d="m20 20-3.5-3.5"></path>
+          </svg>
+          <input id="logViewerSearchInput" type="text" placeholder="搜索日志内容"
+            oninput="onLogViewerSearchInput(this.value)">
+        </label>
+        <div class="log-viewer-selects">
+          <label>数量
+            <select id="logViewerLimitSelect" onchange="onLogViewerLimitChange(this.value)">
+              <option value="50">50</option>
+              <option value="100">100</option>
+              <option value="200" selected>200</option>
+              <option value="500">500</option>
+            </select>
+          </label>
+          <label>顺序
+            <select id="logViewerOrderSelect" onchange="onLogViewerOrderChange(this.value)">
+              <option value="desc" selected>最新优先</option>
+              <option value="asc">最早优先</option>
+            </select>
+          </label>
+        </div>
+      </div>
+      <div class="log-viewer-toolbar">
+        <div class="log-viewer-levels">
+          <label class="log-viewer-level active" data-level="ok"><input type="checkbox" checked
+              onchange="onLogViewerLevelChange('ok', this.checked)">OK</label>
+          <label class="log-viewer-level active" data-level="info"><input type="checkbox" checked
+              onchange="onLogViewerLevelChange('info', this.checked)">INFO</label>
+          <label class="log-viewer-level active" data-level="warn"><input type="checkbox" checked
+              onchange="onLogViewerLevelChange('warn', this.checked)">WARN</label>
+          <label class="log-viewer-level active" data-level="err"><input type="checkbox" checked
+              onchange="onLogViewerLevelChange('err', this.checked)">ERR</label>
+        </div>
+        <div class="log-viewer-quick-actions">
+          <button type="button" class="modal-btn modal-btn-cancel" onclick="setLogViewerLevelPreset('all')">全部</button>
+          <button type="button" class="modal-btn modal-btn-cancel" onclick="setLogViewerLevelPreset('important')">重点</button>
+          <button type="button" class="modal-btn modal-btn-cancel" onclick="setLogViewerLevelPreset('errors')">错误</button>
+        </div>
+      </div>
+      <div class="log-viewer-summary">
+        <span id="logViewerVisibleCount">0 条匹配 / 共 0 条</span>
+        <span id="logViewerLevelSummary">OK 0 · INFO 0 · WARN 0 · ERR 0</span>
+        <label class="log-viewer-auto-scroll">
+          <input id="logViewerAutoScrollInput" type="checkbox" checked
+            onchange="onLogViewerAutoScrollChange(this.checked)">自动滚动
+        </label>
+      </div>
+      <div class="log-viewer-body" id="logViewerBody">
+        <div class="log-viewer-empty">暂无日志。</div>
+      </div>
+      <div class="log-viewer-footer">
+        <button type="button" class="modal-btn modal-btn-cancel" onclick="clearLogs()">清空日志</button>
+        <button type="button" class="modal-btn modal-btn-cancel" onclick="exportLogs()">导出日志</button>
+        <button type="button" class="modal-btn modal-btn-confirm" onclick="closeLogViewerModal()">关闭</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 快速开始引导 -->
+  <div id="onboarding-guide-modal" class="modal-overlay onboarding-guide-overlay">
+    <div class="modal-container onboarding-guide-modal">
+      <div class="onboarding-guide-hero">
+        <div class="onboarding-guide-mark">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round"
+            stroke-linejoin="round" aria-hidden="true">
+            <path d="M12 2 3.5 7v10L12 22l8.5-5V7L12 2Z"></path>
+            <path d="M12 22V12"></path>
+            <path d="m3.5 7 8.5 5 8.5-5"></path>
+          </svg>
+        </div>
+        <div>
+          <div class="onboarding-guide-kicker">Quick Start</div>
+          <h2>把模型接入工作流，只需要四步</h2>
+          <p>按顺序配置供应商、模型映射、本地代理和平台接入。AnyBridge 会尽量保留原始配置，并把关键错误暴露出来方便排查。</p>
+        </div>
+        <button type="button" class="modal-close-icon onboarding-guide-close" onclick="closeOnboardingGuide()"
+          aria-label="关闭快速指南">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+            stroke-linecap="round" stroke-linejoin="round">
+            <path d="M18 6 6 18"></path>
+            <path d="m6 6 12 12"></path>
+          </svg>
+        </button>
+      </div>
+      <div class="onboarding-guide-steps">
+        <article class="onboarding-guide-step">
+          <span>01</span>
+          <strong>添加供应商</strong>
+          <p>填入 API Host、Key 和默认模型，确认协议类型能连通。</p>
+        </article>
+        <article class="onboarding-guide-step">
+          <span>02</span>
+          <strong>建立模型映射</strong>
+          <p>把 IDE 槽位映射到真实供应商模型，可按顺序添加备用目标。</p>
+        </article>
+        <article class="onboarding-guide-step">
+          <span>03</span>
+          <strong>启动本地代理</strong>
+          <p>统一暴露 OpenAI/Anthropic 兼容入口，并启用重试和日志。</p>
+        </article>
+        <article class="onboarding-guide-step">
+          <span>04</span>
+          <strong>接入平台</strong>
+          <p>为 Windsurf、Codex、Cursor 等平台写入配置，重启后生效。</p>
+        </article>
+      </div>
+      <div class="onboarding-guide-footer">
+        <button type="button" class="modal-btn modal-btn-cancel" onclick="closeOnboardingGuide()">稍后再看</button>
+        <button type="button" class="modal-btn modal-btn-confirm" onclick="finishOnboardingGuide()">开始配置</button>
       </div>
     </div>
   </div>

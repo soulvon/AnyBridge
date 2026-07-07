@@ -55,7 +55,7 @@ function normalizeProxyRoute(route = {}) {
     displayName: String(route.id || '').trim(),
     idFromRenameRule: route.idFromRenameRule === true || route.id_from_rename_rule === true,
     enabled: route.enabled !== false,
-    exposedFormats: ['openai', 'anthropic'],
+    exposedFormats: ['openai', 'anthropic', 'gemini'],
     source: String(route.source || 'manual').trim() || 'manual',
     capabilities: {
       stream: route.capabilities?.stream !== false,
@@ -604,7 +604,7 @@ async function openProxyRouteEditor(routeId = '') {
     id: '',
     displayName: '',
     enabled: true,
-    exposedFormats: ['openai', 'anthropic'],
+    exposedFormats: ['openai', 'anthropic', 'gemini'],
     capabilities: { stream: true, tools: true, vision: true, reasoning: true },
     targets: []
   });
@@ -1209,7 +1209,7 @@ async function saveProxyRouteEditor() {
       showCustomAlert(`模型已在列表中: ${id}`, '保存失败', 'error');
       return;
     }
-    const exposedFormats = ['openai', 'anthropic'];
+    const exposedFormats = ['openai', 'anthropic', 'gemini'];
     const targets = proxyRouteDraftTargets.map(proxyRouteTargetWithDefaultUnlock).filter(t => t.providerId || t.model);
     if (!targets.length) {
       showCustomAlert('请填写上游目标。', '保存失败', 'error');
@@ -1272,7 +1272,7 @@ async function saveProxyRouteEditor() {
     showCustomAlert('请至少勾选一个模型。', '保存失败', 'error');
     return;
   }
-  const exposedFormats = ['openai', 'anthropic'];
+  const exposedFormats = ['openai', 'anthropic', 'gemini'];
   const capabilities = {
     stream: document.getElementById('proxyRouteCapStreamInput')?.checked === true,
     tools: document.getElementById('proxyRouteCapToolsInput')?.checked === true,

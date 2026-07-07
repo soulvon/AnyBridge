@@ -171,16 +171,15 @@ jobs:
           args: ${{ matrix.tauri_args }}
 
   rebuild-latest-json:
-    name: Rebuild latest.json and sync release assets
+    name: Rebuild latest.json and publish release
     needs:
       - prepare-release
       - release
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: write
     env:
       SOURCE_REPO: ${{ github.repository }}
-      TARGET_REPO: ${{ vars.RELEASE_REPO || 'soulvon/AnyBridge-Release' }}
       VERSION: ${{ needs.prepare-release.outputs.version }}
     steps:
       - name: Checkout repository
@@ -193,7 +192,7 @@ jobs:
 
       - name: Download release assets (retry)
         env:
-          GH_TOKEN: ${{ secrets.RELEASE_REPO_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: bash
         run: |
           set -euo pipefail
@@ -216,7 +215,7 @@ jobs:
 
       - name: Read release metadata
         env:
-          GH_TOKEN: ${{ secrets.RELEASE_REPO_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: bash
         run: |
           set -euo pipefail
@@ -227,46 +226,31 @@ jobs:
           fi
           echo "PUBLISHED_AT=${PUBLISHED_AT}" >> "$GITHUB_ENV"
 
-      - name: Build merged latest.json for public repo
+      - name: Build merged latest.json
         shell: bash
         run: |
           set -euo pipefail
           node scripts/release/build_merged_latest_json.cjs \
             --version "${VERSION}" \
-            --repo "${TARGET_REPO}" \
+            --repo "${SOURCE_REPO}" \
             --assets-dir "release-assets" \
             --notes-file "release-notes.md" \
             --published-at "${PUBLISHED_AT}" \
             --output "latest.json"
 
-      - name: Ensure target release exists
+      - name: Upload merged latest.json
         env:
-          GH_TOKEN: ${{ secrets.RELEASE_REPO_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: bash
         run: |
           set -euo pipefail
           TAG="v${VERSION}"
-          if gh release view "$TAG" --repo "$TARGET_REPO" >/dev/null 2>&1; then
-            echo "Target release already exists: $TARGET_REPO:$TAG"
-          else
-            gh release create "$TAG" --repo "$TARGET_REPO" --title "AnyBridge v${VERSION}" --notes-file release-notes.md --draft
-          fi
+          gh release upload "$TAG" --repo "$SOURCE_REPO" latest.json --clobber
 
-      - name: Upload assets to target release
+      - name: Publish release
         env:
-          GH_TOKEN: ${{ secrets.RELEASE_REPO_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: bash
         run: |
           set -euo pipefail
-          TAG="v${VERSION}"
-          gh release upload "$TAG" --repo "$TARGET_REPO" release-assets/* --clobber
-          gh release upload "$TAG" --repo "$TARGET_REPO" latest.json --clobber
-
-      - name: Publish target release
-        env:
-          GH_TOKEN: ${{ secrets.RELEASE_REPO_TOKEN }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          gh release edit "v${VERSION}" --repo "$TARGET_REPO" --draft=false --prerelease=false --latest
-
+          gh release edit "v${VERSION}" --repo "$SOURCE_REPO" --draft=false --prerelease=false --latest

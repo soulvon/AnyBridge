@@ -1,10 +1,7 @@
-use chrono::{TimeZone, Utc};
 use rusqlite::Connection;
 use serde::Serialize;
-use serde_json::{json, Value};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::fs;
-use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use toml_edit::DocumentMut;
@@ -13,8 +10,6 @@ const DEFAULT_PROVIDER_ID: &str = "openai";
 const STATE_DB_FILE: &str = "state_5.sqlite";
 const STATE_DB_SQLITE_DIR: &str = "sqlite";
 const CONFIG_FILE_NAME: &str = "config.toml";
-const SESSION_INDEX_FILE: &str = "session_index.jsonl";
-const SESSION_DIRS: [&str; 2] = ["sessions", "archived_sessions"];
 const BACKUP_PREFIX: &str = "backup-";
 const BACKUP_SUFFIX: &str = "-session-visibility-repair";
 /// 最多保留几个历史备份（学 cockpit：只留 1 份，避免每次切换 2G 撑爆磁盘）。
@@ -31,26 +26,12 @@ pub struct CodexSessionVisibilityRepairSummary {
     pub message: String,
 }
 
-#[derive(Debug, Clone)]
-struct RolloutProviderChange {
-    relative_path: PathBuf,
-    absolute_path: PathBuf,
-    updated_first_line: String,
-}
-
 #[derive(Debug, Clone, Copy)]
 struct ThreadsTableColumns {
     model_provider: bool,
     has_user_event: bool,
     first_user_message: bool,
     thread_source: bool,
-}
-
-#[derive(Debug, Clone)]
-struct SqliteThreadIndexRow {
-    id: String,
-    title: String,
-    updated_at: Option<i64>,
 }
 
 /// 修复 Codex 历史会话可见性。
@@ -120,29 +101,6 @@ pub fn repair_default_codex_session_visibility(
     })
 }
 
-fn repair_codex_session_visibility(
-    data_dir: &Path,
-    target_provider: &str,
-    rollout_changes: &[RolloutProviderChange],
-    update_sqlite: bool,
-    reconcile_session_index: bool,
-) -> Result<(usize, usize), String> {
-    let updated_sqlite_rows = if update_sqlite {
-        update_sqlite_provider(data_dir, target_provider)?
-    } else {
-        0
-    };
-    for change in rollout_changes {
-        rewrite_rollout_provider(change)?;
-    }
-    let added_session_index_entries = if reconcile_session_index {
-        reconcile_session_index_from_sqlite(data_dir)?
-    } else {
-        0
-    };
-    Ok((updated_sqlite_rows, added_session_index_entries))
-}
-
 fn read_target_provider(data_dir: &Path) -> Result<String, String> {
     let config_path = data_dir.join(CONFIG_FILE_NAME);
     if !config_path.exists() {
@@ -172,298 +130,6 @@ fn read_target_provider(data_dir: &Path) -> Result<String, String> {
         .filter(|value| !value.is_empty())
         .unwrap_or(DEFAULT_PROVIDER_ID)
         .to_string())
-}
-
-fn collect_rollout_provider_changes(
-    data_dir: &Path,
-    target_provider: &str,
-) -> Result<Vec<RolloutProviderChange>, String> {
-    let mut changes = Vec::new();
-    for dir_name in SESSION_DIRS {
-        let root_dir = data_dir.join(dir_name);
-        if !root_dir.exists() {
-            continue;
-        }
-        for rollout_path in list_rollout_files(&root_dir)? {
-            let Some((first_line, _separator)) = read_first_line(&rollout_path)? else {
-                continue;
-            };
-            let Some(mut parsed) = parse_session_meta_record(&first_line) else {
-                continue;
-            };
-            let current_provider = parsed["payload"]
-                .get("model_provider")
-                .and_then(Value::as_str)
-                .unwrap_or("");
-            if current_provider == target_provider {
-                continue;
-            }
-            let Some(payload) = parsed.get_mut("payload").and_then(Value::as_object_mut) else {
-                continue;
-            };
-            payload.insert(
-                "model_provider".to_string(),
-                Value::String(target_provider.to_string()),
-            );
-            let updated_first_line = serde_json::to_string(&parsed)
-                .map_err(|error| format!("序列化 session_meta 失败: {}", error))?;
-            let relative_path = rollout_path
-                .strip_prefix(data_dir)
-                .map_err(|_| format!("无法计算 rollout 相对路径: {}", rollout_path.display()))?
-                .to_path_buf();
-            changes.push(RolloutProviderChange {
-                relative_path,
-                absolute_path: rollout_path,
-                updated_first_line,
-            });
-        }
-    }
-    changes.sort_by(|left, right| left.relative_path.cmp(&right.relative_path));
-    Ok(changes)
-}
-
-fn list_rollout_files(root_dir: &Path) -> Result<Vec<PathBuf>, String> {
-    let mut result = Vec::new();
-    for entry in fs::read_dir(root_dir)
-        .map_err(|error| format!("读取目录失败 ({}): {}", root_dir.display(), error))?
-    {
-        let entry =
-            entry.map_err(|error| format!("读取目录项失败 ({}): {}", root_dir.display(), error))?;
-        let path = entry.path();
-        let file_type = entry
-            .file_type()
-            .map_err(|error| format!("读取文件类型失败 ({}): {}", path.display(), error))?;
-        if file_type.is_dir() {
-            result.extend(list_rollout_files(&path)?);
-        } else if file_type.is_file() {
-            let file_name = path
-                .file_name()
-                .and_then(|item| item.to_str())
-                .unwrap_or_default();
-            if file_name.starts_with("rollout-") && file_name.ends_with(".jsonl") {
-                result.push(path);
-            }
-        }
-    }
-    result.sort();
-    Ok(result)
-}
-
-fn read_first_line(path: &Path) -> Result<Option<(String, String)>, String> {
-    let file = fs::File::open(path)
-        .map_err(|error| format!("打开 rollout 文件失败 ({}): {}", path.display(), error))?;
-    let mut reader = BufReader::new(file);
-    let mut buffer = Vec::new();
-    let bytes_read = reader
-        .read_until(b'\n', &mut buffer)
-        .map_err(|error| format!("读取 rollout 首行失败 ({}): {}", path.display(), error))?;
-    if bytes_read == 0 {
-        return Ok(None);
-    }
-    let (line_bytes, separator) = if buffer.ends_with(b"\r\n") {
-        (&buffer[..buffer.len() - 2], "\r\n")
-    } else if buffer.ends_with(b"\n") {
-        (&buffer[..buffer.len() - 1], "\n")
-    } else {
-        (&buffer[..], "")
-    };
-    let line = String::from_utf8(line_bytes.to_vec()).map_err(|error| {
-        format!(
-            "解析 rollout 首行 UTF-8 失败 ({}): {}",
-            path.display(),
-            error
-        )
-    })?;
-    Ok(Some((line, separator.to_string())))
-}
-
-fn parse_session_meta_record(first_line: &str) -> Option<Value> {
-    if first_line.trim().is_empty() {
-        return None;
-    }
-    let parsed = serde_json::from_str::<Value>(first_line).ok()?;
-    if parsed.get("type").and_then(Value::as_str) != Some("session_meta") {
-        return None;
-    }
-    if !parsed.get("payload").is_some_and(Value::is_object) {
-        return None;
-    }
-    Some(parsed)
-}
-
-fn read_session_index_map(root_dir: &Path) -> Result<HashMap<String, Value>, String> {
-    let path = root_dir.join(SESSION_INDEX_FILE);
-    if !path.exists() {
-        return Ok(HashMap::new());
-    }
-    let content = fs::read_to_string(&path).map_err(|error| {
-        format!(
-            "读取 session_index.jsonl 失败 ({}): {}",
-            path.display(),
-            error
-        )
-    })?;
-    let mut entries = HashMap::new();
-    for line in content.lines() {
-        let trimmed = line.trim();
-        if trimmed.is_empty() {
-            continue;
-        }
-        let Ok(entry) = serde_json::from_str::<Value>(trimmed) else {
-            continue;
-        };
-        let Some(id) = entry.get("id").and_then(Value::as_str) else {
-            continue;
-        };
-        entries.insert(id.to_string(), entry);
-    }
-    Ok(entries)
-}
-
-fn count_missing_session_index_entries(data_dir: &Path) -> Result<usize, String> {
-    let session_index_map = read_session_index_map(data_dir)?;
-    let rows = load_sqlite_thread_index_rows(data_dir)?;
-    Ok(rows
-        .iter()
-        .filter(|row| !session_index_map.contains_key(&row.id))
-        .count())
-}
-
-fn load_sqlite_thread_index_rows(data_dir: &Path) -> Result<Vec<SqliteThreadIndexRow>, String> {
-    let mut result = Vec::new();
-    let mut seen_ids = HashSet::new();
-    for db_path in existing_state_db_paths(data_dir) {
-        let rows = load_sqlite_thread_index_rows_from_db(&db_path)?;
-        for row in rows {
-            if seen_ids.insert(row.id.clone()) {
-                result.push(row);
-            }
-        }
-    }
-    result.sort_by(|left, right| right.updated_at.cmp(&left.updated_at));
-    Ok(result)
-}
-
-fn load_sqlite_thread_index_rows_from_db(
-    db_path: &Path,
-) -> Result<Vec<SqliteThreadIndexRow>, String> {
-    if !db_path.exists() {
-        return Ok(Vec::new());
-    }
-    let connection = Connection::open(&db_path).map_err(|error| {
-        format!(
-            "打开 state_5.sqlite 失败 ({}): {}",
-            db_path.display(),
-            error
-        )
-    })?;
-    let names = read_table_column_names(&connection)?;
-    if !names.contains("id") {
-        return Ok(Vec::new());
-    }
-    let title_expr = if names.contains("title") {
-        "COALESCE(title, '')"
-    } else {
-        "''"
-    };
-    let updated_at_expr = if names.contains("updated_at") {
-        "updated_at"
-    } else {
-        "NULL"
-    };
-    let order_expr = if names.contains("updated_at") {
-        "updated_at DESC"
-    } else {
-        "id ASC"
-    };
-    let sql =
-        format!("SELECT id, {title_expr}, {updated_at_expr} FROM threads ORDER BY {order_expr}");
-    let mut statement = connection.prepare(&sql).map_err(|error| {
-        format!(
-            "准备 SQLite 会话索引查询失败 ({}): {}",
-            db_path.display(),
-            error
-        )
-    })?;
-    let mapped = statement
-        .query_map([], |row| {
-            Ok(SqliteThreadIndexRow {
-                id: row.get(0)?,
-                title: row.get(1)?,
-                updated_at: row.get(2)?,
-            })
-        })
-        .map_err(|error| {
-            format!(
-                "查询 SQLite 会话索引行失败 ({}): {}",
-                db_path.display(),
-                error
-            )
-        })?;
-    let mut result = Vec::new();
-    for row in mapped {
-        result.push(row.map_err(|error| {
-            format!(
-                "读取 SQLite 会话索引行失败 ({}): {}",
-                db_path.display(),
-                error
-            )
-        })?);
-    }
-    Ok(result)
-}
-
-fn reconcile_session_index_from_sqlite(data_dir: &Path) -> Result<usize, String> {
-    let session_index_map = read_session_index_map(data_dir)?;
-    let rows = load_sqlite_thread_index_rows(data_dir)?;
-    let missing_rows: Vec<&SqliteThreadIndexRow> = rows
-        .iter()
-        .filter(|row| !session_index_map.contains_key(&row.id))
-        .collect();
-    if missing_rows.is_empty() {
-        return Ok(0);
-    }
-
-    let path = data_dir.join(SESSION_INDEX_FILE);
-    let mut lines = if path.exists() {
-        fs::read_to_string(&path)
-            .map_err(|error| {
-                format!(
-                    "读取 session_index.jsonl 失败 ({}): {}",
-                    path.display(),
-                    error
-                )
-            })?
-            .lines()
-            .map(str::to_string)
-            .collect::<Vec<_>>()
-    } else {
-        Vec::new()
-    };
-    while lines.last().is_some_and(|line| line.trim().is_empty()) {
-        lines.pop();
-    }
-    for row in &missing_rows {
-        let line = serde_json::to_string(&json!({
-            "id": row.id,
-            "thread_name": if row.title.trim().is_empty() { "Untitled" } else { row.title.as_str() },
-            "updated_at": format_thread_updated_at_iso(row.updated_at),
-        }))
-        .map_err(|error| format!("序列化 session_index 条目失败: {}", error))?;
-        lines.push(line);
-    }
-    let mut output = lines.join("\n");
-    output.push('\n');
-    write_bytes_atomic(&path, output.as_bytes())?;
-    Ok(missing_rows.len())
-}
-
-fn format_thread_updated_at_iso(updated_at: Option<i64>) -> String {
-    let seconds = updated_at.unwrap_or_else(now_epoch_secs);
-    Utc.timestamp_opt(seconds, 0)
-        .single()
-        .unwrap_or_else(Utc::now)
-        .to_rfc3339_opts(chrono::SecondsFormat::Micros, true)
 }
 
 fn count_sqlite_rows_to_update(data_dir: &Path, target_provider: &str) -> Result<usize, String> {
@@ -630,55 +296,6 @@ fn build_threads_repair_set_clause(columns: ThreadsTableColumns) -> String {
     assignments.join(", ")
 }
 
-fn rewrite_rollout_provider(change: &RolloutProviderChange) -> Result<(), String> {
-    let original_modified_at = read_modified_time(&change.absolute_path);
-    let bytes = fs::read(&change.absolute_path).map_err(|error| {
-        format!(
-            "读取 rollout 文件失败 ({}): {}",
-            change.absolute_path.display(),
-            error
-        )
-    })?;
-    let (offset, separator) = detect_first_line_boundary(&bytes);
-    let mut next_bytes = Vec::with_capacity(change.updated_first_line.len() + bytes.len());
-    next_bytes.extend_from_slice(change.updated_first_line.as_bytes());
-    next_bytes.extend_from_slice(separator.as_bytes());
-    next_bytes.extend_from_slice(&bytes[offset..]);
-    write_bytes_atomic(&change.absolute_path, &next_bytes)?;
-    restore_modified_time(&change.absolute_path, original_modified_at)
-}
-
-fn detect_first_line_boundary(bytes: &[u8]) -> (usize, &'static str) {
-    for (index, byte) in bytes.iter().enumerate() {
-        if *byte == b'\n' {
-            if index > 0 && bytes[index - 1] == b'\r' {
-                return (index + 1, "\r\n");
-            }
-            return (index + 1, "\n");
-        }
-    }
-    (bytes.len(), "")
-}
-
-fn write_bytes_atomic(path: &Path, content: &[u8]) -> Result<(), String> {
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent)
-            .map_err(|error| format!("创建目录失败 ({}): {}", parent.display(), error))?;
-    }
-    let temp_path = path.with_extension(format!(
-        "session-visibility-tmp-{}-{}",
-        std::process::id(),
-        now_epoch_millis()
-    ));
-    fs::write(&temp_path, content)
-        .map_err(|error| format!("写入临时文件失败 ({}): {}", temp_path.display(), error))?;
-    if let Err(error) = fs::rename(&temp_path, path) {
-        let _ = fs::remove_file(&temp_path);
-        return Err(format!("替换文件失败 ({}): {}", path.display(), error));
-    }
-    Ok(())
-}
-
 fn state_db_relative_paths() -> [PathBuf; 2] {
     [
         PathBuf::from(STATE_DB_FILE),
@@ -775,103 +392,6 @@ fn restore_sqlite_from_backup(data_dir: &Path, backup_dir: &Path) -> Result<(), 
     Ok(())
 }
 
-fn backup_codex_session_visibility_files(
-    data_dir: &Path,
-    rollout_changes: &[RolloutProviderChange],
-    include_sqlite: bool,
-    include_session_index: bool,
-    target_provider: &str,
-) -> Result<PathBuf, String> {
-    let backup_dir = data_dir.join(format!(
-        "{}{}{}",
-        BACKUP_PREFIX,
-        now_epoch_millis(),
-        BACKUP_SUFFIX
-    ));
-    fs::create_dir_all(&backup_dir)
-        .map_err(|error| format!("创建备份目录失败 ({}): {}", backup_dir.display(), error))?;
-
-    let mut backed_up_files = Vec::new();
-    for change in rollout_changes {
-        let target = backup_dir.join("files").join(&change.relative_path);
-        if let Some(parent) = target.parent() {
-            fs::create_dir_all(parent).map_err(|error| {
-                format!(
-                    "创建 rollout 备份目录失败 ({}): {}",
-                    parent.display(),
-                    error
-                )
-            })?;
-        }
-        fs::copy(&change.absolute_path, &target).map_err(|error| {
-            format!(
-                "备份 rollout 文件失败 ({} -> {}): {}",
-                change.absolute_path.display(),
-                target.display(),
-                error
-            )
-        })?;
-        restore_modified_time(&target, read_modified_time(&change.absolute_path))?;
-        backed_up_files.push(change.relative_path.to_string_lossy().to_string());
-    }
-
-    let sqlite_backup_created = if include_sqlite {
-        backup_sqlite_database(data_dir, &backup_dir)?
-    } else {
-        false
-    };
-    let mut session_index_backup_created = false;
-    if include_session_index {
-        let source = data_dir.join(SESSION_INDEX_FILE);
-        if source.exists() {
-            let target = backup_dir.join("files").join(SESSION_INDEX_FILE);
-            if let Some(parent) = target.parent() {
-                fs::create_dir_all(parent).map_err(|error| {
-                    format!(
-                        "创建 session_index 备份目录失败 ({}): {}",
-                        parent.display(),
-                        error
-                    )
-                })?;
-            }
-            fs::copy(&source, &target).map_err(|error| {
-                format!(
-                    "备份 session_index.jsonl 失败 ({} -> {}): {}",
-                    source.display(),
-                    target.display(),
-                    error
-                )
-            })?;
-            session_index_backup_created = true;
-        }
-    }
-
-    let manifest = json!({
-        "instanceRoot": data_dir,
-        "targetProvider": target_provider,
-        "createdAt": now_epoch_secs(),
-        "hasSqliteBackup": sqlite_backup_created,
-        "hasSessionIndexBackup": session_index_backup_created,
-        "rolloutFiles": backed_up_files,
-    });
-    fs::write(
-        backup_dir.join("manifest.json"),
-        format!(
-            "{}\n",
-            serde_json::to_string_pretty(&manifest)
-                .map_err(|error| format!("序列化可见性修复备份清单失败: {}", error))?
-        ),
-    )
-    .map_err(|error| {
-        format!(
-            "写入可见性修复备份清单失败 ({}): {}",
-            backup_dir.display(),
-            error
-        )
-    })?;
-    Ok(backup_dir)
-}
-
 fn backup_sqlite_database(data_dir: &Path, backup_dir: &Path) -> Result<bool, String> {
     let relative_paths = existing_state_db_relative_paths(data_dir);
     if relative_paths.is_empty() {
@@ -916,102 +436,6 @@ fn backup_sqlite_database(data_dir: &Path, backup_dir: &Path) -> Result<bool, St
     Ok(true)
 }
 
-fn restore_codex_session_visibility_backup(
-    data_dir: &Path,
-    backup_dir: &Path,
-    include_sqlite: bool,
-) -> Result<(), String> {
-    if include_sqlite {
-        remove_backed_up_sqlite_sidecars(data_dir, backup_dir)?;
-    }
-    let files_root = backup_dir.join("files");
-    if files_root.exists() {
-        restore_directory_contents(&files_root, data_dir)?;
-    }
-    if include_sqlite {
-        remove_backed_up_sqlite_sidecars(data_dir, backup_dir)?;
-    }
-    Ok(())
-}
-
-fn remove_backed_up_sqlite_sidecars(data_dir: &Path, backup_dir: &Path) -> Result<(), String> {
-    let files_root = backup_dir.join("files");
-    for relative_path in state_db_relative_paths() {
-        if files_root.join(&relative_path).exists() {
-            remove_sqlite_sidecar_files(&data_dir.join(relative_path))?;
-        }
-    }
-    Ok(())
-}
-
-fn restore_directory_contents(source_root: &Path, target_root: &Path) -> Result<(), String> {
-    for entry in fs::read_dir(source_root)
-        .map_err(|error| format!("读取备份目录失败 ({}): {}", source_root.display(), error))?
-    {
-        let entry = entry.map_err(|error| {
-            format!("读取备份目录项失败 ({}): {}", source_root.display(), error)
-        })?;
-        let source_path = entry.path();
-        let file_type = entry.file_type().map_err(|error| {
-            format!(
-                "读取备份文件类型失败 ({}): {}",
-                source_path.display(),
-                error
-            )
-        })?;
-        let relative = source_path
-            .strip_prefix(source_root)
-            .map_err(|_| format!("无法计算备份相对路径: {}", source_path.display()))?;
-        let target_path = target_root.join(relative);
-        if file_type.is_dir() {
-            fs::create_dir_all(&target_path).map_err(|error| {
-                format!("创建恢复目录失败 ({}): {}", target_path.display(), error)
-            })?;
-            restore_directory_contents(&source_path, &target_path)?;
-            continue;
-        }
-        if let Some(parent) = target_path.parent() {
-            fs::create_dir_all(parent)
-                .map_err(|error| format!("创建恢复父目录失败 ({}): {}", parent.display(), error))?;
-        }
-        fs::copy(&source_path, &target_path).map_err(|error| {
-            format!(
-                "恢复备份文件失败 ({} -> {}): {}",
-                source_path.display(),
-                target_path.display(),
-                error
-            )
-        })?;
-        restore_modified_time(&target_path, read_modified_time(&source_path))?;
-    }
-    Ok(())
-}
-
-fn sqlite_sidecar_paths(db_path: &Path) -> Vec<PathBuf> {
-    let raw = db_path.to_string_lossy();
-    vec![
-        PathBuf::from(format!("{}-wal", raw)),
-        PathBuf::from(format!("{}-shm", raw)),
-    ]
-}
-
-fn remove_sqlite_sidecar_files(db_path: &Path) -> Result<(), String> {
-    for path in sqlite_sidecar_paths(db_path) {
-        match fs::remove_file(&path) {
-            Ok(()) => {}
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
-            Err(error) => {
-                return Err(format!(
-                    "清理 SQLite sidecar 文件失败 ({}): {}",
-                    path.display(),
-                    error
-                ));
-            }
-        }
-    }
-    Ok(())
-}
-
 fn is_missing_threads_table_error(error: &rusqlite::Error) -> bool {
     error
         .to_string()
@@ -1034,31 +458,6 @@ fn format_sqlite_write_error(path: &Path, error: &rusqlite::Error) -> String {
         path.display(),
         message
     )
-}
-
-fn read_modified_time(path: &Path) -> Option<SystemTime> {
-    fs::metadata(path)
-        .and_then(|metadata| metadata.modified())
-        .ok()
-}
-
-fn restore_modified_time(path: &Path, modified_at: Option<SystemTime>) -> Result<(), String> {
-    let Some(modified_at) = modified_at else {
-        return Ok(());
-    };
-    let file = fs::OpenOptions::new()
-        .write(true)
-        .open(path)
-        .map_err(|error| format!("打开文件以恢复修改时间失败 ({}): {}", path.display(), error))?;
-    file.set_modified(modified_at)
-        .map_err(|error| format!("恢复文件修改时间失败 ({}): {}", path.display(), error))
-}
-
-fn now_epoch_secs() -> i64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|duration| duration.as_secs() as i64)
-        .unwrap_or(0)
 }
 
 fn now_epoch_millis() -> u128 {
@@ -1085,7 +484,7 @@ mod tests {
     }
 
     #[test]
-    fn rollout_repair_updates_model_provider() {
+    fn rollout_repair_keeps_original_model_provider() {
         let data_dir = make_temp_dir("anybridge-codex-rollout-provider-test");
         fs::write(
             data_dir.join(CONFIG_FILE_NAME),
@@ -1104,9 +503,9 @@ mod tests {
         let summary =
             repair_default_codex_session_visibility(&data_dir.join(CONFIG_FILE_NAME)).unwrap();
 
-        assert_eq!(summary.changed_rollout_file_count, 1);
+        assert_eq!(summary.changed_rollout_file_count, 0);
         let content = fs::read_to_string(rollout_path).unwrap();
-        assert!(content.contains("\"model_provider\":\"byok\""));
+        assert!(content.contains("\"model_provider\":\"openai\""));
         fs::remove_dir_all(data_dir).unwrap();
     }
 
@@ -1160,6 +559,7 @@ mod tests {
             )
             .unwrap();
         assert_eq!(row, ("byok".to_string(), 1, "user".to_string()));
+        drop(connection);
         fs::remove_dir_all(data_dir).unwrap();
     }
 }

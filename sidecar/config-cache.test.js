@@ -96,6 +96,18 @@ describe('config-cache model-map enhancement', () => {
           rateLimitEnabled: true,
           requestLogging: true,
           unlockModels: false,
+          webSearchEnabled: true,
+          webSearchMaxResults: 7,
+          webSearchMaxRounds: 2,
+        },
+        searchModels: {
+          searchSources: [{
+            id: 'src-1',
+            name: 'DuckDuckGo',
+            type: 'engine',
+            engine: 'duckduckgo',
+            enabled: true,
+          }],
         },
         proxyRouteRenameRule: {
           enabled: true,
@@ -113,9 +125,19 @@ describe('config-cache model-map enhancement', () => {
       assert.equal(config.enhancement.rateLimitEnabled, true);
       assert.equal(config.enhancement.requestLogging, true);
       assert.equal(config.enhancement.unlockModels, false);
+      assert.equal(config.enhancement.webSearchEnabled, true);
+      assert.equal(config.enhancement.webSearchMaxResults, 7);
+      assert.equal(config.enhancement.webSearchMaxRounds, 2);
       assert.deepEqual(config.enhancement.customHeaders, [{ key: 'x-test', value: '1' }]);
       assert.deepEqual(config.enhancement.responseHeaders, [{ key: 'x-response', value: '2' }]);
       assert.deepEqual(config.enhancement.paramOverrides, { top_p: 0.7 });
+      assert.deepEqual(config.searchModels.searchSources, [{
+        id: 'src-1',
+        name: 'DuckDuckGo',
+        type: 'engine',
+        engine: 'duckduckgo',
+        enabled: true,
+      }]);
       assert.deepEqual(config.proxyRouteRenameRule, {
         enabled: true,
         mode: 'simple',

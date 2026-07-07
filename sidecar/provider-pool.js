@@ -51,6 +51,36 @@ function cleanApiPath(value) {
   return `/${raw.replace(/^\/+/, '').replace(/\/+$/, '')}`;
 }
 
+function parseApiHost(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return { error: 'API Host 为空' };
+  let url;
+  try {
+    url = new URL(/^https?:\/\//i.test(raw) ? raw : `https://${raw}`);
+  } catch {
+    return { error: `API Host 无效(${raw})` };
+  }
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+    return { error: `API Host 协议不支持(${url.protocol})` };
+  }
+  if (!url.hostname) return { error: `API Host 缺少主机名(${raw})` };
+  return {
+    protocol: url.protocol === 'http:' ? 'http' : 'https',
+    hostname: url.hostname,
+    port: url.port ? Number(url.port) : (url.protocol === 'http:' ? 80 : 443),
+    basePath: cleanApiPath(url.pathname),
+  };
+}
+
+function joinApiPath(basePath, apiPath) {
+  const base = cleanApiPath(basePath);
+  const path = cleanApiPath(apiPath);
+  if (!base) return path || '/';
+  if (!path) return base;
+  if (path === base || path.startsWith(`${base}/`)) return path;
+  return `${base}${path}`;
+}
+
 function isOfficialDashScopeHost(host) {
   const h = String(host || '')
     .replace(/^https?:\/\//i, '')
@@ -97,6 +127,18 @@ function normalizeAnthropicApiPath(apiPath) {
   return `${path}/v1/messages`;
 }
 
+function normalizeGeminiApiPath(apiPath, model) {
+  const path = cleanApiPath(apiPath);
+  const lower = path.toLowerCase();
+  const encodedModel = encodeURIComponent(String(model || '').trim());
+  if (lower.endsWith(':generatecontent') || lower.endsWith(':streamgeneratecontent')) return path;
+  if (lower.includes('/v1beta/models/') || lower.includes('/v1/models/')) return `${path}:generateContent`;
+  if (!path) return `/v1beta/models/${encodedModel}:generateContent`;
+  if (lower.endsWith('/v1beta') || lower.endsWith('/v1')) return `${path}/models/${encodedModel}:generateContent`;
+  if (lower.endsWith('/models')) return `${path}/${encodedModel}:generateContent`;
+  return `${path}/v1beta/models/${encodedModel}:generateContent`;
+}
+
 function shouldUseAnthropicBearerAuth(host, apiPath) {
   const hostname = String(host || '').split('/')[0].split(':')[0].toLowerCase();
   const path = normalizeAnthropicApiPath(apiPath).toLowerCase();
@@ -106,9 +148,7 @@ function shouldUseAnthropicBearerAuth(host, apiPath) {
 function inferApiFormatFromPath(apiPath) {
   const path = cleanApiPath(apiPath).toLowerCase();
   if (!path) return null;
-  if (path.includes(':generatecontent') || path.includes('/v1beta/models/')) {
-    return { error: '检测到 Gemini 原生 generateContent 路径，但聊天代理尚未接入 Gemini 原生协议' };
-  }
+  if (path.includes(':generatecontent') || path.includes(':streamgeneratecontent') || path.includes('/v1beta/models/')) return 'gemini';
   if (path.endsWith('/messages') || path.includes('/messages/')) return 'anthropic';
   if (path.endsWith('/chat/completions') || path.endsWith('/responses')) return 'openai';
   if (path.includes('/openai/') || path.includes('/compatible-mode/')) return 'openai';
@@ -123,6 +163,7 @@ function inferApiFormatFromHost(host) {
     .toLowerCase();
   if (hostname === 'api.anthropic.com') return 'anthropic';
   if (hostname === 'api.openai.com' || hostname.endsWith('.openai.azure.com')) return 'openai';
+  if (hostname === 'generativelanguage.googleapis.com') return 'gemini';
   return null;
 }
 
@@ -221,7 +262,7 @@ function normalizeTargetApiFormat(value) {
   if (raw === 'auto') return null;
   if (raw === 'openai') return 'openai';
   if (raw === 'anthropic') return 'anthropic';
-  if (raw === 'gemini') return { error: '聊天代理尚未接入 Gemini 原生协议；请使用 OpenAI/Anthropic 兼容入口或留空自动识别' };
+  if (raw === 'gemini') return 'gemini';
   return { error: `未知目标协议(${raw})` };
 }
 
@@ -266,7 +307,9 @@ export function resolveTarget(target, providers) {
   if (targetApiFormat && unlockApiFormat && targetApiFormat !== unlockApiFormat) {
     return { error: `目标协议 ${targetApiFormat} 与${targetUnlock === 'codex' ? ' Codex' : ' Claude Code'} 解锁不匹配` };
   }
-  const host = (p.apiHost || '').replace(/^https?:\/\//, '').replace(/\/$/, '');
+  const parsedHost = parseApiHost(p.apiHost);
+  if (parsedHost?.error) return { error: parsedHost.error };
+  const host = parsedHost.hostname;
   const explicitPath = target.apiPath || target.api_path || null;
   const unlockConfig = targetUnlock ? p.unlocks?.[targetUnlock] : null;
   const unlockWireApi = unlockConfig?.wireApi || unlockConfig?.wire_api || null;
@@ -277,17 +320,22 @@ export function resolveTarget(target, providers) {
   const route = inferTargetRouteFormat({ targetApiFormat, unlockApiFormat, targetUnlock, explicitPath, providerPath, host });
   if (route?.error) return { error: route.error };
   const routeFormat = route.format;
+  const modelId = target.model || p.defaultModel;
   const configuredPath = (explicitPath || unlockWireApi || providerPath) && (explicitPath || unlockWireApi || providerPath) !== '/'
     ? (explicitPath || unlockWireApi || providerPath)
     : null;
   const apiPath = unlockWireApi && !explicitPath
     ? cleanApiPath(unlockWireApi)
-    : (routeFormat === 'openai' ? normalizeOpenAIApiPath(host, configuredPath) : normalizeAnthropicApiPath(configuredPath));
+    : (routeFormat === 'openai'
+      ? normalizeOpenAIApiPath(host, configuredPath)
+      : (routeFormat === 'gemini'
+        ? normalizeGeminiApiPath(configuredPath, modelId)
+        : normalizeAnthropicApiPath(configuredPath)));
   // wireApi=chat 是普通 OpenAI 兼容供应商的提示；平台解锁目标使用自己的 wireApi，不应被覆盖。
-  const finalApiPath = (p.wireApi === 'chat' && !explicitPath && !targetUnlock)
+  const routeApiPath = (routeFormat === 'openai' && p.wireApi === 'chat' && !explicitPath && !targetUnlock)
     ? apiPath.replace(/\/responses$/, '/chat/completions')
     : apiPath;
-  const modelId = target.model || p.defaultModel;
+  const finalApiPath = joinApiPath(parsedHost.basePath, routeApiPath);
   // 合并供应商级 + 模型级能力标记
   const supplierCaps = p.capabilities || {};
   const modelCaps = (p.modelCaps || {})[modelId] || {};
@@ -304,6 +352,9 @@ export function resolveTarget(target, providers) {
     providerId: p.id,
     providerName: p.name,
     host,
+    hostname: parsedHost.hostname,
+    protocol: parsedHost.protocol,
+    port: parsedHost.port,
     apiPath: finalApiPath,
     apiKey: apiKeyForTarget(target, p.apiKey),
     format: routeFormat,

@@ -504,21 +504,6 @@ fn launch_plain() -> Result<u32, String> {
 // inject 自己会重试连 CDP，拿到 page target 并装上 patch 才算就绪，失败则
 // 暴露真实原因（ECONNREFUSED / No page target / patch 异常）。
 
-/// 探测 CDP 是否可达（watcher 用，不阻塞太久）。
-fn cdp_reachable() -> bool {
-    match http_get_local(CDP_PORT, "/json", Duration::from_millis(800)) {
-        Ok(buf) => buf.starts_with("HTTP/1.1 200") || buf.starts_with("HTTP/1.0 200"),
-        Err(_) => false,
-    }
-}
-
-/// 探测 9229 端口是否还在被监听（kill 确认用）。
-/// 能拿到任何 HTTP 响应（哪怕非 200）都说明端口还在被监听；
-/// 连接被拒绝/超时说明端口已释放。区分于 cdp_reachable（要求 200）。
-fn cdp_listening() -> bool {
-    cdp_listening_with_timeout(Duration::from_millis(500))
-}
-
 /// watcher 用的慢探测：给足响应时间，避免 renderer 加载中 /json 响应慢被误判为没监听。
 fn cdp_listening_slow() -> bool {
     cdp_listening_with_timeout(Duration::from_secs(2))
@@ -881,18 +866,6 @@ fn remaining_codex_pids() -> String {
 
 // ─── 主命令：重启 Codex Desktop ───────────────────────────────────────
 
-/// 判断当前 Codex 是否处于"自定义供应商"态（watcher + managed 启动前判断用）。
-fn codex_is_managed_state() -> bool {
-    match read_provider_store() {
-        Ok(store) => store
-            .platforms
-            .get("codex")
-            .map(|s| !s.provider_id.is_empty())
-            .unwrap_or(false),
-        Err(_) => false,
-    }
-}
-
 /// 当前 Codex 配置是否需要 CDP 注入。
 /// 读 providerStore → 找当前 codex 配置 → 看 inject_models。
 /// inject_models=false 时，整条 CDP 流程（watcher 接管、补注入）都不触发。
@@ -930,7 +903,7 @@ fn needs_cdp(inject_models: bool) -> bool {
 async fn restart_codex_desktop_impl(
     app: Option<&AppHandle>,
     managed: bool,
-    model: &str,
+    _model: &str,
     inject_models: bool,
 ) -> CodexDesktopResult {
     let progress = |step: &str, msg: &str| {

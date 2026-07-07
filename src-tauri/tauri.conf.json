@@ -52,7 +52,7 @@
     "updater": {
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDM3MEEwQ0E3QTA3NzMwNUIKUldSYk1IZWdwd3dLTnprdDA4aTdFVkJUNEpKWW9PTVY0RmVWMCtCenFaU1poUUgrbmFNS1NxeGwK",
       "endpoints": [
-        "https://github.com/soulvon/AnyBridge-Release/releases/latest/download/latest.json"
+        "https://github.com/soulvon/AnyBridge/releases/latest/download/latest.json"
       ]
     }
   }

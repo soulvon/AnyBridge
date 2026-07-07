@@ -11,6 +11,7 @@ let claudeCodeRawConfigSyncing = false;
 let codexConfigSearch = '';
 let codexConfigEditorMode = 'create';
 let codexConfigModelFetchSeq = 0;
+let codexAgentsState = [];
 let opencodeConfigSearch = '';
 let opencodeConfigEditorMode = 'create';
 let opencodeConfigModelFetchSeq = 0;
@@ -908,6 +909,9 @@ function renderCodexModelManager(entries, defaultModel = '', status = '') {
     </div>`;
   }).join('');
   if (status) codexConfigSetModelStatus(status);
+  if (document.getElementById('codex-agents-list')) {
+    renderCodexAgentsPanel(null, codexAgentsState);
+  }
 }
 
 // 从状态缓存读（避免 re-render 时 DOM 已被替换导致读到旧值）
@@ -1149,6 +1153,179 @@ function getReasoningConfig() {
   };
 }
 
+function codexAgentModelOptions(selected = '') {
+  const models = getCodexModelEntries().map(e => e.model).filter(Boolean);
+  if (selected && !models.includes(selected)) models.unshift(selected);
+  const inherited = `<option value="" ${selected ? '' : 'selected'}>继承父会话模型</option>`;
+  return inherited + models.map(model =>
+    `<option value="${platformEsc(model)}" ${model === selected ? 'selected' : ''}>${platformEsc(model)}</option>`
+  ).join('');
+}
+
+function normalizeCodexAgent(agent = {}) {
+  return {
+    name: String(agent.name || '').trim(),
+    description: String(agent.description || '').trim(),
+    developerInstructions: String(agent.developerInstructions || '').trim(),
+    model: String(agent.model || '').trim(),
+    modelReasoningEffort: String(agent.modelReasoningEffort || '').trim(),
+    sandboxMode: String(agent.sandboxMode || '').trim(),
+    nicknameCandidates: Array.isArray(agent.nicknameCandidates)
+      ? agent.nicknameCandidates.map(n => String(n || '').trim()).filter(Boolean)
+      : String(agent.nicknameCandidates || '').split(/[,，\n]/).map(n => n.trim()).filter(Boolean),
+  };
+}
+
+function renderCodexAgentsPanel(config = null, agents = null) {
+  if (config) {
+    codexConfigSetInputValue('codex-agents-max-threads', config.maxThreads || 6);
+    codexConfigSetInputValue('codex-agents-max-depth', config.maxDepth || 1);
+    codexConfigSetInputValue('codex-agents-job-timeout', config.jobMaxRuntimeSeconds || 1800);
+  }
+  if (Array.isArray(agents)) {
+    codexAgentsState = agents.map(normalizeCodexAgent);
+  }
+  const count = document.getElementById('codex-agents-count');
+  if (count) count.textContent = String(codexAgentsState.length);
+  const list = document.getElementById('codex-agents-list');
+  if (!list) return;
+  if (!codexAgentsState.length) {
+    list.innerHTML = '<div class="codex-config-model-empty">尚未配置子代理。Codex 只会在用户明确要求时调用子代理。</div>';
+    return;
+  }
+  list.innerHTML = codexAgentsState.map((agent, idx) => {
+    const nicknames = agent.nicknameCandidates.join(', ');
+    return `<div class="codex-agent-card" data-idx="${idx}">
+      <div class="codex-agent-card-head">
+        <strong>${platformEsc(agent.name || `agent-${idx + 1}`)}</strong>
+        <button type="button" class="codex-config-catalog-del" onclick="removeCodexAgent(${idx})">删除</button>
+      </div>
+      <div class="codex-agent-grid">
+        <label class="codex-config-field">
+          <span>名称</span>
+          <input class="field-input" value="${platformEsc(agent.name)}" placeholder="code-reviewer" oninput="updateCodexAgentField(${idx}, 'name', this.value)">
+        </label>
+        <label class="codex-config-field">
+          <span>模型</span>
+          <select class="field-input" onchange="updateCodexAgentField(${idx}, 'model', this.value)">
+            ${codexAgentModelOptions(agent.model)}
+          </select>
+        </label>
+        <label class="codex-config-field">
+          <span>推理强度</span>
+          <select class="field-input" onchange="updateCodexAgentField(${idx}, 'modelReasoningEffort', this.value)">
+            <option value="" ${agent.modelReasoningEffort ? '' : 'selected'}>继承</option>
+            <option value="low" ${agent.modelReasoningEffort === 'low' ? 'selected' : ''}>low</option>
+            <option value="medium" ${agent.modelReasoningEffort === 'medium' ? 'selected' : ''}>medium</option>
+            <option value="high" ${agent.modelReasoningEffort === 'high' ? 'selected' : ''}>high</option>
+          </select>
+        </label>
+        <label class="codex-config-field">
+          <span>Sandbox</span>
+          <select class="field-input" onchange="updateCodexAgentField(${idx}, 'sandboxMode', this.value)">
+            <option value="" ${agent.sandboxMode ? '' : 'selected'}>继承</option>
+            <option value="read-only" ${agent.sandboxMode === 'read-only' ? 'selected' : ''}>read-only</option>
+            <option value="workspace-write" ${agent.sandboxMode === 'workspace-write' ? 'selected' : ''}>workspace-write</option>
+            <option value="danger-full-access" ${agent.sandboxMode === 'danger-full-access' ? 'selected' : ''}>danger-full-access</option>
+          </select>
+        </label>
+      </div>
+      <label class="codex-config-field">
+        <span>描述</span>
+        <input class="field-input" value="${platformEsc(agent.description)}" placeholder="PR reviewer focused on correctness..." oninput="updateCodexAgentField(${idx}, 'description', this.value)">
+      </label>
+      <label class="codex-config-field">
+        <span>昵称候选（逗号分隔）</span>
+        <input class="field-input" value="${platformEsc(nicknames)}" placeholder="Atlas, Delta" oninput="updateCodexAgentField(${idx}, 'nicknameCandidates', this.value)">
+      </label>
+      <label class="codex-config-field">
+        <span>Developer Instructions</span>
+        <textarea class="field-input codex-agent-instructions" placeholder="Review code like an owner..." oninput="updateCodexAgentField(${idx}, 'developerInstructions', this.value)">${platformEsc(agent.developerInstructions)}</textarea>
+      </label>
+    </div>`;
+  }).join('');
+}
+
+function addCodexAgent() {
+  codexAgentsState.push({
+    name: `agent-${codexAgentsState.length + 1}`,
+    description: '',
+    developerInstructions: '',
+    model: '',
+    modelReasoningEffort: '',
+    sandboxMode: 'read-only',
+    nicknameCandidates: [],
+  });
+  renderCodexAgentsPanel(null, codexAgentsState);
+}
+
+function removeCodexAgent(idx) {
+  codexAgentsState.splice(idx, 1);
+  renderCodexAgentsPanel(null, codexAgentsState);
+}
+
+function updateCodexAgentField(idx, field, value) {
+  if (!codexAgentsState[idx]) return;
+  if (field === 'nicknameCandidates') {
+    codexAgentsState[idx][field] = String(value || '').split(/[,，\n]/).map(n => n.trim()).filter(Boolean);
+  } else {
+    codexAgentsState[idx][field] = String(value || '');
+  }
+  const count = document.getElementById('codex-agents-count');
+  if (count) count.textContent = String(codexAgentsState.length);
+}
+
+function getCodexAgentsConfig() {
+  const maxThreads = Number(document.getElementById('codex-agents-max-threads')?.value || 6);
+  const maxDepth = Number(document.getElementById('codex-agents-max-depth')?.value || 1);
+  const jobMaxRuntimeSeconds = Number(document.getElementById('codex-agents-job-timeout')?.value || 1800);
+  return {
+    maxThreads: Number.isInteger(maxThreads) && maxThreads > 0 ? maxThreads : 6,
+    maxDepth: Number.isInteger(maxDepth) && maxDepth > 0 ? maxDepth : 1,
+    jobMaxRuntimeSeconds: Number.isInteger(jobMaxRuntimeSeconds) && jobMaxRuntimeSeconds > 0 ? jobMaxRuntimeSeconds : 1800,
+  };
+}
+
+function getCodexAgents() {
+  return codexAgentsState.map(normalizeCodexAgent).filter(agent =>
+    agent.name || agent.description || agent.developerInstructions
+  );
+}
+
+function validateCodexAgents(agents, models) {
+  const modelSet = new Set(models);
+  const seen = new Set();
+  const reserved = new Set(['default', 'worker', 'explorer']);
+  for (const agent of agents) {
+    if (!/^[a-z][a-z0-9-]{0,63}$/.test(agent.name)) {
+      return `子代理名称「${agent.name || '(空)'}」无效：必须匹配 ^[a-z][a-z0-9-]{0,63}$`;
+    }
+    if (reserved.has(agent.name)) return `子代理名称「${agent.name}」是 Codex 内置名称，当前版本不允许覆盖。`;
+    const key = agent.name.toLowerCase();
+    if (seen.has(key)) return `子代理名称重复：${agent.name}`;
+    seen.add(key);
+    if (!agent.description) return `子代理「${agent.name}」缺少描述。`;
+    if (!agent.developerInstructions) return `子代理「${agent.name}」缺少 Developer Instructions。`;
+    if (agent.model && !modelSet.has(agent.model)) return `子代理「${agent.name}」引用的模型「${agent.model}」不在当前模型列表中。`;
+    if (agent.modelReasoningEffort && !['low', 'medium', 'high'].includes(agent.modelReasoningEffort)) {
+      return `子代理「${agent.name}」的推理强度无效。`;
+    }
+    if (agent.sandboxMode && !['read-only', 'workspace-write', 'danger-full-access'].includes(agent.sandboxMode)) {
+      return `子代理「${agent.name}」的 Sandbox 无效。`;
+    }
+    const nickSeen = new Set();
+    for (const nickname of agent.nicknameCandidates) {
+      if (!/^[A-Za-z0-9 _-]+$/.test(nickname)) {
+        return `子代理「${agent.name}」的昵称「${nickname}」无效：仅允许 ASCII 字母、数字、空格、连字符和下划线。`;
+      }
+      const nickKey = nickname.toLowerCase();
+      if (nickSeen.has(nickKey)) return `子代理「${agent.name}」的昵称重复：${nickname}`;
+      nickSeen.add(nickKey);
+    }
+  }
+  return '';
+}
+
 function openCodexConfigEditor(providerId = '') {
   const provider = providerId ? codexConfigProviderById(providerId) : null;
   if (providerId && !provider) {
@@ -1201,6 +1378,7 @@ function openCodexConfigEditor(providerId = '') {
       }
     }
     renderCodexModelManager(merged, defaultModel, merged.length ? `已保存 ${merged.length} 个模型` : '可重新拉取模型列表');
+    renderCodexAgentsPanel(provider.agentsConfig || { maxThreads: 6, maxDepth: 1, jobMaxRuntimeSeconds: 1800 }, provider.agents || []);
   } else {
     codexConfigSetInputValue('codex-config-name', '');
     codexConfigSetInputValue('codex-config-base-url', '');
@@ -1209,6 +1387,7 @@ function openCodexConfigEditor(providerId = '') {
     document.getElementById('codex-config-inject-models').checked = true;
     renderReasoningConfig(null);
     renderCodexModelManager([], '', '选择供应商后拉取模型列表');
+    renderCodexAgentsPanel({ maxThreads: 6, maxDepth: 1, jobMaxRuntimeSeconds: 1800 }, []);
     const picked = renderCodexConfigSourceList('');
     if (picked) applyCodexConfigSource(picked);
   }
@@ -1274,6 +1453,12 @@ async function saveCodexConfigEditor(switchAfter = false) {
     showCustomAlert('请选择一个默认模型（勾选后点击单选按钮）。', '未选择默认模型', 'warn');
     return;
   }
+  const agents = getCodexAgents();
+  const agentsError = validateCodexAgents(agents, models);
+  if (agentsError) {
+    showCustomAlert(agentsError, '子代理配置无效', 'warn');
+    return;
+  }
 
   const endpoint = typeof providerEndpointParts === 'function'
     ? providerEndpointParts(baseUrl, 'openai', '/v1')
@@ -1299,6 +1484,8 @@ async function saveCodexConfigEditor(switchAfter = false) {
     wireApi,
     modelCatalog: modelCatalog.length ? modelCatalog : undefined,
     codexChatReasoning: getReasoningConfig(),
+    agentsConfig: agents.length ? getCodexAgentsConfig() : undefined,
+    agents: agents.length ? agents : undefined,
     routeThroughProxy,
     injectModels,
     sourceProviderId: sourceId || existing?.sourceProviderId || '',
@@ -1370,10 +1557,12 @@ function renderCodexConfigCard(config) {
   const actions = config.current
     ? `<div class="codex-config-actions">${editButton}${deleteButton}${configButton}${removeButton}${startButton}${codexCurrentAction(config.currentLabel || '当前使用')}</div>`
     : (editButton || deleteButton || configButton || removeButton || switchButton || startButton ? `<div class="codex-config-actions">${editButton}${deleteButton}${configButton}${removeButton}${switchButton}${startButton}</div>` : '<span class="codex-row-muted">-</span>');
+  const agentCount = Array.isArray(config.agents) ? config.agents.length : Number(config.agentCount || 0);
   const meta = codexConfigMetaLine([
     config.model || '-',
     config.endpoint || '-',
     config.protocol || 'responses',
+    agentCount > 0 ? `子代理: ${agentCount}` : '',
   ]);
   return `
     <article class="codex-config-card ${config.current ? 'current' : ''} ${platformEsc(config.tone || '')}">

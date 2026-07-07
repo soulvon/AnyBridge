@@ -74,6 +74,14 @@ fn default_vision_batch_size() -> u32 {
     3
 }
 
+fn default_web_search_max_results() -> u32 {
+    5
+}
+
+fn default_web_search_max_rounds() -> u32 {
+    3
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Target {
     #[serde(rename = "providerId")]
@@ -155,6 +163,18 @@ pub struct EnhancementConfig {
     pub vision_multi_image_mode: String,
     #[serde(rename = "visionBatchSize", default = "default_vision_batch_size")]
     pub vision_batch_size: u32,
+    #[serde(rename = "webSearchEnabled", default)]
+    pub web_search_enabled: bool,
+    #[serde(
+        rename = "webSearchMaxResults",
+        default = "default_web_search_max_results"
+    )]
+    pub web_search_max_results: u32,
+    #[serde(
+        rename = "webSearchMaxRounds",
+        default = "default_web_search_max_rounds"
+    )]
+    pub web_search_max_rounds: u32,
     #[serde(rename = "autoRouting", default = "default_true")]
     pub auto_routing: bool,
     #[serde(rename = "unlockModels", default = "default_true")]
@@ -204,6 +224,9 @@ impl Default for EnhancementConfig {
             vision_context_max_chars: default_vision_context_max_chars(),
             vision_multi_image_mode: default_vision_multi_image_mode(),
             vision_batch_size: default_vision_batch_size(),
+            web_search_enabled: false,
+            web_search_max_results: default_web_search_max_results(),
+            web_search_max_rounds: default_web_search_max_rounds(),
             auto_routing: true,
             unlock_models: true,
             system_prompt_prefix: String::new(),
@@ -237,6 +260,31 @@ pub struct VisionModelTarget {
     pub model: String,
     #[serde(rename = "apiFormat")]
     pub api_format: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct SearchModels {
+    #[serde(rename = "searchSources", default)]
+    pub search_sources: Vec<SearchSource>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SearchSource {
+    pub id: String,
+    #[serde(default)]
+    pub name: String,
+    #[serde(default)]
+    pub r#type: String,
+    #[serde(default)]
+    pub provider: String,
+    #[serde(default)]
+    pub engine: String,
+    #[serde(rename = "apiKey", default)]
+    pub api_key: String,
+    #[serde(rename = "apiHost", default)]
+    pub api_host: String,
+    #[serde(default = "default_true")]
+    pub enabled: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -339,6 +387,9 @@ pub struct ModelMap {
     /// 第三方图片理解模型故障转移链。
     #[serde(rename = "visionModels", default)]
     pub vision_models: VisionModels,
+    /// 联网搜索源故障转移链。
+    #[serde(rename = "searchModels", default)]
+    pub search_models: SearchModels,
     /// 本地代理模型 ID 批量重命名规则(由「模型列表」列头齿轮按钮设置)。
     /// 保存后下次打开弹窗自动回填,避免重复输入造成规则叠加。
     #[serde(rename = "proxyRouteRenameRule", default)]
@@ -410,6 +461,7 @@ pub(crate) fn read_map() -> Result<ModelMap, String> {
             injected: Vec::new(),
             enhancement: default_enhancement(),
             vision_models: VisionModels::default(),
+            search_models: SearchModels::default(),
             proxy_route_rename_rule: ProxyRouteRenameRule::default(),
         });
     }

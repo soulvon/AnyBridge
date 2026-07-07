@@ -66,3 +66,83 @@ test('resolveTarget rejects apiPath overrides that conflict with platform unlock
 
   assert.match(conn.error, /Codex 解锁目标不支持覆盖 apiPath/);
 });
+
+test('resolveTarget supports Gemini Native providers', () => {
+  const providers = new Map([[
+    'google',
+    {
+      id: 'google',
+      name: 'Google Gemini',
+      enabled: true,
+      apiHost: 'https://generativelanguage.googleapis.com',
+      apiKey: 'AIza-test',
+      apiPath: '/v1beta',
+      defaultModel: 'gemini-2.5-pro',
+    },
+  ]]);
+
+  const conn = resolveTarget({
+    providerId: 'google',
+    model: 'gemini-2.5-flash',
+    apiFormat: 'gemini',
+  }, providers);
+
+  assert.equal(conn.error, undefined);
+  assert.equal(conn.format, 'gemini');
+  assert.equal(conn.host, 'generativelanguage.googleapis.com');
+  assert.equal(conn.apiPath, '/v1beta/models/gemini-2.5-flash:generateContent');
+  assert.equal(conn.authScheme, 'x-api-key');
+});
+
+test('resolveTarget preserves HTTP localhost provider ports', () => {
+  const providers = new Map([[
+    'cpa',
+    {
+      id: 'cpa',
+      name: 'CPA',
+      enabled: true,
+      apiHost: 'http://localhost:8317',
+      apiKey: 'sk-test',
+      defaultModel: 'grok-composer-2.5-fast',
+    },
+  ]]);
+
+  const conn = resolveTarget({
+    providerId: 'cpa',
+    model: 'grok-composer-2.5-fast',
+    apiFormat: 'openai',
+  }, providers);
+
+  assert.equal(conn.error, undefined);
+  assert.equal(conn.protocol, 'http');
+  assert.equal(conn.hostname, 'localhost');
+  assert.equal(conn.host, 'localhost');
+  assert.equal(conn.port, 8317);
+  assert.equal(conn.apiPath, '/v1/chat/completions');
+});
+
+test('resolveTarget joins apiHost path prefixes with normalized API paths', () => {
+  const providers = new Map([[
+    'longcat',
+    {
+      id: 'longcat',
+      name: 'LongCat',
+      enabled: true,
+      apiHost: 'https://api.longcat.chat/openai',
+      apiKey: 'ak-test',
+      apiPath: '/v1/chat/completions',
+      defaultModel: 'LongCat-Flash-Chat',
+    },
+  ]]);
+
+  const conn = resolveTarget({
+    providerId: 'longcat',
+    model: 'LongCat-Flash-Chat',
+    apiFormat: 'openai',
+  }, providers);
+
+  assert.equal(conn.error, undefined);
+  assert.equal(conn.protocol, 'https');
+  assert.equal(conn.hostname, 'api.longcat.chat');
+  assert.equal(conn.apiPath, '/openai/v1/chat/completions');
+});

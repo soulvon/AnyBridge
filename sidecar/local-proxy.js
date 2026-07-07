@@ -3,6 +3,7 @@
 
 import crypto from 'node:crypto';
 import fs from 'node:fs';
+import http from 'node:http';
 import https from 'node:https';
 import os from 'node:os';
 import path from 'node:path';
@@ -26,8 +27,10 @@ import {
   createResponsesSSEFromChat,
 } from './lib/responses-chat-transform.js';
 import { DEFAULT_SELF_HEAL_CONFIG, tryHeal } from './lib/self-heal.js';
+import { executeSearchWithFailover } from './handlers/search-sources.js';
 
 const AGENT = new https.Agent({ keepAlive: true, maxSockets: 64, maxFreeSockets: 16 });
+const HTTP_AGENT = new http.Agent({ keepAlive: true, maxSockets: 64, maxFreeSockets: 16 });
 const RETRYABLE_STATUS = new Set([408, 425, 429, 500, 502, 503, 504, 529]);
 const RETRYABLE_CODES = new Set(['ECONNRESET', 'ETIMEDOUT', 'ENOTFOUND', 'EAI_AGAIN', 'ECONNREFUSED', 'EPIPE', 'EHOSTUNREACH', 'ENETUNREACH']);
 
@@ -62,15 +65,36 @@ function pathnameOf(req) {
   catch { return req.url || '/'; }
 }
 
+function geminiGenerateContentMatch(pathname) {
+  return String(pathname || '').match(/^\/v1beta\/models\/([^/]+):(generateContent|streamGenerateContent)$/);
+}
+
+function isGeminiGenerateContentPath(pathname) {
+  return !!geminiGenerateContentMatch(pathname);
+}
+
+function geminiModelFromPath(pathname) {
+  const m = geminiGenerateContentMatch(pathname);
+  return m ? decodeURIComponent(m[1]) : '';
+}
+
+function geminiMethodFromPath(pathname) {
+  const m = geminiGenerateContentMatch(pathname);
+  return m ? m[2] : '';
+}
+
 export function isLocalProxyRequest(req) {
   const p = pathnameOf(req);
   return p === '/v1/models'
     || p === '/v1/chat/completions'
     || p === '/v1/responses'
+    || p === '/v1beta/models'
+    || isGeminiGenerateContentPath(p)
     || p === '/codex/v1/models'
     || p === '/codex/v1/chat/completions'
     || p === '/codex/v1/responses'
     || p === '/anthropic/v1/models'
+    || p === '/__byok/web-search/test'
     || p === '/anthropic/v1/messages'
     || p === '/anthropic/messages'
     || p === '/anthropic/v1/messages/count_tokens'
@@ -88,7 +112,7 @@ function isCodexProxyScope(scope) {
 function cors(extra = {}) {
   return {
     'access-control-allow-origin': '*',
-    'access-control-allow-headers': 'authorization,content-type,x-api-key,anthropic-version,anthropic-beta',
+    'access-control-allow-headers': 'authorization,content-type,x-api-key,x-goog-api-key,anthropic-version,anthropic-beta',
     'access-control-allow-methods': 'GET,POST,OPTIONS',
     ...extra,
   };
@@ -115,6 +139,10 @@ function sendAnthropicError(res, status, message, type = 'api_error') {
   sendJson(res, status, { type: 'error', error: { type, message } });
 }
 
+function sendGeminiError(res, status, message, type = 'INVALID_ARGUMENT') {
+  sendJson(res, status, { error: { code: status, message, status: type } });
+}
+
 class LocalProxyUpstreamError extends Error {
   constructor(message, { status = 502, type = 'upstream_error', upstreamResponse = null } = {}) {
     super(message);
@@ -129,7 +157,7 @@ function authToken(req) {
   const auth = String(req.headers.authorization || '').trim();
   const m = auth.match(/^Bearer\s+(.+)$/i);
   if (m) return m[1].trim();
-  return String(req.headers['x-api-key'] || req.headers['api-key'] || '').trim();
+  return String(req.headers['x-api-key'] || req.headers['x-goog-api-key'] || req.headers['api-key'] || '').trim();
 }
 
 function validateAuth(req) {
@@ -202,11 +230,13 @@ function renderedProxyRouteId(route, options = {}) {
 function routeExposedFormats(route) {
   const formats = Array.isArray(route?.exposedFormats) ? route.exposedFormats : [];
   const normalized = formats.map(fmt => String(fmt || '').trim().toLowerCase()).filter(Boolean);
-  return normalized.length ? normalized : ['openai', 'anthropic'];
+  return normalized.length ? normalized : ['openai', 'anthropic', 'gemini'];
 }
 
 function localProxyKind(kind) {
-  return kind === 'anthropic' ? 'anthropic' : 'openai';
+  if (kind === 'anthropic') return 'anthropic';
+  if (kind === 'gemini') return 'gemini';
+  return 'openai';
 }
 
 function routeSupportsKind(route, kind) {
@@ -270,10 +300,11 @@ function proxyRouteRows(kind, options = {}) {
 function handleModels(req, res) {
   const pathname = pathnameOf(req);
   const anthropic = pathname.startsWith('/anthropic/');
+  const gemini = pathname === '/v1beta/models';
   const scope = proxyScopeForPath(pathname);
   let rows;
   try {
-    rows = proxyRouteRows(anthropic ? 'anthropic' : 'openai', {
+    rows = proxyRouteRows(gemini ? 'gemini' : (anthropic ? 'anthropic' : 'openai'), {
       scope,
       applyRename: !isCodexProxyScope(scope),
     });
@@ -283,6 +314,16 @@ function handleModels(req, res) {
   }
   if (anthropic) {
     sendJson(res, 200, { data: rows.map(m => ({ id: m.id, type: 'model', display_name: m.name, created_at: '2026-01-01T00:00:00Z' })), has_more: false, first_id: rows[0]?.id || null, last_id: rows[rows.length - 1]?.id || null });
+    return;
+  }
+  if (gemini) {
+    sendJson(res, 200, {
+      models: rows.map(m => ({
+        name: `models/${m.id}`,
+        displayName: m.name,
+        supportedGenerationMethods: ['generateContent'],
+      })),
+    });
     return;
   }
   sendJson(res, 200, { object: 'list', data: rows.map(m => ({ id: m.id, object: 'model', created: 0, owned_by: 'anybridge' })) });
@@ -358,18 +399,99 @@ function normalizeAnthropic(body) {
   return { system, messages };
 }
 
+function geminiTextFromParts(parts) {
+  return (Array.isArray(parts) ? parts : [])
+    .map(part => part?.text || '')
+    .filter(Boolean)
+    .join('\n');
+}
+
+function normalizeGeminiPart(part) {
+  if (!part || typeof part !== 'object') return null;
+  if (part.text !== undefined) return textPart(part.text);
+  const inline = part.inlineData || part.inline_data;
+  if (inline?.data) {
+    const mime = String(inline.mimeType || inline.mime_type || 'image/png');
+    if (!mime.startsWith('image/')) {
+      return {
+        type: 'gemini_part',
+        part: { inlineData: { mimeType: mime, data: String(inline.data || '') } },
+      };
+    }
+    return { type: 'image', source: { type: 'base64', media_type: mime, data: String(inline.data || '') } };
+  }
+  if (part.functionResponse) return { type: 'gemini_part', part: { functionResponse: part.functionResponse } };
+  if (part.function_response) return { type: 'gemini_part', part: { function_response: part.function_response } };
+  if (part.functionCall) return { type: 'gemini_part', part: { functionCall: part.functionCall } };
+  if (part.function_call) return { type: 'gemini_part', part: { function_call: part.function_call } };
+  return null;
+}
+
+function normalizeGeminiTools(tools) {
+  const out = [];
+  for (const group of (Array.isArray(tools) ? tools : [])) {
+    const declarations = group?.functionDeclarations || group?.function_declarations || [];
+    for (const fn of declarations) {
+      const name = String(fn?.name || '').trim();
+      if (!name) continue;
+      out.push({
+        type: 'function',
+        function: {
+          name,
+          description: String(fn.description || ''),
+          parameters: fn.parameters || { type: 'object', properties: {} },
+        },
+      });
+    }
+  }
+  return out;
+}
+
+function normalizeGeminiToolChoice(body) {
+  const cfg = body?.toolConfig?.functionCallingConfig || body?.tool_config?.function_calling_config;
+  if (!cfg || typeof cfg !== 'object') return null;
+  const mode = String(cfg.mode || '').trim().toUpperCase();
+  if (!mode || mode === 'MODE_UNSPECIFIED' || mode === 'AUTO') return 'auto';
+  if (mode === 'NONE') return 'none';
+  const allowed = cfg.allowedFunctionNames || cfg.allowed_function_names || [];
+  if (mode === 'ANY' && Array.isArray(allowed) && allowed.length === 1) {
+    return { type: 'function', function: { name: String(allowed[0]) } };
+  }
+  if (mode === 'ANY') return 'required';
+  return null;
+}
+
+function normalizeGemini(body) {
+  const systemParts = body?.systemInstruction?.parts || body?.system_instruction?.parts || [];
+  const system = geminiTextFromParts(systemParts);
+  const messages = [];
+  for (const content of (Array.isArray(body.contents) ? body.contents : [])) {
+    const role = content?.role === 'model' ? 'assistant' : 'user';
+    const parts = (Array.isArray(content?.parts) ? content.parts : [])
+      .map(normalizeGeminiPart)
+      .filter(Boolean);
+    if (parts.length) messages.push({ role, content: parts });
+  }
+  return { system, messages };
+}
+
 function normalizeRequest(kind, body) {
-  const base = kind === 'anthropic' ? normalizeAnthropic(body) : normalizeOpenAI(body);
+  const base = kind === 'anthropic'
+    ? normalizeAnthropic(body)
+    : (kind === 'gemini' ? normalizeGemini(body) : normalizeOpenAI(body));
+  const generationConfig = kind === 'gemini' && body?.generationConfig && typeof body.generationConfig === 'object'
+    ? body.generationConfig
+    : {};
   return {
     kind,
     model: String(body.model || '').trim(),
     system: base.system,
     messages: base.messages,
-    tools: Array.isArray(body.tools) ? body.tools : [],
-    toolChoice: body.tool_choice || body.toolChoice || null,
+    tools: kind === 'gemini' ? normalizeGeminiTools(body.tools) : (Array.isArray(body.tools) ? body.tools : []),
+    toolChoice: kind === 'gemini' ? normalizeGeminiToolChoice(body) : (body.tool_choice || body.toolChoice || null),
     stream: body.stream === true,
-    maxTokens: Number(body.max_tokens || body.max_output_tokens || body.max_completion_tokens) || 4096,
-    temperature: Number.isFinite(Number(body.temperature)) ? Number(body.temperature) : undefined,
+    maxTokens: Number(body.max_tokens || body.max_output_tokens || body.max_completion_tokens || generationConfig.maxOutputTokens || generationConfig.max_output_tokens) || 4096,
+    temperature: Number.isFinite(Number(body.temperature ?? generationConfig.temperature)) ? Number(body.temperature ?? generationConfig.temperature) : undefined,
     extraParams: passthroughParams(kind, body),
     rawBody: body,
   };
@@ -401,6 +523,21 @@ function passthroughParams(kind, body = {}) {
     'thinking',
     'reasoning',
   ]);
+  if (kind === 'gemini') {
+    for (const key of [
+      'contents',
+      'systemInstruction',
+      'system_instruction',
+      'generationConfig',
+      'generation_config',
+      'toolConfig',
+      'tool_config',
+      'safetySettings',
+      'safety_settings',
+      'cachedContent',
+      'cached_content',
+    ]) blocked.add(key);
+  }
   const out = isPlainObject(body.extra_body) ? { ...body.extra_body } : {};
   for (const [key, value] of Object.entries(body)) {
     if (blocked.has(key)) continue;
@@ -523,11 +660,78 @@ function openAITools(tools) {
   return out.length ? out : undefined;
 }
 
+function geminiPartFromAnthropic(part) {
+  if (!part || typeof part !== 'object') return null;
+  if (part.type === 'text') return { text: String(part.text || '') };
+  if (part.type === 'image' && part.source?.data) {
+    return { inlineData: { mimeType: part.source.media_type || 'image/png', data: part.source.data } };
+  }
+  if (part.type === 'gemini_part' && part.part) return part.part;
+  return null;
+}
+
+function hasGeminiNativeOnlyParts(messages) {
+  return (messages || []).some(message =>
+    (message.content || []).some(part => part?.type === 'gemini_part')
+  );
+}
+
+function geminiContents(system, messages) {
+  const out = [];
+  for (const m of messages || []) {
+    const parts = (m.content || []).map(geminiPartFromAnthropic).filter(Boolean);
+    if (!parts.length) continue;
+    out.push({ role: m.role === 'assistant' ? 'model' : 'user', parts });
+  }
+  if (!out.length && system) out.push({ role: 'user', parts: [{ text: system }] });
+  return out;
+}
+
+function geminiTools(tools) {
+  const declarations = [];
+  for (const tool of tools || []) {
+    const fn = tool?.type === 'function' ? tool.function : tool;
+    const name = String(fn?.name || '').trim();
+    if (!name) continue;
+    declarations.push({
+      name,
+      description: String(fn.description || ''),
+      parameters: fn.parameters || fn.input_schema || { type: 'object', properties: {} },
+    });
+  }
+  return declarations.length ? [{ functionDeclarations: declarations }] : undefined;
+}
+
+function geminiToolConfig(toolChoice) {
+  if (!toolChoice) return undefined;
+  if (toolChoice === 'none') return { functionCallingConfig: { mode: 'NONE' } };
+  if (toolChoice === 'required') return { functionCallingConfig: { mode: 'ANY' } };
+  if (toolChoice === 'auto') return { functionCallingConfig: { mode: 'AUTO' } };
+  const name = toolChoice?.function?.name || toolChoice?.name;
+  if (name) return { functionCallingConfig: { mode: 'ANY', allowedFunctionNames: [String(name)] } };
+  return undefined;
+}
+
+function geminiGenerationConfig(ctx) {
+  const raw = ctx.rawBody?.generationConfig || ctx.rawBody?.generation_config || {};
+  const config = isPlainObject(raw) ? { ...raw } : {};
+  delete config.max_output_tokens;
+  config.maxOutputTokens = ctx.maxTokens;
+  if (ctx.temperature !== undefined) config.temperature = ctx.temperature;
+  return config;
+}
+
 function upstreamBody(conn, ctx) {
   const extras = {
     ...(ctx.preserveExtraParams === true ? (ctx.extraParams || {}) : {}),
     ...(ctx.paramOverrideExtras || {}),
   };
+  if (conn.format !== 'gemini' && hasGeminiNativeOnlyParts(ctx.messages)) {
+    throw new LocalProxyUpstreamError('Gemini Native 的 functionCall/functionResponse 或非图片 inlineData 只能路由到 Gemini Native 上游。', {
+      status: 400,
+      type: 'invalid_request_error',
+    });
+  }
   if (conn.format === 'anthropic') {
     const claudeCodeUnlock = claudeCodeUnlockForTarget(conn);
     if (claudeCodeUnlock) {
@@ -539,6 +743,18 @@ function upstreamBody(conn, ctx) {
       });
     }
     return cleanBody({ ...extras, model: conn.model, system: ctx.system || undefined, messages: ctx.messages, max_tokens: ctx.maxTokens, temperature: ctx.temperature, stream: false, thinking: ctx.rawBody?.thinking || undefined, tools: anthropicTools(ctx.tools), tool_choice: ctx.toolChoice || undefined });
+  }
+  if (conn.format === 'gemini') {
+    return cleanBody({
+      ...extras,
+      contents: geminiContents(ctx.system, ctx.messages),
+      systemInstruction: ctx.system ? { parts: [{ text: ctx.system }] } : undefined,
+      generationConfig: geminiGenerationConfig(ctx),
+      tools: geminiTools(ctx.tools),
+      toolConfig: geminiToolConfig(ctx.toolChoice),
+      safetySettings: ctx.rawBody?.safetySettings || ctx.rawBody?.safety_settings || undefined,
+      cachedContent: ctx.rawBody?.cachedContent || ctx.rawBody?.cached_content || undefined,
+    });
   }
   const codexUnlock = codexUnlockForTarget(conn);
   // wireApi=chat: 仅当客户端发来 Responses API 请求时，才做 Responses→Chat 转换
@@ -570,6 +786,7 @@ function upstreamBody(conn, ctx) {
 }
 
 function authHeaders(conn) {
+  if (conn.format === 'gemini') return { 'x-goog-api-key': conn.apiKey };
   if (conn.format === 'openai' && conn.unlockKind === 'codex') return codexUnlockHeaders(conn);
   if (conn.format === 'openai') return { authorization: `Bearer ${conn.apiKey}` };
   if (conn.format === 'anthropic' && conn.unlockKind === 'claudeCode') return claudeCodeUnlockHeaders(conn);
@@ -577,6 +794,22 @@ function authHeaders(conn) {
   if (conn.authScheme === 'bearer') h.authorization = `Bearer ${conn.apiKey}`;
   else h['x-api-key'] = conn.apiKey;
   return h;
+}
+
+function upstreamRequestOptions(conn, headers) {
+  const protocol = conn.protocol === 'http' ? 'http' : 'https';
+  const defaultPort = protocol === 'http' ? 80 : 443;
+  return {
+    module: protocol === 'http' ? http : https,
+    options: {
+      agent: protocol === 'http' ? HTTP_AGENT : httpsAgentFor(AGENT),
+      hostname: conn.hostname || conn.host,
+      port: Number(conn.port || defaultPort),
+      path: conn.apiPath,
+      method: 'POST',
+      headers,
+    },
+  };
 }
 
 function requestUpstream(conn, payload, enhancement = {}) {
@@ -589,7 +822,8 @@ function requestUpstream(conn, payload, enhancement = {}) {
         if (h && h.key) extraHeaders[h.key] = h.value;
       }
     }
-    const req = https.request({ agent: httpsAgentFor(AGENT), hostname: conn.host, port: 443, path: conn.apiPath, method: 'POST', headers: { 'content-type': 'application/json', 'content-length': body.length, ...authHeaders(conn), ...extraHeaders } }, apiRes => {
+    const requestConfig = upstreamRequestOptions(conn, { 'content-type': 'application/json', 'content-length': body.length, ...authHeaders(conn), ...extraHeaders });
+    const req = requestConfig.module.request(requestConfig.options, apiRes => {
       const chunks = [];
       apiRes.on('data', c => chunks.push(c));
       apiRes.on('end', () => {
@@ -617,7 +851,8 @@ function requestUpstreamStream(conn, payload, enhancement = {}) {
         if (h && h.key) extraHeaders[h.key] = h.value;
       }
     }
-    const req = https.request({ agent: httpsAgentFor(AGENT), hostname: conn.host, port: 443, path: conn.apiPath, method: 'POST', headers: { 'content-type': 'application/json', 'content-length': body.length, ...authHeaders(conn), ...extraHeaders } }, apiRes => {
+    const requestConfig = upstreamRequestOptions(conn, { 'content-type': 'application/json', 'content-length': body.length, ...authHeaders(conn), ...extraHeaders });
+    const req = requestConfig.module.request(requestConfig.options, apiRes => {
       resolve({
         statusCode: apiRes.statusCode || 0,
         headers: apiRes.headers || {},
@@ -664,6 +899,7 @@ async function* parseSSEStream(response) {
 function extractText(conn, json) {
   if (!json) return '';
   if (conn.format === 'anthropic') return (json.content || []).map(p => p?.text || '').filter(Boolean).join('');
+  if (conn.format === 'gemini') return (json.candidates?.[0]?.content?.parts || []).map(p => p?.text || '').filter(Boolean).join('');
   if (typeof json.output_text === 'string') return json.output_text;
   const chatText = json.choices?.[0]?.message?.content;
   if (typeof chatText === 'string') return chatText;
@@ -675,7 +911,55 @@ function extractText(conn, json) {
 function usageFrom(conn, json, fallbackIn, fallbackOut) {
   const u = json?.usage || {};
   if (conn.format === 'anthropic') return { inputTokens: Number(u.input_tokens) || fallbackIn, outputTokens: Number(u.output_tokens) || fallbackOut, cachedTokens: Number(u.cache_read_input_tokens) || 0 };
+  if (conn.format === 'gemini') {
+    const gm = json?.usageMetadata || json?.usage_metadata || {};
+    return {
+      inputTokens: Number(gm.promptTokenCount || gm.prompt_token_count) || fallbackIn,
+      outputTokens: Number(gm.candidatesTokenCount || gm.candidates_token_count) || fallbackOut,
+      cachedTokens: Number(gm.cachedContentTokenCount || gm.cached_content_token_count) || 0,
+    };
+  }
   return { inputTokens: Number(u.input_tokens || u.prompt_tokens) || fallbackIn, outputTokens: Number(u.output_tokens || u.completion_tokens) || fallbackOut, cachedTokens: Number(u.input_tokens_details?.cached_tokens || u.prompt_tokens_details?.cached_tokens) || 0 };
+}
+
+function parseJsonObject(text) {
+  if (!text) return {};
+  try {
+    const value = JSON.parse(text);
+    return isPlainObject(value) ? value : {};
+  } catch {
+    return {};
+  }
+}
+
+function extractToolCalls(conn, json) {
+  if (!json) return [];
+  if (conn.format === 'anthropic') {
+    return (json.content || [])
+      .filter(part => part?.type === 'tool_use' && part.name)
+      .map(part => ({ id: part.id || '', name: part.name, arguments: part.input || {} }));
+  }
+  if (conn.format === 'gemini') {
+    return (json.candidates?.[0]?.content?.parts || [])
+      .map(part => part?.functionCall || part?.function_call)
+      .filter(call => call?.name)
+      .map(call => ({ id: '', name: call.name, arguments: call.args || {} }));
+  }
+  const message = json.choices?.[0]?.message || {};
+  const chatCalls = Array.isArray(message.tool_calls) ? message.tool_calls : [];
+  const responseCalls = Array.isArray(json.output) ? json.output.filter(item => item?.type === 'function_call') : [];
+  return [
+    ...chatCalls.map(call => ({
+      id: call.id || '',
+      name: call.function?.name || '',
+      arguments: parseJsonObject(call.function?.arguments || '{}'),
+    })),
+    ...responseCalls.map(call => ({
+      id: call.call_id || call.id || '',
+      name: call.name || '',
+      arguments: parseJsonObject(call.arguments || '{}'),
+    })),
+  ].filter(call => call.name);
 }
 
 function upstreamMessage(r) { return r.json?.error?.message || r.json?.message || r.json?.detail || r.text || `HTTP ${r.statusCode}`; }
@@ -1017,6 +1301,7 @@ export async function execute(ctx) {
         recordLatency(r.durationMs);
         if (r.statusCode >= 200 && r.statusCode < 300) {
           const text = extractText(conn, r.json);
+          const toolCalls = extractToolCalls(conn, r.json);
           const usage = usageFrom(conn, r.json, estimateTokens(effective.messages, effective.system), Math.ceil(text.length / 4));
           recordUsage(usage);
           if (enhancement.requestLogging) {
@@ -1033,7 +1318,7 @@ export async function execute(ctx) {
           const responseObj = conn.wireApi === 'chat' && r.json
             ? chatCompletionToResponse(r.json, conn.model)
             : null;
-          return { conn, text, json: r.json, usage, extraHeaders: extraRespHeaders, responseObj };
+          return { conn, text, toolCalls, json: r.json, usage, extraHeaders: extraRespHeaders, responseObj };
         }
         const msg = compactText(upstreamMessage(r));
         // ── 智能重试：错误驱动的请求自愈（仅 anthropic 格式上游）──
@@ -1191,6 +1476,39 @@ function sendAnthropic(ctx, res, result) {
   sendJson(res, 200, message, extra);
 }
 
+function geminiUsageMetadata(usage = {}) {
+  const prompt = Number(usage.inputTokens) || 0;
+  const candidates = Number(usage.outputTokens) || 0;
+  const cached = Number(usage.cachedTokens) || 0;
+  const out = {
+    promptTokenCount: prompt,
+    candidatesTokenCount: candidates,
+    totalTokenCount: prompt + candidates,
+  };
+  if (cached > 0) out.cachedContentTokenCount = cached;
+  return out;
+}
+
+function sendGemini(ctx, res, result) {
+  const extra = result.extraHeaders || {};
+  const parts = [];
+  if (result.text) parts.push({ text: result.text });
+  for (const call of result.toolCalls || []) {
+    parts.push({ functionCall: { name: call.name, args: call.arguments || {} } });
+  }
+  if (!parts.length) parts.push({ text: '' });
+  const body = {
+    candidates: [{
+      content: { role: 'model', parts },
+      finishReason: (result.toolCalls || []).length ? 'STOP' : 'STOP',
+      index: 0,
+    }],
+    usageMetadata: geminiUsageMetadata(result.usage),
+    modelVersion: ctx.model,
+  };
+  sendJson(res, 200, body, extra);
+}
+
 function handleCountTokens(body, res) {
   const ctx = normalizeRequest('anthropic', body);
   sendJson(res, 200, { input_tokens: estimateTokens(ctx.messages, ctx.system) });
@@ -1206,15 +1524,35 @@ export async function handleLocalProxyRequest(req, res, body) {
     ctx.proxyRouteScope = scope;
     return ctx;
   };
-  if (req.method === 'GET' && (p === '/v1/models' || p === '/codex/v1/models' || p === '/anthropic/v1/models')) { handleModels(req, res); return; }
+  if (req.method === 'GET' && (p === '/v1/models' || p === '/codex/v1/models' || p === '/anthropic/v1/models' || p === '/v1beta/models')) { handleModels(req, res); return; }
   let json;
   try { json = body && body.length ? JSON.parse(body.toString('utf8')) : {}; }
   catch (e) { sendError(res, 400, `请求 JSON 解析失败: ${e.message}`); return; }
+  if (p === '/__byok/web-search/test') {
+    const query = String(json.query || '').trim();
+    if (!query) { sendError(res, 400, '测试搜索 query 不能为空'); return; }
+    try {
+      const result = await executeSearchWithFailover([json.source || {}], query, Number(json.maxResults) || 3);
+      sendJson(res, 200, { results: result.results, source: result.source, attempts: result.attempts });
+    } catch (e) {
+      sendError(res, 502, e.message || '搜索源测试失败', 'search_source_error');
+    }
+    return;
+  }
   if (p.endsWith('/messages/count_tokens')) { handleCountTokens(json, res); return; }
   try {
     if (p === '/v1/chat/completions' || p === '/codex/v1/chat/completions') { const ctx = attachScope(normalizeRequest('openai', json)); sendOpenAIChat(ctx, res, await execute(ctx)); return; }
     if (p === '/v1/responses' || p === '/codex/v1/responses') { const ctx = attachScope(normalizeRequest('responses', json)); sendOpenAIResponses(ctx, res, await execute(ctx)); return; }
     if (p === '/anthropic/v1/messages' || p === '/anthropic/messages') { const ctx = normalizeRequest('anthropic', json); sendAnthropic(ctx, res, await execute(ctx)); return; }
+    if (isGeminiGenerateContentPath(p)) {
+      if (geminiMethodFromPath(p) === 'streamGenerateContent') {
+        sendGeminiError(res, 501, 'Gemini Native streamGenerateContent 暂未接入；请使用 generateContent。', 'UNIMPLEMENTED');
+        return;
+      }
+      const ctx = attachScope(normalizeRequest('gemini', { ...json, model: geminiModelFromPath(p), stream: false }));
+      sendGemini(ctx, res, await execute(ctx));
+      return;
+    }
     sendError(res, 404, `未知本地代理路径: ${p}`);
   } catch (e) {
     if (e.upstreamResponse) {
@@ -1226,6 +1564,13 @@ export async function handleLocalProxyRequest(req, res, body) {
     const message = e.message || String(e);
     if (p.startsWith('/anthropic/')) {
       sendAnthropicError(res, status, message, type);
+      return;
+    }
+    if (p.startsWith('/v1beta/')) {
+      const geminiStatus = type === 'authentication_error' ? 'UNAUTHENTICATED'
+        : (type === 'permission_error' ? 'PERMISSION_DENIED'
+          : (type === 'not_found_error' ? 'NOT_FOUND' : 'INVALID_ARGUMENT'));
+      sendGeminiError(res, status, message, geminiStatus);
       return;
     }
     sendError(res, status, message, type);

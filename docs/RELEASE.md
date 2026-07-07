@@ -71,7 +71,6 @@ The release workflow needs these repository secrets:
 
 - `TAURI_SIGNING_PRIVATE_KEY`
 - `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`
-- `RELEASE_REPO_TOKEN` if assets are mirrored to a separate release repository
 
 The private key file `tauri-sign.key` must never be committed.
 
@@ -91,14 +90,11 @@ The private key file `tauri-sign.key` must never be committed.
 
 ## Release Repository
 
-By default, updater metadata points at:
+Release assets and updater metadata live in the source repository release:
 
 ```text
-https://github.com/soulvon/AnyBridge-Release/releases/latest/download/latest.json
+https://github.com/soulvon/AnyBridge/releases/latest/download/latest.json
 ```
 
-If releases should live in the source repository instead, update:
-
-- `.github/workflows/release.yml`
-- `src-tauri/tauri.conf.json`
-- `scripts/release/build_merged_latest_json.cjs` arguments
+Do not mirror release assets or updater metadata to a separate release
+repository.

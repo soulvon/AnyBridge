@@ -435,6 +435,8 @@ pub fn import_providers(
             wire_api: String::new(),
             model_catalog: Vec::new(),
             codex_chat_reasoning: None,
+            agents_config: None,
+            agents: Vec::new(),
         };
         store.providers.push(provider);
         imported += 1;

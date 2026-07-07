@@ -245,6 +245,16 @@ pub struct Provider {
         skip_serializing_if = "Option::is_none"
     )]
     pub codex_chat_reasoning: Option<CodexChatReasoningConfig>,
+    /// Codex 专有：配置级子代理全局调度配置
+    #[serde(
+        rename = "agentsConfig",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub agents_config: Option<AgentsGlobalConfig>,
+    /// Codex 专有：配置级子代理定义
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub agents: Vec<CodexAgent>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -276,6 +286,67 @@ pub struct ProviderUnlockConfig {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub include: Option<serde_json::Value>,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CodexAgent {
+    pub name: String,
+    pub description: String,
+    #[serde(rename = "developerInstructions")]
+    pub developer_instructions: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub model: String,
+    #[serde(
+        rename = "modelReasoningEffort",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub model_reasoning_effort: Option<String>,
+    #[serde(
+        rename = "sandboxMode",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub sandbox_mode: Option<String>,
+    #[serde(
+        rename = "nicknameCandidates",
+        default,
+        skip_serializing_if = "Vec::is_empty"
+    )]
+    pub nickname_candidates: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AgentsGlobalConfig {
+    #[serde(rename = "maxThreads", default = "default_agent_max_threads")]
+    pub max_threads: usize,
+    #[serde(rename = "maxDepth", default = "default_agent_max_depth")]
+    pub max_depth: usize,
+    #[serde(rename = "jobMaxRuntimeSeconds", default = "default_agent_job_timeout")]
+    pub job_max_runtime_seconds: u64,
+}
+
+fn default_agent_max_threads() -> usize {
+    6
+}
+
+fn default_agent_max_depth() -> usize {
+    1
+}
+
+fn default_agent_job_timeout() -> u64 {
+    1800
+}
+
+impl Default for AgentsGlobalConfig {
+    fn default() -> Self {
+        Self {
+            max_threads: default_agent_max_threads(),
+            max_depth: default_agent_max_depth(),
+            job_max_runtime_seconds: default_agent_job_timeout(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CodexConfig {
     pub id: String,
@@ -328,6 +399,16 @@ pub struct CodexConfig {
         skip_serializing_if = "Option::is_none"
     )]
     pub codex_chat_reasoning: Option<CodexChatReasoningConfig>,
+    /// Codex 配置级子代理全局调度配置。
+    #[serde(
+        rename = "agentsConfig",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub agents_config: Option<AgentsGlobalConfig>,
+    /// Codex 配置级子代理定义。
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub agents: Vec<CodexAgent>,
 }
 
 fn default_wire_api() -> String {
@@ -491,6 +572,8 @@ impl From<CodexConfig> for Provider {
             inject_models: config.inject_models,
             model_catalog: config.model_catalog,
             codex_chat_reasoning: config.codex_chat_reasoning,
+            agents_config: config.agents_config,
+            agents: config.agents,
         }
     }
 }
@@ -519,6 +602,8 @@ impl From<OpenCodeConfig> for Provider {
             inject_models: true,
             model_catalog: Vec::new(),
             codex_chat_reasoning: None,
+            agents_config: None,
+            agents: Vec::new(),
         }
     }
 }
@@ -547,6 +632,8 @@ impl From<ClaudeCodeConfig> for Provider {
             inject_models: true,
             model_catalog: Vec::new(),
             codex_chat_reasoning: None,
+            agents_config: None,
+            agents: Vec::new(),
         }
     }
 }

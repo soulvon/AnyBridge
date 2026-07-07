@@ -187,6 +187,9 @@ function transformModelMap(json) {
   const visionModels = (json && json.visionModels && typeof json.visionModels === 'object')
     ? json.visionModels
     : {};
+  const searchModels = (json && json.searchModels && typeof json.searchModels === 'object')
+    ? json.searchModels
+    : {};
   const renameRule = (json && json.proxyRouteRenameRule && typeof json.proxyRouteRenameRule === 'object')
     ? json.proxyRouteRenameRule
     : {};
@@ -206,6 +209,9 @@ function transformModelMap(json) {
       ? String(enhancement.visionMultiImageMode)
       : 'single',
     visionBatchSize: positiveInt(enhancement.visionBatchSize, 3, 1),
+    webSearchEnabled: enhancement.webSearchEnabled === true,
+    webSearchMaxResults: positiveInt(enhancement.webSearchMaxResults, 5, 1),
+    webSearchMaxRounds: positiveInt(enhancement.webSearchMaxRounds, 3, 1),
     autoRouting: enhancement.autoRouting !== false,
     unlockModels: enhancement.unlockModels !== false,
     systemPromptPrefix: String(enhancement.systemPromptPrefix || ''),
@@ -228,6 +234,9 @@ function transformModelMap(json) {
     enhancement: normalizedEnhancement,
     visionModels: {
       imageModels: Array.isArray(visionModels.imageModels) ? visionModels.imageModels : [],
+    },
+    searchModels: {
+      searchSources: Array.isArray(searchModels.searchSources) ? searchModels.searchSources : [],
     },
     proxyRouteRenameRule: {
       enabled: renameRule.enabled !== false,
