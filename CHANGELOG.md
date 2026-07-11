@@ -2,6 +2,12 @@
 
 All notable changes to AnyBridge will be documented in this file.
 
+## v0.2.8 - 2026-07-09
+
+- 新增扩展中心（Extensions Center）UI：统一浏览、检测、更新 CPA Suite 等本地 AI Gateway 组件状态。
+- 后端新增 `extensions` 命令集与相关依赖，支持本地套件版本检测、端口健康探测与 GitHub Release 元数据查询。
+- 同步前端样式与交互资源，改进 UI 细节与扩展页面体验。
+
 ## v0.2.7 - 2026-06-30
 
 - 修复 Windows 自动更新安装时可能被后台代理进程占用，导致无法覆盖安装的问题。
