@@ -2904,6 +2904,7 @@
 .cpa-deploy-dir-row .settings-input:focus {
   border-color: var(--accent);
 }
+.cpa-deploy-dir-browse,
 .cpa-deploy-dir-reset {
   flex-shrink: 0;
   font-size: 12px;

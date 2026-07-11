@@ -4199,6 +4199,65 @@ html[data-theme="dark"] .theme-setting-moon {
   word-break: break-all;
 }
 
+.extension-settings-hint {
+  margin: 0;
+  padding: 12px 16px 14px;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.55;
+  border-top: 1px solid var(--border);
+  background: rgba(18, 97, 166, 0.04);
+}
+
+[data-theme="dark"] .extension-settings-hint {
+  background: rgba(90, 176, 230, 0.06);
+}
+
+.extension-detail-settings {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--bg-card);
+}
+
+.extension-detail-setting-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.extension-detail-setting-row:last-child {
+  border-bottom: none;
+}
+
+.extension-detail-setting-label {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.extension-detail-setting-label strong {
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.extension-detail-setting-label span {
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 600;
+  word-break: break-all;
+  line-height: 1.45;
+}
+
 .extensions-log-panel {
   padding: 18px;
   display: flex;

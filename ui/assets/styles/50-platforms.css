@@ -62,39 +62,83 @@
   font-weight: inherit;
 }
 
-.platform-console-actions .platform-proxy-primary.is-connected {
+/* 已接入：覆盖 btn-primary 渐变，改为实心成功绿 */
+.platform-console-actions .btn-primary.platform-proxy-primary.is-connected,
+.platform-console-actions .btn-primary.platform-proxy-primary.is-connected:hover:not(:disabled),
+.platform-console-actions .btn-primary.platform-proxy-primary.is-connected:focus-visible {
   background: var(--success);
   border-color: var(--success);
+  color: var(--button-on-solid);
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.22),
     inset 0 -1px 0 rgba(0, 0, 0, 0.08),
-    0 10px 24px -14px var(--success);
+    0 10px 24px -14px color-mix(in srgb, var(--success) 70%, transparent);
 }
 
-.platform-console-actions .platform-proxy-primary.is-connected:hover:not(:disabled) {
-  background: var(--success);
-  border-color: var(--success);
+.platform-console-actions .btn-primary.platform-proxy-primary.is-connected:hover:not(:disabled) {
+  filter: brightness(1.04);
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.28),
     inset 0 -1px 0 rgba(0, 0, 0, 0.08),
-    0 14px 30px -14px var(--success);
+    0 14px 30px -14px color-mix(in srgb, var(--success) 78%, transparent);
 }
 
+.platform-console-actions .btn-primary.platform-proxy-primary.is-connected :is(svg, span) {
+  color: inherit;
+  stroke: currentColor;
+}
+
+/* 刷新状态：中性 ghost，略强调边框，不抢主操作 */
+.platform-console-actions .platform-refresh-proxy {
+  color: var(--text-secondary);
+  border-color: color-mix(in srgb, var(--border-strong, var(--border)) 88%, var(--accent) 12%);
+  background: color-mix(in srgb, var(--bg-card, #fff) 92%, var(--accent-light, rgba(18, 97, 166, 0.08)) 8%);
+}
+
+.platform-console-actions .platform-refresh-proxy:hover:not(:disabled) {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 42%, var(--border) 58%);
+  background: var(--accent-light, rgba(18, 97, 166, 0.10));
+}
+
+/* 停止接入：已接入时危险红描边 */
 .platform-console-actions .platform-stop-proxy.is-danger:not(:disabled) {
   color: var(--danger);
-  border-color: var(--danger);
+  border-color: color-mix(in srgb, var(--danger) 72%, var(--border) 28%);
+  background: var(--danger-dim);
+  font-weight: 650;
 }
 
 .platform-console-actions .platform-stop-proxy.is-danger:hover:not(:disabled) {
-  background: var(--danger-dim);
   color: var(--danger);
   border-color: var(--danger);
+  background: color-mix(in srgb, var(--danger-dim) 70%, var(--danger) 12%);
 }
 
 .platform-console-actions .platform-stop-proxy:disabled {
-  color: var(--text-tertiary);
+  color: var(--text-muted);
   border-color: var(--border);
   background: transparent;
+  opacity: 0.72;
+  cursor: not-allowed;
+}
+
+[data-theme="dark"] .platform-console-actions .platform-refresh-proxy {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(255, 255, 255, 0.12);
+  color: var(--text-secondary);
+}
+
+[data-theme="dark"] .platform-console-actions .platform-refresh-proxy:hover:not(:disabled) {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 48%, rgba(255, 255, 255, 0.12) 52%);
+  background: var(--accent-light);
+}
+
+[data-theme="dark"] .platform-console-actions .platform-stop-proxy.is-danger:not(:disabled) {
+  color: var(--danger);
+  border-color: color-mix(in srgb, var(--danger) 65%, rgba(255, 255, 255, 0.12) 35%);
+  background: var(--danger-dim);
 }
 
 .platform-kite-ad {
@@ -4424,19 +4468,43 @@ button.codex-reconfigure-action:disabled {
   background: var(--bg-card);
 }
 
-.cb-model-table .cb-col-select { width: 4%; }
-.cb-model-table .cb-col-id { width: 34%; }
-.cb-model-table .cb-col-vendor { width: 20%; }
+.cb-model-table .cb-col-select { width: 44px; }
+.cb-model-table .cb-col-id { width: 26%; }
+.cb-model-table .cb-col-vendor { width: 14%; }
+.cb-model-table .cb-col-context { width: 88px; }
 .cb-model-table .cb-col-caps { width: 22%; }
-.cb-model-table .cb-col-enabled { width: 8%; }
-.cb-model-table .cb-col-action { width: 12%; }
+.cb-model-table .cb-col-enabled { width: 72px; }
+.cb-model-table .cb-col-action { width: 96px; }
 
-.wb-model-table .wb-col-select { width: 4%; }
-.wb-model-table .wb-col-id { width: 34%; }
-.wb-model-table .wb-col-vendor { width: 20%; }
+.wb-model-table .wb-col-select { width: 44px; }
+.wb-model-table .wb-col-id { width: 26%; }
+.wb-model-table .wb-col-vendor { width: 14%; }
+.wb-model-table .wb-col-context { width: 88px; }
 .wb-model-table .wb-col-caps { width: 22%; }
-.wb-model-table .wb-col-enabled { width: 8%; }
-.wb-model-table .wb-col-action { width: 12%; }
+.wb-model-table .wb-col-enabled { width: 72px; }
+.wb-model-table .wb-col-action { width: 96px; }
+
+.cb-context-cell,
+.wb-context-cell {
+  text-align: center;
+  white-space: nowrap;
+}
+
+.cb-context-pill,
+.wb-context-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-secondary);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 22%, var(--border-strong));
+}
 
 .cb-model-table th {
   text-align: left;
@@ -4902,23 +4970,54 @@ tr:hover .model-id-copy-btn {
   transition: background var(--duration-fast) var(--ease);
 }
 
-.cb-model-table thead th:nth-child(5),
+/* 7 列表头/内容对齐：勾选、上下文、启用、操作居中；其余左对齐 */
+.cb-model-table thead th:nth-child(1),
+.cb-model-table thead th:nth-child(4),
 .cb-model-table thead th:nth-child(6),
-.wb-model-table thead th:nth-child(5),
+.cb-model-table thead th:nth-child(7),
+.wb-model-table thead th:nth-child(1),
+.wb-model-table thead th:nth-child(4),
 .wb-model-table thead th:nth-child(6),
-.cb-model-table tbody td:nth-child(5),
+.wb-model-table thead th:nth-child(7),
+.cb-model-table tbody td:nth-child(1),
+.cb-model-table tbody td:nth-child(4),
 .cb-model-table tbody td:nth-child(6),
-.wb-model-table tbody td:nth-child(5),
-.wb-model-table tbody td:nth-child(6) {
+.cb-model-table tbody td:nth-child(7),
+.wb-model-table tbody td:nth-child(1),
+.wb-model-table tbody td:nth-child(4),
+.wb-model-table tbody td:nth-child(6),
+.wb-model-table tbody td:nth-child(7) {
   text-align: center;
 }
 
-.cb-model-table tbody td:nth-child(5),
+.cb-model-table thead th:nth-child(1),
+.cb-model-table thead th:nth-child(4),
+.cb-model-table thead th:nth-child(6),
+.cb-model-table thead th:nth-child(7),
+.wb-model-table thead th:nth-child(1),
+.wb-model-table thead th:nth-child(4),
+.wb-model-table thead th:nth-child(6),
+.wb-model-table thead th:nth-child(7),
+.cb-model-table tbody td:nth-child(1),
+.cb-model-table tbody td:nth-child(4),
 .cb-model-table tbody td:nth-child(6),
-.wb-model-table tbody td:nth-child(5),
-.wb-model-table tbody td:nth-child(6) {
+.cb-model-table tbody td:nth-child(7),
+.wb-model-table tbody td:nth-child(1),
+.wb-model-table tbody td:nth-child(4),
+.wb-model-table tbody td:nth-child(6),
+.wb-model-table tbody td:nth-child(7) {
   padding-left: 10px;
   padding-right: 10px;
+}
+
+.cb-model-table tbody td:nth-child(6) .toggle-switch,
+.wb-model-table tbody td:nth-child(6) .toggle-switch {
+  margin: 0 auto;
+}
+
+.cb-model-table tbody td:nth-child(7) > div,
+.wb-model-table tbody td:nth-child(7) > div {
+  justify-content: center;
 }
 
 .cb-model-table tbody tr:last-child td,
@@ -9034,4 +9133,22 @@ td.display-name-cell {
 
 .reveal-path:hover {
   color: var(--accent);
+}
+
+
+/* 代理页 · 统计 / 日志 tab 挂载区 */
+.proxy-stats-mount,
+.proxy-logs-mount {
+  min-height: 240px;
+}
+.proxy-stats-mount .proxy-analytics {
+  margin: 0;
+}
+.proxy-logs-mount .proxy-logs-panel {
+  margin: 0;
+}
+.proxy-logs-mount .proxy-logs-box,
+.proxy-logs-mount #fullLog {
+  min-height: 360px;
+  max-height: min(70vh, 720px);
 }
