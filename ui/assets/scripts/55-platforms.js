@@ -100,6 +100,37 @@ function platformDef(platformId) {
   };
 }
 
+function isRevealablePath(path) {
+  const s = String(path || '').trim();
+  if (!s || s.startsWith('~')) return false;
+  return s.includes('/') || s.includes('\\') || /^[A-Za-z]:/.test(s);
+}
+
+async function revealConfigPath(path) {
+  if (!isRevealablePath(path)) return;
+  if (!invoke && !bindTauriBridge()) return;
+  try {
+    await invoke('reveal_path', { path: String(path) });
+  } catch (e) {
+    if (typeof addLog === 'function') addLog('err', '打开配置目录失败: ' + e);
+  }
+}
+
+function bindRevealPathLabel(labelId, path) {
+  const el = document.getElementById(labelId);
+  if (!el) return;
+  el.textContent = path;
+  if (isRevealablePath(path)) {
+    el.classList.add('reveal-path');
+    el.title = '点击打开所在文件夹';
+    el.onclick = () => revealConfigPath(path);
+  } else {
+    el.classList.remove('reveal-path');
+    el.title = '';
+    el.onclick = null;
+  }
+}
+
 function codexDesktopAutomationSupported() {
   const ua = `${navigator.userAgent || ''} ${navigator.platform || ''}`;
   return /\bWindows\b|Win32|Win64/i.test(ua);
@@ -605,7 +636,6 @@ function renderCodexPageStatus(info) {
   const headline = document.getElementById('platform-codex-headline');
   const pill = document.getElementById('platform-codex-state-pill');
   const currentLabel = document.getElementById('codex-current-label');
-  const configPathLabel = document.getElementById('codex-config-path-label');
 
   const meta = codexStatusMeta(info);
   if (headline) headline.textContent = '管理 Codex 的官方登录配置和第三方 API 配置方案，切换后重启 Codex 生效。';
@@ -615,31 +645,31 @@ function renderCodexPageStatus(info) {
     pill.className = `codex-state-pill ${meta.tone}`;
   }
   if (currentLabel) currentLabel.textContent = meta.label;
-  if (configPathLabel) configPathLabel.textContent = info.configPath || platformDef('codex').configHint;
+  bindRevealPathLabel('codex-config-path-label', info.configPath || platformDef('codex').configHint);
   renderCodexConfigList(info);
 }
 
 function renderClaudeCodePageStatus(info) {
   const headline = document.getElementById('platform-claude-code-headline');
   const currentLabel = document.getElementById('claude-code-current-label');
-  const configPathLabel = document.getElementById('claude-code-config-path-label');
+
   const meta = claudeCodeStatusMeta(info);
 
   if (headline) headline.textContent = '管理 Claude Code 的官方环境和第三方 Anthropic API 配置，切换后重启 Claude Code 生效。';
   if (currentLabel) currentLabel.textContent = meta.label;
-  if (configPathLabel) configPathLabel.textContent = info.configPath || platformDef('claude-code').configHint;
+  bindRevealPathLabel('claude-code-config-path-label', info.configPath || platformDef('claude-code').configHint);
   renderClaudeCodeConfigList(info);
 }
 
 function renderOpenCodePageStatus(info) {
   const headline = document.getElementById('platform-opencode-headline');
   const currentLabel = document.getElementById('opencode-current-label');
-  const configPathLabel = document.getElementById('opencode-config-path-label');
+
   const meta = openCodeStatusMeta(info);
 
   if (headline) headline.textContent = '管理 OpenCode 的独立 provider 配置。应用时追加到 opencode.json，并可设为当前 model，不覆盖其他 provider。';
   if (currentLabel) currentLabel.textContent = meta.label;
-  if (configPathLabel) configPathLabel.textContent = info.configPath || platformDef('opencode').configHint;
+  bindRevealPathLabel('opencode-config-path-label', info.configPath || platformDef('opencode').configHint);
   renderOpenCodeConfigList(info);
 }
 
@@ -1527,8 +1557,8 @@ function codexActionIcon(type) {
   return '<svg aria-hidden="true" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"></path><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"></path></svg>';
 }
 
-function codexCurrentAction(label = '当前使用') {
-  return `<span class="codex-current-action">${platformEsc(label)}</span>`;
+function codexReconfigureAction(action, disabled) {
+  return `<button class="codex-current-action codex-reconfigure-action" type="button" title="重新写入当前配置" ${disabled ? 'disabled' : ''} onclick="${platformEsc(action)}">重新配置</button>`;
 }
 
 function renderCodexConfigCard(config) {
@@ -1554,8 +1584,11 @@ function renderCodexConfigCard(config) {
   const switchButton = config.current || !config.action
     ? ''
     : `<button class="btn-primary codex-card-action codex-switch-action" ${disabled ? 'disabled' : ''} onclick="${platformEsc(config.action)}">${platformEsc(config.actionLabel || '切换')}</button>`;
+  const reconfigureButton = config.current && config.action
+    ? `${codexReconfigureAction(config.action, disabled)}`
+    : '';
   const actions = config.current
-    ? `<div class="codex-config-actions">${editButton}${deleteButton}${configButton}${removeButton}${startButton}${codexCurrentAction(config.currentLabel || '当前使用')}</div>`
+    ? `<div class="codex-config-actions">${editButton}${deleteButton}${configButton}${removeButton}${startButton}${reconfigureButton}</div>`
     : (editButton || deleteButton || configButton || removeButton || switchButton || startButton ? `<div class="codex-config-actions">${editButton}${deleteButton}${configButton}${removeButton}${switchButton}${startButton}</div>` : '<span class="codex-row-muted">-</span>');
   const agentCount = Array.isArray(config.agents) ? config.agents.length : Number(config.agentCount || 0);
   const meta = codexConfigMetaLine([
@@ -1569,6 +1602,7 @@ function renderCodexConfigCard(config) {
       <div class="codex-config-main">
         <div class="codex-config-title">
           <strong title="${platformEsc(config.name)}">${platformEsc(config.name)}</strong>
+          ${config.current ? '<span class="codex-config-badge-current">当前使用</span>' : ''}
           ${codexConfigBadge(config.typeLabel || '第三方', config.tone)}
           ${config.injectBadge === 'success'
             ? '<span class="codex-config-badge-success">✓ codex 桌面版正确显示模型</span>'
@@ -3334,7 +3368,7 @@ async function applyCodexProviderConfig(providerId) {
   }
 }
 
-async function startCodexWithCdp(injectModels = false) {
+async function startCodexWithCdp(injectModels = true) {
   if (!codexDesktopAutomationSupported()) {
     const msg = codexDesktopUnsupportedMessage();
     if (typeof addLog === 'function') addLog('warn', msg);
@@ -3425,7 +3459,7 @@ function cursorSetBusy(busy) {
   const root = cursorPageRoot();
   if (!root) return;
   root
-    .querySelectorAll('.cursor-primary-action, .cursor-mini-btn, .cursor-step-action, .cursor-card-action, .cursor-hero-actions .btn-ghost')
+    .querySelectorAll('.cursor-primary-action, .cursor-mini-btn, .cursor-step-action, .cursor-card-action, .cursor-hero-actions button')
     .forEach(btn => { btn.disabled = !!busy; });
 }
 
@@ -3725,7 +3759,7 @@ function cursorOpenProxyModels() {
 
 function cursorOpenStats() {
   if (typeof openProxyPanel === 'function') {
-    openProxyPanel('overview');
+    openProxyPanel('stats');
   } else {
     navigateTo('proxy');
   }
@@ -4420,9 +4454,8 @@ const WB_PLATFORM = 'workbuddy';
 function cbApplyConfigMeta(prefix, data, fallbackPath) {
   const path = data && data._configPath ? String(data._configPath) : fallbackPath;
   const scope = data && data._configScope ? String(data._configScope) : 'user';
-  const label = document.getElementById(`${prefix}-config-path-label`);
+  bindRevealPathLabel(`${prefix}-config-path-label`, path);
   const scopeLabel = document.getElementById(`${prefix}-config-scope-label`);
-  if (label) label.textContent = path;
   if (scopeLabel) scopeLabel.textContent = scope === 'project' ? '项目级' : '用户级';
   return { path, scope };
 }

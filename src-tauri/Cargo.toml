@@ -1,6 +1,6 @@
 [package]
 name = "anybridge"
-version = "0.2.7"
+version = "0.2.8"
 description = "AnyBridge desktop client"
 authors = ["soulvon"]
 edition = "2021"
@@ -25,7 +25,7 @@ tauri-plugin-shell = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tokio = { version = "1", features = ["full"] }
-reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-features = false }
+reqwest = { version = "0.12", features = ["json", "rustls-tls", "stream", "blocking"], default-features = false }
 flate2 = "1"
 dirs = "5"
 rcgen = "0.13"
@@ -39,6 +39,10 @@ sha1 = "0.10"
 hex = "0.4"
 rusqlite = { version = "0.32", features = ["bundled"] }
 snap = "1"
+zip = "2"
+tar = "0.4"
+rand = "0.8"
+futures-util = "0.3"
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.59", features = [

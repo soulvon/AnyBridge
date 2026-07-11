@@ -1583,7 +1583,7 @@ async function testSearchSource(idx) {
   ensureModelMapDefaults();
   const src = modelMapStore.searchModels.searchSources[idx];
   if (!src) return;
-  const query = window.prompt('输入测试搜索关键词', '今日新闻');
+  const query = await showCustomPrompt('输入测试搜索关键词', '今日新闻', '搜索测试');
   if (!query) return;
   proxySearchTestingId = src.id;
   renderProxyEnhancement();
@@ -1914,7 +1914,7 @@ function normalizeUnlockScope(mode) {
 }
 
 function normalizeSlotVisibilityMode(mode) {
-  return Object.prototype.hasOwnProperty.call(SLOT_VISIBILITY_LABELS, mode) ? mode : 'mapped';
+  return Object.prototype.hasOwnProperty.call(SLOT_VISIBILITY_LABELS, mode) ? mode : 'official';
 }
 
 function ensureSlotVisibilityArray() {
@@ -2015,7 +2015,7 @@ function updateSlotPolicySummary() {
   const rows = slotVisibilityRows || [];
   const visibleCount = rows.filter(r => r.visible).length;
   const overrideCount = ensureSlotVisibilityArray().length;
-  const shortLabel = SLOT_VISIBILITY_SHORT_LABELS[visibility] || SLOT_VISIBILITY_SHORT_LABELS.mapped;
+  const shortLabel = SLOT_VISIBILITY_SHORT_LABELS[visibility] || SLOT_VISIBILITY_SHORT_LABELS.official;
   summary.textContent = [
     `当前策略：${shortLabel}`,
     rows.length ? `已显示 ${visibleCount} / ${rows.length}` : '',
@@ -2381,6 +2381,7 @@ async function deleteSlot(uid) {
 // ─── 添加映射模态框 ───
 let selectedSlotUid = '';
 let selectedMappingTargets = []; // [{providerId, model, apiFormat?, unlock?}]
+let slotDisplayNameMode = 'mapped'; // 添加映射时默认使用映射模型名
 let slotCatalogScope = 'account';
 let slotWasManuallySelected = false;
 const AUTO_ROUTE_VALUE = 'auto';
@@ -2636,6 +2637,10 @@ function toggleMappingModelTarget(providerId, model) {
   }
   renderMappingModelCatalog();
   maybeAutoSelectRecommendedSlot();
+  // 映射目标变化时，若当前为「使用映射模型名」则同步显示名
+  if (slotDisplayNameMode === 'mapped') {
+    applyDisplayNameByMode();
+  }
 }
 
 function slotCatalogStats(used) {
@@ -2866,38 +2871,38 @@ function selectCatalogSlot(uid, name) {
   if (nameEl) nameEl.textContent = name;
   if (idEl) idEl.textContent = uid;
 
-  // 同步显示名输入框为当前选中的模型名（方便用户基于原始名二次修改）
-  const displayInput = document.getElementById('slot-display');
-  if (displayInput) {
-    displayInput.value = name || '';
-  }
-  updateDisplayNameButtons('original');
+  // 按当前显示名模式同步输入框（默认 mapped：用映射模型名）
+  applyDisplayNameByMode();
 
   // 重新绘制左侧以更新高亮
   renderSlotCatalogList();
 }
 
 function useOriginalModelName() {
-  const uid = selectedSlotUid || document.getElementById('slot-uid-select')?.value || document.getElementById('slot-edit-uid')?.value;
-  const name = uid ? originalNameOf(uid) : '';
-  const displayInput = document.getElementById('slot-display');
-  if (displayInput) {
-    displayInput.value = name;
-  }
-  updateDisplayNameButtons('original');
+  slotDisplayNameMode = 'original';
+  applyDisplayNameByMode();
 }
 
 function useMappedModelName() {
-  const firstTarget = selectedMappingTargets && selectedMappingTargets[0];
-  const name = firstTarget ? firstTarget.model : '';
+  slotDisplayNameMode = 'mapped';
+  applyDisplayNameByMode();
+}
+
+function applyDisplayNameByMode() {
   const displayInput = document.getElementById('slot-display');
-  if (displayInput) {
-    displayInput.value = name;
+  if (!displayInput) return;
+  if (slotDisplayNameMode === 'mapped') {
+    const firstTarget = selectedMappingTargets && selectedMappingTargets[0];
+    displayInput.value = firstTarget ? firstTarget.model : '';
+  } else {
+    const uid = selectedSlotUid || document.getElementById('slot-uid-select')?.value || document.getElementById('slot-edit-uid')?.value;
+    displayInput.value = uid ? originalNameOf(uid) : '';
   }
-  updateDisplayNameButtons('mapped');
+  updateDisplayNameButtons(slotDisplayNameMode);
 }
 
 function updateDisplayNameButtons(active) {
+  slotDisplayNameMode = active === 'mapped' ? 'mapped' : 'original';
   const origBtn = document.getElementById('btn-use-original-name');
   const mappedBtn = document.getElementById('btn-use-mapped-name');
   if (origBtn) {
@@ -2982,19 +2987,23 @@ async function openSlotEditor(uid) {
   // 5. 重绘左侧平铺卡片目录
   renderSlotCatalogList();
 
-  // 设置显示名：编辑态用已保存的自定义名，新建态默认使用原始模型名
+  // 设置显示名：编辑态用已保存的自定义名，新建态默认使用映射模型名
   if (editing) {
     document.getElementById('slot-display').value = editing.displayName || '';
     if (editing.displayName && editing.displayName.trim()) {
-      updateDisplayNameButtons('mapped');
+      const isOriginalName = editing.displayName.trim() === originalNameOf(editing.modelUid);
+      slotDisplayNameMode = isOriginalName ? 'original' : 'mapped';
+      updateDisplayNameButtons(slotDisplayNameMode);
+      // 编辑态保留用户已保存的显示名，不覆盖
+      document.getElementById('slot-display').value = editing.displayName;
     } else {
+      slotDisplayNameMode = 'original';
       updateDisplayNameButtons('original');
     }
   } else {
-    // 默认使用原始模型名
-    const defaultName = selectedSlotUid ? originalNameOf(selectedSlotUid) : '';
-    document.getElementById('slot-display').value = defaultName;
-    updateDisplayNameButtons('original');
+    // 新建：默认使用映射模型名
+    slotDisplayNameMode = 'mapped';
+    applyDisplayNameByMode();
   }
   // 切到「添加/编辑映射」普通 page，保持顶部 tab 栏可见
   navigateTo('slot-editor');
@@ -3184,14 +3193,13 @@ function updateFailoverRow(idx, key, val) {
 
   if (key === 'model' && val === '__custom__') {
     const oldVal = failoverDraft[idx].model;
-    setTimeout(() => {
-      const customVal = prompt('请输入自定义模型 ID：', oldVal);
+    setTimeout(async () => {
+      const customVal = await showCustomPrompt('请输入自定义模型 ID：', oldVal, '自定义模型');
       if (customVal && customVal.trim()) {
         failoverDraft[idx].model = customVal.trim();
       } else if (customVal === '') {
         failoverDraft[idx].model = '';
       } else {
-        // 用户点击取消，恢复旧值
         failoverDraft[idx].model = oldVal;
       }
       renderFailoverRows();

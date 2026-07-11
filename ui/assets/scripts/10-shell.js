@@ -22,19 +22,19 @@ const PLATFORM_SHELL_PAGES = new Set([
 ]);
 
 function normalizePlatformSection(section) {
-  return ['overview', 'models', 'settings'].includes(section) ? section : 'models';
+  return ['models', 'settings'].includes(section) ? section : 'models';
 }
 
 function getPlatformSectionForPage(pageId) {
   if (['models', 'model-slots', 'slot-editor'].includes(pageId)) return 'models';
   if (pageId === 'platform-proxy') {
-    return activePlatformSection === 'settings' ? 'settings' : 'overview';
+    return activePlatformSection === 'settings' ? 'settings' : 'settings';
   }
   return null;
 }
 
 function setPlatformPanel(section) {
-  const panelId = normalizePlatformSection(section) === 'settings' ? 'settings' : 'overview';
+  const panelId = normalizePlatformSection(section) === 'settings' ? 'settings' : 'settings';
   document.querySelectorAll('.platform-panel[data-platform-panel]').forEach(panel => {
     const isActive = panel.dataset.platformPanel === panelId;
     panel.classList.toggle('active', isActive);
@@ -90,7 +90,7 @@ function navigateTo(pageId) {
   hideAllEditorModals();
 
   if (pageId === 'platform-proxy' && activePlatformSection !== 'settings') {
-    activePlatformSection = 'overview';
+    activePlatformSection = 'settings';
   }
 
   // 编辑器 page 归属到对应的 tab：高亮对应的 tab，激活对应 page
@@ -146,6 +146,12 @@ function navigateTo(pageId) {
   }
   if (pageId === 'more-platforms' && typeof refreshPlatforms === 'function') {
     refreshPlatforms();
+  }
+  if (pageId === 'extensions') {
+    if (typeof onExtensionsPageEnter === 'function') onExtensionsPageEnter();
+    else if (typeof refreshExtensionStatuses === 'function') refreshExtensionStatuses({ silent: true });
+  } else if (typeof onExtensionsPageLeave === 'function') {
+    onExtensionsPageLeave();
   }
   syncPlatformRailForPage(pageId);
   syncPlatformSubtabsForPage(pageId);
@@ -293,7 +299,8 @@ function maybeShowOnboardingGuide() {
 }
 
 function activateProxyPanel(panelId = 'overview') {
-  const target = panelId === 'routes' || panelId === 'enhancement' ? panelId : 'overview';
+  const validPanels = new Set(['overview', 'routes', 'enhancement', 'logs', 'stats']);
+  const target = validPanels.has(panelId) ? panelId : 'overview';
   document.querySelectorAll('.proxy-console-tab[data-proxy-panel]').forEach(tab => {
     const isActive = tab.dataset.proxyPanel === target;
     tab.classList.toggle('active', isActive);
@@ -307,6 +314,9 @@ function activateProxyPanel(panelId = 'overview') {
   }
   if (target === 'routes' && typeof renderProxyRoutes === 'function') {
     renderProxyRoutes();
+  }
+  if (target === 'stats' && typeof renderProxyStats === 'function') {
+    renderProxyStats();
   }
 }
 
@@ -1063,16 +1073,73 @@ function showBottomToast(message, iconType = 'info', options = {}) {
     document.body.appendChild(host);
   }
 
+  const isError = iconType === 'error';
+  const isWarn = iconType === 'warn';
+  const copyable = Boolean(options.copyable) || isError;
+  const defaultDuration = isError ? 8000 : (isWarn ? 5000 : 2600);
+  const duration = Number(options.duration || defaultDuration);
+
   const toast = document.createElement('div');
-  toast.className = `app-toast app-toast-${iconType || 'info'}`;
-  toast.textContent = text;
+  toast.className = `app-toast app-toast-${iconType || 'info'}${copyable ? ' app-toast-copyable' : ''}`;
+  toast.setAttribute('role', 'status');
+
+  const body = document.createElement('span');
+  body.className = 'app-toast-body';
+  body.textContent = text;
+  toast.appendChild(body);
+
+  let hideTimer = null;
+  const removeToast = () => {
+    if (hideTimer) {
+      window.clearTimeout(hideTimer);
+      hideTimer = null;
+    }
+    toast.classList.remove('show');
+    window.setTimeout(() => toast.remove(), 220);
+  };
+
+  const actions = document.createElement('span');
+  actions.className = 'app-toast-actions';
+
+  if (copyable && typeof navigator?.clipboard?.writeText === 'function') {
+    const copyBtn = document.createElement('button');
+    copyBtn.type = 'button';
+    copyBtn.className = 'app-toast-action app-toast-copy';
+    copyBtn.title = '复制错误信息';
+    copyBtn.setAttribute('aria-label', '复制错误信息');
+    copyBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg><span>复制</span>';
+    copyBtn.addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(text);
+        copyBtn.classList.add('copied');
+        const original = copyBtn.innerHTML;
+        copyBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg><span>已复制</span>';
+        window.setTimeout(() => {
+          copyBtn.classList.remove('copied');
+          copyBtn.innerHTML = original;
+        }, 1600);
+      } catch (_) {
+        copyBtn.title = '复制失败，请手动复制';
+      }
+    });
+    actions.appendChild(copyBtn);
+  }
+
+  const closeBtn = document.createElement('button');
+  closeBtn.type = 'button';
+  closeBtn.className = 'app-toast-action app-toast-close';
+  closeBtn.title = '关闭';
+  closeBtn.setAttribute('aria-label', '关闭提示');
+  closeBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>';
+  closeBtn.addEventListener('click', removeToast);
+  actions.appendChild(closeBtn);
+
+  toast.appendChild(actions);
   host.appendChild(toast);
 
   requestAnimationFrame(() => toast.classList.add('show'));
-  const duration = Number(options.duration || 2600);
-  window.setTimeout(() => {
-    toast.classList.remove('show');
-    window.setTimeout(() => toast.remove(), 220);
+  hideTimer = window.setTimeout(() => {
+    removeToast();
   }, duration);
 }
 
@@ -1147,5 +1214,53 @@ function showCustomConfirm(message, title, iconType) {
     btnConfirm.addEventListener('click', onConfirm);
     modal.addEventListener('click', onOverlay);
     document.addEventListener('keydown', onEsc);
+  });
+}
+
+// ═══════ CUSTOM PROMPT (替代原生 prompt，返回 Promise<string|null>) ═══════
+function showCustomPrompt(message, defaultValue, title) {
+  title = title || '输入';
+  defaultValue = defaultValue || '';
+
+  return new Promise((resolve) => {
+    const modal = document.getElementById('custom-prompt-modal');
+    const titleEl = document.getElementById('custom-prompt-title');
+    const msgEl = document.getElementById('custom-prompt-message');
+    const inputEl = document.getElementById('custom-prompt-input');
+    const okBtn = document.getElementById('custom-prompt-ok-btn');
+    const cancelBtn = document.getElementById('custom-prompt-cancel-btn');
+
+    if (!modal || !inputEl || !okBtn || !cancelBtn) {
+      resolve(window.prompt(message, defaultValue));
+      return;
+    }
+
+    if (titleEl) titleEl.textContent = title;
+    if (msgEl) msgEl.textContent = message;
+    inputEl.value = defaultValue;
+
+    modal.classList.add('active');
+    setTimeout(() => { inputEl.focus(); inputEl.select(); }, 50);
+
+    const cleanup = () => {
+      modal.classList.remove('active');
+      okBtn.removeEventListener('click', onOk);
+      cancelBtn.removeEventListener('click', onCancel);
+      modal.removeEventListener('click', onOverlay);
+      document.removeEventListener('keydown', onEsc);
+      inputEl.removeEventListener('keydown', onEnter);
+    };
+
+    const onOk = (e) => { e.preventDefault(); e.stopPropagation(); cleanup(); resolve(inputEl.value); };
+    const onCancel = (e) => { e.preventDefault(); e.stopPropagation(); cleanup(); resolve(null); };
+    const onOverlay = (e) => { if (e.target === modal) { cleanup(); resolve(null); } };
+    const onEsc = (e) => { if (e.key === 'Escape' && modal.classList.contains('active')) { cleanup(); resolve(null); } };
+    const onEnter = (e) => { if (e.key === 'Enter') { e.preventDefault(); cleanup(); resolve(inputEl.value); } };
+
+    okBtn.addEventListener('click', onOk);
+    cancelBtn.addEventListener('click', onCancel);
+    modal.addEventListener('click', onOverlay);
+    document.addEventListener('keydown', onEsc);
+    inputEl.addEventListener('keydown', onEnter);
   });
 }

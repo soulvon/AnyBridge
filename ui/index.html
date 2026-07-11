@@ -55,14 +55,14 @@
           </svg>
           <span>代理</span>
         </button>
-        <button type="button" class="tab-item" id="tab-overview" data-page="platform-proxy"
-          data-platform-section="overview" role="tab" aria-selected="false" aria-controls="page-platform-proxy"
-          tabindex="-1">
-          <svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <path d="M3 3v18h18"></path><path d="M8 17v-4"></path><path d="M13 17V7"></path><path d="M18 17v-8"></path>
+        <button type="button" class="tab-item" id="tab-extensions" data-page="extensions" role="tab" aria-selected="false"
+          aria-controls="page-extensions" tabindex="-1">
+          <svg class="tab-icon tab-icon-fill" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+            <path d="M20.5 11H19V7c0-1.1-.9-2-2-2h-4V3.5C13 2.12 11.88 1 10.5 1S8 2.12 8 3.5V5H4c-1.1 0-1.99.9-1.99 2v3.8H3.5c1.49 0 2.7 1.21 2.7 2.7s-1.21 2.7-2.7 2.7H2V20c0 1.1.9 2 2 2h3.8v-1.5c0-1.49 1.21-2.7 2.7-2.7 1.49 0 2.7 1.21 2.7 2.7V22H17c1.1 0 2-.9 2-2v-4h1.5c1.38 0 2.5-1.12 2.5-2.5S21.88 11 20.5 11z"></path>
           </svg>
-          <span>统计</span>
+          <span>扩展</span>
         </button>
+
       </nav>
       <div class="topbar-right">
         <button type="button" class="global-proxy-pill off" id="globalProxyStatusPill" onclick="navigateTo('proxy')" title="打开代理控制台">
@@ -220,7 +220,7 @@
       <main class="main">
 
         <!-- ═══════ PAGE: PLATFORM · WINDSURF / DEVIN ═══════ -->
-        <div class="page" id="page-platform-proxy" role="tabpanel" aria-labelledby="tab-overview">
+        <div class="page" id="page-platform-proxy" role="tabpanel" aria-labelledby="tab-platforms">
 
           <div class="platform-panel active" id="platform-panel-overview" data-platform-panel="overview">
 
@@ -2151,6 +2151,268 @@
             <div class="eval-history-list eval-history-page-list" id="eval-history-list"></div>
           </section>
         </div>
+
+        <div class="page" id="page-extensions" role="tabpanel" aria-labelledby="tab-extensions">
+          <section class="extensions-page" aria-label="扩展中心">
+            <div class="extensions-hero glass-card">
+              <div class="proxy-console-title">
+                <span class="dot"></span>
+                <div>
+                  <h1>扩展中心</h1>
+                  <p>统一管理扩展的安装、启动、更新与日志查看，所有扩展按同一方式接入。</p>
+                </div>
+              </div>
+              <div class="proxy-console-actions">
+                <button class="btn-ghost" id="extensionSettingsBtn" onclick="toggleExtensionSettings()" title="设置">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="3"/>
+                    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+                  </svg>
+                  设置
+                </button>
+              </div>
+            </div>
+            <div class="extensions-tabbar" role="tablist" aria-label="扩展分类">
+              <button type="button" class="extension-tab active" role="tab" aria-selected="true"
+                data-extension-tab="all" id="extension-tab-all"
+                onclick="switchExtensionTab('all')">全部</button>
+              <button type="button" class="extension-tab" role="tab" aria-selected="false"
+                data-extension-tab="recommended" id="extension-tab-recommended"
+                onclick="switchExtensionTab('recommended')">推荐</button>
+              <button type="button" class="extension-tab" role="tab" aria-selected="false"
+                data-extension-tab="installed" id="extension-tab-installed"
+                onclick="switchExtensionTab('installed')">已安装</button>
+              <button type="button" class="extension-tab" role="tab" aria-selected="false"
+                data-extension-tab="api" id="extension-tab-api"
+                onclick="switchExtensionTab('api')">接口服务</button>
+              <button type="button" class="extension-tab" role="tab" aria-selected="false"
+                data-extension-tab="media" id="extension-tab-media"
+                onclick="switchExtensionTab('media')">生成服务</button>
+              <button type="button" class="extension-tab" role="tab" aria-selected="false"
+                data-extension-tab="logs" id="extension-tab-logs"
+                onclick="switchExtensionTab('logs')">日志</button>
+            </div>
+
+            <div class="extension-empty-state" id="extensionEmptyState" hidden>
+              当前分类下还没有扩展。后续接入完成后会自动出现在这里。
+            </div>
+
+            <div class="extension-card-grid" id="extensionCardGrid">
+              <article class="extension-card extension-card-featured" data-extension-card="cpa-suite"
+                data-extension-tags="recommended api">
+                <div class="extension-card-top">
+                  <div class="extension-identity">
+                    <div class="extension-logo extension-logo-cpa" aria-hidden="true">CPA</div>
+                    <div>
+                      <div class="extension-title-row">
+                        <h3>CPA 套件</h3>
+                        <span class="extension-badge badge-recommended">推荐套件</span>
+                      </div>
+                      <p>CLIProxyAPI + CPA Manager Plus + CPA 插件商店，一键部署为本地 AI 网关管理中心。</p>
+                    </div>
+                  </div>
+                  <span class="extension-status status-pending" id="extension-cpa-status">检测中</span>
+                </div>
+                <div class="extension-meta-grid">
+                  <div><span>版本</span><strong id="extension-cpa-version">待检测</strong> <span class="extension-update-badge" id="extension-cpa-update-badge" hidden onclick="event.stopPropagation(); handleExtensionAction('update-cpa-suite')">有更新</span></div>
+                  <div><span>端口</span><strong id="extension-cpa-ports">8317 / 18317</strong></div>
+                  <div><span>安装目录</span><strong id="extension-cpa-install-dir" title="">默认</strong></div>
+                  <div><span>组件</span><strong id="extension-cpa-components">3 个</strong></div>
+                </div>
+                <div class="extension-card-alert" id="extension-cpa-alert" hidden role="status"></div>
+                <div class="extension-progress" id="extension-cpa-progress" hidden>
+                  <div class="extension-progress-track">
+                    <div class="extension-progress-fill" id="extension-cpa-progress-fill"></div>
+                  </div>
+                  <div class="extension-progress-meta">
+                    <span id="extension-cpa-progress-text">准备中...</span>
+                    <strong id="extension-cpa-progress-percent">0%</strong>
+                  </div>
+                </div>
+                <div class="extension-tags">
+                  <span>兼容 OpenAI 接口</span>
+                  <span>请求统计</span>
+                  <span>插件市场</span>
+                  <span>账号巡检</span>
+                </div>
+                <div class="extension-actions">
+                  <button type="button" class="btn-primary" id="extension-cpa-primary-action">一键部署</button>
+                  <div class="extension-secondary-actions" id="extension-cpa-secondary-actions"></div>
+                </div>
+                <div class="cpa-credentials" id="cpa-credentials" hidden>
+                  <div class="cpa-credentials-title">访问凭证 <span class="cpa-credentials-hint">点击即可复制</span></div>
+                  <div class="cpa-credential-row">
+                    <span class="cpa-credential-label">管理面板</span>
+                    <code class="cpa-credential-value" id="cpa-cred-admin-key">—</code>
+                    <button type="button" class="cpa-credential-copy" data-copy="admin-key" title="复制">复制</button>
+                  </div>
+                  <div class="cpa-credential-row">
+                    <span class="cpa-credential-label">管理密钥</span>
+                    <code class="cpa-credential-value" id="cpa-cred-management-key">—</code>
+                    <button type="button" class="cpa-credential-copy" data-copy="management-key" title="复制">复制</button>
+                  </div>
+                  <div class="cpa-credential-row">
+                    <span class="cpa-credential-label">API Key</span>
+                    <code class="cpa-credential-value" id="cpa-cred-api-key">—</code>
+                    <button type="button" class="cpa-credential-copy" data-copy="api-key" title="复制">复制</button>
+                  </div>
+                  <div class="cpa-credential-row cpa-credential-row-link">
+                    <span class="cpa-credential-label">面板地址</span>
+                    <code class="cpa-credential-value">http://127.0.0.1:18317</code>
+                    <button type="button" class="cpa-credential-copy" data-copy-url="http://127.0.0.1:18317" title="复制地址">复制</button>
+                  </div>
+                </div>
+                <div class="extension-details" id="extension-details-cpa-suite">
+                  <div class="extension-component-list" aria-label="CPA 套件组件">
+                    <div class="extension-component-row" data-extension-component="cli-proxy-api">
+                      <span class="component-dot pending" id="extension-cpa-cli-dot"></span>
+                      <div>
+                        <strong>CLIProxyAPI</strong>
+                        <small id="extension-cpa-cli-detail">网关本体、管理接口，默认端口 8317</small>
+                      </div>
+                      <code id="extension-cpa-cli-port">:8317</code>
+                    </div>
+                    <div class="extension-component-row" data-extension-component="cpa-manager-plus">
+                      <span class="component-dot pending" id="extension-cpa-cpamp-dot"></span>
+                      <div>
+                        <strong>CPA Manager Plus</strong>
+                        <small id="extension-cpa-cpamp-detail">管理面板、统计、插件商店，默认端口 18317</small>
+                      </div>
+                      <code id="extension-cpa-cpamp-port">:18317</code>
+                    </div>
+                    <div class="extension-component-row" data-extension-component="cpa-plugins">
+                      <span class="component-dot muted" id="extension-cpa-plugins-dot"></span>
+                      <div>
+                        <strong>CPA 插件</strong>
+                        <small id="extension-cpa-plugins-detail">复用 CPA 插件库，后续展示安装数和可更新数</small>
+                      </div>
+                      <code id="extension-cpa-plugins-port">插件库</code>
+                    </div>
+                  </div>
+                </div>
+              </article>
+
+              <article class="extension-card" data-extension-card="sub2api" data-extension-tags="recommended api"
+                tabindex="0" aria-label="查看 sub2api 扩展详情">
+                <div class="extension-card-top">
+                  <div class="extension-identity">
+                    <div class="extension-logo extension-logo-sub" aria-hidden="true">S2</div>
+                    <div>
+                      <div class="extension-title-row">
+                        <h3>sub2api</h3>
+                        <span class="extension-badge badge-market">接口服务</span>
+                      </div>
+                      <p>把订阅或账号能力转换成兼容 OpenAI 的接口，安装后可自动生成 AnyBridge 供应商。</p>
+                    </div>
+                  </div>
+                  <span class="extension-status status-not-installed">未安装</span>
+                </div>
+                <div class="extension-meta-grid">
+                  <div><span>类型</span><strong>托管服务</strong></div>
+                  <div><span>版本</span><strong>待适配</strong></div>
+                  <div><span>端口</span><strong>待分配</strong></div>
+                  <div><span>接入</span><strong>L2-L3</strong></div>
+                </div>
+                <div class="extension-tags">
+                  <span>供应商适配</span>
+                  <span>模型同步</span>
+                  <span>外部源</span>
+                </div>
+                <div class="extension-actions">
+                  <button type="button" class="btn-primary" onclick="handleExtensionAction('install-sub2api')">安装</button>
+                  <button type="button" class="btn-ghost" onclick="openExtensionDetail('sub2api')">详情</button>
+                  <button type="button" class="btn-ghost" onclick="handleExtensionAction('view-adapter-plan')">适配计划</button>
+                </div>
+              </article>
+
+              <article class="extension-card" data-extension-card="grok2api" data-extension-tags="recommended api"
+                tabindex="0" aria-label="查看 grok2api 扩展详情">
+                <div class="extension-card-top">
+                  <div class="extension-identity">
+                    <div class="extension-logo extension-logo-grok" aria-hidden="true">GX</div>
+                    <div>
+                      <div class="extension-title-row">
+                        <h3>grok2api</h3>
+                        <span class="extension-badge badge-market">接口服务</span>
+                      </div>
+                      <p>面向 Grok/xAI 的本地接口适配服务，后续与 AnyBridge 联网搜索增强联动。</p>
+                    </div>
+                  </div>
+                  <span class="extension-status status-not-installed">未安装</span>
+                </div>
+                <div class="extension-meta-grid">
+                  <div><span>类型</span><strong>托管服务</strong></div>
+                  <div><span>版本</span><strong>待适配</strong></div>
+                  <div><span>端口</span><strong>待分配</strong></div>
+                  <div><span>接入</span><strong>L2-L3</strong></div>
+                </div>
+                <div class="extension-tags">
+                  <span>Grok</span>
+                  <span>兼容 OpenAI 接口</span>
+                  <span>搜索增强</span>
+                </div>
+                <div class="extension-actions">
+                  <button type="button" class="btn-primary" onclick="handleExtensionAction('install-grok2api')">安装</button>
+                  <button type="button" class="btn-ghost" onclick="openExtensionDetail('grok2api')">详情</button>
+                  <button type="button" class="btn-ghost" onclick="handleExtensionAction('view-adapter-plan')">适配计划</button>
+                </div>
+              </article>
+
+              <article class="extension-card" data-extension-card="free-jimeng" data-extension-tags="recommended media">
+                <div class="extension-card-top">
+                  <div class="extension-identity">
+                    <div class="extension-logo extension-logo-jimeng" aria-hidden="true">JM</div>
+                    <div>
+                      <div class="extension-title-row">
+                        <h3>free 即梦</h3>
+                        <span class="extension-badge badge-lab">生成服务</span>
+                      </div>
+                      <p>即梦相关生成接口的预留卡位。确认仓库和接口格式后再选择本地托管或外部服务接入。</p>
+                    </div>
+                  </div>
+                  <span class="extension-status status-not-installed">未安装</span>
+                </div>
+                <div class="extension-meta-grid">
+                  <div><span>类型</span><strong>待确认</strong></div>
+                  <div><span>版本</span><strong>待适配</strong></div>
+                  <div><span>端口</span><strong>待分配</strong></div>
+                  <div><span>接入</span><strong>L1-L3</strong></div>
+                </div>
+                <div class="extension-tags">
+                  <span>图片/视频</span>
+                  <span>外部服务</span>
+                  <span>待调研</span>
+                </div>
+                <div class="extension-actions">
+                  <button type="button" class="btn-primary" onclick="handleExtensionAction('install-jimeng')">安装</button>
+                  <button type="button" class="btn-ghost" onclick="openExtensionDetail('free-jimeng')">详情</button>
+                  <button type="button" class="btn-ghost" onclick="handleExtensionAction('view-adapter-plan')">适配计划</button>
+                </div>
+              </article>
+            </div>
+
+            <section class="extensions-log-panel glass-card" id="extensionsLogPanel" aria-label="扩展日志" hidden>
+              <div class="extensions-log-head">
+                <div>
+                  <h3>扩展日志</h3>
+                  <span class="tag log-count" id="extensionLogCount">0 条记录</span>
+                </div>
+                <button type="button" class="btn-ghost" onclick="clearExtensionLogs()">清空</button>
+              </div>
+              <div class="log-tabs" id="extensionLogTabs">
+                <button class="log-tab active" data-level="all" onclick="setExtensionLogFilter('all')">全部</button>
+                <button class="log-tab" data-level="ok" onclick="setExtensionLogFilter('ok')">OK</button>
+                <button class="log-tab" data-level="info" onclick="setExtensionLogFilter('info')">INFO</button>
+                <button class="log-tab" data-level="warn" onclick="setExtensionLogFilter('warn')">WARN</button>
+                <button class="log-tab" data-level="err" onclick="setExtensionLogFilter('err')">ERR</button>
+              </div>
+              <div class="log-box proxy-logs-box extensions-log-box">
+                <div class="log-body" id="extensionLogBody"></div>
+              </div>
+            </section>
+          </section>
+        </div>
+
 
         <!-- ═══════ PAGE: PROXY ═══════ -->
         <div class="page" id="page-proxy" role="tabpanel" aria-labelledby="tab-proxy">
@@ -4887,6 +5149,59 @@
     </div>
   </div>
 
+  <!-- CPA 版本切换 -->
+  <div id="cpa-version-modal" class="modal-overlay">
+    <div class="modal-container cpa-version-modal" style="max-width: 720px;">
+      <div class="modal-header">
+        <div class="modal-title">
+          <span class="modal-icon" style="color: var(--accent);">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 20V10"></path>
+              <path d="M18 20V4"></path>
+              <path d="M6 20v-4"></path>
+            </svg>
+          </span>
+          <span>切换 CPA 版本</span>
+        </div>
+      </div>
+      <div class="modal-body" style="max-height: 520px; overflow-y: auto;">
+        <p class="cpa-version-desc">可切换到本地已缓存版本，或从 GitHub 下载指定版本（遇 bug 时可回退）。切换会更新 installed.json 并重启服务，密钥配置会保留。</p>
+        <div id="cpa-version-loading" class="cpa-version-loading">正在加载本地与 GitHub 版本列表...</div>
+        <div id="cpa-version-body" hidden>
+          <div class="cpa-version-columns">
+            <section class="cpa-version-panel">
+              <header class="cpa-version-panel-head">
+                <strong>CLIProxyAPI</strong>
+                <span>当前 <code id="cpa-version-cli-current">—</code></span>
+              </header>
+              <div class="cpa-version-list" id="cpa-version-cli-list"></div>
+            </section>
+            <section class="cpa-version-panel">
+              <header class="cpa-version-panel-head">
+                <strong>CPA Manager Plus</strong>
+                <span>当前 <code id="cpa-version-cpamp-current">—</code></span>
+              </header>
+              <div class="cpa-version-list" id="cpa-version-cpamp-list"></div>
+            </section>
+          </div>
+        </div>
+        <div id="cpa-version-progress" class="cpa-version-progress" hidden>
+          <div class="cpa-version-progress-bar-row">
+            <div class="cpa-version-progress-track">
+              <div class="cpa-version-progress-fill" id="cpa-version-progress-fill" style="width:0%"></div>
+            </div>
+            <span id="cpa-version-progress-percent">0%</span>
+          </div>
+          <p id="cpa-version-progress-message" class="cpa-version-progress-message">准备中...</p>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" id="cpa-version-cancel-btn" class="modal-btn modal-btn-cancel">取消</button>
+        <button type="button" id="cpa-version-confirm-btn" class="modal-btn modal-btn-confirm" disabled>切换到已选版本</button>
+      </div>
+    </div>
+  </div>
+
   <!-- 本地代理模型编辑 -->
   <div id="proxy-route-editor-modal" class="modal-overlay">
     <div class="modal-container proxy-route-editor-modal">
@@ -5485,7 +5800,222 @@
   <script src="./assets/i18n/zh-CN.js"></script>
   <script src="./assets/i18n/en-US.js"></script>
   <script src="./assets/i18n/i18n.js"></script>
-  <script src="./assets/scripts/00-bridge.js"></script>
+  
+        <div id="extension-settings-modal" class="modal-overlay" role="dialog" aria-modal="true"
+          aria-labelledby="extensionSettingsTitle">
+          <div class="modal-container extension-settings-modal">
+            <div class="modal-header extension-settings-header">
+              <div class="modal-title">
+                <span class="modal-icon" style="color: var(--accent);">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                    stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <circle cx="12" cy="12" r="3"></circle>
+                    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+                  </svg>
+                </span>
+                <span id="extensionSettingsTitle">扩展设置</span>
+              </div>
+              <button type="button" class="modal-close-icon" onclick="closeExtensionSettings()" aria-label="关闭扩展设置">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                  stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M18 6 6 18"></path>
+                  <path d="m6 6 12 12"></path>
+                </svg>
+              </button>
+            </div>
+            <div class="modal-body extension-settings-body">
+              <div class="extension-settings-panel" id="extensionSettingsPanel">
+                <div class="extension-settings-row">
+                  <div class="extension-settings-label">
+                    <strong>安装目录</strong>
+                    <span id="extensionInstallDirText">读取中...</span>
+                  </div>
+                  <button type="button" class="btn-ghost" onclick="setCpaInstallDir()">修改</button>
+                </div>
+                <div class="extension-settings-row">
+                  <div class="extension-settings-label">
+                    <strong>CPA 管理面板</strong>
+                    <span>打开 CPA Manager Plus 管理界面</span>
+                  </div>
+                  <button type="button" class="btn-ghost" onclick="handleExtensionAction('open-cpamp')">打开</button>
+                </div>
+                <div class="extension-settings-row">
+                  <div class="extension-settings-label">
+                    <strong>插件商店</strong>
+                    <span>打开 CPA 插件管理页面</span>
+                  </div>
+                  <button type="button" class="btn-ghost" onclick="handleExtensionAction('open-cpamp-plugins')">打开</button>
+                </div>
+                <div class="extension-settings-row">
+                  <div class="extension-settings-label">
+                    <strong>刷新状态</strong>
+                    <span>重新检测所有扩展的运行状态</span>
+                  </div>
+                  <button type="button" class="btn-ghost" onclick="refreshExtensionStatuses()">刷新</button>
+                </div>
+                <div class="extension-settings-row">
+                  <div class="extension-settings-label">
+                    <strong>检测更新</strong>
+                    <span>检查 CPA 套件是否有新版本</span>
+                  </div>
+                  <button type="button" class="btn-ghost" onclick="checkCpaExtensionUpdates()">检测</button>
+                </div>
+              </div>
+            </div>
+            <div class="modal-footer">
+              <button type="button" class="modal-btn modal-btn-confirm" onclick="closeExtensionSettings()">完成</button>
+            </div>
+          </div>
+        </div>
+
+
+        <div id="extension-detail-modal" class="modal-overlay extension-detail-overlay">
+          <div class="modal-container extension-detail-modal" role="dialog" aria-modal="true"
+            aria-labelledby="extensionDetailTitle">
+            <div class="extension-detail-hero">
+              <div class="extension-detail-mark" id="extensionDetailMark">扩展</div>
+              <div>
+                <div class="extensions-kicker" id="extensionDetailKicker">扩展详情</div>
+                <h2 id="extensionDetailTitle">扩展详情</h2>
+                <p id="extensionDetailDescription">查看扩展来源、运行状态、组件和后续接入计划。</p>
+              </div>
+              <button type="button" class="modal-close-icon extension-detail-close"
+                onclick="closeExtensionDetail()" aria-label="关闭扩展详情">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                  stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M18 6 6 18"></path>
+                  <path d="m6 6 12 12"></path>
+                </svg>
+              </button>
+            </div>
+            <div class="extension-detail-body">
+              <section class="extension-detail-section">
+                <div class="extension-detail-section-title">运行概览</div>
+                <div class="extension-detail-metrics" id="extensionDetailMetrics"></div>
+              </section>
+              <section class="extension-detail-section">
+                <div class="extension-detail-section-title">GitHub 地址</div>
+                <div class="extension-detail-links" id="extensionDetailGithub"></div>
+              </section>
+              <section class="extension-detail-section">
+                <div class="extension-detail-section-title">组件</div>
+                <div class="extension-detail-components" id="extensionDetailComponents"></div>
+              </section>
+              <section class="extension-detail-section">
+                <div class="extension-detail-section-title">说明</div>
+                <div class="extension-detail-notes" id="extensionDetailNotes"></div>
+              </section>
+            </div>
+            <div class="extension-detail-footer">
+              <button type="button" class="modal-btn modal-btn-cancel" onclick="closeExtensionDetail()">关闭</button>
+              <button type="button" class="modal-btn modal-btn-cancel" id="extensionDetailSecondaryAction">检测更新</button>
+              <button type="button" class="modal-btn modal-btn-confirm" id="extensionDetailPrimaryAction">执行操作</button>
+            </div>
+          </div>
+        </div>
+
+<!-- CPA 部署确认弹窗 -->
+  <div id="cpa-deploy-modal" class="modal-overlay">
+    <div class="modal-container" style="max-width: 560px;">
+      <div class="modal-header">
+        <div class="modal-title">
+          <span class="modal-icon" id="cpa-deploy-modal-icon" style="color: var(--accent);">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+              stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+              <polyline points="7 10 12 15 17 10"></polyline>
+              <line x1="12" y1="15" x2="12" y2="3"></line>
+            </svg>
+          </span>
+          <span id="cpa-deploy-modal-title">部署 CPA 套件</span>
+        </div>
+      </div>
+
+      <!-- 确认视图 -->
+      <div class="modal-body cpa-deploy-view cpa-deploy-view-confirm" id="cpa-deploy-confirm-view" style="max-height: 420px; overflow-y: auto;">
+        <div class="cpa-deploy-info">
+          <p class="cpa-deploy-desc">从 GitHub 下载最新发布包，自动匹配当前系统与 CPU 架构，部署后作为本地进程运行。</p>
+          <div class="cpa-deploy-sources">
+            <div class="cpa-deploy-source-item">
+              <span class="cpa-deploy-source-label">CLIProxyAPI</span>
+              <span class="cpa-deploy-source-repo">router-for-me/CLIProxyAPI</span>
+              <span class="cpa-deploy-source-port">端口 8317</span>
+            </div>
+            <div class="cpa-deploy-source-item">
+              <span class="cpa-deploy-source-label">CPA Manager Plus</span>
+              <span class="cpa-deploy-source-repo">seakee/CPA-Manager-Plus</span>
+              <span class="cpa-deploy-source-port">端口 18317</span>
+            </div>
+          </div>
+          <div class="cpa-deploy-dir-section">
+            <label class="cpa-deploy-dir-label">安装目录</label>
+            <div class="cpa-deploy-dir-row">
+              <input type="text" id="cpa-deploy-dir-input" class="settings-input"
+                placeholder="留空使用默认目录" />
+              <button type="button" class="btn-ghost cpa-deploy-dir-reset" onclick="document.getElementById('cpa-deploy-dir-input').value=''">重置</button>
+            </div>
+            <p class="cpa-deploy-dir-hint" id="cpa-deploy-dir-hint"></p>
+          </div>
+        </div>
+      </div>
+
+      <!-- 进度视图 -->
+      <div class="modal-body cpa-deploy-view cpa-deploy-view-progress" id="cpa-deploy-progress-view" style="display: none; max-height: 480px; overflow-y: auto;">
+        <div class="cpa-deploy-progress-wrap">
+          <div class="cpa-deploy-progress-bar-row">
+            <div class="cpa-deploy-progress-bar-track">
+              <div class="cpa-deploy-progress-bar-fill" id="cpa-deploy-progress-fill" style="width: 0%;"></div>
+            </div>
+            <span class="cpa-deploy-progress-percent" id="cpa-deploy-progress-percent">0%</span>
+          </div>
+          <p class="cpa-deploy-progress-message" id="cpa-deploy-progress-message">准备中...</p>
+          <div class="cpa-deploy-steps" id="cpa-deploy-steps">
+            <div class="cpa-deploy-step" data-step="check">
+              <span class="cpa-deploy-step-icon"></span>
+              <span class="cpa-deploy-step-label">检查端口</span>
+            </div>
+            <div class="cpa-deploy-step" data-step="fetch">
+              <span class="cpa-deploy-step-icon"></span>
+              <span class="cpa-deploy-step-label">获取发布包</span>
+            </div>
+            <div class="cpa-deploy-step" data-step="download">
+              <span class="cpa-deploy-step-icon"></span>
+              <span class="cpa-deploy-step-label">下载组件</span>
+            </div>
+            <div class="cpa-deploy-step" data-step="extract">
+              <span class="cpa-deploy-step-icon"></span>
+              <span class="cpa-deploy-step-label">解压安装</span>
+            </div>
+            <div class="cpa-deploy-step" data-step="config">
+              <span class="cpa-deploy-step-icon"></span>
+              <span class="cpa-deploy-step-label">生成配置</span>
+            </div>
+            <div class="cpa-deploy-step" data-step="start">
+              <span class="cpa-deploy-step-icon"></span>
+              <span class="cpa-deploy-step-label">启动服务</span>
+            </div>
+            <div class="cpa-deploy-step" data-step="health">
+              <span class="cpa-deploy-step-icon"></span>
+              <span class="cpa-deploy-step-label">健康检查</span>
+            </div>
+          </div>
+          <div class="cpa-deploy-log-box" id="cpa-deploy-log-box"></div>
+        </div>
+      </div>
+
+      <!-- 结果视图 -->
+      <div class="modal-body cpa-deploy-view cpa-deploy-view-result" id="cpa-deploy-result-view" style="display: none; max-height: 420px; overflow-y: auto;">
+        <div class="cpa-deploy-result" id="cpa-deploy-result-content"></div>
+      </div>
+
+      <div class="modal-footer" id="cpa-deploy-footer">
+        <button id="cpa-deploy-cancel-btn" class="modal-btn modal-btn-cancel">取消</button>
+        <button id="cpa-deploy-confirm-btn" class="modal-btn modal-btn-confirm">开始部署</button>
+      </div>
+    </div>
+  </div>
+
+<script src="./assets/scripts/00-bridge.js"></script>
   <script src="./assets/scripts/10-shell.js"></script>
   <script src="./assets/scripts/20-runtime.js"></script>
   <script src="./assets/scripts/30-providers-eval.js"></script>
@@ -5493,6 +6023,7 @@
   <script src="./assets/scripts/50-model-map.js"></script>
   <script src="./assets/scripts/52-proxy-routes.js"></script>
   <script src="./assets/scripts/55-platforms.js"></script>
+  <script src="./assets/scripts/65-extensions.js"></script>
   <script src="./assets/scripts/60-updater.js"></script>
   <script src="./assets/scripts/70-healthcheck.js"></script>
   <script src="./assets/scripts/90-init.js"></script>

@@ -45,6 +45,7 @@
   gap: 10px;
   flex-wrap: wrap;
   justify-self: end;
+  margin-left: auto;
 }
 
 .platform-console-actions .proxy-btn {
@@ -446,15 +447,6 @@
   min-height: 58px;
 }
 
-.proxy-analytics-kicker {
-  color: var(--accent);
-  font-family: var(--font-mono);
-  font-size: 11px;
-  font-weight: 800;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
 .proxy-analytics-head h2 {
   margin: 5px 0 4px;
   color: var(--text-primary);
@@ -680,19 +672,26 @@
   flex-wrap: wrap;
 }
 
+.proxy-logs-panel > .log-tabs {
+  margin: 0 0 12px;
+}
+
 .proxy-logs-box {
   flex: 1 1 auto;
   min-height: 0;
   display: flex;
   flex-direction: column;
-  border-radius: 10px;
+  border-radius: 12px;
   box-shadow: none;
+  border-color: color-mix(in srgb, var(--border) 90%, var(--accent) 10%);
+  background: color-mix(in srgb, var(--bg-card) 88%, transparent);
 }
 
 .proxy-logs-box .log-body {
   flex: 1 1 auto;
   height: min(34vh, 360px);
   min-height: 260px;
+  border-radius: 0 0 11px 11px;
 }
 
 .proxy-panel-head {
@@ -1539,6 +1538,8 @@
 }
 
 .codex-toolbar-actions .btn-primary,
+.codex-toolbar-actions .btn-secondary,
+.codex-toolbar-actions .btn-danger,
 .codex-toolbar-actions .btn-ghost {
   min-height: 36px;
   border-radius: 10px;
@@ -1770,9 +1771,9 @@
 }
 
 .codex-switch-action {
-  width: 76px;
-  min-width: 76px;
-  flex: 0 0 76px;
+  width: 92px;
+  min-width: 92px;
+  flex: 0 0 92px;
   border: 1px solid rgba(255, 255, 255, 0.35) !important;
   border-radius: 9px;
   background:
@@ -1914,11 +1915,6 @@
   flex: 1 1 auto;
   min-height: 0;
   overflow: hidden;
-}
-
-.claude-code-config-modal .codex-config-editor-layout,
-.opencode-config-modal .codex-config-editor-layout {
-  /* flex/min-height/overflow 已从通用选择器继承 */;
 }
 
 .codex-config-editor-layout.is-editing {
@@ -2231,6 +2227,37 @@
   border-radius: 4px;
   padding: 2px 6px;
   margin-left: 6px;
+}
+
+.codex-config-badge-current {
+  display: inline-flex;
+  align-items: center;
+  font-size: 10px;
+  font-weight: 800;
+  color: #fff;
+  background: linear-gradient(135deg, #14b89a 0%, #0e9a87 100%);
+  border-radius: 999px;
+  padding: 2px 8px;
+  margin-left: 2px;
+  white-space: nowrap;
+}
+
+button.codex-reconfigure-action {
+  width: 92px;
+  min-width: 92px;
+  flex: 0 0 92px;
+  cursor: pointer;
+  border: none;
+  font-family: inherit;
+}
+
+button.codex-reconfigure-action:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+
+button.codex-reconfigure-action:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 .codex-config-field {
@@ -3714,7 +3741,8 @@
   }
 
   .codex-card-action,
-  .codex-current-action {
+  .codex-current-action,
+  button.codex-reconfigure-action {
     flex: 1 1 0;
   }
 
@@ -4348,6 +4376,9 @@
 
 /* 工具栏按钮 */
 .btn-primary.platform-model-btn,
+.btn-success.platform-model-btn,
+.btn-danger.platform-model-btn,
+.btn-secondary.platform-model-btn,
 .btn-ghost.platform-model-btn {
   border-radius: 10px;
   min-width: auto;
@@ -4476,28 +4507,6 @@ tr:hover .model-id-copy-btn {
 .cb-select-head input:disabled {
   cursor: not-allowed;
   opacity: 0.45;
-}
-
-.cb-bulk-delete-btn {
-  border-radius: 10px;
-  min-width: 98px;
-  padding: 0 14px;
-  font-size: 12px;
-  font-weight: 750;
-  height: 36px;
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  justify-content: center;
-  color: var(--danger);
-}
-.cb-bulk-delete-btn:not(:disabled) {
-  border-color: rgba(239, 68, 68, 0.28);
-  background: rgba(239, 68, 68, 0.08);
-}
-.cb-bulk-delete-btn:disabled {
-  opacity: 0.48;
-  cursor: not-allowed;
 }
 
 .cb-model-table tbody tr:last-child td {
@@ -5806,7 +5815,6 @@ td.display-name-cell {
 .cb-add-prov-item.is-local-proxy,
 .wb-add-prov-item.is-local-proxy {
   background: linear-gradient(90deg, rgba(37, 99, 235, 0.06), transparent);
-  border-left: 3px solid var(--accent);
 }
 .cb-add-prov-item.is-local-proxy .cb-add-prov-icon,
 .wb-add-prov-item.is-local-proxy .wb-add-prov-icon {
@@ -6070,7 +6078,8 @@ td.display-name-cell {
 .platform-console-hero {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-start;
+  flex-wrap: wrap;
   gap: 18px;
   min-height: 84px !important;
   margin-bottom: 16px !important;
@@ -6687,19 +6696,6 @@ td.display-name-cell {
     grid-template-columns: 1fr;
   }
 
-  .platform-hero-card,
-  .platform-console-hero {
-    align-items: stretch;
-    flex-direction: column;
-  }
-
-  .platform-kite-ad {
-    width: 100%;
-    max-width: none;
-    align-self: stretch;
-    justify-content: flex-start;
-  }
-
   .platform-console-stats {
     width: 100%;
     min-width: 0;
@@ -6844,6 +6840,27 @@ td.display-name-cell {
   border-color: var(--danger);
 }
 
+[data-theme="dark"] .btn-icon {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.10);
+  color: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(10px) saturate(1.2);
+  -webkit-backdrop-filter: blur(10px) saturate(1.2);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+[data-theme="dark"] .btn-icon:hover {
+  background: rgba(90, 176, 230, 0.12);
+  color: var(--accent);
+  border-color: rgba(90, 176, 230, 0.35);
+}
+
+[data-theme="dark"] .btn-icon.danger:hover {
+  background: rgba(239, 68, 68, 0.12);
+  color: var(--danger);
+  border-color: rgba(239, 68, 68, 0.35);
+}
+
 @media (max-width: 980px) {
   .cb-add-layout,
   .wb-add-layout {
@@ -6946,38 +6963,40 @@ td.display-name-cell {
   justify-content: flex-end;
 }
 .proxy-console-tabs {
-  display: inline-flex;
+  display: flex;
   align-self: flex-start;
-  gap: 4px;
-  padding: 4px;
+  align-items: center;
+  gap: 8px;
+  padding: 10px;
+  background: var(--bg-card);
   border: 1px solid var(--border);
-  border-radius: 10px;
-  background: var(--bg-input);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+  overflow-x: auto;
 }
 .proxy-console-tab {
-  height: 32px;
-  min-width: 92px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 0 14px;
-  border: 0;
-  border-radius: 7px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-pill);
   background: transparent;
-  color: var(--text-secondary);
+  color: var(--text-muted);
   font-size: 12px;
   font-weight: 800;
+  padding: 8px 13px;
   cursor: pointer;
-  transition: background var(--duration-fast) var(--ease), color var(--duration-fast) var(--ease), box-shadow var(--duration-fast) var(--ease);
+  white-space: nowrap;
+  transition: all var(--duration-fast) var(--ease);
 }
 .proxy-console-tab:hover {
-  color: var(--text-primary);
   background: var(--bg-hover);
+  color: var(--text-primary);
 }
 .proxy-console-tab.active {
+  border-color: rgba(18, 97, 166, 0.18);
+  background: var(--accent-light);
   color: var(--accent);
-  background: var(--bg-card);
-  box-shadow: var(--shadow-sm);
 }
 .proxy-console-section {
   display: none;
@@ -9007,4 +9026,12 @@ td.display-name-cell {
   .proxy-ports-grid .btn-primary {
     justify-content: center;
   }
+}
+
+.reveal-path {
+  cursor: pointer;
+}
+
+.reveal-path:hover {
+  color: var(--accent);
 }

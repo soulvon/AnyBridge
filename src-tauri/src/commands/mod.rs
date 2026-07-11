@@ -4,6 +4,7 @@ pub mod codex_session_visibility;
 pub mod config;
 pub mod cursor_auth;
 pub mod eval;
+pub mod extensions;
 pub mod ide_config;
 pub mod ide_models;
 pub mod kite_plugin;

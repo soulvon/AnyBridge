@@ -91,6 +91,9 @@ async function init() {
   await loadUpdateSettings();
   // 显示当前版本号
   await syncAppVersionDisplay();
+  if (typeof initExtensions === 'function') {
+    await initExtensions();
+  }
 
   bindUpdateJumpModalHandlers();
   // 检查是否刚进行了版本更新

@@ -171,12 +171,16 @@
   // ──────────────────────────────────────────────
   window.cleanupLegacyCaFromHealth = async function () {
     if (!invoke) return;
+    const btn = _hEl('health-cleanup-legacy-btn');
+    if (btn) { btn.disabled = true; btn.dataset.oldText = btn.textContent; btn.textContent = '清理中...'; }
     try {
       const msg = await invoke('cert_cleanup_legacy');
       addLog && addLog('ok', '老证书清理: ' + msg);
       await window.runHealthcheck();
     } catch (e) {
       addLog && addLog('err', '老证书清理失败: ' + e);
+    } finally {
+      if (btn) { btn.disabled = false; btn.textContent = btn.dataset.oldText || '清理老证书'; }
     }
   };
 
@@ -186,40 +190,53 @@
   window.exportHealthMarkdown = async function () {
     const md = buildMarkdownReport(_lastReport);
     if (!md) return;
-    const ts = new Date().toISOString().replace(/[-:T]/g, '').slice(0, 14);
-    const filename = 'byok-healthcheck-' + ts + '.md';
-    // 优先用 Tauri save dialog
+    const btn = _hEl('health-export-md-btn');
+    if (btn) { btn.disabled = true; btn.dataset.oldText = btn.textContent; btn.textContent = '导出中...'; }
     try {
-      if (window.__TAURI__ && window.__TAURI__.dialog && window.__TAURI__.dialog.save) {
-        const path = await window.__TAURI__.dialog.save({
-          defaultPath: filename,
-          filters: [{ name: 'Markdown', extensions: ['md'] }],
-        });
-        if (path) {
-          if (window.__TAURI__.fs && window.__TAURI__.fs.writeTextFile) {
-            await window.__TAURI__.fs.writeTextFile(path, md);
-            addLog && addLog('ok', '体检报告已保存: ' + path);
+      const ts = new Date().toISOString().replace(/[-:T]/g, '').slice(0, 14);
+      const filename = 'byok-healthcheck-' + ts + '.md';
+      // 优先用 Tauri save dialog
+      try {
+        if (window.__TAURI__ && window.__TAURI__.dialog && window.__TAURI__.dialog.save) {
+          const path = await window.__TAURI__.dialog.save({
+            defaultPath: filename,
+            filters: [{ name: 'Markdown', extensions: ['md'] }],
+          });
+          if (path) {
+            if (window.__TAURI__.fs && window.__TAURI__.fs.writeTextFile) {
+              await window.__TAURI__.fs.writeTextFile(path, md);
+              addLog && addLog('ok', '体检报告已保存: ' + path);
+              return;
+            }
+          } else {
             return;
           }
-        } else {
-          return;
         }
+      } catch (e) {
+        addLog && addLog('warn', 'Tauri 保存对话框不可用，退到浏览器下载: ' + e);
       }
-    } catch (e) {
-      addLog && addLog('warn', 'Tauri 保存对话框不可用，退到浏览器下载: ' + e);
+      downloadTextFile(md, filename);
+      addLog && addLog('ok', '体检报告已下载: ' + filename);
+    } finally {
+      if (btn) { btn.disabled = false; btn.textContent = btn.dataset.oldText || '导出报告'; }
     }
-    downloadTextFile(md, filename);
-    addLog && addLog('ok', '体检报告已下载: ' + filename);
   };
 
   window.copyHealthMarkdown = async function () {
     const md = buildMarkdownReport(_lastReport);
     if (!md) return;
+    const btn = _hEl('health-copy-md-btn');
+    if (btn) { btn.disabled = true; btn.dataset.oldText = btn.textContent; btn.textContent = '复制中...'; }
     try {
       await navigator.clipboard.writeText(md);
       addLog && addLog('ok', '体检报告已复制到剪贴板');
+      if (btn) { btn.textContent = '✓ 已复制'; }
     } catch (e) {
       addLog && addLog('err', '复制到剪贴板失败: ' + e);
+    } finally {
+      if (btn) {
+        setTimeout(() => { btn.disabled = false; btn.textContent = btn.dataset.oldText || '复制报告'; }, 800);
+      }
     }
   };
 

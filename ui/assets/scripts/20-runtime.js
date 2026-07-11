@@ -250,7 +250,6 @@ function syncIdeProxyButton() {
   btn.classList.remove('running', 'warning', 'is-connected');
   if (restoreBtn) {
     restoreBtn.textContent = '停止接入';
-    restoreBtn.classList.toggle('is-danger', patched);
     restoreBtn.disabled = !patched;
     restoreBtn.setAttribute('aria-label', patched ? `停止 ${label} 接入 AnyBridge` : `${label} 当前未接入`);
   }
@@ -516,7 +515,11 @@ function promptInstallCertificateBeforeProxy() {
     const btnConfirm = document.getElementById('modal-btn-confirm');
 
     if (!modal || !btnCancel || !btnConfirm) {
-      resolve(confirm(message + '\n\n是否现在安装证书并继续切换到代理？'));
+      if (typeof showCustomConfirm === 'function') {
+        showCustomConfirm(message + '\n\n是否现在安装证书并继续切换到代理？', '需要安装证书', 'warn').then(resolve);
+      } else {
+        resolve(confirm(message + '\n\n是否现在安装证书并继续切换到代理？'));
+      }
       return;
     }
 
@@ -1223,7 +1226,9 @@ function escapeHtml(s) {
 }
 
 function renderLogLine(e) {
-  return `<div class="log-line"><span class="log-ts">${e.ts}</span><span class="log-lv ${e.level}">${e.level.toUpperCase().padEnd(4)}</span><span class="log-msg">${escapeHtml(e.msg)}</span></div>`;
+  const level = escapeHtml(e.level);
+  const label = escapeHtml(String(e.level || '').toUpperCase());
+  return `<div class="log-line" data-level="${level}"><span class="log-ts">${escapeHtml(e.ts)}</span><span class="log-lv ${level}">${label}</span><span class="log-msg">${escapeHtml(e.msg)}</span></div>`;
 }
 
 function renderLogs() {
@@ -1282,11 +1287,12 @@ const logViewerFilters = {
   autoScroll: true
 };
 
-function cycleLogFilter() {
-  const i = LOG_FILTERS.indexOf(logFilter);
-  logFilter = LOG_FILTERS[(i + 1) % LOG_FILTERS.length];
-  const btn = document.getElementById('logFilterBtn');
-  if (btn) btn.textContent = `筛选: ${LOG_FILTER_LABELS[logFilter]} ▾`;
+function setLogFilter(level) {
+  if (!LOG_FILTERS.includes(level)) return;
+  logFilter = level;
+  document.querySelectorAll('.log-tab').forEach(tab => {
+    tab.classList.toggle('active', tab.dataset.level === level);
+  });
   renderLogs();
 }
 
