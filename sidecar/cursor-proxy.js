@@ -89,7 +89,7 @@ const CURSOR_AGENT_SYSTEM = [
 function appConfigDir(name) {
   if (process.platform === 'darwin') return path.join(os.homedir(), 'Library', 'Application Support', name);
   if (process.platform === 'linux') return path.join(process.env.XDG_CONFIG_HOME || path.join(os.homedir(), '.config'), name);
-  return path.join(os.homedir(), 'AppData', 'Roaming', name);
+  return process.env.APPDATA ? path.join(process.env.APPDATA, name) : path.join(os.homedir(), 'AppData', 'Roaming', name);
 }
 
 function configDir() {

@@ -14,6 +14,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import crypto from 'node:crypto';
+import { pathToFileURL } from 'node:url';
 import { listenWithReclaim } from './port-utils.js';
 import { handleGetChatMessage, shouldIntercept } from './handlers/chat.js';
 import { handleLocalProxyRequest, isLocalProxyRequest } from './local-proxy.js';
@@ -51,7 +52,7 @@ function configDir() {
 function appConfigDir(name) {
   if (process.platform === 'darwin') return path.join(os.homedir(), 'Library', 'Application Support', name);
   if (process.platform === 'linux') return path.join(process.env.XDG_CONFIG_HOME || path.join(os.homedir(), '.config'), name);
-  return path.join(os.homedir(), 'AppData', 'Roaming', name);
+  return process.env.APPDATA ? path.join(process.env.APPDATA, name) : path.join(os.homedir(), 'AppData', 'Roaming', name);
 }
 
 // 遥测屏蔽：这些 gRPC 方法直接返回空 200 响应，不转发到服务端。
@@ -77,7 +78,11 @@ const REAL_UNLEASH_HOST = 'unleash.codeium.com';
 // ─── MITM certs for server.codeium.com (optional — not needed behind nginx) ──
 // Priority: BYOK_CONFIG_DIR/certs (user-generated) → BYOK_RESOURCE_DIR/certs → ../certs
 function resolveCertsDir() {
-  const toUrl = (p) => new URL(`file://${p.replace(/\\/g, '/')}/certs/`);
+  // pathToFileURL 正确处理 Windows 盘符（file:///C:/...），避免 file://C:/ 被解析成 host
+  const toUrl = (p) => {
+    const base = pathToFileURL(path.resolve(String(p))).href.replace(/\/?$/, '/');
+    return new URL('certs/', base);
+  };
   if (process.env.BYOK_CONFIG_DIR) return toUrl(process.env.BYOK_CONFIG_DIR);
   if (process.env.BYOK_RESOURCE_DIR) return toUrl(process.env.BYOK_RESOURCE_DIR);
   return new URL('../certs/', import.meta.url);
