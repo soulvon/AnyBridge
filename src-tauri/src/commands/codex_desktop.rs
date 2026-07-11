@@ -30,6 +30,7 @@ use std::collections::HashSet;
 use std::io::{Read, Write};
 use std::net::{SocketAddr, TcpStream};
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicU16, Ordering};
 use std::time::{Duration, Instant};
 use tauri::AppHandle;
 
@@ -40,6 +41,20 @@ use std::os::windows::process::CommandExt;
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
 const CDP_PORT: u16 = 9229;
+
+/// 记录当前 Codex 实际使用的 CDP 端口（可能为动态端口）。
+/// launch_with_cdp 时写入，watcher 和 injection check 读取。
+/// 0 表示尚未启动过 CDP 模式，回退到 CDP_PORT。
+static ACTIVE_CDP_PORT: AtomicU16 = AtomicU16::new(0);
+
+fn current_cdp_port() -> u16 {
+    let p = ACTIVE_CDP_PORT.load(Ordering::Relaxed);
+    if p == 0 { CDP_PORT } else { p }
+}
+
+fn set_active_cdp_port(port: u16) {
+    ACTIVE_CDP_PORT.store(port, Ordering::Relaxed);
+}
 
 /// 找一个可用的 CDP 端口：优先 9229，被占就让 OS 分配。
 /// 解决 Codex kill 后 9229 socket 残留导致新实例 bind 失败的问题。
@@ -472,6 +487,7 @@ public class CodexLauncher {{
         .trim()
         .parse()
         .map_err(|e| format!("COM 激活返回的 PID 解析失败: {e} (raw={raw})"))?;
+    set_active_cdp_port(port);
     Ok((pid, port))
 }
 
@@ -557,11 +573,11 @@ fn launch_plain() -> Result<u32, String> {
 
 /// watcher 用的慢探测：给足响应时间，避免 renderer 加载中 /json 响应慢被误判为没监听。
 fn cdp_listening_slow() -> bool {
-    cdp_listening_with_timeout(Duration::from_secs(2))
+    cdp_listening_on_port(current_cdp_port(), Duration::from_secs(2))
 }
 
 fn cdp_listening_with_timeout(timeout: Duration) -> bool {
-    match http_get_local(CDP_PORT, "/json", timeout) {
+    match http_get_local(current_cdp_port(), "/json", timeout) {
         Ok(_) => true,
         Err(_) => false,
     }
@@ -844,7 +860,7 @@ pub(crate) fn clean_models_cache() -> Result<(), String> {
 
 /// POST sidecar /__byok/codex-cdp/inject 触发 6 点补丁注入。
 fn inject_via_sidecar() -> Result<String, String> {
-    inject_via_sidecar_on_port(CDP_PORT)
+    inject_via_sidecar_on_port(current_cdp_port())
 }
 
 /// POST sidecar /__byok/codex-cdp/inject，指定 CDP 端口（动态端口用）。
@@ -888,7 +904,7 @@ fn inject_via_sidecar_on_port(cdp_port: u16) -> Result<String, String> {
 /// POST sidecar /__byok/codex-cdp/check 检测注入标记是否存在。
 fn sidecar_injection_present() -> bool {
     let ports = configured_proxy_ports();
-    let body = serde_json::json!({ "port": CDP_PORT }).to_string();
+    let body = serde_json::json!({ "port": current_cdp_port() }).to_string();
     match http_post_local(
         ports.api_port,
         "/__byok/codex-cdp/check",
