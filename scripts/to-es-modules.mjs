@@ -1,18 +1,10 @@
 /**
- * P3: classic scripts → ES modules（零回归，保留 function hoist）
- *
- * 策略：
- * 1. 顶层 function / async function / class：保留声明（模块内 hoist），文末 mirror 到 globalThis
- * 2. 顶层 let/const/var：改写为 globalThis.name = ...（可变共享状态）
- * 3. 浏览器模块对 global 对象属性的自由变量读写与 classic 全局脚本一致
- * 4. data-action 继续 window[fnName]
- * 5. IIFE 副作用文件仅加 module 标记
- * 6. main.js 按序 import
+ * Fix incomplete P3 mirrors + residual top-level vars
+ * (converter scanner stopped early on 10-shell / 20-runtime)
  */
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-const DIR = 'ui/assets/scripts';
 const ORDER = [
   '00-bridge.js',
   '05-actions.js',
@@ -29,72 +21,25 @@ const ORDER = [
   '90-init.js',
 ];
 
-const HEADER = `// ES module (P3) — vars on globalThis; functions kept + mirrored for hoist + data-action.
-`;
-
-function transformSource(src) {
-  if (src.includes('ES module (P3)')) {
-    return { out: src, stats: { skipped: 'already' } };
-  }
-
-  const decls = findTopLevelDecls(src);
-  const fnNames = decls.filter((d) => d.kind === 'function' || d.kind === 'class').map((d) => d.name);
-  const varDecls = decls.filter((d) => d.kind === 'var');
-
-  if (decls.length === 0) {
-    return {
-      out: HEADER + src.replace(/\s*$/, '\n'),
-      stats: { skipped: 'side-effect-only', functions: 0, vars: 0 },
-    };
-  }
-
-  let out = src;
-  // 只改写 var，从后往前
-  const sortedVars = [...varDecls].sort((a, b) => b.start - a.start);
-  let varCount = 0;
-  for (const d of sortedVars) {
-    const rewritten = rewriteVarDecl(d.varKind, out.slice(d.innerStart, d.end));
-    out = out.slice(0, d.start) + rewritten + out.slice(d.end);
-    varCount += d.names.length;
-  }
-
-  // 文末 mirror functions/classes（去重）
-  const uniqueFns = [...new Set(fnNames)];
-  const footer =
-    uniqueFns.length === 0
-      ? ''
-      : [
-          '',
-          '// ---- P3 globalThis mirror (functions/classes) ----',
-          '(function mirrorFns(g) {',
-          ...uniqueFns.map((name) => `  g.${name} = ${name};`),
-          '})(globalThis);',
-          '',
-        ].join('\n');
-
-  return {
-    out: HEADER + out.replace(/\s*$/, '\n') + footer,
-    stats: { functions: uniqueFns.length, vars: varCount, classes: 0 },
-  };
-}
-
-function findTopLevelDecls(src) {
-  const decls = [];
+// Reuse accurate scanner from audit2
+function scan(src) {
+  const fns = [];
+  const varSpans = [];
   let i = 0;
   const n = src.length;
   let brace = 0;
   let paren = 0;
   let bracket = 0;
 
-  const skipLineComment = () => {
+  function skipLineComment() {
     while (i < n && src[i] !== '\n') i++;
-  };
-  const skipBlockComment = () => {
+  }
+  function skipBlockComment() {
     i += 2;
     while (i < n - 1 && !(src[i] === '*' && src[i + 1] === '/')) i++;
     i = Math.min(n, i + 2);
-  };
-  const skipString = (q) => {
+  }
+  function skipString(q) {
     i++;
     while (i < n) {
       if (src[i] === '\\') {
@@ -107,8 +52,8 @@ function findTopLevelDecls(src) {
       }
       i++;
     }
-  };
-  const skipTemplate = () => {
+  }
+  function skipTemplate() {
     i++;
     while (i < n) {
       if (src[i] === '\\') {
@@ -140,14 +85,14 @@ function findTopLevelDecls(src) {
       }
       i++;
     }
-  };
-  const canStartRegex = () => {
+  }
+  function canStartRegex() {
     let j = i - 1;
     while (j >= 0 && /[ \t]/.test(src[j])) j--;
     if (j < 0) return true;
-    return /[=(:,[\!&|?+{};\nreturn]/.test(src[j]);
-  };
-  const skipRegex = () => {
+    return /[=(:,[\!&|?+{};\n]/.test(src[j]) || src.slice(Math.max(0, j - 6), j + 1).includes('return');
+  }
+  function skipRegex() {
     i++;
     while (i < n) {
       if (src[i] === '\\') {
@@ -170,76 +115,7 @@ function findTopLevelDecls(src) {
       }
       i++;
     }
-  };
-
-  const skipFunctionFromName = () => {
-    while (i < n && /\s/.test(src[i])) i++;
-    if (src[i] === '*') i++;
-    while (i < n && /\s/.test(src[i])) i++;
-    while (i < n && src[i] !== '(') i++;
-    if (src[i] === '(') {
-      let d = 0;
-      do {
-        if (src[i] === '"' || src[i] === "'") skipString(src[i]);
-        else if (src[i] === '`') skipTemplate();
-        else if (src[i] === '(') {
-          d++;
-          i++;
-        } else if (src[i] === ')') {
-          d--;
-          i++;
-        } else i++;
-      } while (i < n && d > 0);
-    }
-    while (i < n && /\s/.test(src[i])) i++;
-    if (src[i] === '{') {
-      let d = 0;
-      do {
-        const c = src[i];
-        if (c === '"' || c === "'") skipString(c);
-        else if (c === '`') skipTemplate();
-        else if (c === '/' && src[i + 1] === '/') skipLineComment();
-        else if (c === '/' && src[i + 1] === '*') skipBlockComment();
-        else if (c === '/' && canStartRegex()) skipRegex();
-        else if (c === '{') {
-          d++;
-          i++;
-        } else if (c === '}') {
-          d--;
-          i++;
-        } else i++;
-      } while (i < n && d > 0);
-    }
-  };
-
-  const skipClassBody = () => {
-    while (i < n && /\s/.test(src[i])) i++;
-    if (src.startsWith('extends', i)) {
-      i += 7;
-      while (i < n && src[i] !== '{') {
-        if (src[i] === '"' || src[i] === "'") skipString(src[i]);
-        else if (src[i] === '`') skipTemplate();
-        else i++;
-      }
-    }
-    if (src[i] === '{') {
-      let d = 0;
-      do {
-        const c = src[i];
-        if (c === '"' || c === "'") skipString(c);
-        else if (c === '`') skipTemplate();
-        else if (c === '/' && src[i + 1] === '/') skipLineComment();
-        else if (c === '/' && src[i + 1] === '*') skipBlockComment();
-        else if (c === '{') {
-          d++;
-          i++;
-        } else if (c === '}') {
-          d--;
-          i++;
-        } else i++;
-      } while (i < n && d > 0);
-    }
-  };
+  }
 
   while (i < n) {
     const c = src[i];
@@ -296,37 +172,21 @@ function findTopLevelDecls(src) {
 
     if (brace === 0 && paren === 0 && bracket === 0) {
       const rest = src.slice(i);
+      if (rest.startsWith('// ---- P3 globalThis mirror')) break;
       let m;
       if ((m = rest.match(/^async\s+function\s*\*?\s*([A-Za-z_$][\w$]*)/))) {
-        const start = i;
-        const name = m[1];
-        const nameEnd = i + m[0].length;
-        i = nameEnd;
-        skipFunctionFromName();
-        decls.push({ kind: 'function', async: true, name, start, nameEnd, end: i });
+        fns.push(m[1]);
+        i += m[0].length;
         continue;
       }
       if ((m = rest.match(/^function\s*\*?\s*([A-Za-z_$][\w$]*)/))) {
-        const start = i;
-        const name = m[1];
-        const nameEnd = i + m[0].length;
-        i = nameEnd;
-        skipFunctionFromName();
-        decls.push({ kind: 'function', async: false, name, start, nameEnd, end: i });
-        continue;
-      }
-      if ((m = rest.match(/^class\s+([A-Za-z_$][\w$]*)/))) {
-        const start = i;
-        const name = m[1];
-        const nameEnd = i + m[0].length;
-        i = nameEnd;
-        skipClassBody();
-        decls.push({ kind: 'class', name, start, nameEnd, end: i });
+        fns.push(m[1]);
+        i += m[0].length;
         continue;
       }
       if ((m = rest.match(/^(let|const|var)\s+/))) {
-        const start = i;
-        const varKind = m[1];
+        const kindStart = i;
+        const kind = m[1];
         i += m[0].length;
         const innerStart = i;
         let pb = 0;
@@ -384,40 +244,54 @@ function findTopLevelDecls(src) {
             i++;
             break;
           }
-          if (ch === '\n' && pb === 0 && pp === 0 && pk === 0) {
-            let j = i + 1;
-            while (j < n && /[ \t]/.test(src[j])) j++;
-            if (j < n && (src[j] === '\n' || src[j] === '/' || /[A-Za-z_$]/.test(src[j]))) {
-              break;
-            }
-          }
+          if (ch === '\n' && pb === 0 && pp === 0 && pk === 0) break;
           i++;
         }
-        const inner = src.slice(innerStart, i);
-        const names = [];
+        const end = i;
+        const inner = src.slice(innerStart, end);
+        // only simple bindings, not object destructure
         if (!/^\s*[{\[]/.test(inner)) {
-          for (const part of splitTopLevelComma(inner.replace(/;\s*$/, ''))) {
-            const nm = part.trim().match(/^([A-Za-z_$][\w$]*)/);
+          const names = [];
+          // split top-level commas carefully for object init like logViewerFilters = { a: 1 }
+          // if single binding with = object, one name
+          const eq = inner.indexOf('=');
+          if (eq === -1) {
+            const nm = inner.trim().match(/^([A-Za-z_$][\w$]*)/);
             if (nm) names.push(nm[1]);
+          } else {
+            const left = inner.slice(0, eq).trim();
+            // multi: a = 1, b = 2
+            // if left has comma, multi without init on first... rare
+            if (!left.includes(',')) {
+              const nm = left.match(/^([A-Za-z_$][\w$]*)$/);
+              if (nm) names.push(nm[1]);
+            } else {
+              // fallback split
+              for (const part of splitComma(inner)) {
+                const nm = part.trim().match(/^([A-Za-z_$][\w$]*)/);
+                if (nm) names.push(nm[1]);
+              }
+            }
+          }
+          if (names.length) {
+            varSpans.push({ kind, kindStart, innerStart, end, names, inner });
           }
         }
-        decls.push({ kind: 'var', varKind, names, start, innerStart, end: i });
         continue;
       }
     }
     i++;
   }
-  return decls;
+  return { fns: [...new Set(fns)], varSpans };
 }
 
-function splitTopLevelComma(s) {
+function splitComma(s) {
   const parts = [];
   let cur = '';
   let pb = 0;
   let pp = 0;
   let pk = 0;
-  let i = 0;
-  while (i < s.length) {
+  for (let i = 0; i < s.length; i++) {
     const c = s[i];
     if (c === '"' || c === "'") {
       const q = c;
@@ -428,45 +302,7 @@ function splitTopLevelComma(s) {
         if (s[i] === '\\') {
           i++;
           if (i < s.length) cur += s[i];
-          i++;
-          continue;
-        }
-        if (s[i] === q) {
-          i++;
-          break;
-        }
-        i++;
-      }
-      continue;
-    }
-    if (c === '`') {
-      cur += c;
-      i++;
-      while (i < s.length) {
-        if (s[i] === '\\') {
-          cur += s[i];
-          i++;
-          if (i < s.length) cur += s[i];
-          i++;
-          continue;
-        }
-        cur += s[i];
-        if (s[i] === '`') {
-          i++;
-          break;
-        }
-        if (s[i] === '$' && s[i + 1] === '{') {
-          cur += '{';
-          i += 2;
-          let d = 1;
-          while (i < s.length && d > 0) {
-            cur += s[i];
-            if (s[i] === '{') d++;
-            else if (s[i] === '}') d--;
-            i++;
-          }
-          continue;
-        }
+        } else if (s[i] === q) break;
         i++;
       }
       continue;
@@ -480,63 +316,74 @@ function splitTopLevelComma(s) {
     if (c === ',' && pb === 0 && pp === 0 && pk === 0) {
       parts.push(cur);
       cur = '';
-      i++;
       continue;
     }
     cur += c;
-    i++;
   }
   if (cur.trim()) parts.push(cur);
   return parts;
 }
 
-function rewriteVarDecl(varKind, innerWithSemi) {
+function rewriteVar(kind, innerWithSemi) {
   const hasSemi = /;\s*$/.test(innerWithSemi);
   const body = innerWithSemi.replace(/;\s*$/, '');
-  const parts = splitTopLevelComma(body);
+  // single binding preferred
+  const m = body.trim().match(/^([A-Za-z_$][\w$]*)(\s*=\s*[\s\S]*)?$/);
+  if (m) {
+    const name = m[1];
+    const init = m[2] ? m[2].replace(/^\s*=\s*/, '') : 'undefined';
+    return `globalThis.${name} = ${init}` + (hasSemi ? ';' : '');
+  }
+  // multi
+  const parts = splitComma(body);
   const stmts = parts.map((p) => {
     const t = p.trim();
-    if (!t) return '';
-    if (t.startsWith('{') || t.startsWith('[')) {
-      return `${varKind} ${t}`;
-    }
-    const m = t.match(/^([A-Za-z_$][\w$]*)(\s*=\s*[\s\S]*)?$/);
-    if (!m) return `${varKind} ${t}`;
-    const name = m[1];
-    if (m[2]) {
-      const init = m[2].replace(/^\s*=\s*/, '');
-      return `globalThis.${name} = ${init}`;
-    }
+    const mm = t.match(/^([A-Za-z_$][\w$]*)(\s*=\s*[\s\S]*)?$/);
+    if (!mm) return `${kind} ${t}`;
+    const name = mm[1];
+    if (mm[2]) return `globalThis.${name} = ${mm[2].replace(/^\s*=\s*/, '')}`;
     return `globalThis.${name} = undefined`;
   });
-  const joined = stmts.filter(Boolean).join('; ');
-  return joined + (hasSemi ? ';' : '');
+  return stmts.join('; ') + (hasSemi ? ';' : '');
 }
-
-const dry = process.argv.includes('--dry');
-const only = process.argv.find((a) => a.startsWith('--only='))?.slice(7);
-const report = {};
 
 for (const f of ORDER) {
-  if (only && f !== only) continue;
-  const path = join(DIR, f);
-  const src = readFileSync(path, 'utf8');
-  const { out, stats } = transformSource(src);
-  report[f] = stats;
-  console.log(dry ? 'dry' : 'write', f, JSON.stringify(stats));
-  if (!dry && stats.skipped !== 'already') writeFileSync(path, out);
-}
+  const path = join('ui/assets/scripts', f);
+  let src = readFileSync(path, 'utf8');
+  if (!src.includes('ES module (P3)')) continue;
 
-if (!only) {
-  const mainJs =
-    `/**\n * AnyBridge UI entry (ES module)\n * Side-effect imports in dependency order; bindings live on globalThis.\n */\n` +
-    ORDER.map((f) => `import './${f}';`).join('\n') +
-    '\n';
-  if (!dry) {
-    writeFileSync(join(DIR, 'main.js'), mainJs);
-    console.log('wrote main.js');
+  // strip old mirror
+  src = src.replace(/\n\/\/ ---- P3 globalThis mirror[\s\S]*$/, '\n');
+
+  const { fns, varSpans } = scan(src);
+
+  // rewrite residual vars from back
+  const sorted = [...varSpans].sort((a, b) => b.kindStart - a.kindStart);
+  for (const d of sorted) {
+    // skip if already globalThis (shouldn't be in scan)
+    const rewritten = rewriteVar(d.kind, src.slice(d.innerStart, d.end));
+    src = src.slice(0, d.kindStart) + rewritten + src.slice(d.end);
   }
-}
 
-writeFileSync('scripts/_p3-transform-report.json', JSON.stringify(report, null, 2));
+  // rebuild mirror
+  if (fns.length) {
+    const footer =
+      '\n// ---- P3 globalThis mirror (functions/classes) ----\n' +
+      '(function mirrorFns(g) {\n' +
+      fns.map((name) => `  g.${name} = ${name};`).join('\n') +
+      '\n})(globalThis);\n';
+    src = src.replace(/\s*$/, '\n') + footer;
+  }
+
+  writeFileSync(path, src);
+  console.log(
+    'fixed',
+    f,
+    'fns=',
+    fns.length,
+    'varsRewritten=',
+    varSpans.length,
+    varSpans.length ? varSpans.flatMap((v) => v.names).join(',') : '',
+  );
+}
 console.log('done');

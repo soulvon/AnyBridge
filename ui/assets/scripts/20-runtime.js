@@ -1211,10 +1211,10 @@ function toggleTheme() {
 }
 
 // ═══════ LOG STREAM ═══════
-const MAX_LOGS = 500;
-let logEntries = [];
-let logRenderScheduled = false;
-let logScrollPending = false;
+globalThis.MAX_LOGS = 500;
+globalThis.logEntries = [];
+globalThis.logRenderScheduled = false;
+globalThis.logScrollPending = false;
 
 function nowTs() {
   const d = new Date();
@@ -1276,11 +1276,11 @@ function clearLogs() {
   renderLogs();
 }
 
-let logFilter = 'all';
-const LOG_FILTERS = ['all', 'ok', 'info', 'warn', 'err'];
-const LOG_FILTER_LABELS = { all: '全部', ok: 'OK', info: 'INFO', warn: 'WARN', err: 'ERR' };
-const LOG_VIEWER_LEVELS = ['ok', 'info', 'warn', 'err'];
-const logViewerFilters = {
+globalThis.logFilter = 'all';
+globalThis.LOG_FILTERS = ['all', 'ok', 'info', 'warn', 'err'];
+globalThis.LOG_FILTER_LABELS = { all: '全部', ok: 'OK', info: 'INFO', warn: 'WARN', err: 'ERR' };
+globalThis.LOG_VIEWER_LEVELS = ['ok', 'info', 'warn', 'err'];
+globalThis.logViewerFilters = {
   levels: new Set(LOG_VIEWER_LEVELS),
   query: '',
   limit: 200,
@@ -1713,4 +1713,49 @@ function setConfigToggleState(key, enabled) {
   g.setText = setText;
   g.setBar = setBar;
   g.pctOf = pctOf;
+  g.resetStatsUi = resetStatsUi;
+  g.updateHealthPill = updateHealthPill;
+  g.refreshStats = refreshStats;
+  g.renderTopModels = renderTopModels;
+  g.windowMinimize = windowMinimize;
+  g.windowMaximize = windowMaximize;
+  g.windowClose = windowClose;
+  g.bindWindowControlHandlers = bindWindowControlHandlers;
+  g.applyTheme = applyTheme;
+  g.toggleTheme = toggleTheme;
+  g.nowTs = nowTs;
+  g.escapeHtml = escapeHtml;
+  g.renderLogLine = renderLogLine;
+  g.renderLogs = renderLogs;
+  g.scheduleLogRender = scheduleLogRender;
+  g.addLog = addLog;
+  g.clearLogs = clearLogs;
+  g.setLogFilter = setLogFilter;
+  g.openLogViewerModal = openLogViewerModal;
+  g.closeLogViewerModal = closeLogViewerModal;
+  g.closeLogViewerOnEsc = closeLogViewerOnEsc;
+  g.syncLogViewerControls = syncLogViewerControls;
+  g.onLogViewerLevelChange = onLogViewerLevelChange;
+  g.setLogViewerLevelPreset = setLogViewerLevelPreset;
+  g.onLogViewerSearchInput = onLogViewerSearchInput;
+  g.onLogViewerLimitChange = onLogViewerLimitChange;
+  g.onLogViewerOrderChange = onLogViewerOrderChange;
+  g.onLogViewerAutoScrollChange = onLogViewerAutoScrollChange;
+  g.logViewerFilteredEntries = logViewerFilteredEntries;
+  g.renderLogViewerLine = renderLogViewerLine;
+  g.renderLogViewer = renderLogViewer;
+  g.exportLogs = exportLogs;
+  g.openCertsDir = openCertsDir;
+  g.openConfigDir = openConfigDir;
+  g.generateCerts = generateCerts;
+  g.runSettingsEnvironmentCheck = runSettingsEnvironmentCheck;
+  g.detectIdePath = detectIdePath;
+  g.saveIdePath = saveIdePath;
+  g.loadAndFillConfig = loadAndFillConfig;
+  g.saveConfigField = saveConfigField;
+  g.syncAutostartState = syncAutostartState;
+  g.setAutostartToggleState = setAutostartToggleState;
+  g.applyToggleStates = applyToggleStates;
+  g.setConfigToggleElementState = setConfigToggleElementState;
+  g.setConfigToggleState = setConfigToggleState;
 })(globalThis);
