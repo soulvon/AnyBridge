@@ -683,12 +683,16 @@ function buildUnlockSet() {
       provider: providerName,
       apiModel,
     }) : '';
+    const slotContextWindow = Number(s.contextWindow);
     byUid.set(s.modelUid, {
       newLabel,
       customName,
       providerName,
       apiModel,
       wantImages: s.supportsImages !== false && canDeclareImagesForSlot(s.modelUid),
+      contextWindow: Number.isFinite(slotContextWindow) && slotContextWindow > 0
+        ? Math.trunc(slotContextWindow)
+        : null,
       source: 'rename',
     });
   }
@@ -861,6 +865,7 @@ function existingRewriteSpec(uid, origLabel, wasDisabled, cfg, ctx) {
       newLabel: configuredLabelFromRuntime(cfg, origLabel, uid, ctx.labelTemplate, ctx.namePrefix),
       wantImages: cfg.wantImages,
       apiIdOverride: cfg.apiIdOverride || '',
+      contextWindow: cfg.contextWindow || null,
       disabled: false,
       status: 'configured',
       source: cfg.source || 'rename',
@@ -911,6 +916,7 @@ function configuredMissingSpecs(seenUids, ctx) {
       newLabel: configuredLabelFromRuntime(cfg, fallbackLabel, uid, ctx.labelTemplate, ctx.namePrefix),
       wantImages: cfg.wantImages,
       apiIdOverride: cfg.apiIdOverride || '',
+      contextWindow: cfg.contextWindow || null,
       disabled: false,
       status: 'configured',
       source: cfg.source || 'rename',
@@ -957,14 +963,28 @@ function missingModelSpecs(seenUids, ctx) {
   ];
 }
 
-function modelMetadataForUid(uid) {
+function modelMetadataForUid(uid, contextWindowOverride = null) {
   const catalog = catalogByUid().get(uid) || {};
   const apiId = catalog.apiId || (!String(uid || '').startsWith('MODEL_') ? uid : null);
+  const override = Number(contextWindowOverride);
+  const catalogWindow = Number(catalog.contextWindow);
+  const contextWindow = Number.isFinite(override) && override > 0
+    ? Math.trunc(override)
+    : (Number.isFinite(catalogWindow) && catalogWindow > 0 ? Math.trunc(catalogWindow) : null);
   return {
     uid,
     apiId,
-    contextWindow: catalog.contextWindow || null,
+    contextWindow,
   };
+}
+
+/** slot.contextWindow 覆盖 GetUserStatus JSON 条目；无有效覆盖时保持原值。 */
+function applyContextWindowToJsonItem(item, spec) {
+  if (!item || typeof item !== 'object') return item;
+  const n = Number(spec && spec.contextWindow);
+  if (!Number.isFinite(n) || n <= 0) return item;
+  item.contextWindow = Math.trunc(n);
+  return item;
 }
 
 function writeStringFieldLocal(fieldNo, value) {
@@ -1101,6 +1121,7 @@ function rewriteForUnlock(buf, counter, depth, ctx, state) {
               apiIdOverride: spec.apiIdOverride || '',
               newLabel: spec.newLabel,
               wantImages: spec.wantImages,
+              contextWindow: spec.contextWindow || null,
               disabled: spec.disabled,
             });
             if (rewritten !== child) {
@@ -1133,6 +1154,7 @@ function rewriteForUnlock(buf, counter, depth, ctx, state) {
           apiIdOverride: spec.apiIdOverride || '',
           newLabel: spec.newLabel,
           wantImages: spec.wantImages,
+          contextWindow: spec.contextWindow || null,
           disabled: spec.disabled,
         });
         parts.push(templateTagBytes, encVarint(synthetic.length), synthetic);
@@ -1152,10 +1174,10 @@ function rewriteForUnlock(buf, counter, depth, ctx, state) {
 //   field5 (supports_images) → wantImages 为布尔值时才重写；否则保持原值
 //     wantImages=true  → 追加 field5=1（GLM 等原本不支持图的模型也强制可发图）
 //     wantImages=false → 不追加（proto3 默认 false，发图按钮置灰）
-//   field18(context_window)   → catalog 有记录时替换，避免合成条目沿用模板窗口
+//   field18(context_window)   → slot 覆盖优先，否则用 catalog；避免合成条目沿用模板窗口
 //   field23(model_info)       → 同步内部 modelUid/API ID，避免客户端按模板模型折叠
 // 外层 rewriteForUnlock 会用 encVarint(child.length) 重算长度前缀，故增删字段安全。
-function rewriteConfigFields(buf, { modelUid, apiIdOverride, newLabel, wantImages, disabled }) {
+function rewriteConfigFields(buf, { modelUid, apiIdOverride, newLabel, wantImages, contextWindow, disabled }) {
   const parts = [];
   let i = 0;
   let mutated = false;
@@ -1163,7 +1185,12 @@ function rewriteConfigFields(buf, { modelUid, apiIdOverride, newLabel, wantImage
   const manageImages = typeof wantImages === 'boolean';
   const manageModelUid = typeof modelUid === 'string' && modelUid.length > 0;
   const manageLabel = typeof newLabel === 'string' && newLabel.length > 0;
-  const meta = manageModelUid ? modelMetadataForUid(modelUid) : null;
+  const overrideWindow = Number(contextWindow);
+  const hasContextOverride = Number.isFinite(overrideWindow) && overrideWindow > 0;
+  // 已有 modelUid 时可合并 catalog；仅 slot 覆盖时也允许改 field18
+  const meta = manageModelUid
+    ? modelMetadataForUid(modelUid, hasContextOverride ? overrideWindow : null)
+    : (hasContextOverride ? { uid: '', apiId: null, contextWindow: Math.trunc(overrideWindow) } : null);
   if (meta && apiIdOverride) meta.apiId = apiIdOverride;
   const manageContextWindow = !!(meta && Number.isFinite(Number(meta.contextWindow)) && Number(meta.contextWindow) > 0);
   let sawModelInfo = false;
@@ -1280,6 +1307,7 @@ function unlockInJson(text, unlockAll, byUid, defaultProviderName = '', labelTem
         if (spec.newLabel) out.label = spec.newLabel;
         out.disabled = spec.disabled === true;
         if (typeof spec.wantImages === 'boolean') out.supportsImages = spec.wantImages;
+        applyContextWindowToJsonItem(out, spec);
         next.push(out);
       }
 
@@ -1292,6 +1320,7 @@ function unlockInJson(text, unlockAll, byUid, defaultProviderName = '', labelTem
           disabled: spec.disabled === true,
         };
         if (typeof spec.wantImages === 'boolean') out.supportsImages = spec.wantImages;
+        applyContextWindowToJsonItem(out, spec);
         next.push(out);
       }
 
@@ -1368,6 +1397,16 @@ function unlockInJson(text, unlockAll, byUid, defaultProviderName = '', labelTem
       } else {
         // 紧跟开头的 '{' 插入字段（JSON 对象字段无序，安全）
         newObj = newObj.replace(/^\{/, `{"supportsImages":${imgVal},`);
+      }
+    }
+    // 4) contextWindow：仅 slot 有有效覆盖时写入。
+    const slotCtx = cfg && !hideConfigured ? Number(cfg.contextWindow) : NaN;
+    if (Number.isFinite(slotCtx) && slotCtx > 0) {
+      const ctxVal = String(Math.trunc(slotCtx));
+      if (/"contextWindow"\s*:\s*\d+/.test(newObj)) {
+        newObj = newObj.replace(/"contextWindow"\s*:\s*\d+/g, `"contextWindow":${ctxVal}`);
+      } else {
+        newObj = newObj.replace(/^\{/, `{"contextWindow":${ctxVal},`);
       }
     }
     if (newObj !== obj) {

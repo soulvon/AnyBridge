@@ -964,18 +964,18 @@
                 </div>
                 <div id="slotCatalogScopeTabs"
                   style="display:flex;align-items:center;gap:6px;padding:10px 20px;border-bottom:1px solid var(--border);background:var(--bg-card);">
-                  <button class="slot-scope-tab" data-scope="extended"
- style="height:26px;padding:0 10px;border-radius:7px;border:1px solid var(--border);background:var(--bg-input);color:var(--text-muted);font-size:11px;font-weight:700;cursor:pointer;" data-action="setSlotCatalogScope" data-arg="extended">内置槽位
-                    <span id="slotScopeExtendedCount">0</span></button>
                   <button class="slot-scope-tab" data-scope="all"
  style="height:26px;padding:0 10px;border-radius:7px;border:1px solid var(--border);background:var(--bg-input);color:var(--text-muted);font-size:11px;font-weight:700;cursor:pointer;" data-action="setSlotCatalogScope" data-arg="all">全部
                     <span id="slotScopeAllCount">0</span></button>
-                  <button class="slot-scope-tab" data-scope="bound"
- style="height:26px;padding:0 10px;border-radius:7px;border:1px solid var(--border);background:var(--bg-input);color:var(--text-muted);font-size:11px;font-weight:700;cursor:pointer;" data-action="setSlotCatalogScope" data-arg="bound">已绑定
-                    <span id="slotScopeBoundCount">0</span></button>
                   <button class="slot-scope-tab" data-scope="account"
  style="height:26px;padding:0 10px;border-radius:7px;border:1px solid var(--border);background:var(--bg-input);color:var(--text-muted);font-size:11px;font-weight:700;cursor:pointer;" data-action="setSlotCatalogScope" data-arg="account">当前账号
                     <span id="slotScopeAccountCount">0</span></button>
+                  <button class="slot-scope-tab" data-scope="extended"
+ style="height:26px;padding:0 10px;border-radius:7px;border:1px solid var(--border);background:var(--bg-input);color:var(--text-muted);font-size:11px;font-weight:700;cursor:pointer;" data-action="setSlotCatalogScope" data-arg="extended">内置槽位
+                    <span id="slotScopeExtendedCount">0</span></button>
+                  <button class="slot-scope-tab" data-scope="bound"
+ style="height:26px;padding:0 10px;border-radius:7px;border:1px solid var(--border);background:var(--bg-input);color:var(--text-muted);font-size:11px;font-weight:700;cursor:pointer;" data-action="setSlotCatalogScope" data-arg="bound">已绑定
+                    <span id="slotScopeBoundCount">0</span></button>
                 </div>
                 <!-- 槽位搜索栏 -->
                 <div
@@ -1047,6 +1047,31 @@
                   </div>
                   <input class="field-input" id="slot-display" placeholder="例如：我的 DeepSeek 映射..."
                     style="padding:10px 14px; font-size:12px; border-radius:8px; width:100%;">
+                  <div style="display:flex; flex-direction:column; gap:6px; margin-top:4px;">
+                    <div style="display:flex; align-items:center; justify-content:space-between; gap:8px;">
+                      <span style="font-size:12px; font-weight:600; color:var(--text-secondary);">上下文窗口（token）</span>
+                      <span id="slot-context-hint" style="font-size:11px; color:var(--text-muted);">留空 = 使用 catalog / 上游原值</span>
+                    </div>
+                    <div style="display:flex; gap:8px; align-items:center;">
+                      <input class="field-input" id="slot-context-window" type="number" min="1" step="1"
+                        placeholder="例如 200000"
+                        style="padding:10px 14px; font-size:12px; border-radius:8px; flex:1; min-width:0;">
+                      <div id="slot-context-presets" style="display:flex; gap:4px; flex-wrap:wrap; justify-content:flex-end;">
+                        <button type="button" id="btn-slot-context-recommend" class="slot-ctx-preset" data-action="applyRecommendedSlotContextWindow"
+                          style="height:28px;padding:0 8px;border-radius:7px;border:1px solid var(--accent);background:var(--accent);color:#fff;font-size:11px;font-weight:600;cursor:pointer;" title="按映射模型推荐上下文（与 CodeBuddy 同源）">推荐</button>
+                        <button type="button" class="slot-ctx-preset" data-action="setSlotContextPreset" data-args="[32000]"
+                          style="height:28px;padding:0 8px;border-radius:7px;border:1px solid var(--border);background:var(--bg-input);color:var(--text-muted);font-size:11px;font-weight:600;cursor:pointer;">32K</button>
+                        <button type="button" class="slot-ctx-preset" data-action="setSlotContextPreset" data-args="[128000]"
+                          style="height:28px;padding:0 8px;border-radius:7px;border:1px solid var(--border);background:var(--bg-input);color:var(--text-muted);font-size:11px;font-weight:600;cursor:pointer;">128K</button>
+                        <button type="button" class="slot-ctx-preset" data-action="setSlotContextPreset" data-args="[200000]"
+                          style="height:28px;padding:0 8px;border-radius:7px;border:1px solid var(--border);background:var(--bg-input);color:var(--text-muted);font-size:11px;font-weight:600;cursor:pointer;">200K</button>
+                        <button type="button" class="slot-ctx-preset" data-action="setSlotContextPreset" data-args="[1000000]"
+                          style="height:28px;padding:0 8px;border-radius:7px;border:1px solid var(--border);background:var(--bg-input);color:var(--text-muted);font-size:11px;font-weight:600;cursor:pointer;">1M</button>
+                        <button type="button" class="slot-ctx-preset" data-action="setSlotContextPreset" data-args="[&quot;&quot;]"
+                          style="height:28px;padding:0 8px;border-radius:7px;border:1px solid var(--border);background:var(--bg-input);color:var(--text-muted);font-size:11px;font-weight:600;cursor:pointer;">清除</button>
+                      </div>
+                    </div>
+                  </div>
                   <input type="hidden" id="slot-edit-uid">
                   <select class="model-select" id="slot-uid-select" style="display:none;"></select>
                 </div>

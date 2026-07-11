@@ -1304,7 +1304,7 @@ function renderVisionModelPicker() {
       return `
         <button type="button" class="proxy-route-provider-item ${active ? 'active' : ''} ${isLP ? 'is-local-proxy' : ''}" data-action="selectVisionModelProvider" data-arg="${escAttr(provider.providerId)}">
           <span class="proxy-route-provider-icon">${escAttr(String(provider.providerName || provider.providerId || '?').trim().charAt(0).toUpperCase() || '?')}</span>
-          <span class="proxy-route-provider-name">${escAttr(provider.providerName || provider.providerId)}${isLP ? '<span class="proxy-route-prov-badge">本地</span>' : ''}</span>
+          <span class="proxy-route-provider-name">${escAttr(provider.providerName || provider.providerId)}${isLP ? '<span class="proxy-route-prov-badge">本地代理</span>' : ''}</span>
           <span class="proxy-route-provider-count">${provider.models.length}</span>
         </button>
       `;
@@ -2637,6 +2637,7 @@ function toggleMappingModelTarget(providerId, model) {
   if (slotDisplayNameMode === 'mapped') {
     applyDisplayNameByMode();
   }
+  refreshSlotContextRecommendHint();
 }
 
 function slotCatalogStats(used) {
@@ -2733,8 +2734,8 @@ function maybeAutoSelectRecommendedSlot() {
   selectedSlotUid = recommended.id;
   const selectEl = document.getElementById('slot-uid-select');
   if (selectEl) selectEl.value = recommended.id;
-  if (slotCatalogScope === 'account' && !isAccountSlotModel(recommended)) {
-    slotCatalogScope = 'extended';
+  if (!slotMatchesScope(recommended, used)) {
+    slotCatalogScope = 'all';
   }
   renderSlotCatalogList();
 }
@@ -2954,12 +2955,12 @@ async function openSlotEditor(uid) {
     slotWasManuallySelected = true;
     slotCatalogScope = isAccountSlotModel(slotModelOf(uid)) ? 'account' : 'extended';
   } else {
-    slotCatalogScope = 'account';
+    slotCatalogScope = 'all';
     slotWasManuallySelected = false;
     selectedSlotUid = '';
     if (ideModels && ideModels.length > 0) {
       const firstAvailable = (ideModels || [])
-        .filter(m => isAccountSlotModel(m) && !used.has(m.id))
+        .filter(m => !used.has(m.id))
         .sort((a, b) => slotRecommendationRank(a, used) - slotRecommendationRank(b, used) || a.name.localeCompare(b.name))[0];
       if (firstAvailable) selectedSlotUid = firstAvailable.id;
     }
@@ -3001,6 +3002,8 @@ async function openSlotEditor(uid) {
     slotDisplayNameMode = 'mapped';
     applyDisplayNameByMode();
   }
+  setSlotContextWindowInput(editing ? editing.contextWindow : null);
+  refreshSlotContextRecommendHint();
   // 切到「添加/编辑映射」普通 page，保持顶部 tab 栏可见
   navigateTo('slot-editor');
 }
@@ -3010,11 +3013,144 @@ function closeSlotEditor() {
   navigateTo('models');
 }
 
+function setSlotContextWindowInput(value) {
+  const el = document.getElementById('slot-context-window');
+  if (!el) return;
+  const n = Number(value);
+  el.value = Number.isFinite(n) && n > 0 ? String(Math.trunc(n)) : '';
+}
+
+function readSlotContextWindowInput() {
+  const el = document.getElementById('slot-context-window');
+  if (!el) return null;
+  const raw = String(el.value || '').trim();
+  if (!raw) return null;
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n <= 0) return null;
+  return Math.trunc(n);
+}
+
+function setSlotContextPreset(value) {
+  if (value === '' || value == null) {
+    setSlotContextWindowInput(null);
+    return;
+  }
+  setSlotContextWindowInput(value);
+}
+
+function applySlotContextWindow(slot, contextWindow) {
+  if (!slot || typeof slot !== 'object') return;
+  if (contextWindow == null) {
+    delete slot.contextWindow;
+  } else {
+    slot.contextWindow = contextWindow;
+  }
+}
+
+/** 格式化上下文 token：128000 → 128K，1000000 → 1M（与 CodeBuddy 一致） */
+function formatSlotContextTokens(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n) || n <= 0) return '';
+  if (n >= 1000000) {
+    const m = n / 1000000;
+    const text = Number.isInteger(m) ? String(m) : m.toFixed(2).replace(/\.?0+$/, '');
+    return `${text}M`;
+  }
+  if (n >= 1000) {
+    const k = n / 1000;
+    const text = Number.isInteger(k) ? String(k) : k.toFixed(1).replace(/\.0$/, '');
+    return `${text}K`;
+  }
+  return String(Math.round(n));
+}
+
+/** 推荐上下文的模型 ID：优先首个映射目标 API 模型名 */
+function slotContextRecommendModelId() {
+  const firstTarget = selectedMappingTargets && selectedMappingTargets[0];
+  if (firstTarget && firstTarget.model) return String(firstTarget.model).trim();
+  return '';
+}
+
+function resolveSlotContextRecommend() {
+  const modelId = slotContextRecommendModelId();
+  if (!modelId) return null;
+  let value = null;
+  let source = 'default';
+  let note = '';
+  if (typeof globalThis.resolveModelContextPreset === 'function') {
+    const preset = globalThis.resolveModelContextPreset(modelId) || {};
+    const n = Number(preset.maxInputTokens);
+    if (Number.isFinite(n) && n > 0) {
+      value = Math.trunc(n);
+      source = preset.source || 'default';
+      note = preset.note || '';
+    }
+  } else if (typeof globalThis.recommendContextWindow === 'function') {
+    const n = Number(globalThis.recommendContextWindow(modelId));
+    if (Number.isFinite(n) && n > 0) value = Math.trunc(n);
+  }
+  if (value == null) return null;
+  return { modelId, value, source, note };
+}
+
+function refreshSlotContextRecommendHint() {
+  const hint = document.getElementById('slot-context-hint');
+  const btn = document.getElementById('btn-slot-context-recommend');
+  const rec = resolveSlotContextRecommend();
+  if (btn) {
+    if (rec) {
+      const label = formatSlotContextTokens(rec.value) || String(rec.value);
+      btn.textContent = `推荐 ${label}`;
+      btn.disabled = false;
+      btn.title = `按映射模型 ${rec.modelId} 推荐 ${label}`
+        + (rec.note ? `\n${rec.note}` : '')
+        + '\n（与 CodeBuddy 同源 model-context-presets）';
+      btn.style.opacity = '1';
+      btn.style.cursor = 'pointer';
+    } else {
+      btn.textContent = '推荐';
+      btn.disabled = true;
+      btn.title = '请先选择右侧映射目标模型';
+      btn.style.opacity = '0.55';
+      btn.style.cursor = 'not-allowed';
+    }
+  }
+  if (hint) {
+    if (rec) {
+      const label = formatSlotContextTokens(rec.value) || String(rec.value);
+      const src = rec.source === 'model' || rec.source === 'pattern' ? '推荐' : '默认';
+      hint.textContent = `${src} ${label} · ${rec.modelId}`;
+      hint.title = rec.note || 'model-context-presets';
+    } else {
+      hint.textContent = '留空 = 使用 catalog / 上游原值';
+      hint.title = '';
+    }
+  }
+}
+
+function applyRecommendedSlotContextWindow() {
+  const rec = resolveSlotContextRecommend();
+  if (!rec) {
+    if (typeof showBottomToast === 'function') {
+      showBottomToast('请先选择映射目标模型', 'warn');
+    } else {
+      addLog('warn', '请先选择映射目标模型');
+    }
+    return;
+  }
+  setSlotContextWindowInput(rec.value);
+  const label = formatSlotContextTokens(rec.value) || String(rec.value);
+  if (typeof showBottomToast === 'function') {
+    showBottomToast(`已填入推荐上下文 ${label}`, 'success');
+  }
+}
+
 async function saveSlotFromEditor() {
   const editUid = document.getElementById('slot-edit-uid').value;
   const selectedUid = document.getElementById('slot-uid-select').value;
   const uid = selectedUid || editUid;
   const display = document.getElementById('slot-display').value.trim();
+  const contextWindow = readSlotContextWindowInput();
   const supportsImages = true;  // 默认始终启用图片支持
   if (!uid) { addLog('warn', '请选择模型槽位'); return; }
 
@@ -3033,6 +3169,7 @@ async function saveSlotFromEditor() {
       s.modelUid = uid;  // 更新槽位 UID（可能和原来一样）
       s.displayName = display;
       s.supportsImages = supportsImages;
+      applySlotContextWindow(s, contextWindow);
       s.targets = targetsWithSlotRoute(selectedMappingTargets, uid);
     }
   } else {
@@ -3040,14 +3177,16 @@ async function saveSlotFromEditor() {
       showCustomAlert('该槽位已存在映射，请勿重复添加。', '添加失败', 'warn');
       return;
     }
-    modelMapStore.slots.push({
+    const slot = {
       modelUid: uid,
       displayName: display,
       enabled: true,
       supportsImages,
       useThirdPartyVision: false,
       targets: targetsWithSlotRoute(selectedMappingTargets, uid)
-    });
+    };
+    applySlotContextWindow(slot, contextWindow);
+    modelMapStore.slots.push(slot);
   }
   if (await persistModelMap()) {
     closeSlotEditor();
@@ -3425,6 +3564,9 @@ async function saveFailoverFromEditor() {
   g.filterSlotCatalog = filterSlotCatalog;
   g.openSlotEditor = openSlotEditor;
   g.closeSlotEditor = closeSlotEditor;
+  g.setSlotContextPreset = setSlotContextPreset;
+  g.applyRecommendedSlotContextWindow = applyRecommendedSlotContextWindow;
+  g.refreshSlotContextRecommendHint = refreshSlotContextRecommendHint;
   g.saveSlotFromEditor = saveSlotFromEditor;
   g.enabledProviders = enabledProviders;
   g.routeLabelForValue = routeLabelForValue;

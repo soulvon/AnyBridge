@@ -76,3 +76,59 @@ test('unlockModels=false with no configured routes leaves the response untouched
   const body = statusBody([{ modelUid: 'MODEL_LOCKED', label: 'Locked Official', disabled: true }]);
   assert.equal(unlockModels(body), null);
 }));
+
+test('slot.contextWindow overrides GetUserStatus contextWindow for configured routes', () => withConfigDir((dir) => {
+  fs.writeFileSync(path.join(dir, 'providers.json'), JSON.stringify({
+    providers: [{ id: 'p1', name: 'Provider One' }],
+  }), 'utf8');
+  fs.writeFileSync(path.join(dir, 'model-map.json'), JSON.stringify({
+    labelTemplate: '{label}',
+    enhancement: { unlockModels: false },
+    slots: [{
+      modelUid: 'MODEL_CONFIGURED',
+      displayName: 'Configured Model',
+      enabled: true,
+      supportsImages: true,
+      contextWindow: 200000,
+      targets: [{ providerId: 'p1', model: 'upstream-model' }],
+    }],
+  }), 'utf8');
+
+  const result = unlockModels(statusBody([
+    { modelUid: 'MODEL_CONFIGURED', label: 'Original', disabled: true, contextWindow: 32000 },
+    { modelUid: 'MODEL_LOCKED', label: 'Locked Official', disabled: true, contextWindow: 64000 },
+  ]));
+
+  assert.ok(result);
+  const json = JSON.parse(result.body.toString('utf8'));
+  const rows = json.userStatus.cascadeModelConfigData.clientModelConfigs;
+  assert.equal(rows.find(row => row.modelUid === 'MODEL_CONFIGURED').contextWindow, 200000);
+  assert.equal(rows.find(row => row.modelUid === 'MODEL_LOCKED').contextWindow, 64000);
+}));
+
+test('missing slot.contextWindow keeps upstream contextWindow', () => withConfigDir((dir) => {
+  fs.writeFileSync(path.join(dir, 'providers.json'), JSON.stringify({
+    providers: [{ id: 'p1', name: 'Provider One' }],
+  }), 'utf8');
+  fs.writeFileSync(path.join(dir, 'model-map.json'), JSON.stringify({
+    labelTemplate: '{label}',
+    enhancement: { unlockModels: false },
+    slots: [{
+      modelUid: 'MODEL_CONFIGURED',
+      displayName: 'Configured Model',
+      enabled: true,
+      supportsImages: true,
+      targets: [{ providerId: 'p1', model: 'upstream-model' }],
+    }],
+  }), 'utf8');
+
+  const result = unlockModels(statusBody([
+    { modelUid: 'MODEL_CONFIGURED', label: 'Original', disabled: true, contextWindow: 32000 },
+  ]));
+
+  assert.ok(result);
+  const json = JSON.parse(result.body.toString('utf8'));
+  const row = json.userStatus.cascadeModelConfigData.clientModelConfigs
+    .find(item => item.modelUid === 'MODEL_CONFIGURED');
+  assert.equal(row.contextWindow, 32000);
+}));

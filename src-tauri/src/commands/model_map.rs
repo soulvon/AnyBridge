@@ -302,6 +302,9 @@ pub struct Slot {
     /// 是否对该槽位启用用户配置的第三方图片理解降级链。默认关闭。
     #[serde(rename = "useThirdPartyVision", default)]
     pub use_third_party_vision: bool,
+    /// 覆盖 GetUserStatus 下发的上下文窗口（token）。None = 使用 windsurf-catalog / 上游原值。
+    #[serde(rename = "contextWindow", default, skip_serializing_if = "Option::is_none")]
+    pub context_window: Option<u64>,
     #[serde(default)]
     pub targets: Vec<Target>,
 }
@@ -438,6 +441,7 @@ fn default_slots() -> Vec<Slot> {
         enabled: true,
         supports_images: true,
         use_third_party_vision: false,
+        context_window: None,
         targets: Vec::new(),
     };
     vec![
