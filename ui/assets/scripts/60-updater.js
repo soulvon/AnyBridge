@@ -399,16 +399,16 @@ function setUpdaterUIState(state) {
     titleText.textContent = isVersionReset ? '检测到版本线迁移' : '检测到新版本可用！';
     icon.style.color = 'var(--accent)';
     if (footer) footer.innerHTML = `
-      <button onclick="skipThisVersion()" class="modal-btn modal-btn-cancel" style="font-size: 12px; padding: 10px 16px;">跳过此版本</button>
-      <button onclick="closeUpdaterPromptModal()" class="modal-btn modal-btn-cancel" style="font-size: 12px; padding: 10px 16px;">稍后</button>
-      <button onclick="startDownloadAndUpdate()" class="modal-btn modal-btn-confirm" style="font-size: 12px; padding: 10px 20px;">${isVersionReset ? '安装迁移版本' : '立即更新'}</button>
+      <button data-action="skipThisVersion" class="modal-btn modal-btn-cancel" style="font-size: 12px; padding: 10px 16px;">跳过此版本</button>
+      <button data-action="closeUpdaterPromptModal" class="modal-btn modal-btn-cancel" style="font-size: 12px; padding: 10px 16px;">稍后</button>
+      <button data-action="startDownloadAndUpdate" class="modal-btn modal-btn-confirm" style="font-size: 12px; padding: 10px 20px;">${isVersionReset ? '安装迁移版本' : '立即更新'}</button>
     `;
   } else if (state === 'downloading') {
     titleText.textContent = '正在下载更新...';
     icon.style.color = 'var(--accent)';
     if (progress) progress.style.display = 'block';
     if (footer) footer.innerHTML = `
-      <button onclick="cancelUpdateDownload()" class="modal-btn modal-btn-cancel" style="font-size: 12px; padding: 10px 16px;">取消下载</button>
+      <button data-action="cancelUpdateDownload" class="modal-btn modal-btn-cancel" style="font-size: 12px; padding: 10px 16px;">取消下载</button>
       <button class="modal-btn modal-btn-confirm" style="font-size: 12px; padding: 10px 20px; opacity: 0.6;" disabled id="updater-downloading-btn">下载中...</button>
     `;
   } else if (state === 'ready') {
@@ -416,17 +416,17 @@ function setUpdaterUIState(state) {
     icon.style.color = 'var(--success)';
     if (ready) ready.style.display = 'block';
     if (footer) footer.innerHTML = `
-      <button onclick="closeUpdaterPromptModal()" class="modal-btn modal-btn-cancel" style="font-size: 12px; padding: 10px 16px;">稍后重启</button>
-      <button onclick="restartToUpdate()" class="modal-btn modal-btn-confirm" style="font-size: 12px; padding: 10px 20px;">立即重启</button>
+      <button data-action="closeUpdaterPromptModal" class="modal-btn modal-btn-cancel" style="font-size: 12px; padding: 10px 16px;">稍后重启</button>
+      <button data-action="restartToUpdate" class="modal-btn modal-btn-confirm" style="font-size: 12px; padding: 10px 20px;">立即重启</button>
     `;
   } else if (state === 'error') {
     titleText.textContent = '更新失败';
     icon.style.color = 'var(--error, #ef4444)';
     if (error) error.style.display = 'block';
     if (footer) footer.innerHTML = `
-      <button onclick="closeUpdaterPromptModal()" class="modal-btn modal-btn-cancel" style="font-size: 12px; padding: 10px 16px;">关闭</button>
-      <button onclick="retryUpdateDownload()" class="modal-btn modal-btn-cancel" style="font-size: 12px; padding: 10px 16px; color: var(--accent);">🔄 重试</button>
-      <button onclick="openDownloadPage()" class="modal-btn modal-btn-confirm" style="font-size: 12px; padding: 10px 20px;">前往下载页</button>
+      <button data-action="closeUpdaterPromptModal" class="modal-btn modal-btn-cancel" style="font-size: 12px; padding: 10px 16px;">关闭</button>
+      <button data-action="retryUpdateDownload" class="modal-btn modal-btn-cancel" style="font-size: 12px; padding: 10px 16px; color: var(--accent);">🔄 重试</button>
+      <button data-action="openDownloadPage" class="modal-btn modal-btn-confirm" style="font-size: 12px; padding: 10px 20px;">前往下载页</button>
     `;
   } else if (state === 'retrying') {
     titleText.textContent = '正在重试...';

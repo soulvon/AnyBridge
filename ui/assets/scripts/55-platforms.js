@@ -487,7 +487,7 @@ function renderPlatformCard(info) {
         ${appliedAt ? `<div class="platform-card-row"><span>应用时间</span><strong>${platformEsc(appliedAt)}</strong></div>` : ''}
       </div>
       <div class="platform-card-actions">
-        <button class="btn-primary platform-open-btn" onclick="openPlatformPage('${platformEsc(info.id)}')">配置</button>
+        <button class="btn-primary platform-open-btn" data-action="openPlatformPage" data-arg="${platformEsc(info.id)}">配置</button>
       </div>
     </article>
   `;
@@ -929,13 +929,13 @@ function renderCodexModelManager(entries, defaultModel = '', status = '') {
       ? `selectCodexDefaultModel('')`
       : `selectCodexDefaultModel('${model}')`;
     return `<div class="codex-config-model-option${activeClass}" data-idx="${i}" data-model="${model}" data-display="${displayName}" data-ctx="${ctx}">
-      <input type="checkbox" ${checked} onchange="toggleCodexModelCatalog(${i})" title="加入模型目录">
+      <input type="checkbox" ${checked} data-action="toggleCodexModelCatalog" data-events="change" data-args="[${i}]" title="加入模型目录">
       <span title="${model}">${model}</span>
       ${displayName ? `<span>${displayName}</span>` : ''}
       ${ctx ? `<span>${ctx}</span>` : ''}
-      <button type="button" class="${defaultBtnClass}" onclick="${defaultBtnClick}">${defaultBtnText}</button>
-      <button type="button" class="codex-config-fetch-btn" onclick="editCodexModelEntry(${i})">编辑</button>
-      <button type="button" class="codex-config-catalog-del" onclick="removeCodexModelEntry(${i})">删除</button>
+      <button type="button" class="${defaultBtnClass}" data-action-call="${defaultBtnClick}">${defaultBtnText}</button>
+      <button type="button" class="codex-config-fetch-btn" data-action="editCodexModelEntry" data-args="[${i}]">编辑</button>
+      <button type="button" class="codex-config-catalog-del" data-action="removeCodexModelEntry" data-args="[${i}]">删除</button>
     </div>`;
   }).join('');
   if (status) codexConfigSetModelStatus(status);
@@ -990,6 +990,12 @@ function toggleCodexModelCatalog(idx) {
   renderCodexModelManager(codexModelEntriesState, defaultModel);
 }
 
+function cancelCodexModelEdit() {
+  const entries = getCodexModelEntries();
+  const def = entries.find(e => e.isDefault)?.model || '';
+  renderCodexModelManager(entries, def);
+}
+
 function selectCodexDefaultModel(model) {
   const entries = getCodexModelEntries();
   const defaultModel = String(model || '').trim();
@@ -1019,8 +1025,8 @@ function editCodexModelEntry(idx) {
     <input class="field-input" placeholder="显示名（可选）" value="${platformEsc(entry.displayName)}">
     <input class="field-input" placeholder="上下文窗口" value="${platformEsc(String(entry.contextWindow || ''))}">
     <div style="display:flex;gap:4px">
-      <button type="button" class="codex-config-fetch-btn" onclick="saveCodexModelEdit(${idx})">确定</button>
-      <button type="button" class="codex-config-catalog-del" onclick="renderCodexModelManager(getCodexModelEntries(), getCodexModelEntries().find(e=>e.isDefault)?.model||'')">取消</button>
+      <button type="button" class="codex-config-fetch-btn" data-action="saveCodexModelEdit" data-args="[${idx}]">确定</button>
+      <button type="button" class="codex-config-catalog-del" data-action="cancelCodexModelEdit">取消</button>
     </div>
   </div>`;
   row.querySelector('.field-input')?.focus();
@@ -1228,22 +1234,22 @@ function renderCodexAgentsPanel(config = null, agents = null) {
     return `<div class="codex-agent-card" data-idx="${idx}">
       <div class="codex-agent-card-head">
         <strong>${platformEsc(agent.name || `agent-${idx + 1}`)}</strong>
-        <button type="button" class="codex-config-catalog-del" onclick="removeCodexAgent(${idx})">删除</button>
+        <button type="button" class="codex-config-catalog-del" data-action="removeCodexAgent" data-args="[${idx}]">删除</button>
       </div>
       <div class="codex-agent-grid">
         <label class="codex-config-field">
           <span>名称</span>
-          <input class="field-input" value="${platformEsc(agent.name)}" placeholder="code-reviewer" oninput="updateCodexAgentField(${idx}, 'name', this.value)">
+          <input class="field-input" value="${platformEsc(agent.name)}" placeholder="code-reviewer" data-action="updateCodexAgentField" data-events="input" data-args="[${idx},&quot;name&quot;]" data-pass-value>
         </label>
         <label class="codex-config-field">
           <span>模型</span>
-          <select class="field-input" onchange="updateCodexAgentField(${idx}, 'model', this.value)">
+          <select class="field-input" data-action="updateCodexAgentField" data-events="change" data-args="[${idx},&quot;model&quot;]" data-pass-value>
             ${codexAgentModelOptions(agent.model)}
           </select>
         </label>
         <label class="codex-config-field">
           <span>推理强度</span>
-          <select class="field-input" onchange="updateCodexAgentField(${idx}, 'modelReasoningEffort', this.value)">
+          <select class="field-input" data-action="updateCodexAgentField" data-events="change" data-args="[${idx},&quot;modelReasoningEffort&quot;]" data-pass-value>
             <option value="" ${agent.modelReasoningEffort ? '' : 'selected'}>继承</option>
             <option value="low" ${agent.modelReasoningEffort === 'low' ? 'selected' : ''}>low</option>
             <option value="medium" ${agent.modelReasoningEffort === 'medium' ? 'selected' : ''}>medium</option>
@@ -1252,7 +1258,7 @@ function renderCodexAgentsPanel(config = null, agents = null) {
         </label>
         <label class="codex-config-field">
           <span>Sandbox</span>
-          <select class="field-input" onchange="updateCodexAgentField(${idx}, 'sandboxMode', this.value)">
+          <select class="field-input" data-action="updateCodexAgentField" data-events="change" data-args="[${idx},&quot;sandboxMode&quot;]" data-pass-value>
             <option value="" ${agent.sandboxMode ? '' : 'selected'}>继承</option>
             <option value="read-only" ${agent.sandboxMode === 'read-only' ? 'selected' : ''}>read-only</option>
             <option value="workspace-write" ${agent.sandboxMode === 'workspace-write' ? 'selected' : ''}>workspace-write</option>
@@ -1262,15 +1268,15 @@ function renderCodexAgentsPanel(config = null, agents = null) {
       </div>
       <label class="codex-config-field">
         <span>描述</span>
-        <input class="field-input" value="${platformEsc(agent.description)}" placeholder="PR reviewer focused on correctness..." oninput="updateCodexAgentField(${idx}, 'description', this.value)">
+        <input class="field-input" value="${platformEsc(agent.description)}" placeholder="PR reviewer focused on correctness..." data-action="updateCodexAgentField" data-events="input" data-args="[${idx},&quot;description&quot;]" data-pass-value>
       </label>
       <label class="codex-config-field">
         <span>昵称候选（逗号分隔）</span>
-        <input class="field-input" value="${platformEsc(nicknames)}" placeholder="Atlas, Delta" oninput="updateCodexAgentField(${idx}, 'nicknameCandidates', this.value)">
+        <input class="field-input" value="${platformEsc(nicknames)}" placeholder="Atlas, Delta" data-action="updateCodexAgentField" data-events="input" data-args="[${idx},&quot;nicknameCandidates&quot;]" data-pass-value>
       </label>
       <label class="codex-config-field">
         <span>Developer Instructions</span>
-        <textarea class="field-input codex-agent-instructions" placeholder="Review code like an owner..." oninput="updateCodexAgentField(${idx}, 'developerInstructions', this.value)">${platformEsc(agent.developerInstructions)}</textarea>
+        <textarea class="field-input codex-agent-instructions" placeholder="Review code like an owner..." data-action="updateCodexAgentField" data-events="input" data-args="[${idx},&quot;developerInstructions&quot;]" data-pass-value>${platformEsc(agent.developerInstructions)}</textarea>
       </label>
     </div>`;
   }).join('');
@@ -1558,32 +1564,32 @@ function codexActionIcon(type) {
 }
 
 function codexReconfigureAction(action, disabled) {
-  return `<button class="codex-current-action codex-reconfigure-action" type="button" title="重新写入当前配置" ${disabled ? 'disabled' : ''} onclick="${platformEsc(action)}">重新配置</button>`;
+  return `<button class="codex-current-action codex-reconfigure-action" type="button" title="重新写入当前配置" ${disabled ? 'disabled' : ''} data-action-call="${platformEsc(action)}">重新配置</button>`;
 }
 
 function renderCodexConfigCard(config) {
   const disabled = platformBusy === (config.platformId || 'codex');
   const editButton = config.editAction
-    ? `<button class="btn-ghost codex-card-action codex-icon-action" type="button" title="编辑" aria-label="编辑 ${platformEsc(config.name)}" ${disabled ? 'disabled' : ''} onclick="${platformEsc(config.editAction)}">${codexActionIcon('edit')}</button>`
+    ? `<button class="btn-ghost codex-card-action codex-icon-action" type="button" title="编辑" aria-label="编辑 ${platformEsc(config.name)}" ${disabled ? 'disabled' : ''} data-action-call="${platformEsc(config.editAction)}">${codexActionIcon('edit')}</button>`
     : '';
   const deleteButton = config.deleteAction
-    ? `<button class="btn-ghost codex-card-action codex-icon-action codex-delete-action" type="button" title="删除" aria-label="删除 ${platformEsc(config.name)}" ${disabled ? 'disabled' : ''} onclick="${platformEsc(config.deleteAction)}">${codexActionIcon('delete')}</button>`
+    ? `<button class="btn-ghost codex-card-action codex-icon-action codex-delete-action" type="button" title="删除" aria-label="删除 ${platformEsc(config.name)}" ${disabled ? 'disabled' : ''} data-action-call="${platformEsc(config.deleteAction)}">${codexActionIcon('delete')}</button>`
     : '';
   const removeButton = config.removeAction
-    ? `<button class="btn-ghost codex-card-action" type="button" title="从 live 配置移除" aria-label="从 live 配置移除 ${platformEsc(config.name)}" ${disabled ? 'disabled' : ''} onclick="${platformEsc(config.removeAction)}">${platformEsc(config.removeLabel || '移除')}</button>`
+    ? `<button class="btn-ghost codex-card-action" type="button" title="从 live 配置移除" aria-label="从 live 配置移除 ${platformEsc(config.name)}" ${disabled ? 'disabled' : ''} data-action-call="${platformEsc(config.removeAction)}">${platformEsc(config.removeLabel || '移除')}</button>`
     : '';
   const configButton = config.configAction
-    ? `<button class="btn-ghost codex-card-action" type="button" aria-label="${platformEsc(config.configLabel || '配置')} ${platformEsc(config.name)}" ${disabled ? 'disabled' : ''} onclick="${platformEsc(config.configAction)}">${platformEsc(config.configLabel || '配置')}</button>`
+    ? `<button class="btn-ghost codex-card-action" type="button" aria-label="${platformEsc(config.configLabel || '配置')} ${platformEsc(config.name)}" ${disabled ? 'disabled' : ''} data-action-call="${platformEsc(config.configAction)}">${platformEsc(config.configLabel || '配置')}</button>`
     : '';
   const desktopSupported = codexDesktopAutomationSupported();
   const startDisabled = disabled || !desktopSupported;
   const startTitle = desktopSupported ? '重启 Codex 桌面版' : '仅 Windows 支持自动启动 / 注入 Codex Desktop';
   const startButton = config.startAction
-    ? `<button class="btn-ghost codex-card-action codex-icon-action" type="button" title="${platformEsc(startTitle)}" aria-label="启动 Codex ${platformEsc(config.name)}" ${startDisabled ? 'disabled' : ''} onclick="${platformEsc(config.startAction)}">${codexActionIcon('start')}</button>`
+    ? `<button class="btn-ghost codex-card-action codex-icon-action" type="button" title="${platformEsc(startTitle)}" aria-label="启动 Codex ${platformEsc(config.name)}" ${startDisabled ? 'disabled' : ''} data-action-call="${platformEsc(config.startAction)}">${codexActionIcon('start')}</button>`
     : '';
   const switchButton = config.current || !config.action
     ? ''
-    : `<button class="btn-primary codex-card-action codex-switch-action" ${disabled ? 'disabled' : ''} onclick="${platformEsc(config.action)}">${platformEsc(config.actionLabel || '切换')}</button>`;
+    : `<button class="btn-primary codex-card-action codex-switch-action" ${disabled ? 'disabled' : ''} data-action-call="${platformEsc(config.action)}">${platformEsc(config.actionLabel || '切换')}</button>`;
   const reconfigureButton = config.current && config.action
     ? `${codexReconfigureAction(config.action, disabled)}`
     : '';
@@ -4488,8 +4494,8 @@ function syncTencentBuddySyncButtons() {
   document.querySelectorAll('[data-buddy-sync-toggle]').forEach(btn => {
     btn.classList.toggle('is-active', tencentBuddySyncEnabled);
     btn.setAttribute('aria-pressed', tencentBuddySyncEnabled ? 'true' : 'false');
-    const platform = btn.getAttribute('onclick') || '';
-    const isCodeBuddy = platform.includes("'codebuddy'");
+    const platform = btn.getAttribute('data-arg') || '';
+    const isCodeBuddy = platform === 'codebuddy';
     const targetName = isCodeBuddy ? 'WorkBuddy' : 'CodeBuddy';
     btn.title = tencentBuddySyncEnabled
       ? `同步 ${targetName} 已开启，点击关闭`
@@ -4812,7 +4818,8 @@ function cbOnAddModelCheckChanged(input, syncFn) {
     const exists = row.dataset.existing === 'true';
     row.classList.toggle('already-added', exists);
   }
-  if (typeof syncFn === 'function') syncFn();
+  const fn = typeof syncFn === 'function' ? syncFn : (typeof syncFn === 'string' ? window[syncFn] : null);
+  if (typeof fn === 'function') fn();
 }
 
 function cbSetAddModelChecks(selector, checked, syncFn) {
@@ -5449,7 +5456,7 @@ function renderCbAddProviderList() {
     const isActive = cbAddSelectedProvider === p.providerId;
     const isLP = isLocalProxyProviderEntry(p);
     return `
-      <div class="cb-add-prov-item ${isActive ? 'active' : ''} ${enabled ? '' : 'disabled'} ${isLP ? 'is-local-proxy' : ''}" onclick="selectCbAddProvider('${platformEsc(p.providerId)}')">
+      <div class="cb-add-prov-item ${isActive ? 'active' : ''} ${enabled ? '' : 'disabled'} ${isLP ? 'is-local-proxy' : ''}" data-action="selectCbAddProvider" data-arg="${platformEsc(p.providerId)}">
         <span class="cb-add-prov-icon">${platformEsc(initial)}</span>
         <span class="cb-add-prov-name">${platformEsc(p.providerName)}${isLP ? '<span class="cb-add-prov-badge">本地</span>' : ''}</span>
         <span class="cb-add-prov-count">${p.models.length}</span>
@@ -5498,7 +5505,7 @@ function renderCbAddModels() {
     const exists = cbModels.some(model => model.id === m.id);
     return `
       <label class="cb-add-model-row ${exists ? 'already-added' : ''}" data-existing="${exists ? 'true' : 'false'}">
-        <input type="checkbox" class="cb-add-model-check" data-model-id="${platformEsc(m.id)}" data-model-name="${platformEsc(m.name || m.id)}" ${exists ? 'checked' : ''} onchange="cbOnAddModelCheckChanged(this, updateCbAddConfirmButton)">
+        <input type="checkbox" class="cb-add-model-check" data-model-id="${platformEsc(m.id)}" data-model-name="${platformEsc(m.name || m.id)}" ${exists ? 'checked' : ''} data-action="cbOnAddModelCheckChanged" data-events="change" data-pass-this data-arg="updateCbAddConfirmButton">
         ${cbAddModelIdentity(m.id)}
       </label>
     `;
@@ -5603,12 +5610,12 @@ function createCbRowFactory(prefix) {
     return `
     <tr ${dataAttr}="${index}" class="${selected ? 'cb-model-row-selected' : ''}">
       <td class="cb-select-cell">
-        <input type="checkbox" class="cb-model-row-check" aria-label="选择 ${esc(model.id || '模型')}" ${selected ? 'checked' : ''} onchange="toggleCbModelSelection('${prefix}', ${index}, this.checked)">
+        <input type="checkbox" class="cb-model-row-check" aria-label="选择 ${esc(model.id || '模型')}" ${selected ? 'checked' : ''} data-action="toggleCbModelSelection" data-events="change" data-args="[&quot;${prefix}&quot;,${index}]" data-pass-checked>
       </td>
       <td>
         <div class="model-id-copy-wrap">
           <span class="display-name-cell" title="${esc(model.id || '')}">${esc(model.id || '-')}</span>
-          <button class="btn-icon model-id-copy-btn" onclick="copyTextToClipboard('${esc(model.id || '')}', '模型 ID')" title="复制模型 ID">
+          <button class="btn-icon model-id-copy-btn" data-action="copyTextToClipboard" data-args="[&quot;${esc(model.id || '')}&quot;,&quot;模型 ID&quot;]" title="复制模型 ID">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
           </button>
         </div>
@@ -5617,16 +5624,16 @@ function createCbRowFactory(prefix) {
       <td><div style="display:flex; gap:6px; flex-wrap:wrap;">${caps.join('') || '<span style="color:var(--text-muted);font-size:12px;">—</span>'}</div></td>
       <td style="text-align:center;">
         <label class="toggle-switch" title="${enabled ? '已启用' : '已停用'}">
-          <input type="checkbox" ${enabled ? 'checked' : ''} onchange="${toggleFn}(${index}, this.checked)">
+          <input type="checkbox" ${enabled ? 'checked' : ''} data-action="${toggleFn}" data-events="change" data-args="[${index}]" data-pass-checked>
           <span class="toggle-slider"></span>
         </label>
       </td>
       <td>
         <div style="display:flex; gap:8px; justify-content:center;">
-          <button class="btn-icon model-map-action-btn" onclick="openCbEditModal('${prefix}', ${index})" title="编辑模型">
+          <button class="btn-icon model-map-action-btn" data-action="openCbEditModal" data-args="[&quot;${prefix}&quot;,${index}]" title="编辑模型">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
           </button>
-          <button class="btn-icon model-map-action-btn danger" onclick="${deleteFn}(${index})" title="删除模型">
+          <button class="btn-icon model-map-action-btn danger" data-action="${deleteFn}" data-args="[${index}]" title="删除模型">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"/></svg>
           </button>
         </div>
@@ -6100,7 +6107,7 @@ function renderWbAddProviderList() {
     const isActive = wbAddSelectedProvider === p.providerId;
     const isLP = isLocalProxyProviderEntry(p);
     return `
-      <div class="wb-add-prov-item ${isActive ? 'active' : ''} ${enabled ? '' : 'disabled'} ${isLP ? 'is-local-proxy' : ''}" onclick="selectWbAddProvider('${platformEsc(p.providerId)}')">
+      <div class="wb-add-prov-item ${isActive ? 'active' : ''} ${enabled ? '' : 'disabled'} ${isLP ? 'is-local-proxy' : ''}" data-action="selectWbAddProvider" data-arg="${platformEsc(p.providerId)}">
         <span class="wb-add-prov-icon">${platformEsc(initial)}</span>
         <span class="wb-add-prov-name">${platformEsc(p.providerName)}${isLP ? '<span class="wb-add-prov-badge">本地</span>' : ''}</span>
         <span class="wb-add-prov-count">${p.models.length}</span>
@@ -6143,7 +6150,7 @@ function renderWbAddModels() {
     const exists = wbModels.some(model => model.id === m.id);
     return `
       <label class="wb-add-model-row ${exists ? 'already-added' : ''}" data-existing="${exists ? 'true' : 'false'}">
-        <input type="checkbox" class="wb-add-model-check" data-model-id="${platformEsc(m.id)}" data-model-name="${platformEsc(m.name || m.id)}" ${exists ? 'checked' : ''} onchange="cbOnAddModelCheckChanged(this, updateWbAddConfirmButton)">
+        <input type="checkbox" class="wb-add-model-check" data-model-id="${platformEsc(m.id)}" data-model-name="${platformEsc(m.name || m.id)}" ${exists ? 'checked' : ''} data-action="cbOnAddModelCheckChanged" data-events="change" data-pass-this data-arg="updateWbAddConfirmButton">
         ${cbAddModelIdentity(m.id)}
       </label>
     `;
@@ -6363,7 +6370,7 @@ function renderZcAddProviderList() {
     const isActive = zcAddSelectedProvider === p.providerId;
     const isLP = isLocalProxyProviderEntry(p);
     return `
-      <div class="wb-add-prov-item zc-add-prov-item ${isActive ? 'active' : ''} ${enabled ? '' : 'disabled'} ${isLP ? 'is-local-proxy' : ''}" onclick="selectZcAddProvider('${platformEsc(p.providerId)}')">
+      <div class="wb-add-prov-item zc-add-prov-item ${isActive ? 'active' : ''} ${enabled ? '' : 'disabled'} ${isLP ? 'is-local-proxy' : ''}" data-action="selectZcAddProvider" data-arg="${platformEsc(p.providerId)}">
         <span class="wb-add-prov-icon zc-add-prov-icon">${platformEsc(initial)}</span>
         <span class="wb-add-prov-name zc-add-prov-name">${platformEsc(p.providerName)}${isLP ? '<span class="wb-add-prov-badge zc-add-prov-badge">本地</span>' : ''}</span>
         <span class="wb-add-prov-count zc-add-prov-count">${p.models.length}</span>
@@ -6408,7 +6415,7 @@ function renderZcAddModels() {
     const exists = zcModels.some(model => zcProviderModelKey(model) === zcProviderModelKeyParts(zcodeProviderId, m.id));
     return `
       <label class="wb-add-model-row zc-add-model-row ${exists ? 'already-added' : ''}" data-existing="${exists ? 'true' : 'false'}">
-        <input type="checkbox" class="zc-add-model-check" data-model-id="${platformEsc(m.id)}" data-model-name="${platformEsc(m.name || m.id)}" ${exists ? 'checked' : ''} onchange="cbOnAddModelCheckChanged(this, updateZcAddConfirmButton)">
+        <input type="checkbox" class="zc-add-model-check" data-model-id="${platformEsc(m.id)}" data-model-name="${platformEsc(m.name || m.id)}" ${exists ? 'checked' : ''} data-action="cbOnAddModelCheckChanged" data-events="change" data-pass-this data-arg="updateZcAddConfirmButton">
         ${cbAddModelIdentity(m.id)}
       </label>
     `;

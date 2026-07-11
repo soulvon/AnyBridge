@@ -172,9 +172,9 @@
                       <span class="tag log-count" id="logCount">0 条记录</span>
                     </div>
                     <div class="proxy-logs-actions">
-                      <button class="btn-ghost" onclick="clearLogs()">清空</button>
-                      <button class="btn-ghost" onclick="exportLogs()">导出</button>
-                      <button class="btn-ghost" onclick="cycleLogFilter()" id="logFilterBtn">筛选: 全部 ▾</button>
+                      <button class="btn-ghost" data-action="clearLogs">清空</button>
+                      <button class="btn-ghost" data-action="exportLogs">导出</button>
+                      <button class="btn-ghost" id="logFilterBtn" data-action="cycleLogFilter">筛选: 全部 ▾</button>
                     </div>
                   </div>
                   <div class="log-box proxy-logs-box">

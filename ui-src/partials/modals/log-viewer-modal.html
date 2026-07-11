@@ -8,7 +8,7 @@
           <h2>代理日志查看器</h2>
           <p>按级别、关键词和时间顺序查看 AnyBridge 运行日志。</p>
         </div>
-        <button type="button" class="modal-close-icon" onclick="closeLogViewerModal()" aria-label="关闭日志查看器">
+        <button type="button" class="modal-close-icon" aria-label="关闭日志查看器" data-action="closeLogViewerModal">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
             stroke-linecap="round" stroke-linejoin="round">
             <path d="M18 6 6 18"></path>
@@ -24,11 +24,11 @@
             <path d="m20 20-3.5-3.5"></path>
           </svg>
           <input id="logViewerSearchInput" type="text" placeholder="搜索日志内容"
-            oninput="onLogViewerSearchInput(this.value)">
+ data-action="onLogViewerSearchInput" data-events="input" data-pass-value>
         </label>
         <div class="log-viewer-selects">
           <label>数量
-            <select id="logViewerLimitSelect" onchange="onLogViewerLimitChange(this.value)">
+            <select id="logViewerLimitSelect" data-action="onLogViewerLimitChange" data-events="change" data-pass-value>
               <option value="50">50</option>
               <option value="100">100</option>
               <option value="200" selected>200</option>
@@ -36,7 +36,7 @@
             </select>
           </label>
           <label>顺序
-            <select id="logViewerOrderSelect" onchange="onLogViewerOrderChange(this.value)">
+            <select id="logViewerOrderSelect" data-action="onLogViewerOrderChange" data-events="change" data-pass-value>
               <option value="desc" selected>最新优先</option>
               <option value="asc">最早优先</option>
             </select>
@@ -46,18 +46,18 @@
       <div class="log-viewer-toolbar">
         <div class="log-viewer-levels">
           <label class="log-viewer-level active" data-level="ok"><input type="checkbox" checked
-              onchange="onLogViewerLevelChange('ok', this.checked)">OK</label>
+ data-action="onLogViewerLevelChange" data-events="change" data-args="[&quot;ok&quot;]" data-pass-checked>OK</label>
           <label class="log-viewer-level active" data-level="info"><input type="checkbox" checked
-              onchange="onLogViewerLevelChange('info', this.checked)">INFO</label>
+ data-action="onLogViewerLevelChange" data-events="change" data-args="[&quot;info&quot;]" data-pass-checked>INFO</label>
           <label class="log-viewer-level active" data-level="warn"><input type="checkbox" checked
-              onchange="onLogViewerLevelChange('warn', this.checked)">WARN</label>
+ data-action="onLogViewerLevelChange" data-events="change" data-args="[&quot;warn&quot;]" data-pass-checked>WARN</label>
           <label class="log-viewer-level active" data-level="err"><input type="checkbox" checked
-              onchange="onLogViewerLevelChange('err', this.checked)">ERR</label>
+ data-action="onLogViewerLevelChange" data-events="change" data-args="[&quot;err&quot;]" data-pass-checked>ERR</label>
         </div>
         <div class="log-viewer-quick-actions">
-          <button type="button" class="modal-btn modal-btn-cancel" onclick="setLogViewerLevelPreset('all')">全部</button>
-          <button type="button" class="modal-btn modal-btn-cancel" onclick="setLogViewerLevelPreset('important')">重点</button>
-          <button type="button" class="modal-btn modal-btn-cancel" onclick="setLogViewerLevelPreset('errors')">错误</button>
+          <button type="button" class="modal-btn modal-btn-cancel" data-action="setLogViewerLevelPreset" data-arg="all">全部</button>
+          <button type="button" class="modal-btn modal-btn-cancel" data-action="setLogViewerLevelPreset" data-arg="important">重点</button>
+          <button type="button" class="modal-btn modal-btn-cancel" data-action="setLogViewerLevelPreset" data-arg="errors">错误</button>
         </div>
       </div>
       <div class="log-viewer-summary">
@@ -65,16 +65,16 @@
         <span id="logViewerLevelSummary">OK 0 · INFO 0 · WARN 0 · ERR 0</span>
         <label class="log-viewer-auto-scroll">
           <input id="logViewerAutoScrollInput" type="checkbox" checked
-            onchange="onLogViewerAutoScrollChange(this.checked)">自动滚动
+ data-action="onLogViewerAutoScrollChange" data-events="change" data-pass-checked>自动滚动
         </label>
       </div>
       <div class="log-viewer-body" id="logViewerBody">
         <div class="log-viewer-empty">暂无日志。</div>
       </div>
       <div class="log-viewer-footer">
-        <button type="button" class="modal-btn modal-btn-cancel" onclick="clearLogs()">清空日志</button>
-        <button type="button" class="modal-btn modal-btn-cancel" onclick="exportLogs()">导出日志</button>
-        <button type="button" class="modal-btn modal-btn-confirm" onclick="closeLogViewerModal()">关闭</button>
+        <button type="button" class="modal-btn modal-btn-cancel" data-action="clearLogs">清空日志</button>
+        <button type="button" class="modal-btn modal-btn-cancel" data-action="exportLogs">导出日志</button>
+        <button type="button" class="modal-btn modal-btn-confirm" data-action="closeLogViewerModal">关闭</button>
       </div>
     </div>
   </div>

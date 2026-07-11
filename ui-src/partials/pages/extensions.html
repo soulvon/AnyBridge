@@ -10,7 +10,7 @@
                 </div>
               </div>
               <div class="proxy-console-actions">
-                <button class="btn-ghost" id="extensionSettingsBtn" onclick="toggleExtensionSettings()" title="设置">
+                <button class="btn-ghost" id="extensionSettingsBtn" title="设置" data-action="toggleExtensionSettings">
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                     <circle cx="12" cy="12" r="3"/>
                     <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
@@ -21,23 +21,23 @@
             </div>
             <div class="extensions-tabbar" role="tablist" aria-label="扩展分类">
               <button type="button" class="extension-tab active" role="tab" aria-selected="true"
-                data-extension-tab="all" id="extension-tab-all"
-                onclick="switchExtensionTab('all')">全部</button>
+ data-extension-tab="all" id="extension-tab-all"
+ data-action="switchExtensionTab" data-arg="all">全部</button>
               <button type="button" class="extension-tab" role="tab" aria-selected="false"
-                data-extension-tab="recommended" id="extension-tab-recommended"
-                onclick="switchExtensionTab('recommended')">推荐</button>
+ data-extension-tab="recommended" id="extension-tab-recommended"
+ data-action="switchExtensionTab" data-arg="recommended">推荐</button>
               <button type="button" class="extension-tab" role="tab" aria-selected="false"
-                data-extension-tab="installed" id="extension-tab-installed"
-                onclick="switchExtensionTab('installed')">已安装</button>
+ data-extension-tab="installed" id="extension-tab-installed"
+ data-action="switchExtensionTab" data-arg="installed">已安装</button>
               <button type="button" class="extension-tab" role="tab" aria-selected="false"
-                data-extension-tab="api" id="extension-tab-api"
-                onclick="switchExtensionTab('api')">接口服务</button>
+ data-extension-tab="api" id="extension-tab-api"
+ data-action="switchExtensionTab" data-arg="api">接口服务</button>
               <button type="button" class="extension-tab" role="tab" aria-selected="false"
-                data-extension-tab="media" id="extension-tab-media"
-                onclick="switchExtensionTab('media')">生成服务</button>
+ data-extension-tab="media" id="extension-tab-media"
+ data-action="switchExtensionTab" data-arg="media">生成服务</button>
               <button type="button" class="extension-tab" role="tab" aria-selected="false"
-                data-extension-tab="logs" id="extension-tab-logs"
-                onclick="switchExtensionTab('logs')">日志</button>
+ data-extension-tab="logs" id="extension-tab-logs"
+ data-action="switchExtensionTab" data-arg="logs">日志</button>
             </div>
 
             <div class="extension-empty-state" id="extensionEmptyState" hidden>
@@ -61,7 +61,7 @@
                   <span class="extension-status status-pending" id="extension-cpa-status">检测中</span>
                 </div>
                 <div class="extension-meta-grid">
-                  <div><span>版本</span><strong id="extension-cpa-version">待检测</strong> <span class="extension-update-badge" id="extension-cpa-update-badge" hidden onclick="event.stopPropagation(); handleExtensionAction('update-cpa-suite')">有更新</span></div>
+                  <div><span>版本</span><strong id="extension-cpa-version">待检测</strong> <span class="extension-update-badge" id="extension-cpa-update-badge" hidden data-action-chain="[{&quot;fn&quot;:&quot;handleExtensionAction&quot;,&quot;args&quot;:[&quot;update-cpa-suite&quot;]}]" data-action="handleExtensionAction" data-stop>有更新</span></div>
                   <div><span>端口</span><strong id="extension-cpa-ports">8317 / 18317</strong></div>
                   <div><span>安装目录</span><strong id="extension-cpa-install-dir" title="">默认</strong></div>
                   <div><span>组件</span><strong id="extension-cpa-components">3 个</strong></div>
@@ -166,9 +166,9 @@
                   <span>外部源</span>
                 </div>
                 <div class="extension-actions">
-                  <button type="button" class="btn-primary" onclick="handleExtensionAction('install-sub2api')">安装</button>
-                  <button type="button" class="btn-ghost" onclick="openExtensionDetail('sub2api')">详情</button>
-                  <button type="button" class="btn-ghost" onclick="handleExtensionAction('view-adapter-plan')">适配计划</button>
+                  <button type="button" class="btn-primary" data-action="handleExtensionAction" data-arg="install-sub2api">安装</button>
+                  <button type="button" class="btn-ghost" data-action="openExtensionDetail" data-arg="sub2api">详情</button>
+                  <button type="button" class="btn-ghost" data-action="handleExtensionAction" data-arg="view-adapter-plan">适配计划</button>
                 </div>
               </article>
 
@@ -199,9 +199,9 @@
                   <span>搜索增强</span>
                 </div>
                 <div class="extension-actions">
-                  <button type="button" class="btn-primary" onclick="handleExtensionAction('install-grok2api')">安装</button>
-                  <button type="button" class="btn-ghost" onclick="openExtensionDetail('grok2api')">详情</button>
-                  <button type="button" class="btn-ghost" onclick="handleExtensionAction('view-adapter-plan')">适配计划</button>
+                  <button type="button" class="btn-primary" data-action="handleExtensionAction" data-arg="install-grok2api">安装</button>
+                  <button type="button" class="btn-ghost" data-action="openExtensionDetail" data-arg="grok2api">详情</button>
+                  <button type="button" class="btn-ghost" data-action="handleExtensionAction" data-arg="view-adapter-plan">适配计划</button>
                 </div>
               </article>
 
@@ -231,9 +231,9 @@
                   <span>待调研</span>
                 </div>
                 <div class="extension-actions">
-                  <button type="button" class="btn-primary" onclick="handleExtensionAction('install-jimeng')">安装</button>
-                  <button type="button" class="btn-ghost" onclick="openExtensionDetail('free-jimeng')">详情</button>
-                  <button type="button" class="btn-ghost" onclick="handleExtensionAction('view-adapter-plan')">适配计划</button>
+                  <button type="button" class="btn-primary" data-action="handleExtensionAction" data-arg="install-jimeng">安装</button>
+                  <button type="button" class="btn-ghost" data-action="openExtensionDetail" data-arg="free-jimeng">详情</button>
+                  <button type="button" class="btn-ghost" data-action="handleExtensionAction" data-arg="view-adapter-plan">适配计划</button>
                 </div>
               </article>
             </div>
@@ -244,14 +244,14 @@
                   <h3>扩展日志</h3>
                   <span class="tag log-count" id="extensionLogCount">0 条记录</span>
                 </div>
-                <button type="button" class="btn-ghost" onclick="clearExtensionLogs()">清空</button>
+                <button type="button" class="btn-ghost" data-action="clearExtensionLogs">清空</button>
               </div>
               <div class="log-tabs" id="extensionLogTabs">
-                <button class="log-tab active" data-level="all" onclick="setExtensionLogFilter('all')">全部</button>
-                <button class="log-tab" data-level="ok" onclick="setExtensionLogFilter('ok')">OK</button>
-                <button class="log-tab" data-level="info" onclick="setExtensionLogFilter('info')">INFO</button>
-                <button class="log-tab" data-level="warn" onclick="setExtensionLogFilter('warn')">WARN</button>
-                <button class="log-tab" data-level="err" onclick="setExtensionLogFilter('err')">ERR</button>
+                <button class="log-tab active" data-level="all" data-action="setExtensionLogFilter" data-arg="all">全部</button>
+                <button class="log-tab" data-level="ok" data-action="setExtensionLogFilter" data-arg="ok">OK</button>
+                <button class="log-tab" data-level="info" data-action="setExtensionLogFilter" data-arg="info">INFO</button>
+                <button class="log-tab" data-level="warn" data-action="setExtensionLogFilter" data-arg="warn">WARN</button>
+                <button class="log-tab" data-level="err" data-action="setExtensionLogFilter" data-arg="err">ERR</button>
               </div>
               <div class="log-box proxy-logs-box extensions-log-box">
                 <div class="log-body" id="extensionLogBody"></div>

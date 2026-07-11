@@ -10,7 +10,7 @@
                 <p id="extensionDetailDescription">查看扩展来源、运行状态、组件和后续接入计划。</p>
               </div>
               <button type="button" class="modal-close-icon extension-detail-close"
-                onclick="closeExtensionDetail()" aria-label="关闭扩展详情">
+ aria-label="关闭扩展详情" data-action="closeExtensionDetail">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                   stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                   <path d="M18 6 6 18"></path>
@@ -37,7 +37,7 @@
               </section>
             </div>
             <div class="extension-detail-footer">
-              <button type="button" class="modal-btn modal-btn-cancel" onclick="closeExtensionDetail()">关闭</button>
+              <button type="button" class="modal-btn modal-btn-cancel" data-action="closeExtensionDetail">关闭</button>
               <button type="button" class="modal-btn modal-btn-cancel" id="extensionDetailSecondaryAction">检测更新</button>
               <button type="button" class="modal-btn modal-btn-confirm" id="extensionDetailPrimaryAction">执行操作</button>
             </div>

@@ -427,7 +427,7 @@ async function renderModelMap() {
     });
     const chain = (s.targets && s.targets.length)
       ? renderTargetChain(s.targets)
-      : `<span style="color:var(--warn,#d97706);cursor:pointer" onclick="openFailoverEditor('${escAttr(s.modelUid)}')">未设置 ⚠ [点击配置]</span>`;
+      : `<span style="color:var(--warn,#d97706);cursor:pointer" data-action="openFailoverEditor" data-arg="${escAttr(s.modelUid)}">未设置 ⚠ [点击配置]</span>`;
     const vision = slotVisionAssessment(s.modelUid, s.targets || [], s.supportsImages !== false);
     const enabled = s.enabled !== false;
     const hasVisionModels = (modelMapStore.visionModels?.imageModels?.length || 0) > 0;
@@ -439,37 +439,37 @@ async function renderModelMap() {
     const selected = modelMapSelectedIds.has(s.modelUid);
     return `
       <tr data-model-uid="${escAttr(s.modelUid)}" data-row-kind="mapped" class="${selected ? 'is-selected' : ''}">
-        <td class="model-map-select-cell" onclick="event.stopPropagation()">
-          <label class="provider-select-check provider-select-check-table" title="选择此映射" onclick="event.stopPropagation()">
-            <input type="checkbox" class="model-map-row-check" data-uid="${escAttr(s.modelUid)}" ${selected ? 'checked' : ''} onchange="toggleModelMapSelection('${escAttr(s.modelUid)}', this.checked, event)">
+        <td class="model-map-select-cell" data-action="__noop" data-stop>
+          <label class="provider-select-check provider-select-check-table" title="选择此映射" data-action="__noop" data-stop>
+            <input type="checkbox" class="model-map-row-check" data-uid="${escAttr(s.modelUid)}" ${selected ? 'checked' : ''} data-action="toggleModelMapSelection" data-events="change" data-args="[&quot;${escAttr(s.modelUid)}&quot;]" data-pass-checked data-pass-event>
             <span></span>
           </label>
         </td>
-        <td class="editable-cell display-name-cell" onclick="startEditDisplayName(this, '${escAttr(s.modelUid)}')" title="${escAttr(display)}">${escAttr(display)}</td>
+        <td class="editable-cell display-name-cell" data-action="startEditDisplayName" data-args="[&quot;${escAttr(s.modelUid)}&quot;]" data-pass-this title="${escAttr(display)}">${escAttr(display)}</td>
         <td>
           <div>${escAttr(orig)}</div>
           <div style="margin-top:3px;">${renderVisionPill(vision, true)}</div>
         </td>
-        <td class="model-target-cell" onclick="openFailoverEditor('${escAttr(s.modelUid)}')" title="配置故障转移分流目标">${chain}</td>
+        <td class="model-target-cell" data-action="openFailoverEditor" data-arg="${escAttr(s.modelUid)}" title="配置故障转移分流目标">${chain}</td>
         <td>
           <div class="model-map-actions">
-            <button class="btn-icon model-map-action-btn" onclick="openSlotEditor('${escAttr(s.modelUid)}')" title="编辑映射" aria-label="编辑映射">
+            <button class="btn-icon model-map-action-btn" data-action="openSlotEditor" data-arg="${escAttr(s.modelUid)}" title="编辑映射" aria-label="编辑映射">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
             </button>
-            <button class="btn-icon model-map-action-btn danger" onclick="deleteSlot('${escAttr(s.modelUid)}')" title="删除映射" aria-label="删除映射">
+            <button class="btn-icon model-map-action-btn danger" data-action="deleteSlot" data-arg="${escAttr(s.modelUid)}" title="删除映射" aria-label="删除映射">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"/></svg>
             </button>
           </div>
         </td>
         <td class="model-map-toggle-cell">
           <label class="toggle-switch" title="${escAttr(visionTitle)}">
-            <input type="checkbox" ${useThirdParty ? 'checked' : ''} ${visionDisabled} onchange="toggleSlotThirdPartyVision('${escAttr(s.modelUid)}', this.checked)">
+            <input type="checkbox" ${useThirdParty ? 'checked' : ''} ${visionDisabled} data-action="toggleSlotThirdPartyVision" data-events="change" data-args="[&quot;${escAttr(s.modelUid)}&quot;]" data-pass-checked>
             <span class="toggle-slider"></span>
           </label>
         </td>
         <td class="model-map-toggle-cell">
           <label class="toggle-switch" title="${enabled ? '已启用，点击停用' : '已停用，点击启用'}">
-            <input type="checkbox" ${enabled ? 'checked' : ''} onchange="toggleSlotEnabled('${escAttr(s.modelUid)}')">
+            <input type="checkbox" ${enabled ? 'checked' : ''} data-action="toggleSlotEnabled" data-events="change" data-arg="${escAttr(s.modelUid)}">
             <span class="toggle-slider"></span>
           </label>
         </td>
@@ -860,9 +860,9 @@ function renderHeaderList(field, headers) {
   }
   wrap.innerHTML = items.map((h, i) =>
     '<div class="header-pair-row" style="display:flex;gap:6px;align-items:center;margin-bottom:6px;">' +
-    '<input type="text" value="' + escapeHtml(h.key || '') + '" placeholder="Header 名" style="flex:1;min-width:0;" onchange="updateHeaderPair(\'' + field + '\', ' + i + ', \'key\', this.value)" />' +
-    '<input type="text" value="' + escapeHtml(h.value || '') + '" placeholder="Header 值" style="flex:1;min-width:0;" onchange="updateHeaderPair(\'' + field + '\', ' + i + ', \'value\', this.value)" />' +
-    '<button class="btn btn-sm btn-danger" onclick="removeHeaderPair(\'' + field + '\', ' + i + ')" title="删除">✕</button>' +
+    '<input type="text" value="' + escapeHtml(h.key || '') + '" placeholder="Header 名" style="flex:1;min-width:0;" data-action="updateHeaderPair" data-events="change" data-args="[&quot;' + field + '&quot;,' + i + ',&quot;key&quot;]" data-pass-value />' +
+    '<input type="text" value="' + escapeHtml(h.value || '') + '" placeholder="Header 值" style="flex:1;min-width:0;" data-action="updateHeaderPair" data-events="change" data-args="[&quot;' + field + '&quot;,' + i + ',&quot;value&quot;]" data-pass-value />' +
+    '<button class="btn btn-sm btn-danger" data-action="removeHeaderPair" data-args="[&quot;' + field + '&quot;,' + i + ']" title="删除">✕</button>' +
     '</div>'
   ).join('');
 }
@@ -993,7 +993,7 @@ function setPanelControlsEnabled(panel, enabled) {
   });
   // 自定义请求头的添加按钮
   if (panel === 'customHeaders') {
-    document.querySelectorAll('[onclick^="addHeaderPair"]').forEach(btn => { btn.disabled = !enabled; });
+    document.querySelectorAll('[data-action="addHeaderPair"]').forEach(btn => { btn.disabled = !enabled; });
   }
 }
 
@@ -1106,10 +1106,10 @@ function renderProxyVisionModelList() {
           </div>
         </div>
         <div style="display:flex;align-items:center;gap:6px;flex-shrink:0;">
-          <button class="btn-ghost" onclick="moveVisionModel(${idx}, -1)" ${idx === 0 ? 'disabled' : ''} style="height:26px;padding:0 8px;border-radius:7px;font-size:11px;">↑</button>
-          <button class="btn-ghost" onclick="moveVisionModel(${idx}, 1)" ${idx === items.length - 1 ? 'disabled' : ''} style="height:26px;padding:0 8px;border-radius:7px;font-size:11px;">↓</button>
-          <button id="vision-test-btn-${idx}" class="btn-ghost" onclick="testVisionModel(${idx})" ${testing ? 'disabled' : ''} style="height:26px;padding:0 9px;border-radius:7px;font-size:11px;">${testing ? '测试中...' : '测试'}</button>
-          <button class="btn-ghost" onclick="removeVisionModel(${idx})" style="height:26px;padding:0 8px;border-radius:7px;font-size:11px;">✕</button>
+          <button class="btn-ghost" data-action="moveVisionModel" data-args="[${idx},-1]" ${idx === 0 ? 'disabled' : ''} style="height:26px;padding:0 8px;border-radius:7px;font-size:11px;">↑</button>
+          <button class="btn-ghost" data-action="moveVisionModel" data-args="[${idx},1]" ${idx === items.length - 1 ? 'disabled' : ''} style="height:26px;padding:0 8px;border-radius:7px;font-size:11px;">↓</button>
+          <button id="vision-test-btn-${idx}" class="btn-ghost" data-action="testVisionModel" data-args="[${idx}]" ${testing ? 'disabled' : ''} style="height:26px;padding:0 9px;border-radius:7px;font-size:11px;">${testing ? '测试中...' : '测试'}</button>
+          <button class="btn-ghost" data-action="removeVisionModel" data-args="[${idx}]" style="height:26px;padding:0 8px;border-radius:7px;font-size:11px;">✕</button>
         </div>
       </div>`;
   }).join('');
@@ -1306,7 +1306,7 @@ function renderVisionModelPicker() {
       const active = provider.providerId === proxyVisionSelectedProviderId;
       const isLP = isLocalProxyProviderEntry(provider);
       return `
-        <button type="button" class="proxy-route-provider-item ${active ? 'active' : ''} ${isLP ? 'is-local-proxy' : ''}" onclick="selectVisionModelProvider('${escAttr(provider.providerId)}')">
+        <button type="button" class="proxy-route-provider-item ${active ? 'active' : ''} ${isLP ? 'is-local-proxy' : ''}" data-action="selectVisionModelProvider" data-arg="${escAttr(provider.providerId)}">
           <span class="proxy-route-provider-icon">${escAttr(String(provider.providerName || provider.providerId || '?').trim().charAt(0).toUpperCase() || '?')}</span>
           <span class="proxy-route-provider-name">${escAttr(provider.providerName || provider.providerId)}${isLP ? '<span class="proxy-route-prov-badge">本地</span>' : ''}</span>
           <span class="proxy-route-provider-count">${provider.models.length}</span>
@@ -1340,7 +1340,7 @@ function renderVisionModelPicker() {
     const active = already || bucket.has(key);
     return `
       <button type="button" class="proxy-route-model-item proxy-vision-model-item ${active ? 'active' : ''} ${already ? 'is-disabled' : ''}"
-        ${already ? 'disabled' : ''} onclick="toggleVisionModelOption('${escAttr(selectedProvider.providerId)}', '${escAttr(key)}')">
+        ${already ? 'disabled' : ''} data-action="toggleVisionModelOption" data-args="[&quot;${escAttr(selectedProvider.providerId)}&quot;,&quot;${escAttr(key)}&quot;]">
         <span class="proxy-route-model-check">${active ? '&#10003;' : ''}</span>
         ${visionModelIcon(option.model)}
         <span class="proxy-route-model-name">
@@ -1463,25 +1463,25 @@ function renderProxySearchSourceList() {
             </div>
           </div>
           <label class="toggle-switch" title="启用搜索源">
-            <input type="checkbox" ${src.enabled !== false ? 'checked' : ''} onchange="toggleSearchSourceEnabled(${idx}, this.checked)">
+            <input type="checkbox" ${src.enabled !== false ? 'checked' : ''} data-action="toggleSearchSourceEnabled" data-events="change" data-args="[${idx}]" data-pass-checked>
             <span class="toggle-slider"></span>
           </label>
         </div>
         <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;">
           <label style="display:flex;flex-direction:column;gap:5px;font-size:10px;color:var(--text-muted);">
             API Key
-            <input type="password" value="${escAttr(src.apiKey || '')}" ${needsKey ? '' : 'disabled'} placeholder="${needsKey ? '必填' : '无需 API Key'}" onchange="updateSearchSourceField(${idx}, 'apiKey', this.value)" style="height:30px;padding:0 9px;border-radius:8px;border:1px solid var(--border);background:var(--bg-input);color:var(--text-primary);">
+            <input type="password" value="${escAttr(src.apiKey || '')}" ${needsKey ? '' : 'disabled'} placeholder="${needsKey ? '必填' : '无需 API Key'}" data-action="updateSearchSourceField" data-events="change" data-args="[${idx},&quot;apiKey&quot;]" data-pass-value style="height:30px;padding:0 9px;border-radius:8px;border:1px solid var(--border);background:var(--bg-input);color:var(--text-primary);">
           </label>
           <label style="display:flex;flex-direction:column;gap:5px;font-size:10px;color:var(--text-muted);">
             API Host
-            <input type="text" value="${escAttr(src.apiHost || '')}" placeholder="${escAttr(preset?.defaultHost || (key === 'searxng' ? 'https://your-searxng.example.com' : '默认'))}" ${key === 'duckduckgo' ? 'disabled' : ''} onchange="updateSearchSourceField(${idx}, 'apiHost', this.value)" style="height:30px;padding:0 9px;border-radius:8px;border:1px solid var(--border);background:var(--bg-input);color:var(--text-primary);">
+            <input type="text" value="${escAttr(src.apiHost || '')}" placeholder="${escAttr(preset?.defaultHost || (key === 'searxng' ? 'https://your-searxng.example.com' : '默认'))}" ${key === 'duckduckgo' ? 'disabled' : ''} data-action="updateSearchSourceField" data-events="change" data-args="[${idx},&quot;apiHost&quot;]" data-pass-value style="height:30px;padding:0 9px;border-radius:8px;border:1px solid var(--border);background:var(--bg-input);color:var(--text-primary);">
           </label>
         </div>
         <div style="display:flex;align-items:center;justify-content:flex-end;gap:6px;">
-          <button class="btn-ghost" onclick="moveSearchSource(${idx}, -1)" ${idx === 0 ? 'disabled' : ''} style="height:26px;padding:0 8px;border-radius:7px;font-size:11px;">↑</button>
-          <button class="btn-ghost" onclick="moveSearchSource(${idx}, 1)" ${idx === items.length - 1 ? 'disabled' : ''} style="height:26px;padding:0 8px;border-radius:7px;font-size:11px;">↓</button>
-          <button class="btn-ghost" onclick="testSearchSource(${idx})" ${testing ? 'disabled' : ''} style="height:26px;padding:0 9px;border-radius:7px;font-size:11px;">${testing ? '测试中...' : '测试'}</button>
-          <button class="btn-ghost" onclick="removeSearchSource(${idx})" style="height:26px;padding:0 8px;border-radius:7px;font-size:11px;">删除</button>
+          <button class="btn-ghost" data-action="moveSearchSource" data-args="[${idx},-1]" ${idx === 0 ? 'disabled' : ''} style="height:26px;padding:0 8px;border-radius:7px;font-size:11px;">↑</button>
+          <button class="btn-ghost" data-action="moveSearchSource" data-args="[${idx},1]" ${idx === items.length - 1 ? 'disabled' : ''} style="height:26px;padding:0 8px;border-radius:7px;font-size:11px;">↓</button>
+          <button class="btn-ghost" data-action="testSearchSource" data-args="[${idx}]" ${testing ? 'disabled' : ''} style="height:26px;padding:0 9px;border-radius:7px;font-size:11px;">${testing ? '测试中...' : '测试'}</button>
+          <button class="btn-ghost" data-action="removeSearchSource" data-args="[${idx}]" style="height:26px;padding:0 8px;border-radius:7px;font-size:11px;">删除</button>
         </div>
       </div>`;
   }).join('');
@@ -1508,7 +1508,7 @@ function renderSearchSourcePicker() {
   wrap.innerHTML = `
     <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:10px;">
       ${SEARCH_SOURCE_PRESETS.map(preset => `
-        <button type="button" class="btn-ghost" onclick="addSearchSource('${escAttr(preset.key)}')" style="text-align:left;padding:10px;border-radius:9px;border:1px solid var(--border);background:var(--bg-card);display:flex;flex-direction:column;gap:3px;">
+        <button type="button" class="btn-ghost" data-action="addSearchSource" data-arg="${escAttr(preset.key)}" style="text-align:left;padding:10px;border-radius:9px;border:1px solid var(--border);background:var(--bg-card);display:flex;flex-direction:column;gap:3px;">
           <strong style="font-size:12px;color:var(--text-primary);">${escAttr(preset.label)}</strong>
           <small style="font-size:10px;color:var(--text-muted);">${preset.type === 'api' ? 'API' : 'Engine'} · ${preset.needsKey ? '需要 Key' : '无需 Key'}</small>
         </button>`).join('')}
@@ -2309,7 +2309,7 @@ async function renderInjectedList() {
       ${rows.map(row => `
         <tr data-uid="${escAttr(row.uid)}" class="${row.visible ? '' : 'is-hidden'}">
           <td>
-            <input class="slot-visibility-row-check" data-uid="${escAttr(row.uid)}" type="checkbox" onchange="syncSlotVisibilitySelectionState()">
+            <input class="slot-visibility-row-check" data-uid="${escAttr(row.uid)}" type="checkbox" data-action="syncSlotVisibilitySelectionState" data-events="change">
           </td>
           <td>
             <div class="slot-visibility-name">${escAttr(row.label)}</div>
@@ -2325,7 +2325,7 @@ async function renderInjectedList() {
           </td>
           <td>
             <label class="slot-visibility-switch" title="${row.visible ? '当前显示在 IDE 模型列表' : '当前不显示在 IDE 模型列表'}">
-              <input type="checkbox" ${row.visible ? 'checked' : ''} onchange="onSlotVisibilityToggle('${escAttr(row.uid)}', this.checked)">
+              <input type="checkbox" ${row.visible ? 'checked' : ''} data-action="onSlotVisibilityToggle" data-events="change" data-args="[&quot;${escAttr(row.uid)}&quot;]" data-pass-checked>
               <span></span>
             </label>
           </td>
@@ -2533,9 +2533,9 @@ function renderMappingModelCatalog() {
       const providerNames = {};
       allModels.forEach(m => { providerNames[m.providerId] = m.providerName; });
       providerBar.innerHTML = `
-        <button onclick="mappingCatalogProvider='';renderMappingModelCatalog()" style="height:22px;padding:0 8px;border-radius:6px;border:1px solid ${!mappingCatalogProvider ? 'var(--accent)' : 'var(--border)'};background:${!mappingCatalogProvider ? 'var(--accent-light)' : 'transparent'};color:${!mappingCatalogProvider ? 'var(--accent)' : 'var(--text-muted)'};font-size:10px;font-weight:700;cursor:pointer;">全部 ${allModels.length}</button>
+        <button data-set="mappingCatalogProvider" data-set-value="" data-action="renderMappingModelCatalog" style="height:22px;padding:0 8px;border-radius:6px;border:1px solid ${!mappingCatalogProvider ? 'var(--accent)' : 'var(--border)'};background:${!mappingCatalogProvider ? 'var(--accent-light)' : 'transparent'};color:${!mappingCatalogProvider ? 'var(--accent)' : 'var(--text-muted)'};font-size:10px;font-weight:700;cursor:pointer;">全部 ${allModels.length}</button>
         ${providerIds.map(pid => `
-          <button onclick="mappingCatalogProvider='${escAttr(pid)}';renderMappingModelCatalog()" style="height:22px;padding:0 8px;border-radius:6px;border:1px solid ${mappingCatalogProvider === pid ? 'var(--accent)' : 'var(--border)'};background:${mappingCatalogProvider === pid ? 'var(--accent-light)' : 'transparent'};color:${mappingCatalogProvider === pid ? 'var(--accent)' : 'var(--text-muted)'};font-size:10px;font-weight:700;cursor:pointer;">${escAttr(providerNames[pid] || pid)} ${allModels.filter(m => m.providerId === pid).length}</button>
+          <button data-set="mappingCatalogProvider" data-set-value="${escAttr(pid)}" data-action="renderMappingModelCatalog" style="height:22px;padding:0 8px;border-radius:6px;border:1px solid ${mappingCatalogProvider === pid ? 'var(--accent)' : 'var(--border)'};background:${mappingCatalogProvider === pid ? 'var(--accent-light)' : 'transparent'};color:${mappingCatalogProvider === pid ? 'var(--accent)' : 'var(--text-muted)'};font-size:10px;font-weight:700;cursor:pointer;">${escAttr(providerNames[pid] || pid)} ${allModels.filter(m => m.providerId === pid).length}</button>
         `).join('')}
       `;
       providerBar.style.display = 'flex';
@@ -2599,7 +2599,7 @@ function renderMappingModelCatalog() {
 
     return `
       <div class="mapping-catalog-item ${isSelected ? 'selected' : ''}"
-           onclick="toggleMappingModelTarget('${escAttr(item.providerId)}', '${escAttr(item.model)}')"
+           data-action="toggleMappingModelTarget" data-args="[&quot;${escAttr(item.providerId)}&quot;,&quot;${escAttr(item.model)}&quot;]"
            style="display:flex; align-items:center; justify-content:space-between; padding:12px 16px; border:1px solid ${isSelected ? 'var(--accent)' : 'var(--border)'}; background:${isSelected ? 'var(--accent-light)' : 'var(--bg-card)'}; cursor:pointer; border-radius:10px; gap:12px; transition:all 0.2s; box-shadow:${isSelected ? '0 0 12px var(--accent-glow)' : 'none'};">
         <div style="display:flex; align-items:center; gap:10px; flex:1; min-width:0;">
           <div class="provider-logo ${logoClass}" style="width:28px; height:28px; font-size:12px; border-radius:6px; flex-shrink:0; display:flex; align-items:center; justify-content:center; font-weight:800;">
@@ -2764,9 +2764,9 @@ function renderSlotCatalogList() {
   if (brandBar) {
     if (availableBrands.length > 0) {
       brandBar.innerHTML = `
-        <button onclick="slotCatalogBrand='';renderSlotCatalogList()" style="height:22px;padding:0 8px;border-radius:6px;border:1px solid ${!slotCatalogBrand ? 'var(--accent)' : 'var(--border)'};background:${!slotCatalogBrand ? 'var(--accent-light)' : 'transparent'};color:${!slotCatalogBrand ? 'var(--accent)' : 'var(--text-muted)'};font-size:10px;font-weight:700;cursor:pointer;">全部</button>
+        <button data-set="slotCatalogBrand" data-set-value="" data-action="renderSlotCatalogList" style="height:22px;padding:0 8px;border-radius:6px;border:1px solid ${!slotCatalogBrand ? 'var(--accent)' : 'var(--border)'};background:${!slotCatalogBrand ? 'var(--accent-light)' : 'transparent'};color:${!slotCatalogBrand ? 'var(--accent)' : 'var(--text-muted)'};font-size:10px;font-weight:700;cursor:pointer;">全部</button>
         ${availableBrands.map(b => `
-          <button onclick="slotCatalogBrand='${b.id}';renderSlotCatalogList()" style="height:22px;padding:0 8px;border-radius:6px;border:1px solid ${slotCatalogBrand === b.id ? 'var(--accent)' : 'var(--border)'};background:${slotCatalogBrand === b.id ? 'var(--accent-light)' : 'transparent'};color:${slotCatalogBrand === b.id ? 'var(--accent)' : 'var(--text-muted)'};font-size:10px;font-weight:700;cursor:pointer;">${b.label}</button>
+          <button data-set="slotCatalogBrand" data-set-value="${b.id}" data-action="renderSlotCatalogList" style="height:22px;padding:0 8px;border-radius:6px;border:1px solid ${slotCatalogBrand === b.id ? 'var(--accent)' : 'var(--border)'};background:${slotCatalogBrand === b.id ? 'var(--accent-light)' : 'transparent'};color:${slotCatalogBrand === b.id ? 'var(--accent)' : 'var(--text-muted)'};font-size:10px;font-weight:700;cursor:pointer;">${b.label}</button>
         `).join('')}
       `;
       brandBar.style.display = 'flex';
@@ -2805,8 +2805,8 @@ function renderSlotCatalogList() {
           <div style="font-weight:700;color:var(--text-secondary);">还没有当前账号槽位数据</div>
           <div>点击刷新可读取当前 IDE 账号实际模型；也可以先查看内置槽位。</div>
           <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center;">
-            <button class="btn-ghost" onclick="refreshIdeModels()" style="height:30px;padding:0 12px;border-radius:8px;font-size:12px;font-weight:700;">刷新当前账号</button>
-            <button class="btn-primary" onclick="setSlotCatalogScope('extended')" style="height:30px;padding:0 12px;border-radius:8px;font-size:12px;font-weight:700;">启用内置槽位</button>
+            <button class="btn-ghost" data-action="refreshIdeModels" style="height:30px;padding:0 12px;border-radius:8px;font-size:12px;font-weight:700;">刷新当前账号</button>
+            <button class="btn-primary" data-action="setSlotCatalogScope" data-arg="extended" style="height:30px;padding:0 12px;border-radius:8px;font-size:12px;font-weight:700;">启用内置槽位</button>
           </div>
         </div>`;
     } else {
@@ -2835,7 +2835,7 @@ function renderSlotCatalogList() {
     // 渲染具有极致质感的左侧行卡片，支持选中态发光与锁定态置灰
     return `
       <div class="slot-catalog-item ${isSelected ? 'selected' : ''} ${taken ? 'taken' : ''}"
-           onclick="${taken ? '' : `selectCatalogSlot('${escAttr(m.id)}', '${escAttr(m.name)}')`}"
+           ${taken ? '' : `data-action="selectCatalogSlot" data-args="[&quot;${escAttr(m.id)}&quot;,&quot;${escAttr(m.name)}&quot;]"`}
            style="display:flex; align-items:center; justify-content:space-between; padding:12px 16px; border:1px solid ${isSelected ? 'var(--accent)' : 'var(--border)'}; background:${isSelected ? 'var(--accent-light)' : 'var(--bg-card)'}; opacity:${taken ? '0.5' : '1'}; cursor:${taken ? 'not-allowed' : 'pointer'}; border-radius:10px; gap:12px; transition:all 0.2s; box-shadow:${isSelected ? '0 0 12px var(--accent-glow)' : 'none'};">
         <div style="display:flex; align-items:center; gap:10px; flex:1; min-width:0;">
           ${leftIcon}
@@ -3159,16 +3159,16 @@ function renderFailoverRows() {
       <div style="display:flex;flex-direction:column;gap:6px" data-fo-idx="${i}">
         <div style="display:flex;gap:8px;align-items:center">
           <span style="width:20px;text-align:center;color:var(--text-muted)">${marks[i] || (i + 1)}</span>
-          <select class="input-sm" style="flex:1" onchange="updateFailoverRow(${i},'providerId',this.value)">${invalidOpt}${provOpts}</select>
-          <select class="input-sm" style="flex:0 0 132px" onchange="updateFailoverRow(${i},'route',this.value)">${routeOpts}</select>
-          <select class="input-sm" style="flex:1; text-align: left;" onchange="updateFailoverRow(${i},'model',this.value)">
+          <select class="input-sm" style="flex:1" data-action="updateFailoverRow" data-events="change" data-args="[${i},&quot;providerId&quot;]" data-pass-value>${invalidOpt}${provOpts}</select>
+          <select class="input-sm" style="flex:0 0 132px" data-action="updateFailoverRow" data-events="change" data-args="[${i},&quot;route&quot;]" data-pass-value>${routeOpts}</select>
+          <select class="input-sm" style="flex:1; text-align: left;" data-action="updateFailoverRow" data-events="change" data-args="[${i},&quot;model&quot;]" data-pass-value>
             <option value=""${!row.model ? ' selected' : ''}>默认模型</option>
             ${modelOpts}
             <option value="__custom__">+ 输入自定义模型...</option>
           </select>
-          <button class="btn-ghost" title="上移" onclick="moveFailoverRow(${i},-1)" ${i === 0 ? 'disabled' : ''}>↑</button>
-          <button class="btn-ghost" title="下移" onclick="moveFailoverRow(${i},1)" ${i === failoverDraft.length - 1 ? 'disabled' : ''}>↓</button>
-          <button class="btn-ghost" title="删除" onclick="removeFailoverRow(${i})">✕</button>
+          <button class="btn-ghost" title="上移" data-action="moveFailoverRow" data-args="[${i},-1]" ${i === 0 ? 'disabled' : ''}>↑</button>
+          <button class="btn-ghost" title="下移" data-action="moveFailoverRow" data-args="[${i},1]" ${i === failoverDraft.length - 1 ? 'disabled' : ''}>↓</button>
+          <button class="btn-ghost" title="删除" data-action="removeFailoverRow" data-args="[${i}]">✕</button>
         </div>
         ${capLine}
       </div>`;

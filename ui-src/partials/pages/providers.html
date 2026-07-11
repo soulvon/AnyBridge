@@ -4,7 +4,7 @@
             <div class="provider-toolbar-main">
               <div class="card-title"><span class="dot"></span> API 供应商</div>
               <div class="provider-toolbar-actions">
-                <button class="btn-ghost provider-toolbar-btn" onclick="openEvalWorkbenchPage()">
+                <button class="btn-ghost provider-toolbar-btn" data-action="openEvalWorkbenchPage">
                   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
                     stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                     <path
@@ -16,7 +16,7 @@
                   <span>模型检测</span>
                 </button>
                 <button class="btn-ghost provider-toolbar-btn" id="provider-import-open-btn"
-                  onclick="openProviderImportModal()">
+ data-action="openProviderImportModal">
                   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
                     stroke-linecap="round" stroke-linejoin="round">
                     <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
@@ -25,7 +25,7 @@
                   </svg>
                   <span class="provider-toolbar-label">本地导入</span>
                 </button>
-                <button class="btn-primary provider-toolbar-btn" onclick="openProviderEditor()">
+                <button class="btn-primary provider-toolbar-btn" data-action="openProviderEditor">
                   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3"
                     stroke-linecap="round" stroke-linejoin="round">
                     <line x1="12" y1="5" x2="12" y2="19"></line>
@@ -43,9 +43,9 @@
                   <path d="m21 21-4.35-4.35"></path>
                 </svg>
                 <input type="text" id="providerSearchInput" placeholder="搜索供应商、模型、API 地址"
-                  oninput="onProviderSearchInput(this.value)">
+ data-action="onProviderSearchInput" data-events="input" data-pass-value>
                 <button type="button" class="provider-search-clear" id="providerSearchClear"
-                  onclick="clearProviderSearch()" title="清空搜索" aria-label="清空搜索">
+ title="清空搜索" aria-label="清空搜索" data-action="clearProviderSearch">
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"
                     stroke-linecap="round" stroke-linejoin="round">
                     <path d="M18 6 6 18"></path>
@@ -55,8 +55,8 @@
               </div>
               <div class="provider-sort-control" id="providerSortControl">
                 <button type="button" class="provider-sort-trigger" id="providerSortTrigger"
-                  onclick="toggleProviderSortMenu(event)" aria-haspopup="listbox" aria-expanded="false"
-                  aria-controls="providerSortMenu" aria-label="供应商排序" title="供应商排序">
+ aria-haspopup="listbox" aria-expanded="false"
+ aria-controls="providerSortMenu" aria-label="供应商排序" title="供应商排序" data-action="toggleProviderSortMenu" data-pass-event>
                   <svg class="provider-sort-icon" width="14" height="14" viewBox="0 0 24 24" fill="none"
                     stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"
                     aria-hidden="true">
@@ -74,16 +74,16 @@
                 </button>
                 <div class="provider-sort-menu" id="providerSortMenu" role="listbox" aria-label="供应商排序">
                   <button type="button" class="provider-sort-option" role="option" data-sort-mode="default"
-                    onclick="chooseProviderSortMode('default')">默认排序</button>
+ data-action="chooseProviderSortMode" data-arg="default">默认排序</button>
                   <button type="button" class="provider-sort-option" role="option" data-sort-mode="name-asc"
-                    onclick="chooseProviderSortMode('name-asc')">名称正序</button>
+ data-action="chooseProviderSortMode" data-arg="name-asc">名称正序</button>
                   <button type="button" class="provider-sort-option" role="option" data-sort-mode="name-desc"
-                    onclick="chooseProviderSortMode('name-desc')">名称反序</button>
+ data-action="chooseProviderSortMode" data-arg="name-desc">名称反序</button>
                 </div>
               </div>
               <div class="provider-view-toggle" role="group" aria-label="供应商视图">
                 <button type="button" class="provider-view-btn active" id="providerViewGridBtn"
-                  onclick="setProviderViewMode('grid')" title="卡片视图" aria-label="卡片视图">
+ title="卡片视图" aria-label="卡片视图" data-action="setProviderViewMode" data-arg="grid">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
                     stroke-linecap="round" stroke-linejoin="round">
                     <rect x="3" y="3" width="7" height="7" rx="1"></rect>
@@ -93,7 +93,7 @@
                   </svg>
                 </button>
                 <button type="button" class="provider-view-btn" id="providerViewListBtn"
-                  onclick="setProviderViewMode('list')" title="列表视图" aria-label="列表视图">
+ title="列表视图" aria-label="列表视图" data-action="setProviderViewMode" data-arg="list">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
                     stroke-linecap="round" stroke-linejoin="round">
                     <line x1="8" y1="6" x2="21" y2="6"></line>
@@ -108,13 +108,13 @@
               <div class="provider-bulk-actions">
                 <span class="provider-bulk-count" id="providerBulkCount">未选择</span>
                 <button class="btn-ghost provider-bulk-btn" id="providerSelectVisibleBtn"
-                  onclick="toggleVisibleProvidersSelection()" disabled>选择当前</button>
+ disabled data-action="toggleVisibleProvidersSelection">选择当前</button>
                 <button class="btn-ghost provider-bulk-btn" id="providerBulkEnableBtn"
-                  onclick="setSelectedProvidersEnabled(true)" disabled>启用</button>
+ disabled data-action="setSelectedProvidersEnabled" data-args="[true]">启用</button>
                 <button class="btn-ghost provider-bulk-btn" id="providerBulkDisableBtn"
-                  onclick="setSelectedProvidersEnabled(false)" disabled>禁用</button>
+ disabled data-action="setSelectedProvidersEnabled" data-args="[false]">禁用</button>
                 <button class="btn-ghost provider-bulk-btn danger" id="providerBulkDeleteBtn"
-                  onclick="deleteSelectedProviders()" disabled>删除</button>
+ disabled data-action="deleteSelectedProviders">删除</button>
               </div>
             </div>
           </div>
@@ -143,8 +143,8 @@
                   <div class="provider-import-modal-subtitle">扫描本机工具配置，确认后写入当前供应商列表。</div>
                 </div>
               </div>
-              <button class="modal-close-icon provider-import-close" onclick="closeProviderImportModal()"
-                aria-label="关闭导入弹窗">
+              <button class="modal-close-icon provider-import-close"
+ aria-label="关闭导入弹窗" data-action="closeProviderImportModal">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"
                   stroke-linecap="round" stroke-linejoin="round">
                   <path d="M18 6L6 18"></path>
@@ -159,25 +159,25 @@
                   <div class="provider-import-sub" id="provider-import-summary">尚未扫描</div>
                 </div>
                 <div class="provider-import-actions">
-                  <button class="model-panel-btn" onclick="handleProviderImportScanAction()"
-                    id="provider-import-rescan-btn">开始扫描</button>
+                  <button class="model-panel-btn"
+ id="provider-import-rescan-btn" data-action="handleProviderImportScanAction">开始扫描</button>
                   <button class="model-panel-btn provider-import-select-all" type="button"
-                    id="provider-import-select-all" onclick="toggleAllProviderImportCandidates(true)">选择可导入</button>
+ id="provider-import-select-all" data-action="toggleAllProviderImportCandidates" data-args="[true]">选择可导入</button>
                   <button class="model-panel-btn provider-import-clear-selection" type="button"
-                    id="provider-import-clear-selection"
-                    onclick="toggleAllProviderImportCandidates(false)">清空选择</button>
+ id="provider-import-clear-selection"
+ data-action="toggleAllProviderImportCandidates" data-args="[false]">清空选择</button>
                 </div>
                 <div class="provider-import-sources" id="provider-import-sources" aria-label="选择扫描来源">
                   <label class="provider-import-source-option">
-                    <input type="checkbox" value="cc-switch" checked onchange="syncProviderImportSourceState()">
+                    <input type="checkbox" value="cc-switch" checked data-action="syncProviderImportSourceState" data-events="change">
                     <span>CC Switch</span>
                   </label>
                   <label class="provider-import-source-option">
-                    <input type="checkbox" value="cockpit-tools" checked onchange="syncProviderImportSourceState()">
+                    <input type="checkbox" value="cockpit-tools" checked data-action="syncProviderImportSourceState" data-events="change">
                     <span>Cockpit Tools</span>
                   </label>
                   <label class="provider-import-source-option">
-                    <input type="checkbox" value="cherry-studio" checked onchange="syncProviderImportSourceState()">
+                    <input type="checkbox" value="cherry-studio" checked data-action="syncProviderImportSourceState" data-events="change">
                     <span>Cherry Studio</span>
                   </label>
                 </div>
@@ -203,9 +203,9 @@
             </div>
             <div class="modal-footer provider-import-footer">
               <div class="provider-import-footer-summary" id="provider-import-footer-summary">扫描后可选择要导入的供应商</div>
-              <button class="modal-btn modal-btn-cancel" onclick="closeProviderImportModal()">取消</button>
-              <button class="modal-btn modal-btn-confirm" onclick="handleProviderImportPrimaryAction()"
-                id="provider-import-confirm-btn" disabled>开始扫描</button>
+              <button class="modal-btn modal-btn-cancel" data-action="closeProviderImportModal">取消</button>
+              <button class="modal-btn modal-btn-confirm"
+ id="provider-import-confirm-btn" disabled data-action="handleProviderImportPrimaryAction">开始扫描</button>
             </div>
           </div>
         </div>

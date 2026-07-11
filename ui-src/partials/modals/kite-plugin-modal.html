@@ -1,14 +1,14 @@
 
   <!-- Kite 插件安装选择 -->
-  <div id="kite-plugin-modal" class="modal-overlay" onclick="if (event.target === this) closeKitePluginModal()">
+  <div id="kite-plugin-modal" class="modal-overlay" data-action="closeKitePluginModal" data-only-self>
     <div class="modal-container kite-plugin-modal">
       <div class="modal-header kite-plugin-modal-header">
         <div class="modal-title kite-plugin-title">
           <span class="kite-plugin-mark">Kite</span>
           <span>安装 Kite 插件</span>
         </div>
-        <button type="button" class="modal-close-icon kite-plugin-close" onclick="closeKitePluginModal()"
-          aria-label="关闭 Kite 插件安装弹窗">
+        <button type="button" class="modal-close-icon kite-plugin-close"
+ aria-label="关闭 Kite 插件安装弹窗" data-action="closeKitePluginModal">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
             stroke-linecap="round" stroke-linejoin="round">
             <path d="M18 6 6 18"></path>
@@ -23,7 +23,7 @@
         </p>
         <div class="kite-plugin-choice-grid">
           <button type="button" class="kite-plugin-choice kite-plugin-choice-install" id="kite-plugin-install-btn"
-            onclick="installKitePlugin()">
+ data-action="installKitePlugin">
             <span class="kite-plugin-choice-icon">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"
                 stroke-linecap="round" stroke-linejoin="round">
@@ -38,7 +38,7 @@
             </span>
           </button>
           <a class="kite-plugin-choice kite-plugin-choice-project" href="https://github.com/soulvon/Kite"
-            target="_blank" rel="noopener noreferrer" onclick="closeKitePluginModal()">
+ target="_blank" rel="noopener noreferrer" data-action="closeKitePluginModal">
             <span class="kite-plugin-choice-icon">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"
                 stroke-linecap="round" stroke-linejoin="round">

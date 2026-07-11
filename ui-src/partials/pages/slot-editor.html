@@ -3,7 +3,7 @@
           <div class="model-slots-page">
             <div class="control-bar glass-card model-slots-head">
               <div class="model-slots-title">
-                <button class="btn-ghost model-slots-back" onclick="closeSlotEditor()" title="返回模型映射">
+                <button class="btn-ghost model-slots-back" title="返回模型映射" data-action="closeSlotEditor">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"
                     stroke-linecap="round" stroke-linejoin="round">
                     <path d="M19 12H5"></path>
@@ -16,8 +16,8 @@
                 </div>
               </div>
               <div class="model-slots-actions">
-                <button class="btn-ghost" onclick="closeSlotEditor()">取消</button>
-                <button class="btn-primary" onclick="saveSlotFromEditor()">
+                <button class="btn-ghost" data-action="closeSlotEditor">取消</button>
+                <button class="btn-primary" data-action="saveSlotFromEditor">
                   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
                     stroke-linecap="round" stroke-linejoin="round">
                     <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>
@@ -38,9 +38,9 @@
                   <div style="display:flex; align-items:center; gap:6px;">
                     <span class="brand-tag" id="slotCatalogCount"
                       style="padding: 2px 8px; font-size: 10px; font-weight:700;">0 可用</span>
-                    <button id="btn-refresh-models" class="btn-ghost" onclick="refreshIdeModels()"
-                      style="padding: 0 10px; border-radius: 6px; display: flex; align-items: center; gap: 4px; height: 24px; font-size: 11px; font-weight: 600;"
-                      title="从 IDE 账号拉取最新模型列表">
+                    <button id="btn-refresh-models" class="btn-ghost"
+ style="padding: 0 10px; border-radius: 6px; display: flex; align-items: center; gap: 4px; height: 24px; font-size: 11px; font-weight: 600;"
+ title="从 IDE 账号拉取最新模型列表" data-action="refreshIdeModels">
                       <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                         stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
                         <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"></path>
@@ -51,27 +51,27 @@
                 </div>
                 <div id="slotCatalogScopeTabs"
                   style="display:flex;align-items:center;gap:6px;padding:10px 20px;border-bottom:1px solid var(--border);background:var(--bg-card);">
-                  <button class="slot-scope-tab" data-scope="extended" onclick="setSlotCatalogScope('extended')"
-                    style="height:26px;padding:0 10px;border-radius:7px;border:1px solid var(--border);background:var(--bg-input);color:var(--text-muted);font-size:11px;font-weight:700;cursor:pointer;">内置槽位
+                  <button class="slot-scope-tab" data-scope="extended"
+ style="height:26px;padding:0 10px;border-radius:7px;border:1px solid var(--border);background:var(--bg-input);color:var(--text-muted);font-size:11px;font-weight:700;cursor:pointer;" data-action="setSlotCatalogScope" data-arg="extended">内置槽位
                     <span id="slotScopeExtendedCount">0</span></button>
-                  <button class="slot-scope-tab" data-scope="all" onclick="setSlotCatalogScope('all')"
-                    style="height:26px;padding:0 10px;border-radius:7px;border:1px solid var(--border);background:var(--bg-input);color:var(--text-muted);font-size:11px;font-weight:700;cursor:pointer;">全部
+                  <button class="slot-scope-tab" data-scope="all"
+ style="height:26px;padding:0 10px;border-radius:7px;border:1px solid var(--border);background:var(--bg-input);color:var(--text-muted);font-size:11px;font-weight:700;cursor:pointer;" data-action="setSlotCatalogScope" data-arg="all">全部
                     <span id="slotScopeAllCount">0</span></button>
-                  <button class="slot-scope-tab" data-scope="bound" onclick="setSlotCatalogScope('bound')"
-                    style="height:26px;padding:0 10px;border-radius:7px;border:1px solid var(--border);background:var(--bg-input);color:var(--text-muted);font-size:11px;font-weight:700;cursor:pointer;">已绑定
+                  <button class="slot-scope-tab" data-scope="bound"
+ style="height:26px;padding:0 10px;border-radius:7px;border:1px solid var(--border);background:var(--bg-input);color:var(--text-muted);font-size:11px;font-weight:700;cursor:pointer;" data-action="setSlotCatalogScope" data-arg="bound">已绑定
                     <span id="slotScopeBoundCount">0</span></button>
-                  <button class="slot-scope-tab" data-scope="account" onclick="setSlotCatalogScope('account')"
-                    style="height:26px;padding:0 10px;border-radius:7px;border:1px solid var(--border);background:var(--bg-input);color:var(--text-muted);font-size:11px;font-weight:700;cursor:pointer;">当前账号
+                  <button class="slot-scope-tab" data-scope="account"
+ style="height:26px;padding:0 10px;border-radius:7px;border:1px solid var(--border);background:var(--bg-input);color:var(--text-muted);font-size:11px;font-weight:700;cursor:pointer;" data-action="setSlotCatalogScope" data-arg="account">当前账号
                     <span id="slotScopeAccountCount">0</span></button>
                 </div>
                 <!-- 槽位搜索栏 -->
                 <div
                   style="padding:12px 20px; border-bottom:1px solid var(--border); background:rgba(0,0,0,0.01); display:flex; gap:8px; align-items:center;">
                   <input type="text" id="slotCatalogSearch" placeholder="搜索槽位名 / modelUid..."
-                    oninput="filterSlotCatalog()"
-                    style="padding:10px 14px; border-radius:10px; font-size:12px; flex:1; min-width:0; border:1px solid var(--border); background:var(--bg-input); outline:none; transition:all 0.2s;">
-                  <select id="slotCatalogSort" onchange="slotCatalogSort=this.value;filterSlotCatalog()"
-                    style="height:34px;padding:0 8px;border:1px solid var(--border);background:var(--bg-input);color:var(--text-primary);border-radius:8px;font-size:11px;outline:none;cursor:pointer;">
+ 
+ style="padding:10px 14px; border-radius:10px; font-size:12px; flex:1; min-width:0; border:1px solid var(--border); background:var(--bg-input); outline:none; transition:all 0.2s;" data-action="filterSlotCatalog" data-events="input">
+                  <select id="slotCatalogSort"
+ style="height:34px;padding:0 8px;border:1px solid var(--border);background:var(--bg-input);color:var(--text-primary);border-radius:8px;font-size:11px;outline:none;cursor:pointer;" data-assign="slotCatalogSort" data-action="filterSlotCatalog" data-events="change">
                     <option value="name-asc">名称 A→Z</option>
                     <option value="name-desc">名称 Z→A</option>
                   </select>
@@ -101,10 +101,10 @@
                 <div
                   style="padding:12px 20px; border-bottom:1px solid var(--border); background:rgba(0,0,0,0.01); display:flex; gap:8px; align-items:center;">
                   <input type="text" id="mappingModelSearch" placeholder="搜索已配置的模型名称/供应商..."
-                    oninput="renderMappingModelCatalog()"
-                    style="padding:10px 14px; border-radius:10px; font-size:12px; flex:1; min-width:0; border:1px solid var(--border); background:var(--bg-input); outline:none; transition:all 0.2s;">
-                  <select id="mappingCatalogSort" onchange="mappingCatalogSort=this.value;renderMappingModelCatalog()"
-                    style="height:34px;padding:0 8px;border:1px solid var(--border);background:var(--bg-input);color:var(--text-primary);border-radius:8px;font-size:11px;outline:none;cursor:pointer;">
+ 
+ style="padding:10px 14px; border-radius:10px; font-size:12px; flex:1; min-width:0; border:1px solid var(--border); background:var(--bg-input); outline:none; transition:all 0.2s;" data-action="renderMappingModelCatalog" data-events="input">
+                  <select id="mappingCatalogSort"
+ style="height:34px;padding:0 8px;border:1px solid var(--border);background:var(--bg-input);color:var(--text-primary);border-radius:8px;font-size:11px;outline:none;cursor:pointer;" data-assign="mappingCatalogSort" data-action="renderMappingModelCatalog" data-events="change">
                     <option value="name-asc">名称 A→Z</option>
                     <option value="name-desc">名称 Z→A</option>
                   </select>
@@ -127,10 +127,10 @@
                   </div>
                   <!-- 快速填充显示名按钮 -->
                   <div style="display:flex; gap:6px; align-items:center;">
-                    <button id="btn-use-original-name" onclick="useOriginalModelName()"
-                      style="height:26px;padding:0 10px;border-radius:7px;border:1px solid var(--accent);background:var(--accent);color:#fff;font-size:11px;font-weight:600;cursor:pointer;">使用原始模型名</button>
-                    <button id="btn-use-mapped-name" onclick="useMappedModelName()"
-                      style="height:26px;padding:0 10px;border-radius:7px;border:1px solid var(--border);background:var(--bg-input);color:var(--text-muted);font-size:11px;font-weight:600;cursor:pointer;">使用映射模型名</button>
+                    <button id="btn-use-original-name"
+ style="height:26px;padding:0 10px;border-radius:7px;border:1px solid var(--accent);background:var(--accent);color:#fff;font-size:11px;font-weight:600;cursor:pointer;" data-action="useOriginalModelName">使用原始模型名</button>
+                    <button id="btn-use-mapped-name"
+ style="height:26px;padding:0 10px;border-radius:7px;border:1px solid var(--border);background:var(--bg-input);color:var(--text-muted);font-size:11px;font-weight:600;cursor:pointer;" data-action="useMappedModelName">使用映射模型名</button>
                   </div>
                   <input class="field-input" id="slot-display" placeholder="例如：我的 DeepSeek 映射..."
                     style="padding:10px 14px; font-size:12px; border-radius:8px; width:100%;">

@@ -10,9 +10,9 @@
                 </div>
               </div>
               <div class="proxy-console-actions">
-                <button class="btn-primary" id="globalProxyStartBtn" onclick="startGlobalProxyService()">启动代理</button>
-                <button class="btn-ghost" id="globalProxyStopBtn" onclick="stopGlobalProxyService()">停止代理</button>
-                <button class="btn-ghost" id="globalProxyRestartBtn" onclick="restartGlobalProxyService()">重启代理</button>
+                <button class="btn-primary" id="globalProxyStartBtn" data-action="startGlobalProxyService">启动代理</button>
+                <button class="btn-ghost" id="globalProxyStopBtn" data-action="stopGlobalProxyService">停止代理</button>
+                <button class="btn-ghost" id="globalProxyRestartBtn" data-action="restartGlobalProxyService">重启代理</button>
               </div>
             </div>
 
@@ -52,7 +52,7 @@
                           OpenAI
                         </span>
                         <code id="localProxyOpenAiUrl">http://127.0.0.1:{port}/v1</code>
-                        <button class="btn-ghost" onclick="copyLocalProxyValue('openai')">复制</button>
+                        <button class="btn-ghost" data-action="copyLocalProxyValue" data-arg="openai">复制</button>
                       </div>
                       <div class="proxy-endpoint-row">
                         <span class="endpoint-label">
@@ -67,7 +67,7 @@
                           Claude
                         </span>
                         <code id="localProxyClaudeUrl">http://127.0.0.1:{port}/anthropic</code>
-                        <button class="btn-ghost" onclick="copyLocalProxyValue('claude')">复制</button>
+                        <button class="btn-ghost" data-action="copyLocalProxyValue" data-arg="claude">复制</button>
                       </div>
                       <div class="proxy-endpoint-row">
                         <span class="endpoint-label">
@@ -80,7 +80,7 @@
                           Models
                         </span>
                         <code id="localProxyModelsUrl">http://127.0.0.1:{port}/v1/models</code>
-                        <button class="btn-ghost" onclick="copyLocalProxyValue('models')">复制</button>
+                        <button class="btn-ghost" data-action="copyLocalProxyValue" data-arg="models">复制</button>
                       </div>
                     </div>
                   </div>
@@ -100,8 +100,8 @@
                         <strong id="localProxyKeyValue">未生成</strong>
                       </div>
                       <div class="proxy-local-key-actions">
-                        <button class="btn-ghost" onclick="copyLocalProxyValue('key')">复制 key</button>
-                        <button class="btn-primary" onclick="regenerateLocalProxyKey()">重新生成</button>
+                        <button class="btn-ghost" data-action="copyLocalProxyValue" data-arg="key">复制 key</button>
+                        <button class="btn-primary" data-action="regenerateLocalProxyKey">重新生成</button>
                       </div>
                     </div>
                     <div class="proxy-ports-grid proxy-ports-grid-single">
@@ -109,7 +109,7 @@
                         <label>API 服务端口</label>
                         <input id="localProxyPortInput" class="input-sm" type="number" min="1" max="65535" value="7450">
                       </div>
-                      <button class="btn-primary" onclick="saveLocalProxyPorts('proxy')">保存端口</button>
+                      <button class="btn-primary" data-action="saveLocalProxyPorts" data-arg="proxy">保存端口</button>
                     </div>
                   </div>
 
@@ -152,11 +152,11 @@
                       <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
                     </svg>
                     <input id="proxyRoutesSearch" type="text" placeholder="搜索模型 ID、供应商或上游模型"
-                      oninput="renderProxyRoutes()">
+ data-action="renderProxyRoutes" data-events="input">
                   </label>
                   <span class="model-map-count-pill" id="proxyRoutesBulkCount">共 0 个</span>
                   <div class="proxy-routes-command-group model-map-bulk-actions">
-                    <button class="btn-primary proxy-route-add-btn" onclick="openProxyRouteEditor()">
+                    <button class="btn-primary proxy-route-add-btn" data-action="openProxyRouteEditor">
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                         stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
                         <line x1="12" y1="5" x2="12" y2="19"></line>
@@ -165,19 +165,19 @@
                       添加模型
                     </button>
                     <button class="btn-ghost provider-bulk-btn" id="proxyRoutesSelectVisibleBtn"
-                      onclick="toggleVisibleProxyRouteSelection()" disabled>选择当前</button>
+ disabled data-action="toggleVisibleProxyRouteSelection">选择当前</button>
                     <button class="btn-ghost provider-bulk-btn" id="proxyRoutesBulkEnableBtn"
-                      onclick="batchSetSelectedProxyRoutesEnabled(true)" disabled>启用</button>
+ disabled data-action="batchSetSelectedProxyRoutesEnabled" data-args="[true]">启用</button>
                     <button class="btn-ghost provider-bulk-btn" id="proxyRoutesBulkDisableBtn"
-                      onclick="batchSetSelectedProxyRoutesEnabled(false)" disabled>停用</button>
+ disabled data-action="batchSetSelectedProxyRoutesEnabled" data-args="[false]">停用</button>
                     <button class="btn-ghost provider-bulk-btn" id="proxyRoutesBulkVisionBtn"
-                      onclick="batchSetSelectedProxyRoutesThirdPartyVision(true)" disabled>启用第三方图片</button>
+ disabled data-action="batchSetSelectedProxyRoutesThirdPartyVision" data-args="[true]">启用第三方图片</button>
                     <button class="btn-ghost provider-bulk-btn danger proxy-routes-delete-selected" id="proxyRoutesDeleteSelectedBtn"
-                      onclick="deleteSelectedProxyRoutes()" disabled>
+ disabled data-action="deleteSelectedProxyRoutes">
                       <span class="proxy-routes-delete-label">删除选中</span>
                     </button>
-                    <button class="btn-ghost proxy-route-icon-btn" onclick="loadProxyRoutes()" title="刷新"
-                      aria-label="刷新模型列表">
+                    <button class="btn-ghost proxy-route-icon-btn" title="刷新"
+ aria-label="刷新模型列表" data-action="loadProxyRoutes">
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                         stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
                         <polyline points="23 4 23 10 17 10"></polyline>
@@ -201,16 +201,16 @@
                     <thead>
                       <tr>
                         <th class="proxy-route-select-head model-map-select-head">
-                          <label class="provider-select-check provider-select-check-table" title="选择当前列表" onclick="event.stopPropagation()">
-                            <input type="checkbox" id="proxyRoutesSelectAll" aria-label="选择当前列表" onchange="toggleProxyRoutesSelectAll(this.checked)">
+                          <label class="provider-select-check provider-select-check-table" title="选择当前列表" data-stop data-action="__noop">
+                            <input type="checkbox" id="proxyRoutesSelectAll" aria-label="选择当前列表" data-action="toggleProxyRoutesSelectAll" data-events="change" data-pass-checked>
                             <span></span>
                           </label>
                         </th>
                         <th>
                           <span class="model-map-display-head">
                             <span>模型 ID</span>
-                            <button class="btn-ghost model-map-settings-btn" onclick="openProxyRouteRenameModal()"
-                              title="批量重命名模型 ID（加前后缀/换名）" aria-label="批量重命名模型 ID">
+                            <button class="btn-ghost model-map-settings-btn"
+ title="批量重命名模型 ID（加前后缀/换名）" aria-label="批量重命名模型 ID" data-action="openProxyRouteRenameModal">
                               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                                 stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
                                 <circle cx="12" cy="12" r="3"></circle>
@@ -227,8 +227,8 @@
                         <th>
                           <span class="model-map-display-head">
                             <span>第三方图片理解</span>
-                            <button class="btn-ghost model-map-settings-btn" onclick="navigateToProxyEnhancement()"
-                              title="配置图片理解模型" aria-label="配置图片理解模型">
+                            <button class="btn-ghost model-map-settings-btn"
+ title="配置图片理解模型" aria-label="配置图片理解模型" data-action="navigateToProxyEnhancement">
                               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                                 stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
                                 <circle cx="12" cy="12" r="3"></circle>

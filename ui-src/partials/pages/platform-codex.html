@@ -21,16 +21,16 @@
                     <circle cx="11" cy="11" r="8"></circle>
                     <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
                   </svg>
-                  <input type="text" id="codex-config-search" placeholder="搜索配置、模型或地址" oninput="onCodexConfigSearch()">
+                  <input type="text" id="codex-config-search" placeholder="搜索配置、模型或地址" data-action="onCodexConfigSearch" data-events="input">
                 </div>
               </div>
               <div class="codex-toolbar-actions">
-                <button class="btn-primary codex-add-config-btn" onclick="openCodexProviderAdd()">
+                <button class="btn-primary codex-add-config-btn" data-action="openCodexProviderAdd">
                   <span>+</span> 添加配置
                 </button>
-                <button class="btn-ghost codex-refresh-btn" onclick="refreshPlatforms()">刷新</button>
+                <button class="btn-ghost codex-refresh-btn" data-action="refreshPlatforms">刷新</button>
                 <button class="btn-ghost codex-restore-btn" id="platform-codex-restore"
-                  onclick="restorePlatform('codex')">还原备份</button>
+ data-action="restorePlatform" data-arg="codex">还原备份</button>
               </div>
             </div>
 
@@ -52,7 +52,7 @@
                 <div class="modal-title" id="codex-config-modal-title">添加 Codex 配置</div>
                 <div class="codex-config-modal-sub" id="codex-config-modal-sub">从现有供应商创建一份可切换配置。</div>
               </div>
-              <button class="modal-close-icon" onclick="closeCodexConfigEditor()" aria-label="关闭配置编辑">
+              <button class="modal-close-icon" aria-label="关闭配置编辑" data-action="closeCodexConfigEditor">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"
                   stroke-linecap="round" stroke-linejoin="round">
                   <path d="M18 6L6 18"></path>
@@ -124,19 +124,19 @@
                         </div>
                         <div style="display:flex;gap:6px;flex:0 0 auto">
                           <button type="button" class="codex-config-fetch-btn" id="codex-config-fetch-models-btn"
-                            onclick="fetchCodexConfigModels()">拉取模型</button>
-                          <button type="button" class="codex-config-fetch-btn" onclick="addCodexModelEntry()">+ 添加</button>
+ data-action="fetchCodexConfigModels">拉取模型</button>
+                          <button type="button" class="codex-config-fetch-btn" data-action="addCodexModelEntry">+ 添加</button>
                         </div>
                       </div>
                       <div class="codex-model-batch-bar">
                         <div class="codex-model-batch-group">
                           <span class="codex-model-batch-label">目录：</span>
-                          <button type="button" class="codex-model-batch-btn" onclick="batchSetCodexModelCatalog(true)">全选</button>
-                          <button type="button" class="codex-model-batch-btn" onclick="batchSetCodexModelCatalog(false)">清空</button>
+                          <button type="button" class="codex-model-batch-btn" data-action="batchSetCodexModelCatalog" data-args="[true]">全选</button>
+                          <button type="button" class="codex-model-batch-btn" data-action="batchSetCodexModelCatalog" data-args="[false]">清空</button>
                         </div>
                         <div class="codex-model-batch-group">
                           <span class="codex-model-batch-label">默认：</span>
-                          <button type="button" class="codex-model-batch-btn" onclick="batchSetCodexDefaultModel('clear')">清空默认</button>
+                          <button type="button" class="codex-model-batch-btn" data-action="batchSetCodexDefaultModel" data-arg="clear">清空默认</button>
                         </div>
                       </div>
                       <div class="codex-config-model-list" id="codex-config-model-list">
@@ -168,7 +168,7 @@
                       </div>
                       <div class="codex-agents-toolbar">
                         <span>子代理只会在用户明确要求 Codex 调用时使用。</span>
-                        <button type="button" class="codex-config-fetch-btn" onclick="addCodexAgent()">+ 添加子代理</button>
+                        <button type="button" class="codex-config-fetch-btn" data-action="addCodexAgent">+ 添加子代理</button>
                       </div>
                       <div class="codex-agents-list" id="codex-agents-list"></div>
                     </div>
@@ -218,8 +218,8 @@
             </div>
             <div class="modal-footer codex-config-modal-footer">
               <div class="codex-config-editor-note">保存后出现在配置列表中，点击「切换」才会写入 Codex 当前配置文件。</div>
-              <button class="modal-btn modal-btn-ghost" onclick="closeCodexConfigEditor()">取消</button>
-              <button class="modal-btn modal-btn-confirm" onclick="saveCodexConfigEditor(false)">保存配置</button>
+              <button class="modal-btn modal-btn-ghost" data-action="closeCodexConfigEditor">取消</button>
+              <button class="modal-btn modal-btn-confirm" data-action="saveCodexConfigEditor" data-args="[false]">保存配置</button>
             </div>
           </div>
         </div>

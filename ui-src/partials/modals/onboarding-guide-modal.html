@@ -16,8 +16,8 @@
           <h2>把模型接入工作流，只需要四步</h2>
           <p>按顺序配置供应商、模型映射、本地代理和平台接入。AnyBridge 会尽量保留原始配置，并把关键错误暴露出来方便排查。</p>
         </div>
-        <button type="button" class="modal-close-icon onboarding-guide-close" onclick="closeOnboardingGuide()"
-          aria-label="关闭快速指南">
+        <button type="button" class="modal-close-icon onboarding-guide-close"
+ aria-label="关闭快速指南" data-action="closeOnboardingGuide">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
             stroke-linecap="round" stroke-linejoin="round">
             <path d="M18 6 6 18"></path>
@@ -48,8 +48,8 @@
         </article>
       </div>
       <div class="onboarding-guide-footer">
-        <button type="button" class="modal-btn modal-btn-cancel" onclick="closeOnboardingGuide()">稍后再看</button>
-        <button type="button" class="modal-btn modal-btn-confirm" onclick="finishOnboardingGuide()">开始配置</button>
+        <button type="button" class="modal-btn modal-btn-cancel" data-action="closeOnboardingGuide">稍后再看</button>
+        <button type="button" class="modal-btn modal-btn-confirm" data-action="finishOnboardingGuide">开始配置</button>
       </div>
     </div>
   </div>

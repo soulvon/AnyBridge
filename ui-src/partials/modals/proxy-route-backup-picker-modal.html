@@ -17,7 +17,7 @@
             <div class="modal-subtitle">从供应商列表中选择模型添加到备用链路</div>
           </div>
         </div>
-        <button type="button" class="modal-close-icon" onclick="closeProxyRouteBackupPicker()" aria-label="关闭">
+        <button type="button" class="modal-close-icon" aria-label="关闭" data-action="closeProxyRouteBackupPicker">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
             stroke-linecap="round" stroke-linejoin="round">
             <path d="M18 6 6 18"></path>
@@ -34,7 +34,7 @@
                 <circle cx="11" cy="11" r="8"></circle>
                 <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
               </svg>
-              <input id="proxyRouteBackupProviderSearch" type="text" placeholder="搜索供应商" oninput="onProxyRouteBackupProviderSearch()">
+              <input id="proxyRouteBackupProviderSearch" type="text" placeholder="搜索供应商" data-action="onProxyRouteBackupProviderSearch" data-events="input">
             </label>
             <div id="proxyRouteBackupProviderList" class="proxy-route-provider-list"></div>
           </aside>
@@ -50,8 +50,8 @@
         </div>
       </div>
       <div class="modal-footer proxy-route-backup-picker-footer">
-        <button class="modal-btn modal-btn-cancel" onclick="closeProxyRouteBackupPicker()">取消</button>
-        <button class="modal-btn modal-btn-confirm" id="proxyRouteAddBackupConfirmBtn" onclick="addSelectedProxyRouteBackupModel()" disabled>添加到链路</button>
+        <button class="modal-btn modal-btn-cancel" data-action="closeProxyRouteBackupPicker">取消</button>
+        <button class="modal-btn modal-btn-confirm" id="proxyRouteAddBackupConfirmBtn" disabled data-action="addSelectedProxyRouteBackupModel">添加到链路</button>
       </div>
     </div>
   </div>

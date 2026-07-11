@@ -535,7 +535,7 @@ function renderProxyRoutes() {
         </div>
         <div class="proxy-routes-empty-title">${isFiltered ? '没有匹配的模型' : '尚未配置本地代理模型'}</div>
         <div class="proxy-routes-empty-subtitle">${isFiltered ? '换个关键词再试。' : '从供应商模型中添加到本地代理模型列表。'}</div>
-        ${isFiltered ? '' : '<button type="button" class="btn-primary proxy-routes-empty-action" onclick="openProxyRouteEditor()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>添加模型</button>'}
+        ${isFiltered ? '' : '<button type="button" class="btn-primary proxy-routes-empty-action" data-action="openProxyRouteEditor"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>添加模型</button>'}
       </div>
     </td></tr>`;
     syncProxyRouteSelectionState();
@@ -551,9 +551,9 @@ function renderProxyRoutes() {
     const thirdPartyVision = route.enhancement?.thirdPartyVision === true;
     return `
       <tr data-proxy-route-id="${proxyRouteEsc(route.id)}" class="${selected ? 'is-selected' : ''}">
-        <td class="proxy-route-select-cell model-map-select-cell" onclick="event.stopPropagation()">
-          <label class="provider-select-check provider-select-check-table" title="选择此模型" onclick="event.stopPropagation()">
-            <input type="checkbox" class="proxy-route-row-check" aria-label="选择 ${proxyRouteEsc(route.id)}" ${selected ? 'checked' : ''} onchange="toggleProxyRouteSelection('${proxyRouteEsc(route.id)}', this.checked)">
+        <td class="proxy-route-select-cell model-map-select-cell" data-action="__noop" data-stop>
+          <label class="provider-select-check provider-select-check-table" title="选择此模型" data-action="__noop" data-stop>
+            <input type="checkbox" class="proxy-route-row-check" aria-label="选择 ${proxyRouteEsc(route.id)}" ${selected ? 'checked' : ''} data-action="toggleProxyRouteSelection" data-events="change" data-args="[&quot;${proxyRouteEsc(route.id)}&quot;]" data-pass-checked>
             <span></span>
           </label>
         </td>
@@ -562,23 +562,23 @@ function renderProxyRoutes() {
         <td><div class="proxy-route-badges">${proxyRouteBadges(route)}</div></td>
         <td>
           <div class="model-map-actions proxy-route-row-actions">
-            <button class="btn-icon model-map-action-btn" onclick="openProxyRouteEditor('${proxyRouteEsc(route.id)}')" title="编辑模型" aria-label="编辑模型">
+            <button class="btn-icon model-map-action-btn" data-action="openProxyRouteEditor" data-arg="${proxyRouteEsc(route.id)}" title="编辑模型" aria-label="编辑模型">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
             </button>
-            <button class="btn-icon model-map-action-btn danger" onclick="deleteProxyRoute('${proxyRouteEsc(route.id)}')" title="删除模型" aria-label="删除模型">
+            <button class="btn-icon model-map-action-btn danger" data-action="deleteProxyRoute" data-arg="${proxyRouteEsc(route.id)}" title="删除模型" aria-label="删除模型">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"/></svg>
             </button>
           </div>
         </td>
         <td class="proxy-route-toggle-cell model-map-toggle-cell">
           <label class="toggle-switch" title="${thirdPartyVision ? '已启用第三方图片理解' : '已关闭第三方图片理解'}">
-            <input type="checkbox" ${thirdPartyVision ? 'checked' : ''} onchange="toggleProxyRouteThirdPartyVision('${proxyRouteEsc(route.id)}', this.checked)">
+            <input type="checkbox" ${thirdPartyVision ? 'checked' : ''} data-action="toggleProxyRouteThirdPartyVision" data-events="change" data-args="[&quot;${proxyRouteEsc(route.id)}&quot;]" data-pass-checked>
             <span class="toggle-slider"></span>
           </label>
         </td>
         <td class="proxy-route-enabled-cell model-map-toggle-cell">
           <label class="toggle-switch" title="${route.enabled ? '已启用' : '已禁用'}">
-            <input type="checkbox" ${route.enabled ? 'checked' : ''} onchange="toggleProxyRouteEnabled('${proxyRouteEsc(route.id)}', this.checked)">
+            <input type="checkbox" ${route.enabled ? 'checked' : ''} data-action="toggleProxyRouteEnabled" data-events="change" data-args="[&quot;${proxyRouteEsc(route.id)}&quot;]" data-pass-checked>
             <span class="toggle-slider"></span>
           </label>
         </td>
@@ -907,7 +907,7 @@ function renderProxyRouteProviderPicker() {
       const active = provider.providerId === proxyRouteSelectedProviderId;
       const isLP = isLocalProxyProviderEntry(provider);
       return `
-        <button type="button" class="proxy-route-provider-item ${active ? 'active' : ''} ${isLP ? 'is-local-proxy' : ''}" onclick="selectProxyRouteProvider('${proxyRouteEsc(provider.providerId)}')">
+        <button type="button" class="proxy-route-provider-item ${active ? 'active' : ''} ${isLP ? 'is-local-proxy' : ''}" data-action="selectProxyRouteProvider" data-arg="${proxyRouteEsc(provider.providerId)}">
           <span class="proxy-route-provider-icon">${proxyRouteEsc(proxyRouteProviderInitial(provider.providerName))}</span>
           <span class="proxy-route-provider-name">${proxyRouteEsc(provider.providerName || provider.providerId)}${isLP ? '<span class="proxy-route-prov-badge">本地</span>' : ''}</span>
           <span class="proxy-route-provider-count">${Array.isArray(provider.models) ? provider.models.length : 0}</span>
@@ -944,7 +944,7 @@ function renderProxyRouteProviderPicker() {
       ? bucket.has(id)
       : (selectedProvider.providerId === proxyRouteSelectedProviderId && id === proxyRouteSelectedModelId);
     return `
-      <button type="button" class="proxy-route-model-item ${active ? 'active' : ''}" onclick="selectProxyRouteModel('${proxyRouteEsc(selectedProvider.providerId)}', '${proxyRouteEsc(id)}')">
+      <button type="button" class="proxy-route-model-item ${active ? 'active' : ''}" data-action="selectProxyRouteModel" data-args="[&quot;${proxyRouteEsc(selectedProvider.providerId)}&quot;,&quot;${proxyRouteEsc(id)}&quot;]">
         <span class="proxy-route-model-check">${active ? '&#10003;' : ''}</span>
         ${proxyRouteModelIcon(id)}
         <span class="proxy-route-model-name">${proxyRouteEsc(model?.name || id)}</span>
@@ -984,13 +984,13 @@ function proxyRouteTargetCard(target, idx) {
       </div>
       <div class="proxy-route-chain-actions">
         ${isPrimary ? '' : `
-          <button type="button" class="btn-icon model-map-action-btn" onclick="moveProxyRouteTarget(${idx}, -1)" ${idx === 1 ? 'disabled' : ''} title="上移" aria-label="上移备用模型">
+          <button type="button" class="btn-icon model-map-action-btn" data-action="moveProxyRouteTarget" data-args="[${idx},-1]" ${idx === 1 ? 'disabled' : ''} title="上移" aria-label="上移备用模型">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="m18 15-6-6-6 6"/></svg>
           </button>
-          <button type="button" class="btn-icon model-map-action-btn" onclick="moveProxyRouteTarget(${idx}, 1)" ${idx === proxyRouteDraftTargets.length - 1 ? 'disabled' : ''} title="下移" aria-label="下移备用模型">
+          <button type="button" class="btn-icon model-map-action-btn" data-action="moveProxyRouteTarget" data-args="[${idx},1]" ${idx === proxyRouteDraftTargets.length - 1 ? 'disabled' : ''} title="下移" aria-label="下移备用模型">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
           </button>
-          <button type="button" class="btn-icon model-map-action-btn danger" onclick="removeProxyRouteTarget(${idx})" title="移除" aria-label="移除备用模型">
+          <button type="button" class="btn-icon model-map-action-btn danger" data-action="removeProxyRouteTarget" data-args="[${idx}]" title="移除" aria-label="移除备用模型">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"/></svg>
           </button>
         `}
@@ -1100,7 +1100,7 @@ function renderProxyRouteBackupPicker() {
       const active = provider.providerId === proxyRouteBackupSelectedProviderId;
       const isLP = isLocalProxyProviderEntry(provider);
       return `
-        <button type="button" class="proxy-route-provider-item ${active ? 'active' : ''} ${isLP ? 'is-local-proxy' : ''}" onclick="selectProxyRouteBackupProvider('${proxyRouteEsc(provider.providerId)}')">
+        <button type="button" class="proxy-route-provider-item ${active ? 'active' : ''} ${isLP ? 'is-local-proxy' : ''}" data-action="selectProxyRouteBackupProvider" data-arg="${proxyRouteEsc(provider.providerId)}">
           <span class="proxy-route-provider-icon">${proxyRouteEsc(proxyRouteProviderInitial(provider.providerName))}</span>
           <span class="proxy-route-provider-name">${proxyRouteEsc(provider.providerName || provider.providerId)}${isLP ? '<span class="proxy-route-prov-badge">本地</span>' : ''}</span>
           <span class="proxy-route-provider-count">${Array.isArray(provider.models) ? provider.models.length : 0}</span>
@@ -1135,7 +1135,7 @@ function renderProxyRouteBackupPicker() {
     const active = id === proxyRouteBackupSelectedModelId;
     return `
       <button type="button" class="proxy-route-model-item ${active ? 'active' : ''} ${used ? 'is-disabled' : ''}"
-        ${used ? 'disabled' : ''} onclick="selectProxyRouteBackupModel('${proxyRouteEsc(provider.providerId)}', '${proxyRouteEsc(id)}')">
+        ${used ? 'disabled' : ''} data-action="selectProxyRouteBackupModel" data-args="[&quot;${proxyRouteEsc(provider.providerId)}&quot;,&quot;${proxyRouteEsc(id)}&quot;]">
         <span class="proxy-route-model-check">${active || used ? '&#10003;' : ''}</span>
         ${proxyRouteModelIcon(id)}
         <span class="proxy-route-model-name">

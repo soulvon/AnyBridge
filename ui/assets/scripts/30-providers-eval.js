@@ -631,11 +631,11 @@ function providerUnlockIconSvg(p) {
 
 function providerUnlockCardButtonHtml(p) {
   const isUnlocked = providerUnlockLabels(p).length > 0;
-  return `<button class="btn-ghost provider-unlock-action ${isUnlocked ? 'active' : ''}" onclick="openProviderUnlockModal('${escAttr(p.id)}')" title="供应商解锁限制">${isUnlocked ? '已解锁限制' : '解锁限制'}</button>`;
+  return `<button class="btn-ghost provider-unlock-action ${isUnlocked ? 'active' : ''}" data-action="openProviderUnlockModal" data-arg="${escAttr(p.id)}" title="供应商解锁限制">${isUnlocked ? '已解锁限制' : '解锁限制'}</button>`;
 }
 
 function providerUnlockListButtonHtml(p) {
-  return `<button class="provider-list-icon-btn provider-unlock-list-btn ${providerUnlockLabels(p).length ? 'active' : ''}" onclick="openProviderUnlockModal('${escAttr(p.id)}')" title="解锁限制" aria-label="解锁限制 ${escAttr(p.name || p.id)}">${providerUnlockIconSvg(p)}</button>`;
+  return `<button class="provider-list-icon-btn provider-unlock-list-btn ${providerUnlockLabels(p).length ? 'active' : ''}" data-action="openProviderUnlockModal" data-arg="${escAttr(p.id)}" title="解锁限制" aria-label="解锁限制 ${escAttr(p.name || p.id)}">${providerUnlockIconSvg(p)}</button>`;
 }
 
 
@@ -643,20 +643,20 @@ function ensureProviderUnlockModal() {
   let modal = document.getElementById('provider-unlock-modal');
   if (modal) return modal;
   document.body.insertAdjacentHTML('beforeend', `
-    <div class="modal-overlay" id="provider-unlock-modal" onclick="if(event.target.id==='provider-unlock-modal') closeProviderUnlockModal()">
+    <div class="modal-overlay" id="provider-unlock-modal" data-action="closeProviderUnlockModal" data-only-self>
       <div class="modal-container provider-unlock-modal">
         <div class="modal-header provider-unlock-head">
           <div>
             <div class="modal-title" id="provider-unlock-title">供应商解锁限制</div>
             <div class="provider-unlock-sub" id="provider-unlock-sub">解锁限制后，该供应商可通过代理转发接入其他平台。</div>
           </div>
-          <button class="modal-close-icon" onclick="closeProviderUnlockModal()" aria-label="关闭解锁限制弹窗">
+          <button class="modal-close-icon" data-action="closeProviderUnlockModal" aria-label="关闭解锁限制弹窗">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"></path><path d="m6 6 12 12"></path></svg>
           </button>
         </div>
         <div class="modal-body provider-unlock-body" id="provider-unlock-body"></div>
         <div class="modal-footer provider-unlock-footer">
-          <button class="modal-btn modal-btn-confirm" onclick="closeProviderUnlockModal()">完成</button>
+          <button class="modal-btn modal-btn-confirm" data-action="closeProviderUnlockModal">完成</button>
         </div>
       </div>
     </div>`);
@@ -685,7 +685,7 @@ function providerUnlockRowHtml(p, kind, label, detail) {
         <strong>${escAttr(label)}</strong>
         <span>${escAttr(detail)}</span>
       </div>
-      <input type="checkbox" ${enabled ? 'checked' : ''} onchange="setProviderUnlockFromModal('${kind}', this.checked)">
+      <input type="checkbox" ${enabled ? 'checked' : ''} data-action="setProviderUnlockFromModal" data-events="change" data-args="[&quot;${kind}&quot;]" data-pass-checked>
       <span class="provider-unlock-switch" aria-hidden="true"></span>
     </label>`;
 }
@@ -736,20 +736,20 @@ function renderProviderCards(list) {
     const builtinBadge = builtin ? '<span class="provider-builtin-badge">本地代理</span>' : '';
     const toggleHtml = builtin
       ? ''
-      : `<div class="toggle ${enabled ? 'on' : ''}" title="${enabled ? '已启用，点击禁用' : '未启用，点击启用'}" onclick="toggleProviderEnabled('${escAttr(p.id)}')"></div>`;
+      : `<div class="toggle ${enabled ? 'on' : ''}" title="${enabled ? '已启用，点击禁用' : '未启用，点击启用'}" data-action="toggleProviderEnabled" data-arg="${escAttr(p.id)}"></div>`;
     const actionsHtml = builtin
-      ? `<button class="btn-ghost" onclick="testProvider('${escAttr(p.id)}')">测试</button>
+      ? `<button class="btn-ghost" data-action="testProvider" data-arg="${escAttr(p.id)}">测试</button>
          ${providerUnlockCardButtonHtml(p)}
-         <button class="btn-ghost" onclick="navigateToProxyModels()">编辑</button>`
-      : `<button class="btn-ghost" onclick="testProvider('${escAttr(p.id)}')">测试</button>
+         <button class="btn-ghost" data-action="navigateToProxyModels">编辑</button>`
+      : `<button class="btn-ghost" data-action="testProvider" data-arg="${escAttr(p.id)}">测试</button>
          ${providerUnlockCardButtonHtml(p)}
-         <button class="btn-ghost" onclick="openProviderEditor('${escAttr(p.id)}')">编辑</button>
-         <button class="btn-ghost" onclick="deleteProvider('${escAttr(p.id)}')">删除</button>`;
+         <button class="btn-ghost" data-action="openProviderEditor" data-arg="${escAttr(p.id)}">编辑</button>
+         <button class="btn-ghost" data-action="deleteProvider" data-arg="${escAttr(p.id)}">删除</button>`;
 
     const selectCheckHtml = builtin
       ? ''
-      : `<label class="provider-select-check" title="选择供应商" onclick="event.stopPropagation()">
-            <input type="checkbox" ${selected ? 'checked' : ''} onchange="toggleProviderSelection('${escAttr(p.id)}', this.checked, event)">
+      : `<label class="provider-select-check" title="选择供应商" data-action="__noop" data-stop>
+            <input type="checkbox" ${selected ? 'checked' : ''} data-action="toggleProviderSelection" data-events="change" data-args="[&quot;${escAttr(p.id)}&quot;]" data-pass-checked data-pass-event>
             <span></span>
           </label>`;
     const connStatusHtml = builtin
@@ -809,7 +809,7 @@ function renderProviderListTable(list) {
             const builtin = isBuiltinProvider(p);
             const builtinBadge = builtin ? '<span class="provider-builtin-badge">本地代理</span>' : '';
             const actionButtons = builtin
-              ? `<button class="provider-list-icon-btn" onclick="testProvider('${escAttr(p.id)}')" title="测试" aria-label="测试 ${escAttr(p.name || p.id)}">
+              ? `<button class="provider-list-icon-btn" data-action="testProvider" data-arg="${escAttr(p.id)}" title="测试" aria-label="测试 ${escAttr(p.name || p.id)}">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                     <path d="M10 2v7.3a4 4 0 0 1-.54 2L4.2 20.1A1.3 1.3 0 0 0 5.32 22h13.36a1.3 1.3 0 0 0 1.12-1.9l-5.26-8.8a4 4 0 0 1-.54-2V2"></path>
                     <path d="M8.5 2h7"></path>
@@ -817,13 +817,13 @@ function renderProviderListTable(list) {
                   </svg>
                 </button>
                 ${providerUnlockListButtonHtml(p)}
-                <button class="provider-list-icon-btn" onclick="navigateToProxyModels()" title="编辑" aria-label="编辑">
+                <button class="provider-list-icon-btn" data-action="navigateToProxyModels" title="编辑" aria-label="编辑">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                     <path d="M12 20h9"></path>
                     <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"></path>
                   </svg>
                 </button>`
-              : `<button class="provider-list-icon-btn" onclick="testProvider('${escAttr(p.id)}')" title="测试" aria-label="测试 ${escAttr(p.name || p.id)}">
+              : `<button class="provider-list-icon-btn" data-action="testProvider" data-arg="${escAttr(p.id)}" title="测试" aria-label="测试 ${escAttr(p.name || p.id)}">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                     <path d="M10 2v7.3a4 4 0 0 1-.54 2L4.2 20.1A1.3 1.3 0 0 0 5.32 22h13.36a1.3 1.3 0 0 0 1.12-1.9l-5.26-8.8a4 4 0 0 1-.54-2V2"></path>
                     <path d="M8.5 2h7"></path>
@@ -831,13 +831,13 @@ function renderProviderListTable(list) {
                   </svg>
                 </button>
                 ${providerUnlockListButtonHtml(p)}
-                <button class="provider-list-icon-btn" onclick="openProviderEditor('${escAttr(p.id)}')" title="编辑" aria-label="编辑 ${escAttr(p.name || p.id)}">
+                <button class="provider-list-icon-btn" data-action="openProviderEditor" data-arg="${escAttr(p.id)}" title="编辑" aria-label="编辑 ${escAttr(p.name || p.id)}">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                     <path d="M12 20h9"></path>
                     <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"></path>
                   </svg>
                 </button>
-                <button class="provider-list-icon-btn danger" onclick="deleteProvider('${escAttr(p.id)}')" title="删除" aria-label="删除 ${escAttr(p.name || p.id)}">
+                <button class="provider-list-icon-btn danger" data-action="deleteProvider" data-arg="${escAttr(p.id)}" title="删除" aria-label="删除 ${escAttr(p.name || p.id)}">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                     <path d="M3 6h18"></path>
                     <path d="M8 6V4h8v2"></path>
@@ -848,12 +848,12 @@ function renderProviderListTable(list) {
                 </button>`;
             const toggleHtml = builtin
               ? ''
-              : `<div class="toggle ${enabled ? 'on' : ''}" title="${enabled ? '已启用，点击禁用' : '未启用，点击启用'}" onclick="toggleProviderEnabled('${escAttr(p.id)}')"></div>`;
+              : `<div class="toggle ${enabled ? 'on' : ''}" title="${enabled ? '已启用，点击禁用' : '未启用，点击启用'}" data-action="toggleProviderEnabled" data-arg="${escAttr(p.id)}"></div>`;
             return `
               <tr class="${selected ? 'selected' : ''} ${builtin ? 'provider-list-row-builtin' : ''}">
                 <td class="provider-list-check-col">
-                  ${builtin ? '' : `<label class="provider-select-check provider-select-check-table" title="选择供应商" onclick="event.stopPropagation()">
-                    <input type="checkbox" ${selected ? 'checked' : ''} onchange="toggleProviderSelection('${escAttr(p.id)}', this.checked, event)">
+                  ${builtin ? '' : `<label class="provider-select-check provider-select-check-table" title="选择供应商" data-action="__noop" data-stop>
+                    <input type="checkbox" ${selected ? 'checked' : ''} data-action="toggleProviderSelection" data-events="change" data-args="[&quot;${escAttr(p.id)}&quot;]" data-pass-checked data-pass-event>
                     <span></span>
                   </label>`}
                 </td>
@@ -1159,7 +1159,7 @@ function renderProviderImportFilters() {
     ['duplicate', `已存在 ${counts.duplicate || 0}`],
   ];
   box.innerHTML = items.map(([key, label]) => `
-    <button type="button" class="provider-import-filter ${providerImportFilter === key ? 'active' : ''}" onclick="setProviderImportFilter('${key}')">${escAttr(label)}</button>
+    <button type="button" class="provider-import-filter ${providerImportFilter === key ? 'active' : ''}" data-action="setProviderImportFilter" data-arg="${key}">${escAttr(label)}</button>
   `).join('');
 }
 
@@ -1621,8 +1621,8 @@ function renderProviderImportCandidates() {
     const note = c.sourcePath || '';
     const nextChecked = selected ? 'false' : 'true';
     return `
-      <div class="provider-import-row ${escAttr(status.state)} ${selected ? 'selected' : ''}" onclick="toggleProviderImportCandidate('${escAttr(c.id)}', ${nextChecked})">
-        <input class="provider-import-check" type="checkbox" ${selected ? 'checked' : ''} ${status.selectable ? '' : 'disabled'} onclick="event.stopPropagation()" onchange="toggleProviderImportCandidate('${escAttr(c.id)}', this.checked)">
+      <div class="provider-import-row ${escAttr(status.state)} ${selected ? 'selected' : ''}" data-action="toggleProviderImportCandidate" data-args="[&quot;${escAttr(c.id)}&quot;,${nextChecked}]">
+        <input class="provider-import-check" type="checkbox" ${selected ? 'checked' : ''} ${status.selectable ? '' : 'disabled'} data-action="__noop" data-stop data-action="toggleProviderImportCandidate" data-events="change" data-args="[&quot;${escAttr(c.id)}&quot;]" data-pass-checked>
         <div class="provider-import-row-main">
           <div class="provider-import-row-identity">
             <span class="provider-import-name" title="${escAttr(c.name || '')}">${escAttr(c.name || '未命名供应商')}</span>
@@ -2141,7 +2141,7 @@ function renderEvalCheckPicker() {
   if (!grid) return;
   grid.innerHTML = EVAL_CHECK_OPTIONS.map(opt => `
     <label class="eval-check-option">
-      <input type="checkbox" value="${escAttr(opt.id)}" checked onchange="syncEvalCheckButton()">
+      <input type="checkbox" value="${escAttr(opt.id)}" checked data-action="syncEvalCheckButton" data-events="change">
       <span>${escAttr(opt.label)}</span>
     </label>
   `).join('');
@@ -2597,7 +2597,7 @@ function renderEvalHistory() {
       : (r.model || reportedModel || '--');
     const protocol = evalApiFormatLabel(r.apiFormat);
     return `
-      <div class="eval-history-item${active}" onclick="selectEvalReport('${escAttr(r.id)}')">
+      <div class="eval-history-item${active}" data-action="selectEvalReport" data-arg="${escAttr(r.id)}">
         <div class="eval-history-top">
           <div class="eval-history-name">
             <div class="eval-history-provider">${escAttr(r.providerName || '--')}</div>
@@ -2607,7 +2607,7 @@ function renderEvalHistory() {
         </div>
         <div class="eval-history-meta">
           <span class="eval-history-time">${evalFormatTime(r.createdAt)}</span>
-          <button class="btn-ghost eval-history-delete" onclick="deleteEvalReport('${escAttr(r.id)}', event)">删除</button>
+          <button class="btn-ghost eval-history-delete" data-action="deleteEvalReport" data-args="[&quot;${escAttr(r.id)}&quot;]" data-pass-event>删除</button>
         </div>
       </div>`;
   }).join('');

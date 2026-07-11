@@ -2,7 +2,7 @@
         <div class="page" id="page-platform-workbuddy-add" role="tabpanel" aria-labelledby="tab-platforms">
           <div class="platform-console-hero model-add-hero glass-card">
             <div class="platform-console-titlebar">
-              <button class="btn-ghost platform-console-back" onclick="navigateTo('platform-workbuddy')">← 返回</button>
+              <button class="btn-ghost platform-console-back" data-action="navigateTo" data-arg="platform-workbuddy">← 返回</button>
               <div class="platform-console-titlewrap">
                 <strong>添加模型 · WorkBuddy</strong>
               </div>
@@ -17,11 +17,11 @@
                   <circle cx="11" cy="11" r="8" />
                   <line x1="21" y1="21" x2="16.65" y2="16.65" />
                 </svg>
-                <input type="text" id="wb-add-search" placeholder="搜索供应商…" oninput="onWbAddSearch()">
+                <input type="text" id="wb-add-search" placeholder="搜索供应商…" data-action="onWbAddSearch" data-events="input">
                 <div class="provider-sort-control platform-add-sort-control" id="wbAddSortControl">
                   <button type="button" class="provider-sort-trigger platform-add-sort-trigger" id="wbAddSortTrigger"
-                    onclick="toggleWbAddSort(event)" aria-haspopup="listbox" aria-expanded="false"
-                    aria-controls="wbAddSortMenu" aria-label="供应商排序" title="供应商排序">
+ aria-haspopup="listbox" aria-expanded="false"
+ aria-controls="wbAddSortMenu" aria-label="供应商排序" title="供应商排序" data-action="toggleWbAddSort" data-pass-event>
                     <svg class="provider-sort-icon" width="14" height="14" viewBox="0 0 24 24" fill="none"
                       stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"
                       aria-hidden="true">
@@ -40,11 +40,11 @@
                   <div class="provider-sort-menu platform-add-sort-menu" id="wbAddSortMenu" role="listbox"
                     aria-label="供应商排序">
                     <button type="button" class="provider-sort-option platform-add-sort-option" role="option"
-                      data-sort-mode="default" onclick="chooseWbAddSortMode('default')">默认排序</button>
+ data-sort-mode="default" data-action="chooseWbAddSortMode" data-arg="default">默认排序</button>
                     <button type="button" class="provider-sort-option platform-add-sort-option" role="option"
-                      data-sort-mode="name-asc" onclick="chooseWbAddSortMode('name-asc')">名称正序</button>
+ data-sort-mode="name-asc" data-action="chooseWbAddSortMode" data-arg="name-asc">名称正序</button>
                     <button type="button" class="provider-sort-option platform-add-sort-option" role="option"
-                      data-sort-mode="name-desc" onclick="chooseWbAddSortMode('name-desc')">名称反序</button>
+ data-sort-mode="name-desc" data-action="chooseWbAddSortMode" data-arg="name-desc">名称反序</button>
                   </div>
                 </div>
               </div>
@@ -59,9 +59,9 @@
                     <div class="wb-add-models-sub" id="wb-add-models-sub">左侧选择一个供应商，右侧将展示其可用模型</div>
                   </div>
                   <div style="display:flex; gap:8px;">
-                    <button class="btn-ghost" onclick="wbAddSelectAll()">全选</button>
-                    <button class="btn-ghost" onclick="wbAddSelectNone()">全不选</button>
-                    <button class="btn-primary" id="wb-add-confirm-page" onclick="confirmAddWbModelsPage()" disabled>
+                    <button class="btn-ghost" data-action="wbAddSelectAll">全选</button>
+                    <button class="btn-ghost" data-action="wbAddSelectNone">全不选</button>
+                    <button class="btn-primary" id="wb-add-confirm-page" disabled data-action="confirmAddWbModelsPage">
                       <svg viewBox="0 0 24 24"
                         style="width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;">
                         <path d="M20 6L9 17l-5-5" />

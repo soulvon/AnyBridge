@@ -29,7 +29,7 @@
                       </div>
                       <div class="setting-ctrl">
                         <button type="button" class="theme-setting-btn" id="settings-theme-toggle"
-                          onclick="toggleTheme()" aria-label="切换主题">
+ aria-label="切换主题" data-action="toggleTheme">
                           <span class="theme-setting-icon" aria-hidden="true">
                             <svg class="theme-setting-sun" width="15" height="15" viewBox="0 0 24 24" fill="none"
                               stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
@@ -123,7 +123,7 @@
                         <div class="setting-label">保存代理端口</div>
                         <div class="setting-desc">端口变更会同步到本地代理入口；代理运行中保存会要求重启</div>
                       </div>
-                      <div class="setting-ctrl"><button class="btn-primary" onclick="saveLocalProxyPorts('settings')">保存端口</button></div>
+                      <div class="setting-ctrl"><button class="btn-primary" data-action="saveLocalProxyPorts" data-arg="settings">保存端口</button></div>
                     </div>
                     <div class="setting-row">
                       <div>
@@ -280,7 +280,7 @@
                         <div class="setting-label">密钥存储位置</div>
                         <div class="setting-desc">本地配置目录，仅当前用户可读</div>
                       </div>
-                      <div class="setting-ctrl"><button class="btn-ghost" onclick="openConfigDir()">打开目录</button></div>
+                      <div class="setting-ctrl"><button class="btn-ghost" data-action="openConfigDir">打开目录</button></div>
                     </div>
                     <div class="setting-row">
                       <div>
@@ -316,7 +316,7 @@
                         <div class="setting-desc">应用启动时自动检查 GitHub 是否有新版本</div>
                       </div>
                       <div class="setting-ctrl">
-                        <div class="toggle-sm" id="updater-auto-check" onclick="toggleUpdateSetting('auto_check')">
+                        <div class="toggle-sm" id="updater-auto-check" data-action="toggleUpdateSetting" data-arg="auto_check">
                         </div>
                       </div>
                     </div>
@@ -326,7 +326,7 @@
                         <div class="setting-desc">后台静默下载可用更新并在下次重启时应用</div>
                       </div>
                       <div class="setting-ctrl">
-                        <div class="toggle-sm" id="updater-auto-install" onclick="toggleUpdateSetting('auto_install')">
+                        <div class="toggle-sm" id="updater-auto-install" data-action="toggleUpdateSetting" data-arg="auto_install">
                         </div>
                       </div>
                     </div>
@@ -336,7 +336,7 @@
                         <div class="setting-desc">当有可用更新时在前台弹出提示</div>
                       </div>
                       <div class="setting-ctrl">
-                        <div class="toggle-sm" id="updater-remind" onclick="toggleUpdateSetting('remind_on_update')">
+                        <div class="toggle-sm" id="updater-remind" data-action="toggleUpdateSetting" data-arg="remind_on_update">
                         </div>
                       </div>
                     </div>
@@ -347,7 +347,7 @@
                       </div>
                       <div class="setting-ctrl">
                         <input class="input-sm" id="updater-check-interval" type="number" min="1" max="168" value="1"
-                          onchange="changeUpdateInterval(this.value)">
+ data-action="changeUpdateInterval" data-events="change" data-pass-value>
                       </div>
                     </div>
                     <div class="setting-row">
@@ -356,7 +356,7 @@
                         <div class="setting-desc">立即尝试连线 GitHub 获取最新版本</div>
                       </div>
                       <div class="setting-ctrl">
-                        <button class="btn-ghost" id="updater-manual-btn" onclick="manualCheckUpdate()">检查更新</button>
+                        <button class="btn-ghost" id="updater-manual-btn" data-action="manualCheckUpdate">检查更新</button>
                       </div>
                     </div>
                     <div class="setting-row" style="border:none;padding-top:8px;">
@@ -370,7 +370,7 @@
                 <div class="glass-card" data-panel-id="1">
                   <div class="card-header">
                     <div class="card-title"><span class="dot"></span> 设置</div>
-                    <button class="btn-primary" onclick="generateCerts()">生成 MITM 证书</button>
+                    <button class="btn-primary" data-action="generateCerts">生成 MITM 证书</button>
                   </div>
                   <div class="card-body">
                     <div class="setting-row">
@@ -388,7 +388,7 @@
                       <div class="setting-ctrl setting-restart-pref-ctrl">
                         <input class="input-sm" id="ideRestartPromptMode" value="每次询问" readonly>
                         <button class="btn-ghost" id="ideRestartPromptResetBtn"
-                          onclick="resetIdeRestartPromptPreference()">恢复询问</button>
+ data-action="resetIdeRestartPromptPreference">恢复询问</button>
                       </div>
                     </div>
                     <div class="setting-row">
@@ -398,8 +398,8 @@
                         </div>
                       </div>
                       <div class="setting-ctrl">
-                        <button class="btn-ghost" onclick="openCertsDir()">证书目录</button>
-                        <button class="btn-ghost" onclick="openConfigDir()">配置目录</button>
+                        <button class="btn-ghost" data-action="openCertsDir">证书目录</button>
+                        <button class="btn-ghost" data-action="openConfigDir">配置目录</button>
                       </div>
                     </div>
                     <div class="setting-row setting-row-stacked setting-path-row">
@@ -409,8 +409,8 @@
                       </div>
                       <div class="setting-ctrl setting-path-ctrl">
                         <input class="field-input" id="idePath" placeholder="探测中...">
-                        <button class="btn-ghost" onclick="detectIdePath()">探测</button>
-                        <button class="btn-ghost" onclick="saveIdePath()">保存</button>
+                        <button class="btn-ghost" data-action="detectIdePath">探测</button>
+                        <button class="btn-ghost" data-action="saveIdePath">保存</button>
                       </div>
                     </div>
                     <div class="setting-row">
@@ -437,7 +437,7 @@
                         <div class="setting-desc">拦截 GetUserStatus 响应，解除 IDE 下拉框中灰色锁定项的限制。仅对 Windsurf / Devin 生效。</div>
                       </div>
                       <div class="setting-ctrl">
-                        <span class="toggle-switch"><input id="enhancement-unlockModels" type="checkbox" onchange="toggleEnhancement(this, 'unlockModels'); saveProxyEnhancement()"><span class="toggle-slider"></span></span>
+                        <span class="toggle-switch"><input id="enhancement-unlockModels" type="checkbox" data-action-chain="[{&quot;fn&quot;:&quot;toggleEnhancement&quot;,&quot;args&quot;:[&quot;unlockModels&quot;],&quot;passThis&quot;:true},{&quot;fn&quot;:&quot;saveProxyEnhancement&quot;}]" data-action="toggleEnhancement" data-events="change"><span class="toggle-slider"></span></span>
                       </div>
                     </div>
                   </div>
@@ -458,27 +458,27 @@
                         <span class="card-title">诊断操作</span>
                       </div>
                       <div class="health-head-actions">
-                        <button class="btn-primary" id="health-run-btn" onclick="runHealthcheck()">
+                        <button class="btn-primary" id="health-run-btn" data-action="runHealthcheck">
                           <span class="health-btn-icon">▶</span> 一键检测
                         </button>
-                        <button class="btn-ghost" id="health-generate-cert-btn" onclick="generateCertsFromHealth()">
+                        <button class="btn-ghost" id="health-generate-cert-btn" data-action="generateCertsFromHealth">
                           生成证书
                         </button>
-                        <button class="btn-ghost" id="health-install-cert-btn" onclick="installCaFromHealth()">
+                        <button class="btn-ghost" id="health-install-cert-btn" data-action="installCaFromHealth">
                           安装证书
                         </button>
                         <button class="btn-ghost health-danger-btn" id="health-uninstall-cert-btn"
-                          onclick="uninstallCaFromHealth()">
+ data-action="uninstallCaFromHealth">
                           卸载证书
                         </button>
-                        <button class="btn-ghost" id="health-cleanup-legacy-btn" onclick="cleanupLegacyCaFromHealth()"
-                          style="display:none;">
+                        <button class="btn-ghost" id="health-cleanup-legacy-btn"
+ style="display:none;" data-action="cleanupLegacyCaFromHealth">
                           清理老证书
                         </button>
-                        <button class="btn-ghost" id="health-export-md-btn" onclick="exportHealthMarkdown()" disabled>
+                        <button class="btn-ghost" id="health-export-md-btn" disabled data-action="exportHealthMarkdown">
                           导出 Markdown 报告
                         </button>
-                        <button class="btn-ghost" id="health-copy-md-btn" onclick="copyHealthMarkdown()" disabled>
+                        <button class="btn-ghost" id="health-copy-md-btn" disabled data-action="copyHealthMarkdown">
                           复制到剪贴板
                         </button>
                       </div>

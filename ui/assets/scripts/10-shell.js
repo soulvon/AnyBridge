@@ -345,7 +345,7 @@ function mountProxyEnhancementPanel() {
     innerCard.remove();
   }
 
-  source.querySelectorAll('button[onclick="closeProxyEnhancement()"]').forEach(btn => btn.remove());
+  source.querySelectorAll('button[data-action="closeProxyEnhancement"]').forEach(btn => btn.remove());
   const header = source.querySelector(':scope > .card-header');
   if (header) header.removeAttribute('style');
   const body = source.querySelector(':scope > .card-body');

@@ -352,7 +352,7 @@ function changeModelTab(tab) {
   currentModelTab = tab;
   // 切换 active 样式
   document.querySelectorAll('.model-filter-tab').forEach(el => {
-    const isClickedTab = el.getAttribute('onclick')?.includes(`'${tab}'`);
+    const isClickedTab = el.getAttribute('data-arg') === tab;
     el.classList.toggle('active', isClickedTab);
   });
   filterModelPanel();
@@ -493,7 +493,7 @@ function updateSelectedModelsUI() {
               </div>
             </div>
           </div>
-          <button class="model-panel-btn selected-model-remove" onclick="selectModel('${escAttr(m)}')" title="移除该模型">
+          <button class="model-panel-btn selected-model-remove" data-action="selectModel" data-arg="${escAttr(m)}" title="移除该模型">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <line x1="18" y1="6" x2="6" y2="18"></line>
               <line x1="6" y1="6" x2="18" y2="18"></line>
@@ -511,7 +511,7 @@ function updateSelectedModelsUI() {
       return;
     }
     rightContainer.innerHTML = selectedModels.map((m, idx) => `
-      <div class="selected-model-tag" onclick="selectModel('${escAttr(m)}')" title="点击移除">
+      <div class="selected-model-tag" data-action="selectModel" data-arg="${escAttr(m)}" title="点击移除">
         ${renderModelIcon(m)}
         <span>${escAttr(m)}</span>
         ${idx === 0 ? '<span style="opacity: 0.6; font-size: 9px; margin-left: 2px;">(默认)</span>' : ''}
@@ -568,22 +568,22 @@ function filterModelPanel() {
     const isOpen = modelGroupStates[groupName] !== false; // default open
     return `
       <div class="model-group">
-        <div class="model-group-header ${isOpen ? 'open' : ''}" onclick="toggleModelGroup('${escAttr(groupName)}')">
+        <div class="model-group-header ${isOpen ? 'open' : ''}" data-action="toggleModelGroup" data-arg="${escAttr(groupName)}">
           <div class="model-group-label">
             ${escAttr(groupName)}
             <span class="model-group-count">${models.length}</span>
           </div>
-          <div class="model-group-tools" onclick="event.stopPropagation();">
-            <button class="model-panel-btn model-group-mini-btn" onclick="toggleSelectGroup('${escAttr(groupName)}', true)">＋ 全选</button>
-            <button class="model-panel-btn model-group-mini-btn" onclick="toggleSelectGroup('${escAttr(groupName)}', false)">－ 清空</button>
-            <span class="model-group-chevron" onclick="toggleModelGroup('${escAttr(groupName)}')">▶</span>
+          <div class="model-group-tools" data-action="__noop" data-stop>
+            <button class="model-panel-btn model-group-mini-btn" data-action="toggleSelectGroup" data-args="[&quot;${escAttr(groupName)}&quot;,true]">＋ 全选</button>
+            <button class="model-panel-btn model-group-mini-btn" data-action="toggleSelectGroup" data-args="[&quot;${escAttr(groupName)}&quot;,false]">－ 清空</button>
+            <span class="model-group-chevron" data-action="toggleModelGroup" data-arg="${escAttr(groupName)}">▶</span>
           </div>
         </div>
         <div class="model-group-body ${isOpen ? 'open' : ''}">
           ${models.map(m => {
             const isSelected = selectedModels.includes(m);
             return `
-              <div class="model-item ${isSelected ? 'selected' : ''}" onclick="selectModel('${escAttr(m)}')">
+              <div class="model-item ${isSelected ? 'selected' : ''}" data-action="selectModel" data-arg="${escAttr(m)}">
                 ${renderModelIcon(m)}
                 <span class="model-item-name">${escAttr(m)}</span>
                 <div style="display:flex; gap:4px; align-items:center; flex-shrink:0; margin-right:8px;">
@@ -942,7 +942,7 @@ function openProviderEditor(id) {
 
   // 重置 UI 的 Tab 选中状态
   document.querySelectorAll('.model-filter-tab').forEach(el => {
-    const isAllTab = el.getAttribute('onclick')?.includes("'all'");
+    const isAllTab = el.getAttribute('data-arg') === 'all';
     el.classList.toggle('active', !!isAllTab);
   });
 

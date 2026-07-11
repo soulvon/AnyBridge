@@ -23,16 +23,16 @@
                     <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
                   </svg>
                   <input type="text" id="opencode-config-search" placeholder="搜索配置、模型或地址"
-                    oninput="onOpenCodeConfigSearch()">
+ data-action="onOpenCodeConfigSearch" data-events="input">
                 </div>
               </div>
               <div class="codex-toolbar-actions">
-                <button class="btn-primary codex-add-config-btn" onclick="openOpenCodeProviderAdd()">
+                <button class="btn-primary codex-add-config-btn" data-action="openOpenCodeProviderAdd">
                   <span>+</span> 添加配置
                 </button>
-                <button class="btn-ghost codex-refresh-btn" onclick="refreshPlatforms()">刷新</button>
+                <button class="btn-ghost codex-refresh-btn" data-action="refreshPlatforms">刷新</button>
                 <button class="btn-ghost codex-restore-btn" id="platform-opencode-restore"
-                  onclick="restorePlatform('opencode')">还原备份</button>
+ data-action="restorePlatform" data-arg="opencode">还原备份</button>
               </div>
             </div>
 
@@ -56,7 +56,7 @@
                 <div class="codex-config-modal-sub" id="opencode-config-modal-sub">从现有供应商创建一份 OpenCode provider 配置。
                 </div>
               </div>
-              <button class="modal-close-icon" onclick="closeOpenCodeConfigEditor()" aria-label="关闭配置编辑">
+              <button class="modal-close-icon" aria-label="关闭配置编辑" data-action="closeOpenCodeConfigEditor">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"
                   stroke-linecap="round" stroke-linejoin="round">
                   <path d="M18 6L6 18"></path>
@@ -84,17 +84,17 @@
                       <label class="codex-config-field">
                         <span>配置名称</span>
                         <input id="opencode-config-name" class="field-input" placeholder="例如：AnyRouter"
-                          oninput="syncOpenCodeRawConfigFromFields()">
+ data-action="syncOpenCodeRawConfigFromFields" data-events="input">
                       </label>
                       <label class="codex-config-field">
                         <span>Base URL</span>
                         <input id="opencode-config-base-url" class="field-input" placeholder="https://api.example.com/v1"
-                          oninput="syncOpenCodeRawConfigFromFields()">
+ data-action="syncOpenCodeRawConfigFromFields" data-events="input">
                       </label>
                       <label class="codex-config-field">
                         <span>API Key</span>
                         <input id="opencode-config-api-key" class="field-input" type="password" placeholder="sk-..."
-                          autocomplete="off" oninput="syncOpenCodeRawConfigFromFields()">
+ autocomplete="off" data-action="syncOpenCodeRawConfigFromFields" data-events="input">
                       </label>
                     </div>
                   </section>
@@ -107,7 +107,7 @@
                           <em id="opencode-config-model-status">选择供应商后拉取模型列表</em>
                         </div>
                         <button type="button" class="codex-config-fetch-btn" id="opencode-config-fetch-models-btn"
-                          onclick="event.preventDefault(); event.stopPropagation(); fetchOpenCodeConfigModels()">拉取模型列表</button>
+ data-action-chain="[{&quot;fn&quot;:&quot;fetchOpenCodeConfigModels&quot;}]" data-action="fetchOpenCodeConfigModels" data-prevent data-stop>拉取模型列表</button>
                       </div>
                       <div class="codex-config-model-list" id="opencode-config-model-list">
                         <div class="codex-config-model-empty">还没有模型，点击右上角按钮拉取。</div>
@@ -115,7 +115,7 @@
                       <label class="codex-config-field codex-config-default-model">
                         <span>默认模型</span>
                         <input id="opencode-config-model" class="field-input" placeholder="可从上方点选，也可以手动输入"
-                          oninput="onOpenCodeDefaultModelInput()">
+ data-action="onOpenCodeDefaultModelInput" data-events="input">
                       </label>
                       <textarea id="opencode-config-models" class="codex-config-models-input" aria-hidden="true"
                         tabindex="-1"></textarea>
@@ -130,8 +130,8 @@
                     </summary>
                     <div class="claude-code-collapse-body">
                       <textarea id="opencode-config-raw-json" class="claude-code-raw-config-input" spellcheck="false"
-                        oninput="onOpenCodeRawConfigInput()"
-                        placeholder="{&#10;  &quot;npm&quot;: &quot;@ai-sdk/openai-compatible&quot;,&#10;  &quot;options&quot;: {&#10;    &quot;baseURL&quot;: &quot;https://api.example.com/v1&quot;&#10;  },&#10;  &quot;models&quot;: {}&#10;}"></textarea>
+ 
+ placeholder="{&#10; &quot;npm&quot;: &quot;@ai-sdk/openai-compatible&quot;,&#10; &quot;options&quot;: {&#10; &quot;baseURL&quot;: &quot;https://api.example.com/v1&quot;&#10; },&#10; &quot;models&quot;: {}&#10;}" data-action="onOpenCodeRawConfigInput" data-events="input"></textarea>
                     </div>
                   </details>
                 </div>
@@ -139,10 +139,10 @@
             </div>
             <div class="modal-footer codex-config-modal-footer">
               <div class="codex-config-editor-note">保存后出现在配置列表中，点击「加入」才会写入 opencode.json 的 provider 列表。</div>
-              <button class="modal-btn modal-btn-ghost" onclick="closeOpenCodeConfigEditor()">取消</button>
-              <button class="modal-btn modal-btn-cancel" onclick="saveOpenCodeConfigEditor(false)">保存配置</button>
+              <button class="modal-btn modal-btn-ghost" data-action="closeOpenCodeConfigEditor">取消</button>
+              <button class="modal-btn modal-btn-cancel" data-action="saveOpenCodeConfigEditor" data-args="[false]">保存配置</button>
               <button class="modal-btn modal-btn-confirm" id="opencode-config-save-switch-btn"
-                onclick="saveOpenCodeConfigEditor(true)">保存并加入</button>
+ data-action="saveOpenCodeConfigEditor" data-args="[true]">保存并加入</button>
             </div>
           </div>
         </div>

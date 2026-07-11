@@ -70,8 +70,8 @@
               <div style="flex:1;min-width:0;">
                 <div id="updater-error-message"
                   style="font-size: 13px; color: var(--error, #ef4444); word-break: break-word;"></div>
-                <button id="updater-error-toggle" onclick="toggleUpdaterErrorDetails()"
-                  style="font-size: 11px; color: var(--text-muted); background: none; border: none; cursor: pointer; padding: 2px 0; margin-top: 4px; text-decoration: underline;"></button>
+                <button id="updater-error-toggle"
+ style="font-size: 11px; color: var(--text-muted); background: none; border: none; cursor: pointer; padding: 2px 0; margin-top: 4px; text-decoration: underline;" data-action="toggleUpdaterErrorDetails"></button>
                 <div id="updater-error-details"
                   style="display: none; font-size: 11px; color: var(--text-muted); margin-top: 4px; word-break: break-all; font-family: var(--font-mono); background: var(--bg-primary); padding: 6px 8px; border-radius: 4px; max-height: 80px; overflow-y: auto;">
                 </div>
@@ -93,12 +93,12 @@
         </div>
       </div>
       <div class="modal-footer" id="updater-prompt-footer">
-        <button onclick="skipThisVersion()" class="modal-btn modal-btn-cancel"
-          style="font-size: 12px; padding: 10px 16px;">跳过此版本</button>
-        <button onclick="closeUpdaterPromptModal()" class="modal-btn modal-btn-cancel"
-          style="font-size: 12px; padding: 10px 16px;">稍后</button>
-        <button onclick="startDownloadAndUpdate()" class="modal-btn modal-btn-confirm" id="updater-confirm-btn"
-          style="font-size: 12px; padding: 10px 20px;">立即更新</button>
+        <button class="modal-btn modal-btn-cancel"
+ style="font-size: 12px; padding: 10px 16px;" data-action="skipThisVersion">跳过此版本</button>
+        <button class="modal-btn modal-btn-cancel"
+ style="font-size: 12px; padding: 10px 16px;" data-action="closeUpdaterPromptModal">稍后</button>
+        <button class="modal-btn modal-btn-confirm" id="updater-confirm-btn"
+ style="font-size: 12px; padding: 10px 20px;" data-action="startDownloadAndUpdate">立即更新</button>
       </div>
     </div>
   </div>

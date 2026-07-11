@@ -3,8 +3,8 @@
           <div class="eval-workbench-head glass-card">
             <div class="eval-head-copy">
               <div class="eval-title-row">
-                <button type="button" class="eval-workbench-back" onclick="navigateTo('providers')" title="返回供应商列表"
-                  aria-label="返回供应商列表">
+                <button type="button" class="eval-workbench-back" title="返回供应商列表"
+ aria-label="返回供应商列表" data-action="navigateTo" data-arg="providers">
                   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"
                     stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                     <path d="M19 12H5"></path>
@@ -19,10 +19,10 @@
               </div>
             </div>
             <button type="button" class="btn-ghost eval-check-open-btn" id="eval-check-open-btn"
-              onclick="openEvalCheckModal()">
+ data-action="openEvalCheckModal">
               检测项(10个)
             </button>
-            <button type="button" class="btn-ghost eval-history-open-btn" onclick="openEvalHistoryPage()">
+            <button type="button" class="btn-ghost eval-history-open-btn" data-action="openEvalHistoryPage">
               <svg class="btn-svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                 stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                 <path d="M3 12a9 9 0 1 0 3-6.7"></path>
@@ -34,10 +34,10 @@
             <div class="eval-controls" aria-label="检测配置">
               <div class="eval-combo eval-provider-combo" data-select-id="eval-provider-select">
                 <select class="model-select eval-select eval-native-select" id="eval-provider-select"
-                  onchange="renderEvalModelOptions()" aria-label="供应商"></select>
+ aria-label="供应商" data-action="renderEvalModelOptions" data-events="change"></select>
                 <button type="button" class="eval-combo-trigger"
-                  onclick="toggleEvalCombo('eval-provider-select', event)"
-                  onkeydown="handleEvalComboTriggerKey('eval-provider-select', event)" aria-haspopup="listbox"
+                  data-actions="{&quot;click&quot;:{&quot;action&quot;:&quot;toggleEvalCombo&quot;,&quot;args&quot;:[&quot;eval-provider-select&quot;],&quot;passEvent&quot;:true},&quot;keydown&quot;:{&quot;action&quot;:&quot;handleEvalComboTriggerKey&quot;,&quot;args&quot;:[&quot;eval-provider-select&quot;],&quot;passEvent&quot;:true}}"
+                  aria-haspopup="listbox"
                   aria-expanded="false" aria-label="供应商">
                   <span class="eval-combo-label">--</span>
                   <svg class="eval-combo-arrow" width="12" height="12" viewBox="0 0 24 24" fill="none"
@@ -49,13 +49,14 @@
               </div>
               <div class="eval-combo eval-format-combo" data-select-id="eval-format-select">
                 <select class="model-select eval-select eval-native-select" id="eval-format-select"
-                  onchange="renderEvalModelOptions({ fetchRemote: true })" aria-label="协议">
+ aria-label="协议" data-action="renderEvalModelOptions" data-events="change" data-args="[{&quot;fetchRemote&quot;:true}]">
                   <option value="auto">自动</option>
                   <option value="openai">OpenAI</option>
                   <option value="anthropic">Anthropic</option>
                 </select>
-                <button type="button" class="eval-combo-trigger" onclick="toggleEvalCombo('eval-format-select', event)"
-                  onkeydown="handleEvalComboTriggerKey('eval-format-select', event)" aria-haspopup="listbox"
+                <button type="button" class="eval-combo-trigger"
+                  data-actions="{&quot;click&quot;:{&quot;action&quot;:&quot;toggleEvalCombo&quot;,&quot;args&quot;:[&quot;eval-format-select&quot;],&quot;passEvent&quot;:true},&quot;keydown&quot;:{&quot;action&quot;:&quot;handleEvalComboTriggerKey&quot;,&quot;args&quot;:[&quot;eval-format-select&quot;],&quot;passEvent&quot;:true}}"
+                  aria-haspopup="listbox"
                   aria-expanded="false" aria-label="协议">
                   <span class="eval-combo-label">自动</span>
                   <svg class="eval-combo-arrow" width="12" height="12" viewBox="0 0 24 24" fill="none"
@@ -68,8 +69,9 @@
               <div class="eval-combo eval-model-combo" data-select-id="eval-model-select">
                 <select class="model-select eval-select eval-native-select" id="eval-model-select"
                   aria-label="模型"></select>
-                <button type="button" class="eval-combo-trigger" onclick="toggleEvalCombo('eval-model-select', event)"
-                  onkeydown="handleEvalComboTriggerKey('eval-model-select', event)" aria-haspopup="listbox"
+                <button type="button" class="eval-combo-trigger"
+                  data-actions="{&quot;click&quot;:{&quot;action&quot;:&quot;toggleEvalCombo&quot;,&quot;args&quot;:[&quot;eval-model-select&quot;],&quot;passEvent&quot;:true},&quot;keydown&quot;:{&quot;action&quot;:&quot;handleEvalComboTriggerKey&quot;,&quot;args&quot;:[&quot;eval-model-select&quot;],&quot;passEvent&quot;:true}}"
+                  aria-haspopup="listbox"
                   aria-expanded="false" aria-label="模型">
                   <span class="eval-combo-label">--</span>
                   <svg class="eval-combo-arrow" width="12" height="12" viewBox="0 0 24 24" fill="none"
@@ -79,7 +81,7 @@
                 </button>
                 <div class="eval-combo-menu" role="listbox" aria-label="模型"></div>
               </div>
-              <button class="btn-primary eval-run-btn" id="evalRunBtn" onclick="startEval()">
+              <button class="btn-primary eval-run-btn" id="evalRunBtn" data-action="startEval">
                 开始检测
               </button>
             </div>

@@ -11,7 +11,7 @@
               </div>
             </div>
             <button type="button" class="platform-kite-ad" id="proxy-platform-kite-ad"
-              onclick="openKitePluginModal()" aria-label="打开 Kite 插件安装选项">
+ aria-label="打开 Kite 插件安装选项" data-action="openKitePluginModal">
               <span class="platform-kite-ad-badge">Kite</span>
               <span class="platform-kite-ad-copy">
                 <strong>插件推荐</strong>
@@ -29,8 +29,8 @@
                   <span class="proxy-btn-text">一键接入</span>
                 </span>
               </button>
-              <button class="btn-ghost" id="proxyRefreshBtn" onclick="refreshCurrentProxyPlatformStatus()">刷新状态</button>
-              <button class="btn-ghost platform-stop-proxy" id="proxyRestoreBtn" onclick="restoreCurrentProxyPlatformDirect()">停止接入</button>
+              <button class="btn-ghost" id="proxyRefreshBtn" data-action="refreshCurrentProxyPlatformStatus">刷新状态</button>
+              <button class="btn-ghost platform-stop-proxy" id="proxyRestoreBtn" data-action="restoreCurrentProxyPlatformDirect">停止接入</button>
             </div>
           </section>
           <div class="control-bar glass-card model-map-control-bar">
@@ -40,7 +40,7 @@
                 <span>Devin / Windsurf 槽位路由，模型名只服务对应平台。</span>
               </div>
               <div class="model-map-toolbar-actions">
-                <button class="btn-primary model-map-command-btn" onclick="openSlotEditor('')">
+                <button class="btn-primary model-map-command-btn" data-action="openSlotEditor" data-arg="">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
                     stroke-linecap="round" stroke-linejoin="round">
                     <line x1="12" y1="5" x2="12" y2="19"></line>
@@ -49,11 +49,11 @@
                   添加映射
                 </button>
                 <button class="btn-ghost model-map-command-btn" id="modelMapBulkDeleteBtn"
-                  onclick="batchDeleteSelectedSlots()" disabled>
+ disabled data-action="batchDeleteSelectedSlots">
                   删除选中
                 </button>
-                <button class="btn-ghost platform-model-btn-icon" onclick="renderModelMap(); addLog('info', '已刷新映射列表');"
-                  title="刷新映射列表" aria-label="刷新映射列表">
+                <button class="btn-ghost platform-model-btn-icon"
+ title="刷新映射列表" aria-label="刷新映射列表" data-action-chain="[{&quot;fn&quot;:&quot;renderModelMap&quot;},{&quot;fn&quot;:&quot;addLog&quot;,&quot;args&quot;:[&quot;info&quot;,&quot;已刷新映射列表&quot;]}]" data-action="renderModelMap">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
                     stroke-linecap="round" stroke-linejoin="round">
                     <polyline points="23 4 23 10 17 10"></polyline>
@@ -61,7 +61,7 @@
                     <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
                   </svg>
                 </button>
-                <button class="btn-ghost model-map-command-btn" onclick="openInjectedEditor()" title="管理模型槽位的解锁、显示范围和 BYOK 路由。">
+                <button class="btn-ghost model-map-command-btn" title="管理模型槽位的解锁、显示范围和 BYOK 路由。" data-action="openInjectedEditor">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"
                     stroke-linecap="round" stroke-linejoin="round">
                     <path d="M12 2L2 7l10 5 10-5-10-5z"></path>
@@ -70,7 +70,7 @@
                   </svg>
                   <span id="injected-count-badge">槽位管理</span>
                 </button>
-                <button class="btn-ghost platform-model-btn-icon" onclick="openPlatformSection('settings')" title="设置" aria-label="设置">
+                <button class="btn-ghost platform-model-btn-icon" title="设置" aria-label="设置" data-action="openPlatformSection" data-arg="settings">
                   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"
                     stroke-linecap="round" stroke-linejoin="round">
                     <circle cx="12" cy="12" r="3"></circle>
@@ -86,18 +86,18 @@
                   <circle cx="11" cy="11" r="8"></circle>
                   <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
                 </svg>
-                <input type="text" id="model-search-input" placeholder="搜索已映射模型、槽位或供应商" oninput="filterModelTable()">
+                <input type="text" id="model-search-input" placeholder="搜索已映射模型、槽位或供应商" data-action="filterModelTable" data-events="input">
               </label>
               <span class="model-map-count-pill" id="modelMapBulkCount">共 0 个</span>
               <div class="model-map-bulk-actions">
                 <button class="btn-ghost provider-bulk-btn" id="modelMapSelectVisibleBtn"
-                  onclick="toggleVisibleModelMapSelection()" disabled>选择当前</button>
+ disabled data-action="toggleVisibleModelMapSelection">选择当前</button>
                 <button class="btn-ghost provider-bulk-btn" id="modelMapBulkEnableBtn"
-                  onclick="batchSetSelectedSlotsEnabled(true)" disabled>启用</button>
+ disabled data-action="batchSetSelectedSlotsEnabled" data-args="[true]">启用</button>
                 <button class="btn-ghost provider-bulk-btn" id="modelMapBulkDisableBtn"
-                  onclick="batchSetSelectedSlotsEnabled(false)" disabled>停用</button>
+ disabled data-action="batchSetSelectedSlotsEnabled" data-args="[false]">停用</button>
                 <button class="btn-ghost provider-bulk-btn" id="modelMapBulkVisionBtn"
-                  onclick="batchSetSelectedSlotsThirdPartyVision(true)" disabled>启用第三方图片</button>
+ disabled data-action="batchSetSelectedSlotsThirdPartyVision" data-args="[true]">启用第三方图片</button>
               </div>
             </div>
           </div>
@@ -115,16 +115,16 @@
               <thead>
                 <tr>
                   <th class="model-map-select-head">
-                    <label class="provider-select-check provider-select-check-table" title="选择当前列表" onclick="event.stopPropagation()">
-                      <input type="checkbox" id="modelMapSelectAll" aria-label="选择当前列表" onchange="toggleVisibleModelMapSelectionFromHeader(this.checked)">
+                    <label class="provider-select-check provider-select-check-table" title="选择当前列表" data-stop data-action="__noop">
+                      <input type="checkbox" id="modelMapSelectAll" aria-label="选择当前列表" data-action="toggleVisibleModelMapSelectionFromHeader" data-events="change" data-pass-checked>
                       <span></span>
                     </label>
                   </th>
                   <th>
                     <span class="model-map-display-head">
                       <span>显示名</span>
-                      <button class="btn-ghost model-map-settings-btn" onclick="openModelMapSettings()"
-                        title="显示名设置：前缀 / 后缀" aria-label="显示名设置：前缀 / 后缀">
+                      <button class="btn-ghost model-map-settings-btn"
+ title="显示名设置：前缀 / 后缀" aria-label="显示名设置：前缀 / 后缀" data-action="openModelMapSettings">
                         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                           stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
                           <circle cx="12" cy="12" r="3"></circle>
@@ -141,8 +141,8 @@
                   <th>
                     <span class="model-map-display-head">
                       <span>第三方图片理解</span>
-                      <button class="btn-ghost model-map-settings-btn" onclick="navigateToProxyEnhancement()"
-                        title="配置图片理解模型" aria-label="配置图片理解模型">
+                      <button class="btn-ghost model-map-settings-btn"
+ title="配置图片理解模型" aria-label="配置图片理解模型" data-action="navigateToProxyEnhancement">
                         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                           stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
                           <circle cx="12" cy="12" r="3"></circle>

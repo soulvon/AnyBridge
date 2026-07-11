@@ -25,7 +25,7 @@
           </div>
         </div>
         <!-- 隐藏的原生 select 供已有 JS 数据流与 load_config / save_config 使用 -->
-        <select id="targetIde" onchange="onTargetIdeChange()" hidden aria-hidden="true">
+        <select id="targetIde" hidden aria-hidden="true" data-action="onTargetIdeChange" data-events="change">
           <option value="devin">Devin</option>
           <option value="windsurf">Windsurf</option>
           <option value="cursor">Cursor</option>
@@ -65,13 +65,13 @@
 
       </nav>
       <div class="topbar-right">
-        <button type="button" class="global-proxy-pill off" id="globalProxyStatusPill" onclick="navigateTo('proxy')" title="打开代理控制台">
+        <button type="button" class="global-proxy-pill off" id="globalProxyStatusPill" title="打开代理控制台" data-action="navigateTo" data-arg="proxy">
           <span class="global-proxy-dot" aria-hidden="true"></span>
           <span id="globalProxyStatusText">代理未启动</span>
         </button>
         <div class="topbar-action-cluster" aria-label="快捷操作">
           <button type="button" class="topbar-action-btn topbar-action-theme" id="topbarThemeToggle"
-            onclick="toggleTheme()" title="切换主题" aria-label="切换主题">
+ title="切换主题" aria-label="切换主题" data-action="toggleTheme">
             <svg class="topbar-theme-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1"
               stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
               <circle cx="12" cy="12" r="4"></circle>
@@ -91,7 +91,7 @@
             </svg>
           </a>
           <button type="button" class="topbar-action-btn topbar-action-guide"
-            onclick="openOnboardingGuide({ manual: true })" title="打开快速指南" aria-label="打开快速指南">
+ title="打开快速指南" aria-label="打开快速指南" data-action="openOnboardingGuide" data-args="[{&quot;manual&quot;:true}]">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round"
               stroke-linejoin="round" aria-hidden="true">
               <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path>
@@ -100,7 +100,7 @@
             </svg>
           </button>
           <button type="button" class="topbar-action-btn topbar-action-notify"
-            onclick="openNotificationCenter()" title="通知与更新" aria-label="通知与更新">
+ title="通知与更新" aria-label="通知与更新" data-action="openNotificationCenter">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round"
               stroke-linejoin="round" aria-hidden="true">
               <path d="M18 8a6 6 0 1 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9"></path>
@@ -109,7 +109,7 @@
             <span class="topbar-notification-dot" id="topbarNotificationDot" hidden></span>
           </button>
           <button type="button" class="topbar-action-btn topbar-action-settings" id="topbarSettingsBtn"
-            onclick="navigateTo('settings')" title="打开设置" aria-label="打开设置">
+ title="打开设置" aria-label="打开设置" data-action="navigateTo" data-arg="settings">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round"
               stroke-linejoin="round" aria-hidden="true">
               <path d="M12 15.5A3.5 3.5 0 1 0 12 8a3.5 3.5 0 0 0 0 7.5Z"></path>
@@ -150,63 +150,63 @@
         <div class="sidebar-platforms">
           <div class="platform-rail" role="navigation" aria-label="接入平台">
         <button type="button" class="platform-rail-item active" data-platform-rail="devin" draggable="true"
-          onclick="openProxyPlatform('devin')">
+ data-action="openProxyPlatform" data-arg="devin">
           <span class="platform-rail-handle" draggable="true" aria-hidden="true"></span>
           <span class="platform-rail-icon"><img src="./assets/icons/platform-devin.svg" alt=""
               aria-hidden="true"></span>
           <span class="platform-rail-label">Devin</span>
         </button>
         <button type="button" class="platform-rail-item" data-platform-rail="windsurf" draggable="true"
-          onclick="openProxyPlatform('windsurf')">
+ data-action="openProxyPlatform" data-arg="windsurf">
           <span class="platform-rail-handle" draggable="true" aria-hidden="true"></span>
           <span class="platform-rail-icon"><img src="./assets/icons/platform-windsurf.svg" alt=""
               aria-hidden="true"></span>
           <span class="platform-rail-label">Windsurf</span>
         </button>
         <button type="button" class="platform-rail-item" data-platform-rail="codex" draggable="true"
-          onclick="openPlatformPage('codex')">
+ data-action="openPlatformPage" data-arg="codex">
           <span class="platform-rail-handle" draggable="true" aria-hidden="true"></span>
           <span class="platform-rail-icon"><img src="./assets/icons/platform-codex.svg" alt=""
               aria-hidden="true"></span>
           <span class="platform-rail-label">Codex</span>
         </button>
         <button type="button" class="platform-rail-item" data-platform-rail="cursor" draggable="true"
-          onclick="openPlatformPage('cursor')">
+ data-action="openPlatformPage" data-arg="cursor">
           <span class="platform-rail-handle" draggable="true" aria-hidden="true"></span>
           <span class="platform-rail-icon"><img src="./assets/icons/platform-cursor.svg" alt=""
               aria-hidden="true"></span>
           <span class="platform-rail-label">Cursor</span>
         </button>
         <button type="button" class="platform-rail-item" data-platform-rail="claude-code" draggable="true"
-          onclick="openPlatformPage('claude-code')">
+ data-action="openPlatformPage" data-arg="claude-code">
           <span class="platform-rail-handle" draggable="true" aria-hidden="true"></span>
           <span class="platform-rail-icon"><img src="./assets/icons/platform-claude-code.svg" alt=""
               aria-hidden="true"></span>
           <span class="platform-rail-label">Claude Code</span>
         </button>
         <button type="button" class="platform-rail-item" data-platform-rail="codebuddy" draggable="true"
-          onclick="openPlatformPage('codebuddy')">
+ data-action="openPlatformPage" data-arg="codebuddy">
           <span class="platform-rail-handle" draggable="true" aria-hidden="true"></span>
           <span class="platform-rail-icon"><img src="./assets/icons/platform-codebuddy.png" alt=""
               aria-hidden="true"></span>
           <span class="platform-rail-label">CodeBuddy</span>
         </button>
         <button type="button" class="platform-rail-item" data-platform-rail="workbuddy" draggable="true"
-          onclick="openPlatformPage('workbuddy')">
+ data-action="openPlatformPage" data-arg="workbuddy">
           <span class="platform-rail-handle" draggable="true" aria-hidden="true"></span>
           <span class="platform-rail-icon"><img src="./assets/icons/platform-workbuddy.png" alt=""
               aria-hidden="true"></span>
           <span class="platform-rail-label">WorkBuddy</span>
         </button>
         <button type="button" class="platform-rail-item" data-platform-rail="opencode" draggable="true"
-          onclick="openPlatformPage('opencode')">
+ data-action="openPlatformPage" data-arg="opencode">
           <span class="platform-rail-handle" draggable="true" aria-hidden="true"></span>
           <span class="platform-rail-icon"><img src="./assets/icons/platform-opencode.svg" alt=""
               aria-hidden="true"></span>
           <span class="platform-rail-label">OpenCode</span>
         </button>
         <button type="button" class="platform-rail-item" data-platform-rail="zcode" draggable="true"
-          onclick="openPlatformPage('zcode')">
+ data-action="openPlatformPage" data-arg="zcode">
           <span class="platform-rail-handle" draggable="true" aria-hidden="true"></span>
           <span class="platform-rail-icon"><img src="./assets/icons/platform-zcode.svg" alt=""
               aria-hidden="true"></span>

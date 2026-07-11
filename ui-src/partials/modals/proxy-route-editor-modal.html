@@ -21,7 +21,7 @@
             <div id="proxyRouteEditorSubtitle" class="proxy-route-editor-subtitle">从供应商模型中选择要暴露到本地代理的模型。</div>
           </div>
         </div>
-        <button type="button" class="modal-close-icon" onclick="closeProxyRouteEditor()" aria-label="关闭">
+        <button type="button" class="modal-close-icon" aria-label="关闭" data-action="closeProxyRouteEditor">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
             stroke-linecap="round" stroke-linejoin="round">
             <path d="M18 6 6 18"></path>
@@ -45,7 +45,7 @@
                   <circle cx="11" cy="11" r="8"></circle>
                   <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
                 </svg>
-                <input id="proxyRouteProviderSearch" type="text" placeholder="搜索供应商" oninput="onProxyRouteProviderSearch()">
+                <input id="proxyRouteProviderSearch" type="text" placeholder="搜索供应商" data-action="onProxyRouteProviderSearch" data-events="input">
               </label>
               <div id="proxyRouteProviderList" class="proxy-route-provider-list"></div>
             </aside>
@@ -56,8 +56,8 @@
                   <span id="proxyRouteModelProviderSub">右侧会展示该供应商的模型</span>
                 </div>
                 <div class="proxy-route-model-actions">
-                  <button type="button" class="btn-ghost" id="proxyRouteSelectAllBtn" onclick="selectAllProxyRouteModels()" disabled>全选</button>
-                  <button type="button" class="btn-ghost" id="proxyRouteSelectNoneBtn" onclick="selectNoProxyRouteModels()" disabled>全不选</button>
+                  <button type="button" class="btn-ghost" id="proxyRouteSelectAllBtn" disabled data-action="selectAllProxyRouteModels">全选</button>
+                  <button type="button" class="btn-ghost" id="proxyRouteSelectNoneBtn" disabled data-action="selectNoProxyRouteModels">全不选</button>
                 </div>
               </div>
               <div id="proxyRouteModelList" class="proxy-route-model-list"></div>
@@ -79,11 +79,11 @@
             <div class="proxy-route-editor-grid proxy-route-editor-upstream-grid">
               <label>
                 <span>上游供应商</span>
-                <select id="proxyRoutePrimaryProviderInput" onchange="updateProxyRouteTarget(0, 'providerId', this.value)"></select>
+                <select id="proxyRoutePrimaryProviderInput" data-action="updateProxyRouteTarget" data-events="change" data-args="[0,&quot;providerId&quot;]" data-pass-value></select>
               </label>
               <label>
                 <span>实际模型</span>
-                <input id="proxyRoutePrimaryModelInput" class="field-input" type="text" placeholder="真正发给供应商的模型" onchange="updateProxyRouteTarget(0, 'model', this.value)">
+                <input id="proxyRoutePrimaryModelInput" class="field-input" type="text" placeholder="真正发给供应商的模型" data-action="updateProxyRouteTarget" data-events="change" data-args="[0,&quot;model&quot;]" data-pass-value>
               </label>
             </div>
           </div>
@@ -104,7 +104,7 @@
               <div class="proxy-route-editor-section-title">备用模型</div>
               <div class="proxy-route-editor-section-desc">主模型失败后按顺序尝试，当前主模型也会显示在链路顶部。</div>
             </div>
-            <button type="button" class="btn-ghost proxy-route-add-target-btn" onclick="openProxyRouteBackupPicker()">添加备用模型</button>
+            <button type="button" class="btn-ghost proxy-route-add-target-btn" data-action="openProxyRouteBackupPicker">添加备用模型</button>
           </div>
           <div id="proxyRouteTargetsEditor" class="proxy-route-target-editor"></div>
         </section>
@@ -118,9 +118,9 @@
             <div class="proxy-route-editor-option-group">
               <div class="proxy-route-editor-option-group-title">接口格式</div>
               <div class="proxy-route-format-seg" id="proxyRoutePrimaryFormatInput">
-                <button type="button" class="proxy-route-format-seg-btn" data-value="" onclick="updateProxyRouteTarget(0, 'apiFormat', ''); syncProxyRouteFormatSeg('')">自动</button>
-                <button type="button" class="proxy-route-format-seg-btn" data-value="openai" onclick="updateProxyRouteTarget(0, 'apiFormat', 'openai'); syncProxyRouteFormatSeg('openai')">OpenAI</button>
-                <button type="button" class="proxy-route-format-seg-btn" data-value="anthropic" onclick="updateProxyRouteTarget(0, 'apiFormat', 'anthropic'); syncProxyRouteFormatSeg('anthropic')">Claude</button>
+                <button type="button" class="proxy-route-format-seg-btn" data-value="" data-action-chain="[{&quot;fn&quot;:&quot;updateProxyRouteTarget&quot;,&quot;args&quot;:[0,&quot;apiFormat&quot;,&quot;&quot;]},{&quot;fn&quot;:&quot;syncProxyRouteFormatSeg&quot;,&quot;args&quot;:[&quot;&quot;]}]" data-action="updateProxyRouteTarget">自动</button>
+                <button type="button" class="proxy-route-format-seg-btn" data-value="openai" data-action-chain="[{&quot;fn&quot;:&quot;updateProxyRouteTarget&quot;,&quot;args&quot;:[0,&quot;apiFormat&quot;,&quot;openai&quot;]},{&quot;fn&quot;:&quot;syncProxyRouteFormatSeg&quot;,&quot;args&quot;:[&quot;openai&quot;]}]" data-action="updateProxyRouteTarget">OpenAI</button>
+                <button type="button" class="proxy-route-format-seg-btn" data-value="anthropic" data-action-chain="[{&quot;fn&quot;:&quot;updateProxyRouteTarget&quot;,&quot;args&quot;:[0,&quot;apiFormat&quot;,&quot;anthropic&quot;]},{&quot;fn&quot;:&quot;syncProxyRouteFormatSeg&quot;,&quot;args&quot;:[&quot;anthropic&quot;]}]" data-action="updateProxyRouteTarget">Claude</button>
               </div>
             </div>
             <div class="proxy-route-editor-option-group">
@@ -140,13 +140,13 @@
           </div>
         </details>
         <label class="proxy-route-editor-rename-toggle" id="proxyRouteEditorRenameToggle" style="margin-top:8px;display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text-secondary);cursor:pointer;">
-          <input type="checkbox" id="proxyRouteEditorRenameApply" checked onchange="onProxyRouteEditorRenameApplyChange()">
+          <input type="checkbox" id="proxyRouteEditorRenameApply" checked data-action="onProxyRouteEditorRenameApplyChange" data-events="change">
           <span>按「模型 ID 命名规则」重写模型 ID</span>
         </label>
       </div>
       <div class="modal-footer proxy-route-editor-footer">
-        <button class="modal-btn modal-btn-cancel" onclick="closeProxyRouteEditor()">取消</button>
-        <button class="modal-btn modal-btn-confirm" id="proxyRouteEditorConfirmBtn" onclick="saveProxyRouteEditor()">添加到列表</button>
+        <button class="modal-btn modal-btn-cancel" data-action="closeProxyRouteEditor">取消</button>
+        <button class="modal-btn modal-btn-confirm" id="proxyRouteEditorConfirmBtn" data-action="saveProxyRouteEditor">添加到列表</button>
       </div>
     </div>
   </div>

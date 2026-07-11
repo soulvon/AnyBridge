@@ -8,7 +8,7 @@
           <h2>通知与更新</h2>
           <p>查看版本状态、GitHub 发布信息和更新提醒。</p>
         </div>
-        <button type="button" class="modal-close-icon" onclick="closeNotificationCenter()" aria-label="关闭通知中心">
+        <button type="button" class="modal-close-icon" aria-label="关闭通知中心" data-action="closeNotificationCenter">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
             stroke-linecap="round" stroke-linejoin="round">
             <path d="M18 6 6 18"></path>
@@ -52,8 +52,8 @@
         <a class="modal-btn modal-btn-cancel notification-release-link"
           href="https://github.com/soulvon/AnyBridge/releases/latest" target="_blank" rel="noreferrer">打开发布页</a>
         <button type="button" class="modal-btn modal-btn-cancel" id="notificationCheckUpdateBtn"
-          onclick="checkUpdateFromNotificationCenter()">检查更新</button>
-        <button type="button" class="modal-btn modal-btn-confirm" onclick="closeNotificationCenter()">完成</button>
+ data-action="checkUpdateFromNotificationCenter">检查更新</button>
+        <button type="button" class="modal-btn modal-btn-confirm" data-action="closeNotificationCenter">完成</button>
       </div>
     </div>
   </div>

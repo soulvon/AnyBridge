@@ -21,7 +21,7 @@
                   <span>WorkBuddy 自定义模型，支持添加、编辑、导入导出。</span>
                 </div>
                 <div class="platform-model-toolbar-actions">
-                <button class="btn-primary platform-model-btn" onclick="openWbAddModal()">
+                <button class="btn-primary platform-model-btn" data-action="openWbAddModal">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
                     stroke-linecap="round" stroke-linejoin="round">
                     <line x1="12" y1="5" x2="12" y2="19" />
@@ -30,7 +30,7 @@
                   添加模型
                 </button>
                 <button class="btn-ghost cb-bulk-delete-btn" id="wb-delete-selected-btn"
-                  onclick="deleteSelectedWbModels()" disabled title="删除勾选的模型">
+ disabled title="删除勾选的模型" data-action="deleteSelectedWbModels">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
                     stroke-linecap="round" stroke-linejoin="round">
                     <polyline points="3 6 5 6 21 6" />
@@ -40,7 +40,7 @@
                   </svg>
                   <span class="cb-bulk-delete-label">删除选中</span>
                 </button>
-                <button class="btn-ghost platform-model-btn" onclick="saveWbModels()">
+                <button class="btn-ghost platform-model-btn" data-action="saveWbModels">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
                     stroke-linecap="round" stroke-linejoin="round">
                     <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
@@ -50,8 +50,8 @@
                   保存
                 </button>
                 <button class="btn-ghost buddy-sync-toggle platform-model-btn" id="wb-sync-buddy-btn" data-buddy-sync-toggle
-                  aria-pressed="false" onclick="toggleTencentBuddySync('workbuddy')"
-                  title="开启同步 CodeBuddy">
+ aria-pressed="false"
+ title="开启同步 CodeBuddy" data-action="toggleTencentBuddySync" data-arg="workbuddy">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
                     stroke-linecap="round" stroke-linejoin="round">
                     <path d="M10 13a5 5 0 0 0 7.07 0l3-3a5 5 0 0 0-7.07-7.07l-1.7 1.7" />
@@ -59,8 +59,8 @@
                   </svg>
                   <span class="model-action-label">同步 CodeBuddy</span>
                 </button>
-                <button class="btn-ghost platform-model-btn-icon" onclick="loadWbModels()"
-                  title="刷新">
+                <button class="btn-ghost platform-model-btn-icon"
+ title="刷新" data-action="loadWbModels">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
                     stroke-linecap="round" stroke-linejoin="round">
                     <polyline points="23 4 23 10 17 10" />
@@ -69,8 +69,8 @@
                   </svg>
                 </button>
                 <span class="platform-model-divider"></span>
-                <button class="btn-ghost platform-model-btn" onclick="exportWbModels()"
-                  title="导出">
+                <button class="btn-ghost platform-model-btn"
+ title="导出" data-action="exportWbModels">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
                     stroke-linecap="round" stroke-linejoin="round">
                     <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
@@ -78,8 +78,8 @@
                     <line x1="12" y1="15" x2="12" y2="3" />
                   </svg>
                 </button>
-                <button class="btn-ghost platform-model-btn" onclick="document.getElementById('wb-import-file').click()"
-                  title="导入">
+                <button class="btn-ghost platform-model-btn"
+ title="导入" data-click-id="wb-import-file">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
                     stroke-linecap="round" stroke-linejoin="round">
                     <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
@@ -88,9 +88,9 @@
                   </svg>
                 </button>
                 <input type="file" id="wb-import-file" accept=".json" style="display:none;"
-                  onchange="importWbModels(event)">
-                <button class="btn-ghost platform-model-btn-icon" data-json-toggle="wb" aria-pressed="false" onclick="toggleWbJsonEditor()"
-                  title="JSON 编辑">
+ data-action="importWbModels" data-events="change" data-pass-event>
+                <button class="btn-ghost platform-model-btn-icon" data-json-toggle="wb" aria-pressed="false"
+ title="JSON 编辑" data-action="toggleWbJsonEditor">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
                     stroke-linecap="round" stroke-linejoin="round">
                     <polyline points="16 18 22 12 16 6" />
@@ -108,7 +108,7 @@
                     <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
                   </svg>
                   <input type="text" id="wb-model-search" placeholder="搜索模型、供应商或 URL"
-                    oninput="onWbModelSearch()">
+ data-action="onWbModelSearch" data-events="input">
                 </label>
                 <span class="platform-model-count-pill" id="wb-model-count">共 0 个</span>
               </div>
@@ -129,7 +129,7 @@
                 </div>
                 <div class="wb-empty-title">尚未配置自定义模型</div>
                 <div class="wb-empty-subtitle">添加第一个模型，让 WorkBuddy 使用你指定的 AI 供应商与模型能力。</div>
-                <button type="button" class="btn-primary wb-empty-action" onclick="openWbAddModal()">
+                <button type="button" class="btn-primary wb-empty-action" data-action="openWbAddModal">
                   <svg viewBox="0 0 24 24">
                     <line x1="12" y1="5" x2="12" y2="19" />
                     <line x1="5" y1="12" x2="19" y2="12" />
@@ -156,7 +156,7 @@
                 <thead>
                   <tr>
                     <th class="cb-select-head"><input type="checkbox" id="wb-select-all" aria-label="选择当前列表"
-                        title="选择当前列表" onchange="toggleCbModelSelectAll('Wb', this.checked)"></th>
+ title="选择当前列表" data-action="toggleCbModelSelectAll" data-events="change" data-args="[&quot;Wb&quot;]" data-pass-checked></th>
                     <th>模型 ID</th>
                     <th>供应商</th>
                     <th>能力</th>
@@ -175,11 +175,11 @@
               <h2 style="font-size:14px; font-weight:700; margin:0;">JSON 编辑器</h2>
               <div style="display:flex; gap:8px;">
                 <button class="btn-ghost" style="padding:4px 12px; font-size:12px;"
-                  onclick="formatWbJson()">格式化</button>
+ data-action="formatWbJson">格式化</button>
                 <button class="btn-primary" style="padding:4px 12px; font-size:12px;"
-                  onclick="applyWbJson()">应用</button>
+ data-action="applyWbJson">应用</button>
                 <button class="btn-ghost" style="padding:4px 12px; font-size:12px;"
-                  onclick="toggleWbJsonEditor()">返回列表</button>
+ data-action="toggleWbJsonEditor">返回列表</button>
               </div>
             </div>
             <div id="wb-json-editor-wrap" class="wb-json-editor-wrap model-json-panel">
@@ -209,13 +209,13 @@
                   </span>
                   <span>从供应商添加模型</span>
                 </div>
-                <button class="modal-close" onclick="closeWbAddModal()" aria-label="关闭">&times;</button>
+                <button class="modal-close" aria-label="关闭" data-action="closeWbAddModal">&times;</button>
               </div>
               <div style="padding:4px 0 16px;">
                 <div class="platform-field" style="margin-bottom:14px;">
                   <label for="wb-add-provider">选择供应商</label>
-                  <select class="platform-provider-select" id="wb-add-provider" onchange="onWbAddProviderChange()"
-                    style="width:100%;">
+                  <select class="platform-provider-select" id="wb-add-provider"
+ style="width:100%;" data-action="onWbAddProviderChange" data-events="change">
                     <option value="">-- 请选择 --</option>
                   </select>
                 </div>
@@ -243,8 +243,8 @@
                 </div>
               </div>
               <div class="platform-actions" style="margin-top:0; justify-content:flex-end;">
-                <button class="btn-ghost" onclick="closeWbAddModal()">取消</button>
-                <button class="btn-primary" id="wb-add-confirm" onclick="confirmAddWbModels()" disabled>添加选中模型</button>
+                <button class="btn-ghost" data-action="closeWbAddModal">取消</button>
+                <button class="btn-primary" id="wb-add-confirm" disabled data-action="confirmAddWbModels">添加选中模型</button>
               </div>
             </div>
           </div>
@@ -272,10 +272,10 @@
                 </div>
               </div>
               <div class="model-slots-actions" style="display:flex; gap:8px;">
-                <button class="btn-ghost" onclick="closeCbEditModal()"
-                  style="border-radius:10px; padding:0 16px; font-size:13px; font-weight:600; height:36px;">取消</button>
-                <button class="btn-primary" onclick="saveCbEditFromModal()"
-                  style="border-radius:10px; padding:0 18px; font-size:13px; font-weight:600; height:36px; display:flex; align-items:center; gap:6px;">
+                <button class="btn-ghost"
+ style="border-radius:10px; padding:0 16px; font-size:13px; font-weight:600; height:36px;" data-action="closeCbEditModal">取消</button>
+                <button class="btn-primary"
+ style="border-radius:10px; padding:0 18px; font-size:13px; font-weight:600; height:36px; display:flex; align-items:center; gap:6px;" data-action="saveCbEditFromModal">
                   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
                     stroke-linecap="round" stroke-linejoin="round">
                     <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>
