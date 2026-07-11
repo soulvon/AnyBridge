@@ -576,13 +576,6 @@ fn cdp_listening_slow() -> bool {
     cdp_listening_on_port(current_cdp_port(), Duration::from_secs(2))
 }
 
-fn cdp_listening_with_timeout(timeout: Duration) -> bool {
-    match http_get_local(current_cdp_port(), "/json", timeout) {
-        Ok(_) => true,
-        Err(_) => false,
-    }
-}
-
 /// 探测指定端口是否在监听（动态端口用）
 fn cdp_listening_on_port(port: u16, timeout: Duration) -> bool {
     match http_get_local(port, "/json", timeout) {
@@ -1276,6 +1269,10 @@ pub fn spawn_codex_desktop_watcher(app: AppHandle) {
 
 #[cfg(target_os = "windows")]
 const WATCHER_INTERVAL: Duration = Duration::from_secs(3);
+/// 启动宽限期：AnyBridge 启动后这段时间内 watcher 只做非破坏性操作（补注入），
+/// 不做 takeover（kill + 重启），避免「打开 AnyBridge → Codex 被杀重启」的体验。
+#[cfg(target_os = "windows")]
+const WATCHER_STARTUP_GRACE: Duration = Duration::from_secs(15);
 /// takeover 成功后冷却：防止接管刚完成的 Codex 在 renderer 加载期间被误判重新接管。
 /// 之前 30s 太长，用户重开 Codex 后要等冷却到期才检测，体感慢。http_get_local
 /// 修了 keep-alive 误判后，5s 足够 Codex 稳定。
@@ -1288,18 +1285,20 @@ const WATCHER_COOLDOWN_AFTER_FAILURE: Duration = Duration::from_secs(30);
 #[cfg(target_os = "windows")]
 fn watch_loop(app: AppHandle) {
     let mut cooldown_until: Option<Instant> = None;
+    let started_at = Instant::now();
     loop {
-        run_watcher_tick(&app, &mut cooldown_until);
+        run_watcher_tick(&app, &mut cooldown_until, started_at);
         std::thread::sleep(WATCHER_INTERVAL);
     }
 }
 
 /// 单次检查逻辑。
 /// watcher 只在"当前 Codex 配置需要 CDP 注入（injectModels=true）"时才工作。
-/// injectModels=false 时，整条 CDP 流程不触发——不检测 9229、不接管、不补注入。
+/// injectModels=false 时，整条 CDP 流程不触发——不检测 CDP、不接管、不补注入。
 /// 且必须确认 Desktop UI 宿主在跑；仅有 app-server/CLI 不算。
+/// 启动宽限期内（WATCHER_STARTUP_GRACE）不做 takeover，避免打开 AnyBridge 就杀 Codex。
 #[cfg(target_os = "windows")]
-fn run_watcher_tick(app: &AppHandle, cooldown_until: &mut Option<Instant>) {
+fn run_watcher_tick(app: &AppHandle, cooldown_until: &mut Option<Instant>, started_at: Instant) {
     if !codex_needs_cdp_injection() {
         *cooldown_until = None;
         return;
@@ -1319,7 +1318,7 @@ fn run_watcher_tick(app: &AppHandle, cooldown_until: &mut Option<Instant>) {
     }
 
     if cdp_listening_slow() {
-        // 9229 通 → 检查 patch 是否在
+        // CDP 通 → 检查 patch 是否在
         if sidecar_injection_present() {
             return; // 一切正常
         }
@@ -1343,7 +1342,12 @@ fn run_watcher_tick(app: &AppHandle, cooldown_until: &mut Option<Instant>) {
         return;
     }
 
-    // 9229 不通（用户手动重开 Desktop，没带 CDP）→ takeover
+    // CDP 不通（用户手动重开 Desktop，没带 CDP）→ takeover
+    // 启动宽限期内跳过 takeover，避免打开 AnyBridge 就自动杀重启 Codex
+    if Instant::now() - started_at < WATCHER_STARTUP_GRACE {
+        eprintln!("[codex-desktop watcher] 启动宽限期内，跳过 takeover");
+        return;
+    }
     eprintln!("[codex-desktop watcher] 检测到 Codex Desktop 未以 CDP 模式运行，自动接管…");
     let ok = takeover(app);
     if ok {

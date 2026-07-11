@@ -2334,27 +2334,29 @@ pub fn kill_sidecar_process() {
         // (release 模式这步是多余的,因为 node 进程由 exe 启动,exe 退出时 node 也会退出)
         #[cfg(debug_assertions)]
         {
-            let out = std::process::Command::new("wmic")
-                .args([
-                    "process",
-                    "where",
-                    "name='node.exe'",
-                    "get",
-                    "CommandLine,ProcessId",
-                    "/format:csv",
-                ])
+            // wmic 在 Win11 已弃用，改用 PowerShell Get-CimInstance
+            let ps_script = r#"
+$ErrorActionPreference = 'SilentlyContinue'
+Get-CimInstance Win32_Process -Filter "name='node.exe'" |
+  Select-Object ProcessId, CommandLine |
+  ForEach-Object { "$($_.ProcessId),$($_.CommandLine)" }
+"#;
+            let out = std::process::Command::new("powershell")
+                .args(["-NoProfile", "-NonInteractive", "-Command", ps_script])
                 .creation_flags(CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP)
                 .output();
             if let Ok(o) = out {
                 if o.status.success() {
                     let text = String::from_utf8_lossy(&o.stdout);
                     for line in text.lines() {
-                        // CommandLine 含 "proxy-entry.js" 或 "sidecar\\" 的是 dev sidecar
+                        let line = line.trim();
+                        if line.is_empty() { continue; }
+                        // 格式: "PID,CommandLine"
                         if line.contains("proxy-entry.js")
                             || line.contains("sidecar\\hybrid-server.js")
                         {
-                            // 提 ProcessId (CSV 第二列,索引 1)
-                            if let Some(pid_str) = line.split(',').nth(1) {
+                            // 提 ProcessId (第一个逗号前)
+                            if let Some(pid_str) = line.split(',').next() {
                                 if let Ok(pid) = pid_str.trim().parse::<u32>() {
                                     let _ = std::process::Command::new("taskkill")
                                         .args(["/F", "/T", "/PID", &pid.to_string()])

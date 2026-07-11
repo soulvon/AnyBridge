@@ -42,7 +42,20 @@ function writeJsonAtomic(file, data) {
   fs.mkdirSync(dir, { recursive: true });
   const tmp = `${file}.tmp-${process.pid}-${Date.now()}`;
   fs.writeFileSync(tmp, JSON.stringify(data, null, 2), 'utf8');
-  fs.renameSync(tmp, file);
+  // Windows 上目标文件可能被杀毒软件/索引服务短暂锁定，rename 会 EPERM。
+  // 重试 3 次，每次间隔 100ms。
+  let lastErr;
+  for (let i = 0; i < 3; i++) {
+    try {
+      fs.renameSync(tmp, file);
+      return;
+    } catch (e) {
+      lastErr = e;
+      if (i < 2) { const t = Date.now() + 100; while (Date.now() < t) {} }
+    }
+  }
+  try { fs.unlinkSync(tmp); } catch {}
+  throw lastErr;
 }
 
 function cleanApiPath(value) {

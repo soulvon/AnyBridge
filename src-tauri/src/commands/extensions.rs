@@ -1675,7 +1675,7 @@ pub fn maybe_auto_start_cpa_suite() {
     tauri::async_runtime::spawn(async move {
         let enabled = tauri::async_runtime::spawn_blocking(is_cpa_auto_start_enabled)
             .await
-            .unwrap_or(true);
+            .unwrap_or(false);
         if !enabled {
             return;
         }
