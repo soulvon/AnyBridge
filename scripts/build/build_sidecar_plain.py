@@ -129,15 +129,21 @@ def main():
 
     new = os.path.join(OUT_DIR, sidecar_filename)
     if os.path.exists(old):
+        if os.path.exists(new):
+            os.remove(new)
         shutil.move(old, new)
         if os_name != "windows":
             os.chmod(new, 0o755)
         print(f"[out] {new}")
     else:
         # 列出 OUT_DIR 帮助排查
-        print(f"[warn] expected {old} not found")
+        print(f"[error] expected {old} not found")
         for f in os.listdir(OUT_DIR):
             print(f"  found: {f}")
+        raise RuntimeError(f"pkg output missing: expected {old}")
+
+    if not os.path.isfile(new) or os.path.getsize(new) == 0:
+        raise RuntimeError(f"sidecar output invalid or empty: {new}")
 
     print("[done] Plain sidecar built.")
 
