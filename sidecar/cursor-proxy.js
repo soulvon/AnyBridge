@@ -3625,7 +3625,18 @@ function writeJsonAtomically(file, value) {
   fs.mkdirSync(dir, { recursive: true });
   const tmp = `${file}.${process.pid}.${Date.now()}.tmp`;
   fs.writeFileSync(tmp, JSON.stringify(value, null, 2));
-  fs.renameSync(tmp, file);
+  let lastErr;
+  for (let i = 0; i < 3; i++) {
+    try {
+      fs.renameSync(tmp, file);
+      return;
+    } catch (e) {
+      lastErr = e;
+      if (i < 2) { const t = Date.now() + 100; while (Date.now() < t) {} }
+    }
+  }
+  try { fs.unlinkSync(tmp); } catch {}
+  throw lastErr;
 }
 
 function nextCursorTurnIndex(turnsDir) {

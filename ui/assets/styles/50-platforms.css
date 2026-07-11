@@ -88,57 +88,35 @@
   stroke: currentColor;
 }
 
-/* 刷新状态：中性 ghost，略强调边框，不抢主操作 */
+/* 刷新状态：主色蓝描边 outline 风格 */
 .platform-console-actions .platform-refresh-proxy {
-  color: var(--text-secondary);
-  border-color: color-mix(in srgb, var(--border-strong, var(--border)) 88%, var(--accent) 12%);
-  background: color-mix(in srgb, var(--bg-card, #fff) 92%, var(--accent-light, rgba(18, 97, 166, 0.08)) 8%);
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--border) 55%);
+  background: var(--accent-light);
 }
 
 .platform-console-actions .platform-refresh-proxy:hover:not(:disabled) {
-  color: var(--accent);
-  border-color: color-mix(in srgb, var(--accent) 42%, var(--border) 58%);
-  background: var(--accent-light, rgba(18, 97, 166, 0.10));
+  color: var(--accent-hover);
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent-light) 60%, var(--accent) 10%);
 }
 
-/* 停止接入：已接入时危险红描边 */
-.platform-console-actions .platform-stop-proxy.is-danger:not(:disabled) {
-  color: var(--danger);
-  border-color: color-mix(in srgb, var(--danger) 72%, var(--border) 28%);
-  background: var(--danger-dim);
-  font-weight: 650;
-}
-
-.platform-console-actions .platform-stop-proxy.is-danger:hover:not(:disabled) {
-  color: var(--danger);
-  border-color: var(--danger);
-  background: color-mix(in srgb, var(--danger-dim) 70%, var(--danger) 12%);
-}
-
+/* 停止接入：btn-danger 实心红，禁用时淡化 */
 .platform-console-actions .platform-stop-proxy:disabled {
-  color: var(--text-muted);
-  border-color: var(--border);
-  background: transparent;
-  opacity: 0.72;
+  opacity: 0.5;
   cursor: not-allowed;
 }
 
 [data-theme="dark"] .platform-console-actions .platform-refresh-proxy {
-  background: rgba(255, 255, 255, 0.04);
-  border-color: rgba(255, 255, 255, 0.12);
-  color: var(--text-secondary);
-}
-
-[data-theme="dark"] .platform-console-actions .platform-refresh-proxy:hover:not(:disabled) {
   color: var(--accent);
-  border-color: color-mix(in srgb, var(--accent) 48%, rgba(255, 255, 255, 0.12) 52%);
+  border-color: color-mix(in srgb, var(--accent) 40%, rgba(255, 255, 255, 0.12) 60%);
   background: var(--accent-light);
 }
 
-[data-theme="dark"] .platform-console-actions .platform-stop-proxy.is-danger:not(:disabled) {
-  color: var(--danger);
-  border-color: color-mix(in srgb, var(--danger) 65%, rgba(255, 255, 255, 0.12) 35%);
-  background: var(--danger-dim);
+[data-theme="dark"] .platform-console-actions .platform-refresh-proxy:hover:not(:disabled) {
+  color: var(--accent-hover);
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent-light) 50%, var(--accent) 15%);
 }
 
 .platform-kite-ad {
@@ -733,8 +711,8 @@
 
 .proxy-logs-box .log-body {
   flex: 1 1 auto;
-  height: min(34vh, 360px);
-  min-height: 260px;
+  height: min(48vh, 480px);
+  min-height: 320px;
   border-radius: 0 0 11px 11px;
 }
 
@@ -4371,6 +4349,15 @@ button.codex-reconfigure-action:disabled {
   color: var(--text-muted);
 }
 
+/* 所有平台页：禁用全局 fadeUp 进入动画，避免 glass-card 切页时闪烁 */
+[id^="page-platform-"].active {
+  animation: none;
+}
+[id^="page-platform-"] .glass-card {
+  transform: translateZ(0);
+  backface-visibility: hidden;
+}
+
 /* 控制栏 */
 .platform-model-toolbar {
   display: grid !important;
@@ -7785,15 +7772,6 @@ td.display-name-cell {
   width: 118px;
   height: 36px;
   justify-content: center;
-  color: var(--danger);
-}
-.proxy-routes-delete-selected:disabled {
-  display: inline-flex;
-  opacity: 0.48;
-}
-.proxy-routes-delete-selected:not(:disabled) {
-  border-color: rgba(239, 68, 68, 0.28);
-  background: rgba(239, 68, 68, 0.08);
 }
 @media (max-width: 1120px) {
   .proxy-routes-hero {

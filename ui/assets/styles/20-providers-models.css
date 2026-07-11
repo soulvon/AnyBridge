@@ -344,13 +344,6 @@
   font-weight: 700;
   white-space: nowrap;
 }
-.provider-bulk-btn.danger {
-  color: var(--danger);
-}
-.provider-bulk-btn.danger:not(:disabled):hover {
-  border-color: rgba(212, 61, 61, 0.28);
-  background: var(--danger-dim);
-}
 
 /* ═══════ PROVIDER IMPORT ═══════ */
 #provider-import-modal .provider-import-modal {
@@ -2158,22 +2151,6 @@ html[data-theme="dark"] .model-item-icon-image .model-icon-image-dark {
   font-size: 12px;
   font-weight: 750;
 }
-#modelMapBulkDeleteBtn.btn-ghost {
-  min-width: 98px;
-  color: var(--danger);
-}
-#modelMapBulkDeleteBtn.btn-ghost:not(:disabled) {
-  border-color: rgba(239, 68, 68, 0.28);
-  background: rgba(239, 68, 68, 0.08);
-}
-[data-theme="dark"] #modelMapBulkDeleteBtn.btn-ghost:not(:disabled) {
-  background: rgba(239, 68, 68, 0.10);
-  border-color: rgba(239, 68, 68, 0.30);
-}
-[data-theme="dark"] #modelMapBulkDeleteBtn.btn-ghost:not(:disabled):hover {
-  background: rgba(239, 68, 68, 0.16);
-  border-color: rgba(239, 68, 68, 0.40);
-}
 .model-map-search {
   position: relative;
   display: flex;
@@ -2224,11 +2201,6 @@ html[data-theme="dark"] .model-item-icon-image .model-icon-image-dark {
   height: 36px;
   border-radius: 10px;
   white-space: nowrap;
-}
-.model-map-bulk-actions .provider-bulk-btn.danger:not(:disabled) {
-  border-color: rgba(239, 68, 68, 0.28);
-  background: rgba(239, 68, 68, 0.08);
-  color: var(--danger);
 }
 .model-map-bulk-actions .provider-bulk-btn:disabled {
   opacity: 0.48;

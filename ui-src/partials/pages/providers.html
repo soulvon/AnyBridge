@@ -4,7 +4,7 @@
             <div class="provider-toolbar-main">
               <div class="card-title"><span class="dot"></span> API 供应商</div>
               <div class="provider-toolbar-actions">
-                <button class="btn-ghost provider-toolbar-btn" data-action="openEvalWorkbenchPage">
+                <button class="btn-ghost accent provider-toolbar-btn" data-action="openEvalWorkbenchPage">
                   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
                     stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                     <path
@@ -15,7 +15,7 @@
                   </svg>
                   <span>模型检测</span>
                 </button>
-                <button class="btn-ghost provider-toolbar-btn" id="provider-import-open-btn"
+                <button class="btn-ghost accent provider-toolbar-btn" id="provider-import-open-btn"
  data-action="openProviderImportModal">
                   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
                     stroke-linecap="round" stroke-linejoin="round">
@@ -107,13 +107,13 @@
               </div>
               <div class="provider-bulk-actions">
                 <span class="provider-bulk-count" id="providerBulkCount">未选择</span>
-                <button class="btn-ghost provider-bulk-btn" id="providerSelectVisibleBtn"
+                <button class="btn-ghost secondary provider-bulk-btn" id="providerSelectVisibleBtn"
  disabled data-action="toggleVisibleProvidersSelection">选择当前</button>
-                <button class="btn-ghost provider-bulk-btn" id="providerBulkEnableBtn"
+                <button class="btn-ghost success provider-bulk-btn" id="providerBulkEnableBtn"
  disabled data-action="setSelectedProvidersEnabled" data-args="[true]">启用</button>
-                <button class="btn-ghost provider-bulk-btn" id="providerBulkDisableBtn"
+                <button class="btn-ghost warn provider-bulk-btn" id="providerBulkDisableBtn"
  disabled data-action="setSelectedProvidersEnabled" data-args="[false]">禁用</button>
-                <button class="btn-ghost provider-bulk-btn danger" id="providerBulkDeleteBtn"
+                <button class="btn-ghost danger provider-bulk-btn" id="providerBulkDeleteBtn"
  disabled data-action="deleteSelectedProviders">删除</button>
               </div>
             </div>

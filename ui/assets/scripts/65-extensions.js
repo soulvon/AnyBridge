@@ -449,16 +449,16 @@ function getCpaActionConfig(status, hasUpdate) {
     case 'not-installed':
       return {
         primary: { label: '一键部署', action: 'install-cpa' },
-        secondary: [{ label: '设置', action: 'settings' }]
+        secondary: [{ label: '设置', action: 'settings', cls: 'secondary' }]
       };
     case 'installed':
       return {
         primary: { label: '启动', action: 'start-cpa-suite' },
         secondary: [
-          { label: '切换版本', action: 'switch-cpa-version' },
-          { label: '卸载', action: 'uninstall-cpa-suite', danger: true },
-          { label: '检测更新', action: 'check-cpa-update' },
-          { label: '设置', action: 'settings' }
+          { label: '切换版本', action: 'switch-cpa-version', cls: 'secondary' },
+          { label: '卸载', action: 'uninstall-cpa-suite', danger: true, cls: 'danger' },
+          { label: '检测更新', action: 'check-cpa-update', cls: 'accent' },
+          { label: '设置', action: 'settings', cls: 'secondary' }
         ]
       };
     case 'running':
@@ -466,36 +466,36 @@ function getCpaActionConfig(status, hasUpdate) {
         return {
           primary: { label: '更新', action: 'update-cpa-suite' },
           secondary: [
-            { label: '打开面板', action: 'open-cpamp' },
-            { label: '切换版本', action: 'switch-cpa-version' },
-            { label: '停止', action: 'stop-cpa-suite' },
-            { label: '设置', action: 'settings' }
+            { label: '打开面板', action: 'open-cpamp', cls: 'accent' },
+            { label: '切换版本', action: 'switch-cpa-version', cls: 'secondary' },
+            { label: '停止', action: 'stop-cpa-suite', cls: 'warn' },
+            { label: '设置', action: 'settings', cls: 'secondary' }
           ]
         };
       }
       return {
         primary: { label: '打开面板', action: 'open-cpamp' },
         secondary: [
-          { label: '停止', action: 'stop-cpa-suite' },
-          { label: '切换版本', action: 'switch-cpa-version' },
-          { label: '检测更新', action: 'check-cpa-update' },
-          { label: '设置', action: 'settings' }
+          { label: '停止', action: 'stop-cpa-suite', cls: 'warn' },
+          { label: '切换版本', action: 'switch-cpa-version', cls: 'secondary' },
+          { label: '检测更新', action: 'check-cpa-update', cls: 'accent' },
+          { label: '设置', action: 'settings', cls: 'secondary' }
         ]
       };
     case 'degraded':
       return {
         primary: { label: '重启', action: 'restart-cpa-suite' },
         secondary: [
-          { label: '切换版本', action: 'switch-cpa-version' },
-          { label: '停止', action: 'stop-cpa-suite' },
-          { label: '卸载', action: 'uninstall-cpa-suite', danger: true },
-          { label: '设置', action: 'settings' }
+          { label: '切换版本', action: 'switch-cpa-version', cls: 'secondary' },
+          { label: '停止', action: 'stop-cpa-suite', cls: 'warn' },
+          { label: '卸载', action: 'uninstall-cpa-suite', danger: true, cls: 'danger' },
+          { label: '设置', action: 'settings', cls: 'secondary' }
         ]
       };
     case 'error':
       return {
         primary: { label: '刷新状态', action: 'refresh' },
-        secondary: [{ label: '设置', action: 'settings' }]
+        secondary: [{ label: '设置', action: 'settings', cls: 'secondary' }]
       };
     case 'installing':
       return {
@@ -505,17 +505,17 @@ function getCpaActionConfig(status, hasUpdate) {
     case 'starting':
       return {
         primary: { label: '启动中...', action: null, disabled: true },
-        secondary: [{ label: '设置', action: 'settings' }]
+        secondary: [{ label: '设置', action: 'settings', cls: 'secondary' }]
       };
     case 'stopping':
       return {
         primary: { label: '停止中...', action: null, disabled: true },
-        secondary: [{ label: '设置', action: 'settings' }]
+        secondary: [{ label: '设置', action: 'settings', cls: 'secondary' }]
       };
     case 'updating':
       return {
         primary: { label: '更新中...', action: null, disabled: true },
-        secondary: [{ label: '设置', action: 'settings' }]
+        secondary: [{ label: '设置', action: 'settings', cls: 'secondary' }]
       };
     case 'uninstalling':
       return {
@@ -525,12 +525,12 @@ function getCpaActionConfig(status, hasUpdate) {
     case 'checking':
       return {
         primary: { label: '检测中...', action: null, disabled: true },
-        secondary: [{ label: '设置', action: 'settings' }]
+        secondary: [{ label: '设置', action: 'settings', cls: 'secondary' }]
       };
     default:
       return {
         primary: { label: '一键部署', action: 'install-cpa' },
-        secondary: [{ label: '设置', action: 'settings' }]
+        secondary: [{ label: '设置', action: 'settings', cls: 'secondary' }]
       };
   }
 }
@@ -567,7 +567,7 @@ function renderCpaActions(status, _installed, hasUpdate) {
   (config.secondary || []).forEach(btn => {
     const el = document.createElement('button');
     el.type = 'button';
-    el.className = btn.danger ? 'btn-ghost extension-action-danger' : 'btn-ghost';
+    el.className = 'btn-ghost' + (btn.cls ? ' ' + btn.cls : '');
     el.textContent = btn.label;
     el.title = btn.title || '';
     bindCpaActionButton(el, btn.action);

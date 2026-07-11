@@ -29,7 +29,7 @@
                   </svg>
                   添加模型
                 </button>
-                <button class="btn-ghost cb-bulk-delete-btn" id="cb-delete-selected-btn"
+                <button class="btn-ghost danger cb-bulk-delete-btn" id="cb-delete-selected-btn"
  disabled title="删除勾选的模型" data-action="deleteSelectedCbModels">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
                     stroke-linecap="round" stroke-linejoin="round">
@@ -40,7 +40,7 @@
                   </svg>
                   <span class="cb-bulk-delete-label">删除选中</span>
                 </button>
-                <button class="btn-ghost platform-model-btn" data-action="saveCodeBuddyModels">
+                <button class="btn-ghost success platform-model-btn" data-action="saveCodeBuddyModels">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
                     stroke-linecap="round" stroke-linejoin="round">
                     <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
@@ -49,7 +49,7 @@
                   </svg>
                   保存
                 </button>
-                <button class="btn-ghost buddy-sync-toggle platform-model-btn" id="cb-sync-buddy-btn" data-buddy-sync-toggle
+                <button class="btn-ghost accent buddy-sync-toggle platform-model-btn" id="cb-sync-buddy-btn" data-buddy-sync-toggle
  aria-pressed="false"
  title="开启同步 WorkBuddy" data-action="toggleTencentBuddySync" data-arg="codebuddy">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
@@ -74,7 +74,7 @@
                 </label>
                 <span class="platform-model-count-pill" id="cb-model-count">共 0 个</span>
                 <span class="platform-model-divider"></span>
-                <button class="btn-ghost platform-model-btn-icon"
+                <button class="btn-ghost accent platform-model-btn-icon"
  title="导入" data-click-id="cb-import-file">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
                     stroke-linecap="round" stroke-linejoin="round">
@@ -85,7 +85,7 @@
                 </button>
                 <input type="file" id="cb-import-file" accept=".json" style="display:none;"
  data-action="importCbModels" data-events="change" data-pass-event>
-                <button class="btn-ghost platform-model-btn-icon"
+                <button class="btn-ghost accent platform-model-btn-icon"
  title="导出" data-action="exportCbModels">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
                     stroke-linecap="round" stroke-linejoin="round">
@@ -94,7 +94,7 @@
                     <line x1="12" y1="15" x2="12" y2="3" />
                   </svg>
                 </button>
-                <button class="btn-ghost platform-model-btn-icon" data-json-toggle="cb" aria-pressed="false"
+                <button class="btn-ghost accent platform-model-btn-icon" data-json-toggle="cb" aria-pressed="false"
  title="JSON 编辑" data-action="toggleCbJsonEditor">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
                     stroke-linecap="round" stroke-linejoin="round">
@@ -102,7 +102,7 @@
                     <polyline points="8 6 2 12 8 18" />
                   </svg>
                 </button>
-                <button class="btn-ghost platform-model-btn-icon"
+                <button class="btn-ghost accent platform-model-btn-icon"
  title="刷新" data-action="loadCodeBuddyModels">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
                     stroke-linecap="round" stroke-linejoin="round">
@@ -176,11 +176,11 @@
             <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;">
               <h2 style="font-size:14px; font-weight:700; margin:0;">JSON 编辑器</h2>
               <div style="display:flex; gap:8px;">
-                <button class="btn-ghost" style="padding:4px 12px; font-size:12px;"
+                <button class="btn-ghost accent" style="padding:4px 12px; font-size:12px;"
  data-action="formatCbJson">格式化</button>
                 <button class="btn-primary" style="padding:4px 12px; font-size:12px;"
  data-action="applyCbJson">应用</button>
-                <button class="btn-ghost" style="padding:4px 12px; font-size:12px;"
+                <button class="btn-ghost secondary" style="padding:4px 12px; font-size:12px;"
  data-action="toggleCbJsonEditor">返回列表</button>
               </div>
             </div>
@@ -245,7 +245,7 @@
                 </div>
               </div>
               <div class="platform-actions" style="margin-top:0; justify-content:flex-end;">
-                <button class="btn-ghost" data-action="closeCodeBuddyAddModal">取消</button>
+                <button class="btn-ghost secondary" data-action="closeCodeBuddyAddModal">取消</button>
                 <button class="btn-primary" id="cb-add-confirm"
  disabled data-action="confirmAddCodeBuddyModels">添加选中模型</button>
               </div>

@@ -20,13 +20,22 @@ const BYOK_VERSION_MARKER: &str = "<!-- byok-cards-v1 -->";
 const BACKUP_SUFFIX: &str = ".byok-origin";
 
 /// 原子写：同目录临时文件 + rename，避免写 workbench.html 中途崩溃留下截断 HTML。
+/// Windows 上 rename 可能因文件锁失败，重试 3 次。
 fn write_atomic(path: &PathBuf, content: &str) -> Result<(), String> {
     let tmp = PathBuf::from(format!("{}.byok-tmp", path.to_string_lossy()));
     fs::write(&tmp, content).map_err(|e| e.to_string())?;
-    fs::rename(&tmp, path).map_err(|e| {
-        let _ = fs::remove_file(&tmp);
-        e.to_string()
-    })
+    let mut last_err = String::new();
+    for i in 0..3u32 {
+        match fs::rename(&tmp, path) {
+            Ok(()) => return Ok(()),
+            Err(e) => {
+                last_err = e.to_string();
+                if i < 2 { std::thread::sleep(std::time::Duration::from_millis(50)); }
+            }
+        }
+    }
+    let _ = fs::remove_file(&tmp);
+    Err(last_err)
 }
 
 /// 从 IDE 可执行文件路径推出 workbench.html 路径。

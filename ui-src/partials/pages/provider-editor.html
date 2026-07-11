@@ -4,7 +4,7 @@
           <div class="model-slots-page">
             <div class="control-bar glass-card model-slots-head">
               <div class="model-slots-title">
-                <button class="btn-ghost model-slots-back" title="返回供应商列表" data-action="closeProviderEditor">
+                <button class="btn-ghost secondary model-slots-back" title="返回供应商列表" data-action="closeProviderEditor">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"
                     stroke-linecap="round" stroke-linejoin="round">
                     <path d="M19 12H5"></path>
@@ -17,7 +17,7 @@
                 </div>
               </div>
               <div class="model-slots-actions">
-                <button class="btn-ghost" id="provider-editor-test-btn"
+                <button class="btn-ghost accent" id="provider-editor-test-btn"
  title="测试当前 API 地址、密钥和首个已选模型是否可用" aria-label="测试连接"
  style="display:inline-flex; align-items:center; gap:6px;" data-action="testProviderInEditor">
                   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
@@ -28,7 +28,7 @@
                   </svg>
                   <span class="provider-editor-test-label">测试连接</span>
                 </button>
-                <button class="btn-ghost" data-action="closeProviderEditor">取消</button>
+                <button class="btn-ghost secondary" data-action="closeProviderEditor">取消</button>
                 <button class="btn-primary" data-action="saveProviderFromEditor">
                   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
                     stroke-linecap="round" stroke-linejoin="round">
@@ -186,12 +186,15 @@
                         <div class="model-filter-tab" data-action="changeModelTab" data-arg="reason">
                           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                             stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-                            <path
-                              d="M9.5 2A2.5 2.5 0 0 1 12 4.5v15a2.5 2.5 0 0 1-4.96-.44 2.5 2.5 0 0 1 0-3.12 3 3 0 0 1 0-4.88 2.5 2.5 0 0 1 0-3.12A2.5 2.5 0 0 1 9.5 2Z">
-                            </path>
-                            <path
-                              d="M14.5 2A2.5 2.5 0 0 0 12 4.5v15a2.5 2.5 0 0 0 4.96-.44 2.5 2.5 0 0 0 0-3.12 3 3 0 0 0 0-4.88 2.5 2.5 0 0 0 0-3.12A2.5 2.5 0 0 0 14.5 2Z">
-                            </path>
+                            <path d="M12 5a3 3 0 1 0-5.997.125 4 4 0 0 0-2.526 5.77 4 4 0 0 0 .556 6.588A4 4 0 1 0 12 18Z"></path>
+                            <path d="M12 5a3 3 0 1 1 5.997.125 4 4 0 0 1 2.526 5.77 4 4 0 0 1-.556 6.588A4 4 0 1 1 12 18Z"></path>
+                            <path d="M15 13a4.5 4.5 0 0 1-3-4 4.5 4.5 0 0 1-3 4"></path>
+                            <path d="M17.599 6.5a3 3 0 0 0 .399-1.375"></path>
+                            <path d="M6.003 5.125A3 3 0 0 0 6.401 6.5"></path>
+                            <path d="M3.477 10.896a4 4 0 0 1 .585-.396"></path>
+                            <path d="M19.938 10.5a4 4 0 0 1 .585.396"></path>
+                            <path d="M6 18a4 4 0 0 1-1.967-.516"></path>
+                            <path d="M19.967 17.484A4 4 0 0 1 18 18"></path>
                           </svg>
                           <span>推理</span>
                         </div>

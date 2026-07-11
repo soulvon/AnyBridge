@@ -109,11 +109,20 @@ pub(crate) fn apply_system_proxy(builder: reqwest::ClientBuilder) -> reqwest::Cl
 }
 
 /// 原子写：先写同目录临时文件再 rename 覆盖，避免写入中途崩溃留下截断文件。
+/// Windows 上 rename 可能因杀毒软件/索引服务锁定目标文件而 EPERM，重试 3 次。
 pub(crate) fn write_atomic(path: &Path, bytes: &[u8]) -> Result<(), String> {
     let tmp = path.with_extension("byok-tmp");
     std::fs::write(&tmp, bytes).map_err(|e| e.to_string())?;
-    std::fs::rename(&tmp, path).map_err(|e| {
-        let _ = std::fs::remove_file(&tmp);
-        e.to_string()
-    })
+    let mut last_err = String::new();
+    for i in 0..3u32 {
+        match std::fs::rename(&tmp, path) {
+            Ok(()) => return Ok(()),
+            Err(e) => {
+                last_err = e.to_string();
+                if i < 2 { std::thread::sleep(std::time::Duration::from_millis(50)); }
+            }
+        }
+    }
+    let _ = std::fs::remove_file(&tmp);
+    Err(last_err)
 }

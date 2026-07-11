@@ -29,8 +29,8 @@
                   <span class="proxy-btn-text">一键接入</span>
                 </span>
               </button>
-              <button class="btn-ghost platform-refresh-proxy" id="proxyRefreshBtn" data-action="refreshCurrentProxyPlatformStatus">刷新状态</button>
-              <button class="btn-ghost platform-stop-proxy" id="proxyRestoreBtn" data-action="restoreCurrentProxyPlatformDirect">停止接入</button>
+              <button class="btn-ghost accent platform-refresh-proxy" id="proxyRefreshBtn" data-action="refreshCurrentProxyPlatformStatus">刷新状态</button>
+              <button class="btn-ghost danger platform-stop-proxy" id="proxyRestoreBtn" data-action="restoreCurrentProxyPlatformDirect">停止接入</button>
             </div>
           </section>
           <div class="control-bar glass-card model-map-control-bar">
@@ -48,11 +48,11 @@
                   </svg>
                   添加映射
                 </button>
-                <button class="btn-ghost model-map-command-btn" id="modelMapBulkDeleteBtn"
+                <button class="btn-ghost danger model-map-command-btn" id="modelMapBulkDeleteBtn"
  disabled data-action="batchDeleteSelectedSlots">
                   删除选中
                 </button>
-                <button class="btn-ghost platform-model-btn-icon"
+                <button class="btn-ghost accent platform-model-btn-icon"
  title="刷新映射列表" aria-label="刷新映射列表" data-action-chain="[{&quot;fn&quot;:&quot;renderModelMap&quot;},{&quot;fn&quot;:&quot;addLog&quot;,&quot;args&quot;:[&quot;info&quot;,&quot;已刷新映射列表&quot;]}]" data-action="renderModelMap">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
                     stroke-linecap="round" stroke-linejoin="round">
@@ -61,7 +61,7 @@
                     <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
                   </svg>
                 </button>
-                <button class="btn-ghost model-map-command-btn" title="管理模型槽位的解锁、显示范围和 BYOK 路由。" data-action="openInjectedEditor">
+                <button class="btn-ghost secondary model-map-command-btn" title="管理模型槽位的解锁、显示范围和 BYOK 路由。" data-action="openInjectedEditor">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"
                     stroke-linecap="round" stroke-linejoin="round">
                     <path d="M12 2L2 7l10 5 10-5-10-5z"></path>
@@ -70,7 +70,7 @@
                   </svg>
                   <span id="injected-count-badge">槽位管理</span>
                 </button>
-                <button class="btn-ghost platform-model-btn-icon" title="设置" aria-label="设置" data-action="openPlatformSection" data-arg="settings">
+                <button class="btn-ghost secondary platform-model-btn-icon" title="设置" aria-label="设置" data-action="openPlatformSection" data-arg="settings">
                   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"
                     stroke-linecap="round" stroke-linejoin="round">
                     <circle cx="12" cy="12" r="3"></circle>
@@ -90,13 +90,13 @@
               </label>
               <span class="model-map-count-pill" id="modelMapBulkCount">共 0 个</span>
               <div class="model-map-bulk-actions">
-                <button class="btn-ghost provider-bulk-btn" id="modelMapSelectVisibleBtn"
+                <button class="btn-ghost secondary provider-bulk-btn" id="modelMapSelectVisibleBtn"
  disabled data-action="toggleVisibleModelMapSelection">选择当前</button>
-                <button class="btn-ghost provider-bulk-btn" id="modelMapBulkEnableBtn"
+                <button class="btn-ghost success provider-bulk-btn" id="modelMapBulkEnableBtn"
  disabled data-action="batchSetSelectedSlotsEnabled" data-args="[true]">启用</button>
-                <button class="btn-ghost provider-bulk-btn" id="modelMapBulkDisableBtn"
+                <button class="btn-ghost warn provider-bulk-btn" id="modelMapBulkDisableBtn"
  disabled data-action="batchSetSelectedSlotsEnabled" data-args="[false]">停用</button>
-                <button class="btn-ghost provider-bulk-btn" id="modelMapBulkVisionBtn"
+                <button class="btn-ghost accent provider-bulk-btn" id="modelMapBulkVisionBtn"
  disabled data-action="batchSetSelectedSlotsThirdPartyVision" data-args="[true]">启用第三方图片</button>
               </div>
             </div>
@@ -123,7 +123,7 @@
                   <th>
                     <span class="model-map-display-head">
                       <span>显示名</span>
-                      <button class="btn-ghost model-map-settings-btn"
+                      <button class="btn-ghost accent model-map-settings-btn"
  title="显示名设置：前缀 / 后缀" aria-label="显示名设置：前缀 / 后缀" data-action="openModelMapSettings">
                         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                           stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
@@ -141,7 +141,7 @@
                   <th>
                     <span class="model-map-display-head">
                       <span>第三方图片理解</span>
-                      <button class="btn-ghost model-map-settings-btn"
+                      <button class="btn-ghost accent model-map-settings-btn"
  title="配置图片理解模型" aria-label="配置图片理解模型" data-action="navigateToProxyEnhancement">
                         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                           stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">

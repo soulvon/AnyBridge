@@ -29,7 +29,7 @@
                   </svg>
                   添加模型
                 </button>
-                <button class="btn-ghost cb-bulk-delete-btn" id="wb-delete-selected-btn"
+                <button class="btn-ghost danger cb-bulk-delete-btn" id="wb-delete-selected-btn"
  disabled title="删除勾选的模型" data-action="deleteSelectedWbModels">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
                     stroke-linecap="round" stroke-linejoin="round">
@@ -40,7 +40,7 @@
                   </svg>
                   <span class="cb-bulk-delete-label">删除选中</span>
                 </button>
-                <button class="btn-ghost platform-model-btn" data-action="saveWbModels">
+                <button class="btn-ghost success platform-model-btn" data-action="saveWbModels">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
                     stroke-linecap="round" stroke-linejoin="round">
                     <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
@@ -49,7 +49,7 @@
                   </svg>
                   保存
                 </button>
-                <button class="btn-ghost buddy-sync-toggle platform-model-btn" id="wb-sync-buddy-btn" data-buddy-sync-toggle
+                <button class="btn-ghost accent buddy-sync-toggle platform-model-btn" id="wb-sync-buddy-btn" data-buddy-sync-toggle
  aria-pressed="false"
  title="开启同步 CodeBuddy" data-action="toggleTencentBuddySync" data-arg="workbuddy">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
@@ -59,7 +59,7 @@
                   </svg>
                   <span class="model-action-label">同步 CodeBuddy</span>
                 </button>
-                <button class="btn-ghost platform-model-btn-icon"
+                <button class="btn-ghost accent platform-model-btn-icon"
  title="刷新" data-action="loadWbModels">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
                     stroke-linecap="round" stroke-linejoin="round">
@@ -69,7 +69,7 @@
                   </svg>
                 </button>
                 <span class="platform-model-divider"></span>
-                <button class="btn-ghost platform-model-btn"
+                <button class="btn-ghost accent platform-model-btn"
  title="导出" data-action="exportWbModels">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
                     stroke-linecap="round" stroke-linejoin="round">
@@ -78,7 +78,7 @@
                     <line x1="12" y1="15" x2="12" y2="3" />
                   </svg>
                 </button>
-                <button class="btn-ghost platform-model-btn"
+                <button class="btn-ghost accent platform-model-btn"
  title="导入" data-click-id="wb-import-file">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
                     stroke-linecap="round" stroke-linejoin="round">
@@ -89,7 +89,7 @@
                 </button>
                 <input type="file" id="wb-import-file" accept=".json" style="display:none;"
  data-action="importWbModels" data-events="change" data-pass-event>
-                <button class="btn-ghost platform-model-btn-icon" data-json-toggle="wb" aria-pressed="false"
+                <button class="btn-ghost accent platform-model-btn-icon" data-json-toggle="wb" aria-pressed="false"
  title="JSON 编辑" data-action="toggleWbJsonEditor">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
                     stroke-linecap="round" stroke-linejoin="round">
@@ -176,11 +176,11 @@
             <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;">
               <h2 style="font-size:14px; font-weight:700; margin:0;">JSON 编辑器</h2>
               <div style="display:flex; gap:8px;">
-                <button class="btn-ghost" style="padding:4px 12px; font-size:12px;"
+                <button class="btn-ghost accent" style="padding:4px 12px; font-size:12px;"
  data-action="formatWbJson">格式化</button>
                 <button class="btn-primary" style="padding:4px 12px; font-size:12px;"
  data-action="applyWbJson">应用</button>
-                <button class="btn-ghost" style="padding:4px 12px; font-size:12px;"
+                <button class="btn-ghost secondary" style="padding:4px 12px; font-size:12px;"
  data-action="toggleWbJsonEditor">返回列表</button>
               </div>
             </div>
@@ -245,7 +245,7 @@
                 </div>
               </div>
               <div class="platform-actions" style="margin-top:0; justify-content:flex-end;">
-                <button class="btn-ghost" data-action="closeWbAddModal">取消</button>
+                <button class="btn-ghost secondary" data-action="closeWbAddModal">取消</button>
                 <button class="btn-primary" id="wb-add-confirm" disabled data-action="confirmAddWbModels">添加选中模型</button>
               </div>
             </div>
@@ -274,7 +274,7 @@
                 </div>
               </div>
               <div class="model-slots-actions" style="display:flex; gap:8px;">
-                <button class="btn-ghost"
+                <button class="btn-ghost secondary"
  style="border-radius:10px; padding:0 16px; font-size:13px; font-weight:600; height:36px;" data-action="closeCbEditModal">取消</button>
                 <button class="btn-primary"
  style="border-radius:10px; padding:0 18px; font-size:13px; font-weight:600; height:36px; display:flex; align-items:center; gap:6px;" data-action="saveCbEditFromModal">

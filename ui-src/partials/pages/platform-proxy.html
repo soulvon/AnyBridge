@@ -161,10 +161,16 @@
                       <span class="tag log-count" id="logCount">0 条记录</span>
                     </div>
                     <div class="proxy-logs-actions">
-                      <button class="btn-ghost" data-action="clearLogs">清空</button>
-                      <button class="btn-ghost" data-action="exportLogs">导出</button>
-                      <button class="btn-ghost" id="logFilterBtn" data-action="cycleLogFilter">筛选: 全部 ▾</button>
+                      <button class="btn-ghost danger" data-action="clearLogs">清空</button>
+                      <button class="btn-ghost accent" data-action="exportLogs">导出</button>
                     </div>
+                  </div>
+                  <div class="log-tabs" id="proxyLogTabs">
+                    <button class="log-tab active" data-level="all" data-action="setLogFilter" data-arg="all">全部</button>
+                    <button class="log-tab" data-level="ok" data-action="setLogFilter" data-arg="ok">OK</button>
+                    <button class="log-tab" data-level="info" data-action="setLogFilter" data-arg="info">INFO</button>
+                    <button class="log-tab" data-level="warn" data-action="setLogFilter" data-arg="warn">WARN</button>
+                    <button class="log-tab" data-level="err" data-action="setLogFilter" data-arg="err">ERR</button>
                   </div>
                   <div class="log-box proxy-logs-box">
                     <div class="log-body" id="fullLog"></div>

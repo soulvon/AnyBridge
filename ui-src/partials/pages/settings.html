@@ -280,7 +280,7 @@
                         <div class="setting-label">密钥存储位置</div>
                         <div class="setting-desc">本地配置目录，仅当前用户可读</div>
                       </div>
-                      <div class="setting-ctrl"><button class="btn-ghost" data-action="openConfigDir">打开目录</button></div>
+                      <div class="setting-ctrl"><button class="btn-ghost accent" data-action="openConfigDir">打开目录</button></div>
                     </div>
                     <div class="setting-row">
                       <div>
@@ -356,7 +356,7 @@
                         <div class="setting-desc">立即尝试连线 GitHub 获取最新版本</div>
                       </div>
                       <div class="setting-ctrl">
-                        <button class="btn-ghost" id="updater-manual-btn" data-action="manualCheckUpdate">检查更新</button>
+                        <button class="btn-ghost accent" id="updater-manual-btn" data-action="manualCheckUpdate">检查更新</button>
                       </div>
                     </div>
                     <div class="setting-row" style="border:none;padding-top:8px;">
@@ -387,7 +387,7 @@
                       </div>
                       <div class="setting-ctrl setting-restart-pref-ctrl">
                         <input class="input-sm" id="ideRestartPromptMode" value="每次询问" readonly>
-                        <button class="btn-ghost" id="ideRestartPromptResetBtn"
+                        <button class="btn-ghost secondary" id="ideRestartPromptResetBtn"
  data-action="resetIdeRestartPromptPreference">恢复询问</button>
                       </div>
                     </div>
@@ -398,8 +398,8 @@
                         </div>
                       </div>
                       <div class="setting-ctrl">
-                        <button class="btn-ghost" data-action="openCertsDir">证书目录</button>
-                        <button class="btn-ghost" data-action="openConfigDir">配置目录</button>
+                        <button class="btn-ghost accent" data-action="openCertsDir">证书目录</button>
+                        <button class="btn-ghost accent" data-action="openConfigDir">配置目录</button>
                       </div>
                     </div>
                     <div class="setting-row setting-row-stacked setting-path-row">
@@ -409,8 +409,8 @@
                       </div>
                       <div class="setting-ctrl setting-path-ctrl">
                         <input class="field-input" id="idePath" placeholder="探测中...">
-                        <button class="btn-ghost" data-action="detectIdePath">探测</button>
-                        <button class="btn-ghost" data-action="saveIdePath">保存</button>
+                        <button class="btn-ghost accent" data-action="detectIdePath">探测</button>
+                        <button class="btn-ghost success" data-action="saveIdePath">保存</button>
                       </div>
                     </div>
                     <div class="setting-row">
@@ -461,24 +461,24 @@
                         <button class="btn-primary" id="health-run-btn" data-action="runHealthcheck">
                           <span class="health-btn-icon">▶</span> 一键检测
                         </button>
-                        <button class="btn-ghost" id="health-generate-cert-btn" data-action="generateCertsFromHealth">
+                        <button class="btn-ghost success" id="health-generate-cert-btn" data-action="generateCertsFromHealth">
                           生成证书
                         </button>
-                        <button class="btn-ghost" id="health-install-cert-btn" data-action="installCaFromHealth">
+                        <button class="btn-ghost success" id="health-install-cert-btn" data-action="installCaFromHealth">
                           安装证书
                         </button>
-                        <button class="btn-ghost health-danger-btn" id="health-uninstall-cert-btn"
+                        <button class="btn-ghost danger health-danger-btn" id="health-uninstall-cert-btn"
  data-action="uninstallCaFromHealth">
                           卸载证书
                         </button>
-                        <button class="btn-ghost" id="health-cleanup-legacy-btn"
+                        <button class="btn-ghost warn" id="health-cleanup-legacy-btn"
  style="display:none;" data-action="cleanupLegacyCaFromHealth">
                           清理老证书
                         </button>
-                        <button class="btn-ghost" id="health-export-md-btn" disabled data-action="exportHealthMarkdown">
+                        <button class="btn-ghost accent" id="health-export-md-btn" disabled data-action="exportHealthMarkdown">
                           导出 Markdown 报告
                         </button>
-                        <button class="btn-ghost" id="health-copy-md-btn" disabled data-action="copyHealthMarkdown">
+                        <button class="btn-ghost accent" id="health-copy-md-btn" disabled data-action="copyHealthMarkdown">
                           复制到剪贴板
                         </button>
                       </div>
@@ -540,7 +540,7 @@
                         <div class="about-actions">
                           <a class="btn-primary about-join-btn" href="https://qm.qq.com/q/nT5ApAtKiQ" target="_blank"
                             rel="noopener noreferrer">加入交流群</a>
-                          <a class="btn-ghost about-link-btn" href="https://github.com/soulvon/AnyBridge-Release/releases" target="_blank"
+                          <a class="btn-ghost accent about-link-btn" href="https://github.com/soulvon/AnyBridge-Release/releases" target="_blank"
                             rel="noopener noreferrer">发布页</a>
                         </div>
                       </div>

@@ -1283,7 +1283,8 @@ function requestAnthropicBuffered(req, res, { systemPrompt, messages, tools, too
           resolve({ kind: 'failover', reason: `HTTP ${apiRes.statusCode}`, meta: { statusCode: apiRes.statusCode, headers: apiRes.headers, body: errBody } });
         };
         apiRes.on('end', fail);
-        setTimeout(fail, 5000);
+        const failTimer = setTimeout(fail, 5000);
+        apiRes.on('close', () => clearTimeout(failTimer));
         return;
       }
 
@@ -1465,7 +1466,8 @@ function requestOpenAIResponsesBuffered(req, res, { systemPrompt, messages, tool
           resolve({ kind: 'failover', reason: `HTTP ${apiRes.statusCode}`, meta: { statusCode: apiRes.statusCode, headers: apiRes.headers, body: errBody } });
         };
         apiRes.on('end', fail);
-        setTimeout(fail, 5000);
+        const failTimer = setTimeout(fail, 5000);
+        apiRes.on('close', () => clearTimeout(failTimer));
         return;
       }
 
@@ -1629,7 +1631,8 @@ function requestOpenAIChatCompletionsBuffered(req, res, { systemPrompt, messages
           resolve({ kind: 'failover', reason: `HTTP ${apiRes.statusCode}`, meta: { statusCode: apiRes.statusCode, headers: apiRes.headers, body: errBody } });
         };
         apiRes.on('end', fail);
-        setTimeout(fail, 5000);
+        const failTimer = setTimeout(fail, 5000);
+        apiRes.on('close', () => clearTimeout(failTimer));
         return;
       }
 
@@ -1802,7 +1805,8 @@ function streamAnthropic(req, res, { systemPrompt, messages, tools, toolChoice, 
       };
       apiRes.on('end', fail);
       // 上游只发头不发 body 时 'end' 可能不来，加超时兜底避免请求挂死。
-      setTimeout(() => { if (!failed) fail(); }, 5000);
+      const failTimer = setTimeout(() => { if (!failed) fail(); }, 5000);
+      apiRes.on('close', () => clearTimeout(failTimer));
       return;
     }
 
@@ -2009,7 +2013,8 @@ function streamOpenAI(req, res, { systemPrompt, messages, tools, toolChoice, res
 
     apiRes.on('end', fail);
     // 上游只发头不发 body 时 'end' 可能不来，加超时兜底避免请求挂死。
-      setTimeout(() => { if (!failed) fail(); }, 5000);
+      const failTimer = setTimeout(() => { if (!failed) fail(); }, 5000);
+      apiRes.on('close', () => clearTimeout(failTimer));
       return;
     }
 
@@ -2195,7 +2200,8 @@ function streamOpenAIChatCompletions(req, res, { systemPrompt, messages, tools, 
       };
 
       apiRes.on('end', fail);
-      setTimeout(() => { if (!failed) fail(); }, 5000);
+      const failTimer = setTimeout(() => { if (!failed) fail(); }, 5000);
+      apiRes.on('close', () => clearTimeout(failTimer));
       return;
     }
 

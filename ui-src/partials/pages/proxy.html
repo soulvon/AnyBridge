@@ -11,8 +11,8 @@
               </div>
               <div class="proxy-console-actions">
                 <button class="btn-primary" id="globalProxyStartBtn" data-action="startGlobalProxyService">启动代理</button>
-                <button class="btn-ghost" id="globalProxyStopBtn" data-action="stopGlobalProxyService">停止代理</button>
-                <button class="btn-ghost" id="globalProxyRestartBtn" data-action="restartGlobalProxyService">重启代理</button>
+                <button class="btn-ghost warn" id="globalProxyStopBtn" data-action="stopGlobalProxyService">停止代理</button>
+                <button class="btn-ghost accent" id="globalProxyRestartBtn" data-action="restartGlobalProxyService">重启代理</button>
               </div>
             </div>
 
@@ -54,7 +54,7 @@
                           OpenAI
                         </span>
                         <code id="localProxyOpenAiUrl">http://127.0.0.1:{port}/v1</code>
-                        <button class="btn-ghost" data-action="copyLocalProxyValue" data-arg="openai">复制</button>
+                        <button class="btn-ghost accent" data-action="copyLocalProxyValue" data-arg="openai">复制</button>
                       </div>
                       <div class="proxy-endpoint-row">
                         <span class="endpoint-label">
@@ -69,7 +69,7 @@
                           Claude
                         </span>
                         <code id="localProxyClaudeUrl">http://127.0.0.1:{port}/anthropic</code>
-                        <button class="btn-ghost" data-action="copyLocalProxyValue" data-arg="claude">复制</button>
+                        <button class="btn-ghost accent" data-action="copyLocalProxyValue" data-arg="claude">复制</button>
                       </div>
                       <div class="proxy-endpoint-row">
                         <span class="endpoint-label">
@@ -82,7 +82,7 @@
                           Models
                         </span>
                         <code id="localProxyModelsUrl">http://127.0.0.1:{port}/v1/models</code>
-                        <button class="btn-ghost" data-action="copyLocalProxyValue" data-arg="models">复制</button>
+                        <button class="btn-ghost accent" data-action="copyLocalProxyValue" data-arg="models">复制</button>
                       </div>
                     </div>
                   </div>
@@ -102,7 +102,7 @@
                         <strong id="localProxyKeyValue">未生成</strong>
                       </div>
                       <div class="proxy-local-key-actions">
-                        <button class="btn-ghost" data-action="copyLocalProxyValue" data-arg="key">复制 key</button>
+                        <button class="btn-ghost accent" data-action="copyLocalProxyValue" data-arg="key">复制 key</button>
                         <button class="btn-primary" data-action="regenerateLocalProxyKey">重新生成</button>
                       </div>
                     </div>
@@ -166,19 +166,19 @@
                       </svg>
                       添加模型
                     </button>
-                    <button class="btn-ghost provider-bulk-btn" id="proxyRoutesSelectVisibleBtn"
+                    <button class="btn-ghost secondary provider-bulk-btn" id="proxyRoutesSelectVisibleBtn"
  disabled data-action="toggleVisibleProxyRouteSelection">选择当前</button>
-                    <button class="btn-ghost provider-bulk-btn" id="proxyRoutesBulkEnableBtn"
+                    <button class="btn-ghost success provider-bulk-btn" id="proxyRoutesBulkEnableBtn"
  disabled data-action="batchSetSelectedProxyRoutesEnabled" data-args="[true]">启用</button>
-                    <button class="btn-ghost provider-bulk-btn" id="proxyRoutesBulkDisableBtn"
+                    <button class="btn-ghost warn provider-bulk-btn" id="proxyRoutesBulkDisableBtn"
  disabled data-action="batchSetSelectedProxyRoutesEnabled" data-args="[false]">停用</button>
-                    <button class="btn-ghost provider-bulk-btn" id="proxyRoutesBulkVisionBtn"
+                    <button class="btn-ghost accent provider-bulk-btn" id="proxyRoutesBulkVisionBtn"
  disabled data-action="batchSetSelectedProxyRoutesThirdPartyVision" data-args="[true]">启用第三方图片</button>
-                    <button class="btn-ghost provider-bulk-btn danger proxy-routes-delete-selected" id="proxyRoutesDeleteSelectedBtn"
+                    <button class="btn-ghost danger provider-bulk-btn proxy-routes-delete-selected" id="proxyRoutesDeleteSelectedBtn"
  disabled data-action="deleteSelectedProxyRoutes">
                       <span class="proxy-routes-delete-label">删除选中</span>
                     </button>
-                    <button class="btn-ghost proxy-route-icon-btn" title="刷新"
+                    <button class="btn-ghost accent proxy-route-icon-btn" title="刷新"
  aria-label="刷新模型列表" data-action="loadProxyRoutes">
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                         stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
@@ -211,7 +211,7 @@
                         <th>
                           <span class="model-map-display-head">
                             <span>模型 ID</span>
-                            <button class="btn-ghost model-map-settings-btn"
+                            <button class="btn-ghost accent model-map-settings-btn"
  title="批量重命名模型 ID（加前后缀/换名）" aria-label="批量重命名模型 ID" data-action="openProxyRouteRenameModal">
                               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                                 stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
@@ -229,7 +229,7 @@
                         <th>
                           <span class="model-map-display-head">
                             <span>第三方图片理解</span>
-                            <button class="btn-ghost model-map-settings-btn"
+                            <button class="btn-ghost accent model-map-settings-btn"
  title="配置图片理解模型" aria-label="配置图片理解模型" data-action="navigateToProxyEnhancement">
                               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                                 stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">

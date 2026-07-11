@@ -14,6 +14,10 @@ All notable changes to AnyBridge will be documented in this file.
 - 增强前端脚本：platforms、extensions、shell、runtime、providers-eval 等模块功能扩展。
 - 更新页面、弹窗、平台样式，优化视觉一致性。
 - 更新 gen-catalog 目录生成脚本，扩展目录构建能力。
+- 重构 CPA 凭证面板：将 CPA API（API Key、API 地址）与 CPA 管理面板（管理面板、管理密钥、面板地址）分区显示，新增 API 地址行，提升可读性。
+- 更换模型筛选「推理」Tab 图标为大脑（brain）图标，更贴合思考/推理语义。
+- 优化平台页面样式与代理页面交互细节。
+- 引入按钮颜色变体系统（accent/secondary/danger/success/warn），统一全站按钮视觉语义。
 
 ## v0.2.8 - 2026-07-09
 

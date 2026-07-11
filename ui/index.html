@@ -382,10 +382,16 @@
                       <span class="tag log-count" id="logCount">0 条记录</span>
                     </div>
                     <div class="proxy-logs-actions">
-                      <button class="btn-ghost" data-action="clearLogs">清空</button>
-                      <button class="btn-ghost" data-action="exportLogs">导出</button>
-                      <button class="btn-ghost" id="logFilterBtn" data-action="cycleLogFilter">筛选: 全部 ▾</button>
+                      <button class="btn-ghost danger" data-action="clearLogs">清空</button>
+                      <button class="btn-ghost accent" data-action="exportLogs">导出</button>
                     </div>
+                  </div>
+                  <div class="log-tabs" id="proxyLogTabs">
+                    <button class="log-tab active" data-level="all" data-action="setLogFilter" data-arg="all">全部</button>
+                    <button class="log-tab" data-level="ok" data-action="setLogFilter" data-arg="ok">OK</button>
+                    <button class="log-tab" data-level="info" data-action="setLogFilter" data-arg="info">INFO</button>
+                    <button class="log-tab" data-level="warn" data-action="setLogFilter" data-arg="warn">WARN</button>
+                    <button class="log-tab" data-level="err" data-action="setLogFilter" data-arg="err">ERR</button>
                   </div>
                   <div class="log-box proxy-logs-box">
                     <div class="log-body" id="fullLog"></div>
@@ -417,7 +423,7 @@
             <div class="provider-toolbar-main">
               <div class="card-title"><span class="dot"></span> API 供应商</div>
               <div class="provider-toolbar-actions">
-                <button class="btn-ghost provider-toolbar-btn" data-action="openEvalWorkbenchPage">
+                <button class="btn-ghost accent provider-toolbar-btn" data-action="openEvalWorkbenchPage">
                   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
                     stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                     <path
@@ -428,7 +434,7 @@
                   </svg>
                   <span>模型检测</span>
                 </button>
-                <button class="btn-ghost provider-toolbar-btn" id="provider-import-open-btn"
+                <button class="btn-ghost accent provider-toolbar-btn" id="provider-import-open-btn"
  data-action="openProviderImportModal">
                   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
                     stroke-linecap="round" stroke-linejoin="round">
@@ -520,13 +526,13 @@
               </div>
               <div class="provider-bulk-actions">
                 <span class="provider-bulk-count" id="providerBulkCount">未选择</span>
-                <button class="btn-ghost provider-bulk-btn" id="providerSelectVisibleBtn"
+                <button class="btn-ghost secondary provider-bulk-btn" id="providerSelectVisibleBtn"
  disabled data-action="toggleVisibleProvidersSelection">选择当前</button>
-                <button class="btn-ghost provider-bulk-btn" id="providerBulkEnableBtn"
+                <button class="btn-ghost success provider-bulk-btn" id="providerBulkEnableBtn"
  disabled data-action="setSelectedProvidersEnabled" data-args="[true]">启用</button>
-                <button class="btn-ghost provider-bulk-btn" id="providerBulkDisableBtn"
+                <button class="btn-ghost warn provider-bulk-btn" id="providerBulkDisableBtn"
  disabled data-action="setSelectedProvidersEnabled" data-args="[false]">禁用</button>
-                <button class="btn-ghost provider-bulk-btn danger" id="providerBulkDeleteBtn"
+                <button class="btn-ghost danger provider-bulk-btn" id="providerBulkDeleteBtn"
  disabled data-action="deleteSelectedProviders">删除</button>
               </div>
             </div>
@@ -629,7 +635,7 @@
           <div class="model-slots-page">
             <div class="control-bar glass-card model-slots-head">
               <div class="model-slots-title">
-                <button class="btn-ghost model-slots-back" title="返回供应商列表" data-action="closeProviderEditor">
+                <button class="btn-ghost secondary model-slots-back" title="返回供应商列表" data-action="closeProviderEditor">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"
                     stroke-linecap="round" stroke-linejoin="round">
                     <path d="M19 12H5"></path>
@@ -642,7 +648,7 @@
                 </div>
               </div>
               <div class="model-slots-actions">
-                <button class="btn-ghost" id="provider-editor-test-btn"
+                <button class="btn-ghost accent" id="provider-editor-test-btn"
  title="测试当前 API 地址、密钥和首个已选模型是否可用" aria-label="测试连接"
  style="display:inline-flex; align-items:center; gap:6px;" data-action="testProviderInEditor">
                   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
@@ -653,7 +659,7 @@
                   </svg>
                   <span class="provider-editor-test-label">测试连接</span>
                 </button>
-                <button class="btn-ghost" data-action="closeProviderEditor">取消</button>
+                <button class="btn-ghost secondary" data-action="closeProviderEditor">取消</button>
                 <button class="btn-primary" data-action="saveProviderFromEditor">
                   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
                     stroke-linecap="round" stroke-linejoin="round">
@@ -811,12 +817,15 @@
                         <div class="model-filter-tab" data-action="changeModelTab" data-arg="reason">
                           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                             stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-                            <path
-                              d="M9.5 2A2.5 2.5 0 0 1 12 4.5v15a2.5 2.5 0 0 1-4.96-.44 2.5 2.5 0 0 1 0-3.12 3 3 0 0 1 0-4.88 2.5 2.5 0 0 1 0-3.12A2.5 2.5 0 0 1 9.5 2Z">
-                            </path>
-                            <path
-                              d="M14.5 2A2.5 2.5 0 0 0 12 4.5v15a2.5 2.5 0 0 0 4.96-.44 2.5 2.5 0 0 0 0-3.12 3 3 0 0 0 0-4.88 2.5 2.5 0 0 0 0-3.12A2.5 2.5 0 0 0 14.5 2Z">
-                            </path>
+                            <path d="M12 5a3 3 0 1 0-5.997.125 4 4 0 0 0-2.526 5.77 4 4 0 0 0 .556 6.588A4 4 0 1 0 12 18Z"></path>
+                            <path d="M12 5a3 3 0 1 1 5.997.125 4 4 0 0 1 2.526 5.77 4 4 0 0 1-.556 6.588A4 4 0 1 1 12 18Z"></path>
+                            <path d="M15 13a4.5 4.5 0 0 1-3-4 4.5 4.5 0 0 1-3 4"></path>
+                            <path d="M17.599 6.5a3 3 0 0 0 .399-1.375"></path>
+                            <path d="M6.003 5.125A3 3 0 0 0 6.401 6.5"></path>
+                            <path d="M3.477 10.896a4 4 0 0 1 .585-.396"></path>
+                            <path d="M19.938 10.5a4 4 0 0 1 .585.396"></path>
+                            <path d="M6 18a4 4 0 0 1-1.967-.516"></path>
+                            <path d="M19.967 17.484A4 4 0 0 1 18 18"></path>
                           </svg>
                           <span>推理</span>
                         </div>
@@ -907,7 +916,7 @@
           <div class="model-slots-page">
             <div class="control-bar glass-card model-slots-head">
               <div class="model-slots-title">
-                <button class="btn-ghost model-slots-back" title="返回模型映射" data-action="closeSlotEditor">
+                <button class="btn-ghost secondary model-slots-back" title="返回模型映射" data-action="closeSlotEditor">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"
                     stroke-linecap="round" stroke-linejoin="round">
                     <path d="M19 12H5"></path>
@@ -920,7 +929,7 @@
                 </div>
               </div>
               <div class="model-slots-actions">
-                <button class="btn-ghost" data-action="closeSlotEditor">取消</button>
+                <button class="btn-ghost secondary" data-action="closeSlotEditor">取消</button>
                 <button class="btn-primary" data-action="saveSlotFromEditor">
                   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
                     stroke-linecap="round" stroke-linejoin="round">
@@ -942,7 +951,7 @@
                   <div style="display:flex; align-items:center; gap:6px;">
                     <span class="brand-tag" id="slotCatalogCount"
                       style="padding: 2px 8px; font-size: 10px; font-weight:700;">0 可用</span>
-                    <button id="btn-refresh-models" class="btn-ghost"
+                    <button id="btn-refresh-models" class="btn-ghost accent"
  style="padding: 0 10px; border-radius: 6px; display: flex; align-items: center; gap: 4px; height: 24px; font-size: 11px; font-weight: 600;"
  title="从 IDE 账号拉取最新模型列表" data-action="refreshIdeModels">
                       <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor"
@@ -1051,7 +1060,7 @@
           <div class="model-slots-page">
             <div class="control-bar glass-card model-slots-head">
               <div class="model-slots-title">
-                <button class="btn-ghost model-slots-back" title="返回模型映射" data-action="closeInjectedEditor">
+                <button class="btn-ghost secondary model-slots-back" title="返回模型映射" data-action="closeInjectedEditor">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"
                     stroke-linecap="round" stroke-linejoin="round">
                     <path d="M19 12H5"></path>
@@ -1064,7 +1073,7 @@
                 </div>
               </div>
               <div class="model-slots-actions">
-                <button class="btn-ghost" data-action="closeInjectedEditor">返回映射</button>
+                <button class="btn-ghost secondary" data-action="closeInjectedEditor">返回映射</button>
                 <button class="btn-primary" id="slot-visibility-save-btn" data-action="saveInjectedFromEditor">
                   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
                     stroke-linecap="round" stroke-linejoin="round">
@@ -1098,8 +1107,8 @@
  data-action="toggleSlotVisibilitySelectAll" data-events="change" data-pass-checked>
                     <span id="slot-visibility-select-label">选择</span>
                   </label>
-                  <button class="btn-ghost" id="slot-bulk-enable-btn" data-action="batchSetSlotVisibility" data-args="[true]">启用</button>
-                  <button class="btn-ghost" id="slot-bulk-disable-btn"
+                  <button class="btn-ghost success" id="slot-bulk-enable-btn" data-action="batchSetSlotVisibility" data-args="[true]">启用</button>
+                  <button class="btn-ghost warn" id="slot-bulk-disable-btn"
  data-action="batchSetSlotVisibility" data-args="[false]">禁用</button>
                 </div>
                 <div class="model-slots-search-tools">
@@ -1136,7 +1145,7 @@
             style="width:640px;max-width:95vw;display:flex;flex-direction:column;max-height:80vh;">
             <div class="control-bar glass-card model-slots-head" style="border-radius:0;">
               <div class="model-slots-title">
-                <button class="btn-ghost model-slots-back" title="返回" data-action="closeFailoverEditor">
+                <button class="btn-ghost secondary model-slots-back" title="返回" data-action="closeFailoverEditor">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"
                     stroke-linecap="round" stroke-linejoin="round">
                     <path d="M19 12H5"></path>
@@ -1149,7 +1158,7 @@
                 </div>
               </div>
               <div class="model-slots-actions">
-                <button class="btn-ghost" data-action="addFailoverRow">+ 添加备选</button>
+                <button class="btn-ghost accent" data-action="addFailoverRow">+ 添加备选</button>
                 <button class="btn-primary" data-action="saveFailoverFromEditor">
                   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
                     stroke-linecap="round" stroke-linejoin="round">
@@ -1231,7 +1240,7 @@
             </div>
             <div class="provider-footer"
               style="display:flex;justify-content:flex-end;gap:12px;padding:12px 20px;border-top:1px solid var(--border);">
-              <button class="btn-ghost"
+              <button class="btn-ghost secondary"
  style="padding:10px 20px;border-radius:10px;font-size:12px;font-weight:600;" data-action="closeModelMapSettings">取消</button>
               <button class="btn-primary"
  style="padding:10px 24px;border-radius:10px;font-size:12px;font-weight:700;display:inline-flex;align-items:center;gap:6px;" data-action="saveModelMapSettingsFromModal">
@@ -1315,7 +1324,7 @@
             </div>
             <div class="provider-footer"
               style="display:flex;justify-content:flex-end;gap:12px;padding:12px 20px;border-top:1px solid var(--border);">
-              <button class="btn-ghost"
+              <button class="btn-ghost secondary"
  style="padding:10px 20px;border-radius:10px;font-size:12px;font-weight:600;" data-action="closeProxyRouteRenameModal">取消</button>
               <button class="btn-primary" id="proxyRouteRenameSaveBtn"
  style="padding:10px 24px;border-radius:10px;font-size:12px;font-weight:700;display:inline-flex;align-items:center;gap:6px;" data-action="saveProxyRouteRenameFromModal">
@@ -1343,7 +1352,7 @@
                 <div style="font-size:11px;color:var(--text-muted);margin-top:4px;">配置手动增强能力和第三方图片理解故障转移链。</div>
               </div>
               <div style="display:flex;align-items:center;gap:8px;">
-                <button class="btn-ghost"
+                <button class="btn-ghost warn"
  style="padding:7px 14px;border-radius:8px;font-size:12px;font-weight:600;" data-action="resetProxyEnhancementDefaults">重置默认</button>
                 <button class="btn-primary"
  style="padding:7px 18px;border-radius:8px;font-size:12px;font-weight:700;" data-action="closeProxyEnhancement">完成</button>
@@ -1419,7 +1428,7 @@
                           <div style="font-size:12px;font-weight:800;color:var(--text-primary);">图片理解模型</div>
                           <div style="font-size:10px;color:var(--text-muted);margin-top:3px;">按列表顺序故障转移，名称显示为"供应商名 - 模型名"。</div>
                         </div>
-                        <button class="btn-ghost" style="height:30px;padding:0 12px;border-radius:8px;font-size:12px;font-weight:700;" data-action="toggleVisionModelPicker">+ 添加模型</button>
+                        <button class="btn-ghost accent" style="height:30px;padding:0 12px;border-radius:8px;font-size:12px;font-weight:700;" data-action="toggleVisionModelPicker">+ 添加模型</button>
                       </div>
                       <div id="proxyVisionModelList" style="display:flex;flex-direction:column;gap:8px;"></div>
                     </div>
@@ -1448,7 +1457,7 @@
                           <div style="font-size:12px;font-weight:800;color:var(--text-primary);">搜索源</div>
                           <div style="font-size:10px;color:var(--text-muted);margin-top:3px;">按列表顺序故障转移；所有失败会显式暴露给模型和日志。</div>
                         </div>
-                        <button class="btn-ghost" style="height:30px;padding:0 12px;border-radius:8px;font-size:12px;font-weight:700;" data-action="toggleSearchSourcePicker">+ 添加搜索源</button>
+                        <button class="btn-ghost accent" style="height:30px;padding:0 12px;border-radius:8px;font-size:12px;font-weight:700;" data-action="toggleSearchSourcePicker">+ 添加搜索源</button>
                       </div>
                       <div id="proxySearchSourceList" style="display:flex;flex-direction:column;gap:8px;"></div>
                       <div id="proxySearchSourcePicker"></div>
@@ -1532,7 +1541,7 @@
                           <div style="font-size:12px;font-weight:800;color:var(--text-primary);">请求头</div>
                           <div style="font-size:10px;color:var(--text-muted);margin-top:3px;">注入到发往上游 API 的请求头</div>
                         </div>
-                        <button class="btn-ghost" style="height:30px;padding:0 12px;border-radius:8px;font-size:12px;font-weight:700;" data-action="addHeaderPair" data-arg="customHeaders">+ 添加</button>
+                        <button class="btn-ghost accent" style="height:30px;padding:0 12px;border-radius:8px;font-size:12px;font-weight:700;" data-action="addHeaderPair" data-arg="customHeaders">+ 添加</button>
                       </div>
                       <div id="enhancement-customHeaders-list"></div>
                     </div>
@@ -1542,7 +1551,7 @@
                           <div style="font-size:12px;font-weight:800;color:var(--text-primary);">响应头</div>
                           <div style="font-size:10px;color:var(--text-muted);margin-top:3px;">注入到返回给客户端的响应头</div>
                         </div>
-                        <button class="btn-ghost" style="height:30px;padding:0 12px;border-radius:8px;font-size:12px;font-weight:700;" data-action="addHeaderPair" data-arg="responseHeaders">+ 添加</button>
+                        <button class="btn-ghost accent" style="height:30px;padding:0 12px;border-radius:8px;font-size:12px;font-weight:700;" data-action="addHeaderPair" data-arg="responseHeaders">+ 添加</button>
                       </div>
                       <div id="enhancement-responseHeaders-list"></div>
                     </div>
@@ -1626,8 +1635,8 @@
                           <span id="proxyVisionModelProviderSub">右侧会展示可加入图片理解链的模型</span>
                         </div>
                         <div class="proxy-route-model-actions">
-                          <button type="button" class="btn-ghost" id="proxyVisionSelectAllBtn" disabled data-action="selectAllVisionModels">全选</button>
-                          <button type="button" class="btn-ghost" id="proxyVisionSelectNoneBtn" disabled data-action="selectNoVisionModels">全不选</button>
+                          <button type="button" class="btn-ghost accent" id="proxyVisionSelectAllBtn" disabled data-action="selectAllVisionModels">全选</button>
+                          <button type="button" class="btn-ghost secondary" id="proxyVisionSelectNoneBtn" disabled data-action="selectNoVisionModels">全不选</button>
                         </div>
                       </div>
                       <div id="proxyVisionModelPickerList" class="proxy-route-model-list proxy-vision-picker-list"></div>
@@ -1708,8 +1717,8 @@
                   <span class="proxy-btn-text">一键接入</span>
                 </span>
               </button>
-              <button class="btn-ghost platform-refresh-proxy" id="proxyRefreshBtn" data-action="refreshCurrentProxyPlatformStatus">刷新状态</button>
-              <button class="btn-ghost platform-stop-proxy" id="proxyRestoreBtn" data-action="restoreCurrentProxyPlatformDirect">停止接入</button>
+              <button class="btn-ghost accent platform-refresh-proxy" id="proxyRefreshBtn" data-action="refreshCurrentProxyPlatformStatus">刷新状态</button>
+              <button class="btn-ghost danger platform-stop-proxy" id="proxyRestoreBtn" data-action="restoreCurrentProxyPlatformDirect">停止接入</button>
             </div>
           </section>
           <div class="control-bar glass-card model-map-control-bar">
@@ -1727,11 +1736,11 @@
                   </svg>
                   添加映射
                 </button>
-                <button class="btn-ghost model-map-command-btn" id="modelMapBulkDeleteBtn"
+                <button class="btn-ghost danger model-map-command-btn" id="modelMapBulkDeleteBtn"
  disabled data-action="batchDeleteSelectedSlots">
                   删除选中
                 </button>
-                <button class="btn-ghost platform-model-btn-icon"
+                <button class="btn-ghost accent platform-model-btn-icon"
  title="刷新映射列表" aria-label="刷新映射列表" data-action-chain="[{&quot;fn&quot;:&quot;renderModelMap&quot;},{&quot;fn&quot;:&quot;addLog&quot;,&quot;args&quot;:[&quot;info&quot;,&quot;已刷新映射列表&quot;]}]" data-action="renderModelMap">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
                     stroke-linecap="round" stroke-linejoin="round">
@@ -1740,7 +1749,7 @@
                     <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
                   </svg>
                 </button>
-                <button class="btn-ghost model-map-command-btn" title="管理模型槽位的解锁、显示范围和 BYOK 路由。" data-action="openInjectedEditor">
+                <button class="btn-ghost secondary model-map-command-btn" title="管理模型槽位的解锁、显示范围和 BYOK 路由。" data-action="openInjectedEditor">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"
                     stroke-linecap="round" stroke-linejoin="round">
                     <path d="M12 2L2 7l10 5 10-5-10-5z"></path>
@@ -1749,7 +1758,7 @@
                   </svg>
                   <span id="injected-count-badge">槽位管理</span>
                 </button>
-                <button class="btn-ghost platform-model-btn-icon" title="设置" aria-label="设置" data-action="openPlatformSection" data-arg="settings">
+                <button class="btn-ghost secondary platform-model-btn-icon" title="设置" aria-label="设置" data-action="openPlatformSection" data-arg="settings">
                   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"
                     stroke-linecap="round" stroke-linejoin="round">
                     <circle cx="12" cy="12" r="3"></circle>
@@ -1769,13 +1778,13 @@
               </label>
               <span class="model-map-count-pill" id="modelMapBulkCount">共 0 个</span>
               <div class="model-map-bulk-actions">
-                <button class="btn-ghost provider-bulk-btn" id="modelMapSelectVisibleBtn"
+                <button class="btn-ghost secondary provider-bulk-btn" id="modelMapSelectVisibleBtn"
  disabled data-action="toggleVisibleModelMapSelection">选择当前</button>
-                <button class="btn-ghost provider-bulk-btn" id="modelMapBulkEnableBtn"
+                <button class="btn-ghost success provider-bulk-btn" id="modelMapBulkEnableBtn"
  disabled data-action="batchSetSelectedSlotsEnabled" data-args="[true]">启用</button>
-                <button class="btn-ghost provider-bulk-btn" id="modelMapBulkDisableBtn"
+                <button class="btn-ghost warn provider-bulk-btn" id="modelMapBulkDisableBtn"
  disabled data-action="batchSetSelectedSlotsEnabled" data-args="[false]">停用</button>
-                <button class="btn-ghost provider-bulk-btn" id="modelMapBulkVisionBtn"
+                <button class="btn-ghost accent provider-bulk-btn" id="modelMapBulkVisionBtn"
  disabled data-action="batchSetSelectedSlotsThirdPartyVision" data-args="[true]">启用第三方图片</button>
               </div>
             </div>
@@ -1802,7 +1811,7 @@
                   <th>
                     <span class="model-map-display-head">
                       <span>显示名</span>
-                      <button class="btn-ghost model-map-settings-btn"
+                      <button class="btn-ghost accent model-map-settings-btn"
  title="显示名设置：前缀 / 后缀" aria-label="显示名设置：前缀 / 后缀" data-action="openModelMapSettings">
                         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                           stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
@@ -1820,7 +1829,7 @@
                   <th>
                     <span class="model-map-display-head">
                       <span>第三方图片理解</span>
-                      <button class="btn-ghost model-map-settings-btn"
+                      <button class="btn-ghost accent model-map-settings-btn"
  title="配置图片理解模型" aria-label="配置图片理解模型" data-action="navigateToProxyEnhancement">
                         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                           stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
@@ -1860,11 +1869,11 @@
                 <span class="tag eval-count" id="evalReportCount">0 份报告</span>
               </div>
             </div>
-            <button type="button" class="btn-ghost eval-check-open-btn" id="eval-check-open-btn"
+            <button type="button" class="btn-ghost accent eval-check-open-btn" id="eval-check-open-btn"
  data-action="openEvalCheckModal">
               检测项(10个)
             </button>
-            <button type="button" class="btn-ghost eval-history-open-btn" data-action="openEvalHistoryPage">
+            <button type="button" class="btn-ghost accent eval-history-open-btn" data-action="openEvalHistoryPage">
               <svg class="btn-svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                 stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                 <path d="M3 12a9 9 0 1 0 3-6.7"></path>
@@ -2154,7 +2163,7 @@
                 </div>
               </div>
               <div class="proxy-console-actions">
-                <button class="btn-ghost" id="extensionSettingsBtn" title="设置" data-action="toggleExtensionSettings">
+                <button class="btn-ghost secondary" id="extensionSettingsBtn" title="设置" data-action="toggleExtensionSettings">
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                     <circle cx="12" cy="12" r="3"/>
                     <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
@@ -2232,6 +2241,20 @@
                 </div>
                 <div class="cpa-credentials" id="cpa-credentials" hidden>
                   <div class="cpa-credentials-title">访问凭证 <span class="cpa-credentials-hint">点击即可复制</span></div>
+
+                  <div class="cpa-credentials-subtitle">CPA API</div>
+                  <div class="cpa-credential-row">
+                    <span class="cpa-credential-label">API Key</span>
+                    <code class="cpa-credential-value" id="cpa-cred-api-key">—</code>
+                    <button type="button" class="cpa-credential-copy" data-copy="api-key" title="复制">复制</button>
+                  </div>
+                  <div class="cpa-credential-row cpa-credential-row-link">
+                    <span class="cpa-credential-label">API 地址</span>
+                    <code class="cpa-credential-value">http://127.0.0.1:8317</code>
+                    <button type="button" class="cpa-credential-copy" data-copy-url="http://127.0.0.1:8317" title="复制地址">复制</button>
+                  </div>
+
+                  <div class="cpa-credentials-subtitle">CPA 管理面板</div>
                   <div class="cpa-credential-row">
                     <span class="cpa-credential-label">管理面板</span>
                     <code class="cpa-credential-value" id="cpa-cred-admin-key">—</code>
@@ -2241,11 +2264,6 @@
                     <span class="cpa-credential-label">管理密钥</span>
                     <code class="cpa-credential-value" id="cpa-cred-management-key">—</code>
                     <button type="button" class="cpa-credential-copy" data-copy="management-key" title="复制">复制</button>
-                  </div>
-                  <div class="cpa-credential-row">
-                    <span class="cpa-credential-label">API Key</span>
-                    <code class="cpa-credential-value" id="cpa-cred-api-key">—</code>
-                    <button type="button" class="cpa-credential-copy" data-copy="api-key" title="复制">复制</button>
                   </div>
                   <div class="cpa-credential-row cpa-credential-row-link">
                     <span class="cpa-credential-label">面板地址</span>
@@ -2311,8 +2329,8 @@
                 </div>
                 <div class="extension-actions">
                   <button type="button" class="btn-primary" data-action="handleExtensionAction" data-arg="install-sub2api">安装</button>
-                  <button type="button" class="btn-ghost" data-action="openExtensionDetail" data-arg="sub2api">详情</button>
-                  <button type="button" class="btn-ghost" data-action="handleExtensionAction" data-arg="view-adapter-plan">适配计划</button>
+                  <button type="button" class="btn-ghost secondary" data-action="openExtensionDetail" data-arg="sub2api">详情</button>
+                  <button type="button" class="btn-ghost accent" data-action="handleExtensionAction" data-arg="view-adapter-plan">适配计划</button>
                 </div>
               </article>
 
@@ -2344,8 +2362,8 @@
                 </div>
                 <div class="extension-actions">
                   <button type="button" class="btn-primary" data-action="handleExtensionAction" data-arg="install-grok2api">安装</button>
-                  <button type="button" class="btn-ghost" data-action="openExtensionDetail" data-arg="grok2api">详情</button>
-                  <button type="button" class="btn-ghost" data-action="handleExtensionAction" data-arg="view-adapter-plan">适配计划</button>
+                  <button type="button" class="btn-ghost secondary" data-action="openExtensionDetail" data-arg="grok2api">详情</button>
+                  <button type="button" class="btn-ghost accent" data-action="handleExtensionAction" data-arg="view-adapter-plan">适配计划</button>
                 </div>
               </article>
 
@@ -2376,8 +2394,8 @@
                 </div>
                 <div class="extension-actions">
                   <button type="button" class="btn-primary" data-action="handleExtensionAction" data-arg="install-jimeng">安装</button>
-                  <button type="button" class="btn-ghost" data-action="openExtensionDetail" data-arg="free-jimeng">详情</button>
-                  <button type="button" class="btn-ghost" data-action="handleExtensionAction" data-arg="view-adapter-plan">适配计划</button>
+                  <button type="button" class="btn-ghost secondary" data-action="openExtensionDetail" data-arg="free-jimeng">详情</button>
+                  <button type="button" class="btn-ghost accent" data-action="handleExtensionAction" data-arg="view-adapter-plan">适配计划</button>
                 </div>
               </article>
             </div>
@@ -2388,7 +2406,7 @@
                   <h3>扩展日志</h3>
                   <span class="tag log-count" id="extensionLogCount">0 条记录</span>
                 </div>
-                <button type="button" class="btn-ghost" data-action="clearExtensionLogs">清空</button>
+                <button type="button" class="btn-ghost danger" data-action="clearExtensionLogs">清空</button>
               </div>
               <div class="log-tabs" id="extensionLogTabs">
                 <button class="log-tab active" data-level="all" data-action="setExtensionLogFilter" data-arg="all">全部</button>
@@ -2418,8 +2436,8 @@
               </div>
               <div class="proxy-console-actions">
                 <button class="btn-primary" id="globalProxyStartBtn" data-action="startGlobalProxyService">启动代理</button>
-                <button class="btn-ghost" id="globalProxyStopBtn" data-action="stopGlobalProxyService">停止代理</button>
-                <button class="btn-ghost" id="globalProxyRestartBtn" data-action="restartGlobalProxyService">重启代理</button>
+                <button class="btn-ghost warn" id="globalProxyStopBtn" data-action="stopGlobalProxyService">停止代理</button>
+                <button class="btn-ghost accent" id="globalProxyRestartBtn" data-action="restartGlobalProxyService">重启代理</button>
               </div>
             </div>
 
@@ -2461,7 +2479,7 @@
                           OpenAI
                         </span>
                         <code id="localProxyOpenAiUrl">http://127.0.0.1:{port}/v1</code>
-                        <button class="btn-ghost" data-action="copyLocalProxyValue" data-arg="openai">复制</button>
+                        <button class="btn-ghost accent" data-action="copyLocalProxyValue" data-arg="openai">复制</button>
                       </div>
                       <div class="proxy-endpoint-row">
                         <span class="endpoint-label">
@@ -2476,7 +2494,7 @@
                           Claude
                         </span>
                         <code id="localProxyClaudeUrl">http://127.0.0.1:{port}/anthropic</code>
-                        <button class="btn-ghost" data-action="copyLocalProxyValue" data-arg="claude">复制</button>
+                        <button class="btn-ghost accent" data-action="copyLocalProxyValue" data-arg="claude">复制</button>
                       </div>
                       <div class="proxy-endpoint-row">
                         <span class="endpoint-label">
@@ -2489,7 +2507,7 @@
                           Models
                         </span>
                         <code id="localProxyModelsUrl">http://127.0.0.1:{port}/v1/models</code>
-                        <button class="btn-ghost" data-action="copyLocalProxyValue" data-arg="models">复制</button>
+                        <button class="btn-ghost accent" data-action="copyLocalProxyValue" data-arg="models">复制</button>
                       </div>
                     </div>
                   </div>
@@ -2509,7 +2527,7 @@
                         <strong id="localProxyKeyValue">未生成</strong>
                       </div>
                       <div class="proxy-local-key-actions">
-                        <button class="btn-ghost" data-action="copyLocalProxyValue" data-arg="key">复制 key</button>
+                        <button class="btn-ghost accent" data-action="copyLocalProxyValue" data-arg="key">复制 key</button>
                         <button class="btn-primary" data-action="regenerateLocalProxyKey">重新生成</button>
                       </div>
                     </div>
@@ -2573,19 +2591,19 @@
                       </svg>
                       添加模型
                     </button>
-                    <button class="btn-ghost provider-bulk-btn" id="proxyRoutesSelectVisibleBtn"
+                    <button class="btn-ghost secondary provider-bulk-btn" id="proxyRoutesSelectVisibleBtn"
  disabled data-action="toggleVisibleProxyRouteSelection">选择当前</button>
-                    <button class="btn-ghost provider-bulk-btn" id="proxyRoutesBulkEnableBtn"
+                    <button class="btn-ghost success provider-bulk-btn" id="proxyRoutesBulkEnableBtn"
  disabled data-action="batchSetSelectedProxyRoutesEnabled" data-args="[true]">启用</button>
-                    <button class="btn-ghost provider-bulk-btn" id="proxyRoutesBulkDisableBtn"
+                    <button class="btn-ghost warn provider-bulk-btn" id="proxyRoutesBulkDisableBtn"
  disabled data-action="batchSetSelectedProxyRoutesEnabled" data-args="[false]">停用</button>
-                    <button class="btn-ghost provider-bulk-btn" id="proxyRoutesBulkVisionBtn"
+                    <button class="btn-ghost accent provider-bulk-btn" id="proxyRoutesBulkVisionBtn"
  disabled data-action="batchSetSelectedProxyRoutesThirdPartyVision" data-args="[true]">启用第三方图片</button>
-                    <button class="btn-ghost provider-bulk-btn danger proxy-routes-delete-selected" id="proxyRoutesDeleteSelectedBtn"
+                    <button class="btn-ghost danger provider-bulk-btn proxy-routes-delete-selected" id="proxyRoutesDeleteSelectedBtn"
  disabled data-action="deleteSelectedProxyRoutes">
                       <span class="proxy-routes-delete-label">删除选中</span>
                     </button>
-                    <button class="btn-ghost proxy-route-icon-btn" title="刷新"
+                    <button class="btn-ghost accent proxy-route-icon-btn" title="刷新"
  aria-label="刷新模型列表" data-action="loadProxyRoutes">
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                         stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
@@ -2618,7 +2636,7 @@
                         <th>
                           <span class="model-map-display-head">
                             <span>模型 ID</span>
-                            <button class="btn-ghost model-map-settings-btn"
+                            <button class="btn-ghost accent model-map-settings-btn"
  title="批量重命名模型 ID（加前后缀/换名）" aria-label="批量重命名模型 ID" data-action="openProxyRouteRenameModal">
                               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                                 stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
@@ -2636,7 +2654,7 @@
                         <th>
                           <span class="model-map-display-head">
                             <span>第三方图片理解</span>
-                            <button class="btn-ghost model-map-settings-btn"
+                            <button class="btn-ghost accent model-map-settings-btn"
  title="配置图片理解模型" aria-label="配置图片理解模型" data-action="navigateToProxyEnhancement">
                               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                                 stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
@@ -2678,7 +2696,7 @@
           <div class="control-bar glass-card"
             style="padding: 14px 24px; margin-bottom: 20px; border-radius: 14px; min-height: 72px;">
             <div class="card-title"><span class="dot"></span> 平台总览</div>
-            <button class="btn-ghost" id="platforms-refresh-btn" data-action="refreshPlatforms">刷新检测</button>
+            <button class="btn-ghost accent" id="platforms-refresh-btn" data-action="refreshPlatforms">刷新检测</button>
           </div>
           <p class="platforms-intro">通过修改 AI 工具自身的配置文件来自定义 API 端点。切换后下次启动对应工具即可生效，<strong>无需保持 AnyBridge
               运行</strong>。每次切换前会自动备份原配置，可一键还原。</p>
@@ -2703,8 +2721,8 @@
                   <span class="cursor-btn-icon" aria-hidden="true">↯</span>
                   一键接入
                 </button>
-                <button class="btn-ghost" data-action="cursorRefreshConsole">刷新状态</button>
-                <button class="btn-ghost" data-action="cursorRestoreDirect">还原直连</button>
+                <button class="btn-ghost accent" data-action="cursorRefreshConsole">刷新状态</button>
+                <button class="btn-ghost warn" data-action="cursorRestoreDirect">还原直连</button>
               </div>
             </div>
 
@@ -2754,7 +2772,7 @@
                     <h2>接入流程</h2>
                     <p>按顺序完成，失败项会直接显示原因。</p>
                   </div>
-                  <button class="btn-ghost cursor-mini-btn" data-action="cursorRunHealthcheck">环境检测</button>
+                  <button class="btn-ghost accent cursor-mini-btn" data-action="cursorRunHealthcheck">环境检测</button>
                 </div>
                 <div class="cursor-step-list">
                   <div class="cursor-step">
@@ -2818,8 +2836,8 @@
                 <strong>排障入口</strong>
                 <p>遇到模型不显示、证书报错、Cursor 无响应时，先跑环境检测，再查看代理日志和 turn artifacts。</p>
                 <div class="cursor-note-actions">
-                  <button class="btn-ghost cursor-mini-btn" data-action="cursorOpenStats">统计日志</button>
-                  <button class="btn-ghost cursor-mini-btn" data-action="cursorRunHealthcheck">环境检测</button>
+                  <button class="btn-ghost accent cursor-mini-btn" data-action="cursorOpenStats">统计日志</button>
+                  <button class="btn-ghost accent cursor-mini-btn" data-action="cursorRunHealthcheck">环境检测</button>
                 </div>
               </div>
             </section>
@@ -2858,8 +2876,8 @@
                 <button class="btn-primary codex-add-config-btn" data-action="openClaudeCodeProviderAdd">
                   <span>+</span> 添加配置
                 </button>
-                <button class="btn-ghost codex-refresh-btn" data-action="refreshPlatforms">刷新</button>
-                <button class="btn-ghost codex-restore-btn" id="platform-claude-code-restore"
+                <button class="btn-ghost accent codex-refresh-btn" data-action="refreshPlatforms">刷新</button>
+                <button class="btn-ghost warn codex-restore-btn" id="platform-claude-code-restore"
  data-action="restorePlatform" data-arg="claude-code">还原备份</button>
               </div>
             </div>
@@ -3004,8 +3022,8 @@
                 <button class="btn-primary codex-add-config-btn" data-action="openCodexProviderAdd">
                   <span>+</span> 添加配置
                 </button>
-                <button class="btn-ghost codex-refresh-btn" data-action="refreshPlatforms">刷新</button>
-                <button class="btn-ghost codex-restore-btn" id="platform-codex-restore"
+                <button class="btn-ghost accent codex-refresh-btn" data-action="refreshPlatforms">刷新</button>
+                <button class="btn-ghost warn codex-restore-btn" id="platform-codex-restore"
  data-action="restorePlatform" data-arg="codex">还原备份</button>
               </div>
             </div>
@@ -3247,7 +3265,7 @@
                   </svg>
                   添加模型
                 </button>
-                <button class="btn-ghost cb-bulk-delete-btn" id="cb-delete-selected-btn"
+                <button class="btn-ghost danger cb-bulk-delete-btn" id="cb-delete-selected-btn"
  disabled title="删除勾选的模型" data-action="deleteSelectedCbModels">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
                     stroke-linecap="round" stroke-linejoin="round">
@@ -3258,7 +3276,7 @@
                   </svg>
                   <span class="cb-bulk-delete-label">删除选中</span>
                 </button>
-                <button class="btn-ghost platform-model-btn" data-action="saveCodeBuddyModels">
+                <button class="btn-ghost success platform-model-btn" data-action="saveCodeBuddyModels">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
                     stroke-linecap="round" stroke-linejoin="round">
                     <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
@@ -3267,7 +3285,7 @@
                   </svg>
                   保存
                 </button>
-                <button class="btn-ghost buddy-sync-toggle platform-model-btn" id="cb-sync-buddy-btn" data-buddy-sync-toggle
+                <button class="btn-ghost accent buddy-sync-toggle platform-model-btn" id="cb-sync-buddy-btn" data-buddy-sync-toggle
  aria-pressed="false"
  title="开启同步 WorkBuddy" data-action="toggleTencentBuddySync" data-arg="codebuddy">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
@@ -3292,7 +3310,7 @@
                 </label>
                 <span class="platform-model-count-pill" id="cb-model-count">共 0 个</span>
                 <span class="platform-model-divider"></span>
-                <button class="btn-ghost platform-model-btn-icon"
+                <button class="btn-ghost accent platform-model-btn-icon"
  title="导入" data-click-id="cb-import-file">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
                     stroke-linecap="round" stroke-linejoin="round">
@@ -3303,7 +3321,7 @@
                 </button>
                 <input type="file" id="cb-import-file" accept=".json" style="display:none;"
  data-action="importCbModels" data-events="change" data-pass-event>
-                <button class="btn-ghost platform-model-btn-icon"
+                <button class="btn-ghost accent platform-model-btn-icon"
  title="导出" data-action="exportCbModels">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
                     stroke-linecap="round" stroke-linejoin="round">
@@ -3312,7 +3330,7 @@
                     <line x1="12" y1="15" x2="12" y2="3" />
                   </svg>
                 </button>
-                <button class="btn-ghost platform-model-btn-icon" data-json-toggle="cb" aria-pressed="false"
+                <button class="btn-ghost accent platform-model-btn-icon" data-json-toggle="cb" aria-pressed="false"
  title="JSON 编辑" data-action="toggleCbJsonEditor">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
                     stroke-linecap="round" stroke-linejoin="round">
@@ -3320,7 +3338,7 @@
                     <polyline points="8 6 2 12 8 18" />
                   </svg>
                 </button>
-                <button class="btn-ghost platform-model-btn-icon"
+                <button class="btn-ghost accent platform-model-btn-icon"
  title="刷新" data-action="loadCodeBuddyModels">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
                     stroke-linecap="round" stroke-linejoin="round">
@@ -3394,11 +3412,11 @@
             <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;">
               <h2 style="font-size:14px; font-weight:700; margin:0;">JSON 编辑器</h2>
               <div style="display:flex; gap:8px;">
-                <button class="btn-ghost" style="padding:4px 12px; font-size:12px;"
+                <button class="btn-ghost accent" style="padding:4px 12px; font-size:12px;"
  data-action="formatCbJson">格式化</button>
                 <button class="btn-primary" style="padding:4px 12px; font-size:12px;"
  data-action="applyCbJson">应用</button>
-                <button class="btn-ghost" style="padding:4px 12px; font-size:12px;"
+                <button class="btn-ghost secondary" style="padding:4px 12px; font-size:12px;"
  data-action="toggleCbJsonEditor">返回列表</button>
               </div>
             </div>
@@ -3463,7 +3481,7 @@
                 </div>
               </div>
               <div class="platform-actions" style="margin-top:0; justify-content:flex-end;">
-                <button class="btn-ghost" data-action="closeCodeBuddyAddModal">取消</button>
+                <button class="btn-ghost secondary" data-action="closeCodeBuddyAddModal">取消</button>
                 <button class="btn-primary" id="cb-add-confirm"
  disabled data-action="confirmAddCodeBuddyModels">添加选中模型</button>
               </div>
@@ -3534,8 +3552,8 @@
                     <div class="cb-add-models-sub" id="cb-add-models-sub">左侧选择一个供应商，右侧将展示其可用模型</div>
                   </div>
                   <div style="display:flex; gap:8px;">
-                    <button class="btn-ghost" data-action="cbAddSelectAll">全选</button>
-                    <button class="btn-ghost" data-action="cbAddSelectNone">全不选</button>
+                    <button class="btn-ghost accent" data-action="cbAddSelectAll">全选</button>
+                    <button class="btn-ghost secondary" data-action="cbAddSelectNone">全不选</button>
                     <button class="btn-primary" id="cb-add-confirm-page"
  disabled data-action="confirmAddCodeBuddyModelsPage">
                       <svg viewBox="0 0 24 24"
@@ -3605,8 +3623,8 @@
                 <button class="btn-primary codex-add-config-btn" data-action="openOpenCodeProviderAdd">
                   <span>+</span> 添加配置
                 </button>
-                <button class="btn-ghost codex-refresh-btn" data-action="refreshPlatforms">刷新</button>
-                <button class="btn-ghost codex-restore-btn" id="platform-opencode-restore"
+                <button class="btn-ghost accent codex-refresh-btn" data-action="refreshPlatforms">刷新</button>
+                <button class="btn-ghost warn codex-restore-btn" id="platform-opencode-restore"
  data-action="restorePlatform" data-arg="opencode">还原备份</button>
               </div>
             </div>
@@ -3753,7 +3771,7 @@
                   </svg>
                   添加模型
                 </button>
-                <button class="btn-ghost cb-bulk-delete-btn" id="zc-delete-selected-btn"
+                <button class="btn-ghost danger cb-bulk-delete-btn" id="zc-delete-selected-btn"
  disabled title="删除勾选的模型" data-action="deleteSelectedZcModels">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
                     stroke-linecap="round" stroke-linejoin="round">
@@ -3764,7 +3782,7 @@
                   </svg>
                   <span class="cb-bulk-delete-label">删除选中</span>
                 </button>
-                <button class="btn-ghost platform-model-btn" data-action="saveZcModels">
+                <button class="btn-ghost success platform-model-btn" data-action="saveZcModels">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
                     stroke-linecap="round" stroke-linejoin="round">
                     <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
@@ -3788,7 +3806,7 @@
                 </label>
                 <span class="platform-model-count-pill" id="zc-model-count">共 0 个</span>
                 <span class="platform-model-divider"></span>
-                <button class="btn-ghost platform-model-btn-icon"
+                <button class="btn-ghost accent platform-model-btn-icon"
  title="导入" data-click-id="zc-import-file">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
                     stroke-linecap="round" stroke-linejoin="round">
@@ -3799,7 +3817,7 @@
                 </button>
                 <input type="file" id="zc-import-file" accept=".json" style="display:none;"
  data-action="importZcModels" data-events="change" data-pass-event>
-                <button class="btn-ghost platform-model-btn-icon"
+                <button class="btn-ghost accent platform-model-btn-icon"
  title="导出" data-action="exportZcModels">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
                     stroke-linecap="round" stroke-linejoin="round">
@@ -3808,7 +3826,7 @@
                     <line x1="12" y1="15" x2="12" y2="3" />
                   </svg>
                 </button>
-                <button class="btn-ghost platform-model-btn-icon" data-json-toggle="zc" aria-pressed="false"
+                <button class="btn-ghost accent platform-model-btn-icon" data-json-toggle="zc" aria-pressed="false"
  title="JSON 编辑" data-action="toggleZcJsonEditor">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
                     stroke-linecap="round" stroke-linejoin="round">
@@ -3816,7 +3834,7 @@
                     <polyline points="8 6 2 12 8 18" />
                   </svg>
                 </button>
-                <button class="btn-ghost platform-model-btn-icon"
+                <button class="btn-ghost accent platform-model-btn-icon"
  title="刷新" data-action="loadZcModels">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
                     stroke-linecap="round" stroke-linejoin="round">
@@ -3890,11 +3908,11 @@
             <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;">
               <h2 style="font-size:14px; font-weight:700; margin:0;">JSON 编辑器</h2>
               <div style="display:flex; gap:8px;">
-                <button class="btn-ghost" style="padding:4px 12px; font-size:12px;"
+                <button class="btn-ghost accent" style="padding:4px 12px; font-size:12px;"
  data-action="formatZcJson">格式化</button>
                 <button class="btn-primary" style="padding:4px 12px; font-size:12px;"
  data-action="applyZcJson">应用</button>
-                <button class="btn-ghost" style="padding:4px 12px; font-size:12px;"
+                <button class="btn-ghost secondary" style="padding:4px 12px; font-size:12px;"
  data-action="toggleZcJsonEditor">返回列表</button>
               </div>
             </div>
@@ -3973,8 +3991,8 @@
                     <div class="wb-add-models-sub" id="zc-add-models-sub">左侧选择一个供应商，右侧将展示其可用模型</div>
                   </div>
                   <div style="display:flex; gap:8px;">
-                    <button class="btn-ghost" data-action="zcAddSelectAll">全选</button>
-                    <button class="btn-ghost" data-action="zcAddSelectNone">全不选</button>
+                    <button class="btn-ghost accent" data-action="zcAddSelectAll">全选</button>
+                    <button class="btn-ghost secondary" data-action="zcAddSelectNone">全不选</button>
                     <button class="btn-primary" id="zc-add-confirm-page" disabled data-action="confirmAddZcModelsPage">
                       <svg viewBox="0 0 24 24"
                         style="width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;">
@@ -4042,7 +4060,7 @@
                   </svg>
                   添加模型
                 </button>
-                <button class="btn-ghost cb-bulk-delete-btn" id="wb-delete-selected-btn"
+                <button class="btn-ghost danger cb-bulk-delete-btn" id="wb-delete-selected-btn"
  disabled title="删除勾选的模型" data-action="deleteSelectedWbModels">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
                     stroke-linecap="round" stroke-linejoin="round">
@@ -4053,7 +4071,7 @@
                   </svg>
                   <span class="cb-bulk-delete-label">删除选中</span>
                 </button>
-                <button class="btn-ghost platform-model-btn" data-action="saveWbModels">
+                <button class="btn-ghost success platform-model-btn" data-action="saveWbModels">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
                     stroke-linecap="round" stroke-linejoin="round">
                     <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
@@ -4062,7 +4080,7 @@
                   </svg>
                   保存
                 </button>
-                <button class="btn-ghost buddy-sync-toggle platform-model-btn" id="wb-sync-buddy-btn" data-buddy-sync-toggle
+                <button class="btn-ghost accent buddy-sync-toggle platform-model-btn" id="wb-sync-buddy-btn" data-buddy-sync-toggle
  aria-pressed="false"
  title="开启同步 CodeBuddy" data-action="toggleTencentBuddySync" data-arg="workbuddy">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
@@ -4072,7 +4090,7 @@
                   </svg>
                   <span class="model-action-label">同步 CodeBuddy</span>
                 </button>
-                <button class="btn-ghost platform-model-btn-icon"
+                <button class="btn-ghost accent platform-model-btn-icon"
  title="刷新" data-action="loadWbModels">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
                     stroke-linecap="round" stroke-linejoin="round">
@@ -4082,7 +4100,7 @@
                   </svg>
                 </button>
                 <span class="platform-model-divider"></span>
-                <button class="btn-ghost platform-model-btn"
+                <button class="btn-ghost accent platform-model-btn"
  title="导出" data-action="exportWbModels">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
                     stroke-linecap="round" stroke-linejoin="round">
@@ -4091,7 +4109,7 @@
                     <line x1="12" y1="15" x2="12" y2="3" />
                   </svg>
                 </button>
-                <button class="btn-ghost platform-model-btn"
+                <button class="btn-ghost accent platform-model-btn"
  title="导入" data-click-id="wb-import-file">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
                     stroke-linecap="round" stroke-linejoin="round">
@@ -4102,7 +4120,7 @@
                 </button>
                 <input type="file" id="wb-import-file" accept=".json" style="display:none;"
  data-action="importWbModels" data-events="change" data-pass-event>
-                <button class="btn-ghost platform-model-btn-icon" data-json-toggle="wb" aria-pressed="false"
+                <button class="btn-ghost accent platform-model-btn-icon" data-json-toggle="wb" aria-pressed="false"
  title="JSON 编辑" data-action="toggleWbJsonEditor">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
                     stroke-linecap="round" stroke-linejoin="round">
@@ -4189,11 +4207,11 @@
             <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;">
               <h2 style="font-size:14px; font-weight:700; margin:0;">JSON 编辑器</h2>
               <div style="display:flex; gap:8px;">
-                <button class="btn-ghost" style="padding:4px 12px; font-size:12px;"
+                <button class="btn-ghost accent" style="padding:4px 12px; font-size:12px;"
  data-action="formatWbJson">格式化</button>
                 <button class="btn-primary" style="padding:4px 12px; font-size:12px;"
  data-action="applyWbJson">应用</button>
-                <button class="btn-ghost" style="padding:4px 12px; font-size:12px;"
+                <button class="btn-ghost secondary" style="padding:4px 12px; font-size:12px;"
  data-action="toggleWbJsonEditor">返回列表</button>
               </div>
             </div>
@@ -4258,7 +4276,7 @@
                 </div>
               </div>
               <div class="platform-actions" style="margin-top:0; justify-content:flex-end;">
-                <button class="btn-ghost" data-action="closeWbAddModal">取消</button>
+                <button class="btn-ghost secondary" data-action="closeWbAddModal">取消</button>
                 <button class="btn-primary" id="wb-add-confirm" disabled data-action="confirmAddWbModels">添加选中模型</button>
               </div>
             </div>
@@ -4287,7 +4305,7 @@
                 </div>
               </div>
               <div class="model-slots-actions" style="display:flex; gap:8px;">
-                <button class="btn-ghost"
+                <button class="btn-ghost secondary"
  style="border-radius:10px; padding:0 16px; font-size:13px; font-weight:600; height:36px;" data-action="closeCbEditModal">取消</button>
                 <button class="btn-primary"
  style="border-radius:10px; padding:0 18px; font-size:13px; font-weight:600; height:36px; display:flex; align-items:center; gap:6px;" data-action="saveCbEditFromModal">
@@ -4415,8 +4433,8 @@
                     <div class="wb-add-models-sub" id="wb-add-models-sub">左侧选择一个供应商，右侧将展示其可用模型</div>
                   </div>
                   <div style="display:flex; gap:8px;">
-                    <button class="btn-ghost" data-action="wbAddSelectAll">全选</button>
-                    <button class="btn-ghost" data-action="wbAddSelectNone">全不选</button>
+                    <button class="btn-ghost accent" data-action="wbAddSelectAll">全选</button>
+                    <button class="btn-ghost secondary" data-action="wbAddSelectNone">全不选</button>
                     <button class="btn-primary" id="wb-add-confirm-page" disabled data-action="confirmAddWbModelsPage">
                       <svg viewBox="0 0 24 24"
                         style="width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;">
@@ -4735,7 +4753,7 @@
                         <div class="setting-label">密钥存储位置</div>
                         <div class="setting-desc">本地配置目录，仅当前用户可读</div>
                       </div>
-                      <div class="setting-ctrl"><button class="btn-ghost" data-action="openConfigDir">打开目录</button></div>
+                      <div class="setting-ctrl"><button class="btn-ghost accent" data-action="openConfigDir">打开目录</button></div>
                     </div>
                     <div class="setting-row">
                       <div>
@@ -4811,7 +4829,7 @@
                         <div class="setting-desc">立即尝试连线 GitHub 获取最新版本</div>
                       </div>
                       <div class="setting-ctrl">
-                        <button class="btn-ghost" id="updater-manual-btn" data-action="manualCheckUpdate">检查更新</button>
+                        <button class="btn-ghost accent" id="updater-manual-btn" data-action="manualCheckUpdate">检查更新</button>
                       </div>
                     </div>
                     <div class="setting-row" style="border:none;padding-top:8px;">
@@ -4842,7 +4860,7 @@
                       </div>
                       <div class="setting-ctrl setting-restart-pref-ctrl">
                         <input class="input-sm" id="ideRestartPromptMode" value="每次询问" readonly>
-                        <button class="btn-ghost" id="ideRestartPromptResetBtn"
+                        <button class="btn-ghost secondary" id="ideRestartPromptResetBtn"
  data-action="resetIdeRestartPromptPreference">恢复询问</button>
                       </div>
                     </div>
@@ -4853,8 +4871,8 @@
                         </div>
                       </div>
                       <div class="setting-ctrl">
-                        <button class="btn-ghost" data-action="openCertsDir">证书目录</button>
-                        <button class="btn-ghost" data-action="openConfigDir">配置目录</button>
+                        <button class="btn-ghost accent" data-action="openCertsDir">证书目录</button>
+                        <button class="btn-ghost accent" data-action="openConfigDir">配置目录</button>
                       </div>
                     </div>
                     <div class="setting-row setting-row-stacked setting-path-row">
@@ -4864,8 +4882,8 @@
                       </div>
                       <div class="setting-ctrl setting-path-ctrl">
                         <input class="field-input" id="idePath" placeholder="探测中...">
-                        <button class="btn-ghost" data-action="detectIdePath">探测</button>
-                        <button class="btn-ghost" data-action="saveIdePath">保存</button>
+                        <button class="btn-ghost accent" data-action="detectIdePath">探测</button>
+                        <button class="btn-ghost success" data-action="saveIdePath">保存</button>
                       </div>
                     </div>
                     <div class="setting-row">
@@ -4916,24 +4934,24 @@
                         <button class="btn-primary" id="health-run-btn" data-action="runHealthcheck">
                           <span class="health-btn-icon">▶</span> 一键检测
                         </button>
-                        <button class="btn-ghost" id="health-generate-cert-btn" data-action="generateCertsFromHealth">
+                        <button class="btn-ghost success" id="health-generate-cert-btn" data-action="generateCertsFromHealth">
                           生成证书
                         </button>
-                        <button class="btn-ghost" id="health-install-cert-btn" data-action="installCaFromHealth">
+                        <button class="btn-ghost success" id="health-install-cert-btn" data-action="installCaFromHealth">
                           安装证书
                         </button>
-                        <button class="btn-ghost health-danger-btn" id="health-uninstall-cert-btn"
+                        <button class="btn-ghost danger health-danger-btn" id="health-uninstall-cert-btn"
  data-action="uninstallCaFromHealth">
                           卸载证书
                         </button>
-                        <button class="btn-ghost" id="health-cleanup-legacy-btn"
+                        <button class="btn-ghost warn" id="health-cleanup-legacy-btn"
  style="display:none;" data-action="cleanupLegacyCaFromHealth">
                           清理老证书
                         </button>
-                        <button class="btn-ghost" id="health-export-md-btn" disabled data-action="exportHealthMarkdown">
+                        <button class="btn-ghost accent" id="health-export-md-btn" disabled data-action="exportHealthMarkdown">
                           导出 Markdown 报告
                         </button>
-                        <button class="btn-ghost" id="health-copy-md-btn" disabled data-action="copyHealthMarkdown">
+                        <button class="btn-ghost accent" id="health-copy-md-btn" disabled data-action="copyHealthMarkdown">
                           复制到剪贴板
                         </button>
                       </div>
@@ -4995,7 +5013,7 @@
                         <div class="about-actions">
                           <a class="btn-primary about-join-btn" href="https://qm.qq.com/q/nT5ApAtKiQ" target="_blank"
                             rel="noopener noreferrer">加入交流群</a>
-                          <a class="btn-ghost about-link-btn" href="https://github.com/soulvon/AnyBridge-Release/releases" target="_blank"
+                          <a class="btn-ghost accent about-link-btn" href="https://github.com/soulvon/AnyBridge-Release/releases" target="_blank"
                             rel="noopener noreferrer">发布页</a>
                         </div>
                       </div>
@@ -5034,8 +5052,8 @@
         <div class="eval-check-modal-toolbar">
           <div class="eval-check-modal-note">基础协议、结构、签名、模型回显会固定执行；这里选择附加检测项。</div>
           <div class="eval-check-modal-actions">
-            <button type="button" class="btn-ghost" data-action="setAllEvalChecks" data-args="[true]">全选</button>
-            <button type="button" class="btn-ghost" data-action="setAllEvalChecks" data-args="[false]">清空</button>
+            <button type="button" class="btn-ghost accent" data-action="setAllEvalChecks" data-args="[true]">全选</button>
+            <button type="button" class="btn-ghost secondary" data-action="setAllEvalChecks" data-args="[false]">清空</button>
           </div>
         </div>
         <div class="eval-check-picker-grid" id="eval-check-picker-grid"></div>
@@ -5282,8 +5300,8 @@
                   <span id="proxyRouteModelProviderSub">右侧会展示该供应商的模型</span>
                 </div>
                 <div class="proxy-route-model-actions">
-                  <button type="button" class="btn-ghost" id="proxyRouteSelectAllBtn" disabled data-action="selectAllProxyRouteModels">全选</button>
-                  <button type="button" class="btn-ghost" id="proxyRouteSelectNoneBtn" disabled data-action="selectNoProxyRouteModels">全不选</button>
+                  <button type="button" class="btn-ghost accent" id="proxyRouteSelectAllBtn" disabled data-action="selectAllProxyRouteModels">全选</button>
+                  <button type="button" class="btn-ghost secondary" id="proxyRouteSelectNoneBtn" disabled data-action="selectNoProxyRouteModels">全不选</button>
                 </div>
               </div>
               <div id="proxyRouteModelList" class="proxy-route-model-list"></div>
@@ -5330,7 +5348,7 @@
               <div class="proxy-route-editor-section-title">备用模型</div>
               <div class="proxy-route-editor-section-desc">主模型失败后按顺序尝试，当前主模型也会显示在链路顶部。</div>
             </div>
-            <button type="button" class="btn-ghost proxy-route-add-target-btn" data-action="openProxyRouteBackupPicker">添加备用模型</button>
+            <button type="button" class="btn-ghost accent proxy-route-add-target-btn" data-action="openProxyRouteBackupPicker">添加备用模型</button>
           </div>
           <div id="proxyRouteTargetsEditor" class="proxy-route-target-editor"></div>
         </section>
@@ -5853,14 +5871,14 @@
                     <strong>刷新状态</strong>
                     <span>重新检测所有扩展的运行状态</span>
                   </div>
-                  <button type="button" class="btn-ghost" data-action="refreshExtensionStatuses">刷新</button>
+                  <button type="button" class="btn-ghost accent" data-action="refreshExtensionStatuses">刷新</button>
                 </div>
                 <div class="extension-settings-row">
                   <div class="extension-settings-label">
                     <strong>扩展日志</strong>
                     <span>查看安装、启动、更新等操作记录</span>
                   </div>
-                  <button type="button" class="btn-ghost" data-action="openExtensionLogsFromSettings">打开</button>
+                  <button type="button" class="btn-ghost accent" data-action="openExtensionLogsFromSettings">打开</button>
                 </div>
                 <p class="extension-settings-hint">各扩展的安装目录、版本切换等专属配置，请在对应扩展卡片的「设置」中管理。</p>
               </div>
@@ -5961,9 +5979,9 @@
             <div class="cpa-deploy-dir-row">
               <input type="text" id="cpa-deploy-dir-input" class="settings-input"
                 placeholder="留空使用默认目录" />
-              <button type="button" class="btn-ghost cpa-deploy-dir-browse" id="cpa-deploy-dir-browse"
+              <button type="button" class="btn-ghost accent cpa-deploy-dir-browse" id="cpa-deploy-dir-browse"
                 title="选择文件夹">选择</button>
-              <button type="button" class="btn-ghost cpa-deploy-dir-reset" data-clear-id="cpa-deploy-dir-input">重置</button>
+              <button type="button" class="btn-ghost secondary cpa-deploy-dir-reset" data-clear-id="cpa-deploy-dir-input">重置</button>
             </div>
             <p class="cpa-deploy-dir-hint" id="cpa-deploy-dir-hint"></p>
           </div>

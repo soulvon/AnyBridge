@@ -1590,6 +1590,128 @@ html[data-theme="dark"] .theme-setting-moon {
   color: #ffffff;
 }
 
+/* Ghost button semantic outline variants */
+.btn-ghost.accent,
+.btn-ghost.success,
+.btn-ghost.warn,
+.btn-ghost.danger,
+.btn-ghost.secondary {
+  font-weight: 650;
+}
+
+.btn-ghost.accent:disabled,
+.btn-ghost.success:disabled,
+.btn-ghost.warn:disabled,
+.btn-ghost.danger:disabled,
+.btn-ghost.secondary:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.btn-ghost.accent {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 38%, var(--border) 62%);
+  background: var(--accent-light);
+}
+.btn-ghost.accent:not(:disabled):hover {
+  color: var(--accent-hover);
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent-light) 70%, var(--accent) 14%);
+}
+
+.btn-ghost.success {
+  color: var(--success);
+  border-color: color-mix(in srgb, var(--success) 34%, var(--border) 66%);
+  background: var(--success-dim);
+}
+.btn-ghost.success:not(:disabled):hover {
+  border-color: var(--success);
+  background: color-mix(in srgb, var(--success-dim) 70%, var(--success) 14%);
+}
+
+.btn-ghost.warn {
+  color: var(--warn);
+  border-color: color-mix(in srgb, var(--warn) 38%, var(--border) 62%);
+  background: var(--accent-warm-dim);
+}
+.btn-ghost.warn:not(:disabled):hover {
+  border-color: var(--warn);
+  background: color-mix(in srgb, var(--accent-warm-dim) 70%, var(--warn) 14%);
+}
+
+.btn-ghost.danger {
+  color: var(--danger);
+  border-color: color-mix(in srgb, var(--danger) 42%, var(--border) 58%);
+  background: var(--danger-dim);
+}
+.btn-ghost.danger:not(:disabled):hover {
+  border-color: var(--danger);
+  background: color-mix(in srgb, var(--danger-dim) 70%, var(--danger) 14%);
+}
+
+.btn-ghost.secondary {
+  color: var(--text-secondary);
+  border-color: var(--border-strong);
+  background: var(--bg-card);
+}
+.btn-ghost.secondary:not(:disabled):hover {
+  color: var(--text-primary);
+  border-color: var(--border);
+  background: var(--bg-hover);
+}
+
+[data-theme="dark"] .btn-ghost.accent {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 45%, rgba(255, 255, 255, 0.12) 55%);
+  background: var(--accent-light);
+}
+[data-theme="dark"] .btn-ghost.accent:not(:disabled):hover {
+  color: var(--accent-hover);
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent-light) 55%, var(--accent) 18%);
+}
+
+[data-theme="dark"] .btn-ghost.success {
+  color: var(--success);
+  border-color: color-mix(in srgb, var(--success) 42%, rgba(255, 255, 255, 0.12) 58%);
+  background: var(--success-dim);
+}
+[data-theme="dark"] .btn-ghost.success:not(:disabled):hover {
+  border-color: var(--success);
+  background: color-mix(in srgb, var(--success-dim) 55%, var(--success) 18%);
+}
+
+[data-theme="dark"] .btn-ghost.warn {
+  color: var(--warn);
+  border-color: color-mix(in srgb, var(--warn) 45%, rgba(255, 255, 255, 0.12) 55%);
+  background: var(--accent-warm-dim);
+}
+[data-theme="dark"] .btn-ghost.warn:not(:disabled):hover {
+  border-color: var(--warn);
+  background: color-mix(in srgb, var(--accent-warm-dim) 55%, var(--warn) 18%);
+}
+
+[data-theme="dark"] .btn-ghost.danger {
+  color: var(--danger);
+  border-color: color-mix(in srgb, var(--danger) 50%, rgba(255, 255, 255, 0.12) 50%);
+  background: var(--danger-dim);
+}
+[data-theme="dark"] .btn-ghost.danger:not(:disabled):hover {
+  border-color: var(--danger);
+  background: color-mix(in srgb, var(--danger-dim) 55%, var(--danger) 18%);
+}
+
+[data-theme="dark"] .btn-ghost.secondary {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.12);
+  color: rgba(255, 255, 255, 0.90);
+}
+[data-theme="dark"] .btn-ghost.secondary:not(:disabled):hover {
+  background: rgba(255, 255, 255, 0.10);
+  border-color: rgba(255, 255, 255, 0.18);
+  color: #ffffff;
+}
+
 /* Shared button geometry: primary/ghost buttons must not drift in height or text baseline. */
 .btn-primary,
 .btn-success,
@@ -3274,15 +3396,6 @@ html[data-theme="dark"] .theme-setting-moon {
   line-height: 1;
   white-space: nowrap;
 }
-.health-head-actions > .health-danger-btn {
-  color: var(--danger);
-  border-color: rgba(212, 61, 61, 0.26);
-}
-.health-head-actions > .health-danger-btn:hover {
-  color: var(--danger);
-  background: var(--danger-dim);
-  border-color: rgba(212, 61, 61, 0.36);
-}
 .health-btn-icon {
   display: inline-block;
   margin-right: 4px;
@@ -3859,15 +3972,6 @@ html[data-theme="dark"] .theme-setting-moon {
   font-size: 11px;
 }
 
-.extension-actions .extension-action-danger {
-  color: var(--danger);
-}
-
-.extension-actions .extension-action-danger:hover {
-  border-color: rgba(212, 61, 61, 0.35);
-  background: rgba(212, 61, 61, 0.08);
-  color: var(--danger);
-}
 
 .extension-actions .btn-primary,
 .extension-actions .btn-ghost {
@@ -4021,6 +4125,19 @@ html[data-theme="dark"] .theme-setting-moon {
   font-size: 10px;
   font-weight: 400;
   color: var(--text-muted);
+}
+.cpa-credentials-subtitle {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px dashed var(--border);
+}
+.cpa-credentials-subtitle:first-of-type {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: none;
 }
 .cpa-credential-row {
   display: flex;
@@ -4324,8 +4441,8 @@ html[data-theme="dark"] .theme-setting-moon {
 }
 
 .extensions-log-panel .log-body {
-  height: min(58vh, 620px);
-  min-height: 360px;
+  height: min(48vh, 480px);
+  min-height: 320px;
   flex: 1 1 auto;
 }
 

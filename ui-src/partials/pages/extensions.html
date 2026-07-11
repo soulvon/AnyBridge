@@ -10,7 +10,7 @@
                 </div>
               </div>
               <div class="proxy-console-actions">
-                <button class="btn-ghost" id="extensionSettingsBtn" title="设置" data-action="toggleExtensionSettings">
+                <button class="btn-ghost secondary" id="extensionSettingsBtn" title="设置" data-action="toggleExtensionSettings">
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                     <circle cx="12" cy="12" r="3"/>
                     <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
@@ -88,6 +88,20 @@
                 </div>
                 <div class="cpa-credentials" id="cpa-credentials" hidden>
                   <div class="cpa-credentials-title">访问凭证 <span class="cpa-credentials-hint">点击即可复制</span></div>
+
+                  <div class="cpa-credentials-subtitle">CPA API</div>
+                  <div class="cpa-credential-row">
+                    <span class="cpa-credential-label">API Key</span>
+                    <code class="cpa-credential-value" id="cpa-cred-api-key">—</code>
+                    <button type="button" class="cpa-credential-copy" data-copy="api-key" title="复制">复制</button>
+                  </div>
+                  <div class="cpa-credential-row cpa-credential-row-link">
+                    <span class="cpa-credential-label">API 地址</span>
+                    <code class="cpa-credential-value">http://127.0.0.1:8317</code>
+                    <button type="button" class="cpa-credential-copy" data-copy-url="http://127.0.0.1:8317" title="复制地址">复制</button>
+                  </div>
+
+                  <div class="cpa-credentials-subtitle">CPA 管理面板</div>
                   <div class="cpa-credential-row">
                     <span class="cpa-credential-label">管理面板</span>
                     <code class="cpa-credential-value" id="cpa-cred-admin-key">—</code>
@@ -97,11 +111,6 @@
                     <span class="cpa-credential-label">管理密钥</span>
                     <code class="cpa-credential-value" id="cpa-cred-management-key">—</code>
                     <button type="button" class="cpa-credential-copy" data-copy="management-key" title="复制">复制</button>
-                  </div>
-                  <div class="cpa-credential-row">
-                    <span class="cpa-credential-label">API Key</span>
-                    <code class="cpa-credential-value" id="cpa-cred-api-key">—</code>
-                    <button type="button" class="cpa-credential-copy" data-copy="api-key" title="复制">复制</button>
                   </div>
                   <div class="cpa-credential-row cpa-credential-row-link">
                     <span class="cpa-credential-label">面板地址</span>
@@ -167,8 +176,8 @@
                 </div>
                 <div class="extension-actions">
                   <button type="button" class="btn-primary" data-action="handleExtensionAction" data-arg="install-sub2api">安装</button>
-                  <button type="button" class="btn-ghost" data-action="openExtensionDetail" data-arg="sub2api">详情</button>
-                  <button type="button" class="btn-ghost" data-action="handleExtensionAction" data-arg="view-adapter-plan">适配计划</button>
+                  <button type="button" class="btn-ghost secondary" data-action="openExtensionDetail" data-arg="sub2api">详情</button>
+                  <button type="button" class="btn-ghost accent" data-action="handleExtensionAction" data-arg="view-adapter-plan">适配计划</button>
                 </div>
               </article>
 
@@ -200,8 +209,8 @@
                 </div>
                 <div class="extension-actions">
                   <button type="button" class="btn-primary" data-action="handleExtensionAction" data-arg="install-grok2api">安装</button>
-                  <button type="button" class="btn-ghost" data-action="openExtensionDetail" data-arg="grok2api">详情</button>
-                  <button type="button" class="btn-ghost" data-action="handleExtensionAction" data-arg="view-adapter-plan">适配计划</button>
+                  <button type="button" class="btn-ghost secondary" data-action="openExtensionDetail" data-arg="grok2api">详情</button>
+                  <button type="button" class="btn-ghost accent" data-action="handleExtensionAction" data-arg="view-adapter-plan">适配计划</button>
                 </div>
               </article>
 
@@ -232,8 +241,8 @@
                 </div>
                 <div class="extension-actions">
                   <button type="button" class="btn-primary" data-action="handleExtensionAction" data-arg="install-jimeng">安装</button>
-                  <button type="button" class="btn-ghost" data-action="openExtensionDetail" data-arg="free-jimeng">详情</button>
-                  <button type="button" class="btn-ghost" data-action="handleExtensionAction" data-arg="view-adapter-plan">适配计划</button>
+                  <button type="button" class="btn-ghost secondary" data-action="openExtensionDetail" data-arg="free-jimeng">详情</button>
+                  <button type="button" class="btn-ghost accent" data-action="handleExtensionAction" data-arg="view-adapter-plan">适配计划</button>
                 </div>
               </article>
             </div>
@@ -244,7 +253,7 @@
                   <h3>扩展日志</h3>
                   <span class="tag log-count" id="extensionLogCount">0 条记录</span>
                 </div>
-                <button type="button" class="btn-ghost" data-action="clearExtensionLogs">清空</button>
+                <button type="button" class="btn-ghost danger" data-action="clearExtensionLogs">清空</button>
               </div>
               <div class="log-tabs" id="extensionLogTabs">
                 <button class="log-tab active" data-level="all" data-action="setExtensionLogFilter" data-arg="all">全部</button>
