@@ -105,7 +105,16 @@ export function setLogFilter(level) {
   document.querySelectorAll('.log-tab').forEach((tab) => {
     tab.classList.toggle('active', tab.dataset.level === level);
   });
+  const btn = document.getElementById('logFilterBtn');
+  if (btn) btn.textContent = `筛选: ${LOG_FILTER_LABELS[level] || level} ▾`;
   renderLogs();
+}
+
+export function cycleLogFilter() {
+  ensureState();
+  const i = LOG_FILTERS.indexOf(globalThis.logFilter);
+  const next = LOG_FILTERS[(i + 1) % LOG_FILTERS.length];
+  setLogFilter(next);
 }
 
 export function openLogViewerModal() {
@@ -280,6 +289,7 @@ g.scheduleLogRender = scheduleLogRender;
 g.addLog = addLog;
 g.clearLogs = clearLogs;
 g.setLogFilter = setLogFilter;
+g.cycleLogFilter = cycleLogFilter;
 g.openLogViewerModal = openLogViewerModal;
 g.closeLogViewerModal = closeLogViewerModal;
 g.closeLogViewerOnEsc = closeLogViewerOnEsc;

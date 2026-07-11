@@ -215,10 +215,16 @@ function updateSlotVisionHint() {
 
 
 function isBuiltinProvider(p) {
-  return !!(p && p.meta?.builtin === true);
+  return isLocalProxyProvider(p) || isCpaLocalProvider(p);
+}
+
+/** 仅前端注入、不落盘的内置供应商（AnyBridge 本地代理） */
+function isVirtualBuiltinProvider(p) {
+  return isLocalProxyProvider(p);
 }
 
 globalThis.LOCAL_PROXY_PROVIDER_ID = 'anybridge-local-proxy';
+globalThis.CPA_LOCAL_PROVIDER_ID = 'cpa-local';
 
 /** 构建 AnyBridge 本地代理供应商的模型列表条目（供各「添加模型」页面使用） */
 function localProxyProviderModelsEntry() {
@@ -247,7 +253,29 @@ function localProxyProviderModelsEntry() {
 
 /** 判断供应商条目是否为 AnyBridge 本地代理 */
 function isLocalProxyProviderEntry(p) {
-  return !!(p && (p.providerId === LOCAL_PROXY_PROVIDER_ID || p.isLocalProxy === true));
+  return !!(p && (p.providerId === LOCAL_PROXY_PROVIDER_ID || p.id === LOCAL_PROXY_PROVIDER_ID || p.isLocalProxy === true || p.meta?.localProxy === true));
+}
+
+function isLocalProxyProvider(p) {
+  return isLocalProxyProviderEntry(p);
+}
+
+/** CPA 套件部署后自动添加的内置本地供应商 */
+function isCpaLocalProvider(p) {
+  if (!p) return false;
+  if (p.id === CPA_LOCAL_PROVIDER_ID || p.meta?.cpaLocal === true) return true;
+  if (typeof p.id === 'string' && p.id.startsWith('p-cpa-local')) return true;
+  return false;
+}
+
+function builtinProviderBadgeHtml(p) {
+  if (isLocalProxyProvider(p)) {
+    return '<span class="provider-builtin-badge">本地代理</span>';
+  }
+  if (isCpaLocalProvider(p)) {
+    return '<span class="provider-builtin-badge">本地</span>';
+  }
+  return '';
 }
 
 function syncLocalProxyProvider() {
@@ -278,6 +306,23 @@ function syncLocalProxyProvider() {
   providerStore.providers.unshift(provider);
 }
 
+/** 规范化 CPA 内置供应商：固定 id、标记 meta，便于徽章与排序 */
+function syncCpaLocalProvider() {
+  if (!providerStore || !Array.isArray(providerStore.providers)) return;
+  const idx = providerStore.providers.findIndex(p =>
+    p.id === CPA_LOCAL_PROVIDER_ID
+    || (typeof p.id === 'string' && p.id.startsWith('p-cpa-local'))
+    || (String(p.apiHost || '').replace(/\/+$/, '').toLowerCase() === 'http://127.0.0.1:8317' && /cpa/i.test(String(p.name || '')))
+  );
+  if (idx < 0) return;
+  const p = providerStore.providers[idx];
+  p.id = CPA_LOCAL_PROVIDER_ID;
+  if (!p.name || p.name === 'CPA (本地)' || /^CPA \(本地\)/.test(p.name)) p.name = 'CPA';
+  p.meta = { ...(p.meta || {}), builtin: true, cpaLocal: true };
+  p.enabled = true;
+  if (!p.apiPath) p.apiPath = '/v1';
+}
+
 async function loadProviders() {
   if (!invoke) return;
   try {
@@ -286,6 +331,7 @@ async function loadProviders() {
       providerStore = { providers: [], codexConfigs: [], claudeCodeConfigs: [], opencodeConfigs: [] };
     }
     syncLocalProxyProvider();
+    syncCpaLocalProvider();
     if (!Array.isArray(providerStore.codexConfigs)) {
       providerStore.codexConfigs = [];
     }
@@ -351,12 +397,13 @@ function providerSortedList(list = []) {
     const sorted = [...list].sort(compareProvidersByName);
     result = providerSortMode === 'name-desc' ? sorted.reverse() : sorted;
   }
-  // 本地代理供应商始终排在第一位，不受排序影响
-  const lpIdx = result.findIndex(p => p.id === LOCAL_PROXY_PROVIDER_ID);
-  if (lpIdx > 0) {
-    const [lp] = result.splice(lpIdx, 1);
-    result.unshift(lp);
+  // 内置本地供应商固定置顶：AnyBridge 第一，CPA 第二，不受排序影响
+  const pinned = [];
+  for (const id of [LOCAL_PROXY_PROVIDER_ID, CPA_LOCAL_PROVIDER_ID]) {
+    const i = result.findIndex(p => p.id === id);
+    if (i >= 0) pinned.push(...result.splice(i, 1));
   }
+  if (pinned.length) result = [...pinned, ...result];
   return result;
 }
 
@@ -731,14 +778,19 @@ function renderProviderCards(list) {
     const enabled = p.enabled !== false;
     const selected = providerSelectedIds.has(p.id);
     const builtin = isBuiltinProvider(p);
-    const builtinBadge = builtin ? '<span class="provider-builtin-badge">本地代理</span>' : '';
+    const builtinBadge = builtinProviderBadgeHtml(p);
     const toggleHtml = builtin
       ? ''
       : `<div class="toggle ${enabled ? 'on' : ''}" title="${enabled ? '已启用，点击禁用' : '未启用，点击启用'}" data-action="toggleProviderEnabled" data-arg="${escAttr(p.id)}"></div>`;
-    const actionsHtml = builtin
+    const isLocalProxy = isLocalProxyProvider(p);
+    const actionsHtml = isLocalProxy
       ? `<button class="btn-ghost" data-action="testProvider" data-arg="${escAttr(p.id)}">测试</button>
          ${providerUnlockCardButtonHtml(p)}
          <button class="btn-ghost" data-action="navigateToProxyModels">编辑</button>`
+      : builtin
+      ? `<button class="btn-ghost" data-action="testProvider" data-arg="${escAttr(p.id)}">测试</button>
+         ${providerUnlockCardButtonHtml(p)}
+         <button class="btn-ghost" data-action="openProviderEditor" data-arg="${escAttr(p.id)}">编辑</button>`
       : `<button class="btn-ghost" data-action="testProvider" data-arg="${escAttr(p.id)}">测试</button>
          ${providerUnlockCardButtonHtml(p)}
          <button class="btn-ghost" data-action="openProviderEditor" data-arg="${escAttr(p.id)}">编辑</button>
@@ -805,8 +857,9 @@ function renderProviderListTable(list) {
             const enabled = p.enabled !== false;
             const selected = providerSelectedIds.has(p.id);
             const builtin = isBuiltinProvider(p);
-            const builtinBadge = builtin ? '<span class="provider-builtin-badge">本地代理</span>' : '';
-            const actionButtons = builtin
+            const builtinBadge = builtinProviderBadgeHtml(p);
+            const isLocalProxy = isLocalProxyProvider(p);
+            const actionButtons = isLocalProxy
               ? `<button class="provider-list-icon-btn" data-action="testProvider" data-arg="${escAttr(p.id)}" title="测试" aria-label="测试 ${escAttr(p.name || p.id)}">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                     <path d="M10 2v7.3a4 4 0 0 1-.54 2L4.2 20.1A1.3 1.3 0 0 0 5.32 22h13.36a1.3 1.3 0 0 0 1.12-1.9l-5.26-8.8a4 4 0 0 1-.54-2V2"></path>
@@ -816,6 +869,21 @@ function renderProviderListTable(list) {
                 </button>
                 ${providerUnlockListButtonHtml(p)}
                 <button class="provider-list-icon-btn" data-action="navigateToProxyModels" title="编辑" aria-label="编辑">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M12 20h9"></path>
+                    <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"></path>
+                  </svg>
+                </button>`
+              : builtin
+              ? `<button class="provider-list-icon-btn" data-action="testProvider" data-arg="${escAttr(p.id)}" title="测试" aria-label="测试 ${escAttr(p.name || p.id)}">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M10 2v7.3a4 4 0 0 1-.54 2L4.2 20.1A1.3 1.3 0 0 0 5.32 22h13.36a1.3 1.3 0 0 0 1.12-1.9l-5.26-8.8a4 4 0 0 1-.54-2V2"></path>
+                    <path d="M8.5 2h7"></path>
+                    <path d="M7.5 15h9"></path>
+                  </svg>
+                </button>
+                ${providerUnlockListButtonHtml(p)}
+                <button class="provider-list-icon-btn" data-action="openProviderEditor" data-arg="${escAttr(p.id)}" title="编辑" aria-label="编辑 ${escAttr(p.name || p.id)}">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                     <path d="M12 20h9"></path>
                     <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"></path>
@@ -889,6 +957,7 @@ function renderProviderListTable(list) {
 
 function renderProviders() {
   syncLocalProxyProvider();
+  syncCpaLocalProvider();
   const grid = document.getElementById('providerGrid');
   const empty = document.getElementById('providerEmpty');
   if (!grid) return;
@@ -1974,7 +2043,7 @@ function renderEvalProviderOptions(options = {}) {
   const select = document.getElementById('eval-provider-select');
   if (!select) return;
   const previous = select.value;
-  const providers = (providerStore.providers || []).filter(p => p.enabled !== false && p.meta?.codexConfig !== true && !isBuiltinProvider(p));
+  const providers = (providerStore.providers || []).filter(p => p.enabled !== false && p.meta?.codexConfig !== true && !isLocalProxyProvider(p));
   if (!providers.length) {
     select.innerHTML = '<option value="">无启用供应商</option>';
     renderEvalModelOptions({ fetchRemote });
@@ -2814,7 +2883,7 @@ async function persistProviders() {
   try {
     const storeToSave = {
       ...providerStore,
-      providers: (providerStore.providers || []).filter(p => !isBuiltinProvider(p)),
+      providers: (providerStore.providers || []).filter(p => !isVirtualBuiltinProvider(p)),
     };
     await invoke('save_providers', { store: storeToSave });
     return true;
@@ -2875,9 +2944,14 @@ syncEvalCombos();
   g.visionSafeAlternatives = visionSafeAlternatives;
   g.updateSlotVisionHint = updateSlotVisionHint;
   g.isBuiltinProvider = isBuiltinProvider;
+  g.isVirtualBuiltinProvider = isVirtualBuiltinProvider;
+  g.isLocalProxyProvider = isLocalProxyProvider;
+  g.isCpaLocalProvider = isCpaLocalProvider;
+  g.builtinProviderBadgeHtml = builtinProviderBadgeHtml;
   g.localProxyProviderModelsEntry = localProxyProviderModelsEntry;
   g.isLocalProxyProviderEntry = isLocalProxyProviderEntry;
   g.syncLocalProxyProvider = syncLocalProxyProvider;
+  g.syncCpaLocalProvider = syncCpaLocalProvider;
   g.loadProviders = loadProviders;
   g.providerListAll = providerListAll;
   g.providerSearchHaystack = providerSearchHaystack;

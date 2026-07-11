@@ -103,7 +103,9 @@ function platformDef(platformId) {
 
 function isRevealablePath(path) {
   const s = String(path || '').trim();
-  if (!s || s.startsWith('~')) return false;
+  if (!s) return false;
+  // ~/.xxx 也允许点击；后端 reveal_path 负责展开 home
+  if (s === '~' || s.startsWith('~/') || s.startsWith('~\\')) return true;
   return s.includes('/') || s.includes('\\') || /^[A-Za-z]:/.test(s);
 }
 
@@ -120,11 +122,12 @@ async function revealConfigPath(path) {
 function bindRevealPathLabel(labelId, path) {
   const el = document.getElementById(labelId);
   if (!el) return;
-  el.textContent = path;
-  if (isRevealablePath(path)) {
+  const display = String(path || '').trim() || el.textContent || '';
+  el.textContent = display;
+  if (isRevealablePath(display)) {
     el.classList.add('reveal-path');
     el.title = '点击打开所在文件夹';
-    el.onclick = () => revealConfigPath(path);
+    el.onclick = () => revealConfigPath(display);
   } else {
     el.classList.remove('reveal-path');
     el.title = '';
@@ -1395,6 +1398,8 @@ function openCodexConfigEditor(providerId = '') {
     codexConfigSetInputValue('codex-config-api-key', provider.apiKey || '');
     document.getElementById('codex-config-route-through-proxy').checked = provider.routeThroughProxy !== false;
     document.getElementById('codex-config-inject-models').checked = provider.injectModels !== false;
+    document.getElementById('codex-config-preserve-official-auth').checked = !!provider.preserveOfficialAuth;
+    document.getElementById('codex-config-unify-session-history').checked = provider.unifySessionHistory !== false;
     renderReasoningConfig(provider.codexChatReasoning);
     // 合并 catalog 和 models 到统一列表
     const catalog = provider.modelCatalog || [];
@@ -1422,6 +1427,8 @@ function openCodexConfigEditor(providerId = '') {
     codexConfigSetInputValue('codex-config-api-key', '');
     document.getElementById('codex-config-route-through-proxy').checked = true;
     document.getElementById('codex-config-inject-models').checked = true;
+    document.getElementById('codex-config-preserve-official-auth').checked = false;
+    document.getElementById('codex-config-unify-session-history').checked = true;
     renderReasoningConfig(null);
     renderCodexModelManager([], '', '选择供应商后拉取模型列表');
     renderCodexAgentsPanel({ maxThreads: 6, maxDepth: 1, jobMaxRuntimeSeconds: 1800 }, []);
@@ -1508,6 +1515,8 @@ async function saveCodexConfigEditor(switchAfter = false) {
   const wireApi = source?.wireApi || existing?.wireApi || 'responses';
   const routeThroughProxy = document.getElementById('codex-config-route-through-proxy')?.checked !== false;
   const injectModels = document.getElementById('codex-config-inject-models')?.checked !== false;
+  const preserveOfficialAuth = document.getElementById('codex-config-preserve-official-auth')?.checked === true;
+  const unifySessionHistory = document.getElementById('codex-config-unify-session-history')?.checked !== false;
 
   const provider = {
     ...(existing || {}),
@@ -1525,6 +1534,8 @@ async function saveCodexConfigEditor(switchAfter = false) {
     agents: agents.length ? agents : undefined,
     routeThroughProxy,
     injectModels,
+    preserveOfficialAuth,
+    unifySessionHistory,
     sourceProviderId: sourceId || existing?.sourceProviderId || '',
     sourceProviderName: source?.name || existing?.sourceProviderName || '',
   };
@@ -1616,6 +1627,9 @@ function renderCodexConfigCard(config) {
             : config.injectBadge === 'muted'
               ? '<span class="codex-config-badge-muted">codex 桌面版使用默认模型</span>'
               : ''}
+          ${config.preserveAuthBadge === 'success'
+            ? '<span class="codex-config-badge-success">✓ 保留官方登录</span>'
+            : ''}
         </div>
         <p>${platformEsc(config.description || '')}</p>
         <div class="codex-config-meta">${meta}</div>
@@ -1719,6 +1733,7 @@ function renderCodexConfigList(info) {
     const current = codexProviderIsCurrent(provider, info);
     const typeLabel = provider.routeThroughProxy === false ? '直连' : '代理';
     const injectModels = provider.injectModels !== false; // 默认 true
+    const preserveAuth = !!provider.preserveOfficialAuth;
     const isOfficialModel = /^gpt-/i.test(String(provider.defaultModel || '').trim());
     items.push({
       name: provider.name || provider.id,
@@ -1730,9 +1745,10 @@ function renderCodexConfigList(info) {
       endpoint: baseUrl,
       protocol: provider.wireApi || 'responses',
       injectBadge: injectModels ? 'success' : 'muted',
+      preserveAuthBadge: preserveAuth ? 'success' : '',
       action: `applyCodexProviderConfig(${platformJsArg(provider.id)})`,
       editAction: `editCodexProviderConfig(${platformJsArg(provider.id)})`,
-      startAction: current ? `startCodexWithCdp(${injectModels ? 'true' : 'false'})` : '',
+      startAction: current ? `startCodexWithCdp(${injectModels && !preserveAuth ? 'true' : 'false'})` : '',
       deleteAction: current ? '' : `deleteCodexProviderConfig(${platformJsArg(provider.id)})`,
     });
   });
@@ -2520,7 +2536,7 @@ function opencodeConfigSourceProviders() {
   return (providerStore.providers || []).filter(p =>
     p &&
     p.enabled !== false &&
-    !isBuiltinProvider(p)
+    !isLocalProxyProvider(p)
   );
 }
 
@@ -3347,9 +3363,13 @@ async function applyCodexProviderConfig(providerId) {
 
         let restart = null;
         if (codexDesktopAutomationSupported()) {
-          setMessage('正在重启 Codex 桌面版并注入自定义模型…');
+          const preserveAuth = !!provider.preserveOfficialAuth;
+          const needInject = !preserveAuth && provider.injectModels !== false;
+          setMessage(preserveAuth
+            ? '正在重启 Codex 桌面版（保留官方登录模式）…'
+            : '正在重启 Codex 桌面版并注入自定义模型…');
           restart = assertSwitchResultOk(
-            await invoke('restart_codex_desktop', { managed: true, model: provider.defaultModel || null, injectModels: provider.injectModels !== false }),
+            await invoke('restart_codex_desktop', { managed: true, model: provider.defaultModel || null, injectModels: needInject }),
             'Codex 桌面版重启或注入失败'
           );
         } else {
@@ -3767,6 +3787,8 @@ function cursorOpenProxyModels() {
 function cursorOpenStats() {
   if (typeof openProxyPanel === 'function') {
     openProxyPanel('stats');
+  } else if (typeof openPlatformSection === 'function') {
+    openPlatformSection('overview');
   } else {
     navigateTo('proxy');
   }
@@ -3781,6 +3803,12 @@ function openPlatformPage(platformId) {
       if (typeof addLog === 'function') addLog('err', 'Cursor 控制台刷新失败: ' + e);
       showCustomAlert(String(e), 'Cursor 状态读取失败', 'error');
     });
+  } else if (platformId === 'codebuddy') {
+    loadCodeBuddyModels();
+  } else if (platformId === 'workbuddy') {
+    loadWbModels();
+  } else if (platformId === 'zcode') {
+    loadZcModels();
   }
 }
 
@@ -4620,8 +4648,8 @@ async function persistTencentBuddyModels(platform, models, availableModels, scop
 }
 
 function applyTencentBuddySyncedState(models, availableModels, codebuddyMeta, workbuddyMeta) {
-  cbModels = cloneTencentBuddyJson(models);
-  wbModels = cloneTencentBuddyJson(models);
+  cbModels = cbNormalizeModelsContext(cloneTencentBuddyJson(models));
+  wbModels = cbNormalizeModelsContext(cloneTencentBuddyJson(models));
   cbAvailableModels = cbUniqueStrings(availableModels);
   wbAvailableModels = cbUniqueStrings(availableModels);
 
@@ -4634,6 +4662,7 @@ function applyTencentBuddySyncedState(models, availableModels, codebuddyMeta, wo
 
   renderCodeBuddyModels();
   renderWbModels();
+  syncTencentBuddySyncButtons();
 }
 
 async function syncTencentBuddyModels(primaryPlatform, options = {}) {
@@ -4782,6 +4811,76 @@ function cbSelectedCapability(prefix, name) {
   return el ? !!el.checked : true;
 }
 
+/** 按模型 ID 推断推荐上下文窗口（token）。优先读 model-context-presets.json。 */
+function cbRecommendContextWindow(modelId) {
+  if (typeof globalThis.recommendContextWindow === 'function') {
+    return globalThis.recommendContextWindow(modelId);
+  }
+  return 128000;
+}
+
+/** 按模型 ID 推断推荐最大输出 token。优先读 model-context-presets.json。 */
+function cbRecommendMaxOutputTokens(modelId) {
+  if (typeof globalThis.recommendMaxOutputTokens === 'function') {
+    return globalThis.recommendMaxOutputTokens(modelId);
+  }
+  return 8192;
+}
+
+/** 是否为历史遗留的默认 128K（可被推荐值覆盖） */
+function cbIsLegacyDefaultContext(value) {
+  const n = Number(value);
+  return Number.isFinite(n) && n === 128000;
+}
+
+/**
+ * 规范化模型上下文：缺失时填推荐值；
+ * 若仍是历史默认 128K 且推荐值更大，则升级到推荐值。
+ * 用户手动改成非 128K 的值会保留。
+ */
+function cbNormalizeModelContext(model) {
+  if (!model || typeof model !== 'object') return model;
+  const id = model.id || '';
+  const recommended = cbRecommendContextWindow(id);
+  const recommendedOut = cbRecommendMaxOutputTokens(id);
+  const current = model.maxInputTokens;
+  if (current == null || current === '' || !Number.isFinite(Number(current)) || Number(current) <= 0) {
+    model.maxInputTokens = recommended;
+    if (model.maxOutputTokens == null) model.maxOutputTokens = recommendedOut;
+    return model;
+  }
+  if (cbIsLegacyDefaultContext(current) && recommended > 128000) {
+    model.maxInputTokens = recommended;
+    if (model.maxOutputTokens == null || Number(model.maxOutputTokens) === 8192) {
+      model.maxOutputTokens = recommendedOut;
+    }
+  }
+  return model;
+}
+
+function cbNormalizeModelsContext(models) {
+  if (!Array.isArray(models)) return [];
+  return models.map((m) => cbNormalizeModelContext({ ...m }));
+}
+
+/** 格式化上下文 token 显示：128000 → 128K，1000000 → 1M */
+function cbFormatContextTokens(value) {
+  if (value == null || value === '') return '—';
+  const n = Number(value);
+  if (!Number.isFinite(n) || n <= 0) return '—';
+  if (n >= 1000000) {
+    const m = n / 1000000;
+    const text = Number.isInteger(m) ? String(m) : m.toFixed(2).replace(/\.?0+$/, '');
+    return `${text}M`;
+  }
+  if (n >= 1000) {
+    const k = n / 1000;
+    const text = Number.isInteger(k) ? String(k) : k.toFixed(1).replace(/\.0$/, '');
+    return `${text}K`;
+  }
+  return String(Math.round(n));
+}
+
 function cbBuildModelEntry(provider, modelId, displayName, capabilities, platformId) {
   const entry = {
     id: modelId,
@@ -4789,8 +4888,8 @@ function cbBuildModelEntry(provider, modelId, displayName, capabilities, platfor
     vendor: provider.providerName || 'Custom',
     url: platformId === ZC_PLATFORM ? zcProviderBaseUrl(provider) : cbProviderChatUrl(provider),
     apiKey: cbProviderApiKey(provider),
-    maxInputTokens: 128000,
-    maxOutputTokens: 8192,
+    maxInputTokens: cbRecommendContextWindow(modelId),
+    maxOutputTokens: cbRecommendMaxOutputTokens(modelId),
     supportsToolCall: !!capabilities.supportsToolCall,
     supportsImages: !!capabilities.supportsImages,
     supportsReasoning: !!capabilities.supportsReasoning,
@@ -4856,12 +4955,38 @@ function cbApplyProviderModelSelection(prefix, provider, checkSelector, platform
   };
   const previousSelectedCount = currentModels.filter(isCurrentProviderModel).length;
   const preservedModels = currentModels.filter(model => !isCurrentProviderModel(model));
+  const existingById = new Map(
+    currentModels
+      .filter(isCurrentProviderModel)
+      .map(model => [String(model?.id || ''), model])
+  );
   const selectedModels = providerModels
     .filter(model => selectedIds.has(String(model?.id || '')))
     .map(model => {
       const modelId = String(model.id || '');
-      const modelName = String(model.name || modelId);
-      return cbBuildModelEntry(provider, modelId, provider.providerName, capabilities, platformId);
+      const built = cbBuildModelEntry(provider, modelId, provider.providerName, capabilities, platformId);
+      const existing = existingById.get(modelId);
+      // 已存在的模型：保留用户自定义值；若仍是历史默认 128K，则升级到推荐值
+      if (existing) {
+        if (existing.maxInputTokens != null) {
+          const rec = cbRecommendContextWindow(modelId);
+          if (cbIsLegacyDefaultContext(existing.maxInputTokens) && rec > 128000) {
+            built.maxInputTokens = rec;
+          } else {
+            built.maxInputTokens = existing.maxInputTokens;
+          }
+        }
+        if (existing.maxOutputTokens != null) {
+          if (Number(existing.maxOutputTokens) === 8192 && built.maxOutputTokens > 8192) {
+            // 保留推荐输出上限
+          } else {
+            built.maxOutputTokens = existing.maxOutputTokens;
+          }
+        }
+        if (existing.temperature != null) built.temperature = existing.temperature;
+        if (existing.enabled === false) built.enabled = false;
+      }
+      return built;
     });
 
   ref.setModels([...preservedModels, ...selectedModels]);
@@ -5071,7 +5196,7 @@ function cbFilteredModelEntries(models, prefix) {
 function cbNoResultRow(prefix) {
   return `
     <tr class="model-console-empty-row">
-      <td colspan="6">
+      <td colspan="7">
         <div>
           <strong>没有匹配的模型</strong>
           <span>换个关键词或清空搜索</span>
@@ -5302,12 +5427,22 @@ async function loadCodeBuddyModels() {
       return;
     }
     const data = await invoke('load_codebuddy_models', { platform: CB_PLATFORM });
-    cbModels = Array.isArray(data.models) ? data.models : [];
+    const rawModels = Array.isArray(data.models) ? data.models : [];
+    cbModels = cbNormalizeModelsContext(rawModels);
     cbAvailableModels = Array.isArray(data.availableModels) ? data.availableModels : [];
     const meta = cbApplyConfigMeta('cb', data, '~/.codebuddy/models.json');
     cbConfigScope = meta.scope;
     cbConfigPath = meta.path;
     renderCodeBuddyModels();
+    // 历史默认 128K 已升级时，静默写回配置
+    const upgraded = rawModels.some((m, i) => {
+      const before = m?.maxInputTokens;
+      const after = cbModels[i]?.maxInputTokens;
+      return before !== after;
+    });
+    if (upgraded) {
+      await saveCodeBuddyModels({ silent: true });
+    }
     if (typeof addLog === 'function') addLog('ok', 'CodeBuddy 模型列表已加载');
   } catch (e) {
     const action = tencentBuddySyncEnabled ? '同步 CodeBuddy / WorkBuddy' : '加载 CodeBuddy 模型';
@@ -5607,6 +5742,11 @@ function createCbRowFactory(prefix) {
     const enabled = model.enabled !== false;
     const toggleFn = prefix === 'Cb' ? 'toggleCbModelEnabled'      : prefix === 'Zc' ? 'toggleZcModelEnabled'
       : 'toggleWbModelEnabled';
+    const contextTokens = model.maxInputTokens != null ? model.maxInputTokens : null;
+    const contextLabel = cbFormatContextTokens(contextTokens);
+    const contextTitle = contextTokens != null && Number.isFinite(Number(contextTokens))
+      ? `上下文窗口：${Number(contextTokens).toLocaleString()} tokens`
+      : '未设置上下文窗口';
 
     return `
     <tr ${dataAttr}="${index}" class="${selected ? 'cb-model-row-selected' : ''}">
@@ -5622,6 +5762,9 @@ function createCbRowFactory(prefix) {
         </div>
       </td>
       <td><span title="${esc(displayName)}">${esc(displayName)}</span></td>
+      <td class="${cls}-context-cell">
+        <span class="${cls}-context-pill" title="${esc(contextTitle)}">${esc(contextLabel)}</span>
+      </td>
       <td><div style="display:flex; gap:6px; flex-wrap:wrap;">${caps.join('') || '<span style="color:var(--text-muted);font-size:12px;">—</span>'}</div></td>
       <td style="text-align:center;">
         <label class="toggle-switch" title="${enabled ? '已启用' : '已停用'}">
@@ -5951,12 +6094,22 @@ async function loadWbModels() {
       return;
     }
     const data = await invoke('load_codebuddy_models', { platform: WB_PLATFORM });
-    wbModels = Array.isArray(data.models) ? data.models : [];
+    const rawModels = Array.isArray(data.models) ? data.models : [];
+    wbModels = cbNormalizeModelsContext(rawModels);
     wbAvailableModels = Array.isArray(data.availableModels) ? data.availableModels : [];
     const meta = cbApplyConfigMeta('wb', data, '~/.workbuddy/models.json');
     wbConfigScope = meta.scope;
     wbConfigPath = meta.path;
     renderWbModels();
+    // 历史默认 128K 已升级时，静默写回配置
+    const upgraded = rawModels.some((m, i) => {
+      const before = m?.maxInputTokens;
+      const after = wbModels[i]?.maxInputTokens;
+      return before !== after;
+    });
+    if (upgraded) {
+      await saveWbModels({ silent: true });
+    }
     if (typeof addLog === 'function') addLog('ok', 'WorkBuddy 模型列表已加载');
   } catch (e) {
     const action = tencentBuddySyncEnabled ? '同步 CodeBuddy / WorkBuddy' : '加载 WorkBuddy 模型';
@@ -6228,12 +6381,21 @@ async function loadZcModels() {
   if (!invoke) return;
   try {
     const data = await invoke('load_codebuddy_models', { platform: ZC_PLATFORM });
-    zcModels = Array.isArray(data.models) ? data.models : [];
+    const rawModels = Array.isArray(data.models) ? data.models : [];
+    zcModels = cbNormalizeModelsContext(rawModels);
     zcAvailableModels = Array.isArray(data.availableModels) ? data.availableModels : [];
     const meta = cbApplyConfigMeta('zc', data, '~/.zcode/v2/config.json');
     zcConfigScope = meta.scope;
     zcConfigPath = meta.path;
     renderZcModels();
+    const upgraded = rawModels.some((m, i) => {
+      const before = m?.maxInputTokens;
+      const after = zcModels[i]?.maxInputTokens;
+      return before !== after;
+    });
+    if (upgraded) {
+      await saveZcModels({ silent: true });
+    }
     if (typeof addLog === 'function') addLog('ok', 'ZCode 模型列表已加载');
   } catch (e) {
     if (typeof addLog === 'function') addLog('err', '加载 ZCode 模型失败: ' + e);
@@ -6495,7 +6657,7 @@ function zcFlatToNative(models) {
       };
     }
     const input = model.supportsImages ? ['text', 'image'] : ['text'];
-    const limit = { context: model.maxInputTokens || 128000 };
+    const limit = { context: model.maxInputTokens || cbRecommendContextWindow(model.id) };
     if (model.maxOutputTokens) limit.output = model.maxOutputTokens;
     const meta = { name: model.name || model.id, limit, modalities: { input, output: ['text'] } };
     if (model.supportsReasoning) {
@@ -6541,7 +6703,7 @@ function zcNativeToFlat(config) {
           url: baseURL,
           apiKey: opts.apiKey || '',
         }),
-        maxInputTokens: limit.context || 128000,
+        maxInputTokens: limit.context || cbRecommendContextWindow(mid),
         maxOutputTokens: limit.output || undefined,
         supportsImages: inputArr.includes('image'),
         supportsReasoning: zcReasoningEnabled(meta),
@@ -6967,6 +7129,12 @@ window.zcDrop = function(e) {
   g.cbModelSelectionKey = cbModelSelectionKey;
   g.cbProviderApiKey = cbProviderApiKey;
   g.cbSelectedCapability = cbSelectedCapability;
+  g.cbRecommendContextWindow = cbRecommendContextWindow;
+  g.cbRecommendMaxOutputTokens = cbRecommendMaxOutputTokens;
+  g.cbFormatContextTokens = cbFormatContextTokens;
+  g.cbIsLegacyDefaultContext = cbIsLegacyDefaultContext;
+  g.cbNormalizeModelContext = cbNormalizeModelContext;
+  g.cbNormalizeModelsContext = cbNormalizeModelsContext;
   g.cbBuildModelEntry = cbBuildModelEntry;
   g.cbAddModelIdentity = cbAddModelIdentity;
   g.cbOnAddModelCheckChanged = cbOnAddModelCheckChanged;

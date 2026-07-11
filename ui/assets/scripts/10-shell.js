@@ -24,19 +24,19 @@ globalThis.PLATFORM_SHELL_PAGES = new Set([
 ]);
 
 function normalizePlatformSection(section) {
-  return ['models', 'settings'].includes(section) ? section : 'models';
+  return ['overview', 'models', 'settings'].includes(section) ? section : 'models';
 }
 
 function getPlatformSectionForPage(pageId) {
   if (['models', 'model-slots', 'slot-editor'].includes(pageId)) return 'models';
   if (pageId === 'platform-proxy') {
-    return activePlatformSection === 'settings' ? 'settings' : 'settings';
+    return activePlatformSection === 'settings' ? 'settings' : 'overview';
   }
   return null;
 }
 
 function setPlatformPanel(section) {
-  const panelId = normalizePlatformSection(section) === 'settings' ? 'settings' : 'settings';
+  const panelId = normalizePlatformSection(section) === 'settings' ? 'settings' : 'overview';
   document.querySelectorAll('.platform-panel[data-platform-panel]').forEach(panel => {
     const isActive = panel.dataset.platformPanel === panelId;
     panel.classList.toggle('active', isActive);
@@ -66,6 +66,13 @@ function openPlatformSection(section) {
     syncPlatformConsoleHead();
     return;
   }
+  // 统计已划入代理页 tab；overview 统一跳代理「统计」
+  if (target === 'overview') {
+    if (typeof openProxyPanel === 'function') openProxyPanel('stats');
+    else navigateTo('proxy');
+    syncPlatformConsoleHead();
+    return;
+  }
   navigateTo('platform-proxy');
   setPlatformPanel(target);
   syncPlatformSubtabsForPage('platform-proxy');
@@ -92,7 +99,7 @@ function navigateTo(pageId) {
   hideAllEditorModals();
 
   if (pageId === 'platform-proxy' && activePlatformSection !== 'settings') {
-    activePlatformSection = 'settings';
+    activePlatformSection = 'overview';
   }
 
   // 编辑器 page 归属到对应的 tab：高亮对应的 tab，激活对应 page
@@ -317,14 +324,42 @@ function activateProxyPanel(panelId = 'overview') {
   if (target === 'routes' && typeof renderProxyRoutes === 'function') {
     renderProxyRoutes();
   }
+  if ((target === 'stats' || target === 'logs') && typeof refreshStats === 'function') {
+    refreshStats();
+  }
   if (target === 'stats' && typeof renderProxyStats === 'function') {
     renderProxyStats();
+  }
+  if (target === 'logs' && typeof renderLogs === 'function') {
+    renderLogs();
   }
 }
 
 function openProxyPanel(panelId = 'overview') {
   navigateTo('proxy');
   activateProxyPanel(panelId);
+}
+
+/**
+ * 将全局统计 KPI / 代理日志挂到代理页 stats、logs tab。
+ * 从 platform-proxy overview 迁移 DOM（同 id，只迁一次）。
+ */
+function mountProxyStatsAndLogsPanels() {
+  const statsMount = document.getElementById('proxyStatsMount');
+  const logsMount = document.getElementById('proxyLogsMount');
+  const analytics = document.querySelector('#platform-panel-overview .proxy-analytics');
+  if (!analytics) return;
+
+  const logsPanel = analytics.querySelector('.proxy-logs-panel');
+
+  if (statsMount && !statsMount.dataset.mounted) {
+    statsMount.dataset.mounted = '1';
+    statsMount.appendChild(analytics);
+  }
+  if (logsMount && logsPanel && !logsMount.dataset.mounted) {
+    logsMount.dataset.mounted = '1';
+    logsMount.appendChild(logsPanel);
+  }
 }
 
 function mountProxyEnhancementPanel() {
@@ -379,6 +414,7 @@ document.querySelectorAll('.proxy-console-tab[data-proxy-panel]').forEach(tab =>
   tab.addEventListener('click', () => activateProxyPanel(tab.dataset.proxyPanel));
 });
 mountProxyEnhancementPanel();
+mountProxyStatsAndLogsPanels();
 document.querySelectorAll('.proxy-enhancement-tab[data-enhancement-panel]').forEach(tab => {
   tab.addEventListener('click', () => activateEnhancementPanel(tab.dataset.enhancementPanel));
 });
@@ -1031,6 +1067,7 @@ function updateFlowIdeTarget(ide) {
   g.activateProxyPanel = activateProxyPanel;
   g.openProxyPanel = openProxyPanel;
   g.mountProxyEnhancementPanel = mountProxyEnhancementPanel;
+  g.mountProxyStatsAndLogsPanels = mountProxyStatsAndLogsPanels;
   g.activateEnhancementPanel = activateEnhancementPanel;
   g.normalizeProxyPlatform = normalizeProxyPlatform;
   g.setPlatformRailActive = setPlatformRailActive;

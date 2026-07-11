@@ -1146,8 +1146,6 @@ function collectVisionModelOptions() {
   const options = [];
   (providerStore.providers || []).forEach(p => {
     if (!p || p.enabled === false || p.meta?.codexConfig === true) return;
-    // AnyBridge 本地代理供应商也参与图片理解模型选择
-    if (isBuiltinProvider(p) && !isLocalProxyProviderEntry(p)) return;
     providerSelectedModels(p).forEach(model => {
       const caps = providerCapabilities(p, model);
       ['openai', 'anthropic'].forEach(apiFormat => {
@@ -2489,7 +2487,7 @@ function targetsWithSlotRoute(targets, slotUid) {
 function getAllProviderModels() {
   const list = [];
   (providerStore.providers || []).forEach(p => {
-    if (p.enabled !== false && p.meta?.codexConfig !== true && !isBuiltinProvider(p)) {
+    if (p.enabled !== false && p.meta?.codexConfig !== true && !isLocalProxyProvider(p)) {
       const models = Array.isArray(p.models) && p.models.length > 0 ? p.models : (p.defaultModel ? [p.defaultModel] : []);
       models.forEach(m => {
         list.push({
@@ -3066,7 +3064,7 @@ globalThis.failoverEditUid = '';
 globalThis.failoverDraft = [];   // [{providerId, model, apiFormat?, unlock?}]
 
 function enabledProviders() {
-  return (providerStore.providers || []).filter(p => p.enabled !== false && p.meta?.codexConfig !== true && !isBuiltinProvider(p));
+  return (providerStore.providers || []).filter(p => p.enabled !== false && p.meta?.codexConfig !== true && !isLocalProxyProvider(p));
 }
 
 function routeLabelForValue(value) {

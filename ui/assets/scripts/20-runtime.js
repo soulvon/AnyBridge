@@ -626,10 +626,27 @@ function setProxyButtonBusyText(textValue) {
 }
 
 function setProxyPlatformActionBusy(busy) {
+  const restoreBtn = document.getElementById('proxyRestoreBtn');
   ['proxyBtn', 'proxyRefreshBtn', 'proxyRestoreBtn'].forEach(id => {
-    const btn = document.getElementById(id);
-    if (btn) btn.disabled = !!busy;
+    const el = document.getElementById(id);
+    if (!el) return;
+    if (busy) {
+      el.disabled = true;
+      return;
+    }
+    // 结束 busy 后，停止接入仍由 syncIdeProxyButton 按 patched 状态决定
+    if (id === 'proxyRestoreBtn') return;
+    el.disabled = false;
   });
+  if (!busy && typeof syncIdeProxyButton === 'function') {
+    syncIdeProxyButton();
+  } else if (!busy && restoreBtn) {
+    // fallback: 未接入时保持禁用
+    const target = normalizeIdeProxyTargetValue(typeof getTargetIde === 'function' ? getTargetIde() : 'windsurf');
+    const patched = !!(ideProxyStatusByTarget[target] || {}).patched;
+    restoreBtn.disabled = !patched;
+    restoreBtn.classList.toggle('is-danger', patched);
+  }
 }
 
 async function refreshCurrentProxyPlatformStatus() {
@@ -1005,6 +1022,10 @@ function updateHealthPill(errorRate, latencyMs, windowRequests) {
   }
   el.textContent = '运行正常';
   el.classList.add('ok');
+}
+
+function renderProxyStats() {
+  return refreshStats();
 }
 
 async function refreshStats() {
@@ -1459,6 +1480,7 @@ function setConfigToggleState(key, enabled) {
   g.resetStatsUi = resetStatsUi;
   g.updateHealthPill = updateHealthPill;
   g.refreshStats = refreshStats;
+  g.renderProxyStats = renderProxyStats;
   g.renderTopModels = renderTopModels;
   g.windowMinimize = windowMinimize;
   g.windowMaximize = windowMaximize;

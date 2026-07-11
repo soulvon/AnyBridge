@@ -14,6 +14,7 @@ import './30-providers-eval.js';
 import './40-model-picker.js';
 import './50-model-map.js';
 import './52-proxy-routes.js';
+import './model-context-presets.js';
 import './55-platforms.js';
 import './65-extensions.js';
 import './60-updater.js';

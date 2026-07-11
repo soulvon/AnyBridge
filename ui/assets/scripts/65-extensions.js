@@ -16,6 +16,7 @@ globalThis.extensionServicesById = new Map();
 globalThis.activeExtensionDetailId = '';
 globalThis.cpaUpdateReport = null;
 globalThis.cpaInstallDir = null;
+globalThis.cpaAutoStart = true;
 globalThis.extensionAutoRefreshTimer = null;
 globalThis.extensionDeployInProgress = false;
 globalThis.cpaProgressState = { percent: 0, message: '' };
@@ -178,7 +179,6 @@ function openExtensionSettings() {
   if (!modal) return;
   modal.hidden = false;
   modal.classList.add('active');
-  loadCpaInstallDir();
   document.addEventListener('keydown', closeExtensionSettingsOnEsc);
 }
 
@@ -449,7 +449,7 @@ function getCpaActionConfig(status, hasUpdate) {
     case 'not-installed':
       return {
         primary: { label: '一键部署', action: 'install-cpa' },
-        secondary: [{ label: '详情', action: 'detail' }]
+        secondary: [{ label: '设置', action: 'settings' }]
       };
     case 'installed':
       return {
@@ -458,7 +458,7 @@ function getCpaActionConfig(status, hasUpdate) {
           { label: '切换版本', action: 'switch-cpa-version' },
           { label: '卸载', action: 'uninstall-cpa-suite', danger: true },
           { label: '检测更新', action: 'check-cpa-update' },
-          { label: '详情', action: 'detail' }
+          { label: '设置', action: 'settings' }
         ]
       };
     case 'running':
@@ -469,7 +469,7 @@ function getCpaActionConfig(status, hasUpdate) {
             { label: '打开面板', action: 'open-cpamp' },
             { label: '切换版本', action: 'switch-cpa-version' },
             { label: '停止', action: 'stop-cpa-suite' },
-            { label: '详情', action: 'detail' }
+            { label: '设置', action: 'settings' }
           ]
         };
       }
@@ -479,7 +479,7 @@ function getCpaActionConfig(status, hasUpdate) {
           { label: '停止', action: 'stop-cpa-suite' },
           { label: '切换版本', action: 'switch-cpa-version' },
           { label: '检测更新', action: 'check-cpa-update' },
-          { label: '详情', action: 'detail' }
+          { label: '设置', action: 'settings' }
         ]
       };
     case 'degraded':
@@ -489,13 +489,13 @@ function getCpaActionConfig(status, hasUpdate) {
           { label: '切换版本', action: 'switch-cpa-version' },
           { label: '停止', action: 'stop-cpa-suite' },
           { label: '卸载', action: 'uninstall-cpa-suite', danger: true },
-          { label: '详情', action: 'detail' }
+          { label: '设置', action: 'settings' }
         ]
       };
     case 'error':
       return {
         primary: { label: '刷新状态', action: 'refresh' },
-        secondary: [{ label: '详情', action: 'detail' }]
+        secondary: [{ label: '设置', action: 'settings' }]
       };
     case 'installing':
       return {
@@ -505,17 +505,17 @@ function getCpaActionConfig(status, hasUpdate) {
     case 'starting':
       return {
         primary: { label: '启动中...', action: null, disabled: true },
-        secondary: [{ label: '详情', action: 'detail' }]
+        secondary: [{ label: '设置', action: 'settings' }]
       };
     case 'stopping':
       return {
         primary: { label: '停止中...', action: null, disabled: true },
-        secondary: [{ label: '详情', action: 'detail' }]
+        secondary: [{ label: '设置', action: 'settings' }]
       };
     case 'updating':
       return {
         primary: { label: '更新中...', action: null, disabled: true },
-        secondary: [{ label: '详情', action: 'detail' }]
+        secondary: [{ label: '设置', action: 'settings' }]
       };
     case 'uninstalling':
       return {
@@ -525,12 +525,12 @@ function getCpaActionConfig(status, hasUpdate) {
     case 'checking':
       return {
         primary: { label: '检测中...', action: null, disabled: true },
-        secondary: [{ label: '详情', action: 'detail' }]
+        secondary: [{ label: '设置', action: 'settings' }]
       };
     default:
       return {
         primary: { label: '一键部署', action: 'install-cpa' },
-        secondary: [{ label: '详情', action: 'detail' }]
+        secondary: [{ label: '设置', action: 'settings' }]
       };
   }
 }
@@ -540,7 +540,7 @@ function bindCpaActionButton(el, action) {
   el.onclick = event => {
     event?.stopPropagation?.();
     if (!action || el.disabled) return;
-    if (action === 'detail') openExtensionDetail('cpa-suite');
+    if (action === 'settings' || action === 'detail') openExtensionDetail('cpa-suite');
     else handleExtensionAction(action);
   };
 }
@@ -898,6 +898,145 @@ function highlightExtensionDetailAlerts(service) {
   });
 }
 
+function appendExtensionSettingRow(host, { label, desc, actionLabel, onClick, danger = false }) {
+  const row = document.createElement('div');
+  row.className = 'extension-detail-setting-row';
+  const copy = document.createElement('div');
+  copy.className = 'extension-detail-setting-label';
+  const title = document.createElement('strong');
+  title.textContent = label;
+  const detail = document.createElement('span');
+  detail.textContent = desc || '';
+  copy.append(title, detail);
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = danger ? 'btn-ghost extension-action-danger' : 'btn-ghost';
+  btn.textContent = actionLabel || '操作';
+  btn.onclick = (event) => {
+    event?.stopPropagation?.();
+    if (typeof onClick === 'function') onClick();
+  };
+  row.append(copy, btn);
+  host.appendChild(row);
+}
+
+function appendExtensionSettingToggle(host, { label, desc, checked, onChange }) {
+  const row = document.createElement('div');
+  row.className = 'extension-detail-setting-row';
+  const copy = document.createElement('div');
+  copy.className = 'extension-detail-setting-label';
+  const title = document.createElement('strong');
+  title.textContent = label;
+  const detail = document.createElement('span');
+  detail.textContent = desc || '';
+  copy.append(title, detail);
+  const toggle = document.createElement('label');
+  toggle.className = 'toggle-switch';
+  toggle.title = checked ? '已开启' : '已关闭';
+  const input = document.createElement('input');
+  input.type = 'checkbox';
+  input.checked = Boolean(checked);
+  const slider = document.createElement('span');
+  slider.className = 'toggle-slider';
+  toggle.append(input, slider);
+  input.addEventListener('change', async () => {
+    const next = Boolean(input.checked);
+    toggle.title = next ? '已开启' : '已关闭';
+    if (typeof onChange !== 'function') return;
+    try {
+      await onChange(next, input);
+    } catch (e) {
+      input.checked = !next;
+      toggle.title = input.checked ? '已开启' : '已关闭';
+      extensionNotify(`设置失败: ${e?.message || e}`, 'error');
+    }
+  });
+  row.append(copy, toggle);
+  host.appendChild(row);
+}
+
+async function loadCpaAutoStart() {
+  if (!ensureExtensionBridge()) return true;
+  try {
+    const enabled = await invoke('extension_cpa_auto_start');
+    cpaAutoStart = enabled !== false;
+  } catch (e) {
+    extensionLog('warn', `读取 CPA 跟随启动设置失败: ${e?.message || e}`);
+    cpaAutoStart = true;
+  }
+  return cpaAutoStart;
+}
+
+async function setCpaAutoStart(enabled) {
+  if (!ensureExtensionBridge()) {
+    throw new Error('桌面通信通道未就绪');
+  }
+  const next = await invoke('extension_set_cpa_auto_start', { enabled: Boolean(enabled) });
+  cpaAutoStart = next !== false;
+  extensionLog('info', `CPA 跟随软件启动: ${cpaAutoStart ? '已开启' : '已关闭'}`);
+  extensionNotify(cpaAutoStart ? '已开启跟随软件启动' : '已关闭跟随软件启动', 'info');
+  return cpaAutoStart;
+}
+
+function renderExtensionDetailSettings(id, service) {
+  const section = document.getElementById('extensionDetailSettingsSection');
+  const host = document.getElementById('extensionDetailSettings');
+  if (!section || !host) return;
+  clearExtensionNode(host);
+
+  if (id !== 'cpa-suite') {
+    section.hidden = true;
+    return;
+  }
+
+  section.hidden = false;
+  const installDir = service?.installDir || cpaInstallDir || '默认目录';
+  appendExtensionSettingToggle(host, {
+    label: '跟随软件启动',
+    desc: 'AnyBridge 启动时自动拉起已安装的 CPA 套件（默认开启）',
+    checked: cpaAutoStart !== false,
+    onChange: async (enabled) => {
+      await setCpaAutoStart(enabled);
+    }
+  });
+  appendExtensionSettingRow(host, {
+    label: '安装目录',
+    desc: installDir,
+    actionLabel: '修改',
+    onClick: () => setCpaInstallDir()
+  });
+  appendExtensionSettingRow(host, {
+    label: 'CPA 管理面板',
+    desc: '打开 CPA Manager Plus 管理界面',
+    actionLabel: '打开',
+    onClick: () => handleExtensionAction('open-cpamp')
+  });
+  appendExtensionSettingRow(host, {
+    label: '插件商店',
+    desc: '打开 CPA 插件管理页面',
+    actionLabel: '打开',
+    onClick: () => handleExtensionAction('open-cpamp-plugins')
+  });
+  appendExtensionSettingRow(host, {
+    label: '切换版本',
+    desc: '在本地缓存与 GitHub 版本间切换',
+    actionLabel: '切换',
+    onClick: () => handleExtensionAction('switch-cpa-version')
+  });
+  appendExtensionSettingRow(host, {
+    label: '检测更新',
+    desc: '检查 CPA 套件是否有新版本',
+    actionLabel: '检测',
+    onClick: () => handleExtensionAction('check-cpa-update')
+  });
+  appendExtensionSettingRow(host, {
+    label: '刷新状态',
+    desc: '重新检测 CPA 套件运行状态',
+    actionLabel: '刷新',
+    onClick: () => handleExtensionAction('refresh')
+  });
+}
+
 function openExtensionDetail(id) {
   const catalog = EXTENSION_CATALOG[id];
   if (!catalog) {
@@ -909,65 +1048,81 @@ function openExtensionDetail(id) {
   const modal = document.getElementById('extension-detail-modal');
   if (!modal) return;
 
+  const isCpaSettings = id === 'cpa-suite';
   const mark = document.getElementById('extensionDetailMark');
   if (mark) {
     mark.textContent = catalog.short || '扩展';
     mark.className = `extension-detail-mark extension-detail-mark-${id}`;
   }
   const kicker = document.getElementById('extensionDetailKicker');
-  if (kicker) kicker.textContent = catalog.kicker || '扩展详情';
+  if (kicker) kicker.textContent = isCpaSettings ? '扩展设置' : (catalog.kicker || '扩展详情');
   const title = document.getElementById('extensionDetailTitle');
-  if (title) title.textContent = catalog.name;
+  if (title) title.textContent = isCpaSettings ? `${catalog.name}设置` : catalog.name;
   const desc = document.getElementById('extensionDetailDescription');
-  if (desc) desc.textContent = catalog.description;
-
-  const metrics = document.getElementById('extensionDetailMetrics');
-  clearExtensionNode(metrics);
-  appendExtensionMetric(metrics, '状态', extensionStatusLabel(service?.status || (id === 'cpa-suite' ? 'checking' : 'not-installed')));
-  appendExtensionMetric(metrics, '类型', catalog.type);
-  appendExtensionMetric(metrics, '版本', service?.version || '待检测');
-  appendExtensionMetric(metrics, '端口', extensionPortsText(service, catalog));
-  appendExtensionMetric(metrics, '接入等级', catalog.level);
-  appendExtensionMetric(metrics, '来源', service?.installSource || 'GitHub 或手动导入');
-  appendExtensionMetric(metrics, '安装目录', service?.installDir || '默认');
-
-  renderExtensionGithubLinks(document.getElementById('extensionDetailGithub'), catalog);
-  renderExtensionComponents(document.getElementById('extensionDetailComponents'), service, catalog);
-  renderExtensionNotes(document.getElementById('extensionDetailNotes'), service, catalog);
-  highlightExtensionDetailAlerts(service);
-
-  const secondary = document.getElementById('extensionDetailSecondaryAction');
-  if (secondary) {
-    secondary.textContent = catalog.secondaryLabel || '更多';
-    secondary.onclick = () => handleExtensionAction(catalog.secondaryAction || 'view-adapter-plan');
+  if (desc) {
+    desc.textContent = isCpaSettings
+      ? '管理 CPA 套件的跟随启动、安装目录、面板入口、版本与更新等专属配置。'
+      : catalog.description;
   }
-  const primary = document.getElementById('extensionDetailPrimaryAction');
-  if (primary) {
-    let primaryAction = catalog.primaryAction;
-    let primaryLabel = catalog.primaryLabel || '执行操作';
-    if (id === 'cpa-suite') {
-      const status = service?.status || 'not-installed';
-      const hasUpdate = cpaUpdateReport?.components?.some(component => component.updateAvailable === true);
-      const config = getCpaActionConfig(status, hasUpdate);
-      // 详情弹窗内「查看详情」无意义，降级为刷新
-      if (config.primary.action === 'detail') {
-        primaryAction = 'refresh';
-        primaryLabel = '刷新状态';
-        primary.disabled = false;
-      } else {
-        primaryAction = config.primary.action || catalog.primaryAction;
-        primaryLabel = config.primary.label;
-        primary.disabled = Boolean(config.primary.disabled);
-      }
-    } else {
-      primary.disabled = false;
+
+  const paint = () => {
+    if (activeExtensionDetailId !== id) return;
+    renderExtensionDetailSettings(id, service);
+
+    const metrics = document.getElementById('extensionDetailMetrics');
+    clearExtensionNode(metrics);
+    appendExtensionMetric(metrics, '状态', extensionStatusLabel(service?.status || (id === 'cpa-suite' ? 'checking' : 'not-installed')));
+    appendExtensionMetric(metrics, '类型', catalog.type);
+    appendExtensionMetric(metrics, '版本', service?.version || '待检测');
+    appendExtensionMetric(metrics, '端口', extensionPortsText(service, catalog));
+    appendExtensionMetric(metrics, '接入等级', catalog.level);
+    appendExtensionMetric(metrics, '来源', service?.installSource || 'GitHub 或手动导入');
+    appendExtensionMetric(metrics, '安装目录', service?.installDir || cpaInstallDir || '默认');
+
+    renderExtensionGithubLinks(document.getElementById('extensionDetailGithub'), catalog);
+    renderExtensionComponents(document.getElementById('extensionDetailComponents'), service, catalog);
+    renderExtensionNotes(document.getElementById('extensionDetailNotes'), service, catalog);
+    highlightExtensionDetailAlerts(service);
+
+    const secondary = document.getElementById('extensionDetailSecondaryAction');
+    if (secondary) {
+      secondary.textContent = catalog.secondaryLabel || '更多';
+      secondary.onclick = () => handleExtensionAction(catalog.secondaryAction || 'view-adapter-plan');
     }
-    primary.textContent = primaryLabel;
-    primary.onclick = () => {
-      if (!primaryAction || primary.disabled) return;
-      if (primaryAction === 'detail') return;
-      handleExtensionAction(primaryAction);
-    };
+    const primary = document.getElementById('extensionDetailPrimaryAction');
+    if (primary) {
+      let primaryAction = catalog.primaryAction;
+      let primaryLabel = catalog.primaryLabel || '执行操作';
+      if (id === 'cpa-suite') {
+        const status = service?.status || 'not-installed';
+        const hasUpdate = cpaUpdateReport?.components?.some(component => component.updateAvailable === true);
+        const config = getCpaActionConfig(status, hasUpdate);
+        // 设置弹窗内「设置」无意义，降级为刷新
+        if (config.primary.action === 'settings' || config.primary.action === 'detail') {
+          primaryAction = 'refresh';
+          primaryLabel = '刷新状态';
+          primary.disabled = false;
+        } else {
+          primaryAction = config.primary.action || catalog.primaryAction;
+          primaryLabel = config.primary.label;
+          primary.disabled = Boolean(config.primary.disabled);
+        }
+      } else {
+        primary.disabled = false;
+      }
+      primary.textContent = primaryLabel;
+      primary.onclick = () => {
+        if (!primaryAction || primary.disabled) return;
+        if (primaryAction === 'settings' || primaryAction === 'detail') return;
+        handleExtensionAction(primaryAction);
+      };
+    }
+  };
+
+  if (isCpaSettings) {
+    loadCpaAutoStart().finally(paint);
+  } else {
+    paint();
   }
 
   modal.classList.add('active');
@@ -986,7 +1141,7 @@ function closeExtensionDetailOnEsc(event) {
 }
 
 function bindExtensionCardOpeners() {
-  // 仅通过「详情」按钮打开弹窗，卡片本体不响应点击
+  // 仅通过「详情/设置」按钮打开弹窗，卡片本体不响应点击
   const modal = document.getElementById('extension-detail-modal');
   if (modal && modal.dataset.overlayBound !== '1') {
     modal.dataset.overlayBound = '1';
@@ -994,6 +1149,11 @@ function bindExtensionCardOpeners() {
       if (event.target === modal) closeExtensionDetail();
     });
   }
+}
+
+function openExtensionLogsFromSettings() {
+  closeExtensionSettings();
+  switchExtensionTab('logs');
 }
 
 async function refreshExtensionStatuses(options = {}) {
@@ -1171,6 +1331,11 @@ async function uninstallCpaSuite() {
     cpaUpdateReport = null;
     await loadCpaInstallDir();
     await refreshExtensionStatuses({ silent: true });
+    try {
+      if (typeof loadProviders === 'function') await loadProviders();
+      if (typeof renderProviders === 'function') renderProviders();
+      if (typeof renderEvalProviderOptions === 'function') renderEvalProviderOptions();
+    } catch (_) {}
     const still = extensionServicesById.get('cpa-suite');
     if (still?.installed || still?.status === 'installed' || still?.status === 'running' || still?.status === 'degraded') {
       extensionNotify('托管目录已清理，但仍检测到桌面等外部安装来源。', 'warn');
@@ -1249,8 +1414,11 @@ async function initExtensions() {
   bindExtensionSettingsModal();
   bindDeployProgressListener();
   switchExtensionTab('all');
-  await refreshExtensionStatuses({ silent: true });
-  await loadCpaInstallDir();
+  await Promise.all([
+    refreshExtensionStatuses({ silent: true }),
+    loadCpaInstallDir(),
+    loadCpaAutoStart()
+  ]);
 }
 
 function onExtensionsPageEnter() {
@@ -1283,9 +1451,17 @@ function renderCpaInstallDir() {
     el.textContent = label;
     el.title = cpaInstallDir || '';
   }
-  const settingsEl = document.getElementById('extensionInstallDirText');
-  if (settingsEl) {
-    settingsEl.textContent = cpaInstallDir || '默认目录';
+  // 若 CPA 设置弹窗打开中，同步刷新安装目录展示
+  if (activeExtensionDetailId === 'cpa-suite') {
+    const host = document.getElementById('extensionDetailSettings');
+    const rows = host?.querySelectorAll('.extension-detail-setting-row') || [];
+    rows.forEach(row => {
+      const title = row.querySelector('.extension-detail-setting-label strong')?.textContent || '';
+      if (title === '安装目录') {
+        const desc = row.querySelector('.extension-detail-setting-label span');
+        if (desc) desc.textContent = cpaInstallDir || '默认目录';
+      }
+    });
   }
 }
 
@@ -1293,9 +1469,21 @@ async function chooseCpaInstallDir() {
   if (!ensureExtensionBridge()) return null;
   const defaultDir = cpaInstallDir || (await invoke('extension_cpa_default_install_dir'));
   if (typeof defaultDir !== 'string') return cpaInstallDir;
-  const chosen = await showCustomPrompt('请指定 CPA 套件安装目录（留空使用默认目录）', defaultDir, 'CPA 安装目录');
-  if (chosen === null) return null;
-  const dir = chosen.trim();
+
+  let picked;
+  try {
+    picked = await invoke('pick_directory', {
+      title: '选择 CPA 套件安装目录',
+      defaultPath: defaultDir,
+    });
+  } catch (e) {
+    extensionLog('err', `选择文件夹失败: ${e?.message || e}`);
+    extensionNotify(`选择文件夹失败: ${e?.message || e}`, 'error');
+    return null;
+  }
+  if (picked === null || picked === undefined) return null; // 用户取消
+
+  const dir = String(picked || '').trim();
   cpaInstallDir = dir || defaultDir;
   renderCpaInstallDir();
   if (dir && dir !== defaultDir) {
@@ -1306,6 +1494,31 @@ async function chooseCpaInstallDir() {
     }
   }
   return cpaInstallDir;
+}
+
+/** 部署弹窗内：选择安装目录并写入输入框 */
+async function browseCpaDeployDir() {
+  if (!ensureExtensionBridge()) return;
+  const inputEl = document.getElementById('cpa-deploy-dir-input');
+  let defaultDir = cpaInstallDir || '';
+  try {
+    defaultDir = cpaInstallDir || (await invoke('extension_cpa_default_install_dir'));
+  } catch (_) {}
+  const current = (inputEl?.value || '').trim() || defaultDir || '';
+  try {
+    const picked = await invoke('pick_directory', {
+      title: '选择 CPA 套件安装目录',
+      defaultPath: current,
+    });
+    if (picked === null || picked === undefined) return;
+    if (inputEl) {
+      inputEl.value = String(picked || '');
+      inputEl.focus();
+    }
+  } catch (e) {
+    extensionLog('err', `选择文件夹失败: ${e?.message || e}`);
+    extensionNotify(`选择文件夹失败: ${e?.message || e}`, 'error');
+  }
 }
 
 async function setCpaInstallDir() {
@@ -1488,6 +1701,15 @@ function showCpaDeployModal() {
       inputEl.placeholder = defaultDir ? `默认：${defaultDir}` : '留空使用默认目录';
     }
     if (hintEl) hintEl.textContent = defaultDir ? `默认目录：${defaultDir}` : '';
+
+    const browseBtn = document.getElementById('cpa-deploy-dir-browse');
+    if (browseBtn) {
+      browseBtn.onclick = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        browseCpaDeployDir();
+      };
+    }
 
     function switchView(view) {
       confirmView.style.display = view === 'confirm' ? '' : 'none';
@@ -1674,11 +1896,20 @@ function showCpaDeployModal() {
         extensionLog('ok', `部署完成：CPA 套件 ${extensionStatusLabel(result.status)}`);
         extensionNotify('CPA 套件部署完成！', 'success');
         appendDeployLog('部署完成！', 'ok');
+        // 刷新供应商列表，展示内置 CPA 本地供应商
+        try {
+          if (typeof loadProviders === 'function') await loadProviders();
+          if (typeof renderProviders === 'function') renderProviders();
+          if (typeof renderEvalProviderOptions === 'function') renderEvalProviderOptions();
+        } catch (e) {
+          extensionLog('warn', `刷新供应商列表失败: ${e?.message || e}`);
+        }
 
         showResult(true, '部署完成', [
           'CPA 套件已成功部署并启动运行。',
           '<strong>CLIProxyAPI</strong>：端口 8317',
           '<strong>CPA Manager Plus</strong>：端口 18317',
+          '已在供应商页添加内置「CPA」本地供应商（排在 AnyBridge 后）。',
           '点击卡片上的「打开面板」即可进入管理界面。'
         ].join('<br>'));
       } catch (err) {
@@ -2018,6 +2249,12 @@ async function applyCpaVersionSelection() {
   g.closeExtensionDetail = closeExtensionDetail;
   g.closeExtensionDetailOnEsc = closeExtensionDetailOnEsc;
   g.bindExtensionCardOpeners = bindExtensionCardOpeners;
+  g.appendExtensionSettingRow = appendExtensionSettingRow;
+  g.appendExtensionSettingToggle = appendExtensionSettingToggle;
+  g.renderExtensionDetailSettings = renderExtensionDetailSettings;
+  g.openExtensionLogsFromSettings = openExtensionLogsFromSettings;
+  g.loadCpaAutoStart = loadCpaAutoStart;
+  g.setCpaAutoStart = setCpaAutoStart;
   g.refreshExtensionStatuses = refreshExtensionStatuses;
   g.formatUpdateLine = formatUpdateLine;
   g.checkCpaExtensionUpdates = checkCpaExtensionUpdates;
@@ -2033,6 +2270,7 @@ async function applyCpaVersionSelection() {
   g.renderCpaInstallDir = renderCpaInstallDir;
   g.chooseCpaInstallDir = chooseCpaInstallDir;
   g.setCpaInstallDir = setCpaInstallDir;
+  g.browseCpaDeployDir = browseCpaDeployDir;
   g.toggleExtensionDetails = toggleExtensionDetails;
   g.openExtensionURL = openExtensionURL;
   g.showExtensionBackendPending = showExtensionBackendPending;

@@ -179,7 +179,7 @@ function proxyRouteBackupVisibleProviders() {
 }
 
 function proxyRouteProviderModelsFromStore() {
-  const providers = (providerStore.providers || []).filter(p => p.enabled !== false && p.meta?.codexConfig !== true && !isBuiltinProvider(p));
+  const providers = (providerStore.providers || []).filter(p => p.enabled !== false && p.meta?.codexConfig !== true && !isLocalProxyProvider(p));
   return providers.map(provider => {
     const models = Array.isArray(provider.models) ? provider.models : [];
     return {
@@ -710,7 +710,7 @@ async function onProxyRouteEditorRenameApplyChange() {
 }
 
 function providerOptions(selectedId) {
-  const providers = (providerStore.providers || []).filter(p => p.enabled !== false && p.meta?.codexConfig !== true && !isBuiltinProvider(p));
+  const providers = (providerStore.providers || []).filter(p => p.enabled !== false && p.meta?.codexConfig !== true && !isLocalProxyProvider(p));
   return [
     '<option value="">选择供应商</option>',
     ...providers.map(p => `<option value="${proxyRouteEsc(p.id)}" ${p.id === selectedId ? 'selected' : ''}>${proxyRouteEsc(p.name || p.id)}</option>`)
