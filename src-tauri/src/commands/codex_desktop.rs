@@ -17,7 +17,9 @@
 //       CC-Switch spec §4.11-4.20 (CDP + models_cache 注入)。
 
 use crate::commands::config::{configured_proxy_ports, read_provider_store};
-use crate::commands::platforms::read_codex_model_template;
+use crate::commands::platforms::{
+    codex_bundled_model_template, is_codex_bundled_model, read_codex_model_template,
+};
 use serde::Serialize;
 use std::collections::HashSet;
 use std::io::{Read, Write};
@@ -699,26 +701,51 @@ fn write_models_cache() -> Result<(), String> {
             .and_then(|s| s.as_str())
             .unwrap_or(&slug)
             .to_string();
-        let ctx_default = template
-            .get("context_window")
-            .and_then(|c| c.as_u64())
-            .unwrap_or(128000);
-        let ctx = entry
-            .get("context_window")
-            .and_then(|c| c.as_u64())
-            .unwrap_or(ctx_default);
 
-        let mut model_obj = template.clone();
+        let mut model_obj = if is_codex_bundled_model(&slug) {
+            // ── 新版逻辑：使用 bundled catalog 完整定义 ──
+            let (mut model, _) = codex_bundled_model_template(&slug);
+            let obj = model
+                .as_object_mut()
+                .expect("Bundled model template should be a JSON object");
+            obj["priority"] = serde_json::json!(1000 + i);
+            if !display.is_empty() && display != slug {
+                obj["display_name"] = serde_json::json!(display);
+            }
+            if let Some(ctx_val) = entry.get("context_window").and_then(|c| c.as_u64()) {
+                obj["context_window"] = serde_json::json!(ctx_val);
+                obj["max_context_window"] = serde_json::json!(ctx_val);
+            }
+            obj.insert("supported_in_api".to_string(), serde_json::Value::Bool(true));
+            if !obj.contains_key("visibility") {
+                obj.insert("visibility".to_string(), serde_json::Value::String("list".to_string()));
+            }
+            model
+        } else {
+            // ── 旧版逻辑：从 models_cache.json 的 gpt-5.5 模板 deep-clone ──
+            let ctx_default = template
+                .get("context_window")
+                .and_then(|c| c.as_u64())
+                .unwrap_or(128000);
+            let ctx = entry
+                .get("context_window")
+                .and_then(|c| c.as_u64())
+                .unwrap_or(ctx_default);
+            let mut obj = template.clone();
+            obj["slug"] = serde_json::json!(slug);
+            obj["display_name"] = serde_json::json!(display);
+            obj["description"] = serde_json::json!(display);
+            obj["context_window"] = serde_json::json!(ctx);
+            obj["max_context_window"] = serde_json::json!(ctx);
+            obj["priority"] = serde_json::json!(1000 + i);
+            obj
+        };
+
         // slug 必须与 anybridge-model-catalog.json / proxy-routes / CDP 注入完全一致
         // （原始模型名，不加任何前缀）。否则用户在 Desktop 选中后，Codex 发给本地代理的
         // model 名对不上路由表，resolveProxyModel 直接报"模型不在本地代理模型列表中"。
         // 幂等清理改用独立标记字段 anybridge_managed（Codex 读 models_cache 时忽略未知字段，已验证）。
         model_obj["slug"] = serde_json::json!(slug);
-        model_obj["display_name"] = serde_json::json!(display);
-        model_obj["description"] = serde_json::json!(display);
-        model_obj["context_window"] = serde_json::json!(ctx);
-        model_obj["max_context_window"] = serde_json::json!(ctx);
-        model_obj["priority"] = serde_json::json!(1000 + i);
         model_obj[ANYBRIDGE_MANAGED_FLAG] = serde_json::json!(true);
         arr.push(model_obj);
     }
@@ -1042,7 +1069,7 @@ pub async fn restart_codex_desktop(
 #[cfg(target_os = "windows")]
 #[tauri::command]
 pub async fn start_codex_with_cdp(inject_models: Option<bool>) -> CodexDesktopResult {
-    let inject_models = inject_models.unwrap_or(false);
+    let inject_models = inject_models.unwrap_or(true);
     if codex_running() {
         return CodexDesktopResult {
             ok: true,
@@ -1129,21 +1156,33 @@ pub async fn start_codex_with_cdp(_inject_models: Option<bool>) -> CodexDesktopR
 //   - 9229 不通 → kill + launch_with_cdp + inject
 // 冷却退避避免死循环：成功 15s，失败 30s。随 AnyBridge 运行，不独立常驻。
 
+/// 启动常驻 watcher 后台线程。在 lib.rs setup 闭包里调一次。
+/// 仅 Windows 有意义（Codex Desktop MSIX + CDP）；其它平台直接 no-op。
+pub fn spawn_codex_desktop_watcher(app: AppHandle) {
+    #[cfg(target_os = "windows")]
+    {
+        std::thread::spawn(move || {
+            watch_loop(app);
+        });
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = app;
+    }
+}
+
+#[cfg(target_os = "windows")]
 const WATCHER_INTERVAL: Duration = Duration::from_secs(3);
 /// takeover 成功后冷却：防止接管刚完成的 Codex 在 renderer 加载期间被误判重新接管。
 /// 之前 30s 太长，用户重开 Codex 后要等冷却到期才检测，体感慢。http_get_local
 /// 修了 keep-alive 误判后，5s 足够 Codex 稳定。
+#[cfg(target_os = "windows")]
 const WATCHER_COOLDOWN_AFTER_SUCCESS: Duration = Duration::from_secs(5);
+#[cfg(target_os = "windows")]
 const WATCHER_COOLDOWN_AFTER_FAILURE: Duration = Duration::from_secs(30);
 
-/// 启动常驻 watcher 后台线程。在 lib.rs setup 闭包里调一次。
-pub fn spawn_codex_desktop_watcher(app: AppHandle) {
-    std::thread::spawn(move || {
-        watch_loop(app);
-    });
-}
-
 /// watcher 主循环：每 5 秒检查一次。
+#[cfg(target_os = "windows")]
 fn watch_loop(app: AppHandle) {
     let mut cooldown_until: Option<Instant> = None;
     loop {
@@ -1155,6 +1194,7 @@ fn watch_loop(app: AppHandle) {
 /// 单次检查逻辑。
 /// watcher 只在"当前 Codex 配置需要 CDP 注入（injectModels=true）"时才工作。
 /// injectModels=false 时，整条 CDP 流程不触发——不检测 9229、不接管、不补注入。
+#[cfg(target_os = "windows")]
 fn run_watcher_tick(app: &AppHandle, cooldown_until: &mut Option<Instant>) {
     if !codex_needs_cdp_injection() {
         *cooldown_until = None;
@@ -1219,6 +1259,7 @@ fn run_watcher_tick(app: &AppHandle, cooldown_until: &mut Option<Instant>) {
 
 /// 接管：kill + 等 AppX 复位 + launch_with_cdp + 等CDP起来。
 /// inject 后台异步做（不阻塞 watcher），学 CodexPlusPlus 的 launcher 模式。
+#[cfg(target_os = "windows")]
 fn takeover(app: &AppHandle) -> bool {
     crate::commands::platforms::emit_switch_progress(
         app,

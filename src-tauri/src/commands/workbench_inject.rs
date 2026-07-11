@@ -31,37 +31,98 @@ fn write_atomic(path: &PathBuf, content: &str) -> Result<(), String> {
 
 /// 从 IDE 可执行文件路径推出 workbench.html 路径。
 pub(crate) fn workbench_html_path(target: &str) -> Option<PathBuf> {
-    #[cfg(target_os = "windows")]
-    let app_root = {
-        // exe 在 <root>\Windsurf.exe 或 <root>\Devin.exe，资源在 <root>\resources\app
-        let exe = crate::commands::system::find_ide_exe(target)?;
-        exe.parent()?.join("resources").join("app")
-    };
-
-    #[cfg(target_os = "macos")]
-    let app_root = {
-        // <Windsurf.app>/Contents/Resources/app 或 <Devin.app>/Contents/Resources/app
-        let app = crate::commands::system::find_ide_app(target)?;
-        app.join("Contents").join("Resources").join("app")
-    };
-
-    #[cfg(target_os = "linux")]
-    let app_root = {
-        // bin 通常在 <root>/windsurf 或 <root>/devin，资源在 <root>/resources/app
-        let bin = crate::commands::system::find_ide_bin(target)?;
-        bin.parent()?.join("resources").join("app")
-    };
-
-    let p = app_root
-        .join("out")
+    let workbench_rel = PathBuf::from("out")
         .join("vs")
         .join("code")
         .join("electron-browser")
         .join("workbench")
         .join("workbench.html");
-    if p.exists() {
-        Some(p)
-    } else {
+
+    #[cfg(target_os = "windows")]
+    {
+        // exe 在 <root>\Windsurf.exe 或 <root>\Devin.exe，资源在 <root>\resources\app
+        let exe = crate::commands::system::find_ide_exe(target)?;
+        let roots = [
+            exe.parent().map(|p| p.join("resources").join("app")),
+            // 部分布局把 exe 放在 bin\ 下
+            exe.parent()
+                .and_then(|p| p.parent())
+                .map(|p| p.join("resources").join("app")),
+        ];
+        for root in roots.into_iter().flatten() {
+            let p = root.join(&workbench_rel);
+            if p.exists() {
+                return Some(p);
+            }
+        }
+        return None;
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        // <Windsurf.app>/Contents/Resources/app 或 <Devin.app>/Contents/Resources/app
+        let app = crate::commands::system::find_ide_app(target)?;
+        let p = app
+            .join("Contents")
+            .join("Resources")
+            .join("app")
+            .join(&workbench_rel);
+        return if p.exists() { Some(p) } else { None };
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        // bin 可能是 /usr/bin/windsurf 软链，不能只用 parent() 推 resources。
+        let bin = crate::commands::system::find_ide_bin(target)?;
+        let mut roots = Vec::new();
+
+        let resolved = std::fs::canonicalize(&bin).unwrap_or_else(|_| bin.clone());
+        if let Some(parent) = resolved.parent() {
+            roots.push(parent.join("resources").join("app"));
+            // .../bin/windsurf → .../resources/app
+            if parent
+                .file_name()
+                .map(|n| n.eq_ignore_ascii_case("bin"))
+                .unwrap_or(false)
+            {
+                if let Some(grand) = parent.parent() {
+                    roots.push(grand.join("resources").join("app"));
+                }
+            }
+        }
+        if let Some(parent) = bin.parent() {
+            roots.push(parent.join("resources").join("app"));
+        }
+
+        // 常见 deb/rpm 安装布局
+        let dir_name = match target {
+            "devin" => "Devin",
+            "cursor" => "Cursor",
+            _ => "Windsurf",
+        };
+        let lower = dir_name.to_lowercase();
+        roots.push(PathBuf::from(format!(
+            "/usr/share/{}/resources/app",
+            lower
+        )));
+        roots.push(PathBuf::from(format!("/opt/{}/resources/app", dir_name)));
+        roots.push(PathBuf::from(format!(
+            "/opt/{}/resources/app",
+            lower
+        )));
+
+        for root in roots {
+            let p = root.join(&workbench_rel);
+            if p.exists() {
+                return Some(p);
+            }
+        }
+        return None;
+    }
+
+    #[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux")))]
+    {
+        let _ = (target, workbench_rel);
         None
     }
 }

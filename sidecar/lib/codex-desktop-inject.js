@@ -61,7 +61,21 @@ export function buildInjectionScript(models) {
     (existing||[]).forEach(function(e){ seen[keyFn(e)] = true; });
     var result = (existing||[]).slice();
     additions.forEach(function(a){
-      if (!seen[keyFn(a)]) { seen[keyFn(a)] = true; result.push(a); }
+      var slug = a && (a.slug || a.id || a.model);
+      var desc = slug ? descriptorFor(slug) : a;
+      var key = keyFn(desc);
+      if (!seen[key]) { seen[key] = true; result.push(desc); }
+      else if (slug) {
+        // 已存在：补 camelCase 字段（同 patchModelArray 逻辑）
+        var item = result.find(function(x){ return x && keyFn(x) === key; });
+        if (item) {
+          if (!item.displayName && desc.displayName) item.displayName = desc.displayName;
+          if (!item.supportedReasoningEfforts && desc.supportedReasoningEfforts) item.supportedReasoningEfforts = desc.supportedReasoningEfforts;
+          if (!item.defaultReasoningEffort && desc.defaultReasoningEffort) item.defaultReasoningEffort = desc.defaultReasoningEffort;
+          if (!item.model) item.model = desc.model;
+          if (item.hidden !== false) item.hidden = false;
+        }
+      }
     });
     return result;
   }
@@ -147,7 +161,38 @@ export function buildInjectionScript(models) {
   }
 
   // ── Patch 2: Model descriptor builder ─────────────────────────────
+  // 使用注入的完整模型对象（来自 anybridge-model-catalog.json，含
+  // supported_reasoning_levels / service_tiers / context_window 等 30+ 字段）
+  // 而非简陋的 descriptorFor，避免 Codex Desktop 把模型显示为"自定义"。
   function descriptorFor(name){
+    var CUSTOM_MODELS = getCustomModels();
+    var full = CUSTOM_MODELS.find(function(m){ return m.slug === name; });
+    if (full) {
+      // 确保必要字段存在，兼容 Codex Desktop 的 model picker schema
+      var d = Object.assign({}, full);
+      d.model = d.model || name;
+      d.id = d.id || name;
+      d.slug = d.slug || name;
+      d.name = d.name || name;
+      d.displayName = d.displayName || d.display_name || name;
+      d.hidden = false;
+      if (!d.defaultReasoningEffort) {
+        d.defaultReasoningEffort = 'medium';
+      }
+      if (!d.supportedReasoningEfforts) {
+        var levels = (d.supported_reasoning_levels || []).map(function(l){
+          return { reasoningEffort: l.effort || l, description: l.description || (l.effort || l) + ' effort' };
+        });
+        if (!levels.length) {
+          levels = ['low','medium','high','xhigh'].map(function(e){
+            return { reasoningEffort: e, description: e + ' effort' };
+          });
+        }
+        d.supportedReasoningEfforts = levels;
+      }
+      return d;
+    }
+    // Fallback: 未知模型用最小描述符
     return {
       model: name, id: name, slug: name, name: name, displayName: name,
       hidden: false, defaultReasoningEffort: 'medium',
@@ -166,8 +211,21 @@ export function buildInjectionScript(models) {
     CUSTOM_SLUGS.forEach(function(name){
       if (!seen[name]) arr.push(descriptorFor(name));
       else {
+        // 模型已存在（app-server 从 model_catalog_json 加载，字段为 snake_case）。
+        // 不能只 unhide：前端 yt 组件检查 displayName（camelCase），
+        // 若为 undefined 则显示 "Custom"。必须合并 descriptorFor 的驼峰字段。
         var item = arr.find(function(x){ return x && (x.model===name||x.slug===name); });
-        if (item && item.hidden !== false) item.hidden = false;
+        if (item) {
+          var desc = descriptorFor(name);
+          // 补齐前端需要的 camelCase 字段（不覆盖已有值）
+          if (!item.displayName && desc.displayName) item.displayName = desc.displayName;
+          if (!item.supportedReasoningEfforts && desc.supportedReasoningEfforts) item.supportedReasoningEfforts = desc.supportedReasoningEfforts;
+          if (!item.defaultReasoningEffort && desc.defaultReasoningEffort) item.defaultReasoningEffort = desc.defaultReasoningEffort;
+          if (!item.model) item.model = desc.model;
+          if (!item.id) item.id = desc.id;
+          if (!item.name) item.name = desc.name;
+          if (item.hidden !== false) item.hidden = false;
+        }
       }
     });
     return true;
