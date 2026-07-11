@@ -64,3 +64,12 @@ cursor byok调研/
 
 # UI build baseline (local zero-regression compare only)
 ui/index.html.baseline
+
+# Temporary audit/debug scripts (one-off, not for version control)
+scripts/_*
+
+# Temporary dev notes
+findings.md
+progress.md
+task_plan.md
+待办.md
