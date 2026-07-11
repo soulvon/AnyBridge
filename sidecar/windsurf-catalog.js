@@ -1,6 +1,6 @@
 // windsurf-catalog.js — Windsurf 模型全量目录
-// 数据源: scripts/inst4_models_full.json + 本地 windsurfAuthStatus 增量抓取
-// 最终 129 条
+// 数据源: Pro 账号 GetUserStatus 缓存 (ide-models.json) + 历史 catalog 合并
+// 最终 167 条
 //
 // 字段:
 //   label          Windsurf 显示名 (GetUserStatus.field1)
@@ -14,8 +14,80 @@
 
 export const WINDSURF_CATALOG = [
   {
-    "label": "Claude 5 Fable Medium",
+    "label": "Claude 3.5 Haiku",
+    "modelUid": "MODEL_CLAUDE_3_5_HAIKU_20241022",
+    "apiId": null,
+    "contextWindow": 200000,
+    "supportsImages": true,
+    "noApiIdHint": null
+  },
+  {
+    "label": "Claude 3.5 Sonnet",
+    "modelUid": "MODEL_CLAUDE_3_5_SONNET",
+    "apiId": null,
+    "contextWindow": 200000,
+    "supportsImages": true,
+    "noApiIdHint": null
+  },
+  {
+    "label": "Claude 3.7 Sonnet",
+    "modelUid": "MODEL_CLAUDE_3_7_SONNET",
+    "apiId": null,
+    "contextWindow": 200000,
+    "supportsImages": true,
+    "noApiIdHint": null
+  },
+  {
+    "label": "Claude 3.7 Sonnet Thinking",
+    "modelUid": "MODEL_CLAUDE_3_7_SONNET_THINKING",
+    "apiId": null,
+    "contextWindow": 200000,
+    "supportsImages": true,
+    "noApiIdHint": null
+  },
+  {
+    "label": "Claude 4.5 Opus",
+    "modelUid": "MODEL_PRIVATE_1",
+    "apiId": null,
+    "contextWindow": 200000,
+    "supportsImages": true,
+    "noApiIdHint": null
+  },
+  {
+    "label": "Claude Fable 5 High",
+    "modelUid": "claude-5-fable-high",
+    "apiId": "claude-5-fable",
+    "contextWindow": 1000000,
+    "supportsImages": true,
+    "noApiIdHint": null
+  },
+  {
+    "label": "Claude Fable 5 Low",
+    "modelUid": "claude-5-fable-low",
+    "apiId": "claude-5-fable",
+    "contextWindow": 1000000,
+    "supportsImages": true,
+    "noApiIdHint": null
+  },
+  {
+    "label": "Claude Fable 5 Max",
+    "modelUid": "claude-5-fable-max",
+    "apiId": "claude-5-fable",
+    "contextWindow": 1000000,
+    "supportsImages": true,
+    "noApiIdHint": null
+  },
+  {
+    "label": "Claude Fable 5 Medium",
     "modelUid": "claude-5-fable-medium",
+    "apiId": "claude-5-fable",
+    "contextWindow": 1000000,
+    "supportsImages": true,
+    "noApiIdHint": null
+  },
+  {
+    "label": "Claude Fable 5 XHigh",
+    "modelUid": "claude-5-fable-xhigh",
     "apiId": "claude-5-fable",
     "contextWindow": 1000000,
     "supportsImages": true,
@@ -24,6 +96,38 @@ export const WINDSURF_CATALOG = [
   {
     "label": "Claude Haiku 4.5",
     "modelUid": "MODEL_PRIVATE_11",
+    "apiId": null,
+    "contextWindow": 200000,
+    "supportsImages": true,
+    "noApiIdHint": null
+  },
+  {
+    "label": "Claude Opus 4",
+    "modelUid": "MODEL_CLAUDE_4_OPUS",
+    "apiId": null,
+    "contextWindow": 200000,
+    "supportsImages": true,
+    "noApiIdHint": null
+  },
+  {
+    "label": "Claude Opus 4 Thinking",
+    "modelUid": "MODEL_CLAUDE_4_OPUS_THINKING",
+    "apiId": null,
+    "contextWindow": 200000,
+    "supportsImages": true,
+    "noApiIdHint": null
+  },
+  {
+    "label": "Claude Opus 4.1",
+    "modelUid": "MODEL_CLAUDE_4_1_OPUS",
+    "apiId": null,
+    "contextWindow": 200000,
+    "supportsImages": true,
+    "noApiIdHint": null
+  },
+  {
+    "label": "Claude Opus 4.1 Thinking",
+    "modelUid": "MODEL_CLAUDE_4_1_OPUS_THINKING",
     "apiId": null,
     "contextWindow": 200000,
     "supportsImages": true,
@@ -54,10 +158,26 @@ export const WINDSURF_CATALOG = [
     "noApiIdHint": null
   },
   {
+    "label": "Claude Opus 4.6 1M",
+    "modelUid": "claude-opus-4-6-1m",
+    "apiId": "claude-opus-4-6-1m",
+    "contextWindow": 1000000,
+    "supportsImages": true,
+    "noApiIdHint": null
+  },
+  {
     "label": "Claude Opus 4.6 Thinking",
     "modelUid": "claude-opus-4-6-thinking",
     "apiId": "claude-opus-4-6-thinking",
     "contextWindow": 200000,
+    "supportsImages": true,
+    "noApiIdHint": null
+  },
+  {
+    "label": "Claude Opus 4.6 Thinking 1M",
+    "modelUid": "claude-opus-4-6-thinking-1m",
+    "apiId": "claude-opus-4-6-thinking-1m",
+    "contextWindow": 1000000,
     "supportsImages": true,
     "noApiIdHint": null
   },
@@ -222,6 +342,22 @@ export const WINDSURF_CATALOG = [
     "noApiIdHint": null
   },
   {
+    "label": "Claude Sonnet 4",
+    "modelUid": "MODEL_CLAUDE_4_SONNET",
+    "apiId": null,
+    "contextWindow": 200000,
+    "supportsImages": true,
+    "noApiIdHint": null
+  },
+  {
+    "label": "Claude Sonnet 4 Thinking",
+    "modelUid": "MODEL_CLAUDE_4_SONNET_THINKING",
+    "apiId": null,
+    "contextWindow": 200000,
+    "supportsImages": true,
+    "noApiIdHint": null
+  },
+  {
     "label": "Claude Sonnet 4.5",
     "modelUid": "MODEL_PRIVATE_2",
     "apiId": "claude-sonnet-4.5",
@@ -270,9 +406,65 @@ export const WINDSURF_CATALOG = [
     "noApiIdHint": null
   },
   {
+    "label": "Claude Sonnet 5 High",
+    "modelUid": "claude-sonnet-5-high",
+    "apiId": "claude-sonnet-5-high",
+    "contextWindow": 1000000,
+    "supportsImages": true,
+    "noApiIdHint": null
+  },
+  {
+    "label": "Claude Sonnet 5 Low",
+    "modelUid": "claude-sonnet-5-low",
+    "apiId": "claude-sonnet-5-low",
+    "contextWindow": 1000000,
+    "supportsImages": true,
+    "noApiIdHint": null
+  },
+  {
+    "label": "Claude Sonnet 5 Max",
+    "modelUid": "claude-sonnet-5-max",
+    "apiId": "claude-sonnet-5-max",
+    "contextWindow": 1000000,
+    "supportsImages": true,
+    "noApiIdHint": null
+  },
+  {
+    "label": "Claude Sonnet 5 Medium",
+    "modelUid": "claude-sonnet-5-medium",
+    "apiId": "claude-sonnet-5-medium",
+    "contextWindow": 1000000,
+    "supportsImages": true,
+    "noApiIdHint": null
+  },
+  {
+    "label": "Claude Sonnet 5 XHigh",
+    "modelUid": "claude-sonnet-5-xhigh",
+    "apiId": "claude-sonnet-5-xhigh",
+    "contextWindow": 1000000,
+    "supportsImages": true,
+    "noApiIdHint": null
+  },
+  {
     "label": "DeepSeek V4 Pro",
     "modelUid": "deepseek-v4",
     "apiId": "deepseek-v4",
+    "contextWindow": 1048576,
+    "supportsImages": true,
+    "noApiIdHint": null
+  },
+  {
+    "label": "Gemini 2.5 Flash",
+    "modelUid": "MODEL_GOOGLE_GEMINI_2_5_FLASH",
+    "apiId": null,
+    "contextWindow": 1048576,
+    "supportsImages": true,
+    "noApiIdHint": null
+  },
+  {
+    "label": "Gemini 2.5 Flash Thinking",
+    "modelUid": "MODEL_GOOGLE_GEMINI_2_5_FLASH_THINKING",
+    "apiId": null,
     "contextWindow": 1048576,
     "supportsImages": true,
     "noApiIdHint": null
@@ -286,23 +478,7 @@ export const WINDSURF_CATALOG = [
     "noApiIdHint": "gemini-..."
   },
   {
-    "label": "Gemini 3 Flash High",
-    "modelUid": "MODEL_GOOGLE_GEMINI_3_0_FLASH_HIGH",
-    "apiId": "gemini-3.0-flash",
-    "contextWindow": 1048576,
-    "supportsImages": true,
-    "noApiIdHint": null
-  },
-  {
-    "label": "Gemini 3 Flash Low",
-    "modelUid": "MODEL_GOOGLE_GEMINI_3_0_FLASH_LOW",
-    "apiId": "gemini-3.0-flash",
-    "contextWindow": 1048576,
-    "supportsImages": true,
-    "noApiIdHint": null
-  },
-  {
-    "label": "Gemini 3 Flash Medium",
+    "label": "Gemini 3.0 Flash",
     "modelUid": "MODEL_GOOGLE_GEMINI_3_0_FLASH_MEDIUM",
     "apiId": "gemini-3.0-flash",
     "contextWindow": 1048576,
@@ -310,7 +486,23 @@ export const WINDSURF_CATALOG = [
     "noApiIdHint": null
   },
   {
-    "label": "Gemini 3 Flash Minimal",
+    "label": "Gemini 3.0 Flash High",
+    "modelUid": "MODEL_GOOGLE_GEMINI_3_0_FLASH_HIGH",
+    "apiId": "gemini-3.0-flash",
+    "contextWindow": 1048576,
+    "supportsImages": true,
+    "noApiIdHint": null
+  },
+  {
+    "label": "Gemini 3.0 Flash Low",
+    "modelUid": "MODEL_GOOGLE_GEMINI_3_0_FLASH_LOW",
+    "apiId": "gemini-3.0-flash",
+    "contextWindow": 1048576,
+    "supportsImages": true,
+    "noApiIdHint": null
+  },
+  {
+    "label": "Gemini 3.0 Flash Minimal",
     "modelUid": "MODEL_GOOGLE_GEMINI_3_0_FLASH_MINIMAL",
     "apiId": "gemini-3.0-flash",
     "contextWindow": 1048576,
@@ -374,8 +566,64 @@ export const WINDSURF_CATALOG = [
     "noApiIdHint": null
   },
   {
+    "label": "GLM-5.2 High",
+    "modelUid": "glm-5-2",
+    "apiId": "glm-5-2",
+    "contextWindow": 200000,
+    "supportsImages": true,
+    "noApiIdHint": null
+  },
+  {
+    "label": "GLM-5.2 High 1M",
+    "modelUid": "glm-5-2-1m",
+    "apiId": "glm-5-2-1m",
+    "contextWindow": 1000000,
+    "supportsImages": true,
+    "noApiIdHint": null
+  },
+  {
+    "label": "GLM-5.2 Max",
+    "modelUid": "glm-5-2-max",
+    "apiId": "glm-5-2-max",
+    "contextWindow": 200000,
+    "supportsImages": true,
+    "noApiIdHint": null
+  },
+  {
+    "label": "GLM-5.2 Max 1M",
+    "modelUid": "glm-5-2-max-1m",
+    "apiId": "glm-5-2-max-1m",
+    "contextWindow": 1000000,
+    "supportsImages": true,
+    "noApiIdHint": null
+  },
+  {
+    "label": "GLM-5.2 No Thinking",
+    "modelUid": "glm-5-2-none",
+    "apiId": "glm-5-2-none",
+    "contextWindow": 200000,
+    "supportsImages": true,
+    "noApiIdHint": null
+  },
+  {
+    "label": "GLM-5.2 No Thinking 1M",
+    "modelUid": "glm-5-2-none-1m",
+    "apiId": "glm-5-2-none-1m",
+    "contextWindow": 1000000,
+    "supportsImages": true,
+    "noApiIdHint": null
+  },
+  {
     "label": "GPT-4.1",
     "modelUid": "MODEL_CHAT_GPT_4_1_2025_04_14",
+    "apiId": null,
+    "contextWindow": 1047576,
+    "supportsImages": true,
+    "noApiIdHint": "gpt-... (gpt-4o, gpt-5, gpt-5.1, gpt-5.2...)"
+  },
+  {
+    "label": "GPT-4.1 mini",
+    "modelUid": "MODEL_CHAT_GPT_4_1_MINI_2025_04_14",
     "apiId": null,
     "contextWindow": 1047576,
     "supportsImages": true,
@@ -386,6 +634,22 @@ export const WINDSURF_CATALOG = [
     "modelUid": "MODEL_CHAT_GPT_4O_2024_08_06",
     "apiId": null,
     "contextWindow": 128000,
+    "supportsImages": true,
+    "noApiIdHint": "gpt-... (gpt-4o, gpt-5, gpt-5.1, gpt-5.2...)"
+  },
+  {
+    "label": "GPT-4o mini",
+    "modelUid": "MODEL_CHAT_GPT_4O_MINI_2024_07_18",
+    "apiId": null,
+    "contextWindow": 128000,
+    "supportsImages": true,
+    "noApiIdHint": "gpt-... (gpt-4o, gpt-5, gpt-5.1, gpt-5.2...)"
+  },
+  {
+    "label": "GPT-5 Codex",
+    "modelUid": "MODEL_CHAT_GPT_5_CODEX",
+    "apiId": null,
+    "contextWindow": 400000,
     "supportsImages": true,
     "noApiIdHint": "gpt-... (gpt-4o, gpt-5, gpt-5.1, gpt-5.2...)"
   },
@@ -414,12 +678,68 @@ export const WINDSURF_CATALOG = [
     "noApiIdHint": null
   },
   {
+    "label": "GPT-5 Minimal",
+    "modelUid": "MODEL_CHAT_GPT_5_MINIMAL",
+    "apiId": null,
+    "contextWindow": 384000,
+    "supportsImages": true,
+    "noApiIdHint": null
+  },
+  {
+    "label": "GPT-5 Nano",
+    "modelUid": "MODEL_GPT_5_NANO",
+    "apiId": null,
+    "contextWindow": 128000,
+    "supportsImages": true,
+    "noApiIdHint": null
+  },
+  {
     "label": "GPT-5-Codex",
-    "modelUid": "MODEL_CHAT_GPT_5_CODEX",
+    "modelUid": "MODEL_PRIVATE_5",
     "apiId": null,
     "contextWindow": 400000,
     "supportsImages": true,
-    "noApiIdHint": "gpt-... (gpt-4o, gpt-5, gpt-5.1, gpt-5.2...)"
+    "noApiIdHint": null
+  },
+  {
+    "label": "GPT-5.1 Codex Low",
+    "modelUid": "MODEL_GPT_5_1_CODEX_LOW",
+    "apiId": "gpt-5.1-codex",
+    "contextWindow": 400000,
+    "supportsImages": true,
+    "noApiIdHint": null
+  },
+  {
+    "label": "GPT-5.1 Codex Max High",
+    "modelUid": "MODEL_GPT_5_1_CODEX_MAX_HIGH",
+    "apiId": "gpt-5.1-codex-max",
+    "contextWindow": 384000,
+    "supportsImages": true,
+    "noApiIdHint": null
+  },
+  {
+    "label": "GPT-5.1 Codex Max Low",
+    "modelUid": "MODEL_GPT_5_1_CODEX_MAX_LOW",
+    "apiId": "gpt-5.1-codex-max",
+    "contextWindow": 384000,
+    "supportsImages": true,
+    "noApiIdHint": null
+  },
+  {
+    "label": "GPT-5.1 Codex Max Medium",
+    "modelUid": "MODEL_GPT_5_1_CODEX_MAX_MEDIUM",
+    "apiId": "gpt-5.1-codex-max",
+    "contextWindow": 384000,
+    "supportsImages": true,
+    "noApiIdHint": null
+  },
+  {
+    "label": "GPT-5.1 Codex Mini Low",
+    "modelUid": "MODEL_GPT_5_1_CODEX_MINI_LOW",
+    "apiId": "gpt-5.1-codex-mini",
+    "contextWindow": 400000,
+    "supportsImages": true,
+    "noApiIdHint": null
   },
   {
     "label": "GPT-5.1 High Thinking",
@@ -486,38 +806,6 @@ export const WINDSURF_CATALOG = [
     "noApiIdHint": null
   },
   {
-    "label": "GPT-5.1-Codex Low",
-    "modelUid": "MODEL_GPT_5_1_CODEX_LOW",
-    "apiId": "gpt-5.1-codex",
-    "contextWindow": 400000,
-    "supportsImages": true,
-    "noApiIdHint": null
-  },
-  {
-    "label": "GPT-5.1-Codex Max High",
-    "modelUid": "MODEL_GPT_5_1_CODEX_MAX_HIGH",
-    "apiId": "gpt-5.1-codex-max",
-    "contextWindow": 384000,
-    "supportsImages": true,
-    "noApiIdHint": null
-  },
-  {
-    "label": "GPT-5.1-Codex Max Low",
-    "modelUid": "MODEL_GPT_5_1_CODEX_MAX_LOW",
-    "apiId": "gpt-5.1-codex-max",
-    "contextWindow": 384000,
-    "supportsImages": true,
-    "noApiIdHint": null
-  },
-  {
-    "label": "GPT-5.1-Codex Max Medium",
-    "modelUid": "MODEL_GPT_5_1_CODEX_MAX_MEDIUM",
-    "apiId": "gpt-5.1-codex-max",
-    "contextWindow": 384000,
-    "supportsImages": true,
-    "noApiIdHint": null
-  },
-  {
     "label": "GPT-5.1-Codex Medium",
     "modelUid": "MODEL_PRIVATE_9",
     "apiId": null,
@@ -534,10 +822,10 @@ export const WINDSURF_CATALOG = [
     "noApiIdHint": null
   },
   {
-    "label": "GPT-5.1-Codex-Mini Low",
-    "modelUid": "MODEL_GPT_5_1_CODEX_MINI_LOW",
-    "apiId": "gpt-5.1-codex-mini",
-    "contextWindow": 400000,
+    "label": "GPT-5.2",
+    "modelUid": "MODEL_GPT_5_2_NONE",
+    "apiId": "gpt-5.2",
+    "contextWindow": 384000,
     "supportsImages": true,
     "noApiIdHint": null
   },
@@ -584,14 +872,6 @@ export const WINDSURF_CATALOG = [
   {
     "label": "GPT-5.2 Medium Thinking Fast",
     "modelUid": "MODEL_GPT_5_2_MEDIUM_PRIORITY",
-    "apiId": "gpt-5.2",
-    "contextWindow": 384000,
-    "supportsImages": true,
-    "noApiIdHint": null
-  },
-  {
-    "label": "GPT-5.2 No Thinking",
-    "modelUid": "MODEL_GPT_5_2_NONE",
     "apiId": "gpt-5.2",
     "contextWindow": 384000,
     "supportsImages": true,
@@ -942,7 +1222,7 @@ export const WINDSURF_CATALOG = [
     "noApiIdHint": null
   },
   {
-    "label": "GPT-OSS 120B Medium Thinking",
+    "label": "GPT-OSS 120B",
     "modelUid": "MODEL_GPT_OSS_120B",
     "apiId": null,
     "contextWindow": 128000,
@@ -974,7 +1254,15 @@ export const WINDSURF_CATALOG = [
     "noApiIdHint": null
   },
   {
-    "label": "Minimax M2.5",
+    "label": "Kimi K2.7",
+    "modelUid": "kimi-k2-7",
+    "apiId": "kimi-k2-7",
+    "contextWindow": 262144,
+    "supportsImages": true,
+    "noApiIdHint": null
+  },
+  {
+    "label": "MiniMax M2.5",
     "modelUid": "minimax-m2-5",
     "apiId": "minimax-m2-5",
     "contextWindow": 204800,
@@ -990,7 +1278,7 @@ export const WINDSURF_CATALOG = [
     "noApiIdHint": null
   },
   {
-    "label": "o3 High Reasoning",
+    "label": "o3 High",
     "modelUid": "MODEL_CHAT_O3_HIGH",
     "apiId": "o3",
     "contextWindow": 200000,
@@ -999,17 +1287,17 @@ export const WINDSURF_CATALOG = [
   },
   {
     "label": "SWE-1.5",
-    "modelUid": "MODEL_SWE_1_5_SLOW",
+    "modelUid": "MODEL_SWE_1_5",
     "apiId": "swe-1p5",
-    "contextWindow": 200000,
+    "contextWindow": 128000,
     "supportsImages": true,
     "noApiIdHint": null
   },
   {
-    "label": "SWE-1.5 Fast",
-    "modelUid": "MODEL_SWE_1_5",
+    "label": "SWE-1.5 (Slow)",
+    "modelUid": "MODEL_SWE_1_5_SLOW",
     "apiId": "swe-1p5",
-    "contextWindow": 128000,
+    "contextWindow": 200000,
     "supportsImages": true,
     "noApiIdHint": null
   },
@@ -1025,6 +1313,22 @@ export const WINDSURF_CATALOG = [
     "label": "SWE-1.6 Fast",
     "modelUid": "swe-1-6-fast",
     "apiId": "swe-1-6-fast",
+    "contextWindow": 200000,
+    "supportsImages": true,
+    "noApiIdHint": null
+  },
+  {
+    "label": "SWE-1.7 Lightning",
+    "modelUid": "swe-1-7-lightning",
+    "apiId": "swe-1-7-lightning",
+    "contextWindow": 200000,
+    "supportsImages": true,
+    "noApiIdHint": null
+  },
+  {
+    "label": "Windsurf Fast",
+    "modelUid": "MODEL_CHAT_11121",
+    "apiId": null,
     "contextWindow": 200000,
     "supportsImages": true,
     "noApiIdHint": null

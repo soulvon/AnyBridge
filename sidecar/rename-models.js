@@ -38,7 +38,7 @@ function configDir() {
 function appConfigDir(name) {
   if (process.platform === 'darwin') return path.join(os.homedir(), 'Library', 'Application Support', name);
   if (process.platform === 'linux') return path.join(process.env.XDG_CONFIG_HOME || path.join(os.homedir(), '.config'), name);
-  return path.join(os.homedir(), 'AppData', 'Roaming', name);
+  return process.env.APPDATA ? path.join(process.env.APPDATA, name) : path.join(os.homedir(), 'AppData', 'Roaming', name);
 }
 
 // 渲染显示模板。
@@ -64,7 +64,7 @@ function normalizeUnlockScope(mode) {
 
 function normalizeSlotVisibilityMode(mode) {
   const s = String(mode || '').trim();
-  return SLOT_VISIBILITY_MODES.has(s) ? s : 'mapped';
+  return SLOT_VISIBILITY_MODES.has(s) ? s : 'official';
 }
 
 function isCommonManagedSlot(uid, label = '') {
@@ -635,7 +635,7 @@ function buildUnlockSet() {
   let namePrefix = '';
   let labelTemplate = '';
   let unlockScope = 'all';
-  let slotVisibilityMode = 'mapped';
+  let slotVisibilityMode = 'official';
   let slotVisibility = new Map();
   let slots = [];
   let injected = [];
@@ -1254,7 +1254,7 @@ function rewriteConfigFields(buf, { modelUid, apiIdOverride, newLabel, wantImage
 // 按 JSON 对象边界精确定位，避免误改相邻条目。
 // unlockAll=true 时所有 ClientModelConfig 条目都处理；否则只处理 byUid 中的项。
 // 每个条目可同时改 3 件事: label（rename/injected） / disabled（解锁） / supportsImages。
-function unlockInJson(text, unlockAll, byUid, defaultProviderName = '', labelTemplate = '', namePrefix = '', unlockScope = 'all', slotVisibilityMode = 'mapped', slotVisibility = null, runtimeStatus = null) {
+function unlockInJson(text, unlockAll, byUid, defaultProviderName = '', labelTemplate = '', namePrefix = '', unlockScope = 'all', slotVisibilityMode = 'official', slotVisibility = null, runtimeStatus = null) {
   const ctx = { unlockAll, byUid, defaultProviderName, labelTemplate, namePrefix, unlockScope, slotVisibilityMode, slotVisibility, runtimeStatus };
   try {
     const root = JSON.parse(text);
