@@ -1,4 +1,4 @@
-import { readFileSync, existsSync } from 'node:fs';
+import { readFileSync, existsSync, readdirSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 
@@ -8,25 +8,12 @@ const i18nFiles = [
   'ui/assets/i18n/i18n.js',
 ];
 
-const moduleFiles = [
-  'ui/assets/scripts/main.js',
-  'ui/assets/scripts/00-bridge.js',
-  'ui/assets/scripts/05-actions.js',
-  'ui/assets/scripts/10-shell.js',
-  'ui/assets/scripts/20-runtime.js',
-  'ui/assets/scripts/30-providers-eval.js',
-  'ui/assets/scripts/40-model-picker.js',
-  'ui/assets/scripts/50-model-map.js',
-  'ui/assets/scripts/52-proxy-routes.js',
-  'ui/assets/scripts/55-platforms.js',
-  'ui/assets/scripts/65-extensions.js',
-  'ui/assets/scripts/60-updater.js',
-  'ui/assets/scripts/70-healthcheck.js',
-  'ui/assets/scripts/90-init.js',
-];
-
+// P4 shared layers + feature modules (main.js import order)
 const moduleImportOrder = [
-  '00-bridge.js',
+  'api/bridge.js',
+  'ui/dom.js',
+  'ui/feedback.js',
+  'state/logs.js',
   '05-actions.js',
   '10-shell.js',
   '20-runtime.js',
@@ -39,6 +26,12 @@ const moduleImportOrder = [
   '60-updater.js',
   '70-healthcheck.js',
   '90-init.js',
+];
+
+const moduleFiles = [
+  'ui/assets/scripts/main.js',
+  'ui/assets/scripts/00-bridge.js',
+  ...moduleImportOrder.map((f) => `ui/assets/scripts/${f}`),
 ];
 
 const styleFiles = [
@@ -90,7 +83,6 @@ function assertContainsInOrder(source, needles, label) {
   }
 }
 
-// 1) ui-src must exist and build must be up to date
 if (!existsSync('ui-src/index.html')) {
   fail('ui-src/index.html missing — HTML source of truth is ui-src/');
 }
@@ -105,15 +97,12 @@ if (buildCheck.status !== 0) {
 
 const indexHtml = readFileSync('ui/index.html', 'utf8');
 
-// i18n still classic scripts (catalog side effects on window)
 const i18nTags = i18nFiles.map((file) => `<script src="./${file.replace('ui/', '')}"></script>`);
 assertContainsInOrder(indexHtml, i18nTags, 'index.html i18n script list');
 
-// app scripts: single ES module entry
 if (!indexHtml.includes('<script type="module" src="./assets/scripts/main.js"></script>')) {
   fail('index.html missing ES module entry <script type="module" src="./assets/scripts/main.js">');
 }
-// must not load classic multi-script app bundle anymore
 if (indexHtml.includes('<script src="./assets/scripts/00-bridge.js"></script>')) {
   fail('index.html still loads classic 00-bridge.js; use main.js module entry only');
 }
@@ -133,13 +122,22 @@ const appCss = readFileSync('ui/assets/app.css', 'utf8');
 const cssImports = styleFiles.map((file) => `@import url('./styles/${file.split('/').pop()}');`);
 assertContainsInOrder(appCss, cssImports, 'app.css import list');
 
-for (const file of [...i18nFiles, ...moduleFiles]) {
+const allScriptFiles = new Set(moduleFiles);
+function walkScripts(dir) {
+  for (const ent of readdirSync(dir, { withFileTypes: true })) {
+    const p = path.join(dir, ent.name).replace(/\\/g, '/');
+    if (ent.isDirectory()) walkScripts(p);
+    else if (ent.name.endsWith('.js')) allScriptFiles.add(p);
+  }
+}
+walkScripts('ui/assets/scripts');
+
+for (const file of [...i18nFiles, ...allScriptFiles]) {
   if (!existsSync(file)) fail(`missing script file ${file}`);
   const result = spawnSync(process.execPath, ['--check', file], { stdio: 'inherit' });
   if (result.status !== 0) fail(`syntax error in ${file}`);
 }
 
-// Source partials referenced by shell must exist
 const shell = readFileSync('ui-src/index.html', 'utf8');
 const includeRe = /<!--\s*@include\s+([^\s]+)\s*-->/g;
 let m;
@@ -150,5 +148,5 @@ while ((m = includeRe.exec(shell)) !== null) {
 }
 
 console.log(
-  `UI check passed (${moduleFiles.length} modules + ${i18nFiles.length} i18n, ${styleFiles.length} styles, ${requiredPageIds.length} pages).`,
+  `UI check passed (${allScriptFiles.size} scripts + ${i18nFiles.length} i18n, ${styleFiles.length} styles, ${requiredPageIds.length} pages).`,
 );

@@ -1,4 +1,5 @@
-// ES module (P3) — vars on globalThis; functions kept + mirrored for hoist + data-action.
+// ES module (P3/P4) — escapeHtml 已迁至 ui/dom.js
+import { escapeHtml, escAttr } from './ui/dom.js';
 // ═══════ MODEL MAP (可编辑槽位映射 + 故障转移链) ═══════
 globalThis.modelMapStore = { slots: [] };       // load_model_map 结果
 globalThis.ideModels = null;               // list_ide_models 缓存（数组）
@@ -866,10 +867,6 @@ function renderHeaderList(field, headers) {
     '<button class="btn btn-sm btn-danger" data-action="removeHeaderPair" data-args="[&quot;' + field + '&quot;,' + i + ']" title="删除">✕</button>' +
     '</div>'
   ).join('');
-}
-
-function escapeHtml(s) {
-  return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
 function addHeaderPair(field) {
@@ -3293,7 +3290,6 @@ async function saveFailoverFromEditor() {
   g.batchDeleteSelectedSlots = batchDeleteSelectedSlots;
   g.renderProxyEnhancement = renderProxyEnhancement;
   g.renderHeaderList = renderHeaderList;
-  g.escapeHtml = escapeHtml;
   g.addHeaderPair = addHeaderPair;
   g.updateHeaderPair = updateHeaderPair;
   g.removeHeaderPair = removeHeaderPair;

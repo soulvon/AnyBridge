@@ -1,4 +1,28 @@
-// ES module (P3) — vars on globalThis; functions kept + mirrored for hoist + data-action.
+// ES module (P3/P4) — dom/logs 已迁至 ui/dom.js + state/logs.js
+import { fmtNum, forEachElementAlias, setText, setBar, pctOf, escapeHtml } from './ui/dom.js';
+import {
+  addLog,
+  clearLogs,
+  setLogFilter,
+  openLogViewerModal,
+  closeLogViewerModal,
+  closeLogViewerOnEsc,
+  syncLogViewerControls,
+  onLogViewerLevelChange,
+  setLogViewerLevelPreset,
+  onLogViewerSearchInput,
+  onLogViewerLimitChange,
+  onLogViewerOrderChange,
+  onLogViewerAutoScrollChange,
+  logViewerFilteredEntries,
+  renderLogViewerLine,
+  renderLogViewer,
+  exportLogs,
+  nowTs,
+  renderLogLine,
+  renderLogs,
+  scheduleLogRender,
+} from './state/logs.js';
 // ═══════ PROXY TOGGLE ═══════
 globalThis.proxyRunning = false;
 globalThis.activeProxyTarget = '';
@@ -920,45 +944,6 @@ function promptRestartIde(leadText, targetOverride, options = {}) {
 }
 
 
-function fmtNum(n) {
-  if (n == null) return '—';
-  if (n >= 1_000_000) return (n / 1_000_000).toFixed(2) + 'M';
-  if (n >= 1000) return (n / 1000).toFixed(1) + 'K';
-  return String(n);
-}
-
-function forEachElementAlias(id, cb) {
-  const seen = new Set();
-  const direct = document.getElementById(id);
-  if (direct) {
-    seen.add(direct);
-    cb(direct);
-  }
-  document.querySelectorAll(`[data-oid="${id}"]`).forEach(el => {
-    if (seen.has(el)) return;
-    seen.add(el);
-    cb(el);
-  });
-}
-
-function setText(id, v) {
-  forEachElementAlias(id, el => {
-    el.textContent = v;
-  });
-}
-
-function setBar(id, pct) {
-  const el = document.getElementById(id);
-  if (!el) return;
-  const safe = Number.isFinite(pct) ? Math.max(0, Math.min(100, pct)) : 0;
-  el.style.width = safe + '%';
-}
-
-function pctOf(value, total) {
-  if (!Number.isFinite(value) || !Number.isFinite(total) || total <= 0) return 0;
-  return (value / total) * 100;
-}
-
 function resetStatsUi() {
   setText('stat-requests', '—');
   setText('stat-requests-sub', '代理未运行');
@@ -1208,244 +1193,6 @@ function toggleTheme() {
     addLog('err', '保存主题偏好失败: ' + e);
     if (typeof showCustomAlert === 'function') showCustomAlert(String(e), '保存失败', 'error');
   }
-}
-
-// ═══════ LOG STREAM ═══════
-globalThis.MAX_LOGS = 500;
-globalThis.logEntries = [];
-globalThis.logRenderScheduled = false;
-globalThis.logScrollPending = false;
-
-function nowTs() {
-  const d = new Date();
-  const p = n => String(n).padStart(2, '0');
-  return `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
-}
-
-function escapeHtml(s) {
-  return String(s || '').replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
-}
-
-function renderLogLine(e) {
-  const level = escapeHtml(e.level);
-  const label = escapeHtml(String(e.level || '').toUpperCase());
-  return `<div class="log-line" data-level="${level}"><span class="log-ts">${escapeHtml(e.ts)}</span><span class="log-lv ${level}">${label}</span><span class="log-msg">${escapeHtml(e.msg)}</span></div>`;
-}
-
-function renderLogs() {
-  const full = document.getElementById('fullLog');
-  const dash = document.getElementById('dashLog');
-  const filtered = (typeof logFilter !== 'undefined' && logFilter !== 'all')
-    ? logEntries.filter(e => e.level === logFilter)
-    : logEntries;
-  if (full) full.innerHTML = filtered.map(renderLogLine).join('');
-  if (dash) dash.innerHTML = logEntries.slice(-5).map(renderLogLine).join('');
-  const count = document.getElementById('logCount');
-  if (count) count.textContent = `${filtered.length} 条记录`;
-  const analyticsCount = document.getElementById('analyticsLogEntryCount');
-  if (analyticsCount) analyticsCount.textContent = `${logEntries.length} 条记录`;
-  const modal = document.getElementById('log-viewer-modal');
-  if (modal?.classList.contains('active')) renderLogViewer();
-}
-
-function scheduleLogRender(scrollToBottom) {
-  logScrollPending = logScrollPending || !!scrollToBottom;
-  if (logRenderScheduled) return;
-  logRenderScheduled = true;
-  const schedule = window.requestAnimationFrame || ((fn) => setTimeout(fn, 16));
-  schedule(() => {
-    logRenderScheduled = false;
-    renderLogs();
-    if (logScrollPending) {
-      const full = document.getElementById('fullLog');
-      if (full) full.scrollTop = full.scrollHeight;
-      logScrollPending = false;
-    }
-  });
-}
-
-function addLog(level, msg) {
-  const normalizedLevel = level === 'error' ? 'err' : level;
-  logEntries.push({ ts: nowTs(), level: normalizedLevel, msg });
-  if (logEntries.length > MAX_LOGS) logEntries = logEntries.slice(-MAX_LOGS);
-  scheduleLogRender(true);
-}
-
-function clearLogs() {
-  logEntries = [];
-  renderLogs();
-}
-
-globalThis.logFilter = 'all';
-globalThis.LOG_FILTERS = ['all', 'ok', 'info', 'warn', 'err'];
-globalThis.LOG_FILTER_LABELS = { all: '全部', ok: 'OK', info: 'INFO', warn: 'WARN', err: 'ERR' };
-globalThis.LOG_VIEWER_LEVELS = ['ok', 'info', 'warn', 'err'];
-globalThis.logViewerFilters = {
-  levels: new Set(LOG_VIEWER_LEVELS),
-  query: '',
-  limit: 200,
-  order: 'desc',
-  autoScroll: true
-};
-
-function setLogFilter(level) {
-  if (!LOG_FILTERS.includes(level)) return;
-  logFilter = level;
-  document.querySelectorAll('.log-tab').forEach(tab => {
-    tab.classList.toggle('active', tab.dataset.level === level);
-  });
-  renderLogs();
-}
-
-function openLogViewerModal() {
-  const modal = document.getElementById('log-viewer-modal');
-  if (!modal) throw new Error('log-viewer-modal not found');
-  modal.classList.add('active');
-  syncLogViewerControls();
-  renderLogViewer();
-  document.addEventListener('keydown', closeLogViewerOnEsc);
-}
-
-function closeLogViewerModal() {
-  const modal = document.getElementById('log-viewer-modal');
-  if (!modal) throw new Error('log-viewer-modal not found');
-  modal.classList.remove('active');
-  document.removeEventListener('keydown', closeLogViewerOnEsc);
-}
-
-function closeLogViewerOnEsc(event) {
-  if (event.key === 'Escape') closeLogViewerModal();
-}
-
-function syncLogViewerControls() {
-  LOG_VIEWER_LEVELS.forEach(level => {
-    const input = document.querySelector(`.log-viewer-level[data-level="${level}"] input`);
-    const label = input?.closest('.log-viewer-level');
-    const checked = logViewerFilters.levels.has(level);
-    if (input) input.checked = checked;
-    if (label) label.classList.toggle('active', checked);
-  });
-  const search = document.getElementById('logViewerSearchInput');
-  if (search && search.value !== logViewerFilters.query) search.value = logViewerFilters.query;
-  const limit = document.getElementById('logViewerLimitSelect');
-  if (limit) limit.value = String(logViewerFilters.limit);
-  const order = document.getElementById('logViewerOrderSelect');
-  if (order) order.value = logViewerFilters.order;
-  const auto = document.getElementById('logViewerAutoScrollInput');
-  if (auto) auto.checked = logViewerFilters.autoScroll;
-}
-
-function onLogViewerLevelChange(level, checked) {
-  if (!LOG_VIEWER_LEVELS.includes(level)) throw new Error(`Unknown log level: ${level}`);
-  if (checked) logViewerFilters.levels.add(level);
-  else logViewerFilters.levels.delete(level);
-  syncLogViewerControls();
-  renderLogViewer();
-}
-
-function setLogViewerLevelPreset(preset) {
-  if (preset === 'all') {
-    logViewerFilters.levels = new Set(LOG_VIEWER_LEVELS);
-  } else if (preset === 'important') {
-    logViewerFilters.levels = new Set(['warn', 'err']);
-  } else if (preset === 'errors') {
-    logViewerFilters.levels = new Set(['err']);
-  } else {
-    throw new Error(`Unknown log level preset: ${preset}`);
-  }
-  syncLogViewerControls();
-  renderLogViewer();
-}
-
-function onLogViewerSearchInput(value) {
-  logViewerFilters.query = String(value || '').trim();
-  renderLogViewer();
-}
-
-function onLogViewerLimitChange(value) {
-  const next = Number.parseInt(value, 10);
-  if (![50, 100, 200, 500].includes(next)) throw new Error(`Unknown log limit: ${value}`);
-  logViewerFilters.limit = next;
-  renderLogViewer();
-}
-
-function onLogViewerOrderChange(value) {
-  if (value !== 'asc' && value !== 'desc') throw new Error(`Unknown log order: ${value}`);
-  logViewerFilters.order = value;
-  renderLogViewer();
-}
-
-function onLogViewerAutoScrollChange(checked) {
-  logViewerFilters.autoScroll = !!checked;
-}
-
-function logViewerFilteredEntries() {
-  const q = logViewerFilters.query.toLowerCase();
-  let rows = logEntries.filter(e => {
-    if (!logViewerFilters.levels.has(e.level)) return false;
-    if (!q) return true;
-    return `${e.ts} ${e.level} ${e.msg}`.toLowerCase().includes(q);
-  });
-  rows = rows.slice(-logViewerFilters.limit);
-  if (logViewerFilters.order === 'desc') rows = rows.slice().reverse();
-  return rows;
-}
-
-function renderLogViewerLine(e) {
-  return `<div class="log-viewer-line">
-    <span class="log-viewer-ts">${escapeHtml(e.ts)}</span>
-    <span class="log-viewer-lv ${escapeHtml(e.level)}">${escapeHtml(String(e.level).toUpperCase())}</span>
-    <span class="log-viewer-msg">${escapeHtml(e.msg)}</span>
-  </div>`;
-}
-
-function renderLogViewer() {
-  const body = document.getElementById('logViewerBody');
-  if (!body) return;
-  const rows = logViewerFilteredEntries();
-  body.innerHTML = rows.length
-    ? rows.map(renderLogViewerLine).join('')
-    : '<div class="log-viewer-empty">没有匹配当前过滤条件的日志。</div>';
-  const visible = document.getElementById('logViewerVisibleCount');
-  if (visible) visible.textContent = `${rows.length} 条匹配 / 共 ${logEntries.length} 条`;
-  const counts = LOG_VIEWER_LEVELS.reduce((acc, level) => {
-    acc[level] = logEntries.filter(e => e.level === level).length;
-    return acc;
-  }, {});
-  const summary = document.getElementById('logViewerLevelSummary');
-  if (summary) {
-    summary.textContent = `OK ${counts.ok || 0} · INFO ${counts.info || 0} · WARN ${counts.warn || 0} · ERR ${counts.err || 0}`;
-  }
-  if (logViewerFilters.autoScroll) {
-    body.scrollTop = logViewerFilters.order === 'desc' ? 0 : body.scrollHeight;
-  }
-}
-
-async function exportLogs() {
-  if (logEntries.length === 0) {
-    addLog('warn', '暂无日志可导出');
-    return;
-  }
-  if (invoke || bindTauriBridge()) {
-    try {
-      const path = await invoke('export_proxy_logs', { entries: logEntries });
-      addLog('ok', `已导出 ${logEntries.length} 条日志: ${path}`);
-      return;
-    } catch (e) {
-      addLog('warn', '后端导出失败，尝试浏览器下载: ' + e);
-    }
-  }
-  const text = logEntries.map(e => `[${e.ts}] ${e.level.toUpperCase()} ${e.msg}`).join('\n');
-  const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `byok-logs-${new Date().toISOString().slice(0, 10)}.txt`;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  URL.revokeObjectURL(url);
-  addLog('ok', `已导出 ${logEntries.length} 条日志`);
 }
 
 // ═══════ ACCESS GUIDE (replaces patch logic) ═══════
@@ -1708,11 +1455,6 @@ function setConfigToggleState(key, enabled) {
   g.refreshStatus = refreshStatus;
   g.restartIdeNow = restartIdeNow;
   g.promptRestartIde = promptRestartIde;
-  g.fmtNum = fmtNum;
-  g.forEachElementAlias = forEachElementAlias;
-  g.setText = setText;
-  g.setBar = setBar;
-  g.pctOf = pctOf;
   g.resetStatsUi = resetStatsUi;
   g.updateHealthPill = updateHealthPill;
   g.refreshStats = refreshStats;
@@ -1723,28 +1465,6 @@ function setConfigToggleState(key, enabled) {
   g.bindWindowControlHandlers = bindWindowControlHandlers;
   g.applyTheme = applyTheme;
   g.toggleTheme = toggleTheme;
-  g.nowTs = nowTs;
-  g.escapeHtml = escapeHtml;
-  g.renderLogLine = renderLogLine;
-  g.renderLogs = renderLogs;
-  g.scheduleLogRender = scheduleLogRender;
-  g.addLog = addLog;
-  g.clearLogs = clearLogs;
-  g.setLogFilter = setLogFilter;
-  g.openLogViewerModal = openLogViewerModal;
-  g.closeLogViewerModal = closeLogViewerModal;
-  g.closeLogViewerOnEsc = closeLogViewerOnEsc;
-  g.syncLogViewerControls = syncLogViewerControls;
-  g.onLogViewerLevelChange = onLogViewerLevelChange;
-  g.setLogViewerLevelPreset = setLogViewerLevelPreset;
-  g.onLogViewerSearchInput = onLogViewerSearchInput;
-  g.onLogViewerLimitChange = onLogViewerLimitChange;
-  g.onLogViewerOrderChange = onLogViewerOrderChange;
-  g.onLogViewerAutoScrollChange = onLogViewerAutoScrollChange;
-  g.logViewerFilteredEntries = logViewerFilteredEntries;
-  g.renderLogViewerLine = renderLogViewerLine;
-  g.renderLogViewer = renderLogViewer;
-  g.exportLogs = exportLogs;
   g.openCertsDir = openCertsDir;
   g.openConfigDir = openConfigDir;
   g.generateCerts = generateCerts;

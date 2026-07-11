@@ -1,8 +1,12 @@
 /**
  * AnyBridge UI entry (ES module)
- * Side-effect imports in dependency order; bindings live on globalThis.
+ * P4: shared layers first (api/ui/state), then feature modules.
+ * Bindings still mirrored to globalThis for data-action + free vars.
  */
-import './00-bridge.js';
+import './api/bridge.js';
+import './ui/dom.js';
+import './ui/feedback.js';
+import './state/logs.js';
 import './05-actions.js';
 import './10-shell.js';
 import './20-runtime.js';

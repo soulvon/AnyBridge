@@ -1,4 +1,5 @@
-// ES module (P3) — vars on globalThis; functions kept + mirrored for hoist + data-action.
+// ES module (P3/P4) — escAttr 已迁至 ui/dom.js
+import { escAttr, escapeHtml } from './ui/dom.js';
 // ═══════ PROVIDER PROFILES (多套供应商 + 启用开关) ═══════
 globalThis.providerStore = { providers: [], codexConfigs: [], claudeCodeConfigs: [], opencodeConfigs: [] };
 globalThis.PROVIDER_VIEW_STORAGE_KEY = 'anybridge.providerViewMode';
@@ -43,10 +44,6 @@ globalThis.PROVIDER_IMPORT_SOURCE_OPTIONS = [
   { key: 'cockpit-tools', label: 'Cockpit Tools' },
   { key: 'cherry-studio', label: 'Cherry Studio' },
 ];
-
-function escAttr(s) {
-  return String(s || '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-}
 
 function providerSelectedModels(p) {
   if (!p) return [];
@@ -2861,7 +2858,6 @@ syncEvalCombos();
 
 // ---- P3 globalThis mirror (functions/classes) ----
 (function mirrorFns(g) {
-  g.escAttr = escAttr;
   g.providerSelectedModels = providerSelectedModels;
   g.providerCapabilities = providerCapabilities;
   g.capabilityBadges = capabilityBadges;
