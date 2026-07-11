@@ -1,0 +1,473 @@
+{
+  "version": 1,
+  "updatedAt": "2026-07-11",
+  "source": "综合官方文档与公开横评（Anthropic / OpenAI / Google / 智谱 / DeepSeek / Kimi / Qwen / xAI / MiniMax 等）",
+  "defaults": {
+    "maxInputTokens": 128000,
+    "maxOutputTokens": 8192
+  },
+  "models": [
+    {
+      "id": "claude-opus-4-6",
+      "match": ["claude-opus-4-6", "claude-opus-4.6", "claude-opus-4_6", "opus-4-6", "opus-4.6"],
+      "maxInputTokens": 1000000,
+      "maxOutputTokens": 128000,
+      "vendor": "anthropic",
+      "note": "官方 1M 上下文 / 128K 输出"
+    },
+    {
+      "id": "claude-sonnet-4-6",
+      "match": ["claude-sonnet-4-6", "claude-sonnet-4.6", "claude-sonnet-4_6", "sonnet-4-6", "sonnet-4.6"],
+      "maxInputTokens": 1000000,
+      "maxOutputTokens": 64000,
+      "vendor": "anthropic",
+      "note": "官方 1M 上下文"
+    },
+    {
+      "id": "claude-haiku-4-5",
+      "match": ["claude-haiku-4-5", "claude-haiku-4.5", "haiku-4-5", "haiku-4.5"],
+      "maxInputTokens": 200000,
+      "maxOutputTokens": 32000,
+      "vendor": "anthropic",
+      "note": "标准 200K"
+    },
+    {
+      "id": "claude-sonnet-4-5",
+      "match": ["claude-sonnet-4-5", "claude-sonnet-4.5", "sonnet-4-5", "sonnet-4.5"],
+      "maxInputTokens": 1000000,
+      "maxOutputTokens": 64000,
+      "vendor": "anthropic",
+      "note": "支持 1M 长上下文"
+    },
+    {
+      "id": "claude-opus-4",
+      "match": ["claude-opus-4", "claude-4-opus", "opus-4"],
+      "maxInputTokens": 200000,
+      "maxOutputTokens": 32000,
+      "vendor": "anthropic",
+      "note": "标准 200K；1M 需显式 1m 型号"
+    },
+    {
+      "id": "claude-sonnet-4",
+      "match": ["claude-sonnet-4", "claude-4-sonnet", "sonnet-4"],
+      "maxInputTokens": 200000,
+      "maxOutputTokens": 32000,
+      "vendor": "anthropic",
+      "note": "标准 200K"
+    },
+    {
+      "id": "gpt-5.4",
+      "match": ["gpt-5.4", "gpt-5-4", "gpt5.4", "gpt5-4"],
+      "maxInputTokens": 1000000,
+      "maxOutputTokens": 128000,
+      "vendor": "openai",
+      "note": "约 1M 上下文 / 128K 输出"
+    },
+    {
+      "id": "gpt-5.2",
+      "match": ["gpt-5.2", "gpt-5-2", "gpt5.2", "gpt5-2"],
+      "maxInputTokens": 400000,
+      "maxOutputTokens": 32768,
+      "vendor": "openai",
+      "note": "400K 上下文"
+    },
+    {
+      "id": "gpt-5",
+      "match": ["gpt-5", "gpt5"],
+      "maxInputTokens": 400000,
+      "maxOutputTokens": 32768,
+      "vendor": "openai",
+      "note": "GPT-5 系常见 400K"
+    },
+    {
+      "id": "gpt-4.1",
+      "match": ["gpt-4.1", "gpt-4-1", "gpt4.1", "gpt4-1"],
+      "maxInputTokens": 1000000,
+      "maxOutputTokens": 32768,
+      "vendor": "openai",
+      "note": "1M 上下文"
+    },
+    {
+      "id": "gpt-4o",
+      "match": ["gpt-4o", "gpt4o"],
+      "maxInputTokens": 128000,
+      "maxOutputTokens": 16384,
+      "vendor": "openai",
+      "note": "128K"
+    },
+    {
+      "id": "o3",
+      "match": ["o3", "o3-pro", "o3-mini", "o3-deep-research"],
+      "maxInputTokens": 200000,
+      "maxOutputTokens": 100000,
+      "vendor": "openai",
+      "note": "推理模型 200K"
+    },
+    {
+      "id": "o4-mini",
+      "match": ["o4-mini", "o4mini"],
+      "maxInputTokens": 200000,
+      "maxOutputTokens": 100000,
+      "vendor": "openai",
+      "note": "推理模型 200K"
+    },
+    {
+      "id": "o1",
+      "match": ["o1", "o1-pro", "o1-mini", "o1-preview"],
+      "maxInputTokens": 200000,
+      "maxOutputTokens": 100000,
+      "vendor": "openai",
+      "note": "推理模型 200K"
+    },
+    {
+      "id": "gemini-2.5-pro",
+      "match": ["gemini-2.5-pro", "gemini-2.5pro", "gemini2.5-pro"],
+      "maxInputTokens": 1000000,
+      "maxOutputTokens": 65536,
+      "vendor": "google",
+      "note": "1M 上下文"
+    },
+    {
+      "id": "gemini-2.5-flash",
+      "match": ["gemini-2.5-flash", "gemini-2.5flash", "gemini2.5-flash"],
+      "maxInputTokens": 1000000,
+      "maxOutputTokens": 65536,
+      "vendor": "google",
+      "note": "1M 上下文"
+    },
+    {
+      "id": "gemini-3-pro",
+      "match": ["gemini-3-pro", "gemini-3.0-pro", "gemini3-pro", "gemini-3.1-pro"],
+      "maxInputTokens": 1000000,
+      "maxOutputTokens": 65536,
+      "vendor": "google",
+      "note": "1M 上下文"
+    },
+    {
+      "id": "glm-5.2",
+      "match": ["glm-5.2", "glm5.2", "glm_5.2", "glm-5-2", "glm_5_2"],
+      "maxInputTokens": 1000000,
+      "maxOutputTokens": 128000,
+      "vendor": "zhipu",
+      "note": "官方 1M 上下文 / 128K 输出"
+    },
+    {
+      "id": "glm-5.1",
+      "match": ["glm-5.1", "glm5.1", "glm_5.1", "glm-5-1"],
+      "maxInputTokens": 200000,
+      "maxOutputTokens": 16384,
+      "vendor": "zhipu",
+      "note": "200K"
+    },
+    {
+      "id": "glm-5",
+      "match": ["glm-5", "glm5"],
+      "maxInputTokens": 200000,
+      "maxOutputTokens": 16384,
+      "vendor": "zhipu",
+      "note": "200K"
+    },
+    {
+      "id": "glm-4.6",
+      "match": ["glm-4.6", "glm4.6", "glm-4-6"],
+      "maxInputTokens": 200000,
+      "maxOutputTokens": 16384,
+      "vendor": "zhipu",
+      "note": "200K"
+    },
+    {
+      "id": "glm-4.5",
+      "match": ["glm-4.5", "glm4.5", "glm-4-5"],
+      "maxInputTokens": 200000,
+      "maxOutputTokens": 16384,
+      "vendor": "zhipu",
+      "note": "200K"
+    },
+    {
+      "id": "glm-4-flash",
+      "match": ["glm-4-flash", "glm4-flash", "glm-4.flash"],
+      "maxInputTokens": 128000,
+      "maxOutputTokens": 8192,
+      "vendor": "zhipu",
+      "note": "128K"
+    },
+    {
+      "id": "grok-4.5",
+      "match": ["grok-4.5", "grok4.5", "grok_4.5", "grok-4-5", "grok_4_5"],
+      "maxInputTokens": 500000,
+      "maxOutputTokens": 32768,
+      "vendor": "xai",
+      "note": "500K 上下文"
+    },
+    {
+      "id": "grok-4.3",
+      "match": ["grok-4.3", "grok4.3", "grok-4-3"],
+      "maxInputTokens": 1000000,
+      "maxOutputTokens": 32768,
+      "vendor": "xai",
+      "note": "1M 上下文"
+    },
+    {
+      "id": "deepseek-reasoner",
+      "match": ["deepseek-reasoner", "deepseek-r1", "deepseek_r1"],
+      "maxInputTokens": 128000,
+      "maxOutputTokens": 64000,
+      "vendor": "deepseek",
+      "note": "128K / 推理输出可达 64K"
+    },
+    {
+      "id": "deepseek-chat",
+      "match": ["deepseek-chat", "deepseek-v3", "deepseek-v3.2", "deepseek-v4"],
+      "maxInputTokens": 128000,
+      "maxOutputTokens": 16384,
+      "vendor": "deepseek",
+      "note": "官方常见 128K"
+    },
+    {
+      "id": "kimi-k2.5",
+      "match": ["kimi-k2.5", "kimi-k2-5"],
+      "maxInputTokens": 256000,
+      "maxOutputTokens": 16384,
+      "vendor": "moonshot",
+      "note": "256K"
+    },
+    {
+      "id": "kimi-k2.6",
+      "match": ["kimi-k2.6", "kimi-k2-6"],
+      "maxInputTokens": 256000,
+      "maxOutputTokens": 16384,
+      "vendor": "moonshot",
+      "note": "256K"
+    },
+    {
+      "id": "kimi-k2.7",
+      "match": ["kimi-k2.7", "kimi-k2-7", "kimi-k2.7-code"],
+      "maxInputTokens": 256000,
+      "maxOutputTokens": 16384,
+      "vendor": "moonshot",
+      "note": "256K"
+    },
+    {
+      "id": "qwen3.5-plus",
+      "match": ["qwen3.5-plus", "qwen-3.5-plus", "qwen3-5-plus"],
+      "maxInputTokens": 1000000,
+      "maxOutputTokens": 32768,
+      "vendor": "alibaba",
+      "note": "1M 上下文"
+    },
+    {
+      "id": "qwen-flash",
+      "match": ["qwen-flash", "qwen3-flash", "qwen3.5-flash"],
+      "maxInputTokens": 1000000,
+      "maxOutputTokens": 32768,
+      "vendor": "alibaba",
+      "note": "1M 上下文"
+    },
+    {
+      "id": "qwen3-max",
+      "match": ["qwen3-max", "qwen-3-max", "qwen3.max"],
+      "maxInputTokens": 262144,
+      "maxOutputTokens": 32768,
+      "vendor": "alibaba",
+      "note": "约 262K"
+    },
+    {
+      "id": "qwen3.7-max",
+      "match": ["qwen3.7-max", "qwen3.7-plus", "qwen3.6-plus"],
+      "maxInputTokens": 256000,
+      "maxOutputTokens": 32768,
+      "vendor": "alibaba",
+      "note": "Qwen3.6/3.7 系常见 256K+"
+    },
+    {
+      "id": "minimax-m2.7",
+      "match": ["minimax-m2.7", "minimax-m2-7", "minimax-m2.7-highspeed"],
+      "maxInputTokens": 1000000,
+      "maxOutputTokens": 32768,
+      "vendor": "minimax",
+      "note": "公开资料常见百万级上下文"
+    },
+    {
+      "id": "minimax-m2.5",
+      "match": ["minimax-m2.5", "minimax-m2-5"],
+      "maxInputTokens": 200000,
+      "maxOutputTokens": 16384,
+      "vendor": "minimax",
+      "note": "200K"
+    },
+    {
+      "id": "minimax-m3",
+      "match": ["minimax-m3", "minimax-m3.0"],
+      "maxInputTokens": 200000,
+      "maxOutputTokens": 16384,
+      "vendor": "minimax",
+      "note": "200K"
+    }
+  ],
+  "patterns": [
+    {
+      "id": "marker-1m",
+      "includesAny": ["1m", "1000k", "1048576", "1000000"],
+      "maxInputTokens": 1000000,
+      "maxOutputTokens": 32768,
+      "note": "ID 含 1M 标记"
+    },
+    {
+      "id": "marker-500k",
+      "includesAny": ["500k", "512k"],
+      "maxInputTokens": 500000,
+      "maxOutputTokens": 32768,
+      "note": "ID 含 500K 标记"
+    },
+    {
+      "id": "marker-256k",
+      "includesAny": ["256k"],
+      "maxInputTokens": 256000,
+      "maxOutputTokens": 16384,
+      "note": "ID 含 256K 标记"
+    },
+    {
+      "id": "marker-200k",
+      "includesAny": ["200k"],
+      "maxInputTokens": 200000,
+      "maxOutputTokens": 16384,
+      "note": "ID 含 200K 标记"
+    },
+    {
+      "id": "claude-family",
+      "includesAny": ["claude"],
+      "maxInputTokens": 200000,
+      "maxOutputTokens": 32000,
+      "note": "Claude 默认 200K"
+    },
+    {
+      "id": "gemini-family",
+      "includesAny": ["gemini"],
+      "maxInputTokens": 1000000,
+      "maxOutputTokens": 65536,
+      "note": "Gemini 常见 1M"
+    },
+    {
+      "id": "gpt-5-family",
+      "includesAny": ["gpt-5", "gpt5"],
+      "maxInputTokens": 400000,
+      "maxOutputTokens": 32768,
+      "note": "GPT-5 系默认 400K"
+    },
+    {
+      "id": "gpt-4.1-family",
+      "includesAny": ["gpt-4.1", "gpt4.1"],
+      "maxInputTokens": 1000000,
+      "maxOutputTokens": 32768,
+      "note": "GPT-4.1 系 1M"
+    },
+    {
+      "id": "gpt-4o-family",
+      "includesAny": ["gpt-4o", "gpt4o", "gpt-4-turbo", "gpt-4.0"],
+      "maxInputTokens": 128000,
+      "maxOutputTokens": 16384,
+      "note": "GPT-4o / Turbo 128K"
+    },
+    {
+      "id": "openai-o-series",
+      "includesAny": ["o1-", "o3-", "o4-", "o1.", "o3.", "o4."],
+      "maxInputTokens": 200000,
+      "maxOutputTokens": 100000,
+      "note": "OpenAI o 系列 200K（要求 oN- 前缀，避免误伤）"
+    },
+    {
+      "id": "glm-5-family",
+      "includesAny": ["glm-5", "glm5", "glm-4.6", "glm4.6", "glm-4.5", "glm4.5"],
+      "maxInputTokens": 200000,
+      "maxOutputTokens": 16384,
+      "note": "GLM-5 / 4.5+ 常见 200K"
+    },
+    {
+      "id": "glm-family",
+      "includesAny": ["glm"],
+      "maxInputTokens": 128000,
+      "maxOutputTokens": 8192,
+      "note": "其他 GLM 默认 128K"
+    },
+    {
+      "id": "grok-family",
+      "includesAny": ["grok"],
+      "maxInputTokens": 256000,
+      "maxOutputTokens": 32768,
+      "note": "其他 Grok 默认 256K"
+    },
+    {
+      "id": "deepseek-long",
+      "includesAny": ["deepseek"],
+      "requiresAny": ["long", "1m"],
+      "maxInputTokens": 1000000,
+      "maxOutputTokens": 32768,
+      "note": "DeepSeek 长上下文变体"
+    },
+    {
+      "id": "deepseek-family",
+      "includesAny": ["deepseek"],
+      "maxInputTokens": 128000,
+      "maxOutputTokens": 16384,
+      "note": "DeepSeek 默认 128K"
+    },
+    {
+      "id": "kimi-k2-family",
+      "includesAny": ["kimi", "moonshot"],
+      "requiresAny": ["k2", "k-2"],
+      "maxInputTokens": 256000,
+      "maxOutputTokens": 16384,
+      "note": "Kimi K2 系 256K"
+    },
+    {
+      "id": "kimi-family",
+      "includesAny": ["kimi", "moonshot"],
+      "maxInputTokens": 128000,
+      "maxOutputTokens": 8192,
+      "note": "其他 Kimi 默认 128K"
+    },
+    {
+      "id": "qwen-long",
+      "includesAny": ["qwen"],
+      "requiresAny": ["long", "1m", "1000k"],
+      "maxInputTokens": 1000000,
+      "maxOutputTokens": 32768,
+      "note": "Qwen 长上下文变体"
+    },
+    {
+      "id": "qwen3-family",
+      "includesAny": ["qwen3", "qwen-3", "qwen2.5", "qwen-2.5"],
+      "maxInputTokens": 256000,
+      "maxOutputTokens": 32768,
+      "note": "Qwen3 / 2.5 常见 256K"
+    },
+    {
+      "id": "qwen-family",
+      "includesAny": ["qwen"],
+      "maxInputTokens": 128000,
+      "maxOutputTokens": 8192,
+      "note": "其他 Qwen 默认 128K"
+    },
+    {
+      "id": "minimax-family",
+      "includesAny": ["minimax", "abab"],
+      "maxInputTokens": 200000,
+      "maxOutputTokens": 16384,
+      "note": "MiniMax 默认 200K"
+    },
+    {
+      "id": "doubao-family",
+      "includesAny": ["doubao", "doubao-seed", "seedream", "seed-1", "seed1."],
+      "maxInputTokens": 256000,
+      "maxOutputTokens": 16384,
+      "note": "豆包 / Seed 256K（不用裸 seed，避免误伤）"
+    },
+    {
+      "id": "yi-family",
+      "includesAny": ["yi-", "yi1", "01-ai"],
+      "maxInputTokens": 200000,
+      "maxOutputTokens": 16384,
+      "note": "零一万物 200K"
+    }
+  ]
+}
