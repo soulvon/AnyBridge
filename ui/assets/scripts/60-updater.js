@@ -1,5 +1,6 @@
+// ES module (P3) — vars on globalThis; functions kept + mirrored for hoist + data-action.
 // ═══════ AUTO UPDATE SYSTEM ═══════
-let updateSettings = {
+globalThis.updateSettings = {
   auto_check: true,
   last_check_time: 0,
   check_interval_hours: 1,
@@ -8,7 +9,7 @@ let updateSettings = {
   remind_on_update: true,
   skipped_version: ''
 };
-let detectedUpdateInfo = null;
+globalThis.detectedUpdateInfo = null;
 
 function formatUpdaterTargetVersion(update) {
   if (!update) return '';
@@ -365,13 +366,13 @@ async function autoCheckUpdate() {
 }
 
 // 点击立即更新开始下载
-let isDownloading = false;
-let updaterRetryCount = 0;
-const UPDATER_MAX_RETRIES = 3;
-const UPDATER_RETRY_DELAYS = [1000, 2500, 5000]; // 指数退避
+globalThis.isDownloading = false;
+globalThis.updaterRetryCount = 0;
+globalThis.UPDATER_MAX_RETRIES = 3;
+globalThis.UPDATER_RETRY_DELAYS = [1000, 2500, 5000]; // 指数退避
 
 // 下载页 URL
-const UPDATER_DOWNLOAD_PAGE = 'https://github.com/soulvon/AnyBridge/releases/latest';
+globalThis.UPDATER_DOWNLOAD_PAGE = 'https://github.com/soulvon/AnyBridge/releases/latest';
 
 // 判断是否为可重试的网络错误
 function isRetryableUpdateError(err) {
@@ -616,3 +617,36 @@ function bindProxyButtonHandlers() {
   btn.addEventListener('click', handler);
   _diag('proxyBtn handler bound (click)');
 }
+
+// ---- P3 globalThis mirror (functions/classes) ----
+(function mirrorFns(g) {
+  g.formatUpdaterTargetVersion = formatUpdaterTargetVersion;
+  g.formatUpdaterNotes = formatUpdaterNotes;
+  g.currentVersionLabel = currentVersionLabel;
+  g.syncNotificationCenter = syncNotificationCenter;
+  g.openNotificationCenter = openNotificationCenter;
+  g.closeNotificationCenter = closeNotificationCenter;
+  g.closeNotificationCenterOnEsc = closeNotificationCenterOnEsc;
+  g.checkUpdateFromNotificationCenter = checkUpdateFromNotificationCenter;
+  g.loadUpdateSettings = loadUpdateSettings;
+  g.saveUpdateSettings = saveUpdateSettings;
+  g.toggleUpdateSetting = toggleUpdateSetting;
+  g.changeUpdateInterval = changeUpdateInterval;
+  g.bindUpdateJumpModalHandlers = bindUpdateJumpModalHandlers;
+  g.checkVersionJump = checkVersionJump;
+  g.closeUpdateJumpModal = closeUpdateJumpModal;
+  g.manualCheckUpdate = manualCheckUpdate;
+  g.closeUpdaterPromptModal = closeUpdaterPromptModal;
+  g.skipThisVersion = skipThisVersion;
+  g.autoCheckUpdate = autoCheckUpdate;
+  g.isRetryableUpdateError = isRetryableUpdateError;
+  g.setUpdaterUIState = setUpdaterUIState;
+  g.showUpdaterError = showUpdaterError;
+  g.toggleUpdaterErrorDetails = toggleUpdaterErrorDetails;
+  g.cancelUpdateDownload = cancelUpdateDownload;
+  g.retryUpdateDownload = retryUpdateDownload;
+  g.openDownloadPage = openDownloadPage;
+  g.restartToUpdate = restartToUpdate;
+  g.startDownloadAndUpdate = startDownloadAndUpdate;
+  g.bindProxyButtonHandlers = bindProxyButtonHandlers;
+})(globalThis);

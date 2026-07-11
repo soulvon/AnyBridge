@@ -1,43 +1,44 @@
+// ES module (P3) — vars on globalThis; functions kept + mirrored for hoist + data-action.
 // ═══════ PROVIDER PROFILES (多套供应商 + 启用开关) ═══════
-let providerStore = { providers: [], codexConfigs: [], claudeCodeConfigs: [], opencodeConfigs: [] };
-const PROVIDER_VIEW_STORAGE_KEY = 'anybridge.providerViewMode';
-const PROVIDER_SORT_STORAGE_KEY = 'anybridge.providerSortMode';
-const PROVIDER_SORT_MODES = new Set(['default', 'name-asc', 'name-desc']);
-const PROVIDER_SORT_LABELS = {
+globalThis.providerStore = { providers: [], codexConfigs: [], claudeCodeConfigs: [], opencodeConfigs: [] };
+globalThis.PROVIDER_VIEW_STORAGE_KEY = 'anybridge.providerViewMode';
+globalThis.PROVIDER_SORT_STORAGE_KEY = 'anybridge.providerSortMode';
+globalThis.PROVIDER_SORT_MODES = new Set(['default', 'name-asc', 'name-desc']);
+globalThis.PROVIDER_SORT_LABELS = {
   default: '默认排序',
   'name-asc': '名称正序',
   'name-desc': '名称反序',
 };
-let providerViewMode = (() => {
+globalThis.providerViewMode = (() => {
   try {
     return localStorage.getItem(PROVIDER_VIEW_STORAGE_KEY) === 'list' ? 'list' : 'grid';
   } catch (_) {
     return 'grid';
   }
 })();
-let providerSortMode = (() => {
+globalThis.providerSortMode = (() => {
   try {
     return normalizeProviderSortMode(localStorage.getItem(PROVIDER_SORT_STORAGE_KEY));
   } catch (_) {
     return 'default';
   }
 })();
-let providerSearchKeyword = '';
-let providerSelectedIds = new Set();
-let providerBulkRunning = false;
-let providerImportCandidates = [];
-let providerImportSelectedIds = new Set();
-let providerImportOpening = false;
-let providerImportHasScanned = false;
-let providerImportLastScannedSourceLabels = [];
-let providerImportScanSeq = 0;
-let providerImportScanRunning = false;
-let providerImportActiveScanId = '';
-let providerImportScanUnlisten = null;
-let providerImportFilter = 'all';
-let providerImportSourceStates = {};
-let providerImportStep = 'select';
-const PROVIDER_IMPORT_SOURCE_OPTIONS = [
+globalThis.providerSearchKeyword = '';
+globalThis.providerSelectedIds = new Set();
+globalThis.providerBulkRunning = false;
+globalThis.providerImportCandidates = [];
+globalThis.providerImportSelectedIds = new Set();
+globalThis.providerImportOpening = false;
+globalThis.providerImportHasScanned = false;
+globalThis.providerImportLastScannedSourceLabels = [];
+globalThis.providerImportScanSeq = 0;
+globalThis.providerImportScanRunning = false;
+globalThis.providerImportActiveScanId = '';
+globalThis.providerImportScanUnlisten = null;
+globalThis.providerImportFilter = 'all';
+globalThis.providerImportSourceStates = {};
+globalThis.providerImportStep = 'select';
+globalThis.PROVIDER_IMPORT_SOURCE_OPTIONS = [
   { key: 'cc-switch', label: 'CC Switch' },
   { key: 'cockpit-tools', label: 'Cockpit Tools' },
   { key: 'cherry-studio', label: 'Cherry Studio' },
@@ -88,7 +89,7 @@ function capabilityBadges(p, compact = false, modelId = null) {
 }
 
 // Windsurf 是否真的上传图片，取决于"原生模型槽位"本身；仅把映射目标标成 Vision 不够。
-const IMAGE_UNSAFE_NATIVE_SLOT_IDS = new Set([
+globalThis.IMAGE_UNSAFE_NATIVE_SLOT_IDS = new Set([
   'MODEL_XAI_GROK_3',
   'MODEL_XAI_GROK_3_MINI_REASONING',
 ]);
@@ -220,7 +221,7 @@ function isBuiltinProvider(p) {
   return !!(p && p.meta?.builtin === true);
 }
 
-const LOCAL_PROXY_PROVIDER_ID = 'anybridge-local-proxy';
+globalThis.LOCAL_PROXY_PROVIDER_ID = 'anybridge-local-proxy';
 
 /** 构建 AnyBridge 本地代理供应商的模型列表条目（供各「添加模型」页面使用） */
 function localProxyProviderModelsEntry() {
@@ -663,7 +664,7 @@ function ensureProviderUnlockModal() {
   return document.getElementById('provider-unlock-modal');
 }
 
-let providerUnlockEditingId = '';
+globalThis.providerUnlockEditingId = '';
 
 function openProviderUnlockModal(providerId) {
   providerUnlockEditingId = providerId;
@@ -1715,15 +1716,15 @@ async function importSelectedProviders() {
 }
 
 // ═══════ MODEL EVALUATION ═══════
-let evalReports = [];
-let currentEvalReportId = '';
-let evalRunning = false;
-let currentEvalProgressId = '';
-let evalProgressUnlisten = null;
-const EVAL_COMBO_IDS = ['eval-provider-select', 'eval-format-select', 'eval-model-select'];
-const evalRemoteModelCache = new Map();
-const evalRemoteModelPending = new Set();
-let evalModelFetchSeq = 0;
+globalThis.evalReports = [];
+globalThis.currentEvalReportId = '';
+globalThis.evalRunning = false;
+globalThis.currentEvalProgressId = '';
+globalThis.evalProgressUnlisten = null;
+globalThis.EVAL_COMBO_IDS = ['eval-provider-select', 'eval-format-select', 'eval-model-select'];
+globalThis.evalRemoteModelCache = new Map();
+globalThis.evalRemoteModelPending = new Set();
+globalThis.evalModelFetchSeq = 0;
 
 function getEvalComboParts(selectId) {
   const shell = document.querySelector(`.eval-combo[data-select-id="${selectId}"]`);
@@ -2114,7 +2115,7 @@ function evalFormatTime(ts) {
   }
 }
 
-const EVAL_DIMENSIONS = [
+globalThis.EVAL_DIMENSIONS = [
   { key: 'protocol', label: '协议合规', ids: ['P1', 'P2', 'P5', 'P13'] },
   { key: 'performance', label: '性能', ids: ['P10', 'P11'] },
   { key: 'safety', label: '安全性', ids: ['P8', 'P14'] },
@@ -2123,7 +2124,7 @@ const EVAL_DIMENSIONS = [
   { key: 'identity', label: '身份一致', ids: ['P3', 'P7'] },
 ];
 
-const EVAL_CHECK_OPTIONS = [
+globalThis.EVAL_CHECK_OPTIONS = [
   { id: 'P4', label: '内容 Canary' },
   { id: 'P5', label: '流式传输' },
   { id: 'P6', label: '工具调用' },
@@ -2857,3 +2858,187 @@ function navigateToProxyEnhancement() {
 }
 
 syncEvalCombos();
+
+// ---- P3 globalThis mirror (functions/classes) ----
+(function mirrorFns(g) {
+  g.escAttr = escAttr;
+  g.providerSelectedModels = providerSelectedModels;
+  g.providerCapabilities = providerCapabilities;
+  g.capabilityBadges = capabilityBadges;
+  g.catalogEntryOf = catalogEntryOf;
+  g.nativeVisionSlotInfo = nativeVisionSlotInfo;
+  g.targetSupportsVision = targetSupportsVision;
+  g.targetsSupportVision = targetsSupportVision;
+  g.visionStatusStyle = visionStatusStyle;
+  g.slotVisionAssessment = slotVisionAssessment;
+  g.renderVisionPill = renderVisionPill;
+  g.isAccountSlotModel = isAccountSlotModel;
+  g.slotModelOf = slotModelOf;
+  g.slotSourceInfo = slotSourceInfo;
+  g.renderSourcePill = renderSourcePill;
+  g.visionSafeAlternatives = visionSafeAlternatives;
+  g.updateSlotVisionHint = updateSlotVisionHint;
+  g.isBuiltinProvider = isBuiltinProvider;
+  g.localProxyProviderModelsEntry = localProxyProviderModelsEntry;
+  g.isLocalProxyProviderEntry = isLocalProxyProviderEntry;
+  g.syncLocalProxyProvider = syncLocalProxyProvider;
+  g.loadProviders = loadProviders;
+  g.providerListAll = providerListAll;
+  g.providerSearchHaystack = providerSearchHaystack;
+  g.normalizeProviderSortMode = normalizeProviderSortMode;
+  g.providerSortLabel = providerSortLabel;
+  g.providerSortText = providerSortText;
+  g.compareProvidersByName = compareProvidersByName;
+  g.providerSortedList = providerSortedList;
+  g.providerVisibleList = providerVisibleList;
+  g.cleanupProviderSelection = cleanupProviderSelection;
+  g.providerModelBadges = providerModelBadges;
+  g.renderProviderToolbarState = renderProviderToolbarState;
+  g.onProviderSearchInput = onProviderSearchInput;
+  g.clearProviderSearch = clearProviderSearch;
+  g.setProviderViewMode = setProviderViewMode;
+  g.setProviderSortMode = setProviderSortMode;
+  g.syncProviderSortControl = syncProviderSortControl;
+  g.setProviderSortMenuOpen = setProviderSortMenuOpen;
+  g.toggleProviderSortMenu = toggleProviderSortMenu;
+  g.closeProviderSortMenu = closeProviderSortMenu;
+  g.chooseProviderSortMode = chooseProviderSortMode;
+  g.toggleProviderSelection = toggleProviderSelection;
+  g.toggleVisibleProvidersSelection = toggleVisibleProvidersSelection;
+  g.setSelectedProvidersEnabled = setSelectedProvidersEnabled;
+  g.deleteSelectedProviders = deleteSelectedProviders;
+  g.normalizeProviderUnlocks = normalizeProviderUnlocks;
+  g.providerUnlockEnabled = providerUnlockEnabled;
+  g.providerUnlockLabels = providerUnlockLabels;
+  g.providerUnlockSummaryHtml = providerUnlockSummaryHtml;
+  g.providerUnlockTagsHtml = providerUnlockTagsHtml;
+  g.providerUnlockIconSvg = providerUnlockIconSvg;
+  g.providerUnlockCardButtonHtml = providerUnlockCardButtonHtml;
+  g.providerUnlockListButtonHtml = providerUnlockListButtonHtml;
+  g.ensureProviderUnlockModal = ensureProviderUnlockModal;
+  g.openProviderUnlockModal = openProviderUnlockModal;
+  g.closeProviderUnlockModal = closeProviderUnlockModal;
+  g.providerUnlockRowHtml = providerUnlockRowHtml;
+  g.renderProviderUnlockModal = renderProviderUnlockModal;
+  g.setProviderUnlockFromModal = setProviderUnlockFromModal;
+  g.renderProviderCards = renderProviderCards;
+  g.renderProviderListTable = renderProviderListTable;
+  g.renderProviders = renderProviders;
+  g.setProviderImportOpenButtonBusy = setProviderImportOpenButtonBusy;
+  g.providerImportSourceLabel = providerImportSourceLabel;
+  g.providerImportSelectedSourceKeys = providerImportSelectedSourceKeys;
+  g.providerImportSelectedSourceLabels = providerImportSelectedSourceLabels;
+  g.setProviderImportSourceInputsDisabled = setProviderImportSourceInputsDisabled;
+  g.providerImportListSurface = providerImportListSurface;
+  g.setProviderImportStep = setProviderImportStep;
+  g.syncProviderImportSourceState = syncProviderImportSourceState;
+  g.handleProviderImportScanAction = handleProviderImportScanAction;
+  g.handleProviderImportPrimaryAction = handleProviderImportPrimaryAction;
+  g.openProviderImportModal = openProviderImportModal;
+  g.closeProviderImportModal = closeProviderImportModal;
+  g.normalizeProviderImportHost = normalizeProviderImportHost;
+  g.normalizeProviderImportPath = normalizeProviderImportPath;
+  g.providerImportCandidateApiAddress = providerImportCandidateApiAddress;
+  g.providerImportCandidateWarnings = providerImportCandidateWarnings;
+  g.providerImportCandidateIsDuplicate = providerImportCandidateIsDuplicate;
+  g.providerImportCandidateStatus = providerImportCandidateStatus;
+  g.providerImportStatusPillHtml = providerImportStatusPillHtml;
+  g.providerImportStatusCounts = providerImportStatusCounts;
+  g.updateProviderImportFooterSummary = updateProviderImportFooterSummary;
+  g.updateProviderImportPrimaryState = updateProviderImportPrimaryState;
+  g.resetProviderImportSourceStates = resetProviderImportSourceStates;
+  g.providerImportSourceStatusText = providerImportSourceStatusText;
+  g.renderProviderImportSourceStatus = renderProviderImportSourceStatus;
+  g.renderProviderImportFilters = renderProviderImportFilters;
+  g.setProviderImportFilter = setProviderImportFilter;
+  g.providerImportFilteredCandidates = providerImportFilteredCandidates;
+  g.renderProviderImportScanPrompt = renderProviderImportScanPrompt;
+  g.scanProviderImportCandidates = scanProviderImportCandidates;
+  g.scanProviderImportCandidatesFallback = scanProviderImportCandidatesFallback;
+  g.bindProviderImportScanListener = bindProviderImportScanListener;
+  g.applyProviderImportScanProgress = applyProviderImportScanProgress;
+  g.mergeProviderImportCandidates = mergeProviderImportCandidates;
+  g.finishProviderImportCancelledScan = finishProviderImportCancelledScan;
+  g.cancelProviderImportScan = cancelProviderImportScan;
+  g.finishProviderImportScanUi = finishProviderImportScanUi;
+  g.renderProviderImportNotices = renderProviderImportNotices;
+  g.renderProviderImportResultsSub = renderProviderImportResultsSub;
+  g.providerImportScanProgressHtml = providerImportScanProgressHtml;
+  g.renderProviderImportCandidates = renderProviderImportCandidates;
+  g.toggleProviderImportCandidate = toggleProviderImportCandidate;
+  g.toggleAllProviderImportCandidates = toggleAllProviderImportCandidates;
+  g.syncProviderImportSelectionState = syncProviderImportSelectionState;
+  g.importSelectedProviders = importSelectedProviders;
+  g.getEvalComboParts = getEvalComboParts;
+  g.closeEvalCombos = closeEvalCombos;
+  g.focusEvalComboOption = focusEvalComboOption;
+  g.setEvalComboOpen = setEvalComboOpen;
+  g.toggleEvalCombo = toggleEvalCombo;
+  g.handleEvalComboTriggerKey = handleEvalComboTriggerKey;
+  g.selectEvalComboOption = selectEvalComboOption;
+  g.syncEvalCombo = syncEvalCombo;
+  g.syncEvalCombos = syncEvalCombos;
+  g.getEvalProvider = getEvalProvider;
+  g.normalizeEvalModels = normalizeEvalModels;
+  g.normalizeEvalApiFormat = normalizeEvalApiFormat;
+  g.evalApiFormatLabel = evalApiFormatLabel;
+  g.getEvalApiFormat = getEvalApiFormat;
+  g.evalRemoteModelCacheKey = evalRemoteModelCacheKey;
+  g.getEvalSavedModelList = getEvalSavedModelList;
+  g.getEvalModelList = getEvalModelList;
+  g.getEvalProviderFetchHost = getEvalProviderFetchHost;
+  g.canFetchEvalModels = canFetchEvalModels;
+  g.shouldAutoFetchEvalModels = shouldAutoFetchEvalModels;
+  g.fetchEvalRemoteModels = fetchEvalRemoteModels;
+  g.renderEvalProviderOptions = renderEvalProviderOptions;
+  g.renderEvalModelOptions = renderEvalModelOptions;
+  g.evalStatusLabel = evalStatusLabel;
+  g.evalStatusTag = evalStatusTag;
+  g.evalRiskLabel = evalRiskLabel;
+  g.evalRiskColor = evalRiskColor;
+  g.evalRelationLabel = evalRelationLabel;
+  g.evalCheckStatusClass = evalCheckStatusClass;
+  g.renderEvalChecks = renderEvalChecks;
+  g.evalFormatDuration = evalFormatDuration;
+  g.evalFormatTime = evalFormatTime;
+  g.renderEvalCheckPicker = renderEvalCheckPicker;
+  g.setAllEvalChecks = setAllEvalChecks;
+  g.getSelectedEvalChecks = getSelectedEvalChecks;
+  g.getEvalTotalForSelected = getEvalTotalForSelected;
+  g.syncEvalCheckButton = syncEvalCheckButton;
+  g.openEvalCheckModal = openEvalCheckModal;
+  g.closeEvalCheckModal = closeEvalCheckModal;
+  g.setEvalText = setEvalText;
+  g.evalScoreBand = evalScoreBand;
+  g.evalSafeScore = evalSafeScore;
+  g.evalDimensionScores = evalDimensionScores;
+  g.updateEvalRadar = updateEvalRadar;
+  g.renderEvalDimensions = renderEvalDimensions;
+  g.evalDiagnosisLevel = evalDiagnosisLevel;
+  g.renderEvalDiagnosis = renderEvalDiagnosis;
+  g.resetEvalReportChrome = resetEvalReportChrome;
+  g.renderEvalRunning = renderEvalRunning;
+  g.renderEvalFailure = renderEvalFailure;
+  g.applyEvalProgress = applyEvalProgress;
+  g.bindEvalProgressListener = bindEvalProgressListener;
+  g.renderEvalReport = renderEvalReport;
+  g.renderEvalHistory = renderEvalHistory;
+  g.selectEvalReport = selectEvalReport;
+  g.openEvalHistoryPage = openEvalHistoryPage;
+  g.openEvalWorkbenchPage = openEvalWorkbenchPage;
+  g.loadEvalReports = loadEvalReports;
+  g.setEvalRunning = setEvalRunning;
+  g.evalReportProtocolConnected = evalReportProtocolConnected;
+  g.evalReportProtocolSummary = evalReportProtocolSummary;
+  g.rememberEvalReport = rememberEvalReport;
+  g.runProviderEvalRequest = runProviderEvalRequest;
+  g.startEval = startEval;
+  g.deleteEvalReport = deleteEvalReport;
+  g.toggleProviderEnabled = toggleProviderEnabled;
+  g.deleteProvider = deleteProvider;
+  g.cloneProviderStore = cloneProviderStore;
+  g.persistProviders = persistProviders;
+  g.copyLocalProxyInfo = copyLocalProxyInfo;
+  g.navigateToProxyModels = navigateToProxyModels;
+  g.navigateToProxyEnhancement = navigateToProxyEnhancement;
+})(globalThis);

@@ -15,8 +15,8 @@ ui-src/
   partials/
     pages/                   # 各业务页
     modals/                  # 全局弹窗
-    scripts-app.html         # classic script 标签顺序（含 05-actions.js）
-    scripts-i18n.html
+    scripts-app.html         # ES module 入口：main.js
+    scripts-i18n.html        # i18n classic scripts
     shell-close.html
   manifest.json              # 切片元数据（只读参考）
 ```
@@ -35,8 +35,13 @@ ui-src/
 - 使用 `data-action` / `data-args` / `data-events` 等，由 `ui/assets/scripts/05-actions.js` 统一委托。
 - 约定详见 `ui/README.md` 的「事件约定」一节。
 
+## 脚本
+
+- 业务脚本：`ui/assets/scripts/main.js`（`type="module"`）按序 import 各模块。
+- i18n：仍为 classic script，见 `scripts-i18n.html`。
+- 新增业务 JS 时同步改 `main.js` 与 `scripts/check-ui.mjs`。
+
 ## 注意
 
 - 不要手改 `ui/index.html`（产物）。
 - 弹窗放在 `partials/modals/`，在壳或 body 尾部按顺序 `@include`。
-- 新增 script 文件时同步改 `partials/scripts-app.html` 与 `scripts/check-ui.mjs` 的顺序清单。

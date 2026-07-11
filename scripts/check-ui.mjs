@@ -2,10 +2,14 @@ import { readFileSync, existsSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 
-const scriptFiles = [
+const i18nFiles = [
   'ui/assets/i18n/zh-CN.js',
   'ui/assets/i18n/en-US.js',
   'ui/assets/i18n/i18n.js',
+];
+
+const moduleFiles = [
+  'ui/assets/scripts/main.js',
   'ui/assets/scripts/00-bridge.js',
   'ui/assets/scripts/05-actions.js',
   'ui/assets/scripts/10-shell.js',
@@ -19,6 +23,22 @@ const scriptFiles = [
   'ui/assets/scripts/60-updater.js',
   'ui/assets/scripts/70-healthcheck.js',
   'ui/assets/scripts/90-init.js',
+];
+
+const moduleImportOrder = [
+  '00-bridge.js',
+  '05-actions.js',
+  '10-shell.js',
+  '20-runtime.js',
+  '30-providers-eval.js',
+  '40-model-picker.js',
+  '50-model-map.js',
+  '52-proxy-routes.js',
+  '55-platforms.js',
+  '65-extensions.js',
+  '60-updater.js',
+  '70-healthcheck.js',
+  '90-init.js',
 ];
 
 const styleFiles = [
@@ -84,8 +104,26 @@ if (buildCheck.status !== 0) {
 }
 
 const indexHtml = readFileSync('ui/index.html', 'utf8');
-const scriptTags = scriptFiles.map((file) => `<script src="./${file.replace('ui/', '')}"></script>`);
-assertContainsInOrder(indexHtml, scriptTags, 'index.html script list');
+
+// i18n still classic scripts (catalog side effects on window)
+const i18nTags = i18nFiles.map((file) => `<script src="./${file.replace('ui/', '')}"></script>`);
+assertContainsInOrder(indexHtml, i18nTags, 'index.html i18n script list');
+
+// app scripts: single ES module entry
+if (!indexHtml.includes('<script type="module" src="./assets/scripts/main.js"></script>')) {
+  fail('index.html missing ES module entry <script type="module" src="./assets/scripts/main.js">');
+}
+// must not load classic multi-script app bundle anymore
+if (indexHtml.includes('<script src="./assets/scripts/00-bridge.js"></script>')) {
+  fail('index.html still loads classic 00-bridge.js; use main.js module entry only');
+}
+
+const mainJs = readFileSync('ui/assets/scripts/main.js', 'utf8');
+assertContainsInOrder(
+  mainJs,
+  moduleImportOrder.map((f) => `import './${f}';`),
+  'main.js import order',
+);
 
 for (const id of requiredPageIds) {
   if (!indexHtml.includes(`id="${id}"`)) fail(`index.html missing #${id}`);
@@ -95,7 +133,8 @@ const appCss = readFileSync('ui/assets/app.css', 'utf8');
 const cssImports = styleFiles.map((file) => `@import url('./styles/${file.split('/').pop()}');`);
 assertContainsInOrder(appCss, cssImports, 'app.css import list');
 
-for (const file of scriptFiles) {
+for (const file of [...i18nFiles, ...moduleFiles]) {
+  if (!existsSync(file)) fail(`missing script file ${file}`);
   const result = spawnSync(process.execPath, ['--check', file], { stdio: 'inherit' });
   if (result.status !== 0) fail(`syntax error in ${file}`);
 }
@@ -111,5 +150,5 @@ while ((m = includeRe.exec(shell)) !== null) {
 }
 
 console.log(
-  `UI check passed (${scriptFiles.length} scripts, ${styleFiles.length} styles, ${requiredPageIds.length} pages).`,
+  `UI check passed (${moduleFiles.length} modules + ${i18nFiles.length} i18n, ${styleFiles.length} styles, ${requiredPageIds.length} pages).`,
 );

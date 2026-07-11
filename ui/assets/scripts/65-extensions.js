@@ -1,9 +1,10 @@
+// ES module (P3) — vars on globalThis; functions kept + mirrored for hoist + data-action.
 // ═══════ 扩展中心 ═══════
-const CPAMP_MANAGEMENT_URL = 'http://127.0.0.1:18317/management.html';
+globalThis.CPAMP_MANAGEMENT_URL = 'http://127.0.0.1:18317/management.html';
 
-const CPAMP_PLUGINS_URL = `${CPAMP_MANAGEMENT_URL}#/plugins`;
-const EXTENSION_AUTO_REFRESH_MS = 10000;
-const EXTENSION_TRANSIENT_STATUSES = new Set([
+globalThis.CPAMP_PLUGINS_URL = `${CPAMP_MANAGEMENT_URL}#/plugins`;
+globalThis.EXTENSION_AUTO_REFRESH_MS = 10000;
+globalThis.EXTENSION_TRANSIENT_STATUSES = new Set([
   'checking',
   'installing',
   'starting',
@@ -11,15 +12,15 @@ const EXTENSION_TRANSIENT_STATUSES = new Set([
   'updating',
   'uninstalling'
 ]);
-let extensionServicesById = new Map();
-let activeExtensionDetailId = '';
-let cpaUpdateReport = null;
-let cpaInstallDir = null;
-let extensionAutoRefreshTimer = null;
-let extensionDeployInProgress = false;
-let cpaProgressState = { percent: 0, message: '' };
+globalThis.extensionServicesById = new Map();
+globalThis.activeExtensionDetailId = '';
+globalThis.cpaUpdateReport = null;
+globalThis.cpaInstallDir = null;
+globalThis.extensionAutoRefreshTimer = null;
+globalThis.extensionDeployInProgress = false;
+globalThis.cpaProgressState = { percent: 0, message: '' };
 
-const EXTENSION_CATALOG = {
+globalThis.EXTENSION_CATALOG = {
   'cpa-suite': {
     short: 'CPA',
     name: 'CPA 套件',
@@ -115,7 +116,7 @@ const EXTENSION_CATALOG = {
   }
 };
 
-const EXTENSION_STATUS_LABELS = {
+globalThis.EXTENSION_STATUS_LABELS = {
   checking: '检测中',
   pending: '待接入',
   'not-installed': '未安装',
@@ -131,7 +132,7 @@ const EXTENSION_STATUS_LABELS = {
   uninstalling: '卸载中'
 };
 
-const EXTENSION_STATUS_CLASSES = [
+globalThis.EXTENSION_STATUS_CLASSES = [
   'status-pending',
   'status-checking',
   'status-not-installed',
@@ -147,7 +148,7 @@ const EXTENSION_STATUS_CLASSES = [
   'status-uninstalling'
 ];
 
-const EXTENSION_COMPONENT_DOT_CLASSES = [
+globalThis.EXTENSION_COMPONENT_DOT_CLASSES = [
   'pending',
   'muted',
   'running',
@@ -157,7 +158,7 @@ const EXTENSION_COMPONENT_DOT_CLASSES = [
   'error'
 ];
 
-const EXTENSION_LOG_LABELS = {
+globalThis.EXTENSION_LOG_LABELS = {
   info: '信息',
   warn: '警告',
   err: '错误',
@@ -209,10 +210,10 @@ function bindExtensionSettingsModal() {
   });
 }
 
-const EXTENSION_LOG_FILTERS = ['all', 'ok', 'info', 'warn', 'err'];
-let extensionLogEntries = [];
-let extensionLogFilter = 'all';
-const EXTENSION_MAX_LOGS = 500;
+globalThis.EXTENSION_LOG_FILTERS = ['all', 'ok', 'info', 'warn', 'err'];
+globalThis.extensionLogEntries = [];
+globalThis.extensionLogFilter = 'all';
+globalThis.EXTENSION_MAX_LOGS = 500;
 
 function extensionNowTs() {
   const d = new Date();
@@ -1052,7 +1053,7 @@ function formatUpdateLine(component) {
   return `${component.name}：${current} 更新为 ${latest}（${suffix}）`;
 }
 
-let cpaUpdateChecking = false;
+globalThis.cpaUpdateChecking = false;
 
 async function checkCpaExtensionUpdates(autoUpdate = false) {
   if (!ensureExtensionBridge()) {
@@ -1443,7 +1444,7 @@ function bindDeployProgressListener() {
   }
 }
 
-const CPA_DEPLOY_STEP_MAP = {
+globalThis.CPA_DEPLOY_STEP_MAP = {
   check: 'check', fetch: 'fetch',
   download_cpa: 'download', download_cpamp: 'download', download: 'download',
   extract_cpa: 'extract', extract_cpamp: 'extract',
@@ -1452,7 +1453,7 @@ const CPA_DEPLOY_STEP_MAP = {
   health_cpa: 'health', health_cpamp: 'health',
   done: 'done',
 };
-const CPA_DEPLOY_STEP_ORDER = ['check', 'fetch', 'download', 'extract', 'config', 'start', 'health'];
+globalThis.CPA_DEPLOY_STEP_ORDER = ['check', 'fetch', 'download', 'extract', 'config', 'start', 'health'];
 
 async function deployCpaSuite() {
   if (!ensureExtensionBridge()) {
@@ -1704,9 +1705,9 @@ function showCpaDeployModal() {
 
 // âââââââ CPA çæ¬åæ¢ âââââââ
 
-let cpaVersionCatalog = null;
-let cpaVersionSelected = { cli: null, cpamp: null };
-let cpaVersionBusy = false;
+globalThis.cpaVersionCatalog = null;
+globalThis.cpaVersionSelected = { cli: null, cpamp: null };
+globalThis.cpaVersionBusy = false;
 
 function findCpaComponentVersions(catalog, id) {
   return ((catalog && catalog.components) || []).find(function (c) { return c.id === id; }) || null;
@@ -1965,3 +1966,87 @@ async function applyCpaVersionSelection() {
     setTimeout(function () { hideCpaProgress(); }, 800);
   }
 }
+
+// ---- P3 globalThis mirror (functions/classes) ----
+(function mirrorFns(g) {
+  g.extensionNotify = extensionNotify;
+  g.openExtensionSettings = openExtensionSettings;
+  g.closeExtensionSettings = closeExtensionSettings;
+  g.closeExtensionSettingsOnEsc = closeExtensionSettingsOnEsc;
+  g.toggleExtensionSettings = toggleExtensionSettings;
+  g.bindExtensionSettingsModal = bindExtensionSettingsModal;
+  g.extensionNowTs = extensionNowTs;
+  g.extensionEscapeHtml = extensionEscapeHtml;
+  g.renderExtensionLogLine = renderExtensionLogLine;
+  g.renderExtensionLogs = renderExtensionLogs;
+  g.extensionLog = extensionLog;
+  g.setExtensionLogFilter = setExtensionLogFilter;
+  g.extensionStatusLabel = extensionStatusLabel;
+  g.setExtensionStatusBadge = setExtensionStatusBadge;
+  g.isExtensionsPageActive = isExtensionsPageActive;
+  g.clearExtensionAutoRefresh = clearExtensionAutoRefresh;
+  g.scheduleExtensionAutoRefresh = scheduleExtensionAutoRefresh;
+  g.setCpaProgress = setCpaProgress;
+  g.hideCpaProgress = hideCpaProgress;
+  g.setCpaSuiteTransientStatus = setCpaSuiteTransientStatus;
+  g.collectCpaAlertMessages = collectCpaAlertMessages;
+  g.renderCpaAlert = renderCpaAlert;
+  g.renderCpaCredentials = renderCpaCredentials;
+  g.getCpaActionConfig = getCpaActionConfig;
+  g.bindCpaActionButton = bindCpaActionButton;
+  g.renderCpaActions = renderCpaActions;
+  g.setComponentDot = setComponentDot;
+  g.currentExtensionTab = currentExtensionTab;
+  g.currentExtensionFilter = currentExtensionFilter;
+  g.ensureExtensionBridge = ensureExtensionBridge;
+  g.clearExtensionLogs = clearExtensionLogs;
+  g.clearExtensionNode = clearExtensionNode;
+  g.appendExtensionMetric = appendExtensionMetric;
+  g.switchExtensionTab = switchExtensionTab;
+  g.switchExtensionFilter = switchExtensionFilter;
+  g.syncExtensionCardTags = syncExtensionCardTags;
+  g.describeExtensionComponent = describeExtensionComponent;
+  g.updateExtensionComponent = updateExtensionComponent;
+  g.updateCpaSuiteCard = updateCpaSuiteCard;
+  g.updateExtensionsMetric = updateExtensionsMetric;
+  g.extensionPortsText = extensionPortsText;
+  g.renderExtensionGithubLinks = renderExtensionGithubLinks;
+  g.renderExtensionComponents = renderExtensionComponents;
+  g.renderExtensionNotes = renderExtensionNotes;
+  g.highlightExtensionDetailAlerts = highlightExtensionDetailAlerts;
+  g.openExtensionDetail = openExtensionDetail;
+  g.closeExtensionDetail = closeExtensionDetail;
+  g.closeExtensionDetailOnEsc = closeExtensionDetailOnEsc;
+  g.bindExtensionCardOpeners = bindExtensionCardOpeners;
+  g.refreshExtensionStatuses = refreshExtensionStatuses;
+  g.formatUpdateLine = formatUpdateLine;
+  g.checkCpaExtensionUpdates = checkCpaExtensionUpdates;
+  g.stopCpaSuite = stopCpaSuite;
+  g.startCpaSuite = startCpaSuite;
+  g.uninstallCpaSuite = uninstallCpaSuite;
+  g.restartCpaSuite = restartCpaSuite;
+  g.updateCpaSuite = updateCpaSuite;
+  g.initExtensions = initExtensions;
+  g.onExtensionsPageEnter = onExtensionsPageEnter;
+  g.onExtensionsPageLeave = onExtensionsPageLeave;
+  g.loadCpaInstallDir = loadCpaInstallDir;
+  g.renderCpaInstallDir = renderCpaInstallDir;
+  g.chooseCpaInstallDir = chooseCpaInstallDir;
+  g.setCpaInstallDir = setCpaInstallDir;
+  g.toggleExtensionDetails = toggleExtensionDetails;
+  g.openExtensionURL = openExtensionURL;
+  g.showExtensionBackendPending = showExtensionBackendPending;
+  g.handleExtensionAction = handleExtensionAction;
+  g.bindDeployProgressListener = bindDeployProgressListener;
+  g.deployCpaSuite = deployCpaSuite;
+  g.showCpaDeployModal = showCpaDeployModal;
+  g.findCpaComponentVersions = findCpaComponentVersions;
+  g.formatCpaVersionDate = formatCpaVersionDate;
+  g.renderCpaVersionList = renderCpaVersionList;
+  g.updateCpaVersionConfirmLabel = updateCpaVersionConfirmLabel;
+  g.refreshCpaVersionLists = refreshCpaVersionLists;
+  g.setCpaVersionProgress = setCpaVersionProgress;
+  g.openCpaVersionSwitchModal = openCpaVersionSwitchModal;
+  g.closeCpaVersionSwitchModal = closeCpaVersionSwitchModal;
+  g.applyCpaVersionSelection = applyCpaVersionSelection;
+})(globalThis);

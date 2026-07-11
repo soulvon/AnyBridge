@@ -1,13 +1,14 @@
+// ES module (P3) — vars on globalThis; functions kept + mirrored for hoist + data-action.
 // 运行期诊断输出（默认仅控制台，不在界面展示）
 function _diag(msg) { console.log('[DIAG]', msg); }
 window.addEventListener('error', e => _diag(`UNCAUGHT: ${e.message} @ ${e.filename}:${e.lineno}`));
 window.addEventListener('unhandledrejection', e => _diag(`UNHANDLED: ${e.reason}`));
 
 
-let TAURI = null;
-let invoke = null;
-let tauriEvent = null;
-let appWindow = null;
+globalThis.TAURI = null;
+globalThis.invoke = null;
+globalThis.tauriEvent = null;
+globalThis.appWindow = null;
 
 function bindTauriBridge() {
   TAURI = window.__TAURI__ || null;
@@ -33,3 +34,10 @@ async function ensureTauriBridge(maxWaitMs = 3000) {
   _diag('ensureTauriBridge: FAILED - bridge never became available');
   return false;
 }
+
+// ---- P3 globalThis mirror (functions/classes) ----
+(function mirrorFns(g) {
+  g._diag = _diag;
+  g.bindTauriBridge = bindTauriBridge;
+  g.ensureTauriBridge = ensureTauriBridge;
+})(globalThis);

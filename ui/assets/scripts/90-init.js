@@ -1,3 +1,4 @@
+// ES module (P3) — vars on globalThis; functions kept + mirrored for hoist + data-action.
 // ═══════ INIT ═══════
 async function syncAppVersionDisplay() {
   let label = 'v1.2.16';
@@ -131,3 +132,9 @@ async function init() {
 }
 
 init().catch(e => console.error('init failed:', e));
+
+// ---- P3 globalThis mirror (functions/classes) ----
+(function mirrorFns(g) {
+  g.syncAppVersionDisplay = syncAppVersionDisplay;
+  g.init = init;
+})(globalThis);

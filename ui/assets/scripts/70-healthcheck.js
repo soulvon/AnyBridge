@@ -1,3 +1,4 @@
+// ES module (P3) — vars on globalThis; functions kept + mirrored for hoist + data-action.
 // 70-healthcheck.js — 「环境体检」独立 tab 的渲染逻辑
 //
 // 数据流：

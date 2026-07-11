@@ -1,11 +1,12 @@
+// ES module (P3) — vars on globalThis; functions kept + mirrored for hoist + data-action.
 // ═══════ MODEL MAP (可编辑槽位映射 + 故障转移链) ═══════
-let modelMapStore = { slots: [] };       // load_model_map 结果
-let ideModels = null;               // list_ide_models 缓存（数组）
-let ideMeta = null;                 // { source, capturedAt, account } 元信息
-let modelMapSelectedIds = new Set(); // 批量勾选：modelUid
-let modelMapBulkRunning = false;     // 批量操作防并发
+globalThis.modelMapStore = { slots: [] };       // load_model_map 结果
+globalThis.ideModels = null;               // list_ide_models 缓存（数组）
+globalThis.ideMeta = null;                 // { source, capturedAt, account } 元信息
+globalThis.modelMapSelectedIds = new Set(); // 批量勾选：modelUid
+globalThis.modelMapBulkRunning = false;     // 批量操作防并发
 
-const DEFAULT_PROXY_ENHANCEMENT = Object.freeze({
+globalThis.DEFAULT_PROXY_ENHANCEMENT = Object.freeze({
   retry: true,
   retryMaxRetries: 5,
   retryBaseMs: 600,
@@ -43,16 +44,16 @@ const DEFAULT_PROXY_ENHANCEMENT = Object.freeze({
   rateLimitEnabled: false,
   requestLogging: false,
 });
-const PROXY_VISION_TEST_FALLBACK_IMAGE_B64 = 'iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAYAAADDPmHLAAABpklEQVR4nO3SMRHDUBBDwcAxiIAwYoNI/bk4IFTc6GYL1a/Qfq77+yY74cb7T7YTbrr/GT9gug8AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAsBNA/YFpv/zAtA8AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAMBOAPUHpv3yA9M+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAOwHUH5j2yw9M+wAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAOwEcN2/N9kJN95/sp1w030AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAB2Aqg/MO2XH5j2AQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA2Amg/sC0X35g2gcAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAGAngPoD0375gWkfAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACAlQD+DY7JjtGCazMAAAAASUVORK5CYII=';
-let proxyVisionPickerOpen = false;
-let proxyVisionTestingKey = '';
-let proxyVisionTestImageB64 = '';
-let proxyVisionProviderSearch = '';
-let proxyVisionSelectedProviderId = '';
-let proxyVisionPickedModels = new Map();
-let proxySearchSourcePickerOpen = false;
-let proxySearchTestingId = '';
-let lastSavedProxyEnhancement = null;
+globalThis.PROXY_VISION_TEST_FALLBACK_IMAGE_B64 = 'iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAYAAADDPmHLAAABpklEQVR4nO3SMRHDUBBDwcAxiIAwYoNI/bk4IFTc6GYL1a/Qfq77+yY74cb7T7YTbrr/GT9gug8AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAsBNA/YFpv/zAtA8AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAMBOAPUHpv3yA9M+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAOwHUH5j2yw9M+wAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAOwEcN2/N9kJN95/sp1w030AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAB2Aqg/MO2XH5j2AQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA2Amg/sC0X35g2gcAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAGAngPoD0375gWkfAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACAlQD+DY7JjtGCazMAAAAASUVORK5CYII=';
+globalThis.proxyVisionPickerOpen = false;
+globalThis.proxyVisionTestingKey = '';
+globalThis.proxyVisionTestImageB64 = '';
+globalThis.proxyVisionProviderSearch = '';
+globalThis.proxyVisionSelectedProviderId = '';
+globalThis.proxyVisionPickedModels = new Map();
+globalThis.proxySearchSourcePickerOpen = false;
+globalThis.proxySearchTestingId = '';
+globalThis.lastSavedProxyEnhancement = null;
 
 function defaultProxyEnhancement() {
   return { ...DEFAULT_PROXY_ENHANCEMENT, selfHeal: { ...DEFAULT_PROXY_ENHANCEMENT.selfHeal } };
@@ -318,7 +319,7 @@ function originalNameOf(uid) {
 }
 
 // ── 品牌检测与快速筛选 ──
-const MODEL_BRANDS = [
+globalThis.MODEL_BRANDS = [
   { id: 'claude', label: 'Claude', match: /claude|opus|sonnet|haiku|fable/i },
   { id: 'gpt', label: 'GPT', match: /gpt|o1\b|o3\b|o4\b|codex/i },
   { id: 'gemini', label: 'Gemini', match: /gemini/i },
@@ -348,10 +349,10 @@ function getAvailableBrands(items, getName, getUid) {
 }
 
 // 排序/筛选状态
-let slotCatalogBrand = '';
-let slotCatalogSort = 'name-asc';
-let mappingCatalogProvider = '';
-let mappingCatalogSort = 'name-asc';
+globalThis.slotCatalogBrand = '';
+globalThis.slotCatalogSort = 'name-asc';
+globalThis.mappingCatalogProvider = '';
+globalThis.mappingCatalogSort = 'name-asc';
 
 // 渲染单个 target 链，失效（供应商不存在或未启用）的标红 ⚠
 function renderTargetChain(targets) {
@@ -1040,7 +1041,7 @@ function updateVisionMultiImageMode(select) {
   setVisionBatchSizeEnabled(select.value === 'chunk' && modelMapStore.enhancement.imageFallback !== false);
 }
 
-let _enhancementSaveTimer = null;
+globalThis._enhancementSaveTimer = null;
 async function autoSaveEnhancement() {
   ensureModelMapDefaults();
   if (_enhancementSaveTimer) clearTimeout(_enhancementSaveTimer);
@@ -1416,7 +1417,7 @@ async function moveVisionModel(idx, dir) {
   }
 }
 
-const SEARCH_SOURCE_PRESETS = Object.freeze([
+globalThis.SEARCH_SOURCE_PRESETS = Object.freeze([
   { key: 'tavily', type: 'api', label: 'Tavily', needsKey: true, defaultHost: 'https://api.tavily.com' },
   { key: 'serper', type: 'api', label: 'Serper', needsKey: true, defaultHost: 'https://google.serper.dev' },
   { key: 'bravesearch', type: 'api', label: 'Brave Search', needsKey: true, defaultHost: 'https://api.search.brave.com' },
@@ -1694,10 +1695,10 @@ async function toggleSlotThirdPartyVision(uid, enabled) {
 // ─── 模型映射显示设置模态框（名称前缀 + 后缀 + 高级模板）───
 // 跟 sidecar renderTemplate 保持一致:占位符 {prefix} {label} {provider} {apiModel}
 // 模板含 {provider} 且 provider 空 → 「未设置」
-const DEFAULT_LABEL_TEMPLATE = '{prefix} {label} ({provider})';
-const SIMPLE_LABEL_TEMPLATE_BASE = '{prefix} {label}';
-const TEMPLATE_VAR_NAMES = ['prefix', 'label', 'provider', 'apiModel'];
-let labelTemplateModalMode = 'simple';
+globalThis.DEFAULT_LABEL_TEMPLATE = '{prefix} {label} ({provider})';
+globalThis.SIMPLE_LABEL_TEMPLATE_BASE = '{prefix} {label}';
+globalThis.TEMPLATE_VAR_NAMES = ['prefix', 'label', 'provider', 'apiModel'];
+globalThis.labelTemplateModalMode = 'simple';
 
 function renderLabelTemplate(tpl, vars) {
   const tmpl = (tpl && tpl.trim()) || DEFAULT_LABEL_TEMPLATE;
@@ -1883,11 +1884,11 @@ async function saveModelMapSettingsFromModal() {
 // ─── 模型槽位管理（旧字段 injected，解锁 Windsurf 灰色模型）───
 // modelMapStore.injected: [{ label, modelUid, providerId, model, apiFormat, unlock, supportsImages }]
 // 加载时确保存在（兼容旧 model-map.json）
-let injectedCatalog = null;     // 128 模型内置目录（首次调用时加载）
-let slotVisibilityRows = [];
-let slotVisibilityDirty = false;
+globalThis.injectedCatalog = null;     // 128 模型内置目录（首次调用时加载）
+globalThis.slotVisibilityRows = [];
+globalThis.slotVisibilityDirty = false;
 
-const UNLOCK_SCOPE_LABELS = {
+globalThis.UNLOCK_SCOPE_LABELS = {
   all: '全部槽位',
   common: '常用槽位',
   claude: 'Claude',
@@ -1897,13 +1898,13 @@ const UNLOCK_SCOPE_LABELS = {
   configured: '已配置 BYOK',
 };
 
-const SLOT_VISIBILITY_LABELS = {
+globalThis.SLOT_VISIBILITY_LABELS = {
   mapped: '应用：仅显示已映射槽位',
   official: '应用：已映射 + 官方模型',
   all: '应用：已映射 + 官方模型 + 全部',
 };
 
-const SLOT_VISIBILITY_SHORT_LABELS = {
+globalThis.SLOT_VISIBILITY_SHORT_LABELS = {
   mapped: '仅已映射',
   official: '已映射 + 官方',
   all: '全部模型',
@@ -2379,12 +2380,12 @@ async function deleteSlot(uid) {
 }
 
 // ─── 添加映射模态框 ───
-let selectedSlotUid = '';
-let selectedMappingTargets = []; // [{providerId, model, apiFormat?, unlock?}]
-let slotDisplayNameMode = 'mapped'; // 添加映射时默认使用映射模型名
-let slotCatalogScope = 'account';
-let slotWasManuallySelected = false;
-const AUTO_ROUTE_VALUE = 'auto';
+globalThis.selectedSlotUid = '';
+globalThis.selectedMappingTargets = []; // [{providerId, model, apiFormat?, unlock?}]
+globalThis.slotDisplayNameMode = 'mapped'; // 添加映射时默认使用映射模型名
+globalThis.slotCatalogScope = 'account';
+globalThis.slotWasManuallySelected = false;
+globalThis.AUTO_ROUTE_VALUE = 'auto';
 
 function normalizeMappingUnlock(value) {
   const raw = String(value || '').trim();
@@ -3064,8 +3065,8 @@ async function saveSlotFromEditor() {
 }
 
 // ─── 故障转移配置模态框 ───
-let failoverEditUid = '';
-let failoverDraft = [];   // [{providerId, model, apiFormat?, unlock?}]
+globalThis.failoverEditUid = '';
+globalThis.failoverDraft = [];   // [{providerId, model, apiFormat?, unlock?}]
 
 function enabledProviders() {
   return (providerStore.providers || []).filter(p => p.enabled !== false && p.meta?.codexConfig !== true && !isBuiltinProvider(p));
@@ -3255,3 +3256,191 @@ async function saveFailoverFromEditor() {
     s.targets = prev;
   }
 }
+
+// ---- P3 globalThis mirror (functions/classes) ----
+(function mirrorFns(g) {
+  g.defaultProxyEnhancement = defaultProxyEnhancement;
+  g.cloneModelMapStore = cloneModelMapStore;
+  g.cloneProxyEnhancement = cloneProxyEnhancement;
+  g.normalizeHeaderPair = normalizeHeaderPair;
+  g.sanitizeHeaderPairsForPersist = sanitizeHeaderPairsForPersist;
+  g.modelMapForPersist = modelMapForPersist;
+  g.getProxyVisionTestImageBase64 = getProxyVisionTestImageBase64;
+  g.ensureModelMapDefaults = ensureModelMapDefaults;
+  g.normalizeEnhancementInt = normalizeEnhancementInt;
+  g.visionModelKey = visionModelKey;
+  g.decodeVisionModelKey = decodeVisionModelKey;
+  g.visionModelLabel = visionModelLabel;
+  g.ensureIdeModels = ensureIdeModels;
+  g.refreshIdeModels = refreshIdeModels;
+  g.syncCurrentIdeModels = syncCurrentIdeModels;
+  g.originalNameOf = originalNameOf;
+  g.detectModelBrand = detectModelBrand;
+  g.getAvailableBrands = getAvailableBrands;
+  g.renderTargetChain = renderTargetChain;
+  g.renderModelMap = renderModelMap;
+  g.startEditDisplayName = startEditDisplayName;
+  g.filterModelTable = filterModelTable;
+  g.persistModelMap = persistModelMap;
+  g.cleanupModelMapSelection = cleanupModelMapSelection;
+  g.toggleModelMapSelection = toggleModelMapSelection;
+  g.visibleModelMapSlots = visibleModelMapSlots;
+  g.toggleVisibleModelMapSelectionFromHeader = toggleVisibleModelMapSelectionFromHeader;
+  g.toggleVisibleModelMapSelection = toggleVisibleModelMapSelection;
+  g.syncModelMapSelectionState = syncModelMapSelectionState;
+  g.batchSetSelectedSlotsEnabled = batchSetSelectedSlotsEnabled;
+  g.batchSetSelectedSlotsThirdPartyVision = batchSetSelectedSlotsThirdPartyVision;
+  g.batchDeleteSelectedSlots = batchDeleteSelectedSlots;
+  g.renderProxyEnhancement = renderProxyEnhancement;
+  g.renderHeaderList = renderHeaderList;
+  g.escapeHtml = escapeHtml;
+  g.addHeaderPair = addHeaderPair;
+  g.updateHeaderPair = updateHeaderPair;
+  g.removeHeaderPair = removeHeaderPair;
+  g.updateEnhancementText = updateEnhancementText;
+  g.updateEnhancementSelect = updateEnhancementSelect;
+  g.updateParamOverrides = updateParamOverrides;
+  g.updateToolFilterList = updateToolFilterList;
+  g.openProxyEnhancement = openProxyEnhancement;
+  g.closeProxyEnhancement = closeProxyEnhancement;
+  g.toggleEnhancement = toggleEnhancement;
+  g.toggleSelfHeal = toggleSelfHeal;
+  g.setPanelControlsEnabled = setPanelControlsEnabled;
+  g.setVisionOptionControlsEnabled = setVisionOptionControlsEnabled;
+  g.setVisionBatchSizeEnabled = setVisionBatchSizeEnabled;
+  g.setRetryConfigControlsEnabled = setRetryConfigControlsEnabled;
+  g.setSelfHealControlsEnabled = setSelfHealControlsEnabled;
+  g.updateEnhancementNumber = updateEnhancementNumber;
+  g.updateVisionMultiImageMode = updateVisionMultiImageMode;
+  g.autoSaveEnhancement = autoSaveEnhancement;
+  g.saveProxyEnhancement = saveProxyEnhancement;
+  g.resetProxyEnhancementDefaults = resetProxyEnhancementDefaults;
+  g.renderProxyVisionModelList = renderProxyVisionModelList;
+  g.toggleVisionModelPicker = toggleVisionModelPicker;
+  g.closeVisionModelPicker = closeVisionModelPicker;
+  g.setVisionModelPickerOpen = setVisionModelPickerOpen;
+  g.collectVisionModelOptions = collectVisionModelOptions;
+  g.visionFormatLabel = visionFormatLabel;
+  g.visionOptionKey = visionOptionKey;
+  g.visionModelIcon = visionModelIcon;
+  g.visionModelProviderEntries = visionModelProviderEntries;
+  g.visionProviderSearchHaystack = visionProviderSearchHaystack;
+  g.visibleVisionModelProviders = visibleVisionModelProviders;
+  g.visionModelProviderEntry = visionModelProviderEntry;
+  g.totalPickedVisionModelCount = totalPickedVisionModelCount;
+  g.currentVisionProviderPickedCount = currentVisionProviderPickedCount;
+  g.onVisionModelPickerSearch = onVisionModelPickerSearch;
+  g.selectVisionModelProvider = selectVisionModelProvider;
+  g.toggleVisionModelOption = toggleVisionModelOption;
+  g.selectAllVisionModels = selectAllVisionModels;
+  g.selectNoVisionModels = selectNoVisionModels;
+  g.syncVisionModelPickerActions = syncVisionModelPickerActions;
+  g.renderVisionModelPicker = renderVisionModelPicker;
+  g.addSelectedVisionModels = addSelectedVisionModels;
+  g.removeVisionModel = removeVisionModel;
+  g.moveVisionModel = moveVisionModel;
+  g.searchSourceDisplayName = searchSourceDisplayName;
+  g.searchSourcePreset = searchSourcePreset;
+  g.searchSourceKey = searchSourceKey;
+  g.renderProxySearchSourceList = renderProxySearchSourceList;
+  g.toggleSearchSourcePicker = toggleSearchSourcePicker;
+  g.closeSearchSourcePicker = closeSearchSourcePicker;
+  g.renderSearchSourcePicker = renderSearchSourcePicker;
+  g.addSearchSource = addSearchSource;
+  g.updateSearchSourceField = updateSearchSourceField;
+  g.toggleSearchSourceEnabled = toggleSearchSourceEnabled;
+  g.removeSearchSource = removeSearchSource;
+  g.moveSearchSource = moveSearchSource;
+  g.testSearchSource = testSearchSource;
+  g.isMissingVisionTestCommandMessage = isMissingVisionTestCommandMessage;
+  g.closeVisionTestModal = closeVisionTestModal;
+  g.setVisionTestState = setVisionTestState;
+  g.testVisionModel = testVisionModel;
+  g.toggleSlotThirdPartyVision = toggleSlotThirdPartyVision;
+  g.renderLabelTemplate = renderLabelTemplate;
+  g.normalizedLabelTemplate = normalizedLabelTemplate;
+  g.composeSimpleLabelTemplate = composeSimpleLabelTemplate;
+  g.suffixFromSimpleLabelTemplate = suffixFromSimpleLabelTemplate;
+  g.currentModalLabelTemplate = currentModalLabelTemplate;
+  g.labelTemplateForStoreFromModal = labelTemplateForStoreFromModal;
+  g.providerNameOf = providerNameOf;
+  g.openModelMapSettings = openModelMapSettings;
+  g.closeModelMapSettings = closeModelMapSettings;
+  g.onModalSimpleLabelInput = onModalSimpleLabelInput;
+  g.onModalAdvancedLabelTemplateInput = onModalAdvancedLabelTemplateInput;
+  g.onLabelTemplateAdvancedToggle = onLabelTemplateAdvancedToggle;
+  g.onModalLabelTemplateInput = onModalLabelTemplateInput;
+  g.updateModalLabelTemplatePreview = updateModalLabelTemplatePreview;
+  g.saveModelMapSettingsFromModal = saveModelMapSettingsFromModal;
+  g.normalizeUnlockScope = normalizeUnlockScope;
+  g.normalizeSlotVisibilityMode = normalizeSlotVisibilityMode;
+  g.ensureSlotVisibilityArray = ensureSlotVisibilityArray;
+  g.slotVisibilityOverrideMap = slotVisibilityOverrideMap;
+  g.baseSlotVisibleForMode = baseSlotVisibleForMode;
+  g.updateSlotPresetButtons = updateSlotPresetButtons;
+  g.updateSlotFilterCounts = updateSlotFilterCounts;
+  g.setSlotVisibilityFilter = setSlotVisibilityFilter;
+  g.setSlotVisibilityDirty = setSlotVisibilityDirty;
+  g.updateSlotPolicySummary = updateSlotPolicySummary;
+  g.setSlotVisibilityMode = setSlotVisibilityMode;
+  g.setSlotVisibilityOverride = setSlotVisibilityOverride;
+  g.onSlotVisibilityToggle = onSlotVisibilityToggle;
+  g.toggleSlotVisibilitySelectAll = toggleSlotVisibilitySelectAll;
+  g.selectedSlotVisibilityUids = selectedSlotVisibilityUids;
+  g.syncSlotVisibilitySelectionState = syncSlotVisibilitySelectionState;
+  g.batchSetSlotVisibility = batchSetSlotVisibility;
+  g.modelSlotSkeletonHtml = modelSlotSkeletonHtml;
+  g.ensureInjected = ensureInjected;
+  g.openInjectedEditor = openInjectedEditor;
+  g.closeInjectedEditor = closeInjectedEditor;
+  g.buildSlotVisibilityRows = buildSlotVisibilityRows;
+  g.renderSlotStatusPill = renderSlotStatusPill;
+  g.renderInjectedList = renderInjectedList;
+  g.saveInjectedFromEditor = saveInjectedFromEditor;
+  g.toggleSlotEnabled = toggleSlotEnabled;
+  g.deleteSlot = deleteSlot;
+  g.normalizeMappingUnlock = normalizeMappingUnlock;
+  g.normalizeMappingApiFormat = normalizeMappingApiFormat;
+  g.apiFormatForMappingUnlock = apiFormatForMappingUnlock;
+  g.mappingProviderUnlockEnabled = mappingProviderUnlockEnabled;
+  g.targetRouteLabel = targetRouteLabel;
+  g.unlockKindForSlotUid = unlockKindForSlotUid;
+  g.preferredRouteForSlotTarget = preferredRouteForSlotTarget;
+  g.applyRouteToTarget = applyRouteToTarget;
+  g.targetRouteValue = targetRouteValue;
+  g.targetWithSlotRoute = targetWithSlotRoute;
+  g.targetWithPreferredRoute = targetWithPreferredRoute;
+  g.targetsWithSlotRoute = targetsWithSlotRoute;
+  g.getAllProviderModels = getAllProviderModels;
+  g.getProviderLogoClass = getProviderLogoClass;
+  g.renderMappingModelCatalog = renderMappingModelCatalog;
+  g.toggleMappingModelTarget = toggleMappingModelTarget;
+  g.slotCatalogStats = slotCatalogStats;
+  g.updateSlotScopeTabs = updateSlotScopeTabs;
+  g.setSlotCatalogScope = setSlotCatalogScope;
+  g.slotMatchesScope = slotMatchesScope;
+  g.slotRecommendationRank = slotRecommendationRank;
+  g.pickRecommendedSlot = pickRecommendedSlot;
+  g.maybeAutoSelectRecommendedSlot = maybeAutoSelectRecommendedSlot;
+  g.renderSlotCatalogList = renderSlotCatalogList;
+  g.selectCatalogSlot = selectCatalogSlot;
+  g.useOriginalModelName = useOriginalModelName;
+  g.useMappedModelName = useMappedModelName;
+  g.applyDisplayNameByMode = applyDisplayNameByMode;
+  g.updateDisplayNameButtons = updateDisplayNameButtons;
+  g.filterSlotCatalog = filterSlotCatalog;
+  g.openSlotEditor = openSlotEditor;
+  g.closeSlotEditor = closeSlotEditor;
+  g.saveSlotFromEditor = saveSlotFromEditor;
+  g.enabledProviders = enabledProviders;
+  g.routeLabelForValue = routeLabelForValue;
+  g.targetRouteOptionsForProvider = targetRouteOptionsForProvider;
+  g.openFailoverEditor = openFailoverEditor;
+  g.closeFailoverEditor = closeFailoverEditor;
+  g.renderFailoverRows = renderFailoverRows;
+  g.addFailoverRow = addFailoverRow;
+  g.updateFailoverRow = updateFailoverRow;
+  g.moveFailoverRow = moveFailoverRow;
+  g.removeFailoverRow = removeFailoverRow;
+  g.saveFailoverFromEditor = saveFailoverFromEditor;
+})(globalThis);

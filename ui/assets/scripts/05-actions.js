@@ -1,3 +1,4 @@
+// ES module (P3) — vars on globalThis; functions kept + mirrored for hoist + data-action.
 /**
  * 05-actions.js — 中央事件委托（data-action 总线）
  *

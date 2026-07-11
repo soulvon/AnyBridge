@@ -1,9 +1,10 @@
+// ES module (P3) — vars on globalThis; functions kept + mirrored for hoist + data-action.
 // ═══════ TAB NAVIGATION ═══════
-const tabs = document.querySelectorAll('.tab-item[data-page]');
-const pages = document.querySelectorAll('.page');
-let activePlatformSection = 'models';
+globalThis.tabs = document.querySelectorAll('.tab-item[data-page]');
+globalThis.pages = document.querySelectorAll('.page');
+globalThis.activePlatformSection = 'models';
 
-const PLATFORM_SHELL_PAGES = new Set([
+globalThis.PLATFORM_SHELL_PAGES = new Set([
   'platform-proxy',
   'slot-editor',
   'model-slots',
@@ -262,7 +263,7 @@ function openSettingsPanel(panelId) {
 }
 
 // ═══════ QUICK START GUIDE ═══════
-const ONBOARDING_GUIDE_SEEN_KEY = 'anybridge.onboardingGuideSeen';
+globalThis.ONBOARDING_GUIDE_SEEN_KEY = 'anybridge.onboardingGuideSeen';
 
 function markOnboardingGuideSeen() {
   localStorage.setItem(ONBOARDING_GUIDE_SEEN_KEY, '1');
@@ -386,7 +387,7 @@ activateProxyPanel('overview');
 syncPlatformSubtabsForPage('platform-proxy');
 
 // ═══════ PLATFORM RAIL ═══════
-const PROXY_PLATFORM_META = {
+globalThis.PROXY_PLATFORM_META = {
   windsurf: {
     label: 'Windsurf',
     title: 'Windsurf 接入控制台',
@@ -549,7 +550,7 @@ function syncPlatformRailForPage(pageId) {
 }
 
 // ═══════ PLATFORM RAIL · DRAG & DROP REORDER ═══════
-const PLATFORM_RAIL_ORDER_KEY = 'anybridge.platformRailOrder';
+globalThis.PLATFORM_RAIL_ORDER_KEY = 'anybridge.platformRailOrder';
 
 function getPlatformRailElement() {
   return document.querySelector('.platform-rail');
@@ -615,7 +616,7 @@ function clearPlatformRailDragMarkers(except) {
   });
 }
 
-let platformRailDragging = null;
+globalThis.platformRailDragging = null;
 
 function bindPlatformRailDragAndDrop() {
   const rail = getPlatformRailElement();
@@ -1264,3 +1265,46 @@ function showCustomPrompt(message, defaultValue, title) {
     inputEl.addEventListener('keydown', onEnter);
   });
 }
+
+// ---- P3 globalThis mirror (functions/classes) ----
+(function mirrorFns(g) {
+  g.normalizePlatformSection = normalizePlatformSection;
+  g.getPlatformSectionForPage = getPlatformSectionForPage;
+  g.setPlatformPanel = setPlatformPanel;
+  g.syncPlatformSubtabsForPage = syncPlatformSubtabsForPage;
+  g.openPlatformSection = openPlatformSection;
+  g.syncPlatformConsoleHead = syncPlatformConsoleHead;
+  g.hideAllEditorModals = hideAllEditorModals;
+  g.navigateTo = navigateTo;
+  g.focusTabByOffset = focusTabByOffset;
+  g.focusPlatformSubtabByOffset = focusPlatformSubtabByOffset;
+  g.activateSettingsPanel = activateSettingsPanel;
+  g.openSettingsPanel = openSettingsPanel;
+  g.markOnboardingGuideSeen = markOnboardingGuideSeen;
+  g.openOnboardingGuide = openOnboardingGuide;
+  g.closeOnboardingGuide = closeOnboardingGuide;
+  g.finishOnboardingGuide = finishOnboardingGuide;
+  g.closeOnboardingGuideOnEsc = closeOnboardingGuideOnEsc;
+  g.maybeShowOnboardingGuide = maybeShowOnboardingGuide;
+  g.activateProxyPanel = activateProxyPanel;
+  g.openProxyPanel = openProxyPanel;
+  g.mountProxyEnhancementPanel = mountProxyEnhancementPanel;
+  g.activateEnhancementPanel = activateEnhancementPanel;
+  g.normalizeProxyPlatform = normalizeProxyPlatform;
+  g.setPlatformRailActive = setPlatformRailActive;
+  g.updateProxyPlatformCopy = updateProxyPlatformCopy;
+  g.currentKitePluginPlatform = currentKitePluginPlatform;
+  g.openKitePluginModal = openKitePluginModal;
+  g.closeKitePluginModal = closeKitePluginModal;
+  g.closeKitePluginModalOnEsc = closeKitePluginModalOnEsc;
+  g.installKitePlugin = installKitePlugin;
+  g.syncPlatformRailForPage = syncPlatformRailForPage;
+  g.getPlatformRailElement = getPlatformRailElement;
+  g.getPlatformRailItems = getPlatformRailItems;
+  g.readPlatformRailOrder = readPlatformRailOrder;
+  g.writePlatformRailOrder = writePlatformRailOrder;
+  g.applyPlatformRailOrder = applyPlatformRailOrder;
+  g.persistPlatformRailOrder = persistPlatformRailOrder;
+  g.clearPlatformRailDragMarkers = clearPlatformRailDragMarkers;
+  g.bindPlatformRailDragAndDrop = bindPlatformRailDragAndDrop;
+})(globalThis);

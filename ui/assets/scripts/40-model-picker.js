@@ -1,8 +1,9 @@
+// ES module (P3) — vars on globalThis; functions kept + mirrored for hoist + data-action.
 // ─── 编辑器弹窗 ───
-let activeModelsList = [];
+globalThis.activeModelsList = [];
 
 // ═══════ MODEL ICON SYSTEM ═══════
-const MODEL_ICON_PATTERNS = [
+globalThis.MODEL_ICON_PATTERNS = [
   [/claude|anthropic[.-]?claude/i, 'claude'],
   [/gpt-5[.-]1-codex-mini/i, 'gpt-5-1-codex-mini'],
   [/gpt-5[.-]1-codex/i, 'gpt-5-1-codex'],
@@ -57,8 +58,8 @@ const MODEL_ICON_PATTERNS = [
   [/spark|xinghuo|xfxf/i, 'xinghuo'],
 ];
 
-const MODEL_ICON_FILE_BASE = './assets/model-icons';
-const MODEL_ICON_FILES = {
+globalThis.MODEL_ICON_FILE_BASE = './assets/model-icons';
+globalThis.MODEL_ICON_FILES = {
   aya: 'aya.svg',
   claude: 'claude.svg',
   codegeex: 'codegeex.svg',
@@ -98,14 +99,14 @@ const MODEL_ICON_FILES = {
   trinity: 'trinity.svg',
 };
 
-const MODEL_DARK_ICON_FILES = {
+globalThis.MODEL_DARK_ICON_FILES = {
   grok: 'grok.svg',
   kimi: 'kimi.svg',
   mimo: 'mimo.svg',
   trinity: 'trinity.svg',
 };
 
-const MODEL_SVG_PATHS = {
+globalThis.MODEL_SVG_PATHS = {
   claude: {
     viewBox: '0 0 100 100',
     d: 'm19.6 66.5 19.7-11 .3-1-.3-.5h-1l-3.3-.2-11.2-.3L14 53l-9.5-.5-2.4-.5L0 49l.2-1.5 2-1.3 2.9.2 6.3.5 9.5.6 6.9.4L38 49.1h1.6l.2-.7-.5-.4-.4-.4L29 41l-10.6-7-5.6-4.1-3-2-1.5-2-.6-4.2 2.7-3 3.7.3.9.2 3.7 2.9 8 6.1L37 36l1.5 1.2.6-.4.1-.3-.7-1.1L33 25l-6-10.4-2.7-4.3-.7-2.6c-.3-1-.4-2-.4-3l3-4.2L28 0l4.2.6L33.8 2l2.6 6 4.1 9.3L47 29.9l2 3.8 1 3.4.3 1h.7v-.5l.5-7.2 1-8.7 1-11.2.3-3.2 1.6-3.8 3-2L61 2.6l2 2.9-.3 1.8-1.1 7.7L59 27.1l-1.5 8.2h.9l1-1.1 4.1-5.4 6.9-8.6 3-3.5L77 13l2.3-1.8h4.3l3.1 4.7-1.4 4.9-4.4 5.6-3.7 4.7-5.3 7.1-3.2 5.7.3.4h.7l12-2.6 6.4-1.1 7.6-1.3 3.5 1.6.4 1.6-1.4 3.4-8.2 2-9.6 2-14.3 3.3-.2.1.2.3 6.4.6 2.8.2h6.8l12.6 1 3.3 2 1.9 2.7-.3 2-5.1 2.6-6.8-1.6-16-3.8-5.4-1.3h-.8v.4l4.6 4.5 8.3 7.5L89 80.1l.5 2.4-1.3 2-1.4-.2-9.2-7-3.6-3-8-6.8h-.5v.7l1.8 2.7 9.8 14.7.5 4.5-.7 1.4-2.6 1-2.7-.6-5.8-8-6-9-4.7-8.2-.5.4-2.9 30.2-1.3 1.5-3 1.2-2.5-2-1.4-3 1.4-6.2 1.6-8 1.3-6.4 1.2-7.9.7-2.6v-.2H49L43 72l-9 12.3-7.2 7.6-1.7.7-3-1.5.3-2.8L24 86l10-12.8 6-7.9 4-4.6-.1-.5h-.3L17.2 77.4l-4.7.6-2-2 .2-3 1-1 8-5.5Z'
@@ -170,7 +171,7 @@ const MODEL_SVG_PATHS = {
   }
 };
 
-const MODEL_ICON_COLORS = {
+globalThis.MODEL_ICON_COLORS = {
   aya: '#010201',
   claude: '#d97757',
   codegeex: '#171e1e',
@@ -344,9 +345,9 @@ function groupModels(models) {
 }
 
 // ═══════ MODEL PANEL INTERACTIONS ═══════
-let modelSearchOpen = false;
-let modelGroupStates = {}; // group name → open/closed
-let currentModelTab = 'all';
+globalThis.modelSearchOpen = false;
+globalThis.modelGroupStates = {}; // group name → open/closed
+globalThis.currentModelTab = 'all';
 
 function changeModelTab(tab) {
   currentModelTab = tab;
@@ -435,8 +436,8 @@ function providerFetchButtonContent(label, loading = false) {
   `;
 }
 
-let selectedModels = [];
-let editorDraftModelCaps = {};
+globalThis.selectedModels = [];
+globalThis.editorDraftModelCaps = {};
 
 function updateSelectedModelsUI() {
   const leftContainer = document.getElementById('leftSelectedModelsList');
@@ -675,8 +676,8 @@ function addCustomModel() {
   addLog('ok', `已添加自定义模型: ${val}`);
 }
 
-const EYE_SVG_OPEN = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"></path><circle cx="12" cy="12" r="3"></circle></svg>`;
-const EYE_SVG_CLOSE = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;"><path d="M9.88 9.88a3 3 0 1 0 4.24 4.24"></path><path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68"></path><path d="M6.61 6.61A13.52 13.52 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61"></path><line x1="2" y1="2" x2="22" y2="2"></line></svg>`;
+globalThis.EYE_SVG_OPEN = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"></path><circle cx="12" cy="12" r="3"></circle></svg>`;
+globalThis.EYE_SVG_CLOSE = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;"><path d="M9.88 9.88a3 3 0 1 0 4.24 4.24"></path><path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68"></path><path d="M6.61 6.61A13.52 13.52 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61"></path><line x1="2" y1="2" x2="22" y2="2"></line></svg>`;
 
 function toggleKeyVisibility() {
   const keyInput = document.getElementById('pf-key');
@@ -1330,3 +1331,43 @@ async function fetchModelsForEditor(options = {}) {
     }
   }
 }
+
+// ---- P3 globalThis mirror (functions/classes) ----
+(function mirrorFns(g) {
+  g.getModelIconKey = getModelIconKey;
+  g.renderModelIcon = renderModelIcon;
+  g.getModelGroup = getModelGroup;
+  g.groupModels = groupModels;
+  g.changeModelTab = changeModelTab;
+  g.getModelBadges = getModelBadges;
+  g.toggleModelSearch = toggleModelSearch;
+  g.clearModelSearch = clearModelSearch;
+  g.providerFetchButtonContent = providerFetchButtonContent;
+  g.updateSelectedModelsUI = updateSelectedModelsUI;
+  g.filterModelPanel = filterModelPanel;
+  g.toggleSelectGroup = toggleSelectGroup;
+  g.toggleModelGroup = toggleModelGroup;
+  g.selectModel = selectModel;
+  g.addCustomModel = addCustomModel;
+  g.toggleKeyVisibility = toggleKeyVisibility;
+  g.cleanProviderApiPath = cleanProviderApiPath;
+  g.isGeneratedProviderApiPath = isGeneratedProviderApiPath;
+  g.displayProviderApiPath = displayProviderApiPath;
+  g.providerEndpointParts = providerEndpointParts;
+  g.providerEndpointDisplayUrl = providerEndpointDisplayUrl;
+  g.onFormatChange = onFormatChange;
+  g.autoDetectFormatFromHost = autoDetectFormatFromHost;
+  g.onHostChange = onHostChange;
+  g.toggleFormatDropdown = toggleFormatDropdown;
+  g.pickApiFormat = pickApiFormat;
+  g.syncFormatDropdownUi = syncFormatDropdownUi;
+  g.openProviderEditor = openProviderEditor;
+  g.closeProviderEditor = closeProviderEditor;
+  g.saveProviderFromEditor = saveProviderFromEditor;
+  g.setProviderConnectionText = setProviderConnectionText;
+  g.testProvider = testProvider;
+  g.setProviderEditorTestButtonState = setProviderEditorTestButtonState;
+  g.showProviderEditorTestToast = showProviderEditorTestToast;
+  g.testProviderInEditor = testProviderInEditor;
+  g.fetchModelsForEditor = fetchModelsForEditor;
+})(globalThis);

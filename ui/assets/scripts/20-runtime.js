@@ -1,11 +1,12 @@
+// ES module (P3) — vars on globalThis; functions kept + mirrored for hoist + data-action.
 // ═══════ PROXY TOGGLE ═══════
-let proxyRunning = false;
-let activeProxyTarget = '';
-let ideProxyStatusByTarget = {};
-let localProxyKey = '';
-let localProxyPort = 7450;
-let localProxyInferencePort = 7451;
-const IDE_RESTART_AFTER_SWITCH_KEY = 'anybridge.ideRestartAfterSwitch';
+globalThis.proxyRunning = false;
+globalThis.activeProxyTarget = '';
+globalThis.ideProxyStatusByTarget = {};
+globalThis.localProxyKey = '';
+globalThis.localProxyPort = 7450;
+globalThis.localProxyInferencePort = 7451;
+globalThis.IDE_RESTART_AFTER_SWITCH_KEY = 'anybridge.ideRestartAfterSwitch';
 
 function shouldAutoRestartIdeAfterSwitch() {
   try {
@@ -431,7 +432,7 @@ async function regenerateLocalProxyKey() {
   addLog('ok', '本地代理 key 已重新生成');
 }
 // 防连点:记录进行中的 toggle key,同一目标的并发操作会被忽略,避免后写覆盖先写。
-const _inFlightToggles = new Set();
+globalThis._inFlightToggles = new Set();
 
 function ideDisplayLabel(ide) {
   const labels = { windsurf: 'Windsurf', devin: 'Devin', cursor: 'Cursor', auto: '自动检测' };
@@ -464,7 +465,7 @@ function setStatusPill(running, status = {}) {
   syncLocalProxyUi();
   syncIdeProxyButton();
 }
-let _toggling = false;
+globalThis._toggling = false;
 
 function renderPreflightReport(report, targetElId) {
   const el = document.getElementById(targetElId || 'env-check-results');
@@ -803,8 +804,8 @@ async function restartGlobalProxyService() {
     setGlobalProxyBusy(false);
   }
 }
-let _statusFailStreak = 0;
-let _refreshStatusInFlight = false;
+globalThis._statusFailStreak = 0;
+globalThis._refreshStatusInFlight = false;
 async function refreshStatus() {
   if (!invoke) return;
   if (_refreshStatusInFlight) return;
@@ -1653,3 +1654,63 @@ function setConfigToggleState(key, enabled) {
     setConfigToggleElementState(el, enabled);
   });
 }
+
+// ---- P3 globalThis mirror (functions/classes) ----
+(function mirrorFns(g) {
+  g.shouldAutoRestartIdeAfterSwitch = shouldAutoRestartIdeAfterSwitch;
+  g.setAutoRestartIdeAfterSwitch = setAutoRestartIdeAfterSwitch;
+  g.resetIdeRestartPromptPreference = resetIdeRestartPromptPreference;
+  g.syncIdeRestartPromptSetting = syncIdeRestartPromptSetting;
+  g.normalizeIdeProxyTargetValue = normalizeIdeProxyTargetValue;
+  g.resolveIdeProxyTarget = resolveIdeProxyTarget;
+  g.getLocalProxyPort = getLocalProxyPort;
+  g.getLocalProxyInferencePort = getLocalProxyInferencePort;
+  g.getLocalProxyKeyValue = getLocalProxyKeyValue;
+  g.getLocalProxyDefaultModel = getLocalProxyDefaultModel;
+  g.getLocalProxyModels = getLocalProxyModels;
+  g.localProxyOrigin = localProxyOrigin;
+  g.localProxyBaseUrl = localProxyBaseUrl;
+  g.localProxyModelsUrl = localProxyModelsUrl;
+  g.localProxyEndpointParts = localProxyEndpointParts;
+  g.getLocalProxyRuntimeConfig = getLocalProxyRuntimeConfig;
+  g.generateLocalProxyKeyValue = generateLocalProxyKeyValue;
+  g.syncProxyEnhancementSummary = syncProxyEnhancementSummary;
+  g.syncLocalProxyUi = syncLocalProxyUi;
+  g.updateGlobalProxyStatusPill = updateGlobalProxyStatusPill;
+  g.syncTopbarProxyControls = syncTopbarProxyControls;
+  g.toggleGlobalProxyFromTopbar = toggleGlobalProxyFromTopbar;
+  g.updateProxyPageState = updateProxyPageState;
+  g.syncIdeProxyButton = syncIdeProxyButton;
+  g.refreshIdeProxyStatus = refreshIdeProxyStatus;
+  g.ensureLocalProxyConfig = ensureLocalProxyConfig;
+  g.persistLocalProxyConfig = persistLocalProxyConfig;
+  g.parseProxyPortInputValue = parseProxyPortInputValue;
+  g.proxyPortInputIds = proxyPortInputIds;
+  g.saveLocalProxyPorts = saveLocalProxyPorts;
+  g.copyTextToClipboard = copyTextToClipboard;
+  g.copyLocalProxyValue = copyLocalProxyValue;
+  g.regenerateLocalProxyKey = regenerateLocalProxyKey;
+  g.ideDisplayLabel = ideDisplayLabel;
+  g.statusTargetIde = statusTargetIde;
+  g.setStatusPill = setStatusPill;
+  g.renderPreflightReport = renderPreflightReport;
+  g.runEnvironmentCheck = runEnvironmentCheck;
+  g.promptInstallCertificateBeforeProxy = promptInstallCertificateBeforeProxy;
+  g.setProxyButtonBusyText = setProxyButtonBusyText;
+  g.setProxyPlatformActionBusy = setProxyPlatformActionBusy;
+  g.refreshCurrentProxyPlatformStatus = refreshCurrentProxyPlatformStatus;
+  g.restoreCurrentProxyPlatformDirect = restoreCurrentProxyPlatformDirect;
+  g.toggleProxy = toggleProxy;
+  g.setGlobalProxyBusy = setGlobalProxyBusy;
+  g.startGlobalProxyService = startGlobalProxyService;
+  g.stopGlobalProxyService = stopGlobalProxyService;
+  g.restartGlobalProxyService = restartGlobalProxyService;
+  g.refreshStatus = refreshStatus;
+  g.restartIdeNow = restartIdeNow;
+  g.promptRestartIde = promptRestartIde;
+  g.fmtNum = fmtNum;
+  g.forEachElementAlias = forEachElementAlias;
+  g.setText = setText;
+  g.setBar = setBar;
+  g.pctOf = pctOf;
+})(globalThis);

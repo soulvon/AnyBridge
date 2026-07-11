@@ -1,23 +1,24 @@
+// ES module (P3) — vars on globalThis; functions kept + mirrored for hoist + data-action.
 // More platforms: persistent config switching for Claude Code / Codex / CodeBuddy / OpenCode / ZCode.
 
-let platformInfos = [];
-let platformBusy = null;
-let codexTokenVisible = false;
-let codexTokenTimer = null;
-let claudeCodeConfigSearch = '';
-let claudeCodeConfigEditorMode = 'create';
-let claudeCodeConfigModelFetchSeq = 0;
-let claudeCodeRawConfigSyncing = false;
-let codexConfigSearch = '';
-let codexConfigEditorMode = 'create';
-let codexConfigModelFetchSeq = 0;
-let codexAgentsState = [];
-let opencodeConfigSearch = '';
-let opencodeConfigEditorMode = 'create';
-let opencodeConfigModelFetchSeq = 0;
-let opencodeRawConfigSyncing = false;
+globalThis.platformInfos = [];
+globalThis.platformBusy = null;
+globalThis.codexTokenVisible = false;
+globalThis.codexTokenTimer = null;
+globalThis.claudeCodeConfigSearch = '';
+globalThis.claudeCodeConfigEditorMode = 'create';
+globalThis.claudeCodeConfigModelFetchSeq = 0;
+globalThis.claudeCodeRawConfigSyncing = false;
+globalThis.codexConfigSearch = '';
+globalThis.codexConfigEditorMode = 'create';
+globalThis.codexConfigModelFetchSeq = 0;
+globalThis.codexAgentsState = [];
+globalThis.opencodeConfigSearch = '';
+globalThis.opencodeConfigEditorMode = 'create';
+globalThis.opencodeConfigModelFetchSeq = 0;
+globalThis.opencodeRawConfigSyncing = false;
 
-const PLATFORM_DEFS = {
+globalThis.PLATFORM_DEFS = {
   'claude-code': {
     id: 'claude-code',
     name: 'Claude Code',
@@ -976,7 +977,7 @@ function getCodexModelEntries() {
 
 // 独立的 entries 状态缓存，避免 onchange 时从 DOM checkbox.checked 读到
 // 已变化的值（导致"点取消→又变回勾上"的反向 bug）
-let codexModelEntriesState = [];
+globalThis.codexModelEntriesState = [];
 
 function setCodexModelEntriesState(entries) {
   codexModelEntriesState = entries.map(e => ({ ...e }));
@@ -3434,7 +3435,7 @@ function renderPlatformProviderOptions() {
 
 // ═══════ Cursor BYOK Console ═══════
 
-let cursorConsoleBusy = false;
+globalThis.cursorConsoleBusy = false;
 
 function cursorPageRoot() {
   return document.getElementById('page-platform-cursor');
@@ -3845,9 +3846,9 @@ function setPlatformBusy(platformId, busy) {
 
 // ═══════ 切换进度提示 ═══════
 
-let _switchProgressUnlisten = null;
-let _switchProgressPlatform = null;
-let _switchFlowState = null;
+globalThis._switchProgressUnlisten = null;
+globalThis._switchProgressPlatform = null;
+globalThis._switchFlowState = null;
 
 function switchFlowErrorText(e) {
   return String(e?.message || e || '未知错误');
@@ -4275,36 +4276,36 @@ async function restorePlatform(platformId) {
 // ═══════ CodeBuddy 自定义模型管理 ═══════
 
 // 表格行工厂（提前声明，避免 TDZ）
-const cbRowFactory = createCbRowFactory('Cb');
-const wbRowFactory = createCbRowFactory('Wb');
-const zcRowFactory = createCbRowFactory('Zc');
+globalThis.cbRowFactory = createCbRowFactory('Cb');
+globalThis.wbRowFactory = createCbRowFactory('Wb');
+globalThis.zcRowFactory = createCbRowFactory('Zc');
 
-let cbModels = [];
-let cbAvailableModels = [];
-let cbConfigScope = 'user';
-let cbConfigPath = '~/.codebuddy/models.json';
-let cbProviderModels = [];
-let cbEditingIndex = -1;
-let cbAddSelectedProvider = null; // 当前在「添加」页面选中的供应商
-let cbAddSearchKw = '';
-const TENCENT_BUDDY_SYNC_STORAGE_KEY = 'anybridge.tencentBuddyModelSyncEnabled';
-let tencentBuddySyncEnabled = localStorage.getItem(TENCENT_BUDDY_SYNC_STORAGE_KEY) === 'true';
-const PLATFORM_ADD_PROVIDER_SORT_STORAGE_KEY = 'anybridge.platformAddProviderSortMode';
-const PLATFORM_ADD_PROVIDER_SORT_MODES = new Set(['default', 'name-asc', 'name-desc']);
-const PLATFORM_ADD_PROVIDER_SORT_LABELS = {
+globalThis.cbModels = [];
+globalThis.cbAvailableModels = [];
+globalThis.cbConfigScope = 'user';
+globalThis.cbConfigPath = '~/.codebuddy/models.json';
+globalThis.cbProviderModels = [];
+globalThis.cbEditingIndex = -1;
+globalThis.cbAddSelectedProvider = null; // 当前在「添加」页面选中的供应商
+globalThis.cbAddSearchKw = '';
+globalThis.TENCENT_BUDDY_SYNC_STORAGE_KEY = 'anybridge.tencentBuddyModelSyncEnabled';
+globalThis.tencentBuddySyncEnabled = localStorage.getItem(TENCENT_BUDDY_SYNC_STORAGE_KEY) === 'true';
+globalThis.PLATFORM_ADD_PROVIDER_SORT_STORAGE_KEY = 'anybridge.platformAddProviderSortMode';
+globalThis.PLATFORM_ADD_PROVIDER_SORT_MODES = new Set(['default', 'name-asc', 'name-desc']);
+globalThis.PLATFORM_ADD_PROVIDER_SORT_LABELS = {
   default: '默认排序',
   'name-asc': '名称正序',
   'name-desc': '名称反序',
 };
-const PLATFORM_ADD_SORT_PREFIXES = ['cb', 'wb', 'zc'];
-let platformAddProviderSortMode = (() => {
+globalThis.PLATFORM_ADD_SORT_PREFIXES = ['cb', 'wb', 'zc'];
+globalThis.platformAddProviderSortMode = (() => {
   try {
     return normalizePlatformAddProviderSortMode(localStorage.getItem(PLATFORM_ADD_PROVIDER_SORT_STORAGE_KEY));
   } catch (_) {
     return 'default';
   }
 })();
-const cbSelectedModelIds = {
+globalThis.cbSelectedModelIds = {
   Cb: new Set(),
   Wb: new Set(),
   Zc: new Set(),
@@ -4454,8 +4455,8 @@ document.addEventListener('keydown', event => {
   if (event.key === 'Escape') closePlatformAddSortMenus();
 });
 
-const CB_PLATFORM = 'codebuddy';
-const WB_PLATFORM = 'workbuddy';
+globalThis.CB_PLATFORM = 'codebuddy';
+globalThis.WB_PLATFORM = 'workbuddy';
 
 function cbApplyConfigMeta(prefix, data, fallbackPath) {
   const path = data && data._configPath ? String(data._configPath) : fallbackPath;
@@ -4904,7 +4905,7 @@ function cbEditModelsRef(prefix) {
   return { models: wbModels, available: () => wbAvailableModels, render: renderWbModels, replace: (oldId, id) => { wbAvailableModels = cbReplaceAvailableModel(wbAvailableModels, oldId, id); }, platform: WB_PLATFORM };
 }
 
-let cbEditCurrent = { prefix: null, index: -1 };
+globalThis.cbEditCurrent = { prefix: null, index: -1 };
 
 function openCbEditModal(prefix, index) {
   const ref = cbEditModelsRef(prefix);
@@ -5928,14 +5929,14 @@ createCbIoHandlers(
 
 // ═══════ WorkBuddy 自定义模型管理 ═══════
 
-let wbModels = [];
-let wbAvailableModels = [];
-let wbConfigScope = 'user';
-let wbConfigPath = '~/.workbuddy/models.json';
-let wbProviderModels = [];
-let wbEditingIndex = -1;
-let wbAddSelectedProvider = null;
-let wbAddSearchKw = '';
+globalThis.wbModels = [];
+globalThis.wbAvailableModels = [];
+globalThis.wbConfigScope = 'user';
+globalThis.wbConfigPath = '~/.workbuddy/models.json';
+globalThis.wbProviderModels = [];
+globalThis.wbEditingIndex = -1;
+globalThis.wbAddSelectedProvider = null;
+globalThis.wbAddSearchKw = '';
 
 function wbModelRow(model, index) {
   return wbRowFactory(model, index);
@@ -6208,16 +6209,16 @@ async function confirmAddWbModelsPage() {
 
 // ═══════ ZCode 自定义模型管理 ═══════
 
-let zcModels = [];
-let zcAvailableModels = [];
-let zcConfigScope = 'user';
-let zcConfigPath = '~/.zcode/v2/config.json';
-let zcProviderModels = [];
-let zcEditingIndex = -1;
-let zcAddSelectedProvider = null;
-let zcAddSearchKw = '';
+globalThis.zcModels = [];
+globalThis.zcAvailableModels = [];
+globalThis.zcConfigScope = 'user';
+globalThis.zcConfigPath = '~/.zcode/v2/config.json';
+globalThis.zcProviderModels = [];
+globalThis.zcEditingIndex = -1;
+globalThis.zcAddSelectedProvider = null;
+globalThis.zcAddSearchKw = '';
 
-const ZC_PLATFORM = 'zcode';
+globalThis.ZC_PLATFORM = 'zcode';
 
 function zcModelRow(model, index) {
   return zcRowFactory(model, index);
@@ -6678,3 +6679,402 @@ window.zcDrop = function(e) {
   }
   window.importZcModels({ target: { files: [file], value: '' } });
 };
+
+// ---- P3 globalThis mirror (functions/classes) ----
+(function mirrorFns(g) {
+  g.platformEsc = platformEsc;
+  g.platformInfoOf = platformInfoOf;
+  g.platformDef = platformDef;
+  g.isRevealablePath = isRevealablePath;
+  g.revealConfigPath = revealConfigPath;
+  g.bindRevealPathLabel = bindRevealPathLabel;
+  g.codexDesktopAutomationSupported = codexDesktopAutomationSupported;
+  g.codexDesktopUnsupportedMessage = codexDesktopUnsupportedMessage;
+  g.platformFormatLabel = platformFormatLabel;
+  g.platformLocalProxyConfigId = platformLocalProxyConfigId;
+  g.platformIsLocalProxyConfig = platformIsLocalProxyConfig;
+  g.platformLocalProxyRuntime = platformLocalProxyRuntime;
+  g.openProxyRoutesFromPlatform = openProxyRoutesFromPlatform;
+  g.platformLocalProxyCard = platformLocalProxyCard;
+  g.upsertById = upsertById;
+  g.ensureLocalProxyPlatformConfig = ensureLocalProxyPlatformConfig;
+  g.applyLocalProxyPlatformConfig = applyLocalProxyPlatformConfig;
+  g.platformProviderList = platformProviderList;
+  g.formatPlatformTime = formatPlatformTime;
+  g.platformSetText = platformSetText;
+  g.platformSetValue = platformSetValue;
+  g.platformStatusTag = platformStatusTag;
+  g.platformShort = platformShort;
+  g.platformJoinUrl = platformJoinUrl;
+  g.platformStripSuffix = platformStripSuffix;
+  g.codexTargetBaseUrl = codexTargetBaseUrl;
+  g.refreshPlatforms = refreshPlatforms;
+  g.renderPlatformCards = renderPlatformCards;
+  g.renderPlatformCard = renderPlatformCard;
+  g.renderPlatformDetailStatuses = renderPlatformDetailStatuses;
+  g.renderCodexConfigRows = renderCodexConfigRows;
+  g.codexStatusMeta = codexStatusMeta;
+  g.claudeCodeStatusMeta = claudeCodeStatusMeta;
+  g.openCodeStatusMeta = openCodeStatusMeta;
+  g.codexField = codexField;
+  g.renderCodexPageStatus = renderCodexPageStatus;
+  g.renderClaudeCodePageStatus = renderClaudeCodePageStatus;
+  g.renderOpenCodePageStatus = renderOpenCodePageStatus;
+  g.toggleCodexToken = toggleCodexToken;
+  g.renderCodexTargetSummary = renderCodexTargetSummary;
+  g.codexProviderIsCurrent = codexProviderIsCurrent;
+  g.codexConfigMetaLine = codexConfigMetaLine;
+  g.platformJsArg = platformJsArg;
+  g.codexConfigBadge = codexConfigBadge;
+  g.codexConfigProviderById = codexConfigProviderById;
+  g.codexConfigSourceProviders = codexConfigSourceProviders;
+  g.renderCodexConfigSourceList = renderCodexConfigSourceList;
+  g.applyCodexConfigSource = applyCodexConfigSource;
+  g.selectCodexConfigSource = selectCodexConfigSource;
+  g.onCodexConfigSourceChange = onCodexConfigSourceChange;
+  g.codexConfigModelList = codexConfigModelList;
+  g.codexConfigParseModels = codexConfigParseModels;
+  g.codexConfigNormalizeModels = codexConfigNormalizeModels;
+  g.mergeCatalogAndModels = mergeCatalogAndModels;
+  g.codexConfigSetModelStatus = codexConfigSetModelStatus;
+  g.codexConfigSetFetchLoading = codexConfigSetFetchLoading;
+  g.renderCodexModelManager = renderCodexModelManager;
+  g.getCodexModelEntries = getCodexModelEntries;
+  g.setCodexModelEntriesState = setCodexModelEntriesState;
+  g.toggleCodexModelCatalog = toggleCodexModelCatalog;
+  g.cancelCodexModelEdit = cancelCodexModelEdit;
+  g.selectCodexDefaultModel = selectCodexDefaultModel;
+  g.addCodexModelEntry = addCodexModelEntry;
+  g.editCodexModelEntry = editCodexModelEntry;
+  g.saveCodexModelEdit = saveCodexModelEdit;
+  g.removeCodexModelEntry = removeCodexModelEntry;
+  g.batchSetCodexModelCatalog = batchSetCodexModelCatalog;
+  g.batchSetCodexDefaultModel = batchSetCodexDefaultModel;
+  g.codexConfigGetDefaultModel = codexConfigGetDefaultModel;
+  g.codexConfigEndpointParts = codexConfigEndpointParts;
+  g.fetchCodexConfigModels = fetchCodexConfigModels;
+  g.codexConfigDisplayBaseUrl = codexConfigDisplayBaseUrl;
+  g.codexConfigSetInputValue = codexConfigSetInputValue;
+  g.renderReasoningConfig = renderReasoningConfig;
+  g.getReasoningConfig = getReasoningConfig;
+  g.codexAgentModelOptions = codexAgentModelOptions;
+  g.normalizeCodexAgent = normalizeCodexAgent;
+  g.renderCodexAgentsPanel = renderCodexAgentsPanel;
+  g.addCodexAgent = addCodexAgent;
+  g.removeCodexAgent = removeCodexAgent;
+  g.updateCodexAgentField = updateCodexAgentField;
+  g.getCodexAgentsConfig = getCodexAgentsConfig;
+  g.getCodexAgents = getCodexAgents;
+  g.validateCodexAgents = validateCodexAgents;
+  g.openCodexConfigEditor = openCodexConfigEditor;
+  g.closeCodexConfigEditor = closeCodexConfigEditor;
+  g.syncCodexConfigUiAfterStoreChange = syncCodexConfigUiAfterStoreChange;
+  g.saveCodexConfigEditor = saveCodexConfigEditor;
+  g.codexActionIcon = codexActionIcon;
+  g.codexReconfigureAction = codexReconfigureAction;
+  g.renderCodexConfigCard = renderCodexConfigCard;
+  g.deleteCodexProviderConfig = deleteCodexProviderConfig;
+  g.editCodexProviderConfig = editCodexProviderConfig;
+  g.codexConfigMatchesSearch = codexConfigMatchesSearch;
+  g.renderCodexConfigList = renderCodexConfigList;
+  g.claudeCodeConfigProviderById = claudeCodeConfigProviderById;
+  g.claudeCodeConfigSourceProviders = claudeCodeConfigSourceProviders;
+  g.claudeCodeTargetBaseUrl = claudeCodeTargetBaseUrl;
+  g.claudeCodeConfigDisplayBaseUrl = claudeCodeConfigDisplayBaseUrl;
+  g.claudeCodeBuildSettingsConfig = claudeCodeBuildSettingsConfig;
+  g.claudeCodeCurrentRawSettingsConfig = claudeCodeCurrentRawSettingsConfig;
+  g.claudeCodeModelCandidatesFromEnv = claudeCodeModelCandidatesFromEnv;
+  g.claudeCodeSeededSettingsConfig = claudeCodeSeededSettingsConfig;
+  g.claudeCodeFallbackSettingsConfig = claudeCodeFallbackSettingsConfig;
+  g.claudeCodeNormalizeSettingsConfig = claudeCodeNormalizeSettingsConfig;
+  g.claudeCodeEnsureRawConfigFromFields = claudeCodeEnsureRawConfigFromFields;
+  g.claudeCodeEnvModel = claudeCodeEnvModel;
+  g.claudeCodeApplyModelCandidates = claudeCodeApplyModelCandidates;
+  g.claudeCodeApiKeyFromEnv = claudeCodeApiKeyFromEnv;
+  g.claudeCodeApiKeyFromSettings = claudeCodeApiKeyFromSettings;
+  g.claudeCodeBaseUrlFromEnv = claudeCodeBaseUrlFromEnv;
+  g.claudeCodeValidateSettingsConfig = claudeCodeValidateSettingsConfig;
+  g.claudeCodeRawConfigTextFromSettings = claudeCodeRawConfigTextFromSettings;
+  g.claudeCodeSettingsFromFields = claudeCodeSettingsFromFields;
+  g.claudeCodeSettingsTextFromFields = claudeCodeSettingsTextFromFields;
+  g.claudeCodeSetRawSettings = claudeCodeSetRawSettings;
+  g.claudeCodeBuildSettingsForProvider = claudeCodeBuildSettingsForProvider;
+  g.claudeCodeCreateSettingsFromCurrentFields = claudeCodeCreateSettingsFromCurrentFields;
+  g.claudeCodeConfigObjectFromRawOrFields = claudeCodeConfigObjectFromRawOrFields;
+  g.claudeCodeRawConfigTextFromFields = claudeCodeRawConfigTextFromFields;
+  g.syncClaudeCodeRawConfigFromFields = syncClaudeCodeRawConfigFromFields;
+  g.claudeCodeApplyRawConfigToFields = claudeCodeApplyRawConfigToFields;
+  g.onClaudeCodeRawConfigInput = onClaudeCodeRawConfigInput;
+  g.onClaudeCodeDefaultModelInput = onClaudeCodeDefaultModelInput;
+  g.renderClaudeCodeConfigSourceList = renderClaudeCodeConfigSourceList;
+  g.applyClaudeCodeConfigSource = applyClaudeCodeConfigSource;
+  g.selectClaudeCodeConfigSource = selectClaudeCodeConfigSource;
+  g.claudeCodeConfigSetModelStatus = claudeCodeConfigSetModelStatus;
+  g.claudeCodeConfigSetFetchLoading = claudeCodeConfigSetFetchLoading;
+  g.claudeCodeConfigSetModels = claudeCodeConfigSetModels;
+  g.renderClaudeCodeConfigModelList = renderClaudeCodeConfigModelList;
+  g.selectClaudeCodeConfigModel = selectClaudeCodeConfigModel;
+  g.claudeCodeConfigEndpointParts = claudeCodeConfigEndpointParts;
+  g.claudeCodeConfigModelEndpointParts = claudeCodeConfigModelEndpointParts;
+  g.fetchClaudeCodeConfigModelsWithFormat = fetchClaudeCodeConfigModelsWithFormat;
+  g.fetchClaudeCodeConfigModels = fetchClaudeCodeConfigModels;
+  g.claudeCodeProviderIsCurrent = claudeCodeProviderIsCurrent;
+  g.claudeCodeConfigMatchesSearch = claudeCodeConfigMatchesSearch;
+  g.openClaudeCodeProviderAdd = openClaudeCodeProviderAdd;
+  g.openClaudeCodeConfigEditor = openClaudeCodeConfigEditor;
+  g.closeClaudeCodeConfigEditor = closeClaudeCodeConfigEditor;
+  g.syncClaudeCodeConfigUiAfterStoreChange = syncClaudeCodeConfigUiAfterStoreChange;
+  g.saveClaudeCodeConfigEditor = saveClaudeCodeConfigEditor;
+  g.editClaudeCodeProviderConfig = editClaudeCodeProviderConfig;
+  g.deleteClaudeCodeProviderConfig = deleteClaudeCodeProviderConfig;
+  g.renderClaudeCodeConfigList = renderClaudeCodeConfigList;
+  g.onClaudeCodeConfigSearch = onClaudeCodeConfigSearch;
+  g.opencodeConfigProviderById = opencodeConfigProviderById;
+  g.opencodeConfigSourceProviders = opencodeConfigSourceProviders;
+  g.opencodeTargetBaseUrl = opencodeTargetBaseUrl;
+  g.opencodeConfigDisplayBaseUrl = opencodeConfigDisplayBaseUrl;
+  g.opencodeCurrentRawSettingsConfig = opencodeCurrentRawSettingsConfig;
+  g.opencodeModelMapFromList = opencodeModelMapFromList;
+  g.opencodeBuildSettingsConfig = opencodeBuildSettingsConfig;
+  g.opencodeSettingsFromFields = opencodeSettingsFromFields;
+  g.opencodeValidateSettingsConfig = opencodeValidateSettingsConfig;
+  g.opencodeNormalizeSettingsConfig = opencodeNormalizeSettingsConfig;
+  g.opencodeConfigObjectFromRawOrFields = opencodeConfigObjectFromRawOrFields;
+  g.opencodeBuildSettingsForProvider = opencodeBuildSettingsForProvider;
+  g.opencodeSetRawSettings = opencodeSetRawSettings;
+  g.opencodeModelKeysFromSettings = opencodeModelKeysFromSettings;
+  g.opencodeBaseUrlFromOptions = opencodeBaseUrlFromOptions;
+  g.opencodeApiKeyFromOptions = opencodeApiKeyFromOptions;
+  g.opencodeConfigNameFromSettings = opencodeConfigNameFromSettings;
+  g.opencodeRawConfigTextFromSettings = opencodeRawConfigTextFromSettings;
+  g.opencodeRawConfigTextFromFields = opencodeRawConfigTextFromFields;
+  g.syncOpenCodeRawConfigFromFields = syncOpenCodeRawConfigFromFields;
+  g.opencodeApplyRawConfigToFields = opencodeApplyRawConfigToFields;
+  g.onOpenCodeRawConfigInput = onOpenCodeRawConfigInput;
+  g.onOpenCodeDefaultModelInput = onOpenCodeDefaultModelInput;
+  g.renderOpenCodeConfigSourceList = renderOpenCodeConfigSourceList;
+  g.applyOpenCodeConfigSource = applyOpenCodeConfigSource;
+  g.selectOpenCodeConfigSource = selectOpenCodeConfigSource;
+  g.opencodeConfigSetModelStatus = opencodeConfigSetModelStatus;
+  g.opencodeConfigSetFetchLoading = opencodeConfigSetFetchLoading;
+  g.opencodeConfigSetModels = opencodeConfigSetModels;
+  g.renderOpenCodeConfigModelList = renderOpenCodeConfigModelList;
+  g.selectOpenCodeConfigModel = selectOpenCodeConfigModel;
+  g.opencodeConfigEndpointParts = opencodeConfigEndpointParts;
+  g.fetchOpenCodeConfigModels = fetchOpenCodeConfigModels;
+  g.openCodeProviderIsLive = openCodeProviderIsLive;
+  g.opencodeConfigMatchesSearch = opencodeConfigMatchesSearch;
+  g.openOpenCodeProviderAdd = openOpenCodeProviderAdd;
+  g.openOpenCodeConfigEditor = openOpenCodeConfigEditor;
+  g.closeOpenCodeConfigEditor = closeOpenCodeConfigEditor;
+  g.syncOpenCodeConfigUiAfterStoreChange = syncOpenCodeConfigUiAfterStoreChange;
+  g.saveOpenCodeConfigEditor = saveOpenCodeConfigEditor;
+  g.editOpenCodeProviderConfig = editOpenCodeProviderConfig;
+  g.deleteOpenCodeProviderConfig = deleteOpenCodeProviderConfig;
+  g.renderOpenCodeConfigList = renderOpenCodeConfigList;
+  g.onOpenCodeConfigSearch = onOpenCodeConfigSearch;
+  g.applyOpenCodeProviderConfig = applyOpenCodeProviderConfig;
+  g.removeOpenCodeProviderConfig = removeOpenCodeProviderConfig;
+  g.restoreClaudeCodeOfficialConfig = restoreClaudeCodeOfficialConfig;
+  g.applyClaudeCodeProviderConfig = applyClaudeCodeProviderConfig;
+  g.onCodexConfigSearch = onCodexConfigSearch;
+  g.applyCodexProviderConfig = applyCodexProviderConfig;
+  g.startCodexWithCdp = startCodexWithCdp;
+  g.openCodexProviderAdd = openCodexProviderAdd;
+  g.renderPlatformProviderOptions = renderPlatformProviderOptions;
+  g.cursorPageRoot = cursorPageRoot;
+  g.cursorEnsureBridge = cursorEnsureBridge;
+  g.cursorSetText = cursorSetText;
+  g.cursorSetCard = cursorSetCard;
+  g.cursorSetBusy = cursorSetBusy;
+  g.cursorIssueList = cursorIssueList;
+  g.cursorIssueMatches = cursorIssueMatches;
+  g.cursorIssueDetail = cursorIssueDetail;
+  g.cursorIssueTone = cursorIssueTone;
+  g.cursorReportErrorMessage = cursorReportErrorMessage;
+  g.cursorExtractReport = cursorExtractReport;
+  g.cursorRefreshConsole = cursorRefreshConsole;
+  g.cursorStartProxy = cursorStartProxy;
+  g.cursorSwitchToProxy = cursorSwitchToProxy;
+  g.cursorRestoreDirect = cursorRestoreDirect;
+  g.cursorRestartIde = cursorRestartIde;
+  g.cursorRunHealthcheck = cursorRunHealthcheck;
+  g.cursorInstallCert = cursorInstallCert;
+  g.cursorOpenProxyModels = cursorOpenProxyModels;
+  g.cursorOpenStats = cursorOpenStats;
+  g.openPlatformPage = openPlatformPage;
+  g.onPlatformProviderChange = onPlatformProviderChange;
+  g.setPlatformBusy = setPlatformBusy;
+  g.switchFlowErrorText = switchFlowErrorText;
+  g.assertSwitchResultOk = assertSwitchResultOk;
+  g.runSwitchFlow = runSwitchFlow;
+  g.showSwitchProgress = showSwitchProgress;
+  g.updateSwitchProgress = updateSwitchProgress;
+  g.hideSwitchProgress = hideSwitchProgress;
+  g.bindSwitchProgressListener = bindSwitchProgressListener;
+  g.applyPlatform = applyPlatform;
+  g.codexApplyConfirmMessage = codexApplyConfirmMessage;
+  g.restoreCodexOfficialConfig = restoreCodexOfficialConfig;
+  g.restorePlatform = restorePlatform;
+  g.normalizePlatformAddProviderSortMode = normalizePlatformAddProviderSortMode;
+  g.platformAddProviderSortLabel = platformAddProviderSortLabel;
+  g.platformAddProviderSortText = platformAddProviderSortText;
+  g.comparePlatformAddProvidersByName = comparePlatformAddProvidersByName;
+  g.platformAddProviderSortedList = platformAddProviderSortedList;
+  g.platformAddProviderSearchHaystack = platformAddProviderSearchHaystack;
+  g.platformAddVisibleProviders = platformAddVisibleProviders;
+  g.renderPlatformAddProviderLists = renderPlatformAddProviderLists;
+  g.setPlatformAddProviderSortMode = setPlatformAddProviderSortMode;
+  g.syncPlatformAddSortControl = syncPlatformAddSortControl;
+  g.syncAllPlatformAddSortControls = syncAllPlatformAddSortControls;
+  g.setPlatformAddSortMenuOpen = setPlatformAddSortMenuOpen;
+  g.togglePlatformAddSortMenu = togglePlatformAddSortMenu;
+  g.closePlatformAddSortMenus = closePlatformAddSortMenus;
+  g.choosePlatformAddSortMode = choosePlatformAddSortMode;
+  g.toggleCbAddSort = toggleCbAddSort;
+  g.chooseCbAddSortMode = chooseCbAddSortMode;
+  g.toggleWbAddSort = toggleWbAddSort;
+  g.chooseWbAddSortMode = chooseWbAddSortMode;
+  g.toggleZcAddSort = toggleZcAddSort;
+  g.chooseZcAddSortMode = chooseZcAddSortMode;
+  g.cbApplyConfigMeta = cbApplyConfigMeta;
+  g.cbUniqueStrings = cbUniqueStrings;
+  g.cbMergeAvailableModels = cbMergeAvailableModels;
+  g.tencentBuddyPlatformLabel = tencentBuddyPlatformLabel;
+  g.cloneTencentBuddyJson = cloneTencentBuddyJson;
+  g.syncTencentBuddySyncButtons = syncTencentBuddySyncButtons;
+  g.setTencentBuddySyncEnabled = setTencentBuddySyncEnabled;
+  g.tencentBuddyModelId = tencentBuddyModelId;
+  g.mergeTencentBuddyModelObject = mergeTencentBuddyModelObject;
+  g.mergeTencentBuddyModelState = mergeTencentBuddyModelState;
+  g.readTencentBuddyModels = readTencentBuddyModels;
+  g.memoryTencentBuddyModels = memoryTencentBuddyModels;
+  g.persistTencentBuddyModels = persistTencentBuddyModels;
+  g.applyTencentBuddySyncedState = applyTencentBuddySyncedState;
+  g.syncTencentBuddyModels = syncTencentBuddyModels;
+  g.toggleTencentBuddySync = toggleTencentBuddySync;
+  g.cbRemoveAvailableModel = cbRemoveAvailableModel;
+  g.cbReplaceAvailableModel = cbReplaceAvailableModel;
+  g.cbProviderChatUrl = cbProviderChatUrl;
+  g.zcNormalizeBaseUrl = zcNormalizeBaseUrl;
+  g.zcProviderBaseUrl = zcProviderBaseUrl;
+  g.zcHashId = zcHashId;
+  g.zcProviderIdNeedsMigration = zcProviderIdNeedsMigration;
+  g.zcProviderIdForModel = zcProviderIdForModel;
+  g.zcProviderIdForProvider = zcProviderIdForProvider;
+  g.zcProviderModelKeyParts = zcProviderModelKeyParts;
+  g.zcProviderModelKey = zcProviderModelKey;
+  g.cbModelSelectionKey = cbModelSelectionKey;
+  g.cbProviderApiKey = cbProviderApiKey;
+  g.cbSelectedCapability = cbSelectedCapability;
+  g.cbBuildModelEntry = cbBuildModelEntry;
+  g.cbAddModelIdentity = cbAddModelIdentity;
+  g.cbOnAddModelCheckChanged = cbOnAddModelCheckChanged;
+  g.cbSetAddModelChecks = cbSetAddModelChecks;
+  g.cbApplyProviderModelSelection = cbApplyProviderModelSelection;
+  g.cbIconSvg = cbIconSvg;
+  g.cbCapabilityChip = cbCapabilityChip;
+  g.cbCapabilityPill = cbCapabilityPill;
+  g.cbEditModelsRef = cbEditModelsRef;
+  g.openCbEditModal = openCbEditModal;
+  g.closeCbEditModal = closeCbEditModal;
+  g.saveCbEditFromModal = saveCbEditFromModal;
+  g.cbModelsByClass = cbModelsByClass;
+  g.cbModelMatches = cbModelMatches;
+  g.cbFilteredModelEntries = cbFilteredModelEntries;
+  g.cbNoResultRow = cbNoResultRow;
+  g.cbUpdateConsoleStats = cbUpdateConsoleStats;
+  g.cbButtonLabelEl = cbButtonLabelEl;
+  g.cbGetButtonLabel = cbGetButtonLabel;
+  g.cbSetButtonLabel = cbSetButtonLabel;
+  g.onCbModelSearch = onCbModelSearch;
+  g.onWbModelSearch = onWbModelSearch;
+  g.onZcModelSearch = onZcModelSearch;
+  g.cbSelectionSet = cbSelectionSet;
+  g.cbModelListRef = cbModelListRef;
+  g.cbSelectedVisibleEntries = cbSelectedVisibleEntries;
+  g.cbPruneSelection = cbPruneSelection;
+  g.cbSyncSelectionState = cbSyncSelectionState;
+  g.toggleCbModelSelection = toggleCbModelSelection;
+  g.toggleCbModelSelectAll = toggleCbModelSelectAll;
+  g.cbPersistModelDeletion = cbPersistModelDeletion;
+  g.cbDeleteModelByIndex = cbDeleteModelByIndex;
+  g.cbDeleteSelectedModels = cbDeleteSelectedModels;
+  g.deleteSelectedCbModels = deleteSelectedCbModels;
+  g.deleteSelectedWbModels = deleteSelectedWbModels;
+  g.deleteSelectedZcModels = deleteSelectedZcModels;
+  g.copyCbModelId = copyCbModelId;
+  g.cbModelRow = cbModelRow;
+  g.loadCodeBuddyModels = loadCodeBuddyModels;
+  g.renderCodeBuddyModels = renderCodeBuddyModels;
+  g.editCbModel = editCbModel;
+  g.cancelCbEdit = cancelCbEdit;
+  g.saveCbEdit = saveCbEdit;
+  g.deleteCbModel = deleteCbModel;
+  g.toggleCbModelEnabled = toggleCbModelEnabled;
+  g.saveCodeBuddyModels = saveCodeBuddyModels;
+  g.openCodeBuddyAddModal = openCodeBuddyAddModal;
+  g.initCbAddPage = initCbAddPage;
+  g.onCbAddSearch = onCbAddSearch;
+  g.renderCbAddProviderList = renderCbAddProviderList;
+  g.selectCbAddProvider = selectCbAddProvider;
+  g.renderCbAddModels = renderCbAddModels;
+  g.updateCbAddConfirmButton = updateCbAddConfirmButton;
+  g.cbAddSelectAll = cbAddSelectAll;
+  g.cbAddSelectNone = cbAddSelectNone;
+  g.confirmAddCodeBuddyModelsPage = confirmAddCodeBuddyModelsPage;
+  g.closeCodeBuddyAddModal = closeCodeBuddyAddModal;
+  g.onCbAddProviderChange = onCbAddProviderChange;
+  g.confirmAddCodeBuddyModels = confirmAddCodeBuddyModels;
+  g.createCbRowFactory = createCbRowFactory;
+  g.createCbDropHandlers = createCbDropHandlers;
+  g.createCbIoHandlers = createCbIoHandlers;
+  g.wbModelRow = wbModelRow;
+  g.loadWbModels = loadWbModels;
+  g.renderWbModels = renderWbModels;
+  g.editWbModel = editWbModel;
+  g.cancelWbEdit = cancelWbEdit;
+  g.saveWbEdit = saveWbEdit;
+  g.deleteWbModel = deleteWbModel;
+  g.toggleWbModelEnabled = toggleWbModelEnabled;
+  g.saveWbModels = saveWbModels;
+  g.openWbAddModal = openWbAddModal;
+  g.closeWbAddModal = closeWbAddModal;
+  g.onWbAddProviderChange = onWbAddProviderChange;
+  g.confirmAddWbModels = confirmAddWbModels;
+  g.initWbAddPage = initWbAddPage;
+  g.onWbAddSearch = onWbAddSearch;
+  g.renderWbAddProviderList = renderWbAddProviderList;
+  g.selectWbAddProvider = selectWbAddProvider;
+  g.renderWbAddModels = renderWbAddModels;
+  g.updateWbAddConfirmButton = updateWbAddConfirmButton;
+  g.wbAddSelectAll = wbAddSelectAll;
+  g.wbAddSelectNone = wbAddSelectNone;
+  g.confirmAddWbModelsPage = confirmAddWbModelsPage;
+  g.zcModelRow = zcModelRow;
+  g.loadZcModels = loadZcModels;
+  g.renderZcModels = renderZcModels;
+  g.editZcModel = editZcModel;
+  g.cancelZcEdit = cancelZcEdit;
+  g.saveZcEdit = saveZcEdit;
+  g.deleteZcModel = deleteZcModel;
+  g.toggleZcModelEnabled = toggleZcModelEnabled;
+  g.saveZcModels = saveZcModels;
+  g.openZcAddModal = openZcAddModal;
+  g.closeZcAddModal = closeZcAddModal;
+  g.onZcAddProviderChange = onZcAddProviderChange;
+  g.confirmAddZcModels = confirmAddZcModels;
+  g.initZcAddPage = initZcAddPage;
+  g.onZcAddSearch = onZcAddSearch;
+  g.renderZcAddProviderList = renderZcAddProviderList;
+  g.selectZcAddProvider = selectZcAddProvider;
+  g.renderZcAddModels = renderZcAddModels;
+  g.updateZcAddConfirmButton = updateZcAddConfirmButton;
+  g.zcAddSelectAll = zcAddSelectAll;
+  g.zcAddSelectNone = zcAddSelectNone;
+  g.confirmAddZcModelsPage = confirmAddZcModelsPage;
+  g.zcFlatToNative = zcFlatToNative;
+  g.zcReasoningEnabled = zcReasoningEnabled;
+  g.zcNativeToFlat = zcNativeToFlat;
+  g.zcPayloadToFlat = zcPayloadToFlat;
+})(globalThis);

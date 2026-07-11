@@ -1,19 +1,20 @@
+// ES module (P3) — vars on globalThis; functions kept + mirrored for hoist + data-action.
 // ═══════ LOCAL PROXY MODEL ROUTES ═══════
-let proxyRoutesStore = { version: 1, defaultModelId: '', routes: [] };
-let proxyRouteEditingId = '';
-let proxyRouteDraftTargets = [];
-let proxyRouteSelectedIds = new Set();
-let proxyRouteProviderModels = [];
-let proxyRouteProviderSearch = '';
-let proxyRouteSelectedProviderId = '';
-let proxyRouteSelectedModelId = '';
-let proxyRouteBackupProviderSearch = '';
-let proxyRouteBackupSelectedProviderId = '';
-let proxyRouteBackupSelectedModelId = '';
-let proxyRouteBackupPickerOpen = false;
+globalThis.proxyRoutesStore = { version: 1, defaultModelId: '', routes: [] };
+globalThis.proxyRouteEditingId = '';
+globalThis.proxyRouteDraftTargets = [];
+globalThis.proxyRouteSelectedIds = new Set();
+globalThis.proxyRouteProviderModels = [];
+globalThis.proxyRouteProviderSearch = '';
+globalThis.proxyRouteSelectedProviderId = '';
+globalThis.proxyRouteSelectedModelId = '';
+globalThis.proxyRouteBackupProviderSearch = '';
+globalThis.proxyRouteBackupSelectedProviderId = '';
+globalThis.proxyRouteBackupSelectedModelId = '';
+globalThis.proxyRouteBackupPickerOpen = false;
 // 弹窗内多选状态：Map<providerId, Set<modelId>>，编辑单模型时退化为空
-let proxyRoutePickedModels = new Map();
-let proxyRouteCustomNameTouched = false;
+globalThis.proxyRoutePickedModels = new Map();
+globalThis.proxyRouteCustomNameTouched = false;
 
 function proxyRouteEsc(value) {
   return String(value ?? '')
@@ -1343,8 +1344,8 @@ async function saveProxyRouteEditor() {
 // 跟 Devin/Windsurf「显示名设置」思路一致:存规则(proxyRouteRenameRule),
 // 老路由运行时套用规则。新增同名模型时如果原始 ID/别名已被占用,会把当前规则渲染成
 // 一个最终 route.id 并标记 idFromRenameRule,避免同名供应商模型被跳过或后续二次拼接。
-let proxyRouteRenameMode = 'simple'; // 'simple' | 'custom'
-const PROXY_ROUTE_RENAME_TEMPLATE_VARS = ['prefix', 'model', 'provider', 'suffix'];
+globalThis.proxyRouteRenameMode = 'simple'; // 'simple' | 'custom'
+globalThis.PROXY_ROUTE_RENAME_TEMPLATE_VARS = ['prefix', 'model', 'provider', 'suffix'];
 
 function renderProxyRouteRenameTemplate(tpl, vars) {
   // 多次扫描直到稳定,支持"占位符的值里再嵌占位符"的场景
@@ -1667,3 +1668,106 @@ async function saveProxyRouteRenameFromModal() {
   // 刷新模型列表(渲染时套用规则显示改名后的 ID)
   renderProxyRoutes();
 }
+
+// ---- P3 globalThis mirror (functions/classes) ----
+(function mirrorFns(g) {
+  g.proxyRouteEsc = proxyRouteEsc;
+  g.normalizeProxyRouteFormat = normalizeProxyRouteFormat;
+  g.normalizeProxyRouteUnlock = normalizeProxyRouteUnlock;
+  g.normalizeProxyRouteTarget = normalizeProxyRouteTarget;
+  g.normalizeProxyRoute = normalizeProxyRoute;
+  g.normalizeProxyRoutesStore = normalizeProxyRoutesStore;
+  g.proxyRouteProvider = proxyRouteProvider;
+  g.proxyRouteProviderName = proxyRouteProviderName;
+  g.proxyRouteProviderUnlockEnabled = proxyRouteProviderUnlockEnabled;
+  g.proxyRouteApiFormatForUnlock = proxyRouteApiFormatForUnlock;
+  g.proxyRouteDefaultUnlockForTarget = proxyRouteDefaultUnlockForTarget;
+  g.proxyRouteTargetWithDefaultUnlock = proxyRouteTargetWithDefaultUnlock;
+  g.proxyRouteProviderInitial = proxyRouteProviderInitial;
+  g.proxyRouteProviderEntry = proxyRouteProviderEntry;
+  g.proxyRouteProviderModel = proxyRouteProviderModel;
+  g.proxyRouteModelIcon = proxyRouteModelIcon;
+  g.proxyRouteProviderSearchHaystack = proxyRouteProviderSearchHaystack;
+  g.proxyRouteVisibleProviders = proxyRouteVisibleProviders;
+  g.proxyRouteBackupVisibleProviders = proxyRouteBackupVisibleProviders;
+  g.proxyRouteProviderModelsFromStore = proxyRouteProviderModelsFromStore;
+  g.loadProxyRouteProviderModels = loadProxyRouteProviderModels;
+  g.proxyRouteTargetLabel = proxyRouteTargetLabel;
+  g.proxyRouteAliasesForRoute = proxyRouteAliasesForRoute;
+  g.proxyRouteAliasExists = proxyRouteAliasExists;
+  g.proxyRouteTargetAlreadyExists = proxyRouteTargetAlreadyExists;
+  g.getEnabledProxyRouteModels = getEnabledProxyRouteModels;
+  g.getProxyRouteDefaultModel = getProxyRouteDefaultModel;
+  g.loadProxyRoutes = loadProxyRoutes;
+  g.saveProxyRoutes = saveProxyRoutes;
+  g.toggleProxyRouteEnabled = toggleProxyRouteEnabled;
+  g.toggleProxyRouteThirdPartyVision = toggleProxyRouteThirdPartyVision;
+  g.cloneProxyRoutesStore = cloneProxyRoutesStore;
+  g.deleteProxyRoute = deleteProxyRoute;
+  g.pruneProxyRouteSelection = pruneProxyRouteSelection;
+  g.visibleProxyRouteIds = visibleProxyRouteIds;
+  g.syncProxyRouteSelectionState = syncProxyRouteSelectionState;
+  g.toggleProxyRouteSelection = toggleProxyRouteSelection;
+  g.toggleProxyRoutesSelectAll = toggleProxyRoutesSelectAll;
+  g.deleteSelectedProxyRoutes = deleteSelectedProxyRoutes;
+  g.toggleVisibleProxyRouteSelection = toggleVisibleProxyRouteSelection;
+  g.batchSetSelectedProxyRoutesEnabled = batchSetSelectedProxyRoutesEnabled;
+  g.batchSetSelectedProxyRoutesThirdPartyVision = batchSetSelectedProxyRoutesThirdPartyVision;
+  g.proxyRouteBadges = proxyRouteBadges;
+  g.renderProxyRoutes = renderProxyRoutes;
+  g.openProxyRouteEditor = openProxyRouteEditor;
+  g.closeProxyRouteEditor = closeProxyRouteEditor;
+  g.onProxyRouteEditorRenameApplyChange = onProxyRouteEditorRenameApplyChange;
+  g.providerOptions = providerOptions;
+  g.renderProxyRoutePrimaryTargetEditor = renderProxyRoutePrimaryTargetEditor;
+  g.syncProxyRouteFormatSeg = syncProxyRouteFormatSeg;
+  g.onProxyRouteProviderSearch = onProxyRouteProviderSearch;
+  g.syncProxyRouteEditorConfirmState = syncProxyRouteEditorConfirmState;
+  g.updateProxyRouteEditorConfirmText = updateProxyRouteEditorConfirmText;
+  g.totalPickedModelCount = totalPickedModelCount;
+  g.currentProxyRouteProviderModels = currentProxyRouteProviderModels;
+  g.currentProxyRouteProviderPickedCount = currentProxyRouteProviderPickedCount;
+  g.syncProxyRouteBulkSelectionState = syncProxyRouteBulkSelectionState;
+  g.setCurrentProxyRouteProviderModelsPicked = setCurrentProxyRouteProviderModelsPicked;
+  g.selectAllProxyRouteModels = selectAllProxyRouteModels;
+  g.selectNoProxyRouteModels = selectNoProxyRouteModels;
+  g.syncProxyRouteEditorAdvancedVisibility = syncProxyRouteEditorAdvancedVisibility;
+  g.selectProxyRouteProvider = selectProxyRouteProvider;
+  g.selectProxyRouteModel = selectProxyRouteModel;
+  g.renderProxyRouteProviderPicker = renderProxyRouteProviderPicker;
+  g.proxyRouteFormatLabel = proxyRouteFormatLabel;
+  g.proxyRouteTargetRouteLabel = proxyRouteTargetRouteLabel;
+  g.proxyRouteTargetCard = proxyRouteTargetCard;
+  g.renderProxyRouteTargetsEditor = renderProxyRouteTargetsEditor;
+  g.openProxyRouteBackupPicker = openProxyRouteBackupPicker;
+  g.closeProxyRouteBackupPicker = closeProxyRouteBackupPicker;
+  g.onProxyRouteBackupProviderSearch = onProxyRouteBackupProviderSearch;
+  g.selectProxyRouteBackupProvider = selectProxyRouteBackupProvider;
+  g.selectProxyRouteBackupModel = selectProxyRouteBackupModel;
+  g.proxyRouteTargetKey = proxyRouteTargetKey;
+  g.addSelectedProxyRouteBackupModel = addSelectedProxyRouteBackupModel;
+  g.renderProxyRouteBackupPicker = renderProxyRouteBackupPicker;
+  g.updateProxyRouteTarget = updateProxyRouteTarget;
+  g.addProxyRouteTargetRow = addProxyRouteTargetRow;
+  g.removeProxyRouteTarget = removeProxyRouteTarget;
+  g.moveProxyRouteTarget = moveProxyRouteTarget;
+  g.saveProxyRouteEditor = saveProxyRouteEditor;
+  g.renderProxyRouteRenameTemplate = renderProxyRouteRenameTemplate;
+  g.proxyRouteRenderedId = proxyRouteRenderedId;
+  g.proxyRouteRenderedIdForModel = proxyRouteRenderedIdForModel;
+  g.proxyRouteRenameRuleEnabled = proxyRouteRenameRuleEnabled;
+  g.proxyRouteConflictFallbackId = proxyRouteConflictFallbackId;
+  g.proxyRouteIdForNewModel = proxyRouteIdForNewModel;
+  g.proxyRouteRenameSimpleTemplate = proxyRouteRenameSimpleTemplate;
+  g.currentProxyRouteRenameTemplate = currentProxyRouteRenameTemplate;
+  g.proxyRouteRenameFirstProviderId = proxyRouteRenameFirstProviderId;
+  g.computeProxyRouteRenames = computeProxyRouteRenames;
+  g.renderProxyRouteRenamePreview = renderProxyRouteRenamePreview;
+  g.openProxyRouteRenameModal = openProxyRouteRenameModal;
+  g.closeProxyRouteRenameModal = closeProxyRouteRenameModal;
+  g.onProxyRouteRenameEnabledChange = onProxyRouteRenameEnabledChange;
+  g.onProxyRouteRenameInput = onProxyRouteRenameInput;
+  g.onProxyRouteRenameTemplateInput = onProxyRouteRenameTemplateInput;
+  g.onProxyRouteRenameAdvancedToggle = onProxyRouteRenameAdvancedToggle;
+  g.saveProxyRouteRenameFromModal = saveProxyRouteRenameFromModal;
+})(globalThis);
