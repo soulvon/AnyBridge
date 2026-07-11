@@ -21,6 +21,8 @@
     "dev": "node --watch sidecar/proxy-entry.js",
     "dev:proxy": "node --watch sidecar/hybrid-server.js",
     "dev:inference": "node --watch sidecar/inference-proxy.js",
+    "build:ui": "node scripts/build-ui.mjs",
+    "build:ui:watch": "node scripts/build-ui.mjs --watch",
     "check:cursor": "node scripts/check-cursor-proxy.mjs",
     "check:ui": "node scripts/check-ui.mjs",
     "tauri": "tauri",

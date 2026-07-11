@@ -4,7 +4,9 @@
   "version": "0.2.8",
   "identifier": "com.anybridge.desktop",
   "build": {
-    "frontendDist": "../ui"
+    "frontendDist": "../ui",
+    "beforeDevCommand": "npm run build:ui",
+    "beforeBuildCommand": "npm run build:ui"
   },
   "app": {
     "withGlobalTauri": true,

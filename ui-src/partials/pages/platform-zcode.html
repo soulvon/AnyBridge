@@ -1,0 +1,188 @@
+        <!-- ═══════ PAGE: PLATFORM · ZCODE ═══════ -->
+        <div class="page" id="page-platform-zcode" role="tabpanel" aria-labelledby="tab-platforms">
+          <div class="platform-console-hero glass-card">
+            <div class="platform-console-titlebar">
+              <div class="platform-console-icon"><img src="assets/icons/platform-zcode.svg" alt="ZCode"></div>
+              <div class="platform-console-titlewrap">
+                <strong>ZCode</strong>
+                <span>Z.AI 推出的 ADE 编程 IDE · 支持 OpenAI 兼容 API 协议</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- 列表视图 -->
+          <div id="zc-list-view">
+            <!-- 控制栏 -->
+            <div class="control-bar glass-card platform-model-toolbar">
+              <!-- 第一行：标题 + 操作按钮 -->
+              <div class="platform-model-toolbar-main">
+                <div class="platform-model-title-block">
+                  <h2>自定义模型列表</h2>
+                  <span>Z.AI 自定义模型，支持添加、编辑、导入导出。</span>
+                </div>
+                <div class="platform-model-toolbar-actions">
+                <button class="btn-primary platform-model-btn" onclick="openZcAddModal()">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="12" y1="5" x2="12" y2="19" />
+                    <line x1="5" y1="12" x2="19" y2="12" />
+                  </svg>
+                  添加模型
+                </button>
+                <button class="btn-ghost cb-bulk-delete-btn" id="zc-delete-selected-btn"
+                  onclick="deleteSelectedZcModels()" disabled title="删除勾选的模型">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="3 6 5 6 21 6" />
+                    <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+                    <path d="M10 11v6M14 11v6" />
+                    <path d="M9 6V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2" />
+                  </svg>
+                  <span class="cb-bulk-delete-label">删除选中</span>
+                </button>
+                <button class="btn-ghost platform-model-btn" onclick="saveZcModels()">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
+                    <polyline points="17 21 17 13 7 13 7 21" />
+                    <polyline points="7 3 7 8 15 8" />
+                  </svg>
+                  保存
+                </button>
+                </div>
+              </div>
+              <!-- 第二行：搜索 + 计数 + 工具按钮 -->
+              <div class="platform-model-bulk-row">
+                <label class="platform-model-search">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="11" cy="11" r="8"></circle>
+                    <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                  </svg>
+                  <input type="text" id="zc-model-search" placeholder="搜索模型、供应商或 Base URL"
+                    oninput="onZcModelSearch()">
+                </label>
+                <span class="platform-model-count-pill" id="zc-model-count">共 0 个</span>
+                <span class="platform-model-divider"></span>
+                <button class="btn-ghost platform-model-btn-icon" onclick="document.getElementById('zc-import-file').click()"
+                  title="导入">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                    <polyline points="17 8 12 3 7 8" />
+                    <line x1="12" y1="3" x2="12" y2="15" />
+                  </svg>
+                </button>
+                <input type="file" id="zc-import-file" accept=".json" style="display:none;"
+                  onchange="importZcModels(event)">
+                <button class="btn-ghost platform-model-btn-icon" onclick="exportZcModels()"
+                  title="导出">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                    <polyline points="7 10 12 15 17 10" />
+                    <line x1="12" y1="15" x2="12" y2="3" />
+                  </svg>
+                </button>
+                <button class="btn-ghost platform-model-btn-icon" data-json-toggle="zc" aria-pressed="false" onclick="toggleZcJsonEditor()"
+                  title="JSON 编辑">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="16 18 22 12 16 6" />
+                    <polyline points="8 6 2 12 8 18" />
+                  </svg>
+                </button>
+                <button class="btn-ghost platform-model-btn-icon" onclick="loadZcModels()"
+                  title="刷新">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="23 4 23 10 17 10" />
+                    <polyline points="1 20 1 14 7 14" />
+                    <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+
+            <!-- 模型表格 -->
+            <div class="glass-card" style="overflow: hidden; margin-bottom: 20px;" id="zc-drop-zone"
+              ondragover="zcDragOver(event)" ondragleave="zcDragLeave(event)" ondrop="zcDrop(event)">
+              <div class="wb-model-empty" id="zc-model-empty"
+                style="display:none; padding:40px 20px; text-align:center;">
+                <div class="wb-empty-icon">
+                  <svg viewBox="0 0 24 24">
+                    <rect x="3" y="3" width="18" height="18" rx="2" />
+                    <line x1="9" y1="9" x2="15" y2="9" />
+                    <line x1="9" y1="13" x2="15" y2="13" />
+                    <line x1="9" y1="17" x2="13" y2="17" />
+                  </svg>
+                </div>
+                <div class="wb-empty-title">尚未配置自定义模型</div>
+                <div class="wb-empty-subtitle">添加第一个模型，让 ZCode 使用你指定的 AI 供应商与模型能力。</div>
+                <button type="button" class="btn-primary wb-empty-action" onclick="openZcAddModal()">
+                  <svg viewBox="0 0 24 24">
+                    <line x1="12" y1="5" x2="12" y2="19" />
+                    <line x1="5" y1="12" x2="19" y2="12" />
+                  </svg>
+                  添加模型
+                </button>
+                <div class="wb-empty-steps">
+                  <span class="wb-empty-step"><span class="wb-empty-step-num">1</span> 选择供应商</span>
+                  <span class="wb-empty-step"><span class="wb-empty-step-num">2</span> 勾选模型</span>
+                  <span class="wb-empty-step"><span class="wb-empty-step-num">3</span> 保存配置</span>
+                  <span class="wb-empty-step"><span class="wb-empty-step-num">或</span> 拖入 JSON</span>
+                </div>
+              </div>
+              <table class="wb-model-table" id="zc-model-table"
+                style="border: none; box-shadow: none; border-radius: 0;">
+                <colgroup>
+                  <col class="wb-col-select">
+                  <col class="wb-col-id">
+                  <col class="wb-col-vendor">
+                  <col class="wb-col-caps">
+                  <col class="wb-col-enabled">
+                  <col class="wb-col-action">
+                </colgroup>
+                <thead>
+                  <tr>
+                    <th class="cb-select-head"><input type="checkbox" id="zc-select-all" aria-label="选择当前列表"
+                        title="选择当前列表" onchange="toggleCbModelSelectAll('Zc', this.checked)"></th>
+                    <th>模型 ID</th>
+                    <th>供应商</th>
+                    <th>能力</th>
+                    <th>启用</th>
+                    <th>操作</th>
+                  </tr>
+                </thead>
+                <tbody id="zc-model-tbody"></tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- JSON 编辑器视图 -->
+          <div id="zc-json-view" class="glass-card" style="display:none; padding:20px;">
+            <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;">
+              <h2 style="font-size:14px; font-weight:700; margin:0;">JSON 编辑器</h2>
+              <div style="display:flex; gap:8px;">
+                <button class="btn-ghost" style="padding:4px 12px; font-size:12px;"
+                  onclick="formatZcJson()">格式化</button>
+                <button class="btn-primary" style="padding:4px 12px; font-size:12px;"
+                  onclick="applyZcJson()">应用</button>
+                <button class="btn-ghost" style="padding:4px 12px; font-size:12px;"
+                  onclick="toggleZcJsonEditor()">返回列表</button>
+              </div>
+            </div>
+            <div id="zc-json-editor-wrap" class="wb-json-editor-wrap model-json-panel">
+              <textarea id="zc-json-editor"
+                style="width:100%; min-height:400px; font-family:var(--font-mono); font-size:12px; line-height:1.6; padding:12px; border:1px solid var(--border-strong); border-radius:8px; background:var(--bg-glass); color:var(--text-primary); resize:vertical; tab-size:2;"
+                spellcheck="false"></textarea>
+              <div id="zc-json-error" style="display:none; margin-top:6px; font-size:12px; color:var(--danger);"></div>
+            </div>
+          </div>
+
+          <p class="platform-hint" style="margin:0 4px;">
+            配置文件路径（用户级）：<code id="zc-config-path-label">~/.zcode/v2/config.json</code>。保存后会同步写入
+            <code>~/.zcode/cli/config.json</code> 并自动备份原文件。
+          </p>
+        </div>
+

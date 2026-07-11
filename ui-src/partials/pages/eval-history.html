@@ -1,0 +1,19 @@
+        <!-- ═══════ PAGE: EVALUATION HISTORY ═══════ -->
+        <div class="page" id="page-eval-history" role="tabpanel" aria-labelledby="tab-providers">
+          <div class="eval-history-page-head glass-card">
+            <div class="eval-history-page-title">
+              <h2 class="card-title eval-title">
+                <span class="dot"></span>
+                检测历史
+              </h2>
+              <span class="tag eval-count" id="evalHistoryPageCount">0 份报告</span>
+            </div>
+            <div class="eval-history-page-actions">
+              <button class="btn-ghost eval-refresh-btn" onclick="loadEvalReports()" aria-label="刷新历史记录">刷新</button>
+              <button class="btn-primary eval-back-btn" onclick="openEvalWorkbenchPage()">返回检测</button>
+            </div>
+          </div>
+          <section class="glass-card eval-history-page-card" aria-label="检测历史记录">
+            <div class="eval-history-list eval-history-page-list" id="eval-history-list"></div>
+          </section>
+        </div>

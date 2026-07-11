@@ -1,0 +1,279 @@
+        <!-- ═══════ PAGE: PROVIDER EDITOR (新增/编辑供应商) ═══════ -->
+        <div class="page provider-editor-page" id="page-provider-editor" role="tabpanel"
+          aria-labelledby="tab-providers">
+          <div class="model-slots-page">
+            <div class="control-bar glass-card model-slots-head">
+              <div class="model-slots-title">
+                <button class="btn-ghost model-slots-back" onclick="closeProviderEditor()" title="返回供应商列表">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M19 12H5"></path>
+                    <path d="M12 19l-7-7 7-7"></path>
+                  </svg>
+                </button>
+                <div>
+                  <h2 id="providerModalTitle">新增供应商</h2>
+                  <div id="providerModalSubtitle">配置供应商信息和模型</div>
+                </div>
+              </div>
+              <div class="model-slots-actions">
+                <button class="btn-ghost" id="provider-editor-test-btn" onclick="testProviderInEditor()"
+                  title="测试当前 API 地址、密钥和首个已选模型是否可用" aria-label="测试连接"
+                  style="display:inline-flex; align-items:center; gap:6px;">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+                    stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;">
+                    <path d="M4.5 3h15"></path>
+                    <path d="M6 3v16a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V3"></path>
+                    <path d="M6 14h12"></path>
+                  </svg>
+                  <span class="provider-editor-test-label">测试连接</span>
+                </button>
+                <button class="btn-ghost" onclick="closeProviderEditor()">取消</button>
+                <button class="btn-primary" onclick="saveProviderFromEditor()">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>
+                    <polyline points="17 21 17 13 7 13 7 21"></polyline>
+                    <polyline points="7 3 7 8 15 8"></polyline>
+                  </svg>
+                  <span>保存</span>
+                </button>
+              </div>
+            </div>
+            <div class="glass-card model-slots-workspace provider-editor-workspace">
+              <input type="hidden" id="pf-id">
+              <input type="hidden" id="pf-path">
+              <div class="provider-editor-layout">
+                <!-- Left Column: Base Config -->
+                <div class="provider-editor-left">
+                  <div class="field provider-editor-field">
+                    <div class="field-label">名称</div>
+                    <input class="field-input" id="pf-name" placeholder="例如：我的中转站">
+                  </div>
+                  <div class="field" style="margin-bottom:0; display:none;">
+                    <div class="field-label" style="font-size:13px; font-weight:600; margin-bottom:8px;">API 格式</div>
+                    <select class="model-select" id="pf-format"
+                      style="padding:10px 14px; font-size:13px; border-radius:10px; height:42px; width:100%;">
+                      <option value="anthropic">Anthropic</option>
+                      <option value="openai">OpenAI</option>
+                    </select>
+                  </div>
+                  <div class="field provider-editor-field">
+                    <div class="field-label provider-editor-label-row">
+                      <span>API 地址</span>
+                      <!-- API 格式下拉按钮（Anthropic / OpenAI / 自动识别） -->
+                      <div class="pf-format-select" id="pfFormatSelect" style="position:relative;">
+                        <button type="button" class="pf-format-trigger" id="pfFormatTrigger"
+                          onclick="toggleFormatDropdown(event)" title="选择 API 格式（默认自动识别）"
+                          style="display:inline-flex; align-items:center; gap:5px; height:24px; padding:0 8px 0 10px; border-radius:7px; border:1px solid var(--border); background:var(--bg-input); color:var(--text-primary); font-size:11px; font-weight:700; cursor:pointer; transition:all 0.15s;">
+                          <span id="pfFormatTriggerLabel">自动识别</span>
+                          <svg class="pf-format-arrow" width="10" height="10" viewBox="0 0 24 24" fill="none"
+                            stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"
+                            style="transition:transform 0.15s;">
+                            <polyline points="6 9 12 15 18 9"></polyline>
+                          </svg>
+                        </button>
+                        <div class="pf-format-dropdown" id="pfFormatDropdown"
+                          style="display:none; position:absolute; top:calc(100% + 4px); right:0; z-index:50; min-width:140px; background:var(--bg-card); border:1px solid var(--border); border-radius:9px; box-shadow:var(--shadow-md); padding:4px; flex-direction:column; gap:2px;">
+                          <button type="button" class="pf-format-option auto" data-format="auto"
+                            onclick="pickApiFormat('auto', event)"
+                            style="display:flex; align-items:center; gap:8px; width:100%; padding:7px 10px; border:none; background:transparent; color:var(--text-primary); font-size:12px; font-weight:600; text-align:left; border-radius:6px; cursor:pointer;">
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                              stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;">
+                              <path
+                                d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41">
+                              </path>
+                              <circle cx="12" cy="12" r="4"></circle>
+                            </svg>
+                            <span style="flex:1;">自动识别</span>
+                            <svg class="pf-format-check" width="12" height="12" viewBox="0 0 24 24" fill="none"
+                              stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"
+                              style="display:none; color:var(--accent); flex-shrink:0;">
+                              <polyline points="20 6 9 17 4 12"></polyline>
+                            </svg>
+                          </button>
+                          <button type="button" class="pf-format-option" data-format="anthropic"
+                            onclick="pickApiFormat('anthropic', event)"
+                            style="display:flex; align-items:center; gap:8px; width:100%; padding:7px 10px; border:none; background:transparent; color:var(--text-primary); font-size:12px; font-weight:600; text-align:left; border-radius:6px; cursor:pointer;">
+                            <span
+                              style="display:inline-flex; align-items:center; justify-content:center; width:13px; height:13px; border-radius:3px; background:#d97706; color:#fff; font-size:8px; font-weight:800; flex-shrink:0;">A</span>
+                            <span style="flex:1;">Anthropic</span>
+                            <svg class="pf-format-check" width="12" height="12" viewBox="0 0 24 24" fill="none"
+                              stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"
+                              style="display:none; color:var(--accent); flex-shrink:0;">
+                              <polyline points="20 6 9 17 4 12"></polyline>
+                            </svg>
+                          </button>
+                          <button type="button" class="pf-format-option" data-format="openai"
+                            onclick="pickApiFormat('openai', event)"
+                            style="display:flex; align-items:center; gap:8px; width:100%; padding:7px 10px; border:none; background:transparent; color:var(--text-primary); font-size:12px; font-weight:600; text-align:left; border-radius:6px; cursor:pointer;">
+                            <span
+                              style="display:inline-flex; align-items:center; justify-content:center; width:13px; height:13px; border-radius:3px; background:#10a37f; color:#fff; font-size:8px; font-weight:800; flex-shrink:0;">O</span>
+                            <span style="flex:1;">OpenAI</span>
+                            <svg class="pf-format-check" width="12" height="12" viewBox="0 0 24 24" fill="none"
+                              stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"
+                              style="display:none; color:var(--accent); flex-shrink:0;">
+                              <polyline points="20 6 9 17 4 12"></polyline>
+                            </svg>
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                    <input class="field-input" id="pf-host" placeholder="https://api.anthropic.com"
+                      oninput="onHostChange()">
+                  </div>
+                  <div class="field provider-editor-field">
+                    <div class="field-label provider-editor-label-row">
+                      <span>API 密钥</span>
+                      <button class="model-panel-btn provider-key-toggle" onclick="toggleKeyVisibility()"
+                        id="pf-key-toggle">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                          stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;">
+                          <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"></path>
+                          <circle cx="12" cy="12" r="3"></circle>
+                        </svg>
+                      </button>
+                    </div>
+                    <input class="field-input" id="pf-key" type="password" placeholder="sk-..." autocomplete="off">
+                  </div>
+
+                  <!-- 已选择模型列表 (Cherry Studio 风格) -->
+                  <div class="provider-selected-section">
+                    <div class="provider-selected-head">
+                      <span>已选模型列表</span>
+                      <span class="brand-tag provider-selected-count" id="leftSelectedCount">0</span>
+                    </div>
+                    <div class="provider-selected-list" id="leftSelectedModelsList">
+                      <!-- 动态加载 Cherry Studio 风格的已选模型行 -->
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Right Column: Model selection list (Expanded for fullscreen) -->
+                <div class="provider-editor-right">
+                  <div class="field provider-model-field">
+                    <!-- Model List Panel (Cherry Studio Style) -->
+                    <div class="model-panel provider-model-panel" id="modelPanel">
+                      <div class="model-panel-header">
+                        <div class="model-panel-title">
+                          <span>选择支持的模型</span>
+                          <span class="model-panel-count" id="modelPanelCount">0 个</span>
+                        </div>
+                        <div class="model-panel-actions">
+                          <button class="model-panel-btn provider-fetch-btn" id="pf-fetch-btn"
+                            onclick="fetchModelsForEditor()">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                              stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                              <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"></path>
+                            </svg>
+                            <span>获取模型列表</span>
+                          </button>
+                        </div>
+                      </div>
+
+                      <!-- 分类 Tab (全部、推理、视觉、联网、免费、向量、重排 - 精致 SVG 胶囊按钮) -->
+                      <div class="provider-model-filterbar">
+                        <div class="model-filter-tab active" onclick="changeModelTab('all')">
+                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                            <rect x="3" y="3" width="7" height="7"></rect>
+                            <rect x="14" y="3" width="7" height="7"></rect>
+                            <rect x="14" y="14" width="7" height="7"></rect>
+                            <rect x="3" y="14" width="7" height="7"></rect>
+                          </svg>
+                          <span>全部</span>
+                        </div>
+                        <div class="model-filter-tab" onclick="changeModelTab('reason')">
+                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                            <path
+                              d="M9.5 2A2.5 2.5 0 0 1 12 4.5v15a2.5 2.5 0 0 1-4.96-.44 2.5 2.5 0 0 1 0-3.12 3 3 0 0 1 0-4.88 2.5 2.5 0 0 1 0-3.12A2.5 2.5 0 0 1 9.5 2Z">
+                            </path>
+                            <path
+                              d="M14.5 2A2.5 2.5 0 0 0 12 4.5v15a2.5 2.5 0 0 0 4.96-.44 2.5 2.5 0 0 0 0-3.12 3 3 0 0 0 0-4.88 2.5 2.5 0 0 0 0-3.12A2.5 2.5 0 0 0 14.5 2Z">
+                            </path>
+                          </svg>
+                          <span>推理</span>
+                        </div>
+                        <div class="model-filter-tab" onclick="changeModelTab('vision')">
+                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"></path>
+                            <circle cx="12" cy="12" r="3"></circle>
+                          </svg>
+                          <span>视觉</span>
+                        </div>
+                        <div class="model-filter-tab" onclick="changeModelTab('search')">
+                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="12" cy="12" r="10"></circle>
+                            <line x1="2" y1="12" x2="22" y2="12"></line>
+                            <path
+                              d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z">
+                            </path>
+                          </svg>
+                          <span>联网</span>
+                        </div>
+                        <div class="model-filter-tab" onclick="changeModelTab('free')">
+                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                            <rect x="3" y="8" width="18" height="4" rx="1"></rect>
+                            <path d="M12 8v13"></path>
+                            <path d="M19 12v7a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2v-7"></path>
+                            <path
+                              d="M7.5 8a2.5 2.5 0 0 1 0-5A2.5 2.5 0 0 1 12 5.5a2.5 2.5 0 0 1 4.5-2.5 2.5 2.5 0 0 1 0 5">
+                            </path>
+                          </svg>
+                          <span>免费</span>
+                        </div>
+                        <div class="model-filter-tab" onclick="changeModelTab('embed')">
+                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="18" cy="5" r="3"></circle>
+                            <circle cx="6" cy="12" r="3"></circle>
+                            <circle cx="18" cy="19" r="3"></circle>
+                            <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line>
+                            <line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line>
+                          </svg>
+                          <span>向量</span>
+                        </div>
+                        <div class="model-filter-tab" onclick="changeModelTab('rerank')">
+                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="m3 16 4 4 4-4"></path>
+                            <path d="M7 20V4"></path>
+                            <path d="m21 8-4-4-4 4"></path>
+                            <path d="M17 4v16"></path>
+                          </svg>
+                          <span>重排</span>
+                        </div>
+                      </div>
+
+                      <!-- 始终显示且设计精美的搜索栏 -->
+                      <div class="model-panel-search open" id="modelPanelSearch">
+                        <input type="text" id="modelSearchInput" placeholder="搜索模型 ID/品牌关键字..."
+                          oninput="filterModelPanel()">
+                      </div>
+
+                      <div class="model-panel-body" id="modelPanelBody">
+                        <!-- Dynamically populated -->
+                      </div>
+                      <div class="model-panel-custom">
+                        <input type="text" id="modelCustomInput" placeholder="自定义模型 ID (如 deepseek-reasoner)..."
+                          onkeydown="if(event.key==='Enter'){event.preventDefault();addCustomModel()}">
+                        <button onclick="addCustomModel()">＋ 添加</button>
+                      </div>
+                      <div class="model-panel-selected" id="modelPanelSelected">
+                        <div style="font-size:12px; font-weight:600; color:var(--text-secondary); margin-bottom:4px;">
+                          已选择模型（首个为默认模型）：</div>
+                        <div class="selected-model-tags" id="selectedModelTags"></div>
+                      </div>
+                      <input type="hidden" id="pf-model">
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+

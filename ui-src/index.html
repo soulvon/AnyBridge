@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AnyBridge</title>
+  <link rel="stylesheet" href="./assets/app.css">
+</head>
+
+<body>
+
+  <div class="app">
+
+    <!-- ═══════ TOP BAR ═══════ -->
+    <header class="topbar" data-tauri-drag-region>
+      <div class="topbar-left">
+        <div class="brand">
+          <span class="brand-logo-frame" aria-hidden="true">
+            <img class="brand-logo" src="./assets/anybridge-logo.svg" alt="">
+          </span>
+          <div class="brand-name" aria-label="AnyBridge">
+            <span>Any</span>
+            <span>Bridge</span>
+          </div>
+        </div>
+        <!-- 隐藏的原生 select 供已有 JS 数据流与 load_config / save_config 使用 -->
+        <select id="targetIde" onchange="onTargetIdeChange()" hidden aria-hidden="true">
+          <option value="devin">Devin</option>
+          <option value="windsurf">Windsurf</option>
+          <option value="cursor">Cursor</option>
+          <option value="auto">自动检测</option>
+        </select>
+      </div>
+      <nav class="tab-nav" role="tablist" aria-label="主导航">
+        <button type="button" class="tab-item active" id="tab-platforms" data-page="models" role="tab"
+          aria-selected="true" aria-controls="page-models" tabindex="0">
+          <svg class="tab-icon tab-icon-fill" viewBox="0 0 1024 1024" fill="currentColor" aria-hidden="true">
+            <path d="M951.901 244.015l-413.3-238.57a33.606 33.606 0 0 0-33.909 0L91.3 244.016c-10.426 6.12-16.99 17.221-16.99 29.346v477.184c0 12.149 6.447 23.343 16.99 29.37l413.3 238.662c5.213 2.933 11.101 4.515 16.99 4.515 5.794 0 11.775-1.582 16.988-4.515l413.3-238.661c10.427-6.121 16.99-17.222 16.99-29.37V273.36a33.908 33.908 0 0 0-16.966-29.346zM892.23 726.016l-370.618 213.97-370.642-213.97v-427.87L521.588 84.178l370.642 213.97v427.869z m8.797 5.073"></path>
+            <path d="M285.207 348.393a34.095 34.095 0 0 0-46.336 12.567 33.908 33.908 0 0 0 12.474 46.36l235.94 136.215v269.498a33.745 33.745 0 0 0 33.884 33.885 33.745 33.745 0 0 0 33.886-33.885V543.977L791.9 407.227a34.025 34.025 0 0 0 12.451-46.36 34.025 34.025 0 0 0-46.336-12.474l-236.404 136.54-236.405-136.54z m0 0"></path>
+          </svg>
+          <span>平台</span>
+        </button>
+        <button type="button" class="tab-item" id="tab-providers" data-page="providers" role="tab" aria-selected="false"
+          aria-controls="page-providers" tabindex="-1">
+          <svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <rect x="3" y="4" width="18" height="6" rx="2"></rect><rect x="3" y="14" width="18" height="6" rx="2"></rect><path d="M7 7h.01"></path><path d="M7 17h.01"></path>
+          </svg>
+          <span>供应商</span>
+        </button>
+        <button type="button" class="tab-item" id="tab-proxy" data-page="proxy" role="tab" aria-selected="false"
+          aria-controls="page-proxy" tabindex="-1">
+          <svg class="tab-icon tab-icon-fill" viewBox="0 0 1024 1024" fill="currentColor" aria-hidden="true">
+            <path d="M584.794353 124.235294c33.942588 0 61.470118 27.527529 61.470118 61.500235v140.528942a61.500235 61.500235 0 0 1-61.470118 61.500235l-43.941647-0.030118v87.853177h307.471059a26.352941 26.352941 0 0 1 3.312941 52.525176l-3.312941 0.210824-96.64753-0.030118v87.853177h43.941647c32.406588 0 58.970353 25.088 61.31953 56.922352l0.150588 4.577883v140.559059a61.500235 61.500235 0 0 1-61.470118 61.470117H655.058824a61.500235 61.500235 0 0 1-61.500236-61.470117V677.647059c0-33.972706 27.527529-61.500235 61.500236-61.500235h43.911529v-87.853177h-368.941177v87.853177h43.941648c32.406588 0 58.970353 25.088 61.319529 56.922352l0.150588 4.577883v140.559059a61.500235 61.500235 0 0 1-61.470117 61.470117H233.411765a61.500235 61.500235 0 0 1-61.500236-61.470117V677.647059c0-33.972706 27.527529-61.500235 61.500236-61.500235h43.911529v-87.853177H180.705882a26.352941 26.352941 0 0 1-3.312941-52.495059l3.312941-0.180706 307.440942-0.030117v-87.853177l-43.91153 0.030118a61.500235 61.500235 0 0 1-61.319529-56.922353l-0.180706-4.577882V185.735529c0-33.972706 27.527529-61.500235 61.500235-61.500235z"></path>
+          </svg>
+          <span>代理</span>
+        </button>
+        <button type="button" class="tab-item" id="tab-extensions" data-page="extensions" role="tab" aria-selected="false"
+          aria-controls="page-extensions" tabindex="-1">
+          <svg class="tab-icon tab-icon-fill" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+            <path d="M20.5 11H19V7c0-1.1-.9-2-2-2h-4V3.5C13 2.12 11.88 1 10.5 1S8 2.12 8 3.5V5H4c-1.1 0-1.99.9-1.99 2v3.8H3.5c1.49 0 2.7 1.21 2.7 2.7s-1.21 2.7-2.7 2.7H2V20c0 1.1.9 2 2 2h3.8v-1.5c0-1.49 1.21-2.7 2.7-2.7 1.49 0 2.7 1.21 2.7 2.7V22H17c1.1 0 2-.9 2-2v-4h1.5c1.38 0 2.5-1.12 2.5-2.5S21.88 11 20.5 11z"></path>
+          </svg>
+          <span>扩展</span>
+        </button>
+
+      </nav>
+      <div class="topbar-right">
+        <button type="button" class="global-proxy-pill off" id="globalProxyStatusPill" onclick="navigateTo('proxy')" title="打开代理控制台">
+          <span class="global-proxy-dot" aria-hidden="true"></span>
+          <span id="globalProxyStatusText">代理未启动</span>
+        </button>
+        <div class="topbar-action-cluster" aria-label="快捷操作">
+          <button type="button" class="topbar-action-btn topbar-action-theme" id="topbarThemeToggle"
+            onclick="toggleTheme()" title="切换主题" aria-label="切换主题">
+            <svg class="topbar-theme-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1"
+              stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <circle cx="12" cy="12" r="4"></circle>
+              <path d="M12 2v2"></path><path d="M12 20v2"></path><path d="m4.93 4.93 1.41 1.41"></path>
+              <path d="m17.66 17.66 1.41 1.41"></path><path d="M2 12h2"></path><path d="M20 12h2"></path>
+              <path d="m6.34 17.66-1.41 1.41"></path><path d="m19.07 4.93-1.41 1.41"></path>
+            </svg>
+            <svg class="topbar-theme-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1"
+              stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M20.5 14.4A8.5 8.5 0 1 1 9.6 3.5 7 7 0 0 0 20.5 14.4Z"></path>
+            </svg>
+          </button>
+          <a class="topbar-action-btn" href="https://github.com/soulvon/AnyBridge" target="_blank"
+            rel="noreferrer" title="打开 GitHub" aria-label="打开 GitHub">
+            <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+              <path d="M12 2.25a10 10 0 0 0-3.16 19.49c.5.09.68-.22.68-.48v-1.7c-2.78.6-3.37-1.2-3.37-1.2-.46-1.14-1.11-1.45-1.11-1.45-.91-.62.07-.61.07-.61 1 .07 1.53 1.03 1.53 1.03.9 1.52 2.35 1.08 2.92.83.09-.64.35-1.08.63-1.33-2.22-.25-4.55-1.1-4.55-4.92 0-1.09.39-1.98 1.03-2.68-.1-.25-.45-1.27.1-2.64 0 0 .84-.27 2.75 1.02A9.45 9.45 0 0 1 12 7.27c.85 0 1.7.11 2.5.34 1.9-1.29 2.74-1.02 2.74-1.02.55 1.37.2 2.39.1 2.64.64.7 1.03 1.59 1.03 2.68 0 3.83-2.34 4.67-4.57 4.92.36.31.68.92.68 1.86v2.57c0 .26.18.57.69.48A10 10 0 0 0 12 2.25Z"></path>
+            </svg>
+          </a>
+          <button type="button" class="topbar-action-btn topbar-action-guide"
+            onclick="openOnboardingGuide({ manual: true })" title="打开快速指南" aria-label="打开快速指南">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round"
+              stroke-linejoin="round" aria-hidden="true">
+              <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path>
+              <path d="M4 4.5A2.5 2.5 0 0 1 6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15Z"></path>
+              <path d="M8 7h8"></path><path d="M8 11h6"></path>
+            </svg>
+          </button>
+          <button type="button" class="topbar-action-btn topbar-action-notify"
+            onclick="openNotificationCenter()" title="通知与更新" aria-label="通知与更新">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round"
+              stroke-linejoin="round" aria-hidden="true">
+              <path d="M18 8a6 6 0 1 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9"></path>
+              <path d="M10 21h4"></path>
+            </svg>
+            <span class="topbar-notification-dot" id="topbarNotificationDot" hidden></span>
+          </button>
+          <button type="button" class="topbar-action-btn topbar-action-settings" id="topbarSettingsBtn"
+            onclick="navigateTo('settings')" title="打开设置" aria-label="打开设置">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round"
+              stroke-linejoin="round" aria-hidden="true">
+              <path d="M12 15.5A3.5 3.5 0 1 0 12 8a3.5 3.5 0 0 0 0 7.5Z"></path>
+              <path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1 1.55V21a2 2 0 0 1-4 0v-.09a1.7 1.7 0 0 0-1-1.55 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.55-1H3a2 2 0 0 1 0-4h.09a1.7 1.7 0 0 0 1.55-1 1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-1.55V3a2 2 0 0 1 4 0v.09a1.7 1.7 0 0 0 1 1.55 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.7 1.7 0 0 0 19.4 9c.22.6.78 1 1.55 1H21a2 2 0 0 1 0 4h-.09A1.7 1.7 0 0 0 19.4 15Z"></path>
+            </svg>
+          </button>
+        </div>
+        <div class="win-controls">
+          <button type="button" class="win-btn win-minimize" title="最小化">
+            <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+              <line x1="1.5" y1="5" x2="8.5" y2="5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" />
+            </svg>
+          </button>
+          <button type="button" class="win-btn win-maximize" title="最大化" id="maxBtn">
+            <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+              <rect x="1.5" y="1.5" width="7" height="7" rx="1" stroke="currentColor" stroke-width="1.3"
+                stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+          </button>
+          <button type="button" class="win-btn win-close" title="关闭">
+            <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+              <line x1="2" y1="2" x2="8" y2="8" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" />
+              <line x1="8" y1="2" x2="2" y2="8" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" />
+            </svg>
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <!-- ═══════ WORKSPACE ═══════ -->
+    <div class="workspace-shell">
+      <aside class="app-sidebar" aria-label="侧边导航">
+        <div class="sidebar-nav-block">
+          <div class="sidebar-section-label">主菜单</div>
+          <div id="sidebarNavMount" class="sidebar-nav-mount"></div>
+        </div>
+
+        <div class="sidebar-platforms">
+          <div class="platform-rail" role="navigation" aria-label="接入平台">
+        <button type="button" class="platform-rail-item active" data-platform-rail="devin" draggable="true"
+          onclick="openProxyPlatform('devin')">
+          <span class="platform-rail-handle" draggable="true" aria-hidden="true"></span>
+          <span class="platform-rail-icon"><img src="./assets/icons/platform-devin.svg" alt=""
+              aria-hidden="true"></span>
+          <span class="platform-rail-label">Devin</span>
+        </button>
+        <button type="button" class="platform-rail-item" data-platform-rail="windsurf" draggable="true"
+          onclick="openProxyPlatform('windsurf')">
+          <span class="platform-rail-handle" draggable="true" aria-hidden="true"></span>
+          <span class="platform-rail-icon"><img src="./assets/icons/platform-windsurf.svg" alt=""
+              aria-hidden="true"></span>
+          <span class="platform-rail-label">Windsurf</span>
+        </button>
+        <button type="button" class="platform-rail-item" data-platform-rail="codex" draggable="true"
+          onclick="openPlatformPage('codex')">
+          <span class="platform-rail-handle" draggable="true" aria-hidden="true"></span>
+          <span class="platform-rail-icon"><img src="./assets/icons/platform-codex.svg" alt=""
+              aria-hidden="true"></span>
+          <span class="platform-rail-label">Codex</span>
+        </button>
+        <button type="button" class="platform-rail-item" data-platform-rail="cursor" draggable="true"
+          onclick="openPlatformPage('cursor')">
+          <span class="platform-rail-handle" draggable="true" aria-hidden="true"></span>
+          <span class="platform-rail-icon"><img src="./assets/icons/platform-cursor.svg" alt=""
+              aria-hidden="true"></span>
+          <span class="platform-rail-label">Cursor</span>
+        </button>
+        <button type="button" class="platform-rail-item" data-platform-rail="claude-code" draggable="true"
+          onclick="openPlatformPage('claude-code')">
+          <span class="platform-rail-handle" draggable="true" aria-hidden="true"></span>
+          <span class="platform-rail-icon"><img src="./assets/icons/platform-claude-code.svg" alt=""
+              aria-hidden="true"></span>
+          <span class="platform-rail-label">Claude Code</span>
+        </button>
+        <button type="button" class="platform-rail-item" data-platform-rail="codebuddy" draggable="true"
+          onclick="openPlatformPage('codebuddy')">
+          <span class="platform-rail-handle" draggable="true" aria-hidden="true"></span>
+          <span class="platform-rail-icon"><img src="./assets/icons/platform-codebuddy.png" alt=""
+              aria-hidden="true"></span>
+          <span class="platform-rail-label">CodeBuddy</span>
+        </button>
+        <button type="button" class="platform-rail-item" data-platform-rail="workbuddy" draggable="true"
+          onclick="openPlatformPage('workbuddy')">
+          <span class="platform-rail-handle" draggable="true" aria-hidden="true"></span>
+          <span class="platform-rail-icon"><img src="./assets/icons/platform-workbuddy.png" alt=""
+              aria-hidden="true"></span>
+          <span class="platform-rail-label">WorkBuddy</span>
+        </button>
+        <button type="button" class="platform-rail-item" data-platform-rail="opencode" draggable="true"
+          onclick="openPlatformPage('opencode')">
+          <span class="platform-rail-handle" draggable="true" aria-hidden="true"></span>
+          <span class="platform-rail-icon"><img src="./assets/icons/platform-opencode.svg" alt=""
+              aria-hidden="true"></span>
+          <span class="platform-rail-label">OpenCode</span>
+        </button>
+        <button type="button" class="platform-rail-item" data-platform-rail="zcode" draggable="true"
+          onclick="openPlatformPage('zcode')">
+          <span class="platform-rail-handle" draggable="true" aria-hidden="true"></span>
+          <span class="platform-rail-icon"><img src="./assets/icons/platform-zcode.svg" alt=""
+              aria-hidden="true"></span>
+          <span class="platform-rail-label">ZCode</span>
+        </button>
+          </div>
+        </div>
+      </aside>
+
+      <!-- ═══════ MAIN ═══════ -->
+      <main class="main">
+
+    <!-- @include partials/pages/platform-proxy.html -->
+    <!-- @include partials/pages/providers.html -->
+    <!-- @include partials/pages/provider-editor.html -->
+    <!-- @include partials/pages/slot-editor.html -->
+    <!-- @include partials/pages/model-slots.html -->
+    <!-- @include partials/pages/models.html -->
+    <!-- @include partials/pages/eval.html -->
+    <!-- @include partials/pages/eval-history.html -->
+    <!-- @include partials/pages/extensions.html -->
+    <!-- @include partials/pages/proxy.html -->
+    <!-- @include partials/pages/more-platforms.html -->
+    <!-- @include partials/pages/platform-cursor.html -->
+    <!-- @include partials/pages/platform-claude.html -->
+    <!-- @include partials/pages/platform-codex.html -->
+    <!-- @include partials/pages/platform-codebuddy.html -->
+    <!-- @include partials/pages/platform-codebuddy-add.html -->
+    <!-- @include partials/pages/platform-opencode.html -->
+    <!-- @include partials/pages/platform-zcode.html -->
+    <!-- @include partials/pages/platform-zcode-add.html -->
+    <!-- @include partials/pages/platform-workbuddy.html -->
+    <!-- @include partials/pages/platform-workbuddy-add.html -->
+    <!-- @include partials/pages/settings.html -->
+      </main>
+    <!-- @include partials/shell-close.html -->
+    <!-- @include partials/modals/eval-check-modal.html -->
+    <!-- @include partials/modals/custom-alert-modal.html -->
+    <!-- @include partials/modals/kite-plugin-modal.html -->
+    <!-- @include partials/modals/custom-confirm-modal.html -->
+    <!-- @include partials/modals/cpa-version-modal.html -->
+    <!-- @include partials/modals/proxy-route-editor-modal.html -->
+    <!-- @include partials/modals/proxy-route-backup-picker-modal.html -->
+    <!-- @include partials/modals/notification-center-modal.html -->
+    <!-- @include partials/modals/log-viewer-modal.html -->
+    <!-- @include partials/modals/onboarding-guide-modal.html -->
+    <!-- @include partials/modals/ide-restart-modal.html -->
+    <!-- @include partials/modals/update-jump-modal.html -->
+    <!-- @include partials/modals/updater-prompt-modal.html -->
+    <!-- @include partials/scripts-i18n.html -->
+    <!-- @include partials/modals/extension-settings-modal.html -->
+    <!-- @include partials/modals/extension-detail-modal.html -->
+    <!-- @include partials/modals/cpa-deploy-modal.html -->
+    <!-- @include partials/scripts-app.html -->
+</body>
+
+</html>

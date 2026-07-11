@@ -61,3 +61,6 @@ test-output.txt
 
 # Cursor byok 调研资料
 cursor byok调研/
+
+# UI build baseline (local zero-regression compare only)
+ui/index.html.baseline

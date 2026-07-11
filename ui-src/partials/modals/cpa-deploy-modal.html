@@ -1,0 +1,101 @@
+
+<!-- CPA 部署确认弹窗 -->
+  <div id="cpa-deploy-modal" class="modal-overlay">
+    <div class="modal-container" style="max-width: 560px;">
+      <div class="modal-header">
+        <div class="modal-title">
+          <span class="modal-icon" id="cpa-deploy-modal-icon" style="color: var(--accent);">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+              stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+              <polyline points="7 10 12 15 17 10"></polyline>
+              <line x1="12" y1="15" x2="12" y2="3"></line>
+            </svg>
+          </span>
+          <span id="cpa-deploy-modal-title">部署 CPA 套件</span>
+        </div>
+      </div>
+
+      <!-- 确认视图 -->
+      <div class="modal-body cpa-deploy-view cpa-deploy-view-confirm" id="cpa-deploy-confirm-view" style="max-height: 420px; overflow-y: auto;">
+        <div class="cpa-deploy-info">
+          <p class="cpa-deploy-desc">从 GitHub 下载最新发布包，自动匹配当前系统与 CPU 架构，部署后作为本地进程运行。</p>
+          <div class="cpa-deploy-sources">
+            <div class="cpa-deploy-source-item">
+              <span class="cpa-deploy-source-label">CLIProxyAPI</span>
+              <span class="cpa-deploy-source-repo">router-for-me/CLIProxyAPI</span>
+              <span class="cpa-deploy-source-port">端口 8317</span>
+            </div>
+            <div class="cpa-deploy-source-item">
+              <span class="cpa-deploy-source-label">CPA Manager Plus</span>
+              <span class="cpa-deploy-source-repo">seakee/CPA-Manager-Plus</span>
+              <span class="cpa-deploy-source-port">端口 18317</span>
+            </div>
+          </div>
+          <div class="cpa-deploy-dir-section">
+            <label class="cpa-deploy-dir-label">安装目录</label>
+            <div class="cpa-deploy-dir-row">
+              <input type="text" id="cpa-deploy-dir-input" class="settings-input"
+                placeholder="留空使用默认目录" />
+              <button type="button" class="btn-ghost cpa-deploy-dir-reset" onclick="document.getElementById('cpa-deploy-dir-input').value=''">重置</button>
+            </div>
+            <p class="cpa-deploy-dir-hint" id="cpa-deploy-dir-hint"></p>
+          </div>
+        </div>
+      </div>
+
+      <!-- 进度视图 -->
+      <div class="modal-body cpa-deploy-view cpa-deploy-view-progress" id="cpa-deploy-progress-view" style="display: none; max-height: 480px; overflow-y: auto;">
+        <div class="cpa-deploy-progress-wrap">
+          <div class="cpa-deploy-progress-bar-row">
+            <div class="cpa-deploy-progress-bar-track">
+              <div class="cpa-deploy-progress-bar-fill" id="cpa-deploy-progress-fill" style="width: 0%;"></div>
+            </div>
+            <span class="cpa-deploy-progress-percent" id="cpa-deploy-progress-percent">0%</span>
+          </div>
+          <p class="cpa-deploy-progress-message" id="cpa-deploy-progress-message">准备中...</p>
+          <div class="cpa-deploy-steps" id="cpa-deploy-steps">
+            <div class="cpa-deploy-step" data-step="check">
+              <span class="cpa-deploy-step-icon"></span>
+              <span class="cpa-deploy-step-label">检查端口</span>
+            </div>
+            <div class="cpa-deploy-step" data-step="fetch">
+              <span class="cpa-deploy-step-icon"></span>
+              <span class="cpa-deploy-step-label">获取发布包</span>
+            </div>
+            <div class="cpa-deploy-step" data-step="download">
+              <span class="cpa-deploy-step-icon"></span>
+              <span class="cpa-deploy-step-label">下载组件</span>
+            </div>
+            <div class="cpa-deploy-step" data-step="extract">
+              <span class="cpa-deploy-step-icon"></span>
+              <span class="cpa-deploy-step-label">解压安装</span>
+            </div>
+            <div class="cpa-deploy-step" data-step="config">
+              <span class="cpa-deploy-step-icon"></span>
+              <span class="cpa-deploy-step-label">生成配置</span>
+            </div>
+            <div class="cpa-deploy-step" data-step="start">
+              <span class="cpa-deploy-step-icon"></span>
+              <span class="cpa-deploy-step-label">启动服务</span>
+            </div>
+            <div class="cpa-deploy-step" data-step="health">
+              <span class="cpa-deploy-step-icon"></span>
+              <span class="cpa-deploy-step-label">健康检查</span>
+            </div>
+          </div>
+          <div class="cpa-deploy-log-box" id="cpa-deploy-log-box"></div>
+        </div>
+      </div>
+
+      <!-- 结果视图 -->
+      <div class="modal-body cpa-deploy-view cpa-deploy-view-result" id="cpa-deploy-result-view" style="display: none; max-height: 420px; overflow-y: auto;">
+        <div class="cpa-deploy-result" id="cpa-deploy-result-content"></div>
+      </div>
+
+      <div class="modal-footer" id="cpa-deploy-footer">
+        <button id="cpa-deploy-cancel-btn" class="modal-btn modal-btn-cancel">取消</button>
+        <button id="cpa-deploy-confirm-btn" class="modal-btn modal-btn-confirm">开始部署</button>
+      </div>
+    </div>
+  </div>

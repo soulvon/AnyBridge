@@ -1,0 +1,281 @@
+        <!-- ═══════ PAGE: EVALUATION ═══════ -->
+        <div class="page" id="page-eval" role="tabpanel" aria-labelledby="tab-providers">
+          <div class="eval-workbench-head glass-card">
+            <div class="eval-head-copy">
+              <div class="eval-title-row">
+                <button type="button" class="eval-workbench-back" onclick="navigateTo('providers')" title="返回供应商列表"
+                  aria-label="返回供应商列表">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"
+                    stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M19 12H5"></path>
+                    <path d="M12 19l-7-7 7-7"></path>
+                  </svg>
+                </button>
+                <h2 class="card-title eval-title">
+                  <span class="dot"></span>
+                  模型检测
+                </h2>
+                <span class="tag eval-count" id="evalReportCount">0 份报告</span>
+              </div>
+            </div>
+            <button type="button" class="btn-ghost eval-check-open-btn" id="eval-check-open-btn"
+              onclick="openEvalCheckModal()">
+              检测项(10个)
+            </button>
+            <button type="button" class="btn-ghost eval-history-open-btn" onclick="openEvalHistoryPage()">
+              <svg class="btn-svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M3 12a9 9 0 1 0 3-6.7"></path>
+                <path d="M3 4v5h5"></path>
+                <path d="M12 7v5l3 2"></path>
+              </svg>
+              历史记录
+            </button>
+            <div class="eval-controls" aria-label="检测配置">
+              <div class="eval-combo eval-provider-combo" data-select-id="eval-provider-select">
+                <select class="model-select eval-select eval-native-select" id="eval-provider-select"
+                  onchange="renderEvalModelOptions()" aria-label="供应商"></select>
+                <button type="button" class="eval-combo-trigger"
+                  onclick="toggleEvalCombo('eval-provider-select', event)"
+                  onkeydown="handleEvalComboTriggerKey('eval-provider-select', event)" aria-haspopup="listbox"
+                  aria-expanded="false" aria-label="供应商">
+                  <span class="eval-combo-label">--</span>
+                  <svg class="eval-combo-arrow" width="12" height="12" viewBox="0 0 24 24" fill="none"
+                    stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="6 9 12 15 18 9"></polyline>
+                  </svg>
+                </button>
+                <div class="eval-combo-menu" role="listbox" aria-label="供应商"></div>
+              </div>
+              <div class="eval-combo eval-format-combo" data-select-id="eval-format-select">
+                <select class="model-select eval-select eval-native-select" id="eval-format-select"
+                  onchange="renderEvalModelOptions({ fetchRemote: true })" aria-label="协议">
+                  <option value="auto">自动</option>
+                  <option value="openai">OpenAI</option>
+                  <option value="anthropic">Anthropic</option>
+                </select>
+                <button type="button" class="eval-combo-trigger" onclick="toggleEvalCombo('eval-format-select', event)"
+                  onkeydown="handleEvalComboTriggerKey('eval-format-select', event)" aria-haspopup="listbox"
+                  aria-expanded="false" aria-label="协议">
+                  <span class="eval-combo-label">自动</span>
+                  <svg class="eval-combo-arrow" width="12" height="12" viewBox="0 0 24 24" fill="none"
+                    stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="6 9 12 15 18 9"></polyline>
+                  </svg>
+                </button>
+                <div class="eval-combo-menu" role="listbox" aria-label="协议"></div>
+              </div>
+              <div class="eval-combo eval-model-combo" data-select-id="eval-model-select">
+                <select class="model-select eval-select eval-native-select" id="eval-model-select"
+                  aria-label="模型"></select>
+                <button type="button" class="eval-combo-trigger" onclick="toggleEvalCombo('eval-model-select', event)"
+                  onkeydown="handleEvalComboTriggerKey('eval-model-select', event)" aria-haspopup="listbox"
+                  aria-expanded="false" aria-label="模型">
+                  <span class="eval-combo-label">--</span>
+                  <svg class="eval-combo-arrow" width="12" height="12" viewBox="0 0 24 24" fill="none"
+                    stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="6 9 12 15 18 9"></polyline>
+                  </svg>
+                </button>
+                <div class="eval-combo-menu" role="listbox" aria-label="模型"></div>
+              </div>
+              <button class="btn-primary eval-run-btn" id="evalRunBtn" onclick="startEval()">
+                开始检测
+              </button>
+            </div>
+          </div>
+
+          <div class="eval-layout">
+            <section class="eval-main" aria-label="检测结果">
+              <section class="eval-report-cover" aria-label="检测报告摘要">
+                <div class="eval-report-cover-top">
+                  <div class="eval-report-cover-copy">
+                    <div class="eval-report-title-row">
+                      <h2 class="eval-report-title-text">检测报告</h2>
+                      <span class="eval-report-run-state" id="eval-report-state">未开始</span>
+                    </div>
+                    <div class="eval-report-target" id="eval-report-target">请选择供应商和模型</div>
+                  </div>
+                  <div class="eval-report-cover-meta">
+                    <span class="eval-report-id" id="eval-report-id">--</span>
+                    <span class="eval-report-clock" id="eval-report-clock">--</span>
+                  </div>
+                </div>
+                <div class="eval-progress-panel">
+                  <div class="eval-progress-line">
+                    <span id="eval-progress-text">等待检测</span>
+                    <span id="eval-progress-score">--</span>
+                  </div>
+                  <div class="eval-progress-track" aria-hidden="true">
+                    <div class="eval-progress-fill" id="eval-progress-fill"></div>
+                  </div>
+                </div>
+              </section>
+
+              <div class="eval-empty-state" id="eval-empty">暂无报告</div>
+              <div class="eval-report-stack" id="eval-result" style="display:none;">
+                <div class="eval-report-primary">
+                  <section class="eval-score-card" aria-label="综合评分">
+                    <div class="eval-score-copy">
+                      <div class="eval-score-kicker">综合评分（评分仅提供技术风险评估）</div>
+                      <div class="eval-score-line">
+                        <span class="eval-score-number" id="eval-score">--</span>
+                        <span class="eval-score-total">/ 100</span>
+                      </div>
+                      <div class="eval-score-risk" id="eval-risk">--</div>
+                      <div class="eval-report-meta" id="eval-report-meta">--</div>
+                    </div>
+                    <div class="eval-score-facts" aria-label="报告摘要">
+                      <div>
+                        <span>硬上限</span>
+                        <strong id="eval-score-cap-count">--</strong>
+                      </div>
+                      <div>
+                        <span>执行探针</span>
+                        <strong id="eval-score-probe-count">--</strong>
+                      </div>
+                      <div>
+                        <span>模型关系</span>
+                        <strong id="eval-score-model-relation">--</strong>
+                      </div>
+                    </div>
+                  </section>
+
+                  <section class="eval-cap-card" id="eval-cap-card" aria-label="硬上限规则">
+                    <div class="eval-cap-head">
+                      <div>
+                        <span class="eval-warning-mark">!</span>
+                        <span>综合分压低原因（硬上限规则命中）</span>
+                      </div>
+                      <span id="eval-cap-limit">未命中硬上限</span>
+                    </div>
+                    <div class="eval-caps" id="eval-caps"></div>
+                  </section>
+
+                  <section class="eval-diagnosis-card" aria-label="综合判定">
+                    <div class="eval-diagnosis-panel">
+                      <div class="eval-diagnosis-topline">
+                        <span id="eval-diagnosis-level">综合判定</span>
+                        <span>诊断结论</span>
+                      </div>
+                      <div class="eval-verdict" id="eval-verdict"></div>
+                      <ul class="eval-diagnosis-list" id="eval-diagnosis-list"></ul>
+                    </div>
+                  </section>
+
+                  <section class="eval-matrix-section" aria-label="能力与协议检测">
+                    <div class="eval-matrix-card">
+                      <div class="eval-matrix-title">能力支持情况</div>
+                      <div class="eval-check-grid" id="eval-capability-checks"></div>
+                    </div>
+                    <div class="eval-matrix-card">
+                      <div class="eval-matrix-title">调用方式兼容</div>
+                      <div class="eval-check-grid eval-protocol-grid" id="eval-protocol-checks"></div>
+                    </div>
+                  </section>
+
+                  <div class="glass-card eval-report-card">
+                    <div class="card-header">
+                      <div class="card-title"><span class="dot"></span> 探针明细 <small>点失败项可展开诊断</small></div>
+                    </div>
+                    <div class="card-body eval-report-body">
+                      <table class="model-table eval-probe-table">
+                        <thead>
+                          <tr>
+                            <th style="width:76px;">探针</th>
+                            <th style="width:86px;">状态</th>
+                            <th style="width:80px;">分数</th>
+                            <th style="width:90px;">延迟</th>
+                            <th>证据</th>
+                          </tr>
+                        </thead>
+                        <tbody id="eval-probe-body"></tbody>
+                      </table>
+                    </div>
+                  </div>
+
+                  <div class="eval-report-footnote">
+                    <div class="eval-footnote-grid">
+                      <div>
+                        <div class="eval-footnote-title">报告元数据 · 可追溯</div>
+                        <div class="eval-footnote-text" id="eval-footnote-left">暂无报告</div>
+                      </div>
+                      <div>
+                        <div class="eval-footnote-title">执行节点</div>
+                        <div class="eval-footnote-text" id="eval-footnote-right">本机检测 · 完整探针</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <aside class="eval-report-sidebar" aria-label="检测摘要">
+                  <section class="eval-sidebar-card eval-radar-card" aria-label="维度雷达">
+                    <div class="eval-sidebar-title">维度雷达</div>
+                    <div class="eval-radar-wrap">
+                      <svg class="eval-radar" viewBox="0 0 220 220" role="img" aria-label="检测维度雷达图">
+                        <polygon class="eval-radar-grid" points="110,24 184,67 184,153 110,196 36,153 36,67"></polygon>
+                        <polygon class="eval-radar-grid dim" points="110,53 159,82 159,138 110,167 61,138 61,82">
+                        </polygon>
+                        <polygon class="eval-radar-grid dim" points="110,82 134,96 134,124 110,138 86,124 86,96">
+                        </polygon>
+                        <line x1="110" y1="110" x2="110" y2="24"></line>
+                        <line x1="110" y1="110" x2="184" y2="67"></line>
+                        <line x1="110" y1="110" x2="184" y2="153"></line>
+                        <line x1="110" y1="110" x2="110" y2="196"></line>
+                        <line x1="110" y1="110" x2="36" y2="153"></line>
+                        <line x1="110" y1="110" x2="36" y2="67"></line>
+                        <polygon class="eval-radar-poly" id="eval-radar-poly"
+                          points="110,110 110,110 110,110 110,110 110,110 110,110"></polygon>
+                        <circle cx="110" cy="110" r="22" class="eval-radar-center"></circle>
+                        <text x="110" y="108" text-anchor="middle" class="eval-radar-score"
+                          id="eval-radar-score">--</text>
+                        <text x="110" y="126" text-anchor="middle" class="eval-radar-score-label">综合分</text>
+                        <text x="110" y="14" text-anchor="middle">协议合规</text>
+                        <text x="198" y="64" text-anchor="middle">性能</text>
+                        <text x="200" y="162" text-anchor="middle">安全性</text>
+                        <text x="110" y="214" text-anchor="middle">内容完整性</text>
+                        <text x="20" y="162" text-anchor="middle">能力验证</text>
+                        <text x="22" y="64" text-anchor="middle">身份一致</text>
+                      </svg>
+                    </div>
+                  </section>
+                  <section class="eval-sidebar-card">
+                    <div class="eval-sidebar-title">关键指标</div>
+                    <div class="eval-result-grid">
+                      <div class="eval-stat eval-stat-requests">
+                        <div class="eval-stat-label">请求</div>
+                        <div class="eval-stat-value" id="eval-requests">--</div>
+                      </div>
+                      <div class="eval-stat eval-stat-duration">
+                        <div class="eval-stat-label">耗时</div>
+                        <div class="eval-stat-value" id="eval-duration">--</div>
+                      </div>
+                      <div class="eval-stat eval-stat-reported-model">
+                        <div class="eval-stat-label">响应模型</div>
+                        <div class="eval-stat-value eval-stat-model-value" id="eval-reported-model">--</div>
+                      </div>
+                      <div class="eval-stat eval-stat-tps">
+                        <div class="eval-stat-label">Token/s</div>
+                        <div class="eval-stat-value" id="eval-token-speed">--</div>
+                      </div>
+                      <div class="eval-stat eval-stat-ttft">
+                        <div class="eval-stat-label">首字节</div>
+                        <div class="eval-stat-value" id="eval-ttft">--</div>
+                      </div>
+                      <div class="eval-stat eval-stat-output-tokens">
+                        <div class="eval-stat-label">输出 Token</div>
+                        <div class="eval-stat-value" id="eval-output-tokens">--</div>
+                      </div>
+                    </div>
+                  </section>
+                  <section class="eval-sidebar-card">
+                    <div class="eval-sidebar-title">维度得分</div>
+                    <div class="eval-dimension-grid" id="eval-dimension-grid"></div>
+                  </section>
+                </aside>
+              </div>
+            </section>
+
+          </div>
+        </div>
+

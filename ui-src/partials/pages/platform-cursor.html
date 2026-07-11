@@ -1,0 +1,139 @@
+        <!-- ═══════ PAGE: PLATFORM · CURSOR ═══════ -->
+        <div class="page" id="page-platform-cursor" role="tabpanel" aria-labelledby="tab-platforms">
+          <section class="cursor-console">
+            <div class="cursor-console-hero glass-card platform-hero-card">
+              <div class="platform-console-titlebar">
+                <div class="platform-console-icon"><img src="assets/icons/platform-cursor.svg" alt="Cursor"></div>
+                <div class="platform-console-copy">
+                  <h1>Cursor 接入控制台</h1>
+                  <p>本机代理、MITM 证书、Cursor 配置和模型路由集中管理。</p>
+                </div>
+              </div>
+              <div class="platform-console-actions cursor-hero-actions">
+                <button class="btn-primary cursor-primary-action" onclick="cursorSwitchToProxy()">
+                  <span class="cursor-btn-icon" aria-hidden="true">↯</span>
+                  一键接入
+                </button>
+                <button class="btn-ghost" onclick="cursorRefreshConsole()">刷新状态</button>
+                <button class="btn-ghost" onclick="cursorRestoreDirect()">还原直连</button>
+              </div>
+            </div>
+
+            <div class="cursor-status-grid">
+              <article class="cursor-status-card" id="cursor-card-proxy">
+                <div class="cursor-status-top">
+                  <span class="cursor-status-dot"></span>
+                  <span>本地代理</span>
+                </div>
+                <strong id="cursor-proxy-state">读取中</strong>
+                <p id="cursor-proxy-detail">正在读取 AnyBridge 服务状态</p>
+                <button class="cursor-card-action" onclick="cursorStartProxy()">启动代理</button>
+              </article>
+              <article class="cursor-status-card" id="cursor-card-settings">
+                <div class="cursor-status-top">
+                  <span class="cursor-status-dot"></span>
+                  <span>Cursor 配置</span>
+                </div>
+                <strong id="cursor-settings-state">读取中</strong>
+                <p id="cursor-settings-detail">正在检查代理设置</p>
+                <button class="cursor-card-action" onclick="cursorSwitchToProxy()">写入配置</button>
+              </article>
+              <article class="cursor-status-card" id="cursor-card-auth">
+                <div class="cursor-status-top">
+                  <span class="cursor-status-dot"></span>
+                  <span>账号与模型</span>
+                </div>
+                <strong id="cursor-auth-state">读取中</strong>
+                <p id="cursor-auth-detail">正在检查 state.vscdb 和默认模型</p>
+                <button class="cursor-card-action" onclick="cursorOpenProxyModels()">管理模型</button>
+              </article>
+              <article class="cursor-status-card" id="cursor-card-cert">
+                <div class="cursor-status-top">
+                  <span class="cursor-status-dot"></span>
+                  <span>MITM 证书</span>
+                </div>
+                <strong id="cursor-cert-state">读取中</strong>
+                <p id="cursor-cert-detail">正在检查 Cursor 域名 SAN</p>
+                <button class="cursor-card-action" onclick="cursorInstallCert()">安装证书</button>
+              </article>
+            </div>
+
+            <div class="cursor-main-grid">
+              <section class="cursor-panel glass-card">
+                <div class="cursor-panel-head">
+                  <div>
+                    <h2>接入流程</h2>
+                    <p>按顺序完成，失败项会直接显示原因。</p>
+                  </div>
+                  <button class="btn-ghost cursor-mini-btn" onclick="cursorRunHealthcheck()">环境检测</button>
+                </div>
+                <div class="cursor-step-list">
+                  <div class="cursor-step">
+                    <span class="cursor-step-index">1</span>
+                    <div>
+                      <strong>准备代理模型</strong>
+                      <p>至少启用一个 OpenAI 兼容模型，Cursor 模型选择器会读取这里的路由。</p>
+                    </div>
+                    <button class="cursor-step-action" onclick="cursorOpenProxyModels()">模型列表</button>
+                  </div>
+                  <div class="cursor-step">
+                    <span class="cursor-step-index">2</span>
+                    <div>
+                      <strong>写入 Cursor 状态</strong>
+                      <p>备份 Cursor 原状态后写入 BYOK 会话、默认模型和代理设置。</p>
+                    </div>
+                    <button class="cursor-step-action" onclick="cursorSwitchToProxy()">写入</button>
+                  </div>
+                  <div class="cursor-step">
+                    <span class="cursor-step-index">3</span>
+                    <div>
+                      <strong>启动本机代理</strong>
+                      <p>保持 AnyBridge 后台服务运行，Cursor 的请求会进入本机 MITM 入口。</p>
+                    </div>
+                    <button class="cursor-step-action" onclick="cursorStartProxy()">启动</button>
+                  </div>
+                  <div class="cursor-step">
+                    <span class="cursor-step-index">4</span>
+                    <div>
+                      <strong>重启 Cursor</strong>
+                      <p>重启后 Cursor 才会重新读取 settings.json 和 state.vscdb。</p>
+                    </div>
+                    <button class="cursor-step-action" onclick="cursorRestartIde()">重启</button>
+                  </div>
+                </div>
+              </section>
+
+              <aside class="cursor-panel glass-card">
+                <div class="cursor-panel-head">
+                  <div>
+                    <h2>能力覆盖</h2>
+                    <p>当前版本的实现范围。</p>
+                  </div>
+                </div>
+                <div class="cursor-capability-list">
+                  <div class="cursor-capability ok"><span></span><strong>Agent / Ask / Plan</strong><em>主聊天与多轮工具循环</em></div>
+                  <div class="cursor-capability ok"><span></span><strong>文件与命令工具</strong><em>Read、Grep、Shell、Write、MCP</em></div>
+                  <div class="cursor-capability ok"><span></span><strong>Background Composer</strong><em>可流式运行并落盘 turn summary</em></div>
+                  <div class="cursor-capability warn"><span></span><strong>BugBot</strong><em>已支持基础审查，工具循环待补齐</em></div>
+                  <div class="cursor-capability muted"><span></span><strong>Tab Completion</strong><em>官方 BYOK 也不覆盖，继续走 Cursor 内置模型</em></div>
+                </div>
+              </aside>
+            </div>
+
+            <section class="cursor-foot-grid">
+              <div class="cursor-note glass-card">
+                <strong>隐私边界</strong>
+                <p>AnyBridge 方案在本机代理内构造请求，不把你的 provider key 交给 Cursor 后端；但 Cursor 客户端仍会把编辑器上下文发到本机代理处理。</p>
+              </div>
+              <div class="cursor-note glass-card">
+                <strong>排障入口</strong>
+                <p>遇到模型不显示、证书报错、Cursor 无响应时，先跑环境检测，再查看代理日志和 turn artifacts。</p>
+                <div class="cursor-note-actions">
+                  <button class="btn-ghost cursor-mini-btn" onclick="cursorOpenStats()">统计日志</button>
+                  <button class="btn-ghost cursor-mini-btn" onclick="cursorRunHealthcheck()">环境检测</button>
+                </div>
+              </div>
+            </section>
+          </section>
+        </div>
+

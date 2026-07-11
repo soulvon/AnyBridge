@@ -1,0 +1,43 @@
+
+  <!-- 版本跃迁更新成功提示模态框 -->
+  <div id="update-jump-modal" class="modal-overlay">
+    <div class="modal-container update-success-modal">
+      <div class="modal-header update-success-header">
+        <div class="modal-title">
+          <span class="modal-icon update-success-icon">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+              stroke-linecap="round" stroke-linejoin="round">
+              <path d="M4 15c2-1 4-1 6 0s4 1 6 0 3-1 4 0"></path>
+              <path d="M7 10l1.5 1.5L11 8"></path>
+              <path d="M15 5h.01"></path>
+              <path d="M18 8h.01"></path>
+              <path d="M14 12h.01"></path>
+              <path d="M20 4h.01"></path>
+            </svg>
+          </span>
+          <span>更新成功！</span>
+        </div>
+        <button type="button" class="modal-close-icon" onclick="closeUpdateJumpModal()" aria-label="关闭">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+            stroke-linecap="round" stroke-linejoin="round">
+            <path d="M18 6 6 18"></path>
+            <path d="m6 6 12 12"></path>
+          </svg>
+        </button>
+      </div>
+      <div class="modal-body update-success-body">
+        <div id="update-jump-version" class="update-success-version">v1.0.1</div>
+        <p class="update-success-message">
+          已从 <span id="update-jump-prev-version">v1.0.0</span> 更新到 <span id="update-jump-current-version">v1.0.1</span>
+        </p>
+        <div class="update-success-notes">
+          <div class="update-success-notes-title">更新内容</div>
+          <div id="update-jump-notes" class="update-success-notes-content">无更新内容说明</div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button id="update-jump-close-btn" type="button"
+          class="modal-btn modal-btn-confirm update-success-confirm">我知道了</button>
+      </div>
+    </div>
+  </div>

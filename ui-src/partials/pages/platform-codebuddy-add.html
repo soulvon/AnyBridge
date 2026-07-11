@@ -1,0 +1,102 @@
+        <!-- ═══════ PAGE: PLATFORM · CODEBUDDY · 添加模型（独立页面） ═══════ -->
+        <div class="page" id="page-platform-codebuddy-add" role="tabpanel" aria-labelledby="tab-platforms">
+          <div class="platform-console-hero model-add-hero glass-card">
+            <div class="platform-console-titlebar">
+              <button class="btn-ghost platform-console-back" onclick="navigateTo('platform-codebuddy')">← 返回</button>
+              <div class="platform-console-titlewrap">
+                <strong>添加模型 · CodeBuddy</strong>
+              </div>
+            </div>
+          </div>
+
+          <div class="cb-add-layout">
+            <!-- 左列：供应商列表 -->
+            <aside class="cb-add-sidebar glass-card">
+              <div class="cb-add-search">
+                <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" fill="none" stroke-width="2"
+                  stroke-linecap="round" stroke-linejoin="round">
+                  <circle cx="11" cy="11" r="8" />
+                  <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                </svg>
+                <input type="text" id="cb-add-search" placeholder="搜索供应商…" oninput="onCbAddSearch()">
+                <div class="provider-sort-control platform-add-sort-control" id="cbAddSortControl">
+                  <button type="button" class="provider-sort-trigger platform-add-sort-trigger" id="cbAddSortTrigger"
+                    onclick="toggleCbAddSort(event)" aria-haspopup="listbox" aria-expanded="false"
+                    aria-controls="cbAddSortMenu" aria-label="供应商排序" title="供应商排序">
+                    <svg class="provider-sort-icon" width="14" height="14" viewBox="0 0 24 24" fill="none"
+                      stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"
+                      aria-hidden="true">
+                      <path d="M8 3v18"></path>
+                      <path d="m4 7 4-4 4 4"></path>
+                      <path d="M16 21V3"></path>
+                      <path d="m20 17-4 4-4-4"></path>
+                    </svg>
+                    <span id="cbAddSortLabel">默认排序</span>
+                    <svg class="provider-sort-caret" width="13" height="13" viewBox="0 0 24 24" fill="none"
+                      stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"
+                      aria-hidden="true">
+                      <path d="m6 9 6 6 6-6"></path>
+                    </svg>
+                  </button>
+                  <div class="provider-sort-menu platform-add-sort-menu" id="cbAddSortMenu" role="listbox"
+                    aria-label="供应商排序">
+                    <button type="button" class="provider-sort-option platform-add-sort-option" role="option"
+                      data-sort-mode="default" onclick="chooseCbAddSortMode('default')">默认排序</button>
+                    <button type="button" class="provider-sort-option platform-add-sort-option" role="option"
+                      data-sort-mode="name-asc" onclick="chooseCbAddSortMode('name-asc')">名称正序</button>
+                    <button type="button" class="provider-sort-option platform-add-sort-option" role="option"
+                      data-sort-mode="name-desc" onclick="chooseCbAddSortMode('name-desc')">名称反序</button>
+                  </div>
+                </div>
+              </div>
+              <div class="cb-add-provider-list" id="cb-add-provider-list"></div>
+            </aside>
+
+            <!-- 右列：模型列表 -->
+            <section class="cb-add-main">
+              <div class="glass-card cb-add-models-card">
+                <div class="cb-add-models-head">
+                  <div>
+                    <div class="cb-add-models-title" id="cb-add-models-title">请选择供应商</div>
+                    <div class="cb-add-models-sub" id="cb-add-models-sub">左侧选择一个供应商，右侧将展示其可用模型</div>
+                  </div>
+                  <div style="display:flex; gap:8px;">
+                    <button class="btn-ghost" onclick="cbAddSelectAll()">全选</button>
+                    <button class="btn-ghost" onclick="cbAddSelectNone()">全不选</button>
+                    <button class="btn-primary" id="cb-add-confirm-page" onclick="confirmAddCodeBuddyModelsPage()"
+                      disabled>
+                      <svg viewBox="0 0 24 24"
+                        style="width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;">
+                        <path d="M20 6L9 17l-5-5" />
+                      </svg>
+                      <span class="model-action-label"> 保存选择</span>
+                    </button>
+                  </div>
+                </div>
+                <div class="cb-add-models-body" id="cb-add-models-list-page">
+                  <div class="cb-add-models-empty">请从左侧选择一个供应商</div>
+                </div>
+              </div>
+
+              <div class="glass-card cb-add-caps-card">
+                <div class="cb-add-caps-title">能力</div>
+                <div class="cb-add-caps">
+                  <label class="cb-add-cap-chip">
+                    <input type="checkbox" id="cb-add-page-images" checked>
+                    <span>图片</span>
+                  </label>
+                  <label class="cb-add-cap-chip">
+                    <input type="checkbox" id="cb-add-page-tools" checked>
+                    <span>工具</span>
+                  </label>
+                  <label class="cb-add-cap-chip">
+                    <input type="checkbox" id="cb-add-page-reasoning" checked>
+                    <span>推理</span>
+                  </label>
+                </div>
+              </div>
+
+            </section>
+          </div>
+        </div>
+

@@ -1,0 +1,45 @@
+
+        <div id="extension-detail-modal" class="modal-overlay extension-detail-overlay">
+          <div class="modal-container extension-detail-modal" role="dialog" aria-modal="true"
+            aria-labelledby="extensionDetailTitle">
+            <div class="extension-detail-hero">
+              <div class="extension-detail-mark" id="extensionDetailMark">扩展</div>
+              <div>
+                <div class="extensions-kicker" id="extensionDetailKicker">扩展详情</div>
+                <h2 id="extensionDetailTitle">扩展详情</h2>
+                <p id="extensionDetailDescription">查看扩展来源、运行状态、组件和后续接入计划。</p>
+              </div>
+              <button type="button" class="modal-close-icon extension-detail-close"
+                onclick="closeExtensionDetail()" aria-label="关闭扩展详情">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                  stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M18 6 6 18"></path>
+                  <path d="m6 6 12 12"></path>
+                </svg>
+              </button>
+            </div>
+            <div class="extension-detail-body">
+              <section class="extension-detail-section">
+                <div class="extension-detail-section-title">运行概览</div>
+                <div class="extension-detail-metrics" id="extensionDetailMetrics"></div>
+              </section>
+              <section class="extension-detail-section">
+                <div class="extension-detail-section-title">GitHub 地址</div>
+                <div class="extension-detail-links" id="extensionDetailGithub"></div>
+              </section>
+              <section class="extension-detail-section">
+                <div class="extension-detail-section-title">组件</div>
+                <div class="extension-detail-components" id="extensionDetailComponents"></div>
+              </section>
+              <section class="extension-detail-section">
+                <div class="extension-detail-section-title">说明</div>
+                <div class="extension-detail-notes" id="extensionDetailNotes"></div>
+              </section>
+            </div>
+            <div class="extension-detail-footer">
+              <button type="button" class="modal-btn modal-btn-cancel" onclick="closeExtensionDetail()">关闭</button>
+              <button type="button" class="modal-btn modal-btn-cancel" id="extensionDetailSecondaryAction">检测更新</button>
+              <button type="button" class="modal-btn modal-btn-confirm" id="extensionDetailPrimaryAction">执行操作</button>
+            </div>
+          </div>
+        </div>

@@ -1,0 +1,53 @@
+
+  <!-- CPA 版本切换 -->
+  <div id="cpa-version-modal" class="modal-overlay">
+    <div class="modal-container cpa-version-modal" style="max-width: 720px;">
+      <div class="modal-header">
+        <div class="modal-title">
+          <span class="modal-icon" style="color: var(--accent);">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 20V10"></path>
+              <path d="M18 20V4"></path>
+              <path d="M6 20v-4"></path>
+            </svg>
+          </span>
+          <span>切换 CPA 版本</span>
+        </div>
+      </div>
+      <div class="modal-body" style="max-height: 520px; overflow-y: auto;">
+        <p class="cpa-version-desc">可切换到本地已缓存版本，或从 GitHub 下载指定版本（遇 bug 时可回退）。切换会更新 installed.json 并重启服务，密钥配置会保留。</p>
+        <div id="cpa-version-loading" class="cpa-version-loading">正在加载本地与 GitHub 版本列表...</div>
+        <div id="cpa-version-body" hidden>
+          <div class="cpa-version-columns">
+            <section class="cpa-version-panel">
+              <header class="cpa-version-panel-head">
+                <strong>CLIProxyAPI</strong>
+                <span>当前 <code id="cpa-version-cli-current">—</code></span>
+              </header>
+              <div class="cpa-version-list" id="cpa-version-cli-list"></div>
+            </section>
+            <section class="cpa-version-panel">
+              <header class="cpa-version-panel-head">
+                <strong>CPA Manager Plus</strong>
+                <span>当前 <code id="cpa-version-cpamp-current">—</code></span>
+              </header>
+              <div class="cpa-version-list" id="cpa-version-cpamp-list"></div>
+            </section>
+          </div>
+        </div>
+        <div id="cpa-version-progress" class="cpa-version-progress" hidden>
+          <div class="cpa-version-progress-bar-row">
+            <div class="cpa-version-progress-track">
+              <div class="cpa-version-progress-fill" id="cpa-version-progress-fill" style="width:0%"></div>
+            </div>
+            <span id="cpa-version-progress-percent">0%</span>
+          </div>
+          <p id="cpa-version-progress-message" class="cpa-version-progress-message">准备中...</p>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" id="cpa-version-cancel-btn" class="modal-btn modal-btn-cancel">取消</button>
+        <button type="button" id="cpa-version-confirm-btn" class="modal-btn modal-btn-confirm" disabled>切换到已选版本</button>
+      </div>
+    </div>
+  </div>

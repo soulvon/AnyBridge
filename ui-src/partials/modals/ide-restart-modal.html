@@ -1,0 +1,45 @@
+
+  <!-- IDE 重启提示 -->
+  <div id="ide-restart-modal" class="modal-overlay">
+    <div class="modal-container ide-restart-modal">
+      <div class="modal-header ide-restart-header">
+        <div class="modal-title">
+          <span class="modal-icon ide-restart-icon">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+              stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 12a9 9 0 1 1-2.64-6.36"></path>
+              <path d="M21 3v6h-6"></path>
+            </svg>
+          </span>
+          <span id="ide-restart-title">重启 IDE 以应用代理</span>
+        </div>
+      </div>
+      <div class="modal-body ide-restart-body">
+        <p id="ide-restart-lead">代理状态已变更，需重启 IDE 才能生效。</p>
+        <div class="ide-restart-status">
+          <span class="ide-restart-status-dot"></span>
+          <span id="ide-restart-status">已写入 AnyBridge 代理配置，本地代理服务已启动。</span>
+        </div>
+        <div class="modal-warning">
+          <span class="modal-warning-icon">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+              stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="10"></circle>
+              <line x1="12" y1="8" x2="12" y2="12"></line>
+              <line x1="12" y1="16" x2="12.01" y2="16"></line>
+            </svg>
+          </span>
+          <span>重启会<strong>强制关闭</strong> IDE，请先保存所有未保存的工作。</span>
+        </div>
+        <div id="ide-restart-detail" class="ide-restart-detail" style="display:none;"></div>
+        <label class="ide-restart-option">
+          <input id="ide-restart-auto-checkbox" type="checkbox">
+          <span>以后切换代理或直连后自动立即重启，不再提示</span>
+        </label>
+      </div>
+      <div class="modal-footer ide-restart-footer">
+        <button id="ide-restart-later-btn" class="modal-btn modal-btn-cancel">稍后重启</button>
+        <button id="ide-restart-now-btn" class="modal-btn modal-btn-confirm">立即重启</button>
+      </div>
+    </div>
+  </div>

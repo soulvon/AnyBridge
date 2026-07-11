@@ -1,0 +1,148 @@
+        <!-- ═══════ PAGE: PLATFORM · CLAUDE CODE ═══════ -->
+        <div class="page" id="page-platform-claude-code" role="tabpanel" aria-labelledby="tab-platforms">
+          <section class="codex-manager-shell claude-code-manager-shell">
+            <div class="platform-console-hero glass-card codex-manager-hero">
+              <div class="platform-console-titlebar">
+                <div class="platform-console-icon codex-manager-icon"><img src="assets/icons/platform-claude-code.svg"
+                    alt="Claude Code"></div>
+                <div class="platform-console-titlewrap">
+                  <strong>Claude Code</strong>
+                  <span id="platform-claude-code-headline">管理 Claude Code 的官方环境和第三方 Anthropic API 配置，切换后重启 Claude Code
+                    生效。</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="control-bar glass-card codex-manager-toolbar">
+              <div class="codex-toolbar-left">
+                <h2>Claude Code 配置</h2>
+                <div class="codex-search">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="11" cy="11" r="8"></circle>
+                    <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                  </svg>
+                  <input type="text" id="claude-code-config-search" placeholder="搜索配置、模型或地址"
+                    oninput="onClaudeCodeConfigSearch()">
+                </div>
+              </div>
+              <div class="codex-toolbar-actions">
+                <button class="btn-primary codex-add-config-btn" onclick="openClaudeCodeProviderAdd()">
+                  <span>+</span> 添加配置
+                </button>
+                <button class="btn-ghost codex-refresh-btn" onclick="refreshPlatforms()">刷新</button>
+                <button class="btn-ghost codex-restore-btn" id="platform-claude-code-restore"
+                  onclick="restorePlatform('claude-code')">还原备份</button>
+              </div>
+            </div>
+
+            <div class="glass-card codex-card-list-shell">
+              <div class="codex-card-list" id="platform-claude-code-config-list">
+                <div class="codex-table-empty">正在加载配置…</div>
+              </div>
+            </div>
+
+            <p class="codex-safe-note">配置文件路径：<code
+                id="claude-code-config-path-label">~/.claude/settings.json</code>。切换后重启 Claude Code 生效，AnyBridge 会保留
+              MCP、权限、hooks、语言等其他配置。</p>
+          </section>
+        </div>
+
+        <div class="modal-overlay" id="claude-code-config-modal">
+          <div class="modal-container codex-config-modal claude-code-config-modal">
+            <div class="modal-header codex-config-modal-head">
+              <div>
+                <div class="modal-title" id="claude-code-config-modal-title">添加 Claude Code 配置</div>
+                <div class="codex-config-modal-sub" id="claude-code-config-modal-sub">从现有供应商创建一份可切换配置。</div>
+              </div>
+              <button class="modal-close-icon" onclick="closeClaudeCodeConfigEditor()" aria-label="关闭配置编辑">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"
+                  stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M18 6L6 18"></path>
+                  <path d="M6 6l12 12"></path>
+                </svg>
+              </button>
+            </div>
+            <div class="modal-body codex-config-modal-body">
+              <input type="hidden" id="claude-code-config-edit-id">
+              <input type="hidden" id="claude-code-config-source-id">
+              <div class="codex-config-editor-layout" id="claude-code-config-editor-layout">
+                <aside class="codex-config-source" id="claude-code-config-source-wrap">
+                  <div class="codex-config-source-head">
+                    <span>选择供应商</span>
+                    <strong id="claude-code-config-source-count">0</strong>
+                  </div>
+                  <div class="codex-config-source-list" id="claude-code-config-source-list"></div>
+                  <div class="codex-config-source-hint" id="claude-code-config-source-hint">选择一个 Anthropic
+                    协议供应商，右侧会自动带入地址和密钥。</div>
+                </aside>
+                <div class="codex-config-form-grid">
+                  <section class="config-section">
+                    <div class="config-section-title">基础信息</div>
+                    <div class="config-section-body">
+                      <label class="codex-config-field">
+                        <span>配置名称</span>
+                        <input id="claude-code-config-name" class="field-input" placeholder="例如：AnyRouter Claude"
+                          oninput="syncClaudeCodeRawConfigFromFields()">
+                      </label>
+                      <label class="codex-config-field">
+                        <span>Base URL</span>
+                        <input id="claude-code-config-base-url" class="field-input" placeholder="https://api.example.com"
+                          oninput="syncClaudeCodeRawConfigFromFields()">
+                      </label>
+                      <label class="codex-config-field">
+                        <span>API Key</span>
+                        <input id="claude-code-config-api-key" class="field-input" type="password" placeholder="sk-..."
+                          autocomplete="off" oninput="syncClaudeCodeRawConfigFromFields()">
+                      </label>
+                    </div>
+                  </section>
+                  <section class="config-section">
+                    <div class="config-section-title">模型列表</div>
+                    <div class="config-section-body">
+                      <div class="codex-config-model-head">
+                        <div>
+                          <span>可用模型</span>
+                          <em id="claude-code-config-model-status">选择供应商后拉取模型列表</em>
+                        </div>
+                        <button type="button" class="codex-config-fetch-btn" id="claude-code-config-fetch-models-btn"
+                          onclick="event.preventDefault(); event.stopPropagation(); fetchClaudeCodeConfigModels()">拉取模型列表</button>
+                      </div>
+                      <div class="codex-config-model-list" id="claude-code-config-model-list">
+                        <div class="codex-config-model-empty">还没有模型，点击右上角按钮拉取。</div>
+                      </div>
+                      <label class="codex-config-field codex-config-default-model">
+                        <span>默认模型</span>
+                        <input id="claude-code-config-model" class="field-input" placeholder="可从上方点选，也可以手动输入"
+                          oninput="onClaudeCodeDefaultModelInput()">
+                      </label>
+                      <textarea id="claude-code-config-models" class="codex-config-models-input" aria-hidden="true"
+                        tabindex="-1"></textarea>
+                    </div>
+                  </section>
+                  <details class="codex-config-field codex-config-field-wide claude-code-json-panel">
+                    <summary class="claude-code-collapse-head">
+                      <div>
+                        <span>原始配置 JSON</span>
+                        <em>需要精细调整 settings.json 片段时展开编辑</em>
+                      </div>
+                    </summary>
+                    <div class="claude-code-collapse-body">
+                      <textarea id="claude-code-config-raw-json" class="claude-code-raw-config-input" spellcheck="false"
+                        oninput="onClaudeCodeRawConfigInput()"
+                        placeholder="{&#10;  &quot;env&quot;: {&#10;    &quot;ANTHROPIC_BASE_URL&quot;: &quot;https://api.example.com&quot;&#10;  }&#10;}"></textarea>
+                    </div>
+                  </details>
+                </div>
+              </div>
+            </div>
+            <div class="modal-footer codex-config-modal-footer">
+              <div class="codex-config-editor-note">保存后出现在配置列表中，点击「切换」才会写入 Claude Code 当前配置文件。</div>
+              <button class="modal-btn modal-btn-ghost" onclick="closeClaudeCodeConfigEditor()">取消</button>
+              <button class="modal-btn modal-btn-cancel" onclick="saveClaudeCodeConfigEditor(false)">保存配置</button>
+              <button class="modal-btn modal-btn-confirm" id="claude-code-config-save-switch-btn"
+                onclick="saveClaudeCodeConfigEditor(true)">保存并切换</button>
+            </div>
+          </div>
+        </div>
+

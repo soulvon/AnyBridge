@@ -1,0 +1,203 @@
+        <!-- ═══════ PAGE: PLATFORM · WINDSURF / DEVIN ═══════ -->
+        <div class="page" id="page-platform-proxy" role="tabpanel" aria-labelledby="tab-platforms">
+
+          <div class="platform-panel active" id="platform-panel-overview" data-platform-panel="overview">
+
+            <section class="proxy-analytics">
+              <div class="proxy-analytics-head">
+                <div>
+                  <div class="proxy-analytics-kicker">Proxy Analytics</div>
+                  <h2>全局代理统计</h2>
+                  <p>统计所有通过 AnyBridge 本机代理转发的请求，不再按 Devin / Windsurf 页面拆分。</p>
+                </div>
+                <div class="proxy-analytics-window">
+                  <span>今日累计</span>
+                  <strong>最近 60 秒实时窗口</strong>
+                </div>
+              </div>
+
+              <div class="proxy-kpi-grid">
+                <article class="proxy-kpi-card accent-blue">
+                  <div class="proxy-kpi-label">今日请求</div>
+                  <div class="proxy-kpi-value" id="stat-requests">—</div>
+                  <div class="proxy-kpi-sub" id="stat-requests-sub">代理未运行</div>
+                </article>
+                <article class="proxy-kpi-card accent-cyan">
+                  <div class="proxy-kpi-label">Token 用量</div>
+                  <div class="proxy-kpi-value" id="stat-tokens">—</div>
+                  <div class="proxy-kpi-sub" id="stat-tokens-sub">输入 / 输出 / 缓存</div>
+                </article>
+                <article class="proxy-kpi-card accent-green">
+                  <div class="proxy-kpi-label">成功率</div>
+                  <div class="proxy-kpi-value" id="stat-success-rate">—</div>
+                  <div class="proxy-kpi-sub" id="stat-errors-sub">错误 0 次</div>
+                </article>
+                <article class="proxy-kpi-card accent-orange">
+                  <div class="proxy-kpi-label">平均响应耗时</div>
+                  <div class="proxy-kpi-value" id="stat-latency">—</div>
+                  <div class="proxy-kpi-sub">最近 60 秒均值</div>
+                </article>
+              </div>
+
+              <div class="proxy-analytics-grid">
+                <section class="proxy-panel proxy-load-panel">
+                  <div class="proxy-panel-head">
+                    <div>
+                      <div class="proxy-panel-title">实时负载</div>
+                      <div class="proxy-panel-sub">按最近 60 秒滑动窗口计算</div>
+                    </div>
+                    <span class="proxy-health-pill" id="stat-health-pill">等待流量</span>
+                  </div>
+                  <div class="proxy-load-metrics">
+                    <div class="proxy-load-item">
+                      <span>RPM</span>
+                      <strong id="stat-rpm">—</strong>
+                      <small>请求 / 分钟</small>
+                    </div>
+                    <div class="proxy-load-item">
+                      <span>TPM</span>
+                      <strong id="stat-tpm">—</strong>
+                      <small>Token / 秒</small>
+                    </div>
+                    <div class="proxy-load-item">
+                      <span>错误率</span>
+                      <strong id="stat-error-rate">—</strong>
+                      <small id="stat-window-errors">最近窗口</small>
+                    </div>
+                  </div>
+                  <div class="proxy-meter-list">
+                    <div class="proxy-meter-row">
+                      <span>请求窗口</span>
+                      <div class="proxy-meter"><i id="stat-window-requests-bar"></i></div>
+                      <strong id="stat-window-requests">0</strong>
+                    </div>
+                    <div class="proxy-meter-row">
+                      <span>Token 窗口</span>
+                      <div class="proxy-meter"><i id="stat-window-tokens-bar"></i></div>
+                      <strong id="stat-window-tokens">0</strong>
+                    </div>
+                    <div class="proxy-meter-row danger">
+                      <span>错误窗口</span>
+                      <div class="proxy-meter"><i id="stat-window-errors-bar"></i></div>
+                      <strong id="stat-window-errors-count">0</strong>
+                    </div>
+                  </div>
+                </section>
+
+                <section class="proxy-panel proxy-route-panel">
+                  <div class="proxy-panel-head">
+                    <div>
+                      <div class="proxy-panel-title">当前路由</div>
+                      <div class="proxy-panel-sub">最近一次成功解析的供应商与模型</div>
+                    </div>
+                  </div>
+                  <div class="proxy-route-current">
+                    <span id="stat-provider">—</span>
+                    <strong id="stat-model">尚无请求</strong>
+                  </div>
+                  <div class="proxy-route-stats">
+                    <div>
+                      <span>重试次数</span>
+                      <strong id="stat-retries">—</strong>
+                      <small id="stat-retries-sub">本日累计</small>
+                    </div>
+                    <div>
+                      <span>估算成本</span>
+                      <strong id="stat-cost">—</strong>
+                      <small>按混合单价粗估</small>
+                    </div>
+                  </div>
+                </section>
+
+                <section class="proxy-panel proxy-token-panel">
+                  <div class="proxy-panel-head">
+                    <div>
+                      <div class="proxy-panel-title">Token 构成</div>
+                      <div class="proxy-panel-sub">输入、输出与缓存读取占比</div>
+                    </div>
+                  </div>
+                  <div class="proxy-token-bars">
+                    <div class="proxy-token-row">
+                      <span>输入</span>
+                      <div class="proxy-token-track"><i id="stat-input-token-bar"></i></div>
+                      <strong id="stat-input-tokens">—</strong>
+                    </div>
+                    <div class="proxy-token-row">
+                      <span>输出</span>
+                      <div class="proxy-token-track"><i id="stat-output-token-bar"></i></div>
+                      <strong id="stat-output-tokens">—</strong>
+                    </div>
+                    <div class="proxy-token-row">
+                      <span>缓存</span>
+                      <div class="proxy-token-track"><i id="stat-cached-token-bar"></i></div>
+                      <strong id="stat-cached-tokens">—</strong>
+                    </div>
+                  </div>
+                </section>
+
+                <section class="proxy-panel proxy-vision-panel">
+                  <div class="proxy-panel-head">
+                    <div>
+                      <div class="proxy-panel-title">图片理解降级</div>
+                      <div class="proxy-panel-sub">第三方图片理解模型池调用情况</div>
+                    </div>
+                  </div>
+                  <div class="proxy-vision-grid">
+                    <div><span>图片</span><strong id="stat-vision-images">0</strong></div>
+                    <div><span>API 调用</span><strong id="stat-vision-api-calls">0</strong></div>
+                    <div><span>缓存命中</span><strong id="stat-vision-cache-hits">0</strong></div>
+                    <div><span>失败</span><strong id="stat-vision-failures">0</strong></div>
+                  </div>
+                </section>
+
+                <section class="proxy-panel proxy-model-panel">
+                  <div class="proxy-panel-head">
+                    <div>
+                      <div class="proxy-panel-title">Top 模型表现</div>
+                      <div class="proxy-panel-sub">按全局代理请求量排序</div>
+                    </div>
+                  </div>
+                  <div id="topModelsChart" class="proxy-model-table">
+                    <div class="proxy-empty-state">尚无模型请求数据</div>
+                  </div>
+                </section>
+
+                <section class="proxy-panel proxy-logs-panel">
+                  <div class="proxy-panel-head proxy-logs-head">
+                    <div class="proxy-logs-title">
+                      <div>
+                        <div class="proxy-panel-title">代理日志</div>
+                        <div class="proxy-panel-sub">代理运行事件、路由变更和错误输出</div>
+                      </div>
+                      <span class="tag log-count" id="logCount">0 条记录</span>
+                    </div>
+                    <div class="proxy-logs-actions">
+                      <button class="btn-ghost" onclick="clearLogs()">清空</button>
+                      <button class="btn-ghost" onclick="exportLogs()">导出</button>
+                      <button class="btn-ghost" onclick="cycleLogFilter()" id="logFilterBtn">筛选: 全部 ▾</button>
+                    </div>
+                  </div>
+                  <div class="log-box proxy-logs-box">
+                    <div class="log-body" id="fullLog"></div>
+                  </div>
+                </section>
+              </div>
+            </section>
+          </div>
+
+          <div class="platform-panel" id="platform-panel-settings" data-platform-panel="settings">
+            <section class="glass-card platform-settings-card">
+              <div class="platform-settings-inner">
+                <aside class="settings-sidebar" aria-label="平台设置">
+                  <button type="button" class="settings-menu-item active" data-platform-settings-panel="0">环境检测</button>
+                  <button type="button" class="settings-menu-item" data-platform-settings-panel="1">设置</button>
+                </aside>
+                <div class="settings-detail">
+                  <div id="platform-health-mount" class="platform-settings-mount"></div>
+                  <div id="platform-access-mount" class="platform-settings-mount"></div>
+                </div>
+              </div>
+            </section>
+          </div>
+        </div>
+

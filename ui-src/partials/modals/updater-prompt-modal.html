@@ -1,0 +1,104 @@
+
+  <!-- 发现更新/下载更新模态框 -->
+  <div id="updater-prompt-modal" class="modal-overlay">
+    <div class="modal-container" style="max-width: 500px;">
+      <div class="modal-header">
+        <div class="modal-title">
+          <span class="modal-icon" id="updater-modal-icon" style="color: var(--accent);">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+              stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"></path>
+            </svg>
+          </span>
+          <span id="updater-modal-title-text">检测到新版本可用！</span>
+        </div>
+      </div>
+      <div class="modal-body" style="max-height: 360px; overflow-y: auto; padding-right: 8px;">
+        <!-- 版本信息 -->
+        <p style="font-weight: 600; font-size: 14px; margin-bottom: 8px;">
+          新版本：<span id="updater-target-version"
+            style="color: var(--accent); font-family: var(--font-mono);">v1.0.1</span>
+        </p>
+        <!-- 更新内容 -->
+        <div
+          style="background: var(--bg-primary); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 12px 16px; font-size: 13px; margin-bottom: 12px;">
+          <div style="font-weight: bold; margin-bottom: 6px; color: var(--text-primary);">更新内容：</div>
+          <div id="updater-target-notes"
+            style="white-space: pre-wrap; font-family: var(--font-body); line-height: 1.5; color: var(--text-secondary); min-height: 72px; max-height: 180px; overflow-y: auto;">
+            载入中...
+          </div>
+        </div>
+
+        <!-- 下载进度条区 -->
+        <div id="updater-progress-container" style="display: none; margin-top: 14px;">
+          <div
+            style="display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 6px; font-family: var(--font-mono);">
+            <span id="updater-progress-status" style="color: var(--text-secondary);">正在下载更新包...</span>
+            <span id="updater-progress-percent" style="color: var(--accent); font-weight: bold;">0%</span>
+          </div>
+          <div
+            style="width: 100%; height: 8px; background: var(--bg-primary); border-radius: 4px; overflow: hidden; border: 1px solid var(--border);">
+            <div id="updater-progress-bar"
+              style="width: 0%; height: 100%; background: linear-gradient(90deg, var(--accent), var(--accent-secondary)); transition: width 0.1s ease;">
+            </div>
+          </div>
+        </div>
+
+        <!-- 下载完成提示 -->
+        <div id="updater-ready-container" style="display: none; margin-top: 14px;">
+          <div
+            style="display: flex; align-items: center; gap: 8px; padding: 10px 14px; background: rgba(34,197,94,0.08); border: 1px solid rgba(34,197,94,0.2); border-radius: 8px;">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--success)" stroke-width="2.5">
+              <polyline points="9 11 12 14 22 4"></polyline>
+              <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path>
+            </svg>
+            <span style="font-size: 13px; color: var(--success);">更新已就绪，重启后即可生效</span>
+          </div>
+        </div>
+
+        <!-- 错误提示区 -->
+        <div id="updater-error-container" style="display: none; margin-top: 14px;">
+          <div
+            style="padding: 10px 14px; background: rgba(239,68,68,0.08); border: 1px solid rgba(239,68,68,0.2); border-radius: 8px;">
+            <div style="display: flex; align-items: flex-start; gap: 8px;">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--error, #ef4444)"
+                stroke-width="2.5" style="flex-shrink:0;margin-top:1px;">
+                <circle cx="12" cy="12" r="10"></circle>
+                <line x1="15" y1="9" x2="9" y2="15"></line>
+                <line x1="9" y1="9" x2="15" y2="15"></line>
+              </svg>
+              <div style="flex:1;min-width:0;">
+                <div id="updater-error-message"
+                  style="font-size: 13px; color: var(--error, #ef4444); word-break: break-word;"></div>
+                <button id="updater-error-toggle" onclick="toggleUpdaterErrorDetails()"
+                  style="font-size: 11px; color: var(--text-muted); background: none; border: none; cursor: pointer; padding: 2px 0; margin-top: 4px; text-decoration: underline;"></button>
+                <div id="updater-error-details"
+                  style="display: none; font-size: 11px; color: var(--text-muted); margin-top: 4px; word-break: break-all; font-family: var(--font-mono); background: var(--bg-primary); padding: 6px 8px; border-radius: 4px; max-height: 80px; overflow-y: auto;">
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 重试状态提示 -->
+        <div id="updater-retry-container" style="display: none; margin-top: 14px;">
+          <div
+            style="display: flex; align-items: center; gap: 8px; padding: 8px 14px; background: rgba(59,130,246,0.08); border: 1px solid rgba(59,130,246,0.2); border-radius: 8px;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2"
+              style="animation: spin 1s linear infinite;">
+              <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"></path>
+            </svg>
+            <span id="updater-retry-status" style="font-size: 12px; color: var(--accent);">正在重试...</span>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer" id="updater-prompt-footer">
+        <button onclick="skipThisVersion()" class="modal-btn modal-btn-cancel"
+          style="font-size: 12px; padding: 10px 16px;">跳过此版本</button>
+        <button onclick="closeUpdaterPromptModal()" class="modal-btn modal-btn-cancel"
+          style="font-size: 12px; padding: 10px 16px;">稍后</button>
+        <button onclick="startDownloadAndUpdate()" class="modal-btn modal-btn-confirm" id="updater-confirm-btn"
+          style="font-size: 12px; padding: 10px 20px;">立即更新</button>
+      </div>
+    </div>
+  </div>

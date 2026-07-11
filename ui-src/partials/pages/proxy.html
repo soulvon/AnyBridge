@@ -1,0 +1,258 @@
+        <!-- ═══════ PAGE: PROXY ═══════ -->
+        <div class="page" id="page-proxy" role="tabpanel" aria-labelledby="tab-proxy">
+          <section class="proxy-console-page">
+            <div class="proxy-console-hero glass-card">
+              <div class="proxy-console-title">
+                <span class="dot"></span>
+                <div>
+                  <h1>本地代理</h1>
+                  <p>统一管理 AnyBridge sidecar、兼容入口、本地 key 和代理增强。</p>
+                </div>
+              </div>
+              <div class="proxy-console-actions">
+                <button class="btn-primary" id="globalProxyStartBtn" onclick="startGlobalProxyService()">启动代理</button>
+                <button class="btn-ghost" id="globalProxyStopBtn" onclick="stopGlobalProxyService()">停止代理</button>
+                <button class="btn-ghost" id="globalProxyRestartBtn" onclick="restartGlobalProxyService()">重启代理</button>
+              </div>
+            </div>
+
+            <div class="proxy-console-tabs" role="tablist" aria-label="代理配置">
+              <button type="button" class="proxy-console-tab active" data-proxy-panel="overview" aria-selected="true">概览</button>
+              <button type="button" class="proxy-console-tab" data-proxy-panel="routes" aria-selected="false">模型列表</button>
+              <button type="button" class="proxy-console-tab" data-proxy-panel="enhancement" aria-selected="false">代理增强</button>
+            </div>
+
+            <div class="proxy-console-section active" data-proxy-section="overview">
+              <div class="proxy-console-grid proxy-console-grid-single">
+
+                <section class="proxy-console-card glass-card ">
+                  <div class="proxy-console-card-head">
+                    <div>
+                      <h2>连接配置</h2>
+                      <p>兼容入口、本地 key 与端口。</p>
+                    </div>
+                  </div>
+
+                  <div class="proxy-section">
+                    <div class="proxy-section-title">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path>
+                        <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>
+                      </svg>
+                      兼容入口
+                    </div>
+                    <div class="proxy-endpoint-list">
+                      <div class="proxy-endpoint-row">
+                        <span class="endpoint-label">
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <circle cx="12" cy="12" r="10"></circle>
+                            <path d="M12 16v-4"></path>
+                            <path d="M12 8h.01"></path>
+                          </svg>
+                          OpenAI
+                        </span>
+                        <code id="localProxyOpenAiUrl">http://127.0.0.1:{port}/v1</code>
+                        <button class="btn-ghost" onclick="copyLocalProxyValue('openai')">复制</button>
+                      </div>
+                      <div class="proxy-endpoint-row">
+                        <span class="endpoint-label">
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <path d="M12 2a10 10 0 1 0 10 10 4 4 0 0 1-5-5 4 4 0 0 1-5-5"></path>
+                            <path d="M8.5 8.5v.01"></path>
+                            <path d="M16 15.5v.01"></path>
+                            <path d="M12 12v.01"></path>
+                            <path d="M8 16v.01"></path>
+                            <path d="M16 8v.01"></path>
+                          </svg>
+                          Claude
+                        </span>
+                        <code id="localProxyClaudeUrl">http://127.0.0.1:{port}/anthropic</code>
+                        <button class="btn-ghost" onclick="copyLocalProxyValue('claude')">复制</button>
+                      </div>
+                      <div class="proxy-endpoint-row">
+                        <span class="endpoint-label">
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <rect x="3" y="4" width="18" height="6" rx="2"></rect>
+                            <rect x="3" y="14" width="18" height="6" rx="2"></rect>
+                            <path d="M7 7h.01"></path>
+                            <path d="M7 17h.01"></path>
+                          </svg>
+                          Models
+                        </span>
+                        <code id="localProxyModelsUrl">http://127.0.0.1:{port}/v1/models</code>
+                        <button class="btn-ghost" onclick="copyLocalProxyValue('models')">复制</button>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="proxy-section-divider"></div>
+
+                  <div class="proxy-section">
+                    <div class="proxy-section-title">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 0 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3-1.5 1.5"></path>
+                      </svg>
+                      本地认证
+                    </div>
+                    <div class="proxy-local-key-box">
+                      <div>
+                        <span>当前 key</span>
+                        <strong id="localProxyKeyValue">未生成</strong>
+                      </div>
+                      <div class="proxy-local-key-actions">
+                        <button class="btn-ghost" onclick="copyLocalProxyValue('key')">复制 key</button>
+                        <button class="btn-primary" onclick="regenerateLocalProxyKey()">重新生成</button>
+                      </div>
+                    </div>
+                    <div class="proxy-ports-grid proxy-ports-grid-single">
+                      <div class="proxy-port-field">
+                        <label>API 服务端口</label>
+                        <input id="localProxyPortInput" class="input-sm" type="number" min="1" max="65535" value="7450">
+                      </div>
+                      <button class="btn-primary" onclick="saveLocalProxyPorts('proxy')">保存端口</button>
+                    </div>
+                  </div>
+
+                  <div class="proxy-section-divider"></div>
+
+                  <div class="proxy-section">
+                    <div class="proxy-section-title">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <path d="M5 12h14"></path>
+                        <path d="m12 5 7 7-7 7"></path>
+                      </svg>
+                      启动偏好
+                    </div>
+                    <div class="proxy-preference-row">
+                      <div>
+                        <span>启动时自动运行</span>
+                        <strong>应用打开时自动启动本地代理</strong>
+                      </div>
+                      <div class="toggle-sm" data-config-toggle="AUTO_START_PROXY" role="switch" aria-label="启动时自动运行代理"></div>
+                    </div>
+                  </div>
+                </section>
+
+            </div>
+            </div>
+
+            <div class="proxy-console-section" data-proxy-section="routes">
+              <section class="proxy-console-card glass-card proxy-routes-card">
+                <div class="proxy-routes-hero">
+                  <div class="proxy-routes-title">
+                    <h2>模型列表</h2>
+                    <p>管理本地代理对外暴露的模型。请求里的 model 必须命中这里的模型 ID。</p>
+                  </div>
+                </div>
+                <div class="proxy-routes-toolbar">
+                  <label class="proxy-routes-search">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                      stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                      <circle cx="11" cy="11" r="8"></circle>
+                      <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                    </svg>
+                    <input id="proxyRoutesSearch" type="text" placeholder="搜索模型 ID、供应商或上游模型"
+                      oninput="renderProxyRoutes()">
+                  </label>
+                  <span class="model-map-count-pill" id="proxyRoutesBulkCount">共 0 个</span>
+                  <div class="proxy-routes-command-group model-map-bulk-actions">
+                    <button class="btn-primary proxy-route-add-btn" onclick="openProxyRouteEditor()">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                        stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                        <line x1="12" y1="5" x2="12" y2="19"></line>
+                        <line x1="5" y1="12" x2="19" y2="12"></line>
+                      </svg>
+                      添加模型
+                    </button>
+                    <button class="btn-ghost provider-bulk-btn" id="proxyRoutesSelectVisibleBtn"
+                      onclick="toggleVisibleProxyRouteSelection()" disabled>选择当前</button>
+                    <button class="btn-ghost provider-bulk-btn" id="proxyRoutesBulkEnableBtn"
+                      onclick="batchSetSelectedProxyRoutesEnabled(true)" disabled>启用</button>
+                    <button class="btn-ghost provider-bulk-btn" id="proxyRoutesBulkDisableBtn"
+                      onclick="batchSetSelectedProxyRoutesEnabled(false)" disabled>停用</button>
+                    <button class="btn-ghost provider-bulk-btn" id="proxyRoutesBulkVisionBtn"
+                      onclick="batchSetSelectedProxyRoutesThirdPartyVision(true)" disabled>启用第三方图片</button>
+                    <button class="btn-ghost provider-bulk-btn danger proxy-routes-delete-selected" id="proxyRoutesDeleteSelectedBtn"
+                      onclick="deleteSelectedProxyRoutes()" disabled>
+                      <span class="proxy-routes-delete-label">删除选中</span>
+                    </button>
+                    <button class="btn-ghost proxy-route-icon-btn" onclick="loadProxyRoutes()" title="刷新"
+                      aria-label="刷新模型列表">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                        stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="23 4 23 10 17 10"></polyline>
+                        <polyline points="1 20 1 14 7 14"></polyline>
+                        <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+                <div class="proxy-routes-table-wrap">
+                  <table class="proxy-routes-table">
+                    <colgroup>
+                      <col class="proxy-route-col-select">
+                      <col class="proxy-route-col-id">
+                      <col class="proxy-route-col-upstream">
+                      <col class="proxy-route-col-capabilities">
+                      <col class="proxy-route-col-actions">
+                      <col class="proxy-route-col-vision">
+                      <col class="proxy-route-col-enabled">
+                    </colgroup>
+                    <thead>
+                      <tr>
+                        <th class="proxy-route-select-head model-map-select-head">
+                          <label class="provider-select-check provider-select-check-table" title="选择当前列表" onclick="event.stopPropagation()">
+                            <input type="checkbox" id="proxyRoutesSelectAll" aria-label="选择当前列表" onchange="toggleProxyRoutesSelectAll(this.checked)">
+                            <span></span>
+                          </label>
+                        </th>
+                        <th>
+                          <span class="model-map-display-head">
+                            <span>模型 ID</span>
+                            <button class="btn-ghost model-map-settings-btn" onclick="openProxyRouteRenameModal()"
+                              title="批量重命名模型 ID（加前后缀/换名）" aria-label="批量重命名模型 ID">
+                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
+                                <circle cx="12" cy="12" r="3"></circle>
+                                <path
+                                  d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z">
+                                </path>
+                              </svg>
+                            </button>
+                          </span>
+                        </th>
+                        <th>上游</th>
+                        <th>能力</th>
+                        <th>操作</th>
+                        <th>
+                          <span class="model-map-display-head">
+                            <span>第三方图片理解</span>
+                            <button class="btn-ghost model-map-settings-btn" onclick="navigateToProxyEnhancement()"
+                              title="配置图片理解模型" aria-label="配置图片理解模型">
+                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
+                                <circle cx="12" cy="12" r="3"></circle>
+                                <path
+                                  d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z">
+                                </path>
+                              </svg>
+                            </button>
+                          </span>
+                        </th>
+                        <th>启用</th>
+                      </tr>
+                    </thead>
+                    <tbody id="proxyRoutesTableBody">
+                      <tr><td colspan="7" class="proxy-routes-empty">正在加载模型列表...</td></tr>
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+            </div>
+
+            <div class="proxy-console-section" data-proxy-section="enhancement">
+              <div id="proxyEnhancementMount"></div>
+            </div>
+          </section>
+        </div>
+

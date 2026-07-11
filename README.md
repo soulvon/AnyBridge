@@ -829,8 +829,9 @@ AnyBridge/
 │   │   ├── integrity.rs    # 完整性校验
 │   │   └── commands/       # 各功能模块
 │   └── tauri.conf.json     # 配置
-├── ui/                     # 前端界面
-│   ├── index.html          # 单页应用
+├── ui-src/                 # 前端 HTML 源码（partials + 壳）
+├── ui/                     # 前端产物（Tauri 加载）
+│   ├── index.html          # 由 npm run build:ui 从 ui-src 拼装
 │   └── assets/             # CSS + JS
 ├── scripts/                # 构建脚本
 ├── docs/                   # 文档
@@ -846,10 +847,11 @@ AnyBridge/
 |---|---|---|
 | 桌面框架 | Tauri v2 | 比 Electron 更轻量，安装包小，内存占用低 |
 | 后端语言 | Rust | 主要负责系统级操作：进程管理、文件读写、证书生成、配置持久化 |
-| 前端 | 纯 HTML/CSS/JS | 没有 React/Vue，不需要构建步骤，打开就直接跑 |
+| 前端 | 纯 HTML/CSS/JS | 无 React/Vue；HTML 用轻量 `@include` 拼装，CSS/JS 手拆模块 |
 | 代理服务 | Node.js | 独立进程，负责 HTTP 代理、请求路由、协议转换 |
 | 代理打包 | pkg | 把 Node.js 代码编译成单文件 exe，用户不需要装 Node |
 | 存储 | SQLite | 缓存模型列表、统计数据和测试报告 |
+
 
 ### 后端（Rust）主要职责
 

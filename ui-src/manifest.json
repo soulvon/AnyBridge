@@ -1,0 +1,178 @@
+{
+  "sourceLines": 6032,
+  "newline": "CRLF",
+  "pages": [
+    {
+      "file": "platform-proxy",
+      "name": "PLATFORM · WINDSURF / DEVIN",
+      "start": 222,
+      "end": 424,
+      "lines": 203
+    },
+    {
+      "file": "providers",
+      "name": "PROVIDERS",
+      "start": 425,
+      "end": 636,
+      "lines": 212
+    },
+    {
+      "file": "provider-editor",
+      "name": "PROVIDER EDITOR (新增/编辑供应商)",
+      "start": 637,
+      "end": 915,
+      "lines": 279
+    },
+    {
+      "file": "slot-editor",
+      "name": "SLOT MAPPING EDITOR (添加/编辑映射)",
+      "start": 916,
+      "end": 1059,
+      "lines": 144
+    },
+    {
+      "file": "model-slots",
+      "name": "MODEL SLOT MANAGEMENT",
+      "start": 1060,
+      "end": 1690,
+      "lines": 631
+    },
+    {
+      "file": "models",
+      "name": "MODEL MAP",
+      "start": 1691,
+      "end": 1853,
+      "lines": 163
+    },
+    {
+      "file": "eval",
+      "name": "EVALUATION",
+      "start": 1854,
+      "end": 2134,
+      "lines": 281
+    },
+    {
+      "file": "eval-history",
+      "name": "EVALUATION HISTORY",
+      "start": 2135,
+      "end": 2416,
+      "lines": 282
+    },
+    {
+      "file": "proxy",
+      "name": "PROXY",
+      "start": 2417,
+      "end": 2674,
+      "lines": 258
+    },
+    {
+      "file": "more-platforms",
+      "name": "PLATFORM OVERVIEW",
+      "start": 2675,
+      "end": 2688,
+      "lines": 14
+    },
+    {
+      "file": "platform-cursor",
+      "name": "PLATFORM · CURSOR",
+      "start": 2689,
+      "end": 2827,
+      "lines": 139
+    },
+    {
+      "file": "platform-claude",
+      "name": "PLATFORM · CLAUDE CODE",
+      "start": 2828,
+      "end": 2975,
+      "lines": 148
+    },
+    {
+      "file": "platform-codex",
+      "name": "PLATFORM · CODEX",
+      "start": 2976,
+      "end": 3201,
+      "lines": 226
+    },
+    {
+      "file": "platform-codebuddy",
+      "name": "PLATFORM · CODEBUDDY",
+      "start": 3202,
+      "end": 3454,
+      "lines": 253
+    },
+    {
+      "file": "platform-codebuddy-add",
+      "name": "PLATFORM · CODEBUDDY · 添加模型（独立页面）",
+      "start": 3455,
+      "end": 3556,
+      "lines": 102
+    },
+    {
+      "file": "platform-opencode",
+      "name": "PLATFORM · OPENCODE",
+      "start": 3557,
+      "end": 3705,
+      "lines": 149
+    },
+    {
+      "file": "platform-zcode",
+      "name": "PLATFORM · ZCODE",
+      "start": 3706,
+      "end": 3893,
+      "lines": 188
+    },
+    {
+      "file": "platform-zcode-add",
+      "name": "PLATFORM · ZCODE · 添加模型（独立页面）",
+      "start": 3894,
+      "end": 3992,
+      "lines": 99
+    },
+    {
+      "file": "platform-workbuddy",
+      "name": "PLATFORM · WORKBUDDY",
+      "start": 3993,
+      "end": 4333,
+      "lines": 341
+    },
+    {
+      "file": "platform-workbuddy-add",
+      "name": "PLATFORM · WORKBUDDY · 添加模型（独立页面）",
+      "start": 4334,
+      "end": 4432,
+      "lines": 99
+    },
+    {
+      "file": "settings",
+      "name": "SETTINGS",
+      "start": 4433,
+      "end": 4990,
+      "lines": 558
+    }
+  ],
+  "bodyTail": {
+    "split": true,
+    "includes": [
+      "partials/shell-close.html",
+      "partials/modals/eval-check-modal.html",
+      "partials/modals/custom-alert-modal.html",
+      "partials/modals/kite-plugin-modal.html",
+      "partials/modals/custom-confirm-modal.html",
+      "partials/modals/cpa-version-modal.html",
+      "partials/modals/proxy-route-editor-modal.html",
+      "partials/modals/proxy-route-backup-picker-modal.html",
+      "partials/modals/notification-center-modal.html",
+      "partials/modals/log-viewer-modal.html",
+      "partials/modals/onboarding-guide-modal.html",
+      "partials/modals/ide-restart-modal.html",
+      "partials/modals/update-jump-modal.html",
+      "partials/modals/updater-prompt-modal.html",
+      "partials/scripts-i18n.html",
+      "partials/modals/extension-settings-modal.html",
+      "partials/modals/extension-detail-modal.html",
+      "partials/modals/cpa-deploy-modal.html",
+      "partials/scripts-app.html"
+    ]
+  },
+  "extensionsExtracted": true
+}

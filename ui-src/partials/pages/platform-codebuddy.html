@@ -1,0 +1,253 @@
+        <!-- ═══════ PAGE: PLATFORM · CODEBUDDY ═══════ -->
+        <div class="page" id="page-platform-codebuddy" role="tabpanel" aria-labelledby="tab-platforms">
+          <div class="platform-console-hero glass-card">
+            <div class="platform-console-titlebar">
+              <div class="platform-console-icon"><img src="assets/icons/platform-codebuddy.png" alt="CodeBuddy"></div>
+              <div class="platform-console-titlewrap">
+                <strong>CodeBuddy</strong>
+                <span>腾讯云国际版 AI 编程 IDE · 管理 OpenAI Chat Completions 兼容配置</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- 列表视图 -->
+          <div id="cb-list-view">
+            <!-- 控制栏 -->
+            <div class="control-bar glass-card platform-model-toolbar">
+              <!-- 第一行：标题 + 操作按钮 -->
+              <div class="platform-model-toolbar-main">
+                <div class="platform-model-title-block">
+                  <h2>自定义模型列表</h2>
+                  <span>CodeBuddy 自定义模型，支持添加、编辑、导入导出。</span>
+                </div>
+                <div class="platform-model-toolbar-actions">
+                <button class="btn-primary platform-model-btn" onclick="openCodeBuddyAddModal()">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="12" y1="5" x2="12" y2="19" />
+                    <line x1="5" y1="12" x2="19" y2="12" />
+                  </svg>
+                  添加模型
+                </button>
+                <button class="btn-ghost cb-bulk-delete-btn" id="cb-delete-selected-btn"
+                  onclick="deleteSelectedCbModels()" disabled title="删除勾选的模型">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="3 6 5 6 21 6" />
+                    <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+                    <path d="M10 11v6M14 11v6" />
+                    <path d="M9 6V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2" />
+                  </svg>
+                  <span class="cb-bulk-delete-label">删除选中</span>
+                </button>
+                <button class="btn-ghost platform-model-btn" onclick="saveCodeBuddyModels()">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
+                    <polyline points="17 21 17 13 7 13 7 21" />
+                    <polyline points="7 3 7 8 15 8" />
+                  </svg>
+                  保存
+                </button>
+                <button class="btn-ghost buddy-sync-toggle platform-model-btn" id="cb-sync-buddy-btn" data-buddy-sync-toggle
+                  aria-pressed="false" onclick="toggleTencentBuddySync('codebuddy')"
+                  title="开启同步 WorkBuddy">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M10 13a5 5 0 0 0 7.07 0l3-3a5 5 0 0 0-7.07-7.07l-1.7 1.7" />
+                    <path d="M14 11a5 5 0 0 0-7.07 0l-3 3A5 5 0 0 0 11 21.07l1.7-1.7" />
+                  </svg>
+                  <span class="model-action-label">同步 WorkBuddy</span>
+                </button>
+                </div>
+              </div>
+              <!-- 第二行：搜索 + 计数 + 工具按钮 -->
+              <div class="platform-model-bulk-row">
+                <label class="platform-model-search">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="11" cy="11" r="8"></circle>
+                    <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                  </svg>
+                  <input type="text" id="cb-model-search" placeholder="搜索模型、供应商或 URL"
+                    oninput="onCbModelSearch()">
+                </label>
+                <span class="platform-model-count-pill" id="cb-model-count">共 0 个</span>
+                <span class="platform-model-divider"></span>
+                <button class="btn-ghost platform-model-btn-icon" onclick="document.getElementById('cb-import-file').click()"
+                  title="导入">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                    <polyline points="17 8 12 3 7 8" />
+                    <line x1="12" y1="3" x2="12" y2="15" />
+                  </svg>
+                </button>
+                <input type="file" id="cb-import-file" accept=".json" style="display:none;"
+                  onchange="importCbModels(event)">
+                <button class="btn-ghost platform-model-btn-icon" onclick="exportCbModels()"
+                  title="导出">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                    <polyline points="7 10 12 15 17 10" />
+                    <line x1="12" y1="15" x2="12" y2="3" />
+                  </svg>
+                </button>
+                <button class="btn-ghost platform-model-btn-icon" data-json-toggle="cb" aria-pressed="false" onclick="toggleCbJsonEditor()"
+                  title="JSON 编辑">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="16 18 22 12 16 6" />
+                    <polyline points="8 6 2 12 8 18" />
+                  </svg>
+                </button>
+                <button class="btn-ghost platform-model-btn-icon" onclick="loadCodeBuddyModels()"
+                  title="刷新">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="23 4 23 10 17 10" />
+                    <polyline points="1 20 1 14 7 14" />
+                    <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+
+            <!-- 模型表格 -->
+            <div class="glass-card" style="overflow: hidden; margin-bottom: 20px;" id="cb-drop-zone"
+              ondragover="cbDragOver(event)" ondragleave="cbDragLeave(event)" ondrop="cbDrop(event)">
+              <div class="cb-model-empty" id="cb-model-empty"
+                style="display:none; padding:40px 20px; text-align:center;">
+                <div class="cb-empty-icon">
+                  <svg viewBox="0 0 24 24">
+                    <rect x="3" y="3" width="18" height="18" rx="2" />
+                    <line x1="9" y1="9" x2="15" y2="9" />
+                    <line x1="9" y1="13" x2="15" y2="13" />
+                    <line x1="9" y1="17" x2="13" y2="17" />
+                  </svg>
+                </div>
+                <div class="cb-empty-title">尚未配置自定义模型</div>
+                <div class="cb-empty-subtitle">添加第一个模型，让 CodeBuddy 使用你指定的 AI 供应商与模型能力。</div>
+                <button type="button" class="btn-primary cb-empty-action" onclick="openCodeBuddyAddModal()">
+                  <svg viewBox="0 0 24 24">
+                    <line x1="12" y1="5" x2="12" y2="19" />
+                    <line x1="5" y1="12" x2="19" y2="12" />
+                  </svg>
+                  添加模型
+                </button>
+                <div class="cb-empty-steps">
+                  <span class="cb-empty-step"><span class="cb-empty-step-num">1</span> 选择供应商</span>
+                  <span class="cb-empty-step"><span class="cb-empty-step-num">2</span> 勾选模型</span>
+                  <span class="cb-empty-step"><span class="cb-empty-step-num">3</span> 保存配置</span>
+                  <span class="cb-empty-step"><span class="cb-empty-step-num">或</span> 拖入 JSON</span>
+                </div>
+              </div>
+              <table class="cb-model-table" id="cb-model-table"
+                style="border: none; box-shadow: none; border-radius: 0;">
+                <colgroup>
+                  <col class="cb-col-select">
+                  <col class="cb-col-id">
+                  <col class="cb-col-vendor">
+                  <col class="cb-col-caps">
+                  <col class="cb-col-enabled">
+                  <col class="cb-col-action">
+                </colgroup>
+                <thead>
+                  <tr>
+                    <th class="cb-select-head"><input type="checkbox" id="cb-select-all" aria-label="选择当前列表"
+                        title="选择当前列表" onchange="toggleCbModelSelectAll('Cb', this.checked)"></th>
+                    <th>模型 ID</th>
+                    <th>供应商</th>
+                    <th>能力</th>
+                    <th>启用</th>
+                    <th>操作</th>
+                  </tr>
+                </thead>
+                <tbody id="cb-model-tbody"></tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- JSON 编辑器视图 -->
+          <div id="cb-json-view" class="glass-card" style="display:none; padding:20px;">
+            <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;">
+              <h2 style="font-size:14px; font-weight:700; margin:0;">JSON 编辑器</h2>
+              <div style="display:flex; gap:8px;">
+                <button class="btn-ghost" style="padding:4px 12px; font-size:12px;"
+                  onclick="formatCbJson()">格式化</button>
+                <button class="btn-primary" style="padding:4px 12px; font-size:12px;"
+                  onclick="applyCbJson()">应用</button>
+                <button class="btn-ghost" style="padding:4px 12px; font-size:12px;"
+                  onclick="toggleCbJsonEditor()">返回列表</button>
+              </div>
+            </div>
+            <div id="cb-json-editor-wrap" class="cb-json-editor-wrap model-json-panel">
+              <textarea id="cb-json-editor"
+                style="width:100%; min-height:400px; font-family:var(--font-mono); font-size:12px; line-height:1.6; padding:12px; border:1px solid var(--border-strong); border-radius:8px; background:var(--bg-glass); color:var(--text-primary); resize:vertical; tab-size:2;"
+                spellcheck="false"></textarea>
+              <div id="cb-json-error" style="display:none; margin-top:6px; font-size:12px; color:var(--danger);"></div>
+            </div>
+          </div>
+
+          <p class="platform-hint" style="margin:0 4px;">
+            配置文件路径（<span id="cb-config-scope-label">用户级</span>）：<code
+              id="cb-config-path-label">~/.codebuddy/models.json</code>。保存后会自动备份原文件。
+          </p>
+
+          <!-- 添加模型弹窗 -->
+          <div class="modal-overlay" id="cb-add-modal">
+            <div class="modal-container" style="max-width:560px; width:92%; padding:24px 28px;">
+              <div class="modal-header" style="justify-content:space-between;">
+                <div class="modal-title" style="display:flex; align-items:center; gap:10px;">
+                  <span
+                    style="width:32px; height:32px; display:inline-flex; align-items:center; justify-content:center; border-radius:9px; background:var(--cb-grad-soft); color:var(--accent); box-shadow:var(--shadow-sm);">
+                    <svg viewBox="0 0 24 24"
+                      style="width:16px; height:16px; stroke:currentColor; fill:none; stroke-width:2; stroke-linecap:round; stroke-linejoin:round;">
+                      <path d="M12 5v14M5 12h14" />
+                    </svg>
+                  </span>
+                  <span>从供应商添加模型</span>
+                </div>
+                <button class="modal-close" onclick="closeCodeBuddyAddModal()" aria-label="关闭">&times;</button>
+              </div>
+              <div style="padding:4px 0 16px;">
+                <div class="platform-field" style="margin-bottom:14px;">
+                  <label for="cb-add-provider">选择供应商</label>
+                  <select class="platform-provider-select" id="cb-add-provider" onchange="onCbAddProviderChange()"
+                    style="width:100%;">
+                    <option value="">-- 请选择 --</option>
+                  </select>
+                </div>
+                <div id="cb-add-models-wrap" style="display:none;">
+                  <div style="font-weight:600; font-size:13px; margin-bottom:8px; color:var(--text-secondary);">该供应商的模型
+                  </div>
+                  <div id="cb-add-models-list"
+                    style="max-height:240px; overflow-y:auto; border:1px solid var(--border-strong); border-radius:8px; padding:8px;">
+                  </div>
+                  <div style="margin-top:12px; padding-top:12px; border-top:1px solid var(--border-strong);">
+                    <div style="font-weight:600; font-size:13px; margin-bottom:8px; color:var(--text-secondary);">默认继承设置
+                    </div>
+                    <label
+                      style="display:inline-flex; align-items:center; gap:6px; margin-right:16px; font-size:13px; cursor:pointer;">
+                      <input type="checkbox" id="cb-add-tools" checked> 支持工具调用
+                    </label>
+                    <label
+                      style="display:inline-flex; align-items:center; gap:6px; margin-right:16px; font-size:13px; cursor:pointer;">
+                      <input type="checkbox" id="cb-add-images" checked> 支持图片
+                    </label>
+                    <label style="display:inline-flex; align-items:center; gap:6px; font-size:13px; cursor:pointer;">
+                      <input type="checkbox" id="cb-add-reasoning"> 支持推理
+                    </label>
+                  </div>
+                </div>
+              </div>
+              <div class="platform-actions" style="margin-top:0; justify-content:flex-end;">
+                <button class="btn-ghost" onclick="closeCodeBuddyAddModal()">取消</button>
+                <button class="btn-primary" id="cb-add-confirm" onclick="confirmAddCodeBuddyModels()"
+                  disabled>添加选中模型</button>
+              </div>
+            </div>
+          </div>
+        </div>
+

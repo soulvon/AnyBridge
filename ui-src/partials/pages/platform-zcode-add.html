@@ -1,0 +1,99 @@
+        <!-- ═══════ PAGE: PLATFORM · ZCODE · 添加模型（独立页面） ═══════ -->
+        <div class="page" id="page-platform-zcode-add" role="tabpanel" aria-labelledby="tab-platforms">
+          <div class="platform-console-hero model-add-hero glass-card">
+            <div class="platform-console-titlebar">
+              <button class="btn-ghost platform-console-back" onclick="navigateTo('platform-zcode')">← 返回</button>
+              <div class="platform-console-titlewrap">
+                <strong>添加模型 · ZCode</strong>
+              </div>
+            </div>
+          </div>
+
+          <div class="wb-add-layout">
+            <aside class="wb-add-sidebar glass-card">
+              <div class="wb-add-search">
+                <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" fill="none" stroke-width="2"
+                  stroke-linecap="round" stroke-linejoin="round">
+                  <circle cx="11" cy="11" r="8" />
+                  <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                </svg>
+                <input type="text" id="zc-add-search" placeholder="搜索供应商…" oninput="onZcAddSearch()">
+                <div class="provider-sort-control platform-add-sort-control" id="zcAddSortControl">
+                  <button type="button" class="provider-sort-trigger platform-add-sort-trigger" id="zcAddSortTrigger"
+                    onclick="toggleZcAddSort(event)" aria-haspopup="listbox" aria-expanded="false"
+                    aria-controls="zcAddSortMenu" aria-label="供应商排序" title="供应商排序">
+                    <svg class="provider-sort-icon" width="14" height="14" viewBox="0 0 24 24" fill="none"
+                      stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"
+                      aria-hidden="true">
+                      <path d="M8 3v18"></path>
+                      <path d="m4 7 4-4 4 4"></path>
+                      <path d="M16 21V3"></path>
+                      <path d="m20 17-4 4-4-4"></path>
+                    </svg>
+                    <span id="zcAddSortLabel">默认排序</span>
+                    <svg class="provider-sort-caret" width="13" height="13" viewBox="0 0 24 24" fill="none"
+                      stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"
+                      aria-hidden="true">
+                      <path d="m6 9 6 6 6-6"></path>
+                    </svg>
+                  </button>
+                  <div class="provider-sort-menu platform-add-sort-menu" id="zcAddSortMenu" role="listbox"
+                    aria-label="供应商排序">
+                    <button type="button" class="provider-sort-option platform-add-sort-option" role="option"
+                      data-sort-mode="default" onclick="chooseZcAddSortMode('default')">默认排序</button>
+                    <button type="button" class="provider-sort-option platform-add-sort-option" role="option"
+                      data-sort-mode="name-asc" onclick="chooseZcAddSortMode('name-asc')">名称正序</button>
+                    <button type="button" class="provider-sort-option platform-add-sort-option" role="option"
+                      data-sort-mode="name-desc" onclick="chooseZcAddSortMode('name-desc')">名称反序</button>
+                  </div>
+                </div>
+              </div>
+              <div class="wb-add-provider-list" id="zc-add-provider-list"></div>
+            </aside>
+
+            <section class="wb-add-main">
+              <div class="glass-card wb-add-models-card">
+                <div class="wb-add-models-head">
+                  <div>
+                    <div class="wb-add-models-title" id="zc-add-models-title">请选择供应商</div>
+                    <div class="wb-add-models-sub" id="zc-add-models-sub">左侧选择一个供应商，右侧将展示其可用模型</div>
+                  </div>
+                  <div style="display:flex; gap:8px;">
+                    <button class="btn-ghost" onclick="zcAddSelectAll()">全选</button>
+                    <button class="btn-ghost" onclick="zcAddSelectNone()">全不选</button>
+                    <button class="btn-primary" id="zc-add-confirm-page" onclick="confirmAddZcModelsPage()" disabled>
+                      <svg viewBox="0 0 24 24"
+                        style="width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;">
+                        <path d="M20 6L9 17l-5-5" />
+                      </svg>
+                      <span class="model-action-label"> 保存选择</span>
+                    </button>
+                  </div>
+                </div>
+                <div class="wb-add-models-body" id="zc-add-models-list-page">
+                  <div class="wb-add-models-empty">请从左侧选择一个供应商</div>
+                </div>
+              </div>
+
+              <div class="glass-card wb-add-caps-card zc-add-caps-card">
+                <div class="wb-add-caps-title zc-add-caps-title">能力</div>
+                <div class="wb-add-caps zc-add-caps">
+                  <label class="wb-add-cap-chip zc-add-cap-chip">
+                    <input type="checkbox" id="zc-add-page-images" checked>
+                    <span>图片</span>
+                  </label>
+                  <label class="wb-add-cap-chip zc-add-cap-chip">
+                    <input type="checkbox" id="zc-add-page-tools" checked>
+                    <span>工具</span>
+                  </label>
+                  <label class="wb-add-cap-chip zc-add-cap-chip">
+                    <input type="checkbox" id="zc-add-page-reasoning" checked>
+                    <span>推理</span>
+                  </label>
+                </div>
+              </div>
+
+            </section>
+          </div>
+        </div>
+

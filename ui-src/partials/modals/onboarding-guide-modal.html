@@ -1,0 +1,55 @@
+
+  <!-- 快速开始引导 -->
+  <div id="onboarding-guide-modal" class="modal-overlay onboarding-guide-overlay">
+    <div class="modal-container onboarding-guide-modal">
+      <div class="onboarding-guide-hero">
+        <div class="onboarding-guide-mark">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round"
+            stroke-linejoin="round" aria-hidden="true">
+            <path d="M12 2 3.5 7v10L12 22l8.5-5V7L12 2Z"></path>
+            <path d="M12 22V12"></path>
+            <path d="m3.5 7 8.5 5 8.5-5"></path>
+          </svg>
+        </div>
+        <div>
+          <div class="onboarding-guide-kicker">Quick Start</div>
+          <h2>把模型接入工作流，只需要四步</h2>
+          <p>按顺序配置供应商、模型映射、本地代理和平台接入。AnyBridge 会尽量保留原始配置，并把关键错误暴露出来方便排查。</p>
+        </div>
+        <button type="button" class="modal-close-icon onboarding-guide-close" onclick="closeOnboardingGuide()"
+          aria-label="关闭快速指南">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+            stroke-linecap="round" stroke-linejoin="round">
+            <path d="M18 6 6 18"></path>
+            <path d="m6 6 12 12"></path>
+          </svg>
+        </button>
+      </div>
+      <div class="onboarding-guide-steps">
+        <article class="onboarding-guide-step">
+          <span>01</span>
+          <strong>添加供应商</strong>
+          <p>填入 API Host、Key 和默认模型，确认协议类型能连通。</p>
+        </article>
+        <article class="onboarding-guide-step">
+          <span>02</span>
+          <strong>建立模型映射</strong>
+          <p>把 IDE 槽位映射到真实供应商模型，可按顺序添加备用目标。</p>
+        </article>
+        <article class="onboarding-guide-step">
+          <span>03</span>
+          <strong>启动本地代理</strong>
+          <p>统一暴露 OpenAI/Anthropic 兼容入口，并启用重试和日志。</p>
+        </article>
+        <article class="onboarding-guide-step">
+          <span>04</span>
+          <strong>接入平台</strong>
+          <p>为 Windsurf、Codex、Cursor 等平台写入配置，重启后生效。</p>
+        </article>
+      </div>
+      <div class="onboarding-guide-footer">
+        <button type="button" class="modal-btn modal-btn-cancel" onclick="closeOnboardingGuide()">稍后再看</button>
+        <button type="button" class="modal-btn modal-btn-confirm" onclick="finishOnboardingGuide()">开始配置</button>
+      </div>
+    </div>
+  </div>

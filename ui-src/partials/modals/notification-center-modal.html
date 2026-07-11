@@ -1,0 +1,59 @@
+
+  <!-- 通知中心 -->
+  <div id="notification-center-modal" class="modal-overlay notification-center-overlay">
+    <div class="modal-container notification-center-modal">
+      <div class="notification-center-header">
+        <div>
+          <div class="notification-center-kicker">Notifications</div>
+          <h2>通知与更新</h2>
+          <p>查看版本状态、GitHub 发布信息和更新提醒。</p>
+        </div>
+        <button type="button" class="modal-close-icon" onclick="closeNotificationCenter()" aria-label="关闭通知中心">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+            stroke-linecap="round" stroke-linejoin="round">
+            <path d="M18 6 6 18"></path>
+            <path d="m6 6 12 12"></path>
+          </svg>
+        </button>
+      </div>
+      <div class="notification-center-body">
+        <article class="notification-status-card">
+          <div class="notification-status-icon" id="notificationUpdateIcon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round"
+              stroke-linejoin="round" aria-hidden="true">
+              <path d="M21.5 2v6h-6"></path>
+              <path d="M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"></path>
+            </svg>
+          </div>
+          <div class="notification-status-main">
+            <div class="notification-status-row">
+              <span>当前版本</span>
+              <strong id="notificationCurrentVersion">—</strong>
+            </div>
+            <h3 id="notificationUpdateTitle">暂无新的通知</h3>
+            <p id="notificationUpdateDesc">还没有检测到可用更新。你可以手动检查 GitHub 发布页。</p>
+            <div class="notification-update-notes" id="notificationUpdateNotes" hidden>
+              <div class="notification-section-title">更新说明</div>
+              <pre id="notificationUpdateNotesText"></pre>
+            </div>
+          </div>
+        </article>
+        <div class="notification-changelog">
+          <article>
+            <span>Release Channel</span>
+            <ul>
+              <li>更新检查会连接 GitHub latest release。</li>
+              <li>如果网络不可达，错误会显示在设置页和代理日志中。</li>
+            </ul>
+          </article>
+        </div>
+      </div>
+      <div class="notification-center-footer">
+        <a class="modal-btn modal-btn-cancel notification-release-link"
+          href="https://github.com/soulvon/AnyBridge/releases/latest" target="_blank" rel="noreferrer">打开发布页</a>
+        <button type="button" class="modal-btn modal-btn-cancel" id="notificationCheckUpdateBtn"
+          onclick="checkUpdateFromNotificationCenter()">检查更新</button>
+        <button type="button" class="modal-btn modal-btn-confirm" onclick="closeNotificationCenter()">完成</button>
+      </div>
+    </div>
+  </div>
