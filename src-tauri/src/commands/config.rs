@@ -231,6 +231,12 @@ pub struct Provider {
     /// Codex 专有：是否 CDP 注入让 Desktop 显示所有模型（默认 true）
     #[serde(rename = "injectModels", default = "default_true")]
     pub inject_models: bool,
+    /// Codex 专有：保留官方登录态（requires_openai_auth=true），无需 CDP 注入即可显示官方模型
+    #[serde(rename = "preserveOfficialAuth", default)]
+    pub preserve_official_auth: bool,
+    /// Codex 专有：统一会话历史（切回官方时保留 model_provider 标签）
+    #[serde(rename = "unifySessionHistory", default = "default_true")]
+    pub unify_session_history: bool,
     /// Codex 专有：自定义模型目录
     #[serde(
         rename = "modelCatalog",
@@ -385,6 +391,13 @@ pub struct CodexConfig {
     /// 关 = Desktop 只能切换默认模型；CLI 不受影响。
     #[serde(rename = "injectModels", default = "default_true")]
     pub inject_models: bool,
+    /// 保留官方登录态（requires_openai_auth=true），无需 CDP 注入即可显示官方模型。
+    /// 仅适用于提供官方模型名的第三方渠道商。
+    #[serde(rename = "preserveOfficialAuth", default)]
+    pub preserve_official_auth: bool,
+    /// 统一会话历史：切回官方配置时保留 model_provider 标签，使官方与第三方会话历史在同一桶中显示。
+    #[serde(rename = "unifySessionHistory", default = "default_true")]
+    pub unify_session_history: bool,
     /// 自定义模型目录，让 Codex 显示自定义模型列表。
     #[serde(
         rename = "modelCatalog",
@@ -570,6 +583,8 @@ impl From<CodexConfig> for Provider {
             wire_api: config.wire_api,
             route_through_proxy: config.route_through_proxy,
             inject_models: config.inject_models,
+            preserve_official_auth: config.preserve_official_auth,
+            unify_session_history: config.unify_session_history,
             model_catalog: config.model_catalog,
             codex_chat_reasoning: config.codex_chat_reasoning,
             agents_config: config.agents_config,
@@ -600,6 +615,8 @@ impl From<OpenCodeConfig> for Provider {
             wire_api: String::new(),
             route_through_proxy: true,
             inject_models: true,
+            preserve_official_auth: false,
+            unify_session_history: true,
             model_catalog: Vec::new(),
             codex_chat_reasoning: None,
             agents_config: None,
@@ -630,6 +647,8 @@ impl From<ClaudeCodeConfig> for Provider {
             wire_api: String::new(),
             route_through_proxy: true,
             inject_models: true,
+            preserve_official_auth: false,
+            unify_session_history: true,
             model_catalog: Vec::new(),
             codex_chat_reasoning: None,
             agents_config: None,

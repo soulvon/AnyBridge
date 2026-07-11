@@ -40,8 +40,8 @@ pub fn run() {
 
             commands::system::build_tray(app.handle())?;
 
-            // 启动 Codex Desktop 常驻 watcher：检测到 Codex 在跑但无 CDP 时自动接管注入。
-            // 仅在自定义供应商态下工作，官方态空闲。
+            // 启动 Codex Desktop 常驻 watcher：检测到 Desktop UI 在跑但无 CDP 时自动接管注入。
+            // 仅在自定义供应商态 + injectModels 下工作；不会因 CLI/app-server 残留凭空启动 Desktop。
             commands::codex_desktop::spawn_codex_desktop_watcher(app.handle().clone());
 
             // 默认启动代理（AUTO_START_PROXY 默认为 true，可在设置里关闭）。
@@ -62,6 +62,10 @@ pub fn run() {
                     }
                 });
             }
+
+            // CPA 套件：已安装且开启「跟随软件启动」时自动拉起（默认开启）。
+            commands::extensions::maybe_auto_start_cpa_suite();
+
             Ok(())
         })
         .on_window_event(|window, event| {
@@ -103,6 +107,8 @@ pub fn run() {
             commands::extensions::extension_cpa_default_install_dir,
             commands::extensions::extension_cpa_install_dir,
             commands::extensions::extension_set_cpa_install_dir,
+            commands::extensions::extension_cpa_auto_start,
+            commands::extensions::extension_set_cpa_auto_start,
             commands::extensions::extension_list_mirrors,
             commands::extensions::extension_save_mirrors,
             commands::extensions::extension_speed_test_mirrors,
@@ -144,6 +150,7 @@ pub fn run() {
             commands::system::export_proxy_logs,
             commands::system::open_config_dir,
             commands::system::reveal_path,
+            commands::system::pick_directory,
             commands::system::generate_certs,
             commands::system::restart_ide,
             commands::system::detect_ide_path,

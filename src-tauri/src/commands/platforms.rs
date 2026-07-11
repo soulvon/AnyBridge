@@ -395,8 +395,13 @@ impl Platform {
                 } else {
                     String::new()
                 };
+                let auth_line = if p.preserve_official_auth {
+                    "requires_openai_auth = true".to_string()
+                } else {
+                    format!("requires_openai_auth = false\nexperimental_bearer_token = \"{masked}\"")
+                };
                 Ok(format!(
-                    "model = \"{model}\"\nmodel_provider = \"{CODEX_RUNTIME_MODEL_PROVIDER_ID}\"{catalog_line}\n\n[model_providers.{CODEX_RUNTIME_MODEL_PROVIDER_ID}]\nname = \"{name}\"\nbase_url = \"{base}\"\nwire_api = \"responses\"\nrequires_openai_auth = false\nexperimental_bearer_token = \"{masked}\"\n{CODEX_ANYBRIDGE_MANAGED_FLAG} = true"
+                    "model = \"{model}\"\nmodel_provider = \"{CODEX_RUNTIME_MODEL_PROVIDER_ID}\"{catalog_line}\n\n[model_providers.{CODEX_RUNTIME_MODEL_PROVIDER_ID}]\nname = \"{name}\"\nbase_url = \"{base}\"\nwire_api = \"responses\"\n{auth_line}\n{CODEX_ANYBRIDGE_MANAGED_FLAG} = true"
                 ))
             }
             Platform::CodeBuddy => {
@@ -575,12 +580,20 @@ impl Platform {
         // wire_api 始终为 "responses"：Codex 始终用 Responses API 与本地代理通信，
         // 由代理根据 provider 的 wireApi 配置决定是否转换为 Chat Completions。
         provider_table["wire_api"] = value("responses");
-        // requires_openai_auth = false：第三方 provider 使用 experimental_bearer_token
-        // 认证，而非 ChatGPT OAuth 登录。官方文档明确此字段仅适用于 OpenAI 内置 provider。
-        // 设为 true 会导致 Codex 忽略 bearer_token，改用 ChatGPT 令牌发送请求，第三方 API 拒绝。
-        provider_table["requires_openai_auth"] = value(false);
-        // 代理模式写 AnyBridge 本地代理 key；直连模式必须写供应商真实 key。
-        provider_table["experimental_bearer_token"] = value(bearer);
+        if p.preserve_official_auth {
+            // 保留官方登录模式：Codex 使用 auth.json 中的 OAuth token 认证，
+            // 模型选择器显示官方模型列表，无需 CDP 注入。
+            // 请求仍发往 base_url（本地代理），代理接受 OAuth token 并转发到第三方 API。
+            provider_table["requires_openai_auth"] = value(true);
+            provider_table.remove("experimental_bearer_token");
+        } else {
+            // requires_openai_auth = false：第三方 provider 使用 experimental_bearer_token
+            // 认证，而非 ChatGPT OAuth 登录。官方文档明确此字段仅适用于 OpenAI 内置 provider。
+            // 设为 true 会导致 Codex 忽略 bearer_token，改用 ChatGPT 令牌发送请求，第三方 API 拒绝。
+            provider_table["requires_openai_auth"] = value(false);
+            // 代理模式写 AnyBridge 本地代理 key；直连模式必须写供应商真实 key。
+            provider_table["experimental_bearer_token"] = value(bearer);
+        }
         provider_table[CODEX_ANYBRIDGE_MANAGED_FLAG] = value(true);
 
         // ── 模型目录：让 Codex 显示自定义模型列表 ──
@@ -602,7 +615,7 @@ impl Platform {
         finalize_codex_agents_files(path, agents_finalize)
     }
 
-    fn apply_codex_official(&self, path: &PathBuf) -> Result<(), String> {
+    fn apply_codex_official(&self, path: &PathBuf, unify_session_history: bool) -> Result<(), String> {
         let raw = if path.exists() {
             fs::read_to_string(path).map_err(|e| e.to_string())?
         } else {
@@ -612,33 +625,69 @@ impl Platform {
             .parse::<DocumentMut>()
             .map_err(|e| format!("config.toml 解析失败: {e}"))?;
 
-        // OpenAI Official uses Codex's built-in provider and auth.json login.
-        // Keep common settings, but remove the active third-party pointer.
-        doc.as_table_mut().remove("model");
-        doc.as_table_mut().remove("model_provider");
-        doc.as_table_mut().remove("model_catalog_json");
+        if unify_session_history {
+            // 统一会话历史模式：保留 model_provider = codex_local_access，
+            // 配置 provider 使用官方 OAuth 认证（requires_openai_auth=true），
+            // 不设 base_url（Codex 回落到官方端点），不写 bearer_token。
+            // 这样官方会话和第三方会话都在 codex_local_access 桶中。
+            doc["model_provider"] = value(CODEX_RUNTIME_MODEL_PROVIDER_ID);
+            // 移除第三方模型指针（让 Codex 使用官方默认模型）
+            doc.as_table_mut().remove("model");
+            doc.as_table_mut().remove("model_catalog_json");
 
-        // 删除可能存在的模型目录文件
-        let catalog_dir = path.parent().unwrap_or_else(|| Path::new("."));
-        let _ = fs::remove_file(catalog_dir.join(CODEX_MODEL_CATALOG_FILENAME));
+            let catalog_dir = path.parent().unwrap_or_else(|| Path::new("."));
+            let _ = fs::remove_file(catalog_dir.join(CODEX_MODEL_CATALOG_FILENAME));
 
-        let providers_empty = doc["model_providers"]
-            .as_table_mut()
-            .map(|providers| {
-                providers.remove(CODEX_LEGACY_MODEL_PROVIDER_ID);
-                let should_remove_runtime = providers
-                    .get(CODEX_RUNTIME_MODEL_PROVIDER_ID)
-                    .and_then(Item::as_table)
-                    .map(|table| toml_table_bool(table, CODEX_ANYBRIDGE_MANAGED_FLAG))
-                    .unwrap_or(false);
-                if should_remove_runtime {
-                    providers.remove(CODEX_RUNTIME_MODEL_PROVIDER_ID);
-                }
-                providers.is_empty()
-            })
-            .unwrap_or(false);
-        if providers_empty {
-            doc.as_table_mut().remove("model_providers");
+            let providers = doc
+                .entry("model_providers")
+                .or_insert(Item::Table(Table::new()))
+                .as_table_mut()
+                .ok_or_else(|| "config.toml 的 model_providers 不是表".to_string())?;
+            providers.set_implicit(true);
+            providers.remove(CODEX_LEGACY_MODEL_PROVIDER_ID);
+
+            let provider_table = providers
+                .entry(CODEX_RUNTIME_MODEL_PROVIDER_ID)
+                .or_insert(Item::Table(Table::new()))
+                .as_table_mut()
+                .ok_or_else(|| {
+                    format!("config.toml 的 model_providers.{CODEX_RUNTIME_MODEL_PROVIDER_ID} 不是表")
+                })?;
+            provider_table["name"] = value("OpenAI 官方");
+            provider_table["wire_api"] = value("responses");
+            provider_table["requires_openai_auth"] = value(true);
+            provider_table.remove("base_url");
+            provider_table.remove("experimental_bearer_token");
+            provider_table[CODEX_ANYBRIDGE_MANAGED_FLAG] = value(true);
+        } else {
+            // 原有行为：OpenAI Official uses Codex's built-in provider and auth.json login.
+            // Keep common settings, but remove the active third-party pointer.
+            doc.as_table_mut().remove("model");
+            doc.as_table_mut().remove("model_provider");
+            doc.as_table_mut().remove("model_catalog_json");
+
+            // 删除可能存在的模型目录文件
+            let catalog_dir = path.parent().unwrap_or_else(|| Path::new("."));
+            let _ = fs::remove_file(catalog_dir.join(CODEX_MODEL_CATALOG_FILENAME));
+
+            let providers_empty = doc["model_providers"]
+                .as_table_mut()
+                .map(|providers| {
+                    providers.remove(CODEX_LEGACY_MODEL_PROVIDER_ID);
+                    let should_remove_runtime = providers
+                        .get(CODEX_RUNTIME_MODEL_PROVIDER_ID)
+                        .and_then(Item::as_table)
+                        .map(|table| toml_table_bool(table, CODEX_ANYBRIDGE_MANAGED_FLAG))
+                        .unwrap_or(false);
+                    if should_remove_runtime {
+                        providers.remove(CODEX_RUNTIME_MODEL_PROVIDER_ID);
+                    }
+                    providers.is_empty()
+                })
+                .unwrap_or(false);
+            if providers_empty {
+                doc.as_table_mut().remove("model_providers");
+            }
         }
 
         let agents_finalize =
@@ -1258,11 +1307,9 @@ fn generate_model_catalog_json(entries: &[ModelCatalogEntry]) -> Result<String, 
                     .clone()
                     .expect("legacy_template verified above for non-bundled models");
                 let display_name = e.display_name.as_deref().unwrap_or(e.model.as_str());
-                let ctx = e.context_window.unwrap_or(
-                    obj.get("context_window")
-                        .and_then(|v| v.as_u64())
-                        .unwrap_or(128000),
-                );
+                let ctx = e.context_window.unwrap_or_else(|| {
+                    recommend_context_window(&e.model)
+                });
                 obj["slug"] = serde_json::json!(e.model);
                 obj["display_name"] = serde_json::json!(display_name);
                 obj["description"] = serde_json::json!(display_name);
@@ -2319,8 +2366,8 @@ fn codebuddy_model_entry(p: &Provider, api_key: &str) -> Value {
         "name": display_name,
         "vendor": p.name.trim(),
         "apiKey": api_key,
-        "maxInputTokens": 128000,
-        "maxOutputTokens": 8192,
+        "maxInputTokens": recommend_context_window(&model_id),
+        "maxOutputTokens": recommend_max_output_tokens(&model_id),
         "url": codebuddy_chat_url(p),
         "supportsToolCall": p.capabilities.tools || caps.tools,
         "supportsImages": p.capabilities.vision || caps.vision,
@@ -2351,8 +2398,8 @@ fn workbuddy_model_entry(p: &Provider, api_key: &str) -> Value {
         "name": model_name,
         "vendor": p.name.trim(),
         "apiKey": api_key,
-        "maxInputTokens": 128000,
-        "maxOutputTokens": 8192,
+        "maxInputTokens": recommend_context_window(&model_id),
+        "maxOutputTokens": recommend_max_output_tokens(&model_id),
         "url": codebuddy_chat_url(p),
         "useCustomProtocol": true,
         "supportsToolCall": p.capabilities.tools || caps.tools,
@@ -2534,6 +2581,252 @@ fn zcode_model_id(p: &Provider) -> String {
     }
 }
 
+/// 主流模型推荐上下文配置（与 ui/assets/model-context-presets.json 对齐）。
+/// 编译期嵌入 JSON，避免运行时路径/CWD 依赖与双份漂移。
+#[derive(Debug, Clone, serde::Deserialize)]
+struct ModelContextDefaults {
+    #[serde(rename = "maxInputTokens", default = "default_max_input")]
+    max_input_tokens: u64,
+    #[serde(rename = "maxOutputTokens", default = "default_max_output")]
+    max_output_tokens: u64,
+}
+
+fn default_max_input() -> u64 {
+    128_000
+}
+fn default_max_output() -> u64 {
+    8_192
+}
+
+impl Default for ModelContextDefaults {
+    fn default() -> Self {
+        Self {
+            max_input_tokens: default_max_input(),
+            max_output_tokens: default_max_output(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, serde::Deserialize)]
+struct ModelContextModelEntry {
+    id: Option<String>,
+    #[serde(rename = "match")]
+    match_field: Option<Vec<String>>,
+    #[serde(rename = "maxInputTokens")]
+    max_input_tokens: Option<u64>,
+    #[serde(rename = "maxOutputTokens")]
+    max_output_tokens: Option<u64>,
+}
+
+#[derive(Debug, Clone, serde::Deserialize)]
+struct ModelContextPatternEntry {
+    id: Option<String>,
+    #[serde(rename = "includesAny")]
+    includes_any: Option<Vec<String>>,
+    #[serde(rename = "requiresAny")]
+    requires_any: Option<Vec<String>>,
+    #[serde(rename = "maxInputTokens")]
+    max_input_tokens: Option<u64>,
+    #[serde(rename = "maxOutputTokens")]
+    max_output_tokens: Option<u64>,
+}
+
+#[derive(Debug, Clone, serde::Deserialize, Default)]
+struct ModelContextPresets {
+    #[serde(default)]
+    defaults: ModelContextDefaults,
+    #[serde(default)]
+    models: Vec<ModelContextModelEntry>,
+    #[serde(default)]
+    patterns: Vec<ModelContextPatternEntry>,
+}
+
+const MODEL_CONTEXT_PRESETS_JSON: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/resources/model-context-presets.json"
+));
+
+fn load_model_context_presets() -> ModelContextPresets {
+    match serde_json::from_str::<ModelContextPresets>(MODEL_CONTEXT_PRESETS_JSON) {
+        Ok(parsed) => parsed,
+        Err(err) => {
+            eprintln!(
+                "[model-context-presets] 内置 JSON 解析失败，回退默认值: {err}"
+            );
+            ModelContextPresets::default()
+        }
+    }
+}
+
+fn model_context_presets() -> &'static ModelContextPresets {
+    use std::sync::OnceLock;
+    static PRESETS: OnceLock<ModelContextPresets> = OnceLock::new();
+    PRESETS.get_or_init(load_model_context_presets)
+}
+
+fn normalize_model_id(model_id: &str) -> String {
+    model_id
+        .to_ascii_lowercase()
+        .chars()
+        .map(|c| if c.is_whitespace() { '-' } else { c })
+        .collect()
+}
+
+/// 短 token / 版本碎片：只允许精确或前缀匹配，避免 o1、m2.7、seed 误伤。
+fn is_ambiguous_token(token: &str) -> bool {
+    let t = token.to_ascii_lowercase();
+    if t.is_empty() || t.len() <= 3 {
+        return true;
+    }
+    if t.len() < 5 && !t.contains('-') && !t.contains('_') && !t.contains('/') {
+        return true;
+    }
+    // m2.7 / k2.5 / o1.5
+    let bytes = t.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() && bytes[i].is_ascii_alphabetic() {
+        i += 1;
+    }
+    if i > 2 {
+        return false;
+    }
+    if i == bytes.len() {
+        return false;
+    }
+    let rest = &t[i..];
+    if rest.is_empty() {
+        return false;
+    }
+    rest.chars().all(|c| c.is_ascii_digit() || c == '.')
+        && rest.contains('.')
+        && rest.chars().any(|c| c.is_ascii_digit())
+}
+
+fn is_boundary_char(c: char) -> bool {
+    !c.is_ascii_alphanumeric()
+}
+
+/// 边界匹配：token 必须是完整片段（两侧为非字母数字或边界）。
+fn token_matches(id: &str, token: &str) -> bool {
+    let t = token.to_ascii_lowercase();
+    if t.is_empty() {
+        return false;
+    }
+    if id == t {
+        return true;
+    }
+    if is_ambiguous_token(&t) {
+        return id.starts_with(&format!("{t}-"))
+            || id.starts_with(&format!("{t}."))
+            || id.starts_with(&format!("{t}_"));
+    }
+    let mut start = 0;
+    while let Some(rel) = id[start..].find(&t) {
+        let idx = start + rel;
+        let before_ok = idx == 0
+            || id[..idx]
+                .chars()
+                .next_back()
+                .map(is_boundary_char)
+                .unwrap_or(true);
+        let after_idx = idx + t.len();
+        let after_ok = after_idx >= id.len()
+            || id[after_idx..]
+                .chars()
+                .next()
+                .map(is_boundary_char)
+                .unwrap_or(true);
+        if before_ok && after_ok {
+            return true;
+        }
+        start = idx + 1;
+        if start >= id.len() {
+            break;
+        }
+    }
+    false
+}
+
+fn list_hit(id: &str, list: &[String]) -> bool {
+    list.iter().any(|token| token_matches(id, token))
+}
+
+fn score_match(id: &str, token: &str) -> i32 {
+    let t = token.to_ascii_lowercase();
+    if t.is_empty() {
+        return -1;
+    }
+    if id == t {
+        return 1000 + t.len() as i32;
+    }
+    if !token_matches(id, &t) {
+        return -1;
+    }
+    if id.starts_with(&t) {
+        return 200 + t.len() as i32;
+    }
+    100 + t.len() as i32
+}
+
+fn resolve_model_context_preset(model_id: &str) -> (u64, u64) {
+    let presets = model_context_presets();
+    let defaults = &presets.defaults;
+    let id = normalize_model_id(model_id);
+    if id.is_empty() {
+        return (defaults.max_input_tokens, defaults.max_output_tokens);
+    }
+
+    // 精确/边界模型表：取最高分
+    let mut best_score = -1;
+    let mut best_in = defaults.max_input_tokens;
+    let mut best_out = defaults.max_output_tokens;
+    for entry in &presets.models {
+        let tokens: Vec<String> = entry
+            .match_field
+            .clone()
+            .unwrap_or_else(|| entry.id.clone().into_iter().collect());
+        for token in tokens {
+            let score = score_match(&id, &token);
+            if score > best_score {
+                best_score = score;
+                best_in = entry.max_input_tokens.unwrap_or(defaults.max_input_tokens);
+                best_out = entry.max_output_tokens.unwrap_or(defaults.max_output_tokens);
+            }
+        }
+    }
+    if best_score >= 0 {
+        return (best_in, best_out);
+    }
+
+    // 模式表：按顺序首个命中
+    for entry in &presets.patterns {
+        let includes = entry.includes_any.clone().unwrap_or_default();
+        if includes.is_empty() || !list_hit(&id, &includes) {
+            continue;
+        }
+        let requires = entry.requires_any.clone().unwrap_or_default();
+        if !requires.is_empty() && !list_hit(&id, &requires) {
+            continue;
+        }
+        return (
+            entry.max_input_tokens.unwrap_or(defaults.max_input_tokens),
+            entry.max_output_tokens.unwrap_or(defaults.max_output_tokens),
+        );
+    }
+
+    (defaults.max_input_tokens, defaults.max_output_tokens)
+}
+
+/// 按模型 ID 推断推荐上下文窗口（优先读 model-context-presets.json）。
+fn recommend_context_window(model_id: &str) -> u64 {
+    resolve_model_context_preset(model_id).0
+}
+
+fn recommend_max_output_tokens(model_id: &str) -> u64 {
+    resolve_model_context_preset(model_id).1
+}
+
+
 fn zcode_provider_entry(p: &Provider, api_key: &str) -> Value {
     let model_id = zcode_model_id(p);
     let provider_name = if p.name.trim().is_empty() {
@@ -2552,12 +2845,13 @@ fn zcode_provider_entry(p: &Provider, api_key: &str) -> Value {
     } else {
         serde_json::json!(["text"])
     };
+    let context = recommend_context_window(&model_id);
 
     let mut model_meta = Map::new();
     model_meta.insert(
         "limit".to_string(),
         serde_json::json!({
-            "context": 128000,
+            "context": context,
         }),
     );
     model_meta.insert(
@@ -2804,7 +3098,7 @@ fn zcode_model_meta_from_model(model: &Value) -> (String, Value) {
     let max_input = model
         .get("maxInputTokens")
         .and_then(Value::as_u64)
-        .unwrap_or(128000);
+        .unwrap_or_else(|| recommend_context_window(&model_id));
     let mut meta = serde_json::json!({
         "name": display_name,
         "limit": { "context": max_input },
@@ -3579,6 +3873,7 @@ pub fn restore_claude_official_config(app: AppHandle) -> Result<SwitchResult, St
 #[tauri::command]
 pub fn restore_codex_official_config(app: AppHandle) -> Result<SwitchResult, String> {
     let plat = Platform::Codex;
+    let store = read_provider_store()?;
     emit_switch_progress(&app, plat.id(), "backup", "正在备份当前配置…");
     let path = plat
         .config_path()
@@ -3596,7 +3891,19 @@ pub fn restore_codex_official_config(app: AppHandle) -> Result<SwitchResult, Str
         emit_switch_progress(&app, plat.id(), "warning", warning);
     }
     emit_switch_progress(&app, plat.id(), "writing", "正在写入官方配置…");
-    plat.apply_codex_official(&path)?;
+    // 查找当前活跃的 Codex 配置，读取其 unify_session_history 标志（默认 true）
+    let unify_session_history = store
+        .platforms
+        .get(plat.id())
+        .and_then(|state| {
+            store
+                .codex_configs
+                .iter()
+                .find(|c| c.id == state.provider_id)
+        })
+        .map(|c| c.unify_session_history)
+        .unwrap_or(true);
+    plat.apply_codex_official(&path, unify_session_history)?;
     super::proxy_routes::write_codex_routes(&planned_routes)?;
     if let Some(routes) = legacy_cleanup_plan.routes.as_ref() {
         if let Err(e) = super::proxy_routes::write_routes(routes) {
@@ -3905,6 +4212,8 @@ mod tests {
             wire_api: String::new(),
             route_through_proxy: true,
             inject_models: true,
+            preserve_official_auth: false,
+            unify_session_history: true,
             model_catalog: Vec::new(),
             codex_chat_reasoning: None,
             agents_config: None,
@@ -3935,6 +4244,8 @@ mod tests {
             wire_api: String::new(),
             route_through_proxy: true,
             inject_models: true,
+            preserve_official_auth: false,
+            unify_session_history: true,
             model_catalog: Vec::new(),
             codex_chat_reasoning: None,
             agents_config: None,
@@ -4604,7 +4915,7 @@ wire_api = "responses"
         )
         .unwrap();
 
-        Platform::Codex.apply_codex_official(&path).unwrap();
+        Platform::Codex.apply_codex_official(&path, false).unwrap();
 
         let raw = fs::read_to_string(&path).unwrap();
         let doc = raw.parse::<DocumentMut>().unwrap();
@@ -4651,7 +4962,7 @@ wire_api = "responses"
         )
         .unwrap();
 
-        Platform::Codex.apply_codex_official(&path).unwrap();
+        Platform::Codex.apply_codex_official(&path, false).unwrap();
 
         let raw = fs::read_to_string(&path).unwrap();
         let doc = raw.parse::<DocumentMut>().unwrap();

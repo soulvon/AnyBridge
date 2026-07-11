@@ -427,6 +427,8 @@ pub fn import_providers(
             api_format: candidate.api_format,
             route_through_proxy: true,
             inject_models: true,
+            preserve_official_auth: false,
+            unify_session_history: true,
             enabled: true,
             models: unique_strings(candidate.models),
             capabilities: normalize_caps(candidate.capabilities),

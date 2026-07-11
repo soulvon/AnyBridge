@@ -292,13 +292,66 @@ pub fn open_config_dir(which: String) -> Result<(), String> {
     Ok(())
 }
 
+fn expand_user_path(path: &str) -> std::path::PathBuf {
+    let trimmed = path.trim();
+    if trimmed == "~" {
+        return dirs::home_dir().unwrap_or_else(|| std::path::PathBuf::from("."));
+    }
+    if let Some(rest) = trimmed
+        .strip_prefix("~/")
+        .or_else(|| trimmed.strip_prefix("~\\"))
+    {
+        if let Some(home) = dirs::home_dir() {
+            return home.join(rest);
+        }
+    }
+    std::path::PathBuf::from(trimmed)
+}
+
+/// 弹出系统文件夹选择对话框。取消返回 None。
+#[tauri::command]
+pub async fn pick_directory(
+    title: Option<String>,
+    default_path: Option<String>,
+) -> Result<Option<String>, String> {
+    let title = title
+        .unwrap_or_else(|| "选择文件夹".into())
+        .trim()
+        .to_string();
+    let default_path = default_path.unwrap_or_default().trim().to_string();
+
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut dialog = rfd::FileDialog::new().set_title(&title);
+        if !default_path.is_empty() {
+            let p = expand_user_path(&default_path);
+            if p.is_dir() {
+                dialog = dialog.set_directory(&p);
+            } else if let Some(parent) = p.parent() {
+                if parent.is_dir() {
+                    dialog = dialog.set_directory(parent);
+                }
+            }
+        }
+        Ok(dialog
+            .pick_folder()
+            .map(|p| p.to_string_lossy().to_string()))
+    })
+    .await
+    .map_err(|e| format!("打开文件夹选择对话框失败: {}", e))?
+}
+
 #[tauri::command]
 pub fn reveal_path(path: String) -> Result<(), String> {
-    let target = std::path::PathBuf::from(path);
-    let parent = target
-        .parent()
-        .ok_or_else(|| "无法获取配置文件所在目录".to_string())?
-        .to_path_buf();
+    let target = expand_user_path(&path);
+    // 文件：打开父目录；目录：直接打开
+    let parent = if target.is_dir() {
+        target
+    } else {
+        target
+            .parent()
+            .ok_or_else(|| "无法获取配置文件所在目录".to_string())?
+            .to_path_buf()
+    };
     reveal_path_impl(&parent)
 }
 

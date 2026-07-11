@@ -248,10 +248,26 @@ fn path_text(path: &Path) -> String {
     path.to_string_lossy().to_string()
 }
 
-#[derive(Debug, Default, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct CpaSettings {
     install_dir: Option<String>,
+    /// 是否跟随 AnyBridge 启动。未设置时默认 true。
+    #[serde(default = "default_cpa_auto_start")]
+    auto_start: bool,
+}
+
+impl Default for CpaSettings {
+    fn default() -> Self {
+        Self {
+            install_dir: None,
+            auto_start: true,
+        }
+    }
+}
+
+fn default_cpa_auto_start() -> bool {
+    true
 }
 
 fn cpa_settings_path() -> PathBuf {
@@ -281,6 +297,15 @@ fn read_cpa_settings() -> CpaSettings {
     CpaSettings::default()
 }
 
+fn write_cpa_settings(settings: &CpaSettings) -> Result<(), String> {
+    let path = cpa_settings_path();
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+    let json = serde_json::to_string_pretty(settings).map_err(|e| e.to_string())?;
+    super::write_atomic(&path, json.as_bytes())
+}
+
 fn current_cpa_install_root() -> PathBuf {
     let settings = read_cpa_settings();
     if let Some(dir) = settings.install_dir {
@@ -292,21 +317,25 @@ fn current_cpa_install_root() -> PathBuf {
     default_cpa_install_root()
 }
 
+fn is_cpa_auto_start_enabled() -> bool {
+    read_cpa_settings().auto_start
+}
+
 fn persist_cpa_install_dir(dir: &Path) -> Result<(), String> {
     let default = default_cpa_install_root();
-    let settings = CpaSettings {
-        install_dir: if dir == default.as_path() {
-            None
-        } else {
-            Some(path_text(dir))
-        },
+    let mut settings = read_cpa_settings();
+    settings.install_dir = if dir == default.as_path() {
+        None
+    } else {
+        Some(path_text(dir))
     };
-    let path = cpa_settings_path();
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent).map_err(|e| e.to_string())?;
-    }
-    let json = serde_json::to_string_pretty(&settings).map_err(|e| e.to_string())?;
-    super::write_atomic(&path, json.as_bytes())
+    write_cpa_settings(&settings)
+}
+
+fn persist_cpa_auto_start(enabled: bool) -> Result<(), String> {
+    let mut settings = read_cpa_settings();
+    settings.auto_start = enabled;
+    write_cpa_settings(&settings)
 }
 
 fn resolve_cpa_install_dir(install_dir: Option<String>) -> PathBuf {
@@ -1593,6 +1622,11 @@ pub async fn extension_uninstall_cpa_suite() -> Result<ExtensionServiceStatus, S
         .await
         .map_err(|e| e.to_string())??;
 
+    // 卸载后移除内置 CPA 供应商
+    let _ = tauri::async_runtime::spawn_blocking(remove_cpa_provider)
+        .await
+        .map_err(|e| e.to_string())?;
+
     Ok(scan_cpa_suite())
 }
 
@@ -1623,6 +1657,46 @@ pub async fn extension_set_cpa_install_dir(dir: String) -> Result<(), String> {
     }
     let path = PathBuf::from(dir.trim());
     persist_cpa_install_dir(&path)
+}
+
+#[tauri::command]
+pub async fn extension_cpa_auto_start() -> Result<bool, String> {
+    Ok(is_cpa_auto_start_enabled())
+}
+
+#[tauri::command]
+pub async fn extension_set_cpa_auto_start(enabled: bool) -> Result<bool, String> {
+    persist_cpa_auto_start(enabled)?;
+    Ok(enabled)
+}
+
+/// 应用启动时调用：若已安装且开启跟随启动，则后台拉起 CPA 套件。
+pub fn maybe_auto_start_cpa_suite() {
+    tauri::async_runtime::spawn(async move {
+        let enabled = tauri::async_runtime::spawn_blocking(is_cpa_auto_start_enabled)
+            .await
+            .unwrap_or(true);
+        if !enabled {
+            return;
+        }
+        let suite = match tauri::async_runtime::spawn_blocking(scan_cpa_suite).await {
+            Ok(s) => s,
+            Err(e) => {
+                eprintln!("[auto-start] 检测 CPA 状态失败: {}", e);
+                return;
+            }
+        };
+        if !suite.installed {
+            return;
+        }
+        if suite.status == "running" {
+            return;
+        }
+        match start_cpa_suite_async().await {
+            Ok(()) => eprintln!("[auto-start] CPA 套件已跟随启动"),
+            Err(e) => eprintln!("[auto-start] CPA 套件启动失败: {}", e),
+        }
+    });
 }
 
 #[tauri::command]
@@ -2450,45 +2524,55 @@ fn patch_cpamp_management_html(runtime_dir: &Path, admin_key: &str) -> Result<()
         .map_err(|e| format!("写入 management-auto.html 失败: {}", e))
 }
 
-/// 部署成功后自动将 CPA 添加为供应商，方便用户直接使用
+/// 部署/启动成功后自动将 CPA 添加为内置本地供应商（固定 id，排在 AnyBridge 后由前端处理）。
 fn auto_add_cpa_provider(api_key: &str) -> Result<(), String> {
     use crate::commands::config::{
         read_provider_store, write_provider_store, ApiFormat, Provider, ProviderCapabilities,
     };
 
     let mut store = read_provider_store()?;
-
-    // 检查是否已存在相同 host 的 CPA 供应商
     let cpa_host = "http://127.0.0.1:8317";
-    if store.providers.iter().any(|p| {
-        p.api_host.trim_end_matches('/').eq_ignore_ascii_case(cpa_host)
-            && p.api_key == api_key
-    }) {
-        return Ok(()); // 已存在，跳过
+    let cpa_id = "cpa-local";
+    let api_key = api_key.trim();
+    if api_key.is_empty() {
+        return Err("CPA API Key 为空，无法添加供应商。".into());
     }
 
-    // 生成唯一 ID 和名称
-    let base_id = "p-cpa-local";
-    let mut id = base_id.to_string();
-    let mut idx = 2;
-    while store.providers.iter().any(|p| p.id == id) {
-        id = format!("{}-{}", base_id, idx);
-        idx += 1;
+    // 已有固定 id：同步 host / key / 路径
+    if let Some(existing) = store.providers.iter_mut().find(|p| p.id == cpa_id) {
+        existing.name = "CPA".into();
+        existing.api_host = cpa_host.into();
+        existing.api_key = api_key.to_string();
+        if existing.api_path.as_deref().unwrap_or("").trim().is_empty() {
+            existing.api_path = Some("/v1".into());
+        }
+        existing.enabled = true;
+        return write_provider_store(&store);
     }
 
-    let mut name = "CPA (本地)".to_string();
-    let mut name_idx = 2;
-    while store.providers.iter().any(|p| p.name == name) {
-        name = format!("CPA (本地) ({})", name_idx);
-        name_idx += 1;
+    // 兼容旧版自动添加的 p-cpa-local*：升级为固定 id（不按 host 匹配，避免劫持用户自建供应商）
+    if let Some(existing) = store
+        .providers
+        .iter_mut()
+        .find(|p| p.id.starts_with("p-cpa-local"))
+    {
+        existing.id = cpa_id.into();
+        existing.name = "CPA".into();
+        existing.api_host = cpa_host.into();
+        existing.api_key = api_key.to_string();
+        if existing.api_path.as_deref().unwrap_or("").trim().is_empty() {
+            existing.api_path = Some("/v1".into());
+        }
+        existing.enabled = true;
+        return write_provider_store(&store);
     }
 
     let provider = Provider {
-        id,
-        name,
-        api_host: cpa_host.to_string(),
+        id: cpa_id.into(),
+        name: "CPA".into(),
+        api_host: cpa_host.into(),
         api_key: api_key.to_string(),
-        api_path: Some("/v1".to_string()),
+        api_path: Some("/v1".into()),
         default_model: String::new(),
         api_format: ApiFormat::Openai,
         enabled: true,
@@ -2499,14 +2583,29 @@ fn auto_add_cpa_provider(api_key: &str) -> Result<(), String> {
         wire_api: String::new(),
         route_through_proxy: true,
         inject_models: true,
+        preserve_official_auth: false,
+        unify_session_history: true,
         model_catalog: Vec::new(),
         codex_chat_reasoning: None,
         agents_config: None,
         agents: Vec::new(),
     };
 
-    store.providers.push(provider);
+    // 尽量插到列表前部（前端仍会把 AnyBridge 置顶、CPA 紧随其后）
+    store.providers.insert(0, provider);
     write_provider_store(&store)
+}
+
+fn remove_cpa_provider() -> Result<(), String> {
+    use crate::commands::config::{read_provider_store, write_provider_store};
+    let mut store = read_provider_store()?;
+    let before = store.providers.len();
+    // 只删系统自动管理的 CPA 条目，不按 host 误删用户自建供应商
+    store.providers.retain(|p| p.id != "cpa-local" && !p.id.starts_with("p-cpa-local"));
+    if store.providers.len() != before {
+        write_provider_store(&store)?;
+    }
+    Ok(())
 }
 
 fn write_secrets(root: &Path, secrets: &CpaSecrets) -> Result<(), String> {

@@ -4,17 +4,22 @@
 //
 // 职责（按用户选择：Rust 管生命周期 / sidecar 管 CDP 注入）：
 //   - 检测 Codex MSIX 安装信息（Get-AppxPackage）
-//   - kill Codex.exe（Stop-Process）
+//   - kill Codex Desktop 宿主（ChatGPT.exe / 旧版 Codex.exe）及其包内子进程
 //   - COM 激活 ApplicationActivationManager 带 --remote-debugging-port 启动
 //   - 轮询 CDP /json 就绪
 //   - 写 / 清理 ~/.codex/models_cache.json 注入项
 //   - 通过 sidecar /__byok/codex-cdp/inject 注入 6 点补丁
-//   - 常驻 watcher：检测到 Codex 在跑但无 CDP 时自动接管
+//   - 常驻 watcher：检测到 Desktop UI 在跑但无 CDP 时自动接管
 //
 // 仅支持 Windows。macOS/Linux 返回友好错误。
 //
 // 参考：CodexPlusPlus launcher.py (COM 激活 + kill)、app_paths.py (MSIX 检测)、
 //       CC-Switch spec §4.11-4.20 (CDP + models_cache 注入)。
+//
+// 进程识别注意（2026-07）：
+//   新版 Codex Desktop 宿主进程名是 ChatGPT.exe（路径含 OpenAI.Codex），
+//   包内 app-server 仍叫 codex.exe。不能再用「任意 codex.exe」判断 Desktop 在跑，
+//   否则 CLI / 残留 app-server / 第三方 adapter 会误触发 watcher 接管并弹窗。
 
 use crate::commands::config::{configured_proxy_ports, read_provider_store};
 use crate::commands::platforms::{
@@ -311,25 +316,68 @@ fn find_codex_msix() -> Result<CodexMsixInfo, String> {
 
 // ─── kill ────────────────────────────────────────────────────────────
 
-/// 杀掉所有 Codex.exe / codex.exe 进程，并确认退出。
+/// PowerShell：判断是否为 Codex Desktop 相关进程。
+/// - UI 宿主：ChatGPT.exe（路径/命令行含 OpenAI.Codex），或旧版 Electron 宿主 Codex.exe
+/// - 包内 helper：OpenAI.Codex 包下的 resources\codex.exe（app-server）
+/// 明确排除：npm CLI、codex-acp、cockpit-codex-adapter 等第三方进程。
 ///
-/// Stop-Process 不吞错；退出确认只轮询进程归零（9229 端口残留是 TIME_WAIT，
-/// 杀掉所有 Codex.exe / codex.exe 进程，并确认进程退出 + 9229 端口释放。
+/// 注意：Win32 进程名大小写不稳定，不能用 -ieq 'Codex.exe' 区分宿主与 app-server。
+/// app-server 特征：路径含 \resources\codex.exe，或命令行含 app-server。
+#[cfg(target_os = "windows")]
+const PS_CODEX_DESKTOP_PROCESS_FILTER: &str = r#"
+function Test-CodexDesktopProcess($proc, [switch]$UiHostOnly) {
+  if (-not $proc) { return $false }
+  $name = [string]$proc.Name
+  $path = if ($proc.ExecutablePath) { [string]$proc.ExecutablePath } else { '' }
+  $cmd = if ($proc.CommandLine) { [string]$proc.CommandLine } else { '' }
+  $blob = "$path $cmd"
+  $isOpenAiCodexPkg = $blob -match 'OpenAI\.Codex'
+
+  # 新版 Desktop 宿主：ChatGPT.exe（MSIX 包 OpenAI.Codex）
+  if ($name -ieq 'ChatGPT.exe' -and $isOpenAiCodexPkg) { return $true }
+
+  # Codex.exe / codex.exe：可能是旧版宿主，也可能是包内 app-server helper
+  if ($name -ieq 'Codex.exe' -or $name -ieq 'codex.exe') {
+    $isAppServerHelper = ($path -match '(?i)[\\/]resources[\\/]codex\.exe') -or ($cmd -match '(?i)app-server')
+    if ($isAppServerHelper) {
+      # 仅 kill/残留检测需要 helper；watcher 的「是否在跑」绝不能认 helper
+      return (-not $UiHostOnly) -and $isOpenAiCodexPkg
+    }
+    # 旧版 Desktop 宿主（Electron 主进程）
+    return $true
+  }
+  return $false
+}
+"#;
+
+/// 杀掉 Codex Desktop 宿主及其包内子进程，并确认退出。
 ///
-/// Stop-Process 不吞错；超时后再次尝试（Codex MSIX 多进程结构下，
+/// 必须覆盖 ChatGPT.exe（新版宿主）与旧版 Codex.exe；同时清理包内 codex.exe。
+/// 不碰 CLI / ACP / 第三方 adapter。
+///
+/// Stop-Process 不吞错；超时后再次尝试（MSIX 多进程结构下，
 /// 部分子进程需等父进程死后才能退出），再超时则暴露剩余 PID 供诊断。
 fn kill_codex() -> Result<(), String> {
     #[cfg(target_os = "windows")]
     {
         // 两轮 Stop-Process：第二轮针对第一轮残留的子进程（需等父进程死后才能退）
         for _ in 0..2 {
-            let script = r#"Get-CimInstance Win32_Process -Filter "Name='Codex.exe' OR Name='codex.exe'" | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }"#;
-            run_powershell(script)?;
+            let script = format!(
+                r#"{filter}
+Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object {{
+  Test-CodexDesktopProcess $_
+}} | ForEach-Object {{
+  Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue
+}}
+"#,
+                filter = PS_CODEX_DESKTOP_PROCESS_FILTER
+            );
+            run_powershell(&script)?;
             // 只等进程归零。9229 端口 TIME_WAIT 残留是 OS 正常状态，
             // launch_with_cdp 启动的新进程可复用同一端口（OS SO_REUSEADDR 行为）。
             let deadline = Instant::now() + Duration::from_secs(8);
             while Instant::now() < deadline {
-                if !codex_running() {
+                if !codex_desktop_processes_present() {
                     return Ok(());
                 }
                 std::thread::sleep(Duration::from_millis(500));
@@ -351,6 +399,7 @@ fn kill_codex() -> Result<(), String> {
         Err("Codex Desktop CDP 注入仅支持 Windows".to_string())
     }
 }
+
 
 // ─── COM 激活启动 ─────────────────────────────────────────────────────
 
@@ -856,12 +905,22 @@ fn sidecar_injection_present() -> bool {
     }
 }
 
-// ─── Codex.exe 是否在跑 ───────────────────────────────────────────────
+// ─── Codex Desktop 进程检测 ───────────────────────────────────────────
 
+/// Desktop UI 宿主是否在跑。
+/// 只认 ChatGPT.exe（OpenAI.Codex）或旧版 Codex.exe，不认包内 app-server / CLI。
+/// watcher 与「已在运行」判断必须用这个，避免冷启动误接管。
 #[cfg(target_os = "windows")]
 fn codex_running() -> bool {
-    let script = r#"(Get-CimInstance Win32_Process -Filter "Name='Codex.exe' OR Name='codex.exe'" -ErrorAction SilentlyContinue | Measure-Object).Count"#;
-    match run_powershell(script) {
+    let script = format!(
+        r#"{filter}
+@(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object {{
+  Test-CodexDesktopProcess $_ -UiHostOnly
+}}).Count
+"#,
+        filter = PS_CODEX_DESKTOP_PROCESS_FILTER
+    );
+    match run_powershell(&script) {
         Ok(s) => s.trim().parse::<u32>().unwrap_or(0) > 0,
         Err(_) => false,
     }
@@ -872,11 +931,35 @@ fn codex_running() -> bool {
     false
 }
 
-/// 列出仍存活的 Codex 进程 PID（kill 超时时用于诊断）
+/// Desktop 相关进程是否仍在（UI 宿主 + 包内 helper）。kill 等待用。
+#[cfg(target_os = "windows")]
+fn codex_desktop_processes_present() -> bool {
+    let script = format!(
+        r#"{filter}
+@(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object {{
+  Test-CodexDesktopProcess $_
+}}).Count
+"#,
+        filter = PS_CODEX_DESKTOP_PROCESS_FILTER
+    );
+    match run_powershell(&script) {
+        Ok(s) => s.trim().parse::<u32>().unwrap_or(0) > 0,
+        Err(_) => false,
+    }
+}
+
+/// 列出仍存活的 Codex Desktop 相关进程 PID（kill 超时时用于诊断）
 #[cfg(target_os = "windows")]
 fn remaining_codex_pids() -> String {
-    let script = r#"Get-CimInstance Win32_Process -Filter "Name='Codex.exe' OR Name='codex.exe'" -ErrorAction SilentlyContinue | Select-Object -ExpandProperty ProcessId"#;
-    match run_powershell(script) {
+    let script = format!(
+        r#"{filter}
+Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object {{
+  Test-CodexDesktopProcess $_
+}} | Select-Object -ExpandProperty ProcessId
+"#,
+        filter = PS_CODEX_DESKTOP_PROCESS_FILTER
+    );
+    match run_powershell(&script) {
         Ok(s) => s
             .lines()
             .filter(|l| l.trim().parse::<u32>().is_ok())
@@ -890,6 +973,7 @@ fn remaining_codex_pids() -> String {
 fn remaining_codex_pids() -> String {
     String::new()
 }
+
 
 // ─── 主命令：重启 Codex Desktop ───────────────────────────────────────
 
@@ -1151,10 +1235,13 @@ pub async fn start_codex_with_cdp(_inject_models: Option<bool>) -> CodexDesktopR
 
 // ─── 常驻 watcher（spec/31）────────────────────────────────────────────
 //
-// 检测 Codex 在跑但没注入（用户手动重开 / 页面刷新 patch 丢失），自动接管：
+// 检测 Codex Desktop UI 在跑但没注入（用户手动重开 / 页面刷新 patch 丢失），自动接管：
 //   - 9229 通但 patch 没 → 直接补 inject（不 kill）
 //   - 9229 不通 → kill + launch_with_cdp + inject
 // 冷却退避避免死循环：成功 15s，失败 30s。随 AnyBridge 运行，不独立常驻。
+//
+// 硬约束：只在 Desktop UI 宿主（ChatGPT.exe/OpenAI.Codex 或旧版 Codex.exe）在跑时工作。
+// 绝不因孤立的 codex.exe app-server / CLI / 第三方 adapter 去 launch Desktop。
 
 /// 启动常驻 watcher 后台线程。在 lib.rs setup 闭包里调一次。
 /// 仅 Windows 有意义（Codex Desktop MSIX + CDP）；其它平台直接 no-op。
@@ -1181,7 +1268,7 @@ const WATCHER_COOLDOWN_AFTER_SUCCESS: Duration = Duration::from_secs(5);
 #[cfg(target_os = "windows")]
 const WATCHER_COOLDOWN_AFTER_FAILURE: Duration = Duration::from_secs(30);
 
-/// watcher 主循环：每 5 秒检查一次。
+/// watcher 主循环：每 3 秒检查一次。
 #[cfg(target_os = "windows")]
 fn watch_loop(app: AppHandle) {
     let mut cooldown_until: Option<Instant> = None;
@@ -1194,13 +1281,14 @@ fn watch_loop(app: AppHandle) {
 /// 单次检查逻辑。
 /// watcher 只在"当前 Codex 配置需要 CDP 注入（injectModels=true）"时才工作。
 /// injectModels=false 时，整条 CDP 流程不触发——不检测 9229、不接管、不补注入。
+/// 且必须确认 Desktop UI 宿主在跑；仅有 app-server/CLI 不算。
 #[cfg(target_os = "windows")]
 fn run_watcher_tick(app: &AppHandle, cooldown_until: &mut Option<Instant>) {
     if !codex_needs_cdp_injection() {
         *cooldown_until = None;
         return;
     }
-    // Codex 没在跑，不接管
+    // Desktop UI 没在跑，不接管（绝不凭空 launch）
     if !codex_running() {
         *cooldown_until = None;
         return;
@@ -1239,8 +1327,8 @@ fn run_watcher_tick(app: &AppHandle, cooldown_until: &mut Option<Instant>) {
         return;
     }
 
-    // 9229 不通（用户手动重开，没带 CDP）→ takeover
-    eprintln!("[codex-desktop watcher] 检测到 Codex 未以 CDP 模式运行，自动接管…");
+    // 9229 不通（用户手动重开 Desktop，没带 CDP）→ takeover
+    eprintln!("[codex-desktop watcher] 检测到 Codex Desktop 未以 CDP 模式运行，自动接管…");
     let ok = takeover(app);
     if ok {
         eprintln!(
@@ -1256,6 +1344,7 @@ fn run_watcher_tick(app: &AppHandle, cooldown_until: &mut Option<Instant>) {
         *cooldown_until = Some(Instant::now() + WATCHER_COOLDOWN_AFTER_FAILURE);
     }
 }
+
 
 /// 接管：kill + 等 AppX 复位 + launch_with_cdp + 等CDP起来。
 /// inject 后台异步做（不阻塞 watcher），学 CodexPlusPlus 的 launcher 模式。
