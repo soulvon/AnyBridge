@@ -20,6 +20,8 @@
               <button type="button" class="proxy-console-tab active" data-proxy-panel="overview" aria-selected="true">概览</button>
               <button type="button" class="proxy-console-tab" data-proxy-panel="routes" aria-selected="false">模型列表</button>
               <button type="button" class="proxy-console-tab" data-proxy-panel="enhancement" aria-selected="false">代理增强</button>
+              <button type="button" class="proxy-console-tab" data-proxy-panel="stats" aria-selected="false">统计</button>
+              <button type="button" class="proxy-console-tab" data-proxy-panel="logs" aria-selected="false">日志</button>
             </div>
 
             <div class="proxy-console-section active" data-proxy-section="overview">
@@ -252,6 +254,14 @@
 
             <div class="proxy-console-section" data-proxy-section="enhancement">
               <div id="proxyEnhancementMount"></div>
+            </div>
+
+            <div class="proxy-console-section" data-proxy-section="stats">
+              <div id="proxyStatsMount" class="proxy-stats-mount"></div>
+            </div>
+
+            <div class="proxy-console-section" data-proxy-section="logs">
+              <div id="proxyLogsMount" class="proxy-logs-mount"></div>
             </div>
           </section>
         </div>

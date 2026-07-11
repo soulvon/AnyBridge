@@ -112,6 +112,22 @@
                         </label>
                       </label>
                       <p class="codex-config-toggle-hint">开启后 AnyBridge 向 Codex 桌面版注入解锁脚本，让所有模型在模型选择器里显示。关闭后 Codex 桌面版只能切换到默认模型，CLI 不受影响。</p>
+                      <label class="codex-config-toggle-row">
+                        <span class="codex-config-toggle-label">保留官方登录</span>
+                        <label class="switch">
+                          <input type="checkbox" id="codex-config-preserve-official-auth">
+                          <span class="slider"></span>
+                        </label>
+                      </label>
+                      <p class="codex-config-toggle-hint">开启后 Codex 桌面版使用 auth.json 中的官方 OAuth 登录态认证，模型选择器显示官方模型列表，无需 CDP 注入。请求仍经本地代理转发到第三方 API。仅适用于提供官方模型名的第三方渠道商。</p>
+                      <label class="codex-config-toggle-row">
+                        <span class="codex-config-toggle-label">统一会话历史</span>
+                        <label class="switch">
+                          <input type="checkbox" id="codex-config-unify-session-history" checked>
+                          <span class="slider"></span>
+                        </label>
+                      </label>
+                      <p class="codex-config-toggle-hint">开启后切回官方配置时保留 model_provider 标签，官方与第三方会话历史统一在同一个桶中显示。关闭后切回官方时会话历史回到默认 openai 桶。</p>
                     </div>
                   </section>
                   <section class="config-section">

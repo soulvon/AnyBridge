@@ -25,27 +25,6 @@
               <div class="extension-settings-panel" id="extensionSettingsPanel">
                 <div class="extension-settings-row">
                   <div class="extension-settings-label">
-                    <strong>安装目录</strong>
-                    <span id="extensionInstallDirText">读取中...</span>
-                  </div>
-                  <button type="button" class="btn-ghost" data-action="setCpaInstallDir">修改</button>
-                </div>
-                <div class="extension-settings-row">
-                  <div class="extension-settings-label">
-                    <strong>CPA 管理面板</strong>
-                    <span>打开 CPA Manager Plus 管理界面</span>
-                  </div>
-                  <button type="button" class="btn-ghost" data-action="handleExtensionAction" data-arg="open-cpamp">打开</button>
-                </div>
-                <div class="extension-settings-row">
-                  <div class="extension-settings-label">
-                    <strong>插件商店</strong>
-                    <span>打开 CPA 插件管理页面</span>
-                  </div>
-                  <button type="button" class="btn-ghost" data-action="handleExtensionAction" data-arg="open-cpamp-plugins">打开</button>
-                </div>
-                <div class="extension-settings-row">
-                  <div class="extension-settings-label">
                     <strong>刷新状态</strong>
                     <span>重新检测所有扩展的运行状态</span>
                   </div>
@@ -53,11 +32,12 @@
                 </div>
                 <div class="extension-settings-row">
                   <div class="extension-settings-label">
-                    <strong>检测更新</strong>
-                    <span>检查 CPA 套件是否有新版本</span>
+                    <strong>扩展日志</strong>
+                    <span>查看安装、启动、更新等操作记录</span>
                   </div>
-                  <button type="button" class="btn-ghost" data-action="checkCpaExtensionUpdates">检测</button>
+                  <button type="button" class="btn-ghost" data-action="openExtensionLogsFromSettings">打开</button>
                 </div>
+                <p class="extension-settings-hint">各扩展的安装目录、版本切换等专属配置，请在对应扩展卡片的「设置」中管理。</p>
               </div>
             </div>
             <div class="modal-footer">
@@ -65,4 +45,5 @@
             </div>
           </div>
         </div>
+
 

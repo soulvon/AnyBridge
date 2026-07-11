@@ -149,6 +149,7 @@
                   <col class="wb-col-select">
                   <col class="wb-col-id">
                   <col class="wb-col-vendor">
+                  <col class="wb-col-context">
                   <col class="wb-col-caps">
                   <col class="wb-col-enabled">
                   <col class="wb-col-action">
@@ -159,6 +160,7 @@
  title="选择当前列表" data-action="toggleCbModelSelectAll" data-events="change" data-args="[&quot;Wb&quot;]" data-pass-checked></th>
                     <th>模型 ID</th>
                     <th>供应商</th>
+                    <th>上下文</th>
                     <th>能力</th>
                     <th>启用</th>
                     <th>操作</th>
@@ -312,8 +314,8 @@
                 style="font-size:11px; font-weight:700; color:var(--text-muted); letter-spacing:0.5px; margin-bottom:12px; margin-top:8px;">
                 选填参数</div>
               <div class="cb-edit-field">
-                <label for="cb-edit-max-input">最大输入 Token</label>
-                <input type="number" id="cb-edit-max-input" placeholder="最大输入 token 数">
+                <label for="cb-edit-max-input">上下文窗口 (Token)</label>
+                <input type="number" id="cb-edit-max-input" placeholder="如 128000 / 500000 / 1000000">
               </div>
               <div class="cb-edit-field">
                 <label for="cb-edit-max-output">最大输出 Token</label>
