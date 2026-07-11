@@ -2,6 +2,19 @@
 
 All notable changes to AnyBridge will be documented in this file.
 
+## v0.3.0 - 2026-07-11
+
+- 重构前端架构：将 `index.html` 拆分为 partials 模板，引入轻量 HTML 构建流程（`scripts/build-ui.mjs`）。
+- 迁移内联事件处理器为 `data-action` 事件总线模式，前端脚本改为 ES Module 加载（`main.js`）。
+- 提取共享 API/UI/State 模块（P4 架构 slice），改善代码组织与可维护性。
+- 新增 model-context-presets 模型上下文预设功能，支持自定义模型上下文窗口配置。
+- 增强 Rust 后端命令模块：codex_desktop、platforms、extensions、system 命令全面升级。
+- 优化 local-proxy 代理逻辑，提升请求转发稳定性。
+- 更新平台页面与弹窗模板（CodeBuddy/Codex/Proxy/WorkBuddy/ZCode），改进 UI 交互体验。
+- 增强前端脚本：platforms、extensions、shell、runtime、providers-eval 等模块功能扩展。
+- 更新页面、弹窗、平台样式，优化视觉一致性。
+- 更新 gen-catalog 目录生成脚本，扩展目录构建能力。
+
 ## v0.2.8 - 2026-07-09
 
 - 新增扩展中心（Extensions Center）UI：统一浏览、检测、更新 CPA Suite 等本地 AI Gateway 组件状态。
