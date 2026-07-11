@@ -275,6 +275,7 @@ function syncIdeProxyButton() {
   btn.classList.remove('running', 'warning', 'is-connected');
   if (restoreBtn) {
     restoreBtn.textContent = '停止接入';
+    restoreBtn.classList.toggle('is-danger', patched);
     restoreBtn.disabled = !patched;
     restoreBtn.setAttribute('aria-label', patched ? `停止 ${label} 接入 AnyBridge` : `${label} 当前未接入`);
   }
