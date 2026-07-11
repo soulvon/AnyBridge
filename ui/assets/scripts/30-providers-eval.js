@@ -273,7 +273,7 @@ function builtinProviderBadgeHtml(p) {
     return '<span class="provider-builtin-badge">本地代理</span>';
   }
   if (isCpaLocalProvider(p)) {
-    return '<span class="provider-builtin-badge">本地</span>';
+    return '<span class="provider-builtin-badge">本地代理</span>';
   }
   return '';
 }

@@ -5594,7 +5594,7 @@ function renderCbAddProviderList() {
     return `
       <div class="cb-add-prov-item ${isActive ? 'active' : ''} ${enabled ? '' : 'disabled'} ${isLP ? 'is-local-proxy' : ''}" data-action="selectCbAddProvider" data-arg="${platformEsc(p.providerId)}">
         <span class="cb-add-prov-icon">${platformEsc(initial)}</span>
-        <span class="cb-add-prov-name">${platformEsc(p.providerName)}${isLP ? '<span class="cb-add-prov-badge">本地</span>' : ''}</span>
+        <span class="cb-add-prov-name">${platformEsc(p.providerName)}${isLP ? '<span class="cb-add-prov-badge">本地代理</span>' : ''}</span>
         <span class="cb-add-prov-count">${p.models.length}</span>
       </div>
     `;
@@ -6263,7 +6263,7 @@ function renderWbAddProviderList() {
     return `
       <div class="wb-add-prov-item ${isActive ? 'active' : ''} ${enabled ? '' : 'disabled'} ${isLP ? 'is-local-proxy' : ''}" data-action="selectWbAddProvider" data-arg="${platformEsc(p.providerId)}">
         <span class="wb-add-prov-icon">${platformEsc(initial)}</span>
-        <span class="wb-add-prov-name">${platformEsc(p.providerName)}${isLP ? '<span class="wb-add-prov-badge">本地</span>' : ''}</span>
+        <span class="wb-add-prov-name">${platformEsc(p.providerName)}${isLP ? '<span class="wb-add-prov-badge">本地代理</span>' : ''}</span>
         <span class="wb-add-prov-count">${p.models.length}</span>
       </div>
     `;
@@ -6535,7 +6535,7 @@ function renderZcAddProviderList() {
     return `
       <div class="wb-add-prov-item zc-add-prov-item ${isActive ? 'active' : ''} ${enabled ? '' : 'disabled'} ${isLP ? 'is-local-proxy' : ''}" data-action="selectZcAddProvider" data-arg="${platformEsc(p.providerId)}">
         <span class="wb-add-prov-icon zc-add-prov-icon">${platformEsc(initial)}</span>
-        <span class="wb-add-prov-name zc-add-prov-name">${platformEsc(p.providerName)}${isLP ? '<span class="wb-add-prov-badge zc-add-prov-badge">本地</span>' : ''}</span>
+        <span class="wb-add-prov-name zc-add-prov-name">${platformEsc(p.providerName)}${isLP ? '<span class="wb-add-prov-badge zc-add-prov-badge">本地代理</span>' : ''}</span>
         <span class="wb-add-prov-count zc-add-prov-count">${p.models.length}</span>
       </div>
     `;
