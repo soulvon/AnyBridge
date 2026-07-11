@@ -160,11 +160,46 @@ function authToken(req) {
   return String(req.headers['x-api-key'] || req.headers['x-goog-api-key'] || req.headers['api-key'] || '').trim();
 }
 
+function codexAuthJsonPath() {
+  const home = os.homedir();
+  return path.join(home, '.codex', 'auth.json');
+}
+
+let _cachedCodexToken = null;
+let _cachedCodexTokenMtime = 0;
+
+function readCodexOAuthToken() {
+  try {
+    const authPath = codexAuthJsonPath();
+    if (!fs.existsSync(authPath)) return null;
+    const stat = fs.statSync(authPath);
+    const mtime = stat.mtimeMs;
+    if (_cachedCodexToken && mtime === _cachedCodexTokenMtime) return _cachedCodexToken;
+    const raw = fs.readFileSync(authPath, 'utf8');
+    const json = JSON.parse(raw);
+    // Codex auth.json stores token as "Bearer xxx" in OPENAI_API_KEY or as access_token
+    const token = (json.OPENAI_API_KEY || json.access_token || '').replace(/^Bearer\s+/i, '').trim();
+    _cachedCodexToken = token || null;
+    _cachedCodexTokenMtime = mtime;
+    return _cachedCodexToken;
+  } catch {
+    return null;
+  }
+}
+
 function validateAuth(req) {
   const expected = String(readLocalConfig().LOCAL_PROXY_KEY || '').trim();
   if (!expected) return { ok: false, status: 503, message: 'AnyBridge 本地代理 key 尚未生成，请在代理页生成 key。' };
-  if (authToken(req) !== expected) return { ok: false, status: 401, message: 'AnyBridge 本地代理 key 无效。' };
-  return { ok: true };
+  const token = authToken(req);
+  if (token === expected) return { ok: true };
+  // Codex 保留官方登录模式：Codex 发送 OAuth token 而非 LOCAL_PROXY_KEY
+  // 对 /codex/ 路径的请求，接受 auth.json 中的 OAuth token
+  const p = pathnameOf(req);
+  if (String(p).startsWith('/codex/')) {
+    const oauthToken = readCodexOAuthToken();
+    if (oauthToken && token === oauthToken) return { ok: true };
+  }
+  return { ok: false, status: 401, message: 'AnyBridge 本地代理 key 无效。' };
 }
 
 // ─── 本地代理模型 ID 命名规则(跟 Devin 显示名设置一样:只存规则,运行时套用,不硬写 route.id)───
