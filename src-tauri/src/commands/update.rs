@@ -308,6 +308,16 @@ pub async fn download_and_install_update(app: AppHandle, relaunch: bool) -> Resu
 #[tauri::command]
 pub fn open_download_page() -> Result<(), String> {
     let url = "https://github.com/soulvon/AnyBridge/releases/latest";
+    open_url_internal(url)
+}
+
+/// 用系统默认浏览器打开指定 URL
+#[tauri::command]
+pub fn open_url(url: String) -> Result<(), String> {
+    open_url_internal(&url)
+}
+
+fn open_url_internal(url: &str) -> Result<(), String> {
     #[cfg(target_os = "windows")]
     {
         std::process::Command::new("cmd")

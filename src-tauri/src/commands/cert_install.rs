@@ -718,7 +718,22 @@ mod platform {
     }
 
     fn system_anchor_path() -> PathBuf {
+        // Debian/Ubuntu 默认路径（历史兼容）
         PathBuf::from("/usr/local/share/ca-certificates/anybridge-local-ca.crt")
+    }
+
+    /// 各发行版可能写入的系统 CA 落盘路径（探测/卸载时都要扫）。
+    fn system_anchor_candidates() -> Vec<PathBuf> {
+        vec![
+            PathBuf::from("/usr/local/share/ca-certificates/anybridge-local-ca.crt"),
+            PathBuf::from("/etc/pki/ca-trust/source/anchors/anybridge-local-ca.crt"),
+            PathBuf::from("/etc/ca-certificates/trust-source/anchors/anybridge-local-ca.crt"),
+            PathBuf::from("/usr/share/ca-certificates/anybridge-local-ca.crt"),
+        ]
+    }
+
+    fn find_existing_system_anchor() -> Option<PathBuf> {
+        system_anchor_candidates().into_iter().find(|p| p.exists())
     }
 
     fn command_text(out: std::process::Output) -> String {
@@ -797,27 +812,29 @@ mod platform {
     }
 
     pub fn is_in_store(cn: &str, current_user_only: bool) -> bool {
-        let path = if current_user_only {
-            match user_anchor_path() {
+        if current_user_only {
+            let path = match user_anchor_path() {
                 Ok(p) => p,
                 Err(_) => return false,
-            }
-        } else {
-            system_anchor_path()
-        };
-        cert_matches_cn(&path, cn)
+            };
+            return cert_matches_cn(&path, cn);
+        }
+        system_anchor_candidates()
+            .iter()
+            .any(|path| cert_matches_cn(path, cn))
     }
 
     pub fn is_thumbprint_in_store(thumbprint: &str, current_user_only: bool) -> bool {
-        let path = if current_user_only {
-            match user_anchor_path() {
+        if current_user_only {
+            let path = match user_anchor_path() {
                 Ok(p) => p,
                 Err(_) => return false,
-            }
-        } else {
-            system_anchor_path()
-        };
-        cert_matches_thumbprint(&path, thumbprint)
+            };
+            return cert_matches_thumbprint(&path, thumbprint);
+        }
+        system_anchor_candidates()
+            .iter()
+            .any(|path| cert_matches_thumbprint(path, thumbprint))
     }
 
     pub fn install_current_user(cert_path: &Path) -> Result<(), String> {
@@ -844,20 +861,50 @@ mod platform {
 
     pub fn install_local_machine_via_uac(cert_path: &Path) -> Result<(), String> {
         require_command(
-            "update-ca-certificates",
-            "当前实现使用 Debian/Ubuntu 风格的 update-ca-certificates；其他发行版请先安装对应工具或手动导入 CA。",
-        )?;
-        require_command(
             "install",
             "缺少 coreutils install 命令，无法复制系统级 CA 文件。",
         )?;
-        let anchor = system_anchor_path();
-        let script = format!(
-            "install -m 0644 {} {} && update-ca-certificates",
-            shell_quote(&cert_path.to_string_lossy()),
-            shell_quote(&anchor.to_string_lossy())
-        );
-        run_pkexec_script(&script)
+        let cert_q = shell_quote(&cert_path.to_string_lossy());
+
+        // Debian/Ubuntu: update-ca-certificates
+        if command_exists("update-ca-certificates") {
+            let anchor = system_anchor_path();
+            let script = format!(
+                "install -m 0644 {} {} && update-ca-certificates",
+                cert_q,
+                shell_quote(&anchor.to_string_lossy())
+            );
+            return run_pkexec_script(&script);
+        }
+
+        // Fedora/RHEL/CentOS: update-ca-trust
+        if command_exists("update-ca-trust") {
+            let pki = PathBuf::from("/etc/pki/ca-trust/source/anchors/anybridge-local-ca.crt");
+            let script = format!(
+                "install -m 0644 {} {} && update-ca-trust extract",
+                cert_q,
+                shell_quote(&pki.to_string_lossy())
+            );
+            return run_pkexec_script(&script);
+        }
+
+        // Arch: trust extract-compat after placing in /etc/ca-certificates/trust-source/anchors
+        if command_exists("trust") {
+            let arch_anchor = PathBuf::from(
+                "/etc/ca-certificates/trust-source/anchors/anybridge-local-ca.crt",
+            );
+            let script = format!(
+                "install -D -m 0644 {} {} && trust extract-compat",
+                cert_q,
+                shell_quote(&arch_anchor.to_string_lossy())
+            );
+            return run_pkexec_script(&script);
+        }
+
+        Err(
+            "未找到系统 CA 更新工具。请安装 update-ca-certificates（Debian/Ubuntu）、update-ca-trust（Fedora/RHEL）或 p11-kit trust（Arch）后重试。"
+                .into(),
+        )
     }
 
     pub fn uninstall_from_store(_cn: &str, current_user: bool) -> Result<(), String> {
@@ -873,30 +920,35 @@ mod platform {
             }
             Ok(())
         } else {
-            require_command(
-                "update-ca-certificates",
-                "当前实现使用 Debian/Ubuntu 风格的 update-ca-certificates；其他发行版请先安装对应工具或手动更新 CA。",
-            )?;
-            let anchor = system_anchor_path();
-            let script = format!(
-                "rm -f {} && update-ca-certificates",
-                shell_quote(&anchor.to_string_lossy())
-            );
-            run_pkexec_script(&script)
+            uninstall_local_machine_thumbprint_via_uac("")
         }
     }
 
     pub fn uninstall_local_machine_thumbprint_via_uac(_thumbprint: &str) -> Result<(), String> {
-        require_command(
-            "update-ca-certificates",
-            "当前实现使用 Debian/Ubuntu 风格的 update-ca-certificates；其他发行版请先安装对应工具或手动更新 CA。",
-        )?;
-        let anchor = system_anchor_path();
-        let script = format!(
-            "rm -f {} && update-ca-certificates",
-            shell_quote(&anchor.to_string_lossy())
-        );
-        run_pkexec_script(&script)
+        let rm_paths = system_anchor_candidates()
+            .iter()
+            .map(|p| format!("rm -f {}", shell_quote(&p.to_string_lossy())))
+            .collect::<Vec<_>>()
+            .join(" && ");
+
+        if command_exists("update-ca-certificates") {
+            let script = format!("{rm_paths} && update-ca-certificates");
+            return run_pkexec_script(&script);
+        }
+        if command_exists("update-ca-trust") {
+            let script = format!("{rm_paths} && update-ca-trust extract");
+            return run_pkexec_script(&script);
+        }
+        if command_exists("trust") {
+            let script = format!("{rm_paths} && trust extract-compat");
+            return run_pkexec_script(&script);
+        }
+
+        // 至少删掉已知落盘文件
+        if find_existing_system_anchor().is_some() {
+            return run_pkexec_script(&rm_paths);
+        }
+        Ok(())
     }
 
     pub fn uninstall_thumbprint_from_store(

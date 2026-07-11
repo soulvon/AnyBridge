@@ -654,6 +654,18 @@ pub fn builtin_models() -> Vec<IdeModel> {
             "anthropic",
             true,
         ),
+        m(
+            "claude-opus-4-6-1m",
+            "Claude Opus 4.6 1M",
+            "anthropic",
+            false,
+        ),
+        m(
+            "claude-opus-4-6-thinking-1m",
+            "Claude Opus 4.6 Thinking 1M",
+            "anthropic",
+            false,
+        ),
         m("claude-sonnet-4-6", "Claude Sonnet 4.6", "anthropic", true),
         m(
             "claude-sonnet-4-6-thinking",
@@ -795,12 +807,71 @@ pub fn builtin_models() -> Vec<IdeModel> {
             "anthropic",
             false,
         ),
-        // Claude 5
-        ma(
-            "claude-5-fable-medium",
-            "Claude 5 Fable Medium",
+        // Claude Sonnet 5
+        m(
+            "claude-sonnet-5-low",
+            "Claude Sonnet 5 Low",
+            "anthropic",
+            false,
+        ),
+        m(
+            "claude-sonnet-5-medium",
+            "Claude Sonnet 5 Medium",
             "anthropic",
             true,
+        ),
+        m(
+            "claude-sonnet-5-high",
+            "Claude Sonnet 5 High",
+            "anthropic",
+            false,
+        ),
+        m(
+            "claude-sonnet-5-xhigh",
+            "Claude Sonnet 5 XHigh",
+            "anthropic",
+            false,
+        ),
+        m(
+            "claude-sonnet-5-max",
+            "Claude Sonnet 5 Max",
+            "anthropic",
+            false,
+        ),
+        // Claude Fable 5
+        ma(
+            "claude-5-fable-low",
+            "Claude Fable 5 Low",
+            "anthropic",
+            false,
+            "claude-5-fable",
+        ),
+        ma(
+            "claude-5-fable-medium",
+            "Claude Fable 5 Medium",
+            "anthropic",
+            true,
+            "claude-5-fable",
+        ),
+        ma(
+            "claude-5-fable-high",
+            "Claude Fable 5 High",
+            "anthropic",
+            false,
+            "claude-5-fable",
+        ),
+        ma(
+            "claude-5-fable-xhigh",
+            "Claude Fable 5 XHigh",
+            "anthropic",
+            false,
+            "claude-5-fable",
+        ),
+        ma(
+            "claude-5-fable-max",
+            "Claude Fable 5 Max",
+            "anthropic",
+            false,
             "claude-5-fable",
         ),
         // BYOK 变体
@@ -846,6 +917,7 @@ pub fn builtin_models() -> Vec<IdeModel> {
             "anthropic",
             false,
         ),
+
         // ── OpenAI GPT / O 系列 ──
         m("MODEL_PRIVATE_6", "GPT-5 Low Thinking", "openai", true),
         m("MODEL_PRIVATE_7", "GPT-5 Medium Thinking", "openai", true),
@@ -1285,8 +1357,20 @@ pub fn builtin_models() -> Vec<IdeModel> {
         // ── 其他厂商 ──
         m("kimi-k2-5", "Kimi K2.5", "other", false),
         m("kimi-k2-6", "Kimi K2.6", "other", false),
+        m("kimi-k2-7", "Kimi K2.7", "other", true),
         m("minimax-m2-5", "MiniMax M2.5", "other", false),
         m("glm-5-1", "GLM-5.1", "other", false),
+        m("glm-5-2-none", "GLM-5.2 No Thinking", "other", false),
+        m(
+            "glm-5-2-none-1m",
+            "GLM-5.2 No Thinking 1M",
+            "other",
+            false,
+        ),
+        m("glm-5-2", "GLM-5.2 High", "other", true),
+        m("glm-5-2-1m", "GLM-5.2 High 1M", "other", false),
+        m("glm-5-2-max", "GLM-5.2 Max", "other", false),
+        m("glm-5-2-max-1m", "GLM-5.2 Max 1M", "other", false),
         m("deepseek-v4", "DeepSeek V4 Pro", "other", false),
         // ── Windsurf 自研 ──
         ma("MODEL_SWE_1_5", "SWE-1.5", "windsurf", true, "swe-1p5"),
@@ -1299,9 +1383,16 @@ pub fn builtin_models() -> Vec<IdeModel> {
         ),
         m("swe-1-6", "SWE-1.6", "windsurf", true),
         m("swe-1-6-fast", "SWE-1.6 Fast", "windsurf", false),
+        m(
+            "swe-1-7-lightning",
+            "SWE-1.7 Lightning",
+            "windsurf",
+            true,
+        ),
         m("MODEL_CHAT_11121", "Windsurf Fast", "windsurf", false),
     ]
 }
+
 
 // ─── Tauri 命令 ──────────────────────────────────────────────
 

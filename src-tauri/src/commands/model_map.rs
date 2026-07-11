@@ -31,7 +31,7 @@ fn default_unlock_scope() -> String {
 }
 
 fn default_slot_visibility_mode() -> String {
-    "mapped".to_string()
+    "official".to_string()
 }
 
 fn default_enhancement() -> EnhancementConfig {

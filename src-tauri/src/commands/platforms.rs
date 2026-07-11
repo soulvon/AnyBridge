@@ -396,7 +396,7 @@ impl Platform {
                     String::new()
                 };
                 Ok(format!(
-                    "model = \"{model}\"\nmodel_provider = \"{CODEX_RUNTIME_MODEL_PROVIDER_ID}\"{catalog_line}\n\n[model_providers.{CODEX_RUNTIME_MODEL_PROVIDER_ID}]\nname = \"{name}\"\nbase_url = \"{base}\"\nwire_api = \"responses\"\nrequires_openai_auth = true\nexperimental_bearer_token = \"{masked}\"\n{CODEX_ANYBRIDGE_MANAGED_FLAG} = true"
+                    "model = \"{model}\"\nmodel_provider = \"{CODEX_RUNTIME_MODEL_PROVIDER_ID}\"{catalog_line}\n\n[model_providers.{CODEX_RUNTIME_MODEL_PROVIDER_ID}]\nname = \"{name}\"\nbase_url = \"{base}\"\nwire_api = \"responses\"\nrequires_openai_auth = false\nexperimental_bearer_token = \"{masked}\"\n{CODEX_ANYBRIDGE_MANAGED_FLAG} = true"
                 ))
             }
             Platform::CodeBuddy => {
@@ -548,6 +548,10 @@ impl Platform {
         }
         doc["model_provider"] = value(CODEX_RUNTIME_MODEL_PROVIDER_ID);
 
+        // service_tier 是 OpenAI 官方专属字段（Pro/Fast 等计费层级），
+        // 第三方 API 不支持此参数，残留会导致 Codex 请求被拒、无法对话。
+        doc.as_table_mut().remove("service_tier");
+
         // 确保 [model_providers] 是表，再写入统一的 Codex local access 子表。
         let providers = doc
             .entry("model_providers")
@@ -571,7 +575,10 @@ impl Platform {
         // wire_api 始终为 "responses"：Codex 始终用 Responses API 与本地代理通信，
         // 由代理根据 provider 的 wireApi 配置决定是否转换为 Chat Completions。
         provider_table["wire_api"] = value("responses");
-        provider_table["requires_openai_auth"] = value(true);
+        // requires_openai_auth = false：第三方 provider 使用 experimental_bearer_token
+        // 认证，而非 ChatGPT OAuth 登录。官方文档明确此字段仅适用于 OpenAI 内置 provider。
+        // 设为 true 会导致 Codex 忽略 bearer_token，改用 ChatGPT 令牌发送请求，第三方 API 拒绝。
+        provider_table["requires_openai_auth"] = value(false);
         // 代理模式写 AnyBridge 本地代理 key；直连模式必须写供应商真实 key。
         provider_table["experimental_bearer_token"] = value(bearer);
         provider_table[CODEX_ANYBRIDGE_MANAGED_FLAG] = value(true);
@@ -990,6 +997,110 @@ const CODEX_RUNTIME_MODEL_PROVIDER_ID: &str = "codex_local_access";
 const CODEX_LEGACY_MODEL_PROVIDER_ID: &str = "byok";
 const CODEX_PROXY_ROUTE_SOURCE_PREFIX: &str = "codex:";
 
+// ─── Bundled Codex 客户端模型目录（从 cockpit-tools v1.1.4 移植） ──────────
+//
+// 新版 Codex 客户端（含 GPT-5.6 系列）使用 bundled catalog 提供完整模型定义，
+// 不依赖运行时读取 ~/.codex/models_cache.json。旧版客户端仍走 models_cache 逻辑。
+const CODEX_BUNDLED_CATALOG_JSON: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/resources/codex/codex_client_models.json"
+));
+const CODEX_BUNDLED_CATALOG_TEMPLATE_SLUG: &str = "gpt-5.5";
+
+fn codex_bundled_catalog() -> &'static Value {
+    static CATALOG: std::sync::OnceLock<Value> = std::sync::OnceLock::new();
+    CATALOG.get_or_init(|| {
+        serde_json::from_str(CODEX_BUNDLED_CATALOG_JSON)
+            .expect("Bundled codex_client_models.json should be valid")
+    })
+}
+
+/// 从 bundled catalog 提取 model_overrides 中的所有模型 slug（新版模型列表）。
+fn codex_bundled_model_ids() -> &'static HashSet<String> {
+    static IDS: std::sync::OnceLock<HashSet<String>> = std::sync::OnceLock::new();
+    IDS.get_or_init(|| {
+        codex_bundled_catalog()
+            .get("model_overrides")
+            .and_then(Value::as_array)
+            .map(|models| {
+                models
+                    .iter()
+                    .filter_map(|m| m.get("slug").and_then(Value::as_str))
+                    .map(str::trim)
+                    .filter(|s| !s.is_empty())
+                    .map(ToString::to_string)
+                    .collect()
+            })
+            .unwrap_or_default()
+    })
+}
+
+/// 判断一个模型 slug 是否在 bundled catalog 的 model_overrides 中（即"新版"模型）。
+pub(crate) fn is_codex_bundled_model(slug: &str) -> bool {
+    codex_bundled_model_ids()
+        .iter()
+        .any(|id| id.eq_ignore_ascii_case(slug))
+}
+
+/// 从 bundled catalog 查找模型模板。
+///
+/// 1. 先在 `models` 数组中精确匹配 slug（如 gpt-5.5, gpt-5.4 等已有完整定义的模型）
+/// 2. 若未找到，用 gpt-5.5 作为基础模板，再从 `model_overrides` 中查找并合并覆盖字段
+///    （如 gpt-5.6-sol, gpt-5.6-terra, gpt-5.6-luna 等新模型）
+/// 3. 若 model_overrides 中也没有，返回 gpt-5.5 模板（is_catalog_model = false）
+///
+/// 返回 (模型 JSON, 是否为 catalog 中已存在的完整模型定义)。
+pub(crate) fn codex_bundled_model_template(model_id: &str) -> (Value, bool) {
+    let payload = codex_bundled_catalog();
+    let models = payload
+        .get("models")
+        .and_then(Value::as_array)
+        .expect("Bundled catalog should include models array");
+
+    // 1. 精确匹配
+    if let Some(model) = models.iter().find(|m| {
+        m.get("slug")
+            .and_then(Value::as_str)
+            .is_some_and(|slug| slug.eq_ignore_ascii_case(model_id))
+    }) {
+        return (model.clone(), true);
+    }
+
+    // 2. 用 gpt-5.5 做基础模板，合并 model_overrides
+    let default_model = models
+        .iter()
+        .find(|m| {
+            m.get("slug").and_then(Value::as_str) == Some(CODEX_BUNDLED_CATALOG_TEMPLATE_SLUG)
+        })
+        .cloned()
+        .expect("Bundled catalog should include gpt-5.5 template");
+
+    if let Some(model_override) = payload
+        .get("model_overrides")
+        .and_then(Value::as_array)
+        .and_then(|overrides| {
+            overrides.iter().find(|m| {
+                m.get("slug")
+                    .and_then(Value::as_str)
+                    .is_some_and(|slug| slug.eq_ignore_ascii_case(model_id))
+            })
+        })
+    {
+        let mut model = default_model;
+        if let (Some(target), Some(override_obj)) =
+            (model.as_object_mut(), model_override.as_object())
+        {
+            for (key, value) in override_obj {
+                target.insert(key.clone(), value.clone());
+            }
+        }
+        return (model, true);
+    }
+
+    // 3. 未知模型，返回 gpt-5.5 模板
+    (default_model, false)
+}
+
 /// 读取 `~/.codex/models_cache.json` 的第一个模型条目作为 deep-clone 模板。
 ///
 /// Codex CLI 对模型目录做严格 schema 校验（30+ 字段：base_instructions、
@@ -1086,42 +1197,80 @@ fn is_codex_official_template_candidate(
 
 /// 生成 Codex 模型目录 JSON 内容。
 ///
-/// 从 `~/.codex/models_cache.json` 读取官方 gpt-5.5 完整条目作为模板，
-/// 对每个自定义模型做 deep-clone 后**只覆盖** 6 个字段：
-///   slug, display_name, description, context_window, max_context_window, priority
-/// 其它 26 个字段（base_instructions / model_messages / comp_hash / input_modalities 等）
-/// 全部从官方模板继承，保证 Codex CLI 严格校验通过。
+/// **新版逻辑（cockpit-tools v1.1.4 移植）**：如果模型 slug 在 bundled catalog 的
+/// `model_overrides` 中（如 gpt-5.6-sol/terra/luna），直接使用 bundled catalog 的完整
+/// 模型定义（含 supported_reasoning_levels、service_tiers、multi_agent_version 等），
+/// 不依赖运行时 `~/.codex/models_cache.json`。
+///
+/// **旧版逻辑（保持兼容）**：如果模型 slug 不在 bundled catalog 中（用户自定义模型或
+/// 旧版 Codex 模型），从 `~/.codex/models_cache.json` 读取官方 gpt-5.5 完整条目作为模板，
+/// deep-clone 后只覆盖 6 个字段：slug, display_name, description, context_window,
+/// max_context_window, priority。其余 26+ 字段从官方模板继承。
 ///
 /// 返回 Err 让上层（apply_codex → UI）显示明确错误：
-/// 失败时**不静默退化**（debug-first 原则），用户能立即看到"models_cache.json 不可读"。
+/// 失败时**不静默退化**（debug-first 原则）。
 fn generate_model_catalog_json(entries: &[ModelCatalogEntry]) -> Result<String, String> {
-    let template = read_codex_model_template().ok_or_else(|| {
-        "无法读取 ~/.codex/models_cache.json（Codex 官方模型缓存）。\n\
-         请先启动一次 Codex CLI 让其生成此文件，然后重新切换供应商。\n\
-         路径: ~/.codex/models_cache.json"
-            .to_string()
-    })?;
+    // 旧版模板：仅在存在非 bundled 模型时才需要读取 models_cache.json
+    let has_legacy_models = entries.iter().any(|e| !is_codex_bundled_model(&e.model));
+    let legacy_template: Option<serde_json::Value> = if has_legacy_models {
+        Some(read_codex_model_template().ok_or_else(|| {
+            "无法读取 ~/.codex/models_cache.json（Codex 官方模型缓存）。\n\
+             请先启动一次 Codex CLI 让其生成此文件，然后重新切换供应商。\n\
+             路径: ~/.codex/models_cache.json"
+                .to_string()
+        })?)
+    } else {
+        None
+    };
 
     let models: Vec<serde_json::Value> = entries
         .iter()
         .enumerate()
         .map(|(i, e)| {
-            let mut obj = template.clone();
-            let display_name = e.display_name.as_deref().unwrap_or(e.model.as_str());
-            let ctx = e.context_window.unwrap_or(
-                obj.get("context_window")
-                    .and_then(|v| v.as_u64())
-                    .unwrap_or(128000),
-            );
-            // 只覆盖这 6 个字段，其余 26+ 字段（base_instructions / model_messages /
-            // comp_hash / input_modalities / supports_search_tool 等）从官方模板继承。
-            obj["slug"] = serde_json::json!(e.model);
-            obj["display_name"] = serde_json::json!(display_name);
-            obj["description"] = serde_json::json!(display_name);
-            obj["context_window"] = serde_json::json!(ctx);
-            obj["max_context_window"] = serde_json::json!(ctx);
-            obj["priority"] = serde_json::json!(1000 + i);
-            obj
+            if is_codex_bundled_model(&e.model) {
+                // ── 新版逻辑：使用 bundled catalog 完整定义 ──
+                let (mut model, _) = codex_bundled_model_template(&e.model);
+                let obj = model
+                    .as_object_mut()
+                    .expect("Bundled model template should be a JSON object");
+
+                obj["priority"] = serde_json::json!(1000 + i);
+
+                if let Some(dn) = &e.display_name {
+                    if !dn.is_empty() {
+                        obj["display_name"] = serde_json::json!(dn);
+                    }
+                }
+                if let Some(ctx) = e.context_window {
+                    obj["context_window"] = serde_json::json!(ctx);
+                    obj["max_context_window"] = serde_json::json!(ctx);
+                }
+
+                obj.insert("supported_in_api".to_string(), Value::Bool(true));
+                if !obj.contains_key("visibility") {
+                    obj.insert("visibility".to_string(), Value::String("list".to_string()));
+                }
+
+                model
+            } else {
+                // ── 旧版逻辑：从 models_cache.json 模板 deep-clone ──
+                let mut obj = legacy_template
+                    .clone()
+                    .expect("legacy_template verified above for non-bundled models");
+                let display_name = e.display_name.as_deref().unwrap_or(e.model.as_str());
+                let ctx = e.context_window.unwrap_or(
+                    obj.get("context_window")
+                        .and_then(|v| v.as_u64())
+                        .unwrap_or(128000),
+                );
+                obj["slug"] = serde_json::json!(e.model);
+                obj["display_name"] = serde_json::json!(display_name);
+                obj["description"] = serde_json::json!(display_name);
+                obj["context_window"] = serde_json::json!(ctx);
+                obj["max_context_window"] = serde_json::json!(ctx);
+                obj["priority"] = serde_json::json!(1000 + i);
+                obj
+            }
         })
         .collect();
 
@@ -4240,6 +4389,37 @@ config_file = "./anybridge-agents/old-agent.toml"
         assert!(dir.join("old-agent.toml").exists());
         let raw = fs::read_to_string(&path).unwrap();
         assert!(raw.contains("[agents.old-agent]"));
+
+        let _ = fs::remove_dir_all(path.parent().unwrap());
+    }
+
+    #[test]
+    fn apply_codex_removes_service_tier_when_switching_to_third_party() {
+        let path = temp_config_path("codex-remove-service-tier");
+        fs::write(
+            &path,
+            r#"
+model = "gpt-5.6-sol"
+model_provider = "openai"
+service_tier = "default"
+
+[model_providers.openai]
+name = "OpenAI"
+"#,
+        )
+        .unwrap();
+
+        let provider = test_openai_provider();
+        Platform::Codex.apply_codex(&path, &provider).unwrap();
+
+        let raw = fs::read_to_string(&path).unwrap();
+        let doc = raw.parse::<DocumentMut>().unwrap();
+        assert!(doc.get("service_tier").is_none(),
+            "service_tier should be removed when switching to third-party provider");
+        assert_eq!(
+            doc["model_provider"].as_str(),
+            Some(CODEX_RUNTIME_MODEL_PROVIDER_ID)
+        );
 
         let _ = fs::remove_dir_all(path.parent().unwrap());
     }

@@ -226,9 +226,14 @@ pub fn set_autostart(enabled: bool) -> Result<(), String> {
 
         if enabled {
             std::fs::create_dir_all(&autostart_dir).map_err(|e| e.to_string())?;
+            // Desktop Entry Spec: Exec 值中的空格/引号需要转义
+            let exec = format!(
+                "\"{}\"",
+                exe.replace('\\', "\\\\").replace('"', "\\\"")
+            );
             let desktop_content = format!(
-                "[Desktop Entry]\nType=Application\nName=AnyBridge\nExec={}\nHidden=false\n",
-                exe
+                "[Desktop Entry]\nType=Application\nName=AnyBridge\nExec={}\nHidden=false\nX-GNOME-Autostart-enabled=true\n",
+                exec
             );
             std::fs::write(&desktop_path, desktop_content)
                 .map_err(|e| format!("写入 .desktop 失败: {}", e))?;
@@ -283,7 +288,22 @@ pub fn open_config_dir(which: String) -> Result<(), String> {
         "certs" => base.join("certs"),
         _ => base,
     };
-    std::fs::create_dir_all(&target).map_err(|e| e.to_string())?;
+    reveal_path_impl(&target)?;
+    Ok(())
+}
+
+#[tauri::command]
+pub fn reveal_path(path: String) -> Result<(), String> {
+    let target = std::path::PathBuf::from(path);
+    let parent = target
+        .parent()
+        .ok_or_else(|| "无法获取配置文件所在目录".to_string())?
+        .to_path_buf();
+    reveal_path_impl(&parent)
+}
+
+fn reveal_path_impl(target: &std::path::Path) -> Result<(), String> {
+    std::fs::create_dir_all(target).map_err(|e| e.to_string())?;
     #[cfg(target_os = "windows")]
     {
         std::process::Command::new("explorer")
@@ -294,14 +314,14 @@ pub fn open_config_dir(which: String) -> Result<(), String> {
     #[cfg(target_os = "macos")]
     {
         std::process::Command::new("open")
-            .arg(&target)
+            .arg(target)
             .spawn()
             .map_err(|e| e.to_string())?;
     }
     #[cfg(target_os = "linux")]
     {
         std::process::Command::new("xdg-open")
-            .arg(&target)
+            .arg(target)
             .spawn()
             .map_err(|e| e.to_string())?;
     }
@@ -794,7 +814,7 @@ pub(crate) fn find_ide_app(target: &str) -> Option<std::path::PathBuf> {
     None
 }
 
-/// 探测 IDE 可执行文件（Linux），支持 Windsurf 和 Devin。
+/// 探测 IDE 可执行文件（Linux），支持 Windsurf / Devin / Cursor。
 #[cfg(target_os = "linux")]
 pub(crate) fn find_ide_bin(target: &str) -> Option<std::path::PathBuf> {
     use std::path::PathBuf;
@@ -817,15 +837,59 @@ pub(crate) fn find_ide_bin(target: &str) -> Option<std::path::PathBuf> {
         Some(p)
     };
 
-    let candidates = [
-        format!("/usr/share/{}/{}", dir_name.to_lowercase(), bin_name),
+    let lower = dir_name.to_lowercase();
+    let mut candidates = vec![
+        format!("/usr/share/{}/{}", lower, bin_name),
+        format!("/usr/share/{}/bin/{}", lower, bin_name),
         format!("/usr/bin/{}", bin_name),
         format!("/opt/{}/{}", dir_name, bin_name),
+        format!("/opt/{}/{}", lower, bin_name),
+        format!("/opt/{}/bin/{}", dir_name, bin_name),
+        format!("/opt/{}/bin/{}", lower, bin_name),
         format!("/snap/bin/{}", bin_name),
     ];
+    if let Some(home) = dirs::home_dir() {
+        candidates.push(
+            home.join(".local")
+                .join("bin")
+                .join(bin_name)
+                .to_string_lossy()
+                .into_owned(),
+        );
+        candidates.push(
+            home.join(".local")
+                .join("share")
+                .join(&lower)
+                .join(bin_name)
+                .to_string_lossy()
+                .into_owned(),
+        );
+        candidates.push(
+            home.join(".local")
+                .join("share")
+                .join(&lower)
+                .join("bin")
+                .join(bin_name)
+                .to_string_lossy()
+                .into_owned(),
+        );
+    }
+    // which 回退（PATH 上的真实安装）
+    if let Ok(out) = Command::new("sh")
+        .args(["-c", &format!("command -v {} 2>/dev/null", bin_name)])
+        .output()
+    {
+        if out.status.success() {
+            let path = String::from_utf8_lossy(&out.stdout).trim().to_string();
+            if !path.is_empty() {
+                candidates.push(path);
+            }
+        }
+    }
+
     for c in candidates {
         let p = PathBuf::from(&c);
-        if p.exists() {
+        if p.exists() && is_ide_bin_for_target(target, &p) {
             return cache_and_return(p);
         }
     }
@@ -1047,14 +1111,19 @@ fn restart_ide_impl(target: String) -> Result<String, String> {
     {
         let app = find_ide_app(&t)
             .ok_or_else(|| format!("未找到 {}.app，请手动重启", ide_dir_name(&t)))?;
-        let proc_name = match t.as_str() {
-            "devin" => "Devin",
-            "cursor" => "Cursor",
-            _ => "Windsurf",
-        };
 
-        // macOS: 用 killall 杀主进程及同名子进程，比 pkill -x 更可靠
-        let _ = Command::new("killall").args([proc_name]).output();
+        // 优先按路径过滤后的 PID 杀（覆盖 Devin 主进程仍叫 Windsurf 的情况）。
+        // 回退 killall 仅用安全进程名，绝不因 Devin 去 killall Windsurf。
+        let pids = unix_ide_pids(&t);
+        if pids.is_empty() {
+            for name in unix_ide_fallback_kill_names(&t) {
+                let _ = Command::new("killall").args([name]).output();
+            }
+        } else {
+            for pid in pids {
+                let _ = Command::new("kill").args(["-9", &pid.to_string()]).output();
+            }
+        }
 
         // 等待进程退出，最多 3 秒
         let mut dead = false;
@@ -1085,13 +1154,23 @@ fn restart_ide_impl(target: String) -> Result<String, String> {
     {
         let bin = find_ide_bin(&t)
             .ok_or_else(|| format!("未找到 {} 可执行文件，请手动重启", ide_dir_name(&t)))?;
-        let proc_name = match t.as_str() {
-            "devin" => "devin",
-            "cursor" => "cursor",
-            _ => "windsurf",
-        };
 
-        let _ = Command::new("pkill").args(["-x", proc_name]).output();
+        let pids = unix_ide_pids(&t);
+        if pids.is_empty() {
+            for name in unix_ide_fallback_kill_names(&t) {
+                let _ = Command::new("pkill").args(["-x", name]).output();
+            }
+            // Devin 主进程可能不叫 devin：仅按路径/包名子串兜底，避免 -f windsurf 误杀
+            if t == "devin" {
+                let _ = Command::new("pkill")
+                    .args(["-f", "[/ ][Dd]evin([/ .]|$)"])
+                    .output();
+            }
+        } else {
+            for pid in pids {
+                let _ = Command::new("kill").args(["-9", &pid.to_string()]).output();
+            }
+        }
 
         // 等待进程退出，最多 3 秒
         let mut dead = false;
@@ -1134,6 +1213,182 @@ pub async fn restart_ide(target: String) -> Result<String, String> {
 
 // ═══════ IDE DETECTION ═══════
 
+/// Unix 上「按进程名」回退杀进程时允许的名字。
+/// 注意：Devin 绝不能把 Windsurf 放进回退列表——路径未命中时 killall Windsurf 会误杀真·Windsurf。
+/// Devin 主进程若仍叫 Windsurf，必须靠 unix_ide_pids 的路径过滤命中 PID。
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+fn unix_ide_fallback_kill_names(target: &str) -> &'static [&'static str] {
+    match target {
+        "cursor" => {
+            #[cfg(target_os = "macos")]
+            {
+                &["Cursor"]
+            }
+            #[cfg(target_os = "linux")]
+            {
+                &["cursor", "Cursor"]
+            }
+        }
+        "devin" => {
+            #[cfg(target_os = "macos")]
+            {
+                &["Devin"]
+            }
+            #[cfg(target_os = "linux")]
+            {
+                &["devin", "Devin"]
+            }
+        }
+        _ => {
+            #[cfg(target_os = "macos")]
+            {
+                &["Windsurf"]
+            }
+            #[cfg(target_os = "linux")]
+            {
+                &["windsurf", "Windsurf"]
+            }
+        }
+    }
+}
+
+/// pgrep 回退探测用的进程名（可比 kill 回退更宽，但仍避免 Devin↔Windsurf 互误）。
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+fn unix_ide_process_names(target: &str) -> &'static [&'static str] {
+    match target {
+        "cursor" => unix_ide_fallback_kill_names("cursor"),
+        "devin" => {
+            #[cfg(target_os = "macos")]
+            {
+                // 探测可以包含 Windsurf，但 is_ide_running 里对 windsurf 名会 continue 跳过
+                &["Devin"]
+            }
+            #[cfg(target_os = "linux")]
+            {
+                &["devin", "Devin"]
+            }
+        }
+        _ => unix_ide_fallback_kill_names("windsurf"),
+    }
+}
+
+/// 返回匹配目标 IDE 的 PID 列表（Unix）。
+/// Devin 用安装路径/`devin` 路径片段过滤，避免误杀 Windsurf。
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+fn unix_ide_pids(target: &str) -> Vec<u32> {
+    use std::collections::HashSet;
+
+    let mut pids = HashSet::new();
+    let install_hint = match target {
+        "devin" => find_ide_app_or_bin_path("devin")
+            .map(|p| p.to_string_lossy().to_lowercase())
+            .unwrap_or_else(|| "devin".into()),
+        "cursor" => find_ide_app_or_bin_path("cursor")
+            .map(|p| p.to_string_lossy().to_lowercase())
+            .unwrap_or_else(|| "cursor".into()),
+        _ => find_ide_app_or_bin_path("windsurf")
+            .map(|p| p.to_string_lossy().to_lowercase())
+            .unwrap_or_else(|| "windsurf".into()),
+    };
+
+    // ps 输出：PID COMMAND
+    let out = Command::new("ps")
+        .args(["-ax", "-o", "pid=,command="])
+        .output();
+    let Ok(out) = out else {
+        return Vec::new();
+    };
+    if !out.status.success() {
+        return Vec::new();
+    }
+    let text = String::from_utf8_lossy(&out.stdout);
+    for line in text.lines() {
+        let line = line.trim();
+        if line.is_empty() {
+            continue;
+        }
+        let mut parts = line.splitn(2, char::is_whitespace);
+        let Some(pid_str) = parts.next() else { continue };
+        let Some(cmd) = parts.next() else { continue };
+        let Ok(pid) = pid_str.trim().parse::<u32>() else {
+            continue;
+        };
+        let cmd_l = cmd.to_lowercase();
+
+        let matched = match target {
+            "cursor" => {
+                // 收紧：避免匹配任意含 cursor 的路径（如文档、其它工具）
+                cmd_l.contains("cursor.app/")
+                    || cmd_l.contains("cursor.app ")
+                    || cmd_l.contains("/cursor.app")
+                    || cmd_l.contains("/cursor/")
+                    || cmd_l.ends_with("/cursor")
+                    || cmd_l.contains("/cursor ")
+            }
+            "devin" => {
+                // 排除 Windsurf 扩展里的 devin 子进程
+                if cmd_l.contains("extensions/windsurf/devin")
+                    || cmd_l.contains("extensions\\windsurf\\devin")
+                {
+                    false
+                } else if !install_hint.is_empty()
+                    && install_hint != "devin"
+                    && cmd_l.contains(&install_hint)
+                {
+                    // 已探测到安装路径时，优先按安装路径匹配（覆盖主进程名为 Windsurf）
+                    true
+                } else {
+                    cmd_l.contains("devin.app/")
+                        || cmd_l.contains("devin.app ")
+                        || cmd_l.contains("/devin.app")
+                        || cmd_l.contains("/devin/")
+                        || cmd_l.ends_with("/devin")
+                        || cmd_l.contains("/devin ")
+                }
+            }
+            _ => {
+                // Windsurf：命中 windsurf，但排除 Devin 安装路径
+                let looks_devin = cmd_l.contains("devin.app")
+                    || cmd_l.contains("/devin/")
+                    || cmd_l.contains("/devin ")
+                    || cmd_l.ends_with("/devin")
+                    || (cmd_l.contains("devin")
+                        && !cmd_l.contains("extensions/windsurf/devin")
+                        && !cmd_l.contains("extensions\\windsurf\\devin"));
+                if looks_devin {
+                    false
+                } else if !install_hint.is_empty()
+                    && install_hint != "windsurf"
+                    && cmd_l.contains(&install_hint)
+                {
+                    true
+                } else {
+                    cmd_l.contains("windsurf.app/")
+                        || cmd_l.contains("windsurf.app ")
+                        || cmd_l.contains("/windsurf.app")
+                        || cmd_l.contains("/windsurf/")
+                        || cmd_l.ends_with("/windsurf")
+                        || cmd_l.contains("/windsurf ")
+                }
+            }
+        };
+        if matched {
+            pids.insert(pid);
+        }
+    }
+    pids.into_iter().collect()
+}
+
+#[cfg(target_os = "macos")]
+fn find_ide_app_or_bin_path(target: &str) -> Option<std::path::PathBuf> {
+    find_ide_app(target)
+}
+
+#[cfg(target_os = "linux")]
+fn find_ide_app_or_bin_path(target: &str) -> Option<std::path::PathBuf> {
+    find_ide_bin(target)
+}
+
 #[tauri::command]
 pub fn is_ide_running(name: String) -> bool {
     let n = if name == "auto" {
@@ -1169,34 +1424,27 @@ pub fn is_ide_running(name: String) -> bool {
         }
     }
 
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
     {
-        let process_name = match n.as_str() {
-            "windsurf" => "Windsurf",
-            "devin" => "Devin",
-            "cursor" => "Cursor",
-            _ => return false,
-        };
-        if let Ok(out) = Command::new("pgrep").args(["-x", process_name]).output() {
-            !out.stdout.is_empty()
-        } else {
-            false
+        if !unix_ide_pids(&n).is_empty() {
+            return true;
         }
-    }
-
-    #[cfg(target_os = "linux")]
-    {
-        let process_name = match n.as_str() {
-            "windsurf" => "windsurf",
-            "devin" => "devin",
-            "cursor" => "cursor",
-            _ => return false,
-        };
-        if let Ok(out) = Command::new("pgrep").args(["-x", process_name]).output() {
-            !out.stdout.is_empty()
-        } else {
-            false
+        // 回退：按进程名 pgrep（兼容 ps 不可用的环境）
+        for process_name in unix_ide_process_names(&n) {
+            if let Ok(out) = Command::new("pgrep").args(["-x", process_name]).output() {
+                if !out.stdout.is_empty() {
+                    // Devin 回退命中 Windsurf 时，尽量用路径再确认
+                    if n == "devin" && process_name.eq_ignore_ascii_case("windsurf") {
+                        continue;
+                    }
+                    if n == "windsurf" && process_name.eq_ignore_ascii_case("devin") {
+                        continue;
+                    }
+                    return true;
+                }
+            }
         }
+        false
     }
 
     #[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux")))]
