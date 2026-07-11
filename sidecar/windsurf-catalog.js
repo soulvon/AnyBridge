@@ -1,6 +1,6 @@
 // windsurf-catalog.js — Windsurf 模型全量目录
 // 数据源: Pro 账号 GetUserStatus 缓存 (ide-models.json) + 历史 catalog 合并
-// 最终 167 条
+// 最终 204 条
 //
 // 字段:
 //   label          Windsurf 显示名 (GetUserStatus.field1)
@@ -1222,12 +1222,300 @@ export const WINDSURF_CATALOG = [
     "noApiIdHint": null
   },
   {
+    "label": "GPT-5.6 Luna High Thinking",
+    "modelUid": "gpt-5-6-luna-high",
+    "apiId": "gpt-5.6-luna",
+    "contextWindow": 1000000,
+    "supportsImages": true,
+    "noApiIdHint": null
+  },
+  {
+    "label": "GPT-5.6 Luna High Thinking Fast",
+    "modelUid": "gpt-5-6-luna-high-priority",
+    "apiId": "gpt-5.6-luna",
+    "contextWindow": 1000000,
+    "supportsImages": true,
+    "noApiIdHint": null
+  },
+  {
+    "label": "GPT-5.6 Luna Low Thinking",
+    "modelUid": "gpt-5-6-luna-low",
+    "apiId": "gpt-5.6-luna",
+    "contextWindow": 1000000,
+    "supportsImages": true,
+    "noApiIdHint": null
+  },
+  {
+    "label": "GPT-5.6 Luna Low Thinking Fast",
+    "modelUid": "gpt-5-6-luna-low-priority",
+    "apiId": "gpt-5.6-luna",
+    "contextWindow": 1000000,
+    "supportsImages": true,
+    "noApiIdHint": null
+  },
+  {
+    "label": "GPT-5.6 Luna Max Thinking",
+    "modelUid": "gpt-5-6-luna-max",
+    "apiId": "gpt-5.6-luna",
+    "contextWindow": 1000000,
+    "supportsImages": true,
+    "noApiIdHint": null
+  },
+  {
+    "label": "GPT-5.6 Luna Medium Thinking",
+    "modelUid": "gpt-5-6-luna-medium",
+    "apiId": "gpt-5.6-luna",
+    "contextWindow": 1000000,
+    "supportsImages": true,
+    "noApiIdHint": null
+  },
+  {
+    "label": "GPT-5.6 Luna Medium Thinking Fast",
+    "modelUid": "gpt-5-6-luna-medium-priority",
+    "apiId": "gpt-5.6-luna",
+    "contextWindow": 1000000,
+    "supportsImages": true,
+    "noApiIdHint": null
+  },
+  {
+    "label": "GPT-5.6 Luna No Thinking",
+    "modelUid": "gpt-5-6-luna-none",
+    "apiId": "gpt-5.6-luna",
+    "contextWindow": 1000000,
+    "supportsImages": true,
+    "noApiIdHint": null
+  },
+  {
+    "label": "GPT-5.6 Luna No Thinking Fast",
+    "modelUid": "gpt-5-6-luna-none-priority",
+    "apiId": "gpt-5.6-luna",
+    "contextWindow": 1000000,
+    "supportsImages": true,
+    "noApiIdHint": null
+  },
+  {
+    "label": "GPT-5.6 Luna XHigh Thinking",
+    "modelUid": "gpt-5-6-luna-xhigh",
+    "apiId": "gpt-5.6-luna",
+    "contextWindow": 1000000,
+    "supportsImages": true,
+    "noApiIdHint": null
+  },
+  {
+    "label": "GPT-5.6 Luna XHigh Thinking Fast",
+    "modelUid": "gpt-5-6-luna-xhigh-priority",
+    "apiId": "gpt-5.6-luna",
+    "contextWindow": 1000000,
+    "supportsImages": true,
+    "noApiIdHint": null
+  },
+  {
+    "label": "GPT-5.6 Sol High Thinking",
+    "modelUid": "gpt-5-6-sol-high",
+    "apiId": "gpt-5.6-sol",
+    "contextWindow": 1000000,
+    "supportsImages": true,
+    "noApiIdHint": null
+  },
+  {
+    "label": "GPT-5.6 Sol High Thinking Fast",
+    "modelUid": "gpt-5-6-sol-high-priority",
+    "apiId": "gpt-5.6-sol",
+    "contextWindow": 1000000,
+    "supportsImages": true,
+    "noApiIdHint": null
+  },
+  {
+    "label": "GPT-5.6 Sol Low Thinking",
+    "modelUid": "gpt-5-6-sol-low",
+    "apiId": "gpt-5.6-sol",
+    "contextWindow": 1000000,
+    "supportsImages": true,
+    "noApiIdHint": null
+  },
+  {
+    "label": "GPT-5.6 Sol Low Thinking Fast",
+    "modelUid": "gpt-5-6-sol-low-priority",
+    "apiId": "gpt-5.6-sol",
+    "contextWindow": 1000000,
+    "supportsImages": true,
+    "noApiIdHint": null
+  },
+  {
+    "label": "GPT-5.6 Sol Max Thinking",
+    "modelUid": "gpt-5-6-sol-max",
+    "apiId": "gpt-5.6-sol",
+    "contextWindow": 1000000,
+    "supportsImages": true,
+    "noApiIdHint": null
+  },
+  {
+    "label": "GPT-5.6 Sol Medium Thinking",
+    "modelUid": "gpt-5-6-sol-medium",
+    "apiId": "gpt-5.6-sol",
+    "contextWindow": 1000000,
+    "supportsImages": true,
+    "noApiIdHint": null
+  },
+  {
+    "label": "GPT-5.6 Sol Medium Thinking Fast",
+    "modelUid": "gpt-5-6-sol-medium-priority",
+    "apiId": "gpt-5.6-sol",
+    "contextWindow": 1000000,
+    "supportsImages": true,
+    "noApiIdHint": null
+  },
+  {
+    "label": "GPT-5.6 Sol No Thinking",
+    "modelUid": "gpt-5-6-sol-none",
+    "apiId": "gpt-5.6-sol",
+    "contextWindow": 1000000,
+    "supportsImages": true,
+    "noApiIdHint": null
+  },
+  {
+    "label": "GPT-5.6 Sol No Thinking Fast",
+    "modelUid": "gpt-5-6-sol-none-priority",
+    "apiId": "gpt-5.6-sol",
+    "contextWindow": 1000000,
+    "supportsImages": true,
+    "noApiIdHint": null
+  },
+  {
+    "label": "GPT-5.6 Sol XHigh Thinking",
+    "modelUid": "gpt-5-6-sol-xhigh",
+    "apiId": "gpt-5.6-sol",
+    "contextWindow": 1000000,
+    "supportsImages": true,
+    "noApiIdHint": null
+  },
+  {
+    "label": "GPT-5.6 Sol XHigh Thinking Fast",
+    "modelUid": "gpt-5-6-sol-xhigh-priority",
+    "apiId": "gpt-5.6-sol",
+    "contextWindow": 1000000,
+    "supportsImages": true,
+    "noApiIdHint": null
+  },
+  {
+    "label": "GPT-5.6 Terra High Thinking",
+    "modelUid": "gpt-5-6-terra-high",
+    "apiId": "gpt-5.6-terra",
+    "contextWindow": 1000000,
+    "supportsImages": true,
+    "noApiIdHint": null
+  },
+  {
+    "label": "GPT-5.6 Terra High Thinking Fast",
+    "modelUid": "gpt-5-6-terra-high-priority",
+    "apiId": "gpt-5.6-terra",
+    "contextWindow": 1000000,
+    "supportsImages": true,
+    "noApiIdHint": null
+  },
+  {
+    "label": "GPT-5.6 Terra Low Thinking",
+    "modelUid": "gpt-5-6-terra-low",
+    "apiId": "gpt-5.6-terra",
+    "contextWindow": 1000000,
+    "supportsImages": true,
+    "noApiIdHint": null
+  },
+  {
+    "label": "GPT-5.6 Terra Low Thinking Fast",
+    "modelUid": "gpt-5-6-terra-low-priority",
+    "apiId": "gpt-5.6-terra",
+    "contextWindow": 1000000,
+    "supportsImages": true,
+    "noApiIdHint": null
+  },
+  {
+    "label": "GPT-5.6 Terra Max Thinking",
+    "modelUid": "gpt-5-6-terra-max",
+    "apiId": "gpt-5.6-terra",
+    "contextWindow": 1000000,
+    "supportsImages": true,
+    "noApiIdHint": null
+  },
+  {
+    "label": "GPT-5.6 Terra Medium Thinking",
+    "modelUid": "gpt-5-6-terra-medium",
+    "apiId": "gpt-5.6-terra",
+    "contextWindow": 1000000,
+    "supportsImages": true,
+    "noApiIdHint": null
+  },
+  {
+    "label": "GPT-5.6 Terra Medium Thinking Fast",
+    "modelUid": "gpt-5-6-terra-medium-priority",
+    "apiId": "gpt-5.6-terra",
+    "contextWindow": 1000000,
+    "supportsImages": true,
+    "noApiIdHint": null
+  },
+  {
+    "label": "GPT-5.6 Terra No Thinking",
+    "modelUid": "gpt-5-6-terra-none",
+    "apiId": "gpt-5.6-terra",
+    "contextWindow": 1000000,
+    "supportsImages": true,
+    "noApiIdHint": null
+  },
+  {
+    "label": "GPT-5.6 Terra No Thinking Fast",
+    "modelUid": "gpt-5-6-terra-none-priority",
+    "apiId": "gpt-5.6-terra",
+    "contextWindow": 1000000,
+    "supportsImages": true,
+    "noApiIdHint": null
+  },
+  {
+    "label": "GPT-5.6 Terra XHigh Thinking",
+    "modelUid": "gpt-5-6-terra-xhigh",
+    "apiId": "gpt-5.6-terra",
+    "contextWindow": 1000000,
+    "supportsImages": true,
+    "noApiIdHint": null
+  },
+  {
+    "label": "GPT-5.6 Terra XHigh Thinking Fast",
+    "modelUid": "gpt-5-6-terra-xhigh-priority",
+    "apiId": "gpt-5.6-terra",
+    "contextWindow": 1000000,
+    "supportsImages": true,
+    "noApiIdHint": null
+  },
+  {
     "label": "GPT-OSS 120B",
     "modelUid": "MODEL_GPT_OSS_120B",
     "apiId": null,
     "contextWindow": 128000,
     "supportsImages": true,
     "noApiIdHint": "gpt-... (gpt-4o, gpt-5, gpt-5.1, gpt-5.2...)"
+  },
+  {
+    "label": "Grok 4.5 High",
+    "modelUid": "grok-4-5-high",
+    "apiId": "grok-4.5",
+    "contextWindow": 500000,
+    "supportsImages": true,
+    "noApiIdHint": null
+  },
+  {
+    "label": "Grok 4.5 Low",
+    "modelUid": "grok-4-5-low",
+    "apiId": "grok-4.5",
+    "contextWindow": 500000,
+    "supportsImages": true,
+    "noApiIdHint": null
+  },
+  {
+    "label": "Grok 4.5 Medium",
+    "modelUid": "grok-4-5-medium",
+    "apiId": "grok-4.5",
+    "contextWindow": 500000,
+    "supportsImages": true,
+    "noApiIdHint": null
   },
   {
     "label": "Grok Code Fast 1",
@@ -1318,6 +1606,14 @@ export const WINDSURF_CATALOG = [
     "noApiIdHint": null
   },
   {
+    "label": "SWE-1.7",
+    "modelUid": "swe-1-7",
+    "apiId": "swe-1.7",
+    "contextWindow": 262000,
+    "supportsImages": false,
+    "noApiIdHint": null
+  },
+  {
     "label": "SWE-1.7 Lightning",
     "modelUid": "swe-1-7-lightning",
     "apiId": "swe-1-7-lightning",
@@ -1350,11 +1646,3 @@ export const WINDSURF_CATALOG = [
     "noApiIdHint": "grok-3 / grok-3-mini"
   }
 ];
-
-// 辅助: 分类 (用于 GUI 渲染)
-export function catalogTag(m) {
-  const uid = String(m.modelUid || '');
-  if (/CODEX|codex/i.test(uid) || /codex/i.test(m.label)) return 'codex';
-  if (/SWE|swe/i.test(uid) || /SWE/i.test(m.label)) return 'swe';
-  return 'chat';
-}

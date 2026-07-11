@@ -64,6 +64,22 @@
       "note": "约 1M 上下文 / 128K 输出"
     },
     {
+      "id": "gpt-5.5",
+      "match": ["gpt-5.5", "gpt-5-5", "gpt5.5", "gpt5-5"],
+      "maxInputTokens": 1000000,
+      "maxOutputTokens": 128000,
+      "vendor": "openai",
+      "note": "约 1M 上下文 / 128K 输出"
+    },
+    {
+      "id": "gpt-5.6",
+      "match": ["gpt-5.6", "gpt-5-6", "gpt5.6", "gpt5-6"],
+      "maxInputTokens": 1000000,
+      "maxOutputTokens": 128000,
+      "vendor": "openai",
+      "note": "1M 上下文 / 128K 输出"
+    },
+    {
       "id": "gpt-5.2",
       "match": ["gpt-5.2", "gpt-5-2", "gpt5.2", "gpt5-2"],
       "maxInputTokens": 400000,
