@@ -1010,6 +1010,30 @@
                   style="padding:16px 20px; border-bottom:1px solid var(--border); background:var(--bg-glass); display:flex; align-items:center; justify-content:space-between;">
                   <span style="font-size:14px; font-weight:700; color:var(--text-primary);">选择映射模型</span>
                 </div>
+                <!-- 映射参数配置区 (移到右卡片顶部，节省底部空间) -->
+                <div
+                  style="padding:12px 20px; border-bottom:1px solid var(--border); background:rgba(0,0,0,0.01); display:flex; flex-direction:column; gap:8px;">
+                  <div style="display:flex; gap:8px; align-items:center;">
+                    <input class="field-input" id="slot-display" placeholder="自定义显示名（留空使用模型原始名）"
+                      style="padding:8px 12px; font-size:12px; border-radius:8px; flex:1; min-width:0;">
+                    <div style="display:flex; gap:8px; align-items:center; flex-shrink:0;">
+                      <input class="field-input" id="slot-context-window" type="number" min="1" step="1"
+                        placeholder="上下文窗口"
+                        title="留空 = 使用 catalog / 上游原值"
+                        style="padding:8px 12px; font-size:12px; border-radius:8px; width:110px;">
+                      <div id="slot-context-presets" style="display:flex; gap:4px; flex-wrap:wrap;">
+                        <button type="button" id="btn-slot-context-recommend" class="slot-ctx-preset" data-action="applyRecommendedSlotContextWindow"
+                          style="height:30px;padding:0 8px;border-radius:7px;border:1px solid var(--accent);background:var(--accent);color:#fff;font-size:11px;font-weight:600;cursor:pointer;" title="按映射模型推荐上下文（与 CodeBuddy 同源）">推荐</button>
+                        <button type="button" class="slot-ctx-preset" data-action="setSlotContextPreset" data-args="[200000]"
+                          style="height:30px;padding:0 8px;border-radius:7px;border:1px solid var(--border);background:var(--bg-input);color:var(--text-muted);font-size:11px;font-weight:600;cursor:pointer;">200K</button>
+                        <button type="button" class="slot-ctx-preset" data-action="setSlotContextPreset" data-args="[1000000]"
+                          style="height:30px;padding:0 8px;border-radius:7px;border:1px solid var(--border);background:var(--bg-input);color:var(--text-muted);font-size:11px;font-weight:600;cursor:pointer;">1M</button>
+                      </div>
+                    </div>
+                  </div>
+                  <input type="hidden" id="slot-edit-uid">
+                  <select class="model-select" id="slot-uid-select" style="display:none;"></select>
+                </div>
                 <!-- 映射模型搜索栏 -->
                 <div
                   style="padding:12px 20px; border-bottom:1px solid var(--border); background:rgba(0,0,0,0.01); display:flex; gap:8px; align-items:center;">
@@ -1030,50 +1054,6 @@
                 <div id="mappingModelCatalogBody"
                   style="flex:1; overflow-y:auto; padding:16px 20px; display:flex; flex-direction:column; gap:8px;">
                   <!-- 动态加载供应商模型行，支持点击多选 -->
-                </div>
-                <!-- 自定义显示名称配置区 (放在右卡片底部，紧随列表之后) -->
-                <div
-                  style="padding:16px 20px; border-top:1px solid var(--border); background:var(--bg-glass); display:flex; flex-direction:column; gap:8px;">
-                  <div style="display:flex; align-items:center; justify-content:space-between;">
-                    <span
-                      style="font-size:12px; font-weight:600; color:var(--text-secondary);">映射自定义显示名（留空使用模型原始名）</span>
-                  </div>
-                  <!-- 快速填充显示名按钮 -->
-                  <div style="display:flex; gap:6px; align-items:center;">
-                    <button id="btn-use-original-name"
- style="height:26px;padding:0 10px;border-radius:7px;border:1px solid var(--accent);background:var(--accent);color:#fff;font-size:11px;font-weight:600;cursor:pointer;" data-action="useOriginalModelName">使用原始模型名</button>
-                    <button id="btn-use-mapped-name"
- style="height:26px;padding:0 10px;border-radius:7px;border:1px solid var(--border);background:var(--bg-input);color:var(--text-muted);font-size:11px;font-weight:600;cursor:pointer;" data-action="useMappedModelName">使用映射模型名</button>
-                  </div>
-                  <input class="field-input" id="slot-display" placeholder="例如：我的 DeepSeek 映射..."
-                    style="padding:10px 14px; font-size:12px; border-radius:8px; width:100%;">
-                  <div style="display:flex; flex-direction:column; gap:6px; margin-top:4px;">
-                    <div style="display:flex; align-items:center; justify-content:space-between; gap:8px;">
-                      <span style="font-size:12px; font-weight:600; color:var(--text-secondary);">上下文窗口（token）</span>
-                      <span id="slot-context-hint" style="font-size:11px; color:var(--text-muted);">留空 = 使用 catalog / 上游原值</span>
-                    </div>
-                    <div style="display:flex; gap:8px; align-items:center;">
-                      <input class="field-input" id="slot-context-window" type="number" min="1" step="1"
-                        placeholder="例如 200000"
-                        style="padding:10px 14px; font-size:12px; border-radius:8px; flex:1; min-width:0;">
-                      <div id="slot-context-presets" style="display:flex; gap:4px; flex-wrap:wrap; justify-content:flex-end;">
-                        <button type="button" id="btn-slot-context-recommend" class="slot-ctx-preset" data-action="applyRecommendedSlotContextWindow"
-                          style="height:28px;padding:0 8px;border-radius:7px;border:1px solid var(--accent);background:var(--accent);color:#fff;font-size:11px;font-weight:600;cursor:pointer;" title="按映射模型推荐上下文（与 CodeBuddy 同源）">推荐</button>
-                        <button type="button" class="slot-ctx-preset" data-action="setSlotContextPreset" data-args="[32000]"
-                          style="height:28px;padding:0 8px;border-radius:7px;border:1px solid var(--border);background:var(--bg-input);color:var(--text-muted);font-size:11px;font-weight:600;cursor:pointer;">32K</button>
-                        <button type="button" class="slot-ctx-preset" data-action="setSlotContextPreset" data-args="[128000]"
-                          style="height:28px;padding:0 8px;border-radius:7px;border:1px solid var(--border);background:var(--bg-input);color:var(--text-muted);font-size:11px;font-weight:600;cursor:pointer;">128K</button>
-                        <button type="button" class="slot-ctx-preset" data-action="setSlotContextPreset" data-args="[200000]"
-                          style="height:28px;padding:0 8px;border-radius:7px;border:1px solid var(--border);background:var(--bg-input);color:var(--text-muted);font-size:11px;font-weight:600;cursor:pointer;">200K</button>
-                        <button type="button" class="slot-ctx-preset" data-action="setSlotContextPreset" data-args="[1000000]"
-                          style="height:28px;padding:0 8px;border-radius:7px;border:1px solid var(--border);background:var(--bg-input);color:var(--text-muted);font-size:11px;font-weight:600;cursor:pointer;">1M</button>
-                        <button type="button" class="slot-ctx-preset" data-action="setSlotContextPreset" data-args="[&quot;&quot;]"
-                          style="height:28px;padding:0 8px;border-radius:7px;border:1px solid var(--border);background:var(--bg-input);color:var(--text-muted);font-size:11px;font-weight:600;cursor:pointer;">清除</button>
-                      </div>
-                    </div>
-                  </div>
-                  <input type="hidden" id="slot-edit-uid">
-                  <select class="model-select" id="slot-uid-select" style="display:none;"></select>
                 </div>
               </div>
             </div>

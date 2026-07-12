@@ -1289,8 +1289,28 @@ pub async fn extension_switch_cpa_version(
     ensure_cpa_config_for_version(&cli_install.dir, &root)?;
     write_installed_json(&root, &target_cli, &target_cpamp)?;
 
-    // silence unused warning for cpamp_install path verification above
-    let _ = cpamp_install;
+    // 写入 CPAMP 配置并迁移数据到共享目录
+    let cpamp_runtime = {
+        let dir = cpamp_install.dir.clone();
+        tauri::async_runtime::spawn_blocking(move || resolve_cpamp_runtime_dir(&dir))
+            .await
+            .map_err(|e| e.to_string())??
+    };
+    let shared_data_dir = root.join("cpamp-data");
+    let runtime_for_migrate = cpamp_runtime.clone();
+    let shared_data_for_migrate = shared_data_dir.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        migrate_cpamp_data(&runtime_for_migrate, &shared_data_for_migrate)
+    })
+    .await
+    .map_err(|e| e.to_string())??;
+    let runtime_for_config = cpamp_runtime.clone();
+    let shared_data_for_config = shared_data_dir.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        write_cpamp_config(&runtime_for_config, &shared_data_for_config)
+    })
+    .await
+    .map_err(|e| e.to_string())??;
 
     if should_restart {
         start_cpa_suite_async().await?;
@@ -1488,7 +1508,10 @@ async fn start_cpa_suite_async() -> Result<(), String> {
     // panelPath/PANEL_PATH 会替换 /management.html 的内容，不会新增 /management-auto.html。
     // 必须先无 PANEL_PATH 启动以拉取内嵌原版，写入补丁后再带 PANEL_PATH 重启。
     let runtime_dir = resolve_cpamp_runtime_dir(&cpamp_install.dir)?;
-    write_cpamp_config(&runtime_dir)?;
+    let root = current_cpa_install_root();
+    let shared_data_dir = root.join("cpamp-data");
+    migrate_cpamp_data(&runtime_dir, &shared_data_dir)?;
+    write_cpamp_config(&runtime_dir, &shared_data_dir)?;
 
     if need_cpamp {
         if cpamp_probe.status == "degraded" {
@@ -1498,12 +1521,17 @@ async fn start_cpa_suite_async() -> Result<(), String> {
             check_port_available(CPAMP_PORT, "CPA Manager Plus")?;
         }
         let cpamp_exe = find_exe_in_dir(&cpamp_install.dir, "cpa-manager-plus")?;
+        // 同步管理员密钥，确保数据库中的凭证与 secrets.json 一致
+        let cpamp_exe_reset = cpamp_exe.clone();
+        let runtime_dir_reset = runtime_dir.clone();
+        let admin_key_reset = secrets.admin_key.clone();
+        tauri::async_runtime::spawn_blocking(move || {
+            reset_cpamp_admin_key(&cpamp_exe_reset, &runtime_dir_reset, &admin_key_reset)
+        })
+        .await
+        .map_err(|e| e.to_string())??;
         // 首次启动不带 PANEL_PATH，确保能读到内嵌 management.html
-        let cpamp_env = vec![
-            ("CPA_MANAGER_ADMIN_KEY".into(), secrets.admin_key.clone()),
-            ("CPA_UPSTREAM_URL".into(), "http://127.0.0.1:8317".into()),
-            ("CPA_MANAGEMENT_KEY".into(), secrets.management_key.clone()),
-        ];
+        let cpamp_env = cpamp_env_base(&secrets, &shared_data_dir);
         let runtime_start = runtime_dir.clone();
         tauri::async_runtime::spawn_blocking(move || {
             start_service(&cpamp_exe, &runtime_start, &cpamp_env)
@@ -1527,7 +1555,16 @@ async fn start_cpa_suite_async() -> Result<(), String> {
         let _ = kill_service_by_port(CPAMP_PORT, "CPA Manager Plus");
         tokio::time::sleep(Duration::from_secs(1)).await;
         let cpamp_exe = find_exe_in_dir(&cpamp_install.dir, "cpa-manager-plus")?;
-        let cpamp_env = cpamp_env_with_panel(&secrets, &runtime_dir);
+        // 再次同步管理员密钥，覆盖首次启动初始化可能生成的 cpamp_... 密钥
+        let cpamp_exe_reset = cpamp_exe.clone();
+        let runtime_dir_reset = runtime_dir.clone();
+        let admin_key_reset = secrets.admin_key.clone();
+        tauri::async_runtime::spawn_blocking(move || {
+            reset_cpamp_admin_key(&cpamp_exe_reset, &runtime_dir_reset, &admin_key_reset)
+        })
+        .await
+        .map_err(|e| e.to_string())??;
+        let cpamp_env = cpamp_env_with_panel(&secrets, &runtime_dir, &shared_data_dir);
         let runtime_start = runtime_dir.clone();
         tauri::async_runtime::spawn_blocking(move || {
             start_service(&cpamp_exe, &runtime_start, &cpamp_env)
@@ -2319,15 +2356,72 @@ fn cpamp_panel_file(runtime_dir: &Path) -> PathBuf {
     runtime_dir.join("management-auto.html")
 }
 
-fn cpamp_env_with_panel(secrets: &CpaSecrets, runtime_dir: &Path) -> Vec<(String, String)> {
-    let panel = cpamp_panel_file(runtime_dir);
+fn cpamp_env_base(secrets: &CpaSecrets, shared_data_dir: &Path) -> Vec<(String, String)> {
     vec![
         ("CPA_MANAGER_ADMIN_KEY".into(), secrets.admin_key.clone()),
         ("CPA_UPSTREAM_URL".into(), "http://127.0.0.1:8317".into()),
         ("CPA_MANAGEMENT_KEY".into(), secrets.management_key.clone()),
-        // 绝对路径更稳：覆盖内嵌 /management.html，不会新增 /management-auto.html 路由
-        ("PANEL_PATH".into(), path_text(&panel)),
+        // 共享数据目录：确保更新/切换版本后数据不丢失
+        ("USAGE_DATA_DIR".into(), path_text(shared_data_dir)),
+        ("USAGE_DB_PATH".into(), path_text(&shared_data_dir.join("usage.sqlite"))),
+        ("CPA_MANAGER_DATA_KEY_PATH".into(), path_text(&shared_data_dir.join("data.key"))),
     ]
+}
+
+fn cpamp_env_with_panel(secrets: &CpaSecrets, runtime_dir: &Path, shared_data_dir: &Path) -> Vec<(String, String)> {
+    let mut env = cpamp_env_base(secrets, shared_data_dir);
+    let panel = cpamp_panel_file(runtime_dir);
+    // 绝对路径更稳：覆盖内嵌 /management.html，不会新增 /management-auto.html 路由
+    env.push(("PANEL_PATH".into(), path_text(&panel)));
+    env
+}
+
+/// 同步 CPAMP 数据库中的管理员密钥与 secrets.json。
+/// CPAMP 首次启动后会把管理员密钥持久化到 SQLite，后续启动不再读取
+/// CPA_MANAGER_ADMIN_KEY 环境变量。因此每次启动前需要用 reset-admin-key
+/// 强制同步，避免 AnyBridge 面板显示的密钥与实际有效密钥不一致。
+fn reset_cpamp_admin_key(exe_path: &Path, runtime_dir: &Path, admin_key: &str) -> Result<(), String> {
+    // 优先使用共享数据目录，兼容旧版本的 runtime_dir/data
+    let root = current_cpa_install_root();
+    let shared_db = root.join("cpamp-data").join("usage.sqlite");
+    let legacy_db = runtime_dir.join("data").join("usage.sqlite");
+    let db_path = if shared_db.is_file() {
+        shared_db
+    } else if legacy_db.is_file() {
+        legacy_db
+    } else {
+        // 数据库尚不存在，依赖 CPA_MANAGER_ADMIN_KEY 环境变量首次初始化
+        return Ok(());
+    };
+
+    let mut cmd = std::process::Command::new(exe_path);
+    cmd.current_dir(runtime_dir)
+        .env("CPA_MANAGER_ADMIN_KEY", admin_key)
+        .args([
+            "reset-admin-key",
+            "--admin-key",
+            admin_key,
+            "--db-path",
+            &path_text(&db_path),
+        ]);
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
+    }
+    let output = cmd
+        .output()
+        .map_err(|e| format!("执行 reset-admin-key 失败: {}", e))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        return Err(format!(
+            "同步 CPAMP 管理员密钥失败（{}）。stderr: {} stdout: {}",
+            output.status, stderr, stdout
+        ));
+    }
+    Ok(())
 }
 
 fn start_service(
@@ -2419,11 +2513,14 @@ fn write_cpa_config(dir: &Path, mgmt_key: &str, api_key: &str) -> Result<(), Str
     fs::write(&target, content).map_err(|e| format!("写入 CPA config.yaml 失败: {}", e))
 }
 
-fn write_cpamp_config(dir: &Path) -> Result<(), String> {
+fn write_cpamp_config(dir: &Path, data_dir: &Path) -> Result<(), String> {
+    // dataDir 使用绝对路径，指向 CPA suite 根目录下的共享数据目录，
+    // 这样更新/切换版本时数据（usage.sqlite、data.key、凭据、历史等）不会丢失。
     // panelPath 相对路径相对于 CPAMP 运行目录（exe 同目录）
+    fs::create_dir_all(data_dir).map_err(|e| format!("创建 CPAMP 数据目录失败: {}", e))?;
     let json = serde_json::json!({
         "httpAddr": "127.0.0.1:18317",
-        "dataDir": "./data",
+        "dataDir": path_text(data_dir),
         "cpaUpstreamUrl": "http://127.0.0.1:8317",
         "panelPath": "management-auto.html"
     });
@@ -2431,6 +2528,29 @@ fn write_cpamp_config(dir: &Path) -> Result<(), String> {
         serde_json::to_string_pretty(&json).map_err(|e| format!("序列化 CPAMP 配置失败: {}", e))?;
     let target = dir.join("config.json");
     fs::write(&target, &json_str).map_err(|e| format!("写入 CPAMP config.json 失败: {}", e))
+}
+
+/// 将旧版本 runtime 目录下的 data/ 迁移到共享数据目录（仅首次迁移）
+fn migrate_cpamp_data(runtime_dir: &Path, shared_data_dir: &Path) -> Result<(), String> {
+    if shared_data_dir.join("usage.sqlite").is_file() {
+        return Ok(()); // 共享目录已有数据，无需迁移
+    }
+    let old_data = runtime_dir.join("data");
+    if !old_data.is_dir() {
+        return Ok(()); // 旧版本也没有数据，无需迁移
+    }
+    fs::create_dir_all(shared_data_dir)
+        .map_err(|e| format!("创建共享数据目录失败: {}", e))?;
+    for entry in fs::read_dir(&old_data).map_err(|e| format!("读取旧 data 目录失败: {}", e))? {
+        let entry = entry.map_err(|e| format!("读取目录条目失败: {}", e))?;
+        let src = entry.path();
+        let dst = shared_data_dir.join(entry.file_name());
+        if src.is_file() {
+            fs::copy(&src, &dst)
+                .map_err(|e| format!("迁移数据文件失败 {}: {}", src.display(), e))?;
+        }
+    }
+    Ok(())
 }
 
 /// 获取 CPAMP 管理面板 HTML 并注入自动登录脚本。
@@ -2777,12 +2897,29 @@ pub async fn extension_deploy_cpa_suite(
             .map_err(|e| e.to_string())??;
     }
 
-    // 8. 生成密钥和配置
+    // 8. 生成密钥和配置（已存在则复用，避免每次更新丢失密钥）
     emit_deploy_progress(&app, "config", "生成运行时配置和密钥...", 75);
-    let secrets = CpaSecrets {
-        admin_key: generate_random_key(24),
-        management_key: generate_random_key(24),
-        api_key: format!("sk-{}", generate_random_key(32)),
+    let secrets = {
+        let existing = root.join("secrets.json");
+        if existing.is_file() {
+            match fs::read_to_string(&existing)
+                .ok()
+                .and_then(|c| serde_json::from_str::<CpaSecrets>(&c).ok())
+            {
+                Some(s) => s,
+                None => CpaSecrets {
+                    admin_key: generate_random_key(24),
+                    management_key: generate_random_key(24),
+                    api_key: format!("sk-{}", generate_random_key(32)),
+                },
+            }
+        } else {
+            CpaSecrets {
+                admin_key: generate_random_key(24),
+                management_key: generate_random_key(24),
+                api_key: format!("sk-{}", generate_random_key(32)),
+            }
+        }
     };
 
     let cpa_dir_c = cpa_dir.clone();
@@ -2817,9 +2954,19 @@ pub async fn extension_deploy_cpa_suite(
         .ok_or_else(|| format!("无法解析 CPAMP 运行目录: {}", cpamp_exe.display()))?;
 
     // 配置写到 exe 同目录（发布包常再套一层平台目录）
+    // dataDir 指向共享数据目录，确保更新后数据不丢失
     {
         let runtime = cpamp_runtime.clone();
-        tauri::async_runtime::spawn_blocking(move || write_cpamp_config(&runtime))
+        let shared_data = root.join("cpamp-data");
+        // 迁移旧版本 data/ 到共享目录（仅首次）
+        let runtime_for_migrate = cpamp_runtime.clone();
+        let shared_data_for_migrate = shared_data.clone();
+        tauri::async_runtime::spawn_blocking(move || {
+            migrate_cpamp_data(&runtime_for_migrate, &shared_data_for_migrate)
+        })
+        .await
+        .map_err(|e| e.to_string())??;
+        tauri::async_runtime::spawn_blocking(move || write_cpamp_config(&runtime, &shared_data))
             .await
             .map_err(|e| e.to_string())??;
     }
@@ -2843,11 +2990,17 @@ pub async fn extension_deploy_cpa_suite(
     )
     .map_err(|e| format!("解析 secrets.json 失败: {}", e))?;
 
-    let cpamp_env = vec![
-        ("CPA_MANAGER_ADMIN_KEY".into(), secrets.admin_key.clone()),
-        ("CPA_UPSTREAM_URL".into(), "http://127.0.0.1:8317".into()),
-        ("CPA_MANAGEMENT_KEY".into(), secrets.management_key.clone()),
-    ];
+    let shared_data_dir = root.join("cpamp-data");
+    let cpamp_env = cpamp_env_base(&secrets, &shared_data_dir);
+    // 同步管理员密钥（同版本重装时 DB 可能已存在）
+    let cpamp_exe_reset = cpamp_exe.clone();
+    let cpamp_runtime_reset = cpamp_runtime.clone();
+    let admin_key_reset = secrets.admin_key.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        reset_cpamp_admin_key(&cpamp_exe_reset, &cpamp_runtime_reset, &admin_key_reset)
+    })
+    .await
+    .map_err(|e| e.to_string())??;
     let cpamp_runtime_start = cpamp_runtime.clone();
     let cpamp_exe_start = cpamp_exe.clone();
     tauri::async_runtime::spawn_blocking(move || {
@@ -2872,7 +3025,16 @@ pub async fn extension_deploy_cpa_suite(
         emit_deploy_progress(&app, "patch_panel", "应用自动登录面板...", 98);
         kill_service_by_port(CPAMP_PORT, "CPA Manager Plus")?;
         tokio::time::sleep(Duration::from_secs(1)).await;
-        let cpamp_env = cpamp_env_with_panel(&secrets, &cpamp_runtime);
+        // 同步管理员密钥，确保数据库中保存的与 secrets.json 一致
+        let cpamp_runtime_reset = cpamp_runtime.clone();
+        let cpamp_exe_reset = cpamp_exe.clone();
+        let admin_key_reset = secrets.admin_key.clone();
+        tauri::async_runtime::spawn_blocking(move || {
+            reset_cpamp_admin_key(&cpamp_exe_reset, &cpamp_runtime_reset, &admin_key_reset)
+        })
+        .await
+        .map_err(|e| e.to_string())??;
+        let cpamp_env = cpamp_env_with_panel(&secrets, &cpamp_runtime, &root.join("cpamp-data"));
         let runtime_restart = cpamp_runtime.clone();
         let exe_restart = cpamp_exe.clone();
         tauri::async_runtime::spawn_blocking(move || {
@@ -3082,7 +3244,29 @@ pub async fn extension_install_cpa_version(
 
     write_cpa_config(&cpa_dir, &secrets.management_key, &secrets.api_key)?;
     write_installed_json(&root, &target_cli, &target_cpamp)?;
-    let _ = cpamp_dir;
+
+    // 写入 CPAMP 配置，dataDir 指向共享数据目录
+    let cpamp_runtime = {
+        let dir = cpamp_dir.clone();
+        tauri::async_runtime::spawn_blocking(move || resolve_cpamp_runtime_dir(&dir))
+            .await
+            .map_err(|e| e.to_string())??
+    };
+    let shared_data_dir = root.join("cpamp-data");
+    let runtime_for_migrate = cpamp_runtime.clone();
+    let shared_data_for_migrate = shared_data_dir.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        migrate_cpamp_data(&runtime_for_migrate, &shared_data_for_migrate)
+    })
+    .await
+    .map_err(|e| e.to_string())??;
+    let runtime_for_config = cpamp_runtime.clone();
+    let shared_data_for_config = shared_data_dir.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        write_cpamp_config(&runtime_for_config, &shared_data_for_config)
+    })
+    .await
+    .map_err(|e| e.to_string())??;
 
     if should_restart {
         emit_deploy_progress(&app, "start", "启动选定版本...", 88);

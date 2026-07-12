@@ -2900,18 +2900,8 @@ function applyDisplayNameByMode() {
 
 function updateDisplayNameButtons(active) {
   slotDisplayNameMode = active === 'mapped' ? 'mapped' : 'original';
-  const origBtn = document.getElementById('btn-use-original-name');
-  const mappedBtn = document.getElementById('btn-use-mapped-name');
-  if (origBtn) {
-    origBtn.style.background = active === 'original' ? 'var(--accent)' : 'var(--bg-input)';
-    origBtn.style.color = active === 'original' ? '#fff' : 'var(--text-muted)';
-    origBtn.style.borderColor = active === 'original' ? 'var(--accent)' : 'var(--border)';
-  }
-  if (mappedBtn) {
-    mappedBtn.style.background = active === 'mapped' ? 'var(--accent)' : 'var(--bg-input)';
-    mappedBtn.style.color = active === 'mapped' ? '#fff' : 'var(--text-muted)';
-    mappedBtn.style.borderColor = active === 'mapped' ? 'var(--accent)' : 'var(--border)';
-  }
+  // 原 "使用原始模型名" / "使用映射模型名" 按钮已从 UI 移除，
+  // 仅保留模式状态，用于自动填充 slot-display 输入框。
 }
 
 function filterSlotCatalog() {

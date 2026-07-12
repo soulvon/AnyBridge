@@ -2,6 +2,24 @@
 
 All notable changes to AnyBridge will be documented in this file.
 
+## v0.3.2 - 2026-07-13
+
+- 修复 CPA Manager Plus 登录失败问题：确保 `secrets.json` 中的 `admin_key` 与 CPAMP 数据库密钥同步。
+- 新增 `reset_cpamp_admin_key` 函数，在启动/部署/更新/切换版本前自动执行 `reset-admin-key` 同步数据库密钥。
+- 修复每次更新 CPA Suite 时密钥丢失的问题：部署前检查 `secrets.json` 是否已存在，存在则复用旧密钥。
+- 修复 CPAMP 内部数据（反代凭据、面板历史、OAuth token、usage.sqlite、data.key 等）在更新或切换版本时丢失的问题。
+- 新增共享数据目录 `cpamp-data/`，将 `dataDir` 从版本目录内的 `./data` 改为 CPA Suite 根目录下的共享路径。
+- 新增 `migrate_cpamp_data` 函数，首次使用共享目录时自动从旧版本 `data/` 迁移全部文件。
+- 通过环境变量 `USAGE_DATA_DIR`、`USAGE_DB_PATH`、`CPA_MANAGER_DATA_KEY_PATH` 确保所有路径一致。
+- 优化模型映射编辑器 UI：将"映射自定义显示名"和"上下文窗口"配置区从底部移到右列顶部，简化为一行布局。
+- 精简上下文窗口预设按钮：仅保留推荐、200K、1M，移除 32K/128K/清除。
+- Windows 平台调用子进程时加入 `CREATE_NO_WINDOW` 标志防止黑窗。
+
+## v0.3.1 - 2026-07-12
+
+- 修复 CPA Manager Plus 1.10+ 登录失败：`admin_key` 在首次启动后被持久化到 SQLite，后续启动不再读取环境变量，新增 `reset_cpamp_admin_key` 函数在启动前同步密钥。
+- 部署时复用已有 `secrets.json` 避免每次更新生成新密钥。
+
 ## v0.3.0 - 2026-07-11
 
 - 重构前端架构：将 `index.html` 拆分为 partials 模板，引入轻量 HTML 构建流程（`scripts/build-ui.mjs`）。
