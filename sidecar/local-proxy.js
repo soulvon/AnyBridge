@@ -28,6 +28,7 @@ import {
 } from './lib/responses-chat-transform.js';
 import { DEFAULT_SELF_HEAL_CONFIG, tryHeal } from './lib/self-heal.js';
 import { executeSearchWithFailover } from './handlers/search-sources.js';
+import { codexAuthJsonPath } from './lib/codex-home.js';
 
 const AGENT = new https.Agent({ keepAlive: true, maxSockets: 64, maxFreeSockets: 16 });
 const HTTP_AGENT = new http.Agent({ keepAlive: true, maxSockets: 64, maxFreeSockets: 16 });
@@ -160,10 +161,6 @@ function authToken(req) {
   return String(req.headers['x-api-key'] || req.headers['x-goog-api-key'] || req.headers['api-key'] || '').trim();
 }
 
-function codexAuthJsonPath() {
-  const home = os.homedir();
-  return path.join(home, '.codex', 'auth.json');
-}
 
 let _cachedCodexToken = null;
 let _cachedCodexTokenMtime = 0;

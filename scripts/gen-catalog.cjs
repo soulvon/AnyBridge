@@ -1,11 +1,32 @@
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
 
+// Align with Rust codex_home() / sidecar codex-home.js: CODEX_HOME, else ~/.codex
+function codexHome() {
+  const raw = process.env.CODEX_HOME;
+  if (typeof raw === 'string') {
+    const trimmed = raw.trim();
+    if (trimmed) return path.resolve(trimmed);
+  }
+  return path.join(os.homedir(), '.codex');
+}
+
+const codexDir = codexHome();
+const modelsCachePath = path.join(codexDir, 'models_cache.json');
+const catalogOutPath = path.join(codexDir, 'anybridge-model-catalog.json');
+
+if (!fs.existsSync(modelsCachePath)) {
+  console.error(`ERROR: models_cache.json not found: ${modelsCachePath}`);
+  console.error('Start Codex once to generate it, or set CODEX_HOME if non-default.');
+  process.exit(1);
+}
+
 // Read the gpt-5.5 template from models_cache.json
-const cache = JSON.parse(fs.readFileSync('C:/Users/admin/.codex/models_cache.json', 'utf8'));
+const cache = JSON.parse(fs.readFileSync(modelsCachePath, 'utf8'));
 const template = cache.models.find(m => m.slug === 'gpt-5.5');
 if (!template) {
-  console.error('ERROR: gpt-5.5 template not found in models_cache.json');
+  console.error(`ERROR: gpt-5.5 template not found in ${modelsCachePath}`);
   process.exit(1);
 }
 
@@ -111,10 +132,9 @@ const models = customModels.map((m, i) => {
 
 // Write as ModelsResponse format: {"models": [...]}
 const catalog = { models };
-fs.writeFileSync(
-  'C:/Users/admin/.codex/anybridge-model-catalog.json',
-  JSON.stringify(catalog, null, 2)
-);
+fs.mkdirSync(codexDir, { recursive: true });
+fs.writeFileSync(catalogOutPath, JSON.stringify(catalog, null, 2));
 console.log(`Catalog written as ModelsResponse format: ${models.length} models`);
+console.log(`Path: ${catalogOutPath}`);
 console.log('Contexts:', models.map(m => `${m.slug}=${m.context_window}`).join(', '));
 console.log('First model keys:', Object.keys(models[0]).join(', '));

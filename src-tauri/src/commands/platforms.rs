@@ -249,15 +249,24 @@ impl Platform {
 
     /// 配置目录（用于检测是否安装）。
     fn config_dir(&self) -> Option<PathBuf> {
-        let home = dirs::home_dir()?;
-        Some(match self {
-            Platform::ClaudeCode => home.join(".claude"),
-            Platform::Codex => home.join(".codex"),
-            Platform::CodeBuddy => home.join(".codebuddy"),
-            Platform::OpenCode => home.join(".config").join("opencode"),
-            Platform::WorkBuddy => home.join(".workbuddy"),
-            Platform::ZCode => home.join(".zcode"),
-        })
+        match self {
+            Platform::Codex => codex_home(),
+            Platform::ClaudeCode
+            | Platform::CodeBuddy
+            | Platform::OpenCode
+            | Platform::WorkBuddy
+            | Platform::ZCode => {
+                let home = dirs::home_dir()?;
+                Some(match self {
+                    Platform::ClaudeCode => home.join(".claude"),
+                    Platform::CodeBuddy => home.join(".codebuddy"),
+                    Platform::OpenCode => home.join(".config").join("opencode"),
+                    Platform::WorkBuddy => home.join(".workbuddy"),
+                    Platform::ZCode => home.join(".zcode"),
+                    Platform::Codex => unreachable!(),
+                })
+            }
+        }
     }
 
     /// 配置文件路径。
@@ -390,7 +399,7 @@ impl Platform {
                 let name = toml_escape(&p.name);
                 // wire_api 始终为 "responses"：Codex 始终用 Responses API 与本地代理通信，
                 // 由代理根据 provider 的 wireApi 配置决定是否转换为 Chat Completions。
-                let catalog_line = if !p.model_catalog.is_empty() {
+                let catalog_line = if !resolve_codex_model_catalog_entries(p).is_empty() {
                     format!("\nmodel_catalog_json = \"{CODEX_MODEL_CATALOG_FILENAME}\"")
                 } else {
                     String::new()
@@ -597,15 +606,18 @@ impl Platform {
         provider_table[CODEX_ANYBRIDGE_MANAGED_FLAG] = value(true);
 
         // ── 模型目录：让 Codex 显示自定义模型列表 ──
-        if !p.model_catalog.is_empty() {
-            let catalog_json = generate_model_catalog_json(&p.model_catalog)?;
-            let catalog_dir = path.parent().unwrap_or_else(|| Path::new("."));
+        // catalog 目录必须与 config.toml 同目录；禁止回退到进程 CWD。
+        let catalog_dir = path.parent().ok_or_else(|| {
+            format!("无法定位 Codex 配置目录（config 路径异常）: {}", path.display())
+        })?;
+        let catalog_entries = resolve_codex_model_catalog_entries(p);
+        if !catalog_entries.is_empty() {
+            let catalog_json = generate_model_catalog_json(&catalog_entries)?;
             let catalog_path = catalog_dir.join(CODEX_MODEL_CATALOG_FILENAME);
             super::write_atomic(&catalog_path, catalog_json.as_bytes())?;
             doc["model_catalog_json"] = value(CODEX_MODEL_CATALOG_FILENAME);
         } else {
             doc.as_table_mut().remove("model_catalog_json");
-            let catalog_dir = path.parent().unwrap_or_else(|| Path::new("."));
             let _ = fs::remove_file(catalog_dir.join(CODEX_MODEL_CATALOG_FILENAME));
         }
 
@@ -635,8 +647,9 @@ impl Platform {
             doc.as_table_mut().remove("model");
             doc.as_table_mut().remove("model_catalog_json");
 
-            let catalog_dir = path.parent().unwrap_or_else(|| Path::new("."));
-            let _ = fs::remove_file(catalog_dir.join(CODEX_MODEL_CATALOG_FILENAME));
+            if let Some(catalog_dir) = path.parent() {
+                let _ = fs::remove_file(catalog_dir.join(CODEX_MODEL_CATALOG_FILENAME));
+            }
 
             let providers = doc
                 .entry("model_providers")
@@ -667,8 +680,9 @@ impl Platform {
             doc.as_table_mut().remove("model_catalog_json");
 
             // 删除可能存在的模型目录文件
-            let catalog_dir = path.parent().unwrap_or_else(|| Path::new("."));
-            let _ = fs::remove_file(catalog_dir.join(CODEX_MODEL_CATALOG_FILENAME));
+            if let Some(catalog_dir) = path.parent() {
+                let _ = fs::remove_file(catalog_dir.join(CODEX_MODEL_CATALOG_FILENAME));
+            }
 
             let providers_empty = doc["model_providers"]
                 .as_table_mut()
@@ -1037,10 +1051,48 @@ fn codex_bearer_token() -> Result<String, String> {
 }
 
 /// 模型目录文件名
-const CODEX_MODEL_CATALOG_FILENAME: &str = "anybridge-model-catalog.json";
+pub(crate) const CODEX_MODEL_CATALOG_FILENAME: &str = "anybridge-model-catalog.json";
 const CODEX_ANYBRIDGE_AGENTS_DIRNAME: &str = "anybridge-agents";
 const CODEX_ANYBRIDGE_AGENTS_MANIFEST: &str = "manifest.json";
 const CODEX_ANYBRIDGE_MANAGED_FLAG: &str = "anybridge_managed";
+
+/// 解析 Codex 配置目录：优先 `CODEX_HOME`，否则 `~/.codex`。
+/// 与官方 Codex CLI 行为一致，避免用户自定义 CODEX_HOME 时写到错误路径。
+pub(crate) fn codex_home() -> Option<PathBuf> {
+    if let Ok(raw) = std::env::var("CODEX_HOME") {
+        let trimmed = raw.trim();
+        if !trimmed.is_empty() {
+            return Some(PathBuf::from(trimmed));
+        }
+    }
+    dirs::home_dir().map(|h| h.join(".codex"))
+}
+
+/// 从 Provider 合成 model_catalog：优先用显式 model_catalog；
+/// 为空时回退 models / default_model，避免只配了模型列表却不写 catalog。
+pub(crate) fn resolve_codex_model_catalog_entries(p: &Provider) -> Vec<ModelCatalogEntry> {
+    if !p.model_catalog.is_empty() {
+        return p.model_catalog.clone();
+    }
+    let mut seen = HashSet::new();
+    let mut entries = Vec::new();
+    let mut push = |model: &str| {
+        let m = model.trim();
+        if m.is_empty() || !seen.insert(m.to_string()) {
+            return;
+        }
+        entries.push(ModelCatalogEntry {
+            model: m.to_string(),
+            display_name: None,
+            context_window: None,
+        });
+    };
+    for m in &p.models {
+        push(m);
+    }
+    push(&p.default_model);
+    entries
+}
 const CODEX_LEGACY_ANYBRIDGE_SLUG_PREFIX: &str = "anybridge:";
 const CODEX_RUNTIME_MODEL_PROVIDER_ID: &str = "codex_local_access";
 const CODEX_LEGACY_MODEL_PROVIDER_ID: &str = "byok";
@@ -1159,7 +1211,7 @@ pub(crate) fn codex_bundled_model_template(model_id: &str) -> (Value, bool) {
 /// 治本方案：直接复用官方 gpt-5.5 条目作为模板，避免手写 schema 错漏。
 /// models_cache.json 由 Codex 首次运行时自动生成，读取它不需要启动 Codex。
 pub(crate) fn read_codex_model_template() -> Option<serde_json::Value> {
-    let path = dirs::home_dir()?.join(".codex").join("models_cache.json");
+    let path = codex_home()?.join("models_cache.json");
     let raw = std::fs::read_to_string(&path).ok()?;
     let parsed: serde_json::Value = serde_json::from_str(&raw).ok()?;
     let models = parsed.get("models")?.as_array()?;
@@ -1186,10 +1238,10 @@ pub(crate) fn read_codex_model_template() -> Option<serde_json::Value> {
 }
 
 fn read_codex_catalog_slugs_for_template() -> HashSet<String> {
-    let Some(home) = dirs::home_dir() else {
+    let Some(dir) = codex_home() else {
         return HashSet::new();
     };
-    let path = home.join(".codex").join(CODEX_MODEL_CATALOG_FILENAME);
+    let path = dir.join(CODEX_MODEL_CATALOG_FILENAME);
     let Ok(raw) = std::fs::read_to_string(path) else {
         return HashSet::new();
     };
@@ -1258,15 +1310,20 @@ fn is_codex_official_template_candidate(
 ///
 /// 返回 Err 让上层（apply_codex → UI）显示明确错误：
 /// 失败时**不静默退化**（debug-first 原则）。
-fn generate_model_catalog_json(entries: &[ModelCatalogEntry]) -> Result<String, String> {
+pub(crate) fn generate_model_catalog_json(entries: &[ModelCatalogEntry]) -> Result<String, String> {
     // 旧版模板：仅在存在非 bundled 模型时才需要读取 models_cache.json
     let has_legacy_models = entries.iter().any(|e| !is_codex_bundled_model(&e.model));
     let legacy_template: Option<serde_json::Value> = if has_legacy_models {
         Some(read_codex_model_template().ok_or_else(|| {
-            "无法读取 ~/.codex/models_cache.json（Codex 官方模型缓存）。\n\
-             请先启动一次 Codex CLI 让其生成此文件，然后重新切换供应商。\n\
-             路径: ~/.codex/models_cache.json"
-                .to_string()
+            let path = codex_home()
+                .map(|d| d.join("models_cache.json"))
+                .map(|p| p.display().to_string())
+                .unwrap_or_else(|| "CODEX_HOME/models_cache.json".to_string());
+            format!(
+                "无法读取 Codex 官方模型缓存 models_cache.json。\n\
+                 请先启动一次 Codex CLI 让其生成此文件，然后重新切换供应商。\n\
+                 路径: {path}"
+            )
         })?)
     } else {
         None
@@ -1362,10 +1419,13 @@ impl CodexAgentsFinalize {
 }
 
 fn codex_agents_dir(config_path: &Path) -> PathBuf {
-    config_path
+    let base = config_path
         .parent()
-        .unwrap_or_else(|| Path::new("."))
-        .join(CODEX_ANYBRIDGE_AGENTS_DIRNAME)
+        .filter(|p| !p.as_os_str().is_empty())
+        .map(|p| p.to_path_buf())
+        .or_else(codex_home)
+        .unwrap_or_else(|| PathBuf::from("."));
+    base.join(CODEX_ANYBRIDGE_AGENTS_DIRNAME)
 }
 
 fn codex_agents_manifest_path(config_path: &Path) -> PathBuf {

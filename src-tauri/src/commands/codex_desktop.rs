@@ -21,9 +21,10 @@
 //   包内 app-server 仍叫 codex.exe。不能再用「任意 codex.exe」判断 Desktop 在跑，
 //   否则 CLI / 残留 app-server / 第三方 adapter 会误触发 watcher 接管并弹窗。
 
-use crate::commands::config::{configured_proxy_ports, read_provider_store};
+use crate::commands::config::{configured_proxy_ports, read_provider_store, ModelCatalogEntry};
 use crate::commands::platforms::{
-    codex_bundled_model_template, is_codex_bundled_model, read_codex_model_template,
+    codex_bundled_model_template, codex_home, generate_model_catalog_json, is_codex_bundled_model,
+    read_codex_model_template, resolve_codex_model_catalog_entries, CODEX_MODEL_CATALOG_FILENAME,
 };
 use serde::Serialize;
 use std::collections::HashSet;
@@ -96,7 +97,7 @@ pub struct CodexDesktopResult {
 // ─── helpers ──────────────────────────────────────────────────────────
 
 fn codex_config_dir() -> Option<PathBuf> {
-    dirs::home_dir().map(|h| h.join(".codex"))
+    codex_home()
 }
 
 /// 运行一段 PowerShell 脚本，返回 stdout（去掉首尾空白）。
@@ -586,13 +587,66 @@ fn cdp_listening_on_port(port: u16, timeout: Duration) -> bool {
 
 // ─── models_cache.json 注入 ───────────────────────────────────────────
 
-/// 读取 AnyBridge catalog 文件（~/.codex/anybridge-model-catalog.json），
-/// 提取需要注入到 models_cache.json 的模型 slug 列表。
+/// 从当前 Codex 平台绑定的配置合成 catalog 条目。
+fn current_codex_catalog_entries() -> Result<Vec<ModelCatalogEntry>, String> {
+    let store = read_provider_store()?;
+    let provider_id = store
+        .platforms
+        .get("codex")
+        .map(|s| s.provider_id.clone())
+        .filter(|id| !id.trim().is_empty())
+        .ok_or_else(|| {
+            "当前未绑定 Codex 供应商配置，无法生成模型目录。请先在「更多平台」切换一次 Codex。"
+                .to_string()
+        })?;
+    let provider = store
+        .codex_configs
+        .iter()
+        .find(|c| c.id == provider_id)
+        .cloned()
+        .map(crate::commands::config::Provider::from)
+        .ok_or_else(|| format!("Codex 配置不存在: {provider_id}"))?;
+    let entries = resolve_codex_model_catalog_entries(&provider);
+    if entries.is_empty() {
+        return Err(format!(
+            "Codex 配置「{}」未提供可用模型（modelCatalog / models / defaultModel 均为空）",
+            provider.name
+        ));
+    }
+    Ok(entries)
+}
+
+/// 确保 `anybridge-model-catalog.json` 存在；缺失或空时从 provider store 重建。
+fn ensure_anybridge_catalog_file(dir: &std::path::Path) -> Result<PathBuf, String> {
+    let catalog_file = dir.join(CODEX_MODEL_CATALOG_FILENAME);
+    let needs_rebuild = match std::fs::read_to_string(&catalog_file) {
+        Ok(raw) => {
+            let parsed = serde_json::from_str::<serde_json::Value>(&raw).ok();
+            match parsed.as_ref().and_then(catalog_models_array) {
+                Some(arr) => !arr.iter().any(|m| extract_model_slug(m).is_some()),
+                None => true,
+            }
+        }
+        Err(_) => true,
+    };
+    if needs_rebuild {
+        let entries = current_codex_catalog_entries()?;
+        let catalog_json = generate_model_catalog_json(&entries)?;
+        std::fs::create_dir_all(dir).map_err(|e| {
+            format!("创建 Codex 配置目录失败 ({}): {e}", dir.display())
+        })?;
+        crate::commands::write_atomic(&catalog_file, catalog_json.as_bytes())?;
+    }
+    Ok(catalog_file)
+}
+
+/// 读取 AnyBridge catalog（缺失时从当前 Codex 配置重建），
+/// 提取需要注入到 models_cache.json 的模型列表。
 fn read_anybridge_catalog_models() -> Result<Vec<serde_json::Value>, String> {
     let Some(dir) = codex_config_dir() else {
-        return Err("无法定位用户主目录".to_string());
+        return Err("无法定位 Codex 配置目录（CODEX_HOME / ~/.codex）".to_string());
     };
-    let catalog_file = dir.join("anybridge-model-catalog.json");
+    let catalog_file = ensure_anybridge_catalog_file(&dir)?;
     let raw = std::fs::read_to_string(&catalog_file)
         .map_err(|e| format!("读取 Codex 模型目录失败 ({}): {e}", catalog_file.display()))?;
     let parsed = serde_json::from_str::<serde_json::Value>(&raw)
@@ -709,9 +763,11 @@ fn write_models_cache() -> Result<(), String> {
     });
 
     let template = template.ok_or_else(|| {
-        "无法读取 Codex 官方模型模板：~/.codex/models_cache.json 不存在且 cache 为空。\n\
-         请先启动一次 Codex Desktop / CLI 让其生成 models_cache.json，再切换供应商。"
-            .to_string()
+        format!(
+            "无法读取 Codex 官方模型模板：{} 不存在或无可用官方条目。\n\
+             请先启动一次 Codex Desktop / CLI 让其生成 models_cache.json，再切换供应商。",
+            cache_path.display()
+        )
     })?;
 
     // 本次要注入的原始 slug 集合（用于清掉 JS prePatchModelsCache 历史写入的同名无前缀残留）。

@@ -21,10 +21,10 @@
 // and the `http` module with no agent (§4.17: system proxy intercepts localhost).
 
 import http from 'node:http';
-import fs from 'node:fs';
-import os from 'node:os';
-import path from 'node:path';
 import { buildInjectionScript } from './codex-desktop-inject.js';
+import { codexModelCatalogPath, readInjectableModels } from './codex-home.js';
+
+export { readInjectableModels };
 
 // WebSocket: 优先 Node 22+ 全局 WebSocket（release pkg exe 内置）；
 // 回退 ws 包（dev 模式 node 20 无全局 WebSocket，typeof 检查避免 ReferenceError）。
@@ -40,33 +40,6 @@ const WSImpl = (() => {
 })();
 const CDP_TIMEOUT_MS = 8000;
 
-/**
- * Read the full model objects from the AnyBridge catalog file
- * (~/.codex/anybridge-model-catalog.json). Returns objects in Codex-internal
- * format ({slug, display_name, description, ...}) suitable for injection.
- * @returns {Array<object>}
- */
-export function readInjectableModels() {
-  const catalogFile = path.join(os.homedir(), '.codex', 'anybridge-model-catalog.json');
-  if (!fs.existsSync(catalogFile)) {
-    throw new Error(`Codex model catalog not found: ${catalogFile}`);
-  }
-  let parsed;
-  try {
-    parsed = JSON.parse(fs.readFileSync(catalogFile, 'utf8'));
-  } catch (err) {
-    throw new Error(`Failed to parse Codex model catalog ${catalogFile}: ${err.message || err}`);
-  }
-  const arr = Array.isArray(parsed) ? parsed : (parsed && Array.isArray(parsed.models) ? parsed.models : null);
-  if (!Array.isArray(arr)) {
-    throw new Error(`Codex model catalog has no models array: ${catalogFile}`);
-  }
-  const models = arr.filter((m) => m && (m.slug || m.model));
-  if (!models.length) {
-    throw new Error(`Codex model catalog has no injectable models: ${catalogFile}`);
-  }
-  return models;
-}
 
 function httpGetJson(url) {
   return new Promise((resolve, reject) => {
@@ -240,7 +213,7 @@ async function injectOnce(port, models) {
  */
 export async function injectWithRetry(port, models, timeoutMs = 15000) {
   if (!Array.isArray(models) || !models.length) {
-    return { ok: false, message: 'No Codex custom models to inject. Check ~/.codex/anybridge-model-catalog.json.' };
+    return { ok: false, message: `No Codex custom models to inject. Check ${codexModelCatalogPath()}.` };
   }
 
   const deadline = Date.now() + timeoutMs;

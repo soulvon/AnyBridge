@@ -2,6 +2,13 @@
 
 All notable changes to AnyBridge will be documented in this file.
 
+## v0.3.3 - 2026-07-14
+
+- 统一 Codex 路径解析：移除脚本与错误消息中的机器相关硬编码路径，改为优先读取 `CODEX_HOME`，否则回退到 `~/.codex`。
+- 新增 sidecar 共享模块 `codex-home.js`，对齐 Rust `codex_home()`，供 catalog 读写、auth.json 定位与 CDP 注入复用。
+- 修复 `gen-catalog`、`platforms`、`codex_desktop` 与 sidecar 注入逻辑在非默认 Codex 目录下的路径解析问题。
+- 错误提示改为展示实际解析路径，便于排查缺失的 `models_cache.json` / `anybridge-model-catalog.json`。
+
 ## v0.3.2 - 2026-07-13
 
 - 修复 CPA Manager Plus 登录失败问题：确保 `secrets.json` 中的 `admin_key` 与 CPAMP 数据库密钥同步。
