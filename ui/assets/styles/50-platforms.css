@@ -1562,7 +1562,8 @@
 .codex-toolbar-actions .btn-primary,
 .codex-toolbar-actions .btn-secondary,
 .codex-toolbar-actions .btn-danger,
-.codex-toolbar-actions .btn-ghost {
+.codex-toolbar-actions .btn-ghost,
+.codex-toolbar-actions .codex-repair-sessions-btn {
   min-height: 36px;
   border-radius: 10px;
   padding: 0 14px;
@@ -3595,7 +3596,8 @@ button.codex-reconfigure-action:disabled {
   .codex-search,
   .codex-search input,
   .codex-toolbar-actions .btn-primary,
-  .codex-toolbar-actions .btn-ghost {
+  .codex-toolbar-actions .btn-ghost,
+  .codex-toolbar-actions .codex-repair-sessions-btn {
     width: 100%;
   }
 

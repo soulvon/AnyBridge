@@ -54,7 +54,7 @@ const RETRY_MAX = intEnv('BYOK_RETRY_MAX', 5, 0);
 const RETRY_BASE_MS = intEnv('BYOK_RETRY_BASE_MS', 600, 1);
 const RETRY_CAP_MS = intEnv('BYOK_RETRY_CAP_MS', 8000, 1);
 const RETRY_TOTAL_MS = intEnv('BYOK_RETRY_TOTAL_MS', 60000, 0);
-const NATIVE_STREAM_ERRORS = /^(true|1|on)$/i.test(String(process.env.BYOK_NATIVE_ERRORS || 'false'));
+const NATIVE_STREAM_ERRORS = !/^(false|0|off)$/i.test(String(process.env.BYOK_NATIVE_ERRORS || 'true'));
 const OPENAI_REASONING_EFFORT = String(process.env.BYOK_REASONING_EFFORT || process.env.OPENAI_REASONING_EFFORT || '').trim();
 const OPENAI_REASONING_SUMMARY = String(process.env.BYOK_REASONING_SUMMARY || process.env.OPENAI_REASONING_SUMMARY || '').trim();
 const PROMPT_CACHE_ENABLED = !/^(false|0|off)$/i.test(String(process.env.BYOK_PROMPT_CACHE || 'true'));
@@ -145,6 +145,30 @@ function upstreamRequestOptions(conn, apiPath, headers) {
   };
 }
 
+function looksLikeHtml(text) {
+  const s = String(text || '').trim();
+  if (!s) return false;
+  // Require real markup, not plain text that merely mentions Cloudflare.
+  return /<!DOCTYPE\s+html/i.test(s)
+    || /<\/?html[\s>]/i.test(s)
+    || /<div[^>]*\bid=["']?cf-wrapper/i.test(s)
+    || (/<(?:head|body|title|meta|style)[\s>]/i.test(s) && /cloudflare|cf-error|attention required/i.test(s));
+}
+
+function summarizeHtmlError(text) {
+  const raw = String(text || '');
+  const title = raw.match(/<title[^>]*>([^<]+)<\/title>/i)?.[1]?.trim();
+  const ray = raw.match(/Cloudflare Ray ID[^0-9A-Za-z]*([0-9a-f]+)/i)?.[1]
+    || raw.match(/cf-ray["'=:\s]+([0-9a-f-]+)/i)?.[1];
+  const code = raw.match(/Error code\s*(\d{3})/i)?.[1]
+    || raw.match(/\b(520|521|522|523|524|525|526|530)\b/)?.[1];
+  const parts = ['上游返回 HTML 错误页'];
+  if (code) parts.push(`HTTP/CF ${code}`);
+  if (title) parts.push(title.replace(/\s+/g, ' '));
+  if (ray) parts.push(`Ray ${ray}`);
+  return clampText(parts.join(' · '));
+}
+
 function extractUpstreamMessage(body) {
   if (!body) return '';
   const raw = String(body).trim();
@@ -156,9 +180,19 @@ function extractUpstreamMessage(body) {
       || json?.message
       || json?.detail
       || (typeof json?.error === 'string' ? json.error : '');
-    if (msg) return clampText(msg.replace(/\s*\(request id:[^)]+\)/ig, ''));
+    if (msg) {
+      const text = String(msg).replace(/\s*\(request id:[^)]+\)/ig, '');
+      // Midways/proxies often wrap Cloudflare HTML inside JSON error.message.
+      if (looksLikeHtml(text)) return summarizeHtmlError(text);
+      return clampText(text);
+    }
   } catch {
-    // Non-JSON provider bodies are still useful if they are short.
+    // Non-JSON provider bodies may be useful if short and non-HTML.
+  }
+  if (looksLikeHtml(raw)) return summarizeHtmlError(raw);
+  // Avoid dumping huge non-JSON bodies into UI/context.
+  if (raw.length > 400 || /[<>]{2,}|\{[\s\S]{200,}/.test(raw)) {
+    return '';
   }
   return clampText(raw.replace(/\s*\(request id:[^)]+\)/ig, ''));
 }
@@ -233,8 +267,8 @@ function providerFailureMessage(failures = []) {
   if (failures.length === 0) {
     return 'BYOK 暂时无法连接模型：没有可用的供应商目标。请检查模型映射，或添加备用目标。';
   }
-  const lastUpstreamBody = [...failures].reverse().find(f => typeof f.body === 'string' && f.body.length > 0)?.body;
-  if (lastUpstreamBody) return lastUpstreamBody;
+  // Never return raw upstream bodies (HTML/Cloudflare pages, huge JSON, etc.).
+  // Raw bodies pollute Devin/Windsurf assistant context and become session titles.
   const summaries = failures.map(failureSummary);
   const head = failures.length === 1
     ? `BYOK 暂时无法连接模型：${summaries[0]}。`

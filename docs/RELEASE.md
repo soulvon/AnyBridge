@@ -11,10 +11,13 @@ For each release, keep these versions aligned:
 - `sidecar/package.json`
 - `sidecar/package-lock.json`
 - `src-tauri/Cargo.toml`
+- `src-tauri/Cargo.lock` (auto-updated with Cargo.toml)
 - `src-tauri/tauri.conf.json`
 - `CHANGELOG.md`
 
 The open-source line starts at `0.1.0`.
+
+Do not commit local build outputs (`src-tauri/binaries/`, `src-tauri/target/`), one-off probe scripts, or credential dumps.
 
 ## Legacy Updater Migration
 
@@ -76,17 +79,28 @@ The private key file `tauri-sign.key` must never be committed.
 
 ## Release Flow
 
-1. Update versions and `CHANGELOG.md`.
-2. Commit the release changes.
-3. Create and push a tag:
+1. Update versions and write `CHANGELOG.md` for the new version section (`## vX.Y.Z`).
+2. Commit the release changes on `main`.
+3. Push the commit, then create and push an annotated tag matching `package.json`:
 
    ```bash
-   git tag v0.1.0
-   git push origin v0.1.0
+   git push origin main
+   git tag -a v0.3.6 -m "release: v0.3.6"
+   git push origin v0.3.6
    ```
 
-4. Verify the GitHub Actions run.
-5. Verify every expected platform asset and `latest.json`.
+4. Tag push triggers `.github/workflows/release.yml`:
+   - `prepare-release` creates a **draft** GitHub Release and fills notes from `CHANGELOG.md`
+   - matrix builds Windows / macOS (arm64 + x64) / Linux installers with signed updater artifacts
+5. Verify the Actions run, every platform asset, and `latest.json`.
+6. Publish the draft release when assets look correct.
+
+Local smoke test before tagging (Windows):
+
+```bash
+python scripts/build/build_sidecar_plain.py
+npm run tauri:build:local
+```
 
 ## Release Repository
 

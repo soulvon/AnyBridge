@@ -1385,11 +1385,7 @@ async function updateCpaSuite() {
     'warn'
   );
   if (!confirmed) return;
-  const installDir = await chooseCpaInstallDir();
-  if (installDir === null) {
-    extensionLog('info', '用户取消了选择安装目录。');
-    return;
-  }
+  const installDir = cpaInstallDir || null;
   setCpaSuiteTransientStatus('updating');
   setCpaProgress(1, '开始更新 CPA 套件...', true);
   extensionLog('warn', '开始更新 CPA 套件...');

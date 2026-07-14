@@ -1753,9 +1753,44 @@ pub async fn extension_update_cpa_suite(
     emit_deploy_progress(&app, "check", "检查到新版本，准备更新...", 2);
     kill_service_by_port(CPA_PORT, "CLIProxyAPI")?;
     kill_service_by_port(CPAMP_PORT, "CPA Manager Plus")?;
-    tokio::time::sleep(Duration::from_secs(2)).await;
 
-    extension_deploy_cpa_suite(app, install_dir).await
+    // 等待端口释放（最多重试 5 次，每次 2 秒）
+    let mut ports_released = false;
+    for i in 0..5u32 {
+        tokio::time::sleep(Duration::from_secs(2)).await;
+        let cli_probe = probe_http_port(CPA_PORT, "/", "CLIProxyAPI");
+        let cpamp_probe = probe_http_port(CPAMP_PORT, "/", "CPA Manager Plus");
+        if cli_probe.status == "stopped" && cpamp_probe.status == "stopped" {
+            ports_released = true;
+            break;
+        }
+        emit_deploy_progress(
+            &app,
+            "check",
+            &format!("等待服务停止...({}/5)", i + 1),
+            2,
+        );
+    }
+    if !ports_released {
+        // 尝试恢复旧服务
+        let _ = start_cpa_suite_async().await;
+        return Err("更新失败：服务停止后端口未释放，请稍后重试。".into());
+    }
+
+    match extension_deploy_cpa_suite(app.clone(), install_dir).await {
+        Ok(result) => Ok(result),
+        Err(e) => {
+            // 更新失败，尝试恢复旧服务
+            emit_deploy_progress(&app, "rollback", "更新失败，尝试恢复旧服务...", 0);
+            if let Err(restart_err) = start_cpa_suite_async().await {
+                return Err(format!(
+                    "更新失败: {}\n恢复旧服务也失败: {}",
+                    e, restart_err
+                ));
+            }
+            Err(format!("更新失败: {}（旧服务已恢复）", e))
+        }
+    }
 }
 
 // ═══════ 部署 ═══════
@@ -1833,6 +1868,23 @@ fn generate_random_key(len: usize) -> String {
 }
 
 async fn fetch_release_with_assets(repo: &str) -> Result<GithubReleaseWithAssets, String> {
+    let mut last_err = String::new();
+    for attempt in 0..3u32 {
+        match fetch_release_with_assets_attempt(repo).await {
+            Ok(result) => return Ok(result),
+            Err(e) => {
+                last_err = e;
+                if attempt < 2 {
+                    let delay = Duration::from_secs(2 * (attempt + 1) as u64);
+                    tokio::time::sleep(delay).await;
+                }
+            }
+        }
+    }
+    Err(last_err)
+}
+
+async fn fetch_release_with_assets_attempt(repo: &str) -> Result<GithubReleaseWithAssets, String> {
     let client = build_github_client()?;
     let url = format!("https://api.github.com/repos/{}/releases/latest", repo);
     let response = client
@@ -1842,16 +1894,24 @@ async fn fetch_release_with_assets(repo: &str) -> Result<GithubReleaseWithAssets
         .await
         .map_err(|e| format!("请求 GitHub 最新发布包失败 {}：{}", repo, e))?;
     let status = response.status();
-    if !status.is_success() {
-        return Err(format!(
-            "GitHub 最新发布包请求失败 {}：HTTP {}",
-            repo, status
-        ));
+    if status.is_success() {
+        return response
+            .json::<GithubReleaseWithAssets>()
+            .await
+            .map_err(|e| format!("无法解析 GitHub 发布包信息 {}：{}", repo, e));
     }
-    response
-        .json::<GithubReleaseWithAssets>()
-        .await
-        .map_err(|e| format!("无法解析 GitHub 发布包信息 {}：{}", repo, e))
+
+    // 403/429 通常为 API 未认证限流；404 可能是 release 不存在或 API 被限制。使用网页抓取兜底。
+    if status == 403 || status == 429 || status == 404 {
+        let release = fetch_latest_release_via_web_redirect(repo).await?;
+        let tag = &release.tag_name;
+        return fetch_release_assets_via_web(repo, tag).await;
+    }
+
+    Err(format!(
+        "GitHub 最新发布包请求失败 {}：HTTP {}（未认证 API 请求易被限流，可设置 GITHUB_TOKEN 环境变量提升额度）",
+        repo, status
+    ))
 }
 
 async fn fetch_release_with_assets_by_tag(
@@ -1867,6 +1927,7 @@ async fn fetch_release_with_assets_by_tag(
         format!("V{}", tag),
     ];
     let mut last_err = String::new();
+    let mut rate_limited = false;
     for tag_name in &candidates {
         let url = format!(
             "https://api.github.com/repos/{}/releases/tags/{}",
@@ -1886,14 +1947,123 @@ async fn fetch_release_with_assets_by_tag(
                 .map_err(|e| format!("无法解析 GitHub 发布包 {} @ {}：{}", repo, tag_name, e));
         }
         last_err = format!("HTTP {}", status);
+        if status == 403 || status == 429 {
+            rate_limited = true;
+            break;
+        }
         if status != 404 {
             break;
         }
     }
+
+    // API 限流时，通过网页抓取兜底
+    if rate_limited {
+        for tag_name in &candidates {
+            if let Ok(release) = fetch_release_assets_via_web(repo, tag_name).await {
+                return Ok(release);
+            }
+        }
+    }
+
     Err(format!(
         "未找到 {} 的发布版本 {}（{}）",
         repo, tag, last_err
     ))
+}
+
+/// 递归复制目录内容（用于迁移旧版本 auth/、plugins/ 等数据）
+fn copy_dir_contents(src: &Path, dst: &Path) -> Result<(), String> {
+    if !src.is_dir() {
+        return Ok(());
+    }
+    fs::create_dir_all(dst)
+        .map_err(|e| format!("创建目录 {} 失败: {}", dst.display(), e))?;
+    for entry in fs::read_dir(src).map_err(|e| format!("读取目录 {} 失败: {}", src.display(), e))? {
+        let entry =
+            entry.map_err(|e| format!("读取目录条目失败: {}", e))?;
+        let src_path = entry.path();
+        let dst_path = dst.join(entry.file_name());
+        if src_path.is_dir() {
+            copy_dir_contents(&src_path, &dst_path)?;
+        } else {
+            fs::copy(&src_path, &dst_path)
+                .map_err(|e| format!("复制文件 {} 失败: {}", src_path.display(), e))?;
+        }
+    }
+    Ok(())
+}
+
+/// 通过 GitHub 网页抓取 release 资产列表，绕过 API 限流。
+/// 抓取 expanded_assets 页面，解析其中的下载链接。
+async fn fetch_release_assets_via_web(
+    repo: &str,
+    tag: &str,
+) -> Result<GithubReleaseWithAssets, String> {
+    let client = super::apply_system_proxy(reqwest::Client::builder())
+        .timeout(Duration::from_secs(GITHUB_TIMEOUT_SECS))
+        .user_agent(format!(
+            "AnyBridge-Extension-Deployer/{}",
+            env!("CARGO_PKG_VERSION")
+        ))
+        .build()
+        .map_err(|e| e.to_string())?;
+
+    let url = format!(
+        "https://github.com/{}/releases/expanded_assets/{}",
+        repo, tag
+    );
+    let response = client
+        .get(&url)
+        .send()
+        .await
+        .map_err(|e| format!("请求 GitHub 发布资产页失败 {} @ {}：{}", repo, tag, e))?;
+
+    let status = response.status();
+    if !status.is_success() {
+        return Err(format!(
+            "GitHub 发布资产页请求失败 {} @ {}：HTTP {}",
+            repo, tag, status
+        ));
+    }
+
+    let html = response
+        .text()
+        .await
+        .map_err(|e| format!("读取 GitHub 发布资产页失败：{}", e))?;
+
+    // 解析 HTML 中的下载链接，格式如：href="/repo/releases/download/tag/filename"
+    let prefix = format!("/{}/releases/download/{}/", repo, tag);
+    let mut assets = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+    for segment in html.split('"') {
+        if let Some(rest) = segment.strip_prefix(&prefix) {
+            let filename = rest.trim_end_matches('"').trim();
+            if !filename.is_empty()
+                && !filename.contains('/')
+                && !filename.contains('\\')
+                && seen.insert(filename.to_string())
+            {
+                let download_url = format!("https://github.com{}{}", prefix, filename);
+                assets.push(GithubAsset {
+                    name: filename.to_string(),
+                    browser_download_url: download_url,
+                    size: 0,
+                });
+            }
+        }
+    }
+
+    if assets.is_empty() {
+        return Err(format!(
+            "无法从 GitHub 发布页解析资产列表 {} @ {}",
+            repo, tag
+        ));
+    }
+
+    Ok(GithubReleaseWithAssets {
+        tag_name: tag.to_string(),
+        assets,
+    })
 }
 
 fn host_os_tokens() -> &'static [&'static str] {
@@ -2872,6 +3042,10 @@ pub async fn extension_deploy_cpa_suite(
     )
     .await?;
 
+    // 4.5. 记录旧版本安装目录，用于后续数据迁移
+    let old_cli_dir = find_component_install("cli-proxy-api", parse_cli_version)
+        .map(|c| c.dir);
+
     // 5. 准备目录
     let root = resolve_cpa_install_dir(install_dir);
     let versions = root.join("versions");
@@ -2895,6 +3069,22 @@ pub async fn extension_deploy_cpa_suite(
         tauri::async_runtime::spawn_blocking(move || extract_archive(&cpamp_archive, &dir))
             .await
             .map_err(|e| e.to_string())??;
+    }
+
+    // 7.5. 迁移旧版本 auth/ 和 plugins/ 到新版本目录，保留用户配置
+    // 同版本重装时 old == new，自拷既无意义，Windows 上还可能因文件自复制失败。
+    if let Some(old) = &old_cli_dir {
+        if old != &cpa_dir {
+            let old_cli = old.clone();
+            let new_cli = cpa_dir.clone();
+            tauri::async_runtime::spawn_blocking(move || {
+                copy_dir_contents(&old_cli.join("auth"), &new_cli.join("auth"))?;
+                copy_dir_contents(&old_cli.join("plugins"), &new_cli.join("plugins"))?;
+                Ok::<_, String>(())
+            })
+            .await
+            .map_err(|e| e.to_string())??;
+        }
     }
 
     // 8. 生成密钥和配置（已存在则复用，避免每次更新丢失密钥）

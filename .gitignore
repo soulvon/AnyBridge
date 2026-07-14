@@ -67,6 +67,16 @@ ui/index.html.baseline
 
 # Temporary audit/debug scripts (one-off, not for version control)
 scripts/_*
+scripts/probe_*.py
+scripts/export_sub2api_alive.py
+scripts/export_release_review_diffs.py
+scripts/convert_sub2api_to_cpa.py
+scripts/probe_inspect_bulk.py
+
+# Local credential / alive harvest dumps (never commit)
+cpa_alive100/
+sub2api_alive100.json
+mcps/
 
 # Temporary dev notes
 findings.md

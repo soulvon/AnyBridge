@@ -4210,7 +4210,42 @@ function codexApplyConfirmMessage(provider) {
       ? '切换后会自动重启 Codex，并解锁模型选择器中的第三方模型。'
       : '切换后会自动重启 Codex 生效。')
     : '切换后会写入 Codex 配置；当前平台不支持自动重启 / 桌面注入，请手动重启 Codex 生效。';
-  return `将把 Codex 从「${from}」切换到「${to}」。\n\n供应商：${to}\n默认模型：${model}\n\n${hint}`;
+  const historyHint = provider.unifySessionHistory === false
+    ? '切换后会按当前 model_provider 自动修复会话索引可见性。'
+    : '切换后会自动对齐会话索引到统一桶 codex_local_access，历史会话继续可见。';
+  return `将把 Codex 从「${from}」切换到「${to}」。\n\n供应商：${to}\n默认模型：${model}\n\n${hint}\n${historyHint}`;
+}
+
+async function repairCodexSessionVisibility() {
+  const info = platformInfoOf('codex') || {};
+  const providerId = (info.codexConfig && info.codexConfig.modelProviderId)
+    || info.currentProviderId
+    || 'openai';
+  const ok = await showCustomConfirm(
+    `将把本地 Codex 会话索引（state_5.sqlite）对齐到当前 model_provider「${providerId}」，使历史会话在侧边栏重新可见。\n\n建议先完全关闭 Codex / Codex App，避免数据库被占用。\n\n不会改写会话内容文件（rollout）。若要统一到 codex_local_access，请先切换到开启「统一会话历史」的配置。`,
+    '修复会话历史',
+    'info'
+  );
+  if (!ok) return;
+
+  setPlatformBusy('codex', true);
+  showSwitchProgress('codex', '正在修复会话历史…');
+  try {
+    const summary = await invoke('repair_codex_session_visibility');
+    const msg = summary && summary.message
+      ? `${summary.message}（目标桶：${summary.targetProvider || providerId}，更新 ${summary.updatedSqliteRowCount || 0} 条）`
+      : '历史会话可见性修复完成';
+    if (typeof addLog === 'function') addLog('ok', msg);
+    showCustomAlert(msg, '修复完成', 'success');
+    await refreshPlatforms({ silent: true });
+  } catch (e) {
+    if (typeof addLog === 'function') addLog('err', `修复会话历史失败: ${e}`);
+    showCustomAlert(String(e), '修复失败', 'error');
+  } finally {
+    hideSwitchProgress();
+    setPlatformBusy('codex', false);
+    renderPlatformDetailStatuses();
+  }
 }
 
 async function restoreCodexOfficialConfig() {
@@ -7077,6 +7112,7 @@ window.zcDrop = function(e) {
   g.applyPlatform = applyPlatform;
   g.codexApplyConfirmMessage = codexApplyConfirmMessage;
   g.restoreCodexOfficialConfig = restoreCodexOfficialConfig;
+  g.repairCodexSessionVisibility = repairCodexSessionVisibility;
   g.restorePlatform = restorePlatform;
   g.normalizePlatformAddProviderSortMode = normalizePlatformAddProviderSortMode;
   g.platformAddProviderSortLabel = platformAddProviderSortLabel;

@@ -2,6 +2,17 @@
 
 All notable changes to AnyBridge will be documented in this file.
 
+## v0.3.6 - 2026-07-15
+
+- 修复 Codex 三方供应商 auth 模式冲突：`requires_openai_auth` 与 `experimental_bearer_token` / `env_key` / `auth` 互斥写入，避免残留 OAuth 导致 bearer 无效。
+- 新增 `apply_codex_provider_auth`，统一 `apply_codex` / `apply_codex_official` 的 auth 写入与清理逻辑，并补齐回归测试。
+- 修复 Codex 历史会话可见性：同步修复 rollout / archived_sessions 与 official state sqlite 中的 `model_provider`，避免重启后索引回滚。
+- 平台页增加「修复会话历史」操作与切换提示，说明统一会话历史与索引修复行为。
+- 修复 Devin/Windsurf BYOK 上游失败时错误 HTML/原始 body 被当作 assistant 正文写入会话上下文的问题。
+- 恢复默认使用 Connect-RPC 原生流错误帧（`BYOK_NATIVE_ERRORS=true`），避免错误进入聊天上下文与会话标题。
+- 清洗 Cloudflare/HTML 错误页：只提取短可读摘要，不再透传整页 HTML。
+- 增强扩展中心 CPA Suite 更新稳定性：GitHub Release 获取重试、更新失败回滚旧服务。
+
 ## v0.3.3 - 2026-07-14
 
 - 统一 Codex 路径解析：移除脚本与错误消息中的机器相关硬编码路径，改为优先读取 `CODEX_HOME`，否则回退到 `~/.codex`。

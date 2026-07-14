@@ -589,20 +589,11 @@ impl Platform {
         // wire_api 始终为 "responses"：Codex 始终用 Responses API 与本地代理通信，
         // 由代理根据 provider 的 wireApi 配置决定是否转换为 Chat Completions。
         provider_table["wire_api"] = value("responses");
-        if p.preserve_official_auth {
-            // 保留官方登录模式：Codex 使用 auth.json 中的 OAuth token 认证，
-            // 模型选择器显示官方模型列表，无需 CDP 注入。
-            // 请求仍发往 base_url（本地代理），代理接受 OAuth token 并转发到第三方 API。
-            provider_table["requires_openai_auth"] = value(true);
-            provider_table.remove("experimental_bearer_token");
-        } else {
-            // requires_openai_auth = false：第三方 provider 使用 experimental_bearer_token
-            // 认证，而非 ChatGPT OAuth 登录。官方文档明确此字段仅适用于 OpenAI 内置 provider。
-            // 设为 true 会导致 Codex 忽略 bearer_token，改用 ChatGPT 令牌发送请求，第三方 API 拒绝。
-            provider_table["requires_openai_auth"] = value(false);
-            // 代理模式写 AnyBridge 本地代理 key；直连模式必须写供应商真实 key。
-            provider_table["experimental_bearer_token"] = value(bearer);
-        }
+        // Auth 互斥（官方文档 / openai/codex#16288）：
+        // - OpenAI OAuth：requires_openai_auth=true，禁止 experimental_bearer_token / env_key / .auth
+        // - 第三方静态凭证：requires_openai_auth=false + experimental_bearer_token（或 env_key）
+        // 残留冲突会导致 Codex 读 auth.json.refresh_token，apikey 模式下 refresh_token 为空。
+        apply_codex_provider_auth(provider_table, p.preserve_official_auth, Some(bearer.as_str()));
         provider_table[CODEX_ANYBRIDGE_MANAGED_FLAG] = value(true);
 
         // ── 模型目录：让 Codex 显示自定义模型列表 ──
@@ -668,9 +659,8 @@ impl Platform {
                 })?;
             provider_table["name"] = value("OpenAI 官方");
             provider_table["wire_api"] = value("responses");
-            provider_table["requires_openai_auth"] = value(true);
             provider_table.remove("base_url");
-            provider_table.remove("experimental_bearer_token");
+            apply_codex_provider_auth(provider_table, true, None);
             provider_table[CODEX_ANYBRIDGE_MANAGED_FLAG] = value(true);
         } else {
             // 原有行为：OpenAI Official uses Codex's built-in provider and auth.json login.
@@ -1048,6 +1038,38 @@ fn codex_bearer_token() -> Result<String, String> {
              请启动 AnyBridge 触发一次代理页（首次启动会自动生成 LOCAL_PROXY_KEY），然后重试。"
                 .to_string()
         })
+}
+
+/// 写入 Codex provider 认证字段并清除互斥残留。
+///
+/// 官方文档 (learn.chatgpt.com config-advanced) 与 openai/codex#16288：
+/// `[model_providers.<id>.auth]` / `env_key` / `experimental_bearer_token` / `requires_openai_auth`
+/// 不得混用。第三方静态凭证路径：`requires_openai_auth=false` + bearer。
+fn apply_codex_provider_auth(
+    provider_table: &mut Table,
+    preserve_official_auth: bool,
+    bearer: Option<&str>,
+) {
+    // 无论哪条路径，都先清掉可能残留的互斥/动态 auth 字段，避免历史手工编辑冲突。
+    provider_table.remove("env_key");
+    provider_table.remove("env_key_instructions");
+    provider_table.remove("auth");
+
+    if preserve_official_auth {
+        provider_table["requires_openai_auth"] = value(true);
+        provider_table.remove("experimental_bearer_token");
+    } else {
+        provider_table["requires_openai_auth"] = value(false);
+        match bearer {
+            Some(token) if !token.trim().is_empty() => {
+                provider_table["experimental_bearer_token"] = value(token);
+            }
+            _ => {
+                // 无 bearer 时也必须去掉旧 token，避免 OAuth/apikey 语义漂移。
+                provider_table.remove("experimental_bearer_token");
+            }
+        }
+    }
 }
 
 /// 模型目录文件名
@@ -2063,14 +2085,28 @@ fn read_codex_config_info(path: &PathBuf) -> Result<Option<CodexConfigInfo>, Str
         .unwrap_or_default()
         .trim()
         .to_ascii_lowercase();
-    let is_official = model_provider_normalized.is_empty()
+    let requires_openai_auth = provider_table
+        .map(|table| toml_table_bool(table, "requires_openai_auth"))
+        .unwrap_or(false);
+    // 统一会话历史下的官方模式：model_provider 固定为 codex_local_access，
+    // 但 provider 走 OAuth、无 base_url/token，语义上仍是官方。
+    let is_unified_official = model_provider_normalized == CODEX_RUNTIME_MODEL_PROVIDER_ID
+        && requires_openai_auth
+        && base_url.is_none()
+        && !has_bearer_token;
+    let is_builtin_or_named_official = model_provider_normalized.is_empty()
         || model_provider_normalized == "openai"
         || (provider_table
             .and_then(|table| toml_table_string(table, "name"))
-            .map(|name| name.trim().eq_ignore_ascii_case("openai"))
+            .map(|name| {
+                let trimmed = name.trim();
+                trimmed.eq_ignore_ascii_case("openai")
+                    || trimmed == "OpenAI 官方"
+            })
             .unwrap_or(false)
             && base_url.is_none()
             && !has_bearer_token);
+    let is_official = is_builtin_or_named_official || is_unified_official;
     let managed_by_any_bridge = model_provider_id.as_deref()
         == Some(CODEX_LEGACY_MODEL_PROVIDER_ID)
         || provider_table
@@ -4605,6 +4641,25 @@ wire_api = "responses"
             Some(expected_codex_bearer.as_str())
         );
         assert_eq!(
+            doc["model_providers"][CODEX_RUNTIME_MODEL_PROVIDER_ID]["requires_openai_auth"]
+                .as_bool(),
+            Some(false)
+        );
+        assert!(
+            doc["model_providers"][CODEX_RUNTIME_MODEL_PROVIDER_ID]
+                .as_table()
+                .unwrap()
+                .get("env_key")
+                .is_none()
+        );
+        assert!(
+            doc["model_providers"][CODEX_RUNTIME_MODEL_PROVIDER_ID]
+                .as_table()
+                .unwrap()
+                .get("auth")
+                .is_none()
+        );
+        assert_eq!(
             doc["model_providers"][CODEX_RUNTIME_MODEL_PROVIDER_ID][CODEX_ANYBRIDGE_MANAGED_FLAG]
                 .as_bool(),
             Some(true)
@@ -4618,6 +4673,98 @@ wire_api = "responses"
             doc["projects"]["E:/project/demo"]["trust_level"].as_str(),
             Some("trusted")
         );
+
+        let _ = fs::remove_dir_all(path.parent().unwrap());
+    }
+
+    #[test]
+    fn apply_codex_clears_conflicting_oauth_and_bearer_fields() {
+        let path = temp_config_path("codex-auth-conflict");
+        fs::write(
+            &path,
+            r#"
+model = "stale-model"
+model_provider = "codex_local_access"
+
+[model_providers.codex_local_access]
+name = "AnyRouter"
+base_url = "https://anyrouter.top/v1"
+wire_api = "responses"
+requires_openai_auth = true
+env_key = "OPENAI_API_KEY"
+experimental_bearer_token = "sk-stale-conflict"
+anybridge_managed = true
+
+[model_providers.codex_local_access.auth]
+command = "echo"
+args = ["token"]
+"#,
+        )
+        .unwrap();
+
+        let provider = test_openai_provider();
+        Platform::Codex.apply_codex(&path, &provider).unwrap();
+
+        let raw = fs::read_to_string(&path).unwrap();
+        let doc = raw.parse::<DocumentMut>().unwrap();
+        let provider = doc["model_providers"][CODEX_RUNTIME_MODEL_PROVIDER_ID]
+            .as_table()
+            .unwrap();
+        let expected_codex_bearer = codex_bearer_token().unwrap();
+
+        assert_eq!(
+            provider.get("requires_openai_auth").and_then(|v| v.as_bool()),
+            Some(false)
+        );
+        assert_eq!(
+            provider
+                .get("experimental_bearer_token")
+                .and_then(|v| v.as_str()),
+            Some(expected_codex_bearer.as_str())
+        );
+        assert!(provider.get("env_key").is_none());
+        assert!(provider.get("auth").is_none());
+
+        let _ = fs::remove_dir_all(path.parent().unwrap());
+    }
+
+    #[test]
+    fn apply_codex_official_strips_bearer_when_enabling_oauth() {
+        let path = temp_config_path("codex-oauth-from-conflict");
+        fs::write(
+            &path,
+            r#"
+model = "third-party"
+model_provider = "codex_local_access"
+
+[model_providers.codex_local_access]
+name = "AnyRouter"
+base_url = "https://anyrouter.top/v1"
+wire_api = "responses"
+requires_openai_auth = false
+env_key = "OPENAI_API_KEY"
+experimental_bearer_token = "sk-should-be-removed"
+anybridge_managed = true
+"#,
+        )
+        .unwrap();
+
+        Platform::Codex.apply_codex_official(&path, true).unwrap();
+
+        let raw = fs::read_to_string(&path).unwrap();
+        let doc = raw.parse::<DocumentMut>().unwrap();
+        let provider = doc["model_providers"][CODEX_RUNTIME_MODEL_PROVIDER_ID]
+            .as_table()
+            .unwrap();
+
+        assert_eq!(
+            provider.get("requires_openai_auth").and_then(|v| v.as_bool()),
+            Some(true)
+        );
+        assert!(provider.get("experimental_bearer_token").is_none());
+        assert!(provider.get("env_key").is_none());
+        assert!(provider.get("auth").is_none());
+        assert!(provider.get("base_url").is_none());
 
         let _ = fs::remove_dir_all(path.parent().unwrap());
     }
@@ -4945,6 +5092,88 @@ command = "node"
         assert!(info.is_official);
         assert!(!info.managed_by_any_bridge);
         assert_eq!(info.model_provider_id, None);
+
+        let _ = fs::remove_dir_all(path.parent().unwrap());
+    }
+
+    #[test]
+    fn read_codex_config_info_unified_official_is_official() {
+        let path = temp_config_path("codex-unified-official");
+        fs::write(
+            &path,
+            r#"
+model_provider = "codex_local_access"
+
+[model_providers.codex_local_access]
+name = "OpenAI 官方"
+wire_api = "responses"
+requires_openai_auth = true
+anybridge_managed = true
+"#,
+        )
+        .unwrap();
+
+        let info = read_codex_config_info(&path).unwrap().unwrap();
+        assert!(info.is_official);
+        assert!(info.managed_by_any_bridge);
+        assert_eq!(
+            info.model_provider_id.as_deref(),
+            Some(CODEX_RUNTIME_MODEL_PROVIDER_ID)
+        );
+        assert!(info.base_url.is_none());
+        assert!(!info.has_bearer_token);
+
+        let _ = fs::remove_dir_all(path.parent().unwrap());
+    }
+
+    #[test]
+    fn apply_codex_official_with_unify_keeps_codex_local_access_bucket() {
+        let path = temp_config_path("codex-restore-unify-official");
+        fs::write(
+            &path,
+            r#"
+model = "third-party-model"
+model_provider = "codex_local_access"
+
+[model_providers.codex_local_access]
+name = "AnyBridge"
+base_url = "http://127.0.0.1:7450/v1"
+wire_api = "responses"
+experimental_bearer_token = "sk-test"
+anybridge_managed = true
+"#,
+        )
+        .unwrap();
+
+        Platform::Codex.apply_codex_official(&path, true).unwrap();
+
+        let raw = fs::read_to_string(&path).unwrap();
+        let doc = raw.parse::<DocumentMut>().unwrap();
+        assert!(doc.get("model").is_none());
+        assert_eq!(
+            doc.get("model_provider").and_then(|item| item.as_str()),
+            Some(CODEX_RUNTIME_MODEL_PROVIDER_ID)
+        );
+        let provider = doc["model_providers"][CODEX_RUNTIME_MODEL_PROVIDER_ID]
+            .as_table()
+            .unwrap();
+        assert_eq!(provider.get("name").and_then(|v| v.as_str()), Some("OpenAI 官方"));
+        assert_eq!(
+            provider.get("requires_openai_auth").and_then(|v| v.as_bool()),
+            Some(true)
+        );
+        assert!(provider.get("base_url").is_none());
+        assert!(provider.get("experimental_bearer_token").is_none());
+        assert_eq!(
+            provider
+                .get(CODEX_ANYBRIDGE_MANAGED_FLAG)
+                .and_then(|v| v.as_bool()),
+            Some(true)
+        );
+
+        let info = read_codex_config_info(&path).unwrap().unwrap();
+        assert!(info.is_official);
+        assert!(info.managed_by_any_bridge);
 
         let _ = fs::remove_dir_all(path.parent().unwrap());
     }

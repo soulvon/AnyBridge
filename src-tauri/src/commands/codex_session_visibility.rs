@@ -1,7 +1,9 @@
 use rusqlite::Connection;
 use serde::Serialize;
+use serde_json::Value as JsonValue;
 use std::collections::HashSet;
 use std::fs;
+use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use toml_edit::DocumentMut;
@@ -12,8 +14,9 @@ const STATE_DB_SQLITE_DIR: &str = "sqlite";
 const CONFIG_FILE_NAME: &str = "config.toml";
 const BACKUP_PREFIX: &str = "backup-";
 const BACKUP_SUFFIX: &str = "-session-visibility-repair";
-/// 最多保留几个历史备份（学 cockpit：只留 1 份，避免每次切换 2G 撑爆磁盘）。
+/// 最多保留几个历史备份（学 cockpit：只留 1 份，避免每次切换撑爆磁盘）。
 const MAX_BACKUPS: usize = 1;
+const SESSION_DIR_NAMES: [&str; 2] = ["sessions", "archived_sessions"];
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -36,13 +39,14 @@ struct ThreadsTableColumns {
 
 /// 修复 Codex 历史会话可见性。
 ///
-/// 设计参考 cockpit Quick 模式：
-///   - **不改 rollout 文件**：保留各会话原始 model_provider 标记，不破坏
-///     供应商间的会话隔离（旧实现把所有 rollout 改成当前 provider，导致
-///     切换后用其他工具看不到历史会话）。
-///   - **只修 official state db（sqlite）**：更新 model_provider 列让会话在
-///     当前供应商下可见，这是 Codex 侧边栏列表的可见性来源。
-///   - **备份后清理旧备份**：只保留 MAX_BACKUPS=1 份，避免每次切换 2G 撑爆磁盘。
+/// Codex Desktop 侧边栏按 `threads.model_provider == config.model_provider` 过滤。
+/// 仅改 sqlite 不够：重启后 Codex 会从 rollout 的 `session_meta.model_provider`
+/// 重新索引，把 sqlite 写回旧 provider（常见为 `openai`），历史再次消失。
+///
+/// 因此本修复会：
+///   - 改 rollout / archived_sessions 中的 model_provider 元数据
+///   - 改 official state db（sqlite）的 threads.model_provider 与可见性字段
+///   - 备份 sqlite；失败时回滚 sqlite
 pub fn repair_default_codex_session_visibility(
     codex_config_path: &Path,
 ) -> Result<CodexSessionVisibilityRepairSummary, String> {
@@ -50,10 +54,10 @@ pub fn repair_default_codex_session_visibility(
         .parent()
         .ok_or_else(|| format!("无法定位 Codex 配置目录: {}", codex_config_path.display()))?;
     let target_provider = read_target_provider(data_dir)?;
-    // 只修 sqlite，不修 rollout（保留会话原始 provider 标记）
     let sqlite_rows_to_update = count_sqlite_rows_to_update(data_dir, &target_provider)?;
+    let rollout_files_to_update = count_rollout_files_to_update(data_dir, &target_provider)?;
 
-    if sqlite_rows_to_update == 0 {
+    if sqlite_rows_to_update == 0 && rollout_files_to_update == 0 {
         return Ok(CodexSessionVisibilityRepairSummary {
             target_provider,
             changed_rollout_file_count: 0,
@@ -64,10 +68,28 @@ pub fn repair_default_codex_session_visibility(
         });
     }
 
-    // 备份 sqlite（只备份要改的 official state db，不 VACUUM 整个目录）
     let backup_dir = backup_sqlite_only(data_dir, &target_provider)?;
-    // 清理旧备份，只留 MAX_BACKUPS 份
     prune_old_backups(data_dir);
+
+    let changed_rollout_file_count = match update_rollout_providers(data_dir, &target_provider) {
+        Ok(n) => n,
+        Err(error) => {
+            let restore_result = restore_sqlite_from_backup(data_dir, &backup_dir);
+            if let Err(restore_error) = restore_result {
+                return Err(format!(
+                    "修复 Codex 历史会话可见性失败（rollout）: {}；自动回滚也失败: {}；备份目录: {}",
+                    error,
+                    restore_error,
+                    backup_dir.display()
+                ));
+            }
+            return Err(format!(
+                "修复 Codex 历史会话可见性失败（rollout）: {}；已自动回滚 sqlite，备份目录: {}",
+                error,
+                backup_dir.display()
+            ));
+        }
+    };
 
     let updated_sqlite_row_count = match update_sqlite_provider(data_dir, &target_provider) {
         Ok(n) => n,
@@ -75,25 +97,28 @@ pub fn repair_default_codex_session_visibility(
             let restore_result = restore_sqlite_from_backup(data_dir, &backup_dir);
             if let Err(restore_error) = restore_result {
                 return Err(format!(
-                    "修复 Codex 历史会话可见性失败: {}；自动回滚也失败: {}；备份目录: {}",
+                    "修复 Codex 历史会话可见性失败（sqlite）: {}；自动回滚也失败: {}；备份目录: {}",
                     error,
                     restore_error,
                     backup_dir.display()
                 ));
             }
             return Err(format!(
-                "修复 Codex 历史会话可见性失败: {}；已自动回滚，备份目录: {}",
+                "修复 Codex 历史会话可见性失败（sqlite）: {}；已自动回滚，备份目录: {}",
                 error,
                 backup_dir.display()
             ));
         }
     };
 
-    let message = format!("已恢复 {} 条历史会话的可见性", updated_sqlite_row_count);
+    let message = format!(
+        "已恢复历史会话可见性（sqlite {} 条，rollout {} 个文件）",
+        updated_sqlite_row_count, changed_rollout_file_count
+    );
 
     Ok(CodexSessionVisibilityRepairSummary {
         target_provider,
-        changed_rollout_file_count: 0,
+        changed_rollout_file_count,
         updated_sqlite_row_count,
         added_session_index_entry_count: 0,
         backup_dir: Some(backup_dir.to_string_lossy().to_string()),
@@ -147,7 +172,7 @@ fn count_sqlite_rows_to_update_in_db(
     if !db_path.exists() {
         return Ok(0);
     }
-    let connection = Connection::open(&db_path).map_err(|error| {
+    let connection = Connection::open(db_path).map_err(|error| {
         format!(
             "打开 state_5.sqlite 失败 ({}): {}",
             db_path.display(),
@@ -188,7 +213,7 @@ fn update_sqlite_provider_in_db(db_path: &Path, target_provider: &str) -> Result
     if !db_path.exists() {
         return Ok(0);
     }
-    let mut connection = Connection::open(&db_path).map_err(|error| {
+    let mut connection = Connection::open(db_path).map_err(|error| {
         format!(
             "打开 state_5.sqlite 失败 ({}): {}",
             db_path.display(),
@@ -213,18 +238,215 @@ fn update_sqlite_provider_in_db(db_path: &Path, target_provider: &str) -> Result
     let set_clause = build_threads_repair_set_clause(columns);
     let transaction = connection
         .transaction()
-        .map_err(|error| format_sqlite_write_error(&db_path, &error))?;
+        .map_err(|error| format_sqlite_write_error(db_path, &error))?;
     let sql = format!("UPDATE threads SET {set_clause} WHERE {where_clause}");
     let updated_rows = if columns.model_provider {
         transaction.execute(&sql, [target_provider])
     } else {
         transaction.execute(&sql, [])
     }
-    .map_err(|error| format_sqlite_write_error(&db_path, &error))?;
+    .map_err(|error| format_sqlite_write_error(db_path, &error))?;
     transaction
         .commit()
-        .map_err(|error| format_sqlite_write_error(&db_path, &error))?;
+        .map_err(|error| format_sqlite_write_error(db_path, &error))?;
     Ok(updated_rows)
+}
+
+fn count_rollout_files_to_update(data_dir: &Path, target_provider: &str) -> Result<usize, String> {
+    let mut total = 0usize;
+    for path in iter_rollout_files(data_dir)? {
+        if rollout_file_needs_provider_update(&path, target_provider)? {
+            total += 1;
+        }
+    }
+    Ok(total)
+}
+
+fn update_rollout_providers(data_dir: &Path, target_provider: &str) -> Result<usize, String> {
+    let mut changed = 0usize;
+    for path in iter_rollout_files(data_dir)? {
+        if update_rollout_file_provider(&path, target_provider)? {
+            changed += 1;
+        }
+    }
+    Ok(changed)
+}
+
+fn iter_rollout_files(data_dir: &Path) -> Result<Vec<PathBuf>, String> {
+    let mut files = Vec::new();
+    for dir_name in SESSION_DIR_NAMES {
+        let root = data_dir.join(dir_name);
+        if !root.exists() {
+            continue;
+        }
+        collect_jsonl_files(&root, &mut files)?;
+    }
+    Ok(files)
+}
+
+fn collect_jsonl_files(dir: &Path, out: &mut Vec<PathBuf>) -> Result<(), String> {
+    let entries = fs::read_dir(dir)
+        .map_err(|error| format!("读取会话目录失败 ({}): {}", dir.display(), error))?;
+    for entry in entries {
+        let entry =
+            entry.map_err(|error| format!("读取会话目录条目失败 ({}): {}", dir.display(), error))?;
+        let path = entry.path();
+        let file_type = entry
+            .file_type()
+            .map_err(|error| format!("读取会话文件类型失败 ({}): {}", path.display(), error))?;
+        if file_type.is_dir() {
+            collect_jsonl_files(&path, out)?;
+            continue;
+        }
+        if file_type.is_file()
+            && path
+                .extension()
+                .and_then(|ext| ext.to_str())
+                .is_some_and(|ext| ext.eq_ignore_ascii_case("jsonl"))
+        {
+            out.push(path);
+        }
+    }
+    Ok(())
+}
+
+fn rollout_file_needs_provider_update(path: &Path, target_provider: &str) -> Result<bool, String> {
+    let file = fs::File::open(path)
+        .map_err(|error| format!("打开 rollout 失败 ({}): {}", path.display(), error))?;
+    let reader = BufReader::new(file);
+    for line in reader.lines() {
+        let line =
+            line.map_err(|error| format!("读取 rollout 失败 ({}): {}", path.display(), error))?;
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        let Ok(mut value) = serde_json::from_str::<JsonValue>(trimmed) else {
+            continue;
+        };
+        if patch_json_model_provider(&mut value, target_provider) {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
+fn update_rollout_file_provider(path: &Path, target_provider: &str) -> Result<bool, String> {
+    let file = fs::File::open(path)
+        .map_err(|error| format!("打开 rollout 失败 ({}): {}", path.display(), error))?;
+    let reader = BufReader::new(file);
+    let mut rewritten_lines = Vec::new();
+    let mut changed = false;
+
+    for line in reader.lines() {
+        let line =
+            line.map_err(|error| format!("读取 rollout 失败 ({}): {}", path.display(), error))?;
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            rewritten_lines.push(String::new());
+            continue;
+        }
+        match serde_json::from_str::<JsonValue>(trimmed) {
+            Ok(mut value) => {
+                if patch_json_model_provider(&mut value, target_provider) {
+                    changed = true;
+                    rewritten_lines.push(
+                        serde_json::to_string(&value).map_err(|error| {
+                            format!("序列化 rollout 失败 ({}): {}", path.display(), error)
+                        })?,
+                    );
+                } else {
+                    rewritten_lines.push(trimmed.to_string());
+                }
+            }
+            Err(_) => rewritten_lines.push(line),
+        }
+    }
+
+    if !changed {
+        return Ok(false);
+    }
+
+    let parent = path.parent().unwrap_or_else(|| Path::new("."));
+    let temp_path = parent.join(format!(
+        ".{}.tmp-{}",
+        path.file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or("rollout.jsonl"),
+        now_epoch_millis()
+    ));
+    {
+        let mut out = fs::File::create(&temp_path).map_err(|error| {
+            format!(
+                "创建临时 rollout 失败 ({}): {}",
+                temp_path.display(),
+                error
+            )
+        })?;
+        for (idx, line) in rewritten_lines.iter().enumerate() {
+            if idx > 0 {
+                out.write_all(b"\n").map_err(|error| {
+                    format!("写入临时 rollout 失败 ({}): {}", temp_path.display(), error)
+                })?;
+            }
+            out.write_all(line.as_bytes()).map_err(|error| {
+                format!("写入临时 rollout 失败 ({}): {}", temp_path.display(), error)
+            })?;
+        }
+        if !rewritten_lines.is_empty() {
+            out.write_all(b"\n").map_err(|error| {
+                format!("写入临时 rollout 失败 ({}): {}", temp_path.display(), error)
+            })?;
+        }
+        out.sync_all().map_err(|error| {
+            format!("同步临时 rollout 失败 ({}): {}", temp_path.display(), error)
+        })?;
+    }
+
+    fs::rename(&temp_path, path).map_err(|error| {
+        let _ = fs::remove_file(&temp_path);
+        format!(
+            "替换 rollout 失败 ({} -> {}): {}",
+            temp_path.display(),
+            path.display(),
+            error
+        )
+    })?;
+    Ok(true)
+}
+
+/// 递归改写 JSON 中所有 string 类型的 `model_provider` 字段。
+fn patch_json_model_provider(value: &mut JsonValue, target_provider: &str) -> bool {
+    match value {
+        JsonValue::Object(map) => {
+            let mut changed = false;
+            if let Some(JsonValue::String(existing)) = map.get("model_provider") {
+                if existing != target_provider {
+                    map.insert(
+                        "model_provider".to_string(),
+                        JsonValue::String(target_provider.to_string()),
+                    );
+                    changed = true;
+                }
+            }
+            for nested in map.values_mut() {
+                if patch_json_model_provider(nested, target_provider) {
+                    changed = true;
+                }
+            }
+            changed
+        }
+        JsonValue::Array(items) => {
+            let mut changed = false;
+            for item in items {
+                if patch_json_model_provider(item, target_provider) {
+                    changed = true;
+                }
+            }
+            changed
+        }
+        _ => false,
+    }
 }
 
 fn read_table_column_names(connection: &Connection) -> Result<HashSet<String>, String> {
@@ -317,8 +539,7 @@ fn existing_state_db_paths(data_dir: &Path) -> Vec<PathBuf> {
         .collect()
 }
 
-/// 只备份 sqlite（official state db），不备份 rollout/session_index。
-/// rollout 不再修改，无需备份；session_index 不再补写，也无需备份。
+/// 只备份 sqlite（official state db）。
 fn backup_sqlite_only(data_dir: &Path, _target_provider: &str) -> Result<PathBuf, String> {
     let backup_dir = data_dir.join(format!(
         "{}{}{}",
@@ -333,7 +554,6 @@ fn backup_sqlite_only(data_dir: &Path, _target_provider: &str) -> Result<PathBuf
 }
 
 /// 清理旧备份目录，只保留最近 MAX_BACKUPS 份。
-/// 学 cockpit 的 prune_session_visibility_repair_backups。
 fn prune_old_backups(data_dir: &Path) {
     let entries = match fs::read_dir(data_dir) {
         Ok(e) => e,
@@ -352,7 +572,6 @@ fn prune_old_backups(data_dir: &Path) {
             Some(n) => n.to_string(),
             None => continue,
         };
-        // 匹配 backup-{timestamp}-session-visibility-repair
         if !name.starts_with(BACKUP_PREFIX) || !name.ends_with(BACKUP_SUFFIX) {
             continue;
         }
@@ -362,7 +581,6 @@ fn prune_old_backups(data_dir: &Path) {
     if backups.len() <= MAX_BACKUPS {
         return;
     }
-    // 按 timestamp 降序，保留前 MAX_BACKUPS 份，删旧的
     backups.sort_by(|a, b| b.0.cmp(&a.0));
     for (_, path) in backups.into_iter().skip(MAX_BACKUPS) {
         let _ = fs::remove_dir_all(&path);
@@ -484,7 +702,7 @@ mod tests {
     }
 
     #[test]
-    fn rollout_repair_keeps_original_model_provider() {
+    fn rollout_repair_updates_model_provider() {
         let data_dir = make_temp_dir("anybridge-codex-rollout-provider-test");
         fs::write(
             data_dir.join(CONFIG_FILE_NAME),
@@ -503,9 +721,10 @@ mod tests {
         let summary =
             repair_default_codex_session_visibility(&data_dir.join(CONFIG_FILE_NAME)).unwrap();
 
-        assert_eq!(summary.changed_rollout_file_count, 0);
+        assert_eq!(summary.changed_rollout_file_count, 1);
         let content = fs::read_to_string(rollout_path).unwrap();
-        assert!(content.contains("\"model_provider\":\"openai\""));
+        assert!(content.contains("\"model_provider\":\"byok\""));
+        assert!(!content.contains("\"model_provider\":\"openai\""));
         fs::remove_dir_all(data_dir).unwrap();
     }
 
