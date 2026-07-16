@@ -29,6 +29,11 @@ import { getRuntimeModelSlotStatus } from '../rename-models.js';
 import { httpsAgentFor } from '../system-proxy.js';
 import { preprocessImagesWithThirdPartyVision } from '../vision-fallback.js';
 import {
+  attachUpstreamWatchdog,
+  providerGateKey,
+  providerInflightGate,
+} from '../lib/upstream-watchdog.js';
+import {
   buildToolErrorContent,
   buildToolResultContent,
   enabledSearchSources,
@@ -49,7 +54,6 @@ function intEnv(names, fallback, min = 0) {
 }
 
 const MAX_TOKENS = intEnv('MAX_TOKENS', 16384, 1);
-const UPSTREAM_TIMEOUT_MS = intEnv(['UPSTREAM_TIMEOUT_MS', 'API_TIMEOUT_MS'], 300000, 1000);
 const RETRY_MAX = intEnv('BYOK_RETRY_MAX', 5, 0);
 const RETRY_BASE_MS = intEnv('BYOK_RETRY_BASE_MS', 600, 1);
 const RETRY_CAP_MS = intEnv('BYOK_RETRY_CAP_MS', 8000, 1);
@@ -1072,9 +1076,9 @@ export function handleGetChatMessage(req, res, body) {
       if (toolInjection.searchInjection?.mode === 'generic') {
         await streamSearchAgentLoop(req, res, opts);
       } else {
-        currentApiReq = conn.format === 'openai'
+        currentApiReq = await (conn.format === 'openai'
           ? streamOpenAI(req, res, opts)
-          : streamAnthropic(req, res, opts);
+          : streamAnthropic(req, res, opts));
       }
     };
 
@@ -1231,7 +1235,7 @@ async function streamSearchAgentLoop(req, res, opts) {
 }
 
 function requestAnthropicBuffered(req, res, { systemPrompt, messages, tools, toolChoice, resolvedModel, messageId, conn, enhancement = {}, promptCacheRetry = false, bindActiveReq = null }) {
-  return new Promise((resolve) => {
+  return providerInflightGate.run(providerGateKey(conn), () => new Promise((resolve) => {
     const claudeCodeUnlock = claudeCodeUnlockForTarget(conn);
     if (claudeCodeUnlock) {
       resolve({
@@ -1348,6 +1352,9 @@ function requestAnthropicBuffered(req, res, { systemPrompt, messages, tools, too
         if (failed) return;
         failed = true;
         if (sseBuffer.trim()) processPart(sseBuffer);
+        if (!processor.isDone) {
+          protoChunks.push(...processor.processEvent({ event: 'message_stop', data: {} }));
+        }
         resolve({
           kind: 'success',
           format: 'anthropic',
@@ -1385,13 +1392,9 @@ function requestAnthropicBuffered(req, res, { systemPrompt, messages, tools, too
         message: `BYOK 连接上游失败：${conn.providerName} / ${resolvedModel}（${clampText(err.message, 120)}）。请检查网络、代理和 API Host。`,
       });
     });
-    apiReq.setTimeout(UPSTREAM_TIMEOUT_MS, () => {
-      const err = new Error('upstream timeout');
-      err.code = 'ETIMEDOUT';
-      apiReq.destroy(err);
-    });
+    attachUpstreamWatchdog(apiReq, { label: `${conn.providerName}/${resolvedModel} anthropic-buffered` });
     apiReq.end(apiBody);
-  });
+  }));
 }
 
 function requestOpenAIBuffered(req, res, opts) {
@@ -1402,7 +1405,7 @@ function requestOpenAIBuffered(req, res, opts) {
 }
 
 function requestOpenAIResponsesBuffered(req, res, { systemPrompt, messages, tools, toolChoice, resolvedModel, requestedModel, serviceTier, messageId, conn, enhancement = {}, schemaCompatRetry = false, bindActiveReq = null }) {
-  return new Promise((resolve) => {
+  return providerInflightGate.run(providerGateKey(conn), () => new Promise((resolve) => {
     const codexUnlock = codexUnlockForTarget(conn);
     if (codexUnlock) {
       resolve({
@@ -1579,17 +1582,13 @@ function requestOpenAIResponsesBuffered(req, res, { systemPrompt, messages, tool
         message: `BYOK 连接上游失败：${conn.providerName} / ${resolvedModel}（${clampText(err.message, 120)}）。请检查网络、代理和 API Host。`,
       });
     });
-    apiReq.setTimeout(UPSTREAM_TIMEOUT_MS, () => {
-      const err = new Error('upstream timeout');
-      err.code = 'ETIMEDOUT';
-      apiReq.destroy(err);
-    });
+    attachUpstreamWatchdog(apiReq, { label: `${conn.providerName}/${resolvedModel} openai-responses-buffered` });
     apiReq.end(finalBody);
-  });
+  }));
 }
 
 function requestOpenAIChatCompletionsBuffered(req, res, { systemPrompt, messages, tools, toolChoice, resolvedModel, serviceTier, messageId, conn, enhancement = {}, schemaCompatRetry = false, bindActiveReq = null }) {
-  return new Promise((resolve) => {
+  return providerInflightGate.run(providerGateKey(conn), () => new Promise((resolve) => {
     const forceGeminiCompat = schemaCompatRetry || conn.capabilities?.toolSchemaCompat === 'gemini';
     const apiPayload = {
       model: resolvedModel,
@@ -1736,16 +1735,20 @@ function requestOpenAIChatCompletionsBuffered(req, res, { systemPrompt, messages
         message: `BYOK 连接上游失败：${conn.providerName} / ${resolvedModel}（${clampText(err.message, 120)}）。请检查网络、代理和 API Host。`,
       });
     });
-    apiReq.setTimeout(UPSTREAM_TIMEOUT_MS, () => {
-      const err = new Error('upstream timeout');
-      err.code = 'ETIMEDOUT';
-      apiReq.destroy(err);
-    });
+    attachUpstreamWatchdog(apiReq, { label: `${conn.providerName}/${resolvedModel} openai-chat-buffered` });
     apiReq.end(apiBody);
-  });
+  }));
 }
 
-function streamAnthropic(req, res, { systemPrompt, messages, tools, toolChoice, resolvedModel, messageId, conn, enhancement = {}, onFailover, promptCacheRetry = false, bindActiveReq = null }) {
+async function streamAnthropic(req, res, { systemPrompt, messages, tools, toolChoice, resolvedModel, messageId, conn, enhancement = {}, onFailover, promptCacheRetry = false, bindActiveReq = null }) {
+  const freeSlot = await providerInflightGate.acquire(providerGateKey(conn));
+  let slotFreed = false;
+  const freeOnce = () => {
+    if (slotFreed) return;
+    slotFreed = true;
+    freeSlot();
+  };
+
   const claudeCodeUnlock = claudeCodeUnlockForTarget(conn);
   const targetPath = claudeCodeUnlock?.wireApi || conn.apiPath;
   const usePromptCache = shouldUseAnthropicPromptCache(conn, claudeCodeUnlock, promptCacheRetry);
@@ -1802,6 +1805,9 @@ function streamAnthropic(req, res, { systemPrompt, messages, tools, toolChoice, 
   const requestConfig = upstreamRequestOptions(conn, targetPath, reqHeaders);
   const apiReq = requestConfig.module.request(requestConfig.options, (apiRes) => {
     let sseBuffer = '';
+    apiRes.on('end', freeOnce);
+    apiRes.on('close', freeOnce);
+    apiRes.on('error', freeOnce);
 
     if (apiRes.statusCode !== 200) {
       console.error(`  ❌ ${conn.providerName} 返回 ${apiRes.statusCode}`);
@@ -1814,6 +1820,7 @@ function streamAnthropic(req, res, { systemPrompt, messages, tools, toolChoice, 
 
         if (usePromptCache && !promptCacheRetry && isPromptCacheRejected(apiRes.statusCode, errBody) && !res.headersSent) {
           console.warn(`  ♻️  ${conn.providerName} / ${resolvedModel} 不接受 cache_control，本次移除后重试一次`);
+          freeOnce();
           apiReq.destroy();
           if (!failed) {
             failed = true;
@@ -1834,6 +1841,7 @@ function streamAnthropic(req, res, { systemPrompt, messages, tools, toolChoice, 
           return;
         }
 
+        freeOnce();
         apiReq.destroy();
         if (!failed) { failed = true; onFailover(`HTTP ${apiRes.statusCode}`, { statusCode: apiRes.statusCode, headers: apiRes.headers, body: errBody }); }
       };
@@ -1880,6 +1888,14 @@ function streamAnthropic(req, res, { systemPrompt, messages, tools, toolChoice, 
 
     apiRes.on('end', () => {
       if (sseBuffer.trim()) processPart(sseBuffer);
+      // Force stop when upstream closed without message_stop (common on flaky gateways).
+      if (!processor.isDone && !res.writableEnded) {
+        console.log(`  ⚠️  Anthropic stream ended without message_stop — forcing stop`);
+        const finalChunks = processor.processEvent({ event: 'message_stop', data: {} });
+        for (const chunk of finalChunks) {
+          res.write(wrapEnvelope(chunk));
+        }
+      }
       if (!res.writableEnded) {
         res.write(endOfStreamEnvelope());
         res.end();
@@ -1888,7 +1904,7 @@ function streamAnthropic(req, res, { systemPrompt, messages, tools, toolChoice, 
         recordUsage(processor.usage);
         logEnhancedChatResponse(enhancement, conn, resolvedModel, processor);
         mitmLog({ direction: 'downstream', providerName: conn.providerName, model: resolvedModel, format: 'anthropic', request: { method: 'POST', url: requestUrl }, response: { statusCode: 200, headers: { 'content-type': 'text/event-stream' }, body: `[USAGE] ${JSON.stringify(processor.usage)}\n\n${rawOutput.join('\n\n')}` } });
-        console.log(`  ✅ Stream ended`);
+        console.log(`  ✅ Stream ended (stop: ${processor.stopReason || 'forced'})`);
       }
     });
 
@@ -1903,6 +1919,7 @@ function streamAnthropic(req, res, { systemPrompt, messages, tools, toolChoice, 
   if (typeof bindActiveReq === 'function') bindActiveReq(apiReq);
 
   apiReq.on('error', (err) => {
+    freeOnce();
     console.error(`  ❌ ${conn.providerName} 连接错误: ${err.message}`);
     // 连接阶段失败（headersSent=false）→ 还能切换下一个供应商。
     if (!failed && !res.headersSent) { failed = true; onFailover(err.message, { code: err.code }); return; }
@@ -1911,12 +1928,7 @@ function streamAnthropic(req, res, { systemPrompt, messages, tools, toolChoice, 
     }
   });
 
-  // 上游挂起防护：120s 无响应则断开（触发上面的 error handler 回写错误流或故障转移）。
-  apiReq.setTimeout(UPSTREAM_TIMEOUT_MS, () => {
-    const err = new Error('upstream timeout');
-    err.code = 'ETIMEDOUT';
-    apiReq.destroy(err);
-  });
+  attachUpstreamWatchdog(apiReq, { label: `${conn.providerName}/${resolvedModel} anthropic` });
 
   apiReq.end(apiBody);
   return apiReq;
@@ -1924,11 +1936,19 @@ function streamAnthropic(req, res, { systemPrompt, messages, tools, toolChoice, 
 
 // ─── OpenAI Responses API streaming ─────────────────────────
 
-function streamOpenAI(req, res, { systemPrompt, messages, tools, toolChoice, resolvedModel, requestedModel, serviceTier, messageId, conn, enhancement = {}, onFailover, schemaCompatRetry = false, bindActiveReq = null }) {
+async function streamOpenAI(req, res, { systemPrompt, messages, tools, toolChoice, resolvedModel, requestedModel, serviceTier, messageId, conn, enhancement = {}, onFailover, schemaCompatRetry = false, bindActiveReq = null }) {
   const codexUnlock = codexUnlockForTarget(conn);
   if (!codexUnlock && conn.apiPath.includes('/chat/completions')) {
     return streamOpenAIChatCompletions(req, res, { systemPrompt, messages, tools, toolChoice, resolvedModel, serviceTier, messageId, conn, enhancement, onFailover, schemaCompatRetry, bindActiveReq });
   }
+
+  const freeSlot = await providerInflightGate.acquire(providerGateKey(conn));
+  let slotFreed = false;
+  const freeOnce = () => {
+    if (slotFreed) return;
+    slotFreed = true;
+    freeSlot();
+  };
 
   // Convert Anthropic-format messages to OpenAI format
   const openaiMessages = toOpenAIMessages(systemPrompt, messages);
@@ -2003,6 +2023,9 @@ function streamOpenAI(req, res, { systemPrompt, messages, tools, toolChoice, res
   const requestConfig = upstreamRequestOptions(conn, targetPath, reqHeaders);
   const apiReq = requestConfig.module.request(requestConfig.options, (apiRes) => {
     let sseBuffer = '';
+    apiRes.on('end', freeOnce);
+    apiRes.on('close', freeOnce);
+    apiRes.on('error', freeOnce);
 
     if (apiRes.statusCode !== 200) {
       console.error(`  ❌ ${conn.providerName} 返回 ${apiRes.statusCode}`);
@@ -2019,6 +2042,7 @@ function streamOpenAI(req, res, { systemPrompt, messages, tools, toolChoice, res
             console.log(`  🧠 已记住 ${conn.providerName} 的工具 Schema 兼容模式: gemini`);
           }
           console.warn(`  ♻️  检测到工具 Schema 不兼容，自动启用兼容模式并重试一次`);
+          freeOnce();
           apiReq.destroy();
           if (!failed) {
             failed = true;
@@ -2041,12 +2065,13 @@ function streamOpenAI(req, res, { systemPrompt, messages, tools, toolChoice, res
           return;
         }
 
+        freeOnce();
         apiReq.destroy();
         if (!failed) { failed = true; onFailover(`HTTP ${apiRes.statusCode}`, { statusCode: apiRes.statusCode, headers: apiRes.headers, body: errBody }); }
       };
 
-    apiRes.on('end', fail);
-    // 上游只发头不发 body 时 'end' 可能不来，加超时兜底避免请求挂死。
+      apiRes.on('end', fail);
+      // 上游只发头不发 body 时 'end' 可能不来，加超时兜底避免请求挂死。
       const failTimer = setTimeout(() => { if (!failed) fail(); }, 5000);
       apiRes.on('close', () => clearTimeout(failTimer));
       return;
@@ -2126,7 +2151,7 @@ function streamOpenAI(req, res, { systemPrompt, messages, tools, toolChoice, res
   if (typeof bindActiveReq === 'function') bindActiveReq(apiReq);
 
   apiReq.on('error', (err) => {
-
+    freeOnce();
     console.error(`  ❌ ${conn.providerName} 连接错误: ${err.message}`);
     if (!failed && !res.headersSent) { failed = true; onFailover(err.message, { code: err.code }); return; }
     if (!res.writableEnded) {
@@ -2134,12 +2159,7 @@ function streamOpenAI(req, res, { systemPrompt, messages, tools, toolChoice, res
     }
   });
 
-  // 上游挂起防护：120s 无响应则断开（触发上面的 error handler 回写错误流或故障转移）。
-  apiReq.setTimeout(UPSTREAM_TIMEOUT_MS, () => {
-    const err = new Error('upstream timeout');
-    err.code = 'ETIMEDOUT';
-    apiReq.destroy(err);
-  });
+  attachUpstreamWatchdog(apiReq, { label: `${conn.providerName}/${resolvedModel} openai-responses` });
 
   apiReq.end(finalBody);
   return apiReq;
@@ -2147,7 +2167,15 @@ function streamOpenAI(req, res, { systemPrompt, messages, tools, toolChoice, res
 
 // ─── OpenAI Chat Completions API streaming ──────────────────
 
-function streamOpenAIChatCompletions(req, res, { systemPrompt, messages, tools, toolChoice, resolvedModel, serviceTier, messageId, conn, enhancement = {}, onFailover, schemaCompatRetry = false, bindActiveReq = null }) {
+async function streamOpenAIChatCompletions(req, res, { systemPrompt, messages, tools, toolChoice, resolvedModel, serviceTier, messageId, conn, enhancement = {}, onFailover, schemaCompatRetry = false, bindActiveReq = null }) {
+  const freeSlot = await providerInflightGate.acquire(providerGateKey(conn));
+  let slotFreed = false;
+  const freeOnce = () => {
+    if (slotFreed) return;
+    slotFreed = true;
+    freeSlot();
+  };
+
   const forceGeminiCompat = schemaCompatRetry || conn.capabilities?.toolSchemaCompat === 'gemini';
 
   const apiPayload = {
@@ -2192,6 +2220,9 @@ function streamOpenAIChatCompletions(req, res, { systemPrompt, messages, tools, 
   const requestConfig = upstreamRequestOptions(conn, conn.apiPath, reqHeaders);
   const apiReq = requestConfig.module.request(requestConfig.options, (apiRes) => {
     let sseBuffer = '';
+    apiRes.on('end', freeOnce);
+    apiRes.on('close', freeOnce);
+    apiRes.on('error', freeOnce);
 
     if (apiRes.statusCode !== 200) {
       console.error(`  ❌ ${conn.providerName} 返回 ${apiRes.statusCode}`);
@@ -2208,6 +2239,7 @@ function streamOpenAIChatCompletions(req, res, { systemPrompt, messages, tools, 
             console.log(`  🧠 已记住 ${conn.providerName} 的工具 Schema 兼容模式: gemini`);
           }
           console.warn(`  ♻️  检测到工具 Schema 不兼容，自动启用兼容模式并重试一次`);
+          freeOnce();
           apiReq.destroy();
           if (!failed) {
             failed = true;
@@ -2229,6 +2261,7 @@ function streamOpenAIChatCompletions(req, res, { systemPrompt, messages, tools, 
           return;
         }
 
+        freeOnce();
         apiReq.destroy();
         if (!failed) { failed = true; onFailover(`HTTP ${apiRes.statusCode}`, { statusCode: apiRes.statusCode, headers: apiRes.headers, body: errBody }); }
       };
@@ -2303,7 +2336,7 @@ function streamOpenAIChatCompletions(req, res, { systemPrompt, messages, tools, 
   if (typeof bindActiveReq === 'function') bindActiveReq(apiReq);
 
   apiReq.on('error', (err) => {
-
+    freeOnce();
     console.error(`  ❌ ${conn.providerName} 连接错误: ${err.message}`);
     if (!failed && !res.headersSent) { failed = true; onFailover(err.message, { code: err.code }); return; }
     if (!res.writableEnded) {
@@ -2311,11 +2344,7 @@ function streamOpenAIChatCompletions(req, res, { systemPrompt, messages, tools, 
     }
   });
 
-  apiReq.setTimeout(UPSTREAM_TIMEOUT_MS, () => {
-    const err = new Error('upstream timeout');
-    err.code = 'ETIMEDOUT';
-    apiReq.destroy(err);
-  });
+  attachUpstreamWatchdog(apiReq, { label: `${conn.providerName}/${resolvedModel} openai-chat` });
 
   apiReq.end(apiBody);
   return apiReq;

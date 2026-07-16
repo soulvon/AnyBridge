@@ -85,8 +85,8 @@ The private key file `tauri-sign.key` must never be committed.
 
    ```bash
    git push origin main
-   git tag -a v0.3.6 -m "release: v0.3.6"
-   git push origin v0.3.6
+   git tag -a v0.3.7 -m "release: v0.3.7"
+   git push origin v0.3.7
    ```
 
 4. Tag push triggers `.github/workflows/release.yml`:

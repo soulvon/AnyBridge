@@ -2472,15 +2472,18 @@ fn codebuddy_model_entry(p: &Provider, api_key: &str) -> Value {
 }
 
 fn workbuddy_model_id(p: &Provider) -> String {
-    format!("byok-{}", sanitize_codebuddy_id(&p.id))
+    // 与 CodeBuddy 一致：使用真实模型名作为 id，避免请求体 model=byok-xxx。
+    codebuddy_model_id(p)
 }
 
 fn workbuddy_model_entry(p: &Provider, api_key: &str) -> Value {
     let model_id = workbuddy_model_id(p);
-    let model_name = if p.default_model.trim().is_empty() {
+    let display_name = if p.name.trim().is_empty() {
         model_id.clone()
+    } else if p.default_model.trim().is_empty() {
+        p.name.trim().to_string()
     } else {
-        p.default_model.trim().to_string()
+        format!("{} · {}", p.name.trim(), p.default_model.trim())
     };
 
     let caps = p
@@ -2489,9 +2492,11 @@ fn workbuddy_model_entry(p: &Provider, api_key: &str) -> Value {
         .cloned()
         .unwrap_or_default();
 
+    // WorkBuddy 在 useCustomProtocol=true 时不会再拼接路径，url 必须是完整
+    // /v1/chat/completions 端点（与 codebuddy_chat_url 输出一致）。
     serde_json::json!({
         "id": model_id,
-        "name": model_name,
+        "name": display_name,
         "vendor": p.name.trim(),
         "apiKey": api_key,
         "maxInputTokens": recommend_context_window(&model_id),

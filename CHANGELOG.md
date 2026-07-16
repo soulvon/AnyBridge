@@ -2,6 +2,14 @@
 
 All notable changes to AnyBridge will be documented in this file.
 
+## v0.3.7 - 2026-07-16
+
+- 新增 per-provider 上游并发闸门（`providerInflightGate`）：按 `provider|host|model` 限制 inflight 请求（默认 8，`BYOK_MAX_INFLIGHT=0` 关闭）。
+- Chat 全路径接入：buffered 走 `run()`，streaming 走 `acquire()` + 幂等 `freeOnce()`，并在 end/close/error/重试前释放槽位。
+- local-proxy 同步接入并发闸门与 `attachUpstreamWatchdog`，流式槽位保持到响应体结束，避免长流打爆上游。
+- 统一上游超时策略（TTFB / idle / hard），替换原先单一 `setTimeout`。
+- 修复 WorkBuddy 模型 id/展示名与 `useCustomProtocol` 同步逻辑，避免 `model=byok-xxx` 与路径拼接错误。
+
 ## v0.3.6 - 2026-07-15
 
 - 修复 Codex 三方供应商 auth 模式冲突：`requires_openai_auth` 与 `experimental_bearer_token` / `env_key` / `auth` 互斥写入，避免残留 OAuth 导致 bearer 无效。

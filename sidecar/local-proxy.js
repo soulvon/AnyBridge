@@ -27,6 +27,12 @@ import {
   createResponsesSSEFromChat,
 } from './lib/responses-chat-transform.js';
 import { DEFAULT_SELF_HEAL_CONFIG, tryHeal } from './lib/self-heal.js';
+import {
+  attachUpstreamWatchdog,
+  providerGateKey,
+  providerInflightGate,
+  startSseKeepalive,
+} from './lib/upstream-watchdog.js';
 import { executeSearchWithFailover } from './handlers/search-sources.js';
 import { codexAuthJsonPath } from './lib/codex-home.js';
 
@@ -845,7 +851,8 @@ function upstreamRequestOptions(conn, headers) {
 }
 
 function requestUpstream(conn, payload, enhancement = {}) {
-  return new Promise((resolve, reject) => {
+  const label = `${conn.providerName || 'provider'}/${conn.model || 'model'} local-proxy`;
+  return providerInflightGate.run(providerGateKey(conn), () => new Promise((resolve, reject) => {
     const body = Buffer.from(JSON.stringify(payload));
     const started = Date.now();
     const extraHeaders = {};
@@ -864,16 +871,24 @@ function requestUpstream(conn, payload, enhancement = {}) {
         try { json = text ? JSON.parse(text) : null; } catch {}
         resolve({ statusCode: apiRes.statusCode || 0, headers: apiRes.headers || {}, text, json, durationMs: Date.now() - started });
       });
+      apiRes.on('error', reject);
     });
-    req.on('timeout', () => req.destroy(new Error('ETIMEDOUT')));
-    req.on('error', reject);
-    req.setTimeout(300000);
+    const watchdog = attachUpstreamWatchdog(req, { label });
+    req.on('error', (err) => {
+      watchdog.clear();
+      reject(err);
+    });
     req.end(body);
-  });
+  }));
 }
 
 // ── 流式请求：返回 response stream 供调用方逐块消费 ──
-function requestUpstreamStream(conn, payload, enhancement = {}) {
+// 并发闸门保持到响应体结束（而非仅 headers），避免长流并发打爆上游。
+async function requestUpstreamStream(conn, payload, enhancement = {}) {
+  const label = `${conn.providerName || 'provider'}/${conn.model || 'model'} local-proxy-stream`;
+  const gateKey = providerGateKey(conn);
+  const freeSlot = await providerInflightGate.acquire(gateKey);
+
   return new Promise((resolve, reject) => {
     const body = Buffer.from(JSON.stringify(payload));
     const started = Date.now();
@@ -883,18 +898,46 @@ function requestUpstreamStream(conn, payload, enhancement = {}) {
         if (h && h.key) extraHeaders[h.key] = h.value;
       }
     }
-    const requestConfig = upstreamRequestOptions(conn, { 'content-type': 'application/json', 'content-length': body.length, ...authHeaders(conn), ...extraHeaders });
-    const req = requestConfig.module.request(requestConfig.options, apiRes => {
-      resolve({
+    const requestConfig = upstreamRequestOptions(conn, {
+      'content-type': 'application/json',
+      'content-length': body.length,
+      ...authHeaders(conn),
+      ...extraHeaders,
+    });
+
+    let headerSettled = false;
+    let slotFreed = false;
+    const freeOnce = () => {
+      if (slotFreed) return;
+      slotFreed = true;
+      freeSlot();
+    };
+
+    const settleHeader = (fn, value) => {
+      if (headerSettled) return;
+      headerSettled = true;
+      fn(value);
+    };
+
+    let watchdog;
+    const req = requestConfig.module.request(requestConfig.options, (apiRes) => {
+      apiRes.on('end', freeOnce);
+      apiRes.on('close', freeOnce);
+      apiRes.on('error', freeOnce);
+      settleHeader(resolve, {
         statusCode: apiRes.statusCode || 0,
         headers: apiRes.headers || {},
         response: apiRes,
         durationMs: Date.now() - started,
+        watchdog,
       });
     });
-    req.on('timeout', () => req.destroy(new Error('ETIMEDOUT')));
-    req.on('error', reject);
-    req.setTimeout(300000);
+    watchdog = attachUpstreamWatchdog(req, { label });
+    req.on('error', (err) => {
+      watchdog.clear();
+      freeOnce();
+      settleHeader(reject, err);
+    });
     req.end(body);
   });
 }
@@ -906,10 +949,13 @@ async function collectStreamBody(response) {
   return Buffer.concat(chunks).toString('utf8');
 }
 
-// 解析上游 SSE 流，逐块 yield JSON 对象
-async function* parseSSEStream(response) {
+// 解析上游 SSE 流，逐块 yield JSON 对象；可选 touch 重置 idle 计时
+async function* parseSSEStream(response, { onChunk } = {}) {
   let buffer = '';
   for await (const chunk of response) {
+    if (typeof onChunk === 'function') {
+      try { onChunk(chunk); } catch { /* ignore */ }
+    }
     buffer += chunk.toString('utf8');
     const lines = buffer.split('\n');
     buffer = lines.pop() || '';
@@ -1301,7 +1347,7 @@ export async function execute(ctx) {
                 if (h && h.key) extraRespHeaders[h.key] = h.value;
               }
             }
-            return { conn, stream: true, upstreamResponse: r.response, extraHeaders: extraRespHeaders };
+            return { conn, stream: true, upstreamResponse: r.response, extraHeaders: extraRespHeaders, watchdog: r.watchdog };
           }
           // 非 2xx：收集错误 body，走重试逻辑
           const errorText = await collectStreamBody(r.response);
@@ -1452,9 +1498,14 @@ function sendOpenAIResponses(ctx, res, result) {
   if (result.stream === true && result.conn?.wireApi === 'chat') {
     res.writeHead(200, cors({ 'content-type': 'text/event-stream; charset=utf-8', ...extra }));
     const converter = createResponsesSSEFromChat(ctx.model, result.conn?.codexChatReasoning?.outputFormat);
+    const keepalive = startSseKeepalive(res);
+    const watchdog = result.watchdog;
     (async () => {
       try {
-        for await (const chunk of parseSSEStream(result.upstreamResponse)) {
+        for await (const chunk of parseSSEStream(result.upstreamResponse, {
+          onChunk: () => { if (watchdog) watchdog.touch(); },
+        })) {
+          keepalive.touch();
           const events = converter.write(chunk);
           for (const ev of events) sse(res, ev.type, ev);
         }
@@ -1468,8 +1519,10 @@ function sendOpenAIResponses(ctx, res, result) {
         // 流中途出错，尽量优雅结束
         try { sse(res, 'error', { type: 'error', message: e?.message || 'stream error' }); } catch {}
       } finally {
-        res.write('data: [DONE]\n\n');
-        res.end();
+        if (watchdog) watchdog.clear();
+        keepalive.stop();
+        try { res.write('data: [DONE]\n\n'); } catch {}
+        try { res.end(); } catch {}
       }
     })();
     return;

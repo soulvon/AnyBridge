@@ -4672,19 +4672,32 @@ function memoryTencentBuddyModels(platform) {
   };
 }
 
+function normalizeBuddyModelsForPlatform(models, platform) {
+  return (Array.isArray(models) ? models : []).map((model) => {
+    const entry = cloneTencentBuddyJson(model) || {};
+    if (platform === WB_PLATFORM) {
+      // WorkBuddy 在 useCustomProtocol=true 时不再拼接路径，双端同步/保存时必须写回。
+      entry.useCustomProtocol = true;
+    } else if (platform === CB_PLATFORM && Object.prototype.hasOwnProperty.call(entry, 'useCustomProtocol')) {
+      delete entry.useCustomProtocol;
+    }
+    return entry;
+  });
+}
+
 async function persistTencentBuddyModels(platform, models, availableModels, scope) {
   if (!invoke) throw new Error('Tauri invoke 未初始化，无法保存 CodeBuddy / WorkBuddy 配置');
   return invoke('save_codebuddy_models', {
     platform,
-    models,
+    models: normalizeBuddyModelsForPlatform(models, platform),
     availableModels,
     scope,
   });
 }
 
 function applyTencentBuddySyncedState(models, availableModels, codebuddyMeta, workbuddyMeta) {
-  cbModels = cbNormalizeModelsContext(cloneTencentBuddyJson(models));
-  wbModels = cbNormalizeModelsContext(cloneTencentBuddyJson(models));
+  cbModels = cbNormalizeModelsContext(normalizeBuddyModelsForPlatform(models, CB_PLATFORM));
+  wbModels = cbNormalizeModelsContext(normalizeBuddyModelsForPlatform(models, WB_PLATFORM));
   cbAvailableModels = cbUniqueStrings(availableModels);
   wbAvailableModels = cbUniqueStrings(availableModels);
 
@@ -5184,8 +5197,8 @@ async function saveCbEditFromModal() {
   if (supportsImages) entry.supportsImages = true;
   if (supportsReasoning) entry.supportsReasoning = true;
 
-  // 保留 WorkBuddy 特殊字段
-  if (model.useCustomProtocol) entry.useCustomProtocol = true;
+  // WorkBuddy 必须保持 useCustomProtocol；从 CodeBuddy 同步过来的模型也要补写
+  if (prefix === 'Wb' || ref.platform === WB_PLATFORM) entry.useCustomProtocol = true;
   if (prefix === 'Zc') entry.providerId = zcProviderIdForModel({ ...model, ...entry });
 
   const previousModels = listRef.getModels().slice();
@@ -5463,7 +5476,7 @@ async function loadCodeBuddyModels() {
     }
     const data = await invoke('load_codebuddy_models', { platform: CB_PLATFORM });
     const rawModels = Array.isArray(data.models) ? data.models : [];
-    cbModels = cbNormalizeModelsContext(rawModels);
+    cbModels = cbNormalizeModelsContext(normalizeBuddyModelsForPlatform(rawModels, CB_PLATFORM));
     cbAvailableModels = Array.isArray(data.availableModels) ? data.availableModels : [];
     const meta = cbApplyConfigMeta('cb', data, '~/.codebuddy/models.json');
     cbConfigScope = meta.scope;
@@ -5554,7 +5567,7 @@ async function saveCodeBuddyModels(options = {}) {
     }
     const path = await invoke('save_codebuddy_models', {
       platform: CB_PLATFORM,
-      models: cbModels,
+      models: normalizeBuddyModelsForPlatform(cbModels, CB_PLATFORM),
       availableModels: cbAvailableModels,
       scope: cbConfigScope,
     });
@@ -6130,7 +6143,7 @@ async function loadWbModels() {
     }
     const data = await invoke('load_codebuddy_models', { platform: WB_PLATFORM });
     const rawModels = Array.isArray(data.models) ? data.models : [];
-    wbModels = cbNormalizeModelsContext(rawModels);
+    wbModels = cbNormalizeModelsContext(normalizeBuddyModelsForPlatform(rawModels, WB_PLATFORM));
     wbAvailableModels = Array.isArray(data.availableModels) ? data.availableModels : [];
     const meta = cbApplyConfigMeta('wb', data, '~/.workbuddy/models.json');
     wbConfigScope = meta.scope;
@@ -6208,6 +6221,7 @@ async function saveWbModels(options = {}) {
     return false;
   }
   try {
+    wbModels = normalizeBuddyModelsForPlatform(wbModels, WB_PLATFORM);
     wbAvailableModels = cbMergeAvailableModels(wbAvailableModels, wbModels);
     if (tencentBuddySyncEnabled && !options.skipBuddySync) {
       const result = await syncTencentBuddyModels(WB_PLATFORM, {
