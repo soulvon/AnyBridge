@@ -414,11 +414,10 @@ impl Platform {
                 ))
             }
             Platform::CodeBuddy => {
-                let model_id = codebuddy_model_id(p);
                 let preview_model = codebuddy_model_entry(p, &mask_key(&p.api_key));
+                // 不写 availableModels：客户端会把该字段当白名单整表替换，导致官方模型消失。
                 let preview = serde_json::json!({
                     "models": [preview_model],
-                    "availableModels": format!("如果已配置且非空，将追加 \"{}\"", model_id),
                 });
                 serde_json::to_string_pretty(&preview).map_err(|e| e.to_string())
             }
@@ -427,11 +426,10 @@ impl Platform {
                 serde_json::to_string_pretty(&preview).map_err(|e| e.to_string())
             }
             Platform::WorkBuddy => {
-                let model_id = workbuddy_model_id(p);
                 let preview_model = workbuddy_model_entry(p, &mask_key(&p.api_key));
+                // 不写 availableModels：客户端会把该字段当白名单整表替换，导致官方模型消失。
                 let preview = serde_json::json!({
                     "models": [preview_model],
-                    "availableModels": format!("如果已配置且非空，将追加 \"{}\"", model_id),
                 });
                 serde_json::to_string_pretty(&preview).map_err(|e| e.to_string())
             }
@@ -822,14 +820,10 @@ fn upsert_models_json_entry(
         models_arr.push(new_model);
     }
 
-    if let Some(available) = obj.get_mut("availableModels") {
-        let arr = available
-            .as_array_mut()
-            .ok_or_else(|| "models.json 的 availableModels 字段不是数组".to_string())?;
-        if !arr.is_empty() && !arr.iter().any(|v| v.as_str() == Some(model_id)) {
-            arr.push(Value::String(model_id.to_string()));
-        }
-    }
+    // CodeBuddy / WorkBuddy 的 availableModels 是最终模型白名单。
+    // SmartMerge 对字符串数组是整表替换；若只写自定义 id，官方模型会被 AvailableModelsFilter 滤掉。
+    // 因此 AnyBridge 只维护 models，让客户端用内置列表 + 自定义 models 合并。
+    obj.remove("availableModels");
 
     Ok(())
 }
@@ -2441,15 +2435,27 @@ fn sanitize_codebuddy_id(value: &str) -> String {
     }
 }
 
+fn buddy_display_name(p: &Provider, model_id: &str) -> String {
+    // WorkBuddy / CodeBuddy UI 并排展示 name + id，name 只写供应商名，避免与 id 重复。
+    // 例如 name="CPA"、id="grok-4.5" → 客户端显示 "CPA · grok-4.5"。
+    let provider_name = p.name.trim();
+    if !provider_name.is_empty() {
+        provider_name.to_string()
+    } else if !model_id.is_empty() {
+        model_id.to_string()
+    } else {
+        let model = p.default_model.trim();
+        if !model.is_empty() {
+            model.to_string()
+        } else {
+            "model".to_string()
+        }
+    }
+}
+
 fn codebuddy_model_entry(p: &Provider, api_key: &str) -> Value {
     let model_id = codebuddy_model_id(p);
-    let display_name = if p.name.trim().is_empty() {
-        model_id.clone()
-    } else if p.default_model.trim().is_empty() {
-        p.name.trim().to_string()
-    } else {
-        format!("{} · {}", p.name.trim(), p.default_model.trim())
-    };
+    let display_name = buddy_display_name(p, &model_id);
 
     let caps = p
         .model_caps
@@ -2457,10 +2463,12 @@ fn codebuddy_model_entry(p: &Provider, api_key: &str) -> Value {
         .cloned()
         .unwrap_or_default();
 
+    // 新版 WorkBuddy / CodeBuddy 仅当 vendor == "user" 时识别为自定义模型；
+    // 写入供应商名会被归到「第三方模型」并可能覆盖官方同名模型。
     serde_json::json!({
         "id": model_id,
         "name": display_name,
-        "vendor": p.name.trim(),
+        "vendor": "user",
         "apiKey": api_key,
         "maxInputTokens": recommend_context_window(&model_id),
         "maxOutputTokens": recommend_max_output_tokens(&model_id),
@@ -2478,13 +2486,7 @@ fn workbuddy_model_id(p: &Provider) -> String {
 
 fn workbuddy_model_entry(p: &Provider, api_key: &str) -> Value {
     let model_id = workbuddy_model_id(p);
-    let display_name = if p.name.trim().is_empty() {
-        model_id.clone()
-    } else if p.default_model.trim().is_empty() {
-        p.name.trim().to_string()
-    } else {
-        format!("{} · {}", p.name.trim(), p.default_model.trim())
-    };
+    let display_name = buddy_display_name(p, &model_id);
 
     let caps = p
         .model_caps
@@ -2494,10 +2496,11 @@ fn workbuddy_model_entry(p: &Provider, api_key: &str) -> Value {
 
     // WorkBuddy 在 useCustomProtocol=true 时不会再拼接路径，url 必须是完整
     // /v1/chat/completions 端点（与 codebuddy_chat_url 输出一致）。
+    // vendor 必须是 "user"，否则新版会把条目归类为第三方模型。
     serde_json::json!({
         "id": model_id,
         "name": display_name,
-        "vendor": p.name.trim(),
+        "vendor": "user",
         "apiKey": api_key,
         "maxInputTokens": recommend_context_window(&model_id),
         "maxOutputTokens": recommend_max_output_tokens(&model_id),
@@ -4176,7 +4179,11 @@ pub fn load_codebuddy_models(platform: String) -> Result<serde_json::Value, Stri
     Ok(attach_codebuddy_config_meta(value, &path, scope))
 }
 
-/// 保存 CodeBuddy models.json（原子写 + 自动备份）。
+/// 保存 CodeBuddy / WorkBuddy models.json（原子写 + 自动备份）。
+///
+/// `available_models` 参数保留以兼容前端调用，但**刻意不写入磁盘**。
+/// 客户端对 `availableModels` 字符串数组做 SmartMerge 时是整表替换；
+/// 若只含自定义模型 id，随后 AvailableModelsFilter 会把官方模型全部过滤掉。
 #[tauri::command]
 pub fn save_codebuddy_models(
     platform: String,
@@ -4184,6 +4191,8 @@ pub fn save_codebuddy_models(
     available_models: Vec<String>,
     scope: Option<String>,
 ) -> Result<String, String> {
+    let _ = available_models; // 兼容旧前端参数；勿写回 models.json
+
     if platform == PLATFORM_ZCODE {
         let path = zcode_config_path()?;
         write_zcode_models_to_path(&path, &models)?;
@@ -4200,7 +4209,6 @@ pub fn save_codebuddy_models(
 
     let payload = serde_json::json!({
         "models": models,
-        "availableModels": available_models,
     });
     let json = serde_json::to_string_pretty(&payload).map_err(|e| format!("序列化失败: {e}"))?;
     super::write_atomic(&path, json.as_bytes()).map_err(|e| format!("写入失败: {e}"))?;

@@ -2,6 +2,12 @@
 
 All notable changes to AnyBridge will be documented in this file.
 
+## v0.3.8 - 2026-07-18
+
+- 修复 WorkBuddy / CodeBuddy 自定义模型展示名：`name` 改为供应商名（如 `CPA`），不再与 `id`（模型 ID）重复；客户端并排展示为 `CPA · grok-4.5`。
+- 修复新版 WorkBuddy / CodeBuddy 自定义模型识别：`vendor` 固定写为 `user`（此前写成供应商名会被归到第三方模型并可能覆盖官方同名模型）；加载/保存时自动迁移历史配置。
+- 同步调整 Rust `buddy_display_name` 与前端 `cbBuildModelEntry` 的生成逻辑。
+
 ## v0.3.7 - 2026-07-16
 
 - 新增 per-provider 上游并发闸门（`providerInflightGate`）：按 `provider|host|model` 限制 inflight 请求（默认 8，`BYOK_MAX_INFLIGHT=0` 关闭）。

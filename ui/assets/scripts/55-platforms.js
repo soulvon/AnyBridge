@@ -4675,6 +4675,13 @@ function memoryTencentBuddyModels(platform) {
 function normalizeBuddyModelsForPlatform(models, platform) {
   return (Array.isArray(models) ? models : []).map((model) => {
     const entry = cloneTencentBuddyJson(model) || {};
+    // 新版 WorkBuddy / CodeBuddy 仅识别 vendor === "user" 为自定义模型。
+    // 历史写入的供应商名会归到「第三方模型」并可能覆盖官方同名模型。
+    entry.vendor = 'user';
+    // Buddy UI 并排 name + id；name 缺失或仍是旧 vendor 时回退到 id（不强制覆盖用户自定义展示名）。
+    if (!entry.name || entry.name === model?.vendor) {
+      entry.name = entry.id || entry.name || 'model';
+    }
     if (platform === WB_PLATFORM) {
       // WorkBuddy 在 useCustomProtocol=true 时不再拼接路径，双端同步/保存时必须写回。
       entry.useCustomProtocol = true;
@@ -4930,10 +4937,13 @@ function cbFormatContextTokens(value) {
 }
 
 function cbBuildModelEntry(provider, modelId, displayName, capabilities, platformId) {
+  const isBuddy = platformId === CB_PLATFORM || platformId === WB_PLATFORM;
   const entry = {
     id: modelId,
-    name: displayName || provider.providerName || 'Custom',
-    vendor: provider.providerName || 'Custom',
+    // Buddy UI 并排 name + id，name 只写供应商展示名（如 CPA）；ZCode 同样用供应商名。
+    name: displayName || provider.providerName || (isBuddy ? (modelId || 'model') : 'Custom'),
+    // 新版 Buddy 要求 vendor === "user" 才算自定义模型；ZCode 仍写供应商名用于分组。
+    vendor: isBuddy ? 'user' : (provider.providerName || 'Custom'),
     url: platformId === ZC_PLATFORM ? zcProviderBaseUrl(provider) : cbProviderChatUrl(provider),
     apiKey: cbProviderApiKey(provider),
     maxInputTokens: cbRecommendContextWindow(modelId),
@@ -5089,8 +5099,12 @@ function openCbEditModal(prefix, index) {
   const modal = document.getElementById('cb-edit-modal');
   if (!modal) return;
 
-  // 填充字段：name 和 vendor 合并为「供应商」输入框
-  const vendorOrName = model.vendor || model.name || '';
+  // Buddy 平台：编辑框展示 name（展示名），vendor 固定为 user 写入时再处理。
+  // ZCode：保留 vendor/name 合并编辑。
+  const isBuddyEdit = prefix === 'Cb' || prefix === 'Wb';
+  const vendorOrName = isBuddyEdit
+    ? (model.name || model.id || '')
+    : (model.vendor || model.name || '');
   platformSetValue('cb-edit-id', model.id || '');
   platformSetValue('cb-edit-vendor', vendorOrName);
   platformSetValue('cb-edit-url', prefix === 'Zc' ? zcNormalizeBaseUrl(model.url || '') : model.url || '');
@@ -5108,6 +5122,18 @@ function openCbEditModal(prefix, index) {
     const platformLabel = prefix === 'Cb' ? 'CodeBuddy'      : prefix === 'Zc' ? 'ZCode'
       : 'WorkBuddy';
     titleEl.textContent = `编辑模型 · ${platformLabel}`;
+  }
+  const vendorLabel = document.querySelector('label[for="cb-edit-vendor"]');
+  const vendorInput = document.getElementById('cb-edit-vendor');
+  if (vendorLabel) {
+    vendorLabel.innerHTML = isBuddyEdit
+      ? '展示名 <span style="color:var(--danger);">*</span>'
+      : '供应商 <span style="color:var(--danger);">*</span>';
+  }
+  if (vendorInput) {
+    vendorInput.placeholder = isBuddyEdit
+      ? '供应商展示名，如 CPA / OpenAI'
+      : '模型供应商，如 OpenAI / Google / 黑与白';
   }
   const urlLabel = document.querySelector('label[for="cb-edit-url"]');
   const urlInput = document.getElementById('cb-edit-url');
@@ -5145,17 +5171,18 @@ async function saveCbEditFromModal() {
   const model = ref.models[index];
   if (!model) return;
 
-  // 必填字段（4 个）：id / vendor (= name) / url / apiKey
+  // 必填字段（4 个）：id / 展示名 / url / apiKey
   const id = (document.getElementById('cb-edit-id')?.value || '').trim();
-  const vendor = (document.getElementById('cb-edit-vendor')?.value || '').trim();
+  const displayName = (document.getElementById('cb-edit-vendor')?.value || '').trim();
   const rawUrl = (document.getElementById('cb-edit-url')?.value || '').trim();
   const url = prefix === 'Zc' ? zcNormalizeBaseUrl(rawUrl) : rawUrl;
   const apiKey = (document.getElementById('cb-edit-key')?.value || '').trim();
+  const isBuddyEdit = prefix === 'Cb' || prefix === 'Wb';
 
   // 必填校验
   const missing = [];
   if (!id) missing.push('模型 ID');
-  if (!vendor) missing.push('供应商');
+  if (!displayName) missing.push(isBuddyEdit ? '展示名' : '供应商');
   if (!url) missing.push('接口地址');
   if (!apiKey) missing.push('API 密钥');
   if (missing.length) {
@@ -5181,12 +5208,12 @@ async function saveCbEditFromModal() {
   const maxOutput = parseNum(maxOutputStr);
   const temperature = parseNum(tempStr);
 
-  // 重建 entry：必填字段全写，name = vendor 同值；选填字段只在非空时写
+  // Buddy：vendor 固定 "user"，name 用展示名；ZCode：name/vendor 同值保留旧语义。
   const oldId = model.id || '';
   const entry = {
     id,
-    name: vendor,
-    vendor,
+    name: displayName,
+    vendor: isBuddyEdit ? 'user' : displayName,
     url,
     apiKey,
   };
@@ -5256,7 +5283,11 @@ function cbNoResultRow(prefix) {
 
 function cbUpdateConsoleStats(prefix, models) {
   const list = Array.isArray(models) ? models : [];
-  const providerCount = new Set(list.map(m => String(m?.vendor || m?.url || 'Custom')).filter(Boolean)).size;
+  // Buddy 固定 vendor=user，按 url/name 统计，避免供应商数恒为 1。
+  const providerCount = new Set(list.map((m) => {
+    if (String(m?.vendor || '') === 'user') return String(m?.url || m?.name || m?.id || 'Custom');
+    return String(m?.vendor || m?.url || 'Custom');
+  }).filter(Boolean)).size;
   const capCount = list.reduce((total, model) =>
     total + (model?.supportsToolCall ? 1 : 0) + (model?.supportsImages ? 1 : 0) + (model?.supportsReasoning ? 1 : 0),
     0
@@ -5482,11 +5513,11 @@ async function loadCodeBuddyModels() {
     cbConfigScope = meta.scope;
     cbConfigPath = meta.path;
     renderCodeBuddyModels();
-    // 历史默认 128K 已升级时，静默写回配置
+    // 历史默认 128K 升级，或 vendor 需迁移为 user 时，静默写回配置
     const upgraded = rawModels.some((m, i) => {
       const before = m?.maxInputTokens;
       const after = cbModels[i]?.maxInputTokens;
-      return before !== after;
+      return before !== after || String(m?.vendor || '') !== 'user';
     });
     if (upgraded) {
       await saveCodeBuddyModels({ silent: true });
@@ -5780,7 +5811,10 @@ function createCbRowFactory(prefix) {
     : 'deleteWbModel';
 
   return function modelRow(model, index) {
-    const displayName = model.vendor || model.name || model.id || '未命名';
+    // Buddy 固定 vendor=user，列表展示优先 name/id，避免全部显示成 "user"。
+    const displayName = (model.vendor === 'user'
+      ? (model.name || model.id)
+      : (model.vendor || model.name || model.id)) || '未命名';
     const selected = cbSelectionSet(prefix).has(cbModelSelectionKey(prefix, model));
     const caps = [];
     if (model.supportsToolCall) caps.push(cbCapabilityPill(cls, 'tool', '工具'));
@@ -6149,11 +6183,11 @@ async function loadWbModels() {
     wbConfigScope = meta.scope;
     wbConfigPath = meta.path;
     renderWbModels();
-    // 历史默认 128K 已升级时，静默写回配置
+    // 历史默认 128K 升级，或 vendor 需迁移为 user 时，静默写回配置
     const upgraded = rawModels.some((m, i) => {
       const before = m?.maxInputTokens;
       const after = wbModels[i]?.maxInputTokens;
-      return before !== after;
+      return before !== after || String(m?.vendor || '') !== 'user';
     });
     if (upgraded) {
       await saveWbModels({ silent: true });
