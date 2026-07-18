@@ -2,6 +2,12 @@
 
 All notable changes to AnyBridge will be documented in this file.
 
+## v0.3.10 - 2026-07-18
+
+- CPA 套件支持出站代理配置：跟随系统代理 / 自定义 URL / 直连。
+- 扩展设置面板可查看生效代理，并支持保存或保存并重启 CPA。
+- 启动与写入 `config.yaml` 时自动同步 `proxy-url`。
+
 ## v0.3.9 - 2026-07-18
 
 - 修复新机切换 Codex 供应商失败：`models_cache.json` 缺失时回退到内嵌 `gpt-5.5` 完整模型模板。

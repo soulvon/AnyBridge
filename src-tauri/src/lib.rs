@@ -109,6 +109,8 @@ pub fn run() {
             commands::extensions::extension_set_cpa_install_dir,
             commands::extensions::extension_cpa_auto_start,
             commands::extensions::extension_set_cpa_auto_start,
+            commands::extensions::extension_cpa_proxy_settings,
+            commands::extensions::extension_set_cpa_proxy_settings,
             commands::extensions::extension_list_mirrors,
             commands::extensions::extension_save_mirrors,
             commands::extensions::extension_speed_test_mirrors,

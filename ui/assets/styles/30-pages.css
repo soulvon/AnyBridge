@@ -4375,6 +4375,39 @@ html[data-theme="dark"] .theme-setting-moon {
   line-height: 1.45;
 }
 
+.extension-detail-setting-block {
+  border-bottom: 1px solid var(--border);
+}
+
+.extension-detail-setting-block:last-child {
+  border-bottom: none;
+}
+
+.extension-detail-setting-controls .extension-setting-select,
+.extension-detail-setting-controls .extension-setting-input {
+  flex: 0 1 280px;
+  width: min(280px, 46vw);
+  max-width: 100%;
+  min-height: 34px;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.extension-detail-setting-controls .extension-setting-input:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+.extension-detail-setting-actions {
+  justify-content: flex-end;
+  gap: 8px;
+}
+
 .extensions-log-panel {
   padding: 18px;
   display: flex;

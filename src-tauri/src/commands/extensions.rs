@@ -248,6 +248,45 @@ fn path_text(path: &Path) -> String {
     path.to_string_lossy().to_string()
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+enum CpaProxyMode {
+    /// 跟随 Windows 系统代理（ProxyEnable + ProxyServer）
+    System,
+    /// 使用 custom_proxy_url
+    Custom,
+    /// 不走代理（直连）
+    Off,
+}
+
+impl Default for CpaProxyMode {
+    fn default() -> Self {
+        CpaProxyMode::System
+    }
+}
+
+impl CpaProxyMode {
+    fn as_str(&self) -> &'static str {
+        match self {
+            CpaProxyMode::System => "system",
+            CpaProxyMode::Custom => "custom",
+            CpaProxyMode::Off => "off",
+        }
+    }
+
+    fn parse(raw: &str) -> Result<Self, String> {
+        match raw.trim().to_ascii_lowercase().as_str() {
+            "system" | "auto" | "follow" => Ok(CpaProxyMode::System),
+            "custom" | "manual" => Ok(CpaProxyMode::Custom),
+            "off" | "none" | "direct" | "disabled" => Ok(CpaProxyMode::Off),
+            other => Err(format!(
+                "不支持的代理模式: {} （可用 system / custom / off）",
+                other
+            )),
+        }
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct CpaSettings {
@@ -255,6 +294,12 @@ struct CpaSettings {
     /// 是否跟随 AnyBridge 启动。未设置时默认 true。
     #[serde(default = "default_cpa_auto_start")]
     auto_start: bool,
+    /// CPA 出站代理模式：system | custom | off，默认跟随系统代理。
+    #[serde(default)]
+    proxy_mode: CpaProxyMode,
+    /// custom 模式下的代理 URL（http/https/socks5）
+    #[serde(default)]
+    custom_proxy_url: Option<String>,
 }
 
 impl Default for CpaSettings {
@@ -262,12 +307,27 @@ impl Default for CpaSettings {
         Self {
             install_dir: None,
             auto_start: true,
+            proxy_mode: CpaProxyMode::System,
+            custom_proxy_url: None,
         }
     }
 }
 
 fn default_cpa_auto_start() -> bool {
     true
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CpaProxySettingsView {
+    pub mode: String,
+    pub custom_url: String,
+    pub system_url: Option<String>,
+    pub effective_url: String,
+    pub applied_url: Option<String>,
+    pub config_path: Option<String>,
+    pub needs_restart: bool,
+    pub suite_running: bool,
 }
 
 fn cpa_settings_path() -> PathBuf {
@@ -336,6 +396,188 @@ fn persist_cpa_auto_start(enabled: bool) -> Result<(), String> {
     let mut settings = read_cpa_settings();
     settings.auto_start = enabled;
     write_cpa_settings(&settings)
+}
+
+fn normalize_cpa_proxy_url(raw: &str) -> Result<String, String> {
+    let value = raw.trim();
+    if value.is_empty() {
+        return Ok(String::new());
+    }
+    let lower = value.to_ascii_lowercase();
+    if lower == "direct" || lower == "none" || lower == "off" {
+        return Ok(String::new());
+    }
+    let with_scheme = if value.contains("://") {
+        value.to_string()
+    } else {
+        format!("http://{}", value)
+    };
+    let lower_scheme = with_scheme.to_ascii_lowercase();
+    if !(lower_scheme.starts_with("http://")
+        || lower_scheme.starts_with("https://")
+        || lower_scheme.starts_with("socks5://")
+        || lower_scheme.starts_with("socks5h://"))
+    {
+        return Err(
+            "代理地址仅支持 http://、https://、socks5:// 或 socks5h:// 协议".into(),
+        );
+    }
+    // 粗校验：scheme 后至少要有 host
+    let rest = with_scheme.splitn(2, "://").nth(1).unwrap_or("").trim();
+    if rest.is_empty() || rest.starts_with('/') {
+        return Err("代理地址缺少主机名，例如 http://127.0.0.1:7890".into());
+    }
+    Ok(with_scheme)
+}
+
+fn resolve_cpa_proxy_url(settings: &CpaSettings) -> Result<String, String> {
+    match settings.proxy_mode {
+        CpaProxyMode::Off => Ok(String::new()),
+        CpaProxyMode::System => Ok(super::windows_user_proxy_url().unwrap_or_default()),
+        CpaProxyMode::Custom => {
+            let raw = settings
+                .custom_proxy_url
+                .as_deref()
+                .unwrap_or("")
+                .trim();
+            if raw.is_empty() {
+                return Err("自定义代理模式下请填写代理地址".into());
+            }
+            normalize_cpa_proxy_url(raw)
+        }
+    }
+}
+
+fn yaml_escape_double_quoted(value: &str) -> String {
+    value.replace('\\', "\\\\").replace('"', "\\\"")
+}
+
+fn active_cpa_config_path() -> Option<PathBuf> {
+    find_component_install("cli-proxy-api", parse_cli_version).map(|item| item.dir.join("config.yaml"))
+}
+
+fn read_cpa_config_proxy_url(config_path: &Path) -> Option<String> {
+    let content = fs::read_to_string(config_path).ok()?;
+    for line in content.lines() {
+        let trimmed = line.trim();
+        if let Some(rest) = trimmed.strip_prefix("proxy-url:") {
+            let value = rest.trim();
+            if value.is_empty() || value == "\"\"" || value == "''" {
+                return Some(String::new());
+            }
+            if (value.starts_with('"') && value.ends_with('"') && value.len() >= 2)
+                || (value.starts_with('\'') && value.ends_with('\'') && value.len() >= 2)
+            {
+                return Some(value[1..value.len() - 1].to_string());
+            }
+            return Some(value.to_string());
+        }
+    }
+    None
+}
+
+fn set_cpa_config_proxy_url(config_path: &Path, proxy_url: &str) -> Result<(), String> {
+    if !config_path.is_file() {
+        return Err(format!("CPA 配置不存在: {}", config_path.display()));
+    }
+    let content =
+        fs::read_to_string(config_path).map_err(|e| format!("读取 CPA config.yaml 失败: {}", e))?;
+    let escaped = yaml_escape_double_quoted(proxy_url);
+    let replacement = format!("proxy-url: \"{}\"", escaped);
+    let mut replaced = false;
+    let mut lines: Vec<String> = content
+        .lines()
+        .map(|line| {
+            let trimmed = line.trim_start();
+            if trimmed.starts_with("proxy-url:") {
+                replaced = true;
+                let indent_len = line.len() - trimmed.len();
+                format!("{}{}", &line[..indent_len], replacement)
+            } else {
+                line.to_string()
+            }
+        })
+        .collect();
+    if !replaced {
+        if !lines.is_empty() && !lines.last().map(|s| s.is_empty()).unwrap_or(true) {
+            lines.push(String::new());
+        }
+        lines.push(replacement);
+    }
+    let mut out = lines.join("\n");
+    if content.ends_with('\n') {
+        out.push('\n');
+    }
+    super::write_atomic(config_path, out.as_bytes())
+        .map_err(|e| format!("写入 CPA config.yaml 失败: {}", e))
+}
+
+/// 将当前设置解析出的代理写入活动版本 config.yaml（若已安装）。
+fn sync_active_cpa_proxy_config() -> Result<(Option<PathBuf>, String), String> {
+    let settings = read_cpa_settings();
+    let proxy_url = resolve_cpa_proxy_url(&settings)?;
+    let Some(config_path) = active_cpa_config_path() else {
+        return Ok((None, proxy_url));
+    };
+    set_cpa_config_proxy_url(&config_path, &proxy_url)?;
+    Ok((Some(config_path), proxy_url))
+}
+
+fn is_cpa_suite_running() -> bool {
+    let cli = probe_http_port(CPA_PORT, "/healthz", "CLIProxyAPI");
+    let cpamp = probe_http_port(CPAMP_PORT, "/health", "CPA Manager Plus");
+    cli.status == "running" || cpamp.status == "running"
+}
+
+fn build_cpa_proxy_settings_view() -> Result<CpaProxySettingsView, String> {
+    let settings = read_cpa_settings();
+    let system_url = super::windows_user_proxy_url();
+    let effective_url = resolve_cpa_proxy_url(&settings)?;
+    let config_path = active_cpa_config_path();
+    let applied_url = config_path
+        .as_ref()
+        .and_then(|p| read_cpa_config_proxy_url(p));
+    let suite_running = is_cpa_suite_running();
+    let needs_restart = suite_running
+        && applied_url
+            .as_ref()
+            .map(|applied| applied != &effective_url)
+            .unwrap_or(true);
+    Ok(CpaProxySettingsView {
+        mode: settings.proxy_mode.as_str().to_string(),
+        custom_url: settings.custom_proxy_url.unwrap_or_default(),
+        system_url,
+        effective_url,
+        applied_url,
+        config_path: config_path.map(|p| path_text(&p)),
+        needs_restart,
+        suite_running,
+    })
+}
+
+fn persist_cpa_proxy_settings(mode: CpaProxyMode, custom_url: Option<String>) -> Result<(), String> {
+    let mut settings = read_cpa_settings();
+    settings.proxy_mode = mode;
+    settings.custom_proxy_url = match custom_url {
+        Some(raw) => {
+            let normalized = normalize_cpa_proxy_url(&raw)?;
+            if normalized.is_empty() {
+                None
+            } else {
+                Some(normalized)
+            }
+        }
+        None => settings.custom_proxy_url.take().and_then(|s| {
+            normalize_cpa_proxy_url(&s)
+                .ok()
+                .filter(|v| !v.is_empty())
+        }),
+    };
+    // custom 模式必须能解析出有效 URL
+    let _ = resolve_cpa_proxy_url(&settings)?;
+    write_cpa_settings(&settings)?;
+    let _ = sync_active_cpa_proxy_config()?;
+    Ok(())
 }
 
 fn resolve_cpa_install_dir(install_dir: Option<String>) -> PathBuf {
@@ -1487,6 +1729,11 @@ async fn start_cpa_suite_async() -> Result<(), String> {
     // 始终解析密钥（启动 CPAMP、注入补丁、添加供应商都需要）
     let secrets = resolve_cpa_secrets_for_start()?;
 
+    // 启动前同步出站代理到当前活动 config.yaml（跟随系统/自定义）
+    let _ = tauri::async_runtime::spawn_blocking(sync_active_cpa_proxy_config)
+        .await
+        .map_err(|e| e.to_string())?;
+
     // 1. 启动 CPA（端口被不健康进程占用时先 kill）
     if need_cli {
         if cli_probe.status == "degraded" {
@@ -1705,6 +1952,32 @@ pub async fn extension_cpa_auto_start() -> Result<bool, String> {
 pub async fn extension_set_cpa_auto_start(enabled: bool) -> Result<bool, String> {
     persist_cpa_auto_start(enabled)?;
     Ok(enabled)
+}
+
+#[tauri::command]
+pub async fn extension_cpa_proxy_settings() -> Result<CpaProxySettingsView, String> {
+    tauri::async_runtime::spawn_blocking(build_cpa_proxy_settings_view)
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub async fn extension_set_cpa_proxy_settings(
+    mode: String,
+    custom_url: Option<String>,
+) -> Result<CpaProxySettingsView, String> {
+    let mode = CpaProxyMode::parse(&mode)?;
+    tauri::async_runtime::spawn_blocking(move || {
+        persist_cpa_proxy_settings(mode, custom_url)?;
+        let mut view = build_cpa_proxy_settings_view()?;
+        // config.yaml 已更新，但运行中的 CLIProxyAPI 需重启后才会加载新 proxy-url
+        if view.suite_running {
+            view.needs_restart = true;
+        }
+        Ok(view)
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 /// 应用启动时调用：若已安装且开启跟随启动，则后台拉起 CPA 套件。
@@ -2646,6 +2919,9 @@ async fn wait_for_http_with_key(port: u16, path: &str, label: &str, max_retries:
 }
 
 fn write_cpa_config(dir: &Path, mgmt_key: &str, api_key: &str) -> Result<(), String> {
+    let settings = read_cpa_settings();
+    let proxy_url = resolve_cpa_proxy_url(&settings).unwrap_or_default();
+    let proxy_escaped = yaml_escape_double_quoted(&proxy_url);
     let content = format!(
         "host: \"127.0.0.1\"\n\
          port: 8317\n\
@@ -2664,7 +2940,7 @@ fn write_cpa_config(dir: &Path, mgmt_key: &str, api_key: &str) -> Result<(), Str
          usage-statistics-enabled: true\n\
          redis-usage-queue-retention-seconds: 300\n\
          request-retry: 1\n\
-         proxy-url: \"\"\n\
+         proxy-url: \"{}\"\n\
          quota-exceeded:\n\
          \x20 switch-project: true\n\
          \x20 switch-preview-model: true\n\
@@ -2677,7 +2953,7 @@ fn write_cpa_config(dir: &Path, mgmt_key: &str, api_key: &str) -> Result<(), Str
          \x20 enabled: true\n\
          \x20 dir: \"plugins\"\n\
          ws-auth: true\n",
-        mgmt_key, api_key
+        mgmt_key, api_key, proxy_escaped
     );
     let target = dir.join("config.yaml");
     fs::write(&target, content).map_err(|e| format!("写入 CPA config.yaml 失败: {}", e))

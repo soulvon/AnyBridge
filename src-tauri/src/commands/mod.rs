@@ -82,7 +82,7 @@ fn parse_windows_proxy_server(raw: &str) -> Option<String> {
 }
 
 #[cfg(target_os = "windows")]
-fn windows_user_proxy_url() -> Option<String> {
+pub(crate) fn windows_user_proxy_url() -> Option<String> {
     let enabled = reg_query_current_user_internet_setting("ProxyEnable")?;
     let enabled = enabled.trim();
     let is_enabled = enabled == "1" || enabled.eq_ignore_ascii_case("0x1");
@@ -94,7 +94,7 @@ fn windows_user_proxy_url() -> Option<String> {
 }
 
 #[cfg(not(target_os = "windows"))]
-fn windows_user_proxy_url() -> Option<String> {
+pub(crate) fn windows_user_proxy_url() -> Option<String> {
     None
 }
 
