@@ -2,6 +2,11 @@
 
 All notable changes to AnyBridge will be documented in this file.
 
+## v0.3.9 - 2026-07-18
+
+- 修复新机切换 Codex 供应商失败：`models_cache.json` 缺失时回退到内嵌 `gpt-5.5` 完整模型模板。
+- `read_codex_model_template` / `generate_model_catalog_json` / `write_models_cache` 统一缓存优先、bundled 兜底，不再要求先启动 Codex CLI。
+
 ## v0.3.8 - 2026-07-18
 
 - 修复 WorkBuddy / CodeBuddy 自定义模型展示名：`name` 改为供应商名（如 `CPA`），不再与 `id`（模型 ID）重复；客户端并排展示为 `CPA · grok-4.5`。

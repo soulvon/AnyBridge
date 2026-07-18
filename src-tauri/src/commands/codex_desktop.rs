@@ -744,8 +744,10 @@ fn write_models_cache() -> Result<(), String> {
     }
     let arr = cache["models"].as_array_mut().unwrap();
 
-    // 优先复用 platforms.rs 的官方模板（治本：读 models_cache.json 第一个条目）
-    // 兜底：cache 自身第一个真正的官方条目（排除我们自己的注入项；不静默——下面会校验并返回 Err）
+    // 模板优先级：
+    //   1) platforms::read_codex_model_template()
+    //      — models_cache 官方条目优先，缺失时回退内嵌 gpt-5.5
+    //   2) 当前 cache 中第一个非 AnyBridge 注入的条目
     let template = read_codex_model_template().or_else(|| {
         arr.iter()
             .find(|m| {
@@ -764,8 +766,7 @@ fn write_models_cache() -> Result<(), String> {
 
     let template = template.ok_or_else(|| {
         format!(
-            "无法读取 Codex 官方模型模板：{} 不存在或无可用官方条目。\n\
-             请先启动一次 Codex Desktop / CLI 让其生成 models_cache.json，再切换供应商。",
+            "无法解析 Codex 模型模板：{} 与内嵌 gpt-5.5 均不可用。",
             cache_path.display()
         )
     })?;

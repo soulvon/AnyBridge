@@ -1218,39 +1218,54 @@ pub(crate) fn codex_bundled_model_template(model_id: &str) -> (Value, bool) {
     (default_model, false)
 }
 
-/// 读取 `~/.codex/models_cache.json` 的第一个模型条目作为 deep-clone 模板。
+/// 读取 Codex 模型 deep-clone 模板。
 ///
 /// Codex CLI 对模型目录做严格 schema 校验（30+ 字段：base_instructions、
 /// model_messages、supports_reasoning_summaries、comp_hash、input_modalities…），
 /// 任何缺字段都会导致 `codex exec` 启动时报 "missing field `xxx`"。
 ///
-/// 治本方案：直接复用官方 gpt-5.5 条目作为模板，避免手写 schema 错漏。
-/// models_cache.json 由 Codex 首次运行时自动生成，读取它不需要启动 Codex。
+/// 优先级：
+/// 1. `~/.codex/models_cache.json` 中的官方条目（Codex 首次运行后生成，字段最新）
+/// 2. 编译期内嵌 `codex_client_models.json` 的 gpt-5.5 完整定义
+///    —— 覆盖新机器尚未启动过 Codex、缓存文件不存在的场景。
 pub(crate) fn read_codex_model_template() -> Option<serde_json::Value> {
-    let path = codex_home()?.join("models_cache.json");
-    let raw = std::fs::read_to_string(&path).ok()?;
-    let parsed: serde_json::Value = serde_json::from_str(&raw).ok()?;
-    let models = parsed.get("models")?.as_array()?;
-    let catalog_slugs = read_codex_catalog_slugs_for_template();
-    models
-        .iter()
-        .find(|m| is_codex_official_template_candidate(m, &catalog_slugs, true, true))
-        .or_else(|| {
-            models
-                .iter()
-                .find(|m| is_codex_official_template_candidate(m, &catalog_slugs, true, false))
-        })
-        .or_else(|| {
-            models
-                .iter()
-                .find(|m| is_codex_official_template_candidate(m, &catalog_slugs, false, true))
-        })
-        .or_else(|| {
-            models
-                .iter()
-                .find(|m| is_codex_official_template_candidate(m, &catalog_slugs, false, false))
-        })
-        .cloned()
+    if let Some(path) = codex_home().map(|d| d.join("models_cache.json")) {
+        if let Ok(raw) = std::fs::read_to_string(&path) {
+            if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&raw) {
+                if let Some(models) = parsed.get("models").and_then(Value::as_array) {
+                    let catalog_slugs = read_codex_catalog_slugs_for_template();
+                    let found = models
+                        .iter()
+                        .find(|m| {
+                            is_codex_official_template_candidate(m, &catalog_slugs, true, true)
+                        })
+                        .or_else(|| {
+                            models.iter().find(|m| {
+                                is_codex_official_template_candidate(m, &catalog_slugs, true, false)
+                            })
+                        })
+                        .or_else(|| {
+                            models.iter().find(|m| {
+                                is_codex_official_template_candidate(m, &catalog_slugs, false, true)
+                            })
+                        })
+                        .or_else(|| {
+                            models.iter().find(|m| {
+                                is_codex_official_template_candidate(m, &catalog_slugs, false, false)
+                            })
+                        })
+                        .cloned();
+                    if found.is_some() {
+                        return found;
+                    }
+                }
+            }
+        }
+    }
+
+    // 新机 / 缓存缺失 / 仅有 AnyBridge 注入项：回退到内嵌 gpt-5.5 完整模板
+    let (template, _) = codex_bundled_model_template(CODEX_BUNDLED_CATALOG_TEMPLATE_SLUG);
+    Some(template)
 }
 
 fn read_codex_catalog_slugs_for_template() -> HashSet<String> {
@@ -1320,26 +1335,15 @@ fn is_codex_official_template_candidate(
 /// 不依赖运行时 `~/.codex/models_cache.json`。
 ///
 /// **旧版逻辑（保持兼容）**：如果模型 slug 不在 bundled catalog 中（用户自定义模型或
-/// 旧版 Codex 模型），从 `~/.codex/models_cache.json` 读取官方 gpt-5.5 完整条目作为模板，
-/// deep-clone 后只覆盖 6 个字段：slug, display_name, description, context_window,
-/// max_context_window, priority。其余 26+ 字段从官方模板继承。
-///
-/// 返回 Err 让上层（apply_codex → UI）显示明确错误：
-/// 失败时**不静默退化**（debug-first 原则）。
+/// 旧版 Codex 模型），优先从 `~/.codex/models_cache.json` 读取官方条目作为模板；
+/// 缓存不存在时回退到内嵌 gpt-5.5，deep-clone 后只覆盖 6 个字段：slug, display_name,
+/// description, context_window, max_context_window, priority。其余 26+ 字段从模板继承。
 pub(crate) fn generate_model_catalog_json(entries: &[ModelCatalogEntry]) -> Result<String, String> {
-    // 旧版模板：仅在存在非 bundled 模型时才需要读取 models_cache.json
+    // 旧版模板：仅在存在非 bundled 模型时才需要模板（缓存优先，bundled 兜底）
     let has_legacy_models = entries.iter().any(|e| !is_codex_bundled_model(&e.model));
     let legacy_template: Option<serde_json::Value> = if has_legacy_models {
         Some(read_codex_model_template().ok_or_else(|| {
-            let path = codex_home()
-                .map(|d| d.join("models_cache.json"))
-                .map(|p| p.display().to_string())
-                .unwrap_or_else(|| "CODEX_HOME/models_cache.json".to_string());
-            format!(
-                "无法读取 Codex 官方模型缓存 models_cache.json。\n\
-                 请先启动一次 Codex CLI 让其生成此文件，然后重新切换供应商。\n\
-                 路径: {path}"
-            )
+            "无法解析 Codex 模型模板（models_cache 与内嵌 gpt-5.5 均不可用）".to_string()
         })?)
     } else {
         None
