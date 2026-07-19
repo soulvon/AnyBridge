@@ -161,13 +161,13 @@ function slotSourceInfo(uidOrModel) {
     return {
       state: 'account',
       label: '当前账号',
-      title: '当前 IDE 账号实际返回的模型槽位，默认优先使用',
+      title: '当前登录账号在 Windsurf 下拉中可见的模型槽位（含代理抓取的完整清单），默认优先使用',
     };
   }
   return {
     state: 'extended',
     label: '内置槽位',
-    title: '来自内置全量槽位目录；切换到代理后可用于 BYOK 映射',
+    title: '来自内置/历史扩展目录，不在当前账号下拉里；切换到代理后仍可用于 BYOK 映射',
   };
 }
 

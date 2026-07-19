@@ -137,6 +137,55 @@
   };
 
   // ──────────────────────────────────────────────
+  // 入口：用户点「清理并重装」—— 删旧 PEM + 卸旧 CN/旧指纹 + 重生 + 装信任库
+  // 给别人机器上证书乱/不匹配时一键修复用。
+  // ──────────────────────────────────────────────
+  window.reinstallCaFromHealth = async function () {
+    if (!invoke) {
+      try { if (typeof bindTauriBridge === 'function') bindTauriBridge(); } catch (_) {}
+      if (!invoke) {
+        setCertInstallProgress({ message: 'Tauri 通道未就绪，无法清理并重装证书', percent: 100, level: 'err' });
+        addLog && addLog('err', 'CA 清理并重装失败: Tauri 通道未就绪');
+        return;
+      }
+    }
+    await ensureCertInstallProgressListener();
+    _lastCertProgressMessage = '';
+    setCertInstallProgress({ message: '准备清理旧证书并重新安装', percent: 3, level: 'warn' });
+    addLog && addLog('warn', '正在清理并重装 CA 证书（强制重生 + 重装信任库）...');
+    const btn = _hEl('health-reinstall-cert-btn');
+    if (btn) {
+      btn.disabled = true;
+      btn.dataset.oldText = btn.textContent;
+      btn.textContent = '重装中...';
+    }
+    setInstallCertButtonState('busy');
+    try {
+      const msg = await invoke('cert_reinstall_clean');
+      setCertInstallProgress({ message: msg || 'CA 清理并重装完成', percent: 100, level: 'ok' });
+      addLog && addLog('ok', 'CA 清理并重装: ' + msg);
+      await window.runHealthcheck();
+    } catch (e) {
+      const errMsg = String(e);
+      setCertInstallProgress({ message: '清理并重装失败: ' + errMsg, percent: 100, level: 'err' });
+      addLog && addLog('err', 'CA 清理并重装失败: ' + errMsg);
+      if (errMsg.includes('取消') || errMsg.includes('拒绝')) {
+        showCustomAlert && showCustomAlert(
+          '你取消了 UAC 授权（或拒绝访问）。证书可能未完整安装。\n\n请再次点击「清理并重装」，并在 UAC 弹窗中选择「是」。',
+          'CA 重装被取消',
+          'warning'
+        );
+      }
+    } finally {
+      setInstallCertButtonState('idle');
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = btn.dataset.oldText || '清理并重装';
+      }
+    }
+  };
+
+  // ──────────────────────────────────────────────
   // 入口：用户点「卸载证书」按钮（测试用，常驻显示）
   // ──────────────────────────────────────────────
   window.uninstallCaFromHealth = async function () {

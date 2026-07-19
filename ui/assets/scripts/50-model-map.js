@@ -2797,13 +2797,20 @@ function renderSlotCatalogList() {
 
   if (filtered.length === 0) {
     if (slotCatalogScope === 'account') {
+      const accountTotal = (ideModels || []).filter(isAccountSlotModel).length;
+      const emptyTitle = accountTotal > 0
+        ? '当前筛选下没有匹配的账号槽位'
+        : '还没有当前账号槽位数据';
+      const emptyHint = accountTotal > 0
+        ? '当前账号已有槽位数据，但被搜索词或品牌筛选过滤掉了。可清空筛选，或先查看全部/内置槽位。'
+        : '需要先通过代理抓取 Windsurf 下拉清单，或点击刷新读取当前 IDE 账号模型。';
       body.innerHTML = `
         <div style="display:flex;flex-direction:column;gap:12px;align-items:center;text-align:center;color:var(--text-muted);padding:30px 16px;font-size:12px;line-height:1.55;">
-          <div style="font-weight:700;color:var(--text-secondary);">还没有当前账号槽位数据</div>
-          <div>点击刷新可读取当前 IDE 账号实际模型；也可以先查看内置槽位。</div>
+          <div style="font-weight:700;color:var(--text-secondary);">${emptyTitle}</div>
+          <div>${emptyHint}</div>
           <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center;">
             <button class="btn-ghost" data-action="refreshIdeModels" style="height:30px;padding:0 12px;border-radius:8px;font-size:12px;font-weight:700;">刷新当前账号</button>
-            <button class="btn-primary" data-action="setSlotCatalogScope" data-arg="extended" style="height:30px;padding:0 12px;border-radius:8px;font-size:12px;font-weight:700;">启用内置槽位</button>
+            <button class="btn-primary" data-action="setSlotCatalogScope" data-arg="all" style="height:30px;padding:0 12px;border-radius:8px;font-size:12px;font-weight:700;">查看全部槽位</button>
           </div>
         </div>`;
     } else {

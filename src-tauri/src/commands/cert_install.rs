@@ -8,8 +8,10 @@
 //   4. 用户点"是" → 装到 LM → 完成
 //
 // 升级路径：
-//   旧版 CN = "IDE BYOK Local MITM" / "ide-byok Local CA" → 新版 CN = "AnyBridge Local CA"
-//   装新证书后自动调 `cleanup_legacy_cn()` 卸老证书，避免新老并存。
+//   旧版 CN = "Windsurf BYOK Local MITM" / "IDE BYOK Local MITM" / "ide-byok Local CA"
+//     → 新版 CN = "AnyBridge Local CA"
+//   装新证书前自动 `cleanup_legacy_cn()` + 清理同 CN 旧指纹，避免新老并存。
+//   「清理并重装」：force 重生 PEM + 重装信任库，适用于别人机器上证书乱/不匹配。
 
 use sha1::Digest;
 use std::path::{Path, PathBuf};
@@ -17,6 +19,11 @@ use std::process::Command;
 use tauri::{AppHandle, Emitter};
 
 use crate::commands::system::{CA_COMMON_NAME, LEGACY_CA_COMMON_NAMES};
+
+/// 普通 certutil 调用超时（秒）。避免 verifystore/addstore 卡死导致 UI「Step is still running」。
+const CERTUTIL_CMD_TIMEOUT_SECS: u64 = 20;
+/// 显式安装/卸载整条任务超时（秒）。UAC 等待算在内。
+const CERT_TASK_TIMEOUT_SECS: u64 = 120;
 
 /// 证书在系统中的安装位置
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
@@ -250,7 +257,8 @@ mod platform {
     use std::os::windows::process::CommandExt;
 
     const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-    const CERTUTIL_WAIT_TIMEOUT_MS: u32 = 120_000;
+    /// UAC 子进程最长等待（ms）。不能无限等，否则 UI 会一直 Step is still running。
+    const CERTUTIL_WAIT_TIMEOUT_MS: u32 = 90_000;
 
     fn certutil_path() -> PathBuf {
         let system_root = std::env::var_os("SystemRoot")
@@ -265,21 +273,85 @@ mod platform {
         }
     }
 
+    /// 带超时运行 certutil；超时 kill 子进程，避免体检/安装步骤永久卡死。
+    fn run_certutil(args: &[&str]) -> Result<std::process::Output, String> {
+        use std::io::Read;
+
+        let mut child = Command::new(certutil_path())
+            .args(args)
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .creation_flags(CREATE_NO_WINDOW)
+            .spawn()
+            .map_err(|e| format!("certutil 启动失败: {}", e))?;
+
+        // 后台读管道，避免输出塞满 pipe 导致子进程写阻塞、父进程等退出的死锁。
+        let stdout_handle = child.stdout.take().map(|mut pipe| {
+            std::thread::spawn(move || {
+                let mut buf = Vec::new();
+                let _ = pipe.read_to_end(&mut buf);
+                buf
+            })
+        });
+        let stderr_handle = child.stderr.take().map(|mut pipe| {
+            std::thread::spawn(move || {
+                let mut buf = Vec::new();
+                let _ = pipe.read_to_end(&mut buf);
+                buf
+            })
+        });
+
+        let started = std::time::Instant::now();
+        let timeout = std::time::Duration::from_secs(CERTUTIL_CMD_TIMEOUT_SECS);
+        let status = loop {
+            match child.try_wait() {
+                Ok(Some(status)) => break status,
+                Ok(None) => {
+                    if started.elapsed() >= timeout {
+                        let _ = child.kill();
+                        let _ = child.wait();
+                        return Err(format!(
+                            "certutil 超时（{}s）: {}",
+                            CERTUTIL_CMD_TIMEOUT_SECS,
+                            args.join(" ")
+                        ));
+                    }
+                    std::thread::sleep(std::time::Duration::from_millis(40));
+                }
+                Err(e) => return Err(format!("等待 certutil 失败: {}", e)),
+            }
+        };
+
+        let stdout = stdout_handle
+            .and_then(|h| h.join().ok())
+            .unwrap_or_default();
+        let stderr = stderr_handle
+            .and_then(|h| h.join().ok())
+            .unwrap_or_default();
+        Ok(std::process::Output {
+            status,
+            stdout,
+            stderr,
+        })
+    }
+
+    fn certutil_success(args: &[&str]) -> bool {
+        run_certutil(args)
+            .map(|o| o.status.success())
+            .unwrap_or(false)
+    }
+
     /// 检查指定 CommonName 的证书是否在指定 store 里。
     /// `current_user_only=true` 时只查 CurrentUser\Root，否则查 LocalMachine\Root。
     pub fn is_in_store(cn: &str, current_user_only: bool) -> bool {
         // certutil 区分 user / machine store 的方式：加 `-user` 前缀
         // 仅查 CurrentUser，不加则查 LocalMachine（certutil 默认行为）。
-        let mut args: Vec<&str> = vec!["-verifystore", "Root", cn];
         if current_user_only {
-            args.insert(0, "-user");
+            certutil_success(&["-user", "-verifystore", "Root", cn])
+        } else {
+            certutil_success(&["-verifystore", "Root", cn])
         }
-        Command::new(certutil_path())
-            .args(&args)
-            .creation_flags(CREATE_NO_WINDOW)
-            .output()
-            .map(|o| o.status.success())
-            .unwrap_or(false)
     }
 
     pub fn is_thumbprint_in_store(thumbprint: &str, current_user_only: bool) -> bool {
@@ -290,32 +362,18 @@ mod platform {
         if normalized.len() != 40 {
             return false;
         }
-        let mut args: Vec<&str> = vec!["-verifystore", "Root", normalized.as_str()];
         if current_user_only {
-            args.insert(0, "-user");
+            certutil_success(&["-user", "-verifystore", "Root", normalized.as_str()])
+        } else {
+            certutil_success(&["-verifystore", "Root", normalized.as_str()])
         }
-        Command::new(certutil_path())
-            .args(&args)
-            .creation_flags(CREATE_NO_WINDOW)
-            .output()
-            .map(|o| o.status.success())
-            .unwrap_or(false)
     }
 
     /// 把 PEM 装到 CurrentUser\Root（不需要管理员权限）。
     /// 用 certutil -user -addstore 强制走 user store，避免被任何机器策略拦截。
     pub fn install_current_user(cert_path: &Path) -> Result<(), String> {
-        let out = Command::new(certutil_path())
-            .args([
-                "-f",
-                "-user",
-                "-addstore",
-                "Root",
-                &cert_path.to_string_lossy(),
-            ])
-            .creation_flags(CREATE_NO_WINDOW)
-            .output()
-            .map_err(|e| format!("certutil 启动失败: {}", e))?;
+        let path = cert_path.to_string_lossy();
+        let out = run_certutil(&["-f", "-user", "-addstore", "Root", path.as_ref()])?;
         if !out.status.success() {
             return Err(format!(
                 "装到 CurrentUser\\Root 失败: {}",
@@ -466,15 +524,13 @@ mod platform {
     /// 从指定 store 卸载指定 CommonName 的证书。
     /// `current_user=true` 时走 user store，否则走 machine store（需 admin）。
     pub fn uninstall_from_store(cn: &str, current_user: bool) -> Result<(), String> {
-        let mut args: Vec<&str> = vec!["-delstore", "Root", cn];
-        if current_user {
-            args.insert(0, "-user");
-        }
-        let out = Command::new(certutil_path())
-            .args(&args)
-            .creation_flags(CREATE_NO_WINDOW)
-            .output()
-            .map_err(|e| format!("certutil 启动失败: {}", e))?;
+        // LocalMachine delstore 无提权会失败；显式 UAC 路径用 uninstall_local_machine_*_via_uac。
+        // 这里不走 ShellExecute，避免后台 cleanup 意外弹 UAC。
+        let out = if current_user {
+            run_certutil(&["-user", "-delstore", "Root", cn])?
+        } else {
+            run_certutil(&["-delstore", "Root", cn])?
+        };
         if !out.status.success() {
             return Err(format!(
                 "卸载 CA '{}' 失败: {}",
@@ -496,15 +552,11 @@ mod platform {
         if normalized.len() != 40 {
             return Err("证书指纹格式异常，无法卸载".to_string());
         }
-        let mut args: Vec<&str> = vec!["-delstore", "Root", normalized.as_str()];
-        if current_user {
-            args.insert(0, "-user");
-        }
-        let out = Command::new(certutil_path())
-            .args(&args)
-            .creation_flags(CREATE_NO_WINDOW)
-            .output()
-            .map_err(|e| format!("certutil 启动失败: {}", e))?;
+        let out = if current_user {
+            run_certutil(&["-user", "-delstore", "Root", normalized.as_str()])?
+        } else {
+            run_certutil(&["-delstore", "Root", normalized.as_str()])?
+        };
         if !out.status.success() {
             return Err(format!(
                 "按 Thumbprint 卸载 CA '{}' 失败: {}",
@@ -1076,27 +1128,96 @@ pub fn check_ca_status() -> CaStatus {
 
 /// 一键安装 CA：先尝试 CurrentUser\Root（零弹窗），失败才走 UAC 兜底。
 /// 升级路径会自动清理老证书。
+#[allow(dead_code)]
 pub fn install_ca() -> Result<String, String> {
-    install_ca_impl(None)
+    install_ca_with_options(false, false)
 }
 
-fn install_ca_impl(app: Option<AppHandle>) -> Result<String, String> {
-    eprintln!("[cert_install] install_ca: start");
-    emit_cert_progress(app.as_ref(), "start", "开始安装 CA 证书", 5, "info");
+/// 仅装用户信任库，绝不弹 UAC。
+/// 给「环境体检 repair / generate_certs / 启动代理自检」用，避免后台静默卡住。
+pub fn install_ca_user_only(
+    force_regenerate: bool,
+    prefer_fresh_install: bool,
+) -> Result<String, String> {
+    install_ca_impl(None, force_regenerate, prefer_fresh_install, false)
+}
+
+/// `force_regenerate`：删除 PEM 并重生后再安装（「清理并重装」）。
+/// `prefer_fresh_install`：安装前先清掉当前 CN 下不匹配的旧指纹（防止同名多证书乱）。
+#[allow(dead_code)]
+pub fn install_ca_with_options(
+    force_regenerate: bool,
+    prefer_fresh_install: bool,
+) -> Result<String, String> {
+    install_ca_impl(None, force_regenerate, prefer_fresh_install, true)
+}
+
+/// 尝试从 user store 按 CN 卸载当前产品 CA（无需管理员）。
+/// 用于「同 CN 旧指纹」清理：重生后旧证书还在库里时先卸掉再装新的。
+fn cleanup_stale_current_user_cn(keep_thumbprint: &str) -> String {
+    // 当前指纹已在库里 → 无需清
+    if platform::is_thumbprint_in_store(keep_thumbprint, true) {
+        return String::new();
+    }
+    // CN 存在但指纹不匹配 → 是旧轮证书，卸掉
+    if !platform::is_in_store(CA_COMMON_NAME, true) {
+        return String::new();
+    }
+    match platform::uninstall_from_store(CA_COMMON_NAME, true) {
+        Ok(()) => format!(
+            "已清除 {} 中同名旧 CA \"{}\"\n",
+            current_user_store_label(),
+            CA_COMMON_NAME
+        ),
+        Err(e) => {
+            eprintln!(
+                "[cert_install] cleanup stale CurrentUser CN failed: {}",
+                e
+            );
+            String::new()
+        }
+    }
+}
+
+fn install_ca_impl(
+    app: Option<AppHandle>,
+    force_regenerate: bool,
+    prefer_fresh_install: bool,
+    allow_admin: bool,
+) -> Result<String, String> {
+    eprintln!(
+        "[cert_install] install_ca: start force={} fresh={} allow_admin={}",
+        force_regenerate, prefer_fresh_install, allow_admin
+    );
+    emit_cert_progress(
+        app.as_ref(),
+        "start",
+        if force_regenerate {
+            "开始清理并重装 CA 证书"
+        } else {
+            "开始安装 CA 证书"
+        },
+        5,
+        "info",
+    );
     let (cert_path, key_path) = cert_paths()?;
 
     let cert_ok = cert_path.metadata().map(|m| m.len() > 0).unwrap_or(false);
     let key_ok = key_path.metadata().map(|m| m.len() > 0).unwrap_or(false);
     let san_current = is_san_current(&cert_path, cert_ok, key_ok);
-    let auto_generate_msg = if !cert_ok || !key_ok || !san_current {
-        let reason = if !cert_ok || !key_ok {
+    let need_generate = force_regenerate || !cert_ok || !key_ok || !san_current;
+    let auto_generate_msg = if need_generate {
+        let reason = if force_regenerate {
+            "正在强制重新生成 MITM 证书"
+        } else if !cert_ok || !key_ok {
             "证书文件缺失或为空，正在自动生成 MITM 证书"
         } else {
             "MITM 证书缺少 Cursor 所需 SAN，正在重新生成"
         };
         emit_cert_progress(app.as_ref(), "auto_generate", reason, 8, "info");
-        let (certs_dir, generated) = crate::commands::system::ensure_mitm_certs()
-            .map_err(|e| format!("自动生成证书失败: {}", e))?;
+        let (certs_dir, generated) =
+            crate::commands::system::ensure_mitm_certs_ex(force_regenerate)
+                .map_err(|e| format!("自动生成证书失败: {}", e))?;
         Some(if generated {
             format!("已自动生成证书到 {}", certs_dir.to_string_lossy())
         } else {
@@ -1127,14 +1248,45 @@ fn install_ca_impl(app: Option<AppHandle>) -> Result<String, String> {
         "info",
     );
 
-    // 清理老证书（不影响新证书安装）
-    emit_cert_progress(app.as_ref(), "cleanup", "正在清理旧版残留证书", 20, "info");
-    let _ = cleanup_legacy_cn();
-    eprintln!("[cert_install] install_ca: legacy cleanup done");
+    // 已安装且指纹一致、非 force → 幂等返回（避免重复弹 UAC）
+    if !force_regenerate && !prefer_fresh_install {
+        let already_user = platform::is_thumbprint_in_store(&thumbprint, true);
+        let already_machine = platform::is_thumbprint_in_store(&thumbprint, false);
+        if already_user || already_machine {
+            let store = if already_user {
+                current_user_store_label()
+            } else {
+                local_machine_store_label()
+            };
+            // 仍尝试清理 legacy，不影响成功路径
+            let _ = cleanup_legacy_cn();
+            let msg = format!(
+                "CA 已在 {}（无需重装）。Thumbprint: {}",
+                store, thumbprint
+            );
+            emit_cert_progress(app.as_ref(), "done", &msg, 100, "ok");
+            return Ok(match auto_generate_msg {
+                Some(prefix) => format!("{prefix}\n{msg}"),
+                None => msg,
+            });
+        }
+    }
+
+    // 清理老 CN + 同 CN 旧指纹（不影响新证书安装）
+    emit_cert_progress(app.as_ref(), "cleanup", "正在清理旧版/残留证书", 20, "info");
+    let mut cleanup_notes = String::new();
+    if let Ok(legacy_msg) = cleanup_legacy_cn() {
+        if legacy_msg != "无老证书残留" {
+            cleanup_notes.push_str(&legacy_msg);
+        }
+    }
+    if force_regenerate || prefer_fresh_install || need_generate {
+        cleanup_notes.push_str(&cleanup_stale_current_user_cn(&thumbprint));
+    }
+    eprintln!("[cert_install] install_ca: cleanup done");
 
     // 阶段 1：先试 CurrentUser\Root（零弹窗，95% 用户走到这里就完事了）
     // 调试 UAC 时可设置 ANYBRIDGE_FORCE_UAC_CERT_INSTALL=1 强制跳过本阶段。
-    // 旧变量保留兼容，方便复用历史调试脚本。
     if std::env::var_os("ANYBRIDGE_FORCE_UAC_CERT_INSTALL").is_none()
         && std::env::var_os("IDE_BYOK_FORCE_UAC_CERT_INSTALL").is_none()
     {
@@ -1150,10 +1302,7 @@ fn install_ca_impl(app: Option<AppHandle>) -> Result<String, String> {
         );
         match platform::install_current_user(&cert_path) {
             Ok(()) => {
-                // 二次验证：实际查一下 CurrentUser\Root 确认装上了
-                // certutil -user -addstore 在某些 GPO 限制下会静默失败。
-                // 这里必须用当前证书文件的 Thumbprint 验证，不能用 CN；
-                // 升级用户可能还持有旧 CN 的证书文件。
+                // 必须用当前证书文件的 Thumbprint 验证，不能用 CN
                 emit_cert_progress(
                     app.as_ref(),
                     "verify_current_user",
@@ -1178,9 +1327,14 @@ fn install_ca_impl(app: Option<AppHandle>) -> Result<String, String> {
                         current_user_store_label(),
                         thumbprint
                     );
+                    let body = if cleanup_notes.is_empty() {
+                        install_msg
+                    } else {
+                        format!("{cleanup_notes}{install_msg}")
+                    };
                     return Ok(match auto_generate_msg {
-                        Some(prefix) => format!("{}\n{}", prefix, install_msg),
-                        None => install_msg,
+                        Some(prefix) => format!("{prefix}\n{body}"),
+                        None => body,
                     });
                 }
                 // 装完查不到，说明 GPO 拦截了，降级
@@ -1201,6 +1355,26 @@ fn install_ca_impl(app: Option<AppHandle>) -> Result<String, String> {
         );
     }
 
+    // 静默/修复路径：不弹 UAC。让用户在体检里点「安装证书」显式操作。
+    if !allow_admin {
+        let msg = format!(
+            "已尝试安装到 {}，但验证未通过（可能被组策略拦截）。请在「环境检测」点「安装证书」或「清理并重装」（可能需要 {}）。Thumbprint: {}",
+            current_user_store_label(),
+            admin_prompt_label(),
+            thumbprint
+        );
+        emit_cert_progress(app.as_ref(), "need_admin", &msg, 100, "warn");
+        let body = if cleanup_notes.is_empty() {
+            msg
+        } else {
+            format!("{cleanup_notes}{msg}")
+        };
+        return Err(match auto_generate_msg {
+            Some(prefix) => format!("{prefix}\n{body}"),
+            None => body,
+        });
+    }
+
     // 阶段 2：管理员授权，装到系统级根证书库。
     eprintln!(
         "[cert_install] install_ca: install to {} via {}",
@@ -1211,7 +1385,7 @@ fn install_ca_impl(app: Option<AppHandle>) -> Result<String, String> {
         app.as_ref(),
         "admin",
         &format!(
-            "{} 验证未通过，正在请求 {} 授权安装到 {}",
+            "{} 验证未通过，正在请求 {} 授权安装到 {}（请在 UAC 弹窗中点「是」；若没看到请检查任务栏）",
             current_user_store_label(),
             admin_prompt_label(),
             local_machine_store_label()
@@ -1257,9 +1431,14 @@ fn install_ca_impl(app: Option<AppHandle>) -> Result<String, String> {
         local_machine_store_label(),
         thumbprint
     );
+    let body = if cleanup_notes.is_empty() {
+        install_msg
+    } else {
+        format!("{cleanup_notes}{install_msg}")
+    };
     Ok(match auto_generate_msg {
-        Some(prefix) => format!("{}\n{}", prefix, install_msg),
-        None => install_msg,
+        Some(prefix) => format!("{prefix}\n{body}"),
+        None => body,
     })
 }
 
@@ -1412,13 +1591,16 @@ pub fn cleanup_legacy_cn() -> Result<String, String> {
             }
         }
 
-        // LocalMachine 也查（老版本经常装到 LM）
+        // LocalMachine：仅检测/尝试非提权 delstore（无 UAC）。
+        // 不能在 cleanup_legacy 里弹 UAC，否则体检修复会卡死。
         if platform::is_in_store(cn, false) {
-            // LM 卸需要 admin，会触发 UAC 弹窗，失败用户拒绝也无所谓
             match platform::uninstall_from_store(cn, false) {
                 Ok(()) => msg.push_str(&format!("已清理老 CA \"{}\"（LocalMachine）\n", cn)),
                 Err(_) => {
-                    // 用户拒绝 UAC 也没关系，老证书不会影响新证书使用
+                    msg.push_str(&format!(
+                        "检测到老 CA \"{}\"（LocalMachine），需要管理员权限才能清理；不影响当前用户级证书\n",
+                        cn
+                    ));
                 }
             }
         }
@@ -1445,11 +1627,16 @@ async fn run_cert_task(
     task: impl FnOnce() -> Result<String, String> + Send + 'static,
 ) -> Result<String, String> {
     let handle = tauri::async_runtime::spawn_blocking(task);
-    match tokio::time::timeout(std::time::Duration::from_secs(180), handle).await {
+    match tokio::time::timeout(
+        std::time::Duration::from_secs(CERT_TASK_TIMEOUT_SECS),
+        handle,
+    )
+    .await
+    {
         Ok(result) => result.map_err(|e| format!("{}任务失败: {}", label, e))?,
         Err(_) => Err(format!(
-            "{}超时。可能 UAC 弹窗被系统隐藏、用户未确认，或系统策略拦截了提权请求",
-            label
+            "{}超时（{}s）。可能 UAC 弹窗被系统隐藏、用户未确认，或 certutil 被杀软拦截。请重试并在 UAC 中点「是」",
+            label, CERT_TASK_TIMEOUT_SECS
         )),
     }
 }
@@ -1457,12 +1644,35 @@ async fn run_cert_task(
 #[tauri::command]
 pub async fn cert_install(app: AppHandle) -> Result<String, String> {
     let progress_app = app.clone();
-    let result = run_cert_task("CA 安装", move || install_ca_impl(Some(progress_app))).await;
+    let result = run_cert_task("CA 安装", move || {
+        install_ca_impl(Some(progress_app), false, false, true)
+    })
+    .await;
     if let Err(e) = &result {
         emit_cert_progress(
             Some(&app),
             "error",
             &format!("CA 证书安装失败: {}", e),
+            100,
+            "err",
+        );
+    }
+    result
+}
+
+/// 清理旧证书并强制重生 + 重装（给「别人机器用不了」一键修复用）。
+#[tauri::command]
+pub async fn cert_reinstall_clean(app: AppHandle) -> Result<String, String> {
+    let progress_app = app.clone();
+    let result = run_cert_task("CA 清理并重装", move || {
+        install_ca_impl(Some(progress_app), true, true, true)
+    })
+    .await;
+    if let Err(e) = &result {
+        emit_cert_progress(
+            Some(&app),
+            "error",
+            &format!("CA 清理并重装失败: {}", e),
             100,
             "err",
         );

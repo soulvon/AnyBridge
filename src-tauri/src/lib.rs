@@ -163,6 +163,7 @@ pub fn run() {
             commands::system::detect_target_ide,
             commands::cert_install::cert_check_status,
             commands::cert_install::cert_install,
+            commands::cert_install::cert_reinstall_clean,
             commands::cert_install::cert_uninstall,
             commands::cert_install::cert_cleanup_legacy,
             commands::ide_config::patch_ide_config,

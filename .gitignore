@@ -75,6 +75,7 @@ scripts/probe_inspect_bulk.py
 
 # Local credential / alive harvest dumps (never commit)
 cpa_alive100/
+cpa_alive100.zip
 sub2api_alive100.json
 mcps/
 

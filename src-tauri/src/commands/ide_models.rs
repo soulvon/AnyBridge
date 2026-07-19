@@ -428,8 +428,11 @@ fn save_ide_models_cache(info: &IdeAccountInfo) -> Result<Vec<IdeModel>, String>
     // 元组: (modelUid, label, api_id)
     let mut ordered: Vec<(String, String, Option<String>)> = Vec::new();
     let mut seen: HashSet<String> = HashSet::new();
+    // 旧 accountModelIds：sidecar 抓取的下拉清单比 JSON API 更完整，API 刷新时只增不减。
+    let mut prev_account_model_ids: HashSet<String> = HashSet::new();
     if let Ok(raw) = fs::read_to_string(&path) {
         if let Ok(old) = serde_json::from_str::<CacheFile>(&raw) {
+            prev_account_model_ids = old.account_model_ids.into_iter().collect();
             for e in old.models {
                 if e.label.starts_with("http") {
                     continue; // 跳过拦截噪声（apiServerUrl 被误当 label）
@@ -468,7 +471,15 @@ fn save_ide_models_cache(info: &IdeAccountInfo) -> Result<Vec<IdeModel>, String>
         }
     }
 
-    let account_model_ids: HashSet<String> = info.models.iter().map(|m| m.id.clone()).collect();
+    // 「当前账号」= API 返回 ∪ 缓存中仍存在的旧账号槽位（通常来自 sidecar 下拉抓取）。
+    // JSON GetUserStatus 不含 Inkling/Nemotron 等新形态 ID，直接覆盖会让 UI 与 Windsurf 下拉不一致。
+    let mut account_model_ids: HashSet<String> =
+        info.models.iter().map(|m| m.id.clone()).collect();
+    for id in prev_account_model_ids {
+        if seen.contains(&id) {
+            account_model_ids.insert(id);
+        }
+    }
 
     let cache = serde_json::json!({
         "capturedAt": now_ms,

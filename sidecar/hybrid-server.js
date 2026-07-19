@@ -137,23 +137,36 @@ function writeCapturedModelList(file, list) {
     if (item && item.modelUid) existingByUid.set(item.modelUid, item);
   }
 
-  const models = list.map(item => {
-    const prev = existingByUid.get(item.modelUid) || {};
+  // protobuf/JSON 抓取结果 = Windsurf 客户端下拉真实清单。
+  // accountModelIds 必须与之对齐；否则 UI「当前账号」仍只显示旧 JSON API 精简集。
+  const models = [];
+  const accountModelIds = [];
+  const seen = new Set();
+  for (const item of list) {
+    const modelUid = String(item?.modelUid || '').trim();
+    if (!modelUid || seen.has(modelUid)) continue;
+    // 拦截噪声：apiServerUrl 等被误识别为 label 的条目
+    const label = String(item?.label || modelUid).trim();
+    if (/^https?:\/\//i.test(label)) continue;
+    seen.add(modelUid);
+    const prev = existingByUid.get(modelUid) || {};
     const out = {
-      modelUid: item.modelUid,
-      label: item.label || item.modelUid,
+      modelUid,
+      label: label || modelUid,
     };
     const apiId = item.apiId || prev.apiId;
     if (apiId) out.apiId = apiId;
-    return out;
-  });
+    models.push(out);
+    accountModelIds.push(modelUid);
+  }
+  if (!models.length) return;
 
   const next = {
     capturedAt: Date.now(),
     source: 'captured',
+    accountModelIds,
     models,
   };
-  if (Array.isArray(existing.accountModelIds)) next.accountModelIds = existing.accountModelIds;
   if (existing.account && typeof existing.account === 'object') next.account = existing.account;
   fs.writeFileSync(file, JSON.stringify(next, null, 2));
 }

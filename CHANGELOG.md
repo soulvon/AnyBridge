@@ -2,6 +2,14 @@
 
 All notable changes to AnyBridge will be documented in this file.
 
+## v0.3.12 - 2026-07-19
+
+- 证书生成命令 `generate_certs` 增加 60s 超时保护，避免 UI 阻塞与 "Step is still running"。
+- 证书安装优先使用 CurrentUser\Root 静默安装（无需 UAC），失败时回退 LocalMachine\Root 并提示管理员权限。
+- 清理遗留证书与过期指纹，避免冲突。
+- 健壮化首次安装 / 多用户 / 路径探测逻辑。
+- UI 样式与健康检查流程优化。
+
 ## v0.3.10 - 2026-07-18
 
 - CPA 套件支持出站代理配置：跟随系统代理 / 自定义 URL / 直连。

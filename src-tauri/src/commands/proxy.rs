@@ -661,14 +661,20 @@ fn run_proxy_preflight(
         .unwrap_or(false);
     if !cert_ok || !key_ok {
         if repair {
-            match crate::commands::system::generate_certs() {
-                Ok(msg) => {
+            // 只生成 PEM，不走完整 install（避免 UAC 卡启动/体检）
+            match crate::commands::system::ensure_mitm_certs() {
+                Ok((dir, generated)) => {
                     cert_ok = cert_path.metadata().map(|m| m.len() > 0).unwrap_or(false);
                     key_ok = key_path.metadata().map(|m| m.len() > 0).unwrap_or(false);
                     san_ok = std::fs::read_to_string(&san_marker_path)
                         .map(|s| s.trim() == crate::commands::system::mitm_cert_san_version())
                         .unwrap_or(false);
                     if cert_ok && key_ok && san_ok {
+                        let msg = if generated {
+                            format!("已自动生成 MITM 证书到 {}", dir.to_string_lossy())
+                        } else {
+                            format!("MITM 证书已就绪 ({})", dir.to_string_lossy())
+                        };
                         push_issue(&mut issues, "ok", "certs.auto_generated", msg);
                     } else {
                         push_issue(
@@ -703,13 +709,18 @@ fn run_proxy_preflight(
         }
     } else if !san_ok {
         if repair {
-            match crate::commands::system::generate_certs() {
-                Ok(msg) => {
+            match crate::commands::system::ensure_mitm_certs_ex(true) {
+                Ok((dir, _)) => {
                     san_ok = std::fs::read_to_string(&san_marker_path)
                         .map(|s| s.trim() == crate::commands::system::mitm_cert_san_version())
                         .unwrap_or(false);
                     if san_ok {
-                        push_issue(&mut issues, "ok", "certs.san_regenerated", msg);
+                        push_issue(
+                            &mut issues,
+                            "ok",
+                            "certs.san_regenerated",
+                            format!("已按当前 SAN 版本重新生成 MITM 证书 ({})", dir.to_string_lossy()),
+                        );
                     } else {
                         push_issue(
                             &mut issues,
@@ -740,10 +751,83 @@ fn run_proxy_preflight(
     }
 
     // 证书信任状态检查（升级路径：用户在装了 BYOK 但没装证书的机器上会卡这里）
-    // 之前这里完全没做检查，导致 Devin/Windsurf 拿到 BYOK 伪证书时直接走 bad
-    // certificate 流程产生 30+ 条 SSL alert 42 错误。增加此检查后，体检报告
-    // 会直接告诉用户「证书未装到系统」并引导一键安装。
-    let ca_status = crate::commands::cert_install::check_ca_status();
+    // repair=true 时只做「用户级静默安装」，绝不弹 UAC。
+    // 需要管理员安装时，留给用户在「环境检测」点「安装证书」。
+    let mut ca_status = crate::commands::cert_install::check_ca_status();
+    if repair {
+        if matches!(
+            ca_status.effective_store,
+            crate::commands::cert_install::CaStore::None
+        ) && (ca_status.cert_exists || cert_ok)
+        {
+            match crate::commands::cert_install::install_ca_user_only(false, false) {
+                Ok(msg) => {
+                    ca_status = crate::commands::cert_install::check_ca_status();
+                    if !matches!(
+                        ca_status.effective_store,
+                        crate::commands::cert_install::CaStore::None
+                    ) {
+                        push_issue(
+                            &mut issues,
+                            "ok",
+                            "cert.auto_installed",
+                            format!("已自动安装 CA 到用户信任库。{}", msg),
+                        );
+                    } else {
+                        push_issue(
+                            &mut issues,
+                            "err",
+                            "cert.auto_install_incomplete",
+                            format!(
+                                "已尝试静默安装 CA，但用户信任库仍未找到当前指纹。请点「安装证书」（可能需要管理员）。{}",
+                                msg
+                            ),
+                        );
+                    }
+                }
+                Err(e) => push_issue(
+                    &mut issues,
+                    "err",
+                    "cert.auto_install_failed",
+                    format!(
+                        "自动静默安装 CA 失败: {}。请在「平台 > 设置 > 环境检测」点「安装证书」或「清理并重装」",
+                        e
+                    ),
+                ),
+            }
+        }
+        if ca_status.legacy_residual {
+            match crate::commands::cert_install::cleanup_legacy_cn() {
+                Ok(msg) => {
+                    ca_status = crate::commands::cert_install::check_ca_status();
+                    if !ca_status.legacy_residual {
+                        push_issue(
+                            &mut issues,
+                            "ok",
+                            "cert.legacy_cleaned",
+                            format!("已自动清理老版本 CA 残留。{}", msg),
+                        );
+                    } else {
+                        push_issue(
+                            &mut issues,
+                            "warn",
+                            "cert.legacy_cleanup_partial",
+                            format!(
+                                "已尝试清理老证书，但仍有残留（可能需要管理员权限）: {}",
+                                msg
+                            ),
+                        );
+                    }
+                }
+                Err(e) => push_issue(
+                    &mut issues,
+                    "warn",
+                    "cert.legacy_cleanup_failed",
+                    format!("自动清理老证书失败: {}", e),
+                ),
+            }
+        }
+    }
     match ca_status.effective_store {
         crate::commands::cert_install::CaStore::CurrentUser => {
             push_issue(
@@ -782,7 +866,7 @@ fn run_proxy_preflight(
                     &mut issues,
                     "err",
                     "cert.not_trusted",
-                    "当前 CA 证书已生成但未安装到系统根证书库。点「环境体检」中的「一键安装证书」可自动装到 CurrentUser\\Root（无需管理员权限），失败才弹 UAC".to_string(),
+                    "当前 CA 证书已生成但未安装到系统根证书库。点「安装证书」可装到 CurrentUser\\Root（无需管理员），失败才弹 UAC；若仍异常请点「清理并重装」".to_string(),
                 );
             }
             // cert_exists=false 已经在上面 certs.missing 提示过了
@@ -794,7 +878,7 @@ fn run_proxy_preflight(
             "warn",
             "cert.legacy_residual",
             format!(
-                "检测到老版本 CA \"{}\" 残留。建议点「环境体检 > 清理老证书」卸掉",
+                "检测到老版本 CA \"{}\" 残留。建议点「清理老证书」或「清理并重装」",
                 crate::commands::system::LEGACY_CA_COMMON_NAMES.join("\" / \"")
             ),
         );
@@ -1421,8 +1505,18 @@ pub async fn healthcheck_grouped(
     app: AppHandle,
     target_ide: Option<String>,
 ) -> Result<GroupedHealthReport, String> {
-    let report = preflight_proxy_impl(app.clone(), target_ide)?;
-    Ok(group_report(&report))
+    // 体检本身可能多次调 certutil；必须离 runtime 线程，并设总超时，避免 UI 永久 pending。
+    let handle = tauri::async_runtime::spawn_blocking(move || {
+        let report = preflight_proxy_impl(app, target_ide)?;
+        Ok::<GroupedHealthReport, String>(group_report(&report))
+    });
+    match tokio::time::timeout(std::time::Duration::from_secs(90), handle).await {
+        Ok(join) => join.map_err(|e| format!("环境检测任务失败: {}", e))?,
+        Err(_) => Err(
+            "环境检测超时（90s）。可能 certutil/证书操作被杀软拦截。请重试，或到「环境检测」单独点「安装证书」"
+                .into(),
+        ),
+    }
 }
 
 /// 解析 sidecar 二进制路径。

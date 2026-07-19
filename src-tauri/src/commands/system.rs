@@ -8,12 +8,18 @@ use tauri::{
 
 /// CA 证书 CommonName。当前版本统一使用 "AnyBridge Local CA"，
 /// 跟 package.json 的 name 字段对齐，便于在 certmgr 中一眼辨识。
-/// 升级路径：旧版用 "IDE BYOK Local MITM" / "ide-byok Local CA"，
+/// 升级路径：旧版用 "Windsurf BYOK Local MITM" / "IDE BYOK Local MITM" / "ide-byok Local CA"，
 /// 老证书清理逻辑见 `commands::cert_install::cleanup_legacy_cn`。
 pub const CA_COMMON_NAME: &str = "AnyBridge Local CA";
 
 /// 老版本 CA 证书 CommonName（升级时需要清理掉）。
-pub const LEGACY_CA_COMMON_NAMES: &[&str] = &["IDE BYOK Local MITM", "ide-byok Local CA"];
+/// 包含历史品牌重命名过程中出现过的全部 CN，避免别人电脑上残留导致 certutil / Electron 信任异常。
+pub const LEGACY_CA_COMMON_NAMES: &[&str] = &[
+    "Windsurf BYOK Local MITM",
+    "IDE BYOK Local MITM",
+    "ide-byok Local CA",
+    "AnyBridge Local MITM",
+];
 
 const MITM_CERT_SAN_VERSION: &str = "2";
 const MITM_DNS_NAMES: &[&str] = &[
@@ -381,22 +387,97 @@ fn reveal_path_impl(target: &std::path::Path) -> Result<(), String> {
     Ok(())
 }
 
+fn write_atomic(path: &std::path::Path, contents: impl AsRef<[u8]>) -> Result<(), String> {
+    let parent = path
+        .parent()
+        .ok_or_else(|| format!("证书路径缺少父目录: {}", path.to_string_lossy()))?;
+    std::fs::create_dir_all(parent).map_err(|e| {
+        format!(
+            "无法创建目录 {} ({})。请检查写权限/杀软拦截",
+            parent.to_string_lossy(),
+            e
+        )
+    })?;
+    let tmp = parent.join(format!(
+        ".{}.{}.tmp",
+        path.file_name()
+            .and_then(|s| s.to_str())
+            .unwrap_or("cert"),
+        std::process::id()
+    ));
+    std::fs::write(&tmp, contents.as_ref()).map_err(|e| {
+        format!(
+            "写入临时文件失败 {} ({})。请检查磁盘空间与写权限",
+            tmp.to_string_lossy(),
+            e
+        )
+    })?;
+
+    // Windows 上 rename 不能覆盖已存在目标；先尝试 rename，失败则 remove+rename 再回退 copy。
+    match std::fs::rename(&tmp, path) {
+        Ok(()) => Ok(()),
+        Err(rename_err) => {
+            if path.exists() {
+                let _ = std::fs::remove_file(path);
+            }
+            match std::fs::rename(&tmp, path) {
+                Ok(()) => Ok(()),
+                Err(e2) => {
+                    // 最后回退：直接覆盖写目标（不如 rename 原子，但比失败好）
+                    let copy_result = std::fs::copy(&tmp, path);
+                    let _ = std::fs::remove_file(&tmp);
+                    match copy_result {
+                        Ok(_) => Ok(()),
+                        Err(e3) => Err(format!(
+                            "原子写入证书失败 {} (rename: {}; retry: {}; copy: {})",
+                            path.to_string_lossy(),
+                            rename_err,
+                            e2,
+                            e3
+                        )),
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// 确保 MITM 证书文件存在且 SAN 版本当前。
+/// `force=true` 时删除旧文件并重新生成（用于「清理并重装」）。
+/// 返回 (certs_dir, newly_generated)。
 pub fn ensure_mitm_certs() -> Result<(std::path::PathBuf, bool), String> {
-    use rcgen::{CertificateParams, DistinguishedName, DnType, SanType};
+    ensure_mitm_certs_ex(false)
+}
+
+pub fn ensure_mitm_certs_ex(force: bool) -> Result<(std::path::PathBuf, bool), String> {
+    use rcgen::{CertificateParams, DistinguishedName, DnType, IsCa, KeyUsagePurpose, SanType};
 
     let certs_dir = crate::commands::config::config_dir_path().join("certs");
-    std::fs::create_dir_all(&certs_dir).map_err(|e| e.to_string())?;
+    std::fs::create_dir_all(&certs_dir).map_err(|e| {
+        format!(
+            "无法创建证书目录 {} ({})。请检查用户配置目录写权限",
+            certs_dir.to_string_lossy(),
+            e
+        )
+    })?;
 
     let cert_path = certs_dir.join("server.codeium.com.pem");
     let key_path = certs_dir.join("server.codeium.com-key.pem");
     let san_marker_path = certs_dir.join("san-version");
+
+    if force {
+        let _ = std::fs::remove_file(&cert_path);
+        let _ = std::fs::remove_file(&key_path);
+        let _ = std::fs::remove_file(&san_marker_path);
+    }
 
     let cert_ok = cert_path.metadata().map(|m| m.len() > 0).unwrap_or(false);
     let key_ok = key_path.metadata().map(|m| m.len() > 0).unwrap_or(false);
     let san_ok = std::fs::read_to_string(&san_marker_path)
         .map(|s| s.trim() == MITM_CERT_SAN_VERSION)
         .unwrap_or(false);
-    let already_complete = cert_ok && key_ok && san_ok;
+    // 证书与私钥必须成对；任一空/缺/版本过期都重生
+    let already_complete = !force && cert_ok && key_ok && san_ok;
 
     if !already_complete {
         let mut params = CertificateParams::new(
@@ -406,17 +487,19 @@ pub fn ensure_mitm_certs() -> Result<(std::path::PathBuf, bool), String> {
                 .collect::<Vec<String>>(),
         )
         .map_err(|e| e.to_string())?;
-        // CommonName 跟项目产品名 (tauri.conf.json productName="AnyBridge") 对齐，
-        // 便于在 certmgr 中一眼辨识。
-        // 升级路径: 旧版 "IDE BYOK Local MITM" / "ide-byok Local CA" → 新版 "AnyBridge Local CA",
-        // 老证书清理逻辑见 cert_install::cleanup_legacy_cn。
-        // 说明: rcgen 0.13 的 DnType 不一定有 OrganizationName 变体, 这里只设
-        // CommonName (X.509 Subject 最显眼的字段), 配合 SAN 就能保证 Electron
-        // 进程的 TLS 校验通过。
+        // CommonName 跟项目产品名 (tauri.conf.json productName="AnyBridge") 对齐。
+        // 该证书同时作为 MITM leaf 与本地信任根：需标记 IsCa + keyCertSign，
+        // 否则部分环境下 Chromium/Electron 对「根库中的非 CA 证书」信任不稳定。
 
         let mut dn = DistinguishedName::new();
         dn.push(DnType::CommonName, CA_COMMON_NAME);
         params.distinguished_name = dn;
+        params.is_ca = IsCa::Ca(rcgen::BasicConstraints::Unconstrained);
+        params.key_usages = vec![
+            KeyUsagePurpose::DigitalSignature,
+            KeyUsagePurpose::KeyCertSign,
+            KeyUsagePurpose::CrlSign,
+        ];
         params.subject_alt_names = mitm_dns_names()
             .iter()
             .map(|name| {
@@ -431,43 +514,68 @@ pub fn ensure_mitm_certs() -> Result<(std::path::PathBuf, bool), String> {
         let key_pair = rcgen::KeyPair::generate().map_err(|e| e.to_string())?;
         let cert = params.self_signed(&key_pair).map_err(|e| e.to_string())?;
 
-        std::fs::write(&cert_path, cert.pem()).map_err(|e| e.to_string())?;
-        std::fs::write(&key_path, key_pair.serialize_pem()).map_err(|e| e.to_string())?;
-        std::fs::write(&san_marker_path, format!("{}\n", MITM_CERT_SAN_VERSION))
-            .map_err(|e| e.to_string())?;
+        write_atomic(&cert_path, cert.pem())?;
+        write_atomic(&key_path, key_pair.serialize_pem())?;
+        write_atomic(
+            &san_marker_path,
+            format!("{version}\n", version = MITM_CERT_SAN_VERSION),
+        )?;
+
+        // 回读校验：避免磁盘满/权限问题导致「写入成功但文件为空」
+        let cert_ok = cert_path.metadata().map(|m| m.len() > 0).unwrap_or(false);
+        let key_ok = key_path.metadata().map(|m| m.len() > 0).unwrap_or(false);
+        let san_ok = std::fs::read_to_string(&san_marker_path)
+            .map(|s| s.trim() == MITM_CERT_SAN_VERSION)
+            .unwrap_or(false);
+        if !cert_ok || !key_ok || !san_ok {
+            return Err(format!(
+                "证书写入后校验失败: cert_ok={} key_ok={} san_ok={} dir={}",
+                cert_ok,
+                key_ok,
+                san_ok,
+                certs_dir.to_string_lossy()
+            ));
+        }
     }
 
     Ok((certs_dir, !already_complete))
 }
 
 #[tauri::command]
-pub fn generate_certs() -> Result<String, String> {
-    let (certs_dir, generated) = ensure_mitm_certs()?;
+pub async fn generate_certs() -> Result<String, String> {
+    let handle = tauri::async_runtime::spawn_blocking(|| generate_certs_ex(false));
+    match tokio::time::timeout(std::time::Duration::from_secs(60), handle).await {
+        Ok(join) => join.map_err(|e| format!("证书生成任务失败: {}", e))?,
+        Err(_) => Err(
+            "证书生成超时（60s）。请重试；若仍失败请到「环境检测」点「清理并重装」".into(),
+        ),
+    }
+}
 
-    // 生成完（或已存在）自动调一次证书安装：
-    // - 首次装会触发 CurrentUser\Root 路径（零弹窗）
-    // - 已装会快速返回幂等
-    // 注意：这里只装证书，不返回错误——证书生成本身已成功，证书安装失败
-    // 也不影响 MITM 代理运行（仅影响 IDE 是否信任），由用户在「环境体检」
-    // 里查看具体状态。
-    match crate::commands::cert_install::install_ca() {
+/// 生成（或强制重生）MITM 证书，并静默尝试装到用户信任库（不弹 UAC）。
+/// 需要管理员路径时提示用户去「环境检测」显式点「安装证书」。
+pub fn generate_certs_ex(force: bool) -> Result<String, String> {
+    let (certs_dir, generated) = ensure_mitm_certs_ex(force)?;
+
+    // 只走用户信任库静默安装，绝不在生成路径弹 UAC。
+    // 否则「生成证书」/ 启动自检 / 体检 repair 会卡在 ShellExecuteExW。
+    match crate::commands::cert_install::install_ca_user_only(false, force || generated) {
         Ok(install_msg) => {
             let gen_msg = if generated {
                 format!("已生成证书到 {}", certs_dir.to_string_lossy())
             } else {
                 format!("证书已存在 ({})", certs_dir.to_string_lossy())
             };
-            Ok(format!("{}\n{}", gen_msg, install_msg))
+            Ok(format!("{gen_msg}\n{install_msg}"))
         }
         Err(e) => {
-            // 证书安装失败不影响证书生成结果，但要让用户知道
             let gen_msg = if generated {
-                "已生成证书"
+                format!("已生成证书到 {}", certs_dir.to_string_lossy())
             } else {
-                "证书已存在"
+                format!("证书已存在 ({})", certs_dir.to_string_lossy())
             };
             Ok(format!(
-                "{}。⚠ 证书安装到系统根证书库失败: {}。请在「平台 > 设置 > 环境检测」点击「安装证书」",
+                "{}。⚠ 自动装到用户信任库未完成: {}。请在「平台 > 设置 > 环境检测」点「安装证书」或「清理并重装」",
                 gen_msg, e
             ))
         }
