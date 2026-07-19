@@ -41,7 +41,7 @@ pub fn run() {
             commands::system::build_tray(app.handle())?;
 
             // 启动 Codex Desktop 常驻 watcher：检测到 Desktop UI 在跑但无 CDP 时自动接管注入。
-            // 仅在自定义供应商态 + injectModels 下工作；不会因 CLI/app-server 残留凭空启动 Desktop。
+            // 仅在 injectModels=true 且 preserveOfficialAuth=false 时工作；不会因 CLI/app-server 残留凭空启动 Desktop。
             commands::codex_desktop::spawn_codex_desktop_watcher(app.handle().clone());
 
             // 默认启动代理（AUTO_START_PROXY 默认为 true，可在设置里关闭）。

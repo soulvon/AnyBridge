@@ -815,6 +815,9 @@ function upstreamBody(conn, ctx) {
       tools: openAITools(ctx.tools),
       tool_choice: ctx.toolChoice || undefined,
     };
+    // Proxy never retrieves stored responses; always disable server-side store
+    // so client/preserveExtraParams cannot re-enable upstream disk persistence.
+    body.store = false;
     if (codexUnlock) {
       applyCodexUnlockRequiredFields(body, codexUnlock);
     }

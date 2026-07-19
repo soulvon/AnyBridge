@@ -2,6 +2,15 @@
 
 All notable changes to AnyBridge will be documented in this file.
 
+## v0.3.14 - 2026-07-19
+
+- Responses API 上游强制 `store: false`：`local-proxy` 在 extras 合并后硬写，`applyCodexUnlockRequiredFields` 同步强制，避免 `preserveExtraParams`/客户端把 `store: true` 透传到三方网关落盘。
+- 补充回归测试：Codex unlock 与 `preserveExtraParams` 路径均断言 `store: false`。
+- MITM 证书校验增强：证书/私钥匹配、有效期、CA 标志与 SAN 检查；启动前 `ensure_proxy_mitm_ready`，失败时明确 503 而非静默隧道。
+- 代理健康检查：`/__byok/stats` 上报 MITM 状态，新增 `/__byok/mitm-health` 与 CONNECT/TLS 实链路探测；MITM 失败可自动重生证书并仅重试启动一次。
+- Codex 桌面：`preserveOfficialAuth` 与 `injectModels` 互斥（preserve 优先），前后端 CDP watcher/restart 逻辑对齐。
+- 模型映射 UI：展示 IDE 模型清单来源（captured/api/builtin）徽章与提示，降低「刷新 API 仍不等于 IDE 下拉」的误解。
+
 ## v0.3.13 - 2026-07-19
 
 - CPA 套件更新健壮化：下载超时 15s→300s，增加停滞检测与文件大小校验。

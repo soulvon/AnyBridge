@@ -132,8 +132,28 @@ test('Codex unlock keeps Responses payload even when provider wireApi is chat', 
   assert.ok(Array.isArray(body.input));
   assert.deepEqual(body.include, ['reasoning.encrypted_content']);
   assert.match(body.prompt_cache_key, /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+  assert.equal(body.store, false);
   assert.equal('messages' in body, false);
   assert.equal('max_tokens' in body, false);
+});
+
+test('Responses upstream forces store:false even when preserveExtraParams sets store:true', () => {
+  const ctx = __localProxyTest.normalizeRequest('responses', {
+    model: 'local-model',
+    input: 'hello',
+    store: true,
+  });
+  ctx.preserveExtraParams = true;
+
+  const body = __localProxyTest.upstreamBody({
+    format: 'openai',
+    model: 'gpt-5.5',
+    apiPath: '/v1/responses',
+  }, ctx);
+
+  assert.equal(body.store, false);
+  assert.equal(body.model, 'gpt-5.5');
+  assert.ok(Array.isArray(body.input));
 });
 
 test('tool filtering rejects stale tool_choice references', () => {

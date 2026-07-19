@@ -34,7 +34,7 @@ globalThis.PLATFORM_DEFS = {
     vendor: 'OpenAI',
     requiredApiFormat: 'openai',
     configHint: '~/.codex/config.toml',
-    summary: '写入 model_provider = "byok" 和 model_providers.byok',
+    summary: '写入 model_provider = "codex_local_access" 和 model_providers.codex_local_access',
     note: '所选中转站必须支持 OpenAI Responses API。',
   },
   codebuddy: {
@@ -752,6 +752,47 @@ function codexConfigProviderById(id) {
   return (providerStore.codexConfigs || []).find(p => p && p.id === id) || null;
 }
 
+/** preserveOfficialAuth 优先；与后端 codex_needs_cdp_injection 一致。 */
+function codexProviderPreservesOfficialAuth(provider) {
+  return !!(provider && provider.preserveOfficialAuth);
+}
+
+/** injectModels 默认 true；preserveOfficialAuth=true 时强制不注入。 */
+function codexProviderNeedsInject(provider) {
+  if (!provider) return false;
+  if (codexProviderPreservesOfficialAuth(provider)) return false;
+  return provider.injectModels !== false;
+}
+
+/** 表单互斥：preserveOfficialAuth 与 injectModels 不能同时为 true。 */
+function codexConfigAuthInjectInputs() {
+  return {
+    inject: document.getElementById('codex-config-inject-models'),
+    preserve: document.getElementById('codex-config-preserve-official-auth'),
+  };
+}
+
+function syncCodexConfigAuthInjectMutualExclusion(source) {
+  const { inject, preserve } = codexConfigAuthInjectInputs();
+  if (!inject || !preserve) return;
+  if (source === 'preserve' && preserve.checked) {
+    inject.checked = false;
+  } else if (source === 'inject' && inject.checked) {
+    preserve.checked = false;
+  } else if (source !== 'inject' && source !== 'preserve' && preserve.checked) {
+    // 打开编辑器或保存前：preserve 优先
+    inject.checked = false;
+  }
+}
+
+function onCodexConfigInjectModelsChange() {
+  syncCodexConfigAuthInjectMutualExclusion('inject');
+}
+
+function onCodexConfigPreserveOfficialAuthChange() {
+  syncCodexConfigAuthInjectMutualExclusion('preserve');
+}
+
 function codexConfigSourceProviders() {
   return (providerStore.providers || []).filter(p => {
     if (!p || p.enabled === false) return false;
@@ -1397,9 +1438,12 @@ function openCodexConfigEditor(providerId = '') {
     codexConfigSetInputValue('codex-config-base-url', codexConfigDisplayBaseUrl(provider));
     codexConfigSetInputValue('codex-config-api-key', provider.apiKey || '');
     document.getElementById('codex-config-route-through-proxy').checked = provider.routeThroughProxy !== false;
-    document.getElementById('codex-config-inject-models').checked = provider.injectModels !== false;
     document.getElementById('codex-config-preserve-official-auth').checked = !!provider.preserveOfficialAuth;
+    // preserve 优先：保留官方登录时强制关闭注入
+    document.getElementById('codex-config-inject-models').checked =
+      !provider.preserveOfficialAuth && provider.injectModels !== false;
     document.getElementById('codex-config-unify-session-history').checked = provider.unifySessionHistory !== false;
+    syncCodexConfigAuthInjectMutualExclusion();
     renderReasoningConfig(provider.codexChatReasoning);
     // 合并 catalog 和 models 到统一列表
     const catalog = provider.modelCatalog || [];
@@ -1429,6 +1473,7 @@ function openCodexConfigEditor(providerId = '') {
     document.getElementById('codex-config-inject-models').checked = true;
     document.getElementById('codex-config-preserve-official-auth').checked = false;
     document.getElementById('codex-config-unify-session-history').checked = true;
+    syncCodexConfigAuthInjectMutualExclusion();
     renderReasoningConfig(null);
     renderCodexModelManager([], '', '选择供应商后拉取模型列表');
     renderCodexAgentsPanel({ maxThreads: 6, maxDepth: 1, jobMaxRuntimeSeconds: 1800 }, []);
@@ -1514,8 +1559,12 @@ async function saveCodexConfigEditor(switchAfter = false) {
   // wireApi 从来源供应商自动继承（用户不在 UI 上选，编辑时保留原值）
   const wireApi = source?.wireApi || existing?.wireApi || 'responses';
   const routeThroughProxy = document.getElementById('codex-config-route-through-proxy')?.checked !== false;
-  const injectModels = document.getElementById('codex-config-inject-models')?.checked !== false;
+  syncCodexConfigAuthInjectMutualExclusion();
   const preserveOfficialAuth = document.getElementById('codex-config-preserve-official-auth')?.checked === true;
+  // preserve 优先：与 codexProviderNeedsInject / 后端 watcher 一致
+  const injectModels = preserveOfficialAuth
+    ? false
+    : document.getElementById('codex-config-inject-models')?.checked !== false;
   const unifySessionHistory = document.getElementById('codex-config-unify-session-history')?.checked !== false;
 
   const provider = {
@@ -1732,8 +1781,8 @@ function renderCodexConfigList(info) {
     const baseUrl = codexTargetBaseUrl(provider);
     const current = codexProviderIsCurrent(provider, info);
     const typeLabel = provider.routeThroughProxy === false ? '直连' : '代理';
-    const injectModels = provider.injectModels !== false; // 默认 true
-    const preserveAuth = !!provider.preserveOfficialAuth;
+    const preserveAuth = codexProviderPreservesOfficialAuth(provider);
+    const needInject = codexProviderNeedsInject(provider);
     const isOfficialModel = /^gpt-/i.test(String(provider.defaultModel || '').trim());
     items.push({
       name: provider.name || provider.id,
@@ -1744,11 +1793,12 @@ function renderCodexConfigList(info) {
       model: provider.defaultModel || '默认模型未设置',
       endpoint: baseUrl,
       protocol: provider.wireApi || 'responses',
-      injectBadge: injectModels ? 'success' : 'muted',
+      // 三态：success=注入；muted=主动关闭注入；空=保留官方登录（由 preserveAuth 徽章说明）
+      injectBadge: needInject ? 'success' : (preserveAuth ? '' : 'muted'),
       preserveAuthBadge: preserveAuth ? 'success' : '',
       action: `applyCodexProviderConfig(${platformJsArg(provider.id)})`,
       editAction: `editCodexProviderConfig(${platformJsArg(provider.id)})`,
-      startAction: current ? `startCodexWithCdp(${injectModels && !preserveAuth ? 'true' : 'false'})` : '',
+      startAction: current ? `startCodexWithCdp(${needInject ? 'true' : 'false'})` : '',
       deleteAction: current ? '' : `deleteCodexProviderConfig(${platformJsArg(provider.id)})`,
     });
   });
@@ -3362,12 +3412,14 @@ async function applyCodexProviderConfig(providerId) {
         await refreshPlatforms({ silent: true });
 
         let restart = null;
+        const preserveAuth = codexProviderPreservesOfficialAuth(provider);
+        const needInject = codexProviderNeedsInject(provider);
         if (codexDesktopAutomationSupported()) {
-          const preserveAuth = !!provider.preserveOfficialAuth;
-          const needInject = !preserveAuth && provider.injectModels !== false;
           setMessage(preserveAuth
             ? '正在重启 Codex 桌面版（保留官方登录模式）…'
-            : '正在重启 Codex 桌面版并注入自定义模型…');
+            : needInject
+              ? '正在重启 Codex 桌面版并注入自定义模型…'
+              : '正在重启 Codex 桌面版（不进行模型注入）…');
           restart = assertSwitchResultOk(
             await invoke('restart_codex_desktop', { managed: true, model: provider.defaultModel || null, injectModels: needInject }),
             'Codex 桌面版重启或注入失败'
@@ -3378,11 +3430,15 @@ async function applyCodexProviderConfig(providerId) {
 
         if (typeof addLog === 'function') {
           addLog('ok', result.message || 'Codex 配置已切换');
-          if (restart) addLog('ok', restart.message || 'Codex 桌面版已重启并完成注入');
-          else addLog('warn', codexDesktopUnsupportedMessage());
+          if (restart) {
+            addLog('ok', restart.message || (needInject ? 'Codex 桌面版已重启并完成注入' : 'Codex 桌面版已重启'));
+          } else {
+            addLog('warn', codexDesktopUnsupportedMessage());
+          }
         }
+        const restartFallback = needInject ? 'Codex 桌面版已重启并完成注入。' : 'Codex 桌面版已重启。';
         return {
-          message: `${result.message || 'Codex 配置已切换。'}\n\n${restart ? (restart.message || 'Codex 桌面版已重启并完成注入。') : codexDesktopUnsupportedMessage()}`
+          message: `${result.message || 'Codex 配置已切换。'}\n\n${restart ? (restart.message || restartFallback) : codexDesktopUnsupportedMessage()}`
         };
       } finally {
         setPlatformBusy('codex', false);
@@ -4159,6 +4215,21 @@ async function bindSwitchProgressListener() {
 }
 
 async function applyPlatform(platformId) {
+  // Codex 主 UI 走卡片 applyCodexProviderConfig；这里兜底避免通用入口只写配置不重启。
+  // platform-codex-select 可能不存在（卡片 UI），依次回退：store 当前 → select → 首个配置。
+  if (platformId === 'codex') {
+    const storeId = String(providerStore?.platforms?.codex?.providerId || '').trim();
+    const select = document.getElementById('platform-codex-select');
+    const selectId = select ? String(select.value || '').trim() : '';
+    const firstId = (platformProviderList('codex')[0] || {}).id || '';
+    const providerId = storeId || selectId || firstId;
+    if (!providerId) {
+      showCustomAlert('请先添加一份 Codex 配置。', '无法切换', 'warn');
+      return;
+    }
+    return applyCodexProviderConfig(providerId);
+  }
+
   const def = platformDef(platformId);
   const select = document.getElementById(`platform-${platformId}-select`);
   const providerId = select ? select.value : '';
@@ -4169,12 +4240,10 @@ async function applyPlatform(platformId) {
 
   const provider = platformProviderList(platformId).find(p => p.id === providerId);
   if (!provider) {
-    showCustomAlert(platformId === 'codex' ? 'Codex 配置不存在或尚未加载。' : '供应商不存在或尚未加载。', '无法切换', 'error');
+    showCustomAlert('供应商不存在或尚未加载。', '无法切换', 'error');
     return;
   }
-  const confirmMessage = platformId === 'codex'
-    ? codexApplyConfirmMessage(provider)
-    : `将把「${provider.name}」写入 ${def.name} 配置文件，并在首次接管前创建 .byok-bak 备份。`;
+  const confirmMessage = `将把「${provider.name}」写入 ${def.name} 配置文件，并在首次接管前创建 .byok-bak 备份。`;
   const ok = await showCustomConfirm(confirmMessage, '确认切换', 'warn');
   if (!ok) return;
 
@@ -4192,7 +4261,7 @@ async function applyPlatform(platformId) {
   } finally {
     hideSwitchProgress();
     setPlatformBusy(platformId, false);
-    if (platformId === 'codex' || platformId === 'opencode') renderPlatformDetailStatuses();
+    if (platformId === 'opencode') renderPlatformDetailStatuses();
     else onPlatformProviderChange(platformId);
   }
 }
@@ -4202,13 +4271,15 @@ function codexApplyConfirmMessage(provider) {
   const from = info.currentProviderName || info.currentProviderId || '当前配置';
   const to = provider.name || provider.id || '目标配置';
   const model = provider.defaultModel || '默认模型';
-  // 官方模型(gpt-*)在 Codex 白名单内，切换后直接可用；
-  // 非官方模型需要注入补丁才能在模型选择器显示。
-  const needsInject = !/^gpt-/i.test(String(model || '').trim());
+  // 与 applyCodexProviderConfig / watcher 一致：preserveOfficialAuth 优先禁止 CDP 注入。
+  const preserveAuth = codexProviderPreservesOfficialAuth(provider);
+  const needsInject = codexProviderNeedsInject(provider);
   const hint = codexDesktopAutomationSupported()
-    ? (needsInject
-      ? '切换后会自动重启 Codex，并解锁模型选择器中的第三方模型。'
-      : '切换后会自动重启 Codex 生效。')
+    ? (preserveAuth
+      ? '切换后会自动重启 Codex（保留官方登录模式，不进行 CDP 注入）。'
+      : needsInject
+        ? '切换后会自动重启 Codex，并解锁模型选择器中的第三方模型。'
+        : '切换后会自动重启 Codex 生效（不进行模型注入）。')
     : '切换后会写入 Codex 配置；当前平台不支持自动重启 / 桌面注入，请手动重启 Codex 生效。';
   const historyHint = provider.unifySessionHistory === false
     ? '切换后会按当前 model_provider 自动修复会话索引可见性。'
@@ -6968,6 +7039,11 @@ window.zcDrop = function(e) {
   g.toggleCodexToken = toggleCodexToken;
   g.renderCodexTargetSummary = renderCodexTargetSummary;
   g.codexProviderIsCurrent = codexProviderIsCurrent;
+  g.codexProviderPreservesOfficialAuth = codexProviderPreservesOfficialAuth;
+  g.codexProviderNeedsInject = codexProviderNeedsInject;
+  g.syncCodexConfigAuthInjectMutualExclusion = syncCodexConfigAuthInjectMutualExclusion;
+  g.onCodexConfigInjectModelsChange = onCodexConfigInjectModelsChange;
+  g.onCodexConfigPreserveOfficialAuthChange = onCodexConfigPreserveOfficialAuthChange;
   g.codexConfigMetaLine = codexConfigMetaLine;
   g.platformJsArg = platformJsArg;
   g.codexConfigBadge = codexConfigBadge;

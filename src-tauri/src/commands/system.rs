@@ -39,6 +39,74 @@ pub(crate) fn mitm_dns_names() -> &'static [&'static str] {
     MITM_DNS_NAMES
 }
 
+pub(crate) fn validate_mitm_cert_files(
+    cert_path: &std::path::Path,
+    key_path: &std::path::Path,
+) -> Result<(), String> {
+    let cert_pem = std::fs::read(cert_path)
+        .map_err(|e| format!("读取 MITM 证书失败 {}: {}", cert_path.to_string_lossy(), e))?;
+    let key_pem = std::fs::read(key_path)
+        .map_err(|e| format!("读取 MITM 私钥失败 {}: {}", key_path.to_string_lossy(), e))?;
+    let mut identity_pem = cert_pem;
+    identity_pem.extend_from_slice(b"\n");
+    identity_pem.extend_from_slice(&key_pem);
+    reqwest::Identity::from_pem(&identity_pem)
+        .map_err(|e| format!("MITM 证书/私钥解析或匹配失败: {}", e))?;
+    Ok(())
+}
+
+fn write_mitm_cert_bundle(certs_dir: &std::path::Path) -> Result<(), String> {
+    use rcgen::{CertificateParams, DistinguishedName, DnType, IsCa, KeyUsagePurpose, SanType};
+
+    let cert_path = certs_dir.join("server.codeium.com.pem");
+    let key_path = certs_dir.join("server.codeium.com-key.pem");
+    let san_marker_path = certs_dir.join("san-version");
+    let mut params = CertificateParams::new(
+        mitm_dns_names()
+            .iter()
+            .map(|name| (*name).to_string())
+            .collect::<Vec<String>>(),
+    )
+    .map_err(|e| e.to_string())?;
+
+    let mut dn = DistinguishedName::new();
+    dn.push(DnType::CommonName, CA_COMMON_NAME);
+    params.distinguished_name = dn;
+    params.is_ca = IsCa::Ca(rcgen::BasicConstraints::Unconstrained);
+    params.key_usages = vec![
+        KeyUsagePurpose::DigitalSignature,
+        KeyUsagePurpose::KeyCertSign,
+        KeyUsagePurpose::CrlSign,
+    ];
+    params.subject_alt_names = mitm_dns_names()
+        .iter()
+        .map(|name| {
+            Ok(SanType::DnsName(
+                (*name)
+                    .try_into()
+                    .map_err(|_| format!("bad san: {}", name))?,
+            ))
+        })
+        .collect::<Result<Vec<_>, String>>()?;
+
+    let key_pair = rcgen::KeyPair::generate().map_err(|e| e.to_string())?;
+    let cert = params.self_signed(&key_pair).map_err(|e| e.to_string())?;
+    write_atomic(&cert_path, cert.pem())?;
+    write_atomic(&key_path, key_pair.serialize_pem())?;
+    write_atomic(
+        &san_marker_path,
+        format!("{version}\n", version = MITM_CERT_SAN_VERSION),
+    )?;
+    validate_mitm_cert_files(&cert_path, &key_path)
+}
+
+#[cfg(test)]
+pub(crate) fn write_mitm_cert_bundle_for_test(
+    certs_dir: &std::path::Path,
+) -> Result<(), String> {
+    write_mitm_cert_bundle(certs_dir)
+}
+
 #[derive(serde::Deserialize)]
 pub struct ExportLogEntry {
     ts: String,
@@ -450,8 +518,6 @@ pub fn ensure_mitm_certs() -> Result<(std::path::PathBuf, bool), String> {
 }
 
 pub fn ensure_mitm_certs_ex(force: bool) -> Result<(std::path::PathBuf, bool), String> {
-    use rcgen::{CertificateParams, DistinguishedName, DnType, IsCa, KeyUsagePurpose, SanType};
-
     let certs_dir = crate::commands::config::config_dir_path().join("certs");
     std::fs::create_dir_all(&certs_dir).map_err(|e| {
         format!(
@@ -476,50 +542,15 @@ pub fn ensure_mitm_certs_ex(force: bool) -> Result<(std::path::PathBuf, bool), S
     let san_ok = std::fs::read_to_string(&san_marker_path)
         .map(|s| s.trim() == MITM_CERT_SAN_VERSION)
         .unwrap_or(false);
-    // 证书与私钥必须成对；任一空/缺/版本过期都重生
-    let already_complete = !force && cert_ok && key_ok && san_ok;
+    let contents_ok = cert_ok && key_ok && validate_mitm_cert_files(&cert_path, &key_path).is_ok();
+    // 证书与私钥必须成对；任一空/缺/版本过期/内容无效都重生
+    let already_complete = !force && contents_ok && san_ok;
 
     if !already_complete {
-        let mut params = CertificateParams::new(
-            mitm_dns_names()
-                .iter()
-                .map(|name| (*name).to_string())
-                .collect::<Vec<String>>(),
-        )
-        .map_err(|e| e.to_string())?;
         // CommonName 跟项目产品名 (tauri.conf.json productName="AnyBridge") 对齐。
         // 该证书同时作为 MITM leaf 与本地信任根：需标记 IsCa + keyCertSign，
         // 否则部分环境下 Chromium/Electron 对「根库中的非 CA 证书」信任不稳定。
-
-        let mut dn = DistinguishedName::new();
-        dn.push(DnType::CommonName, CA_COMMON_NAME);
-        params.distinguished_name = dn;
-        params.is_ca = IsCa::Ca(rcgen::BasicConstraints::Unconstrained);
-        params.key_usages = vec![
-            KeyUsagePurpose::DigitalSignature,
-            KeyUsagePurpose::KeyCertSign,
-            KeyUsagePurpose::CrlSign,
-        ];
-        params.subject_alt_names = mitm_dns_names()
-            .iter()
-            .map(|name| {
-                Ok(SanType::DnsName(
-                    (*name)
-                        .try_into()
-                        .map_err(|_| format!("bad san: {}", name))?,
-                ))
-            })
-            .collect::<Result<Vec<_>, String>>()?;
-
-        let key_pair = rcgen::KeyPair::generate().map_err(|e| e.to_string())?;
-        let cert = params.self_signed(&key_pair).map_err(|e| e.to_string())?;
-
-        write_atomic(&cert_path, cert.pem())?;
-        write_atomic(&key_path, key_pair.serialize_pem())?;
-        write_atomic(
-            &san_marker_path,
-            format!("{version}\n", version = MITM_CERT_SAN_VERSION),
-        )?;
+        write_mitm_cert_bundle(&certs_dir)?;
 
         // 回读校验：避免磁盘满/权限问题导致「写入成功但文件为空」
         let cert_ok = cert_path.metadata().map(|m| m.len() > 0).unwrap_or(false);
@@ -527,12 +558,14 @@ pub fn ensure_mitm_certs_ex(force: bool) -> Result<(std::path::PathBuf, bool), S
         let san_ok = std::fs::read_to_string(&san_marker_path)
             .map(|s| s.trim() == MITM_CERT_SAN_VERSION)
             .unwrap_or(false);
-        if !cert_ok || !key_ok || !san_ok {
+        let contents_result = validate_mitm_cert_files(&cert_path, &key_path);
+        if !cert_ok || !key_ok || !san_ok || contents_result.is_err() {
             return Err(format!(
-                "证书写入后校验失败: cert_ok={} key_ok={} san_ok={} dir={}",
+                "证书写入后校验失败: cert_ok={} key_ok={} san_ok={} contents={} dir={}",
                 cert_ok,
                 key_ok,
                 san_ok,
+                contents_result.err().unwrap_or_else(|| "ok".to_string()),
                 certs_dir.to_string_lossy()
             ));
         }

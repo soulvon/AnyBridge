@@ -45,6 +45,7 @@ describe('Codex supplier unlock routing', () => {
       model: 'gpt-5.5',
       input: [{ role: 'user', content: 'hello' }],
       stream: true,
+      store: true,
     };
 
     applyCodexUnlockRequiredFields(payload, codexUnlockForTarget({
@@ -52,8 +53,9 @@ describe('Codex supplier unlock routing', () => {
       unlockKind: 'codex',
     }));
 
-    assert.deepEqual(Object.keys(payload).sort(), ['include', 'input', 'model', 'prompt_cache_key', 'stream']);
+    assert.deepEqual(Object.keys(payload).sort(), ['include', 'input', 'model', 'prompt_cache_key', 'store', 'stream']);
     assert.deepEqual(payload.include, ['reasoning.encrypted_content']);
+    assert.equal(payload.store, false);
     assert.match(payload.prompt_cache_key, /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
   });
 });

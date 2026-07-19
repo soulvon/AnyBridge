@@ -58,8 +58,11 @@ export function applyCodexUnlockRequiredFields(payload, unlock) {
   // Keep this intentionally minimal. AnyRouter's Codex-only channels were
   // validated against spec/23 with model/input/stream/include/prompt_cache_key;
   // fabricated Desktop-only metadata fields have broken routing before.
+  // store:false: local proxy never needs upstream response persistence; some
+  // third-party Responses gateways hit disk/temp floors when store defaults on.
   payload.include = unlock.include;
   payload.prompt_cache_key = generateUUIDv7();
+  payload.store = false;
   return payload;
 }
 

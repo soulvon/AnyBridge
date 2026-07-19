@@ -240,9 +240,133 @@ function visionModelLabel(item) {
   const p = (providerStore.providers || []).find(x => x.id === item.providerId);
   return `${p ? (p.name || p.id) : (item.providerId || '未知供应商')} - ${item.model || '默认模型'} · ${targetRouteLabel(item)}`;
 }
+function formatIdeModelsCapturedAt(ts) {
+  if (ts == null || ts === '') return '';
+  const n = Number(ts);
+  if (!Number.isFinite(n) || n <= 0) return '';
+  // list_ide_models may return seconds or milliseconds
+  const ms = n < 1e12 ? n * 1000 : n;
+  try {
+    return new Date(ms).toLocaleString();
+  } catch {
+    return '';
+  }
+}
+
+function ideModelsSourcePresentation(source) {
+  const key = String(source || '').trim().toLowerCase();
+  if (key === 'captured') {
+    return {
+      key: 'captured',
+      label: 'proxy capture',
+      badgeBg: 'rgba(16,185,129,.12)',
+      badgeColor: 'var(--ok, #059669)',
+      badgeBorder: 'rgba(16,185,129,.28)',
+      warn: false,
+      title: '代理拦截的 GetUserStatus 清单，最接近 IDE 实际下拉框',
+      hint: '当前清单来自代理实时抓取，与 IDE 模型下拉框更一致。',
+    };
+  }
+  if (key === 'api') {
+    return {
+      key: 'api',
+      label: 'api',
+      badgeBg: 'rgba(245,158,11,.12)',
+      badgeColor: 'var(--warn, #d97706)',
+      badgeBorder: 'rgba(245,158,11,.30)',
+      warn: true,
+      title: 'GetUserStatus API 缓存，不一定等于 IDE 实际下拉框',
+      hint: '清单来源为 api，不一定等于 IDE 实际下拉框。若模型不可见，请启动代理后重启 IDE 并打开一次模型选择器。',
+    };
+  }
+  if (key === 'builtin') {
+    return {
+      key: 'builtin',
+      label: 'builtin',
+      badgeBg: 'var(--bg-input)',
+      badgeColor: 'var(--text-muted)',
+      badgeBorder: 'var(--border)',
+      warn: true,
+      title: '内置静态表，不一定等于 IDE 实际下拉框',
+      hint: '清单来源为 builtin（内置静态表），不一定等于 IDE 实际下拉框。可点「刷新」拉取账号模型，或启动代理后重启 IDE 并打开一次模型选择器。',
+    };
+  }
+  if (key) {
+    return {
+      key,
+      label: key,
+      badgeBg: 'rgba(245,158,11,.12)',
+      badgeColor: 'var(--warn, #d97706)',
+      badgeBorder: 'rgba(245,158,11,.30)',
+      warn: true,
+      title: `清单来源：${key}`,
+      hint: `清单来源为 ${key}，不一定等于 IDE 实际下拉框。若模型不可见，请启动代理后重启 IDE 并打开一次模型选择器。`,
+    };
+  }
+  return {
+    key: '',
+    label: '未知',
+    badgeBg: 'var(--bg-input)',
+    badgeColor: 'var(--text-muted)',
+    badgeBorder: 'var(--border)',
+    warn: true,
+    title: '尚未获取清单来源',
+    hint: '尚未获取清单来源。可点「刷新」或启动代理后抓取 IDE 实际下拉框。',
+  };
+}
+
+function updateIdeModelsSourceUi() {
+  const meta = ideMeta || { source: '', capturedAt: null, account: null };
+  const pres = ideModelsSourcePresentation(meta.source);
+  const when = formatIdeModelsCapturedAt(meta.capturedAt);
+  const email = meta.account && (meta.account.email || meta.account.Email);
+  const detailParts = [];
+  if (when) detailParts.push(when);
+  if (email) detailParts.push(String(email));
+  const detail = detailParts.length ? ` · ${detailParts.join(' · ')}` : '';
+
+  const applyBadge = (el) => {
+    if (!el) return;
+    el.style.display = '';
+    el.textContent = `来源: ${pres.label}`;
+    el.title = pres.title + (detail ? ` (${detailParts.join(', ')})` : '');
+    el.style.background = pres.badgeBg;
+    el.style.color = pres.badgeColor;
+    el.style.border = `1px solid ${pres.badgeBorder}`;
+  };
+
+  const applyHint = (el, compact) => {
+    if (!el) return;
+    // only show banner when not authoritative capture
+    if (!pres.warn) {
+      el.style.display = 'none';
+      el.innerHTML = '';
+      return;
+    }
+    const pad = compact ? '8px 12px' : '10px 14px';
+    const radius = compact ? '0' : '10px';
+    const border = compact
+      ? 'border-bottom:1px solid rgba(245,158,11,.28);'
+      : 'border:1px solid rgba(245,158,11,.28);';
+    el.style.display = 'block';
+    el.innerHTML = `<div style="padding:${pad};border-radius:${radius};${border}background:rgba(245,158,11,.08);color:var(--text-secondary);font-size:11px;line-height:1.55;">
+      <strong style="color:var(--warn,#d97706);font-weight:700;">清单来源提示</strong>
+      <span style="margin-left:6px;">${escapeHtml(pres.hint)}${escapeHtml(detail)}</span>
+    </div>`;
+  };
+
+  applyBadge(document.getElementById('ideModelsSourceBadge'));
+  applyBadge(document.getElementById('ideModelsSourceBadgeSlots'));
+  applyHint(document.getElementById('ideModelsSourceHint'), true);
+  applyHint(document.getElementById('ideModelsSourceHintSlots'), false);
+}
+
 async function ensureIdeModels(options = {}) {
   const force = options === true || !!(options && options.force);
-  if (ideModels && !force) return ideModels;
+  if (ideModels && !force) {
+    updateIdeModelsSourceUi();
+    return ideModels;
+  }
   try {
     const res = await invoke('list_ide_models');
     if (res && Array.isArray(res.models)) {
@@ -261,6 +385,7 @@ async function ensureIdeModels(options = {}) {
     ideModels = [];
     ideMeta = { source: '', capturedAt: null, account: null };
   }
+  updateIdeModelsSourceUi();
   return ideModels;
 }
 
@@ -275,21 +400,34 @@ async function refreshIdeModels(options = {}) {
     const refreshed = await invoke('list_ide_models');
     if (refreshed && Array.isArray(refreshed.models)) {
       ideModels = refreshed.models;
+      ideMeta = {
+        source: refreshed.source || 'api',
+        capturedAt: refreshed.captured_at || Date.now(),
+        account: refreshed.account || {
+          email: info.email,
+          plan_name: info.plan_name,
+          teams_tier: info.teams_tier,
+          daily_remaining: info.daily_remaining,
+          weekly_remaining: info.weekly_remaining,
+          overage_balance_micros: info.overage_balance_micros,
+        },
+      };
     } else {
       ideModels = info.models || [];
+      ideMeta = {
+        source: 'api',
+        capturedAt: Date.now(),
+        account: {
+          email: info.email,
+          plan_name: info.plan_name,
+          teams_tier: info.teams_tier,
+          daily_remaining: info.daily_remaining,
+          weekly_remaining: info.weekly_remaining,
+          overage_balance_micros: info.overage_balance_micros,
+        },
+      };
     }
-    ideMeta = {
-      source: 'api',
-      capturedAt: Date.now(),
-      account: {
-        email: info.email,
-        plan_name: info.plan_name,
-        teams_tier: info.teams_tier,
-        daily_remaining: info.daily_remaining,
-        weekly_remaining: info.weekly_remaining,
-        overage_balance_micros: info.overage_balance_micros,
-      },
-    };
+    updateIdeModelsSourceUi();
     if (rerender) {
       maybeAutoSelectRecommendedSlot();
       renderSlotCatalogList();
@@ -297,7 +435,13 @@ async function refreshIdeModels(options = {}) {
         await renderInjectedList();
       }
     }
-    if (!quiet) addLog('info', `模型列表已更新：${info.email} (${info.plan_name})，${info.models.length} 个模型`);
+    if (!quiet) {
+      const src = (ideMeta && ideMeta.source) || 'api';
+      addLog('info', `模型列表已更新：${info.email} (${info.plan_name})，${info.models.length} 个模型，来源 ${src}`);
+      if (src !== 'captured') {
+        addLog('warn', `清单来源为 ${src}，不一定等于 IDE 实际下拉框；若模型不可见，请启动代理后重启 IDE 并打开一次模型选择器`);
+      }
+    }
     return true;
   } catch (e) {
     addLog(quiet ? 'warn' : 'error', `${quiet ? '自动同步当前账号模型列表失败' : '刷新模型列表失败'}: ${e}`);
@@ -310,6 +454,7 @@ async function refreshIdeModels(options = {}) {
 async function syncCurrentIdeModels(options = {}) {
   const ok = await refreshIdeModels({ quiet: true, rerender: false, ...(options || {}) });
   if (!ok) await ensureIdeModels({ force: true });
+  else updateIdeModelsSourceUi();
   return ok;
 }
 

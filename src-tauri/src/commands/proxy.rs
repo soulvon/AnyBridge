@@ -455,29 +455,188 @@ fn port_pair_text(ports: crate::commands::config::ConfiguredProxyPorts) -> Strin
     format!("{} / {}", ports.api_port, ports.inference_port)
 }
 
-fn probe_byok_stats(port: u16, timeout: Duration) -> Result<(), String> {
+#[derive(Debug)]
+struct ProxyHealthFailure {
+    message: String,
+    mitm_related: bool,
+}
+
+fn probe_byok_stats(port: u16, timeout: Duration) -> Result<(), ProxyHealthFailure> {
     let addr = SocketAddr::from(([127, 0, 0, 1], port));
     let mut stream = TcpStream::connect_timeout(&addr, timeout)
-        .map_err(|e| format!("无法连接 {}: {}", port, e))?;
+        .map_err(|e| ProxyHealthFailure {
+            message: format!("无法连接 {}: {}", port, e),
+            mitm_related: false,
+        })?;
     let _ = stream.set_read_timeout(Some(timeout));
     let _ = stream.set_write_timeout(Some(timeout));
     stream
         .write_all(b"GET /__byok/stats HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n")
-        .map_err(|e| format!("发送健康检查失败: {}", e))?;
+        .map_err(|e| ProxyHealthFailure {
+            message: format!("发送健康检查失败: {}", e),
+            mitm_related: false,
+        })?;
     let mut buf = String::new();
     stream
         .read_to_string(&mut buf)
-        .map_err(|e| format!("读取健康检查响应失败: {}", e))?;
+        .map_err(|e| ProxyHealthFailure {
+            message: format!("读取健康检查响应失败: {}", e),
+            mitm_related: false,
+        })?;
     if !buf.starts_with("HTTP/1.1 200") && !buf.starts_with("HTTP/1.0 200") {
-        return Err(format!("{} 有响应，但不是 BYOK 健康检查 200", port));
+        return Err(ProxyHealthFailure {
+            message: format!("{} 有响应，但不是 BYOK 健康检查 200", port),
+            mitm_related: false,
+        });
     }
     if !buf.contains("\"requests\"") || !buf.contains("\"uptimeSec\"") {
+        return Err(ProxyHealthFailure {
+            message: format!(
+                "{} 有响应，但不像 AnyBridge 代理；可能被其它程序占用",
+                port
+            ),
+            mitm_related: false,
+        });
+    }
+    if !buf.contains("\"mitmEnabled\":true") {
+        let detail = buf
+            .split_once("\r\n\r\n")
+            .and_then(|(_, body)| serde_json::from_str::<serde_json::Value>(body).ok())
+            .and_then(|json| json.get("mitmError").and_then(|v| v.as_str()).map(str::to_string))
+            .unwrap_or_else(|| "sidecar 未报告 MITM enabled".to_string());
+        return Err(ProxyHealthFailure {
+            message: format!("{} 端口已监听，但 MITM 未启用: {}", port, detail),
+            mitm_related: true,
+        });
+    }
+    Ok(())
+}
+
+fn probe_mitm_tls(
+    port: u16,
+    cert_path: &std::path::Path,
+    timeout: Duration,
+) -> Result<(), String> {
+    let cert_pem = std::fs::read(cert_path)
+        .map_err(|e| format!("读取 MITM 证书用于 TLS 探针失败: {}", e))?;
+    let root = reqwest::Certificate::from_pem(&cert_pem)
+        .map_err(|e| format!("TLS 探针加载 MITM 根证书失败: {}", e))?;
+    let proxy = reqwest::Proxy::http(format!("http://127.0.0.1:{}", port))
+        .map_err(|e| format!("TLS 探针创建代理失败: {}", e))?;
+    let client = reqwest::blocking::Client::builder()
+        .proxy(proxy)
+        .add_root_certificate(root)
+        .tls_built_in_root_certs(false)
+        .timeout(timeout)
+        .build()
+        .map_err(|e| format!("TLS 探针客户端初始化失败: {}", e))?;
+    let response = client
+        .get("https://server.codeium.com/__byok/mitm-health")
+        .send()
+        .map_err(|e| format!("CONNECT/TLS 握手失败: {}", e))?;
+    let status = response.status();
+    let body = response
+        .text()
+        .map_err(|e| format!("读取 MITM TLS 探针响应失败: {}", e))?;
+    let json = serde_json::from_str::<serde_json::Value>(&body)
+        .map_err(|e| format!("MITM TLS 探针响应不是 JSON ({}): {}", e, body))?;
+    if status != reqwest::StatusCode::OK
+        || json.get("ok") != Some(&serde_json::Value::Bool(true))
+        || json.get("source").and_then(|v| v.as_str()) != Some("mitm")
+        || json.get("upstream").and_then(|v| v.as_str()) != Some("server.codeium.com")
+    {
         return Err(format!(
-            "{} 有响应，但不像 AnyBridge 代理；可能被其它程序占用",
-            port
+            "TLS 已连接但未进入 MITM: HTTP {} body={}",
+            status, body
         ));
     }
     Ok(())
+}
+
+fn mitm_tls_failure(message: String) -> ProxyHealthFailure {
+    ProxyHealthFailure {
+        message,
+        mitm_related: true,
+    }
+}
+
+struct MitmReadyReport {
+    message: String,
+    admin_prompted: bool,
+}
+
+fn ensure_proxy_mitm_ready_once(
+    force_regenerate: bool,
+    allow_admin: bool,
+) -> Result<String, String> {
+    let (certs_dir, generated) =
+        crate::commands::system::ensure_mitm_certs_ex(force_regenerate)?;
+    let cert_path = certs_dir.join("server.codeium.com.pem");
+    let key_path = certs_dir.join("server.codeium.com-key.pem");
+    crate::commands::system::validate_mitm_cert_files(&cert_path, &key_path)?;
+    let install_message = if allow_admin {
+        crate::commands::cert_install::install_ca_with_options(
+            false,
+            force_regenerate || generated,
+        )
+    } else {
+        crate::commands::cert_install::install_ca_user_only(
+            false,
+            force_regenerate || generated,
+        )
+    }
+    .map_err(|e| {
+        if allow_admin {
+            format!("MITM CA 管理员安装失败: {}", e)
+        } else {
+            format!("MITM CA 未能安装到当前用户根证书库: {}", e)
+        }
+    })?;
+    let status = crate::commands::cert_install::check_ca_status();
+    if matches!(status.effective_store, crate::commands::cert_install::CaStore::None) {
+        return Err(format!(
+            "MITM CA 安装后仍未在信任库中找到当前证书指纹。{}",
+            install_message
+        ));
+    }
+    Ok(format!(
+        "证书目录={}；Thumbprint={}；信任库={:?}",
+        certs_dir.to_string_lossy(),
+        status.thumbprint.as_deref().unwrap_or("unknown"),
+        status.effective_store
+    ))
+}
+
+fn ensure_proxy_mitm_ready(allow_admin: bool) -> Result<MitmReadyReport, String> {
+    match ensure_proxy_mitm_ready_once(false, false) {
+        Ok(message) => Ok(MitmReadyReport {
+            message,
+            admin_prompted: false,
+        }),
+        Err(first_error) => match ensure_proxy_mitm_ready_once(true, false) {
+            Ok(message) => Ok(MitmReadyReport {
+                message: format!("自动修复后通过（首次原因: {}）；{}", first_error, message),
+                admin_prompted: false,
+            }),
+            Err(repair_error) if allow_admin => match ensure_proxy_mitm_ready_once(false, true) {
+                Ok(message) => Ok(MitmReadyReport {
+                    message: format!(
+                        "已通过一次管理员授权修复（自动修复原因: {}；重装原因: {}）；{}",
+                        first_error, repair_error, message
+                    ),
+                    admin_prompted: true,
+                }),
+                Err(admin_error) => Err(format!(
+                    "首次自检失败: {}；自动清理并重装失败: {}；管理员安装失败: {}",
+                    first_error, repair_error, admin_error
+                )),
+            },
+            Err(repair_error) => Err(format!(
+                "首次自检失败: {}；自动清理并重装失败: {}；本次启动已请求过一次管理员授权，不再重复弹窗",
+                first_error, repair_error
+            )),
+        },
+    }
 }
 
 fn check_provider_route(
@@ -659,7 +818,10 @@ fn run_proxy_preflight(
     let mut san_ok = std::fs::read_to_string(&san_marker_path)
         .map(|s| s.trim() == crate::commands::system::mitm_cert_san_version())
         .unwrap_or(false);
-    if !cert_ok || !key_ok {
+    let mut cert_contents_ok = cert_ok
+        && key_ok
+        && crate::commands::system::validate_mitm_cert_files(&cert_path, &key_path).is_ok();
+    if !cert_ok || !key_ok || !cert_contents_ok {
         if repair {
             // 只生成 PEM，不走完整 install（避免 UAC 卡启动/体检）
             match crate::commands::system::ensure_mitm_certs() {
@@ -669,7 +831,14 @@ fn run_proxy_preflight(
                     san_ok = std::fs::read_to_string(&san_marker_path)
                         .map(|s| s.trim() == crate::commands::system::mitm_cert_san_version())
                         .unwrap_or(false);
-                    if cert_ok && key_ok && san_ok {
+                    cert_contents_ok = cert_ok
+                        && key_ok
+                        && crate::commands::system::validate_mitm_cert_files(
+                            &cert_path,
+                            &key_path,
+                        )
+                        .is_ok();
+                    if cert_ok && key_ok && san_ok && cert_contents_ok {
                         let msg = if generated {
                             format!("已自动生成 MITM 证书到 {}", dir.to_string_lossy())
                         } else {
@@ -681,7 +850,7 @@ fn run_proxy_preflight(
                             &mut issues,
                             "err",
                             "certs.generate_incomplete",
-                            "已尝试自动生成 MITM 证书，但证书文件仍不完整。请在「平台 > 设置 > 环境检测」点击「生成证书」",
+                            "已尝试自动生成 MITM 证书，但证书内容仍无效或文件不完整。请在「平台 > 设置 > 环境检测」点击「生成证书」",
                         );
                     }
                 }
@@ -701,7 +870,7 @@ fn run_proxy_preflight(
                 "err",
                 "certs.missing",
                 format!(
-                    "MITM 证书不完整；点击「安装证书」会自动生成并安装，也可以点击「生成证书」单独生成（缺少或为空: {}, {}）",
+                    "MITM 证书缺失、为空或内容无效；点击「安装证书」会自动生成并安装，也可以点击「生成证书」单独生成（文件: {}, {}）",
                     cert_path.to_string_lossy(),
                     key_path.to_string_lossy()
                 ),
@@ -1934,7 +2103,9 @@ pub fn start_proxy_impl(
             ports.api_port
         ))
     } else {
-        probe_byok_stats(ports.api_port, Duration::from_secs(2)).err()
+        probe_byok_stats(ports.api_port, Duration::from_secs(2))
+            .map_err(|failure| failure.message)
+            .err()
     };
 
     if let Some(e) = health_error {
@@ -1992,6 +2163,14 @@ pub fn start_proxy_impl(
 }
 
 pub fn start_proxy_service_impl(app: AppHandle) -> Result<bool, String> {
+    start_proxy_service_impl_with_repair(app, true, false)
+}
+
+fn start_proxy_service_impl_with_repair(
+    app: AppHandle,
+    allow_runtime_repair: bool,
+    admin_already_prompted: bool,
+) -> Result<bool, String> {
     let state = app.state::<ProxyState>();
 
     {
@@ -2011,11 +2190,36 @@ pub fn start_proxy_service_impl(app: AppHandle) -> Result<bool, String> {
 
     let config_dir = crate::commands::config::config_dir_path();
     let ports = configured_ports();
+    let cert_path = config_dir.join("certs").join("server.codeium.com.pem");
     let resource_dir = app
         .path()
         .resource_dir()
         .ok()
         .and_then(|p| resolve_resources_root(Some(&p)));
+
+    let mitm_report = match ensure_proxy_mitm_ready(!admin_already_prompted) {
+        Ok(report) => report,
+        Err(e) => {
+            clear_starting();
+            let msg = format!("代理服务未启动：MITM 前置条件不满足: {}", e);
+            let _ = app.emit(
+                "proxy-log",
+                LogLine {
+                    level: "err".into(),
+                    msg: msg.clone(),
+                },
+            );
+            return Err(msg);
+        }
+    };
+    let _ = app.emit(
+        "proxy-log",
+        LogLine {
+            level: "ok".into(),
+            msg: format!("✅ MITM 前置检查通过: {}", mitm_report.message),
+        },
+    );
+    let admin_prompted = admin_already_prompted || mitm_report.admin_prompted;
 
     kill_sidecar_process();
 
@@ -2128,23 +2332,89 @@ pub fn start_proxy_service_impl(app: AppHandle) -> Result<bool, String> {
     let expected_ports = unique_proxy_ports(ports);
     let missing_ports = wait_for_ports(&expected_ports, Duration::from_secs(5));
     let health_error = if missing_ports.contains(&ports.api_port) {
-        Some(format!(
-            "代理主端口 {} 未监听，本地代理入口不可用",
-            ports.api_port
-        ))
+        Some(ProxyHealthFailure {
+            message: format!(
+                "代理主端口 {} 未监听，本地代理入口不可用",
+                ports.api_port
+            ),
+            mitm_related: false,
+        })
     } else {
-        probe_byok_stats(ports.api_port, Duration::from_secs(2)).err()
+        match probe_byok_stats(ports.api_port, Duration::from_secs(2)) {
+            Err(failure) => Some(failure),
+            Ok(()) => probe_mitm_tls(ports.api_port, &cert_path, Duration::from_secs(5))
+                .map_err(mitm_tls_failure)
+                .err(),
+        }
     };
 
-    if let Some(e) = health_error {
+    if let Some(failure) = health_error {
         let child = lock_or_recover(&state.child).take();
         if let Some(child) = child {
             let _ = child.kill();
         }
         *lock_or_recover(&state.target_ide) = String::new();
         *lock_or_recover(&state.ports) = None;
+        if failure.mitm_related && allow_runtime_repair {
+            let _ = app.emit(
+                "proxy-log",
+                LogLine {
+                    level: "warn".into(),
+                    msg: format!(
+                        "MITM/TLS 实链路自检失败，正在强制重生证书并仅重启一次: {}",
+                        failure.message
+                    ),
+                },
+            );
+            let repair_result = match ensure_proxy_mitm_ready_once(true, false) {
+                Ok(report) => Ok((report, false)),
+                Err(user_error) if admin_prompted => Err(format!(
+                    "当前用户静默修复失败: {}；本次启动已请求过一次管理员授权，不再重复弹窗",
+                    user_error
+                )),
+                Err(user_error) => ensure_proxy_mitm_ready_once(false, true)
+                    .map(|report| (report, true))
+                    .map_err(|admin_error| {
+                        format!(
+                            "当前用户静默修复失败: {}；管理员修复失败: {}",
+                            user_error, admin_error
+                        )
+                    }),
+            };
+            match repair_result {
+                Ok((report, repair_admin_prompted)) => {
+                    let _ = app.emit(
+                        "proxy-log",
+                        LogLine {
+                            level: "ok".into(),
+                            msg: format!("MITM 证书已修复，正在重新启动代理: {}", report),
+                        },
+                    );
+                    return start_proxy_service_impl_with_repair(
+                        app,
+                        false,
+                        admin_prompted || repair_admin_prompted,
+                    );
+                }
+                Err(repair_error) => {
+                    let msg = format!(
+                        "代理服务启动失败: {}；MITM 自动修复失败: {}",
+                        failure.message, repair_error
+                    );
+                    let _ = app.emit("proxy-stopped", ());
+                    let _ = app.emit(
+                        "proxy-log",
+                        LogLine {
+                            level: "err".into(),
+                            msg: msg.clone(),
+                        },
+                    );
+                    return Err(msg);
+                }
+            }
+        }
+        let msg = format!("代理服务启动失败: {}", failure.message);
         let _ = app.emit("proxy-stopped", ());
-        let msg = format!("代理服务启动失败: {}", e);
         let _ = app.emit(
             "proxy-log",
             LogLine {

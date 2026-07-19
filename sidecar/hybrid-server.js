@@ -75,6 +75,17 @@ const REAL_WEBSITE = 'windsurf.com';
 const REAL_REGISTER_HOST = 'register.windsurf.com';
 const REAL_UNLEASH_HOST = 'unleash.codeium.com';
 
+// API hosts must be MITM'd for model/status rewriting. If the certificate
+// cannot be loaded, these targets fail explicitly instead of silently falling
+// back to a blind tunnel that makes the proxy look healthy but ineffective.
+const MITM_HOSTS = new Set([
+  REAL_API_HOST,
+  'server.codeium.com',
+  'api2.cursor.sh',
+  'authentication.cursor.sh',
+  'prod.authentication.cursor.sh',
+]);
+
 // ─── MITM certs for server.codeium.com (optional — not needed behind nginx) ──
 // Priority: BYOK_CONFIG_DIR/certs (user-generated) → BYOK_RESOURCE_DIR/certs → ../certs
 function resolveCertsDir() {
@@ -89,11 +100,38 @@ function resolveCertsDir() {
 }
 const CERTS_DIR = resolveCertsDir();
 let MITM_CERT, MITM_KEY;
+let MITM_ENABLED = false;
+let MITM_CERT_FINGERPRINT = null;
+let MITM_ERROR = null;
 try {
   MITM_CERT = fs.readFileSync(new URL('server.codeium.com.pem', CERTS_DIR));
   MITM_KEY = fs.readFileSync(new URL('server.codeium.com-key.pem', CERTS_DIR));
-} catch {
-  console.log('⚠️  No MITM certs found — CONNECT MITM disabled (OK if behind nginx)');
+  const certificate = new crypto.X509Certificate(MITM_CERT);
+  const privateKey = crypto.createPrivateKey(MITM_KEY);
+  if (!certificate.checkPrivateKey(privateKey)) {
+    throw new Error('证书与私钥不匹配');
+  }
+  if (Date.now() < Date.parse(certificate.validFrom) || Date.now() > Date.parse(certificate.validTo)) {
+    throw new Error(`证书不在有效期内: ${certificate.validFrom} ~ ${certificate.validTo}`);
+  }
+  if (!certificate.ca) {
+    throw new Error('证书未标记为 CA，不能作为 MITM 信任根');
+  }
+  const missing = [...MITM_HOSTS].filter(host => !certificate.checkHost(host));
+  if (missing.length) {
+    throw new Error(`证书缺少 SAN: ${missing.join(', ')}`);
+  }
+  // Creating the context validates the key/certificate pair before the first
+  // client connection and avoids discovering a broken key only under load.
+  tls.createSecureContext({ cert: MITM_CERT, key: MITM_KEY });
+  MITM_CERT_FINGERPRINT = certificate.fingerprint256;
+  MITM_ENABLED = true;
+  console.log(`🔐 MITM enabled; cert=${new URL('server.codeium.com.pem', CERTS_DIR).href}; fingerprint=${MITM_CERT_FINGERPRINT}`);
+} catch (error) {
+  MITM_ERROR = error instanceof Error ? error.message : String(error);
+  MITM_CERT = undefined;
+  MITM_KEY = undefined;
+  console.error(`❌ MITM certificate unavailable: ${MITM_ERROR}`);
 }
 
 let requestCounter = 0;
@@ -562,10 +600,35 @@ function handleRequest(req, res) {
 
   // ── BYOK control endpoint: stats snapshot (local UI only) ──
   if (req.url === '/__byok/stats') {
-    const payload = JSON.stringify(snapshot());
+    const payload = JSON.stringify({
+      ...snapshot(),
+      mitmEnabled: MITM_ENABLED,
+      mitmCertFingerprint: MITM_CERT_FINGERPRINT,
+      mitmCertDir: CERTS_DIR.href,
+      mitmError: MITM_ERROR,
+      mitmHosts: [...MITM_HOSTS],
+    });
     res.writeHead(200, {
       'content-type': 'application/json',
       'access-control-allow-origin': '*',
+    });
+    res.end(payload);
+    return;
+  }
+
+  if (req.url === '/__byok/mitm-health') {
+    const upstream = req.socket && mitmUpstreamHost.get(req.socket);
+    const payload = JSON.stringify({
+      ok: MITM_ENABLED && Boolean(upstream),
+      source: upstream ? 'mitm' : 'direct',
+      upstream: upstream || null,
+      mitmEnabled: MITM_ENABLED,
+      fingerprint: MITM_CERT_FINGERPRINT,
+    });
+    res.writeHead(upstream && MITM_ENABLED ? 200 : 503, {
+      'content-type': 'application/json',
+      'content-length': Buffer.byteLength(payload),
+      'connection': 'close',
     });
     res.end(payload);
     return;
@@ -826,6 +889,24 @@ const server = http.createServer(handleRequest);
 const mitmServer = http.createServer((req, res) => {
   const id = ++requestCounter;
   const method = getRpcMethod(req.url);
+  const upstreamHost = req.socket && mitmUpstreamHost.get(req.socket);
+
+  if (req.url === '/__byok/mitm-health') {
+    const payload = JSON.stringify({
+      ok: MITM_ENABLED && Boolean(upstreamHost),
+      source: upstreamHost ? 'mitm' : 'direct',
+      upstream: upstreamHost || null,
+      mitmEnabled: MITM_ENABLED,
+      fingerprint: MITM_CERT_FINGERPRINT,
+    });
+    res.writeHead(upstreamHost && MITM_ENABLED ? 200 : 503, {
+      'content-type': 'application/json',
+      'content-length': Buffer.byteLength(payload),
+      'connection': 'close',
+    });
+    res.end(payload);
+    return;
+  }
 
   const chunks = [];
   req.on('error', err => {
@@ -836,8 +917,6 @@ const mitmServer = http.createServer((req, res) => {
   req.on('data', c => chunks.push(c));
   req.on('end', () => {
     const body = Buffer.concat(chunks);
-    const upstreamHost = req.socket && mitmUpstreamHost.get(req.socket);
-
     if (handleCursorRequest(req, res, body, {
       id,
       source: 'mitm',
@@ -960,14 +1039,22 @@ server.on('connect', (req, clientSocket, head) => {
   const targetPort = parseInt(port) || 443;
 
   // ── MITM for API hosts (Windsurf/Devin/experimental Cursor)
-  const MITM_HOSTS = new Set([
-    REAL_API_HOST,
-    'server.codeium.com',
-    'api2.cursor.sh',
-    'authentication.cursor.sh',
-    'prod.authentication.cursor.sh',
-  ]);
-  if (MITM_HOSTS.has(host) && MITM_CERT && MITM_KEY) {
+  if (MITM_HOSTS.has(host) && !MITM_ENABLED) {
+    console.error(`[${now()}] #${id} ❌ MITM unavailable for ${host}: ${MITM_ERROR || 'unknown certificate error'}`);
+    rpcAuditLog({
+      id,
+      phase: 'connect',
+      source: 'connect',
+      route: 'mitm_unavailable',
+      url: req.url,
+      upstream: host,
+      statusCode: 503,
+      error: MITM_ERROR || 'certificate unavailable',
+    });
+    clientSocket.end('HTTP/1.1 503 Service Unavailable\r\nConnection: close\r\n\r\n');
+    return;
+  }
+  if (MITM_HOSTS.has(host) && MITM_ENABLED) {
     console.log(`[${now()}] #${id} 🔓 MITM ${host}:${targetPort}`);
     rpcAuditLog({
       id,
@@ -1058,7 +1145,11 @@ server.on('connect', (req, clientSocket, head) => {
 function logBanner() {
   console.log(`\n⚡ Windsurf HYBRID PROXY on http://localhost:${PORT}`);
   console.log(`\n   MODE: MITM CONNECT (normal Windsurf, full features)`);
-  console.log(`\n   MITM → server.codeium.com:443`);
+  console.log(`\n   MITM status: ${MITM_ENABLED ? 'enabled' : 'disabled'}`);
+  console.log(`   MITM cert: ${CERTS_DIR.href}`);
+  if (MITM_CERT_FINGERPRINT) console.log(`   MITM fingerprint: ${MITM_CERT_FINGERPRINT}`);
+  if (MITM_ERROR) console.log(`   MITM error: ${MITM_ERROR}`);
+  console.log(`   MITM → server.codeium.com:443`);
   console.log(`     GetChatMessage  → Anthropic API (your models, your key)`);
   console.log(`     Everything else → real Codeium (trial account)`);
   console.log(`\n   LOCAL COMPATIBLE API:`);

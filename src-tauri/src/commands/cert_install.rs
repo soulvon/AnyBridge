@@ -112,6 +112,14 @@ fn read_san_version(cert_path: &Path) -> Option<String> {
 fn is_san_current(cert_path: &Path, cert_exists: bool, key_exists: bool) -> bool {
     cert_exists
         && key_exists
+        && crate::commands::system::validate_mitm_cert_files(
+            cert_path,
+            &cert_path
+                .parent()
+                .map(|dir| dir.join("server.codeium.com-key.pem"))
+                .unwrap_or_else(|| PathBuf::from("server.codeium.com-key.pem")),
+        )
+        .is_ok()
         && read_san_version(cert_path)
             .as_deref()
             .map(|version| version == crate::commands::system::mitm_cert_san_version())
@@ -1723,11 +1731,14 @@ mod tests {
         let dir = unique_temp_dir();
         std::fs::create_dir_all(&dir).expect("create temp dir");
         let cert_path = dir.join("server.codeium.com.pem");
+        let key_path = dir.join("server.codeium.com-key.pem");
         let marker_path = san_marker_path(&cert_path).expect("marker path");
 
         assert_eq!(read_san_version(&cert_path), None);
         assert!(!is_san_current(&cert_path, true, true));
 
+        crate::commands::system::write_mitm_cert_bundle_for_test(&dir)
+            .expect("generate test MITM certificate");
         std::fs::write(&marker_path, "1\n").expect("write old marker");
         assert_eq!(read_san_version(&cert_path).as_deref(), Some("1"));
         assert!(!is_san_current(&cert_path, true, true));
@@ -1740,6 +1751,9 @@ mod tests {
         assert!(is_san_current(&cert_path, true, true));
         assert!(!is_san_current(&cert_path, false, true));
         assert!(!is_san_current(&cert_path, true, false));
+
+        std::fs::write(&key_path, "not a private key").expect("corrupt key");
+        assert!(!is_san_current(&cert_path, true, true));
 
         let _ = std::fs::remove_dir_all(&dir);
     }

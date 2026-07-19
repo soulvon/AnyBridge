@@ -108,19 +108,19 @@
                       <label class="codex-config-toggle-row">
                         <span class="codex-config-toggle-label">桌面版显示所有模型</span>
                         <label class="switch">
-                          <input type="checkbox" id="codex-config-inject-models" checked>
+                          <input type="checkbox" id="codex-config-inject-models" checked data-action="onCodexConfigInjectModelsChange" data-events="change">
                           <span class="slider"></span>
                         </label>
                       </label>
-                      <p class="codex-config-toggle-hint">开启后 AnyBridge 向 Codex 桌面版注入解锁脚本，让所有模型在模型选择器里显示。关闭后 Codex 桌面版只能切换到默认模型，CLI 不受影响。</p>
+                      <p class="codex-config-toggle-hint">开启后 AnyBridge 向 Codex 桌面版注入解锁脚本，让所有模型在模型选择器里显示。关闭后 Codex 桌面版只能切换到默认模型，CLI 不受影响。与「保留官方登录」互斥；开启保留官方登录时会自动关闭注入。</p>
                       <label class="codex-config-toggle-row">
                         <span class="codex-config-toggle-label">保留官方登录</span>
                         <label class="switch">
-                          <input type="checkbox" id="codex-config-preserve-official-auth">
+                          <input type="checkbox" id="codex-config-preserve-official-auth" data-action="onCodexConfigPreserveOfficialAuthChange" data-events="change">
                           <span class="slider"></span>
                         </label>
                       </label>
-                      <p class="codex-config-toggle-hint">开启后 Codex 桌面版使用 auth.json 中的官方 OAuth 登录态认证，模型选择器显示官方模型列表，无需 CDP 注入。请求仍经本地代理转发到第三方 API。仅适用于提供官方模型名的第三方渠道商。</p>
+                      <p class="codex-config-toggle-hint">开启后 Codex 桌面版使用 auth.json 中的官方 OAuth 登录态认证，模型选择器显示官方模型列表，无需 CDP 注入。请求仍经本地代理转发到第三方 API。仅适用于提供官方模型名的第三方渠道商。与「桌面版显示所有模型」互斥。</p>
                       <label class="codex-config-toggle-row">
                         <span class="codex-config-toggle-label">统一会话历史</span>
                         <label class="switch">

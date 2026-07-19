@@ -1044,8 +1044,9 @@ fn remaining_codex_pids() -> String {
 // ─── 主命令：重启 Codex Desktop ───────────────────────────────────────
 
 /// 当前 Codex 配置是否需要 CDP 注入。
-/// 读 providerStore → 找当前 codex 配置 → 看 inject_models。
-/// inject_models=false 时，整条 CDP 流程（watcher 接管、补注入）都不触发。
+/// 读 providerStore → 找当前 codex 配置 → inject_models && !preserve_official_auth。
+/// 与前端 `needInject = !preserveAuth && injectModels !== false` 保持一致：
+/// preserveOfficialAuth=true 时 watcher 不得接管 / 补注入（保留官方登录模式）。
 fn codex_needs_cdp_injection() -> bool {
     let store = match read_provider_store() {
         Ok(s) => s,
@@ -1059,24 +1060,25 @@ fn codex_needs_cdp_injection() -> bool {
         .codex_configs
         .iter()
         .find(|c| c.id == provider_id)
-        .map(|c| c.inject_models)
+        .map(|c| c.inject_models && !c.preserve_official_auth)
         .unwrap_or(false)
 }
 
-/// CDP 注入是否需要。只看用户配置的 injectModels 开关。
-/// 开 = 走 CDP（kill + launch_cdp + inject），让桌面版显示所有模型。
-/// 关 = 不走 CDP（kill + launch_plain），桌面版只能用默认模型。
+/// CDP 注入是否需要。
+/// 前端已把 preserveOfficialAuth 折算进 inject_models 参数：
+/// true = kill + launch_cdp + inject；false = kill + launch_plain。
 fn needs_cdp(inject_models: bool) -> bool {
     inject_models
 }
 
 /// 内部编排（async，不阻塞 UI 主线程）：
-///   managed=true  → 写 models_cache + kill + (按模型分流: 官方模型→launch_plain；
-///                   非官方→launch_with_cdp+injectWithRetry)
+///   managed=true  → 写 models_cache + kill + (inject_models=true→launch_with_cdp+inject；
+///                   inject_models=false→launch_plain)
 ///   managed=false → 清 models_cache + kill + launch_plain
 ///
-/// 就绪判断不用 poll /json（/json 200 ≠ renderer 就绪）。非官方模型路径由
+/// 就绪判断不用 poll /json（/json 200 ≠ renderer 就绪）。CDP 路径由
 /// injectWithRetry 自带 renderer 就绪重试，拿到 page target 并装上 patch 才算成功。
+/// 前端已把 preserveOfficialAuth 折算进 inject_models 参数。
 async fn restart_codex_desktop_impl(
     app: Option<&AppHandle>,
     managed: bool,
@@ -1111,7 +1113,7 @@ async fn restart_codex_desktop_impl(
             };
         }
 
-        // 3. 按模型分流：官方模型(gpt-*)不需要 CDP；非官方需要 CDP+inject
+        // 3. 按 inject_models 分流（前端已折算 preserveOfficialAuth）
         if needs_cdp(inject_models) {
             progress("starting", "正在以调试模式启动 Codex…");
             let (pid, cdp_port) = match launch_with_cdp() {
@@ -1141,11 +1143,12 @@ async fn restart_codex_desktop_impl(
                 },
             }
         } else {
-            progress("starting", "正在重启 Codex（官方模型，无需注入）…");
+            // inject_models=false：可能是关闭注入，或 preserveOfficialAuth 折算后的不注入。
+            progress("starting", "正在重启 Codex（不进行模型注入）…");
             match launch_plain() {
                 Ok(pid) => CodexDesktopResult {
                     ok: true,
-                    message: "已重启 Codex 生效".to_string(),
+                    message: "已重启 Codex（未进行模型注入）".to_string(),
                     managed,
                     pid: Some(pid),
                 },
@@ -1196,10 +1199,10 @@ async fn restart_codex_desktop_impl(
 }
 
 /// Tauri 命令：重启 Codex Desktop（async，不阻塞 UI 主线程）。
-/// managed=true  → 自定义供应商模式（按模型分流：官方模型不 CDP，非官方 CDP+注入）
+/// managed=true  → 自定义供应商模式（由 inject_models 决定 CDP+注入 或 launch_plain）
 /// managed=false → 官方模式（普通启动，清理注入）
-/// model = 切换的目标模型名（managed=true 时用于 needs_cdp 判断）
-/// inject_models = 是否启用桌面版 CDP 注入（用户配置项，false 时永不 CDP）
+/// model = 切换的目标模型名（保留字段；CDP 分流不再按模型名判断）
+/// inject_models = 是否启用桌面版 CDP 注入（前端已折算 preserveOfficialAuth；false 时永不 CDP）
 #[tauri::command]
 pub async fn restart_codex_desktop(
     app: AppHandle,
@@ -1350,8 +1353,9 @@ fn watch_loop(app: AppHandle) {
 }
 
 /// 单次检查逻辑。
-/// watcher 只在"当前 Codex 配置需要 CDP 注入（injectModels=true）"时才工作。
-/// injectModels=false 时，整条 CDP 流程不触发——不检测 CDP、不接管、不补注入。
+/// watcher 只在 codex_needs_cdp_injection() 为 true 时工作：
+/// injectModels=true 且 preserveOfficialAuth=false。
+/// 否则整条 CDP 流程不触发——不检测 CDP、不接管、不补注入。
 /// 且必须确认 Desktop UI 宿主在跑；仅有 app-server/CLI 不算。
 /// 启动宽限期内（WATCHER_STARTUP_GRACE）不做 takeover，避免打开 AnyBridge 就杀 Codex。
 #[cfg(target_os = "windows")]
