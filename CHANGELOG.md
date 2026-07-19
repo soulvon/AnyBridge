@@ -2,6 +2,16 @@
 
 All notable changes to AnyBridge will be documented in this file.
 
+## v0.3.13 - 2026-07-19
+
+- CPA 套件更新健壮化：下载超时 15s→300s，增加停滞检测与文件大小校验。
+- 下载镜像每源重试 2 次（指数退避 4s→8s），避免偶发网络抖动导致整源放弃。
+- 服务停止改为两阶段：先优雅关闭（WM_CLOSE/SIGTERM），等 2s 后才强制 kill。
+- 健康检查改为指数退避（1s→2s→4s→8s→cap 10s），CPA 重试 30 次、CPAMP 20 次。
+- 端口释放等待 10→20s，解压前清理目标目录残留。
+- 证书生成命令 `generate_certs` 增加 60s 超时保护，避免 UI 阻塞。
+- 证书安装优先 CurrentUser\Root 静默安装，失败回退 LocalMachine\Root。
+
 ## v0.3.12 - 2026-07-19
 
 - 证书生成命令 `generate_certs` 增加 60s 超时保护，避免 UI 阻塞与 "Step is still running"。

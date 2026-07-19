@@ -1643,27 +1643,58 @@ fn pid_listening_on_port(port: u16) -> Option<u32> {
 
 fn kill_service_by_port(port: u16, label: &str) -> Result<(), String> {
     if let Some(pid) = pid_listening_on_port(port) {
+        // Phase 1: Graceful termination
         #[cfg(target_os = "windows")]
         {
             use std::os::windows::process::CommandExt;
+            // taskkill without /F sends WM_CLOSE, allowing graceful shutdown
             let mut cmd = std::process::Command::new("taskkill");
-            cmd.args(["/F", "/PID", &pid.to_string()]);
+            cmd.args(["/PID", &pid.to_string()]);
             cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
-            let status = cmd
-                .status()
-                .map_err(|e| format!("无法停止 {} (PID {}): {}", label, pid, e))?;
-            if !status.success() {
-                return Err(format!("停止 {} (PID {}) 失败。", label, pid));
-            }
+            let _ = cmd.status();
         }
         #[cfg(not(target_os = "windows"))]
         {
-            let status = std::process::Command::new("kill")
-                .args(["-9", &pid.to_string()])
-                .status()
-                .map_err(|e| format!("无法停止 {} (PID {}): {}", label, pid, e))?;
-            if !status.success() {
-                return Err(format!("停止 {} (PID {}) 失败。", label, pid));
+            let _ = std::process::Command::new("kill")
+                .args(["-TERM", &pid.to_string()])
+                .status();
+        }
+
+        // Wait up to 2s for graceful exit
+        let mut still_alive = false;
+        for _ in 0..4 {
+            std::thread::sleep(Duration::from_millis(500));
+            if pid_listening_on_port(port).is_none() {
+                still_alive = false;
+                break;
+            }
+            still_alive = true;
+        }
+
+        // Phase 2: Force kill if still alive
+        if still_alive {
+            #[cfg(target_os = "windows")]
+            {
+                use std::os::windows::process::CommandExt;
+                let mut cmd = std::process::Command::new("taskkill");
+                cmd.args(["/F", "/PID", &pid.to_string()]);
+                cmd.creation_flags(0x08000000);
+                let status = cmd
+                    .status()
+                    .map_err(|e| format!("无法强制停止 {} (PID {}): {}", label, pid, e))?;
+                if !status.success() {
+                    return Err(format!("强制停止 {} (PID {}) 失败。", label, pid));
+                }
+            }
+            #[cfg(not(target_os = "windows"))]
+            {
+                let status = std::process::Command::new("kill")
+                    .args(["-9", &pid.to_string()])
+                    .status()
+                    .map_err(|e| format!("无法强制停止 {} (PID {}): {}", label, pid, e))?;
+                if !status.success() {
+                    return Err(format!("强制停止 {} (PID {}) 失败。", label, pid));
+                }
             }
         }
     }
@@ -1749,7 +1780,7 @@ async fn start_cpa_suite_async() -> Result<(), String> {
     }
 
     // 2. 等待 CPA 就绪（CPAMP 依赖 CPA 作为 upstream，必须先就绪）
-    wait_for_http(CPA_PORT, "/healthz", "CLIProxyAPI", 15).await?;
+    wait_for_http(CPA_PORT, "/healthz", "CLIProxyAPI", 30).await?;
 
     // 3. 启动 CPAMP（端口被不健康进程占用时先 kill）
     // panelPath/PANEL_PATH 会替换 /management.html 的内容，不会新增 /management-auto.html。
@@ -1787,7 +1818,7 @@ async fn start_cpa_suite_async() -> Result<(), String> {
         .map_err(|e| e.to_string())??;
 
         // 4. 等待 CPAMP 就绪
-        wait_for_http(CPAMP_PORT, "/health", "CPA Manager Plus", 10).await?;
+        wait_for_http(CPAMP_PORT, "/health", "CPA Manager Plus", 20).await?;
     }
 
     // 5. 注入自动登录补丁到 runtime 目录
@@ -1818,7 +1849,7 @@ async fn start_cpa_suite_async() -> Result<(), String> {
         })
         .await
         .map_err(|e| e.to_string())??;
-        wait_for_http(CPAMP_PORT, "/health", "CPA Manager Plus", 10).await?;
+        wait_for_http(CPAMP_PORT, "/health", "CPA Manager Plus", 20).await?;
     }
 
     // 7. 自动添加 CPA 供应商
@@ -2027,9 +2058,9 @@ pub async fn extension_update_cpa_suite(
     kill_service_by_port(CPA_PORT, "CLIProxyAPI")?;
     kill_service_by_port(CPAMP_PORT, "CPA Manager Plus")?;
 
-    // 等待端口释放（最多重试 5 次，每次 2 秒）
+    // 等待端口释放（最多重试 10 次，每次 2 秒）
     let mut ports_released = false;
-    for i in 0..5u32 {
+    for i in 0..10u32 {
         tokio::time::sleep(Duration::from_secs(2)).await;
         let cli_probe = probe_http_port(CPA_PORT, "/", "CLIProxyAPI");
         let cpamp_probe = probe_http_port(CPAMP_PORT, "/", "CPA Manager Plus");
@@ -2040,7 +2071,7 @@ pub async fn extension_update_cpa_suite(
         emit_deploy_progress(
             &app,
             "check",
-            &format!("等待服务停止...({}/5)", i + 1),
+            &format!("等待服务停止...({}/10)", i + 1),
             2,
         );
     }
@@ -2455,7 +2486,18 @@ fn find_platform_release_asset<'a>(
         .ok_or_else(|| format!("{} 未找到可用安装包", label))
 }
 
-/// 从单个 URL 下载文件（带进度回调），返回下载的临时文件路径
+/// 下载专用 HTTP 客户端：超时 300s（大文件需要足够时间），区别于 API 客户端的 15s
+fn build_download_client() -> Result<reqwest::Client, String> {
+    let builder = super::apply_system_proxy(reqwest::Client::builder())
+        .timeout(Duration::from_secs(300))
+        .user_agent(format!(
+            "AnyBridge-Extension-Deployer/{}",
+            env!("CARGO_PKG_VERSION")
+        ));
+    builder.build().map_err(|e| e.to_string())
+}
+
+/// 从单个 URL 下载文件（带进度回调 + 停滞检测），返回下载的临时文件路径
 async fn download_from_url(
     url: &str,
     tmp: &Path,
@@ -2463,7 +2505,7 @@ async fn download_from_url(
     base_percent: u8,
     end_percent: u8,
 ) -> Result<(), String> {
-    let client = build_github_client()?;
+    let client = build_download_client()?;
     let response = client
         .get(url)
         .header("Accept", "application/octet-stream")
@@ -2483,35 +2525,71 @@ async fn download_from_url(
     let mut downloaded: u64 = 0;
     let mut stream = response.bytes_stream();
     let mut last_emit = std::time::Instant::now();
+    const STALL_TIMEOUT: Duration = Duration::from_secs(30);
 
-    while let Some(chunk) = stream.next().await {
-        let data = chunk.map_err(|e| format!("下载失败: {}", e))?;
-        tokio::io::AsyncWriteExt::write_all(&mut file, &data)
-            .await
-            .map_err(|e| format!("写入临时文件失败: {}", e))?;
-        downloaded += data.len() as u64;
+    loop {
+        let chunk_future = stream.next();
+        match tokio::time::timeout(STALL_TIMEOUT, chunk_future).await {
+            Ok(Some(chunk)) => {
+                let data = chunk.map_err(|e| format!("下载失败: {}", e))?;
+                tokio::io::AsyncWriteExt::write_all(&mut file, &data)
+                    .await
+                    .map_err(|e| format!("写入临时文件失败: {}", e))?;
+                downloaded += data.len() as u64;
 
-        if last_emit.elapsed() >= Duration::from_millis(400) {
-            let (pct, msg) = if let Some(total) = total {
-                let p = base_percent
-                    + ((downloaded as f64 / total as f64) * (end_percent - base_percent) as f64)
-                        as u8;
-                (
-                    p,
-                    format!(
-                        "下载中 {:.1} / {:.1} MB",
-                        downloaded as f64 / 1_000_000.0,
-                        total as f64 / 1_000_000.0
-                    ),
-                )
-            } else {
-                (
-                    base_percent,
-                    format!("下载中 {:.1} MB", downloaded as f64 / 1_000_000.0),
-                )
-            };
-            emit_deploy_progress(app, "download", &msg, pct);
-            last_emit = std::time::Instant::now();
+                if last_emit.elapsed() >= Duration::from_millis(400) {
+                    let (pct, msg) = if let Some(total) = total {
+                        let p = base_percent
+                            + ((downloaded as f64 / total as f64)
+                                * (end_percent - base_percent) as f64) as u8;
+                        (
+                            p,
+                            format!(
+                                "下载中 {:.1} / {:.1} MB",
+                                downloaded as f64 / 1_000_000.0,
+                                total as f64 / 1_000_000.0
+                            ),
+                        )
+                    } else {
+                        (
+                            base_percent,
+                            format!("下载中 {:.1} MB", downloaded as f64 / 1_000_000.0),
+                        )
+                    };
+                    emit_deploy_progress(app, "download", &msg, pct);
+                    last_emit = std::time::Instant::now();
+                }
+            }
+            Ok(None) => break, // stream ended
+            Err(_) => {
+                return Err(format!(
+                    "下载停滞超时（{}s 无数据），已下载 {:.1} MB",
+                    STALL_TIMEOUT.as_secs(),
+                    downloaded as f64 / 1_000_000.0
+                ));
+            }
+        }
+    }
+
+    // 刷新文件确保数据落盘
+    tokio::io::AsyncWriteExt::flush(&mut file)
+        .await
+        .map_err(|e| format!("刷新临时文件失败: {}", e))?;
+
+    // 文件大小校验
+    let file_size = tokio::fs::metadata(tmp)
+        .await
+        .map(|m| m.len())
+        .unwrap_or(0);
+    if file_size == 0 {
+        return Err("下载完成但文件为空，可能下载源异常".into());
+    }
+    if let Some(expected) = total {
+        if file_size != expected {
+            return Err(format!(
+                "下载文件大小不匹配：期望 {} 字节，实际 {} 字节",
+                expected, file_size
+            ));
         }
     }
 
@@ -2538,7 +2616,7 @@ async fn download_asset(
         return Ok(tmp);
     }
 
-    // 2. 按测速结果依次尝试
+    // 2. 按测速结果依次尝试，每个镜像最多重试 2 次
     let mut last_err = String::new();
     for (i, (mirror, duration)) in ranked.iter().enumerate() {
         let mirror_url = build_mirror_url(url, mirror);
@@ -2564,20 +2642,37 @@ async fn download_asset(
             );
         }
 
-        match download_from_url(&mirror_url, &tmp, app, base_percent, end_percent).await {
-            Ok(()) => return Ok(tmp),
-            Err(e) => {
-                last_err = e;
-                // 清理失败的临时文件
-                let _ = tokio::fs::remove_file(&tmp).await;
+        let mut mirror_err = String::new();
+        for attempt in 0..2u32 {
+            if attempt > 0 {
+                let delay = Duration::from_secs(2u64 * (1 << attempt)); // 4s, 8s
+                emit_deploy_progress(
+                    app,
+                    "download",
+                    &format!("{} 第 {} 次重试（{}s 后）...", mirror.name, attempt + 1, delay.as_secs()),
+                    base_percent,
+                );
+                tokio::time::sleep(delay).await;
+            }
+            match download_from_url(&mirror_url, &tmp, app, base_percent, end_percent).await {
+                Ok(()) => return Ok(tmp),
+                Err(e) => {
+                    mirror_err = e;
+                    let _ = tokio::fs::remove_file(&tmp).await;
+                }
             }
         }
+        last_err = mirror_err;
     }
 
     Err(format!("所有镜像下载均失败，最后错误: {}", last_err))
 }
 
 fn extract_archive(archive_path: &Path, target_dir: &Path) -> Result<(), String> {
+    // Clean up any stale files from previous failed extraction attempts
+    if target_dir.exists() {
+        let _ = fs::remove_dir_all(target_dir);
+    }
     fs::create_dir_all(target_dir)
         .map_err(|e| format!("无法创建目标目录 {}: {}", target_dir.display(), e))?;
 
@@ -2893,10 +2988,13 @@ async fn wait_for_http(port: u16, path: &str, label: &str, max_retries: u32) -> 
 }
 
 async fn wait_for_http_with_key(port: u16, path: &str, label: &str, max_retries: u32, mgmt_key: Option<String>) -> Result<(), String> {
+    let mut total_waited: u64 = 0;
     for attempt in 0..max_retries {
-        // 首次不等待，后续每次重试间隔 2 秒
+        // 首次不等待，后续指数退避：1s→2s→4s→8s→cap 10s
         if attempt > 0 {
-            tokio::time::sleep(Duration::from_secs(2)).await;
+            let delay_secs = std::cmp::min(10u64, 1u64 << (attempt - 1));
+            tokio::time::sleep(Duration::from_secs(delay_secs)).await;
+            total_waited += delay_secs;
         }
         let probe = {
             let path = path.to_string();
@@ -2911,10 +3009,10 @@ async fn wait_for_http_with_key(port: u16, path: &str, label: &str, max_retries:
         }
     }
     Err(format!(
-        "{} (端口 {}) 健康检查超时，已等待 {} 秒",
+        "{} (端口 {}) 健康检查超时，已等待约 {} 秒",
         label,
         port,
-        max_retries * 2
+        total_waited
     ))
 }
 
@@ -3446,7 +3544,7 @@ pub async fn extension_deploy_cpa_suite(
 
     // 11. 健康检查 CPA（/healthz 无需认证）
     emit_deploy_progress(&app, "health_cpa", "等待 CLIProxyAPI 就绪...", 85);
-    wait_for_http(CPA_PORT, "/healthz", "CLIProxyAPI", 15).await?;
+    wait_for_http(CPA_PORT, "/healthz", "CLIProxyAPI", 30).await?;
 
     // 12. 启动 CPAMP（先不带 PANEL_PATH，便于拉取内嵌面板）
     emit_deploy_progress(&app, "start_cpamp", "启动 CPA Manager Plus...", 92);
@@ -3477,7 +3575,7 @@ pub async fn extension_deploy_cpa_suite(
 
     // 13. 健康检查 CPAMP
     emit_deploy_progress(&app, "health_cpamp", "等待 CPA Manager Plus 就绪...", 95);
-    wait_for_http(CPAMP_PORT, "/health", "CPA Manager Plus", 10).await?;
+    wait_for_http(CPAMP_PORT, "/health", "CPA Manager Plus", 20).await?;
 
     // 14. 注入自动登录补丁，并用 PANEL_PATH 重启以覆盖 /management.html
     emit_deploy_progress(&app, "patch_panel", "注入面板自动登录...", 97);
@@ -3508,7 +3606,7 @@ pub async fn extension_deploy_cpa_suite(
         })
         .await
         .map_err(|e| e.to_string())??;
-        wait_for_http(CPAMP_PORT, "/health", "CPA Manager Plus", 10).await?;
+        wait_for_http(CPAMP_PORT, "/health", "CPA Manager Plus", 20).await?;
     }
 
     // 15. 自动添加 CPA 供应商到 providers.json
