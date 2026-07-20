@@ -8,7 +8,7 @@
   "devDependencies": {
     "@yao-pkg/pkg": "^6.20.0",
     "bytenode": "^1.5.7",
-    "javascript-obfuscator": "^5.4.3"
+    "javascript-obfuscator": "^5.5.0"
   },
   "pkg": {
     "assets": [
