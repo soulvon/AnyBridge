@@ -1393,6 +1393,11 @@ pub(crate) fn generate_model_catalog_json(entries: &[ModelCatalogEntry]) -> Resu
                 obj["context_window"] = serde_json::json!(ctx);
                 obj["max_context_window"] = serde_json::json!(ctx);
                 obj["priority"] = serde_json::json!(1000 + i);
+                // 白名单要求（spec CC-Switch 调研 4.11，2026-06-26 验证）：
+                // 每个条目必须 visibility="list" + supported_in_api=true，否则模型不显示/不可调用。
+                // 模板克隆来的 visibility 是 "hide"，会被 Codex 的模型白名单过滤掉（显示为"自定义"），必须覆盖。
+                obj["visibility"] = serde_json::json!("list");
+                obj["supported_in_api"] = serde_json::json!(true);
                 obj
             }
         })

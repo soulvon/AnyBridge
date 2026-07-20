@@ -517,40 +517,91 @@ fn probe_mitm_tls(
     cert_path: &std::path::Path,
     timeout: Duration,
 ) -> Result<(), String> {
-    let cert_pem = std::fs::read(cert_path)
+    use std::io::{Read, Write};
+    use std::sync::Arc;
+
+    // 不用 reqwest 走代理：reqwest 对「HTTPS 经 HTTP 代理」的连接不会正确应用
+    // add_root_certificate 的自定义根证书（实测直连可验证、经代理报 UnknownIssuer）。
+    // 这里手动建立 CONNECT 隧道 + rustls TLS 握手，直接用磁盘上的 CA 校验叶子证书，
+    // 既严格验证证书链，又真实覆盖 CONNECT→MITM→mitm-health 全链路。
+    let pem = std::fs::read_to_string(cert_path)
         .map_err(|e| format!("读取 MITM 证书用于 TLS 探针失败: {}", e))?;
-    let root = reqwest::Certificate::from_pem(&cert_pem)
+    let der = pem_cert_der(&pem)
+        .ok_or_else(|| "TLS 探针未在 PEM 中找到证书块".to_string())?;
+    let mut roots = rustls::RootCertStore::empty();
+    roots
+        .add(rustls::pki_types::CertificateDer::from(der))
         .map_err(|e| format!("TLS 探针加载 MITM 根证书失败: {}", e))?;
-    let proxy = reqwest::Proxy::http(format!("http://127.0.0.1:{}", port))
-        .map_err(|e| format!("TLS 探针创建代理失败: {}", e))?;
-    let client = reqwest::blocking::Client::builder()
-        .proxy(proxy)
-        .add_root_certificate(root)
-        .tls_built_in_root_certs(false)
-        .timeout(timeout)
-        .build()
-        .map_err(|e| format!("TLS 探针客户端初始化失败: {}", e))?;
-    let response = client
-        .get("https://server.codeium.com/__byok/mitm-health")
-        .send()
+    // 确保进程已安装 ring provider（reqwest 可能尚未初始化）。重复安装返回 Err，忽略即可。
+    let _ = rustls::crypto::ring::default_provider().install_default();
+    let config = rustls::ClientConfig::builder()
+        .with_root_certificates(roots)
+        .with_no_client_auth();
+
+    // 1. 连接代理并发送 CONNECT，建立到 MITM 主机的隧道
+    let addr = SocketAddr::from(([127, 0, 0, 1], port));
+    let mut tcp = TcpStream::connect_timeout(&addr, timeout)
+        .map_err(|e| format!("CONNECT/TLS 探针连接代理失败: {}", e))?;
+    let _ = tcp.set_read_timeout(Some(timeout));
+    let _ = tcp.set_write_timeout(Some(timeout));
+    tcp.write_all(
+        b"CONNECT server.codeium.com:443 HTTP/1.1\r\nHost: server.codeium.com:443\r\n\r\n",
+    )
+    .map_err(|e| format!("CONNECT/TLS 握手失败: 发送 CONNECT 失败: {}", e))?;
+    let mut head = [0u8; 512];
+    let n = tcp
+        .read(&mut head)
+        .map_err(|e| format!("CONNECT/TLS 握手失败: 读取 CONNECT 响应失败: {}", e))?;
+    let connect_resp = String::from_utf8_lossy(&head[..n]);
+    if !connect_resp.starts_with("HTTP/1.1 200") && !connect_resp.starts_with("HTTP/1.0 200") {
+        return Err(format!(
+            "CONNECT/TLS 握手失败: 隧道建立失败: {}",
+            connect_resp.lines().next().unwrap_or("").trim()
+        ));
+    }
+
+    // 2. 在隧道上做 rustls TLS 握手（严格校验：叶子证书必须由磁盘 CA 签发）
+    let server_name = "server.codeium.com"
+        .try_into()
+        .map_err(|_| "CONNECT/TLS 握手失败: 服务器名无效".to_string())?;
+    let mut conn = rustls::ClientConnection::new(Arc::new(config), server_name)
         .map_err(|e| format!("CONNECT/TLS 握手失败: {}", e))?;
-    let status = response.status();
-    let body = response
-        .text()
-        .map_err(|e| format!("读取 MITM TLS 探针响应失败: {}", e))?;
-    let json = serde_json::from_str::<serde_json::Value>(&body)
+    let mut tls = rustls::Stream::new(&mut conn, &mut tcp);
+
+    // 3. 发送 mitm-health 请求并读取响应
+    tls.write_all(
+        b"GET /__byok/mitm-health HTTP/1.1\r\nHost: server.codeium.com\r\nConnection: close\r\n\r\n",
+    )
+    .map_err(|e| format!("CONNECT/TLS 握手失败: {}", e))?;
+    let mut response = String::new();
+    tls.read_to_string(&mut response)
+        .map_err(|e| format!("CONNECT/TLS 握手失败: {}", e))?;
+
+    // 4. 校验响应：200 + ok:true + source:mitm + upstream:server.codeium.com
+    let status_ok = response.starts_with("HTTP/1.1 200") || response.starts_with("HTTP/1.0 200");
+    let body = response.split_once("\r\n\r\n").map(|(_, b)| b).unwrap_or("");
+    let json = serde_json::from_str::<serde_json::Value>(body)
         .map_err(|e| format!("MITM TLS 探针响应不是 JSON ({}): {}", e, body))?;
-    if status != reqwest::StatusCode::OK
+    if !status_ok
         || json.get("ok") != Some(&serde_json::Value::Bool(true))
         || json.get("source").and_then(|v| v.as_str()) != Some("mitm")
         || json.get("upstream").and_then(|v| v.as_str()) != Some("server.codeium.com")
     {
-        return Err(format!(
-            "TLS 已连接但未进入 MITM: HTTP {} body={}",
-            status, body
-        ));
+        return Err(format!("TLS 已连接但未进入 MITM: body={}", body));
     }
     Ok(())
+}
+
+/// 从 PEM 文本提取第一个证书块并 base64 解码为 DER。
+fn pem_cert_der(pem: &str) -> Option<Vec<u8>> {
+    use base64::Engine;
+    const BEGIN: &str = "-----BEGIN CERTIFICATE-----";
+    const END: &str = "-----END CERTIFICATE-----";
+    let start = pem.find(BEGIN)?;
+    let after = &pem[start + BEGIN.len()..];
+    let end = after.find(END)?;
+    let b64: String = after[..end].chars().filter(|c| !c.is_whitespace()).collect();
+    base64::engine::general_purpose::STANDARD.decode(b64).ok()
 }
 
 fn mitm_tls_failure(message: String) -> ProxyHealthFailure {
@@ -562,40 +613,49 @@ fn mitm_tls_failure(message: String) -> ProxyHealthFailure {
 
 struct MitmReadyReport {
     message: String,
-    admin_prompted: bool,
 }
 
-fn ensure_proxy_mitm_ready_once(
-    force_regenerate: bool,
-    allow_admin: bool,
-) -> Result<String, String> {
+/// 仅当错误表明 PEM/密钥文件本身坏了时才强制重生。
+/// 信任库安装失败（GPO/权限）不应触发重生，否则会改 fingerprint 造成装证循环。
+fn is_mitm_cert_file_error(err: &str) -> bool {
+    const MARKERS: &[&str] = &[
+        "MITM 证书/私钥",
+        "读取 MITM 证书",
+        "读取 MITM 私钥",
+        "证书文件",
+        "自动生成证书",
+        "无法创建证书目录",
+        "SAN 标记",
+        "解析或匹配失败",
+        "证书不完整",
+        "仍不完整",
+        // write_atomic / ensure_mitm_certs_ex 写盘失败：属于证书文件问题，值得一次强制重生重试
+        "证书路径缺少父目录",
+        "无法创建目录",
+        "写入临时文件失败",
+        "原子写入证书失败",
+        "证书写入后校验失败",
+    ];
+    MARKERS.iter().any(|m| err.contains(m))
+}
+
+/// 代理启动路径：只静默装 CurrentUser，绝不自动 UAC。
+/// 管理员安装只允许用户在「环境检测」显式点击。
+fn ensure_proxy_mitm_ready_once(force_regenerate: bool) -> Result<String, String> {
     let (certs_dir, generated) =
         crate::commands::system::ensure_mitm_certs_ex(force_regenerate)?;
     let cert_path = certs_dir.join("server.codeium.com.pem");
     let key_path = certs_dir.join("server.codeium.com-key.pem");
     crate::commands::system::validate_mitm_cert_files(&cert_path, &key_path)?;
-    let install_message = if allow_admin {
-        crate::commands::cert_install::install_ca_with_options(
-            false,
-            force_regenerate || generated,
-        )
-    } else {
-        crate::commands::cert_install::install_ca_user_only(
-            false,
-            force_regenerate || generated,
-        )
-    }
-    .map_err(|e| {
-        if allow_admin {
-            format!("MITM CA 管理员安装失败: {}", e)
-        } else {
-            format!("MITM CA 未能安装到当前用户根证书库: {}", e)
-        }
-    })?;
+    let install_message = crate::commands::cert_install::install_ca_with_options(
+        false,
+        force_regenerate || generated,
+    )
+    .map_err(|e| format!("MITM CA 未能安装到系统根证书库: {}", e))?;
     let status = crate::commands::cert_install::check_ca_status();
     if matches!(status.effective_store, crate::commands::cert_install::CaStore::None) {
         return Err(format!(
-            "MITM CA 安装后仍未在信任库中找到当前证书指纹。{}",
+            "MITM CA 安装后仍未在信任库中找到当前证书指纹。{}。请到「环境检测」手动安装证书（可能需要管理员授权）",
             install_message
         ));
     }
@@ -607,35 +667,27 @@ fn ensure_proxy_mitm_ready_once(
     ))
 }
 
-fn ensure_proxy_mitm_ready(allow_admin: bool) -> Result<MitmReadyReport, String> {
-    match ensure_proxy_mitm_ready_once(false, false) {
-        Ok(message) => Ok(MitmReadyReport {
-            message,
-            admin_prompted: false,
-        }),
-        Err(first_error) => match ensure_proxy_mitm_ready_once(true, false) {
-            Ok(message) => Ok(MitmReadyReport {
-                message: format!("自动修复后通过（首次原因: {}）；{}", first_error, message),
-                admin_prompted: false,
-            }),
-            Err(repair_error) if allow_admin => match ensure_proxy_mitm_ready_once(false, true) {
+fn ensure_proxy_mitm_ready() -> Result<MitmReadyReport, String> {
+    match ensure_proxy_mitm_ready_once(false) {
+        Ok(message) => Ok(MitmReadyReport { message }),
+        Err(first_error) if is_mitm_cert_file_error(&first_error) => {
+            match ensure_proxy_mitm_ready_once(true) {
                 Ok(message) => Ok(MitmReadyReport {
                     message: format!(
-                        "已通过一次管理员授权修复（自动修复原因: {}；重装原因: {}）；{}",
-                        first_error, repair_error, message
+                        "自动修复后通过（首次原因: {}）；{}",
+                        first_error, message
                     ),
-                    admin_prompted: true,
                 }),
-                Err(admin_error) => Err(format!(
-                    "首次自检失败: {}；自动清理并重装失败: {}；管理员安装失败: {}",
-                    first_error, repair_error, admin_error
+                Err(repair_error) => Err(format!(
+                    "首次自检失败: {}；自动清理并重装失败: {}。请到「环境检测」手动安装证书（可能需要管理员授权）",
+                    first_error, repair_error
                 )),
-            },
-            Err(repair_error) => Err(format!(
-                "首次自检失败: {}；自动清理并重装失败: {}；本次启动已请求过一次管理员授权，不再重复弹窗",
-                first_error, repair_error
-            )),
-        },
+            }
+        }
+        Err(first_error) => Err(format!(
+            "{}。若当前用户信任库被组策略拦截，请到「环境检测」手动安装证书（可能需要管理员授权）",
+            first_error
+        )),
     }
 }
 
@@ -812,6 +864,8 @@ fn run_proxy_preflight(
     let cert_dir = config_dir.join("certs");
     let cert_path = cert_dir.join("server.codeium.com.pem");
     let key_path = cert_dir.join("server.codeium.com-key.pem");
+    let leaf_path = cert_dir.join(crate::commands::system::MITM_LEAF_CERT_FILE);
+    let leaf_key_path = cert_dir.join(crate::commands::system::MITM_LEAF_KEY_FILE);
     let san_marker_path = cert_dir.join("san-version");
     let mut cert_ok = cert_path.metadata().map(|m| m.len() > 0).unwrap_or(false);
     let mut key_ok = key_path.metadata().map(|m| m.len() > 0).unwrap_or(false);
@@ -821,7 +875,11 @@ fn run_proxy_preflight(
     let mut cert_contents_ok = cert_ok
         && key_ok
         && crate::commands::system::validate_mitm_cert_files(&cert_path, &key_path).is_ok();
-    if !cert_ok || !key_ok || !cert_contents_ok {
+    // 叶子证书（hybrid-server 实际呈现）也必须存在且有效；旧版升级时可能缺失。
+    let mut leaf_ok = leaf_path.metadata().map(|m| m.len() > 0).unwrap_or(false)
+        && leaf_key_path.metadata().map(|m| m.len() > 0).unwrap_or(false)
+        && crate::commands::system::validate_mitm_cert_files(&leaf_path, &leaf_key_path).is_ok();
+    if !cert_ok || !key_ok || !cert_contents_ok || !leaf_ok {
         if repair {
             // 只生成 PEM，不走完整 install（避免 UAC 卡启动/体检）
             match crate::commands::system::ensure_mitm_certs() {
@@ -838,7 +896,14 @@ fn run_proxy_preflight(
                             &key_path,
                         )
                         .is_ok();
-                    if cert_ok && key_ok && san_ok && cert_contents_ok {
+                    leaf_ok = leaf_path.metadata().map(|m| m.len() > 0).unwrap_or(false)
+                        && leaf_key_path.metadata().map(|m| m.len() > 0).unwrap_or(false)
+                        && crate::commands::system::validate_mitm_cert_files(
+                            &leaf_path,
+                            &leaf_key_path,
+                        )
+                        .is_ok();
+                    if cert_ok && key_ok && san_ok && cert_contents_ok && leaf_ok {
                         let msg = if generated {
                             format!("已自动生成 MITM 证书到 {}", dir.to_string_lossy())
                         } else {
@@ -920,8 +985,8 @@ fn run_proxy_preflight(
     }
 
     // 证书信任状态检查（升级路径：用户在装了 BYOK 但没装证书的机器上会卡这里）
-    // repair=true 时只做「用户级静默安装」，绝不弹 UAC。
-    // 需要管理员安装时，留给用户在「环境检测」点「安装证书」。
+    // repair=true 时提权安装到 LocalMachine\Root（UAC 授权后静默，无 Windows 安全警告）；
+    // 提权失败再降级 CurrentUser\Root。
     let mut ca_status = crate::commands::cert_install::check_ca_status();
     if repair {
         if matches!(
@@ -929,7 +994,7 @@ fn run_proxy_preflight(
             crate::commands::cert_install::CaStore::None
         ) && (ca_status.cert_exists || cert_ok)
         {
-            match crate::commands::cert_install::install_ca_user_only(false, false) {
+            match crate::commands::cert_install::install_ca_with_options(false, false) {
                 Ok(msg) => {
                     ca_status = crate::commands::cert_install::check_ca_status();
                     if !matches!(
@@ -940,7 +1005,7 @@ fn run_proxy_preflight(
                             &mut issues,
                             "ok",
                             "cert.auto_installed",
-                            format!("已自动安装 CA 到用户信任库。{}", msg),
+                            format!("已自动安装 CA 到系统信任库。{}", msg),
                         );
                     } else {
                         push_issue(
@@ -948,7 +1013,7 @@ fn run_proxy_preflight(
                             "err",
                             "cert.auto_install_incomplete",
                             format!(
-                                "已尝试静默安装 CA，但用户信任库仍未找到当前指纹。请点「安装证书」（可能需要管理员）。{}",
+                                "已尝试安装 CA，但系统信任库仍未找到当前指纹。请点「安装证书」或「清理并重装」。{}",
                                 msg
                             ),
                         );
@@ -959,7 +1024,7 @@ fn run_proxy_preflight(
                     "err",
                     "cert.auto_install_failed",
                     format!(
-                        "自动静默安装 CA 失败: {}。请在「平台 > 设置 > 环境检测」点「安装证书」或「清理并重装」",
+                        "自动安装 CA 失败: {}。请在「平台 > 设置 > 环境检测」点「安装证书」或「清理并重装」",
                         e
                     ),
                 ),
@@ -2163,13 +2228,12 @@ pub fn start_proxy_impl(
 }
 
 pub fn start_proxy_service_impl(app: AppHandle) -> Result<bool, String> {
-    start_proxy_service_impl_with_repair(app, true, false)
+    start_proxy_service_impl_with_repair(app, true)
 }
 
 fn start_proxy_service_impl_with_repair(
     app: AppHandle,
     allow_runtime_repair: bool,
-    admin_already_prompted: bool,
 ) -> Result<bool, String> {
     let state = app.state::<ProxyState>();
 
@@ -2197,7 +2261,8 @@ fn start_proxy_service_impl_with_repair(
         .ok()
         .and_then(|p| resolve_resources_root(Some(&p)));
 
-    let mitm_report = match ensure_proxy_mitm_ready(!admin_already_prompted) {
+    // 启动前只做静默装证；绝不在此路径弹 UAC。
+    let mitm_report = match ensure_proxy_mitm_ready() {
         Ok(report) => report,
         Err(e) => {
             clear_starting();
@@ -2219,7 +2284,6 @@ fn start_proxy_service_impl_with_repair(
             msg: format!("✅ MITM 前置检查通过: {}", mitm_report.message),
         },
     );
-    let admin_prompted = admin_already_prompted || mitm_report.admin_prompted;
 
     kill_sidecar_process();
 
@@ -2356,33 +2420,27 @@ fn start_proxy_service_impl_with_repair(
         *lock_or_recover(&state.target_ide) = String::new();
         *lock_or_recover(&state.ports) = None;
         if failure.mitm_related && allow_runtime_repair {
+            // 仅当 sidecar 明确报告 MITM 未启用（证书文件加载失败）时，才允许一次强制重生。
+            // TLS 握手失败本身不重生证书：健康探针信任的是磁盘 PEM，乱重生只会改 fingerprint 并诱发装证循环。
+            // 运行时修复绝不弹 UAC。
+            let force_regenerate = failure.message.contains("MITM 未启用");
             let _ = app.emit(
                 "proxy-log",
                 LogLine {
                     level: "warn".into(),
                     msg: format!(
-                        "MITM/TLS 实链路自检失败，正在强制重生证书并仅重启一次: {}",
+                        "MITM/TLS 实链路自检失败，正在{}并仅重启一次（无 UAC）: {}",
+                        if force_regenerate {
+                            "强制重生证书"
+                        } else {
+                            "静默重装当前用户 CA"
+                        },
                         failure.message
                     ),
                 },
             );
-            let repair_result = match ensure_proxy_mitm_ready_once(true, false) {
-                Ok(report) => Ok((report, false)),
-                Err(user_error) if admin_prompted => Err(format!(
-                    "当前用户静默修复失败: {}；本次启动已请求过一次管理员授权，不再重复弹窗",
-                    user_error
-                )),
-                Err(user_error) => ensure_proxy_mitm_ready_once(false, true)
-                    .map(|report| (report, true))
-                    .map_err(|admin_error| {
-                        format!(
-                            "当前用户静默修复失败: {}；管理员修复失败: {}",
-                            user_error, admin_error
-                        )
-                    }),
-            };
-            match repair_result {
-                Ok((report, repair_admin_prompted)) => {
+            match ensure_proxy_mitm_ready_once(force_regenerate) {
+                Ok(report) => {
                     let _ = app.emit(
                         "proxy-log",
                         LogLine {
@@ -2390,15 +2448,11 @@ fn start_proxy_service_impl_with_repair(
                             msg: format!("MITM 证书已修复，正在重新启动代理: {}", report),
                         },
                     );
-                    return start_proxy_service_impl_with_repair(
-                        app,
-                        false,
-                        admin_prompted || repair_admin_prompted,
-                    );
+                    return start_proxy_service_impl_with_repair(app, false);
                 }
                 Err(repair_error) => {
                     let msg = format!(
-                        "代理服务启动失败: {}；MITM 自动修复失败: {}",
+                        "代理服务启动失败: {}；MITM 自动修复失败: {}。请到「环境检测」手动安装证书（可能需要管理员授权）",
                         failure.message, repair_error
                     );
                     let _ = app.emit("proxy-stopped", ());

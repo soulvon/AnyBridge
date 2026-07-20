@@ -100,12 +100,29 @@ function resolveCertsDir() {
 }
 const CERTS_DIR = resolveCertsDir();
 let MITM_CERT, MITM_KEY;
+let MITM_CA_CERT = null;
 let MITM_ENABLED = false;
 let MITM_CERT_FINGERPRINT = null;
 let MITM_ERROR = null;
 try {
-  MITM_CERT = fs.readFileSync(new URL('server.codeium.com.pem', CERTS_DIR));
-  MITM_KEY = fs.readFileSync(new URL('server.codeium.com-key.pem', CERTS_DIR));
+  // 优先使用由本地 CA 签发的 end-entity 叶子证书（mitm-leaf.pem，含 CA 链）。
+  // 严格 TLS 客户端（rustls/webpki）拒绝「CA 证书当作服务器证书」(CaUsedAsEndEntity)，
+  // 因此 MITM 必须呈现叶子证书，CA 仅作为信任根。
+  const leafUrl = new URL('mitm-leaf.pem', CERTS_DIR);
+  const leafKeyUrl = new URL('mitm-leaf-key.pem', CERTS_DIR);
+  const caUrl = new URL('server.codeium.com.pem', CERTS_DIR);
+  const hasLeaf = fs.existsSync(leafUrl) && fs.existsSync(leafKeyUrl);
+  if (hasLeaf) {
+    MITM_CERT = fs.readFileSync(leafUrl);
+    MITM_KEY = fs.readFileSync(leafKeyUrl);
+    MITM_CA_CERT = fs.readFileSync(caUrl);
+  } else {
+    // 兼容旧布局（CA 直接当服务器证书）：仅供独立 dev 运行，严格客户端会拒绝。
+    // 正常启动路径（Rust ensure_mitm_certs_ex）会先补齐叶子证书，不会走到这里。
+    MITM_CERT = fs.readFileSync(caUrl);
+    MITM_KEY = fs.readFileSync(new URL('server.codeium.com-key.pem', CERTS_DIR));
+  }
+  // X509Certificate 解析链首证书（叶子）。
   const certificate = new crypto.X509Certificate(MITM_CERT);
   const privateKey = crypto.createPrivateKey(MITM_KEY);
   if (!certificate.checkPrivateKey(privateKey)) {
@@ -114,23 +131,36 @@ try {
   if (Date.now() < Date.parse(certificate.validFrom) || Date.now() > Date.parse(certificate.validTo)) {
     throw new Error(`证书不在有效期内: ${certificate.validFrom} ~ ${certificate.validTo}`);
   }
-  if (!certificate.ca) {
-    throw new Error('证书未标记为 CA，不能作为 MITM 信任根');
-  }
   const missing = [...MITM_HOSTS].filter(host => !certificate.checkHost(host));
   if (missing.length) {
     throw new Error(`证书缺少 SAN: ${missing.join(', ')}`);
+  }
+  if (hasLeaf) {
+    // 叶子必须是非 CA 的 end-entity，且由本地 CA 签发。
+    if (certificate.ca) {
+      throw new Error('MITM 叶子证书不应标记为 CA');
+    }
+    const ca = new crypto.X509Certificate(MITM_CA_CERT);
+    if (!ca.ca) {
+      throw new Error('MITM 信任根未标记为 CA');
+    }
+    if (!certificate.verify(ca.publicKey)) {
+      throw new Error('叶子证书未由本地 MITM CA 签发');
+    }
+  } else if (!certificate.ca) {
+    throw new Error('证书未标记为 CA，不能作为 MITM 信任根');
   }
   // Creating the context validates the key/certificate pair before the first
   // client connection and avoids discovering a broken key only under load.
   tls.createSecureContext({ cert: MITM_CERT, key: MITM_KEY });
   MITM_CERT_FINGERPRINT = certificate.fingerprint256;
   MITM_ENABLED = true;
-  console.log(`🔐 MITM enabled; cert=${new URL('server.codeium.com.pem', CERTS_DIR).href}; fingerprint=${MITM_CERT_FINGERPRINT}`);
+  console.log(`🔐 MITM enabled; ${hasLeaf ? 'leaf' : 'ca-as-leaf'}=${new URL(hasLeaf ? 'mitm-leaf.pem' : 'server.codeium.com.pem', CERTS_DIR).href}; fingerprint=${MITM_CERT_FINGERPRINT}`);
 } catch (error) {
   MITM_ERROR = error instanceof Error ? error.message : String(error);
   MITM_CERT = undefined;
   MITM_KEY = undefined;
+  MITM_CA_CERT = null;
   console.error(`❌ MITM certificate unavailable: ${MITM_ERROR}`);
 }
 

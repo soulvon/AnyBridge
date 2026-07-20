@@ -949,11 +949,13 @@
                   style="padding:16px 20px; border-bottom:1px solid var(--border); background:var(--bg-glass); display:flex; align-items:center; justify-content:space-between;">
                   <span style="font-size:14px; font-weight:700; color:var(--text-primary);">选择 IDE 模型槽位</span>
                   <div style="display:flex; align-items:center; gap:6px;">
+                    <span class="brand-tag" id="ideModelsSourceBadge" title="模型清单缓存来源"
+                      style="padding: 2px 8px; font-size: 10px; font-weight:700; display:none;"></span>
                     <span class="brand-tag" id="slotCatalogCount"
                       style="padding: 2px 8px; font-size: 10px; font-weight:700;">0 可用</span>
                     <button id="btn-refresh-models" class="btn-ghost accent"
  style="padding: 0 10px; border-radius: 6px; display: flex; align-items: center; gap: 4px; height: 24px; font-size: 11px; font-weight: 600;"
- title="从 IDE 账号拉取最新模型列表" data-action="refreshIdeModels">
+ title="从 IDE 账号拉取最新模型列表（API 刷新）。若需与 IDE 下拉框一致，请启动代理后重启 IDE 并打开一次模型选择器以抓取 captured 清单。" data-action="refreshIdeModels">
                       <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                         stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
                         <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"></path>
@@ -962,6 +964,7 @@
                     </button>
                   </div>
                 </div>
+                <div id="ideModelsSourceHint" role="note" style="display:none;"></div>
                 <div id="slotCatalogScopeTabs"
                   style="display:flex;align-items:center;gap:6px;padding:10px 20px;border-bottom:1px solid var(--border);background:var(--bg-card);">
                   <button class="slot-scope-tab" data-scope="all"
@@ -1076,6 +1079,8 @@
                   <h2>模型槽位管理</h2>
                   <div id="slot-policy-summary">默认全量解锁</div>
                 </div>
+                <span class="brand-tag" id="ideModelsSourceBadgeSlots" title="模型清单缓存来源"
+                  style="padding: 2px 8px; font-size: 10px; font-weight:700; display:none; margin-left:8px;"></span>
               </div>
               <div class="model-slots-actions">
                 <button class="btn-ghost secondary" data-action="closeInjectedEditor">返回映射</button>
@@ -1090,6 +1095,7 @@
                 </button>
               </div>
             </div>
+            <div id="ideModelsSourceHintSlots" role="note" style="display:none; margin:0 0 10px;"></div>
             <div class="glass-card model-slots-workspace">
               <div class="model-slots-presets-wrap">
                 <div class="model-slots-section-title">

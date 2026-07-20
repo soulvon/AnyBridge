@@ -1,6 +1,6 @@
 [package]
 name = "anybridge"
-version = "0.3.14"
+version = "0.3.16"
 description = "AnyBridge desktop client"
 authors = ["soulvon"]
 edition = "2021"
@@ -26,6 +26,8 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tokio = { version = "1", features = ["full"] }
 reqwest = { version = "0.12", features = ["json", "rustls-tls", "stream", "blocking"], default-features = false }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+base64 = "0.22"
 flate2 = "1"
 dirs = "5"
 rcgen = "0.13"

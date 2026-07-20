@@ -66,8 +66,9 @@ dependencies = [
 
 [[package]]
 name = "anybridge"
-version = "0.3.14"
+version = "0.3.16"
 dependencies = [
+ "base64 0.22.1",
  "chrono",
  "dirs 5.0.1",
  "flate2",
@@ -81,6 +82,7 @@ dependencies = [
  "reqwest 0.12.28",
  "rfd",
  "rusqlite",
+ "rustls",
  "serde",
  "serde_json",
  "sha1",

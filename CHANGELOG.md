@@ -2,6 +2,24 @@
 
 All notable changes to AnyBridge will be documented in this file.
 
+## v0.3.16 - 2026-07-20
+
+- MITM 证书架构升级 — CA 与叶子证书分离：CA（`server.codeium.com.pem`）仅作信任根装入系统证书库，新增由 CA 签发的 end-entity 叶子证书（`mitm-leaf.pem` + `mitm-leaf-key.pem`）用于 MITM 呈现。严格 TLS 客户端（rustls/webpki）拒绝 CA 证书当服务器证书（CaUsedAsEndEntity），叶子证书彻底解决此问题。
+- sidecar 证书加载优先叶子证书：hybrid-server.js 优先加载 `mitm-leaf.pem`，兼容旧布局降级。增加叶子证书链校验（非 CA 标志 + 由本地 CA 签发）。
+- TLS 探针 `probe_mitm_tls` 重写：弃用 reqwest（经 HTTP 代理不应用自定义根证书，导致 UnknownIssuer），改用手动 CONNECT 隧道 + rustls TLS 握手，直接以磁盘 CA 严格校验叶子证书链，覆盖 CONNECT→MITM→mitm-health 全链路。
+- MITM 运行时自检分级修复：sidecar 报告 MITM 未启用（证书加载失败）才强制重生证书；TLS 实链路探测失败仅静默重装当前用户 CA 并只重试一次，不再弹 UAC。
+- `generate_certs_ex` 证书安装改走 `install_ca_with_options`：用户显式操作时提权装 LocalMachine\Root（UAC 授权后静默无安全警告），提权失败再降级 CurrentUser\Root。
+
+## v0.3.15 - 2026-07-19
+
+- 修复 Codex 第三方模型在选择器显示为「自定义」而不显示模型名：模型目录（`anybridge-model-catalog.json`）的模板克隆分支未覆盖模板的 `visibility: "hide"`，导致自定义模型被 Codex 模型白名单过滤（官方模型在内置白名单故正常）。按 spec 既有结论（CC-Switch 调研 4.11）在目录生成时强制 `visibility: "list"` + `supported_in_api: true`。
+- 证书安装改回「提权优先」：安装 CA 时优先用 UAC 提权装到 `LocalMachine\Root`（提权进程安装根证书 Windows 不弹「安全警告」，实现自动提权 + 静默无感），提权失败再降级 `CurrentUser\Root`。修复 v0.3.12 改为 CurrentUser 优先后每次新装证书都弹 Windows「安全警告」对话框的问题（启动自检、生成证书、体检修复三条路径统一）。
+- 修复代理启动失败「CONNECT/TLS 握手失败（CaUsedAsEndEntity）」：MITM 改为呈现由本地 CA 签发的独立 end-entity 叶子证书（`mitm-leaf.pem`），CA 仅作为信任根。严格 TLS 客户端（rustls/webpki）拒绝把 CA 证书当作服务器证书，旧版直接呈现 CA 证书导致启动实链路自检握手失败；升级后自动补齐叶子证书。
+- 重写 MITM 实链路自检探针 `probe_mitm_tls`：改用手动 CONNECT 隧道 + rustls TLS 握手。reqwest 对「HTTPS 经 HTTP 代理」连接不会应用 `add_root_certificate` 自定义根证书（实测直连可验证、经代理报 UnknownIssuer），导致即使证书正确自检仍失败；新探针直接用磁盘 CA 严格校验叶子证书链并覆盖 CONNECT→MITM→mitm-health 全链路。
+- 修复潜在「装证循环」：仅当证书文件本身损坏（PEM/私钥不匹配、写盘失败等）才强制重生；信任库安装失败（GPO/权限）不再触发重生，避免 fingerprint 变更导致的反复重装。
+- 运行时 MITM 自检修复分级：sidecar 报告 MITM 未启用（证书加载失败）才强制重生；TLS 实链路探测失败只提权重装 CA 并仅重试一次。
+- 补齐 `ui/index.html` 构建产物：IDE 模型清单来源（captured/api/builtin）徽章与提示在 v0.3.14 漏构建，本版同步。
+
 ## v0.3.14 - 2026-07-19
 
 - Responses API 上游强制 `store: false`：`local-proxy` 在 extras 合并后硬写，`applyCodexUnlockRequiredFields` 同步强制，避免 `preserveExtraParams`/客户端把 `store: true` 透传到三方网关落盘。

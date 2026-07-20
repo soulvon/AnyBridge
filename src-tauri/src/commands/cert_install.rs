@@ -1141,8 +1141,9 @@ pub fn install_ca() -> Result<String, String> {
     install_ca_with_options(false, false)
 }
 
-/// 仅装用户信任库，绝不弹 UAC。
-/// 给「环境体检 repair / generate_certs / 启动代理自检」用，避免后台静默卡住。
+/// 仅装用户信任库，绝不弹 UAC（保留 API；当前主路径已改为提权装 LocalMachine）。
+/// 注意：CurrentUser\Root 安装会触发 Windows「安全警告」弹窗。
+#[allow(dead_code)]
 pub fn install_ca_user_only(
     force_regenerate: bool,
     prefer_fresh_install: bool,
@@ -1293,9 +1294,13 @@ fn install_ca_impl(
     }
     eprintln!("[cert_install] install_ca: cleanup done");
 
-    // 阶段 1：先试 CurrentUser\Root（零弹窗，95% 用户走到这里就完事了）
+    // 阶段 1：仅 allow_admin=false（纯静默/修复路径）才先试 CurrentUser\Root。
+    // allow_admin=true 时跳过 CurrentUser，直接走阶段 2 提权装 LocalMachine\Root——
+    // 因为 CurrentUser 安装会触发 Windows「安全警告」弹窗，而提权进程装 LocalMachine\Root
+    // 不会弹该警告（UAC 提权本身就是授权门槛），实现「自动提权 + 静默无感」。
     // 调试 UAC 时可设置 ANYBRIDGE_FORCE_UAC_CERT_INSTALL=1 强制跳过本阶段。
-    if std::env::var_os("ANYBRIDGE_FORCE_UAC_CERT_INSTALL").is_none()
+    if !allow_admin
+        && std::env::var_os("ANYBRIDGE_FORCE_UAC_CERT_INSTALL").is_none()
         && std::env::var_os("IDE_BYOK_FORCE_UAC_CERT_INSTALL").is_none()
     {
         emit_cert_progress(
@@ -1393,8 +1398,7 @@ fn install_ca_impl(
         app.as_ref(),
         "admin",
         &format!(
-            "{} 验证未通过，正在请求 {} 授权安装到 {}（请在 UAC 弹窗中点「是」；若没看到请检查任务栏）",
-            current_user_store_label(),
+            "正在请求 {} 授权安装到 {}（UAC 授权后静默安装，无安全警告；请在 UAC 弹窗中点「是」，若没看到请检查任务栏）",
             admin_prompt_label(),
             local_machine_store_label()
         ),

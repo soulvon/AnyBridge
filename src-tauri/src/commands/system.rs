@@ -55,49 +55,88 @@ pub(crate) fn validate_mitm_cert_files(
     Ok(())
 }
 
-fn write_mitm_cert_bundle(certs_dir: &std::path::Path) -> Result<(), String> {
-    use rcgen::{CertificateParams, DistinguishedName, DnType, IsCa, KeyUsagePurpose, SanType};
+/// MITM 叶子证书文件名（hybrid-server 实际向客户端呈现的证书 + CA 链）。
+/// 信任根仍是 `server.codeium.com.pem`（装入系统证书库、probe 以此为 root）。
+pub(crate) const MITM_LEAF_CERT_FILE: &str = "mitm-leaf.pem";
+pub(crate) const MITM_LEAF_KEY_FILE: &str = "mitm-leaf-key.pem";
 
-    let cert_path = certs_dir.join("server.codeium.com.pem");
-    let key_path = certs_dir.join("server.codeium.com-key.pem");
-    let san_marker_path = certs_dir.join("san-version");
-    let mut params = CertificateParams::new(
-        mitm_dns_names()
-            .iter()
-            .map(|name| (*name).to_string())
-            .collect::<Vec<String>>(),
-    )
-    .map_err(|e| e.to_string())?;
-
-    let mut dn = DistinguishedName::new();
-    dn.push(DnType::CommonName, CA_COMMON_NAME);
-    params.distinguished_name = dn;
-    params.is_ca = IsCa::Ca(rcgen::BasicConstraints::Unconstrained);
-    params.key_usages = vec![
-        KeyUsagePurpose::DigitalSignature,
-        KeyUsagePurpose::KeyCertSign,
-        KeyUsagePurpose::CrlSign,
-    ];
-    params.subject_alt_names = mitm_dns_names()
+fn mitm_san_entries() -> Result<Vec<rcgen::SanType>, String> {
+    mitm_dns_names()
         .iter()
         .map(|name| {
-            Ok(SanType::DnsName(
+            Ok(rcgen::SanType::DnsName(
                 (*name)
                     .try_into()
                     .map_err(|_| format!("bad san: {}", name))?,
             ))
         })
-        .collect::<Result<Vec<_>, String>>()?;
+        .collect::<Result<Vec<_>, String>>()
+}
 
-    let key_pair = rcgen::KeyPair::generate().map_err(|e| e.to_string())?;
-    let cert = params.self_signed(&key_pair).map_err(|e| e.to_string())?;
-    write_atomic(&cert_path, cert.pem())?;
-    write_atomic(&key_path, key_pair.serialize_pem())?;
+fn write_mitm_cert_bundle(certs_dir: &std::path::Path) -> Result<(), String> {
+    use rcgen::{
+        BasicConstraints, CertificateParams, DistinguishedName, DnType, ExtendedKeyUsagePurpose,
+        IsCa, KeyUsagePurpose,
+    };
+
+    let ca_cert_path = certs_dir.join("server.codeium.com.pem");
+    let ca_key_path = certs_dir.join("server.codeium.com-key.pem");
+    let leaf_cert_path = certs_dir.join(MITM_LEAF_CERT_FILE);
+    let leaf_key_path = certs_dir.join(MITM_LEAF_KEY_FILE);
+    let san_marker_path = certs_dir.join("san-version");
+
+    let san_names: Vec<String> = mitm_dns_names().iter().map(|n| (*n).to_string()).collect();
+    let san_entries = mitm_san_entries()?;
+
+    // ── CA 信任根：装入系统证书库，客户端（含 rustls probe）以此为 root。
+    // 标记 IsCa + keyCertSign；保留 SAN 以兼容既有 san-version 校验逻辑。
+    let mut ca_params = CertificateParams::new(san_names.clone()).map_err(|e| e.to_string())?;
+    let mut ca_dn = DistinguishedName::new();
+    ca_dn.push(DnType::CommonName, CA_COMMON_NAME);
+    ca_params.distinguished_name = ca_dn;
+    ca_params.is_ca = IsCa::Ca(BasicConstraints::Unconstrained);
+    ca_params.key_usages = vec![
+        KeyUsagePurpose::DigitalSignature,
+        KeyUsagePurpose::KeyCertSign,
+        KeyUsagePurpose::CrlSign,
+    ];
+    ca_params.subject_alt_names = san_entries.clone();
+    let ca_key = rcgen::KeyPair::generate().map_err(|e| e.to_string())?;
+    let ca_cert = ca_params.self_signed(&ca_key).map_err(|e| e.to_string())?;
+
+    // ── 叶子证书：hybrid-server 实际呈现；由 CA 签发、非 CA、带 ServerAuth EKU。
+    // 严格 TLS 客户端（rustls/webpki）拒绝「CA 证书当作服务器证书」(CaUsedAsEndEntity)，
+    // 因此必须由 CA 签发一张独立的 end-entity 叶子证书。
+    let mut leaf_params = CertificateParams::new(san_names).map_err(|e| e.to_string())?;
+    let mut leaf_dn = DistinguishedName::new();
+    leaf_dn.push(DnType::CommonName, "AnyBridge MITM Leaf");
+    leaf_params.distinguished_name = leaf_dn;
+    leaf_params.is_ca = IsCa::NoCa;
+    leaf_params.key_usages = vec![
+        KeyUsagePurpose::DigitalSignature,
+        KeyUsagePurpose::KeyEncipherment,
+    ];
+    leaf_params.extended_key_usages = vec![ExtendedKeyUsagePurpose::ServerAuth];
+    leaf_params.subject_alt_names = san_entries;
+    let leaf_key = rcgen::KeyPair::generate().map_err(|e| e.to_string())?;
+    let leaf_cert = leaf_params
+        .signed_by(&leaf_key, &ca_cert, &ca_key)
+        .map_err(|e| e.to_string())?;
+
+    // 叶子 + CA 链一并写出，hybrid-server 呈现完整链（leaf 在前）。
+    let mut leaf_chain_pem = leaf_cert.pem();
+    leaf_chain_pem.push_str(&ca_cert.pem());
+
+    write_atomic(&ca_cert_path, ca_cert.pem())?;
+    write_atomic(&ca_key_path, ca_key.serialize_pem())?;
+    write_atomic(&leaf_cert_path, leaf_chain_pem)?;
+    write_atomic(&leaf_key_path, leaf_key.serialize_pem())?;
     write_atomic(
         &san_marker_path,
         format!("{version}\n", version = MITM_CERT_SAN_VERSION),
     )?;
-    validate_mitm_cert_files(&cert_path, &key_path)
+    validate_mitm_cert_files(&ca_cert_path, &ca_key_path)?;
+    validate_mitm_cert_files(&leaf_cert_path, &leaf_key_path)
 }
 
 #[cfg(test)]
@@ -529,41 +568,52 @@ pub fn ensure_mitm_certs_ex(force: bool) -> Result<(std::path::PathBuf, bool), S
 
     let cert_path = certs_dir.join("server.codeium.com.pem");
     let key_path = certs_dir.join("server.codeium.com-key.pem");
+    let leaf_cert_path = certs_dir.join(MITM_LEAF_CERT_FILE);
+    let leaf_key_path = certs_dir.join(MITM_LEAF_KEY_FILE);
     let san_marker_path = certs_dir.join("san-version");
 
     if force {
         let _ = std::fs::remove_file(&cert_path);
         let _ = std::fs::remove_file(&key_path);
+        let _ = std::fs::remove_file(&leaf_cert_path);
+        let _ = std::fs::remove_file(&leaf_key_path);
         let _ = std::fs::remove_file(&san_marker_path);
     }
 
     let cert_ok = cert_path.metadata().map(|m| m.len() > 0).unwrap_or(false);
     let key_ok = key_path.metadata().map(|m| m.len() > 0).unwrap_or(false);
+    let leaf_ok = leaf_cert_path.metadata().map(|m| m.len() > 0).unwrap_or(false)
+        && leaf_key_path.metadata().map(|m| m.len() > 0).unwrap_or(false)
+        && validate_mitm_cert_files(&leaf_cert_path, &leaf_key_path).is_ok();
     let san_ok = std::fs::read_to_string(&san_marker_path)
         .map(|s| s.trim() == MITM_CERT_SAN_VERSION)
         .unwrap_or(false);
     let contents_ok = cert_ok && key_ok && validate_mitm_cert_files(&cert_path, &key_path).is_ok();
-    // 证书与私钥必须成对；任一空/缺/版本过期/内容无效都重生
-    let already_complete = !force && contents_ok && san_ok;
+    // CA 与叶子证书必须成对且完整；任一空/缺/版本过期/内容无效都重生。
+    // 旧版只有 CA-as-leaf 单文件（无 mitm-leaf.pem）→ leaf_ok=false → 自动补齐叶子证书。
+    let already_complete = !force && contents_ok && san_ok && leaf_ok;
 
     if !already_complete {
-        // CommonName 跟项目产品名 (tauri.conf.json productName="AnyBridge") 对齐。
-        // 该证书同时作为 MITM leaf 与本地信任根：需标记 IsCa + keyCertSign，
-        // 否则部分环境下 Chromium/Electron 对「根库中的非 CA 证书」信任不稳定。
+        // 生成 CA 信任根 + 由其签发的 end-entity 叶子证书。
+        // 严格 TLS 客户端（rustls/webpki）拒绝 CA 证书当作服务器证书，故叶子必须独立。
         write_mitm_cert_bundle(&certs_dir)?;
 
         // 回读校验：避免磁盘满/权限问题导致「写入成功但文件为空」
         let cert_ok = cert_path.metadata().map(|m| m.len() > 0).unwrap_or(false);
         let key_ok = key_path.metadata().map(|m| m.len() > 0).unwrap_or(false);
+        let leaf_ok = leaf_cert_path.metadata().map(|m| m.len() > 0).unwrap_or(false)
+            && leaf_key_path.metadata().map(|m| m.len() > 0).unwrap_or(false);
         let san_ok = std::fs::read_to_string(&san_marker_path)
             .map(|s| s.trim() == MITM_CERT_SAN_VERSION)
             .unwrap_or(false);
-        let contents_result = validate_mitm_cert_files(&cert_path, &key_path);
-        if !cert_ok || !key_ok || !san_ok || contents_result.is_err() {
+        let contents_result = validate_mitm_cert_files(&cert_path, &key_path)
+            .and_then(|()| validate_mitm_cert_files(&leaf_cert_path, &leaf_key_path));
+        if !cert_ok || !key_ok || !leaf_ok || !san_ok || contents_result.is_err() {
             return Err(format!(
-                "证书写入后校验失败: cert_ok={} key_ok={} san_ok={} contents={} dir={}",
+                "证书写入后校验失败: cert_ok={} key_ok={} leaf_ok={} san_ok={} contents={} dir={}",
                 cert_ok,
                 key_ok,
+                leaf_ok,
                 san_ok,
                 contents_result.err().unwrap_or_else(|| "ok".to_string()),
                 certs_dir.to_string_lossy()
@@ -585,14 +635,15 @@ pub async fn generate_certs() -> Result<String, String> {
     }
 }
 
-/// 生成（或强制重生）MITM 证书，并静默尝试装到用户信任库（不弹 UAC）。
-/// 需要管理员路径时提示用户去「环境检测」显式点「安装证书」。
+/// 生成（或强制重生）MITM 证书，并尝试安装到系统信任库。
+/// 走提权安装 LocalMachine\Root（UAC 授权后静默，无 Windows 安全警告）；
+/// 提权失败再降级 CurrentUser\Root。
 pub fn generate_certs_ex(force: bool) -> Result<String, String> {
     let (certs_dir, generated) = ensure_mitm_certs_ex(force)?;
 
-    // 只走用户信任库静默安装，绝不在生成路径弹 UAC。
-    // 否则「生成证书」/ 启动自检 / 体检 repair 会卡在 ShellExecuteExW。
-    match crate::commands::cert_install::install_ca_user_only(false, force || generated) {
+    // 提权装 LocalMachine\Root：UAC 授权后静默安装，不弹 Windows「安全警告」。
+    // 「生成证书」是用户显式操作，弹 UAC 提权符合预期。
+    match crate::commands::cert_install::install_ca_with_options(false, force || generated) {
         Ok(install_msg) => {
             let gen_msg = if generated {
                 format!("已生成证书到 {}", certs_dir.to_string_lossy())
@@ -608,7 +659,7 @@ pub fn generate_certs_ex(force: bool) -> Result<String, String> {
                 format!("证书已存在 ({})", certs_dir.to_string_lossy())
             };
             Ok(format!(
-                "{}。⚠ 自动装到用户信任库未完成: {}。请在「平台 > 设置 > 环境检测」点「安装证书」或「清理并重装」",
+                "{}。⚠ 自动安装到系统信任库未完成: {}。请在「平台 > 设置 > 环境检测」点「安装证书」或「清理并重装」",
                 gen_msg, e
             ))
         }
