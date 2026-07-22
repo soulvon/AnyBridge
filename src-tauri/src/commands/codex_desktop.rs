@@ -1304,10 +1304,10 @@ pub async fn start_codex_with_cdp(_inject_models: Option<bool>) -> CodexDesktopR
 
 // ─── 常驻 watcher（spec/31）────────────────────────────────────────────
 //
-// 检测 Codex Desktop UI 在跑但没注入（用户手动重开 / 页面刷新 patch 丢失），自动接管：
-//   - 9229 通但 patch 没 → 直接补 inject（不 kill）
-//   - 9229 不通 → kill + launch_with_cdp + inject
-// 冷却退避避免死循环：成功 15s，失败 30s。随 AnyBridge 运行，不独立常驻。
+// 检测 Codex Desktop UI 在跑但没注入（页面刷新 patch 丢失），自动补注入：
+//   - CDP 通但 patch 没 → 直接补 inject（不 kill）
+//   - CDP 不通 → 只通知用户从 AnyBridge 启动，不自动 kill + 重启
+// 冷却退避避免频繁操作：成功 5s，失败 30s。随 AnyBridge 运行，不独立常驻。
 //
 // 硬约束：只在 Desktop UI 宿主（ChatGPT.exe/OpenAI.Codex 或旧版 Codex.exe）在跑时工作。
 // 绝不因孤立的 codex.exe app-server / CLI / 第三方 adapter 去 launch Desktop。
@@ -1329,11 +1329,7 @@ pub fn spawn_codex_desktop_watcher(app: AppHandle) {
 
 #[cfg(target_os = "windows")]
 const WATCHER_INTERVAL: Duration = Duration::from_secs(3);
-/// 启动宽限期：AnyBridge 启动后这段时间内 watcher 只做非破坏性操作（补注入），
-/// 不做 takeover（kill + 重启），避免「打开 AnyBridge → Codex 被杀重启」的体验。
-#[cfg(target_os = "windows")]
-const WATCHER_STARTUP_GRACE: Duration = Duration::from_secs(15);
-/// takeover 成功后冷却：防止接管刚完成的 Codex 在 renderer 加载期间被误判重新接管。
+/// 补注入成功后冷却：防止频繁重复注入。
 /// 之前 30s 太长，用户重开 Codex 后要等冷却到期才检测，体感慢。http_get_local
 /// 修了 keep-alive 误判后，5s 足够 Codex 稳定。
 #[cfg(target_os = "windows")]
@@ -1345,9 +1341,8 @@ const WATCHER_COOLDOWN_AFTER_FAILURE: Duration = Duration::from_secs(30);
 #[cfg(target_os = "windows")]
 fn watch_loop(app: AppHandle) {
     let mut cooldown_until: Option<Instant> = None;
-    let started_at = Instant::now();
     loop {
-        run_watcher_tick(&app, &mut cooldown_until, started_at);
+        run_watcher_tick(&app, &mut cooldown_until);
         std::thread::sleep(WATCHER_INTERVAL);
     }
 }
@@ -1355,11 +1350,11 @@ fn watch_loop(app: AppHandle) {
 /// 单次检查逻辑。
 /// watcher 只在 codex_needs_cdp_injection() 为 true 时工作：
 /// injectModels=true 且 preserveOfficialAuth=false。
-/// 否则整条 CDP 流程不触发——不检测 CDP、不接管、不补注入。
+/// 否则整条 CDP 流程不触发——不检测 CDP、不补注入、不通知。
 /// 且必须确认 Desktop UI 宿主在跑；仅有 app-server/CLI 不算。
-/// 启动宽限期内（WATCHER_STARTUP_GRACE）不做 takeover，避免打开 AnyBridge 就杀 Codex。
+/// CDP 不通时只发通知提示用户从 AnyBridge 启动，不自动 kill + 重启。
 #[cfg(target_os = "windows")]
-fn run_watcher_tick(app: &AppHandle, cooldown_until: &mut Option<Instant>, started_at: Instant) {
+fn run_watcher_tick(app: &AppHandle, cooldown_until: &mut Option<Instant>) {
     if !codex_needs_cdp_injection() {
         *cooldown_until = None;
         return;
@@ -1403,84 +1398,13 @@ fn run_watcher_tick(app: &AppHandle, cooldown_until: &mut Option<Instant>, start
         return;
     }
 
-    // CDP 不通（用户手动重开 Desktop，没带 CDP）→ takeover
-    // 启动宽限期内跳过 takeover，避免打开 AnyBridge 就自动杀重启 Codex
-    if Instant::now() - started_at < WATCHER_STARTUP_GRACE {
-        eprintln!("[codex-desktop watcher] 启动宽限期内，跳过 takeover");
-        return;
-    }
-    eprintln!("[codex-desktop watcher] 检测到 Codex Desktop 未以 CDP 模式运行，自动接管…");
-    let ok = takeover(app);
-    if ok {
-        eprintln!(
-            "[codex-desktop watcher] 接管完成，设冷却 {}s",
-            WATCHER_COOLDOWN_AFTER_SUCCESS.as_secs()
-        );
-        *cooldown_until = Some(Instant::now() + WATCHER_COOLDOWN_AFTER_SUCCESS);
-    } else {
-        eprintln!(
-            "[codex-desktop watcher] 接管失败，退避 {}s",
-            WATCHER_COOLDOWN_AFTER_FAILURE.as_secs()
-        );
-        *cooldown_until = Some(Instant::now() + WATCHER_COOLDOWN_AFTER_FAILURE);
-    }
-}
-
-
-/// 接管：kill + 等 AppX 复位 + launch_with_cdp + 等CDP起来。
-/// inject 后台异步做（不阻塞 watcher），学 CodexPlusPlus 的 launcher 模式。
-#[cfg(target_os = "windows")]
-fn takeover(app: &AppHandle) -> bool {
+    // CDP 不通（用户手动打开 Codex，没带 CDP）→ 只通知，不接管
+    eprintln!("[codex-desktop watcher] Codex Desktop 未以 CDP 模式运行，不自动接管");
     crate::commands::platforms::emit_switch_progress(
         app,
         "codex",
-        "stopping",
-        "正在自动停止 Codex…",
+        "notify",
+        "Codex 未以调试模式运行，如需自定义模型请从 AnyBridge 启动",
     );
-    if let Err(e) = kill_codex() {
-        eprintln!("[codex-desktop watcher] takeover kill 失败: {e}");
-        return false;
-    }
-    // MSIX 应用 kill 后 AppX 状态需要复位，不等就 launch 可能失败（学 CodexPlusPlus）
-    std::thread::sleep(Duration::from_millis(1500));
-    crate::commands::platforms::emit_switch_progress(
-        app,
-        "codex",
-        "starting",
-        "正在以调试模式重启 Codex…",
-    );
-    let (_pid, cdp_port) = match launch_with_cdp() {
-        Ok(v) => v,
-        Err(e) => {
-            eprintln!("[codex-desktop watcher] takeover launch 失败: {e}");
-            return false;
-        }
-    };
-    // 只等 CDP 端口起来（最多 15s），不等 inject 完成
-    let deadline = Instant::now() + Duration::from_secs(15);
-    while Instant::now() < deadline {
-        if cdp_listening_on_port(cdp_port, Duration::from_millis(500)) {
-            break;
-        }
-        std::thread::sleep(Duration::from_millis(300));
-    }
-    if !cdp_listening_on_port(cdp_port, Duration::from_millis(500)) {
-        eprintln!("[codex-desktop watcher] takeover: {cdp_port} 在 15s 内未就绪");
-        return false;
-    }
-    // inject 后台异步做，不阻塞 watcher（学 CodexPlusPlus launcher 异步 inject）
-    let app_clone = app.clone();
-    std::thread::spawn(move || {
-        crate::commands::platforms::emit_switch_progress(
-            &app_clone,
-            "codex",
-            "injecting",
-            "正在注入自定义模型…",
-        );
-        match inject_via_sidecar_on_port(cdp_port) {
-            Ok(_) => eprintln!("[codex-desktop watcher] 后台注入完成"),
-            Err(e) => eprintln!("[codex-desktop watcher] 后台注入失败: {e}"),
-        }
-    });
-    true
+    *cooldown_until = Some(Instant::now() + WATCHER_COOLDOWN_AFTER_FAILURE);
 }

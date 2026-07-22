@@ -798,10 +798,12 @@ export function handleGetChatMessage(req, res, body) {
   }
 
   if (injected) {
+    const injectedSupportsImages = injected.supportsImages !== false;
     slot = {
       modelUid: injected.modelUid,
       displayName: injected.label,
-      supportsImages: injected.supportsImages !== false,
+      supportsImages: injectedSupportsImages,
+      useThirdPartyVision: !injectedSupportsImages,
       targets: [{
         providerId: injected.providerId,
         model: injected.model,

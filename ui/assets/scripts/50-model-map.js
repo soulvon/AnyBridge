@@ -2435,6 +2435,7 @@ async function renderInjectedList() {
     return;
   }
 
+  const hasVisionModels = (modelMapStore.visionModels?.imageModels?.length || 0) > 0;
   list.innerHTML = `<table class="slot-visibility-table">
     <thead>
       <tr>
@@ -2443,11 +2444,20 @@ async function renderInjectedList() {
         <th>原始模型名</th>
         <th>modelUid</th>
         <th style="width:120px;">状态</th>
+        <th style="width:100px;">图片理解</th>
         <th style="width:96px;text-align:right;">显示</th>
       </tr>
     </thead>
     <tbody>
-      ${rows.map(row => `
+      ${rows.map(row => {
+        const vi = nativeVisionSlotInfo(row.uid);
+        let visionBadge;
+        if (vi.ok === false && hasVisionModels) {
+          visionBadge = renderVisionPill({ state: 'auto', label: '第三方增强', title: '该模型不支持图片，已自动启用第三方图片理解增强' }, true);
+        } else {
+          visionBadge = renderVisionPill(vi, true);
+        }
+        return `
         <tr data-uid="${escAttr(row.uid)}" class="${row.visible ? '' : 'is-hidden'}">
           <td>
             <input class="slot-visibility-row-check" data-uid="${escAttr(row.uid)}" type="checkbox" data-action="syncSlotVisibilitySelectionState" data-events="change">
@@ -2464,13 +2474,15 @@ async function renderInjectedList() {
               ${row.hasOverride ? '<span class="slot-visibility-override">单独设置</span>' : ''}
             </div>
           </td>
+          <td>${visionBadge}</td>
           <td>
             <label class="slot-visibility-switch" title="${row.visible ? '当前显示在 IDE 模型列表' : '当前不显示在 IDE 模型列表'}">
               <input type="checkbox" ${row.visible ? 'checked' : ''} data-action="onSlotVisibilityToggle" data-events="change" data-args="[&quot;${escAttr(row.uid)}&quot;]" data-pass-checked>
               <span></span>
             </label>
           </td>
-      </tr>`).join('')}
+      </tr>`;
+      }).join('')}
     </tbody>
   </table>`;
   syncSlotVisibilitySelectionState();
