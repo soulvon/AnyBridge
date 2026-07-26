@@ -2,7 +2,7 @@
 
 All notable changes to AnyBridge will be documented in this file.
 
-## v0.3.17 - 2026-07-27
+## v0.3.18 - 2026-07-27
 
 - 修复 Windsurf 等 Claude 槽位映射到 OpenAI 兼容供应商（如阿里云百炼、DashScope）时，`apiFormat` 被硬编码为 `anthropic` 导致请求路径错误（`/compatible-mode/v1/messages`）和上游 `Invalid argument` 错误。根因是 `preferredRouteForSlotTarget` 在供应商未开启解锁时硬编码协议格式，现改为运行时根据供应商 apiPath/host 自动推断。
 - `inferApiFormatFromPath` 兼容 `/compatible-mode`（无尾部斜杠）路径识别，避免 DashScope 标准端点被遗漏。
