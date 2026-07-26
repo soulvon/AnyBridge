@@ -164,7 +164,7 @@ function inferApiFormatFromPath(apiPath) {
   if (path.includes(':generatecontent') || path.includes(':streamgeneratecontent') || path.includes('/v1beta/models/')) return 'gemini';
   if (path.endsWith('/messages') || path.includes('/messages/')) return 'anthropic';
   if (path.endsWith('/chat/completions') || path.endsWith('/responses')) return 'openai';
-  if (path.includes('/openai/') || path.includes('/compatible-mode/')) return 'openai';
+  if (path.includes('/openai/') || path.includes('/compatible-mode')) return 'openai';
   return null;
 }
 

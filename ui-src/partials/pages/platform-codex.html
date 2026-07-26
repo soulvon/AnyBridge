@@ -41,6 +41,23 @@
               </div>
             </div>
 
+            <div class="glass-card" style="padding:16px 20px;margin-top:12px">
+              <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+                <strong style="font-size:14px">Codex 原生重试</strong>
+                <span style="font-size:12px;color:var(--text-muted,#888)">写入 config.toml，控制 Codex 客户端的请求重试次数</span>
+              </div>
+              <div style="display:flex;gap:16px;flex-wrap:wrap">
+                <label class="codex-config-field" style="flex:1;min-width:140px">
+                  <span>请求重试次数</span>
+                  <input id="platform-codex-request-max-retries" class="field-input" type="number" min="0" max="100" step="1" value="10" data-action="saveCodexNativeRetry" data-events="change" data-pass-this>
+                </label>
+                <label class="codex-config-field" style="flex:1;min-width:140px">
+                  <span>流式重试次数</span>
+                  <input id="platform-codex-stream-max-retries" class="field-input" type="number" min="0" max="100" step="1" value="10" data-action="saveCodexNativeRetry" data-events="change" data-pass-this>
+                </label>
+              </div>
+            </div>
+
             <p class="codex-safe-note">配置文件路径：<code id="codex-config-path-label">~/.codex/config.toml</code>。切换后重启 Codex
               生效，AnyBridge 会保留 MCP、桌面和项目配置。</p>
           </section>

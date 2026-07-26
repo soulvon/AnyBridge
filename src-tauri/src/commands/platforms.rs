@@ -58,6 +58,7 @@ const CLAUDE_MANAGED_ENV_KEYS: &[&str] = &[
     "ANTHROPIC_API_KEY",
     "OPENROUTER_API_KEY",
     "GOOGLE_API_KEY",
+    "CLAUDE_CODE_MAX_RETRIES",
     "ANTHROPIC_MODEL",
     "ANTHROPIC_REASONING_MODEL",
     "ANTHROPIC_SMALL_FAST_MODEL",
@@ -488,6 +489,15 @@ impl Platform {
         );
         set_claude_model_env(env_obj, &model);
 
+        // ── Claude Code 原生重试配置：从 model-map.json enhancement 读取 ──
+        let enhancement = super::model_map::read_map()
+            .map(|m| m.enhancement)
+            .unwrap_or_default();
+        env_obj.insert(
+            "CLAUDE_CODE_MAX_RETRIES".into(),
+            Value::String(enhancement.claude_max_retries.to_string()),
+        );
+
         let json = serde_json::to_string_pretty(&Value::Object(obj)).map_err(|e| e.to_string())?;
         super::write_atomic(path, json.as_bytes())
     }
@@ -594,6 +604,15 @@ impl Platform {
         apply_codex_provider_auth(provider_table, p.preserve_official_auth, Some(bearer.as_str()));
         provider_table[CODEX_ANYBRIDGE_MANAGED_FLAG] = value(true);
 
+        // ── Codex 原生重试配置：从 model-map.json enhancement 读取 ──
+        let enhancement = super::model_map::read_map()
+            .map(|m| m.enhancement)
+            .unwrap_or_default();
+        provider_table["request_max_retries"] =
+            value(enhancement.codex_request_max_retries as i64);
+        provider_table["stream_max_retries"] =
+            value(enhancement.codex_stream_max_retries as i64);
+
         // ── 模型目录：让 Codex 显示自定义模型列表 ──
         // catalog 目录必须与 config.toml 同目录；禁止回退到进程 CWD。
         let catalog_dir = path.parent().ok_or_else(|| {
@@ -660,6 +679,15 @@ impl Platform {
             provider_table.remove("base_url");
             apply_codex_provider_auth(provider_table, true, None);
             provider_table[CODEX_ANYBRIDGE_MANAGED_FLAG] = value(true);
+
+            // ── Codex 原生重试配置：统一会话历史模式也写入 ──
+            let enhancement = super::model_map::read_map()
+                .map(|m| m.enhancement)
+                .unwrap_or_default();
+            provider_table["request_max_retries"] =
+                value(enhancement.codex_request_max_retries as i64);
+            provider_table["stream_max_retries"] =
+                value(enhancement.codex_stream_max_retries as i64);
         } else {
             // 原有行为：OpenAI Official uses Codex's built-in provider and auth.json login.
             // Keep common settings, but remove the active third-party pointer.

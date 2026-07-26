@@ -2586,8 +2586,8 @@ function preferredRouteForSlotTarget(slotUid, providerId) {
   const preferredUnlock = unlockKindForSlotUid(slotUid);
   const p = (providerStore.providers || []).find(x => x.id === providerId);
   if (preferredUnlock && mappingProviderUnlockEnabled(p, preferredUnlock)) return preferredUnlock;
-  if (preferredUnlock === 'codex') return 'openai';
-  if (preferredUnlock === 'claudeCode') return 'anthropic';
+  // 供应商未开启对应解锁时，不硬编码 apiFormat（Claude 槽位≠上游一定是 anthropic）。
+  // 返回 AUTO 让运行时根据供应商 apiPath / host 自动推断协议格式。
   return AUTO_ROUTE_VALUE;
 }
 

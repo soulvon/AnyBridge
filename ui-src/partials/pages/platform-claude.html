@@ -42,6 +42,19 @@
               </div>
             </div>
 
+            <div class="glass-card" style="padding:16px 20px;margin-top:12px">
+              <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+                <strong style="font-size:14px">Claude Code 原生重试</strong>
+                <span style="font-size:12px;color:var(--text-muted,#888)">写入 settings.json 环境变量，控制 Claude Code 客户端的重试次数</span>
+              </div>
+              <div style="display:flex;gap:16px;flex-wrap:wrap">
+                <label class="codex-config-field" style="flex:1;min-width:140px">
+                  <span>最大重试次数</span>
+                  <input id="platform-claude-max-retries" class="field-input" type="number" min="0" max="15" step="1" value="10" data-action="saveClaudeNativeRetry" data-events="change" data-pass-this>
+                </label>
+              </div>
+            </div>
+
             <p class="codex-safe-note">配置文件路径：<code
                 id="claude-code-config-path-label">~/.claude/settings.json</code>。切换后重启 Claude Code 生效，AnyBridge 会保留
               MCP、权限、hooks、语言等其他配置。</p>

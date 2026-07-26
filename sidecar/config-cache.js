@@ -199,6 +199,9 @@ function transformModelMap(json) {
     retryBaseMs: positiveInt(enhancement.retryBaseMs, 600, 1),
     retryCapMs: positiveInt(enhancement.retryCapMs, 8000, 1),
     retryTotalSeconds: positiveInt(enhancement.retryTotalSeconds, 60, 1),
+    codexRequestMaxRetries: positiveInt(enhancement.codexRequestMaxRetries, 10, 0),
+    codexStreamMaxRetries: positiveInt(enhancement.codexStreamMaxRetries, 10, 0),
+    claudeMaxRetries: positiveInt(enhancement.claudeMaxRetries, 10, 0),
     imageFallback: enhancement.imageFallback !== false,
     visionMaxTokens: positiveInt(enhancement.visionMaxTokens, 2048, 64),
     visionContextMode: ['current', 'summary', 'full'].includes(String(enhancement.visionContextMode || ''))

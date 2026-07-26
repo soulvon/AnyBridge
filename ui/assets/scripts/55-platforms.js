@@ -651,6 +651,7 @@ function renderCodexPageStatus(info) {
   if (currentLabel) currentLabel.textContent = meta.label;
   bindRevealPathLabel('codex-config-path-label', info.configPath || platformDef('codex').configHint);
   renderCodexConfigList(info);
+  renderPlatformNativeRetry();
 }
 
 function renderClaudeCodePageStatus(info) {
@@ -663,6 +664,7 @@ function renderClaudeCodePageStatus(info) {
   if (currentLabel) currentLabel.textContent = meta.label;
   bindRevealPathLabel('claude-code-config-path-label', info.configPath || platformDef('claude-code').configHint);
   renderClaudeCodeConfigList(info);
+  renderPlatformNativeRetry();
 }
 
 function renderOpenCodePageStatus(info) {
@@ -7405,4 +7407,67 @@ window.zcDrop = function(e) {
   g.zcReasoningEnabled = zcReasoningEnabled;
   g.zcNativeToFlat = zcNativeToFlat;
   g.zcPayloadToFlat = zcPayloadToFlat;
+
+  // ─── 平台页原生重试设置 ───
+  async function renderPlatformNativeRetry() {
+    if (!invoke) return;
+    try {
+      const map = await invoke('load_model_map');
+      const e = map?.enhancement || {};
+      const reqEl = document.getElementById('platform-codex-request-max-retries');
+      const streamEl = document.getElementById('platform-codex-stream-max-retries');
+      const claudeEl = document.getElementById('platform-claude-max-retries');
+      if (reqEl) reqEl.value = e.codexRequestMaxRetries ?? 10;
+      if (streamEl) streamEl.value = e.codexStreamMaxRetries ?? 10;
+      if (claudeEl) claudeEl.value = e.claudeMaxRetries ?? 10;
+    } catch (_) { /* ignore */ }
+  }
+
+  async function saveCodexNativeRetry(input) {
+    if (!invoke) return;
+    const id = input?.id;
+    const key = id === 'platform-codex-request-max-retries' ? 'codexRequestMaxRetries'
+      : id === 'platform-codex-stream-max-retries' ? 'codexStreamMaxRetries' : null;
+    if (!key) return;
+    const val = Math.max(0, Math.min(100, parseInt(input.value, 10) || 0));
+    input.value = val;
+    try {
+      const map = await invoke('load_model_map');
+      if (!map.enhancement) map.enhancement = {};
+      map.enhancement[key] = val;
+      await invoke('save_model_map', { map });
+      // 重新应用当前 Codex 配置，让重试值立即写入 config.toml
+      const info = platformInfoOf('codex');
+      if (info?.currentProviderId && info.managedByAnyBridge) {
+        try { await invoke('switch_platform', { platform: 'codex', providerId: info.currentProviderId }); } catch (_) { /* 静默 */ }
+      }
+      if (typeof addLog === 'function') addLog('ok', `已保存 Codex 原生重试: ${key} = ${val}`);
+    } catch (e) {
+      if (typeof addLog === 'function') addLog('err', '保存 Codex 原生重试失败: ' + e);
+    }
+  }
+
+  async function saveClaudeNativeRetry(input) {
+    if (!invoke) return;
+    const val = Math.max(0, Math.min(15, parseInt(input.value, 10) || 0));
+    input.value = val;
+    try {
+      const map = await invoke('load_model_map');
+      if (!map.enhancement) map.enhancement = {};
+      map.enhancement.claudeMaxRetries = val;
+      await invoke('save_model_map', { map });
+      // 重新应用当前 Claude Code 配置，让重试值立即写入 settings.json
+      const info = platformInfoOf('claude-code');
+      if (info?.currentProviderId && info.managedByAnyBridge) {
+        try { await invoke('switch_platform', { platform: 'claude-code', providerId: info.currentProviderId }); } catch (_) { /* 静默 */ }
+      }
+      if (typeof addLog === 'function') addLog('ok', `已保存 Claude Code 原生重试: claudeMaxRetries = ${val}`);
+    } catch (e) {
+      if (typeof addLog === 'function') addLog('err', '保存 Claude Code 原生重试失败: ' + e);
+    }
+  }
+
+  g.renderPlatformNativeRetry = renderPlatformNativeRetry;
+  g.saveCodexNativeRetry = saveCodexNativeRetry;
+  g.saveClaudeNativeRetry = saveClaudeNativeRetry;
 })(globalThis);

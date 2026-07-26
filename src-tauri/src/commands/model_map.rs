@@ -54,6 +54,18 @@ fn default_retry_total_seconds() -> u32 {
     60
 }
 
+fn default_codex_request_max_retries() -> u32 {
+    10
+}
+
+fn default_codex_stream_max_retries() -> u32 {
+    10
+}
+
+fn default_claude_max_retries() -> u32 {
+    10
+}
+
 fn default_vision_max_tokens() -> u32 {
     2048
 }
@@ -143,6 +155,21 @@ pub struct EnhancementConfig {
     pub retry_cap_ms: u32,
     #[serde(rename = "retryTotalSeconds", default = "default_retry_total_seconds")]
     pub retry_total_seconds: u32,
+    #[serde(
+        rename = "codexRequestMaxRetries",
+        default = "default_codex_request_max_retries"
+    )]
+    pub codex_request_max_retries: u32,
+    #[serde(
+        rename = "codexStreamMaxRetries",
+        default = "default_codex_stream_max_retries"
+    )]
+    pub codex_stream_max_retries: u32,
+    #[serde(
+        rename = "claudeMaxRetries",
+        default = "default_claude_max_retries"
+    )]
+    pub claude_max_retries: u32,
     #[serde(rename = "selfHeal", default)]
     pub self_heal: SelfHealConfig,
     #[serde(rename = "imageFallback", default = "default_true")]
@@ -217,6 +244,9 @@ impl Default for EnhancementConfig {
             retry_base_ms: default_retry_base_ms(),
             retry_cap_ms: default_retry_cap_ms(),
             retry_total_seconds: default_retry_total_seconds(),
+            codex_request_max_retries: default_codex_request_max_retries(),
+            codex_stream_max_retries: default_codex_stream_max_retries(),
+            claude_max_retries: default_claude_max_retries(),
             self_heal: SelfHealConfig::default(),
             image_fallback: true,
             vision_max_tokens: default_vision_max_tokens(),

@@ -2,6 +2,12 @@
 
 All notable changes to AnyBridge will be documented in this file.
 
+## v0.3.17 - 2026-07-27
+
+- 修复 Windsurf 等 Claude 槽位映射到 OpenAI 兼容供应商（如阿里云百炼、DashScope）时，`apiFormat` 被硬编码为 `anthropic` 导致请求路径错误（`/compatible-mode/v1/messages`）和上游 `Invalid argument` 错误。根因是 `preferredRouteForSlotTarget` 在供应商未开启解锁时硬编码协议格式，现改为运行时根据供应商 apiPath/host 自动推断。
+- `inferApiFormatFromPath` 兼容 `/compatible-mode`（无尾部斜杠）路径识别，避免 DashScope 标准端点被遗漏。
+- 新增 Codex / Claude Code 原生重试配置：从 `model-map.json` 的 `enhancement` 读取 `codexRequestMaxRetries` / `codexStreamMaxRetries` / `claudeMaxRetries`，写入对应配置文件（config.toml / settings.json），平台页 UI 支持直接修改并即时生效。
+
 ## v0.3.16 - 2026-07-20
 
 - MITM 证书架构升级 — CA 与叶子证书分离：CA（`server.codeium.com.pem`）仅作信任根装入系统证书库，新增由 CA 签发的 end-entity 叶子证书（`mitm-leaf.pem` + `mitm-leaf-key.pem`）用于 MITM 呈现。严格 TLS 客户端（rustls/webpki）拒绝 CA 证书当服务器证书（CaUsedAsEndEntity），叶子证书彻底解决此问题。
