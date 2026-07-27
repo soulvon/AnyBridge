@@ -124,6 +124,14 @@ function normalizeOpenAIApiPath(host, apiPath) {
     if (lower.endsWith('/compatible-mode')) return `${path}/v1/chat/completions`;
   }
 
+  // 通用 compatible-mode 补全：百炼 TokenPlan 等非 dashscope.aliyuncs.com 域名
+  // 也使用 /compatible-mode 路径格式，需要补全 /v1/chat/completions。
+  if (lower.includes('/compatible-mode')) {
+    if (lower.endsWith('/compatible-mode/v1/chat/completions') || lower.endsWith('/compatible-mode/v1/responses')) return path;
+    if (lower.endsWith('/compatible-mode/v1')) return `${path}/chat/completions`;
+    if (lower.endsWith('/compatible-mode')) return `${path}/v1/chat/completions`;
+  }
+
   if (lower.endsWith('/chat/completions') || lower.endsWith('/responses')) return path;
 
   if (!path) return '/v1/chat/completions';
