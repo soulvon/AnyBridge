@@ -72,7 +72,17 @@ pub fn run() {
             if let WindowEvent::CloseRequested { api, .. } = event {
                 if window.label() == "main" {
                     api.prevent_close();
-                    let _ = window.hide();
+                    // Windows + WebView2 下 hide() 后 show() 无法恢复窗口（tauri/tray 已知问题），
+                    // 改用 minimize() + skip_taskbar 保证托盘还原时 unminimize() 可靠工作。
+                    #[cfg(target_os = "windows")]
+                    {
+                        let _ = window.set_skip_taskbar(true);
+                        let _ = window.minimize();
+                    }
+                    #[cfg(not(target_os = "windows"))]
+                    {
+                        let _ = window.hide();
+                    }
                 }
             }
         })

@@ -172,8 +172,20 @@ pub fn build_tray(app: &AppHandle) -> tauri::Result<()> {
         .on_menu_event(|app, event| match event.id.as_ref() {
             "show" => {
                 if let Some(w) = app.get_webview_window("main") {
+                    // Windows 上先恢复 skip_taskbar + unminimize，配合 CloseRequested 的 minimize 方案。
+                    #[cfg(target_os = "windows")]
+                    {
+                        let _ = w.set_skip_taskbar(false);
+                        let _ = w.unminimize();
+                        // 短暂置顶绕过 Windows 焦点防盗保护
+                        let _ = w.set_always_on_top(true);
+                    }
                     let _ = w.show();
                     let _ = w.set_focus();
+                    #[cfg(target_os = "windows")]
+                    {
+                        let _ = w.set_always_on_top(false);
+                    }
                 }
             }
             "start" => {
@@ -204,8 +216,18 @@ pub fn build_tray(app: &AppHandle) -> tauri::Result<()> {
             {
                 let app = tray.app_handle();
                 if let Some(w) = app.get_webview_window("main") {
+                    #[cfg(target_os = "windows")]
+                    {
+                        let _ = w.set_skip_taskbar(false);
+                        let _ = w.unminimize();
+                        let _ = w.set_always_on_top(true);
+                    }
                     let _ = w.show();
                     let _ = w.set_focus();
+                    #[cfg(target_os = "windows")]
+                    {
+                        let _ = w.set_always_on_top(false);
+                    }
                 }
             }
         })

@@ -1,6 +1,6 @@
 [package]
 name = "anybridge"
-version = "0.3.19"
+version = "0.3.20"
 description = "AnyBridge desktop client"
 authors = ["soulvon"]
 edition = "2021"
