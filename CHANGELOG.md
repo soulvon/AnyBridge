@@ -2,6 +2,10 @@
 
 All notable changes to AnyBridge will be documented in this file.
 
+## v0.3.19 - 2026-07-27
+
+- 修复百炼 TokenPlan 等非 `dashscope.aliyuncs.com` 域名使用 `/compatible-mode` 路径时，`normalizeOpenAIApiPath` 未补全为 `/compatible-mode/v1/chat/completions` 导致上游 404 的问题。通用 compatible-mode 路径补全不再依赖 host 白名单匹配。
+
 ## v0.3.18 - 2026-07-27
 
 - 修复 Windsurf 等 Claude 槽位映射到 OpenAI 兼容供应商（如阿里云百炼、DashScope）时，`apiFormat` 被硬编码为 `anthropic` 导致请求路径错误（`/compatible-mode/v1/messages`）和上游 `Invalid argument` 错误。根因是 `preferredRouteForSlotTarget` 在供应商未开启解锁时硬编码协议格式，现改为运行时根据供应商 apiPath/host 自动推断。
