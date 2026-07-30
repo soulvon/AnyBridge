@@ -2345,39 +2345,6 @@
                 </div>
               </article>
 
-              <article class="extension-card" data-extension-card="grok2api" data-extension-tags="recommended api"
-                tabindex="0" aria-label="查看 grok2api 扩展详情">
-                <div class="extension-card-top">
-                  <div class="extension-identity">
-                    <div class="extension-logo extension-logo-grok" aria-hidden="true">GX</div>
-                    <div>
-                      <div class="extension-title-row">
-                        <h3>grok2api</h3>
-                        <span class="extension-badge badge-market">接口服务</span>
-                      </div>
-                      <p>面向 Grok/xAI 的本地接口适配服务，后续与 AnyBridge 联网搜索增强联动。</p>
-                    </div>
-                  </div>
-                  <span class="extension-status status-not-installed">未安装</span>
-                </div>
-                <div class="extension-meta-grid">
-                  <div><span>类型</span><strong>托管服务</strong></div>
-                  <div><span>版本</span><strong>待适配</strong></div>
-                  <div><span>端口</span><strong>待分配</strong></div>
-                  <div><span>接入</span><strong>L2-L3</strong></div>
-                </div>
-                <div class="extension-tags">
-                  <span>Grok</span>
-                  <span>兼容 OpenAI 接口</span>
-                  <span>搜索增强</span>
-                </div>
-                <div class="extension-actions">
-                  <button type="button" class="btn-primary" data-action="handleExtensionAction" data-arg="install-grok2api">安装</button>
-                  <button type="button" class="btn-ghost secondary" data-action="openExtensionDetail" data-arg="grok2api">详情</button>
-                  <button type="button" class="btn-ghost accent" data-action="handleExtensionAction" data-arg="view-adapter-plan">适配计划</button>
-                </div>
-              </article>
-
               <article class="extension-card" data-extension-card="free-jimeng" data-extension-tags="recommended media">
                 <div class="extension-card-top">
                   <div class="extension-identity">
@@ -2410,6 +2377,17 @@
                 </div>
               </article>
             </div>
+
+            <section class="plugin-section" id="pluginSection" aria-label="运行时插件">
+              <div class="plugin-section-head">
+                <div>
+                  <h3>运行时插件</h3>
+                  <p>由 plugin.json 声明驱动，界面按清单自动渲染；新增插件无需修改 AnyBridge。</p>
+                </div>
+                <button type="button" class="btn-ghost secondary" data-action="refreshPluginList">刷新</button>
+              </div>
+              <div class="plugin-card-grid" id="plugin-list-grid"></div>
+            </section>
 
             <section class="extensions-log-panel glass-card" id="extensionsLogPanel" aria-label="扩展日志" hidden>
               <div class="extensions-log-head">
@@ -3140,6 +3118,15 @@
                         </label>
                       </label>
                       <p class="codex-config-toggle-hint">开启后 Codex 通过 AnyBridge 本地代理转发请求（127.0.0.1:7450），适合供应商只支持 Chat Completions 或需要协议转换的场景。关闭后 Codex 直接连接供应商的 Responses 端点。</p>
+                      <label class="codex-config-field">
+                        <span>上游协议（本地代理 → 供应商）</span>
+                        <select id="codex-config-wire-api" class="field-input">
+                          <option value="auto">自动识别</option>
+                          <option value="responses">Responses</option>
+                          <option value="chat">Chat Completions</option>
+                        </select>
+                      </label>
+                      <p class="codex-config-toggle-hint">决定本地代理用哪个端点请求供应商；「自动识别」按来源供应商的 API 路径判断。Codex 与 AnyBridge 之间恒为 Responses —— 官方已移除 wire_api = "chat"，写入会导致 Codex 启动即崩，所以只支持 Chat Completions 的供应商必须开启上面的「路由模式」，由本地代理完成协议转换。关闭路由模式（直连）时该选项不生效。</p>
                       <label class="codex-config-toggle-row">
                         <span class="codex-config-toggle-label">桌面版显示所有模型</span>
                         <label class="switch">
@@ -6086,6 +6073,71 @@
       <div class="modal-footer" id="cpa-deploy-footer">
         <button id="cpa-deploy-cancel-btn" class="modal-btn modal-btn-cancel">取消</button>
         <button id="cpa-deploy-confirm-btn" class="modal-btn modal-btn-confirm">开始部署</button>
+      </div>
+    </div>
+  </div>
+
+<!-- 插件部署对话框（通用，由 plugin.json 驱动） -->
+  <div id="plugin-deploy-modal" class="modal-overlay">
+    <div class="modal-container" style="max-width: 620px;">
+      <div class="modal-header">
+        <div class="modal-title">
+          <span class="modal-icon" style="color: var(--accent);">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+              stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+              <polyline points="7 10 12 15 17 10"></polyline>
+              <line x1="12" y1="15" x2="12" y2="3"></line>
+            </svg>
+          </span>
+          <span id="plugin-deploy-title">安装插件</span>
+        </div>
+      </div>
+
+      <!-- 确认视图：部署信息 + 环境预检 -->
+      <div class="modal-body" id="plugin-deploy-confirm-view" style="max-height: 440px; overflow-y: auto;">
+        <div class="plugin-deploy-info" id="plugin-deploy-info"></div>
+        <div class="plugin-deploy-env" id="plugin-deploy-env"></div>
+      </div>
+
+      <!-- 进度视图：步骤列表 + 实时日志 -->
+      <div class="modal-body" id="plugin-deploy-progress-view" style="display: none; max-height: 480px; overflow-y: auto;">
+        <div class="plugin-deploy-steps" id="plugin-deploy-steps"></div>
+        <div class="plugin-deploy-log" id="plugin-deploy-log"></div>
+      </div>
+
+      <div class="modal-footer">
+        <button id="plugin-deploy-cancel-btn" class="modal-btn modal-btn-cancel">取消</button>
+        <button id="plugin-deploy-confirm-btn" class="modal-btn modal-btn-confirm">开始安装</button>
+      </div>
+    </div>
+  </div>
+
+<!-- 插件管理面板（tabs 与内容全部由 plugin.json 的 panels / configSchema 渲染） -->
+  <div id="plugin-manager-modal" class="modal-overlay">
+    <div class="modal-container plugin-manager-container" style="max-width: 860px;">
+      <div class="modal-header">
+        <div class="modal-title">
+          <span class="modal-icon" style="color: var(--accent);">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+              stroke-linecap="round" stroke-linejoin="round">
+              <rect x="3" y="3" width="7" height="7"></rect>
+              <rect x="14" y="3" width="7" height="7"></rect>
+              <rect x="14" y="14" width="7" height="7"></rect>
+              <rect x="3" y="14" width="7" height="7"></rect>
+            </svg>
+          </span>
+          <span id="plugin-manager-title">插件管理</span>
+        </div>
+      </div>
+
+      <div class="plugin-manager-tabs" id="plugin-manager-tabs"></div>
+
+      <div class="modal-body plugin-manager-body" id="plugin-manager-body"
+        style="max-height: 520px; overflow-y: auto;"></div>
+
+      <div class="modal-footer">
+        <button class="modal-btn modal-btn-cancel" data-action="closePluginManager">关闭</button>
       </div>
     </div>
   </div>

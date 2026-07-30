@@ -181,39 +181,6 @@
                 </div>
               </article>
 
-              <article class="extension-card" data-extension-card="grok2api" data-extension-tags="recommended api"
-                tabindex="0" aria-label="查看 grok2api 扩展详情">
-                <div class="extension-card-top">
-                  <div class="extension-identity">
-                    <div class="extension-logo extension-logo-grok" aria-hidden="true">GX</div>
-                    <div>
-                      <div class="extension-title-row">
-                        <h3>grok2api</h3>
-                        <span class="extension-badge badge-market">接口服务</span>
-                      </div>
-                      <p>面向 Grok/xAI 的本地接口适配服务，后续与 AnyBridge 联网搜索增强联动。</p>
-                    </div>
-                  </div>
-                  <span class="extension-status status-not-installed">未安装</span>
-                </div>
-                <div class="extension-meta-grid">
-                  <div><span>类型</span><strong>托管服务</strong></div>
-                  <div><span>版本</span><strong>待适配</strong></div>
-                  <div><span>端口</span><strong>待分配</strong></div>
-                  <div><span>接入</span><strong>L2-L3</strong></div>
-                </div>
-                <div class="extension-tags">
-                  <span>Grok</span>
-                  <span>兼容 OpenAI 接口</span>
-                  <span>搜索增强</span>
-                </div>
-                <div class="extension-actions">
-                  <button type="button" class="btn-primary" data-action="handleExtensionAction" data-arg="install-grok2api">安装</button>
-                  <button type="button" class="btn-ghost secondary" data-action="openExtensionDetail" data-arg="grok2api">详情</button>
-                  <button type="button" class="btn-ghost accent" data-action="handleExtensionAction" data-arg="view-adapter-plan">适配计划</button>
-                </div>
-              </article>
-
               <article class="extension-card" data-extension-card="free-jimeng" data-extension-tags="recommended media">
                 <div class="extension-card-top">
                   <div class="extension-identity">
@@ -246,6 +213,17 @@
                 </div>
               </article>
             </div>
+
+            <section class="plugin-section" id="pluginSection" aria-label="运行时插件">
+              <div class="plugin-section-head">
+                <div>
+                  <h3>运行时插件</h3>
+                  <p>由 plugin.json 声明驱动，界面按清单自动渲染；新增插件无需修改 AnyBridge。</p>
+                </div>
+                <button type="button" class="btn-ghost secondary" data-action="refreshPluginList">刷新</button>
+              </div>
+              <div class="plugin-card-grid" id="plugin-list-grid"></div>
+            </section>
 
             <section class="extensions-log-panel glass-card" id="extensionsLogPanel" aria-label="扩展日志" hidden>
               <div class="extensions-log-head">

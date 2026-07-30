@@ -95,6 +95,9 @@ async function init() {
   if (typeof initExtensions === 'function') {
     await initExtensions();
   }
+  if (typeof initPluginSystem === 'function') {
+    await initPluginSystem();
+  }
 
   bindUpdateJumpModalHandlers();
   // 检查是否刚进行了版本更新

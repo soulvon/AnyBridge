@@ -17,6 +17,7 @@ import './52-proxy-routes.js';
 import './model-context-presets.js';
 import './55-platforms.js';
 import './65-extensions.js';
+import './66-plugins.js';
 import './60-updater.js';
 import './70-healthcheck.js';
 import './90-init.js';

@@ -23,6 +23,7 @@ const moduleImportOrder = [
   '52-proxy-routes.js',
   '55-platforms.js',
   '65-extensions.js',
+  '66-plugins.js',
   '60-updater.js',
   '70-healthcheck.js',
   '90-init.js',
@@ -41,6 +42,7 @@ const styleFiles = [
   'ui/assets/styles/30-pages.css',
   'ui/assets/styles/40-modals.css',
   'ui/assets/styles/50-platforms.css',
+  'ui/assets/styles/60-plugins.css',
 ];
 
 const requiredPageIds = [

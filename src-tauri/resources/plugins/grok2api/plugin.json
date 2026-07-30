@@ -103,9 +103,11 @@
       "type": "builtin",
       "order": 2,
       "capability": "account-management",
+      "requiresAuth": true,
+      "loadFrom": "getAccountStats",
       "actions": [
-        { "id": "import", "label": "导入账号", "type": "file-upload", "accept": ".json,.jsonl,.txt", "confirm": false },
-        { "id": "export", "label": "导出", "type": "button", "confirm": false }
+        { "id": "import", "label": "导入账号", "type": "file-upload", "accept": ".json,.jsonl,.txt", "confirm": false, "method": "importAccounts" },
+        { "id": "export", "label": "导出", "type": "button", "confirm": false, "method": "exportAccounts" }
       ],
       "fields": [
         { "key": "buildCount", "label": "Build 账号", "type": "number" },
@@ -124,9 +126,10 @@
       "type": "builtin",
       "order": 3,
       "capability": "client-keys",
+      "requiresAuth": true,
       "actions": [
-        { "id": "create", "label": "新建 Key", "type": "button", "confirm": false },
-        { "id": "delete", "label": "删除", "type": "button", "confirm": true }
+        { "id": "create", "label": "新建 Key", "type": "prompt", "promptLabel": "Key 名称", "confirm": false, "method": "createClientKey" },
+        { "id": "delete", "label": "删除", "type": "row-action", "confirm": true, "method": "deleteClientKey" }
       ],
       "table": {
         "columns": ["key", "name", "createdAt", "status"],

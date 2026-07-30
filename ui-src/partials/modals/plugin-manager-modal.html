@@ -1,0 +1,29 @@
+
+<!-- 插件管理面板（tabs 与内容全部由 plugin.json 的 panels / configSchema 渲染） -->
+  <div id="plugin-manager-modal" class="modal-overlay">
+    <div class="modal-container plugin-manager-container" style="max-width: 860px;">
+      <div class="modal-header">
+        <div class="modal-title">
+          <span class="modal-icon" style="color: var(--accent);">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+              stroke-linecap="round" stroke-linejoin="round">
+              <rect x="3" y="3" width="7" height="7"></rect>
+              <rect x="14" y="3" width="7" height="7"></rect>
+              <rect x="14" y="14" width="7" height="7"></rect>
+              <rect x="3" y="14" width="7" height="7"></rect>
+            </svg>
+          </span>
+          <span id="plugin-manager-title">插件管理</span>
+        </div>
+      </div>
+
+      <div class="plugin-manager-tabs" id="plugin-manager-tabs"></div>
+
+      <div class="modal-body plugin-manager-body" id="plugin-manager-body"
+        style="max-height: 520px; overflow-y: auto;"></div>
+
+      <div class="modal-footer">
+        <button class="modal-btn modal-btn-cancel" data-action="closePluginManager">关闭</button>
+      </div>
+    </div>
+  </div>

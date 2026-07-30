@@ -1,0 +1,36 @@
+
+<!-- 插件部署对话框（通用，由 plugin.json 驱动） -->
+  <div id="plugin-deploy-modal" class="modal-overlay">
+    <div class="modal-container" style="max-width: 620px;">
+      <div class="modal-header">
+        <div class="modal-title">
+          <span class="modal-icon" style="color: var(--accent);">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+              stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+              <polyline points="7 10 12 15 17 10"></polyline>
+              <line x1="12" y1="15" x2="12" y2="3"></line>
+            </svg>
+          </span>
+          <span id="plugin-deploy-title">安装插件</span>
+        </div>
+      </div>
+
+      <!-- 确认视图：部署信息 + 环境预检 -->
+      <div class="modal-body" id="plugin-deploy-confirm-view" style="max-height: 440px; overflow-y: auto;">
+        <div class="plugin-deploy-info" id="plugin-deploy-info"></div>
+        <div class="plugin-deploy-env" id="plugin-deploy-env"></div>
+      </div>
+
+      <!-- 进度视图：步骤列表 + 实时日志 -->
+      <div class="modal-body" id="plugin-deploy-progress-view" style="display: none; max-height: 480px; overflow-y: auto;">
+        <div class="plugin-deploy-steps" id="plugin-deploy-steps"></div>
+        <div class="plugin-deploy-log" id="plugin-deploy-log"></div>
+      </div>
+
+      <div class="modal-footer">
+        <button id="plugin-deploy-cancel-btn" class="modal-btn modal-btn-cancel">取消</button>
+        <button id="plugin-deploy-confirm-btn" class="modal-btn modal-btn-confirm">开始安装</button>
+      </div>
+    </div>
+  </div>

@@ -1126,6 +1126,30 @@ pub async fn plugin_uninstall(
     Ok(())
 }
 
+/// Read the tail of a plugin's captured stdout/stderr. Used by the built-in logs panel
+/// when the adapter's getLogs() returns null (i.e. the plugin has no log API of its own).
+#[tauri::command]
+pub async fn plugin_read_logs(plugin_id: String, lines: Option<usize>) -> Result<serde_json::Value, String> {
+    let limit = lines.unwrap_or(300).clamp(1, 5000);
+    let dir = plugin_data_dir(&plugin_id);
+
+    let tail = |path: PathBuf| -> Vec<String> {
+        match fs::read_to_string(&path) {
+            Ok(content) => {
+                let all: Vec<&str> = content.lines().collect();
+                let start = all.len().saturating_sub(limit);
+                all[start..].iter().map(|s| s.to_string()).collect()
+            }
+            Err(_) => Vec::new(),
+        }
+    };
+
+    Ok(serde_json::json!({
+        "stdout": tail(dir.join("stdout.log")),
+        "stderr": tail(dir.join("stderr.log")),
+    }))
+}
+
 #[tauri::command]
 pub async fn plugin_generate_config(
     plugin_id: String,

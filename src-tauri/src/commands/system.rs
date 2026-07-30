@@ -443,6 +443,47 @@ fn expand_user_path(path: &str) -> std::path::PathBuf {
     std::path::PathBuf::from(trimmed)
 }
 
+/// 弹出系统文件选择对话框。`extensions` 形如 ["json","jsonl","txt"]。取消返回 None。
+#[tauri::command]
+pub async fn pick_file(
+    title: Option<String>,
+    extensions: Option<Vec<String>>,
+    default_path: Option<String>,
+) -> Result<Option<String>, String> {
+    let title = title
+        .unwrap_or_else(|| "选择文件".into())
+        .trim()
+        .to_string();
+    let default_path = default_path.unwrap_or_default().trim().to_string();
+    let extensions: Vec<String> = extensions
+        .unwrap_or_default()
+        .into_iter()
+        .map(|e| e.trim().trim_start_matches('.').to_string())
+        .filter(|e| !e.is_empty())
+        .collect();
+
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut dialog = rfd::FileDialog::new().set_title(&title);
+        if !extensions.is_empty() {
+            let refs: Vec<&str> = extensions.iter().map(|s| s.as_str()).collect();
+            dialog = dialog.add_filter("支持的文件", &refs);
+        }
+        if !default_path.is_empty() {
+            let p = expand_user_path(&default_path);
+            if p.is_dir() {
+                dialog = dialog.set_directory(&p);
+            } else if let Some(parent) = p.parent() {
+                if parent.is_dir() {
+                    dialog = dialog.set_directory(parent);
+                }
+            }
+        }
+        Ok(dialog.pick_file().map(|p| p.to_string_lossy().to_string()))
+    })
+    .await
+    .map_err(|e| format!("文件选择对话框失败: {}", e))?
+}
+
 /// 弹出系统文件夹选择对话框。取消返回 None。
 #[tauri::command]
 pub async fn pick_directory(

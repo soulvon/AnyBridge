@@ -1,0 +1,657 @@
+/* ══════════════════════════════════════════════════════════════
+   60-plugins.css — 运行时插件系统（由 plugin.json 驱动的通用渲染）
+   组件：PluginList / PluginCard / PluginPanel / PluginConfigForm /
+        PluginTable / PluginLogs / PluginDeployDialog
+   ══════════════════════════════════════════════════════════════ */
+
+/* ── 插件区块 ── */
+.plugin-section {
+  margin-top: 24px;
+}
+
+.plugin-section[hidden] {
+  display: none;
+}
+
+.plugin-section-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 14px;
+}
+
+.plugin-section-head h3 {
+  margin: 0 0 4px;
+  font-size: 15px;
+  font-weight: 650;
+  color: var(--text-primary);
+}
+
+.plugin-section-head p {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--text-muted);
+}
+
+.plugin-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  gap: 14px;
+}
+
+.plugin-empty {
+  grid-column: 1 / -1;
+  padding: 28px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--text-muted);
+  background: var(--bg-glass);
+  border: 1px dashed var(--border-strong);
+  border-radius: 14px;
+}
+
+/* ── PluginCard ── */
+.plugin-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px 18px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: var(--shadow-sm);
+  transition: border-color 0.18s ease, box-shadow 0.18s ease;
+}
+
+.plugin-card:hover {
+  border-color: var(--border-strong);
+  box-shadow: var(--shadow-md);
+}
+
+.plugin-card-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.plugin-card-mark {
+  flex: 0 0 auto;
+  width: 38px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  border-radius: 10px;
+  background: var(--accent-light);
+  color: var(--accent);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+}
+
+.plugin-card-title-wrap {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.plugin-card-title-wrap h3 {
+  margin: 0 0 3px;
+  font-size: 14.5px;
+  font-weight: 640;
+  color: var(--text-primary);
+}
+
+.plugin-card-title-wrap p {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+
+.plugin-status {
+  flex: 0 0 auto;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.plugin-status.status-running {
+  background: var(--success-dim);
+  color: var(--success);
+}
+
+.plugin-status.status-stopped,
+.plugin-status.status-not-installed {
+  background: var(--bg-input);
+  color: var(--text-muted);
+}
+
+.plugin-status.status-installing {
+  background: var(--accent-warm-dim);
+  color: var(--accent-warm);
+}
+
+.plugin-status.status-error {
+  background: var(--danger-dim);
+  color: var(--danger);
+}
+
+.plugin-card-meta {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 14px;
+}
+
+.plugin-card-meta > div {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.plugin-card-meta span {
+  color: var(--text-muted);
+}
+
+.plugin-card-meta strong {
+  color: var(--text-secondary);
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.plugin-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.plugin-card-error {
+  margin: 0;
+  padding: 8px 10px;
+  font-size: 12px;
+  color: var(--danger);
+  background: var(--danger-dim);
+  border-radius: 8px;
+  word-break: break-word;
+}
+
+/* ── PluginPanel（管理面板） ── */
+.plugin-manager-container {
+  width: 92vw;
+}
+
+.plugin-manager-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 0 24px 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.plugin-tab {
+  padding: 6px 14px;
+  font-size: 12.5px;
+  font-weight: 560;
+  color: var(--text-muted);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.plugin-tab:hover {
+  background: var(--bg-hover);
+  color: var(--text-secondary);
+}
+
+.plugin-tab.is-active {
+  background: var(--accent-light);
+  border-color: var(--accent-glow);
+  color: var(--accent);
+}
+
+.plugin-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.plugin-panel-loading,
+.plugin-panel-hint {
+  margin: 0;
+  padding: 18px 0;
+  font-size: 13px;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+.plugin-panel-hint.is-bad {
+  color: var(--danger);
+}
+
+.plugin-panel-error {
+  padding: 16px;
+  background: var(--danger-dim);
+  border-radius: 10px;
+}
+
+.plugin-panel-error p {
+  margin: 0 0 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--danger);
+}
+
+.plugin-panel-error code {
+  display: block;
+  font-size: 11.5px;
+  line-height: 1.6;
+  color: var(--text-secondary);
+  word-break: break-all;
+}
+
+.plugin-panel-error-line {
+  margin: 0;
+  padding: 10px 12px;
+  font-size: 12.5px;
+  color: var(--danger);
+  background: var(--danger-dim);
+  border-radius: 8px;
+  word-break: break-word;
+}
+
+.plugin-panel-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* ── 字段网格 ── */
+.plugin-field-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 10px;
+}
+
+.plugin-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  background: var(--bg-input);
+  border-radius: 10px;
+}
+
+.plugin-field > span {
+  font-size: 11.5px;
+  color: var(--text-muted);
+}
+
+.plugin-field > strong {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+  font-weight: 640;
+  color: var(--text-primary);
+  word-break: break-word;
+}
+
+.plugin-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--text-muted);
+  flex: 0 0 auto;
+}
+
+.plugin-dot.state-running {
+  background: var(--success);
+  box-shadow: 0 0 0 3px var(--success-dim);
+}
+
+.plugin-dot.state-error {
+  background: var(--danger);
+  box-shadow: 0 0 0 3px var(--danger-dim);
+}
+
+.plugin-dot.state-installing {
+  background: var(--accent-warm);
+  box-shadow: 0 0 0 3px var(--accent-warm-dim);
+}
+
+.plugin-install-path {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-muted);
+  word-break: break-all;
+}
+
+.plugin-health-line {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--text-muted);
+}
+
+.plugin-health-line.is-ok {
+  color: var(--success);
+}
+
+.plugin-health-line.is-bad {
+  color: var(--danger);
+}
+
+/* ── PluginTable ── */
+.plugin-table-box {
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.plugin-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12.5px;
+}
+
+.plugin-table th {
+  padding: 9px 12px;
+  text-align: left;
+  font-weight: 620;
+  color: var(--text-secondary);
+  background: var(--table-th-bg);
+  white-space: nowrap;
+}
+
+.plugin-table td {
+  padding: 9px 12px;
+  color: var(--text-secondary);
+  border-top: 1px solid var(--border);
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.plugin-table-empty {
+  text-align: center;
+  color: var(--text-muted);
+  padding: 22px 12px;
+}
+
+.btn-xs {
+  padding: 3px 9px;
+  font-size: 11.5px;
+}
+
+/* ── PluginConfigForm ── */
+.plugin-config-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.plugin-config-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.plugin-config-row > label {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.plugin-config-required {
+  color: var(--danger);
+}
+
+.plugin-config-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.plugin-config-controls .settings-input {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.plugin-config-controls input[type='checkbox'] {
+  width: 16px;
+  height: 16px;
+}
+
+.plugin-config-hint {
+  margin: 0;
+  font-size: 11.5px;
+  color: var(--text-muted);
+}
+
+.plugin-config-sep {
+  margin: 6px 0 0;
+  padding-top: 12px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  border-top: 1px solid var(--border);
+}
+
+/* ── PluginLogs ── */
+.plugin-log-box {
+  max-height: 380px;
+  overflow-y: auto;
+  padding: 10px 12px;
+  background: var(--bg-input);
+  border-radius: 10px;
+  font-family: ui-monospace, 'SFMono-Regular', Consolas, monospace;
+  font-size: 11.5px;
+  line-height: 1.65;
+}
+
+.plugin-log-line {
+  color: var(--text-secondary);
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.plugin-log-line.is-err {
+  color: var(--danger);
+}
+
+/* ── PluginDeployDialog ── */
+.plugin-deploy-info {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.plugin-deploy-info-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 12.5px;
+}
+
+.plugin-deploy-info-row span {
+  color: var(--text-muted);
+}
+
+.plugin-deploy-info-row strong {
+  color: var(--text-secondary);
+  font-weight: 600;
+  text-align: right;
+  word-break: break-all;
+}
+
+.plugin-deploy-env {
+  padding: 12px 14px;
+  background: var(--bg-input);
+  border-radius: 10px;
+}
+
+.plugin-deploy-env-title {
+  margin: 0 0 8px;
+  font-size: 12.5px;
+  font-weight: 620;
+}
+
+.plugin-deploy-env-title.is-ok {
+  color: var(--success);
+}
+
+.plugin-deploy-env-title.is-bad {
+  color: var(--accent-warm);
+}
+
+.plugin-deploy-env-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 0;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.plugin-deploy-env-row strong {
+  min-width: 90px;
+  font-weight: 600;
+}
+
+.plugin-deploy-env-row span {
+  color: var(--text-muted);
+}
+
+.plugin-deploy-env-row a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.plugin-deploy-env-row a:hover {
+  text-decoration: underline;
+}
+
+.plugin-deploy-env-hint {
+  margin: 6px 0 0;
+  font-size: 11.5px;
+  color: var(--text-muted);
+}
+
+.plugin-deploy-env-hint.is-bad {
+  color: var(--danger);
+}
+
+.plugin-deploy-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+
+.plugin-deploy-step {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  font-size: 12.5px;
+  color: var(--text-muted);
+  background: var(--bg-input);
+}
+
+.plugin-deploy-step-icon {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--text-dim);
+  flex: 0 0 auto;
+}
+
+.plugin-deploy-step[data-status='running'] {
+  color: var(--text-primary);
+}
+
+.plugin-deploy-step[data-status='running'] .plugin-deploy-step-icon {
+  background: var(--accent);
+  animation: pluginStepPulse 1.2s ease-in-out infinite;
+}
+
+.plugin-deploy-step[data-status='done'] {
+  color: var(--success);
+}
+
+.plugin-deploy-step[data-status='done'] .plugin-deploy-step-icon {
+  background: var(--success);
+}
+
+.plugin-deploy-step[data-status='skipped'] .plugin-deploy-step-icon {
+  background: var(--border-strong);
+}
+
+.plugin-deploy-step[data-status='error'] {
+  color: var(--danger);
+}
+
+.plugin-deploy-step[data-status='error'] .plugin-deploy-step-icon {
+  background: var(--danger);
+}
+
+@keyframes pluginStepPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+
+.plugin-deploy-log {
+  max-height: 240px;
+  overflow-y: auto;
+  padding: 10px 12px;
+  background: var(--bg-input);
+  border-radius: 10px;
+  font-family: ui-monospace, 'SFMono-Regular', Consolas, monospace;
+  font-size: 11.5px;
+  line-height: 1.6;
+}
+
+.plugin-deploy-log-line {
+  display: flex;
+  gap: 8px;
+  color: var(--text-secondary);
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.plugin-deploy-log-time {
+  flex: 0 0 auto;
+  color: var(--text-dim);
+}
+
+.plugin-deploy-log-line.level-ok {
+  color: var(--success);
+}
+
+.plugin-deploy-log-line.level-err {
+  color: var(--danger);
+}
+
+@media (max-width: 720px) {
+  .plugin-card-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .plugin-card-meta {
+    grid-template-columns: 1fr;
+  }
+
+  .plugin-section-head {
+    flex-direction: column;
+  }
+}

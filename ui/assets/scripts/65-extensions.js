@@ -638,6 +638,7 @@ function switchExtensionTab(tab) {
 
   const logPanel = document.getElementById('extensionsLogPanel');
   const cardGrid = document.getElementById('extensionCardGrid');
+  const pluginSection = document.getElementById('pluginSection');
   const emptyState = document.getElementById('extensionEmptyState');
   const isLogs = normalized === 'logs';
 
@@ -649,6 +650,10 @@ function switchExtensionTab(tab) {
   if (cardGrid) {
     cardGrid.hidden = isLogs;
     cardGrid.classList.toggle('is-hidden', isLogs);
+  }
+  // 运行时插件区随卡片区一起显隐；「生成服务」分类下无插件，也一并隐藏
+  if (pluginSection) {
+    pluginSection.hidden = isLogs || normalized === 'media';
   }
 
   if (isLogs) {
@@ -1815,10 +1820,8 @@ function handleExtensionAction(action) {
       );
       break;
     case 'install-grok2api':
-      showExtensionBackendPending(
-        'grok2api 安装',
-        '将按扩展清单下载并托管 grok2api，安装后可生成 Grok 供应商配置。'
-      );
+      // grok2api 已迁移为运行时插件，安装入口在「运行时插件」区（66-plugins.js）
+      if (typeof openPluginDeployDialog === 'function') openPluginDeployDialog('grok2api');
       break;
     case 'install-jimeng':
       showExtensionBackendPending(
