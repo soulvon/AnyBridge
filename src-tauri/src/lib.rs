@@ -4,7 +4,7 @@ mod commands;
 #[allow(dead_code)]
 mod integrity;
 
-use commands::{provider_import::ProviderImportScanState, proxy::ProxyState};
+use commands::{provider_import::ProviderImportScanState, proxy::ProxyState, plugins::PluginState};
 use tauri::{Emitter, Manager, WindowEvent};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -20,6 +20,7 @@ pub fn run() {
         .plugin(tauri_plugin_shell::init())
         .manage(ProxyState::default())
         .manage(ProviderImportScanState::default())
+        .manage(PluginState::new())
         .setup(|app| {
             // 启动时先清理上一轮崩溃或异常退出后残留的孤儿 sidecar 进程，
             // 避免旧进程锁住 anybridge-proxy.exe 导致升级安装失败。
@@ -124,6 +125,21 @@ pub fn run() {
             commands::extensions::extension_list_mirrors,
             commands::extensions::extension_save_mirrors,
             commands::extensions::extension_speed_test_mirrors,
+            commands::plugins::plugin_list,
+            commands::plugins::plugin_get_manifest,
+            commands::plugins::plugin_get_status,
+            commands::plugins::plugin_get_config,
+            commands::plugins::plugin_set_config,
+            commands::plugins::plugin_adapter_call,
+            commands::plugins::plugin_check_environment,
+            commands::plugins::plugin_start,
+            commands::plugins::plugin_stop,
+            commands::plugins::plugin_restart,
+            commands::plugins::plugin_health_check,
+            commands::plugins::plugin_uninstall,
+            commands::plugins::plugin_deploy,
+            commands::plugins::plugin_generate_config,
+            commands::plugins::plugin_restore_state,
             commands::model_map::load_model_map,
             commands::model_map::save_model_map,
             commands::model_map::validate_model_map,

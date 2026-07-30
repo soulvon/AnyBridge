@@ -1,0 +1,165 @@
+{
+  "apiVersion": 1,
+  "id": "grok2api",
+  "name": "Grok2API",
+  "description": "Grok 多账号 API 网关",
+  "version": "1.0.0",
+  "icon": "icon.png",
+  "category": "api-gateway",
+  "author": "soulvon",
+  "homepage": "https://github.com/chenyme/grok2api",
+  "license": "MIT",
+  "runtime": {
+    "type": "binary",
+    "binary": "grok2api{ext}",
+    "args": ["--config", "{configPath}"],
+    "workdir": "{installPath}",
+    "port": "{config.port}",
+    "stopSignal": "SIGTERM",
+    "stopTimeout": 30000,
+    "env": {
+      "GOPROXY": "https://goproxy.cn,direct"
+    }
+  },
+  "healthCheck": {
+    "type": "http",
+    "url": "http://127.0.0.1:{port}/healthz",
+    "method": "GET",
+    "expectStatus": 200,
+    "intervalSeconds": 30,
+    "timeoutSeconds": 3,
+    "healthyThreshold": 2,
+    "unhealthyThreshold": 3
+  },
+  "configSchema": [
+    {
+      "key": "port",
+      "label": "监听端口",
+      "type": "number",
+      "default": 8000,
+      "required": true,
+      "description": "服务监听端口",
+      "hidden": false,
+      "generate": null,
+      "immutable": false
+    },
+    {
+      "key": "adminPassword",
+      "label": "管理员密码",
+      "type": "password",
+      "default": "",
+      "required": true,
+      "description": "管理员登录密码（自动生成）",
+      "hidden": true,
+      "generate": "random-password",
+      "immutable": false
+    },
+    {
+      "key": "jwtSecret",
+      "label": "JWT 密钥",
+      "type": "string",
+      "default": "",
+      "required": true,
+      "description": "JWT 签名密钥（自动生成）",
+      "hidden": true,
+      "generate": "hex-32",
+      "immutable": false
+    },
+    {
+      "key": "encryptionKey",
+      "label": "加密密钥",
+      "type": "string",
+      "default": "",
+      "required": true,
+      "description": "凭据加密密钥（首次写入账号后不可更改）",
+      "hidden": true,
+      "generate": "base64-32",
+      "immutable": true
+    }
+  ],
+  "capabilities": [
+    "lifecycle",
+    "health-check",
+    "account-management",
+    "client-keys",
+    "logs"
+  ],
+  "panels": [
+    {
+      "id": "overview",
+      "title": "概览",
+      "type": "builtin",
+      "order": 1,
+      "fields": [
+        { "key": "status", "label": "状态", "type": "status-light" },
+        { "key": "port", "label": "端口", "type": "text" },
+        { "key": "version", "label": "版本", "type": "text" },
+        { "key": "uptime", "label": "运行时间", "type": "duration" }
+      ]
+    },
+    {
+      "id": "accounts",
+      "title": "账号管理",
+      "type": "builtin",
+      "order": 2,
+      "capability": "account-management",
+      "actions": [
+        { "id": "import", "label": "导入账号", "type": "file-upload", "accept": ".json,.jsonl,.txt", "confirm": false },
+        { "id": "export", "label": "导出", "type": "button", "confirm": false }
+      ],
+      "fields": [
+        { "key": "buildCount", "label": "Build 账号", "type": "number" },
+        { "key": "webCount", "label": "Web 账号", "type": "number" },
+        { "key": "consoleCount", "label": "Console 账号", "type": "number" },
+        { "key": "totalCount", "label": "总计", "type": "number" }
+      ],
+      "table": {
+        "columns": ["email", "type", "status", "quota", "lastSeen"],
+        "loadFrom": "getAccounts"
+      }
+    },
+    {
+      "id": "client-keys",
+      "title": "Client Key",
+      "type": "builtin",
+      "order": 3,
+      "capability": "client-keys",
+      "actions": [
+        { "id": "create", "label": "新建 Key", "type": "button", "confirm": false },
+        { "id": "delete", "label": "删除", "type": "button", "confirm": true }
+      ],
+      "table": {
+        "columns": ["key", "name", "createdAt", "status"],
+        "loadFrom": "listClientKeys"
+      }
+    },
+    {
+      "id": "logs",
+      "title": "日志",
+      "type": "builtin",
+      "order": 4,
+      "capability": "logs"
+    }
+  ],
+  "deploy": {
+    "strategies": ["source", "docker"],
+    "docker": {
+      "composeFile": "docker-compose.yml",
+      "configFile": "config.yaml"
+    },
+    "source": {
+      "doc": "deploy.md",
+      "installer": "adapter.js",
+      "minDiskMB": 200,
+      "estimatedTime": "5-10min",
+      "requiresNetwork": true,
+      "requiresAdmin": false
+    }
+  },
+  "upgrade": {
+    "type": "github-release",
+    "repo": "chenyme/grok2api",
+    "checkInterval": "24h",
+    "autoCheck": true
+  }
+}

@@ -10,6 +10,7 @@ pub mod ide_models;
 pub mod kite_plugin;
 pub mod model_map;
 pub mod platforms;
+pub mod plugins;
 pub mod provider_import;
 pub mod proxy;
 pub mod proxy_routes;

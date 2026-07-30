@@ -811,6 +811,26 @@ fn resolve_resources_root(resource_dir: Option<&Path>) -> Option<PathBuf> {
     Some(dir.to_path_buf())
 }
 
+/// Locate the bundled plugin definitions directory (plugin.json + adapter.js + deploy.md).
+/// dev: <crate>/resources/plugins — release: <resource_root>/plugins
+fn resolve_plugins_dir(resource_dir: Option<&Path>) -> Option<PathBuf> {
+    #[cfg(debug_assertions)]
+    {
+        let dev_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("resources")
+            .join("plugins");
+        if dev_dir.exists() {
+            return Some(dev_dir);
+        }
+    }
+    let root = resolve_resources_root(resource_dir)?;
+    let packaged = root.join("plugins");
+    if packaged.exists() {
+        return Some(packaged);
+    }
+    None
+}
+
 fn run_proxy_preflight(
     target_ide: Option<&str>,
     resource_dir: Option<&Path>,
@@ -1973,6 +1993,9 @@ pub fn start_proxy_impl(
     if let Some(res) = &resource_dir {
         cmd.env("BYOK_RESOURCE_DIR", res.to_string_lossy().to_string());
     }
+    if let Some(pdir) = resolve_plugins_dir(resource_dir.as_deref()) {
+        cmd.env("ANYBRIDGE_PLUGINS_DIR", pdir.to_string_lossy().to_string());
+    }
 
     // 捕获 stdout/stderr 用于日志转发
     cmd.stdout(std::process::Stdio::piped())
@@ -2328,6 +2351,9 @@ fn start_proxy_service_impl_with_repair(
     cmd.env("INFERENCE_PORT", ports.inference_port.to_string());
     if let Some(res) = &resource_dir {
         cmd.env("BYOK_RESOURCE_DIR", res.to_string_lossy().to_string());
+    }
+    if let Some(pdir) = resolve_plugins_dir(resource_dir.as_deref()) {
+        cmd.env("ANYBRIDGE_PLUGINS_DIR", pdir.to_string_lossy().to_string());
     }
     cmd.stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped());

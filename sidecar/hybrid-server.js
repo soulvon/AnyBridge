@@ -26,6 +26,7 @@ import { snapshot } from './stats.js';
 import { extractModelList, unlockModels } from './rename-models.js';
 import { mitmLog, rpcAuditLog } from './mitm-logger.js';
 import { httpsAgentFor } from './system-proxy.js';
+import { attachPluginRoutes } from './plugin-loader.js';
 
 function intEnv(name, fallback, min = 1) {
   const n = parseInt(process.env[name] || '', 10);
@@ -753,6 +754,27 @@ function handleRequest(req, res) {
         console.error(`[${now()}] #${id} local proxy error: ${err.message}`);
         if (!res.headersSent) res.writeHead(500, { 'content-type': 'application/json' });
         if (!res.writableEnded) res.end(JSON.stringify({ error: { message: err.message || String(err) } }));
+      });
+      return;
+    }
+
+    // ── Plugin system internal routes ──
+    if (req.url.startsWith('/internal/plugins/')) {
+      const url = new URL(req.url, `http://localhost:${PORT}`);
+      let pluginBody = null;
+      if (req.method === 'POST') {
+        try { pluginBody = JSON.parse(body || '{}'); } catch { pluginBody = {}; }
+      }
+      res.setHeader('content-type', 'application/json');
+      attachPluginRoutes(req, res, url, pluginBody).then(handled => {
+        if (!handled) {
+          res.statusCode = 404;
+          res.end(JSON.stringify({ ok: false, error: 'Not found' }));
+        }
+      }).catch(err => {
+        console.error(`[${now()}] #${id} plugin route error: ${err.message}`);
+        if (!res.headersSent) res.statusCode = 500;
+        if (!res.writableEnded) res.end(JSON.stringify({ ok: false, error: err.message }));
       });
       return;
     }
