@@ -122,6 +122,15 @@
                         </label>
                       </label>
                       <p class="codex-config-toggle-hint">开启后 Codex 通过 AnyBridge 本地代理转发请求（127.0.0.1:7450），适合供应商只支持 Chat Completions 或需要协议转换的场景。关闭后 Codex 直接连接供应商的 Responses 端点。</p>
+                      <label class="codex-config-field">
+                        <span>上游协议（本地代理 → 供应商）</span>
+                        <select id="codex-config-wire-api" class="field-input">
+                          <option value="auto">自动识别</option>
+                          <option value="responses">Responses</option>
+                          <option value="chat">Chat Completions</option>
+                        </select>
+                      </label>
+                      <p class="codex-config-toggle-hint">决定本地代理用哪个端点请求供应商；「自动识别」按来源供应商的 API 路径判断。Codex 与 AnyBridge 之间恒为 Responses —— 官方已移除 wire_api = "chat"，写入会导致 Codex 启动即崩，所以只支持 Chat Completions 的供应商必须开启上面的「路由模式」，由本地代理完成协议转换。关闭路由模式（直连）时该选项不生效。</p>
                       <label class="codex-config-toggle-row">
                         <span class="codex-config-toggle-label">桌面版显示所有模型</span>
                         <label class="switch">

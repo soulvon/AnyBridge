@@ -389,8 +389,64 @@ function platformStripSuffix(value, suffixes) {
 function codexTargetBaseUrl(provider) {
   const endpoint = platformJoinUrl(provider && provider.apiHost, provider && provider.apiPath);
   if (!endpoint) return '';
+  // Codex 会自行拼接 "/responses"，base 必须是 API 根路径。
+  // 归一规则必须与后端 codex_direct_base_url() 完全一致，
+  // 否则「显示的地址」与「写进 config.toml 的地址」会对不上，连带 codexProviderIsCurrent 误判。
   const base = platformStripSuffix(endpoint, ['/chat/completions', '/responses']);
-  return base.toLowerCase().endsWith('/v1') ? base : `${base}/v1`;
+  return platformUrlHasPath(base) ? base : `${base}/v1`;
+}
+
+/** URL 是否带非空路径段（platformJoinUrl 已保证有 scheme 且去掉了尾斜杠）。 */
+function platformUrlHasPath(url) {
+  const raw = String(url || '');
+  const idx = raw.indexOf('://');
+  return idx >= 0 ? raw.slice(idx + 3).includes('/') : raw.includes('/');
+}
+
+/**
+ * 供应商的上游协议：显式 wireApi 优先，否则按 API 路径判断。返回 '' 表示无法判断。
+ *
+ * 普通供应商在 UI 上没有 wireApi 输入项（字段恒为空字符串），
+ * 端点协议这个信息实际上只存在于 apiPath 里（如 /v1/chat/completions）。
+ */
+function codexWireApiOf(provider) {
+  const explicit = String(provider?.wireApi || '').trim().toLowerCase();
+  if (explicit === 'chat' || explicit === 'responses') return explicit;
+  const path = String(provider?.apiPath || '').trim().toLowerCase().replace(/\/+$/, '');
+  if (path.endsWith('/chat/completions')) return 'chat';
+  if (path.endsWith('/responses')) return 'responses';
+  return '';
+}
+
+/**
+ * 推断 Codex 配置的上游协议 —— 只决定「本地代理 → 供应商」用哪个端点，
+ * 以及 sidecar 是否做 Responses→Chat 转换，**不写进 config.toml**。
+ *
+ * config.toml 里的 wire_api 恒为 "responses"：openai/codex 已删除 WireApi::Chat，
+ * 写 "chat" 会让 Codex 反序列化配置失败、启动即崩（discussions/7782）。
+ * 因此只支持 Chat Completions 的供应商，唯一出路就是开启路由模式让本地代理转协议 ——
+ * 而转不转，正由这里推断出的值决定。
+ *
+ * 来源供应商优先：它的 apiPath 是探测出来的客观端点，比配置里存的旧值可信。
+ */
+function codexInferWireApi(source, existing) {
+  return codexWireApiOf(source) || codexWireApiOf(existing) || 'responses';
+}
+
+function codexWireApiLabel(wireApi) {
+  return wireApi === 'chat' ? 'Chat Completions' : 'Responses';
+}
+
+/** 把「自动识别」当前会推断出的协议写进选项文案，让推断结果对用户可见、可复核。 */
+function refreshCodexWireApiAutoLabel() {
+  const autoOption = document.querySelector('#codex-config-wire-api option[value="auto"]');
+  if (!autoOption) return;
+  const sourceId = String(document.getElementById('codex-config-source-id')?.value || '').trim();
+  const source = sourceId
+    ? (providerStore?.providers || []).find(p => p && p.id === sourceId)
+    : null;
+  const guess = codexWireApiOf(source);
+  autoOption.textContent = guess ? `自动识别（当前：${codexWireApiLabel(guess)}）` : '自动识别';
 }
 
 async function refreshPlatforms(options = {}) {
@@ -850,6 +906,7 @@ function applyCodexConfigSource(providerId) {
   codexConfigSetInputValue('codex-config-base-url', codexConfigDisplayBaseUrl(source));
   codexConfigSetInputValue('codex-config-api-key', source.apiKey || '');
   renderReasoningConfig(source.codexChatReasoning);
+  refreshCodexWireApiAutoLabel();
   // 合并 catalog 和 provider models 到统一列表
   const catalog = source.modelCatalog || [];
   const providerModels = codexConfigModelList(source);
@@ -1445,6 +1502,12 @@ function openCodexConfigEditor(providerId = '') {
     document.getElementById('codex-config-inject-models').checked =
       !provider.preserveOfficialAuth && provider.injectModels !== false;
     document.getElementById('codex-config-unify-session-history').checked = provider.unifySessionHistory !== false;
+    // wireApiAuto 缺失（存量配置）按 auto 处理：保存时会按来源供应商重新推断，自动纠正历史误判。
+    codexConfigSetInputValue(
+      'codex-config-wire-api',
+      provider.wireApiAuto === false ? (codexWireApiOf(provider) || 'responses') : 'auto'
+    );
+    refreshCodexWireApiAutoLabel();
     syncCodexConfigAuthInjectMutualExclusion();
     renderReasoningConfig(provider.codexChatReasoning);
     // 合并 catalog 和 models 到统一列表
@@ -1475,6 +1538,7 @@ function openCodexConfigEditor(providerId = '') {
     document.getElementById('codex-config-inject-models').checked = true;
     document.getElementById('codex-config-preserve-official-auth').checked = false;
     document.getElementById('codex-config-unify-session-history').checked = true;
+    codexConfigSetInputValue('codex-config-wire-api', 'auto');
     syncCodexConfigAuthInjectMutualExclusion();
     renderReasoningConfig(null);
     renderCodexModelManager([], '', '选择供应商后拉取模型列表');
@@ -1558,8 +1622,12 @@ async function saveCodexConfigEditor(switchAfter = false) {
   const source = sourceId
     ? (providerStore.providers || []).find(p => p && p.id === sourceId)
     : null;
-  // wireApi 从来源供应商自动继承（用户不在 UI 上选，编辑时保留原值）
-  const wireApi = source?.wireApi || existing?.wireApi || 'responses';
+  // 上游协议：选「自动识别」时按来源供应商的 API 路径推断，否则用用户显式选定的值。
+  const wireApiChoice = String(document.getElementById('codex-config-wire-api')?.value || 'auto')
+    .trim()
+    .toLowerCase();
+  const wireApiAuto = wireApiChoice !== 'chat' && wireApiChoice !== 'responses';
+  const wireApi = wireApiAuto ? codexInferWireApi(source, existing) : wireApiChoice;
   const routeThroughProxy = document.getElementById('codex-config-route-through-proxy')?.checked !== false;
   syncCodexConfigAuthInjectMutualExclusion();
   const preserveOfficialAuth = document.getElementById('codex-config-preserve-official-auth')?.checked === true;
@@ -1579,6 +1647,7 @@ async function saveCodexConfigEditor(switchAfter = false) {
     defaultModel,
     models,
     wireApi,
+    wireApiAuto,
     modelCatalog: modelCatalog.length ? modelCatalog : undefined,
     codexChatReasoning: getReasoningConfig(),
     agentsConfig: agents.length ? getCodexAgentsConfig() : undefined,

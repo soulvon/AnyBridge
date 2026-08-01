@@ -64,6 +64,9 @@ function resetIdeRestartPromptPreference() {
 function syncIdeRestartPromptSetting() {
   const auto = shouldAutoRestartIdeAfterSwitch();
   setText('ideRestartPromptMode', auto ? '自动立即重启' : '每次询问');
+  document.querySelectorAll('[data-ide-restart-toggle]').forEach(el => {
+    setConfigToggleElementState(el, auto);
+  });
   forEachElementAlias('ideRestartPromptResetBtn', btn => {
     btn.disabled = !auto;
   });
@@ -1360,6 +1363,16 @@ document.querySelectorAll('[data-config-toggle]').forEach(el => {
     setConfigToggleState(key, next);
     const ok = await saveConfigField(key, next ? 'true' : 'false');
     if (!ok) setConfigToggleState(key, previous);
+  });
+});
+
+document.querySelectorAll('[data-ide-restart-toggle]').forEach(el => {
+  el.addEventListener('click', () => {
+    const previous = el.classList.contains('on');
+    const next = !previous;
+    setConfigToggleElementState(el, next);
+    const ok = setAutoRestartIdeAfterSwitch(next);
+    if (!ok) setConfigToggleElementState(el, previous);
   });
 });
 

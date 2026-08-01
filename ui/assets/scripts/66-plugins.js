@@ -342,6 +342,32 @@ async function openPluginDeployDialog(pluginId) {
     row.append(l, v);
     infoEl.appendChild(row);
   };
+
+  // Strategy selector — only shown when multiple strategies are available
+  const stratRow = document.getElementById('plugin-deploy-strategy-row');
+  stratRow.replaceChildren();
+  let selectedStrategy = null; // null = auto (let Rust walk all strategies with fallback)
+  if (strategies.length > 1) {
+    const label = document.createElement('label');
+    label.className = 'plugin-deploy-strategy-label';
+    label.textContent = '部署策略';
+    const select = document.createElement('select');
+    select.className = 'settings-input';
+    // Auto option: let Rust try all strategies with fallback
+    const autoOpt = document.createElement('option');
+    autoOpt.value = '';
+    autoOpt.textContent = '自动（失败降级）';
+    select.appendChild(autoOpt);
+    for (const s of strategies) {
+      const opt = document.createElement('option');
+      opt.value = s;
+      opt.textContent = s === 'source' ? '源码编译' : s === 'docker' ? 'Docker 容器' : s;
+      select.appendChild(opt);
+    }
+    select.addEventListener('change', () => { selectedStrategy = select.value || null; });
+    stratRow.append(label, select);
+  }
+
   addInfo('部署策略', strategies.join(' → ') + (strategies.length > 1 ? '（失败自动降级）' : ''));
   addInfo('预计耗时', src.estimatedTime);
   addInfo('磁盘占用', src.minDiskMB ? `≥ ${src.minDiskMB} MB` : '');
@@ -425,7 +451,9 @@ async function openPluginDeployDialog(pluginId) {
     cancelBtn.textContent = '后台运行';
 
     try {
-      await pluginInvoke('plugin_deploy', { pluginId });
+      const deployArgs = { pluginId };
+      if (selectedStrategy) deployArgs.strategy = selectedStrategy;
+      await pluginInvoke('plugin_deploy', deployArgs);
       appendDeployLog(logEl, 'ok', '部署完成');
       pluginNotify(`${manifest.name || pluginId} 部署完成`, 'ok');
       okBtn.disabled = false;
@@ -786,7 +814,7 @@ function renderPluginAction(pluginId, panel, action, needsAuth) {
       }
       if (!filePath) return;
       try {
-        const result = await callPluginMethod(pluginId, action.method || action.id, [filePath, action.variant || 'build'], needsAuth);
+        const result = await callPluginMethod(pluginId, action.method || action.id, [filePath, action.variant || action.id], needsAuth);
         pluginNotify(`${action.label}完成：导入 ${result?.imported ?? '-'} 条`, 'ok');
         await selectPluginPanel(panel.id);
       } catch (e) {
@@ -915,7 +943,7 @@ async function renderPluginTable(plugin, panel, needsAuth) {
 function normalizeTableRows(data) {
   if (Array.isArray(data)) return data;
   if (!data || typeof data !== 'object') return [];
-  for (const key of ['items', 'data', 'list', 'rows', 'keys', 'accounts']) {
+  for (const key of ['items', 'data', 'list', 'rows', 'keys']) {
     if (Array.isArray(data[key])) return data[key];
   }
   return [];

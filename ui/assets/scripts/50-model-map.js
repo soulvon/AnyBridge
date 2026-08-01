@@ -2579,6 +2579,9 @@ function unlockKindForSlotUid(uid) {
   const provider = String(slotModelOf(uid)?.provider || '').trim().toLowerCase();
   if (provider === 'openai') return 'codex';
   if (provider === 'anthropic') return 'claudeCode';
+  const u = String(uid || '').toLowerCase();
+  if (u.includes('claude') || u.includes('opus') || u.includes('sonnet') || u.includes('fable') || u.includes('haiku')) return 'claudeCode';
+  if (u.includes('gpt') || u.includes('swe') || u.startsWith('o1') || u.startsWith('o3') || u.startsWith('o4')) return 'codex';
   return '';
 }
 

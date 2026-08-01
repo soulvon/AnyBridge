@@ -1957,7 +1957,7 @@
 
 .claude-code-config-modal .codex-config-source,
 .opencode-config-modal .codex-config-source {
-  overflow: visible;
+  overflow: hidden;
 }
 
 .codex-config-source.is-hidden {
@@ -2003,9 +2003,9 @@
 
 .claude-code-config-modal .codex-config-source-list,
 .opencode-config-modal .codex-config-source-list {
-  max-height: none;
+  max-height: 400px;
   min-height: 0;
-  overflow: visible;
+  overflow-y: auto;
 }
 
 .codex-config-source-item {

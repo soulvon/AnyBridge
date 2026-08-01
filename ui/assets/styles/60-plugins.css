@@ -655,3 +655,26 @@
     flex-direction: column;
   }
 }
+
+/* ── 策略选择 ── */
+.plugin-deploy-strategy {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 12px 0;
+  padding: 10px 14px;
+  background: var(--surface-2, rgba(0,0,0,0.03));
+  border-radius: 8px;
+}
+
+.plugin-deploy-strategy-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+}
+
+.plugin-deploy-strategy select {
+  flex: 1;
+  min-width: 120px;
+}

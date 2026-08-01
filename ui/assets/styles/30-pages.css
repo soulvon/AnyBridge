@@ -389,14 +389,17 @@
 .setting-desc { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
 .setting-ctrl { display: flex; align-items: center; gap: 8px; }
 .setting-restart-pref-ctrl {
-  display: grid;
-  grid-template-columns: 116px 88px;
+  display: flex;
+  align-items: center;
   gap: 8px;
 }
-.setting-restart-pref-ctrl .input-sm,
+.setting-restart-pref-label {
+  font-size: 12px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
 .setting-restart-pref-ctrl .btn-ghost {
-  width: 100%;
-  min-width: 0;
+  white-space: nowrap;
 }
 .setting-path-ctrl {
   flex: 1 1 auto;

@@ -4880,7 +4880,7 @@
                         <div class="setting-label">切换到代理</div>
                         <div class="setting-desc">点击平台页「切换到代理」时写入 http.proxy / http.proxyStrictSSL；还原直连时恢复备份</div>
                       </div>
-                      <div class="setting-ctrl"><input class="input-sm" value="自动" readonly></div>
+                      <div class="setting-ctrl"><span class="tag" id="proxySwitchModeTag">自动</span></div>
                     </div>
                     <div class="setting-row">
                       <div>
@@ -4888,7 +4888,8 @@
                         <div class="setting-desc">切换代理或直连后默认询问是否重启；可在提示框中选择以后自动立即重启</div>
                       </div>
                       <div class="setting-ctrl setting-restart-pref-ctrl">
-                        <input class="input-sm" id="ideRestartPromptMode" value="每次询问" readonly>
+                        <div class="toggle-sm" data-ide-restart-toggle id="ideRestartPromptToggle" role="switch" aria-label="自动立即重启"></div>
+                        <span class="setting-restart-pref-label" id="ideRestartPromptMode">每次询问</span>
                         <button class="btn-ghost secondary" id="ideRestartPromptResetBtn"
  data-action="resetIdeRestartPromptPreference">恢复询问</button>
                       </div>
@@ -6094,9 +6095,10 @@
         </div>
       </div>
 
-      <!-- 确认视图：部署信息 + 环境预检 -->
+      <!-- 确认视图：部署信息 + 策略选择 + 环境预检 -->
       <div class="modal-body" id="plugin-deploy-confirm-view" style="max-height: 440px; overflow-y: auto;">
         <div class="plugin-deploy-info" id="plugin-deploy-info"></div>
+        <div class="plugin-deploy-strategy" id="plugin-deploy-strategy-row"></div>
         <div class="plugin-deploy-env" id="plugin-deploy-env"></div>
       </div>
 
