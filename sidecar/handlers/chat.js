@@ -1759,9 +1759,9 @@ async function streamAnthropic(req, res, { systemPrompt, messages, tools, toolCh
     usePromptCache
   );
   const extraHeaders = enhancementRequestHeaders(enhancement);
-  const sentTools = claudeCodeUnlock ? undefined : withAnthropicToolsCache(tools, usePromptCache);
+  const sentTools = claudeCodeUnlock ? tools : withAnthropicToolsCache(tools, usePromptCache);
   const apiPayload = claudeCodeUnlock
-    ? buildClaudeCodeUnlockPayload({ model: resolvedModel, messages, maxTokens: MAX_TOKENS })
+    ? buildClaudeCodeUnlockPayload({ model: resolvedModel, messages, maxTokens: MAX_TOKENS, tools: sentTools, systemPrompt })
     : {
         model: resolvedModel,
         system: withAnthropicSystemCache(systemPrompt, usePromptCache),
@@ -1770,6 +1770,10 @@ async function streamAnthropic(req, res, { systemPrompt, messages, tools, toolCh
         max_tokens: MAX_TOKENS,
       };
   if (!claudeCodeUnlock && sentTools && sentTools.length > 0) {
+    apiPayload.tools = sentTools;
+    if (toolChoice) apiPayload.tool_choice = toolChoice;
+  }
+  if (claudeCodeUnlock && sentTools && sentTools.length > 0) {
     apiPayload.tools = sentTools;
     if (toolChoice) apiPayload.tool_choice = toolChoice;
   }

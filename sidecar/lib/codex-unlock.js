@@ -148,14 +148,16 @@ export function claudeCodeUnlockForTarget(conn) {
   return normalizeClaudeCodeUnlock(conn.unlocks?.claudeCode);
 }
 
-export function buildClaudeCodeUnlockPayload({ model, messages, maxTokens, stream = true }) {
-  return {
+export function buildClaudeCodeUnlockPayload({ model, messages, maxTokens, stream = true, tools, systemPrompt }) {
+  const payload = {
     model,
-    system: [{
-      type: 'text',
-      text: CLAUDE_CODE_SYSTEM_PROMPT,
-      cache_control: { type: 'ephemeral' },
-    }],
+    system: systemPrompt
+      ? [{ type: 'text', text: systemPrompt, cache_control: { type: 'ephemeral' } }]
+      : [{
+          type: 'text',
+          text: CLAUDE_CODE_SYSTEM_PROMPT,
+          cache_control: { type: 'ephemeral' },
+        }],
     messages,
     metadata: {
       user_id: JSON.stringify({
@@ -169,6 +171,10 @@ export function buildClaudeCodeUnlockPayload({ model, messages, maxTokens, strea
     output_config: { effort: 'high' },
     stream,
   };
+  if (tools && tools.length > 0) {
+    payload.tools = tools;
+  }
+  return payload;
 }
 
 export function claudeCodeUnlockHeaders(conn) {
@@ -179,7 +185,7 @@ export function claudeCodeUnlockHeaders(conn) {
     'anthropic-beta': CLAUDE_CODE_BETA,
     'anthropic-dangerous-direct-browser-access': 'true',
     'x-app': 'cli',
-    'user-agent': 'claude-cli/2.1.173 (external, cli)',
+    'user-agent': 'claude-cli/2.1.220 (external, sdk-cli)',
     'x-claude-code-session-id': CLAUDE_CODE_SESSION_ID,
     'x-stainless-arch': stainlessArch(),
     'x-stainless-lang': 'js',
