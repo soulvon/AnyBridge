@@ -164,8 +164,7 @@ function replaceVars(text, vars) {
 // On Windows, cmd.exe /c doesn't persist cwd across lines reliably,
 // so we parse each line, track cd/pushd/popd, and run each command
 // with the correct cwd.
-function execCommand(cmdText, options = {}) {
-  return new Promise(async (resolve) => {
+async function execCommand(cmdText, options = {}) {
     const isWindows = process.platform === 'win32';
     const lines = cmdText.split('\n').map(l => l.trim()).filter(l => l && !l.startsWith('#') && !l.startsWith('//'));
     
@@ -249,13 +248,11 @@ function execCommand(cmdText, options = {}) {
       lastExitCode = result.exitCode;
 
       if (result.exitCode !== 0) {
-        resolve({ stdout: combinedStdout, stderr: combinedStderr, exitCode: result.exitCode });
-        return;
+        return { stdout: combinedStdout, stderr: combinedStderr, exitCode: result.exitCode };
       }
     }
 
-    resolve({ stdout: combinedStdout, stderr: combinedStderr, exitCode: lastExitCode });
-  });
+    return { stdout: combinedStdout, stderr: combinedStderr, exitCode: lastExitCode };
 }
 
 // ── Run validation checks ──
@@ -372,7 +369,7 @@ async function executeDeploy({ pluginId, strategy, deployMdContent, installPath,
         step: stepIndex,
         title: stepTitle,
         status: 'running',
-        message: `$ ${cmdText.split('\n')[0].slice(0, 80)}...`
+        message: `$ ${(() => { const first = cmdText.split('\n')[0]; return first.slice(0, 80) + (first.length > 80 ? '...' : ''); })()}`
       });
 
       const result = await execCommand(cmdText, {

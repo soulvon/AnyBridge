@@ -96,11 +96,12 @@ async function loadPlugin(pluginId, { reload = false } = {}) {
 
 // ── Call an adapter method with ctx injection ──
 async function callAdapter(pluginId, method, args = []) {
-  const { adapter } = await loadPlugin(pluginId);
+  const { adapter, pluginDir } = await loadPlugin(pluginId);
   if (typeof adapter[method] !== 'function') {
     throw new Error(`Adapter method "${method}" not implemented for plugin "${pluginId}"`);
   }
-  return adapter[method](adapterContext, ...args);
+  const ctx = { ...adapterContext, pluginDir };
+  return adapter[method](ctx, ...args);
 }
 
 // ── List all available plugins ──
@@ -135,7 +136,7 @@ function readBody(req) {
 
 // ── Deploy a plugin with the given strategy ──
 // Runs deploy.md steps, then generates the config file via adapter.generateConfig().
-async function runDeploy(body) {
+async function runDeploy(body, onStreamProgress) {
   const { pluginId, strategy, installPath, configValues = {} } = body;
   const loaded = await loadPlugin(pluginId);
 
@@ -154,13 +155,18 @@ async function runDeploy(body) {
   configWithSecrets._deployStrategy = strategy;
 
   const progressEvents = [];
+  const onProgress = (evt) => {
+    progressEvents.push(evt);
+    onStreamProgress?.({ type: 'progress', ...evt });
+  };
+
   const result = await executeDeploy({
     pluginId,
     strategy,
     deployMdContent,
     installPath,
     configValues: configWithSecrets,
-    onProgress: (evt) => progressEvents.push(evt),
+    onProgress,
   });
 
   if (!result.success) {
@@ -168,15 +174,15 @@ async function runDeploy(body) {
   }
 
   // Post-step: generate the config file via adapter (corresponds to deploy.md "Config" step)
-  progressEvents.push({ step: 'config', title: 'Generate Config', status: 'running', message: '生成配置文件...' });
+  onProgress({ step: 'config', title: 'Generate Config', status: 'running', message: '生成配置文件...' });
 
   let configPath = null;
   try {
     const configResult = await callAdapter(pluginId, 'generateConfig', [configWithSecrets, installPath]);
     configPath = configResult?.configPath || null;
-    progressEvents.push({ step: 'config', title: 'Generate Config', status: 'done', message: '配置文件已生成' });
+    onProgress({ step: 'config', title: 'Generate Config', status: 'done', message: '配置文件已生成' });
   } catch (e) {
-    progressEvents.push({ step: 'config', title: 'Generate Config', status: 'error', message: `generateConfig 失败: ${e.message}` });
+    onProgress({ step: 'config', title: 'Generate Config', status: 'error', message: `generateConfig 失败: ${e.message}` });
     return { ok: false, error: `generateConfig failed: ${e.message}`, result: { ...result, progress: progressEvents } };
   }
 
@@ -227,12 +233,25 @@ async function attachPluginRoutes(req, res, url, body) {
   }
 
   // POST /internal/plugins/deploy — Body: { pluginId, strategy, installPath, configValues }
+  // Returns NDJSON stream: one JSON object per line, flushed in real-time.
+  // Each line is either { type: 'progress', ...event } or { type: 'result', ok, result/error }.
   if (url.pathname === '/internal/plugins/deploy') {
+    res.setHeader('content-type', 'application/x-ndjson');
+    res.setHeader('cache-control', 'no-cache');
+    res.setHeader('x-accel-buffering', 'no');
+    res.flushHeaders?.();
+
+    const sendLine = (obj) => {
+      res.write(JSON.stringify(obj) + '\n');
+    };
+
     try {
-      res.end(JSON.stringify(await runDeploy(body)));
+      const result = await runDeploy(body, sendLine);
+      sendLine({ type: 'result', ...result });
     } catch (err) {
-      res.end(JSON.stringify({ ok: false, error: err.message }));
+      sendLine({ type: 'result', ok: false, error: err.message });
     }
+    res.end();
     return true;
   }
 

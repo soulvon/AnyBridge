@@ -748,6 +748,22 @@ function handleRequest(req, res) {
       return;
     }
 
+    // ── BYOK control endpoint: invalidate unlockModels cache ──
+    // Rust save_model_map 保存后调用此端点，清除 sidecar 内存缓存，
+    // 使下次 Windsurf 心跳立即用新 model-map.json 重跑 unlockModels。
+    if (req.url === '/__byok/invalidate-models' && req.method === 'POST') {
+      lastUnlockInputSig = '';
+      lastUnlockResult = null;
+      lastModelListCapturedAt = 0;
+      lastModelRewriteLogAt = 0;
+      lastModelCaptureLogAt = 0;
+      const json = JSON.stringify({ ok: true });
+      res.writeHead(200, { 'content-type': 'application/json', 'access-control-allow-origin': '*', 'content-length': Buffer.byteLength(json) });
+      res.end(json);
+      console.log(`[${now()}] #${id} 🧹 invalidated unlockModels cache`);
+      return;
+    }
+
     if (isLocalProxyRequest(req)) {
       console.log(`[${now()}] #${id} local ${req.method} ${req.url}`);
       Promise.resolve(handleLocalProxyRequest(req, res, body)).catch(err => {

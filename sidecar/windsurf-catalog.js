@@ -342,6 +342,86 @@ export const WINDSURF_CATALOG = [
     "noApiIdHint": null
   },
   {
+    "label": "Claude Opus 5 High",
+    "modelUid": "claude-opus-5-high",
+    "apiId": "claude-opus-5-high",
+    "contextWindow": 1000000,
+    "supportsImages": true,
+    "noApiIdHint": null
+  },
+  {
+    "label": "Claude Opus 5 High Fast",
+    "modelUid": "claude-opus-5-high-fast",
+    "apiId": "claude-opus-5-high-fast",
+    "contextWindow": 1000000,
+    "supportsImages": true,
+    "noApiIdHint": null
+  },
+  {
+    "label": "Claude Opus 5 Low",
+    "modelUid": "claude-opus-5-low",
+    "apiId": "claude-opus-5-low",
+    "contextWindow": 1000000,
+    "supportsImages": true,
+    "noApiIdHint": null
+  },
+  {
+    "label": "Claude Opus 5 Low Fast",
+    "modelUid": "claude-opus-5-low-fast",
+    "apiId": "claude-opus-5-low-fast",
+    "contextWindow": 1000000,
+    "supportsImages": true,
+    "noApiIdHint": null
+  },
+  {
+    "label": "Claude Opus 5 Max",
+    "modelUid": "claude-opus-5-max",
+    "apiId": "claude-opus-5-max",
+    "contextWindow": 1000000,
+    "supportsImages": true,
+    "noApiIdHint": null
+  },
+  {
+    "label": "Claude Opus 5 Max Fast",
+    "modelUid": "claude-opus-5-max-fast",
+    "apiId": "claude-opus-5-max-fast",
+    "contextWindow": 1000000,
+    "supportsImages": true,
+    "noApiIdHint": null
+  },
+  {
+    "label": "Claude Opus 5 Medium",
+    "modelUid": "claude-opus-5-medium",
+    "apiId": "claude-opus-5-medium",
+    "contextWindow": 1000000,
+    "supportsImages": true,
+    "noApiIdHint": null
+  },
+  {
+    "label": "Claude Opus 5 Medium Fast",
+    "modelUid": "claude-opus-5-medium-fast",
+    "apiId": "claude-opus-5-medium-fast",
+    "contextWindow": 1000000,
+    "supportsImages": true,
+    "noApiIdHint": null
+  },
+  {
+    "label": "Claude Opus 5 XHigh",
+    "modelUid": "claude-opus-5-xhigh",
+    "apiId": "claude-opus-5-xhigh",
+    "contextWindow": 1000000,
+    "supportsImages": true,
+    "noApiIdHint": null
+  },
+  {
+    "label": "Claude Opus 5 XHigh Fast",
+    "modelUid": "claude-opus-5-xhigh-fast",
+    "apiId": "claude-opus-5-xhigh-fast",
+    "contextWindow": 1000000,
+    "supportsImages": true,
+    "noApiIdHint": null
+  },
+  {
     "label": "Claude Sonnet 4",
     "modelUid": "MODEL_CLAUDE_4_SONNET",
     "apiId": null,

@@ -324,6 +324,14 @@ export function resolveTarget(target, providers) {
   if (targetUnlock && !providerUnlockEnabled(p, targetUnlock)) {
     return { error: `目标要求${targetUnlock === 'codex' ? ' Codex' : ' Claude Code'} 解锁，但供应商「${p.name}」未开启该解锁` };
   }
+  // 运行时模型族与解锁类型匹配校验（defense-in-depth）。
+  const modelLower = String(target.model || '').toLowerCase();
+  if (targetUnlock === 'claudeCode' && (modelLower.includes('gpt') || modelLower.includes('swe') || modelLower.startsWith('o1') || modelLower.startsWith('o3') || modelLower.startsWith('o4'))) {
+    return { error: `模型 ${target.model} 看起来是 GPT 系列，不应使用 Claude Code 解锁（会路由到 Anthropic 端点导致 404）` };
+  }
+  if (targetUnlock === 'codex' && (modelLower.includes('claude') || modelLower.includes('opus') || modelLower.includes('sonnet') || modelLower.includes('fable') || modelLower.includes('haiku'))) {
+    return { error: `模型 ${target.model} 看起来是 Claude 系列，不应使用 Codex 解锁（会路由到 OpenAI 端点导致 404）` };
+  }
   const unlockApiFormat = apiFormatForUnlock(targetUnlock);
   if (targetApiFormat && unlockApiFormat && targetApiFormat !== unlockApiFormat) {
     return { error: `目标协议 ${targetApiFormat} 与${targetUnlock === 'codex' ? ' Codex' : ' Claude Code'} 解锁不匹配` };
