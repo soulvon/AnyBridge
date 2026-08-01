@@ -2,6 +2,19 @@
 
 All notable changes to AnyBridge will be documented in this file.
 
+## v0.3.21 - 2026-08-01
+
+- sidecar: 插件部署改为 NDJSON 流式输出实时进度；新增 `/__byok/invalidate-models` 端点，model-map 保存后立即清除 sidecar 缓存。
+- sidecar: 运行时模型族与解锁类型匹配校验（GPT 模型不应使用 Claude Code 解锁，反之亦然），避免路由到错误端点导致 404。
+- sidecar: 新增 Claude Opus 5 全系列模型目录（high/low/medium/max/xhigh × fast）。
+- sidecar: `execCommand` 从 `new Promise(async)` 重构为 `async/await`，修复短命令多余省略号。
+- 后端: 平台管理命令大幅扩展（+342 行），插件部署/停止/状态查询增强，支持 Docker 策略 `prepareStop`。
+- 后端: 模型映射保存后调用 sidecar `invalidate-models` 清除缓存，使下次 Windsurf 心跳立即生效。
+- 插件: grok2api 支持 Docker 部署策略（`docker compose up -d` / `down`），自动复制 `docker-compose.yml` 并替换端口。
+- 插件: 新增 `plugin-schema.json` 插件元数据 schema 定义，grok2api 图标改为 `icon.svg`。
+- 前端: 插件部署弹窗适配 NDJSON 流式进度展示；平台页、插件管理页、样式大幅增强。
+- 工具: 新增辅助脚本（Cassia 油猴脚本、SSO 转 CPA 工具、Devin Workbench checksum 探针）与 Devin 工作流定义。
+
 ## v0.3.19 - 2026-07-27
 
 - 修复百炼 TokenPlan 等非 `dashscope.aliyuncs.com` 域名使用 `/compatible-mode` 路径时，`normalizeOpenAIApiPath` 未补全为 `/compatible-mode/v1/chat/completions` 导致上游 404 的问题。通用 compatible-mode 路径补全不再依赖 host 白名单匹配。
