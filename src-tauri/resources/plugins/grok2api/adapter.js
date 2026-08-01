@@ -126,6 +126,25 @@ audit:
 `;
     const configPath = ctx.path.join(installPath, 'config.yaml');
     await ctx.fs.writeFile(configPath, yaml, 'utf-8');
+
+    // For Docker strategy: ensure docker-compose.yml exists in installPath
+    if (configValues._deployStrategy === 'docker') {
+      const composeDest = ctx.path.join(installPath, 'docker-compose.yml');
+      try {
+        await ctx.fs.access(composeDest);
+      } catch {
+        // Source repo doesn't include docker-compose.yml — copy from plugin dir with port substitution
+        const composeSrc = ctx.path.join(ctx.pluginDir, 'docker-compose.yml');
+        try {
+          let composeContent = await ctx.fs.readFile(composeSrc, 'utf-8');
+          // Replace hardcoded port mapping with user-configured port
+          const port = configValues.port || 8000;
+          composeContent = composeContent.replace(/"8000:8000"/g, `"${port}:${port}"`);
+          await ctx.fs.writeFile(composeDest, composeContent, 'utf-8');
+        } catch { /* non-fatal — docker compose will fail with a clear error */ }
+      }
+    }
+
     return { configPath };
   },
 
@@ -134,6 +153,16 @@ audit:
   // ═══════════════════════════════════════════════════
 
   async prepareStart(ctx, installPath, configValues) {
+    // Docker strategy: start via docker compose
+    if (configValues._deployStrategy === 'docker' || configValues.deployStrategy === 'docker') {
+      return {
+        command: 'docker',
+        args: ['compose', 'up', '-d'],
+        cwd: installPath,
+        env: {}
+      };
+    }
+    // Source strategy: run the compiled binary directly
     const binaryName = process.platform === 'win32' ? 'grok2api.exe' : 'grok2api';
     return {
       command: ctx.path.join(installPath, binaryName),
@@ -154,6 +183,19 @@ audit:
     } catch (e) {
       return { ok: false, detail: e.message };
     }
+  },
+
+  async prepareStop(ctx, installPath, configValues) {
+    // Docker strategy: stop via docker compose down
+    if (configValues._deployStrategy === 'docker' || configValues.deployStrategy === 'docker') {
+      return {
+        command: 'docker',
+        args: ['compose', 'down'],
+        cwd: installPath,
+      };
+    }
+    // Source strategy: return null — Rust will kill the process by PID
+    return null;
   },
 
   // ═══════════════════════════════════════════════════

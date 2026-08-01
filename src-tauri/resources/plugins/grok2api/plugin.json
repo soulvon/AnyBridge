@@ -4,7 +4,7 @@
   "name": "Grok2API",
   "description": "Grok 多账号 API 网关",
   "version": "1.0.0",
-  "icon": "icon.png",
+  "icon": "icon.svg",
   "category": "api-gateway",
   "author": "soulvon",
   "homepage": "https://github.com/chenyme/grok2api",

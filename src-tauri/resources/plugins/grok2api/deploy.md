@@ -73,10 +73,18 @@ The config includes:
 
 ### Steps
 
-#### 1. Prepare Config
-AnyBridge will auto-generate config.yaml via adapter.js generateConfig().
+#### 1. Clone Source
+```bash
+git clone https://github.com/chenyme/grok2api.git {installPath}
+cd {installPath}
+```
+**验证**: `{installPath}\Dockerfile` 文件存在
 
-#### 2. Start Container
+#### 2. Prepare Config
+AnyBridge will auto-generate config.yaml via adapter.js generateConfig().
+If the source repo does not include a docker-compose.yml, AnyBridge will copy the plugin's bundled docker-compose.yml into {installPath}.
+
+#### 3. Start Container
 ```bash
 cd {installPath}
 docker compose up -d

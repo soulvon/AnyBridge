@@ -1,0 +1,17 @@
+<svg width="128" height="128" viewBox="0 0 128 128" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1a1a2e"/>
+      <stop offset="100%" stop-color="#16213e"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0f3460"/>
+      <stop offset="100%" stop-color="#533483"/>
+    </linearGradient>
+  </defs>
+  <rect width="128" height="128" rx="24" fill="url(#bg)"/>
+  <rect x="20" y="20" width="88" height="88" rx="16" fill="none" stroke="url(#accent)" stroke-width="3"/>
+  <text x="64" y="78" font-family="system-ui, -apple-system, sans-serif" font-size="48" font-weight="700" fill="#e94560" text-anchor="middle">G</text>
+  <circle cx="100" cy="28" r="8" fill="#e94560" opacity="0.8"/>
+  <circle cx="28" cy="100" r="6" fill="#533483" opacity="0.6"/>
+</svg>

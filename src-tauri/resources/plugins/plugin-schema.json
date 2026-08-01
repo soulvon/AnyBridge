@@ -1,0 +1,126 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "AnyBridge Plugin Manifest",
+  "type": "object",
+  "required": ["apiVersion", "id", "name", "description", "version", "runtime", "healthCheck", "configSchema", "capabilities", "panels", "deploy"],
+  "properties": {
+    "apiVersion": { "type": "integer", "const": 1 },
+    "id": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" },
+    "name": { "type": "string" },
+    "description": { "type": "string" },
+    "version": { "type": "string", "pattern": "^\\d+\\.\\d+\\.\\d+" },
+    "icon": { "type": "string", "default": "icon.png" },
+    "category": { "enum": ["api-gateway", "proxy", "tool", "database", "other"] },
+    "author": { "type": "string" },
+    "homepage": { "type": "string", "format": "uri" },
+    "license": { "type": "string" },
+    "runtime": {
+      "type": "object",
+      "required": ["type", "args", "workdir"],
+      "properties": {
+        "type": { "enum": ["binary", "docker", "nodejs", "python", "custom"] },
+        "binary": { "type": "string" },
+        "args": { "type": "array", "items": { "type": "string" } },
+        "workdir": { "type": "string" },
+        "port": { "type": "string" },
+        "stopSignal": { "type": "string" },
+        "stopTimeout": { "type": "integer" },
+        "env": { "type": "object" }
+      }
+    },
+    "healthCheck": {
+      "type": "object",
+      "required": ["type", "intervalSeconds", "timeoutSeconds"],
+      "properties": {
+        "type": { "enum": ["http", "tcp", "process", "custom"] },
+        "url": { "type": "string" },
+        "method": { "type": "string" },
+        "expectStatus": { "type": "integer" },
+        "intervalSeconds": { "type": "integer", "minimum": 5 },
+        "timeoutSeconds": { "type": "integer", "minimum": 1 },
+        "healthyThreshold": { "type": "integer", "minimum": 1 },
+        "unhealthyThreshold": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "configSchema": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["key", "label", "type"],
+        "properties": {
+          "key": { "type": "string" },
+          "label": { "type": "string" },
+          "type": { "enum": ["number", "string", "password", "boolean", "select"] },
+          "default": {},
+          "required": { "type": "boolean" },
+          "description": { "type": "string" },
+          "hidden": { "type": "boolean" },
+          "generate": { "type": ["string", "null"], "enum": ["hex-32", "base64-32", "random-password", null] },
+          "immutable": { "type": "boolean" },
+          "options": { "type": "array", "items": { "type": "object", "required": ["label", "value"] } }
+        }
+      }
+    },
+    "capabilities": {
+      "type": "array",
+      "items": { "enum": ["lifecycle", "health-check", "account-management", "model-routing", "client-keys", "logs", "metrics", "proxy-config"] }
+    },
+    "panels": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "title", "type", "order"],
+        "properties": {
+          "id": { "type": "string" },
+          "title": { "type": "string" },
+          "type": { "enum": ["builtin"] },
+          "order": { "type": "integer" },
+          "capability": { "type": "string" },
+          "requiresAuth": { "type": "boolean" },
+          "loadFrom": { "type": "string" },
+          "actions": { "type": "array" },
+          "fields": { "type": "array" },
+          "table": { "type": "object" }
+        }
+      }
+    },
+    "deploy": {
+      "type": "object",
+      "required": ["strategies"],
+      "properties": {
+        "strategies": {
+          "type": "array",
+          "items": { "enum": ["docker", "source", "adapter"] },
+          "minItems": 1
+        },
+        "docker": {
+          "type": "object",
+          "properties": {
+            "composeFile": { "type": "string" },
+            "configFile": { "type": "string" }
+          }
+        },
+        "source": {
+          "type": "object",
+          "properties": {
+            "doc": { "type": "string" },
+            "installer": { "type": "string" },
+            "minDiskMB": { "type": "integer" },
+            "estimatedTime": { "type": "string" },
+            "requiresNetwork": { "type": "boolean" },
+            "requiresAdmin": { "type": "boolean" }
+          }
+        }
+      }
+    },
+    "upgrade": {
+      "type": "object",
+      "properties": {
+        "type": { "enum": ["github-release", "git-pull", "custom", "none"] },
+        "repo": { "type": "string" },
+        "checkInterval": { "type": "string" },
+        "autoCheck": { "type": "boolean" }
+      }
+    }
+  }
+}

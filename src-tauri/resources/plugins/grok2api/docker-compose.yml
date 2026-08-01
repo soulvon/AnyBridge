@@ -1,0 +1,19 @@
+version: "3.8"
+
+services:
+  grok2api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: grok2api
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./config.yaml:/app/config.yaml:ro
+      - grok2api-data:/app/data
+    environment:
+      - GOPROXY=https://goproxy.cn,direct
+
+volumes:
+  grok2api-data:
