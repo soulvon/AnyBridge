@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
 use tauri::{Emitter, State};
+use futures_util::StreamExt;
 
 use crate::commands::config::configured_proxy_ports;
 
@@ -163,7 +164,9 @@ fn write_config(plugin_id: &str, config: &serde_json::Value) -> Result<(), Strin
 
 /// Returns true if the TCP port on localhost is already bound by another process.
 fn is_port_in_use(port: u16) -> bool {
+    // Check both loopback and wildcard bindings — a process on 0.0.0.0 would conflict too
     std::net::TcpListener::bind(("127.0.0.1", port)).is_err()
+        || std::net::TcpListener::bind(("0.0.0.0", port)).is_err()
 }
 
 /// Returns true if a process with the given PID is currently alive.
@@ -454,30 +457,87 @@ async fn deploy_with_strategy(
         "configValues": serde_json::Value::Object(config_values),
     });
 
-    let deploy_result = sidecar_post_with_timeout(
-        "/internal/plugins/deploy",
-        &deploy_body,
-        std::time::Duration::from_secs(1800),
-    )
-    .await?;
+    // Stream NDJSON from the sidecar: each line is either a progress event or the final result.
+    // We read the HTTP response body chunk-by-chunk and split on newlines so progress events
+    // are emitted to the UI in real-time, not buffered until the entire deploy finishes.
+    let url = format!("{}{}", sidecar_url(), "/internal/plugins/deploy");
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(1800))
+        .build()
+        .map_err(|e| e.to_string())?;
+    let res = client
+        .post(&url)
+        .header("content-type", "application/json")
+        .body(deploy_body.to_string())
+        .send()
+        .await
+        .map_err(|e| format!("Sidecar deploy request failed: {}", e))?;
 
-    // Replay the step executor's progress events to the UI
-    let result_obj = deploy_result.get("result").cloned().unwrap_or(serde_json::Value::Null);
-    if let Some(progress) = result_obj.get("progress").and_then(|p| p.as_array()) {
-        for evt in progress {
-            let _ = app.emit(
-                "plugin-deploy-progress",
-                serde_json::json!({
-                    "pluginId": plugin_id,
-                    "strategy": strategy,
-                    "step": evt.get("step").unwrap_or(&serde_json::Value::Null),
-                    "title": evt.get("title").unwrap_or(&serde_json::Value::Null),
-                    "status": evt.get("status").unwrap_or(&serde_json::Value::Null),
-                    "message": evt.get("message").unwrap_or(&serde_json::Value::Null),
-                }),
-            );
+    if !res.status().is_success() {
+        let status = res.status();
+        let text = res.text().await.unwrap_or_default();
+        return Err(format!("Sidecar deploy returned {}: {}", status, text));
+    }
+
+    // Read the NDJSON stream chunk-by-chunk, splitting on newlines
+    let mut stream = res.bytes_stream();
+    let mut buf = String::new();
+    let mut final_result: Option<serde_json::Value> = None;
+
+    while let Some(chunk_result) = stream.next().await {
+        let chunk = chunk_result.map_err(|e| format!("Reading deploy stream failed: {}", e))?;
+        buf.push_str(&String::from_utf8_lossy(&chunk));
+
+        // Process complete lines (terminated by \n)
+        while let Some(pos) = buf.find('\n') {
+            let line = buf[..pos].trim().to_string();
+            buf = buf[pos + 1..].to_string();
+
+            if line.is_empty() {
+                continue;
+            }
+
+            let parsed: serde_json::Value = match serde_json::from_str(&line) {
+                Ok(v) => v,
+                Err(_) => continue,
+            };
+
+            let evt_type = parsed.get("type").and_then(|v| v.as_str()).unwrap_or("");
+            match evt_type {
+                "progress" => {
+                    let _ = app.emit(
+                        "plugin-deploy-progress",
+                        serde_json::json!({
+                            "pluginId": plugin_id,
+                            "strategy": strategy,
+                            "step": parsed.get("step").unwrap_or(&serde_json::Value::Null),
+                            "title": parsed.get("title").unwrap_or(&serde_json::Value::Null),
+                            "status": parsed.get("status").unwrap_or(&serde_json::Value::Null),
+                            "message": parsed.get("message").unwrap_or(&serde_json::Value::Null),
+                        }),
+                    );
+                }
+                "result" => {
+                    final_result = Some(parsed);
+                }
+                _ => {}
+            }
         }
     }
+
+    // Process any remaining data in the buffer (last line without trailing \n)
+    let remaining = buf.trim();
+    if !remaining.is_empty() {
+        if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(remaining) {
+            let evt_type = parsed.get("type").and_then(|v| v.as_str()).unwrap_or("");
+            if evt_type == "result" {
+                final_result = Some(parsed);
+            }
+        }
+    }
+
+    let deploy_result = final_result.ok_or("Deploy stream ended without result")?;
+    let result_obj = deploy_result.get("result").cloned().unwrap_or(serde_json::Value::Null);
 
     let success = deploy_result.get("ok").and_then(|v| v.as_bool()).unwrap_or(false);
     if !success {
@@ -745,8 +805,16 @@ pub async fn plugin_start(
     fs::create_dir_all(&log_dir).map_err(|e| format!("创建插件日志目录失败: {}", e))?;
     let stdout_path = log_dir.join("stdout.log");
     let stderr_path = log_dir.join("stderr.log");
-    let stdout = std::fs::File::create(&stdout_path).map_err(|e| e.to_string())?;
-    let stderr = std::fs::File::create(&stderr_path).map_err(|e| e.to_string())?;
+    let stdout = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&stdout_path)
+        .map_err(|e| e.to_string())?;
+    let stderr = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&stderr_path)
+        .map_err(|e| e.to_string())?;
     cmd.stdout(std::process::Stdio::from(stdout));
     cmd.stderr(std::process::Stdio::from(stderr));
 
@@ -959,8 +1027,47 @@ pub async fn plugin_stop(
     state: State<'_, PluginState>,
     plugin_id: String,
 ) -> Result<(), String> {
-    // Prefer the in-memory Child handle; fall back to the PID recorded in status.json
-    // so a plugin started before an AnyBridge restart can still be stopped.
+    // 1. Try adapter prepareStop (e.g. Docker needs `docker compose down` not PID kill)
+    let config = read_config(&plugin_id);
+    let install_path = config.get("installPath").and_then(|v| v.as_str()).unwrap_or("");
+    let stop_info = if !install_path.is_empty() {
+        plugin_adapter_call(
+            plugin_id.clone(),
+            "prepareStop".to_string(),
+            vec![serde_json::json!(install_path), config.clone()],
+        )
+        .await
+        .ok()
+        .filter(|v| !v.is_null())
+    } else {
+        None
+    };
+
+    if let Some(stop) = stop_info {
+        // Adapter returned a stop command — execute it
+        if let Some(command) = stop.get("command").and_then(|v| v.as_str()) {
+            let args: Vec<String> = stop
+                .get("args")
+                .and_then(|v| v.as_array())
+                .map(|a| a.iter().filter_map(|x| x.as_str().map(String::from)).collect())
+                .unwrap_or_default();
+            let cwd = stop.get("cwd").and_then(|v| v.as_str());
+            let mut cmd = std::process::Command::new(command);
+            cmd.args(&args);
+            if let Some(cwd) = cwd {
+                cmd.current_dir(cwd);
+            }
+            #[cfg(target_os = "windows")]
+            {
+                use std::os::windows::process::CommandExt;
+                const CREATE_NO_WINDOW: u32 = 0x08000000;
+                cmd.creation_flags(CREATE_NO_WINDOW);
+            }
+            let _ = cmd.output(); // wait for it to finish
+        }
+    }
+
+    // 2. Also kill the tracked child process / PID (covers source strategy and cleanup)
     let tracked = {
         let mut processes = state.processes.lock().unwrap();
         processes.remove(&plugin_id)
@@ -968,10 +1075,14 @@ pub async fn plugin_stop(
 
     let pid = match tracked {
         Some(mut p) => {
+            // On Windows, kill_pid (taskkill /T /F) already terminates the whole tree.
+            // On Unix, send SIGTERM first for graceful shutdown, then SIGKILL as fallback.
             kill_pid(p.pid);
-            // Reap the child so it doesn't linger as a zombie on unix
-            let _ = p.child.kill();
-            let _ = p.child.wait();
+            #[cfg(not(target_os = "windows"))]
+            {
+                let _ = p.child.kill();
+            }
+            let _ = p.child.wait(); // reap to avoid zombie on unix
             Some(p.pid)
         }
         None => {
@@ -1005,7 +1116,14 @@ pub async fn plugin_restart(
     plugin_id: String,
 ) -> Result<(), String> {
     plugin_stop(app.clone(), state.clone(), plugin_id.clone()).await?;
-    tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+
+    // Poll for port release instead of a fixed 1s sleep — TCP TIME_WAIT can take longer
+    let port = read_config(&plugin_id).get("port").and_then(|v| v.as_u64()).unwrap_or(8000) as u16;
+    for _ in 0..30 {
+        if !is_port_in_use(port) { break; }
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+    }
+
     plugin_start(app, state, plugin_id).await
 }
 
@@ -1084,8 +1202,8 @@ pub async fn plugin_uninstall(
     state: State<'_, PluginState>,
     plugin_id: String,
 ) -> Result<(), String> {
-    // Stop if running
-    plugin_stop(app.clone(), state, plugin_id.clone()).await?;
+    // Stop if running — best-effort, don't let a dead PID block uninstall
+    let _ = plugin_stop(app.clone(), state, plugin_id.clone()).await;
 
     // Call adapter prepareUninstall
     let config = read_config(&plugin_id);

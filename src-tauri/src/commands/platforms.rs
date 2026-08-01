@@ -378,28 +378,20 @@ impl Platform {
                 serde_json::to_string_pretty(&preview).map_err(|e| e.to_string())
             }
             Platform::Codex => {
+                // 与 apply_codex 共用归一逻辑：预览显示的地址必须等于实际写入的地址。
                 let base = if p.route_through_proxy {
                     codex_base_url()
                 } else {
-                    let host = p.api_host.trim().trim_end_matches('/');
-                    let path = p
-                        .api_path
-                        .as_deref()
-                        .unwrap_or("/v1")
-                        .trim()
-                        .trim_start_matches('/');
-                    format!("{}/{}", host, path)
+                    codex_direct_base_url(p)
                 };
                 let model = toml_escape(p.default_model.trim());
-                let bearer_for_preview = if p.route_through_proxy {
-                    codex_bearer_token().unwrap_or_default()
-                } else {
-                    p.api_key.clone()
-                };
+                // 预览不因缺少凭证而失败：拿不到就留空掩码。
+                let bearer_for_preview = codex_provider_bearer(p)
+                    .unwrap_or_default()
+                    .unwrap_or_default();
                 let masked = mask_key(&bearer_for_preview);
                 let name = toml_escape(&p.name);
-                // wire_api 始终为 "responses"：Codex 始终用 Responses API 与本地代理通信，
-                // 由代理根据 provider 的 wireApi 配置决定是否转换为 Chat Completions。
+                // wire_api 恒为 "responses"，理由见 apply_codex。
                 let catalog_line = if !resolve_codex_model_catalog_entries(p).is_empty() {
                     format!("\nmodel_catalog_json = \"{CODEX_MODEL_CATALOG_FILENAME}\"")
                 } else {
@@ -544,25 +536,10 @@ impl Platform {
         let base = if p.route_through_proxy {
             codex_base_url()
         } else {
-            // 直连供应商：拼接 apiHost + apiPath（不写 localhost 代理地址）
-            let host = p.api_host.trim().trim_end_matches('/');
-            let path = p
-                .api_path
-                .as_deref()
-                .unwrap_or("/v1")
-                .trim()
-                .trim_start_matches('/');
-            format!("{}/{}", host, path)
+            // 直连供应商：写供应商的 API 根路径（不写 localhost 代理地址）
+            codex_direct_base_url(p)
         };
-        let bearer = if p.route_through_proxy {
-            codex_bearer_token()?
-        } else {
-            let key = p.api_key.trim();
-            if key.is_empty() {
-                return Err("Codex 直连供应商缺少 API Key".to_string());
-            }
-            key.to_string()
-        };
+        let bearer = codex_provider_bearer(p)?;
         let model = p.default_model.trim();
 
         if !model.is_empty() {
@@ -594,14 +571,17 @@ impl Platform {
             })?;
         provider_table["name"] = value(p.name.clone());
         provider_table["base_url"] = value(base);
-        // wire_api 始终为 "responses"：Codex 始终用 Responses API 与本地代理通信，
-        // 由代理根据 provider 的 wireApi 配置决定是否转换为 Chat Completions。
+        // wire_api 恒为 "responses"：openai/codex 已删除 `WireApi::Chat`，
+        // 写 "chat" 会让 Codex 反序列化 config.toml 失败、启动即崩
+        // （错误提示指向 openai/codex discussions/7782）。
+        // 因此只支持 Chat Completions 的上游必须走代理模式，由本地代理按
+        // provider 的 wireApi 做 Responses→Chat 转换 —— 那是内部字段，不写进这里。
         provider_table["wire_api"] = value("responses");
         // Auth 互斥（官方文档 / openai/codex#16288）：
         // - OpenAI OAuth：requires_openai_auth=true，禁止 experimental_bearer_token / env_key / .auth
         // - 第三方静态凭证：requires_openai_auth=false + experimental_bearer_token（或 env_key）
         // 残留冲突会导致 Codex 读 auth.json.refresh_token，apikey 模式下 refresh_token 为空。
-        apply_codex_provider_auth(provider_table, p.preserve_official_auth, Some(bearer.as_str()));
+        apply_codex_provider_auth(provider_table, p.preserve_official_auth, bearer.as_deref());
         provider_table[CODEX_ANYBRIDGE_MANAGED_FLAG] = value(true);
 
         // ── Codex 原生重试配置：从 model-map.json enhancement 读取 ──
@@ -1046,6 +1026,54 @@ fn codex_base_url() -> String {
     use crate::commands::config::configured_proxy_ports;
     let port = configured_proxy_ports().api_port;
     format!("http://127.0.0.1:{port}/codex/v1")
+}
+
+/// URL 是否带非空路径段（`normalize_url` 已保证有 scheme 且去掉尾斜杠）。
+fn url_has_path_segment(url: &str) -> bool {
+    match url.split_once("://") {
+        Some((_, rest)) => rest.contains('/'),
+        None => url.contains('/'),
+    }
+}
+
+/// Codex 直连模式的 base_url：必须是 API **根路径**，不能带端点后缀。
+///
+/// Codex 自己会按 wire_api 拼接端点（openai/codex `ModelProviderInfo`）：
+/// `wire_api` 现在只剩 `responses` 一个取值，请求地址固定为 `{base_url}/responses`。
+/// 所以 base 若写成 `.../v1/responses`，实际请求会变成 `.../v1/responses/responses` → 404。
+///
+/// 与 `claude_base_url`（剥 `/v1/messages`）、前端 `codexTargetBaseUrl()` 同源同语义；
+/// 供应商 `api_path` 存的是完整端点路径（如 `/v1/chat/completions`），必须在这里剥掉。
+fn codex_direct_base_url(p: &Provider) -> String {
+    let base = strip_first_matching_suffix(
+        &provider_endpoint_url(p),
+        &["/chat/completions", "/responses"],
+    );
+    // 剥完只剩裸域名（api_path 为空、"/" 或仅有端点后缀）时补 `/v1`：
+    // Codex 会拼成 `{base}/responses`，没有版本段的地址几乎不可能是有效端点。
+    if url_has_path_segment(&base) {
+        base
+    } else {
+        format!("{base}/v1")
+    }
+}
+
+/// Codex 直连模式写入 config.toml 的 bearer。
+///
+/// `preserve_official_auth=true` 时 Codex 走 auth.json 的 OAuth 凭证，
+/// bearer 会被 `apply_codex_provider_auth` 丢弃 —— 此时不该因为缺 Key 阻断切换。
+fn codex_provider_bearer(p: &Provider) -> Result<Option<String>, String> {
+    if p.preserve_official_auth {
+        return Ok(None);
+    }
+    if p.route_through_proxy {
+        return codex_bearer_token().map(Some);
+    }
+    let key = p.api_key.trim();
+    if key.is_empty() {
+        return Err("Codex 直连供应商缺少 API Key".to_string());
+    }
+    Ok(Some(key.to_string()))
 }
 
 /// Codex config.toml 里的 bearer_token：代理模式写 anybridge 本地代理 key。
@@ -1909,6 +1937,61 @@ fn codex_proxy_route_display_name(provider: &Provider, model: &str) -> String {
         .and_then(|entry| entry.display_name.clone())
         .filter(|name| !name.trim().is_empty())
         .unwrap_or_else(|| model.to_string())
+}
+
+/// 从供应商的 API 路径推断上游协议；返回 None 表示路径里没带端点信息。
+fn infer_wire_api_from_api_path(api_path: Option<&str>) -> Option<&'static str> {
+    let path = api_path?.trim().trim_end_matches('/').to_ascii_lowercase();
+    if path.ends_with("/chat/completions") {
+        Some("chat")
+    } else if path.ends_with("/responses") {
+        Some("responses")
+    } else {
+        None
+    }
+}
+
+/// 切换时按来源供应商重新推断 `wire_api`（只对 `wireApiAuto` 的配置生效）。
+/// 返回 None 表示保持原值。
+///
+/// 前端原本想「从来源供应商继承 wireApi」，但普通供应商在 UI 上没有该输入项、
+/// 字段恒为空字符串，继承永远落空、一律回落 "responses"。结果只支持
+/// Chat Completions 的上游被代理请求到 `/responses` → 404。
+fn resolve_codex_auto_wire_api(store: &ProviderStore, config_id: &str) -> Option<String> {
+    let config = store.codex_configs.iter().find(|c| c.id == config_id)?;
+    if !config.wire_api_auto || config.source_provider_id.trim().is_empty() {
+        return None;
+    }
+    let source = store
+        .providers
+        .iter()
+        .find(|p| p.id == config.source_provider_id)?;
+    let explicit = source.wire_api.trim().to_ascii_lowercase();
+    if explicit == "chat" || explicit == "responses" {
+        return Some(explicit);
+    }
+    infer_wire_api_from_api_path(source.api_path.as_deref()).map(str::to_string)
+}
+
+/// 应用推断结果，并**同步写回 store**，让存量配置不必逐个重新保存也能走对端点。
+///
+/// 必须写回：sidecar 是从 providers.json 的 `codexConfigs` 直接读 `wireApi` 来决定
+/// 要不要做 Responses→Chat 转换的（config-cache.js `transformProviders`）。
+/// 只改内存里的 provider，会让路由指向 `/chat/completions` 却不转换请求体 —— 比不修更糟。
+///
+/// 只影响「本地代理 → 上游」；config.toml 的 wire_api 仍恒为 "responses"。
+fn apply_codex_auto_wire_api(provider: &mut Provider, store: &mut ProviderStore, config_id: &str) {
+    let Some(resolved) = resolve_codex_auto_wire_api(store, config_id) else {
+        return;
+    };
+    provider.wire_api = resolved.clone();
+    if let Some(config) = store
+        .codex_configs
+        .iter_mut()
+        .find(|c| c.id == config_id)
+    {
+        config.wire_api = resolved;
+    }
 }
 
 fn codex_proxy_target_api_path(provider: &Provider) -> String {
@@ -3821,7 +3904,10 @@ pub fn switch_platform(
     }
 
     emit_switch_progress(&app, plat.id(), "resolving", "正在解析供应商信息…");
-    let provider = resolve_platform_config(&plat, &store, &provider_id)?;
+    let mut provider = resolve_platform_config(&plat, &store, &provider_id)?;
+    if matches!(plat, Platform::Codex) {
+        apply_codex_auto_wire_api(&mut provider, &mut store, &provider_id);
+    }
     let planned_codex_routes = if matches!(plat, Platform::Codex) {
         emit_switch_progress(&app, plat.id(), "routing", "正在校验 Codex 本地代理路由…");
         Some(if provider.route_through_proxy {
@@ -5017,15 +5103,195 @@ wire_api = "responses"
             doc["model_provider"].as_str(),
             Some(CODEX_RUNTIME_MODEL_PROVIDER_ID)
         );
+        // api_path 是 "/v1/responses"，但 base_url 必须是根路径：
+        // Codex 自己会拼 "/responses"，带后缀会请求到 ".../v1/responses/responses"。
         assert_eq!(
             doc["model_providers"][CODEX_RUNTIME_MODEL_PROVIDER_ID]["base_url"].as_str(),
-            Some("https://example.com/v1/responses")
+            Some("https://example.com/v1")
         );
         assert_eq!(
             doc["model_providers"][CODEX_RUNTIME_MODEL_PROVIDER_ID]["experimental_bearer_token"]
                 .as_str(),
             Some("sk-test-secret")
         );
+
+        let _ = fs::remove_dir_all(path.parent().unwrap());
+    }
+
+    #[test]
+    fn codex_direct_base_url_strips_endpoint_suffix_and_keeps_api_root() {
+        let mut provider = test_openai_provider();
+
+        // 端点后缀必须剥掉：Codex 会自行拼接 "/responses"。
+        provider.api_path = Some("/v1/responses".to_string());
+        assert_eq!(codex_direct_base_url(&provider), "https://example.com/v1");
+        provider.api_path = Some("/v1/chat/completions".to_string());
+        assert_eq!(codex_direct_base_url(&provider), "https://example.com/v1");
+        provider.api_path = Some("/V1/Chat/Completions".to_string());
+        assert_eq!(codex_direct_base_url(&provider), "https://example.com/V1");
+
+        // 已经是根路径的原样保留，非 /v1 的自定义根路径不得被改写。
+        provider.api_path = Some("/v1".to_string());
+        assert_eq!(codex_direct_base_url(&provider), "https://example.com/v1");
+        provider.api_path = Some("/zen/go/v1".to_string());
+        assert_eq!(
+            codex_direct_base_url(&provider),
+            "https://example.com/zen/go/v1"
+        );
+        provider.api_path = Some("/api/v2".to_string());
+        assert_eq!(codex_direct_base_url(&provider), "https://example.com/api/v2");
+
+        // 空路径不能产生 "https://host/" —— 否则 Codex 拼成 "https://host//responses"。
+        for empty in [None, Some(String::new()), Some("/".to_string())] {
+            provider.api_path = empty;
+            assert_eq!(codex_direct_base_url(&provider), "https://example.com/v1");
+        }
+
+        // 裸域名补 scheme，尾部斜杠不残留。
+        provider.api_host = "example.com/".to_string();
+        provider.api_path = Some("/v1/responses/".to_string());
+        assert_eq!(codex_direct_base_url(&provider), "https://example.com/v1");
+    }
+
+    #[test]
+    fn infer_wire_api_from_api_path_reads_endpoint_suffix() {
+        assert_eq!(
+            infer_wire_api_from_api_path(Some("/v1/chat/completions")),
+            Some("chat")
+        );
+        assert_eq!(
+            infer_wire_api_from_api_path(Some("/V1/Chat/Completions/")),
+            Some("chat")
+        );
+        assert_eq!(
+            infer_wire_api_from_api_path(Some("/v1/responses")),
+            Some("responses")
+        );
+        // 路径里没有端点信息时不瞎猜，交给调用方保留原值。
+        assert_eq!(infer_wire_api_from_api_path(Some("/v1")), None);
+        assert_eq!(infer_wire_api_from_api_path(Some("")), None);
+        assert_eq!(infer_wire_api_from_api_path(None), None);
+    }
+
+    /// 构造一份 Codex 配置：`extra` 用于追加字段（如 `,"wireApiAuto":false`）。
+    fn test_codex_config(source_id: &str, extra: &str) -> crate::commands::config::CodexConfig {
+        serde_json::from_str(&format!(
+            r#"{{"id":"cfg-1","name":"Cfg","apiHost":"https://example.com","apiKey":"sk-x","defaultModel":"gpt-5","sourceProviderId":"{source_id}","wireApi":"responses"{extra}}}"#
+        ))
+        .unwrap()
+    }
+
+    fn test_store_with_chat_source(
+        config: crate::commands::config::CodexConfig,
+    ) -> ProviderStore {
+        let mut source = test_openai_provider();
+        source.id = "prov-chat".to_string();
+        source.api_path = Some("/v1/chat/completions".to_string());
+        ProviderStore {
+            providers: vec![source],
+            codex_configs: vec![config],
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn apply_codex_auto_wire_api_heals_legacy_configs_from_source_path() {
+        // 存量配置：wireApi 被历史前端一律写成 "responses"，且完全没有 wireApiAuto 字段。
+        let config = test_codex_config("prov-chat", "");
+        assert!(
+            config.wire_api_auto,
+            "缺少 wireApiAuto 的存量配置必须默认视为自动推断，否则修复对存量不生效"
+        );
+
+        let mut store = test_store_with_chat_source(config);
+        let mut provider = test_openai_provider();
+        provider.wire_api = "responses".to_string();
+        apply_codex_auto_wire_api(&mut provider, &mut store, "cfg-1");
+        assert_eq!(
+            provider.wire_api, "chat",
+            "来源只支持 Chat Completions 时，代理必须请求 /chat/completions"
+        );
+        // 必须写回 store：sidecar 从 providers.json 的 codexConfigs 读 wireApi
+        // 决定要不要做 Responses→Chat 转换。只改内存会让路由打到 /chat/completions
+        // 却仍发 Responses 格式的请求体 —— 比不修更糟。
+        assert_eq!(
+            store.codex_configs[0].wire_api, "chat",
+            "推断结果必须持久化，否则 sidecar 仍按 responses 处理请求体"
+        );
+    }
+
+    #[test]
+    fn apply_codex_auto_wire_api_respects_explicit_user_choice() {
+        let config = test_codex_config("prov-chat", r#","wireApiAuto":false"#);
+        let mut store = test_store_with_chat_source(config);
+        let mut provider = test_openai_provider();
+        provider.wire_api = "responses".to_string();
+        apply_codex_auto_wire_api(&mut provider, &mut store, "cfg-1");
+        assert_eq!(
+            provider.wire_api, "responses",
+            "用户在 UI 上显式选定后，推断不得覆盖"
+        );
+        assert_eq!(store.codex_configs[0].wire_api, "responses");
+    }
+
+    #[test]
+    fn apply_codex_auto_wire_api_keeps_value_when_source_is_unknown() {
+        // 来源供应商已被删除 / 从未记录来源：保持原值，不做任何猜测。
+        for source_id in ["prov-missing", ""] {
+            let config = test_codex_config(source_id, "");
+            let mut store = test_store_with_chat_source(config);
+            let mut provider = test_openai_provider();
+            provider.wire_api = "responses".to_string();
+            apply_codex_auto_wire_api(&mut provider, &mut store, "cfg-1");
+            assert_eq!(provider.wire_api, "responses");
+            assert_eq!(store.codex_configs[0].wire_api, "responses");
+        }
+
+        // 配置 id 对不上时同样不改。
+        let config = test_codex_config("prov-chat", "");
+        let mut store = test_store_with_chat_source(config);
+        let mut provider = test_openai_provider();
+        provider.wire_api = "responses".to_string();
+        apply_codex_auto_wire_api(&mut provider, &mut store, "cfg-unknown");
+        assert_eq!(provider.wire_api, "responses");
+    }
+
+    #[test]
+    fn apply_codex_direct_with_official_auth_does_not_require_api_key() {
+        let path = temp_config_path("codex-direct-oauth-no-key");
+
+        let mut provider = test_openai_provider();
+        provider.route_through_proxy = false;
+        provider.preserve_official_auth = true;
+        provider.api_key = String::new();
+        // preserve_official_auth 下 bearer 本就会被丢弃，不该因为缺 Key 阻断切换。
+        Platform::Codex.apply_codex(&path, &provider).unwrap();
+
+        let raw = fs::read_to_string(&path).unwrap();
+        let doc = raw.parse::<DocumentMut>().unwrap();
+        let provider_table = &doc["model_providers"][CODEX_RUNTIME_MODEL_PROVIDER_ID];
+        assert_eq!(provider_table["requires_openai_auth"].as_bool(), Some(true));
+        assert!(
+            provider_table.get("experimental_bearer_token").is_none(),
+            "OAuth 模式不得写入 bearer"
+        );
+        assert_eq!(
+            provider_table["base_url"].as_str(),
+            Some("https://example.com/v1")
+        );
+
+        let _ = fs::remove_dir_all(path.parent().unwrap());
+    }
+
+    #[test]
+    fn apply_codex_direct_without_official_auth_still_requires_api_key() {
+        let path = temp_config_path("codex-direct-missing-key");
+
+        let mut provider = test_openai_provider();
+        provider.route_through_proxy = false;
+        provider.api_key = "   ".to_string();
+        let err = Platform::Codex.apply_codex(&path, &provider).unwrap_err();
+        assert!(err.contains("缺少 API Key"), "unexpected error: {err}");
 
         let _ = fs::remove_dir_all(path.parent().unwrap());
     }

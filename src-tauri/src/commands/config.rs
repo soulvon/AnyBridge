@@ -381,8 +381,19 @@ pub struct CodexConfig {
     pub source_provider_name: String,
     /// Codex wire_api: "responses" (默认) 或 "chat"。
     /// chat 模式下，本地代理将 Responses 请求转为 Chat Completions 格式发往上游。
+    ///
+    /// 注意：这是 **AnyBridge 内部字段**，只决定「本地代理 → 上游」用哪个端点，
+    /// 不会写进 config.toml —— Codex 的 `wire_api` 恒为 "responses"
+    /// （openai/codex 已删除 `WireApi::Chat`，写 "chat" 会让 Codex 启动即崩）。
     #[serde(rename = "wireApi", default = "default_wire_api")]
     pub wire_api: String,
+    /// `wire_api` 是否由来源供应商的 API 路径自动推断（默认 true）。
+    ///
+    /// true = 每次保存都按来源供应商重新推断，供应商换端点时自动跟随；
+    /// false = 用户在 UI 上显式选定，推断不再覆盖。
+    /// 默认 true 让存量配置（历史上一律被写成 "responses"）在重新保存时自愈。
+    #[serde(rename = "wireApiAuto", default = "default_true")]
+    pub wire_api_auto: bool,
     /// 是否走本地代理（默认 true）。
     /// 关 = Codex 直接连接供应商原 URL；开 = 走 AnyBridge 本地代理（127.0.0.1:7450）。
     #[serde(rename = "routeThroughProxy", default = "default_true")]
@@ -812,7 +823,17 @@ pub(crate) fn write_provider_store(store: &ProviderStore) -> Result<(), String> 
     let dir = config_dir();
     fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     let json = serde_json::to_string_pretty(store).map_err(|e| e.to_string())?;
-    super::write_atomic(&providers_path(), json.as_bytes())
+    super::write_atomic(&providers_path(), json.as_bytes())?;
+
+    let port = configured_proxy_ports().api_port;
+    let _ = super::codex_desktop::http_post_local(
+        port,
+        "/__byok/invalidate-models",
+        "{}",
+        std::time::Duration::from_secs(2),
+    );
+
+    Ok(())
 }
 
 #[tauri::command]

@@ -185,7 +185,7 @@ fn http_get_local(port: u16, path: &str, timeout: Duration) -> Result<String, St
 /// body 提取后会解码 chunked transfer encoding（sidecar 的 Node http 在未设
 /// Content-Length 时用 chunked）。不解 chunked 会导致 JSON 前出现 chunk size
 /// 标记（如 "b4\r\n{...}"），serde 解析失败误判 ok=false。
-fn http_post_local(
+pub(crate) fn http_post_local(
     port: u16,
     path: &str,
     body: &str,

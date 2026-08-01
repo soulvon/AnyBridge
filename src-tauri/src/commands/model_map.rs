@@ -553,6 +553,33 @@ fn validate_target_route(slot_label: &str, target: &Target) -> Result<(), String
             slot_label
         ));
     }
+    // 模型族与解锁类型匹配校验：防止 GPT 模型配 claudeCode 解锁（走 Anthropic 端点 404）
+    // 或 Claude 模型配 codex 解锁（走 OpenAI 端点 404）。
+    if !unlock.is_empty() {
+        let uid_lower = slot_label.to_lowercase();
+        let is_claude = uid_lower.contains("claude")
+            || uid_lower.contains("opus")
+            || uid_lower.contains("sonnet")
+            || uid_lower.contains("fable")
+            || uid_lower.contains("haiku");
+        let is_gpt = uid_lower.contains("gpt")
+            || uid_lower.contains("swe")
+            || uid_lower.starts_with("o1")
+            || uid_lower.starts_with("o3")
+            || uid_lower.starts_with("o4");
+        if is_claude && unlock == "codex" {
+            return Err(format!(
+                "槽位 {} 看起来是 Claude 模型，不应使用 Codex 解锁（会路由到 OpenAI 端点）",
+                slot_label
+            ));
+        }
+        if is_gpt && unlock == "claudeCode" {
+            return Err(format!(
+                "槽位 {} 看起来是 GPT 模型，不应使用 Claude Code 解锁（会路由到 Anthropic 端点）",
+                slot_label
+            ));
+        }
+    }
     let api_format = target.api_format.as_deref().unwrap_or("").trim();
     if api_format.is_empty() || api_format.eq_ignore_ascii_case("auto") {
         return Ok(());
@@ -638,7 +665,19 @@ pub fn save_model_map(map: ModelMap) -> Result<(), String> {
             return Err(format!("模型槽位 modelUid 重复: {}", inj.model_uid));
         }
     }
-    write_map(&map)
+    write_map(&map)?;
+
+    // 通知 sidecar 清除 unlockModels 内存缓存，使下次 Windsurf 心跳立即用新配置重跑。
+    // 代理未运行时静默忽略——缓存自然过期，不影响保存结果。
+    let port = super::config::configured_proxy_ports().api_port;
+    let _ = super::codex_desktop::http_post_local(
+        port,
+        "/__byok/invalidate-models",
+        "{}",
+        std::time::Duration::from_secs(2),
+    );
+
+    Ok(())
 }
 
 /// 启动代理前校验:扫描启用的槽位 + 已配置 providerId 的模型槽位管理项，若 targets/配置为空、
@@ -670,7 +709,7 @@ pub fn validate_model_map() -> Result<Vec<String>, String> {
                     problems.push(format!("「{}」引用的供应商「{}」已禁用", label, p.name))
                 }
                 Some(p) => {
-                    if let Err(err) = validate_target_route(&label, t) {
+                    if let Err(err) = validate_target_route(&slot.model_uid, t) {
                         problems.push(err);
                         continue;
                     }
@@ -730,7 +769,7 @@ pub fn validate_model_map() -> Result<Vec<String>, String> {
             api_path: inj.api_path.clone(),
             unlock: inj.unlock.clone(),
         };
-        if let Err(err) = validate_target_route(&inj.label, &target) {
+        if let Err(err) = validate_target_route(&inj.model_uid, &target) {
             problems.push(err);
             continue;
         }
