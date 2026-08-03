@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 
 import {
   applyCodexUnlockRequiredFields,
+  buildClaudeCodeUnlockPayload,
   claudeCodeUnlockForTarget,
   codexUnlockForTarget,
 } from './codex-unlock.js';
@@ -38,6 +39,21 @@ describe('Codex supplier unlock routing', () => {
     assert.deepEqual(claudeCodeUnlockForTarget({ unlocks: providerUnlocks, unlockKind: 'claudeCode' }), {
       wireApi: '/v1/messages?beta=true',
     });
+  });
+
+  it('preserves Claude Code system blocks in the unlock payload', () => {
+    const payload = buildClaudeCodeUnlockPayload({
+      model: 'claude-opus-5',
+      system: 'Client system instructions',
+      messages: [{ role: 'user', content: 'hello' }],
+      maxTokens: 64,
+      stream: true,
+    });
+
+    assert.equal(payload.system.length, 2);
+    assert.match(payload.system[0].text, /Claude agent/);
+    assert.equal(payload.system[1].text, 'Client system instructions');
+    assert.equal(payload.stream, true);
   });
 
   it('adds only the required Codex unlock fields', () => {

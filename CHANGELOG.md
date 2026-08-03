@@ -2,6 +2,15 @@
 
 All notable changes to AnyBridge will be documented in this file.
 
+## v0.3.23 - 2026-08-02
+
+- Claude Code unlock: UA 升级到 2.1.220，payload 改用内置 CLI tools 列表（自动发现 + bundled fallback），不再透传 IDE 的 tools/systemPrompt，避免上游校验失败。
+- 新增 `claude-code-cli-tools.js` 模块：从 CLI 二进制自动提取 tool names，版本不匹配时触发发现，失败回退 bundled 列表。
+- NODE_EXTRA_CA_CERTS 管理：代理启动时自动设置环境变量（Windows setx / macOS launchctl / Linux environment.d），停止时清除，解决 Node.js gRPC TLS 不信任 MITM CA 导致 `bad_certificate` 问题。
+- 内置模型目录新增 Claude Opus 5 全系列（low/medium/high/xhigh/max × fast）。
+- model-map 自动迁移：新增内置模型后，已有 `model-map.json` 缺失 unlock 的槽位/注入项自动按 `builtin_models()` 的 provider 字段补全，无需用户手动重建映射。
+- CONNECT 代理错误降级：非关键 host（feature flags、telemetry）的 ECONNRESET/EPIPE 降级为 debug 日志，减少噪音。
+
 ## v0.3.21 - 2026-08-01
 
 - sidecar: 插件部署改为 NDJSON 流式输出实时进度；新增 `/__byok/invalidate-models` 端点，model-map 保存后立即清除 sidecar 缓存。

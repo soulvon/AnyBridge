@@ -317,36 +317,39 @@ export function resolveTarget(target, providers) {
   const p = providers.get(target.providerId);
   if (!p) return { error: `供应商不存在(${target.providerId})` };
   if (p.enabled === false) return { error: `供应商已禁用(${p.name})` };
+
   const targetUnlock = normalizeTargetUnlock(target.unlock);
   if (targetUnlock?.error) return { error: targetUnlock.error };
   const targetApiFormat = normalizeTargetApiFormat(target.apiFormat || target.api_format);
   if (targetApiFormat?.error) return { error: targetApiFormat.error };
-  if (targetUnlock && !providerUnlockEnabled(p, targetUnlock)) {
-    return { error: `目标要求${targetUnlock === 'codex' ? ' Codex' : ' Claude Code'} 解锁，但供应商「${p.name}」未开启该解锁` };
+  // 供应商未开启对应解锁 → 不加 unlock 参数，普通请求，不报错
+  let effectiveUnlock = targetUnlock;
+  if (effectiveUnlock && !providerUnlockEnabled(p, effectiveUnlock)) {
+    effectiveUnlock = null;
   }
-  // 运行时模型族与解锁类型匹配校验（defense-in-depth）。
+  // 运行时模型族与解锁类型不匹配 → 也不加 unlock 参数
   const modelLower = String(target.model || '').toLowerCase();
-  if (targetUnlock === 'claudeCode' && (modelLower.includes('gpt') || modelLower.includes('swe') || modelLower.startsWith('o1') || modelLower.startsWith('o3') || modelLower.startsWith('o4'))) {
-    return { error: `模型 ${target.model} 看起来是 GPT 系列，不应使用 Claude Code 解锁（会路由到 Anthropic 端点导致 404）` };
+  if (effectiveUnlock === 'claudeCode' && (modelLower.includes('gpt') || modelLower.includes('swe') || modelLower.startsWith('o1') || modelLower.startsWith('o3') || modelLower.startsWith('o4'))) {
+    effectiveUnlock = null;
   }
-  if (targetUnlock === 'codex' && (modelLower.includes('claude') || modelLower.includes('opus') || modelLower.includes('sonnet') || modelLower.includes('fable') || modelLower.includes('haiku'))) {
-    return { error: `模型 ${target.model} 看起来是 Claude 系列，不应使用 Codex 解锁（会路由到 OpenAI 端点导致 404）` };
+  if (effectiveUnlock === 'codex' && (modelLower.includes('claude') || modelLower.includes('opus') || modelLower.includes('sonnet') || modelLower.includes('fable') || modelLower.includes('haiku'))) {
+    effectiveUnlock = null;
   }
-  const unlockApiFormat = apiFormatForUnlock(targetUnlock);
+  const unlockApiFormat = apiFormatForUnlock(effectiveUnlock);
   if (targetApiFormat && unlockApiFormat && targetApiFormat !== unlockApiFormat) {
-    return { error: `目标协议 ${targetApiFormat} 与${targetUnlock === 'codex' ? ' Codex' : ' Claude Code'} 解锁不匹配` };
+    return { error: `目标协议 ${targetApiFormat} 与${effectiveUnlock === 'codex' ? ' Codex' : ' Claude Code'} 解锁不匹配` };
   }
   const parsedHost = parseApiHost(p.apiHost);
   if (parsedHost?.error) return { error: parsedHost.error };
   const host = parsedHost.hostname;
   const explicitPath = target.apiPath || target.api_path || null;
-  const unlockConfig = targetUnlock ? p.unlocks?.[targetUnlock] : null;
+  const unlockConfig = effectiveUnlock ? p.unlocks?.[effectiveUnlock] : null;
   const unlockWireApi = unlockConfig?.wireApi || unlockConfig?.wire_api || null;
-  if (targetUnlock && explicitPath && unlockWireApi && cleanApiPath(explicitPath) !== cleanApiPath(unlockWireApi)) {
-    return { error: `${targetUnlock === 'codex' ? 'Codex' : 'Claude Code'} 解锁目标不支持覆盖 apiPath；请留空并使用供应商解锁模板 ${cleanApiPath(unlockWireApi)}` };
+  if (effectiveUnlock && explicitPath && unlockWireApi && cleanApiPath(explicitPath) !== cleanApiPath(unlockWireApi)) {
+    return { error: `${effectiveUnlock === 'codex' ? 'Codex' : 'Claude Code'} 解锁目标不支持覆盖 apiPath；请留空并使用供应商解锁模板 ${cleanApiPath(unlockWireApi)}` };
   }
   const providerPath = p.apiPath || p.api_path || null;
-  const route = inferTargetRouteFormat({ targetApiFormat, unlockApiFormat, targetUnlock, explicitPath, providerPath, host });
+  const route = inferTargetRouteFormat({ targetApiFormat, unlockApiFormat, targetUnlock: effectiveUnlock, explicitPath, providerPath, host });
   if (route?.error) return { error: route.error };
   const routeFormat = route.format;
   const modelId = target.model || p.defaultModel;
@@ -361,7 +364,7 @@ export function resolveTarget(target, providers) {
         ? normalizeGeminiApiPath(configuredPath, modelId)
         : normalizeAnthropicApiPath(configuredPath)));
   // wireApi=chat 是普通 OpenAI 兼容供应商的提示；平台解锁目标使用自己的 wireApi，不应被覆盖。
-  const routeApiPath = (routeFormat === 'openai' && p.wireApi === 'chat' && !explicitPath && !targetUnlock)
+  const routeApiPath = (routeFormat === 'openai' && p.wireApi === 'chat' && !explicitPath && !effectiveUnlock)
     ? apiPath.replace(/\/responses$/, '/chat/completions')
     : apiPath;
   const finalApiPath = joinApiPath(parsedHost.basePath, routeApiPath);
@@ -392,7 +395,7 @@ export function resolveTarget(target, providers) {
     model: modelId,
     capabilities,
     unlocks: p.unlocks || {},
-    unlockKind: targetUnlock,
+    unlockKind: effectiveUnlock,
     wireApi: p.wireApi || '',
     codexChatReasoning: p.codexChatReasoning || null,
   };

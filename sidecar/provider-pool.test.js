@@ -56,6 +56,19 @@ test('resolveTarget still uses chat path for ordinary chat-wire providers', () =
   assert.equal(conn.apiPath, '/v1/chat/completions');
 });
 
+test('resolveTarget does not auto-enable Claude Code unlock for ordinary Claude targets', () => {
+  const conn = resolveTarget({
+    providerId: 'anyrouter',
+    model: 'claude-sonnet-4-20250514',
+    apiFormat: 'anthropic',
+  }, providersWithChatWireApiUnlocks());
+
+  assert.equal(conn.error, undefined);
+  assert.equal(conn.format, 'anthropic');
+  assert.equal(conn.unlockKind, null);
+  assert.equal(conn.apiPath, '/v1/messages');
+});
+
 test('resolveTarget rejects apiPath overrides that conflict with platform unlock wireApi', () => {
   const conn = resolveTarget({
     providerId: 'anyrouter',

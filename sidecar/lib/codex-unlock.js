@@ -1,16 +1,27 @@
 import crypto from 'node:crypto';
+import { getClaudeCodeCliTools, getClaudeCodeCliVersion } from './claude-code-cli-tools.js';
+import { CLAUDE_CODE_NATIVE_TOOLS } from './claude-code-native-tools-data.js';
 
+// 对齐 2026-08-02 Claude Code CLI v2.1.220 真实抓包的主聊天请求 beta
+// 多余的 beta（thinking-token-count/context-management/prompt-caching-scope）会导致 AnyRouter 429
 const CLAUDE_CODE_BETA = [
   'claude-code-20250219',
   'context-1m-2025-08-07',
   'interleaved-thinking-2025-05-14',
   'mid-conversation-system-2026-04-07',
   'effort-2025-11-24',
+  'fallback-credit-2026-06-01',
 ].join(',');
 
 const CLAUDE_CODE_SESSION_ID = crypto.randomUUID();
 const CLAUDE_CODE_DEVICE_ID = crypto.randomBytes(32).toString('hex');
-const CLAUDE_CODE_SYSTEM_PROMPT = "You are Claude Code, Anthropic's official CLI for Claude.";
+const CLAUDE_CODE_SYSTEM_PROMPT = "You are a Claude agent, built on Anthropic's Claude Agent SDK.";
+
+// 内嵌的 Claude Code 原生 tools 指纹（前 21 个，2026-08-03 二分确认）
+// 直接 import JS 模块，pkg 打包后自动在 snapshot 中，无需文件 IO
+function getClaudeCodeNativeTools() {
+  return CLAUDE_CODE_NATIVE_TOOLS;
+}
 const CODEX_INSTALLATION_ID = crypto.randomUUID();
 const CODEX_SESSION_ID = generateUUIDv7();
 const CODEX_DESKTOP_USER_AGENT = 'Codex Desktop/0.142.0-alpha.1 (Windows 10.0.26200; x86_64)';
@@ -148,16 +159,20 @@ export function claudeCodeUnlockForTarget(conn) {
   return normalizeClaudeCodeUnlock(conn.unlocks?.claudeCode);
 }
 
-export function buildClaudeCodeUnlockPayload({ model, messages, maxTokens, stream = true, tools, systemPrompt }) {
+export function buildClaudeCodeUnlockPayload({ model, system, messages, maxTokens, stream = true, tools }) {
+  const systemBlocks = Array.isArray(system)
+    ? system.filter(block => block && typeof block === 'object' && typeof block.text === 'string')
+    : (system ? [{ type: 'text', text: String(system) }] : []);
+  if (!systemBlocks.some(block => block.text.includes('Claude agent') || block.text.includes('Claude Code'))) {
+    systemBlocks.unshift({ type: 'text', text: CLAUDE_CODE_SYSTEM_PROMPT });
+  }
+  // 对齐 2026-08-02 真实抓包：thinking 不加 display，不加 context_management
   const payload = {
     model,
-    system: systemPrompt
-      ? [{ type: 'text', text: systemPrompt, cache_control: { type: 'ephemeral' } }]
-      : [{
-          type: 'text',
-          text: CLAUDE_CODE_SYSTEM_PROMPT,
-          cache_control: { type: 'ephemeral' },
-        }],
+    system: systemBlocks.map(block => ({
+      ...block,
+      cache_control: block.cache_control || { type: 'ephemeral' },
+    })),
     messages,
     metadata: {
       user_id: JSON.stringify({
@@ -171,21 +186,29 @@ export function buildClaudeCodeUnlockPayload({ model, messages, maxTokens, strea
     output_config: { effort: 'high' },
     stream,
   };
-  if (tools && tools.length > 0) {
-    payload.tools = tools;
+  // AnyRouter 要求携带 Claude Code 原生 tools 指纹，同时透传客户端 tools
+  const nativeTools = getClaudeCodeNativeTools();
+  const clientTools = (tools && tools.length > 0) ? tools : [];
+  if (nativeTools && nativeTools.length > 0) {
+    // 去重：客户端 tools 中已存在的同名工具不重复追加
+    const nativeNames = new Set(nativeTools.map(t => t.name));
+    const uniqueClient = clientTools.filter(t => !nativeNames.has(t.name));
+    payload.tools = [...nativeTools, ...uniqueClient];
+  } else if (clientTools.length > 0) {
+    payload.tools = clientTools;
   }
   return payload;
 }
 
 export function claudeCodeUnlockHeaders(conn) {
+  const cliVersion = getClaudeCodeCliVersion();
   return {
     authorization: `Bearer ${conn.apiKey}`,
-    'x-api-key': conn.apiKey,
     'anthropic-version': '2023-06-01',
     'anthropic-beta': CLAUDE_CODE_BETA,
     'anthropic-dangerous-direct-browser-access': 'true',
     'x-app': 'cli',
-    'user-agent': 'claude-cli/2.1.220 (external, sdk-cli)',
+    'user-agent': `claude-cli/${cliVersion} (external, sdk-cli)`,
     'x-claude-code-session-id': CLAUDE_CODE_SESSION_ID,
     'x-stainless-arch': stainlessArch(),
     'x-stainless-lang': 'js',

@@ -454,15 +454,7 @@ function applyChatToolInjection(tools, conn, enhancement = {}, searchModels = {}
     return { tools: nextTools, searchInjection: { mode: 'off' } };
   }
 
-  if (conn.unlockKind) {
-    return {
-      tools: nextTools,
-      searchInjection: {
-        mode: 'unsupported-unlock',
-        reason: `${conn.unlockKind} 解锁路径当前不支持联网搜索工具注入`,
-      },
-    };
-  }
+  // unlock 只是 headers 层，不影响工具注入和联网搜索
 
   if (conn.format === 'gemini') {
     return {
@@ -1039,8 +1031,7 @@ export function handleGetChatMessage(req, res, body) {
 
       const toolInjection = applyChatToolInjection(tools, conn, enhancement, searchModels);
       if (toolInjection.searchInjection?.mode === 'missing-search-source'
-          || toolInjection.searchInjection?.mode === 'unsupported-gemini-native'
-          || toolInjection.searchInjection?.mode === 'unsupported-unlock') {
+          || toolInjection.searchInjection?.mode === 'unsupported-gemini-native') {
         const reason = toolInjection.searchInjection.reason || '当前目标不支持联网搜索';
         const hasNextTarget = idx < routingTargets.length;
         console.warn(`  ⚠️  ${conn.providerName} 跳过: ${reason}${hasNextTarget ? ' → 切换下一个' : ''}`);
@@ -1239,30 +1230,38 @@ async function streamSearchAgentLoop(req, res, opts) {
 function requestAnthropicBuffered(req, res, { systemPrompt, messages, tools, toolChoice, resolvedModel, messageId, conn, enhancement = {}, promptCacheRetry = false, bindActiveReq = null }) {
   return providerInflightGate.run(providerGateKey(conn), () => new Promise((resolve) => {
     const claudeCodeUnlock = claudeCodeUnlockForTarget(conn);
-    if (claudeCodeUnlock) {
-      resolve({
-        kind: 'terminal-error',
-        code: 'invalid_argument',
-        message: 'Claude Code 解锁路径当前不支持 AnyBridge 通用联网搜索 agent loop。',
-      });
-      return;
-    }
-
-    const targetPath = conn.apiPath;
-    const usePromptCache = shouldUseAnthropicPromptCache(conn, false, promptCacheRetry);
-    const authHeaders = withAnthropicPromptCacheHeaders(anthropicAuthHeaders(conn), usePromptCache);
+    const targetPath = claudeCodeUnlock?.wireApi || conn.apiPath;
+    const usePromptCache = shouldUseAnthropicPromptCache(conn, claudeCodeUnlock, promptCacheRetry);
+    const authHeaders = withAnthropicPromptCacheHeaders(
+      claudeCodeUnlock ? claudeCodeUnlockHeaders(conn) : anthropicAuthHeaders(conn),
+      usePromptCache
+    );
     const extraHeaders = enhancementRequestHeaders(enhancement);
     const sentTools = withAnthropicToolsCache(tools, usePromptCache);
-    const apiPayload = {
-      model: resolvedModel,
-      system: withAnthropicSystemCache(systemPrompt, usePromptCache),
-      messages,
-      stream: true,
-      max_tokens: MAX_TOKENS,
-    };
-    if (sentTools && sentTools.length > 0) {
-      apiPayload.tools = sentTools;
-      if (toolChoice) apiPayload.tool_choice = toolChoice;
+
+    let apiPayload;
+    if (claudeCodeUnlock) {
+      // Claude Code Unlock 需要注入 metadata/thinking/output_config 等 AnyRouter 必填字段
+      apiPayload = buildClaudeCodeUnlockPayload({
+        model: resolvedModel,
+        system: systemPrompt,
+        messages,
+        maxTokens: MAX_TOKENS,
+        stream: true,
+        tools: sentTools,
+      });
+    } else {
+      apiPayload = {
+        model: resolvedModel,
+        system: withAnthropicSystemCache(systemPrompt, usePromptCache),
+        messages,
+        stream: true,
+        max_tokens: MAX_TOKENS,
+      };
+      if (sentTools && sentTools.length > 0) {
+        apiPayload.tools = sentTools;
+        if (toolChoice) apiPayload.tool_choice = toolChoice;
+      }
     }
     applyPayloadParamOverrides(apiPayload, enhancement, 'max_tokens');
 
@@ -1409,14 +1408,8 @@ function requestOpenAIBuffered(req, res, opts) {
 function requestOpenAIResponsesBuffered(req, res, { systemPrompt, messages, tools, toolChoice, resolvedModel, requestedModel, serviceTier, messageId, conn, enhancement = {}, schemaCompatRetry = false, bindActiveReq = null }) {
   return providerInflightGate.run(providerGateKey(conn), () => new Promise((resolve) => {
     const codexUnlock = codexUnlockForTarget(conn);
-    if (codexUnlock) {
-      resolve({
-        kind: 'terminal-error',
-        code: 'invalid_argument',
-        message: 'Codex 解锁路径当前不支持 AnyBridge 通用联网搜索 agent loop。',
-      });
-      return;
-    }
+    // unlock 只加 headers，不影响 payload 和 agent loop
+    const targetPath = codexUnlock?.wireApi || conn.apiPath;
 
     const openaiMessages = toOpenAIMessages(systemPrompt, messages);
     const forceGeminiCompat = schemaCompatRetry || conn.capabilities?.toolSchemaCompat === 'gemini';
@@ -1442,12 +1435,15 @@ function requestOpenAIResponsesBuffered(req, res, { systemPrompt, messages, tool
         else if (toolChoice.type === 'tool') apiPayload.tool_choice = { type: 'function', name: toolChoice.name };
       }
     }
+    if (codexUnlock) {
+      applyCodexUnlockRequiredFields(apiPayload, codexUnlock);
+    }
     applyPayloadParamOverrides(apiPayload, enhancement, 'max_output_tokens');
 
     const apiBody = JSON.stringify(apiPayload);
     const authHeaders = { authorization: `Bearer ${conn.apiKey}` };
     const extraHeaders = enhancementRequestHeaders(enhancement);
-    const requestUrl = upstreamUrl(conn, conn.apiPath);
+    const requestUrl = upstreamUrl(conn, targetPath);
     mitmLog({
       direction: 'upstream',
       providerName: conn.providerName,
@@ -1467,7 +1463,7 @@ function requestOpenAIResponsesBuffered(req, res, { systemPrompt, messages, tool
     };
     if (useGzip) reqHeaders['content-encoding'] = 'gzip';
 
-    const requestConfig = upstreamRequestOptions(conn, conn.apiPath, reqHeaders);
+    const requestConfig = upstreamRequestOptions(conn, targetPath, reqHeaders);
     let failed = false;
     let streamStarted = false;
     const apiReq = requestConfig.module.request(requestConfig.options, (apiRes) => {
@@ -1761,7 +1757,7 @@ async function streamAnthropic(req, res, { systemPrompt, messages, tools, toolCh
   const extraHeaders = enhancementRequestHeaders(enhancement);
   const sentTools = claudeCodeUnlock ? tools : withAnthropicToolsCache(tools, usePromptCache);
   const apiPayload = claudeCodeUnlock
-    ? buildClaudeCodeUnlockPayload({ model: resolvedModel, messages, maxTokens: MAX_TOKENS, tools: sentTools, systemPrompt })
+    ? buildClaudeCodeUnlockPayload({ model: resolvedModel, system: systemPrompt, messages, maxTokens: MAX_TOKENS, tools: sentTools })
     : {
         model: resolvedModel,
         system: withAnthropicSystemCache(systemPrompt, usePromptCache),
@@ -1773,9 +1769,8 @@ async function streamAnthropic(req, res, { systemPrompt, messages, tools, toolCh
     apiPayload.tools = sentTools;
     if (toolChoice) apiPayload.tool_choice = toolChoice;
   }
-  if (claudeCodeUnlock && sentTools && sentTools.length > 0) {
-    apiPayload.tools = sentTools;
-    if (toolChoice) apiPayload.tool_choice = toolChoice;
+  if (claudeCodeUnlock && sentTools && sentTools.length > 0 && toolChoice) {
+    apiPayload.tool_choice = toolChoice;
   }
   applyPayloadParamOverrides(apiPayload, enhancement, 'max_tokens');
   const apiBody = JSON.stringify(apiPayload);
