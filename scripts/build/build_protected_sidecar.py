@@ -85,6 +85,7 @@ def parse_platform(value):
 
 def get_pkg_target(os_name, arch):
     """返回 pkg 的 target triple"""
+    # 与 sidecar 本地 @yao-pkg/pkg 及已缓存的 Node 22 基础运行时保持一致。
     node_version = "22"
     os_map = {"windows": "win", "macos": "macos", "linux": "linux"}
     arch_map = {"x64": "x64", "arm64": "arm64"}
@@ -111,7 +112,7 @@ def get_sidecar_filename(os_name, tauri_triple):
 
 def run(cmd, cwd=None):
     print(f"[exec] {cmd}")
-    r = subprocess.run(cmd, shell=True, cwd=cwd, capture_output=True, text=True)
+    r = subprocess.run(cmd, shell=True, cwd=cwd, capture_output=True, text=True, encoding="utf-8", errors="replace")
     if r.returncode != 0:
         print(f"[stderr] {r.stderr}")
         raise RuntimeError(f"Command failed: {cmd}")
@@ -256,9 +257,14 @@ def bytenode_compile(os_name, arch):
     modules = [
         "connect.js", "mitm-logger.js", "port-utils.js",
         "proto.js", "provider-pool.js", "rename-models.js",
-        "stats.js", "inject-models.js", "load-env.js"
+        "stats.js", "inject-models.js", "load-env.js",
+        "plugin-loader.js", "step-executor.js", "cursor-proxy.js",
+        "local-proxy.js", "system-proxy.js", "config-cache.js",
+        "multimodal-middleware.js", "retry.js", "vision-fallback.js",
+        "windsurf-catalog.js",
     ]
     handlers = glob.glob(os.path.join(JSC_DIR, "handlers", "*.js"))
+    lib_files = glob.glob(os.path.join(JSC_DIR, "lib", "*.js"))
 
     all_js = []
     for f in entries + modules:
@@ -266,6 +272,7 @@ def bytenode_compile(os_name, arch):
         if os.path.exists(p):
             all_js.append(p)
     all_js.extend(handlers)
+    all_js.extend(lib_files)
 
     esbuild_bin = local_bin("esbuild")
     bytenode_cli = os.path.join(SIDECAR_DIR, "node_modules", "bytenode", "lib", "cli.js")

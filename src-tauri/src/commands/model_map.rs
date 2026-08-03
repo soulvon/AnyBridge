@@ -514,6 +514,10 @@ pub(crate) fn read_map() -> Result<ModelMap, String> {
     if map.slot_visibility_mode.trim().is_empty() {
         map.slot_visibility_mode = default_slot_visibility_mode();
     }
+
+    // 不根据槽位名或模型名自动改写 unlock/apiFormat；这些字段属于用户/供应商配置。
+    // 运行时由 provider-pool 根据供应商是否启用对应解锁决定是否附加解锁参数。
+
     Ok(map)
 }
 
@@ -527,78 +531,6 @@ fn write_map(map: &ModelMap) -> Result<(), String> {
 #[tauri::command]
 pub fn load_model_map() -> Result<ModelMap, String> {
     read_map()
-}
-
-fn normalize_target_unlock<'a>(value: Option<&'a str>) -> &'a str {
-    match value.unwrap_or("").trim() {
-        "codex" => "codex",
-        "claudeCode" | "claude-code" | "claude_code" => "claudeCode",
-        _ => value.unwrap_or("").trim(),
-    }
-}
-
-fn api_format_for_unlock(unlock: &str) -> Option<&'static str> {
-    match unlock {
-        "codex" => Some("openai"),
-        "claudeCode" => Some("anthropic"),
-        _ => None,
-    }
-}
-
-fn validate_target_route(slot_label: &str, target: &Target) -> Result<(), String> {
-    let unlock = normalize_target_unlock(target.unlock.as_deref());
-    if !unlock.is_empty() && !matches!(unlock, "codex" | "claudeCode") {
-        return Err(format!(
-            "槽位 {} 的目标解锁类型必须是 codex 或 claudeCode",
-            slot_label
-        ));
-    }
-    // 模型族与解锁类型匹配校验：防止 GPT 模型配 claudeCode 解锁（走 Anthropic 端点 404）
-    // 或 Claude 模型配 codex 解锁（走 OpenAI 端点 404）。
-    if !unlock.is_empty() {
-        let uid_lower = slot_label.to_lowercase();
-        let is_claude = uid_lower.contains("claude")
-            || uid_lower.contains("opus")
-            || uid_lower.contains("sonnet")
-            || uid_lower.contains("fable")
-            || uid_lower.contains("haiku");
-        let is_gpt = uid_lower.contains("gpt")
-            || uid_lower.contains("swe")
-            || uid_lower.starts_with("o1")
-            || uid_lower.starts_with("o3")
-            || uid_lower.starts_with("o4");
-        if is_claude && unlock == "codex" {
-            return Err(format!(
-                "槽位 {} 看起来是 Claude 模型，不应使用 Codex 解锁（会路由到 OpenAI 端点）",
-                slot_label
-            ));
-        }
-        if is_gpt && unlock == "claudeCode" {
-            return Err(format!(
-                "槽位 {} 看起来是 GPT 模型，不应使用 Claude Code 解锁（会路由到 Anthropic 端点）",
-                slot_label
-            ));
-        }
-    }
-    let api_format = target.api_format.as_deref().unwrap_or("").trim();
-    if api_format.is_empty() || api_format.eq_ignore_ascii_case("auto") {
-        return Ok(());
-    }
-    if !matches!(api_format, "openai" | "anthropic") {
-        return Err(format!(
-            "槽位 {} 的目标 apiFormat 必须是 openai 或 anthropic",
-            slot_label
-        ));
-    }
-    if let Some(expected) = api_format_for_unlock(unlock) {
-        if api_format != expected {
-            return Err(format!(
-                "槽位 {} 的目标 apiFormat={} 与 {} 解锁不匹配",
-                slot_label, api_format, unlock
-            ));
-        }
-    }
-    Ok(())
 }
 
 /// 整体保存槽位表（增删改/排序/改 targets 统一走这里）。
@@ -638,15 +570,13 @@ pub fn save_model_map(map: ModelMap) -> Result<(), String> {
     }
 
     let mut seen = std::collections::HashSet::new();
-    for slot in &map.slots {
+    let mut map = map;
+    for slot in &mut map.slots {
         if slot.model_uid.trim().is_empty() {
             return Err("槽位 modelUid 不能为空".into());
         }
         if !seen.insert(slot.model_uid.clone()) {
             return Err(format!("槽位 modelUid 重复: {}", slot.model_uid));
-        }
-        for target in &slot.targets {
-            validate_target_route(&slot.model_uid, target)?;
         }
     }
     // 注入项校验
@@ -708,37 +638,7 @@ pub fn validate_model_map() -> Result<Vec<String>, String> {
                 Some(p) if !p.enabled => {
                     problems.push(format!("「{}」引用的供应商「{}」已禁用", label, p.name))
                 }
-                Some(p) => {
-                    if let Err(err) = validate_target_route(&slot.model_uid, t) {
-                        problems.push(err);
-                        continue;
-                    }
-                    let unlock = normalize_target_unlock(t.unlock.as_deref());
-                    if unlock == "codex" {
-                        let enabled = p.unlocks.codex.as_ref().map(|u| u.enabled).unwrap_or(false);
-                        if !enabled {
-                            problems.push(format!(
-                                "「{}」要求 Codex 解锁，但供应商「{}」未开启 Codex 解锁",
-                                label, p.name
-                            ));
-                        }
-                    } else if unlock == "claudeCode" {
-                        let enabled = p
-                            .unlocks
-                            .claude_code
-                            .as_ref()
-                            .map(|u| u.enabled)
-                            .unwrap_or(false);
-                        if !enabled {
-                            problems.push(format!(
-                                "「{}」要求 Claude Code 解锁，但供应商「{}」未开启 Claude Code 解锁",
-                                label, p.name
-                            ));
-                        }
-                    } else if !unlock.is_empty() {
-                        problems.push(format!("「{}」配置了未知解锁类型 {}", label, unlock));
-                    }
-                }
+                Some(_p) => {}
             }
         }
     }
@@ -761,42 +661,6 @@ pub fn validate_model_map() -> Result<Vec<String>, String> {
         }
         if inj.model.as_deref().unwrap_or("").trim().is_empty() {
             problems.push(format!("模型槽位「{}」已选供应商但 model 为空", inj.label));
-        }
-        let target = Target {
-            provider_id: pid.clone(),
-            model: inj.model.clone().unwrap_or_default(),
-            api_format: inj.api_format.clone(),
-            api_path: inj.api_path.clone(),
-            unlock: inj.unlock.clone(),
-        };
-        if let Err(err) = validate_target_route(&inj.model_uid, &target) {
-            problems.push(err);
-            continue;
-        }
-        if let Some(p) = store.providers.iter().find(|p| p.id == *pid) {
-            let unlock = normalize_target_unlock(inj.unlock.as_deref());
-            if unlock == "codex" {
-                let enabled = p.unlocks.codex.as_ref().map(|u| u.enabled).unwrap_or(false);
-                if !enabled {
-                    problems.push(format!(
-                        "模型槽位「{}」要求 Codex 解锁，但供应商「{}」未开启 Codex 解锁",
-                        inj.label, p.name
-                    ));
-                }
-            } else if unlock == "claudeCode" {
-                let enabled = p
-                    .unlocks
-                    .claude_code
-                    .as_ref()
-                    .map(|u| u.enabled)
-                    .unwrap_or(false);
-                if !enabled {
-                    problems.push(format!(
-                        "模型槽位「{}」要求 Claude Code 解锁，但供应商「{}」未开启 Claude Code 解锁",
-                        inj.label, p.name
-                    ));
-                }
-            }
         }
     }
 

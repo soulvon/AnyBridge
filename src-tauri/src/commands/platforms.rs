@@ -2844,6 +2844,7 @@ struct ModelContextModelEntry {
 
 #[derive(Debug, Clone, serde::Deserialize)]
 struct ModelContextPatternEntry {
+    #[allow(dead_code)]
     id: Option<String>,
     #[serde(rename = "includesAny")]
     includes_any: Option<Vec<String>>,

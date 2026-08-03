@@ -73,6 +73,7 @@ def parse_platform(value):
 def get_pkg_target(os_name, arch):
     os_map = {"windows": "win", "macos": "macos", "linux": "linux"}
     pkg_os = os_map.get(os_name, os_name)
+    # 使用 sidecar 本地 @yao-pkg/pkg；Node 22 Windows/macOS/Linux 目标由当前构建链支持。
     return f"node22-{pkg_os}-{arch}"
 
 def get_tauri_triple(os_name, arch):
@@ -112,8 +113,11 @@ def main():
 
     os.makedirs(OUT_DIR, exist_ok=True)
 
-    # 直接 pkg 打包 sidecar 目录
-    cmd = [NPX, "pkg", SIDECAR_DIR, "--target", pkg_target, "--out-path", OUT_DIR]
+    # 使用 sidecar 自己声明的 @yao-pkg/pkg，避免误调用工作区中的旧版 pkg。
+    pkg_bin = os.path.join(SIDECAR_DIR, "node_modules", ".bin", "pkg.cmd" if os.name == "nt" else "pkg")
+    if not os.path.exists(pkg_bin):
+        raise RuntimeError(f"sidecar pkg executable not found: {pkg_bin}")
+    cmd = [pkg_bin, SIDECAR_DIR, "--target", pkg_target, "--out-path", OUT_DIR]
     print(f"[exec] {' '.join(cmd)}")
     r = subprocess.run(cmd, cwd=SIDECAR_DIR, capture_output=True, text=True)
     if r.returncode != 0:
