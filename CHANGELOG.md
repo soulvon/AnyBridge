@@ -2,6 +2,17 @@
 
 All notable changes to AnyBridge will be documented in this file.
 
+## v0.4.0 - 2026-08-03
+
+- Claude Code Unlock: payload 完全对齐 Claude Code CLI v2.1.220 真实抓包（beta 9→6，去掉 context_management 和 thinking.display）
+- Claude Code Unlock: 内嵌 21 个 Claude Code 原生 tools 指纹，AnyRouter 端点校验通过
+- unlock 逻辑优化：供应商未开启解锁时自动降级为普通协议，不再报错
+- 移除按槽位名自动写入 unlock/apiFormat 的逻辑，避免 glm-5.2 等模型被误判
+- 修复错误码语义：上游网络错误使用 unavailable，参数错误使用 invalid_argument
+- 修复 sidecar 构建脚本：使用本地 @yao-pkg/pkg，避免调用全局旧版 pkg@5.8.1
+- 协议推断回滚原有逻辑，跨平台 CLI 查找兼容 Windows/macOS/Linux
+- 版本号同步所有 package.json、lockfile、Cargo.toml
+
 ## v0.3.23 - 2026-08-02
 
 - Claude Code unlock: UA 升级到 2.1.220，payload 改用内置 CLI tools 列表（自动发现 + bundled fallback），不再透传 IDE 的 tools/systemPrompt，避免上游校验失败。
