@@ -46,7 +46,7 @@
   "license": "MIT",
   "devDependencies": {
     "@tauri-apps/cli": "^2",
-    "jsdom": "^27.0.1"
+    "jsdom": "^30.0.1"
   },
   "engines": {
     "node": ">=20.0.0"
