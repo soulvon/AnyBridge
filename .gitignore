@@ -73,6 +73,16 @@ scripts/export_release_review_diffs.py
 scripts/convert_sub2api_to_cpa.py
 scripts/probe_inspect_bulk.py
 
+# MITM sniffer / debug captures (may contain account data, tokens, private instructions)
+logs/
+scripts/mitm-sniffer.cjs
+scripts/probe_*.cjs
+scripts/test_*.cjs
+scripts/verify_*.cjs
+scripts/test-*.cjs
+scripts/quick_verify.cjs
+scripts/update_cli_tools.cjs
+
 # Local credential / alive harvest dumps (never commit)
 cpa_alive100/
 cpa_alive100.zip
