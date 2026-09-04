@@ -2,6 +2,12 @@
 
 All notable changes to AnyBridge will be documented in this file.
 
+## v0.4.2 - 2026-09-04
+
+- Codex Desktop 注入优化：将平台切换与 Codex 重启注入中的重型进程探测、COM 激活和长连接等待全面切入后台工作线程池（`spawn_blocking`），彻底解决注入过程导致 AnyBridge 任务栏出现「未响应」的问题。
+- Codex CDP 探测与超时改进：优化 CDP `/json` 探测超时粒度（1500ms），并将渲染进程就绪等待超时放宽至 25s，完美适配冷启动慢场景，避免误报「未就绪」。
+- 提升注入连接稳定性与重试响应速度。
+
 ## v0.4.1 - 2026-09-04
 
 - CPA Manager Plus: 修复更新/切换版本后提示「数据库升级维护尚未完成」的问题。启动、部署、更新前自动执行 `cleanup-derived` 离线完成新版本索引创建与派生数据清理。

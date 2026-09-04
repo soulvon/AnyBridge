@@ -3820,13 +3820,25 @@ pub fn preview_platform_switch(platform: String, provider_id: String) -> Result<
 
 /// 切换平台供应商：备份 + 写入配置文件，并记录到 providerStore.platforms。
 #[tauri::command]
-pub fn switch_platform(
+pub async fn switch_platform(
     app: AppHandle,
     platform: String,
     provider_id: String,
 ) -> Result<SwitchResult, String> {
-    let plat = Platform::from_id(&platform).ok_or_else(|| format!("未知平台: {platform}"))?;
-    emit_switch_progress(&app, plat.id(), "reading", "正在读取供应商配置…");
+    tauri::async_runtime::spawn_blocking(move || {
+        switch_platform_sync(&app, &platform, &provider_id)
+    })
+    .await
+    .map_err(|e| format!("切换平台任务执行失败: {e}"))?
+}
+
+fn switch_platform_sync(
+    app: &AppHandle,
+    platform: &str,
+    provider_id: &str,
+) -> Result<SwitchResult, String> {
+    let plat = Platform::from_id(platform).ok_or_else(|| format!("未知平台: {platform}"))?;
+    emit_switch_progress(app, plat.id(), "reading", "正在读取供应商配置…");
     let mut store = read_provider_store()?;
 
     if matches!(plat, Platform::ClaudeCode) {
@@ -3839,17 +3851,17 @@ pub fn switch_platform(
         let path = plat
             .config_path()
             .ok_or_else(|| "无法定位用户主目录".to_string())?;
-        emit_switch_progress(&app, plat.id(), "backup", "正在备份原配置文件…");
+        emit_switch_progress(app, plat.id(), "backup", "正在备份原配置文件…");
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent).map_err(|e| format!("创建配置目录失败: {e}"))?;
         }
         ensure_backup(&path)?;
-        emit_switch_progress(&app, plat.id(), "writing", "正在写入 Claude Code 配置…");
+        emit_switch_progress(app, plat.id(), "writing", "正在写入 Claude Code 配置…");
         apply_claude_config_file(&path, &config)?;
 
         let config_path = path.to_string_lossy().to_string();
         let backup = backup_path(&path).to_string_lossy().to_string();
-        emit_switch_progress(&app, plat.id(), "saving", "正在保存接管状态…");
+        emit_switch_progress(app, plat.id(), "saving", "正在保存接管状态…");
         store.platforms.insert(
             plat.id().to_string(),
             PlatformState {
@@ -3858,7 +3870,7 @@ pub fn switch_platform(
             },
         );
         write_provider_store(&store)?;
-        emit_switch_progress(&app, plat.id(), "done", "切换完成");
+        emit_switch_progress(app, plat.id(), "done", "切换完成");
 
         return Ok(SwitchResult {
             ok: true,
@@ -3881,17 +3893,17 @@ pub fn switch_platform(
         let path = plat
             .config_path()
             .ok_or_else(|| "无法定位用户主目录".to_string())?;
-        emit_switch_progress(&app, plat.id(), "backup", "正在备份原配置文件…");
+        emit_switch_progress(app, plat.id(), "backup", "正在备份原配置文件…");
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent).map_err(|e| format!("创建配置目录失败: {e}"))?;
         }
         ensure_backup(&path)?;
-        emit_switch_progress(&app, plat.id(), "writing", "正在写入 OpenCode 配置…");
+        emit_switch_progress(app, plat.id(), "writing", "正在写入 OpenCode 配置…");
         apply_opencode_config_file(&path, &config)?;
 
         let config_path = path.to_string_lossy().to_string();
         let backup = backup_path(&path).to_string_lossy().to_string();
-        emit_switch_progress(&app, plat.id(), "done", "设置完成");
+        emit_switch_progress(app, plat.id(), "done", "设置完成");
 
         return Ok(SwitchResult {
             ok: true,
@@ -3904,13 +3916,13 @@ pub fn switch_platform(
         });
     }
 
-    emit_switch_progress(&app, plat.id(), "resolving", "正在解析供应商信息…");
-    let mut provider = resolve_platform_config(&plat, &store, &provider_id)?;
+    emit_switch_progress(app, plat.id(), "resolving", "正在解析供应商信息…");
+    let mut provider = resolve_platform_config(&plat, &store, provider_id)?;
     if matches!(plat, Platform::Codex) {
-        apply_codex_auto_wire_api(&mut provider, &mut store, &provider_id);
+        apply_codex_auto_wire_api(&mut provider, &mut store, provider_id);
     }
     let planned_codex_routes = if matches!(plat, Platform::Codex) {
-        emit_switch_progress(&app, plat.id(), "routing", "正在校验 Codex 本地代理路由…");
+        emit_switch_progress(app, plat.id(), "routing", "正在校验 Codex 本地代理路由…");
         Some(if provider.route_through_proxy {
             plan_codex_proxy_routes(&provider)?
         } else {
@@ -3923,38 +3935,38 @@ pub fn switch_platform(
         if matches!(plat, Platform::Codex) {
             let plan = plan_clear_legacy_global_codex_proxy_routes();
             for warning in &plan.warnings {
-                emit_switch_progress(&app, plat.id(), "warning", warning);
+                emit_switch_progress(app, plat.id(), "warning", warning);
             }
             (plan.routes, plan.warnings)
         } else {
             (None, Vec::new())
         };
 
-    emit_switch_progress(&app, plat.id(), "backup", "正在备份原配置文件…");
+    emit_switch_progress(app, plat.id(), "backup", "正在备份原配置文件…");
     let path = plat.apply(&provider)?;
     let config_path = path.to_string_lossy().to_string();
     let backup = backup_path(&path).to_string_lossy().to_string();
 
     if let Some(routes) = planned_codex_routes.as_ref() {
-        emit_switch_progress(&app, plat.id(), "routing", "正在写入 Codex 本地代理路由…");
+        emit_switch_progress(app, plat.id(), "routing", "正在写入 Codex 本地代理路由…");
         super::proxy_routes::write_codex_routes(routes)?;
     }
     if let Some(routes) = planned_legacy_global_codex_routes.as_ref() {
         emit_switch_progress(
-            &app,
+            app,
             plat.id(),
             "routing",
             "正在清理旧版 Codex 全局代理路由…",
         );
         if let Err(e) = super::proxy_routes::write_routes(routes) {
             let warning = legacy_global_codex_proxy_route_cleanup_warning("写入", &e);
-            emit_switch_progress(&app, plat.id(), "warning", &warning);
+            emit_switch_progress(app, plat.id(), "warning", &warning);
             codex_cleanup_warnings.push(warning);
         }
     }
 
     if !matches!(plat, Platform::OpenCode) {
-        emit_switch_progress(&app, plat.id(), "saving", "正在保存接管状态…");
+        emit_switch_progress(app, plat.id(), "saving", "正在保存接管状态…");
         store.platforms.insert(
             plat.id().to_string(),
             PlatformState {
@@ -3983,7 +3995,7 @@ pub fn switch_platform(
         append_switch_warnings(&mut message, &codex_cleanup_warnings);
     }
 
-    emit_switch_progress(&app, plat.id(), "done", "切换完成");
+    emit_switch_progress(app, plat.id(), "done", "切换完成");
     Ok(SwitchResult {
         ok: true,
         message,

@@ -922,7 +922,7 @@ fn inject_via_sidecar_on_port(cdp_port: u16) -> Result<String, String> {
         port,
         "/__byok/codex-cdp/inject",
         &body,
-        Duration::from_secs(25),
+        Duration::from_secs(28),
     )?;
     if status.contains("200") {
         let parsed: serde_json::Value =
@@ -1212,7 +1212,17 @@ pub async fn restart_codex_desktop(
 ) -> CodexDesktopResult {
     let model = model.unwrap_or_default();
     let inject_models = inject_models.unwrap_or(true);
-    restart_codex_desktop_impl(Some(&app), managed, &model, inject_models).await
+    tauri::async_runtime::spawn_blocking(move || {
+        let rt = tokio::runtime::Handle::current();
+        rt.block_on(restart_codex_desktop_impl(Some(&app), managed, &model, inject_models))
+    })
+    .await
+    .unwrap_or_else(|e| CodexDesktopResult {
+        ok: false,
+        message: format!("重启 Codex Desktop 任务执行异常: {e}"),
+        managed,
+        pid: None,
+    })
 }
 
 /// Tauri 命令：手动启动 Codex。
@@ -1223,72 +1233,81 @@ pub async fn restart_codex_desktop(
 #[tauri::command]
 pub async fn start_codex_with_cdp(inject_models: Option<bool>) -> CodexDesktopResult {
     let inject_models = inject_models.unwrap_or(true);
-    if codex_running() {
-        return CodexDesktopResult {
-            ok: true,
-            message: "Codex 已在运行".to_string(),
-            managed: false,
-            pid: None,
-        };
-    }
-    if inject_models {
-        // 带 CDP 启动 + 注入
-        let (pid, cdp_port) = match launch_with_cdp() {
-            Ok(v) => v,
-            Err(e) => {
-                return CodexDesktopResult {
-                    ok: false,
-                    message: format!("启动 Codex (CDP) 失败: {e}"),
-                    managed: false,
-                    pid: None,
-                }
-            }
-        };
-        let deadline = Instant::now() + Duration::from_secs(15);
-        while Instant::now() < deadline {
-            if cdp_listening_on_port(cdp_port, Duration::from_millis(500)) {
-                break;
-            }
-            std::thread::sleep(Duration::from_millis(300));
-        }
-        if !cdp_listening_on_port(cdp_port, Duration::from_millis(500)) {
+    tauri::async_runtime::spawn_blocking(move || {
+        if codex_running() {
             return CodexDesktopResult {
-                ok: false,
-                message: format!("Codex 已启动 (PID {pid})，但 {cdp_port} 在 15s 内未就绪"),
+                ok: true,
+                message: "Codex 已在运行".to_string(),
                 managed: false,
-                pid: Some(pid),
+                pid: None,
             };
         }
-        return match inject_via_sidecar_on_port(cdp_port) {
-            Ok(_) => CodexDesktopResult {
+        if inject_models {
+            // 带 CDP 启动 + 注入
+            let (pid, cdp_port) = match launch_with_cdp() {
+                Ok(v) => v,
+                Err(e) => {
+                    return CodexDesktopResult {
+                        ok: false,
+                        message: format!("启动 Codex (CDP) 失败: {e}"),
+                        managed: false,
+                        pid: None,
+                    }
+                }
+            };
+            let deadline = Instant::now() + Duration::from_secs(20);
+            while Instant::now() < deadline {
+                if cdp_listening_on_port(cdp_port, Duration::from_millis(500)) {
+                    break;
+                }
+                std::thread::sleep(Duration::from_millis(300));
+            }
+            if !cdp_listening_on_port(cdp_port, Duration::from_millis(500)) {
+                return CodexDesktopResult {
+                    ok: false,
+                    message: format!("Codex 已启动 (PID {pid})，但 {cdp_port} 在 20s 内未就绪"),
+                    managed: false,
+                    pid: Some(pid),
+                };
+            }
+            return match inject_via_sidecar_on_port(cdp_port) {
+                Ok(_) => CodexDesktopResult {
+                    ok: true,
+                    message: "已启动 Codex（带 CDP）并解锁第三方模型".to_string(),
+                    managed: false,
+                    pid: Some(pid),
+                },
+                Err(e) => CodexDesktopResult {
+                    ok: false,
+                    message: format!("Codex 已启动 (PID {pid})，但注入失败: {e}"),
+                    managed: false,
+                    pid: Some(pid),
+                },
+            };
+        }
+        // 普通启动（不 CDP、不注入）
+        match launch_plain() {
+            Ok(pid) => CodexDesktopResult {
                 ok: true,
-                message: "已启动 Codex（带 CDP）并解锁第三方模型".to_string(),
+                message: "已启动 Codex".to_string(),
                 managed: false,
                 pid: Some(pid),
             },
             Err(e) => CodexDesktopResult {
                 ok: false,
-                message: format!("Codex 已启动 (PID {pid})，但注入失败: {e}"),
+                message: format!("启动 Codex 失败: {e}"),
                 managed: false,
-                pid: Some(pid),
+                pid: None,
             },
-        };
-    }
-    // 普通启动（不 CDP、不注入）
-    match launch_plain() {
-        Ok(pid) => CodexDesktopResult {
-            ok: true,
-            message: "已启动 Codex".to_string(),
-            managed: false,
-            pid: Some(pid),
-        },
-        Err(e) => CodexDesktopResult {
-            ok: false,
-            message: format!("启动 Codex 失败: {e}"),
-            managed: false,
-            pid: None,
-        },
-    }
+        }
+    })
+    .await
+    .unwrap_or_else(|e| CodexDesktopResult {
+        ok: false,
+        message: format!("启动 Codex 任务执行异常: {e}"),
+        managed: false,
+        pid: None,
+    })
 }
 
 #[cfg(not(target_os = "windows"))]

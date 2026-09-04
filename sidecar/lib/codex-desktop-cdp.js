@@ -43,7 +43,7 @@ const CDP_TIMEOUT_MS = 8000;
 
 function httpGetJson(url) {
   return new Promise((resolve, reject) => {
-    const req = http.get(url, { agent: false, timeout: 3000 }, (res) => {
+    const req = http.get(url, { agent: false, timeout: 1500 }, (res) => {
       const chunks = [];
       res.on('data', (c) => chunks.push(c));
       res.on('end', () => {
@@ -211,7 +211,7 @@ async function injectOnce(port, models) {
  * @param {number} [timeoutMs=15000]  最长等待 renderer 就绪的时间
  * @returns {Promise<{ok:boolean, message:string, target?:object, evalResult?:string}>}
  */
-export async function injectWithRetry(port, models, timeoutMs = 15000) {
+export async function injectWithRetry(port, models, timeoutMs = 25000) {
   if (!Array.isArray(models) || !models.length) {
     return { ok: false, message: `No Codex custom models to inject. Check ${codexModelCatalogPath()}.` };
   }
