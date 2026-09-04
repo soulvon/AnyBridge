@@ -4374,7 +4374,10 @@
                 style="font-size:11px; font-weight:700; color:var(--text-muted); letter-spacing:0.5px; margin-bottom:12px; margin-top:8px;">
                 选填参数</div>
               <div class="cb-edit-field">
-                <label for="cb-edit-max-input">上下文窗口 (Token)</label>
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+                  <label for="cb-edit-max-input" style="margin-bottom:0;">上下文窗口 (Token)</label>
+                  <button type="button" class="btn-ghost secondary" id="btn-cb-edit-recommend" style="font-size:11px; padding:2px 8px; height:24px; border-radius:6px; cursor:pointer;" data-action="cbFillRecommendedContext" title="根据当前模型 ID 填入官方推荐的上下文与输出设置">填入推荐值</button>
+                </div>
                 <input type="number" id="cb-edit-max-input" placeholder="如 128000 / 500000 / 1000000">
               </div>
               <div class="cb-edit-field">

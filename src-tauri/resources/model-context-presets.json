@@ -1,6 +1,6 @@
 {
-  "version": 1,
-  "updatedAt": "2026-07-11",
+  "version": 2,
+  "updatedAt": "2026-09-04",
   "source": "综合官方文档与公开横评（Anthropic / OpenAI / Google / 智谱 / DeepSeek / Kimi / Qwen / xAI / MiniMax 等）",
   "defaults": {
     "maxInputTokens": 128000,
@@ -8,8 +8,32 @@
   },
   "models": [
     {
+      "id": "claude-opus-4-8",
+      "match": ["claude-opus-4-8", "claude-opus-4.8", "opus-4-8", "opus-4.8"],
+      "maxInputTokens": 1000000,
+      "maxOutputTokens": 128000,
+      "vendor": "anthropic",
+      "note": "官方 1M 上下文 / 128K 输出"
+    },
+    {
+      "id": "claude-opus-4-7",
+      "match": ["claude-opus-4-7", "claude-opus-4.7", "opus-4-7", "opus-4.7"],
+      "maxInputTokens": 1000000,
+      "maxOutputTokens": 128000,
+      "vendor": "anthropic",
+      "note": "官方 1M 上下文 / 128K 输出"
+    },
+    {
+      "id": "claude-sonnet-5",
+      "match": ["claude-sonnet-5", "claude-5-sonnet", "sonnet-5", "claude-5-fable"],
+      "maxInputTokens": 1000000,
+      "maxOutputTokens": 128000,
+      "vendor": "anthropic",
+      "note": "Claude 5 系 1M 上下文"
+    },
+    {
       "id": "claude-opus-4-6",
-      "match": ["claude-opus-4-6", "claude-opus-4.6", "claude-opus-4_6", "opus-4-6", "opus-4.6"],
+      "match": ["claude-opus-4-6", "claude-opus-4.6", "claude-opus-4_6", "opus-4-6", "opus-4.6", "claude-opus-4-6-thinking"],
       "maxInputTokens": 1000000,
       "maxOutputTokens": 128000,
       "vendor": "anthropic",
@@ -56,12 +80,36 @@
       "note": "标准 200K"
     },
     {
-      "id": "gpt-5.4",
-      "match": ["gpt-5.4", "gpt-5-4", "gpt5.4", "gpt5-4"],
+      "id": "claude-3-7-sonnet",
+      "match": ["claude-3-7-sonnet", "claude-3.7-sonnet", "claude-3_7-sonnet", "sonnet-3-7", "sonnet-3.7"],
+      "maxInputTokens": 200000,
+      "maxOutputTokens": 64000,
+      "vendor": "anthropic",
+      "note": "200K 上下文 / 思考推理输出最高 64K"
+    },
+    {
+      "id": "claude-3-5-sonnet",
+      "match": ["claude-3-5-sonnet", "claude-3.5-sonnet", "sonnet-3-5", "sonnet-3.5"],
+      "maxInputTokens": 200000,
+      "maxOutputTokens": 8192,
+      "vendor": "anthropic",
+      "note": "200K 上下文 / 8K 输出"
+    },
+    {
+      "id": "claude-3-5-haiku",
+      "match": ["claude-3-5-haiku", "claude-3.5-haiku", "haiku-3-5", "haiku-3.5"],
+      "maxInputTokens": 200000,
+      "maxOutputTokens": 8192,
+      "vendor": "anthropic",
+      "note": "200K 上下文 / 8K 输出"
+    },
+    {
+      "id": "gpt-5.6",
+      "match": ["gpt-5.6", "gpt-5-6", "gpt5.6", "gpt5-6", "gpt-5.6-sol", "gpt-5.6-luna", "gpt-5.6-terra"],
       "maxInputTokens": 1000000,
       "maxOutputTokens": 128000,
       "vendor": "openai",
-      "note": "约 1M 上下文 / 128K 输出"
+      "note": "1M 上下文 / 128K 输出"
     },
     {
       "id": "gpt-5.5",
@@ -72,12 +120,20 @@
       "note": "约 1M 上下文 / 128K 输出"
     },
     {
-      "id": "gpt-5.6",
-      "match": ["gpt-5.6", "gpt-5-6", "gpt5.6", "gpt5-6"],
+      "id": "gpt-5.4",
+      "match": ["gpt-5.4", "gpt-5-4", "gpt5.4", "gpt5-4", "gpt-5.4-mini"],
       "maxInputTokens": 1000000,
       "maxOutputTokens": 128000,
       "vendor": "openai",
-      "note": "1M 上下文 / 128K 输出"
+      "note": "约 1M 上下文 / 128K 输出"
+    },
+    {
+      "id": "gpt-5.3-codex-spark",
+      "match": ["gpt-5.3-codex-spark", "gpt-5.3-codex", "codex-spark"],
+      "maxInputTokens": 400000,
+      "maxOutputTokens": 32768,
+      "vendor": "openai",
+      "note": "400K 上下文 / 32K 输出"
     },
     {
       "id": "gpt-5.2",
@@ -96,6 +152,14 @@
       "note": "GPT-5 系常见 400K"
     },
     {
+      "id": "gpt-4.5",
+      "match": ["gpt-4.5", "gpt-4-5", "gpt4.5", "gpt-4.5-preview"],
+      "maxInputTokens": 128000,
+      "maxOutputTokens": 16384,
+      "vendor": "openai",
+      "note": "128K 上下文 / 16K 输出"
+    },
+    {
       "id": "gpt-4.1",
       "match": ["gpt-4.1", "gpt-4-1", "gpt4.1", "gpt4-1"],
       "maxInputTokens": 1000000,
@@ -112,8 +176,24 @@
       "note": "128K"
     },
     {
+      "id": "gpt-oss-120b-medium",
+      "match": ["gpt-oss-120b-medium", "gpt-oss"],
+      "maxInputTokens": 128000,
+      "maxOutputTokens": 8192,
+      "vendor": "openai",
+      "note": "128K 上下文"
+    },
+    {
+      "id": "codex-auto-review",
+      "match": ["codex-auto-review"],
+      "maxInputTokens": 200000,
+      "maxOutputTokens": 32768,
+      "vendor": "openai",
+      "note": "200K 上下文 / 32K 输出"
+    },
+    {
       "id": "o3",
-      "match": ["o3", "o3-pro", "o3-mini", "o3-deep-research"],
+      "match": ["o3", "o3-pro", "o3-mini", "o3-mini-high", "o3-deep-research"],
       "maxInputTokens": 200000,
       "maxOutputTokens": 100000,
       "vendor": "openai",
@@ -136,6 +216,46 @@
       "note": "推理模型 200K"
     },
     {
+      "id": "gemini-3.8-flash",
+      "match": ["gemini-3.8-flash", "gemini-3.8flash", "gemini3.8-flash", "gemini-3.8-flash-high"],
+      "maxInputTokens": 1000000,
+      "maxOutputTokens": 65536,
+      "vendor": "google",
+      "note": "1M 上下文 / 64K 输出"
+    },
+    {
+      "id": "gemini-3.7-flash",
+      "match": ["gemini-3.7-flash", "gemini-3.7flash", "gemini3.7-flash", "gemini-3.7-flash-high", "gemini-3.7-flash-thinking"],
+      "maxInputTokens": 1000000,
+      "maxOutputTokens": 65536,
+      "vendor": "google",
+      "note": "1M 上下文 / 思考输出最高 64K"
+    },
+    {
+      "id": "gemini-3.6-flash",
+      "match": ["gemini-3.6-flash", "gemini-3.6flash", "gemini3.6-flash", "gemini-3.6-flash-high"],
+      "maxInputTokens": 1000000,
+      "maxOutputTokens": 65536,
+      "vendor": "google",
+      "note": "1M 上下文"
+    },
+    {
+      "id": "gemini-3-flash",
+      "match": ["gemini-3-flash", "gemini-3.0-flash", "gemini3-flash", "gemini-3.1-flash", "gemini-3.1-flash-lite", "gemini-3.1-flash-image"],
+      "maxInputTokens": 1000000,
+      "maxOutputTokens": 65536,
+      "vendor": "google",
+      "note": "1M 上下文"
+    },
+    {
+      "id": "gemini-3-pro",
+      "match": ["gemini-3-pro", "gemini-3.0-pro", "gemini3-pro", "gemini-3.1-pro", "gemini-3.1-pro-low", "gemini-pro-agent"],
+      "maxInputTokens": 1000000,
+      "maxOutputTokens": 65536,
+      "vendor": "google",
+      "note": "1M 上下文"
+    },
+    {
       "id": "gemini-2.5-pro",
       "match": ["gemini-2.5-pro", "gemini-2.5pro", "gemini2.5-pro"],
       "maxInputTokens": 1000000,
@@ -152,12 +272,44 @@
       "note": "1M 上下文"
     },
     {
-      "id": "gemini-3-pro",
-      "match": ["gemini-3-pro", "gemini-3.0-pro", "gemini3-pro", "gemini-3.1-pro"],
+      "id": "gemini-2.0-pro",
+      "match": ["gemini-2.0-pro", "gemini-2-pro", "gemini-2.0-pro-exp"],
+      "maxInputTokens": 2000000,
+      "maxOutputTokens": 65536,
+      "vendor": "google",
+      "note": "2M 上下文"
+    },
+    {
+      "id": "gemini-2.0-flash",
+      "match": ["gemini-2.0-flash", "gemini-2-flash", "gemini-2.0-flash-thinking", "gemini-2.0-flash-exp"],
       "maxInputTokens": 1000000,
       "maxOutputTokens": 65536,
       "vendor": "google",
       "note": "1M 上下文"
+    },
+    {
+      "id": "gemini-1.5-pro",
+      "match": ["gemini-1.5-pro", "gemini-1.5pro", "gemini1.5-pro"],
+      "maxInputTokens": 2000000,
+      "maxOutputTokens": 65536,
+      "vendor": "google",
+      "note": "官方 2M 上下文"
+    },
+    {
+      "id": "gemini-1.5-flash",
+      "match": ["gemini-1.5-flash", "gemini-1.5flash", "gemini1.5-flash"],
+      "maxInputTokens": 1000000,
+      "maxOutputTokens": 65536,
+      "vendor": "google",
+      "note": "1M 上下文"
+    },
+    {
+      "id": "glm-5.3",
+      "match": ["glm-5.3", "glm5.3", "glm_5.3", "glm-5-3", "glm_5_3"],
+      "maxInputTokens": 1000000,
+      "maxOutputTokens": 128000,
+      "vendor": "zhipu",
+      "note": "官方 1M 上下文 / 128K 输出"
     },
     {
       "id": "glm-5.2",
@@ -208,6 +360,14 @@
       "note": "128K"
     },
     {
+      "id": "grok-4.6",
+      "match": ["grok-4.6", "grok4.6", "grok_4.6", "grok-4-6"],
+      "maxInputTokens": 1000000,
+      "maxOutputTokens": 32768,
+      "vendor": "xai",
+      "note": "1M 上下文"
+    },
+    {
       "id": "grok-4.5",
       "match": ["grok-4.5", "grok4.5", "grok_4.5", "grok-4-5", "grok_4_5"],
       "maxInputTokens": 500000,
@@ -216,12 +376,44 @@
       "note": "500K 上下文"
     },
     {
+      "id": "grok-4.20",
+      "match": ["grok-4.20", "grok4.20", "grok_4.20", "grok-4.20-0309-reasoning", "grok-4.20-0309-non-reasoning", "grok-4.20-multi-agent-0309"],
+      "maxInputTokens": 1000000,
+      "maxOutputTokens": 32768,
+      "vendor": "xai",
+      "note": "1M 上下文 / 32K 输出"
+    },
+    {
       "id": "grok-4.3",
       "match": ["grok-4.3", "grok4.3", "grok-4-3"],
       "maxInputTokens": 1000000,
       "maxOutputTokens": 32768,
       "vendor": "xai",
       "note": "1M 上下文"
+    },
+    {
+      "id": "grok-3",
+      "match": ["grok-3", "grok3", "grok-3-mini", "grok-3-mini-fast", "grok-3-fast"],
+      "maxInputTokens": 1000000,
+      "maxOutputTokens": 32768,
+      "vendor": "xai",
+      "note": "1M 上下文"
+    },
+    {
+      "id": "grok-build-0.1",
+      "match": ["grok-build-0.1", "grok-build"],
+      "maxInputTokens": 256000,
+      "maxOutputTokens": 16384,
+      "vendor": "xai",
+      "note": "256K 上下文"
+    },
+    {
+      "id": "grok-composer-2.5",
+      "match": ["grok-composer-2.5-fast", "grok-composer-2.5", "grok-composer"],
+      "maxInputTokens": 256000,
+      "maxOutputTokens": 16384,
+      "vendor": "xai",
+      "note": "256K 上下文"
     },
     {
       "id": "deepseek-reasoner",
@@ -318,6 +510,22 @@
       "maxOutputTokens": 16384,
       "vendor": "minimax",
       "note": "200K"
+    },
+    {
+      "id": "swe-series",
+      "match": ["swe-1.7", "swe-1-7", "swe-1.6", "swe-1-6", "swe-1.5", "swe-1-5", "swe-1p5"],
+      "maxInputTokens": 200000,
+      "maxOutputTokens": 32768,
+      "vendor": "windsurf",
+      "note": "SWE 编程模型推荐 200K"
+    },
+    {
+      "id": "hy3-preview",
+      "match": ["hy3-preview", "hy3", "hunyuan-3"],
+      "maxInputTokens": 256000,
+      "maxOutputTokens": 16384,
+      "vendor": "tencent",
+      "note": "混元 3 系列 256K"
     }
   ],
   "patterns": [
@@ -357,6 +565,14 @@
       "note": "Claude 默认 200K"
     },
     {
+      "id": "gemini-pro-family",
+      "includesAny": ["gemini"],
+      "requiresAny": ["pro"],
+      "maxInputTokens": 2000000,
+      "maxOutputTokens": 65536,
+      "note": "Gemini Pro 系列 2M"
+    },
+    {
       "id": "gemini-family",
       "includesAny": ["gemini"],
       "maxInputTokens": 1000000,
@@ -392,6 +608,13 @@
       "note": "OpenAI o 系列 200K（要求 oN- 前缀，避免误伤）"
     },
     {
+      "id": "glm-5-long",
+      "includesAny": ["glm-5.3", "glm5.3", "glm_5.3", "glm-5-3", "glm-5.2", "glm5.2", "glm_5.2", "glm-5-2"],
+      "maxInputTokens": 1000000,
+      "maxOutputTokens": 128000,
+      "note": "GLM-5.2 / 5.3 官方支持 1M 上下文"
+    },
+    {
       "id": "glm-5-family",
       "includesAny": ["glm-5", "glm5", "glm-4.6", "glm4.6", "glm-4.5", "glm4.5"],
       "maxInputTokens": 200000,
@@ -404,6 +627,13 @@
       "maxInputTokens": 128000,
       "maxOutputTokens": 8192,
       "note": "其他 GLM 默认 128K"
+    },
+    {
+      "id": "grok-3-family",
+      "includesAny": ["grok-3", "grok3"],
+      "maxInputTokens": 1000000,
+      "maxOutputTokens": 32768,
+      "note": "Grok-3 系常见 1M"
     },
     {
       "id": "grok-family",

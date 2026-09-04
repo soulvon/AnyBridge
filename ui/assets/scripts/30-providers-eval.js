@@ -45,10 +45,16 @@ globalThis.PROVIDER_IMPORT_SOURCE_OPTIONS = [
   { key: 'cherry-studio', label: 'Cherry Studio' },
 ];
 
+function sortModelsNaturally(list) {
+  if (!Array.isArray(list)) return [];
+  return [...list].sort((a, b) => String(a || '').localeCompare(String(b || ''), undefined, { numeric: true, sensitivity: 'base' }));
+}
+
 function providerSelectedModels(p) {
   if (!p) return [];
   if (Array.isArray(p.models) && p.models.length > 0) {
-    return p.models.map(m => String(m || '').trim()).filter(Boolean);
+    const list = p.models.map(m => String(m || '').trim()).filter(Boolean);
+    return sortModelsNaturally(list);
   }
   const fallback = String(p.defaultModel || '').trim();
   return fallback ? [fallback] : [];
@@ -263,8 +269,12 @@ function isLocalProxyProvider(p) {
 /** CPA 套件部署后自动添加的内置本地供应商 */
 function isCpaLocalProvider(p) {
   if (!p) return false;
-  if (p.id === CPA_LOCAL_PROVIDER_ID || p.meta?.cpaLocal === true) return true;
-  if (typeof p.id === 'string' && p.id.startsWith('p-cpa-local')) return true;
+  const id = p.id || p.providerId || p.provider_id;
+  if (id === CPA_LOCAL_PROVIDER_ID || p.meta?.cpaLocal === true) return true;
+  if (typeof id === 'string' && (id === 'cpa-local' || id.startsWith('p-cpa-local'))) return true;
+  if (String(p.name || p.providerName || '').trim().toUpperCase() === 'CPA') return true;
+  const host = String(p.apiHost || p.api_host || '').replace(/\/+$/, '').toLowerCase();
+  if (host === 'http://127.0.0.1:8317' && /cpa/i.test(String(p.name || p.providerName || ''))) return true;
   return false;
 }
 
@@ -2927,6 +2937,7 @@ syncEvalCombos();
 
 // ---- P3 globalThis mirror (functions/classes) ----
 (function mirrorFns(g) {
+  g.sortModelsNaturally = sortModelsNaturally;
   g.providerSelectedModels = providerSelectedModels;
   g.providerCapabilities = providerCapabilities;
   g.capabilityBadges = capabilityBadges;

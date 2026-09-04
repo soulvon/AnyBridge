@@ -2,6 +2,13 @@
 
 All notable changes to AnyBridge will be documented in this file.
 
+## v0.4.1 - 2026-09-04
+
+- CPA Manager Plus: 修复更新/切换版本后提示「数据库升级维护尚未完成」的问题。启动、部署、更新前自动执行 `cleanup-derived` 离线完成新版本索引创建与派生数据清理。
+- 修复 sidecar 模块打包兼容性问题：移除 top-level await，修复打包安装后代理启动失败的异常。
+- 供应商模型列表自然排序：已选模型列表及模型分组内支持按名称自然字母数字升序排列（Natural Sort）。
+- 平台与供应商页面交互与视觉优化。
+
 ## v0.4.0 - 2026-08-03
 
 - Claude Code Unlock: payload 完全对齐 Claude Code CLI v2.1.220 真实抓包（beta 9→6，去掉 context_management 和 thinking.display）

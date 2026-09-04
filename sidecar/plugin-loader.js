@@ -3,7 +3,9 @@
 // injects ctx utilities, and exposes HTTP endpoints for the Rust core.
 
 import { readFile, readdir, stat, mkdir, writeFile } from 'fs/promises';
+import * as fsPromises from 'fs/promises';
 import { join, resolve, dirname } from 'path';
+import * as pathMod from 'path';
 import { fileURLToPath } from 'url';
 import { existsSync } from 'fs';
 import { exec } from 'child_process';
@@ -47,8 +49,8 @@ const adapterContext = {
     exec(cmd, { timeout: 5000 }, (err) => resolve(!err));
   }),
   fetch: globalThis.fetch,
-  fs: await import('fs/promises'),
-  path: await import('path'),
+  fs: fsPromises,
+  path: pathMod,
   exec: (cmd, options = {}) => new Promise((resolve, reject) => {
     const opts = { maxBuffer: 10 * 1024 * 1024, ...options };
     exec(cmd, opts, (error, stdout, stderr) => {

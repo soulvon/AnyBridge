@@ -1808,6 +1808,14 @@ async fn start_cpa_suite_async() -> Result<(), String> {
         })
         .await
         .map_err(|e| e.to_string())??;
+        // 执行离线派生维护（创建新版本索引、清理旧派生数据，消除「数据库升级维护尚未完成」提示）
+        let cpamp_exe_cleanup = cpamp_exe.clone();
+        let runtime_dir_cleanup = runtime_dir.clone();
+        tauri::async_runtime::spawn_blocking(move || {
+            cleanup_cpamp_derived(&cpamp_exe_cleanup, &runtime_dir_cleanup)
+        })
+        .await
+        .map_err(|e| e.to_string())??;
         // 首次启动不带 PANEL_PATH，确保能读到内嵌 management.html
         let cpamp_env = cpamp_env_base(&secrets, &shared_data_dir);
         let runtime_start = runtime_dir.clone();
@@ -2962,6 +2970,48 @@ fn reset_cpamp_admin_key(exe_path: &Path, runtime_dir: &Path, admin_key: &str) -
     Ok(())
 }
 
+/// 执行 CPAMP 数据库离线派生维护（创建新版本延迟索引、清理旧派生数据）。
+/// CPAMP v1.12.0+ 采用 Listener-First 机制，新版本启动时不会自动为大数据库执行索引创建和清理，
+/// 必须在离线状态下通过 cleanup-derived 完成，否则面板会提示「数据库升级维护尚未完成」并降低性能。
+fn cleanup_cpamp_derived(exe_path: &Path, runtime_dir: &Path) -> Result<(), String> {
+    let root = current_cpa_install_root();
+    let shared_db = root.join("cpamp-data").join("usage.sqlite");
+    let legacy_db = runtime_dir.join("data").join("usage.sqlite");
+    let db_path = if shared_db.is_file() {
+        shared_db
+    } else if legacy_db.is_file() {
+        legacy_db
+    } else {
+        return Ok(());
+    };
+
+    let mut cmd = std::process::Command::new(exe_path);
+    cmd.current_dir(runtime_dir)
+        .args([
+            "cleanup-derived",
+            "--db-path",
+            &path_text(&db_path),
+        ]);
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
+    }
+    let output = cmd
+        .output()
+        .map_err(|e| format!("执行 CPAMP cleanup-derived 失败: {}", e))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        return Err(format!(
+            "执行 CPAMP 数据库派生维护失败（{}）。stderr: {} stdout: {}",
+            output.status, stderr, stdout
+        ));
+    }
+    Ok(())
+}
+
 fn start_service(
     exe_path: &Path,
     working_dir: &Path,
@@ -3562,6 +3612,14 @@ pub async fn extension_deploy_cpa_suite(
     let admin_key_reset = secrets.admin_key.clone();
     tauri::async_runtime::spawn_blocking(move || {
         reset_cpamp_admin_key(&cpamp_exe_reset, &cpamp_runtime_reset, &admin_key_reset)
+    })
+    .await
+    .map_err(|e| e.to_string())??;
+    // 执行离线派生维护（创建新版本索引、清理旧派生数据，消除「数据库升级维护尚未完成」提示）
+    let cpamp_exe_cleanup = cpamp_exe.clone();
+    let cpamp_runtime_cleanup = cpamp_runtime.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        cleanup_cpamp_derived(&cpamp_exe_cleanup, &cpamp_runtime_cleanup)
     })
     .await
     .map_err(|e| e.to_string())??;

@@ -5909,6 +5909,47 @@ td.display-name-cell {
   background: linear-gradient(135deg, var(--accent), var(--accent-secondary));
   color: var(--button-on-solid);
 }
+
+/* 内置本地代理方形图标（上面本地，下面代理） */
+.cb-add-prov-icon.cb-add-prov-icon-builtin,
+.wb-add-prov-icon.wb-add-prov-icon-builtin {
+  width: 32px;
+  height: 32px;
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  background: linear-gradient(135deg, var(--accent, #2563eb), var(--accent-secondary, #3b82f6));
+  color: #ffffff;
+  box-shadow: 0 1px 3px rgba(37, 99, 235, 0.25);
+  flex-shrink: 0;
+  padding: 2px 0;
+  box-sizing: border-box;
+  gap: 1px;
+}
+
+.cb-add-prov-icon.cb-add-prov-icon-builtin span,
+.wb-add-prov-icon.wb-add-prov-icon-builtin span {
+  display: block;
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 1.1;
+  letter-spacing: 0.5px;
+  text-align: center;
+  color: #ffffff;
+}
+
+.cb-add-prov-item.active .cb-add-prov-icon.cb-add-prov-icon-builtin,
+.wb-add-prov-item.active .wb-add-prov-icon.wb-add-prov-icon-builtin {
+  background: #ffffff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
+}
+
+.cb-add-prov-item.active .cb-add-prov-icon.cb-add-prov-icon-builtin span,
+.wb-add-prov-item.active .wb-add-prov-icon.wb-add-prov-icon-builtin span {
+  color: var(--accent, #2563eb);
+}
 .cb-add-prov-badge,
 .wb-add-prov-badge,
 .zc-add-prov-badge {

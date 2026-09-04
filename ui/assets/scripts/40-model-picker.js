@@ -334,12 +334,18 @@ function groupModels(models) {
     if (!groups[g]) groups[g] = [];
     groups[g].push(m);
   });
+  // Sort models within each group in natural alphabetical order
+  Object.keys(groups).forEach(g => {
+    groups[g] = typeof sortModelsNaturally === 'function'
+      ? sortModelsNaturally(groups[g])
+      : groups[g].sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }));
+  });
   // Sort groups: known first, "其他" last
   const sorted = {};
   Object.keys(groups).sort((a, b) => {
     if (a === '其他模型') return 1;
     if (b === '其他模型') return -1;
-    return a.localeCompare(b);
+    return a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
   }).forEach(k => sorted[k] = groups[k]);
   return sorted;
 }
@@ -440,6 +446,9 @@ globalThis.selectedModels = [];
 globalThis.editorDraftModelCaps = {};
 
 function updateSelectedModelsUI() {
+  if (typeof sortModelsNaturally === 'function') {
+    selectedModels = sortModelsNaturally(selectedModels);
+  }
   const leftContainer = document.getElementById('leftSelectedModelsList');
   const leftCount = document.getElementById('leftSelectedCount');
   const rightContainer = document.getElementById('selectedModelTags'); // 兼容旧面板
@@ -640,6 +649,10 @@ function toggleSelectGroup(groupName, selectAll) {
     }
   });
 
+  if (typeof sortModelsNaturally === 'function') {
+    selectedModels = sortModelsNaturally(selectedModels);
+  }
+
   updateSelectedModelsUI();
   filterModelPanel();
 }
@@ -656,6 +669,9 @@ function selectModel(val) {
   } else {
     selectedModels.push(val);
   }
+  if (typeof sortModelsNaturally === 'function') {
+    selectedModels = sortModelsNaturally(selectedModels);
+  }
   updateSelectedModelsUI();
   filterModelPanel(); // re-render to update selection highlight
 }
@@ -669,6 +685,10 @@ function addCustomModel() {
   }
   if (!selectedModels.includes(val)) {
     selectedModels.push(val);
+  }
+  if (typeof sortModelsNaturally === 'function') {
+    activeModelsList = sortModelsNaturally(activeModelsList);
+    selectedModels = sortModelsNaturally(selectedModels);
   }
   updateSelectedModelsUI();
   input.value = '';
@@ -762,9 +782,12 @@ function onFormatChange() {
   // Ensure current selected models are in the list
   selectedModels.forEach(m => {
     if (m && !activeModelsList.includes(m)) {
-      activeModelsList.unshift(m);
+      activeModelsList.push(m);
     }
   });
+  if (typeof sortModelsNaturally === 'function') {
+    activeModelsList = sortModelsNaturally(activeModelsList);
+  }
   modelGroupStates = {};
   filterModelPanel();
 }
@@ -937,7 +960,9 @@ function openProviderEditor(id) {
   if (subtitleEl) subtitleEl.textContent = p ? `正在编辑「${p.name}」` : '配置供应商信息和模型';
 
   // Start with configured models in list
-  activeModelsList = [...selectedModels];
+  activeModelsList = typeof sortModelsNaturally === 'function'
+    ? sortModelsNaturally([...selectedModels])
+    : [...selectedModels];
   modelGroupStates = {};
   modelSearchOpen = false;
   currentModelTab = 'all';
@@ -1296,6 +1321,9 @@ async function fetchModelsForEditor(options = {}) {
   try {
     if (succeeded) {
       activeModelsList = Array.from(new Set([...selectedModels, ...succeeded.models]));
+      if (typeof sortModelsNaturally === 'function') {
+        activeModelsList = sortModelsNaturally(activeModelsList);
+      }
 
       // 拉取成功：把下拉/select 同步到真正命中的协议，并锁定（避免下次输入 URL 又被覆盖）
       if (fmtEl) {

@@ -97,7 +97,10 @@ function resolveCertsDir() {
   };
   if (process.env.BYOK_CONFIG_DIR) return toUrl(process.env.BYOK_CONFIG_DIR);
   if (process.env.BYOK_RESOURCE_DIR) return toUrl(process.env.BYOK_RESOURCE_DIR);
-  return new URL('../certs/', import.meta.url);
+  try {
+    if (import.meta?.url) return new URL('../certs/', import.meta.url);
+  } catch {}
+  return toUrl(process.cwd());
 }
 const CERTS_DIR = resolveCertsDir();
 let MITM_CERT, MITM_KEY;

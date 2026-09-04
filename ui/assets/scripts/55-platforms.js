@@ -4541,20 +4541,79 @@ function comparePlatformAddProvidersByName(a, b) {
   });
 }
 
+function isAnyBridgeLocalProxy(p) {
+  if (!p) return false;
+  if (p.isLocalProxy === true || p.meta?.localProxy === true) return true;
+  const id = String(p.providerId || p.id || p.provider_id || '').toLowerCase();
+  if (id === 'anybridge-local-proxy' || id === 'anybridge' || id === 'local-proxy') return true;
+  const name = String(p.providerName || p.name || '').trim().toLowerCase();
+  if (name === 'anybridge' || name.startsWith('anybridge')) return true;
+  return false;
+}
+
+function isCpaLocalProxy(p) {
+  if (!p) return false;
+  if (p.meta?.cpaLocal === true) return true;
+  const id = String(p.providerId || p.id || p.provider_id || '').toLowerCase();
+  if (id === 'cpa-local' || id === 'cpa' || id.startsWith('p-cpa-local')) return true;
+  const name = String(p.providerName || p.name || '').trim().toUpperCase();
+  if (name === 'CPA' || name.startsWith('CPA ') || name.startsWith('CPA(') || name.startsWith('CPA（')) return true;
+  const host = String(p.apiHost || p.api_host || '').replace(/\/+$/, '').toLowerCase();
+  if (host === 'http://127.0.0.1:8317' || (host.includes(':8317') && /cpa/i.test(name))) return true;
+  return false;
+}
+
+function isOtherBuiltinProxy(p) {
+  if (!p) return false;
+  if (isAnyBridgeLocalProxy(p) || isCpaLocalProxy(p)) return false;
+  if (p.isBuiltin === true || p.builtin === true || p.meta?.builtin === true || p.meta?.isBuiltin === true) return true;
+  if (p.meta?.pluginProxy === true || p.isPluginProxy === true || p.meta?.isProxy === true || p.isProxy === true) return true;
+  if (p.meta?.cpaLocal === true || p.meta?.localProxy === true) return true;
+  const host = String(p.apiHost || p.api_host || '').toLowerCase();
+  if ((host.includes('127.0.0.1') || host.includes('localhost')) && (p.meta?.plugin || p.meta?.extension || p.pluginId)) return true;
+  return false;
+}
+
+function isBuiltinProxyEntry(p) {
+  return isAnyBridgeLocalProxy(p) || isCpaLocalProxy(p) || isOtherBuiltinProxy(p);
+}
+
+function builtinProxySortRank(p) {
+  if (isAnyBridgeLocalProxy(p)) return 1;
+  if (isCpaLocalProxy(p)) return 2;
+  if (isOtherBuiltinProxy(p)) return 3;
+  return 999;
+}
+
 function platformAddProviderSortedList(list = []) {
   if (!Array.isArray(list)) return [];
-  let result = list;
-  if (platformAddProviderSortMode !== 'default') {
-    const sorted = [...list].sort(comparePlatformAddProvidersByName);
-    result = platformAddProviderSortMode === 'name-desc' ? sorted.reverse() : sorted;
+  const builtinProxies = [];
+  const regularProviders = [];
+  for (const p of list) {
+    if (isBuiltinProxyEntry(p)) {
+      builtinProxies.push(p);
+    } else {
+      regularProviders.push(p);
+    }
   }
-  // AnyBridge 本地代理始终排在第一位，不受排序影响
-  const lpIdx = result.findIndex(p => isLocalProxyProviderEntry(p));
-  if (lpIdx > 0) {
-    const [lp] = result.splice(lpIdx, 1);
-    result.unshift(lp);
+
+  // 内置反代工具始终固定排在最前面：
+  // AnyBridge 第一，CPA 第二，插件新增的内置反代工具第三（同级按名称正序）
+  builtinProxies.sort((a, b) => {
+    const rankA = builtinProxySortRank(a);
+    const rankB = builtinProxySortRank(b);
+    if (rankA !== rankB) return rankA - rankB;
+    return comparePlatformAddProvidersByName(a, b);
+  });
+
+  // 常规第三方供应商按当前选中的模式排序
+  if (platformAddProviderSortMode === 'name-asc') {
+    regularProviders.sort(comparePlatformAddProvidersByName);
+  } else if (platformAddProviderSortMode === 'name-desc') {
+    regularProviders.sort((a, b) => comparePlatformAddProvidersByName(b, a));
   }
-  return result;
+
+  return [...builtinProxies, ...regularProviders];
 }
 
 function platformAddProviderSearchHaystack(p) {
@@ -5258,6 +5317,13 @@ function openCbEditModal(prefix, index) {
   platformSetValue('cb-edit-images', !!model.supportsImages);
   platformSetValue('cb-edit-reasoning', !!model.supportsReasoning);
 
+  const recInput = cbRecommendContextWindow(model.id || '');
+  const recOutput = cbRecommendMaxOutputTokens(model.id || '');
+  const inputEl = document.getElementById('cb-edit-max-input');
+  if (inputEl) inputEl.placeholder = `推荐值: ${recInput}（${cbFormatContextTokens(recInput)}）`;
+  const outputEl = document.getElementById('cb-edit-max-output');
+  if (outputEl) outputEl.placeholder = `推荐值: ${recOutput}`;
+
   // 标题展示平台名
   const titleEl = document.getElementById('cb-edit-modal-title');
   if (titleEl) {
@@ -5303,6 +5369,27 @@ function closeCbEditModal() {
   if (modal) modal.classList.remove('active');
   document.body.classList.remove('modal-open');
   cbEditCurrent = { prefix: null, index: -1 };
+}
+
+function cbFillRecommendedContext() {
+  const modelId = (document.getElementById('cb-edit-id')?.value || '').trim();
+  if (!modelId) {
+    if (typeof showCustomAlert === 'function') {
+      showCustomAlert('请先输入模型 ID，再填入推荐值', '提示', 'info');
+    }
+    return;
+  }
+  const inputTokens = cbRecommendContextWindow(modelId);
+  const outputTokens = cbRecommendMaxOutputTokens(modelId);
+  platformSetValue('cb-edit-max-input', inputTokens);
+  platformSetValue('cb-edit-max-output', outputTokens);
+  const inputEl = document.getElementById('cb-edit-max-input');
+  if (inputEl) inputEl.placeholder = `推荐值: ${inputTokens}（${cbFormatContextTokens(inputTokens)}）`;
+  const outputEl = document.getElementById('cb-edit-max-output');
+  if (outputEl) outputEl.placeholder = `推荐值: ${outputTokens}`;
+  if (typeof showBottomToast === 'function') {
+    showBottomToast(`已填入推荐设置：上下文 ${cbFormatContextTokens(inputTokens)} / 输出 ${outputTokens}`, 'success');
+  }
 }
 
 async function saveCbEditFromModal() {
@@ -5811,11 +5898,14 @@ function renderCbAddProviderList() {
     const initial = (p.providerName || '?').charAt(0).toUpperCase();
     const enabled = p.enabled !== false;
     const isActive = cbAddSelectedProvider === p.providerId;
-    const isLP = isLocalProxyProviderEntry(p);
+    const isBuiltin = isBuiltinProxyEntry(p);
+    const iconHtml = isBuiltin
+      ? `<span class="cb-add-prov-icon cb-add-prov-icon-builtin" title="内置本地代理"><span>本地</span><span>代理</span></span>`
+      : `<span class="cb-add-prov-icon">${platformEsc(initial)}</span>`;
     return `
-      <div class="cb-add-prov-item ${isActive ? 'active' : ''} ${enabled ? '' : 'disabled'} ${isLP ? 'is-local-proxy' : ''}" data-action="selectCbAddProvider" data-arg="${platformEsc(p.providerId)}">
-        <span class="cb-add-prov-icon">${platformEsc(initial)}</span>
-        <span class="cb-add-prov-name">${platformEsc(p.providerName)}${isLP ? '<span class="cb-add-prov-badge">本地代理</span>' : ''}</span>
+      <div class="cb-add-prov-item ${isActive ? 'active' : ''} ${enabled ? '' : 'disabled'} ${isBuiltin ? 'is-local-proxy' : ''}" data-action="selectCbAddProvider" data-arg="${platformEsc(p.providerId)}">
+        ${iconHtml}
+        <span class="cb-add-prov-name">${platformEsc(p.providerName)}</span>
         <span class="cb-add-prov-count">${p.models.length}</span>
       </div>
     `;
@@ -6484,11 +6574,14 @@ function renderWbAddProviderList() {
     const initial = (p.providerName || '?').charAt(0).toUpperCase();
     const enabled = p.enabled !== false;
     const isActive = wbAddSelectedProvider === p.providerId;
-    const isLP = isLocalProxyProviderEntry(p);
+    const isBuiltin = isBuiltinProxyEntry(p);
+    const iconHtml = isBuiltin
+      ? `<span class="wb-add-prov-icon wb-add-prov-icon-builtin" title="内置本地代理"><span>本地</span><span>代理</span></span>`
+      : `<span class="wb-add-prov-icon">${platformEsc(initial)}</span>`;
     return `
-      <div class="wb-add-prov-item ${isActive ? 'active' : ''} ${enabled ? '' : 'disabled'} ${isLP ? 'is-local-proxy' : ''}" data-action="selectWbAddProvider" data-arg="${platformEsc(p.providerId)}">
-        <span class="wb-add-prov-icon">${platformEsc(initial)}</span>
-        <span class="wb-add-prov-name">${platformEsc(p.providerName)}${isLP ? '<span class="wb-add-prov-badge">本地代理</span>' : ''}</span>
+      <div class="wb-add-prov-item ${isActive ? 'active' : ''} ${enabled ? '' : 'disabled'} ${isBuiltin ? 'is-local-proxy' : ''}" data-action="selectWbAddProvider" data-arg="${platformEsc(p.providerId)}">
+        ${iconHtml}
+        <span class="wb-add-prov-name">${platformEsc(p.providerName)}</span>
         <span class="wb-add-prov-count">${p.models.length}</span>
       </div>
     `;
@@ -6756,11 +6849,14 @@ function renderZcAddProviderList() {
     const initial = (p.providerName || '?').charAt(0).toUpperCase();
     const enabled = p.enabled !== false;
     const isActive = zcAddSelectedProvider === p.providerId;
-    const isLP = isLocalProxyProviderEntry(p);
+    const isBuiltin = isBuiltinProxyEntry(p);
+    const iconHtml = isBuiltin
+      ? `<span class="wb-add-prov-icon zc-add-prov-icon wb-add-prov-icon-builtin" title="内置本地代理"><span>本地</span><span>代理</span></span>`
+      : `<span class="wb-add-prov-icon zc-add-prov-icon">${platformEsc(initial)}</span>`;
     return `
-      <div class="wb-add-prov-item zc-add-prov-item ${isActive ? 'active' : ''} ${enabled ? '' : 'disabled'} ${isLP ? 'is-local-proxy' : ''}" data-action="selectZcAddProvider" data-arg="${platformEsc(p.providerId)}">
-        <span class="wb-add-prov-icon zc-add-prov-icon">${platformEsc(initial)}</span>
-        <span class="wb-add-prov-name zc-add-prov-name">${platformEsc(p.providerName)}${isLP ? '<span class="wb-add-prov-badge zc-add-prov-badge">本地代理</span>' : ''}</span>
+      <div class="wb-add-prov-item zc-add-prov-item ${isActive ? 'active' : ''} ${enabled ? '' : 'disabled'} ${isBuiltin ? 'is-local-proxy' : ''}" data-action="selectZcAddProvider" data-arg="${platformEsc(p.providerId)}">
+        ${iconHtml}
+        <span class="wb-add-prov-name zc-add-prov-name">${platformEsc(p.providerName)}</span>
         <span class="wb-add-prov-count zc-add-prov-count">${p.models.length}</span>
       </div>
     `;
@@ -7377,6 +7473,7 @@ window.zcDrop = function(e) {
   g.cbEditModelsRef = cbEditModelsRef;
   g.openCbEditModal = openCbEditModal;
   g.closeCbEditModal = closeCbEditModal;
+  g.cbFillRecommendedContext = cbFillRecommendedContext;
   g.saveCbEditFromModal = saveCbEditFromModal;
   g.cbModelsByClass = cbModelsByClass;
   g.cbModelMatches = cbModelMatches;
