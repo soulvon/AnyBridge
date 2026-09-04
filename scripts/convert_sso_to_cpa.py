@@ -270,9 +270,15 @@ def token_to_cpa_record(token, email=""):
 # ── 主流程 ──
 
 def main():
-    input_file = r"C:\Users\admin\Desktop\grok_accounts.json"
-    output_dir = r"C:\Users\admin\Desktop\cpa_auth_files"
-    max_convert = 3
+    parser = argparse.ArgumentParser(description="SSO -> CPA xAI auth file converter")
+    parser.add_argument("--input", default="grok_accounts.json", help="Path to grok_accounts.json")
+    parser.add_argument("--out-dir", default="cpa_auth_files", help="Output directory for auth files")
+    parser.add_argument("--max", type=int, default=3, help="Max accounts to convert")
+    args = parser.parse_args()
+
+    input_file = args.input
+    output_dir = args.out_dir
+    max_convert = args.max
 
     os.makedirs(output_dir, exist_ok=True)
 

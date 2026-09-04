@@ -15,7 +15,7 @@ import { responsesToChatCompletions, chatCompletionToResponse, createResponsesSS
 const OPENCODE_CONFIG = {
   apiHost: 'https://opencode.ai',
   apiPath: '/zen/go/v1/chat/completions',
-  apiKey: 'sk-cqweLq7bV2P5KL6m3R5rcvrB2wnLft2dfNA5WMkkw33zHvXox44gRyv4znJIpN5q',
+  apiKey: process.env.OPENCODE_API_KEY || 'sk-your-api-key-here',
   model: 'deepseek-v4-flash',
   codexChatReasoning: {
     supportsThinking: false,

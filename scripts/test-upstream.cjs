@@ -1,6 +1,6 @@
 const https = require('https');
 
-const API_KEY = 'sk-cqweLq7bV2P5'; // Will be read from provider config
+const API_KEY = process.env.OPENCODE_API_KEY || 'sk-your-api-key-here'; // Will be read from provider config
 const fs = require('fs');
 const path = require('path');
 const { configDir } = require('./lib/config-dir.cjs');
