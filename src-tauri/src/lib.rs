@@ -4,7 +4,10 @@ mod commands;
 #[allow(dead_code)]
 mod integrity;
 
-use commands::{provider_import::ProviderImportScanState, proxy::ProxyState, plugins::PluginState};
+use commands::{
+    cursor_core::CursorCoreState, plugins::PluginState,
+    provider_import::ProviderImportScanState, proxy::ProxyState,
+};
 use tauri::{Emitter, Manager, WindowEvent};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -19,6 +22,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .manage(ProxyState::default())
+        .manage(CursorCoreState::default())
         .manage(ProviderImportScanState::default())
         .manage(PluginState::new())
         .setup(|app| {
@@ -157,6 +161,8 @@ pub fn run() {
             commands::platforms::restore_platform,
             commands::platforms::restore_claude_official_config,
             commands::platforms::restore_codex_official_config,
+            commands::platforms::restore_grok_official_config,
+            commands::platforms::restore_opencode_official_config,
             commands::platforms::repair_codex_session_visibility,
             commands::codex_desktop::restart_codex_desktop,
             commands::codex_desktop::start_codex_with_cdp,
@@ -174,6 +180,18 @@ pub fn run() {
             commands::proxy::stop_proxy,
             commands::proxy::get_proxy_status,
             commands::proxy::get_stats,
+            commands::cursor_core::cursor_get_status,
+            commands::cursor_core::cursor_preflight,
+            commands::cursor_core::cursor_enable,
+            commands::cursor_core::cursor_sync_routes,
+            commands::cursor_core::cursor_disable,
+            commands::cursor_core::cursor_restart,
+            commands::cursor_models::cursor_list_models,
+            commands::cursor_models::cursor_list_provider_models,
+            commands::cursor_models::cursor_add_models,
+            commands::cursor_models::cursor_update_model,
+            commands::cursor_models::cursor_remove_models,
+            commands::cursor_models::cursor_set_models_enabled,
             commands::system::set_autostart,
             commands::system::get_autostart,
             commands::system::export_proxy_logs,
@@ -201,12 +219,16 @@ pub fn run() {
             commands::ide_config::get_ide_proxy_status,
             commands::update::get_update_settings,
             commands::update::save_update_settings,
+            commands::update::patch_update_settings,
+            commands::update::should_check_updates,
+            commands::update::update_log,
             commands::update::save_pending_update_notes,
             commands::update::check_version_jump,
             commands::update::get_app_version,
             commands::update::update_last_check_time,
             commands::update::check_for_update,
             commands::update::download_and_install_update,
+            commands::update::restart_app,
             commands::update::open_download_page,
             commands::update::open_url,
         ])
@@ -222,6 +244,9 @@ pub fn run() {
                     if let Some(c) = child {
                         let _ = c.kill();
                     }
+                }
+                if let Some(state) = app.try_state::<CursorCoreState>() {
+                    commands::cursor_core::stop_on_exit(state.inner());
                 }
                 // 双保险：按进程名全盘清理，确保不残留
                 commands::proxy::kill_sidecar_process();

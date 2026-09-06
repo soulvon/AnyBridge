@@ -1,0 +1,87 @@
+<h2>Cursor「添加模型」页面：三种结构方案</h2>
+<p class="subtitle">共同前提：复用 AnyBridge 已配置供应商，不重复填写 API Key；保存后写入代理模型路由，并在 Core 运行时自动同步给 Cursor。</p>
+
+<div class="cards">
+  <div class="card" data-choice="a" onclick="toggleSelect(this)">
+    <div class="card-image" style="padding:14px;background:#f4f7fb;min-height:330px">
+      <div style="height:38px;background:white;border:1px solid #dfe5ed;border-radius:9px;padding:9px 12px;font-weight:700;color:#172033">← 添加模型 · Cursor <span style="float:right;background:#0ea5a5;color:white;padding:4px 10px;border-radius:6px;font-size:11px">保存选择 (3)</span></div>
+      <div style="display:grid;grid-template-columns:32% 1fr;gap:10px;margin-top:10px">
+        <div style="background:white;border:1px solid #dfe5ed;border-radius:9px;padding:10px">
+          <div style="background:#eef2f7;border-radius:6px;padding:7px;color:#8590a0;font-size:10px">搜索供应商...</div>
+          <div style="margin-top:8px;background:#e8f7f6;border:1px solid #88d4cf;border-radius:7px;padding:9px;font-size:11px;font-weight:700">OpenRouter <span style="float:right">28</span></div>
+          <div style="margin-top:5px;border:1px solid #e5e9ef;border-radius:7px;padding:9px;font-size:11px">Anthropic <span style="float:right">6</span></div>
+          <div style="margin-top:5px;border:1px solid #e5e9ef;border-radius:7px;padding:9px;font-size:11px">OpenAI <span style="float:right">12</span></div>
+        </div>
+        <div>
+          <div style="background:white;border:1px solid #dfe5ed;border-radius:9px;padding:11px">
+            <b style="font-size:12px">OpenRouter 的可用模型</b><div style="font-size:9px;color:#8490a0">勾选后批量添加到 Cursor 模型列表</div>
+            <div style="margin-top:8px;border-top:1px solid #edf0f4;padding-top:7px;font-size:10px">☑ Claude Opus 4.1 <span style="float:right;color:#10a37f">Agent · Thinking · Vision</span></div>
+            <div style="margin-top:7px;border-top:1px solid #edf0f4;padding-top:7px;font-size:10px">☑ GPT-5.2 <span style="float:right;color:#1684e8">Agent · Thinking</span></div>
+            <div style="margin-top:7px;border-top:1px solid #edf0f4;padding-top:7px;font-size:10px">□ Gemini 3 Pro <span style="float:right;color:#8855dd">Agent · Vision</span></div>
+          </div>
+          <div style="background:white;border:1px solid #dfe5ed;border-radius:9px;padding:10px;margin-top:8px;font-size:10px"><b>Cursor 能力</b><br><label>☑ Agent 工具调用</label>　<label>☑ 图片理解</label>　<label>☑ 深度推理</label></div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body"><h3>A · CodeBuddy 同款批量选择</h3><p>左供应商、右模型列表；一次批量添加。操作最快，和现有 CodeBuddy 心智完全一致。</p></div>
+  </div>
+
+  <div class="card" data-choice="b" onclick="toggleSelect(this)">
+    <div class="card-image" style="padding:14px;background:#f4f7fb;min-height:330px">
+      <div style="height:38px;background:white;border:1px solid #dfe5ed;border-radius:9px;padding:9px 12px;font-weight:700;color:#172033">← 添加模型 · Cursor <span style="float:right;background:#0ea5a5;color:white;padding:4px 10px;border-radius:6px;font-size:11px">保存并测试</span></div>
+      <div style="display:grid;grid-template-columns:30% 1fr;gap:10px;margin-top:10px">
+        <div style="background:white;border:1px solid #dfe5ed;border-radius:9px;padding:10px">
+          <div style="font-size:9px;color:#8590a0">第一步 · 选择供应商</div>
+          <div style="margin-top:8px;background:#e8f7f6;border:1px solid #88d4cf;border-radius:7px;padding:9px;font-size:11px;font-weight:700">OpenRouter</div>
+          <div style="margin-top:5px;border:1px solid #e5e9ef;border-radius:7px;padding:9px;font-size:11px">Anthropic</div>
+          <div style="margin-top:5px;border:1px solid #e5e9ef;border-radius:7px;padding:9px;font-size:11px">OpenAI</div>
+        </div>
+        <div style="background:white;border:1px solid #dfe5ed;border-radius:9px;padding:12px">
+          <div style="font-size:9px;color:#8590a0">第二步 · 配置 Cursor 模型</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-top:7px">
+            <div><div style="font-size:9px;color:#657080">上游模型</div><div style="border:1px solid #d8dee7;border-radius:6px;padding:7px;font-size:10px">claude-opus-4.1 ▾</div></div>
+            <div><div style="font-size:9px;color:#657080">Cursor 显示名称</div><div style="border:1px solid #d8dee7;border-radius:6px;padding:7px;font-size:10px">Claude Opus 4.1</div></div>
+            <div><div style="font-size:9px;color:#657080">模型 ID</div><div style="border:1px solid #d8dee7;border-radius:6px;padding:7px;font-size:10px">claude-opus-4.1</div></div>
+            <div><div style="font-size:9px;color:#657080">上游协议</div><div style="border:1px solid #d8dee7;border-radius:6px;padding:7px;font-size:10px">自动检测 ▾</div></div>
+          </div>
+          <div style="margin-top:9px;background:#f7f9fc;border-radius:7px;padding:9px;font-size:10px"><b>能力声明</b><br><label>☑ Agent 工具</label>　<label>☑ Vision</label>　<label>☑ Thinking</label></div>
+          <div style="margin-top:8px;border:1px solid #d8dee7;border-radius:7px;padding:8px;font-size:10px;color:#526070">高级设置　› 故障转移 / 请求格式 / 第三方图片 / 额外参数</div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body"><h3>B · 单模型精细配置</h3><p>参考 cursor-byok，每次完整配置一个模型。能力最强，但添加多个模型较慢、字段偏重。</p></div>
+  </div>
+
+  <div class="card" data-choice="c" onclick="toggleSelect(this)">
+    <div class="card-image" style="padding:14px;background:#f4f7fb;min-height:330px">
+      <div style="height:38px;background:white;border:1px solid #dfe5ed;border-radius:9px;padding:9px 12px;font-weight:700;color:#172033">← 添加模型 · Cursor <span style="float:right;background:#0ea5a5;color:white;padding:4px 10px;border-radius:6px;font-size:11px">添加到 Cursor (3)</span></div>
+      <div style="display:grid;grid-template-columns:30% 1fr;gap:10px;margin-top:10px">
+        <div style="background:white;border:1px solid #dfe5ed;border-radius:9px;padding:10px">
+          <div style="background:#eef2f7;border-radius:6px;padding:7px;color:#8590a0;font-size:10px">搜索供应商...</div>
+          <div style="margin-top:8px;background:#e8f7f6;border:1px solid #88d4cf;border-radius:7px;padding:9px;font-size:11px;font-weight:700">OpenRouter <span style="float:right">28</span></div>
+          <div style="margin-top:5px;border:1px solid #e5e9ef;border-radius:7px;padding:9px;font-size:11px">Anthropic <span style="float:right">6</span></div>
+          <div style="margin-top:5px;border:1px solid #e5e9ef;border-radius:7px;padding:9px;font-size:11px">OpenAI <span style="float:right">12</span></div>
+        </div>
+        <div>
+          <div style="background:white;border:1px solid #dfe5ed;border-radius:9px;padding:11px">
+            <b style="font-size:12px">选择模型</b><span style="float:right;font-size:9px;color:#1684e8">全选 · 全不选</span>
+            <div style="margin-top:8px;border-top:1px solid #edf0f4;padding-top:7px;font-size:10px">☑ Claude Opus 4.1 <span style="float:right;color:#10a37f">Agent · Vision · Thinking</span></div>
+            <div style="margin-top:7px;border-top:1px solid #edf0f4;padding-top:7px;font-size:10px">☑ GPT-5.2 <span style="float:right;color:#1684e8">Agent · Thinking</span></div>
+            <div style="margin-top:7px;border-top:1px solid #edf0f4;padding-top:7px;font-size:10px">☑ Gemini 3 Pro <span style="float:right;color:#8855dd">Agent · Vision</span></div>
+          </div>
+          <div style="background:white;border:1px solid #dfe5ed;border-radius:9px;padding:10px;margin-top:8px">
+            <div style="font-size:10px;font-weight:700">Cursor 接入设置 <span style="font-weight:400;color:#8590a0">应用于本次选择</span></div>
+            <div style="font-size:10px;margin-top:6px"><label>☑ Agent 工具调用</label>　<label>☑ 保留推理</label>　<label>☑ 原生图片</label></div>
+            <div style="font-size:9px;color:#657080;margin-top:7px;padding-top:7px;border-top:1px solid #edf0f4">模型 ID 默认沿用上游名称；保存后自动同步到运行中的 Cursor Core。</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body"><h3>C · 批量选择 + Cursor 专用设置（推荐）</h3><p>保留 CodeBuddy 的高效批量选择，增加 Cursor 所需的能力声明、同步提示；精细参数放到添加后的“编辑”中。</p></div>
+  </div>
+</div>
+
+<div class="pros-cons" style="margin-top:20px">
+  <div class="pros"><h4>调研后的关键结论</h4><ul><li>AnyBridge 已有供应商、API Key 和模型目录，添加时不应再重复录入连接信息。</li><li>Cursor Core 的模型源就是 <code>proxy-routes.json</code> 中启用且暴露 OpenAI 格式的路由。</li><li>添加模型后若 Core 正在运行，应自动调用 <code>cursor_sync_routes</code>，无需用户再手动同步。</li><li>Cursor 特有能力是 Agent 工具、Vision、Thinking 和官方账号双轨，而不是“槽位映射”。</li></ul></div>
+  <div class="cons"><h4>首版不建议放进添加页</h4><ul><li>API Key / Base URL：属于供应商配置，避免重复数据源。</li><li>复杂 Headers、额外参数、故障转移链：放入添加后的编辑页。</li><li>上下文窗口和最大输出：当前代理路由结构不承载，不做假字段。</li><li>虚假的延迟测速：没有真实后端接口前不展示随机结果。</li></ul></div>
+</div>

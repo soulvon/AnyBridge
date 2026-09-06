@@ -1,0 +1,7 @@
+[build]
+# 限制最大并发编译任务为 2，防止 Rust 编译占用过多内存导致整机卡死
+jobs = 2
+
+[target.x86_64-pc-windows-msvc]
+# 关闭增量链接的巨型中间表，大幅削减链接器 (link.exe) 的内存峰值
+rustflags = ["-C", "link-arg=/INCREMENTAL:NO"]

@@ -3,6 +3,8 @@ pub mod codex_desktop;
 pub mod codex_session_visibility;
 pub mod config;
 pub mod cursor_auth;
+pub mod cursor_core;
+pub mod cursor_models;
 pub mod eval;
 pub mod extensions;
 pub mod ide_config;

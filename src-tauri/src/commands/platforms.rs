@@ -30,6 +30,7 @@ use super::config::{
 const PLATFORM_CLAUDE_CODE: &str = "claude-code";
 const PLATFORM_CODEX: &str = "codex";
 const PLATFORM_CODEBUDDY: &str = "codebuddy";
+const PLATFORM_GROK: &str = "grok";
 const PLATFORM_OPENCODE: &str = "opencode";
 const PLATFORM_WORKBUDDY: &str = "workbuddy";
 const PLATFORM_ZCODE: &str = "zcode";
@@ -185,6 +186,7 @@ enum Platform {
     ClaudeCode,
     Codex,
     CodeBuddy,
+    Grok,
     OpenCode,
     WorkBuddy,
     ZCode,
@@ -196,6 +198,7 @@ impl Platform {
             PLATFORM_CLAUDE_CODE => Some(Platform::ClaudeCode),
             PLATFORM_CODEX => Some(Platform::Codex),
             PLATFORM_CODEBUDDY => Some(Platform::CodeBuddy),
+            PLATFORM_GROK => Some(Platform::Grok),
             PLATFORM_OPENCODE => Some(Platform::OpenCode),
             PLATFORM_WORKBUDDY => Some(Platform::WorkBuddy),
             PLATFORM_ZCODE => Some(Platform::ZCode),
@@ -208,6 +211,7 @@ impl Platform {
             Platform::ClaudeCode => PLATFORM_CLAUDE_CODE,
             Platform::Codex => PLATFORM_CODEX,
             Platform::CodeBuddy => PLATFORM_CODEBUDDY,
+            Platform::Grok => PLATFORM_GROK,
             Platform::OpenCode => PLATFORM_OPENCODE,
             Platform::WorkBuddy => PLATFORM_WORKBUDDY,
             Platform::ZCode => PLATFORM_ZCODE,
@@ -219,6 +223,7 @@ impl Platform {
             Platform::ClaudeCode => "Claude Code",
             Platform::Codex => "Codex",
             Platform::CodeBuddy => "CodeBuddy",
+            Platform::Grok => "Grok",
             Platform::OpenCode => "OpenCode",
             Platform::WorkBuddy => "WorkBuddy",
             Platform::ZCode => "ZCode",
@@ -230,6 +235,7 @@ impl Platform {
             Platform::ClaudeCode => "Anthropic",
             Platform::Codex => "OpenAI",
             Platform::CodeBuddy => "Tencent Cloud",
+            Platform::Grok => "xAI",
             Platform::OpenCode => "OpenCode",
             Platform::WorkBuddy => "Tencent Cloud",
             Platform::ZCode => "Z.AI",
@@ -242,6 +248,7 @@ impl Platform {
             Platform::ClaudeCode => "anthropic",
             Platform::Codex
             | Platform::CodeBuddy
+            | Platform::Grok
             | Platform::OpenCode
             | Platform::WorkBuddy
             | Platform::ZCode => "openai",
@@ -254,6 +261,7 @@ impl Platform {
             Platform::Codex => codex_home(),
             Platform::ClaudeCode
             | Platform::CodeBuddy
+            | Platform::Grok
             | Platform::OpenCode
             | Platform::WorkBuddy
             | Platform::ZCode => {
@@ -261,6 +269,7 @@ impl Platform {
                 Some(match self {
                     Platform::ClaudeCode => home.join(".claude"),
                     Platform::CodeBuddy => home.join(".codebuddy"),
+                    Platform::Grok => home.join(".grok"),
                     Platform::OpenCode => home.join(".config").join("opencode"),
                     Platform::WorkBuddy => home.join(".workbuddy"),
                     Platform::ZCode => home.join(".zcode"),
@@ -277,6 +286,7 @@ impl Platform {
             Platform::ClaudeCode => dir.join("settings.json"),
             Platform::Codex => dir.join("config.toml"),
             Platform::CodeBuddy => dir.join("models.json"),
+            Platform::Grok => dir.join("config.toml"),
             Platform::OpenCode => {
                 let json = dir.join("opencode.json");
                 let jsonc = dir.join("opencode.jsonc");
@@ -430,6 +440,22 @@ impl Platform {
                 let preview = zcode_preview(p, &mask_key(&p.api_key));
                 serde_json::to_string_pretty(&preview).map_err(|e| e.to_string())
             }
+            Platform::Grok => {
+                let base = openai_base_url(p);
+                let raw_model = p.default_model.trim();
+                let model = toml_escape(if raw_model.is_empty() { "default" } else { raw_model });
+                let masked = mask_key(&p.api_key);
+                let name = toml_escape(&p.name);
+                let key = grok_sanitize_key(&p.id);
+                let backend = if !p.wire_api.trim().is_empty() {
+                    p.wire_api.trim()
+                } else {
+                    "chat_completions"
+                };
+                Ok(format!(
+                    "[models]\ndefault = \"{key}\"\n\n[model.{key}]\nname = \"{name}\"\nmodel = \"{model}\"\nbase_url = \"{base}\"\napi_key = \"{masked}\"\napi_backend = \"{backend}\"\nanybridge_managed = true"
+                ))
+            }
         }
     }
 
@@ -449,6 +475,7 @@ impl Platform {
             Platform::ClaudeCode => self.apply_claude(&path, p)?,
             Platform::Codex => self.apply_codex(&path, p)?,
             Platform::CodeBuddy => self.apply_codebuddy(&path, p)?,
+            Platform::Grok => self.apply_grok(&path, p)?,
             Platform::OpenCode => self.apply_opencode(&path, p)?,
             Platform::WorkBuddy => self.apply_workbuddy(&path, p)?,
             Platform::ZCode => self.apply_zcode(&path, p)?,
@@ -764,6 +791,39 @@ impl Platform {
         super::write_atomic(path, json.as_bytes())
     }
 
+    fn apply_opencode_official(&self, path: &PathBuf, store: &ProviderStore) -> Result<(), String> {
+        if !path.exists() {
+            return Ok(());
+        }
+        let raw = fs::read_to_string(path).map_err(|e| format!("读取 opencode.json 失败: {e}"))?;
+        if raw.trim().is_empty() {
+            return Ok(());
+        }
+        let mut obj = parse_json_object(&raw, "opencode.json")?;
+
+        let mut managed_ids: Vec<String> = store.opencode_configs.iter().map(|c| c.id.clone()).collect();
+        managed_ids.push(PLATFORM_OPENCODE.to_string());
+        managed_ids.push("anybridge-local-proxy".to_string());
+        managed_ids.push("anybridge-local-proxy-opencode".to_string());
+
+        if let Some(providers) = obj.get_mut("provider").and_then(Value::as_object_mut) {
+            for id in &managed_ids {
+                providers.remove(id);
+            }
+        }
+
+        let current_model = obj.get("model").and_then(Value::as_str);
+        if let Some(m) = current_model {
+            let provider_prefix = m.split('/').next().unwrap_or("").trim();
+            if managed_ids.iter().any(|id| id == provider_prefix) {
+                obj.remove("model");
+            }
+        }
+
+        let json = serde_json::to_string_pretty(&Value::Object(obj)).map_err(|e| e.to_string())?;
+        super::write_atomic(path, json.as_bytes())
+    }
+
     fn apply_zcode(&self, path: &PathBuf, p: &Provider) -> Result<(), String> {
         apply_zcode_config_file(path, p)?;
 
@@ -774,6 +834,109 @@ impl Platform {
         }
 
         Ok(())
+    }
+
+    fn apply_grok(&self, path: &PathBuf, p: &Provider) -> Result<(), String> {
+        let raw = if path.exists() {
+            fs::read_to_string(path).map_err(|e| format!("读取 Grok 配置文件失败: {e}"))?
+        } else {
+            String::new()
+        };
+        let mut doc = if raw.trim().is_empty() {
+            DocumentMut::new()
+        } else {
+            raw.parse::<DocumentMut>()
+                .map_err(|e| format!("解析 Grok config.toml 失败: {e}"))?
+        };
+
+        let section_key = grok_sanitize_key(&p.id);
+
+        if !doc.contains_key("models") {
+            doc.insert("models", Item::Table(Table::new()));
+        }
+        let models_table = doc["models"]
+            .as_table_like_mut()
+            .ok_or_else(|| "Grok config.toml 中的 models 不是 table".to_string())?;
+        models_table.insert("default", value(&section_key));
+
+        if !doc.contains_key("model") {
+            doc.insert("model", Item::Table(Table::new()));
+        }
+        let model_table = doc["model"]
+            .as_table_like_mut()
+            .ok_or_else(|| "Grok config.toml 中的 model 不是 table".to_string())?;
+
+        let mut entry = Table::new();
+        let raw_model = p.default_model.trim();
+        let model_val = if raw_model.is_empty() { "default" } else { raw_model };
+        let backend = if !p.wire_api.trim().is_empty() {
+            p.wire_api.trim()
+        } else {
+            "chat_completions"
+        };
+        entry.insert("name", value(&p.name));
+        entry.insert("model", value(model_val));
+        entry.insert("base_url", value(openai_base_url(p)));
+        entry.insert("api_key", value(&p.api_key));
+        entry.insert("api_backend", value(backend));
+        entry.insert("anybridge_managed", value(true));
+
+        model_table.insert(&section_key, Item::Table(entry));
+
+        super::write_atomic(path, doc.to_string().as_bytes())
+    }
+
+    fn apply_grok_official(&self, path: &PathBuf) -> Result<(), String> {
+        if !path.exists() {
+            return Ok(());
+        }
+        let raw = fs::read_to_string(path).map_err(|e| format!("读取 Grok 配置文件失败: {e}"))?;
+        if raw.trim().is_empty() {
+            return Ok(());
+        }
+        let mut doc = raw
+            .parse::<DocumentMut>()
+            .map_err(|e| format!("解析 Grok config.toml 失败: {e}"))?;
+
+        let current_default = doc
+            .get("models")
+            .and_then(Item::as_table_like)
+            .and_then(|t| t.get("default"))
+            .and_then(toml_item_string);
+
+        let mut keys_to_remove = Vec::new();
+        if let Some(model_table) = doc.get("model").and_then(Item::as_table_like) {
+            for (key, val) in model_table.iter() {
+                if let Some(table) = val.as_table_like() {
+                    let is_managed = table
+                        .get("anybridge_managed")
+                        .and_then(Item::as_bool)
+                        .unwrap_or(false);
+                    if is_managed || key == "anybridge" {
+                        keys_to_remove.push(key.to_string());
+                    }
+                }
+            }
+        }
+
+        if let Some(model_table) = doc.get_mut("model").and_then(Item::as_table_like_mut) {
+            for key in &keys_to_remove {
+                model_table.remove(key);
+            }
+        }
+
+        if let Some(def) = current_default {
+            if keys_to_remove.contains(&def) || def == "anybridge" {
+                if let Some(models_table) = doc.get_mut("models").and_then(Item::as_table_like_mut) {
+                    models_table.remove("default");
+                    if models_table.is_empty() {
+                        doc.remove("models");
+                    }
+                }
+            }
+        }
+
+        super::write_atomic(path, doc.to_string().as_bytes())
     }
 
     /// 从 `.byok-bak` 还原；无备份时不动文件（返回 false）。
@@ -946,6 +1109,16 @@ fn resolve_platform_config(
             .cloned()
             .map(Provider::from)
             .ok_or_else(|| format!("OpenCode 配置不存在: {id}"));
+    }
+
+    if matches!(plat, Platform::Grok) {
+        if let Some(config) = store
+            .grok_configs
+            .iter()
+            .find(|config| config.id == id || grok_sanitize_key(&config.id) == id)
+        {
+            return Ok(Provider::from(config.clone()));
+        }
     }
 
     store
@@ -2041,6 +2214,7 @@ fn plan_codex_proxy_routes(
         }
 
         routes.routes.push(super::proxy_routes::ProxyRoute {
+            uid: String::new(),
             id: model.clone(),
             display_name: codex_proxy_route_display_name(provider, &model),
             id_from_rename_rule: false,
@@ -3570,16 +3744,80 @@ fn toml_escape(s: &str) -> String {
     s.replace('\\', "\\\\").replace('"', "\\\"")
 }
 
+fn grok_sanitize_key(key: &str) -> String {
+    let s: String = key
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() || c == '-' || c == '_' { c } else { '-' })
+        .collect();
+    let trimmed = s.trim_matches('-');
+    if trimmed.is_empty() {
+        "anybridge".to_string()
+    } else {
+        trimmed.to_string()
+    }
+}
+
+fn read_grok_config_info(path: &PathBuf) -> Result<Option<(Option<String>, Option<String>, bool, Vec<String>)>, String> {
+    if !path.exists() {
+        return Ok(None);
+    }
+    let raw = fs::read_to_string(path).map_err(|e| e.to_string())?;
+    if raw.trim().is_empty() {
+        return Ok(Some((None, None, false, Vec::new())));
+    }
+    let doc = match raw.parse::<DocumentMut>() {
+        Ok(doc) => doc,
+        Err(e) => return Err(format!("Grok config.toml 解析失败: {e}")),
+    };
+    let default_model = doc
+        .get("models")
+        .and_then(Item::as_table_like)
+        .and_then(|t| t.get("default"))
+        .and_then(toml_item_string);
+
+    let mut live_ids = Vec::new();
+    if let Some(model_table) = doc.get("model").and_then(Item::as_table_like) {
+        for (key, _) in model_table.iter() {
+            live_ids.push(key.to_string());
+        }
+    }
+
+    let (provider_name, is_managed) = if let Some(ref def_id) = default_model {
+        let entry = doc
+            .get("model")
+            .and_then(Item::as_table_like)
+            .and_then(|t| t.get(def_id))
+            .and_then(Item::as_table_like);
+        let name = entry.and_then(|t| t.get("name")).and_then(toml_item_string);
+        let managed = entry
+            .and_then(|t| t.get("anybridge_managed"))
+            .and_then(Item::as_bool)
+            .unwrap_or(def_id == "anybridge");
+        (name, managed)
+    } else {
+        (None, false)
+    };
+
+    Ok(Some((default_model, provider_name, is_managed, live_ids)))
+}
+
 // ═══════ TAURI COMMANDS ═══════
 
 /// 检测所有支持的平台：安装状态 + 当前接管的供应商 + 备份是否存在。
 #[tauri::command]
-pub fn detect_platforms() -> Result<Vec<PlatformInfo>, String> {
+pub async fn detect_platforms() -> Result<Vec<PlatformInfo>, String> {
+    tauri::async_runtime::spawn_blocking(detect_platforms_sync)
+        .await
+        .map_err(|e| format!("检测平台状态任务执行失败: {e}"))?
+}
+
+fn detect_platforms_sync() -> Result<Vec<PlatformInfo>, String> {
     let store = read_provider_store().unwrap_or_default();
     let platforms = [
         Platform::ClaudeCode,
         Platform::Codex,
         Platform::CodeBuddy,
+        Platform::Grok,
         Platform::OpenCode,
         Platform::WorkBuddy,
         Platform::ZCode,
@@ -3616,6 +3854,19 @@ pub fn detect_platforms() -> Result<Vec<PlatformInfo>, String> {
                     .iter()
                     .find(|config| &config.id == pid)
                     .map(|config| config.name.clone())
+            } else if matches!(plat, Platform::Grok) {
+                store
+                    .grok_configs
+                    .iter()
+                    .find(|config| &config.id == pid)
+                    .map(|config| config.name.clone())
+                    .or_else(|| {
+                        store
+                            .providers
+                            .iter()
+                            .find(|p| &p.id == pid)
+                            .map(|p| p.name.clone())
+                    })
             } else {
                 store
                     .providers
@@ -3764,6 +4015,36 @@ pub fn detect_platforms() -> Result<Vec<PlatformInfo>, String> {
                     Err(e) => {
                         managed_by_any_bridge = false;
                         applied_at = None;
+                        error = Some(e);
+                    }
+                }
+            }
+        } else if matches!(plat, Platform::Grok) {
+            if let Some(path) = config_path_buf.as_ref() {
+                match read_grok_config_info(path) {
+                    Ok(Some((default_id, name, is_managed, live_ids))) => {
+                        live_provider_ids = live_ids;
+                        if let Some(def_id) = default_id {
+                            let matched_config = store
+                                .grok_configs
+                                .iter()
+                                .find(|c| c.id == def_id || grok_sanitize_key(&c.id) == def_id);
+                            if let Some(cfg) = matched_config {
+                                current_provider_id = Some(cfg.id.clone());
+                                current_provider_name = Some(cfg.name.clone());
+                                managed_by_any_bridge = true;
+                            } else {
+                                current_provider_id = Some(def_id.clone());
+                                current_provider_name = name.or_else(|| Some(def_id.clone()));
+                                managed_by_any_bridge = is_managed
+                                    || state.as_ref().map(|s| s.provider_id == def_id || grok_sanitize_key(&s.provider_id) == def_id).unwrap_or(false);
+                            }
+                        } else if state.is_none() {
+                            managed_by_any_bridge = false;
+                        }
+                    }
+                    Ok(None) => {}
+                    Err(e) => {
                         error = Some(e);
                     }
                 }
@@ -4109,10 +4390,45 @@ pub fn restore_claude_official_config(app: AppHandle) -> Result<SwitchResult, St
     })
 }
 
-/// 切回 Codex 官方 OpenAI 配置：不依赖 .byok-bak，不修改 auth.json。
+/// 切回 Grok 官方环境：清理 AnyBridge 写入的 [models].default 及 [model.<id>] 托管字段。
 #[tauri::command]
-pub fn restore_codex_official_config(app: AppHandle) -> Result<SwitchResult, String> {
-    let plat = Platform::Codex;
+pub fn restore_grok_official_config(app: AppHandle) -> Result<SwitchResult, String> {
+    let plat = Platform::Grok;
+    emit_switch_progress(&app, plat.id(), "backup", "正在备份当前配置…");
+    let path = plat
+        .config_path()
+        .ok_or_else(|| "无法定位用户主目录".to_string())?;
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(|e| format!("创建配置目录失败: {e}"))?;
+    }
+    if path.exists() {
+        ensure_backup(&path)?;
+    }
+    emit_switch_progress(&app, plat.id(), "writing", "正在恢复官方配置…");
+    plat.apply_grok_official(&path)?;
+
+    emit_switch_progress(&app, plat.id(), "saving", "正在清除接管记录…");
+    if let Ok(mut store) = read_provider_store() {
+        if store.platforms.remove(plat.id()).is_some() {
+            let _ = write_provider_store(&store);
+        }
+    }
+
+    let config_path = path.to_string_lossy().to_string();
+    let backup = backup_path(&path).to_string_lossy().to_string();
+    emit_switch_progress(&app, plat.id(), "done", "已切回官方配置");
+    Ok(SwitchResult {
+        ok: true,
+        message: "已切回 Grok 官方配置，重启终端 grok 生效".to_string(),
+        config_path,
+        backup_path: backup,
+    })
+}
+
+/// 切回 OpenCode 官方环境 (Zen / Go)：清理 AnyBridge 写入的托管 provider 与 model 指向。
+#[tauri::command]
+pub fn restore_opencode_official_config(app: AppHandle) -> Result<SwitchResult, String> {
+    let plat = Platform::OpenCode;
     let store = read_provider_store()?;
     emit_switch_progress(&app, plat.id(), "backup", "正在备份当前配置…");
     let path = plat
@@ -4121,16 +4437,60 @@ pub fn restore_codex_official_config(app: AppHandle) -> Result<SwitchResult, Str
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).map_err(|e| format!("创建配置目录失败: {e}"))?;
     }
+    if path.exists() {
+        ensure_backup(&path)?;
+    }
+    emit_switch_progress(&app, plat.id(), "writing", "正在恢复官方 Zen / Go 配置…");
+    plat.apply_opencode_official(&path, &store)?;
+
+    emit_switch_progress(&app, plat.id(), "saving", "正在清除接管记录…");
+    if let Ok(mut store) = read_provider_store() {
+        if store.platforms.remove(plat.id()).is_some() {
+            let _ = write_provider_store(&store);
+        }
+    }
+
+    let config_path = path.to_string_lossy().to_string();
+    let backup = backup_path(&path).to_string_lossy().to_string();
+    emit_switch_progress(&app, plat.id(), "done", "已切回官方配置");
+    Ok(SwitchResult {
+        ok: true,
+        message: "已切回 OpenCode 官方配置 (Zen / Go)，重启或新建会话后生效".to_string(),
+        config_path,
+        backup_path: backup,
+    })
+}
+
+/// 切回 Codex 官方 OpenAI 配置：不依赖 .byok-bak，不修改 auth.json。
+#[tauri::command]
+pub async fn restore_codex_official_config(app: AppHandle) -> Result<SwitchResult, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        restore_codex_official_config_sync(&app)
+    })
+    .await
+    .map_err(|e| format!("切回官方配置任务执行失败: {e}"))?
+}
+
+fn restore_codex_official_config_sync(app: &AppHandle) -> Result<SwitchResult, String> {
+    let plat = Platform::Codex;
+    let store = read_provider_store()?;
+    emit_switch_progress(app, plat.id(), "backup", "正在备份当前配置…");
+    let path = plat
+        .config_path()
+        .ok_or_else(|| "无法定位用户主目录".to_string())?;
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(|e| format!("创建配置目录失败: {e}"))?;
+    }
     ensure_backup(&path)?;
     crate::commands::codex_desktop::clean_models_cache()?;
-    emit_switch_progress(&app, plat.id(), "routing", "正在清理 Codex 本地代理路由…");
+    emit_switch_progress(app, plat.id(), "routing", "正在清理 Codex 本地代理路由…");
     let planned_routes = plan_clear_codex_proxy_routes()?;
     let legacy_cleanup_plan = plan_clear_legacy_global_codex_proxy_routes();
     let mut codex_cleanup_warnings = legacy_cleanup_plan.warnings;
     for warning in &codex_cleanup_warnings {
-        emit_switch_progress(&app, plat.id(), "warning", warning);
+        emit_switch_progress(app, plat.id(), "warning", warning);
     }
-    emit_switch_progress(&app, plat.id(), "writing", "正在写入官方配置…");
+    emit_switch_progress(app, plat.id(), "writing", "正在写入官方配置…");
     // 查找当前活跃的 Codex 配置，读取其 unify_session_history 标志（默认 true）
     let unify_session_history = store
         .platforms
@@ -4148,12 +4508,12 @@ pub fn restore_codex_official_config(app: AppHandle) -> Result<SwitchResult, Str
     if let Some(routes) = legacy_cleanup_plan.routes.as_ref() {
         if let Err(e) = super::proxy_routes::write_routes(routes) {
             let warning = legacy_global_codex_proxy_route_cleanup_warning("写入", &e);
-            emit_switch_progress(&app, plat.id(), "warning", &warning);
+            emit_switch_progress(app, plat.id(), "warning", &warning);
             codex_cleanup_warnings.push(warning);
         }
     }
 
-    emit_switch_progress(&app, plat.id(), "saving", "正在清除接管记录…");
+    emit_switch_progress(app, plat.id(), "saving", "正在清除接管记录…");
     if let Ok(mut store) = read_provider_store() {
         if store.platforms.remove(plat.id()).is_some() {
             let _ = write_provider_store(&store);
@@ -4165,7 +4525,7 @@ pub fn restore_codex_official_config(app: AppHandle) -> Result<SwitchResult, Str
     let mut message = "已切回 Codex 官方 OpenAI 配置，重启 Codex 后生效".to_string();
     message.push_str(&repair_codex_session_visibility_message(&path));
     append_switch_warnings(&mut message, &codex_cleanup_warnings);
-    emit_switch_progress(&app, plat.id(), "done", "已切回官方配置");
+    emit_switch_progress(app, plat.id(), "done", "已切回官方配置");
     Ok(SwitchResult {
         ok: true,
         message,
@@ -5596,6 +5956,158 @@ wire_api = "responses"
             Some("https://manual.example.com/v1")
         );
         assert_eq!(doc["mcp_servers"]["docs"]["command"].as_str(), Some("node"));
+
+        let _ = fs::remove_dir_all(path.parent().unwrap());
+    }
+
+    #[test]
+    fn apply_grok_writes_anybridge_model_and_preserves_user_sections() {
+        let path = temp_config_path("grok-apply");
+        fs::write(
+            &path,
+            r#"
+[cli]
+auto_update = false
+
+[models]
+default = "grok-4.5"
+
+[model.existing]
+model = "grok-4.5"
+name = "Official Grok"
+"#,
+        )
+        .unwrap();
+
+        let mut provider = test_openai_provider();
+        provider.id = "deepseek".to_string();
+        provider.name = "DeepSeek".to_string();
+        provider.default_model = "deepseek-coder".to_string();
+        provider.api_host = "https://api.deepseek.com".to_string();
+        provider.api_path = Some("/v1/chat/completions".to_string());
+        provider.api_key = "sk-1234567890".to_string();
+
+        Platform::Grok.apply_grok(&path, &provider).unwrap();
+
+        let raw = fs::read_to_string(&path).unwrap();
+        let doc = raw.parse::<DocumentMut>().unwrap();
+        assert_eq!(doc["cli"]["auto_update"].as_bool(), Some(false));
+        assert_eq!(doc["models"]["default"].as_str(), Some("deepseek"));
+        assert_eq!(doc["model"]["existing"]["name"].as_str(), Some("Official Grok"));
+
+        let deepseek_table = doc["model"]["deepseek"].as_table().unwrap();
+        assert_eq!(deepseek_table["name"].as_str(), Some("DeepSeek"));
+        assert_eq!(deepseek_table["model"].as_str(), Some("deepseek-coder"));
+        assert_eq!(deepseek_table["base_url"].as_str(), Some("https://api.deepseek.com/v1"));
+        assert_eq!(deepseek_table["api_key"].as_str(), Some("sk-1234567890"));
+        assert_eq!(deepseek_table["api_backend"].as_str(), Some("chat_completions"));
+        assert_eq!(deepseek_table["anybridge_managed"].as_bool(), Some(true));
+
+        let info = read_grok_config_info(&path).unwrap().unwrap();
+        assert_eq!(info.0.as_deref(), Some("deepseek"));
+        assert_eq!(info.1.as_deref(), Some("DeepSeek"));
+        assert_eq!(info.2, true);
+
+        // 测试 default_model 为空时的回退
+        provider.default_model = "   ".to_string();
+        Platform::Grok.apply_grok(&path, &provider).unwrap();
+        let raw2 = fs::read_to_string(&path).unwrap();
+        let doc2 = raw2.parse::<DocumentMut>().unwrap();
+        assert_eq!(doc2["model"]["deepseek"]["model"].as_str(), Some("default"));
+
+        // 测试切回官方配置
+        Platform::Grok.apply_grok_official(&path).unwrap();
+        let raw3 = fs::read_to_string(&path).unwrap();
+        let doc3 = raw3.parse::<DocumentMut>().unwrap();
+        assert_eq!(doc3["cli"]["auto_update"].as_bool(), Some(false));
+        assert_eq!(doc3["model"]["existing"]["name"].as_str(), Some("Official Grok"));
+        assert!(doc3.get("model").unwrap().as_table().unwrap().get("deepseek").is_none());
+        assert!(doc3.get("models").is_none());
+
+        let info2 = read_grok_config_info(&path).unwrap().unwrap();
+        assert_eq!(info2.2, false);
+
+        let _ = fs::remove_dir_all(path.parent().unwrap());
+    }
+
+    #[test]
+    fn apply_grok_creates_file_if_missing_and_restores_cleanly() {
+        let path = temp_config_path("grok-missing-init");
+        if path.exists() {
+            let _ = fs::remove_file(&path);
+        }
+
+        let mut provider = test_openai_provider();
+        provider.id = "custom-grok-model".to_string();
+        provider.name = "My Custom".to_string();
+        provider.default_model = "gpt-4o".to_string();
+        provider.api_host = "https://api.openai.com".to_string();
+        provider.api_path = Some("/v1".to_string());
+        provider.api_key = "sk-live-secret".to_string();
+
+        // 验证文件原本不存在时创建
+        Platform::Grok.apply_grok(&path, &provider).unwrap();
+        assert!(path.exists());
+
+        let raw = fs::read_to_string(&path).unwrap();
+        let doc = raw.parse::<DocumentMut>().unwrap();
+        assert_eq!(doc["models"]["default"].as_str(), Some("custom-grok-model"));
+        assert_eq!(doc["model"]["custom-grok-model"]["name"].as_str(), Some("My Custom"));
+        assert_eq!(doc["model"]["custom-grok-model"]["model"].as_str(), Some("gpt-4o"));
+
+        // 验证切回官方后托管段与 models.default 被清理
+        Platform::Grok.apply_grok_official(&path).unwrap();
+        let raw2 = fs::read_to_string(&path).unwrap();
+        let doc2 = raw2.parse::<DocumentMut>().unwrap();
+        assert!(doc2.get("model").unwrap().as_table().unwrap().get("custom-grok-model").is_none());
+        assert!(doc2.get("models").is_none());
+
+        let _ = fs::remove_dir_all(path.parent().unwrap());
+    }
+
+    #[test]
+    fn apply_opencode_official_clears_managed_providers_and_model_pointer() {
+        let path = temp_config_path("opencode-official-restore");
+        fs::write(
+            &path,
+            r#"{
+  "$schema": "https://opencode.ai/config.json",
+  "model": "managed-deepseek/deepseek-coder",
+  "provider": {
+    "managed-deepseek": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "DeepSeek Managed"
+    },
+    "user-custom": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "User Custom Manual"
+    }
+  }
+}"#,
+        )
+        .unwrap();
+
+        let mut store = ProviderStore::default();
+        store.opencode_configs.push(OpenCodeConfig {
+            id: "managed-deepseek".to_string(),
+            name: "DeepSeek Managed".to_string(),
+            api_host: "https://api.deepseek.com".to_string(),
+            api_key: "sk-123456".to_string(),
+            api_path: Some("/v1".to_string()),
+            default_model: "deepseek-coder".to_string(),
+            models: vec!["deepseek-coder".to_string()],
+            settings_config: None,
+            source_provider_id: String::new(),
+            source_provider_name: String::new(),
+        });
+
+        Platform::OpenCode.apply_opencode_official(&path, &store).unwrap();
+
+        let raw = fs::read_to_string(&path).unwrap();
+        let val: Value = serde_json::from_str(&raw).unwrap();
+        assert!(val.get("model").is_none());
+        assert!(val["provider"].get("managed-deepseek").is_none());
+        assert_eq!(val["provider"]["user-custom"]["name"].as_str(), Some("User Custom Manual"));
 
         let _ = fs::remove_dir_all(path.parent().unwrap());
     }

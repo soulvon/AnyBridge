@@ -1,0 +1,929 @@
+syntax = "proto3";
+
+package git_forge.v1;
+
+option go_package = "github.com/leookun/cursor-byok/cursor-proto/gen/git_forge/v1;git_forgev1";
+
+// Copied from: local:git_forge.v1.BatchGetBlobOidsRequest (var: Gn)
+message BatchGetBlobOidsRequest {
+  string repo_uuid = 1;
+  string revision = 2;
+  repeated string paths = 3;
+}
+
+// Copied from: local:git_forge.v1.BatchGetBlobOidsResponse (var: Vn)
+message BatchGetBlobOidsResponse {
+  repeated BlobOidResult results = 1;
+  string resolved_commit_sha = 2;
+}
+
+// Copied from: local:git_forge.v1.BatchGetCommitMetadataRequest (var: Ut)
+message BatchGetCommitMetadataRequest {
+  string repo_uuid = 1;
+  repeated string revisions = 2;
+}
+
+// Copied from: local:git_forge.v1.BatchGetCommitMetadataResponse (var: Gt)
+message BatchGetCommitMetadataResponse {
+  repeated BatchGetCommitMetadataResult results = 1;
+}
+
+// Copied from: local:git_forge.v1.BatchGetCommitMetadataResult (var: Qt)
+message BatchGetCommitMetadataResult {
+  string revision = 1;
+  CommitMetadata metadata = 2;
+}
+
+// Copied from: local:git_forge.v1.BatchGetRepoContentRequest (var: Un)
+message BatchGetRepoContentRequest {
+  string repo_uuid = 1;
+  string revision = 2;
+  repeated string paths = 3;
+  optional uint64 max_file_size = 4;
+}
+
+// Copied from: local:git_forge.v1.BatchGetRepoContentResponse (var: Qn)
+message BatchGetRepoContentResponse {
+  repeated BatchRepoContentResult results = 1;
+  string resolved_commit_sha = 2;
+}
+
+// Copied from: local:git_forge.v1.BatchRepoContentResult (var: xn)
+message BatchRepoContentResult {
+  string path = 1;
+  bool found = 2;
+  oneof content {
+    FileContent file_content = 3;
+    DirectoryContent directory_content = 4;
+  }
+}
+
+// Copied from: local:git_forge.v1.BlameChunk (var: GSv)
+message BlameChunk {
+  repeated ShortCommit commits = 1;
+  repeated BlameLineRange line_ranges = 2;
+}
+
+// Copied from: local:git_forge.v1.BlameLineRange (var: VSv)
+message BlameLineRange {
+  bytes commit_sha = 1;
+  uint32 start_in_blamed_file = 2;
+  uint32 len = 3;
+}
+
+// Copied from: local:git_forge.v1.BlobOidResult (var: Hn)
+message BlobOidResult {
+  string path = 1;
+  bool found = 2;
+  string blob_oid = 3;
+}
+
+// Copied from: local:git_forge.v1.BranchDeletion (var: Or)
+message BranchDeletion {
+  string target_ref = 1;
+  string expected_head_sha = 2;
+}
+
+// Copied from: local:git_forge.v1.CanMergeRequest (var: on)
+message CanMergeRequest {
+  string repo_uuid = 1;
+  string ours = 2;
+  string theirs = 3;
+  uint64 change_number = 4;
+  MergeMode mode = 7;
+  bool use_git_conflict_semantics = 8;
+}
+
+// Copied from: local:git_forge.v1.CanMergeResponse (var: LSv)
+message CanMergeResponse {
+  bool can_merge_without_conflicts = 1;
+  optional bytes merged_tree_sha = 2;
+  repeated string conflicted_paths = 3;
+}
+
+// Copied from: local:git_forge.v1.ChangeKind (var: TQd)
+enum ChangeKind {
+  CHANGE_KIND_UNSPECIFIED = 0;
+  CHANGE_KIND_ADDED = 1;
+  CHANGE_KIND_DELETED = 2;
+  CHANGE_KIND_MODIFIED = 3;
+  CHANGE_KIND_RENAMED = 4;
+  CHANGE_KIND_COPIED = 5;
+}
+
+// Copied from: local:git_forge.v1.Commit (var: azi)
+message Commit {
+  string sha = 1;
+  string message = 2;
+  Signature author = 3;
+  Signature committer = 4;
+  repeated string parent_shas = 5;
+  string tree_sha = 7;
+  optional string change_id = 8;
+}
+
+// Copied from: local:git_forge.v1.CommitDiffChunk (var: rwv)
+message CommitDiffChunk {
+  optional CommitDiffHeader header = 1;
+  repeated DiffEntry entries = 3;
+}
+
+// Copied from: local:git_forge.v1.CommitDiffHeader (var: iwv)
+message CommitDiffHeader {
+  Commit commit = 1;
+  optional string base_commit_sha = 2;
+  CommitDiffStats stats = 3;
+  bool has_more = 5;
+  optional string next_page_cursor = 6;
+  repeated DiffEntry entries = 7;
+}
+
+// Copied from: local:git_forge.v1.CommitDiffStats (var: owv)
+message CommitDiffStats {
+  uint32 files_changed = 1;
+  int32 additions = 2;
+  int32 deletions = 3;
+}
+
+// Copied from: local:git_forge.v1.CommitFileDelete (var: OSv)
+message CommitFileDelete {
+}
+
+// Copied from: local:git_forge.v1.CommitFileMode (var: kSv)
+enum CommitFileMode {
+  COMMIT_FILE_MODE_UNSPECIFIED = 0;
+  COMMIT_FILE_MODE_REGULAR = 1;
+  COMMIT_FILE_MODE_EXECUTABLE = 2;
+  COMMIT_FILE_MODE_SYMLINK = 3;
+}
+
+// Copied from: local:git_forge.v1.CommitFileOperation (var: FSv)
+message CommitFileOperation {
+  string path = 1;
+  oneof operation {
+    CommitFileUpsert upsert = 2;
+    CommitFileDelete delete = 3;
+  }
+}
+
+// Copied from: local:git_forge.v1.CommitFileUpsert (var: NSv)
+message CommitFileUpsert {
+  bytes content = 1;
+  CommitFileMode mode = 2;
+}
+
+// Copied from: local:git_forge.v1.CommitMetadata (var: xt)
+message CommitMetadata {
+  string sha = 1;
+  Signature author = 2;
+  Signature committer = 3;
+  string message = 4;
+}
+
+// Copied from: local:git_forge.v1.CompareCommitsRequest (var: rn)
+message CompareCommitsRequest {
+  string repo_uuid = 1;
+  string base_revision = 2;
+  string head_revision = 3;
+}
+
+// Copied from: local:git_forge.v1.CompareCommitsResponse (var: PSv)
+message CompareCommitsResponse {
+  CompareCommitsStatus status = 1;
+  int32 ahead_by = 2;
+  int32 behind_by = 3;
+  string base_commit_sha = 4;
+  string head_commit_sha = 5;
+  string merge_base_commit_sha = 6;
+}
+
+// Copied from: local:git_forge.v1.CompareCommitsStatus (var: wSv)
+enum CompareCommitsStatus {
+  COMPARE_COMMITS_STATUS_UNSPECIFIED = 0;
+  COMPARE_COMMITS_STATUS_IDENTICAL = 1;
+  COMPARE_COMMITS_STATUS_AHEAD = 2;
+  COMPARE_COMMITS_STATUS_BEHIND = 3;
+  COMPARE_COMMITS_STATUS_DIVERGED = 4;
+}
+
+// Copied from: local:git_forge.v1.ComputeMergeCommitRequest (var: mn)
+message ComputeMergeCommitRequest {
+  string repo_uuid = 1;
+  string ours_sha = 2;
+  string theirs_sha = 3;
+  string message = 4;
+  Signature author = 5;
+  Signature committer = 6;
+  MergeMode mode = 7;
+}
+
+// Copied from: local:git_forge.v1.ComputeMergeCommitResponse (var: cn)
+message ComputeMergeCommitResponse {
+  string merge_commit_sha = 1;
+  bytes packfile = 2;
+}
+
+// Copied from: local:git_forge.v1.CreateBranchRequest (var: Qr)
+message CreateBranchRequest {
+  string repo_uuid = 1;
+  string target_ref = 2;
+  string new_head_sha = 3;
+}
+
+// Copied from: local:git_forge.v1.CreateBranchResponse (var: Gr)
+message CreateBranchResponse {
+  string new_head_sha = 1;
+  string wal_entry_key = 2;
+  bool unchanged = 3;
+}
+
+// Copied from: local:git_forge.v1.CreateCommitFromFilesRequest (var: En)
+message CreateCommitFromFilesRequest {
+  string repo_uuid = 1;
+  string target_ref = 2;
+  optional string expected_head_sha = 3;
+  string message = 4;
+  Signature author = 5;
+  optional Signature committer = 6;
+  repeated CommitFileOperation files = 7;
+}
+
+// Copied from: local:git_forge.v1.CreateCommitFromFilesResponse (var: Sn)
+message CreateCommitFromFilesResponse {
+  string commit_sha = 1;
+  string tree_sha = 2;
+  string old_head_sha = 3;
+  string wal_entry_key = 4;
+}
+
+// Copied from: local:git_forge.v1.CreateMergeCommitRequest (var: ln)
+message CreateMergeCommitRequest {
+  string repo_uuid = 1;
+  optional string ours_sha = 2;
+  optional string theirs_sha = 3;
+  string ours_ref = 4;
+  string theirs_ref = 5;
+  string message = 6;
+  Signature author = 7;
+  Signature committer = 8;
+  uint64 change_number = 9;
+  MergeMode mode = 10;
+}
+
+// Copied from: local:git_forge.v1.CreateMergeCommitResponse (var: un)
+message CreateMergeCommitResponse {
+  string merge_commit_sha = 1;
+  string wal_entry_key = 2;
+}
+
+// Copied from: local:git_forge.v1.CreateRepoRequest (var: kr)
+message CreateRepoRequest {
+  string repo_uuid = 1;
+}
+
+// Copied from: local:git_forge.v1.CreateRepoResponse (var: wr)
+message CreateRepoResponse {
+}
+
+// Copied from: local:git_forge.v1.CreateRevertBranchConflict (var: Jn)
+message CreateRevertBranchConflict {
+  repeated string conflicted_paths = 1;
+}
+
+// Copied from: local:git_forge.v1.CreateRevertBranchRequest (var: In)
+message CreateRevertBranchRequest {
+  string repo_uuid = 1;
+  string commit_sha = 2;
+  string base_ref = 3;
+  string branch_ref = 4;
+  string message = 5;
+  Signature author = 6;
+  optional Signature committer = 7;
+}
+
+// Copied from: local:git_forge.v1.CreateRevertBranchResponse (var: vn)
+message CreateRevertBranchResponse {
+  oneof result {
+    CreateRevertBranchSuccess success = 1;
+    CreateRevertBranchConflict conflict = 2;
+  }
+}
+
+// Copied from: local:git_forge.v1.CreateRevertBranchSuccess (var: Bn)
+message CreateRevertBranchSuccess {
+  string revert_commit_sha = 1;
+  string base_sha = 2;
+  string wal_entry_key = 3;
+}
+
+// Copied from: local:git_forge.v1.DeleteBranchesRequest (var: Ur)
+message DeleteBranchesRequest {
+  string repo_uuid = 1;
+  repeated BranchDeletion branches = 2;
+}
+
+// Copied from: local:git_forge.v1.DeleteBranchesResponse (var: xr)
+message DeleteBranchesResponse {
+  uint32 deleted_count = 1;
+  uint32 missing_count = 2;
+  string wal_entry_key = 3;
+  bool unchanged = 4;
+}
+
+// Copied from: local:git_forge.v1.DiffEntry (var: czi)
+message DiffEntry {
+  string path = 1;
+  optional string old_path = 2;
+  ChangeKind change_kind = 3;
+  optional FileMode old_mode = 4;
+  optional FileMode new_mode = 5;
+  optional string old_sha = 6;
+  optional string new_sha = 7;
+  optional FileStats stats = 8;
+  optional string patch = 9;
+  optional bool is_generated = 10;
+}
+
+// Copied from: local:git_forge.v1.DiffHeader (var: swv)
+message DiffHeader {
+  string merge_base_commit_sha = 1;
+  bool has_more = 4;
+  optional string next_page_cursor = 5;
+  repeated DiffEntry entries = 6;
+}
+
+// Copied from: local:git_forge.v1.DirectoryContent (var: BSv)
+message DirectoryContent {
+  repeated RepoContentEntry entries = 1;
+  string sha = 2;
+}
+
+// Copied from: local:git_forge.v1.FastForwardRefRequest (var: Fr)
+message FastForwardRefRequest {
+  string repo_uuid = 1;
+  string target_ref = 2;
+  string expected_head_sha = 3;
+  string new_head_sha = 4;
+}
+
+// Copied from: local:git_forge.v1.FastForwardRefResponse (var: Dr)
+message FastForwardRefResponse {
+  string old_head_sha = 1;
+  string new_head_sha = 2;
+  string wal_entry_key = 3;
+  bool unchanged = 4;
+}
+
+// Copied from: local:git_forge.v1.FileContent (var: IQd)
+message FileContent {
+  string size = 1;
+  string encoding = 2;
+  string content = 3;
+  string sha = 4;
+}
+
+// Copied from: local:git_forge.v1.FileHistoryCommitEntry (var: HSv)
+message FileHistoryCommitEntry {
+  ShortCommit commit = 1;
+  optional string diff_base_commit_sha = 2;
+  optional FileStats path_stats = 8;
+}
+
+// Copied from: local:git_forge.v1.FileHistoryWithDiffStatsChunk (var: er)
+message FileHistoryWithDiffStatsChunk {
+  repeated FileHistoryCommitEntry entries = 1;
+  bool exhausted = 2;
+  bool scan_truncated = 3;
+  optional string resume_commit_sha = 4;
+}
+
+// Copied from: local:git_forge.v1.FileMode (var: xQd)
+enum FileMode {
+  FILE_MODE_UNSPECIFIED = 0;
+  FILE_MODE_REGULAR = 1;
+  FILE_MODE_EXECUTABLE = 2;
+  FILE_MODE_SYMLINK = 3;
+  FILE_MODE_GITLINK = 4;
+}
+
+// Copied from: local:git_forge.v1.FileStats (var: DQd)
+message FileStats {
+  int32 additions = 1;
+  int32 deletions = 2;
+  bool is_binary = 3;
+}
+
+// Copied from: local:git_forge.v1.GetBlameRequest (var: nr)
+message GetBlameRequest {
+  string repo_uuid = 1;
+  string start_commit_sha = 2;
+  string path = 3;
+}
+
+// Copied from: local:git_forge.v1.GetBlobRequest (var: Ht)
+message GetBlobRequest {
+  string repo_uuid = 1;
+  string blob_sha = 2;
+}
+
+// Copied from: local:git_forge.v1.GetBlobResponse (var: xSv)
+message GetBlobResponse {
+  FileContent blob = 1;
+}
+
+// Copied from: local:git_forge.v1.GetCommitDiffRequest (var: Ir)
+message GetCommitDiffRequest {
+  string repo_uuid = 1;
+  string commit_sha = 2;
+  optional string base_commit_sha = 3;
+  bool include_patches = 4;
+  repeated string paths = 5;
+  optional uint32 page_size = 6;
+  optional string page_cursor = 7;
+}
+
+// Copied from: local:git_forge.v1.GetCommitRequest (var: Dt)
+message GetCommitRequest {
+  string repo_uuid = 1;
+  string commit_sha = 2;
+}
+
+// Copied from: local:git_forge.v1.GetCommitResponse (var: ESv)
+message GetCommitResponse {
+  Commit commit = 1;
+}
+
+// Copied from: local:git_forge.v1.GetDefaultBranchRequest (var: qn)
+message GetDefaultBranchRequest {
+  string repo_uuid = 1;
+}
+
+// Copied from: local:git_forge.v1.GetDefaultBranchResponse (var: Fn)
+message GetDefaultBranchResponse {
+  string default_branch = 1;
+}
+
+// Copied from: local:git_forge.v1.GetFileHistoryPageWithDiffStatsResponse (var: zSv)
+message GetFileHistoryPageWithDiffStatsResponse {
+  repeated FileHistoryCommitEntry entries = 1;
+  bool has_more = 2;
+  optional string next_cursor = 3;
+}
+
+// Copied from: local:git_forge.v1.GetFileHistoryRequest (var: zn)
+message GetFileHistoryRequest {
+  string repo_uuid = 1;
+  string start_commit_sha = 2;
+  optional string path = 3;
+  uint32 max_commits = 4;
+}
+
+// Copied from: local:git_forge.v1.GetFileHistoryResponse (var: WSv)
+message GetFileHistoryResponse {
+  repeated ShortCommit commits = 1;
+}
+
+// Copied from: local:git_forge.v1.GetFileHistoryWithDiffStatsRequest (var: Xn)
+message GetFileHistoryWithDiffStatsRequest {
+  string repo_uuid = 1;
+  string start_commit_sha = 2;
+  optional string path = 3;
+  uint32 max_commits = 4;
+  optional string next_cursor = 5;
+  bool include_diff_stats = 6;
+  optional uint32 max_commits_scanned = 7;
+}
+
+// Copied from: local:git_forge.v1.GetFileHistoryWithDiffStatsResponse (var: Zn)
+message GetFileHistoryWithDiffStatsResponse {
+  repeated FileHistoryCommitEntry entries = 1;
+  bool has_more = 2;
+  optional string next_cursor = 3;
+}
+
+// Copied from: local:git_forge.v1.GetFuzzyPathsRequest (var: lr)
+message GetFuzzyPathsRequest {
+  string repo_uuid = 1;
+  string commit_sha = 2;
+  string query = 3;
+  uint32 limit = 4;
+}
+
+// Copied from: local:git_forge.v1.GetFuzzyPathsResponse (var: QSv)
+message GetFuzzyPathsResponse {
+  repeated string paths = 1;
+  bool has_more = 2;
+}
+
+// Copied from: local:git_forge.v1.GetLocalDevInfoRequest (var: qt)
+message GetLocalDevInfoRequest {
+}
+
+// Copied from: local:git_forge.v1.GetLocalDevInfoResponse (var: Ft)
+message GetLocalDevInfoResponse {
+  string repo_uuid = 1;
+  string git_forge_root_dir = 2;
+}
+
+// Copied from: local:git_forge.v1.GetPullRequestDiffRequest (var: Er)
+message GetPullRequestDiffRequest {
+  string repo_uuid = 1;
+  string head_commit_sha = 2;
+  string base_commit_sha = 3;
+  optional bool include_patches = 4;
+  optional uint32 page_size = 5;
+  optional string page_cursor = 6;
+  optional bool include_file_stats = 7;
+  optional bool include_generated = 8;
+}
+
+// Copied from: local:git_forge.v1.GetRepoContentDetailsRequest (var: Kn)
+message GetRepoContentDetailsRequest {
+  string repo_uuid = 1;
+  PathIdentifier path_identifier = 2;
+}
+
+// Copied from: local:git_forge.v1.GetRepoContentDetailsResponse (var: jSv)
+message GetRepoContentDetailsResponse {
+  optional RepoContentDetails details = 1;
+  PathIdentifier path_identifier = 2;
+  string resolved_commit_sha = 3;
+}
+
+// Copied from: local:git_forge.v1.GetRepoContentRequest (var: Dn)
+message GetRepoContentRequest {
+  string repo_uuid = 1;
+  optional uint64 max_file_size = 4;
+  oneof id {
+    PathIdentifier path_identifier = 2;
+    string ref_and_path = 3;
+  }
+}
+
+// Copied from: local:git_forge.v1.GetRepoContentResponse (var: RQd)
+message GetRepoContentResponse {
+  PathIdentifier path_identifier = 3;
+  string resolved_commit_sha = 4;
+  oneof content {
+    FileContent file_content = 1;
+    DirectoryContent directory_content = 2;
+  }
+}
+
+// Copied from: local:git_forge.v1.GetTagRequest (var: Yt)
+message GetTagRequest {
+  string repo_uuid = 1;
+  string tag_sha = 2;
+}
+
+// Copied from: local:git_forge.v1.GetTagResponse (var: TSv)
+message GetTagResponse {
+  Tag tag = 1;
+}
+
+// Copied from: local:git_forge.v1.GetTreeBlameRequest (var: or)
+message GetTreeBlameRequest {
+  string repo_uuid = 1;
+  string start_commit_sha = 2;
+  string path = 3;
+}
+
+// Copied from: local:git_forge.v1.GetTreeBlameResponse (var: KSv)
+message GetTreeBlameResponse {
+  repeated TreeEntryBlame entries = 1;
+}
+
+// Copied from: local:git_forge.v1.GetTreeRequest (var: Wt)
+message GetTreeRequest {
+  string repo_uuid = 1;
+  string tree_sha = 2;
+  bool recursive = 3;
+}
+
+// Copied from: local:git_forge.v1.GetTreeResponse (var: ASv)
+message GetTreeResponse {
+  Tree tree = 1;
+}
+
+// Copied from: local:git_forge.v1.GrepLineKind (var: CSv)
+enum GrepLineKind {
+  GREP_LINE_KIND_UNSPECIFIED = 0;
+  GREP_LINE_KIND_MATCH = 1;
+  GREP_LINE_KIND_CONTEXT = 2;
+}
+
+// Copied from: local:git_forge.v1.GrepMatch (var: JSv)
+message GrepMatch {
+  string path = 1;
+  string lines = 2;
+  uint32 line_number = 3;
+  uint64 absolute_offset = 4;
+  repeated GrepSubmatch submatches = 5;
+  GrepLineKind kind = 6;
+}
+
+// Copied from: local:git_forge.v1.GrepRepoChunk (var: ewv)
+message GrepRepoChunk {
+  repeated GrepMatch matches = 1;
+  bool limit_hit = 2;
+}
+
+// Copied from: local:git_forge.v1.GrepRepoRequest (var: pr)
+message GrepRepoRequest {
+  string repo_uuid = 1;
+  string revision = 2;
+  string query = 3;
+  GrepSearchOptions options = 4;
+  uint32 max_results = 5;
+}
+
+// Copied from: local:git_forge.v1.GrepSearchOptions (var: ZSv)
+message GrepSearchOptions {
+  bool literal = 1;
+  bool case_insensitive = 2;
+  bool whole_word = 3;
+  uint32 context_before = 4;
+  uint32 context_after = 5;
+  optional uint64 max_lines = 6;
+  optional string filter_path = 7;
+  repeated string includes = 8;
+  repeated string excludes = 9;
+}
+
+// Copied from: local:git_forge.v1.GrepSubmatch (var: XSv)
+message GrepSubmatch {
+  uint32 start = 1;
+  uint32 end = 2;
+}
+
+// Copied from: local:git_forge.v1.ListCommitsInRangeRequest (var: tn)
+message ListCommitsInRangeRequest {
+  string repo_uuid = 1;
+  string base_revision = 2;
+  string head_revision = 3;
+  optional int32 max_commits = 4;
+  bool oldest_first = 5;
+  ListCommitsSort sort = 6;
+}
+
+// Copied from: local:git_forge.v1.ListCommitsInRangeResponse (var: MSv)
+message ListCommitsInRangeResponse {
+  repeated Commit commits = 1;
+  string base_commit_sha = 2;
+  string head_commit_sha = 3;
+  string merge_base_commit_sha = 4;
+  bool truncated = 5;
+}
+
+// Copied from: local:git_forge.v1.ListCommitsRequest (var: Zt)
+message ListCommitsRequest {
+  string repo_uuid = 1;
+  string revision = 2;
+  int32 page = 3;
+  int32 per_page = 4;
+  ListCommitsSort sort = 5;
+}
+
+// Copied from: local:git_forge.v1.ListCommitsResponse (var: en)
+message ListCommitsResponse {
+  repeated Commit commits = 1;
+  optional int32 next_page = 2;
+}
+
+// Copied from: local:git_forge.v1.ListCommitsSort (var: k)
+enum ListCommitsSort {
+  LIST_COMMITS_SORT_UNSPECIFIED = 0;
+  LIST_COMMITS_SORT_COMMIT_TIME = 1;
+  LIST_COMMITS_SORT_TOPOLOGICAL = 2;
+}
+
+// Copied from: local:git_forge.v1.ListRefsFilter (var: AQd)
+enum ListRefsFilter {
+  LIST_REFS_FILTER_UNSPECIFIED = 0;
+  LIST_REFS_FILTER_ALL = 1;
+  LIST_REFS_FILTER_BRANCHES = 2;
+  LIST_REFS_FILTER_TAGS = 3;
+}
+
+// Copied from: local:git_forge.v1.ListRefsRequest (var: Pr)
+message ListRefsRequest {
+  string repo_uuid = 1;
+  ListRefsFilter filter = 2;
+  bool names_only = 3;
+  string prefix = 4;
+  optional uint32 limit = 5;
+  optional string page_token = 7;
+}
+
+// Copied from: local:git_forge.v1.ListRefsResponse (var: awv)
+message ListRefsResponse {
+  repeated string refs = 1;
+  repeated RefInfo ref_infos = 2;
+  optional string next_page_token = 5;
+}
+
+// Copied from: local:git_forge.v1.ListTreePathsRequest (var: mr)
+message ListTreePathsRequest {
+  string repo_uuid = 1;
+  string revision = 2;
+  repeated string includes = 3;
+  repeated string excludes = 4;
+  uint32 limit = 5;
+}
+
+// Copied from: local:git_forge.v1.ListTreePathsResponse (var: YSv)
+message ListTreePathsResponse {
+  repeated string paths = 1;
+  bool has_more = 2;
+}
+
+// Copied from: local:git_forge.v1.MergeMode (var: EQd)
+enum MergeMode {
+  MERGE_MODE_UNSPECIFIED = 0;
+  MERGE_MODE_MERGE_COMMIT = 1;
+  MERGE_MODE_SQUASH = 2;
+}
+
+// Copied from: local:git_forge.v1.NotifyRepoPushedRequest (var: Ar)
+message NotifyRepoPushedRequest {
+  string repo_uuid = 1;
+}
+
+// Copied from: local:git_forge.v1.NotifyRepoPushedResponse (var: _r)
+message NotifyRepoPushedResponse {
+}
+
+// Copied from: local:git_forge.v1.PathIdentifier (var: B$t)
+message PathIdentifier {
+  string revision = 1;
+  string path = 2;
+}
+
+// Copied from: local:git_forge.v1.PrepareChangeMergeRequest (var: dn)
+message PrepareChangeMergeRequest {
+  string repo_uuid = 1;
+  string base_ref = 2;
+  string head_ref = 3;
+  uint64 change_number = 4;
+  optional string expected_base_sha = 5;
+  optional string expected_head_sha = 6;
+  MergeMode mode = 7;
+}
+
+// Copied from: local:git_forge.v1.PrepareChangeMergeResponse (var: pn)
+message PrepareChangeMergeResponse {
+  bool mergeable = 1;
+  optional string merged_tree_sha = 2;
+  optional string change_merge_ref = 3;
+  optional string dummy_commit_sha = 4;
+}
+
+// Copied from: local:git_forge.v1.PullRequestDiffChunk (var: nwv)
+message PullRequestDiffChunk {
+  optional DiffHeader header = 1;
+  repeated DiffEntry entries = 3;
+}
+
+// Copied from: local:git_forge.v1.RebaseStackBranch (var: gn)
+message RebaseStackBranch {
+  string head_ref = 1;
+  string expected_old_oid = 2;
+  optional string replay_base_oid = 3;
+}
+
+// Copied from: local:git_forge.v1.RebaseStackBranchUpdate (var: _n)
+message RebaseStackBranchUpdate {
+  string head_ref = 1;
+  string old_oid = 2;
+  string new_oid = 3;
+}
+
+// Copied from: local:git_forge.v1.RebaseStackConflict (var: Tn)
+message RebaseStackConflict {
+  string conflicted_head_ref = 1;
+  repeated string conflicted_paths = 2;
+}
+
+// Copied from: local:git_forge.v1.RebaseStackRequest (var: fn)
+message RebaseStackRequest {
+  string repo_uuid = 1;
+  string onto_ref = 2;
+  optional string expected_onto_oid = 3;
+  repeated RebaseStackBranch branches = 4;
+  bool dry_run = 5;
+}
+
+// Copied from: local:git_forge.v1.RebaseStackResponse (var: hn)
+message RebaseStackResponse {
+  oneof result {
+    RebaseStackSuccess success = 1;
+    RebaseStackConflict conflict = 2;
+  }
+}
+
+// Copied from: local:git_forge.v1.RebaseStackSuccess (var: An)
+message RebaseStackSuccess {
+  string wal_entry_key = 1;
+  repeated RebaseStackBranchUpdate updates = 2;
+}
+
+// Copied from: local:git_forge.v1.RefInfo (var: MQd)
+message RefInfo {
+  string name = 1;
+  string target_sha = 2;
+  string object_sha = 3;
+  string object_type = 4;
+}
+
+// Copied from: local:git_forge.v1.RepoContentDetails (var: $Sv)
+message RepoContentDetails {
+  string type = 1;
+  optional uint64 size = 2;
+  bool is_binary = 3;
+  bool too_large_to_introspect = 4;
+}
+
+// Copied from: local:git_forge.v1.RepoContentEntry (var: twv)
+message RepoContentEntry {
+  string type = 1;
+  string name = 2;
+  string path = 3;
+  string sha = 4;
+  optional uint64 size = 5;
+}
+
+// Copied from: local:git_forge.v1.ResolveRefPathRequest (var: Mn)
+message ResolveRefPathRequest {
+  string repo_uuid = 1;
+  string ref_path = 2;
+}
+
+// Copied from: local:git_forge.v1.ResolveRefPathResponse (var: USv)
+message ResolveRefPathResponse {
+  PathIdentifier path_identifier = 1;
+  string resolved_commit_sha = 2;
+}
+
+// Copied from: local:git_forge.v1.SearchRefsRequest (var: Lr)
+message SearchRefsRequest {
+  string repo_uuid = 1;
+  ListRefsFilter filter = 2;
+  string query = 3;
+  optional uint32 limit = 4;
+}
+
+// Copied from: local:git_forge.v1.SearchRefsResponse (var: cwv)
+message SearchRefsResponse {
+  repeated RefInfo ref_infos = 1;
+  bool exact_match = 2;
+}
+
+// Copied from: local:git_forge.v1.ShortCommit (var: fMn)
+message ShortCommit {
+  bytes sha = 1;
+  string summary = 2;
+  string author_name = 3;
+  string author_email = 4;
+  int64 timestamp = 5;
+}
+
+// Copied from: local:git_forge.v1.Signature (var: o_t)
+message Signature {
+  string name = 1;
+  string email = 2;
+  int64 timestamp = 3;
+  int32 timezone_offset = 4;
+}
+
+// Copied from: local:git_forge.v1.Tag (var: DSv)
+message Tag {
+  string sha = 1;
+  string name = 2;
+  string message = 3;
+  Signature tagger = 4;
+  string object_sha = 5;
+  string object_type = 6;
+}
+
+// Copied from: local:git_forge.v1.Tree (var: ISv)
+message Tree {
+  string sha = 1;
+  repeated TreeEntry tree = 2;
+  bool truncated = 3;
+}
+
+// Copied from: local:git_forge.v1.TreeEntry (var: RSv)
+message TreeEntry {
+  string path = 1;
+  string mode = 2;
+  string type = 3;
+  string sha = 4;
+  optional uint64 size = 5;
+}
+
+// Copied from: local:git_forge.v1.TreeEntryBlame (var: qSv)
+message TreeEntryBlame {
+  string name = 1;
+  ShortCommit last_commit = 2;
+}
+

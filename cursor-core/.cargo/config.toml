@@ -1,0 +1,6 @@
+[build]
+# 限制最大并发编译任务为 2
+jobs = 2
+
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "link-arg=/INCREMENTAL:NO"]

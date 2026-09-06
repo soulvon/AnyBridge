@@ -572,6 +572,44 @@ pub struct OpenCodeConfig {
     pub source_provider_name: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GrokConfig {
+    pub id: String,
+    pub name: String,
+    #[serde(rename = "apiHost")]
+    pub api_host: String,
+    #[serde(rename = "apiKey")]
+    pub api_key: String,
+    #[serde(rename = "apiPath", skip_serializing_if = "Option::is_none")]
+    pub api_path: Option<String>,
+    #[serde(rename = "defaultModel")]
+    pub default_model: String,
+    #[serde(default)]
+    pub models: Vec<String>,
+    #[serde(
+        rename = "apiBackend",
+        default = "default_grok_backend",
+        skip_serializing_if = "String::is_empty"
+    )]
+    pub api_backend: String,
+    #[serde(
+        rename = "sourceProviderId",
+        default,
+        skip_serializing_if = "String::is_empty"
+    )]
+    pub source_provider_id: String,
+    #[serde(
+        rename = "sourceProviderName",
+        default,
+        skip_serializing_if = "String::is_empty"
+    )]
+    pub source_provider_name: String,
+}
+
+fn default_grok_backend() -> String {
+    "chat_completions".to_string()
+}
+
 impl From<CodexConfig> for Provider {
     fn from(config: CodexConfig) -> Self {
         Provider {
@@ -624,6 +662,38 @@ impl From<OpenCodeConfig> for Provider {
             model_caps: HashMap::new(),
             unlocks: ProviderUnlocks::default(),
             wire_api: String::new(),
+            route_through_proxy: true,
+            inject_models: true,
+            preserve_official_auth: false,
+            unify_session_history: true,
+            model_catalog: Vec::new(),
+            codex_chat_reasoning: None,
+            agents_config: None,
+            agents: Vec::new(),
+        }
+    }
+}
+
+impl From<GrokConfig> for Provider {
+    fn from(config: GrokConfig) -> Self {
+        Provider {
+            id: config.id,
+            name: config.name,
+            api_host: config.api_host,
+            api_key: config.api_key,
+            api_path: config.api_path,
+            default_model: config.default_model,
+            api_format: ApiFormat::Openai,
+            enabled: true,
+            models: config.models,
+            capabilities: ProviderCapabilities {
+                text: true,
+                stream: true,
+                ..ProviderCapabilities::default()
+            },
+            model_caps: HashMap::new(),
+            unlocks: ProviderUnlocks::default(),
+            wire_api: config.api_backend,
             route_through_proxy: true,
             inject_models: true,
             preserve_official_auth: false,
@@ -742,6 +812,13 @@ pub struct ProviderStore {
         skip_serializing_if = "Vec::is_empty"
     )]
     pub opencode_configs: Vec<OpenCodeConfig>,
+    /// Grok 专用配置。它们不是供应商，只是基于某个 OpenAI 供应商生成/编辑的 Grok custom model 配置。
+    #[serde(
+        rename = "grokConfigs",
+        default,
+        skip_serializing_if = "Vec::is_empty"
+    )]
+    pub grok_configs: Vec<GrokConfig>,
     /// Claude Code 专用配置。它们不是供应商，只是基于某个 Anthropic 供应商生成/编辑的写入配置。
     #[serde(
         rename = "claudeCodeConfigs",

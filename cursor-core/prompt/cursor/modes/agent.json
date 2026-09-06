@@ -1,0 +1,9 @@
+{
+  "tools": [
+    "Shell", "Grep", "Delete", "WebSearch", "WebFetch", "GenerateImage",
+    "EditNotebook", "TodoWrite", "StrReplace", "Write", "Read", "ReadLints",
+    "Glob", "AskQuestion", "Task", "GetMcpTools",
+    "FetchMcpResource", "SwitchMode", "CallMcpTool", "SembleSearch",
+    "SembleFindRelated"
+  ]
+}

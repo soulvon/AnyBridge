@@ -1362,14 +1362,35 @@ fn run_proxy_preflight(
                 "无法定位 Cursor state.vscdb 路径",
             ),
         }
-        match crate::commands::cursor_auth::first_cursor_model_stable_id() {
-            Ok(model) => push_issue(
+        let cursor_models = crate::commands::proxy_routes::read_routes()
+            .map(|routes| {
+                routes.routes
+                    .into_iter()
+                    .filter(|route| {
+                        route.enabled
+                            && !route.targets.is_empty()
+                            && route
+                                .exposed_formats
+                                .iter()
+                                .any(|format| format.eq_ignore_ascii_case("openai"))
+                    })
+                    .count()
+            })
+            .unwrap_or(0);
+        if cursor_models > 0 {
+            push_issue(
                 &mut issues,
                 "ok",
-                "cursor.model_pin",
-                format!("Cursor 默认 BYOK 模型可写入: {}", model),
-            ),
-            Err(e) => push_issue(&mut issues, "err", "cursor.model_pin_failed", e),
+                "cursor.models",
+                format!("Cursor Core 可同步 {} 个本地模型", cursor_models),
+            );
+        } else {
+            push_issue(
+                &mut issues,
+                "err",
+                "cursor.models_missing",
+                "未配置可供 Cursor Core 使用的 OpenAI 格式模型",
+            );
         }
         push_issue(
             &mut issues,
@@ -2574,18 +2595,10 @@ pub fn switch_ide_to_proxy_impl(
     let mut report = IdeProxyModeReport::default();
 
     if target == "cursor" {
-        report.cursor_auth = crate::commands::cursor_auth::apply_cursor_auth_and_model()
-            .map_err(|e| format!("写入 Cursor BYOK auth/model 失败: {}", e))?;
-        report.ide_config = match crate::commands::ide_config::patch(&target) {
-            Ok(true) => "updated".into(),
-            Ok(false) => "ok".into(),
-            Err(e) => {
-                let _ = crate::commands::cursor_auth::restore_cursor_auth();
-                return Err(format!("写入 Cursor 代理配置失败: {}", e));
-            }
-        };
-        report.workbench_inject = "ok（Cursor 无需 workbench 注入）".into();
-        return Ok(report);
+        return Err(
+            "Cursor 已迁移到独立 Cursor Core，请使用 cursor_enable；旧入口已停用且不会再改写账号状态。"
+                .into(),
+        );
     }
 
     report.cursor_auth = "ok（无需 Cursor auth）".into();

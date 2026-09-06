@@ -1,0 +1,37 @@
+# Semble's transport-independent indexing and hybrid-search engine.
+[package]
+name = "semble-core"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+bincode = { version = "2", features = ["serde"] }
+dirs = "6"
+half = "2"
+hex = "0.4"
+ignore = "0.4"
+lru = "0.16"
+parking_lot = "0.12"
+rayon = "1"
+regex = "1"
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "rustls-tls"] }
+safetensors = "0.8"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+thiserror = "2"
+tokenizers = { version = "0.23", default-features = false, features = ["onig"] }
+tree-sitter = "0.26"
+tree-sitter-c = "0.24"
+tree-sitter-cpp = "0.23"
+tree-sitter-go = "0.25"
+tree-sitter-java = "0.23"
+tree-sitter-javascript = "0.25"
+tree-sitter-python = "0.25"
+tree-sitter-rust = "0.24"
+tree-sitter-typescript = "0.23"
+url = "2"
+
+[dev-dependencies]
+tempfile = "3"

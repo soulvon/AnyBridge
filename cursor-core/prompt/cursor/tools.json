@@ -1,0 +1,903 @@
+{
+  "tools": [
+    {
+      "type": "function",
+      "function": {
+        "name": "AskQuestion",
+        "description": "Collect structured multiple-choice answers from the user. Use this tool only when you are blocked on a decision that is genuinely the user's to make: one you cannot resolve from the request, the code, or sensible defaults.\n\nUsage notes:\n- Each question should have at least 2 options for the user to choose from\n- Users will always be able to select \"Other\" to provide custom text input\n- Use allow_multiple: true to allow multiple answers to be selected for a question\n- If you recommend a specific option, make that the first option in the list and add \"(Recommended)\" at the end of the label\n\nPrefer this tool over listing options in your final response text (as letters, numbers, bullet points, etc).",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "questions": {
+              "description": "Array of questions to present to the user (minimum 1 required)",
+              "items": {
+                "properties": {
+                  "allow_multiple": {
+                    "description": "If true, user can select multiple options. Defaults to false.",
+                    "type": "boolean"
+                  },
+                  "id": {
+                    "description": "Unique identifier for this question",
+                    "type": "string"
+                  },
+                  "options": {
+                    "description": "Array of answer options (minimum 2 required)",
+                    "items": {
+                      "properties": {
+                        "id": {
+                          "description": "Unique identifier for this option",
+                          "type": "string"
+                        },
+                        "label": {
+                          "description": "Display text for this option",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "label"
+                      ],
+                      "type": "object"
+                    },
+                    "minItems": 2,
+                    "type": "array"
+                  },
+                  "prompt": {
+                    "description": "The question text to display to the user, without the options.",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id",
+                  "prompt",
+                  "options"
+                ],
+                "type": "object"
+              },
+              "minItems": 1,
+              "type": "array"
+            },
+            "title": {
+              "description": "Optional title for the questions form",
+              "type": "string"
+            }
+          },
+          "required": [
+            "questions"
+          ]
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "CallMcpTool",
+        "description": "Call an MCP tool by server identifier and tool name with arbitrary JSON arguments. Use the matching descriptor in <mcp_meta_tools>: follow its inline input_schema, or read its definition_path when the schema is stored in a file. Call listed tools directly; do not call GetMcpTools first. If Cursor returns an MCP error, inspect it, correct the arguments or authentication, and retry only when appropriate.\n\nExample:\n{\n  \"server\": \"my-mcp-server\",\n  \"toolName\": \"search\",\n  \"description\": \"Search the public docs for the example API\",\n  \"arguments\": { \"query\": \"example\", \"limit\": 10 }\n}",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "arguments": {
+              "description": "Arguments to pass to the MCP tool, as described in the tool descriptor.",
+              "type": "object"
+            },
+            "description": {
+              "description": "Short plain-language description of what this call will do. One sentence naming the outcome and where it applies (channel, page, file, or service) when known. Do not include tool names, argument keys, or JSON.",
+              "type": "string"
+            },
+            "requestSmartModeApproval": {
+              "description": "Set to true when immediately retrying the exact same MCP call after Auto-review blocks it and you decide the user should approve it through the native approval card.",
+              "type": "boolean"
+            },
+            "server": {
+              "description": "Identifier of the MCP server hosting the tool.",
+              "type": "string"
+            },
+            "smartModeBlockReason": {
+              "description": "Provide the exact block reason returned by Auto-review in the prior rejection. Required when requestSmartModeApproval is true so the approval card shows the original classifier reason without re-running the classifier.",
+              "type": "string"
+            },
+            "toolName": {
+              "description": "Name of the MCP tool to invoke.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "server",
+            "toolName"
+          ]
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "SembleSearch",
+        "description": "Search a source repository with hybrid semantic retrieval, BM25 lexical matching, and exact-symbol lookup. Use it to locate unknown implementations, understand behavior, find symbols and relevant code, or identify likely entry points in a code flow. The repository may be an absolute local directory or an explicit HTTP(S) Git URL.\n\nWrite natural-language queries in English because the code-specialized model performs best in English; preserve exact identifiers, literals, and code fragments unchanged. Prefer a focused query, start with top_k 5 and 8-12 snippet lines, and keep the default code scope unless documentation or configuration is specifically relevant. Results are ranked evidence, not an exhaustive text match or authoritative call graph; use Grep when every exact occurrence is required, and use SembleFindRelated to expand from a known result.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "description": {
+              "description": "Short plain-language description of what this search will find. One sentence; do not include tool names or argument keys.",
+              "type": "string"
+            },
+            "repo": {
+              "description": "Absolute local repository directory or explicit HTTP(S) Git URL.",
+              "type": "string"
+            },
+            "query": {
+              "description": "Focused English behavior description, exact symbol name, literal, or code fragment.",
+              "type": "string"
+            },
+            "content": {
+              "description": "Content scope. Use all sparingly because it broadens and weakens ranking.",
+              "enum": ["code", "docs", "config", "all"],
+              "type": "string",
+              "default": "code"
+            },
+            "top_k": {
+              "description": "Number of ranked chunks to return.",
+              "type": "integer",
+              "minimum": 1,
+              "default": 5
+            },
+            "max_snippet_lines": {
+              "description": "Maximum source lines returned per result. Use 0 for locations only.",
+              "type": "integer",
+              "minimum": 0,
+              "default": 10
+            }
+          },
+          "required": ["repo", "query"]
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "SembleFindRelated",
+        "description": "Find code chunks semantically related to a known Semble search result. Use it after SembleSearch when a relevant location is known and you need nearby responsibilities, collaborators, or likely connected implementation. Pass the file path exactly as returned by search and a one-indexed line inside that result. This is ranked related-code evidence rather than an authoritative call graph.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "description": {
+              "description": "Short plain-language description of the relationship being explored. One sentence; do not include tool names or argument keys.",
+              "type": "string"
+            },
+            "repo": {
+              "description": "The same absolute local repository directory or explicit HTTP(S) Git URL used for search.",
+              "type": "string"
+            },
+            "file_path": {
+              "description": "File path exactly as returned by SembleSearch.",
+              "type": "string"
+            },
+            "line": {
+              "description": "One-indexed line contained by the source result.",
+              "type": "integer",
+              "minimum": 1
+            },
+            "content": {
+              "description": "Content scope containing the source file.",
+              "enum": ["code", "docs", "config", "all"],
+              "type": "string",
+              "default": "code"
+            },
+            "top_k": {
+              "description": "Number of ranked related chunks to return.",
+              "type": "integer",
+              "minimum": 1,
+              "default": 5
+            },
+            "max_snippet_lines": {
+              "description": "Maximum source lines returned per result. Use 0 for locations only.",
+              "type": "integer",
+              "minimum": 0,
+              "default": 10
+            }
+          },
+          "required": ["repo", "file_path", "line"]
+        }
+      }
+    },
+    {
+      "function": {
+        "description": "Use this tool to create or revise a concise plan for accomplishing the user's request. This tool should be called at the end of the planning phase to finalize and store the plan.\n\nThe plan you create should be properly formatted in markdown, using appropriate sections and headers. The plan should be very concise and actionable, providing the minimum amount of detail for the user to understand and action the plan. It may be helpful to identify the most important couple files you will change, and existing code you will leverage. Cite specific file paths and essential snippets of code. IMPORTANT: Do NOT use markdown tables in plan content (they cannot be rendered for the user); use bullet lists instead. The first line MUST BE A TITLE for the plan formatted as a level 1 markdown heading.\n\nTASK ORGANIZATION:\n\nUse 'todos' for organizing implementation tasks:\n- Each todo should be a clear, specific, and actionable task\n- Each todo needs a unique ID (e.g., \"setup-auth\") and descriptive content\n- If the plan is simple, provide just a few high-level todos or none at all\n\nUPDATING THE PLAN:\n- The plan file URI will be returned in the tool result\n- If a current plan already exists, call this tool with the complete revised plan and omit the name field\n- Only the first CreatePlan call may include name; later calls must not include name and must not use name to rename or create a separate plan\n- If the user asks for a separate new plan while a current plan exists, explain the limitation or ask how to proceed before calling CreatePlan again\n\nAdditional guidelines:\n- Avoid asking clarifying questions in the plan itself. Ask them before calling this tool. Present these to the user using the AskQuestion tool.\n- Todos help break down complex plans into manageable, trackable tasks\n- Focus on high-level meaningful decisions rather than low-level implementation details\n- A good plan is glanceable, not a wall of text.",
+        "name": "CreatePlan",
+        "parameters": {
+          "properties": {
+            "name": {
+              "description": "A short 3-4 word name for the plan. IMPORTANT: Provide this only on the first CreatePlan call when no current plan exists. If a current plan already exists, omit this field entirely; do not use it to rename or create a separate plan.",
+              "type": "string"
+            },
+            "overview": {
+              "description": "A 1-2 sentence high-level description of the plan that summarizes what will be accomplished",
+              "type": "string"
+            },
+            "plan": {
+              "description": "A detailed, concrete plan for accomplishing the user's request",
+              "type": "string"
+            },
+            "todos": {
+              "description": "Array of implementation todos",
+              "items": {
+                "properties": {
+                  "content": {
+                    "description": "Description of the todo task",
+                    "type": "string"
+                  },
+                  "id": {
+                    "description": "Unique identifier for the todo",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id",
+                  "content"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            }
+          },
+          "type": "object"
+        }
+      },
+      "type": "function"
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "Delete",
+        "description": "Deletes a file at the specified path. The operation will fail gracefully if:\n    - The file doesn't exist\n    - The operation is rejected for security reasons\n    - The file cannot be deleted",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "path": {
+              "description": "The absolute path of the file to delete",
+              "type": "string"
+            }
+          },
+          "required": [
+            "path"
+          ]
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "EditNotebook",
+        "description": "Use this tool to edit a jupyter notebook cell.\nCell indices are 0-based. 'old_string' and 'new_string' should be a valid cell content, i.e. WITHOUT any JSON syntax that notebook files use under the hood. If you need to create a new notebook, just set 'is_new_cell' to true and cell_idx to 0.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "cell_idx": {
+              "description": "The index of the cell to edit (0-based)",
+              "type": "number"
+            },
+            "cell_language": {
+              "description": "The language of the cell to edit. Should be STRICTLY one of these: 'python', 'markdown', 'javascript', 'typescript', 'r', 'sql', 'shell', 'raw' or 'other'.",
+              "type": "string"
+            },
+            "is_new_cell": {
+              "description": "If true, a new cell will be created at the specified cell index. If false, the cell at the specified cell index will be edited.",
+              "type": "boolean"
+            },
+            "new_string": {
+              "description": "The edited text to replace the old_string or the content for the new cell.",
+              "type": "string"
+            },
+            "old_string": {
+              "description": "The text to replace (must be unique within the cell, and must match the cell contents exactly, including all whitespace and indentation).",
+              "type": "string"
+            },
+            "target_notebook": {
+              "description": "The path to the notebook file you want to edit. You can use either a relative path in the workspace or an absolute path. If an absolute path is provided, it will be preserved as is.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "target_notebook",
+            "cell_idx",
+            "is_new_cell",
+            "cell_language",
+            "old_string",
+            "new_string"
+          ]
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "FetchMcpResource",
+        "description": "Reads a specific resource from an MCP server, identified by server name and resource URI. Optionally, set downloadPath (relative to the workspace) to save the resource to disk; when set, the resource will be downloaded and not returned to the model.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "downloadPath": {
+              "description": "Optional relative path in the workspace to save the resource to. When set, the resource is written to disk and is not returned to the model.",
+              "type": "string"
+            },
+            "requestSmartModeApproval": {
+              "description": "Set to true when immediately retrying the exact same resource fetch after Auto-review blocks it and you decide the user should approve it through the native approval card.",
+              "type": "boolean"
+            },
+            "server": {
+              "description": "The MCP server identifier",
+              "type": "string"
+            },
+            "smartModeBlockReason": {
+              "description": "Provide the exact block reason returned by Auto-review in the prior rejection. Required when requestSmartModeApproval is true so the approval card shows the original classifier reason without re-running the classifier.",
+              "type": "string"
+            },
+            "uri": {
+              "description": "The resource URI to read",
+              "type": "string"
+            }
+          },
+          "required": [
+            "server",
+            "uri"
+          ]
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "GenerateImage",
+        "description": "Generate an image file from a text description.\n\nSTRICT INVOCATION RULES (must follow):\n- Only use this tool when the user explicitly asks for an image. Do not generate images \"just to be helpful\".\n- Do not use this tool for data heavy visualizations such as charts, plots, tables.\n\nGeneral guidelines:\n- Provide a concrete description first: subject(s), layout, style, colors, text (if any), and constraints.\n- If the user requests an aspect ratio, set `aspect_ratio` to one of \"1:1\", \"4:3\", \"3:4\", \"16:9\", or \"9:16\".\n- If the user provides reference images, include them in `reference_image_paths`.\n- Do not repeat generated images as Markdown in your response; the client displays tool-generated images automatically.\n\nExamples that should call this tool:\n- user: \"Generate an app icon for a note-taking app, minimal flat vector style.\" (explicitly requests an image asset)\n- user: \"Make a UI mockup of a settings screen with a dark mode toggle.\" (explicitly requests a UI mockup)\n- user: \"Generate an asset of a game character with a sword.\" (explicitly requests a visual asset)\n\nExamples that should not call this tool:\n- user: \"Create a plan to refactor this module.\" (planning request; respond in text or mermaid diagram)\n- user: \"Generate a chart of sales and revenue using data.csv.\" (data visualization; generate via code)\n",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "aspect_ratio": {
+              "description": "Optional aspect ratio for the generated image. Supported values are \"1:1\", \"4:3\", \"3:4\", \"16:9\", and \"9:16\".",
+              "enum": [
+                "1:1",
+                "4:3",
+                "3:4",
+                "16:9",
+                "9:16"
+              ],
+              "type": "string"
+            },
+            "description": {
+              "description": "A detailed description of the image.",
+              "type": "string"
+            },
+            "filename": {
+              "description": "Optional filename for the generated image (e.g., 'diagram.png'). Do not include a directory path - the tool automatically handles where to save and how to display the image. If not provided, a timestamped filename will be generated.",
+              "type": "string"
+            },
+            "reference_image_paths": {
+              "description": "Optional array of file paths to reference images as additional inputs.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "description"
+          ]
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "GetMcpTools",
+        "description": "Inspect the Cursor client's current MCP server state. Use this only when a server or tool is absent from <mcp_meta_tools>, when its descriptor has neither an inline schema nor a readable definition_path, or when you specifically need refreshed connection/authentication status. Do not call it before tools already described in <mcp_meta_tools>.\n\n1. {\"server\":\"<id>\"}: returns the server status, instructions, descriptions, and schemas.\n2. {\"server\":\"<id>\",\"toolName\":\"<name>\"}: returns one tool.\n3. {\"pattern\":\"<regex>\"}: searches server and tool names.\n4. {\"server\":\"<id>\",\"pattern\":\"<regex>\"}: searches one server.\n5. No arguments: returns the full catalog; use only as a last resort.\n\nIf an MCP call reports an authentication error, call that server's mcp_auth tool with empty arguments when available, then retry the original call only if authentication succeeds.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "pattern": {
+              "description": "RE2 regex pattern to search server and tool names (max 256 chars). Optionally combine with server to scope the search.",
+              "type": "string"
+            },
+            "server": {
+              "description": "MCP server identifier to inspect.",
+              "type": "string"
+            },
+            "toolName": {
+              "description": "Tool name within the server. Requires server to be set.",
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "Glob",
+        "description": "\nTool to search for files matching a glob pattern\n\n- Works fast with codebases of any size\n- Returns matching file paths sorted by modification time\n- Use this tool when you need to find files by name patterns\n- You have the capability to call multiple tools in a single response. It is always better to speculatively perform multiple searches that are potentially useful as a batch.\n",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "glob_pattern": {
+              "description": "The glob pattern to match files against.\nPatterns not starting with \"**/\" are automatically prepended with \"**/\" to enable recursive searching.\n\nExamples:\n\t- \"*.js\" (becomes \"**/*.js\") - find all .js files\n\t- \"**/node_modules/**\" - find all node_modules directories\n\t- \"**/test/**/test_*.ts\" - find all test_*.ts files in any test directory",
+              "type": "string"
+            },
+            "target_directory": {
+              "description": "Absolute path to directory to search for files in. If not provided, defaults to Cursor workspace root.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "glob_pattern"
+          ]
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "Grep",
+        "description": "A search tool built on ripgrep. Results are capped to several thousand output lines for responsiveness; when truncation occurs, the results report \"at least\" counts, but are otherwise accurate.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "-A": {
+              "description": "Number of lines to show after each match (rg -A). Requires output_mode: \"content\", ignored otherwise.",
+              "type": "number"
+            },
+            "-B": {
+              "description": "Number of lines to show before each match (rg -B). Requires output_mode: \"content\", ignored otherwise.",
+              "type": "number"
+            },
+            "-C": {
+              "description": "Number of lines to show before and after each match (rg -C). Requires output_mode: \"content\", ignored otherwise.",
+              "type": "number"
+            },
+            "-i": {
+              "description": "Case insensitive search (rg -i) Defaults to false",
+              "type": "boolean"
+            },
+            "glob": {
+              "description": "Glob pattern to filter files (e.g. \"*.js\", \"*.{ts,tsx}\") - maps to rg --glob",
+              "type": "string"
+            },
+            "head_limit": {
+              "description": "Limit output size. For \"content\" mode: limits total matches shown. For \"files_with_matches\" and \"count\" modes: limits number of files.",
+              "minimum": 0,
+              "type": "number"
+            },
+            "multiline": {
+              "description": "Enable multiline mode where . matches newlines and patterns can span lines (rg -U --multiline-dotall). Default: false.",
+              "type": "boolean"
+            },
+            "offset": {
+              "description": "Skip first N entries. For \"content\" mode: skips first N matches. For \"files_with_matches\" and \"count\" modes: skips first N files. Use with head_limit for pagination.",
+              "minimum": 0,
+              "type": "number"
+            },
+            "output_mode": {
+              "description": "Output mode: \"content\" shows matching lines (supports -A/-B/-C context, -n line numbers, head_limit), \"files_with_matches\" shows file paths (supports head_limit), \"count\" shows match counts (supports head_limit). Defaults to \"content\".",
+              "enum": [
+                "content",
+                "files_with_matches",
+                "count"
+              ],
+              "type": "string"
+            },
+            "path": {
+              "description": "File or directory to search in (rg pattern -- PATH). Defaults to Cursor workspace root.",
+              "type": "string"
+            },
+            "pattern": {
+              "description": "The regular expression pattern to search for in file contents",
+              "type": "string"
+            },
+            "type": {
+              "description": "File type to search (rg --type). Common types: js, py, rust, go, java, etc. More efficient than include for standard file types.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "pattern"
+          ]
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "Read",
+        "description": "Reads a file from the local filesystem. This tool can also read image files when called with the appropriate path. Formats supported: jpeg/jpg, png, gif, webp.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "limit": {
+              "description": "The number of lines to read. Only provide if the file is too large to read at once.",
+              "type": "integer"
+            },
+            "offset": {
+              "description": "The line number to start reading from. Positive values are 1-indexed from the start of the file. Negative values count backwards from the end (e.g. -1 is the last line). Only provide if the file is too large to read at once.",
+              "type": "integer"
+            },
+            "path": {
+              "description": "The absolute path of the file to read.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "path"
+          ]
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "ReadLints",
+        "description": "Read and display linter errors from the current workspace. You can provide paths to specific files or directories, or omit the argument to get diagnostics for all files.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "paths": {
+              "description": "Optional. An array of paths to files or directories to read linter errors for. You can use either relative paths in the workspace or absolute paths. If provided, returns diagnostics for the specified files/directories only. If not provided, returns diagnostics for all files in the workspace.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "Shell",
+        "description": "Executes a given command in a shell session with optional foreground timeout.\n\nIMPORTANT: This tool is for terminal operations like git, npm, docker, etc. DO NOT use it for file operations (reading, writing, editing, searching, finding files, sleeping) - use the specialized tools for this instead.\n\nYou can monitor commands by configuring `notify_on_output`. You will be notified at the end of your turn whenever stdout/stderr output matches the regex `pattern`. Output redirected only to a file will not trigger it. Configure a 5-or-fewer-word `reason` explaining what you are watching for, and optionally configure `debounce_ms`.\n\n<sandboxing>\nBy default, your commands will run in a sandbox. The sandbox allows most writes to the workspace and reads to the rest of the filesystem. Some other syscalls are also disallowed like access to USB devices.\n\nThe sandbox includes network access for common package managers and version control providers (e.g. npm, pypi, crates.io, Maven Central, GitHub, etc.). Standard operations like package installs and fetching dependencies will work without requesting additional permissions.\n\nFor broader network access beyond the allowed domains, you may still need to request 'full_network' permissions.\n\nThe required_permissions argument is used to request additional permissions. If you know you will need a permission, request it. Requesting permissions will slow down the command execution as it will ask the user for approval. Do not hesitate to request permissions if you are certain you need them. For commands you know will need unrestricted network access, request the full_network permission rather than waiting for the command to fail and asking for it later.\n\nThe following permissions are supported:\n\n- full_network: Grants unrestricted network access. This is useful for any commands that need to contact the outside internet, outside of the allowed domains.\n- all: Disables the sandbox entirely. If all is requested the command will run outside of the sandbox.\n\nIf you think a command failed due to sandbox restrictions, run the command again with the required_permissions argument to request what you need.\n</sandboxing>",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "block_until_ms": {
+              "description": "How long to block and wait for the command to complete before moving it to background (in milliseconds). Defaults to 30000ms (30 seconds). Set to 0 to immediately run the command in the background. For a long-lived process, keep the command itself in the foreground and use `block_until_ms: 0`; do not combine it with `nohup`, `&`, `disown`, or another self-backgrounding wrapper, because Cursor must manage the real process. Make sure to set `block_until_ms` to higher than the command's expected runtime. Add some buffer since block_until_ms includes shell startup time; increase buffer next time based on previous elapsed times if you chose too low. E.g. if you sleep for 40s, recommended `block_until_ms` is 45s. Do not specify a 'timeout' parameter; no such param exists.",
+              "type": "number"
+            },
+            "command": {
+              "description": "The command to execute",
+              "type": "string"
+            },
+            "description": {
+              "description": "Clear, concise description of what this command does in 5-10 words. Examples:\nInput: ls\nOutput: Lists files in current directory\n\nInput: git status\nOutput: Shows working tree status\n\nInput: npm install\nOutput: Installs package dependencies\n\nInput: mkdir foo\nOutput: Creates directory 'foo'",
+              "type": "string"
+            },
+            "notify_on_output": {
+              "description": "Optional output notification config. Each terminal output which matches the pattern will notify you. ONLY set this when the user explicitly requests monitoring.",
+              "properties": {
+                "debounce_ms": {
+                  "description": "Milliseconds that must elapse between notifications. The harness enforces a minimum of 5000ms.",
+                  "type": "number"
+                },
+                "pattern": {
+                  "description": "Regex pattern matched against stdout/stderr output. Output redirected only to a file will not trigger it. Do not match all outputs.",
+                  "type": "string"
+                },
+                "reason": {
+                  "description": "5 or less words describing why you are watching for this output. The UI (only visible to user) will prefix it as 'Monitored `reason`'.",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "pattern",
+                "reason"
+              ],
+              "type": "object"
+            },
+            "request_smart_mode_approval": {
+              "description": "Set to true when immediately retrying the exact same command after Auto-review blocks it and you decide the user should approve it through the native approval card.",
+              "type": "boolean"
+            },
+            "smart_mode_block_reason": {
+              "description": "Provide the exact block reason returned by Auto-review in the prior rejection. Required when request_smart_mode_approval is true so the approval card shows the original classifier reason without re-running the classifier.",
+              "type": "string"
+            },
+            "working_directory": {
+              "description": "The absolute path to the working directory to execute the command in (defaults to current directory)",
+              "type": "string"
+            },
+            "required_permissions": {
+              "description": "Optional list of permissions to request if the command needs them. Use \"full_network\" for unrestricted network access beyond the sandbox allowlist, or \"all\" to disable the sandbox entirely.",
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": ["full_network", "all"]
+              }
+            }
+          },
+          "required": [
+            "command"
+          ]
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "StrReplace",
+        "description": "Performs exact string replacements in files.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "new_string": {
+              "description": "The text to replace it with (must be different from old_string)",
+              "type": "string"
+            },
+            "old_string": {
+              "description": "The text to replace",
+              "type": "string"
+            },
+            "path": {
+              "description": "The absolute path to the file to modify",
+              "type": "string"
+            },
+            "replace_all": {
+              "description": "Replace all occurrences of old_string (default false)",
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "path",
+            "old_string",
+            "new_string"
+          ]
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "SwitchMode",
+        "description": "Switch the interaction mode to better match the current task. Each mode is optimized for a specific type of work.\n\n## When to Switch Modes\n\nSwitch modes proactively when:\n1. **Task type changes** - User shifts from asking questions to requesting implementation, or vice versa\n2. **Complexity emerges** - What seemed simple reveals architectural decisions or multiple approaches\n3. **Debugging needed** - An error, bug, or unexpected behavior requires investigation\n4. **Planning needed** - The task is large, ambiguous, or has significant trade-offs to discuss\n5. **You're stuck** - Multiple attempts without progress suggest a different approach is needed\n\n## When NOT to Switch\n\nDo NOT switch modes for:\n- Simple, clear tasks that can be completed quickly in current mode\n- Mid-implementation when you're making good progress\n- Minor clarifying questions (just ask them)\n- Tasks where the current mode is working well\n\n## Available Modes\n\n### Agent Mode [switchable]\nDefault implementation mode with full access to all tools for making changes.\n\n**Switch to Agent when:**\n- You have a clear understanding of what to implement\n- Planning/debugging is complete and you're ready to code\n- The task is straightforward with an obvious implementation\n- You've gathered enough context and are ready to execute\n\n**Examples:**\n- After planning: \"I've designed the approach, ready to implement\" → Switch to Agent\n- After debugging: \"Found the bug, it's a null check issue\" → Switch to Agent\n- Simple task: User asks to \"Add a comment to this function\" → Stay in Agent (no switch needed)\n\n### Plan Mode [switchable]\nRead-only collaborative mode for designing implementation approaches before coding.\n\n**Switch to Plan when:**\n- The task has multiple valid approaches with significant trade-offs\n- Architectural decisions are needed (e.g., \"Add caching\" - Redis vs in-memory vs file-based)\n- The task touches many files or systems (large refactors, migrations)\n- Requirements are unclear and you need to explore before understanding scope\n- You would otherwise ask multiple clarifying questions\n\n**Examples:**\n- User: \"Add user authentication\" → Switch to Plan (session vs JWT, storage, middleware decisions)\n- User: \"Refactor the database layer\" → Switch to Plan (large scope, architectural impact)\n- User: \"Make the app faster\" → Switch to Plan (need to profile, multiple optimization strategies)\n\n### Debug Mode (cannot switch to this mode)\nSystematic troubleshooting mode for investigating bugs, failures, and unexpected behavior with runtime evidence.\n\n### Ask Mode (cannot switch to this mode)\nRead-only mode for exploring code and answering questions without making changes.\n\n## Important Notes\n\n- **Be proactive**: Don't wait for the user to ask you to switch modes\n- **Explain briefly**: When switching, briefly explain why in your `explanation` parameter\n- **Don't over-switch**: If the current mode is working, stay in it\n- **User approval required**: Mode switches require user consent",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "explanation": {
+              "description": "Optional explanation for why the mode switch is requested. This helps the user understand why you're switching modes.",
+              "type": "string"
+            },
+            "target_mode_id": {
+              "description": "The mode to switch to. Allowed values: 'plan', 'agent'.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "target_mode_id"
+          ]
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "Task",
+        "description": "Launch a new agent to autonomously handle a clearly bounded task that is suitable for delegation.\n\nThe Task tool starts a dedicated subagent. Each subagent_type has specific capabilities and available tools. When using Task, select the agent type through subagent_type.\n\nDefault behavior\n\nHandle the user's request directly by default, preferring direct tools such as Read, Glob, Grep, Shell, and MCP. A task being broad, multi-step, requiring codebase exploration, having an uncertain answer, or theoretically parallelizable is not by itself a reason to use Task.\n\nUse Task only when at least one of the following applies:\n- The user explicitly asks to start an agent, subagent, or worker, or explicitly asks for parallel delegation.\n- There is a substantial, clearly bounded workflow that can be completed independently and delegating it would materially help the current task.\n- The task genuinely requires capabilities provided by a specialized subagent_type.\n\nIf the current agent can complete the work with one or a few direct tool calls, do not use Task. Do not hand the entire user request to a subagent and simply return its result; the current agent remains responsible for understanding the user's intent, integrating results, and producing the final response.\n\nConcurrency rules\n\n- Launch one to three subagents by default, matching the number of independent workflows that genuinely need delegation.\n- Launch multiple subagents at the same time only when the user explicitly requests parallel agents or when there are two or three independent, substantial workflows.\n- When the user does not specify a number, launch at most three subagents in a single response. If the user explicitly requests more, you may launch the requested number.\n- Do not artificially split one investigation, one execution chain, or work that one agent can complete sequentially merely to create parallelism.\n- When multiple subagents should start together, issue multiple Task calls in the same message.\n\nExamples\n\n- The user asks, \"Where is the ClientError class defined?\": use Grep or Glob directly; do not use Task.\n- The user asks to read a known file: use Read directly; do not use Task.\n- The user asks to search two or three specified files: use Read, Grep, or Glob directly; do not use Task.\n- The user asks to run a query through a database API: call the relevant MCP directly; do not use Task.\n- The user broadly asks about the repository structure: investigate with direct tools first; broad scope alone does not require delegation.\n- The user explicitly asks to \"start two agents to investigate the client and server separately\": start two clearly bounded Tasks in parallel.\n\nUsage requirements\n\n- description must be a short, specific title that users can easily recognize.\n- prompt must clearly state the work the subagent should complete, its scope, constraints, and the information it should return.\n- Subagents cannot see the user's original message or the parent's previous steps, so prompt must include the context required to complete the task without copying unrelated context.\n- A subagent's response is working material for the parent. Verify it as appropriate for the task's risk instead of accepting it unconditionally.\n- Descriptions of subagent types explain their capabilities but do not override the rule that the current agent handles work directly by default. Do not call a type proactively merely because its description says it can be used proactively.\n- If the user explicitly requests parallel subagents, follow the number requested by the user.\n\nResume and interruption\n\n- Use resume with an existing agent ID to continue that agent while preserving its context.\n- If the target agent is still running, a resume request fails unless interrupt=true.\n- Set interrupt=true only when the user explicitly asks to interrupt or change a running agent.\n- resume=\"self\" forks a new subagent from the current parent's full conversation context.\n- Without resume, each Task call starts a new agent, so prompt must be self-contained.\n\nDisplay rules\n\nIf you mention an agent or subagent in a user-facing response, link it as `[Name](id)`. Do not use generic labels such as `[agent]`, `[worker]`, or `[subagent]`. When a cloud subagent edits code, link to `[Review](bc-id#changes)`, or use `[Review +A −D](bc-id#changes)` when the exact added and deleted line counts are known, replacing A and D with the real numbers. Use `[Try Live](bc-id#desktop)` only when the agent used computer use.\n\nAvailable subagent_type values\n\n- generalPurpose: handles substantial, clearly bounded general work that has already been determined suitable for delegation. Uncertain search results alone are not enough reason to use it.\n- explore: handles clearly bounded, substantial codebase exploration that has already been determined suitable for delegation. It can find files by patterns, search keywords, or map code structure. State the scope and desired depth: quick, medium, or very thorough.\n- shell: executes commands, Git operations, and other terminal work. Use it only when that work itself forms an independently delegable workflow.\n- cursor-guide: reads Cursor product documentation and answers questions about Cursor Desktop, IDE, CLI, Cloud Agents, Bugbot, and related products.\n- ci-investigator: investigates one failing PR CI check and returns a concise root-cause summary.\n- bugbot: use only when the user explicitly requests a Bugbot-style review of local code changes. description must be exactly `Bugbot`. Unless the user explicitly asks for background execution, set run_in_background=false. Use this exact prompt format: `Full Repository Path: ...\\nDiff: <branch changes|uncommitted changes|natural language>\\nChange Description: ...\\nCustom Instructions: ...`. Default to `Diff: branch changes`. Use natural language only as a last resort when a normal diff cannot be generated. This type does not support resume; each call starts a new agent.\n- security-review: use only when the user explicitly requests a security review of local code changes. description must be exactly `Security Review`. Unless the user explicitly asks for background execution, set run_in_background=false. Use this exact prompt format: `Full Repository Path: ...\\nDiff: <branch changes|uncommitted changes>\\nCustom Instructions: ...`. Default to `Diff: branch changes`. This type does not support resume; each call starts a new agent.\n- best-of-n-runner: performs tasks in isolated Git worktrees for user-requested Best-of-N parallel attempts or isolated experiments.\n- test-subagent: use only when the type's own specific instructions clearly match the current task and the task already satisfies the delegation conditions.\n\nSubagent model\n\nChoose from the following list only when the user explicitly requests a subagent model:\n- inherit\n- claude-opus-5-thinking-high\n- composer-2.5-fast\n- cursor-grok-4.5-low\n- cursor-grok-4.6-high-fast\n- gpt-5.6-sol-medium\n\nWhen the user does not explicitly specify a model, use inherit. If the requested model is not in the list, do not substitute or guess. Skip that subagent call and tell the user that the model is unavailable and which models are available. When describing the selected model to the user, do not show the kebab-case slug unless the user already used it.\n\nBackground agents\n\nBackground agents automatically send a completion notification after the current response ends.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "cloud_base_branch": {
+              "description": "Base branch for the cloud subagent's branch to start from. Default is current branch. Uses remote version of branch; uncommitted or un-pushed branches will fail. Only specify this parameter if environment equals cloud.",
+              "type": "string"
+            },
+            "description": {
+              "description": "A short, user-friendly title for the subagent. This appears in the UI as the subagent's name. Make it concrete and distinct, consider recent titles to avoid reuse. For resumed subagents which you are prompting to work on a separate task, give an updated description based on the latest work the subagent is performing. (Do not rename if the subagent is continuing work on the same high-level task.)",
+              "type": "string"
+            },
+            "environment": {
+              "description": "Optional execution environment for the subagent. Use \"local\" (default) for normal local subagents, or \"cloud\" to run the subagent as a cloud agent (i.e. in its own separate worktree). ONLY set to cloud if the user explicitly requests a cloud subagent. DO NOT set to cloud if user does not request cloud. Cloud subagents will work on their own git branch on their own VM. After subagent completion, follow user instructions on whether to merge that branch into your own branch, check it out, or neither. If you mention an agent or subagent in your response, link it with the `[Name](id)` Don't use generic label such as `[agent]`, `[worker]`, or `[subagent]`. For cloud subagents, when the agent has edited code, link to `[Review](bc-id#changes)`, or, if you know the exact added and deleted line counts, `[Review +A −D](bc-id#changes)`, replacing A and D with those counts. Never write A or D literally. Use `[Try Live](bc-id#desktop)` only when the agent used computer use.",
+              "enum": [
+                "local",
+                "cloud"
+              ],
+              "type": "string"
+            },
+            "file_attachments": {
+              "description": "Optional array of file paths to images or videos to pass to video-review subagents. Files are read and attached to the subagent's context. Use to forward relevant media (e.g. images sent by user) to subagents.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "interrupt": {
+              "description": "If true and `resume` targets a running async agent, interrupt the current run and send this prompt immediately. Only use when the user explicitly asks to interrupt or change what the running agent is doing.",
+              "type": "boolean"
+            },
+            "model": {
+              "description": "Optional model slug for this agent. If provided, it must resolve to one of the available model slugs. If omitted, the subagent uses the same model as the parent agent. Do not pass if resume field is set (prior model will be used). Use \"inherit\" unless the user explicitly requested another listed model.",
+              "type": "string"
+            },
+            "prompt": {
+              "description": "The task for the agent to perform",
+              "type": "string"
+            },
+            "resume": {
+              "description": "Optional agent ID to resume from. If provided, sends a follow-up message to the agent after it has completed. Requests to a currently running asynchronous agent fail unless `interrupt` is true; set `interrupt` to true only when you intend to interrupt the running agent. Use \"self\" to start a new agent with your own entire conversation history as a starting point (aka 'self-fork').",
+              "type": "string"
+            },
+            "run_in_background": {
+              "description": "Run the agent in the background (returns output_file path to check later). If this is false, you will be blocked until the agent completes. If the user is currently in Multitask Mode, always set this parameter to True. When true, the background subagent will send a notification when it completes.",
+              "type": "boolean"
+            },
+            "subagent_type": {
+              "description": "Subagent type to use for this task. Must be one of: generalPurpose, explore, shell, cursor-guide, ci-investigator, bugbot, security-review, best-of-n-runner, test-subagent.",
+              "enum": [
+                "generalPurpose",
+                "explore",
+                "shell",
+                "cursor-guide",
+                "ci-investigator",
+                "bugbot",
+                "security-review",
+                "best-of-n-runner",
+                "test-subagent"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "description",
+            "prompt"
+          ]
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "TodoWrite",
+        "description": "Use this tool to create and manage a structured task list for your current coding session.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "merge": {
+              "description": "Whether to merge the todos with the existing todos. If true, the todos will be merged into the existing todos based on the id field. You can leave unchanged properties undefined. If false, the new todos will replace the existing todos.",
+              "type": "boolean"
+            },
+            "todos": {
+              "description": "Array of TODO items to update or create",
+              "items": {
+                "properties": {
+                  "content": {
+                    "description": "The description/content of the TODO item",
+                    "type": "string"
+                  },
+                  "id": {
+                    "description": "Unique identifier for the TODO item",
+                    "type": "string"
+                  },
+                  "status": {
+                    "description": "The current status of the TODO item",
+                    "enum": [
+                      "pending",
+                      "in_progress",
+                      "completed",
+                      "cancelled"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id",
+                  "content",
+                  "status"
+                ],
+                "type": "object"
+              },
+              "minItems": 2,
+              "type": "array"
+            }
+          },
+          "required": [
+            "todos",
+            "merge"
+          ]
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "UpdateCurrentStep",
+        "description": "Record a concise (6 words or less), user-friendly update of the major step or phase you are working on for the parent timeline. Update when the subtask changes. Set `final_summary` and `completed_subtitle` ONCE per response as your last action before the final response. ALWAYS use in parallel with at least one other tool. ALWAYS start the update with a descriptive verb.",
+        "parameters": {
+          "properties": {
+            "completed_subtitle": {
+              "$ref": "#/properties/current_step",
+              "description": "4-6 word, past-tense, final summary of the work you have completed. Will be used as your agent subtitle in the UI. Keep the text concise, high-level, and user-friendly. Set this field ONCE per turn, as the last thing you do before your final response, at the same time that you set the final_summary field."
+            },
+            "current_step": {
+              "description": "Major step or phase you are on. Update when the subtask changes. Keep the text concise, high-level, and user-friendly.",
+              "minLength": 1,
+              "type": "string"
+            },
+            "final_summary": {
+              "$ref": "#/properties/current_step",
+              "description": "User-facing executive summary succinctly reporting on your work / responding to the user's message; write this as a concise message speaking back to the user, not as a status tag. Typically 1-3 sentences, or a brief lead-in plus bullet points when there are multiple distinct takeaways, decisions, test results, etc. When using bullets, make them pleasant and easy to scan: 2-5 bullets when possible, one useful idea per bullet, ordered by importance to the user, concise but not cryptic, and no nested bullets unless the user requested detail. Use prose instead of bullets when there is only one main takeaway. Include the most relevant takeaways for the user, as implied by the user's original request. No unnecessary details. When answering questions by the user, include the full answer that the user is seeking. Examples of what to include: full answer(s) to user's question(s), high-level root cause while debugging, status update of completed (or in-progress) work, test results for specifically requested testing, blocking questions the user must answer before you can continue, links to newly created PRs, etc. Examples of what NOT to include (unless implicitly or explicitly requested by the user): tool calls / results, code / log / shell command excerpts, long file paths, line numbers, low-level implementation details, etc. Set this field just ONCE per turn, as the last thing you do before your final response, at the same time that you set the completed_subtitle field."
+            }
+          },
+          "type": "object"
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "WebFetch",
+        "description": "Fetch content from a specified URL and return its contents in a readable markdown format. Use this tool when you need to retrieve and analyze web content.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "requestSmartModeApproval": {
+              "description": "Set to true when immediately retrying the exact same fetch after Auto-review blocks it and you decide the user should approve it through the native approval card.",
+              "type": "boolean"
+            },
+            "smartModeBlockReason": {
+              "description": "Provide the exact block reason returned by Auto-review in the prior rejection. Required when requestSmartModeApproval is true so the approval card shows the original classifier reason without re-running the classifier.",
+              "type": "string"
+            },
+            "url": {
+              "description": "The URL to fetch. The content will be converted to a readable markdown format.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "url"
+          ]
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "WebSearch",
+        "description": "Search web for real-time info on any topic; use for up-to-date facts not in training data, like current events or tech updates. Results include snippets and URLs.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "explanation": {
+              "description": "One sentence explanation as to why this tool is being used, and how it contributes to the goal.",
+              "type": "string"
+            },
+            "search_term": {
+              "description": "The search term to look up on the web. Be specific and include relevant keywords for better results. For technical queries, include version numbers or dates if relevant.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "search_term"
+          ]
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "Write",
+        "description": "Writes a file to the local filesystem.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "contents": {
+              "description": "The contents to write to the file",
+              "type": "string"
+            },
+            "path": {
+              "description": "The absolute path to the file to modify",
+              "type": "string"
+            }
+          },
+          "required": [
+            "path",
+            "contents"
+          ]
+        }
+      }
+    }
+  ],
+  "variants": {}
+}

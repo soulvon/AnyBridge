@@ -1,0 +1,4326 @@
+syntax = "proto3";
+
+package origin.v1;
+
+import "google/protobuf/struct.proto";
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/leookun/cursor-byok/cursor-proto/gen/origin/v1;originv1";
+
+// Copied from: local:origin.v1.ActorWithDisplay (var: x4e)
+message ActorWithDisplay {
+  string id = 1;
+  string kind = 2;
+  string display_name = 3;
+  string avatar_url = 4;
+}
+
+// Copied from: local:origin.v1.AddAppSigningKeyRequest (var: L1v)
+message AddAppSigningKeyRequest {
+  string app_id = 1;
+  string public_key = 2;
+}
+
+// Copied from: local:origin.v1.AddAppSigningKeyResponse (var: N1v)
+message AddAppSigningKeyResponse {
+  AppSigningKey key = 1;
+}
+
+// Copied from: local:origin.v1.AddAssigneeRequest (var: Vkv)
+message AddAssigneeRequest {
+  ChangeIdentifier change = 1;
+  oneof target {
+    string auth_id = 2;
+    string group_id = 3;
+    int64 cursor_user_id = 4;
+    int64 cursor_group_id = 5;
+  }
+}
+
+// Copied from: local:origin.v1.AddAssigneeResponse (var: Gkv)
+message AddAssigneeResponse {
+  ChangeAssignment assignment = 1;
+}
+
+// Copied from: local:origin.v1.AddCommentToThreadRequest (var: t0v)
+message AddCommentToThreadRequest {
+  ChangeIdentifier change = 1;
+  string thread_id = 2;
+  string body = 3;
+}
+
+// Copied from: local:origin.v1.AddCommentToThreadResponse (var: n0v)
+message AddCommentToThreadResponse {
+  Comment comment = 1;
+}
+
+// Copied from: local:origin.v1.AddLabelToChangeRequest (var: uxv)
+message AddLabelToChangeRequest {
+  ChangeIdentifier change = 1;
+  string label_id = 2;
+}
+
+// Copied from: local:origin.v1.AddLabelToChangeResponse (var: dxv)
+message AddLabelToChangeResponse {
+}
+
+// Copied from: local:origin.v1.AddSshPublicKeyRequest (var: fSv)
+message AddSshPublicKeyRequest {
+  string public_key = 1;
+  string name = 2;
+}
+
+// Copied from: local:origin.v1.AddSshPublicKeyResponse (var: vSv)
+message AddSshPublicKeyResponse {
+  SshPublicKey ssh_public_key = 1;
+}
+
+// Copied from: local:origin.v1.App (var: yMn)
+message App {
+  string id = 1;
+  string slug = 2;
+  string display_name = 3;
+  string webhook_url = 4;
+  bool is_public = 6;
+  string namespace_slug = 7;
+  repeated string events = 8;
+  string created_at = 10;
+  string updated_at = 11;
+  repeated string installation_redirect_uris = 12;
+  string icon_url = 13;
+  string description = 14;
+  string website_url = 15;
+  repeated string default_scopes = 16;
+}
+
+// Copied from: local:origin.v1.AppDefaultScopesReplace (var: Z1v)
+message AppDefaultScopesReplace {
+  repeated string scopes = 1;
+}
+
+// Copied from: local:origin.v1.AppDisplayMetadata (var: iYd)
+message AppDisplayMetadata {
+  string id = 1;
+  string slug = 2;
+  string display_name = 3;
+  optional string icon_url = 4;
+  optional string description = 5;
+}
+
+// Copied from: local:origin.v1.AppEventsReplace (var: Q1v)
+message AppEventsReplace {
+  repeated string events = 1;
+}
+
+// Copied from: local:origin.v1.AppInstallationRedirectUrisReplace (var: Y1v)
+message AppInstallationRedirectUrisReplace {
+  repeated string installation_redirect_uris = 1;
+}
+
+// Copied from: local:origin.v1.AppMetadata (var: aEv)
+message AppMetadata {
+  string id = 1;
+  string slug = 2;
+  string display_name = 3;
+  string namespace_slug = 4;
+  string icon_url = 5;
+  string description = 6;
+  string website_url = 7;
+  repeated string default_scopes = 8;
+  string install_redirect_uri = 9;
+}
+
+// Copied from: local:origin.v1.AppSigningKey (var: nYd)
+message AppSigningKey {
+  string kid = 1;
+  string created_at = 2;
+}
+
+// Copied from: local:origin.v1.AppStats (var: tYd)
+message AppStats {
+  uint32 installation_count = 1;
+}
+
+// Copied from: local:origin.v1.ApplyReviewRequestChangesRequest (var: Ukv)
+message ApplyReviewRequestChangesRequest {
+  ChangeIdentifier change = 1;
+  repeated ReviewRequestTarget additions = 2;
+  repeated ReviewRequestTarget removals = 3;
+}
+
+// Copied from: local:origin.v1.ApplyReviewRequestChangesResponse (var: $kv)
+message ApplyReviewRequestChangesResponse {
+}
+
+// Copied from: local:origin.v1.AtlasFreshness (var: oYd)
+enum AtlasFreshness {
+  ATLAS_FRESHNESS_UNSPECIFIED = 0;
+  ATLAS_FRESHNESS_EAGER = 1;
+  ATLAS_FRESHNESS_BALANCED = 2;
+  ATLAS_FRESHNESS_RELAXED = 3;
+  ATLAS_FRESHNESS_MANUAL = 4;
+}
+
+// Copied from: local:origin.v1.AtlasLayerStatus (var: OEv)
+message AtlasLayerStatus {
+  string layer = 1;
+  string label = 2;
+  bool enabled = 3;
+  int32 generated_nodes = 4;
+  int32 pending_nodes = 5;
+  string last_gen_at = 6;
+}
+
+// Copied from: local:origin.v1.AtlasNodeLayerContent (var: LEv)
+message AtlasNodeLayerContent {
+  string layer = 1;
+  string label = 2;
+  string content_markdown = 3;
+  string digest_json = 4;
+  string status = 5;
+  string last_gen_at = 6;
+}
+
+// Copied from: local:origin.v1.AuthPolicyAppliesTo (var: $yv)
+enum AuthPolicyAppliesTo {
+  AUTH_POLICY_APPLIES_TO_UNSPECIFIED = 0;
+  AUTH_POLICY_APPLIES_TO_REPOSITORY = 1;
+  AUTH_POLICY_APPLIES_TO_NAMESPACE = 2;
+}
+
+// Copied from: local:origin.v1.AuthPolicyStatement (var: jyv)
+message AuthPolicyStatement {
+  string resource_kind = 1;
+  string action = 2;
+}
+
+// Copied from: local:origin.v1.AuthPolicySummary (var: wQd)
+message AuthPolicySummary {
+  string name = 1;
+  string display_name = 2;
+  string description = 3;
+  AuthPolicyAppliesTo applies_to = 4;
+  bool is_origin_managed = 5;
+  bool is_custom = 6;
+  repeated AuthPolicyStatement statements = 7;
+  int32 user_facing_scope_count = 8;
+}
+
+// Copied from: local:origin.v1.AuthorizedNamespace (var: Uyv)
+message AuthorizedNamespace {
+  OriginNamespace namespace = 1;
+  AuthorizedNamespaceAccessReason access_reason = 2;
+}
+
+// Copied from: local:origin.v1.AuthorizedNamespaceAccessReason (var: G_v)
+enum AuthorizedNamespaceAccessReason {
+  AUTHORIZED_NAMESPACE_ACCESS_REASON_UNSPECIFIED = 0;
+  AUTHORIZED_NAMESPACE_ACCESS_REASON_TEAM_OWNERSHIP = 1;
+  AUTHORIZED_NAMESPACE_ACCESS_REASON_USER_OWNERSHIP = 2;
+}
+
+// Copied from: local:origin.v1.BatchGetChangesRequest (var: uCv)
+message BatchGetChangesRequest {
+  ClientRepoIdentifier identifier = 1;
+  repeated uint64 change_numbers = 2;
+  repeated string head_refs = 3;
+}
+
+// Copied from: local:origin.v1.BatchGetChangesResponse (var: dCv)
+message BatchGetChangesResponse {
+  repeated ChangeWithLatestVersion changes = 1;
+}
+
+// Copied from: git_forge.v1.BlameChunk (var: GSv)
+message BlameChunk {
+  repeated ShortCommit commits = 1;
+  repeated BlameLineRange line_ranges = 2;
+}
+
+// Copied from: git_forge.v1.BlameLineRange (var: VSv)
+message BlameLineRange {
+  bytes commit_sha = 1;
+  uint32 start_in_blamed_file = 2;
+  uint32 len = 3;
+}
+
+// Copied from: local:origin.v1.BuildkiteBranchFilters (var: fEv)
+message BuildkiteBranchFilters {
+  repeated string patterns = 1;
+}
+
+// Copied from: local:origin.v1.BuildkiteTrigger (var: Mpo)
+message BuildkiteTrigger {
+  string id = 1;
+  ClientRepoIdentifier repo = 2;
+  string buildkite_org_slug = 3;
+  string pipeline_slug = 4;
+  bool enabled = 5;
+  bool trigger_on_prs = 6;
+  repeated string branch_filters = 7;
+}
+
+// Copied from: local:origin.v1.CanMergeClientRequest (var: Nwv)
+message CanMergeClientRequest {
+  ClientRepoIdentifier identifier = 1;
+  string ours = 2;
+  string theirs = 3;
+}
+
+// Copied from: git_forge.v1.CanMergeResponse (var: LSv)
+message CanMergeResponse {
+  bool can_merge_without_conflicts = 1;
+  optional bytes merged_tree_sha = 2;
+  repeated string conflicted_paths = 3;
+}
+
+// Copied from: local:origin.v1.Change (var: Vce)
+message Change {
+  string id = 1;
+  string repo_uuid = 2;
+  uint64 number = 3;
+  string title = 4;
+  string description = 5;
+  string head_ref = 6;
+  string base_ref = 7;
+  string author_id = 8;
+  ChangeStatus status = 9;
+  google.protobuf.Timestamp created_at = 10;
+  google.protobuf.Timestamp updated_at = 11;
+  optional google.protobuf.Timestamp merged_at = 12;
+  optional google.protobuf.Timestamp closed_at = 13;
+  optional string parent_change_id = 14;
+  optional string stack_id = 15;
+  optional string merge_commit_sha = 16;
+  string author_kind = 17;
+  string author_display_name = 18;
+  string author_avatar_url = 19;
+  optional string merged_by_id = 20;
+  optional string merged_by_kind = 21;
+  ActorWithDisplay author = 22;
+  ActorWithDisplay merged_by = 23;
+}
+
+// Copied from: local:origin.v1.ChangeAssignment (var: bMn)
+message ChangeAssignment {
+  string id = 1;
+  string change_id = 2;
+  ChangeAssignmentKind kind = 3;
+  string assigned_auth_id = 4;
+  string assigned_group_id = 5;
+  ChangeAssignmentCreatedVia created_via = 6;
+  string created_by_auth_id = 7;
+  google.protobuf.Timestamp created_at = 8;
+  google.protobuf.Timestamp updated_at = 9;
+  int64 cursor_user_id = 10;
+  int64 cursor_group_id = 11;
+  OriginReviewerCandidateUser assigned_user = 12;
+  OriginReviewerCandidateGroup assigned_group = 13;
+}
+
+// Copied from: local:origin.v1.ChangeAssignmentCreatedVia (var: LQd)
+enum ChangeAssignmentCreatedVia {
+  CHANGE_ASSIGNMENT_CREATED_VIA_UNSPECIFIED = 0;
+  CHANGE_ASSIGNMENT_CREATED_VIA_HUMAN = 1;
+  CHANGE_ASSIGNMENT_CREATED_VIA_CODEOWNERS = 2;
+  CHANGE_ASSIGNMENT_CREATED_VIA_SYSTEM = 3;
+}
+
+// Copied from: local:origin.v1.ChangeAssignmentKind (var: PQd)
+enum ChangeAssignmentKind {
+  CHANGE_ASSIGNMENT_KIND_UNSPECIFIED = 0;
+  CHANGE_ASSIGNMENT_KIND_REVIEW_REQUEST = 1;
+  CHANGE_ASSIGNMENT_KIND_ASSIGNEE = 2;
+}
+
+// Copied from: local:origin.v1.ChangeIdentifier (var: Zf)
+message ChangeIdentifier {
+  ClientRepoIdentifier identifier = 1;
+  uint64 change_number = 2;
+}
+
+// Copied from: git_forge.v1.ChangeKind (var: TQd)
+enum ChangeKind {
+  CHANGE_KIND_UNSPECIFIED = 0;
+  CHANGE_KIND_ADDED = 1;
+  CHANGE_KIND_DELETED = 2;
+  CHANGE_KIND_MODIFIED = 3;
+  CHANGE_KIND_RENAMED = 4;
+  CHANGE_KIND_COPIED = 5;
+}
+
+// Copied from: local:origin.v1.ChangeLabel (var: Zkv)
+message ChangeLabel {
+  string id = 1;
+  string name = 2;
+  string color = 3;
+  optional string description = 4;
+}
+
+// Copied from: local:origin.v1.ChangeMergeWhenReady (var: HQd)
+message ChangeMergeWhenReady {
+  string id = 1;
+  string change_id = 2;
+  string repo_uuid = 3;
+  uint64 change_number = 4;
+  string enabling_user_id = 5;
+  string status = 6;
+  string source = 7;
+  string trunk_branch = 8;
+  optional google.protobuf.Timestamp lock_expires_at = 9;
+  int32 consecutive_failed_attempts = 10;
+  bool dev = 11;
+  optional string repo_org = 12;
+  optional string repo_name = 13;
+}
+
+// Copied from: local:origin.v1.ChangeStackPageItem (var: I1v)
+message ChangeStackPageItem {
+  Change change = 1;
+  repeated Version versions = 2;
+  repeated ChangeAssignment assignments = 3;
+  repeated Review reviews = 4;
+  GetChangesetMergeabilityResponse mergeability = 5;
+  int32 total_thread_count = 6;
+  int32 unresolved_thread_count = 7;
+}
+
+// Copied from: local:origin.v1.ChangeStatus (var: xpo)
+enum ChangeStatus {
+  CHANGE_STATUS_UNSPECIFIED = 0;
+  CHANGE_STATUS_DRAFT = 1;
+  CHANGE_STATUS_OPEN = 2;
+  CHANGE_STATUS_MERGED = 3;
+  CHANGE_STATUS_CLOSED = 4;
+}
+
+// Copied from: local:origin.v1.ChangeSyncTarget (var: c_t)
+message ChangeSyncTarget {
+  ClientRepoIdentifier identifier = 1;
+  uint64 change_number = 2;
+}
+
+// Copied from: local:origin.v1.ChangeWithLatestVersion (var: BQd)
+message ChangeWithLatestVersion {
+  Change change = 1;
+  optional Version latest_version = 2;
+}
+
+// Copied from: local:origin.v1.ChangesetMergeBlocker (var: JQd)
+message ChangesetMergeBlocker {
+  string kind = 1;
+  optional ChangesetRuleEvaluation rule_failure = 2;
+  optional string merge_ref_sha = 3;
+  optional string base_tip_sha_at_computation = 4;
+  optional string current_base_tip_sha = 5;
+  optional string ruleset_id = 6;
+  optional string rule_id = 7;
+  optional string enforcement = 8;
+  optional string message = 9;
+  optional uint64 change_number = 10;
+  optional string merge_commit_oid = 11;
+  repeated uint64 merged_change_numbers = 12;
+  repeated uint64 open_change_numbers = 13;
+  optional uint64 top_change_number = 14;
+  optional uint64 downstack_change_number = 15;
+  optional string top_head_sha = 16;
+  optional string downstack_head_sha = 17;
+  optional string compare_status = 18;
+  optional string topology_reason = 19;
+  optional string root_base_ref = 20;
+  repeated string conflicted_paths = 21;
+  optional bool conflict_inherited_from_downstack = 22;
+  optional string recorded_base_sha = 23;
+  optional string target_base_ref = 24;
+}
+
+// Copied from: local:origin.v1.ChangesetMergeability (var: ZQd)
+message ChangesetMergeability {
+  string verdict = 1;
+  repeated ChangesetRuleEvaluation evaluations = 2;
+  repeated ChangesetMergeBlocker blockers = 3;
+  repeated ChangesetRuleConfigurationDiagnostic configuration_diagnostics = 4;
+}
+
+// Copied from: local:origin.v1.ChangesetRuleActionableSignal (var: o1v)
+message ChangesetRuleActionableSignal {
+  string kind = 1;
+  repeated string check_names = 2;
+  optional int32 required_count = 3;
+  optional int32 actual_count = 4;
+  repeated string owner_labels = 5;
+  repeated string paths = 6;
+}
+
+// Copied from: local:origin.v1.ChangesetRuleConfigurationDiagnostic (var: a1v)
+message ChangesetRuleConfigurationDiagnostic {
+  string kind = 1;
+  string severity = 2;
+  string message = 3;
+  optional string ruleset_id = 4;
+  optional string rule_id = 5;
+  optional string bypass_actor_id = 6;
+  optional string enforcement = 7;
+}
+
+// Copied from: local:origin.v1.ChangesetRuleEvaluation (var: XQd)
+message ChangesetRuleEvaluation {
+  string rule_type = 1;
+  string ruleset_id = 2;
+  string ruleset_name = 3;
+  string rule_id = 4;
+  string enforcement = 5;
+  string result = 6;
+  string message = 7;
+  string category = 8;
+  repeated ChangesetRuleViolation violations = 9;
+}
+
+// Copied from: local:origin.v1.ChangesetRuleViolation (var: s1v)
+message ChangesetRuleViolation {
+  string rule_type = 1;
+  string detail = 2;
+  optional string remediation = 3;
+  optional ChangesetRuleActionableSignal actionable_signal = 4;
+}
+
+// Copied from: local:origin.v1.CheckChangeCreationAccessRequest (var: KCv)
+message CheckChangeCreationAccessRequest {
+  ClientRepoIdentifier identifier = 1;
+}
+
+// Copied from: local:origin.v1.CheckChangeCreationAccessResponse (var: QCv)
+message CheckChangeCreationAccessResponse {
+}
+
+// Copied from: local:origin.v1.CheckRunActor (var: GQd)
+message CheckRunActor {
+  string kind = 1;
+  string id = 2;
+  string display_name = 3;
+  string slug = 4;
+  string icon_url = 5;
+}
+
+// Copied from: local:origin.v1.CheckRunConclusion (var: VQd)
+enum CheckRunConclusion {
+  CHECK_RUN_CONCLUSION_UNSPECIFIED = 0;
+  success = 1;
+  failure = 2;
+  neutral = 3;
+  cancelled = 4;
+  skipped = 5;
+  timed_out = 6;
+  action_required = 7;
+  stale = 8;
+}
+
+// Copied from: local:origin.v1.CheckRunGroup (var: QQd)
+message CheckRunGroup {
+  string id = 1;
+  string name = 2;
+  optional string app_name = 3;
+  optional string details_url = 4;
+  repeated CheckRunStatus check_runs = 5;
+  CheckRunActor actor = 6;
+  string external_id = 7;
+}
+
+// Copied from: local:origin.v1.CheckRunGroupInput (var: J0v)
+message CheckRunGroupInput {
+  string key = 1;
+  string name = 2;
+  string external_id = 3;
+  optional string details_url = 4;
+}
+
+// Copied from: local:origin.v1.CheckRunInput (var: e1v)
+message CheckRunInput {
+  string key = 1;
+  string name = 2;
+  string external_id = 3;
+  CheckRunLifecycleStatus status = 4;
+  optional CheckRunConclusion conclusion = 5;
+  int64 external_updated_at_unix_ms = 6;
+  optional int64 started_at_unix_ms = 7;
+  optional int64 completed_at_unix_ms = 8;
+  optional string details_url = 10;
+  optional CheckRunOutput output = 11;
+}
+
+// Copied from: local:origin.v1.CheckRunLifecycleStatus (var: zQd)
+enum CheckRunLifecycleStatus {
+  CHECK_RUN_LIFECYCLE_STATUS_UNSPECIFIED = 0;
+  queued = 1;
+  in_progress = 2;
+  completed = 3;
+}
+
+// Copied from: local:origin.v1.CheckRunOutput (var: qQd)
+message CheckRunOutput {
+  optional string title = 1;
+  optional string summary = 2;
+  optional string text = 3;
+}
+
+// Copied from: local:origin.v1.CheckRunStatus (var: KQd)
+message CheckRunStatus {
+  string id = 1;
+  string name = 2;
+  optional string details_url = 4;
+  CheckRunLifecycleStatus status = 5;
+  optional CheckRunConclusion conclusion = 6;
+  optional int64 started_at_unix_ms = 7;
+  optional int64 completed_at_unix_ms = 8;
+  string external_id = 9;
+  optional bool required = 10;
+  optional CheckRunOutput output = 11;
+}
+
+// Copied from: local:origin.v1.CiState (var: Z0v)
+message CiState {
+  repeated CheckRunGroup check_run_groups = 1;
+}
+
+// Copied from: local:origin.v1.ClaimInboundMirrorGithubMergeOperationRequest (var: g1v)
+message ClaimInboundMirrorGithubMergeOperationRequest {
+  ChangeIdentifier change = 1;
+  string requested_merge_method = 2;
+  optional string commit_title = 3;
+  optional string commit_message = 4;
+  string initiated_by_user_id = 5;
+  bool include_stack = 6;
+}
+
+// Copied from: local:origin.v1.ClaimInboundMirrorGithubMergeOperationResponse (var: f1v)
+message ClaimInboundMirrorGithubMergeOperationResponse {
+  InboundMirrorGithubMergeOperation operation = 1;
+  bool lease_acquired = 2;
+  InboundMirrorMergeStack merge_stack = 3;
+}
+
+// Copied from: local:origin.v1.ClientRepoIdentifier (var: Fd)
+message ClientRepoIdentifier {
+  string org = 1;
+  string name = 2;
+}
+
+// Copied from: local:origin.v1.CloseReviewRequestRequest (var: Hkv)
+message CloseReviewRequestRequest {
+  ChangeIdentifier change = 1;
+  oneof target {
+    string auth_id = 2;
+    string group_id = 3;
+    int64 cursor_user_id = 4;
+    int64 cursor_group_id = 5;
+  }
+}
+
+// Copied from: local:origin.v1.CloseReviewRequestResponse (var: zkv)
+message CloseReviewRequestResponse {
+}
+
+// Copied from: local:origin.v1.CodeownersOwners (var: fwv)
+message CodeownersOwners {
+  repeated string owners = 1;
+}
+
+// Copied from: local:origin.v1.CollectedFileDiff (var: zwv)
+message CollectedFileDiff {
+  string path = 1;
+  optional string old_path = 2;
+  ChangeKind change_kind = 3;
+  bool is_binary = 4;
+  string patch = 5;
+  int32 additions = 6;
+  int32 deletions = 7;
+  optional bool is_generated = 8;
+}
+
+// Copied from: local:origin.v1.Comment (var: vMn)
+message Comment {
+  string id = 1;
+  string change_id = 2;
+  string version_id = 3;
+  uint64 version_number = 4;
+  string author_id = 5;
+  string body = 6;
+  google.protobuf.Timestamp created_at = 7;
+  google.protobuf.Timestamp updated_at = 8;
+  string thread_id = 9;
+  string author_kind = 10;
+  string author_display_name = 11;
+  string author_avatar_url = 12;
+  repeated CommentReactionGroup reaction_groups = 13;
+  ActorWithDisplay author = 14;
+}
+
+// Copied from: local:origin.v1.CommentReaction (var: Skv)
+message CommentReaction {
+  string emoji = 1;
+  string reactor_id = 2;
+  string reactor_kind = 3;
+  string reactor_display_name = 4;
+  string reactor_avatar_url = 5;
+  bool viewer_is_reactor = 6;
+  ActorWithDisplay reactor = 7;
+}
+
+// Copied from: local:origin.v1.CommentReactionGroup (var: ykv)
+message CommentReactionGroup {
+  string emoji = 1;
+  uint32 count = 2;
+  bool viewer_has_reacted = 3;
+}
+
+// Copied from: local:origin.v1.CommentSide (var: jQd)
+enum CommentSide {
+  COMMENT_SIDE_UNSPECIFIED = 0;
+  COMMENT_SIDE_LEFT = 1;
+  COMMENT_SIDE_RIGHT = 2;
+}
+
+// Copied from: local:origin.v1.CommentThread (var: lzi)
+message CommentThread {
+  string id = 1;
+  string change_id = 2;
+  string version_id = 3;
+  uint64 version_number = 4;
+  string review_id = 5;
+  google.protobuf.Timestamp resolved_at = 6;
+  string resolved_by_id = 7;
+  string path = 8;
+  CommentSide side = 9;
+  uint32 start_line = 10;
+  uint32 end_line = 11;
+  string external_id = 12;
+  google.protobuf.Timestamp created_at = 13;
+  google.protobuf.Timestamp updated_at = 14;
+  repeated Comment comments = 15;
+  string resolved_by_kind = 16;
+  string resolved_by_display_name = 17;
+  string resolved_by_avatar_url = 18;
+  ActorWithDisplay resolved_by = 19;
+  uint64 ported_to_version_number = 20;
+  CommentThreadPortingStatus porting_status = 21;
+  string ported_path = 22;
+  uint32 ported_start_line = 23;
+  uint32 ported_end_line = 24;
+}
+
+// Copied from: local:origin.v1.CommentThreadPortingStatus (var: YCv)
+enum CommentThreadPortingStatus {
+  COMMENT_THREAD_PORTING_STATUS_UNSPECIFIED = 0;
+  COMMENT_THREAD_PORTING_STATUS_PORTED = 1;
+  COMMENT_THREAD_PORTING_STATUS_ORPHANED = 2;
+}
+
+// Copied from: git_forge.v1.Commit (var: azi)
+message Commit {
+  string sha = 1;
+  string message = 2;
+  Signature author = 3;
+  Signature committer = 4;
+  repeated string parent_shas = 5;
+  string tree_sha = 7;
+  optional string change_id = 8;
+}
+
+// Copied from: local:origin.v1.CommitActorDisplay (var: FQd)
+message CommitActorDisplay {
+  string display_name = 1;
+  string avatar_url = 2;
+}
+
+// Copied from: local:origin.v1.CommitActorDisplays (var: oCv)
+message CommitActorDisplays {
+  CommitActorDisplay author = 1;
+  CommitActorDisplay committer = 2;
+}
+
+// Copied from: git_forge.v1.CommitDiffChunk (var: rwv)
+message CommitDiffChunk {
+  optional CommitDiffHeader header = 1;
+  repeated DiffEntry entries = 3;
+}
+
+// Copied from: git_forge.v1.CommitDiffHeader (var: iwv)
+message CommitDiffHeader {
+  Commit commit = 1;
+  optional string base_commit_sha = 2;
+  CommitDiffStats stats = 3;
+  bool has_more = 5;
+  optional string next_page_cursor = 6;
+  repeated DiffEntry entries = 7;
+}
+
+// Copied from: git_forge.v1.CommitDiffStats (var: owv)
+message CommitDiffStats {
+  uint32 files_changed = 1;
+  int32 additions = 2;
+  int32 deletions = 3;
+}
+
+// Copied from: git_forge.v1.CommitFileDelete (var: OSv)
+message CommitFileDelete {
+}
+
+// Copied from: git_forge.v1.CommitFileMode (var: kSv)
+enum CommitFileMode {
+  COMMIT_FILE_MODE_UNSPECIFIED = 0;
+  COMMIT_FILE_MODE_REGULAR = 1;
+  COMMIT_FILE_MODE_EXECUTABLE = 2;
+  COMMIT_FILE_MODE_SYMLINK = 3;
+}
+
+// Copied from: git_forge.v1.CommitFileOperation (var: FSv)
+message CommitFileOperation {
+  string path = 1;
+  oneof operation {
+    CommitFileUpsert upsert = 2;
+    CommitFileDelete delete = 3;
+  }
+}
+
+// Copied from: git_forge.v1.CommitFileUpsert (var: NSv)
+message CommitFileUpsert {
+  bytes content = 1;
+  CommitFileMode mode = 2;
+}
+
+// Copied from: local:origin.v1.CompareCommitsClientRequest (var: Owv)
+message CompareCommitsClientRequest {
+  ClientRepoIdentifier identifier = 1;
+  string base_revision = 2;
+  string head_revision = 3;
+}
+
+// Copied from: git_forge.v1.CompareCommitsResponse (var: PSv)
+message CompareCommitsResponse {
+  CompareCommitsStatus status = 1;
+  int32 ahead_by = 2;
+  int32 behind_by = 3;
+  string base_commit_sha = 4;
+  string head_commit_sha = 5;
+  string merge_base_commit_sha = 6;
+}
+
+// Copied from: git_forge.v1.CompareCommitsStatus (var: wSv)
+enum CompareCommitsStatus {
+  COMPARE_COMMITS_STATUS_UNSPECIFIED = 0;
+  COMPARE_COMMITS_STATUS_IDENTICAL = 1;
+  COMPARE_COMMITS_STATUS_AHEAD = 2;
+  COMPARE_COMMITS_STATUS_BEHIND = 3;
+  COMPARE_COMMITS_STATUS_DIVERGED = 4;
+}
+
+// Copied from: local:origin.v1.CreateAppRequest (var: R1v)
+message CreateAppRequest {
+  string slug = 1;
+  string display_name = 2;
+  string webhook_url = 3;
+  string namespace_slug = 6;
+  string public_key = 7;
+  repeated string events = 8;
+  repeated string installation_redirect_uris = 10;
+  string description = 11;
+  string website_url = 12;
+  repeated string default_scopes = 13;
+}
+
+// Copied from: local:origin.v1.CreateAppResponse (var: D1v)
+message CreateAppResponse {
+  App app = 1;
+}
+
+// Copied from: local:origin.v1.CreateChangeRequest (var: Jwv)
+message CreateChangeRequest {
+  ClientRepoIdentifier identifier = 1;
+  string title = 2;
+  string description = 3;
+  string head_ref = 4;
+  string base_ref = 5;
+  ChangeStatus status = 6;
+  ChangeIdentifier parent_change = 7;
+}
+
+// Copied from: local:origin.v1.CreateChangeResponse (var: ekv)
+message CreateChangeResponse {
+  Change change = 1;
+  Version initial_version = 2;
+}
+
+// Copied from: local:origin.v1.CreateCommentRequest (var: Rkv)
+message CreateCommentRequest {
+  ChangeIdentifier change = 1;
+  string body = 2;
+  uint64 version_number = 3;
+}
+
+// Copied from: local:origin.v1.CreateCommentResponse (var: Dkv)
+message CreateCommentResponse {
+  Comment comment = 1;
+}
+
+// Copied from: local:origin.v1.CreateCommentThreadRequest (var: ZCv)
+message CreateCommentThreadRequest {
+  ChangeIdentifier change = 1;
+  string body = 2;
+  uint64 version_number = 3;
+  string path = 4;
+  CommentSide side = 5;
+  uint32 start_line = 6;
+  uint32 end_line = 7;
+  string review_id = 8;
+}
+
+// Copied from: local:origin.v1.CreateCommentThreadResponse (var: XCv)
+message CreateCommentThreadResponse {
+  CommentThread thread = 1;
+}
+
+// Copied from: local:origin.v1.CreateCommitFromFilesClientRequest (var: $wv)
+message CreateCommitFromFilesClientRequest {
+  ClientRepoIdentifier identifier = 1;
+  string branch = 2;
+  optional string expected_head_sha = 3;
+  string message = 4;
+  Signature author = 5;
+  optional Signature committer = 6;
+  repeated CommitFileOperation files = 7;
+}
+
+// Copied from: local:origin.v1.CreateCommitFromFilesClientResponse (var: jwv)
+message CreateCommitFromFilesClientResponse {
+  string commit_sha = 1;
+  string tree_sha = 2;
+  string old_head_sha = 3;
+  bool reverse_mirror_push_failed = 4;
+}
+
+// Copied from: local:origin.v1.CreateGithubPrForReverseMirroredRepoRequest (var: Wwv)
+message CreateGithubPrForReverseMirroredRepoRequest {
+  ClientRepoIdentifier identifier = 1;
+  string head_ref = 2;
+  string title = 3;
+  string description = 4;
+}
+
+// Copied from: local:origin.v1.CreateGithubPrForReverseMirroredRepoResponse (var: Hwv)
+message CreateGithubPrForReverseMirroredRepoResponse {
+  string pr_url = 1;
+  int32 pr_number = 2;
+  bool created = 3;
+}
+
+// Copied from: local:origin.v1.CreateInstallationRequest (var: W1v)
+message CreateInstallationRequest {
+  string app_id = 1;
+  string namespace_slug = 2;
+  repeated string repo_ids = 3;
+  repeated string requested_scopes = 4;
+  optional string state = 5;
+}
+
+// Copied from: local:origin.v1.CreateInstallationResponse (var: H1v)
+message CreateInstallationResponse {
+  Installation installation = 1;
+  string installation_receipt = 2;
+}
+
+// Copied from: local:origin.v1.CreateLabelRequest (var: exv)
+message CreateLabelRequest {
+  ClientRepoIdentifier repo = 1;
+  string name = 2;
+  string color = 3;
+  optional string description = 4;
+}
+
+// Copied from: local:origin.v1.CreateLabelResponse (var: txv)
+message CreateLabelResponse {
+  Label label = 1;
+}
+
+// Copied from: local:origin.v1.CreateMergeCommitBypassingChecksClientRequest (var: Bwv)
+message CreateMergeCommitBypassingChecksClientRequest {
+  ClientRepoIdentifier identifier = 1;
+  optional string ours_sha = 2;
+  optional string theirs_sha = 3;
+  string ours_ref = 4;
+  string theirs_ref = 5;
+  string message = 6;
+  Signature author = 7;
+  Signature committer = 8;
+  MergeMode mode = 9;
+}
+
+// Copied from: local:origin.v1.CreateMergeCommitBypassingChecksResponse (var: Uwv)
+message CreateMergeCommitBypassingChecksResponse {
+  string merge_commit_sha = 1;
+  string wal_entry_key = 2;
+  bool reverse_mirror_push_failed = 3;
+}
+
+// Copied from: local:origin.v1.CreateMirroredRepoRequest (var: X_v)
+message CreateMirroredRepoRequest {
+  GithubRepoIdentifier github_source = 1;
+  string target_namespace = 2;
+  optional string forge_environment = 3;
+  optional RepoKind repo_kind = 4;
+  optional int64 github_installation_id = 6;
+}
+
+// Copied from: local:origin.v1.CreateOriginNamespaceRequest (var: Eyv)
+message CreateOriginNamespaceRequest {
+  OriginNamespaceOwnerType owner_type = 1;
+  int64 owner_entity_id = 2;
+  string namespace = 3;
+}
+
+// Copied from: local:origin.v1.CreateOriginNamespaceResponse (var: xyv)
+message CreateOriginNamespaceResponse {
+  OriginNamespace origin_namespace = 1;
+}
+
+// Copied from: local:origin.v1.CreateRepoRequest (var: bQd)
+message CreateRepoRequest {
+  ClientRepoIdentifier identifier = 1;
+  optional string default_branch = 2;
+  optional string forge_environment = 6;
+  optional RepoKind repo_kind = 7;
+  optional RepoVisibility visibility = 8;
+}
+
+// Copied from: local:origin.v1.CreateRepoResponse (var: Cpo)
+message CreateRepoResponse {
+  Repo repository = 3;
+}
+
+// Copied from: local:origin.v1.CreateReviewRequest (var: wkv)
+message CreateReviewRequest {
+  ChangeIdentifier change = 1;
+  ReviewVerdict verdict = 2;
+  string body = 3;
+  uint64 version_number = 4;
+}
+
+// Copied from: local:origin.v1.CreateReviewResponse (var: kkv)
+message CreateReviewResponse {
+  Review review = 1;
+}
+
+// Copied from: local:origin.v1.DeleteBuildkiteTriggerRequest (var: kEv)
+message DeleteBuildkiteTriggerRequest {
+  ClientRepoIdentifier repo = 1;
+  string trigger_id = 2;
+}
+
+// Copied from: local:origin.v1.DeleteBuildkiteTriggerResponse (var: CEv)
+message DeleteBuildkiteTriggerResponse {
+  string trigger_id = 1;
+}
+
+// Copied from: local:origin.v1.DeleteChangeHeadBranchRequest (var: akv)
+message DeleteChangeHeadBranchRequest {
+  ChangeIdentifier change = 1;
+}
+
+// Copied from: local:origin.v1.DeleteChangeHeadBranchResponse (var: ckv)
+message DeleteChangeHeadBranchResponse {
+  bool already_deleted = 1;
+}
+
+// Copied from: local:origin.v1.DeleteCommentRequest (var: l0v)
+message DeleteCommentRequest {
+  string comment_id = 1;
+}
+
+// Copied from: local:origin.v1.DeleteCommentResponse (var: u0v)
+message DeleteCommentResponse {
+}
+
+// Copied from: local:origin.v1.DeleteInstallationRequest (var: tEv)
+message DeleteInstallationRequest {
+  string id = 1;
+}
+
+// Copied from: local:origin.v1.DeleteInstallationResponse (var: nEv)
+message DeleteInstallationResponse {
+}
+
+// Copied from: local:origin.v1.DeleteLabelRequest (var: rxv)
+message DeleteLabelRequest {
+  ClientRepoIdentifier repo = 1;
+  string label_id = 2;
+}
+
+// Copied from: local:origin.v1.DeleteLabelResponse (var: sxv)
+message DeleteLabelResponse {
+}
+
+// Copied from: local:origin.v1.DeleteMirroredRepoRequest (var: dyv)
+message DeleteMirroredRepoRequest {
+  ClientRepoIdentifier identifier = 1;
+}
+
+// Copied from: local:origin.v1.DeleteMirroredRepoResponse (var: hyv)
+message DeleteMirroredRepoResponse {
+  string repo_uuid = 1;
+}
+
+// Copied from: local:origin.v1.DeleteRepoClientRequest (var: lyv)
+message DeleteRepoClientRequest {
+  ClientRepoIdentifier identifier = 1;
+}
+
+// Copied from: local:origin.v1.DeleteRepoClientResponse (var: uyv)
+message DeleteRepoClientResponse {
+  string repo_uuid = 1;
+}
+
+// Copied from: local:origin.v1.DeleteRulesetRequest (var: XEv)
+message DeleteRulesetRequest {
+  ClientRepoIdentifier repo = 1;
+  string ruleset_id = 2;
+}
+
+// Copied from: local:origin.v1.DeleteRulesetResponse (var: JEv)
+message DeleteRulesetResponse {
+  string ruleset_id = 1;
+}
+
+// Copied from: local:origin.v1.DeleteSshPublicKeyRequest (var: ySv)
+message DeleteSshPublicKeyRequest {
+  string id = 1;
+}
+
+// Copied from: local:origin.v1.DeleteSshPublicKeyResponse (var: SSv)
+message DeleteSshPublicKeyResponse {
+}
+
+// Copied from: local:origin.v1.DeleteVercelTriggerRequest (var: DEv)
+message DeleteVercelTriggerRequest {
+  ClientRepoIdentifier repo = 1;
+  string trigger_id = 2;
+}
+
+// Copied from: local:origin.v1.DeleteVercelTriggerResponse (var: MEv)
+message DeleteVercelTriggerResponse {
+  string trigger_id = 1;
+}
+
+// Copied from: local:origin.v1.DetachRepoMirrorRequest (var: tyv)
+message DetachRepoMirrorRequest {
+  ClientRepoIdentifier identifier = 1;
+}
+
+// Copied from: local:origin.v1.DetachRepoMirrorResponse (var: nyv)
+message DetachRepoMirrorResponse {
+}
+
+// Copied from: git_forge.v1.DiffEntry (var: czi)
+message DiffEntry {
+  string path = 1;
+  optional string old_path = 2;
+  ChangeKind change_kind = 3;
+  optional FileMode old_mode = 4;
+  optional FileMode new_mode = 5;
+  optional string old_sha = 6;
+  optional string new_sha = 7;
+  optional FileStats stats = 8;
+  optional string patch = 9;
+  optional bool is_generated = 10;
+}
+
+// Copied from: git_forge.v1.DiffHeader (var: swv)
+message DiffHeader {
+  string merge_base_commit_sha = 1;
+  bool has_more = 4;
+  optional string next_page_cursor = 5;
+  repeated DiffEntry entries = 6;
+}
+
+// Copied from: git_forge.v1.DirectoryContent (var: BSv)
+message DirectoryContent {
+  repeated RepoContentEntry entries = 1;
+  string sha = 2;
+}
+
+// Copied from: local:origin.v1.DisableChangeMergeWhenReadyRequest (var: U0v)
+message DisableChangeMergeWhenReadyRequest {
+  ChangeIdentifier change = 1;
+}
+
+// Copied from: local:origin.v1.DisableChangeMergeWhenReadyResponse (var: $0v)
+message DisableChangeMergeWhenReadyResponse {
+}
+
+// Copied from: local:origin.v1.DiscardPendingReviewRequest (var: zCv)
+message DiscardPendingReviewRequest {
+  ChangeIdentifier change = 1;
+  string review_id = 2;
+}
+
+// Copied from: local:origin.v1.DiscardPendingReviewResponse (var: VCv)
+message DiscardPendingReviewResponse {
+}
+
+// Copied from: local:origin.v1.DismissReviewRequest (var: xkv)
+message DismissReviewRequest {
+  ChangeIdentifier change = 1;
+  string review_id = 2;
+  string reason = 3;
+}
+
+// Copied from: local:origin.v1.DismissReviewResponse (var: Tkv)
+message DismissReviewResponse {
+  Review review = 1;
+}
+
+// Copied from: local:origin.v1.DoesNamespaceExistForTeamRequest (var: Nyv)
+message DoesNamespaceExistForTeamRequest {
+  int64 team_id = 1;
+}
+
+// Copied from: local:origin.v1.DoesNamespaceExistForTeamResponse (var: Oyv)
+message DoesNamespaceExistForTeamResponse {
+  bool exists = 1;
+}
+
+// Copied from: local:origin.v1.EnableChangeMergeWhenReadyRequest (var: N0v)
+message EnableChangeMergeWhenReadyRequest {
+  ChangeIdentifier change = 1;
+  string trunk_branch = 2;
+  optional string source = 3;
+  optional bool dev = 4;
+}
+
+// Copied from: local:origin.v1.EnableChangeMergeWhenReadyResponse (var: O0v)
+message EnableChangeMergeWhenReadyResponse {
+  ChangeMergeWhenReady record = 1;
+}
+
+// Copied from: local:origin.v1.ExistingInstallation (var: oEv)
+message ExistingInstallation {
+  string installation_id = 1;
+  RepoSelectionMode repo_selection_mode = 2;
+  repeated string repo_ids = 3;
+}
+
+// Copied from: local:origin.v1.FastForwardBranchClientRequest (var: qwv)
+message FastForwardBranchClientRequest {
+  ClientRepoIdentifier identifier = 1;
+  string branch = 2;
+  string expected_head_sha = 3;
+  string new_head_sha = 4;
+}
+
+// Copied from: local:origin.v1.FastForwardBranchClientResponse (var: Kwv)
+message FastForwardBranchClientResponse {
+  string old_head_sha = 1;
+  string new_head_sha = 2;
+  bool unchanged = 3;
+  bool reverse_mirror_push_failed = 4;
+}
+
+// Copied from: git_forge.v1.FileContent (var: IQd)
+message FileContent {
+  string size = 1;
+  string encoding = 2;
+  string content = 3;
+  string sha = 4;
+}
+
+// Copied from: git_forge.v1.FileHistoryCommitEntry (var: HSv)
+message FileHistoryCommitEntry {
+  ShortCommit commit = 1;
+  optional string diff_base_commit_sha = 2;
+  optional FileStats path_stats = 8;
+}
+
+// Copied from: git_forge.v1.FileMode (var: xQd)
+enum FileMode {
+  FILE_MODE_UNSPECIFIED = 0;
+  FILE_MODE_REGULAR = 1;
+  FILE_MODE_EXECUTABLE = 2;
+  FILE_MODE_SYMLINK = 3;
+  FILE_MODE_GITLINK = 4;
+}
+
+// Copied from: git_forge.v1.FileStats (var: DQd)
+message FileStats {
+  int32 additions = 1;
+  int32 deletions = 2;
+  bool is_binary = 3;
+}
+
+// Copied from: local:origin.v1.FileViewedState (var: T0v)
+message FileViewedState {
+  string file_path = 1;
+  string version_id = 2;
+  optional bool stale = 3;
+}
+
+// Copied from: local:origin.v1.FilterMirrorableGithubReposRequest (var: J_v)
+message FilterMirrorableGithubReposRequest {
+  repeated GithubRepoIdentifier repos = 1;
+}
+
+// Copied from: local:origin.v1.FilterMirrorableGithubReposResponse (var: eyv)
+message FilterMirrorableGithubReposResponse {
+  repeated GithubRepoIdentifier mirrorable_repos = 1;
+}
+
+// Copied from: local:origin.v1.FoldChangeRequest (var: pkv)
+message FoldChangeRequest {
+  ChangeIdentifier change = 1;
+}
+
+// Copied from: local:origin.v1.FoldChangeResponse (var: mkv)
+message FoldChangeResponse {
+}
+
+// Copied from: local:origin.v1.GeneratedCodeTour (var: WQd)
+message GeneratedCodeTour {
+  string id = 1;
+  string storage_key = 2;
+  string result = 3;
+  optional string agentic_markdown = 4;
+  optional string agentic_error_message = 5;
+  optional uint32 format_version = 6;
+  optional uint32 prompt_revision = 7;
+  bool machine_generated = 8;
+  int64 updated_at_ms = 9;
+}
+
+// Copied from: local:origin.v1.GetActiveMirrorTransitionJobRequest (var: syv)
+message GetActiveMirrorTransitionJobRequest {
+  ClientRepoIdentifier identifier = 1;
+}
+
+// Copied from: local:origin.v1.GetActiveMirrorTransitionJobResponse (var: oyv)
+message GetActiveMirrorTransitionJobResponse {
+  RepoMirrorTransitionJob active_job_info = 1;
+  RepoMirrorTransitionJob last_job_info = 2;
+}
+
+// Copied from: local:origin.v1.GetAppMetadataRequest (var: cEv)
+message GetAppMetadataRequest {
+  string id = 1;
+}
+
+// Copied from: local:origin.v1.GetAppMetadataResponse (var: lEv)
+message GetAppMetadataResponse {
+  AppMetadata app = 1;
+  AppStats stats = 2;
+}
+
+// Copied from: local:origin.v1.GetAppRequest (var: M1v)
+message GetAppRequest {
+  string id = 1;
+}
+
+// Copied from: local:origin.v1.GetAppResponse (var: P1v)
+message GetAppResponse {
+  App app = 1;
+  AppStats stats = 2;
+  repeated AppSigningKey signing_keys = 3;
+}
+
+// Copied from: local:origin.v1.GetAtlasNodeRequest (var: PEv)
+message GetAtlasNodeRequest {
+  ClientRepoIdentifier repo = 1;
+  string path = 2;
+}
+
+// Copied from: local:origin.v1.GetAtlasNodeResponse (var: NEv)
+message GetAtlasNodeResponse {
+  string last_commit = 1;
+  repeated AtlasNodeLayerContent layers = 2;
+}
+
+// Copied from: local:origin.v1.GetAtlasRepoStatusRequest (var: FEv)
+message GetAtlasRepoStatusRequest {
+  ClientRepoIdentifier repo = 1;
+}
+
+// Copied from: local:origin.v1.GetAtlasRepoStatusResponse (var: aYd)
+message GetAtlasRepoStatusResponse {
+  bool configured = 1;
+  bool enabled = 2;
+  string model = 3;
+  int32 node_count = 4;
+  repeated AtlasLayerStatus layers = 5;
+  bool refreshing = 6;
+  AtlasFreshness freshness = 7;
+}
+
+// Copied from: local:origin.v1.GetAuthorizedNamespacesRequest (var: Fyv)
+message GetAuthorizedNamespacesRequest {
+}
+
+// Copied from: local:origin.v1.GetAuthorizedNamespacesResponse (var: Byv)
+message GetAuthorizedNamespacesResponse {
+  repeated AuthorizedNamespace namespaces = 1;
+  bool origin_disabled_for_team = 2;
+}
+
+// Copied from: local:origin.v1.GetBlameClientRequest (var: xwv)
+message GetBlameClientRequest {
+  ClientRepoIdentifier identifier = 1;
+  string start_commit_sha = 2;
+  string path = 3;
+}
+
+// Copied from: local:origin.v1.GetBlobClientRequest (var: _wv)
+message GetBlobClientRequest {
+  ClientRepoIdentifier identifier = 1;
+  string blob_sha = 2;
+}
+
+// Copied from: git_forge.v1.GetBlobResponse (var: xSv)
+message GetBlobResponse {
+  FileContent blob = 1;
+}
+
+// Copied from: local:origin.v1.GetChangeMergeWhenReadyRequest (var: F0v)
+message GetChangeMergeWhenReadyRequest {
+  ChangeIdentifier change = 1;
+  optional string status = 2;
+}
+
+// Copied from: local:origin.v1.GetChangeMergeWhenReadyResponse (var: B0v)
+message GetChangeMergeWhenReadyResponse {
+  optional ChangeMergeWhenReady record = 1;
+}
+
+// Copied from: local:origin.v1.GetChangeRequest (var: Ykv)
+message GetChangeRequest {
+  ChangeIdentifier change = 1;
+}
+
+// Copied from: local:origin.v1.GetChangeResponse (var: Xkv)
+message GetChangeResponse {
+  Change change = 1;
+  repeated Version versions = 2;
+  repeated ChangeAssignment assignments = 3;
+  repeated ChangeLabel labels = 4;
+  optional google.protobuf.Timestamp viewer_last_viewed_at = 5;
+  optional google.protobuf.Timestamp viewer_timeline_viewed_at = 6;
+}
+
+// Copied from: local:origin.v1.GetChangeStackPageDataRequest (var: T1v)
+message GetChangeStackPageDataRequest {
+  ChangeIdentifier change = 1;
+}
+
+// Copied from: local:origin.v1.GetChangeStackPageDataResponse (var: A1v)
+message GetChangeStackPageDataResponse {
+  MirrorStatus mirror_status = 1;
+  repeated ChangeStackPageItem items = 2;
+  ListOriginRepoReviewerCandidatesResponse reviewer_candidates = 3;
+}
+
+// Copied from: local:origin.v1.GetChangeStackRequest (var: Jkv)
+message GetChangeStackRequest {
+  ChangeIdentifier change = 1;
+}
+
+// Copied from: local:origin.v1.GetChangeStackResponse (var: eCv)
+message GetChangeStackResponse {
+  repeated Change changes = 1;
+  optional string stack_id = 6;
+  optional string convergence_state = 2;
+  optional uint64 convergence_conflicted_change_number = 3;
+  repeated string convergence_conflicted_paths = 4;
+  optional string convergence_blocked_reason = 5;
+}
+
+// Copied from: local:origin.v1.GetChangesetMergeabilityRequest (var: r1v)
+message GetChangesetMergeabilityRequest {
+  ClientRepoIdentifier identifier = 1;
+  uint64 change_number = 2;
+  optional string expected_head_sha = 3;
+  MergeabilityScope scope = 4;
+}
+
+// Copied from: local:origin.v1.GetChangesetMergeabilityResponse (var: YQd)
+message GetChangesetMergeabilityResponse {
+  bool mergeable = 1;
+  bool ci_passing = 2;
+  CiState ci_state = 3;
+  bool meets_approval_requirements = 4;
+  bool has_merge_conflicts = 5;
+  ChangesetMergeability mergeability = 6;
+  optional StackMergeability stack_mergeability = 7;
+  repeated string conflicted_paths = 8;
+}
+
+// Copied from: local:origin.v1.GetCheckRunRequest (var: z0v)
+message GetCheckRunRequest {
+  ClientRepoIdentifier identifier = 1;
+  string check_run_id = 2;
+}
+
+// Copied from: local:origin.v1.GetCheckRunResponse (var: V0v)
+message GetCheckRunResponse {
+  CheckRunStatus check_run = 1;
+}
+
+// Copied from: local:origin.v1.GetCiStateRequest (var: W0v)
+message GetCiStateRequest {
+  ClientRepoIdentifier identifier = 1;
+  string sha = 2;
+  optional uint64 change_number = 3;
+}
+
+// Copied from: local:origin.v1.GetCiStateResponse (var: H0v)
+message GetCiStateResponse {
+  repeated CheckRunGroup check_run_groups = 1;
+  repeated MissingRequiredCheck missing_required_checks = 2;
+}
+
+// Copied from: local:origin.v1.GetCollectedPullRequestDiffRequest (var: Vwv)
+message GetCollectedPullRequestDiffRequest {
+  ClientRepoIdentifier identifier = 1;
+  string head_commit_sha = 2;
+  string base_commit_sha = 3;
+  optional bool include_patches = 4;
+  optional bool include_file_stats = 5;
+  optional uint32 page_size = 6;
+  optional string page_cursor = 7;
+}
+
+// Copied from: local:origin.v1.GetCollectedPullRequestDiffResponse (var: Gwv)
+message GetCollectedPullRequestDiffResponse {
+  string merge_base_sha = 1;
+  repeated CollectedFileDiff files = 2;
+  optional string next_page_cursor = 4;
+}
+
+// Copied from: local:origin.v1.GetCommitClientRequest (var: bwv)
+message GetCommitClientRequest {
+  ClientRepoIdentifier identifier = 1;
+  string commit_sha = 2;
+}
+
+// Copied from: local:origin.v1.GetCommitDiffClientRequest (var: Mwv)
+message GetCommitDiffClientRequest {
+  ClientRepoIdentifier identifier = 1;
+  string commit_sha = 2;
+  optional string base_commit_sha = 3;
+  bool include_patches = 4;
+  repeated string paths = 5;
+  optional uint32 page_size = 6;
+  optional string page_cursor = 7;
+}
+
+// Copied from: git_forge.v1.GetCommitResponse (var: ESv)
+message GetCommitResponse {
+  Commit commit = 1;
+}
+
+// Copied from: local:origin.v1.GetFileHistoryClientRequest (var: wwv)
+message GetFileHistoryClientRequest {
+  ClientRepoIdentifier identifier = 1;
+  string start_commit_sha = 2;
+  optional string path = 3;
+  uint32 max_commits = 4;
+}
+
+// Copied from: local:origin.v1.GetFileHistoryPageClientRequest (var: kwv)
+message GetFileHistoryPageClientRequest {
+  ClientRepoIdentifier identifier = 1;
+  string start_commit_sha = 2;
+  optional string path = 3;
+  uint32 page_size = 4;
+  optional string next_cursor = 5;
+}
+
+// Copied from: local:origin.v1.GetFileHistoryPageResponse (var: Cwv)
+message GetFileHistoryPageResponse {
+  repeated ShortCommit commits = 1;
+  bool has_more = 2;
+  optional string next_cursor = 3;
+}
+
+// Copied from: local:origin.v1.GetFileHistoryPageWithDiffStatsClientRequest (var: Ewv)
+message GetFileHistoryPageWithDiffStatsClientRequest {
+  ClientRepoIdentifier identifier = 1;
+  string start_commit_sha = 2;
+  optional string path = 3;
+  uint32 page_size = 4;
+  optional string next_cursor = 5;
+}
+
+// Copied from: git_forge.v1.GetFileHistoryPageWithDiffStatsResponse (var: zSv)
+message GetFileHistoryPageWithDiffStatsResponse {
+  repeated FileHistoryCommitEntry entries = 1;
+  bool has_more = 2;
+  optional string next_cursor = 3;
+}
+
+// Copied from: git_forge.v1.GetFileHistoryResponse (var: WSv)
+message GetFileHistoryResponse {
+  repeated ShortCommit commits = 1;
+}
+
+// Copied from: local:origin.v1.GetFuzzyPathsClientRequest (var: Awv)
+message GetFuzzyPathsClientRequest {
+  ClientRepoIdentifier identifier = 1;
+  string commit_sha = 2;
+  string query = 3;
+  uint32 limit = 4;
+}
+
+// Copied from: git_forge.v1.GetFuzzyPathsResponse (var: QSv)
+message GetFuzzyPathsResponse {
+  repeated string paths = 1;
+  bool has_more = 2;
+}
+
+// Copied from: local:origin.v1.GetGeneratedCodeTourRequest (var: D0v)
+message GetGeneratedCodeTourRequest {
+  ChangeIdentifier change = 1;
+  string storage_key = 2;
+}
+
+// Copied from: local:origin.v1.GetGeneratedCodeTourResponse (var: M0v)
+message GetGeneratedCodeTourResponse {
+  optional GeneratedCodeTour tour = 1;
+}
+
+// Copied from: local:origin.v1.GetInstallationRequest (var: z1v)
+message GetInstallationRequest {
+  string id = 1;
+}
+
+// Copied from: local:origin.v1.GetInstallationResponse (var: V1v)
+message GetInstallationResponse {
+  Installation installation = 1;
+}
+
+// Copied from: local:origin.v1.GetLabelByNameRequest (var: cxv)
+message GetLabelByNameRequest {
+  ClientRepoIdentifier repo = 1;
+  string name = 2;
+}
+
+// Copied from: local:origin.v1.GetLabelByNameResponse (var: lxv)
+message GetLabelByNameResponse {
+  optional Label label = 1;
+}
+
+// Copied from: local:origin.v1.GetMirrorTransitionJobRequest (var: ayv)
+message GetMirrorTransitionJobRequest {
+  ClientRepoIdentifier identifier = 1;
+  string job_id = 2;
+}
+
+// Copied from: local:origin.v1.GetMirrorTransitionJobResponse (var: cyv)
+message GetMirrorTransitionJobResponse {
+  RepoMirrorTransitionJob job = 1;
+  Repo repository = 2;
+}
+
+// Copied from: local:origin.v1.GetNamespaceTeamAccessRequest (var: iSv)
+message GetNamespaceTeamAccessRequest {
+  string namespace_slug = 1;
+}
+
+// Copied from: local:origin.v1.GetNamespaceTeamAccessResponse (var: rSv)
+message GetNamespaceTeamAccessResponse {
+  OriginNamespace namespace = 1;
+  NamespaceTeamGroupAccess team_admins = 2;
+  NamespaceTeamGroupAccess team_members = 3;
+}
+
+// Copied from: local:origin.v1.GetPendingReviewRequest (var: GCv)
+message GetPendingReviewRequest {
+  ChangeIdentifier change = 1;
+}
+
+// Copied from: local:origin.v1.GetPendingReviewResponse (var: qCv)
+message GetPendingReviewResponse {
+  optional Review review = 1;
+  uint32 thread_count = 2;
+}
+
+// Copied from: local:origin.v1.GetProjectedLatestVersionsRequest (var: tCv)
+message GetProjectedLatestVersionsRequest {
+  ClientRepoIdentifier identifier = 1;
+  repeated uint64 change_numbers = 2;
+}
+
+// Copied from: local:origin.v1.GetProjectedLatestVersionsResponse (var: iCv)
+message GetProjectedLatestVersionsResponse {
+  repeated ProjectedLatestVersionEntry entries = 1;
+}
+
+// Copied from: local:origin.v1.GetPullRequestDiffClientRequest (var: Dwv)
+message GetPullRequestDiffClientRequest {
+  ClientRepoIdentifier identifier = 1;
+  string head_commit_sha = 2;
+  string base_commit_sha = 3;
+  optional bool include_patches = 4;
+  optional bool include_file_stats = 5;
+  optional uint32 page_size = 6;
+  optional string page_cursor = 7;
+}
+
+// Copied from: local:origin.v1.GetRepoByGithubMirrorRequest (var: wyv)
+message GetRepoByGithubMirrorRequest {
+  string github_node_id = 1;
+  optional string github_enterprise_id = 2;
+}
+
+// Copied from: local:origin.v1.GetRepoCodeownersClientRequest (var: gwv)
+message GetRepoCodeownersClientRequest {
+  ClientRepoIdentifier identifier = 1;
+  string base_ref = 2;
+  repeated string paths = 3;
+}
+
+// Copied from: local:origin.v1.GetRepoCodeownersResponse (var: vwv)
+message GetRepoCodeownersResponse {
+  map<string, CodeownersOwners> codeowners_by_path = 1;
+}
+
+// Copied from: local:origin.v1.GetRepoContentAtShaClientRequest (var: pwv)
+message GetRepoContentAtShaClientRequest {
+  ClientRepoIdentifier identifier = 1;
+  PathIdentifier path_identifier = 2;
+  optional uint64 max_file_size = 3;
+}
+
+// Copied from: local:origin.v1.GetRepoContentClientRequest (var: uwv)
+message GetRepoContentClientRequest {
+  ClientRepoIdentifier identifier = 1;
+  string ref_path = 2;
+}
+
+// Copied from: local:origin.v1.GetRepoContentDetailsAtShaClientRequest (var: mwv)
+message GetRepoContentDetailsAtShaClientRequest {
+  ClientRepoIdentifier identifier = 1;
+  PathIdentifier path_identifier = 2;
+}
+
+// Copied from: git_forge.v1.GetRepoContentDetailsResponse (var: jSv)
+message GetRepoContentDetailsResponse {
+  optional RepoContentDetails details = 1;
+  PathIdentifier path_identifier = 2;
+  string resolved_commit_sha = 3;
+}
+
+// Copied from: git_forge.v1.GetRepoContentResponse (var: RQd)
+message GetRepoContentResponse {
+  PathIdentifier path_identifier = 3;
+  string resolved_commit_sha = 4;
+  oneof content {
+    FileContent file_content = 1;
+    DirectoryContent directory_content = 2;
+  }
+}
+
+// Copied from: local:origin.v1.GetRepoNamespaceRequest (var: Pyv)
+message GetRepoNamespaceRequest {
+  OriginNamespaceOwnerType owner_type = 1;
+  int64 owner_entity_id = 2;
+}
+
+// Copied from: local:origin.v1.GetRepoNamespaceResponse (var: Lyv)
+message GetRepoNamespaceResponse {
+  OriginNamespace origin_namespace = 1;
+}
+
+// Copied from: local:origin.v1.GetRepoRequest (var: _Qd)
+message GetRepoRequest {
+  ClientRepoIdentifier identifier = 1;
+}
+
+// Copied from: local:origin.v1.GetRepoResponse (var: Syv)
+message GetRepoResponse {
+  Repo repository = 1;
+  optional RepoGithubMirrorInfo github_mirror_info = 2;
+}
+
+// Copied from: local:origin.v1.GetRepoTeamAccessRequest (var: Gyv)
+message GetRepoTeamAccessRequest {
+  ClientRepoIdentifier identifier = 1;
+}
+
+// Copied from: local:origin.v1.GetRepoTeamAccessResponse (var: qyv)
+message GetRepoTeamAccessResponse {
+  OriginNamespace namespace = 1;
+  TeamGroupAccess team_admins = 2;
+  TeamGroupAccess team_members = 3;
+}
+
+// Copied from: local:origin.v1.GetRepoWithMirrorInfoResponse (var: yQd)
+message GetRepoWithMirrorInfoResponse {
+  Repo repository = 1;
+  RepoGithubMirrorInfo github_mirror_info = 2;
+  optional bool viewer_can_write_changes = 3;
+}
+
+// Copied from: local:origin.v1.GetRulesetRequest (var: KEv)
+message GetRulesetRequest {
+  ClientRepoIdentifier repo = 1;
+  string ruleset_id = 2;
+}
+
+// Copied from: local:origin.v1.GetRulesetResponse (var: QEv)
+message GetRulesetResponse {
+  Ruleset ruleset = 1;
+}
+
+// Copied from: local:origin.v1.GetSectionOfChangesRequest (var: UQd)
+message GetSectionOfChangesRequest {
+  repeated ClientRepoIdentifier repos = 1;
+  SectionOfChangesFilter filter = 2;
+  optional string cursor = 3;
+  int32 limit = 4;
+  SectionOfChangesSortField sort_field = 5;
+  bool sort_is_asc = 6;
+  bool skip_total_count = 7;
+}
+
+// Copied from: local:origin.v1.GetSectionOfChangesResponse (var: pCv)
+message GetSectionOfChangesResponse {
+  repeated SectionOfChanges changes = 1;
+  bool has_more = 2;
+  int32 total_count = 3;
+}
+
+// Copied from: local:origin.v1.GetTagClientRequest (var: ywv)
+message GetTagClientRequest {
+  ClientRepoIdentifier identifier = 1;
+  string tag_sha = 2;
+}
+
+// Copied from: git_forge.v1.GetTagResponse (var: TSv)
+message GetTagResponse {
+  Tag tag = 1;
+}
+
+// Copied from: local:origin.v1.GetTreeBlameClientRequest (var: Twv)
+message GetTreeBlameClientRequest {
+  ClientRepoIdentifier identifier = 1;
+  string start_commit_sha = 2;
+  string path = 3;
+}
+
+// Copied from: git_forge.v1.GetTreeBlameResponse (var: KSv)
+message GetTreeBlameResponse {
+  repeated TreeEntryBlame entries = 1;
+}
+
+// Copied from: local:origin.v1.GetTreeClientRequest (var: Swv)
+message GetTreeClientRequest {
+  ClientRepoIdentifier identifier = 1;
+  string tree_sha = 2;
+  bool recursive = 3;
+}
+
+// Copied from: git_forge.v1.GetTreeResponse (var: ASv)
+message GetTreeResponse {
+  Tree tree = 1;
+}
+
+// Copied from: local:origin.v1.GithubRepoIdentifier (var: kpo)
+message GithubRepoIdentifier {
+  string owner = 1;
+  string repo = 2;
+  optional string enterprise_id = 3;
+}
+
+// Copied from: local:origin.v1.GrantPolicyRef (var: AZe)
+message GrantPolicyRef {
+  string name = 1;
+  string display_name = 2;
+}
+
+// Copied from: local:origin.v1.GrantPrincipal (var: kQd)
+message GrantPrincipal {
+  string kind = 1;
+  string external_id = 2;
+  string display_name = 3;
+  string email = 4;
+  int32 group_admin_count = 5;
+  int32 group_member_count = 6;
+}
+
+// Copied from: git_forge.v1.GrepLineKind (var: CSv)
+enum GrepLineKind {
+  GREP_LINE_KIND_UNSPECIFIED = 0;
+  GREP_LINE_KIND_MATCH = 1;
+  GREP_LINE_KIND_CONTEXT = 2;
+}
+
+// Copied from: git_forge.v1.GrepMatch (var: JSv)
+message GrepMatch {
+  string path = 1;
+  string lines = 2;
+  uint32 line_number = 3;
+  uint64 absolute_offset = 4;
+  repeated GrepSubmatch submatches = 5;
+  GrepLineKind kind = 6;
+}
+
+// Copied from: git_forge.v1.GrepRepoChunk (var: ewv)
+message GrepRepoChunk {
+  repeated GrepMatch matches = 1;
+  bool limit_hit = 2;
+}
+
+// Copied from: local:origin.v1.GrepRepoClientRequest (var: Rwv)
+message GrepRepoClientRequest {
+  ClientRepoIdentifier identifier = 1;
+  string revision = 2;
+  string query = 3;
+  GrepSearchOptions options = 4;
+  uint32 max_results = 5;
+}
+
+// Copied from: git_forge.v1.GrepSearchOptions (var: ZSv)
+message GrepSearchOptions {
+  bool literal = 1;
+  bool case_insensitive = 2;
+  bool whole_word = 3;
+  uint32 context_before = 4;
+  uint32 context_after = 5;
+  optional uint64 max_lines = 6;
+  optional string filter_path = 7;
+  repeated string includes = 8;
+  repeated string excludes = 9;
+}
+
+// Copied from: git_forge.v1.GrepSubmatch (var: XSv)
+message GrepSubmatch {
+  uint32 start = 1;
+  uint32 end = 2;
+}
+
+// Copied from: local:origin.v1.HasOriginPermissionRequest (var: Wyv)
+message HasOriginPermissionRequest {
+  string scope = 1;
+  oneof resource {
+    string namespace_slug = 2;
+    ClientRepoIdentifier repository = 3;
+  }
+}
+
+// Copied from: local:origin.v1.HasOriginPermissionResponse (var: Hyv)
+message HasOriginPermissionResponse {
+  bool allowed = 1;
+}
+
+// Copied from: local:origin.v1.InboundMirrorGithubMergeOperation (var: uzi)
+message InboundMirrorGithubMergeOperation {
+  string id = 1;
+  ChangeIdentifier change = 2;
+  string status = 3;
+  optional string lease_token = 4;
+  optional string lease_expires_at = 5;
+  optional string github_pull_request_node_id = 6;
+  optional uint64 github_pull_request_number = 7;
+  optional string github_pull_request_url = 8;
+  optional string merge_commit_sha = 9;
+  string requested_merge_method = 10;
+  optional string commit_title = 11;
+  optional string commit_message = 12;
+  string initiated_by_user_id = 13;
+  optional string last_error_message = 14;
+  optional string last_error_at = 15;
+  string created_at = 16;
+  string updated_at = 17;
+}
+
+// Copied from: local:origin.v1.InboundMirrorMergeStack (var: m1v)
+message InboundMirrorMergeStack {
+  repeated uint64 change_numbers = 1;
+  string root_base_ref = 2;
+  string target_head_ref = 3;
+  string target_head_sha = 4;
+}
+
+// Copied from: local:origin.v1.Installation (var: Dpo)
+message Installation {
+  string id = 1;
+  string app_id = 2;
+  string namespace_slug = 3;
+  string created_at = 4;
+  string updated_at = 5;
+  RepoSelectionMode repo_selection_mode = 6;
+  repeated string repo_ids = 7;
+  repeated string accepted_scopes = 8;
+  optional string suspended_at = 9;
+}
+
+// Copied from: local:origin.v1.InstallationReference (var: rYd)
+message InstallationReference {
+  string id = 1;
+  string app_id = 2;
+  AppDisplayMetadata app_metadata = 3;
+}
+
+// Copied from: local:origin.v1.Label (var: dzi)
+message Label {
+  string id = 1;
+  string repo_uuid = 2;
+  string name = 3;
+  string color = 4;
+  optional string description = 5;
+  google.protobuf.Timestamp created_at = 6;
+  google.protobuf.Timestamp updated_at = 7;
+}
+
+// Copied from: local:origin.v1.ListAtlasNodePathsRequest (var: $Ev)
+message ListAtlasNodePathsRequest {
+  ClientRepoIdentifier repo = 1;
+}
+
+// Copied from: local:origin.v1.ListAtlasNodePathsResponse (var: jEv)
+message ListAtlasNodePathsResponse {
+  repeated string paths = 1;
+}
+
+// Copied from: local:origin.v1.ListBuildkiteTriggersRequest (var: _Ev)
+message ListBuildkiteTriggersRequest {
+  ClientRepoIdentifier repo = 1;
+}
+
+// Copied from: local:origin.v1.ListBuildkiteTriggersResponse (var: yEv)
+message ListBuildkiteTriggersResponse {
+  repeated BuildkiteTrigger triggers = 1;
+}
+
+// Copied from: local:origin.v1.ListChangeCommitsRequest (var: rCv)
+message ListChangeCommitsRequest {
+  ChangeIdentifier change = 1;
+  uint64 version_number = 2;
+  optional uint32 max_commits = 3;
+}
+
+// Copied from: local:origin.v1.ListChangeCommitsResponse (var: sCv)
+message ListChangeCommitsResponse {
+  repeated Commit commits = 1;
+  string merge_base_sha = 2;
+  bool truncated = 3;
+  map<string, CommitActorDisplays> actor_displays_by_sha = 4;
+}
+
+// Copied from: local:origin.v1.ListChangesByHeadRefRequest (var: cCv)
+message ListChangesByHeadRefRequest {
+  ClientRepoIdentifier identifier = 1;
+  string head_ref = 2;
+  bool include_inactive = 3;
+}
+
+// Copied from: local:origin.v1.ListChangesByHeadRefResponse (var: lCv)
+message ListChangesByHeadRefResponse {
+  repeated Change changes = 1;
+}
+
+// Copied from: local:origin.v1.ListChangesRequest (var: aCv)
+message ListChangesRequest {
+  ClientRepoIdentifier identifier = 1;
+  optional string status = 2;
+  optional uint64 cursor = 3;
+  optional int32 limit = 4;
+  optional string author_id = 5;
+  optional string base_ref = 6;
+  optional string head_ref = 7;
+  repeated string file = 8;
+}
+
+// Copied from: local:origin.v1.ListChangesResponse (var: hCv)
+message ListChangesResponse {
+  repeated ChangeWithLatestVersion changes = 1;
+  optional uint64 next_cursor = 2;
+}
+
+// Copied from: local:origin.v1.ListCommentReactionsRequest (var: p0v)
+message ListCommentReactionsRequest {
+  string comment_id = 1;
+}
+
+// Copied from: local:origin.v1.ListCommentReactionsResponse (var: m0v)
+message ListCommentReactionsResponse {
+  repeated CommentReaction reactions = 1;
+}
+
+// Copied from: local:origin.v1.ListCommentThreadsRequest (var: JCv)
+message ListCommentThreadsRequest {
+  ChangeIdentifier change = 1;
+  uint64 version_number = 2;
+}
+
+// Copied from: local:origin.v1.ListCommentThreadsResponse (var: e0v)
+message ListCommentThreadsResponse {
+  repeated CommentThread threads = 1;
+}
+
+// Copied from: local:origin.v1.ListCommentsRequest (var: Mkv)
+message ListCommentsRequest {
+  ChangeIdentifier change = 1;
+}
+
+// Copied from: local:origin.v1.ListCommentsResponse (var: Pkv)
+message ListCommentsResponse {
+  repeated Comment comments = 1;
+}
+
+// Copied from: local:origin.v1.ListCommitsClientRequest (var: rs)
+message ListCommitsClientRequest {
+  ClientRepoIdentifier identifier = 1;
+  string revision = 2;
+  int32 page = 3;
+  int32 per_page = 4;
+}
+
+// Copied from: local:origin.v1.ListCommitsInRangeClientRequest (var: Fwv)
+message ListCommitsInRangeClientRequest {
+  ClientRepoIdentifier identifier = 1;
+  string base_revision = 2;
+  string head_revision = 3;
+  optional int32 max_commits = 4;
+  bool oldest_first = 5;
+}
+
+// Copied from: git_forge.v1.ListCommitsInRangeResponse (var: MSv)
+message ListCommitsInRangeResponse {
+  repeated Commit commits = 1;
+  string base_commit_sha = 2;
+  string head_commit_sha = 3;
+  string merge_base_commit_sha = 4;
+  bool truncated = 5;
+}
+
+// Copied from: local:origin.v1.ListFileViewedStatesRequest (var: E0v)
+message ListFileViewedStatesRequest {
+  ChangeIdentifier change = 1;
+  string head_commit_sha = 2;
+}
+
+// Copied from: local:origin.v1.ListFileViewedStatesResponse (var: x0v)
+message ListFileViewedStatesResponse {
+  repeated FileViewedState file_viewed_states = 1;
+  optional string head_version_id = 2;
+}
+
+// Copied from: local:origin.v1.ListHostedReposOrderBy (var: H_v)
+enum ListHostedReposOrderBy {
+  LIST_HOSTED_REPOS_ORDER_BY_UNSPECIFIED = 0;
+  LIST_HOSTED_REPOS_ORDER_BY_NAME_ASC = 1;
+  LIST_HOSTED_REPOS_ORDER_BY_NAME_DESC = 2;
+  LIST_HOSTED_REPOS_ORDER_BY_LAST_PUSHED_DESC = 3;
+  LIST_HOSTED_REPOS_ORDER_BY_LAST_PUSHED_ASC = 4;
+  LIST_HOSTED_REPOS_ORDER_BY_ID_ASC = 5;
+  LIST_HOSTED_REPOS_ORDER_BY_ID_DESC = 6;
+}
+
+// Copied from: local:origin.v1.ListHostedReposRequest (var: K_v)
+message ListHostedReposRequest {
+  uint32 page_size = 1;
+  string page_token = 2;
+  string search = 3;
+  ListHostedReposOrderBy order_by = 4;
+  string namespace = 5;
+  bool include_github_mirror_info = 6;
+  bool apply_repository_picker_policy = 7;
+}
+
+// Copied from: local:origin.v1.ListHostedReposResponse (var: vQd)
+message ListHostedReposResponse {
+  repeated RepoSummary repositories = 1;
+  string next_page_token = 2;
+  uint32 total_count = 3;
+}
+
+// Copied from: local:origin.v1.ListLabelsRequest (var: oxv)
+message ListLabelsRequest {
+  ClientRepoIdentifier repo = 1;
+  optional string cursor = 2;
+  optional int32 limit = 3;
+  optional string search_query = 4;
+}
+
+// Copied from: local:origin.v1.ListLabelsResponse (var: axv)
+message ListLabelsResponse {
+  repeated Label labels = 1;
+  optional string next_cursor = 2;
+}
+
+// Copied from: local:origin.v1.ListNamespaceAppsRequest (var: B1v)
+message ListNamespaceAppsRequest {
+  string namespace_slug = 1;
+  uint32 page_size = 2;
+  string page_token = 3;
+}
+
+// Copied from: local:origin.v1.ListNamespaceAppsResponse (var: U1v)
+message ListNamespaceAppsResponse {
+  repeated App apps = 1;
+  string next_page_token = 2;
+}
+
+// Copied from: local:origin.v1.ListNamespaceAssignablePoliciesRequest (var: mSv)
+message ListNamespaceAssignablePoliciesRequest {
+  string namespace_slug = 1;
+}
+
+// Copied from: local:origin.v1.ListNamespaceAssignablePoliciesResponse (var: gSv)
+message ListNamespaceAssignablePoliciesResponse {
+  repeated AuthPolicySummary policies = 1;
+}
+
+// Copied from: local:origin.v1.ListNamespaceGrantsRequest (var: cSv)
+message ListNamespaceGrantsRequest {
+  string namespace_slug = 1;
+  int32 page = 2;
+  int32 page_size = 3;
+  string search = 4;
+}
+
+// Copied from: local:origin.v1.ListNamespaceGrantsResponse (var: lSv)
+message ListNamespaceGrantsResponse {
+  repeated NamespaceGrantRow rows = 1;
+  int32 total_count = 2;
+  bool list_truncated = 3;
+}
+
+// Copied from: local:origin.v1.ListNamespaceInstallationsRequest (var: G1v)
+message ListNamespaceInstallationsRequest {
+  string namespace_slug = 1;
+  uint32 page_size = 2;
+  string page_token = 3;
+}
+
+// Copied from: local:origin.v1.ListNamespaceInstallationsResponse (var: q1v)
+message ListNamespaceInstallationsResponse {
+  repeated Installation installations = 1;
+  string next_page_token = 2;
+  repeated InstallationReference installation_references = 3;
+}
+
+// Copied from: local:origin.v1.ListOriginRepoReviewerCandidatesRequest (var: Qkv)
+message ListOriginRepoReviewerCandidatesRequest {
+  ClientRepoIdentifier repo = 1;
+}
+
+// Copied from: local:origin.v1.ListOriginRepoReviewerCandidatesResponse (var: OQd)
+message ListOriginRepoReviewerCandidatesResponse {
+  repeated OriginReviewerCandidateUser users = 1;
+  repeated OriginReviewerCandidateGroup groups = 2;
+}
+
+// Copied from: local:origin.v1.ListPublicAppsRequest (var: $1v)
+message ListPublicAppsRequest {
+  uint32 page_size = 1;
+  string page_token = 2;
+}
+
+// Copied from: local:origin.v1.ListPublicAppsResponse (var: j1v)
+message ListPublicAppsResponse {
+  repeated AppDisplayMetadata apps = 1;
+  string next_page_token = 2;
+}
+
+// Copied from: local:origin.v1.ListRefsClientRequest (var: Pwv)
+message ListRefsClientRequest {
+  ClientRepoIdentifier identifier = 1;
+  ListRefsFilter filter = 2;
+  bool names_only = 3;
+  string prefix = 4;
+  optional uint32 limit = 5;
+  optional string page_token = 7;
+}
+
+// Copied from: git_forge.v1.ListRefsFilter (var: AQd)
+enum ListRefsFilter {
+  LIST_REFS_FILTER_UNSPECIFIED = 0;
+  LIST_REFS_FILTER_ALL = 1;
+  LIST_REFS_FILTER_BRANCHES = 2;
+  LIST_REFS_FILTER_TAGS = 3;
+}
+
+// Copied from: git_forge.v1.ListRefsResponse (var: awv)
+message ListRefsResponse {
+  repeated string refs = 1;
+  repeated RefInfo ref_infos = 2;
+  optional string next_page_token = 5;
+}
+
+// Copied from: local:origin.v1.ListRepoAssignablePoliciesRequest (var: zyv)
+message ListRepoAssignablePoliciesRequest {
+  ClientRepoIdentifier identifier = 1;
+}
+
+// Copied from: local:origin.v1.ListRepoAssignablePoliciesResponse (var: Vyv)
+message ListRepoAssignablePoliciesResponse {
+  repeated AuthPolicySummary policies = 1;
+}
+
+// Copied from: local:origin.v1.ListRepoCheckSourcesRequest (var: G0v)
+message ListRepoCheckSourcesRequest {
+  ClientRepoIdentifier identifier = 1;
+}
+
+// Copied from: local:origin.v1.ListRepoCheckSourcesResponse (var: Q0v)
+message ListRepoCheckSourcesResponse {
+  repeated RepoCheckSource sources = 1;
+}
+
+// Copied from: local:origin.v1.ListRepoGrantsRequest (var: Qyv)
+message ListRepoGrantsRequest {
+  ClientRepoIdentifier identifier = 1;
+  int32 page = 2;
+  int32 page_size = 3;
+  string search = 4;
+}
+
+// Copied from: local:origin.v1.ListRepoGrantsResponse (var: Yyv)
+message ListRepoGrantsResponse {
+  repeated RepoGrantRow rows = 1;
+  int32 total_count = 2;
+  bool list_truncated = 3;
+}
+
+// Copied from: local:origin.v1.ListRepoInstallationsRequest (var: mEv)
+message ListRepoInstallationsRequest {
+  string repo_id = 1;
+  uint32 page_size = 2;
+  string page_token = 3;
+}
+
+// Copied from: local:origin.v1.ListRepoInstallationsResponse (var: gEv)
+message ListRepoInstallationsResponse {
+  repeated InstallationReference installations = 1;
+  string next_page_token = 2;
+}
+
+// Copied from: local:origin.v1.ListRepoPathsClientRequest (var: Iwv)
+message ListRepoPathsClientRequest {
+  ClientRepoIdentifier identifier = 1;
+  string revision = 2;
+  repeated string includes = 3;
+  repeated string excludes = 4;
+  uint32 limit = 5;
+}
+
+// Copied from: local:origin.v1.ListReposForAppInstallRequest (var: Q_v)
+message ListReposForAppInstallRequest {
+  string namespace = 1;
+  uint32 page_size = 2;
+  string page_token = 3;
+  string search = 4;
+}
+
+// Copied from: local:origin.v1.ListReviewRequestEventsRequest (var: Nkv)
+message ListReviewRequestEventsRequest {
+  ChangeIdentifier change = 1;
+}
+
+// Copied from: local:origin.v1.ListReviewRequestEventsResponse (var: Okv)
+message ListReviewRequestEventsResponse {
+  repeated ReviewRequestEvent events = 1;
+}
+
+// Copied from: local:origin.v1.ListReviewsRequest (var: Akv)
+message ListReviewsRequest {
+  ChangeIdentifier change = 1;
+}
+
+// Copied from: local:origin.v1.ListReviewsResponse (var: Ikv)
+message ListReviewsResponse {
+  repeated Review reviews = 1;
+}
+
+// Copied from: local:origin.v1.ListRulesetsRequest (var: GEv)
+message ListRulesetsRequest {
+  ClientRepoIdentifier repo = 1;
+}
+
+// Copied from: local:origin.v1.ListRulesetsResponse (var: qEv)
+message ListRulesetsResponse {
+  repeated Ruleset rulesets = 1;
+}
+
+// Copied from: local:origin.v1.ListSshPublicKeysRequest (var: bSv)
+message ListSshPublicKeysRequest {
+}
+
+// Copied from: local:origin.v1.ListSshPublicKeysResponse (var: _Sv)
+message ListSshPublicKeysResponse {
+  repeated SshPublicKey ssh_public_keys = 1;
+}
+
+// Copied from: git_forge.v1.ListTreePathsResponse (var: YSv)
+message ListTreePathsResponse {
+  repeated string paths = 1;
+  bool has_more = 2;
+}
+
+// Copied from: local:origin.v1.ListVercelTriggersRequest (var: TEv)
+message ListVercelTriggersRequest {
+  ClientRepoIdentifier repo = 1;
+}
+
+// Copied from: local:origin.v1.ListVercelTriggersResponse (var: AEv)
+message ListVercelTriggersResponse {
+  repeated VercelTrigger triggers = 1;
+}
+
+// Copied from: local:origin.v1.MarkAllFilesAsViewedRequest (var: S0v)
+message MarkAllFilesAsViewedRequest {
+  ChangeIdentifier change = 1;
+  repeated string file_paths = 2;
+  string version_id = 3;
+}
+
+// Copied from: local:origin.v1.MarkAllFilesAsViewedResponse (var: w0v)
+message MarkAllFilesAsViewedResponse {
+}
+
+// Copied from: local:origin.v1.MarkDirectoryAsViewedRequest (var: _0v)
+message MarkDirectoryAsViewedRequest {
+  ChangeIdentifier change = 1;
+  string directory_path = 2;
+  repeated string file_paths = 3;
+  string version_id = 4;
+}
+
+// Copied from: local:origin.v1.MarkDirectoryAsViewedResponse (var: y0v)
+message MarkDirectoryAsViewedResponse {
+}
+
+// Copied from: local:origin.v1.MarkFileAsViewedRequest (var: g0v)
+message MarkFileAsViewedRequest {
+  ChangeIdentifier change = 1;
+  string file_path = 2;
+  string version_id = 3;
+  string head_commit_sha = 4;
+}
+
+// Copied from: local:origin.v1.MarkFileAsViewedResponse (var: f0v)
+message MarkFileAsViewedResponse {
+}
+
+// Copied from: local:origin.v1.MarkPullRequestAsViewedRequest (var: I0v)
+message MarkPullRequestAsViewedRequest {
+  ChangeIdentifier change = 1;
+  google.protobuf.Timestamp viewed_at = 2;
+  PullRequestViewedCursor cursor = 3;
+}
+
+// Copied from: local:origin.v1.MarkPullRequestAsViewedResponse (var: R0v)
+message MarkPullRequestAsViewedResponse {
+  google.protobuf.Timestamp viewed_at = 1;
+  optional google.protobuf.Timestamp timeline_viewed_at = 2;
+}
+
+// Copied from: local:origin.v1.MergeChangesetRequest (var: pl)
+message MergeChangesetRequest {
+  ClientRepoIdentifier identifier = 1;
+  uint64 change_number = 2;
+}
+
+// Copied from: local:origin.v1.MergeChangesetResponse (var: fl)
+message MergeChangesetResponse {
+}
+
+// Copied from: git_forge.v1.MergeMode (var: EQd)
+enum MergeMode {
+  MERGE_MODE_UNSPECIFIED = 0;
+  MERGE_MODE_MERGE_COMMIT = 1;
+  MERGE_MODE_SQUASH = 2;
+}
+
+// Copied from: local:origin.v1.MergeStackRequest (var: u1v)
+message MergeStackRequest {
+  ClientRepoIdentifier identifier = 1;
+  uint64 top_change_number = 2;
+  MergeMode mode = 3;
+}
+
+// Copied from: local:origin.v1.MergeStackResponse (var: d1v)
+message MergeStackResponse {
+  string merge_commit_sha = 1;
+  repeated uint64 merged_change_numbers = 2;
+}
+
+// Copied from: local:origin.v1.MergeabilityScope (var: j0v)
+enum MergeabilityScope {
+  MERGEABILITY_SCOPE_UNSPECIFIED = 0;
+  MERGEABILITY_SCOPE_STACK = 1;
+  MERGEABILITY_SCOPE_SINGLE_CHANGE = 2;
+}
+
+// Copied from: local:origin.v1.MintRawRepoFileLinkClientRequest (var: dwv)
+message MintRawRepoFileLinkClientRequest {
+  ClientRepoIdentifier identifier = 1;
+  string ref_path = 2;
+}
+
+// Copied from: local:origin.v1.MintRawRepoFileLinkClientResponse (var: hwv)
+message MintRawRepoFileLinkClientResponse {
+  string token = 1;
+  PathIdentifier path_identifier = 2;
+  string raw_origin = 3;
+}
+
+// Copied from: local:origin.v1.MirrorStatus (var: nzi)
+enum MirrorStatus {
+  MIRROR_STATUS_UNSPECIFIED = 0;
+  MIRROR_STATUS_TRANSITIONING_TO_INBOUND = 1;
+  MIRROR_STATUS_INBOUND = 2;
+  MIRROR_STATUS_OUTBOUND = 3;
+  MIRROR_STATUS_TRANSITIONING_INBOUND_TO_OUTBOUND = 4;
+  MIRROR_STATUS_TRANSITIONING_OUTBOUND_TO_INBOUND = 5;
+  MIRROR_STATUS_INITIAL_SYNC_PENDING = 6;
+}
+
+// Copied from: local:origin.v1.MissingRequiredCheck (var: Y0v)
+message MissingRequiredCheck {
+  string display_name = 1;
+  string identity_path = 2;
+}
+
+// Copied from: local:origin.v1.NamespaceGrantRow (var: aSv)
+message NamespaceGrantRow {
+  GrantPrincipal principal = 1;
+  GrantPolicyRef policy = 2;
+}
+
+// Copied from: local:origin.v1.NamespaceTeamGroupAccess (var: ozi)
+message NamespaceTeamGroupAccess {
+  GrantPolicyRef policy = 1;
+}
+
+// Copied from: local:origin.v1.OriginNamespace (var: xke)
+message OriginNamespace {
+  string id = 1;
+  OriginNamespaceOwnerType owner_type = 2;
+  int64 owner_entity_id = 3;
+  string namespace = 4;
+}
+
+// Copied from: local:origin.v1.OriginNamespaceOwnerType (var: izi)
+enum OriginNamespaceOwnerType {
+  ORIGIN_NAMESPACE_OWNER_TYPE_UNSPECIFIED = 0;
+  ORIGIN_NAMESPACE_OWNER_TYPE_TEAM = 1;
+  ORIGIN_NAMESPACE_OWNER_TYPE_USER = 2;
+}
+
+// Copied from: local:origin.v1.OriginReviewerCandidateGroup (var: Rpo)
+message OriginReviewerCandidateGroup {
+  string group_public_id = 1;
+  string organization_slug = 2;
+  string group_slug = 3;
+  string name = 4;
+  repeated string member_auth_ids = 5;
+  int64 cursor_group_id = 6;
+  repeated string member_user_ids = 7;
+}
+
+// Copied from: local:origin.v1.OriginReviewerCandidateUser (var: Ipo)
+message OriginReviewerCandidateUser {
+  string auth_id = 1;
+  string first_name = 3;
+  string last_name = 4;
+  string email = 5;
+  string avatar_url = 6;
+  int64 cursor_user_id = 7;
+  string user_id = 8;
+}
+
+// Copied from: git_forge.v1.PathIdentifier (var: B$t)
+message PathIdentifier {
+  string revision = 1;
+  string path = 2;
+}
+
+// Copied from: local:origin.v1.PostCheckRunRequest (var: X0v)
+message PostCheckRunRequest {
+  ClientRepoIdentifier identifier = 1;
+  string head_sha = 2;
+  CheckRunGroupInput group = 3;
+  CheckRunInput check = 4;
+}
+
+// Copied from: local:origin.v1.PostCheckRunResponse (var: t1v)
+message PostCheckRunResponse {
+  string repo_id = 1;
+  string sha = 2;
+  string check_run_group_id = 3;
+  string check_run_id = 4;
+}
+
+// Copied from: local:origin.v1.PrepareInboundStackMergeCommitRequest (var: E1v)
+message PrepareInboundStackMergeCommitRequest {
+  ChangeIdentifier change = 1;
+  string operation_id = 2;
+  string lease_token = 3;
+  string ours_sha = 4;
+  string message = 5;
+  optional string author_name = 6;
+  optional string author_email = 7;
+}
+
+// Copied from: local:origin.v1.PrepareInboundStackMergeCommitResponse (var: x1v)
+message PrepareInboundStackMergeCommitResponse {
+  string merge_commit_sha = 1;
+  string exported_ref = 2;
+}
+
+// Copied from: local:origin.v1.PreviewAppInstallationOptions (var: iEv)
+message PreviewAppInstallationOptions {
+  bool include_granted_scopes = 1;
+}
+
+// Copied from: local:origin.v1.PreviewAppInstallationRequest (var: rEv)
+message PreviewAppInstallationRequest {
+  string namespace_slug = 1;
+  string app_id = 2;
+  repeated string requested_scopes = 3;
+  string summary = 4;
+  optional string redirect_uri = 5;
+  PreviewAppInstallationOptions options = 6;
+}
+
+// Copied from: local:origin.v1.PreviewAppInstallationResponse (var: sEv)
+message PreviewAppInstallationResponse {
+  string app_id = 1;
+  string app_slug = 2;
+  string app_display_name = 3;
+  string app_logo_url = 4;
+  string summary = 5;
+  repeated PreviewAppInstallationScope requested_scopes = 6;
+  repeated PreviewAppInstallationScope granted_scopes = 7;
+  ExistingInstallation existing_installation = 8;
+  string app_description = 9;
+  string app_website_url = 10;
+}
+
+// Copied from: local:origin.v1.PreviewAppInstallationScope (var: sYd)
+message PreviewAppInstallationScope {
+  string scope = 1;
+}
+
+// Copied from: local:origin.v1.ProjectedLatestVersionEntry (var: nCv)
+message ProjectedLatestVersionEntry {
+  uint64 change_number = 1;
+  Version projected_latest_version = 2;
+}
+
+// Copied from: local:origin.v1.PublishAgentTempRepoRequest (var: Y_v)
+message PublishAgentTempRepoRequest {
+  ClientRepoIdentifier identifier = 1;
+  optional string new_name = 2;
+  optional RepoVisibility visibility = 3;
+}
+
+// Copied from: local:origin.v1.PublishAgentTempRepoResponse (var: Z_v)
+message PublishAgentTempRepoResponse {
+  bool published = 1;
+  Repo repository = 2;
+}
+
+// Copied from: git_forge.v1.PullRequestDiffChunk (var: nwv)
+message PullRequestDiffChunk {
+  optional DiffHeader header = 1;
+  repeated DiffEntry entries = 3;
+}
+
+// Copied from: local:origin.v1.PullRequestViewedCursor (var: A0v)
+enum PullRequestViewedCursor {
+  PULL_REQUEST_VIEWED_CURSOR_UNSPECIFIED = 0;
+  PULL_REQUEST_VIEWED_CURSOR_OPENED = 1;
+  PULL_REQUEST_VIEWED_CURSOR_TIMELINE = 2;
+}
+
+// Copied from: local:origin.v1.RebuildBuildkiteCheckRunRequest (var: n1v)
+message RebuildBuildkiteCheckRunRequest {
+  ChangeIdentifier change = 1;
+  string check_run_id = 2;
+}
+
+// Copied from: local:origin.v1.RebuildBuildkiteCheckRunResponse (var: i1v)
+message RebuildBuildkiteCheckRunResponse {
+}
+
+// Copied from: local:origin.v1.RecordInboundMirrorExternalGithubMergeRequest (var: k1v)
+message RecordInboundMirrorExternalGithubMergeRequest {
+  ChangeIdentifier change = 1;
+  string github_merge_commit_sha = 2;
+  string operation_id = 3;
+  string lease_token = 4;
+}
+
+// Copied from: local:origin.v1.RecordInboundMirrorExternalGithubMergeResponse (var: C1v)
+message RecordInboundMirrorExternalGithubMergeResponse {
+  Change change = 1;
+}
+
+// Copied from: local:origin.v1.RecordInboundMirrorGithubMergeErrorRequest (var: S1v)
+message RecordInboundMirrorGithubMergeErrorRequest {
+  ChangeIdentifier change = 1;
+  string operation_id = 2;
+  string lease_token = 3;
+  string error_message = 4;
+}
+
+// Copied from: local:origin.v1.RecordInboundMirrorGithubMergeErrorResponse (var: w1v)
+message RecordInboundMirrorGithubMergeErrorResponse {
+  InboundMirrorGithubMergeOperation operation = 1;
+}
+
+// Copied from: local:origin.v1.RecordInboundMirrorGithubMergeGithubPrRequest (var: v1v)
+message RecordInboundMirrorGithubMergeGithubPrRequest {
+  ChangeIdentifier change = 1;
+  string operation_id = 2;
+  string lease_token = 3;
+  string github_pull_request_node_id = 4;
+  uint64 github_pull_request_number = 5;
+  string github_pull_request_url = 6;
+}
+
+// Copied from: local:origin.v1.RecordInboundMirrorGithubMergeGithubPrResponse (var: b1v)
+message RecordInboundMirrorGithubMergeGithubPrResponse {
+  InboundMirrorGithubMergeOperation operation = 1;
+}
+
+// Copied from: local:origin.v1.RecordInboundMirrorGithubMergeGithubResultRequest (var: _1v)
+message RecordInboundMirrorGithubMergeGithubResultRequest {
+  ChangeIdentifier change = 1;
+  string operation_id = 2;
+  string lease_token = 3;
+  string merge_commit_sha = 4;
+}
+
+// Copied from: local:origin.v1.RecordInboundMirrorGithubMergeGithubResultResponse (var: y1v)
+message RecordInboundMirrorGithubMergeGithubResultResponse {
+  InboundMirrorGithubMergeOperation operation = 1;
+}
+
+// Copied from: git_forge.v1.RefInfo (var: MQd)
+message RefInfo {
+  string name = 1;
+  string target_sha = 2;
+  string object_sha = 3;
+  string object_type = 4;
+}
+
+// Copied from: local:origin.v1.RemoveAssigneeRequest (var: qkv)
+message RemoveAssigneeRequest {
+  ChangeIdentifier change = 1;
+  oneof target {
+    string auth_id = 2;
+    string group_id = 3;
+    int64 cursor_user_id = 4;
+    int64 cursor_group_id = 5;
+  }
+}
+
+// Copied from: local:origin.v1.RemoveAssigneeResponse (var: Kkv)
+message RemoveAssigneeResponse {
+}
+
+// Copied from: local:origin.v1.RemoveLabelFromChangeRequest (var: hxv)
+message RemoveLabelFromChangeRequest {
+  ChangeIdentifier change = 1;
+  string label_id = 2;
+}
+
+// Copied from: local:origin.v1.RemoveLabelFromChangeResponse (var: pxv)
+message RemoveLabelFromChangeResponse {
+}
+
+// Copied from: local:origin.v1.ReopenCommentThreadRequest (var: s0v)
+message ReopenCommentThreadRequest {
+  ChangeIdentifier change = 1;
+  string thread_id = 2;
+}
+
+// Copied from: local:origin.v1.ReopenCommentThreadResponse (var: o0v)
+message ReopenCommentThreadResponse {
+  CommentThread thread = 1;
+}
+
+// Copied from: local:origin.v1.Repo (var: E4e)
+message Repo {
+  ClientRepoIdentifier identifier = 1;
+  string default_branch = 2;
+  optional string github_node_id = 4;
+  optional string github_enterprise_id = 5;
+  MirrorStatus mirror_status = 6;
+  optional string active_mirror_transition_job_id = 7;
+  string repo_uuid = 8;
+  optional uint64 github_installation_id = 9;
+  optional google.protobuf.Timestamp created_at = 10;
+  optional google.protobuf.Timestamp updated_at = 11;
+  optional google.protobuf.Timestamp last_pushed_at = 12;
+  optional int64 owner_entity_id = 13;
+  optional string owner_type = 14;
+  string forge_environment = 15;
+  string origin_namespace_id = 16;
+  bool allow_merge_commit = 17;
+  bool allow_squash_merge = 18;
+  RepoVisibility visibility = 19;
+  bool delete_branch_on_merge = 20;
+}
+
+// Copied from: local:origin.v1.RepoCheckSource (var: K0v)
+message RepoCheckSource {
+  CheckRunActor actor = 1;
+  string group_key = 2;
+  string suite_name = 3;
+  repeated RepoCheckSourceRun runs = 4;
+  int64 last_seen_at_unix_ms = 5;
+  string actor_id_uuid = 6;
+}
+
+// Copied from: local:origin.v1.RepoCheckSourceRun (var: q0v)
+message RepoCheckSourceRun {
+  string run_key = 1;
+  string name = 2;
+}
+
+// Copied from: git_forge.v1.RepoContentDetails (var: $Sv)
+message RepoContentDetails {
+  string type = 1;
+  optional uint64 size = 2;
+  bool is_binary = 3;
+  bool too_large_to_introspect = 4;
+}
+
+// Copied from: git_forge.v1.RepoContentEntry (var: twv)
+message RepoContentEntry {
+  string type = 1;
+  string name = 2;
+  string path = 3;
+  string sha = 4;
+  optional uint64 size = 5;
+}
+
+// Copied from: local:origin.v1.RepoGithubMirrorInfo (var: Epo)
+message RepoGithubMirrorInfo {
+  string github_owner = 1;
+  string github_repo = 2;
+  string github_repo_url = 3;
+}
+
+// Copied from: local:origin.v1.RepoGrantRow (var: Kyv)
+message RepoGrantRow {
+  GrantPrincipal principal = 1;
+  GrantPolicyRef namespace_policy = 2;
+  GrantPolicyRef repo_policy = 3;
+  GrantPolicyRef effective_policy = 4;
+  bool is_namespace_owned = 5;
+}
+
+// Copied from: local:origin.v1.RepoKind (var: s_t)
+enum RepoKind {
+  REPO_KIND_UNSPECIFIED = 0;
+  REPO_KIND_STANDARD = 1;
+  REPO_KIND_CURSOR_MARKETPLACE = 2;
+  REPO_KIND_ORIGIN_NATIVE_CURSOR_MARKETPLACE = 3;
+  REPO_KIND_AGENT_TEMP = 4;
+}
+
+// Copied from: local:origin.v1.RepoMirrorTransition (var: fQd)
+enum RepoMirrorTransition {
+  REPO_MIRROR_TRANSITION_UNSPECIFIED = 0;
+  REPO_MIRROR_TRANSITION_INBOUND_TO_OUTBOUND = 1;
+  REPO_MIRROR_TRANSITION_OUTBOUND_TO_INBOUND = 2;
+  REPO_MIRROR_TRANSITION_INITIAL_TO_INBOUND = 3;
+}
+
+// Copied from: local:origin.v1.RepoMirrorTransitionJob (var: rzi)
+message RepoMirrorTransitionJob {
+  string id = 1;
+  ClientRepoIdentifier identifier = 2;
+  RepoMirrorTransition transition = 3;
+  MirrorStatus mirror_status = 4;
+  RepoMirrorTransitionJobStatus status = 5;
+  RepoMirrorTransitionJobPhase phase = 6;
+  uint32 attempt_count = 7;
+  optional string drain_until = 11;
+  optional string last_error_code = 12;
+  optional string last_error_message = 13;
+  optional string started_at = 15;
+  optional string completed_at = 16;
+  string created_at = 17;
+  string updated_at = 18;
+}
+
+// Copied from: local:origin.v1.RepoMirrorTransitionJobPhase (var: V_v)
+enum RepoMirrorTransitionJobPhase {
+  REPO_MIRROR_TRANSITION_JOB_PHASE_UNSPECIFIED = 0;
+  REPO_MIRROR_TRANSITION_JOB_PHASE_QUEUED = 1;
+  REPO_MIRROR_TRANSITION_JOB_PHASE_STARTING = 2;
+  REPO_MIRROR_TRANSITION_JOB_PHASE_DRAINING_WRITES = 3;
+  REPO_MIRROR_TRANSITION_JOB_PHASE_FINALIZING_MIRROR_FETCH = 4;
+  REPO_MIRROR_TRANSITION_JOB_PHASE_FINALIZING_MIRROR_PUSH = 5;
+  REPO_MIRROR_TRANSITION_JOB_PHASE_COMMITTING_TARGET_STATUS = 6;
+  REPO_MIRROR_TRANSITION_JOB_PHASE_ROLLING_BACK = 7;
+  REPO_MIRROR_TRANSITION_JOB_PHASE_COMPLETED = 8;
+  REPO_MIRROR_TRANSITION_JOB_PHASE_INITIALIZING_MIRROR_FETCH = 9;
+}
+
+// Copied from: local:origin.v1.RepoMirrorTransitionJobStatus (var: z_v)
+enum RepoMirrorTransitionJobStatus {
+  REPO_MIRROR_TRANSITION_JOB_STATUS_UNSPECIFIED = 0;
+  REPO_MIRROR_TRANSITION_JOB_STATUS_QUEUED = 1;
+  REPO_MIRROR_TRANSITION_JOB_STATUS_RUNNING = 2;
+  REPO_MIRROR_TRANSITION_JOB_STATUS_SUCCEEDED = 3;
+  REPO_MIRROR_TRANSITION_JOB_STATUS_FAILED_ROLLED_BACK = 4;
+  REPO_MIRROR_TRANSITION_JOB_STATUS_REQUIRES_ATTENTION = 5;
+}
+
+// Copied from: local:origin.v1.RepoSelectionMode (var: eYd)
+enum RepoSelectionMode {
+  REPO_SELECTION_MODE_UNSPECIFIED = 0;
+  REPO_SELECTION_MODE_ALL = 1;
+  REPO_SELECTION_MODE_SELECTED = 2;
+}
+
+// Copied from: local:origin.v1.RepoSummary (var: q_v)
+message RepoSummary {
+  string org = 1;
+  string name = 2;
+  string clone_url = 3;
+  string default_branch = 4;
+  optional string github_node_id = 6;
+  optional string github_enterprise_id = 7;
+  string repo_uuid = 8;
+  MirrorStatus mirror_status = 9;
+  optional google.protobuf.Timestamp last_pushed_at = 10;
+  string forge_environment = 11;
+  string origin_namespace_id = 12;
+  bool allow_merge_commit = 13;
+  bool allow_squash_merge = 14;
+  RepoVisibility visibility = 15;
+  optional RepoGithubMirrorInfo github_mirror_info = 16;
+}
+
+// Copied from: local:origin.v1.RepoVisibility (var: gMn)
+enum RepoVisibility {
+  REPO_VISIBILITY_UNSPECIFIED = 0;
+  REPO_VISIBILITY_INTERNAL = 1;
+  REPO_VISIBILITY_PRIVATE = 2;
+}
+
+// Copied from: local:origin.v1.RequestReviewRequest (var: Fkv)
+message RequestReviewRequest {
+  ChangeIdentifier change = 1;
+  oneof target {
+    string auth_id = 2;
+    string group_id = 3;
+    int64 cursor_user_id = 4;
+    int64 cursor_group_id = 5;
+  }
+}
+
+// Copied from: local:origin.v1.RequestReviewResponse (var: Bkv)
+message RequestReviewResponse {
+  ChangeAssignment assignment = 1;
+}
+
+// Copied from: local:origin.v1.RequestReviewsRequest (var: jkv)
+message RequestReviewsRequest {
+  ChangeIdentifier change = 1;
+  repeated ReviewRequestTarget targets = 2;
+}
+
+// Copied from: local:origin.v1.RequestReviewsResponse (var: Wkv)
+message RequestReviewsResponse {
+  repeated ChangeAssignment assignments = 1;
+}
+
+// Copied from: local:origin.v1.ResolveCommentThreadRequest (var: i0v)
+message ResolveCommentThreadRequest {
+  ChangeIdentifier change = 1;
+  string thread_id = 2;
+}
+
+// Copied from: local:origin.v1.ResolveCommentThreadResponse (var: r0v)
+message ResolveCommentThreadResponse {
+  CommentThread thread = 1;
+}
+
+// Copied from: local:origin.v1.ResolveOriginPullRequestRedirectRequest (var: kyv)
+message ResolveOriginPullRequestRedirectRequest {
+  ClientRepoIdentifier identifier = 1;
+  int64 pull_number = 2;
+}
+
+// Copied from: local:origin.v1.ResolveOriginPullRequestRedirectResponse (var: Cyv)
+message ResolveOriginPullRequestRedirectResponse {
+  string pull_request_url = 1;
+}
+
+// Copied from: git_forge.v1.ResolveRefPathResponse (var: USv)
+message ResolveRefPathResponse {
+  PathIdentifier path_identifier = 1;
+  string resolved_commit_sha = 2;
+}
+
+// Copied from: local:origin.v1.ResolveRepoPathClientRequest (var: lwv)
+message ResolveRepoPathClientRequest {
+  ClientRepoIdentifier identifier = 1;
+  string ref_path = 2;
+}
+
+// Copied from: local:origin.v1.RestackStackRequest (var: h1v)
+message RestackStackRequest {
+  ClientRepoIdentifier identifier = 1;
+  uint64 top_change_number = 2;
+}
+
+// Copied from: local:origin.v1.RestackStackResponse (var: p1v)
+message RestackStackResponse {
+  repeated uint64 restacked_change_numbers = 1;
+}
+
+// Copied from: local:origin.v1.RestorePullRequestBranchRequest (var: lkv)
+message RestorePullRequestBranchRequest {
+  ChangeIdentifier change = 1;
+}
+
+// Copied from: local:origin.v1.RestorePullRequestBranchResponse (var: ukv)
+message RestorePullRequestBranchResponse {
+  bool already_restored = 1;
+}
+
+// Copied from: local:origin.v1.RetargetChangeRequest (var: dkv)
+message RetargetChangeRequest {
+  ChangeIdentifier change = 1;
+  string base_ref = 2;
+}
+
+// Copied from: local:origin.v1.RetargetChangeResponse (var: hkv)
+message RetargetChangeResponse {
+  Change change = 1;
+  Version latest_version = 2;
+  bool unchanged = 3;
+}
+
+// Copied from: local:origin.v1.RevertPullRequestRequest (var: tkv)
+message RevertPullRequestRequest {
+  ChangeIdentifier change = 1;
+  optional string title = 2;
+  optional string description = 3;
+  bool draft = 4;
+}
+
+// Copied from: local:origin.v1.RevertPullRequestResponse (var: nkv)
+message RevertPullRequestResponse {
+  Change change = 1;
+  bool reverse_mirror_push_failed = 2;
+}
+
+// Copied from: local:origin.v1.Review (var: RZe)
+message Review {
+  string id = 1;
+  string change_id = 2;
+  string version_id = 3;
+  uint64 version_number = 4;
+  string author_id = 5;
+  ReviewVerdict verdict = 6;
+  string body = 7;
+  google.protobuf.Timestamp created_at = 8;
+  string author_kind = 9;
+  string author_display_name = 10;
+  string author_avatar_url = 11;
+  optional google.protobuf.Timestamp submitted_at = 12;
+  optional ReviewDismissal dismissal = 13;
+  ActorWithDisplay author = 14;
+}
+
+// Copied from: local:origin.v1.ReviewDismissal (var: _kv)
+message ReviewDismissal {
+  google.protobuf.Timestamp dismissed_at = 1;
+  string dismissed_by_id = 2;
+  string dismissed_by_kind = 3;
+  string dismissal_message = 4;
+}
+
+// Copied from: local:origin.v1.ReviewRequestEvent (var: Lkv)
+message ReviewRequestEvent {
+  string id = 1;
+  string change_id = 2;
+  ChangeAssignmentKind kind = 3;
+  ReviewRequestEventAction action = 4;
+  string assigned_auth_id = 5;
+  string assigned_group_id = 6;
+  ChangeAssignmentCreatedVia created_via = 7;
+  string actor_auth_id = 8;
+  google.protobuf.Timestamp created_at = 9;
+  ActorWithDisplay actor = 10;
+  OriginReviewerCandidateUser assigned_user = 11;
+  OriginReviewerCandidateGroup assigned_group = 12;
+}
+
+// Copied from: local:origin.v1.ReviewRequestEventAction (var: Ywv)
+enum ReviewRequestEventAction {
+  REVIEW_REQUEST_EVENT_ACTION_UNSPECIFIED = 0;
+  REVIEW_REQUEST_EVENT_ACTION_REQUESTED = 1;
+  REVIEW_REQUEST_EVENT_ACTION_REMOVED = 2;
+}
+
+// Copied from: local:origin.v1.ReviewRequestTarget (var: Apo)
+message ReviewRequestTarget {
+  oneof target {
+    string auth_id = 1;
+    string group_id = 2;
+    int64 cursor_user_id = 3;
+    int64 cursor_group_id = 4;
+  }
+}
+
+// Copied from: local:origin.v1.ReviewVerdict (var: Tpo)
+enum ReviewVerdict {
+  REVIEW_VERDICT_UNSPECIFIED = 0;
+  REVIEW_VERDICT_APPROVE = 1;
+  REVIEW_VERDICT_REQUEST_CHANGES = 2;
+  REVIEW_VERDICT_COMMENT = 3;
+}
+
+// Copied from: local:origin.v1.RevokeAppSigningKeyRequest (var: O1v)
+message RevokeAppSigningKeyRequest {
+  string app_id = 1;
+  string kid = 2;
+}
+
+// Copied from: local:origin.v1.RevokeAppSigningKeyResponse (var: F1v)
+message RevokeAppSigningKeyResponse {
+}
+
+// Copied from: local:origin.v1.Ruleset (var: Lpo)
+message Ruleset {
+  string id = 1;
+  ClientRepoIdentifier repo = 2;
+  string name = 3;
+  string description = 4;
+  RulesetEnforcement enforcement = 5;
+  RulesetKind kind = 6;
+  repeated string included_ref_names = 7;
+  repeated string excluded_ref_names = 8;
+  repeated RulesetRule rules = 9;
+  repeated RulesetBypassActor bypass_actors = 10;
+}
+
+// Copied from: local:origin.v1.RulesetBypassActor (var: HEv)
+message RulesetBypassActor {
+  string id = 1;
+  RulesetBypassMode bypass_mode = 2;
+  RulesetBypassActorKind actor_kind = 3;
+  google.protobuf.Struct actor_payload = 4;
+}
+
+// Copied from: local:origin.v1.RulesetBypassActorInput (var: VEv)
+message RulesetBypassActorInput {
+  RulesetBypassMode bypass_mode = 1;
+  RulesetBypassActorKind actor_kind = 2;
+  google.protobuf.Struct actor_payload = 3;
+}
+
+// Copied from: local:origin.v1.RulesetBypassActorKind (var: dYd)
+enum RulesetBypassActorKind {
+  RULESET_BYPASS_ACTOR_KIND_UNSPECIFIED = 0;
+  RULESET_BYPASS_ACTOR_KIND_USER = 1;
+  RULESET_BYPASS_ACTOR_KIND_TEAM = 2;
+  RULESET_BYPASS_ACTOR_KIND_APP = 3;
+  RULESET_BYPASS_ACTOR_KIND_ORGANIZATION_ADMIN = 4;
+  RULESET_BYPASS_ACTOR_KIND_REPOSITORY_ROLE = 5;
+}
+
+// Copied from: local:origin.v1.RulesetBypassMode (var: uYd)
+enum RulesetBypassMode {
+  RULESET_BYPASS_MODE_UNSPECIFIED = 0;
+  RULESET_BYPASS_MODE_ALWAYS = 1;
+  RULESET_BYPASS_MODE_PULL_REQUEST_ONLY = 2;
+}
+
+// Copied from: local:origin.v1.RulesetEnforcement (var: cYd)
+enum RulesetEnforcement {
+  RULESET_ENFORCEMENT_UNSPECIFIED = 0;
+  RULESET_ENFORCEMENT_ACTIVE = 1;
+  RULESET_ENFORCEMENT_EVALUATE = 2;
+  RULESET_ENFORCEMENT_DISABLED = 3;
+}
+
+// Copied from: local:origin.v1.RulesetKind (var: lYd)
+enum RulesetKind {
+  RULESET_KIND_UNSPECIFIED = 0;
+  RULESET_KIND_MERGE_BRANCH = 1;
+  RULESET_KIND_PUSH_BRANCH = 2;
+  RULESET_KIND_PUSH_TAG = 3;
+  RULESET_KIND_PUSH_REPOSITORY = 4;
+}
+
+// Copied from: local:origin.v1.RulesetRule (var: WEv)
+message RulesetRule {
+  string id = 1;
+  string rule_type = 2;
+  google.protobuf.Struct parameters = 3;
+}
+
+// Copied from: local:origin.v1.RulesetRuleInput (var: zEv)
+message RulesetRuleInput {
+  string rule_type = 1;
+  google.protobuf.Struct parameters = 2;
+}
+
+// Copied from: local:origin.v1.SearchRefsClientRequest (var: Lwv)
+message SearchRefsClientRequest {
+  ClientRepoIdentifier identifier = 1;
+  ListRefsFilter filter = 2;
+  string query = 3;
+  optional uint32 limit = 4;
+}
+
+// Copied from: git_forge.v1.SearchRefsResponse (var: cwv)
+message SearchRefsResponse {
+  repeated RefInfo ref_infos = 1;
+  bool exact_match = 2;
+}
+
+// Copied from: local:origin.v1.SectionOfChanges (var: mCv)
+message SectionOfChanges {
+  string id = 1;
+  int32 number = 2;
+  string repo_id = 3;
+  string title = 4;
+  string description = 5;
+  string head_ref = 6;
+  string base_ref = 7;
+  string author_id = 8;
+  SectionOfChangesStatus status = 9;
+  google.protobuf.Timestamp created_at = 10;
+  google.protobuf.Timestamp updated_at = 11;
+  optional google.protobuf.Timestamp merged_at = 12;
+  optional google.protobuf.Timestamp closed_at = 13;
+  string head_sha = 14;
+  string base_sha = 15;
+  int32 additions = 16;
+  int32 deletions = 17;
+  int32 changed_files = 18;
+  int32 version_count = 19;
+  optional string review_decision = 20;
+  repeated SectionOfChangesReviewer reviewers = 21;
+  int32 total_thread_count = 22;
+  int32 unresolved_thread_count = 23;
+  optional string parent_change_id = 24;
+  optional string stack_id = 25;
+  string repo_namespace = 26;
+  string repo_name = 27;
+  string author_kind = 28;
+  string author_display_name = 29;
+  string author_avatar_url = 30;
+  ActorWithDisplay author = 31;
+  optional google.protobuf.Timestamp viewer_last_viewed_at = 32;
+}
+
+// Copied from: local:origin.v1.SectionOfChangesFilter (var: _Mn)
+message SectionOfChangesFilter {
+  oneof kind {
+    SectionOfChangesFilterAnd and = 1;
+    SectionOfChangesFilterOr or = 2;
+    SectionOfChangesFilterNot not = 3;
+    SectionOfChangesFilterConsolidatedStatus consolidated_status = 4;
+    SectionOfChangesFilterTitleContains title_contains = 5;
+    SectionOfChangesFilterDescriptionContains description_contains = 6;
+    SectionOfChangesFilterMergeBase merge_base = 7;
+    SectionOfChangesFilterTrunk trunk = 8;
+    SectionOfChangesFilterLastUpdated last_updated = 9;
+    SectionOfChangesFilterOpenReviewRequestFor open_review_request_for = 10;
+    SectionOfChangesFilterReopenedReviewRequestFor reopened_review_request_for = 11;
+    SectionOfChangesFilterClosedReviewRequestFrom closed_review_request_from = 12;
+    SectionOfChangesFilterIncludesDirectReviewer includes_direct_reviewer = 13;
+    SectionOfChangesFilterAuthorIs author_is = 14;
+    SectionOfChangesFilterReviewStatus review_status = 15;
+    SectionOfChangesFilterApprovedBy approved_by = 16;
+    SectionOfChangesFilterIncludesPastReviewer includes_past_reviewer = 17;
+    SectionOfChangesFilterHasLabel has_label = 18;
+    SectionOfChangesFilterNumFilesChanged num_files_changed = 19;
+    SectionOfChangesFilterNumLinesChanged num_lines_changed = 20;
+    SectionOfChangesFilterIncludesReviewer includes_reviewer = 21;
+    SectionOfChangesFilterIncludesAssignee includes_assignee = 22;
+    SectionOfChangesFilterIncludesDirectTeamReviewer includes_direct_team_reviewer = 23;
+    SectionOfChangesFilterMentions mentions = 24;
+    SectionOfChangesFilterUnsupported unsupported = 100;
+  }
+}
+
+// Copied from: local:origin.v1.SectionOfChangesFilterAnd (var: fCv)
+message SectionOfChangesFilterAnd {
+  repeated SectionOfChangesFilter exprs = 1;
+}
+
+// Copied from: local:origin.v1.SectionOfChangesFilterApprovedBy (var: RCv)
+message SectionOfChangesFilterApprovedBy {
+  string auth_id = 1;
+  int64 cursor_user_id = 2;
+}
+
+// Copied from: local:origin.v1.SectionOfChangesFilterAuthorIs (var: $Qd)
+message SectionOfChangesFilterAuthorIs {
+  string auth_id = 1;
+  int64 cursor_user_id = 2;
+}
+
+// Copied from: local:origin.v1.SectionOfChangesFilterClosedReviewRequestFrom (var: TCv)
+message SectionOfChangesFilterClosedReviewRequestFrom {
+  string auth_id = 1;
+  int64 cursor_user_id = 2;
+}
+
+// Copied from: local:origin.v1.SectionOfChangesFilterConsolidatedStatus (var: _Cv)
+message SectionOfChangesFilterConsolidatedStatus {
+  SectionOfChangesStatus status = 1;
+}
+
+// Copied from: local:origin.v1.SectionOfChangesFilterDescriptionContains (var: SCv)
+message SectionOfChangesFilterDescriptionContains {
+  string text = 1;
+}
+
+// Copied from: local:origin.v1.SectionOfChangesFilterHasLabel (var: MCv)
+message SectionOfChangesFilterHasLabel {
+  string name = 1;
+}
+
+// Copied from: local:origin.v1.SectionOfChangesFilterIncludesAssignee (var: OCv)
+message SectionOfChangesFilterIncludesAssignee {
+  string auth_id = 1;
+  int64 cursor_user_id = 2;
+}
+
+// Copied from: local:origin.v1.SectionOfChangesFilterIncludesDirectReviewer (var: ACv)
+message SectionOfChangesFilterIncludesDirectReviewer {
+  string auth_id = 1;
+  int64 cursor_user_id = 2;
+}
+
+// Copied from: local:origin.v1.SectionOfChangesFilterIncludesDirectTeamReviewer (var: FCv)
+message SectionOfChangesFilterIncludesDirectTeamReviewer {
+  string slug = 1;
+}
+
+// Copied from: local:origin.v1.SectionOfChangesFilterIncludesPastReviewer (var: DCv)
+message SectionOfChangesFilterIncludesPastReviewer {
+  string auth_id = 1;
+  int64 cursor_user_id = 2;
+}
+
+// Copied from: local:origin.v1.SectionOfChangesFilterIncludesReviewer (var: NCv)
+message SectionOfChangesFilterIncludesReviewer {
+  string auth_id = 1;
+  repeated string group_public_ids = 2;
+  int64 cursor_user_id = 3;
+}
+
+// Copied from: local:origin.v1.SectionOfChangesFilterLastUpdated (var: CCv)
+message SectionOfChangesFilterLastUpdated {
+  int32 hours = 1;
+}
+
+// Copied from: local:origin.v1.SectionOfChangesFilterMentions (var: BCv)
+message SectionOfChangesFilterMentions {
+  string username = 1;
+}
+
+// Copied from: local:origin.v1.SectionOfChangesFilterMergeBase (var: wCv)
+message SectionOfChangesFilterMergeBase {
+  string merge_base = 1;
+}
+
+// Copied from: local:origin.v1.SectionOfChangesFilterNot (var: bCv)
+message SectionOfChangesFilterNot {
+  SectionOfChangesFilter expr = 1;
+}
+
+// Copied from: local:origin.v1.SectionOfChangesFilterNumFilesChanged (var: PCv)
+message SectionOfChangesFilterNumFilesChanged {
+  int32 num_files = 1;
+}
+
+// Copied from: local:origin.v1.SectionOfChangesFilterNumLinesChanged (var: LCv)
+message SectionOfChangesFilterNumLinesChanged {
+  int32 num_lines = 1;
+}
+
+// Copied from: local:origin.v1.SectionOfChangesFilterOpenReviewRequestFor (var: ECv)
+message SectionOfChangesFilterOpenReviewRequestFor {
+  string auth_id = 1;
+  int64 cursor_user_id = 2;
+}
+
+// Copied from: local:origin.v1.SectionOfChangesFilterOr (var: vCv)
+message SectionOfChangesFilterOr {
+  repeated SectionOfChangesFilter exprs = 1;
+}
+
+// Copied from: local:origin.v1.SectionOfChangesFilterReopenedReviewRequestFor (var: xCv)
+message SectionOfChangesFilterReopenedReviewRequestFor {
+  string auth_id = 1;
+  int64 cursor_user_id = 2;
+}
+
+// Copied from: local:origin.v1.SectionOfChangesFilterReviewStatus (var: ICv)
+message SectionOfChangesFilterReviewStatus {
+  SectionOfChangesReviewStatusState state = 1;
+}
+
+// Copied from: local:origin.v1.SectionOfChangesFilterTitleContains (var: yCv)
+message SectionOfChangesFilterTitleContains {
+  string text = 1;
+}
+
+// Copied from: local:origin.v1.SectionOfChangesFilterTrunk (var: kCv)
+message SectionOfChangesFilterTrunk {
+  string trunk = 1;
+}
+
+// Copied from: local:origin.v1.SectionOfChangesFilterUnsupported (var: UCv)
+message SectionOfChangesFilterUnsupported {
+  string kind = 1;
+}
+
+// Copied from: local:origin.v1.SectionOfChangesReviewStatusState (var: Xwv)
+enum SectionOfChangesReviewStatusState {
+  SECTION_OF_CHANGES_REVIEW_STATUS_STATE_UNSPECIFIED = 0;
+  SECTION_OF_CHANGES_REVIEW_STATUS_STATE_ONE_OR_MORE_APPROVALS = 1;
+  SECTION_OF_CHANGES_REVIEW_STATUS_STATE_IS_FULLY_APPROVED = 2;
+  SECTION_OF_CHANGES_REVIEW_STATUS_STATE_HAS_ACTIVE_REVIEW = 3;
+  SECTION_OF_CHANGES_REVIEW_STATUS_STATE_HAS_REQUESTED_REVIEWERS = 4;
+  SECTION_OF_CHANGES_REVIEW_STATUS_STATE_HAS_REREQUESTED_REVIEW = 5;
+  SECTION_OF_CHANGES_REVIEW_STATUS_STATE_HAS_UNADDRESSED_CHANGES_REQUESTED = 6;
+  SECTION_OF_CHANGES_REVIEW_STATUS_STATE_HAS_CHANGES_REQUESTED = 7;
+}
+
+// Copied from: local:origin.v1.SectionOfChangesReviewer (var: gCv)
+message SectionOfChangesReviewer {
+  string author_id = 1;
+  SectionOfChangesVerdict verdict = 2;
+  google.protobuf.Timestamp reviewed_at = 3;
+  string author_kind = 4;
+  string author_display_name = 5;
+  string author_avatar_url = 6;
+  ActorWithDisplay author = 7;
+}
+
+// Copied from: local:origin.v1.SectionOfChangesSortField (var: NQd)
+enum SectionOfChangesSortField {
+  SECTION_OF_CHANGES_SORT_FIELD_UNSPECIFIED = 0;
+  SECTION_OF_CHANGES_SORT_FIELD_UPDATED_AT = 1;
+  SECTION_OF_CHANGES_SORT_FIELD_CREATED_AT = 2;
+  SECTION_OF_CHANGES_SORT_FIELD_TITLE = 3;
+  SECTION_OF_CHANGES_SORT_FIELD_LINES_CHANGED = 4;
+}
+
+// Copied from: local:origin.v1.SectionOfChangesStatus (var: a_t)
+enum SectionOfChangesStatus {
+  SECTION_OF_CHANGES_STATUS_UNSPECIFIED = 0;
+  SECTION_OF_CHANGES_STATUS_DRAFT = 1;
+  SECTION_OF_CHANGES_STATUS_OPEN = 2;
+  SECTION_OF_CHANGES_STATUS_MERGED = 3;
+  SECTION_OF_CHANGES_STATUS_CLOSED = 4;
+}
+
+// Copied from: local:origin.v1.SectionOfChangesVerdict (var: Zwv)
+enum SectionOfChangesVerdict {
+  SECTION_OF_CHANGES_VERDICT_UNSPECIFIED = 0;
+  SECTION_OF_CHANGES_VERDICT_APPROVE = 1;
+  SECTION_OF_CHANGES_VERDICT_COMMENT = 2;
+  SECTION_OF_CHANGES_VERDICT_REQUEST_CHANGES = 3;
+}
+
+// Copied from: local:origin.v1.SetAppIconRequest (var: J1v)
+message SetAppIconRequest {
+  string app_id = 1;
+  bytes icon = 2;
+}
+
+// Copied from: local:origin.v1.SetAppIconResponse (var: eEv)
+message SetAppIconResponse {
+  App app = 1;
+}
+
+// Copied from: local:origin.v1.SetAtlasRepoConfigRequest (var: BEv)
+message SetAtlasRepoConfigRequest {
+  ClientRepoIdentifier repo = 1;
+  bool enabled = 2;
+  repeated string enabled_layers = 3;
+  AtlasFreshness freshness = 4;
+}
+
+// Copied from: local:origin.v1.SetAtlasRepoConfigResponse (var: UEv)
+message SetAtlasRepoConfigResponse {
+  GetAtlasRepoStatusResponse status = 1;
+}
+
+// Copied from: local:origin.v1.SetBuildkiteTriggerEnabledRequest (var: SEv)
+message SetBuildkiteTriggerEnabledRequest {
+  ClientRepoIdentifier repo = 1;
+  string trigger_id = 2;
+  bool enabled = 3;
+}
+
+// Copied from: local:origin.v1.SetBuildkiteTriggerEnabledResponse (var: wEv)
+message SetBuildkiteTriggerEnabledResponse {
+  BuildkiteTrigger trigger = 1;
+}
+
+// Copied from: local:origin.v1.SetCommentReactionRequest (var: d0v)
+message SetCommentReactionRequest {
+  string comment_id = 1;
+  string emoji = 2;
+  bool active = 3;
+}
+
+// Copied from: local:origin.v1.SetCommentReactionResponse (var: h0v)
+message SetCommentReactionResponse {
+}
+
+// Copied from: local:origin.v1.SetNamespaceGroupAccessRequest (var: hSv)
+message SetNamespaceGroupAccessRequest {
+  string namespace_slug = 1;
+  repeated string group_ids = 2;
+  bool retain_self_admin = 5;
+  oneof policy_update {
+    string policy_name = 3;
+    bool clear_access = 4;
+  }
+}
+
+// Copied from: local:origin.v1.SetNamespaceGroupAccessResponse (var: pSv)
+message SetNamespaceGroupAccessResponse {
+  OriginNamespace namespace = 1;
+  bool self_admin_granted = 2;
+}
+
+// Copied from: local:origin.v1.SetNamespaceTeamAccessRequest (var: sSv)
+message SetNamespaceTeamAccessRequest {
+  string namespace_slug = 1;
+  TeamGroupKind group = 2;
+  bool retain_self_admin = 5;
+  oneof policy_update {
+    string policy_name = 3;
+    bool clear_access = 4;
+  }
+}
+
+// Copied from: local:origin.v1.SetNamespaceTeamAccessResponse (var: oSv)
+message SetNamespaceTeamAccessResponse {
+  OriginNamespace namespace = 1;
+  NamespaceTeamGroupAccess team_admins = 2;
+  NamespaceTeamGroupAccess team_members = 3;
+  bool self_admin_granted = 4;
+}
+
+// Copied from: local:origin.v1.SetNamespaceUserAccessRequest (var: uSv)
+message SetNamespaceUserAccessRequest {
+  string namespace_slug = 1;
+  repeated string user_ids = 2;
+  bool retain_self_admin = 5;
+  oneof policy_update {
+    string policy_name = 3;
+    bool clear_access = 4;
+  }
+}
+
+// Copied from: local:origin.v1.SetNamespaceUserAccessResponse (var: dSv)
+message SetNamespaceUserAccessResponse {
+  OriginNamespace namespace = 1;
+  bool self_admin_granted = 2;
+}
+
+// Copied from: local:origin.v1.SetRepoGroupAccessRequest (var: tSv)
+message SetRepoGroupAccessRequest {
+  ClientRepoIdentifier identifier = 1;
+  string group_id = 2;
+  oneof policy_update {
+    string policy_name = 3;
+    bool clear_access = 4;
+  }
+}
+
+// Copied from: local:origin.v1.SetRepoGroupAccessResponse (var: nSv)
+message SetRepoGroupAccessResponse {
+}
+
+// Copied from: local:origin.v1.SetRepoTeamAccessRequest (var: Zyv)
+message SetRepoTeamAccessRequest {
+  ClientRepoIdentifier identifier = 1;
+  TeamGroupKind group = 2;
+  oneof policy_update {
+    string policy_name = 3;
+    bool clear_override = 4;
+  }
+}
+
+// Copied from: local:origin.v1.SetRepoTeamAccessResponse (var: Xyv)
+message SetRepoTeamAccessResponse {
+  OriginNamespace namespace = 1;
+  TeamGroupAccess team_admins = 2;
+  TeamGroupAccess team_members = 3;
+}
+
+// Copied from: local:origin.v1.SetRepoUserAccessRequest (var: Jyv)
+message SetRepoUserAccessRequest {
+  ClientRepoIdentifier identifier = 1;
+  string user_id = 2;
+  oneof policy_update {
+    string policy_name = 3;
+    bool clear_access = 4;
+  }
+}
+
+// Copied from: local:origin.v1.SetRepoUserAccessResponse (var: eSv)
+message SetRepoUserAccessResponse {
+}
+
+// Copied from: local:origin.v1.SetVercelTriggerEnabledRequest (var: IEv)
+message SetVercelTriggerEnabledRequest {
+  ClientRepoIdentifier repo = 1;
+  string trigger_id = 2;
+  bool enabled = 3;
+}
+
+// Copied from: local:origin.v1.SetVercelTriggerEnabledResponse (var: REv)
+message SetVercelTriggerEnabledResponse {
+  VercelTrigger trigger = 1;
+}
+
+// Copied from: local:origin.v1.SetupTeamNamespaceRequest (var: Tyv)
+message SetupTeamNamespaceRequest {
+  OriginNamespaceOwnerType owner_type = 1;
+  int64 owner_entity_id = 2;
+  string namespace = 3;
+}
+
+// Copied from: local:origin.v1.SetupTeamNamespaceResponse (var: Ayv)
+message SetupTeamNamespaceResponse {
+  OriginNamespace origin_namespace = 1;
+  bool namespace_created = 2;
+  bool grants_changed = 3;
+}
+
+// Copied from: local:origin.v1.SetupUserNamespaceRequest (var: Iyv)
+message SetupUserNamespaceRequest {
+  string namespace = 1;
+}
+
+// Copied from: local:origin.v1.SetupUserNamespaceResponse (var: Myv)
+message SetupUserNamespaceResponse {
+  OriginNamespace origin_namespace = 1;
+  bool namespace_created = 2;
+  bool grants_changed = 3;
+}
+
+// Copied from: git_forge.v1.ShortCommit (var: fMn)
+message ShortCommit {
+  bytes sha = 1;
+  string summary = 2;
+  string author_name = 3;
+  string author_email = 4;
+  int64 timestamp = 5;
+}
+
+// Copied from: git_forge.v1.Signature (var: o_t)
+message Signature {
+  string name = 1;
+  string email = 2;
+  int64 timestamp = 3;
+  int32 timezone_offset = 4;
+}
+
+// Copied from: local:origin.v1.SshPublicKey (var: CQd)
+message SshPublicKey {
+  string id = 1;
+  string name = 2;
+  string algo = 3;
+  string fingerprint = 4;
+  google.protobuf.Timestamp created_at = 5;
+  google.protobuf.Timestamp last_used_at = 6;
+}
+
+// Copied from: local:origin.v1.StackMemberEvaluation (var: l1v)
+message StackMemberEvaluation {
+  uint64 change_number = 1;
+  string role = 2;
+  ChangesetMergeability mergeability = 3;
+}
+
+// Copied from: local:origin.v1.StackMergeability (var: c1v)
+message StackMergeability {
+  uint64 target_change_number = 1;
+  repeated uint64 prefix_change_numbers = 2;
+  string root_base_ref = 3;
+  string verdict = 4;
+  repeated ChangesetMergeBlocker blockers = 5;
+  repeated StackMemberEvaluation member_evaluations = 6;
+  optional string convergence_state = 7;
+  optional uint64 convergence_conflicted_change_number = 8;
+  repeated string convergence_conflicted_paths = 9;
+  optional string convergence_updated_at = 10;
+}
+
+// Copied from: local:origin.v1.StartReviewRequest (var: $Cv)
+message StartReviewRequest {
+  ChangeIdentifier change = 1;
+  ReviewVerdict verdict = 2;
+  string body = 3;
+  uint64 version_number = 4;
+}
+
+// Copied from: local:origin.v1.StartReviewResponse (var: jCv)
+message StartReviewResponse {
+  Review review = 1;
+}
+
+// Copied from: local:origin.v1.SubmitReviewRequest (var: WCv)
+message SubmitReviewRequest {
+  ChangeIdentifier change = 1;
+  string review_id = 2;
+}
+
+// Copied from: local:origin.v1.SubmitReviewResponse (var: HCv)
+message SubmitReviewResponse {
+  Review review = 1;
+}
+
+// Copied from: local:origin.v1.SuggestOriginNamespaceRequest (var: Ryv)
+message SuggestOriginNamespaceRequest {
+  string preferred_slug = 1;
+}
+
+// Copied from: local:origin.v1.SuggestOriginNamespaceResponse (var: Dyv)
+message SuggestOriginNamespaceResponse {
+  bool available = 1;
+  string normalized_slug = 2;
+  string suggested_slug = 3;
+  string message = 4;
+}
+
+// Copied from: local:origin.v1.SuspendInstallationRequest (var: uEv)
+message SuspendInstallationRequest {
+  string id = 1;
+}
+
+// Copied from: local:origin.v1.SuspendInstallationResponse (var: dEv)
+message SuspendInstallationResponse {
+}
+
+// Copied from: local:origin.v1.SyncEventHeartbeat (var: hYd)
+message SyncEventHeartbeat {
+}
+
+// Copied from: git_forge.v1.Tag (var: DSv)
+message Tag {
+  string sha = 1;
+  string name = 2;
+  string message = 3;
+  Signature tagger = 4;
+  string object_sha = 5;
+  string object_type = 6;
+}
+
+// Copied from: local:origin.v1.TaggedSyncEvent (var: _xv)
+message TaggedSyncEvent {
+  ChangeSyncTarget target = 1;
+  string event_json = 2;
+}
+
+// Copied from: local:origin.v1.TaggedSyncSnapshot (var: bxv)
+message TaggedSyncSnapshot {
+  ChangeSyncTarget target = 1;
+  string snapshot_json = 2;
+}
+
+// Copied from: local:origin.v1.TeamGroupAccess (var: szi)
+message TeamGroupAccess {
+  GrantPolicyRef namespace_policy = 1;
+  GrantPolicyRef repo_policy = 2;
+  GrantPolicyRef effective_policy = 3;
+}
+
+// Copied from: local:origin.v1.TeamGroupKind (var: SQd)
+enum TeamGroupKind {
+  TEAM_GROUP_KIND_UNSPECIFIED = 0;
+  TEAM_GROUP_KIND_ADMINS = 1;
+  TEAM_GROUP_KIND_MEMBERS = 2;
+}
+
+// Copied from: local:origin.v1.TransitionRepoMirrorStatusRequest (var: iyv)
+message TransitionRepoMirrorStatusRequest {
+  ClientRepoIdentifier identifier = 1;
+  RepoMirrorTransition transition = 2;
+}
+
+// Copied from: local:origin.v1.TransitionRepoMirrorStatusResponse (var: ryv)
+message TransitionRepoMirrorStatusResponse {
+  Repo repository = 1;
+  RepoMirrorTransitionJob active_job_info = 2;
+}
+
+// Copied from: git_forge.v1.Tree (var: ISv)
+message Tree {
+  string sha = 1;
+  repeated TreeEntry tree = 2;
+  bool truncated = 3;
+}
+
+// Copied from: git_forge.v1.TreeEntry (var: RSv)
+message TreeEntry {
+  string path = 1;
+  string mode = 2;
+  string type = 3;
+  string sha = 4;
+  optional uint64 size = 5;
+}
+
+// Copied from: git_forge.v1.TreeEntryBlame (var: qSv)
+message TreeEntryBlame {
+  string name = 1;
+  ShortCommit last_commit = 2;
+}
+
+// Copied from: local:origin.v1.UnmarkAllFilesAsViewedRequest (var: k0v)
+message UnmarkAllFilesAsViewedRequest {
+  ChangeIdentifier change = 1;
+}
+
+// Copied from: local:origin.v1.UnmarkAllFilesAsViewedResponse (var: C0v)
+message UnmarkAllFilesAsViewedResponse {
+}
+
+// Copied from: local:origin.v1.UnmarkFileAsViewedRequest (var: v0v)
+message UnmarkFileAsViewedRequest {
+  ChangeIdentifier change = 1;
+  string file_path = 2;
+}
+
+// Copied from: local:origin.v1.UnmarkFileAsViewedResponse (var: b0v)
+message UnmarkFileAsViewedResponse {
+}
+
+// Copied from: local:origin.v1.UnsuspendInstallationRequest (var: hEv)
+message UnsuspendInstallationRequest {
+  string id = 1;
+}
+
+// Copied from: local:origin.v1.UnsuspendInstallationResponse (var: pEv)
+message UnsuspendInstallationResponse {
+}
+
+// Copied from: local:origin.v1.UpdateAppRequest (var: K1v)
+message UpdateAppRequest {
+  string id = 1;
+  optional string display_name = 2;
+  optional string webhook_url = 3;
+  optional AppEventsReplace events = 5;
+  optional bool is_public = 6;
+  optional AppInstallationRedirectUrisReplace installation_redirect_uris = 8;
+  optional string description = 9;
+  optional string website_url = 10;
+  optional AppDefaultScopesReplace default_scopes = 11;
+}
+
+// Copied from: local:origin.v1.UpdateAppResponse (var: X1v)
+message UpdateAppResponse {
+  App app = 1;
+}
+
+// Copied from: local:origin.v1.UpdateChangeBranchMethod (var: Qwv)
+enum UpdateChangeBranchMethod {
+  UPDATE_CHANGE_BRANCH_METHOD_UNSPECIFIED = 0;
+  UPDATE_CHANGE_BRANCH_METHOD_MERGE_COMMIT = 1;
+}
+
+// Copied from: local:origin.v1.UpdateChangeBranchRequest (var: skv)
+message UpdateChangeBranchRequest {
+  ChangeIdentifier change = 1;
+  UpdateChangeBranchMethod method = 2;
+}
+
+// Copied from: local:origin.v1.UpdateChangeBranchResponse (var: okv)
+message UpdateChangeBranchResponse {
+  Change change = 1;
+  Version latest_version = 2;
+  bool unchanged = 3;
+}
+
+// Copied from: local:origin.v1.UpdateChangeMetadataRequest (var: gkv)
+message UpdateChangeMetadataRequest {
+  ChangeIdentifier change = 1;
+  optional string title = 2;
+  optional string description = 3;
+}
+
+// Copied from: local:origin.v1.UpdateChangeMetadataResponse (var: fkv)
+message UpdateChangeMetadataResponse {
+  Change change = 1;
+}
+
+// Copied from: local:origin.v1.UpdateChangeRequest (var: ikv)
+message UpdateChangeRequest {
+  ChangeIdentifier change = 1;
+  optional string head_ref = 2;
+  optional string base_ref = 3;
+  oneof parent_update {
+    ChangeIdentifier parent_change = 4;
+    bool clear_parent = 5;
+  }
+}
+
+// Copied from: local:origin.v1.UpdateChangeResponse (var: rkv)
+message UpdateChangeResponse {
+  Change change = 1;
+  Version latest_version = 2;
+  bool unchanged = 3;
+}
+
+// Copied from: local:origin.v1.UpdateChangeStatusRequest (var: vkv)
+message UpdateChangeStatusRequest {
+  ChangeIdentifier change = 1;
+  ChangeStatus status = 2;
+}
+
+// Copied from: local:origin.v1.UpdateChangeStatusResponse (var: bkv)
+message UpdateChangeStatusResponse {
+  Change change = 1;
+}
+
+// Copied from: local:origin.v1.UpdateCommentRequest (var: a0v)
+message UpdateCommentRequest {
+  string comment_id = 1;
+  string body = 2;
+}
+
+// Copied from: local:origin.v1.UpdateCommentResponse (var: c0v)
+message UpdateCommentResponse {
+  Comment comment = 1;
+}
+
+// Copied from: local:origin.v1.UpdateLabelRequest (var: nxv)
+message UpdateLabelRequest {
+  ClientRepoIdentifier repo = 1;
+  string label_id = 2;
+  optional string name = 3;
+  optional string color = 4;
+  optional string description = 5;
+}
+
+// Copied from: local:origin.v1.UpdateLabelResponse (var: ixv)
+message UpdateLabelResponse {
+  Label label = 1;
+}
+
+// Copied from: local:origin.v1.UpdateRepoBranchDeletionSettingRequest (var: gyv)
+message UpdateRepoBranchDeletionSettingRequest {
+  ClientRepoIdentifier identifier = 1;
+  optional bool delete_branch_on_merge = 2;
+}
+
+// Copied from: local:origin.v1.UpdateRepoBranchDeletionSettingResponse (var: fyv)
+message UpdateRepoBranchDeletionSettingResponse {
+  Repo repository = 1;
+}
+
+// Copied from: local:origin.v1.UpdateRepoDefaultBranchRequest (var: _yv)
+message UpdateRepoDefaultBranchRequest {
+  ClientRepoIdentifier identifier = 1;
+  string default_branch = 2;
+}
+
+// Copied from: local:origin.v1.UpdateRepoDefaultBranchResponse (var: yyv)
+message UpdateRepoDefaultBranchResponse {
+  string default_branch = 1;
+  bool changed = 2;
+}
+
+// Copied from: local:origin.v1.UpdateRepoMergeSettingsRequest (var: pyv)
+message UpdateRepoMergeSettingsRequest {
+  ClientRepoIdentifier identifier = 1;
+  bool allow_merge_commit = 2;
+  bool allow_squash_merge = 3;
+}
+
+// Copied from: local:origin.v1.UpdateRepoMergeSettingsResponse (var: myv)
+message UpdateRepoMergeSettingsResponse {
+  Repo repository = 1;
+}
+
+// Copied from: local:origin.v1.UpdateRepoVisibilityRequest (var: vyv)
+message UpdateRepoVisibilityRequest {
+  ClientRepoIdentifier identifier = 1;
+  optional RepoVisibility visibility = 2;
+}
+
+// Copied from: local:origin.v1.UpdateRepoVisibilityResponse (var: byv)
+message UpdateRepoVisibilityResponse {
+  Repo repository = 1;
+}
+
+// Copied from: local:origin.v1.UpdateReviewRequest (var: Ckv)
+message UpdateReviewRequest {
+  ChangeIdentifier change = 1;
+  string review_id = 2;
+  string body = 3;
+}
+
+// Copied from: local:origin.v1.UpdateReviewResponse (var: Ekv)
+message UpdateReviewResponse {
+  Review review = 1;
+}
+
+// Copied from: local:origin.v1.UpdateWatchChangeSyncSubscriptionsRequest (var: kxv)
+message UpdateWatchChangeSyncSubscriptionsRequest {
+  string connection_id = 1;
+  repeated ChangeSyncTarget add = 2;
+  repeated ChangeSyncTarget remove = 3;
+}
+
+// Copied from: local:origin.v1.UpdateWatchChangeSyncSubscriptionsResponse (var: Cxv)
+message UpdateWatchChangeSyncSubscriptionsResponse {
+}
+
+// Copied from: local:origin.v1.UpsertBuildkiteTriggerRequest (var: vEv)
+message UpsertBuildkiteTriggerRequest {
+  ClientRepoIdentifier repo = 1;
+  string buildkite_org_slug = 2;
+  string pipeline_slug = 3;
+  string plaintext_api_token = 4;
+  optional bool enabled = 5;
+  optional bool trigger_on_prs = 6;
+  optional BuildkiteBranchFilters branch_filters = 7;
+}
+
+// Copied from: local:origin.v1.UpsertBuildkiteTriggerResponse (var: bEv)
+message UpsertBuildkiteTriggerResponse {
+  BuildkiteTrigger trigger = 1;
+}
+
+// Copied from: local:origin.v1.UpsertGeneratedCodeTourRequest (var: P0v)
+message UpsertGeneratedCodeTourRequest {
+  ChangeIdentifier change = 1;
+  string storage_key = 2;
+  string head_sha = 3;
+  string result = 4;
+  optional string agentic_markdown = 5;
+  optional string agentic_error_message = 6;
+  string feature_configuration_json = 7;
+}
+
+// Copied from: local:origin.v1.UpsertGeneratedCodeTourResponse (var: L0v)
+message UpsertGeneratedCodeTourResponse {
+  GeneratedCodeTour tour = 1;
+}
+
+// Copied from: local:origin.v1.UpsertRulesetRequest (var: YEv)
+message UpsertRulesetRequest {
+  ClientRepoIdentifier repo = 1;
+  optional string ruleset_id = 2;
+  string name = 3;
+  string description = 4;
+  RulesetEnforcement enforcement = 5;
+  RulesetKind kind = 6;
+  repeated string included_ref_names = 7;
+  repeated string excluded_ref_names = 8;
+  repeated RulesetRuleInput rules = 9;
+  repeated RulesetBypassActorInput bypass_actors = 10;
+}
+
+// Copied from: local:origin.v1.UpsertRulesetResponse (var: ZEv)
+message UpsertRulesetResponse {
+  Ruleset ruleset = 1;
+}
+
+// Copied from: local:origin.v1.UpsertVercelTriggerRequest (var: EEv)
+message UpsertVercelTriggerRequest {
+  ClientRepoIdentifier repo = 1;
+  string vercel_project_id = 2;
+  string vercel_team_id = 3;
+  string target = 4;
+  string plaintext_api_token = 5;
+  optional string branch_filter = 6;
+  optional bool enabled = 7;
+}
+
+// Copied from: local:origin.v1.UpsertVercelTriggerResponse (var: xEv)
+message UpsertVercelTriggerResponse {
+  VercelTrigger trigger = 1;
+}
+
+// Copied from: local:origin.v1.VercelTrigger (var: Ppo)
+message VercelTrigger {
+  string id = 1;
+  ClientRepoIdentifier repo = 2;
+  string vercel_project_id = 3;
+  string vercel_team_id = 4;
+  string target = 5;
+  optional string branch_filter = 6;
+  bool enabled = 7;
+}
+
+// Copied from: local:origin.v1.Version (var: IZe)
+message Version {
+  string id = 1;
+  string change_id = 2;
+  uint64 number = 3;
+  string head_sha = 4;
+  string base_sha = 5;
+  google.protobuf.Timestamp created_at = 6;
+  int32 additions = 7;
+  int32 deletions = 8;
+  int32 changed_files = 9;
+}
+
+// Copied from: local:origin.v1.WatchChangeSyncEventsRequest (var: mxv)
+message WatchChangeSyncEventsRequest {
+  ClientRepoIdentifier identifier = 1;
+  uint64 change_number = 2;
+}
+
+// Copied from: local:origin.v1.WatchChangeSyncEventsResponse (var: gxv)
+message WatchChangeSyncEventsResponse {
+  oneof frame {
+    string snapshot_json = 1;
+    string event_json = 2;
+    SyncEventHeartbeat heartbeat = 3;
+  }
+}
+
+// Copied from: local:origin.v1.WatchChangeSyncEventsV2Request (var: fxv)
+message WatchChangeSyncEventsV2Request {
+  repeated ChangeSyncTarget subscriptions = 1;
+}
+
+// Copied from: local:origin.v1.WatchChangeSyncEventsV2Response (var: wxv)
+message WatchChangeSyncEventsV2Response {
+  oneof frame {
+    WatchSyncSessionStarted session = 1;
+    TaggedSyncSnapshot snapshot = 2;
+    TaggedSyncEvent event = 3;
+    SyncEventHeartbeat heartbeat = 4;
+    WatchSyncSubscriptionNack nack = 5;
+    WatchSyncSubscriptionRemoved removed = 6;
+  }
+}
+
+// Copied from: local:origin.v1.WatchSyncSessionStarted (var: vxv)
+message WatchSyncSessionStarted {
+  string connection_id = 1;
+}
+
+// Copied from: local:origin.v1.WatchSyncSubscriptionNack (var: yxv)
+message WatchSyncSubscriptionNack {
+  ChangeSyncTarget target = 1;
+  string reason = 2;
+  string message = 3;
+}
+
+// Copied from: local:origin.v1.WatchSyncSubscriptionRemoved (var: Sxv)
+message WatchSyncSubscriptionRemoved {
+  ChangeSyncTarget target = 1;
+}
+
+// Source: origin.v1.OriginService (var: pYd)
+service OriginService {
+  rpc ListHostedRepos(ListHostedReposRequest) returns (ListHostedReposResponse) {}
+  rpc CreateRepo(CreateRepoRequest) returns (CreateRepoResponse) {}
+  rpc CreateRepoAndEnsureUserNamespace(CreateRepoRequest) returns (CreateRepoResponse) {}
+  rpc PublishAgentTempRepo(PublishAgentTempRepoRequest) returns (PublishAgentTempRepoResponse) {}
+  rpc CreateMirroredRepo(CreateMirroredRepoRequest) returns (CreateRepoResponse) {}
+  rpc FilterMirrorableGithubRepos(FilterMirrorableGithubReposRequest) returns (FilterMirrorableGithubReposResponse) {}
+  rpc DeleteRepo(DeleteRepoClientRequest) returns (DeleteRepoClientResponse) {}
+  rpc DeleteMirroredRepo(DeleteMirroredRepoRequest) returns (DeleteMirroredRepoResponse) {}
+  rpc GetRepo(GetRepoRequest) returns (GetRepoResponse) {}
+  rpc GetRepoWithMirrorInfo(GetRepoRequest) returns (GetRepoWithMirrorInfoResponse) {}
+  rpc GetRepoByGithubMirror(GetRepoByGithubMirrorRequest) returns (GetRepoWithMirrorInfoResponse) {}
+  rpc UpdateRepoMergeSettings(UpdateRepoMergeSettingsRequest) returns (UpdateRepoMergeSettingsResponse) {}
+  rpc UpdateRepoBranchDeletionSetting(UpdateRepoBranchDeletionSettingRequest) returns (UpdateRepoBranchDeletionSettingResponse) {}
+  rpc UpdateRepoVisibility(UpdateRepoVisibilityRequest) returns (UpdateRepoVisibilityResponse) {}
+  rpc UpdateRepoDefaultBranch(UpdateRepoDefaultBranchRequest) returns (UpdateRepoDefaultBranchResponse) {}
+  rpc DetachRepoMirror(DetachRepoMirrorRequest) returns (DetachRepoMirrorResponse) {}
+  rpc TransitionRepoMirrorStatus(TransitionRepoMirrorStatusRequest) returns (TransitionRepoMirrorStatusResponse) {}
+  rpc GetMirrorTransitionJob(GetMirrorTransitionJobRequest) returns (GetMirrorTransitionJobResponse) {}
+  rpc GetActiveMirrorTransitionJob(GetActiveMirrorTransitionJobRequest) returns (GetActiveMirrorTransitionJobResponse) {}
+  rpc GetRepoNamespace(GetRepoNamespaceRequest) returns (GetRepoNamespaceResponse) {}
+  rpc DoesNamespaceExistForTeam(DoesNamespaceExistForTeamRequest) returns (DoesNamespaceExistForTeamResponse) {}
+  rpc GetAuthorizedNamespaces(GetAuthorizedNamespacesRequest) returns (GetAuthorizedNamespacesResponse) {}
+  rpc CreateOriginNamespace(CreateOriginNamespaceRequest) returns (CreateOriginNamespaceResponse) {}
+  rpc SetupTeamNamespace(SetupTeamNamespaceRequest) returns (SetupTeamNamespaceResponse) {}
+  rpc SetupUserNamespace(SetupUserNamespaceRequest) returns (SetupUserNamespaceResponse) {}
+  rpc SuggestOriginNamespace(SuggestOriginNamespaceRequest) returns (SuggestOriginNamespaceResponse) {}
+  rpc ListRepoAssignablePolicies(ListRepoAssignablePoliciesRequest) returns (ListRepoAssignablePoliciesResponse) {}
+  rpc GetRepoTeamAccess(GetRepoTeamAccessRequest) returns (GetRepoTeamAccessResponse) {}
+  rpc ListRepoGrants(ListRepoGrantsRequest) returns (ListRepoGrantsResponse) {}
+  rpc SetRepoTeamAccess(SetRepoTeamAccessRequest) returns (SetRepoTeamAccessResponse) {}
+  rpc SetRepoUserAccess(SetRepoUserAccessRequest) returns (SetRepoUserAccessResponse) {}
+  rpc SetRepoGroupAccess(SetRepoGroupAccessRequest) returns (SetRepoGroupAccessResponse) {}
+  rpc HasOriginPermission(HasOriginPermissionRequest) returns (HasOriginPermissionResponse) {}
+  rpc GetNamespaceTeamAccess(GetNamespaceTeamAccessRequest) returns (GetNamespaceTeamAccessResponse) {}
+  rpc SetNamespaceTeamAccess(SetNamespaceTeamAccessRequest) returns (SetNamespaceTeamAccessResponse) {}
+  rpc ListNamespaceGrants(ListNamespaceGrantsRequest) returns (ListNamespaceGrantsResponse) {}
+  rpc SetNamespaceUserAccess(SetNamespaceUserAccessRequest) returns (SetNamespaceUserAccessResponse) {}
+  rpc SetNamespaceGroupAccess(SetNamespaceGroupAccessRequest) returns (SetNamespaceGroupAccessResponse) {}
+  rpc ListNamespaceAssignablePolicies(ListNamespaceAssignablePoliciesRequest) returns (ListNamespaceAssignablePoliciesResponse) {}
+  rpc AddSshPublicKey(AddSshPublicKeyRequest) returns (AddSshPublicKeyResponse) {}
+  rpc ListSshPublicKeys(ListSshPublicKeysRequest) returns (ListSshPublicKeysResponse) {}
+  rpc DeleteSshPublicKey(DeleteSshPublicKeyRequest) returns (DeleteSshPublicKeyResponse) {}
+  rpc GetCommit(GetCommitClientRequest) returns (GetCommitResponse) {}
+  rpc GetBlob(GetBlobClientRequest) returns (GetBlobResponse) {}
+  rpc GetTag(GetTagClientRequest) returns (GetTagResponse) {}
+  rpc GetTree(GetTreeClientRequest) returns (GetTreeResponse) {}
+  rpc ResolveRepoPath(ResolveRepoPathClientRequest) returns (ResolveRefPathResponse) {}
+  rpc GetRepoContent(GetRepoContentClientRequest) returns (GetRepoContentResponse) {}
+  rpc MintRawRepoFileLink(MintRawRepoFileLinkClientRequest) returns (MintRawRepoFileLinkClientResponse) {}
+  rpc GetRepoContentAtSha(GetRepoContentAtShaClientRequest) returns (GetRepoContentResponse) {}
+  rpc GetRepoContentDetailsAtSha(GetRepoContentDetailsAtShaClientRequest) returns (GetRepoContentDetailsResponse) {}
+  rpc GetRepoCodeowners(GetRepoCodeownersClientRequest) returns (GetRepoCodeownersResponse) {}
+  rpc GetFileHistory(GetFileHistoryClientRequest) returns (GetFileHistoryResponse) {}
+  rpc GetFileHistoryPage(GetFileHistoryPageClientRequest) returns (GetFileHistoryPageResponse) {}
+  rpc GetFileHistoryPageWithDiffStats(GetFileHistoryPageWithDiffStatsClientRequest) returns (GetFileHistoryPageWithDiffStatsResponse) {}
+  rpc GetFuzzyPaths(GetFuzzyPathsClientRequest) returns (GetFuzzyPathsResponse) {}
+  rpc ListRepoPaths(ListRepoPathsClientRequest) returns (ListTreePathsResponse) {}
+  rpc GrepRepo(GrepRepoClientRequest) returns (stream GrepRepoChunk) {}
+  rpc GetPullRequestDiff(GetPullRequestDiffClientRequest) returns (stream PullRequestDiffChunk) {}
+  rpc GetCommitDiff(GetCommitDiffClientRequest) returns (stream CommitDiffChunk) {}
+  rpc GetBlame(GetBlameClientRequest) returns (stream BlameChunk) {}
+  rpc GetTreeBlame(GetTreeBlameClientRequest) returns (GetTreeBlameResponse) {}
+  rpc ListRefs(ListRefsClientRequest) returns (ListRefsResponse) {}
+  rpc SearchRefs(SearchRefsClientRequest) returns (SearchRefsResponse) {}
+  rpc CompareCommits(CompareCommitsClientRequest) returns (CompareCommitsResponse) {}
+  rpc ListCommitsInRange(ListCommitsInRangeClientRequest) returns (ListCommitsInRangeResponse) {}
+  rpc CanMerge(CanMergeClientRequest) returns (CanMergeResponse) {}
+  rpc CreateMergeCommitBypassingChecks(CreateMergeCommitBypassingChecksClientRequest) returns (CreateMergeCommitBypassingChecksResponse) {}
+  rpc CreateCommitFromFiles(CreateCommitFromFilesClientRequest) returns (CreateCommitFromFilesClientResponse) {}
+  rpc CreateGithubPrForReverseMirroredRepo(CreateGithubPrForReverseMirroredRepoRequest) returns (CreateGithubPrForReverseMirroredRepoResponse) {}
+  rpc GetCollectedPullRequestDiff(GetCollectedPullRequestDiffRequest) returns (GetCollectedPullRequestDiffResponse) {}
+  rpc CreateChange(CreateChangeRequest) returns (CreateChangeResponse) {}
+  rpc UpdateChange(UpdateChangeRequest) returns (UpdateChangeResponse) {}
+  rpc UpdateChangeBranch(UpdateChangeBranchRequest) returns (UpdateChangeBranchResponse) {}
+  rpc DeleteChangeHeadBranch(DeleteChangeHeadBranchRequest) returns (DeleteChangeHeadBranchResponse) {}
+  rpc RestorePullRequestBranch(RestorePullRequestBranchRequest) returns (RestorePullRequestBranchResponse) {}
+  rpc RetargetChange(RetargetChangeRequest) returns (RetargetChangeResponse) {}
+  rpc FoldChange(FoldChangeRequest) returns (FoldChangeResponse) {}
+  rpc UpdateChangeMetadata(UpdateChangeMetadataRequest) returns (UpdateChangeMetadataResponse) {}
+  rpc UpdateChangeStatus(UpdateChangeStatusRequest) returns (UpdateChangeStatusResponse) {}
+  rpc CreateReview(CreateReviewRequest) returns (CreateReviewResponse) {}
+  rpc UpdateReview(UpdateReviewRequest) returns (UpdateReviewResponse) {}
+  rpc DismissReview(DismissReviewRequest) returns (DismissReviewResponse) {}
+  rpc ListReviews(ListReviewsRequest) returns (ListReviewsResponse) {}
+  rpc StartReview(StartReviewRequest) returns (StartReviewResponse) {}
+  rpc SubmitReview(SubmitReviewRequest) returns (SubmitReviewResponse) {}
+  rpc DiscardPendingReview(DiscardPendingReviewRequest) returns (DiscardPendingReviewResponse) {}
+  rpc GetPendingReview(GetPendingReviewRequest) returns (GetPendingReviewResponse) {}
+  rpc RequestReview(RequestReviewRequest) returns (RequestReviewResponse) {}
+  rpc ApplyReviewRequestChanges(ApplyReviewRequestChangesRequest) returns (ApplyReviewRequestChangesResponse) {}
+  rpc RequestReviews(RequestReviewsRequest) returns (RequestReviewsResponse) {}
+  rpc CloseReviewRequest(CloseReviewRequestRequest) returns (CloseReviewRequestResponse) {}
+  rpc ListReviewRequestEvents(ListReviewRequestEventsRequest) returns (ListReviewRequestEventsResponse) {}
+  rpc AddAssignee(AddAssigneeRequest) returns (AddAssigneeResponse) {}
+  rpc RemoveAssignee(RemoveAssigneeRequest) returns (RemoveAssigneeResponse) {}
+  rpc ListOriginRepoReviewerCandidates(ListOriginRepoReviewerCandidatesRequest) returns (ListOriginRepoReviewerCandidatesResponse) {}
+  rpc CreateComment(CreateCommentRequest) returns (CreateCommentResponse) {}
+  rpc ListComments(ListCommentsRequest) returns (ListCommentsResponse) {}
+  rpc CreateCommentThread(CreateCommentThreadRequest) returns (CreateCommentThreadResponse) {}
+  rpc ListCommentThreads(ListCommentThreadsRequest) returns (ListCommentThreadsResponse) {}
+  rpc AddCommentToThread(AddCommentToThreadRequest) returns (AddCommentToThreadResponse) {}
+  rpc ResolveCommentThread(ResolveCommentThreadRequest) returns (ResolveCommentThreadResponse) {}
+  rpc ReopenCommentThread(ReopenCommentThreadRequest) returns (ReopenCommentThreadResponse) {}
+  rpc UpdateComment(UpdateCommentRequest) returns (UpdateCommentResponse) {}
+  rpc DeleteComment(DeleteCommentRequest) returns (DeleteCommentResponse) {}
+  rpc SetCommentReaction(SetCommentReactionRequest) returns (SetCommentReactionResponse) {}
+  rpc ListCommentReactions(ListCommentReactionsRequest) returns (ListCommentReactionsResponse) {}
+  rpc MarkFileAsViewed(MarkFileAsViewedRequest) returns (MarkFileAsViewedResponse) {}
+  rpc UnmarkFileAsViewed(UnmarkFileAsViewedRequest) returns (UnmarkFileAsViewedResponse) {}
+  rpc MarkDirectoryAsViewed(MarkDirectoryAsViewedRequest) returns (MarkDirectoryAsViewedResponse) {}
+  rpc MarkAllFilesAsViewed(MarkAllFilesAsViewedRequest) returns (MarkAllFilesAsViewedResponse) {}
+  rpc UnmarkAllFilesAsViewed(UnmarkAllFilesAsViewedRequest) returns (UnmarkAllFilesAsViewedResponse) {}
+  rpc ListFileViewedStates(ListFileViewedStatesRequest) returns (ListFileViewedStatesResponse) {}
+  rpc MarkPullRequestAsViewed(MarkPullRequestAsViewedRequest) returns (MarkPullRequestAsViewedResponse) {}
+  rpc GetGeneratedCodeTour(GetGeneratedCodeTourRequest) returns (GetGeneratedCodeTourResponse) {}
+  rpc UpsertGeneratedCodeTour(UpsertGeneratedCodeTourRequest) returns (UpsertGeneratedCodeTourResponse) {}
+  rpc EnableChangeMergeWhenReady(EnableChangeMergeWhenReadyRequest) returns (EnableChangeMergeWhenReadyResponse) {}
+  rpc GetChangeMergeWhenReady(GetChangeMergeWhenReadyRequest) returns (GetChangeMergeWhenReadyResponse) {}
+  rpc DisableChangeMergeWhenReady(DisableChangeMergeWhenReadyRequest) returns (DisableChangeMergeWhenReadyResponse) {}
+  rpc GetChange(GetChangeRequest) returns (GetChangeResponse) {}
+  rpc GetProjectedLatestVersions(GetProjectedLatestVersionsRequest) returns (GetProjectedLatestVersionsResponse) {}
+  rpc GetChangeStackPageData(GetChangeStackPageDataRequest) returns (GetChangeStackPageDataResponse) {}
+  rpc GetChangeStack(GetChangeStackRequest) returns (GetChangeStackResponse) {}
+  rpc ListChangeCommits(ListChangeCommitsRequest) returns (ListChangeCommitsResponse) {}
+  rpc ListChanges(ListChangesRequest) returns (ListChangesResponse) {}
+  rpc ListChangesByHeadRef(ListChangesByHeadRefRequest) returns (ListChangesByHeadRefResponse) {}
+  rpc BatchGetChanges(BatchGetChangesRequest) returns (BatchGetChangesResponse) {}
+  rpc GetSectionOfChanges(GetSectionOfChangesRequest) returns (GetSectionOfChangesResponse) {}
+  rpc ResolveOriginPullRequestRedirect(ResolveOriginPullRequestRedirectRequest) returns (ResolveOriginPullRequestRedirectResponse) {}
+  rpc GetCiState(GetCiStateRequest) returns (GetCiStateResponse) {}
+  rpc GetCheckRun(GetCheckRunRequest) returns (GetCheckRunResponse) {}
+  rpc ListRepoCheckSources(ListRepoCheckSourcesRequest) returns (ListRepoCheckSourcesResponse) {}
+  rpc PostCheckRun(PostCheckRunRequest) returns (PostCheckRunResponse) {}
+  rpc RebuildBuildkiteCheckRun(RebuildBuildkiteCheckRunRequest) returns (RebuildBuildkiteCheckRunResponse) {}
+  rpc GetChangesetMergeability(GetChangesetMergeabilityRequest) returns (GetChangesetMergeabilityResponse) {}
+  rpc MergeStack(MergeStackRequest) returns (MergeStackResponse) {}
+  rpc RevertPullRequest(RevertPullRequestRequest) returns (RevertPullRequestResponse) {}
+  rpc RestackStack(RestackStackRequest) returns (RestackStackResponse) {}
+  rpc ClaimInboundMirrorGithubMergeOperation(ClaimInboundMirrorGithubMergeOperationRequest) returns (ClaimInboundMirrorGithubMergeOperationResponse) {}
+  rpc RecordInboundMirrorGithubMergeGithubPr(RecordInboundMirrorGithubMergeGithubPrRequest) returns (RecordInboundMirrorGithubMergeGithubPrResponse) {}
+  rpc RecordInboundMirrorGithubMergeGithubResult(RecordInboundMirrorGithubMergeGithubResultRequest) returns (RecordInboundMirrorGithubMergeGithubResultResponse) {}
+  rpc RecordInboundMirrorGithubMergeError(RecordInboundMirrorGithubMergeErrorRequest) returns (RecordInboundMirrorGithubMergeErrorResponse) {}
+  rpc RecordInboundMirrorExternalGithubMerge(RecordInboundMirrorExternalGithubMergeRequest) returns (RecordInboundMirrorExternalGithubMergeResponse) {}
+  rpc PrepareInboundStackMergeCommit(PrepareInboundStackMergeCommitRequest) returns (PrepareInboundStackMergeCommitResponse) {}
+  rpc GetApp(GetAppRequest) returns (GetAppResponse) {}
+  rpc CreateApp(CreateAppRequest) returns (CreateAppResponse) {}
+  rpc AddAppSigningKey(AddAppSigningKeyRequest) returns (AddAppSigningKeyResponse) {}
+  rpc RevokeAppSigningKey(RevokeAppSigningKeyRequest) returns (RevokeAppSigningKeyResponse) {}
+  rpc GetAppMetadata(GetAppMetadataRequest) returns (GetAppMetadataResponse) {}
+  rpc ListNamespaceApps(ListNamespaceAppsRequest) returns (ListNamespaceAppsResponse) {}
+  rpc ListPublicApps(ListPublicAppsRequest) returns (ListPublicAppsResponse) {}
+  rpc CreateInstallation(CreateInstallationRequest) returns (CreateInstallationResponse) {}
+  rpc GetInstallation(GetInstallationRequest) returns (GetInstallationResponse) {}
+  rpc ListNamespaceInstallations(ListNamespaceInstallationsRequest) returns (ListNamespaceInstallationsResponse) {}
+  rpc ListRepoInstallations(ListRepoInstallationsRequest) returns (ListRepoInstallationsResponse) {}
+  rpc UpdateApp(UpdateAppRequest) returns (UpdateAppResponse) {}
+  rpc SetAppIcon(SetAppIconRequest) returns (SetAppIconResponse) {}
+  rpc DeleteInstallation(DeleteInstallationRequest) returns (DeleteInstallationResponse) {}
+  rpc SuspendInstallation(SuspendInstallationRequest) returns (SuspendInstallationResponse) {}
+  rpc UnsuspendInstallation(UnsuspendInstallationRequest) returns (UnsuspendInstallationResponse) {}
+  rpc ListReposForAppInstall(ListReposForAppInstallRequest) returns (ListHostedReposResponse) {}
+  rpc PreviewAppInstallation(PreviewAppInstallationRequest) returns (PreviewAppInstallationResponse) {}
+  rpc UpsertBuildkiteTrigger(UpsertBuildkiteTriggerRequest) returns (UpsertBuildkiteTriggerResponse) {}
+  rpc ListBuildkiteTriggers(ListBuildkiteTriggersRequest) returns (ListBuildkiteTriggersResponse) {}
+  rpc SetBuildkiteTriggerEnabled(SetBuildkiteTriggerEnabledRequest) returns (SetBuildkiteTriggerEnabledResponse) {}
+  rpc DeleteBuildkiteTrigger(DeleteBuildkiteTriggerRequest) returns (DeleteBuildkiteTriggerResponse) {}
+  rpc UpsertVercelTrigger(UpsertVercelTriggerRequest) returns (UpsertVercelTriggerResponse) {}
+  rpc ListVercelTriggers(ListVercelTriggersRequest) returns (ListVercelTriggersResponse) {}
+  rpc SetVercelTriggerEnabled(SetVercelTriggerEnabledRequest) returns (SetVercelTriggerEnabledResponse) {}
+  rpc DeleteVercelTrigger(DeleteVercelTriggerRequest) returns (DeleteVercelTriggerResponse) {}
+  rpc GetAtlasNode(GetAtlasNodeRequest) returns (GetAtlasNodeResponse) {}
+  rpc ListAtlasNodePaths(ListAtlasNodePathsRequest) returns (ListAtlasNodePathsResponse) {}
+  rpc GetAtlasRepoStatus(GetAtlasRepoStatusRequest) returns (GetAtlasRepoStatusResponse) {}
+  rpc SetAtlasRepoConfig(SetAtlasRepoConfigRequest) returns (SetAtlasRepoConfigResponse) {}
+  rpc ListRulesets(ListRulesetsRequest) returns (ListRulesetsResponse) {}
+  rpc GetRuleset(GetRulesetRequest) returns (GetRulesetResponse) {}
+  rpc UpsertRuleset(UpsertRulesetRequest) returns (UpsertRulesetResponse) {}
+  rpc DeleteRuleset(DeleteRulesetRequest) returns (DeleteRulesetResponse) {}
+  rpc CreateLabel(CreateLabelRequest) returns (CreateLabelResponse) {}
+  rpc UpdateLabel(UpdateLabelRequest) returns (UpdateLabelResponse) {}
+  rpc DeleteLabel(DeleteLabelRequest) returns (DeleteLabelResponse) {}
+  rpc ListLabels(ListLabelsRequest) returns (ListLabelsResponse) {}
+  rpc GetLabelByName(GetLabelByNameRequest) returns (GetLabelByNameResponse) {}
+  rpc AddLabelToChange(AddLabelToChangeRequest) returns (AddLabelToChangeResponse) {}
+  rpc RemoveLabelFromChange(RemoveLabelFromChangeRequest) returns (RemoveLabelFromChangeResponse) {}
+  rpc CheckChangeCreationAccess(CheckChangeCreationAccessRequest) returns (CheckChangeCreationAccessResponse) {}
+  rpc WatchChangeSyncEvents(WatchChangeSyncEventsRequest) returns (stream WatchChangeSyncEventsResponse) {}
+  rpc WatchChangeSyncEventsV2(WatchChangeSyncEventsV2Request) returns (stream WatchChangeSyncEventsV2Response) {}
+  rpc UpdateWatchChangeSyncSubscriptions(UpdateWatchChangeSyncSubscriptionsRequest) returns (UpdateWatchChangeSyncSubscriptionsResponse) {}
+  rpc FastForwardBranch(FastForwardBranchClientRequest) returns (FastForwardBranchClientResponse) {}
+}
+

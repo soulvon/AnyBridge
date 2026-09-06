@@ -1,11 +1,12 @@
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::PathBuf;
 
 use super::config::config_dir_path;
 
-fn proxy_routes_path() -> PathBuf {
+pub(crate) fn proxy_routes_path() -> PathBuf {
     config_dir_path().join("proxy-routes.json")
 }
 
@@ -43,6 +44,8 @@ pub struct ProxyRoutes {
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct ProxyRoute {
+    #[serde(default)]
+    pub uid: String,
     pub id: String,
     #[serde(default)]
     pub display_name: String,
@@ -163,6 +166,17 @@ pub struct ProxyRouteTarget {
     pub api_keys: Vec<String>,
 }
 
+pub fn generate_route_uid(route: &ProxyRoute) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(route.id.trim().as_bytes());
+    for target in &route.targets {
+        hasher.update(target.provider_id.trim().as_bytes());
+        hasher.update(target.model.trim().as_bytes());
+    }
+    let digest = hex::encode(hasher.finalize());
+    format!("route-{}", &digest[..16])
+}
+
 fn empty_routes() -> ProxyRoutes {
     ProxyRoutes {
         version: default_version(),
@@ -171,7 +185,7 @@ fn empty_routes() -> ProxyRoutes {
     }
 }
 
-fn read_routes_from(path: PathBuf) -> Result<ProxyRoutes, String> {
+pub(crate) fn read_routes_from(path: PathBuf) -> Result<ProxyRoutes, String> {
     if !path.exists() {
         return Ok(empty_routes());
     }
@@ -180,8 +194,12 @@ fn read_routes_from(path: PathBuf) -> Result<ProxyRoutes, String> {
     if routes.version == 0 {
         routes.version = default_version();
     }
+    let had_missing_uid = routes.routes.iter().any(|r| r.uid.trim().is_empty());
     normalize_routes(&mut routes);
     validate_routes(&routes)?;
+    if had_missing_uid && path.exists() {
+        let _ = write_routes_to(path, &routes);
+    }
     Ok(routes)
 }
 
@@ -193,10 +211,15 @@ pub(crate) fn read_codex_routes() -> Result<ProxyRoutes, String> {
     read_routes_from(codex_proxy_routes_path())
 }
 
-fn normalize_routes(routes: &mut ProxyRoutes) {
+pub fn normalize_routes(routes: &mut ProxyRoutes) {
     routes.default_model_id.clear();
     for route in &mut routes.routes {
         route.id = route.id.trim().to_string();
+        if route.uid.trim().is_empty() {
+            route.uid = generate_route_uid(route);
+        } else {
+            route.uid = route.uid.trim().to_string();
+        }
         route.display_name = route.display_name.trim().to_string();
         route.source = route.source.trim().to_string();
         if route.source.is_empty() {
@@ -233,14 +256,52 @@ fn normalize_routes(routes: &mut ProxyRoutes) {
     }
 }
 
+pub fn find_route_by_uid<'a>(routes: &'a ProxyRoutes, uid: &str) -> Option<&'a ProxyRoute> {
+    let clean = uid.trim();
+    if clean.is_empty() {
+        return None;
+    }
+    routes.routes.iter().find(|r| r.uid == clean)
+}
+
+#[allow(dead_code)]
+pub fn find_route_by_id<'a>(routes: &'a ProxyRoutes, id: &str) -> Option<&'a ProxyRoute> {
+    let clean = id.trim();
+    if clean.is_empty() {
+        return None;
+    }
+    routes.routes.iter().find(|r| r.id == clean)
+}
+
+pub fn find_route_by_target<'a>(
+    routes: &'a ProxyRoutes,
+    provider_id: &str,
+    model: &str,
+) -> Option<&'a ProxyRoute> {
+    let p = provider_id.trim();
+    let m = model.trim();
+    if p.is_empty() || m.is_empty() {
+        return None;
+    }
+    routes.routes.iter().find(|r| {
+        r.targets
+            .iter()
+            .any(|t| t.provider_id == p && t.model == m)
+    })
+}
+
 fn validate_routes(routes: &ProxyRoutes) -> Result<(), String> {
-    let mut seen = HashSet::new();
+    let mut seen_ids = HashSet::new();
+    let mut seen_uids = HashSet::new();
     for route in &routes.routes {
         if route.id.trim().is_empty() {
             return Err("本地代理模型 ID 不能为空".into());
         }
-        if !seen.insert(route.id.clone()) {
+        if !seen_ids.insert(route.id.clone()) {
             return Err(format!("本地代理模型 ID 重复: {}", route.id));
+        }
+        if !route.uid.trim().is_empty() && !seen_uids.insert(route.uid.clone()) {
+            return Err(format!("本地代理模型 UID 重复: {}", route.uid));
         }
         for fmt in &route.exposed_formats {
             if !matches!(fmt.as_str(), "openai" | "anthropic" | "gemini") {
@@ -329,3 +390,79 @@ pub fn save_proxy_routes(mut store: ProxyRoutes) -> Result<(), String> {
     validate_routes(&store)?;
     write_routes(&store)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn legacy_routes_receive_deterministic_uid() {
+        let mut routes = ProxyRoutes {
+            version: 1,
+            default_model_id: String::new(),
+            routes: vec![ProxyRoute {
+                id: "gpt-4o".into(),
+                targets: vec![ProxyRouteTarget {
+                    provider_id: "openai".into(),
+                    model: "gpt-4o-2024-08-06".into(),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }],
+        };
+
+        normalize_routes(&mut routes);
+        assert!(!routes.routes[0].uid.is_empty());
+        assert!(routes.routes[0].uid.starts_with("route-"));
+
+        let first_uid = routes.routes[0].uid.clone();
+        routes.routes[0].uid = String::new();
+        normalize_routes(&mut routes);
+        assert_eq!(routes.routes[0].uid, first_uid);
+    }
+
+    #[test]
+    fn existing_uid_is_preserved_even_when_id_renamed() {
+        let mut routes = ProxyRoutes {
+            version: 1,
+            default_model_id: String::new(),
+            routes: vec![ProxyRoute {
+                uid: "route-custom-12345".into(),
+                id: "gpt-4o-renamed".into(),
+                targets: vec![ProxyRouteTarget {
+                    provider_id: "openai".into(),
+                    model: "gpt-4o".into(),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }],
+        };
+
+        normalize_routes(&mut routes);
+        assert_eq!(routes.routes[0].uid, "route-custom-12345");
+    }
+
+    #[test]
+    fn different_targets_produce_different_uids() {
+        let r1 = ProxyRoute {
+            id: "model-a".into(),
+            targets: vec![ProxyRouteTarget {
+                provider_id: "p1".into(),
+                model: "m1".into(),
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+        let r2 = ProxyRoute {
+            id: "model-a".into(),
+            targets: vec![ProxyRouteTarget {
+                provider_id: "p2".into(),
+                model: "m1".into(),
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+        assert_ne!(generate_route_uid(&r1), generate_route_uid(&r2));
+    }
+}
+

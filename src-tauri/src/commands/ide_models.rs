@@ -223,6 +223,7 @@ fn regex_extract_api_server_url(content: &str) -> Option<String> {
 
 async fn fetch_ide_account_info(session: &IdeSession) -> Result<IdeAccountInfo, String> {
     let client = super::apply_system_proxy(reqwest::Client::builder())
+        .timeout(std::time::Duration::from_secs(6))
         .build()
         .map_err(|e| e.to_string())?;
     let url = format!(

@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="230" height="230" viewBox="0 0 230 230" xmlns="http://www.w3.org/2000/svg">
+  <title>grok</title>
+  <rect x="22" y="21" width="187" height="187" rx="42" fill="#000000"/>
+  <g fill="#FFFFFF">
+    <path d="M96.5 137.5 L152 82 L166 96 L110.5 151.5 Z"/>
+    <path d="M64 82 L106 124 L92 138 L64 110 Z"/>
+    <path d="M166 148 L166 96 L152 110 L152 148 Z"/>
+  </g>
+</svg>

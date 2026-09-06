@@ -80,14 +80,39 @@ fn pending_update_notes_path() -> PathBuf {
     crate::commands::config::config_dir_path().join(PENDING_UPDATE_NOTES_FILE)
 }
 
+fn quarantine_corrupt_file(path: &std::path::Path, err: &str) {
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+    let corrupt_name = format!("{}.corrupt.{}", path.to_string_lossy(), now);
+    let corrupt_path = PathBuf::from(corrupt_name);
+    eprintln!(
+        "[Updater] File {:?} corrupted ({}), quarantining to {:?}",
+        path, err, corrupt_path
+    );
+    let _ = fs::rename(path, corrupt_path);
+}
+
 fn load_pending_update_notes() -> Result<Option<PendingUpdateNotes>, String> {
     let path = pending_update_notes_path();
     if !path.exists() {
         return Ok(None);
     }
-    let content = fs::read_to_string(&path).map_err(|e| e.to_string())?;
-    let pending: PendingUpdateNotes = serde_json::from_str(&content).map_err(|e| e.to_string())?;
-    Ok(Some(pending))
+    let content = match fs::read_to_string(&path) {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("[Updater] Failed to read pending notes: {}", e);
+            return Ok(None);
+        }
+    };
+    match serde_json::from_str::<PendingUpdateNotes>(&content) {
+        Ok(pending) => Ok(Some(pending)),
+        Err(e) => {
+            quarantine_corrupt_file(&path, &e.to_string());
+            Ok(None)
+        }
+    }
 }
 
 fn remove_pending_update_notes_file() {
@@ -146,9 +171,81 @@ pub fn get_update_settings() -> Result<UpdateSettings, String> {
     if !path.exists() {
         return Ok(UpdateSettings::default());
     }
-    let content = fs::read_to_string(&path).map_err(|e| e.to_string())?;
-    let settings: UpdateSettings = serde_json::from_str(&content).map_err(|e| e.to_string())?;
+    let content = match fs::read_to_string(&path) {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("[Updater] Failed to read update settings: {}", e);
+            return Ok(UpdateSettings::default());
+        }
+    };
+    match serde_json::from_str::<UpdateSettings>(&content) {
+        Ok(settings) => Ok(settings),
+        Err(e) => {
+            quarantine_corrupt_file(&path, &e.to_string());
+            Ok(UpdateSettings::default())
+        }
+    }
+}
+
+#[tauri::command]
+pub fn patch_update_settings(
+    auto_check: Option<bool>,
+    check_interval_hours: Option<u64>,
+    auto_install: Option<bool>,
+    last_run_version: Option<String>,
+    remind_on_update: Option<bool>,
+    skipped_version: Option<String>,
+) -> Result<UpdateSettings, String> {
+    let mut settings = get_update_settings()?;
+    if let Some(value) = auto_check {
+        settings.auto_check = value;
+    }
+    if let Some(value) = check_interval_hours {
+        settings.check_interval_hours = value;
+    }
+    if let Some(value) = auto_install {
+        settings.auto_install = value;
+    }
+    if let Some(value) = last_run_version {
+        settings.last_run_version = value;
+    }
+    if let Some(value) = remind_on_update {
+        settings.remind_on_update = value;
+    }
+    if let Some(value) = skipped_version {
+        settings.skipped_version = value;
+    }
+    save_update_settings(settings.clone())?;
     Ok(settings)
+}
+
+#[tauri::command]
+pub fn should_check_updates() -> Result<bool, String> {
+    let settings = get_update_settings()?;
+    if !settings.auto_check {
+        return Ok(false);
+    }
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+    let interval_secs = settings.check_interval_hours.max(1) * 3600;
+    Ok(now.saturating_sub(settings.last_check_time) >= interval_secs)
+}
+
+#[tauri::command]
+pub fn update_log(level: String, message: String) -> Result<(), String> {
+    let lvl = level.trim().to_lowercase();
+    let msg = message.trim();
+    if msg.is_empty() {
+        return Ok(());
+    }
+    match lvl.as_str() {
+        "error" => eprintln!("[Updater][ERROR] {}", msg),
+        "warn" | "warning" => eprintln!("[Updater][WARN] {}", msg),
+        _ => eprintln!("[Updater][INFO] {}", msg),
+    }
+    Ok(())
 }
 
 #[tauri::command]
@@ -261,6 +358,9 @@ pub async fn download_and_install_update(app: AppHandle, relaunch: bool) -> Resu
         let version = update.version.clone();
         let body = update.body.clone().unwrap_or_default();
 
+        // 提前保存更新日志，确保 Windows 下安装程序退出老进程前已写入
+        let _ = save_pending_update_notes(version.clone(), body.clone(), body.clone());
+
         crate::commands::proxy::stop_sidecar_for_update(app.clone())?;
 
         let app_clone1 = app.clone();
@@ -290,11 +390,8 @@ pub async fn download_and_install_update(app: AppHandle, relaunch: bool) -> Resu
             .await
             .map_err(|e| e.to_string())?;
 
-        // If not relaunching immediately, write pending update notes so we can show a changelog next time
-        if !relaunch {
-            let _ = save_pending_update_notes(version, body.clone(), body);
-        } else {
-            // Relaunch the application
+        // macOS/Linux 平台非即时退出场景：如需立即重启则调用 restart
+        if relaunch {
             app.restart();
         }
 
@@ -302,6 +399,12 @@ pub async fn download_and_install_update(app: AppHandle, relaunch: bool) -> Resu
     } else {
         Err("No update available".to_string())
     }
+}
+
+/// 重启应用程序（用于更新包就绪后的立即重启生效）
+#[tauri::command]
+pub fn restart_app(app: AppHandle) {
+    app.restart();
 }
 
 /// 打开下载页面（浏览器）
