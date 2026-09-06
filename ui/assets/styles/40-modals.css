@@ -594,12 +594,12 @@
   width: 34px;
   height: 34px;
   border-radius: 9px;
-  background: linear-gradient(135deg, #1d4ed8 0%, #3b82f6 100%);
+  background: linear-gradient(135deg, rgba(18, 97, 166, 0.95), rgba(14, 159, 139, 0.95));
   color: #ffffff;
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.28);
+  box-shadow: 0 4px 14px rgba(18, 97, 166, 0.32);
   flex-shrink: 0;
 }
 
@@ -643,7 +643,7 @@
 .update-target-version {
   font-size: 14px;
   font-weight: 700;
-  color: var(--accent, #2563eb);
+  color: #0e9f8b;
   font-family: var(--font-mono, monospace);
   letter-spacing: 0.2px;
 }
@@ -682,7 +682,7 @@
 
 .update-progress-fill {
   height: 100%;
-  background: linear-gradient(90deg, var(--accent, #2563eb), #60a5fa);
+  background: linear-gradient(90deg, rgba(18, 97, 166, 0.95), rgba(14, 159, 139, 0.95));
   border-radius: 999px;
   transition: width 0.25s cubic-bezier(0.4, 0, 0.2, 1);
 }
@@ -784,7 +784,7 @@
   position: absolute;
   left: 2px;
   top: -1px;
-  color: var(--accent, #2563eb);
+  color: #0e9f8b;
   font-size: 14px;
   font-weight: bold;
 }
@@ -872,18 +872,19 @@
 }
 
 .update-btn {
+  position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
-  height: 36px;
-  padding: 0 18px;
-  border-radius: 8px;
+  gap: 8px;
+  height: 38px;
+  padding: 0 20px;
+  border-radius: var(--radius-md, 10px);
   font-size: 13px;
-  font-weight: 600;
+  font-weight: 700;
   cursor: pointer;
   border: 1px solid transparent;
-  transition: all 0.18s ease;
+  transition: all var(--duration-normal, 0.2s) var(--ease, ease);
   user-select: none;
 }
 
@@ -900,22 +901,73 @@
 }
 
 .update-btn-primary {
-  background: linear-gradient(135deg, #1d4ed8 0%, #2563eb 100%);
-  color: #ffffff;
-  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.28);
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  background:
+    radial-gradient(ellipse 90% 70% at 18% 0%, rgba(255, 255, 255, 0.34), transparent 62%),
+    radial-gradient(ellipse 70% 80% at 100% 100%, rgba(55, 199, 165, 0.34), transparent 64%),
+    linear-gradient(135deg, rgba(18, 97, 166, 0.95), rgba(14, 159, 139, 0.95)),
+    rgba(255, 255, 255, 0.2);
+  color: var(--button-on-solid, #ffffff);
+  border: 1px solid rgba(255, 255, 255, 0.38);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.46),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.08),
+    0 10px 24px -14px rgba(18, 97, 166, 0.68),
+    0 0 0 1px rgba(18, 97, 166, 0.12);
+  backdrop-filter: blur(16px) saturate(1.35);
+  -webkit-backdrop-filter: blur(16px) saturate(1.35);
 }
 
 .update-btn-primary:hover:not(:disabled) {
-  background: linear-gradient(135deg, #1e40af 0%, #1d4ed8 100%);
-  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.38);
   transform: translateY(-1px);
+  background:
+    radial-gradient(ellipse 90% 70% at 18% 0%, rgba(255, 255, 255, 0.42), transparent 62%),
+    radial-gradient(ellipse 70% 80% at 100% 100%, rgba(55, 199, 165, 0.42), transparent 64%),
+    linear-gradient(135deg, rgba(18, 97, 166, 0.95), rgba(14, 159, 139, 0.95)),
+    rgba(255, 255, 255, 0.28);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.56),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.08),
+    0 14px 30px -14px rgba(18, 97, 166, 0.76),
+    0 0 0 1px rgba(18, 97, 166, 0.18);
 }
 
 .update-btn-primary:disabled {
-  opacity: 0.72;
-  cursor: wait;
-  box-shadow: none;
+  opacity: 0.58;
+  cursor: not-allowed;
   transform: none;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.3),
+    0 0 0 1px rgba(18, 97, 166, 0.08);
+}
+
+[data-theme="dark"] .update-btn-primary {
+  background:
+    radial-gradient(ellipse 90% 70% at 18% 0%, rgba(255, 255, 255, 0.34), transparent 62%),
+    radial-gradient(ellipse 70% 80% at 100% 100%, rgba(55, 199, 165, 0.34), transparent 64%),
+    linear-gradient(135deg, rgba(18, 97, 166, 0.95), rgba(14, 159, 139, 0.95)),
+    rgba(255, 255, 255, 0.2);
+  border-color: rgba(255, 255, 255, 0.38);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.46),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.08),
+    0 10px 24px -14px rgba(18, 97, 166, 0.68),
+    0 0 0 1px rgba(18, 97, 166, 0.12);
+}
+
+[data-theme="dark"] .update-btn-primary:hover:not(:disabled) {
+  background:
+    radial-gradient(ellipse 90% 70% at 18% 0%, rgba(255, 255, 255, 0.42), transparent 62%),
+    radial-gradient(ellipse 70% 80% at 100% 100%, rgba(55, 199, 165, 0.42), transparent 64%),
+    linear-gradient(135deg, rgba(18, 97, 166, 0.95), rgba(14, 159, 139, 0.95)),
+    rgba(255, 255, 255, 0.28);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.56),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.08),
+    0 14px 30px -14px rgba(18, 97, 166, 0.76),
+    0 0 0 1px rgba(18, 97, 166, 0.18);
 }
 
 .update-btn .spin {
@@ -1798,7 +1850,7 @@
   margin: 0;
 }
 
-/* ── 顶部药丸选项卡 ── */
+/* ── 顶部现代分段胶囊选项卡 ── */
 .platform-modal-tabs {
   display: flex;
   align-items: center;
@@ -1813,26 +1865,28 @@
   padding: 6px 16px;
   font-size: 13px;
   font-weight: 600;
-  color: var(--text-muted);
-  background: transparent;
-  border: 1px solid transparent;
-  border-radius: 999px;
+  color: var(--text-secondary);
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 9px;
   cursor: pointer;
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 7px;
   transition: all 0.15s ease;
 }
 
 .platform-modal-tab:hover {
   background: var(--bg-hover);
-  color: var(--text-secondary);
+  border-color: var(--border-strong);
+  color: var(--text-primary);
 }
 
 .platform-modal-tab.active {
   background: var(--accent-light);
-  border-color: color-mix(in srgb, var(--accent) 30%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 35%, transparent);
   color: var(--accent);
+  font-weight: 700;
 }
 
 /* ── 弹窗内容区 ── */
@@ -2149,10 +2203,138 @@
   max-width: 50%;
 }
 
-/* ── 接入设置单项列表 ── */
-.platform-settings-access-list {
+/* ── 环境检测主卡片与操作台 ── */
+.platform-health-hero-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px 18px;
+  margin-bottom: 14px;
+  box-shadow: var(--shadow-sm);
+}
+
+.platform-health-hero-card .platform-health-summary-box {
+  margin-bottom: 14px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  padding: 12px 14px;
+  min-height: 44px;
+}
+
+.platform-health-hero-card .platform-health-toolbar {
+  margin-bottom: 0;
+}
+
+.platform-btn-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.health-groups-wrapper {
+  margin-top: 4px;
+}
+
+/* ── 接入设置多模块卡片区 ── */
+.platform-settings-sections {
   display: flex;
   flex-direction: column;
+  gap: 14px;
+}
+
+.platform-section-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px 18px;
+  box-shadow: var(--shadow-sm);
+  transition: border-color 0.15s ease;
+}
+
+.platform-section-card:hover {
+  border-color: color-mix(in srgb, var(--accent) 30%, var(--border));
+}
+
+.platform-section-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.platform-section-title svg {
+  color: var(--accent);
+}
+
+.platform-section-body .setting-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.platform-section-body .setting-row:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.platform-section-body .setting-row:first-child {
+  padding-top: 0;
+}
+
+.platform-section-body .setting-row-stacked {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.platform-section-body .setting-path-ctrl {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.platform-section-body .setting-path-ctrl .field-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  border-radius: 8px;
+}
+
+.platform-port-badges {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.platform-port-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 12px;
+}
+
+.platform-port-pill .pill-label {
+  color: var(--text-muted);
+}
+
+.platform-port-pill code {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--accent);
 }
 
 .platform-settings-modal .modal-footer {
