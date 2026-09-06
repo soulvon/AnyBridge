@@ -2036,11 +2036,11 @@
 .health-badge {
   font-size: 11px;
   font-weight: 600;
-  padding: 2px 8px;
-  border-radius: 999px;
+  padding: 2.5px 9px;
+  border-radius: 8px;
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: 5px;
 }
 
 .health-badge.ok {
@@ -2078,11 +2078,11 @@
 
 .health-issue-tag {
   flex-shrink: 0;
-  font-size: 10px;
+  font-size: 10.5px;
   font-weight: 700;
-  padding: 1px 5px;
-  border-radius: 4px;
-  margin-top: 2px;
+  padding: 2px 7px;
+  border-radius: 6px;
+  margin-top: 1px;
 }
 
 .health-issue-tag.ok {
@@ -2121,8 +2121,8 @@
   font-size: 11px;
   color: var(--text-primary);
   background: var(--bg-input);
-  padding: 1px 5px;
-  border-radius: 4px;
+  padding: 2px 6px;
+  border-radius: 6px;
   border: 1px solid var(--border);
 }
 

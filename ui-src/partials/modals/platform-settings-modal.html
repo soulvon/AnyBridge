@@ -7,12 +7,12 @@
       <div class="modal-header">
         <div class="modal-title">
           <span class="modal-icon">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
               <circle cx="12" cy="12" r="3"></circle>
               <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.2a1.7 1.7 0 0 0-1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.2a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3 1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.2a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8 1.7 1.7 0 0 0 1.5 1h.2a2 2 0 1 1 0 4h-.2a1.7 1.7 0 0 0-1.5 1z"></path>
             </svg>
           </span>
-          <span id="platformSettingsModalTitle">平台接入与环境诊断</span>
+          <span id="platformSettingsModalTitle">平台接入与环境设置</span>
         </div>
         <button type="button" class="modal-close-icon" aria-label="关闭" data-action="closePlatformSettingsModal" title="关闭 (Esc)">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
@@ -22,198 +22,165 @@
         </button>
       </div>
 
-      <!-- 选项卡导航 (现代分段胶囊) -->
-      <div class="platform-modal-tabs">
-        <button type="button" class="platform-modal-tab active" id="platform-settings-tab-btn-health" data-action="switchPlatformSettingsTab" data-arg="health">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
-          </svg>
-          <span>环境检测</span>
-        </button>
-        <button type="button" class="platform-modal-tab" id="platform-settings-tab-btn-access" data-action="switchPlatformSettingsTab" data-arg="access">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <circle cx="12" cy="12" r="3"></circle>
-            <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.2a1.7 1.7 0 0 0-1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.2a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3 1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.2a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8 1.7 1.7 0 0 0 1.5 1h.2a2 2 0 1 1 0 4h-.2a1.7 1.7 0 0 0-1.5 1z"></path>
-          </svg>
-          <span>接入设置</span>
-        </button>
-      </div>
+      <!-- 核心主体：左选项、右详情 -->
+      <div class="platform-settings-layout">
+        <!-- 左侧菜单侧边栏 -->
+        <aside class="platform-settings-nav" aria-label="设置导航">
+          <button type="button" class="platform-settings-nav-item active" id="platform-settings-tab-btn-health" data-action="switchPlatformSettingsTab" data-arg="health">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
+            </svg>
+            <span>环境检测</span>
+          </button>
+          <button type="button" class="platform-settings-nav-item" id="platform-settings-tab-btn-access" data-action="switchPlatformSettingsTab" data-arg="access">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="3"></circle>
+              <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.2a1.7 1.7 0 0 0-1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.2a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3 1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.2a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8 1.7 1.7 0 0 0 1.5 1h.2a2 2 0 1 1 0 4h-.2a1.7 1.7 0 0 0-1.5 1z"></path>
+            </svg>
+            <span>接入设置</span>
+          </button>
+        </aside>
 
-      <!-- 内容主体视口 -->
-      <div class="modal-body platform-settings-body">
+        <!-- 右侧详情视口 -->
+        <div class="platform-settings-detail">
 
-        <!-- ═══ 面板 1：环境检测 ═══ -->
-        <div class="platform-settings-panel active" id="platform-settings-panel-health">
-          
-          <!-- 操作与诊断总控台 -->
-          <div class="platform-health-hero-card">
-            <!-- 诊断状态摘要 -->
-            <div class="health-summary platform-health-summary-box" data-oid="health-summary">
-              <div class="health-summary-empty">点击「一键检测」开始全面诊断 AnyBridge 的运行环境（证书、路径、端口、模型映射与网络连通性）。</div>
-            </div>
+          <!-- ═══ 面板 1：环境检测 ═══ -->
+          <div class="platform-settings-panel active" id="platform-settings-panel-health">
+            
+            <!-- 状态提示与操作栏 -->
+            <div class="platform-health-control-area">
+              <div class="health-summary platform-health-summary-box" data-oid="health-summary">
+                <div class="health-summary-empty">点击「一键检测」开始诊断 AnyBridge 运行环境（证书、路径、端口、模型映射与网络连通性）。</div>
+              </div>
 
-            <!-- 操作按钮组 -->
-            <div class="platform-health-toolbar">
-              <div class="platform-health-actions-left">
-                <button type="button" class="btn-primary" data-oid="health-run-btn" data-action="runHealthcheck">
-                  <span class="health-btn-icon">▶</span> 一键检测
-                </button>
-                <div class="platform-btn-group">
-                  <button type="button" class="btn-ghost success" data-oid="health-generate-cert-btn" data-action="generateCertsFromHealth">
+              <div class="platform-health-toolbar">
+                <div class="platform-health-actions-left">
+                  <button type="button" class="btn-primary" data-oid="health-run-btn" data-action="runHealthcheck">
+                    <span class="health-btn-icon">▶</span> 一键检测
+                  </button>
+                  <button type="button" class="btn-ghost secondary" data-oid="health-generate-cert-btn" data-action="generateCertsFromHealth">
                     生成证书
                   </button>
-                  <button type="button" class="btn-ghost success" data-oid="health-install-cert-btn" data-action="installCaFromHealth">
+                  <button type="button" class="btn-ghost secondary" data-oid="health-install-cert-btn" data-action="installCaFromHealth">
                     安装证书
                   </button>
-                  <button type="button" class="btn-ghost warn" data-oid="health-reinstall-cert-btn" data-action="reinstallCaFromHealth" title="清理旧证书、重新生成并安装">
-                    清理并重装
+                  <button type="button" class="btn-ghost secondary" data-oid="health-reinstall-cert-btn" data-action="reinstallCaFromHealth" title="清理旧证书、重新生成并安装">
+                    清理重装
                   </button>
-                  <button type="button" class="btn-ghost danger" data-oid="health-uninstall-cert-btn" data-action="uninstallCaFromHealth">
+                  <button type="button" class="btn-ghost secondary" data-oid="health-uninstall-cert-btn" data-action="uninstallCaFromHealth">
                     卸载证书
                   </button>
                   <button type="button" class="btn-ghost warn" data-oid="health-cleanup-legacy-btn" style="display:none;" data-action="cleanupLegacyCaFromHealth">
                     清理老证书
                   </button>
                 </div>
+                <div class="platform-health-actions-right">
+                  <button type="button" class="btn-ghost secondary" data-oid="health-copy-md-btn" disabled data-action="copyHealthMarkdown">
+                    复制报告
+                  </button>
+                  <button type="button" class="btn-ghost secondary" data-oid="health-export-md-btn" disabled data-action="exportHealthMarkdown">
+                    导出报告
+                  </button>
+                </div>
               </div>
-              <div class="platform-health-actions-right">
-                <button type="button" class="btn-ghost accent" data-oid="health-copy-md-btn" disabled data-action="copyHealthMarkdown">
-                  复制报告
-                </button>
-                <button type="button" class="btn-ghost accent" data-oid="health-export-md-btn" disabled data-action="exportHealthMarkdown">
-                  导出报告
-                </button>
+
+              <!-- 证书安装进度条 -->
+              <div class="health-install-progress" data-oid="health-install-progress" hidden>
+                <div class="health-install-progress-top">
+                  <span class="health-install-progress-dot"></span>
+                  <span class="health-install-progress-text" data-oid="health-install-progress-text">等待安装</span>
+                  <span class="health-install-progress-percent" data-oid="health-install-progress-percent">0%</span>
+                </div>
+                <div class="health-install-progress-track">
+                  <div class="health-install-progress-fill" data-oid="health-install-progress-fill" style="width:0%"></div>
+                </div>
               </div>
             </div>
 
-            <!-- 证书安装进度条 -->
-            <div class="health-install-progress" data-oid="health-install-progress" hidden>
-              <div class="health-install-progress-top">
-                <span class="health-install-progress-dot"></span>
-                <span class="health-install-progress-text" data-oid="health-install-progress-text">等待安装</span>
-                <span class="health-install-progress-percent" data-oid="health-install-progress-percent">0%</span>
-              </div>
-              <div class="health-install-progress-track">
-                <div class="health-install-progress-fill" data-oid="health-install-progress-fill" style="width:0%"></div>
-              </div>
-            </div>
-          </div>
-
-          <!-- 诊断结果卡片列表 -->
-          <div class="health-groups-wrapper">
+            <!-- 诊断结果平铺列表 (简洁无厚重卡片外框) -->
             <div class="health-groups" data-oid="health-groups"></div>
           </div>
-        </div>
 
-        <!-- ═══ 面板 2：接入设置 ═══ -->
-        <div class="platform-settings-panel" id="platform-settings-panel-access">
-          <div class="platform-settings-sections">
-            
-            <!-- 分组卡片 1：代理与模式策略 -->
-            <div class="platform-section-card">
-              <div class="platform-section-title">
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect><line x1="8" y1="21" x2="16" y2="21"></line><line x1="12" y1="17" x2="12" y2="21"></line></svg>
-                <span>代理与运行策略</span>
-              </div>
+          <!-- ═══ 面板 2：接入设置 ═══ -->
+          <div class="platform-settings-panel" id="platform-settings-panel-access">
+            <div class="platform-settings-access-clean">
               
-              <div class="platform-section-body">
-                <div class="setting-row">
-                  <div class="setting-meta">
-                    <div class="setting-label">切换代理模式</div>
-                    <div class="setting-desc">点击「切换到代理」时自动写入代理规则，还原直连时恢复原始备份。</div>
-                  </div>
-                  <div class="setting-ctrl">
-                    <span class="tag" data-oid="proxySwitchModeTag">自动</span>
-                  </div>
+              <div class="setting-row">
+                <div class="setting-meta">
+                  <div class="setting-label">切换到代理</div>
+                  <div class="setting-desc">点击「切换到代理」时自动写入代理配置，还原直连时恢复原始备份。</div>
                 </div>
+                <div class="setting-ctrl">
+                  <span class="tag" data-oid="proxySwitchModeTag">自动</span>
+                </div>
+              </div>
 
-                <div class="setting-row">
-                  <div class="setting-meta">
-                    <div class="setting-label">重启提示策略</div>
-                    <div class="setting-desc">切换代理或还原直连后确认是否重启 IDE，支持开启自动重启。</div>
-                  </div>
-                  <div class="setting-ctrl setting-restart-pref-ctrl">
-                    <div class="toggle-sm" data-ide-restart-toggle data-oid="ideRestartPromptToggle" role="switch" aria-label="自动立即重启"></div>
-                    <span class="setting-restart-pref-label" data-oid="ideRestartPromptMode">每次询问</span>
-                    <button type="button" class="btn-ghost secondary" data-oid="ideRestartPromptResetBtn" data-action="resetIdeRestartPromptPreference">恢复询问</button>
+              <div class="setting-row">
+                <div class="setting-meta">
+                  <div class="setting-label">重启提示</div>
+                  <div class="setting-desc">切换代理或还原直连后询问是否重启 IDE，支持设置默认自动重启。</div>
+                </div>
+                <div class="setting-ctrl setting-restart-pref-ctrl">
+                  <div class="toggle-sm" data-ide-restart-toggle data-oid="ideRestartPromptToggle" role="switch" aria-label="自动立即重启"></div>
+                  <span class="setting-restart-pref-label" data-oid="ideRestartPromptMode">每次询问</span>
+                  <button type="button" class="btn-ghost secondary" data-oid="ideRestartPromptResetBtn" data-action="resetIdeRestartPromptPreference">恢复询问</button>
+                </div>
+              </div>
+
+              <div class="setting-row">
+                <div class="setting-meta">
+                  <div class="setting-label">MITM 证书</div>
+                  <div class="setting-desc" data-oid="cert-status">首次使用请生成证书；切换到代理时会写入证书信任配置。</div>
+                </div>
+                <div class="setting-ctrl">
+                  <button type="button" class="btn-ghost secondary" data-action="openCertsDir">证书目录</button>
+                  <button type="button" class="btn-ghost secondary" data-action="openConfigDir">配置目录</button>
+                  <button type="button" class="btn-ghost secondary" data-action="generateCerts">生成证书</button>
+                </div>
+              </div>
+
+              <div class="setting-row setting-row-stacked">
+                <div class="setting-meta">
+                  <div class="setting-label">IDE 安装路径</div>
+                  <div class="setting-desc" data-oid="ide-path-status">自动探测运行中进程、默认目录和注册表；失败时可手动指定。</div>
+                </div>
+                <div class="setting-ctrl setting-path-ctrl">
+                  <input class="field-input" data-oid="idePath" placeholder="自动探测中或手动指定 IDE 可执行文件路径...">
+                  <button type="button" class="btn-ghost secondary" data-action="detectIdePath">探测</button>
+                  <button type="button" class="btn-ghost secondary" data-action="saveIdePath">保存</button>
+                </div>
+              </div>
+
+              <div class="setting-row">
+                <div class="setting-meta">
+                  <div class="setting-label">流量路由端口</div>
+                  <div class="setting-desc">本地服务监听与分流端口配置。</div>
+                </div>
+                <div class="setting-ctrl">
+                  <div class="platform-port-badges">
+                    <span class="platform-port-pill"><span class="pill-label">MITM 代理</span><code>:7450</code></span>
+                    <span class="platform-port-pill"><span class="pill-label">直连代理</span><code>:7451</code></span>
                   </div>
                 </div>
               </div>
+
+              <div class="setting-row">
+                <div class="setting-meta">
+                  <div class="setting-label">解锁模型列表</div>
+                  <div class="setting-desc">拦截 GetUserStatus 响应，解除 IDE 下拉框中灰色锁定项的限制。仅对 Windsurf / Devin 生效。</div>
+                </div>
+                <div class="setting-ctrl">
+                  <label class="toggle-switch" title="开启后解除模型锁定限制">
+                    <input id="modal-enhancement-unlockModels" data-oid="enhancement-unlockModels" type="checkbox" data-action-chain="[{&quot;fn&quot;:&quot;toggleEnhancement&quot;,&quot;args&quot;:[&quot;unlockModels&quot;],&quot;passThis&quot;:true},{&quot;fn&quot;:&quot;saveProxyEnhancement&quot;}]" data-action="toggleEnhancement" data-events="change">
+                    <span class="toggle-slider"></span>
+                  </label>
+                </div>
+              </div>
+
             </div>
-
-            <!-- 分组卡片 2：证书与配置管理 -->
-            <div class="platform-section-card">
-              <div class="platform-section-title">
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
-                <span>证书与配置目录</span>
-              </div>
-
-              <div class="platform-section-body">
-                <div class="setting-row">
-                  <div class="setting-meta">
-                    <div class="setting-label">MITM 根证书状态</div>
-                    <div class="setting-desc" data-oid="cert-status">首次使用需生成证书，代理接管时自动配置证书信任链。</div>
-                  </div>
-                  <div class="setting-ctrl">
-                    <button type="button" class="btn-ghost accent" data-action="openCertsDir">证书目录</button>
-                    <button type="button" class="btn-ghost accent" data-action="openConfigDir">配置目录</button>
-                    <button type="button" class="btn-ghost success" data-action="generateCerts">重新生成</button>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <!-- 分组卡片 3：环境路径与扩展设置 -->
-            <div class="platform-section-card">
-              <div class="platform-section-title">
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
-                <span>路径、端口与高级选项</span>
-              </div>
-
-              <div class="platform-section-body">
-                <div class="setting-row setting-row-stacked">
-                  <div class="setting-meta">
-                    <div class="setting-label">IDE 安装路径</div>
-                    <div class="setting-desc" data-oid="ide-path-status">自动探测运行中进程与注册表；探测失败时可手动指定路径。</div>
-                  </div>
-                  <div class="setting-ctrl setting-path-ctrl">
-                    <input class="field-input" data-oid="idePath" placeholder="自动探测中或手动指定 IDE 可执行文件路径...">
-                    <button type="button" class="btn-ghost accent" data-action="detectIdePath">探测</button>
-                    <button type="button" class="btn-ghost success" data-action="saveIdePath">保存</button>
-                  </div>
-                </div>
-
-                <div class="setting-row">
-                  <div class="setting-meta">
-                    <div class="setting-label">流量路由端口</div>
-                    <div class="setting-desc">本地服务监听与分流端口。</div>
-                  </div>
-                  <div class="setting-ctrl">
-                    <div class="platform-port-badges">
-                      <span class="platform-port-pill"><span class="pill-label">MITM 代理</span><code>:7450</code></span>
-                      <span class="platform-port-pill"><span class="pill-label">直连代理</span><code>:7451</code></span>
-                    </div>
-                  </div>
-                </div>
-
-                <div class="setting-row">
-                  <div class="setting-meta">
-                    <div class="setting-label">解锁模型限制</div>
-                    <div class="setting-desc">解除 IDE 下拉框中灰色锁定项的限制（仅对 Windsurf / Devin 生效）。</div>
-                  </div>
-                  <div class="setting-ctrl">
-                    <label class="toggle-switch" title="开启后解除模型锁定限制">
-                      <input id="modal-enhancement-unlockModels" data-oid="enhancement-unlockModels" type="checkbox" data-action-chain="[{&quot;fn&quot;:&quot;toggleEnhancement&quot;,&quot;args&quot;:[&quot;unlockModels&quot;],&quot;passThis&quot;:true},{&quot;fn&quot;:&quot;saveProxyEnhancement&quot;}]" data-action="toggleEnhancement" data-events="change">
-                      <span class="toggle-slider"></span>
-                    </label>
-                  </div>
-                </div>
-              </div>
-            </div>
-
           </div>
-        </div>
 
+        </div>
       </div>
 
       <!-- 底部 Footer -->
