@@ -212,6 +212,13 @@
               aria-hidden="true"></span>
           <span class="platform-rail-label">ZCode</span>
         </button>
+        <button type="button" class="platform-rail-item" data-platform-rail="grok" draggable="true"
+ data-action="openPlatformPage" data-arg="grok">
+          <span class="platform-rail-handle" draggable="true" aria-hidden="true"></span>
+          <span class="platform-rail-icon"><img src="./assets/icons/platform-grok.svg" alt=""
+              aria-hidden="true"></span>
+          <span class="platform-rail-label">Grok</span>
+        </button>
           </div>
         </div>
       </aside>
@@ -802,85 +809,86 @@
                         </div>
                       </div>
 
-                      <!-- 分类 Tab (全部、推理、视觉、联网、免费、向量、重排 - 精致 SVG 胶囊按钮) -->
+                      <!-- 分类 Tab (Cherry Studio 风格：全部、文本、图片、嵌入、音频、视频、重排 + 排序按钮) -->
                       <div class="provider-model-filterbar">
                         <div class="model-filter-tab active" data-action="changeModelTab" data-arg="all">
-                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                            stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-                            <rect x="3" y="3" width="7" height="7"></rect>
-                            <rect x="14" y="3" width="7" height="7"></rect>
-                            <rect x="14" y="14" width="7" height="7"></rect>
-                            <rect x="3" y="14" width="7" height="7"></rect>
-                          </svg>
                           <span>全部</span>
+                          <span class="model-tab-count" id="count-tab-all">0</span>
                         </div>
-                        <div class="model-filter-tab" data-action="changeModelTab" data-arg="reason">
-                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                            stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-                            <path d="M12 5a3 3 0 1 0-5.997.125 4 4 0 0 0-2.526 5.77 4 4 0 0 0 .556 6.588A4 4 0 1 0 12 18Z"></path>
-                            <path d="M12 5a3 3 0 1 1 5.997.125 4 4 0 0 1 2.526 5.77 4 4 0 0 1-.556 6.588A4 4 0 1 1 12 18Z"></path>
-                            <path d="M15 13a4.5 4.5 0 0 1-3-4 4.5 4.5 0 0 1-3 4"></path>
-                            <path d="M17.599 6.5a3 3 0 0 0 .399-1.375"></path>
-                            <path d="M6.003 5.125A3 3 0 0 0 6.401 6.5"></path>
-                            <path d="M3.477 10.896a4 4 0 0 1 .585-.396"></path>
-                            <path d="M19.938 10.5a4 4 0 0 1 .585.396"></path>
-                            <path d="M6 18a4 4 0 0 1-1.967-.516"></path>
-                            <path d="M19.967 17.484A4 4 0 0 1 18 18"></path>
+                        <div class="model-filter-tab" data-action="changeModelTab" data-arg="text">
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                            <polyline points="4 7 4 4 20 4 20 7"></polyline>
+                            <line x1="9" y1="20" x2="15" y2="20"></line>
+                            <line x1="12" y1="4" x2="12" y2="20"></line>
                           </svg>
-                          <span>推理</span>
+                          <span>文本</span>
+                          <span class="model-tab-count" id="count-tab-text">0</span>
                         </div>
-                        <div class="model-filter-tab" data-action="changeModelTab" data-arg="vision">
-                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                            stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-                            <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"></path>
-                            <circle cx="12" cy="12" r="3"></circle>
+                        <div class="model-filter-tab" data-action="changeModelTab" data-arg="image">
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                            <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                            <circle cx="8.5" cy="8.5" r="1.5"></circle>
+                            <polyline points="21 15 16 10 5 21"></polyline>
                           </svg>
-                          <span>视觉</span>
+                          <span>图片</span>
+                          <span class="model-tab-count" id="count-tab-image">0</span>
                         </div>
-                        <div class="model-filter-tab" data-action="changeModelTab" data-arg="search">
-                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                            stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-                            <circle cx="12" cy="12" r="10"></circle>
-                            <line x1="2" y1="12" x2="22" y2="12"></line>
-                            <path
-                              d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z">
-                            </path>
+                        <div class="model-filter-tab" data-action="changeModelTab" data-arg="embedding">
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M2.97 12.92A2 2 0 0 0 2 14.63v3.24a2 2 0 0 0 .97 1.71l3 1.8a2 2 0 0 0 2.06 0L12 19v-5.5l-5-3-4.03 2.42Z"></path>
+                            <path d="m7 16.5-4.74-2.85"></path>
+                            <path d="m7 16.5 5-3"></path>
+                            <path d="M7 16.5v5.17"></path>
+                            <path d="M12 13.5V19l3.97 2.38a2 2 0 0 0 2.06 0l3-1.8a2 2 0 0 0 .97-1.71v-3.24a2 2 0 0 0-.97-1.71L17 10.5l-5 3Z"></path>
+                            <path d="m17 16.5-5-3"></path>
+                            <path d="m17 16.5 4.74-2.85"></path>
+                            <path d="M17 16.5v5.17"></path>
+                            <path d="M7.97 4.42A2 2 0 0 0 7 6.13v4.37l5 3 5-3V6.13a2 2 0 0 0-.97-1.71l-3-1.8a2 2 0 0 0-2.06 0l-3 1.8Z"></path>
+                            <path d="M12 8 7.26 5.15"></path>
+                            <path d="m12 8 4.74-2.85"></path>
+                            <path d="M12 13.5V8"></path>
                           </svg>
-                          <span>联网</span>
+                          <span>嵌入</span>
+                          <span class="model-tab-count" id="count-tab-embedding">0</span>
                         </div>
-                        <div class="model-filter-tab" data-action="changeModelTab" data-arg="free">
-                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                            stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-                            <rect x="3" y="8" width="18" height="4" rx="1"></rect>
-                            <path d="M12 8v13"></path>
-                            <path d="M19 12v7a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2v-7"></path>
-                            <path
-                              d="M7.5 8a2.5 2.5 0 0 1 0-5A2.5 2.5 0 0 1 12 5.5a2.5 2.5 0 0 1 4.5-2.5 2.5 2.5 0 0 1 0 5">
-                            </path>
+                        <div class="model-filter-tab" data-action="changeModelTab" data-arg="audio">
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M2 10v4"></path>
+                            <path d="M6 6v12"></path>
+                            <path d="M10 3v18"></path>
+                            <path d="M14 8v8"></path>
+                            <path d="M18 5v14"></path>
+                            <path d="M22 10v4"></path>
                           </svg>
-                          <span>免费</span>
+                          <span>音频</span>
+                          <span class="model-tab-count" id="count-tab-audio">0</span>
                         </div>
-                        <div class="model-filter-tab" data-action="changeModelTab" data-arg="embed">
-                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                            stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-                            <circle cx="18" cy="5" r="3"></circle>
-                            <circle cx="6" cy="12" r="3"></circle>
-                            <circle cx="18" cy="19" r="3"></circle>
-                            <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line>
-                            <line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line>
+                        <div class="model-filter-tab" data-action="changeModelTab" data-arg="video">
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="m22 8-6 4 6 4V8Z"></path>
+                            <rect width="14" height="12" x="2" y="6" rx="2"></rect>
                           </svg>
-                          <span>向量</span>
+                          <span>视频</span>
+                          <span class="model-tab-count" id="count-tab-video">0</span>
                         </div>
                         <div class="model-filter-tab" data-action="changeModelTab" data-arg="rerank">
-                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                            stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="m21 16-4 4-4-4"></path>
+                            <path d="M17 20V4"></path>
+                            <path d="m3 8 4-4 4 4"></path>
+                            <path d="M7 4v16"></path>
+                          </svg>
+                          <span>重排</span>
+                          <span class="model-tab-count" id="count-tab-rerank">0</span>
+                        </div>
+                        <button type="button" class="model-filter-sort-btn" id="modelFilterSortBtn" data-action="toggleModelSort" title="切换模型排序 (默认 / 名称 A-Z)">
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
                             <path d="m3 16 4 4 4-4"></path>
                             <path d="M7 20V4"></path>
                             <path d="m21 8-4-4-4 4"></path>
                             <path d="M17 4v16"></path>
                           </svg>
-                          <span>重排</span>
-                        </div>
+                        </button>
                       </div>
 
                       <!-- 始终显示且设计精美的搜索栏 -->
@@ -941,21 +949,19 @@
                 </button>
               </div>
             </div>
-            <div class="glass-card model-slots-workspace slot-editor-workspace">
-              <!-- Left Column: 模型目录 (平铺列表) -->
-              <div
-                style="flex:1; display:flex; flex-direction:column; background:var(--bg-card); border:1px solid var(--border); border-radius:var(--radius-lg); overflow:hidden; box-shadow:var(--shadow-sm);">
-                <div
-                  style="padding:16px 20px; border-bottom:1px solid var(--border); background:var(--bg-glass); display:flex; align-items:center; justify-content:space-between;">
-                  <span style="font-size:14px; font-weight:700; color:var(--text-primary);">选择 IDE 模型槽位</span>
+
+            <!-- 工作区：移除外层套娃 card，直接左右双卡片平铺 -->
+            <div class="slot-editor-workspace">
+              <!-- Left Column: 选择 IDE 模型槽位 -->
+              <div class="glass-card slot-editor-col slot-editor-left-col">
+                <div class="slot-editor-card-head">
+                  <span class="slot-editor-card-title">选择 IDE 模型槽位</span>
                   <div style="display:flex; align-items:center; gap:6px;">
-                    <span class="brand-tag" id="ideModelsSourceBadge" title="模型清单缓存来源"
-                      style="padding: 2px 8px; font-size: 10px; font-weight:700; display:none;"></span>
                     <span class="brand-tag" id="slotCatalogCount"
                       style="padding: 2px 8px; font-size: 10px; font-weight:700;">0 可用</span>
                     <button id="btn-refresh-models" class="btn-ghost accent"
- style="padding: 0 10px; border-radius: 6px; display: flex; align-items: center; gap: 4px; height: 24px; font-size: 11px; font-weight: 600;"
- title="从 IDE 账号拉取最新模型列表（API 刷新）。若需与 IDE 下拉框一致，请启动代理后重启 IDE 并打开一次模型选择器以抓取 captured 清单。" data-action="refreshIdeModels">
+                      style="padding: 0 10px; border-radius: 6px; display: flex; align-items: center; gap: 4px; height: 24px; font-size: 11px; font-weight: 600;"
+                      title="从 IDE 账号拉取最新模型列表（API 刷新）。若需与 IDE 下拉框一致，请启动代理后重启 IDE 并打开一次模型选择器以抓取 captured 清单。" data-action="refreshIdeModels">
                       <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                         stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
                         <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"></path>
@@ -964,73 +970,66 @@
                     </button>
                   </div>
                 </div>
-                <div id="ideModelsSourceHint" role="note" style="display:none;"></div>
                 <div id="slotCatalogScopeTabs"
-                  style="display:flex;align-items:center;gap:6px;padding:10px 20px;border-bottom:1px solid var(--border);background:var(--bg-card);">
+                  style="display:flex;align-items:center;gap:6px;padding:10px 18px;border-bottom:1px solid var(--border);background:var(--bg-card);flex-wrap:wrap;flex:0 0 auto;">
                   <button class="slot-scope-tab" data-scope="all"
- style="height:26px;padding:0 10px;border-radius:7px;border:1px solid var(--border);background:var(--bg-input);color:var(--text-muted);font-size:11px;font-weight:700;cursor:pointer;" data-action="setSlotCatalogScope" data-arg="all">全部
+                    style="height:26px;padding:0 10px;border-radius:7px;border:1px solid var(--border);background:var(--bg-input);color:var(--text-muted);font-size:11px;font-weight:700;cursor:pointer;" data-action="setSlotCatalogScope" data-arg="all">全部
                     <span id="slotScopeAllCount">0</span></button>
                   <button class="slot-scope-tab" data-scope="account"
- style="height:26px;padding:0 10px;border-radius:7px;border:1px solid var(--border);background:var(--bg-input);color:var(--text-muted);font-size:11px;font-weight:700;cursor:pointer;" data-action="setSlotCatalogScope" data-arg="account">当前账号
+                    style="height:26px;padding:0 10px;border-radius:7px;border:1px solid var(--border);background:var(--bg-input);color:var(--text-muted);font-size:11px;font-weight:700;cursor:pointer;" data-action="setSlotCatalogScope" data-arg="account">当前账号
                     <span id="slotScopeAccountCount">0</span></button>
                   <button class="slot-scope-tab" data-scope="extended"
- style="height:26px;padding:0 10px;border-radius:7px;border:1px solid var(--border);background:var(--bg-input);color:var(--text-muted);font-size:11px;font-weight:700;cursor:pointer;" data-action="setSlotCatalogScope" data-arg="extended">内置槽位
+                    style="height:26px;padding:0 10px;border-radius:7px;border:1px solid var(--border);background:var(--bg-input);color:var(--text-muted);font-size:11px;font-weight:700;cursor:pointer;" data-action="setSlotCatalogScope" data-arg="extended">内置槽位
                     <span id="slotScopeExtendedCount">0</span></button>
                   <button class="slot-scope-tab" data-scope="bound"
- style="height:26px;padding:0 10px;border-radius:7px;border:1px solid var(--border);background:var(--bg-input);color:var(--text-muted);font-size:11px;font-weight:700;cursor:pointer;" data-action="setSlotCatalogScope" data-arg="bound">已绑定
+                    style="height:26px;padding:0 10px;border-radius:7px;border:1px solid var(--border);background:var(--bg-input);color:var(--text-muted);font-size:11px;font-weight:700;cursor:pointer;" data-action="setSlotCatalogScope" data-arg="bound">已绑定
                     <span id="slotScopeBoundCount">0</span></button>
                 </div>
                 <!-- 槽位搜索栏 -->
                 <div
-                  style="padding:12px 20px; border-bottom:1px solid var(--border); background:rgba(0,0,0,0.01); display:flex; gap:8px; align-items:center;">
+                  style="padding:10px 18px; border-bottom:1px solid var(--border); background:rgba(0,0,0,0.01); display:flex; gap:8px; align-items:center; flex:0 0 auto;">
                   <input type="text" id="slotCatalogSearch" placeholder="搜索槽位名 / modelUid..."
- 
- style="padding:10px 14px; border-radius:10px; font-size:12px; flex:1; min-width:0; border:1px solid var(--border); background:var(--bg-input); outline:none; transition:all 0.2s;" data-action="filterSlotCatalog" data-events="input">
+                    style="padding:8px 12px; border-radius:8px; font-size:12px; flex:1; min-width:0; border:1px solid var(--border); background:var(--bg-input); outline:none; transition:all 0.2s;" data-action="filterSlotCatalog" data-events="input">
                   <select id="slotCatalogSort"
- style="height:34px;padding:0 8px;border:1px solid var(--border);background:var(--bg-input);color:var(--text-primary);border-radius:8px;font-size:11px;outline:none;cursor:pointer;" data-assign="slotCatalogSort" data-action="filterSlotCatalog" data-events="change">
+                    style="height:32px;padding:0 8px;border:1px solid var(--border);background:var(--bg-input);color:var(--text-primary);border-radius:8px;font-size:11px;outline:none;cursor:pointer;" data-assign="slotCatalogSort" data-action="filterSlotCatalog" data-events="change">
                     <option value="name-asc">名称 A→Z</option>
                     <option value="name-desc">名称 Z→A</option>
                   </select>
                 </div>
                 <!-- 槽位品牌快速筛选 -->
                 <div id="slotCatalogBrandBar"
-                  style="display:flex;align-items:center;gap:5px;padding:8px 20px;border-bottom:1px solid var(--border);background:var(--bg-card);flex-wrap:wrap;">
+                  style="display:flex;align-items:center;gap:5px;padding:8px 18px;border-bottom:1px solid var(--border);background:var(--bg-card);flex-wrap:wrap;flex:0 0 auto;">
                 </div>
                 <!-- 槽位行容器 -->
                 <div id="slotCatalogBody"
-                  style="flex:1; overflow-y:auto; padding:16px 20px; display:flex; flex-direction:column; gap:8px;">
+                  style="flex:1 1 auto; overflow-y:auto; padding:12px 16px; display:flex; flex-direction:column; gap:8px; min-height:0;">
                   <!-- 动态加载槽位行，支持点击选中和已占用提示 -->
                 </div>
               </div>
 
-              <!-- Vertical Divider -->
-              <div style="width:1px; background:var(--border); margin:0 8px;"></div>
-
-              <!-- Right Column: Mapping Targets Catalog (映射模型平铺列表) -->
-              <div
-                style="flex:1.2; display:flex; flex-direction:column; background:var(--bg-card); border:1px solid var(--border); border-radius:var(--radius-lg); overflow:hidden; box-shadow:var(--shadow-sm);">
-                <div
-                  style="padding:16px 20px; border-bottom:1px solid var(--border); background:var(--bg-glass); display:flex; align-items:center; justify-content:space-between;">
-                  <span style="font-size:14px; font-weight:700; color:var(--text-primary);">选择映射模型</span>
+              <!-- Right Column: 选择映射模型 -->
+              <div class="glass-card slot-editor-col slot-editor-right-col">
+                <div class="slot-editor-card-head">
+                  <span class="slot-editor-card-title">选择映射模型</span>
                 </div>
                 <!-- 映射参数配置区 (移到右卡片顶部，节省底部空间) -->
                 <div
-                  style="padding:12px 20px; border-bottom:1px solid var(--border); background:rgba(0,0,0,0.01); display:flex; flex-direction:column; gap:8px;">
+                  style="padding:10px 18px; border-bottom:1px solid var(--border); background:rgba(0,0,0,0.01); display:flex; flex-direction:column; gap:8px; flex:0 0 auto;">
                   <div style="display:flex; gap:8px; align-items:center;">
                     <input class="field-input" id="slot-display" placeholder="自定义显示名（留空使用模型原始名）"
-                      style="padding:8px 12px; font-size:12px; border-radius:8px; flex:1; min-width:0;">
-                    <div style="display:flex; gap:8px; align-items:center; flex-shrink:0;">
+                      style="padding:7px 11px; font-size:12px; border-radius:8px; flex:1; min-width:0; height:32px;">
+                    <div style="display:flex; gap:6px; align-items:center; flex-shrink:0;">
                       <input class="field-input" id="slot-context-window" type="number" min="1" step="1"
                         placeholder="上下文窗口"
                         title="留空 = 使用 catalog / 上游原值"
-                        style="padding:8px 12px; font-size:12px; border-radius:8px; width:110px;">
+                        style="padding:7px 10px; font-size:12px; border-radius:8px; width:100px; height:32px;">
                       <div id="slot-context-presets" style="display:flex; gap:4px; flex-wrap:wrap;">
                         <button type="button" id="btn-slot-context-recommend" class="slot-ctx-preset" data-action="applyRecommendedSlotContextWindow"
-                          style="height:30px;padding:0 8px;border-radius:7px;border:1px solid var(--accent);background:var(--accent);color:#fff;font-size:11px;font-weight:600;cursor:pointer;" title="按映射模型推荐上下文（与 CodeBuddy 同源）">推荐</button>
+                          style="height:32px;padding:0 8px;border-radius:7px;border:1px solid var(--accent);background:var(--accent);color:#fff;font-size:11px;font-weight:600;cursor:pointer;" title="按映射模型推荐上下文（与 CodeBuddy 同源）">推荐</button>
                         <button type="button" class="slot-ctx-preset" data-action="setSlotContextPreset" data-args="[200000]"
-                          style="height:30px;padding:0 8px;border-radius:7px;border:1px solid var(--border);background:var(--bg-input);color:var(--text-muted);font-size:11px;font-weight:600;cursor:pointer;">200K</button>
+                          style="height:32px;padding:0 8px;border-radius:7px;border:1px solid var(--border);background:var(--bg-input);color:var(--text-muted);font-size:11px;font-weight:600;cursor:pointer;">200K</button>
                         <button type="button" class="slot-ctx-preset" data-action="setSlotContextPreset" data-args="[1000000]"
-                          style="height:30px;padding:0 8px;border-radius:7px;border:1px solid var(--border);background:var(--bg-input);color:var(--text-muted);font-size:11px;font-weight:600;cursor:pointer;">1M</button>
+                          style="height:32px;padding:0 8px;border-radius:7px;border:1px solid var(--border);background:var(--bg-input);color:var(--text-muted);font-size:11px;font-weight:600;cursor:pointer;">1M</button>
                       </div>
                     </div>
                   </div>
@@ -1039,30 +1038,28 @@
                 </div>
                 <!-- 映射模型搜索栏 -->
                 <div
-                  style="padding:12px 20px; border-bottom:1px solid var(--border); background:rgba(0,0,0,0.01); display:flex; gap:8px; align-items:center;">
+                  style="padding:10px 18px; border-bottom:1px solid var(--border); background:rgba(0,0,0,0.01); display:flex; gap:8px; align-items:center; flex:0 0 auto;">
                   <input type="text" id="mappingModelSearch" placeholder="搜索已配置的模型名称/供应商..."
- 
- style="padding:10px 14px; border-radius:10px; font-size:12px; flex:1; min-width:0; border:1px solid var(--border); background:var(--bg-input); outline:none; transition:all 0.2s;" data-action="renderMappingModelCatalog" data-events="input">
+                    style="padding:8px 12px; border-radius:8px; font-size:12px; flex:1; min-width:0; border:1px solid var(--border); background:var(--bg-input); outline:none; transition:all 0.2s;" data-action="renderMappingModelCatalog" data-events="input">
                   <select id="mappingCatalogSort"
- style="height:34px;padding:0 8px;border:1px solid var(--border);background:var(--bg-input);color:var(--text-primary);border-radius:8px;font-size:11px;outline:none;cursor:pointer;" data-assign="mappingCatalogSort" data-action="renderMappingModelCatalog" data-events="change">
+                    style="height:32px;padding:0 8px;border:1px solid var(--border);background:var(--bg-input);color:var(--text-primary);border-radius:8px;font-size:11px;outline:none;cursor:pointer;" data-assign="mappingCatalogSort" data-action="renderMappingModelCatalog" data-events="change">
                     <option value="name-asc">名称 A→Z</option>
                     <option value="name-desc">名称 Z→A</option>
                   </select>
                 </div>
                 <!-- 映射模型供应商快速筛选 -->
                 <div id="mappingCatalogProviderBar"
-                  style="display:flex;align-items:center;gap:5px;padding:8px 20px;border-bottom:1px solid var(--border);background:var(--bg-card);flex-wrap:wrap;">
+                  style="display:flex;align-items:center;gap:5px;padding:8px 18px;border-bottom:1px solid var(--border);background:var(--bg-card);flex-wrap:wrap;flex:0 0 auto;">
                 </div>
                 <!-- 映射模型行容器 -->
                 <div id="mappingModelCatalogBody"
-                  style="flex:1; overflow-y:auto; padding:16px 20px; display:flex; flex-direction:column; gap:8px;">
+                  style="flex:1 1 auto; overflow-y:auto; padding:12px 16px; display:flex; flex-direction:column; gap:8px; min-height:0;">
                   <!-- 动态加载供应商模型行，支持点击多选 -->
                 </div>
               </div>
             </div>
           </div>
         </div>
-
         <!-- ═══════ PAGE: MODEL SLOT MANAGEMENT ═══════ -->
         <div class="page" id="page-model-slots" role="tabpanel" aria-labelledby="tab-platforms">
           <div class="model-slots-page">
@@ -1079,8 +1076,6 @@
                   <h2>模型槽位管理</h2>
                   <div id="slot-policy-summary">默认全量解锁</div>
                 </div>
-                <span class="brand-tag" id="ideModelsSourceBadgeSlots" title="模型清单缓存来源"
-                  style="padding: 2px 8px; font-size: 10px; font-weight:700; display:none; margin-left:8px;"></span>
               </div>
               <div class="model-slots-actions">
                 <button class="btn-ghost secondary" data-action="closeInjectedEditor">返回映射</button>
@@ -1095,7 +1090,6 @@
                 </button>
               </div>
             </div>
-            <div id="ideModelsSourceHintSlots" role="note" style="display:none; margin:0 0 10px;"></div>
             <div class="glass-card model-slots-workspace">
               <div class="model-slots-presets-wrap">
                 <div class="model-slots-section-title">
@@ -1769,7 +1763,7 @@
                   </svg>
                   <span id="injected-count-badge">槽位管理</span>
                 </button>
-                <button class="btn-ghost secondary platform-model-btn-icon" title="设置" aria-label="设置" data-action="openPlatformSection" data-arg="settings">
+                <button class="btn-ghost secondary platform-model-btn-icon" title="接入设置与环境检测" aria-label="接入设置与环境检测" data-action="openPlatformSettingsModal">
                   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"
                     stroke-linecap="round" stroke-linejoin="round">
                     <circle cx="12" cy="12" r="3"></circle>
@@ -2183,231 +2177,310 @@
                 </button>
               </div>
             </div>
-            <div class="extensions-tabbar" role="tablist" aria-label="扩展分类">
-              <button type="button" class="extension-tab active" role="tab" aria-selected="true"
- data-extension-tab="all" id="extension-tab-all"
- data-action="switchExtensionTab" data-arg="all">全部</button>
-              <button type="button" class="extension-tab" role="tab" aria-selected="false"
- data-extension-tab="recommended" id="extension-tab-recommended"
- data-action="switchExtensionTab" data-arg="recommended">推荐</button>
-              <button type="button" class="extension-tab" role="tab" aria-selected="false"
+            <div class="extensions-tabbar proxy-console-tabs" role="tablist" aria-label="扩展中心功能">
+              <button type="button" class="extension-tab proxy-console-tab active" role="tab" aria-selected="true"
  data-extension-tab="installed" id="extension-tab-installed"
  data-action="switchExtensionTab" data-arg="installed">已安装</button>
-              <button type="button" class="extension-tab" role="tab" aria-selected="false"
- data-extension-tab="api" id="extension-tab-api"
- data-action="switchExtensionTab" data-arg="api">接口服务</button>
-              <button type="button" class="extension-tab" role="tab" aria-selected="false"
- data-extension-tab="media" id="extension-tab-media"
- data-action="switchExtensionTab" data-arg="media">生成服务</button>
-              <button type="button" class="extension-tab" role="tab" aria-selected="false"
+              <button type="button" class="extension-tab proxy-console-tab" role="tab" aria-selected="false"
+ data-extension-tab="plugins" id="extension-tab-plugins"
+ data-action="switchExtensionTab" data-arg="plugins">插件列表</button>
+              <button type="button" class="extension-tab proxy-console-tab" role="tab" aria-selected="false"
  data-extension-tab="logs" id="extension-tab-logs"
  data-action="switchExtensionTab" data-arg="logs">日志</button>
             </div>
 
-            <div class="extension-empty-state" id="extensionEmptyState" hidden>
-              当前分类下还没有扩展。后续接入完成后会自动出现在这里。
+            <!-- Tab 1: 已安装（原汁原味大卡片，独占一行） -->
+            <div class="extension-console-section active" data-extension-section="installed">
+              <div class="extension-card-grid" id="extensionCardGrid">
+                <article class="extension-card extension-card-featured" data-extension-card="cpa-suite"
+                  data-extension-tags="recommended api">
+                  <div class="extension-card-top">
+                    <div class="extension-identity">
+                      <div class="extension-logo extension-logo-cpa" aria-hidden="true">CPA</div>
+                      <div>
+                        <div class="extension-title-row">
+                          <h3>CPA 套件</h3>
+                          <span class="extension-badge badge-recommended">推荐套件</span>
+                        </div>
+                        <p>CLIProxyAPI + CPA Manager Plus + CPA 插件商店，一键部署为本地 AI 网关管理中心。</p>
+                      </div>
+                    </div>
+                    <span class="extension-status status-pending" id="extension-cpa-status">检测中</span>
+                  </div>
+                  <div class="extension-meta-grid">
+                    <div><span>版本</span><strong id="extension-cpa-version">待检测</strong> <span class="extension-update-badge" id="extension-cpa-update-badge" hidden data-action-chain="[{&quot;fn&quot;:&quot;handleExtensionAction&quot;,&quot;args&quot;:[&quot;update-cpa-suite&quot;]}]" data-action="handleExtensionAction" data-stop>有更新</span></div>
+                    <div><span>端口</span><strong id="extension-cpa-ports">8317 / 18317</strong></div>
+                    <div><span>安装目录</span><strong id="extension-cpa-install-dir" title="">默认</strong></div>
+                    <div><span>组件</span><strong id="extension-cpa-components">3 个</strong></div>
+                  </div>
+                  <div class="extension-card-alert" id="extension-cpa-alert" hidden role="status"></div>
+                  <div class="extension-progress" id="extension-cpa-progress" hidden>
+                    <div class="extension-progress-track">
+                      <div class="extension-progress-fill" id="extension-cpa-progress-fill"></div>
+                    </div>
+                    <div class="extension-progress-meta">
+                      <span id="extension-cpa-progress-text">准备中...</span>
+                      <strong id="extension-cpa-progress-percent">0%</strong>
+                    </div>
+                  </div>
+                  <div class="extension-tags">
+                    <span>兼容 OpenAI 接口</span>
+                    <span>请求统计</span>
+                    <span>插件市场</span>
+                    <span>账号巡检</span>
+                  </div>
+                  <div class="extension-actions">
+                    <button type="button" class="btn-primary" id="extension-cpa-primary-action">一键部署</button>
+                    <div class="extension-secondary-actions" id="extension-cpa-secondary-actions"></div>
+                  </div>
+                  <div class="cpa-credentials" id="cpa-credentials" hidden>
+                    <div class="cpa-credentials-title">访问凭证 <span class="cpa-credentials-hint">点击即可复制</span></div>
+
+                    <div class="cpa-credentials-subtitle">CPA API</div>
+                    <div class="cpa-credential-row">
+                      <span class="cpa-credential-label">API Key</span>
+                      <code class="cpa-credential-value" id="cpa-cred-api-key">—</code>
+                      <button type="button" class="cpa-credential-copy" data-copy="api-key" title="复制">复制</button>
+                    </div>
+                    <div class="cpa-credential-row cpa-credential-row-link">
+                      <span class="cpa-credential-label">API 地址</span>
+                      <code class="cpa-credential-value">http://127.0.0.1:8317</code>
+                      <button type="button" class="cpa-credential-copy" data-copy-url="http://127.0.0.1:8317" title="复制地址">复制</button>
+                    </div>
+
+                    <div class="cpa-credentials-subtitle">CPA 管理面板</div>
+                    <div class="cpa-credential-row">
+                      <span class="cpa-credential-label">管理面板</span>
+                      <code class="cpa-credential-value" id="cpa-cred-admin-key">—</code>
+                      <button type="button" class="cpa-credential-copy" data-copy="admin-key" title="复制">复制</button>
+                    </div>
+                    <div class="cpa-credential-row">
+                      <span class="cpa-credential-label">管理密钥</span>
+                      <code class="cpa-credential-value" id="cpa-cred-management-key">—</code>
+                      <button type="button" class="cpa-credential-copy" data-copy="management-key" title="复制">复制</button>
+                    </div>
+                    <div class="cpa-credential-row cpa-credential-row-link">
+                      <span class="cpa-credential-label">面板地址</span>
+                      <code class="cpa-credential-value">http://127.0.0.1:18317</code>
+                      <button type="button" class="cpa-credential-copy" data-copy-url="http://127.0.0.1:18317" title="复制地址">复制</button>
+                    </div>
+                  </div>
+                  <div class="extension-details" id="extension-details-cpa-suite">
+                    <div class="extension-component-list" aria-label="CPA 套件组件">
+                      <div class="extension-component-row" data-extension-component="cli-proxy-api">
+                        <span class="component-dot pending" id="extension-cpa-cli-dot"></span>
+                        <div>
+                          <strong>CLIProxyAPI</strong>
+                          <small id="extension-cpa-cli-detail">网关本体、管理接口，默认端口 8317</small>
+                        </div>
+                        <code id="extension-cpa-cli-port">:8317</code>
+                      </div>
+                      <div class="extension-component-row" data-extension-component="cpa-manager-plus">
+                        <span class="component-dot pending" id="extension-cpa-cpamp-dot"></span>
+                        <div>
+                          <strong>CPA Manager Plus</strong>
+                          <small id="extension-cpa-cpamp-detail">管理面板、统计、插件商店，默认端口 18317</small>
+                        </div>
+                        <code id="extension-cpa-cpamp-port">:18317</code>
+                      </div>
+                      <div class="extension-component-row" data-extension-component="cpa-plugins">
+                        <span class="component-dot muted" id="extension-cpa-plugins-dot"></span>
+                        <div>
+                          <strong>CPA 插件</strong>
+                          <small id="extension-cpa-plugins-detail">复用 CPA 插件库，后续展示安装数和可更新数</small>
+                        </div>
+                        <code id="extension-cpa-plugins-port">插件库</code>
+                      </div>
+                    </div>
+                  </div>
+                </article>
+              </div>
             </div>
 
-            <div class="extension-card-grid" id="extensionCardGrid">
-              <article class="extension-card extension-card-featured" data-extension-card="cpa-suite"
-                data-extension-tags="recommended api">
-                <div class="extension-card-top">
-                  <div class="extension-identity">
-                    <div class="extension-logo extension-logo-cpa" aria-hidden="true">CPA</div>
-                    <div>
-                      <div class="extension-title-row">
-                        <h3>CPA 套件</h3>
-                        <span class="extension-badge badge-recommended">推荐套件</span>
-                      </div>
-                      <p>CLIProxyAPI + CPA Manager Plus + CPA 插件商店，一键部署为本地 AI 网关管理中心。</p>
-                    </div>
+            <!-- Tab 2: 插件列表（两段式：控制条 + 大表格） -->
+            <div class="extension-console-section" data-extension-section="plugins">
+              <!-- 段 1：控制条（标题 + 刷新操作，搜索 + 状态筛选） -->
+              <div class="control-bar glass-card model-map-control-bar plugin-control-bar">
+                <div class="model-map-toolbar-main">
+                  <div class="model-map-title-block">
+                    <h2>插件列表</h2>
+                    <span>统一管理所有扩展插件与本地服务，支持一键安装、启停与快速配置。</span>
                   </div>
-                  <span class="extension-status status-pending" id="extension-cpa-status">检测中</span>
-                </div>
-                <div class="extension-meta-grid">
-                  <div><span>版本</span><strong id="extension-cpa-version">待检测</strong> <span class="extension-update-badge" id="extension-cpa-update-badge" hidden data-action-chain="[{&quot;fn&quot;:&quot;handleExtensionAction&quot;,&quot;args&quot;:[&quot;update-cpa-suite&quot;]}]" data-action="handleExtensionAction" data-stop>有更新</span></div>
-                  <div><span>端口</span><strong id="extension-cpa-ports">8317 / 18317</strong></div>
-                  <div><span>安装目录</span><strong id="extension-cpa-install-dir" title="">默认</strong></div>
-                  <div><span>组件</span><strong id="extension-cpa-components">3 个</strong></div>
-                </div>
-                <div class="extension-card-alert" id="extension-cpa-alert" hidden role="status"></div>
-                <div class="extension-progress" id="extension-cpa-progress" hidden>
-                  <div class="extension-progress-track">
-                    <div class="extension-progress-fill" id="extension-cpa-progress-fill"></div>
-                  </div>
-                  <div class="extension-progress-meta">
-                    <span id="extension-cpa-progress-text">准备中...</span>
-                    <strong id="extension-cpa-progress-percent">0%</strong>
+                  <div class="model-map-toolbar-actions">
+                    <button class="btn-ghost secondary model-map-command-btn" data-action="refreshPluginList" data-args="[{&quot;manual&quot;:true}]">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                        stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <polyline points="23 4 23 10 17 10"></polyline>
+                        <polyline points="1 20 1 14 7 14"></polyline>
+                        <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+                      </svg>
+                      刷新插件
+                    </button>
                   </div>
                 </div>
-                <div class="extension-tags">
-                  <span>兼容 OpenAI 接口</span>
-                  <span>请求统计</span>
-                  <span>插件市场</span>
-                  <span>账号巡检</span>
+                <div class="model-map-bulk-row">
+                  <label class="model-map-search">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"
+                      stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                      <circle cx="11" cy="11" r="8"></circle>
+                      <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                    </svg>
+                    <input type="text" id="pluginSearchInput" placeholder="搜索插件名称、描述或端口" data-action="filterPluginTable" data-events="input">
+                  </label>
+                  <span class="model-map-count-pill" id="pluginCountPill">共 4 个</span>
+                  <div class="model-map-bulk-actions">
+                    <button class="btn-ghost secondary provider-bulk-btn active" data-plugin-filter="all" data-action="setPluginStatusFilter" data-arg="all">全部</button>
+                    <button class="btn-ghost secondary provider-bulk-btn" data-plugin-filter="installed" data-action="setPluginStatusFilter" data-arg="installed">已安装</button>
+                    <button class="btn-ghost secondary provider-bulk-btn" data-plugin-filter="not-installed" data-action="setPluginStatusFilter" data-arg="not-installed">未安装</button>
+                  </div>
                 </div>
-                <div class="extension-actions">
-                  <button type="button" class="btn-primary" id="extension-cpa-primary-action">一键部署</button>
-                  <div class="extension-secondary-actions" id="extension-cpa-secondary-actions"></div>
-                </div>
-                <div class="cpa-credentials" id="cpa-credentials" hidden>
-                  <div class="cpa-credentials-title">访问凭证 <span class="cpa-credentials-hint">点击即可复制</span></div>
+              </div>
 
-                  <div class="cpa-credentials-subtitle">CPA API</div>
-                  <div class="cpa-credential-row">
-                    <span class="cpa-credential-label">API Key</span>
-                    <code class="cpa-credential-value" id="cpa-cred-api-key">—</code>
-                    <button type="button" class="cpa-credential-copy" data-copy="api-key" title="复制">复制</button>
-                  </div>
-                  <div class="cpa-credential-row cpa-credential-row-link">
-                    <span class="cpa-credential-label">API 地址</span>
-                    <code class="cpa-credential-value">http://127.0.0.1:8317</code>
-                    <button type="button" class="cpa-credential-copy" data-copy-url="http://127.0.0.1:8317" title="复制地址">复制</button>
-                  </div>
+              <!-- 段 2：大表格卡片（填满卡片，通透排布） -->
+              <div class="glass-card plugin-table-card-wrap" style="overflow: hidden; margin-bottom: 20px;">
+                <table class="model-table plugin-table-main" style="border: none; box-shadow: none; border-radius: 0;">
+                  <colgroup>
+                    <col style="width: 36%;">
+                    <col style="width: 14%;">
+                    <col style="width: 16%;">
+                    <col style="width: 16%;">
+                    <col style="width: 18%;">
+                  </colgroup>
+                  <thead>
+                    <tr>
+                      <th>插件 / 服务</th>
+                      <th>类型分类</th>
+                      <th>监听端口</th>
+                      <th>版本 / 架构</th>
+                      <th style="text-align: right; padding-right: 20px;">操作</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <!-- 插件 1：CPA 套件 -->
+                    <tr data-extension-card="cpa-suite-overview" data-plugin-state="running" data-plugin-installed="true">
+                      <td class="plugin-name-cell">
+                        <div class="plugin-identity-cell">
+                          <span class="plugin-card-mark" style="background: rgba(18, 97, 166, 0.12); color: var(--accent); font-weight: 800;">CPA</span>
+                          <div class="plugin-identity-text">
+                            <div class="plugin-title-row">
+                              <strong class="plugin-name">CPA 套件</strong>
+                              <span class="extension-badge badge-recommended">推荐</span>
+                              <span class="plugin-status status-running" id="plugin-cpa-status">运行中</span>
+                            </div>
+                            <p class="plugin-desc">本地 AI 网关与管理中心，兼容 OpenAI 接口与插件市场</p>
+                          </div>
+                        </div>
+                      </td>
+                      <td class="plugin-category-cell">
+                        <span class="plugin-tag">网关套件</span>
+                      </td>
+                      <td class="plugin-port-cell">
+                        <code class="plugin-port-code" id="plugin-cpa-ports">8317 / 18317</code>
+                      </td>
+                      <td class="plugin-version-cell">
+                        <span id="plugin-cpa-components">3 个组件</span>
+                      </td>
+                      <td class="plugin-action-cell">
+                        <div class="plugin-table-actions" id="plugin-cpa-actions">
+                          <button type="button" class="btn-primary btn-sm" data-action="switchExtensionTab" data-arg="installed">管理</button>
+                          <button type="button" class="btn-ghost secondary btn-sm" data-action="handleExtensionAction" data-arg="open-cpamp">打开面板</button>
+                          <button type="button" class="btn-ghost danger btn-sm" data-action="handleExtensionAction" data-arg="uninstall-cpa-suite">卸载</button>
+                        </div>
+                      </td>
+                    </tr>
 
-                  <div class="cpa-credentials-subtitle">CPA 管理面板</div>
-                  <div class="cpa-credential-row">
-                    <span class="cpa-credential-label">管理面板</span>
-                    <code class="cpa-credential-value" id="cpa-cred-admin-key">—</code>
-                    <button type="button" class="cpa-credential-copy" data-copy="admin-key" title="复制">复制</button>
-                  </div>
-                  <div class="cpa-credential-row">
-                    <span class="cpa-credential-label">管理密钥</span>
-                    <code class="cpa-credential-value" id="cpa-cred-management-key">—</code>
-                    <button type="button" class="cpa-credential-copy" data-copy="management-key" title="复制">复制</button>
-                  </div>
-                  <div class="cpa-credential-row cpa-credential-row-link">
-                    <span class="cpa-credential-label">面板地址</span>
-                    <code class="cpa-credential-value">http://127.0.0.1:18317</code>
-                    <button type="button" class="cpa-credential-copy" data-copy-url="http://127.0.0.1:18317" title="复制地址">复制</button>
-                  </div>
-                </div>
-                <div class="extension-details" id="extension-details-cpa-suite">
-                  <div class="extension-component-list" aria-label="CPA 套件组件">
-                    <div class="extension-component-row" data-extension-component="cli-proxy-api">
-                      <span class="component-dot pending" id="extension-cpa-cli-dot"></span>
-                      <div>
-                        <strong>CLIProxyAPI</strong>
-                        <small id="extension-cpa-cli-detail">网关本体、管理接口，默认端口 8317</small>
-                      </div>
-                      <code id="extension-cpa-cli-port">:8317</code>
-                    </div>
-                    <div class="extension-component-row" data-extension-component="cpa-manager-plus">
-                      <span class="component-dot pending" id="extension-cpa-cpamp-dot"></span>
-                      <div>
-                        <strong>CPA Manager Plus</strong>
-                        <small id="extension-cpa-cpamp-detail">管理面板、统计、插件商店，默认端口 18317</small>
-                      </div>
-                      <code id="extension-cpa-cpamp-port">:18317</code>
-                    </div>
-                    <div class="extension-component-row" data-extension-component="cpa-plugins">
-                      <span class="component-dot muted" id="extension-cpa-plugins-dot"></span>
-                      <div>
-                        <strong>CPA 插件</strong>
-                        <small id="extension-cpa-plugins-detail">复用 CPA 插件库，后续展示安装数和可更新数</small>
-                      </div>
-                      <code id="extension-cpa-plugins-port">插件库</code>
-                    </div>
-                  </div>
-                </div>
-              </article>
+                    <!-- 插件 2：sub2api -->
+                    <tr data-extension-card="sub2api" data-plugin-state="not-installed" data-plugin-installed="false">
+                      <td class="plugin-name-cell">
+                        <div class="plugin-identity-cell">
+                          <span class="plugin-card-mark" style="background: rgba(16, 185, 129, 0.12); color: #059669; font-weight: 800;">S2</span>
+                          <div class="plugin-identity-text">
+                            <div class="plugin-title-row">
+                              <strong class="plugin-name">sub2api</strong>
+                              <span class="plugin-status status-not-installed">未安装</span>
+                            </div>
+                            <p class="plugin-desc">订阅与账号转兼容接口，安装后可自动生成供应商</p>
+                          </div>
+                        </div>
+                      </td>
+                      <td class="plugin-category-cell">
+                        <span class="plugin-tag">托管服务</span>
+                      </td>
+                      <td class="plugin-port-cell">
+                        <span class="text-muted">待分配</span>
+                      </td>
+                      <td class="plugin-version-cell">
+                        <span>L2-L3 适配</span>
+                      </td>
+                      <td class="plugin-action-cell">
+                        <div class="plugin-table-actions">
+                          <button type="button" class="btn-ghost secondary btn-sm" data-action="openExtensionDetail" data-arg="sub2api">详情</button>
+                          <button type="button" class="btn-ghost accent btn-sm" data-action="handleExtensionAction" data-arg="view-adapter-plan">适配计划</button>
+                          <button type="button" class="btn-primary btn-sm" data-action="handleExtensionAction" data-arg="install-sub2api">安装</button>
+                        </div>
+                      </td>
+                    </tr>
 
-              <article class="extension-card" data-extension-card="sub2api" data-extension-tags="recommended api"
-                tabindex="0" aria-label="查看 sub2api 扩展详情">
-                <div class="extension-card-top">
-                  <div class="extension-identity">
-                    <div class="extension-logo extension-logo-sub" aria-hidden="true">S2</div>
-                    <div>
-                      <div class="extension-title-row">
-                        <h3>sub2api</h3>
-                        <span class="extension-badge badge-market">接口服务</span>
-                      </div>
-                      <p>把订阅或账号能力转换成兼容 OpenAI 的接口，安装后可自动生成 AnyBridge 供应商。</p>
-                    </div>
-                  </div>
-                  <span class="extension-status status-not-installed">未安装</span>
-                </div>
-                <div class="extension-meta-grid">
-                  <div><span>类型</span><strong>托管服务</strong></div>
-                  <div><span>版本</span><strong>待适配</strong></div>
-                  <div><span>端口</span><strong>待分配</strong></div>
-                  <div><span>接入</span><strong>L2-L3</strong></div>
-                </div>
-                <div class="extension-tags">
-                  <span>供应商适配</span>
-                  <span>模型同步</span>
-                  <span>外部源</span>
-                </div>
-                <div class="extension-actions">
-                  <button type="button" class="btn-primary" data-action="handleExtensionAction" data-arg="install-sub2api">安装</button>
-                  <button type="button" class="btn-ghost secondary" data-action="openExtensionDetail" data-arg="sub2api">详情</button>
-                  <button type="button" class="btn-ghost accent" data-action="handleExtensionAction" data-arg="view-adapter-plan">适配计划</button>
-                </div>
-              </article>
-
-              <article class="extension-card" data-extension-card="free-jimeng" data-extension-tags="recommended media">
-                <div class="extension-card-top">
-                  <div class="extension-identity">
-                    <div class="extension-logo extension-logo-jimeng" aria-hidden="true">JM</div>
-                    <div>
-                      <div class="extension-title-row">
-                        <h3>free 即梦</h3>
-                        <span class="extension-badge badge-lab">生成服务</span>
-                      </div>
-                      <p>即梦相关生成接口的预留卡位。确认仓库和接口格式后再选择本地托管或外部服务接入。</p>
-                    </div>
-                  </div>
-                  <span class="extension-status status-not-installed">未安装</span>
-                </div>
-                <div class="extension-meta-grid">
-                  <div><span>类型</span><strong>待确认</strong></div>
-                  <div><span>版本</span><strong>待适配</strong></div>
-                  <div><span>端口</span><strong>待分配</strong></div>
-                  <div><span>接入</span><strong>L1-L3</strong></div>
-                </div>
-                <div class="extension-tags">
-                  <span>图片/视频</span>
-                  <span>外部服务</span>
-                  <span>待调研</span>
-                </div>
-                <div class="extension-actions">
-                  <button type="button" class="btn-primary" data-action="handleExtensionAction" data-arg="install-jimeng">安装</button>
-                  <button type="button" class="btn-ghost secondary" data-action="openExtensionDetail" data-arg="free-jimeng">详情</button>
-                  <button type="button" class="btn-ghost accent" data-action="handleExtensionAction" data-arg="view-adapter-plan">适配计划</button>
-                </div>
-              </article>
+                    <!-- 插件 3：free 即梦 -->
+                    <tr data-extension-card="free-jimeng" data-plugin-state="not-installed" data-plugin-installed="false">
+                      <td class="plugin-name-cell">
+                        <div class="plugin-identity-cell">
+                          <span class="plugin-card-mark" style="background: rgba(139, 92, 246, 0.12); color: #7c3aed; font-weight: 800;">JM</span>
+                          <div class="plugin-identity-text">
+                            <div class="plugin-title-row">
+                              <strong class="plugin-name">free 即梦</strong>
+                              <span class="plugin-status status-not-installed">未安装</span>
+                            </div>
+                            <p class="plugin-desc">即梦相关生成接口预留，支持外部服务接入与托管</p>
+                          </div>
+                        </div>
+                      </td>
+                      <td class="plugin-category-cell">
+                        <span class="plugin-tag">生成服务</span>
+                      </td>
+                      <td class="plugin-port-cell">
+                        <span class="text-muted">待分配</span>
+                      </td>
+                      <td class="plugin-version-cell">
+                        <span>L1-L3 调研</span>
+                      </td>
+                      <td class="plugin-action-cell">
+                        <div class="plugin-table-actions">
+                          <button type="button" class="btn-ghost secondary btn-sm" data-action="openExtensionDetail" data-arg="free-jimeng">详情</button>
+                          <button type="button" class="btn-ghost accent btn-sm" data-action="handleExtensionAction" data-arg="view-adapter-plan">适配计划</button>
+                          <button type="button" class="btn-primary btn-sm" data-action="handleExtensionAction" data-arg="install-jimeng">安装</button>
+                        </div>
+                      </td>
+                    </tr>
+                  </tbody>
+                  <!-- 动态扫描插件挂载点：Grok2API 及后续动态插件自动在此渲染为表格行 -->
+                  <tbody id="plugin-list-grid"></tbody>
+                </table>
+              </div>
             </div>
 
-            <section class="plugin-section" id="pluginSection" aria-label="运行时插件">
-              <div class="plugin-section-head">
-                <div>
-                  <h3>运行时插件</h3>
-                  <p>由 plugin.json 声明驱动，界面按清单自动渲染；新增插件无需修改 AnyBridge。</p>
+            <!-- Tab 3: 日志 -->
+            <div class="extension-console-section" data-extension-section="logs">
+              <section class="extensions-log-panel glass-card" id="extensionsLogPanel" aria-label="扩展日志">
+                <div class="extensions-log-head">
+                  <div>
+                    <h3>扩展日志</h3>
+                    <span class="tag log-count" id="extensionLogCount">0 条记录</span>
+                  </div>
+                  <button type="button" class="btn-ghost danger" data-action="clearExtensionLogs">清空</button>
                 </div>
-                <button type="button" class="btn-ghost secondary" data-action="refreshPluginList">刷新</button>
-              </div>
-              <div class="plugin-card-grid" id="plugin-list-grid"></div>
-            </section>
-
-            <section class="extensions-log-panel glass-card" id="extensionsLogPanel" aria-label="扩展日志" hidden>
-              <div class="extensions-log-head">
-                <div>
-                  <h3>扩展日志</h3>
-                  <span class="tag log-count" id="extensionLogCount">0 条记录</span>
+                <div class="log-tabs" id="extensionLogTabs">
+                  <button class="log-tab active" data-level="all" data-action="setExtensionLogFilter" data-arg="all">全部</button>
+                  <button class="log-tab" data-level="ok" data-action="setExtensionLogFilter" data-arg="ok">OK</button>
+                  <button class="log-tab" data-level="info" data-action="setExtensionLogFilter" data-arg="info">INFO</button>
+                  <button class="log-tab" data-level="warn" data-action="setExtensionLogFilter" data-arg="warn">WARN</button>
+                  <button class="log-tab" data-level="err" data-action="setExtensionLogFilter" data-arg="err">ERR</button>
                 </div>
-                <button type="button" class="btn-ghost danger" data-action="clearExtensionLogs">清空</button>
-              </div>
-              <div class="log-tabs" id="extensionLogTabs">
-                <button class="log-tab active" data-level="all" data-action="setExtensionLogFilter" data-arg="all">全部</button>
-                <button class="log-tab" data-level="ok" data-action="setExtensionLogFilter" data-arg="ok">OK</button>
-                <button class="log-tab" data-level="info" data-action="setExtensionLogFilter" data-arg="info">INFO</button>
-                <button class="log-tab" data-level="warn" data-action="setExtensionLogFilter" data-arg="warn">WARN</button>
-                <button class="log-tab" data-level="err" data-action="setExtensionLogFilter" data-arg="err">ERR</button>
-              </div>
-              <div class="log-box proxy-logs-box extensions-log-box">
-                <div class="log-body" id="extensionLogBody"></div>
-              </div>
-            </section>
+                <div class="log-box proxy-logs-box extensions-log-box">
+                  <div class="log-body" id="extensionLogBody"></div>
+                </div>
+              </section>
+            </div>
           </section>
         </div>
 
@@ -2460,11 +2533,10 @@
                     <div class="proxy-endpoint-list">
                       <div class="proxy-endpoint-row">
                         <span class="endpoint-label">
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                            <circle cx="12" cy="12" r="10"></circle>
-                            <path d="M12 16v-4"></path>
-                            <path d="M12 8h.01"></path>
-                          </svg>
+                          <span class="endpoint-brand-icon" aria-hidden="true">
+                            <img class="endpoint-brand-icon-light endpoint-brand-icon-has-dark" src="./assets/model-icons/light/openai.svg" alt="" draggable="false">
+                            <img class="endpoint-brand-icon-dark" src="./assets/model-icons/dark/openai.svg" alt="" draggable="false">
+                          </span>
                           OpenAI
                         </span>
                         <code id="localProxyOpenAiUrl">http://127.0.0.1:{port}/v1</code>
@@ -2472,14 +2544,9 @@
                       </div>
                       <div class="proxy-endpoint-row">
                         <span class="endpoint-label">
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                            <path d="M12 2a10 10 0 1 0 10 10 4 4 0 0 1-5-5 4 4 0 0 1-5-5"></path>
-                            <path d="M8.5 8.5v.01"></path>
-                            <path d="M16 15.5v.01"></path>
-                            <path d="M12 12v.01"></path>
-                            <path d="M8 16v.01"></path>
-                            <path d="M16 8v.01"></path>
-                          </svg>
+                          <span class="endpoint-brand-icon" aria-hidden="true">
+                            <img src="./assets/model-icons/light/claude.svg" alt="" draggable="false">
+                          </span>
                           Claude
                         </span>
                         <code id="localProxyClaudeUrl">http://127.0.0.1:{port}/anthropic</code>
@@ -2487,7 +2554,7 @@
                       </div>
                       <div class="proxy-endpoint-row">
                         <span class="endpoint-label">
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                             <rect x="3" y="4" width="18" height="6" rx="2"></rect>
                             <rect x="3" y="14" width="18" height="6" rx="2"></rect>
                             <path d="M7 7h.01"></path>
@@ -2696,143 +2763,435 @@
 
         <!-- ═══════ PAGE: PLATFORM · CURSOR ═══════ -->
         <div class="page" id="page-platform-cursor" role="tabpanel" aria-labelledby="tab-platforms">
-          <section class="cursor-console">
-            <div class="cursor-console-hero glass-card platform-hero-card">
-              <div class="platform-console-titlebar">
-                <div class="platform-console-icon"><img src="assets/icons/platform-cursor.svg" alt="Cursor"></div>
-                <div class="platform-console-copy">
-                  <h1>Cursor 接入控制台</h1>
-                  <p>本机代理、MITM 证书、Cursor 配置和模型路由集中管理。</p>
-                </div>
+          
+          <!-- 1. 顶部接入控制台 (platform-console-head) -->
+          <section class="platform-console-head glass-card platform-hero-card">
+            <div class="platform-console-titlebar">
+              <div class="platform-console-icon">
+                <img id="cursor-platform-icon" src="./assets/icons/platform-cursor.svg" alt="Cursor">
               </div>
-              <div class="platform-console-actions cursor-hero-actions">
-                <button class="btn-primary cursor-primary-action" data-action="cursorSwitchToProxy">
-                  <span class="cursor-btn-icon" aria-hidden="true">↯</span>
-                  一键接入
-                </button>
-                <button class="btn-ghost accent" data-action="cursorRefreshConsole">刷新状态</button>
-                <button class="btn-ghost warn" data-action="cursorRestoreDirect">还原直连</button>
+              <div class="platform-console-copy">
+                <h1 id="cursor-platform-title">Cursor 接入控制台</h1>
+                <p id="cursor-platform-subtitle">独立 Rust Cursor Core、MITM 证书、官方账号双轨并存和模型路由集中管理。</p>
               </div>
             </div>
 
-            <div class="cursor-status-grid">
-              <article class="cursor-status-card" id="cursor-card-proxy">
-                <div class="cursor-status-top">
-                  <span class="cursor-status-dot"></span>
-                  <span>本地代理</span>
-                </div>
-                <strong id="cursor-proxy-state">读取中</strong>
-                <p id="cursor-proxy-detail">正在读取 AnyBridge 服务状态</p>
-                <button class="cursor-card-action" data-action="cursorStartProxy">启动代理</button>
-              </article>
-              <article class="cursor-status-card" id="cursor-card-settings">
-                <div class="cursor-status-top">
-                  <span class="cursor-status-dot"></span>
-                  <span>Cursor 配置</span>
-                </div>
-                <strong id="cursor-settings-state">读取中</strong>
-                <p id="cursor-settings-detail">正在检查代理设置</p>
-                <button class="cursor-card-action" data-action="cursorSwitchToProxy">写入配置</button>
-              </article>
-              <article class="cursor-status-card" id="cursor-card-auth">
-                <div class="cursor-status-top">
-                  <span class="cursor-status-dot"></span>
-                  <span>账号与模型</span>
-                </div>
-                <strong id="cursor-auth-state">读取中</strong>
-                <p id="cursor-auth-detail">正在检查 state.vscdb 和默认模型</p>
-                <button class="cursor-card-action" data-action="cursorOpenProxyModels">管理模型</button>
-              </article>
-              <article class="cursor-status-card" id="cursor-card-cert">
-                <div class="cursor-status-top">
-                  <span class="cursor-status-dot"></span>
-                  <span>MITM 证书</span>
-                </div>
-                <strong id="cursor-cert-state">读取中</strong>
-                <p id="cursor-cert-detail">正在检查 Cursor 域名 SAN</p>
-                <button class="cursor-card-action" data-action="cursorInstallCert">安装证书</button>
-              </article>
+            <div class="platform-console-actions">
+              <button class="btn-primary platform-proxy-primary" id="cursor-main-btn" data-action="cursorPrimaryAction" aria-label="一键接入 Cursor">
+                <span class="proxy-btn-action">
+                  <svg class="proxy-btn-icon" width="14" height="14" viewBox="0 0 24 24" fill="none"
+                    stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" fill="currentColor" />
+                  </svg>
+                  <span class="proxy-btn-text" id="cursor-main-btn-text">一键接入</span>
+                </span>
+              </button>
+              <button class="btn-ghost accent platform-refresh-proxy" id="cursorRefreshBtn" data-action="cursorRefreshConsole">刷新状态</button>
+              <button class="btn-ghost danger platform-stop-proxy" id="cursorRestoreBtn" data-action="cursorDisableAction" disabled>停止接入</button>
             </div>
-
-            <div class="cursor-main-grid">
-              <section class="cursor-panel glass-card">
-                <div class="cursor-panel-head">
-                  <div>
-                    <h2>接入流程</h2>
-                    <p>按顺序完成，失败项会直接显示原因。</p>
-                  </div>
-                  <button class="btn-ghost accent cursor-mini-btn" data-action="cursorRunHealthcheck">环境检测</button>
-                </div>
-                <div class="cursor-step-list">
-                  <div class="cursor-step">
-                    <span class="cursor-step-index">1</span>
-                    <div>
-                      <strong>准备代理模型</strong>
-                      <p>至少启用一个 OpenAI 兼容模型，Cursor 模型选择器会读取这里的路由。</p>
-                    </div>
-                    <button class="cursor-step-action" data-action="cursorOpenProxyModels">模型列表</button>
-                  </div>
-                  <div class="cursor-step">
-                    <span class="cursor-step-index">2</span>
-                    <div>
-                      <strong>写入 Cursor 状态</strong>
-                      <p>备份 Cursor 原状态后写入 BYOK 会话、默认模型和代理设置。</p>
-                    </div>
-                    <button class="cursor-step-action" data-action="cursorSwitchToProxy">写入</button>
-                  </div>
-                  <div class="cursor-step">
-                    <span class="cursor-step-index">3</span>
-                    <div>
-                      <strong>启动本机代理</strong>
-                      <p>保持 AnyBridge 后台服务运行，Cursor 的请求会进入本机 MITM 入口。</p>
-                    </div>
-                    <button class="cursor-step-action" data-action="cursorStartProxy">启动</button>
-                  </div>
-                  <div class="cursor-step">
-                    <span class="cursor-step-index">4</span>
-                    <div>
-                      <strong>重启 Cursor</strong>
-                      <p>重启后 Cursor 才会重新读取 settings.json 和 state.vscdb。</p>
-                    </div>
-                    <button class="cursor-step-action" data-action="cursorRestartIde">重启</button>
-                  </div>
-                </div>
-              </section>
-
-              <aside class="cursor-panel glass-card">
-                <div class="cursor-panel-head">
-                  <div>
-                    <h2>能力覆盖</h2>
-                    <p>当前版本的实现范围。</p>
-                  </div>
-                </div>
-                <div class="cursor-capability-list">
-                  <div class="cursor-capability ok"><span></span><strong>Agent / Ask / Plan</strong><em>主聊天与多轮工具循环</em></div>
-                  <div class="cursor-capability ok"><span></span><strong>文件与命令工具</strong><em>Read、Grep、Shell、Write、MCP</em></div>
-                  <div class="cursor-capability ok"><span></span><strong>Background Composer</strong><em>可流式运行并落盘 turn summary</em></div>
-                  <div class="cursor-capability warn"><span></span><strong>BugBot</strong><em>已支持基础审查，工具循环待补齐</em></div>
-                  <div class="cursor-capability muted"><span></span><strong>Tab Completion</strong><em>官方 BYOK 也不覆盖，继续走 Cursor 内置模型</em></div>
-                </div>
-              </aside>
-            </div>
-
-            <section class="cursor-foot-grid">
-              <div class="cursor-note glass-card">
-                <strong>隐私边界</strong>
-                <p>AnyBridge 方案在本机代理内构造请求，不把你的 provider key 交给 Cursor 后端；但 Cursor 客户端仍会把编辑器上下文发到本机代理处理。</p>
-              </div>
-              <div class="cursor-note glass-card">
-                <strong>排障入口</strong>
-                <p>遇到模型不显示、证书报错、Cursor 无响应时，先跑环境检测，再查看代理日志和 turn artifacts。</p>
-                <div class="cursor-note-actions">
-                  <button class="btn-ghost accent cursor-mini-btn" data-action="cursorOpenStats">统计日志</button>
-                  <button class="btn-ghost accent cursor-mini-btn" data-action="cursorRunHealthcheck">环境检测</button>
-                </div>
-              </div>
-            </section>
           </section>
+
+          <!-- 2. 模型列表工具栏 (model-map-control-bar) -->
+          <div class="control-bar glass-card model-map-control-bar">
+            <div class="model-map-toolbar-main">
+              <div class="model-map-title-block">
+                <h2>Cursor 模型列表</h2>
+                <span>从统一供应商模型池添加，只影响 Cursor 中可选的第三方模型。</span>
+              </div>
+              <div class="model-map-toolbar-actions">
+                <button class="btn-primary model-map-command-btn" data-action="openCursorAddPage">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="12" y1="5" x2="12" y2="19"></line>
+                    <line x1="5" y1="12" x2="19" y2="12"></line>
+                  </svg>
+                  添加模型
+                </button>
+                <button class="btn-ghost accent platform-model-btn-icon" title="刷新模型列表" aria-label="刷新模型列表" data-action="cursorRefreshConsole">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="23 4 23 10 17 10"></polyline>
+                    <polyline points="1 20 1 14 7 14"></polyline>
+                    <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+                  </svg>
+                </button>
+                <button class="btn-ghost secondary model-map-command-btn" title="Cursor 接入设置（Core 与证书）" data-action="openCursorSettingsModal">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="3"></circle>
+                    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+                  </svg>
+                  <span>接入设置</span>
+                </button>
+              </div>
+            </div>
+
+            <div class="model-map-bulk-row" style="display:flex;align-items:center;justify-content:space-between;gap:12px;">
+              <div style="display:flex;align-items:center;gap:10px;flex:1;min-width:0;">
+                <label class="model-map-search" style="max-width:340px;width:100%;">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"
+                    stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <circle cx="11" cy="11" r="8"></circle>
+                    <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                  </svg>
+                  <input type="text" id="cursor-search-input" placeholder="搜索 Cursor 模型、供应商或上游模型…" oninput="cursorFilterModels(this.value)">
+                </label>
+                <span class="model-map-count-pill" id="cursor-model-count">共 0 个</span>
+              </div>
+              <div class="model-map-bulk-actions" style="display:flex;align-items:center;gap:6px;flex-shrink:0;">
+                <button class="btn-ghost secondary provider-bulk-btn" id="cursor-bulk-enable-btn" disabled data-action="cursorBulkEnableAction">批量启用</button>
+                <button class="btn-ghost secondary provider-bulk-btn" id="cursor-bulk-disable-btn" disabled data-action="cursorBulkDisableAction">批量停用</button>
+                <button class="btn-ghost danger provider-bulk-btn" id="cursor-bulk-remove-btn" disabled data-action="cursorBulkRemoveAction">从 Cursor 移除</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- 3. 数据表格与空状态容器 (复用 cb-model-empty 旗舰空状态) -->
+          <div class="glass-card" style="overflow-x: auto; margin-bottom: 20px; border-radius: 14px;">
+            <div class="cb-model-empty" id="cursor-model-empty"
+              style="display:none; padding:48px 20px; text-align:center; flex-direction:column; align-items:center; justify-content:center;">
+              <div class="cb-empty-icon" style="width:72px;height:72px;border-radius:20px;margin-bottom:12px;">
+                <svg viewBox="0 0 24 24" style="width:36px;height:36px;">
+                  <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
+                  <polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
+                  <line x1="12" y1="22.08" x2="12" y2="12"></line>
+                </svg>
+              </div>
+              <div class="cb-empty-title">尚未配置 Cursor 平台模型</div>
+              <div class="cb-empty-subtitle">添加第一个模型，让 Cursor 在右下角模型列表中使用你指定的 AI 供应商与模型能力。</div>
+              <button type="button" class="btn-primary cb-empty-action" data-action="openCursorAddPage">
+                <svg viewBox="0 0 24 24">
+                  <line x1="12" y1="5" x2="12" y2="19" />
+                  <line x1="5" y1="12" x2="19" y2="12" />
+                </svg>
+                添加模型
+              </button>
+              <div class="cb-empty-steps">
+                <span class="cb-empty-step"><span class="cb-empty-step-num">1</span> 选择供应商</span>
+                <span class="cb-empty-step"><span class="cb-empty-step-num">2</span> 勾选模型</span>
+                <span class="cb-empty-step"><span class="cb-empty-step-num">3</span> 自动同步接入</span>
+              </div>
+            </div>
+
+            <table class="cb-model-table" id="cursor-model-table" style="border: none; box-shadow: none; border-radius: 0; width: 100%;">
+              <colgroup>
+                <col class="cb-col-select" style="width: 44px;">
+                <col style="width: 24%;">
+                <col style="width: 18%;">
+                <col style="width: 22%;">
+                <col style="width: 18%;">
+                <col style="width: 72px;">
+                <col style="width: 88px;">
+              </colgroup>
+              <thead>
+                <tr>
+                  <th class="cb-select-head" style="text-align: center; padding-left: 14px;">
+                    <label class="provider-select-check provider-select-check-table" title="选择当前列表" data-stop data-action="__noop">
+                      <input type="checkbox" id="cursorSelectAll" aria-label="选择当前列表" onchange="cursorToggleSelectAll(this.checked)">
+                      <span></span>
+                    </label>
+                  </th>
+                  <th>显示名称</th>
+                  <th>暴露模型 ID</th>
+                  <th>所属供应商</th>
+                  <th>能力</th>
+                  <th style="text-align: center;">启用</th>
+                  <th style="text-align: center;">操作</th>
+                </tr>
+              </thead>
+              <tbody id="cursorModelTableBody"></tbody>
+            </table>
+          </div>
+
         </div>
 
+        <!-- ═══════ CURSOR 编辑模型模态弹窗 ═══════ -->
+        <div class="modal-overlay" id="cursorEditModelModal" role="dialog" aria-modal="true" aria-labelledby="cursorEditModalTitle" data-action="closeCursorEditModal" data-only-self>
+          <div class="modal-container" style="max-width: 540px; width: 92%; border-radius: 16px; overflow: hidden; padding: 0; box-shadow: var(--shadow-xl, 0 20px 25px -5px rgba(0,0,0,0.1), 0 10px 10px -5px rgba(0,0,0,0.04));">
+            <!-- 头部 -->
+            <div class="modal-header" style="padding: 16px 22px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; background: var(--bg-card);">
+              <div style="display: flex; align-items: center; gap: 10px;">
+                <div style="width: 32px; height: 32px; border-radius: 9px; background: rgba(37, 99, 235, 0.1); color: var(--accent); display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+                  </svg>
+                </div>
+                <div>
+                  <div class="modal-title" id="cursorEditModalTitle" style="font-size: 15px; font-weight: 750; color: var(--text-primary); line-height: 1.2;">编辑 Cursor 模型</div>
+                  <div style="font-size: 11.5px; color: var(--text-muted); margin-top: 2px;">修改模型在 Cursor 列表中呈现的名称与调用参数</div>
+                </div>
+              </div>
+              <button class="btn-ghost icon-btn" data-action="closeCursorEditModal" aria-label="关闭" style="width: 28px; height: 28px; border-radius: 6px; display: flex; align-items: center; justify-content: center;">✕</button>
+            </div>
+
+            <!-- 主体内容 -->
+            <div class="modal-body" style="padding: 20px 22px; max-height: 70vh; overflow-y: auto; display: flex; flex-direction: column; gap: 16px;">
+              <input type="hidden" id="cursorEditBindingId">
+
+              <!-- 模型元信息卡片（只读展示） -->
+              <div style="background: var(--bg-input); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; display: flex; align-items: center; justify-content: space-between; gap: 12px;">
+                <div style="display: flex; align-items: center; gap: 10px; min-width: 0;">
+                  <div id="cursorEditModelIcon" style="width: 28px; height: 28px; border-radius: 6px; background: var(--bg-card); border: 1px solid var(--border); display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+                    ✦
+                  </div>
+                  <div style="min-width: 0;">
+                    <div style="display: flex; align-items: center; gap: 6px;">
+                      <code id="cursorEditExposedIdText" style="font-family: var(--font-mono); font-size: 12px; font-weight: 650; color: var(--text-primary);">--</code>
+                      <button class="btn-icon" style="width: 20px; height: 20px; min-width: 20px; border: none; background: transparent; padding: 0; color: var(--text-muted);" onclick="copyTextToClipboard(document.getElementById('cursorEditExposedIdText').textContent, '模型 ID')" title="复制暴露模型 ID">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                      </button>
+                    </div>
+                    <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">
+                      供应商：<span id="cursorEditProviderName" style="color: var(--text-secondary); font-weight: 600;">--</span> · 路由：<span id="cursorEditRouteUidShort" style="font-family: var(--font-mono);">--</span>
+                    </div>
+                  </div>
+                </div>
+                <div style="flex-shrink: 0;">
+                  <span class="tag" style="background: rgba(37, 99, 235, 0.1); color: var(--accent); font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 5px;">OpenAI 兼容</span>
+                </div>
+              </div>
+
+              <!-- 分组 1: 基本呈现设置 -->
+              <div class="cb-edit-section" style="border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; background: var(--bg-card);">
+                <div class="cb-edit-section-header" style="margin-bottom: 12px; display: flex; align-items: center; gap: 6px;">
+                  <span class="cb-edit-section-tag" style="font-size: 10px; font-weight: 700; padding: 1px 6px; border-radius: 4px; background: rgba(37, 99, 235, 0.1); color: var(--accent);">BASIC</span>
+                  <span class="cb-edit-section-title" style="font-size: 12px; font-weight: 700; color: var(--text-primary);">显示与启用</span>
+                </div>
+                <div class="cb-edit-fields-grid" style="display: flex; flex-direction: column; gap: 12px;">
+                  <div style="display: flex; flex-direction: column; gap: 6px;">
+                    <label for="cursorEditDisplayName" style="font-size: 12px; font-weight: 650; color: var(--text-secondary);">
+                      显示名称 <span style="font-size: 11px; color: var(--text-muted); font-weight: normal;">（Cursor 列表下拉选项中展示的文字）</span>
+                    </label>
+                    <input type="text" id="cursorEditDisplayName" placeholder="例如：Claude 3.5 Sonnet / Gemini 3.8 Flash" style="height: 36px; padding: 0 12px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg-input); font-size: 13px; color: var(--text-primary); outline: none;">
+                  </div>
+
+                  <div style="display: flex; align-items: center; justify-content: space-between; padding: 10px 12px; background: var(--bg-input); border-radius: 8px; border: 1px solid var(--border);">
+                    <div>
+                      <div style="font-size: 12.5px; font-weight: 650; color: var(--text-primary);">向 Cursor 暴露模型</div>
+                      <div style="font-size: 11px; color: var(--text-muted); margin-top: 1px;">关闭后该模型将从 Cursor 列表中隐藏</div>
+                    </div>
+                    <label class="toggle-switch" title="切换启用状态">
+                      <input type="checkbox" id="cursorEditEnabled">
+                      <span class="toggle-slider"></span>
+                    </label>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 分组 2: Cursor 模型调用参数覆写 -->
+              <div class="cb-edit-section" style="border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; background: var(--bg-card);">
+                <div class="cb-edit-section-header" style="margin-bottom: 12px; display: flex; align-items: center; gap: 6px;">
+                  <span class="cb-edit-section-tag optional" style="font-size: 10px; font-weight: 700; padding: 1px 6px; border-radius: 4px; background: rgba(16, 185, 129, 0.1); color: #10b981;">OPTIONAL</span>
+                  <span class="cb-edit-section-title" style="font-size: 12px; font-weight: 700; color: var(--text-primary);">模型参数配置</span>
+                </div>
+                <div class="cb-edit-fields-grid" style="display: flex; flex-direction: column; gap: 12px;">
+                  <div style="display: flex; flex-direction: column; gap: 6px;">
+                    <label for="cursorEditReasoningEffort" style="font-size: 12px; font-weight: 650; color: var(--text-secondary);">
+                      思考深度 (Reasoning Effort)
+                    </label>
+                    <select id="cursorEditReasoningEffort" class="platform-provider-select" style="height: 36px; border-radius: 8px; font-size: 12.5px; padding: 0 12px; border: 1px solid var(--border); background: var(--bg-input); color: var(--text-primary); outline: none;">
+                      <option value="">跟随上游默认 (无)</option>
+                      <option value="low">Low (轻度思考)</option>
+                      <option value="medium">Medium (适中思考)</option>
+                      <option value="high">High (深度思考)</option>
+                    </select>
+                  </div>
+
+                  <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                    <div style="display: flex; flex-direction: column; gap: 6px;">
+                      <label for="cursorEditContextWindow" style="font-size: 12px; font-weight: 650; color: var(--text-secondary);">
+                        上下文窗口 (Tokens)
+                      </label>
+                      <input type="number" id="cursorEditContextWindow" placeholder="默认（跟随上游）" style="height: 36px; padding: 0 12px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg-input); font-size: 12.5px; color: var(--text-primary); outline: none;">
+                    </div>
+                    <div style="display: flex; flex-direction: column; gap: 6px;">
+                      <label for="cursorEditMaxTokens" style="font-size: 12px; font-weight: 650; color: var(--text-secondary);">
+                        最大生成 (Tokens)
+                      </label>
+                      <input type="number" id="cursorEditMaxTokens" placeholder="默认（跟随上游）" style="height: 36px; padding: 0 12px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg-input); font-size: 12.5px; color: var(--text-primary); outline: none;">
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+            </div>
+
+            <!-- 底部操作栏 -->
+            <div class="modal-footer" style="padding: 14px 22px; border-top: 1px solid var(--border); display: flex; justify-content: flex-end; gap: 10px; background: var(--bg-card);">
+              <button class="btn-ghost secondary" style="height: 36px; padding: 0 16px; font-size: 13px; font-weight: 600; border-radius: 8px;" data-action="closeCursorEditModal">取消</button>
+              <button class="btn-primary" style="height: 36px; padding: 0 18px; font-size: 13px; font-weight: 600; border-radius: 8px; display: inline-flex; align-items: center; gap: 6px;" data-action="saveCursorEditModel">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>
+                  <polyline points="17 21 17 13 7 13 7 21"></polyline>
+                  <polyline points="7 3 7 8 15 8"></polyline>
+                </svg>
+                保存修改
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- ═══════ CURSOR 接入设置模态弹窗 ═══════ -->
+        <div class="modal-overlay" id="cursorSettingsModal" role="dialog" aria-modal="true" aria-labelledby="cursorSettingsModalTitle" data-action="closeCursorSettingsModal" data-only-self>
+          <div class="modal-container" style="max-width: 500px;">
+            <div class="modal-header" style="justify-content:space-between;">
+              <div class="modal-title" id="cursorSettingsModalTitle">Cursor 接入设置</div>
+              <button class="btn-ghost icon-btn" data-action="closeCursorSettingsModal" aria-label="关闭">✕</button>
+            </div>
+            <div class="modal-body">
+              <div style="margin-bottom: 16px;">
+                <strong style="display:block;font-size:13px;color:var(--text-primary);margin-bottom:4px;">CA 根证书管理</strong>
+                <span style="display:block;font-size:12px;color:var(--text-muted);margin-bottom:8px;">AnyBridge 根证书用于本地 Connect-RPC TLS 安全握手。</span>
+                <div style="display:flex;gap:8px;">
+                  <button class="btn-ghost accent" data-action="cursorInstallCertAction">一键安装/更新证书</button>
+                </div>
+              </div>
+              <div style="margin-bottom: 16px;">
+                <strong style="display:block;font-size:13px;color:var(--text-primary);margin-bottom:4px;">Core 运行控制</strong>
+                <span style="display:block;font-size:12px;color:var(--text-muted);margin-bottom:8px;">Rust Cursor Core 服务负责拦截与中继 Cursor 自定义模型流量。</span>
+                <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                  <button class="btn-ghost secondary" data-action="cursorRestartCoreAction">重启 Core 进程</button>
+                  <button class="btn-ghost secondary" data-action="cursorRestartIdeAction">重启 Cursor IDE</button>
+                  <button class="btn-ghost secondary" data-action="cursorPreflightAction">运行环境预检</button>
+                </div>
+              </div>
+            </div>
+            <div class="modal-footer" style="display:flex;justify-content:flex-end;">
+              <button class="btn-ghost secondary" data-action="closeCursorSettingsModal">关闭</button>
+            </div>
+          </div>
+        </div>
+        <!-- ═══════ PAGE: PLATFORM · CURSOR · 添加模型（独立页面） ═══════ -->
+        <div class="page" id="page-platform-cursor-add" role="tabpanel" aria-labelledby="tab-platforms">
+          <div class="platform-console-hero model-add-hero glass-card">
+            <div class="platform-console-titlebar">
+              <button class="btn-ghost platform-console-back" data-action="navigateTo" data-arg="platform-cursor">← 返回</button>
+              <div class="platform-console-titlewrap">
+                <strong>添加模型 · Cursor</strong>
+                <span class="platform-console-sub">从统一供应商模型池选择并勾选模型，将自动建立 Cursor 平台适配并同步至接入网关。</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="cb-add-layout">
+            <!-- 左列：供应商列表 (复用标准 cb-add-sidebar) -->
+            <aside class="cb-add-sidebar glass-card">
+              <div class="cb-add-search">
+                <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" fill="none" stroke-width="2"
+                  stroke-linecap="round" stroke-linejoin="round">
+                  <circle cx="11" cy="11" r="8" />
+                  <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                </svg>
+                <input type="text" id="cursor-add-search" placeholder="搜索供应商…" data-action="onCursorAddSearch" data-events="input">
+                <div class="provider-sort-control platform-add-sort-control" id="cursorAddSortControl">
+                  <button type="button" class="provider-sort-trigger platform-add-sort-trigger" id="cursorAddSortTrigger"
+                    aria-haspopup="listbox" aria-expanded="false"
+                    aria-controls="cursorAddSortMenu" aria-label="供应商排序" title="供应商排序" data-action="toggleCursorAddSort" data-pass-event>
+                    <svg class="provider-sort-icon" width="14" height="14" viewBox="0 0 24 24" fill="none"
+                      stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"
+                      aria-hidden="true">
+                      <path d="M8 3v18"></path>
+                      <path d="m4 7 4-4 4 4"></path>
+                      <path d="M16 21V3"></path>
+                      <path d="m20 17-4 4-4-4"></path>
+                    </svg>
+                    <span id="cursorAddSortLabel">默认排序</span>
+                    <svg class="provider-sort-caret" width="13" height="13" viewBox="0 0 24 24" fill="none"
+                      stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"
+                      aria-hidden="true">
+                      <path d="m6 9 6 6 6-6"></path>
+                    </svg>
+                  </button>
+                  <div class="provider-sort-menu platform-add-sort-menu" id="cursorAddSortMenu" role="listbox"
+                    aria-label="供应商排序">
+                    <button type="button" class="provider-sort-option platform-add-sort-option" role="option"
+                      data-sort-mode="default" data-action="chooseCursorAddSortMode" data-arg="default">默认排序</button>
+                    <button type="button" class="provider-sort-option platform-add-sort-option" role="option"
+                      data-sort-mode="name-asc" data-action="chooseCursorAddSortMode" data-arg="name-asc">名称正序</button>
+                    <button type="button" class="provider-sort-option platform-add-sort-option" role="option"
+                      data-sort-mode="name-desc" data-action="chooseCursorAddSortMode" data-arg="name-desc">名称反序</button>
+                  </div>
+                </div>
+              </div>
+              <div class="cb-add-provider-list" id="cursor-add-provider-list"></div>
+            </aside>
+
+            <!-- 右列：模型列表与 Cursor 定制选项 -->
+            <section class="cb-add-main">
+              <div class="glass-card cb-add-models-card">
+                <div class="cb-add-models-head">
+                  <div>
+                    <div class="cb-add-models-title" id="cursor-add-models-title">请选择供应商</div>
+                    <div class="cb-add-models-sub" id="cursor-add-models-sub">左侧选择一个供应商，勾选要添加到 Cursor 的模型</div>
+                  </div>
+                  <div style="display:flex; gap:8px;">
+                    <button class="btn-ghost accent" data-action="cursorAddSelectAll">全选</button>
+                    <button class="btn-ghost secondary" data-action="cursorAddSelectNone">全不选</button>
+                    <button class="btn-primary" id="cursor-add-confirm-page"
+                      disabled data-action="confirmAddCursorModelsPage">
+                      <svg viewBox="0 0 24 24"
+                        style="width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;">
+                        <path d="M20 6L9 17l-5-5" />
+                      </svg>
+                      <span class="model-action-label"> 保存选择</span>
+                    </button>
+                  </div>
+                </div>
+                <!-- 模型条目容器 (复用标准条状卡片) -->
+                <div class="cb-add-models-body" id="cursor-add-models-list-page">
+                  <div class="cb-add-models-empty">请从左侧选择一个供应商</div>
+                </div>
+              </div>
+
+              <!-- 底部卡片：完全对齐 CodeBuddy / WorkBuddy 的 cb-add-caps-card 结构 -->
+              <div class="glass-card cb-add-caps-card">
+                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+                  <div class="cb-add-caps-title" style="margin: 0;">自动适配特性</div>
+                  <details style="font-size: 11.5px; cursor: pointer;">
+                    <summary style="color: var(--accent); font-weight: 600; user-select: none; outline: none;">
+                      高级命名规则 (可选展开)
+                    </summary>
+                    <div style="margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); display: flex; flex-direction: column; gap: 8px; cursor: default;" onclick="event.stopPropagation()">
+                      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                        <div class="cb-edit-field">
+                          <label for="cursor-add-prefix" style="white-space: nowrap; font-size: 11.5px; color: var(--text-secondary); margin-bottom: 4px; display: block;">显示名前缀</label>
+                          <input type="text" id="cursor-add-prefix" class="field-input" placeholder="例如：[BYOK]" oninput="onCursorAddNamingRuleChange()">
+                        </div>
+                        <div class="cb-edit-field">
+                          <label for="cursor-add-suffix" style="white-space: nowrap; font-size: 11.5px; color: var(--text-secondary); margin-bottom: 4px; display: block;">显示后缀</label>
+                          <input type="text" id="cursor-add-suffix" class="field-input" placeholder="例如：(PRO)" oninput="onCursorAddNamingRuleChange()">
+                        </div>
+                      </div>
+                      <div style="font-size: 11px; color: var(--text-muted); background: var(--bg-input); padding: 5px 10px; border-radius: 6px; border: 1px solid var(--border);">
+                        命名预览：<strong id="cursor-add-naming-preview" style="color: var(--accent); font-family: var(--font-mono);">gpt-5.4</strong>
+                      </div>
+                    </div>
+                  </details>
+                </div>
+                <div class="cb-add-caps">
+                  <div class="cb-add-cap-chip" style="cursor: default;">
+                    <span style="color: #10b981; font-weight: 800;">✓</span>
+                    <span>Agent 工具调用</span>
+                  </div>
+                  <div class="cb-add-cap-chip" style="cursor: default;">
+                    <span style="color: #3b82f6; font-weight: 800;">✓</span>
+                    <span>Thinking 深度思考</span>
+                  </div>
+                  <div class="cb-add-cap-chip" style="cursor: default;">
+                    <span style="color: #a855f7; font-weight: 800;">✓</span>
+                    <span>Vision 视觉多模态</span>
+                  </div>
+                  <div class="cb-add-cap-chip" style="cursor: default;">
+                    <span style="color: var(--accent); font-weight: 800;">✓</span>
+                    <span>OpenAI 兼容协议热同步</span>
+                  </div>
+                </div>
+              </div>
+
+            </section>
+          </div>
+        </div>
         <!-- ═══════ PAGE: PLATFORM · CLAUDE CODE ═══════ -->
         <div class="page" id="page-platform-claude-code" role="tabpanel" aria-labelledby="tab-platforms">
           <section class="codex-manager-shell claude-code-manager-shell">
@@ -2862,8 +3221,13 @@
                 </div>
               </div>
               <div class="codex-toolbar-actions">
-                <button class="btn-primary codex-add-config-btn" data-action="openClaudeCodeProviderAdd">
-                  <span>+</span> 添加配置
+                <button class="btn-primary codex-add-config-btn" data-action="openClaudeCodeAddModal">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="12" y1="5" x2="12" y2="19" />
+                    <line x1="5" y1="12" x2="19" y2="12" />
+                  </svg>
+                  添加模型
                 </button>
                 <button class="btn-ghost accent codex-refresh-btn" data-action="refreshPlatforms">刷新</button>
                 <button class="btn-ghost warn codex-restore-btn" id="platform-claude-code-restore"
@@ -2938,11 +3302,29 @@
                         <input id="claude-code-config-base-url" class="field-input" placeholder="https://api.example.com"
  data-action="syncClaudeCodeRawConfigFromFields" data-events="input">
                       </label>
-                      <label class="codex-config-field">
-                        <span>API Key</span>
-                        <input id="claude-code-config-api-key" class="field-input" type="password" placeholder="sk-..."
+                      <div class="codex-config-field">
+                        <div class="codex-field-header-row">
+                          <span>API Key</span>
+                          <button type="button" class="codex-field-action-btn" id="claude-code-config-sync-token-btn"
+                            data-action="syncClaudeCodeConfigTokenFromSource" title="从关联的来源供应商拉取最新令牌和地址">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                              <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/>
+                            </svg>
+                            <span>同步来源令牌</span>
+                          </button>
+                        </div>
+                        <div class="codex-input-password-wrap">
+                          <input id="claude-code-config-api-key" class="field-input" type="password" placeholder="sk-..."
  autocomplete="off" data-action="syncClaudeCodeRawConfigFromFields" data-events="input">
-                      </label>
+                          <button type="button" class="codex-password-toggle-btn" id="claude-code-config-api-key-toggle"
+                            data-action="toggleClaudeCodeKeyVisibility" title="显示或隐藏 API Key" aria-label="显示或隐藏 API Key">
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;">
+                              <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"></path>
+                              <circle cx="12" cy="12" r="3"></circle>
+                            </svg>
+                          </button>
+                        </div>
+                      </div>
                     </div>
                   </section>
                   <section class="config-section">
@@ -2994,6 +3376,121 @@
           </div>
         </div>
 
+        <!-- ═══════ PAGE: PLATFORM · CLAUDE CODE · 添加模型（独立页面） ═══════ -->
+        <div class="page" id="page-platform-claude-add" role="tabpanel" aria-labelledby="tab-platforms">
+          <div class="platform-console-hero model-add-hero glass-card">
+            <div class="platform-console-titlebar">
+              <button class="btn-ghost platform-console-back" data-action="navigateTo" data-arg="platform-claude-code">← 返回</button>
+              <div class="platform-console-titlewrap">
+                <strong>添加模型 · Claude Code</strong>
+                <span class="platform-console-sub">从统一供应商模型池选择并勾选模型，将自动建立 Claude Code 环境变量与设置，并写入 ~/.claude/settings.json。</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="cb-add-layout">
+            <!-- 左列：供应商列表 -->
+            <aside class="cb-add-sidebar glass-card">
+              <div class="cb-add-search">
+                <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" fill="none" stroke-width="2"
+                  stroke-linecap="round" stroke-linejoin="round">
+                  <circle cx="11" cy="11" r="8" />
+                  <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                </svg>
+                <input type="text" id="claude-add-search" placeholder="搜索供应商…" data-action="onClaudeAddSearch" data-events="input">
+                <div class="provider-sort-control platform-add-sort-control" id="claudeAddSortControl">
+                  <button type="button" class="provider-sort-trigger platform-add-sort-trigger" id="claudeAddSortTrigger"
+                    aria-haspopup="listbox" aria-expanded="false"
+                    aria-controls="claudeAddSortMenu" aria-label="供应商排序" title="供应商排序" data-action="toggleClaudeAddSort" data-pass-event>
+                    <svg class="provider-sort-icon" width="14" height="14" viewBox="0 0 24 24" fill="none"
+                      stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"
+                      aria-hidden="true">
+                      <path d="M8 3v18"></path>
+                      <path d="m4 7 4-4 4 4"></path>
+                      <path d="M16 21V3"></path>
+                      <path d="m20 17-4 4-4-4"></path>
+                    </svg>
+                    <span id="claudeAddSortLabel">默认排序</span>
+                    <svg class="provider-sort-caret" width="13" height="13" viewBox="0 0 24 24" fill="none"
+                      stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"
+                      aria-hidden="true">
+                      <path d="m6 9 6 6 6-6"></path>
+                    </svg>
+                  </button>
+                  <div class="provider-sort-menu platform-add-sort-menu" id="claudeAddSortMenu" role="listbox"
+                    aria-label="供应商排序">
+                    <button type="button" class="provider-sort-option platform-add-sort-option" role="option"
+                      data-sort-mode="default" data-action="chooseClaudeAddSortMode" data-arg="default">默认排序</button>
+                    <button type="button" class="provider-sort-option platform-add-sort-option" role="option"
+                      data-sort-mode="name-asc" data-action="chooseClaudeAddSortMode" data-arg="name-asc">名称正序</button>
+                    <button type="button" class="provider-sort-option platform-add-sort-option" role="option"
+                      data-sort-mode="name-desc" data-action="chooseClaudeAddSortMode" data-arg="name-desc">名称反序</button>
+                  </div>
+                </div>
+              </div>
+              <div class="cb-add-provider-list" id="claude-add-provider-list"></div>
+            </aside>
+
+            <!-- 右列：模型列表 -->
+            <section class="cb-add-main">
+              <div class="glass-card cb-add-models-card">
+                <div class="cb-add-models-head">
+                  <div>
+                    <div class="cb-add-models-title" id="claude-add-models-title">请选择供应商</div>
+                    <div class="cb-add-models-sub" id="claude-add-models-sub">左侧选择一个供应商，右侧将展示其可用模型</div>
+                  </div>
+                  <div style="display:flex; gap:8px;">
+                    <button class="btn-ghost accent" data-action="claudeAddSelectAll">全选</button>
+                    <button class="btn-ghost secondary" data-action="claudeAddSelectNone">全不选</button>
+                    <button class="btn-primary" id="claude-add-confirm-page"
+                      disabled data-action="confirmAddClaudeModelsPage">
+                      <svg viewBox="0 0 24 24"
+                        style="width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;">
+                        <path d="M20 6L9 17l-5-5" />
+                      </svg>
+                      <span class="model-action-label"> 保存选择</span>
+                    </button>
+                  </div>
+                </div>
+                <div class="cb-add-models-body" id="claude-add-models-list-page">
+                  <div class="cb-add-models-empty">请从左侧选择一个供应商</div>
+                </div>
+              </div>
+
+              <!-- Claude Code 特性卡片：能力适配与网络重试参数 -->
+              <div class="glass-card cb-add-caps-card">
+                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+                  <div class="cb-add-caps-title" style="margin: 0;">Claude Code 特性与网络参数</div>
+                  <div style="display: flex; align-items: center; gap: 8px;">
+                    <span style="font-size: 11.5px; color: var(--text-secondary); font-weight: 600;">最大重试次数：</span>
+                    <input type="number" id="claude-add-max-retries" class="field-input" min="0" max="15" step="1" value="10" style="width: 60px; height: 28px; padding: 0 6px; font-size: 12px; text-align: center;">
+                  </div>
+                </div>
+
+                <!-- 能力胶囊选项 -->
+                <div class="cb-add-caps">
+                  <label class="cb-add-cap-chip">
+                    <input type="checkbox" id="claude-add-cap-tools" checked>
+                    <span>原生工具调用 (Tools)</span>
+                  </label>
+                  <label class="cb-add-cap-chip">
+                    <input type="checkbox" id="claude-add-cap-thinking" checked>
+                    <span>深度思考 (Thinking)</span>
+                  </label>
+                  <label class="cb-add-cap-chip">
+                    <input type="checkbox" id="claude-add-cap-vision" checked>
+                    <span>视觉多模态 (Vision)</span>
+                  </label>
+                  <label class="cb-add-cap-chip">
+                    <input type="checkbox" id="claude-add-cap-unlock" checked>
+                    <span>Claude Code Unlock 兼容</span>
+                  </label>
+                </div>
+              </div>
+
+            </section>
+          </div>
+        </div>
         <!-- ═══════ PAGE: PLATFORM · CODEX ═══════ -->
         <div class="page" id="page-platform-codex" role="tabpanel" aria-labelledby="tab-platforms">
           <section class="codex-manager-shell">
@@ -3021,8 +3518,13 @@
                 </div>
               </div>
               <div class="codex-toolbar-actions">
-                <button class="btn-primary codex-add-config-btn" data-action="openCodexProviderAdd">
-                  <span>+</span> 添加配置
+                <button class="btn-primary codex-add-config-btn" data-action="openCodexAddModal">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="12" y1="5" x2="12" y2="19" />
+                    <line x1="5" y1="12" x2="19" y2="12" />
+                  </svg>
+                  添加模型
                 </button>
                 <button class="btn-ghost accent codex-refresh-btn" data-action="refreshPlatforms">刷新</button>
                 <button class="btn-ghost accent codex-repair-sessions-btn" data-action="repairCodexSessionVisibility" title="对齐会话索引到当前 model_provider，使历史会话重新可见">修复会话历史</button>
@@ -3100,11 +3602,29 @@
                         <span>Base URL</span>
                         <input id="codex-config-base-url" class="field-input" placeholder="https://api.example.com/v1">
                       </label>
-                      <label class="codex-config-field">
-                        <span>API Key</span>
-                        <input id="codex-config-api-key" class="field-input" type="password" placeholder="sk-..."
-                          autocomplete="off">
-                      </label>
+                      <div class="codex-config-field">
+                        <div class="codex-field-header-row">
+                          <span>API Key</span>
+                          <button type="button" class="codex-field-action-btn" id="codex-config-sync-token-btn"
+                            data-action="syncCodexConfigTokenFromSource" title="从关联的来源供应商拉取最新令牌和地址">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                              <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/>
+                            </svg>
+                            <span>同步来源令牌</span>
+                          </button>
+                        </div>
+                        <div class="codex-input-password-wrap">
+                          <input id="codex-config-api-key" class="field-input" type="password" placeholder="sk-..."
+                            autocomplete="off">
+                          <button type="button" class="codex-password-toggle-btn" id="codex-config-api-key-toggle"
+                            data-action="toggleCodexKeyVisibility" title="显示或隐藏 API Key" aria-label="显示或隐藏 API Key">
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;">
+                              <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"></path>
+                              <circle cx="12" cy="12" r="3"></circle>
+                            </svg>
+                          </button>
+                        </div>
+                      </div>
                     </div>
                   </section>
                   <section class="config-section">
@@ -3263,6 +3783,167 @@
           </div>
         </div>
 
+        <!-- ═══════ PAGE: PLATFORM · CODEX · 添加模型（独立页面） ═══════ -->
+        <div class="page" id="page-platform-codex-add" role="tabpanel" aria-labelledby="tab-platforms">
+          <div class="platform-console-hero model-add-hero glass-card">
+            <div class="platform-console-titlebar">
+              <button class="btn-ghost platform-console-back" data-action="navigateTo" data-arg="platform-codex">← 返回</button>
+              <div class="platform-console-titlewrap">
+                <strong>添加模型 · Codex</strong>
+                <span class="platform-console-sub">从统一供应商模型池选择并勾选模型，自动建立 Codex 模型适配配置并支持桌面端与终端随时切换。</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="cb-add-layout">
+            <!-- 左列：供应商列表 -->
+            <aside class="cb-add-sidebar glass-card">
+              <div class="cb-add-search">
+                <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" fill="none" stroke-width="2"
+                  stroke-linecap="round" stroke-linejoin="round">
+                  <circle cx="11" cy="11" r="8" />
+                  <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                </svg>
+                <input type="text" id="codex-add-search" placeholder="搜索供应商…" data-action="onCodexAddSearch" data-events="input">
+                <div class="provider-sort-control platform-add-sort-control" id="codexAddSortControl">
+                  <button type="button" class="provider-sort-trigger platform-add-sort-trigger" id="codexAddSortTrigger"
+                    aria-haspopup="listbox" aria-expanded="false"
+                    aria-controls="codexAddSortMenu" aria-label="供应商排序" title="供应商排序" data-action="toggleCodexAddSort" data-pass-event>
+                    <svg class="provider-sort-icon" width="14" height="14" viewBox="0 0 24 24" fill="none"
+                      stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"
+                      aria-hidden="true">
+                      <path d="M8 3v18"></path>
+                      <path d="m4 7 4-4 4 4"></path>
+                      <path d="M16 21V3"></path>
+                      <path d="m20 17-4 4-4-4"></path>
+                    </svg>
+                    <span id="codexAddSortLabel">默认排序</span>
+                    <svg class="provider-sort-caret" width="13" height="13" viewBox="0 0 24 24" fill="none"
+                      stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"
+                      aria-hidden="true">
+                      <path d="m6 9 6 6 6-6"></path>
+                    </svg>
+                  </button>
+                  <div class="provider-sort-menu platform-add-sort-menu" id="codexAddSortMenu" role="listbox"
+                    aria-label="供应商排序">
+                    <button type="button" class="provider-sort-option platform-add-sort-option" role="option"
+                      data-sort-mode="default" data-action="chooseCodexAddSortMode" data-arg="default">默认排序</button>
+                    <button type="button" class="provider-sort-option platform-add-sort-option" role="option"
+                      data-sort-mode="name-asc" data-action="chooseCodexAddSortMode" data-arg="name-asc">名称正序</button>
+                    <button type="button" class="provider-sort-option platform-add-sort-option" role="option"
+                      data-sort-mode="name-desc" data-action="chooseCodexAddSortMode" data-arg="name-desc">名称反序</button>
+                  </div>
+                </div>
+              </div>
+              <div class="cb-add-provider-list" id="codex-add-provider-list"></div>
+            </aside>
+
+            <!-- 右列：模型列表 -->
+            <section class="cb-add-main">
+              <div class="glass-card cb-add-models-card">
+                <div class="cb-add-models-head">
+                  <div>
+                    <div class="cb-add-models-title" id="codex-add-models-title">请选择供应商</div>
+                    <div class="cb-add-models-sub" id="codex-add-models-sub">左侧选择一个供应商，右侧将展示其可用模型</div>
+                  </div>
+                  <div style="display:flex; gap:8px;">
+                    <button class="btn-ghost accent" data-action="codexAddSelectAll">全选</button>
+                    <button class="btn-ghost secondary" data-action="codexAddSelectNone">全不选</button>
+                    <button class="btn-primary" id="codex-add-confirm-page"
+                      disabled data-action="confirmAddCodexModelsPage">
+                      <svg viewBox="0 0 24 24"
+                        style="width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;">
+                        <path d="M20 6L9 17l-5-5" />
+                      </svg>
+                      <span class="model-action-label"> 保存选择</span>
+                    </button>
+                  </div>
+                </div>
+                <div class="cb-add-models-body" id="codex-add-models-list-page">
+                  <div class="cb-add-models-empty">请从左侧选择一个供应商</div>
+                </div>
+              </div>
+
+              <!-- Codex 特性卡片：路由模式、桌面版注入与上游协议选项 -->
+              <div class="glass-card cb-add-caps-card">
+                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+                  <div class="cb-add-caps-title" style="margin: 0;">Codex 运行与适配选项</div>
+                  <details style="font-size: 11.5px; cursor: pointer;">
+                    <summary style="color: var(--accent); font-weight: 600; user-select: none; outline: none;">
+                      高级推理与子代理设置 (可选展开)
+                    </summary>
+                    <div style="margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); display: flex; flex-direction: column; gap: 10px; cursor: default;" onclick="event.stopPropagation()">
+                      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px;">
+                        <div class="cb-edit-field">
+                          <label style="font-size: 11.5px; color: var(--text-secondary); margin-bottom: 4px; display: block;">Thinking 参数注入</label>
+                          <select id="codex-add-reasoning-thinking" class="field-input" style="height: 32px; padding: 0 8px; font-size: 12px;">
+                            <option value="none">不注入</option>
+                            <option value="thinking">thinking</option>
+                            <option value="enable_thinking">enable_thinking</option>
+                            <option value="reasoning_split">reasoning_split</option>
+                          </select>
+                        </div>
+                        <div class="cb-edit-field">
+                          <label style="font-size: 11.5px; color: var(--text-secondary); margin-bottom: 4px; display: block;">Effort 参数注入</label>
+                          <select id="codex-add-reasoning-effort" class="field-input" style="height: 32px; padding: 0 8px; font-size: 12px;">
+                            <option value="none">不注入</option>
+                            <option value="reasoning_effort">reasoning_effort</option>
+                            <option value="reasoning.effort">reasoning.effort</option>
+                          </select>
+                        </div>
+                        <div class="cb-edit-field">
+                          <label style="font-size: 11.5px; color: var(--text-secondary); margin-bottom: 4px; display: block;">子代理最大并发数</label>
+                          <input type="number" id="codex-add-agents-max-threads" class="field-input" min="1" step="1" value="6" style="height: 32px; padding: 0 8px; font-size: 12px;">
+                        </div>
+                      </div>
+                    </div>
+                  </details>
+                </div>
+
+                <!-- 核心特性开关胶囊 -->
+                <div class="cb-add-caps" style="margin-bottom: 12px;">
+                  <label class="cb-add-cap-chip">
+                    <input type="checkbox" id="codex-add-route-through-proxy" checked>
+                    <span>路由模式 (本地代理 :7450 协议转换)</span>
+                  </label>
+                  <label class="cb-add-cap-chip">
+                    <input type="checkbox" id="codex-add-inject-models" checked>
+                    <span>桌面版注入显示所有模型 (CDP)</span>
+                  </label>
+                  <label class="cb-add-cap-chip">
+                    <input type="checkbox" id="codex-add-unify-session-history" checked>
+                    <span>统一会话历史</span>
+                  </label>
+                  <label class="cb-add-cap-chip">
+                    <input type="checkbox" id="codex-add-preserve-official-auth">
+                    <span>保留官方登录态</span>
+                  </label>
+                </div>
+
+                <!-- 上游协议单选胶囊 -->
+                <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding-top: 8px; border-top: 1px dashed var(--border);">
+                  <span style="font-size: 11.5px; color: var(--text-secondary); font-weight: 700;">上游协议：</span>
+                  <div class="cb-add-caps" style="gap: 8px;">
+                    <label class="cb-add-cap-chip" style="padding: 5px 11px; font-size: 11px;">
+                      <input type="radio" name="codex-add-wire-api-radio" value="auto" checked data-action="setCodexAddWireApi" data-events="change" data-arg="auto">
+                      <span>auto (自动识别 · 默认)</span>
+                    </label>
+                    <label class="cb-add-cap-chip" style="padding: 5px 11px; font-size: 11px;">
+                      <input type="radio" name="codex-add-wire-api-radio" value="responses" data-action="setCodexAddWireApi" data-events="change" data-arg="responses">
+                      <span>responses (OpenAI Responses)</span>
+                    </label>
+                    <label class="cb-add-cap-chip" style="padding: 5px 11px; font-size: 11px;">
+                      <input type="radio" name="codex-add-wire-api-radio" value="chat" data-action="setCodexAddWireApi" data-events="change" data-arg="chat">
+                      <span>chat (Chat Completions)</span>
+                    </label>
+                  </div>
+                  <input type="hidden" id="codex-add-wire-api" value="auto">
+                </div>
+              </div>
+
+            </section>
+          </div>
+        </div>
         <!-- ═══════ PAGE: PLATFORM · CODEBUDDY ═══════ -->
         <div class="page" id="page-platform-codebuddy" role="tabpanel" aria-labelledby="tab-platforms">
           <div class="platform-console-hero glass-card">
@@ -3649,12 +4330,17 @@
                 </div>
               </div>
               <div class="codex-toolbar-actions">
-                <button class="btn-primary codex-add-config-btn" data-action="openOpenCodeProviderAdd">
-                  <span>+</span> 添加配置
+                <button class="btn-primary codex-add-config-btn" data-action="openOpenCodeAddModal">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="12" y1="5" x2="12" y2="19" />
+                    <line x1="5" y1="12" x2="19" y2="12" />
+                  </svg>
+                  添加模型
                 </button>
                 <button class="btn-ghost accent codex-refresh-btn" data-action="refreshPlatforms">刷新</button>
                 <button class="btn-ghost warn codex-restore-btn" id="platform-opencode-restore"
- data-action="restorePlatform" data-arg="opencode">还原备份</button>
+                  data-action="restorePlatform" data-arg="opencode">还原备份</button>
               </div>
             </div>
 
@@ -3695,8 +4381,15 @@
                     <span>选择供应商</span>
                     <strong id="opencode-config-source-count">0</strong>
                   </div>
+                  <div class="opencode-source-search-wrap">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                      <circle cx="11" cy="11" r="8"></circle>
+                      <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                    </svg>
+                    <input type="text" id="opencode-source-search-input" placeholder="搜索供应商…" data-action="onOpenCodeSourceSearch" data-events="input">
+                  </div>
                   <div class="codex-config-source-list" id="opencode-config-source-list"></div>
-                  <div class="codex-config-source-hint" id="opencode-config-source-hint">选择一个 OpenAI 供应商，右侧只会带入名称、地址和密钥。
+                  <div class="codex-config-source-hint" id="opencode-config-source-hint">选择一个 OpenAI 供应商，右侧会自动带入名称、地址、密钥与模型。
                   </div>
                 </aside>
                 <div class="codex-config-form-grid">
@@ -3713,11 +4406,29 @@
                         <input id="opencode-config-base-url" class="field-input" placeholder="https://api.example.com/v1"
  data-action="syncOpenCodeRawConfigFromFields" data-events="input">
                       </label>
-                      <label class="codex-config-field">
-                        <span>API Key</span>
-                        <input id="opencode-config-api-key" class="field-input" type="password" placeholder="sk-..."
+                      <div class="codex-config-field">
+                        <div class="codex-field-header-row">
+                          <span>API Key</span>
+                          <button type="button" class="codex-field-action-btn" id="opencode-config-sync-token-btn"
+                            data-action="syncOpenCodeConfigTokenFromSource" title="从关联的来源供应商拉取最新令牌和地址">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                              <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/>
+                            </svg>
+                            <span>同步来源令牌</span>
+                          </button>
+                        </div>
+                        <div class="codex-input-password-wrap">
+                          <input id="opencode-config-api-key" class="field-input" type="password" placeholder="sk-..."
  autocomplete="off" data-action="syncOpenCodeRawConfigFromFields" data-events="input">
-                      </label>
+                          <button type="button" class="codex-password-toggle-btn" id="opencode-config-api-key-toggle"
+                            data-action="toggleOpenCodeKeyVisibility" title="显示或隐藏 API Key" aria-label="显示或隐藏 API Key">
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;">
+                              <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"></path>
+                              <circle cx="12" cy="12" r="3"></circle>
+                            </svg>
+                          </button>
+                        </div>
+                      </div>
                     </div>
                   </section>
                   <section class="config-section">
@@ -3769,6 +4480,109 @@
           </div>
         </div>
 
+        <!-- ═══════ PAGE: PLATFORM · OPENCODE · 添加模型（独立页面） ═══════ -->
+        <div class="page" id="page-platform-opencode-add" role="tabpanel" aria-labelledby="tab-platforms">
+          <div class="platform-console-hero model-add-hero glass-card">
+            <div class="platform-console-titlebar">
+              <button class="btn-ghost platform-console-back" data-action="navigateTo" data-arg="platform-opencode">← 返回</button>
+              <div class="platform-console-titlewrap">
+                <strong>添加模型 · OpenCode</strong>
+                <span class="platform-console-sub">从统一供应商模型池选择并勾选模型，将自动建立 OpenCode provider 配置并可随时加入 opencode.json。</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="cb-add-layout">
+            <!-- 左列：供应商列表 -->
+            <aside class="cb-add-sidebar glass-card">
+              <div class="cb-add-search">
+                <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" fill="none" stroke-width="2"
+                  stroke-linecap="round" stroke-linejoin="round">
+                  <circle cx="11" cy="11" r="8" />
+                  <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                </svg>
+                <input type="text" id="opencode-add-search" placeholder="搜索供应商…" data-action="onOpenCodeAddSearch" data-events="input">
+                <div class="provider-sort-control platform-add-sort-control" id="opencodeAddSortControl">
+                  <button type="button" class="provider-sort-trigger platform-add-sort-trigger" id="opencodeAddSortTrigger"
+                    aria-haspopup="listbox" aria-expanded="false"
+                    aria-controls="opencodeAddSortMenu" aria-label="供应商排序" title="供应商排序" data-action="toggleOpenCodeAddSort" data-pass-event>
+                    <svg class="provider-sort-icon" width="14" height="14" viewBox="0 0 24 24" fill="none"
+                      stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"
+                      aria-hidden="true">
+                      <path d="M8 3v18"></path>
+                      <path d="m4 7 4-4 4 4"></path>
+                      <path d="M16 21V3"></path>
+                      <path d="m20 17-4 4-4-4"></path>
+                    </svg>
+                    <span id="opencodeAddSortLabel">默认排序</span>
+                    <svg class="provider-sort-caret" width="13" height="13" viewBox="0 0 24 24" fill="none"
+                      stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"
+                      aria-hidden="true">
+                      <path d="m6 9 6 6 6-6"></path>
+                    </svg>
+                  </button>
+                  <div class="provider-sort-menu platform-add-sort-menu" id="opencodeAddSortMenu" role="listbox"
+                    aria-label="供应商排序">
+                    <button type="button" class="provider-sort-option platform-add-sort-option" role="option"
+                      data-sort-mode="default" data-action="chooseOpenCodeAddSortMode" data-arg="default">默认排序</button>
+                    <button type="button" class="provider-sort-option platform-add-sort-option" role="option"
+                      data-sort-mode="name-asc" data-action="chooseOpenCodeAddSortMode" data-arg="name-asc">名称正序</button>
+                    <button type="button" class="provider-sort-option platform-add-sort-option" role="option"
+                      data-sort-mode="name-desc" data-action="chooseOpenCodeAddSortMode" data-arg="name-desc">名称反序</button>
+                  </div>
+                </div>
+              </div>
+              <div class="cb-add-provider-list" id="opencode-add-provider-list"></div>
+            </aside>
+
+            <!-- 右列：模型列表 -->
+            <section class="cb-add-main">
+              <div class="glass-card cb-add-models-card">
+                <div class="cb-add-models-head">
+                  <div>
+                    <div class="cb-add-models-title" id="opencode-add-models-title">请选择供应商</div>
+                    <div class="cb-add-models-sub" id="opencode-add-models-sub">左侧选择一个供应商，右侧将展示其可用模型</div>
+                  </div>
+                  <div style="display:flex; gap:8px;">
+                    <button class="btn-ghost accent" data-action="opencodeAddSelectAll">全选</button>
+                    <button class="btn-ghost secondary" data-action="opencodeAddSelectNone">全不选</button>
+                    <button class="btn-primary" id="opencode-add-confirm-page"
+                      disabled data-action="confirmAddOpenCodeModelsPage">
+                      <svg viewBox="0 0 24 24"
+                        style="width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;">
+                        <path d="M20 6L9 17l-5-5" />
+                      </svg>
+                      <span class="model-action-label"> 保存选择</span>
+                    </button>
+                  </div>
+                </div>
+                <div class="cb-add-models-body" id="opencode-add-models-list-page">
+                  <div class="cb-add-models-empty">请从左侧选择一个供应商</div>
+                </div>
+              </div>
+
+              <!-- 底部能力卡片 (100% 对齐 CodeBuddy / WorkBuddy 设计) -->
+              <div class="glass-card cb-add-caps-card">
+                <div class="cb-add-caps-title">能力</div>
+                <div class="cb-add-caps">
+                  <label class="cb-add-cap-chip">
+                    <input type="checkbox" id="opencode-add-page-images" checked>
+                    <span>图片</span>
+                  </label>
+                  <label class="cb-add-cap-chip">
+                    <input type="checkbox" id="opencode-add-page-tools" checked>
+                    <span>工具</span>
+                  </label>
+                  <label class="cb-add-cap-chip">
+                    <input type="checkbox" id="opencode-add-page-reasoning" checked>
+                    <span>推理</span>
+                  </label>
+                </div>
+              </div>
+
+            </section>
+          </div>
+        </div>
         <!-- ═══════ PAGE: PLATFORM · ZCODE ═══════ -->
         <div class="page" id="page-platform-zcode" role="tabpanel" aria-labelledby="tab-platforms">
           <div class="platform-console-hero glass-card">
@@ -4349,55 +5163,71 @@
               </div>
             </div>
             <!-- 表单区 -->
-            <div class="card-body" style="padding:20px 22px; max-height:60vh; overflow-y:auto;">
-              <div
-                style="font-size:11px; font-weight:700; color:var(--text-muted); letter-spacing:0.5px; margin-bottom:12px;">
-                必填信息</div>
-              <div class="cb-edit-field">
-                <label for="cb-edit-id">模型 ID <span style="color:var(--danger);">*</span></label>
-                <input type="text" id="cb-edit-id" placeholder="模型唯一标识符，如 gpt-5.4">
-              </div>
-              <div class="cb-edit-field">
-                <label for="cb-edit-vendor">供应商 <span style="color:var(--danger);">*</span></label>
-                <input type="text" id="cb-edit-vendor" placeholder="模型供应商，如 OpenAI / Google / 黑与白">
-              </div>
-              <div class="cb-edit-field">
-                <label for="cb-edit-url">接口地址 <span style="color:var(--danger);">*</span></label>
-                <input type="text" id="cb-edit-url" placeholder="API 地址">
-              </div>
-              <div class="cb-edit-field">
-                <label for="cb-edit-key">API 密钥 <span style="color:var(--danger);">*</span></label>
-                <input type="text" id="cb-edit-key" placeholder="API 密钥（实际密钥值，非环境变量名）">
-              </div>
-
-              <div
-                style="font-size:11px; font-weight:700; color:var(--text-muted); letter-spacing:0.5px; margin-bottom:12px; margin-top:8px;">
-                选填参数</div>
-              <div class="cb-edit-field">
-                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
-                  <label for="cb-edit-max-input" style="margin-bottom:0;">上下文窗口 (Token)</label>
-                  <button type="button" class="btn-ghost secondary" id="btn-cb-edit-recommend" style="font-size:11px; padding:2px 8px; height:24px; border-radius:6px; cursor:pointer;" data-action="cbFillRecommendedContext" title="根据当前模型 ID 填入官方推荐的上下文与输出设置">填入推荐值</button>
+            <div class="card-body cb-edit-modal-body" style="padding:18px 22px; max-height:65vh; overflow-y:auto; display:flex; flex-direction:column; gap:14px;">
+              <!-- 分组 1: 必填配置 -->
+              <div class="cb-edit-section">
+                <div class="cb-edit-section-header">
+                  <span class="cb-edit-section-tag">REQUIRED</span>
+                  <span class="cb-edit-section-title">基础配置</span>
                 </div>
-                <input type="number" id="cb-edit-max-input" placeholder="如 128000 / 500000 / 1000000">
-              </div>
-              <div class="cb-edit-field">
-                <label for="cb-edit-max-output">最大输出 Token</label>
-                <input type="number" id="cb-edit-max-output" placeholder="最大输出 token 数">
-              </div>
-              <div class="cb-edit-field">
-                <label for="cb-edit-temperature">温度</label>
-                <input type="number" id="cb-edit-temperature" placeholder="0~2，值越高输出越随机" step="0.1" min="0" max="2">
+                <div class="cb-edit-fields-grid">
+                  <div class="cb-edit-field">
+                    <label for="cb-edit-id">模型 ID <span style="color:var(--danger);">*</span></label>
+                    <input type="text" id="cb-edit-id" placeholder="模型唯一标识符，如 gpt-5.4">
+                  </div>
+                  <div class="cb-edit-field">
+                    <label for="cb-edit-vendor">供应商 <span style="color:var(--danger);">*</span></label>
+                    <input type="text" id="cb-edit-vendor" placeholder="模型供应商，如 OpenAI / Google / 自定义">
+                  </div>
+                  <div class="cb-edit-field">
+                    <label for="cb-edit-url">接口地址 <span style="color:var(--danger);">*</span></label>
+                    <input type="text" id="cb-edit-url" placeholder="API 基础地址，如 https://api.openai.com/v1">
+                  </div>
+                  <div class="cb-edit-field">
+                    <label for="cb-edit-key">API 密钥 <span style="color:var(--danger);">*</span></label>
+                    <input type="text" id="cb-edit-key" placeholder="API 密钥（实际密钥值，非环境变量名）">
+                  </div>
+                </div>
               </div>
 
-              <div
-                style="font-size:11px; font-weight:700; color:var(--text-muted); letter-spacing:0.5px; margin-bottom:12px; margin-top:8px;">
-                模型能力</div>
-              <div class="cb-edit-field">
-                <label>能力</label>
-                <div class="cb-edit-caps">
-                  <label><input type="checkbox" id="cb-edit-tools"> 工具调用</label>
-                  <label><input type="checkbox" id="cb-edit-images"> 图片</label>
-                  <label><input type="checkbox" id="cb-edit-reasoning"> 推理</label>
+              <!-- 分组 2: 选填参数 -->
+              <div class="cb-edit-section">
+                <div class="cb-edit-section-header">
+                  <span class="cb-edit-section-tag optional">OPTIONAL</span>
+                  <span class="cb-edit-section-title">上下文与生成参数</span>
+                </div>
+                <div class="cb-edit-fields-grid">
+                  <div class="cb-edit-field">
+                    <label for="cb-edit-max-input">上下文窗口</label>
+                    <div style="display:flex; gap:8px; align-items:center; min-width:0;">
+                      <input type="number" id="cb-edit-max-input" placeholder="如 128000 / 500000 / 1000000" style="flex:1;">
+                      <button type="button" class="btn-ghost secondary" id="btn-cb-edit-recommend" style="font-size:12px; height:34px; padding:0 12px; border-radius:7px; cursor:pointer; white-space:nowrap; flex-shrink:0;" data-action="cbFillRecommendedContext" title="根据当前模型 ID 填入官方推荐的上下文与输出设置">填入推荐值</button>
+                    </div>
+                  </div>
+                  <div class="cb-edit-field">
+                    <label for="cb-edit-max-output">最大输出</label>
+                    <input type="number" id="cb-edit-max-output" placeholder="最大生成 token 数，如 4096 / 8192 / 16384">
+                  </div>
+                  <div class="cb-edit-field">
+                    <label for="cb-edit-temperature">采样温度</label>
+                    <input type="number" id="cb-edit-temperature" placeholder="0~2，值越高输出越随机（默认 1.0）" step="0.1" min="0" max="2">
+                  </div>
+                </div>
+              </div>
+
+              <!-- 分组 3: 模型能力 -->
+              <div class="cb-edit-section">
+                <div class="cb-edit-section-header">
+                  <span class="cb-edit-section-tag caps">CAPABILITIES</span>
+                  <span class="cb-edit-section-title">模型能力支持</span>
+                </div>
+                <div class="cb-edit-field" style="margin-bottom:0;">
+                  <label>支持特性</label>
+                  <div class="cb-edit-caps">
+                    <label><input type="checkbox" id="cb-edit-tools"> 工具调用</label>
+                    <label><input type="checkbox" id="cb-edit-images"> 图片识别</label>
+                    <label><input type="checkbox" id="cb-edit-reasoning"> 深度推理</label>
+                  </div>
                 </div>
               </div>
             </div>
@@ -4503,6 +5333,256 @@
           </div>
         </div>
 
+        <!-- ═══════ PAGE: PLATFORM · GROK ═══════ -->
+        <div class="page" id="page-platform-grok" role="tabpanel" aria-labelledby="tab-platforms">
+          <section class="codex-manager-shell grok-manager-shell">
+            <div class="platform-console-hero glass-card codex-manager-hero">
+              <div class="platform-console-titlebar">
+                <div class="platform-console-icon codex-manager-icon"><img src="assets/icons/platform-grok.svg"
+                    alt="Grok"></div>
+                <div class="platform-console-titlewrap">
+                  <strong>Grok</strong>
+                  <span id="platform-grok-headline">管理 Grok Build CLI 的自定义模型与端点。一键切换写入 ~/.grok/config.toml，重启终端 grok 生效。</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="control-bar glass-card codex-manager-toolbar">
+              <div class="codex-toolbar-left">
+                <h2>Grok 模型配置</h2>
+                <div class="codex-search">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="11" cy="11" r="8"></circle>
+                    <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                  </svg>
+                  <input type="text" id="grok-config-search" placeholder="搜索配置、模型或地址"
+                    data-action="onGrokConfigSearch" data-events="input">
+                </div>
+              </div>
+              <div class="codex-toolbar-actions">
+                <button class="btn-primary codex-add-config-btn" data-action="openGrokAddModal">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="12" y1="5" x2="12" y2="19" />
+                    <line x1="5" y1="12" x2="19" y2="12" />
+                  </svg>
+                  添加模型
+                </button>
+                <button class="btn-ghost accent codex-refresh-btn" data-action="refreshPlatforms">刷新</button>
+                <button class="btn-ghost warn codex-restore-btn" id="platform-grok-restore"
+                  data-action="restorePlatform" data-arg="grok">还原备份</button>
+              </div>
+            </div>
+
+            <div class="glass-card codex-card-list-shell">
+              <div class="codex-card-list" id="platform-grok-config-list">
+                <div class="codex-table-empty">正在加载配置…</div>
+              </div>
+            </div>
+
+            <p class="codex-safe-note">配置文件路径：<code
+                id="grok-config-path-label">~/.grok/config.toml</code>。Grok Build CLI 原生支持 OpenAI 兼容 API；切换后在终端重新执行 <code>grok</code> 即可生效，无需保持 AnyBridge 运行。</p>
+          </section>
+        </div>
+
+        <div class="modal-overlay" id="grok-config-modal">
+          <div class="modal-container codex-config-modal grok-config-modal">
+            <div class="modal-header codex-config-modal-head">
+              <div>
+                <div class="modal-title" id="grok-config-modal-title">添加 Grok 配置</div>
+                <div class="codex-config-modal-sub" id="grok-config-modal-sub">从现有供应商创建一份 Grok Build CLI 自定义模型配置。
+                </div>
+              </div>
+              <button class="modal-close-icon" aria-label="关闭配置编辑" data-action="closeGrokConfigEditor">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"
+                  stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M18 6L6 18"></path>
+                  <path d="M6 6l12 12"></path>
+                </svg>
+              </button>
+            </div>
+            <div class="modal-body codex-config-modal-body">
+              <input type="hidden" id="grok-config-edit-id">
+              <input type="hidden" id="grok-config-source-id">
+              <div class="codex-config-editor-layout" id="grok-config-editor-layout">
+                <aside class="codex-config-source" id="grok-config-source-wrap">
+                  <div class="codex-config-source-head">
+                    <span>选择供应商</span>
+                    <strong id="grok-config-source-count">0</strong>
+                  </div>
+                  <div class="codex-config-source-list" id="grok-config-source-list"></div>
+                  <div class="codex-config-source-hint" id="grok-config-source-hint">选择一个 OpenAI 供应商，右侧会自动带入名称、地址、密钥与模型。
+                  </div>
+                </aside>
+                <div class="codex-config-form-grid">
+                  <section class="config-section">
+                    <div class="config-section-title">基础信息</div>
+                    <div class="config-section-body">
+                      <label class="codex-config-field">
+                        <span>配置名称</span>
+                        <input id="grok-config-name" class="field-input" placeholder="例如：DeepSeek">
+                      </label>
+                      <label class="codex-config-field">
+                        <span>Base URL</span>
+                        <input id="grok-config-base-url" class="field-input" placeholder="https://api.deepseek.com/v1">
+                      </label>
+                      <div class="codex-config-field">
+                        <div class="codex-field-header-row">
+                          <span>API Key</span>
+                          <button type="button" class="codex-field-action-btn" id="grok-config-sync-token-btn"
+                            data-action="syncGrokConfigTokenFromSource" title="从关联的来源供应商拉取最新令牌和地址">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                              <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/>
+                            </svg>
+                            <span>同步来源</span>
+                          </button>
+                        </div>
+                        <div class="password-field-wrap">
+                          <input id="grok-config-api-key" class="field-input" type="password" placeholder="sk-..." autocomplete="off">
+                          <button type="button" class="password-toggle-btn" id="grok-config-api-key-toggle" aria-label="显示/隐藏 API Key"
+                            data-action="togglePasswordVisibility" data-args='["grok-config-api-key", "grok-config-api-key-toggle"]'>
+                            <svg class="eye-open" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                              <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"></path>
+                              <circle cx="12" cy="12" r="3"></circle>
+                            </svg>
+                            <svg class="eye-closed" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                              <path d="m2 2 20 20"></path>
+                              <path d="M9.88 9.88a3 3 0 1 0 4.24 4.24"></path>
+                              <path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68"></path>
+                              <path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61"></path>
+                            </svg>
+                          </button>
+                        </div>
+                      </div>
+                      <label class="codex-config-field">
+                        <span>模型名称 (Model)</span>
+                        <input id="grok-config-model" class="field-input" placeholder="例如：deepseek-chat、gpt-4o">
+                      </label>
+                      <label class="codex-config-field">
+                        <span>协议后端 (API Backend)</span>
+                        <select id="grok-config-backend" class="field-input">
+                          <option value="chat_completions">chat_completions（标准 OpenAI 兼容，默认）</option>
+                          <option value="responses">responses（OpenAI Responses 协议）</option>
+                          <option value="messages">messages（Anthropic Messages 协议）</option>
+                        </select>
+                      </label>
+                    </div>
+                  </section>
+                </div>
+              </div>
+            </div>
+            <div class="modal-footer codex-config-modal-foot">
+              <button class="modal-btn modal-btn-ghost" type="button" data-action="closeGrokConfigEditor">取消</button>
+              <button class="modal-btn modal-btn-confirm" type="button" data-action="saveGrokConfigEditor" data-args="[false]">保存配置</button>
+              <button class="btn-primary codex-modal-apply-btn" type="button" data-action="saveGrokConfigEditor" data-args="[true]">保存并生效</button>
+            </div>
+          </div>
+        </div>
+        <!-- ═══════ PAGE: PLATFORM · GROK · 添加模型（独立页面） ═══════ -->
+        <div class="page" id="page-platform-grok-add" role="tabpanel" aria-labelledby="tab-platforms">
+          <div class="platform-console-hero model-add-hero glass-card">
+            <div class="platform-console-titlebar">
+              <button class="btn-ghost platform-console-back" data-action="navigateTo" data-arg="platform-grok">← 返回</button>
+              <div class="platform-console-titlewrap">
+                <strong>添加模型 · Grok</strong>
+                <span class="platform-console-sub">从统一供应商模型池选择并勾选模型，将自动生成 Grok Build CLI 自定义模型配置并写入 ~/.grok/config.toml。</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="cb-add-layout">
+            <!-- 左列：供应商列表 -->
+            <aside class="cb-add-sidebar glass-card">
+              <div class="cb-add-search">
+                <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" fill="none" stroke-width="2"
+                  stroke-linecap="round" stroke-linejoin="round">
+                  <circle cx="11" cy="11" r="8" />
+                  <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                </svg>
+                <input type="text" id="grok-add-search" placeholder="搜索供应商…" data-action="onGrokAddSearch" data-events="input">
+                <div class="provider-sort-control platform-add-sort-control" id="grokAddSortControl">
+                  <button type="button" class="provider-sort-trigger platform-add-sort-trigger" id="grokAddSortTrigger"
+                    aria-haspopup="listbox" aria-expanded="false"
+                    aria-controls="grokAddSortMenu" aria-label="供应商排序" title="供应商排序" data-action="toggleGrokAddSort" data-pass-event>
+                    <svg class="provider-sort-icon" width="14" height="14" viewBox="0 0 24 24" fill="none"
+                      stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"
+                      aria-hidden="true">
+                      <path d="M8 3v18"></path>
+                      <path d="m4 7 4-4 4 4"></path>
+                      <path d="M16 21V3"></path>
+                      <path d="m20 17-4 4-4-4"></path>
+                    </svg>
+                    <span id="grokAddSortLabel">默认排序</span>
+                    <svg class="provider-sort-caret" width="13" height="13" viewBox="0 0 24 24" fill="none"
+                      stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"
+                      aria-hidden="true">
+                      <path d="m6 9 6 6 6-6"></path>
+                    </svg>
+                  </button>
+                  <div class="provider-sort-menu platform-add-sort-menu" id="grokAddSortMenu" role="listbox"
+                    aria-label="供应商排序">
+                    <button type="button" class="provider-sort-option platform-add-sort-option" role="option"
+                      data-sort-mode="default" data-action="chooseGrokAddSortMode" data-arg="default">默认排序</button>
+                    <button type="button" class="provider-sort-option platform-add-sort-option" role="option"
+                      data-sort-mode="name-asc" data-action="chooseGrokAddSortMode" data-arg="name-asc">名称正序</button>
+                    <button type="button" class="provider-sort-option platform-add-sort-option" role="option"
+                      data-sort-mode="name-desc" data-action="chooseGrokAddSortMode" data-arg="name-desc">名称反序</button>
+                  </div>
+                </div>
+              </div>
+              <div class="cb-add-provider-list" id="grok-add-provider-list"></div>
+            </aside>
+
+            <!-- 右列：模型列表 -->
+            <section class="cb-add-main">
+              <div class="glass-card cb-add-models-card">
+                <div class="cb-add-models-head">
+                  <div>
+                    <div class="cb-add-models-title" id="grok-add-models-title">请选择供应商</div>
+                    <div class="cb-add-models-sub" id="grok-add-models-sub">左侧选择一个供应商，右侧将展示其可用模型</div>
+                  </div>
+                  <div style="display:flex; gap:8px;">
+                    <button class="btn-ghost accent" data-action="grokAddSelectAll">全选</button>
+                    <button class="btn-ghost secondary" data-action="grokAddSelectNone">全不选</button>
+                    <button class="btn-primary" id="grok-add-confirm-page"
+                      disabled data-action="confirmAddGrokModelsPage">
+                      <svg viewBox="0 0 24 24"
+                        style="width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;">
+                        <path d="M20 6L9 17l-5-5" />
+                      </svg>
+                      <span class="model-action-label"> 保存选择</span>
+                    </button>
+                  </div>
+                </div>
+                <div class="cb-add-models-body" id="grok-add-models-list-page">
+                  <div class="cb-add-models-empty">请从左侧选择一个供应商</div>
+                </div>
+              </div>
+
+              <!-- 协议后端卡片 (对齐 CodeBuddy 能力卡片设计) -->
+              <div class="glass-card cb-add-caps-card">
+                <div class="cb-add-caps-title">协议后端 (API Backend)</div>
+                <div class="cb-add-caps">
+                  <label class="cb-add-cap-chip">
+                    <input type="radio" name="grok-add-backend-radio" value="chat_completions" checked data-action="setGrokAddBackend" data-events="change" data-arg="chat_completions">
+                    <span>chat_completions (OpenAI 兼容 · 默认)</span>
+                  </label>
+                  <label class="cb-add-cap-chip">
+                    <input type="radio" name="grok-add-backend-radio" value="responses" data-action="setGrokAddBackend" data-events="change" data-arg="responses">
+                    <span>responses (OpenAI Responses)</span>
+                  </label>
+                  <label class="cb-add-cap-chip">
+                    <input type="radio" name="grok-add-backend-radio" value="messages" data-action="setGrokAddBackend" data-events="change" data-arg="messages">
+                    <span>messages (Anthropic Messages)</span>
+                  </label>
+                </div>
+                <input type="hidden" id="grok-add-backend" value="chat_completions">
+              </div>
+
+            </section>
+          </div>
+        </div>
         <!-- ═══════ PAGE: SETTINGS ═══════ -->
         <div class="page" id="page-settings" role="tabpanel" aria-label="设置">
           <section class="glass-card platform-settings-card">
@@ -5070,6 +6150,200 @@
     </div>
   </div>
 
+
+  <!-- 平台接入与环境检测设置弹窗 (Devin / Windsurf) -->
+  <div id="platform-settings-modal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="platformSettingsModalTitle" data-action="closePlatformSettingsModal" data-only-self>
+    <div class="modal-container platform-settings-modal">
+      
+      <!-- 头部：标题与关闭 -->
+      <div class="modal-header">
+        <div class="modal-title">
+          <span class="modal-icon" style="color: var(--accent);">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="3"></circle>
+              <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.2a1.7 1.7 0 0 0-1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.2a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3 1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.2a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8 1.7 1.7 0 0 0 1.5 1h.2a2 2 0 1 1 0 4h-.2a1.7 1.7 0 0 0-1.5 1z"></path>
+            </svg>
+          </span>
+          <span id="platformSettingsModalTitle">Devin / Windsurf 接入设置</span>
+        </div>
+        <button type="button" class="modal-close-icon" aria-label="关闭" data-action="closePlatformSettingsModal" title="关闭 (Esc)">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M18 6 6 18"></path>
+            <path d="m6 6 12 12"></path>
+          </svg>
+        </button>
+      </div>
+
+      <!-- 选项卡导航 (统一 AnyBridge 风格) -->
+      <div class="platform-modal-tabs">
+        <button type="button" class="platform-modal-tab active" id="platform-settings-tab-btn-health" data-action="switchPlatformSettingsTab" data-arg="health">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
+          </svg>
+          <span>环境检测</span>
+        </button>
+        <button type="button" class="platform-modal-tab" id="platform-settings-tab-btn-access" data-action="switchPlatformSettingsTab" data-arg="access">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="3"></circle>
+            <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.2a1.7 1.7 0 0 0-1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.2a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3 1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.2a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8 1.7 1.7 0 0 0 1.5 1h.2a2 2 0 1 1 0 4h-.2a1.7 1.7 0 0 0-1.5 1z"></path>
+          </svg>
+          <span>接入设置</span>
+        </button>
+      </div>
+
+      <!-- 内容主体视口 -->
+      <div class="modal-body platform-settings-body">
+
+        <!-- ═══ 面板 1：环境检测 ═══ -->
+        <div class="platform-settings-panel active" id="platform-settings-panel-health">
+          
+          <!-- 操作栏 -->
+          <div class="platform-health-toolbar">
+            <div class="platform-health-actions-left">
+              <button type="button" class="btn-primary" data-oid="health-run-btn" data-action="runHealthcheck">
+                <span class="health-btn-icon">▶</span> 一键检测
+              </button>
+              <button type="button" class="btn-ghost success" data-oid="health-generate-cert-btn" data-action="generateCertsFromHealth">
+                生成证书
+              </button>
+              <button type="button" class="btn-ghost success" data-oid="health-install-cert-btn" data-action="installCaFromHealth">
+                安装证书
+              </button>
+              <button type="button" class="btn-ghost warn" data-oid="health-reinstall-cert-btn" data-action="reinstallCaFromHealth" title="清理旧证书、重新生成并安装">
+                清理并重装
+              </button>
+              <button type="button" class="btn-ghost danger" data-oid="health-uninstall-cert-btn" data-action="uninstallCaFromHealth">
+                卸载证书
+              </button>
+              <button type="button" class="btn-ghost warn" data-oid="health-cleanup-legacy-btn" style="display:none;" data-action="cleanupLegacyCaFromHealth">
+                清理老证书
+              </button>
+            </div>
+            <div class="platform-health-actions-right">
+              <button type="button" class="btn-ghost accent" data-oid="health-copy-md-btn" disabled data-action="copyHealthMarkdown">
+                复制报告
+              </button>
+              <button type="button" class="btn-ghost accent" data-oid="health-export-md-btn" disabled data-action="exportHealthMarkdown">
+                导出报告
+              </button>
+            </div>
+          </div>
+
+          <!-- 证书安装进度条 -->
+          <div class="health-install-progress" data-oid="health-install-progress" hidden>
+            <div class="health-install-progress-top">
+              <span class="health-install-progress-dot"></span>
+              <span class="health-install-progress-text" data-oid="health-install-progress-text">等待安装</span>
+              <span class="health-install-progress-percent" data-oid="health-install-progress-percent">0%</span>
+            </div>
+            <div class="health-install-progress-track">
+              <div class="health-install-progress-fill" data-oid="health-install-progress-fill" style="width:0%"></div>
+            </div>
+          </div>
+
+          <!-- 诊断状态摘要条 -->
+          <div class="health-summary platform-health-summary-box" data-oid="health-summary">
+            <div class="health-summary-empty">点击「一键检测」开始诊断 AnyBridge 的运行环境（证书、路径、配置、Sidecar、端口、模型映射与供应商连通性）。</div>
+          </div>
+
+          <!-- 诊断结果卡片组 -->
+          <div class="health-groups" data-oid="health-groups"></div>
+        </div>
+
+        <!-- ═══ 面板 2：接入设置 ═══ -->
+        <div class="platform-settings-panel" id="platform-settings-panel-access">
+          <div class="platform-settings-access-list">
+            
+            <div class="setting-row">
+              <div class="setting-meta">
+                <div class="setting-label">切换到代理</div>
+                <div class="setting-desc">点击平台页「切换到代理」时写入 http.proxy / http.proxyStrictSSL；还原直连时恢复备份。</div>
+              </div>
+              <div class="setting-ctrl">
+                <span class="tag" data-oid="proxySwitchModeTag">自动</span>
+              </div>
+            </div>
+
+            <div class="setting-row">
+              <div class="setting-meta">
+                <div class="setting-label">重启提示</div>
+                <div class="setting-desc">切换代理或还原直连后询问是否重启 IDE；可在提示框中选择以后自动立即重启。</div>
+              </div>
+              <div class="setting-ctrl setting-restart-pref-ctrl">
+                <div class="toggle-sm" data-ide-restart-toggle data-oid="ideRestartPromptToggle" role="switch" aria-label="自动立即重启"></div>
+                <span class="setting-restart-pref-label" data-oid="ideRestartPromptMode">每次询问</span>
+                <button type="button" class="btn-ghost secondary" data-oid="ideRestartPromptResetBtn" data-action="resetIdeRestartPromptPreference">恢复询问</button>
+              </div>
+            </div>
+
+            <div class="setting-row">
+              <div class="setting-meta">
+                <div class="setting-label">MITM 证书</div>
+                <div class="setting-desc" data-oid="cert-status">首次使用请生成证书；切换到代理时会写入 http.proxyStrictSSL: false。</div>
+              </div>
+              <div class="setting-ctrl">
+                <button type="button" class="btn-ghost accent" data-action="openCertsDir">证书目录</button>
+                <button type="button" class="btn-ghost accent" data-action="openConfigDir">配置目录</button>
+                <button type="button" class="btn-ghost success" data-action="generateCerts">生成证书</button>
+              </div>
+            </div>
+
+            <div class="setting-row setting-row-stacked">
+              <div class="setting-meta">
+                <div class="setting-label">IDE 安装路径</div>
+                <div class="setting-desc" data-oid="ide-path-status">自动探测运行中进程、默认目录和注册表；失败时可手动指定。</div>
+              </div>
+              <div class="setting-ctrl setting-path-ctrl" style="width:100%;display:flex;align-items:center;gap:8px;">
+                <input class="field-input" data-oid="idePath" placeholder="自动探测中或手动指定 IDE 可执行文件路径..." style="flex:1;min-width:0;">
+                <button type="button" class="btn-ghost accent" data-action="detectIdePath" style="white-space:nowrap;">探测</button>
+                <button type="button" class="btn-ghost success" data-action="saveIdePath" style="white-space:nowrap;">保存</button>
+              </div>
+            </div>
+
+            <div class="setting-row">
+              <div class="setting-meta">
+                <div class="setting-label">流量路由端口</div>
+                <div class="setting-desc">本地服务监听与分流端口配置。</div>
+              </div>
+              <div class="setting-ctrl">
+                <div class="route-port-stack" style="display:flex;gap:8px;">
+                  <label style="display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--text-secondary);">
+                    <span>MITM 代理</span>
+                    <input class="input-sm" value=":7450" readonly style="width:64px;text-align:center;font-family:var(--font-mono);font-size:11.5px;padding:3px 6px;border:1px solid var(--border);border-radius:6px;background:var(--bg-input);">
+                  </label>
+                  <label style="display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--text-secondary);">
+                    <span>直连代理</span>
+                    <input class="input-sm" value=":7451" readonly style="width:64px;text-align:center;font-family:var(--font-mono);font-size:11.5px;padding:3px 6px;border:1px solid var(--border);border-radius:6px;background:var(--bg-input);">
+                  </label>
+                </div>
+              </div>
+            </div>
+
+            <div class="setting-row">
+              <div class="setting-meta">
+                <div class="setting-label">解锁模型列表</div>
+                <div class="setting-desc">拦截 GetUserStatus 响应，解除 IDE 下拉框中灰色锁定项的限制。仅对 Windsurf / Devin 生效。</div>
+              </div>
+              <div class="setting-ctrl">
+                <label class="toggle-switch" title="开启后解除模型锁定限制">
+                  <input id="modal-enhancement-unlockModels" data-oid="enhancement-unlockModels" type="checkbox" data-action-chain="[{&quot;fn&quot;:&quot;toggleEnhancement&quot;,&quot;args&quot;:[&quot;unlockModels&quot;],&quot;passThis&quot;:true},{&quot;fn&quot;:&quot;saveProxyEnhancement&quot;}]" data-action="toggleEnhancement" data-events="change">
+                  <span class="toggle-slider"></span>
+                </label>
+              </div>
+            </div>
+
+          </div>
+        </div>
+
+      </div>
+
+      <!-- 底部 Footer -->
+      <div class="modal-footer">
+        <button type="button" class="modal-btn modal-btn-cancel" data-action="closePlatformSettingsModal">关闭</button>
+      </div>
+
+    </div>
+  </div>
   <!-- 模型检测项选择 -->
   <div id="eval-check-modal" class="modal-overlay">
     <div class="modal-container eval-check-modal-container">
@@ -5728,149 +7002,160 @@
     </div>
   </div>
 
-  <!-- 版本跃迁更新成功提示模态框 -->
+  <!-- 版本跃迁更新成功提示模态框 (对齐 Cockpit Tools 设计) -->
   <div id="update-jump-modal" class="modal-overlay">
-    <div class="modal-container update-success-modal">
-      <div class="modal-header update-success-header">
-        <div class="modal-title">
-          <span class="modal-icon update-success-icon">
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
-              stroke-linecap="round" stroke-linejoin="round">
-              <path d="M4 15c2-1 4-1 6 0s4 1 6 0 3-1 4 0"></path>
-              <path d="M7 10l1.5 1.5L11 8"></path>
-              <path d="M15 5h.01"></path>
-              <path d="M18 8h.01"></path>
-              <path d="M14 12h.01"></path>
-              <path d="M20 4h.01"></path>
+    <div class="modal-container update-modal">
+      <!-- 头部：彩炮图标 + 🎉 更新成功！ + 关闭按钮 -->
+      <div class="update-modal-header">
+        <div class="update-modal-title-group">
+          <div class="update-modal-icon-badge" style="background: linear-gradient(135deg, #2563eb 0%, #3b82f6 100%);">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M5.8 11.3 2 22l10.7-3.79"/>
+              <path d="M4 3h.01"/>
+              <path d="M22 8h.01"/>
+              <path d="M15 2h.01"/>
+              <path d="M22 20h.01"/>
+              <path d="m22 2-2.24.75a2.9 2.9 0 0 0-1.96 3.12v0c.1.86-.57 1.63-1.45 1.63h-.38c-.86 0-1.6.6-1.76 1.44L14 12"/>
+              <path d="m22 13-.82-.33c-.86-.34-1.82.2-1.98 1.11v0c-.11.66-.72 1.12-1.39.97l-.7-.16c-.78-.17-1.57.25-1.84.99L15 16"/>
+              <path d="m11 2 .33.82c.34.86-.2 1.82-1.11 1.98v0C9.56 4.91 9.1 5.52 9.25 6.19l.16.7c.17.78-.25 1.57-.99 1.84L8 9"/>
             </svg>
-          </span>
-          <span>更新成功！</span>
+          </div>
+          <span class="update-modal-title-text">🎉 更新成功！</span>
         </div>
-        <button type="button" class="modal-close-icon" aria-label="关闭" data-action="closeUpdateJumpModal">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
-            stroke-linecap="round" stroke-linejoin="round">
-            <path d="M18 6 6 18"></path>
-            <path d="m6 6 12 12"></path>
+        <button class="update-modal-close-btn" data-action="closeUpdateJumpModal" title="关闭">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
           </svg>
         </button>
       </div>
-      <div class="modal-body update-success-body">
-        <div id="update-jump-version" class="update-success-version">v1.0.1</div>
-        <p class="update-success-message">
-          已从 <span id="update-jump-prev-version">v1.0.0</span> 更新到 <span id="update-jump-current-version">v1.0.1</span>
-        </p>
-        <div class="update-success-notes">
-          <div class="update-success-notes-title">更新内容</div>
-          <div id="update-jump-notes" class="update-success-notes-content">无更新内容说明</div>
+
+      <div class="update-modal-body">
+        <!-- 版本信息 -->
+        <div class="update-version-row">
+          <div class="update-target-version" id="update-jump-version">v1.0.0</div>
+          <div class="update-version-desc" id="update-jump-desc">已从 v0.0.0 更新到 v1.0.0</div>
+        </div>
+
+        <!-- 更新内容 -->
+        <div class="update-notes-section">
+          <div class="update-notes-title">更新内容</div>
+          <div id="update-jump-notes" class="update-notes-content">
+            载入中...
+          </div>
         </div>
       </div>
-      <div class="modal-footer">
-        <button id="update-jump-close-btn" type="button"
-          class="modal-btn modal-btn-confirm update-success-confirm">我知道了</button>
+
+      <!-- 底部操作栏 (单个 我知道了 按钮) -->
+      <div class="update-modal-footer">
+        <button id="update-jump-close-btn" type="button" class="update-btn update-btn-primary" data-action="closeUpdateJumpModal">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/>
+          </svg>
+          <span>我知道了</span>
+        </button>
       </div>
     </div>
   </div>
 
-  <!-- 发现更新/下载更新模态框 -->
+  <!-- 发现更新/下载更新模态框 (对齐 Cockpit Tools 设计) -->
   <div id="updater-prompt-modal" class="modal-overlay">
-    <div class="modal-container" style="max-width: 500px;">
-      <div class="modal-header">
-        <div class="modal-title">
-          <span class="modal-icon" id="updater-modal-icon" style="color: var(--accent);">
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
-              stroke-linecap="round" stroke-linejoin="round">
-              <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"></path>
+    <div class="modal-container update-modal">
+      <!-- 头部：图标 + 标题 + 关闭按钮 -->
+      <div class="update-modal-header">
+        <div class="update-modal-title-group">
+          <div class="update-modal-icon-badge" id="updater-modal-icon">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/>
             </svg>
-          </span>
-          <span id="updater-modal-title-text">检测到新版本可用！</span>
+          </div>
+          <span id="updater-modal-title-text" class="update-modal-title-text">发现新版本</span>
         </div>
+        <button class="update-modal-close-btn" data-action="closeUpdaterPromptModal" title="关闭">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
       </div>
-      <div class="modal-body" style="max-height: 360px; overflow-y: auto; padding-right: 8px;">
+
+      <div class="update-modal-body">
         <!-- 版本信息 -->
-        <p style="font-weight: 600; font-size: 14px; margin-bottom: 8px;">
-          新版本：<span id="updater-target-version"
-            style="color: var(--accent); font-family: var(--font-mono);">v1.0.1</span>
-        </p>
-        <!-- 更新内容 -->
-        <div
-          style="background: var(--bg-primary); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 12px 16px; font-size: 13px; margin-bottom: 12px;">
-          <div style="font-weight: bold; margin-bottom: 6px; color: var(--text-primary);">更新内容：</div>
-          <div id="updater-target-notes"
-            style="white-space: pre-wrap; font-family: var(--font-body); line-height: 1.5; color: var(--text-secondary); min-height: 72px; max-height: 180px; overflow-y: auto;">
-            载入中...
-          </div>
+        <div class="update-version-row">
+          <div class="update-target-version" id="updater-target-version">v1.0.0</div>
+          <div class="update-version-desc" id="updater-version-desc">当前版本 —，新版本已可用。</div>
         </div>
 
-        <!-- 下载进度条区 -->
-        <div id="updater-progress-container" style="display: none; margin-top: 14px;">
-          <div
-            style="display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 6px; font-family: var(--font-mono);">
-            <span id="updater-progress-status" style="color: var(--text-secondary);">正在下载更新包...</span>
-            <span id="updater-progress-percent" style="color: var(--accent); font-weight: bold;">0%</span>
-          </div>
-          <div
-            style="width: 100%; height: 8px; background: var(--bg-primary); border-radius: 4px; overflow: hidden; border: 1px solid var(--border);">
-            <div id="updater-progress-bar"
-              style="width: 0%; height: 100%; background: linear-gradient(90deg, var(--accent), var(--accent-secondary)); transition: width 0.1s ease;">
+        <!-- 下载进度条区 (对应截图二：位于版本说明与更新内容之间) -->
+        <div id="updater-progress-container" class="update-progress-container" style="display: none;">
+          <div class="update-progress-bar-row">
+            <div class="update-progress-track">
+              <div id="updater-progress-bar" class="update-progress-fill" style="width: 0%;"></div>
             </div>
-          </div>
-        </div>
-
-        <!-- 下载完成提示 -->
-        <div id="updater-ready-container" style="display: none; margin-top: 14px;">
-          <div
-            style="display: flex; align-items: center; gap: 8px; padding: 10px 14px; background: rgba(34,197,94,0.08); border: 1px solid rgba(34,197,94,0.2); border-radius: 8px;">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--success)" stroke-width="2.5">
-              <polyline points="9 11 12 14 22 4"></polyline>
-              <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path>
-            </svg>
-            <span style="font-size: 13px; color: var(--success);">更新已就绪，重启后即可生效</span>
-          </div>
-        </div>
-
-        <!-- 错误提示区 -->
-        <div id="updater-error-container" style="display: none; margin-top: 14px;">
-          <div
-            style="padding: 10px 14px; background: rgba(239,68,68,0.08); border: 1px solid rgba(239,68,68,0.2); border-radius: 8px;">
-            <div style="display: flex; align-items: flex-start; gap: 8px;">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--error, #ef4444)"
-                stroke-width="2.5" style="flex-shrink:0;margin-top:1px;">
+            <button class="update-progress-cancel" data-action="cancelUpdateDownload" title="取消下载">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <circle cx="12" cy="12" r="10"></circle>
                 <line x1="15" y1="9" x2="9" y2="15"></line>
                 <line x1="9" y1="9" x2="15" y2="15"></line>
               </svg>
-              <div style="flex:1;min-width:0;">
-                <div id="updater-error-message"
-                  style="font-size: 13px; color: var(--error, #ef4444); word-break: break-word;"></div>
-                <button id="updater-error-toggle"
- style="font-size: 11px; color: var(--text-muted); background: none; border: none; cursor: pointer; padding: 2px 0; margin-top: 4px; text-decoration: underline;" data-action="toggleUpdaterErrorDetails"></button>
-                <div id="updater-error-details"
-                  style="display: none; font-size: 11px; color: var(--text-muted); margin-top: 4px; word-break: break-all; font-family: var(--font-mono); background: var(--bg-primary); padding: 6px 8px; border-radius: 4px; max-height: 80px; overflow-y: auto;">
-                </div>
-              </div>
+            </button>
+          </div>
+          <div id="updater-progress-text" class="update-progress-text">下载中... 0%</div>
+        </div>
+
+        <!-- 下载完成提示 (对应截图一：v1.3.41 已就绪，重启后生效。) -->
+        <div id="updater-ready-container" class="update-status-box update-status-success" style="display: none;">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;">
+            <polyline points="20 6 9 17 4 12"></polyline>
+          </svg>
+          <span id="updater-ready-text">更新已就绪，重启后生效。</span>
+        </div>
+
+        <!-- 重试状态提示 -->
+        <div id="updater-retry-container" class="update-status-box update-status-retrying" style="display: none;">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="spin">
+            <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"></path>
+          </svg>
+          <span id="updater-retry-status">正在重试...</span>
+        </div>
+
+        <!-- 错误提示区 -->
+        <div id="updater-error-container" class="update-status-box update-status-error" style="display: none;">
+          <div style="display: flex; align-items: flex-start; gap: 8px; width: 100%;">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="flex-shrink:0;margin-top:2px;">
+              <circle cx="12" cy="12" r="10"></circle>
+              <line x1="15" y1="9" x2="9" y2="15"></line>
+              <line x1="9" y1="9" x2="15" y2="15"></line>
+            </svg>
+            <div style="flex:1;min-width:0;">
+              <div id="updater-error-message" style="font-size: 13px; font-weight: 500; word-break: break-word;"></div>
+              <button id="updater-error-toggle" class="update-error-toggle-btn" data-action="toggleUpdaterErrorDetails">查看详情</button>
+              <div id="updater-error-details" class="update-error-detail-box" style="display: none;"></div>
             </div>
           </div>
         </div>
 
-        <!-- 重试状态提示 -->
-        <div id="updater-retry-container" style="display: none; margin-top: 14px;">
-          <div
-            style="display: flex; align-items: center; gap: 8px; padding: 8px 14px; background: rgba(59,130,246,0.08); border: 1px solid rgba(59,130,246,0.2); border-radius: 8px;">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2"
-              style="animation: spin 1s linear infinite;">
-              <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"></path>
-            </svg>
-            <span id="updater-retry-status" style="font-size: 12px; color: var(--accent);">正在重试...</span>
+        <!-- 更新内容 -->
+        <div class="update-notes-section">
+          <div class="update-notes-title">更新内容</div>
+          <div id="updater-target-notes" class="update-notes-content">
+            载入中...
           </div>
         </div>
       </div>
-      <div class="modal-footer" id="updater-prompt-footer">
-        <button class="modal-btn modal-btn-cancel"
- style="font-size: 12px; padding: 10px 16px;" data-action="skipThisVersion">跳过此版本</button>
-        <button class="modal-btn modal-btn-cancel"
- style="font-size: 12px; padding: 10px 16px;" data-action="closeUpdaterPromptModal">稍后</button>
-        <button class="modal-btn modal-btn-confirm" id="updater-confirm-btn"
- style="font-size: 12px; padding: 10px 20px;" data-action="startDownloadAndUpdate">立即更新</button>
+
+      <!-- 底部操作栏 -->
+      <div class="update-modal-footer" id="updater-prompt-footer">
+        <button class="update-btn update-btn-secondary" data-action="closeUpdaterPromptModal">取消</button>
+        <button class="update-btn update-btn-secondary" data-action="skipThisVersion">跳过此版本</button>
+        <button class="update-btn update-btn-primary" id="updater-confirm-btn" data-action="startDownloadAndUpdate">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+            <polyline points="7 10 12 15 17 10"></polyline>
+            <line x1="12" y1="15" x2="12" y2="3"></line>
+          </svg>
+          <span>立即更新</span>
+        </button>
       </div>
     </div>
   </div>

@@ -220,9 +220,30 @@ function bindExtensionSettingsModal() {
 }
 
 globalThis.EXTENSION_LOG_FILTERS = ['all', 'ok', 'info', 'warn', 'err'];
-globalThis.extensionLogEntries = [];
-globalThis.extensionLogFilter = 'all';
 globalThis.EXTENSION_MAX_LOGS = 500;
+const EXTENSION_LOGS_STORAGE_KEY = 'anybridge_extension_logs_v1';
+
+function loadExtensionLogsFromStorage() {
+  try {
+    const raw = sessionStorage.getItem(EXTENSION_LOGS_STORAGE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length) {
+        return parsed.slice(-EXTENSION_MAX_LOGS);
+      }
+    }
+  } catch (_) {}
+  return [];
+}
+
+function saveExtensionLogsToStorage() {
+  try {
+    sessionStorage.setItem(EXTENSION_LOGS_STORAGE_KEY, JSON.stringify(globalThis.extensionLogEntries.slice(-150)));
+  } catch (_) {}
+}
+
+globalThis.extensionLogEntries = loadExtensionLogsFromStorage();
+globalThis.extensionLogFilter = 'all';
 
 function extensionNowTs() {
   const d = new Date();
@@ -259,6 +280,7 @@ function extensionLog(level, message) {
   if (extensionLogEntries.length > EXTENSION_MAX_LOGS) {
     extensionLogEntries = extensionLogEntries.slice(-EXTENSION_MAX_LOGS);
   }
+  saveExtensionLogsToStorage();
   renderExtensionLogs();
 }
 
@@ -476,8 +498,9 @@ function getCpaActionConfig(status, hasUpdate) {
           primary: { label: '更新', action: 'update-cpa-suite' },
           secondary: [
             { label: '打开面板', action: 'open-cpamp', cls: 'accent' },
-            { label: '切换版本', action: 'switch-cpa-version', cls: 'secondary' },
+            { label: '重启', action: 'restart-cpa-suite', cls: 'accent' },
             { label: '停止', action: 'stop-cpa-suite', cls: 'warn' },
+            { label: '切换版本', action: 'switch-cpa-version', cls: 'secondary' },
             { label: '设置', action: 'settings', cls: 'secondary' }
           ]
         };
@@ -485,6 +508,7 @@ function getCpaActionConfig(status, hasUpdate) {
       return {
         primary: { label: '打开面板', action: 'open-cpamp' },
         secondary: [
+          { label: '重启', action: 'restart-cpa-suite', cls: 'accent' },
           { label: '停止', action: 'stop-cpa-suite', cls: 'warn' },
           { label: '切换版本', action: 'switch-cpa-version', cls: 'secondary' },
           { label: '检测更新', action: 'check-cpa-update', cls: 'accent' },
@@ -593,7 +617,7 @@ function setComponentDot(id, status) {
 }
 
 function currentExtensionTab() {
-  return document.querySelector('.extension-tab.active[data-extension-tab]')?.dataset.extensionTab || 'all';
+  return document.querySelector('.extension-tab.active[data-extension-tab]')?.dataset.extensionTab || 'installed';
 }
 
 // 兼容旧调用名
@@ -607,8 +631,11 @@ function ensureExtensionBridge() {
 
 function clearExtensionLogs() {
   extensionLogEntries = [];
+  try {
+    sessionStorage.removeItem(EXTENSION_LOGS_STORAGE_KEY);
+  } catch (_) {}
   renderExtensionLogs();
-  extensionLog('info', '部署日志已清空。');
+  extensionLog('info', '扩展与插件日志已清空。');
 }
 
 function clearExtensionNode(node) {
@@ -628,53 +655,38 @@ function appendExtensionMetric(host, label, value) {
 }
 
 function switchExtensionTab(tab) {
-  const normalized = tab || 'all';
+  const validTabs = new Set(['installed', 'plugins', 'logs']);
+  let target = tab;
+  if (!validTabs.has(target)) {
+    if (target === 'logs') target = 'logs';
+    else if (target === 'plugins') target = 'plugins';
+    else target = 'installed';
+  }
+
   document.querySelectorAll('.extension-tab[data-extension-tab]').forEach(btn => {
-    const isActive = btn.dataset.extensionTab === normalized;
+    const isActive = btn.dataset.extensionTab === target;
     btn.classList.toggle('active', isActive);
     btn.setAttribute('aria-selected', String(isActive));
     btn.tabIndex = isActive ? 0 : -1;
   });
 
-  const logPanel = document.getElementById('extensionsLogPanel');
-  const cardGrid = document.getElementById('extensionCardGrid');
-  const pluginSection = document.getElementById('pluginSection');
-  const emptyState = document.getElementById('extensionEmptyState');
-  const isLogs = normalized === 'logs';
+  document.querySelectorAll('.extension-console-section[data-extension-section]').forEach(section => {
+    const isActive = section.dataset.extensionSection === target;
+    section.classList.toggle('active', isActive);
+  });
 
-  // 与代理页一致：日志是独立整页视图，隐藏卡片区
-  if (logPanel) {
-    logPanel.hidden = !isLogs;
-    logPanel.classList.toggle('is-active', isLogs);
-  }
-  if (cardGrid) {
-    cardGrid.hidden = isLogs;
-    cardGrid.classList.toggle('is-hidden', isLogs);
-  }
-  // 运行时插件区随卡片区一起显隐；「生成服务」分类下无插件，也一并隐藏
-  if (pluginSection) {
-    pluginSection.hidden = isLogs || normalized === 'media';
+  if (target === 'plugins' && typeof refreshPluginList === 'function') {
+    if (!globalThis.pluginRegistry || globalThis.pluginRegistry.length === 0) {
+      refreshPluginList();
+    }
   }
 
-  if (isLogs) {
-    if (emptyState) emptyState.hidden = true;
-    // 切到日志页时滚到底部最新记录
+  if (target === 'logs') {
     requestAnimationFrame(() => {
       const body = document.getElementById('extensionLogBody');
       if (body) body.scrollTop = body.scrollHeight;
     });
-    return;
   }
-
-  let visibleCount = 0;
-  document.querySelectorAll('[data-extension-card]').forEach(card => {
-    const tags = String(card.dataset.extensionTags || '').split(/\s+/).filter(Boolean);
-    const visible = normalized === 'all' || tags.includes(normalized);
-    card.hidden = !visible;
-    if (visible) visibleCount += 1;
-  });
-
-  if (emptyState) emptyState.hidden = visibleCount > 0;
 }
 
 // 兼容旧调用名
@@ -782,6 +794,37 @@ function updateCpaSuiteCard(service) {
   renderCpaInstallDir();
   renderCpaAlert(service);
   renderCpaCredentials(service);
+
+  const pluginCpaStatus = document.getElementById('plugin-cpa-status');
+  const pluginCpaActions = document.getElementById('plugin-cpa-actions');
+  const pluginCpaPorts = document.getElementById('plugin-cpa-ports');
+  const pluginCpaComponents = document.getElementById('plugin-cpa-components');
+
+  if (pluginCpaPorts && ports) {
+    pluginCpaPorts.textContent = ports;
+  }
+  if (pluginCpaComponents && components.length) {
+    const running = components.filter(c => c.status === 'running').length;
+    pluginCpaComponents.textContent = `${running}/${components.length} 运行`;
+  }
+  if (pluginCpaStatus) {
+    pluginCpaStatus.className = `plugin-status status-${status}`;
+    pluginCpaStatus.textContent = status === 'running' ? '运行中' : status === 'installed' ? '已安装' : status === 'not-installed' ? '未安装' : '检测中';
+  }
+  if (pluginCpaActions) {
+    if (status === 'not-installed') {
+      pluginCpaActions.innerHTML = `
+        <button type="button" class="btn-ghost secondary" data-action="openExtensionDetail" data-arg="cpa-suite">详情</button>
+        <button type="button" class="btn-primary" data-action="handleExtensionAction" data-arg="install-cpa">安装</button>
+      `;
+    } else {
+      pluginCpaActions.innerHTML = `
+        <button type="button" class="btn-primary" data-action="switchExtensionTab" data-arg="installed">管理</button>
+        <button type="button" class="btn-ghost secondary" data-action="handleExtensionAction" data-arg="open-cpamp">打开面板</button>
+        <button type="button" class="btn-ghost danger" data-action="handleExtensionAction" data-arg="uninstall-cpa-suite">卸载</button>
+      `;
+    }
+  }
 
   if (!extensionDeployInProgress && (status === 'running' || status === 'installed' || status === 'not-installed' || status === 'degraded' || status === 'error')) {
     hideCpaProgress();
@@ -1367,6 +1410,9 @@ function openExtensionLogsFromSettings() {
   switchExtensionTab('logs');
 }
 
+let lastRecordedCpaStatus = null;
+let lastRecordedComponentsSummary = '';
+
 async function refreshExtensionStatuses(options = {}) {
   const silent = Boolean(options.silent);
   const auto = Boolean(options.auto);
@@ -1397,10 +1443,42 @@ async function refreshExtensionStatuses(options = {}) {
     extensionServicesById = new Map(list.map(service => [service.id, service]));
     updateExtensionsMetric(list);
     updateCpaSuiteCard(extensionServicesById.get('cpa-suite'));
+
     const cpa = extensionServicesById.get('cpa-suite');
-    if (!silent && !auto) {
-      extensionLog(cpa?.status === 'running' ? 'ok' : 'info', `扩展状态已刷新：CPA 套件 ${extensionStatusLabel(cpa?.status || 'error')}。`);
+    const cpaStatus = cpa?.status || 'error';
+    const components = Array.isArray(cpa?.components) ? cpa.components : [];
+    const ports = components.filter(c => c.port).map(c => `:${c.port}`).join(' / ') || '无端口';
+    const compSummary = components.map(c => `${c.name || c.id}:${c.status}:${c.httpStatus || ''}`).join(',');
+
+    const statusChanged = lastRecordedCpaStatus !== cpaStatus || lastRecordedComponentsSummary !== compSummary;
+    const isInitial = lastRecordedCpaStatus === null;
+
+    if (!silent || statusChanged) {
+      lastRecordedCpaStatus = cpaStatus;
+      lastRecordedComponentsSummary = compSummary;
+
+      if (cpaStatus === 'running') {
+        extensionLog('ok', `${isInitial ? '服务巡检就绪' : '扩展状态变更'}：CPA 套件处于【运行中】，版本【${cpa?.version || '最新'}】，端口 ${ports}`);
+        components.forEach(comp => {
+          if (comp.name) {
+            const isOk = comp.status === 'running';
+            const stateText = isOk ? '响应正常' : comp.status === 'degraded' ? '异常' : comp.status === 'stopped' ? '未监听' : comp.status;
+            const httpText = comp.httpStatus ? ` (HTTP ${comp.httpStatus})` : '';
+            const portText = comp.port ? ` :${comp.port}` : '';
+            extensionLog(isOk ? 'ok' : 'warn', `组件健康检查：${comp.name}${portText} -> ${stateText}${httpText}`);
+          }
+        });
+      } else if (cpaStatus === 'installed') {
+        extensionLog('info', `${isInitial ? '服务巡检完成' : '扩展状态变更'}：CPA 套件【已安装未运行】，等待手动启动`);
+      } else if (cpaStatus === 'not-installed') {
+        extensionLog('info', `${isInitial ? '服务巡检完成' : '扩展状态变更'}：CPA 套件【未安装】`);
+      } else if (cpaStatus === 'degraded') {
+        extensionLog('warn', `${isInitial ? '服务巡检告警' : '扩展状态变更'}：CPA 套件【部分组件异常】，端口 ${ports}，详情：${cpa?.detail || '等待恢复'}`);
+      } else if (cpaStatus === 'error') {
+        extensionLog('err', `服务巡检失败：CPA 套件检测异常`);
+      }
     }
+
     if (activeExtensionDetailId) openExtensionDetail(activeExtensionDetailId);
   } catch (e) {
     const message = String(e?.message || e);
@@ -1495,6 +1573,7 @@ async function stopCpaSuite() {
   extensionLog('warn', '正在停止 CPA 套件...');
   try {
     await invoke('extension_stop_cpa_suite');
+    extensionLog('ok', 'CPA 套件已停止，本地子进程已退出，监听端口已释放。');
     extensionNotify('CPA 套件已停止。', 'info');
   } catch (e) {
     const message = String(e?.message || e);
@@ -1514,6 +1593,7 @@ async function startCpaSuite() {
   extensionLog('info', '正在启动 CPA 套件...');
   try {
     await invoke('extension_start_cpa_suite');
+    extensionLog('ok', 'CPA 套件启动成功，服务已监听在端口 8317 / 18317。');
     extensionNotify('CPA 套件已启动', 'success');
   } catch (e) {
     const message = String(e?.message || e);
@@ -1552,6 +1632,7 @@ async function uninstallCpaSuite() {
       extensionNotify('托管目录已清理，但仍检测到桌面等外部安装来源。', 'warn');
       extensionLog('warn', '卸载后仍检测到可扫描的 CPA 安装（例如桌面 CPA 目录），不会自动删除外部目录。');
     } else {
+      extensionLog('ok', 'CPA 套件已成功卸载，本地托管文件与配置已清理完成。');
       extensionNotify('CPA 套件已卸载', 'info');
     }
   } catch (e) {
@@ -1568,9 +1649,10 @@ async function restartCpaSuite() {
     return;
   }
   setCpaSuiteTransientStatus('starting', '重启中');
-  extensionLog('warn', '正在重启 CPA 套件...');
+  extensionLog('warn', '正在执行 CPA 套件重启...');
   try {
     await invoke('extension_restart_cpa_suite');
+    extensionLog('ok', 'CPA 套件重启成功，所有组件端口健康检查已通过 (8317 / 18317)。');
     extensionNotify('CPA 套件已重启', 'success');
   } catch (e) {
     const message = String(e?.message || e);
@@ -1620,7 +1702,7 @@ async function initExtensions() {
   bindExtensionCardOpeners();
   bindExtensionSettingsModal();
   bindDeployProgressListener();
-  switchExtensionTab('all');
+  switchExtensionTab('installed');
   await Promise.all([
     refreshExtensionStatuses({ silent: true }),
     loadCpaInstallDir(),

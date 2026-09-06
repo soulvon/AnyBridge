@@ -25,8 +25,13 @@
                 </div>
               </div>
               <div class="codex-toolbar-actions">
-                <button class="btn-primary codex-add-config-btn" data-action="openCodexProviderAdd">
-                  <span>+</span> 添加配置
+                <button class="btn-primary codex-add-config-btn" data-action="openCodexAddModal">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="12" y1="5" x2="12" y2="19" />
+                    <line x1="5" y1="12" x2="19" y2="12" />
+                  </svg>
+                  添加模型
                 </button>
                 <button class="btn-ghost accent codex-refresh-btn" data-action="refreshPlatforms">刷新</button>
                 <button class="btn-ghost accent codex-repair-sessions-btn" data-action="repairCodexSessionVisibility" title="对齐会话索引到当前 model_provider，使历史会话重新可见">修复会话历史</button>
@@ -104,11 +109,29 @@
                         <span>Base URL</span>
                         <input id="codex-config-base-url" class="field-input" placeholder="https://api.example.com/v1">
                       </label>
-                      <label class="codex-config-field">
-                        <span>API Key</span>
-                        <input id="codex-config-api-key" class="field-input" type="password" placeholder="sk-..."
-                          autocomplete="off">
-                      </label>
+                      <div class="codex-config-field">
+                        <div class="codex-field-header-row">
+                          <span>API Key</span>
+                          <button type="button" class="codex-field-action-btn" id="codex-config-sync-token-btn"
+                            data-action="syncCodexConfigTokenFromSource" title="从关联的来源供应商拉取最新令牌和地址">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                              <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/>
+                            </svg>
+                            <span>同步来源令牌</span>
+                          </button>
+                        </div>
+                        <div class="codex-input-password-wrap">
+                          <input id="codex-config-api-key" class="field-input" type="password" placeholder="sk-..."
+                            autocomplete="off">
+                          <button type="button" class="codex-password-toggle-btn" id="codex-config-api-key-toggle"
+                            data-action="toggleCodexKeyVisibility" title="显示或隐藏 API Key" aria-label="显示或隐藏 API Key">
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;">
+                              <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"></path>
+                              <circle cx="12" cy="12" r="3"></circle>
+                            </svg>
+                          </button>
+                        </div>
+                      </div>
                     </div>
                   </section>
                   <section class="config-section">

@@ -1,0 +1,130 @@
+        <!-- ═══════ PAGE: PLATFORM · CURSOR · 添加模型（独立页面） ═══════ -->
+        <div class="page" id="page-platform-cursor-add" role="tabpanel" aria-labelledby="tab-platforms">
+          <div class="platform-console-hero model-add-hero glass-card">
+            <div class="platform-console-titlebar">
+              <button class="btn-ghost platform-console-back" data-action="navigateTo" data-arg="platform-cursor">← 返回</button>
+              <div class="platform-console-titlewrap">
+                <strong>添加模型 · Cursor</strong>
+                <span class="platform-console-sub">从统一供应商模型池选择并勾选模型，将自动建立 Cursor 平台适配并同步至接入网关。</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="cb-add-layout">
+            <!-- 左列：供应商列表 (复用标准 cb-add-sidebar) -->
+            <aside class="cb-add-sidebar glass-card">
+              <div class="cb-add-search">
+                <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" fill="none" stroke-width="2"
+                  stroke-linecap="round" stroke-linejoin="round">
+                  <circle cx="11" cy="11" r="8" />
+                  <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                </svg>
+                <input type="text" id="cursor-add-search" placeholder="搜索供应商…" data-action="onCursorAddSearch" data-events="input">
+                <div class="provider-sort-control platform-add-sort-control" id="cursorAddSortControl">
+                  <button type="button" class="provider-sort-trigger platform-add-sort-trigger" id="cursorAddSortTrigger"
+                    aria-haspopup="listbox" aria-expanded="false"
+                    aria-controls="cursorAddSortMenu" aria-label="供应商排序" title="供应商排序" data-action="toggleCursorAddSort" data-pass-event>
+                    <svg class="provider-sort-icon" width="14" height="14" viewBox="0 0 24 24" fill="none"
+                      stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"
+                      aria-hidden="true">
+                      <path d="M8 3v18"></path>
+                      <path d="m4 7 4-4 4 4"></path>
+                      <path d="M16 21V3"></path>
+                      <path d="m20 17-4 4-4-4"></path>
+                    </svg>
+                    <span id="cursorAddSortLabel">默认排序</span>
+                    <svg class="provider-sort-caret" width="13" height="13" viewBox="0 0 24 24" fill="none"
+                      stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"
+                      aria-hidden="true">
+                      <path d="m6 9 6 6 6-6"></path>
+                    </svg>
+                  </button>
+                  <div class="provider-sort-menu platform-add-sort-menu" id="cursorAddSortMenu" role="listbox"
+                    aria-label="供应商排序">
+                    <button type="button" class="provider-sort-option platform-add-sort-option" role="option"
+                      data-sort-mode="default" data-action="chooseCursorAddSortMode" data-arg="default">默认排序</button>
+                    <button type="button" class="provider-sort-option platform-add-sort-option" role="option"
+                      data-sort-mode="name-asc" data-action="chooseCursorAddSortMode" data-arg="name-asc">名称正序</button>
+                    <button type="button" class="provider-sort-option platform-add-sort-option" role="option"
+                      data-sort-mode="name-desc" data-action="chooseCursorAddSortMode" data-arg="name-desc">名称反序</button>
+                  </div>
+                </div>
+              </div>
+              <div class="cb-add-provider-list" id="cursor-add-provider-list"></div>
+            </aside>
+
+            <!-- 右列：模型列表与 Cursor 定制选项 -->
+            <section class="cb-add-main">
+              <div class="glass-card cb-add-models-card">
+                <div class="cb-add-models-head">
+                  <div>
+                    <div class="cb-add-models-title" id="cursor-add-models-title">请选择供应商</div>
+                    <div class="cb-add-models-sub" id="cursor-add-models-sub">左侧选择一个供应商，勾选要添加到 Cursor 的模型</div>
+                  </div>
+                  <div style="display:flex; gap:8px;">
+                    <button class="btn-ghost accent" data-action="cursorAddSelectAll">全选</button>
+                    <button class="btn-ghost secondary" data-action="cursorAddSelectNone">全不选</button>
+                    <button class="btn-primary" id="cursor-add-confirm-page"
+                      disabled data-action="confirmAddCursorModelsPage">
+                      <svg viewBox="0 0 24 24"
+                        style="width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;">
+                        <path d="M20 6L9 17l-5-5" />
+                      </svg>
+                      <span class="model-action-label"> 保存选择</span>
+                    </button>
+                  </div>
+                </div>
+                <!-- 模型条目容器 (复用标准条状卡片) -->
+                <div class="cb-add-models-body" id="cursor-add-models-list-page">
+                  <div class="cb-add-models-empty">请从左侧选择一个供应商</div>
+                </div>
+              </div>
+
+              <!-- 底部卡片：完全对齐 CodeBuddy / WorkBuddy 的 cb-add-caps-card 结构 -->
+              <div class="glass-card cb-add-caps-card">
+                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+                  <div class="cb-add-caps-title" style="margin: 0;">自动适配特性</div>
+                  <details style="font-size: 11.5px; cursor: pointer;">
+                    <summary style="color: var(--accent); font-weight: 600; user-select: none; outline: none;">
+                      高级命名规则 (可选展开)
+                    </summary>
+                    <div style="margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); display: flex; flex-direction: column; gap: 8px; cursor: default;" onclick="event.stopPropagation()">
+                      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                        <div class="cb-edit-field">
+                          <label for="cursor-add-prefix" style="white-space: nowrap; font-size: 11.5px; color: var(--text-secondary); margin-bottom: 4px; display: block;">显示名前缀</label>
+                          <input type="text" id="cursor-add-prefix" class="field-input" placeholder="例如：[BYOK]" oninput="onCursorAddNamingRuleChange()">
+                        </div>
+                        <div class="cb-edit-field">
+                          <label for="cursor-add-suffix" style="white-space: nowrap; font-size: 11.5px; color: var(--text-secondary); margin-bottom: 4px; display: block;">显示后缀</label>
+                          <input type="text" id="cursor-add-suffix" class="field-input" placeholder="例如：(PRO)" oninput="onCursorAddNamingRuleChange()">
+                        </div>
+                      </div>
+                      <div style="font-size: 11px; color: var(--text-muted); background: var(--bg-input); padding: 5px 10px; border-radius: 6px; border: 1px solid var(--border);">
+                        命名预览：<strong id="cursor-add-naming-preview" style="color: var(--accent); font-family: var(--font-mono);">gpt-5.4</strong>
+                      </div>
+                    </div>
+                  </details>
+                </div>
+                <div class="cb-add-caps">
+                  <div class="cb-add-cap-chip" style="cursor: default;">
+                    <span style="color: #10b981; font-weight: 800;">✓</span>
+                    <span>Agent 工具调用</span>
+                  </div>
+                  <div class="cb-add-cap-chip" style="cursor: default;">
+                    <span style="color: #3b82f6; font-weight: 800;">✓</span>
+                    <span>Thinking 深度思考</span>
+                  </div>
+                  <div class="cb-add-cap-chip" style="cursor: default;">
+                    <span style="color: #a855f7; font-weight: 800;">✓</span>
+                    <span>Vision 视觉多模态</span>
+                  </div>
+                  <div class="cb-add-cap-chip" style="cursor: default;">
+                    <span style="color: var(--accent); font-weight: 800;">✓</span>
+                    <span>OpenAI 兼容协议热同步</span>
+                  </div>
+                </div>
+              </div>
+
+            </section>
+          </div>
+        </div>

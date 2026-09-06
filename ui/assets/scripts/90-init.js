@@ -71,6 +71,9 @@ async function init() {
   if (typeof refreshPlatforms === 'function') {
     await refreshPlatforms({ silent: true });
   }
+  if (typeof cursorRefreshConsole === 'function') {
+    cursorRefreshConsole({ silent: true }).catch(() => {});
+  }
   await loadEvalReports();
   await refreshStatus();
 

@@ -1,0 +1,146 @@
+        <!-- ═══════ PAGE: PLATFORM · GROK ═══════ -->
+        <div class="page" id="page-platform-grok" role="tabpanel" aria-labelledby="tab-platforms">
+          <section class="codex-manager-shell grok-manager-shell">
+            <div class="platform-console-hero glass-card codex-manager-hero">
+              <div class="platform-console-titlebar">
+                <div class="platform-console-icon codex-manager-icon"><img src="assets/icons/platform-grok.svg"
+                    alt="Grok"></div>
+                <div class="platform-console-titlewrap">
+                  <strong>Grok</strong>
+                  <span id="platform-grok-headline">管理 Grok Build CLI 的自定义模型与端点。一键切换写入 ~/.grok/config.toml，重启终端 grok 生效。</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="control-bar glass-card codex-manager-toolbar">
+              <div class="codex-toolbar-left">
+                <h2>Grok 模型配置</h2>
+                <div class="codex-search">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="11" cy="11" r="8"></circle>
+                    <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                  </svg>
+                  <input type="text" id="grok-config-search" placeholder="搜索配置、模型或地址"
+                    data-action="onGrokConfigSearch" data-events="input">
+                </div>
+              </div>
+              <div class="codex-toolbar-actions">
+                <button class="btn-primary codex-add-config-btn" data-action="openGrokAddModal">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="12" y1="5" x2="12" y2="19" />
+                    <line x1="5" y1="12" x2="19" y2="12" />
+                  </svg>
+                  添加模型
+                </button>
+                <button class="btn-ghost accent codex-refresh-btn" data-action="refreshPlatforms">刷新</button>
+                <button class="btn-ghost warn codex-restore-btn" id="platform-grok-restore"
+                  data-action="restorePlatform" data-arg="grok">还原备份</button>
+              </div>
+            </div>
+
+            <div class="glass-card codex-card-list-shell">
+              <div class="codex-card-list" id="platform-grok-config-list">
+                <div class="codex-table-empty">正在加载配置…</div>
+              </div>
+            </div>
+
+            <p class="codex-safe-note">配置文件路径：<code
+                id="grok-config-path-label">~/.grok/config.toml</code>。Grok Build CLI 原生支持 OpenAI 兼容 API；切换后在终端重新执行 <code>grok</code> 即可生效，无需保持 AnyBridge 运行。</p>
+          </section>
+        </div>
+
+        <div class="modal-overlay" id="grok-config-modal">
+          <div class="modal-container codex-config-modal grok-config-modal">
+            <div class="modal-header codex-config-modal-head">
+              <div>
+                <div class="modal-title" id="grok-config-modal-title">添加 Grok 配置</div>
+                <div class="codex-config-modal-sub" id="grok-config-modal-sub">从现有供应商创建一份 Grok Build CLI 自定义模型配置。
+                </div>
+              </div>
+              <button class="modal-close-icon" aria-label="关闭配置编辑" data-action="closeGrokConfigEditor">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"
+                  stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M18 6L6 18"></path>
+                  <path d="M6 6l12 12"></path>
+                </svg>
+              </button>
+            </div>
+            <div class="modal-body codex-config-modal-body">
+              <input type="hidden" id="grok-config-edit-id">
+              <input type="hidden" id="grok-config-source-id">
+              <div class="codex-config-editor-layout" id="grok-config-editor-layout">
+                <aside class="codex-config-source" id="grok-config-source-wrap">
+                  <div class="codex-config-source-head">
+                    <span>选择供应商</span>
+                    <strong id="grok-config-source-count">0</strong>
+                  </div>
+                  <div class="codex-config-source-list" id="grok-config-source-list"></div>
+                  <div class="codex-config-source-hint" id="grok-config-source-hint">选择一个 OpenAI 供应商，右侧会自动带入名称、地址、密钥与模型。
+                  </div>
+                </aside>
+                <div class="codex-config-form-grid">
+                  <section class="config-section">
+                    <div class="config-section-title">基础信息</div>
+                    <div class="config-section-body">
+                      <label class="codex-config-field">
+                        <span>配置名称</span>
+                        <input id="grok-config-name" class="field-input" placeholder="例如：DeepSeek">
+                      </label>
+                      <label class="codex-config-field">
+                        <span>Base URL</span>
+                        <input id="grok-config-base-url" class="field-input" placeholder="https://api.deepseek.com/v1">
+                      </label>
+                      <div class="codex-config-field">
+                        <div class="codex-field-header-row">
+                          <span>API Key</span>
+                          <button type="button" class="codex-field-action-btn" id="grok-config-sync-token-btn"
+                            data-action="syncGrokConfigTokenFromSource" title="从关联的来源供应商拉取最新令牌和地址">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                              <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/>
+                            </svg>
+                            <span>同步来源</span>
+                          </button>
+                        </div>
+                        <div class="password-field-wrap">
+                          <input id="grok-config-api-key" class="field-input" type="password" placeholder="sk-..." autocomplete="off">
+                          <button type="button" class="password-toggle-btn" id="grok-config-api-key-toggle" aria-label="显示/隐藏 API Key"
+                            data-action="togglePasswordVisibility" data-args='["grok-config-api-key", "grok-config-api-key-toggle"]'>
+                            <svg class="eye-open" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                              <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"></path>
+                              <circle cx="12" cy="12" r="3"></circle>
+                            </svg>
+                            <svg class="eye-closed" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                              <path d="m2 2 20 20"></path>
+                              <path d="M9.88 9.88a3 3 0 1 0 4.24 4.24"></path>
+                              <path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68"></path>
+                              <path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61"></path>
+                            </svg>
+                          </button>
+                        </div>
+                      </div>
+                      <label class="codex-config-field">
+                        <span>模型名称 (Model)</span>
+                        <input id="grok-config-model" class="field-input" placeholder="例如：deepseek-chat、gpt-4o">
+                      </label>
+                      <label class="codex-config-field">
+                        <span>协议后端 (API Backend)</span>
+                        <select id="grok-config-backend" class="field-input">
+                          <option value="chat_completions">chat_completions（标准 OpenAI 兼容，默认）</option>
+                          <option value="responses">responses（OpenAI Responses 协议）</option>
+                          <option value="messages">messages（Anthropic Messages 协议）</option>
+                        </select>
+                      </label>
+                    </div>
+                  </section>
+                </div>
+              </div>
+            </div>
+            <div class="modal-footer codex-config-modal-foot">
+              <button class="modal-btn modal-btn-ghost" type="button" data-action="closeGrokConfigEditor">取消</button>
+              <button class="modal-btn modal-btn-confirm" type="button" data-action="saveGrokConfigEditor" data-args="[false]">保存配置</button>
+              <button class="btn-primary codex-modal-apply-btn" type="button" data-action="saveGrokConfigEditor" data-args="[true]">保存并生效</button>
+            </div>
+          </div>
+        </div>

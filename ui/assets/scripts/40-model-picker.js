@@ -3,107 +3,366 @@
 globalThis.activeModelsList = [];
 
 // ═══════ MODEL ICON SYSTEM ═══════
+globalThis.MODEL_ICON_FILE_BASE = './assets/model-icons';
+const MODEL_ICON_FILE_BASE = './assets/model-icons';
+
+globalThis.DEFAULT_MODEL_FALLBACK_SVG = `<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M10.5 1.5C11 6.5 15 10.5 20 11C15 11.5 11 15.5 10.5 20.5C10 15.5 6 11.5 1 11C6 10.5 10 6.5 10.5 1.5Z" fill="currentColor"/><path d="M19.5 1C19.8 3.2 21.6 5 23.8 5.3C21.6 5.6 19.8 7.4 19.5 9.6C19.2 7.4 17.4 5.6 15.2 5.3C17.4 5 19.2 3.2 19.5 1Z" fill="currentColor" opacity="0.85"/></svg>`;
+const DEFAULT_MODEL_FALLBACK_SVG = globalThis.DEFAULT_MODEL_FALLBACK_SVG;
+
 globalThis.MODEL_ICON_PATTERNS = [
-  [/claude|anthropic[.-]?claude/i, 'claude'],
-  [/gpt-5[.-]1-codex-mini/i, 'gpt-5-1-codex-mini'],
-  [/gpt-5[.-]1-codex/i, 'gpt-5-1-codex'],
-  [/gpt-5[.-]1-chat/i, 'gpt-5-1-chat'],
-  [/gpt-5[.-]1/i, 'gpt-5-1'],
+  // GPT 5.6 series (most specific first; APIs use both `5.6` and `5-6`)
+  [/gpt-5[.-]6-luna/i, 'gpt-5-6-luna'],
+  [/gpt-5[.-]6-sol/i, 'gpt-5-6-sol'],
+  [/gpt-5[.-]6-terra/i, 'gpt-5-6-terra'],
+  // GPT 5.5 series
+  [/gpt-5[.-]5-pro/i, 'gpt-5-5-pro'],
+  [/gpt-5[.-]5/i, 'gpt-5-5'],
+  // GPT 5.4 series
+  [/gpt-5[.-]4-mini/i, 'gpt-5-4-mini'],
+  [/gpt-5[.-]4-nano/i, 'gpt-5-4-nano'],
+  [/gpt-5[.-]4-pro/i, 'gpt-5-4-pro'],
+  [/gpt-5[.-]4/i, 'gpt-5-4'],
+  // GPT 5.3 series
+  [/gpt-5[.-]3-codex/i, 'gpt-5-3-codex'],
+  [/gpt-5[.-]3-chat/i, 'gpt-5-3-chat-latest'],
+  // GPT 5.2 series
+  [/gpt-5[.-]2-chat/i, 'gpt-5-2-chat-latest'],
+  [/gpt-5[.-]2-codex/i, 'gpt-5-2-codex'],
   [/gpt-5[.-]2-pro/i, 'gpt-5-2-pro'],
   [/gpt-5[.-]2/i, 'gpt-5-2'],
-  [/gpt-image-1[.-]5/i, 'gpt-image-1-5'],
-  [/gpt-image-1/i, 'gpt-image-1'],
-  [/gpt-oss-120b/i, 'gpt-oss-120b'],
-  [/gpt-oss-20b/i, 'gpt-oss-20b'],
-  [/gpt-5-codex/i, 'gpt-5-codex'],
-  [/gpt-5-chat/i, 'gpt-5-chat'],
+  // GPT 5.1 series
+  [/gpt-5[.-]1-codex-max/i, 'gpt-5-1-codex-max'],
+  [/gpt-5[.-]1-codex-mini/i, 'gpt-5-1-codex-mini'],
+  [/gpt-5[.-]1-codex/i, 'gpt-5-1-codex'],
+  [/gpt-5[.-]1-chat-latest/i, 'gpt-5-1-chat-latest'],
+  [/gpt-5[.-]1-chat/i, 'gpt-5-1-chat'],
+  [/gpt-5[.-]1/i, 'gpt-5-1'],
+  // GPT 5 series
   [/gpt-5-mini/i, 'gpt-5-mini'],
   [/gpt-5-nano/i, 'gpt-5-nano'],
+  [/gpt-5-pro/i, 'gpt-5-pro'],
+  [/gpt-5-chat/i, 'gpt-5-chat'],
+  [/gpt-5-codex/i, 'gpt-5-codex'],
   [/gpt-5/i, 'gpt-5'],
-  [/gpt-4/i, 'gpt'],
-  [/gpt-3/i, 'gpt'],
-  [/^o[134](?:-|$)/i, 'gpt'],
-  [/chatgpt/i, 'gpt'],
-  [/codegeex/i, 'codegeex'],
-  [/\baya(?:-|_|$)|c4ai-aya/i, 'aya'],
-  [/palm/i, 'palm'],
-  [/gemini|veo|imagen|learnlm/i, 'gemini'],
-  [/gemma(?:-|4|\b)/i, 'gemma'],
+  // GPT 4o series
+  [/gpt-4o-mini-audio-preview/i, 'gpt-4o-mini-audio-preview'],
+  [/gpt-4o-mini-realtime-preview/i, 'gpt-4o-mini-realtime-preview'],
+  [/gpt-4o-mini-search-preview/i, 'gpt-4o-mini-search-preview'],
+  [/gpt-4o-mini-transcribe/i, 'gpt-4o-mini-transcribe'],
+  [/gpt-4o-mini-tts/i, 'gpt-4o-mini-tts'],
+  [/gpt-4o-mini/i, 'gpt-4o-mini'],
+  [/gpt-4o-audio-preview/i, 'gpt-4o-audio-preview'],
+  [/gpt-4o-realtime-preview/i, 'gpt-4o-realtime-preview'],
+  [/gpt-4o-search-preview/i, 'gpt-4o-search-preview'],
+  [/gpt-4o-transcribe-diarize/i, 'gpt-4o-transcribe-diarize'],
+  [/gpt-4o-transcribe/i, 'gpt-4o-transcribe'],
+  [/gpt-4o/i, 'gpt-4o'],
+  // GPT 4 and 3.5 series
+  [/gpt-4[.-]1-mini/i, 'gpt-4-1-mini'],
+  [/gpt-4[.-]1-nano/i, 'gpt-4-1-nano'],
+  [/gpt-4[.-]1/i, 'gpt-4-1'],
+  [/gpt-4[.-]5-preview/i, 'gpt-4-5-preview'],
+  [/gpt-4-turbo-preview/i, 'gpt-4-turbo-preview'],
+  [/gpt-4-turbo/i, 'gpt-4-turbo'],
+  [/gpt-4(?:-|$)/i, 'gpt-4'],
+  [/gpt-3[.-]5-turbo/i, 'gpt-3-5-turbo'],
+  // GPT OSS
+  [/gpt-oss-120b/i, 'gpt-oss-120b'],
+  [/gpt-oss-20b/i, 'gpt-oss-20b'],
+  // GPT image
+  [/gpt-image-2/i, 'gpt-image-2'],
+  [/gpt-image-1-mini/i, 'gpt-image-1-mini'],
+  [/gpt-image-1[.-]5/i, 'gpt-image-1-5'],
+  [/gpt-image/i, 'gpt-image-1'],
+  // GPT audio and realtime
+  [/gpt-audio-1[.-]5/i, 'gpt-audio-1-5'],
+  [/gpt-audio-mini/i, 'gpt-audio-mini'],
+  [/gpt-audio/i, 'gpt-audio'],
+  [/gpt-realtime-2[.-]1-mini/i, 'gpt-realtime-2-1-mini'],
+  [/gpt-realtime-2[.-]1/i, 'gpt-realtime-2-1'],
+  [/gpt-realtime-2/i, 'gpt-realtime-2'],
+  [/gpt-realtime-1[.-]5/i, 'gpt-realtime-1-5'],
+  [/gpt-realtime-mini/i, 'gpt-realtime-mini'],
+  [/gpt-realtime-translate/i, 'gpt-realtime-translate'],
+  [/gpt-realtime-whisper/i, 'gpt-realtime-whisper'],
+  [/gpt-realtime/i, 'gpt-realtime'],
+  [/(?:^|[-_/])(?:dall-e|dalle)(?:[-_/.\d]|$)/i, 'dalle'],
+  // Sora (bare `sora`, `sora-2`, `sora_x`, `sora2` — but not e.g. `pandora`)
+  [/(?:^|[-_/])sora(?:[-_\d]|$)/i, 'sora'],
+  // Claude / Anthropic models
+  [/(claude|anthropic-)/i, 'claude'],
+  // Google models (nano-banana = Gemini 2.5 Flash Image; lyria = music gen)
+  [/nano-?banana/i, 'nanobanana'],
+  [/gemini|veo|imagen|lyria/i, 'gemini'],
+  [/gemma/i, 'gemma'],
+  // Widely used model families with dedicated model marks
   [/deepseek/i, 'deepseek'],
-  [/qwen|qwq|qvq|tongyi/i, 'qwen'],
-  [/glm|zhipu|cogview|cogvideo/i, 'glm'],
-  [/doubao|seed|seedream|seedance|^ep-/i, 'doubao'],
-  [/hunyuan|hy-/i, 'hunyuan'],
-  [/kimi|moonshot/i, 'kimi'],
+  [/nous-|hermes|deephermes/i, 'nousresearch'],
+  [/llama|meta-/i, 'meta'],
+  [/mistral|pixtral|codestral|ministral|voxtral|devstral|mixtral|magistral/i, 'mistral'],
+  [/minimax|abab/i, 'minimax'],
+  [/jamba|j2-/i, 'ai21'],
+  [/aya/i, 'aya'],
+  [/command-r|command-a|c4ai-|cohere|north-/i, 'cohere'],
+  [/nemotron|nvidia/i, 'nvidia'],
+  [/voyage/i, 'voyage'],
+  [/solar/i, 'upstage'],
+  [/bge/i, 'baai'],
+  [/cogito/i, 'deepcogito'],
+  [/mercury/i, 'inception'],
+  [/relace/i, 'relace'],
+  [/jina/i, 'jina'],
+  [/(?:^|[-_/])(?:pplx|sonar)(?:[-_/]|$)/i, 'perplexity'],
+  [/(?:^|[-_/])flux(?:[-_.\d]|$)/i, 'flux'],
+  [/ideogram/i, 'ideogram'],
+  [/stable-|sd3|sdxl/i, 'stability'],
+  [/(?:^|[-_/])kling(?:[-_/]|$)/i, 'kling'],
+  [/(?:^|[-_/])kolors(?:[-_/]|$)/i, 'kolors'],
+  [/(?:^|[-_/])suno(?:[-_/]|$)/i, 'suno'],
+  [/(?:^|[-_/])longcat(?:[-_/]|$)/i, 'longcat'],
+  // Chinese models
+  // `wan` is delimiter-bounded so `taiwan-llm` doesn't misfire to the Qwen icon
+  [/qwen|qwq|qvq|(?:^|[-_/])wan(?:[-_\d]|$)|z-image/i, 'qwen'],
+  [/chatglm/i, 'chatglm'],
+  [/cogview|cogvideo/i, 'cogview'],
+  [/glm[-_.\d]*v(?:[-_/.\d]|$)/i, 'glmv'],
+  [/glm/i, 'glm'],
+  [/baichuan/i, 'baichuan'],
+  [/internlm|internvl/i, 'internlm'],
+  [/(?:^|[-_/])yi(?:[-_/]|$)/i, 'yi'],
+  [/ernie|wenxin/i, 'wenxin'],
+  [/(?:^|[-_/])step(?:[-_/]|$)/i, 'stepfun'],
+  // `seed` delimiter-bounded (mirrors VENDOR_PATTERNS.doubao) so `bytedance-seed`'s bare
+  // `seed-2.0-lite`/`seed-1.6` match, while `seedream`/`seedance` keep their explicit alts
+  [/doubao|seedream|seedance|ep-202|(?:^|[-_/])seed(?:[-_\d]|$)/i, 'doubao'],
+  [/^(?:hunyuan|hy-|hy\d)/i, 'hunyuan'],
+  [/kimi|moonshot|^k3(?:[-_.]|$)/i, 'kimi'],
+  // Other model-specific icons
   [/grok/i, 'grok'],
   [/hailuo/i, 'hailuo'],
-  [/\bmimo(?:-|$)/i, 'mimo'],
-  [/\b(?:ling|ring)-/i, 'ling'],
-  [/\bnova\b|amazon[.-]?nova/i, 'nova'],
-  [/granite|watsonx|ibm/i, 'ibm'],
-  [/sensenova|sensechat|sensecore/i, 'sensenova'],
+  [/happy-?horse/i, 'happyhorse'],
+  [/codegeex/i, 'codegeex'],
+  [/mimo/i, 'mimo'],
+  [/palm|bison/i, 'palm'],
+  [/ibm/i, 'ibm'],
   [/trinity/i, 'trinity'],
-  [/mistral|pixtral|codestral|ministral|voxtral|devstral|mixtral|magistral/i, 'mistral'],
-  [/llama|meta-/i, 'meta'],
-  [/command-r|command-a|cohere/i, 'cohere'],
-  [/phi-/i, 'phi'],
-  [/dall-e|dalle/i, 'dalle'],
-  [/sora/i, 'sora'],
-  [/minimax|abab/i, 'minimax'],
-  [/baichuan/i, 'baichuan'],
-  [/yi-/i, 'yi'],
-  [/ernie|wenxin|baidu/i, 'baidu'],
-  [/internlm|internvl|intern/i, 'internlm'],
-  [/^step-|yuchen|jieyue/i, 'step'],
-  [/spark|xinghuo|xfxf/i, 'xinghuo'],
+  // sensenova before nova: `sensenova-*` must not be preempted by the broader `nova`
+  [/sensenova/i, 'sensenova'],
+  [/nova/i, 'nova'],
+  // delimiter-bounded so `spring-1t`, `ringo-v1`, `*-multilingual-*` don't misfire to the Ling icon
+  [/(?:^|[-_/])(?:ling|ring)(?:[-_]|$)/i, 'ling'],
+  // Devin / SWE 系列 (swe-1.5, swe-1.6, swe-1p5 等)
+  [/(?:^|[-_/])swe(?:[-_.\d]|$)|devin/i, 'devin'],
+  // ── 通用通配兜底 (涵盖新一代及未知子型号) ──
+  [/gpt-image/i, 'gpt-image-1'],
+  [/gpt-oss/i, 'gpt-oss-120b'],
+  [/\bgpt\b|^o[134](?:-|$)|^chatgpt|^codex|^davinci|^babbage|^text-embedding-(?:3|ada)/i, 'gpt'],
 ];
 
-globalThis.MODEL_ICON_FILE_BASE = './assets/model-icons';
 globalThis.MODEL_ICON_FILES = {
-  aya: 'aya.svg',
-  claude: 'claude.svg',
-  codegeex: 'codegeex.svg',
-  deepseek: 'deepseek.svg',
-  doubao: 'doubao.svg',
-  gemini: 'gemini.svg',
-  gemma: 'gemma.svg',
-  glm: 'glm.svg',
-  'gpt-5': 'gpt-5.svg',
-  'gpt-5-1': 'gpt-5-1.svg',
+  'ace': 'ace.svg',
+  'adobe': 'adobe.svg',
+  'ai2': 'ai2.svg',
+  'ai21': 'ai21.svg',
+  'ai360': 'ai360.svg',
+  'aihubmix': 'aihubmix.svg',
+  'aimass': 'aimass.svg',
+  'aionlabs': 'aionlabs.svg',
+  'anthropic': 'anthropic.svg',
+  'arcee': 'arcee.svg',
+  'assemblyai': 'assemblyai.svg',
+  'aws': 'aws.svg',
+  'aya': 'aya.svg',
+  'baai': 'baai.svg',
+  'baichuan': 'baichuan.svg',
+  'baiducloud': 'baiducloud.svg',
+  'bilibili': 'bilibili.svg',
+  'bilibiliindex': 'bilibiliindex.svg',
+  'burncloud': 'burncloud.svg',
+  'bytedance': 'bytedance.svg',
+  'chatglm': 'chatglm.svg',
+  'claude': 'claude.svg',
+  'codegeex': 'codegeex.svg',
+  'cogview': 'cogview.svg',
+  'cohere': 'cohere.svg',
+  'dalle': 'dalle.svg',
+  'dbrx': 'dbrx.svg',
+  'deepcogito': 'deepcogito.svg',
+  'deepmind': 'deepmind.svg',
+  'deepseek': 'deepseek.svg',
+  'devin': 'devin.svg',
+  'dolphin': 'dolphin.svg',
+  'doubao': 'doubao.svg',
+  'essentialai': 'essentialai.svg',
+  'fireworks': 'fireworks.svg',
+  'fishaudio': 'fishaudio.svg',
+  'flux': 'flux.svg',
+  'gemini': 'gemini.svg',
+  'gemma': 'gemma.svg',
+  'glm': 'glm.svg',
+  'glmv': 'glmv.svg',
+  'google': 'google.svg',
+  'gpt-3-5-turbo': 'gpt-3-5-turbo.svg',
+  'gpt-4-1-mini': 'gpt-4-1-mini.svg',
+  'gpt-4-1-nano': 'gpt-4-1-nano.svg',
+  'gpt-4-1': 'gpt-4-1.svg',
+  'gpt-4-5-preview': 'gpt-4-5-preview.svg',
+  'gpt-4-turbo-preview': 'gpt-4-turbo-preview.svg',
+  'gpt-4-turbo': 'gpt-4-turbo.svg',
+  'gpt-4': 'gpt-4.svg',
+  'gpt-4o-audio-preview': 'gpt-4o-audio-preview.svg',
+  'gpt-4o-mini-audio-preview': 'gpt-4o-mini-audio-preview.svg',
+  'gpt-4o-mini-realtime-preview': 'gpt-4o-mini-realtime-preview.svg',
+  'gpt-4o-mini-search-preview': 'gpt-4o-mini-search-preview.svg',
+  'gpt-4o-mini-transcribe': 'gpt-4o-mini-transcribe.svg',
+  'gpt-4o-mini-tts': 'gpt-4o-mini-tts.svg',
+  'gpt-4o-mini': 'gpt-4o-mini.svg',
+  'gpt-4o-realtime-preview': 'gpt-4o-realtime-preview.svg',
+  'gpt-4o-search-preview': 'gpt-4o-search-preview.svg',
+  'gpt-4o-transcribe-diarize': 'gpt-4o-transcribe-diarize.svg',
+  'gpt-4o-transcribe': 'gpt-4o-transcribe.svg',
+  'gpt-4o': 'gpt-4o.svg',
+  'gpt-5-1-chat-latest': 'gpt-5-1-chat-latest.svg',
   'gpt-5-1-chat': 'gpt-5-1-chat.svg',
-  'gpt-5-1-codex': 'gpt-5-1-codex.svg',
+  'gpt-5-1-codex-max': 'gpt-5-1-codex-max.svg',
   'gpt-5-1-codex-mini': 'gpt-5-1-codex-mini.svg',
-  'gpt-5-2': 'gpt-5-2.svg',
+  'gpt-5-1-codex': 'gpt-5-1-codex.svg',
+  'gpt-5-1': 'gpt-5-1.svg',
+  'gpt-5-2-chat-latest': 'gpt-5-2-chat-latest.svg',
+  'gpt-5-2-codex': 'gpt-5-2-codex.svg',
   'gpt-5-2-pro': 'gpt-5-2-pro.svg',
+  'gpt-5-2': 'gpt-5-2.svg',
+  'gpt-5-3-chat-latest': 'gpt-5-3-chat-latest.svg',
+  'gpt-5-3-codex': 'gpt-5-3-codex.svg',
+  'gpt-5-4-mini': 'gpt-5-4-mini.svg',
+  'gpt-5-4-nano': 'gpt-5-4-nano.svg',
+  'gpt-5-4-pro': 'gpt-5-4-pro.svg',
+  'gpt-5-4': 'gpt-5-4.svg',
+  'gpt-5-5-pro': 'gpt-5-5-pro.svg',
+  'gpt-5-5': 'gpt-5-5.svg',
+  'gpt-5-6-luna': 'gpt-5-6-luna.svg',
+  'gpt-5-6-sol': 'gpt-5-6-sol.svg',
+  'gpt-5-6-terra': 'gpt-5-6-terra.svg',
+  'gpt-5-chat-latest': 'gpt-5-chat-latest.svg',
   'gpt-5-chat': 'gpt-5-chat.svg',
   'gpt-5-codex': 'gpt-5-codex.svg',
   'gpt-5-mini': 'gpt-5-mini.svg',
   'gpt-5-nano': 'gpt-5-nano.svg',
-  'gpt-image-1': 'gpt-image-1.svg',
+  'gpt-5-pro': 'gpt-5-pro.svg',
+  'gpt-5': 'gpt-5.svg',
+  'gpt-audio-1-5': 'gpt-audio-1-5.svg',
+  'gpt-audio-mini': 'gpt-audio-mini.svg',
+  'gpt-audio': 'gpt-audio.svg',
   'gpt-image-1-5': 'gpt-image-1-5.svg',
+  'gpt-image-1-mini': 'gpt-image-1-mini.svg',
+  'gpt-image-1': 'gpt-image-1.svg',
+  'gpt-image-2': 'gpt-image-2.svg',
   'gpt-oss-120b': 'gpt-oss-120b.svg',
   'gpt-oss-20b': 'gpt-oss-20b.svg',
-  grok: 'grok.svg',
-  hailuo: 'hailuo.svg',
-  hunyuan: 'hunyuan.svg',
-  ibm: 'ibm.svg',
-  kimi: 'kimi.svg',
-  ling: 'ling.svg',
-  minimax: 'minimax.svg',
-  mimo: 'mimo.svg',
-  nova: 'nova.svg',
-  palm: 'palm.svg',
-  qwen: 'qwen.svg',
-  sensenova: 'sensenova.svg',
-  sora: 'sora.svg',
-  trinity: 'trinity.svg',
+  'gpt-realtime-1-5': 'gpt-realtime-1-5.svg',
+  'gpt-realtime-2-1-mini': 'gpt-realtime-2-1-mini.svg',
+  'gpt-realtime-2-1': 'gpt-realtime-2-1.svg',
+  'gpt-realtime-2': 'gpt-realtime-2.svg',
+  'gpt-realtime-mini': 'gpt-realtime-mini.svg',
+  'gpt-realtime-translate': 'gpt-realtime-translate.svg',
+  'gpt-realtime-whisper': 'gpt-realtime-whisper.svg',
+  'gpt-realtime': 'gpt-realtime.svg',
+  'grok': 'grok.svg',
+  'hailuo': 'hailuo.svg',
+  'happyhorse': 'happyhorse.svg',
+  'hunyuan': 'hunyuan.svg',
+  'ibm': 'ibm.svg',
+  'ideogram': 'ideogram.svg',
+  'inception': 'inception.svg',
+  'inflection': 'inflection.svg',
+  'internlm': 'internlm.svg',
+  'jimeng': 'jimeng.svg',
+  'jina': 'jina.svg',
+  'kimi': 'kimi.svg',
+  'kling': 'kling.svg',
+  'kolors': 'kolors.svg',
+  'kwaipilot': 'kwaipilot.svg',
+  'lg': 'lg.svg',
+  'ling': 'ling.svg',
+  'liquid': 'liquid.svg',
+  'llava': 'llava.svg',
+  'longcat': 'longcat.svg',
+  'menlo': 'menlo.svg',
+  'meta': 'meta.svg',
+  'microsoft': 'microsoft.svg',
+  'mimo': 'mimo.svg',
+  'minimax': 'minimax.svg',
+  'mistral': 'mistral.svg',
+  'moonshot': 'moonshot.svg',
+  'morph': 'morph.svg',
+  'nanobanana': 'nanobanana.svg',
+  'nousresearch': 'nousresearch.svg',
+  'nova': 'nova.svg',
+  'nvidia': 'nvidia.svg',
+  'openai': 'openai.svg',
+  'openchat': 'openchat.svg',
+  'openrouter': 'openrouter.svg',
+  'palm': 'palm.svg',
+  'perplexity': 'perplexity.svg',
+  'phind': 'phind.svg',
+  'poolside': 'poolside.svg',
+  'qiniu': 'qiniu.svg',
+  'qwen': 'qwen.svg',
+  'relace': 'relace.svg',
+  'rwkv': 'rwkv.svg',
+  'sensenova': 'sensenova.svg',
+  'skywork': 'skywork.svg',
+  'sora': 'sora.svg',
+  'spark': 'spark.svg',
+  'stability': 'stability.svg',
+  'stepfun': 'stepfun.svg',
+  'suno': 'suno.svg',
+  'tencent': 'tencent.svg',
+  'tii': 'tii.svg',
+  'trinity': 'trinity.svg',
+  'udio': 'udio.svg',
+  'upstage': 'upstage.svg',
+  'v0': 'v0.svg',
+  'vertexai': 'vertexai.svg',
+  'voyage': 'voyage.svg',
+  'wenxin': 'wenxin.svg',
+  'xiaomimimo': 'xiaomimimo.svg',
+  'yi': 'yi.svg',
+  'zai': 'zai.svg',
 };
 
 globalThis.MODEL_DARK_ICON_FILES = {
-  grok: 'grok.svg',
-  kimi: 'kimi.svg',
-  mimo: 'mimo.svg',
-  trinity: 'trinity.svg',
+  'ace': 'ace.svg',
+  'ai21': 'ai21.svg',
+  'anthropic': 'anthropic.svg',
+  'aws': 'aws.svg',
+  'baai': 'baai.svg',
+  'bilibiliindex': 'bilibiliindex.svg',
+  'dolphin': 'dolphin.svg',
+  'fishaudio': 'fishaudio.svg',
+  'flux': 'flux.svg',
+  'glm': 'glm.svg',
+  'grok': 'grok.svg',
+  'ideogram': 'ideogram.svg',
+  'inception': 'inception.svg',
+  'inflection': 'inflection.svg',
+  'jina': 'jina.svg',
+  'kimi': 'kimi.svg',
+  'liquid': 'liquid.svg',
+  'longcat': 'longcat.svg',
+  'mimo': 'mimo.svg',
+  'moonshot': 'moonshot.svg',
+  'nousresearch': 'nousresearch.svg',
+  'openai': 'openai.svg',
+  'phind': 'phind.svg',
+  'relace': 'relace.svg',
+  'suno': 'suno.svg',
+  'trinity': 'trinity.svg',
+  'v0': 'v0.svg',
+  'voyage': 'voyage.svg',
+  'xiaomimimo': 'xiaomimimo.svg',
+  'yi': 'yi.svg',
+  'zai': 'zai.svg',
 };
 
 globalThis.MODEL_SVG_PATHS = {
@@ -225,26 +484,38 @@ globalThis.MODEL_ICON_COLORS = {
 
 function getModelIconKey(modelId) {
   if (!modelId) return null;
-  for (const [regex, key] of MODEL_ICON_PATTERNS) {
-    if (regex.test(modelId)) return key;
+  const raw = String(modelId).trim();
+  // 参照 Cherry Studio: 剥离命名空间前缀 (如 openai/xxx 或 aihub::xxx) 以及 :free / :cloud 后缀
+  const baseName = raw.split('/').pop().split('::').pop().replace(/:(?:free|cloud)$/i, '');
+  const patterns = (typeof MODEL_ICON_PATTERNS !== 'undefined' ? MODEL_ICON_PATTERNS : globalThis.MODEL_ICON_PATTERNS) || [];
+  for (const [regex, key] of patterns) {
+    if (regex.test(baseName) || regex.test(raw)) return key;
   }
   return null;
 }
 
 function renderModelIcon(modelId) {
   const key = getModelIconKey(modelId);
-  if (key && MODEL_ICON_FILES[key]) {
-    const lightSrc = `${MODEL_ICON_FILE_BASE}/light/${MODEL_ICON_FILES[key]}`;
-    const darkFile = MODEL_DARK_ICON_FILES[key];
+  const iconBase = (typeof MODEL_ICON_FILE_BASE !== 'undefined' ? MODEL_ICON_FILE_BASE : globalThis.MODEL_ICON_FILE_BASE) || './assets/model-icons';
+  const iconFiles = (typeof MODEL_ICON_FILES !== 'undefined' ? MODEL_ICON_FILES : globalThis.MODEL_ICON_FILES) || {};
+  const darkIconFiles = (typeof MODEL_DARK_ICON_FILES !== 'undefined' ? MODEL_DARK_ICON_FILES : globalThis.MODEL_DARK_ICON_FILES) || {};
+
+  if (key && iconFiles[key]) {
+    const lightSrc = `${iconBase}/light/${iconFiles[key]}`;
+    const darkFile = darkIconFiles[key];
     const lightClass = darkFile ? 'model-icon-image-light model-icon-has-dark' : 'model-icon-image-light';
     const darkImg = darkFile
-      ? `<img class="model-icon-image-dark" src="${MODEL_ICON_FILE_BASE}/dark/${darkFile}" alt="" aria-hidden="true" draggable="false">`
+      ? `<img class="model-icon-image-dark" src="${iconBase}/dark/${darkFile}" alt="" aria-hidden="true" draggable="false">`
       : '';
     return `<div class="model-item-icon model-item-icon-image"><img class="${lightClass}" src="${lightSrc}" alt="" aria-hidden="true" draggable="false">${darkImg}</div>`;
   }
-  if (key && MODEL_SVG_PATHS[key]) {
-    const color = MODEL_ICON_COLORS[key] || '#888';
-    const iconData = MODEL_SVG_PATHS[key];
+
+  const svgPaths = (typeof MODEL_SVG_PATHS !== 'undefined' ? MODEL_SVG_PATHS : globalThis.MODEL_SVG_PATHS) || {};
+  const iconColors = (typeof MODEL_ICON_COLORS !== 'undefined' ? MODEL_ICON_COLORS : globalThis.MODEL_ICON_COLORS) || {};
+
+  if (key && svgPaths[key]) {
+    const color = iconColors[key] || '#888';
+    const iconData = svgPaths[key];
 
     let viewBox = '0 0 24 24'; // Default to standard 24x24 for robust scaling
     let rawSvg = '';
@@ -264,10 +535,10 @@ function renderModelIcon(modelId) {
 
     return `<div class="model-item-icon" style="background:${color}20"><svg viewBox="${viewBox}" fill="${color}" xmlns="http://www.w3.org/2000/svg">${rawSvg}</svg></div>`;
   }
-  // Fallback: first letter avatar
-  const ch = escapeHtml((modelId || '?').charAt(0).toUpperCase());
-  const fbColor = key && MODEL_ICON_COLORS[key] ? MODEL_ICON_COLORS[key] : '#888';
-  return `<div class="model-item-icon fallback" style="background:${fbColor}40;color:${fbColor}">${ch}</div>`;
+
+  // Fallback: 极简 AI 晶体算力星芒核心 (Sparkle Core)
+  const sparkSvg = (typeof DEFAULT_MODEL_FALLBACK_SVG !== 'undefined' ? DEFAULT_MODEL_FALLBACK_SVG : globalThis.DEFAULT_MODEL_FALLBACK_SVG) || `<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M10.5 2.5C10.9 6.8 14.2 10.1 18.5 10.5C14.2 10.9 10.9 14.2 10.5 18.5C10.1 14.2 6.8 10.9 2.5 10.5C6.8 10.1 10.1 6.8 10.5 2.5Z" fill="currentColor"/><path d="M18.5 2C18.7 3.8 20.2 5.3 22 5.5C20.2 5.7 18.7 7.2 18.5 9C18.3 7.2 16.8 5.7 15 5.5C16.8 5.3 18.3 3.8 18.5 2Z" fill="currentColor" opacity="0.8"/></svg>`;
+  return `<div class="model-item-icon fallback" title="${escapeHtml(modelId || '')}">${sparkSvg}</div>`;
 }
 
 // ═══════ MODEL GROUPING ═══════
@@ -314,6 +585,7 @@ function getModelGroup(modelId) {
     cohere: 'Cohere 系列',
     phi: 'Phi 系列',
     dalle: 'DALL-E 系列',
+    devin: 'Devin / SWE 系列',
     sora: 'Sora 系列',
     hailuo: '海螺系列',
     minimax: 'MiniMax 系列',
@@ -324,7 +596,24 @@ function getModelGroup(modelId) {
     step: '跃问系列',
     xinghuo: '星火系列',
   };
-  return groupMap[key] || '其他模型';
+  if (groupMap[key]) return groupMap[key];
+  if (/^gpt-image/i.test(key)) return 'GPT Image 系列';
+  if (/^gpt-oss/i.test(key)) return 'GPT OSS 系列';
+  if (/^gpt|^o[134]|^chatgpt/i.test(key)) return 'GPT 系列';
+  if (/^claude/i.test(key)) return 'Claude 系列';
+  if (/^gemini|^veo|^imagen/i.test(key)) return 'Gemini 系列';
+  if (/^gemma/i.test(key)) return 'Gemma 系列';
+  if (/^deepseek/i.test(key)) return 'DeepSeek 系列';
+  if (/^qwen|^qwq|^qvq/i.test(key)) return 'Qwen 系列';
+  if (/^glm|^chatglm|^cogview/i.test(key)) return 'GLM 系列';
+  if (/^doubao|^seed/i.test(key)) return '豆包系列';
+  if (/^hunyuan|^hy/i.test(key)) return '混元系列';
+  if (/^kimi|^moonshot/i.test(key)) return 'Kimi 系列';
+  if (/^grok/i.test(key)) return 'Grok 系列';
+  if (/^mistral|^pixtral|^codestral/i.test(key)) return 'Mistral 系列';
+  if (/^meta|^llama/i.test(key)) return 'Llama 系列';
+  if (/^swe|^devin/i.test(key)) return 'Devin / SWE 系列';
+  return '其他模型';
 }
 
 function groupModels(models) {
@@ -354,6 +643,29 @@ function groupModels(models) {
 globalThis.modelSearchOpen = false;
 globalThis.modelGroupStates = {}; // group name → open/closed
 globalThis.currentModelTab = 'all';
+globalThis.modelPanelSortMode = 'default'; // 'default' | 'asc'
+
+function classifyModelType(modelId) {
+  const id = String(modelId || '').toLowerCase();
+  if (/rerank/i.test(id)) return 'rerank';
+  if (/embed/i.test(id)) return 'embedding';
+  if (/video|sora|kling|runway|veo|cogvideo|hailuo|pika|jimeng/i.test(id)) return 'video';
+  if (/image|img|dall-e|dalle|flux|midjourney|sdxl|stable-|imagen|paint|recraft|ideogram|kolors|banana/i.test(id)) return 'image';
+  if (/audio|tts|whisper|voice|speech|sound|music|suno|fishaudio/i.test(id)) return 'audio';
+  return 'text';
+}
+
+function updateModelFilterTabCounts() {
+  const counts = { all: activeModelsList.length, text: 0, image: 0, embedding: 0, audio: 0, video: 0, rerank: 0 };
+  for (const m of activeModelsList) {
+    const t = classifyModelType(m);
+    if (counts[t] !== undefined) counts[t]++;
+  }
+  for (const [key, count] of Object.entries(counts)) {
+    const el = document.getElementById(`count-tab-${key}`);
+    if (el) el.textContent = count;
+  }
+}
 
 function changeModelTab(tab) {
   currentModelTab = tab;
@@ -362,6 +674,16 @@ function changeModelTab(tab) {
     const isClickedTab = el.getAttribute('data-arg') === tab;
     el.classList.toggle('active', isClickedTab);
   });
+  filterModelPanel();
+}
+
+function toggleModelSort() {
+  modelPanelSortMode = modelPanelSortMode === 'default' ? 'asc' : 'default';
+  const btn = document.getElementById('modelFilterSortBtn');
+  if (btn) {
+    btn.classList.toggle('active', modelPanelSortMode === 'asc');
+    btn.title = modelPanelSortMode === 'asc' ? '当前：名称 A-Z 排序（点击切回默认）' : '当前：默认排序（点击切换 A-Z）';
+  }
   filterModelPanel();
 }
 
@@ -536,35 +858,22 @@ function filterModelPanel() {
   const body = document.getElementById('modelPanelBody');
   if (!body) return;
 
-  // 1. 基于搜索字符过滤
+  // 1. 更新顶部各分类模型数量 Badge
+  updateModelFilterTabCounts();
+
+  // 2. 基于搜索字符过滤
   let filtered = query
     ? activeModelsList.filter(m => m.toLowerCase().includes(query))
     : activeModelsList;
 
-  // 2. 基于分类 Tab 过滤
+  // 3. 基于分类 Tab 过滤 (Cherry Studio 体系)
   if (currentModelTab !== 'all') {
-    filtered = filtered.filter(m => {
-      const id = m.toLowerCase();
-      if (currentModelTab === 'reason') {
-        return /reason|thinking|r1|o1|o3|coder|math/i.test(id);
-      }
-      if (currentModelTab === 'vision') {
-        return /vl|vision|image|paint|dall/i.test(id);
-      }
-      if (currentModelTab === 'search') {
-        return /online|search|web|pro/i.test(id);
-      }
-      if (currentModelTab === 'free') {
-        return /free/i.test(id);
-      }
-      if (currentModelTab === 'embed') {
-        return /embed/i.test(id);
-      }
-      if (currentModelTab === 'rerank') {
-        return /rerank/i.test(id);
-      }
-      return true;
-    });
+    filtered = filtered.filter(m => classifyModelType(m) === currentModelTab);
+  }
+
+  // 4. 基于排序切换 (默认排序 / A-Z 升序)
+  if (modelPanelSortMode === 'asc') {
+    filtered = [...filtered].sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }));
   }
 
   const groups = groupModels(filtered);
@@ -697,7 +1006,7 @@ function addCustomModel() {
 }
 
 globalThis.EYE_SVG_OPEN = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"></path><circle cx="12" cy="12" r="3"></circle></svg>`;
-globalThis.EYE_SVG_CLOSE = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;"><path d="M9.88 9.88a3 3 0 1 0 4.24 4.24"></path><path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68"></path><path d="M6.61 6.61A13.52 13.52 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61"></path><line x1="2" y1="2" x2="22" y2="2"></line></svg>`;
+globalThis.EYE_SVG_CLOSE = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;"><path d="M9.88 9.88a3 3 0 1 0 4.24 4.24"></path><path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68"></path><path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61"></path><line x1="2" y1="2" x2="22" y2="22"></line></svg>`;
 
 function toggleKeyVisibility() {
   const keyInput = document.getElementById('pf-key');
@@ -966,6 +1275,13 @@ function openProviderEditor(id) {
   modelGroupStates = {};
   modelSearchOpen = false;
   currentModelTab = 'all';
+  modelPanelSortMode = 'default';
+  const sortBtn = document.getElementById('modelFilterSortBtn');
+  if (sortBtn) {
+    sortBtn.classList.remove('active');
+    sortBtn.title = '切换模型排序 (默认 / 名称 A-Z)';
+  }
+  updateModelFilterTabCounts();
 
   // 重置 UI 的 Tab 选中状态
   document.querySelectorAll('.model-filter-tab').forEach(el => {
@@ -1070,6 +1386,61 @@ async function saveProviderFromEditor() {
     providerStore.providers.push(provider);
   }
 
+  // 自动同步关联该供应商的所有平台配置（Codex / Claude Code / OpenCode）的 API Key 和 Base URL
+  let syncedPlatformConfigsCount = 0;
+
+  if (id) {
+    const newEndpoint = providerEndpointParts(
+      baseUrl,
+      apiFormat,
+      document.getElementById('pf-path').value
+    );
+    const resolvedHost = newEndpoint.apiHost;
+    const resolvedPath = newEndpoint.apiPath || '/v1';
+
+    // 1. 同步 Codex 配置
+    if (Array.isArray(providerStore.codexConfigs)) {
+      providerStore.codexConfigs.forEach(cfg => {
+        if (!cfg) return;
+        if (cfg.sourceProviderId === id || (!cfg.sourceProviderId && cfg.name === name)) {
+          cfg.sourceProviderId = id;
+          cfg.apiKey = apiKey;
+          cfg.apiHost = resolvedHost;
+          cfg.apiPath = resolvedPath;
+          syncedPlatformConfigsCount++;
+        }
+      });
+    }
+
+    // 2. 同步 Claude Code 配置
+    if (Array.isArray(providerStore.claudeCodeConfigs)) {
+      providerStore.claudeCodeConfigs.forEach(cfg => {
+        if (!cfg) return;
+        if (cfg.sourceProviderId === id || (!cfg.sourceProviderId && cfg.name === name)) {
+          cfg.sourceProviderId = id;
+          cfg.apiKey = apiKey;
+          cfg.apiHost = resolvedHost;
+          cfg.apiPath = resolvedPath;
+          syncedPlatformConfigsCount++;
+        }
+      });
+    }
+
+    // 3. 同步 OpenCode 配置
+    if (Array.isArray(providerStore.opencodeConfigs)) {
+      providerStore.opencodeConfigs.forEach(cfg => {
+        if (!cfg) return;
+        if (cfg.sourceProviderId === id || (!cfg.sourceProviderId && cfg.name === name)) {
+          cfg.sourceProviderId = id;
+          cfg.apiKey = apiKey;
+          cfg.apiHost = resolvedHost;
+          cfg.apiPath = resolvedPath;
+          syncedPlatformConfigsCount++;
+        }
+      });
+    }
+  }
+
   const ok = await persistProviders();
   if (!ok) {
     providerStore = typeof cloneProviderStore === 'function'
@@ -1077,11 +1448,13 @@ async function saveProviderFromEditor() {
       : JSON.parse(JSON.stringify(previous));
     return;
   }
+
   renderProviders();
   renderEvalProviderOptions();
   await renderModelMap();
   closeProviderEditor();
-  addLog('ok', `已保存供应商: ${name}`);
+  const syncMsg = syncedPlatformConfigsCount > 0 ? `（已同步 ${syncedPlatformConfigsCount} 个平台配置，下次切换或使用时生效）` : '';
+  addLog('ok', `已保存供应商: ${name}${syncMsg}`);
 }
 
 function setProviderConnectionText(id, value) {
@@ -1369,6 +1742,8 @@ async function fetchModelsForEditor(options = {}) {
   g.getModelGroup = getModelGroup;
   g.groupModels = groupModels;
   g.changeModelTab = changeModelTab;
+  g.toggleModelSort = toggleModelSort;
+  g.classifyModelType = classifyModelType;
   g.getModelBadges = getModelBadges;
   g.toggleModelSearch = toggleModelSearch;
   g.clearModelSearch = clearModelSearch;

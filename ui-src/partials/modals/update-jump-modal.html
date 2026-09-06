@@ -1,43 +1,56 @@
 
-  <!-- 版本跃迁更新成功提示模态框 -->
+  <!-- 版本跃迁更新成功提示模态框 (对齐 Cockpit Tools 设计) -->
   <div id="update-jump-modal" class="modal-overlay">
-    <div class="modal-container update-success-modal">
-      <div class="modal-header update-success-header">
-        <div class="modal-title">
-          <span class="modal-icon update-success-icon">
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
-              stroke-linecap="round" stroke-linejoin="round">
-              <path d="M4 15c2-1 4-1 6 0s4 1 6 0 3-1 4 0"></path>
-              <path d="M7 10l1.5 1.5L11 8"></path>
-              <path d="M15 5h.01"></path>
-              <path d="M18 8h.01"></path>
-              <path d="M14 12h.01"></path>
-              <path d="M20 4h.01"></path>
+    <div class="modal-container update-modal">
+      <!-- 头部：彩炮图标 + 🎉 更新成功！ + 关闭按钮 -->
+      <div class="update-modal-header">
+        <div class="update-modal-title-group">
+          <div class="update-modal-icon-badge" style="background: linear-gradient(135deg, #2563eb 0%, #3b82f6 100%);">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M5.8 11.3 2 22l10.7-3.79"/>
+              <path d="M4 3h.01"/>
+              <path d="M22 8h.01"/>
+              <path d="M15 2h.01"/>
+              <path d="M22 20h.01"/>
+              <path d="m22 2-2.24.75a2.9 2.9 0 0 0-1.96 3.12v0c.1.86-.57 1.63-1.45 1.63h-.38c-.86 0-1.6.6-1.76 1.44L14 12"/>
+              <path d="m22 13-.82-.33c-.86-.34-1.82.2-1.98 1.11v0c-.11.66-.72 1.12-1.39.97l-.7-.16c-.78-.17-1.57.25-1.84.99L15 16"/>
+              <path d="m11 2 .33.82c.34.86-.2 1.82-1.11 1.98v0C9.56 4.91 9.1 5.52 9.25 6.19l.16.7c.17.78-.25 1.57-.99 1.84L8 9"/>
             </svg>
-          </span>
-          <span>更新成功！</span>
+          </div>
+          <span class="update-modal-title-text">🎉 更新成功！</span>
         </div>
-        <button type="button" class="modal-close-icon" aria-label="关闭" data-action="closeUpdateJumpModal">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
-            stroke-linecap="round" stroke-linejoin="round">
-            <path d="M18 6 6 18"></path>
-            <path d="m6 6 12 12"></path>
+        <button class="update-modal-close-btn" data-action="closeUpdateJumpModal" title="关闭">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
           </svg>
         </button>
       </div>
-      <div class="modal-body update-success-body">
-        <div id="update-jump-version" class="update-success-version">v1.0.1</div>
-        <p class="update-success-message">
-          已从 <span id="update-jump-prev-version">v1.0.0</span> 更新到 <span id="update-jump-current-version">v1.0.1</span>
-        </p>
-        <div class="update-success-notes">
-          <div class="update-success-notes-title">更新内容</div>
-          <div id="update-jump-notes" class="update-success-notes-content">无更新内容说明</div>
+
+      <div class="update-modal-body">
+        <!-- 版本信息 -->
+        <div class="update-version-row">
+          <div class="update-target-version" id="update-jump-version">v1.0.0</div>
+          <div class="update-version-desc" id="update-jump-desc">已从 v0.0.0 更新到 v1.0.0</div>
+        </div>
+
+        <!-- 更新内容 -->
+        <div class="update-notes-section">
+          <div class="update-notes-title">更新内容</div>
+          <div id="update-jump-notes" class="update-notes-content">
+            载入中...
+          </div>
         </div>
       </div>
-      <div class="modal-footer">
-        <button id="update-jump-close-btn" type="button"
-          class="modal-btn modal-btn-confirm update-success-confirm">我知道了</button>
+
+      <!-- 底部操作栏 (单个 我知道了 按钮) -->
+      <div class="update-modal-footer">
+        <button id="update-jump-close-btn" type="button" class="update-btn update-btn-primary" data-action="closeUpdateJumpModal">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/>
+          </svg>
+          <span>我知道了</span>
+        </button>
       </div>
     </div>
   </div>

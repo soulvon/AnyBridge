@@ -38,7 +38,12 @@
       if (ic) ic.textContent = '⏳';
     }
 
-    setHealthSummary('检测进行中...', 'pending');
+    setHealthSummary('正在诊断环境各项指标（证书、路径、配置、端口、连通性）...', 'pending');
+    enableExportButtons(false);
+    const groupsContainer = _hEl('health-groups');
+    if (groupsContainer) {
+      groupsContainer.innerHTML = renderHealthSkeleton();
+    }
     addLog && addLog('ok', '环境检测: 正在执行（首次可能需要 1-2 秒）...');
 
     try {
@@ -48,7 +53,7 @@
       enableExportButtons(true);
       addLog && addLog('ok', `环境检测: 完成 (${report.totals.err} 错误 / ${report.totals.warn} 警告 / ${report.totals.ok} 通过)`);
     } catch (e) {
-      setHealthSummary('❌ 检测失败: ' + escapeHtml(String(e)), 'err');
+      setHealthSummary('检测失败: ' + escapeHtml(String(e)), 'err');
       addLog && addLog('err', '环境检测执行失败: ' + e);
     } finally {
       if (runBtn) {
@@ -293,17 +298,46 @@
   // ──────────────────────────────────────────────
   // 渲染：主入口
   // ──────────────────────────────────────────────
+  const HEALTH_GROUP_SVGS = {
+    path: `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>`,
+    cert: `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>`,
+    port: `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>`,
+    sidecar: `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"></rect><rect x="2" y="14" width="20" height="8" rx="2" ry="2"></rect><line x1="6" y1="6" x2="6.01" y2="6"></line><line x1="6" y1="18" x2="6.01" y2="18"></line></svg>`,
+    resources: `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path></svg>`,
+    model_map: `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"></polygon><line x1="8" y1="2" x2="8" y2="18"></line><line x1="16" y1="6" x2="16" y2="22"></line></svg>`,
+    providers: `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>`,
+    other: `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>`
+  };
+
+  function formatIssueMsg(msg) {
+    if (!msg) return '';
+    const raw = String(msg);
+    const parts = raw.split('; ');
+    if (parts.length > 1) {
+      return parts.map(p => {
+        const colonIdx = p.indexOf(': ');
+        if (colonIdx > 0) {
+          const k = p.slice(0, colonIdx);
+          const v = p.slice(colonIdx + 2);
+          return `<span class="health-kv-item"><span class="health-kv-key">${escapeHtml(k)}:</span> <code class="health-kv-val">${escapeHtml(v)}</code></span>`;
+        }
+        return `<span>${escapeHtml(p)}</span>`;
+      }).join('<span class="health-kv-divider">·</span>');
+    }
+    return `<span>${escapeHtml(raw)}</span>`;
+  }
+
   function renderGroupedReport(report) {
     if (!report) return;
     const ts = new Date(report.generatedAt || Date.now());
     const genAtEl = _hEl('health-generated-at');
     if (genAtEl) genAtEl.textContent = '更新时间: ' + formatTs(ts);
 
-    setHealthSummary(
-      (report.ok ? '✅ 体检通过' : '❌ 体检未通过') + '  ' +
-      '错误 ' + report.totals.err + ' · 警告 ' + report.totals.warn + ' · 通过 ' + report.totals.ok,
-      report.ok ? 'ok' : (report.totals.err > 0 ? 'err' : 'warn')
-    );
+    const summaryText = report.ok
+      ? `检测通过（全部检测项正常）`
+      : `体检未通过（发现 ${report.totals.err} 项异常，${report.totals.warn} 项提示）`;
+
+    setHealthSummary(summaryText, report.ok ? 'ok' : (report.totals.err > 0 ? 'err' : 'warn'));
 
     const container = _hEl('health-groups');
     if (!container) return;
@@ -324,33 +358,71 @@
   // ──────────────────────────────────────────────
   function renderGroupCard(g) {
     const status = g.errors > 0 ? 'err' : (g.warnings > 0 ? 'warn' : 'ok');
-    const statusIcon = status === 'err' ? '❌' : status === 'warn' ? '⚠' : '✅';
-    const statusColor = status === 'err' ? 'var(--danger)' : status === 'warn' ? 'var(--warning)' : 'var(--success)';
-    const issueCount = g.errors + ' 错 / ' + g.warnings + ' 警 / ' + g.oks + ' 通';
+    const svgIcon = HEALTH_GROUP_SVGS[g.id] || HEALTH_GROUP_SVGS.other;
+    
+    let badgeHtml = '';
+    if (g.errors > 0) {
+      badgeHtml = `<span class="health-badge err">${g.errors} 项异常</span>`;
+    } else if (g.warnings > 0) {
+      badgeHtml = `<span class="health-badge warn">${g.warnings} 项提示</span>`;
+    } else {
+      badgeHtml = `<span class="health-badge ok"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg> 正常</span>`;
+    }
+
     const issuesHtml = g.issues.map((i) => {
       const lvl = i.level || 'info';
-      const color = lvl === 'err' ? 'var(--danger)' : lvl === 'warn' ? 'var(--warning)' : 'var(--success)';
-      const label = lvl === 'err' ? '错误' : lvl === 'warn' ? '提示' : lvl === 'ok' ? '通过' : '信息';
-      return '<div class="health-issue">' +
-        '<span class="health-issue-level" style="color:' + color + '">' + label + '</span>' +
-        '<span class="health-issue-msg">' + escapeHtml(i.message || String(i)) + '</span>' +
-        '</div>';
+      const lvlBadge = lvl === 'err' 
+        ? `<span class="health-issue-tag err">错误</span>`
+        : (lvl === 'warn' 
+          ? `<span class="health-issue-tag warn">提示</span>`
+          : `<span class="health-issue-tag ok">通过</span>`);
+      return `
+        <div class="health-issue">
+          ${lvlBadge}
+          <div class="health-issue-msg">${formatIssueMsg(i.message || String(i))}</div>
+        </div>
+      `;
     }).join('');
-    return '<div class="health-group-card health-status-' + status + '">' +
-      '<div class="health-group-head">' +
-        '<span class="health-group-icon">' + g.icon + '</span>' +
-        '<span class="health-group-title">' + escapeHtml(g.title) + '</span>' +
-        '<span class="health-group-status" style="color:' + statusColor + '">' + statusIcon + ' ' + issueCount + '</span>' +
-      '</div>' +
-      '<div class="health-group-issues">' + issuesHtml + '</div>' +
-    '</div>';
+
+    return `
+      <div class="health-group-card health-status-${status}">
+        <div class="health-group-head">
+          <div class="health-group-title-wrap">
+            <span class="health-group-icon">${svgIcon}</span>
+            <span class="health-group-title">${escapeHtml(g.title)}</span>
+          </div>
+          <div class="health-group-status">${badgeHtml}</div>
+        </div>
+        <div class="health-group-issues">${issuesHtml}</div>
+      </div>
+    `;
   }
 
   function setHealthSummary(text, kind) {
     const el = _hEl('health-summary');
     if (!el) return;
-    const color = kind === 'err' ? 'var(--danger)' : kind === 'warn' ? 'var(--warning)' : kind === 'ok' ? 'var(--success)' : 'var(--text-secondary)';
-    el.innerHTML = '<div class="health-summary-line" style="color:' + color + '">' + escapeHtml(text) + '</div>';
+    const isOk = kind === 'ok';
+    const isErr = kind === 'err';
+    const isWarn = kind === 'warn';
+    const isPending = kind === 'pending';
+
+    let iconSvg = '';
+    if (isOk) {
+      iconSvg = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg>`;
+    } else if (isErr) {
+      iconSvg = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"></circle><line x1="15" y1="9" x2="9" y2="15"></line><line x1="9" y1="9" x2="15" y2="15"></line></svg>`;
+    } else if (isWarn) {
+      iconSvg = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>`;
+    } else if (isPending) {
+      iconSvg = `<svg class="spin" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="2" x2="12" y2="6"></line><line x1="12" y1="18" x2="12" y2="22"></line><line x1="4.93" y1="4.93" x2="7.76" y2="7.76"></line><line x1="16.24" y1="16.24" x2="19.07" y2="19.07"></line><line x1="2" y1="12" x2="6" y2="12"></line><line x1="18" y1="12" x2="22" y2="12"></line><line x1="4.93" y1="19.07" x2="7.76" y2="16.24"></line><line x1="16.24" y1="7.76" x2="19.07" y2="4.93"></line></svg>`;
+    }
+
+    el.innerHTML = `
+      <div class="health-summary-inner status-${kind}">
+        ${iconSvg ? `<span class="health-summary-icon">${iconSvg}</span>` : ''}
+        <span class="health-summary-text">${escapeHtml(text)}</span>
+      </div>
+    `;
   }
 
   // ──────────────────────────────────────────────
@@ -480,6 +552,32 @@
       .replace(/"/g, '&quot;')
       .replace(/'/g, '&#39;');
   }
+  function renderHealthSkeleton(count = 4) {
+    const cards = [];
+    for (let i = 0; i < count; i++) {
+      cards.push(`
+        <div class="health-group-card health-skeleton-card" aria-hidden="true" style="--delay:${i * 60}ms">
+          <div class="health-group-head">
+            <span class="health-skeleton-icon"></span>
+            <span class="health-skeleton-line title"></span>
+            <span class="health-skeleton-line status"></span>
+          </div>
+          <div class="health-group-issues">
+            <div class="health-skeleton-issue">
+              <span class="health-skeleton-line tag"></span>
+              <span class="health-skeleton-line msg"></span>
+            </div>
+            <div class="health-skeleton-issue">
+              <span class="health-skeleton-line tag"></span>
+              <span class="health-skeleton-line msg short"></span>
+            </div>
+          </div>
+        </div>
+      `);
+    }
+    return cards.join('');
+  }
+
   function downloadTextFile(text, filename) {
     const blob = new Blob([text], { type: 'text/markdown;charset=utf-8' });
     const url = URL.createObjectURL(blob);

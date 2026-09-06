@@ -46,6 +46,15 @@ globalThis.PLATFORM_DEFS = {
     summary: '写入 models.json 自定义模型，使用 OpenAI Chat Completions',
     note: 'URL 会规范化为完整 /v1/chat/completions 端点。',
   },
+  grok: {
+    id: 'grok',
+    name: 'Grok',
+    vendor: 'xAI',
+    requiredApiFormat: 'openai',
+    configHint: '~/.grok/config.toml',
+    summary: '写入 [models].default 与 [model.anybridge] 自定义端点',
+    note: '原生支持 OpenAI 兼容 API，保留 config.toml 其余配置。',
+  },
   opencode: {
     id: 'opencode',
     name: 'OpenCode',
@@ -154,7 +163,7 @@ function platformLocalProxyConfigId(platformId) {
 }
 
 function platformIsLocalProxyConfig(config) {
-  return !!(config && (config.localProxy || String(config.id || '').startsWith('anybridge-local-proxy-')));
+  return !!(config && (config.localProxy || String(config.id || '').startsWith('anybridge-local-proxy')));
 }
 
 function platformLocalProxyRuntime(platformId) {
@@ -177,6 +186,7 @@ function platformLocalProxyCard(platformId, info) {
   if (!runtime) return null;
   const isClaude = platformId === 'claude-code';
   const isOpenCode = platformId === 'opencode';
+  const isGrok = platformId === 'grok';
   const localProxyId = platformLocalProxyConfigId(platformId);
   const live = isOpenCode
     ? (Array.isArray(info?.liveProviderIds) && info.liveProviderIds.includes(localProxyId))
@@ -185,7 +195,9 @@ function platformLocalProxyCard(platformId, info) {
     ? info?.currentProviderId === localProxyId
     : isClaude
       ? (typeof claudeCodeProviderIsCurrent === 'function' && claudeCodeProviderIsCurrent(runtime, info))
-      : (typeof codexProviderIsCurrent === 'function' && codexProviderIsCurrent(runtime, info));
+      : isGrok
+        ? (info?.currentProviderId === localProxyId || info?.currentProviderId === grok_sanitize_key(localProxyId))
+        : (typeof codexProviderIsCurrent === 'function' && codexProviderIsCurrent(runtime, info));
   return {
     platformId,
     name: 'AnyBridge 本地代理',
@@ -198,11 +210,11 @@ function platformLocalProxyCard(platformId, info) {
     currentLabel: '当前使用',
     model: runtime.defaultModel || '未配置',
     endpoint: runtime.endpoint,
-    protocol: isClaude ? 'anthropic-compatible' : (isOpenCode ? 'openai-compatible' : 'responses'),
-    configAction: isOpenCode ? '' : 'openProxyRoutesFromPlatform()',
-    configLabel: '配置模型',
+    protocol: isClaude ? 'anthropic-compatible' : ((isOpenCode || isGrok) ? 'openai-compatible' : 'responses'),
+    configAction: 'openProxyRoutesFromPlatform()',
+    configLabel: '配置代理模型',
     action: `applyLocalProxyPlatformConfig(${platformJsArg(platformId)})`,
-    actionLabel: isOpenCode ? (live ? '设为当前' : '加入并设为当前') : '切换',
+    actionLabel: '切换',
     removeAction: isOpenCode && live ? `removeOpenCodeProviderConfig(${platformJsArg(localProxyId)})` : '',
     removeLabel: '移除',
   };
@@ -259,6 +271,11 @@ async function ensureLocalProxyPlatformConfig(platformId) {
     providerStore.opencodeConfigs = upsertById(providerStore.opencodeConfigs, { ...base, settingsConfig });
   } else if (platformId === 'codex') {
     providerStore.codexConfigs = upsertById(providerStore.codexConfigs, base);
+  } else if (platformId === 'grok') {
+    providerStore.grokConfigs = upsertById(providerStore.grokConfigs, {
+      ...base,
+      apiBackend: 'chat_completions',
+    });
   } else {
     providerStore.providers = upsertById(providerStore.providers, {
       id: platformLocalProxyConfigId(platformId),
@@ -325,6 +342,9 @@ function platformProviderList(platformId) {
   }
   if (platformId === 'opencode') {
     return Array.isArray(providerStore?.opencodeConfigs) ? providerStore.opencodeConfigs.filter(p => !platformIsLocalProxyConfig(p)) : [];
+  }
+  if (platformId === 'grok') {
+    return Array.isArray(providerStore?.grokConfigs) ? providerStore.grokConfigs.filter(p => !platformIsLocalProxyConfig(p)) : [];
   }
   const providers = (providerStore && Array.isArray(providerStore.providers))
     ? providerStore.providers
@@ -458,7 +478,7 @@ async function refreshPlatforms(options = {}) {
   }
 
   try {
-    if (typeof loadProviders === 'function') {
+    if (options.reloadProviders !== false && typeof loadProviders === 'function') {
       await loadProviders();
     }
     platformInfos = await invoke('detect_platforms') || [];
@@ -569,6 +589,10 @@ function renderPlatformDetailStatuses() {
     }
     if (platformId === 'opencode') {
       if (info) renderOpenCodePageStatus(info);
+      return;
+    }
+    if (platformId === 'grok') {
+      if (info) renderGrokPageStatus(info);
       return;
     }
 
@@ -1032,14 +1056,18 @@ function renderCodexModelManager(entries, defaultModel = '', status = '') {
     const defaultBtnClick = isDefault
       ? `selectCodexDefaultModel('')`
       : `selectCodexDefaultModel('${model}')`;
+    const icon = typeof renderModelIcon === 'function' ? renderModelIcon(entry.model) : '';
     return `<div class="codex-config-model-option${activeClass}" data-idx="${i}" data-model="${model}" data-display="${displayName}" data-ctx="${ctx}">
       <input type="checkbox" ${checked} data-action="toggleCodexModelCatalog" data-events="change" data-args="[${i}]" title="加入模型目录">
-      <span title="${model}">${model}</span>
-      ${displayName ? `<span>${displayName}</span>` : ''}
-      ${ctx ? `<span>${ctx}</span>` : ''}
-      <button type="button" class="${defaultBtnClass}" data-action-call="${defaultBtnClick}">${defaultBtnText}</button>
-      <button type="button" class="codex-config-fetch-btn" data-action="editCodexModelEntry" data-args="[${i}]">编辑</button>
-      <button type="button" class="codex-config-catalog-del" data-action="removeCodexModelEntry" data-args="[${i}]">删除</button>
+      <span class="codex-model-icon-wrap">${icon}</span>
+      <span class="codex-model-name" title="${model}">${model}</span>
+      ${displayName ? `<span class="codex-model-display-name">${displayName}</span>` : ''}
+      ${ctx ? `<span class="codex-model-ctx">${ctx}</span>` : ''}
+      <div class="codex-model-actions">
+        <button type="button" class="${defaultBtnClass}" data-action-call="${defaultBtnClick}">${defaultBtnText}</button>
+        <button type="button" class="codex-config-fetch-btn" data-action="editCodexModelEntry" data-args="[${i}]">编辑</button>
+        <button type="button" class="codex-config-catalog-del" data-action="removeCodexModelEntry" data-args="[${i}]">删除</button>
+      </div>
     </div>`;
   }).join('');
   if (status) codexConfigSetModelStatus(status);
@@ -1466,7 +1494,358 @@ function validateCodexAgents(agents, models) {
   return '';
 }
 
+const PLATFORM_EYE_OPEN = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"></path><circle cx="12" cy="12" r="3"></circle></svg>`;
+const PLATFORM_EYE_CLOSE = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;"><path d="M9.88 9.88a3 3 0 1 0 4.24 4.24"></path><path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68"></path><path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61"></path><line x1="2" y1="2" x2="22" y2="22"></line></svg>`;
+
+function togglePasswordInputVisibility(inputId, btnId) {
+  const input = document.getElementById(inputId);
+  const btn = btnId ? document.getElementById(btnId) : null;
+  if (!input) return;
+  if (input.type === 'password') {
+    input.type = 'text';
+    if (btn) btn.innerHTML = PLATFORM_EYE_CLOSE;
+  } else {
+    input.type = 'password';
+    if (btn) btn.innerHTML = PLATFORM_EYE_OPEN;
+  }
+}
+
+function resetPasswordInputVisibility(inputId, btnId) {
+  const input = document.getElementById(inputId);
+  const btn = btnId ? document.getElementById(btnId) : null;
+  if (input) input.type = 'password';
+  if (btn) btn.innerHTML = PLATFORM_EYE_OPEN;
+}
+
+function togglePasswordVisibility(inputId, btnId) {
+  togglePasswordInputVisibility(inputId, btnId);
+}
+
+function toggleCodexKeyVisibility() {
+  togglePasswordInputVisibility('codex-config-api-key', 'codex-config-api-key-toggle');
+}
+
+function toggleClaudeCodeKeyVisibility() {
+  togglePasswordInputVisibility('claude-code-config-api-key', 'claude-code-config-api-key-toggle');
+}
+
+function toggleOpenCodeKeyVisibility() {
+  togglePasswordInputVisibility('opencode-config-api-key', 'opencode-config-api-key-toggle');
+}
+
+function toggleGrokKeyVisibility() {
+  togglePasswordInputVisibility('grok-config-api-key', 'grok-config-api-key-toggle');
+}
+
+function syncCodexConfigTokenFromSource() {
+  const sourceId = String(document.getElementById('codex-config-source-id')?.value || '').trim();
+  const editId = String(document.getElementById('codex-config-edit-id')?.value || '').trim();
+  const existing = editId ? codexConfigProviderById(editId) : null;
+  const targetSourceId = sourceId || existing?.sourceProviderId || '';
+  const configName = String(document.getElementById('codex-config-name')?.value || '').trim();
+
+  const source = (providerStore.providers || []).find(p => p && (
+    (targetSourceId && p.id === targetSourceId) ||
+    (configName && (p.name === configName || p.id === configName))
+  ));
+
+  if (!source) {
+    if (typeof showCustomAlert === 'function') {
+      showCustomAlert('未找到关联的来源供应商，请先在下方选择或关联来源。', '无法同步', 'warn');
+    }
+    return;
+  }
+
+  codexConfigSetInputValue('codex-config-source-id', source.id);
+  codexConfigSetInputValue('codex-config-api-key', source.apiKey || '');
+  const newEndpoint = codexConfigDisplayBaseUrl(source);
+  if (newEndpoint) codexConfigSetInputValue('codex-config-base-url', newEndpoint);
+
+  if (typeof showBottomToast === 'function') {
+    showBottomToast(`已同步供应商「${source.name || source.id}」的最新令牌`, 'success');
+  }
+}
+
+function syncClaudeCodeConfigTokenFromSource() {
+  const sourceId = String(document.getElementById('claude-code-config-source-id')?.value || '').trim();
+  const editId = String(document.getElementById('claude-code-config-edit-id')?.value || '').trim();
+  const existing = editId ? claudeCodeConfigProviderById(editId) : null;
+  const targetSourceId = sourceId || existing?.sourceProviderId || '';
+  const configName = String(document.getElementById('claude-code-config-name')?.value || '').trim();
+
+  const source = (providerStore.providers || []).find(p => p && (
+    (targetSourceId && p.id === targetSourceId) ||
+    (configName && (p.name === configName || p.id === configName))
+  ));
+
+  if (!source) {
+    if (typeof showCustomAlert === 'function') {
+      showCustomAlert('未找到关联的来源供应商，请先选择来源。', '无法同步', 'warn');
+    }
+    return;
+  }
+
+  codexConfigSetInputValue('claude-code-config-source-id', source.id);
+  codexConfigSetInputValue('claude-code-config-api-key', source.apiKey || '');
+  const newEndpoint = claudeCodeConfigDisplayBaseUrl(source);
+  if (newEndpoint) codexConfigSetInputValue('claude-code-config-base-url', newEndpoint);
+  syncClaudeCodeRawConfigFromFields();
+
+  if (typeof showBottomToast === 'function') {
+    showBottomToast(`已同步供应商「${source.name || source.id}」的最新令牌`, 'success');
+  }
+}
+
+function syncOpenCodeConfigTokenFromSource() {
+  const sourceId = String(document.getElementById('opencode-config-source-id')?.value || '').trim();
+  const editId = String(document.getElementById('opencode-config-edit-id')?.value || '').trim();
+  const existing = editId ? opencodeConfigProviderById(editId) : null;
+  const targetSourceId = sourceId || existing?.sourceProviderId || '';
+  const configName = String(document.getElementById('opencode-config-name')?.value || '').trim();
+
+  const source = (providerStore.providers || []).find(p => p && (
+    (targetSourceId && p.id === targetSourceId) ||
+    (configName && (p.name === configName || p.id === configName))
+  ));
+
+  if (!source) {
+    if (typeof showCustomAlert === 'function') {
+      showCustomAlert('未找到关联的来源供应商，请先选择来源。', '无法同步', 'warn');
+    }
+    return;
+  }
+
+  codexConfigSetInputValue('opencode-config-source-id', source.id);
+  codexConfigSetInputValue('opencode-config-api-key', source.apiKey || '');
+  const newEndpoint = opencodeConfigDisplayBaseUrl(source);
+  if (newEndpoint) codexConfigSetInputValue('opencode-config-base-url', newEndpoint);
+  syncOpenCodeRawConfigFromFields();
+
+  if (typeof showBottomToast === 'function') {
+    showBottomToast(`已同步供应商「${source.name || source.id}」的最新令牌`, 'success');
+  }
+}
+
+async function openCodexAddModal() {
+  navigateTo('platform-codex-add');
+  await initCodexAddPage();
+}
+
+function openCodexProviderAdd() {
+  openCodexAddModal();
+}
+
+async function initCodexAddPage() {
+  try {
+    codexProviderModels = await invoke('list_provider_models') || [];
+  } catch (e) {
+    codexProviderModels = [];
+  }
+  if (typeof localProxyProviderModelsEntry === 'function') {
+    const lp = localProxyProviderModelsEntry();
+    codexProviderModels = codexProviderModels.filter(p => !isLocalProxyProviderEntry(p));
+    codexProviderModels.unshift(lp);
+  }
+  codexAddSelectedProvider = null;
+  codexAddSearchKw = '';
+  const searchInput = document.getElementById('codex-add-search');
+  if (searchInput) searchInput.value = '';
+  setCodexAddWireApi('auto');
+  renderCodexAddProviderList();
+  renderCodexAddModels();
+  updateCodexAddConfirmButton();
+}
+
+function onCodexAddSearch() {
+  const input = document.getElementById('codex-add-search');
+  codexAddSearchKw = (input?.value || '').trim().toLowerCase();
+  renderCodexAddProviderList();
+}
+
+function renderCodexAddProviderList() {
+  const list = document.getElementById('codex-add-provider-list');
+  syncPlatformAddSortControl('codex');
+  if (!list) return;
+  if (!codexProviderModels.length) {
+    list.innerHTML = '<div class="cb-add-prov-empty">暂无供应商，请先在「供应商」页添加</div>';
+    return;
+  }
+  const filtered = platformAddVisibleProviders(codexProviderModels, codexAddSearchKw);
+  if (!filtered.length) {
+    list.innerHTML = '<div class="cb-add-prov-empty">没有匹配的供应商</div>';
+    return;
+  }
+  list.innerHTML = filtered.map(p => {
+    const initial = (p.providerName || '?').charAt(0).toUpperCase();
+    const enabled = p.enabled !== false;
+    const isActive = codexAddSelectedProvider === p.providerId;
+    const isBuiltin = isBuiltinProxyEntry(p);
+    const iconHtml = isBuiltin
+      ? `<span class="cb-add-prov-icon cb-add-prov-icon-builtin" title="内置本地代理"><span>本地</span><span>代理</span></span>`
+      : `<span class="cb-add-prov-icon">${platformEsc(initial)}</span>`;
+    return `
+      <div class="cb-add-prov-item ${isActive ? 'active' : ''} ${enabled ? '' : 'disabled'} ${isBuiltin ? 'is-local-proxy' : ''}" data-action="selectCodexAddProvider" data-arg="${platformEsc(p.providerId)}">
+        ${iconHtml}
+        <span class="cb-add-prov-name">${platformEsc(p.providerName)}</span>
+        <span class="cb-add-prov-count">${p.models.length}</span>
+      </div>
+    `;
+  }).join('');
+}
+
+function selectCodexAddProvider(providerId) {
+  codexAddSelectedProvider = providerId;
+  renderCodexAddProviderList();
+  renderCodexAddModels();
+  updateCodexAddConfirmButton();
+}
+
+function renderCodexAddModels() {
+  const titleEl = document.getElementById('codex-add-models-title');
+  const subEl = document.getElementById('codex-add-models-sub');
+  const body = document.getElementById('codex-add-models-list-page');
+  if (!body) return;
+
+  if (!codexAddSelectedProvider) {
+    titleEl.textContent = '请选择供应商';
+    subEl.textContent = '左侧选择一个供应商，右侧将展示其可用模型';
+    body.innerHTML = '<div class="cb-add-models-empty">请从左侧选择一个供应商</div>';
+    return;
+  }
+
+  const provider = codexProviderModels.find(p => p.providerId === codexAddSelectedProvider);
+  if (!provider) {
+    titleEl.textContent = '供应商未找到';
+    subEl.textContent = '';
+    body.innerHTML = '<div class="cb-add-models-empty">供应商未找到</div>';
+    return;
+  }
+
+  titleEl.textContent = provider.providerName;
+  subEl.textContent = `共 ${provider.models.length} 个模型，勾选要添加到 Codex 的模型`;
+
+  if (!provider.models.length) {
+    body.innerHTML = '<div class="cb-add-models-empty">该供应商暂无模型</div>';
+    return;
+  }
+
+  const codexConfigs = Array.isArray(providerStore?.codexConfigs) ? providerStore.codexConfigs : [];
+  const existingConfig = codexConfigs.find(c => c.sourceProviderId === provider.providerId || c.name === provider.providerName);
+  const existingModels = new Set(existingConfig?.models || []);
+
+  body.innerHTML = provider.models.map((m) => {
+    const exists = existingModels.has(m.id);
+    return `
+      <label class="cb-add-model-row ${exists ? 'already-added' : ''}" data-existing="${exists ? 'true' : 'false'}">
+        <input type="checkbox" class="codex-add-model-check" data-model-id="${platformEsc(m.id)}" data-model-name="${platformEsc(m.name || m.id)}" ${exists ? 'checked' : ''} data-action="cbOnAddModelCheckChanged" data-events="change" data-pass-this data-arg="updateCodexAddConfirmButton">
+        ${cbAddModelIdentity(m.id)}
+      </label>
+    `;
+  }).join('');
+}
+
+function updateCodexAddConfirmButton() {
+  const btn = document.getElementById('codex-add-confirm-page');
+  if (!btn) return;
+  const checked = document.querySelectorAll('.codex-add-model-check:checked');
+  btn.disabled = checked.length === 0;
+  const label = btn.querySelector('.model-action-label');
+  if (label) {
+    label.textContent = checked.length > 0 ? ` 保存选择 (${checked.length})` : ' 保存选择';
+  }
+}
+
+function codexAddSelectAll() {
+  cbSetAddModelChecks('.codex-add-model-check', true, updateCodexAddConfirmButton);
+}
+
+function codexAddSelectNone() {
+  cbSetAddModelChecks('.codex-add-model-check', false, updateCodexAddConfirmButton);
+}
+
+function setCodexAddWireApi(api) {
+  const normalized = api || 'auto';
+  const hidden = document.getElementById('codex-add-wire-api');
+  if (hidden) hidden.value = normalized;
+  document.querySelectorAll('input[name="codex-add-wire-api-radio"]').forEach(r => {
+    r.checked = r.value === normalized;
+  });
+}
+
+async function confirmAddCodexModelsPage() {
+  const provider = codexProviderModels.find(p => p.providerId === codexAddSelectedProvider);
+  if (!provider) {
+    showCustomAlert('请先在左侧选择供应商。', '未选择供应商', 'warn');
+    return;
+  }
+  const checkedInputs = Array.from(document.querySelectorAll('.codex-add-model-check:checked'));
+  if (!checkedInputs.length) {
+    showCustomAlert('请至少勾选一个模型。', '未勾选模型', 'warn');
+    return;
+  }
+
+  const checkedModelIds = checkedInputs.map(input => input.dataset.modelId);
+  const defaultModel = checkedModelIds[0] || '';
+  const rawBaseUrl = provider.chatUrl || (provider.apiHost ? `${provider.apiHost.replace(/\/+$/, '')}${provider.apiPath || '/v1'}` : '');
+  const endpoint = codexConfigEndpointParts(rawBaseUrl);
+
+  const routeThroughProxy = document.getElementById('codex-add-route-through-proxy')?.checked ?? true;
+  const injectModels = document.getElementById('codex-add-inject-models')?.checked ?? true;
+  const unifySessionHistory = document.getElementById('codex-add-unify-session-history')?.checked ?? true;
+  const preserveOfficialAuth = document.getElementById('codex-add-preserve-official-auth')?.checked ?? false;
+  const wireApi = document.getElementById('codex-add-wire-api')?.value || 'auto';
+  const wireApiAuto = wireApi === 'auto';
+
+  if (!Array.isArray(providerStore.codexConfigs)) providerStore.codexConfigs = [];
+
+  const sanitizedProvider = grok_sanitize_key(provider.providerId);
+  const configId = `codex-${sanitizedProvider}`;
+  const existingIdx = providerStore.codexConfigs.findIndex(p =>
+    p.id === configId || p.sourceProviderId === provider.providerId
+  );
+  const existing = existingIdx >= 0 ? providerStore.codexConfigs[existingIdx] : null;
+
+  const configItem = {
+    ...(existing || {}),
+    id: existing?.id || configId,
+    name: provider.providerName,
+    apiHost: endpoint.apiHost || provider.apiHost,
+    apiPath: endpoint.apiPath || provider.apiPath || '/v1',
+    apiKey: provider.apiKey || '',
+    defaultModel,
+    models: checkedModelIds,
+    modelCatalog: checkedModelIds,
+    wireApi: wireApiAuto ? undefined : wireApi,
+    wireApiAuto,
+    routeThroughProxy,
+    injectModels: !preserveOfficialAuth && injectModels,
+    preserveOfficialAuth,
+    unifySessionHistory,
+    sourceProviderId: provider.providerId,
+    sourceProviderName: provider.providerName,
+  };
+
+  if (existingIdx >= 0) {
+    providerStore.codexConfigs[existingIdx] = configItem;
+  } else {
+    providerStore.codexConfigs.push(configItem);
+  }
+
+  const ok = await syncCodexConfigUiAfterStoreChange();
+  if (ok) {
+    if (typeof addLog === 'function') addLog('ok', `已添加 Codex 配置: ${provider.providerName} (${checkedModelIds.length} 个模型)`);
+    showCustomAlert(`已成功保存「${provider.providerName}」的 Codex 配置（共 ${checkedModelIds.length} 个模型）。`, '保存成功', 'success');
+    navigateTo('platform-codex');
+    renderCodexConfigList(platformInfoOf('codex') || {});
+  }
+}
+
 function openCodexConfigEditor(providerId = '') {
+  if (!providerId) {
+    openCodexAddModal();
+    return;
+  }
+  resetPasswordInputVisibility('codex-config-api-key', 'codex-config-api-key-toggle');
   const provider = providerId ? codexConfigProviderById(providerId) : null;
   if (providerId && !provider) {
     showCustomAlert('配置不存在或尚未加载。', '无法编辑', 'warn');
@@ -1557,6 +1936,7 @@ function openCodexConfigEditor(providerId = '') {
 }
 
 function closeCodexConfigEditor() {
+  resetPasswordInputVisibility('codex-config-api-key', 'codex-config-api-key-toggle');
   document.getElementById('codex-config-modal')?.classList.remove('active');
 }
 
@@ -1689,6 +2069,9 @@ function codexActionIcon(type) {
   if (type === 'delete') {
     return '<svg aria-hidden="true" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"></path><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path><path d="M10 11v6"></path><path d="M14 11v6"></path></svg>';
   }
+  if (type === 'config') {
+    return '<svg aria-hidden="true" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>';
+  }
   if (type === 'start') {
     return '<svg aria-hidden="true" width="15" height="15" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="0.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="6 4 20 12 6 20 6 4"></polygon></svg>';
   }
@@ -1708,10 +2091,10 @@ function renderCodexConfigCard(config) {
     ? `<button class="btn-ghost codex-card-action codex-icon-action codex-delete-action" type="button" title="删除" aria-label="删除 ${platformEsc(config.name)}" ${disabled ? 'disabled' : ''} data-action-call="${platformEsc(config.deleteAction)}">${codexActionIcon('delete')}</button>`
     : '';
   const removeButton = config.removeAction
-    ? `<button class="btn-ghost codex-card-action" type="button" title="从 live 配置移除" aria-label="从 live 配置移除 ${platformEsc(config.name)}" ${disabled ? 'disabled' : ''} data-action-call="${platformEsc(config.removeAction)}">${platformEsc(config.removeLabel || '移除')}</button>`
+    ? `<button class="btn-ghost codex-card-action codex-icon-action codex-delete-action" type="button" title="${platformEsc(config.removeLabel || '移除')}" aria-label="从 live 配置移除 ${platformEsc(config.name)}" ${disabled ? 'disabled' : ''} data-action-call="${platformEsc(config.removeAction)}">${codexActionIcon('delete')}</button>`
     : '';
   const configButton = config.configAction
-    ? `<button class="btn-ghost codex-card-action" type="button" aria-label="${platformEsc(config.configLabel || '配置')} ${platformEsc(config.name)}" ${disabled ? 'disabled' : ''} data-action-call="${platformEsc(config.configAction)}">${platformEsc(config.configLabel || '配置')}</button>`
+    ? `<button class="btn-ghost codex-card-action codex-icon-action" type="button" title="${platformEsc(config.configLabel || '配置模型')}" aria-label="${platformEsc(config.configLabel || '配置')} ${platformEsc(config.name)}" ${disabled ? 'disabled' : ''} data-action-call="${platformEsc(config.configAction)}">${codexActionIcon('config')}</button>`
     : '';
   const desktopSupported = codexDesktopAutomationSupported();
   const startDisabled = disabled || !desktopSupported;
@@ -1768,10 +2151,19 @@ async function deleteCodexProviderConfig(providerId) {
     return;
   }
   const info = platformInfoOf('codex');
-  if (codexProviderIsCurrent(provider, info)) {
-    showCustomAlert('当前正在使用的配置不能直接删除，请先切换到其他配置或官方配置。', '无法删除当前配置', 'warn');
-    return;
+  const isCurrent = codexProviderIsCurrent(provider, info);
+
+  const confirmMsg = isCurrent
+    ? `「${provider.name || provider.id}」当前正在生效中。\n\n删除该配置将自动为您恢复为「OpenAI 官方配置」。是否确认删除？`
+    : `确定要删除 Codex 配置「${provider.name || provider.id}」吗？`;
+
+  const okConfirm = await showCustomConfirm(confirmMsg, '删除配置', 'warn');
+  if (!okConfirm) return;
+
+  if (isCurrent) {
+    await restoreCodexOfficialConfig();
   }
+
   const previous = typeof cloneProviderStore === 'function'
     ? cloneProviderStore()
     : JSON.parse(JSON.stringify(providerStore || { version: 1, providers: [] }));
@@ -1870,7 +2262,7 @@ function renderCodexConfigList(info) {
       action: `applyCodexProviderConfig(${platformJsArg(provider.id)})`,
       editAction: `editCodexProviderConfig(${platformJsArg(provider.id)})`,
       startAction: current ? `startCodexWithCdp(${needInject ? 'true' : 'false'})` : '',
-      deleteAction: current ? '' : `deleteCodexProviderConfig(${platformJsArg(provider.id)})`,
+      deleteAction: `deleteCodexProviderConfig(${platformJsArg(provider.id)})`,
     });
   });
 
@@ -2242,11 +2634,17 @@ function renderClaudeCodeConfigModelList(models = null) {
     list.innerHTML = '<div class="codex-config-model-empty">还没有模型，点击右上角按钮拉取。</div>';
     return;
   }
-  list.innerHTML = source.map(model => `
-    <button type="button" class="codex-config-model-option ${model === defaultModel ? 'active' : ''}" data-model="${platformEsc(model)}" title="${platformEsc(model)}" role="radio" aria-checked="${model === defaultModel ? 'true' : 'false'}">
-      <span>${platformEsc(model)}</span>
-    </button>
-  `).join('');
+  list.innerHTML = source.map(model => {
+    const isDefault = model === defaultModel;
+    const icon = typeof renderModelIcon === 'function' ? renderModelIcon(model) : '';
+    return `
+      <button type="button" class="codex-config-model-option opencode-model-option ${isDefault ? 'active' : ''}" data-model="${platformEsc(model)}" title="${platformEsc(model)}" role="radio" aria-checked="${isDefault ? 'true' : 'false'}">
+        <span class="opencode-model-icon-wrap">${icon}</span>
+        <span class="opencode-model-name">${platformEsc(model)}</span>
+        ${isDefault ? '<span class="opencode-model-default-badge">默认</span>' : ''}
+      </button>
+    `;
+  }).join('');
   list.setAttribute('role', 'radiogroup');
   list.onclick = (event) => {
     const item = event.target.closest('.codex-config-model-option');
@@ -2375,11 +2773,217 @@ function claudeCodeConfigMatchesSearch(config) {
   ].some(value => String(value || '').toLowerCase().includes(kw));
 }
 
+async function openClaudeCodeAddModal() {
+  navigateTo('platform-claude-add');
+  await initClaudeAddPage();
+}
+
 function openClaudeCodeProviderAdd() {
-  openClaudeCodeConfigEditor('');
+  openClaudeCodeAddModal();
+}
+
+async function initClaudeAddPage() {
+  try {
+    claudeProviderModels = await invoke('list_provider_models') || [];
+  } catch (e) {
+    claudeProviderModels = [];
+  }
+  if (typeof localProxyProviderModelsEntry === 'function') {
+    const lp = localProxyProviderModelsEntry();
+    claudeProviderModels = claudeProviderModels.filter(p => !isLocalProxyProviderEntry(p));
+    claudeProviderModels.unshift(lp);
+  }
+  claudeAddSelectedProvider = null;
+  claudeAddSearchKw = '';
+  const searchInput = document.getElementById('claude-add-search');
+  if (searchInput) searchInput.value = '';
+  renderClaudeAddProviderList();
+  renderClaudeAddModels();
+  updateClaudeAddConfirmButton();
+}
+
+function onClaudeAddSearch() {
+  const input = document.getElementById('claude-add-search');
+  claudeAddSearchKw = (input?.value || '').trim().toLowerCase();
+  renderClaudeAddProviderList();
+}
+
+function renderClaudeAddProviderList() {
+  const list = document.getElementById('claude-add-provider-list');
+  syncPlatformAddSortControl('claude');
+  if (!list) return;
+  if (!claudeProviderModels.length) {
+    list.innerHTML = '<div class="cb-add-prov-empty">暂无供应商，请先在「供应商」页添加</div>';
+    return;
+  }
+  const filtered = platformAddVisibleProviders(claudeProviderModels, claudeAddSearchKw);
+  if (!filtered.length) {
+    list.innerHTML = '<div class="cb-add-prov-empty">没有匹配的供应商</div>';
+    return;
+  }
+  list.innerHTML = filtered.map(p => {
+    const initial = (p.providerName || '?').charAt(0).toUpperCase();
+    const enabled = p.enabled !== false;
+    const isActive = claudeAddSelectedProvider === p.providerId;
+    const isBuiltin = isBuiltinProxyEntry(p);
+    const iconHtml = isBuiltin
+      ? `<span class="cb-add-prov-icon cb-add-prov-icon-builtin" title="内置本地代理"><span>本地</span><span>代理</span></span>`
+      : `<span class="cb-add-prov-icon">${platformEsc(initial)}</span>`;
+    return `
+      <div class="cb-add-prov-item ${isActive ? 'active' : ''} ${enabled ? '' : 'disabled'} ${isBuiltin ? 'is-local-proxy' : ''}" data-action="selectClaudeAddProvider" data-arg="${platformEsc(p.providerId)}">
+        ${iconHtml}
+        <span class="cb-add-prov-name">${platformEsc(p.providerName)}</span>
+        <span class="cb-add-prov-count">${p.models.length}</span>
+      </div>
+    `;
+  }).join('');
+}
+
+function selectClaudeAddProvider(providerId) {
+  claudeAddSelectedProvider = providerId;
+  renderClaudeAddProviderList();
+  renderClaudeAddModels();
+  updateClaudeAddConfirmButton();
+}
+
+function renderClaudeAddModels() {
+  const titleEl = document.getElementById('claude-add-models-title');
+  const subEl = document.getElementById('claude-add-models-sub');
+  const body = document.getElementById('claude-add-models-list-page');
+  if (!body) return;
+
+  if (!claudeAddSelectedProvider) {
+    titleEl.textContent = '请选择供应商';
+    subEl.textContent = '左侧选择一个供应商，右侧将展示其可用模型';
+    body.innerHTML = '<div class="cb-add-models-empty">请从左侧选择一个供应商</div>';
+    return;
+  }
+
+  const provider = claudeProviderModels.find(p => p.providerId === claudeAddSelectedProvider);
+  if (!provider) {
+    titleEl.textContent = '供应商未找到';
+    subEl.textContent = '';
+    body.innerHTML = '<div class="cb-add-models-empty">供应商未找到</div>';
+    return;
+  }
+
+  titleEl.textContent = provider.providerName;
+  subEl.textContent = `共 ${provider.models.length} 个模型，勾选要添加到 Claude Code 的模型`;
+
+  if (!provider.models.length) {
+    body.innerHTML = '<div class="cb-add-models-empty">该供应商暂无模型</div>';
+    return;
+  }
+
+  const claudeConfigs = Array.isArray(providerStore?.claudeCodeConfigs) ? providerStore.claudeCodeConfigs : [];
+  const existingConfig = claudeConfigs.find(c => c.sourceProviderId === provider.providerId || c.name === provider.providerName);
+  const existingModels = new Set(existingConfig?.models || []);
+
+  body.innerHTML = provider.models.map((m) => {
+    const exists = existingModels.has(m.id);
+    return `
+      <label class="cb-add-model-row ${exists ? 'already-added' : ''}" data-existing="${exists ? 'true' : 'false'}">
+        <input type="checkbox" class="claude-add-model-check" data-model-id="${platformEsc(m.id)}" data-model-name="${platformEsc(m.name || m.id)}" ${exists ? 'checked' : ''} data-action="cbOnAddModelCheckChanged" data-events="change" data-pass-this data-arg="updateClaudeAddConfirmButton">
+        ${cbAddModelIdentity(m.id)}
+      </label>
+    `;
+  }).join('');
+}
+
+function updateClaudeAddConfirmButton() {
+  const btn = document.getElementById('claude-add-confirm-page');
+  if (!btn) return;
+  const checked = document.querySelectorAll('.claude-add-model-check:checked');
+  btn.disabled = checked.length === 0;
+  const label = btn.querySelector('.model-action-label');
+  if (label) {
+    label.textContent = checked.length > 0 ? ` 保存选择 (${checked.length})` : ' 保存选择';
+  }
+}
+
+function claudeAddSelectAll() {
+  cbSetAddModelChecks('.claude-add-model-check', true, updateClaudeAddConfirmButton);
+}
+
+function claudeAddSelectNone() {
+  cbSetAddModelChecks('.claude-add-model-check', false, updateClaudeAddConfirmButton);
+}
+
+async function confirmAddClaudeModelsPage() {
+  const provider = claudeProviderModels.find(p => p.providerId === claudeAddSelectedProvider);
+  if (!provider) {
+    showCustomAlert('请先在左侧选择供应商。', '未选择供应商', 'warn');
+    return;
+  }
+  const checkedInputs = Array.from(document.querySelectorAll('.claude-add-model-check:checked'));
+  if (!checkedInputs.length) {
+    showCustomAlert('请至少勾选一个模型。', '未勾选模型', 'warn');
+    return;
+  }
+
+  const checkedModelIds = checkedInputs.map(input => input.dataset.modelId);
+  const defaultModel = checkedModelIds[0] || '';
+  const rawBaseUrl = provider.chatUrl || (provider.apiHost ? `${provider.apiHost.replace(/\/+$/, '')}${provider.apiPath || '/v1/messages'}` : '');
+  const endpoint = claudeCodeConfigEndpointParts(rawBaseUrl);
+
+  const maxRetries = Number(document.getElementById('claude-add-max-retries')?.value || 10);
+
+  if (!Array.isArray(providerStore.claudeCodeConfigs)) providerStore.claudeCodeConfigs = [];
+
+  const sanitizedProvider = grok_sanitize_key(provider.providerId);
+  const configId = `claude-code-${sanitizedProvider}`;
+  const existingIdx = providerStore.claudeCodeConfigs.findIndex(p =>
+    p.id === configId || p.sourceProviderId === provider.providerId
+  );
+  const existing = existingIdx >= 0 ? providerStore.claudeCodeConfigs[existingIdx] : null;
+
+  const settingsConfig = claudeCodeBuildSettingsForProvider({
+    name: provider.providerName,
+    apiHost: endpoint.apiHost || provider.apiHost,
+    apiPath: endpoint.apiPath || provider.apiPath || '/v1/messages',
+    apiKey: provider.apiKey || '',
+    settingsConfig: existing?.settingsConfig || null,
+  }, checkedModelIds);
+
+  if (settingsConfig && settingsConfig.env) {
+    settingsConfig.env.ANTHROPIC_MAX_RETRIES = String(maxRetries);
+  }
+
+  const configItem = {
+    ...(existing || {}),
+    id: existing?.id || configId,
+    name: provider.providerName,
+    apiHost: endpoint.apiHost || provider.apiHost,
+    apiPath: endpoint.apiPath || provider.apiPath || '/v1/messages',
+    apiKey: provider.apiKey || '',
+    defaultModel,
+    models: checkedModelIds,
+    settingsConfig,
+    sourceProviderId: provider.providerId,
+    sourceProviderName: provider.providerName,
+  };
+
+  if (existingIdx >= 0) {
+    providerStore.claudeCodeConfigs[existingIdx] = configItem;
+  } else {
+    providerStore.claudeCodeConfigs.push(configItem);
+  }
+
+  const ok = await syncClaudeCodeConfigUiAfterStoreChange();
+  if (ok) {
+    if (typeof addLog === 'function') addLog('ok', `已添加 Claude Code 配置: ${provider.providerName} (${checkedModelIds.length} 个模型)`);
+    showCustomAlert(`已成功保存「${provider.providerName}」的 Claude Code 配置（共 ${checkedModelIds.length} 个模型）。`, '保存成功', 'success');
+    navigateTo('platform-claude-code');
+    renderClaudeCodeConfigList(platformInfoOf('claude-code') || {});
+  }
 }
 
 function openClaudeCodeConfigEditor(providerId = '') {
+  if (!providerId) {
+    openClaudeCodeAddModal();
+    return;
+  }
+  resetPasswordInputVisibility('claude-code-config-api-key', 'claude-code-config-api-key-toggle');
   const provider = providerId ? claudeCodeConfigProviderById(providerId) : null;
   if (providerId && !provider) {
     showCustomAlert('配置不存在或尚未加载。', '无法编辑', 'warn');
@@ -2433,6 +3037,7 @@ function openClaudeCodeConfigEditor(providerId = '') {
 }
 
 function closeClaudeCodeConfigEditor() {
+  resetPasswordInputVisibility('claude-code-config-api-key', 'claude-code-config-api-key-toggle');
   document.getElementById('claude-code-config-modal')?.classList.remove('active');
 }
 
@@ -2551,10 +3156,19 @@ async function deleteClaudeCodeProviderConfig(providerId) {
     return;
   }
   const info = platformInfoOf('claude-code');
-  if (claudeCodeProviderIsCurrent(provider, info)) {
-    showCustomAlert('当前正在使用的配置不能直接删除，请先切换到其他配置或官方配置。', '无法删除当前配置', 'warn');
-    return;
+  const isCurrent = claudeCodeProviderIsCurrent(provider, info);
+
+  const confirmMsg = isCurrent
+    ? `「${provider.name || provider.id}」当前正在生效中。\n\n删除该配置将自动为您恢复为「Anthropic 官方配置」。是否确认删除？`
+    : `确定要删除 Claude Code 配置「${provider.name || provider.id}」吗？`;
+
+  const okConfirm = await showCustomConfirm(confirmMsg, '删除配置', 'warn');
+  if (!okConfirm) return;
+
+  if (isCurrent) {
+    await restoreClaudeCodeOfficialConfig();
   }
+
   const previous = typeof cloneProviderStore === 'function'
     ? cloneProviderStore()
     : JSON.parse(JSON.stringify(providerStore || { version: 1, providers: [] }));
@@ -2626,7 +3240,7 @@ function renderClaudeCodeConfigList(info) {
       protocol: 'anthropic',
       action: `applyClaudeCodeProviderConfig(${platformJsArg(provider.id)})`,
       editAction: `editClaudeCodeProviderConfig(${platformJsArg(provider.id)})`,
-      deleteAction: current ? '' : `deleteClaudeCodeProviderConfig(${platformJsArg(provider.id)})`,
+      deleteAction: `deleteClaudeCodeProviderConfig(${platformJsArg(provider.id)})`,
     });
   });
 
@@ -2876,6 +3490,15 @@ function onOpenCodeDefaultModelInput() {
 
 // Active OpenCode raw-config helpers above preserve extra options/model metadata.
 
+globalThis.opencodeSourceSearchKw = '';
+
+function onOpenCodeSourceSearch() {
+  const input = document.getElementById('opencode-source-search-input');
+  globalThis.opencodeSourceSearchKw = (input?.value || '').trim().toLowerCase();
+  const currentId = document.getElementById('opencode-config-source-id')?.value || '';
+  renderOpenCodeConfigSourceList(currentId);
+}
+
 function renderOpenCodeConfigSourceList(selectedId = '') {
   const list = document.getElementById('opencode-config-source-list');
   const hint = document.getElementById('opencode-config-source-hint');
@@ -2890,15 +3513,37 @@ function renderOpenCodeConfigSourceList(selectedId = '') {
     return '';
   }
 
-  const picked = sources.some(p => p.id === selectedId) ? selectedId : sources[0].id;
-  list.innerHTML = sources.map(p => {
+  const kw = (globalThis.opencodeSourceSearchKw || '').trim().toLowerCase();
+  const filteredSources = kw
+    ? sources.filter(p => {
+        const name = String(p.name || p.id || '').toLowerCase();
+        const host = String(p.apiHost || '').toLowerCase();
+        return name.includes(kw) || host.includes(kw);
+      })
+    : sources;
+
+  if (!filteredSources.length) {
+    list.innerHTML = '<div class="codex-config-source-empty">没有匹配的供应商</div>';
+    return '';
+  }
+
+  const picked = filteredSources.some(p => p.id === selectedId)
+    ? selectedId
+    : (sources.some(p => p.id === selectedId) ? selectedId : filteredSources[0].id);
+
+  list.innerHTML = filteredSources.map(p => {
     const active = p.id === picked;
     const name = p.name || p.id;
     const endpoint = opencodeConfigDisplayBaseUrl(p) || 'Base URL 未设置';
+    const modelCount = Array.isArray(p.models) ? p.models.length : 0;
+    const countBadge = modelCount > 0 ? `<span class="opencode-source-count-badge">${modelCount} 模型</span>` : '';
     return `
       <button type="button" class="codex-config-source-item ${active ? 'active' : ''}" data-source-id="${platformEsc(p.id)}">
         <span class="codex-config-source-copy">
-          <strong title="${platformEsc(name)}">${platformEsc(name)}</strong>
+          <span class="opencode-source-item-top">
+            <strong title="${platformEsc(name)}">${platformEsc(name)}</strong>
+            ${countBadge}
+          </span>
           <em title="${platformEsc(endpoint)}">${platformEsc(endpoint)}</em>
         </span>
       </button>`;
@@ -2963,11 +3608,17 @@ function renderOpenCodeConfigModelList(models = null) {
     list.innerHTML = '<div class="codex-config-model-empty">还没有模型，点击右上角按钮拉取。</div>';
     return;
   }
-  list.innerHTML = source.map(model => `
-    <button type="button" class="codex-config-model-option ${model === defaultModel ? 'active' : ''}" data-model="${platformEsc(model)}" title="${platformEsc(model)}" role="radio" aria-checked="${model === defaultModel ? 'true' : 'false'}">
-      <span>${platformEsc(model)}</span>
-    </button>
-  `).join('');
+  list.innerHTML = source.map(model => {
+    const isDefault = model === defaultModel;
+    const icon = typeof renderModelIcon === 'function' ? renderModelIcon(model) : '';
+    return `
+      <button type="button" class="codex-config-model-option opencode-model-option ${isDefault ? 'active' : ''}" data-model="${platformEsc(model)}" title="${platformEsc(model)}" role="radio" aria-checked="${isDefault ? 'true' : 'false'}">
+        <span class="opencode-model-icon-wrap">${icon}</span>
+        <span class="opencode-model-name">${platformEsc(model)}</span>
+        ${isDefault ? '<span class="opencode-model-default-badge">默认</span>' : ''}
+      </button>
+    `;
+  }).join('');
   list.setAttribute('role', 'radiogroup');
   list.onclick = (event) => {
     const item = event.target.closest('.codex-config-model-option');
@@ -3059,11 +3710,211 @@ function opencodeConfigMatchesSearch(config) {
   ].some(value => String(value || '').toLowerCase().includes(kw));
 }
 
+async function openOpenCodeAddModal() {
+  navigateTo('platform-opencode-add');
+  await initOpenCodeAddPage();
+}
+
 function openOpenCodeProviderAdd() {
-  openOpenCodeConfigEditor('');
+  openOpenCodeAddModal();
+}
+
+async function initOpenCodeAddPage() {
+  try {
+    opencodeProviderModels = await invoke('list_provider_models') || [];
+  } catch (e) {
+    opencodeProviderModels = [];
+  }
+  // 注入 AnyBridge 本地代理供应商到列表首位
+  if (typeof localProxyProviderModelsEntry === 'function') {
+    const lp = localProxyProviderModelsEntry();
+    opencodeProviderModels = opencodeProviderModels.filter(p => !isLocalProxyProviderEntry(p));
+    opencodeProviderModels.unshift(lp);
+  }
+  opencodeAddSelectedProvider = null;
+  opencodeAddSearchKw = '';
+  const searchInput = document.getElementById('opencode-add-search');
+  if (searchInput) searchInput.value = '';
+  renderOpenCodeAddProviderList();
+  renderOpenCodeAddModels();
+  updateOpenCodeAddConfirmButton();
+}
+
+function onOpenCodeAddSearch() {
+  const input = document.getElementById('opencode-add-search');
+  opencodeAddSearchKw = (input?.value || '').trim().toLowerCase();
+  renderOpenCodeAddProviderList();
+}
+
+function renderOpenCodeAddProviderList() {
+  const list = document.getElementById('opencode-add-provider-list');
+  syncPlatformAddSortControl('opencode');
+  if (!list) return;
+  if (!opencodeProviderModels.length) {
+    list.innerHTML = '<div class="cb-add-prov-empty">暂无供应商，请先在「供应商」页添加</div>';
+    return;
+  }
+  const filtered = platformAddVisibleProviders(opencodeProviderModels, opencodeAddSearchKw);
+  if (!filtered.length) {
+    list.innerHTML = '<div class="cb-add-prov-empty">没有匹配的供应商</div>';
+    return;
+  }
+  list.innerHTML = filtered.map(p => {
+    const initial = (p.providerName || '?').charAt(0).toUpperCase();
+    const enabled = p.enabled !== false;
+    const isActive = opencodeAddSelectedProvider === p.providerId;
+    const isBuiltin = isBuiltinProxyEntry(p);
+    const iconHtml = isBuiltin
+      ? `<span class="cb-add-prov-icon cb-add-prov-icon-builtin" title="内置本地代理"><span>本地</span><span>代理</span></span>`
+      : `<span class="cb-add-prov-icon">${platformEsc(initial)}</span>`;
+    return `
+      <div class="cb-add-prov-item ${isActive ? 'active' : ''} ${enabled ? '' : 'disabled'} ${isBuiltin ? 'is-local-proxy' : ''}" data-action="selectOpenCodeAddProvider" data-arg="${platformEsc(p.providerId)}">
+        ${iconHtml}
+        <span class="cb-add-prov-name">${platformEsc(p.providerName)}</span>
+        <span class="cb-add-prov-count">${p.models.length}</span>
+      </div>
+    `;
+  }).join('');
+}
+
+function selectOpenCodeAddProvider(providerId) {
+  opencodeAddSelectedProvider = providerId;
+  renderOpenCodeAddProviderList();
+  renderOpenCodeAddModels();
+  updateOpenCodeAddConfirmButton();
+}
+
+function renderOpenCodeAddModels() {
+  const titleEl = document.getElementById('opencode-add-models-title');
+  const subEl = document.getElementById('opencode-add-models-sub');
+  const body = document.getElementById('opencode-add-models-list-page');
+  if (!body) return;
+
+  if (!opencodeAddSelectedProvider) {
+    titleEl.textContent = '请选择供应商';
+    subEl.textContent = '左侧选择一个供应商，右侧将展示其可用模型';
+    body.innerHTML = '<div class="cb-add-models-empty">请从左侧选择一个供应商</div>';
+    return;
+  }
+
+  const provider = opencodeProviderModels.find(p => p.providerId === opencodeAddSelectedProvider);
+  if (!provider) {
+    titleEl.textContent = '供应商未找到';
+    subEl.textContent = '';
+    body.innerHTML = '<div class="cb-add-models-empty">供应商未找到</div>';
+    return;
+  }
+
+  titleEl.textContent = provider.providerName;
+  subEl.textContent = `共 ${provider.models.length} 个模型，勾选要添加到 OpenCode 的模型`;
+
+  if (!provider.models.length) {
+    body.innerHTML = '<div class="cb-add-models-empty">该供应商暂无模型</div>';
+    return;
+  }
+
+  const opencodeConfigs = Array.isArray(providerStore?.opencodeConfigs) ? providerStore.opencodeConfigs : [];
+  const existingConfig = opencodeConfigs.find(c => c.sourceProviderId === provider.providerId || c.name === provider.providerName);
+  const existingModels = new Set(existingConfig?.models || []);
+
+  body.innerHTML = provider.models.map((m) => {
+    const exists = existingModels.has(m.id);
+    return `
+      <label class="cb-add-model-row ${exists ? 'already-added' : ''}" data-existing="${exists ? 'true' : 'false'}">
+        <input type="checkbox" class="opencode-add-model-check" data-model-id="${platformEsc(m.id)}" data-model-name="${platformEsc(m.name || m.id)}" ${exists ? 'checked' : ''} data-action="cbOnAddModelCheckChanged" data-events="change" data-pass-this data-arg="updateOpenCodeAddConfirmButton">
+        ${cbAddModelIdentity(m.id)}
+      </label>
+    `;
+  }).join('');
+}
+
+function updateOpenCodeAddConfirmButton() {
+  const btn = document.getElementById('opencode-add-confirm-page');
+  if (!btn) return;
+  const checked = document.querySelectorAll('.opencode-add-model-check:checked');
+  btn.disabled = checked.length === 0;
+  const label = btn.querySelector('.model-action-label');
+  if (label) {
+    label.textContent = checked.length > 0 ? ` 保存选择 (${checked.length})` : ' 保存选择';
+  }
+}
+
+function opencodeAddSelectAll() {
+  cbSetAddModelChecks('.opencode-add-model-check', true, updateOpenCodeAddConfirmButton);
+}
+
+function opencodeAddSelectNone() {
+  cbSetAddModelChecks('.opencode-add-model-check', false, updateOpenCodeAddConfirmButton);
+}
+
+async function confirmAddOpenCodeModelsPage() {
+  const provider = opencodeProviderModels.find(p => p.providerId === opencodeAddSelectedProvider);
+  if (!provider) {
+    showCustomAlert('请先在左侧选择供应商。', '未选择供应商', 'warn');
+    return;
+  }
+  const checkedInputs = Array.from(document.querySelectorAll('.opencode-add-model-check:checked'));
+  if (!checkedInputs.length) {
+    showCustomAlert('请至少勾选一个模型。', '未勾选模型', 'warn');
+    return;
+  }
+
+  const checkedModelIds = checkedInputs.map(input => input.dataset.modelId);
+  const defaultModel = checkedModelIds[0] || '';
+  const rawBaseUrl = provider.chatUrl || (provider.apiHost ? `${provider.apiHost.replace(/\/+$/, '')}${provider.apiPath || '/v1'}` : '');
+  const endpoint = opencodeConfigEndpointParts(rawBaseUrl);
+
+  if (!Array.isArray(providerStore.opencodeConfigs)) providerStore.opencodeConfigs = [];
+
+  const sanitizedProvider = grok_sanitize_key(provider.providerId);
+  const configId = `opencode-${sanitizedProvider}`;
+  const existingIdx = providerStore.opencodeConfigs.findIndex(p =>
+    p.id === configId || p.sourceProviderId === provider.providerId
+  );
+  const existing = existingIdx >= 0 ? providerStore.opencodeConfigs[existingIdx] : null;
+
+  const settingsConfig = opencodeBuildSettingsForProvider({
+    name: provider.providerName,
+    apiHost: endpoint.apiHost || provider.apiHost,
+    apiPath: endpoint.apiPath || provider.apiPath || '/v1',
+    apiKey: provider.apiKey || '',
+    settingsConfig: existing?.settingsConfig || null,
+  }, checkedModelIds);
+
+  const configItem = {
+    ...(existing || {}),
+    id: existing?.id || configId,
+    name: provider.providerName,
+    apiHost: endpoint.apiHost || provider.apiHost,
+    apiPath: endpoint.apiPath || provider.apiPath || '/v1',
+    apiKey: provider.apiKey || '',
+    defaultModel,
+    models: checkedModelIds,
+    settingsConfig,
+    sourceProviderId: provider.providerId,
+    sourceProviderName: provider.providerName,
+  };
+
+  if (existingIdx >= 0) {
+    providerStore.opencodeConfigs[existingIdx] = configItem;
+  } else {
+    providerStore.opencodeConfigs.push(configItem);
+  }
+
+  const ok = await syncOpenCodeConfigUiAfterStoreChange();
+  if (ok) {
+    if (typeof addLog === 'function') addLog('ok', `已添加 OpenCode 配置: ${provider.providerName} (${checkedModelIds.length} 个模型)`);
+    showCustomAlert(`已成功保存「${provider.providerName}」的 OpenCode 配置（共 ${checkedModelIds.length} 个模型）。`, '保存成功', 'success');
+    navigateTo('platform-opencode');
+    renderOpenCodeConfigList(platformInfoOf('opencode') || {});
+  }
 }
 
 function openOpenCodeConfigEditor(providerId = '') {
+  resetPasswordInputVisibility('opencode-config-api-key', 'opencode-config-api-key-toggle');
+  const searchInput = document.getElementById('opencode-source-search-input');
+  if (searchInput) searchInput.value = '';
+  globalThis.opencodeSourceSearchKw = '';
   const provider = providerId ? opencodeConfigProviderById(providerId) : null;
   if (providerId && !provider) {
     showCustomAlert('配置不存在或尚未加载。', '无法编辑', 'warn');
@@ -3117,6 +3968,7 @@ function openOpenCodeConfigEditor(providerId = '') {
 }
 
 function closeOpenCodeConfigEditor() {
+  resetPasswordInputVisibility('opencode-config-api-key', 'opencode-config-api-key-toggle');
   document.getElementById('opencode-config-modal')?.classList.remove('active');
 }
 
@@ -3235,10 +4087,19 @@ async function deleteOpenCodeProviderConfig(providerId) {
     return;
   }
   const info = platformInfoOf('opencode');
-  if (openCodeProviderIsLive(provider, info)) {
-    showCustomAlert('这份配置已加入 OpenCode live 配置，请先从 OpenCode 移除后再删除。', '无法删除已加入配置', 'warn');
-    return;
+  const isLive = openCodeProviderIsLive(provider, info);
+
+  const confirmMsg = isLive
+    ? `「${provider.name || provider.id}」已加入 OpenCode 运行配置。\n\n删除该配置将自动从 OpenCode 中移除并删除。是否确认？`
+    : `确定要删除 OpenCode 配置「${provider.name || provider.id}」吗？`;
+
+  const okConfirm = await showCustomConfirm(confirmMsg, '删除配置', 'warn');
+  if (!okConfirm) return;
+
+  if (isLive) {
+    await removeOpenCodeProviderConfig(providerId);
   }
+
   const previous = typeof cloneProviderStore === 'function'
     ? cloneProviderStore()
     : JSON.parse(JSON.stringify(providerStore || { version: 1, providers: [] }));
@@ -3254,13 +4115,58 @@ async function deleteOpenCodeProviderConfig(providerId) {
   if (typeof addLog === 'function') addLog('info', `已删除 OpenCode 配置: ${provider.name || provider.id}`);
 }
 
+async function restoreOpenCodeOfficialConfig() {
+  const info = platformInfoOf('opencode') || {};
+  const isOfficial = !info.managedByAnyBridge;
+  const message = isOfficial
+    ? 'OpenCode 当前已经是官方配置。仍要清理 AnyBridge 写入的托管提供商与当前 model 吗？'
+    : '将把 OpenCode 切回官方配置。\n\n这会清除 AnyBridge 写入的第三方提供商与当前 model 设定，恢复使用 OpenCode 官方 Zen / Go 套餐与官方登录凭证（auth.json）。新会话或重启 OpenCode 后生效。';
+  const ok = await showCustomConfirm(message, '切回官方配置', 'warn');
+  if (!ok) return;
+
+  setPlatformBusy('opencode', true);
+  showSwitchProgress('opencode', '正在准备切回官方配置…');
+  try {
+    const result = await invoke('restore_opencode_official_config');
+    if (typeof loadProviders === 'function') await loadProviders();
+    await refreshPlatforms({ silent: true });
+    if (typeof addLog === 'function') addLog('ok', result.message || 'OpenCode 已切回官方配置');
+    showCustomAlert(result.message || 'OpenCode 已切回官方配置。', '切换完成', 'success');
+  } catch (e) {
+    if (typeof addLog === 'function') addLog('err', `OpenCode 切回官方失败: ${e}`);
+    showCustomAlert(String(e), '切回官方失败', 'error');
+  } finally {
+    hideSwitchProgress();
+    setPlatformBusy('opencode', false);
+    renderPlatformDetailStatuses();
+  }
+}
+
 function renderOpenCodeConfigList(info) {
   const list = document.getElementById('platform-opencode-config-list');
   if (!list) return;
 
   const providers = platformProviderList('opencode');
   const liveIds = Array.isArray(info?.liveProviderIds) ? info.liveProviderIds : [];
+  const isOfficial = !info.managedByAnyBridge;
   const items = [];
+
+  items.push({
+    platformId: 'opencode',
+    name: 'OpenCode 官方配置 (Zen / Go)',
+    description: '使用 OpenCode 官方订阅套餐（Zen / Go）与官方登录凭证（opencode auth login），无需配置第三方 API。',
+    icon: '官',
+    typeLabel: '官方',
+    tone: 'official',
+    current: isOfficial,
+    currentLabel: '当前使用',
+    model: '官方默认 (Zen / Go)',
+    endpoint: '~/.config/opencode/opencode.json',
+    protocol: 'OpenCode 官方',
+    action: 'restoreOpenCodeOfficialConfig()',
+    actionLabel: '切回官方',
+  });
+
   const opencodeLocalCard = platformLocalProxyCard('opencode', info);
   if (opencodeLocalCard) items.push(opencodeLocalCard);
 
@@ -3298,9 +4204,9 @@ function renderOpenCodeConfigList(info) {
       endpoint: baseUrl,
       protocol: 'openai-compatible',
       action: `applyOpenCodeProviderConfig(${platformJsArg(provider.id)})`,
-      actionLabel: live ? '设为当前' : '加入并设为当前',
+      actionLabel: '切换',
       editAction: `editOpenCodeProviderConfig(${platformJsArg(provider.id)})`,
-      deleteAction: live ? '' : `deleteOpenCodeProviderConfig(${platformJsArg(provider.id)})`,
+      deleteAction: `deleteOpenCodeProviderConfig(${platformJsArg(provider.id)})`,
       removeAction: live ? `removeOpenCodeProviderConfig(${platformJsArg(provider.id)})` : '',
       removeLabel: '移除',
     });
@@ -3385,6 +4291,655 @@ async function removeOpenCodeProviderConfig(providerId) {
     setPlatformBusy('opencode', false);
     renderPlatformDetailStatuses();
   }
+}
+
+// ═══════ Grok Build CLI 配置管理器 ═══════
+
+globalThis.grokConfigSearch = '';
+globalThis.grokConfigEditorMode = 'create';
+
+function grok_sanitize_key(key) {
+  const s = String(key || '')
+    .replace(/[^a-zA-Z0-9_-]/g, '-')
+    .replace(/^-+|-+$/g, '');
+  return s || 'anybridge';
+}
+
+function grokConfigProviderById(id) {
+  return (providerStore.grokConfigs || []).find(p => p && p.id === id) || null;
+}
+
+function grokConfigSourceProviders() {
+  const providers = (providerStore && Array.isArray(providerStore.providers))
+    ? providerStore.providers
+    : [];
+  return providers.filter(p => p && p.enabled !== false && p.apiFormat === 'openai' && !platformIsLocalProxyConfig(p));
+}
+
+function renderGrokPageStatus(info) {
+  const headline = document.getElementById('platform-grok-headline');
+  if (headline) headline.textContent = '管理 Grok Build CLI 的自定义模型与端点。一键切换写入 ~/.grok/config.toml，重启终端 grok 生效。';
+  bindRevealPathLabel('grok-config-path-label', info.configPath || platformDef('grok').configHint);
+  renderGrokConfigList(info);
+}
+
+function renderGrokConfigSourceList(selectedId = '') {
+  const list = document.getElementById('grok-config-source-list');
+  const count = document.getElementById('grok-config-source-count');
+  if (!list) return null;
+
+  const sources = grokConfigSourceProviders();
+  if (count) count.textContent = String(sources.length);
+  if (!sources.length) {
+    list.innerHTML = '<div class="codex-config-source-empty">暂无可用 OpenAI 供应商</div>';
+    return null;
+  }
+
+  const activeId = selectedId || sources[0].id;
+  list.innerHTML = sources.map(source => `
+    <button type="button" class="codex-config-source-item ${source.id === activeId ? 'active' : ''}"
+      data-source-id="${platformEsc(source.id)}" data-action="selectGrokConfigSource" data-arg="${platformEsc(source.id)}">
+      <div class="codex-config-source-name">${platformEsc(source.name || source.id)}</div>
+      <div class="codex-config-source-meta">${platformEsc(source.defaultModel || '默认模型')} · ${platformEsc(source.apiHost || '')}</div>
+    </button>
+  `).join('');
+
+  return sources.find(s => s.id === activeId) || sources[0] || null;
+}
+
+function applyGrokConfigSource(source) {
+  if (!source) return;
+  codexConfigSetInputValue('grok-config-source-id', source.id);
+  codexConfigSetInputValue('grok-config-name', source.name || '');
+  codexConfigSetInputValue('grok-config-base-url', openai_base_url_from_source(source));
+  codexConfigSetInputValue('grok-config-api-key', source.apiKey || '');
+  codexConfigSetInputValue('grok-config-model', source.defaultModel || '');
+  const backendSelect = document.getElementById('grok-config-backend');
+  if (backendSelect) backendSelect.value = 'chat_completions';
+}
+
+function openai_base_url_from_source(source) {
+  let host = String(source.apiHost || '').trim();
+  if (!host) return '';
+  if (!/^https?:\/\//i.test(host)) host = `https://${host}`;
+  host = host.replace(/\/+$/, '');
+  let path = String(source.apiPath || '/v1').trim();
+  let full = `${host}/${path.replace(/^\/+/, '')}`.replace(/\/+$/, '');
+  return full.replace(/\/chat\/completions$/i, '').replace(/\/responses$/i, '');
+}
+
+function grokConfigEndpointParts(baseUrl) {
+  if (typeof providerEndpointParts === 'function') {
+    return providerEndpointParts(baseUrl, 'openai', '/v1');
+  }
+  let apiHost = String(baseUrl || '').trim().replace(/\/+$/, '');
+  if (!/^https?:\/\//i.test(apiHost)) apiHost = `https://${apiHost}`;
+  try {
+    const url = new URL(apiHost);
+    const apiPath = url.pathname && url.pathname !== '/' ? url.pathname : '/v1';
+    return { apiHost: url.origin, apiPath };
+  } catch {
+    return { apiHost, apiPath: '/v1' };
+  }
+}
+
+function selectGrokConfigSource(providerId) {
+  const picked = renderGrokConfigSourceList(providerId);
+  if (picked) applyGrokConfigSource(picked);
+}
+
+async function openGrokAddModal() {
+  navigateTo('platform-grok-add');
+  await initGrokAddPage();
+}
+
+function openGrokConfigAdd() {
+  openGrokAddModal();
+}
+
+async function initGrokAddPage() {
+  try {
+    grokProviderModels = await invoke('list_provider_models') || [];
+  } catch (e) {
+    grokProviderModels = [];
+  }
+  // 注入 AnyBridge 本地代理供应商到列表首位
+  if (typeof localProxyProviderModelsEntry === 'function') {
+    const lp = localProxyProviderModelsEntry();
+    grokProviderModels = grokProviderModels.filter(p => !isLocalProxyProviderEntry(p));
+    grokProviderModels.unshift(lp);
+  }
+  grokAddSelectedProvider = null;
+  grokAddSearchKw = '';
+  const searchInput = document.getElementById('grok-add-search');
+  if (searchInput) searchInput.value = '';
+  setGrokAddBackend('chat_completions');
+  renderGrokAddProviderList();
+  renderGrokAddModels();
+  updateGrokAddConfirmButton();
+}
+
+function setGrokAddBackend(backend) {
+  const normalized = backend || 'chat_completions';
+  const hidden = document.getElementById('grok-add-backend');
+  if (hidden) hidden.value = normalized;
+  document.querySelectorAll('input[name="grok-add-backend-radio"]').forEach(r => {
+    r.checked = r.value === normalized;
+  });
+}
+
+function onGrokAddSearch() {
+  const input = document.getElementById('grok-add-search');
+  grokAddSearchKw = (input?.value || '').trim().toLowerCase();
+  renderGrokAddProviderList();
+}
+
+function renderGrokAddProviderList() {
+  const list = document.getElementById('grok-add-provider-list');
+  syncPlatformAddSortControl('grok');
+  if (!list) return;
+  if (!grokProviderModels.length) {
+    list.innerHTML = '<div class="cb-add-prov-empty">暂无供应商，请先在「供应商」页添加</div>';
+    return;
+  }
+  const filtered = platformAddVisibleProviders(grokProviderModels, grokAddSearchKw);
+  if (!filtered.length) {
+    list.innerHTML = '<div class="cb-add-prov-empty">没有匹配的供应商</div>';
+    return;
+  }
+  list.innerHTML = filtered.map(p => {
+    const initial = (p.providerName || '?').charAt(0).toUpperCase();
+    const enabled = p.enabled !== false;
+    const isActive = grokAddSelectedProvider === p.providerId;
+    const isBuiltin = isBuiltinProxyEntry(p);
+    const iconHtml = isBuiltin
+      ? `<span class="cb-add-prov-icon cb-add-prov-icon-builtin" title="内置本地代理"><span>本地</span><span>代理</span></span>`
+      : `<span class="cb-add-prov-icon">${platformEsc(initial)}</span>`;
+    return `
+      <div class="cb-add-prov-item ${isActive ? 'active' : ''} ${enabled ? '' : 'disabled'} ${isBuiltin ? 'is-local-proxy' : ''}" data-action="selectGrokAddProvider" data-arg="${platformEsc(p.providerId)}">
+        ${iconHtml}
+        <span class="cb-add-prov-name">${platformEsc(p.providerName)}</span>
+        <span class="cb-add-prov-count">${p.models.length}</span>
+      </div>
+    `;
+  }).join('');
+}
+
+function selectGrokAddProvider(providerId) {
+  grokAddSelectedProvider = providerId;
+  renderGrokAddProviderList();
+  renderGrokAddModels();
+  updateGrokAddConfirmButton();
+}
+
+function renderGrokAddModels() {
+  const titleEl = document.getElementById('grok-add-models-title');
+  const subEl = document.getElementById('grok-add-models-sub');
+  const body = document.getElementById('grok-add-models-list-page');
+  if (!body) return;
+
+  if (!grokAddSelectedProvider) {
+    titleEl.textContent = '请选择供应商';
+    subEl.textContent = '左侧选择一个供应商，右侧将展示其可用模型';
+    body.innerHTML = '<div class="cb-add-models-empty">请从左侧选择一个供应商</div>';
+    return;
+  }
+
+  const provider = grokProviderModels.find(p => p.providerId === grokAddSelectedProvider);
+  if (!provider) {
+    titleEl.textContent = '供应商未找到';
+    subEl.textContent = '';
+    body.innerHTML = '<div class="cb-add-models-empty">供应商未找到</div>';
+    return;
+  }
+
+  titleEl.textContent = provider.providerName;
+  subEl.textContent = `共 ${provider.models.length} 个模型，勾选要添加到 Grok 的模型`;
+
+  if (!provider.models.length) {
+    body.innerHTML = '<div class="cb-add-models-empty">该供应商暂无模型</div>';
+    return;
+  }
+
+  const grokConfigs = Array.isArray(providerStore?.grokConfigs) ? providerStore.grokConfigs : [];
+  body.innerHTML = provider.models.map((m) => {
+    const exists = grokConfigs.some(cfg =>
+      (cfg.sourceProviderId === provider.providerId || cfg.id === `grok-${grok_sanitize_key(provider.providerId)}-${grok_sanitize_key(m.id)}`) && cfg.defaultModel === m.id
+    );
+    return `
+      <label class="cb-add-model-row ${exists ? 'already-added' : ''}" data-existing="${exists ? 'true' : 'false'}">
+        <input type="checkbox" class="grok-add-model-check" data-model-id="${platformEsc(m.id)}" data-model-name="${platformEsc(m.name || m.id)}" ${exists ? 'checked' : ''} data-action="cbOnAddModelCheckChanged" data-events="change" data-pass-this data-arg="updateGrokAddConfirmButton">
+        ${cbAddModelIdentity(m.id)}
+      </label>
+    `;
+  }).join('');
+}
+
+function updateGrokAddConfirmButton() {
+  const btn = document.getElementById('grok-add-confirm-page');
+  if (!btn) return;
+  const checked = document.querySelectorAll('.grok-add-model-check:checked');
+  btn.disabled = checked.length === 0;
+  const label = btn.querySelector('.model-action-label');
+  if (label) {
+    label.textContent = checked.length > 0 ? ` 保存选择 (${checked.length})` : ' 保存选择';
+  }
+}
+
+function grokAddSelectAll() {
+  cbSetAddModelChecks('.grok-add-model-check', true, updateGrokAddConfirmButton);
+}
+
+function grokAddSelectNone() {
+  cbSetAddModelChecks('.grok-add-model-check', false, updateGrokAddConfirmButton);
+}
+
+async function confirmAddGrokModelsPage() {
+  const provider = grokProviderModels.find(p => p.providerId === grokAddSelectedProvider);
+  if (!provider) {
+    showCustomAlert('请先在左侧选择供应商。', '未选择供应商', 'warn');
+    return;
+  }
+  const checkedInputs = Array.from(document.querySelectorAll('.grok-add-model-check:checked'));
+  if (!checkedInputs.length) {
+    showCustomAlert('请至少勾选一个模型。', '未勾选模型', 'warn');
+    return;
+  }
+
+  const apiBackend = document.getElementById('grok-add-backend')?.value || 'chat_completions';
+  const rawBaseUrl = provider.chatUrl || (provider.apiHost ? `${provider.apiHost.replace(/\/+$/, '')}${provider.apiPath || '/v1'}` : '');
+  const endpoint = grokConfigEndpointParts(rawBaseUrl);
+
+  if (!Array.isArray(providerStore.grokConfigs)) providerStore.grokConfigs = [];
+
+  checkedInputs.forEach(input => {
+    const modelId = input.dataset.modelId;
+    const modelName = input.dataset.modelName || modelId;
+    const sanitizedProvider = grok_sanitize_key(provider.providerId);
+    const sanitizedModel = grok_sanitize_key(modelId);
+    const configId = `grok-${sanitizedProvider}-${sanitizedModel}`;
+
+    const existingIdx = providerStore.grokConfigs.findIndex(cfg =>
+      cfg.id === configId || (cfg.sourceProviderId === provider.providerId && cfg.defaultModel === modelId)
+    );
+
+    const configItem = {
+      id: existingIdx >= 0 ? providerStore.grokConfigs[existingIdx].id : configId,
+      name: `${provider.providerName} - ${modelName}`,
+      apiHost: endpoint.apiHost || provider.apiHost,
+      apiPath: endpoint.apiPath || provider.apiPath || '/v1',
+      apiKey: provider.apiKey || '',
+      defaultModel: modelId,
+      apiBackend: apiBackend,
+      sourceProviderId: provider.providerId,
+      sourceProviderName: provider.providerName,
+    };
+
+    if (existingIdx >= 0) {
+      providerStore.grokConfigs[existingIdx] = configItem;
+    } else {
+      providerStore.grokConfigs.push(configItem);
+    }
+  });
+
+  const ok = await syncGrokConfigUiAfterStoreChange();
+  if (ok) {
+    if (typeof addLog === 'function') addLog('ok', `已添加 ${checkedInputs.length} 个模型到 Grok 配置`);
+    showCustomAlert(`已成功保存 ${checkedInputs.length} 个 Grok 模型配置。`, '保存成功', 'success');
+    navigateTo('platform-grok');
+    renderGrokConfigList(platformInfoOf('grok') || {});
+  }
+}
+
+function openGrokConfigEditor(providerId = '') {
+  if (!providerId) {
+    openGrokAddModal();
+    return;
+  }
+  resetPasswordInputVisibility('grok-config-api-key', 'grok-config-api-key-toggle');
+  const provider = providerId ? grokConfigProviderById(providerId) : null;
+  if (providerId && !provider) {
+    showCustomAlert('配置不存在或尚未加载。', '无法编辑', 'warn');
+    return;
+  }
+  grokConfigEditorMode = provider ? 'edit' : 'create';
+  const modal = document.getElementById('grok-config-modal');
+  const title = document.getElementById('grok-config-modal-title');
+  const sub = document.getElementById('grok-config-modal-sub');
+  const sourceWrap = document.getElementById('grok-config-source-wrap');
+  const layout = document.getElementById('grok-config-editor-layout');
+
+  if (title) title.textContent = provider ? '编辑 Grok 配置' : '添加 Grok 配置';
+  if (sub) sub.textContent = provider
+    ? `正在编辑「${provider.name || provider.id}」这份 Grok 模型配置。`
+    : '从现有 OpenAI 供应商创建一份 Grok Build CLI 自定义模型配置。';
+  if (sourceWrap) sourceWrap.classList.toggle('is-hidden', !!provider);
+  if (layout) {
+    layout.classList.toggle('is-editing', !!provider);
+    layout.classList.toggle('is-creating', !provider);
+  }
+
+  codexConfigSetInputValue('grok-config-edit-id', provider?.id || '');
+  if (provider) {
+    codexConfigSetInputValue('grok-config-source-id', provider.sourceProviderId || '');
+    codexConfigSetInputValue('grok-config-name', provider.name || '');
+    const url = provider.apiHost ? (provider.apiHost.replace(/\/+$/, '') + (provider.apiPath || '/v1')) : '';
+    codexConfigSetInputValue('grok-config-base-url', url);
+    codexConfigSetInputValue('grok-config-api-key', provider.apiKey || '');
+    codexConfigSetInputValue('grok-config-model', provider.defaultModel || '');
+    const backendSelect = document.getElementById('grok-config-backend');
+    if (backendSelect) backendSelect.value = provider.apiBackend || 'chat_completions';
+  } else {
+    codexConfigSetInputValue('grok-config-name', '');
+    codexConfigSetInputValue('grok-config-base-url', '');
+    codexConfigSetInputValue('grok-config-api-key', '');
+    codexConfigSetInputValue('grok-config-model', '');
+    const picked = renderGrokConfigSourceList('');
+    if (picked) applyGrokConfigSource(picked);
+  }
+
+  if (modal) modal.classList.add('active');
+  window.setTimeout(() => {
+    const target = provider
+      ? document.getElementById('grok-config-name')
+      : document.querySelector('#grok-config-source-list .codex-config-source-item.active');
+    target?.focus();
+  }, 30);
+}
+
+function closeGrokConfigEditor() {
+  resetPasswordInputVisibility('grok-config-api-key', 'grok-config-api-key-toggle');
+  document.getElementById('grok-config-modal')?.classList.remove('active');
+}
+
+function syncGrokConfigTokenFromSource() {
+  const sourceId = document.getElementById('grok-config-source-id')?.value;
+  const source = (providerStore.providers || []).find(p => p.id === sourceId);
+  if (!source) {
+    showCustomAlert('未关联来源供应商，无法自动同步。', '提示', 'info');
+    return;
+  }
+  codexConfigSetInputValue('grok-config-api-key', source.apiKey || '');
+  codexConfigSetInputValue('grok-config-base-url', openai_base_url_from_source(source));
+  if (source.defaultModel) codexConfigSetInputValue('grok-config-model', source.defaultModel);
+  if (typeof addLog === 'function') addLog('info', `已从来源供应商「${source.name}」同步最新配置`);
+}
+
+async function syncGrokConfigUiAfterStoreChange() {
+  if (typeof persistProviders === 'function') {
+    const ok = await persistProviders();
+    if (!ok) return false;
+  }
+  if (typeof renderProviders === 'function') renderProviders();
+  if (typeof renderEvalProviderOptions === 'function') renderEvalProviderOptions();
+  if (typeof renderModelMap === 'function') await renderModelMap();
+  renderGrokConfigList(platformInfoOf('grok') || {});
+  renderPlatformProviderOptions();
+  return true;
+}
+
+async function saveGrokConfigEditor(addAfter = false) {
+  const editId = document.getElementById('grok-config-edit-id')?.value.trim();
+  const name = document.getElementById('grok-config-name')?.value.trim();
+  const rawBaseUrl = document.getElementById('grok-config-base-url')?.value.trim();
+  const apiKey = document.getElementById('grok-config-api-key')?.value.trim();
+  const defaultModel = document.getElementById('grok-config-model')?.value.trim();
+  const apiBackend = document.getElementById('grok-config-backend')?.value.trim() || 'chat_completions';
+  const sourceId = document.getElementById('grok-config-source-id')?.value.trim();
+
+  if (!name) {
+    showCustomAlert('请输入配置名称。', '无法保存', 'warn');
+    return;
+  }
+  if (!rawBaseUrl) {
+    showCustomAlert('请输入 Base URL。', '无法保存', 'warn');
+    return;
+  }
+
+  const endpoint = grokConfigEndpointParts(rawBaseUrl);
+  const existing = editId ? grokConfigProviderById(editId) : null;
+  const source = sourceId ? (providerStore.providers || []).find(p => p && p.id === sourceId) : null;
+
+  const config = {
+    ...(existing || {}),
+    id: editId || `grok-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    name,
+    apiHost: endpoint.apiHost,
+    apiPath: endpoint.apiPath || '/v1',
+    apiKey,
+    defaultModel: defaultModel || 'default',
+    apiBackend,
+    sourceProviderId: sourceId || existing?.sourceProviderId || '',
+    sourceProviderName: source?.name || existing?.sourceProviderName || '',
+  };
+
+  const previous = typeof cloneProviderStore === 'function'
+    ? cloneProviderStore()
+    : JSON.parse(JSON.stringify(providerStore || { version: 1, providers: [] }));
+  if (!Array.isArray(providerStore.grokConfigs)) providerStore.grokConfigs = [];
+  if (editId) {
+    const idx = providerStore.grokConfigs.findIndex(p => p.id === editId);
+    if (idx >= 0) providerStore.grokConfigs[idx] = config;
+    else providerStore.grokConfigs.push(config);
+  } else {
+    providerStore.grokConfigs.push(config);
+  }
+
+  const ok = await syncGrokConfigUiAfterStoreChange();
+  if (!ok) {
+    providerStore = typeof cloneProviderStore === 'function'
+      ? cloneProviderStore(previous)
+      : JSON.parse(JSON.stringify(previous));
+    renderGrokConfigList(platformInfoOf('grok') || {});
+    return;
+  }
+  closeGrokConfigEditor();
+  if (typeof addLog === 'function') addLog('ok', `已保存 Grok 配置: ${name}`);
+  if (addAfter) await applyGrokProviderConfig(config.id);
+}
+
+function editGrokProviderConfig(providerId) {
+  openGrokConfigEditor(providerId);
+}
+
+async function deleteGrokProviderConfig(providerId) {
+  const provider = grokConfigProviderById(providerId);
+  if (!provider) {
+    showCustomAlert('配置不存在或尚未加载。', '无法删除', 'warn');
+    return;
+  }
+  const info = platformInfoOf('grok');
+  const isCurrent = info && (info.currentProviderId === providerId || info.currentProviderId === grok_sanitize_key(providerId));
+
+  const confirmMsg = isCurrent
+    ? `「${provider.name || provider.id}」当前正在生效中。\n\n删除该配置将自动为您恢复为「xAI 官方配置」。是否确认删除？`
+    : `确认删除 Grok 配置「${provider.name || provider.id}」吗？`;
+
+  const ok = await showCustomConfirm(confirmMsg, '删除配置', 'warn');
+  if (!ok) return;
+
+  if (isCurrent) {
+    await restoreGrokOfficialConfig();
+  }
+
+  const previous = typeof cloneProviderStore === 'function'
+    ? cloneProviderStore()
+    : JSON.parse(JSON.stringify(providerStore || { version: 1, providers: [] }));
+  providerStore.grokConfigs = (providerStore.grokConfigs || []).filter(p => p.id !== providerId);
+  const synced = await syncGrokConfigUiAfterStoreChange();
+  if (!synced) {
+    providerStore = typeof cloneProviderStore === 'function'
+      ? cloneProviderStore(previous)
+      : JSON.parse(JSON.stringify(previous));
+    renderGrokConfigList(platformInfoOf('grok') || {});
+    return;
+  }
+  if (typeof addLog === 'function') addLog('info', `已删除 Grok 配置: ${provider.name || provider.id}`);
+}
+
+async function applyGrokProviderConfig(providerId) {
+  const provider = grokConfigProviderById(providerId);
+  const label = provider?.name || providerId;
+  const model = provider?.defaultModel || '默认模型';
+  const ok = await showCustomConfirm(
+    `将把 Grok Build CLI 默认模型切换为「${label}」。\n\n模型：${model}\n配置文件：~/.grok/config.toml\n\n下次在终端启动 grok 即可生效。`,
+    '切换 Grok 配置',
+    'warn'
+  );
+  if (!ok) return;
+
+  setPlatformBusy('grok', true);
+  showSwitchProgress('grok', '正在写入 Grok 配置文件…');
+  try {
+    const result = await invoke('switch_platform', { platform: 'grok', providerId });
+    if (typeof loadProviders === 'function') await loadProviders();
+    await refreshPlatforms({ silent: true });
+    if (typeof addLog === 'function') addLog('ok', result.message || 'Grok 配置切换成功');
+    showCustomAlert(result.message || 'Grok 配置切换成功。', '切换完成', 'success');
+  } catch (e) {
+    if (typeof addLog === 'function') addLog('err', `Grok 切换失败: ${e}`);
+    showCustomAlert(String(e), '切换失败', 'error');
+  } finally {
+    hideSwitchProgress();
+    setPlatformBusy('grok', false);
+    renderPlatformDetailStatuses();
+  }
+}
+
+function onGrokConfigSearch() {
+  const input = document.getElementById('grok-config-search');
+  grokConfigSearch = input ? input.value : '';
+  const info = platformInfoOf('grok');
+  if (info) renderGrokConfigList(info);
+}
+
+function grokConfigMatchesSearch(config) {
+  if (!grokConfigSearch.trim()) return true;
+  const kw = grokConfigSearch.trim().toLowerCase();
+  return [
+    config.name,
+    config.model,
+    config.endpoint,
+    config.description,
+  ].some(value => String(value || '').toLowerCase().includes(kw));
+}
+
+async function restoreGrokOfficialConfig() {
+  const info = platformInfoOf('grok') || {};
+  const isOfficial = !info.managedByAnyBridge;
+  const message = isOfficial
+    ? 'Grok Build 当前已经是官方配置。仍要清理 AnyBridge 写入的托管模型段吗？'
+    : '将把 Grok Build 切回官方配置。\n\n这会清理 AnyBridge 写入的自定义端点与默认模型设置，恢复使用 xAI 官方默认登录态与模型。在终端重新运行 grok 即可生效。';
+  const ok = await showCustomConfirm(message, '切回官方配置', 'warn');
+  if (!ok) return;
+
+  setPlatformBusy('grok', true);
+  showSwitchProgress('grok', '正在准备切回官方配置…');
+  try {
+    const result = await invoke('restore_grok_official_config');
+    if (typeof loadProviders === 'function') await loadProviders();
+    await refreshPlatforms({ silent: true });
+    if (typeof addLog === 'function') addLog('ok', result.message || 'Grok 已切回官方配置');
+    showCustomAlert(result.message || 'Grok 已切回官方配置。', '切换完成', 'success');
+  } catch (e) {
+    if (typeof addLog === 'function') addLog('err', `Grok 切回官方失败: ${e}`);
+    showCustomAlert(String(e), '切回官方失败', 'error');
+  } finally {
+    hideSwitchProgress();
+    setPlatformBusy('grok', false);
+    renderPlatformDetailStatuses();
+  }
+}
+
+function renderGrokConfigList(info) {
+  const list = document.getElementById('platform-grok-config-list');
+  if (!list) return;
+
+  const configs = Array.isArray(providerStore?.grokConfigs) ? providerStore.grokConfigs : [];
+  const currentId = info?.currentProviderId || '';
+  const isOfficial = !info.managedByAnyBridge;
+  const items = [];
+
+  items.push({
+    platformId: 'grok',
+    name: 'xAI 官方配置',
+    description: '使用 Grok Build 官方登录态（grok login）与 xAI 官方内置模型。',
+    icon: '官',
+    typeLabel: '官方',
+    tone: 'official',
+    current: isOfficial,
+    currentLabel: '当前使用',
+    model: '官方默认 (grok-4.5)',
+    endpoint: '~/.grok/config.toml',
+    protocol: 'xAI 原生',
+    action: 'restoreGrokOfficialConfig()',
+    actionLabel: '切回官方',
+  });
+
+  const grokLocalCard = platformLocalProxyCard('grok', info);
+  if (grokLocalCard) items.push(grokLocalCard);
+
+  configs.forEach(cfg => {
+    const isCurrent = currentId === cfg.id || currentId === grok_sanitize_key(cfg.id);
+    const backendLabel = cfg.apiBackend === 'responses'
+      ? 'Responses 协议'
+      : cfg.apiBackend === 'messages'
+        ? 'Messages 协议'
+        : 'Chat Completions 协议';
+    const baseUrl = cfg.apiHost ? (cfg.apiHost.replace(/\/+$/, '') + (cfg.apiPath || '/v1')) : '未设置地址';
+    items.push({
+      platformId: 'grok',
+      name: cfg.name || cfg.id,
+      description: 'Grok Build 自定义模型配置，写入 ~/.grok/config.toml。',
+      typeLabel: isCurrent ? '当前使用' : '第三方',
+      tone: isCurrent ? 'third live' : 'third',
+      current: isCurrent,
+      currentLabel: '当前使用',
+      model: cfg.defaultModel || '默认模型未设置',
+      endpoint: baseUrl,
+      protocol: backendLabel,
+      action: `applyGrokProviderConfig(${platformJsArg(cfg.id)})`,
+      actionLabel: '切换',
+      editAction: `editGrokProviderConfig(${platformJsArg(cfg.id)})`,
+      deleteAction: `deleteGrokProviderConfig(${platformJsArg(cfg.id)})`,
+    });
+  });
+
+  const liveIds = Array.isArray(info?.liveProviderIds) ? info.liveProviderIds : [];
+  liveIds
+    .filter(id => !configs.some(c => c.id === id || grok_sanitize_key(c.id) === id))
+    .forEach(id => {
+      const isCurrent = currentId === id;
+      items.push({
+        platformId: 'grok',
+        name: id,
+        description: '在 ~/.grok/config.toml 中由手动或外部写入的模型配置。',
+        typeLabel: isCurrent ? '当前使用' : '外部配置',
+        tone: isCurrent ? 'third live' : 'third external',
+        current: isCurrent,
+        currentLabel: '当前使用',
+        model: '外部模型',
+        endpoint: '~/.grok/config.toml',
+        protocol: '原生配置',
+      });
+    });
+
+  const filtered = items.filter(grokConfigMatchesSearch);
+  const count = document.getElementById('grok-config-count');
+  if (count) count.textContent = String(items.length);
+
+  if (!filtered.length) {
+    list.innerHTML = `
+      <div class="codex-table-empty">
+        <div style="font-size: 14px; font-weight: 600; margin-bottom: 6px;">尚无 Grok 配置</div>
+        <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 12px;">点击右上角「+ 添加配置」从已有的供应商一键创建并切换。</div>
+        <button class="btn-primary" type="button" data-action="openGrokConfigAdd">+ 添加首个配置</button>
+      </div>
+    `;
+    return;
+  }
+
+  list.innerHTML = filtered.map(renderCodexConfigCard).join('');
 }
 
 async function restoreClaudeCodeOfficialConfig() {
@@ -3479,8 +5034,6 @@ async function applyCodexProviderConfig(providerId) {
           await invoke('switch_platform', { platform: 'codex', providerId }),
           'Codex 配置切换失败'
         );
-        if (typeof loadProviders === 'function') await loadProviders();
-        await refreshPlatforms({ silent: true });
 
         let restart = null;
         const preserveAuth = codexProviderPreservesOfficialAuth(provider);
@@ -3507,6 +5060,8 @@ async function applyCodexProviderConfig(providerId) {
             addLog('warn', codexDesktopUnsupportedMessage());
           }
         }
+        setMessage('正在刷新 Codex 状态…');
+        await refreshPlatforms({ silent: true, reloadProviders: false });
         const restartFallback = needInject ? 'Codex 桌面版已重启并完成注入。' : 'Codex 桌面版已重启。';
         return {
           message: `${result.message || 'Codex 配置已切换。'}\n\n${restart ? (restart.message || restartFallback) : codexDesktopUnsupportedMessage()}`
@@ -3546,10 +5101,6 @@ async function startCodexWithCdp(injectModels = true) {
   }
 }
 
-function openCodexProviderAdd() {
-  openCodexConfigEditor('');
-}
-
 function renderPlatformProviderOptions() {
   Object.keys(PLATFORM_DEFS).forEach(platformId => {
     const select = document.getElementById(`platform-${platformId}-select`);
@@ -3580,9 +5131,27 @@ function renderPlatformProviderOptions() {
   });
 }
 
-// ═══════ Cursor BYOK Console ═══════
+// ═══════ Cursor BYOK Console (Specs Aligned Architecture) ═══════
 
 globalThis.cursorConsoleBusy = false;
+let _cursorCachedStatus = null;
+let _cursorModelsList = [];
+let _cursorSearchKeyword = '';
+let _cursorSelectedSet = new Set();
+let _cursorProviderModels = [];
+let _cursorAddSelectedProvider = null;
+let _cursorAddSelectedModels = new Map(); // providerId -> Set of modelId
+let _cursorAddSearchKw = '';
+let _cursorAddSortMode = 'default';
+
+function cursorEsc(str) {
+  return String(str || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
 
 function cursorPageRoot() {
   return document.getElementById('page-platform-cursor');
@@ -3590,7 +5159,7 @@ function cursorPageRoot() {
 
 function cursorEnsureBridge() {
   if (!invoke && typeof bindTauriBridge === 'function') bindTauriBridge();
-  if (!invoke) throw new Error('Tauri 通道未就绪，Cursor 接入操作不可用。请从安装包版本启动，或重启应用后重试。');
+  if (!invoke) throw new Error('Tauri 通道未就绪，Cursor 接入操作不可用。请从桌面版客户端启动。');
 }
 
 function cursorSetText(id, value) {
@@ -3598,244 +5167,830 @@ function cursorSetText(id, value) {
   if (el) el.textContent = value;
 }
 
-function cursorSetCard(kind, tone, state, detail) {
-  const card = document.getElementById(`cursor-card-${kind}`);
-  if (card) {
-    card.classList.remove('ok', 'warn', 'err');
-    if (tone) card.classList.add(tone);
-  }
-  cursorSetText(`cursor-${kind}-state`, state || '未知');
-  cursorSetText(`cursor-${kind}-detail`, detail || '');
-}
-
-function cursorSetBusy(busy) {
+function cursorSetBusy(busy, busyText) {
   cursorConsoleBusy = !!busy;
+  const mainBtn = document.getElementById('cursor-main-btn');
+  const mainBtnText = document.getElementById('cursor-main-btn-text');
+  const refreshBtn = document.getElementById('cursorRefreshBtn');
+  const restoreBtn = document.getElementById('cursorRestoreBtn');
+
+  if (mainBtn) {
+    mainBtn.disabled = !!busy;
+    if (busy && busyText && mainBtnText) {
+      mainBtnText.textContent = busyText;
+    }
+  }
+  if (refreshBtn) {
+    refreshBtn.disabled = !!busy;
+    refreshBtn.classList.toggle('is-spinning', !!busy);
+  }
+  if (restoreBtn && busy) {
+    restoreBtn.disabled = true;
+  }
+}
+
+// 刷新控制台主状态与模型列表
+async function cursorRefreshConsole(options = {}) {
   const root = cursorPageRoot();
   if (!root) return;
-  root
-    .querySelectorAll('.cursor-primary-action, .cursor-mini-btn, .cursor-step-action, .cursor-card-action, .cursor-hero-actions button')
-    .forEach(btn => { btn.disabled = !!busy; });
-}
+  const isSilent = !!(options && options.silent);
+  if (!isSilent) cursorSetBusy(true);
 
-function cursorIssueList(report) {
-  return report && Array.isArray(report.issues) ? report.issues : [];
-}
-
-function cursorIssueMatches(issue, prefixes) {
-  const code = String(issue?.code || '');
-  return prefixes.some(prefix => code === prefix || code.startsWith(prefix));
-}
-
-function cursorIssueDetail(issues, prefixes, fallback) {
-  const matched = issues.filter(issue => cursorIssueMatches(issue, prefixes));
-  const ranked = matched
-    .filter(issue => issue.level === 'err')
-    .concat(matched.filter(issue => issue.level === 'warn'))
-    .concat(matched.filter(issue => issue.level === 'ok'));
-  const messages = ranked
-    .map(issue => String(issue.message || '').trim())
-    .filter(Boolean)
-    .slice(0, 2);
-  return messages.length ? messages.join('；') : fallback;
-}
-
-function cursorIssueTone(issues, prefixes, okTone = 'ok') {
-  const matched = issues.filter(issue => cursorIssueMatches(issue, prefixes));
-  if (matched.some(issue => issue.level === 'err')) return 'err';
-  if (matched.some(issue => issue.level === 'warn')) return 'warn';
-  return okTone;
-}
-
-function cursorReportErrorMessage(e) {
-  return String(e?.message || e || '未知错误');
-}
-
-function cursorExtractReport(result) {
-  if (result && result.status === 'fulfilled') return result.value;
-  throw new Error(cursorReportErrorMessage(result && result.reason));
-}
-
-async function cursorRefreshConsole() {
-  const root = cursorPageRoot();
-  if (!root) return;
-  cursorSetBusy(true);
   try {
     cursorEnsureBridge();
-    cursorSetCard('proxy', '', '读取中', '正在读取 AnyBridge 服务状态');
-    cursorSetCard('settings', '', '读取中', '正在检查 Cursor settings.json');
-    cursorSetCard('auth', '', '读取中', '正在检查 state.vscdb 和模型路由');
-    cursorSetCard('cert', '', '读取中', '正在检查证书和系统信任状态');
 
-    const [proxyResult, ideResult, preflightResult, certResult] = await Promise.allSettled([
-      invoke('get_proxy_status'),
-      typeof refreshIdeProxyStatus === 'function' ? refreshIdeProxyStatus('cursor') : invoke('get_ide_proxy_status', { target: 'cursor' }),
-      invoke('preflight_proxy', { targetIde: 'cursor' }),
-      invoke('cert_check_status')
+    // 1. 获取 Rust Cursor Core 状态与模型列表（并行请求减少等待时间）
+    const [statusRes, modelsRes] = await Promise.allSettled([
+      invoke('cursor_get_status'),
+      invoke('cursor_list_models')
     ]);
 
-    let report = null;
-    try {
-      report = cursorExtractReport(preflightResult);
-    } catch (e) {
-      cursorSetCard('auth', 'err', '体检失败', cursorReportErrorMessage(e));
-      if (typeof addLog === 'function') addLog('err', 'Cursor 环境体检失败: ' + e);
-    }
-    const issues = cursorIssueList(report);
+    let status = statusRes.status === 'fulfilled' ? statusRes.value : null;
+    _cursorCachedStatus = status;
 
-    try {
-      const proxy = cursorExtractReport(proxyResult) || {};
-      const running = !!proxy.running;
-      const target = proxy.target_ide || proxy.targetIde || '';
-      const targetLabel = target ? (typeof ideDisplayLabel === 'function' ? ideDisplayLabel(target) : target) : '未绑定 IDE';
-      const port = proxy.api_port || proxy.apiPort || (typeof getLocalProxyPort === 'function' ? getLocalProxyPort() : 7450);
-      if (!running) {
-        cursorSetCard('proxy', 'warn', '未启动', `本机代理未运行，Cursor 请求还不会进入 AnyBridge。API 端口 ${port}`);
-      } else if (target && target !== 'cursor') {
-        cursorSetCard('proxy', 'warn', '运行中', `代理已启动，但当前服务目标是 ${targetLabel}。建议从 Cursor 页重新接入。`);
+    if (modelsRes.status === 'fulfilled' && Array.isArray(modelsRes.value)) {
+      _cursorModelsList = modelsRes.value;
+    }
+
+    const running = !!status?.running;
+    const certReady = !!status?.certificateReady;
+    const configuredCount = _cursorModelsList.length;
+    const port = status?.controlPort || 17650;
+    const actions = Array.isArray(status?.availableActions) ? status.availableActions : [];
+    const canEnable = actions.includes('enable');
+    const canDisable = actions.includes('disable');
+    const canSync = actions.includes('sync');
+    const canRepair = actions.includes('repair');
+
+    // 1) 主动作按钮与停止按钮 (对齐 Devin / Windsurf 极简模式)
+    const mainBtn = document.getElementById('cursor-main-btn');
+    const mainBtnText = document.getElementById('cursor-main-btn-text');
+    const restoreBtn = document.getElementById('cursorRestoreBtn');
+
+    if (mainBtn && mainBtnText) {
+      const icon = mainBtn.querySelector('.proxy-btn-icon');
+      if (running) {
+        mainBtn.classList.add('is-connected');
+        if (icon) {
+          icon.innerHTML = '<path d="M20 6 9 17l-5-5" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"/>';
+        }
+        mainBtnText.textContent = '已接入';
+        mainBtn.setAttribute('aria-label', 'Cursor 已接入 AnyBridge');
+      } else if (!certReady && canRepair) {
+        mainBtn.classList.remove('is-connected');
+        if (icon) {
+          icon.innerHTML = '<polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" fill="currentColor" />';
+        }
+        mainBtnText.textContent = '安装证书';
+      } else if (configuredCount === 0) {
+        mainBtn.classList.remove('is-connected');
+        if (icon) {
+          icon.innerHTML = '<polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" fill="currentColor" />';
+        }
+        mainBtnText.textContent = '添加模型';
       } else {
-        cursorSetCard('proxy', 'ok', '运行中', `AnyBridge 代理已就绪。API 端口 ${port}`);
+        mainBtn.classList.remove('is-connected');
+        if (icon) {
+          icon.innerHTML = '<polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" fill="currentColor" />';
+        }
+        mainBtnText.textContent = '一键接入';
       }
-    } catch (e) {
-      cursorSetCard('proxy', 'err', '读取失败', cursorReportErrorMessage(e));
-      if (typeof addLog === 'function') addLog('err', 'Cursor 本地代理状态读取失败: ' + e);
     }
 
-    try {
-      const ide = cursorExtractReport(ideResult) || {};
-      if (ide.patched) {
-        const strict = ide.strictSsl === false || ide.strict_ssl === false ? 'StrictSSL 已关闭' : 'StrictSSL 待确认';
-        cursorSetCard('settings', 'ok', '已接入', `${strict}；${ide.proxyValue || ide.proxy_value || '已写入 AnyBridge 代理'}`);
-      } else {
-        const detail = cursorIssueDetail(issues, ['ide_settings.'], ide.settingsPath || ide.settings_path || 'Cursor 尚未写入 AnyBridge 代理配置');
-        cursorSetCard('settings', cursorIssueTone(issues, ['ide_settings.'], 'warn'), '未接入', detail);
-      }
-    } catch (e) {
-      cursorSetCard('settings', 'err', '读取失败', cursorReportErrorMessage(e));
-      if (typeof addLog === 'function') addLog('err', 'Cursor 配置状态读取失败: ' + e);
+    if (restoreBtn) {
+      restoreBtn.disabled = !running;
+      restoreBtn.classList.toggle('is-danger', running);
+      restoreBtn.setAttribute('aria-label', running ? '停止 Cursor 接入 AnyBridge' : 'Cursor 当前未接入');
     }
 
-    if (report) {
-      const authPrefixes = ['cursor.', 'model_map.', 'route.', 'providers.'];
-      const authTone = cursorIssueTone(issues, authPrefixes);
-      const authDetail = cursorIssueDetail(issues, authPrefixes, 'Cursor state.vscdb、默认模型和模型路由已通过检查');
-      cursorSetCard('auth', authTone, authTone === 'ok' ? '就绪' : (authTone === 'warn' ? '有提示' : '未就绪'), authDetail);
+    // 2) 更新模型数量与渲染列表
+    const countPill = document.getElementById('cursor-model-count');
+    if (countPill) {
+      countPill.textContent = `共 ${configuredCount} 个`;
     }
 
-    try {
-      const cert = cursorExtractReport(certResult) || {};
-      const store = cert.effective_store || cert.effectiveStore || 'none';
-      if (!cert.cert_exists && cert.certExists === undefined) cert.certExists = false;
-      const certExists = cert.cert_exists ?? cert.certExists;
-      const keyExists = cert.key_exists ?? cert.keyExists;
-      const sanCurrent = cert.san_current ?? cert.sanCurrent;
-      const trusted = store === 'current_user' || store === 'local_machine' || cert.current_user || cert.currentUser || cert.local_machine || cert.localMachine;
-      const detail = cert.message || cursorIssueDetail(issues, ['cert.', 'certs.'], '证书状态已读取');
-      if (!certExists || !keyExists || !trusted) {
-        cursorSetCard('cert', 'err', '需安装', detail);
-      } else if (!sanCurrent) {
-        cursorSetCard('cert', 'warn', '需更新', detail);
-      } else {
-        cursorSetCard('cert', 'ok', '已信任', detail);
-      }
-    } catch (e) {
-      cursorSetCard('cert', 'err', '读取失败', cursorReportErrorMessage(e));
-      if (typeof addLog === 'function') addLog('err', 'Cursor 证书状态读取失败: ' + e);
-    }
+    // 清理可能不存在的选中项
+    const validIds = new Set(_cursorModelsList.map(m => m.id));
+    _cursorSelectedSet = new Set(Array.from(_cursorSelectedSet).filter(id => validIds.has(id)));
+
+    cursorRenderTableRows();
+    cursorUpdateBulkActionButtons();
+
+  } catch (err) {
+    console.error('[cursor] refresh error:', err);
   } finally {
-    cursorSetBusy(false);
+    if (!isSilent) cursorSetBusy(false);
   }
 }
 
-async function cursorStartProxy() {
-  if (cursorConsoleBusy) return;
-  cursorSetBusy(true);
+// 渲染表格行数据 (对齐 cb-model-table 与 cb-model-empty)
+function cursorRenderTableRows() {
+  const tbody = document.getElementById('cursorModelTableBody');
+  const empty = document.getElementById('cursor-model-empty');
+  const table = document.getElementById('cursor-model-table');
+  if (!tbody) return;
+
+  if (!_cursorModelsList || _cursorModelsList.length === 0) {
+    tbody.innerHTML = '';
+    if (empty) empty.style.display = 'flex';
+    if (table) table.style.display = 'none';
+    return;
+  }
+
+  if (empty) empty.style.display = 'none';
+  if (table) table.style.display = 'table';
+
+  const kw = (_cursorSearchKeyword || '').trim().toLowerCase();
+  const list = _cursorModelsList.filter(item => {
+    if (!kw) return true;
+    const matchName = (item.displayName || '').toLowerCase().includes(kw);
+    const matchExposed = (item.exposedModelId || '').toLowerCase().includes(kw);
+    const matchProvider = (item.providerName || '').toLowerCase().includes(kw);
+    const matchTarget = (item.upstreamModel || '').toLowerCase().includes(kw);
+    return matchName || matchExposed || matchProvider || matchTarget;
+  });
+
+  if (list.length === 0) {
+    tbody.innerHTML = `
+      <tr>
+        <td colspan="7" style="text-align: center; color: var(--text-muted); padding: 36px 0;">
+          未找到匹配「${cursorEsc(kw)}」的 Cursor 模型
+        </td>
+      </tr>
+    `;
+    return;
+  }
+
+  let html = '';
+  list.forEach(item => {
+    const isChecked = _cursorSelectedSet.has(item.id);
+    const displayName = (item.displayName || item.exposedModelId || '').trim();
+    const providerName = (item.providerName || '未知供应商').trim();
+    const targetModel = (item.upstreamModel || item.exposedModelId || '').trim();
+    const isEnabled = item.enabled !== false;
+
+    const iconHtml = (typeof renderModelIcon === 'function')
+      ? renderModelIcon(item.exposedModelId || item.upstreamModel, { size: 20 })
+      : `<span style="color:var(--accent);">✦</span>`;
+
+    const caps = [];
+    if (item.capabilities?.tools) caps.push(cbCapabilityPill('cb', 'tool', '工具'));
+    if (item.capabilities?.vision) caps.push(cbCapabilityPill('cb', 'image', '图片'));
+    if (item.capabilities?.reasoning) caps.push(cbCapabilityPill('cb', 'reason', '推理'));
+
+    html += `
+      <tr class="${isChecked ? 'cb-model-row-selected is-selected' : ''}" data-binding-id="${cursorEsc(item.id)}" style="min-height: 52px;">
+        <td class="cb-select-cell" style="text-align: center; padding-left: 14px;">
+          <label class="provider-select-check provider-select-check-table" data-stop data-action="__noop">
+            <input type="checkbox" ${isChecked ? 'checked' : ''} onchange="cursorToggleRowSelect('${cursorEsc(item.id)}', this.checked)">
+            <span></span>
+          </label>
+        </td>
+        <td class="display-name-cell">
+          <div style="display:flex;align-items:center;gap:8px;">
+            <div style="width:24px;height:24px;display:flex;align-items:center;justify-content:center;border-radius:5px;background:var(--bg-input);border:1px solid var(--border);flex:0 0 24px;">
+              ${iconHtml}
+            </div>
+            <div style="min-width:0;">
+              <strong style="font-weight:750;color:var(--text-primary);display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${cursorEsc(displayName)}">${cursorEsc(displayName)}</strong>
+            </div>
+          </div>
+        </td>
+        <td>
+          <div class="model-id-copy-wrap" style="display:inline-flex;align-items:center;gap:6px;">
+            <code style="font-family:var(--font-mono);font-size:11.5px;color:var(--text-secondary);background:var(--bg-input);padding:2px 6px;border-radius:4px;border:1px solid var(--border);">${cursorEsc(item.exposedModelId)}</code>
+            <button class="btn-icon model-id-copy-btn" style="width:22px;height:22px;min-width:22px;border:none;background:transparent;" onclick="copyTextToClipboard('${cursorEsc(item.exposedModelId)}', '模型 ID')" title="复制暴露模型 ID">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+            </button>
+          </div>
+        </td>
+        <td>
+          <div style="font-size:12.5px;color:var(--text-primary);font-weight:600;">${cursorEsc(providerName)}</div>
+        </td>
+        <td>
+          <div style="display:flex;align-items:center;gap:6px;flex-wrap:nowrap;white-space:nowrap;overflow-x:auto;">
+            ${caps.join('') || '<span style="color:var(--text-muted);font-size:12px;">—</span>'}
+          </div>
+        </td>
+        <td style="text-align: center;">
+          <label class="toggle-switch" title="${isEnabled ? '已向 Cursor 暴露（点击停用）' : '已停用（点击启用）'}">
+            <input type="checkbox" ${isEnabled ? 'checked' : ''} onchange="cursorToggleModelEnabled('${cursorEsc(item.id)}', this.checked)">
+            <span class="toggle-slider"></span>
+          </label>
+        </td>
+        <td style="text-align: center;">
+          <div style="display:inline-flex;align-items:center;justify-content:center;gap:6px;">
+            <button class="btn-icon" style="width:28px;height:28px;min-width:28px;" onclick="openCursorEditModal('${cursorEsc(item.id)}')" title="编辑模型">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+            </button>
+            <button class="btn-icon danger" style="width:28px;height:28px;min-width:28px;" onclick="cursorRemoveSingleModel('${cursorEsc(item.id)}', '${cursorEsc(displayName)}')" title="从 Cursor 移除">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"/></svg>
+            </button>
+          </div>
+        </td>
+      </tr>
+    `;
+  });
+
+  tbody.innerHTML = html;
+}
+
+// 搜索栏输入联动
+function cursorFilterModels(keyword) {
+  _cursorSearchKeyword = keyword || '';
+  cursorRenderTableRows();
+}
+
+// 勾选单行
+function cursorToggleRowSelect(bindingId, checked) {
+  if (checked) {
+    _cursorSelectedSet.add(bindingId);
+  } else {
+    _cursorSelectedSet.delete(bindingId);
+  }
+  const tr = document.querySelector(`tr[data-binding-id="${bindingId}"]`);
+  if (tr) tr.classList.toggle('is-selected', checked);
+  cursorUpdateBulkActionButtons();
+}
+
+// 全选 / 取消全选
+function cursorToggleSelectAll(checked) {
+  _cursorSelectedSet.clear();
+  if (checked && _cursorModelsList) {
+    _cursorModelsList.forEach(m => _cursorSelectedSet.add(m.id));
+  }
+  cursorRenderTableRows();
+  cursorUpdateBulkActionButtons();
+}
+
+// 更新批量操作按钮状态
+function cursorUpdateBulkActionButtons() {
+  const hasSelected = _cursorSelectedSet.size > 0;
+  const enableBtn = document.getElementById('cursor-bulk-enable-btn');
+  const disableBtn = document.getElementById('cursor-bulk-disable-btn');
+  const removeBtn = document.getElementById('cursor-bulk-remove-btn');
+  const selectAllCheckbox = document.getElementById('cursorSelectAll');
+
+  if (enableBtn) enableBtn.disabled = !hasSelected;
+  if (disableBtn) disableBtn.disabled = !hasSelected;
+  if (removeBtn) removeBtn.disabled = !hasSelected;
+  if (selectAllCheckbox && _cursorModelsList.length > 0) {
+    selectAllCheckbox.checked = _cursorSelectedSet.size === _cursorModelsList.length;
+  }
+}
+
+// 批量启用
+async function cursorBulkEnableAction() {
+  if (_cursorSelectedSet.size === 0) return;
+  cursorEnsureBridge();
   try {
-    cursorEnsureBridge();
-    try {
-      await invoke('start_proxy_service');
-      if (typeof addLog === 'function') addLog('ok', 'Cursor: 本地代理服务已启动');
-    } catch (e) {
-      if (String(e).includes('代理已在运行')) {
-        if (typeof addLog === 'function') addLog('warn', 'Cursor: 本地代理服务已在运行');
-      } else {
-        throw e;
-      }
-    }
-    if (typeof refreshStatus === 'function') await refreshStatus();
+    const ids = Array.from(_cursorSelectedSet);
+    await invoke('cursor_set_models_enabled', { ids, enabled: true });
+    if (typeof addLog === 'function') addLog('ok', `已批量启用 ${ids.length} 个 Cursor 模型`);
     await cursorRefreshConsole();
   } catch (e) {
-    if (typeof addLog === 'function') addLog('err', 'Cursor 启动代理失败: ' + e);
-    showCustomAlert(String(e), '启动失败', 'error');
-  } finally {
-    cursorSetBusy(false);
+    console.error('[cursor] bulk enable failed:', e);
+    showCustomAlert('批量启用失败: ' + e, '操作异常', 'error');
   }
 }
 
-async function cursorSwitchToProxy() {
-  if (cursorConsoleBusy) return;
-  cursorSetBusy(true);
+// 批量停用
+async function cursorBulkDisableAction() {
+  if (_cursorSelectedSet.size === 0) return;
+  cursorEnsureBridge();
   try {
-    cursorEnsureBridge();
-    let proxy = await invoke('get_proxy_status');
-    if (!proxy?.running) {
-      try {
-        await invoke('start_proxy_service');
-        if (typeof addLog === 'function') addLog('ok', 'Cursor: 本地代理服务已自动启动');
-      } catch (e) {
-        if (!String(e).includes('代理已在运行')) throw new Error('自动启动本地代理失败: ' + e);
-      }
-      if (typeof refreshStatus === 'function') await refreshStatus();
-      proxy = await invoke('get_proxy_status');
-    }
-
-    const report = await invoke('switch_ide_to_proxy', { target: 'cursor' });
-    if (typeof refreshIdeProxyStatus === 'function') await refreshIdeProxyStatus('cursor');
-    if (typeof setStatusPill === 'function') setStatusPill(!!proxy?.running, proxy);
-    if (typeof addLog === 'function') {
-      addLog('ok', 'Cursor 已切换到 AnyBridge 本机代理');
-      if (report?.cursorAuth) addLog(String(report.cursorAuth).startsWith('ok') ? 'ok' : 'warn', 'Cursor 状态写入: ' + report.cursorAuth);
-      if (report?.ideConfig) addLog(String(report.ideConfig).startsWith('ok') || report.ideConfig === 'updated' ? 'ok' : 'warn', 'Cursor settings 写入: ' + report.ideConfig);
-    }
+    const ids = Array.from(_cursorSelectedSet);
+    await invoke('cursor_set_models_enabled', { ids, enabled: false });
+    if (typeof addLog === 'function') addLog('ok', `已批量停用 ${ids.length} 个 Cursor 模型`);
     await cursorRefreshConsole();
-    if (typeof promptRestartIde === 'function') {
-      await promptRestartIde('Cursor 已接入 AnyBridge，本机代理已启动。重启 Cursor 后会重新读取代理和 BYOK 状态。', 'cursor', { mode: 'proxy' });
-    } else {
-      showCustomAlert('Cursor 已接入 AnyBridge。请重启 Cursor 使配置生效。', '接入完成', 'success');
-    }
   } catch (e) {
-    if (typeof addLog === 'function') addLog('err', 'Cursor 一键接入失败: ' + e);
-    showCustomAlert(String(e), '接入失败', 'error');
-    await cursorRefreshConsole().catch(() => {});
-  } finally {
-    cursorSetBusy(false);
+    console.error('[cursor] bulk disable failed:', e);
+    showCustomAlert('批量停用失败: ' + e, '操作异常', 'error');
   }
 }
 
-async function cursorRestoreDirect() {
-  if (cursorConsoleBusy) return;
-  const ok = await showCustomConfirm('将把 Cursor 的 settings.json 和 state.vscdb 从 AnyBridge 接入状态还原为直连状态。全局代理服务不会停止。', '还原 Cursor 直连', 'warn');
+// 批量移除
+async function cursorBulkRemoveAction() {
+  if (_cursorSelectedSet.size === 0) return;
+  const count = _cursorSelectedSet.size;
+  const ok = await showCustomConfirm(
+    `确定要从 Cursor 移除选中的 ${count} 个模型绑定吗？
+
+注意：此操作仅移除 Cursor 中的选用关系，不会删除统一供应商和共享路由。`,
+    '移除模型绑定',
+    'warn'
+  );
   if (!ok) return;
-  cursorSetBusy(true);
+
+  cursorEnsureBridge();
   try {
-    cursorEnsureBridge();
-    const report = await invoke('restore_ide_direct', { target: 'cursor' });
-    if (typeof refreshIdeProxyStatus === 'function') await refreshIdeProxyStatus('cursor');
-    const warnings = [];
-    if (report?.ideConfig && !String(report.ideConfig).startsWith('ok')) warnings.push('配置: ' + report.ideConfig);
-    if (report?.cursorAuth && !String(report.cursorAuth).startsWith('ok')) warnings.push('状态: ' + report.cursorAuth);
+    const ids = Array.from(_cursorSelectedSet);
+    await invoke('cursor_remove_models', { ids });
+    _cursorSelectedSet.clear();
+    if (typeof addLog === 'function') addLog('ok', `已从 Cursor 移除 ${count} 个模型绑定`);
     await cursorRefreshConsole();
-    if (warnings.length) {
-      if (typeof addLog === 'function') addLog('warn', 'Cursor 还原直连完成但有提示: ' + warnings.join('；'));
-      showCustomAlert(warnings.join('\n'), '还原提示', 'warn');
-    } else {
-      if (typeof addLog === 'function') addLog('ok', 'Cursor 已还原直连');
-      if (typeof promptRestartIde === 'function') {
-        await promptRestartIde('Cursor 已还原直连。重启 Cursor 后会重新读取配置。', 'cursor', { mode: 'direct' });
-      } else {
-        showCustomAlert('Cursor 已还原直连。请重启 Cursor 使配置生效。', '还原完成', 'success');
-      }
+    if (typeof showBottomToast === 'function') {
+      showBottomToast(`已移除 ${count} 个模型`, 'success');
     }
   } catch (e) {
+    console.error('[cursor] bulk remove failed:', e);
+    showCustomAlert('批量移除失败: ' + e, '移除异常', 'error');
+  }
+}
+
+// 单个模型启停
+async function cursorToggleModelEnabled(bindingId, enabled) {
+  cursorEnsureBridge();
+  try {
+    await invoke('cursor_set_models_enabled', { ids: [bindingId], enabled: !!enabled });
+    await cursorRefreshConsole();
+    if (typeof showBottomToast === 'function') {
+      showBottomToast(enabled ? '已启用模型' : '已停用模型', 'success');
+    }
+  } catch (e) {
+    showCustomAlert('切换状态失败: ' + e, '操作异常', 'error');
+  }
+}
+
+// 单个模型移除
+async function cursorRemoveSingleModel(bindingId, displayName) {
+  const ok = await showCustomConfirm(
+    `确定要从 Cursor 移除「${displayName}」吗？
+
+此操作仅从 Cursor 列表中移除，不会影响共享路由及其他 IDE。`,
+    '移除模型',
+    'warn'
+  );
+  if (!ok) return;
+
+  cursorEnsureBridge();
+  try {
+    await invoke('cursor_remove_models', { ids: [bindingId] });
+    _cursorSelectedSet.delete(bindingId);
+    await cursorRefreshConsole();
+    if (typeof showBottomToast === 'function') {
+      showBottomToast(`已移除「${displayName}」`, 'success');
+    }
+  } catch (e) {
+    showCustomAlert('移除模型失败: ' + e, '移除异常', 'error');
+  }
+}
+
+// ═══════ CURSOR 编辑模型模态弹窗 ═══════
+
+function openCursorEditModal(bindingId) {
+  const item = _cursorModelsList.find(m => m.id === bindingId);
+  if (!item) return;
+
+  const modal = document.getElementById('cursorEditModelModal');
+  if (!modal) return;
+
+  document.getElementById('cursorEditBindingId').value = item.id;
+  document.getElementById('cursorEditDisplayName').value = item.displayName || '';
+  
+  const iconEl = document.getElementById('cursorEditModelIcon');
+  if (iconEl) {
+    iconEl.innerHTML = (typeof renderModelIcon === 'function')
+      ? renderModelIcon(item.exposedModelId || item.upstreamModel, { size: 20 })
+      : '✦';
+  }
+
+  const exposedTextEl = document.getElementById('cursorEditExposedIdText');
+  if (exposedTextEl) exposedTextEl.textContent = item.exposedModelId || '--';
+
+  const providerNameEl = document.getElementById('cursorEditProviderName');
+  if (providerNameEl) providerNameEl.textContent = item.providerName || 'AnyBridge 共享路由';
+
+  const routeUidEl = document.getElementById('cursorEditRouteUidShort');
+  if (routeUidEl) routeUidEl.textContent = item.routeUid ? (item.routeUid.length > 18 ? item.routeUid.slice(0, 18) + '...' : item.routeUid) : '--';
+
+  document.getElementById('cursorEditEnabled').checked = item.enabled !== false;
+  document.getElementById('cursorEditReasoningEffort').value = item.overrides?.reasoningEffort || '';
+  document.getElementById('cursorEditContextWindow').value = item.overrides?.contextWindowTokens || '';
+  document.getElementById('cursorEditMaxTokens').value = item.overrides?.maxCompletionTokens || '';
+
+  modal.classList.add('active');
+}
+
+function closeCursorEditModal() {
+  const modal = document.getElementById('cursorEditModelModal');
+  if (modal) modal.classList.remove('active');
+}
+
+async function saveCursorEditModel() {
+  const bindingId = document.getElementById('cursorEditBindingId').value;
+  if (!bindingId) return;
+
+  const displayName = (document.getElementById('cursorEditDisplayName').value || '').trim();
+  const enabled = document.getElementById('cursorEditEnabled').checked;
+  const reasoningEffort = document.getElementById('cursorEditReasoningEffort').value || null;
+  const contextRaw = document.getElementById('cursorEditContextWindow').value;
+  const maxRaw = document.getElementById('cursorEditMaxTokens').value;
+
+  const contextWindowTokens = contextRaw ? parseInt(contextRaw, 10) : null;
+  const maxCompletionTokens = maxRaw ? parseInt(maxRaw, 10) : null;
+
+  cursorEnsureBridge();
+  try {
+    await invoke('cursor_update_model', {
+      payload: {
+        id: bindingId,
+        displayName: displayName || null,
+        enabled,
+        overrides: {
+          reasoningEffort: reasoningEffort || null,
+          contextWindowTokens: (contextWindowTokens && !isNaN(contextWindowTokens)) ? contextWindowTokens : null,
+          maxCompletionTokens: (maxCompletionTokens && !isNaN(maxCompletionTokens)) ? maxCompletionTokens : null
+        }
+      }
+    });
+
+    closeCursorEditModal();
+    await cursorRefreshConsole();
+    if (typeof showBottomToast === 'function') {
+      showBottomToast('模型配置已保存', 'success');
+    }
+  } catch (e) {
+    showCustomAlert('保存修改失败: ' + e, '保存异常', 'error');
+  }
+}
+
+// ═══════ CURSOR 接入设置模态弹窗 ═══════
+
+function openCursorSettingsModal() {
+  const modal = document.getElementById('cursorSettingsModal');
+  if (modal) modal.classList.add('active');
+}
+
+function closeCursorSettingsModal() {
+  const modal = document.getElementById('cursorSettingsModal');
+  if (modal) modal.classList.remove('active');
+}
+
+// ═══════ CURSOR 独立添加模型页面 ═══════
+
+async function openCursorAddPage() {
+  navigateTo('platform-cursor-add');
+  await initCursorAddPage();
+}
+
+async function initCursorAddPage() {
+  cursorEnsureBridge();
+  try {
+    const raw = await invoke('cursor_list_provider_models') || [];
+    _cursorProviderModels = Array.isArray(raw) ? raw : [];
+  } catch (e) {
+    console.error('[cursor-add] list provider models failed:', e);
+    _cursorProviderModels = [];
+  }
+
+  // 注入 AnyBridge 本地代理供应商到列表首位
+  if (typeof localProxyProviderModelsEntry === 'function') {
+    const lp = localProxyProviderModelsEntry();
+    if (lp && Array.isArray(lp.models)) {
+      lp.models.forEach(m => {
+        const already = (_cursorModelsList || []).some(item =>
+          item.targetModel === m.id || item.exposedModelId === m.id || item.id === m.id
+        );
+        m.alreadyAdded = already;
+      });
+    }
+    _cursorProviderModels = _cursorProviderModels.filter(p => !isLocalProxyProviderEntry(p));
+    _cursorProviderModels.unshift(lp);
+  }
+
+  _cursorAddSelectedProvider = null;
+  _cursorAddSelectedModels.clear();
+  _cursorAddSearchKw = '';
+
+  const searchInput = document.getElementById('cursor-add-search');
+  if (searchInput) searchInput.value = '';
+
+  // 默认选中第一个有模型的供应商（优先排在最前的本地代理或第一项）
+  const sorted = platformAddVisibleProviders(_cursorProviderModels, '');
+  const firstWithModels = sorted.find(p => p.models && p.models.length > 0);
+  if (firstWithModels) {
+    _cursorAddSelectedProvider = firstWithModels.providerId;
+  }
+
+  renderCursorAddProviderList();
+  renderCursorAddModels();
+  updateCursorAddConfirmButton();
+}
+
+function onCursorAddSearch() {
+  const input = document.getElementById('cursor-add-search');
+  _cursorAddSearchKw = (input?.value || '').trim().toLowerCase();
+  renderCursorAddProviderList();
+}
+
+function toggleCursorAddSort(event) {
+  togglePlatformAddSortMenu('cursor', event);
+}
+
+function chooseCursorAddSortMode(mode) {
+  choosePlatformAddSortMode('cursor', mode);
+}
+
+function renderCursorAddProviderList() {
+  const list = document.getElementById('cursor-add-provider-list');
+  syncPlatformAddSortControl('cursor');
+  if (!list) return;
+
+  if (!_cursorProviderModels || _cursorProviderModels.length === 0) {
+    list.innerHTML = '<div class="cb-add-prov-empty">暂无可用的供应商，请先在「供应商」页添加</div>';
+    return;
+  }
+
+  const filtered = platformAddVisibleProviders(_cursorProviderModels, _cursorAddSearchKw);
+
+  if (filtered.length === 0) {
+    list.innerHTML = '<div class="cb-add-prov-empty">没有匹配的供应商</div>';
+    return;
+  }
+
+  list.innerHTML = filtered.map(p => {
+    const initial = (p.providerName || '?').charAt(0).toUpperCase();
+    const enabled = p.enabled !== false;
+    const isActive = _cursorAddSelectedProvider === p.providerId;
+    const isBuiltin = isBuiltinProxyEntry(p);
+    const availableCount = (p.models || []).length;
+    const alreadyCount = (p.models || []).filter(m => m.alreadyAdded).length;
+    const countDisplay = alreadyCount > 0 ? `${alreadyCount}/${availableCount}` : String(availableCount);
+
+    const iconHtml = isBuiltin
+      ? `<span class="cb-add-prov-icon cb-add-prov-icon-builtin" title="内置本地代理"><span>本地</span><span>代理</span></span>`
+      : `<span class="cb-add-prov-icon">${cursorEsc(initial)}</span>`;
+
+    return `
+      <div class="cb-add-prov-item ${isActive ? 'active' : ''} ${enabled ? '' : 'disabled'} ${isBuiltin ? 'is-local-proxy' : ''}" data-action="selectCursorAddProvider" data-arg="${cursorEsc(p.providerId)}">
+        ${iconHtml}
+        <span class="cb-add-prov-name">${cursorEsc(p.providerName)}</span>
+        <span class="cb-add-prov-count" title="共 ${availableCount} 个模型，其中 ${alreadyCount} 个已添加">${countDisplay}</span>
+      </div>
+    `;
+  }).join('');
+}
+
+function selectCursorAddProvider(providerId) {
+  _cursorAddSelectedProvider = providerId;
+  renderCursorAddProviderList();
+  renderCursorAddModels();
+  updateCursorAddConfirmButton();
+}
+
+function renderCursorAddModels() {
+  const titleEl = document.getElementById('cursor-add-models-title');
+  const subEl = document.getElementById('cursor-add-models-sub');
+  const body = document.getElementById('cursor-add-models-list-page');
+  if (!body) return;
+
+  if (!_cursorAddSelectedProvider) {
+    if (titleEl) titleEl.textContent = '请选择供应商';
+    if (subEl) subEl.textContent = '左侧选择一个供应商，右侧将展示其可用模型';
+    body.innerHTML = '<div class="cb-add-models-empty">请从左侧选择一个供应商</div>';
+    return;
+  }
+
+  const provider = _cursorProviderModels.find(p => p.providerId === _cursorAddSelectedProvider);
+  if (!provider) {
+    if (titleEl) titleEl.textContent = '供应商未找到';
+    if (subEl) subEl.textContent = '';
+    body.innerHTML = '<div class="cb-add-models-empty">供应商未找到</div>';
+    return;
+  }
+
+  if (titleEl) titleEl.textContent = provider.providerName;
+  if (subEl) subEl.textContent = `该供应商下共有 ${provider.models.length} 个模型可供添加到 Cursor`;
+
+  const models = provider.models || [];
+  if (models.length === 0) {
+    body.innerHTML = '<div class="cb-add-models-empty">该供应商暂无模型，请在供应商管理中拉取或添加模型</div>';
+    return;
+  }
+
+  const selectedForProv = _cursorAddSelectedModels.get(provider.providerId) || new Set();
+
+  body.innerHTML = models.map(m => {
+    const isAlready = !!m.alreadyAdded;
+    const isSelected = selectedForProv.has(m.id);
+    const caps = [];
+    if (m.supportsToolCall) caps.push(cbCapabilityPill('cb', 'tool', '工具'));
+    if (m.supportsImages) caps.push(cbCapabilityPill('cb', 'image', '图片'));
+    if (m.supportsReasoning) caps.push(cbCapabilityPill('cb', 'reason', '推理'));
+
+    return `
+      <label class="cb-add-model-row ${isAlready ? 'already-added' : ''}" data-model-id="${cursorEsc(m.id)}">
+        <input type="checkbox" class="cb-add-model-check" data-model-id="${cursorEsc(m.id)}" ${isAlready ? 'disabled checked' : (isSelected ? 'checked' : '')} onchange="toggleCursorAddModel('${cursorEsc(provider.providerId)}', '${cursorEsc(m.id)}')">
+        ${cbAddModelIdentity(m.id)}
+        <div class="cb-add-model-caps" style="margin-left: auto; display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
+          ${caps.join('')}
+          ${isAlready ? '<span class="tag" style="background:rgba(148,163,184,0.15);color:var(--text-muted);font-size:10px;">已添加</span>' : ''}
+        </div>
+      </label>
+    `;
+  }).join('');
+}
+
+function toggleCursorAddModel(providerId, modelId) {
+  const provider = _cursorProviderModels.find(p => p.providerId === providerId);
+  if (!provider) return;
+  const model = (provider.models || []).find(m => m.id === modelId);
+  if (!model || model.alreadyAdded) return;
+
+  if (!_cursorAddSelectedModels.has(providerId)) {
+    _cursorAddSelectedModels.set(providerId, new Set());
+  }
+  const set = _cursorAddSelectedModels.get(providerId);
+  if (set.has(modelId)) {
+    set.delete(modelId);
+  } else {
+    set.add(modelId);
+  }
+
+  renderCursorAddModels();
+  updateCursorAddConfirmButton();
+}
+
+function cursorAddSelectAll() {
+  if (!_cursorAddSelectedProvider) return;
+  const provider = _cursorProviderModels.find(p => p.providerId === _cursorAddSelectedProvider);
+  if (!provider) return;
+
+  if (!_cursorAddSelectedModels.has(_cursorAddSelectedProvider)) {
+    _cursorAddSelectedModels.set(_cursorAddSelectedProvider, new Set());
+  }
+  const set = _cursorAddSelectedModels.get(_cursorAddSelectedProvider);
+
+  (provider.models || []).forEach(m => {
+    if (!m.alreadyAdded) set.add(m.id);
+  });
+
+  renderCursorAddModels();
+  updateCursorAddConfirmButton();
+}
+
+function cursorAddSelectNone() {
+  if (!_cursorAddSelectedProvider) return;
+  if (_cursorAddSelectedModels.has(_cursorAddSelectedProvider)) {
+    _cursorAddSelectedModels.get(_cursorAddSelectedProvider).clear();
+  }
+  renderCursorAddModels();
+  updateCursorAddConfirmButton();
+}
+
+function updateCursorAddConfirmButton() {
+  let totalSelected = 0;
+  _cursorAddSelectedModels.forEach(set => {
+    totalSelected += set.size;
+  });
+
+  const btn = document.getElementById('cursor-add-confirm-page');
+  if (btn) {
+    btn.disabled = totalSelected === 0;
+    const label = btn.querySelector('.model-action-label');
+    if (label) {
+      label.textContent = totalSelected > 0 ? ` 保存选择 (${totalSelected})` : ' 保存选择';
+    }
+  }
+}
+
+function onCursorAddNamingRuleChange() {
+  const prefix = (document.getElementById('cursor-add-prefix')?.value || '').trim();
+  const suffix = (document.getElementById('cursor-add-suffix')?.value || '').trim();
+  const previewEl = document.getElementById('cursor-add-naming-preview');
+  if (previewEl) {
+    let name = 'gpt-5.4';
+    if (prefix) name = `${prefix} ${name}`;
+    if (suffix) name = `${name} ${suffix}`;
+    previewEl.textContent = name;
+  }
+}
+
+async function confirmAddCursorModelsPage() {
+  const modelsPayload = [];
+  _cursorAddSelectedModels.forEach((modelSet, providerId) => {
+    modelSet.forEach(modelId => {
+      modelsPayload.push({ providerId, modelId });
+    });
+  });
+
+  if (modelsPayload.length === 0) return;
+
+  const prefix = (document.getElementById('cursor-add-prefix')?.value || '').trim() || null;
+  const suffix = (document.getElementById('cursor-add-suffix')?.value || '').trim() || null;
+
+  const btn = document.getElementById('cursor-add-confirm-page');
+  if (btn) btn.disabled = true;
+
+  cursorEnsureBridge();
+  try {
+    const result = await invoke('cursor_add_models', {
+      req: {
+        models: modelsPayload,
+        prefix,
+        suffix
+      }
+    });
+    navigateTo('platform-cursor');
+    await cursorRefreshConsole();
+  } catch (e) {
+    console.error('[cursor-add] confirm add failed:', e);
+    showCustomAlert('添加模型失败: ' + e, '添加异常', 'error');
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+// 主按钮动作：智能分流
+async function cursorPrimaryAction() {
+  if (cursorConsoleBusy) return;
+  cursorEnsureBridge();
+
+  const status = _cursorCachedStatus;
+  if (!status?.certificateReady) {
+    await cursorInstallCertAction();
+    return;
+  }
+  if (_cursorModelsList.length === 0) {
+    openCursorAddPage();
+    return;
+  }
+  if (status?.running) {
+    await cursorRefreshConsole();
+    if (typeof addLog === 'function') addLog('info', 'Cursor 已处于接入状态');
+    return;
+  }
+
+  await cursorEnableAction();
+}
+
+// 启动 Cursor 接入
+async function cursorEnableAction() {
+  if (cursorConsoleBusy) return;
+  cursorSetBusy(true, '正在接入...');
+  try {
+    cursorEnsureBridge();
+    if (typeof addLog === 'function') addLog('info', '正在启动 Cursor Core 协议网关并配置接入...');
+    
+    // 执行启用
+    const result = await invoke('cursor_enable');
+    _cursorCachedStatus = result;
+    
+    if (typeof addLog === 'function') addLog('ok', `Cursor Core 网关已在端口 ${result.controlPort} 启动，已写入代理设置`);
+    await cursorRefreshConsole({ silent: true });
+
+    if (typeof promptRestartIde === 'function') {
+      await promptRestartIde('Cursor 接入服务已成功启动并配置！需重启 Cursor 才能生效。', 'cursor', {
+        mode: 'proxy',
+        detail: '重启后请在右下角模型列表中选择配置好的自备模型。'
+      });
+    } else {
+      showCustomAlert(
+        'Cursor Core 接入服务已启动并成功配置！\n\n请重启 Cursor IDE，在右下角模型列表中选择自备模型即可畅享 Agent。',
+        '接入成功',
+        'success'
+      );
+    }
+  } catch (e) {
+    console.error('[cursor] enable failed:', e);
+    if (typeof addLog === 'function') addLog('err', 'Cursor 接入失败: ' + e);
+    showCustomAlert(String(e), '启动接入失败', 'error');
+  } finally {
+    cursorSetBusy(false);
+  }
+}
+
+// 还原直连 / 停用
+async function cursorDisableAction() {
+  if (cursorConsoleBusy) return;
+  const ok = await showCustomConfirm(
+    '确定要停止 Cursor Core 并还原直连吗？\n这将恢复你原先在 Cursor settings.json 中的原始代理配置。',
+    '还原 Cursor 直连',
+    'warn'
+  );
+  if (!ok) return;
+
+  cursorSetBusy(true, '正在停止...');
+  try {
+    cursorEnsureBridge();
+    if (typeof addLog === 'function') addLog('info', '正在停止 Cursor Core 并还原设置...');
+    
+    const result = await invoke('cursor_disable');
+    _cursorCachedStatus = result;
+
+    if (typeof addLog === 'function') addLog('ok', 'Cursor 已还原直连状态，Core 网关已安全退出');
+    await cursorRefreshConsole({ silent: true });
+
+    if (typeof promptRestartIde === 'function') {
+      await promptRestartIde('Cursor 已还原为直连配置，需重启 Cursor 才能生效。', 'cursor', {
+        mode: 'direct'
+      });
+    } else {
+      showCustomAlert('Cursor 已成功还原直连配置。重启 Cursor 后配置即可生效。', '还原完成', 'success');
+    }
+  } catch (e) {
+    console.error('[cursor] disable failed:', e);
     if (typeof addLog === 'function') addLog('err', 'Cursor 还原直连失败: ' + e);
     showCustomAlert(String(e), '还原失败', 'error');
   } finally {
@@ -3843,7 +5998,52 @@ async function cursorRestoreDirect() {
   }
 }
 
-async function cursorRestartIde() {
+// 实时热同步最新路由模型
+async function cursorSyncRoutesAction() {
+  if (cursorConsoleBusy) return;
+  cursorSetBusy(true);
+  try {
+    cursorEnsureBridge();
+    if (typeof addLog === 'function') addLog('info', '正在向 Cursor Core 同步最新模型路由...');
+    
+    const result = await invoke('cursor_sync_routes');
+    _cursorCachedStatus = result;
+    
+    if (typeof addLog === 'function') addLog('ok', `模型路由热同步成功，当前可用模型数: ${result.configuredModels}`);
+    await cursorRefreshConsole();
+    showCustomAlert(`已将最新 ${result.configuredModels} 个代理模型推送到 Cursor！Cursor 下拉列表将自动生效。`, '同步成功', 'success');
+  } catch (e) {
+    console.error('[cursor] sync routes failed:', e);
+    if (typeof addLog === 'function') addLog('err', '模型同步失败: ' + e);
+    showCustomAlert(String(e), '同步失败', 'error');
+  } finally {
+    cursorSetBusy(false);
+  }
+}
+
+// 重启 Core 服务
+async function cursorRestartCoreAction() {
+  if (cursorConsoleBusy) return;
+  cursorSetBusy(true);
+  try {
+    cursorEnsureBridge();
+    if (typeof addLog === 'function') addLog('info', '正在重启 Cursor Core 进程...');
+    const result = await invoke('cursor_restart');
+    _cursorCachedStatus = result;
+    if (typeof addLog === 'function') addLog('ok', 'Cursor Core 已成功重启');
+    await cursorRefreshConsole();
+    showCustomAlert('Cursor Core 服务已成功重启并刷新配置。', '重启成功', 'success');
+  } catch (e) {
+    console.error('[cursor] restart core failed:', e);
+    if (typeof addLog === 'function') addLog('err', '重启 Core 失败: ' + e);
+    showCustomAlert(String(e), '重启失败', 'error');
+  } finally {
+    cursorSetBusy(false);
+  }
+}
+
+// 重启 IDE 软件
+async function cursorRestartIdeAction() {
   if (typeof restartIdeNow === 'function') {
     await restartIdeNow('cursor');
     return;
@@ -3858,46 +6058,36 @@ async function cursorRestartIde() {
   }
 }
 
-async function cursorRunHealthcheck() {
+// 快速预检
+async function cursorPreflightAction() {
   if (cursorConsoleBusy) return;
   cursorSetBusy(true);
   try {
     cursorEnsureBridge();
-    const result = typeof runEnvironmentCheck === 'function'
-      ? await runEnvironmentCheck({ target: 'cursor', prefix: 'Cursor 环境体检' })
-      : { report: await invoke('preflight_proxy', { targetIde: 'cursor' }) };
-    const report = result.report || {};
-    const issues = cursorIssueList(report);
-    const errors = issues.filter(issue => issue.level === 'err');
-    const warnings = issues.filter(issue => issue.level === 'warn');
+    const result = await invoke('cursor_preflight');
+    _cursorCachedStatus = result;
     await cursorRefreshConsole();
-    if (errors.length) {
-      showCustomAlert(errors.map(issue => issue.message || String(issue)).join('\n'), 'Cursor 体检未通过', 'error');
-    } else if (warnings.length) {
-      showCustomAlert(warnings.map(issue => issue.message || String(issue)).join('\n'), 'Cursor 体检提示', 'warn');
-    } else {
-      showCustomAlert('Cursor 接入环境检查通过。', '体检通过', 'success');
-    }
+    showCustomAlert('Cursor Core 接入环境检查通过：\n\n✓ 二进制就绪\n✓ 本地代理 Key 已配置\n✓ AnyBridge 信任证书已就绪\n✓ 代理模型就绪', '预检通过', 'success');
   } catch (e) {
-    if (typeof addLog === 'function') addLog('err', 'Cursor 环境检测失败: ' + e);
-    showCustomAlert(String(e), '检测失败', 'error');
+    showCustomAlert(String(e), '预检未通过', 'error');
   } finally {
     cursorSetBusy(false);
   }
 }
 
-async function cursorInstallCert() {
+// 安装/修复证书
+async function cursorInstallCertAction() {
   if (cursorConsoleBusy) return;
   cursorSetBusy(true);
   try {
     cursorEnsureBridge();
     const result = await invoke('cert_install');
-    if (typeof addLog === 'function') addLog('ok', 'Cursor 证书安装: ' + result);
+    if (typeof addLog === 'function') addLog('ok', 'CA 证书安装完成: ' + result);
     await cursorRefreshConsole();
-    showCustomAlert(result || '证书已安装。', '证书完成', 'success');
+    showCustomAlert(result || 'AnyBridge Local CA 根证书已安装并信任。', '证书已安装', 'success');
   } catch (e) {
-    if (typeof addLog === 'function') addLog('err', 'Cursor 证书安装失败: ' + e);
-    showCustomAlert(String(e), '证书失败', 'error');
+    if (typeof addLog === 'function') addLog('err', 'CA 安装失败: ' + e);
+    showCustomAlert(String(e), '证书安装失败', 'error');
   } finally {
     cursorSetBusy(false);
   }
@@ -3911,24 +6101,33 @@ function cursorOpenProxyModels() {
   }
 }
 
-function cursorOpenStats() {
+function cursorOpenProxyLogs() {
   if (typeof openProxyPanel === 'function') {
-    openProxyPanel('stats');
-  } else if (typeof openPlatformSection === 'function') {
-    openPlatformSection('overview');
+    openProxyPanel('logs');
   } else {
     navigateTo('proxy');
   }
 }
+
+// 保持历史函数兼容性挂载
+function cursorStartProxy() { return cursorEnableAction(); }
+function cursorSwitchToProxy() { return cursorEnableAction(); }
+function cursorRestoreDirect() { return cursorDisableAction(); }
+function cursorRestartIde() { return cursorRestartIdeAction(); }
+function cursorRunHealthcheck() { return cursorPreflightAction(); }
+function cursorInstallCert() { return cursorInstallCertAction(); }
+function cursorOpenStats() { return cursorOpenProxyLogs(); }
 
 function openPlatformPage(platformId) {
   navigateTo(`platform-${platformId}`);
   renderPlatformDetailStatuses();
   renderPlatformProviderOptions();
   if (platformId === 'cursor') {
-    cursorRefreshConsole().catch(e => {
+    if (_cursorModelsList && _cursorModelsList.length > 0) {
+      cursorRenderTableRows();
+    }
+    cursorRefreshConsole({ silent: true }).catch(e => {
       if (typeof addLog === 'function') addLog('err', 'Cursor 控制台刷新失败: ' + e);
-      showCustomAlert(String(e), 'Cursor 状态读取失败', 'error');
     });
   } else if (platformId === 'codebuddy') {
     loadCodeBuddyModels();
@@ -3936,6 +6135,8 @@ function openPlatformPage(platformId) {
     loadWbModels();
   } else if (platformId === 'zcode') {
     loadZcModels();
+  } else if (platformId === 'grok') {
+    renderGrokPageStatus(platformInfoOf('grok') || {});
   }
 }
 
@@ -4416,8 +6617,6 @@ async function restoreCodexOfficialConfig() {
           await invoke('restore_codex_official_config'),
           'Codex 官方配置还原失败'
         );
-        if (typeof loadProviders === 'function') await loadProviders();
-        await refreshPlatforms({ silent: true });
 
         let restart = null;
         if (codexDesktopAutomationSupported()) {
@@ -4435,6 +6634,8 @@ async function restoreCodexOfficialConfig() {
           if (restart) addLog('ok', restart.message || 'Codex 桌面版已按官方模式重启');
           else addLog('warn', codexDesktopUnsupportedMessage());
         }
+        setMessage('正在刷新 Codex 状态…');
+        await refreshPlatforms({ silent: true, reloadProviders: false });
         return {
           message: `${result.message || 'Codex 已切回官方配置。'}\n\n${restart ? (restart.message || 'Codex 桌面版已按官方模式重启。') : codexDesktopUnsupportedMessage()}`
         };
@@ -4473,7 +6674,7 @@ async function restorePlatform(platformId) {
   } finally {
     hideSwitchProgress();
     setPlatformBusy(platformId, false);
-    if (platformId === 'codex' || platformId === 'opencode') renderPlatformDetailStatuses();
+    if (platformId === 'codex' || platformId === 'opencode' || platformId === 'grok') renderPlatformDetailStatuses();
     else onPlatformProviderChange(platformId);
   }
 }
@@ -4493,6 +6694,18 @@ globalThis.cbProviderModels = [];
 globalThis.cbEditingIndex = -1;
 globalThis.cbAddSelectedProvider = null; // 当前在「添加」页面选中的供应商
 globalThis.cbAddSearchKw = '';
+globalThis.grokProviderModels = [];
+globalThis.grokAddSelectedProvider = null;
+globalThis.grokAddSearchKw = '';
+globalThis.opencodeProviderModels = [];
+globalThis.opencodeAddSelectedProvider = null;
+globalThis.opencodeAddSearchKw = '';
+globalThis.codexProviderModels = [];
+globalThis.codexAddSelectedProvider = null;
+globalThis.codexAddSearchKw = '';
+globalThis.claudeProviderModels = [];
+globalThis.claudeAddSelectedProvider = null;
+globalThis.claudeAddSearchKw = '';
 globalThis.TENCENT_BUDDY_SYNC_STORAGE_KEY = 'anybridge.tencentBuddyModelSyncEnabled';
 globalThis.tencentBuddySyncEnabled = localStorage.getItem(TENCENT_BUDDY_SYNC_STORAGE_KEY) === 'true';
 globalThis.PLATFORM_ADD_PROVIDER_SORT_STORAGE_KEY = 'anybridge.platformAddProviderSortMode';
@@ -4502,7 +6715,7 @@ globalThis.PLATFORM_ADD_PROVIDER_SORT_LABELS = {
   'name-asc': '名称正序',
   'name-desc': '名称反序',
 };
-globalThis.PLATFORM_ADD_SORT_PREFIXES = ['cb', 'wb', 'zc'];
+globalThis.PLATFORM_ADD_SORT_PREFIXES = ['cb', 'wb', 'zc', 'grok', 'opencode', 'codex', 'claude', 'cursor'];
 globalThis.platformAddProviderSortMode = (() => {
   try {
     return normalizePlatformAddProviderSortMode(localStorage.getItem(PLATFORM_ADD_PROVIDER_SORT_STORAGE_KEY));
@@ -4639,6 +6852,11 @@ function renderPlatformAddProviderLists() {
   renderCbAddProviderList();
   renderWbAddProviderList();
   renderZcAddProviderList();
+  renderGrokAddProviderList();
+  renderOpenCodeAddProviderList();
+  renderCodexAddProviderList();
+  renderClaudeAddProviderList();
+  renderCursorAddProviderList();
 }
 
 function setPlatformAddProviderSortMode(mode) {
@@ -4706,6 +6924,14 @@ function toggleWbAddSort(event) { togglePlatformAddSortMenu('wb', event); }
 function chooseWbAddSortMode(mode) { choosePlatformAddSortMode('wb', mode); }
 function toggleZcAddSort(event) { togglePlatformAddSortMenu('zc', event); }
 function chooseZcAddSortMode(mode) { choosePlatformAddSortMode('zc', mode); }
+function toggleGrokAddSort(event) { togglePlatformAddSortMenu('grok', event); }
+function chooseGrokAddSortMode(mode) { choosePlatformAddSortMode('grok', mode); }
+function toggleOpenCodeAddSort(event) { togglePlatformAddSortMenu('opencode', event); }
+function chooseOpenCodeAddSortMode(mode) { choosePlatformAddSortMode('opencode', mode); }
+function toggleCodexAddSort(event) { togglePlatformAddSortMenu('codex', event); }
+function chooseCodexAddSortMode(mode) { choosePlatformAddSortMode('codex', mode); }
+function toggleClaudeAddSort(event) { togglePlatformAddSortMenu('claude', event); }
+function chooseClaudeAddSortMode(mode) { choosePlatformAddSortMode('claude', mode); }
 
 document.addEventListener('click', event => {
   const insideSortControl = PLATFORM_ADD_SORT_PREFIXES.some(prefix => {
@@ -6062,6 +8288,11 @@ function createCbRowFactory(prefix) {
       ? `上下文窗口：${Number(contextTokens).toLocaleString()} tokens`
       : '未设置上下文窗口';
 
+    const modelId = String(model.id || '');
+    const iconHtml = (typeof renderModelIcon === 'function')
+      ? renderModelIcon(modelId)
+      : `<div class="model-item-icon fallback">${esc((modelId.charAt(0) || '?').toUpperCase())}</div>`;
+
     return `
     <tr ${dataAttr}="${index}" class="${selected ? 'cb-model-row-selected' : ''}">
       <td class="cb-select-cell">
@@ -6069,6 +8300,7 @@ function createCbRowFactory(prefix) {
       </td>
       <td>
         <div class="model-id-copy-wrap">
+          ${iconHtml}
           <span class="display-name-cell" title="${esc(model.id || '')}">${esc(model.id || '-')}</span>
           <button class="btn-icon model-id-copy-btn" data-action="copyTextToClipboard" data-args="[&quot;${esc(model.id || '')}&quot;,&quot;模型 ID&quot;]" title="复制模型 ID">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
@@ -7256,6 +9488,14 @@ window.zcDrop = function(e) {
   g.validateCodexAgents = validateCodexAgents;
   g.openCodexConfigEditor = openCodexConfigEditor;
   g.closeCodexConfigEditor = closeCodexConfigEditor;
+  g.toggleCodexKeyVisibility = toggleCodexKeyVisibility;
+  g.toggleClaudeCodeKeyVisibility = toggleClaudeCodeKeyVisibility;
+  g.toggleOpenCodeKeyVisibility = toggleOpenCodeKeyVisibility;
+  g.toggleGrokKeyVisibility = toggleGrokKeyVisibility;
+  g.togglePasswordVisibility = togglePasswordVisibility;
+  g.syncCodexConfigTokenFromSource = syncCodexConfigTokenFromSource;
+  g.syncClaudeCodeConfigTokenFromSource = syncClaudeCodeConfigTokenFromSource;
+  g.syncOpenCodeConfigTokenFromSource = syncOpenCodeConfigTokenFromSource;
   g.syncCodexConfigUiAfterStoreChange = syncCodexConfigUiAfterStoreChange;
   g.saveCodexConfigEditor = saveCodexConfigEditor;
   g.codexActionIcon = codexActionIcon;
@@ -7346,12 +9586,25 @@ window.zcDrop = function(e) {
   g.opencodeConfigSetModelStatus = opencodeConfigSetModelStatus;
   g.opencodeConfigSetFetchLoading = opencodeConfigSetFetchLoading;
   g.opencodeConfigSetModels = opencodeConfigSetModels;
+  g.onOpenCodeSourceSearch = onOpenCodeSourceSearch;
   g.renderOpenCodeConfigModelList = renderOpenCodeConfigModelList;
   g.selectOpenCodeConfigModel = selectOpenCodeConfigModel;
   g.opencodeConfigEndpointParts = opencodeConfigEndpointParts;
   g.fetchOpenCodeConfigModels = fetchOpenCodeConfigModels;
   g.openCodeProviderIsLive = openCodeProviderIsLive;
   g.opencodeConfigMatchesSearch = opencodeConfigMatchesSearch;
+  g.openOpenCodeAddModal = openOpenCodeAddModal;
+  g.initOpenCodeAddPage = initOpenCodeAddPage;
+  g.onOpenCodeAddSearch = onOpenCodeAddSearch;
+  g.renderOpenCodeAddProviderList = renderOpenCodeAddProviderList;
+  g.selectOpenCodeAddProvider = selectOpenCodeAddProvider;
+  g.renderOpenCodeAddModels = renderOpenCodeAddModels;
+  g.updateOpenCodeAddConfirmButton = updateOpenCodeAddConfirmButton;
+  g.opencodeAddSelectAll = opencodeAddSelectAll;
+  g.opencodeAddSelectNone = opencodeAddSelectNone;
+  g.confirmAddOpenCodeModelsPage = confirmAddOpenCodeModelsPage;
+  g.toggleOpenCodeAddSort = toggleOpenCodeAddSort;
+  g.chooseOpenCodeAddSortMode = chooseOpenCodeAddSortMode;
   g.openOpenCodeProviderAdd = openOpenCodeProviderAdd;
   g.openOpenCodeConfigEditor = openOpenCodeConfigEditor;
   g.closeOpenCodeConfigEditor = closeOpenCodeConfigEditor;
@@ -7363,25 +9616,93 @@ window.zcDrop = function(e) {
   g.onOpenCodeConfigSearch = onOpenCodeConfigSearch;
   g.applyOpenCodeProviderConfig = applyOpenCodeProviderConfig;
   g.removeOpenCodeProviderConfig = removeOpenCodeProviderConfig;
+  g.restoreOpenCodeOfficialConfig = restoreOpenCodeOfficialConfig;
+  g.renderGrokPageStatus = renderGrokPageStatus;
+  g.renderGrokConfigSourceList = renderGrokConfigSourceList;
+  g.applyGrokConfigSource = applyGrokConfigSource;
+  g.selectGrokConfigSource = selectGrokConfigSource;
+  g.openGrokAddModal = openGrokAddModal;
+  g.initGrokAddPage = initGrokAddPage;
+  g.onGrokAddSearch = onGrokAddSearch;
+  g.renderGrokAddProviderList = renderGrokAddProviderList;
+  g.selectGrokAddProvider = selectGrokAddProvider;
+  g.renderGrokAddModels = renderGrokAddModels;
+  g.updateGrokAddConfirmButton = updateGrokAddConfirmButton;
+  g.grokAddSelectAll = grokAddSelectAll;
+  g.grokAddSelectNone = grokAddSelectNone;
+  g.setGrokAddBackend = setGrokAddBackend;
+  g.confirmAddGrokModelsPage = confirmAddGrokModelsPage;
+  g.toggleGrokAddSort = toggleGrokAddSort;
+  g.chooseGrokAddSortMode = chooseGrokAddSortMode;
+  g.openGrokConfigAdd = openGrokConfigAdd;
+  g.openGrokConfigEditor = openGrokConfigEditor;
+  g.closeGrokConfigEditor = closeGrokConfigEditor;
+  g.syncGrokConfigTokenFromSource = syncGrokConfigTokenFromSource;
+  g.syncGrokConfigUiAfterStoreChange = syncGrokConfigUiAfterStoreChange;
+  g.saveGrokConfigEditor = saveGrokConfigEditor;
+  g.editGrokProviderConfig = editGrokProviderConfig;
+  g.deleteGrokProviderConfig = deleteGrokProviderConfig;
+  g.applyGrokProviderConfig = applyGrokProviderConfig;
+  g.onGrokConfigSearch = onGrokConfigSearch;
+  g.renderGrokConfigList = renderGrokConfigList;
+  g.restoreGrokOfficialConfig = restoreGrokOfficialConfig;
   g.restoreClaudeCodeOfficialConfig = restoreClaudeCodeOfficialConfig;
   g.applyClaudeCodeProviderConfig = applyClaudeCodeProviderConfig;
   g.onCodexConfigSearch = onCodexConfigSearch;
   g.applyCodexProviderConfig = applyCodexProviderConfig;
   g.startCodexWithCdp = startCodexWithCdp;
+  g.openClaudeCodeAddModal = openClaudeCodeAddModal;
+  g.initClaudeAddPage = initClaudeAddPage;
+  g.onClaudeAddSearch = onClaudeAddSearch;
+  g.renderClaudeAddProviderList = renderClaudeAddProviderList;
+  g.selectClaudeAddProvider = selectClaudeAddProvider;
+  g.renderClaudeAddModels = renderClaudeAddModels;
+  g.updateClaudeAddConfirmButton = updateClaudeAddConfirmButton;
+  g.claudeAddSelectAll = claudeAddSelectAll;
+  g.claudeAddSelectNone = claudeAddSelectNone;
+  g.confirmAddClaudeModelsPage = confirmAddClaudeModelsPage;
+  g.toggleClaudeAddSort = toggleClaudeAddSort;
+  g.chooseClaudeAddSortMode = chooseClaudeAddSortMode;
+  g.openClaudeCodeProviderAdd = openClaudeCodeProviderAdd;
+  g.openClaudeCodeConfigEditor = openClaudeCodeConfigEditor;
+  g.closeClaudeCodeConfigEditor = closeClaudeCodeConfigEditor;
+  g.syncClaudeCodeConfigTokenFromSource = syncClaudeCodeConfigTokenFromSource;
+  g.syncClaudeCodeConfigUiAfterStoreChange = syncClaudeCodeConfigUiAfterStoreChange;
+  g.saveClaudeCodeConfigEditor = saveClaudeCodeConfigEditor;
+  g.editClaudeCodeProviderConfig = editClaudeCodeProviderConfig;
+  g.deleteClaudeCodeProviderConfig = deleteClaudeCodeProviderConfig;
+  g.applyClaudeCodeProviderConfig = applyClaudeCodeProviderConfig;
+  g.onClaudeCodeConfigSearch = onClaudeCodeConfigSearch;
+  g.renderClaudeCodeConfigList = renderClaudeCodeConfigList;
+  g.restoreClaudeCodeOfficialConfig = restoreClaudeCodeOfficialConfig;
+  g.openCodexAddModal = openCodexAddModal;
+  g.initCodexAddPage = initCodexAddPage;
+  g.onCodexAddSearch = onCodexAddSearch;
+  g.renderCodexAddProviderList = renderCodexAddProviderList;
+  g.selectCodexAddProvider = selectCodexAddProvider;
+  g.renderCodexAddModels = renderCodexAddModels;
+  g.updateCodexAddConfirmButton = updateCodexAddConfirmButton;
+  g.codexAddSelectAll = codexAddSelectAll;
+  g.codexAddSelectNone = codexAddSelectNone;
+  g.setCodexAddWireApi = setCodexAddWireApi;
+  g.confirmAddCodexModelsPage = confirmAddCodexModelsPage;
+  g.toggleCodexAddSort = toggleCodexAddSort;
+  g.chooseCodexAddSortMode = chooseCodexAddSortMode;
   g.openCodexProviderAdd = openCodexProviderAdd;
   g.renderPlatformProviderOptions = renderPlatformProviderOptions;
   g.cursorPageRoot = cursorPageRoot;
   g.cursorEnsureBridge = cursorEnsureBridge;
   g.cursorSetText = cursorSetText;
-  g.cursorSetCard = cursorSetCard;
   g.cursorSetBusy = cursorSetBusy;
-  g.cursorIssueList = cursorIssueList;
-  g.cursorIssueMatches = cursorIssueMatches;
-  g.cursorIssueDetail = cursorIssueDetail;
-  g.cursorIssueTone = cursorIssueTone;
-  g.cursorReportErrorMessage = cursorReportErrorMessage;
-  g.cursorExtractReport = cursorExtractReport;
   g.cursorRefreshConsole = cursorRefreshConsole;
+  g.cursorPrimaryAction = cursorPrimaryAction;
+  g.cursorEnableAction = cursorEnableAction;
+  g.cursorDisableAction = cursorDisableAction;
+  g.cursorSyncRoutesAction = cursorSyncRoutesAction;
+  g.cursorRestartCoreAction = cursorRestartCoreAction;
+  g.cursorRestartIdeAction = cursorRestartIdeAction;
+  g.cursorPreflightAction = cursorPreflightAction;
+  g.cursorInstallCertAction = cursorInstallCertAction;
   g.cursorStartProxy = cursorStartProxy;
   g.cursorSwitchToProxy = cursorSwitchToProxy;
   g.cursorRestoreDirect = cursorRestoreDirect;
@@ -7389,7 +9710,32 @@ window.zcDrop = function(e) {
   g.cursorRunHealthcheck = cursorRunHealthcheck;
   g.cursorInstallCert = cursorInstallCert;
   g.cursorOpenProxyModels = cursorOpenProxyModels;
+  g.cursorOpenProxyLogs = cursorOpenProxyLogs;
   g.cursorOpenStats = cursorOpenStats;
+  g.cursorFilterModels = cursorFilterModels;
+  g.cursorToggleRowSelect = cursorToggleRowSelect;
+  g.cursorToggleSelectAll = cursorToggleSelectAll;
+  g.cursorBulkEnableAction = cursorBulkEnableAction;
+  g.cursorBulkDisableAction = cursorBulkDisableAction;
+  g.cursorBulkRemoveAction = cursorBulkRemoveAction;
+  g.cursorToggleModelEnabled = cursorToggleModelEnabled;
+  g.cursorRemoveSingleModel = cursorRemoveSingleModel;
+  g.openCursorEditModal = openCursorEditModal;
+  g.closeCursorEditModal = closeCursorEditModal;
+  g.saveCursorEditModel = saveCursorEditModel;
+  g.openCursorSettingsModal = openCursorSettingsModal;
+  g.closeCursorSettingsModal = closeCursorSettingsModal;
+  g.openCursorAddPage = openCursorAddPage;
+  g.initCursorAddPage = initCursorAddPage;
+  g.onCursorAddSearch = onCursorAddSearch;
+  g.onCursorAddNamingRuleChange = onCursorAddNamingRuleChange;
+  g.toggleCursorAddSort = toggleCursorAddSort;
+  g.chooseCursorAddSortMode = chooseCursorAddSortMode;
+  g.selectCursorAddProvider = selectCursorAddProvider;
+  g.toggleCursorAddModel = toggleCursorAddModel;
+  g.cursorAddSelectAll = cursorAddSelectAll;
+  g.cursorAddSelectNone = cursorAddSelectNone;
+  g.confirmAddCursorModelsPage = confirmAddCursorModelsPage;
   g.openPlatformPage = openPlatformPage;
   g.onPlatformProviderChange = onPlatformProviderChange;
   g.setPlatformBusy = setPlatformBusy;

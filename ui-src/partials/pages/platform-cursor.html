@@ -1,139 +1,301 @@
         <!-- ═══════ PAGE: PLATFORM · CURSOR ═══════ -->
         <div class="page" id="page-platform-cursor" role="tabpanel" aria-labelledby="tab-platforms">
-          <section class="cursor-console">
-            <div class="cursor-console-hero glass-card platform-hero-card">
-              <div class="platform-console-titlebar">
-                <div class="platform-console-icon"><img src="assets/icons/platform-cursor.svg" alt="Cursor"></div>
-                <div class="platform-console-copy">
-                  <h1>Cursor 接入控制台</h1>
-                  <p>本机代理、MITM 证书、Cursor 配置和模型路由集中管理。</p>
-                </div>
+          
+          <!-- 1. 顶部接入控制台 (platform-console-head) -->
+          <section class="platform-console-head glass-card platform-hero-card">
+            <div class="platform-console-titlebar">
+              <div class="platform-console-icon">
+                <img id="cursor-platform-icon" src="./assets/icons/platform-cursor.svg" alt="Cursor">
               </div>
-              <div class="platform-console-actions cursor-hero-actions">
-                <button class="btn-primary cursor-primary-action" data-action="cursorSwitchToProxy">
-                  <span class="cursor-btn-icon" aria-hidden="true">↯</span>
-                  一键接入
-                </button>
-                <button class="btn-ghost accent" data-action="cursorRefreshConsole">刷新状态</button>
-                <button class="btn-ghost warn" data-action="cursorRestoreDirect">还原直连</button>
+              <div class="platform-console-copy">
+                <h1 id="cursor-platform-title">Cursor 接入控制台</h1>
+                <p id="cursor-platform-subtitle">独立 Rust Cursor Core、MITM 证书、官方账号双轨并存和模型路由集中管理。</p>
               </div>
             </div>
 
-            <div class="cursor-status-grid">
-              <article class="cursor-status-card" id="cursor-card-proxy">
-                <div class="cursor-status-top">
-                  <span class="cursor-status-dot"></span>
-                  <span>本地代理</span>
-                </div>
-                <strong id="cursor-proxy-state">读取中</strong>
-                <p id="cursor-proxy-detail">正在读取 AnyBridge 服务状态</p>
-                <button class="cursor-card-action" data-action="cursorStartProxy">启动代理</button>
-              </article>
-              <article class="cursor-status-card" id="cursor-card-settings">
-                <div class="cursor-status-top">
-                  <span class="cursor-status-dot"></span>
-                  <span>Cursor 配置</span>
-                </div>
-                <strong id="cursor-settings-state">读取中</strong>
-                <p id="cursor-settings-detail">正在检查代理设置</p>
-                <button class="cursor-card-action" data-action="cursorSwitchToProxy">写入配置</button>
-              </article>
-              <article class="cursor-status-card" id="cursor-card-auth">
-                <div class="cursor-status-top">
-                  <span class="cursor-status-dot"></span>
-                  <span>账号与模型</span>
-                </div>
-                <strong id="cursor-auth-state">读取中</strong>
-                <p id="cursor-auth-detail">正在检查 state.vscdb 和默认模型</p>
-                <button class="cursor-card-action" data-action="cursorOpenProxyModels">管理模型</button>
-              </article>
-              <article class="cursor-status-card" id="cursor-card-cert">
-                <div class="cursor-status-top">
-                  <span class="cursor-status-dot"></span>
-                  <span>MITM 证书</span>
-                </div>
-                <strong id="cursor-cert-state">读取中</strong>
-                <p id="cursor-cert-detail">正在检查 Cursor 域名 SAN</p>
-                <button class="cursor-card-action" data-action="cursorInstallCert">安装证书</button>
-              </article>
+            <div class="platform-console-actions">
+              <button class="btn-primary platform-proxy-primary" id="cursor-main-btn" data-action="cursorPrimaryAction" aria-label="一键接入 Cursor">
+                <span class="proxy-btn-action">
+                  <svg class="proxy-btn-icon" width="14" height="14" viewBox="0 0 24 24" fill="none"
+                    stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" fill="currentColor" />
+                  </svg>
+                  <span class="proxy-btn-text" id="cursor-main-btn-text">一键接入</span>
+                </span>
+              </button>
+              <button class="btn-ghost accent platform-refresh-proxy" id="cursorRefreshBtn" data-action="cursorRefreshConsole">刷新状态</button>
+              <button class="btn-ghost danger platform-stop-proxy" id="cursorRestoreBtn" data-action="cursorDisableAction" disabled>停止接入</button>
             </div>
-
-            <div class="cursor-main-grid">
-              <section class="cursor-panel glass-card">
-                <div class="cursor-panel-head">
-                  <div>
-                    <h2>接入流程</h2>
-                    <p>按顺序完成，失败项会直接显示原因。</p>
-                  </div>
-                  <button class="btn-ghost accent cursor-mini-btn" data-action="cursorRunHealthcheck">环境检测</button>
-                </div>
-                <div class="cursor-step-list">
-                  <div class="cursor-step">
-                    <span class="cursor-step-index">1</span>
-                    <div>
-                      <strong>准备代理模型</strong>
-                      <p>至少启用一个 OpenAI 兼容模型，Cursor 模型选择器会读取这里的路由。</p>
-                    </div>
-                    <button class="cursor-step-action" data-action="cursorOpenProxyModels">模型列表</button>
-                  </div>
-                  <div class="cursor-step">
-                    <span class="cursor-step-index">2</span>
-                    <div>
-                      <strong>写入 Cursor 状态</strong>
-                      <p>备份 Cursor 原状态后写入 BYOK 会话、默认模型和代理设置。</p>
-                    </div>
-                    <button class="cursor-step-action" data-action="cursorSwitchToProxy">写入</button>
-                  </div>
-                  <div class="cursor-step">
-                    <span class="cursor-step-index">3</span>
-                    <div>
-                      <strong>启动本机代理</strong>
-                      <p>保持 AnyBridge 后台服务运行，Cursor 的请求会进入本机 MITM 入口。</p>
-                    </div>
-                    <button class="cursor-step-action" data-action="cursorStartProxy">启动</button>
-                  </div>
-                  <div class="cursor-step">
-                    <span class="cursor-step-index">4</span>
-                    <div>
-                      <strong>重启 Cursor</strong>
-                      <p>重启后 Cursor 才会重新读取 settings.json 和 state.vscdb。</p>
-                    </div>
-                    <button class="cursor-step-action" data-action="cursorRestartIde">重启</button>
-                  </div>
-                </div>
-              </section>
-
-              <aside class="cursor-panel glass-card">
-                <div class="cursor-panel-head">
-                  <div>
-                    <h2>能力覆盖</h2>
-                    <p>当前版本的实现范围。</p>
-                  </div>
-                </div>
-                <div class="cursor-capability-list">
-                  <div class="cursor-capability ok"><span></span><strong>Agent / Ask / Plan</strong><em>主聊天与多轮工具循环</em></div>
-                  <div class="cursor-capability ok"><span></span><strong>文件与命令工具</strong><em>Read、Grep、Shell、Write、MCP</em></div>
-                  <div class="cursor-capability ok"><span></span><strong>Background Composer</strong><em>可流式运行并落盘 turn summary</em></div>
-                  <div class="cursor-capability warn"><span></span><strong>BugBot</strong><em>已支持基础审查，工具循环待补齐</em></div>
-                  <div class="cursor-capability muted"><span></span><strong>Tab Completion</strong><em>官方 BYOK 也不覆盖，继续走 Cursor 内置模型</em></div>
-                </div>
-              </aside>
-            </div>
-
-            <section class="cursor-foot-grid">
-              <div class="cursor-note glass-card">
-                <strong>隐私边界</strong>
-                <p>AnyBridge 方案在本机代理内构造请求，不把你的 provider key 交给 Cursor 后端；但 Cursor 客户端仍会把编辑器上下文发到本机代理处理。</p>
-              </div>
-              <div class="cursor-note glass-card">
-                <strong>排障入口</strong>
-                <p>遇到模型不显示、证书报错、Cursor 无响应时，先跑环境检测，再查看代理日志和 turn artifacts。</p>
-                <div class="cursor-note-actions">
-                  <button class="btn-ghost accent cursor-mini-btn" data-action="cursorOpenStats">统计日志</button>
-                  <button class="btn-ghost accent cursor-mini-btn" data-action="cursorRunHealthcheck">环境检测</button>
-                </div>
-              </div>
-            </section>
           </section>
+
+          <!-- 2. 模型列表工具栏 (model-map-control-bar) -->
+          <div class="control-bar glass-card model-map-control-bar">
+            <div class="model-map-toolbar-main">
+              <div class="model-map-title-block">
+                <h2>Cursor 模型列表</h2>
+                <span>从统一供应商模型池添加，只影响 Cursor 中可选的第三方模型。</span>
+              </div>
+              <div class="model-map-toolbar-actions">
+                <button class="btn-primary model-map-command-btn" data-action="openCursorAddPage">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="12" y1="5" x2="12" y2="19"></line>
+                    <line x1="5" y1="12" x2="19" y2="12"></line>
+                  </svg>
+                  添加模型
+                </button>
+                <button class="btn-ghost accent platform-model-btn-icon" title="刷新模型列表" aria-label="刷新模型列表" data-action="cursorRefreshConsole">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="23 4 23 10 17 10"></polyline>
+                    <polyline points="1 20 1 14 7 14"></polyline>
+                    <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+                  </svg>
+                </button>
+                <button class="btn-ghost secondary model-map-command-btn" title="Cursor 接入设置（Core 与证书）" data-action="openCursorSettingsModal">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="3"></circle>
+                    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+                  </svg>
+                  <span>接入设置</span>
+                </button>
+              </div>
+            </div>
+
+            <div class="model-map-bulk-row" style="display:flex;align-items:center;justify-content:space-between;gap:12px;">
+              <div style="display:flex;align-items:center;gap:10px;flex:1;min-width:0;">
+                <label class="model-map-search" style="max-width:340px;width:100%;">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"
+                    stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <circle cx="11" cy="11" r="8"></circle>
+                    <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                  </svg>
+                  <input type="text" id="cursor-search-input" placeholder="搜索 Cursor 模型、供应商或上游模型…" oninput="cursorFilterModels(this.value)">
+                </label>
+                <span class="model-map-count-pill" id="cursor-model-count">共 0 个</span>
+              </div>
+              <div class="model-map-bulk-actions" style="display:flex;align-items:center;gap:6px;flex-shrink:0;">
+                <button class="btn-ghost secondary provider-bulk-btn" id="cursor-bulk-enable-btn" disabled data-action="cursorBulkEnableAction">批量启用</button>
+                <button class="btn-ghost secondary provider-bulk-btn" id="cursor-bulk-disable-btn" disabled data-action="cursorBulkDisableAction">批量停用</button>
+                <button class="btn-ghost danger provider-bulk-btn" id="cursor-bulk-remove-btn" disabled data-action="cursorBulkRemoveAction">从 Cursor 移除</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- 3. 数据表格与空状态容器 (复用 cb-model-empty 旗舰空状态) -->
+          <div class="glass-card" style="overflow-x: auto; margin-bottom: 20px; border-radius: 14px;">
+            <div class="cb-model-empty" id="cursor-model-empty"
+              style="display:none; padding:48px 20px; text-align:center; flex-direction:column; align-items:center; justify-content:center;">
+              <div class="cb-empty-icon" style="width:72px;height:72px;border-radius:20px;margin-bottom:12px;">
+                <svg viewBox="0 0 24 24" style="width:36px;height:36px;">
+                  <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
+                  <polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
+                  <line x1="12" y1="22.08" x2="12" y2="12"></line>
+                </svg>
+              </div>
+              <div class="cb-empty-title">尚未配置 Cursor 平台模型</div>
+              <div class="cb-empty-subtitle">添加第一个模型，让 Cursor 在右下角模型列表中使用你指定的 AI 供应商与模型能力。</div>
+              <button type="button" class="btn-primary cb-empty-action" data-action="openCursorAddPage">
+                <svg viewBox="0 0 24 24">
+                  <line x1="12" y1="5" x2="12" y2="19" />
+                  <line x1="5" y1="12" x2="19" y2="12" />
+                </svg>
+                添加模型
+              </button>
+              <div class="cb-empty-steps">
+                <span class="cb-empty-step"><span class="cb-empty-step-num">1</span> 选择供应商</span>
+                <span class="cb-empty-step"><span class="cb-empty-step-num">2</span> 勾选模型</span>
+                <span class="cb-empty-step"><span class="cb-empty-step-num">3</span> 自动同步接入</span>
+              </div>
+            </div>
+
+            <table class="cb-model-table" id="cursor-model-table" style="border: none; box-shadow: none; border-radius: 0; width: 100%;">
+              <colgroup>
+                <col class="cb-col-select" style="width: 44px;">
+                <col style="width: 24%;">
+                <col style="width: 18%;">
+                <col style="width: 22%;">
+                <col style="width: 18%;">
+                <col style="width: 72px;">
+                <col style="width: 88px;">
+              </colgroup>
+              <thead>
+                <tr>
+                  <th class="cb-select-head" style="text-align: center; padding-left: 14px;">
+                    <label class="provider-select-check provider-select-check-table" title="选择当前列表" data-stop data-action="__noop">
+                      <input type="checkbox" id="cursorSelectAll" aria-label="选择当前列表" onchange="cursorToggleSelectAll(this.checked)">
+                      <span></span>
+                    </label>
+                  </th>
+                  <th>显示名称</th>
+                  <th>暴露模型 ID</th>
+                  <th>所属供应商</th>
+                  <th>能力</th>
+                  <th style="text-align: center;">启用</th>
+                  <th style="text-align: center;">操作</th>
+                </tr>
+              </thead>
+              <tbody id="cursorModelTableBody"></tbody>
+            </table>
+          </div>
+
         </div>
 
+        <!-- ═══════ CURSOR 编辑模型模态弹窗 ═══════ -->
+        <div class="modal-overlay" id="cursorEditModelModal" role="dialog" aria-modal="true" aria-labelledby="cursorEditModalTitle" data-action="closeCursorEditModal" data-only-self>
+          <div class="modal-container" style="max-width: 540px; width: 92%; border-radius: 16px; overflow: hidden; padding: 0; box-shadow: var(--shadow-xl, 0 20px 25px -5px rgba(0,0,0,0.1), 0 10px 10px -5px rgba(0,0,0,0.04));">
+            <!-- 头部 -->
+            <div class="modal-header" style="padding: 16px 22px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; background: var(--bg-card);">
+              <div style="display: flex; align-items: center; gap: 10px;">
+                <div style="width: 32px; height: 32px; border-radius: 9px; background: rgba(37, 99, 235, 0.1); color: var(--accent); display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+                  </svg>
+                </div>
+                <div>
+                  <div class="modal-title" id="cursorEditModalTitle" style="font-size: 15px; font-weight: 750; color: var(--text-primary); line-height: 1.2;">编辑 Cursor 模型</div>
+                  <div style="font-size: 11.5px; color: var(--text-muted); margin-top: 2px;">修改模型在 Cursor 列表中呈现的名称与调用参数</div>
+                </div>
+              </div>
+              <button class="btn-ghost icon-btn" data-action="closeCursorEditModal" aria-label="关闭" style="width: 28px; height: 28px; border-radius: 6px; display: flex; align-items: center; justify-content: center;">✕</button>
+            </div>
+
+            <!-- 主体内容 -->
+            <div class="modal-body" style="padding: 20px 22px; max-height: 70vh; overflow-y: auto; display: flex; flex-direction: column; gap: 16px;">
+              <input type="hidden" id="cursorEditBindingId">
+
+              <!-- 模型元信息卡片（只读展示） -->
+              <div style="background: var(--bg-input); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; display: flex; align-items: center; justify-content: space-between; gap: 12px;">
+                <div style="display: flex; align-items: center; gap: 10px; min-width: 0;">
+                  <div id="cursorEditModelIcon" style="width: 28px; height: 28px; border-radius: 6px; background: var(--bg-card); border: 1px solid var(--border); display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+                    ✦
+                  </div>
+                  <div style="min-width: 0;">
+                    <div style="display: flex; align-items: center; gap: 6px;">
+                      <code id="cursorEditExposedIdText" style="font-family: var(--font-mono); font-size: 12px; font-weight: 650; color: var(--text-primary);">--</code>
+                      <button class="btn-icon" style="width: 20px; height: 20px; min-width: 20px; border: none; background: transparent; padding: 0; color: var(--text-muted);" onclick="copyTextToClipboard(document.getElementById('cursorEditExposedIdText').textContent, '模型 ID')" title="复制暴露模型 ID">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                      </button>
+                    </div>
+                    <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">
+                      供应商：<span id="cursorEditProviderName" style="color: var(--text-secondary); font-weight: 600;">--</span> · 路由：<span id="cursorEditRouteUidShort" style="font-family: var(--font-mono);">--</span>
+                    </div>
+                  </div>
+                </div>
+                <div style="flex-shrink: 0;">
+                  <span class="tag" style="background: rgba(37, 99, 235, 0.1); color: var(--accent); font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 5px;">OpenAI 兼容</span>
+                </div>
+              </div>
+
+              <!-- 分组 1: 基本呈现设置 -->
+              <div class="cb-edit-section" style="border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; background: var(--bg-card);">
+                <div class="cb-edit-section-header" style="margin-bottom: 12px; display: flex; align-items: center; gap: 6px;">
+                  <span class="cb-edit-section-tag" style="font-size: 10px; font-weight: 700; padding: 1px 6px; border-radius: 4px; background: rgba(37, 99, 235, 0.1); color: var(--accent);">BASIC</span>
+                  <span class="cb-edit-section-title" style="font-size: 12px; font-weight: 700; color: var(--text-primary);">显示与启用</span>
+                </div>
+                <div class="cb-edit-fields-grid" style="display: flex; flex-direction: column; gap: 12px;">
+                  <div style="display: flex; flex-direction: column; gap: 6px;">
+                    <label for="cursorEditDisplayName" style="font-size: 12px; font-weight: 650; color: var(--text-secondary);">
+                      显示名称 <span style="font-size: 11px; color: var(--text-muted); font-weight: normal;">（Cursor 列表下拉选项中展示的文字）</span>
+                    </label>
+                    <input type="text" id="cursorEditDisplayName" placeholder="例如：Claude 3.5 Sonnet / Gemini 3.8 Flash" style="height: 36px; padding: 0 12px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg-input); font-size: 13px; color: var(--text-primary); outline: none;">
+                  </div>
+
+                  <div style="display: flex; align-items: center; justify-content: space-between; padding: 10px 12px; background: var(--bg-input); border-radius: 8px; border: 1px solid var(--border);">
+                    <div>
+                      <div style="font-size: 12.5px; font-weight: 650; color: var(--text-primary);">向 Cursor 暴露模型</div>
+                      <div style="font-size: 11px; color: var(--text-muted); margin-top: 1px;">关闭后该模型将从 Cursor 列表中隐藏</div>
+                    </div>
+                    <label class="toggle-switch" title="切换启用状态">
+                      <input type="checkbox" id="cursorEditEnabled">
+                      <span class="toggle-slider"></span>
+                    </label>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 分组 2: Cursor 模型调用参数覆写 -->
+              <div class="cb-edit-section" style="border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; background: var(--bg-card);">
+                <div class="cb-edit-section-header" style="margin-bottom: 12px; display: flex; align-items: center; gap: 6px;">
+                  <span class="cb-edit-section-tag optional" style="font-size: 10px; font-weight: 700; padding: 1px 6px; border-radius: 4px; background: rgba(16, 185, 129, 0.1); color: #10b981;">OPTIONAL</span>
+                  <span class="cb-edit-section-title" style="font-size: 12px; font-weight: 700; color: var(--text-primary);">模型参数配置</span>
+                </div>
+                <div class="cb-edit-fields-grid" style="display: flex; flex-direction: column; gap: 12px;">
+                  <div style="display: flex; flex-direction: column; gap: 6px;">
+                    <label for="cursorEditReasoningEffort" style="font-size: 12px; font-weight: 650; color: var(--text-secondary);">
+                      思考深度 (Reasoning Effort)
+                    </label>
+                    <select id="cursorEditReasoningEffort" class="platform-provider-select" style="height: 36px; border-radius: 8px; font-size: 12.5px; padding: 0 12px; border: 1px solid var(--border); background: var(--bg-input); color: var(--text-primary); outline: none;">
+                      <option value="">跟随上游默认 (无)</option>
+                      <option value="low">Low (轻度思考)</option>
+                      <option value="medium">Medium (适中思考)</option>
+                      <option value="high">High (深度思考)</option>
+                    </select>
+                  </div>
+
+                  <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                    <div style="display: flex; flex-direction: column; gap: 6px;">
+                      <label for="cursorEditContextWindow" style="font-size: 12px; font-weight: 650; color: var(--text-secondary);">
+                        上下文窗口 (Tokens)
+                      </label>
+                      <input type="number" id="cursorEditContextWindow" placeholder="默认（跟随上游）" style="height: 36px; padding: 0 12px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg-input); font-size: 12.5px; color: var(--text-primary); outline: none;">
+                    </div>
+                    <div style="display: flex; flex-direction: column; gap: 6px;">
+                      <label for="cursorEditMaxTokens" style="font-size: 12px; font-weight: 650; color: var(--text-secondary);">
+                        最大生成 (Tokens)
+                      </label>
+                      <input type="number" id="cursorEditMaxTokens" placeholder="默认（跟随上游）" style="height: 36px; padding: 0 12px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg-input); font-size: 12.5px; color: var(--text-primary); outline: none;">
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+            </div>
+
+            <!-- 底部操作栏 -->
+            <div class="modal-footer" style="padding: 14px 22px; border-top: 1px solid var(--border); display: flex; justify-content: flex-end; gap: 10px; background: var(--bg-card);">
+              <button class="btn-ghost secondary" style="height: 36px; padding: 0 16px; font-size: 13px; font-weight: 600; border-radius: 8px;" data-action="closeCursorEditModal">取消</button>
+              <button class="btn-primary" style="height: 36px; padding: 0 18px; font-size: 13px; font-weight: 600; border-radius: 8px; display: inline-flex; align-items: center; gap: 6px;" data-action="saveCursorEditModel">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>
+                  <polyline points="17 21 17 13 7 13 7 21"></polyline>
+                  <polyline points="7 3 7 8 15 8"></polyline>
+                </svg>
+                保存修改
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- ═══════ CURSOR 接入设置模态弹窗 ═══════ -->
+        <div class="modal-overlay" id="cursorSettingsModal" role="dialog" aria-modal="true" aria-labelledby="cursorSettingsModalTitle" data-action="closeCursorSettingsModal" data-only-self>
+          <div class="modal-container" style="max-width: 500px;">
+            <div class="modal-header" style="justify-content:space-between;">
+              <div class="modal-title" id="cursorSettingsModalTitle">Cursor 接入设置</div>
+              <button class="btn-ghost icon-btn" data-action="closeCursorSettingsModal" aria-label="关闭">✕</button>
+            </div>
+            <div class="modal-body">
+              <div style="margin-bottom: 16px;">
+                <strong style="display:block;font-size:13px;color:var(--text-primary);margin-bottom:4px;">CA 根证书管理</strong>
+                <span style="display:block;font-size:12px;color:var(--text-muted);margin-bottom:8px;">AnyBridge 根证书用于本地 Connect-RPC TLS 安全握手。</span>
+                <div style="display:flex;gap:8px;">
+                  <button class="btn-ghost accent" data-action="cursorInstallCertAction">一键安装/更新证书</button>
+                </div>
+              </div>
+              <div style="margin-bottom: 16px;">
+                <strong style="display:block;font-size:13px;color:var(--text-primary);margin-bottom:4px;">Core 运行控制</strong>
+                <span style="display:block;font-size:12px;color:var(--text-muted);margin-bottom:8px;">Rust Cursor Core 服务负责拦截与中继 Cursor 自定义模型流量。</span>
+                <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                  <button class="btn-ghost secondary" data-action="cursorRestartCoreAction">重启 Core 进程</button>
+                  <button class="btn-ghost secondary" data-action="cursorRestartIdeAction">重启 Cursor IDE</button>
+                  <button class="btn-ghost secondary" data-action="cursorPreflightAction">运行环境预检</button>
+                </div>
+              </div>
+            </div>
+            <div class="modal-footer" style="display:flex;justify-content:flex-end;">
+              <button class="btn-ghost secondary" data-action="closeCursorSettingsModal">关闭</button>
+            </div>
+          </div>
+        </div>

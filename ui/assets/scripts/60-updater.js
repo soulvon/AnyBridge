@@ -122,6 +122,72 @@ async function loadUpdateSettings() {
   }
 }
 
+function logUpdaterEvent(level, message) {
+  if (invoke) {
+    invoke('update_log', { level, message: String(message) }).catch(() => {});
+  }
+}
+
+function renderMarkdownNotes(rawNotes) {
+  if (!rawNotes) return '<div class="update-notes-item">无详细更新说明。</div>';
+
+  const lines = rawNotes.split(/\r?\n/);
+  const htmlParts = [];
+  let inList = false;
+
+  for (let line of lines) {
+    line = line.trim();
+    if (!line) continue;
+
+    const escaped = line
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+
+    // 识别标题 ## 或 ###
+    const headerMatch = escaped.match(/^(?:#{1,4})\s*(.*)$/);
+    if (headerMatch) {
+      const title = headerMatch[1].trim();
+      htmlParts.push(`<div class="update-notes-category">${title}</div>`);
+      continue;
+    }
+
+    // 识别列表项 - 或 *
+    const listMatch = escaped.match(/^[-*]\s*(.*)$/);
+    if (listMatch) {
+      let content = listMatch[1].trim();
+      // 转化 `code`
+      content = content.replace(/`([^`]+)`/g, '<code class="update-notes-code">$1</code>');
+      // 转化 **bold**
+      content = content.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+      htmlParts.push(`<div class="update-notes-item">${content}</div>`);
+      continue;
+    }
+
+    // 普通段落
+    let paragraph = escaped
+      .replace(/`([^`]+)`/g, '<code class="update-notes-code">$1</code>')
+      .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+    htmlParts.push(`<div class="update-notes-item" style="padding-left:0;">${paragraph}</div>`);
+  }
+
+  return htmlParts.length > 0 ? htmlParts.join('') : '<div class="update-notes-item">无详细更新说明。</div>';
+}
+
+async function patchUpdateSettingField(patch) {
+  if (!invoke) return false;
+  try {
+    const updated = await invoke('patch_update_settings', patch);
+    if (updated) {
+      updateSettings = updated;
+    }
+    return true;
+  } catch (e) {
+    addLog('err', '更新设置失败: ' + e);
+    return false;
+  }
+}
+
 async function saveUpdateSettings() {
   if (!invoke) return false;
   try {
@@ -138,13 +204,13 @@ async function toggleUpdateSetting(key) {
   const toggleId = 'updater-' + (key === 'remind_on_update' ? 'remind' : key.replace(/_/g, '-'));
   const toggle = document.getElementById(toggleId);
   if (toggle) {
-    const previous = updateSettings[key];
-    toggle.classList.toggle('on');
-    updateSettings[key] = toggle.classList.contains('on');
-    const saved = await saveUpdateSettings();
+    const nextVal = !toggle.classList.contains('on');
+    toggle.classList.toggle('on', nextVal);
+    const patch = {};
+    patch[key] = nextVal;
+    const saved = await patchUpdateSettingField(patch);
     if (!saved) {
-      updateSettings[key] = previous;
-      toggle.classList.toggle('on', !!previous);
+      toggle.classList.toggle('on', !nextVal);
     }
   }
 }
@@ -153,10 +219,8 @@ async function changeUpdateInterval(val) {
   const parsed = parseInt(val);
   if (isNaN(parsed) || parsed < 1) return;
   const previous = updateSettings.check_interval_hours || 1;
-  updateSettings.check_interval_hours = parsed;
-  const saved = await saveUpdateSettings();
+  const saved = await patchUpdateSettingField({ check_interval_hours: parsed });
   if (!saved) {
-    updateSettings.check_interval_hours = previous;
     const input = document.getElementById('updater-check-interval');
     if (input) input.value = previous;
   }
@@ -197,10 +261,15 @@ async function checkVersionJump() {
   try {
     const jump = await invoke('check_version_jump');
     if (jump) {
-      document.getElementById('update-jump-version').textContent = 'v' + jump.current_version;
-      document.getElementById('update-jump-prev-version').textContent = 'v' + jump.previous_version;
-      document.getElementById('update-jump-current-version').textContent = 'v' + jump.current_version;
-      document.getElementById('update-jump-notes').textContent = jump.release_notes_zh || jump.release_notes || '本次更新包含性能优化与稳定性提升。';
+      const versionEl = document.getElementById('update-jump-version');
+      const descEl = document.getElementById('update-jump-desc');
+      const notesEl = document.getElementById('update-jump-notes');
+
+      if (versionEl) versionEl.textContent = 'v' + jump.current_version;
+      if (descEl) descEl.textContent = `已从 v${jump.previous_version} 更新到 v${jump.current_version}`;
+      if (notesEl) {
+        notesEl.innerHTML = renderMarkdownNotes(jump.release_notes_zh || jump.release_notes || '本次更新包含性能优化与稳定性提升。');
+      }
 
       // 先收起其他同层弹窗，避免遮罩层级冲突导致无法点击
       document.getElementById('updater-prompt-modal')?.classList.remove('active');
@@ -224,6 +293,26 @@ function closeUpdateJumpModal() {
 
 
 
+function updateModalVersionDisplay(update) {
+  const targetVersionEl = document.getElementById('updater-target-version');
+  const versionDescEl = document.getElementById('updater-version-desc');
+  const targetNotesEl = document.getElementById('updater-target-notes');
+  const currentVer = currentVersionLabel() || '—';
+  const displayCurrent = currentVer.startsWith('v') ? currentVer : `v${currentVer}`;
+
+  if (targetVersionEl) {
+    targetVersionEl.textContent = formatUpdaterTargetVersion(update);
+  }
+  if (versionDescEl) {
+    versionDescEl.textContent = update.version_line_reset
+      ? '这是版本线迁移，新版本已可用。'
+      : `当前版本 ${displayCurrent}，新版本已可用。`;
+  }
+  if (targetNotesEl) {
+    targetNotesEl.innerHTML = renderMarkdownNotes(formatUpdaterNotes(update));
+  }
+}
+
 // 手动检查更新
 async function manualCheckUpdate() {
   if (!invoke) return;
@@ -235,13 +324,14 @@ async function manualCheckUpdate() {
 
   try {
     addLog('info', '正在连线 GitHub 检查更新...');
+    logUpdaterEvent('info', '用户手动触发检查更新');
     const update = await invoke('check_for_update');
+    await invoke('update_last_check_time').catch(() => {});
 
     if (update) {
       detectedUpdateInfo = update;
       syncNotificationCenter();
-      document.getElementById('updater-target-version').textContent = formatUpdaterTargetVersion(update);
-      document.getElementById('updater-target-notes').textContent = formatUpdaterNotes(update);
+      updateModalVersionDisplay(update);
 
       // 重置状态
       isDownloading = false;
@@ -249,12 +339,14 @@ async function manualCheckUpdate() {
       setUpdaterUIState('available');
 
       document.getElementById('updater-prompt-modal').classList.add('active');
+      logUpdaterEvent('info', `检测到新版本: v${update.version}`);
       addLog('info', update.version_line_reset
         ? `检测到版本线迁移: v${update.version}`
         : `检测到新版本: v${update.version}`);
     } else {
       detectedUpdateInfo = null;
       syncNotificationCenter();
+      logUpdaterEvent('info', '检查更新完成，当前已是最新版本');
       addLog('info', '检查更新完成，当前已是最新版本');
       // 在按钮旁显示简短提示
       if (btn) {
@@ -267,6 +359,7 @@ async function manualCheckUpdate() {
       }
     }
   } catch (e) {
+    logUpdaterEvent('error', `手动检查更新失败: ${e}`);
     addLog('err', '检查更新失败: ' + e);
     // 在按钮旁显示错误提示
     if (btn) {
@@ -291,14 +384,10 @@ function closeUpdaterPromptModal() {
 
 async function skipThisVersion() {
   if (detectedUpdateInfo) {
-    const previous = updateSettings.skipped_version || '';
-    updateSettings.skipped_version = detectedUpdateInfo.version;
-    const saved = await saveUpdateSettings();
-    if (!saved) {
-      updateSettings.skipped_version = previous;
-      return;
-    }
-    addLog('info', `已跳过版本 v${detectedUpdateInfo.version}`);
+    const versionToSkip = detectedUpdateInfo.version;
+    await patchUpdateSettingField({ skipped_version: versionToSkip });
+    logUpdaterEvent('info', `用户选择跳过版本: v${versionToSkip}`);
+    addLog('info', `已跳过版本 v${versionToSkip}`);
   }
   closeUpdaterPromptModal();
 }
@@ -307,18 +396,20 @@ async function skipThisVersion() {
 async function autoCheckUpdate() {
   if (!invoke || !updateSettings.auto_check) return;
 
-  const now = Math.floor(Date.now() / 1000);
-  const diff = now - (updateSettings.last_check_time || 0);
-  const intervalSec = (updateSettings.check_interval_hours || 1) * 3600;
-
-  if (diff < intervalSec) {
-    return; // 未达到轮询周期
+  try {
+    const shouldCheck = await invoke('should_check_updates');
+    if (!shouldCheck) return;
+  } catch {
+    const now = Math.floor(Date.now() / 1000);
+    const diff = now - (updateSettings.last_check_time || 0);
+    const intervalSec = (updateSettings.check_interval_hours || 1) * 3600;
+    if (diff < intervalSec) return;
   }
 
   try {
-    console.log('[Updater] Auto check triggered...');
+    logUpdaterEvent('info', '触发后台自动更新检查');
     const update = await invoke('check_for_update');
-    await invoke('update_last_check_time');
+    await invoke('update_last_check_time').catch(() => {});
 
     if (update) {
       if (updateSettings.skipped_version === update.version) {
@@ -346,8 +437,7 @@ async function autoCheckUpdate() {
         }
       } else if (updateSettings.remind_on_update) {
         // 弹出前台提示
-        document.getElementById('updater-target-version').textContent = formatUpdaterTargetVersion(update);
-        document.getElementById('updater-target-notes').textContent = formatUpdaterNotes(update);
+        updateModalVersionDisplay(update);
 
         // 重置状态
         isDownloading = false;
@@ -390,49 +480,75 @@ function setUpdaterUIState(state) {
   const error = document.getElementById('updater-error-container');
   const retry = document.getElementById('updater-retry-container');
   const footer = document.getElementById('updater-prompt-footer');
-  const icon = document.getElementById('updater-modal-icon');
   const titleText = document.getElementById('updater-modal-title-text');
 
   [progress, ready, error, retry].forEach(el => { if (el) el.style.display = 'none'; });
 
+  const isVersionReset = !!detectedUpdateInfo?.version_line_reset;
+  if (titleText) {
+    titleText.textContent = isVersionReset ? '版本线迁移' : '发现新版本';
+  }
+
   if (state === 'available') {
-    const isVersionReset = !!detectedUpdateInfo?.version_line_reset;
-    titleText.textContent = isVersionReset ? '检测到版本线迁移' : '检测到新版本可用！';
-    icon.style.color = 'var(--accent)';
+    const barEl = document.getElementById('updater-progress-bar');
+    const textEl = document.getElementById('updater-progress-text');
+    if (barEl) barEl.style.width = '0%';
+    if (textEl) textEl.textContent = '下载中... 0%';
+
     if (footer) footer.innerHTML = `
-      <button data-action="skipThisVersion" class="modal-btn modal-btn-cancel" style="font-size: 12px; padding: 10px 16px;">跳过此版本</button>
-      <button data-action="closeUpdaterPromptModal" class="modal-btn modal-btn-cancel" style="font-size: 12px; padding: 10px 16px;">稍后</button>
-      <button data-action="startDownloadAndUpdate" class="modal-btn modal-btn-confirm" style="font-size: 12px; padding: 10px 20px;">${isVersionReset ? '安装迁移版本' : '立即更新'}</button>
+      <button data-action="closeUpdaterPromptModal" class="update-btn update-btn-secondary">取消</button>
+      <button data-action="skipThisVersion" class="update-btn update-btn-secondary">跳过此版本</button>
+      <button data-action="startDownloadAndUpdate" class="update-btn update-btn-primary" id="updater-confirm-btn">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+          <polyline points="7 10 12 15 17 10"></polyline>
+          <line x1="12" y1="15" x2="12" y2="3"></line>
+        </svg>
+        <span>${isVersionReset ? '安装迁移版本' : '立即更新'}</span>
+      </button>
     `;
   } else if (state === 'downloading') {
-    titleText.textContent = '正在下载更新...';
-    icon.style.color = 'var(--accent)';
     if (progress) progress.style.display = 'block';
     if (footer) footer.innerHTML = `
-      <button data-action="cancelUpdateDownload" class="modal-btn modal-btn-cancel" style="font-size: 12px; padding: 10px 16px;">取消下载</button>
-      <button class="modal-btn modal-btn-confirm" style="font-size: 12px; padding: 10px 20px; opacity: 0.6;" disabled id="updater-downloading-btn">下载中...</button>
+      <button data-action="closeUpdaterPromptModal" class="update-btn update-btn-secondary">稍后</button>
+      <button class="update-btn update-btn-primary" disabled id="updater-downloading-btn">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" class="spin">
+          <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"></path>
+        </svg>
+        <span>下载中...</span>
+      </button>
     `;
   } else if (state === 'ready') {
-    titleText.textContent = '更新已就绪';
-    icon.style.color = 'var(--success)';
-    if (ready) ready.style.display = 'block';
+    if (ready) ready.style.display = 'flex';
+    const readyText = document.getElementById('updater-ready-text');
+    if (readyText) {
+      const ver = detectedUpdateInfo?.version ? `v${detectedUpdateInfo.version} ` : '';
+      readyText.textContent = `${ver}已就绪，重启后生效。`;
+    }
     if (footer) footer.innerHTML = `
-      <button data-action="closeUpdaterPromptModal" class="modal-btn modal-btn-cancel" style="font-size: 12px; padding: 10px 16px;">稍后重启</button>
-      <button data-action="restartToUpdate" class="modal-btn modal-btn-confirm" style="font-size: 12px; padding: 10px 20px;">立即重启</button>
+      <button data-action="closeUpdaterPromptModal" class="update-btn update-btn-secondary">稍后</button>
+      <button data-action="skipThisVersion" class="update-btn update-btn-secondary">跳过此版本</button>
+      <button data-action="restartToUpdate" class="update-btn update-btn-primary">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"></path>
+        </svg>
+        <span>立即重启</span>
+      </button>
     `;
   } else if (state === 'error') {
-    titleText.textContent = '更新失败';
-    icon.style.color = 'var(--error, #ef4444)';
     if (error) error.style.display = 'block';
     if (footer) footer.innerHTML = `
-      <button data-action="closeUpdaterPromptModal" class="modal-btn modal-btn-cancel" style="font-size: 12px; padding: 10px 16px;">关闭</button>
-      <button data-action="retryUpdateDownload" class="modal-btn modal-btn-cancel" style="font-size: 12px; padding: 10px 16px; color: var(--accent);">🔄 重试</button>
-      <button data-action="openDownloadPage" class="modal-btn modal-btn-confirm" style="font-size: 12px; padding: 10px 20px;">前往下载页</button>
+      <button data-action="closeUpdaterPromptModal" class="update-btn update-btn-secondary">关闭</button>
+      <button data-action="retryUpdateDownload" class="update-btn update-btn-secondary" style="color: var(--accent);">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"></path>
+        </svg>
+        <span>重试</span>
+      </button>
+      <button data-action="openDownloadPage" class="update-btn update-btn-primary">前往发布页</button>
     `;
   } else if (state === 'retrying') {
-    titleText.textContent = '正在重试...';
-    icon.style.color = 'var(--accent)';
-    if (retry) retry.style.display = 'block';
+    if (retry) retry.style.display = 'flex';
   }
 }
 
@@ -459,6 +575,10 @@ function toggleUpdaterErrorDetails() {
 function cancelUpdateDownload() {
   isDownloading = false;
   updaterRetryCount = 0;
+  const barEl = document.getElementById('updater-progress-bar');
+  const textEl = document.getElementById('updater-progress-text') || document.getElementById('updater-progress-percent');
+  if (barEl) barEl.style.width = '0%';
+  if (textEl) textEl.textContent = '下载中... 0%';
   setUpdaterUIState('available');
 }
 
@@ -479,7 +599,8 @@ async function restartToUpdate() {
   if (!invoke) return;
   try {
     addLog('info', '正在重启应用以完成更新...');
-    await invoke('download_and_install_update', { relaunch: true });
+    logUpdaterEvent('info', '用户点击立即重启，触发应用重启');
+    await invoke('restart_app');
   } catch (e) {
     addLog('err', '重启更新失败: ' + e);
     // 如果重启失败，尝试直接 relaunch
@@ -506,15 +627,16 @@ async function startDownloadAndUpdate() {
       const payload = e.payload || {};
       const percent = payload.percentage ? Math.round(payload.percentage) : 0;
 
-      const percentEl = document.getElementById('updater-progress-percent');
+      const percentEl = document.getElementById('updater-progress-text') || document.getElementById('updater-progress-percent');
       const barEl = document.getElementById('updater-progress-bar');
-      const statusEl = document.getElementById('updater-progress-status');
       const downloadingBtn = document.getElementById('updater-downloading-btn');
 
-      if (percentEl) percentEl.textContent = percent + '%';
+      if (percentEl) percentEl.textContent = `下载中... ${percent}%`;
       if (barEl) barEl.style.width = percent + '%';
-      if (statusEl) statusEl.textContent = `已下载: ${(payload.downloaded / 1024 / 1024).toFixed(2)} MB`;
-      if (downloadingBtn) downloadingBtn.textContent = `下载中 (${percent}%)`;
+      if (downloadingBtn) {
+        const span = downloadingBtn.querySelector('span');
+        if (span) span.textContent = `下载中... ${percent}%`;
+      }
     });
 
     unlistenComplete = await tauriEvent.listen('update-download-complete', () => {
@@ -524,9 +646,11 @@ async function startDownloadAndUpdate() {
 
   try {
     addLog('info', '正在下载更新包，请稍候...');
+    logUpdaterEvent('info', '开始下载更新包...');
     await invoke('download_and_install_update', { relaunch: false });
     // 下载成功，保存更新说明以便下次启动展示
     isDownloading = false;
+    logUpdaterEvent('info', '更新包下载并安装完成，等待重启');
     if (detectedUpdateInfo) {
       try {
         await invoke('save_pending_update_notes', {
@@ -541,6 +665,7 @@ async function startDownloadAndUpdate() {
   } catch (e) {
     isDownloading = false;
     const errMsg = String(e || '未知错误');
+    logUpdaterEvent('error', `更新下载失败: ${errMsg}`);
     addLog('err', '更新下载失败: ' + errMsg);
 
     // 判断是否可重试，自动重试

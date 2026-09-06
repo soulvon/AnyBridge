@@ -289,55 +289,71 @@
               </div>
             </div>
             <!-- 表单区 -->
-            <div class="card-body" style="padding:20px 22px; max-height:60vh; overflow-y:auto;">
-              <div
-                style="font-size:11px; font-weight:700; color:var(--text-muted); letter-spacing:0.5px; margin-bottom:12px;">
-                必填信息</div>
-              <div class="cb-edit-field">
-                <label for="cb-edit-id">模型 ID <span style="color:var(--danger);">*</span></label>
-                <input type="text" id="cb-edit-id" placeholder="模型唯一标识符，如 gpt-5.4">
-              </div>
-              <div class="cb-edit-field">
-                <label for="cb-edit-vendor">供应商 <span style="color:var(--danger);">*</span></label>
-                <input type="text" id="cb-edit-vendor" placeholder="模型供应商，如 OpenAI / Google / 黑与白">
-              </div>
-              <div class="cb-edit-field">
-                <label for="cb-edit-url">接口地址 <span style="color:var(--danger);">*</span></label>
-                <input type="text" id="cb-edit-url" placeholder="API 地址">
-              </div>
-              <div class="cb-edit-field">
-                <label for="cb-edit-key">API 密钥 <span style="color:var(--danger);">*</span></label>
-                <input type="text" id="cb-edit-key" placeholder="API 密钥（实际密钥值，非环境变量名）">
-              </div>
-
-              <div
-                style="font-size:11px; font-weight:700; color:var(--text-muted); letter-spacing:0.5px; margin-bottom:12px; margin-top:8px;">
-                选填参数</div>
-              <div class="cb-edit-field">
-                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
-                  <label for="cb-edit-max-input" style="margin-bottom:0;">上下文窗口 (Token)</label>
-                  <button type="button" class="btn-ghost secondary" id="btn-cb-edit-recommend" style="font-size:11px; padding:2px 8px; height:24px; border-radius:6px; cursor:pointer;" data-action="cbFillRecommendedContext" title="根据当前模型 ID 填入官方推荐的上下文与输出设置">填入推荐值</button>
+            <div class="card-body cb-edit-modal-body" style="padding:18px 22px; max-height:65vh; overflow-y:auto; display:flex; flex-direction:column; gap:14px;">
+              <!-- 分组 1: 必填配置 -->
+              <div class="cb-edit-section">
+                <div class="cb-edit-section-header">
+                  <span class="cb-edit-section-tag">REQUIRED</span>
+                  <span class="cb-edit-section-title">基础配置</span>
                 </div>
-                <input type="number" id="cb-edit-max-input" placeholder="如 128000 / 500000 / 1000000">
-              </div>
-              <div class="cb-edit-field">
-                <label for="cb-edit-max-output">最大输出 Token</label>
-                <input type="number" id="cb-edit-max-output" placeholder="最大输出 token 数">
-              </div>
-              <div class="cb-edit-field">
-                <label for="cb-edit-temperature">温度</label>
-                <input type="number" id="cb-edit-temperature" placeholder="0~2，值越高输出越随机" step="0.1" min="0" max="2">
+                <div class="cb-edit-fields-grid">
+                  <div class="cb-edit-field">
+                    <label for="cb-edit-id">模型 ID <span style="color:var(--danger);">*</span></label>
+                    <input type="text" id="cb-edit-id" placeholder="模型唯一标识符，如 gpt-5.4">
+                  </div>
+                  <div class="cb-edit-field">
+                    <label for="cb-edit-vendor">供应商 <span style="color:var(--danger);">*</span></label>
+                    <input type="text" id="cb-edit-vendor" placeholder="模型供应商，如 OpenAI / Google / 自定义">
+                  </div>
+                  <div class="cb-edit-field">
+                    <label for="cb-edit-url">接口地址 <span style="color:var(--danger);">*</span></label>
+                    <input type="text" id="cb-edit-url" placeholder="API 基础地址，如 https://api.openai.com/v1">
+                  </div>
+                  <div class="cb-edit-field">
+                    <label for="cb-edit-key">API 密钥 <span style="color:var(--danger);">*</span></label>
+                    <input type="text" id="cb-edit-key" placeholder="API 密钥（实际密钥值，非环境变量名）">
+                  </div>
+                </div>
               </div>
 
-              <div
-                style="font-size:11px; font-weight:700; color:var(--text-muted); letter-spacing:0.5px; margin-bottom:12px; margin-top:8px;">
-                模型能力</div>
-              <div class="cb-edit-field">
-                <label>能力</label>
-                <div class="cb-edit-caps">
-                  <label><input type="checkbox" id="cb-edit-tools"> 工具调用</label>
-                  <label><input type="checkbox" id="cb-edit-images"> 图片</label>
-                  <label><input type="checkbox" id="cb-edit-reasoning"> 推理</label>
+              <!-- 分组 2: 选填参数 -->
+              <div class="cb-edit-section">
+                <div class="cb-edit-section-header">
+                  <span class="cb-edit-section-tag optional">OPTIONAL</span>
+                  <span class="cb-edit-section-title">上下文与生成参数</span>
+                </div>
+                <div class="cb-edit-fields-grid">
+                  <div class="cb-edit-field">
+                    <label for="cb-edit-max-input">上下文窗口</label>
+                    <div style="display:flex; gap:8px; align-items:center; min-width:0;">
+                      <input type="number" id="cb-edit-max-input" placeholder="如 128000 / 500000 / 1000000" style="flex:1;">
+                      <button type="button" class="btn-ghost secondary" id="btn-cb-edit-recommend" style="font-size:12px; height:34px; padding:0 12px; border-radius:7px; cursor:pointer; white-space:nowrap; flex-shrink:0;" data-action="cbFillRecommendedContext" title="根据当前模型 ID 填入官方推荐的上下文与输出设置">填入推荐值</button>
+                    </div>
+                  </div>
+                  <div class="cb-edit-field">
+                    <label for="cb-edit-max-output">最大输出</label>
+                    <input type="number" id="cb-edit-max-output" placeholder="最大生成 token 数，如 4096 / 8192 / 16384">
+                  </div>
+                  <div class="cb-edit-field">
+                    <label for="cb-edit-temperature">采样温度</label>
+                    <input type="number" id="cb-edit-temperature" placeholder="0~2，值越高输出越随机（默认 1.0）" step="0.1" min="0" max="2">
+                  </div>
+                </div>
+              </div>
+
+              <!-- 分组 3: 模型能力 -->
+              <div class="cb-edit-section">
+                <div class="cb-edit-section-header">
+                  <span class="cb-edit-section-tag caps">CAPABILITIES</span>
+                  <span class="cb-edit-section-title">模型能力支持</span>
+                </div>
+                <div class="cb-edit-field" style="margin-bottom:0;">
+                  <label>支持特性</label>
+                  <div class="cb-edit-caps">
+                    <label><input type="checkbox" id="cb-edit-tools"> 工具调用</label>
+                    <label><input type="checkbox" id="cb-edit-images"> 图片识别</label>
+                    <label><input type="checkbox" id="cb-edit-reasoning"> 深度推理</label>
+                  </div>
                 </div>
               </div>
             </div>

@@ -3014,13 +3014,13 @@ html[data-theme="dark"] .theme-setting-moon {
   flex-direction: column;
 }
 .health-group-card.health-status-err {
-  border-left: 4px solid var(--danger);
+  border-color: color-mix(in srgb, var(--danger) 40%, var(--border));
 }
 .health-group-card.health-status-warn {
-  border-left: 4px solid var(--warning);
+  border-color: color-mix(in srgb, var(--warning) 40%, var(--border));
 }
 .health-group-card.health-status-ok {
-  border-left: 4px solid var(--success);
+  border-color: var(--border);
 }
 .health-group-head {
   display: flex;
@@ -3098,12 +3098,17 @@ html[data-theme="dark"] .theme-setting-moon {
   flex-direction: column;
 }
 
+#page-extensions.active {
+  display: flex;
+  flex-direction: column;
+}
+
 /* ═══════ EXTENSIONS CENTER ═══════ */
 .extensions-page {
   display: flex;
   flex-direction: column;
   gap: 16px;
-  min-height: 100%;
+  flex: 1 1 auto;
 }
 
 .extensions-hero {
@@ -3174,6 +3179,14 @@ html[data-theme="dark"] .theme-setting-moon {
   color: var(--accent);
 }
 
+.extension-console-section {
+  display: none;
+}
+
+.extension-console-section.active {
+  display: block;
+}
+
 .extension-empty-state {
   border: 1px dashed var(--border-strong);
   border-radius: var(--radius-lg);
@@ -3187,15 +3200,6 @@ html[data-theme="dark"] .theme-setting-moon {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   gap: 12px;
-}
-
-/* 暂时隐藏未接入的扩展卡片 */
-.extension-card[data-extension-card="sub2api"],
-.extension-card[data-extension-card="grok2api"],
-.extension-card[data-extension-card="free-jimeng"],
-.extensions-tabbar [data-extension-tab="api"],
-.extensions-tabbar [data-extension-tab="media"] {
-  display: none !important;
 }
 
 .extension-card {
@@ -3401,21 +3405,24 @@ html[data-theme="dark"] .theme-setting-moon {
   display: inline-flex;
   align-items: center;
   margin-left: 6px;
-  padding: 2px 7px;
+  padding: 3px 9px;
   border-radius: var(--radius-pill);
-  border: 1px solid rgba(217, 119, 6, 0.35);
-  background: rgba(217, 119, 6, 0.92);
-  color: #fff;
-  font-size: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  background: #D97706;
+  color: #FFFFFF;
+  font-size: 11px;
   font-weight: 800;
   line-height: 1.2;
+  letter-spacing: 0.02em;
   cursor: pointer;
   vertical-align: middle;
-  animation: extension-status-pulse 2s ease-in-out infinite;
+  box-shadow: 0 1px 3px rgba(217, 119, 6, 0.35);
 }
 
 .extension-update-badge:hover {
-  filter: brightness(1.05);
+  background: #C05F05;
+  border-color: rgba(255, 255, 255, 0.32);
+  box-shadow: 0 2px 5px rgba(217, 119, 6, 0.45);
 }
 
 .extension-update-badge[hidden] {
@@ -3911,15 +3918,24 @@ html[data-theme="dark"] .theme-setting-moon {
 }
 
 .extensions-log-panel {
-  padding: 18px;
+  padding: 20px 24px;
   display: flex;
   flex-direction: column;
-  min-height: min(72vh, 760px);
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+  transition: all var(--duration-normal) var(--ease);
+}
+
+.extensions-log-panel:hover {
+  box-shadow: var(--shadow-card-hover);
 }
 
 .extensions-log-panel[hidden],
 .extension-card-grid[hidden],
 .extension-card-grid.is-hidden,
+.plugin-section[hidden],
 .extension-empty-state[hidden] {
   display: none !important;
 }
@@ -3976,8 +3992,8 @@ html[data-theme="dark"] .theme-setting-moon {
 }
 
 .extensions-log-panel .log-body {
-  height: min(48vh, 480px);
-  min-height: 320px;
+  height: clamp(240px, calc(100vh - 430px), 560px);
+  overflow-y: auto;
   flex: 1 1 auto;
 }
 

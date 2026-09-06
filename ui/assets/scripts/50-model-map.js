@@ -316,49 +316,7 @@ function ideModelsSourcePresentation(source) {
 }
 
 function updateIdeModelsSourceUi() {
-  const meta = ideMeta || { source: '', capturedAt: null, account: null };
-  const pres = ideModelsSourcePresentation(meta.source);
-  const when = formatIdeModelsCapturedAt(meta.capturedAt);
-  const email = meta.account && (meta.account.email || meta.account.Email);
-  const detailParts = [];
-  if (when) detailParts.push(when);
-  if (email) detailParts.push(String(email));
-  const detail = detailParts.length ? ` · ${detailParts.join(' · ')}` : '';
-
-  const applyBadge = (el) => {
-    if (!el) return;
-    el.style.display = '';
-    el.textContent = `来源: ${pres.label}`;
-    el.title = pres.title + (detail ? ` (${detailParts.join(', ')})` : '');
-    el.style.background = pres.badgeBg;
-    el.style.color = pres.badgeColor;
-    el.style.border = `1px solid ${pres.badgeBorder}`;
-  };
-
-  const applyHint = (el, compact) => {
-    if (!el) return;
-    // only show banner when not authoritative capture
-    if (!pres.warn) {
-      el.style.display = 'none';
-      el.innerHTML = '';
-      return;
-    }
-    const pad = compact ? '8px 12px' : '10px 14px';
-    const radius = compact ? '0' : '10px';
-    const border = compact
-      ? 'border-bottom:1px solid rgba(245,158,11,.28);'
-      : 'border:1px solid rgba(245,158,11,.28);';
-    el.style.display = 'block';
-    el.innerHTML = `<div style="padding:${pad};border-radius:${radius};${border}background:rgba(245,158,11,.08);color:var(--text-secondary);font-size:11px;line-height:1.55;">
-      <strong style="color:var(--warn,#d97706);font-weight:700;">清单来源提示</strong>
-      <span style="margin-left:6px;">${escapeHtml(pres.hint)}${escapeHtml(detail)}</span>
-    </div>`;
-  };
-
-  applyBadge(document.getElementById('ideModelsSourceBadge'));
-  applyBadge(document.getElementById('ideModelsSourceBadgeSlots'));
-  applyHint(document.getElementById('ideModelsSourceHint'), true);
-  applyHint(document.getElementById('ideModelsSourceHintSlots'), false);
+  // 来源徽标与清单提示横幅已移除，保持空函数以兼容调用
 }
 
 async function ensureIdeModels(options = {}) {
@@ -572,6 +530,12 @@ async function renderModelMap() {
     const display = renderLabelTemplate(tpl, {
       prefix, label: baseName, provider: providerName, apiModel
     });
+    const slotIconKey = typeof getModelIconKey === 'function'
+      ? (getModelIconKey(apiModel) || getModelIconKey(baseName) || getModelIconKey(s.modelUid) || getModelIconKey(orig))
+      : null;
+    const modelIconHtml = typeof renderModelIcon === 'function'
+      ? renderModelIcon(slotIconKey || apiModel || s.modelUid || orig || baseName)
+      : '';
     const chain = (s.targets && s.targets.length)
       ? renderTargetChain(s.targets)
       : `<span style="color:var(--warn,#d97706);cursor:pointer" data-action="openFailoverEditor" data-arg="${escAttr(s.modelUid)}">未设置 ⚠ [点击配置]</span>`;
@@ -592,7 +556,12 @@ async function renderModelMap() {
             <span></span>
           </label>
         </td>
-        <td class="editable-cell display-name-cell" data-action="startEditDisplayName" data-args="[&quot;${escAttr(s.modelUid)}&quot;]" data-pass-this title="${escAttr(display)}">${escAttr(display)}</td>
+        <td class="editable-cell display-name-cell" data-action="startEditDisplayName" data-args="[&quot;${escAttr(s.modelUid)}&quot;]" data-pass-this title="${escAttr(display)}">
+          <div class="model-map-display-name-wrap" style="display:flex;align-items:center;gap:8px;min-width:0;">
+            ${modelIconHtml}
+            <span class="model-map-display-name-text" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;">${escAttr(display)}</span>
+          </div>
+        </td>
         <td>
           <div>${escAttr(orig)}</div>
           <div style="margin-top:3px;">${renderVisionPill(vision, true)}</div>
@@ -2750,17 +2719,16 @@ function renderMappingModelCatalog() {
       }
     }
 
-    const logoChar = item.providerName.charAt(0).toUpperCase();
-    const logoClass = getProviderLogoClass(item.providerName);
+    const modelIconHtml = typeof renderModelIcon === 'function'
+      ? renderModelIcon(item.model)
+      : `<div class="model-item-icon fallback">${globalThis.DEFAULT_MODEL_FALLBACK_SVG || ''}</div>`;
 
     return `
       <div class="mapping-catalog-item ${isSelected ? 'selected' : ''}"
            data-action="toggleMappingModelTarget" data-args="[&quot;${escAttr(item.providerId)}&quot;,&quot;${escAttr(item.model)}&quot;]"
            style="display:flex; align-items:center; justify-content:space-between; padding:12px 16px; border:1px solid ${isSelected ? 'var(--accent)' : 'var(--border)'}; background:${isSelected ? 'var(--accent-light)' : 'var(--bg-card)'}; cursor:pointer; border-radius:10px; gap:12px; transition:all 0.2s; box-shadow:${isSelected ? '0 0 12px var(--accent-glow)' : 'none'};">
         <div style="display:flex; align-items:center; gap:10px; flex:1; min-width:0;">
-          <div class="provider-logo ${logoClass}" style="width:28px; height:28px; font-size:12px; border-radius:6px; flex-shrink:0; display:flex; align-items:center; justify-content:center; font-weight:800;">
-            ${escAttr(logoChar)}
-          </div>
+          ${modelIconHtml}
           <div style="display:flex; flex-direction:column; gap:2px; flex:1; min-width:0;">
             <span style="font-size:12px; font-weight:600; color:var(--text-primary); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
               ${escAttr(item.model)}
@@ -2989,12 +2957,20 @@ function renderSlotCatalogList() {
     const recommended = !taken && slotRecommendationRank(m, used) < 0;
     const recommendedTag = recommended ? `<span class="brand-tag" style="background:rgba(37,99,235,.10);color:var(--accent);border:1px solid rgba(37,99,235,.22);padding:1px 6px;font-size:9px;font-weight:700;">推荐</span>` : '';
 
-    // 选中态的对号放在左侧图标区（替换魔方），保持右侧 tag 队列结构稳定、所有卡片右对齐
-    const leftIcon = isSelected
-      ? `<div style="width:24px; height:24px; border-radius:6px; background:var(--accent); color:#fff; display:flex; align-items:center; justify-content:center; flex-shrink:0; transition:all 0.2s; font-size:14px; font-weight:800; line-height:1;">✓</div>`
-      : `<div style="width:24px; height:24px; border-radius:6px; background:${taken ? 'var(--bg-secondary)' : 'var(--bg-secondary)'}; color:${taken ? 'var(--text-muted)' : 'var(--text-secondary)'}; display:flex; align-items:center; justify-content:center; flex-shrink:0; transition:all 0.2s;">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg>
-          </div>`;
+    // 槽位模型图标：优先识别真实品牌 key（兼顾可读名 m.name 与底层 id 如 MODEL_PRIVATE_11）
+    const slotIconKey = typeof getModelIconKey === 'function'
+      ? (getModelIconKey(m.name) || getModelIconKey(m.id) || getModelIconKey(m.api_id))
+      : null;
+    const modelIconHtml = typeof renderModelIcon === 'function'
+      ? renderModelIcon(slotIconKey || m.name || m.id)
+      : `<div class="model-item-icon fallback">${globalThis.DEFAULT_MODEL_FALLBACK_SVG || ''}</div>`;
+
+    const leftIcon = `
+      <div class="slot-item-icon-wrap" style="position:relative;width:24px;height:24px;flex-shrink:0;">
+        ${modelIconHtml}
+        ${isSelected ? '<span style="position:absolute;bottom:-2px;right:-2px;width:12px;height:12px;border-radius:50%;background:var(--accent);color:#fff;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:900;box-shadow:0 0 0 1.5px var(--bg-card,#fff);line-height:1;">✓</span>' : ''}
+      </div>
+    `;
 
     // 渲染具有极致质感的左侧行卡片，支持选中态发光与锁定态置灰
     return `
@@ -3076,8 +3052,11 @@ function filterSlotCatalog() {
 }
 
 async function openSlotEditor(uid) {
-  await syncCurrentIdeModels();
+  // 优先加载本地模型槽位，毫秒级秒开页面，绝不阻塞等待远程网络请求
+  await ensureIdeModels();
   await ensureInjected();
+  // 后台静默尝试同步最新账号模型列表
+  syncCurrentIdeModels().catch(() => {});
   const sel = document.getElementById('slot-uid-select');
   const editing = uid ? modelMapStore.slots.find(x => x.modelUid === uid) : null;
   document.getElementById('slotModalTitle').textContent = editing ? '编辑映射' : '添加映射';

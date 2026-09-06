@@ -28,21 +28,19 @@
                 </button>
               </div>
             </div>
-            <div class="glass-card model-slots-workspace slot-editor-workspace">
-              <!-- Left Column: 模型目录 (平铺列表) -->
-              <div
-                style="flex:1; display:flex; flex-direction:column; background:var(--bg-card); border:1px solid var(--border); border-radius:var(--radius-lg); overflow:hidden; box-shadow:var(--shadow-sm);">
-                <div
-                  style="padding:16px 20px; border-bottom:1px solid var(--border); background:var(--bg-glass); display:flex; align-items:center; justify-content:space-between;">
-                  <span style="font-size:14px; font-weight:700; color:var(--text-primary);">选择 IDE 模型槽位</span>
+
+            <!-- 工作区：移除外层套娃 card，直接左右双卡片平铺 -->
+            <div class="slot-editor-workspace">
+              <!-- Left Column: 选择 IDE 模型槽位 -->
+              <div class="glass-card slot-editor-col slot-editor-left-col">
+                <div class="slot-editor-card-head">
+                  <span class="slot-editor-card-title">选择 IDE 模型槽位</span>
                   <div style="display:flex; align-items:center; gap:6px;">
-                    <span class="brand-tag" id="ideModelsSourceBadge" title="模型清单缓存来源"
-                      style="padding: 2px 8px; font-size: 10px; font-weight:700; display:none;"></span>
                     <span class="brand-tag" id="slotCatalogCount"
                       style="padding: 2px 8px; font-size: 10px; font-weight:700;">0 可用</span>
                     <button id="btn-refresh-models" class="btn-ghost accent"
- style="padding: 0 10px; border-radius: 6px; display: flex; align-items: center; gap: 4px; height: 24px; font-size: 11px; font-weight: 600;"
- title="从 IDE 账号拉取最新模型列表（API 刷新）。若需与 IDE 下拉框一致，请启动代理后重启 IDE 并打开一次模型选择器以抓取 captured 清单。" data-action="refreshIdeModels">
+                      style="padding: 0 10px; border-radius: 6px; display: flex; align-items: center; gap: 4px; height: 24px; font-size: 11px; font-weight: 600;"
+                      title="从 IDE 账号拉取最新模型列表（API 刷新）。若需与 IDE 下拉框一致，请启动代理后重启 IDE 并打开一次模型选择器以抓取 captured 清单。" data-action="refreshIdeModels">
                       <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                         stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
                         <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"></path>
@@ -51,73 +49,66 @@
                     </button>
                   </div>
                 </div>
-                <div id="ideModelsSourceHint" role="note" style="display:none;"></div>
                 <div id="slotCatalogScopeTabs"
-                  style="display:flex;align-items:center;gap:6px;padding:10px 20px;border-bottom:1px solid var(--border);background:var(--bg-card);">
+                  style="display:flex;align-items:center;gap:6px;padding:10px 18px;border-bottom:1px solid var(--border);background:var(--bg-card);flex-wrap:wrap;flex:0 0 auto;">
                   <button class="slot-scope-tab" data-scope="all"
- style="height:26px;padding:0 10px;border-radius:7px;border:1px solid var(--border);background:var(--bg-input);color:var(--text-muted);font-size:11px;font-weight:700;cursor:pointer;" data-action="setSlotCatalogScope" data-arg="all">全部
+                    style="height:26px;padding:0 10px;border-radius:7px;border:1px solid var(--border);background:var(--bg-input);color:var(--text-muted);font-size:11px;font-weight:700;cursor:pointer;" data-action="setSlotCatalogScope" data-arg="all">全部
                     <span id="slotScopeAllCount">0</span></button>
                   <button class="slot-scope-tab" data-scope="account"
- style="height:26px;padding:0 10px;border-radius:7px;border:1px solid var(--border);background:var(--bg-input);color:var(--text-muted);font-size:11px;font-weight:700;cursor:pointer;" data-action="setSlotCatalogScope" data-arg="account">当前账号
+                    style="height:26px;padding:0 10px;border-radius:7px;border:1px solid var(--border);background:var(--bg-input);color:var(--text-muted);font-size:11px;font-weight:700;cursor:pointer;" data-action="setSlotCatalogScope" data-arg="account">当前账号
                     <span id="slotScopeAccountCount">0</span></button>
                   <button class="slot-scope-tab" data-scope="extended"
- style="height:26px;padding:0 10px;border-radius:7px;border:1px solid var(--border);background:var(--bg-input);color:var(--text-muted);font-size:11px;font-weight:700;cursor:pointer;" data-action="setSlotCatalogScope" data-arg="extended">内置槽位
+                    style="height:26px;padding:0 10px;border-radius:7px;border:1px solid var(--border);background:var(--bg-input);color:var(--text-muted);font-size:11px;font-weight:700;cursor:pointer;" data-action="setSlotCatalogScope" data-arg="extended">内置槽位
                     <span id="slotScopeExtendedCount">0</span></button>
                   <button class="slot-scope-tab" data-scope="bound"
- style="height:26px;padding:0 10px;border-radius:7px;border:1px solid var(--border);background:var(--bg-input);color:var(--text-muted);font-size:11px;font-weight:700;cursor:pointer;" data-action="setSlotCatalogScope" data-arg="bound">已绑定
+                    style="height:26px;padding:0 10px;border-radius:7px;border:1px solid var(--border);background:var(--bg-input);color:var(--text-muted);font-size:11px;font-weight:700;cursor:pointer;" data-action="setSlotCatalogScope" data-arg="bound">已绑定
                     <span id="slotScopeBoundCount">0</span></button>
                 </div>
                 <!-- 槽位搜索栏 -->
                 <div
-                  style="padding:12px 20px; border-bottom:1px solid var(--border); background:rgba(0,0,0,0.01); display:flex; gap:8px; align-items:center;">
+                  style="padding:10px 18px; border-bottom:1px solid var(--border); background:rgba(0,0,0,0.01); display:flex; gap:8px; align-items:center; flex:0 0 auto;">
                   <input type="text" id="slotCatalogSearch" placeholder="搜索槽位名 / modelUid..."
- 
- style="padding:10px 14px; border-radius:10px; font-size:12px; flex:1; min-width:0; border:1px solid var(--border); background:var(--bg-input); outline:none; transition:all 0.2s;" data-action="filterSlotCatalog" data-events="input">
+                    style="padding:8px 12px; border-radius:8px; font-size:12px; flex:1; min-width:0; border:1px solid var(--border); background:var(--bg-input); outline:none; transition:all 0.2s;" data-action="filterSlotCatalog" data-events="input">
                   <select id="slotCatalogSort"
- style="height:34px;padding:0 8px;border:1px solid var(--border);background:var(--bg-input);color:var(--text-primary);border-radius:8px;font-size:11px;outline:none;cursor:pointer;" data-assign="slotCatalogSort" data-action="filterSlotCatalog" data-events="change">
+                    style="height:32px;padding:0 8px;border:1px solid var(--border);background:var(--bg-input);color:var(--text-primary);border-radius:8px;font-size:11px;outline:none;cursor:pointer;" data-assign="slotCatalogSort" data-action="filterSlotCatalog" data-events="change">
                     <option value="name-asc">名称 A→Z</option>
                     <option value="name-desc">名称 Z→A</option>
                   </select>
                 </div>
                 <!-- 槽位品牌快速筛选 -->
                 <div id="slotCatalogBrandBar"
-                  style="display:flex;align-items:center;gap:5px;padding:8px 20px;border-bottom:1px solid var(--border);background:var(--bg-card);flex-wrap:wrap;">
+                  style="display:flex;align-items:center;gap:5px;padding:8px 18px;border-bottom:1px solid var(--border);background:var(--bg-card);flex-wrap:wrap;flex:0 0 auto;">
                 </div>
                 <!-- 槽位行容器 -->
                 <div id="slotCatalogBody"
-                  style="flex:1; overflow-y:auto; padding:16px 20px; display:flex; flex-direction:column; gap:8px;">
+                  style="flex:1 1 auto; overflow-y:auto; padding:12px 16px; display:flex; flex-direction:column; gap:8px; min-height:0;">
                   <!-- 动态加载槽位行，支持点击选中和已占用提示 -->
                 </div>
               </div>
 
-              <!-- Vertical Divider -->
-              <div style="width:1px; background:var(--border); margin:0 8px;"></div>
-
-              <!-- Right Column: Mapping Targets Catalog (映射模型平铺列表) -->
-              <div
-                style="flex:1.2; display:flex; flex-direction:column; background:var(--bg-card); border:1px solid var(--border); border-radius:var(--radius-lg); overflow:hidden; box-shadow:var(--shadow-sm);">
-                <div
-                  style="padding:16px 20px; border-bottom:1px solid var(--border); background:var(--bg-glass); display:flex; align-items:center; justify-content:space-between;">
-                  <span style="font-size:14px; font-weight:700; color:var(--text-primary);">选择映射模型</span>
+              <!-- Right Column: 选择映射模型 -->
+              <div class="glass-card slot-editor-col slot-editor-right-col">
+                <div class="slot-editor-card-head">
+                  <span class="slot-editor-card-title">选择映射模型</span>
                 </div>
                 <!-- 映射参数配置区 (移到右卡片顶部，节省底部空间) -->
                 <div
-                  style="padding:12px 20px; border-bottom:1px solid var(--border); background:rgba(0,0,0,0.01); display:flex; flex-direction:column; gap:8px;">
+                  style="padding:10px 18px; border-bottom:1px solid var(--border); background:rgba(0,0,0,0.01); display:flex; flex-direction:column; gap:8px; flex:0 0 auto;">
                   <div style="display:flex; gap:8px; align-items:center;">
                     <input class="field-input" id="slot-display" placeholder="自定义显示名（留空使用模型原始名）"
-                      style="padding:8px 12px; font-size:12px; border-radius:8px; flex:1; min-width:0;">
-                    <div style="display:flex; gap:8px; align-items:center; flex-shrink:0;">
+                      style="padding:7px 11px; font-size:12px; border-radius:8px; flex:1; min-width:0; height:32px;">
+                    <div style="display:flex; gap:6px; align-items:center; flex-shrink:0;">
                       <input class="field-input" id="slot-context-window" type="number" min="1" step="1"
                         placeholder="上下文窗口"
                         title="留空 = 使用 catalog / 上游原值"
-                        style="padding:8px 12px; font-size:12px; border-radius:8px; width:110px;">
+                        style="padding:7px 10px; font-size:12px; border-radius:8px; width:100px; height:32px;">
                       <div id="slot-context-presets" style="display:flex; gap:4px; flex-wrap:wrap;">
                         <button type="button" id="btn-slot-context-recommend" class="slot-ctx-preset" data-action="applyRecommendedSlotContextWindow"
-                          style="height:30px;padding:0 8px;border-radius:7px;border:1px solid var(--accent);background:var(--accent);color:#fff;font-size:11px;font-weight:600;cursor:pointer;" title="按映射模型推荐上下文（与 CodeBuddy 同源）">推荐</button>
+                          style="height:32px;padding:0 8px;border-radius:7px;border:1px solid var(--accent);background:var(--accent);color:#fff;font-size:11px;font-weight:600;cursor:pointer;" title="按映射模型推荐上下文（与 CodeBuddy 同源）">推荐</button>
                         <button type="button" class="slot-ctx-preset" data-action="setSlotContextPreset" data-args="[200000]"
-                          style="height:30px;padding:0 8px;border-radius:7px;border:1px solid var(--border);background:var(--bg-input);color:var(--text-muted);font-size:11px;font-weight:600;cursor:pointer;">200K</button>
+                          style="height:32px;padding:0 8px;border-radius:7px;border:1px solid var(--border);background:var(--bg-input);color:var(--text-muted);font-size:11px;font-weight:600;cursor:pointer;">200K</button>
                         <button type="button" class="slot-ctx-preset" data-action="setSlotContextPreset" data-args="[1000000]"
-                          style="height:30px;padding:0 8px;border-radius:7px;border:1px solid var(--border);background:var(--bg-input);color:var(--text-muted);font-size:11px;font-weight:600;cursor:pointer;">1M</button>
+                          style="height:32px;padding:0 8px;border-radius:7px;border:1px solid var(--border);background:var(--bg-input);color:var(--text-muted);font-size:11px;font-weight:600;cursor:pointer;">1M</button>
                       </div>
                     </div>
                   </div>
@@ -126,27 +117,25 @@
                 </div>
                 <!-- 映射模型搜索栏 -->
                 <div
-                  style="padding:12px 20px; border-bottom:1px solid var(--border); background:rgba(0,0,0,0.01); display:flex; gap:8px; align-items:center;">
+                  style="padding:10px 18px; border-bottom:1px solid var(--border); background:rgba(0,0,0,0.01); display:flex; gap:8px; align-items:center; flex:0 0 auto;">
                   <input type="text" id="mappingModelSearch" placeholder="搜索已配置的模型名称/供应商..."
- 
- style="padding:10px 14px; border-radius:10px; font-size:12px; flex:1; min-width:0; border:1px solid var(--border); background:var(--bg-input); outline:none; transition:all 0.2s;" data-action="renderMappingModelCatalog" data-events="input">
+                    style="padding:8px 12px; border-radius:8px; font-size:12px; flex:1; min-width:0; border:1px solid var(--border); background:var(--bg-input); outline:none; transition:all 0.2s;" data-action="renderMappingModelCatalog" data-events="input">
                   <select id="mappingCatalogSort"
- style="height:34px;padding:0 8px;border:1px solid var(--border);background:var(--bg-input);color:var(--text-primary);border-radius:8px;font-size:11px;outline:none;cursor:pointer;" data-assign="mappingCatalogSort" data-action="renderMappingModelCatalog" data-events="change">
+                    style="height:32px;padding:0 8px;border:1px solid var(--border);background:var(--bg-input);color:var(--text-primary);border-radius:8px;font-size:11px;outline:none;cursor:pointer;" data-assign="mappingCatalogSort" data-action="renderMappingModelCatalog" data-events="change">
                     <option value="name-asc">名称 A→Z</option>
                     <option value="name-desc">名称 Z→A</option>
                   </select>
                 </div>
                 <!-- 映射模型供应商快速筛选 -->
                 <div id="mappingCatalogProviderBar"
-                  style="display:flex;align-items:center;gap:5px;padding:8px 20px;border-bottom:1px solid var(--border);background:var(--bg-card);flex-wrap:wrap;">
+                  style="display:flex;align-items:center;gap:5px;padding:8px 18px;border-bottom:1px solid var(--border);background:var(--bg-card);flex-wrap:wrap;flex:0 0 auto;">
                 </div>
                 <!-- 映射模型行容器 -->
                 <div id="mappingModelCatalogBody"
-                  style="flex:1; overflow-y:auto; padding:16px 20px; display:flex; flex-direction:column; gap:8px;">
+                  style="flex:1 1 auto; overflow-y:auto; padding:12px 16px; display:flex; flex-direction:column; gap:8px; min-height:0;">
                   <!-- 动态加载供应商模型行，支持点击多选 -->
                 </div>
               </div>
             </div>
           </div>
         </div>
-

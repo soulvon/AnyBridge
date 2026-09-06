@@ -238,14 +238,14 @@ jobs:
             --published-at "${PUBLISHED_AT}" \
             --output "latest.json"
 
-      - name: Upload merged latest.json
+      - name: Upload manifests and checksums
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: bash
         run: |
           set -euo pipefail
           TAG="v${VERSION}"
-          gh release upload "$TAG" --repo "$SOURCE_REPO" latest.json --clobber
+          gh release upload "$TAG" --repo "$SOURCE_REPO" latest.json latest-*.json SHA256SUMS.txt --clobber
 
       - name: Publish release
         env:

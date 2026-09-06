@@ -1,12 +1,12 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "AnyBridge",
-  "version": "0.4.2",
+  "version": "0.4.6",
   "identifier": "com.anybridge.desktop",
   "build": {
     "frontendDist": "../ui",
     "beforeDevCommand": "npm run build:ui",
-    "beforeBuildCommand": "npm run build:ui"
+    "beforeBuildCommand": "npm run build:desktop"
   },
   "app": {
     "withGlobalTauri": true,
@@ -33,7 +33,10 @@
     "active": true,
     "targets": "all",
     "createUpdaterArtifacts": true,
-    "externalBin": ["binaries/anybridge-proxy"],
+    "externalBin": [
+      "binaries/anybridge-proxy",
+      "binaries/anybridge-cursor-core"
+    ],
     "resources": ["resources/**/*"],
     "icon": [
       "icons/32x32.png",
@@ -54,6 +57,7 @@
     "updater": {
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDM3MEEwQ0E3QTA3NzMwNUIKUldSYk1IZWdwd3dLTnprdDA4aTdFVkJUNEpKWW9PTVY0RmVWMCtCenFaU1poUUgrbmFNS1NxeGwK",
       "endpoints": [
+        "https://github.com/soulvon/AnyBridge/releases/latest/download/latest-{{target}}.json",
         "https://github.com/soulvon/AnyBridge/releases/latest/download/latest.json"
       ]
     }

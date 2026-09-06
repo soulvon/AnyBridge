@@ -1749,43 +1749,66 @@
   color: var(--accent);
 }
 .model-item-icon {
-  width: 22px;
-  height: 22px;
-  border-radius: 50%;
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
   overflow: hidden;
+  background: rgba(0, 0, 0, 0.05);
+}
+[data-theme="dark"] .model-item-icon {
+  background: rgba(255, 255, 255, 0.08);
 }
 .model-item-icon.model-item-icon-image {
   border-radius: 6px;
-  background: transparent;
+  background: rgba(0, 0, 0, 0.05);
+}
+[data-theme="dark"] .model-item-icon.model-item-icon-image {
+  background: rgba(255, 255, 255, 0.08);
 }
 .model-item-icon-image img {
-  width: 100%;
-  height: 100%;
+  width: 30px;
+  height: 30px;
   display: block;
   object-fit: contain;
   pointer-events: none;
 }
+.model-item-icon-image img[src*="devin"] {
+  width: 20px;
+  height: 20px;
+}
 .model-item-icon-image .model-icon-image-dark {
   display: none;
 }
-html[data-theme="dark"] .model-item-icon-image .model-icon-has-dark {
+html[data-theme="dark"] .model-item-icon-image .model-icon-has-dark,
+[data-theme="dark"] .model-item-icon-image .model-icon-has-dark {
   display: none;
 }
-html[data-theme="dark"] .model-item-icon-image .model-icon-image-dark {
+html[data-theme="dark"] .model-item-icon-image .model-icon-image-dark,
+[data-theme="dark"] .model-item-icon-image .model-icon-image-dark {
   display: block;
 }
 .model-item-icon svg {
-  width: 15px;
-  height: 15px;
+  width: 30px;
+  height: 30px;
 }
 .model-item-icon.fallback {
-  font-size: 10px;
-  font-weight: 700;
-  color: var(--button-on-solid);
+  background: rgba(59, 130, 246, 0.08);
+  color: var(--accent, #3b82f6);
+  border: 1px solid rgba(59, 130, 246, 0.15);
+  box-sizing: border-box;
+}
+[data-theme="dark"] .model-item-icon.fallback {
+  background: rgba(59, 130, 246, 0.14);
+  color: #60a5fa;
+  border-color: rgba(96, 165, 250, 0.22);
+}
+.model-item-icon.fallback svg {
+  width: 18px;
+  height: 18px;
 }
 .provider-model-chip .model-item-icon {
   width: 18px;
@@ -1794,12 +1817,18 @@ html[data-theme="dark"] .model-item-icon-image .model-icon-image-dark {
 .provider-model-chip .model-item-icon.model-item-icon-image {
   border-radius: 4px;
 }
-.provider-model-chip .model-item-icon svg {
+.provider-model-chip .model-item-icon svg,
+.provider-model-chip .model-item-icon-image img,
+.provider-model-chip .model-item-icon-image img[src*="devin"] {
   width: 13px;
   height: 13px;
 }
 .provider-model-chip .model-item-icon.fallback {
-  font-size: 9px;
+  border: none;
+}
+.provider-model-chip .model-item-icon.fallback svg {
+  width: 10px;
+  height: 10px;
 }
 .model-item-name {
   flex: 1;
@@ -1939,9 +1968,9 @@ html[data-theme="dark"] .model-item-icon-image .model-icon-image-dark {
 }
 .provider-list-table th {
   background: var(--table-th-bg);
-  color: var(--text-muted);
-  font-size: 11px;
-  font-weight: 800;
+  color: var(--text-secondary);
+  font-size: 14px;
+  font-weight: 700;
 }
 .provider-list-table tbody tr {
   transition: background var(--duration-fast) var(--ease);
@@ -2260,16 +2289,16 @@ html[data-theme="dark"] .model-item-icon-image .model-icon-image-dark {
   box-shadow: var(--shadow-card);
 }
 .model-table .model-col-select { width: 42px; }
-.model-table .model-col-display { width: 18%; }
-.model-table .model-col-origin { width: 14%; }
+.model-table .model-col-display { width: 24%; }
+.model-table .model-col-origin { width: 18%; }
 .model-table .model-col-raw { width: 10%; }
-.model-table .model-col-target { width: 32%; }
-.model-table .model-col-action { width: 60px; }
-.model-table .model-col-vision { width: 90px; }
-.model-table .model-col-toggle { width: 56px; }
+.model-table .model-col-target { width: 26%; }
+.model-table .model-col-action { width: 70px; }
+.model-table .model-col-vision { width: 124px; }
+.model-table .model-col-toggle { width: 60px; }
 .model-table th {
   text-align: left; padding: 12px 18px;
-  font-size: 13px; font-weight: 700; color: var(--text-secondary);
+  font-size: 14px; font-weight: 700; color: var(--text-secondary);
   letter-spacing: 0;
   background: var(--table-th-bg);
   border-bottom: 1px solid var(--border);

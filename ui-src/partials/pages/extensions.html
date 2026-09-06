@@ -19,231 +19,310 @@
                 </button>
               </div>
             </div>
-            <div class="extensions-tabbar" role="tablist" aria-label="扩展分类">
-              <button type="button" class="extension-tab active" role="tab" aria-selected="true"
- data-extension-tab="all" id="extension-tab-all"
- data-action="switchExtensionTab" data-arg="all">全部</button>
-              <button type="button" class="extension-tab" role="tab" aria-selected="false"
- data-extension-tab="recommended" id="extension-tab-recommended"
- data-action="switchExtensionTab" data-arg="recommended">推荐</button>
-              <button type="button" class="extension-tab" role="tab" aria-selected="false"
+            <div class="extensions-tabbar proxy-console-tabs" role="tablist" aria-label="扩展中心功能">
+              <button type="button" class="extension-tab proxy-console-tab active" role="tab" aria-selected="true"
  data-extension-tab="installed" id="extension-tab-installed"
  data-action="switchExtensionTab" data-arg="installed">已安装</button>
-              <button type="button" class="extension-tab" role="tab" aria-selected="false"
- data-extension-tab="api" id="extension-tab-api"
- data-action="switchExtensionTab" data-arg="api">接口服务</button>
-              <button type="button" class="extension-tab" role="tab" aria-selected="false"
- data-extension-tab="media" id="extension-tab-media"
- data-action="switchExtensionTab" data-arg="media">生成服务</button>
-              <button type="button" class="extension-tab" role="tab" aria-selected="false"
+              <button type="button" class="extension-tab proxy-console-tab" role="tab" aria-selected="false"
+ data-extension-tab="plugins" id="extension-tab-plugins"
+ data-action="switchExtensionTab" data-arg="plugins">插件列表</button>
+              <button type="button" class="extension-tab proxy-console-tab" role="tab" aria-selected="false"
  data-extension-tab="logs" id="extension-tab-logs"
  data-action="switchExtensionTab" data-arg="logs">日志</button>
             </div>
 
-            <div class="extension-empty-state" id="extensionEmptyState" hidden>
-              当前分类下还没有扩展。后续接入完成后会自动出现在这里。
+            <!-- Tab 1: 已安装（原汁原味大卡片，独占一行） -->
+            <div class="extension-console-section active" data-extension-section="installed">
+              <div class="extension-card-grid" id="extensionCardGrid">
+                <article class="extension-card extension-card-featured" data-extension-card="cpa-suite"
+                  data-extension-tags="recommended api">
+                  <div class="extension-card-top">
+                    <div class="extension-identity">
+                      <div class="extension-logo extension-logo-cpa" aria-hidden="true">CPA</div>
+                      <div>
+                        <div class="extension-title-row">
+                          <h3>CPA 套件</h3>
+                          <span class="extension-badge badge-recommended">推荐套件</span>
+                        </div>
+                        <p>CLIProxyAPI + CPA Manager Plus + CPA 插件商店，一键部署为本地 AI 网关管理中心。</p>
+                      </div>
+                    </div>
+                    <span class="extension-status status-pending" id="extension-cpa-status">检测中</span>
+                  </div>
+                  <div class="extension-meta-grid">
+                    <div><span>版本</span><strong id="extension-cpa-version">待检测</strong> <span class="extension-update-badge" id="extension-cpa-update-badge" hidden data-action-chain="[{&quot;fn&quot;:&quot;handleExtensionAction&quot;,&quot;args&quot;:[&quot;update-cpa-suite&quot;]}]" data-action="handleExtensionAction" data-stop>有更新</span></div>
+                    <div><span>端口</span><strong id="extension-cpa-ports">8317 / 18317</strong></div>
+                    <div><span>安装目录</span><strong id="extension-cpa-install-dir" title="">默认</strong></div>
+                    <div><span>组件</span><strong id="extension-cpa-components">3 个</strong></div>
+                  </div>
+                  <div class="extension-card-alert" id="extension-cpa-alert" hidden role="status"></div>
+                  <div class="extension-progress" id="extension-cpa-progress" hidden>
+                    <div class="extension-progress-track">
+                      <div class="extension-progress-fill" id="extension-cpa-progress-fill"></div>
+                    </div>
+                    <div class="extension-progress-meta">
+                      <span id="extension-cpa-progress-text">准备中...</span>
+                      <strong id="extension-cpa-progress-percent">0%</strong>
+                    </div>
+                  </div>
+                  <div class="extension-tags">
+                    <span>兼容 OpenAI 接口</span>
+                    <span>请求统计</span>
+                    <span>插件市场</span>
+                    <span>账号巡检</span>
+                  </div>
+                  <div class="extension-actions">
+                    <button type="button" class="btn-primary" id="extension-cpa-primary-action">一键部署</button>
+                    <div class="extension-secondary-actions" id="extension-cpa-secondary-actions"></div>
+                  </div>
+                  <div class="cpa-credentials" id="cpa-credentials" hidden>
+                    <div class="cpa-credentials-title">访问凭证 <span class="cpa-credentials-hint">点击即可复制</span></div>
+
+                    <div class="cpa-credentials-subtitle">CPA API</div>
+                    <div class="cpa-credential-row">
+                      <span class="cpa-credential-label">API Key</span>
+                      <code class="cpa-credential-value" id="cpa-cred-api-key">—</code>
+                      <button type="button" class="cpa-credential-copy" data-copy="api-key" title="复制">复制</button>
+                    </div>
+                    <div class="cpa-credential-row cpa-credential-row-link">
+                      <span class="cpa-credential-label">API 地址</span>
+                      <code class="cpa-credential-value">http://127.0.0.1:8317</code>
+                      <button type="button" class="cpa-credential-copy" data-copy-url="http://127.0.0.1:8317" title="复制地址">复制</button>
+                    </div>
+
+                    <div class="cpa-credentials-subtitle">CPA 管理面板</div>
+                    <div class="cpa-credential-row">
+                      <span class="cpa-credential-label">管理面板</span>
+                      <code class="cpa-credential-value" id="cpa-cred-admin-key">—</code>
+                      <button type="button" class="cpa-credential-copy" data-copy="admin-key" title="复制">复制</button>
+                    </div>
+                    <div class="cpa-credential-row">
+                      <span class="cpa-credential-label">管理密钥</span>
+                      <code class="cpa-credential-value" id="cpa-cred-management-key">—</code>
+                      <button type="button" class="cpa-credential-copy" data-copy="management-key" title="复制">复制</button>
+                    </div>
+                    <div class="cpa-credential-row cpa-credential-row-link">
+                      <span class="cpa-credential-label">面板地址</span>
+                      <code class="cpa-credential-value">http://127.0.0.1:18317</code>
+                      <button type="button" class="cpa-credential-copy" data-copy-url="http://127.0.0.1:18317" title="复制地址">复制</button>
+                    </div>
+                  </div>
+                  <div class="extension-details" id="extension-details-cpa-suite">
+                    <div class="extension-component-list" aria-label="CPA 套件组件">
+                      <div class="extension-component-row" data-extension-component="cli-proxy-api">
+                        <span class="component-dot pending" id="extension-cpa-cli-dot"></span>
+                        <div>
+                          <strong>CLIProxyAPI</strong>
+                          <small id="extension-cpa-cli-detail">网关本体、管理接口，默认端口 8317</small>
+                        </div>
+                        <code id="extension-cpa-cli-port">:8317</code>
+                      </div>
+                      <div class="extension-component-row" data-extension-component="cpa-manager-plus">
+                        <span class="component-dot pending" id="extension-cpa-cpamp-dot"></span>
+                        <div>
+                          <strong>CPA Manager Plus</strong>
+                          <small id="extension-cpa-cpamp-detail">管理面板、统计、插件商店，默认端口 18317</small>
+                        </div>
+                        <code id="extension-cpa-cpamp-port">:18317</code>
+                      </div>
+                      <div class="extension-component-row" data-extension-component="cpa-plugins">
+                        <span class="component-dot muted" id="extension-cpa-plugins-dot"></span>
+                        <div>
+                          <strong>CPA 插件</strong>
+                          <small id="extension-cpa-plugins-detail">复用 CPA 插件库，后续展示安装数和可更新数</small>
+                        </div>
+                        <code id="extension-cpa-plugins-port">插件库</code>
+                      </div>
+                    </div>
+                  </div>
+                </article>
+              </div>
             </div>
 
-            <div class="extension-card-grid" id="extensionCardGrid">
-              <article class="extension-card extension-card-featured" data-extension-card="cpa-suite"
-                data-extension-tags="recommended api">
-                <div class="extension-card-top">
-                  <div class="extension-identity">
-                    <div class="extension-logo extension-logo-cpa" aria-hidden="true">CPA</div>
-                    <div>
-                      <div class="extension-title-row">
-                        <h3>CPA 套件</h3>
-                        <span class="extension-badge badge-recommended">推荐套件</span>
-                      </div>
-                      <p>CLIProxyAPI + CPA Manager Plus + CPA 插件商店，一键部署为本地 AI 网关管理中心。</p>
-                    </div>
+            <!-- Tab 2: 插件列表（两段式：控制条 + 大表格） -->
+            <div class="extension-console-section" data-extension-section="plugins">
+              <!-- 段 1：控制条（标题 + 刷新操作，搜索 + 状态筛选） -->
+              <div class="control-bar glass-card model-map-control-bar plugin-control-bar">
+                <div class="model-map-toolbar-main">
+                  <div class="model-map-title-block">
+                    <h2>插件列表</h2>
+                    <span>统一管理所有扩展插件与本地服务，支持一键安装、启停与快速配置。</span>
                   </div>
-                  <span class="extension-status status-pending" id="extension-cpa-status">检测中</span>
-                </div>
-                <div class="extension-meta-grid">
-                  <div><span>版本</span><strong id="extension-cpa-version">待检测</strong> <span class="extension-update-badge" id="extension-cpa-update-badge" hidden data-action-chain="[{&quot;fn&quot;:&quot;handleExtensionAction&quot;,&quot;args&quot;:[&quot;update-cpa-suite&quot;]}]" data-action="handleExtensionAction" data-stop>有更新</span></div>
-                  <div><span>端口</span><strong id="extension-cpa-ports">8317 / 18317</strong></div>
-                  <div><span>安装目录</span><strong id="extension-cpa-install-dir" title="">默认</strong></div>
-                  <div><span>组件</span><strong id="extension-cpa-components">3 个</strong></div>
-                </div>
-                <div class="extension-card-alert" id="extension-cpa-alert" hidden role="status"></div>
-                <div class="extension-progress" id="extension-cpa-progress" hidden>
-                  <div class="extension-progress-track">
-                    <div class="extension-progress-fill" id="extension-cpa-progress-fill"></div>
-                  </div>
-                  <div class="extension-progress-meta">
-                    <span id="extension-cpa-progress-text">准备中...</span>
-                    <strong id="extension-cpa-progress-percent">0%</strong>
+                  <div class="model-map-toolbar-actions">
+                    <button class="btn-ghost secondary model-map-command-btn" data-action="refreshPluginList" data-args="[{&quot;manual&quot;:true}]">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                        stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <polyline points="23 4 23 10 17 10"></polyline>
+                        <polyline points="1 20 1 14 7 14"></polyline>
+                        <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+                      </svg>
+                      刷新插件
+                    </button>
                   </div>
                 </div>
-                <div class="extension-tags">
-                  <span>兼容 OpenAI 接口</span>
-                  <span>请求统计</span>
-                  <span>插件市场</span>
-                  <span>账号巡检</span>
+                <div class="model-map-bulk-row">
+                  <label class="model-map-search">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"
+                      stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                      <circle cx="11" cy="11" r="8"></circle>
+                      <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                    </svg>
+                    <input type="text" id="pluginSearchInput" placeholder="搜索插件名称、描述或端口" data-action="filterPluginTable" data-events="input">
+                  </label>
+                  <span class="model-map-count-pill" id="pluginCountPill">共 4 个</span>
+                  <div class="model-map-bulk-actions">
+                    <button class="btn-ghost secondary provider-bulk-btn active" data-plugin-filter="all" data-action="setPluginStatusFilter" data-arg="all">全部</button>
+                    <button class="btn-ghost secondary provider-bulk-btn" data-plugin-filter="installed" data-action="setPluginStatusFilter" data-arg="installed">已安装</button>
+                    <button class="btn-ghost secondary provider-bulk-btn" data-plugin-filter="not-installed" data-action="setPluginStatusFilter" data-arg="not-installed">未安装</button>
+                  </div>
                 </div>
-                <div class="extension-actions">
-                  <button type="button" class="btn-primary" id="extension-cpa-primary-action">一键部署</button>
-                  <div class="extension-secondary-actions" id="extension-cpa-secondary-actions"></div>
-                </div>
-                <div class="cpa-credentials" id="cpa-credentials" hidden>
-                  <div class="cpa-credentials-title">访问凭证 <span class="cpa-credentials-hint">点击即可复制</span></div>
+              </div>
 
-                  <div class="cpa-credentials-subtitle">CPA API</div>
-                  <div class="cpa-credential-row">
-                    <span class="cpa-credential-label">API Key</span>
-                    <code class="cpa-credential-value" id="cpa-cred-api-key">—</code>
-                    <button type="button" class="cpa-credential-copy" data-copy="api-key" title="复制">复制</button>
-                  </div>
-                  <div class="cpa-credential-row cpa-credential-row-link">
-                    <span class="cpa-credential-label">API 地址</span>
-                    <code class="cpa-credential-value">http://127.0.0.1:8317</code>
-                    <button type="button" class="cpa-credential-copy" data-copy-url="http://127.0.0.1:8317" title="复制地址">复制</button>
-                  </div>
+              <!-- 段 2：大表格卡片（填满卡片，通透排布） -->
+              <div class="glass-card plugin-table-card-wrap" style="overflow: hidden; margin-bottom: 20px;">
+                <table class="model-table plugin-table-main" style="border: none; box-shadow: none; border-radius: 0;">
+                  <colgroup>
+                    <col style="width: 36%;">
+                    <col style="width: 14%;">
+                    <col style="width: 16%;">
+                    <col style="width: 16%;">
+                    <col style="width: 18%;">
+                  </colgroup>
+                  <thead>
+                    <tr>
+                      <th>插件 / 服务</th>
+                      <th>类型分类</th>
+                      <th>监听端口</th>
+                      <th>版本 / 架构</th>
+                      <th style="text-align: right; padding-right: 20px;">操作</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <!-- 插件 1：CPA 套件 -->
+                    <tr data-extension-card="cpa-suite-overview" data-plugin-state="running" data-plugin-installed="true">
+                      <td class="plugin-name-cell">
+                        <div class="plugin-identity-cell">
+                          <span class="plugin-card-mark" style="background: rgba(18, 97, 166, 0.12); color: var(--accent); font-weight: 800;">CPA</span>
+                          <div class="plugin-identity-text">
+                            <div class="plugin-title-row">
+                              <strong class="plugin-name">CPA 套件</strong>
+                              <span class="extension-badge badge-recommended">推荐</span>
+                              <span class="plugin-status status-running" id="plugin-cpa-status">运行中</span>
+                            </div>
+                            <p class="plugin-desc">本地 AI 网关与管理中心，兼容 OpenAI 接口与插件市场</p>
+                          </div>
+                        </div>
+                      </td>
+                      <td class="plugin-category-cell">
+                        <span class="plugin-tag">网关套件</span>
+                      </td>
+                      <td class="plugin-port-cell">
+                        <code class="plugin-port-code" id="plugin-cpa-ports">8317 / 18317</code>
+                      </td>
+                      <td class="plugin-version-cell">
+                        <span id="plugin-cpa-components">3 个组件</span>
+                      </td>
+                      <td class="plugin-action-cell">
+                        <div class="plugin-table-actions" id="plugin-cpa-actions">
+                          <button type="button" class="btn-primary btn-sm" data-action="switchExtensionTab" data-arg="installed">管理</button>
+                          <button type="button" class="btn-ghost secondary btn-sm" data-action="handleExtensionAction" data-arg="open-cpamp">打开面板</button>
+                          <button type="button" class="btn-ghost danger btn-sm" data-action="handleExtensionAction" data-arg="uninstall-cpa-suite">卸载</button>
+                        </div>
+                      </td>
+                    </tr>
 
-                  <div class="cpa-credentials-subtitle">CPA 管理面板</div>
-                  <div class="cpa-credential-row">
-                    <span class="cpa-credential-label">管理面板</span>
-                    <code class="cpa-credential-value" id="cpa-cred-admin-key">—</code>
-                    <button type="button" class="cpa-credential-copy" data-copy="admin-key" title="复制">复制</button>
-                  </div>
-                  <div class="cpa-credential-row">
-                    <span class="cpa-credential-label">管理密钥</span>
-                    <code class="cpa-credential-value" id="cpa-cred-management-key">—</code>
-                    <button type="button" class="cpa-credential-copy" data-copy="management-key" title="复制">复制</button>
-                  </div>
-                  <div class="cpa-credential-row cpa-credential-row-link">
-                    <span class="cpa-credential-label">面板地址</span>
-                    <code class="cpa-credential-value">http://127.0.0.1:18317</code>
-                    <button type="button" class="cpa-credential-copy" data-copy-url="http://127.0.0.1:18317" title="复制地址">复制</button>
-                  </div>
-                </div>
-                <div class="extension-details" id="extension-details-cpa-suite">
-                  <div class="extension-component-list" aria-label="CPA 套件组件">
-                    <div class="extension-component-row" data-extension-component="cli-proxy-api">
-                      <span class="component-dot pending" id="extension-cpa-cli-dot"></span>
-                      <div>
-                        <strong>CLIProxyAPI</strong>
-                        <small id="extension-cpa-cli-detail">网关本体、管理接口，默认端口 8317</small>
-                      </div>
-                      <code id="extension-cpa-cli-port">:8317</code>
-                    </div>
-                    <div class="extension-component-row" data-extension-component="cpa-manager-plus">
-                      <span class="component-dot pending" id="extension-cpa-cpamp-dot"></span>
-                      <div>
-                        <strong>CPA Manager Plus</strong>
-                        <small id="extension-cpa-cpamp-detail">管理面板、统计、插件商店，默认端口 18317</small>
-                      </div>
-                      <code id="extension-cpa-cpamp-port">:18317</code>
-                    </div>
-                    <div class="extension-component-row" data-extension-component="cpa-plugins">
-                      <span class="component-dot muted" id="extension-cpa-plugins-dot"></span>
-                      <div>
-                        <strong>CPA 插件</strong>
-                        <small id="extension-cpa-plugins-detail">复用 CPA 插件库，后续展示安装数和可更新数</small>
-                      </div>
-                      <code id="extension-cpa-plugins-port">插件库</code>
-                    </div>
-                  </div>
-                </div>
-              </article>
+                    <!-- 插件 2：sub2api -->
+                    <tr data-extension-card="sub2api" data-plugin-state="not-installed" data-plugin-installed="false">
+                      <td class="plugin-name-cell">
+                        <div class="plugin-identity-cell">
+                          <span class="plugin-card-mark" style="background: rgba(16, 185, 129, 0.12); color: #059669; font-weight: 800;">S2</span>
+                          <div class="plugin-identity-text">
+                            <div class="plugin-title-row">
+                              <strong class="plugin-name">sub2api</strong>
+                              <span class="plugin-status status-not-installed">未安装</span>
+                            </div>
+                            <p class="plugin-desc">订阅与账号转兼容接口，安装后可自动生成供应商</p>
+                          </div>
+                        </div>
+                      </td>
+                      <td class="plugin-category-cell">
+                        <span class="plugin-tag">托管服务</span>
+                      </td>
+                      <td class="plugin-port-cell">
+                        <span class="text-muted">待分配</span>
+                      </td>
+                      <td class="plugin-version-cell">
+                        <span>L2-L3 适配</span>
+                      </td>
+                      <td class="plugin-action-cell">
+                        <div class="plugin-table-actions">
+                          <button type="button" class="btn-ghost secondary btn-sm" data-action="openExtensionDetail" data-arg="sub2api">详情</button>
+                          <button type="button" class="btn-ghost accent btn-sm" data-action="handleExtensionAction" data-arg="view-adapter-plan">适配计划</button>
+                          <button type="button" class="btn-primary btn-sm" data-action="handleExtensionAction" data-arg="install-sub2api">安装</button>
+                        </div>
+                      </td>
+                    </tr>
 
-              <article class="extension-card" data-extension-card="sub2api" data-extension-tags="recommended api"
-                tabindex="0" aria-label="查看 sub2api 扩展详情">
-                <div class="extension-card-top">
-                  <div class="extension-identity">
-                    <div class="extension-logo extension-logo-sub" aria-hidden="true">S2</div>
-                    <div>
-                      <div class="extension-title-row">
-                        <h3>sub2api</h3>
-                        <span class="extension-badge badge-market">接口服务</span>
-                      </div>
-                      <p>把订阅或账号能力转换成兼容 OpenAI 的接口，安装后可自动生成 AnyBridge 供应商。</p>
-                    </div>
-                  </div>
-                  <span class="extension-status status-not-installed">未安装</span>
-                </div>
-                <div class="extension-meta-grid">
-                  <div><span>类型</span><strong>托管服务</strong></div>
-                  <div><span>版本</span><strong>待适配</strong></div>
-                  <div><span>端口</span><strong>待分配</strong></div>
-                  <div><span>接入</span><strong>L2-L3</strong></div>
-                </div>
-                <div class="extension-tags">
-                  <span>供应商适配</span>
-                  <span>模型同步</span>
-                  <span>外部源</span>
-                </div>
-                <div class="extension-actions">
-                  <button type="button" class="btn-primary" data-action="handleExtensionAction" data-arg="install-sub2api">安装</button>
-                  <button type="button" class="btn-ghost secondary" data-action="openExtensionDetail" data-arg="sub2api">详情</button>
-                  <button type="button" class="btn-ghost accent" data-action="handleExtensionAction" data-arg="view-adapter-plan">适配计划</button>
-                </div>
-              </article>
-
-              <article class="extension-card" data-extension-card="free-jimeng" data-extension-tags="recommended media">
-                <div class="extension-card-top">
-                  <div class="extension-identity">
-                    <div class="extension-logo extension-logo-jimeng" aria-hidden="true">JM</div>
-                    <div>
-                      <div class="extension-title-row">
-                        <h3>free 即梦</h3>
-                        <span class="extension-badge badge-lab">生成服务</span>
-                      </div>
-                      <p>即梦相关生成接口的预留卡位。确认仓库和接口格式后再选择本地托管或外部服务接入。</p>
-                    </div>
-                  </div>
-                  <span class="extension-status status-not-installed">未安装</span>
-                </div>
-                <div class="extension-meta-grid">
-                  <div><span>类型</span><strong>待确认</strong></div>
-                  <div><span>版本</span><strong>待适配</strong></div>
-                  <div><span>端口</span><strong>待分配</strong></div>
-                  <div><span>接入</span><strong>L1-L3</strong></div>
-                </div>
-                <div class="extension-tags">
-                  <span>图片/视频</span>
-                  <span>外部服务</span>
-                  <span>待调研</span>
-                </div>
-                <div class="extension-actions">
-                  <button type="button" class="btn-primary" data-action="handleExtensionAction" data-arg="install-jimeng">安装</button>
-                  <button type="button" class="btn-ghost secondary" data-action="openExtensionDetail" data-arg="free-jimeng">详情</button>
-                  <button type="button" class="btn-ghost accent" data-action="handleExtensionAction" data-arg="view-adapter-plan">适配计划</button>
-                </div>
-              </article>
+                    <!-- 插件 3：free 即梦 -->
+                    <tr data-extension-card="free-jimeng" data-plugin-state="not-installed" data-plugin-installed="false">
+                      <td class="plugin-name-cell">
+                        <div class="plugin-identity-cell">
+                          <span class="plugin-card-mark" style="background: rgba(139, 92, 246, 0.12); color: #7c3aed; font-weight: 800;">JM</span>
+                          <div class="plugin-identity-text">
+                            <div class="plugin-title-row">
+                              <strong class="plugin-name">free 即梦</strong>
+                              <span class="plugin-status status-not-installed">未安装</span>
+                            </div>
+                            <p class="plugin-desc">即梦相关生成接口预留，支持外部服务接入与托管</p>
+                          </div>
+                        </div>
+                      </td>
+                      <td class="plugin-category-cell">
+                        <span class="plugin-tag">生成服务</span>
+                      </td>
+                      <td class="plugin-port-cell">
+                        <span class="text-muted">待分配</span>
+                      </td>
+                      <td class="plugin-version-cell">
+                        <span>L1-L3 调研</span>
+                      </td>
+                      <td class="plugin-action-cell">
+                        <div class="plugin-table-actions">
+                          <button type="button" class="btn-ghost secondary btn-sm" data-action="openExtensionDetail" data-arg="free-jimeng">详情</button>
+                          <button type="button" class="btn-ghost accent btn-sm" data-action="handleExtensionAction" data-arg="view-adapter-plan">适配计划</button>
+                          <button type="button" class="btn-primary btn-sm" data-action="handleExtensionAction" data-arg="install-jimeng">安装</button>
+                        </div>
+                      </td>
+                    </tr>
+                  </tbody>
+                  <!-- 动态扫描插件挂载点：Grok2API 及后续动态插件自动在此渲染为表格行 -->
+                  <tbody id="plugin-list-grid"></tbody>
+                </table>
+              </div>
             </div>
 
-            <section class="plugin-section" id="pluginSection" aria-label="运行时插件">
-              <div class="plugin-section-head">
-                <div>
-                  <h3>运行时插件</h3>
-                  <p>由 plugin.json 声明驱动，界面按清单自动渲染；新增插件无需修改 AnyBridge。</p>
+            <!-- Tab 3: 日志 -->
+            <div class="extension-console-section" data-extension-section="logs">
+              <section class="extensions-log-panel glass-card" id="extensionsLogPanel" aria-label="扩展日志">
+                <div class="extensions-log-head">
+                  <div>
+                    <h3>扩展日志</h3>
+                    <span class="tag log-count" id="extensionLogCount">0 条记录</span>
+                  </div>
+                  <button type="button" class="btn-ghost danger" data-action="clearExtensionLogs">清空</button>
                 </div>
-                <button type="button" class="btn-ghost secondary" data-action="refreshPluginList">刷新</button>
-              </div>
-              <div class="plugin-card-grid" id="plugin-list-grid"></div>
-            </section>
-
-            <section class="extensions-log-panel glass-card" id="extensionsLogPanel" aria-label="扩展日志" hidden>
-              <div class="extensions-log-head">
-                <div>
-                  <h3>扩展日志</h3>
-                  <span class="tag log-count" id="extensionLogCount">0 条记录</span>
+                <div class="log-tabs" id="extensionLogTabs">
+                  <button class="log-tab active" data-level="all" data-action="setExtensionLogFilter" data-arg="all">全部</button>
+                  <button class="log-tab" data-level="ok" data-action="setExtensionLogFilter" data-arg="ok">OK</button>
+                  <button class="log-tab" data-level="info" data-action="setExtensionLogFilter" data-arg="info">INFO</button>
+                  <button class="log-tab" data-level="warn" data-action="setExtensionLogFilter" data-arg="warn">WARN</button>
+                  <button class="log-tab" data-level="err" data-action="setExtensionLogFilter" data-arg="err">ERR</button>
                 </div>
-                <button type="button" class="btn-ghost danger" data-action="clearExtensionLogs">清空</button>
-              </div>
-              <div class="log-tabs" id="extensionLogTabs">
-                <button class="log-tab active" data-level="all" data-action="setExtensionLogFilter" data-arg="all">全部</button>
-                <button class="log-tab" data-level="ok" data-action="setExtensionLogFilter" data-arg="ok">OK</button>
-                <button class="log-tab" data-level="info" data-action="setExtensionLogFilter" data-arg="info">INFO</button>
-                <button class="log-tab" data-level="warn" data-action="setExtensionLogFilter" data-arg="warn">WARN</button>
-                <button class="log-tab" data-level="err" data-action="setExtensionLogFilter" data-arg="err">ERR</button>
-              </div>
-              <div class="log-box proxy-logs-box extensions-log-box">
-                <div class="log-body" id="extensionLogBody"></div>
-              </div>
-            </section>
+                <div class="log-box proxy-logs-box extensions-log-box">
+                  <div class="log-body" id="extensionLogBody"></div>
+                </div>
+              </section>
+            </div>
           </section>
         </div>
 

@@ -1,6 +1,6 @@
 [package]
 name = "anybridge"
-version = "0.4.2"
+version = "0.4.6"
 description = "AnyBridge desktop client"
 authors = ["soulvon"]
 edition = "2021"
@@ -60,3 +60,11 @@ windows-sys = { version = "0.59", features = [
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
+
+[profile.dev]
+debug = 1
+incremental = false
+
+[profile.dev.package."*"]
+opt-level = 2
+debug = 0

@@ -2,6 +2,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 
 function parseArgs(argv) {
   const args = {};
@@ -169,6 +170,42 @@ function main() {
 
   fs.writeFileSync(output, `${JSON.stringify(latest, null, 2)}\n`);
   console.log(`Merged latest.json generated at ${output} with ${Object.keys(platforms).length} platforms.`);
+
+  // 为每个平台写入独立清单 latest-${target}.json（对齐 cockpit-tools 多端点设计）
+  const outputDir = path.dirname(path.resolve(output));
+  for (const [targetKey, entry] of Object.entries(platforms)) {
+    const targetManifest = {
+      version,
+      notes: latest.notes,
+      pub_date: publishedAt,
+      url: entry.url,
+      signature: entry.signature,
+      platforms: {
+        [targetKey]: entry,
+      },
+    };
+    const targetPath = path.join(outputDir, `latest-${targetKey}.json`);
+    fs.writeFileSync(targetPath, `${JSON.stringify(targetManifest, null, 2)}\n`);
+    console.log(`Generated platform manifest: ${targetPath}`);
+  }
+
+  // 生成全量安装包文件的 SHA256SUMS.txt
+  const checksumLines = [];
+  for (const file of assets.sort()) {
+    const filePath = path.join(assetsDir, file);
+    try {
+      const buffer = fs.readFileSync(filePath);
+      const hash = crypto.createHash('sha256').update(buffer).digest('hex');
+      checksumLines.push(`${hash}  ${file}`);
+    } catch (e) {
+      console.warn(`[Warning] Failed to calculate hash for ${file}:`, e.message);
+    }
+  }
+  if (checksumLines.length > 0) {
+    const checksumPath = path.join(outputDir, 'SHA256SUMS.txt');
+    fs.writeFileSync(checksumPath, `${checksumLines.join('\n')}\n`);
+    console.log(`Generated SHA256SUMS.txt with ${checksumLines.length} files.`);
+  }
 }
 
 try {

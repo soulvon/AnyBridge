@@ -45,10 +45,23 @@ async function openPluginLink(url) {
 // 数据层
 // ═══════════════════════════════════════════════════
 
-async function refreshPluginList() {
+let lastRecordedPluginCount = null;
+
+async function refreshPluginList(options = {}) {
+  const manual = Boolean(options && options.manual);
+  if (manual) {
+    pluginLog('info', '正在重新扫描并刷新插件列表...');
+  }
   try {
     const plugins = await pluginInvoke('plugin_list');
     globalThis.pluginRegistry = Array.isArray(plugins) ? plugins : [];
+    const count = globalThis.pluginRegistry.length;
+    const isInitial = lastRecordedPluginCount === null;
+    if (manual || isInitial || count !== lastRecordedPluginCount) {
+      lastRecordedPluginCount = count;
+      const names = globalThis.pluginRegistry.map(p => p.manifest?.name || p.manifest?.id).join(', ');
+      pluginLog('info', `已扫描本地插件库：发现 ${count} 个扩展插件${names ? `（${names}）` : ''}。`);
+    }
   } catch (e) {
     pluginLog('warn', `插件列表加载失败: ${e}`);
     globalThis.pluginRegistry = [];
@@ -131,102 +144,155 @@ function pluginStateMeta(state) {
   return PLUGIN_STATE_META[state] || PLUGIN_STATE_META.unknown;
 }
 
+let currentPluginStatusFilter = 'all';
+
+function setPluginStatusFilter(filter) {
+  currentPluginStatusFilter = filter || 'all';
+  document.querySelectorAll('[data-plugin-filter]').forEach(btn => {
+    const isActive = btn.dataset.pluginFilter === currentPluginStatusFilter;
+    btn.classList.toggle('active', isActive);
+  });
+  filterPluginTable();
+}
+
+function filterPluginTable() {
+  const searchInput = document.getElementById('pluginSearchInput');
+  const query = searchInput ? searchInput.value.toLowerCase().trim() : '';
+  const rows = document.querySelectorAll('.plugin-table-main tbody tr');
+  let visibleCount = 0;
+
+  rows.forEach(row => {
+    const text = (row.textContent || '').toLowerCase();
+    const isInstalled = row.dataset.pluginInstalled === 'true';
+    const matchesQuery = !query || text.includes(query);
+
+    let matchesFilter = true;
+    if (currentPluginStatusFilter === 'installed') {
+      matchesFilter = isInstalled;
+    } else if (currentPluginStatusFilter === 'not-installed') {
+      matchesFilter = !isInstalled;
+    }
+
+    const show = matchesQuery && matchesFilter;
+    row.style.display = show ? '' : 'none';
+    if (show) visibleCount += 1;
+  });
+
+  const countPill = document.getElementById('pluginCountPill');
+  if (countPill) {
+    countPill.textContent = `共 ${visibleCount} 个`;
+  }
+}
+
 function renderPluginList() {
   const host = document.getElementById('plugin-list-grid');
   if (!host) return;
   host.replaceChildren();
 
-  if (!globalThis.pluginRegistry.length) {
-    const empty = document.createElement('p');
-    empty.className = 'plugin-empty';
-    empty.textContent = '未发现插件定义。插件目录为 resources/plugins/。';
-    host.appendChild(empty);
-    return;
+  if (globalThis.pluginRegistry && globalThis.pluginRegistry.length > 0) {
+    for (const plugin of globalThis.pluginRegistry) {
+      host.appendChild(renderPluginCard(plugin));
+    }
   }
 
-  for (const plugin of globalThis.pluginRegistry) {
-    host.appendChild(renderPluginCard(plugin));
-  }
+  filterPluginTable();
 }
 
 function renderPluginCard(plugin) {
   const { manifest, status } = plugin;
   const meta = pluginStateMeta(status?.state);
-  const card = document.createElement('article');
-  card.className = 'plugin-card';
-  card.dataset.pluginCard = manifest.id;
-
-  const head = document.createElement('div');
-  head.className = 'plugin-card-head';
-
-  const mark = document.createElement('span');
-  mark.className = 'plugin-card-mark';
-  mark.textContent = (manifest.name || manifest.id).slice(0, 2).toUpperCase();
-  head.appendChild(mark);
-
-  const titleWrap = document.createElement('div');
-  titleWrap.className = 'plugin-card-title-wrap';
-  const title = document.createElement('h3');
-  title.textContent = manifest.name || manifest.id;
-  titleWrap.appendChild(title);
-  const desc = document.createElement('p');
-  desc.textContent = manifest.description || '';
-  titleWrap.appendChild(desc);
-  head.appendChild(titleWrap);
-
-  const badge = document.createElement('span');
-  badge.className = `plugin-status status-${meta.cls}`;
-  badge.textContent = meta.label;
-  head.appendChild(badge);
-  card.appendChild(head);
-
-  const grid = document.createElement('div');
-  grid.className = 'plugin-card-meta';
-  const addMeta = (label, value) => {
-    const cell = document.createElement('div');
-    const l = document.createElement('span');
-    l.textContent = label;
-    const v = document.createElement('strong');
-    v.textContent = value;
-    cell.append(l, v);
-    grid.appendChild(cell);
-  };
-  addMeta('分类', manifest.category || '-');
-  addMeta('版本', status?.version || manifest.version || '-');
-  addMeta('端口', status?.port ? `:${status.port}` : '-');
-  addMeta('策略', (manifest.deploy?.strategies || []).join(' / ') || '-');
-  card.appendChild(grid);
-
-  const actions = document.createElement('div');
-  actions.className = 'plugin-card-actions';
   const state = status?.state || 'unknown';
   const installed = ['installed', 'stopped', 'running', 'starting', 'error'].includes(state);
 
-  if (!installed || state === 'unknown') {
-    actions.appendChild(makePluginBtn('安装', 'btn-primary', () => openPluginDeployDialog(manifest.id)));
-  } else if (state === 'running' || state === 'starting') {
-    actions.appendChild(makePluginBtn('管理', 'btn-primary', () => openPluginManager(manifest.id)));
-    actions.appendChild(makePluginBtn('停止', 'btn-ghost secondary', () => stopPlugin(manifest.id)));
+  const row = document.createElement('tr');
+  row.className = 'plugin-table-row';
+  row.dataset.pluginCard = manifest.id;
+  row.dataset.pluginInstalled = String(installed);
+  row.dataset.pluginState = state;
+
+  // 1. 插件名称/描述
+  const nameTd = document.createElement('td');
+  nameTd.className = 'plugin-name-cell';
+  const markText = (manifest.name || manifest.id).slice(0, 2).toUpperCase();
+  nameTd.innerHTML = `
+    <div class="plugin-identity-cell">
+      <span class="plugin-card-mark" style="background: rgba(59, 130, 246, 0.12); color: #2563eb; font-weight: 800;">${markText}</span>
+      <div class="plugin-identity-text">
+        <div class="plugin-title-row">
+          <strong class="plugin-name">${manifest.name || manifest.id}</strong>
+          <span class="plugin-status status-${meta.cls}">${meta.label}</span>
+        </div>
+        <p class="plugin-desc">${manifest.description || ''}</p>
+      </div>
+    </div>
+  `;
+
+  // 2. 分类
+  const catTd = document.createElement('td');
+  catTd.className = 'plugin-category-cell';
+  catTd.innerHTML = `<span class="plugin-tag">${manifest.category || 'API 网关'}</span>`;
+
+  // 3. 端口
+  const portTd = document.createElement('td');
+  portTd.className = 'plugin-port-cell';
+  if (status?.port) {
+    portTd.innerHTML = `<code class="plugin-port-code">:${status.port}</code>`;
   } else {
-    actions.appendChild(makePluginBtn('启动', 'btn-primary', () => startPlugin(manifest.id)));
-    actions.appendChild(makePluginBtn('管理', 'btn-ghost accent', () => openPluginManager(manifest.id)));
+    portTd.innerHTML = `<span class="text-muted">—</span>`;
   }
 
-  if (manifest.homepage) {
-    actions.appendChild(
-      makePluginBtn('项目主页', 'btn-ghost secondary', () => openPluginLink(manifest.homepage))
-    );
+  // 4. 版本 / 策略
+  const verTd = document.createElement('td');
+  verTd.className = 'plugin-version-cell';
+  const verStr = status?.version || manifest.version || '1.0.0';
+  const stratStr = (manifest.deploy?.strategies || []).join(' / ') || 'binary';
+  verTd.innerHTML = `<span>v${verStr} <small class="text-muted">(${stratStr})</small></span>`;
+
+  // 5. 操作按钮
+  const actionTd = document.createElement('td');
+  actionTd.className = 'plugin-action-cell';
+  const actions = document.createElement('div');
+  actions.className = 'plugin-table-actions';
+
+  if (!installed || state === 'unknown') {
+    if (manifest.homepage) {
+      actions.appendChild(
+        makePluginBtn('项目主页', 'btn-ghost secondary btn-sm', () => openPluginLink(manifest.homepage))
+      );
+    }
+    actions.appendChild(makePluginBtn('安装', 'btn-primary btn-sm', () => openPluginDeployDialog(manifest.id)));
+  } else if (state === 'running' || state === 'starting') {
+    actions.appendChild(makePluginBtn('管理', 'btn-primary btn-sm', () => openPluginManager(manifest.id)));
+    actions.appendChild(makePluginBtn('停止', 'btn-ghost secondary btn-sm', () => stopPlugin(manifest.id)));
+    if (manifest.homepage) {
+      actions.appendChild(
+        makePluginBtn('项目主页', 'btn-ghost secondary btn-sm', () => openPluginLink(manifest.homepage))
+      );
+    }
+    actions.appendChild(makePluginBtn('卸载', 'btn-ghost danger btn-sm', () => uninstallPlugin(manifest.id)));
+  } else {
+    actions.appendChild(makePluginBtn('启动', 'btn-primary btn-sm', () => startPlugin(manifest.id)));
+    actions.appendChild(makePluginBtn('管理', 'btn-ghost accent btn-sm', () => openPluginManager(manifest.id)));
+    if (manifest.homepage) {
+      actions.appendChild(
+        makePluginBtn('项目主页', 'btn-ghost secondary btn-sm', () => openPluginLink(manifest.homepage))
+      );
+    }
+    actions.appendChild(makePluginBtn('卸载', 'btn-ghost danger btn-sm', () => uninstallPlugin(manifest.id)));
   }
-  card.appendChild(actions);
+  actionTd.appendChild(actions);
+
+  row.append(nameTd, catTd, portTd, verTd, actionTd);
 
   if (status?.error) {
-    const err = document.createElement('p');
+    const err = document.createElement('div');
     err.className = 'plugin-card-error';
+    err.style.marginTop = '4px';
     err.textContent = status.error;
-    card.appendChild(err);
+    nameTd.querySelector('.plugin-identity-text')?.appendChild(err);
   }
 
-  return card;
+  return row;
 }
 
 function makePluginBtn(label, cls, onClick, disabled = false) {
@@ -244,53 +310,63 @@ function makePluginBtn(label, cls, onClick, disabled = false) {
 // ═══════════════════════════════════════════════════
 
 async function startPlugin(pluginId) {
+  pluginLog('info', `正在启动插件【${pluginId}】...`);
   try {
     pluginNotify(`正在启动 ${pluginId}...`, 'info');
     await pluginInvoke('plugin_start', { pluginId });
-    pluginLog('info', `${pluginId} 启动中，等待健康检查`);
+    pluginLog('ok', `插件【${pluginId}】启动成功，健康检查通过。`);
     await refreshPluginList();
   } catch (e) {
     pluginNotify(`启动失败: ${e}`, 'error');
-    pluginLog('err', `${pluginId} 启动失败: ${e}`);
+    pluginLog('err', `插件【${pluginId}】启动失败: ${e}`);
     await refreshPluginList();
   }
 }
 
 async function stopPlugin(pluginId) {
+  pluginLog('warn', `正在停止插件【${pluginId}】...`);
   try {
     await pluginInvoke('plugin_stop', { pluginId });
     pluginTokenCache.delete(pluginId);
+    pluginLog('ok', `插件【${pluginId}】已成功停止。`);
     pluginNotify(`${pluginId} 已停止`, 'ok');
     await refreshPluginList();
   } catch (e) {
     pluginNotify(`停止失败: ${e}`, 'error');
+    pluginLog('err', `插件【${pluginId}】停止失败: ${e}`);
   }
 }
 
 async function restartPlugin(pluginId) {
+  pluginLog('warn', `正在重启插件【${pluginId}】...`);
   try {
     pluginNotify(`正在重启 ${pluginId}...`, 'info');
     await pluginInvoke('plugin_restart', { pluginId });
     pluginTokenCache.delete(pluginId);
+    pluginLog('ok', `插件【${pluginId}】重启成功，健康检查通过。`);
     await refreshPluginList();
   } catch (e) {
     pluginNotify(`重启失败: ${e}`, 'error');
+    pluginLog('err', `插件【${pluginId}】重启失败: ${e}`);
   }
 }
 
 async function uninstallPlugin(pluginId) {
   const ok = typeof showCustomConfirm === 'function'
-    ? await showCustomConfirm(`确定卸载 ${pluginId}？安装目录与数据将被删除，无法恢复。`, '卸载插件')
+    ? await showCustomConfirm(`确定卸载 ${pluginId}？安装目录与数据将被删除，无法恢复。`, '卸载插件', 'warn')
     : window.confirm(`确定卸载 ${pluginId}？`);
   if (!ok) return;
+  pluginLog('warn', `正在卸载插件【${pluginId}】...`);
   try {
     await pluginInvoke('plugin_uninstall', { pluginId });
     pluginTokenCache.delete(pluginId);
+    pluginLog('ok', `插件【${pluginId}】已成功卸载，本地文件已清理。`);
     pluginNotify(`${pluginId} 已卸载`, 'ok');
     closePluginManager();
     await refreshPluginList();
   } catch (e) {
     pluginNotify(`卸载失败: ${e}`, 'error');
+    pluginLog('err', `插件【${pluginId}】卸载失败: ${e}`);
   }
 }
 
@@ -1207,6 +1283,8 @@ async function initPluginSystem() {
 (function mirrorFns(g) {
   g.refreshPluginList = refreshPluginList;
   g.renderPluginList = renderPluginList;
+  g.filterPluginTable = filterPluginTable;
+  g.setPluginStatusFilter = setPluginStatusFilter;
   g.initPluginSystem = initPluginSystem;
   g.openPluginManager = openPluginManager;
   g.closePluginManager = closePluginManager;

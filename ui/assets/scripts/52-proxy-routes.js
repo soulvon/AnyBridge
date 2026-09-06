@@ -602,6 +602,13 @@ function renderProxyRoutes() {
       : '<span class="proxy-route-muted">未配置目标</span>';
     const selected = proxyRouteSelectedIds.has(route.id);
     const thirdPartyVision = route.enhancement?.thirdPartyVision === true;
+    const renderedId = proxyRouteRenderedId(route);
+    const iconModelKey = (typeof getModelIconKey === 'function')
+      ? (getModelIconKey(route.id) || getModelIconKey(route.targets?.[0]?.model) || getModelIconKey(renderedId))
+      : null;
+    const modelIconHtml = (typeof renderModelIcon === 'function')
+      ? renderModelIcon(iconModelKey || route.targets?.[0]?.model || route.id)
+      : `<div class="model-item-icon fallback">${proxyRouteEsc(String(route.id || '?').charAt(0).toUpperCase())}</div>`;
     return `
       <tr data-proxy-route-id="${proxyRouteEsc(route.id)}" class="${selected ? 'is-selected' : ''}">
         <td class="proxy-route-select-cell model-map-select-cell" data-action="__noop" data-stop>
@@ -610,7 +617,12 @@ function renderProxyRoutes() {
             <span></span>
           </label>
         </td>
-        <td><code class="proxy-route-model-id">${proxyRouteEsc(proxyRouteRenderedId(route))}</code></td>
+        <td>
+          <div class="proxy-route-model-id-wrap">
+            ${modelIconHtml}
+            <code class="proxy-route-model-id">${proxyRouteEsc(renderedId)}</code>
+          </div>
+        </td>
         <td>${targetText}</td>
         <td><div class="proxy-route-badges">${proxyRouteBadges(route)}</div></td>
         <td>

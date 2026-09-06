@@ -171,85 +171,86 @@
                         </div>
                       </div>
 
-                      <!-- 分类 Tab (全部、推理、视觉、联网、免费、向量、重排 - 精致 SVG 胶囊按钮) -->
+                      <!-- 分类 Tab (Cherry Studio 风格：全部、文本、图片、嵌入、音频、视频、重排 + 排序按钮) -->
                       <div class="provider-model-filterbar">
                         <div class="model-filter-tab active" data-action="changeModelTab" data-arg="all">
-                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                            stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-                            <rect x="3" y="3" width="7" height="7"></rect>
-                            <rect x="14" y="3" width="7" height="7"></rect>
-                            <rect x="14" y="14" width="7" height="7"></rect>
-                            <rect x="3" y="14" width="7" height="7"></rect>
-                          </svg>
                           <span>全部</span>
+                          <span class="model-tab-count" id="count-tab-all">0</span>
                         </div>
-                        <div class="model-filter-tab" data-action="changeModelTab" data-arg="reason">
-                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                            stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-                            <path d="M12 5a3 3 0 1 0-5.997.125 4 4 0 0 0-2.526 5.77 4 4 0 0 0 .556 6.588A4 4 0 1 0 12 18Z"></path>
-                            <path d="M12 5a3 3 0 1 1 5.997.125 4 4 0 0 1 2.526 5.77 4 4 0 0 1-.556 6.588A4 4 0 1 1 12 18Z"></path>
-                            <path d="M15 13a4.5 4.5 0 0 1-3-4 4.5 4.5 0 0 1-3 4"></path>
-                            <path d="M17.599 6.5a3 3 0 0 0 .399-1.375"></path>
-                            <path d="M6.003 5.125A3 3 0 0 0 6.401 6.5"></path>
-                            <path d="M3.477 10.896a4 4 0 0 1 .585-.396"></path>
-                            <path d="M19.938 10.5a4 4 0 0 1 .585.396"></path>
-                            <path d="M6 18a4 4 0 0 1-1.967-.516"></path>
-                            <path d="M19.967 17.484A4 4 0 0 1 18 18"></path>
+                        <div class="model-filter-tab" data-action="changeModelTab" data-arg="text">
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                            <polyline points="4 7 4 4 20 4 20 7"></polyline>
+                            <line x1="9" y1="20" x2="15" y2="20"></line>
+                            <line x1="12" y1="4" x2="12" y2="20"></line>
                           </svg>
-                          <span>推理</span>
+                          <span>文本</span>
+                          <span class="model-tab-count" id="count-tab-text">0</span>
                         </div>
-                        <div class="model-filter-tab" data-action="changeModelTab" data-arg="vision">
-                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                            stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-                            <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"></path>
-                            <circle cx="12" cy="12" r="3"></circle>
+                        <div class="model-filter-tab" data-action="changeModelTab" data-arg="image">
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                            <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                            <circle cx="8.5" cy="8.5" r="1.5"></circle>
+                            <polyline points="21 15 16 10 5 21"></polyline>
                           </svg>
-                          <span>视觉</span>
+                          <span>图片</span>
+                          <span class="model-tab-count" id="count-tab-image">0</span>
                         </div>
-                        <div class="model-filter-tab" data-action="changeModelTab" data-arg="search">
-                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                            stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-                            <circle cx="12" cy="12" r="10"></circle>
-                            <line x1="2" y1="12" x2="22" y2="12"></line>
-                            <path
-                              d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z">
-                            </path>
+                        <div class="model-filter-tab" data-action="changeModelTab" data-arg="embedding">
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M2.97 12.92A2 2 0 0 0 2 14.63v3.24a2 2 0 0 0 .97 1.71l3 1.8a2 2 0 0 0 2.06 0L12 19v-5.5l-5-3-4.03 2.42Z"></path>
+                            <path d="m7 16.5-4.74-2.85"></path>
+                            <path d="m7 16.5 5-3"></path>
+                            <path d="M7 16.5v5.17"></path>
+                            <path d="M12 13.5V19l3.97 2.38a2 2 0 0 0 2.06 0l3-1.8a2 2 0 0 0 .97-1.71v-3.24a2 2 0 0 0-.97-1.71L17 10.5l-5 3Z"></path>
+                            <path d="m17 16.5-5-3"></path>
+                            <path d="m17 16.5 4.74-2.85"></path>
+                            <path d="M17 16.5v5.17"></path>
+                            <path d="M7.97 4.42A2 2 0 0 0 7 6.13v4.37l5 3 5-3V6.13a2 2 0 0 0-.97-1.71l-3-1.8a2 2 0 0 0-2.06 0l-3 1.8Z"></path>
+                            <path d="M12 8 7.26 5.15"></path>
+                            <path d="m12 8 4.74-2.85"></path>
+                            <path d="M12 13.5V8"></path>
                           </svg>
-                          <span>联网</span>
+                          <span>嵌入</span>
+                          <span class="model-tab-count" id="count-tab-embedding">0</span>
                         </div>
-                        <div class="model-filter-tab" data-action="changeModelTab" data-arg="free">
-                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                            stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-                            <rect x="3" y="8" width="18" height="4" rx="1"></rect>
-                            <path d="M12 8v13"></path>
-                            <path d="M19 12v7a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2v-7"></path>
-                            <path
-                              d="M7.5 8a2.5 2.5 0 0 1 0-5A2.5 2.5 0 0 1 12 5.5a2.5 2.5 0 0 1 4.5-2.5 2.5 2.5 0 0 1 0 5">
-                            </path>
+                        <div class="model-filter-tab" data-action="changeModelTab" data-arg="audio">
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M2 10v4"></path>
+                            <path d="M6 6v12"></path>
+                            <path d="M10 3v18"></path>
+                            <path d="M14 8v8"></path>
+                            <path d="M18 5v14"></path>
+                            <path d="M22 10v4"></path>
                           </svg>
-                          <span>免费</span>
+                          <span>音频</span>
+                          <span class="model-tab-count" id="count-tab-audio">0</span>
                         </div>
-                        <div class="model-filter-tab" data-action="changeModelTab" data-arg="embed">
-                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                            stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-                            <circle cx="18" cy="5" r="3"></circle>
-                            <circle cx="6" cy="12" r="3"></circle>
-                            <circle cx="18" cy="19" r="3"></circle>
-                            <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line>
-                            <line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line>
+                        <div class="model-filter-tab" data-action="changeModelTab" data-arg="video">
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="m22 8-6 4 6 4V8Z"></path>
+                            <rect width="14" height="12" x="2" y="6" rx="2"></rect>
                           </svg>
-                          <span>向量</span>
+                          <span>视频</span>
+                          <span class="model-tab-count" id="count-tab-video">0</span>
                         </div>
                         <div class="model-filter-tab" data-action="changeModelTab" data-arg="rerank">
-                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                            stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="m21 16-4 4-4-4"></path>
+                            <path d="M17 20V4"></path>
+                            <path d="m3 8 4-4 4 4"></path>
+                            <path d="M7 4v16"></path>
+                          </svg>
+                          <span>重排</span>
+                          <span class="model-tab-count" id="count-tab-rerank">0</span>
+                        </div>
+                        <button type="button" class="model-filter-sort-btn" id="modelFilterSortBtn" data-action="toggleModelSort" title="切换模型排序 (默认 / 名称 A-Z)">
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
                             <path d="m3 16 4 4 4-4"></path>
                             <path d="M7 20V4"></path>
                             <path d="m21 8-4-4-4 4"></path>
                             <path d="M17 4v16"></path>
                           </svg>
-                          <span>重排</span>
-                        </div>
+                        </button>
                       </div>
 
                       <!-- 始终显示且设计精美的搜索栏 -->

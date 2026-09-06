@@ -1,7 +1,7 @@
 // ES module (P3/P4) — escAttr 已迁至 ui/dom.js
 import { escAttr, escapeHtml } from './ui/dom.js';
 // ═══════ PROVIDER PROFILES (多套供应商 + 启用开关) ═══════
-globalThis.providerStore = { providers: [], codexConfigs: [], claudeCodeConfigs: [], opencodeConfigs: [] };
+globalThis.providerStore = { providers: [], codexConfigs: [], claudeCodeConfigs: [], opencodeConfigs: [], grokConfigs: [] };
 globalThis.PROVIDER_VIEW_STORAGE_KEY = 'anybridge.providerViewMode';
 globalThis.PROVIDER_SORT_STORAGE_KEY = 'anybridge.providerSortMode';
 globalThis.PROVIDER_SORT_MODES = new Set(['default', 'name-asc', 'name-desc']);
@@ -338,7 +338,7 @@ async function loadProviders() {
   try {
     providerStore = await invoke('load_providers');
     if (!providerStore || !Array.isArray(providerStore.providers)) {
-      providerStore = { providers: [], codexConfigs: [], claudeCodeConfigs: [], opencodeConfigs: [] };
+      providerStore = { providers: [], codexConfigs: [], claudeCodeConfigs: [], opencodeConfigs: [], grokConfigs: [] };
     }
     syncLocalProxyProvider();
     syncCpaLocalProvider();
@@ -351,9 +351,12 @@ async function loadProviders() {
     if (!Array.isArray(providerStore.opencodeConfigs)) {
       providerStore.opencodeConfigs = [];
     }
+    if (!Array.isArray(providerStore.grokConfigs)) {
+      providerStore.grokConfigs = [];
+    }
     (providerStore.providers || []).forEach(normalizeProviderUnlocks);
   } catch (e) {
-    providerStore = { providers: [], codexConfigs: [], claudeCodeConfigs: [], opencodeConfigs: [] };
+    providerStore = { providers: [], codexConfigs: [], claudeCodeConfigs: [], opencodeConfigs: [], grokConfigs: [] };
   }
   renderProviders();
   renderEvalProviderOptions();
@@ -439,7 +442,7 @@ function providerModelBadges(p, limit = Infinity) {
   const chips = shown.map((m, idx) => {
     return `
       <span class="tag provider-model-chip">
-        ${renderModelIcon(m)}
+        ${typeof renderModelIcon === 'function' ? renderModelIcon(m) : ''}
         <span class="provider-model-chip-text">${escAttr(m)}</span>
         ${idx === 0 ? '<span class="provider-model-default">(默认)</span>' : ''}
       </span>

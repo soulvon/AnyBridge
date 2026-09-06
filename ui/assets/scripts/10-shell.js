@@ -12,15 +12,21 @@ globalThis.PLATFORM_SHELL_PAGES = new Set([
   'models',
   'more-platforms',
   'platform-cursor',
+  'platform-cursor-add',
   'platform-claude-code',
+  'platform-claude-add',
   'platform-codex',
+  'platform-codex-add',
   'platform-codebuddy',
   'platform-codebuddy-add',
   'platform-opencode',
+  'platform-opencode-add',
   'platform-zcode',
   'platform-zcode-add',
   'platform-workbuddy',
-  'platform-workbuddy-add'
+  'platform-workbuddy-add',
+  'platform-grok',
+  'platform-grok-add'
 ]);
 
 function normalizePlatformSection(section) {
@@ -112,6 +118,7 @@ function navigateTo(pageId) {
     'models': 'models',
     'more-platforms': 'models',
     'platform-cursor': 'models',
+    'platform-cursor-add': 'models',
     'platform-claude-code': 'models',
     'platform-codex': 'models',
     'platform-codebuddy': 'models',
@@ -563,15 +570,21 @@ async function installKitePlugin() {
 function syncPlatformRailForPage(pageId) {
   const pageToPlatform = {
     'platform-cursor': 'cursor',
+    'platform-cursor-add': 'cursor',
     'platform-claude-code': 'claude-code',
+    'platform-claude-add': 'claude-code',
     'platform-codex': 'codex',
+    'platform-codex-add': 'codex',
     'platform-codebuddy': 'codebuddy',
     'platform-codebuddy-add': 'codebuddy',
     'platform-opencode': 'opencode',
+    'platform-opencode-add': 'opencode',
     'platform-zcode': 'zcode',
     'platform-zcode-add': 'zcode',
     'platform-workbuddy': 'workbuddy',
-    'platform-workbuddy-add': 'workbuddy'
+    'platform-workbuddy-add': 'workbuddy',
+    'platform-grok': 'grok',
+    'platform-grok-add': 'grok'
   };
   if (pageToPlatform[pageId]) {
     setPlatformRailActive(pageToPlatform[pageId]);
@@ -922,12 +935,72 @@ function mountPlatformOwnedSettings() {
  * 回退到全局 getElementById。供 70-healthcheck.js 和 20-runtime.js 使用。
  */
 function _platformEl(id) {
+  const modal = document.getElementById('platform-settings-modal');
+  if (modal && modal.classList.contains('active')) {
+    const el = modal.querySelector('[data-oid="' + id + '"]') || modal.querySelector('#' + id);
+    if (el) return el;
+  }
   const activeMount = document.querySelector('#platform-panel-settings .platform-settings-mount.active');
   if (activeMount) {
     const el = activeMount.querySelector('[data-oid="' + id + '"]');
     if (el) return el;
   }
   return document.getElementById(id);
+}
+
+function openPlatformSettingsModal(initialTab = 'health') {
+  const modal = document.getElementById('platform-settings-modal');
+  if (!modal) return;
+  switchPlatformSettingsTab(initialTab);
+  syncPlatformSettingsModalData();
+  modal.classList.add('active');
+}
+
+function closePlatformSettingsModal() {
+  const modal = document.getElementById('platform-settings-modal');
+  if (modal) modal.classList.remove('active');
+}
+
+function switchPlatformSettingsTab(tabName) {
+  const isHealth = tabName === 'health';
+  const healthBtn = document.getElementById('platform-settings-tab-btn-health');
+  const accessBtn = document.getElementById('platform-settings-tab-btn-access');
+  const healthPanel = document.getElementById('platform-settings-panel-health');
+  const accessPanel = document.getElementById('platform-settings-panel-access');
+  if (healthBtn) healthBtn.classList.toggle('active', isHealth);
+  if (accessBtn) accessBtn.classList.toggle('active', !isHealth);
+  if (healthPanel) healthPanel.classList.toggle('active', isHealth);
+  if (accessPanel) accessPanel.classList.toggle('active', !isHealth);
+}
+
+function syncPlatformSettingsModalData() {
+  const modal = document.getElementById('platform-settings-modal');
+  if (!modal) return;
+  const mainIdeInput = document.getElementById('idePath');
+  const modalIdeInput = modal.querySelector('[data-oid="idePath"]');
+  if (modalIdeInput && mainIdeInput) {
+    modalIdeInput.value = mainIdeInput.value || '';
+  }
+  const mainUnlock = document.getElementById('enhancement-unlockModels');
+  const modalUnlock = modal.querySelector('[data-oid="enhancement-unlockModels"]');
+  if (modalUnlock && mainUnlock) {
+    modalUnlock.checked = mainUnlock.checked;
+  }
+  const mainRestartToggle = document.getElementById('ideRestartPromptToggle');
+  const modalRestartToggle = modal.querySelector('[data-oid="ideRestartPromptToggle"]');
+  const mainRestartMode = document.getElementById('ideRestartPromptMode');
+  const modalRestartMode = modal.querySelector('[data-oid="ideRestartPromptMode"]');
+  if (modalRestartToggle && mainRestartToggle) {
+    modalRestartToggle.classList.toggle('active', mainRestartToggle.classList.contains('active'));
+  }
+  if (modalRestartMode && mainRestartMode) {
+    modalRestartMode.textContent = mainRestartMode.textContent;
+  }
+  const mainCertStatus = document.getElementById('cert-status');
+  const modalCertStatus = modal.querySelector('[data-oid="cert-status"]');
+  if (modalCertStatus && mainCertStatus) {
+    modalCertStatus.textContent = mainCertStatus.textContent;
+  }
 }
 
 function bindPlatformSettingsNav() {
@@ -1092,6 +1165,10 @@ function updateFlowIdeTarget(ide) {
   g.mountPlatformOwnedSettings = mountPlatformOwnedSettings;
   g._platformEl = _platformEl;
   g.bindPlatformSettingsNav = bindPlatformSettingsNav;
+  g.openPlatformSettingsModal = openPlatformSettingsModal;
+  g.closePlatformSettingsModal = closePlatformSettingsModal;
+  g.switchPlatformSettingsTab = switchPlatformSettingsTab;
+  g.syncPlatformSettingsModalData = syncPlatformSettingsModalData;
   g.openProxyPlatform = openProxyPlatform;
   g.openPlaceholderPlatform = openPlaceholderPlatform;
   g.getTargetIde = getTargetIde;

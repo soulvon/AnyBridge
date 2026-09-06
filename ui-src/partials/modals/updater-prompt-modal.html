@@ -1,104 +1,102 @@
 
-  <!-- 发现更新/下载更新模态框 -->
+  <!-- 发现更新/下载更新模态框 (对齐 Cockpit Tools 设计) -->
   <div id="updater-prompt-modal" class="modal-overlay">
-    <div class="modal-container" style="max-width: 500px;">
-      <div class="modal-header">
-        <div class="modal-title">
-          <span class="modal-icon" id="updater-modal-icon" style="color: var(--accent);">
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
-              stroke-linecap="round" stroke-linejoin="round">
-              <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"></path>
+    <div class="modal-container update-modal">
+      <!-- 头部：图标 + 标题 + 关闭按钮 -->
+      <div class="update-modal-header">
+        <div class="update-modal-title-group">
+          <div class="update-modal-icon-badge" id="updater-modal-icon">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/>
             </svg>
-          </span>
-          <span id="updater-modal-title-text">检测到新版本可用！</span>
+          </div>
+          <span id="updater-modal-title-text" class="update-modal-title-text">发现新版本</span>
         </div>
+        <button class="update-modal-close-btn" data-action="closeUpdaterPromptModal" title="关闭">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
       </div>
-      <div class="modal-body" style="max-height: 360px; overflow-y: auto; padding-right: 8px;">
+
+      <div class="update-modal-body">
         <!-- 版本信息 -->
-        <p style="font-weight: 600; font-size: 14px; margin-bottom: 8px;">
-          新版本：<span id="updater-target-version"
-            style="color: var(--accent); font-family: var(--font-mono);">v1.0.1</span>
-        </p>
-        <!-- 更新内容 -->
-        <div
-          style="background: var(--bg-primary); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 12px 16px; font-size: 13px; margin-bottom: 12px;">
-          <div style="font-weight: bold; margin-bottom: 6px; color: var(--text-primary);">更新内容：</div>
-          <div id="updater-target-notes"
-            style="white-space: pre-wrap; font-family: var(--font-body); line-height: 1.5; color: var(--text-secondary); min-height: 72px; max-height: 180px; overflow-y: auto;">
-            载入中...
-          </div>
+        <div class="update-version-row">
+          <div class="update-target-version" id="updater-target-version">v1.0.0</div>
+          <div class="update-version-desc" id="updater-version-desc">当前版本 —，新版本已可用。</div>
         </div>
 
-        <!-- 下载进度条区 -->
-        <div id="updater-progress-container" style="display: none; margin-top: 14px;">
-          <div
-            style="display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 6px; font-family: var(--font-mono);">
-            <span id="updater-progress-status" style="color: var(--text-secondary);">正在下载更新包...</span>
-            <span id="updater-progress-percent" style="color: var(--accent); font-weight: bold;">0%</span>
-          </div>
-          <div
-            style="width: 100%; height: 8px; background: var(--bg-primary); border-radius: 4px; overflow: hidden; border: 1px solid var(--border);">
-            <div id="updater-progress-bar"
-              style="width: 0%; height: 100%; background: linear-gradient(90deg, var(--accent), var(--accent-secondary)); transition: width 0.1s ease;">
+        <!-- 下载进度条区 (对应截图二：位于版本说明与更新内容之间) -->
+        <div id="updater-progress-container" class="update-progress-container" style="display: none;">
+          <div class="update-progress-bar-row">
+            <div class="update-progress-track">
+              <div id="updater-progress-bar" class="update-progress-fill" style="width: 0%;"></div>
             </div>
-          </div>
-        </div>
-
-        <!-- 下载完成提示 -->
-        <div id="updater-ready-container" style="display: none; margin-top: 14px;">
-          <div
-            style="display: flex; align-items: center; gap: 8px; padding: 10px 14px; background: rgba(34,197,94,0.08); border: 1px solid rgba(34,197,94,0.2); border-radius: 8px;">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--success)" stroke-width="2.5">
-              <polyline points="9 11 12 14 22 4"></polyline>
-              <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path>
-            </svg>
-            <span style="font-size: 13px; color: var(--success);">更新已就绪，重启后即可生效</span>
-          </div>
-        </div>
-
-        <!-- 错误提示区 -->
-        <div id="updater-error-container" style="display: none; margin-top: 14px;">
-          <div
-            style="padding: 10px 14px; background: rgba(239,68,68,0.08); border: 1px solid rgba(239,68,68,0.2); border-radius: 8px;">
-            <div style="display: flex; align-items: flex-start; gap: 8px;">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--error, #ef4444)"
-                stroke-width="2.5" style="flex-shrink:0;margin-top:1px;">
+            <button class="update-progress-cancel" data-action="cancelUpdateDownload" title="取消下载">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <circle cx="12" cy="12" r="10"></circle>
                 <line x1="15" y1="9" x2="9" y2="15"></line>
                 <line x1="9" y1="9" x2="15" y2="15"></line>
               </svg>
-              <div style="flex:1;min-width:0;">
-                <div id="updater-error-message"
-                  style="font-size: 13px; color: var(--error, #ef4444); word-break: break-word;"></div>
-                <button id="updater-error-toggle"
- style="font-size: 11px; color: var(--text-muted); background: none; border: none; cursor: pointer; padding: 2px 0; margin-top: 4px; text-decoration: underline;" data-action="toggleUpdaterErrorDetails"></button>
-                <div id="updater-error-details"
-                  style="display: none; font-size: 11px; color: var(--text-muted); margin-top: 4px; word-break: break-all; font-family: var(--font-mono); background: var(--bg-primary); padding: 6px 8px; border-radius: 4px; max-height: 80px; overflow-y: auto;">
-                </div>
-              </div>
+            </button>
+          </div>
+          <div id="updater-progress-text" class="update-progress-text">下载中... 0%</div>
+        </div>
+
+        <!-- 下载完成提示 (对应截图一：v1.3.41 已就绪，重启后生效。) -->
+        <div id="updater-ready-container" class="update-status-box update-status-success" style="display: none;">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;">
+            <polyline points="20 6 9 17 4 12"></polyline>
+          </svg>
+          <span id="updater-ready-text">更新已就绪，重启后生效。</span>
+        </div>
+
+        <!-- 重试状态提示 -->
+        <div id="updater-retry-container" class="update-status-box update-status-retrying" style="display: none;">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="spin">
+            <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"></path>
+          </svg>
+          <span id="updater-retry-status">正在重试...</span>
+        </div>
+
+        <!-- 错误提示区 -->
+        <div id="updater-error-container" class="update-status-box update-status-error" style="display: none;">
+          <div style="display: flex; align-items: flex-start; gap: 8px; width: 100%;">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="flex-shrink:0;margin-top:2px;">
+              <circle cx="12" cy="12" r="10"></circle>
+              <line x1="15" y1="9" x2="9" y2="15"></line>
+              <line x1="9" y1="9" x2="15" y2="15"></line>
+            </svg>
+            <div style="flex:1;min-width:0;">
+              <div id="updater-error-message" style="font-size: 13px; font-weight: 500; word-break: break-word;"></div>
+              <button id="updater-error-toggle" class="update-error-toggle-btn" data-action="toggleUpdaterErrorDetails">查看详情</button>
+              <div id="updater-error-details" class="update-error-detail-box" style="display: none;"></div>
             </div>
           </div>
         </div>
 
-        <!-- 重试状态提示 -->
-        <div id="updater-retry-container" style="display: none; margin-top: 14px;">
-          <div
-            style="display: flex; align-items: center; gap: 8px; padding: 8px 14px; background: rgba(59,130,246,0.08); border: 1px solid rgba(59,130,246,0.2); border-radius: 8px;">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2"
-              style="animation: spin 1s linear infinite;">
-              <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"></path>
-            </svg>
-            <span id="updater-retry-status" style="font-size: 12px; color: var(--accent);">正在重试...</span>
+        <!-- 更新内容 -->
+        <div class="update-notes-section">
+          <div class="update-notes-title">更新内容</div>
+          <div id="updater-target-notes" class="update-notes-content">
+            载入中...
           </div>
         </div>
       </div>
-      <div class="modal-footer" id="updater-prompt-footer">
-        <button class="modal-btn modal-btn-cancel"
- style="font-size: 12px; padding: 10px 16px;" data-action="skipThisVersion">跳过此版本</button>
-        <button class="modal-btn modal-btn-cancel"
- style="font-size: 12px; padding: 10px 16px;" data-action="closeUpdaterPromptModal">稍后</button>
-        <button class="modal-btn modal-btn-confirm" id="updater-confirm-btn"
- style="font-size: 12px; padding: 10px 20px;" data-action="startDownloadAndUpdate">立即更新</button>
+
+      <!-- 底部操作栏 -->
+      <div class="update-modal-footer" id="updater-prompt-footer">
+        <button class="update-btn update-btn-secondary" data-action="closeUpdaterPromptModal">取消</button>
+        <button class="update-btn update-btn-secondary" data-action="skipThisVersion">跳过此版本</button>
+        <button class="update-btn update-btn-primary" id="updater-confirm-btn" data-action="startDownloadAndUpdate">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+            <polyline points="7 10 12 15 17 10"></polyline>
+            <line x1="12" y1="15" x2="12" y2="3"></line>
+          </svg>
+          <span>立即更新</span>
+        </button>
       </div>
     </div>
   </div>
