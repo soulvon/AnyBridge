@@ -21,6 +21,7 @@ src-tauri/$null
 
 # Rust build artifacts
 src-tauri/target/
+cursor-core/target/
 
 # IDE / caches
 .claude/
