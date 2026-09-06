@@ -109,7 +109,7 @@
             <span class="topbar-notification-dot" id="topbarNotificationDot" hidden></span>
           </button>
           <button type="button" class="topbar-action-btn topbar-action-settings" id="topbarSettingsBtn"
- title="打开设置" aria-label="打开设置" data-action="navigateTo" data-arg="settings">
+            title="打开设置" aria-label="打开设置" data-action="openSettingsModal">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round"
               stroke-linejoin="round" aria-hidden="true">
               <path d="M12 15.5A3.5 3.5 0 1 0 12 8a3.5 3.5 0 0 0 0 7.5Z"></path>
@@ -163,19 +163,19 @@
               aria-hidden="true"></span>
           <span class="platform-rail-label">Windsurf</span>
         </button>
-        <button type="button" class="platform-rail-item" data-platform-rail="codex" draggable="true"
- data-action="openPlatformPage" data-arg="codex">
-          <span class="platform-rail-handle" draggable="true" aria-hidden="true"></span>
-          <span class="platform-rail-icon"><img src="./assets/icons/platform-codex.svg" alt=""
-              aria-hidden="true"></span>
-          <span class="platform-rail-label">Codex</span>
-        </button>
         <button type="button" class="platform-rail-item" data-platform-rail="cursor" draggable="true"
  data-action="openPlatformPage" data-arg="cursor">
           <span class="platform-rail-handle" draggable="true" aria-hidden="true"></span>
           <span class="platform-rail-icon"><img src="./assets/icons/platform-cursor.svg" alt=""
               aria-hidden="true"></span>
           <span class="platform-rail-label">Cursor</span>
+        </button>
+        <button type="button" class="platform-rail-item" data-platform-rail="codex" draggable="true"
+ data-action="openPlatformPage" data-arg="codex">
+          <span class="platform-rail-handle" draggable="true" aria-hidden="true"></span>
+          <span class="platform-rail-icon"><img src="./assets/icons/platform-codex.svg" alt=""
+              aria-hidden="true"></span>
+          <span class="platform-rail-label">Codex</span>
         </button>
         <button type="button" class="platform-rail-item" data-platform-rail="claude-code" draggable="true"
  data-action="openPlatformPage" data-arg="claude-code">
@@ -198,12 +198,12 @@
               aria-hidden="true"></span>
           <span class="platform-rail-label">WorkBuddy</span>
         </button>
-        <button type="button" class="platform-rail-item" data-platform-rail="opencode" draggable="true"
- data-action="openPlatformPage" data-arg="opencode">
+        <button type="button" class="platform-rail-item" data-platform-rail="grok" draggable="true"
+ data-action="openPlatformPage" data-arg="grok">
           <span class="platform-rail-handle" draggable="true" aria-hidden="true"></span>
-          <span class="platform-rail-icon"><img src="./assets/icons/platform-opencode.svg" alt=""
+          <span class="platform-rail-icon"><img src="./assets/icons/platform-grok.svg" alt=""
               aria-hidden="true"></span>
-          <span class="platform-rail-label">OpenCode</span>
+          <span class="platform-rail-label">Grok</span>
         </button>
         <button type="button" class="platform-rail-item" data-platform-rail="zcode" draggable="true"
  data-action="openPlatformPage" data-arg="zcode">
@@ -212,12 +212,12 @@
               aria-hidden="true"></span>
           <span class="platform-rail-label">ZCode</span>
         </button>
-        <button type="button" class="platform-rail-item" data-platform-rail="grok" draggable="true"
- data-action="openPlatformPage" data-arg="grok">
+        <button type="button" class="platform-rail-item" data-platform-rail="opencode" draggable="true"
+ data-action="openPlatformPage" data-arg="opencode">
           <span class="platform-rail-handle" draggable="true" aria-hidden="true"></span>
-          <span class="platform-rail-icon"><img src="./assets/icons/platform-grok.svg" alt=""
+          <span class="platform-rail-icon"><img src="./assets/icons/platform-opencode.svg" alt=""
               aria-hidden="true"></span>
-          <span class="platform-rail-label">Grok</span>
+          <span class="platform-rail-label">OpenCode</span>
         </button>
           </div>
         </div>
@@ -256,6 +256,7 @@
     <!-- @include partials/pages/settings.html -->
       </main>
     <!-- @include partials/shell-close.html -->
+    <!-- @include partials/modals/settings-modal.html -->
     <!-- @include partials/modals/platform-settings-modal.html -->
     <!-- @include partials/modals/eval-check-modal.html -->
     <!-- @include partials/modals/custom-alert-modal.html -->

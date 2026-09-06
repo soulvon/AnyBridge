@@ -1800,103 +1800,139 @@
   transition: all 0.2s ease-in-out;
 }
 
-/* ═══════ PLATFORM SETTINGS MODAL (Devin / Windsurf) ═══════ */
-#platform-settings-modal.modal-overlay {
+/* ═══════ 平台接入大模态弹窗 (Devin / Windsurf / Cursor) ═══════ */
+#platform-settings-modal.modal-overlay,
+#cursorSettingsModal.modal-overlay {
   background: rgba(0, 0, 0, 0.45);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
   z-index: 9999;
 }
 
-#platform-settings-modal .platform-settings-modal {
-  width: min(840px, calc(100vw - 36px));
-  max-width: 840px;
-  min-height: 520px;
-  height: auto;
-  max-height: min(86vh, 700px);
+.modal-container.platform-settings-modal,
+.platform-settings-modal,
+#platform-settings-modal .platform-settings-modal,
+#cursorSettingsModal .platform-settings-modal {
+  width: min(960px, calc(100vw - 48px)) !important;
+  max-width: 960px !important;
+  min-height: 560px !important;
+  height: min(680px, calc(90vh - 36px)) !important;
+  max-height: min(720px, calc(90vh - 36px)) !important;
+  display: flex !important;
+  flex-direction: column !important;
+  padding: 0 !important;
+  border-radius: 16px !important;
+  border: 1px solid var(--border) !important;
+  background: var(--bg-card) !important;
+  box-shadow: 0 16px 40px -10px rgba(0, 0, 0, 0.2) !important;
+  overflow: hidden !important;
+}
+
+.platform-settings-modal .modal-header,
+#platform-settings-modal .modal-header,
+#cursorSettingsModal .modal-header {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  margin-bottom: 0 !important;
+  padding: 16px 24px !important;
+  border-bottom: 1px solid var(--border) !important;
+  background: var(--bg-card) !important;
+  flex-shrink: 0 !important;
+}
+
+.platform-settings-modal .modal-title,
+#platform-settings-modal .modal-title,
+#cursorSettingsModal .modal-title {
+  font-size: 17px !important;
+  font-weight: 700 !important;
+  color: var(--text-primary) !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 10px !important;
+  letter-spacing: 0 !important;
+  margin: 0 !important;
+}
+
+.platform-settings-modal .modal-close-icon,
+#platform-settings-modal .modal-close-icon,
+#cursorSettingsModal .modal-close-icon {
+  margin: 0 !important;
+}
+
+/* ═══════ 左选项右详情布局 (Master-Detail) ═══════ */
+.platform-settings-layout {
   display: flex;
-  flex-direction: column;
-  padding: 0;
-  border-radius: 16px;
-  border: 1px solid var(--border);
-  background: var(--bg-card);
-  box-shadow: 0 16px 40px -10px rgba(0, 0, 0, 0.2);
+  flex: 1 1 auto;
+  min-height: 0;
   overflow: hidden;
 }
 
-#platform-settings-modal .modal-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 0;
-  padding: 18px 24px 12px;
-  border-bottom: 1px solid var(--border);
-  background: var(--bg-card);
+/* ── 左侧侧边栏 ── */
+.platform-settings-nav {
+  width: 190px;
   flex-shrink: 0;
-}
-
-#platform-settings-modal .modal-title {
-  font-size: 17px;
-  font-weight: 700;
-  color: var(--text-primary);
+  border-right: 1px solid var(--border);
+  background: var(--bg-card);
+  padding: 16px 12px;
   display: flex;
-  align-items: center;
-  gap: 10px;
-  letter-spacing: 0;
-  margin: 0;
-}
-
-#platform-settings-modal .modal-close-icon {
-  margin: 0;
-}
-
-/* ── 顶部现代分段胶囊选项卡 ── */
-.platform-modal-tabs {
-  display: flex;
-  align-items: center;
+  flex-direction: column;
   gap: 6px;
-  padding: 10px 24px;
-  border-bottom: 1px solid var(--border);
-  background: var(--bg-card);
-  flex-shrink: 0;
 }
 
-.platform-modal-tab {
-  padding: 6px 16px;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--text-secondary);
-  background: var(--bg-input);
-  border: 1px solid var(--border);
-  border-radius: 9px;
-  cursor: pointer;
-  display: inline-flex;
+/* ── 左侧导航项：统一适度圆角，彻底移除生硬左侧高亮竖条 ── */
+.platform-settings-nav-item {
+  display: flex;
   align-items: center;
-  gap: 7px;
+  gap: 9px;
+  width: 100%;
+  padding: 9px 14px;
+  font-size: 13.5px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  background: transparent;
+  border: none;
+  border-left: none !important; /* 坚决不用左边高亮竖条 */
+  border-radius: 8px;
+  cursor: pointer;
   transition: all 0.15s ease;
+  text-align: left;
 }
 
-.platform-modal-tab:hover {
+.platform-settings-nav-item svg {
+  flex-shrink: 0;
+  color: var(--text-muted);
+  transition: color 0.15s ease;
+}
+
+.platform-settings-nav-item:hover {
   background: var(--bg-hover);
-  border-color: var(--border-strong);
   color: var(--text-primary);
 }
 
-.platform-modal-tab.active {
-  background: var(--accent-light);
-  border-color: color-mix(in srgb, var(--accent) 35%, transparent);
-  color: var(--accent);
-  font-weight: 700;
+.platform-settings-nav-item:hover svg {
+  color: var(--text-primary);
 }
 
-/* ── 弹窗内容区 ── */
-.platform-settings-body {
+.platform-settings-nav-item.active {
+  background: var(--accent-light);
+  color: var(--accent);
+  font-weight: 600;
+  border-left: none !important;
+}
+
+.platform-settings-nav-item.active svg {
+  color: var(--accent);
+}
+
+/* ── 右侧详情内容容器 ── */
+.platform-settings-detail {
   flex: 1 1 auto;
-  min-height: 400px;
-  max-height: min(560px, calc(80vh - 160px));
+  min-width: 0;
+  min-height: 0;
   overflow-y: auto;
-  padding: 18px 24px;
-  margin-bottom: 0;
+  padding: 20px 26px;
+  background: var(--bg-card);
 }
 
 .platform-settings-panel {
@@ -1907,102 +1943,122 @@
   display: block;
 }
 
-/* ── 环境检测工具栏 ── */
-.platform-health-toolbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 10px;
+/* ── 环境检测控制区 (无多余大框外壳，纯净提示文字) ── */
+.platform-health-control-area {
   margin-bottom: 14px;
-  flex-shrink: 0;
 }
 
-.platform-health-actions-left,
-.platform-health-actions-right {
+.platform-settings-modal .platform-health-summary,
+.platform-settings-modal .platform-health-summary-box,
+.platform-settings-modal .health-summary,
+#platform-settings-modal .platform-health-summary,
+#cursorSettingsModal .platform-health-summary {
+  padding: 0;
+  border: none !important;
+  border-radius: 0;
+  background: transparent !important;
+  box-shadow: none !important;
+  margin-top: 0;
+  margin-bottom: 14px;
+  min-height: auto;
   display: flex;
+  align-items: center;
+}
+
+.platform-settings-modal .health-summary-empty,
+#platform-settings-modal .health-summary-empty,
+#cursorSettingsModal .health-summary-empty {
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+.platform-settings-modal .health-summary-inner,
+#platform-settings-modal .health-summary-inner,
+#cursorSettingsModal .health-summary-inner {
+  display: inline-flex;
   align-items: center;
   gap: 8px;
-  flex-wrap: wrap;
-}
-
-/* ── 状态摘要条 ── */
-.platform-health-summary-box {
-  padding: 10px 14px;
-  border-radius: 8px;
-  border: 1px solid var(--border);
-  background: var(--bg-input);
-  margin-bottom: 14px;
-  min-height: 42px;
-  display: flex;
-  align-items: center;
-}
-
-.health-summary-inner {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 12.5px;
+  font-size: 13px;
   font-weight: 600;
 }
 
-.health-summary-inner.status-ok { color: var(--success); }
-.health-summary-inner.status-warn { color: var(--warning); }
-.health-summary-inner.status-err { color: var(--danger); }
-.health-summary-inner.status-pending { color: var(--text-secondary); }
+.platform-settings-modal .health-summary-inner.status-ok { color: var(--success); }
+.platform-settings-modal .health-summary-inner.status-warn { color: var(--warning); }
+.platform-settings-modal .health-summary-inner.status-err { color: var(--danger); }
+.platform-settings-modal .health-summary-inner.status-pending { color: var(--text-secondary); }
 
-.health-summary-icon {
+.platform-settings-modal .health-summary-icon {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
 }
 
-.health-summary-text {
+.platform-settings-modal .health-summary-text {
   line-height: 1.4;
 }
 
-/* ── 诊断分组卡片 ── */
+.platform-health-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.platform-health-actions-left,
+.platform-health-actions-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.platform-health-actions-left .btn-primary {
+  padding: 5px 12px;
+  font-size: 12px;
+  border-radius: 7px;
+}
+
+.platform-health-actions-left .btn-ghost,
+.platform-health-actions-right .btn-ghost {
+  padding: 4px 9px;
+  font-size: 11.5px;
+  border-radius: 7px;
+}
+
+/* ── 诊断结果列表 (彻底扁平化，去除沉重大卡片外框) ── */
 .platform-settings-modal .health-groups {
   display: flex !important;
   flex-direction: column !important;
-  gap: 10px !important;
-  margin-top: 10px !important;
+  gap: 0 !important;
+  margin-top: 4px !important;
 }
 
 .platform-settings-modal .health-group-card {
-  border: 1px solid var(--border) !important;
-  border-radius: 12px !important;
-  background: var(--bg-card) !important;
-  padding: 14px 16px !important;
+  background: transparent !important;
+  border: none !important;
+  border-bottom: 1px solid var(--border-subtle) !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  padding: 10px 0 !important;
   margin: 0 !important;
-  box-shadow: var(--shadow-sm) !important;
-  overflow: hidden !important;
-  transition: border-color 0.15s ease !important;
+  overflow: visible !important;
+  transition: none !important;
 }
 
-.platform-settings-modal .health-group-card.health-status-err {
-  border-color: color-mix(in srgb, var(--danger) 35%, var(--border)) !important;
-}
-
-.platform-settings-modal .health-group-card.health-status-warn {
-  border-color: color-mix(in srgb, var(--warning) 35%, var(--border)) !important;
-}
-
-.platform-settings-modal .health-group-card.health-status-ok {
-  border-color: var(--border) !important;
-}
-
-.platform-settings-modal .health-group-card:hover {
-  border-color: color-mix(in srgb, var(--accent) 30%, var(--border)) !important;
+.platform-settings-modal .health-group-card:last-child {
+  border-bottom: none !important;
 }
 
 .platform-settings-modal .health-group-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
-  margin-bottom: 10px;
+  gap: 8px;
+  margin-bottom: 6px;
   padding: 0;
   background: transparent;
   border-bottom: 0;
@@ -2018,8 +2074,8 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 24px;
-  height: 24px;
+  width: 22px;
+  height: 22px;
   border-radius: 6px;
   background: var(--bg-input);
   color: var(--accent);
@@ -2028,44 +2084,41 @@
 }
 
 .health-group-title {
-  font-size: 13px;
-  font-weight: 700;
+  font-size: 12.5px;
+  font-weight: 600;
   color: var(--text-primary);
 }
 
 .health-badge {
   font-size: 11px;
   font-weight: 600;
-  padding: 2.5px 9px;
-  border-radius: 8px;
+  padding: 1.5px 7px;
+  border-radius: 6px;
   display: inline-flex;
   align-items: center;
-  gap: 5px;
+  gap: 4px;
 }
 
 .health-badge.ok {
   background: rgba(16, 185, 129, 0.1);
   color: var(--success);
-  border: 1px solid rgba(16, 185, 129, 0.2);
 }
 
 .health-badge.warn {
   background: rgba(245, 158, 11, 0.1);
   color: var(--warning);
-  border: 1px solid rgba(245, 158, 11, 0.2);
 }
 
 .health-badge.err {
   background: rgba(239, 68, 68, 0.1);
   color: var(--danger);
-  border: 1px solid rgba(239, 68, 68, 0.2);
 }
 
 .health-group-issues {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  padding-left: 32px;
+  gap: 5px;
+  padding-left: 30px;
 }
 
 .health-issue {
@@ -2078,25 +2131,25 @@
 
 .health-issue-tag {
   flex-shrink: 0;
-  font-size: 10.5px;
-  font-weight: 700;
-  padding: 2px 7px;
-  border-radius: 6px;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 1px 5px;
+  border-radius: 4px;
   margin-top: 1px;
 }
 
 .health-issue-tag.ok {
-  background: rgba(16, 185, 129, 0.12);
+  background: rgba(16, 185, 129, 0.1);
   color: var(--success);
 }
 
 .health-issue-tag.warn {
-  background: rgba(245, 158, 11, 0.12);
+  background: rgba(245, 158, 11, 0.1);
   color: var(--warning);
 }
 
 .health-issue-tag.err {
-  background: rgba(239, 68, 68, 0.12);
+  background: rgba(239, 68, 68, 0.1);
   color: var(--danger);
 }
 
@@ -2121,16 +2174,151 @@
   font-size: 11px;
   color: var(--text-primary);
   background: var(--bg-input);
-  padding: 2px 6px;
-  border-radius: 6px;
+  padding: 1px 5px;
+  border-radius: 4px;
   border: 1px solid var(--border);
 }
 
 .health-kv-divider {
-  margin: 0 4px;
   color: var(--text-muted);
-  opacity: 0.5;
+  margin: 0 4px;
 }
+
+/* ═══════ 全局设置模态弹窗 (#settings-modal) ═══════ */
+#settings-modal .settings-modal {
+  width: min(960px, calc(100vw - 48px));
+  max-width: 960px;
+  min-height: 560px;
+  height: min(680px, calc(90vh - 36px));
+  max-height: min(720px, calc(90vh - 36px));
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  border-radius: 16px;
+  border: 1px solid var(--border);
+  background: var(--bg-card);
+  box-shadow: 0 16px 40px -10px rgba(0, 0, 0, 0.2);
+  overflow: hidden;
+}
+
+#settings-modal .modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0;
+  padding: 16px 24px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-card);
+  flex-shrink: 0;
+}
+
+#settings-modal .modal-title {
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  letter-spacing: 0;
+  margin: 0;
+}
+
+#settings-modal .modal-close-icon {
+  margin: 0;
+}
+
+/* ── 左选项右详情布局 (Master-Detail) ── */
+.settings-modal-layout {
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* ── 左侧分类侧边栏 ── */
+.settings-modal-nav {
+  width: 190px;
+  flex-shrink: 0;
+  border-right: 1px solid var(--border);
+  background: var(--bg-card);
+  padding: 16px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* ── 左侧导航项 ── */
+.settings-modal-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 9px 14px;
+  font-size: 13.5px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  background: transparent;
+  border: none;
+  border-left: none !important;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  text-align: left;
+}
+
+.settings-modal-nav-item svg {
+  flex-shrink: 0;
+  color: var(--text-muted);
+  transition: color 0.15s ease;
+}
+
+.settings-modal-nav-item:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.settings-modal-nav-item:hover svg {
+  color: var(--text-primary);
+}
+
+.settings-modal-nav-item.active {
+  background: var(--accent-light);
+  color: var(--accent);
+  font-weight: 600;
+  border-left: none !important;
+}
+
+.settings-modal-nav-item.active svg {
+  color: var(--accent);
+}
+
+/* ── 右侧详情内容容器 ── */
+.settings-modal-detail {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 20px 28px;
+  background: var(--bg-card);
+}
+
+.settings-modal-detail .settings-panel {
+  display: none;
+}
+
+.settings-modal-detail .settings-panel.active {
+  display: block;
+}
+
+/* ── 底部关闭按钮栏 ── */
+#settings-modal .modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  padding: 12px 24px;
+  border-top: 1px solid var(--border);
+  background: var(--bg-card);
+}
+
 
 /* ── 骨架屏样式 ── */
 @keyframes health-skeleton-shimmer {
@@ -2203,110 +2391,112 @@
   max-width: 50%;
 }
 
-/* ── 环境检测主卡片与操作台 ── */
-.platform-health-hero-card {
-  background: var(--bg-card);
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  padding: 16px 18px;
-  margin-bottom: 14px;
-  box-shadow: var(--shadow-sm);
-}
-
-.platform-health-hero-card .platform-health-summary-box {
-  margin-bottom: 14px;
+.health-install-progress {
+  padding: 8px 12px;
+  border-radius: 7px;
   background: var(--bg-input);
   border: 1px solid var(--border);
-  border-radius: 9px;
-  padding: 12px 14px;
-  min-height: 44px;
+  margin-top: 8px;
 }
 
-.platform-health-hero-card .platform-health-toolbar {
-  margin-bottom: 0;
-}
-
-.platform-btn-group {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  flex-wrap: wrap;
-}
-
-.health-groups-wrapper {
-  margin-top: 4px;
-}
-
-/* ── 接入设置多模块卡片区 ── */
-.platform-settings-sections {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-}
-
-.platform-section-card {
-  background: var(--bg-card);
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  padding: 16px 18px;
-  box-shadow: var(--shadow-sm);
-  transition: border-color 0.15s ease;
-}
-
-.platform-section-card:hover {
-  border-color: color-mix(in srgb, var(--accent) 30%, var(--border));
-}
-
-.platform-section-title {
+.health-install-progress-top {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 13.5px;
-  font-weight: 700;
-  color: var(--text-primary);
-  margin-bottom: 12px;
-  padding-bottom: 8px;
-  border-bottom: 1px solid var(--border-subtle);
+  font-size: 12px;
+  margin-bottom: 6px;
 }
 
-.platform-section-title svg {
-  color: var(--accent);
+.health-install-progress-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent);
+  display: inline-block;
+  flex-shrink: 0;
 }
 
-.platform-section-body .setting-row {
+.health-install-progress-text {
+  flex: 1 1 auto;
+  color: var(--text-secondary);
+}
+
+.health-install-progress-percent {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.health-install-progress-track {
+  height: 4px;
+  border-radius: 2px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  overflow: hidden;
+}
+
+.health-install-progress-fill {
+  height: 100%;
+  background: var(--accent);
+  transition: width 0.2s ease;
+}
+
+/* ── 骨架屏（体检中占位） ── */
+.health-skeleton-card {
+  pointer-events: none;
+  border: none !important;
+  border-bottom: 1px solid var(--border-subtle) !important;
+  background: transparent !important;
+  min-height: 50px;
+  box-sizing: border-box;
+  padding: 8px 0 !important;
+}
+
+/* ── 接入设置极简平铺列表 ── */
+.platform-settings-access-clean {
+  display: flex;
+  flex-direction: column;
+}
+
+.platform-settings-access-clean .setting-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 10px 0;
+  padding: 11px 0;
   border-bottom: 1px solid var(--border-subtle);
 }
 
-.platform-section-body .setting-row:last-child {
+.platform-settings-access-clean .setting-row:last-child {
   border-bottom: none;
-  padding-bottom: 0;
 }
 
-.platform-section-body .setting-row:first-child {
+.platform-settings-access-clean .setting-row:first-child {
   padding-top: 0;
 }
 
-.platform-section-body .setting-row-stacked {
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 10px;
+.platform-settings-modal .setting-row-stacked,
+.platform-settings-access-clean .setting-row-stacked {
+  flex-direction: column !important;
+  align-items: flex-start !important;
+  gap: 8px !important;
 }
 
-.platform-section-body .setting-path-ctrl {
-  width: 100%;
-  display: flex;
-  align-items: center;
-  gap: 8px;
+.platform-settings-modal .setting-path-ctrl,
+.platform-settings-access-clean .setting-path-ctrl {
+  width: 100% !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: flex-start !important;
+  gap: 8px !important;
 }
 
-.platform-section-body .setting-path-ctrl .field-input {
-  flex: 1 1 auto;
-  min-width: 0;
-  border-radius: 8px;
+.platform-settings-modal .setting-path-ctrl .field-input,
+.platform-settings-access-clean .setting-path-ctrl .field-input {
+  flex: 1 1 auto !important;
+  width: 100% !important;
+  min-width: 0 !important;
+  max-width: none !important;
+  border-radius: 7px !important;
 }
 
 .platform-port-badges {
@@ -2319,11 +2509,11 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 4px 10px;
+  padding: 3px 8px;
   background: var(--bg-input);
   border: 1px solid var(--border);
-  border-radius: 8px;
-  font-size: 12px;
+  border-radius: 6px;
+  font-size: 11.5px;
 }
 
 .platform-port-pill .pill-label {
@@ -2332,13 +2522,12 @@
 
 .platform-port-pill code {
   font-family: var(--font-mono);
-  font-size: 11.5px;
   font-weight: 700;
   color: var(--accent);
 }
 
 .platform-settings-modal .modal-footer {
-  padding: 12px 24px;
+  padding: 10px 20px;
   border-top: 1px solid var(--border);
   background: var(--bg-card);
   display: flex;
@@ -3590,7 +3779,7 @@
   width: 16px;
   height: 16px;
   border-radius: 999px;
-  background: var(--text-inverse);
+  background: #FFFFFF;
   transition: transform .16s ease;
   box-shadow: 0 1px 3px rgba(0,0,0,0.15);
 }

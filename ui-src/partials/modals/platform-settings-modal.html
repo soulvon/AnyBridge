@@ -49,7 +49,7 @@
             
             <!-- 状态提示与操作栏 -->
             <div class="platform-health-control-area">
-              <div class="health-summary platform-health-summary-box" data-oid="health-summary">
+              <div class="platform-health-summary" data-oid="health-summary">
                 <div class="health-summary-empty">点击「一键检测」开始诊断 AnyBridge 运行环境（证书、路径、端口、模型映射与网络连通性）。</div>
               </div>
 
@@ -58,16 +58,16 @@
                   <button type="button" class="btn-primary" data-oid="health-run-btn" data-action="runHealthcheck">
                     <span class="health-btn-icon">▶</span> 一键检测
                   </button>
-                  <button type="button" class="btn-ghost secondary" data-oid="health-generate-cert-btn" data-action="generateCertsFromHealth">
+                  <button type="button" class="btn-ghost success" data-oid="health-generate-cert-btn" data-action="generateCertsFromHealth">
                     生成证书
                   </button>
-                  <button type="button" class="btn-ghost secondary" data-oid="health-install-cert-btn" data-action="installCaFromHealth">
+                  <button type="button" class="btn-ghost success" data-oid="health-install-cert-btn" data-action="installCaFromHealth">
                     安装证书
                   </button>
-                  <button type="button" class="btn-ghost secondary" data-oid="health-reinstall-cert-btn" data-action="reinstallCaFromHealth" title="清理旧证书、重新生成并安装">
+                  <button type="button" class="btn-ghost warn" data-oid="health-reinstall-cert-btn" data-action="reinstallCaFromHealth" title="清理旧证书、重新生成并安装">
                     清理重装
                   </button>
-                  <button type="button" class="btn-ghost secondary" data-oid="health-uninstall-cert-btn" data-action="uninstallCaFromHealth">
+                  <button type="button" class="btn-ghost danger health-danger-btn" data-oid="health-uninstall-cert-btn" data-action="uninstallCaFromHealth">
                     卸载证书
                   </button>
                   <button type="button" class="btn-ghost warn" data-oid="health-cleanup-legacy-btn" style="display:none;" data-action="cleanupLegacyCaFromHealth">
@@ -75,10 +75,10 @@
                   </button>
                 </div>
                 <div class="platform-health-actions-right">
-                  <button type="button" class="btn-ghost secondary" data-oid="health-copy-md-btn" disabled data-action="copyHealthMarkdown">
+                  <button type="button" class="btn-ghost accent" data-oid="health-copy-md-btn" disabled data-action="copyHealthMarkdown">
                     复制报告
                   </button>
-                  <button type="button" class="btn-ghost secondary" data-oid="health-export-md-btn" disabled data-action="exportHealthMarkdown">
+                  <button type="button" class="btn-ghost accent" data-oid="health-export-md-btn" disabled data-action="exportHealthMarkdown">
                     导出报告
                   </button>
                 </div>
@@ -133,9 +133,9 @@
                   <div class="setting-desc" data-oid="cert-status">首次使用请生成证书；切换到代理时会写入证书信任配置。</div>
                 </div>
                 <div class="setting-ctrl">
-                  <button type="button" class="btn-ghost secondary" data-action="openCertsDir">证书目录</button>
-                  <button type="button" class="btn-ghost secondary" data-action="openConfigDir">配置目录</button>
-                  <button type="button" class="btn-ghost secondary" data-action="generateCerts">生成证书</button>
+                  <button type="button" class="btn-ghost accent" data-action="openCertsDir">证书目录</button>
+                  <button type="button" class="btn-ghost accent" data-action="openConfigDir">配置目录</button>
+                  <button type="button" class="btn-ghost success" data-action="generateCerts">生成证书</button>
                 </div>
               </div>
 
@@ -146,8 +146,8 @@
                 </div>
                 <div class="setting-ctrl setting-path-ctrl">
                   <input class="field-input" data-oid="idePath" placeholder="自动探测中或手动指定 IDE 可执行文件路径...">
-                  <button type="button" class="btn-ghost secondary" data-action="detectIdePath">探测</button>
-                  <button type="button" class="btn-ghost secondary" data-action="saveIdePath">保存</button>
+                  <button type="button" class="btn-ghost accent" data-action="detectIdePath">探测</button>
+                  <button type="button" class="btn-ghost success" data-action="saveIdePath">保存</button>
                 </div>
               </div>
 

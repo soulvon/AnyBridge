@@ -1641,16 +1641,12 @@
   white-space: nowrap;
 }
 
-.codex-config-badge,
-.codex-current-action {
+.codex-config-badge {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   border-radius: 999px;
   white-space: nowrap;
-}
-
-.codex-config-badge {
   min-height: 22px;
   padding: 0 8px;
   font-size: 11px;
@@ -1666,28 +1662,6 @@
 .codex-config-badge.info {
   background: rgba(14, 165, 233, 0.1);
   color: #0284c7;
-}
-
-.codex-current-action {
-  min-width: 92px;
-  height: 36px;
-  padding: 0 14px;
-  border: 1px solid rgba(14, 165, 233, 0.24);
-  background: rgba(255, 255, 255, 0.42);
-  color: #0369a1;
-  font-size: 12px;
-  font-weight: 900;
-  line-height: 1;
-  text-align: center;
-  box-sizing: border-box;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.66), 0 10px 22px rgba(15, 23, 42, 0.06);
-  backdrop-filter: blur(12px) saturate(1.12);
-}
-
-.codex-config-card.official .codex-current-action {
-  border-color: rgba(16, 185, 129, 0.24);
-  background: rgba(255, 255, 255, 0.42);
-  color: #047857;
 }
 
 .codex-config-main p {
@@ -1735,32 +1709,47 @@
   min-width: 0;
 }
 
+.codex-card-icon-actions {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.codex-card-main-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  width: 92px;
+  min-width: 92px;
+  flex: 0 0 92px;
+}
+
 .codex-card-action {
   display: inline-flex !important;
   align-items: center;
   justify-content: center;
-  min-width: 70px;
-  height: 36px;
-  border-radius: 9px;
-  border: 1px solid rgba(148, 163, 184, 0.24) !important;
-  background: rgba(255, 255, 255, 0.42) !important;
+  min-width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  border: 1px solid var(--border) !important;
+  background: var(--bg-input) !important;
   color: var(--text-secondary) !important;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.66), 0 10px 22px rgba(15, 23, 42, 0.06) !important;
-  backdrop-filter: blur(12px) saturate(1.12);
-  padding: 0 13px;
+  box-shadow: none !important;
+  backdrop-filter: none;
+  padding: 0;
   font-size: 12px;
-  font-weight: 850;
+  font-weight: 700;
   line-height: 1 !important;
   text-align: center;
   box-sizing: border-box;
-  transition: border-color 0.16s ease, background 0.16s ease, color 0.16s ease, transform 0.16s ease, box-shadow 0.16s ease;
+  transition: border-color 0.16s ease, background 0.16s ease, color 0.16s ease, transform 0.16s ease;
 }
 
 .codex-card-action:hover:not(:disabled) {
-  border-color: rgba(14, 165, 233, 0.32) !important;
-  background: rgba(255, 255, 255, 0.56) !important;
-  color: #0369a1 !important;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72), 0 12px 24px rgba(15, 23, 42, 0.08) !important;
+  border-color: var(--accent) !important;
+  background: var(--accent-light) !important;
+  color: var(--accent) !important;
 }
 
 .codex-card-action:active:not(:disabled) {
@@ -1769,35 +1758,40 @@
 
 .codex-card-action:disabled {
   cursor: not-allowed;
-  opacity: 0.68;
+  opacity: 0.6;
 }
 
 .codex-icon-action {
-  width: 36px;
-  min-width: 36px;
-  padding: 0;
-}
-
-.codex-icon-action:hover:not(:disabled) {
-  color: var(--accent) !important;
+  width: 32px !important;
+  min-width: 32px !important;
+  height: 32px !important;
+  padding: 0 !important;
+  border-radius: 8px !important;
 }
 
 .codex-delete-action {
-  color: #dc2626 !important;
+  color: var(--text-secondary) !important;
 }
 
 .codex-delete-action:hover:not(:disabled) {
-  border-color: rgba(220, 38, 38, 0.26) !important;
-  background: rgba(255, 255, 255, 0.56) !important;
-  color: #b91c1c !important;
+  border-color: #ef4444 !important;
+  background: rgba(239, 68, 68, 0.1) !important;
+  color: #ef4444 !important;
+}
+
+[data-theme="dark"] .codex-delete-action:hover:not(:disabled) {
+  border-color: #f87171 !important;
+  background: rgba(239, 68, 68, 0.15) !important;
+  color: #f87171 !important;
 }
 
 .codex-switch-action {
   width: 92px;
   min-width: 92px;
+  height: 32px;
   flex: 0 0 92px;
   border: 1px solid rgba(255, 255, 255, 0.35) !important;
-  border-radius: 9px;
+  border-radius: 8px;
   background:
     radial-gradient(ellipse 80% 60% at 20% 0%, rgba(255, 255, 255, 0.22) 0%, transparent 60%),
     linear-gradient(135deg, #149ee8 0%, #0b8bd8 55%, #0b62d4 100%) !important;
@@ -1808,7 +1802,11 @@
     0 0 0 1px rgba(20, 158, 232, 0.18),
     0 8px 18px -10px rgba(11, 98, 212, 0.62),
     0 2px 6px rgba(0, 0, 0, 0.06) !important;
+  font-size: 12px;
+  font-weight: 850;
+  line-height: 1;
   text-shadow: none;
+  cursor: pointer;
 }
 
 .codex-switch-action:hover:not(:disabled) {
@@ -1827,14 +1825,14 @@
 
 .codex-current-action {
   display: inline-flex;
-  width: 76px;
-  min-width: 76px;
-  height: 36px;
-  flex: 0 0 76px;
+  width: 92px;
+  min-width: 92px;
+  height: 32px;
+  flex: 0 0 92px;
   align-items: center;
   justify-content: center;
   border: 1px solid rgba(255, 255, 255, 0.35);
-  border-radius: 9px;
+  border-radius: 8px;
   background:
     radial-gradient(ellipse 80% 60% at 20% 0%, rgba(255, 255, 255, 0.22) 0%, transparent 60%),
     linear-gradient(135deg, #14b89a 0%, #0e9a87 55%, #087e8b 100%);
@@ -2267,9 +2265,11 @@
 button.codex-reconfigure-action {
   width: 92px;
   min-width: 92px;
+  height: 32px;
   flex: 0 0 92px;
   cursor: pointer;
-  border: none;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  border-radius: 8px;
   font-family: inherit;
 }
 
@@ -7874,8 +7874,14 @@ td.display-name-cell {
   align-items: center;
   justify-content: center;
   border-radius: 10px;
+  background: #FFFFFF;
   overflow: hidden;
 }
+
+[data-theme="dark"] .platform-console-icon {
+  background: #FFFFFF;
+}
+
 .platform-console-icon img {
   width: 34px;
   height: 34px;
@@ -8595,10 +8601,10 @@ td.display-name-cell {
   height: 16px;
   left: 2px;
   top: 2px;
-  background: var(--text-inverse);
+  background: #FFFFFF;
   border-radius: 50%;
   transition: transform 0.22s ease;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.15);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.25);
 }
 
 .toggle-switch input:checked + .toggle-slider {

@@ -52,13 +52,13 @@
                     <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
                   </svg>
                 </button>
-                <button class="btn-ghost secondary model-map-command-btn" title="Cursor 接入设置（Core 与证书）" data-action="openCursorSettingsModal">
+                <button class="btn-ghost secondary model-map-command-btn" title="Cursor 设置（Core 与证书）" data-action="openCursorSettingsModal">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"
                     stroke-linecap="round" stroke-linejoin="round">
                     <circle cx="12" cy="12" r="3"></circle>
                     <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
                   </svg>
-                  <span>接入设置</span>
+                  <span>设置</span>
                 </button>
               </div>
             </div>
@@ -271,31 +271,256 @@
 
         <!-- ═══════ CURSOR 接入设置模态弹窗 ═══════ -->
         <div class="modal-overlay" id="cursorSettingsModal" role="dialog" aria-modal="true" aria-labelledby="cursorSettingsModalTitle" data-action="closeCursorSettingsModal" data-only-self>
-          <div class="modal-container" style="max-width: 500px;">
-            <div class="modal-header" style="justify-content:space-between;">
-              <div class="modal-title" id="cursorSettingsModalTitle">Cursor 接入设置</div>
-              <button class="btn-ghost icon-btn" data-action="closeCursorSettingsModal" aria-label="关闭">✕</button>
-            </div>
-            <div class="modal-body">
-              <div style="margin-bottom: 16px;">
-                <strong style="display:block;font-size:13px;color:var(--text-primary);margin-bottom:4px;">CA 根证书管理</strong>
-                <span style="display:block;font-size:12px;color:var(--text-muted);margin-bottom:8px;">AnyBridge 根证书用于本地 Connect-RPC TLS 安全握手。</span>
-                <div style="display:flex;gap:8px;">
-                  <button class="btn-ghost accent" data-action="cursorInstallCertAction">一键安装/更新证书</button>
-                </div>
+          <div class="modal-container platform-settings-modal cursor-settings-modal">
+            
+            <!-- 头部：标题与关闭 -->
+            <div class="modal-header">
+              <div class="modal-title">
+                <span class="modal-icon" style="color: var(--accent);">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="3"></circle>
+                    <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.2a1.7 1.7 0 0 0-1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.2a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3 1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.2a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8 1.7 1.7 0 0 0 1.5 1h.2a2 2 0 1 1 0 4h-.2a1.7 1.7 0 0 0-1.5 1z"></path>
+                  </svg>
+                </span>
+                <span id="cursorSettingsModalTitle">Cursor 设置</span>
               </div>
-              <div style="margin-bottom: 16px;">
-                <strong style="display:block;font-size:13px;color:var(--text-primary);margin-bottom:4px;">Core 运行控制</strong>
-                <span style="display:block;font-size:12px;color:var(--text-muted);margin-bottom:8px;">Rust Cursor Core 服务负责拦截与中继 Cursor 自定义模型流量。</span>
-                <div style="display:flex;gap:8px;flex-wrap:wrap;">
-                  <button class="btn-ghost secondary" data-action="cursorRestartCoreAction">重启 Core 进程</button>
-                  <button class="btn-ghost secondary" data-action="cursorRestartIdeAction">重启 Cursor IDE</button>
-                  <button class="btn-ghost secondary" data-action="cursorPreflightAction">运行环境预检</button>
+              <button type="button" class="modal-close-icon" aria-label="关闭" data-action="closeCursorSettingsModal" title="关闭 (Esc)">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M18 6 6 18"></path>
+                  <path d="m6 6 12 12"></path>
+                </svg>
+              </button>
+            </div>
+
+            <!-- 核心主体：左分类侧边栏、右详情视口 -->
+            <div class="platform-settings-layout">
+              <!-- 左侧菜单侧边栏 -->
+              <aside class="platform-settings-nav" aria-label="设置导航">
+                <button type="button" class="platform-settings-nav-item active" id="cursor-settings-nav-diag" data-action="switchCursorSettingsTab" data-arg="diag">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
+                  </svg>
+                  <span>状态诊断</span>
+                </button>
+                <button type="button" class="platform-settings-nav-item" id="cursor-settings-nav-core" data-action="switchCursorSettingsTab" data-arg="core">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="4" y="4" width="16" height="16" rx="2"></rect>
+                    <rect x="9" y="9" width="6" height="6"></rect>
+                    <line x1="9" y1="1" x2="9" y2="4"></line>
+                    <line x1="15" y1="1" x2="15" y2="4"></line>
+                    <line x1="9" y1="20" x2="9" y2="23"></line>
+                    <line x1="15" y1="20" x2="15" y2="23"></line>
+                    <line x1="20" y1="9" x2="23" y2="9"></line>
+                    <line x1="20" y1="14" x2="23" y2="14"></line>
+                    <line x1="1" y1="9" x2="4" y2="9"></line>
+                    <line x1="1" y1="14" x2="4" y2="14"></line>
+                  </svg>
+                  <span>Core 服务</span>
+                </button>
+                <button type="button" class="platform-settings-nav-item" id="cursor-settings-nav-cert" data-action="switchCursorSettingsTab" data-arg="cert">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+                  </svg>
+                  <span>证书安全</span>
+                </button>
+                <button type="button" class="platform-settings-nav-item" id="cursor-settings-nav-advanced" data-action="switchCursorSettingsTab" data-arg="advanced">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="3"></circle>
+                    <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.2a1.7 1.7 0 0 0-1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.2a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3 1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.2a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8 1.7 1.7 0 0 0 1.5 1h.2a2 2 0 1 1 0 4h-.2a1.7 1.7 0 0 0-1.5 1z"></path>
+                  </svg>
+                  <span>环境与路径</span>
+                </button>
+              </aside>
+
+              <!-- 右侧详情视口 -->
+              <div class="platform-settings-detail">
+
+                <!-- ═══ 面板 1：环境检测与诊断 ═══ -->
+                <div class="platform-settings-panel active" id="cursor-settings-panel-diag">
+                  <div class="platform-health-control-area">
+                    <div class="platform-health-summary" id="cursor-health-summary">
+                      <div class="health-summary-empty" id="cursor-diag-tip-text">点击「环境预检」开始诊断 Cursor Core、根证书、本地代理密钥及模型同步状态。</div>
+                    </div>
+
+                    <div class="platform-health-toolbar">
+                      <div class="platform-health-actions-left">
+                        <button type="button" class="btn-primary" data-action="cursorPreflightAction">
+                          <span class="health-btn-icon">▶</span> 环境预检
+                        </button>
+                        <button type="button" class="btn-ghost success" data-action="cursorSyncRoutesAction">
+                          同步模型路由
+                        </button>
+                        <button type="button" class="btn-ghost accent" data-action="cursorRefreshConsoleAction">
+                          刷新状态
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="setting-row">
+                    <div class="setting-meta">
+                      <div class="setting-label">Cursor Core 运行状态</div>
+                      <div class="setting-desc" id="cursor-diag-core-desc">检测 Rust Cursor Core 守护进程与控制端口可用性</div>
+                    </div>
+                    <div class="setting-ctrl">
+                      <span class="tag" id="cursor-diag-core-status-tag">检测中...</span>
+                    </div>
+                  </div>
+
+                  <div class="setting-row">
+                    <div class="setting-meta">
+                      <div class="setting-label">CA 根证书受信</div>
+                      <div class="setting-desc" id="cursor-diag-cert-desc">检测 AnyBridge 本地根证书是否已成功签发并安装到系统受信区</div>
+                    </div>
+                    <div class="setting-ctrl">
+                      <span class="tag" id="cursor-diag-cert-status-tag">检测中...</span>
+                    </div>
+                  </div>
+
+                  <div class="setting-row">
+                    <div class="setting-meta">
+                      <div class="setting-label">本地代理密钥 (API Key)</div>
+                      <div class="setting-desc" id="cursor-diag-key-desc">用于 Cursor Core 安全请求 AnyBridge 本地网关进行模型转发</div>
+                    </div>
+                    <div class="setting-ctrl">
+                      <span class="tag success" id="cursor-diag-key-status-tag">已就绪</span>
+                    </div>
+                  </div>
+
+                  <div class="setting-row">
+                    <div class="setting-meta">
+                      <div class="setting-label">已生效代理模型</div>
+                      <div class="setting-desc">当前 Cursor Core 纳管并成功同步到 Cursor 下拉列表的模型总数</div>
+                    </div>
+                    <div class="setting-ctrl">
+                      <span class="tag" id="cursor-diag-model-count-tag">0 个</span>
+                    </div>
+                  </div>
                 </div>
+
+                <!-- ═══ 面板 2：Core 服务控制 ═══ -->
+                <div class="platform-settings-panel" id="cursor-settings-panel-core">
+                  <div class="setting-row">
+                    <div class="setting-meta">
+                      <div class="setting-label">重启 Cursor Core 进程</div>
+                      <div class="setting-desc">重启负责拦截与中继 Connect-RPC 流量的 Rust Core 守护进程，重新载入配置文件与端口映射。</div>
+                    </div>
+                    <div class="setting-ctrl">
+                      <button type="button" class="btn-ghost warn" data-action="cursorRestartCoreAction">重启 Core 进程</button>
+                    </div>
+                  </div>
+
+                  <div class="setting-row">
+                    <div class="setting-meta">
+                      <div class="setting-label">重启 Cursor 客户端</div>
+                      <div class="setting-desc">安全关闭并重新拉起 Cursor IDE 客户端，使其重新建立本地 TLS 代理连接。</div>
+                    </div>
+                    <div class="setting-ctrl">
+                      <button type="button" class="btn-ghost accent" data-action="cursorRestartIdeAction">重启 Cursor IDE</button>
+                    </div>
+                  </div>
+
+                  <div class="setting-row">
+                    <div class="setting-meta">
+                      <div class="setting-label">热同步模型路由</div>
+                      <div class="setting-desc">在不重启 Core 的情况下，立即将 AnyBridge 平台配置的模型列表实时推送到 Cursor。</div>
+                    </div>
+                    <div class="setting-ctrl">
+                      <button type="button" class="btn-ghost success" data-action="cursorSyncRoutesAction">推送模型同步</button>
+                    </div>
+                  </div>
+
+                  <div class="setting-row">
+                    <div class="setting-meta">
+                      <div class="setting-label">接入中继架构</div>
+                      <div class="setting-desc">基于 Rust 原生实现，在系统底层通过 Connect-RPC 协议进行高速流量中继，完全零代码入侵 Cursor 客户端。</div>
+                    </div>
+                    <div class="setting-ctrl">
+                      <span class="tag">Connect-RPC</span>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- ═══ 面板 3：证书安全管理 ═══ -->
+                <div class="platform-settings-panel" id="cursor-settings-panel-cert">
+                  <div class="setting-row">
+                    <div class="setting-meta">
+                      <div class="setting-label">AnyBridge Local CA 根证书</div>
+                      <div class="setting-desc" id="cursor-modal-cert-desc">Cursor 通过 Connect-RPC 与 Core 进行 HTTPS 通信，必须在系统受信颁发机构中信任 AnyBridge CA 证书。</div>
+                    </div>
+                    <div class="setting-ctrl">
+                      <button type="button" class="btn-ghost success" data-action="cursorInstallCertAction">一键安装 / 信任证书</button>
+                      <button type="button" class="btn-ghost accent" data-action="openCertsDir">打开证书目录</button>
+                    </div>
+                  </div>
+
+                  <div class="setting-row">
+                    <div class="setting-meta">
+                      <div class="setting-label">清理与重新安装</div>
+                      <div class="setting-desc">如果证书过期、哈希不匹配或 TLS 握手失败，可点击清理老旧证书并重新生成安装。</div>
+                    </div>
+                    <div class="setting-ctrl">
+                      <button type="button" class="btn-ghost warn" data-action="reinstallCaFromHealth">重新签发并安装</button>
+                    </div>
+                  </div>
+
+                  <div class="setting-row">
+                    <div class="setting-meta">
+                      <div class="setting-label">系统信任证书存储库</div>
+                      <div class="setting-desc">证书将写入 Windows 系统级 Root CA（LocalMachine\Root）或当前用户证书库，供 Node.js 与 Chromium 引擎信任。</div>
+                    </div>
+                    <div class="setting-ctrl">
+                      <span class="tag success">系统级受信</span>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- ═══ 面板 4：环境与路径配置 ═══ -->
+                <div class="platform-settings-panel" id="cursor-settings-panel-advanced">
+                  <div class="platform-settings-access-clean">
+                    <div class="setting-row setting-row-stacked">
+                      <div class="setting-meta">
+                        <div class="setting-label">Cursor 安装路径</div>
+                        <div class="setting-desc" id="cursor-ide-path-status">自动探测 Cursor.exe 或手动指定可执行文件绝对路径。</div>
+                      </div>
+                      <div class="setting-ctrl setting-path-ctrl">
+                        <input class="field-input" id="cursorIdePathInput" placeholder="自动探测中或手动指定 Cursor.exe 路径...">
+                        <button type="button" class="btn-ghost accent" data-action="detectCursorIdePath">自动探测</button>
+                        <button type="button" class="btn-ghost success" data-action="saveCursorIdePath">保存路径</button>
+                      </div>
+                    </div>
+
+                    <div class="setting-row">
+                      <div class="setting-meta">
+                        <div class="setting-label">Cursor Core 控制端口</div>
+                        <div class="setting-desc">Core 内部 HTTP 管理与健康检查监听端口（默认 17650）</div>
+                      </div>
+                      <div class="setting-ctrl">
+                        <input class="input-sm" id="cursorCorePortInput" type="number" min="1" max="65535" value="17650">
+                        <button type="button" class="btn-primary" data-action="saveCursorCorePort">保存端口</button>
+                      </div>
+                    </div>
+
+                    <div class="setting-row">
+                      <div class="setting-meta">
+                        <div class="setting-label">配置目录与运行日志</div>
+                        <div class="setting-desc">查看 Cursor 专属模型持久化数据文件与 Core 运行日志</div>
+                      </div>
+                      <div class="setting-ctrl">
+                        <button type="button" class="btn-ghost accent" data-action="openConfigDir">打开配置目录</button>
+                        <button type="button" class="btn-ghost secondary" data-action="cursorOpenProxyLogs">查看日志</button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
               </div>
             </div>
-            <div class="modal-footer" style="display:flex;justify-content:flex-end;">
-              <button class="btn-ghost secondary" data-action="closeCursorSettingsModal">关闭</button>
+
+            <!-- 底部操作栏 -->
+            <div class="modal-footer" style="display:flex;justify-content:flex-end;padding:12px 24px;border-top:1px solid var(--border);background:var(--bg-card);">
+              <button type="button" class="modal-btn modal-btn-cancel" data-action="closeCursorSettingsModal">关闭</button>
             </div>
+
           </div>
         </div>

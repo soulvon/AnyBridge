@@ -63,6 +63,13 @@
   justify-content: space-between;
   gap: 14px;
 }
+.provider-toolbar-title {
+  font-size: 18px;
+  font-weight: 750;
+  color: var(--text-primary);
+  line-height: 1.2;
+  letter-spacing: -0.01em;
+}
 .provider-toolbar-tools {
   padding-top: 12px;
   border-top: 1px solid var(--border);
@@ -1465,7 +1472,7 @@
   width: 14px;
   height: 14px;
   border-radius: 50%;
-  background: var(--text-inverse);
+  background: #FFFFFF;
   transition: transform var(--duration-normal) var(--ease);
   box-shadow: 0 1px 3px rgba(0,0,0,0.15);
 }
@@ -1757,17 +1764,17 @@
   justify-content: center;
   flex-shrink: 0;
   overflow: hidden;
-  background: rgba(0, 0, 0, 0.05);
+  background: #FFFFFF;
 }
 [data-theme="dark"] .model-item-icon {
-  background: rgba(255, 255, 255, 0.08);
+  background: #FFFFFF;
 }
 .model-item-icon.model-item-icon-image {
   border-radius: 6px;
-  background: rgba(0, 0, 0, 0.05);
+  background: #FFFFFF;
 }
 [data-theme="dark"] .model-item-icon.model-item-icon-image {
-  background: rgba(255, 255, 255, 0.08);
+  background: #FFFFFF;
 }
 .model-item-icon-image img {
   width: 30px;
@@ -1785,24 +1792,24 @@
 }
 html[data-theme="dark"] .model-item-icon-image .model-icon-has-dark,
 [data-theme="dark"] .model-item-icon-image .model-icon-has-dark {
-  display: none;
+  display: block;
 }
 html[data-theme="dark"] .model-item-icon-image .model-icon-image-dark,
 [data-theme="dark"] .model-item-icon-image .model-icon-image-dark {
-  display: block;
+  display: none;
 }
 .model-item-icon svg {
   width: 30px;
   height: 30px;
 }
 .model-item-icon.fallback {
-  background: rgba(59, 130, 246, 0.08);
+  background: #FFFFFF;
   color: var(--accent, #3b82f6);
   border: 1px solid rgba(59, 130, 246, 0.15);
   box-sizing: border-box;
 }
 [data-theme="dark"] .model-item-icon.fallback {
-  background: rgba(59, 130, 246, 0.14);
+  background: #FFFFFF;
   color: #60a5fa;
   border-color: rgba(96, 165, 250, 0.22);
 }
@@ -2677,7 +2684,7 @@ html[data-theme="dark"] .model-item-icon-image .model-icon-image-dark,
   left: 2px;
   top: 2px;
   border-radius: 50%;
-  background: var(--text-inverse);
+  background: #FFFFFF;
   box-shadow: 0 1px 3px rgba(0,0,0,0.16);
   transition: transform var(--duration-fast) var(--ease);
 }

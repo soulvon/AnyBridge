@@ -101,6 +101,11 @@ function hideAllEditorModals() {
 }
 
 function navigateTo(pageId) {
+  if (pageId === 'settings') {
+    openSettingsModal();
+    return;
+  }
+
   // 切页前先收起所有编辑弹窗，避免弹层残留造成"仪表盘出现模型面板"
   hideAllEditorModals();
 
@@ -120,18 +125,23 @@ function navigateTo(pageId) {
     'platform-cursor': 'models',
     'platform-cursor-add': 'models',
     'platform-claude-code': 'models',
+    'platform-claude-add': 'models',
     'platform-codex': 'models',
+    'platform-codex-add': 'models',
     'platform-codebuddy': 'models',
     'platform-codebuddy-add': 'models',
     'platform-opencode': 'models',
+    'platform-opencode-add': 'models',
     'platform-zcode': 'models',
     'platform-zcode-add': 'models',
     'platform-workbuddy': 'models',
-    'platform-workbuddy-add': 'models'
+    'platform-workbuddy-add': 'models',
+    'platform-grok': 'models',
+    'platform-grok-add': 'models'
   };
   const activeTabPageId = pageId === 'platform-proxy' && activePlatformSection === 'settings'
     ? 'models'
-    : editorToTabMap[pageId] || pageId;
+    : editorToTabMap[pageId] || (pageId.startsWith('platform-') ? 'models' : pageId);
   tabs.forEach(t => {
     const isActive = t.dataset.page === activeTabPageId;
     t.classList.toggle('active', isActive);
@@ -272,9 +282,30 @@ function activateSettingsPanel(index) {
   });
 }
 
-function openSettingsPanel(panelId) {
-  navigateTo('settings');
+function openSettingsModal(panelId = 'appearance') {
+  const modal = document.getElementById('settings-modal');
+  if (!modal) return;
   activateSettingsPanel(panelId);
+  modal.classList.add('active');
+  const topbarSettingsBtn = document.getElementById('topbarSettingsBtn');
+  if (topbarSettingsBtn) topbarSettingsBtn.classList.add('active');
+  document.addEventListener('keydown', closeSettingsModalOnEsc);
+}
+
+function closeSettingsModal() {
+  const modal = document.getElementById('settings-modal');
+  if (modal) modal.classList.remove('active');
+  const topbarSettingsBtn = document.getElementById('topbarSettingsBtn');
+  if (topbarSettingsBtn) topbarSettingsBtn.classList.remove('active');
+  document.removeEventListener('keydown', closeSettingsModalOnEsc);
+}
+
+function closeSettingsModalOnEsc(event) {
+  if (event.key === 'Escape') closeSettingsModal();
+}
+
+function openSettingsPanel(panelId) {
+  openSettingsModal(panelId);
 }
 
 // ═══════ QUICK START GUIDE ═══════
@@ -601,6 +632,18 @@ function syncPlatformRailForPage(pageId) {
 
 // ═══════ PLATFORM RAIL · DRAG & DROP REORDER ═══════
 globalThis.PLATFORM_RAIL_ORDER_KEY = 'anybridge.platformRailOrder';
+globalThis.DEFAULT_PLATFORM_RAIL_ORDER = [
+  'devin',
+  'windsurf',
+  'cursor',
+  'codex',
+  'claude-code',
+  'codebuddy',
+  'workbuddy',
+  'grok',
+  'zcode',
+  'opencode'
+];
 
 function getPlatformRailElement() {
   return document.querySelector('.platform-rail');
@@ -617,7 +660,17 @@ function readPlatformRailOrder() {
     const raw = localStorage.getItem(PLATFORM_RAIL_ORDER_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed.filter(id => typeof id === 'string') : null;
+    if (!Array.isArray(parsed)) return null;
+    const filtered = parsed.filter(id => typeof id === 'string');
+    const OLD_DEFAULTS = [
+      '["devin","windsurf","codex","cursor","claude-code","codebuddy","workbuddy","opencode","zcode","grok"]',
+      '["windsurf","devin","codex","claude-code","cursor","codebuddy","workbuddy","zcode","opencode","grok"]'
+    ];
+    if (OLD_DEFAULTS.includes(JSON.stringify(filtered))) {
+      writePlatformRailOrder(DEFAULT_PLATFORM_RAIL_ORDER);
+      return DEFAULT_PLATFORM_RAIL_ORDER;
+    }
+    return filtered;
   } catch (_) {
     return null;
   }
@@ -1131,6 +1184,8 @@ function updateFlowIdeTarget(ide) {
   g.focusPlatformSubtabByOffset = focusPlatformSubtabByOffset;
   g.activateSettingsPanel = activateSettingsPanel;
   g.openSettingsPanel = openSettingsPanel;
+  g.openSettingsModal = openSettingsModal;
+  g.closeSettingsModal = closeSettingsModal;
   g.markOnboardingGuideSeen = markOnboardingGuideSeen;
   g.openOnboardingGuide = openOnboardingGuide;
   g.closeOnboardingGuide = closeOnboardingGuide;

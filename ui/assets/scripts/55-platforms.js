@@ -753,7 +753,7 @@ function renderOpenCodePageStatus(info) {
 
   const meta = openCodeStatusMeta(info);
 
-  if (headline) headline.textContent = '管理 OpenCode 的独立 provider 配置。应用时追加到 opencode.json，并可设为当前 model，不覆盖其他 provider。';
+  if (headline) headline.textContent = '管理 OpenCode 的独立 provider 配置。';
   if (currentLabel) currentLabel.textContent = meta.label;
   bindRevealPathLabel('opencode-config-path-label', info.configPath || platformDef('opencode').configHint);
   renderOpenCodeConfigList(info);
@@ -2085,32 +2085,37 @@ function codexReconfigureAction(action, disabled) {
 function renderCodexConfigCard(config) {
   const disabled = platformBusy === (config.platformId || 'codex');
   const editButton = config.editAction
-    ? `<button class="btn-ghost codex-card-action codex-icon-action" type="button" title="编辑" aria-label="编辑 ${platformEsc(config.name)}" ${disabled ? 'disabled' : ''} data-action-call="${platformEsc(config.editAction)}">${codexActionIcon('edit')}</button>`
+    ? `<button class="btn-icon codex-icon-action" type="button" title="编辑" aria-label="编辑 ${platformEsc(config.name)}" ${disabled ? 'disabled' : ''} data-action-call="${platformEsc(config.editAction)}">${codexActionIcon('edit')}</button>`
     : '';
   const deleteButton = config.deleteAction
-    ? `<button class="btn-ghost codex-card-action codex-icon-action codex-delete-action" type="button" title="删除" aria-label="删除 ${platformEsc(config.name)}" ${disabled ? 'disabled' : ''} data-action-call="${platformEsc(config.deleteAction)}">${codexActionIcon('delete')}</button>`
+    ? `<button class="btn-icon danger codex-icon-action codex-delete-action" type="button" title="删除" aria-label="删除 ${platformEsc(config.name)}" ${disabled ? 'disabled' : ''} data-action-call="${platformEsc(config.deleteAction)}">${codexActionIcon('delete')}</button>`
     : '';
   const removeButton = config.removeAction
-    ? `<button class="btn-ghost codex-card-action codex-icon-action codex-delete-action" type="button" title="${platformEsc(config.removeLabel || '移除')}" aria-label="从 live 配置移除 ${platformEsc(config.name)}" ${disabled ? 'disabled' : ''} data-action-call="${platformEsc(config.removeAction)}">${codexActionIcon('delete')}</button>`
+    ? `<button class="btn-icon danger codex-icon-action codex-delete-action" type="button" title="${platformEsc(config.removeLabel || '移除')}" aria-label="从 live 配置移除 ${platformEsc(config.name)}" ${disabled ? 'disabled' : ''} data-action-call="${platformEsc(config.removeAction)}">${codexActionIcon('delete')}</button>`
     : '';
   const configButton = config.configAction
-    ? `<button class="btn-ghost codex-card-action codex-icon-action" type="button" title="${platformEsc(config.configLabel || '配置模型')}" aria-label="${platformEsc(config.configLabel || '配置')} ${platformEsc(config.name)}" ${disabled ? 'disabled' : ''} data-action-call="${platformEsc(config.configAction)}">${codexActionIcon('config')}</button>`
+    ? `<button class="btn-icon codex-icon-action" type="button" title="${platformEsc(config.configLabel || '配置模型')}" aria-label="${platformEsc(config.configLabel || '配置')} ${platformEsc(config.name)}" ${disabled ? 'disabled' : ''} data-action-call="${platformEsc(config.configAction)}">${codexActionIcon('config')}</button>`
     : '';
   const desktopSupported = codexDesktopAutomationSupported();
   const startDisabled = disabled || !desktopSupported;
   const startTitle = desktopSupported ? '重启 Codex 桌面版' : '仅 Windows 支持自动启动 / 注入 Codex Desktop';
   const startButton = config.startAction
-    ? `<button class="btn-ghost codex-card-action codex-icon-action" type="button" title="${platformEsc(startTitle)}" aria-label="启动 Codex ${platformEsc(config.name)}" ${startDisabled ? 'disabled' : ''} data-action-call="${platformEsc(config.startAction)}">${codexActionIcon('start')}</button>`
+    ? `<button class="btn-icon codex-icon-action" type="button" title="${platformEsc(startTitle)}" aria-label="启动 Codex ${platformEsc(config.name)}" ${startDisabled ? 'disabled' : ''} data-action-call="${platformEsc(config.startAction)}">${codexActionIcon('start')}</button>`
     : '';
   const switchButton = config.current || !config.action
     ? ''
-    : `<button class="btn-primary codex-card-action codex-switch-action" ${disabled ? 'disabled' : ''} data-action-call="${platformEsc(config.action)}">${platformEsc(config.actionLabel || '切换')}</button>`;
+    : `<button class="btn-primary codex-switch-action" ${disabled ? 'disabled' : ''} data-action-call="${platformEsc(config.action)}">${platformEsc(config.actionLabel || '切换')}</button>`;
   const reconfigureButton = config.current && config.action
     ? `${codexReconfigureAction(config.action, disabled)}`
     : '';
-  const actions = config.current
-    ? `<div class="codex-config-actions">${editButton}${deleteButton}${configButton}${removeButton}${startButton}${reconfigureButton}</div>`
-    : (editButton || deleteButton || configButton || removeButton || switchButton || startButton ? `<div class="codex-config-actions">${editButton}${deleteButton}${configButton}${removeButton}${switchButton}${startButton}</div>` : '<span class="codex-row-muted">-</span>');
+  const iconActions = [editButton, deleteButton, removeButton, configButton, startButton].filter(Boolean).join('');
+  const mainAction = switchButton || reconfigureButton || '';
+  const actions = (iconActions || mainAction)
+    ? `<div class="codex-config-actions">
+        ${iconActions ? `<div class="codex-card-icon-actions">${iconActions}</div>` : ''}
+        ${mainAction ? `<div class="codex-card-main-action">${mainAction}</div>` : ''}
+      </div>`
+    : '<span class="codex-row-muted">-</span>';
   const agentCount = Array.isArray(config.agents) ? config.agents.length : Number(config.agentCount || 0);
   const meta = codexConfigMetaLine([
     config.model || '-',
@@ -4318,7 +4323,7 @@ function grokConfigSourceProviders() {
 
 function renderGrokPageStatus(info) {
   const headline = document.getElementById('platform-grok-headline');
-  if (headline) headline.textContent = '管理 Grok Build CLI 的自定义模型与端点。一键切换写入 ~/.grok/config.toml，重启终端 grok 生效。';
+  if (headline) headline.textContent = '管理 Grok Build CLI 的自定义模型与端点。';
   bindRevealPathLabel('grok-config-path-label', info.configPath || platformDef('grok').configHint);
   renderGrokConfigList(info);
 }
@@ -5617,14 +5622,152 @@ async function saveCursorEditModel() {
 
 // ═══════ CURSOR 接入设置模态弹窗 ═══════
 
-function openCursorSettingsModal() {
+function openCursorSettingsModal(initialTab = 'diag') {
   const modal = document.getElementById('cursorSettingsModal');
-  if (modal) modal.classList.add('active');
+  if (!modal) return;
+  switchCursorSettingsTab(initialTab);
+  syncCursorSettingsModalData();
+  modal.classList.add('active');
+  document.addEventListener('keydown', closeCursorSettingsModalOnEsc);
 }
 
 function closeCursorSettingsModal() {
   const modal = document.getElementById('cursorSettingsModal');
   if (modal) modal.classList.remove('active');
+  document.removeEventListener('keydown', closeCursorSettingsModalOnEsc);
+}
+
+function closeCursorSettingsModalOnEsc(event) {
+  if (event.key === 'Escape') closeCursorSettingsModal();
+}
+
+function switchCursorSettingsTab(tabName) {
+  const tabs = ['diag', 'core', 'cert', 'advanced'];
+  tabs.forEach(t => {
+    const btn = document.getElementById(`cursor-settings-nav-${t}`);
+    const panel = document.getElementById(`cursor-settings-panel-${t}`);
+    const isTarget = t === tabName;
+    if (btn) btn.classList.toggle('active', isTarget);
+    if (panel) {
+      panel.classList.toggle('active', isTarget);
+      panel.style.display = isTarget ? 'block' : 'none';
+    }
+  });
+}
+
+async function syncCursorSettingsModalData() {
+  const status = _cursorCachedStatus;
+  const running = !!status?.running;
+  const certReady = !!status?.certificateReady;
+  const modelCount = Array.isArray(_cursorModelsList) ? _cursorModelsList.length : (status?.configuredModels || 0);
+
+  // 1. 状态诊断标签与说明
+  const coreTag = document.getElementById('cursor-diag-core-status-tag');
+  const coreDesc = document.getElementById('cursor-diag-core-desc');
+  if (coreTag) {
+    coreTag.textContent = running ? '运行中 (正常)' : '未运行';
+    coreTag.className = `tag ${running ? 'success' : 'secondary'}`;
+  }
+  if (coreDesc) {
+    coreDesc.textContent = running
+      ? `Core 进程活跃，控制端口 :${status?.controlPort || 17650} 响应正常`
+      : 'Core 进程未启动，点击主界面「一键接入」即可自动拉起';
+  }
+
+  const certTag = document.getElementById('cursor-diag-cert-status-tag');
+  const certDesc = document.getElementById('cursor-diag-cert-desc');
+  if (certTag) {
+    certTag.textContent = certReady ? '已受信 (就绪)' : '未安装/未信任';
+    certTag.className = `tag ${certReady ? 'success' : 'warn'}`;
+  }
+  if (certDesc && status?.certificateMessage) {
+    certDesc.textContent = status.certificateMessage;
+  }
+
+  const countTag = document.getElementById('cursor-diag-model-count-tag');
+  if (countTag) {
+    countTag.textContent = `${modelCount} 个`;
+  }
+
+  // 2. 环境与端口
+  const portInput = document.getElementById('cursorCorePortInput');
+  if (portInput) {
+    portInput.value = status?.controlPort || 17650;
+  }
+
+  // 3. IDE 安装路径
+  const pathInput = document.getElementById('cursorIdePathInput');
+  if (pathInput && !pathInput.value) {
+    try {
+      if (invoke) {
+        const p = await invoke('detect_ide_path', { target: 'cursor' });
+        if (p) pathInput.value = p;
+      }
+    } catch (_) {}
+  }
+}
+
+async function cursorRefreshConsoleAction() {
+  await cursorRefreshConsole();
+  await syncCursorSettingsModalData();
+  showCustomAlert('Cursor 状态数据已最新刷新。', '刷新成功', 'success');
+}
+
+async function detectCursorIdePath() {
+  const input = document.getElementById('cursorIdePathInput');
+  const statusEl = document.getElementById('cursor-ide-path-status');
+  if (!invoke) return;
+  try {
+    const path = await invoke('detect_ide_path', { target: 'cursor' });
+    if (path) {
+      if (input) input.value = path;
+      if (statusEl) statusEl.textContent = '已自动定位 Cursor 可执行文件 ✓';
+    } else {
+      if (input) input.placeholder = '自动探测失败，请手动指定可执行文件绝对路径';
+      if (statusEl) statusEl.textContent = '未探测到默认安装目录或运行中进程，请手动指定';
+    }
+  } catch (e) {
+    if (statusEl) statusEl.textContent = '探测失败: ' + e;
+  }
+}
+
+async function saveCursorIdePath() {
+  const input = document.getElementById('cursorIdePathInput');
+  const statusEl = document.getElementById('cursor-ide-path-status');
+  const path = input ? input.value.trim() : '';
+  if (!path) {
+    showCustomAlert('请先输入或探测 Cursor 安装路径。', '路径为空', 'warn');
+    return;
+  }
+  try {
+    if (invoke) {
+      await invoke('set_ide_path', { path });
+      if (statusEl) statusEl.textContent = '已成功保存 Cursor 路径 ✓';
+      showCustomAlert('Cursor 路径已保存。', '保存成功', 'success');
+    }
+  } catch (e) {
+    if (statusEl) statusEl.textContent = '保存失败: ' + e;
+    showCustomAlert(String(e), '保存失败', 'error');
+  }
+}
+
+async function saveCursorCorePort() {
+  const portInput = document.getElementById('cursorCorePortInput');
+  const val = portInput ? parseInt(portInput.value.trim(), 10) : 17650;
+  if (!val || val < 1024 || val > 65535) {
+    showCustomAlert('端口号必须在 1024 ~ 65535 范围内。', '端口无效', 'warn');
+    return;
+  }
+  try {
+    if (invoke) {
+      const current = (await invoke('load_config')) || {};
+      current.CURSOR_CORE_PORT = String(val);
+      await invoke('save_config', { values: current });
+      showCustomAlert(`Cursor Core 端口已配置为 ${val}。重启 Core 后生效。`, '保存成功', 'success');
+    }
+  } catch (e) {
+    showCustomAlert('保存端口失败: ' + e, '保存失败', 'error');
+  }
 }
 
 // ═══════ CURSOR 独立添加模型页面 ═══════
@@ -6062,13 +6205,24 @@ async function cursorRestartIdeAction() {
 async function cursorPreflightAction() {
   if (cursorConsoleBusy) return;
   cursorSetBusy(true);
+  const tip = document.getElementById('cursor-diag-tip-text');
+  if (tip) tip.textContent = '正在全面诊断 Cursor 接入环境（二进制、证书、代理 Key、模型路由）...';
   try {
     cursorEnsureBridge();
     const result = await invoke('cursor_preflight');
     _cursorCachedStatus = result;
     await cursorRefreshConsole();
+    await syncCursorSettingsModalData();
+    if (tip) {
+      tip.innerHTML = '<span style="color:var(--success);font-weight:600;">✓ 环境预检全部通过：Core 二进制、CA 根证书、本地代理密钥与模型路由均已就绪。</span>';
+    }
     showCustomAlert('Cursor Core 接入环境检查通过：\n\n✓ 二进制就绪\n✓ 本地代理 Key 已配置\n✓ AnyBridge 信任证书已就绪\n✓ 代理模型就绪', '预检通过', 'success');
   } catch (e) {
+    if (tip) {
+      const errStr = typeof escapeHtml === 'function' ? escapeHtml(String(e)) : String(e);
+      tip.innerHTML = `<span style="color:var(--danger);font-weight:600;">✗ 预检未通过: ${errStr}</span>`;
+    }
+    await syncCursorSettingsModalData();
     showCustomAlert(String(e), '预检未通过', 'error');
   } finally {
     cursorSetBusy(false);
@@ -6084,6 +6238,7 @@ async function cursorInstallCertAction() {
     const result = await invoke('cert_install');
     if (typeof addLog === 'function') addLog('ok', 'CA 证书安装完成: ' + result);
     await cursorRefreshConsole();
+    await syncCursorSettingsModalData();
     showCustomAlert(result || 'AnyBridge Local CA 根证书已安装并信任。', '证书已安装', 'success');
   } catch (e) {
     if (typeof addLog === 'function') addLog('err', 'CA 安装失败: ' + e);
@@ -9725,6 +9880,12 @@ window.zcDrop = function(e) {
   g.saveCursorEditModel = saveCursorEditModel;
   g.openCursorSettingsModal = openCursorSettingsModal;
   g.closeCursorSettingsModal = closeCursorSettingsModal;
+  g.switchCursorSettingsTab = switchCursorSettingsTab;
+  g.syncCursorSettingsModalData = syncCursorSettingsModalData;
+  g.cursorRefreshConsoleAction = cursorRefreshConsoleAction;
+  g.detectCursorIdePath = detectCursorIdePath;
+  g.saveCursorIdePath = saveCursorIdePath;
+  g.saveCursorCorePort = saveCursorCorePort;
   g.openCursorAddPage = openCursorAddPage;
   g.initCursorAddPage = initCursorAddPage;
   g.onCursorAddSearch = onCursorAddSearch;

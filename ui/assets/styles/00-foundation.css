@@ -176,7 +176,7 @@
   left: 2px;
   width: 16px;
   height: 16px;
-  background: var(--text-inverse);
+  background: #FFFFFF;
   border-radius: 50%;
   box-shadow: 0 1px 3px rgba(0,0,0,0.15);
   transition: transform var(--duration-normal) var(--ease);
