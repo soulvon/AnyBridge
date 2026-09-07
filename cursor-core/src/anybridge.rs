@@ -8,6 +8,12 @@ pub const ANYBRIDGE_GATEWAY_KEY_SENTINEL: &str = "__ANYBRIDGE_LOCAL_GATEWAY_KEY_
 #[serde(rename_all = "camelCase")]
 struct CursorModelsStore {
     #[serde(default)]
+    provider_tag_style: Option<String>,
+    #[serde(default)]
+    provider_bracket_left: Option<String>,
+    #[serde(default)]
+    provider_bracket_right: Option<String>,
+    #[serde(default)]
     models: Vec<CursorModelBinding>,
 }
 
@@ -178,6 +184,12 @@ pub fn model_inputs_from_bindings(
             if let Ok(cursor_data) = std::fs::read(cursor_path) {
                 if let Ok(cursor_store) = serde_json::from_slice::<CursorModelsStore>(&cursor_data) {
                     let mut models = Vec::new();
+                    let tag_style = cursor_store
+                        .provider_tag_style
+                        .as_deref()
+                        .unwrap_or("badge")
+                        .trim()
+                        .to_lowercase();
                     for binding in cursor_store.models.into_iter().filter(|m| m.enabled) {
                         let matching_route = routes_store.routes.iter().find(|r| {
                             (!r.uid.is_empty() && r.uid == binding.route_uid)
@@ -189,7 +201,7 @@ pub fn model_inputs_from_bindings(
                                 continue;
                             }
 
-                            let display_name = if !binding.display_name.trim().is_empty() {
+                            let raw_display_name = if !binding.display_name.trim().is_empty() {
                                 binding.display_name.trim().to_string()
                             } else if !route.display_name.trim().is_empty() {
                                 route.display_name.trim().to_string()
@@ -203,11 +215,43 @@ pub fn model_inputs_from_bindings(
                                 .or_else(|| route.capabilities.reasoning.then(|| "high".into()));
 
                             let provider_name = resolve_provider_name(route, &providers_map);
+                            let clean_provider = provider_name.trim();
+
+                            let b_left = cursor_store
+                                .provider_bracket_left
+                                .as_deref()
+                                .unwrap_or("[");
+                            let b_right = cursor_store
+                                .provider_bracket_right
+                                .as_deref()
+                                .unwrap_or("]");
+                            let tagged_provider = format!("{b_left}{clean_provider}{b_right}");
+
+                            let (display_name, group_name) = match tag_style.as_str() {
+                                "prefix" => (
+                                    if clean_provider.is_empty() {
+                                        raw_display_name
+                                    } else {
+                                        format!("{tagged_provider} {raw_display_name}")
+                                    },
+                                    None,
+                                ),
+                                "suffix" => (
+                                    if clean_provider.is_empty() {
+                                        raw_display_name
+                                    } else {
+                                        format!("{raw_display_name} {tagged_provider}")
+                                    },
+                                    None,
+                                ),
+                                "none" => (raw_display_name, None),
+                                _ => (raw_display_name, Some(provider_name)),
+                            };
 
                             models.push(ModelConfigInput {
                                 sort_order: binding.sort_order,
                                 display_name,
-                                group_name: Some(provider_name),
+                                group_name,
                                 model_type: ModelType::OpenAi,
                                 base_url: base_url.clone(),
                                 use_full_url: false,
@@ -251,7 +295,6 @@ pub fn model_inputs_from_bindings(
         })
         .enumerate()
         .map(|(index, route)| {
-            let provider_name = resolve_provider_name(&route, &providers_map);
             ModelConfigInput {
                 sort_order: i64::try_from(index + 1).unwrap_or(i64::MAX),
                 display_name: if route.display_name.trim().is_empty() {
@@ -259,7 +302,7 @@ pub fn model_inputs_from_bindings(
                 } else {
                     route.display_name.trim().to_string()
                 },
-                group_name: Some(provider_name),
+                group_name: None,
             model_type: ModelType::OpenAi,
             base_url: base_url.clone(),
             use_full_url: false,
@@ -448,6 +491,146 @@ mod tests {
         assert_eq!(m.model_id, "my-opus");
         assert_eq!(m.reasoning_effort.as_deref(), Some("max"));
         assert_eq!(m.context_window_tokens, Some(200000));
+    }
+
+    #[test]
+    fn converts_cursor_bindings_with_provider_tag_styles() {
+        let directory = tempfile::tempdir().unwrap();
+        let routes_path = directory.path().join("proxy-routes.json");
+        let cursor_path = directory.path().join("cursor-models.json");
+        let providers_path = directory.path().join("providers.json");
+
+        std::fs::write(
+            &providers_path,
+            r#"{"version":1,"providers":[{"id":"cpa","name":"CPA"}]}"#,
+        )
+        .unwrap();
+
+        std::fs::write(
+            &routes_path,
+            r#"{
+              "version": 1,
+              "routes": [{
+                "uid": "r-1",
+                "id": "gemini-flash",
+                "displayName": "Gemini Flash",
+                "enabled": true,
+                "exposedFormats": ["openai"],
+                "targets": [{"providerId": "cpa", "model": "gemini-flash"}]
+              }]
+            }"#,
+        )
+        .unwrap();
+
+        // 1. prefix
+        std::fs::write(
+            &cursor_path,
+            r#"{
+              "version": 1,
+              "providerTagStyle": "prefix",
+              "models": [{
+                "id": "cb-1",
+                "routeUid": "r-1",
+                "displayName": "Gemini Flash",
+                "exposedModelId": "gemini-flash",
+                "enabled": true
+              }]
+            }"#,
+        )
+        .unwrap();
+
+        let models = model_inputs_from_bindings(
+            Some(&cursor_path),
+            &routes_path,
+            "http://127.0.0.1:7450",
+            "local-gateway-key",
+        )
+        .unwrap();
+        assert_eq!(models[0].display_name, "[CPA] Gemini Flash");
+        assert_eq!(models[0].group_name, None);
+
+        // 2. suffix with custom brackets
+        std::fs::write(
+            &cursor_path,
+            r#"{
+              "version": 1,
+              "providerTagStyle": "suffix",
+              "providerBracketLeft": " (",
+              "providerBracketRight": ")",
+              "models": [{
+                "id": "cb-1",
+                "routeUid": "r-1",
+                "displayName": "Gemini Flash",
+                "exposedModelId": "gemini-flash",
+                "enabled": true
+              }]
+            }"#,
+        )
+        .unwrap();
+
+        let models = model_inputs_from_bindings(
+            Some(&cursor_path),
+            &routes_path,
+            "http://127.0.0.1:7450",
+            "local-gateway-key",
+        )
+        .unwrap();
+        assert_eq!(models[0].display_name, "Gemini Flash  (CPA)");
+        assert_eq!(models[0].group_name, None);
+
+        // 3. badge
+        std::fs::write(
+            &cursor_path,
+            r#"{
+              "version": 1,
+              "providerTagStyle": "badge",
+              "models": [{
+                "id": "cb-1",
+                "routeUid": "r-1",
+                "displayName": "Gemini Flash",
+                "exposedModelId": "gemini-flash",
+                "enabled": true
+              }]
+            }"#,
+        )
+        .unwrap();
+
+        let models = model_inputs_from_bindings(
+            Some(&cursor_path),
+            &routes_path,
+            "http://127.0.0.1:7450",
+            "local-gateway-key",
+        )
+        .unwrap();
+        assert_eq!(models[0].display_name, "Gemini Flash");
+        assert_eq!(models[0].group_name.as_deref(), Some("CPA"));
+
+        // 4. none
+        std::fs::write(
+            &cursor_path,
+            r#"{
+              "version": 1,
+              "providerTagStyle": "none",
+              "models": [{
+                "id": "cb-1",
+                "routeUid": "r-1",
+                "displayName": "Gemini Flash",
+                "exposedModelId": "gemini-flash",
+                "enabled": true
+              }]
+            }"#,
+        )
+        .unwrap();
+
+        let models = model_inputs_from_bindings(
+            Some(&cursor_path),
+            &routes_path,
+            "http://127.0.0.1:7450",
+            "local-gateway-key",
+        )
+        .unwrap();
+        assert_eq!(models[0].display_name, "Gemini Flash");
+        assert_eq!(models[0].group_name, None);
     }
 
     #[test]

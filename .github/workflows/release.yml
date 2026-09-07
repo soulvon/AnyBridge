@@ -156,12 +156,25 @@ jobs:
           fi
           ls -lh "src-tauri/binaries/$OUTPUT_NAME"
 
+      - name: Build Cursor Core Binary
+        shell: bash
+        env:
+          RUST_TARGET: ${{ matrix.rust_target }}
+        run: |
+          set -euo pipefail
+          if [ -n "${RUST_TARGET}" ]; then
+            python scripts/build/build_cursor_core.py --target "$RUST_TARGET"
+          else
+            python scripts/build/build_cursor_core.py
+          fi
+
       - name: Build the app
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          RUST_TARGET: ${{ matrix.rust_target }}
         with:
           releaseId: ${{ needs.prepare-release.outputs.release_id }}
           tagName: "v${{ needs.prepare-release.outputs.version }}"

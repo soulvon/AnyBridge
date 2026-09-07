@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import argparse
 import os
 import platform
 import shutil
@@ -21,28 +22,44 @@ TRIPLES = {
 
 
 def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--target", default=os.environ.get("RUST_TARGET") or os.environ.get("CARGO_BUILD_TARGET"))
+    args = parser.parse_args()
+
+    triple = args.target.strip() if args.target else None
     system = platform.system().lower()
     machine = platform.machine().lower()
-    triple = TRIPLES.get((system, machine))
+
     if not triple:
-        raise RuntimeError(f"Unsupported build platform: {system}/{machine}")
+        triple = TRIPLES.get((system, machine))
+        if not triple:
+            raise RuntimeError(f"Unsupported build platform: {system}/{machine}")
 
     env = os.environ.copy()
     env.setdefault("CARGO_BUILD_JOBS", "1")
     env.setdefault("CARGO_INCREMENTAL", "0")
+
+    cmd = ["cargo", "build", "--release", "--manifest-path", str(CORE / "Cargo.toml")]
+    if args.target and args.target.strip():
+        cmd.extend(["--target", triple])
+
     subprocess.run(
-        ["cargo", "build", "--release", "--manifest-path", str(CORE / "Cargo.toml")],
+        cmd,
         cwd=ROOT,
         env=env,
         check=True,
     )
 
-    suffix = ".exe" if system == "windows" else ""
-    source = CORE / "target" / "release" / f"anybridge-cursor-core{suffix}"
+    suffix = ".exe" if "windows" in triple else ""
+    if args.target and args.target.strip():
+        source = CORE / "target" / triple / "release" / f"anybridge-cursor-core{suffix}"
+    else:
+        source = CORE / "target" / "release" / f"anybridge-cursor-core{suffix}"
+
     destination = BINARIES / f"anybridge-cursor-core-{triple}{suffix}"
     BINARIES.mkdir(parents=True, exist_ok=True)
     shutil.copy2(source, destination)
-    if system != "windows":
+    if "windows" not in triple:
         destination.chmod(0o755)
     print(destination)
 

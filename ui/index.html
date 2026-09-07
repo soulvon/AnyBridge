@@ -2895,7 +2895,17 @@
                   </th>
                   <th>显示名称</th>
                   <th>暴露模型 ID</th>
-                  <th>所属供应商</th>
+                  <th>
+                    <span class="model-map-display-head" style="display:inline-flex;align-items:center;gap:4px;">
+                      <span>所属供应商</span>
+                      <button type="button" class="btn-ghost accent model-map-settings-btn" id="cursorProviderTagStyleBtn" title="设置供应商在 Cursor 列表中的展示方式" aria-label="设置供应商展示方式" data-action="openCursorTagStyleModal">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
+                          <circle cx="12" cy="12" r="3"></circle>
+                          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+                        </svg>
+                      </button>
+                    </span>
+                  </th>
                   <th style="text-align: center;">操作</th>
                   <th style="text-align: center;">
                     <span class="model-map-display-head" style="display:inline-flex;align-items:center;justify-content:center;gap:4px;">
@@ -2915,6 +2925,123 @@
             </table>
           </div>
 
+        </div>
+
+        <!-- ═══════ CURSOR 供应商展示方式设置弹窗 ═══════ -->
+        <div class="modal-overlay" id="cursorTagStyleModal" role="dialog" aria-modal="true" aria-labelledby="cursorTagStyleModalTitle" data-action="closeCursorTagStyleModal" data-only-self>
+          <div class="modal-container" style="max-width: 500px; width: 92%; border-radius: 14px; overflow: hidden; padding: 0; box-shadow: var(--shadow-xl, 0 20px 25px -5px rgba(0,0,0,0.1), 0 10px 10px -5px rgba(0,0,0,0.04));">
+            <!-- 头部 -->
+            <div class="modal-header" style="padding: 16px 20px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; background: var(--bg-card);">
+              <div style="display: flex; align-items: center; gap: 10px;">
+                <div style="width: 32px; height: 32px; border-radius: 8px; background: rgba(37, 99, 235, 0.1); color: var(--accent); display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="3"></circle>
+                    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+                  </svg>
+                </div>
+                <div>
+                  <div class="modal-title" id="cursorTagStyleModalTitle" style="font-size: 15px; font-weight: 700; color: var(--text-primary); line-height: 1.2;">供应商展示方式</div>
+                  <div style="font-size: 11.5px; color: var(--text-muted); margin-top: 2px;">选择模型在 Cursor 下拉列表中的供应商标签呈现形式</div>
+                </div>
+              </div>
+              <button type="button" class="btn-ghost icon-btn" data-action="closeCursorTagStyleModal" aria-label="关闭" style="width: 28px; height: 28px; border-radius: 6px; display: flex; align-items: center; justify-content: center;">✕</button>
+            </div>
+
+            <!-- 内容选项区 -->
+            <div class="modal-body" style="padding: 16px 20px; display: flex; flex-direction: column; gap: 10px;">
+              <!-- 选项 1: 前缀形式 -->
+              <label class="cursor-tag-style-option" style="display: flex; align-items: flex-start; gap: 12px; padding: 12px 14px; border: 1.5px solid var(--border); border-radius: 10px; cursor: pointer; transition: all 0.15s ease; background: var(--bg-card);">
+                <input type="radio" name="cursorTagStyleRadio" value="prefix" style="margin-top: 3px; cursor: pointer;">
+                <div style="flex: 1; min-width: 0;">
+                  <div style="display: flex; align-items: center; justify-content: space-between;">
+                    <span style="font-size: 13px; font-weight: 650; color: var(--text-primary);">前缀形式</span>
+                  </div>
+                  <div style="font-size: 12px; font-family: var(--font-mono); color: var(--text-secondary); margin-top: 4px; background: var(--bg-input); padding: 5px 8px; border-radius: 6px; display: flex; align-items: center; justify-content: space-between;">
+                    <span id="cursorPrefixPreviewText">[CPA] Gemini 3.8 Flash</span>
+                    <span style="color: var(--accent); font-weight: bold;">✓</span>
+                  </div>
+                  <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">将供应商作为模型名称前缀，打钩在整行最右端，视觉整洁清爽</div>
+                </div>
+              </label>
+
+              <!-- 选项 2: 后缀形式 -->
+              <label class="cursor-tag-style-option" style="display: flex; align-items: flex-start; gap: 12px; padding: 12px 14px; border: 1.5px solid var(--border); border-radius: 10px; cursor: pointer; transition: all 0.15s ease; background: var(--bg-card);">
+                <input type="radio" name="cursorTagStyleRadio" value="suffix" style="margin-top: 3px; cursor: pointer;">
+                <div style="flex: 1; min-width: 0;">
+                  <div style="display: flex; align-items: center; justify-content: space-between;">
+                    <span style="font-size: 13px; font-weight: 650; color: var(--text-primary);">后缀形式</span>
+                  </div>
+                  <div style="font-size: 12px; font-family: var(--font-mono); color: var(--text-secondary); margin-top: 4px; background: var(--bg-input); padding: 5px 8px; border-radius: 6px; display: flex; align-items: center; justify-content: space-between;">
+                    <span id="cursorSuffixPreviewText">Gemini 3.8 Flash [CPA]</span>
+                    <span style="color: var(--accent); font-weight: bold;">✓</span>
+                  </div>
+                  <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">将供应商作为文本后缀紧跟模型名，无底色徽章</div>
+                </div>
+              </label>
+
+              <!-- 选项 3: 徽章形式 -->
+              <label class="cursor-tag-style-option" style="display: flex; align-items: flex-start; gap: 12px; padding: 12px 14px; border: 1.5px solid var(--border); border-radius: 10px; cursor: pointer; transition: all 0.15s ease; background: var(--bg-card);">
+                <input type="radio" name="cursorTagStyleRadio" value="badge" style="margin-top: 3px; cursor: pointer;">
+                <div style="flex: 1; min-width: 0;">
+                  <div style="display: flex; align-items: center; justify-content: space-between;">
+                    <span style="font-size: 13px; font-weight: 650; color: var(--text-primary);">徽章形式</span>
+                    <span style="font-size: 11px; color: var(--text-muted); background: var(--bg-input); padding: 1px 6px; border-radius: 4px;">原生默认</span>
+                  </div>
+                  <div style="font-size: 12px; font-family: var(--font-mono); color: var(--text-secondary); margin-top: 4px; background: var(--bg-input); padding: 5px 8px; border-radius: 6px; display: flex; align-items: center; justify-content: space-between;">
+                    <span>Gemini 3.8 Flash</span>
+                    <span style="display: inline-flex; align-items: center; gap: 6px;">
+                      <span style="background: #2563eb; color: #fff; font-size: 10px; padding: 1px 5px; border-radius: 3px; font-family: var(--font-sans);">CPA</span>
+                      <span style="color: var(--accent); font-weight: bold;">✓</span>
+                    </span>
+                  </div>
+                  <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">Cursor 原生蓝色徽章标签样式，打钩位于徽章右侧</div>
+                </div>
+              </label>
+
+              <!-- 选项 4: 纯净形式 -->
+              <label class="cursor-tag-style-option" style="display: flex; align-items: flex-start; gap: 12px; padding: 12px 14px; border: 1.5px solid var(--border); border-radius: 10px; cursor: pointer; transition: all 0.15s ease; background: var(--bg-card);">
+                <input type="radio" name="cursorTagStyleRadio" value="none" style="margin-top: 3px; cursor: pointer;">
+                <div style="flex: 1; min-width: 0;">
+                  <div style="display: flex; align-items: center; justify-content: space-between;">
+                    <span style="font-size: 13px; font-weight: 650; color: var(--text-primary);">纯净形式</span>
+                  </div>
+                  <div style="font-size: 12px; font-family: var(--font-mono); color: var(--text-secondary); margin-top: 4px; background: var(--bg-input); padding: 5px 8px; border-radius: 6px; display: flex; align-items: center; justify-content: space-between;">
+                    <span>Gemini 3.8 Flash</span>
+                    <span style="color: var(--accent); font-weight: bold;">✓</span>
+                  </div>
+                  <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">不展示任何供应商标识，保持模型列表极致精简</div>
+                </div>
+              </label>
+
+              <!-- 括号样式设置区 (前缀/后缀模式下生效) -->
+              <div id="cursorTagBracketSection" style="padding: 12px 14px; background: var(--bg-input); border-radius: 10px; border: 1px solid var(--border); display: flex; flex-direction: column; gap: 8px; margin-top: 2px;">
+                <div style="display: flex; align-items: center; justify-content: space-between;">
+                  <span style="font-size: 12px; font-weight: 650; color: var(--text-primary);">括号样式</span>
+                  <span style="font-size: 11px; color: var(--text-muted);">适用于前缀和后缀形式</span>
+                </div>
+                <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;" id="cursorBracketPresetButtons">
+                  <button type="button" class="btn-ghost cursor-bracket-btn" data-bracket="[]" style="height: 28px; padding: 0 10px; font-size: 12px; border-radius: 6px; font-weight: 600;">[ 方括号 ]</button>
+                  <button type="button" class="btn-ghost cursor-bracket-btn" data-bracket="()" style="height: 28px; padding: 0 10px; font-size: 12px; border-radius: 6px;">( 圆括号 )</button>
+                  <button type="button" class="btn-ghost cursor-bracket-btn" data-bracket="【】" style="height: 28px; padding: 0 10px; font-size: 12px; border-radius: 6px;">【 中文括号 】</button>
+                  <button type="button" class="btn-ghost cursor-bracket-btn" data-bracket="{}" style="height: 28px; padding: 0 10px; font-size: 12px; border-radius: 6px;">{ 花括号 }</button>
+                  <button type="button" class="btn-ghost cursor-bracket-btn" data-bracket="none" style="height: 28px; padding: 0 10px; font-size: 12px; border-radius: 6px;">无括号</button>
+                  <button type="button" class="btn-ghost cursor-bracket-btn" data-bracket="custom" style="height: 28px; padding: 0 10px; font-size: 12px; border-radius: 6px;">自定义</button>
+                </div>
+                <div id="cursorTagBracketCustomInputs" style="display: none; align-items: center; gap: 8px; margin-top: 4px; padding-top: 6px; border-top: 1px dashed var(--border);">
+                  <span style="font-size: 11.5px; color: var(--text-secondary);">左符号:</span>
+                  <input type="text" id="cursorBracketLeftInput" style="width: 60px; height: 26px; padding: 0 6px; font-size: 12px; border-radius: 5px; border: 1px solid var(--border); background: var(--bg-card); color: var(--text-primary); text-align: center;" value="[">
+                  <span style="font-size: 11.5px; color: var(--text-secondary); margin-left: 4px;">右符号:</span>
+                  <input type="text" id="cursorBracketRightInput" style="width: 60px; height: 26px; padding: 0 6px; font-size: 12px; border-radius: 5px; border: 1px solid var(--border); background: var(--bg-card); color: var(--text-primary); text-align: center;" value="]">
+                </div>
+              </div>
+            </div>
+
+            <!-- 底部按钮 -->
+            <div class="modal-footer" style="padding: 12px 20px; border-top: 1px solid var(--border); background: var(--bg-card); display: flex; justify-content: flex-end; gap: 10px;">
+              <button type="button" class="btn-ghost" data-action="closeCursorTagStyleModal" style="height: 32px; padding: 0 14px; font-size: 12px; border-radius: 7px;">取消</button>
+              <button type="button" class="btn-primary" data-action="saveCursorTagStyleModal" style="height: 32px; padding: 0 16px; font-size: 12px; font-weight: 600; border-radius: 7px;">应用并同步</button>
+            </div>
+          </div>
         </div>
 
         <!-- ═══════ CURSOR 编辑模型模态弹窗 ═══════ -->
@@ -3284,6 +3411,21 @@
                       <div class="setting-ctrl">
                         <input class="input-sm" id="cursorCorePortInput" type="number" min="1" max="65535" value="17650">
                         <button type="button" class="btn-primary" data-action="saveCursorCorePort">保存端口</button>
+                      </div>
+                    </div>
+
+                    <div class="setting-row">
+                      <div class="setting-meta">
+                        <div class="setting-label">供应商标签展示方式</div>
+                        <div class="setting-desc">控制模型在 Cursor 下拉列表中呈现的供应商标签样式</div>
+                      </div>
+                      <div class="setting-ctrl">
+                        <select class="platform-provider-select" id="cursorSettingsTagStyleSelect" style="min-width:180px;height:32px;border-radius:8px;font-size:12px;padding:0 10px;border:1px solid var(--border);background:var(--bg-input);color:var(--text-primary);outline:none;" data-action="onCursorTagStyleChange" data-events="change">
+                          <option value="badge">徽章形式 [CPA]</option>
+                          <option value="prefix">前缀形式 [CPA] 模型名</option>
+                          <option value="suffix">后缀形式 模型名 [CPA]</option>
+                          <option value="none">纯净形式 (不显示)</option>
+                        </select>
                       </div>
                     </div>
 

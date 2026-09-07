@@ -518,6 +518,18 @@ function setUpdaterUIState(state) {
         <span>下载中...</span>
       </button>
     `;
+  } else if (state === 'retrying') {
+    if (retry) retry.style.display = 'flex';
+    if (progress) progress.style.display = 'block';
+    if (footer) footer.innerHTML = `
+      <button data-action="closeUpdaterPromptModal" class="update-btn update-btn-secondary">稍后</button>
+      <button class="update-btn update-btn-primary" disabled id="updater-downloading-btn">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" class="spin">
+          <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"></path>
+        </svg>
+        <span>重试中...</span>
+      </button>
+    `;
   } else if (state === 'ready') {
     if (ready) ready.style.display = 'flex';
     const readyText = document.getElementById('updater-ready-text');
@@ -645,72 +657,67 @@ async function startDownloadAndUpdate() {
   }
 
   try {
-    addLog('info', '正在下载更新包，请稍候...');
-    logUpdaterEvent('info', '开始下载更新包...');
-    await invoke('download_and_install_update', { relaunch: false });
-    // 下载成功，保存更新说明以便下次启动展示
-    isDownloading = false;
-    logUpdaterEvent('info', '更新包下载并安装完成，等待重启');
-    if (detectedUpdateInfo) {
+    let success = false;
+    let lastError = null;
+
+    for (let attempt = 0; attempt <= UPDATER_MAX_RETRIES; attempt++) {
+      if (!isDownloading) break;
+
+      if (attempt > 0) {
+        updaterRetryCount = attempt;
+        const delay = UPDATER_RETRY_DELAYS[Math.min(attempt - 1, UPDATER_RETRY_DELAYS.length - 1)];
+        const retryStatus = document.getElementById('updater-retry-status');
+        if (retryStatus) retryStatus.textContent = `网络异常，第 ${attempt}/${UPDATER_MAX_RETRIES} 次重试（${delay / 1000}s 后）...`;
+        setUpdaterUIState('retrying');
+
+        await new Promise(r => setTimeout(r, delay));
+        if (!isDownloading) break;
+        setUpdaterUIState('downloading');
+      }
+
       try {
-        await invoke('save_pending_update_notes', {
-          version: detectedUpdateInfo.version,
-          releaseNotes: detectedUpdateInfo.body || '',
-          releaseNotesZh: detectedUpdateInfo.body || ''
-        });
-      } catch (e) { console.warn('save_pending_update_notes failed:', e); }
-    }
-    setUpdaterUIState('ready');
-    addLog('ok', '更新包已下载并安装就绪，等待重启生效');
-  } catch (e) {
-    isDownloading = false;
-    const errMsg = String(e || '未知错误');
-    logUpdaterEvent('error', `更新下载失败: ${errMsg}`);
-    addLog('err', '更新下载失败: ' + errMsg);
+        if (attempt === 0) {
+          addLog('info', '正在下载更新包，请稍候...');
+          logUpdaterEvent('info', '开始下载更新包...');
+        } else {
+          addLog('info', `第 ${attempt} 次重试下载更新包...`);
+          logUpdaterEvent('info', `第 ${attempt} 次重试下载更新包...`);
+        }
 
-    // 判断是否可重试，自动重试
-    if (isRetryableUpdateError(e) && updaterRetryCount < UPDATER_MAX_RETRIES) {
-      const delay = UPDATER_RETRY_DELAYS[Math.min(updaterRetryCount, UPDATER_RETRY_DELAYS.length - 1)];
-      updaterRetryCount++;
-      const retryStatus = document.getElementById('updater-retry-status');
-      if (retryStatus) retryStatus.textContent = `网络异常，第 ${updaterRetryCount}/${UPDATER_MAX_RETRIES} 次重试（${delay/1000}s 后）...`;
-      setUpdaterUIState('retrying');
-
-      await new Promise(r => setTimeout(r, delay));
-
-      if (isDownloading === false && updaterRetryCount > 0) {
-        // 没有被取消，继续重试
-        isDownloading = true;
-        try {
-          await invoke('download_and_install_update', { relaunch: false });
-          isDownloading = false;
-          updaterRetryCount = 0;
-          if (detectedUpdateInfo) {
-            try {
-              await invoke('save_pending_update_notes', {
-                version: detectedUpdateInfo.version,
-                releaseNotes: detectedUpdateInfo.body || '',
-                releaseNotesZh: detectedUpdateInfo.body || ''
-              });
-            } catch (e) { console.warn('save_pending_update_notes failed:', e); }
-          }
-          setUpdaterUIState('ready');
-          addLog('ok', '重试成功，更新包已就绪');
-        } catch (e2) {
-          isDownloading = false;
-          // 重试也失败了，如果还有次数则递归
-          if (updaterRetryCount < UPDATER_MAX_RETRIES) {
-            // 继续重试
-            await startDownloadAndUpdate();
-            return;
-          }
-          // 重试次数用完，显示错误
-          showUpdaterError('自动更新下载失败，可重试或前往下载页手动更新', String(e2));
-          setUpdaterUIState('error');
+        await invoke('download_and_install_update', { relaunch: false });
+        success = true;
+        break;
+      } catch (err) {
+        lastError = err;
+        const errMsg = String(err || '未知错误');
+        logUpdaterEvent('warn', `更新下载尝试失败 (${attempt + 1}/${UPDATER_MAX_RETRIES + 1}): ${errMsg}`);
+        if (!isRetryableUpdateError(err) || attempt >= UPDATER_MAX_RETRIES) {
+          break;
         }
       }
-    } else {
-      // 不可重试的错误，直接显示错误状态
+    }
+
+    if (success) {
+      isDownloading = false;
+      updaterRetryCount = 0;
+      logUpdaterEvent('info', '更新包下载并安装完成，等待重启');
+      if (detectedUpdateInfo) {
+        try {
+          await invoke('save_pending_update_notes', {
+            version: detectedUpdateInfo.version,
+            releaseNotes: detectedUpdateInfo.body || '',
+            releaseNotesZh: detectedUpdateInfo.body || ''
+          });
+        } catch (e) { console.warn('save_pending_update_notes failed:', e); }
+      }
+      setUpdaterUIState('ready');
+      addLog('ok', '更新包已下载并安装就绪，等待重启生效');
+    } else if (isDownloading) {
+      isDownloading = false;
+      const errMsg = String(lastError || '未知错误');
+      logUpdaterEvent('error', `更新下载最终失败: ${errMsg}`);
+      addLog('err', '更新下载失败: ' + errMsg);
+
       const userMsg = errMsg.includes('signature') || errMsg.includes('checksum') || errMsg.includes('hash')
         ? '更新包签名验证失败，请前往下载页手动下载'
         : errMsg.includes('no matching platform')
@@ -720,8 +727,13 @@ async function startDownloadAndUpdate() {
       setUpdaterUIState('error');
     }
   } finally {
-    if (unlistenProgress) unlistenProgress();
-    if (unlistenComplete) unlistenComplete();
+    isDownloading = false;
+    if (typeof unlistenProgress === 'function') {
+      try { unlistenProgress(); } catch {}
+    }
+    if (typeof unlistenComplete === 'function') {
+      try { unlistenComplete(); } catch {}
+    }
   }
 }
 
