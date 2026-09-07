@@ -267,7 +267,7 @@ async function checkVersionJump() {
       if (versionEl) versionEl.textContent = 'v' + jump.current_version;
       if (descEl) descEl.textContent = `已从 v${jump.previous_version} 更新到 v${jump.current_version}`;
       if (notesEl) {
-        notesEl.innerHTML = renderMarkdownNotes(jump.release_notes_zh || jump.release_notes || '本次更新包含性能优化与稳定性提升。');
+        notesEl.textContent = jump.release_notes_zh || jump.release_notes || '本次更新包含性能优化与稳定性提升。';
       }
 
       // 先收起其他同层弹窗，避免遮罩层级冲突导致无法点击
