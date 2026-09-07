@@ -2,6 +2,10 @@
 
 All notable changes to AnyBridge will be documented in this file.
 
+## v0.5.2 - 2026-09-07
+
+- Cursor 平台供应商前缀样式弹窗结构修复：移除冗余的重复关闭容器与底部操作栏节点，恢复弹窗正常渲染与点击交互。
+
 ## v0.5.1 - 2026-09-07
 
 - Cursor 平台模型前缀/后缀样式体验优化：
