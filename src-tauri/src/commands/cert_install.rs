@@ -262,6 +262,7 @@ fn base64_decode(s: &str) -> Result<Vec<u8>, String> {
 #[cfg(target_os = "windows")]
 mod platform {
     use super::*;
+    use std::collections::HashSet;
     use std::os::windows::process::CommandExt;
 
     const CREATE_NO_WINDOW: u32 = 0x0800_0000;
@@ -344,37 +345,205 @@ mod platform {
         })
     }
 
+    #[allow(dead_code)]
     fn certutil_success(args: &[&str]) -> bool {
         run_certutil(args)
             .map(|o| o.status.success())
             .unwrap_or(false)
     }
 
+    fn is_thumbprint_in_registry(thumbprint_hex: &str, current_user: bool) -> bool {
+        use std::ffi::OsStr;
+        use std::os::windows::ffi::OsStrExt;
+        use windows_sys::Win32::System::Registry::{
+            HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE, RegCloseKey, RegOpenKeyExW, KEY_READ,
+        };
+        use windows_sys::Win32::Foundation::ERROR_SUCCESS;
+
+        let subkey = format!(r"Software\Microsoft\SystemCertificates\Root\Certificates\{thumbprint_hex}");
+        let wide_key: Vec<u16> = OsStr::new(&subkey).encode_wide().chain(std::iter::once(0)).collect();
+        let root_hkey = if current_user {
+            HKEY_CURRENT_USER
+        } else {
+            HKEY_LOCAL_MACHINE
+        };
+
+        let mut hkey = std::ptr::null_mut();
+        let status = unsafe {
+            RegOpenKeyExW(root_hkey, wide_key.as_ptr(), 0, KEY_READ, &mut hkey)
+        };
+        if status == ERROR_SUCCESS {
+            unsafe { RegCloseKey(hkey); }
+            true
+        } else {
+            false
+        }
+    }
+
+    struct StoreCerts {
+        thumbprints: HashSet<String>,
+        names: HashSet<String>,
+    }
+
+    fn read_root_store_certs(current_user: bool) -> StoreCerts {
+        use std::ffi::OsStr;
+        use std::os::windows::ffi::OsStrExt;
+        use windows_sys::Win32::Security::Cryptography::{
+            CertOpenStore, CertCloseStore, CertEnumCertificatesInStore, CertGetNameStringW,
+            CertGetCertificateContextProperty,
+            CERT_STORE_PROV_SYSTEM_W, CERT_SYSTEM_STORE_CURRENT_USER, CERT_SYSTEM_STORE_LOCAL_MACHINE,
+            CERT_NAME_SIMPLE_DISPLAY_TYPE, CERT_STORE_READONLY_FLAG, CERT_SHA1_HASH_PROP_ID,
+        };
+
+        let mut thumbprints = HashSet::new();
+        let mut names = HashSet::new();
+
+        let store_name: Vec<u16> = OsStr::new("Root")
+            .encode_wide()
+            .chain(std::iter::once(0))
+            .collect();
+        let flags = CERT_STORE_READONLY_FLAG
+            | if current_user {
+                CERT_SYSTEM_STORE_CURRENT_USER
+            } else {
+                CERT_SYSTEM_STORE_LOCAL_MACHINE
+            };
+
+        let h_store = unsafe {
+            CertOpenStore(
+                CERT_STORE_PROV_SYSTEM_W as _,
+                0,
+                0,
+                flags,
+                store_name.as_ptr() as _,
+            )
+        };
+
+        if h_store.is_null() {
+            return StoreCerts { thumbprints, names };
+        }
+
+        let mut p_ctx = std::ptr::null();
+        let mut name_buf = [0u16; 256];
+        let mut hash_buf = [0u8; 20];
+
+        loop {
+            p_ctx = unsafe { CertEnumCertificatesInStore(h_store, p_ctx) };
+            if p_ctx.is_null() {
+                break;
+            }
+
+            // 获取 CN/简单显示名
+            let len = unsafe {
+                CertGetNameStringW(
+                    p_ctx,
+                    CERT_NAME_SIMPLE_DISPLAY_TYPE,
+                    0,
+                    std::ptr::null(),
+                    name_buf.as_mut_ptr(),
+                    name_buf.len() as u32,
+                )
+            };
+            if len > 1 {
+                let name = String::from_utf16_lossy(&name_buf[..(len as usize - 1)]);
+                names.insert(name.to_lowercase());
+            }
+
+            // 获取 SHA1 Hash
+            let mut hash_size = hash_buf.len() as u32;
+            let ok = unsafe {
+                CertGetCertificateContextProperty(
+                    p_ctx,
+                    CERT_SHA1_HASH_PROP_ID,
+                    hash_buf.as_mut_ptr() as _,
+                    &mut hash_size,
+                )
+            };
+            if ok != 0 && hash_size == 20 {
+                let hex_str = hex::encode_upper(&hash_buf);
+                thumbprints.insert(hex_str);
+            }
+        }
+
+        unsafe {
+            CertCloseStore(h_store, 0);
+        }
+
+        StoreCerts { thumbprints, names }
+    }
+
     /// 检查指定 CommonName 的证书是否在指定 store 里。
     /// `current_user_only=true` 时只查 CurrentUser\Root，否则查 LocalMachine\Root。
     pub fn is_in_store(cn: &str, current_user_only: bool) -> bool {
-        // certutil 区分 user / machine store 的方式：加 `-user` 前缀
-        // 仅查 CurrentUser，不加则查 LocalMachine（certutil 默认行为）。
-        if current_user_only {
-            certutil_success(&["-user", "-verifystore", "Root", cn])
-        } else {
-            certutil_success(&["-verifystore", "Root", cn])
-        }
+        let certs = read_root_store_certs(current_user_only);
+        certs.names.contains(&cn.to_lowercase())
     }
 
     pub fn is_thumbprint_in_store(thumbprint: &str, current_user_only: bool) -> bool {
         let normalized: String = thumbprint
             .chars()
             .filter(|c| c.is_ascii_hexdigit())
-            .collect();
+            .collect::<String>()
+            .to_uppercase();
         if normalized.len() != 40 {
             return false;
         }
-        if current_user_only {
-            certutil_success(&["-user", "-verifystore", "Root", normalized.as_str()])
-        } else {
-            certutil_success(&["-verifystore", "Root", normalized.as_str()])
+        // 优先尝试通过 Windows 注册表快速查找，避免每次都打开证书存储或启动进程
+        if is_thumbprint_in_registry(&normalized, current_user_only) {
+            return true;
         }
+        let certs = read_root_store_certs(current_user_only);
+        certs.thumbprints.contains(&normalized)
+    }
+
+    pub fn query_ca_store_status(
+        thumbprint: Option<&str>,
+        common_name: &str,
+        legacy_cns: &[&str],
+    ) -> (bool, bool, bool) {
+        let normalized_tp = thumbprint.map(|t| {
+            t.chars()
+                .filter(|c| c.is_ascii_hexdigit())
+                .collect::<String>()
+                .to_uppercase()
+        });
+
+        let cn_lower = common_name.to_lowercase();
+        let legacy_lowers: Vec<String> = legacy_cns.iter().map(|s| s.to_lowercase()).collect();
+
+        // 快速注册表检测
+        let cu_reg = normalized_tp
+            .as_deref()
+            .map(|t| is_thumbprint_in_registry(t, true))
+            .unwrap_or(false);
+        let lm_reg = normalized_tp
+            .as_deref()
+            .map(|t| is_thumbprint_in_registry(t, false))
+            .unwrap_or(false);
+
+        // 一次性读取 user 与 machine 证书库，避免为每个名字或指纹反复打开存储
+        let cu_certs = read_root_store_certs(true);
+        let lm_certs = read_root_store_certs(false);
+
+        let current_user = cu_reg
+            || normalized_tp
+                .as_deref()
+                .map(|t| cu_certs.thumbprints.contains(t))
+                .unwrap_or(false)
+            || cu_certs.names.contains(&cn_lower);
+
+        let local_machine = lm_reg
+            || normalized_tp
+                .as_deref()
+                .map(|t| lm_certs.thumbprints.contains(t))
+                .unwrap_or(false)
+            || lm_certs.names.contains(&cn_lower);
+
+        let legacy_residual = legacy_lowers.iter().any(|cn| {
+            cu_certs.names.contains(cn) || lm_certs.names.contains(cn)
+        });
+
+        (current_user, local_machine, legacy_residual)
     }
 
     /// 把 PEM 装到 CurrentUser\Root（不需要管理员权限）。
@@ -693,6 +862,23 @@ mod platform {
         }
     }
 
+    pub fn query_ca_store_status(
+        thumbprint: Option<&str>,
+        common_name: &str,
+        legacy_cns: &[&str],
+    ) -> (bool, bool, bool) {
+        let current_user = thumbprint
+            .map(|t| is_thumbprint_in_store(t, true))
+            .unwrap_or_else(|| is_in_store(common_name, true));
+        let local_machine = thumbprint
+            .map(|t| is_thumbprint_in_store(t, false))
+            .unwrap_or_else(|| is_in_store(common_name, false));
+        let legacy_residual = legacy_cns
+            .iter()
+            .any(|cn| is_in_store(cn, true) || is_in_store(cn, false));
+        (current_user, local_machine, legacy_residual)
+    }
+
     pub fn install_current_user(cert_path: &Path) -> Result<(), String> {
         let kc = login_keychain()?;
         run_security(
@@ -897,6 +1083,23 @@ mod platform {
             .any(|path| cert_matches_thumbprint(path, thumbprint))
     }
 
+    pub fn query_ca_store_status(
+        thumbprint: Option<&str>,
+        common_name: &str,
+        legacy_cns: &[&str],
+    ) -> (bool, bool, bool) {
+        let current_user = thumbprint
+            .map(|t| is_thumbprint_in_store(t, true))
+            .unwrap_or_else(|| is_in_store(common_name, true));
+        let local_machine = thumbprint
+            .map(|t| is_thumbprint_in_store(t, false))
+            .unwrap_or_else(|| is_in_store(common_name, false));
+        let legacy_residual = legacy_cns
+            .iter()
+            .any(|cn| is_in_store(cn, true) || is_in_store(cn, false));
+        (current_user, local_machine, legacy_residual)
+    }
+
     pub fn install_current_user(cert_path: &Path) -> Result<(), String> {
         require_command(
             "trust",
@@ -1028,6 +1231,13 @@ mod platform {
     pub fn is_thumbprint_in_store(_thumbprint: &str, _current_user_only: bool) -> bool {
         false
     }
+    pub fn query_ca_store_status(
+        _thumbprint: Option<&str>,
+        _common_name: &str,
+        _legacy_cns: &[&str],
+    ) -> (bool, bool, bool) {
+        (false, false, false)
+    }
     pub fn install_current_user(_cert_path: &Path) -> Result<(), String> {
         Err("当前平台暂不支持自动安装 CA 证书".to_string())
     }
@@ -1052,8 +1262,31 @@ mod platform {
 // 公共 API
 // ──────────────────────────────────────────────────────────
 
+static CA_STATUS_CACHE: std::sync::Mutex<Option<(std::time::Instant, CaStatus)>> =
+    std::sync::Mutex::new(None);
+static LEGACY_RESIDUAL_CACHE: std::sync::Mutex<Option<(std::time::Instant, bool)>> =
+    std::sync::Mutex::new(None);
+
+pub fn invalidate_ca_status_cache() {
+    if let Ok(mut g) = CA_STATUS_CACHE.lock() {
+        *g = None;
+    }
+    if let Ok(mut g) = LEGACY_RESIDUAL_CACHE.lock() {
+        *g = None;
+    }
+}
+
 /// 查询 CA 在系统中的安装状态。
 pub fn check_ca_status() -> CaStatus {
+    // 1. 检查最近缓存（2 秒内直接返回，避免频繁调用如每秒状态轮询或批量保存时重复执行系统检测）
+    if let Ok(guard) = CA_STATUS_CACHE.lock() {
+        if let Some((time, ref status)) = *guard {
+            if time.elapsed() < std::time::Duration::from_millis(2000) {
+                return status.clone();
+            }
+        }
+    }
+
     let (cert_path, key_path) = cert_paths().unwrap_or_else(|_| {
         (
             PathBuf::from("certs/server.codeium.com.pem"),
@@ -1070,17 +1303,12 @@ pub fn check_ca_status() -> CaStatus {
     } else {
         None
     };
-    let current_user = thumbprint
-        .as_deref()
-        .map(|t| platform::is_thumbprint_in_store(t, true))
-        .unwrap_or_else(|| platform::is_in_store(CA_COMMON_NAME, true));
-    let local_machine = thumbprint
-        .as_deref()
-        .map(|t| platform::is_thumbprint_in_store(t, false))
-        .unwrap_or_else(|| platform::is_in_store(CA_COMMON_NAME, false));
-    let legacy_residual = LEGACY_CA_COMMON_NAMES
-        .iter()
-        .any(|cn| platform::is_in_store(cn, true) || platform::is_in_store(cn, false));
+
+    let (current_user, local_machine, legacy_residual) = platform::query_ca_store_status(
+        thumbprint.as_deref(),
+        CA_COMMON_NAME,
+        LEGACY_CA_COMMON_NAMES,
+    );
 
     let effective_store = if current_user || local_machine {
         if current_user {
@@ -1118,7 +1346,7 @@ pub fn check_ca_status() -> CaStatus {
         }
     };
 
-    CaStatus {
+    let res = CaStatus {
         common_name: CA_COMMON_NAME.to_string(),
         cert_file: cert_path.to_string_lossy().to_string(),
         cert_exists,
@@ -1131,7 +1359,13 @@ pub fn check_ca_status() -> CaStatus {
         thumbprint,
         effective_store,
         message,
+    };
+
+    if let Ok(mut guard) = CA_STATUS_CACHE.lock() {
+        *guard = Some((std::time::Instant::now(), res.clone()));
     }
+
+    res
 }
 
 /// 一键安装 CA：先尝试 CurrentUser\Root（零弹窗），失败才走 UAC 兜底。
@@ -1194,6 +1428,7 @@ fn install_ca_impl(
     prefer_fresh_install: bool,
     allow_admin: bool,
 ) -> Result<String, String> {
+    invalidate_ca_status_cache();
     eprintln!(
         "[cert_install] install_ca: start force={} fresh={} allow_admin={}",
         force_regenerate, prefer_fresh_install, allow_admin
@@ -1461,6 +1696,7 @@ pub fn uninstall_ca() -> Result<String, String> {
 }
 
 fn uninstall_ca_impl(app: Option<AppHandle>) -> Result<String, String> {
+    invalidate_ca_status_cache();
     emit_cert_progress(
         app.as_ref(),
         "uninstall_start",
@@ -1593,6 +1829,7 @@ fn uninstall_ca_impl(app: Option<AppHandle>) -> Result<String, String> {
 /// 两个 store 都查（CurrentUser + LocalMachine），因为老版本
 /// 经常用 certutil -addstore Root 装到 LM。
 pub fn cleanup_legacy_cn() -> Result<String, String> {
+    invalidate_ca_status_cache();
     let mut msg = String::new();
 
     for cn in LEGACY_CA_COMMON_NAMES {
@@ -1760,5 +1997,20 @@ mod tests {
         assert!(!is_san_current(&cert_path, true, true));
 
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_check_ca_status_time() {
+        let start1 = std::time::Instant::now();
+        let _status1 = check_ca_status();
+        let duration1 = start1.elapsed();
+
+        let start2 = std::time::Instant::now();
+        let status2 = check_ca_status();
+        let duration2 = start2.elapsed();
+
+        assert!(duration1 < std::time::Duration::from_millis(500), "冷启动检测应低于 500ms，实际为 {:?}", duration1);
+        assert!(duration2 < std::time::Duration::from_millis(10), "缓存命中应在微秒级，实际为 {:?}", duration2);
+        assert!(status2.cert_file.contains("server.codeium.com.pem"));
     }
 }

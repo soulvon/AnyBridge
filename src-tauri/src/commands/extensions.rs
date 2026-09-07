@@ -3481,18 +3481,28 @@ pub async fn extension_deploy_cpa_suite(
     emit_deploy_progress(&app, "extract_cpa", "解压 CLIProxyAPI...", 65);
     {
         let dir = cpa_dir.clone();
-        tauri::async_runtime::spawn_blocking(move || extract_archive(&cpa_archive, &dir))
-            .await
-            .map_err(|e| e.to_string())??;
+        let archive = cpa_archive.clone();
+        tauri::async_runtime::spawn_blocking(move || {
+            let res = extract_archive(&archive, &dir);
+            let _ = fs::remove_file(&archive);
+            res
+        })
+        .await
+        .map_err(|e| e.to_string())??;
     }
 
     // 7. 解压 CPAMP
     emit_deploy_progress(&app, "extract_cpamp", "解压 CPA Manager Plus...", 70);
     {
         let dir = cpamp_dir.clone();
-        tauri::async_runtime::spawn_blocking(move || extract_archive(&cpamp_archive, &dir))
-            .await
-            .map_err(|e| e.to_string())??;
+        let archive = cpamp_archive.clone();
+        tauri::async_runtime::spawn_blocking(move || {
+            let res = extract_archive(&archive, &dir);
+            let _ = fs::remove_file(&archive);
+            res
+        })
+        .await
+        .map_err(|e| e.to_string())??;
     }
 
     // 7.5. 迁移旧版本 auth/ 和 plugins/ 到新版本目录，保留用户配置

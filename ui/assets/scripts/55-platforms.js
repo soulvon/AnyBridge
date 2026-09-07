@@ -5148,6 +5148,9 @@ let _cursorAddSelectedProvider = null;
 let _cursorAddSelectedModels = new Map(); // providerId -> Set of modelId
 let _cursorAddSearchKw = '';
 let _cursorAddSortMode = 'default';
+let _cursorProviderTagStyle = 'badge';
+let _cursorProviderBracketLeft = '[';
+let _cursorProviderBracketRight = ']';
 
 function cursorEsc(str) {
   return String(str || '')
@@ -5205,9 +5208,10 @@ async function cursorRefreshConsole(options = {}) {
     cursorEnsureBridge();
 
     // 1. 获取 Rust Cursor Core 状态与模型列表（并行请求减少等待时间）
-    const [statusRes, modelsRes] = await Promise.allSettled([
+    const [statusRes, modelsRes, tagStyleRes] = await Promise.allSettled([
       invoke('cursor_get_status'),
-      invoke('cursor_list_models')
+      invoke('cursor_list_models'),
+      invoke('cursor_get_provider_tag_style')
     ]);
 
     let status = statusRes.status === 'fulfilled' ? statusRes.value : null;
@@ -5216,6 +5220,18 @@ async function cursorRefreshConsole(options = {}) {
     if (modelsRes.status === 'fulfilled' && Array.isArray(modelsRes.value)) {
       _cursorModelsList = modelsRes.value;
     }
+
+    if (tagStyleRes.status === 'fulfilled' && tagStyleRes.value) {
+      const val = tagStyleRes.value;
+      if (typeof val === 'object' && val !== null) {
+        _cursorProviderTagStyle = val.style || 'badge';
+        _cursorProviderBracketLeft = val.bracketLeft ?? '[';
+        _cursorProviderBracketRight = val.bracketRight ?? ']';
+      } else if (typeof val === 'string') {
+        _cursorProviderTagStyle = val;
+      }
+    }
+    cursorUpdateTagStyleSelects(_cursorProviderTagStyle);
 
     const running = !!status?.running;
     const certReady = !!status?.certificateReady;
@@ -5437,9 +5453,7 @@ function cursorStartEditDisplayName(td, bindingId) {
           }
         });
         item.displayName = newVal;
-        if (typeof showBottomToast === 'function') {
-          showBottomToast(`显示名已更新: ${newVal}`, 'success');
-        }
+        cursorRefreshConsole({ silent: true }).catch(() => {});
       } catch (e) {
         showCustomAlert('更新显示名失败: ' + e, '保存异常', 'error');
       }
@@ -5542,6 +5556,7 @@ async function cursorToggleThirdPartyVision(bindingId, enabled) {
 
   const prev = item.useThirdPartyVision;
   item.useThirdPartyVision = !!enabled;
+  cursorRenderTableRows();
   try {
     await invoke('cursor_update_model', {
       payload: {
@@ -5549,10 +5564,7 @@ async function cursorToggleThirdPartyVision(bindingId, enabled) {
         useThirdPartyVision: !!enabled
       }
     });
-    cursorRenderTableRows();
-    if (typeof showBottomToast === 'function') {
-      showBottomToast(enabled ? `已为「${item.displayName || item.exposedModelId}」启用第三方图片理解` : `已关闭「${item.displayName || item.exposedModelId}」第三方图片理解`, 'success');
-    }
+    cursorRefreshConsole({ silent: true }).catch(() => {});
   } catch (e) {
     item.useThirdPartyVision = prev;
     cursorRenderTableRows();
@@ -5571,17 +5583,15 @@ async function cursorBulkThirdPartyVisionAction() {
 
   const ids = Array.from(_cursorSelectedSet);
   cursorEnsureBridge();
+  _cursorModelsList.forEach(m => {
+    if (_cursorSelectedSet.has(m.id)) {
+      m.useThirdPartyVision = true;
+    }
+  });
+  cursorRenderTableRows();
   try {
     await invoke('cursor_set_models_third_party_vision', { ids, enabled: true });
-    _cursorModelsList.forEach(m => {
-      if (_cursorSelectedSet.has(m.id)) {
-        m.useThirdPartyVision = true;
-      }
-    });
-    cursorRenderTableRows();
-    if (typeof showBottomToast === 'function') {
-      showBottomToast(`已为选中的 ${ids.length} 个模型启用第三方图片理解`, 'success');
-    }
+    cursorRefreshConsole({ silent: true }).catch(() => {});
   } catch (e) {
     console.error('[cursor] bulk set third party vision failed:', e);
     showCustomAlert('批量设置第三方图片理解失败: ' + e, '操作异常', 'error');
@@ -5592,11 +5602,17 @@ async function cursorBulkThirdPartyVisionAction() {
 async function cursorBulkEnableAction() {
   if (_cursorSelectedSet.size === 0) return;
   cursorEnsureBridge();
+  const ids = Array.from(_cursorSelectedSet);
+  _cursorModelsList.forEach(m => {
+    if (_cursorSelectedSet.has(m.id)) {
+      m.enabled = true;
+    }
+  });
+  cursorRenderTableRows();
   try {
-    const ids = Array.from(_cursorSelectedSet);
     await invoke('cursor_set_models_enabled', { ids, enabled: true });
     if (typeof addLog === 'function') addLog('ok', `已批量启用 ${ids.length} 个 Cursor 模型`);
-    await cursorRefreshConsole();
+    cursorRefreshConsole({ silent: true }).catch(() => {});
   } catch (e) {
     console.error('[cursor] bulk enable failed:', e);
     showCustomAlert('批量启用失败: ' + e, '操作异常', 'error');
@@ -5607,11 +5623,17 @@ async function cursorBulkEnableAction() {
 async function cursorBulkDisableAction() {
   if (_cursorSelectedSet.size === 0) return;
   cursorEnsureBridge();
+  const ids = Array.from(_cursorSelectedSet);
+  _cursorModelsList.forEach(m => {
+    if (_cursorSelectedSet.has(m.id)) {
+      m.enabled = false;
+    }
+  });
+  cursorRenderTableRows();
   try {
-    const ids = Array.from(_cursorSelectedSet);
     await invoke('cursor_set_models_enabled', { ids, enabled: false });
     if (typeof addLog === 'function') addLog('ok', `已批量停用 ${ids.length} 个 Cursor 模型`);
-    await cursorRefreshConsole();
+    cursorRefreshConsole({ silent: true }).catch(() => {});
   } catch (e) {
     console.error('[cursor] bulk disable failed:', e);
     showCustomAlert('批量停用失败: ' + e, '操作异常', 'error');
@@ -5632,16 +5654,19 @@ async function cursorBulkRemoveAction() {
   if (!ok) return;
 
   cursorEnsureBridge();
+  const ids = Array.from(_cursorSelectedSet);
+  const prevList = _cursorModelsList.slice();
+  _cursorModelsList = _cursorModelsList.filter(m => !_cursorSelectedSet.has(m.id));
+  _cursorSelectedSet.clear();
+  cursorRenderTableRows();
+  cursorUpdateBulkActionButtons();
   try {
-    const ids = Array.from(_cursorSelectedSet);
     await invoke('cursor_remove_models', { ids });
-    _cursorSelectedSet.clear();
     if (typeof addLog === 'function') addLog('ok', `已从 Cursor 移除 ${count} 个模型绑定`);
-    await cursorRefreshConsole();
-    if (typeof showBottomToast === 'function') {
-      showBottomToast(`已移除 ${count} 个模型`, 'success');
-    }
+    cursorRefreshConsole({ silent: true }).catch(() => {});
   } catch (e) {
+    _cursorModelsList = prevList;
+    cursorRenderTableRows();
     console.error('[cursor] bulk remove failed:', e);
     showCustomAlert('批量移除失败: ' + e, '移除异常', 'error');
   }
@@ -5650,13 +5675,17 @@ async function cursorBulkRemoveAction() {
 // 单个模型启停
 async function cursorToggleModelEnabled(bindingId, enabled) {
   cursorEnsureBridge();
+  const item = _cursorModelsList.find(m => m.id === bindingId);
+  if (!item) return;
+  const prev = item.enabled;
+  item.enabled = !!enabled;
+  cursorRenderTableRows();
   try {
     await invoke('cursor_set_models_enabled', { ids: [bindingId], enabled: !!enabled });
-    await cursorRefreshConsole();
-    if (typeof showBottomToast === 'function') {
-      showBottomToast(enabled ? '已启用模型' : '已停用模型', 'success');
-    }
+    cursorRefreshConsole({ silent: true }).catch(() => {});
   } catch (e) {
+    item.enabled = prev;
+    cursorRenderTableRows();
     showCustomAlert('切换状态失败: ' + e, '操作异常', 'error');
   }
 }
@@ -5673,14 +5702,17 @@ async function cursorRemoveSingleModel(bindingId, displayName) {
   if (!ok) return;
 
   cursorEnsureBridge();
+  const prevList = _cursorModelsList.slice();
+  _cursorModelsList = _cursorModelsList.filter(m => m.id !== bindingId);
+  _cursorSelectedSet.delete(bindingId);
+  cursorRenderTableRows();
+  cursorUpdateBulkActionButtons();
   try {
     await invoke('cursor_remove_models', { ids: [bindingId] });
-    _cursorSelectedSet.delete(bindingId);
-    await cursorRefreshConsole();
-    if (typeof showBottomToast === 'function') {
-      showBottomToast(`已移除「${displayName}」`, 'success');
-    }
+    cursorRefreshConsole({ silent: true }).catch(() => {});
   } catch (e) {
+    _cursorModelsList = prevList;
+    cursorRenderTableRows();
     showCustomAlert('移除模型失败: ' + e, '移除异常', 'error');
   }
 }
@@ -5759,10 +5791,7 @@ async function saveCursorEditModel() {
     });
 
     closeCursorEditModal();
-    await cursorRefreshConsole();
-    if (typeof showBottomToast === 'function') {
-      showBottomToast('模型配置已保存', 'success');
-    }
+    cursorRefreshConsole({ silent: true }).catch(() => {});
   } catch (e) {
     showCustomAlert('保存修改失败: ' + e, '保存异常', 'error');
   }
@@ -5852,6 +5881,310 @@ async function syncCursorSettingsModalData() {
         if (p) pathInput.value = p;
       }
     } catch (_) {}
+  }
+
+  // 4. 供应商标签展示方式
+  cursorUpdateTagStyleSelects(_cursorProviderTagStyle);
+}
+
+let _cursorTagMainMode = 'badge'; // 'text' | 'badge' | 'none'
+let _cursorTextPosition = 'prefix'; // 'prefix' | 'suffix'
+
+function cursorUpdateTagStyleSelects(style) {
+  _cursorProviderTagStyle = style || 'badge';
+  if (_cursorProviderTagStyle === 'prefix' || _cursorProviderTagStyle === 'suffix') {
+    _cursorTagMainMode = 'text';
+    _cursorTextPosition = _cursorProviderTagStyle;
+  } else if (_cursorProviderTagStyle === 'none') {
+    _cursorTagMainMode = 'none';
+  } else {
+    _cursorTagMainMode = 'badge';
+  }
+
+  const sel = document.getElementById('cursorSettingsTagStyleSelect');
+  if (sel && sel.value !== _cursorProviderTagStyle) sel.value = _cursorProviderTagStyle;
+
+  cursorRenderModalState();
+}
+
+function cursorRenderModalState() {
+  // 1. 更新左栏 3 个单选卡片
+  const radios = document.querySelectorAll('input[name="cursorTagMainModeRadio"]');
+  radios.forEach(r => {
+    r.checked = r.value === _cursorTagMainMode;
+    const parent = r.closest('.cursor-tag-style-option');
+    if (parent) {
+      if (r.checked) {
+        parent.style.borderColor = 'var(--accent)';
+        parent.style.background = 'rgba(37, 99, 235, 0.05)';
+      } else {
+        parent.style.borderColor = 'var(--border)';
+        parent.style.background = 'var(--bg-card)';
+      }
+    }
+  });
+
+  // 2. 右侧配置区按主模式显隐
+  const textCustomPanel = document.getElementById('cursorTextCustomizationPanel');
+  const customDisabledTip = document.getElementById('cursorTextCustomDisabledTip');
+  const isTextMode = _cursorTagMainMode === 'text';
+
+  if (textCustomPanel) textCustomPanel.style.display = isTextMode ? 'flex' : 'none';
+  if (customDisabledTip) customDisabledTip.style.display = isTextMode ? 'none' : 'block';
+
+  // 3. 更新位置按钮高亮 (前置 vs 后置)
+  const prefixBtn = document.getElementById('cursorPosPrefixBtn');
+  const suffixBtn = document.getElementById('cursorPosSuffixBtn');
+  if (prefixBtn && suffixBtn) {
+    const isPrefix = _cursorTextPosition === 'prefix';
+    if (isPrefix) {
+      prefixBtn.style.background = 'var(--accent)';
+      prefixBtn.style.color = '#fff';
+      suffixBtn.style.background = 'transparent';
+      suffixBtn.style.color = 'var(--text-secondary)';
+    } else {
+      suffixBtn.style.background = 'var(--accent)';
+      suffixBtn.style.color = '#fff';
+      prefixBtn.style.background = 'transparent';
+      prefixBtn.style.color = 'var(--text-secondary)';
+    }
+  }
+
+  // 4. 更新括号与实时预览
+  cursorSyncBracketUI();
+  cursorUpdateSimulationPreview();
+}
+
+function cursorUpdateSimulationPreview() {
+  const modelNameEl = document.getElementById('cursorSimulationModelName');
+  const badgeEl = document.getElementById('cursorSimulationBadge');
+  if (!modelNameEl || !badgeEl) return;
+
+  if (_cursorTagMainMode === 'text') {
+    badgeEl.style.display = 'none';
+    const left = _cursorProviderBracketLeft ?? '[';
+    const right = _cursorProviderBracketRight ?? ']';
+    const tag = `${left}CPA${right}`;
+    if (_cursorTextPosition === 'prefix') {
+      modelNameEl.textContent = `${tag} Gemini 3.8 Flash`;
+    } else {
+      modelNameEl.textContent = `Gemini 3.8 Flash ${tag}`;
+    }
+  } else if (_cursorTagMainMode === 'badge') {
+    modelNameEl.textContent = 'Gemini 3.8 Flash';
+    badgeEl.style.display = 'inline-block';
+    badgeEl.textContent = 'CPA';
+  } else {
+    modelNameEl.textContent = 'Gemini 3.8 Flash';
+    badgeEl.style.display = 'none';
+  }
+}
+
+function cursorSyncBracketUI() {
+  const left = _cursorProviderBracketLeft ?? '[';
+  const right = _cursorProviderBracketRight ?? ']';
+
+  const leftInput = document.getElementById('cursorBracketLeftInput');
+  const rightInput = document.getElementById('cursorBracketRightInput');
+  const customInputs = document.getElementById('cursorTagBracketCustomInputs');
+  if (leftInput && leftInput.value !== left) leftInput.value = left;
+  if (rightInput && rightInput.value !== right) rightInput.value = right;
+
+  let matched = 'custom';
+  if (left === '[' && right === ']') matched = '[]';
+  else if (left === '(' && right === ')') matched = '()';
+  else if (left === '【' && right === '】') matched = '【】';
+  else if (left === '{' && right === '}') matched = '{}';
+  else if (left === '' && right === '') matched = 'none';
+
+  const btns = document.querySelectorAll('#cursorBracketPresetButtons .cursor-bracket-btn');
+  btns.forEach(b => {
+    const p = b.getAttribute('data-bracket');
+    const active = p === matched;
+    if (active) {
+      b.style.background = 'rgba(37, 99, 235, 0.12)';
+      b.style.color = 'var(--accent)';
+      b.style.borderColor = 'var(--accent)';
+    } else {
+      b.style.background = 'transparent';
+      b.style.color = 'var(--text-secondary)';
+      b.style.borderColor = 'transparent';
+    }
+  });
+
+  if (customInputs) {
+    customInputs.style.display = matched === 'custom' ? 'flex' : 'none';
+  }
+}
+
+function selectCursorBracketPreset(preset) {
+  if (preset === '[]') {
+    _cursorProviderBracketLeft = '[';
+    _cursorProviderBracketRight = ']';
+  } else if (preset === '()') {
+    _cursorProviderBracketLeft = '(';
+    _cursorProviderBracketRight = ')';
+  } else if (preset === '【】') {
+    _cursorProviderBracketLeft = '【';
+    _cursorProviderBracketRight = '】';
+  } else if (preset === '{}') {
+    _cursorProviderBracketLeft = '{';
+    _cursorProviderBracketRight = '}';
+  } else if (preset === 'none') {
+    _cursorProviderBracketLeft = '';
+    _cursorProviderBracketRight = '';
+  }
+  cursorSyncBracketUI();
+  cursorUpdateSimulationPreview();
+}
+
+function openCursorTagStyleModal() {
+  const modal = document.getElementById('cursorTagStyleModal');
+  if (!modal) return;
+  cursorUpdateTagStyleSelects(_cursorProviderTagStyle);
+  modal.classList.add('active');
+  document.addEventListener('keydown', closeCursorTagStyleModalOnEsc);
+
+  // 绑定左栏 3 个主卡片点击
+  const options = modal.querySelectorAll('.cursor-tag-style-option');
+  options.forEach(opt => {
+    opt.onclick = () => {
+      const radio = opt.querySelector('input[type="radio"]');
+      if (radio) {
+        radio.checked = true;
+        _cursorTagMainMode = radio.value;
+        cursorRenderModalState();
+      }
+    };
+  });
+
+  // 绑定位置按钮：前置 / 后置
+  const prefixBtn = document.getElementById('cursorPosPrefixBtn');
+  const suffixBtn = document.getElementById('cursorPosSuffixBtn');
+  if (prefixBtn) {
+    prefixBtn.onclick = (e) => {
+      e.stopPropagation();
+      _cursorTextPosition = 'prefix';
+      cursorRenderModalState();
+    };
+  }
+  if (suffixBtn) {
+    suffixBtn.onclick = (e) => {
+      e.stopPropagation();
+      _cursorTextPosition = 'suffix';
+      cursorRenderModalState();
+    };
+  }
+
+  // 绑定预设括号按钮点击
+  const presetBtns = modal.querySelectorAll('#cursorBracketPresetButtons .cursor-bracket-btn');
+  presetBtns.forEach(btn => {
+    btn.onclick = (e) => {
+      e.stopPropagation();
+      const p = btn.getAttribute('data-bracket');
+      if (p === 'custom') {
+        const customInputs = document.getElementById('cursorTagBracketCustomInputs');
+        if (customInputs) customInputs.style.display = 'flex';
+        btn.style.background = 'rgba(37, 99, 235, 0.12)';
+        btn.style.color = 'var(--accent)';
+        btn.style.borderColor = 'var(--accent)';
+        presetBtns.forEach(other => {
+          if (other !== btn) {
+            other.style.background = 'transparent';
+            other.style.color = 'var(--text-secondary)';
+            other.style.borderColor = 'transparent';
+          }
+        });
+      } else {
+        selectCursorBracketPreset(p);
+      }
+    };
+  });
+
+  // 绑定自定义左右符号输入实时响应
+  const leftInput = document.getElementById('cursorBracketLeftInput');
+  const rightInput = document.getElementById('cursorBracketRightInput');
+  if (leftInput) {
+    leftInput.oninput = () => {
+      _cursorProviderBracketLeft = leftInput.value;
+      cursorUpdateSimulationPreview();
+    };
+  }
+  if (rightInput) {
+    rightInput.oninput = () => {
+      _cursorProviderBracketRight = rightInput.value;
+      cursorUpdateSimulationPreview();
+    };
+  }
+}
+
+function closeCursorTagStyleModal() {
+  const modal = document.getElementById('cursorTagStyleModal');
+  if (modal) modal.classList.remove('active');
+  document.removeEventListener('keydown', closeCursorTagStyleModalOnEsc);
+}
+
+function closeCursorTagStyleModalOnEsc(event) {
+  if (event.key === 'Escape') closeCursorTagStyleModal();
+}
+
+async function saveCursorTagStyleModal() {
+  let targetStyle = 'badge';
+  if (_cursorTagMainMode === 'text') {
+    targetStyle = _cursorTextPosition; // 'prefix' 或 'suffix'
+  } else if (_cursorTagMainMode === 'none') {
+    targetStyle = 'none';
+  } else {
+    targetStyle = 'badge';
+  }
+
+  const leftInput = document.getElementById('cursorBracketLeftInput');
+  const rightInput = document.getElementById('cursorBracketRightInput');
+  if (leftInput) _cursorProviderBracketLeft = leftInput.value;
+  if (rightInput) _cursorProviderBracketRight = rightInput.value;
+
+  closeCursorTagStyleModal();
+  await cursorChangeProviderTagStyle(targetStyle, _cursorProviderBracketLeft, _cursorProviderBracketRight);
+}
+
+async function cursorChangeProviderTagStyle(style, bracketLeft, bracketRight) {
+  const nextStyle = String(style || 'badge').trim().toLowerCase();
+  const bl = bracketLeft ?? _cursorProviderBracketLeft;
+  const br = bracketRight ?? _cursorProviderBracketRight;
+  _cursorProviderTagStyle = nextStyle;
+  _cursorProviderBracketLeft = bl;
+  _cursorProviderBracketRight = br;
+  cursorUpdateTagStyleSelects(nextStyle);
+  if (!invoke) return;
+
+  try {
+    cursorSetBusy(true);
+    await invoke('cursor_set_provider_tag_style', {
+      style: nextStyle,
+      bracketLeft: bl,
+      bracketRight: br,
+    });
+
+    const labelMap = {
+      prefix: '前缀形式',
+      suffix: '后缀形式',
+      badge: '徽章形式',
+      none: '纯净形式',
+    };
+    const styleLabel = labelMap[nextStyle] || nextStyle;
+    showCustomAlert(`已将 Cursor 供应商标签展示方式切换为「${styleLabel}」，已自动同步至 Cursor。`, '设置已保存', 'success');
+  } catch (err) {
+    console.error('[cursor] set provider tag style error:', err);
+    showCustomAlert(`保存展示方式失败: ${err?.message || err}`, '保存失败', 'error');
+  } finally {
+    cursorSetBusy(false);
+  }
+}
+
+function onCursorTagStyleChange(event) {
+  const target = event?.target;
+  if (target) {
+    cursorChangeProviderTagStyle(target.value);
   }
 }
 
@@ -6072,7 +6405,7 @@ function renderCursorAddModels() {
 
     return `
       <label class="cb-add-model-row ${isAlready ? 'already-added' : ''}" data-model-id="${cursorEsc(m.id)}">
-        <input type="checkbox" class="cb-add-model-check" data-model-id="${cursorEsc(m.id)}" ${isAlready ? 'disabled checked' : (isSelected ? 'checked' : '')} onchange="toggleCursorAddModel('${cursorEsc(provider.providerId)}', '${cursorEsc(m.id)}')">
+        <input type="checkbox" class="cb-add-model-check" data-model-id="${cursorEsc(m.id)}" ${isAlready ? 'disabled checked' : (isSelected ? 'checked' : '')} onchange="toggleCursorAddModel('${cursorEsc(provider.providerId)}', '${cursorEsc(m.id)}', this.checked)">
         ${cbAddModelIdentity(m.id)}
         <div class="cb-add-model-caps" style="margin-left: auto; display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
           ${caps.join('')}
@@ -6083,7 +6416,7 @@ function renderCursorAddModels() {
   }).join('');
 }
 
-function toggleCursorAddModel(providerId, modelId) {
+function toggleCursorAddModel(providerId, modelId, isChecked) {
   const provider = _cursorProviderModels.find(p => p.providerId === providerId);
   if (!provider) return;
   const model = (provider.models || []).find(m => m.id === modelId);
@@ -6093,13 +6426,20 @@ function toggleCursorAddModel(providerId, modelId) {
     _cursorAddSelectedModels.set(providerId, new Set());
   }
   const set = _cursorAddSelectedModels.get(providerId);
-  if (set.has(modelId)) {
-    set.delete(modelId);
+  if (typeof isChecked === 'boolean') {
+    if (isChecked) {
+      set.add(modelId);
+    } else {
+      set.delete(modelId);
+    }
   } else {
-    set.add(modelId);
+    if (set.has(modelId)) {
+      set.delete(modelId);
+    } else {
+      set.add(modelId);
+    }
   }
 
-  renderCursorAddModels();
   updateCursorAddConfirmButton();
 }
 
@@ -6113,11 +6453,20 @@ function cursorAddSelectAll() {
   }
   const set = _cursorAddSelectedModels.get(_cursorAddSelectedProvider);
 
-  (provider.models || []).forEach(m => {
-    if (!m.alreadyAdded) set.add(m.id);
-  });
+  const container = document.getElementById('cursor-add-models-list-page');
+  if (container) {
+    const checks = container.querySelectorAll('.cb-add-model-check:not(:disabled)');
+    checks.forEach(chk => {
+      chk.checked = true;
+      const mid = chk.dataset.modelId;
+      if (mid) set.add(mid);
+    });
+  } else {
+    (provider.models || []).forEach(m => {
+      if (!m.alreadyAdded) set.add(m.id);
+    });
+  }
 
-  renderCursorAddModels();
   updateCursorAddConfirmButton();
 }
 
@@ -6126,7 +6475,13 @@ function cursorAddSelectNone() {
   if (_cursorAddSelectedModels.has(_cursorAddSelectedProvider)) {
     _cursorAddSelectedModels.get(_cursorAddSelectedProvider).clear();
   }
-  renderCursorAddModels();
+  const container = document.getElementById('cursor-add-models-list-page');
+  if (container) {
+    const checks = container.querySelectorAll('.cb-add-model-check:not(:disabled)');
+    checks.forEach(chk => {
+      chk.checked = false;
+    });
+  }
   updateCursorAddConfirmButton();
 }
 
@@ -6172,24 +6527,39 @@ async function confirmAddCursorModelsPage() {
   const suffix = (document.getElementById('cursor-add-suffix')?.value || '').trim() || null;
 
   const btn = document.getElementById('cursor-add-confirm-page');
-  if (btn) btn.disabled = true;
+  const label = btn ? btn.querySelector('.model-action-label') : null;
+  const originalLabel = label ? label.textContent : ' 保存选择';
+  if (btn) {
+    btn.disabled = true;
+    if (label) label.textContent = ' 保存中...';
+  }
 
   cursorEnsureBridge();
   try {
-    const result = await invoke('cursor_add_models', {
+    await invoke('cursor_add_models', {
       req: {
         models: modelsPayload,
         prefix,
         suffix
       }
     });
+    _cursorAddSelectedModels.clear();
     navigateTo('platform-cursor');
-    await cursorRefreshConsole();
+    cursorRefreshConsole({ silent: true }).catch(err => {
+      console.warn('[cursor] background refresh failed:', err);
+    });
   } catch (e) {
     console.error('[cursor-add] confirm add failed:', e);
     showCustomAlert('添加模型失败: ' + e, '添加异常', 'error');
+    if (btn) {
+      btn.disabled = false;
+      if (label) label.textContent = originalLabel;
+    }
   } finally {
-    if (btn) btn.disabled = false;
+    if (btn && _cursorAddSelectedModels.size === 0) {
+      btn.disabled = true;
+      if (label) label.textContent = ' 保存选择';
+    }
   }
 }
 
@@ -10034,6 +10404,13 @@ window.zcDrop = function(e) {
   g.closeCursorSettingsModal = closeCursorSettingsModal;
   g.switchCursorSettingsTab = switchCursorSettingsTab;
   g.syncCursorSettingsModalData = syncCursorSettingsModalData;
+  g.cursorUpdateTagStyleSelects = cursorUpdateTagStyleSelects;
+  g.openCursorTagStyleModal = openCursorTagStyleModal;
+  g.closeCursorTagStyleModal = closeCursorTagStyleModal;
+  g.saveCursorTagStyleModal = saveCursorTagStyleModal;
+  g.selectCursorBracketPreset = selectCursorBracketPreset;
+  g.cursorChangeProviderTagStyle = cursorChangeProviderTagStyle;
+  g.onCursorTagStyleChange = onCursorTagStyleChange;
   g.cursorRefreshConsoleAction = cursorRefreshConsoleAction;
   g.detectCursorIdePath = detectCursorIdePath;
   g.saveCursorIdePath = saveCursorIdePath;

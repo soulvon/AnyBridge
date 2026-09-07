@@ -1457,14 +1457,15 @@ async function saveProviderFromEditor() {
   addLog('ok', `已保存供应商: ${name}${syncMsg}`);
 }
 
-function setProviderConnectionText(id, value) {
+function setProviderConnectionText(id, value, tooltip = '') {
   const text = document.getElementById(`conn-text-${id}`);
   if (!text) return;
   const message = String(value || '失败');
   text.textContent = message;
-  text.title = message;
+  const title = tooltip || message;
+  text.title = title;
   const status = text.closest('.provider-conn-status');
-  if (status) status.title = message;
+  if (status) status.title = title;
 }
 
 async function testProvider(id) {
@@ -1473,66 +1474,48 @@ async function testProvider(id) {
   if (!p) return;
   const dot = document.getElementById(`conn-dot-${id}`);
   setProviderConnectionText(id, '测试中…');
-  const formats = ['openai', 'anthropic'];
-  const results = [];
-  const previous = typeof cloneProviderStore === 'function'
-    ? cloneProviderStore()
-    : JSON.parse(JSON.stringify(providerStore || { version: 1, providers: [] }));
-  let storeChanged = false;
-  for (const apiFormat of formats) {
+
+  const apiFormat = p.apiFormat
+    || (typeof autoDetectFormatFromHost === 'function' ? autoDetectFormatFromHost(`${p.apiHost || ''}${p.apiPath || ''}`) : 'openai')
+    || 'openai';
+
+  const selected = typeof providerSelectedModels === 'function' ? providerSelectedModels(p) : (p.models || []);
+  const testModel = p.defaultModel || selected[0] || null;
+
+  try {
     const result = await invoke('test_connection', {
       args: {
-        host: p.apiHost, api_key: p.apiKey,
+        host: p.apiHost,
+        api_key: p.apiKey,
         path: p.apiPath || null,
         api_format: apiFormat,
-        model: p.defaultModel || null,
+        model: testModel,
       }
-    }).then(value => ({ apiFormat, ok: true, value }), error => ({ apiFormat, ok: false, error }));
-    results.push(result);
-    if (result.ok && result.value && typeof result.value === 'object' && result.value.capabilities) {
+    });
+
+    // 探测到需 gzip 则自动记录
+    if (result && result.capabilities && result.capabilities.gzip !== undefined) {
       const idx = providerStore.providers.findIndex(x => x.id === id);
-      if (idx >= 0) {
-        const c = result.value.capabilities;
-        // gzip 是供应商级能力
-        if (c.gzip !== undefined) {
-          const caps = providerStore.providers[idx].capabilities || {};
-          caps.gzip = c.gzip;
-          providerStore.providers[idx].capabilities = caps;
-        }
-        // vision/tools 是模型级能力，仅保存正向探测结果（true）
-        // 探测失败(false)不保存，避免误标导致后续图片/工具请求被永久拦截
-        const testModel = providerSelectedModels(p)[0] || null;
-        if (testModel && (c.vision === true || c.tools === true)) {
-          const mc = providerStore.providers[idx].modelCaps || {};
-          mc[testModel] = mc[testModel] || {};
-          if (c.vision === true) mc[testModel].vision = true;
-          if (c.tools === true) mc[testModel].tools = true;
-          providerStore.providers[idx].modelCaps = mc;
-        }
-        storeChanged = true;
+      if (idx >= 0 && providerStore.providers[idx].capabilities?.gzip !== result.capabilities.gzip) {
+        providerStore.providers[idx].capabilities = providerStore.providers[idx].capabilities || {};
+        providerStore.providers[idx].capabilities.gzip = result.capabilities.gzip;
+        await persistProviders();
       }
     }
-  }
-  const okResults = results.filter(r => r.ok);
-  if (okResults.length) {
-    const saved = storeChanged ? await persistProviders() : true;
-    if (!saved) {
-      providerStore = typeof cloneProviderStore === 'function'
-        ? cloneProviderStore(previous)
-        : JSON.parse(JSON.stringify(previous));
-      if (dot) dot.className = 'conn-dot no';
-      setProviderConnectionText(id, '能力保存失败');
-      return;
-    }
+
+    const msg = typeof result === 'string' ? result : (result.message || '连通 ✓');
     if (dot) dot.className = 'conn-dot ok';
-    const msg = results.map(r => `${r.apiFormat === 'openai' ? 'OpenAI' : 'Anthropic'} ${r.ok ? '✓' : '✗'}`).join(' / ');
-    setProviderConnectionText(id, msg);
-    addLog('ok', `${p.name} 协议探测: ${msg}`);
-  } else {
+    setProviderConnectionText(id, msg, `${p.name} 连通正常 (${msg})`);
+
+    p.connStatus = { ok: true, text: msg, title: `${p.name} 连通正常 (${msg})` };
+    addLog('ok', `${p.name} 连通性测试: ${msg}`);
+  } catch (err) {
+    const rawErr = String(err || '连接失败');
     if (dot) dot.className = 'conn-dot no';
-    const msg = results.map(r => `${r.apiFormat === 'openai' ? 'OpenAI' : 'Anthropic'}: ${String(r.error || '失败').slice(0, 80)}`).join('；');
-    setProviderConnectionText(id, '全部失败');
-    addLog('err', `${p.name} 协议探测失败: ${msg}`);
+    setProviderConnectionText(id, '连接失败', `测试失败: ${rawErr}`);
+
+    p.connStatus = { ok: false, text: '连接失败', title: `测试失败: ${rawErr}` };
+    addLog('err', `${p.name} 连通性测试失败: ${rawErr}`);
   }
 }
 
@@ -1583,39 +1566,11 @@ async function testProviderInEditor() {
       args: { host: endpoint.apiHost, api_key: apiKey, path: endpoint.apiPath || null, api_format: fmt, model }
     });
     const msg = typeof result === 'string' ? result : (result.message || '连通 ✓');
-    // 自动设置探测到的能力标记
+    // 自动同步 gzip 能力标记
     if (result && typeof result === 'object' && result.capabilities) {
       const c = result.capabilities;
-      // gzip 是供应商级能力
       const gzipEl = document.getElementById('pf-cap-gzip');
       if (gzipEl && c.gzip !== undefined) gzipEl.checked = c.gzip;
-      // vision/tools 是模型级能力：仅保存正向探测（true），失败不覆盖已有标记
-      if (model && (c.vision === true || c.tools === true)) {
-        editorDraftModelCaps[model] = editorDraftModelCaps[model] || {};
-        if (c.vision === true) editorDraftModelCaps[model].vision = true;
-        if (c.tools === true) editorDraftModelCaps[model].tools = true;
-
-        const editId = document.getElementById('pf-id')?.value;
-        if (editId) {
-          const idx = providerStore.providers.findIndex(x => x.id === editId);
-          if (idx >= 0) {
-            const previous = typeof cloneProviderStore === 'function'
-              ? cloneProviderStore()
-              : JSON.parse(JSON.stringify(providerStore || { version: 1, providers: [] }));
-            const mc = providerStore.providers[idx].modelCaps || {};
-            mc[model] = { ...(mc[model] || {}), ...editorDraftModelCaps[model] };
-            providerStore.providers[idx].modelCaps = mc;
-            const saved = await persistProviders();
-            if (!saved) {
-              providerStore = typeof cloneProviderStore === 'function'
-                ? cloneProviderStore(previous)
-                : JSON.parse(JSON.stringify(previous));
-              return;
-            }
-          }
-        }
-        updateSelectedModelsUI();
-      }
     }
     showProviderEditorTestToast(`连接测试通过：${msg}`, 'success', { duration: 3200 });
     addLog('ok', '连接测试: ' + msg);

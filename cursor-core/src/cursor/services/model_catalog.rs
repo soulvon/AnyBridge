@@ -491,19 +491,20 @@ fn available_model(model: &ModelConfig) -> AvailableModel {
             id: 6,
             display_name: "Cursor".into(),
         }),
-        model_picker_badges: vec![ModelPickerBadge {
-            label: model
-                .group_name
-                .clone()
-                .unwrap_or_else(|| provider_host(&model.base_url)),
-            variant: 1,
-            dismiss_on_selection: false,
-        }],
+        model_picker_badges: match &model.group_name {
+            Some(group) if !group.trim().is_empty() => vec![ModelPickerBadge {
+                label: group.clone(),
+                variant: 1,
+                dismiss_on_selection: false,
+            }],
+            _ => Vec::new(),
+        },
     }
 }
 
 /// 徽章回退标签:base_url 的主机名。入库时已校验为带主机的 HTTP(S) URL,
 /// 解析失败仅是理论分支,此时原样返回 base_url。
+#[allow(dead_code)]
 fn provider_host(base_url: &str) -> String {
     reqwest::Url::parse(base_url.trim())
         .ok()

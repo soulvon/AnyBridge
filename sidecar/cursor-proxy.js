@@ -2652,12 +2652,27 @@ function decodeHexProto(value) {
   return Buffer.from(hex, 'hex');
 }
 
+function getCursorModelsStore() {
+  try {
+    const file = path.join(configDir(), 'cursor-models.json');
+    if (fs.existsSync(file)) {
+      return JSON.parse(fs.readFileSync(file, 'utf8'));
+    }
+  } catch {}
+  return null;
+}
+
 function cursorAdapters() {
   const store = getProxyRoutes();
   if (store?.loadError) {
     throw new Error(`Cursor model list read failed: ${store.loadError}`);
   }
   const routes = Array.isArray(store?.routes) ? store.routes : [];
+  const cursorStore = getCursorModelsStore();
+  const tagStyle = String(cursorStore?.providerTagStyle || 'badge').trim().toLowerCase();
+  const bLeft = cursorStore?.providerBracketLeft ?? '[';
+  const bRight = cursorStore?.providerBracketRight ?? ']';
+
   return routes
     .filter(route => route && route.enabled !== false)
     .filter(route => Array.isArray(route.targets) && route.targets.length > 0)
@@ -2667,11 +2682,24 @@ function cursorAdapters() {
         : ['openai'];
       return formats.includes('openai');
     })
-    .map(route => ({
-      id: route.id,
-      displayName: route.displayName || route.id,
-      stableID: stableModelID(route.id),
-    }));
+    .map(route => {
+      let displayName = route.displayName || route.id;
+      const target = route.targets?.[0];
+      const providerId = target?.providerId || '';
+      if (providerId) {
+        const tagged = `${bLeft}${providerId}${bRight}`;
+        if (tagStyle === 'prefix') {
+          displayName = `${tagged} ${displayName}`;
+        } else if (tagStyle === 'suffix') {
+          displayName = `${displayName} ${tagged}`;
+        }
+      }
+      return {
+        id: route.id,
+        displayName,
+        stableID: stableModelID(route.id),
+      };
+    });
 }
 
 function resolveCursorAdapter(selectedModel) {

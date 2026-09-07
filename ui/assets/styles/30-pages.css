@@ -3401,7 +3401,8 @@ html[data-theme="dark"] .theme-setting-moon {
   50% { opacity: 0.55; }
 }
 
-.extension-update-badge {
+.extension-update-badge,
+.extension-meta-grid .extension-update-badge {
   display: inline-flex;
   align-items: center;
   margin-left: 6px;
@@ -3409,7 +3410,7 @@ html[data-theme="dark"] .theme-setting-moon {
   border-radius: var(--radius-pill);
   border: 1px solid rgba(255, 255, 255, 0.22);
   background: #D97706;
-  color: #FFFFFF;
+  color: #FFFFFF !important;
   font-size: 11px;
   font-weight: 800;
   line-height: 1.2;
@@ -3419,8 +3420,10 @@ html[data-theme="dark"] .theme-setting-moon {
   box-shadow: 0 1px 3px rgba(217, 119, 6, 0.35);
 }
 
-.extension-update-badge:hover {
+.extension-update-badge:hover,
+.extension-meta-grid .extension-update-badge:hover {
   background: #C05F05;
+  color: #FFFFFF !important;
   border-color: rgba(255, 255, 255, 0.32);
   box-shadow: 0 2px 5px rgba(217, 119, 6, 0.45);
 }
@@ -3442,7 +3445,7 @@ html[data-theme="dark"] .theme-setting-moon {
   border-radius: 0;
 }
 
-.extension-meta-grid span {
+.extension-meta-grid span:not(.extension-update-badge) {
   display: inline;
   color: var(--text-muted);
   font-size: 10px;

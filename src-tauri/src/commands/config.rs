@@ -1589,44 +1589,12 @@ pub async fn test_connection(args: TestConnArgs) -> Result<TestConnResult, Strin
     let fmt = args.api_format.as_deref().unwrap_or("anthropic");
 
     let client = super::apply_system_proxy(
-        reqwest::Client::builder().timeout(std::time::Duration::from_secs(15)),
+        reqwest::Client::builder().timeout(std::time::Duration::from_secs(12)),
     )
     .build()
     .map_err(|e| e.to_string())?;
 
-    // ── Step 1: 快速连通检查 (/v1/models) ──
-    // 注意：很多中转站（One-Hub + Cloudflare）会屏蔽 /v1/models 返回 403，
-    // 但 /v1/chat/completions 是正常的。所以 403 不阻断，只标记 models_ok。
-    let model_paths = ["/v1/models", "/models"];
-    let mut models_ok = false;
-
-    for path in &model_paths {
-        let url = format!("{}{}", host, path);
-        let mut req = client.get(&url);
-        if fmt == "openai" {
-            req = req.header("Authorization", format!("Bearer {}", args.api_key));
-        } else {
-            req = apply_anthropic_auth(req, &args.api_key, &host, args.path.as_deref());
-        }
-        match req.send().await {
-            Ok(r) => {
-                let s = r.status().as_u16();
-                if r.status().is_success() {
-                    models_ok = true;
-                    break;
-                }
-                if s == 403 {
-                    // Cloudflare WAF 或供应商屏蔽，不阻断后续
-                }
-                // 401 也不阻断，交给 chat 测试最终验证
-            }
-            Err(_) => {
-                // 网络错误也不阻断，chat 测试会再试
-            }
-        }
-    }
-
-    // ── Step 2: Chat 探测（发送 "今天几号" 验证实际调用能力）──
+    // ── Chat 连通性探测（发送极简消息验证实际调用能力与延迟）──
     let chat_path = if fmt == "openai" {
         normalize_openai_api_path(&host, args.path.as_deref())
     } else {
@@ -1635,12 +1603,19 @@ pub async fn test_connection(args: TestConnArgs) -> Result<TestConnResult, Strin
     let uses_openai_responses =
         fmt == "openai" && chat_path.to_ascii_lowercase().contains("/responses");
 
-    let test_model = args.model.as_deref().unwrap_or("gpt-3.5-turbo");
+    let test_model = args.model.as_deref().unwrap_or_else(|| {
+        if fmt == "anthropic" {
+            "claude-3-haiku-20240307"
+        } else {
+            "gpt-4o-mini"
+        }
+    });
+
     let (chat_body, auth_header, auth_value) = if fmt == "openai" && uses_openai_responses {
         let body = serde_json::json!({
             "model": test_model,
-            "input": [{"role": "user", "content": "今天几号"}],
-            "max_output_tokens": 32,
+            "input": [{"role": "user", "content": "hi"}],
+            "max_output_tokens": 5,
             "stream": false
         });
         (
@@ -1651,8 +1626,8 @@ pub async fn test_connection(args: TestConnArgs) -> Result<TestConnResult, Strin
     } else if fmt == "openai" {
         let body = serde_json::json!({
             "model": test_model,
-            "messages": [{"role": "user", "content": "今天几号"}],
-            "max_tokens": 32,
+            "messages": [{"role": "user", "content": "hi"}],
+            "max_tokens": 5,
             "stream": false
         });
         (
@@ -1663,8 +1638,8 @@ pub async fn test_connection(args: TestConnArgs) -> Result<TestConnResult, Strin
     } else {
         let body = serde_json::json!({
             "model": test_model,
-            "messages": [{"role": "user", "content": "今天几号"}],
-            "max_tokens": 32,
+            "messages": [{"role": "user", "content": "hi"}],
+            "max_tokens": 5,
             "stream": false
         });
         let (auth_header, auth_value) = if is_deepseek_anthropic_endpoint(&host, Some(&chat_path)) {
@@ -1679,9 +1654,6 @@ pub async fn test_connection(args: TestConnArgs) -> Result<TestConnResult, Strin
     };
 
     let chat_url = format!("{}{}", host, chat_path);
-
-    // 128x128 PNG: some upstreams reject tiny 1x1 images even when vision works.
-    const VISION_TEST_PNG_B64: &str = "iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAYAAADDPmHLAAABpklEQVR4nO3SMRHDUBBDwcAxiIAwYoNI/bk4IFTc6GYL1a/Qfq77+yY74cb7T7YTbrr/GT9gug8AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAsBNA/YFpv/zAtA8AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAMBOAPUHpv3yA9M+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAOwHUH5j2yw9M+wAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAOwEcN2/N9kJN95/sp1w030AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAB2Aqg/MO2XH5j2AQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA2Amg/sC0X35g2gcAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAGAngPoD0375gWkfAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACAlQD+DY7JjtGCazMAAAAASUVORK5CYII=";
 
     // 发送请求的闭包：根据 use_gzip 决定是否压缩
     let send_req = |body: Vec<u8>, use_gzip: bool| {
@@ -1698,6 +1670,8 @@ pub async fn test_connection(args: TestConnArgs) -> Result<TestConnResult, Strin
         }
         req
     };
+
+    let start = std::time::Instant::now();
 
     // 先发明文请求
     let plain_resp = send_req(chat_body.clone(), false).send().await;
@@ -1731,143 +1705,36 @@ pub async fn test_connection(args: TestConnArgs) -> Result<TestConnResult, Strin
                     let gz_body = r.text().await.unwrap_or_default();
                     let gz_snippet: String = gz_body.chars().take(200).collect();
                     return Err(format!(
-                        "Chat 失败: 明文 HTTP {} / Gzip HTTP {}: {}",
+                        "HTTP {} / Gzip HTTP {}: {}",
                         status, gz_status, gz_snippet
                     ));
                 }
                 Err(e) => {
                     return Err(format!(
-                        "Chat 明文 HTTP {}，Gzip 网络错误: {}",
+                        "明文 HTTP {}，Gzip 网络错误: {}",
                         status,
                         redact(e.to_string(), &args.api_key)
                     ));
                 }
             }
         }
-        Err(e) => return Err(redact(format!("Chat 网络错误: {}", e), &args.api_key)),
+        Err(e) => return Err(redact(format!("网络错误: {}", e), &args.api_key)),
     };
 
-    // ── Step 3: 能力探测（Vision / Tools）──────────────────────
-    // 构建不同格式的测试 body
-    let (vision_body, tools_body) = if fmt == "openai" && uses_openai_responses {
-        let v = serde_json::to_vec(&serde_json::json!({
-            "model": test_model,
-            "input": [{"role": "user", "content": [
-                {"type": "input_text", "text": "describe"},
-                {"type": "input_image", "image_url": format!("data:image/png;base64,{}", VISION_TEST_PNG_B64)}
-            ]}],
-            "max_output_tokens": 16,
-            "stream": false
-        })).unwrap();
-        let t = serde_json::to_vec(&serde_json::json!({
-            "model": test_model,
-            "input": [{"role": "user", "content": "Add 1 and 2"}],
-            "tools": [{"type": "function",
-                "name": "add",
-                "description": "Add two numbers",
-                "parameters": {"type": "object", "properties": {
-                    "a": {"type": "number"}, "b": {"type": "number"}
-                }, "required": ["a", "b"]}
-            }],
-            "max_output_tokens": 64,
-            "stream": false
-        }))
-        .unwrap();
-        (v, t)
-    } else if fmt == "openai" {
-        let v = serde_json::to_vec(&serde_json::json!({
-            "model": test_model,
-            "messages": [{"role": "user", "content": [
-                {"type": "text", "text": "describe"},
-                {"type": "image_url", "image_url": {"url": format!("data:image/png;base64,{}", VISION_TEST_PNG_B64)}}
-            ]}],
-            "max_tokens": 16,
-            "stream": false
-        })).unwrap();
-        let t = serde_json::to_vec(&serde_json::json!({
-            "model": test_model,
-            "messages": [{"role": "user", "content": "Add 1 and 2"}],
-            "tools": [{"type": "function", "function": {
-                "name": "add",
-                "description": "Add two numbers",
-                "parameters": {"type": "object", "properties": {
-                    "a": {"type": "number"}, "b": {"type": "number"}
-                }, "required": ["a", "b"]}
-            }}],
-            "max_tokens": 64,
-            "stream": false
-        }))
-        .unwrap();
-        (v, t)
+    let duration_ms = start.elapsed().as_millis() as u64;
+    let msg = if need_gzip {
+        format!("连通 ({}ms, 需Gzip)", duration_ms)
     } else {
-        let v = serde_json::to_vec(&serde_json::json!({
-            "model": test_model,
-            "messages": [{"role": "user", "content": [
-                {"type": "text", "text": "describe"},
-                {"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": VISION_TEST_PNG_B64}}
-            ]}],
-            "max_tokens": 16,
-            "stream": false
-        })).unwrap();
-        let t = serde_json::to_vec(&serde_json::json!({
-            "model": test_model,
-            "messages": [{"role": "user", "content": "Add 1 and 2"}],
-            "tools": [{"name": "add", "description": "Add two numbers",
-                "input_schema": {"type": "object", "properties": {
-                    "a": {"type": "number"}, "b": {"type": "number"}
-                }, "required": ["a", "b"]}
-            }],
-            "max_tokens": 64,
-            "stream": false
-        }))
-        .unwrap();
-        (v, t)
+        format!("连通 ({}ms)", duration_ms)
     };
-
-    let mut caps = TestCapabilities {
-        gzip: need_gzip,
-        vision: false,
-        tools: false,
-    };
-
-    // Vision 探测
-    match send_req(vision_body, need_gzip).send().await {
-        Ok(r) if r.status().is_success() => caps.vision = true,
-        Ok(r) => {
-            let _ = r.text().await;
-        }
-        Err(_) => {}
-    }
-
-    // Tools 探测
-    match send_req(tools_body, need_gzip).send().await {
-        Ok(r) if r.status().is_success() => caps.tools = true,
-        Ok(r) => {
-            let _ = r.text().await;
-        }
-        Err(_) => {}
-    }
-
-    // 组装结果
-    let mut parts = vec![];
-    if models_ok {
-        parts.push("连通 ✓".to_string());
-    }
-    parts.push("Chat ✓".to_string());
-    if caps.vision {
-        parts.push("Vision ✓".to_string());
-    }
-    if caps.tools {
-        parts.push("Tools ✓".to_string());
-    }
-    if need_gzip {
-        parts.push("(需 Gzip)".to_string());
-    }
-    let msg = parts.join(" ");
 
     Ok(TestConnResult {
         message: msg,
-        capabilities: caps,
+        capabilities: TestCapabilities {
+            gzip: need_gzip,
+            vision: false,
+            tools: false,
+        },
     })
 }
 

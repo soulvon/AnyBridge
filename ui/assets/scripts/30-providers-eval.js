@@ -815,15 +815,15 @@ function renderProviderCards(list) {
             <input type="checkbox" ${selected ? 'checked' : ''} data-action="toggleProviderSelection" data-events="change" data-args="[&quot;${escAttr(p.id)}&quot;]" data-pass-checked data-pass-event>
             <span></span>
           </label>`;
-    const connStatusHtml = builtin
-      ? `<div class="provider-conn-status" title="未测试">
-            <div class="conn-dot no" id="conn-dot-${escAttr(p.id)}"></div>
-            <span class="conn-text" id="conn-text-${escAttr(p.id)}" title="未测试">未测试</span>
-          </div>`
-      : `<div class="provider-conn-status" title="未测试">
-            <div class="conn-dot no" id="conn-dot-${escAttr(p.id)}"></div>
-            <span class="conn-text" id="conn-text-${escAttr(p.id)}" title="未测试">未测试</span>
-          </div>`;
+    const connState = p.connStatus || null;
+    const dotClass = connState ? (connState.ok ? 'conn-dot ok' : 'conn-dot no') : 'conn-dot no';
+    const statusText = connState ? escAttr(connState.text) : '未测试';
+    const statusTitle = connState ? escAttr(connState.title || connState.text) : '未测试';
+    const connStatusHtml = `
+      <div class="provider-conn-status" title="${statusTitle}">
+        <div class="${dotClass}" id="conn-dot-${escAttr(p.id)}"></div>
+        <span class="conn-text" id="conn-text-${escAttr(p.id)}" title="${statusTitle}">${statusText}</span>
+      </div>`;
 
     return `
       <div class="provider-card ${enabled ? 'active' : ''} ${selected ? 'selected' : ''} ${builtin ? 'provider-card-builtin' : ''}">

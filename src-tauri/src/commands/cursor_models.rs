@@ -30,6 +30,18 @@ fn default_auto() -> String {
     "auto".to_string()
 }
 
+fn default_provider_tag_style() -> String {
+    "badge".to_string()
+}
+
+fn default_bracket_left() -> String {
+    "[".to_string()
+}
+
+fn default_bracket_right() -> String {
+    "]".to_string()
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct CursorModelsStore {
@@ -37,6 +49,12 @@ pub struct CursorModelsStore {
     pub version: u32,
     #[serde(default)]
     pub revision: String,
+    #[serde(default = "default_provider_tag_style")]
+    pub provider_tag_style: String,
+    #[serde(default = "default_bracket_left")]
+    pub provider_bracket_left: String,
+    #[serde(default = "default_bracket_right")]
+    pub provider_bracket_right: String,
     #[serde(default)]
     pub migration_version: u32,
     #[serde(default)]
@@ -239,6 +257,16 @@ pub fn normalize_cursor_store(store: &mut CursorModelsStore) {
         true
     });
 
+    let valid_styles = ["prefix", "suffix", "badge", "none"];
+    if !valid_styles.contains(&store.provider_tag_style.as_str()) {
+        store.provider_tag_style = default_provider_tag_style();
+    }
+
+    if store.provider_bracket_left.is_empty() && store.provider_bracket_right.is_empty() {
+        store.provider_bracket_left = default_bracket_left();
+        store.provider_bracket_right = default_bracket_right();
+    }
+
     store.revision = calculate_revision(&store.models);
 }
 
@@ -247,6 +275,9 @@ fn empty_cursor_store() -> CursorModelsStore {
     let mut s = CursorModelsStore {
         version: default_version(),
         revision: String::new(),
+        provider_tag_style: default_provider_tag_style(),
+        provider_bracket_left: default_bracket_left(),
+        provider_bracket_right: default_bracket_right(),
         migration_version: 1,
         migration_notice: None,
         models: Vec::new(),
@@ -296,6 +327,9 @@ pub fn read_cursor_store_with_routes(
         let mut store = CursorModelsStore {
             version: default_version(),
             revision: String::new(),
+            provider_tag_style: default_provider_tag_style(),
+            provider_bracket_left: default_bracket_left(),
+            provider_bracket_right: default_bracket_right(),
             migration_version: 1,
             migration_notice: if count > 0 {
                 Some(format!("已自动导入 {count} 个已有模型到 Cursor"))
@@ -455,6 +489,16 @@ pub fn cursor_list_provider_models() -> Result<Vec<CursorProviderModelsEntry>, S
     }
 
     Ok(out)
+}
+
+async fn sync_or_get_status(core_state: &super::cursor_core::CursorCoreState) -> super::cursor_core::CursorCoreStatus {
+    if core_state.running() {
+        super::cursor_core::sync_routes_impl(core_state)
+            .await
+            .unwrap_or_else(|_| super::cursor_core::get_status_impl(core_state))
+    } else {
+        super::cursor_core::get_status_impl(core_state)
+    }
 }
 
 #[tauri::command]
@@ -644,12 +688,7 @@ pub async fn cursor_add_models(
     drop(_guard);
 
     // Attempt auto sync if Core is running
-    let sync_status = if core_state.running() {
-        let _ = super::cursor_core::sync_routes_impl(core_state.inner()).await;
-        super::cursor_core::get_status_impl(core_state.inner())
-    } else {
-        super::cursor_core::get_status_impl(core_state.inner())
-    };
+    let sync_status = sync_or_get_status(core_state.inner()).await;
 
     Ok(CursorAddModelsResult {
         added_count,
@@ -713,12 +752,7 @@ pub async fn cursor_update_model(
     write_cursor_store(&cursor_store)?;
     drop(_guard);
 
-    let sync_status = if core_state.running() {
-        let _ = super::cursor_core::sync_routes_impl(core_state.inner()).await;
-        super::cursor_core::get_status_impl(core_state.inner())
-    } else {
-        super::cursor_core::get_status_impl(core_state.inner())
-    };
+    let sync_status = sync_or_get_status(core_state.inner()).await;
 
     Ok(CursorMutationResult {
         success: true,
@@ -765,12 +799,7 @@ pub async fn cursor_set_models_third_party_vision(
     write_cursor_store(&cursor_store)?;
     drop(_guard);
 
-    let sync_status = if core_state.running() {
-        let _ = super::cursor_core::sync_routes_impl(core_state.inner()).await;
-        super::cursor_core::get_status_impl(core_state.inner())
-    } else {
-        super::cursor_core::get_status_impl(core_state.inner())
-    };
+    let sync_status = sync_or_get_status(core_state.inner()).await;
 
     Ok(CursorMutationResult {
         success: true,
@@ -796,12 +825,7 @@ pub async fn cursor_remove_models(
     write_cursor_store(&cursor_store)?;
     drop(_guard);
 
-    let sync_status = if core_state.running() {
-        let _ = super::cursor_core::sync_routes_impl(core_state.inner()).await;
-        super::cursor_core::get_status_impl(core_state.inner())
-    } else {
-        super::cursor_core::get_status_impl(core_state.inner())
-    };
+    let sync_status = sync_or_get_status(core_state.inner()).await;
 
     Ok(CursorMutationResult {
         success: true,
@@ -833,12 +857,77 @@ pub async fn cursor_set_models_enabled(
     write_cursor_store(&cursor_store)?;
     drop(_guard);
 
-    let sync_status = if core_state.running() {
-        let _ = super::cursor_core::sync_routes_impl(core_state.inner()).await;
-        super::cursor_core::get_status_impl(core_state.inner())
+    let sync_status = sync_or_get_status(core_state.inner()).await;
+
+    Ok(CursorMutationResult {
+        success: true,
+        sync_status,
+    })
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CursorProviderTagConfig {
+    pub style: String,
+    pub bracket_left: String,
+    pub bracket_right: String,
+}
+
+#[tauri::command]
+pub fn cursor_get_provider_tag_style() -> Result<CursorProviderTagConfig, String> {
+    let store = read_cursor_store()?;
+    let style = store.provider_tag_style.trim().to_lowercase();
+    let valid_styles = ["prefix", "suffix", "badge", "none"];
+    let final_style = if valid_styles.contains(&style.as_str()) {
+        style
     } else {
-        super::cursor_core::get_status_impl(core_state.inner())
+        default_provider_tag_style()
     };
+    let empty_both = store.provider_bracket_left.is_empty() && store.provider_bracket_right.is_empty();
+    let bracket_left = if empty_both {
+        default_bracket_left()
+    } else {
+        store.provider_bracket_left
+    };
+    let bracket_right = if empty_both {
+        default_bracket_right()
+    } else {
+        store.provider_bracket_right
+    };
+    Ok(CursorProviderTagConfig {
+        style: final_style,
+        bracket_left,
+        bracket_right,
+    })
+}
+
+#[tauri::command]
+pub async fn cursor_set_provider_tag_style(
+    style: String,
+    bracket_left: Option<String>,
+    bracket_right: Option<String>,
+    core_state: tauri::State<'_, super::cursor_core::CursorCoreState>,
+) -> Result<CursorMutationResult, String> {
+    let _guard = CONFIG_MUTEX.lock().map_err(|e| e.to_string())?;
+    let mut store = read_cursor_store()?;
+    let valid_styles = ["prefix", "suffix", "badge", "none"];
+    let style = style.trim().to_lowercase();
+    if !valid_styles.contains(&style.as_str()) {
+        return Err(format!("未知的展示模式: {style}，可选值为 prefix、suffix、badge、none"));
+    }
+
+    store.provider_tag_style = style;
+    if let Some(bl) = bracket_left {
+        store.provider_bracket_left = bl;
+    }
+    if let Some(br) = bracket_right {
+        store.provider_bracket_right = br;
+    }
+    normalize_cursor_store(&mut store);
+    write_cursor_store(&store)?;
+    drop(_guard);
+
+    let sync_status = sync_or_get_status(core_state.inner()).await;
 
     Ok(CursorMutationResult {
         success: true,
@@ -922,6 +1011,41 @@ mod tests {
 
         store.models.retain(|m| m.id != "cursor-1");
         assert!(store.models.is_empty());
+    }
+
+    #[test]
+    fn provider_tag_style_normalization_and_default() {
+        let mut store = empty_cursor_store();
+        assert_eq!(store.provider_tag_style, "badge");
+
+        store.provider_tag_style = "prefix".into();
+        normalize_cursor_store(&mut store);
+        assert_eq!(store.provider_tag_style, "prefix");
+
+        store.provider_tag_style = "suffix".into();
+        normalize_cursor_store(&mut store);
+        assert_eq!(store.provider_tag_style, "suffix");
+
+        store.provider_tag_style = "none".into();
+        normalize_cursor_store(&mut store);
+        assert_eq!(store.provider_tag_style, "none");
+
+        store.provider_tag_style = "invalid_style".into();
+        normalize_cursor_store(&mut store);
+        assert_eq!(store.provider_tag_style, "badge");
+
+        // 括号自定义测试
+        store.provider_bracket_left = "【".into();
+        store.provider_bracket_right = "】".into();
+        normalize_cursor_store(&mut store);
+        assert_eq!(store.provider_bracket_left, "【");
+        assert_eq!(store.provider_bracket_right, "】");
+
+        store.provider_bracket_left = "".into();
+        store.provider_bracket_right = "".into();
+        normalize_cursor_store(&mut store);
+        assert_eq!(store.provider_bracket_left, "[");
+        assert_eq!(store.provider_bracket_right, "]");
     }
 }
 

@@ -193,6 +193,8 @@ pub fn run() {
             commands::cursor_models::cursor_remove_models,
             commands::cursor_models::cursor_set_models_enabled,
             commands::cursor_models::cursor_set_models_third_party_vision,
+            commands::cursor_models::cursor_get_provider_tag_style,
+            commands::cursor_models::cursor_set_provider_tag_style,
             commands::system::set_autostart,
             commands::system::get_autostart,
             commands::system::export_proxy_logs,

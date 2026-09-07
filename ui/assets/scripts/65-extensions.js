@@ -1504,19 +1504,39 @@ function formatUpdateLine(component) {
 
 globalThis.cpaUpdateChecking = false;
 
-async function checkCpaExtensionUpdates(autoUpdate = false) {
+async function checkCpaExtensionUpdates(opts = false) {
+  const options = typeof opts === 'boolean' ? { autoUpdate: opts } : (opts || {});
+  const silent = Boolean(options.silent);
+  const autoUpdate = Boolean(options.autoUpdate);
+
   if (!ensureExtensionBridge()) {
     const message = '桌面通信通道未就绪，无法检测 CPA 更新。';
-    extensionLog('err', message);
-    if (typeof showCustomAlert === 'function') showCustomAlert(message, 'CPA 更新检测失败', 'error');
+    if (!silent) {
+      extensionLog('err', message);
+      if (typeof showCustomAlert === 'function') showCustomAlert(message, 'CPA 更新检测失败', 'error');
+    }
     return;
   }
+
+  if (extensionDeployInProgress && silent) {
+    return;
+  }
+
+  const service = extensionServicesById.get('cpa-suite');
+  if (silent) {
+    if (!service?.installed) return;
+    const alreadyHasUpdate = cpaUpdateReport?.components?.some(component => component.updateAvailable === true);
+    if (alreadyHasUpdate) return;
+  }
+
   if (cpaUpdateChecking) return;
   cpaUpdateChecking = true;
 
-  // 显示检测中状态：禁用按钮并更改文字
-  setCpaSuiteTransientStatus('checking');
-  extensionLog('info', '正在检查 CPA 套件的 GitHub 最新发布包...');
+  if (!silent) {
+    // 手动触发时显示检测中状态：禁用按钮并更改文字
+    setCpaSuiteTransientStatus('checking');
+    extensionLog('info', '正在检查 CPA 套件的 GitHub 最新发布包...');
+  }
 
   try {
     const report = await invoke('extension_check_cpa_updates');
@@ -1525,38 +1545,52 @@ async function checkCpaExtensionUpdates(autoUpdate = false) {
     const hasUpdateNow = components.some(component => component.updateAvailable === true);
     const unknown = components.some(component => component.updateAvailable === null || component.updateAvailable === undefined);
     const lines = components.map(formatUpdateLine);
-    extensionLog(hasUpdateNow ? 'warn' : 'ok', `CPA 更新检测完成: ${lines.join('；')}`);
+
+    if (hasUpdateNow || !silent) {
+      extensionLog(hasUpdateNow ? 'warn' : 'ok', `CPA 更新检测完成: ${lines.join('；')}`);
+    }
     updateCpaSuiteCard(extensionServicesById.get('cpa-suite'));
+
     if (autoUpdate && hasUpdateNow) {
       await updateCpaSuite();
       return;
     }
-    if (!hasUpdateNow) {
+
+    if (!silent) {
+      if (!hasUpdateNow) {
+        if (typeof showCustomAlert === 'function') {
+          const body = `${lines.join('\n')}\n\n检测时间: ${report?.checkedAt || '未知'}`;
+          showCustomAlert(body, 'CPA 套件更新检测', unknown ? 'info' : 'success');
+        }
+        return;
+      }
+
+      if (typeof showCustomConfirm === 'function') {
+        const confirmed = await showCustomConfirm(
+          `${lines.join('\n')}\n\n将停止服务、下载并覆盖安装（服务会短暂中断）。是否立即更新？`,
+          'CPA 套件有新版本',
+          'warn'
+        );
+        if (confirmed) {
+          await updateCpaSuite({ skipConfirm: true });
+        }
+        return;
+      }
+
       if (typeof showCustomAlert === 'function') {
         const body = `${lines.join('\n')}\n\n检测时间: ${report?.checkedAt || '未知'}`;
-        showCustomAlert(body, 'CPA 套件更新检测', unknown ? 'info' : 'success');
+        showCustomAlert(body, 'CPA 套件更新检测', 'warn');
       }
       return;
     }
-    if (typeof showCustomConfirm === 'function') {
-      const confirmed = await showCustomConfirm(
-        `${lines.join('\n')}\n\n是否立即更新？`,
-        'CPA 套件有新版本',
-        'warn'
-      );
-      if (confirmed) {
-        await updateCpaSuite();
-        return;
-      }
-    }
-    if (typeof showCustomAlert === 'function') {
-      const body = `${lines.join('\n')}\n\n检测时间: ${report?.checkedAt || '未知'}`;
-      showCustomAlert(body, 'CPA 套件更新检测', 'warn');
-    }
   } catch (e) {
     const message = String(e?.message || e);
-    extensionLog('err', `CPA 更新检测失败: ${message}`);
-    if (typeof showCustomAlert === 'function') showCustomAlert(message, 'CPA 更新检测失败', 'error');
+    if (!silent) {
+      extensionLog('err', `CPA 更新检测失败: ${message}`);
+      if (typeof showCustomAlert === 'function') showCustomAlert(message, 'CPA 更新检测失败', 'error');
+    } else {
+      console.warn('[Extensions] CPA 自动更新检测失败 (静默跳过):', message);
+    }
   } finally {
     cpaUpdateChecking = false;
     // 恢复按钮到实际状态
@@ -1663,21 +1697,30 @@ async function restartCpaSuite() {
   }
 }
 
-async function updateCpaSuite() {
+async function updateCpaSuite(opts = {}) {
+  const options = typeof opts === 'boolean' ? { skipConfirm: opts } : (opts || {});
+  const skipConfirm = Boolean(options.skipConfirm);
+
   if (!ensureExtensionBridge()) {
     extensionLog('err', '桌面通信通道未就绪，无法更新 CPA 套件。');
     return;
   }
   if (!cpaUpdateReport?.components?.some(component => component.updateAvailable === true)) {
-    await checkCpaExtensionUpdates(true);
+    await checkCpaExtensionUpdates();
     return;
   }
-  const confirmed = await showCustomConfirm(
-    '检测到新版本，将停止服务、下载并覆盖安装，服务会短暂中断。确定更新？',
-    '确认更新 CPA 套件',
-    'warn'
-  );
-  if (!confirmed) return;
+
+  if (!skipConfirm) {
+    const confirmed = typeof showCustomConfirm === 'function'
+      ? await showCustomConfirm(
+          '检测到新版本，将停止服务、下载并覆盖安装，服务会短暂中断。确定更新？',
+          '确认更新 CPA 套件',
+          'warn'
+        )
+      : true;
+    if (!confirmed) return;
+  }
+
   const installDir = cpaInstallDir || null;
   setCpaSuiteTransientStatus('updating');
   setCpaProgress(1, '开始更新 CPA 套件...', true);
@@ -1698,6 +1741,25 @@ async function updateCpaSuite() {
   }
 }
 
+let cpaAutoCheckTimer = null;
+let cpaAutoCheckInterval = null;
+
+const CPA_AUTO_CHECK_INITIAL_DELAY_MS = 5 * 60 * 1000; // 启动 5 分钟后首次检查
+const CPA_AUTO_CHECK_INTERVAL_MS = 60 * 60 * 1000;       // 之后每隔 1 小时检查一次
+
+function startCpaAutoUpdateScheduler() {
+  if (cpaAutoCheckTimer) clearTimeout(cpaAutoCheckTimer);
+  if (cpaAutoCheckInterval) clearInterval(cpaAutoCheckInterval);
+
+  cpaAutoCheckTimer = setTimeout(async () => {
+    cpaAutoCheckTimer = null;
+    await checkCpaExtensionUpdates({ silent: true }).catch(() => {});
+    cpaAutoCheckInterval = setInterval(async () => {
+      await checkCpaExtensionUpdates({ silent: true }).catch(() => {});
+    }, CPA_AUTO_CHECK_INTERVAL_MS);
+  }, CPA_AUTO_CHECK_INITIAL_DELAY_MS);
+}
+
 async function initExtensions() {
   bindExtensionCardOpeners();
   bindExtensionSettingsModal();
@@ -1709,6 +1771,7 @@ async function initExtensions() {
     loadCpaAutoStart(),
     loadCpaProxySettings()
   ]);
+  startCpaAutoUpdateScheduler();
 }
 
 function onExtensionsPageEnter() {
@@ -2555,6 +2618,7 @@ async function applyCpaVersionSelection() {
   g.restartCpaSuite = restartCpaSuite;
   g.updateCpaSuite = updateCpaSuite;
   g.initExtensions = initExtensions;
+  g.startCpaAutoUpdateScheduler = startCpaAutoUpdateScheduler;
   g.onExtensionsPageEnter = onExtensionsPageEnter;
   g.onExtensionsPageLeave = onExtensionsPageLeave;
   g.loadCpaInstallDir = loadCpaInstallDir;
