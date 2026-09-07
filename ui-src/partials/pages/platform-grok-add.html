@@ -79,23 +79,25 @@
                 </div>
               </div>
 
-              <!-- 协议后端卡片 (对齐 CodeBuddy 能力卡片设计) -->
+              <!-- 接口协议卡片 -->
               <div class="glass-card cb-add-caps-card">
-                <div class="cb-add-caps-title">协议后端 (API Backend)</div>
+                <div class="cb-add-caps-title">接口协议</div>
                 <div class="cb-add-caps">
                   <label class="cb-add-cap-chip">
                     <input type="radio" name="grok-add-backend-radio" value="chat_completions" checked data-action="setGrokAddBackend" data-events="change" data-arg="chat_completions">
-                    <span>chat_completions (OpenAI 兼容 · 默认)</span>
+                    <span>OpenAI 兼容</span>
+                    <span class="protocol-chip-badge">默认</span>
                   </label>
                   <label class="cb-add-cap-chip">
                     <input type="radio" name="grok-add-backend-radio" value="responses" data-action="setGrokAddBackend" data-events="change" data-arg="responses">
-                    <span>responses (OpenAI Responses)</span>
+                    <span>Responses</span>
                   </label>
                   <label class="cb-add-cap-chip">
                     <input type="radio" name="grok-add-backend-radio" value="messages" data-action="setGrokAddBackend" data-events="change" data-arg="messages">
-                    <span>messages (Anthropic Messages)</span>
+                    <span>Anthropic</span>
                   </label>
                 </div>
+                <div class="cb-add-caps-hint">绝大多数第三方中转及代理模型请保持默认的 OpenAI 兼容。</div>
                 <input type="hidden" id="grok-add-backend" value="chat_completions">
               </div>
 

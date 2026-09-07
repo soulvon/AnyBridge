@@ -135,21 +135,22 @@
                   </label>
                 </div>
 
-                <!-- 上游协议单选胶囊 -->
+                <!-- 接口协议单选胶囊 -->
                 <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding-top: 8px; border-top: 1px dashed var(--border);">
-                  <span style="font-size: 11.5px; color: var(--text-secondary); font-weight: 700;">上游协议：</span>
+                  <span style="font-size: 11.5px; color: var(--text-secondary); font-weight: 700;">接口协议：</span>
                   <div class="cb-add-caps" style="gap: 8px;">
                     <label class="cb-add-cap-chip" style="padding: 5px 11px; font-size: 11px;">
                       <input type="radio" name="codex-add-wire-api-radio" value="auto" checked data-action="setCodexAddWireApi" data-events="change" data-arg="auto">
-                      <span>auto (自动识别 · 默认)</span>
+                      <span>自动识别</span>
+                      <span class="protocol-chip-badge">默认</span>
                     </label>
                     <label class="cb-add-cap-chip" style="padding: 5px 11px; font-size: 11px;">
                       <input type="radio" name="codex-add-wire-api-radio" value="responses" data-action="setCodexAddWireApi" data-events="change" data-arg="responses">
-                      <span>responses (OpenAI Responses)</span>
+                      <span>Responses</span>
                     </label>
                     <label class="cb-add-cap-chip" style="padding: 5px 11px; font-size: 11px;">
                       <input type="radio" name="codex-add-wire-api-radio" value="chat" data-action="setCodexAddWireApi" data-events="change" data-arg="chat">
-                      <span>chat (Chat Completions)</span>
+                      <span>OpenAI 兼容</span>
                     </label>
                   </div>
                   <input type="hidden" id="codex-add-wire-api" value="auto">

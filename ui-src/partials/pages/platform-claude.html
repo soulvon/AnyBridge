@@ -46,16 +46,13 @@
               </div>
             </div>
 
-            <div class="glass-card" style="padding:16px 20px;margin-top:12px">
-              <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
-                <strong style="font-size:14px">Claude Code 原生重试</strong>
-                <span style="font-size:12px;color:var(--text-muted,#888)">写入 settings.json 环境变量，控制 Claude Code 客户端的重试次数</span>
+            <div class="glass-card" style="padding:14px 20px;margin-top:12px;display:flex;align-items:center;justify-content:space-between;gap:16px;">
+              <div>
+                <strong style="font-size:13.5px;color:var(--text-primary);display:block;margin-bottom:2px;">请求重试</strong>
+                <span style="font-size:12px;color:var(--text-muted);">网络异常时的最大重试次数（写入 settings.json）</span>
               </div>
-              <div style="display:flex;gap:16px;flex-wrap:wrap">
-                <label class="codex-config-field" style="flex:1;min-width:140px">
-                  <span>最大重试次数</span>
-                  <input id="platform-claude-max-retries" class="field-input" type="number" min="0" max="15" step="1" value="10" data-action="saveClaudeNativeRetry" data-events="change" data-pass-this>
-                </label>
+              <div style="display:flex;align-items:center;gap:8px;">
+                <input id="platform-claude-max-retries" class="field-input" type="number" min="0" max="15" step="1" value="10" style="width:90px;height:34px;text-align:center;" data-action="saveClaudeNativeRetry" data-events="change" data-pass-this>
               </div>
             </div>
 

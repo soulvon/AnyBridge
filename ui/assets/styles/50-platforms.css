@@ -1664,6 +1664,39 @@
   color: #0284c7;
 }
 
+.codex-config-badge.local {
+  background: rgba(99, 102, 241, 0.1);
+  color: #4f46e5;
+}
+
+.codex-config-badge.external,
+.codex-config-badge.warn {
+  background: rgba(245, 158, 11, 0.1);
+  color: #d97706;
+}
+
+[data-theme="dark"] .codex-config-badge.official {
+  background: rgba(16, 185, 129, 0.18);
+  color: #34d399;
+}
+
+[data-theme="dark"] .codex-config-badge.third,
+[data-theme="dark"] .codex-config-badge.info {
+  background: rgba(14, 165, 233, 0.18);
+  color: #38bdf8;
+}
+
+[data-theme="dark"] .codex-config-badge.local {
+  background: rgba(99, 102, 241, 0.18);
+  color: #a5b4fc;
+}
+
+[data-theme="dark"] .codex-config-badge.external,
+[data-theme="dark"] .codex-config-badge.warn {
+  background: rgba(245, 158, 11, 0.18);
+  color: #fde047;
+}
+
 .codex-config-main p {
   margin: 6px 0 0;
   color: var(--text-secondary);
@@ -7801,6 +7834,30 @@ td.display-name-cell {
   border-color: rgba(18, 97, 166, 0.32);
   color: var(--accent);
   box-shadow: 0 0 0 3px rgba(18, 97, 166, 0.06);
+}
+
+.protocol-chip-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 700;
+  background: rgba(14, 159, 139, 0.12);
+  color: #0e9f8b;
+  line-height: 1.3;
+}
+
+[data-theme="dark"] .protocol-chip-badge {
+  background: rgba(14, 159, 139, 0.22);
+  color: #2dd4bf;
+}
+
+.cb-add-caps-hint {
+  margin-top: 10px;
+  font-size: 12px;
+  color: var(--text-muted);
+  line-height: 1.5;
 }
 
 .cb-add-cap-chip input,

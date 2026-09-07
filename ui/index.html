@@ -3488,16 +3488,13 @@
               </div>
             </div>
 
-            <div class="glass-card" style="padding:16px 20px;margin-top:12px">
-              <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
-                <strong style="font-size:14px">Claude Code 原生重试</strong>
-                <span style="font-size:12px;color:var(--text-muted,#888)">写入 settings.json 环境变量，控制 Claude Code 客户端的重试次数</span>
+            <div class="glass-card" style="padding:14px 20px;margin-top:12px;display:flex;align-items:center;justify-content:space-between;gap:16px;">
+              <div>
+                <strong style="font-size:13.5px;color:var(--text-primary);display:block;margin-bottom:2px;">请求重试</strong>
+                <span style="font-size:12px;color:var(--text-muted);">网络异常时的最大重试次数（写入 settings.json）</span>
               </div>
-              <div style="display:flex;gap:16px;flex-wrap:wrap">
-                <label class="codex-config-field" style="flex:1;min-width:140px">
-                  <span>最大重试次数</span>
-                  <input id="platform-claude-max-retries" class="field-input" type="number" min="0" max="15" step="1" value="10" data-action="saveClaudeNativeRetry" data-events="change" data-pass-this>
-                </label>
+              <div style="display:flex;align-items:center;gap:8px;">
+                <input id="platform-claude-max-retries" class="field-input" type="number" min="0" max="15" step="1" value="10" style="width:90px;height:34px;text-align:center;" data-action="saveClaudeNativeRetry" data-events="change" data-pass-this>
               </div>
             </div>
 
@@ -3707,9 +3704,9 @@
               <!-- Claude Code 特性卡片：能力适配与网络重试参数 -->
               <div class="glass-card cb-add-caps-card">
                 <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
-                  <div class="cb-add-caps-title" style="margin: 0;">Claude Code 特性与网络参数</div>
+                  <div class="cb-add-caps-title" style="margin: 0;">特性与重试参数</div>
                   <div style="display: flex; align-items: center; gap: 8px;">
-                    <span style="font-size: 11.5px; color: var(--text-secondary); font-weight: 600;">最大重试次数：</span>
+                    <span style="font-size: 11.5px; color: var(--text-secondary); font-weight: 600;">重试次数：</span>
                     <input type="number" id="claude-add-max-retries" class="field-input" min="0" max="15" step="1" value="10" style="width: 60px; height: 28px; padding: 0 6px; font-size: 12px; text-align: center;">
                   </div>
                 </div>
@@ -3785,19 +3782,19 @@
               </div>
             </div>
 
-            <div class="glass-card" style="padding:16px 20px;margin-top:12px">
-              <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
-                <strong style="font-size:14px">Codex 原生重试</strong>
-                <span style="font-size:12px;color:var(--text-muted,#888)">写入 config.toml，控制 Codex 客户端的请求重试次数</span>
+            <div class="glass-card" style="padding:14px 20px;margin-top:12px;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;">
+              <div>
+                <strong style="font-size:13.5px;color:var(--text-primary);display:block;margin-bottom:2px;">请求重试</strong>
+                <span style="font-size:12px;color:var(--text-muted);">网络异常时的自动重试次数（写入 config.toml）</span>
               </div>
-              <div style="display:flex;gap:16px;flex-wrap:wrap">
-                <label class="codex-config-field" style="flex:1;min-width:140px">
-                  <span>请求重试次数</span>
-                  <input id="platform-codex-request-max-retries" class="field-input" type="number" min="0" max="100" step="1" value="10" data-action="saveCodexNativeRetry" data-events="change" data-pass-this>
+              <div style="display:flex;align-items:center;gap:16px;">
+                <label style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text-secondary);font-weight:600;">
+                  <span>常规重试</span>
+                  <input id="platform-codex-request-max-retries" class="field-input" type="number" min="0" max="100" step="1" value="10" style="width:80px;height:34px;text-align:center;" data-action="saveCodexNativeRetry" data-events="change" data-pass-this>
                 </label>
-                <label class="codex-config-field" style="flex:1;min-width:140px">
-                  <span>流式重试次数</span>
-                  <input id="platform-codex-stream-max-retries" class="field-input" type="number" min="0" max="100" step="1" value="10" data-action="saveCodexNativeRetry" data-events="change" data-pass-this>
+                <label style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text-secondary);font-weight:600;">
+                  <span>流式重试</span>
+                  <input id="platform-codex-stream-max-retries" class="field-input" type="number" min="0" max="100" step="1" value="10" style="width:80px;height:34px;text-align:center;" data-action="saveCodexNativeRetry" data-events="change" data-pass-this>
                 </label>
               </div>
             </div>
@@ -3885,14 +3882,14 @@
                       </label>
                       <p class="codex-config-toggle-hint">开启后 Codex 通过 AnyBridge 本地代理转发请求（127.0.0.1:7450），适合供应商只支持 Chat Completions 或需要协议转换的场景。关闭后 Codex 直接连接供应商的 Responses 端点。</p>
                       <label class="codex-config-field">
-                        <span>上游协议（本地代理 → 供应商）</span>
+                        <span>接口协议</span>
                         <select id="codex-config-wire-api" class="field-input">
-                          <option value="auto">自动识别</option>
+                          <option value="auto">自动识别（默认）</option>
                           <option value="responses">Responses</option>
-                          <option value="chat">Chat Completions</option>
+                          <option value="chat">OpenAI 兼容</option>
                         </select>
                       </label>
-                      <p class="codex-config-toggle-hint">决定本地代理用哪个端点请求供应商；「自动识别」按来源供应商的 API 路径判断。Codex 与 AnyBridge 之间恒为 Responses —— 官方已移除 wire_api = "chat"，写入会导致 Codex 启动即崩，所以只支持 Chat Completions 的供应商必须开启上面的「路由模式」，由本地代理完成协议转换。关闭路由模式（直连）时该选项不生效。</p>
+                      <p class="codex-config-toggle-hint">决定本地代理用哪个端点请求供应商；「自动识别」按来源供应商的 API 路径判断。Codex 与 AnyBridge 之间恒为 Responses —— 官方已移除 wire_api = "chat"，写入会导致 Codex 启动即崩，所以只支持 OpenAI 兼容的供应商必须开启上面的「路由模式」，由本地代理完成协议转换。关闭路由模式（直连）时该选项不生效。</p>
                       <label class="codex-config-toggle-row">
                         <span class="codex-config-toggle-label">桌面版显示所有模型</span>
                         <label class="switch">
@@ -4166,21 +4163,22 @@
                   </label>
                 </div>
 
-                <!-- 上游协议单选胶囊 -->
+                <!-- 接口协议单选胶囊 -->
                 <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding-top: 8px; border-top: 1px dashed var(--border);">
-                  <span style="font-size: 11.5px; color: var(--text-secondary); font-weight: 700;">上游协议：</span>
+                  <span style="font-size: 11.5px; color: var(--text-secondary); font-weight: 700;">接口协议：</span>
                   <div class="cb-add-caps" style="gap: 8px;">
                     <label class="cb-add-cap-chip" style="padding: 5px 11px; font-size: 11px;">
                       <input type="radio" name="codex-add-wire-api-radio" value="auto" checked data-action="setCodexAddWireApi" data-events="change" data-arg="auto">
-                      <span>auto (自动识别 · 默认)</span>
+                      <span>自动识别</span>
+                      <span class="protocol-chip-badge">默认</span>
                     </label>
                     <label class="cb-add-cap-chip" style="padding: 5px 11px; font-size: 11px;">
                       <input type="radio" name="codex-add-wire-api-radio" value="responses" data-action="setCodexAddWireApi" data-events="change" data-arg="responses">
-                      <span>responses (OpenAI Responses)</span>
+                      <span>Responses</span>
                     </label>
                     <label class="cb-add-cap-chip" style="padding: 5px 11px; font-size: 11px;">
                       <input type="radio" name="codex-add-wire-api-radio" value="chat" data-action="setCodexAddWireApi" data-events="change" data-arg="chat">
-                      <span>chat (Chat Completions)</span>
+                      <span>OpenAI 兼容</span>
                     </label>
                   </div>
                   <input type="hidden" id="codex-add-wire-api" value="auto">
@@ -5703,11 +5701,11 @@
                         <input id="grok-config-model" class="field-input" placeholder="例如：deepseek-chat、gpt-4o">
                       </label>
                       <label class="codex-config-field">
-                        <span>协议后端 (API Backend)</span>
+                        <span>接口协议</span>
                         <select id="grok-config-backend" class="field-input">
-                          <option value="chat_completions">chat_completions（标准 OpenAI 兼容，默认）</option>
-                          <option value="responses">responses（OpenAI Responses 协议）</option>
-                          <option value="messages">messages（Anthropic Messages 协议）</option>
+                          <option value="chat_completions">OpenAI 兼容（默认）</option>
+                          <option value="responses">Responses</option>
+                          <option value="messages">Anthropic</option>
                         </select>
                       </label>
                     </div>
@@ -5803,23 +5801,25 @@
                 </div>
               </div>
 
-              <!-- 协议后端卡片 (对齐 CodeBuddy 能力卡片设计) -->
+              <!-- 接口协议卡片 -->
               <div class="glass-card cb-add-caps-card">
-                <div class="cb-add-caps-title">协议后端 (API Backend)</div>
+                <div class="cb-add-caps-title">接口协议</div>
                 <div class="cb-add-caps">
                   <label class="cb-add-cap-chip">
                     <input type="radio" name="grok-add-backend-radio" value="chat_completions" checked data-action="setGrokAddBackend" data-events="change" data-arg="chat_completions">
-                    <span>chat_completions (OpenAI 兼容 · 默认)</span>
+                    <span>OpenAI 兼容</span>
+                    <span class="protocol-chip-badge">默认</span>
                   </label>
                   <label class="cb-add-cap-chip">
                     <input type="radio" name="grok-add-backend-radio" value="responses" data-action="setGrokAddBackend" data-events="change" data-arg="responses">
-                    <span>responses (OpenAI Responses)</span>
+                    <span>Responses</span>
                   </label>
                   <label class="cb-add-cap-chip">
                     <input type="radio" name="grok-add-backend-radio" value="messages" data-action="setGrokAddBackend" data-events="change" data-arg="messages">
-                    <span>messages (Anthropic Messages)</span>
+                    <span>Anthropic</span>
                   </label>
                 </div>
+                <div class="cb-add-caps-hint">绝大多数第三方中转及代理模型请保持默认的 OpenAI 兼容。</div>
                 <input type="hidden" id="grok-add-backend" value="chat_completions">
               </div>
 
@@ -7065,21 +7065,9 @@
   <!-- 版本跃迁更新成功提示模态框 (对齐 Cockpit Tools 设计) -->
   <div id="update-jump-modal" class="modal-overlay">
     <div class="modal-container update-modal">
-      <!-- 头部：彩炮图标 + 🎉 更新成功！ + 关闭按钮 -->
+      <!-- 头部：🎉 更新成功！ + 关闭按钮 -->
       <div class="update-modal-header">
         <div class="update-modal-title-group">
-          <div class="update-modal-icon-badge">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M5.8 11.3 2 22l10.7-3.79"/>
-              <path d="M4 3h.01"/>
-              <path d="M22 8h.01"/>
-              <path d="M15 2h.01"/>
-              <path d="M22 20h.01"/>
-              <path d="m22 2-2.24.75a2.9 2.9 0 0 0-1.96 3.12v0c.1.86-.57 1.63-1.45 1.63h-.38c-.86 0-1.6.6-1.76 1.44L14 12"/>
-              <path d="m22 13-.82-.33c-.86-.34-1.82.2-1.98 1.11v0c-.11.66-.72 1.12-1.39.97l-.7-.16c-.78-.17-1.57.25-1.84.99L15 16"/>
-              <path d="m11 2 .33.82c.34.86-.2 1.82-1.11 1.98v0C9.56 4.91 9.1 5.52 9.25 6.19l.16.7c.17.78-.25 1.57-.99 1.84L8 9"/>
-            </svg>
-          </div>
           <span class="update-modal-title-text">🎉 更新成功！</span>
         </div>
         <button class="update-modal-close-btn" data-action="closeUpdateJumpModal" title="关闭">
