@@ -53,6 +53,13 @@ PRIVATE_NOTES.md
 
 # Signing keys (private key must NEVER be committed)
 tauri-sign.key
+tauri-sign.key.pub
+tauri-sign.key*
+
+# Local Agent / IDE workspaces & temp artifacts
+.superpowers/
+.devin/
+docs/superpowers/
 
 # Temp/debug files
 cargo-check-err*.txt
