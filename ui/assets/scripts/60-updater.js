@@ -129,11 +129,10 @@ function logUpdaterEvent(level, message) {
 }
 
 function renderMarkdownNotes(rawNotes) {
-  if (!rawNotes) return '<div class="update-notes-item">无详细更新说明。</div>';
+  if (!rawNotes) return '<div class="update-notes-paragraph">无详细更新说明。</div>';
 
   const lines = rawNotes.split(/\r?\n/);
   const htmlParts = [];
-  let inList = false;
 
   for (let line of lines) {
     line = line.trim();
@@ -164,14 +163,14 @@ function renderMarkdownNotes(rawNotes) {
       continue;
     }
 
-    // 普通段落
+    // 普通段落（不带圆点前缀）
     let paragraph = escaped
       .replace(/`([^`]+)`/g, '<code class="update-notes-code">$1</code>')
       .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
-    htmlParts.push(`<div class="update-notes-item" style="padding-left:0;">${paragraph}</div>`);
+    htmlParts.push(`<div class="update-notes-paragraph">${paragraph}</div>`);
   }
 
-  return htmlParts.length > 0 ? htmlParts.join('') : '<div class="update-notes-item">无详细更新说明。</div>';
+  return htmlParts.length > 0 ? htmlParts.join('') : '<div class="update-notes-paragraph">无详细更新说明。</div>';
 }
 
 async function patchUpdateSettingField(patch) {
