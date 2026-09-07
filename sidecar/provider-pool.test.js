@@ -107,6 +107,31 @@ test('resolveTarget supports Gemini Native providers', () => {
   assert.equal(conn.authScheme, 'x-api-key');
 });
 
+test('resolveTarget converts provider /v1 path to /v1beta for Gemini Native', () => {
+  const providers = new Map([[
+    'relay',
+    {
+      id: 'relay',
+      name: 'Relay Proxy',
+      enabled: true,
+      apiHost: 'http://127.0.0.1:8317',
+      apiKey: 'sk-test',
+      apiPath: '/v1',
+      defaultModel: 'gemini-3.8-flash-high',
+    },
+  ]]);
+
+  const conn = resolveTarget({
+    providerId: 'relay',
+    model: 'gemini-3.8-flash-high',
+    apiFormat: 'gemini',
+  }, providers);
+
+  assert.equal(conn.error, undefined);
+  assert.equal(conn.format, 'gemini');
+  assert.equal(conn.apiPath, '/v1beta/models/gemini-3.8-flash-high:generateContent');
+});
+
 test('resolveTarget preserves HTTP localhost provider ports', () => {
   const providers = new Map([[
     'cpa',

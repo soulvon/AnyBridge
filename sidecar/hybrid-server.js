@@ -1227,6 +1227,7 @@ function logBanner() {
   console.log(`     OpenAI  -> http://localhost:${PORT}/v1`);
   console.log(`     Codex   -> http://localhost:${PORT}/codex/v1`);
   console.log(`     Claude  -> http://localhost:${PORT}/anthropic`);
+  console.log(`     Gemini  -> http://localhost:${PORT}`);
 
   console.log(`\n   PASSTHROUGH (blind TCP pipe):`);
   console.log(`     All other CONNECT targets (login, telemetry, marketplace)`);

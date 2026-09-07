@@ -106,6 +106,132 @@ test('Gemini Native requests convert to Gemini upstream payloads', () => {
   });
 });
 
+test('Gemini streamGenerateContent renders single-event SSE snapshot', () => {
+  const writes = [];
+  const res = {
+    writeHead(status, headers) { this.status = status; this.headers = headers; },
+    write(data) { writes.push(data); },
+    end() { this.ended = true; },
+  };
+
+  __localProxyTest.sendGeminiStream({ model: 'local-model' }, res, {
+    conn: { format: 'openai' },
+    text: 'hi',
+    toolCalls: [{ name: 'read_file', arguments: { path: 'a' } }],
+    usage: { inputTokens: 3, outputTokens: 5 },
+  }, true);
+
+  assert.equal(res.status, 200);
+  assert.match(res.headers['content-type'], /text\/event-stream/);
+  assert.equal(res.ended, true);
+  const chunks = writes
+    .filter(l => l.startsWith('data: '))
+    .map(l => JSON.parse(l.slice('data: '.length)));
+  // 官方语义：alt=sse 每个 data 是累计快照，finishReason 只出现在终止块；
+  // 单事件快照同时携带完整内容与 finishReason，客户端不会中途截断。
+  assert.equal(chunks.length, 1);
+  const candidate = chunks[0].candidates[0];
+  assert.equal(candidate.finishReason, 'STOP');
+  assert.deepEqual(candidate.content.parts[0], { text: 'hi' });
+  assert.equal(candidate.content.parts[1].functionCall.name, 'read_file');
+  assert.equal(candidate.content.parts[1].thoughtSignature, 'skip_thought_signature_validator');
+  assert.equal(chunks[0].usageMetadata.totalTokenCount, 8);
+});
+
+test('Gemini streamGenerateContent without alt=sse returns JSON array stream', () => {
+  const res = {
+    writeHead(status, headers) { this.status = status; this.headers = headers; },
+    write() {},
+    end() { this.ended = true; },
+  };
+
+  __localProxyTest.sendGeminiStream({ model: 'local-model' }, res, {
+    conn: { format: 'openai' },
+    text: 'hi',
+    usage: { inputTokens: 3, outputTokens: 5 },
+  }, false);
+
+  assert.equal(res.ended, true);
+});
+
+test('Gemini streamGenerateContent emits empty chunk when result has no content', () => {
+  const writes = [];
+  const res = {
+    writeHead(status, headers) { this.status = status; this.headers = headers; },
+    write(data) { writes.push(data); },
+    end() { this.ended = true; },
+  };
+
+  __localProxyTest.sendGeminiStream({ model: 'local-model' }, res, { usage: {} }, true);
+
+  const chunks = writes
+    .filter(l => l.startsWith('data: '))
+    .map(l => JSON.parse(l.slice('data: '.length)));
+  assert.equal(chunks.length, 1);
+  assert.deepEqual(chunks[0].candidates[0].content.parts, [{ text: '' }]);
+});
+
+test('Gemini request keeps thoughtSignature and replays it to Gemini upstream', () => {
+  const ctx = __localProxyTest.normalizeRequest('gemini', {
+    model: 'local-model',
+    contents: [{
+      role: 'model',
+      parts: [{ functionCall: { name: 'check_flight', args: { flight: 'AA100' } }, thoughtSignature: 'sig-A' }],
+    }],
+  });
+
+  const body = __localProxyTest.upstreamBody({
+    format: 'gemini',
+    model: 'gemini-3-pro',
+    apiPath: '/v1beta/models/gemini-3-pro:generateContent',
+  }, ctx);
+
+  assert.equal(body.contents[0].parts[0].thoughtSignature, 'sig-A');
+  assert.deepEqual(body.contents[0].parts[0].functionCall, { name: 'check_flight', args: { flight: 'AA100' } });
+
+  // Anthropic 上游必须剥离内部签名字段，避免严格网关 400
+  const anthropicBody = __localProxyTest.upstreamBody({
+    format: 'anthropic',
+    model: 'claude-x',
+    apiPath: '/v1/messages',
+  }, {
+    ...ctx,
+    messages: [{ role: 'assistant', content: [{ type: 'text', text: 'hi', thoughtSignature: 'sig-A' }] }],
+    system: '',
+  });
+  assert.equal('thoughtSignature' in anthropicBody.messages[0].content[0], false);
+  assert.equal(anthropicBody.messages[0].content[0].text, 'hi');
+});
+
+test('Gemini response rebuild attaches placeholder signature for cross-protocol tool calls', () => {
+  const writes = [];
+  const res = {
+    writeHead(status, headers) { this.status = status; this.headers = headers; },
+    write(data) { writes.push(data); },
+    end(data) { if (data) writes.push(data); this.ended = true; },
+  };
+
+  __localProxyTest.sendGemini({ model: 'local-model' }, res, {
+    conn: { format: 'openai' },
+    text: '',
+    toolCalls: [{ id: 'call-1', name: 'read_file', arguments: { path: 'a' } }],
+    usage: { inputTokens: 3, outputTokens: 5 },
+  });
+
+  const body = JSON.parse(writes[0]);
+  const part = body.candidates[0].content.parts[0];
+  assert.deepEqual(part.functionCall, { id: 'call-1', name: 'read_file', args: { path: 'a' } });
+  assert.equal(part.thoughtSignature, 'skip_thought_signature_validator');
+});
+
+test('Gemini model id from path strips models/ resource-name prefix', () => {
+  assert.equal(__localProxyTest.geminiModelFromPath('/v1beta/models/gemini-2.5-pro:generateContent'), 'gemini-2.5-pro');
+  assert.equal(__localProxyTest.geminiModelFromPath('/v1beta/models/models/gemini-2.5-pro:generateContent'), 'gemini-2.5-pro');
+  assert.equal(__localProxyTest.geminiModelFromPath('/v1beta/models/models/gemini-2.5-pro:streamGenerateContent'), 'gemini-2.5-pro');
+  assert.equal(__localProxyTest.geminiModelFromPath('/v1beta/models/models/gemini-2.5-pro:countTokens'), 'gemini-2.5-pro');
+  assert.equal(__localProxyTest.geminiModelFromPath('/v1beta/models/gemini-2.5-pro:countTokens'), 'gemini-2.5-pro');
+});
+
 test('Codex unlock keeps Responses payload even when provider wireApi is chat', () => {
   const ctx = __localProxyTest.normalizeRequest('responses', {
     model: 'local-model',

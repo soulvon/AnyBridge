@@ -134,7 +134,11 @@ function localProxyOrigin() {
 }
 
 function localProxyBaseUrl(format = 'openai') {
-  return format === 'anthropic' ? `${localProxyOrigin()}/anthropic` : `${localProxyOrigin()}/v1`;
+  // Claude Code 与 Anthropic SDK 官方规范：ANTHROPIC_BASE_URL 填服务端点根地址，
+  // SDK 会自动追加 /v1/messages，后端已支持路由自适应解析；
+  // Gemini 官方 SDK 同样以根地址为 baseUrl。
+  if (format === 'anthropic' || format === 'gemini') return localProxyOrigin();
+  return `${localProxyOrigin()}/v1`;
 }
 
 function localProxyModelsUrl() {
@@ -186,8 +190,10 @@ function syncProxyEnhancementSummary() {
 
 function syncLocalProxyUi() {
   setText('globalProxyStatusText', proxyRunning ? '代理运行中' : '代理未启动');
+  setText('localProxyUnifiedUrl', localProxyOrigin());
   setText('localProxyOpenAiUrl', localProxyBaseUrl('openai'));
   setText('localProxyClaudeUrl', localProxyBaseUrl('anthropic'));
+  setText('localProxyGeminiUrl', localProxyBaseUrl('gemini'));
   setText('localProxyModelsUrl', localProxyModelsUrl());
   setText('localProxyKeyValue', localProxyKey || '未生成');
   ['localProxyPortInput', 'settingsProxyPortInput'].forEach(id => {
@@ -216,6 +222,35 @@ function updateGlobalProxyStatusPill(running, tone = '') {
   pill.classList.remove('running', 'starting', 'error', 'off');
   pill.classList.add(tone || (running ? 'running' : 'off'));
   syncTopbarProxyControls(running, tone);
+  syncProxyPageControls(running, tone);
+}
+
+function syncProxyPageControls(running, tone = '') {
+  const startBtn = document.getElementById('globalProxyStartBtn');
+  const stopBtn = document.getElementById('globalProxyStopBtn');
+  const restartBtn = document.getElementById('globalProxyRestartBtn');
+  const isBusy = tone === 'starting';
+  const isRunning = !!running && !isBusy;
+
+  if (startBtn) {
+    startBtn.disabled = isBusy;
+    startBtn.classList.remove('btn-ghost');
+    startBtn.classList.add('btn-primary');
+    startBtn.classList.toggle('is-connected', isRunning);
+    if (isRunning) {
+      startBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 5px;"><path d="M20 6 9 17l-5-5"/></svg>已启动';
+      startBtn.title = '代理运行中';
+    } else {
+      startBtn.textContent = isBusy ? '启动中...' : '启动代理';
+      startBtn.title = '启动全局代理服务';
+    }
+  }
+  if (stopBtn) {
+    stopBtn.disabled = isBusy || !isRunning;
+  }
+  if (restartBtn) {
+    restartBtn.disabled = isBusy || !isRunning;
+  }
 }
 
 function syncTopbarProxyControls(running, tone = '') {
@@ -431,16 +466,20 @@ async function copyTextToClipboard(text, label) {
 async function copyLocalProxyValue(kind) {
   const value = kind === 'key'
     ? getLocalProxyKeyValue()
-    : kind === 'claude'
-      ? localProxyBaseUrl('anthropic')
-      : kind === 'models'
-        ? localProxyModelsUrl()
-        : localProxyBaseUrl('openai');
+    : kind === 'unified'
+      ? localProxyOrigin()
+      : kind === 'claude'
+        ? localProxyBaseUrl('anthropic')
+        : kind === 'gemini'
+          ? localProxyBaseUrl('gemini')
+          : kind === 'models'
+            ? localProxyModelsUrl()
+            : localProxyBaseUrl('openai');
   if (!value) {
     addLog('warn', '本地代理 key 尚未生成');
     return;
   }
-  await copyTextToClipboard(value, kind === 'key' ? '本地 key' : '本地代理地址');
+  await copyTextToClipboard(value, kind === 'key' ? '本地 key' : (kind === 'unified' ? '统一 Base URL' : '本地代理地址'));
 }
 
 async function regenerateLocalProxyKey() {
@@ -795,11 +834,16 @@ function setGlobalProxyBusy(busy, label = '') {
     if (label) setText('proxyPageStateText', label);
   } else {
     syncTopbarProxyControls(proxyRunning);
+    syncProxyPageControls(proxyRunning);
   }
 }
 
 async function startGlobalProxyService() {
   if (!invoke && !bindTauriBridge()) return;
+  if (proxyRunning) {
+    if (typeof showBottomToast === 'function') showBottomToast('本地代理已在运行中', 'info');
+    return;
+  }
   setGlobalProxyBusy(true, '代理启动中');
   try {
     await invoke('start_proxy_service');

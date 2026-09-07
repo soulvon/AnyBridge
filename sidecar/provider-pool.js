@@ -155,7 +155,8 @@ function normalizeGeminiApiPath(apiPath, model) {
   if (lower.endsWith(':generatecontent') || lower.endsWith(':streamgeneratecontent')) return path;
   if (lower.includes('/v1beta/models/') || lower.includes('/v1/models/')) return `${path}:generateContent`;
   if (!path) return `/v1beta/models/${encodedModel}:generateContent`;
-  if (lower.endsWith('/v1beta') || lower.endsWith('/v1')) return `${path}/models/${encodedModel}:generateContent`;
+  if (lower.endsWith('/v1beta')) return `${path}/models/${encodedModel}:generateContent`;
+  if (lower.endsWith('/v1')) return `${path.slice(0, -3)}/v1beta/models/${encodedModel}:generateContent`;
   if (lower.endsWith('/models')) return `${path}/${encodedModel}:generateContent`;
   return `${path}/v1beta/models/${encodedModel}:generateContent`;
 }

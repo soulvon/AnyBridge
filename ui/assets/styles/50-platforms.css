@@ -62,10 +62,13 @@
   font-weight: inherit;
 }
 
-/* 已接入：覆盖 btn-primary 渐变，改为实心成功绿 */
+/* 已接入 / 已启动：覆盖 btn-primary 渐变，改为实心成功绿 */
 .platform-console-actions .btn-primary.platform-proxy-primary.is-connected,
 .platform-console-actions .btn-primary.platform-proxy-primary.is-connected:hover:not(:disabled),
-.platform-console-actions .btn-primary.platform-proxy-primary.is-connected:focus-visible {
+.platform-console-actions .btn-primary.platform-proxy-primary.is-connected:focus-visible,
+.proxy-console-actions .btn-primary.is-connected,
+.proxy-console-actions .btn-primary.is-connected:hover:not(:disabled),
+.proxy-console-actions .btn-primary.is-connected:focus-visible {
   background: var(--success);
   border-color: var(--success);
   color: var(--button-on-solid);
@@ -75,7 +78,8 @@
     0 10px 24px -14px color-mix(in srgb, var(--success) 70%, transparent);
 }
 
-.platform-console-actions .btn-primary.platform-proxy-primary.is-connected:hover:not(:disabled) {
+.platform-console-actions .btn-primary.platform-proxy-primary.is-connected:hover:not(:disabled),
+.proxy-console-actions .btn-primary.is-connected:hover:not(:disabled) {
   filter: brightness(1.04);
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.28),
@@ -83,7 +87,8 @@
     0 14px 30px -14px color-mix(in srgb, var(--success) 78%, transparent);
 }
 
-.platform-console-actions .btn-primary.platform-proxy-primary.is-connected :is(svg, span) {
+.platform-console-actions .btn-primary.platform-proxy-primary.is-connected :is(svg, span),
+.proxy-console-actions .btn-primary.is-connected :is(svg, span) {
   color: inherit;
   stroke: currentColor;
 }
@@ -10770,8 +10775,23 @@ html[data-theme="dark"] .endpoint-brand-icon-dark,
   display: block !important;
 }
 
+.endpoint-route-tag {
+  display: inline-block;
+  font-family: var(--font-mono, monospace);
+  font-size: 10px;
+  font-weight: 500;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--bg-hover);
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+  letter-spacing: 0;
+  white-space: nowrap;
+  line-height: 1.4;
+}
+
 .proxy-endpoint-row {
-  grid-template-columns: minmax(104px, auto) minmax(0, 1fr) auto;
+  grid-template-columns: minmax(220px, auto) minmax(0, 1fr) auto;
   transition: background var(--duration-fast) var(--ease), border-color var(--duration-fast) var(--ease), transform var(--duration-fast) var(--ease);
 }
 .proxy-endpoint-row:hover {
@@ -10786,9 +10806,60 @@ html[data-theme="dark"] .endpoint-brand-icon-dark,
   color: var(--accent);
 }
 
+.proxy-value-with-copy {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+
+.proxy-value-with-copy strong {
+  margin-top: 0 !important;
+  display: inline-block;
+  vertical-align: middle;
+}
+
+.proxy-value-copy-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  min-width: 26px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--bg-hover);
+  color: var(--text-muted);
+  cursor: pointer;
+  flex-shrink: 0;
+  padding: 0;
+  transition: all var(--duration-fast) var(--ease);
+}
+
+.proxy-value-copy-btn:hover {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 50%, var(--border));
+  background: var(--accent-light);
+  transform: translateY(-1px);
+}
+
 .proxy-local-key-box {
   border: 1px solid var(--border-strong);
   background: linear-gradient(135deg, var(--bg-input), color-mix(in srgb, var(--bg-input) 70%, var(--bg-card)));
+}
+.proxy-local-key-actions button {
+  min-width: 88px;
+  height: 34px;
+  padding: 0 16px;
+  font-size: 12px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  white-space: nowrap;
+  box-sizing: border-box;
 }
 
 .proxy-preference-row {
@@ -10825,9 +10896,24 @@ html[data-theme="dark"] .endpoint-brand-icon-dark,
   grid-template-columns: repeat(2, minmax(0, 1fr)) auto;
   gap: 12px;
   align-items: end;
+  padding: 0 14px;
 }
 .proxy-ports-grid-single {
   grid-template-columns: minmax(0, 1fr) auto;
+}
+.proxy-ports-grid button,
+.proxy-ports-grid .btn-primary,
+.proxy-ports-grid .btn-ghost {
+  min-width: 88px;
+  height: 34px;
+  padding: 0 16px;
+  font-size: 12px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  white-space: nowrap;
+  box-sizing: border-box;
 }
 .proxy-port-field input {
   width: 120px;
