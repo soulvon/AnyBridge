@@ -5930,23 +5930,44 @@ function cursorRenderModalState() {
   const isTextMode = _cursorTagMainMode === 'text';
 
   if (textCustomPanel) textCustomPanel.style.display = isTextMode ? 'flex' : 'none';
-  if (customDisabledTip) customDisabledTip.style.display = isTextMode ? 'none' : 'block';
+  if (customDisabledTip) {
+    customDisabledTip.style.display = isTextMode ? 'none' : 'block';
+    const tipTitle = document.getElementById('cursorTextCustomDisabledTitle');
+    const tipDesc = document.getElementById('cursorTextCustomDisabledDesc');
+    if (_cursorTagMainMode === 'badge') {
+      if (tipTitle) tipTitle.textContent = 'Cursor 官方原生徽章';
+      if (tipDesc) tipDesc.textContent = '直接使用 Cursor 原生蓝色 Badge 标签，打钩在徽章最右侧，无需额外配置符号。';
+    } else if (_cursorTagMainMode === 'none') {
+      if (tipTitle) tipTitle.textContent = '纯净极简形式';
+      if (tipDesc) tipDesc.textContent = '不显示任何供应商标签或前缀，模型名称保持极致清爽整洁。';
+    }
+  }
 
-  // 3. 更新位置按钮高亮 (前置 vs 后置)
+  // 3. 更新位置分段控件高亮 (现代白底卡片滑块质感)
   const prefixBtn = document.getElementById('cursorPosPrefixBtn');
   const suffixBtn = document.getElementById('cursorPosSuffixBtn');
   if (prefixBtn && suffixBtn) {
     const isPrefix = _cursorTextPosition === 'prefix';
     if (isPrefix) {
-      prefixBtn.style.background = 'var(--accent)';
-      prefixBtn.style.color = '#fff';
+      prefixBtn.style.background = 'var(--bg-card)';
+      prefixBtn.style.color = 'var(--text-primary)';
+      prefixBtn.style.boxShadow = '0 1px 3px rgba(0,0,0,0.08)';
+      prefixBtn.style.fontWeight = '650';
+
       suffixBtn.style.background = 'transparent';
       suffixBtn.style.color = 'var(--text-secondary)';
+      suffixBtn.style.boxShadow = 'none';
+      suffixBtn.style.fontWeight = '500';
     } else {
-      suffixBtn.style.background = 'var(--accent)';
-      suffixBtn.style.color = '#fff';
+      suffixBtn.style.background = 'var(--bg-card)';
+      suffixBtn.style.color = 'var(--text-primary)';
+      suffixBtn.style.boxShadow = '0 1px 3px rgba(0,0,0,0.08)';
+      suffixBtn.style.fontWeight = '650';
+
       prefixBtn.style.background = 'transparent';
       prefixBtn.style.color = 'var(--text-secondary)';
+      prefixBtn.style.boxShadow = 'none';
+      prefixBtn.style.fontWeight = '500';
     }
   }
 
@@ -6002,13 +6023,17 @@ function cursorSyncBracketUI() {
     const p = b.getAttribute('data-bracket');
     const active = p === matched;
     if (active) {
-      b.style.background = 'rgba(37, 99, 235, 0.12)';
+      b.style.background = 'rgba(37, 99, 235, 0.08)';
       b.style.color = 'var(--accent)';
       b.style.borderColor = 'var(--accent)';
+      b.style.boxShadow = '0 0 0 1px rgba(37, 99, 235, 0.2)';
+      b.style.fontWeight = '650';
     } else {
-      b.style.background = 'transparent';
+      b.style.background = 'var(--bg-card)';
       b.style.color = 'var(--text-secondary)';
-      b.style.borderColor = 'transparent';
+      b.style.borderColor = 'var(--border)';
+      b.style.boxShadow = 'none';
+      b.style.fontWeight = '500';
     }
   });
 
@@ -6085,16 +6110,22 @@ function openCursorTagStyleModal() {
       if (p === 'custom') {
         const customInputs = document.getElementById('cursorTagBracketCustomInputs');
         if (customInputs) customInputs.style.display = 'flex';
-        btn.style.background = 'rgba(37, 99, 235, 0.12)';
+        btn.style.background = 'rgba(37, 99, 235, 0.08)';
         btn.style.color = 'var(--accent)';
         btn.style.borderColor = 'var(--accent)';
+        btn.style.boxShadow = '0 0 0 1px rgba(37, 99, 235, 0.2)';
+        btn.style.fontWeight = '650';
         presetBtns.forEach(other => {
           if (other !== btn) {
-            other.style.background = 'transparent';
+            other.style.background = 'var(--bg-card)';
             other.style.color = 'var(--text-secondary)';
-            other.style.borderColor = 'transparent';
+            other.style.borderColor = 'var(--border)';
+            other.style.boxShadow = 'none';
+            other.style.fontWeight = '500';
           }
         });
+        const leftInput = document.getElementById('cursorBracketLeftInput');
+        if (leftInput) leftInput.focus();
       } else {
         selectCursorBracketPreset(p);
       }

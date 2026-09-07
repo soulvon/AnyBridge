@@ -166,132 +166,147 @@
 
         <!-- ═══════ CURSOR 供应商展示方式设置弹窗 ═══════ -->
         <div class="modal-overlay" id="cursorTagStyleModal" role="dialog" aria-modal="true" aria-labelledby="cursorTagStyleModalTitle" data-action="closeCursorTagStyleModal" data-only-self>
-          <div class="modal-container" style="max-width: 760px; width: 92%; border-radius: 14px; overflow: hidden; padding: 0; box-shadow: var(--shadow-xl, 0 20px 25px -5px rgba(0,0,0,0.1), 0 10px 10px -5px rgba(0,0,0,0.04));">
-            <!-- 头部 -->
-            <div class="modal-header" style="padding: 16px 20px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; background: var(--bg-card);">
-              <div style="display: flex; align-items: center; gap: 10px;">
-                <div style="width: 32px; height: 32px; border-radius: 8px; background: rgba(37, 99, 235, 0.1); color: var(--accent); display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <div class="modal-container" style="max-width: 800px; width: 92%; border-radius: 16px; overflow: hidden; padding: 0; box-shadow: var(--shadow-xl, 0 24px 38px 3px rgba(0,0,0,0.12), 0 9px 46px 8px rgba(0,0,0,0.08)); border: 1px solid var(--border);">
+            <!-- 头部：精致标题栏与关闭图标 -->
+            <div class="modal-header" style="padding: 18px 24px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; background: var(--bg-card);">
+              <div style="display: flex; align-items: center; gap: 12px;">
+                <div style="width: 36px; height: 36px; border-radius: 10px; background: rgba(37, 99, 235, 0.08); color: var(--accent); display: flex; align-items: center; justify-content: center; flex-shrink: 0; border: 1px solid rgba(37, 99, 235, 0.15);">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
                     <circle cx="12" cy="12" r="3"></circle>
                     <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
                   </svg>
                 </div>
                 <div>
-                  <div class="modal-title" id="cursorTagStyleModalTitle" style="font-size: 15px; font-weight: 700; color: var(--text-primary); line-height: 1.2;">供应商展示方式</div>
-                  <div style="font-size: 11.5px; color: var(--text-muted); margin-top: 2px;">选择模型在 Cursor 下拉列表中的供应商呈现形式与位置定制</div>
+                  <div class="modal-title" id="cursorTagStyleModalTitle" style="font-size: 15px; font-weight: 750; color: var(--text-primary); line-height: 1.25;">供应商展示方式</div>
+                  <div style="font-size: 11.5px; color: var(--text-muted); margin-top: 3px;">定义模型在 Cursor 下拉列表中的呈现形式与包裹符号</div>
                 </div>
               </div>
-              <button type="button" class="btn-ghost icon-btn" data-action="closeCursorTagStyleModal" aria-label="关闭" style="width: 28px; height: 28px; border-radius: 6px; display: flex; align-items: center; justify-content: center;">✕</button>
+              <button type="button" class="btn-ghost icon-btn" data-action="closeCursorTagStyleModal" aria-label="关闭" style="width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center; color: var(--text-muted); transition: all 0.15s ease;">✕</button>
             </div>
 
-            <!-- 双栏主体内容 -->
-            <div class="modal-body" style="padding: 16px 20px; display: flex; gap: 16px; align-items: stretch; min-height: 290px;">
+            <!-- 双栏主体内容：左右等高撑开，杜绝视觉塌陷 -->
+            <div class="modal-body" style="padding: 22px 24px; display: flex; gap: 20px; align-items: stretch; min-height: 360px; background: var(--bg-card);">
               
-              <!-- 左栏：3 个核心形式单选卡片 -->
-              <div style="width: 250px; flex-shrink: 0; display: flex; flex-direction: column; gap: 8px;">
-                <div style="font-size: 11.5px; font-weight: 700; color: var(--text-secondary); margin-bottom: 2px;">展示形式</div>
-
+              <!-- 左栏：3 个核心形式单选卡片，纵向充分撑开，拒绝留白塌陷 -->
+              <div style="width: 280px; flex-shrink: 0; display: flex; flex-direction: column; gap: 12px; justify-content: space-between;">
+                
                 <!-- 模式 1: 文本标注 (前缀/后缀) -->
-                <label class="cursor-tag-style-option" style="display: flex; align-items: flex-start; gap: 10px; padding: 11px 12px; border: 1.5px solid var(--border); border-radius: 10px; cursor: pointer; transition: all 0.15s ease; background: var(--bg-card);">
-                  <input type="radio" name="cursorTagMainModeRadio" value="text" style="margin-top: 2px; cursor: pointer;">
+                <label class="cursor-tag-style-option" style="flex: 1; min-height: 100px; display: flex; align-items: center; gap: 12px; padding: 16px; border: 1.5px solid var(--border); border-radius: 12px; cursor: pointer; transition: all 0.18s ease; background: var(--bg-card); box-sizing: border-box; box-shadow: var(--shadow-sm);">
+                  <input type="radio" name="cursorTagMainModeRadio" value="text" style="cursor: pointer; width: 16px; height: 16px; margin: 0; accent-color: var(--accent); flex-shrink: 0;">
                   <div style="flex: 1; min-width: 0;">
-                    <div style="font-size: 13px; font-weight: 650; color: var(--text-primary);">文本标注形式</div>
-                    <div style="font-size: 11px; color: var(--text-muted); margin-top: 3px; line-height: 1.35;">融入模型名称，打钩在最右侧，支持前置或后置</div>
+                    <div style="font-size: 13.5px; font-weight: 700; color: var(--text-primary);">文本标注形式</div>
+                    <div style="font-size: 11.5px; color: var(--text-muted); margin-top: 4px; line-height: 1.45;">融入模型名称，打钩居末，支持前置与后置</div>
                   </div>
                 </label>
 
                 <!-- 模式 2: 原生徽章 (Badge) -->
-                <label class="cursor-tag-style-option" style="display: flex; align-items: flex-start; gap: 10px; padding: 11px 12px; border: 1.5px solid var(--border); border-radius: 10px; cursor: pointer; transition: all 0.15s ease; background: var(--bg-card);">
-                  <input type="radio" name="cursorTagMainModeRadio" value="badge" style="margin-top: 2px; cursor: pointer;">
+                <label class="cursor-tag-style-option" style="flex: 1; min-height: 100px; display: flex; align-items: center; gap: 12px; padding: 16px; border: 1.5px solid var(--border); border-radius: 12px; cursor: pointer; transition: all 0.18s ease; background: var(--bg-card); box-sizing: border-box; box-shadow: var(--shadow-sm);">
+                  <input type="radio" name="cursorTagMainModeRadio" value="badge" style="cursor: pointer; width: 16px; height: 16px; margin: 0; accent-color: var(--accent); flex-shrink: 0;">
                   <div style="flex: 1; min-width: 0;">
                     <div style="display: flex; align-items: center; justify-content: space-between;">
-                      <span style="font-size: 13px; font-weight: 650; color: var(--text-primary);">原生徽章形式</span>
-                      <span style="font-size: 10px; color: var(--text-muted); background: var(--bg-input); padding: 1px 5px; border-radius: 4px;">默认</span>
+                      <span style="font-size: 13.5px; font-weight: 700; color: var(--text-primary);">原生徽章形式</span>
+                      <span style="font-size: 10.5px; color: var(--text-muted); background: var(--bg-input); padding: 1px 6px; border-radius: 4px; border: 1px solid var(--border);">默认</span>
                     </div>
-                    <div style="font-size: 11px; color: var(--text-muted); margin-top: 3px; line-height: 1.35;">Cursor 原生蓝色 Badge 标签样式</div>
+                    <div style="font-size: 11.5px; color: var(--text-muted); margin-top: 4px; line-height: 1.45;">Cursor 官方右侧蓝色 Badge 样式</div>
                   </div>
                 </label>
 
                 <!-- 模式 3: 纯净无标 (None) -->
-                <label class="cursor-tag-style-option" style="display: flex; align-items: flex-start; gap: 10px; padding: 11px 12px; border: 1.5px solid var(--border); border-radius: 10px; cursor: pointer; transition: all 0.15s ease; background: var(--bg-card);">
-                  <input type="radio" name="cursorTagMainModeRadio" value="none" style="margin-top: 2px; cursor: pointer;">
+                <label class="cursor-tag-style-option" style="flex: 1; min-height: 100px; display: flex; align-items: center; gap: 12px; padding: 16px; border: 1.5px solid var(--border); border-radius: 12px; cursor: pointer; transition: all 0.18s ease; background: var(--bg-card); box-sizing: border-box; box-shadow: var(--shadow-sm);">
+                  <input type="radio" name="cursorTagMainModeRadio" value="none" style="cursor: pointer; width: 16px; height: 16px; margin: 0; accent-color: var(--accent); flex-shrink: 0;">
                   <div style="flex: 1; min-width: 0;">
-                    <div style="font-size: 13px; font-weight: 650; color: var(--text-primary);">纯净极简形式</div>
-                    <div style="font-size: 11px; color: var(--text-muted); margin-top: 3px; line-height: 1.35;">不显示供应商标识，模型列表最清爽</div>
+                    <div style="font-size: 13.5px; font-weight: 700; color: var(--text-primary);">纯净极简形式</div>
+                    <div style="font-size: 11.5px; color: var(--text-muted); margin-top: 4px; line-height: 1.45;">不显示供应商标签，列表极简纯净</div>
                   </div>
                 </label>
               </div>
 
-              <!-- 右栏：Cursor 高保真实时模拟预览 + 详细参数微调 -->
-              <div style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 12px; background: var(--bg-input); padding: 14px 16px; border-radius: 10px; border: 1px solid var(--border);">
+              <!-- 右栏：Cursor 高保真实时模拟预览 + 详细参数微调，稳定高度无跳动 -->
+              <div style="flex: 1; min-width: 0; min-height: 350px; display: flex; flex-direction: column; justify-content: space-between; background: var(--bg-input); padding: 18px 20px; border-radius: 12px; border: 1px solid var(--border); box-sizing: border-box;">
                 
                 <!-- 模块 1: Cursor 下拉菜单高保真模拟预览 -->
                 <div>
-                  <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px;">
-                    <span style="font-size: 11.5px; font-weight: 700; color: var(--text-secondary);">Cursor 菜单选中效果模拟</span>
-                    <span style="font-size: 11px; color: var(--text-muted);">所见即所得</span>
+                  <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+                    <span style="font-size: 12px; font-weight: 700; color: var(--text-secondary);">Cursor 选中效果预览</span>
+                    <span style="font-size: 11px; color: var(--text-muted);">实时渲染</span>
                   </div>
-                  <div id="cursorSimulationContainer" style="background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; padding: 9px 12px; display: flex; align-items: center; justify-content: space-between; font-size: 13px; font-family: var(--font-mono); box-shadow: var(--shadow-sm);">
-                    <div id="cursorSimulationLeft" style="display: flex; align-items: center; gap: 6px; min-width: 0;">
-                      <span style="color: var(--accent); font-size: 12px;">✦</span>
-                      <span id="cursorSimulationModelName" style="color: var(--text-primary); font-weight: 550;">[CPA] Gemini 3.8 Flash</span>
+                  
+                  <!-- 模拟器外框：仿 Cursor 现代深灰/白底下拉项 -->
+                  <div id="cursorSimulationContainer" style="background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; min-height: 48px; padding: 10px 14px; display: flex; align-items: center; justify-content: space-between; font-size: 13px; font-family: var(--font-mono); box-shadow: 0 1px 3px rgba(0,0,0,0.04); box-sizing: border-box; transition: all 0.2s ease;">
+                    <div id="cursorSimulationLeft" style="display: flex; align-items: center; gap: 8px; min-width: 0;">
+                      <div style="width: 20px; height: 20px; border-radius: 5px; background: rgba(37, 99, 235, 0.1); color: var(--accent); display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: bold; flex-shrink: 0;">✦</div>
+                      <span id="cursorSimulationModelName" style="color: var(--text-primary); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">[CPA] Gemini 3.8 Flash</span>
                     </div>
                     <div id="cursorSimulationRight" style="display: inline-flex; align-items: center; gap: 8px; flex-shrink: 0;">
-                      <span id="cursorSimulationBadge" style="display: none; background: #2563eb; color: #fff; font-size: 10.5px; padding: 1px 6px; border-radius: 4px; font-family: var(--font-sans); font-weight: 500;">CPA</span>
-                      <span style="color: var(--accent); font-weight: bold; font-size: 14px;">✓</span>
+                      <span id="cursorSimulationBadge" style="display: none; background: #2563eb; color: #ffffff; font-size: 10.5px; font-weight: 600; padding: 2px 7px; border-radius: 4px; font-family: var(--font-sans); letter-spacing: 0.2px;">CPA</span>
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0;">
+                        <polyline points="20 6 9 17 4 12"></polyline>
+                      </svg>
                     </div>
                   </div>
                 </div>
 
                 <!-- 模块 2: 文本位置与括号定制面板 (在文本形式下激活) -->
-                <div id="cursorTextCustomizationPanel" style="display: flex; flex-direction: column; gap: 10px; padding-top: 10px; border-top: 1px solid var(--border);">
+                <div id="cursorTextCustomizationPanel" style="display: flex; flex-direction: column; gap: 14px; padding-top: 14px; border-top: 1px solid var(--border); flex: 1; justify-content: center;">
                   
-                  <!-- 位置切换：前缀 vs 后缀 -->
+                  <!-- 位置切换：现代分段控制器 (Segmented Control) 质感 -->
                   <div style="display: flex; align-items: center; justify-content: space-between;">
-                    <span style="font-size: 12px; font-weight: 650; color: var(--text-primary);">放置位置</span>
-                    <div style="display: inline-flex; background: var(--bg-card); padding: 2px; border-radius: 7px; border: 1px solid var(--border); gap: 2px;">
-                      <button type="button" id="cursorPosPrefixBtn" class="cursor-pos-btn" style="border: none; background: transparent; padding: 4px 12px; font-size: 12px; border-radius: 5px; cursor: pointer; font-weight: 600; color: var(--text-secondary); transition: all 0.15s ease;">前置 (前缀)</button>
-                      <button type="button" id="cursorPosSuffixBtn" class="cursor-pos-btn" style="border: none; background: transparent; padding: 4px 12px; font-size: 12px; border-radius: 5px; cursor: pointer; font-weight: 600; color: var(--text-secondary); transition: all 0.15s ease;">后置 (后缀)</button>
+                    <span style="font-size: 12.5px; font-weight: 650; color: var(--text-primary);">放置位置</span>
+                    <div style="display: inline-flex; background: rgba(0, 0, 0, 0.05); padding: 3px; border-radius: 8px; border: 1px solid var(--border); gap: 3px;">
+                      <button type="button" id="cursorPosPrefixBtn" class="cursor-pos-btn" style="border: none; background: var(--bg-card); height: 28px; padding: 0 16px; font-size: 12px; border-radius: 6px; cursor: pointer; font-weight: 600; color: var(--text-primary); box-shadow: 0 1px 2px rgba(0,0,0,0.06); transition: all 0.15s ease;">前置 (前缀)</button>
+                      <button type="button" id="cursorPosSuffixBtn" class="cursor-pos-btn" style="border: none; background: transparent; height: 28px; padding: 0 16px; font-size: 12px; border-radius: 6px; cursor: pointer; font-weight: 600; color: var(--text-secondary); transition: all 0.15s ease;">后置 (后缀)</button>
                     </div>
                   </div>
 
-                  <!-- 括号样式选择 -->
-                  <div style="display: flex; flex-direction: column; gap: 6px;">
+                  <!-- 括号样式选择：规范圆角药丸卡片与清爽状态 -->
+                  <div style="display: flex; flex-direction: column; gap: 8px;">
                     <div style="display: flex; align-items: center; justify-content: space-between;">
-                      <span style="font-size: 12px; font-weight: 650; color: var(--text-primary);">括号样式</span>
+                      <span style="font-size: 12.5px; font-weight: 650; color: var(--text-primary);">括号样式</span>
                     </div>
-                    <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;" id="cursorBracketPresetButtons">
-                      <button type="button" class="btn-ghost cursor-bracket-btn" data-bracket="[]" style="height: 27px; padding: 0 9px; font-size: 12px; border-radius: 6px; font-weight: 600;">[ 方括号 ]</button>
-                      <button type="button" class="btn-ghost cursor-bracket-btn" data-bracket="()" style="height: 27px; padding: 0 9px; font-size: 12px; border-radius: 6px;">( 圆括号 )</button>
-                      <button type="button" class="btn-ghost cursor-bracket-btn" data-bracket="【】" style="height: 27px; padding: 0 9px; font-size: 12px; border-radius: 6px;">【 中文括号 】</button>
-                      <button type="button" class="btn-ghost cursor-bracket-btn" data-bracket="{}" style="height: 27px; padding: 0 9px; font-size: 12px; border-radius: 6px;">{ 花括号 }</button>
-                      <button type="button" class="btn-ghost cursor-bracket-btn" data-bracket="none" style="height: 27px; padding: 0 9px; font-size: 12px; border-radius: 6px;">无括号</button>
-                      <button type="button" class="btn-ghost cursor-bracket-btn" data-bracket="custom" style="height: 27px; padding: 0 9px; font-size: 12px; border-radius: 6px;">自定义</button>
+                    <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;" id="cursorBracketPresetButtons">
+                      <button type="button" class="btn-ghost cursor-bracket-btn" data-bracket="[]" style="height: 34px; font-size: 12.5px; border-radius: 8px; font-weight: 600; border: 1px solid var(--border); background: var(--bg-card); display: flex; align-items: center; justify-content: center; cursor: pointer; transition: all 0.15s ease;">[ 方括号 ]</button>
+                      <button type="button" class="btn-ghost cursor-bracket-btn" data-bracket="()" style="height: 34px; font-size: 12.5px; border-radius: 8px; font-weight: 500; border: 1px solid var(--border); background: var(--bg-card); display: flex; align-items: center; justify-content: center; cursor: pointer; transition: all 0.15s ease;">( 圆括号 )</button>
+                      <button type="button" class="btn-ghost cursor-bracket-btn" data-bracket="【】" style="height: 34px; font-size: 12.5px; border-radius: 8px; font-weight: 500; border: 1px solid var(--border); background: var(--bg-card); display: flex; align-items: center; justify-content: center; cursor: pointer; transition: all 0.15s ease;">【 中文括号 】</button>
+                      <button type="button" class="btn-ghost cursor-bracket-btn" data-bracket="{}" style="height: 34px; font-size: 12.5px; border-radius: 8px; font-weight: 500; border: 1px solid var(--border); background: var(--bg-card); display: flex; align-items: center; justify-content: center; cursor: pointer; transition: all 0.15s ease;">{ 花括号 }</button>
+                      <button type="button" class="btn-ghost cursor-bracket-btn" data-bracket="none" style="height: 34px; font-size: 12.5px; border-radius: 8px; font-weight: 500; border: 1px solid var(--border); background: var(--bg-card); display: flex; align-items: center; justify-content: center; cursor: pointer; transition: all 0.15s ease;">无括号</button>
+                      <button type="button" class="btn-ghost cursor-bracket-btn" data-bracket="custom" style="height: 34px; font-size: 12.5px; border-radius: 8px; font-weight: 500; border: 1px solid var(--border); background: var(--bg-card); display: flex; align-items: center; justify-content: center; cursor: pointer; transition: all 0.15s ease;">自定义</button>
                     </div>
 
-                    <!-- 自定义左右符号输入 -->
-                    <div id="cursorTagBracketCustomInputs" style="display: none; align-items: center; gap: 8px; padding-top: 4px;">
-                      <span style="font-size: 11.5px; color: var(--text-secondary);">左符号:</span>
-                      <input type="text" id="cursorBracketLeftInput" style="width: 54px; height: 26px; padding: 0 6px; font-size: 12px; border-radius: 5px; border: 1px solid var(--border); background: var(--bg-card); color: var(--text-primary); text-align: center;" value="[">
-                      <span style="font-size: 11.5px; color: var(--text-secondary); margin-left: 6px;">右符号:</span>
-                      <input type="text" id="cursorBracketRightInput" style="width: 54px; height: 26px; padding: 0 6px; font-size: 12px; border-radius: 5px; border: 1px solid var(--border); background: var(--bg-card); color: var(--text-primary); text-align: center;" value="]">
+                    <!-- 自定义左右符号输入：与预设网格融合的输入条 -->
+                    <div id="cursorTagBracketCustomInputs" style="display: none; align-items: center; justify-content: space-between; background: var(--bg-card); padding: 9px 14px; border-radius: 8px; border: 1px solid var(--border); margin-top: 4px;">
+                      <div style="display: flex; align-items: center; gap: 8px;">
+                        <span style="font-size: 12px; color: var(--text-secondary); font-weight: 500;">左符号</span>
+                        <input type="text" id="cursorBracketLeftInput" style="width: 64px; height: 30px; padding: 0 8px; font-size: 13px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg-input); color: var(--text-primary); text-align: center; outline: none; font-family: var(--font-mono);" value="[">
+                      </div>
+                      <div style="display: flex; align-items: center; gap: 8px;">
+                        <span style="font-size: 12px; color: var(--text-secondary); font-weight: 500;">右符号</span>
+                        <input type="text" id="cursorBracketRightInput" style="width: 64px; height: 30px; padding: 0 8px; font-size: 13px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg-input); color: var(--text-primary); text-align: center; outline: none; font-family: var(--font-mono);" value="]">
+                      </div>
                     </div>
                   </div>
 
                 </div>
 
-                <!-- 徽章或纯净模式下的友好提示 -->
-                <div id="cursorTextCustomDisabledTip" style="display: none; font-size: 11.5px; color: var(--text-muted); text-align: center; padding: 18px 0;">
-                  当前形式直接呈现官方原生样式，无需配置位置与括号。
+                <!-- 徽章或纯净模式下的占位撑开卡片，杜绝空洞塌陷 -->
+                <div id="cursorTextCustomDisabledTip" style="display: none; flex: 1; padding: 24px 16px; border-top: 1px solid var(--border); box-sizing: border-box;">
+                  <div style="height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; background: var(--bg-card); border-radius: 10px; border: 1px dashed var(--border); padding: 22px; text-align: center;">
+                    <div style="width: 38px; height: 38px; border-radius: 10px; background: rgba(37, 99, 235, 0.08); color: var(--accent); display: flex; align-items: center; justify-content: center; margin-bottom: 10px; border: 1px solid rgba(37, 99, 235, 0.15);">
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="20 6 9 17 4 12"></polyline>
+                      </svg>
+                    </div>
+                    <div style="font-size: 13.5px; font-weight: 700; color: var(--text-primary);" id="cursorTextCustomDisabledTitle">当前形式已准备就绪</div>
+                    <div style="font-size: 12px; color: var(--text-muted); margin-top: 5px; max-width: 320px; line-height: 1.5;" id="cursorTextCustomDisabledDesc">直接呈现官方原生标签规范，无需额外配置符号。点击下方按钮即可一键同步。</div>
+                  </div>
                 </div>
 
               </div>
             </div>
 
             <!-- 底部操作按钮 -->
-            <div class="modal-footer" style="padding: 12px 20px; border-top: 1px solid var(--border); background: var(--bg-card); display: flex; justify-content: flex-end; gap: 10px;">
-              <button type="button" class="btn-ghost" data-action="closeCursorTagStyleModal" style="height: 32px; padding: 0 14px; font-size: 12px; border-radius: 7px;">取消</button>
-              <button type="button" class="btn-primary" data-action="saveCursorTagStyleModal" style="height: 32px; padding: 0 16px; font-size: 12px; font-weight: 600; border-radius: 7px;">应用并同步</button>
+            <div class="modal-footer" style="padding: 14px 24px; border-top: 1px solid var(--border); background: var(--bg-card); display: flex; justify-content: flex-end; gap: 12px;">
+              <button type="button" class="btn-ghost" data-action="closeCursorTagStyleModal" style="height: 36px; padding: 0 18px; font-size: 13px; font-weight: 500; border-radius: 8px;">取消</button>
+              <button type="button" class="btn-primary" data-action="saveCursorTagStyleModal" style="height: 36px; padding: 0 22px; font-size: 13px; font-weight: 600; border-radius: 8px; box-shadow: 0 1px 3px rgba(37, 99, 235, 0.3);">应用并同步</button>
             </div>
           </div>
         </div>
