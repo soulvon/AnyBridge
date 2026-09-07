@@ -56,6 +56,7 @@ jobs:
           set -euo pipefail
           HOST="$(rustc -vV | awk '/^host: / {print $2}')"
           python scripts/build/build_sidecar_plain.py --platform "$HOST"
+          python scripts/build/build_cursor_core.py --target "$HOST"
 
       - name: Cargo check
         run: cargo check --manifest-path src-tauri/Cargo.toml
