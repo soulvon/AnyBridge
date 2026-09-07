@@ -1,6 +1,6 @@
 {
   "name": "anybridge",
-  "version": "0.4.9",
+  "version": "0.5.0",
   "description": "Open-source desktop BYOK bridge for AI coding tools",
   "type": "module",
   "main": "sidecar/proxy-entry.js",
