@@ -62,6 +62,8 @@ pub struct CursorModelBinding {
     pub capability_overrides: CursorCapabilityOverrides,
     #[serde(default)]
     pub cursor_overrides: CursorModelOverrides,
+    #[serde(default)]
+    pub use_third_party_vision: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -112,6 +114,7 @@ pub struct CursorModelItem {
     pub capabilities: CursorModelItemCapabilities,
     pub overrides: CursorModelOverrides,
     pub route_missing: bool,
+    pub use_third_party_vision: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -159,6 +162,7 @@ pub struct CursorUpdateModelPayload {
     pub enabled: Option<bool>,
     pub sort_order: Option<i64>,
     pub overrides: Option<CursorModelOverrides>,
+    pub use_third_party_vision: Option<bool>,
 }
 
 #[derive(Debug, Serialize)]
@@ -184,6 +188,7 @@ pub fn calculate_revision(models: &[CursorModelBinding]) -> String {
         hasher.update(m.display_name.as_bytes());
         hasher.update(m.exposed_model_id.as_bytes());
         hasher.update(if m.enabled { b"1" } else { b"0" });
+        hasher.update(if m.use_third_party_vision { b"1" } else { b"0" });
         hasher.update(m.sort_order.to_le_bytes());
         if let Some(r) = &m.cursor_overrides.reasoning_effort {
             hasher.update(r.as_bytes());
@@ -282,6 +287,7 @@ pub fn read_cursor_store_with_routes(
                     capability_policy: default_auto(),
                     capability_overrides: CursorCapabilityOverrides::default(),
                     cursor_overrides: CursorModelOverrides::default(),
+                    use_third_party_vision: false,
                 });
                 idx += 1;
             }
@@ -368,6 +374,9 @@ pub fn build_cursor_model_items(
                 .unwrap_or_else(|| route.map(|r| r.capabilities.reasoning).unwrap_or(false)),
         };
 
+        let use_third_party_vision = binding.use_third_party_vision
+            || route.map(|r| r.enhancement.third_party_vision).unwrap_or(false);
+
         items.push(CursorModelItem {
             id: binding.id.clone(),
             route_uid: binding.route_uid.clone(),
@@ -381,6 +390,7 @@ pub fn build_cursor_model_items(
             capabilities,
             overrides: binding.cursor_overrides.clone(),
             route_missing: route.is_none(),
+            use_third_party_vision,
         });
     }
 
@@ -619,6 +629,7 @@ pub async fn cursor_add_models(
             capability_policy: default_auto(),
             capability_overrides: CursorCapabilityOverrides::default(),
             cursor_overrides: CursorModelOverrides::default(),
+            use_third_party_vision: false,
         });
 
         added_count += 1;
@@ -687,6 +698,67 @@ pub async fn cursor_update_model(
     }
     if let Some(overrides) = payload.overrides {
         target.cursor_overrides = overrides;
+    }
+    if let Some(use_tpv) = payload.use_third_party_vision {
+        target.use_third_party_vision = use_tpv;
+        if let Ok(mut routes) = super::proxy_routes::read_routes() {
+            if let Some(route) = routes.routes.iter_mut().find(|r| r.uid == target.route_uid) {
+                route.enhancement.third_party_vision = use_tpv;
+                let _ = super::proxy_routes::write_routes(&routes);
+            }
+        }
+    }
+
+    normalize_cursor_store(&mut cursor_store);
+    write_cursor_store(&cursor_store)?;
+    drop(_guard);
+
+    let sync_status = if core_state.running() {
+        let _ = super::cursor_core::sync_routes_impl(core_state.inner()).await;
+        super::cursor_core::get_status_impl(core_state.inner())
+    } else {
+        super::cursor_core::get_status_impl(core_state.inner())
+    };
+
+    Ok(CursorMutationResult {
+        success: true,
+        sync_status,
+    })
+}
+
+#[tauri::command]
+pub async fn cursor_set_models_third_party_vision(
+    _app: AppHandle,
+    ids: Vec<String>,
+    enabled: bool,
+    core_state: State<'_, super::cursor_core::CursorCoreState>,
+) -> Result<CursorMutationResult, String> {
+    let _guard = CONFIG_MUTEX
+        .lock()
+        .map_err(|e| format!("配置锁获取失败: {e}"))?;
+
+    let mut cursor_store = read_cursor_store()?;
+    let id_set: HashSet<String> = ids.into_iter().collect();
+    let mut affected_route_uids = HashSet::new();
+
+    for m in &mut cursor_store.models {
+        if id_set.contains(&m.id) {
+            m.use_third_party_vision = enabled;
+            affected_route_uids.insert(m.route_uid.clone());
+        }
+    }
+
+    if let Ok(mut routes) = super::proxy_routes::read_routes() {
+        let mut route_modified = false;
+        for route in &mut routes.routes {
+            if affected_route_uids.contains(&route.uid) {
+                route.enhancement.third_party_vision = enabled;
+                route_modified = true;
+            }
+        }
+        if route_modified {
+            let _ = super::proxy_routes::write_routes(&routes);
+        }
     }
 
     normalize_cursor_store(&mut cursor_store);
