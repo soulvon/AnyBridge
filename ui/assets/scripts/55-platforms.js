@@ -5305,15 +5305,8 @@ function cursorRenderTableRows() {
   if (empty) empty.style.display = 'none';
   if (table) table.style.display = 'table';
 
-  const kw = (_cursorSearchKeyword || '').trim().toLowerCase();
-  const list = _cursorModelsList.filter(item => {
-    if (!kw) return true;
-    const matchName = (item.displayName || '').toLowerCase().includes(kw);
-    const matchExposed = (item.exposedModelId || '').toLowerCase().includes(kw);
-    const matchProvider = (item.providerName || '').toLowerCase().includes(kw);
-    const matchTarget = (item.upstreamModel || '').toLowerCase().includes(kw);
-    return matchName || matchExposed || matchProvider || matchTarget;
-  });
+  const list = cursorGetFilteredList();
+  const kw = (_cursorSearchKeyword || '').trim();
 
   if (list.length === 0) {
     tbody.innerHTML = `
@@ -5326,22 +5319,22 @@ function cursorRenderTableRows() {
     return;
   }
 
+  const hasVisionModels = (modelMapStore?.visionModels?.imageModels?.length || 0) > 0;
   let html = '';
   list.forEach(item => {
     const isChecked = _cursorSelectedSet.has(item.id);
     const displayName = (item.displayName || item.exposedModelId || '').trim();
     const providerName = (item.providerName || '未知供应商').trim();
-    const targetModel = (item.upstreamModel || item.exposedModelId || '').trim();
     const isEnabled = item.enabled !== false;
+    const isVisionEnabled = item.useThirdPartyVision === true;
 
     const iconHtml = (typeof renderModelIcon === 'function')
       ? renderModelIcon(item.exposedModelId || item.upstreamModel, { size: 20 })
       : `<span style="color:var(--accent);">✦</span>`;
 
-    const caps = [];
-    if (item.capabilities?.tools) caps.push(cbCapabilityPill('cb', 'tool', '工具'));
-    if (item.capabilities?.vision) caps.push(cbCapabilityPill('cb', 'image', '图片'));
-    if (item.capabilities?.reasoning) caps.push(cbCapabilityPill('cb', 'reason', '推理'));
+    const visionTitle = !hasVisionModels
+      ? '请先在「代理增强」中配置图片理解模型'
+      : (isVisionEnabled ? '已启用第三方图片理解（点击关闭）' : '启用后图片将使用第三方模型理解（点击启用）');
 
     html += `
       <tr class="${isChecked ? 'cb-model-row-selected is-selected' : ''}" data-binding-id="${cursorEsc(item.id)}" style="min-height: 52px;">
@@ -5351,12 +5344,12 @@ function cursorRenderTableRows() {
             <span></span>
           </label>
         </td>
-        <td class="display-name-cell">
-          <div style="display:flex;align-items:center;gap:8px;">
+        <td class="editable-cell display-name-cell" onclick="cursorStartEditDisplayName(this, '${cursorEsc(item.id)}')" title="点击修改显示名称">
+          <div style="display:flex;align-items:center;gap:8px;min-width:0;">
             <div style="width:24px;height:24px;display:flex;align-items:center;justify-content:center;border-radius:5px;background:var(--bg-input);border:1px solid var(--border);flex:0 0 24px;">
               ${iconHtml}
             </div>
-            <div style="min-width:0;">
+            <div style="min-width:0;flex:1;">
               <strong style="font-weight:750;color:var(--text-primary);display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${cursorEsc(displayName)}">${cursorEsc(displayName)}</strong>
             </div>
           </div>
@@ -5372,17 +5365,6 @@ function cursorRenderTableRows() {
         <td>
           <div style="font-size:12.5px;color:var(--text-primary);font-weight:600;">${cursorEsc(providerName)}</div>
         </td>
-        <td>
-          <div style="display:flex;align-items:center;gap:6px;flex-wrap:nowrap;white-space:nowrap;overflow-x:auto;">
-            ${caps.join('') || '<span style="color:var(--text-muted);font-size:12px;">—</span>'}
-          </div>
-        </td>
-        <td style="text-align: center;">
-          <label class="toggle-switch" title="${isEnabled ? '已向 Cursor 暴露（点击停用）' : '已停用（点击启用）'}">
-            <input type="checkbox" ${isEnabled ? 'checked' : ''} onchange="cursorToggleModelEnabled('${cursorEsc(item.id)}', this.checked)">
-            <span class="toggle-slider"></span>
-          </label>
-        </td>
         <td style="text-align: center;">
           <div style="display:inline-flex;align-items:center;justify-content:center;gap:6px;">
             <button class="btn-icon" style="width:28px;height:28px;min-width:28px;" onclick="openCursorEditModal('${cursorEsc(item.id)}')" title="编辑模型">
@@ -5393,11 +5375,87 @@ function cursorRenderTableRows() {
             </button>
           </div>
         </td>
+        <td style="text-align: center;">
+          <label class="toggle-switch" title="${cursorEsc(visionTitle)}">
+            <input type="checkbox" ${isVisionEnabled ? 'checked' : ''} onchange="cursorToggleThirdPartyVision('${cursorEsc(item.id)}', this.checked)">
+            <span class="toggle-slider"></span>
+          </label>
+        </td>
+        <td style="text-align: center;">
+          <label class="toggle-switch" title="${isEnabled ? '已向 Cursor 暴露（点击停用）' : '已停用（点击启用）'}">
+            <input type="checkbox" ${isEnabled ? 'checked' : ''} onchange="cursorToggleModelEnabled('${cursorEsc(item.id)}', this.checked)">
+            <span class="toggle-slider"></span>
+          </label>
+        </td>
       </tr>
     `;
   });
 
   tbody.innerHTML = html;
+}
+
+// 获取过滤后的模型列表
+function cursorGetFilteredList() {
+  const kw = (_cursorSearchKeyword || '').trim().toLowerCase();
+  return (_cursorModelsList || []).filter(item => {
+    if (!kw) return true;
+    const matchName = (item.displayName || '').toLowerCase().includes(kw);
+    const matchExposed = (item.exposedModelId || '').toLowerCase().includes(kw);
+    const matchProvider = (item.providerName || '').toLowerCase().includes(kw);
+    const matchTarget = (item.upstreamModel || '').toLowerCase().includes(kw);
+    return matchName || matchExposed || matchProvider || matchTarget;
+  });
+}
+
+// 就地修改显示名称
+function cursorStartEditDisplayName(td, bindingId) {
+  if (td.querySelector('input')) return;
+  const item = _cursorModelsList.find(x => x.id === bindingId);
+  if (!item) return;
+
+  const currName = (item.displayName || item.exposedModelId || '').trim();
+  td.innerHTML = `<input type="text" class="input-sm" style="width:100%; text-align:left; font-family:inherit; padding:4px 8px; border-radius:6px; box-shadow:none; outline:none; height:28px; font-size:13px; font-weight:600; color:var(--text-primary); background:var(--bg-card); border:1px solid var(--accent);" value="${cursorEsc(currName)}">`;
+  const input = td.querySelector('input');
+  if (!input) return;
+
+  input.addEventListener('click', (e) => e.stopPropagation());
+  input.focus();
+  input.select();
+
+  let finished = false;
+  async function finishEdit() {
+    if (finished) return;
+    finished = true;
+    const newVal = input.value.trim();
+    if (newVal && newVal !== currName) {
+      cursorEnsureBridge();
+      try {
+        await invoke('cursor_update_model', {
+          payload: {
+            id: bindingId,
+            displayName: newVal
+          }
+        });
+        item.displayName = newVal;
+        if (typeof showBottomToast === 'function') {
+          showBottomToast(`显示名已更新: ${newVal}`, 'success');
+        }
+      } catch (e) {
+        showCustomAlert('更新显示名失败: ' + e, '保存异常', 'error');
+      }
+    }
+    cursorRenderTableRows();
+  }
+
+  input.addEventListener('blur', finishEdit);
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      finishEdit();
+    } else if (e.key === 'Escape') {
+      finished = true;
+      cursorRenderTableRows();
+    }
+  });
 }
 
 // 搜索栏输入联动
@@ -5421,8 +5479,23 @@ function cursorToggleRowSelect(bindingId, checked) {
 // 全选 / 取消全选
 function cursorToggleSelectAll(checked) {
   _cursorSelectedSet.clear();
-  if (checked && _cursorModelsList) {
-    _cursorModelsList.forEach(m => _cursorSelectedSet.add(m.id));
+  if (checked) {
+    const list = cursorGetFilteredList();
+    list.forEach(m => _cursorSelectedSet.add(m.id));
+  }
+  cursorRenderTableRows();
+  cursorUpdateBulkActionButtons();
+}
+
+// 选择当前显示的所有模型
+function cursorToggleSelectAllVisible() {
+  const list = cursorGetFilteredList();
+  if (!list.length) return;
+  const allSelected = list.every(m => _cursorSelectedSet.has(m.id));
+  if (allSelected) {
+    list.forEach(m => _cursorSelectedSet.delete(m.id));
+  } else {
+    list.forEach(m => _cursorSelectedSet.add(m.id));
   }
   cursorRenderTableRows();
   cursorUpdateBulkActionButtons();
@@ -5433,14 +5506,85 @@ function cursorUpdateBulkActionButtons() {
   const hasSelected = _cursorSelectedSet.size > 0;
   const enableBtn = document.getElementById('cursor-bulk-enable-btn');
   const disableBtn = document.getElementById('cursor-bulk-disable-btn');
+  const visionBtn = document.getElementById('cursor-bulk-vision-btn');
   const removeBtn = document.getElementById('cursor-bulk-remove-btn');
+  const selectVisibleBtn = document.getElementById('cursor-bulk-select-visible-btn');
   const selectAllCheckbox = document.getElementById('cursorSelectAll');
 
   if (enableBtn) enableBtn.disabled = !hasSelected;
   if (disableBtn) disableBtn.disabled = !hasSelected;
+  if (visionBtn) visionBtn.disabled = !hasSelected;
   if (removeBtn) removeBtn.disabled = !hasSelected;
-  if (selectAllCheckbox && _cursorModelsList.length > 0) {
-    selectAllCheckbox.checked = _cursorSelectedSet.size === _cursorModelsList.length;
+
+  const list = cursorGetFilteredList();
+  if (selectVisibleBtn) {
+    selectVisibleBtn.disabled = list.length === 0;
+  }
+  if (selectAllCheckbox && list.length > 0) {
+    selectAllCheckbox.checked = list.every(m => _cursorSelectedSet.has(m.id));
+  } else if (selectAllCheckbox) {
+    selectAllCheckbox.checked = false;
+  }
+}
+
+// 切换单模型第三方图片理解
+async function cursorToggleThirdPartyVision(bindingId, enabled) {
+  cursorEnsureBridge();
+  const item = _cursorModelsList.find(m => m.id === bindingId);
+  if (!item) return;
+
+  const hasVisionModels = (modelMapStore?.visionModels?.imageModels?.length || 0) > 0;
+  if (enabled && !hasVisionModels) {
+    showCustomAlert('请先在「代理增强」中配置图片理解模型。', '无法启用', 'warn');
+    cursorRenderTableRows();
+    return;
+  }
+
+  const prev = item.useThirdPartyVision;
+  item.useThirdPartyVision = !!enabled;
+  try {
+    await invoke('cursor_update_model', {
+      payload: {
+        id: bindingId,
+        useThirdPartyVision: !!enabled
+      }
+    });
+    cursorRenderTableRows();
+    if (typeof showBottomToast === 'function') {
+      showBottomToast(enabled ? `已为「${item.displayName || item.exposedModelId}」启用第三方图片理解` : `已关闭「${item.displayName || item.exposedModelId}」第三方图片理解`, 'success');
+    }
+  } catch (e) {
+    item.useThirdPartyVision = prev;
+    cursorRenderTableRows();
+    showCustomAlert('切换第三方图片理解失败: ' + e, '操作异常', 'error');
+  }
+}
+
+// 批量启用第三方图片理解
+async function cursorBulkThirdPartyVisionAction() {
+  if (_cursorSelectedSet.size === 0) return;
+  const hasVisionModels = (modelMapStore?.visionModels?.imageModels?.length || 0) > 0;
+  if (!hasVisionModels) {
+    showCustomAlert('请先在「代理增强」中配置第三方图片理解模型。', '无法启用', 'warn');
+    return;
+  }
+
+  const ids = Array.from(_cursorSelectedSet);
+  cursorEnsureBridge();
+  try {
+    await invoke('cursor_set_models_third_party_vision', { ids, enabled: true });
+    _cursorModelsList.forEach(m => {
+      if (_cursorSelectedSet.has(m.id)) {
+        m.useThirdPartyVision = true;
+      }
+    });
+    cursorRenderTableRows();
+    if (typeof showBottomToast === 'function') {
+      showBottomToast(`已为选中的 ${ids.length} 个模型启用第三方图片理解`, 'success');
+    }
+  } catch (e) {
+    console.error('[cursor] bulk set third party vision failed:', e);
+    showCustomAlert('批量设置第三方图片理解失败: ' + e, '操作异常', 'error');
   }
 }
 
@@ -5570,6 +5714,8 @@ function openCursorEditModal(bindingId) {
   if (routeUidEl) routeUidEl.textContent = item.routeUid ? (item.routeUid.length > 18 ? item.routeUid.slice(0, 18) + '...' : item.routeUid) : '--';
 
   document.getElementById('cursorEditEnabled').checked = item.enabled !== false;
+  const tpvEl = document.getElementById('cursorEditThirdPartyVision');
+  if (tpvEl) tpvEl.checked = item.useThirdPartyVision === true;
   document.getElementById('cursorEditReasoningEffort').value = item.overrides?.reasoningEffort || '';
   document.getElementById('cursorEditContextWindow').value = item.overrides?.contextWindowTokens || '';
   document.getElementById('cursorEditMaxTokens').value = item.overrides?.maxCompletionTokens || '';
@@ -5588,6 +5734,7 @@ async function saveCursorEditModel() {
 
   const displayName = (document.getElementById('cursorEditDisplayName').value || '').trim();
   const enabled = document.getElementById('cursorEditEnabled').checked;
+  const useThirdPartyVision = document.getElementById('cursorEditThirdPartyVision') ? document.getElementById('cursorEditThirdPartyVision').checked : false;
   const reasoningEffort = document.getElementById('cursorEditReasoningEffort').value || null;
   const contextRaw = document.getElementById('cursorEditContextWindow').value;
   const maxRaw = document.getElementById('cursorEditMaxTokens').value;
@@ -5602,6 +5749,7 @@ async function saveCursorEditModel() {
         id: bindingId,
         displayName: displayName || null,
         enabled,
+        useThirdPartyVision,
         overrides: {
           reasoningEffort: reasoningEffort || null,
           contextWindowTokens: (contextWindowTokens && !isNaN(contextWindowTokens)) ? contextWindowTokens : null,
@@ -9870,10 +10018,14 @@ window.zcDrop = function(e) {
   g.cursorFilterModels = cursorFilterModels;
   g.cursorToggleRowSelect = cursorToggleRowSelect;
   g.cursorToggleSelectAll = cursorToggleSelectAll;
+  g.cursorToggleSelectAllVisible = cursorToggleSelectAllVisible;
   g.cursorBulkEnableAction = cursorBulkEnableAction;
   g.cursorBulkDisableAction = cursorBulkDisableAction;
+  g.cursorBulkThirdPartyVisionAction = cursorBulkThirdPartyVisionAction;
   g.cursorBulkRemoveAction = cursorBulkRemoveAction;
   g.cursorToggleModelEnabled = cursorToggleModelEnabled;
+  g.cursorToggleThirdPartyVision = cursorToggleThirdPartyVision;
+  g.cursorStartEditDisplayName = cursorStartEditDisplayName;
   g.cursorRemoveSingleModel = cursorRemoveSingleModel;
   g.openCursorEditModal = openCursorEditModal;
   g.closeCursorEditModal = closeCursorEditModal;
