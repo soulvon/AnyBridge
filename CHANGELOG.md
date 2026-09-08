@@ -2,6 +2,11 @@
 
 All notable changes to AnyBridge will be documented in this file.
 
+## v0.5.4 - 2026-09-08
+
+- macOS 签名修复：为整个 App 配置 Tauri 官方 `signingIdentity: "-"`（ad-hoc）签名，按 Apple 规范由内到外签署 sidecar、主程序与 App Bundle，解决部分 Mac 用户浏览器下载后提示「App 已损坏，无法打开」的问题。
+- 说明：ad-hoc 签名不改变 Gatekeeper 对未公证软件的信任策略，个别系统仍可能提示无法验证开发者，可在「系统设置 → 隐私与安全性」中放行，或执行 `xattr -rd com.apple.quarantine /Applications/AnyBridge.app` 后打开。
+
 ## v0.5.3 - 2026-09-07
 
 - 本地代理增强：完善 local-proxy 路由处理逻辑，提升请求转发稳定性与覆盖场景。
