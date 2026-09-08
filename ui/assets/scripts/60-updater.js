@@ -584,12 +584,16 @@ function toggleUpdaterErrorDetails() {
 }
 
 function cancelUpdateDownload() {
+  // 注意：Tauri updater 无取消 API，后端下载会继续并完成安装（静默生效）。
+  // 这里只是切换 UI 并如实告知用户：下载转入后台、代理已暂停、重启后生效。
   isDownloading = false;
   updaterRetryCount = 0;
   const barEl = document.getElementById('updater-progress-bar');
   const textEl = document.getElementById('updater-progress-text') || document.getElementById('updater-progress-percent');
   if (barEl) barEl.style.width = '0%';
   if (textEl) textEl.textContent = '下载中... 0%';
+  logUpdaterEvent('info', '用户选择稍后：更新将在后台继续，完成后重启应用生效（本地代理已暂停）');
+  addLog('info', '更新转入后台继续，完成后重启 AnyBridge 生效（本地代理已随更新暂停）');
   setUpdaterUIState('available');
 }
 
@@ -651,6 +655,7 @@ async function startDownloadAndUpdate() {
     });
 
     unlistenComplete = await tauriEvent.listen('update-download-complete', () => {
+      if (!isDownloading) return; // 用户已选择"稍后"，避免取消后仍打出成功日志
       addLog('ok', '更新包下载完成！');
     });
   }
@@ -697,20 +702,18 @@ async function startDownloadAndUpdate() {
     }
 
     if (success) {
-      isDownloading = false;
-      updaterRetryCount = 0;
-      logUpdaterEvent('info', '更新包下载并安装完成，等待重启');
-      if (detectedUpdateInfo) {
-        try {
-          await invoke('save_pending_update_notes', {
-            version: detectedUpdateInfo.version,
-            releaseNotes: detectedUpdateInfo.body || '',
-            releaseNotesZh: detectedUpdateInfo.body || ''
-          });
-        } catch (e) { console.warn('save_pending_update_notes failed:', e); }
+      // 后端已在下载前保存 pending notes，这里不再重复写盘
+      if (!isDownloading) {
+        // 用户已选"稍后"：安装仍在后台完成了，不打扰弹窗，只提示待重启生效
+        logUpdaterEvent('info', '后台更新安装完成，重启应用后生效');
+        addLog('ok', '更新已在后台完成，重启 AnyBridge 后生效');
+      } else {
+        isDownloading = false;
+        updaterRetryCount = 0;
+        logUpdaterEvent('info', '更新包下载并安装完成，等待重启');
+        setUpdaterUIState('ready');
+        addLog('ok', '更新包已下载并安装就绪，等待重启生效');
       }
-      setUpdaterUIState('ready');
-      addLog('ok', '更新包已下载并安装就绪，等待重启生效');
     } else if (isDownloading) {
       isDownloading = false;
       const errMsg = String(lastError || '未知错误');
@@ -724,6 +727,9 @@ async function startDownloadAndUpdate() {
         : '自动更新失败，可重试或前往下载页手动更新';
       showUpdaterError(userMsg, errMsg);
       setUpdaterUIState('error');
+      // 失败时后台代理已被暂停以释放更新文件占用，明确告知恢复方式
+      logUpdaterEvent('warn', '更新失败：本地代理已暂停，重启 AnyBridge 后自动恢复');
+      addLog('warn', '更新失败：本地代理已暂停，重启 AnyBridge 后自动恢复');
     }
   } finally {
     isDownloading = false;

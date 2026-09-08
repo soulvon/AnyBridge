@@ -17,13 +17,28 @@ pub fn get_app_version() -> String {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UpdateSettings {
+    #[serde(default = "default_true")]
     pub auto_check: bool,
+    #[serde(default)]
     pub last_check_time: u64,
+    #[serde(default = "default_interval")]
     pub check_interval_hours: u64,
+    #[serde(default)]
     pub auto_install: bool,
+    #[serde(default)]
     pub last_run_version: String,
+    #[serde(default = "default_true")]
     pub remind_on_update: bool,
+    #[serde(default)]
     pub skipped_version: String,
+}
+
+fn default_true() -> bool {
+    true
+}
+
+fn default_interval() -> u64 {
+    1
 }
 
 impl Default for UpdateSettings {
@@ -158,7 +173,8 @@ fn updater_with_version_reset(app: &AppHandle) -> Result<Updater, String> {
         .version_comparator(|current, release| {
             let current_version = current.to_string();
             let release_version = release.version.to_string();
-            release.version > current
+            // 必须用数值分段比较（如 0.10.0 vs 0.9.0 字符串比较会误判），不能用字符串字典序
+            compare_versions(&release_version, &current_version)
                 || is_version_line_reset_update(&current_version, &release_version)
         })
         .build()
