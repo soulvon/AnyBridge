@@ -392,8 +392,19 @@ async function skipThisVersion() {
 }
 
 // 自动后台静默检查
+globalThis.autoCheckInFlight = false;
 async function autoCheckUpdate() {
   if (!invoke || !updateSettings.auto_check) return;
+  if (autoCheckInFlight) return; // 防重入：上一次检查未完成时不叠加（借鉴 Cockpit-Tools）
+  autoCheckInFlight = true;
+  try {
+    await runAutoCheckUpdate();
+  } finally {
+    autoCheckInFlight = false;
+  }
+}
+
+async function runAutoCheckUpdate() {
 
   try {
     const shouldCheck = await invoke('should_check_updates');

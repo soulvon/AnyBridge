@@ -109,6 +109,14 @@ async function init() {
   if (!hasJumpModal) {
     await autoCheckUpdate();
   }
+  // 周期轮询更新检查（每 10 分钟 tick 一次）：应用长期运行也能及时收到更新弹窗。
+  // 是否真正发起网络请求由后端 should_check_updates 的间隔抖动/失败退避调度决定，
+  // 本地 tick 只是闹钟，不会对 GitHub 造成额外压力（借鉴 Cockpit-Tools 前端轮询模式）。
+  if (typeof autoCheckUpdate === 'function') {
+    setInterval(() => {
+      autoCheckUpdate().catch(() => {});
+    }, 10 * 60 * 1000);
+  }
 
 
   if (tauriEvent?.listen) {
