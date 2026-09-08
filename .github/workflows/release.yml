@@ -168,6 +168,20 @@ jobs:
             python scripts/build/build_cursor_core.py
           fi
 
+      # macOS 要求 App 内所有 Mach-O 都必须有签名（哪怕 ad-hoc），
+      # 否则 Gatekeeper 会把整个 App 判为「已损坏」。
+      # 交叉编译产物不会自动获得 ad-hoc 签名，这里统一补签。
+      - name: Ad-hoc sign sidecar binaries (macOS)
+        if: startsWith(matrix.platform, 'macos')
+        shell: bash
+        run: |
+          set -euo pipefail
+          for bin in src-tauri/binaries/*; do
+            echo "Ad-hoc signing: $bin"
+            codesign --force --sign - "$bin"
+            codesign --verify --verbose=1 "$bin"
+          done
+
       - name: Build the app
         uses: tauri-apps/tauri-action@v0
         env:
