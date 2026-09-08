@@ -229,6 +229,7 @@ pub fn run() {
             commands::update::check_version_jump,
             commands::update::get_app_version,
             commands::update::update_last_check_time,
+            commands::update::mark_check_failed,
             commands::update::check_for_update,
             commands::update::download_and_install_update,
             commands::update::restart_app,

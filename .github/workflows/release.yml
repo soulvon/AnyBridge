@@ -251,6 +251,29 @@ jobs:
             --published-at "${PUBLISHED_AT}" \
             --output "latest.json"
 
+      - name: Validate platform manifests (借鉴 cockpit-tools 发布门禁)
+        shell: bash
+        run: |
+          set -euo pipefail
+          # 校验必需平台键齐备，残缺清单绝不进入 publish 流程
+          node -e "
+            const fs = require('fs');
+            const latest = JSON.parse(fs.readFileSync('latest.json', 'utf8'));
+            const required = ['darwin-aarch64', 'darwin-x86_64', 'windows-x86_64', 'linux-x86_64'];
+            const missing = required.filter(k => !latest.platforms || !latest.platforms[k]);
+            if (missing.length > 0) {
+              console.error('FATAL: missing required platform keys: ' + missing.join(', '));
+              process.exit(1);
+            }
+            for (const [key, entry] of Object.entries(latest.platforms)) {
+              if (!entry.url || !entry.signature) {
+                console.error('FATAL: platform ' + key + ' missing url or signature');
+                process.exit(1);
+              }
+            }
+            console.log('Platform manifests OK:', required.join(', '));
+          "
+
       - name: Upload manifests and checksums
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

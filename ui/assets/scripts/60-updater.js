@@ -451,6 +451,9 @@ async function autoCheckUpdate() {
     }
   } catch (e) {
     console.error('Auto check update failed:', e);
+    // 自动检查失败：通知后端按 5/10/20/40 分钟指数退避（借鉴 Cherry Studio），
+    // 避免固定间隔反复请求失败的更新源；手动检查不受影响
+    try { await invoke('mark_check_failed'); } catch {}
   }
 }
 
@@ -724,6 +727,8 @@ async function startDownloadAndUpdate() {
         ? '更新包签名验证失败，请前往下载页手动下载'
         : errMsg.includes('no matching platform')
         ? '当前平台暂不支持自动更新，请手动下载'
+        : /\b(404|503)\b/.test(errMsg)
+        ? '更新清单尚未就绪（可能正在发布中），请稍后重试'  // 借鉴 Cherry Studio：识别发布窗口期错误
         : '自动更新失败，可重试或前往下载页手动更新';
       showUpdaterError(userMsg, errMsg);
       setUpdaterUIState('error');

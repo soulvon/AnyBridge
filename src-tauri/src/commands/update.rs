@@ -31,6 +31,12 @@ pub struct UpdateSettings {
     pub remind_on_update: bool,
     #[serde(default)]
     pub skipped_version: String,
+    /// 下次允许自动检查的时间戳（秒）。含 ±15% 抖动与失败退避（借鉴 Cherry Studio）
+    #[serde(default)]
+    pub next_check_at: u64,
+    /// 连续自动检查失败次数（用于指数退避）
+    #[serde(default)]
+    pub check_fail_count: u64,
 }
 
 fn default_true() -> bool {
@@ -51,6 +57,8 @@ impl Default for UpdateSettings {
             last_run_version: String::new(),
             remind_on_update: true,
             skipped_version: String::new(),
+            next_check_at: 0,
+            check_fail_count: 0,
         }
     }
 }
@@ -109,6 +117,69 @@ fn quarantine_corrupt_file(path: &std::path::Path, err: &str) {
     let _ = fs::rename(path, corrupt_path);
 }
 
+fn backup_path_for(path: &std::path::Path) -> PathBuf {
+    PathBuf::from(format!("{}.bak", path.to_string_lossy()))
+}
+
+/// 保存前备份旧文件（仅当旧内容"安全"时才值得留作恢复源，借鉴 cockpit-tools）
+fn backup_before_save(path: &std::path::Path) {
+    let Ok(content) = fs::read_to_string(path) else {
+        return;
+    };
+    let trimmed = content.trim();
+    if trimmed.is_empty() || trimmed.contains('\0') {
+        return;
+    }
+    let _ = fs::copy(path, backup_path_for(path));
+}
+
+/// 主文件解析失败时，尝试从 .bak 自动回滚（借鉴 cockpit-tools 的 parse_json_with_auto_restore）
+fn try_restore_from_backup<T: serde::de::DeserializeOwned>(path: &std::path::Path) -> Option<T> {
+    let bak = backup_path_for(path);
+    let content = fs::read_to_string(&bak).ok()?;
+    if content.trim().is_empty() || content.contains('\0') {
+        return None;
+    }
+    match serde_json::from_str::<T>(&content) {
+        Ok(value) => {
+            // 回滚成功：把 .bak 内容原子写回主文件
+            let _ = super::write_atomic(path, content.as_bytes());
+            eprintln!("[Updater] Restored {:?} from backup", path);
+            Some(value)
+        }
+        Err(_) => None,
+    }
+}
+
+fn now_secs() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs()
+}
+
+/// 简易伪随机（纳秒取模），用于检查间隔抖动
+fn simple_rand(max: u64) -> u64 {
+    if max == 0 {
+        return 0;
+    }
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .subsec_nanos() as u64
+        % max
+}
+
+/// 检查间隔 ±15% 随机抖动：避免大量客户端同一时刻挤爆更新源（借鉴 Cherry Studio）
+fn interval_secs_with_jitter(hours: u64) -> u64 {
+    let base = hours.max(1) * 3600;
+    let jitter = base / 100 * 15;
+    base - simple_rand(jitter) + simple_rand(jitter)
+}
+
+/// 自动检查连续失败的退避间隔：5/10/20/40 分钟（封顶 40min，借鉴 Cherry Studio）
+const CHECK_BACKOFF_SECS: [u64; 4] = [300, 600, 1200, 2400];
+
 fn load_pending_update_notes() -> Result<Option<PendingUpdateNotes>, String> {
     let path = pending_update_notes_path();
     if !path.exists() {
@@ -124,6 +195,10 @@ fn load_pending_update_notes() -> Result<Option<PendingUpdateNotes>, String> {
     match serde_json::from_str::<PendingUpdateNotes>(&content) {
         Ok(pending) => Ok(Some(pending)),
         Err(e) => {
+            // 优先尝试 .bak 回滚，失败才隔离
+            if let Some(pending) = try_restore_from_backup::<PendingUpdateNotes>(&path) {
+                return Ok(Some(pending));
+            }
             quarantine_corrupt_file(&path, &e.to_string());
             Ok(None)
         }
@@ -197,6 +272,10 @@ pub fn get_update_settings() -> Result<UpdateSettings, String> {
     match serde_json::from_str::<UpdateSettings>(&content) {
         Ok(settings) => Ok(settings),
         Err(e) => {
+            // 先尝试从 .bak 自动回滚用户设置，回滚失败才隔离重置
+            if let Some(settings) = try_restore_from_backup::<UpdateSettings>(&path) {
+                return Ok(settings);
+            }
             quarantine_corrupt_file(&path, &e.to_string());
             Ok(UpdateSettings::default())
         }
@@ -218,6 +297,8 @@ pub fn patch_update_settings(
     }
     if let Some(value) = check_interval_hours {
         settings.check_interval_hours = value;
+        // 间隔变化立即重算下次检查时间（带抖动），让用户改小间隔即刻生效
+        settings.next_check_at = now_secs() + interval_secs_with_jitter(value);
     }
     if let Some(value) = auto_install {
         settings.auto_install = value;
@@ -241,11 +322,13 @@ pub fn should_check_updates() -> Result<bool, String> {
     if !settings.auto_check {
         return Ok(false);
     }
-    let now = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs();
-    let interval_secs = settings.check_interval_hours.max(1) * 3600;
+    let now = now_secs();
+    // 新逻辑：用带抖动/退避的 next_check_at 判定
+    if settings.next_check_at > 0 {
+        return Ok(now >= settings.next_check_at);
+    }
+    // 旧数据兼容：无 next_check_at 时按 last_check_time 推断
+    let interval_secs = interval_secs_with_jitter(settings.check_interval_hours);
     Ok(now.saturating_sub(settings.last_check_time) >= interval_secs)
 }
 
@@ -268,8 +351,25 @@ pub fn update_log(level: String, message: String) -> Result<(), String> {
 pub fn save_update_settings(settings: UpdateSettings) -> Result<(), String> {
     let dir = crate::commands::config::config_dir_path();
     fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    let path = settings_path();
+    backup_before_save(&path);
     let json = serde_json::to_string_pretty(&settings).map_err(|e| e.to_string())?;
-    super::write_atomic(&settings_path(), json.as_bytes())
+    super::write_atomic(&path, json.as_bytes())
+}
+
+/// 自动检查失败：按次数指数退避（5/10/20/40 分钟），避免反复请求失败源
+#[tauri::command]
+pub fn mark_check_failed() -> Result<(), String> {
+    let mut settings = get_update_settings()?;
+    let now = now_secs();
+    let idx = (settings.check_fail_count as usize).min(CHECK_BACKOFF_SECS.len() - 1);
+    settings.check_fail_count = settings.check_fail_count.saturating_add(1);
+    settings.next_check_at = now + CHECK_BACKOFF_SECS[idx];
+    eprintln!(
+        "[Updater] Check failed (#{}, backoff {}s)",
+        settings.check_fail_count, CHECK_BACKOFF_SECS[idx]
+    );
+    save_update_settings(settings)
 }
 
 #[tauri::command]
@@ -340,10 +440,10 @@ pub fn check_version_jump() -> Result<Option<VersionJumpInfo>, String> {
 #[tauri::command]
 pub fn update_last_check_time() -> Result<(), String> {
     let mut settings = get_update_settings()?;
-    settings.last_check_time = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs();
+    let now = now_secs();
+    settings.last_check_time = now;
+    settings.check_fail_count = 0; // 成功后重置退避计数
+    settings.next_check_at = now + interval_secs_with_jitter(settings.check_interval_hours);
     save_update_settings(settings)
 }
 
