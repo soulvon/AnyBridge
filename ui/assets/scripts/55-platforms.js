@@ -2669,10 +2669,11 @@ async function syncAntigravityConfigUiAfterStoreChange() {
   return true;
 }
 
-function openAntigravityAddModal() {
+async function openAntigravityAddPage() {
   navigateTo('platform-antigravity-add');
-  initAntigravityAddPage();
+  await initAntigravityAddPage();
 }
+const openAntigravityAddModal = openAntigravityAddPage;
 
 async function initAntigravityAddPage() {
   try {

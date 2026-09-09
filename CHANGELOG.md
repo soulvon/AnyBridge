@@ -4,6 +4,8 @@ All notable changes to AnyBridge will be documented in this file.
 
 ## v0.5.7 - 2026-09-09
 
+- 紧急修复前端致命崩溃：`55-platforms.js` 引入 Antigravity 平台时 `openAntigravityAddPage` 未定义，模块加载链在挂载阶段抛出 ReferenceError 整体中断，导致「添加模型」按钮无响应、代理状态不刷新、CPA 套件状态不显示；已补齐函数定义（保留 `openAntigravityAddModal` 别名兼容），并在 `check:ui` 中新增 `mirrorFns` 挂载符号静态防呆检查，此类错误今后在打包前直接拦截。
+- 新增模型目录：内置 GPT-6 Astra 全思考档位、GPT-5.6 Sol/Luna/Terra、Claude Opus 5 / Sonnet 5 / Fable 5 系列、Grok 4.6、DeepSeek V4 Pro/Flash、GLM-5.3、Kimi K3、Gemini 3.7/3.8 Flash 等新旗舰模型；配套更新 Windsurf 模型目录与上下文预设（GPT-6 Astra / Claude Opus 5 按 1M 上下文识别）。
 - 新增 Claude Desktop 平台支持（重大功能）：
   - 全新「Claude Desktop」平台页：通过官方企业级部署通道接管桌面版推理网关，将 Sonnet / Opus / Haiku（可选 Fable）四档角色映射到任意本地代理模型；
   - Codex / Claude Code 同款卡片化配置管理：多配置预设池、一键切换、编辑/删除、搜索过滤、切回官方默认配置，写入前自动快照、失败整体回滚；

@@ -22,6 +22,7 @@ const moduleImportOrder = [
   '50-model-map.js',
   '52-proxy-routes.js',
   '55-platforms.js',
+  '56-claude-desktop.js',
   '65-extensions.js',
   '66-plugins.js',
   '60-updater.js',
@@ -61,8 +62,11 @@ const requiredPageIds = [
   'page-platform-cursor-add',
   'page-platform-claude-code',
   'page-platform-claude-add',
+  'page-platform-claude-desktop',
   'page-platform-codex',
   'page-platform-codex-add',
+  'page-platform-antigravity',
+  'page-platform-antigravity-add',
   'page-platform-codebuddy',
   'page-platform-codebuddy-add',
   'page-platform-opencode',
@@ -144,6 +148,29 @@ for (const file of [...i18nFiles, ...allScriptFiles]) {
   if (!existsSync(file)) fail(`missing script file ${file}`);
   const result = spawnSync(process.execPath, ['--check', file], { stdio: 'inherit' });
   if (result.status !== 0) fail(`syntax error in ${file}`);
+}
+
+// 静态检查各模块 mirrorFns 镜像挂载的函数或变量是否在当前模块中真实声明，杜绝 ReferenceError 导致整个应用运行时崩溃
+for (const file of allScriptFiles) {
+  const content = readFileSync(file, 'utf8');
+  const mirrorBlock = content.match(/function mirrorFns\(g\) \{([\s\S]*?)\}\)\(globalThis\);/);
+  if (!mirrorBlock) continue;
+  const lines = mirrorBlock[1].split('\n');
+  const assignments = [];
+  for (const line of lines) {
+    const m = line.match(/^\s*g\.(\w+)\s*=\s*(\w+);/);
+    if (m) assignments.push({ prop: m[1], val: m[2] });
+  }
+  const declared = new Set();
+  for (const m of content.matchAll(/(?:async\s+)?function\s+(\w+)/g)) declared.add(m[1]);
+  for (const m of content.matchAll(/(?:const|let|var)\s+(\w+)/g)) declared.add(m[1]);
+  for (const m of content.matchAll(/globalThis\.(\w+)/g)) declared.add(m[1]);
+
+  for (const { prop, val } of assignments) {
+    if (!declared.has(val) && !(val in globalThis)) {
+      fail(`${file} mirrorFns references undeclared symbol '${val}' (g.${prop})`);
+    }
+  }
 }
 
 const shell = readFileSync('ui-src/index.html', 'utf8');
