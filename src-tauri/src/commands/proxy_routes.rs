@@ -30,6 +30,19 @@ fn default_source() -> String {
     "manual".into()
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ClaudeDesktopBindings {
+    #[serde(default)]
+    pub sonnet: String,
+    #[serde(default)]
+    pub opus: String,
+    #[serde(default)]
+    pub haiku: String,
+    #[serde(default)]
+    pub fable: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct ProxyRoutes {
@@ -39,6 +52,8 @@ pub struct ProxyRoutes {
     pub default_model_id: String,
     #[serde(default)]
     pub routes: Vec<ProxyRoute>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub claude_desktop: Option<ClaudeDesktopBindings>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -182,6 +197,7 @@ fn empty_routes() -> ProxyRoutes {
         version: default_version(),
         default_model_id: String::new(),
         routes: Vec::new(),
+        claude_desktop: None,
     }
 }
 
@@ -253,6 +269,12 @@ pub fn normalize_routes(routes: &mut ProxyRoutes) {
                 .filter(|k| !k.is_empty())
                 .collect();
         }
+    }
+    if let Some(cd) = routes.claude_desktop.as_mut() {
+        cd.sonnet = cd.sonnet.trim().to_string();
+        cd.opus = cd.opus.trim().to_string();
+        cd.haiku = cd.haiku.trim().to_string();
+        cd.fable = cd.fable.trim().to_string();
     }
 }
 
@@ -391,6 +413,21 @@ pub fn save_proxy_routes(mut store: ProxyRoutes) -> Result<(), String> {
     write_routes(&store)
 }
 
+#[tauri::command]
+pub fn load_claude_desktop_bindings() -> Result<Option<ClaudeDesktopBindings>, String> {
+    let routes = read_routes()?;
+    Ok(routes.claude_desktop)
+}
+
+#[tauri::command]
+pub fn save_claude_desktop_bindings(bindings: ClaudeDesktopBindings) -> Result<(), String> {
+    let mut store = read_routes()?;
+    store.claude_desktop = Some(bindings);
+    normalize_routes(&mut store);
+    validate_routes(&store)?;
+    write_routes(&store)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -409,6 +446,7 @@ mod tests {
                 }],
                 ..Default::default()
             }],
+            claude_desktop: None,
         };
 
         normalize_routes(&mut routes);
@@ -436,6 +474,7 @@ mod tests {
                 }],
                 ..Default::default()
             }],
+            claude_desktop: None,
         };
 
         normalize_routes(&mut routes);
@@ -463,6 +502,26 @@ mod tests {
             ..Default::default()
         };
         assert_ne!(generate_route_uid(&r1), generate_route_uid(&r2));
+    }
+
+    #[test]
+    fn claude_desktop_bindings_roundtrip() {
+        let mut routes = ProxyRoutes {
+            version: 1,
+            default_model_id: String::new(),
+            routes: vec![],
+            claude_desktop: Some(ClaudeDesktopBindings {
+                sonnet: " route-sonnet ".into(),
+                opus: "route-opus".into(),
+                haiku: " route-haiku ".into(),
+                fable: String::new(),
+            }),
+        };
+        normalize_routes(&mut routes);
+        let cd = routes.claude_desktop.as_ref().unwrap();
+        assert_eq!(cd.sonnet, "route-sonnet");
+        assert_eq!(cd.haiku, "route-haiku");
+        assert_eq!(cd.fable, "");
     }
 }
 

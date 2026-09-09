@@ -136,6 +136,9 @@
                     </div>
                   </div>
                 </article>
+
+                <!-- 动态已安装插件大卡片挂载点：Jimeng2API、Grok2API 等安装后自动以大卡片呈现 -->
+                <div id="installed-plugins-container" style="display: contents;"></div>
               </div>
             </div>
 
@@ -262,40 +265,8 @@
                         </div>
                       </td>
                     </tr>
-
-                    <!-- 插件 3：free 即梦 -->
-                    <tr data-extension-card="free-jimeng" data-plugin-state="not-installed" data-plugin-installed="false">
-                      <td class="plugin-name-cell">
-                        <div class="plugin-identity-cell">
-                          <span class="plugin-card-mark" style="background: rgba(139, 92, 246, 0.12); color: #7c3aed; font-weight: 800;">JM</span>
-                          <div class="plugin-identity-text">
-                            <div class="plugin-title-row">
-                              <strong class="plugin-name">free 即梦</strong>
-                              <span class="plugin-status status-not-installed">未安装</span>
-                            </div>
-                            <p class="plugin-desc">即梦相关生成接口预留，支持外部服务接入与托管</p>
-                          </div>
-                        </div>
-                      </td>
-                      <td class="plugin-category-cell">
-                        <span class="plugin-tag">生成服务</span>
-                      </td>
-                      <td class="plugin-port-cell">
-                        <span class="text-muted">待分配</span>
-                      </td>
-                      <td class="plugin-version-cell">
-                        <span>L1-L3 调研</span>
-                      </td>
-                      <td class="plugin-action-cell">
-                        <div class="plugin-table-actions">
-                          <button type="button" class="btn-ghost secondary btn-sm" data-action="openExtensionDetail" data-arg="free-jimeng">详情</button>
-                          <button type="button" class="btn-ghost accent btn-sm" data-action="handleExtensionAction" data-arg="view-adapter-plan">适配计划</button>
-                          <button type="button" class="btn-primary btn-sm" data-action="handleExtensionAction" data-arg="install-jimeng">安装</button>
-                        </div>
-                      </td>
-                    </tr>
                   </tbody>
-                  <!-- 动态扫描插件挂载点：Grok2API 及后续动态插件自动在此渲染为表格行 -->
+                  <!-- 动态扫描插件挂载点：Grok2API、Jimeng2API 及后续动态插件自动在此渲染为表格行 -->
                   <tbody id="plugin-list-grid"></tbody>
                 </table>
               </div>

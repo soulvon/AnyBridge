@@ -326,3 +326,80 @@ test('Codex route scope keeps raw model ids instead of applying global rename ru
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test('Claude Desktop model resolution strips 1M marker and maps dated aliases', () => {
+  assert.equal(__localProxyTest.stripOneMContextMarker('claude-sonnet-5[1m]'), 'claude-sonnet-5');
+  assert.equal(__localProxyTest.stripOneMContextMarker('claude-opus-5 [1M]'), 'claude-opus-5');
+  assert.equal(__localProxyTest.resolveClaudeDesktopRole('claude-haiku-4-5-20251001'), 'haiku');
+  assert.equal(__localProxyTest.resolveClaudeDesktopRole('claude-sonnet-4-6[1m]'), 'sonnet');
+  assert.equal(__localProxyTest.resolveClaudeDesktopRole('claude-opus-4-8'), 'opus');
+  assert.equal(__localProxyTest.resolveClaudeDesktopRole('claude-fable-5'), 'fable');
+  assert.equal(__localProxyTest.resolveClaudeDesktopRole('custom-model'), null);
+});
+
+test('Claude Desktop maps requested roles to bound proxy routes from proxy-routes.json', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'anybridge-cd-proxy-'));
+  const previousConfigDir = process.env.BYOK_CONFIG_DIR;
+  process.env.BYOK_CONFIG_DIR = dir;
+  invalidate('all');
+
+  try {
+    fs.writeFileSync(path.join(dir, 'proxy-routes.json'), JSON.stringify({
+      version: 1,
+      routes: [
+        { uid: 'route-sonnet-uid', id: 'kimi-k2.7-code', enabled: true, targets: [{ providerId: 'kimi', model: 'k2' }] },
+        { uid: 'route-opus-uid', id: 'deepseek-v4-pro', enabled: true, targets: [{ providerId: 'ds', model: 'v4' }] },
+        { uid: 'route-haiku-uid', id: 'qwen-flash', enabled: true, targets: [{ providerId: 'qwen', model: 'flash' }] },
+      ],
+      claudeDesktop: {
+        sonnet: 'route-sonnet-uid',
+        opus: 'route-opus-uid',
+        haiku: 'route-haiku-uid',
+        fable: '',
+      },
+    }), 'utf8');
+
+    const mappedSonnet = __localProxyTest.mapClaudeDesktopModel('claude-sonnet-5[1m]');
+    assert.equal(mappedSonnet.model, 'kimi-k2.7-code');
+
+    const mappedHaiku = __localProxyTest.mapClaudeDesktopModel('claude-haiku-4-5-20251001');
+    assert.equal(mappedHaiku.model, 'qwen-flash');
+
+    // Fable 未显式绑定时，回落到 Opus 档
+    const mappedFable = __localProxyTest.mapClaudeDesktopModel('claude-fable-5');
+    assert.equal(mappedFable.model, 'deepseek-v4-pro');
+  } finally {
+    invalidate('all');
+    if (previousConfigDir === undefined) delete process.env.BYOK_CONFIG_DIR;
+    else process.env.BYOK_CONFIG_DIR = previousConfigDir;
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('Antigravity handler recognizes v1internal paths and builds injected models list', async () => {
+  const { isAntigravityPath, getAntigravityMethod, buildAntigravityModelsList, mockAntigravityLoadCodeAssist } = await import('./lib/antigravity-handler.js');
+  assert.equal(isAntigravityPath('/v1internal:loadCodeAssist'), true);
+  assert.equal(isAntigravityPath('/v1internal:streamGenerateContent?alt=sse'), true);
+  assert.equal(isAntigravityPath('/antigravity/v1internal:fetchAvailableModels'), true);
+  assert.equal(isAntigravityPath('/v1/chat/completions'), false);
+
+  assert.equal(getAntigravityMethod('/v1internal:loadCodeAssist'), 'loadCodeAssist');
+  assert.equal(getAntigravityMethod('/antigravity/v1internal:streamGenerateContent?alt=sse'), 'streamGenerateContent');
+
+  const models = buildAntigravityModelsList({
+    antigravityConfigs: [
+      {
+        id: 'ag-custom',
+        name: 'DeepSeek',
+        defaultModel: 'deepseek-chat',
+        models: ['deepseek-chat', 'deepseek-reasoner'],
+      }
+    ]
+  });
+  assert.ok(models.some(m => m.name === 'models/deepseek-chat'));
+  assert.ok(models.some(m => m.name === 'models/gemini-3-pro'));
+
+  const assist = mockAntigravityLoadCodeAssist();
+  assert.ok(Array.isArray(assist.paidTier.availableCredits));
+  assert.equal(assist.paidTier.availableCredits[0].creditAmount, 1000000);
+});

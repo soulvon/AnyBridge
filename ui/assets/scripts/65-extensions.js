@@ -104,24 +104,24 @@ globalThis.EXTENSION_CATALOG = {
   },
   'free-jimeng': {
     short: 'JM',
-    name: 'free 即梦',
-    kicker: '生成服务桥接',
-    description: '即梦相关生成接口的预留卡位。确认仓库和接口格式后再选择本地托管或外部服务接入。',
-    type: '待确认',
-    level: 'L1-L3',
+    name: 'Jimeng2API',
+    kicker: '即梦 API 网关',
+    description: '即梦多账号 API 网关，兼容 OpenAI 图像与视频接口，支持账号池轮询。',
+    type: 'API 网关',
+    level: 'L2-L3',
     primaryAction: 'install-jimeng',
     primaryLabel: '安装',
-    secondaryAction: 'view-adapter-plan',
-    secondaryLabel: '适配计划',
+    secondaryAction: 'open-jimeng-homepage',
+    secondaryLabel: '项目主页',
     github: [
-      { label: 'GitHub 搜索：free 即梦接口', url: 'https://github.com/search?q=free+jimeng+api&type=repositories' }
+      { label: 'GitHub：zhizinan1997/jimeng-free-api-all', url: 'https://github.com/zhizinan1997/jimeng-free-api-all' }
     ],
     components: [
-      { name: 'free 即梦服务', detail: '待确认图片/视频生成接口、运行时和账号登录方式。', port: null }
+      { name: 'Jimeng2API 服务', detail: '基于 Node.js 22+ 或 Docker 运行，默认监听 5566 端口。', port: 5566 }
     ],
     notes: [
-      '具体仓库尚未确认，所以这里先放 GitHub 搜索入口，不伪造项目地址。',
-      '如果项目不提供稳定二进制发布包，第一阶段会先按外部服务接入。'
+      '支持即梦 4.x/5.x 图像与视频模型生成，提供 OpenAI 兼容的 /v1/chat/completions 与 /v1/images/generations 接口。',
+      '首次运行将生成 AES-256 加密密钥用于保护账号池中的即梦 Cookie。'
     ]
   }
 };
@@ -675,10 +675,8 @@ function switchExtensionTab(tab) {
     section.classList.toggle('active', isActive);
   });
 
-  if (target === 'plugins' && typeof refreshPluginList === 'function') {
-    if (!globalThis.pluginRegistry || globalThis.pluginRegistry.length === 0) {
-      refreshPluginList();
-    }
+  if ((target === 'plugins' || target === 'installed') && typeof refreshPluginList === 'function') {
+    refreshPluginList();
   }
 
   if (target === 'logs') {
@@ -1969,10 +1967,13 @@ function handleExtensionAction(action) {
       if (typeof openPluginDeployDialog === 'function') openPluginDeployDialog('grok2api');
       break;
     case 'install-jimeng':
-      showExtensionBackendPending(
-        'free 即梦安装',
-        '需要先确认具体 GitHub 仓库、API 格式和运行方式，再决定本地托管或外部服务接入。'
-      );
+      // jimeng2api 已迁移为运行时插件，安装入口统一走插件部署弹窗
+      if (typeof openPluginDeployDialog === 'function') openPluginDeployDialog('jimeng2api');
+      break;
+    case 'open-jimeng-homepage':
+      if (typeof openPluginLink === 'function') {
+        openPluginLink('https://github.com/zhizinan1997/jimeng-free-api-all');
+      }
       break;
     case 'view-adapter-plan':
       extensionNotify('适配计划已写入 spec/35-扩展中心与一键部署规划.md。', 'info');

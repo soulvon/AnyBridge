@@ -18,6 +18,10 @@ pub struct PluginManifest {
     pub api_version: u32,
     pub id: String,
     pub name: String,
+    #[serde(default)]
+    pub short: Option<String>,
+    #[serde(default)]
+    pub accent: Option<String>,
     pub description: String,
     pub version: String,
     pub icon: Option<String>,
@@ -1242,6 +1246,83 @@ pub async fn plugin_uninstall(
     emit_status(&app, &status);
 
     Ok(())
+}
+
+#[tauri::command]
+pub async fn plugin_check_update(plugin_id: String) -> Result<serde_json::Value, String> {
+    let config = read_config(&plugin_id);
+    let install_path = config
+        .get("installPath")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    let body = serde_json::json!({
+        "pluginId": plugin_id,
+        "installPath": install_path,
+    });
+    let response = sidecar_post_with_timeout(
+        "/internal/plugins/check-update",
+        &body,
+        std::time::Duration::from_secs(15),
+    )
+    .await?;
+    Ok(response.get("result").cloned().unwrap_or(serde_json::Value::Null))
+}
+
+#[tauri::command]
+pub async fn plugin_upgrade(
+    app: tauri::AppHandle,
+    state: State<'_, PluginState>,
+    plugin_id: String,
+) -> Result<serde_json::Value, String> {
+    let config = read_config(&plugin_id);
+    let install_path = config
+        .get("installPath")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    if install_path.is_empty() {
+        return Err("插件未安装或未记录安装路径".to_string());
+    }
+
+    // 1. 如果正在运行，优雅停止
+    let status_before = read_status(&plugin_id);
+    let was_running = status_before.state == "running" || status_before.state == "starting";
+    if was_running {
+        let _ = plugin_stop(app.clone(), state.clone(), plugin_id.clone()).await;
+    }
+
+    // 2. 调用 sidecar 执行更新
+    let body = serde_json::json!({
+        "pluginId": plugin_id,
+        "installPath": install_path,
+        "configValues": config,
+    });
+    let response = sidecar_post_with_timeout(
+        "/internal/plugins/upgrade",
+        &body,
+        std::time::Duration::from_secs(300),
+    )
+    .await?;
+    let ok = response.get("ok").and_then(|v| v.as_bool()).unwrap_or(false);
+    if !ok {
+        let err_msg = response
+            .get("error")
+            .and_then(|e| e.as_str())
+            .unwrap_or("更新失败");
+        return Err(err_msg.to_string());
+    }
+
+    // 3. 更新状态并发送通知
+    let mut status = read_status(&plugin_id);
+    status.updated_at = now_iso();
+    write_status(&status)?;
+    emit_status(&app, &status);
+
+    // 4. 若此前处于运行中，重新启动
+    if was_running {
+        let _ = plugin_start(app.clone(), state, plugin_id).await;
+    }
+
+    Ok(response.get("result").cloned().unwrap_or(serde_json::Value::Null))
 }
 
 /// Read the tail of a plugin's captured stdout/stderr. Used by the built-in logs panel

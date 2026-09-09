@@ -1,7 +1,8 @@
 // ES module (P3/P4) — escAttr 已迁至 ui/dom.js
 import { escAttr, escapeHtml } from './ui/dom.js';
 // ═══════ PROVIDER PROFILES (多套供应商 + 启用开关) ═══════
-globalThis.providerStore = { providers: [], codexConfigs: [], claudeCodeConfigs: [], opencodeConfigs: [], grokConfigs: [] };
+globalThis.providerStore = { providers: [], codexConfigs: [], claudeCodeConfigs: [], opencodeConfigs: [], grokConfigs: [], claudeDesktopConfigs: [] };
+globalThis.providerStoreLoaded = false;
 globalThis.PROVIDER_VIEW_STORAGE_KEY = 'anybridge.providerViewMode';
 globalThis.PROVIDER_SORT_STORAGE_KEY = 'anybridge.providerSortMode';
 globalThis.PROVIDER_SORT_MODES = new Set(['default', 'name-asc', 'name-desc']);
@@ -338,8 +339,9 @@ async function loadProviders() {
   try {
     providerStore = await invoke('load_providers');
     if (!providerStore || !Array.isArray(providerStore.providers)) {
-      providerStore = { providers: [], codexConfigs: [], claudeCodeConfigs: [], opencodeConfigs: [], grokConfigs: [] };
+      providerStore = { providers: [], codexConfigs: [], claudeCodeConfigs: [], opencodeConfigs: [], grokConfigs: [], claudeDesktopConfigs: [] };
     }
+    globalThis.providerStoreLoaded = true;
     syncLocalProxyProvider();
     syncCpaLocalProvider();
     if (!Array.isArray(providerStore.codexConfigs)) {
@@ -354,9 +356,12 @@ async function loadProviders() {
     if (!Array.isArray(providerStore.grokConfigs)) {
       providerStore.grokConfigs = [];
     }
+    if (!Array.isArray(providerStore.claudeDesktopConfigs)) {
+      providerStore.claudeDesktopConfigs = [];
+    }
     (providerStore.providers || []).forEach(normalizeProviderUnlocks);
   } catch (e) {
-    providerStore = { providers: [], codexConfigs: [], claudeCodeConfigs: [], opencodeConfigs: [], grokConfigs: [] };
+    providerStore = { providers: [], codexConfigs: [], claudeCodeConfigs: [], opencodeConfigs: [], grokConfigs: [], claudeDesktopConfigs: [] };
   }
   renderProviders();
   renderEvalProviderOptions();
@@ -1942,6 +1947,7 @@ function normalizeEvalApiFormat(value, allowAuto = true) {
   if (allowAuto && raw === 'auto') return 'auto';
   if (raw === 'openai') return 'openai';
   if (raw === 'anthropic') return 'anthropic';
+  if (raw === 'gemini') return 'gemini';
   return allowAuto ? 'auto' : 'openai';
 }
 
@@ -1950,6 +1956,7 @@ function evalApiFormatLabel(value) {
   if (fmt === 'auto') return '自动';
   if (fmt === 'openai') return 'OpenAI';
   if (fmt === 'anthropic') return 'Anthropic';
+  if (fmt === 'gemini') return 'Gemini';
   return value || '--';
 }
 
@@ -1976,6 +1983,7 @@ function getEvalModelList(provider, apiFormat = getEvalApiFormat()) {
     ? [
         ...(evalRemoteModelCache.get(evalRemoteModelCacheKey(provider.id, 'openai')) || []),
         ...(evalRemoteModelCache.get(evalRemoteModelCacheKey(provider.id, 'anthropic')) || []),
+        ...(evalRemoteModelCache.get(evalRemoteModelCacheKey(provider.id, 'gemini')) || []),
       ]
     : (evalRemoteModelCache.get(evalRemoteModelCacheKey(provider.id, fmt)) || []);
   return normalizeEvalModels([...getEvalSavedModelList(provider), ...remoteModels]);
@@ -2002,7 +2010,7 @@ function shouldAutoFetchEvalModels() {
 async function fetchEvalRemoteModels(provider) {
   if (!canFetchEvalModels(provider)) return;
   const requestedFormat = getEvalApiFormat();
-  const formats = requestedFormat === 'auto' ? ['openai', 'anthropic'] : [requestedFormat];
+  const formats = requestedFormat === 'auto' ? ['openai', 'anthropic', 'gemini'] : [requestedFormat];
   const seq = ++evalModelFetchSeq;
   const modelSelect = document.getElementById('eval-model-select');
   let lastError = null;
@@ -2030,8 +2038,8 @@ async function fetchEvalRemoteModels(provider) {
         return;
       } catch (e) {
         lastError = e;
-        if (requestedFormat === 'auto' && apiFormat === 'openai') {
-          addLog('warn', `自动协议拉取模型：OpenAI 未通，尝试 Anthropic（${e}）`);
+        if (requestedFormat === 'auto') {
+          addLog('warn', `自动协议拉取模型：${evalApiFormatLabel(apiFormat)} 未通（${e}）`);
         }
       } finally {
         evalRemoteModelPending.delete(cacheKey);
@@ -2778,23 +2786,27 @@ async function startEval() {
   try {
     let report = null;
     if (apiFormat === 'auto') {
-      renderEvalRunning(provider, model, 'openai');
-      addLog('info', '自动协议：先按 OpenAI 检测');
-      let openaiReport = null;
-      try {
-        openaiReport = await runProviderEvalRequest(providerId, model, mode, selectedChecks, 'openai');
-        rememberEvalReport(openaiReport);
-      } catch (e) {
-        addLog('warn', `自动协议：OpenAI 请求异常，尝试 Anthropic（${e}）`);
+      const isGeminiHint = (model || '').toLowerCase().includes('gemini') || (provider.apiHost || '').toLowerCase().includes('gemini') || (provider.apiHost || '').toLowerCase().includes('googleapis');
+      const tryOrder = isGeminiHint ? ['gemini', 'openai', 'anthropic'] : ['openai', 'anthropic', 'gemini'];
+      for (const fmt of tryOrder) {
+        renderEvalRunning(provider, model, fmt);
+        addLog('info', `自动协议：尝试按 ${evalApiFormatLabel(fmt)} 检测`);
+        let currentReport = null;
+        try {
+          currentReport = await runProviderEvalRequest(providerId, model, mode, selectedChecks, fmt);
+          rememberEvalReport(currentReport);
+        } catch (e) {
+          addLog('warn', `自动协议：${evalApiFormatLabel(fmt)} 请求异常（${e}）`);
+        }
+        if (currentReport && evalReportProtocolConnected(currentReport)) {
+          report = currentReport;
+          addLog('ok', `自动协议：${evalApiFormatLabel(fmt)} 已通过，检测成功`);
+          break;
+        }
       }
-      if (openaiReport && evalReportProtocolConnected(openaiReport)) {
-        report = openaiReport;
-        addLog('ok', '自动协议：OpenAI 已通过，不再尝试 Anthropic');
-      } else {
-        const reason = openaiReport ? evalReportProtocolSummary(openaiReport) : 'OpenAI 请求异常';
-        addLog('warn', `自动协议：OpenAI 未通（${reason}），尝试 Anthropic`);
-        renderEvalRunning(provider, model, 'anthropic');
-        report = await runProviderEvalRequest(providerId, model, mode, selectedChecks, 'anthropic');
+      if (!report) {
+        // 如果三者都未通过，保留最后一个尝试的报告
+        report = await runProviderEvalRequest(providerId, model, mode, selectedChecks, tryOrder[0]);
         rememberEvalReport(report);
       }
     } else {
@@ -2887,6 +2899,10 @@ function cloneProviderStore(store = providerStore) {
 }
 
 async function persistProviders() {
+  if (!globalThis.providerStoreLoaded) {
+    console.warn('[persistProviders] providerStore 尚未加载完成，放弃保存以保护磁盘配置');
+    return false;
+  }
   if (!invoke) {
     const message = '当前环境缺少 Tauri invoke，无法保存供应商配置';
     addLog('err', message);

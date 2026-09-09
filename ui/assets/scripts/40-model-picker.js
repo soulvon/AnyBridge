@@ -1030,6 +1030,9 @@ function cleanProviderApiPath(value) {
 function isGeneratedProviderApiPath(apiFormat, apiPath) {
   const path = cleanProviderApiPath(apiPath).toLowerCase();
   if (!path) return false;
+  if (apiFormat === 'gemini') {
+    return path.includes(':generatecontent') || path.includes(':streamgeneratecontent') || path.endsWith('/models');
+  }
   if (apiFormat === 'openai') {
     return [
       '/v1/chat/completions',
@@ -1076,7 +1079,7 @@ function onFormatChange() {
   const badge = document.getElementById('pf-format-badge');
 
   // 同步 API 格式徽章（兼容旧版徽章元素）
-  if (badge) badge.textContent = fmt === 'openai' ? 'OpenAI' : 'Anthropic';
+  if (badge) badge.textContent = fmt === 'gemini' ? 'Gemini' : (fmt === 'openai' ? 'OpenAI' : 'Anthropic');
 
   // 同步下拉按钮 UI（锁定态显示锁定值，自动态显示带"自动"后缀）
   const lockKey = fmtEl.dataset ? fmtEl.dataset.locked : null;
@@ -1105,6 +1108,9 @@ function onFormatChange() {
 function autoDetectFormatFromHost(hostValue) {
   if (!hostValue) return 'anthropic';
   const v = hostValue.toLowerCase();
+  if (v.includes('generativelanguage.googleapis.com') || v.includes('gemini') || v.includes('/v1beta')) {
+    return 'gemini';
+  }
   if (v.includes('anthropic') || v.includes('/v1/messages')) {
     return 'anthropic';
   }
@@ -1196,7 +1202,7 @@ function syncFormatDropdownUi(activeFormat) {
     // 自动识别模式下只显示「自动」，不暴露具体协议
     display = '自动';
   } else {
-    display = activeFormat === 'openai' ? 'OpenAI' : 'Anthropic';
+    display = activeFormat === 'gemini' ? 'Gemini' : (activeFormat === 'openai' ? 'OpenAI' : 'Anthropic');
   }
   labelEl.textContent = display;
   // 高亮下拉里被选中的项
@@ -1606,8 +1612,10 @@ async function fetchModelsForEditor(options = {}) {
   const lockedFormat = fmtEl?.dataset?.locked === '1';
   const formatsToTry = lockedFormat
     ? [primaryFmt]
-    : (primaryFmt === 'openai' ? ['openai', 'anthropic'] : ['anthropic', 'openai']);
-  const fmtLabel = (f) => f === 'openai' ? 'OpenAI' : 'Anthropic';
+    : (primaryFmt === 'gemini'
+      ? ['gemini', 'openai', 'anthropic']
+      : (primaryFmt === 'openai' ? ['openai', 'anthropic', 'gemini'] : ['anthropic', 'openai', 'gemini']));
+  const fmtLabel = (f) => f === 'gemini' ? 'Gemini' : (f === 'openai' ? 'OpenAI' : 'Anthropic');
 
   let succeeded = null;
   let lastError = null;

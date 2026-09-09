@@ -188,6 +188,7 @@ pub fn save_config(values: BTreeMap<String, String>) -> Result<(), String> {
 pub enum ApiFormat {
     Anthropic,
     Openai,
+    Gemini,
 }
 
 impl Default for ApiFormat {
@@ -539,6 +540,40 @@ pub struct ClaudeCodeConfig {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ClaudeDesktopConfig {
+    pub id: String,
+    pub name: String,
+    #[serde(rename = "apiHost", default, skip_serializing_if = "String::is_empty")]
+    pub api_host: String,
+    #[serde(rename = "apiKey", default, skip_serializing_if = "String::is_empty")]
+    pub api_key: String,
+    #[serde(rename = "apiPath", skip_serializing_if = "Option::is_none")]
+    pub api_path: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mode: Option<String>,
+    #[serde(rename = "sonnetModel", default, skip_serializing_if = "String::is_empty")]
+    pub sonnet_model: String,
+    #[serde(rename = "opusModel", default, skip_serializing_if = "String::is_empty")]
+    pub opus_model: String,
+    #[serde(rename = "haikuModel", default, skip_serializing_if = "String::is_empty")]
+    pub haiku_model: String,
+    #[serde(rename = "fableModel", default, skip_serializing_if = "String::is_empty")]
+    pub fable_model: String,
+    #[serde(
+        rename = "sourceProviderId",
+        default,
+        skip_serializing_if = "String::is_empty"
+    )]
+    pub source_provider_id: String,
+    #[serde(
+        rename = "sourceProviderName",
+        default,
+        skip_serializing_if = "String::is_empty"
+    )]
+    pub source_provider_name: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OpenCodeConfig {
     pub id: String,
     pub name: String,
@@ -608,6 +643,97 @@ pub struct GrokConfig {
 
 fn default_grok_backend() -> String {
     "chat_completions".to_string()
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AntigravityConfig {
+    pub id: String,
+    pub name: String,
+    #[serde(rename = "apiHost")]
+    pub api_host: String,
+    #[serde(rename = "apiKey")]
+    pub api_key: String,
+    #[serde(rename = "apiPath", skip_serializing_if = "Option::is_none")]
+    pub api_path: Option<String>,
+    #[serde(rename = "defaultModel")]
+    pub default_model: String,
+    #[serde(default)]
+    pub models: Vec<String>,
+    #[serde(
+        rename = "sourceProviderId",
+        default,
+        skip_serializing_if = "String::is_empty"
+    )]
+    pub source_provider_id: String,
+    #[serde(
+        rename = "sourceProviderName",
+        default,
+        skip_serializing_if = "String::is_empty"
+    )]
+    pub source_provider_name: String,
+    /// 目标 API 格式："openai" / "anthropic" / "gemini"（默认 "openai"）
+    #[serde(rename = "apiFormat", default = "default_antigravity_api_format")]
+    pub api_format: String,
+    /// 上下文压缩窗口阈值（token），默认 262144 (256K)
+    #[serde(rename = "contextWindow", default = "default_antigravity_context_window")]
+    pub context_window: u64,
+    /// 是否注入到 Antigravity 下拉菜单中（默认 true）
+    #[serde(rename = "injectModels", default = "default_true")]
+    pub inject_models: bool,
+    /// 自定义模型目录
+    #[serde(
+        rename = "modelCatalog",
+        default,
+        skip_serializing_if = "Vec::is_empty"
+    )]
+    pub model_catalog: Vec<ModelCatalogEntry>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub env: BTreeMap<String, String>,
+}
+
+fn default_antigravity_api_format() -> String {
+    "openai".to_string()
+}
+
+fn default_antigravity_context_window() -> u64 {
+    262144
+}
+
+impl From<AntigravityConfig> for Provider {
+    fn from(config: AntigravityConfig) -> Self {
+        let fmt = match config.api_format.as_str() {
+            "anthropic" => ApiFormat::Anthropic,
+            "gemini" => ApiFormat::Gemini,
+            _ => ApiFormat::Openai,
+        };
+        Provider {
+            id: config.id,
+            name: config.name,
+            api_host: config.api_host,
+            api_key: config.api_key,
+            api_path: config.api_path,
+            default_model: config.default_model,
+            api_format: fmt,
+            enabled: true,
+            models: config.models,
+            capabilities: ProviderCapabilities {
+                text: true,
+                stream: true,
+                ..ProviderCapabilities::default()
+            },
+            model_caps: HashMap::new(),
+            unlocks: ProviderUnlocks::default(),
+            wire_api: String::new(),
+            route_through_proxy: true,
+            inject_models: config.inject_models,
+            preserve_official_auth: false,
+            unify_session_history: false,
+            model_catalog: config.model_catalog,
+            codex_chat_reasoning: None,
+            agents_config: None,
+            agents: Vec::new(),
+        }
+    }
 }
 
 impl From<CodexConfig> for Provider {
@@ -826,6 +952,20 @@ pub struct ProviderStore {
         skip_serializing_if = "Vec::is_empty"
     )]
     pub claude_code_configs: Vec<ClaudeCodeConfig>,
+    /// Claude Desktop 专用配置。用于管理 3P 网关与各角色档位映射。
+    #[serde(
+        rename = "claudeDesktopConfigs",
+        default,
+        skip_serializing_if = "Vec::is_empty"
+    )]
+    pub claude_desktop_configs: Vec<ClaudeDesktopConfig>,
+    /// Antigravity 专用配置。用于管理 Google Antigravity 的模型路由与上下文策略。
+    #[serde(
+        rename = "antigravityConfigs",
+        default,
+        skip_serializing_if = "Vec::is_empty"
+    )]
+    pub antigravity_configs: Vec<AntigravityConfig>,
     // `current`/激活概念已废弃，改用每槽位 targets 故障转移。保留字段仅为兼容旧文件反序列化，不再读写。
     #[serde(default, skip_serializing)]
     #[allow(dead_code)]
@@ -1214,6 +1354,36 @@ fn content_text(value: &Value) -> String {
         .join("\n")
 }
 
+pub(crate) fn normalize_gemini_api_path(
+    _host: &str,
+    api_path: Option<&str>,
+    model: &str,
+) -> String {
+    let clean = clean_api_path(api_path);
+    let lower = clean.to_ascii_lowercase();
+    let model_clean = model.trim().strip_prefix("models/").unwrap_or(model.trim());
+    if lower.ends_with(":generatecontent") || lower.ends_with(":streamgeneratecontent") {
+        return clean;
+    }
+    if lower.contains("/v1beta/models/") || lower.contains("/v1/models/") {
+        return format!("{}:generateContent", clean);
+    }
+    if clean.is_empty() {
+        return format!("/v1beta/models/{}:generateContent", model_clean);
+    }
+    if lower.ends_with("/v1beta") {
+        return format!("{}/models/{}:generateContent", clean, model_clean);
+    }
+    if lower.ends_with("/v1") {
+        let prefix = &clean[..clean.len().saturating_sub(3)];
+        return format!("{}/v1beta/models/{}:generateContent", prefix, model_clean);
+    }
+    if lower.ends_with("/models") {
+        return format!("{}/{}:generateContent", clean, model_clean);
+    }
+    format!("{}/v1beta/models/{}:generateContent", clean, model_clean)
+}
+
 fn extract_vision_text(fmt: &ApiFormat, json: &Value) -> String {
     match fmt {
         ApiFormat::Openai => {
@@ -1240,6 +1410,12 @@ fn extract_vision_text(fmt: &ApiFormat, json: &Value) -> String {
                 .unwrap_or_default()
         }
         ApiFormat::Anthropic => json.get("content").map(content_text).unwrap_or_default(),
+        ApiFormat::Gemini => json
+            .pointer("/candidates/0/content/parts/0/text")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .trim()
+            .to_string(),
     }
 }
 
@@ -1363,6 +1539,20 @@ fn vision_body(
             "temperature": 0,
             "stream": false
         })
+    } else if matches!(fmt, ApiFormat::Gemini) {
+        serde_json::json!({
+            "contents": [{
+                "role": "user",
+                "parts": [
+                    { "inlineData": { "mimeType": "image/png", "data": image_b64 } },
+                    { "text": prompt }
+                ]
+            }],
+            "generationConfig": {
+                "maxOutputTokens": 1024,
+                "temperature": 0
+            }
+        })
     } else {
         serde_json::json!({
             "model": model,
@@ -1394,7 +1584,8 @@ fn parse_api_format_arg(value: &str) -> Result<ApiFormat, String> {
     match value.trim().to_ascii_lowercase().as_str() {
         "openai" => Ok(ApiFormat::Openai),
         "anthropic" => Ok(ApiFormat::Anthropic),
-        "" => Err("本次调用必须明确选择协议(openai 或 anthropic)".to_string()),
+        "gemini" => Ok(ApiFormat::Gemini),
+        "" => Err("本次调用必须明确选择协议(openai, anthropic 或 gemini)".to_string()),
         other => Err(format!("未知协议: {}", other)),
     }
 }
@@ -1438,6 +1629,7 @@ pub async fn test_vision(args: TestVisionArgs) -> Result<TestVisionResult, Strin
     let chat_path = match api_format {
         ApiFormat::Openai => normalize_openai_api_path(&host, provider.api_path.as_deref()),
         ApiFormat::Anthropic => normalize_anthropic_api_path(provider.api_path.as_deref()),
+        ApiFormat::Gemini => normalize_gemini_api_path(&host, provider.api_path.as_deref(), model),
     };
     let uses_openai_responses =
         api_format == ApiFormat::Openai && chat_path.to_ascii_lowercase().contains("/responses");
@@ -1458,6 +1650,7 @@ pub async fn test_vision(args: TestVisionArgs) -> Result<TestVisionResult, Strin
         .header("User-Agent", APP_USER_AGENT);
     req = match api_format {
         ApiFormat::Openai => req.header("Authorization", format!("Bearer {}", provider.api_key)),
+        ApiFormat::Gemini => req.header("x-goog-api-key", &provider.api_key),
         ApiFormat::Anthropic => {
             apply_anthropic_auth(req, &provider.api_key, &host, provider.api_path.as_deref())
         }
@@ -1597,6 +1790,9 @@ pub async fn test_connection(args: TestConnArgs) -> Result<TestConnResult, Strin
     // ── Chat 连通性探测（发送极简消息验证实际调用能力与延迟）──
     let chat_path = if fmt == "openai" {
         normalize_openai_api_path(&host, args.path.as_deref())
+    } else if fmt == "gemini" {
+        let model = args.model.as_deref().unwrap_or("gemini-2.5-flash");
+        normalize_gemini_api_path(&host, args.path.as_deref(), model)
     } else {
         normalize_anthropic_api_path(args.path.as_deref())
     };
@@ -1604,14 +1800,25 @@ pub async fn test_connection(args: TestConnArgs) -> Result<TestConnResult, Strin
         fmt == "openai" && chat_path.to_ascii_lowercase().contains("/responses");
 
     let test_model = args.model.as_deref().unwrap_or_else(|| {
-        if fmt == "anthropic" {
+        if fmt == "gemini" {
+            "gemini-2.5-flash"
+        } else if fmt == "anthropic" {
             "claude-3-haiku-20240307"
         } else {
             "gpt-4o-mini"
         }
     });
 
-    let (chat_body, auth_header, auth_value) = if fmt == "openai" && uses_openai_responses {
+    let (chat_body, auth_header, auth_value) = if fmt == "gemini" {
+        let body = serde_json::json!({
+            "contents": [{"role": "user", "parts": [{"text": "hi"}]}]
+        });
+        (
+            serde_json::to_vec(&body).unwrap(),
+            "x-goog-api-key".to_string(),
+            args.api_key.clone(),
+        )
+    } else if fmt == "openai" && uses_openai_responses {
         let body = serde_json::json!({
             "model": test_model,
             "input": [{"role": "user", "content": "hi"}],
@@ -1665,7 +1872,7 @@ pub async fn test_connection(args: TestConnArgs) -> Result<TestConnResult, Strin
         if use_gzip {
             req = req.header("Content-Encoding", "gzip");
         }
-        if fmt != "openai" {
+        if fmt == "anthropic" {
             req = req.header("anthropic-version", "2023-06-01");
         }
         req
@@ -1802,13 +2009,17 @@ pub async fn fetch_models(args: FetchModelsArgs) -> Result<FetchModelsResult, St
     let fmt = args.api_format.as_deref().unwrap_or("anthropic");
     let chat_path = if fmt == "openai" {
         normalize_openai_api_path(&host, args.path.as_deref())
+    } else if fmt == "gemini" {
+        normalize_gemini_api_path(&host, args.path.as_deref(), "gemini-2.5-flash")
     } else {
         normalize_anthropic_api_path(args.path.as_deref())
     };
     // 按协议分发凭证头；DeepSeek 的 Anthropic 兼容入口使用 Bearer。
     // 避免把 key 同时塞进两种头发给非预期端点。
     let auth = |req: reqwest::RequestBuilder| {
-        if fmt == "openai" {
+        if fmt == "gemini" {
+            req.header("x-goog-api-key", &args.api_key)
+        } else if fmt == "openai" {
             req.header("Authorization", format!("Bearer {}", args.api_key))
         } else {
             apply_anthropic_auth(req, &args.api_key, &host, Some(&chat_path))
@@ -1826,7 +2037,11 @@ pub async fn fetch_models(args: FetchModelsArgs) -> Result<FetchModelsResult, St
         String::new()
     };
     let mut model_paths = Vec::new();
-    if !base_path.is_empty() {
+    if fmt == "gemini" {
+        model_paths.push("/v1beta/models".to_string());
+        model_paths.push("/v1/models".to_string());
+        model_paths.push("/models".to_string());
+    } else if !base_path.is_empty() {
         model_paths.push(format!("{}/models", base_path.trim_end_matches('/')));
     } else if fmt == "openai" && !chat_path.is_empty() {
         let openai_base = chat_path.trim_end_matches('/');
@@ -1901,18 +2116,22 @@ pub async fn fetch_models(args: FetchModelsArgs) -> Result<FetchModelsResult, St
 
     let mut models = Vec::new();
 
+    let clean_model_name = |s: &str| -> String {
+        s.trim().strip_prefix("models/").unwrap_or(s.trim()).to_string()
+    };
+
     if let Some(arr) = body.get("data").and_then(|d| d.as_array()) {
         for item in arr {
             if let Some(id) = item.get("id").and_then(|v| v.as_str()) {
-                models.push(id.to_string());
+                models.push(clean_model_name(id));
             }
         }
     } else if let Some(arr) = body.as_array() {
         for item in arr {
             if let Some(id) = item.get("id").and_then(|v| v.as_str()) {
-                models.push(id.to_string());
+                models.push(clean_model_name(id));
             } else if let Some(id) = item.as_str() {
-                models.push(id.to_string());
+                models.push(clean_model_name(id));
             }
         }
     } else if let Some(obj) = body.as_object() {
@@ -1920,9 +2139,9 @@ pub async fn fetch_models(args: FetchModelsArgs) -> Result<FetchModelsResult, St
             if let Some(arr) = val.as_array() {
                 for item in arr {
                     if let Some(id) = item.get("id").and_then(|v| v.as_str()) {
-                        models.push(id.to_string());
+                        models.push(clean_model_name(id));
                     } else if let Some(name) = item.get("name").and_then(|v| v.as_str()) {
-                        models.push(name.to_string());
+                        models.push(clean_model_name(name));
                     }
                 }
             }

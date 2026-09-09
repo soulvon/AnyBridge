@@ -35,6 +35,14 @@ import {
 } from './lib/upstream-watchdog.js';
 import { executeSearchWithFailover } from './handlers/search-sources.js';
 import { codexAuthJsonPath } from './lib/codex-home.js';
+import {
+  isAntigravityPath,
+  getAntigravityMethod,
+  buildAntigravityModelsList,
+  cleanAntigravityModelId,
+  mockAntigravityLoadCodeAssist,
+  mockAntigravityUserQuotaSummary,
+} from './lib/antigravity-handler.js';
 
 const AGENT = new https.Agent({ keepAlive: true, maxSockets: 64, maxFreeSockets: 16 });
 const HTTP_AGENT = new http.Agent({ keepAlive: true, maxSockets: 64, maxFreeSockets: 16 });
@@ -65,6 +73,27 @@ function readLocalConfig() {
     console.warn(`[local-proxy] failed to read config: ${e.message}`);
     return {};
   }
+}
+
+function readProvidersJson() {
+  try {
+    const file = path.join(configDir(), 'providers.json');
+    if (fs.existsSync(file)) return JSON.parse(fs.readFileSync(file, 'utf8'));
+  } catch (_) {}
+  return {};
+}
+
+function resolveDefaultAntigravityModel(providersJson = readProvidersJson()) {
+  const state = providersJson.platforms?.antigravity;
+  if (state?.providerId) {
+    const cfg = (providersJson.antigravityConfigs || []).find(c => c.id === state.providerId);
+    if (cfg?.defaultModel) return cfg.defaultModel;
+    const p = (providersJson.providers || []).find(p => p.id === state.providerId);
+    if (p?.defaultModel) return p.defaultModel;
+  }
+  const firstAg = (providersJson.antigravityConfigs || [])[0];
+  if (firstAg?.defaultModel) return firstAg.defaultModel;
+  return 'gemini-3-pro';
 }
 
 function pathnameOf(req) {
@@ -131,15 +160,29 @@ export function isLocalProxyRequest(req) {
     || p === '/__byok/web-search/test'
     || p === '/anthropic/v1/messages'
     || p === '/anthropic/messages'
-    || p.endsWith('/messages/count_tokens');
+    || p === '/claude-desktop/v1/models'
+    || p === '/claude-desktop/models'
+    || p === '/claude-desktop/v1/messages'
+    || p === '/claude-desktop/messages'
+    || p.startsWith('/claude-desktop/')
+    || p.endsWith('/messages/count_tokens')
+    || isAntigravityPath(p);
 }
 
 function proxyScopeForPath(pathname) {
-  return String(pathname || '').startsWith('/codex/') ? 'codex' : 'default';
+  const p = String(pathname || '');
+  if (p.startsWith('/codex/')) return 'codex';
+  if (p.startsWith('/claude-desktop')) return 'claude-desktop';
+  if (isAntigravityPath(p)) return 'antigravity';
+  return 'default';
 }
 
 function isCodexProxyScope(scope) {
   return scope === 'codex';
+}
+
+function isClaudeDesktopProxyScope(scope) {
+  return scope === 'claude-desktop';
 }
 
 function cors(extra = {}) {
@@ -229,6 +272,7 @@ function validateAuth(req) {
   // Codex 保留官方登录模式：Codex 发送 OAuth token 而非 LOCAL_PROXY_KEY
   // 对 /codex/ 路径的请求，接受 auth.json 中的 OAuth token
   const p = pathnameOf(req);
+  if (isAntigravityPath(p)) return { ok: true };
   if (String(p).startsWith('/codex/')) {
     const oauthToken = readCodexOAuthToken();
     if (oauthToken && token === oauthToken) return { ok: true };
@@ -366,8 +410,93 @@ function proxyRouteRows(kind, options = {}) {
     .sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
 }
 
+function stripOneMContextMarker(model) {
+  let m = String(model || '').trim();
+  if (m.toLowerCase().endsWith('[1m]')) {
+    m = m.slice(0, -4).trim();
+  }
+  return m;
+}
+
+function resolveClaudeDesktopRole(model) {
+  const m = stripOneMContextMarker(model).toLowerCase();
+  if (m.includes('opus')) return 'opus';
+  if (m.includes('haiku')) return 'haiku';
+  if (m.includes('fable')) return 'fable';
+  if (m.includes('sonnet')) return 'sonnet';
+  return null;
+}
+
+function mapClaudeDesktopModel(requestedModel) {
+  const rawModel = stripOneMContextMarker(requestedModel);
+  const role = resolveClaudeDesktopRole(rawModel);
+  const store = getProxyRoutes();
+  const bindings = store?.claudeDesktop || {};
+  let targetRef = '';
+  if (role === 'sonnet') targetRef = bindings.sonnet;
+  else if (role === 'opus') targetRef = bindings.opus;
+  else if (role === 'haiku') targetRef = bindings.haiku;
+  else if (role === 'fable') targetRef = bindings.fable || bindings.opus;
+
+  if (targetRef) {
+    const route = (store?.routes || []).find(r => r.uid === targetRef || r.id === targetRef);
+    if (route) {
+      if (!route.enabled) {
+        return { error: `Claude Desktop 绑定的代理模型已禁用: ${route.id}` };
+      }
+      return { model: route.id, original: requestedModel, route };
+    }
+  }
+
+  // 直连回退：尝试直接匹配同名已配置路由
+  const directRoute = (store?.routes || []).find(r => r.id === rawModel || r.uid === rawModel);
+  if (directRoute) {
+    if (!directRoute.enabled) {
+      return { error: `请求的代理模型已禁用: ${directRoute.id}` };
+    }
+    return { model: directRoute.id, original: requestedModel, route: directRoute };
+  }
+
+  return {
+    error: `Claude Desktop 请求模型 [${requestedModel}] 对应的角色 [${role || '未知'}] 尚未在 AnyBridge 平台设置中绑定有效的代理模型。`,
+  };
+}
+
+function handleClaudeDesktopModels(res) {
+  const store = getProxyRoutes();
+  const bindings = store?.claudeDesktop || {};
+
+  const isOneMCandidate = (routeRef) => {
+    if (!routeRef) return false;
+    const r = (store?.routes || []).find(x => x.uid === routeRef || x.id === routeRef);
+    if (!r) return false;
+    const self1m = /\[1m\]|1m/i.test(r.id || '') || /\[1m\]|1m/i.test(r.displayName || '');
+    const target1m = Array.isArray(r.targets) && r.targets.some(t => /\[1m\]|1m/i.test(t.model || ''));
+    return self1m || target1m;
+  };
+
+  const models = [
+    { id: 'claude-sonnet-5', type: 'model', created_at: '2024-01-01T00:00:00Z', supports1m: isOneMCandidate(bindings.sonnet) },
+    { id: 'claude-opus-5', type: 'model', created_at: '2024-01-01T00:00:00Z', supports1m: isOneMCandidate(bindings.opus) },
+    { id: 'claude-haiku-4-5', type: 'model', created_at: '2024-01-01T00:00:00Z', supports1m: isOneMCandidate(bindings.haiku) },
+  ];
+  if (bindings.fable && String(bindings.fable).trim()) {
+    models.push({ id: 'claude-fable-5', type: 'model', created_at: '2024-01-01T00:00:00Z', supports1m: isOneMCandidate(bindings.fable) });
+  }
+  sendJson(res, 200, {
+    data: models,
+    has_more: false,
+    first_id: models[0]?.id || null,
+    last_id: models[models.length - 1]?.id || null,
+  });
+}
+
 function handleModels(req, res) {
   const pathname = pathnameOf(req);
+  if (pathname.startsWith('/claude-desktop')) {
+    handleClaudeDesktopModels(res);
+    return;
+  }
   const anthropic = pathname.startsWith('/anthropic/') || !!req.headers['anthropic-version'];
   const gemini = pathname === '/v1beta/models' || (pathname === '/v1/models' && (!!req.headers['x-goog-api-key'] || (req.url && req.url.includes('key='))));
   const scope = proxyScopeForPath(pathname);
@@ -471,6 +600,10 @@ function normalizeAnthropicContent(content) {
     if (!p || typeof p !== 'object') return null;
     if (p.type === 'text') return textPart(p.text);
     if (p.type === 'image') return p;
+    if (p.type === 'tool_use') return { type: 'tool_use', id: String(p.id || ''), name: String(p.name || ''), input: p.input || {} };
+    if (p.type === 'tool_result') return { type: 'tool_result', tool_use_id: String(p.tool_use_id || ''), content: p.content, is_error: p.is_error === true };
+    if (p.type === 'thinking') return { type: 'thinking', thinking: String(p.thinking || ''), signature: p.signature };
+    if (p.type === 'redacted_thinking') return { type: 'redacted_thinking', data: p.data };
     return null;
   }).filter(Boolean);
 }
@@ -683,6 +816,43 @@ function resolveProxyModel(model, kind, options = {}) {
   }
   const route = lookup.get(requested);
   if (!route) {
+    const providers = loadProviders();
+    const matchedProvider = Array.from(providers.values()).find(p =>
+      p && p.enabled !== false && (
+        p.id === requested
+        || p.name === requested
+        || p.defaultModel === requested
+        || (Array.isArray(p.models) && p.models.includes(requested))
+        || (Array.isArray(p.modelCatalog) && p.modelCatalog.some(e => e.model === requested))
+      )
+    );
+    if (matchedProvider) {
+      const dynamicRoute = {
+        id: requested,
+        enabled: true,
+        targets: [{
+          providerId: matchedProvider.id,
+          model: matchedProvider.defaultModel || requested,
+        }],
+      };
+      return { slot: routeAsSlot(dynamicRoute), route: dynamicRoute };
+    }
+    if (scope === 'antigravity') {
+      const store = readProvidersJson();
+      const agState = store.platforms?.antigravity;
+      const agProvider = agState?.providerId ? providers.get(agState.providerId) : Array.from(providers.values()).find(p => p && p.enabled !== false);
+      if (agProvider) {
+        const dynamicRoute = {
+          id: requested,
+          enabled: true,
+          targets: [{
+            providerId: agProvider.id,
+            model: agProvider.defaultModel || requested,
+          }],
+        };
+        return { slot: routeAsSlot(dynamicRoute), route: dynamicRoute };
+      }
+    }
     const routeWithOtherFormat = routes.find(route => routeAliases(route, lookupOptions).includes(requested));
     if (routeWithOtherFormat) {
       return { error: `模型 ${requested} 未暴露为 ${localProxyKind(kind)} 兼容入口。` };
@@ -707,6 +877,9 @@ export const __localProxyTest = {
   sendGemini,
   sendGeminiStream,
   geminiModelFromPath,
+  stripOneMContextMarker,
+  resolveClaudeDesktopRole,
+  mapClaudeDesktopModel,
 };
 
 function hasImage(messages) {
@@ -730,8 +903,45 @@ function openAIChatMessages(system, messages) {
   const out = [];
   if (system) out.push({ role: 'system', content: system });
   for (const m of messages) {
-    const content = (m.content || []).map(p => openAIPartFromAnthropic(p, 'chat')).filter(Boolean);
-    out.push({ role: m.role === 'assistant' ? 'assistant' : 'user', content: content.length === 1 && content[0].type === 'text' ? content[0].text : content });
+    const rawParts = Array.isArray(m.content) ? m.content : (m.content ? [textPart(m.content)].filter(Boolean) : []);
+    const textParts = [];
+    const toolCalls = [];
+    for (const p of rawParts) {
+      if (p.type === 'tool_use') {
+        toolCalls.push({
+          id: p.id || `call_${crypto.randomUUID().replace(/-/g, '').slice(0, 24)}`,
+          type: 'function',
+          function: {
+            name: p.name,
+            arguments: typeof p.input === 'string' ? p.input : JSON.stringify(p.input || {}),
+          },
+        });
+      } else if (p.type === 'tool_result') {
+        const contentStr = typeof p.content === 'string'
+          ? p.content
+          : (Array.isArray(p.content) ? p.content.map(c => c?.text || '').join('\n') : JSON.stringify(p.content || ''));
+        out.push({
+          role: 'tool',
+          tool_call_id: p.tool_use_id || '',
+          content: contentStr,
+        });
+      } else {
+        const converted = openAIPartFromAnthropic(p, 'chat');
+        if (converted) textParts.push(converted);
+      }
+    }
+    if (m.role === 'assistant') {
+      const assistantMsg = { role: 'assistant' };
+      const content = textParts.length === 1 && textParts[0].type === 'text' ? textParts[0].text : (textParts.length > 0 ? textParts : null);
+      if (content !== null) assistantMsg.content = content;
+      if (toolCalls.length > 0) assistantMsg.tool_calls = toolCalls;
+      if (assistantMsg.content != null || assistantMsg.tool_calls) {
+        out.push(assistantMsg);
+      }
+    } else if (m.role === 'user' && textParts.length > 0) {
+      const content = textParts.length === 1 && textParts[0].type === 'text' ? textParts[0].text : textParts;
+      out.push({ role: 'user', content });
+    }
   }
   return out;
 }
@@ -1624,17 +1834,108 @@ function sendOpenAIResponses(ctx, res, result) {
 }
 
 function sendAnthropic(ctx, res, result) {
-  const message = { id: `msg_${crypto.randomUUID().replace(/-/g, '')}`, type: 'message', role: 'assistant', model: ctx.model, content: [{ type: 'text', text: result.text }], stop_reason: 'end_turn', stop_sequence: null, usage: anthropicUsage(result.usage) };
   const extra = result.extraHeaders || {};
+  const echoModel = ctx.originalModel || ctx.model;
+  const messageId = result.json?.id || `msg_${crypto.randomUUID().replace(/-/g, '')}`;
+
+  let content = [];
+  let stopReason = 'end_turn';
+  let stopSequence = null;
+
+  if (result.conn?.format === 'anthropic' && Array.isArray(result.json?.content) && result.json.content.length > 0) {
+    content = result.json.content;
+    stopReason = result.json.stop_reason || (result.toolCalls?.length ? 'tool_use' : 'end_turn');
+    stopSequence = result.json.stop_sequence || null;
+  } else {
+    if (result.text) {
+      content.push({ type: 'text', text: result.text });
+    }
+    for (const tc of (result.toolCalls || [])) {
+      content.push({
+        type: 'tool_use',
+        id: tc.id || `call_${crypto.randomUUID().replace(/-/g, '').slice(0, 24)}`,
+        name: tc.name,
+        input: tc.arguments || {},
+      });
+    }
+    if (content.length === 0) {
+      content.push({ type: 'text', text: '' });
+    }
+    stopReason = (result.toolCalls && result.toolCalls.length > 0) ? 'tool_use' : 'end_turn';
+  }
+
+  const message = {
+    id: messageId,
+    type: 'message',
+    role: 'assistant',
+    model: echoModel,
+    content,
+    stop_reason: stopReason,
+    stop_sequence: stopSequence,
+    usage: anthropicUsage(result.usage),
+  };
+
   if (ctx.stream) {
     res.writeHead(200, cors({ 'content-type': 'text/event-stream; charset=utf-8', ...extra }));
     sse(res, 'message_start', { type: 'message_start', message: { ...message, content: [] } });
-    sse(res, 'content_block_start', { type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } });
-    if (result.text) sse(res, 'content_block_delta', { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: result.text } });
-    sse(res, 'content_block_stop', { type: 'content_block_stop', index: 0 });
-    sse(res, 'message_delta', { type: 'message_delta', delta: { stop_reason: 'end_turn', stop_sequence: null }, usage: anthropicUsage(result.usage) });
+
+    let blockIndex = 0;
+    for (const block of content) {
+      if (block.type === 'text') {
+        sse(res, 'content_block_start', {
+          type: 'content_block_start',
+          index: blockIndex,
+          content_block: { type: 'text', text: '' },
+        });
+        if (block.text) {
+          sse(res, 'content_block_delta', {
+            type: 'content_block_delta',
+            index: blockIndex,
+            delta: { type: 'text_delta', text: block.text },
+          });
+        }
+        sse(res, 'content_block_stop', { type: 'content_block_stop', index: blockIndex });
+        blockIndex++;
+      } else if (block.type === 'tool_use') {
+        sse(res, 'content_block_start', {
+          type: 'content_block_start',
+          index: blockIndex,
+          content_block: { type: 'tool_use', id: block.id, name: block.name, input: {} },
+        });
+        const partialJson = typeof block.input === 'string' ? block.input : JSON.stringify(block.input || {});
+        sse(res, 'content_block_delta', {
+          type: 'content_block_delta',
+          index: blockIndex,
+          delta: { type: 'input_json_delta', partial_json: partialJson },
+        });
+        sse(res, 'content_block_stop', { type: 'content_block_stop', index: blockIndex });
+        blockIndex++;
+      } else if (block.type === 'thinking') {
+        sse(res, 'content_block_start', {
+          type: 'content_block_start',
+          index: blockIndex,
+          content_block: { type: 'thinking', thinking: '' },
+        });
+        if (block.thinking) {
+          sse(res, 'content_block_delta', {
+            type: 'content_block_delta',
+            index: blockIndex,
+            delta: { type: 'thinking_delta', thinking: block.thinking },
+          });
+        }
+        sse(res, 'content_block_stop', { type: 'content_block_stop', index: blockIndex });
+        blockIndex++;
+      }
+    }
+
+    sse(res, 'message_delta', {
+      type: 'message_delta',
+      delta: { stop_reason: stopReason, stop_sequence: stopSequence },
+      usage: anthropicUsage(result.usage),
+    });
     sse(res, 'message_stop', { type: 'message_stop' });
-    res.end(); return;
+    res.end();
+    return;
   }
   sendJson(res, 200, message, extra);
 }
@@ -1659,6 +1960,9 @@ function geminiUsageMetadata(usage = {}) {
 function geminiResponsePayload(ctx, result) {
   if (result.conn?.format === 'gemini' && isPlainObject(result.json)) return result.json;
   const parts = [];
+  if (result.reasoningText) {
+    parts.push({ text: result.reasoningText, thought: true });
+  }
   if (result.text) parts.push({ text: result.text });
   for (const call of result.toolCalls || []) {
     parts.push({
@@ -1759,7 +2063,7 @@ export async function handleLocalProxyRequest(req, res, body) {
     ctx.proxyRouteScope = scope;
     return ctx;
   };
-  if (req.method === 'GET' && (p === '/v1/models' || p === '/models' || p === '/codex/v1/models' || p === '/anthropic/v1/models' || p === '/v1beta/models')) { handleModels(req, res); return; }
+  if (req.method === 'GET' && (p === '/v1/models' || p === '/models' || p === '/codex/v1/models' || p === '/anthropic/v1/models' || p === '/v1beta/models' || p === '/claude-desktop/v1/models' || p === '/claude-desktop/models')) { handleModels(req, res); return; }
   const geminiSingleModel = req.method === 'GET' ? p.match(/^\/(?:v1beta|v1)\/models\/(?:models\/)?([^/:]+)$/) : null;
   if (geminiSingleModel) { handleGeminiModelInfo(decodeURIComponent(geminiSingleModel[1]), res, scope); return; }
   let json;
@@ -1767,7 +2071,7 @@ export async function handleLocalProxyRequest(req, res, body) {
   catch (e) {
     const message = `请求 JSON 解析失败: ${e.message}`;
     if (p.startsWith('/v1beta/') || isGeminiGenerateContentPath(p)) sendGeminiError(res, 400, message, 'INVALID_ARGUMENT');
-    else if (p.startsWith('/anthropic/') || p.endsWith('/messages')) sendAnthropicError(res, 400, message);
+    else if (p.startsWith('/anthropic/') || p.startsWith('/claude-desktop') || p.endsWith('/messages')) sendAnthropicError(res, 400, message);
     else sendError(res, 400, message);
     return;
   }
@@ -1786,7 +2090,19 @@ export async function handleLocalProxyRequest(req, res, body) {
   try {
     if (p === '/v1/chat/completions' || p === '/chat/completions' || p === '/codex/v1/chat/completions') { const ctx = attachScope(normalizeRequest('openai', json)); sendOpenAIChat(ctx, res, await execute(ctx)); return; }
     if (p === '/v1/responses' || p === '/responses' || p === '/codex/v1/responses') { const ctx = attachScope(normalizeRequest('responses', json)); sendOpenAIResponses(ctx, res, await execute(ctx)); return; }
-    if (p === '/v1/messages' || p === '/messages' || p === '/anthropic/v1/messages' || p === '/anthropic/messages') { const ctx = normalizeRequest('anthropic', json); sendAnthropic(ctx, res, await execute(ctx)); return; }
+    if (p === '/claude-desktop/v1/messages' || p === '/claude-desktop/messages') {
+      const mapped = mapClaudeDesktopModel(json.model);
+      if (mapped.error) {
+        sendAnthropicError(res, 400, mapped.error);
+        return;
+      }
+      json.model = mapped.model;
+      const ctx = attachScope(normalizeRequest('anthropic', json));
+      ctx.originalModel = mapped.original;
+      sendAnthropic(ctx, res, await execute(ctx));
+      return;
+    }
+    if (p === '/v1/messages' || p === '/messages' || p === '/anthropic/v1/messages' || p === '/anthropic/messages') { const ctx = attachScope(normalizeRequest('anthropic', json)); sendAnthropic(ctx, res, await execute(ctx)); return; }
     if (isGeminiGenerateContentPath(p)) {
       if (req.method !== 'POST') {
         sendGeminiError(res, 405, `Gemini ${geminiMethodFromPath(p)} 端点仅支持 POST`, 'FAILED_PRECONDITION');
@@ -1811,6 +2127,65 @@ export async function handleLocalProxyRequest(req, res, body) {
       else sendGemini(ctx, res, result);
       return;
     }
+    if (isAntigravityPath(p)) {
+      const method = getAntigravityMethod(p);
+      if (method === 'loadCodeAssist') {
+        sendJson(res, 200, mockAntigravityLoadCodeAssist());
+        return;
+      }
+      if (method === 'onboardUser') {
+        sendJson(res, 200, { status: 'ONBOARDED' });
+        return;
+      }
+      if (method === 'retrieveUserQuotaSummary') {
+        sendJson(res, 200, mockAntigravityUserQuotaSummary());
+        return;
+      }
+      if (method === 'fetchAvailableModels') {
+        const providersJson = readProvidersJson();
+        sendJson(res, 200, { models: buildAntigravityModelsList(providersJson) });
+        return;
+      }
+      if (method === 'countTokens') {
+        const cleanModel = cleanAntigravityModelId(json.model || 'gemini-3-pro');
+        const ctx = attachScope(normalizeRequest('gemini', { ...json, model: cleanModel }));
+        const totalTokens = await executeGeminiCountTokens(ctx).catch(() => 100);
+        sendJson(res, 200, { totalTokens });
+        return;
+      }
+      if (method === 'streamGenerateContent' || method === 'generateContent') {
+        const stream = method === 'streamGenerateContent';
+        const asSse = new URL(req.url, 'http://localhost').searchParams.get('alt') === 'sse' || stream;
+        const reqData = (json.request && typeof json.request === 'object') ? json.request : json;
+        const cleanModel = cleanAntigravityModelId(json.model || reqData.model || '');
+        const providersJson = readProvidersJson();
+        const targetModel = cleanModel || resolveDefaultAntigravityModel(providersJson);
+
+        const source = {
+          ...reqData,
+          model: targetModel,
+          stream,
+          generationConfig: reqData.generationConfig || json.generationConfig,
+          systemInstruction: reqData.systemInstruction || json.systemInstruction,
+          tools: reqData.tools || json.tools,
+        };
+        const ctx = attachScope(normalizeRequest('gemini', source));
+        const result = await execute(ctx);
+        const payload = geminiResponsePayload(ctx, result);
+        const agPayload = { response: payload };
+
+        if (stream) {
+          res.writeHead(200, cors({ 'content-type': 'text/event-stream; charset=utf-8', ...(result.extraHeaders || {}) }));
+          sse(res, null, agPayload);
+          res.end();
+        } else {
+          sendJson(res, 200, agPayload, result.extraHeaders || {});
+        }
+        return;
+      }
+      sendJson(res, 200, {});
+      return;
+    }
     sendError(res, 404, `未知本地代理路径: ${p}`);
   } catch (e) {
     if (e.upstreamResponse) {
@@ -1820,8 +2195,18 @@ export async function handleLocalProxyRequest(req, res, body) {
     const status = Number(e.status) || 502;
     const type = e.type || 'upstream_error';
     const message = e.message || String(e);
-    if (p.startsWith('/anthropic/') || p.endsWith('/messages') || p.endsWith('/messages/count_tokens')) {
+    if (p.startsWith('/anthropic/') || p.startsWith('/claude-desktop') || p.endsWith('/messages') || p.endsWith('/messages/count_tokens')) {
       sendAnthropicError(res, status, message, type);
+      return;
+    }
+    if (isAntigravityPath(p)) {
+      sendJson(res, status >= 400 && status < 600 ? status : 502, {
+        error: {
+          code: status,
+          message,
+          status: type,
+        },
+      });
       return;
     }
     if (p.startsWith('/v1beta/') || isGeminiGenerateContentPath(p)) {

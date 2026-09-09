@@ -15,8 +15,11 @@ globalThis.PLATFORM_SHELL_PAGES = new Set([
   'platform-cursor-add',
   'platform-claude-code',
   'platform-claude-add',
+  'platform-claude-desktop',
   'platform-codex',
   'platform-codex-add',
+  'platform-antigravity',
+  'platform-antigravity-add',
   'platform-codebuddy',
   'platform-codebuddy-add',
   'platform-opencode',
@@ -126,8 +129,11 @@ function navigateTo(pageId) {
     'platform-cursor-add': 'models',
     'platform-claude-code': 'models',
     'platform-claude-add': 'models',
+    'platform-claude-desktop': 'models',
     'platform-codex': 'models',
     'platform-codex-add': 'models',
+    'platform-antigravity': 'models',
+    'platform-antigravity-add': 'models',
     'platform-codebuddy': 'models',
     'platform-codebuddy-add': 'models',
     'platform-opencode': 'models',
@@ -172,6 +178,12 @@ function navigateTo(pageId) {
   }
   if (pageId === 'more-platforms' && typeof refreshPlatforms === 'function') {
     refreshPlatforms();
+  }
+  if (pageId === 'models' && typeof renderModelMap === 'function') {
+    renderModelMap().catch(() => {});
+  }
+  if (pageId === 'platform-claude-desktop' && typeof loadClaudeDesktopConsole === 'function') {
+    loadClaudeDesktopConsole().catch(() => {});
   }
   if (pageId === 'extensions') {
     if (typeof onExtensionsPageEnter === 'function') onExtensionsPageEnter();
@@ -525,6 +537,10 @@ function updateProxyPlatformCopy(platformId) {
   }
   const kiteModalPlatform = document.getElementById('kite-plugin-platform-label');
   if (kiteModalPlatform) kiteModalPlatform.textContent = meta.label;
+  const emptySubtitle = document.getElementById('model-map-empty-subtitle');
+  if (emptySubtitle) {
+    emptySubtitle.textContent = `添加第一个模型映射，让 ${meta.label || '当前平台'} 使用你指定的 AI 供应商与模型能力。`;
+  }
 }
 
 function currentKitePluginPlatform() {
@@ -604,8 +620,11 @@ function syncPlatformRailForPage(pageId) {
     'platform-cursor-add': 'cursor',
     'platform-claude-code': 'claude-code',
     'platform-claude-add': 'claude-code',
+    'platform-claude-desktop': 'claude-desktop',
     'platform-codex': 'codex',
     'platform-codex-add': 'codex',
+    'platform-antigravity': 'antigravity',
+    'platform-antigravity-add': 'antigravity',
     'platform-codebuddy': 'codebuddy',
     'platform-codebuddy-add': 'codebuddy',
     'platform-opencode': 'opencode',
@@ -638,6 +657,7 @@ globalThis.DEFAULT_PLATFORM_RAIL_ORDER = [
   'cursor',
   'codex',
   'claude-code',
+  'claude-desktop',
   'codebuddy',
   'workbuddy',
   'grok',
@@ -661,7 +681,24 @@ function readPlatformRailOrder() {
     if (!raw) return null;
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed)) return null;
-    const filtered = parsed.filter(id => typeof id === 'string');
+    let filtered = parsed.filter(id => typeof id === 'string');
+    if (!filtered.includes('claude-desktop')) {
+      const ccIdx = filtered.indexOf('claude-code');
+      if (ccIdx !== -1) {
+        filtered.splice(ccIdx + 1, 0, 'claude-desktop');
+      } else {
+        filtered.push('claude-desktop');
+      }
+      writePlatformRailOrder(filtered);
+    } else {
+      const cdIdx = filtered.indexOf('claude-desktop');
+      const ccIdx = filtered.indexOf('claude-code');
+      if (ccIdx !== -1 && cdIdx !== -1 && cdIdx !== ccIdx + 1) {
+        filtered.splice(cdIdx, 1);
+        filtered.splice(ccIdx + 1, 0, 'claude-desktop');
+        writePlatformRailOrder(filtered);
+      }
+    }
     const OLD_DEFAULTS = [
       '["devin","windsurf","codex","cursor","claude-code","codebuddy","workbuddy","opencode","zcode","grok"]',
       '["windsurf","devin","codex","claude-code","cursor","codebuddy","workbuddy","zcode","opencode","grok"]'
@@ -1090,6 +1127,9 @@ function openProxyPlatform(platformId) {
   }
   activePlatformSection = 'models';
   navigateTo('models');
+  if (typeof renderModelMap === 'function') {
+    renderModelMap().catch(() => {});
+  }
 }
 
 function openPlaceholderPlatform(platformId) {

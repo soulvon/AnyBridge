@@ -2,6 +2,7 @@
 import { escapeHtml, escAttr } from './ui/dom.js';
 // ═══════ MODEL MAP (可编辑槽位映射 + 故障转移链) ═══════
 globalThis.modelMapStore = { slots: [] };       // load_model_map 结果
+globalThis.modelMapLoaded = false;              // 是否已成功从磁盘载入
 globalThis.ideModels = null;               // list_ide_models 缓存（数组）
 globalThis.ideMeta = null;                 // { source, capturedAt, account } 元信息
 globalThis.modelMapSelectedIds = new Set(); // 批量勾选：modelUid
@@ -487,114 +488,157 @@ function renderTargetChain(targets) {
 async function renderModelMap() {
   const body = document.getElementById('modelMapBody');
   if (!body) return;
-  await ensureIdeModels({ force: true });
-  await ensureInjected();
   try {
-    const res = await invoke('load_model_map');
-    modelMapStore = (res && Array.isArray(res.slots)) ? res : { slots: [] };
-  } catch (e) {
-    modelMapStore = { slots: [] };
-    addLog('warn', '加载模型映射失败: ' + e);
-  }
+    try {
+      await ensureIdeModels({ force: true });
+    } catch (e) {
+      console.warn('[renderModelMap] ensureIdeModels error:', e);
+    }
+    try {
+      await ensureInjected();
+    } catch (e) {
+      console.warn('[renderModelMap] ensureInjected error:', e);
+    }
+    try {
+      const res = await invoke('load_model_map');
+      modelMapStore = (res && Array.isArray(res.slots)) ? res : { slots: [] };
+      globalThis.modelMapLoaded = true;
+      if (typeof addLog === 'function') {
+        addLog('info', `[renderModelMap] 从磁盘读取到 ${modelMapStore.slots.length} 个槽位`);
+      }
+    } catch (e) {
+      modelMapStore = { slots: [] };
+      if (typeof addLog === 'function') addLog('warn', '加载模型映射失败: ' + e);
+    }
 
-  ensureModelMapDefaults();
-  lastSavedProxyEnhancement = cloneProxyEnhancement();
+    ensureModelMapDefaults();
+    lastSavedProxyEnhancement = cloneProxyEnhancement();
 
-  // 同步 namePrefix 到输入框
-  // 兼容旧 model-map.json（无 injected 字段）
-  modelMapStore.unlockScope = normalizeUnlockScope(modelMapStore.unlockScope || modelMapStore.slotDisplayMode);
-  modelMapStore.slotDisplayMode = modelMapStore.unlockScope;
-  modelMapStore.slotVisibilityMode = normalizeSlotVisibilityMode(modelMapStore.slotVisibilityMode);
-  ensureSlotVisibilityArray();
-  const badge = document.getElementById('injected-count-badge');
-  if (badge) badge.textContent = '槽位管理';
+    modelMapStore.unlockScope = normalizeUnlockScope(modelMapStore.unlockScope || modelMapStore.slotDisplayMode);
+    modelMapStore.slotDisplayMode = modelMapStore.unlockScope;
+    modelMapStore.slotVisibilityMode = normalizeSlotVisibilityMode(modelMapStore.slotVisibilityMode);
+    ensureSlotVisibilityArray();
+    const badge = document.getElementById('injected-count-badge');
+    if (badge) badge.textContent = '槽位管理';
 
-  const slots = modelMapStore.slots || [];
-  const rows = slots.map(s => ({ kind: 'mapped', slot: s, model: slotModelOf(s.modelUid) }));
-  if (rows.length === 0) {
-    body.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--text-muted);padding:18px">暂无模型映射，点击「添加映射」创建第一条关系</td></tr>';
-    syncModelMapSelectionState();
-    return;
-  }
-
-  body.innerHTML = rows.map(row => {
-    const s = row.slot;
-    const orig = originalNameOf(s.modelUid);
-    const customName = s.displayName && s.displayName.trim();
-    const baseName = customName || orig;
-    const prefix = (modelMapStore.namePrefix || '').trim();
-    const tpl = (modelMapStore.labelTemplate || '').trim();
-    const firstTarget = (s.targets && s.targets[0]) || null;
-    const providerName = firstTarget ? providerNameOf(firstTarget.providerId) : '';
-    const apiModel = firstTarget ? firstTarget.model : '';
-    const display = renderLabelTemplate(tpl, {
-      prefix, label: baseName, provider: providerName, apiModel
+    const slots = modelMapStore.slots || [];
+    const rows = slots.map(s => {
+      try {
+        return { kind: 'mapped', slot: s, model: slotModelOf(s.modelUid) };
+      } catch (err) {
+        return { kind: 'mapped', slot: s, model: null };
+      }
     });
-    const slotIconKey = typeof getModelIconKey === 'function'
-      ? (getModelIconKey(apiModel) || getModelIconKey(baseName) || getModelIconKey(s.modelUid) || getModelIconKey(orig))
-      : null;
-    const modelIconHtml = typeof renderModelIcon === 'function'
-      ? renderModelIcon(slotIconKey || apiModel || s.modelUid || orig || baseName)
-      : '';
-    const chain = (s.targets && s.targets.length)
-      ? renderTargetChain(s.targets)
-      : `<span style="color:var(--warn,#d97706);cursor:pointer" data-action="openFailoverEditor" data-arg="${escAttr(s.modelUid)}">未设置 ⚠ [点击配置]</span>`;
-    const vision = slotVisionAssessment(s.modelUid, s.targets || [], s.supportsImages !== false);
-    const enabled = s.enabled !== false;
-    const hasVisionModels = (modelMapStore.visionModels?.imageModels?.length || 0) > 0;
-    const useThirdParty = s.useThirdPartyVision === true;
-    const visionDisabled = !hasVisionModels ? 'disabled' : '';
-    const visionTitle = !hasVisionModels
-      ? '请先在「代理增强」中配置图片理解模型'
-      : (useThirdParty ? '已启用第三方图片理解' : '启用后图片将使用第三方模型理解');
-    const selected = modelMapSelectedIds.has(s.modelUid);
-    return `
-      <tr data-model-uid="${escAttr(s.modelUid)}" data-row-kind="mapped" class="${selected ? 'is-selected' : ''}">
-        <td class="model-map-select-cell" data-action="__noop" data-stop>
-          <label class="provider-select-check provider-select-check-table" title="选择此映射" data-action="__noop" data-stop>
-            <input type="checkbox" class="model-map-row-check" data-uid="${escAttr(s.modelUid)}" ${selected ? 'checked' : ''} data-action="toggleModelMapSelection" data-events="change" data-args="[&quot;${escAttr(s.modelUid)}&quot;]" data-pass-checked data-pass-event>
-            <span></span>
-          </label>
-        </td>
-        <td class="editable-cell display-name-cell" data-action="startEditDisplayName" data-args="[&quot;${escAttr(s.modelUid)}&quot;]" data-pass-this title="${escAttr(display)}">
-          <div class="model-map-display-name-wrap" style="display:flex;align-items:center;gap:8px;min-width:0;">
-            ${modelIconHtml}
-            <span class="model-map-display-name-text" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;">${escAttr(display)}</span>
-          </div>
-        </td>
-        <td>
-          <div>${escAttr(orig)}</div>
-          <div style="margin-top:3px;">${renderVisionPill(vision, true)}</div>
-        </td>
-        <td class="model-target-cell" data-action="openFailoverEditor" data-arg="${escAttr(s.modelUid)}" title="配置故障转移分流目标">${chain}</td>
-        <td>
-          <div class="model-map-actions">
-            <button class="btn-icon model-map-action-btn" data-action="openSlotEditor" data-arg="${escAttr(s.modelUid)}" title="编辑映射" aria-label="编辑映射">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-            </button>
-            <button class="btn-icon model-map-action-btn danger" data-action="deleteSlot" data-arg="${escAttr(s.modelUid)}" title="删除映射" aria-label="删除映射">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"/></svg>
-            </button>
-          </div>
-        </td>
-        <td class="model-map-toggle-cell">
-          <label class="toggle-switch" title="${escAttr(visionTitle)}">
-            <input type="checkbox" ${useThirdParty ? 'checked' : ''} ${visionDisabled} data-action="toggleSlotThirdPartyVision" data-events="change" data-args="[&quot;${escAttr(s.modelUid)}&quot;]" data-pass-checked>
-            <span class="toggle-slider"></span>
-          </label>
-        </td>
-        <td class="model-map-toggle-cell">
-          <label class="toggle-switch" title="${enabled ? '已启用，点击停用' : '已停用，点击启用'}">
-            <input type="checkbox" ${enabled ? 'checked' : ''} data-action="toggleSlotEnabled" data-events="change" data-arg="${escAttr(s.modelUid)}">
-            <span class="toggle-slider"></span>
-          </label>
-        </td>
-      </tr>`;
-  }).join('');
 
-  // 渲染后立即应用当前的过滤器与搜索关键字
-  filterModelTable();
-  syncModelMapSelectionState();
+    const emptyEl = document.getElementById('model-map-empty');
+    const tableEl = document.getElementById('modelMapTable');
+    const ideName = (typeof getTargetIde === 'function' && getTargetIde() === 'devin') ? 'Devin' : 'Windsurf';
+    const subtitleEl = document.getElementById('model-map-empty-subtitle');
+    if (subtitleEl) {
+      subtitleEl.textContent = `添加第一个模型映射，让 ${ideName} 使用你指定的 AI 供应商与模型能力。`;
+    }
+
+    if (rows.length === 0) {
+      if (emptyEl) emptyEl.style.display = '';
+      if (tableEl) tableEl.style.display = 'none';
+      body.innerHTML = '';
+      syncModelMapSelectionState();
+      return;
+    }
+
+    if (emptyEl) emptyEl.style.display = 'none';
+    if (tableEl) tableEl.style.display = 'table';
+
+    body.innerHTML = rows.map(row => {
+      try {
+        const s = row.slot;
+        const orig = originalNameOf(s.modelUid);
+        const customName = s.displayName && s.displayName.trim();
+        const baseName = customName || orig;
+        const prefix = (modelMapStore.namePrefix || '').trim();
+        const tpl = (modelMapStore.labelTemplate || '').trim();
+        const firstTarget = (s.targets && s.targets[0]) || null;
+        const providerName = firstTarget ? providerNameOf(firstTarget.providerId) : '';
+        const apiModel = firstTarget ? firstTarget.model : '';
+        const display = renderLabelTemplate(tpl, {
+          prefix, label: baseName, provider: providerName, apiModel
+        });
+        const slotIconKey = typeof getModelIconKey === 'function'
+          ? (getModelIconKey(apiModel) || getModelIconKey(baseName) || getModelIconKey(s.modelUid) || getModelIconKey(orig))
+          : null;
+        const modelIconHtml = typeof renderModelIcon === 'function'
+          ? renderModelIcon(slotIconKey || apiModel || s.modelUid || orig || baseName)
+          : '';
+        const chain = (s.targets && s.targets.length)
+          ? renderTargetChain(s.targets)
+          : `<span style="color:var(--warn,#d97706);cursor:pointer" data-action="openFailoverEditor" data-arg="${escAttr(s.modelUid)}">未设置 ⚠ [点击配置]</span>`;
+        const vision = typeof slotVisionAssessment === 'function'
+          ? slotVisionAssessment(s.modelUid, s.targets || [], s.supportsImages !== false)
+          : { state: 'supported', label: '支持图片' };
+        const enabled = s.enabled !== false;
+        const hasVisionModels = (modelMapStore.visionModels?.imageModels?.length || 0) > 0;
+        const useThirdParty = s.useThirdPartyVision === true;
+        const visionDisabled = !hasVisionModels ? 'disabled' : '';
+        const visionTitle = !hasVisionModels
+          ? '请先在「代理增强」中配置图片理解模型'
+          : (useThirdParty ? '已启用第三方图片理解' : '启用后图片将使用第三方模型理解');
+        const selected = modelMapSelectedIds.has(s.modelUid);
+        return `
+          <tr data-model-uid="${escAttr(s.modelUid)}" data-row-kind="mapped" class="${selected ? 'is-selected' : ''}">
+            <td class="model-map-select-cell" data-action="__noop" data-stop>
+              <label class="provider-select-check provider-select-check-table" title="选择此映射" data-action="__noop" data-stop>
+                <input type="checkbox" class="model-map-row-check" data-uid="${escAttr(s.modelUid)}" ${selected ? 'checked' : ''} data-action="toggleModelMapSelection" data-events="change" data-args="[&quot;${escAttr(s.modelUid)}&quot;]" data-pass-checked data-pass-event>
+                <span></span>
+              </label>
+            </td>
+            <td class="editable-cell display-name-cell" data-action="startEditDisplayName" data-args="[&quot;${escAttr(s.modelUid)}&quot;]" data-pass-this title="${escAttr(display)}">
+              <div class="model-map-display-name-wrap" style="display:flex;align-items:center;gap:8px;min-width:0;">
+                ${modelIconHtml}
+                <span class="model-map-display-name-text" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;">${escAttr(display)}</span>
+              </div>
+            </td>
+            <td>
+              <div>${escAttr(orig)}</div>
+              <div style="margin-top:3px;">${typeof renderVisionPill === 'function' ? renderVisionPill(vision, true) : ''}</div>
+            </td>
+            <td class="model-target-cell" data-action="openFailoverEditor" data-arg="${escAttr(s.modelUid)}" title="配置故障转移分流目标">${chain}</td>
+            <td>
+              <div class="model-map-actions">
+                <button class="btn-icon model-map-action-btn" data-action="openSlotEditor" data-arg="${escAttr(s.modelUid)}" title="编辑映射" aria-label="编辑映射">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                </button>
+                <button class="btn-icon model-map-action-btn danger" data-action="deleteSlot" data-arg="${escAttr(s.modelUid)}" title="删除映射" aria-label="删除映射">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"/></svg>
+                </button>
+              </div>
+            </td>
+            <td class="model-map-toggle-cell">
+              <label class="toggle-switch" title="${escAttr(visionTitle)}">
+                <input type="checkbox" ${useThirdParty ? 'checked' : ''} ${visionDisabled} data-action="toggleSlotThirdPartyVision" data-events="change" data-args="[&quot;${escAttr(s.modelUid)}&quot;]" data-pass-checked>
+                <span class="toggle-slider"></span>
+              </label>
+            </td>
+            <td class="model-map-toggle-cell">
+              <label class="toggle-switch" title="${enabled ? '已启用，点击停用' : '已停用，点击启用'}">
+                <input type="checkbox" ${enabled ? 'checked' : ''} data-action="toggleSlotEnabled" data-events="change" data-arg="${escAttr(s.modelUid)}">
+                <span class="toggle-slider"></span>
+              </label>
+            </td>
+          </tr>`;
+      } catch (rowErr) {
+        console.error('[renderModelMap] row render error:', rowErr);
+        return '';
+      }
+    }).join('');
+
+    filterModelTable();
+    syncModelMapSelectionState();
+  } catch (globalErr) {
+    console.error('[renderModelMap] global error:', globalErr);
+    if (typeof addLog === 'function') {
+      addLog('err', '[renderModelMap] 渲染严重异常: ' + globalErr);
+    }
+  }
 }
 
 // ─── 双击/点击编辑显示名 ───
@@ -651,18 +695,22 @@ function startEditDisplayName(td, uid) {
 // ═══════ MODEL FILTERING LOGIC ═══════
 function filterModelTable() {
   const searchInput = document.getElementById('model-search-input');
-  const query = searchInput ? searchInput.value.toLowerCase().trim() : '';
+  const query = String(searchInput?.value || '').toLowerCase().trim();
 
   const body = document.getElementById('modelMapBody');
   if (!body) return;
 
+  const prevNoResult = document.getElementById('model-map-no-result-row');
+  if (prevNoResult) prevNoResult.remove();
+
   const rows = body.getElementsByTagName('tr');
+  let matchCount = 0;
 
   for (let i = 0; i < rows.length; i++) {
     const row = rows[i];
 
-    // 跳过空数据提示行
-    if (row.cells.length === 1 && row.cells[0].colSpan >= 7) {
+    // 跳过无结果提示行
+    if (row.id === 'model-map-no-result-row') {
       continue;
     }
 
@@ -679,14 +727,27 @@ function filterModelTable() {
 
     if (matchesSearch) {
       row.style.display = '';
+      matchCount++;
     } else {
       row.style.display = 'none';
     }
   }
+
+  if (query && matchCount === 0 && rows.length > 0) {
+    const tr = document.createElement('tr');
+    tr.id = 'model-map-no-result-row';
+    tr.innerHTML = '<td colspan="7" style="text-align:center;color:var(--text-muted);padding:24px 0;font-size:13px;">未找到匹配的模型映射</td>';
+    body.appendChild(tr);
+  }
+
   syncModelMapSelectionState();
 }
 
 async function persistModelMap() {
+  if (!globalThis.modelMapLoaded) {
+    console.warn('[persistModelMap] modelMapStore 尚未加载完成，放弃保存以保护磁盘配置');
+    return false;
+  }
   try {
     ensureModelMapDefaults();
     await invoke('save_model_map', { map: modelMapForPersist() });
@@ -1154,6 +1215,7 @@ function updateVisionMultiImageMode(select) {
 
 globalThis._enhancementSaveTimer = null;
 async function autoSaveEnhancement() {
+  if (!globalThis.modelMapLoaded) return;
   ensureModelMapDefaults();
   if (_enhancementSaveTimer) clearTimeout(_enhancementSaveTimer);
   _enhancementSaveTimer = setTimeout(async () => {
@@ -1262,7 +1324,7 @@ function collectVisionModelOptions() {
     if (!p || p.enabled === false || p.meta?.codexConfig === true) return;
     providerSelectedModels(p).forEach(model => {
       const caps = providerCapabilities(p, model);
-      ['openai', 'anthropic'].forEach(apiFormat => {
+      ['openai', 'anthropic', 'gemini'].forEach(apiFormat => {
         options.push({ providerId: p.id, providerName: p.name || p.id, model, apiFormat, vision: caps.vision === true });
       });
     });
@@ -1271,7 +1333,10 @@ function collectVisionModelOptions() {
 }
 
 function visionFormatLabel(apiFormat) {
-  return normalizeMappingApiFormat(apiFormat) === 'anthropic' ? 'Anthropic' : 'OpenAI';
+  const fmt = normalizeMappingApiFormat(apiFormat);
+  if (fmt === 'anthropic') return 'Anthropic';
+  if (fmt === 'gemini') return 'Gemini';
+  return 'OpenAI';
 }
 
 function visionOptionKey(option) {
@@ -2541,6 +2606,7 @@ function targetRouteLabel(target) {
   const fmt = normalizeMappingApiFormat(target?.apiFormat || target?.api_format);
   if (fmt === 'openai') return 'OpenAI';
   if (fmt === 'anthropic') return 'Anthropic';
+  if (fmt === 'gemini') return 'Gemini';
   return '自动';
 }
 
@@ -3350,6 +3416,7 @@ function routeLabelForValue(value) {
   const fmt = normalizeMappingApiFormat(value);
   if (fmt === 'openai') return 'OpenAI';
   if (fmt === 'anthropic') return 'Anthropic';
+  if (fmt === 'gemini') return 'Gemini';
   return value || '未设置协议';
 }
 
@@ -3363,6 +3430,7 @@ function targetRouteOptionsForProvider(provider, currentValue) {
   if (mappingProviderUnlockEnabled(provider, 'claudeCode')) add('claudeCode');
   add('openai');
   add('anthropic');
+  add('gemini');
   add(currentValue === AUTO_ROUTE_VALUE ? AUTO_ROUTE_VALUE : (normalizeMappingUnlock(currentValue) || normalizeMappingApiFormat(currentValue)));
   return values.map(value => ({ value, label: routeLabelForValue(value) }));
 }

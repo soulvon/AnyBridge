@@ -1,6 +1,7 @@
 // ES module (P3) — vars on globalThis; functions kept + mirrored for hoist + data-action.
 // ═══════ LOCAL PROXY MODEL ROUTES ═══════
 globalThis.proxyRoutesStore = { version: 1, defaultModelId: '', routes: [] };
+globalThis.proxyRoutesStoreLoaded = false;
 globalThis.proxyRouteEditingId = '';
 globalThis.proxyRouteDraftTargets = [];
 globalThis.proxyRouteSelectedIds = new Set();
@@ -52,6 +53,7 @@ function normalizeProxyRouteTarget(target = {}) {
 
 function normalizeProxyRoute(route = {}) {
   return {
+    uid: String(route.uid || '').trim(),
     id: String(route.id || '').trim(),
     displayName: String(route.id || '').trim(),
     idFromRenameRule: route.idFromRenameRule === true || route.id_from_rename_rule === true,
@@ -77,10 +79,18 @@ function normalizeProxyRoute(route = {}) {
 
 function normalizeProxyRoutesStore(store = {}) {
   const routes = Array.isArray(store.routes) ? store.routes.map(normalizeProxyRoute).filter(route => route.id) : [];
+  const cd = store.claudeDesktop || store.claude_desktop;
+  const claudeDesktop = cd && typeof cd === 'object' ? {
+    sonnet: String(cd.sonnet || '').trim(),
+    opus: String(cd.opus || '').trim(),
+    haiku: String(cd.haiku || '').trim(),
+    fable: String(cd.fable || '').trim(),
+  } : (store.claudeDesktop || null);
   return {
     version: Number(store.version) || 1,
     defaultModelId: '',
     routes,
+    claudeDesktop,
   };
 }
 
@@ -311,6 +321,7 @@ async function loadProxyRoutes() {
   try {
     const store = await invoke('load_proxy_routes');
     proxyRoutesStore = normalizeProxyRoutesStore(store);
+    globalThis.proxyRoutesStoreLoaded = true;
     const fixedTargets = migrateProxyRouteUnlockConflicts();
     renderProxyRoutes();
     if (typeof syncLocalProxyUi === 'function') syncLocalProxyUi();
@@ -326,6 +337,10 @@ async function loadProxyRoutes() {
 }
 
 async function saveProxyRoutes(options = {}) {
+  if (!globalThis.proxyRoutesStoreLoaded) {
+    console.warn('[saveProxyRoutes] proxyRoutesStore 尚未加载完成，放弃保存以保护磁盘配置');
+    return false;
+  }
   if (!invoke) {
     const message = '当前环境缺少 Tauri invoke，无法保存本地代理模型列表';
     addLog('err', message);

@@ -69,6 +69,32 @@ const adapterContext = {
   }
 };
 
+// ── Safely load adapter module without relying on dynamic import callback (pkg compatible) ──
+async function loadAdapterFromDisk(adapterFilePath, mtimeMs) {
+  try {
+    const code = await readFile(adapterFilePath, 'utf-8');
+    let body = code.trim();
+    if (/^\s*export\s+default\s+/m.test(body)) {
+      body = body.replace(/^\s*export\s+default\s+/m, 'return ');
+    } else if (/^\s*module\.exports\s*=/m.test(body)) {
+      body = `let module = { exports: {} };\n${body}\nreturn module.exports.default || module.exports;`;
+    }
+    const fn = new Function(body);
+    const mod = fn();
+    if (mod && typeof mod === 'object') return mod;
+  } catch (parseErr) {
+    // Fallback to standard dynamic import if available in runtime
+    try {
+      const adapterUrl = `file://${adapterFilePath}?t=${mtimeMs}`;
+      const mod = await import(adapterUrl);
+      return mod.default || mod;
+    } catch {
+      throw parseErr;
+    }
+  }
+  throw new Error(`无法从 ${adapterFilePath} 加载有效的适配器模块`);
+}
+
 // ── Load plugin (with cache + cache-busting) ──
 async function loadPlugin(pluginId, { reload = false } = {}) {
   if (!reload && pluginCache.has(pluginId)) {
@@ -87,9 +113,8 @@ async function loadPlugin(pluginId, { reload = false } = {}) {
   const jsonStats = await stat(jsonPath);
 
   const installerName = manifest.deploy?.source?.installer || manifest.deploy?.installer || 'adapter.js';
-  const adapterPath = `file://${resolve(join(pluginDir, installerName))}`;
-  // cache-busting query to avoid dynamic import caching stale module
-  const adapter = (await import(`${adapterPath}?t=${jsonStats.mtimeMs}`)).default;
+  const adapterPath = resolve(join(pluginDir, installerName));
+  const adapter = await loadAdapterFromDisk(adapterPath, jsonStats.mtimeMs);
 
   const loaded = { manifest, adapter, pluginDir, mtime: jsonStats.mtimeMs };
   pluginCache.set(pluginId, loaded);
@@ -203,6 +228,105 @@ async function runDeploy(body, onStreamProgress) {
   };
 }
 
+// ── Check plugin update ──
+async function checkPluginUpdate(body) {
+  const { pluginId, installPath } = body;
+  const loaded = await loadPlugin(pluginId);
+  const upgradeSpec = loaded.manifest.upgrade;
+  if (!upgradeSpec || upgradeSpec.type === 'none') {
+    return { hasUpdate: false, message: '该插件未配置在线更新' };
+  }
+
+  // If adapter defines custom checkUpdate, call it
+  if (typeof loaded.adapter.checkUpdate === 'function') {
+    return loaded.adapter.checkUpdate(adapterContext, installPath);
+  }
+
+  const repo = upgradeSpec.repo;
+  if (repo) {
+    try {
+      const res = await adapterContext.fetch(`https://api.github.com/repos/${repo}/commits?per_page=1`, {
+        headers: { 'User-Agent': 'AnyBridge-Plugin-Update-Checker' },
+        signal: AbortSignal.timeout(6000)
+      });
+      if (res.ok) {
+        const commits = await res.json();
+        const latestSha = commits[0]?.sha?.slice(0, 7) || '';
+        let localSha = '';
+        if (installPath && existsSync(join(installPath, '.git'))) {
+          try {
+            const headPath = join(installPath, '.git', 'HEAD');
+            const headContent = (await readFile(headPath, 'utf-8')).trim();
+            if (headContent.startsWith('ref: ')) {
+              const refRel = headContent.slice(5).trim();
+              const refPath = join(installPath, '.git', refRel);
+              if (existsSync(refPath)) {
+                localSha = (await readFile(refPath, 'utf-8')).trim().slice(0, 7);
+              }
+            } else {
+              localSha = headContent.slice(0, 7);
+            }
+          } catch {}
+        }
+        const hasUpdate = Boolean(latestSha && localSha && latestSha !== localSha);
+        return {
+          hasUpdate,
+          currentVersion: localSha || loaded.manifest.version,
+          latestVersion: latestSha || '最新',
+          message: hasUpdate ? `发现新提交 (${localSha} → ${latestSha})` : '已是最新版本'
+        };
+      }
+    } catch (e) {
+      return { hasUpdate: false, message: `检查更新失败: ${e.message}` };
+    }
+  }
+
+  return { hasUpdate: false, message: '暂无可用更新' };
+}
+
+// ── Upgrade plugin ──
+async function upgradePlugin(body, onProgress) {
+  const { pluginId, installPath, configValues = {} } = body;
+  const loaded = await loadPlugin(pluginId);
+  if (typeof loaded.adapter.upgrade === 'function') {
+    return loaded.adapter.upgrade(adapterContext, installPath, configValues, onProgress);
+  }
+
+  if (installPath && existsSync(join(installPath, '.git'))) {
+    onProgress?.({ step: 'pull', status: 'running', message: '正在拉取最新代码...' });
+    try {
+      // 避免本地补丁文件阻碍 git pull，先清理已跟踪文件的本地修改
+      await adapterContext.exec('git checkout -- .', { cwd: installPath });
+    } catch {}
+    await adapterContext.exec('git pull', { cwd: installPath });
+    onProgress?.({ step: 'pull', status: 'done', message: '代码拉取完成' });
+
+    const pkgPath = join(installPath, 'package.json');
+    if (existsSync(pkgPath)) {
+      onProgress?.({ step: 'install', status: 'running', message: '正在更新依赖 (npm install)...' });
+      const npmCmd = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+      await adapterContext.exec(`${npmCmd} install`, { cwd: installPath });
+      onProgress?.({ step: 'install', status: 'done', message: '依赖更新完成' });
+
+      const pkgContent = JSON.parse(await readFile(pkgPath, 'utf-8'));
+      if (pkgContent.scripts?.build) {
+        onProgress?.({ step: 'build', status: 'running', message: '正在重新编译 (npm run build)...' });
+        await adapterContext.exec(`${npmCmd} run build`, { cwd: installPath });
+        onProgress?.({ step: 'build', status: 'done', message: '编译构建完成' });
+      }
+    }
+
+    try {
+      await callAdapter(pluginId, 'generateConfig', [configValues, installPath]);
+    } catch {}
+
+    onProgress?.({ step: 'done', status: 'done', message: '更新成功' });
+    return { ok: true, message: '插件更新成功' };
+  }
+
+  throw new Error('未检测到本地 git 仓库，无法执行自动拉取更新');
+}
+
 // ── HTTP routes for the Rust core. Always returns a Promise<boolean> (handled or not). ──
 async function attachPluginRoutes(req, res, url, body) {
   // GET /internal/plugins/list
@@ -234,6 +358,28 @@ async function attachPluginRoutes(req, res, url, body) {
     return true;
   }
 
+  // POST /internal/plugins/check-update — Body: { pluginId, installPath }
+  if (url.pathname === '/internal/plugins/check-update') {
+    try {
+      const result = await checkPluginUpdate(body);
+      res.end(JSON.stringify({ ok: true, result }));
+    } catch (e) {
+      res.end(JSON.stringify({ ok: false, error: e.message }));
+    }
+    return true;
+  }
+
+  // POST /internal/plugins/upgrade — Body: { pluginId, installPath, configValues }
+  if (url.pathname === '/internal/plugins/upgrade') {
+    try {
+      const result = await upgradePlugin(body);
+      res.end(JSON.stringify({ ok: true, result }));
+    } catch (e) {
+      res.end(JSON.stringify({ ok: false, error: e.message }));
+    }
+    return true;
+  }
+
   // POST /internal/plugins/deploy — Body: { pluginId, strategy, installPath, configValues }
   // Returns NDJSON stream: one JSON object per line, flushed in real-time.
   // Each line is either { type: 'progress', ...event } or { type: 'result', ok, result/error }.
@@ -260,4 +406,4 @@ async function attachPluginRoutes(req, res, url, body) {
   return false;
 }
 
-export { loadPlugin, callAdapter, listPlugins, attachPluginRoutes, adapterContext, PLUGINS_DIR };
+export { loadPlugin, callAdapter, listPlugins, attachPluginRoutes, adapterContext, PLUGINS_DIR, runDeploy };

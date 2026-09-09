@@ -524,8 +524,19 @@ pub(crate) fn read_map() -> Result<ModelMap, String> {
 fn write_map(map: &ModelMap) -> Result<(), String> {
     let dir = config_dir_path();
     fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    let target = model_map_path();
+    if target.exists() {
+        if let Ok(raw) = fs::read_to_string(&target) {
+            if let Ok(old_map) = serde_json::from_str::<ModelMap>(&raw) {
+                if !old_map.slots.is_empty() {
+                    let backup = dir.join("model-map.json.bak");
+                    let _ = fs::write(&backup, raw.as_bytes());
+                }
+            }
+        }
+    }
     let json = serde_json::to_string_pretty(map).map_err(|e| e.to_string())?;
-    super::write_atomic(&model_map_path(), json.as_bytes())
+    super::write_atomic(&target, json.as_bytes())
 }
 
 #[tauri::command]

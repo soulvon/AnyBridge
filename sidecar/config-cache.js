@@ -156,6 +156,21 @@ function transformProviders(json) {
       modelCaps: config.modelCaps && typeof config.modelCaps === 'object' ? config.modelCaps : {},
     });
   }
+  const antigravityConfigs = (json && Array.isArray(json.antigravityConfigs)) ? json.antigravityConfigs : [];
+  for (const config of antigravityConfigs) {
+    if (!config || !config.id) continue;
+    m.set(config.id, {
+      ...config,
+      apiFormat: config.apiFormat || 'openai',
+      enabled: config.enabled !== false,
+      capabilities: {
+        text: true,
+        stream: true,
+        ...(config.capabilities && typeof config.capabilities === 'object' ? config.capabilities : {}),
+      },
+      modelCaps: config.modelCaps && typeof config.modelCaps === 'object' ? config.modelCaps : {},
+    });
+  }
   return m;
 }
 
@@ -292,10 +307,11 @@ function validateProxyRoutes(routes) {
 
 function transformProxyRoutes(json) {
   if (!json || typeof json !== 'object') {
-    return { fileExists: false, version: 1, defaultModelId: '', routes: [] };
+    return { fileExists: false, version: 1, defaultModelId: '', routes: [], claudeDesktop: null };
   }
   const routes = Array.isArray(json.routes) ? json.routes : [];
   const normalizedRoutes = routes.map(route => ({
+    uid: String(route?.uid || '').trim(),
     id: String(route?.id || '').trim(),
     displayName: String(route?.displayName || route?.display_name || '').trim(),
     idFromRenameRule: route?.idFromRenameRule === true || route?.id_from_rename_rule === true,
@@ -309,11 +325,19 @@ function transformProxyRoutes(json) {
     targets: Array.isArray(route?.targets) ? route.targets.map(normalizeProxyRouteTarget) : [],
   }));
   validateProxyRoutes(normalizedRoutes);
+  const cd = json.claudeDesktop || json.claude_desktop;
+  const claudeDesktop = cd && typeof cd === 'object' ? {
+    sonnet: String(cd.sonnet || '').trim(),
+    opus: String(cd.opus || '').trim(),
+    haiku: String(cd.haiku || '').trim(),
+    fable: String(cd.fable || '').trim(),
+  } : null;
   return {
     fileExists: true,
     version: Number(json.version) || 1,
     defaultModelId: '',
     routes: normalizedRoutes,
+    claudeDesktop,
   };
 }
 

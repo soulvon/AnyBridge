@@ -177,12 +177,26 @@
               aria-hidden="true"></span>
           <span class="platform-rail-label">Codex</span>
         </button>
+        <button type="button" class="platform-rail-item" data-platform-rail="antigravity" draggable="true"
+ data-action="openPlatformPage" data-arg="antigravity">
+          <span class="platform-rail-handle" draggable="true" aria-hidden="true"></span>
+          <span class="platform-rail-icon"><img src="./assets/icons/platform-antigravity.png" alt=""
+              aria-hidden="true"></span>
+          <span class="platform-rail-label">Antigravity</span>
+        </button>
         <button type="button" class="platform-rail-item" data-platform-rail="claude-code" draggable="true"
  data-action="openPlatformPage" data-arg="claude-code">
           <span class="platform-rail-handle" draggable="true" aria-hidden="true"></span>
           <span class="platform-rail-icon"><img src="./assets/icons/platform-claude-code.svg" alt=""
               aria-hidden="true"></span>
           <span class="platform-rail-label">Claude Code</span>
+        </button>
+        <button type="button" class="platform-rail-item" data-platform-rail="claude-desktop" draggable="true"
+ data-action="openPlatformPage" data-arg="claude-desktop">
+          <span class="platform-rail-handle" draggable="true" aria-hidden="true"></span>
+          <span class="platform-rail-icon"><img src="./assets/icons/platform-claude-desktop.svg" alt=""
+              aria-hidden="true"></span>
+          <span class="platform-rail-label">Claude Desktop</span>
         </button>
         <button type="button" class="platform-rail-item" data-platform-rail="codebuddy" draggable="true"
  data-action="openPlatformPage" data-arg="codebuddy">
@@ -694,6 +708,7 @@
                       style="padding:10px 14px; font-size:13px; border-radius:10px; height:42px; width:100%;">
                       <option value="anthropic">Anthropic</option>
                       <option value="openai">OpenAI</option>
+                      <option value="gemini">Gemini</option>
                     </select>
                   </div>
                   <div class="field provider-editor-field">
@@ -748,6 +763,18 @@
                             <span
                               style="display:inline-flex; align-items:center; justify-content:center; width:13px; height:13px; border-radius:3px; background:#10a37f; color:#fff; font-size:8px; font-weight:800; flex-shrink:0;">O</span>
                             <span style="flex:1;">OpenAI</span>
+                            <svg class="pf-format-check" width="12" height="12" viewBox="0 0 24 24" fill="none"
+                              stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"
+                              style="display:none; color:var(--accent); flex-shrink:0;">
+                              <polyline points="20 6 9 17 4 12"></polyline>
+                            </svg>
+                          </button>
+                          <button type="button" class="pf-format-option" data-format="gemini"
+ 
+ style="display:flex; align-items:center; gap:8px; width:100%; padding:7px 10px; border:none; background:transparent; color:var(--text-primary); font-size:12px; font-weight:600; text-align:left; border-radius:6px; cursor:pointer;" data-action="pickApiFormat" data-args="[&quot;gemini&quot;]" data-pass-event>
+                            <span
+                              style="display:inline-flex; align-items:center; justify-content:center; width:13px; height:13px; border-radius:3px; background:#4285f4; color:#fff; font-size:8px; font-weight:800; flex-shrink:0;">G</span>
+                            <span style="flex:1;">Gemini</span>
                             <svg class="pf-format-check" width="12" height="12" viewBox="0 0 24 24" fill="none"
                               stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"
                               style="display:none; color:var(--accent); flex-shrink:0;">
@@ -1729,7 +1756,7 @@
           <div class="control-bar glass-card model-map-control-bar">
             <div class="model-map-toolbar-main">
               <div class="model-map-title-block">
-                <h2>模型映射</h2>
+                <h2>模型列表</h2>
                 <span>Devin / Windsurf 槽位路由，模型名只服务对应平台。</span>
               </div>
               <div class="model-map-toolbar-actions">
@@ -1795,7 +1822,32 @@
             </div>
           </div>
           <div class="glass-card" style="overflow: hidden; margin-bottom: 20px;">
-            <table class="model-table model-map-table" style="border: none; box-shadow: none; border-radius: 0;">
+            <div class="wb-model-empty" id="model-map-empty"
+              style="display:none; padding:40px 20px; text-align:center;">
+              <div class="wb-empty-icon">
+                <svg viewBox="0 0 24 24">
+                  <rect x="3" y="3" width="18" height="18" rx="2" />
+                  <line x1="9" y1="9" x2="15" y2="9" />
+                  <line x1="9" y1="13" x2="15" y2="13" />
+                  <line x1="9" y1="17" x2="13" y2="17" />
+                </svg>
+              </div>
+              <div class="wb-empty-title" id="model-map-empty-title">尚未配置自定义模型</div>
+              <div class="wb-empty-subtitle" id="model-map-empty-subtitle">添加第一个模型映射，让 Devin 使用你指定的 AI 供应商与模型能力。</div>
+              <button type="button" class="btn-primary wb-empty-action" data-action="openSlotEditor" data-arg="">
+                <svg viewBox="0 0 24 24">
+                  <line x1="12" y1="5" x2="12" y2="19" />
+                  <line x1="5" y1="12" x2="19" y2="12" />
+                </svg>
+                添加映射
+              </button>
+              <div class="wb-empty-steps">
+                <span class="wb-empty-step"><span class="wb-empty-step-num">1</span> 选择平台槽位</span>
+                <span class="wb-empty-step"><span class="wb-empty-step-num">2</span> 绑定供应商模型</span>
+                <span class="wb-empty-step"><span class="wb-empty-step-num">3</span> 保存即可生效</span>
+              </div>
+            </div>
+            <table class="model-table model-map-table" id="modelMapTable" style="border: none; box-shadow: none; border-radius: 0;">
               <colgroup>
                 <col class="model-col-select" style="width:42px;">
                 <col class="model-col-display">
@@ -1905,10 +1957,11 @@
               </div>
               <div class="eval-combo eval-format-combo" data-select-id="eval-format-select">
                 <select class="model-select eval-select eval-native-select" id="eval-format-select"
- aria-label="协议" data-action="renderEvalModelOptions" data-events="change" data-args="[{&quot;fetchRemote&quot;:true}]">
+                  aria-label="协议" data-action="renderEvalModelOptions" data-events="change" data-args="[{&quot;fetchRemote&quot;:true}]">
                   <option value="auto">自动</option>
                   <option value="openai">OpenAI</option>
                   <option value="anthropic">Anthropic</option>
+                  <option value="gemini">Gemini</option>
                 </select>
                 <button type="button" class="eval-combo-trigger"
                   data-actions="{&quot;click&quot;:{&quot;action&quot;:&quot;toggleEvalCombo&quot;,&quot;args&quot;:[&quot;eval-format-select&quot;],&quot;passEvent&quot;:true},&quot;keydown&quot;:{&quot;action&quot;:&quot;handleEvalComboTriggerKey&quot;,&quot;args&quot;:[&quot;eval-format-select&quot;],&quot;passEvent&quot;:true}}"
@@ -2294,6 +2347,9 @@
                     </div>
                   </div>
                 </article>
+
+                <!-- 动态已安装插件大卡片挂载点：Jimeng2API、Grok2API 等安装后自动以大卡片呈现 -->
+                <div id="installed-plugins-container" style="display: contents;"></div>
               </div>
             </div>
 
@@ -2420,40 +2476,8 @@
                         </div>
                       </td>
                     </tr>
-
-                    <!-- 插件 3：free 即梦 -->
-                    <tr data-extension-card="free-jimeng" data-plugin-state="not-installed" data-plugin-installed="false">
-                      <td class="plugin-name-cell">
-                        <div class="plugin-identity-cell">
-                          <span class="plugin-card-mark" style="background: rgba(139, 92, 246, 0.12); color: #7c3aed; font-weight: 800;">JM</span>
-                          <div class="plugin-identity-text">
-                            <div class="plugin-title-row">
-                              <strong class="plugin-name">free 即梦</strong>
-                              <span class="plugin-status status-not-installed">未安装</span>
-                            </div>
-                            <p class="plugin-desc">即梦相关生成接口预留，支持外部服务接入与托管</p>
-                          </div>
-                        </div>
-                      </td>
-                      <td class="plugin-category-cell">
-                        <span class="plugin-tag">生成服务</span>
-                      </td>
-                      <td class="plugin-port-cell">
-                        <span class="text-muted">待分配</span>
-                      </td>
-                      <td class="plugin-version-cell">
-                        <span>L1-L3 调研</span>
-                      </td>
-                      <td class="plugin-action-cell">
-                        <div class="plugin-table-actions">
-                          <button type="button" class="btn-ghost secondary btn-sm" data-action="openExtensionDetail" data-arg="free-jimeng">详情</button>
-                          <button type="button" class="btn-ghost accent btn-sm" data-action="handleExtensionAction" data-arg="view-adapter-plan">适配计划</button>
-                          <button type="button" class="btn-primary btn-sm" data-action="handleExtensionAction" data-arg="install-jimeng">安装</button>
-                        </div>
-                      </td>
-                    </tr>
                   </tbody>
-                  <!-- 动态扫描插件挂载点：Grok2API 及后续动态插件自动在此渲染为表格行 -->
+                  <!-- 动态扫描插件挂载点：Grok2API、Jimeng2API 及后续动态插件自动在此渲染为表格行 -->
                   <tbody id="plugin-list-grid"></tbody>
                 </table>
               </div>
@@ -2734,7 +2758,7 @@
               </div>
               <div class="platform-console-copy">
                 <h1 id="cursor-platform-title">Cursor 接入控制台</h1>
-                <p id="cursor-platform-subtitle">独立 Rust Cursor Core、MITM 证书、官方账号双轨并存和模型路由集中管理。</p>
+                <p id="cursor-platform-subtitle">AI 代码编辑器 · 管理代理路由与模型映射</p>
               </div>
             </div>
 
@@ -2757,8 +2781,8 @@
           <div class="control-bar glass-card model-map-control-bar">
             <div class="model-map-toolbar-main">
               <div class="model-map-title-block">
-                <h2>Cursor 模型列表</h2>
-                <span>从统一供应商模型池添加，只影响 Cursor 中可选的第三方模型。</span>
+                <h2>模型列表</h2>
+                <span>管理 Cursor 自定义模型，支持添加与映射。</span>
               </div>
               <div class="model-map-toolbar-actions">
                 <button class="btn-primary model-map-command-btn" data-action="openCursorAddPage">
@@ -3583,8 +3607,7 @@
                     alt="Claude Code"></div>
                 <div class="platform-console-titlewrap">
                   <strong>Claude Code</strong>
-                  <span id="platform-claude-code-headline">管理 Claude Code 的官方环境和第三方 Anthropic API 配置，切换后重启 Claude Code
-                    生效。</span>
+                  <span id="platform-claude-code-headline">Anthropic 终端智能体 CLI · 管理官方与第三方兼容配置</span>
                 </div>
               </div>
             </div>
@@ -3633,8 +3656,7 @@
             </div>
 
             <p class="codex-safe-note">配置文件路径：<code
-                id="claude-code-config-path-label">~/.claude/settings.json</code>。切换后重启 Claude Code 生效，AnyBridge 会保留
-              MCP、权限、hooks、语言等其他配置。</p>
+                id="claude-code-config-path-label">~/.claude/settings.json</code>。切换后重启 Claude Code 生效，无需保持 AnyBridge 运行。</p>
           </section>
         </div>
 
@@ -3869,6 +3891,157 @@
             </section>
           </div>
         </div>
+        <!-- ═══════ PAGE: PLATFORM · CLAUDE DESKTOP ═══════ -->
+        <div class="page" id="page-platform-claude-desktop" role="tabpanel" aria-labelledby="tab-platforms">
+          <section class="codex-manager-shell claude-desktop-manager-shell">
+            <div class="platform-console-hero glass-card codex-manager-hero">
+              <div class="platform-console-titlebar">
+                <div class="platform-console-icon codex-manager-icon"><img src="assets/icons/platform-claude-desktop.svg"
+                    alt="Claude Desktop"></div>
+                <div class="platform-console-titlewrap">
+                  <strong>Claude Desktop</strong>
+                  <span id="platform-claude-desktop-headline">Anthropic 桌面客户端 · 管理本地路由与角色模型映射</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="control-bar glass-card codex-manager-toolbar">
+              <div class="codex-toolbar-left">
+                <div class="codex-search">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="11" cy="11" r="8"></circle>
+                    <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                  </svg>
+                  <input type="text" id="claude-desktop-config-search" placeholder="搜索配置、模型或地址"
+                    data-action="onClaudeDesktopConfigSearch" data-events="input">
+                </div>
+              </div>
+              <div class="codex-toolbar-actions">
+                <button class="btn-primary codex-add-config-btn" data-action="openClaudeDesktopAddModal">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="12" y1="5" x2="12" y2="19" />
+                    <line x1="5" y1="12" x2="19" y2="12" />
+                  </svg>
+                  添加配置
+                </button>
+                <button class="btn-ghost accent codex-refresh-btn" data-action="refreshClaudeDesktopAction">刷新</button>
+                <button class="btn-ghost warn codex-restore-btn" id="platform-claude-desktop-restore"
+                  data-action="restorePlatform" data-arg="claude-desktop">还原官方模式</button>
+              </div>
+            </div>
+
+            <div class="glass-card codex-card-list-shell">
+              <div class="codex-card-list" id="platform-claude-desktop-config-list">
+                <div class="codex-table-empty">正在加载配置…</div>
+              </div>
+            </div>
+
+            <div class="glass-card" style="padding:14px 20px;margin-top:12px;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;">
+              <div>
+                <strong style="font-size:13.5px;color:var(--text-primary);display:block;margin-bottom:2px;">本地路由服务</strong>
+                <span id="claude-desktop-gateway-url-hint" style="font-size:12px;color:var(--text-muted);font-family:var(--font-mono, monospace);">http://127.0.0.1:7450/claude-desktop</span>
+              </div>
+              <div style="display:flex;align-items:center;gap:10px;">
+                <span id="claude-desktop-proxy-status-badge" class="badge" style="background:var(--bg-glass-heavy);color:var(--text-muted);font-size:12px;">代理未启动</span>
+                <button type="button" class="btn-ghost accent" style="font-size:12px;height:32px;padding:0 12px;" data-action="openProxyRoutesFromPlatform">管理代理模型</button>
+              </div>
+            </div>
+
+            <p class="codex-safe-note">配置文件路径：<code id="claude-desktop-config-path-label" class="reveal-path" title="点击打开所在文件夹">Claude-3p/claude_desktop_config.json</code>。切换后重启 Claude Desktop 生效，使用代理模型需保持 AnyBridge 运行。</p>
+          </section>
+        </div>
+
+        <!-- ═══════ MODAL: CLAUDE DESKTOP CONFIG ═══════ -->
+        <div class="modal-overlay" id="claude-desktop-config-modal">
+          <div class="modal-container codex-config-modal claude-desktop-config-modal">
+            <div class="modal-header codex-config-modal-head">
+              <div>
+                <div class="modal-title" id="claude-desktop-config-modal-title">添加 Claude Desktop 配置</div>
+                <div class="codex-config-modal-sub" id="claude-desktop-config-modal-sub">配置桌面端本地路由与各档位角色的模型映射。</div>
+              </div>
+              <button class="modal-close-icon" aria-label="关闭配置编辑" data-action="closeClaudeDesktopConfigEditor">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"
+                  stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M18 6L6 18"></path>
+                  <path d="M6 6l12 12"></path>
+                </svg>
+              </button>
+            </div>
+            <div class="modal-body codex-config-modal-body">
+              <input type="hidden" id="claude-desktop-config-edit-id">
+              <input type="hidden" id="claude-desktop-config-source-id">
+              <div class="codex-config-editor-layout" id="claude-desktop-config-editor-layout">
+                <aside class="codex-config-source" id="claude-desktop-config-source-wrap">
+                  <div class="codex-config-source-head">
+                    <span>快捷选择供应商</span>
+                    <strong id="claude-desktop-config-source-count">0</strong>
+                  </div>
+                  <div class="codex-config-source-list" id="claude-desktop-config-source-list"></div>
+                  <div class="codex-config-source-hint" id="claude-desktop-config-source-hint">点选供应商可快速带入名称与密钥，或直接选择现有代理模型映射。</div>
+                </aside>
+                <div class="codex-config-form-grid">
+                  <section class="config-section">
+                    <div class="config-section-title">基础信息</div>
+                    <div class="config-section-body">
+                      <label class="codex-config-field">
+                        <span>配置名称</span>
+                        <input id="claude-desktop-config-name" class="field-input" placeholder="例如：AnyRouter 旗舰方案 / Kimi 深度推理">
+                      </label>
+                      <label class="codex-config-field">
+                        <span>连接模式</span>
+                        <select id="claude-desktop-config-mode" class="field-input">
+                          <option value="proxy">本地路由映射（推荐，支持任意供应商与模型）</option>
+                          <option value="direct">直连模式（要求供应商原生兼容 Anthropic 角色）</option>
+                        </select>
+                      </label>
+                    </div>
+                  </section>
+                  <section class="config-section">
+                    <div class="config-section-title">角色档位映射</div>
+                    <div class="config-section-body">
+                      <div class="codex-config-source-hint" style="margin-bottom:10px;">
+                        Claude Desktop 客户端菜单识别固定的角色标识，在此为各档位指定映射的实际模型：
+                      </div>
+                      <label class="codex-config-field">
+                        <span>Sonnet 档（对应 claude-sonnet-5，默认主模型）*</span>
+                        <select id="claude-desktop-config-sonnet" class="field-input">
+                          <option value="">请选择模型或代理路由</option>
+                        </select>
+                      </label>
+                      <label class="codex-config-field">
+                        <span>Opus 档（对应 claude-opus-5，深度推理）*</span>
+                        <select id="claude-desktop-config-opus" class="field-input">
+                          <option value="">请选择模型或代理路由</option>
+                        </select>
+                      </label>
+                      <label class="codex-config-field">
+                        <span>Haiku 档（对应 claude-haiku-4-5，轻量快速）*</span>
+                        <select id="claude-desktop-config-haiku" class="field-input">
+                          <option value="">请选择模型或代理路由</option>
+                        </select>
+                      </label>
+                      <label class="codex-config-field">
+                        <span>Fable 档（对应 claude-fable-5，可选扩展）</span>
+                        <select id="claude-desktop-config-fable" class="field-input">
+                          <option value="">(未启用)</option>
+                        </select>
+                      </label>
+                    </div>
+                  </section>
+                </div>
+              </div>
+            </div>
+            <div class="modal-footer codex-config-modal-footer">
+              <div class="codex-config-editor-note">保存后出现在配置列表中，点击「切换」才会写入 Claude Desktop 当前配置文件。</div>
+              <button class="modal-btn modal-btn-ghost" data-action="closeClaudeDesktopConfigEditor">取消</button>
+              <button class="modal-btn modal-btn-cancel" data-action="saveClaudeDesktopConfigEditor" data-args="[false]">保存配置</button>
+              <button class="modal-btn modal-btn-confirm" id="claude-desktop-config-save-switch-btn"
+                data-action="saveClaudeDesktopConfigEditor" data-args="[true]">保存并切换</button>
+            </div>
+          </div>
+        </div>
         <!-- ═══════ PAGE: PLATFORM · CODEX ═══════ -->
         <div class="page" id="page-platform-codex" role="tabpanel" aria-labelledby="tab-platforms">
           <section class="codex-manager-shell">
@@ -3878,7 +4051,7 @@
                     alt="Codex"></div>
                 <div class="platform-console-titlewrap">
                   <strong>Codex</strong>
-                  <span id="platform-codex-headline">管理 Codex 的官方登录配置和第三方 API 配置，切换后重启 Codex 生效。</span>
+                  <span id="platform-codex-headline">OpenAI 终端智能体 CLI · 管理官方与第三方兼容配置</span>
                 </div>
               </div>
             </div>
@@ -4322,6 +4495,306 @@
             </section>
           </div>
         </div>
+        <!-- ═══════ PAGE: PLATFORM · ANTIGRAVITY ═══════ -->
+        <div class="page" id="page-platform-antigravity" role="tabpanel" aria-labelledby="tab-platforms">
+          
+          <!-- 1. 顶部接入控制台 (platform-console-head) -->
+          <section class="platform-console-head glass-card platform-hero-card">
+            <div class="platform-console-titlebar">
+              <div class="platform-console-icon">
+                <img id="antigravity-platform-icon" src="./assets/icons/platform-antigravity.png" alt="Antigravity">
+              </div>
+              <div class="platform-console-copy">
+                <h1 id="antigravity-platform-title">Antigravity 接入控制台</h1>
+                <p id="antigravity-platform-subtitle">Google 编程 IDE · 管理端点重定向与模型映射</p>
+              </div>
+            </div>
+
+            <div class="platform-console-actions">
+              <button class="btn-primary platform-proxy-primary" id="antigravity-main-btn" data-action="antigravityPrimaryAction" aria-label="一键接入 Antigravity">
+                <span class="proxy-btn-action">
+                  <svg class="proxy-btn-icon" width="14" height="14" viewBox="0 0 24 24" fill="none"
+                    stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" fill="currentColor" />
+                  </svg>
+                  <span class="proxy-btn-text" id="antigravity-main-btn-text">一键接入</span>
+                </span>
+              </button>
+              <button class="btn-ghost accent platform-refresh-proxy" id="antigravityRefreshBtn" data-action="antigravityRefreshConsole">刷新状态</button>
+              <button class="btn-ghost danger platform-stop-proxy" id="antigravityRestoreBtn" data-action="antigravityRestoreAction" disabled>停止接入</button>
+            </div>
+          </section>
+
+          <!-- 2. 模型列表工具栏 (model-map-control-bar) -->
+          <div class="control-bar glass-card model-map-control-bar">
+            <div class="model-map-toolbar-main">
+              <div class="model-map-title-block">
+                <h2>模型列表</h2>
+                <span>从统一供应商模型池添加，启用后自动注入到 Antigravity 编辑器模型下拉框。</span>
+              </div>
+              <div class="model-map-toolbar-actions">
+                <button class="btn-primary model-map-command-btn" data-action="openAntigravityAddPage">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="12" y1="5" x2="12" y2="19"></line>
+                    <line x1="5" y1="12" x2="19" y2="12"></line>
+                  </svg>
+                  添加模型
+                </button>
+                <button class="btn-ghost accent platform-model-btn-icon" title="刷新模型列表" aria-label="刷新模型列表" data-action="antigravityRefreshConsole">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="23 4 23 10 17 10"></polyline>
+                    <polyline points="1 20 1 14 7 14"></polyline>
+                    <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+                  </svg>
+                </button>
+                <button class="btn-ghost secondary model-map-command-btn" title="Antigravity 策略设置" data-action="openAntigravitySettingsModal">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="3"></circle>
+                    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+                  </svg>
+                  <span>设置</span>
+                </button>
+              </div>
+            </div>
+
+            <div class="model-map-bulk-row" style="display:flex;align-items:center;justify-content:space-between;gap:12px;">
+              <div style="display:flex;align-items:center;gap:10px;flex:1;min-width:0;">
+                <label class="model-map-search" style="max-width:340px;width:100%;">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"
+                    stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <circle cx="11" cy="11" r="8"></circle>
+                    <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                  </svg>
+                  <input type="text" id="antigravity-search-input" placeholder="搜索 Antigravity 模型、供应商或上游模型…" oninput="antigravityFilterModels(this.value)">
+                </label>
+                <span class="model-map-count-pill" id="antigravity-model-count">共 0 个</span>
+              </div>
+              <div class="model-map-bulk-actions" style="display:flex;align-items:center;gap:6px;flex-shrink:0;">
+                <button class="btn-ghost secondary provider-bulk-btn" id="antigravity-bulk-select-visible-btn" data-action="antigravityToggleSelectAllVisible">选择当前</button>
+                <button class="btn-ghost success provider-bulk-btn" id="antigravity-bulk-enable-btn" disabled data-action="antigravityBulkEnableAction">启用</button>
+                <button class="btn-ghost warn provider-bulk-btn" id="antigravity-bulk-disable-btn" disabled data-action="antigravityBulkDisableAction">停用</button>
+                <button class="btn-ghost danger provider-bulk-btn" id="antigravity-bulk-remove-btn" disabled data-action="antigravityBulkRemoveAction">从 Antigravity 移除</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- 3. 数据表格与空状态容器 (与 WorkBuddy 完全对齐) -->
+          <div class="glass-card" style="overflow: hidden; margin-bottom: 20px;" id="antigravity-drop-zone"
+            ondragover="antigravityDragOver(event)" ondragleave="antigravityDragLeave(event)" ondrop="antigravityDrop(event)">
+            <div class="wb-model-empty" id="antigravity-model-empty"
+              style="padding:40px 20px; text-align:center;">
+              <div class="wb-empty-icon">
+                <svg viewBox="0 0 24 24">
+                  <rect x="3" y="3" width="18" height="18" rx="2" />
+                  <line x1="9" y1="9" x2="15" y2="9" />
+                  <line x1="9" y1="13" x2="15" y2="13" />
+                  <line x1="9" y1="17" x2="13" y2="17" />
+                </svg>
+              </div>
+              <div class="wb-empty-title">尚未配置自定义模型</div>
+              <div class="wb-empty-subtitle">添加第一个模型，让 Antigravity 使用你指定的 AI 供应商与模型能力。</div>
+              <button type="button" class="btn-primary wb-empty-action" data-action="openAntigravityAddPage">
+                <svg viewBox="0 0 24 24">
+                  <line x1="12" y1="5" x2="12" y2="19" />
+                  <line x1="5" y1="12" x2="19" y2="12" />
+                </svg>
+                添加模型
+              </button>
+              <div class="wb-empty-steps">
+                <span class="wb-empty-step"><span class="wb-empty-step-num">1</span> 选择供应商</span>
+                <span class="wb-empty-step"><span class="wb-empty-step-num">2</span> 勾选模型</span>
+                <span class="wb-empty-step"><span class="wb-empty-step-num">3</span> 保存配置</span>
+                <span class="wb-empty-step"><span class="wb-empty-step-num">或</span> 拖入 JSON</span>
+              </div>
+            </div>
+
+            <table class="wb-model-table" id="antigravity-model-table" style="display: none; border: none; box-shadow: none; border-radius: 0; width: 100%;">
+              <colgroup>
+                <col class="cb-col-select" style="width: 44px;">
+                <col style="width: 24%;">
+                <col style="width: 22%;">
+                <col style="width: 18%;">
+                <col style="width: 14%;">
+                <col style="width: 90px;">
+                <col style="width: 70px;">
+              </colgroup>
+              <thead>
+                <tr>
+                  <th class="cb-select-head" style="text-align: center; padding-left: 14px;">
+                    <label class="provider-select-check provider-select-check-table" title="选择当前列表" data-stop data-action="__noop">
+                      <input type="checkbox" id="antigravitySelectAll" aria-label="选择当前列表" onchange="antigravityToggleSelectAll(this.checked)">
+                      <span></span>
+                    </label>
+                  </th>
+                  <th>显示名称</th>
+                  <th>暴露模型 ID</th>
+                  <th>所属供应商</th>
+                  <th>上游协议</th>
+                  <th style="text-align: center;">操作</th>
+                  <th style="text-align: center;">启用</th>
+                </tr>
+              </thead>
+              <tbody id="antigravityModelTableBody"></tbody>
+            </table>
+          </div>
+
+          <p class="codex-safe-note" style="margin-top: 14px;">
+            配置文件路径：<code id="antigravity-config-path-label">settings.json</code>。点击「一键接入」即可生效，AnyBridge 会保留项目与拓展设置，首次接入前自动备份。
+          </p>
+        </div>
+
+        <!-- ═══════ ANTIGRAVITY 设置弹窗 ═══════ -->
+        <div class="modal-overlay" id="antigravitySettingsModal" role="dialog" aria-modal="true" aria-labelledby="antigravitySettingsModalTitle" data-action="closeAntigravitySettingsModal" data-only-self>
+          <div class="modal-container" style="max-width: 600px; width: 92%; border-radius: 16px; overflow: hidden; padding: 0; box-shadow: var(--shadow-xl, 0 24px 38px 3px rgba(0,0,0,0.12), 0 9px 46px 8px rgba(0,0,0,0.08)); border: 1px solid var(--border);">
+            <div class="modal-header" style="padding: 18px 24px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; background: var(--bg-card);">
+              <div style="display: flex; align-items: center; gap: 12px;">
+                <div style="width: 36px; height: 36px; border-radius: 10px; background: rgba(37, 99, 235, 0.08); color: var(--accent); display: flex; align-items: center; justify-content: center; flex-shrink: 0; border: 1px solid rgba(37, 99, 235, 0.15);">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="3"></circle>
+                    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+                  </svg>
+                </div>
+                <div>
+                  <div class="modal-title" id="antigravitySettingsModalTitle" style="font-size: 15px; font-weight: 750; color: var(--text-primary); line-height: 1.25;">Antigravity 接入策略</div>
+                  <div style="font-size: 11.5px; color: var(--text-muted); margin-top: 3px;">长记忆上下文压缩与配额模拟选项</div>
+                </div>
+              </div>
+              <button type="button" class="btn-ghost icon-btn" data-action="closeAntigravitySettingsModal" aria-label="关闭" style="width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center; color: var(--text-muted); transition: all 0.15s ease;">✕</button>
+            </div>
+            <div class="modal-body" style="padding: 22px 24px; background: var(--bg-card); display: flex; flex-direction: column; gap: 16px;">
+              <div>
+                <label style="display:block; font-size:13px; font-weight:700; color:var(--text-primary); margin-bottom:4px;">长记忆上下文压缩阈值</label>
+                <p style="font-size:11.5px; color:var(--text-muted); margin-bottom:8px;">推迟 Antigravity 官方过早裁剪历史摘要的时机，避免长对话丢失代码细节。</p>
+                <select id="modal-antigravity-context-window" class="field-input" style="width:100%; height:36px;">
+                  <option value="131072">128K</option>
+                  <option value="262144" selected>256K（推荐）</option>
+                  <option value="524288">512K</option>
+                  <option value="1048576">1M（超长记忆）</option>
+                </select>
+              </div>
+              <div style="padding-top: 8px; border-top: 1px solid var(--border);">
+                <label style="display:flex; align-items:center; justify-content:space-between;">
+                  <div>
+                    <span style="font-size:13px; font-weight:700; color:var(--text-primary); display:block;">官方配额健康伪装</span>
+                    <span style="font-size:11.5px; color:var(--text-muted);">自动模拟 Google One AI Credits 配额，防止官方接口报 503 阻断。</span>
+                  </div>
+                  <label class="switch">
+                    <input type="checkbox" id="modal-antigravity-mock-credits" checked>
+                    <span class="slider"></span>
+                  </label>
+                </label>
+              </div>
+            </div>
+            <div class="modal-footer" style="padding: 14px 24px; border-top: 1px solid var(--border); display: flex; justify-content: flex-end; background: var(--bg-card);">
+              <button class="btn-primary" data-action="saveAntigravitySettingsModal">确定</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- ═══════ ANTIGRAVITY 编辑单个模型弹窗 ═══════ -->
+        <div class="modal-overlay" id="antigravity-config-modal">
+          <div class="modal-container codex-config-modal" style="max-width: 520px;">
+            <div class="modal-header codex-config-modal-head">
+              <div>
+                <div class="modal-title" id="antigravity-config-modal-title">编辑模型</div>
+                <div class="codex-config-modal-sub" id="antigravity-config-modal-sub">修改该模型在 Antigravity 中的显示名称与映射参数。</div>
+              </div>
+              <button class="modal-close-icon" aria-label="关闭编辑" data-action="closeAntigravityConfigEditor">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M18 6L6 18"></path>
+                  <path d="M6 6l12 12"></path>
+                </svg>
+              </button>
+            </div>
+            <div class="modal-body codex-config-modal-body" style="padding: 16px 20px;">
+              <input type="hidden" id="antigravity-config-edit-id">
+              <label class="codex-config-field" style="margin-bottom: 12px;">
+                <span>显示名称</span>
+                <input id="antigravity-config-name" class="field-input" placeholder="例如：DeepSeek-V3">
+              </label>
+              <label class="codex-config-field" style="margin-bottom: 12px;">
+                <span>暴露模型 ID</span>
+                <input id="antigravity-config-model" class="field-input" placeholder="例如：models/deepseek-chat">
+              </label>
+              <label class="codex-config-field" style="margin-bottom: 12px;">
+                <span>接口协议格式</span>
+                <select id="antigravity-config-api-format" class="field-input">
+                  <option value="openai" selected>OpenAI 兼容</option>
+                  <option value="anthropic">Anthropic Messages</option>
+                  <option value="gemini">Google Gemini 原生</option>
+                </select>
+              </label>
+              <label class="codex-config-toggle-row">
+                <span class="codex-config-toggle-label">注入至 Antigravity 模型下拉菜单</span>
+                <label class="switch">
+                  <input type="checkbox" id="antigravity-config-inject-models" checked>
+                  <span class="slider"></span>
+                </label>
+              </label>
+            </div>
+            <div class="modal-footer codex-config-modal-foot">
+              <button class="btn-ghost" data-action="closeAntigravityConfigEditor">取消</button>
+              <button class="btn-primary" data-action="saveAntigravityConfigEditor">保存</button>
+            </div>
+          </div>
+        </div>
+        <!-- ═══════ PAGE: PLATFORM · ANTIGRAVITY · 添加模型（独立页面） ═══════ -->
+        <div class="page" id="page-platform-antigravity-add" role="tabpanel" aria-labelledby="tab-platforms">
+          <div class="platform-console-hero model-add-hero glass-card">
+            <div class="platform-console-titlebar">
+              <button class="btn-ghost platform-console-back" data-action="navigateTo" data-arg="platform-antigravity">← 返回</button>
+              <div class="platform-console-titlewrap">
+                <strong>添加模型 · Antigravity</strong>
+                <span class="platform-console-sub">从统一供应商模型池选择并勾选模型，自动建立 Antigravity 专有适配配置并注入编辑器模型下拉列表。</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="cb-add-layout">
+            <!-- 左列：供应商列表 -->
+            <aside class="cb-add-sidebar glass-card">
+              <div class="cb-add-search">
+                <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" fill="none" stroke-width="2"
+                  stroke-linecap="round" stroke-linejoin="round">
+                  <circle cx="11" cy="11" r="8" />
+                  <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                </svg>
+                <input type="text" id="antigravity-add-search" placeholder="搜索供应商…" data-action="onAntigravityAddSearch" data-events="input">
+              </div>
+              <div class="cb-add-provider-list" id="antigravity-add-provider-list"></div>
+            </aside>
+
+            <!-- 右列：模型列表 -->
+            <section class="cb-add-main">
+              <div class="glass-card cb-add-models-card">
+                <div class="cb-add-models-head">
+                  <div>
+                    <div class="cb-add-models-title" id="antigravity-add-models-title">请选择供应商</div>
+                    <div class="cb-add-models-sub" id="antigravity-add-models-sub">左侧选择一个供应商，右侧将展示其可用模型</div>
+                  </div>
+                  <div style="display:flex; gap:8px;">
+                    <button class="btn-ghost accent" data-action="antigravityAddSelectAll">全选</button>
+                    <button class="btn-ghost secondary" data-action="antigravityAddSelectNone">全不选</button>
+                    <button class="btn-primary" id="antigravity-add-confirm-page"
+                      disabled data-action="confirmAddAntigravityModelsPage">
+                      <svg viewBox="0 0 24 24"
+                        style="width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;">
+                        <path d="M20 6L9 17l-5-5" />
+                      </svg>
+                      <span class="model-action-label"> 保存选择</span>
+                    </button>
+                  </div>
+                </div>
+                <div class="cb-add-models-body" id="antigravity-add-models-list-page">
+                  <div class="cb-add-models-empty">请从左侧选择一个供应商</div>
+                </div>
+              </div>
+            </section>
+          </div>
+        </div>
         <!-- ═══════ PAGE: PLATFORM · CODEBUDDY ═══════ -->
         <div class="page" id="page-platform-codebuddy" role="tabpanel" aria-labelledby="tab-platforms">
           <div class="platform-console-hero glass-card">
@@ -4329,7 +4802,7 @@
               <div class="platform-console-icon"><img src="assets/icons/platform-codebuddy.png" alt="CodeBuddy"></div>
               <div class="platform-console-titlewrap">
                 <strong>CodeBuddy</strong>
-                <span>腾讯云国际版 AI 编程 IDE · 管理 OpenAI Chat Completions 兼容配置</span>
+                <span>腾讯云 AI 编程 IDE · 支持 CodeBuddy 与 CodeBuddy CN · 管理兼容模型配置</span>
               </div>
             </div>
           </div>
@@ -4341,8 +4814,8 @@
               <!-- 第一行：标题 + 操作按钮 -->
               <div class="platform-model-toolbar-main">
                 <div class="platform-model-title-block">
-                  <h2>自定义模型列表</h2>
-                  <span>CodeBuddy 自定义模型，支持添加、编辑、导入导出。</span>
+                  <h2>模型列表</h2>
+                  <span>管理 CodeBuddy 自定义模型，支持添加、编辑与导入导出。</span>
                 </div>
                 <div class="platform-model-toolbar-actions">
                 <button class="btn-primary platform-model-btn" data-action="openCodeBuddyAddModal">
@@ -4393,7 +4866,7 @@
                     <circle cx="11" cy="11" r="8"></circle>
                     <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
                   </svg>
-                  <input type="text" id="cb-model-search" placeholder="搜索模型、供应商或 URL"
+                  <input type="text" id="cb-model-search" placeholder="搜索模型、供应商或地址"
  data-action="onCbModelSearch" data-events="input">
                 </label>
                 <span class="platform-model-count-pill" id="cb-model-count">共 0 个</span>
@@ -4518,7 +4991,7 @@
 
           <p class="platform-hint" style="margin:0 4px;">
             配置文件路径（<span id="cb-config-scope-label">用户级</span>）：<code
-              id="cb-config-path-label">~/.codebuddy/models.json</code>。保存后会自动备份原文件。
+              id="cb-config-path-label">~/.codebuddy/models.json</code>。保存后自动备份原文件。
           </p>
 
           <!-- 添加模型弹窗 -->
@@ -4688,7 +5161,7 @@
                     alt="OpenCode"></div>
                 <div class="platform-console-titlewrap">
                   <strong>OpenCode</strong>
-                  <span id="platform-opencode-headline">管理 OpenCode 的独立 provider 配置。</span>
+                  <span id="platform-opencode-headline">开源终端 AI 助手 CLI · 管理独立 Provider 配置</span>
                 </div>
               </div>
             </div>
@@ -4727,8 +5200,7 @@
             </div>
 
             <p class="codex-safe-note">配置文件路径：<code
-                id="opencode-config-path-label">~/.config/opencode/opencode.json</code>。OpenCode 使用累加 provider
-              列表；配置方案保存在 AnyBridge，加入或移除 Live 不会影响来源供应商。</p>
+                id="opencode-config-path-label">~/.config/opencode/opencode.json</code>。切换后在 OpenCode 中即时生效，无需保持 AnyBridge 运行。</p>
           </section>
         </div>
 
@@ -4966,7 +5438,7 @@
               <div class="platform-console-icon"><img src="assets/icons/platform-zcode.svg" alt="ZCode"></div>
               <div class="platform-console-titlewrap">
                 <strong>ZCode</strong>
-                <span>Z.AI 推出的 ADE 编程 IDE · 支持 OpenAI 兼容 API 协议</span>
+                <span>Z.AI 编程 IDE · 管理 OpenAI 兼容模型配置</span>
               </div>
             </div>
           </div>
@@ -4978,8 +5450,8 @@
               <!-- 第一行：标题 + 操作按钮 -->
               <div class="platform-model-toolbar-main">
                 <div class="platform-model-title-block">
-                  <h2>自定义模型列表</h2>
-                  <span>Z.AI 自定义模型，支持添加、编辑、导入导出。</span>
+                  <h2>模型列表</h2>
+                  <span>管理 ZCode 自定义模型，支持添加、编辑与导入导出。</span>
                 </div>
                 <div class="platform-model-toolbar-actions">
                 <button class="btn-primary platform-model-btn" data-action="openZcAddModal">
@@ -5020,7 +5492,7 @@
                     <circle cx="11" cy="11" r="8"></circle>
                     <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
                   </svg>
-                  <input type="text" id="zc-model-search" placeholder="搜索模型、供应商或 Base URL"
+                  <input type="text" id="zc-model-search" placeholder="搜索模型、供应商或地址"
  data-action="onZcModelSearch" data-events="input">
                 </label>
                 <span class="platform-model-count-pill" id="zc-model-count">共 0 个</span>
@@ -5144,7 +5616,7 @@
           </div>
 
           <p class="platform-hint" style="margin:0 4px;">
-            配置文件路径（用户级）：<code id="zc-config-path-label">~/.zcode/v2/config.json</code>。保存后会同步写入
+            配置文件路径（用户级）：<code id="zc-config-path-label">~/.zcode/v2/config.json</code>。保存后同步写入
             <code>~/.zcode/cli/config.json</code> 并自动备份原文件。
           </p>
         </div>
@@ -5255,7 +5727,7 @@
               <div class="platform-console-icon"><img src="assets/icons/platform-workbuddy.png" alt="WorkBuddy"></div>
               <div class="platform-console-titlewrap">
                 <strong>WorkBuddy</strong>
-                <span>腾讯云企业办公 AI 工具 · 使用自定义协议接入</span>
+                <span>腾讯云 AI 办公智能体 · 管理自定义协议兼容模型配置</span>
               </div>
             </div>
           </div>
@@ -5267,8 +5739,8 @@
               <!-- 第一行：标题 + 操作按钮 -->
               <div class="platform-model-toolbar-main">
                 <div class="platform-model-title-block">
-                  <h2>自定义模型列表</h2>
-                  <span>WorkBuddy 自定义模型，支持添加、编辑、导入导出。</span>
+                  <h2>模型列表</h2>
+                  <span>管理 WorkBuddy 自定义模型，支持添加、编辑与导入导出。</span>
                 </div>
                 <div class="platform-model-toolbar-actions">
                 <button class="btn-primary platform-model-btn" data-action="openWbAddModal">
@@ -5357,7 +5829,7 @@
                     <circle cx="11" cy="11" r="8"></circle>
                     <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
                   </svg>
-                  <input type="text" id="wb-model-search" placeholder="搜索模型、供应商或 URL"
+                  <input type="text" id="wb-model-search" placeholder="搜索模型、供应商或地址"
  data-action="onWbModelSearch" data-events="input">
                 </label>
                 <span class="platform-model-count-pill" id="wb-model-count">共 0 个</span>
@@ -5444,7 +5916,7 @@
 
           <p class="platform-hint" style="margin:0 4px;">
             配置文件路径（<span id="wb-config-scope-label">用户级</span>）：<code
-              id="wb-config-path-label">~/.workbuddy/models.json</code>。保存后会自动备份原文件。
+              id="wb-config-path-label">~/.workbuddy/models.json</code>。保存后自动备份原文件。
           </p>
 
           <!-- 添加模型弹窗 -->
@@ -5718,7 +6190,7 @@
                     alt="Grok"></div>
                 <div class="platform-console-titlewrap">
                   <strong>Grok</strong>
-                  <span id="platform-grok-headline">管理 Grok Build CLI 的自定义模型与端点。</span>
+                  <span id="platform-grok-headline">xAI 终端智能体 CLI · 管理自定义模型与端点配置</span>
                 </div>
               </div>
             </div>
@@ -5757,7 +6229,7 @@
             </div>
 
             <p class="codex-safe-note">配置文件路径：<code
-                id="grok-config-path-label">~/.grok/config.toml</code>。Grok Build CLI 原生支持 OpenAI 兼容 API；切换后在终端重新执行 <code>grok</code> 即可生效，无需保持 AnyBridge 运行。</p>
+                id="grok-config-path-label">~/.grok/config.toml</code>。切换后在终端重新执行 <code>grok</code> 生效，无需保持 AnyBridge 运行。</p>
           </section>
         </div>
 
@@ -6870,6 +7342,7 @@
                 <button type="button" class="proxy-route-format-seg-btn" data-value="" data-action-chain="[{&quot;fn&quot;:&quot;updateProxyRouteTarget&quot;,&quot;args&quot;:[0,&quot;apiFormat&quot;,&quot;&quot;]},{&quot;fn&quot;:&quot;syncProxyRouteFormatSeg&quot;,&quot;args&quot;:[&quot;&quot;]}]" data-action="updateProxyRouteTarget">自动</button>
                 <button type="button" class="proxy-route-format-seg-btn" data-value="openai" data-action-chain="[{&quot;fn&quot;:&quot;updateProxyRouteTarget&quot;,&quot;args&quot;:[0,&quot;apiFormat&quot;,&quot;openai&quot;]},{&quot;fn&quot;:&quot;syncProxyRouteFormatSeg&quot;,&quot;args&quot;:[&quot;openai&quot;]}]" data-action="updateProxyRouteTarget">OpenAI</button>
                 <button type="button" class="proxy-route-format-seg-btn" data-value="anthropic" data-action-chain="[{&quot;fn&quot;:&quot;updateProxyRouteTarget&quot;,&quot;args&quot;:[0,&quot;apiFormat&quot;,&quot;anthropic&quot;]},{&quot;fn&quot;:&quot;syncProxyRouteFormatSeg&quot;,&quot;args&quot;:[&quot;anthropic&quot;]}]" data-action="updateProxyRouteTarget">Claude</button>
+                <button type="button" class="proxy-route-format-seg-btn" data-value="gemini" data-action-chain="[{&quot;fn&quot;:&quot;updateProxyRouteTarget&quot;,&quot;args&quot;:[0,&quot;apiFormat&quot;,&quot;gemini&quot;]},{&quot;fn&quot;:&quot;syncProxyRouteFormatSeg&quot;,&quot;args&quot;:[&quot;gemini&quot;]}]" data-action="updateProxyRouteTarget">Gemini</button>
               </div>
             </div>
             <div class="proxy-route-editor-option-group">

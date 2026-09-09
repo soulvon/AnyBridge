@@ -168,6 +168,24 @@ jobs:
             python scripts/build/build_cursor_core.py
           fi
 
+      # macOS 要求 App 内所有 Mach-O 二进制（包括 externalBin）必须具备有效签名（哪怕是 ad-hoc 签名）。
+      # pkg 将 JS 注入基础二进制会破坏原有代码签名，且交叉编译产物也未带签名。
+      # Tauri 的 signingIdentity 仅签署主 App Bundle，不会递归签署 externalBin。
+      # 此处在进入 Tauri 打包前，对所有 externalBin 进行强制 ad-hoc 签名并严格校验。
+      - name: Ad-hoc sign external binaries (macOS)
+        if: startsWith(matrix.platform, 'macos')
+        shell: bash
+        run: |
+          set -euo pipefail
+          for bin in src-tauri/binaries/*; do
+            if [ -f "$bin" ]; then
+              echo "Ad-hoc signing: $bin"
+              chmod +x "$bin"
+              codesign --force --sign - "$bin"
+              codesign --verify --verbose=2 "$bin"
+            fi
+          done
+
       - name: Build the app
         uses: tauri-apps/tauri-action@v0
         env:

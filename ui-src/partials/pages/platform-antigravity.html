@@ -1,0 +1,246 @@
+        <!-- ═══════ PAGE: PLATFORM · ANTIGRAVITY ═══════ -->
+        <div class="page" id="page-platform-antigravity" role="tabpanel" aria-labelledby="tab-platforms">
+          
+          <!-- 1. 顶部接入控制台 (platform-console-head) -->
+          <section class="platform-console-head glass-card platform-hero-card">
+            <div class="platform-console-titlebar">
+              <div class="platform-console-icon">
+                <img id="antigravity-platform-icon" src="./assets/icons/platform-antigravity.png" alt="Antigravity">
+              </div>
+              <div class="platform-console-copy">
+                <h1 id="antigravity-platform-title">Antigravity 接入控制台</h1>
+                <p id="antigravity-platform-subtitle">Google 编程 IDE · 管理端点重定向与模型映射</p>
+              </div>
+            </div>
+
+            <div class="platform-console-actions">
+              <button class="btn-primary platform-proxy-primary" id="antigravity-main-btn" data-action="antigravityPrimaryAction" aria-label="一键接入 Antigravity">
+                <span class="proxy-btn-action">
+                  <svg class="proxy-btn-icon" width="14" height="14" viewBox="0 0 24 24" fill="none"
+                    stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" fill="currentColor" />
+                  </svg>
+                  <span class="proxy-btn-text" id="antigravity-main-btn-text">一键接入</span>
+                </span>
+              </button>
+              <button class="btn-ghost accent platform-refresh-proxy" id="antigravityRefreshBtn" data-action="antigravityRefreshConsole">刷新状态</button>
+              <button class="btn-ghost danger platform-stop-proxy" id="antigravityRestoreBtn" data-action="antigravityRestoreAction" disabled>停止接入</button>
+            </div>
+          </section>
+
+          <!-- 2. 模型列表工具栏 (model-map-control-bar) -->
+          <div class="control-bar glass-card model-map-control-bar">
+            <div class="model-map-toolbar-main">
+              <div class="model-map-title-block">
+                <h2>模型列表</h2>
+                <span>从统一供应商模型池添加，启用后自动注入到 Antigravity 编辑器模型下拉框。</span>
+              </div>
+              <div class="model-map-toolbar-actions">
+                <button class="btn-primary model-map-command-btn" data-action="openAntigravityAddPage">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="12" y1="5" x2="12" y2="19"></line>
+                    <line x1="5" y1="12" x2="19" y2="12"></line>
+                  </svg>
+                  添加模型
+                </button>
+                <button class="btn-ghost accent platform-model-btn-icon" title="刷新模型列表" aria-label="刷新模型列表" data-action="antigravityRefreshConsole">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="23 4 23 10 17 10"></polyline>
+                    <polyline points="1 20 1 14 7 14"></polyline>
+                    <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+                  </svg>
+                </button>
+                <button class="btn-ghost secondary model-map-command-btn" title="Antigravity 策略设置" data-action="openAntigravitySettingsModal">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="3"></circle>
+                    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+                  </svg>
+                  <span>设置</span>
+                </button>
+              </div>
+            </div>
+
+            <div class="model-map-bulk-row" style="display:flex;align-items:center;justify-content:space-between;gap:12px;">
+              <div style="display:flex;align-items:center;gap:10px;flex:1;min-width:0;">
+                <label class="model-map-search" style="max-width:340px;width:100%;">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"
+                    stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <circle cx="11" cy="11" r="8"></circle>
+                    <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                  </svg>
+                  <input type="text" id="antigravity-search-input" placeholder="搜索 Antigravity 模型、供应商或上游模型…" oninput="antigravityFilterModels(this.value)">
+                </label>
+                <span class="model-map-count-pill" id="antigravity-model-count">共 0 个</span>
+              </div>
+              <div class="model-map-bulk-actions" style="display:flex;align-items:center;gap:6px;flex-shrink:0;">
+                <button class="btn-ghost secondary provider-bulk-btn" id="antigravity-bulk-select-visible-btn" data-action="antigravityToggleSelectAllVisible">选择当前</button>
+                <button class="btn-ghost success provider-bulk-btn" id="antigravity-bulk-enable-btn" disabled data-action="antigravityBulkEnableAction">启用</button>
+                <button class="btn-ghost warn provider-bulk-btn" id="antigravity-bulk-disable-btn" disabled data-action="antigravityBulkDisableAction">停用</button>
+                <button class="btn-ghost danger provider-bulk-btn" id="antigravity-bulk-remove-btn" disabled data-action="antigravityBulkRemoveAction">从 Antigravity 移除</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- 3. 数据表格与空状态容器 (与 WorkBuddy 完全对齐) -->
+          <div class="glass-card" style="overflow: hidden; margin-bottom: 20px;" id="antigravity-drop-zone"
+            ondragover="antigravityDragOver(event)" ondragleave="antigravityDragLeave(event)" ondrop="antigravityDrop(event)">
+            <div class="wb-model-empty" id="antigravity-model-empty"
+              style="padding:40px 20px; text-align:center;">
+              <div class="wb-empty-icon">
+                <svg viewBox="0 0 24 24">
+                  <rect x="3" y="3" width="18" height="18" rx="2" />
+                  <line x1="9" y1="9" x2="15" y2="9" />
+                  <line x1="9" y1="13" x2="15" y2="13" />
+                  <line x1="9" y1="17" x2="13" y2="17" />
+                </svg>
+              </div>
+              <div class="wb-empty-title">尚未配置自定义模型</div>
+              <div class="wb-empty-subtitle">添加第一个模型，让 Antigravity 使用你指定的 AI 供应商与模型能力。</div>
+              <button type="button" class="btn-primary wb-empty-action" data-action="openAntigravityAddPage">
+                <svg viewBox="0 0 24 24">
+                  <line x1="12" y1="5" x2="12" y2="19" />
+                  <line x1="5" y1="12" x2="19" y2="12" />
+                </svg>
+                添加模型
+              </button>
+              <div class="wb-empty-steps">
+                <span class="wb-empty-step"><span class="wb-empty-step-num">1</span> 选择供应商</span>
+                <span class="wb-empty-step"><span class="wb-empty-step-num">2</span> 勾选模型</span>
+                <span class="wb-empty-step"><span class="wb-empty-step-num">3</span> 保存配置</span>
+                <span class="wb-empty-step"><span class="wb-empty-step-num">或</span> 拖入 JSON</span>
+              </div>
+            </div>
+
+            <table class="wb-model-table" id="antigravity-model-table" style="display: none; border: none; box-shadow: none; border-radius: 0; width: 100%;">
+              <colgroup>
+                <col class="cb-col-select" style="width: 44px;">
+                <col style="width: 24%;">
+                <col style="width: 22%;">
+                <col style="width: 18%;">
+                <col style="width: 14%;">
+                <col style="width: 90px;">
+                <col style="width: 70px;">
+              </colgroup>
+              <thead>
+                <tr>
+                  <th class="cb-select-head" style="text-align: center; padding-left: 14px;">
+                    <label class="provider-select-check provider-select-check-table" title="选择当前列表" data-stop data-action="__noop">
+                      <input type="checkbox" id="antigravitySelectAll" aria-label="选择当前列表" onchange="antigravityToggleSelectAll(this.checked)">
+                      <span></span>
+                    </label>
+                  </th>
+                  <th>显示名称</th>
+                  <th>暴露模型 ID</th>
+                  <th>所属供应商</th>
+                  <th>上游协议</th>
+                  <th style="text-align: center;">操作</th>
+                  <th style="text-align: center;">启用</th>
+                </tr>
+              </thead>
+              <tbody id="antigravityModelTableBody"></tbody>
+            </table>
+          </div>
+
+          <p class="codex-safe-note" style="margin-top: 14px;">
+            配置文件路径：<code id="antigravity-config-path-label">settings.json</code>。点击「一键接入」即可生效，AnyBridge 会保留项目与拓展设置，首次接入前自动备份。
+          </p>
+        </div>
+
+        <!-- ═══════ ANTIGRAVITY 设置弹窗 ═══════ -->
+        <div class="modal-overlay" id="antigravitySettingsModal" role="dialog" aria-modal="true" aria-labelledby="antigravitySettingsModalTitle" data-action="closeAntigravitySettingsModal" data-only-self>
+          <div class="modal-container" style="max-width: 600px; width: 92%; border-radius: 16px; overflow: hidden; padding: 0; box-shadow: var(--shadow-xl, 0 24px 38px 3px rgba(0,0,0,0.12), 0 9px 46px 8px rgba(0,0,0,0.08)); border: 1px solid var(--border);">
+            <div class="modal-header" style="padding: 18px 24px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; background: var(--bg-card);">
+              <div style="display: flex; align-items: center; gap: 12px;">
+                <div style="width: 36px; height: 36px; border-radius: 10px; background: rgba(37, 99, 235, 0.08); color: var(--accent); display: flex; align-items: center; justify-content: center; flex-shrink: 0; border: 1px solid rgba(37, 99, 235, 0.15);">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="3"></circle>
+                    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+                  </svg>
+                </div>
+                <div>
+                  <div class="modal-title" id="antigravitySettingsModalTitle" style="font-size: 15px; font-weight: 750; color: var(--text-primary); line-height: 1.25;">Antigravity 接入策略</div>
+                  <div style="font-size: 11.5px; color: var(--text-muted); margin-top: 3px;">长记忆上下文压缩与配额模拟选项</div>
+                </div>
+              </div>
+              <button type="button" class="btn-ghost icon-btn" data-action="closeAntigravitySettingsModal" aria-label="关闭" style="width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center; color: var(--text-muted); transition: all 0.15s ease;">✕</button>
+            </div>
+            <div class="modal-body" style="padding: 22px 24px; background: var(--bg-card); display: flex; flex-direction: column; gap: 16px;">
+              <div>
+                <label style="display:block; font-size:13px; font-weight:700; color:var(--text-primary); margin-bottom:4px;">长记忆上下文压缩阈值</label>
+                <p style="font-size:11.5px; color:var(--text-muted); margin-bottom:8px;">推迟 Antigravity 官方过早裁剪历史摘要的时机，避免长对话丢失代码细节。</p>
+                <select id="modal-antigravity-context-window" class="field-input" style="width:100%; height:36px;">
+                  <option value="131072">128K</option>
+                  <option value="262144" selected>256K（推荐）</option>
+                  <option value="524288">512K</option>
+                  <option value="1048576">1M（超长记忆）</option>
+                </select>
+              </div>
+              <div style="padding-top: 8px; border-top: 1px solid var(--border);">
+                <label style="display:flex; align-items:center; justify-content:space-between;">
+                  <div>
+                    <span style="font-size:13px; font-weight:700; color:var(--text-primary); display:block;">官方配额健康伪装</span>
+                    <span style="font-size:11.5px; color:var(--text-muted);">自动模拟 Google One AI Credits 配额，防止官方接口报 503 阻断。</span>
+                  </div>
+                  <label class="switch">
+                    <input type="checkbox" id="modal-antigravity-mock-credits" checked>
+                    <span class="slider"></span>
+                  </label>
+                </label>
+              </div>
+            </div>
+            <div class="modal-footer" style="padding: 14px 24px; border-top: 1px solid var(--border); display: flex; justify-content: flex-end; background: var(--bg-card);">
+              <button class="btn-primary" data-action="saveAntigravitySettingsModal">确定</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- ═══════ ANTIGRAVITY 编辑单个模型弹窗 ═══════ -->
+        <div class="modal-overlay" id="antigravity-config-modal">
+          <div class="modal-container codex-config-modal" style="max-width: 520px;">
+            <div class="modal-header codex-config-modal-head">
+              <div>
+                <div class="modal-title" id="antigravity-config-modal-title">编辑模型</div>
+                <div class="codex-config-modal-sub" id="antigravity-config-modal-sub">修改该模型在 Antigravity 中的显示名称与映射参数。</div>
+              </div>
+              <button class="modal-close-icon" aria-label="关闭编辑" data-action="closeAntigravityConfigEditor">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M18 6L6 18"></path>
+                  <path d="M6 6l12 12"></path>
+                </svg>
+              </button>
+            </div>
+            <div class="modal-body codex-config-modal-body" style="padding: 16px 20px;">
+              <input type="hidden" id="antigravity-config-edit-id">
+              <label class="codex-config-field" style="margin-bottom: 12px;">
+                <span>显示名称</span>
+                <input id="antigravity-config-name" class="field-input" placeholder="例如：DeepSeek-V3">
+              </label>
+              <label class="codex-config-field" style="margin-bottom: 12px;">
+                <span>暴露模型 ID</span>
+                <input id="antigravity-config-model" class="field-input" placeholder="例如：models/deepseek-chat">
+              </label>
+              <label class="codex-config-field" style="margin-bottom: 12px;">
+                <span>接口协议格式</span>
+                <select id="antigravity-config-api-format" class="field-input">
+                  <option value="openai" selected>OpenAI 兼容</option>
+                  <option value="anthropic">Anthropic Messages</option>
+                  <option value="gemini">Google Gemini 原生</option>
+                </select>
+              </label>
+              <label class="codex-config-toggle-row">
+                <span class="codex-config-toggle-label">注入至 Antigravity 模型下拉菜单</span>
+                <label class="switch">
+                  <input type="checkbox" id="antigravity-config-inject-models" checked>
+                  <span class="slider"></span>
+                </label>
+              </label>
+            </div>
+            <div class="modal-footer codex-config-modal-foot">
+              <button class="btn-ghost" data-action="closeAntigravityConfigEditor">取消</button>
+              <button class="btn-primary" data-action="saveAntigravityConfigEditor">保存</button>
+            </div>
+          </div>
+        </div>

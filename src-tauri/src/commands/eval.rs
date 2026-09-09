@@ -838,6 +838,42 @@ fn probe_response_structure(ctx: &EvalContext, call: &JsonCall) -> EvalProbeResu
                 "usage",
             );
         }
+        ApiFormat::Gemini => {
+            total = 5.0;
+            let candidates = json.get("candidates").and_then(Value::as_array);
+            add_check(
+                &mut checks,
+                &mut passed,
+                candidates.map_or(false, |c| !c.is_empty()),
+                "candidates",
+            );
+            let role = json.pointer("/candidates/0/content/role").and_then(Value::as_str);
+            add_check(
+                &mut checks,
+                &mut passed,
+                role == Some("model"),
+                "model role",
+            );
+            let parts = json.pointer("/candidates/0/content/parts").and_then(Value::as_array);
+            add_check(
+                &mut checks,
+                &mut passed,
+                parts.map_or(false, |p| !p.is_empty()),
+                "content parts",
+            );
+            add_check(
+                &mut checks,
+                &mut passed,
+                extract_text(ctx, json).trim().len() > 0,
+                "text content",
+            );
+            add_check(
+                &mut checks,
+                &mut passed,
+                json.get("usageMetadata").or_else(|| json.get("usage_metadata")).is_some(),
+                "usageMetadata",
+            );
+        }
     }
     let score = (passed / total) * 100.0;
     let status = status_from_score(score);
@@ -961,6 +997,42 @@ fn probe_response_signature(ctx: &EvalContext, call: &JsonCall) -> EvalProbeResu
                 &mut passed,
                 usage_has_numbers_anthropic(json),
                 "integer usage",
+            );
+        }
+        ApiFormat::Gemini => {
+            total = 4.0;
+            let finish = json
+                .pointer("/candidates/0/finishReason")
+                .or_else(|| json.pointer("/candidates/0/finish_reason"))
+                .and_then(Value::as_str)
+                .unwrap_or("");
+            add_check(
+                &mut checks,
+                &mut passed,
+                matches!(
+                    finish,
+                    "STOP" | "MAX_TOKENS" | "SAFETY" | "RECITATION" | "OTHER" | ""
+                ),
+                "finishReason enum",
+            );
+            let role = json.pointer("/candidates/0/content/role").and_then(Value::as_str);
+            add_check(
+                &mut checks,
+                &mut passed,
+                role == Some("model"),
+                "content role=model",
+            );
+            add_check(
+                &mut checks,
+                &mut passed,
+                json.pointer("/candidates/0/content/parts").and_then(Value::as_array).is_some(),
+                "parts array",
+            );
+            add_check(
+                &mut checks,
+                &mut passed,
+                json.get("usageMetadata").or_else(|| json.get("usage_metadata")).is_some(),
+                "usageMetadata object",
             );
         }
     }
@@ -1585,6 +1657,11 @@ async fn probe_json_mode(ctx: &mut EvalContext) -> EvalProbeResult {
             "response_format": {"type": "json_object"}
         })),
         ApiFormat::Anthropic => None,
+        ApiFormat::Gemini => Some(serde_json::json!({
+            "generationConfig": {
+                "responseMimeType": "application/json"
+            }
+        })),
     };
     let body = chat_body(ctx, &prompt, false, 128, extra);
     let started = Instant::now();
@@ -1661,6 +1738,7 @@ async fn probe_output_throughput(ctx: &mut EvalContext) -> EvalProbeResult {
             "stream_options": {"include_usage": true}
         })),
         ApiFormat::Anthropic => None,
+        ApiFormat::Gemini => None,
     };
     let body = chat_body(ctx, prompt, true, 260, extra);
     let started = Instant::now();
@@ -1748,6 +1826,7 @@ fn api_format_str(fmt: &ApiFormat) -> &'static str {
     match fmt {
         ApiFormat::Anthropic => "anthropic",
         ApiFormat::Openai => "openai",
+        ApiFormat::Gemini => "gemini",
     }
 }
 
@@ -1755,7 +1834,8 @@ fn parse_eval_api_format(value: &str) -> Result<ApiFormat, String> {
     match value.trim().to_ascii_lowercase().as_str() {
         "openai" => Ok(ApiFormat::Openai),
         "anthropic" => Ok(ApiFormat::Anthropic),
-        "" => Err("请选择本次评测协议(openai 或 anthropic)".to_string()),
+        "gemini" => Ok(ApiFormat::Gemini),
+        "" => Err("请选择本次评测协议(openai, anthropic 或 gemini)".to_string()),
         other => Err(format!("未知评测协议: {}", other)),
     }
 }
@@ -1887,7 +1967,7 @@ fn is_deepseek_anthropic_provider(provider: &Provider) -> bool {
             .starts_with("/anthropic/")
 }
 
-fn api_url(provider: &Provider) -> String {
+fn api_url(provider: &Provider, model: &str) -> String {
     let host = provider.api_host.trim().trim_end_matches('/');
     let host = if host.starts_with("http://") || host.starts_with("https://") {
         host.to_string()
@@ -1901,6 +1981,7 @@ fn api_url(provider: &Provider) -> String {
     let path = match provider.api_format {
         ApiFormat::Openai => normalize_openai_api_path(&host, configured_path),
         ApiFormat::Anthropic => normalize_anthropic_api_path(configured_path),
+        ApiFormat::Gemini => config::normalize_gemini_api_path(&host, configured_path, model),
     };
     format!("{}{}", host, path)
 }
@@ -1971,6 +2052,19 @@ fn chat_body(
             }
             body
         }
+        ApiFormat::Gemini => {
+            let mut body = serde_json::json!({
+                "contents": [{"role": "user", "parts": [{"text": prompt}]}],
+                "generationConfig": {
+                    "maxOutputTokens": max_tokens,
+                    "temperature": 0
+                }
+            });
+            if let Some(extra) = extra {
+                merge_json(&mut body, extra);
+            }
+            body
+        }
     }
 }
 
@@ -2024,6 +2118,33 @@ fn tool_body(ctx: &EvalContext, city: &str) -> Value {
                 "tool_choice": {"type": "tool", "name": "get_weather"}
             })),
         ),
+        ApiFormat::Gemini => chat_body(
+            ctx,
+            &prompt,
+            false,
+            128,
+            Some(serde_json::json!({
+                "tools": [{
+                    "functionDeclarations": [{
+                        "name": "get_weather",
+                        "description": "Get weather for a city.",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "city": {"type": "string"}
+                            },
+                            "required": ["city"]
+                        }
+                    }]
+                }],
+                "toolConfig": {
+                    "functionCallingConfig": {
+                        "mode": "ANY",
+                        "allowedFunctionNames": ["get_weather"]
+                    }
+                }
+            })),
+        ),
     }
 }
 
@@ -2054,6 +2175,19 @@ fn vision_body(ctx: &EvalContext) -> Value {
             "temperature": 0,
             "stream": false
         }),
+        ApiFormat::Gemini => serde_json::json!({
+            "contents": [{
+                "role": "user",
+                "parts": [
+                    {"text": prompt},
+                    {"inlineData": {"mimeType": "image/png", "data": VISION_TEST_PNG_B64}}
+                ]
+            }],
+            "generationConfig": {
+                "maxOutputTokens": 1024,
+                "temperature": 0
+            }
+        }),
     }
 }
 
@@ -2081,6 +2215,14 @@ fn prompt_injection_body(ctx: &EvalContext, canary: &str) -> Value {
             "max_tokens": 180,
             "temperature": 0,
             "stream": false
+        }),
+        ApiFormat::Gemini => serde_json::json!({
+            "systemInstruction": {"parts": [{"text": system_prompt}]},
+            "contents": [{"role": "user", "parts": [{"text": attack_prompt}]}],
+            "generationConfig": {
+                "maxOutputTokens": 180,
+                "temperature": 0
+            }
         }),
     }
 }
@@ -2121,7 +2263,7 @@ async fn call_stream(ctx: &mut EvalContext, body: Value) -> Result<StreamCall, S
     let use_gzip = ctx.provider.capabilities.gzip;
     let mut req = ctx
         .client
-        .post(api_url(&ctx.provider))
+        .post(api_url(&ctx.provider, &ctx.model))
         .header("Content-Type", "application/json")
         .header("Accept", "text/event-stream");
     req = auth_headers(req, &ctx.provider);
@@ -2181,7 +2323,7 @@ async fn send_json(ctx: &EvalContext, body: Value) -> Result<(u16, String), Stri
     let use_gzip = ctx.provider.capabilities.gzip;
     let mut req = ctx
         .client
-        .post(api_url(&ctx.provider))
+        .post(api_url(&ctx.provider, &ctx.model))
         .header("Content-Type", "application/json");
     req = auth_headers(req, &ctx.provider);
     if use_gzip {
@@ -2213,6 +2355,9 @@ async fn send_protocol_json(
     req = match fmt {
         ApiFormat::Openai => {
             req.header("Authorization", format!("Bearer {}", ctx.provider.api_key))
+        }
+        ApiFormat::Gemini => {
+            req.header("x-goog-api-key", &ctx.provider.api_key)
         }
         ApiFormat::Anthropic => {
             let req = req.header("anthropic-version", "2023-06-01");
@@ -2258,6 +2403,12 @@ async fn run_protocol_checks(ctx: &mut EvalContext) -> Vec<EvalCheck> {
             "Gemini OpenAI 兼容",
             ApiFormat::Openai,
             format!("{}{}", base, "/v1beta/openai/chat/completions"),
+        ),
+        (
+            "gemini_native",
+            "Gemini 原生",
+            ApiFormat::Gemini,
+            format!("{}/v1beta/models/{}:generateContent", base, ctx.model.trim().strip_prefix("models/").unwrap_or(ctx.model.trim())),
         ),
     ];
     let mut out = Vec::new();
@@ -2340,6 +2491,7 @@ async fn run_protocol_checks(ctx: &mut EvalContext) -> Vec<EvalCheck> {
 fn provider_protocol_key(provider: &Provider) -> &'static str {
     match provider.api_format {
         ApiFormat::Anthropic => "anthropic_messages",
+        ApiFormat::Gemini => "gemini_native",
         ApiFormat::Openai => {
             let endpoint = format!(
                 "{} {}",
@@ -2375,6 +2527,13 @@ fn protocol_probe_body(fmt: &ApiFormat, model: &str) -> Value {
             "temperature": 0,
             "stream": false
         }),
+        ApiFormat::Gemini => serde_json::json!({
+            "contents": [{"role": "user", "parts": [{"text": "Reply with exactly: OK"}]}],
+            "generationConfig": {
+                "maxOutputTokens": 16,
+                "temperature": 0
+            }
+        }),
     }
 }
 
@@ -2392,11 +2551,14 @@ fn protocol_base_url(provider: &Provider) -> String {
             normalized_anthropic_path.as_str()
         }
         ApiFormat::Openai => provider.api_path.as_deref().unwrap_or_default(),
+        ApiFormat::Gemini => provider.api_path.as_deref().unwrap_or_default(),
     };
     let known_suffixes = [
         "/v1/chat/completions",
         "/v1beta/openai/chat/completions",
         "/v1/messages",
+        "/v1beta",
+        "/v1",
     ];
     for suffix in known_suffixes {
         if path.ends_with(suffix) {
@@ -2416,6 +2578,7 @@ fn protocol_base_url(provider: &Provider) -> String {
 fn auth_headers(req: reqwest::RequestBuilder, provider: &Provider) -> reqwest::RequestBuilder {
     match provider.api_format {
         ApiFormat::Openai => req.header("Authorization", format!("Bearer {}", provider.api_key)),
+        ApiFormat::Gemini => req.header("x-goog-api-key", &provider.api_key),
         ApiFormat::Anthropic => {
             let req = req.header("anthropic-version", "2023-06-01");
             if is_deepseek_anthropic_provider(provider) {
@@ -2484,6 +2647,11 @@ fn extract_text_by_format(fmt: &ApiFormat, json: &Value) -> String {
                     .join("\n")
             })
             .unwrap_or_default(),
+        ApiFormat::Gemini => json
+            .pointer("/candidates/0/content/parts/0/text")
+            .and_then(Value::as_str)
+            .map(ToString::to_string)
+            .unwrap_or_default(),
     }
 }
 
@@ -2511,14 +2679,15 @@ fn extracted_text_kind(fmt: &ApiFormat, json: &Value) -> &'static str {
                     .pointer("/choices/0/message/reasoning")
                     .and_then(Value::as_str)
                     .map(|s| !s.trim().is_empty())
-                    .unwrap_or(false)
+                .unwrap_or(false)
             {
                 "reasoning"
             } else {
-                "empty"
+                "none"
             }
         }
         ApiFormat::Anthropic => "content",
+        ApiFormat::Gemini => "content",
     }
 }
 
@@ -2685,6 +2854,34 @@ fn tool_score(ctx: &EvalContext, json: &Value, city: &str) -> (f64, Vec<String>)
             }
             evidence.push(format!("input={}", snippet(&input.to_string(), 120)));
         }
+        ApiFormat::Gemini => {
+            let parts = json.pointer("/candidates/0/content/parts").and_then(Value::as_array);
+            let tool = parts.and_then(|arr| {
+                arr.iter().find(|b| b.get("functionCall").is_some() || b.get("function_call").is_some())
+            });
+            if tool.is_some() {
+                score += 25.0;
+                evidence.push("functionCall part present".into());
+            }
+            let call = tool.and_then(|b| b.get("functionCall").or_else(|| b.get("function_call")));
+            let name = call.and_then(|v| v.get("name")).and_then(Value::as_str).unwrap_or("");
+            if name == "get_weather" {
+                score += 25.0;
+            }
+            evidence.push(format!(
+                "tool_name={}",
+                if name.is_empty() { "(missing)" } else { name }
+            ));
+            let args = call.and_then(|v| v.get("args")).cloned().unwrap_or(Value::Null);
+            if args.is_object() {
+                score += 25.0;
+            }
+            let args_str = serde_json::to_string(&args).unwrap_or_default();
+            if args_str.contains(city) {
+                score += 25.0;
+            }
+            evidence.push(format!("arguments={}", snippet(&args_str, 120)));
+        }
     }
     (score, evidence)
 }
@@ -2717,6 +2914,10 @@ fn input_tokens(fmt: &ApiFormat, json: &Value) -> Option<u64> {
     match fmt {
         ApiFormat::Openai => json.pointer("/usage/prompt_tokens").and_then(Value::as_u64),
         ApiFormat::Anthropic => json.pointer("/usage/input_tokens").and_then(Value::as_u64),
+        ApiFormat::Gemini => json
+            .pointer("/usageMetadata/promptTokenCount")
+            .or_else(|| json.pointer("/usage_metadata/prompt_token_count"))
+            .and_then(Value::as_u64),
     }
 }
 
@@ -2739,6 +2940,18 @@ fn add_usage(summary: &mut EvalUsageSummary, fmt: &ApiFormat, json: &Value) {
                 .unwrap_or(0);
             summary.output_tokens += json
                 .pointer("/usage/output_tokens")
+                .and_then(Value::as_u64)
+                .unwrap_or(0);
+        }
+        ApiFormat::Gemini => {
+            summary.input_tokens += json
+                .pointer("/usageMetadata/promptTokenCount")
+                .or_else(|| json.pointer("/usage_metadata/prompt_token_count"))
+                .and_then(Value::as_u64)
+                .unwrap_or(0);
+            summary.output_tokens += json
+                .pointer("/usageMetadata/candidatesTokenCount")
+                .or_else(|| json.pointer("/usage_metadata/candidates_token_count"))
                 .and_then(Value::as_u64)
                 .unwrap_or(0);
         }
@@ -2865,6 +3078,7 @@ fn build_protocol_checks(ctx: &EvalContext, probes: &[EvalProbeResult]) -> Vec<E
     let current = match ctx.provider.api_format {
         ApiFormat::Openai => ("openai_chat", "OpenAI Chat"),
         ApiFormat::Anthropic => ("anthropic_messages", "Claude Messages"),
+        ApiFormat::Gemini => ("gemini_native", "Gemini Native"),
     };
     let p1 = probes.iter().find(|p| p.id == "P1");
     vec![EvalCheck {
@@ -2955,6 +3169,9 @@ fn stream_has_done(body: &str, fmt: &ApiFormat) -> bool {
         }
         ApiFormat::Anthropic => {
             body.contains("message_stop") || body.contains("\"type\":\"message_stop\"")
+        }
+        ApiFormat::Gemini => {
+            body.contains("finishReason") || body.contains("finish_reason") || body.contains("STOP")
         }
     }
 }

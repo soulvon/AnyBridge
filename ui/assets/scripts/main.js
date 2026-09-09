@@ -16,6 +16,7 @@ import './50-model-map.js';
 import './52-proxy-routes.js';
 import './model-context-presets.js';
 import './55-platforms.js';
+import './56-claude-desktop.js';
 import './65-extensions.js';
 import './66-plugins.js';
 import './60-updater.js';

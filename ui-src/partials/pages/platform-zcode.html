@@ -5,7 +5,7 @@
               <div class="platform-console-icon"><img src="assets/icons/platform-zcode.svg" alt="ZCode"></div>
               <div class="platform-console-titlewrap">
                 <strong>ZCode</strong>
-                <span>Z.AI 推出的 ADE 编程 IDE · 支持 OpenAI 兼容 API 协议</span>
+                <span>Z.AI 编程 IDE · 管理 OpenAI 兼容模型配置</span>
               </div>
             </div>
           </div>
@@ -17,8 +17,8 @@
               <!-- 第一行：标题 + 操作按钮 -->
               <div class="platform-model-toolbar-main">
                 <div class="platform-model-title-block">
-                  <h2>自定义模型列表</h2>
-                  <span>Z.AI 自定义模型，支持添加、编辑、导入导出。</span>
+                  <h2>模型列表</h2>
+                  <span>管理 ZCode 自定义模型，支持添加、编辑与导入导出。</span>
                 </div>
                 <div class="platform-model-toolbar-actions">
                 <button class="btn-primary platform-model-btn" data-action="openZcAddModal">
@@ -59,7 +59,7 @@
                     <circle cx="11" cy="11" r="8"></circle>
                     <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
                   </svg>
-                  <input type="text" id="zc-model-search" placeholder="搜索模型、供应商或 Base URL"
+                  <input type="text" id="zc-model-search" placeholder="搜索模型、供应商或地址"
  data-action="onZcModelSearch" data-events="input">
                 </label>
                 <span class="platform-model-count-pill" id="zc-model-count">共 0 个</span>
@@ -183,7 +183,7 @@
           </div>
 
           <p class="platform-hint" style="margin:0 4px;">
-            配置文件路径（用户级）：<code id="zc-config-path-label">~/.zcode/v2/config.json</code>。保存后会同步写入
+            配置文件路径（用户级）：<code id="zc-config-path-label">~/.zcode/v2/config.json</code>。保存后同步写入
             <code>~/.zcode/cli/config.json</code> 并自动备份原文件。
           </p>
         </div>

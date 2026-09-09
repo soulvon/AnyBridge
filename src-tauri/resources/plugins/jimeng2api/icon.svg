@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
+  <defs>
+    <linearGradient id="jmGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1261A6"/>
+      <stop offset="100%" stop-color="#0E9F8B"/>
+    </linearGradient>
+    <linearGradient id="sparkleGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.95"/>
+      <stop offset="100%" stop-color="#e0f2fe" stop-opacity="0.8"/>
+    </linearGradient>
+  </defs>
+
+  <!-- 背景圆角矩形 -->
+  <rect x="8" y="8" width="112" height="112" rx="28" fill="url(#jmGradient)"/>
+  
+  <!-- 微妙内描边 -->
+  <rect x="8" y="8" width="112" height="112" rx="28" fill="none" stroke="rgba(255, 255, 255, 0.2)" stroke-width="2"/>
+
+  <!-- 艺术化 JM 标识与灵感星芒 -->
+  <g transform="translate(24, 28)">
+    <!-- 星芒装饰 -->
+    <path d="M 64 2 C 64 12 70 18 80 18 C 70 18 64 24 64 34 C 64 24 58 18 48 18 C 58 18 64 12 64 2 Z" fill="url(#sparkleGrad)"/>
+    
+    <!-- 字母 J -->
+    <path d="M 28 16 L 28 46 C 28 54 22 58 14 58 C 8 58 2 55 0 51 L 5 44 C 7 46 10 48 14 48 C 17 48 19 46 19 43 L 19 16 Z" fill="#ffffff"/>
+    
+    <!-- 字母 M -->
+    <path d="M 36 16 L 46 16 L 56 36 L 66 16 L 76 16 L 76 58 L 68 58 L 68 28 L 59 46 L 53 46 L 44 28 L 44 58 L 36 58 Z" fill="#ffffff"/>
+  </g>
+</svg>

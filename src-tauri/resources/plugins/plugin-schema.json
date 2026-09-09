@@ -7,6 +7,7 @@
     "apiVersion": { "type": "integer", "const": 1 },
     "id": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" },
     "name": { "type": "string" },
+    "short": { "type": "string" },
     "description": { "type": "string" },
     "version": { "type": "string", "pattern": "^\\d+\\.\\d+\\.\\d+" },
     "icon": { "type": "string", "default": "icon.png" },

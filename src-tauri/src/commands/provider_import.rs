@@ -1529,6 +1529,9 @@ fn cherry_provider_api_format(provider: &Value) -> Option<(ApiFormat, Option<Str
     if provider_type.contains("anthropic") {
         return Some((ApiFormat::Anthropic, None));
     }
+    if provider_type.contains("gemini") || provider_type.contains("google") {
+        return Some((ApiFormat::Gemini, None));
+    }
 
     let openai_compatible = provider_type.is_empty()
         || provider_type.contains("openai")
@@ -1553,6 +1556,15 @@ fn cherry_provider_base_url(provider: &Value, api_format: &ApiFormat) -> Option<
         ApiFormat::Anthropic => &[
             "anthropicApiHost",
             "anthropic_api_host",
+            "apiHost",
+            "api_host",
+            "baseUrl",
+            "base_url",
+            "url",
+        ],
+        ApiFormat::Gemini => &[
+            "geminiApiHost",
+            "gemini_api_host",
             "apiHost",
             "api_host",
             "baseUrl",
@@ -1961,12 +1973,22 @@ fn normalize_endpoint(
                     "/v1/chat/completions".to_string()
                 }
             }
+            ApiFormat::Gemini => {
+                if lower_path.is_empty() || lower_path == "/" {
+                    "/v1beta".to_string()
+                } else if lower_path.ends_with("/v1beta") || lower_path.ends_with("/v1") {
+                    path
+                } else {
+                    format!("{}/v1beta", path)
+                }
+            }
         };
 
         split_endpoint_prefix(host, api_path, api_format)
     } else {
         let api_path = match api_format {
             ApiFormat::Anthropic => "/v1/messages",
+            ApiFormat::Gemini => "/v1beta",
             ApiFormat::Openai => {
                 if wire_api
                     .map(|v| v.eq_ignore_ascii_case("responses"))
@@ -2070,6 +2092,7 @@ fn candidate_signature(candidate: &ImportProviderCandidate) -> String {
         match candidate.api_format {
             ApiFormat::Anthropic => "anthropic",
             ApiFormat::Openai => "openai",
+            ApiFormat::Gemini => "gemini",
         },
         candidate.api_host.trim_end_matches('/').to_lowercase(),
         candidate

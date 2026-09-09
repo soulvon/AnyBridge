@@ -334,6 +334,36 @@ fn classify(line: &str) -> String {
     }
 }
 
+fn format_exit_status(status: &std::process::ExitStatus) -> String {
+    let mut parts = Vec::new();
+    if let Some(code) = status.code() {
+        if code < 0 || code > 255 {
+            parts.push(format!("退出码: {} (0x{:08X})", code, code as u32));
+        } else {
+            parts.push(format!("退出码: {}", code));
+        }
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::ExitStatusExt;
+        if let Some(sig) = status.signal() {
+            let note = match sig {
+                9 => " (SIGKILL - 常见于 macOS 签名损坏或被系统强杀)",
+                11 => " (SIGSEGV - 内存段错误)",
+                6 => " (SIGABRT - 进程异常中止)",
+                15 => " (SIGTERM - 终止信号)",
+                _ => "",
+            };
+            parts.push(format!("终止信号: {}{}", sig, note));
+        }
+    }
+    if parts.is_empty() {
+        "未知状态".into()
+    } else {
+        parts.join(", ")
+    }
+}
+
 fn spawn_log_reader<R>(app: AppHandle, pipe: Option<R>)
 where
     R: Read + Send + 'static,
@@ -2000,6 +2030,18 @@ pub fn start_proxy_impl(
                     return Err(e);
                 }
             };
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                if let Ok(metadata) = std::fs::metadata(&sidecar_path) {
+                    let mut permissions = metadata.permissions();
+                    let mode = permissions.mode();
+                    if mode & 0o111 != 0o111 {
+                        permissions.set_mode(mode | 0o755);
+                        let _ = std::fs::set_permissions(&sidecar_path, permissions);
+                    }
+                }
+            }
             let mut c = std::process::Command::new(&sidecar_path);
             // Windows: 设置进程创建标志，阻止 CMD 窗口弹出
             #[cfg(target_os = "windows")]
@@ -2150,10 +2192,10 @@ pub fn start_proxy_impl(
     std::thread::spawn(move || loop {
         std::thread::sleep(std::time::Duration::from_secs(1));
 
-        let exited = if let Some(state) = app_handle2.try_state::<ProxyState>() {
+        let exit_status = if let Some(state) = app_handle2.try_state::<ProxyState>() {
             let guard = lock_or_recover(&state.child);
             match guard.as_ref() {
-                Some(managed) => managed.try_wait().ok().flatten().is_some(),
+                Some(managed) => managed.try_wait().ok().flatten(),
                 // child 为 None 说明 stop_proxy 已 take 走了 child 并负责清理，
                 // 这里直接退出循环，不再误判为进程退出。
                 None => {
@@ -2164,7 +2206,7 @@ pub fn start_proxy_impl(
             break;
         };
 
-        if exited {
+        if let Some(status) = exit_status {
             // 进程真正退出后的清理
             if let Some(state) = app_handle2.try_state::<ProxyState>() {
                 *lock_or_recover(&state.child) = None;
@@ -2199,6 +2241,13 @@ pub fn start_proxy_impl(
                     }
                 }
             }
+            let _ = app_handle2.emit(
+                "proxy-log",
+                LogLine {
+                    level: "warn".into(),
+                    msg: format!("代理进程已退出（{}）", format_exit_status(&status)),
+                },
+            );
             let _ = app_handle2.emit("proxy-stopped", ());
             break;
         }
@@ -2360,6 +2409,18 @@ fn start_proxy_service_impl_with_repair(
                     return Err(e);
                 }
             };
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                if let Ok(metadata) = std::fs::metadata(&sidecar_path) {
+                    let mut permissions = metadata.permissions();
+                    let mode = permissions.mode();
+                    if mode & 0o111 != 0o111 {
+                        permissions.set_mode(mode | 0o755);
+                        let _ = std::fs::set_permissions(&sidecar_path, permissions);
+                    }
+                }
+            }
             let mut c = std::process::Command::new(&sidecar_path);
             #[cfg(target_os = "windows")]
             c.creation_flags(DETACHED_PROCESS | CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP);
@@ -2419,22 +2480,29 @@ fn start_proxy_service_impl_with_repair(
     std::thread::spawn(move || loop {
         std::thread::sleep(std::time::Duration::from_secs(1));
 
-        let exited = if let Some(state) = app_handle2.try_state::<ProxyState>() {
+        let exit_status = if let Some(state) = app_handle2.try_state::<ProxyState>() {
             let guard = lock_or_recover(&state.child);
             match guard.as_ref() {
-                Some(managed) => managed.try_wait().ok().flatten().is_some(),
+                Some(managed) => managed.try_wait().ok().flatten(),
                 None => break,
             }
         } else {
             break;
         };
 
-        if exited {
+        if let Some(status) = exit_status {
             if let Some(state) = app_handle2.try_state::<ProxyState>() {
                 *lock_or_recover(&state.child) = None;
                 *lock_or_recover(&state.target_ide) = String::new();
                 *lock_or_recover(&state.ports) = None;
             }
+            let _ = app_handle2.emit(
+                "proxy-log",
+                LogLine {
+                    level: "warn".into(),
+                    msg: format!("代理进程已退出（{}）", format_exit_status(&status)),
+                },
+            );
             let _ = app_handle2.emit("proxy-stopped", ());
             break;
         }

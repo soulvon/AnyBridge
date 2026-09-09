@@ -137,6 +137,8 @@ const PLUGIN_STATE_META = {
   running: { label: '运行中', cls: 'running' },
   stopping: { label: '停止中', cls: 'installing' },
   stopped: { label: '已停止', cls: 'stopped' },
+  uninstalling: { label: '卸载中', cls: 'installing' },
+  updating: { label: '更新中', cls: 'installing' },
   error: { label: '错误', cls: 'error' },
 };
 
@@ -186,16 +188,314 @@ function filterPluginTable() {
 
 function renderPluginList() {
   const host = document.getElementById('plugin-list-grid');
-  if (!host) return;
-  host.replaceChildren();
-
-  if (globalThis.pluginRegistry && globalThis.pluginRegistry.length > 0) {
-    for (const plugin of globalThis.pluginRegistry) {
-      host.appendChild(renderPluginCard(plugin));
+  if (host) {
+    host.replaceChildren();
+    if (globalThis.pluginRegistry && globalThis.pluginRegistry.length > 0) {
+      for (const plugin of globalThis.pluginRegistry) {
+        host.appendChild(renderPluginCard(plugin));
+      }
     }
+    filterPluginTable();
+  }
+  renderInstalledPluginCards();
+}
+
+// ═══════════════════════════════════════════════════
+// 已安装大卡片（挂载在「已安装」Tab，100% 对齐 CPA 套件规格）
+// ═══════════════════════════════════════════════════
+
+globalThis.pluginUpdateReports = new Map();   // pluginId -> report
+globalThis.pluginUpdateChecking = new Set();  // pluginId
+
+function getPluginActionConfig(manifest, state, hasUpdate) {
+  const pluginId = manifest.id;
+  const isRunning = state === 'running';
+
+  if (state === 'uninstalling') {
+    return {
+      primary: { label: '卸载中...', action: null, disabled: true },
+      secondary: []
+    };
   }
 
-  filterPluginTable();
+  if (state === 'updating') {
+    return {
+      primary: { label: '更新中...', action: null, disabled: true },
+      secondary: []
+    };
+  }
+
+  if (state === 'starting') {
+    return {
+      primary: { label: '启动中...', action: null, disabled: true },
+      secondary: []
+    };
+  }
+
+  if (isRunning) {
+    if (hasUpdate) {
+      return {
+        primary: { label: '更新', action: () => upgradePlugin(pluginId) },
+        secondary: [
+          { label: '打开面板', action: () => openPluginConsole(pluginId), cls: 'accent' },
+          { label: '重启', action: () => restartPlugin(pluginId), cls: 'accent' },
+          { label: '停止', action: () => stopPlugin(pluginId), cls: 'warn' },
+          { label: '设置', action: () => openPluginManager(pluginId), cls: 'secondary' },
+          ...(manifest.homepage ? [{ label: '项目主页', action: () => openPluginLink(manifest.homepage), cls: 'secondary' }] : []),
+          { label: '卸载', action: () => uninstallPlugin(pluginId), cls: 'danger' }
+        ]
+      };
+    }
+    return {
+      primary: { label: '打开面板', action: () => openPluginConsole(pluginId) },
+      secondary: [
+        { label: '重启', action: () => restartPlugin(pluginId), cls: 'accent' },
+        { label: '停止', action: () => stopPlugin(pluginId), cls: 'warn' },
+        { label: '检测更新', action: () => checkPluginUpdate(pluginId), cls: 'accent' },
+        { label: '设置', action: () => openPluginManager(pluginId), cls: 'secondary' },
+        ...(manifest.homepage ? [{ label: '项目主页', action: () => openPluginLink(manifest.homepage), cls: 'secondary' }] : []),
+        { label: '卸载', action: () => uninstallPlugin(pluginId), cls: 'danger' }
+      ]
+    };
+  }
+
+  // 已安装但未运行 (stopped / installed / error)
+  if (hasUpdate) {
+    return {
+      primary: { label: '更新', action: () => upgradePlugin(pluginId) },
+      secondary: [
+        { label: '启动', action: () => startPlugin(pluginId), cls: 'accent' },
+        { label: '设置', action: () => openPluginManager(pluginId), cls: 'secondary' },
+        ...(manifest.homepage ? [{ label: '项目主页', action: () => openPluginLink(manifest.homepage), cls: 'secondary' }] : []),
+        { label: '卸载', action: () => uninstallPlugin(pluginId), cls: 'danger' }
+      ]
+    };
+  }
+
+  return {
+    primary: { label: '启动', action: () => startPlugin(pluginId) },
+    secondary: [
+      { label: '设置', action: () => openPluginManager(pluginId), cls: 'secondary' },
+      { label: '检测更新', action: () => checkPluginUpdate(pluginId), cls: 'accent' },
+      ...(manifest.homepage ? [{ label: '项目主页', action: () => openPluginLink(manifest.homepage), cls: 'secondary' }] : []),
+      { label: '卸载', action: () => uninstallPlugin(pluginId), cls: 'danger' }
+    ]
+  };
+}
+
+async function renderInstalledPluginCards() {
+  const container = document.getElementById('installed-plugins-container');
+  if (!container) return;
+
+  const installedPlugins = (globalThis.pluginRegistry || []).filter(p => {
+    const s = p.status?.state;
+    return ['installed', 'stopped', 'running', 'starting', 'stopping', 'error', 'deploying', 'uninstalling', 'updating'].includes(s);
+  });
+
+  const cards = [];
+  for (const plugin of installedPlugins) {
+    const config = await getPluginConfig(plugin.manifest.id);
+    cards.push(renderInstalledPluginCard(plugin, config));
+  }
+  container.replaceChildren(...cards);
+}
+
+function renderInstalledPluginCard(plugin, config = {}) {
+  const { manifest, status } = plugin;
+  const state = status?.state || 'installed';
+  const meta = pluginStateMeta(state);
+  const isRunning = state === 'running';
+  const isTrans = ['deploying', 'starting', 'stopping', 'uninstalling', 'updating'].includes(state);
+  const report = globalThis.pluginUpdateReports?.get(manifest.id);
+  const hasUpdate = Boolean(report?.hasUpdate);
+
+  const card = document.createElement('article');
+  card.className = 'extension-card extension-card-featured';
+  card.dataset.installedPluginCard = manifest.id;
+  card.dataset.extensionTags = 'api-gateway recommended';
+
+  // 1. 顶部标识区（Logo 100% 对齐 CPA 套件规格：微立体渐变底色+纯白文字，标题行干净利落）
+  const top = document.createElement('div');
+  top.className = 'extension-card-top';
+
+  const markText = manifest.short || (manifest.id === 'jimeng2api' ? 'JM' : (manifest.name || manifest.id).slice(0, 2).toUpperCase());
+  const logoClass = manifest.id === 'jimeng2api'
+    ? 'extension-logo-jimeng'
+    : (manifest.id === 'grok2api' ? 'extension-logo-grok' : 'extension-logo-cpa');
+
+  top.innerHTML = `
+    <div class="extension-identity">
+      <div class="extension-logo ${logoClass}" style="font-size: 13px;" aria-hidden="true">${markText}</div>
+      <div>
+        <div class="extension-title-row">
+          <h3>${manifest.name || manifest.id}</h3>
+        </div>
+        <p>${manifest.description || '即梦多账号 API 网关，兼容 OpenAI 图像与视频接口，支持多账号池轮询。'}</p>
+      </div>
+    </div>
+    <span class="extension-status status-${meta.cls}" id="installed-card-status-${manifest.id}">${meta.label}</span>
+  `;
+
+  // 2. 属性网格（2x2 对称四格：左版本、右端口、左安装目录、右组件运行状态）
+  const metaGrid = document.createElement('div');
+  metaGrid.className = 'extension-meta-grid';
+
+  const verStr = status?.version || manifest.version || '1.0.0';
+  const port = status?.port || config?.port || (manifest.id === 'jimeng2api' ? 5566 : 8000);
+  const installPath = status?.install_path || config?.installPath || '默认目录';
+  const shortInstallDir = installPath.length > 38 ? `${installPath.slice(0, 16)}...${installPath.slice(-18)}` : installPath;
+
+  let componentText = '1 个';
+  if (isRunning) componentText = '1/1 运行';
+  else if (state === 'starting') componentText = '启动中';
+  else if (state === 'stopped' || state === 'installed') componentText = '1 个 (未运行)';
+  else if (state === 'error') componentText = '异常';
+
+  metaGrid.innerHTML = `
+    <div>
+      <span>版本</span>
+      <strong>v${verStr}</strong>
+      <span class="extension-update-badge" id="installed-update-badge-${manifest.id}" ${hasUpdate ? '' : 'hidden'} data-action="upgradePlugin" data-arg="${manifest.id}" style="cursor: pointer;" title="点击一键更新">有更新</span>
+    </div>
+    <div>
+      <span>端口</span>
+      <strong>${port}</strong>
+    </div>
+    <div>
+      <span>安装目录</span>
+      <strong title="${installPath}">${shortInstallDir}</strong>
+    </div>
+    <div>
+      <span>组件</span>
+      <strong>${componentText}</strong>
+    </div>
+  `;
+
+  // 3. 异常告警
+  const alertEl = document.createElement('div');
+  alertEl.className = 'extension-card-alert';
+  if (status?.error) {
+    alertEl.dataset.level = 'error';
+    alertEl.textContent = status.error;
+    alertEl.hidden = false;
+  } else {
+    alertEl.hidden = true;
+  }
+
+  // 4. 进度条（部署、启动、更新、卸载全过程动态反馈）
+  const progressWrap = document.createElement('div');
+  progressWrap.className = 'extension-progress';
+  progressWrap.id = `installed-card-progress-${manifest.id}`;
+  if (!isTrans) progressWrap.hidden = true;
+
+  let progressMsg = '准备中...';
+  if (state === 'uninstalling') progressMsg = '正在停止服务并清理本地安装目录与配置...';
+  else if (state === 'updating') progressMsg = '正在拉取最新代码并重新编译构建...';
+  else if (state === 'starting') progressMsg = '正在启动服务并校验端口健康检查...';
+  else if (state === 'deploying') progressMsg = '正在下载并部署项目依赖...';
+
+  progressWrap.innerHTML = `
+    <div class="extension-progress-track">
+      <div class="extension-progress-fill" style="width: 100%; animation: progress-indeterminate 1.5s infinite linear;"></div>
+    </div>
+    <div class="extension-progress-meta">
+      <span id="installed-card-progress-text-${manifest.id}">${progressMsg}</span>
+      <strong>进行中</strong>
+    </div>
+  `;
+
+  // 5. 特性标签
+  const tags = document.createElement('div');
+  tags.className = 'extension-tags';
+  tags.innerHTML = `
+    <span>兼容 OpenAI 接口</span>
+    <span>本地守护进程</span>
+    <span>多账号池轮询</span>
+    <span>实时健康巡检</span>
+  `;
+
+  // 6. 操作按钮栏（与 CPA 完全对齐：由 getPluginActionConfig 统一生成主按钮 + 次按钮组）
+  const actions = document.createElement('div');
+  actions.className = 'extension-actions';
+
+  const secActions = document.createElement('div');
+  secActions.className = 'extension-secondary-actions';
+
+  const actionCfg = getPluginActionConfig(manifest, state, hasUpdate);
+  const primaryBtn = makePluginBtn(
+    actionCfg.primary.label,
+    'btn-primary',
+    actionCfg.primary.action || (() => {}),
+    Boolean(actionCfg.primary.disabled)
+  );
+  if (actionCfg.primary.disabled) {
+    const spinner = document.createElement('span');
+    spinner.className = 'btn-spinner';
+    primaryBtn.appendChild(spinner);
+  }
+  actions.appendChild(primaryBtn);
+
+  (actionCfg.secondary || []).forEach(btn => {
+    const el = makePluginBtn(btn.label, `btn-ghost ${btn.cls || 'secondary'}`, btn.action);
+    secActions.appendChild(el);
+  });
+  actions.appendChild(secActions);
+
+  // 7. 访问凭证卡片（完全采用 CPA 规格的 .cpa-credentials 结构）
+  const creds = document.createElement('div');
+  creds.className = 'cpa-credentials';
+
+  const apiKeyHint = '网页 sessionid 或控制台创建的 jm_... 密钥';
+
+  creds.innerHTML = `
+    <div class="cpa-credentials-title">访问凭证 <span class="cpa-credentials-hint">点击即可复制</span></div>
+
+    <div class="cpa-credentials-subtitle">Jimeng API (OpenAI 兼容)</div>
+    <div class="cpa-credential-row">
+      <span class="cpa-credential-label">API Key</span>
+      <code class="cpa-credential-value">${apiKeyHint}</code>
+      <button type="button" class="cpa-credential-copy" data-copy-text="${apiKeyHint}">复制</button>
+    </div>
+    <div class="cpa-credential-row cpa-credential-row-link">
+      <span class="cpa-credential-label">API 地址</span>
+      <code class="cpa-credential-value">http://127.0.0.1:${port}/v1</code>
+      <button type="button" class="cpa-credential-copy" data-copy-url="http://127.0.0.1:${port}/v1">复制</button>
+    </div>
+
+    <div class="cpa-credentials-subtitle">Jimeng 管理面板</div>
+    <div class="cpa-credential-row">
+      <span class="cpa-credential-label">访问模式</span>
+      <code class="cpa-credential-value" style="color: var(--success); font-weight: 600;">本地免密直达（点击打开面板直接进入）</code>
+    </div>
+    <div class="cpa-credential-row cpa-credential-row-link">
+      <span class="cpa-credential-label">面板地址</span>
+      <code class="cpa-credential-value">http://127.0.0.1:${port}</code>
+      <button type="button" class="cpa-credential-copy" data-copy-url="http://127.0.0.1:${port}">复制</button>
+    </div>
+  `;
+
+  // 复制按钮行内已复制反馈（与 CPA 完全一致，无多余浮动 toast）
+  creds.querySelectorAll('.cpa-credential-copy').forEach(btn => {
+    btn.onclick = (e) => {
+      e.stopPropagation();
+      const text = btn.dataset.copyUrl || btn.dataset.copyText || '';
+      if (!text) return;
+      navigator.clipboard.writeText(text).then(() => {
+        btn.classList.add('copied');
+        btn.textContent = '已复制';
+        setTimeout(() => {
+          btn.classList.remove('copied');
+          btn.textContent = '复制';
+        }, 1500);
+      });
+    };
+  });
+
+  const updateBadge = metaGrid.querySelector('[data-action="upgradePlugin"]');
+  if (updateBadge) updateBadge.addEventListener('click', () => upgradePlugin(manifest.id));
+
+  card.append(top, metaGrid, alertEl, progressWrap, tags, actions, creds);
+  return card;
 }
 
 function renderPluginCard(plugin) {
@@ -213,10 +513,13 @@ function renderPluginCard(plugin) {
   // 1. 插件名称/描述
   const nameTd = document.createElement('td');
   nameTd.className = 'plugin-name-cell';
-  const markText = (manifest.name || manifest.id).slice(0, 2).toUpperCase();
+  const markText = manifest.short || (manifest.id === 'jimeng2api' ? 'JM' : (manifest.name || manifest.id).slice(0, 2).toUpperCase());
+  const accent = typeof manifest.accent === 'string' && manifest.accent.startsWith('#') ? manifest.accent : '#2563eb';
+  const markBg = `${accent}1f`;
+  const markColor = accent;
   nameTd.innerHTML = `
     <div class="plugin-identity-cell">
-      <span class="plugin-card-mark" style="background: rgba(59, 130, 246, 0.12); color: #2563eb; font-weight: 800;">${markText}</span>
+      <span class="plugin-card-mark" style="background: ${markBg}; color: ${markColor}; font-weight: 800;">${markText}</span>
       <div class="plugin-identity-text">
         <div class="plugin-title-row">
           <strong class="plugin-name">${manifest.name || manifest.id}</strong>
@@ -230,7 +533,15 @@ function renderPluginCard(plugin) {
   // 2. 分类
   const catTd = document.createElement('td');
   catTd.className = 'plugin-category-cell';
-  catTd.innerHTML = `<span class="plugin-tag">${manifest.category || 'API 网关'}</span>`;
+  const catMap = {
+    'api-gateway': 'API 网关',
+    'proxy': '代理服务',
+    'tool': '辅助工具',
+    'database': '数据存储',
+    'other': '其它扩展'
+  };
+  const catLabel = catMap[manifest.category] || manifest.category || 'API 网关';
+  catTd.innerHTML = `<span class="plugin-tag">${catLabel}</span>`;
 
   // 3. 端口
   const portTd = document.createElement('td');
@@ -263,7 +574,7 @@ function renderPluginCard(plugin) {
     actions.appendChild(makePluginBtn('安装', 'btn-primary btn-sm', () => openPluginDeployDialog(manifest.id)));
   } else if (state === 'running' || state === 'starting') {
     actions.appendChild(makePluginBtn('管理', 'btn-primary btn-sm', () => openPluginManager(manifest.id)));
-    actions.appendChild(makePluginBtn('停止', 'btn-ghost secondary btn-sm', () => stopPlugin(manifest.id)));
+    actions.appendChild(makePluginBtn('停止', 'btn-ghost warn btn-sm', () => stopPlugin(manifest.id)));
     if (manifest.homepage) {
       actions.appendChild(
         makePluginBtn('项目主页', 'btn-ghost secondary btn-sm', () => openPluginLink(manifest.homepage))
@@ -351,22 +662,175 @@ async function restartPlugin(pluginId) {
   }
 }
 
+function setPluginTransientState(pluginId, state, label) {
+  const plugin = getPlugin(pluginId);
+  if (plugin) {
+    plugin.status = { ...(plugin.status || {}), state, error: null };
+  }
+}
+
+async function checkPluginUpdate(pluginId, opts = {}) {
+  const options = typeof opts === 'boolean' ? { autoUpdate: opts } : (opts || {});
+  const silent = Boolean(options.silent);
+  const autoUpdate = Boolean(options.autoUpdate);
+
+  const plugin = getPlugin(pluginId);
+  const pluginName = plugin?.manifest?.name || pluginId;
+
+  if (globalThis.pluginUpdateChecking?.has(pluginId)) return;
+  globalThis.pluginUpdateChecking?.add(pluginId);
+
+  if (!silent) {
+    pluginLog('info', `正在检查【${pluginName}】的 GitHub 最新发布包...`);
+  }
+
+  const updateBtns = document.querySelectorAll(`[data-action="checkPluginUpdate"][data-arg="${pluginId}"]`);
+  updateBtns.forEach(b => { b.disabled = true; b.textContent = '检测中...'; });
+
+  try {
+    const report = await pluginInvoke('plugin_check_update', { pluginId });
+    globalThis.pluginUpdateReports.set(pluginId, report || null);
+    const hasUpdate = Boolean(report?.hasUpdate);
+
+    renderPluginList();
+
+    if (hasUpdate || !silent) {
+      pluginLog(hasUpdate ? 'warn' : 'ok', `【${pluginName}】更新检测完成: ${report?.message || (hasUpdate ? '发现新版本' : '已是最新版本')}`);
+    }
+
+    if (autoUpdate && hasUpdate) {
+      await upgradePlugin(pluginId, { skipConfirm: true });
+      return;
+    }
+
+    if (!silent) {
+      if (!hasUpdate) {
+        if (typeof showCustomAlert === 'function') {
+          const body = `${pluginName}：${report?.currentVersion || plugin?.manifest?.version || 'v1.2.6'}（已是最新）\n\n检测时间: ${new Date().toLocaleString('zh-CN', { hour12: false })}`;
+          showCustomAlert(body, `${pluginName} 更新检测`, 'success');
+        } else {
+          pluginNotify(`【${pluginName}】已是最新版本`, 'ok');
+        }
+        return;
+      }
+
+      if (typeof showCustomConfirm === 'function') {
+        const body = `${pluginName}：当前 ${report.currentVersion || plugin?.manifest?.version || 'v1.2.6'} 更新为 ${report.latestVersion || '最新'}\n\n将停止服务、拉取最新代码并重新编译（服务会短暂中断）。是否立即更新？`;
+        const confirmed = await showCustomConfirm(body, `${pluginName} 有新版本`, 'warn');
+        if (confirmed) {
+          await upgradePlugin(pluginId, { skipConfirm: true });
+        }
+        return;
+      }
+
+      if (typeof showCustomAlert === 'function') {
+        const body = `${pluginName}：发现新版本 ${report?.latestVersion}\n\n检测时间: ${new Date().toLocaleString('zh-CN', { hour12: false })}`;
+        showCustomAlert(body, `${pluginName} 更新检测`, 'warn');
+      }
+    }
+  } catch (e) {
+    const message = String(e?.message || e);
+    if (!silent) {
+      pluginLog('err', `【${pluginName}】更新检测失败: ${message}`);
+      if (typeof showCustomAlert === 'function') {
+        showCustomAlert(message, `${pluginName} 更新检测失败`, 'error');
+      } else {
+        pluginNotify(`检测更新失败: ${message}`, 'error');
+      }
+    }
+  } finally {
+    globalThis.pluginUpdateChecking?.delete(pluginId);
+    updateBtns.forEach(b => { b.disabled = false; b.textContent = '检测更新'; });
+    renderPluginList();
+  }
+}
+
+async function upgradePlugin(pluginId, opts = {}) {
+  const options = typeof opts === 'boolean' ? { skipConfirm: opts } : (opts || {});
+  const skipConfirm = Boolean(options.skipConfirm);
+
+  const plugin = getPlugin(pluginId);
+  const pluginName = plugin?.manifest?.name || pluginId;
+
+  if (!skipConfirm) {
+    const confirmed = typeof showCustomConfirm === 'function'
+      ? await showCustomConfirm(
+          '检测到新版本，将停止服务、拉取最新代码并重新编译，服务会短暂中断。确定更新？',
+          `确认更新 ${pluginName}`,
+          'warn'
+        )
+      : true;
+    if (!confirmed) return;
+  }
+
+  setPluginTransientState(pluginId, 'updating', '开始更新...');
+  pluginLog('warn', `开始更新【${pluginName}】...`);
+  renderPluginList();
+
+  try {
+    await pluginInvoke('plugin_upgrade', { pluginId });
+    globalThis.pluginUpdateReports.delete(pluginId);
+    pluginLog('ok', `【${pluginName}】更新完成！`);
+    if (typeof showBottomToast === 'function') {
+      showBottomToast(`${pluginName} 更新完成！`, 'success');
+    } else {
+      pluginNotify(`${pluginName} 更新完成！`, 'ok');
+    }
+    await refreshPluginList();
+  } catch (e) {
+    const message = String(e?.message || e);
+    pluginLog('err', `【${pluginName}】更新失败: ${message}`);
+    if (typeof showCustomAlert === 'function') {
+      showCustomAlert(message, `${pluginName} 更新失败`, 'error');
+    } else {
+      pluginNotify(`更新失败: ${message}`, 'error');
+    }
+    await refreshPluginList();
+  }
+}
+
 async function uninstallPlugin(pluginId) {
+  const plugin = getPlugin(pluginId);
+  const pluginName = plugin?.manifest?.name || pluginId;
   const ok = typeof showCustomConfirm === 'function'
-    ? await showCustomConfirm(`确定卸载 ${pluginId}？安装目录与数据将被删除，无法恢复。`, '卸载插件', 'warn')
-    : window.confirm(`确定卸载 ${pluginId}？`);
+    ? await showCustomConfirm(`确定卸载【${pluginName}】？安装目录与本地数据将被删除，无法恢复。`, '卸载插件', 'warn')
+    : window.confirm(`确定卸载【${pluginName}】？`);
   if (!ok) return;
-  pluginLog('warn', `正在卸载插件【${pluginId}】...`);
+
+  pluginLog('warn', `正在卸载插件【${pluginName}】...`);
+
+  // 1. 设置卸载中过渡态并重新渲染呈现进度条
+  setPluginTransientState(pluginId, 'uninstalling', '卸载中...');
+  renderPluginList();
+
   try {
     await pluginInvoke('plugin_uninstall', { pluginId });
     pluginTokenCache.delete(pluginId);
-    pluginLog('ok', `插件【${pluginId}】已成功卸载，本地文件已清理。`);
-    pluginNotify(`${pluginId} 已卸载`, 'ok');
+    pluginLog('ok', `插件【${pluginName}】已成功卸载，本地文件与配置已清理。`);
+    pluginNotify(`【${pluginName}】已成功卸载`, 'ok');
     closePluginManager();
     await refreshPluginList();
   } catch (e) {
     pluginNotify(`卸载失败: ${e}`, 'error');
-    pluginLog('err', `插件【${pluginId}】卸载失败: ${e}`);
+    pluginLog('err', `插件【${pluginName}】卸载失败: ${e}`);
+    await refreshPluginList();
+  }
+}
+
+async function openPluginConsole(pluginId) {
+  const config = await getPluginConfig(pluginId);
+  const port = Number(config?.port) || 5566;
+  const url = `http://127.0.0.1:${port}`;
+  await openPluginLink(url);
+}
+
+async function copyPluginText(text, label = '地址') {
+  if (!text) return;
+  try {
+    await navigator.clipboard.writeText(text);
+    pluginNotify(`已复制${label}`, 'ok');
+  } catch {
+    pluginNotify('复制失败', 'error');
   }
 }
 
@@ -1297,4 +1761,11 @@ async function initPluginSystem() {
   g.uninstallPlugin = uninstallPlugin;
   g.checkPluginHealth = checkPluginHealth;
   g.callPluginMethod = callPluginMethod;
+  g.setPluginTransientState = setPluginTransientState;
+  g.renderInstalledPluginCards = renderInstalledPluginCards;
+  g.checkPluginUpdate = checkPluginUpdate;
+  g.upgradePlugin = upgradePlugin;
+  g.openPluginConsole = openPluginConsole;
+  g.copyPluginText = copyPluginText;
+  g.openPluginLink = openPluginLink;
 })(globalThis);

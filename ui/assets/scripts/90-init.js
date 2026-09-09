@@ -68,6 +68,9 @@ async function init() {
   if (typeof loadProxyRoutes === 'function') {
     await loadProxyRoutes();
   }
+  if (typeof renderModelMap === 'function') {
+    await renderModelMap().catch(() => {});
+  }
   if (typeof refreshPlatforms === 'function') {
     await refreshPlatforms({ silent: true });
   }
@@ -126,7 +129,6 @@ async function init() {
     });
     await tauriEvent.listen('proxy-stopped', () => {
       setStatusPill(false);
-      addLog('warn', '代理进程已退出');
     });
     if (typeof bindEvalProgressListener === 'function') {
       await bindEvalProgressListener();

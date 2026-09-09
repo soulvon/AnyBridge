@@ -23,11 +23,13 @@ use tauri::{AppHandle, Emitter};
 use toml_edit::{value, Array, DocumentMut, Item, Table};
 
 use super::config::{
-    read_provider_store, write_provider_store, AgentsGlobalConfig, ClaudeCodeConfig,
-    ModelCatalogEntry, OpenCodeConfig, PlatformState, Provider, ProviderStore,
+    read_provider_store, write_provider_store, AgentsGlobalConfig,
+    ClaudeCodeConfig, ModelCatalogEntry, OpenCodeConfig, PlatformState, Provider, ProviderStore,
 };
 
+const PLATFORM_ANTIGRAVITY: &str = "antigravity";
 const PLATFORM_CLAUDE_CODE: &str = "claude-code";
+const PLATFORM_CLAUDE_DESKTOP: &str = "claude-desktop";
 const PLATFORM_CODEX: &str = "codex";
 const PLATFORM_CODEBUDDY: &str = "codebuddy";
 const PLATFORM_GROK: &str = "grok";
@@ -126,8 +128,20 @@ pub struct PlatformInfo {
     pub codex_config: Option<CodexConfigInfo>,
     #[serde(rename = "claudeConfig")]
     pub claude_config: Option<ClaudeConfigInfo>,
+    #[serde(rename = "antigravityConfig")]
+    pub antigravity_config: Option<AntigravityConfigInfo>,
     /// 检测/读取过程中的错误（如配置解析失败）
     pub error: Option<String>,
+}
+
+#[derive(Serialize, Clone)]
+pub struct AntigravityConfigInfo {
+    #[serde(rename = "cloudCodeUrl")]
+    pub cloud_code_url: Option<String>,
+    #[serde(rename = "managedByAnyBridge")]
+    pub managed_by_any_bridge: bool,
+    #[serde(rename = "isOfficial")]
+    pub is_official: bool,
 }
 
 #[derive(Serialize, Clone)]
@@ -183,7 +197,9 @@ pub struct SwitchResult {
 // ─── 平台抽象 ──────────────────────────────────────────────────
 
 enum Platform {
+    Antigravity,
     ClaudeCode,
+    ClaudeDesktop,
     Codex,
     CodeBuddy,
     Grok,
@@ -195,7 +211,9 @@ enum Platform {
 impl Platform {
     fn from_id(id: &str) -> Option<Self> {
         match id {
+            PLATFORM_ANTIGRAVITY => Some(Platform::Antigravity),
             PLATFORM_CLAUDE_CODE => Some(Platform::ClaudeCode),
+            PLATFORM_CLAUDE_DESKTOP => Some(Platform::ClaudeDesktop),
             PLATFORM_CODEX => Some(Platform::Codex),
             PLATFORM_CODEBUDDY => Some(Platform::CodeBuddy),
             PLATFORM_GROK => Some(Platform::Grok),
@@ -208,7 +226,9 @@ impl Platform {
 
     fn id(&self) -> &'static str {
         match self {
+            Platform::Antigravity => PLATFORM_ANTIGRAVITY,
             Platform::ClaudeCode => PLATFORM_CLAUDE_CODE,
+            Platform::ClaudeDesktop => PLATFORM_CLAUDE_DESKTOP,
             Platform::Codex => PLATFORM_CODEX,
             Platform::CodeBuddy => PLATFORM_CODEBUDDY,
             Platform::Grok => PLATFORM_GROK,
@@ -220,7 +240,9 @@ impl Platform {
 
     fn display_name(&self) -> &'static str {
         match self {
+            Platform::Antigravity => "Antigravity",
             Platform::ClaudeCode => "Claude Code",
+            Platform::ClaudeDesktop => "Claude Desktop",
             Platform::Codex => "Codex",
             Platform::CodeBuddy => "CodeBuddy",
             Platform::Grok => "Grok",
@@ -232,7 +254,8 @@ impl Platform {
 
     fn vendor(&self) -> &'static str {
         match self {
-            Platform::ClaudeCode => "Anthropic",
+            Platform::Antigravity => "Google",
+            Platform::ClaudeCode | Platform::ClaudeDesktop => "Anthropic",
             Platform::Codex => "OpenAI",
             Platform::CodeBuddy => "Tencent Cloud",
             Platform::Grok => "xAI",
@@ -245,8 +268,9 @@ impl Platform {
     /// 该平台需要的中转站协议格式。
     fn required_api_format(&self) -> &'static str {
         match self {
-            Platform::ClaudeCode => "anthropic",
-            Platform::Codex
+            Platform::ClaudeCode | Platform::ClaudeDesktop => "anthropic",
+            Platform::Antigravity
+            | Platform::Codex
             | Platform::CodeBuddy
             | Platform::Grok
             | Platform::OpenCode
@@ -258,6 +282,10 @@ impl Platform {
     /// 配置目录（用于检测是否安装）。
     fn config_dir(&self) -> Option<PathBuf> {
         match self {
+            Platform::Antigravity => antigravity_config_dir(),
+            Platform::ClaudeDesktop => super::claude_desktop::current_platform_paths()
+                .ok()
+                .map(|p| p.threep_dir),
             Platform::Codex => codex_home(),
             Platform::ClaudeCode
             | Platform::CodeBuddy
@@ -273,7 +301,7 @@ impl Platform {
                     Platform::OpenCode => home.join(".config").join("opencode"),
                     Platform::WorkBuddy => home.join(".workbuddy"),
                     Platform::ZCode => home.join(".zcode"),
-                    Platform::Codex => unreachable!(),
+                    Platform::Antigravity | Platform::ClaudeDesktop | Platform::Codex => unreachable!(),
                 })
             }
         }
@@ -281,24 +309,33 @@ impl Platform {
 
     /// 配置文件路径。
     fn config_path(&self) -> Option<PathBuf> {
-        let dir = self.config_dir()?;
-        Some(match self {
-            Platform::ClaudeCode => dir.join("settings.json"),
-            Platform::Codex => dir.join("config.toml"),
-            Platform::CodeBuddy => dir.join("models.json"),
-            Platform::Grok => dir.join("config.toml"),
-            Platform::OpenCode => {
-                let json = dir.join("opencode.json");
-                let jsonc = dir.join("opencode.jsonc");
-                if !json.exists() && jsonc.exists() {
-                    jsonc
-                } else {
-                    json
-                }
+        match self {
+            Platform::ClaudeDesktop => super::claude_desktop::current_platform_paths()
+                .ok()
+                .map(|p| p.threep_config_path),
+            _ => {
+                let dir = self.config_dir()?;
+                Some(match self {
+                    Platform::Antigravity => dir.join("settings.json"),
+                    Platform::ClaudeCode => dir.join("settings.json"),
+                    Platform::Codex => dir.join("config.toml"),
+                    Platform::CodeBuddy => dir.join("models.json"),
+                    Platform::Grok => dir.join("config.toml"),
+                    Platform::OpenCode => {
+                        let json = dir.join("opencode.json");
+                        let jsonc = dir.join("opencode.jsonc");
+                        if !json.exists() && jsonc.exists() {
+                            jsonc
+                        } else {
+                            json
+                        }
+                    }
+                    Platform::WorkBuddy => dir.join("models.json"),
+                    Platform::ZCode => dir.join("v2").join("config.json"),
+                    Platform::ClaudeDesktop => unreachable!(),
+                })
             }
-            Platform::WorkBuddy => dir.join("models.json"),
-            Platform::ZCode => dir.join("v2").join("config.json"),
-        })
+        }
     }
 
     fn opencode_auth_path(&self) -> Option<PathBuf> {
@@ -324,10 +361,30 @@ impl Platform {
 
     /// 检测工具是否安装：配置目录存在即视为已安装（文件可能尚未生成）。
     fn detect_installed(&self) -> bool {
+        if matches!(self, Platform::ClaudeDesktop) {
+            return super::claude_desktop::current_platform_paths()
+                .map(|p| p.normal_dir.exists() || p.threep_dir.exists())
+                .unwrap_or(false);
+        }
         if self.config_dir().map(|d| d.exists()).unwrap_or(false) {
             return true;
         }
         match self {
+            Platform::Antigravity => {
+                if let Some(data) = dirs::data_dir() {
+                    if data.join("Antigravity IDE").exists() || data.join("Antigravity").exists() {
+                        return true;
+                    }
+                }
+                if let Some(home) = dirs::home_dir() {
+                    if home.join(".gemini").join("antigravity").exists()
+                        || home.join(".antigravity-ide").exists()
+                    {
+                        return true;
+                    }
+                }
+                false
+            }
             Platform::CodeBuddy => app_data_dir("CodeBuddy")
                 .map(|d| d.exists())
                 .unwrap_or(false),
@@ -353,6 +410,11 @@ impl Platform {
     }
 
     fn backup_exists(&self) -> bool {
+        if matches!(self, Platform::ClaudeDesktop) {
+            return super::claude_desktop::current_platform_paths()
+                .map(|p| p.profile_path.exists())
+                .unwrap_or(false);
+        }
         let main = self
             .config_path()
             .map(|p| backup_path(&p).exists())
@@ -371,6 +433,16 @@ impl Platform {
     /// 生成将写入的配置片段（预览用，token 脱敏），不落盘。
     fn preview(&self, p: &Provider) -> Result<String, String> {
         match self {
+            Platform::Antigravity => {
+                let ports = super::config::configured_proxy_ports();
+                let port = ports.api_port;
+                let preview = serde_json::json!({
+                    "jetski.cloudCodeUrl": format!("http://127.0.0.1:{}", port),
+                    "// 说明": format!("已接管 Antigravity，当前绑定模型：{}", p.default_model)
+                });
+                serde_json::to_string_pretty(&preview).map_err(|e| e.to_string())
+            }
+            Platform::ClaudeDesktop => super::claude_desktop::preview_claude_desktop(None),
             Platform::ClaudeCode => {
                 let base = claude_base_url(p);
                 let model = p.default_model.trim();
@@ -472,6 +544,10 @@ impl Platform {
         ensure_backup(&path)?;
 
         match self {
+            Platform::Antigravity => self.apply_antigravity(&path, p)?,
+            Platform::ClaudeDesktop => {
+                super::claude_desktop::apply_claude_desktop_sync(None)?;
+            }
             Platform::ClaudeCode => self.apply_claude(&path, p)?,
             Platform::Codex => self.apply_codex(&path, p)?,
             Platform::CodeBuddy => self.apply_codebuddy(&path, p)?,
@@ -481,6 +557,83 @@ impl Platform {
             Platform::ZCode => self.apply_zcode(&path, p)?,
         }
         Ok(path)
+    }
+
+    fn apply_antigravity(&self, path: &PathBuf, _p: &Provider) -> Result<(), String> {
+        let ports = super::config::configured_proxy_ports();
+        let port = ports.api_port;
+        let proxy_url = format!("http://127.0.0.1:{}", port);
+
+        let mut targets = vec![path.clone()];
+        if let Some(data_dir) = dirs::data_dir() {
+            let ide_path = data_dir.join("Antigravity IDE").join("User").join("settings.json");
+            let app_path = data_dir.join("Antigravity").join("User").join("settings.json");
+            if !targets.contains(&ide_path) && (ide_path.exists() || ide_path.parent().map(|p| p.exists()).unwrap_or(false)) {
+                targets.push(ide_path);
+            }
+            if !targets.contains(&app_path) && (app_path.exists() || app_path.parent().map(|p| p.exists()).unwrap_or(false)) {
+                targets.push(app_path);
+            }
+        }
+
+        for target in &targets {
+            let raw = if target.exists() {
+                fs::read_to_string(target).unwrap_or_default()
+            } else {
+                String::new()
+            };
+            let mut obj = super::ide_config::parse_object(&raw).unwrap_or_default();
+            obj.insert("jetski.cloudCodeUrl".into(), Value::String(proxy_url.clone()));
+            if let Ok(content) = serde_json::to_string_pretty(&Value::Object(obj)) {
+                let _ = super::write_atomic(target, content.as_bytes());
+            }
+        }
+
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            let _ = std::process::Command::new("setx")
+                .args(&["CLOUD_CODE_URL", &proxy_url])
+                .creation_flags(0x0800_0000)
+                .output();
+        }
+        Ok(())
+    }
+
+    fn apply_antigravity_official(&self, path: &PathBuf) -> Result<(), String> {
+        let mut targets = vec![path.clone()];
+        if let Some(data_dir) = dirs::data_dir() {
+            let ide_path = data_dir.join("Antigravity IDE").join("User").join("settings.json");
+            let app_path = data_dir.join("Antigravity").join("User").join("settings.json");
+            if !targets.contains(&ide_path) && ide_path.exists() {
+                targets.push(ide_path);
+            }
+            if !targets.contains(&app_path) && app_path.exists() {
+                targets.push(app_path);
+            }
+        }
+
+        for target in &targets {
+            if !target.exists() { continue; }
+            if let Ok(raw) = fs::read_to_string(target) {
+                if let Ok(mut obj) = super::ide_config::parse_object(&raw) {
+                    obj.remove("jetski.cloudCodeUrl");
+                    if let Ok(content) = serde_json::to_string_pretty(&Value::Object(obj)) {
+                        let _ = super::write_atomic(target, content.as_bytes());
+                    }
+                }
+            }
+        }
+
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            let _ = std::process::Command::new("reg")
+                .args(&["delete", "HKCU\\Environment", "/v", "CLOUD_CODE_URL", "/f"])
+                .creation_flags(0x0800_0000)
+                .output();
+        }
+        Ok(())
     }
 
     fn apply_claude(&self, path: &PathBuf, p: &Provider) -> Result<(), String> {
@@ -941,9 +1094,34 @@ impl Platform {
 
     /// 从 `.byok-bak` 还原；无备份时不动文件（返回 false）。
     fn restore(&self) -> Result<bool, String> {
+        if matches!(self, Platform::ClaudeDesktop) {
+            let res = super::claude_desktop::restore_claude_desktop_sync()?;
+            if let Ok(mut store) = read_provider_store() {
+                store.platforms.remove(PLATFORM_CLAUDE_DESKTOP);
+                let _ = write_provider_store(&store);
+            }
+            return Ok(res.ok);
+        }
+
         let path = self
             .config_path()
             .ok_or_else(|| "无法定位用户主目录".to_string())?;
+
+        if matches!(self, Platform::Antigravity) {
+            let restored = restore_one_file(&path)?;
+            if !restored {
+                let _ = self.apply_antigravity_official(&path);
+            }
+            #[cfg(windows)]
+            {
+                use std::os::windows::process::CommandExt;
+                let _ = std::process::Command::new("reg")
+                    .args(&["delete", "HKCU\\Environment", "/v", "CLOUD_CODE_URL", "/f"])
+                    .creation_flags(0x0800_0000)
+                    .output();
+            }
+            return Ok(restored || true);
+        }
 
         if matches!(self, Platform::OpenCode) {
             let mut restored = restore_one_file(&path)?;
@@ -1068,6 +1246,57 @@ fn app_data_dir(name: &str) -> Option<PathBuf> {
     Some(dir)
 }
 
+fn antigravity_config_dir() -> Option<PathBuf> {
+    let data_dir = dirs::data_dir()?;
+    let ide_user = data_dir.join("Antigravity IDE").join("User");
+    if ide_user.exists() {
+        return Some(ide_user);
+    }
+    let app_user = data_dir.join("Antigravity").join("User");
+    if app_user.exists() {
+        return Some(app_user);
+    }
+    let ide_base = data_dir.join("Antigravity IDE");
+    if ide_base.exists() {
+        return Some(ide_user);
+    }
+    let app_base = data_dir.join("Antigravity");
+    if app_base.exists() {
+        return Some(app_user);
+    }
+    Some(ide_user)
+}
+
+fn read_antigravity_config_info(path: &PathBuf) -> Result<Option<AntigravityConfigInfo>, String> {
+    if !path.exists() {
+        return Ok(None);
+    }
+    let raw = fs::read_to_string(path).map_err(|e| e.to_string())?;
+    if raw.trim().is_empty() {
+        return Ok(Some(AntigravityConfigInfo {
+            cloud_code_url: None,
+            managed_by_any_bridge: false,
+            is_official: true,
+        }));
+    }
+    let obj = super::ide_config::parse_object(&raw)?;
+    let cloud_code_url = obj
+        .get("jetski.cloudCodeUrl")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
+    let managed = cloud_code_url
+        .as_ref()
+        .map(|u| u.contains("127.0.0.1") || u.contains("localhost"))
+        .unwrap_or(false);
+    let is_official = cloud_code_url.is_none()
+        || cloud_code_url.as_deref() == Some("https://cloudcode-pa.googleapis.com");
+    Ok(Some(AntigravityConfigInfo {
+        cloud_code_url,
+        managed_by_any_bridge: managed,
+        is_official,
+    }))
+}
+
 fn now_epoch_secs() -> String {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -1081,6 +1310,16 @@ fn resolve_platform_config(
     store: &ProviderStore,
     id: &str,
 ) -> Result<Provider, String> {
+    if matches!(plat, Platform::Antigravity) {
+        if let Some(config) = store
+            .antigravity_configs
+            .iter()
+            .find(|config| config.id == id)
+        {
+            return Ok(Provider::from(config.clone()));
+        }
+    }
+
     if matches!(plat, Platform::ClaudeCode) {
         return store
             .claude_code_configs
@@ -2476,19 +2715,27 @@ fn json_string_candidates(map: Option<&Map<String, Value>>, keys: &[&str]) -> Ve
     out
 }
 
+fn strip_one_m_marker(model: &str) -> &str {
+    let trimmed = model.trim();
+    if let Some(stripped) = trimmed.strip_suffix("[1m]").or_else(|| trimmed.strip_suffix("[1M]")) {
+        stripped.trim()
+    } else {
+        trimmed
+    }
+}
+
 fn set_claude_model_env(env: &mut Map<String, Value>, model: &str) {
-    for key in [
-        "ANTHROPIC_MODEL",
-        "ANTHROPIC_DEFAULT_HAIKU_MODEL",
-        "ANTHROPIC_DEFAULT_HAIKU_MODEL_NAME",
-        "ANTHROPIC_DEFAULT_SONNET_MODEL",
-        "ANTHROPIC_DEFAULT_SONNET_MODEL_NAME",
-        "ANTHROPIC_DEFAULT_OPUS_MODEL",
-        "ANTHROPIC_DEFAULT_OPUS_MODEL_NAME",
-        "ANTHROPIC_DEFAULT_FABLE_MODEL",
-        "ANTHROPIC_DEFAULT_FABLE_MODEL_NAME",
+    let raw_model = model.trim();
+    let display_name = strip_one_m_marker(raw_model);
+    env.insert("ANTHROPIC_MODEL".to_string(), Value::String(raw_model.to_string()));
+    for (model_key, name_key) in [
+        ("ANTHROPIC_DEFAULT_HAIKU_MODEL", "ANTHROPIC_DEFAULT_HAIKU_MODEL_NAME"),
+        ("ANTHROPIC_DEFAULT_SONNET_MODEL", "ANTHROPIC_DEFAULT_SONNET_MODEL_NAME"),
+        ("ANTHROPIC_DEFAULT_OPUS_MODEL", "ANTHROPIC_DEFAULT_OPUS_MODEL_NAME"),
+        ("ANTHROPIC_DEFAULT_FABLE_MODEL", "ANTHROPIC_DEFAULT_FABLE_MODEL_NAME"),
     ] {
-        env.insert(key.to_string(), Value::String(model.to_string()));
+        env.insert(model_key.to_string(), Value::String(raw_model.to_string()));
+        env.insert(name_key.to_string(), Value::String(display_name.to_string()));
     }
     env.remove("ANTHROPIC_SMALL_FAST_MODEL");
 }
@@ -2544,14 +2791,19 @@ fn normalize_claude_settings_model_env(settings: &mut Value, fallback_model: &st
         .or_else(|| primary.clone())
         .or_else(|| opus.clone());
 
-    set_claude_env_if_missing(env, "ANTHROPIC_DEFAULT_HAIKU_MODEL", haiku.clone());
-    set_claude_env_if_missing(env, "ANTHROPIC_DEFAULT_HAIKU_MODEL_NAME", haiku);
-    set_claude_env_if_missing(env, "ANTHROPIC_DEFAULT_SONNET_MODEL", sonnet.clone());
-    set_claude_env_if_missing(env, "ANTHROPIC_DEFAULT_SONNET_MODEL_NAME", sonnet);
-    set_claude_env_if_missing(env, "ANTHROPIC_DEFAULT_OPUS_MODEL", opus.clone());
-    set_claude_env_if_missing(env, "ANTHROPIC_DEFAULT_OPUS_MODEL_NAME", opus);
-    set_claude_env_if_missing(env, "ANTHROPIC_DEFAULT_FABLE_MODEL", fable.clone());
-    set_claude_env_if_missing(env, "ANTHROPIC_DEFAULT_FABLE_MODEL_NAME", fable);
+    let haiku_name = haiku.as_deref().map(strip_one_m_marker).map(str::to_string);
+    let sonnet_name = sonnet.as_deref().map(strip_one_m_marker).map(str::to_string);
+    let opus_name = opus.as_deref().map(strip_one_m_marker).map(str::to_string);
+    let fable_name = fable.as_deref().map(strip_one_m_marker).map(str::to_string);
+
+    set_claude_env_if_missing(env, "ANTHROPIC_DEFAULT_HAIKU_MODEL", haiku);
+    set_claude_env_if_missing(env, "ANTHROPIC_DEFAULT_HAIKU_MODEL_NAME", haiku_name);
+    set_claude_env_if_missing(env, "ANTHROPIC_DEFAULT_SONNET_MODEL", sonnet);
+    set_claude_env_if_missing(env, "ANTHROPIC_DEFAULT_SONNET_MODEL_NAME", sonnet_name);
+    set_claude_env_if_missing(env, "ANTHROPIC_DEFAULT_OPUS_MODEL", opus);
+    set_claude_env_if_missing(env, "ANTHROPIC_DEFAULT_OPUS_MODEL_NAME", opus_name);
+    set_claude_env_if_missing(env, "ANTHROPIC_DEFAULT_FABLE_MODEL", fable);
+    set_claude_env_if_missing(env, "ANTHROPIC_DEFAULT_FABLE_MODEL_NAME", fable_name);
 
     env.remove("ANTHROPIC_SMALL_FAST_MODEL");
 }
@@ -2620,6 +2872,7 @@ fn claude_settings_from_config(config: &ClaudeCodeConfig, mask_token: bool) -> V
     let provider = Provider::from(config.clone());
     let base = claude_base_url(&provider);
     let model = provider.default_model.trim();
+    let display_name = strip_one_m_marker(model);
     let token = if mask_token {
         mask_key(&provider.api_key)
     } else {
@@ -2634,13 +2887,13 @@ fn claude_settings_from_config(config: &ClaudeCodeConfig, mask_token: bool) -> V
             "ANTHROPIC_AUTH_TOKEN": token,
             "ANTHROPIC_MODEL": model,
             "ANTHROPIC_DEFAULT_HAIKU_MODEL": model,
-            "ANTHROPIC_DEFAULT_HAIKU_MODEL_NAME": model,
+            "ANTHROPIC_DEFAULT_HAIKU_MODEL_NAME": display_name,
             "ANTHROPIC_DEFAULT_SONNET_MODEL": model,
-            "ANTHROPIC_DEFAULT_SONNET_MODEL_NAME": model,
+            "ANTHROPIC_DEFAULT_SONNET_MODEL_NAME": display_name,
             "ANTHROPIC_DEFAULT_OPUS_MODEL": model,
-            "ANTHROPIC_DEFAULT_OPUS_MODEL_NAME": model,
+            "ANTHROPIC_DEFAULT_OPUS_MODEL_NAME": display_name,
             "ANTHROPIC_DEFAULT_FABLE_MODEL": model,
-            "ANTHROPIC_DEFAULT_FABLE_MODEL_NAME": model,
+            "ANTHROPIC_DEFAULT_FABLE_MODEL_NAME": display_name,
         },
         "permissions": {},
         "hooks": {},
@@ -3814,7 +4067,9 @@ pub async fn detect_platforms() -> Result<Vec<PlatformInfo>, String> {
 fn detect_platforms_sync() -> Result<Vec<PlatformInfo>, String> {
     let store = read_provider_store().unwrap_or_default();
     let platforms = [
+        Platform::Antigravity,
         Platform::ClaudeCode,
+        Platform::ClaudeDesktop,
         Platform::Codex,
         Platform::CodeBuddy,
         Platform::Grok,
@@ -3836,7 +4091,20 @@ fn detect_platforms_sync() -> Result<Vec<PlatformInfo>, String> {
         let mut current_provider_id = state.map(|s| s.provider_id.clone());
         let mut applied_at = state.map(|s| s.applied_at.clone());
         let mut current_provider_name = current_provider_id.as_ref().and_then(|pid| {
-            if matches!(plat, Platform::ClaudeCode) {
+            if matches!(plat, Platform::Antigravity) {
+                store
+                    .antigravity_configs
+                    .iter()
+                    .find(|config| &config.id == pid)
+                    .map(|config| config.name.clone())
+                    .or_else(|| {
+                        store
+                            .providers
+                            .iter()
+                            .find(|p| &p.id == pid)
+                            .map(|p| p.name.clone())
+                    })
+            } else if matches!(plat, Platform::ClaudeCode) {
                 store
                     .claude_code_configs
                     .iter()
@@ -3878,10 +4146,41 @@ fn detect_platforms_sync() -> Result<Vec<PlatformInfo>, String> {
         let mut managed_by_any_bridge = state.is_some();
         let mut claude_config = None;
         let mut codex_config = None;
+        let mut antigravity_config = None;
         let mut live_provider_ids = Vec::new();
         let mut error = None;
 
-        if matches!(plat, Platform::ClaudeCode) {
+        if matches!(plat, Platform::ClaudeDesktop) {
+            match super::claude_desktop::get_status_sync() {
+                Ok(cd_status) => {
+                    managed_by_any_bridge = cd_status.managed_by_any_bridge;
+                    if managed_by_any_bridge {
+                        let active_id = cd_status
+                            .current_provider_id
+                            .unwrap_or_else(|| "claude-desktop-default-proxy".to_string());
+                        let cfg_name = store
+                            .claude_desktop_configs
+                            .iter()
+                            .find(|c| c.id == active_id)
+                            .map(|c| c.name.clone())
+                            .unwrap_or_else(|| "AnyBridge 本地路由".to_string());
+                        current_provider_id = Some(active_id);
+                        current_provider_name = Some(cfg_name);
+                    } else if cd_status.installed {
+                        current_provider_id = Some("anthropic-official".to_string());
+                        current_provider_name = Some("Anthropic 官方 (1P)".to_string());
+                        applied_at = None;
+                    } else {
+                        current_provider_id = None;
+                        current_provider_name = None;
+                        applied_at = None;
+                    }
+                }
+                Err(e) => {
+                    error = Some(e);
+                }
+            }
+        } else if matches!(plat, Platform::ClaudeCode) {
             if let Some(path) = config_path_buf.as_ref() {
                 match read_claude_config_info(path) {
                     Ok(Some(mut info)) => {
@@ -3981,6 +4280,29 @@ fn detect_platforms_sync() -> Result<Vec<PlatformInfo>, String> {
                     }
                 }
             }
+        } else if matches!(plat, Platform::Antigravity) {
+            if let Some(path) = config_path_buf.as_ref() {
+                match read_antigravity_config_info(path) {
+                    Ok(Some(info)) => {
+                        if info.is_official {
+                            current_provider_id = Some("google-official".to_string());
+                            current_provider_name = Some("Google 官方直连".to_string());
+                            managed_by_any_bridge = false;
+                            applied_at = None;
+                        } else {
+                            managed_by_any_bridge = info.managed_by_any_bridge;
+                            if managed_by_any_bridge && current_provider_name.is_none() {
+                                current_provider_name = Some("AnyBridge 本地代理".to_string());
+                            }
+                        }
+                        antigravity_config = Some(info);
+                    }
+                    Ok(None) => {}
+                    Err(e) => {
+                        error = Some(e);
+                    }
+                }
+            }
         } else if matches!(plat, Platform::OpenCode) {
             if let Some(path) = config_path_buf.as_ref() {
                 match read_opencode_live_provider_ids(path) {
@@ -4066,6 +4388,7 @@ fn detect_platforms_sync() -> Result<Vec<PlatformInfo>, String> {
             live_provider_ids,
             codex_config,
             claude_config,
+            antigravity_config,
             error,
         });
     }
@@ -4076,6 +4399,20 @@ fn detect_platforms_sync() -> Result<Vec<PlatformInfo>, String> {
 #[tauri::command]
 pub fn preview_platform_switch(platform: String, provider_id: String) -> Result<String, String> {
     let plat = Platform::from_id(&platform).ok_or_else(|| format!("未知平台: {platform}"))?;
+    if matches!(plat, Platform::ClaudeDesktop) {
+        let store = read_provider_store()?;
+        let bindings = if let Some(cfg) = store.claude_desktop_configs.iter().find(|c| c.id == provider_id) {
+            Some(super::proxy_routes::ClaudeDesktopBindings {
+                sonnet: cfg.sonnet_model.clone(),
+                opus: cfg.opus_model.clone(),
+                haiku: cfg.haiku_model.clone(),
+                fable: cfg.fable_model.clone(),
+            })
+        } else {
+            None
+        };
+        return super::claude_desktop::preview_claude_desktop(bindings);
+    }
     let store = read_provider_store()?;
     if matches!(plat, Platform::ClaudeCode) {
         let config = store
@@ -4119,6 +4456,31 @@ fn switch_platform_sync(
     provider_id: &str,
 ) -> Result<SwitchResult, String> {
     let plat = Platform::from_id(platform).ok_or_else(|| format!("未知平台: {platform}"))?;
+    if matches!(plat, Platform::ClaudeDesktop) {
+        emit_switch_progress(app, plat.id(), "writing", "正在写入 Claude Desktop 路由配置…");
+        let mut store = read_provider_store()?;
+        let bindings = if let Some(cfg) = store.claude_desktop_configs.iter().find(|c| c.id == provider_id) {
+            Some(super::proxy_routes::ClaudeDesktopBindings {
+                sonnet: cfg.sonnet_model.clone(),
+                opus: cfg.opus_model.clone(),
+                haiku: cfg.haiku_model.clone(),
+                fable: cfg.fable_model.clone(),
+            })
+        } else {
+            None
+        };
+        let res = super::claude_desktop::apply_claude_desktop_sync(bindings)?;
+        store.platforms.insert(
+            plat.id().to_string(),
+            PlatformState {
+                provider_id: provider_id.to_string(),
+                ..Default::default()
+            },
+        );
+        let _ = write_provider_store(&store);
+        emit_switch_progress(app, plat.id(), "done", "切换完成");
+        return Ok(res);
+    }
     emit_switch_progress(app, plat.id(), "reading", "正在读取供应商配置…");
     let mut store = read_provider_store()?;
 
@@ -4353,6 +4715,41 @@ pub fn restore_platform(app: AppHandle, platform: String) -> Result<bool, String
     }
     emit_switch_progress(&app, plat.id(), "done", "还原完成");
     Ok(restored)
+}
+
+/// 切回 Antigravity 官方环境：清理 AnyBridge 写入的 jetski.cloudCodeUrl 及环境变量，保留其他设置。
+#[tauri::command]
+pub fn restore_antigravity_official_config(app: AppHandle) -> Result<SwitchResult, String> {
+    let plat = Platform::Antigravity;
+    emit_switch_progress(&app, plat.id(), "backup", "正在备份当前配置…");
+    let path = plat
+        .config_path()
+        .ok_or_else(|| "无法定位 Antigravity 用户配置路径".to_string())?;
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(|e| format!("创建配置目录失败: {e}"))?;
+    }
+    if path.exists() {
+        ensure_backup(&path)?;
+    }
+    emit_switch_progress(&app, plat.id(), "writing", "正在恢复官方配置…");
+    plat.apply_antigravity_official(&path)?;
+
+    emit_switch_progress(&app, plat.id(), "saving", "正在清除接管记录…");
+    if let Ok(mut store) = read_provider_store() {
+        if store.platforms.remove(plat.id()).is_some() {
+            let _ = write_provider_store(&store);
+        }
+    }
+
+    let config_path = path.to_string_lossy().to_string();
+    let backup = backup_path(&path).to_string_lossy().to_string();
+    emit_switch_progress(&app, plat.id(), "done", "已切回官方配置");
+    Ok(SwitchResult {
+        ok: true,
+        message: "已切回 Antigravity 官方配置，重启 Antigravity 后生效".to_string(),
+        config_path,
+        backup_path: backup,
+    })
 }
 
 /// 切回 Claude Code 官方环境：清理 AnyBridge 写入的 ANTHROPIC_* env 字段，保留其他设置。
@@ -4913,6 +5310,7 @@ mod tests {
                     test_proxy_route("deepseek-v4-flash", "codex:deepseek"),
                     test_proxy_route("manual-model", "manual"),
                 ],
+                claude_desktop: None,
             },
         ));
 

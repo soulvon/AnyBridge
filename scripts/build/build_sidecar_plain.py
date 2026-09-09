@@ -138,6 +138,13 @@ def main():
         shutil.move(old, new)
         if os_name != "windows":
             os.chmod(new, 0o755)
+        if os_name == "macos" and shutil.which("codesign"):
+            print(f"[codesign] signing {new} with ad-hoc signature...")
+            r_sign = subprocess.run(["codesign", "--force", "--sign", "-", new], capture_output=True, text=True)
+            if r_sign.returncode != 0:
+                print(f"[codesign warning] failed to sign: {r_sign.stderr}")
+            else:
+                print(f"[codesign] successfully signed {new}")
         print(f"[out] {new}")
     else:
         # 列出 OUT_DIR 帮助排查

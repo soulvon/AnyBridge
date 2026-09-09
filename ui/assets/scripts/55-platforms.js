@@ -28,6 +28,15 @@ globalThis.PLATFORM_DEFS = {
     summary: '写入 ANTHROPIC_BASE_URL / ANTHROPIC_AUTH_TOKEN / 默认模型',
     note: '原有 MCP、权限、hooks、语言等设置会保留。',
   },
+  'claude-desktop': {
+    id: 'claude-desktop',
+    name: 'Claude Desktop',
+    vendor: 'Anthropic',
+    requiredApiFormat: 'anthropic',
+    configHint: 'Claude-3p/claude_desktop_config.json',
+    summary: '开启本地路由模式，映射 Sonnet / Opus / Haiku 模型',
+    note: '需保持 AnyBridge 运行以提供本地路由服务，切换后重启 Claude Desktop 生效。',
+  },
   codex: {
     id: 'codex',
     name: 'Codex',
@@ -36,6 +45,15 @@ globalThis.PLATFORM_DEFS = {
     configHint: '~/.codex/config.toml',
     summary: '写入 model_provider = "codex_local_access" 和 model_providers.codex_local_access',
     note: '所选中转站必须支持 OpenAI Responses API。',
+  },
+  antigravity: {
+    id: 'antigravity',
+    name: 'Antigravity',
+    vendor: 'Google',
+    requiredApiFormat: 'openai',
+    configHint: 'Antigravity IDE/User/settings.json',
+    summary: '写入 jetski.cloudCodeUrl 与环境变量，本地转换并优化上下文策略',
+    note: '支持主流服务商接入、上下文长记忆保护与模型下拉列表注入。',
   },
   codebuddy: {
     id: 'codebuddy',
@@ -340,6 +358,9 @@ function platformProviderList(platformId) {
   if (platformId === 'codex') {
     return Array.isArray(providerStore?.codexConfigs) ? providerStore.codexConfigs.filter(p => !platformIsLocalProxyConfig(p)) : [];
   }
+  if (platformId === 'antigravity') {
+    return Array.isArray(providerStore?.antigravityConfigs) ? providerStore.antigravityConfigs.filter(p => !platformIsLocalProxyConfig(p)) : [];
+  }
   if (platformId === 'opencode') {
     return Array.isArray(providerStore?.opencodeConfigs) ? providerStore.opencodeConfigs.filter(p => !platformIsLocalProxyConfig(p)) : [];
   }
@@ -583,6 +604,10 @@ function renderPlatformDetailStatuses() {
       if (info) renderCodexPageStatus(info);
       return;
     }
+    if (platformId === 'antigravity') {
+      renderAntigravityPageStatus(info || { id: 'antigravity', installed: false });
+      return;
+    }
     if (platformId === 'claude-code') {
       if (info) renderClaudeCodePageStatus(info);
       return;
@@ -593,6 +618,12 @@ function renderPlatformDetailStatuses() {
     }
     if (platformId === 'grok') {
       if (info) renderGrokPageStatus(info);
+      return;
+    }
+    if (platformId === 'claude-desktop') {
+      if (typeof loadClaudeDesktopConsole === 'function') {
+        loadClaudeDesktopConsole();
+      }
       return;
     }
 
@@ -722,7 +753,7 @@ function renderCodexPageStatus(info) {
   const currentLabel = document.getElementById('codex-current-label');
 
   const meta = codexStatusMeta(info);
-  if (headline) headline.textContent = '管理 Codex 的官方登录配置和第三方 API 配置方案，切换后重启 Codex 生效。';
+  if (headline) headline.textContent = 'OpenAI 终端智能体 CLI · 管理官方与第三方兼容配置';
 
   if (pill) {
     pill.textContent = meta.label;
@@ -740,7 +771,7 @@ function renderClaudeCodePageStatus(info) {
 
   const meta = claudeCodeStatusMeta(info);
 
-  if (headline) headline.textContent = '管理 Claude Code 的官方环境和第三方 Anthropic API 配置，切换后重启 Claude Code 生效。';
+  if (headline) headline.textContent = 'Anthropic 终端智能体 CLI · 管理官方与第三方兼容配置';
   if (currentLabel) currentLabel.textContent = meta.label;
   bindRevealPathLabel('claude-code-config-path-label', info.configPath || platformDef('claude-code').configHint);
   renderClaudeCodeConfigList(info);
@@ -753,7 +784,7 @@ function renderOpenCodePageStatus(info) {
 
   const meta = openCodeStatusMeta(info);
 
-  if (headline) headline.textContent = '管理 OpenCode 的独立 provider 配置。';
+  if (headline) headline.textContent = '开源终端 AI 助手 CLI · 管理独立 Provider 配置';
   if (currentLabel) currentLabel.textContent = meta.label;
   bindRevealPathLabel('opencode-config-path-label', info.configPath || platformDef('opencode').configHint);
   renderOpenCodeConfigList(info);
@@ -2159,7 +2190,7 @@ async function deleteCodexProviderConfig(providerId) {
   const isCurrent = codexProviderIsCurrent(provider, info);
 
   const confirmMsg = isCurrent
-    ? `「${provider.name || provider.id}」当前正在生效中。\n\n删除该配置将自动为您恢复为「OpenAI 官方配置」。是否确认删除？`
+    ? `「${provider.name || provider.id}」当前正在生效中。\n\n删除该配置将自动为您恢复为「官方默认配置」。是否确认删除？`
     : `确定要删除 Codex 配置「${provider.name || provider.id}」吗？`;
 
   const okConfirm = await showCustomConfirm(confirmMsg, '删除配置', 'warn');
@@ -2215,7 +2246,7 @@ function renderCodexConfigList(info) {
   const items = [];
 
   items.push({
-    name: 'OpenAI 官方配置',
+    name: '官方默认配置',
     description: '使用 Codex 官方登录态，不写入第三方地址和 token。',
     icon: '官',
     typeLabel: '官方',
@@ -2283,6 +2314,633 @@ function renderCodexConfigList(info) {
   list.innerHTML = filtered.map(renderCodexConfigCard).join('');
 }
 
+// ═══════ Antigravity 配置与模型管理 ═══════
+
+globalThis.antigravityProviderModels = [];
+globalThis.antigravityAddSelectedProvider = null;
+globalThis.antigravityAddSearchKw = '';
+globalThis._antigravitySearchKeyword = '';
+globalThis._antigravitySelectedSet = new Set();
+globalThis.antigravityConfigEditorMode = 'edit';
+
+function renderAntigravityPageStatus(info) {
+  antigravityRefreshConsole({ silent: true });
+}
+
+function antigravityPageRoot() {
+  return document.getElementById('page-platform-antigravity');
+}
+
+async function antigravityRefreshConsole(options = {}) {
+  const root = antigravityPageRoot();
+  if (!root) return;
+
+  const info = platformInfoOf('antigravity');
+  const managed = !!info?.managedByAnyBridge;
+
+  // 1. 更新顶部接入状态与按钮 (对齐 Cursor 一键接入 / 停止接入)
+  const mainBtn = document.getElementById('antigravity-main-btn');
+  const mainBtnText = document.getElementById('antigravity-main-btn-text');
+  const restoreBtn = document.getElementById('antigravityRestoreBtn');
+
+  if (mainBtn && mainBtnText) {
+    if (managed) {
+      mainBtn.classList.remove('platform-proxy-primary');
+      mainBtn.classList.add('platform-proxy-active');
+      mainBtnText.textContent = '已接入 Antigravity';
+    } else {
+      mainBtn.classList.add('platform-proxy-primary');
+      mainBtn.classList.remove('platform-proxy-active');
+      mainBtnText.textContent = '一键接入';
+    }
+  }
+
+  if (restoreBtn) {
+    restoreBtn.disabled = !managed;
+  }
+
+  bindRevealPathLabel('antigravity-config-path-label', info?.configPath || platformDef('antigravity').configHint);
+
+  // 2. 清理不存在的选中项
+  const configs = Array.isArray(providerStore?.antigravityConfigs) ? providerStore.antigravityConfigs : [];
+  const validIds = new Set(configs.map(c => c.id));
+  _antigravitySelectedSet = new Set(Array.from(_antigravitySelectedSet).filter(id => validIds.has(id)));
+
+  // 3. 渲染数据表格
+  antigravityRenderTableRows();
+  antigravityUpdateBulkActionButtons();
+}
+
+function antigravityGetFilteredList() {
+  const configs = Array.isArray(providerStore?.antigravityConfigs) ? providerStore.antigravityConfigs : [];
+  const kw = (_antigravitySearchKeyword || '').trim().toLowerCase();
+  if (!kw) return configs;
+  return configs.filter(item => {
+    return [
+      item.name,
+      item.id,
+      item.defaultModel,
+      item.sourceProviderName,
+      item.apiFormat,
+    ].some(v => String(v || '').toLowerCase().includes(kw));
+  });
+}
+
+function antigravityRenderTableRows() {
+  const tbody = document.getElementById('antigravityModelTableBody');
+  const empty = document.getElementById('antigravity-model-empty');
+  const table = document.getElementById('antigravity-model-table');
+  const countPill = document.getElementById('antigravity-model-count');
+  if (!tbody) return;
+
+  const configs = Array.isArray(providerStore?.antigravityConfigs) ? providerStore.antigravityConfigs : [];
+  if (countPill) countPill.textContent = `共 ${configs.length} 个`;
+
+  if (configs.length === 0) {
+    tbody.innerHTML = '';
+    if (empty) empty.style.display = '';
+    if (table) table.style.display = 'none';
+    return;
+  }
+
+  if (empty) empty.style.display = 'none';
+  if (table) table.style.display = 'table';
+
+  const list = antigravityGetFilteredList();
+  const kw = (_antigravitySearchKeyword || '').trim();
+
+  if (list.length === 0) {
+    tbody.innerHTML = `
+      <tr>
+        <td colspan="7" style="text-align: center; color: var(--text-muted); padding: 36px 0;">
+          未找到匹配「${platformEsc(kw)}」的 Antigravity 模型
+        </td>
+      </tr>
+    `;
+    return;
+  }
+
+  let html = '';
+  list.forEach(item => {
+    const isChecked = _antigravitySelectedSet.has(item.id);
+    const displayName = (item.name || item.defaultModel || item.id).trim();
+    const exposedModel = (item.defaultModel || item.id).trim();
+    const providerName = (item.sourceProviderName || item.name || '自定义供应商').trim();
+    const isEnabled = item.enabled !== false && item.injectModels !== false;
+    const protocol = (item.apiFormat || 'openai').toUpperCase();
+
+    const iconHtml = (typeof renderModelIcon === 'function')
+      ? renderModelIcon(exposedModel, { size: 20 })
+      : `<span style="color:var(--accent);">✦</span>`;
+
+    html += `
+      <tr class="${isChecked ? 'cb-model-row-selected is-selected' : ''}" data-config-id="${platformEsc(item.id)}" style="min-height: 52px;">
+        <td class="cb-select-cell" style="text-align: center; padding-left: 14px;">
+          <label class="provider-select-check provider-select-check-table" data-stop data-action="__noop">
+            <input type="checkbox" ${isChecked ? 'checked' : ''} onchange="antigravityToggleRowSelect('${platformEsc(item.id)}', this.checked)">
+            <span></span>
+          </label>
+        </td>
+        <td class="display-name-cell">
+          <div style="display:flex;align-items:center;gap:8px;min-width:0;">
+            <div style="width:24px;height:24px;display:flex;align-items:center;justify-content:center;border-radius:5px;background:var(--bg-input);border:1px solid var(--border);flex:0 0 24px;">
+              ${iconHtml}
+            </div>
+            <div style="min-width:0;flex:1;">
+              <strong style="font-weight:750;color:var(--text-primary);display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${platformEsc(displayName)}">${platformEsc(displayName)}</strong>
+            </div>
+          </div>
+        </td>
+        <td>
+          <code style="font-size:12px;color:var(--text-secondary);background:var(--bg-input);padding:2px 6px;border-radius:4px;border:1px solid var(--border);">${platformEsc(exposedModel)}</code>
+        </td>
+        <td>
+          <span style="font-size:12px;color:var(--text-primary);font-weight:600;">${platformEsc(providerName)}</span>
+        </td>
+        <td>
+          <span class="platform-badge" style="font-size:11px;padding:1px 6px;background:var(--bg-input);border:1px solid var(--border);border-radius:4px;">${platformEsc(protocol)}</span>
+        </td>
+        <td style="text-align: center;">
+          <div style="display:inline-flex;align-items:center;gap:4px;">
+            <button class="btn-icon" type="button" title="编辑" onclick="editAntigravityProviderConfig('${platformEsc(item.id)}')">
+              ${codexActionIcon('edit')}
+            </button>
+            <button class="btn-icon danger" type="button" title="删除" onclick="deleteAntigravityProviderConfig('${platformEsc(item.id)}')">
+              ${codexActionIcon('delete')}
+            </button>
+          </div>
+        </td>
+        <td style="text-align: center;">
+          <label class="switch" style="margin:0 auto;">
+            <input type="checkbox" ${isEnabled ? 'checked' : ''} onchange="antigravityToggleModelEnabled('${platformEsc(item.id)}', this.checked)">
+            <span class="slider"></span>
+          </label>
+        </td>
+      </tr>
+    `;
+  });
+
+  tbody.innerHTML = html;
+}
+
+function antigravityFilterModels(keyword) {
+  _antigravitySearchKeyword = keyword || '';
+  antigravityRenderTableRows();
+  antigravityUpdateBulkActionButtons();
+}
+
+function antigravityToggleSelectAll(checked) {
+  const visible = antigravityGetFilteredList();
+  if (checked) {
+    visible.forEach(m => _antigravitySelectedSet.add(m.id));
+  } else {
+    visible.forEach(m => _antigravitySelectedSet.delete(m.id));
+  }
+  antigravityRenderTableRows();
+  antigravityUpdateBulkActionButtons();
+}
+
+function antigravityToggleSelectAllVisible() {
+  const visible = antigravityGetFilteredList();
+  if (!visible.length) return;
+  const allSelected = visible.every(m => _antigravitySelectedSet.has(m.id));
+  antigravityToggleSelectAll(!allSelected);
+}
+
+function antigravityToggleRowSelect(id, checked) {
+  if (checked) _antigravitySelectedSet.add(id);
+  else _antigravitySelectedSet.delete(id);
+  antigravityRenderTableRows();
+  antigravityUpdateBulkActionButtons();
+}
+
+function antigravityUpdateBulkActionButtons() {
+  const count = _antigravitySelectedSet.size;
+  const selectAll = document.getElementById('antigravitySelectAll');
+  const visible = antigravityGetFilteredList();
+
+  if (selectAll) {
+    selectAll.checked = visible.length > 0 && visible.every(m => _antigravitySelectedSet.has(m.id));
+  }
+
+  const enableBtn = document.getElementById('antigravity-bulk-enable-btn');
+  const disableBtn = document.getElementById('antigravity-bulk-disable-btn');
+  const removeBtn = document.getElementById('antigravity-bulk-remove-btn');
+
+  if (enableBtn) enableBtn.disabled = count === 0;
+  if (disableBtn) disableBtn.disabled = count === 0;
+  if (removeBtn) removeBtn.disabled = count === 0;
+}
+
+async function antigravityToggleModelEnabled(id, checked) {
+  if (!Array.isArray(providerStore?.antigravityConfigs)) return;
+  const target = providerStore.antigravityConfigs.find(c => c.id === id);
+  if (target) {
+    target.enabled = checked;
+    target.injectModels = checked;
+    await syncAntigravityConfigUiAfterStoreChange();
+  }
+}
+
+async function antigravityBulkEnableAction() {
+  if (!Array.isArray(providerStore?.antigravityConfigs)) return;
+  providerStore.antigravityConfigs.forEach(c => {
+    if (_antigravitySelectedSet.has(c.id)) {
+      c.enabled = true;
+      c.injectModels = true;
+    }
+  });
+  await syncAntigravityConfigUiAfterStoreChange();
+  showBottomToast(`已批量启用 ${_antigravitySelectedSet.size} 个 Antigravity 模型`, 'success');
+}
+
+async function antigravityBulkDisableAction() {
+  if (!Array.isArray(providerStore?.antigravityConfigs)) return;
+  providerStore.antigravityConfigs.forEach(c => {
+    if (_antigravitySelectedSet.has(c.id)) {
+      c.enabled = false;
+      c.injectModels = false;
+    }
+  });
+  await syncAntigravityConfigUiAfterStoreChange();
+  showBottomToast(`已批量停用 ${_antigravitySelectedSet.size} 个 Antigravity 模型`, 'info');
+}
+
+async function antigravityBulkRemoveAction() {
+  if (!Array.isArray(providerStore?.antigravityConfigs)) return;
+  const count = _antigravitySelectedSet.size;
+  if (count === 0) return;
+  const ok = await showCustomConfirm(`确认从 Antigravity 列表中移除选中的 ${count} 个模型吗？`, '移除模型', 'warn');
+  if (!ok) return;
+
+  providerStore.antigravityConfigs = providerStore.antigravityConfigs.filter(c => !_antigravitySelectedSet.has(c.id));
+  _antigravitySelectedSet.clear();
+  await syncAntigravityConfigUiAfterStoreChange();
+  showBottomToast(`已移除 ${count} 个模型`, 'success');
+}
+
+async function antigravityPrimaryAction() {
+  const configs = Array.isArray(providerStore?.antigravityConfigs) ? providerStore.antigravityConfigs : [];
+  const activeProviderId = configs.find(c => c.enabled !== false)?.id || configs[0]?.id || '';
+
+  await runSwitchFlow({
+    title: '接入 Antigravity',
+    lead: '将把 Antigravity 代理端点指向 AnyBridge，并在模型列表中注入配置的第三方模型。\n\n接入后请重启 Antigravity IDE。',
+    confirmText: '立即接入',
+    platform: 'antigravity',
+    runningMessage: '正在准备接入 Antigravity…',
+    successTitle: '接入完成',
+    failureTitle: '接入失败',
+    skipConfirm: false,
+    task: async ({ setMessage }) => {
+      setPlatformBusy('antigravity', true);
+      try {
+        setMessage('正在配置 settings.json 与环境变量…');
+        const result = assertSwitchResultOk(
+          await invoke('switch_platform', { platform: 'antigravity', providerId: activeProviderId }),
+          'Antigravity 接入失败'
+        );
+        if (typeof addLog === 'function') {
+          addLog('ok', result.message || 'Antigravity 已成功接入 AnyBridge');
+        }
+        setMessage('正在刷新状态…');
+        await refreshPlatforms({ silent: true, reloadProviders: false });
+        antigravityRefreshConsole({ silent: true });
+        return {
+          message: `${result.message || 'Antigravity 已成功接入。'}\n\n请重启 Antigravity IDE 使配置生效。`,
+        };
+      } finally {
+        setPlatformBusy('antigravity', false);
+      }
+    },
+  });
+}
+
+async function antigravityRestoreAction() {
+  await restoreAntigravityOfficialConfig();
+  antigravityRefreshConsole({ silent: true });
+}
+
+async function restoreAntigravityOfficialConfig() {
+  const info = platformInfoOf('antigravity') || {};
+  const alreadyOfficial = !info.managedByAnyBridge;
+  const message = alreadyOfficial
+    ? 'Antigravity 当前已经是官方直连模式。仍要清理配置吗？'
+    : '将把 Antigravity 切回官方直连环境，清理 jetski.cloudCodeUrl 配置并还原环境变量。\n\n切换后请重启 Antigravity。';
+  await runSwitchFlow({
+    title: '切回官方直连',
+    lead: message,
+    confirmText: '确认切回',
+    platform: 'antigravity',
+    runningMessage: '正在准备切回官方配置…',
+    successTitle: '切换完成',
+    failureTitle: '切回官方失败',
+    skipConfirm: false,
+    task: async ({ setMessage }) => {
+      setPlatformBusy('antigravity', true);
+      try {
+        setMessage('正在恢复 Antigravity 官方配置…');
+        const result = assertSwitchResultOk(
+          await invoke('restore_antigravity_official_config'),
+          'Antigravity 官方配置还原失败'
+        );
+        if (typeof addLog === 'function') {
+          addLog('ok', result.message || 'Antigravity 已恢复官方模式');
+        }
+        await refreshPlatforms({ silent: true, reloadProviders: false });
+        return {
+          message: `${result.message || 'Antigravity 已恢复官方配置。'}\n\n请重启 Antigravity IDE 使修改生效。`,
+        };
+      } finally {
+        setPlatformBusy('antigravity', false);
+      }
+    },
+  });
+}
+
+async function syncAntigravityConfigUiAfterStoreChange() {
+  if (typeof persistProviders === 'function') {
+    const ok = await persistProviders();
+    if (!ok) return false;
+  }
+  if (typeof renderProviders === 'function') renderProviders();
+  renderAntigravityConfigList(platformInfoOf('antigravity') || {});
+  renderPlatformProviderOptions();
+  return true;
+}
+
+function openAntigravityAddModal() {
+  navigateTo('platform-antigravity-add');
+  initAntigravityAddPage();
+}
+
+async function initAntigravityAddPage() {
+  try {
+    antigravityProviderModels = await invoke('list_provider_models') || [];
+  } catch (e) {
+    antigravityProviderModels = [];
+  }
+  if (typeof localProxyProviderModelsEntry === 'function') {
+    const lp = localProxyProviderModelsEntry();
+    antigravityProviderModels = antigravityProviderModels.filter(p => !isLocalProxyProviderEntry(p));
+    antigravityProviderModels.unshift(lp);
+  }
+  antigravityAddSelectedProvider = null;
+  antigravityAddSearchKw = '';
+  const searchInput = document.getElementById('antigravity-add-search');
+  if (searchInput) searchInput.value = '';
+  renderAntigravityAddProviderList();
+  renderAntigravityAddModels();
+  updateAntigravityAddConfirmButton();
+}
+
+function onAntigravityAddSearch() {
+  const input = document.getElementById('antigravity-add-search');
+  antigravityAddSearchKw = (input?.value || '').trim().toLowerCase();
+  renderAntigravityAddProviderList();
+}
+
+function renderAntigravityAddProviderList() {
+  const list = document.getElementById('antigravity-add-provider-list');
+  if (!list) return;
+  if (!antigravityProviderModels.length) {
+    list.innerHTML = '<div class="cb-add-prov-empty">暂无供应商，请先在「供应商」页添加</div>';
+    return;
+  }
+  const filtered = platformAddVisibleProviders(antigravityProviderModels, antigravityAddSearchKw);
+  if (!filtered.length) {
+    list.innerHTML = '<div class="cb-add-prov-empty">没有匹配的供应商</div>';
+    return;
+  }
+  list.innerHTML = filtered.map(p => {
+    const initial = (p.providerName || '?').charAt(0).toUpperCase();
+    const enabled = p.enabled !== false;
+    const isActive = antigravityAddSelectedProvider === p.providerId;
+    const isBuiltin = isBuiltinProxyEntry(p);
+    const iconHtml = isBuiltin
+      ? `<span class="cb-add-prov-icon cb-add-prov-icon-builtin" title="内置本地代理"><span>本地</span><span>代理</span></span>`
+      : `<span class="cb-add-prov-icon">${platformEsc(initial)}</span>`;
+    return `
+      <div class="cb-add-prov-item ${isActive ? 'active' : ''} ${enabled ? '' : 'disabled'} ${isBuiltin ? 'is-local-proxy' : ''}" data-action="selectAntigravityAddProvider" data-arg="${platformEsc(p.providerId)}">
+        ${iconHtml}
+        <span class="cb-add-prov-name">${platformEsc(p.providerName)}</span>
+        <span class="cb-add-prov-count">${p.models.length}</span>
+      </div>
+    `;
+  }).join('');
+}
+
+function selectAntigravityAddProvider(providerId) {
+  antigravityAddSelectedProvider = providerId;
+  renderAntigravityAddProviderList();
+  renderAntigravityAddModels();
+  updateAntigravityAddConfirmButton();
+}
+
+function renderAntigravityAddModels() {
+  const titleEl = document.getElementById('antigravity-add-models-title');
+  const subEl = document.getElementById('antigravity-add-models-sub');
+  const body = document.getElementById('antigravity-add-models-list-page');
+  if (!body) return;
+
+  if (!antigravityAddSelectedProvider) {
+    titleEl.textContent = '请选择供应商';
+    subEl.textContent = '左侧选择一个供应商，右侧将展示其可用模型';
+    body.innerHTML = '<div class="cb-add-models-empty">请从左侧选择一个供应商</div>';
+    return;
+  }
+
+  const provider = antigravityProviderModels.find(p => p.providerId === antigravityAddSelectedProvider);
+  if (!provider) {
+    titleEl.textContent = '供应商未找到';
+    subEl.textContent = '';
+    body.innerHTML = '<div class="cb-add-models-empty">供应商未找到</div>';
+    return;
+  }
+
+  titleEl.textContent = provider.providerName;
+  subEl.textContent = `共 ${provider.models.length} 个模型，勾选要注入到 Antigravity 的模型`;
+
+  if (!provider.models.length) {
+    body.innerHTML = '<div class="cb-add-models-empty">该供应商暂无模型</div>';
+    return;
+  }
+
+  const agConfigs = Array.isArray(providerStore?.antigravityConfigs) ? providerStore.antigravityConfigs : [];
+  const existingConfig = agConfigs.find(c => c.sourceProviderId === provider.providerId || c.name === provider.providerName);
+  const existingModels = new Set(existingConfig?.models || []);
+
+  body.innerHTML = provider.models.map((m) => {
+    const exists = existingModels.has(m.id);
+    return `
+      <label class="cb-add-model-row ${exists ? 'already-added' : ''}">
+        <input type="checkbox" class="antigravity-add-model-check" data-model-id="${platformEsc(m.id)}" data-model-name="${platformEsc(m.name || m.id)}" ${exists ? 'checked' : ''} data-action="cbOnAddModelCheckChanged" data-events="change" data-pass-this data-arg="updateAntigravityAddConfirmButton">
+        ${cbAddModelIdentity(m.id)}
+      </label>
+    `;
+  }).join('');
+}
+
+function updateAntigravityAddConfirmButton() {
+  const btn = document.getElementById('antigravity-add-confirm-page');
+  if (!btn) return;
+  const checked = document.querySelectorAll('.antigravity-add-model-check:checked');
+  btn.disabled = checked.length === 0;
+  const label = btn.querySelector('.model-action-label');
+  if (label) {
+    label.textContent = checked.length > 0 ? ` 保存选择 (${checked.length})` : ' 保存选择';
+  }
+}
+
+function antigravityAddSelectAll() {
+  cbSetAddModelChecks('.antigravity-add-model-check', true, updateAntigravityAddConfirmButton);
+}
+
+function antigravityAddSelectNone() {
+  cbSetAddModelChecks('.antigravity-add-model-check', false, updateAntigravityAddConfirmButton);
+}
+
+async function confirmAddAntigravityModelsPage() {
+  const provider = antigravityProviderModels.find(p => p.providerId === antigravityAddSelectedProvider);
+  if (!provider) return;
+
+  const checkedBoxes = document.querySelectorAll('.antigravity-add-model-check:checked');
+  const checkedModelIds = Array.from(checkedBoxes).map(cb => cb.dataset.modelId).filter(Boolean);
+  if (!checkedModelIds.length) return;
+
+  if (!Array.isArray(providerStore.antigravityConfigs)) {
+    providerStore.antigravityConfigs = [];
+  }
+
+  checkedModelIds.forEach(modelId => {
+    const entryId = `ag-${provider.providerId}-${modelId}`.replace(/[^a-zA-Z0-9_-]/g, '_');
+    const existing = providerStore.antigravityConfigs.find(c => c.id === entryId || (c.sourceProviderId === provider.providerId && c.defaultModel === modelId));
+    if (!existing) {
+      providerStore.antigravityConfigs.push({
+        id: entryId,
+        name: modelId,
+        apiHost: provider.apiHost || '',
+        apiPath: provider.apiPath || '',
+        apiKey: provider.apiKey || '',
+        apiFormat: provider.apiFormat || 'openai',
+        defaultModel: modelId,
+        models: [modelId],
+        enabled: true,
+        injectModels: true,
+        sourceProviderId: provider.providerId,
+        sourceProviderName: provider.providerName,
+      });
+    }
+  });
+
+  const ok = await syncAntigravityConfigUiAfterStoreChange();
+  if (ok) {
+    showBottomToast(`已成功添加 ${checkedModelIds.length} 个模型到 Antigravity`, 'success');
+    navigateTo('platform-antigravity');
+    antigravityRefreshConsole({ silent: true });
+  }
+}
+
+function openAntigravityConfigEditor(providerId = '') {
+  const configs = Array.isArray(providerStore?.antigravityConfigs) ? providerStore.antigravityConfigs : [];
+  const provider = configs.find(c => c.id === providerId);
+  if (!provider) return;
+
+  antigravityConfigEditorMode = 'edit';
+  const modal = document.getElementById('antigravity-config-modal');
+  const title = document.getElementById('antigravity-config-modal-title');
+  const sub = document.getElementById('antigravity-config-modal-sub');
+
+  if (title) title.textContent = '编辑 Antigravity 模型';
+  if (sub) sub.textContent = `正在编辑「${provider.name || provider.defaultModel}」的配置。`;
+
+  const editIdEl = document.getElementById('antigravity-config-edit-id');
+  const nameEl = document.getElementById('antigravity-config-name');
+  const modelEl = document.getElementById('antigravity-config-model');
+  const apiFormatEl = document.getElementById('antigravity-config-api-format');
+  const injectModelsEl = document.getElementById('antigravity-config-inject-models');
+
+  if (editIdEl) editIdEl.value = provider.id || '';
+  if (nameEl) nameEl.value = provider.name || '';
+  if (modelEl) modelEl.value = provider.defaultModel || '';
+  if (apiFormatEl) apiFormatEl.value = provider.apiFormat || 'openai';
+  if (injectModelsEl) injectModelsEl.checked = provider.injectModels !== false;
+
+  if (modal) modal.classList.add('active');
+}
+
+function closeAntigravityConfigEditor() {
+  const modal = document.getElementById('antigravity-config-modal');
+  if (modal) modal.classList.remove('active');
+}
+
+async function saveAntigravityConfigEditor() {
+  const editId = String(document.getElementById('antigravity-config-edit-id')?.value || '').trim();
+  const name = String(document.getElementById('antigravity-config-name')?.value || '').trim();
+  const defaultModel = String(document.getElementById('antigravity-config-model')?.value || '').trim();
+  const apiFormat = String(document.getElementById('antigravity-config-api-format')?.value || 'openai').trim();
+  const injectModels = document.getElementById('antigravity-config-inject-models')?.checked !== false;
+
+  if (!name) {
+    showCustomAlert('显示名称不能为空。', '保存失败', 'warn');
+    return;
+  }
+
+  if (!Array.isArray(providerStore.antigravityConfigs)) {
+    providerStore.antigravityConfigs = [];
+  }
+
+  const existing = providerStore.antigravityConfigs.find(c => c.id === editId);
+  if (existing) {
+    existing.name = name;
+    existing.defaultModel = defaultModel;
+    existing.apiFormat = apiFormat;
+    existing.injectModels = injectModels;
+  }
+
+  const ok = await syncAntigravityConfigUiAfterStoreChange();
+  if (ok) {
+    closeAntigravityConfigEditor();
+    showCustomAlert(`模型「${name}」已成功保存。`, '保存成功', 'success');
+  }
+}
+
+function deleteAntigravityProviderConfig(providerId) {
+  const configs = Array.isArray(providerStore?.antigravityConfigs) ? providerStore.antigravityConfigs : [];
+  const provider = configs.find(c => c.id === providerId);
+  if (!provider) return;
+  showCustomConfirm(`确认从 Antigravity 列表中移除「${provider.name || provider.defaultModel}」吗？`, '移除模型', 'warn').then(async ok => {
+    if (!ok) return;
+    providerStore.antigravityConfigs = providerStore.antigravityConfigs.filter(p => p.id !== providerId);
+    _antigravitySelectedSet.delete(providerId);
+    await syncAntigravityConfigUiAfterStoreChange();
+    if (typeof addLog === 'function') addLog('info', `已移除 Antigravity 模型: ${provider.name || provider.defaultModel}`);
+  });
+}
+
+function editAntigravityProviderConfig(providerId) {
+  openAntigravityConfigEditor(providerId);
+}
+
+function openAntigravitySettingsModal() {
+  const modal = document.getElementById('antigravitySettingsModal');
+  if (modal) modal.classList.add('active');
+}
+
+function closeAntigravitySettingsModal() {
+  const modal = document.getElementById('antigravitySettingsModal');
+  if (modal) modal.classList.remove('active');
+}
+
+function saveAntigravitySettingsModal() {
+  const select = document.getElementById('modal-antigravity-context-window');
+  if (select) {
+    const val = select.value;
+    showBottomToast(`上下文压缩容量已设为 ${Math.round(parseInt(val, 10) / 1024)}K`, 'success');
+  }
+  closeAntigravitySettingsModal();
+}
+
 function claudeCodeConfigProviderById(id) {
   return (providerStore.claudeCodeConfigs || []).find(p => p && p.id === id) || null;
 }
@@ -2311,6 +2969,7 @@ function claudeCodeBuildSettingsConfig(baseUrl, apiKey, model, seed = null) {
     apiPath: '',
   }) || String(baseUrl || '').trim();
   const cleanModel = String(model || '').trim();
+  const displayName = cleanModel.replace(/\s*\[1m\]\s*$/i, '');
   const base = seed && typeof seed === 'object' && !Array.isArray(seed)
     ? JSON.parse(JSON.stringify(seed))
     : {
@@ -2327,13 +2986,13 @@ function claudeCodeBuildSettingsConfig(baseUrl, apiKey, model, seed = null) {
   env.ANTHROPIC_AUTH_TOKEN = String(apiKey || '').trim();
   env.ANTHROPIC_MODEL = cleanModel;
   env.ANTHROPIC_DEFAULT_HAIKU_MODEL = cleanModel;
-  env.ANTHROPIC_DEFAULT_HAIKU_MODEL_NAME = cleanModel;
+  env.ANTHROPIC_DEFAULT_HAIKU_MODEL_NAME = displayName;
   env.ANTHROPIC_DEFAULT_SONNET_MODEL = cleanModel;
-  env.ANTHROPIC_DEFAULT_SONNET_MODEL_NAME = cleanModel;
+  env.ANTHROPIC_DEFAULT_SONNET_MODEL_NAME = displayName;
   env.ANTHROPIC_DEFAULT_OPUS_MODEL = cleanModel;
-  env.ANTHROPIC_DEFAULT_OPUS_MODEL_NAME = cleanModel;
+  env.ANTHROPIC_DEFAULT_OPUS_MODEL_NAME = displayName;
   env.ANTHROPIC_DEFAULT_FABLE_MODEL = cleanModel;
-  env.ANTHROPIC_DEFAULT_FABLE_MODEL_NAME = cleanModel;
+  env.ANTHROPIC_DEFAULT_FABLE_MODEL_NAME = displayName;
   delete env.ANTHROPIC_SMALL_FAST_MODEL;
   return base;
 }
@@ -3164,7 +3823,7 @@ async function deleteClaudeCodeProviderConfig(providerId) {
   const isCurrent = claudeCodeProviderIsCurrent(provider, info);
 
   const confirmMsg = isCurrent
-    ? `「${provider.name || provider.id}」当前正在生效中。\n\n删除该配置将自动为您恢复为「Anthropic 官方配置」。是否确认删除？`
+    ? `「${provider.name || provider.id}」当前正在生效中。\n\n删除该配置将自动为您恢复为「官方默认配置」。是否确认删除？`
     : `确定要删除 Claude Code 配置「${provider.name || provider.id}」吗？`;
 
   const okConfirm = await showCustomConfirm(confirmMsg, '删除配置', 'warn');
@@ -3199,7 +3858,7 @@ function renderClaudeCodeConfigList(info) {
 
   items.push({
     platformId: 'claude-code',
-    name: 'Anthropic 官方配置',
+    name: '官方默认配置',
     description: '使用 Claude Code 官方登录态，不写入第三方地址和 token。',
     icon: '官',
     typeLabel: '官方',
@@ -4158,7 +4817,7 @@ function renderOpenCodeConfigList(info) {
 
   items.push({
     platformId: 'opencode',
-    name: 'OpenCode 官方配置 (Zen / Go)',
+    name: '官方默认配置',
     description: '使用 OpenCode 官方订阅套餐（Zen / Go）与官方登录凭证（opencode auth login），无需配置第三方 API。',
     icon: '官',
     typeLabel: '官方',
@@ -4323,7 +4982,7 @@ function grokConfigSourceProviders() {
 
 function renderGrokPageStatus(info) {
   const headline = document.getElementById('platform-grok-headline');
-  if (headline) headline.textContent = '管理 Grok Build CLI 的自定义模型与端点。';
+  if (headline) headline.textContent = 'xAI 终端智能体 CLI · 管理自定义模型与端点配置';
   bindRevealPathLabel('grok-config-path-label', info.configPath || platformDef('grok').configHint);
   renderGrokConfigList(info);
 }
@@ -4757,7 +5416,7 @@ async function deleteGrokProviderConfig(providerId) {
   const isCurrent = info && (info.currentProviderId === providerId || info.currentProviderId === grok_sanitize_key(providerId));
 
   const confirmMsg = isCurrent
-    ? `「${provider.name || provider.id}」当前正在生效中。\n\n删除该配置将自动为您恢复为「xAI 官方配置」。是否确认删除？`
+    ? `「${provider.name || provider.id}」当前正在生效中。\n\n删除该配置将自动为您恢复为「官方默认配置」。是否确认删除？`
     : `确认删除 Grok 配置「${provider.name || provider.id}」吗？`;
 
   const ok = await showCustomConfirm(confirmMsg, '删除配置', 'warn');
@@ -4867,7 +5526,7 @@ function renderGrokConfigList(info) {
 
   items.push({
     platformId: 'grok',
-    name: 'xAI 官方配置',
+    name: '官方默认配置',
     description: '使用 Grok Build 官方登录态（grok login）与 xAI 官方内置模型。',
     icon: '官',
     typeLabel: '官方',
@@ -6833,6 +7492,9 @@ function openPlatformPage(platformId) {
     cursorRefreshConsole({ silent: true }).catch(e => {
       if (typeof addLog === 'function') addLog('err', 'Cursor 控制台刷新失败: ' + e);
     });
+  } else if (platformId === 'antigravity') {
+    antigravityRefreshConsole({ silent: true });
+    antigravityRenderTableRows();
   } else if (platformId === 'codebuddy') {
     loadCodeBuddyModels();
   } else if (platformId === 'workbuddy') {
@@ -6841,6 +7503,10 @@ function openPlatformPage(platformId) {
     loadZcModels();
   } else if (platformId === 'grok') {
     renderGrokPageStatus(platformInfoOf('grok') || {});
+  } else if (platformId === 'claude-desktop') {
+    if (typeof loadClaudeDesktopConsole === 'function') {
+      loadClaudeDesktopConsole();
+    }
   }
 }
 
@@ -7302,8 +7968,8 @@ async function restoreCodexOfficialConfig() {
     ? '切换后会自动重启 Codex（官方模式）。'
     : '切换后请手动重启 Codex；自动重启 Codex Desktop 仅支持 Windows。';
   const message = alreadyOfficial
-    ? 'Codex 当前已经是 OpenAI 官方配置。仍要清理第三方配置吗？'
-    : `将把 Codex 切回 OpenAI 官方配置。\n\n${autoRestartHint}`;
+    ? 'Codex 当前已经是官方默认配置。仍要清理第三方配置吗？'
+    : `将把 Codex 切回官方默认配置。\n\n${autoRestartHint}`;
   const flow = await runSwitchFlow({
     title: '切回官方配置',
     lead: message,
@@ -9045,8 +9711,79 @@ function createCbRowFactory(prefix) {
     if (platformId === 'codebuddy') loadCodeBuddyModels();
     else if (platformId === 'workbuddy') loadWbModels();
     else if (platformId === 'zcode') loadZcModels();
+    else if (platformId === 'antigravity') {
+      antigravityRefreshConsole({ silent: true });
+      antigravityRenderTableRows();
+    }
   };
 })();
+
+// Antigravity 拖拽导入处理
+window.antigravityDragOver = function(e) {
+  e.preventDefault();
+  e.stopPropagation();
+  const zone = document.getElementById('antigravity-drop-zone');
+  if (zone) zone.classList.add('drag-over');
+};
+window.antigravityDragLeave = function(e) {
+  e.preventDefault();
+  e.stopPropagation();
+  const zone = document.getElementById('antigravity-drop-zone');
+  if (zone) zone.classList.remove('drag-over');
+};
+window.antigravityDrop = function(e) {
+  e.preventDefault();
+  e.stopPropagation();
+  const zone = document.getElementById('antigravity-drop-zone');
+  if (zone) zone.classList.remove('drag-over');
+  const files = e.dataTransfer && e.dataTransfer.files;
+  if (!files || !files.length) return;
+  const file = files[0];
+  if (!file.name.endsWith('.json')) {
+    showCustomAlert('请拖入 .json 文件', '格式不支持', 'warn');
+    return;
+  }
+  const reader = new FileReader();
+  reader.onload = function(ev) {
+    try {
+      const data = JSON.parse(ev.target.result);
+      const incoming = Array.isArray(data.models) ? data.models : (Array.isArray(data) ? data : []);
+      if (!incoming.length) {
+        showCustomAlert('JSON 中未包含模型数组', '导入失败', 'warn');
+        return;
+      }
+      let current = Array.isArray(providerStore?.antigravityConfigs) ? [...providerStore.antigravityConfigs] : [];
+      let added = 0;
+      incoming.forEach(m => {
+        if (!m || !m.id) return;
+        if (current.some(c => c.id === m.id)) return;
+        current.push({
+          id: m.id,
+          name: m.name || m.id,
+          defaultModel: m.defaultModel || m.model || m.id,
+          sourceProviderId: m.sourceProviderId || '',
+          sourceProviderName: m.sourceProviderName || '自定义导入',
+          apiFormat: m.apiFormat || 'openai',
+          enabled: m.enabled !== false,
+        });
+        added++;
+      });
+      if (added > 0) {
+        providerStore.antigravityConfigs = current;
+        if (invoke) {
+          invoke('write_provider_store', { store: providerStore }).catch(() => {});
+        }
+        antigravityRenderTableRows();
+        showCustomAlert(`成功导入 ${added} 个模型配置`, '导入成功', 'ok');
+      } else {
+        showCustomAlert('没有新模型需要导入', '提示', 'info');
+      }
+    } catch (err) {
+      showCustomAlert('解析 JSON 失败: ' + err.message, '解析错误', 'error');
+    }
+  };
+  reader.readAsText(file);
+};
 
 // ═══════ 拖拽导入（通用工厂） ═══════
 
@@ -10393,6 +11130,39 @@ window.zcDrop = function(e) {
   g.toggleCodexAddSort = toggleCodexAddSort;
   g.chooseCodexAddSortMode = chooseCodexAddSortMode;
   g.openCodexProviderAdd = openCodexProviderAdd;
+  g.openAntigravityAddPage = openAntigravityAddPage;
+  g.openAntigravityAddModal = openAntigravityAddModal;
+  g.antigravityRefreshConsole = antigravityRefreshConsole;
+  g.antigravityPrimaryAction = antigravityPrimaryAction;
+  g.antigravityRestoreAction = antigravityRestoreAction;
+  g.antigravityFilterModels = antigravityFilterModels;
+  g.antigravityToggleSelectAll = antigravityToggleSelectAll;
+  g.antigravityToggleSelectAllVisible = antigravityToggleSelectAllVisible;
+  g.antigravityToggleRowSelect = antigravityToggleRowSelect;
+  g.antigravityBulkEnableAction = antigravityBulkEnableAction;
+  g.antigravityBulkDisableAction = antigravityBulkDisableAction;
+  g.antigravityBulkRemoveAction = antigravityBulkRemoveAction;
+  g.antigravityRenderTableRows = antigravityRenderTableRows;
+  g.renderAntigravityPageStatus = renderAntigravityPageStatus;
+  g.antigravityRefreshConsole = antigravityRefreshConsole;
+  g.antigravityToggleModelEnabled = antigravityToggleModelEnabled;
+  g.openAntigravitySettingsModal = openAntigravitySettingsModal;
+  g.closeAntigravitySettingsModal = closeAntigravitySettingsModal;
+  g.saveAntigravitySettingsModal = saveAntigravitySettingsModal;
+  g.initAntigravityAddPage = initAntigravityAddPage;
+  g.onAntigravityAddSearch = onAntigravityAddSearch;
+  g.renderAntigravityAddProviderList = renderAntigravityAddProviderList;
+  g.selectAntigravityAddProvider = selectAntigravityAddProvider;
+  g.renderAntigravityAddModels = renderAntigravityAddModels;
+  g.updateAntigravityAddConfirmButton = updateAntigravityAddConfirmButton;
+  g.antigravityAddSelectAll = antigravityAddSelectAll;
+  g.antigravityAddSelectNone = antigravityAddSelectNone;
+  g.confirmAddAntigravityModelsPage = confirmAddAntigravityModelsPage;
+  g.openAntigravityConfigEditor = openAntigravityConfigEditor;
+  g.closeAntigravityConfigEditor = closeAntigravityConfigEditor;
+  g.saveAntigravityConfigEditor = saveAntigravityConfigEditor;
+  g.editAntigravityProviderConfig = editAntigravityProviderConfig;
+  g.deleteAntigravityProviderConfig = deleteAntigravityProviderConfig;
   g.renderPlatformProviderOptions = renderPlatformProviderOptions;
   g.cursorPageRoot = cursorPageRoot;
   g.cursorEnsureBridge = cursorEnsureBridge;
@@ -10669,6 +11439,9 @@ window.zcDrop = function(e) {
       if (!map.enhancement) map.enhancement = {};
       map.enhancement[key] = val;
       await invoke('save_model_map', { map });
+      if (globalThis.modelMapStore && globalThis.modelMapStore.enhancement) {
+        globalThis.modelMapStore.enhancement[key] = val;
+      }
       // 重新应用当前 Codex 配置，让重试值立即写入 config.toml
       const info = platformInfoOf('codex');
       if (info?.currentProviderId && info.managedByAnyBridge) {
@@ -10689,6 +11462,9 @@ window.zcDrop = function(e) {
       if (!map.enhancement) map.enhancement = {};
       map.enhancement.claudeMaxRetries = val;
       await invoke('save_model_map', { map });
+      if (globalThis.modelMapStore && globalThis.modelMapStore.enhancement) {
+        globalThis.modelMapStore.enhancement.claudeMaxRetries = val;
+      }
       // 重新应用当前 Claude Code 配置，让重试值立即写入 settings.json
       const info = platformInfoOf('claude-code');
       if (info?.currentProviderId && info.managedByAnyBridge) {
@@ -10703,4 +11479,16 @@ window.zcDrop = function(e) {
   g.renderPlatformNativeRetry = renderPlatformNativeRetry;
   g.saveCodexNativeRetry = saveCodexNativeRetry;
   g.saveClaudeNativeRetry = saveClaudeNativeRetry;
+
+  if (typeof document !== 'undefined') {
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', () => {
+        try { antigravityRenderTableRows(); } catch (_) {}
+      });
+    } else {
+      setTimeout(() => {
+        try { antigravityRenderTableRows(); } catch (_) {}
+      }, 0);
+    }
+  }
 })(globalThis);
