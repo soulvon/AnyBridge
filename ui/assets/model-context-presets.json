@@ -24,6 +24,14 @@
       "note": "官方 1M 上下文 / 128K 输出"
     },
     {
+      "id": "claude-opus-5",
+      "match": ["claude-opus-5", "claude-5-opus", "opus-5", "claude-opus-5-low", "claude-opus-5-medium", "claude-opus-5-high", "claude-opus-5-max"],
+      "maxInputTokens": 1000000,
+      "maxOutputTokens": 128000,
+      "vendor": "anthropic",
+      "note": "Claude 5 系 1M 上下文 / 128K 输出"
+    },
+    {
       "id": "claude-sonnet-5",
       "match": ["claude-sonnet-5", "claude-5-sonnet", "sonnet-5", "claude-5-fable"],
       "maxInputTokens": 1000000,
@@ -102,6 +110,14 @@
       "maxOutputTokens": 8192,
       "vendor": "anthropic",
       "note": "200K 上下文 / 8K 输出"
+    },
+    {
+      "id": "gpt-6",
+      "match": ["gpt-6", "gpt6", "gpt-6-astra", "gpt6-astra", "astra"],
+      "maxInputTokens": 1000000,
+      "maxOutputTokens": 128000,
+      "vendor": "openai",
+      "note": "GPT-6 Astra 1M 上下文 / 128K 输出"
     },
     {
       "id": "gpt-5.6",

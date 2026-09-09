@@ -1631,6 +1631,454 @@
       "contextWindow": 131072,
       "supportsImages": false,
       "noApiIdHint": "grok-3 / grok-3-mini"
+    },
+    {
+      "label": "GPT-6 Astra",
+      "modelUid": "gpt-6-astra",
+      "apiId": "gpt-6-astra",
+      "contextWindow": 200000,
+      "supportsImages": true,
+      "noApiIdHint": null
+    },
+    {
+      "label": "GPT-6 Astra No Thinking",
+      "modelUid": "gpt-6-astra-none",
+      "apiId": "gpt-6-astra",
+      "contextWindow": 200000,
+      "supportsImages": true,
+      "noApiIdHint": null
+    },
+    {
+      "label": "GPT-6 Astra Low Thinking",
+      "modelUid": "gpt-6-astra-low",
+      "apiId": "gpt-6-astra",
+      "contextWindow": 200000,
+      "supportsImages": true,
+      "noApiIdHint": null
+    },
+    {
+      "label": "GPT-6 Astra Medium Thinking",
+      "modelUid": "gpt-6-astra-medium",
+      "apiId": "gpt-6-astra",
+      "contextWindow": 200000,
+      "supportsImages": true,
+      "noApiIdHint": null
+    },
+    {
+      "label": "GPT-6 Astra High Thinking",
+      "modelUid": "gpt-6-astra-high",
+      "apiId": "gpt-6-astra",
+      "contextWindow": 200000,
+      "supportsImages": true,
+      "noApiIdHint": null
+    },
+    {
+      "label": "GPT-6 Astra XHigh Thinking",
+      "modelUid": "gpt-6-astra-xhigh",
+      "apiId": "gpt-6-astra",
+      "contextWindow": 200000,
+      "supportsImages": true,
+      "noApiIdHint": null
+    },
+    {
+      "label": "GPT-6 Astra Max Thinking",
+      "modelUid": "gpt-6-astra-max",
+      "apiId": "gpt-6-astra",
+      "contextWindow": 200000,
+      "supportsImages": true,
+      "noApiIdHint": null
+    },
+    {
+      "label": "GPT-6 Astra No Thinking Fast",
+      "modelUid": "gpt-6-astra-none-priority",
+      "apiId": "gpt-6-astra",
+      "contextWindow": 200000,
+      "supportsImages": true,
+      "noApiIdHint": null
+    },
+    {
+      "label": "GPT-6 Astra Low Thinking Fast",
+      "modelUid": "gpt-6-astra-low-priority",
+      "apiId": "gpt-6-astra",
+      "contextWindow": 200000,
+      "supportsImages": true,
+      "noApiIdHint": null
+    },
+    {
+      "label": "GPT-6 Astra Medium Thinking Fast",
+      "modelUid": "gpt-6-astra-medium-priority",
+      "apiId": "gpt-6-astra",
+      "contextWindow": 200000,
+      "supportsImages": true,
+      "noApiIdHint": null
+    },
+    {
+      "label": "GPT-6 Astra High Thinking Fast",
+      "modelUid": "gpt-6-astra-high-priority",
+      "apiId": "gpt-6-astra",
+      "contextWindow": 200000,
+      "supportsImages": true,
+      "noApiIdHint": null
+    },
+    {
+      "label": "GPT-6 Astra XHigh Thinking Fast",
+      "modelUid": "gpt-6-astra-xhigh-priority",
+      "apiId": "gpt-6-astra",
+      "contextWindow": 200000,
+      "supportsImages": true,
+      "noApiIdHint": null
+    },
+    {
+      "label": "GPT-6 Astra Max Thinking Fast",
+      "modelUid": "gpt-6-astra-max-priority",
+      "apiId": "gpt-6-astra",
+      "contextWindow": 200000,
+      "supportsImages": true,
+      "noApiIdHint": null
+    },
+    {
+      "label": "GPT-5.6 Sol",
+      "modelUid": "gpt-5.6-sol",
+      "apiId": "gpt-5.6-sol",
+      "contextWindow": 200000,
+      "supportsImages": true,
+      "noApiIdHint": null
+    },
+    {
+      "label": "GPT-5.6 Luna",
+      "modelUid": "gpt-5.6-luna",
+      "apiId": "gpt-5.6-luna",
+      "contextWindow": 200000,
+      "supportsImages": true,
+      "noApiIdHint": null
+    },
+    {
+      "label": "GPT-5.6 Terra",
+      "modelUid": "gpt-5.6-terra",
+      "apiId": "gpt-5.6-terra",
+      "contextWindow": 200000,
+      "supportsImages": true,
+      "noApiIdHint": null
+    },
+    {
+      "label": "Claude Opus 5",
+      "modelUid": "claude-opus-5",
+      "apiId": "claude-opus-5",
+      "contextWindow": 1000000,
+      "supportsImages": true,
+      "noApiIdHint": null
+    },
+    {
+      "label": "Claude Opus 5 Low",
+      "modelUid": "claude-opus-5-low",
+      "apiId": "claude-opus-5",
+      "contextWindow": 1000000,
+      "supportsImages": true,
+      "noApiIdHint": null
+    },
+    {
+      "label": "Claude Opus 5 Medium",
+      "modelUid": "claude-opus-5-medium",
+      "apiId": "claude-opus-5",
+      "contextWindow": 1000000,
+      "supportsImages": true,
+      "noApiIdHint": null
+    },
+    {
+      "label": "Claude Opus 5 High",
+      "modelUid": "claude-opus-5-high",
+      "apiId": "claude-opus-5",
+      "contextWindow": 1000000,
+      "supportsImages": true,
+      "noApiIdHint": null
+    },
+    {
+      "label": "Claude Opus 5 XHigh",
+      "modelUid": "claude-opus-5-xhigh",
+      "apiId": "claude-opus-5",
+      "contextWindow": 1000000,
+      "supportsImages": true,
+      "noApiIdHint": null
+    },
+    {
+      "label": "Claude Opus 5 Max",
+      "modelUid": "claude-opus-5-max",
+      "apiId": "claude-opus-5",
+      "contextWindow": 1000000,
+      "supportsImages": true,
+      "noApiIdHint": null
+    },
+    {
+      "label": "Claude Opus 5 Low Fast",
+      "modelUid": "claude-opus-5-low-fast",
+      "apiId": "claude-opus-5",
+      "contextWindow": 1000000,
+      "supportsImages": true,
+      "noApiIdHint": null
+    },
+    {
+      "label": "Claude Opus 5 Medium Fast",
+      "modelUid": "claude-opus-5-medium-fast",
+      "apiId": "claude-opus-5",
+      "contextWindow": 1000000,
+      "supportsImages": true,
+      "noApiIdHint": null
+    },
+    {
+      "label": "Claude Opus 5 High Fast",
+      "modelUid": "claude-opus-5-high-fast",
+      "apiId": "claude-opus-5",
+      "contextWindow": 1000000,
+      "supportsImages": true,
+      "noApiIdHint": null
+    },
+    {
+      "label": "Claude Opus 5 XHigh Fast",
+      "modelUid": "claude-opus-5-xhigh-fast",
+      "apiId": "claude-opus-5",
+      "contextWindow": 1000000,
+      "supportsImages": true,
+      "noApiIdHint": null
+    },
+    {
+      "label": "Claude Opus 5 Max Fast",
+      "modelUid": "claude-opus-5-max-fast",
+      "apiId": "claude-opus-5",
+      "contextWindow": 1000000,
+      "supportsImages": true,
+      "noApiIdHint": null
+    },
+    {
+      "label": "Claude Sonnet 5",
+      "modelUid": "claude-sonnet-5",
+      "apiId": "claude-sonnet-5",
+      "contextWindow": 1000000,
+      "supportsImages": true,
+      "noApiIdHint": null
+    },
+    {
+      "label": "Claude Fable 5",
+      "modelUid": "claude-fable-5",
+      "apiId": "claude-fable-5",
+      "contextWindow": 1000000,
+      "supportsImages": true,
+      "noApiIdHint": null
+    },
+    {
+      "label": "Claude Fable 5.1",
+      "modelUid": "claude-fable-5-1",
+      "apiId": "claude-fable-5-1",
+      "contextWindow": 1000000,
+      "supportsImages": true,
+      "noApiIdHint": null
+    },
+    {
+      "label": "Claude Fable 5.1 Low",
+      "modelUid": "claude-fable-5-1-low",
+      "apiId": "claude-fable-5-1",
+      "contextWindow": 1000000,
+      "supportsImages": true,
+      "noApiIdHint": null
+    },
+    {
+      "label": "Claude Fable 5.1 Medium",
+      "modelUid": "claude-fable-5-1-medium",
+      "apiId": "claude-fable-5-1",
+      "contextWindow": 1000000,
+      "supportsImages": true,
+      "noApiIdHint": null
+    },
+    {
+      "label": "Claude Fable 5.1 High",
+      "modelUid": "claude-fable-5-1-high",
+      "apiId": "claude-fable-5-1",
+      "contextWindow": 1000000,
+      "supportsImages": true,
+      "noApiIdHint": null
+    },
+    {
+      "label": "Claude Fable 5.1 XHigh",
+      "modelUid": "claude-fable-5-1-xhigh",
+      "apiId": "claude-fable-5-1",
+      "contextWindow": 1000000,
+      "supportsImages": true,
+      "noApiIdHint": null
+    },
+    {
+      "label": "Claude Fable 5.1 Max",
+      "modelUid": "claude-fable-5-1-max",
+      "apiId": "claude-fable-5-1",
+      "contextWindow": 1000000,
+      "supportsImages": true,
+      "noApiIdHint": null
+    },
+    {
+      "label": "Grok 4.6",
+      "modelUid": "grok-4.6",
+      "apiId": "grok-4.6",
+      "contextWindow": 200000,
+      "supportsImages": true,
+      "noApiIdHint": null
+    },
+    {
+      "label": "Grok 4.6 Low",
+      "modelUid": "grok-4-6-low",
+      "apiId": "grok-4.6",
+      "contextWindow": 200000,
+      "supportsImages": true,
+      "noApiIdHint": null
+    },
+    {
+      "label": "Grok 4.6 Medium",
+      "modelUid": "grok-4-6-medium",
+      "apiId": "grok-4.6",
+      "contextWindow": 200000,
+      "supportsImages": true,
+      "noApiIdHint": null
+    },
+    {
+      "label": "Grok 4.6 High",
+      "modelUid": "grok-4-6-high",
+      "apiId": "grok-4.6",
+      "contextWindow": 200000,
+      "supportsImages": true,
+      "noApiIdHint": null
+    },
+    {
+      "label": "Grok 4.6 XHigh",
+      "modelUid": "grok-4-6-xhigh",
+      "apiId": "grok-4.6",
+      "contextWindow": 200000,
+      "supportsImages": true,
+      "noApiIdHint": null
+    },
+    {
+      "label": "DeepSeek V4 Pro",
+      "modelUid": "deepseek-v4-pro",
+      "apiId": "deepseek-v4-pro",
+      "contextWindow": 128000,
+      "supportsImages": true,
+      "noApiIdHint": null
+    },
+    {
+      "label": "DeepSeek V4 Flash",
+      "modelUid": "deepseek-v4-flash",
+      "apiId": "deepseek-v4-flash",
+      "contextWindow": 128000,
+      "supportsImages": true,
+      "noApiIdHint": null
+    },
+    {
+      "label": "GLM-5.3",
+      "modelUid": "glm-5.3",
+      "apiId": "glm-5.3",
+      "contextWindow": 128000,
+      "supportsImages": true,
+      "noApiIdHint": null
+    },
+    {
+      "label": "GLM-5.3 Low",
+      "modelUid": "glm-5-3-low",
+      "apiId": "glm-5.3",
+      "contextWindow": 128000,
+      "supportsImages": true,
+      "noApiIdHint": null
+    },
+    {
+      "label": "GLM-5.3 High",
+      "modelUid": "glm-5-3-high",
+      "apiId": "glm-5.3",
+      "contextWindow": 128000,
+      "supportsImages": true,
+      "noApiIdHint": null
+    },
+    {
+      "label": "GLM-5.3 Max",
+      "modelUid": "glm-5-3-max",
+      "apiId": "glm-5.3",
+      "contextWindow": 128000,
+      "supportsImages": true,
+      "noApiIdHint": null
+    },
+    {
+      "label": "Kimi K3",
+      "modelUid": "kimi-k3",
+      "apiId": "kimi-k3",
+      "contextWindow": 200000,
+      "supportsImages": true,
+      "noApiIdHint": null
+    },
+    {
+      "label": "Kimi K3 Low",
+      "modelUid": "kimi-k3-low",
+      "apiId": "kimi-k3",
+      "contextWindow": 200000,
+      "supportsImages": true,
+      "noApiIdHint": null
+    },
+    {
+      "label": "Kimi K3 High",
+      "modelUid": "kimi-k3-high",
+      "apiId": "kimi-k3",
+      "contextWindow": 200000,
+      "supportsImages": true,
+      "noApiIdHint": null
+    },
+    {
+      "label": "Kimi K3 Max",
+      "modelUid": "kimi-k3-max",
+      "apiId": "kimi-k3",
+      "contextWindow": 200000,
+      "supportsImages": true,
+      "noApiIdHint": null
+    },
+    {
+      "label": "Gemini 3.7 Flash High",
+      "modelUid": "gemini-3.7-flash-high",
+      "apiId": "gemini-3.7-flash-high",
+      "contextWindow": 1000000,
+      "supportsImages": true,
+      "noApiIdHint": null
+    },
+    {
+      "label": "Gemini 3.8 Flash High",
+      "modelUid": "gemini-3.8-flash-high",
+      "apiId": "gemini-3.8-flash-high",
+      "contextWindow": 1000000,
+      "supportsImages": true,
+      "noApiIdHint": null
+    },
+    {
+      "label": "Nemotron 3 Ultra High",
+      "modelUid": "nemotron-3-ultra-high",
+      "apiId": "nemotron-3-ultra-high",
+      "contextWindow": 128000,
+      "supportsImages": true,
+      "noApiIdHint": null
+    },
+    {
+      "label": "Inkling Medium",
+      "modelUid": "inkling-medium",
+      "apiId": "inkling-medium",
+      "contextWindow": 128000,
+      "supportsImages": true,
+      "noApiIdHint": null
+    },
+    {
+      "label": "Inkling High",
+      "modelUid": "inkling-high",
+      "apiId": "inkling-high",
+      "contextWindow": 128000,
+      "supportsImages": true,
+      "noApiIdHint": null
+    },
+    {
+      "label": "Inkling Max",
+      "modelUid": "inkling-max",
+      "apiId": "inkling-max",
+      "contextWindow": 128000,
+      "supportsImages": true,
+      "noApiIdHint": null
     }
   ]
 }
