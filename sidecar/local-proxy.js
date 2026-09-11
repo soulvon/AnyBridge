@@ -2103,9 +2103,16 @@ function antigravityErrorSnapshot(ctx, message) {
   };
 }
 
+// Cloud Code v1internal 响应必须包一层信封：{ response, traceId, metadata }。
+// 直接返回裸 candidates 会让 LS 在 ProcessStreamChunks 里取 envelope.Response
+// 得到 nil，触发 generation.go:680 空指针崩溃（进程 exit code 2）。
+function antigravityEnvelope(response) {
+  return { response, traceId: '', metadata: {} };
+}
+
 function writeAntigravityStreamError(res, ctx, message) {
   res.writeHead(200, cors({ 'content-type': 'text/event-stream; charset=utf-8' }));
-  sse(res, null, antigravityErrorSnapshot(ctx, message));
+  sse(res, null, antigravityEnvelope(antigravityErrorSnapshot(ctx, message)));
   res.end();
 }
 
@@ -2439,13 +2446,20 @@ export async function handleLocalProxyRequest(req, res, body) {
           throw e;
         }
         const payload = geminiResponsePayload(ctx, result);
+        const hasToolCalls = Array.isArray(result.toolCalls) && result.toolCalls.length > 0;
+        if (payload.candidates?.[0] && hasToolCalls) {
+          payload.candidates[0].finishReason = 'TOOL_CALL';
+        }
 
         if (stream) {
+          // Cloud Code 流式语义：内容帧用 OTHER / TOOL_CALL，随后补一个空 parts 的 STOP 终止帧
+          if (payload.candidates?.[0] && !hasToolCalls) payload.candidates[0].finishReason = 'OTHER';
           res.writeHead(200, cors({ 'content-type': 'text/event-stream; charset=utf-8', ...(result.extraHeaders || {}) }));
-          sse(res, null, payload);
+          sse(res, null, antigravityEnvelope(payload));
+          sse(res, null, antigravityEnvelope({ candidates: [{ content: { parts: [], role: 'model' }, finishReason: 'STOP', index: 0 }] }));
           res.end();
         } else {
-          sendJson(res, 200, payload, result.extraHeaders || {});
+          sendJson(res, 200, antigravityEnvelope(payload), result.extraHeaders || {});
         }
         return;
       }

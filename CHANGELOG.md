@@ -4,6 +4,9 @@ All notable changes to AnyBridge will be documented in this file.
 
 ## v0.5.8 - 2026-09-11
 
+- 修复 Antigravity 流式响应缺少 Cloud Code 信封导致 Language Server 空指针崩溃的根本问题：
+  - 根因：`v1internal:generateContent` / `v1internal:streamGenerateContent` 的正确响应格式是 Cloud Code 信封 `{ response, traceId, metadata }`；此前返回裸 `candidates`，LS 解析时取 `envelope.Response` 得到 nil，在 `generation.go:680` / `stream_helpers.go:181` 空指针崩溃（进程 `exit code 2`，界面永久卡在 "Working."）。参考开源实现 `vahapogut/antigravity-add-model` 的 `{ response: { candidates: [...] }, traceId: '', metadata: {} }` 格式修正。
+  - 修复：两个生成端点统一包信封；流式先发内容帧（`finishReason` 用 `OTHER` / `TOOL_CALL`），随后补一个空 `parts` 的 `STOP` 终止帧；工具调用时标记 `TOOL_CALL`。
 - 修复 Antigravity Agent 卡在 "Working." 不回复的致命问题：
   - 根因：`/v1internal:streamGenerateContent` 在上游失败（如商汤 `HTTP 429: inference exceeds tpm/rpm limit` 或 `HTTP 400: inference request is invalid`）时，代理返回的是 HTTP 错误 + `application/json`；Antigravity Language Server 2.5.5 的流式解析器把该响应当流处理，触发空指针崩溃（`panic: runtime error: invalid memory address or nil pointer dereference`，`generation.go:680` / `stream_helpers.go:181`），进程 `exit code 2`，界面永久停留在 "Working."。
   - 修复：Antigravity `streamGenerateContent` 分支捕获上游异常后统一降级为协议合法的 SSE 快照（HTTP 200 + `text/event-stream`），把错误信息作为模型文本回复返回，Agent 不再崩溃或卡死，用户能直接看到上游失败原因。

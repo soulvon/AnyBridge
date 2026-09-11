@@ -2728,6 +2728,8 @@ function antigravityGetFilteredList() {
       item.defaultModel,
       item.sourceProviderName,
       item.apiFormat,
+      item.apiHost,
+      item.apiPath,
     ].some(v => String(v || '').toLowerCase().includes(kw));
   });
 }
@@ -6992,7 +6994,14 @@ function cursorGetFilteredList() {
     const matchExposed = (item.exposedModelId || '').toLowerCase().includes(kw);
     const matchProvider = (item.providerName || '').toLowerCase().includes(kw);
     const matchTarget = (item.upstreamModel || '').toLowerCase().includes(kw);
-    return matchName || matchExposed || matchProvider || matchTarget;
+    let matchUrl = false;
+    if (providerStore && Array.isArray(providerStore.providers)) {
+      const p = providerStore.providers.find(x => x.id === item.providerId);
+      if (p && (p.baseUrl || p.apiHost)) {
+        matchUrl = String(p.baseUrl || p.apiHost).toLowerCase().includes(kw);
+      }
+    }
+    return matchName || matchExposed || matchProvider || matchTarget || matchUrl;
   });
 }
 

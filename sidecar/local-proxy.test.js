@@ -491,7 +491,11 @@ test('Antigravity stream errors degrade to a valid SSE snapshot instead of a cra
   assert.ok(String(headers[0].h['content-type']).startsWith('text/event-stream'));
   const body = chunks.join('');
   assert.ok(body.startsWith('data: '), '必须是 SSE data 帧');
-  const payload = JSON.parse(body.slice(6).trim());
+  const envelope = JSON.parse(body.slice(6).trim());
+  assert.ok(envelope.response, '必须包 Cloud Code 信封 {response,traceId,metadata}，否则 LS 取 envelope.Response 为 nil 会空指针崩溃');
+  assert.equal(envelope.traceId, '');
+  assert.ok(envelope.metadata, 'metadata 必须是对象');
+  const payload = envelope.response;
   assert.equal(payload.candidates[0].content.role, 'model');
   assert.equal(payload.candidates[0].finishReason, 'STOP');
   assert.ok(String(payload.candidates[0].content.parts[0].text).includes('429'));
