@@ -215,19 +215,14 @@ jobs:
           fi
 
           echo "--- sidecar entitlements ---"
-          codesign -d --entitlements :- "$SIDECAR" > /tmp/sidecar.entitlements
+          codesign -d --entitlements :- "$SIDECAR" 2>/dev/null > /tmp/sidecar.entitlements
           plutil -convert json -o - /tmp/sidecar.entitlements || true
-          for key in \
-            com.apple.security.cs.allow-jit \
-            com.apple.security.cs.allow-unsigned-executable-memory; do
-            # plutil 对 boolean true 输出 "1"，缺失时命令失败，统一归入 missing
-            value="$(plutil -extract "$key" raw -o - /tmp/sidecar.entitlements 2>/dev/null || echo missing)"
-            echo "$key = $value"
-            if [ "$value" != "1" ]; then
-              echo "FATAL: sidecar 缺少 entitlement 或值不为 true: $key"
-              exit 1
-            fi
-          done
+          # 不能用 plutil -extract：它把 key 里的 "." 当作 keypath 分隔符，
+          # com.apple.security.cs.allow-jit 会被解析成嵌套路径而永远取不到值。
+          python3 -c "import plistlib,sys; ent=plistlib.load(open('/tmp/sidecar.entitlements','rb')); req=['com.apple.security.cs.allow-jit','com.apple.security.cs.allow-unsigned-executable-memory']; miss=[k for k in req if ent.get(k) is not True]; print('entitlements:', ent); sys.exit(1 if miss else 0)" || {
+            echo "FATAL: sidecar 的 JIT entitlement 缺失或不为 true"
+            exit 1
+          }
 
           echo "--- sidecar launch smoke test (SIGTRAP guard) ---"
           CFG_DIR="$(mktemp -d)"
