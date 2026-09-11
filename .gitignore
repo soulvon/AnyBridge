@@ -97,6 +97,15 @@ cpa_alive100.zip
 sub2api_alive100.json
 mcps/
 
+# Local Tauri dev run logs (contain dev machine absolute paths)
+dev-tauri.err
+*.err
+
+# Image backups / one-off screenshot copies
+*.bak.png
+*.bak.jpg
+*.bak
+
 # Temporary dev notes
 findings.md
 progress.md

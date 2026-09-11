@@ -19,10 +19,11 @@ pub(crate) struct ConfiguredProxyPorts {
 /// 平台配置根目录（与 sidecar lib/config-dir.js 的 appConfigDir 严格对齐）：
 ///   Windows: %APPDATA%   macOS: ~/Library/Application Support   Linux: $XDG_CONFIG_HOME 或 ~/.config
 ///
-/// dirs 只有在 HOME / APPDATA / XDG_CONFIG_HOME 全部拿不到时才返回 None。
-/// 此时逐级退回用户主目录，**绝不退回当前工作目录**：桌面应用的 cwd 由启动方式决定
-/// （Windows 从开始菜单启动是安装目录，macOS 从 Finder 启动是 /），
+/// dirs 只有在 HOME / APPDATA / XDG_CONFIG_HOME 全部拿不到时才返回 None，
+/// 此时逐级退回用户主目录下的标准位置。这里刻意不优先退回当前工作目录：
+/// 桌面应用的 cwd 由启动方式决定（Windows 从开始菜单启动是安装目录，macOS 从 Finder 启动是 /），
 /// 配置写到那里会表现为「保存成功却再也找不到」，还会污染系统目录。
+/// 最后一环的 "." 只有连主目录都拿不到时才可能命中，那时已无可靠落点。
 fn config_base_dir() -> PathBuf {
     #[cfg(target_os = "macos")]
     {

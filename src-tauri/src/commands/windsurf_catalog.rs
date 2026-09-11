@@ -30,17 +30,13 @@ pub struct CatalogResponse {
 
 const CATALOG_REL: (&str, &str) = ("sidecar", "windsurf-catalog.json");
 
-fn catalog_rel() -> PathBuf {
-    PathBuf::from(CATALOG_REL.0).join(CATALOG_REL.1)
-}
-
 // 查找 catalog.json: Tauri 资源目录 (打包) → 环境变量 → 开发模式相对路径 → 可执行文件旁
 //
 // 打包后必须用 Tauri 的 resource_dir 定位：各平台资源布局不同
 // (Windows: exe 旁; macOS: *.app/Contents/Resources; Linux: /usr/lib/<app>),
 // 靠 current_exe 拼相对路径只在 Windows 上碰巧成立，macOS/Linux 会直接找不到。
 fn catalog_path(resource_dir: Option<&Path>) -> Option<PathBuf> {
-    let rel = catalog_rel();
+    let rel = PathBuf::from(CATALOG_REL.0).join(CATALOG_REL.1);
 
     // 1) Tauri 资源目录。部分打包布局会把 resources/ 前缀一起带进资源目录，两种都试。
     if let Some(dir) = resource_dir {

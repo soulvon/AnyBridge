@@ -16,7 +16,7 @@ const RPC_AUDIT_ENABLED = /^(true|1|on)$/i.test(String(process.env.BYOK_RPC_AUDI
 const MITM_FULL_LOG = /^(true|1|on)$/i.test(String(process.env.BYOK_MITM_FULL_LOG || 'false'));
 const MITM_MAX_BODY_BYTES = parseInt(process.env.BYOK_MITM_MAX_BODY_BYTES || '8192', 10);
 
-// 默认开启时创建日志目录。
+// 仅在显式开启时创建日志目录（默认关闭，见上）。
 if (MITM_LOG_ENABLED) {
   try { fs.mkdirSync(LOG_DIR, { recursive: true }); } catch {}
 }
