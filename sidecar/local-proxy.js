@@ -898,6 +898,9 @@ export const __localProxyTest = {
   applyParamOverrides,
   applyToolEnhancement,
   upstreamBody,
+  openAITools,
+  anthropicTools,
+  normalizeToolParameters,
   sendGemini,
   sendGeminiStream,
   geminiModelFromPath,
@@ -980,11 +983,59 @@ function openAIResponsesInput(messages) {
   return messages.map(m => ({ role: m.role === 'assistant' ? 'assistant' : 'user', content: (m.content || []).map(p => openAIPartFromAnthropic(p, 'responses')).filter(Boolean) }));
 }
 
+// Google 的 protobuf Schema.Type 是 UPPERCASE 枚举（STRING/OBJECT/...），
+// OpenAI / Anthropic 只接受小写 JSON Schema 类型（string/object/...）。
+// 只在“输出到非 Gemini 上游”时转换；Gemini 上游仍保留 Google 风格大写枚举。
+const GOOGLE_SCHEMA_TYPE_BY_INDEX = ['string', 'number', 'integer', 'boolean', 'array', 'object'];
+const GOOGLE_SCHEMA_TYPE_BY_NAME = {
+  STRING: 'string',
+  NUMBER: 'number',
+  INTEGER: 'integer',
+  BOOLEAN: 'boolean',
+  ARRAY: 'array',
+  OBJECT: 'object',
+};
+
+function normalizeSchemaTypeValue(type) {
+  if (typeof type === 'number' && Number.isInteger(type) && type >= 1 && type <= 6) {
+    return GOOGLE_SCHEMA_TYPE_BY_INDEX[type - 1];
+  }
+  if (typeof type === 'string') {
+    return GOOGLE_SCHEMA_TYPE_BY_NAME[type.toUpperCase()] || type;
+  }
+  return type;
+}
+
+function normalizeToolParameters(schema) {
+  if (!schema || typeof schema !== 'object' || Array.isArray(schema)) return schema;
+  const out = { ...schema };
+  if (out.type !== undefined) out.type = normalizeSchemaTypeValue(out.type);
+  if (out.properties && typeof out.properties === 'object') {
+    const props = {};
+    for (const [key, value] of Object.entries(out.properties)) {
+      props[key] = normalizeToolParameters(value);
+    }
+    out.properties = props;
+  }
+  if (out.items) out.items = normalizeToolParameters(out.items);
+  for (const key of ['anyOf', 'oneOf', 'allOf']) {
+    if (Array.isArray(out[key])) out[key] = out[key].map(normalizeToolParameters);
+  }
+  return out;
+}
+
 function anthropicTools(tools) {
   const out = [];
   for (const tool of tools || []) {
-    if (tool?.name && tool.input_schema) out.push(tool);
-    else if (tool?.type === 'function' && tool.function?.name) out.push({ name: tool.function.name, description: tool.function.description || '', input_schema: tool.function.parameters || { type: 'object', properties: {} } });
+    if (tool?.name && tool.input_schema) {
+      out.push({ ...tool, input_schema: normalizeToolParameters(tool.input_schema) });
+    } else if (tool?.type === 'function' && tool.function?.name) {
+      out.push({
+        name: tool.function.name,
+        description: tool.function.description || '',
+        input_schema: normalizeToolParameters(tool.function.parameters) || { type: 'object', properties: {} },
+      });
+    }
   }
   return out.length ? out : undefined;
 }
@@ -992,8 +1043,24 @@ function anthropicTools(tools) {
 function openAITools(tools) {
   const out = [];
   for (const tool of tools || []) {
-    if (tool?.type === 'function' && tool.function?.name) out.push(tool);
-    else if (tool?.name && tool.input_schema) out.push({ type: 'function', function: { name: tool.name, description: tool.description || '', parameters: tool.input_schema } });
+    if (tool?.type === 'function' && tool.function?.name) {
+      out.push({
+        type: 'function',
+        function: {
+          ...tool.function,
+          parameters: normalizeToolParameters(tool.function.parameters) || { type: 'object', properties: {} },
+        },
+      });
+    } else if (tool?.name && tool.input_schema) {
+      out.push({
+        type: 'function',
+        function: {
+          name: tool.name,
+          description: tool.description || '',
+          parameters: normalizeToolParameters(tool.input_schema) || { type: 'object', properties: {} },
+        },
+      });
+    }
   }
   return out.length ? out : undefined;
 }

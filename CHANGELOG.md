@@ -2,6 +2,13 @@
 
 All notable changes to AnyBridge will be documented in this file.
 
+## v0.5.9 - 2026-09-11
+
+- 修复 Antigravity 自定义模型能显示、但 Agent 对话被上游拒绝的问题：
+  - 根因是 Antigravity 发送 Gemini / Google 风格工具声明，参数 schema 使用 protobuf 大写枚举（`type: "OBJECT"` / `"STRING"`）；代理原样透传给 OpenAI 兼容上游，导致 CPA 返回 `HTTP 400: Invalid schema for function 'browser_subagent': 'STRING' is not valid under any of the given schemas.`，界面表现为 `Agent execution terminated due to error`。
+  - 新增工具 schema 递归归一化：将 `STRING/NUMBER/INTEGER/BOOLEAN/ARRAY/OBJECT`（含 protobuf 数字枚举 1–6）转换为小写 JSON Schema，并递归处理 `properties` / `items` / `anyOf|oneOf|allOf`；仅在输出到 OpenAI / Anthropic 上游时生效，`normalizeGeminiTools` 保持不变，Gemini 上游仍收到 Google 大写枚举，避免反向破坏。
+  - 补充 3 条回归测试：OpenAI / Anthropic 必须收到小写 schema、Gemini 上游必须保留大写枚举；`local-proxy` 与 `antigravity` 测试共 27 项全部通过。
+
 ## v0.5.8 - 2026-09-11
 
 - 修复 Antigravity 自定义 API 模型可显示但无法对话的问题：

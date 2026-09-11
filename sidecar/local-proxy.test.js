@@ -430,3 +430,66 @@ test('Antigravity handler recognizes v1internal paths and builds injected models
   assert.ok(Array.isArray(assist.paidTier.availableCredits));
   assert.equal(assist.paidTier.availableCredits[0].creditAmount, 1000000);
 });
+
+test('Gemini uppercase tool schema is normalized to lowercase JSON Schema for OpenAI upstream', () => {
+  const ctx = __localProxyTest.normalizeRequest('gemini', {
+    model: 'local-model',
+    contents: [{ role: 'user', parts: [{ text: 'hi' }] }],
+    tools: [{
+      functionDeclarations: [{
+        name: 'browser_subagent',
+        description: 'run a browser subagent',
+        parameters: {
+          type: 'OBJECT',
+          properties: {
+            task: { type: 'STRING' },
+            maxSteps: { type: 'INTEGER' },
+            nested: { type: 'OBJECT', properties: { flag: { type: 'BOOLEAN' } } },
+            list: { type: 'ARRAY', items: { type: 'STRING' } },
+          },
+        },
+      }],
+    }],
+  });
+  const openaiTools = __localProxyTest.openAITools(ctx.tools);
+  const params = openaiTools[0].function.parameters;
+  assert.equal(params.type, 'object', 'OpenAI 上游必须收到小写 object，否则 CPA 返回 400');
+  assert.equal(params.properties.task.type, 'string');
+  assert.equal(params.properties.maxSteps.type, 'integer');
+  assert.equal(params.properties.nested.type, 'object');
+  assert.equal(params.properties.nested.properties.flag.type, 'boolean');
+  assert.equal(params.properties.list.type, 'array');
+  assert.equal(params.properties.list.items.type, 'string');
+});
+
+test('Anthropic upstream also receives lowercase JSON Schema for Gemini tools', () => {
+  const ctx = __localProxyTest.normalizeRequest('gemini', {
+    model: 'local-model',
+    contents: [{ role: 'user', parts: [{ text: 'hi' }] }],
+    tools: [{
+      functionDeclarations: [{
+        name: 'browser_subagent',
+        parameters: { type: 'OBJECT', properties: { task: { type: 'STRING' } } },
+      }],
+    }],
+  });
+  const anthropic = __localProxyTest.anthropicTools(ctx.tools);
+  assert.equal(anthropic[0].input_schema.type, 'object');
+  assert.equal(anthropic[0].input_schema.properties.task.type, 'string');
+});
+
+test('Gemini upstream keeps Google uppercase schema enums (no cross-protocol corruption)', () => {
+  const ctx = __localProxyTest.normalizeRequest('gemini', {
+    model: 'local-model',
+    contents: [{ role: 'user', parts: [{ text: 'hi' }] }],
+    tools: [{
+      functionDeclarations: [{
+        name: 'browser_subagent',
+        parameters: { type: 'OBJECT', properties: { task: { type: 'STRING' } } },
+      }],
+    }],
+  });
+  // normalizeGeminiTools 不改写原始 schema，Gemini 目标仍应拿到 Google 大写枚举
+  assert.equal(ctx.tools[0].function.parameters.type, 'OBJECT');
+  assert.equal(ctx.tools[0].function.parameters.properties.task.type, 'STRING');
+});
