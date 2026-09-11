@@ -63,6 +63,7 @@ const requiredPageIds = [
   'page-platform-claude-code',
   'page-platform-claude-add',
   'page-platform-claude-desktop',
+  'page-platform-claude-desktop-add',
   'page-platform-codex',
   'page-platform-codex-add',
   'page-platform-antigravity',

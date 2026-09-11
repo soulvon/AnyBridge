@@ -171,6 +171,21 @@ function transformProviders(json) {
       modelCaps: config.modelCaps && typeof config.modelCaps === 'object' ? config.modelCaps : {},
     });
   }
+  if (!m.has('anybridge-local-proxy')) {
+    const port = Number(process.env.API_PORT || 7450);
+    const key = process.env.API_KEY || '';
+    m.set('anybridge-local-proxy', {
+      id: 'anybridge-local-proxy',
+      name: 'AnyBridge',
+      apiHost: `http://127.0.0.1:${port}`,
+      apiPath: '/v1/chat/completions',
+      apiFormat: 'openai',
+      apiKey: key,
+      enabled: true,
+      capabilities: { text: true, stream: true, tools: true, vision: true },
+      meta: { builtin: true, localProxy: true }
+    });
+  }
   return m;
 }
 

@@ -47,7 +47,11 @@ import {
   writeVarintField,
   writeMessageField,
   writeFixed64Field,
+  parseFields,
+  getField,
+  getAllFields,
 } from '../proto.js';
+import { tryGunzip } from '../connect.js';
 
 // ─── StopReason enum ───────────────────────────────────────
 
@@ -280,4 +284,106 @@ export function buildErrorChunk(messageId, errorText) {
     writeStringField(3, errorText),
     writeVarintField(5, STOP_REASON.ERROR),
   ]);
+}
+
+/**
+ * 将 streaming 响应帧合并成一个完整的 GetChatMessageResponse protobuf（unary 语义）。
+ *
+ * Devin Local (devin-cli) 是 Connect unary 客户端，用 application/proto 调 GetChatMessage，
+ * 期待一次性的 gzip(完整 GetChatMessageResponse)。而 AnyBridge 内部统一按 streaming 帧
+ * （wrapEnvelope + endOfStreamEnvelope）逐段产出，需要在此把增量字段合并还原：
+ *
+ *   delta_text / delta_thinking / delta_signature → 拼接
+ *   delta_tokens → 求和
+ *   delta_tool_calls → 累积
+ *   stop_reason / usage / latency / request_id / actual_model_uid / credit_cost → 取最后一次出现
+ *   message_id / timestamp → 取第一次出现
+ *
+ * @param {Buffer[]} frames — streaming 帧序列（每个 wrapEnvelope 产物，末尾可能含 end-of-stream 帧）
+ * @returns {Buffer} 完整 GetChatMessageResponse protobuf
+ */
+export function mergeUnaryFrames(frames) {
+  let messageId = '';
+  let timestamp = null;
+  let deltaText = '';
+  let deltaTokens = 0;
+  let stopReason = 0;
+  const toolCalls = [];
+  let usage = null;
+  let thinking = '';
+  let signature = '';
+  let latency = null;
+  let creditCost = null;
+  let requestId = '';
+  let modelUid = '';
+
+  for (const raw of frames) {
+    const buf = Buffer.isBuffer(raw) ? raw : Buffer.from(raw);
+    if (buf.length < 5) continue;
+    const flags = buf[0];
+    const len = buf.readUInt32BE(1);
+    if (len !== buf.length - 5) continue; // 非 Connect 帧，跳过
+    let payload = buf.subarray(5);
+    if (flags & 1) { // gzip 压缩
+      const d = tryGunzip(payload);
+      if (!d) continue;
+      payload = d;
+    }
+    if (flags & 2) { // end-of-stream（JSON trailers），可能含 error
+      try {
+        const json = JSON.parse(payload.toString('utf8'));
+        if (json && json.error && json.error.message) {
+          deltaText = json.error.message;
+          stopReason = STOP_REASON.ERROR;
+        }
+      } catch { /* 非 JSON 或无 error，忽略 */ }
+      continue;
+    }
+
+    const fields = parseFields(payload);
+    const f1 = getField(fields, 1, 2);
+    const f2 = getField(fields, 2, 2);
+    const f3 = getField(fields, 3, 2);
+    const f4 = getField(fields, 4, 0);
+    const f5 = getField(fields, 5, 0);
+    const f7 = getField(fields, 7, 2);
+    const f9 = getField(fields, 9, 2);
+    const f10 = getField(fields, 10, 2);
+    const f12 = getField(fields, 12, 1);
+    const f14 = getField(fields, 14, 0);
+    const f17 = getField(fields, 17, 2);
+    const f20 = getField(fields, 20, 2);
+    const f6 = getAllFields(fields, 6);
+
+    if (!messageId && f1) messageId = f1.value.toString('utf8');
+    if (!timestamp && f2) timestamp = f2.value;
+    if (f3) deltaText += f3.value.toString('utf8');
+    if (f4) deltaTokens += f4.value;
+    if (f5) stopReason = f5.value;
+    if (f9) thinking += f9.value.toString('utf8');
+    if (f10) signature = f10.value.toString('utf8');
+    if (f12) latency = f12.value;
+    if (f14) creditCost = f14.value;
+    if (f17) requestId = f17.value.toString('utf8');
+    if (f20) modelUid = f20.value.toString('utf8');
+    if (f7) usage = f7.value;
+    for (const tc of f6) toolCalls.push(tc.value);
+  }
+
+  const parts = [];
+  if (messageId) parts.push(writeStringField(1, messageId));
+  if (timestamp) parts.push(writeMessageField(2, timestamp));
+  if (deltaText) parts.push(writeStringField(3, deltaText));
+  if (deltaTokens > 0) parts.push(writeVarintField(4, deltaTokens));
+  if (stopReason) parts.push(writeVarintField(5, stopReason));
+  for (const tc of toolCalls) parts.push(writeMessageField(6, tc));
+  if (usage) parts.push(writeMessageField(7, usage));
+  if (thinking) parts.push(writeStringField(9, thinking));
+  if (signature) parts.push(writeStringField(10, signature));
+  if (latency) parts.push(writeFixed64Field(12, latency));
+  if (creditCost !== null && creditCost !== undefined) parts.push(writeVarintField(14, creditCost));
+  if (requestId) parts.push(writeStringField(17, requestId));
+  if (modelUid) parts.push(writeStringField(20, modelUid));
+
+  return Buffer.concat(parts);
 }

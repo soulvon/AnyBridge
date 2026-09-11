@@ -14,6 +14,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import crypto from 'node:crypto';
+import { EventEmitter } from 'node:events';
 import { pathToFileURL } from 'node:url';
 import { listenWithReclaim } from './port-utils.js';
 import { handleGetChatMessage, shouldIntercept } from './handlers/chat.js';
@@ -21,7 +22,8 @@ import { handleLocalProxyRequest, isLocalProxyRequest } from './local-proxy.js';
 import { handleCursorRequest } from './cursor-proxy.js';
 import { injectWithRetry, listTargets, isAlreadyInjected, readInjectableModels } from './lib/codex-desktop-cdp.js';
 import { parseFields, writeStringField, writeBytesField, writeVarintField } from './proto.js';
-import { tryGunzip } from './connect.js';
+import { tryGunzip, unaryHeaders, wrapUnary } from './connect.js';
+import { mergeUnaryFrames } from './handlers/build-response.js';
 import { snapshot } from './stats.js';
 import { extractModelList, unlockModels } from './rename-models.js';
 import { mitmLog, rpcAuditLog } from './mitm-logger.js';
@@ -521,18 +523,22 @@ function proxyToCodeium(req, res, body, id, opts = {}) {
           }
         }
 
-        // 改写 GetUserStatus 响应（合并三件事：label 改名 + 注入项 + 全部解锁）。
+        // 改写模型清单响应（合并三件事：label 改名 + 注入项 + 全部解锁）。
+        // 覆盖两个数据源：
+        //   - GetUserStatus：Windsurf/Devin Cascade 面板的下拉数据源
+        //   - GetCliModelConfigs：新版 Devin Local (devin-cli ACP) 的下拉数据源（Connect unary 纯 protobuf）
         // 阶段 4 改造后，unlockModels 一次性完成以下职责：
         //   - 槽位改名（model-map.json 的 slots.displayName + namePrefix）
         //   - 注入项（model-map.json 的 injected）→ label 改写为 "(BYOK) {label} (服务商/未配置)" + 解锁
         //   - 全部解锁（删 field4 disabled = true）让下拉框灰色项可点
-        // 调用方仅需一次，替代之前 renameModels + unlockModels 两次调用。
         let stripEncoding = false;
-        if (method === 'GetUserStatus' && proxyRes.statusCode === 200) {
-          // 抓取原始模型清单(改名前)→ 缓存供 GUI 添加映射时选用。
+        const shouldRewriteModels = proxyRes.statusCode === 200
+          && (method === 'GetUserStatus' || method === 'GetCliModelConfigs');
+        if (shouldRewriteModels) {
+          // 抓取原始模型清单(改名前)→ 缓存供 GUI 添加映射时选用（仅 GetUserStatus，清单最全）。
           // 性能优化：每秒 8-10 次心跳 → 节流到 30s 一次 + 签名比对
           // 注意：unlockModels 仍然每次都做（必须做，下拉框要看到 BYOK 项）
-          const shouldCapture = (Date.now() - lastModelListCapturedAt) > 30000;
+          const shouldCapture = method === 'GetUserStatus' && (Date.now() - lastModelListCapturedAt) > 30000;
           if (shouldCapture) {
             try {
               const list = extractModelList(resBody);
@@ -554,9 +560,9 @@ function proxyToCodeium(req, res, body, id, opts = {}) {
             }
           }
           try {
-            // 节流：unlockModels 是个 protobuf 完整改写。每秒 8-10 次心跳 → 1s 内只跑一次
-            // 用 resBody 的 sha1 短路——同一秒内上游响应没变，直接复用上次结果
-            const inputSig = `${crypto.createHash('sha1').update(resBody).digest('hex').slice(0, 16)}|${rewriteConfigSignature()}`;
+            // 节流：unlockModels 是个完整改写。心跳频繁 → 1s 内同一响应只跑一次
+            // 用 resBody 的 sha1 短路——上游响应没变，直接复用上次结果
+            const inputSig = `${method}|${crypto.createHash('sha1').update(resBody).digest('hex').slice(0, 16)}|${rewriteConfigSignature()}`;
             if (inputSig === lastUnlockInputSig && lastUnlockResult) {
               resBody = lastUnlockResult.body;
               if (lastUnlockResult.wasConnect) stripEncoding = true;
@@ -569,7 +575,7 @@ function proxyToCodeium(req, res, body, id, opts = {}) {
                 lastUnlockInputSig = inputSig;
                 // 5s 内只打一次 rewrite 日志
                 if (Date.now() - lastModelRewriteLogAt > 5000) {
-                  console.log(`  [#${id}] 🔄 rewrote ${result.changed} model(s) (rename+unlock+inject)`);
+                  console.log(`  [#${id}] 🔄 ${method}: rewrote ${result.changed} model(s) (rename+unlock+inject)`);
                   lastModelRewriteLogAt = Date.now();
                 }
               }
@@ -951,6 +957,67 @@ function handleRequest(req, res) {
 
 // ─── Server ───────────────────────────────────────────────
 
+/**
+ * 构造一个「unary 响应收集器」，用于把 handleGetChatMessage 产出的 streaming 帧
+ * 缓冲起来，在结束时合并成一个完整的 GetChatMessageResponse 并以 unary 格式回传。
+ * 供 Devin Local (devin-cli, Connect unary 客户端) 使用。
+ */
+function makeUnaryResponseCollector(realRes) {
+  const frames = [];
+  const emitter = new EventEmitter();
+  let statusCode = 200;
+  let sent = false;
+  let ended = false;
+
+  // 客户端断开时转发 close 事件，让 handler 能中止上游请求。
+  realRes.on('close', () => {
+    if (!ended) ended = true;
+    emitter.emit('close');
+  });
+
+  const collector = {
+    writeHead(status) {
+      statusCode = status;
+      sent = true;
+    },
+    write(data) {
+      if (data) frames.push(Buffer.isBuffer(data) ? data : Buffer.from(data));
+      return true;
+    },
+    end(data) {
+      if (data) frames.push(Buffer.isBuffer(data) ? data : Buffer.from(data));
+      if (ended) return;
+      ended = true;
+      const merged = mergeUnaryFrames(frames);
+      const wrapped = wrapUnary(merged);
+      if (!realRes.headersSent) {
+        realRes.writeHead(statusCode, { ...unaryHeaders(), 'content-length': wrapped.length });
+      }
+      realRes.end(wrapped);
+    },
+    on: (ev, cb) => { emitter.on(ev, cb); return collector; },
+    once: (ev, cb) => { emitter.once(ev, cb); return collector; },
+    removeListener: (ev, cb) => { emitter.removeListener(ev, cb); return collector; },
+    removeAllListeners: () => { emitter.removeAllListeners(); return collector; },
+    setHeader() {},
+    getHeader() { return undefined; },
+    getHeaders() { return {}; },
+    removeHeader() {},
+    flushHeaders() {},
+  };
+
+  Object.defineProperty(collector, 'headersSent', {
+    get: () => sent,
+    configurable: true,
+  });
+  Object.defineProperty(collector, 'writableEnded', {
+    get: () => ended,
+    configurable: true,
+  });
+
+  return collector;
+}
+
 const server = http.createServer(handleRequest);
 
 // ─── MITM internal server (handles decrypted traffic) ─────
@@ -1045,7 +1112,7 @@ const mitmServer = http.createServer((req, res) => {
 
     // ── THE INTERCEPTION: GetChatMessage → Anthropic API ──
     if (method === 'GetChatMessage' && shouldIntercept(body, req.headers)) {
-      console.log(`[${now()}] #${id} ⚡ MITM GetChatMessage → Anthropic (${body.length}b)`);
+      console.log(`[${now()}] #${id} ⚡ MITM GetChatMessage → Anthropic (${body.length}b) ct=${req.headers['content-type']} enc=${req.headers['connect-content-encoding'] || req.headers['content-encoding'] || '-'}`);
       rpcAuditLog({
         id,
         phase: 'intercepted',
@@ -1055,19 +1122,25 @@ const mitmServer = http.createServer((req, res) => {
         url: req.url,
         requestBytes: body.length,
       });
+      // Devin Local (devin-cli) 是 Connect unary 客户端（content-type: application/proto），
+      // 期待一次性 gzip 完整响应；而内部统一按 streaming 帧产出。这里用收集器把
+      // streaming 帧缓冲起来，结束时合并成 unary 响应回传。
+      const reqContentType = String(req.headers['content-type'] || '');
+      const isUnaryRequest = reqContentType.includes('application/proto') && !reqContentType.includes('connect+proto');
+      const targetRes = isUnaryRequest ? makeUnaryResponseCollector(res) : res;
       try {
-        const result = handleGetChatMessage(req, res, body);
+        const result = handleGetChatMessage(req, targetRes, body);
         if (result && typeof result.catch === 'function') {
           result.catch(err => {
             console.error(`[${now()}] #${id} Chat error: ${err.message}`);
-            if (!res.headersSent) res.writeHead(500);
-            if (!res.writableEnded) res.end();
+            if (!targetRes.headersSent) targetRes.writeHead(500);
+            if (!targetRes.writableEnded) targetRes.end();
           });
         }
       } catch (err) {
         console.error(`[${now()}] #${id} Chat error: ${err.message}`);
-        if (!res.headersSent) res.writeHead(500);
-        if (!res.writableEnded) res.end();
+        if (!targetRes.headersSent) targetRes.writeHead(500);
+        if (!targetRes.writableEnded) targetRes.end();
       }
       return;
     }

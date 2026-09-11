@@ -1,0 +1,238 @@
+        <!-- ═══════ PAGE: PLATFORM · CLAUDE DESKTOP · 添加/编辑配置（独立页面） ═══════ -->
+        <div class="page" id="page-platform-claude-desktop-add" role="tabpanel" aria-labelledby="tab-platforms">
+          <div class="platform-console-hero model-add-hero glass-card">
+            <div class="platform-console-titlebar">
+              <button class="btn-ghost platform-console-back" data-action="closeClaudeDesktopConfigEditor">← 返回</button>
+              <div class="platform-console-titlewrap">
+                <strong id="claude-desktop-config-page-title">添加配置 · Claude Desktop</strong>
+                <span class="platform-console-sub" id="claude-desktop-config-page-sub">配置桌面端本地路由与各档位角色的模型映射。</span>
+              </div>
+              <div class="codex-page-hero-actions" style="display: flex; align-items: center; gap: 8px; margin-left: auto;">
+                <button class="btn-ghost" data-action="closeClaudeDesktopConfigEditor">取消</button>
+                <button class="btn-primary" data-action="saveClaudeDesktopConfigEditor" data-args="[false]">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>
+                    <polyline points="17 21 17 13 7 13 7 21"></polyline>
+                    <polyline points="7 3 7 8 15 8"></polyline>
+                  </svg>
+                  <span>保存配置</span>
+                </button>
+                <button class="btn-ghost accent" id="claude-desktop-config-save-switch-btn" data-action="saveClaudeDesktopConfigEditor" data-args="[true]">
+                  <span>保存并切换</span>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div class="cb-add-layout">
+            <!-- 左列：供应商列表 -->
+            <aside class="cb-add-sidebar glass-card" id="claude-desktop-config-source-wrap">
+              <div class="cb-add-search">
+                <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" fill="none" stroke-width="2"
+                  stroke-linecap="round" stroke-linejoin="round">
+                  <circle cx="11" cy="11" r="8" />
+                  <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                </svg>
+                <input type="text" id="claude-desktop-source-search-input" placeholder="搜索供应商…" data-action="onClaudeDesktopSourceSearch" data-events="input">
+                <div class="provider-sort-control platform-add-sort-control" id="claudeDesktopAddSortControl">
+                  <button type="button" class="provider-sort-trigger platform-add-sort-trigger" id="claudeDesktopAddSortTrigger"
+                    aria-haspopup="listbox" aria-expanded="false"
+                    aria-controls="claudeDesktopAddSortMenu" aria-label="供应商排序" title="供应商排序" data-action="toggleClaudeDesktopAddSort" data-pass-event>
+                    <svg class="provider-sort-icon" width="14" height="14" viewBox="0 0 24 24" fill="none"
+                      stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"
+                      aria-hidden="true">
+                      <path d="M8 3v18"></path>
+                      <path d="m4 7 4-4 4 4"></path>
+                      <path d="M16 21V3"></path>
+                      <path d="m20 17-4 4-4-4"></path>
+                    </svg>
+                    <span id="claudeDesktopAddSortLabel">默认排序</span>
+                    <svg class="provider-sort-caret" width="13" height="13" viewBox="0 0 24 24" fill="none"
+                      stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"
+                      aria-hidden="true">
+                      <path d="m6 9 6 6 6-6"></path>
+                    </svg>
+                  </button>
+                  <div class="provider-sort-menu platform-add-sort-menu" id="claudeDesktopAddSortMenu" role="listbox"
+                    aria-label="供应商排序">
+                    <button type="button" class="provider-sort-option platform-add-sort-option" role="option"
+                      data-sort-mode="default" data-action="chooseClaudeDesktopAddSortMode" data-arg="default">默认排序</button>
+                    <button type="button" class="provider-sort-option platform-add-sort-option" role="option"
+                      data-sort-mode="name-asc" data-action="chooseClaudeDesktopAddSortMode" data-arg="name-asc">名称正序</button>
+                    <button type="button" class="provider-sort-option platform-add-sort-option" role="option"
+                      data-sort-mode="name-desc" data-action="chooseClaudeDesktopAddSortMode" data-arg="name-desc">名称反序</button>
+                  </div>
+                </div>
+              </div>
+              <div class="cb-add-provider-list" id="claude-desktop-config-source-list"></div>
+            </aside>
+
+            <!-- 右列：主工作区（全量垂直滚动，展示完所有设置项） -->
+            <section class="cb-add-main codex-add-main">
+              <input type="hidden" id="claude-desktop-config-edit-id">
+              <input type="hidden" id="claude-desktop-config-source-id">
+
+              <!-- 卡片 1：基础连接信息 -->
+              <div class="glass-card" style="padding: 16px 20px;">
+                <div style="font-size: 14px; font-weight: 700; color: var(--text-primary); margin-bottom: 14px; display: flex; align-items: center;">
+                  <div style="display: flex; align-items: center; gap: 8px;">
+                    <span style="display: inline-block; width: 3px; height: 14px; background: var(--accent); border-radius: 2px;"></span>
+                    <span>基础连接信息</span>
+                  </div>
+                </div>
+
+                <div style="display: grid; grid-template-columns: minmax(180px, 1.1fr) minmax(260px, 1.5fr); gap: 14px; margin-bottom: 14px;">
+                  <div style="display: flex; flex-direction: column; gap: 6px;">
+                    <label style="font-size: 12.5px; font-weight: 700; color: var(--text-secondary);">配置名称</label>
+                    <input id="claude-desktop-config-name" class="field-input" style="height: 36px; padding: 0 12px; font-size: 13px;" placeholder="例如：CPA / 薄荷 / AnyRouter"
+                      data-action="syncClaudeDesktopRawConfigFromFields" data-events="input">
+                  </div>
+                  <div style="display: flex; flex-direction: column; gap: 6px;">
+                    <label style="font-size: 12.5px; font-weight: 700; color: var(--text-secondary);">连接模式</label>
+                    <select id="claude-desktop-config-mode" class="field-input" style="height: 36px; padding: 0 12px; font-size: 13px;" data-action="syncClaudeDesktopRawConfigFromFields" data-events="change">
+                      <option value="proxy">本地路由映射（推荐，支持任意供应商与模型）</option>
+                      <option value="direct">直连模式（要求供应商原生兼容 Anthropic 角色）</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div style="display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px;">
+                  <label style="font-size: 12.5px; font-weight: 700; color: var(--text-secondary);">请求地址</label>
+                  <input id="claude-desktop-config-base-url" class="field-input" style="height: 36px; padding: 0 12px; font-size: 13px;" placeholder="http://127.0.0.1:7450/v1"
+                    data-action="syncClaudeDesktopRawConfigFromFields" data-events="input">
+                  <span style="font-size: 11.5px; color: var(--text-muted);">填写兼容 Claude API 的服务端点地址，不要以斜杠结尾</span>
+                </div>
+
+                <div style="display: flex; flex-direction: column; gap: 6px;">
+                  <div style="display: flex; align-items: center; justify-content: space-between;">
+                    <label style="font-size: 12.5px; font-weight: 700; color: var(--text-secondary);">API Key</label>
+                    <button type="button" class="btn-ghost" id="claude-desktop-config-sync-token-btn"
+                      data-action="syncClaudeDesktopConfigTokenFromSource" style="padding: 2px 8px; height: 24px; font-size: 11.5px; display: inline-flex; align-items: center; gap: 5px;" title="从关联的来源供应商拉取最新令牌和地址">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/>
+                      </svg>
+                      <span>同步来源令牌</span>
+                    </button>
+                  </div>
+                  <div class="codex-input-password-wrap" style="position: relative; width: 100%;">
+                    <input id="claude-desktop-config-api-key" class="field-input" type="password" style="height: 36px; padding: 0 40px 0 12px; font-size: 13px; width: 100%; box-sizing: border-box;" placeholder="sk-... 或留空" autocomplete="off"
+                      data-action="syncClaudeDesktopRawConfigFromFields" data-events="input">
+                    <button type="button" class="codex-password-toggle-btn" id="claude-desktop-config-api-key-toggle"
+                      data-action="toggleClaudeDesktopKeyVisibility" title="显示或隐藏 API Key" aria-label="显示或隐藏 API Key" style="position: absolute; right: 8px; top: 50%; transform: translateY(-50%); background: transparent; border: none; cursor: pointer; color: var(--text-muted); display: flex; align-items: center; justify-content: center; width: 26px; height: 26px;">
+                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"></path>
+                        <circle cx="12" cy="12" r="3"></circle>
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 卡片 2：模型映射与 1M 上下文 -->
+              <div class="glass-card claude-desktop-role-card" id="claude-desktop-role-card" style="padding: 16px 20px; overflow: visible !important; position: relative; z-index: 50;">
+                <div style="font-size: 14px; font-weight: 700; color: var(--text-primary); margin-bottom: 12px; display: flex; align-items: center; justify-content: space-between;">
+                  <div>
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                      <span style="display: inline-block; width: 3px; height: 14px; background: var(--accent); border-radius: 2px;"></span>
+                      <span>模型角色映射与 1M 上下文</span>
+                    </div>
+                    <div class="cb-add-models-sub" id="claude-desktop-config-model-status" style="margin-top: 4px; font-size: 12px; font-weight: normal; color: var(--text-muted);">为各档填写实际请求模型，菜单显示名可写品牌名；留空的档自动沿用已填档</div>
+                  </div>
+                  <div style="display: flex; align-items: center; gap: 8px;">
+                    <button type="button" class="btn-ghost accent" data-action="claudeDesktopQuickSetAllModels" style="height: 28px; padding: 0 10px; font-size: 12px; display: inline-flex; align-items: center; gap: 4px;">
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3Z"/>
+                      </svg>
+                      <span>一键设置</span>
+                    </button>
+                    <button type="button" class="btn-ghost accent" id="claude-desktop-config-fetch-models-btn" data-action="fetchClaudeDesktopConfigModels" style="height: 28px; padding: 0 10px; font-size: 12px; display: inline-flex; align-items: center; gap: 4px;">
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/>
+                      </svg>
+                      <span>获取模型列表</span>
+                    </button>
+                  </div>
+                </div>
+
+                <div class="claude-role-table">
+                  <div class="claude-desktop-role-row-header">
+                    <span>模型角色</span>
+                    <span>菜单显示名</span>
+                    <span>实际请求模型</span>
+                    <span style="text-align: center;">声明支持 1M</span>
+                  </div>
+
+                  <!-- 1. Sonnet (主力) -->
+                  <div class="claude-desktop-role-row">
+                    <div class="claude-role-badge">Sonnet</div>
+                    <input id="claude-desktop-config-sonnet-name" class="field-input" style="height: 36px; padding: 0 10px; font-size: 12.5px;" placeholder="例如：Claude Opus 4.8 或 DeepSeek" oninput="syncClaudeDesktopRawConfigFromFields()">
+                    <div class="custom-role-select" id="claude-desktop-role-select-sonnet">
+                      <input type="hidden" id="claude-desktop-config-sonnet">
+                    </div>
+                    <label class="claude-1m-toggle-box" id="claude-desktop-1m-box-sonnet" title="勾选后实际请求模型将声明 1M 上下文支持">
+                      <input type="checkbox" id="claude-desktop-1m-sonnet" onchange="onClaudeDesktop1mChange('sonnet', this.checked)">
+                      <span>1M</span>
+                    </label>
+                  </div>
+
+                  <!-- 2. Opus (深度推理) -->
+                  <div class="claude-desktop-role-row">
+                    <div class="claude-role-badge">Opus</div>
+                    <input id="claude-desktop-config-opus-name" class="field-input" style="height: 36px; padding: 0 10px; font-size: 12.5px;" placeholder="例如：Claude Opus 5" oninput="syncClaudeDesktopRawConfigFromFields()">
+                    <div class="custom-role-select" id="claude-desktop-role-select-opus">
+                      <input type="hidden" id="claude-desktop-config-opus">
+                    </div>
+                    <label class="claude-1m-toggle-box" id="claude-desktop-1m-box-opus" title="勾选后实际请求模型将声明 1M 上下文支持">
+                      <input type="checkbox" id="claude-desktop-1m-opus" onchange="onClaudeDesktop1mChange('opus', this.checked)">
+                      <span>1M</span>
+                    </label>
+                  </div>
+
+                  <!-- 3. Fable (扩展模型) -->
+                  <div class="claude-desktop-role-row">
+                    <div class="claude-role-badge">Fable</div>
+                    <input id="claude-desktop-config-fable-name" class="field-input" style="height: 36px; padding: 0 10px; font-size: 12.5px;" placeholder="例如：DeepSeek V4 Pro" oninput="syncClaudeDesktopRawConfigFromFields()">
+                    <div class="custom-role-select" id="claude-desktop-role-select-fable">
+                      <input type="hidden" id="claude-desktop-config-fable">
+                    </div>
+                    <label class="claude-1m-toggle-box" id="claude-desktop-1m-box-fable" title="勾选后实际请求模型将声明 1M 上下文支持">
+                      <input type="checkbox" id="claude-desktop-1m-fable" onchange="onClaudeDesktop1mChange('fable', this.checked)">
+                      <span>1M</span>
+                    </label>
+                  </div>
+
+                  <!-- 4. Haiku (轻量快速) -->
+                  <div class="claude-desktop-role-row">
+                    <div class="claude-role-badge">Haiku</div>
+                    <input id="claude-desktop-config-haiku-name" class="field-input" style="height: 36px; padding: 0 10px; font-size: 12.5px;" placeholder="例如：Claude Fable 5" oninput="syncClaudeDesktopRawConfigFromFields()">
+                    <div class="custom-role-select" id="claude-desktop-role-select-haiku">
+                      <input type="hidden" id="claude-desktop-config-haiku">
+                    </div>
+                    <label class="claude-1m-toggle-box" id="claude-desktop-1m-box-haiku" title="勾选后实际请求模型将声明 1M 上下文支持">
+                      <input type="checkbox" id="claude-desktop-1m-haiku" onchange="onClaudeDesktop1mChange('haiku', this.checked)">
+                      <span>1M</span>
+                    </label>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 卡片 3：实际配置文件内容（大模态弹窗） -->
+              <div class="glass-card" style="padding: 16px 20px; display: flex; align-items: center; justify-content: space-between; gap: 16px; position: relative; z-index: 1;">
+                <div style="display: flex; align-items: center; gap: 10px;">
+                  <span style="display: inline-block; width: 3px; height: 16px; background: var(--accent); border-radius: 2px;"></span>
+                  <div>
+                    <div style="font-weight: 700; color: var(--text-primary); font-size: 13.5px;">实际配置文件 (claude_desktop_config.json)</div>
+                    <div style="font-size: 12px; color: var(--text-muted); margin-top: 2px;">以大弹窗查看 Claude 桌面端真实配置文件的完整结构</div>
+                  </div>
+                </div>
+                <button type="button" class="btn-ghost accent" data-action="openPlatformRealConfigModal" data-arg="claude-desktop" style="display: inline-flex; align-items: center; gap: 6px; padding: 4px 14px; height: 32px; font-size: 12.5px; font-weight: 600;">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M12 20h9"/>
+                    <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
+                  </svg>
+                  <span>编辑查看</span>
+                </button>
+              </div>
+            </section>
+          </div>
+        </div>

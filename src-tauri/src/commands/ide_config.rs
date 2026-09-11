@@ -11,6 +11,105 @@ const USE_HTTP1_KEY: &str = "cursor.general.useHttp1";
 const DISABLE_HTTP2_KEY: &str = "cursor.general.disableHttp2";
 const PROXY_KERBEROS_KEY: &str = "http.proxyKerberosServicePrincipal";
 const LEGACY_CURSOR_PROXY_KEYS: &[&str] = &["systemCertificatesV2", "useHttp1", "disableHttp2"];
+const DEVIN_AGENT_ENV_KEY: &str = "devin.acp.agentEnv";
+const WINDSURF_AGENT_ENV_KEY: &str = "windsurf.acp.agentEnv";
+const DEVIN_AGENT_NO_PROXY: &str =
+    "unleash.codeium.com,api.devin.ai,app.devin.ai,static.devin.ai,cli.devin.ai,devin.ai";
+
+/// MITM CA 根证书路径。新版 devin-cli（rustls-native-certs 0.8）在 Windows 上
+/// 对 SSL_CERT_FILE 采用「平台证书库 + 该文件」合并语义：带上它可确保
+/// server.codeium.com 的 MITM 链受信，同时不影响直连域名的公签校验。
+fn devin_cert_path() -> PathBuf {
+    crate::commands::config::config_dir_path()
+        .join("certs")
+        .join("server.codeium.com.pem")
+}
+
+fn devin_agent_env_ok(obj: &Map<String, Value>) -> bool {
+    let check_map = |key: &str| -> bool {
+        let Some(Value::Object(env_map)) = obj.get(key) else {
+            return false;
+        };
+        let Some(Value::Object(cli_env)) = env_map.get("devin-cli") else {
+            return false;
+        };
+        let proxy_ok = cli_env
+            .get("HTTP_PROXY")
+            .and_then(|v| v.as_str())
+            .map(is_current_proxy_value)
+            .unwrap_or(false);
+        let https_proxy_ok = cli_env
+            .get("HTTPS_PROXY")
+            .and_then(|v| v.as_str())
+            .map(is_current_proxy_value)
+            .unwrap_or(false);
+        // SSL_CERT_FILE 与 NO_PROXY 必须精确匹配当前配置：旧补丁缺失任一项时，
+        // status 应返回未完成，让再次接入自动补齐，而不是误判为已接入。
+        let expected_cert = devin_cert_path().to_string_lossy().to_string();
+        let cert_ok = cli_env
+            .get("SSL_CERT_FILE")
+            .and_then(|v| v.as_str())
+            .map(|s| s == expected_cert)
+            .unwrap_or(false);
+        let no_proxy_ok = cli_env
+            .get("NO_PROXY")
+            .and_then(|v| v.as_str())
+            == Some(DEVIN_AGENT_NO_PROXY);
+        proxy_ok && https_proxy_ok && cert_ok && no_proxy_ok
+    };
+    check_map(DEVIN_AGENT_ENV_KEY) || check_map(WINDSURF_AGENT_ENV_KEY)
+}
+
+fn patch_devin_agent_env(obj: &mut Map<String, Value>, proxy_value: &str) {
+    let cert_str = devin_cert_path().to_string_lossy().to_string();
+    for key in [DEVIN_AGENT_ENV_KEY, WINDSURF_AGENT_ENV_KEY] {
+        let env_obj = match obj.remove(key) {
+            Some(Value::Object(m)) => m,
+            _ => Map::new(),
+        };
+        let mut new_env_obj = env_obj;
+        let mut cli_obj = match new_env_obj.remove("devin-cli") {
+            Some(Value::Object(m)) => m,
+            _ => Map::new(),
+        };
+        cli_obj.insert("HTTP_PROXY".into(), Value::String(proxy_value.to_string()));
+        cli_obj.insert("HTTPS_PROXY".into(), Value::String(proxy_value.to_string()));
+        // 辅助域名（feature flag / 云端 web / 下载）直连，不走本地代理：
+        // 新版 devin-cli authenticate 时会并发刷新这些域名，超时上限仅 2s，
+        // 全部挤过代理会触发 "ZDR status refresh timed out on auth" 导致接入失败。
+        cli_obj.insert("NO_PROXY".into(), Value::String(DEVIN_AGENT_NO_PROXY.into()));
+        if !cert_str.is_empty() {
+            cli_obj.insert("SSL_CERT_FILE".into(), Value::String(cert_str.clone()));
+        }
+        cli_obj.insert(
+            "WINDSURF_API_SERVER_URL".into(),
+            Value::String("https://server.codeium.com".to_string()),
+        );
+        new_env_obj.insert("devin-cli".into(), Value::Object(cli_obj));
+        obj.insert(key.into(), Value::Object(new_env_obj));
+    }
+}
+
+fn remove_devin_agent_env(obj: &mut Map<String, Value>) {
+    for key in [DEVIN_AGENT_ENV_KEY, WINDSURF_AGENT_ENV_KEY] {
+        let Some(Value::Object(mut env_obj)) = obj.remove(key) else {
+            continue;
+        };
+        if let Some(Value::Object(mut cli_obj)) = env_obj.remove("devin-cli") {
+            cli_obj.remove("HTTP_PROXY");
+            cli_obj.remove("HTTPS_PROXY");
+            cli_obj.remove("NO_PROXY");
+            cli_obj.remove("SSL_CERT_FILE");
+            cli_obj.remove("WINDSURF_API_SERVER_URL");
+            if !cli_obj.is_empty() {
+                env_obj.insert("devin-cli".into(), Value::Object(cli_obj));
+            }
+        }
+        if !env_obj.is_empty() {
+            obj.insert(key.into(), Value::Object(env_obj));
+        }
+    }
+}
 fn configured_proxy_port() -> u16 {
     crate::commands::config::configured_proxy_ports().api_port
 }
@@ -82,6 +181,8 @@ fn managed_proxy_keys(target: &str) -> Vec<&'static str> {
             DISABLE_HTTP2_KEY,
             PROXY_KERBEROS_KEY,
         ]);
+    } else if target == "devin" {
+        keys.extend([DEVIN_AGENT_ENV_KEY, WINDSURF_AGENT_ENV_KEY]);
     }
     keys
 }
@@ -184,7 +285,8 @@ fn patch_settings_file(target: &str, settings: &PathBuf) -> Result<bool, String>
         .map(is_current_proxy_value)
         .unwrap_or(false)
         && obj.get(STRICT_SSL_KEY) == Some(&Value::Bool(false))
-        && (target != "cursor" || cursor_extra_settings_ok(&obj));
+        && (target != "cursor" || cursor_extra_settings_ok(&obj))
+        && (target != "devin" || devin_agent_env_ok(&obj));
     if already {
         if !backup.exists() {
             // 原始值已被补丁覆盖、无从恢复，备份成「移除这两个键」的状态:
@@ -192,6 +294,11 @@ fn patch_settings_file(target: &str, settings: &PathBuf) -> Result<bool, String>
             let mut orig = obj.clone();
             if target == "cursor" {
                 remove_cursor_proxy_keys(&mut orig);
+            } else if target == "devin" {
+                for key in managed_proxy_keys(target) {
+                    orig.remove(key);
+                }
+                remove_devin_agent_env(&mut orig);
             } else {
                 for key in managed_proxy_keys(target) {
                     orig.remove(key);
@@ -221,6 +328,8 @@ fn patch_settings_file(target: &str, settings: &PathBuf) -> Result<bool, String>
         for key in LEGACY_CURSOR_PROXY_KEYS {
             obj.remove(*key);
         }
+    } else if target == "devin" {
+        patch_devin_agent_env(&mut obj, &proxy_value);
     }
     write_object(&settings, &obj)?;
     Ok(true)
@@ -283,8 +392,9 @@ fn restore_settings_file(target: &str, settings: &PathBuf) -> Result<bool, Strin
             .map(is_known_anybridge_proxy_value)
             .unwrap_or(false);
         let had_ssl = current.get(STRICT_SSL_KEY) == Some(&Value::Bool(false));
+        let had_devin_env = target == "devin" && devin_agent_env_ok(&current);
 
-        if !had_proxy && !had_ssl {
+        if !had_proxy && !had_ssl && !had_devin_env {
             // 配置中没有代理残留，无需操作。
             return Ok(false);
         }
@@ -297,6 +407,8 @@ fn restore_settings_file(target: &str, settings: &PathBuf) -> Result<bool, Strin
         }
         if target == "cursor" {
             remove_cursor_proxy_keys(&mut current);
+        } else if target == "devin" {
+            remove_devin_agent_env(&mut current);
         }
 
         write_object(&settings, &current)?;
@@ -335,7 +447,8 @@ pub fn status(target: &str) -> Result<IdeProxyStatus, String> {
         target: target.to_string(),
         patched: is_current_proxy_value(&proxy_value)
             && strict_ssl == Some(false)
-            && (target != "cursor" || cursor_extra_settings_ok(&obj)),
+            && (target != "cursor" || cursor_extra_settings_ok(&obj))
+            && (target != "devin" || devin_agent_env_ok(&obj)),
         proxy_value,
         strict_ssl,
         settings_path: settings.to_string_lossy().to_string(),
@@ -586,6 +699,75 @@ mod tests {
             );
         }
         assert_eq!(restored.get("window.zoomLevel"), Some(&Value::from(2)));
+
+        let _ = fs::remove_dir_all(
+            settings
+                .parent()
+                .unwrap()
+                .parent()
+                .unwrap()
+                .parent()
+                .unwrap(),
+        );
+    }
+
+    #[test]
+    fn devin_patch_and_restore_compatible_with_old_and_new() {
+        let settings = temp_settings_path("devin-compat");
+        fs::create_dir_all(settings.parent().unwrap()).unwrap();
+        fs::write(
+            &settings,
+            r#"{
+                "editor.fontSize": 14,
+                "devin.acp.agentPreferences": {
+                    "devin-cli": { "model": "swe-1-6-slow" }
+                },
+                "devin.acp.enabledAgents": {
+                    "devin-cli": true
+                }
+            }"#,
+        )
+        .unwrap();
+
+        assert_eq!(patch_settings_file("devin", &settings).unwrap(), true);
+        let patched = read_settings(&settings);
+        assert_eq!(patched.get("editor.fontSize"), Some(&Value::from(14)));
+        // 兼容旧版：http.proxy 正常写入
+        assert!(patched
+            .get(PROXY_KEY)
+            .and_then(|v| v.as_str())
+            .map(is_current_proxy_value)
+            .unwrap_or(false));
+        assert_eq!(patched.get(STRICT_SSL_KEY), Some(&Value::Bool(false)));
+
+        // 兼容新版：devin.acp.agentEnv 注入 devin-cli
+        assert!(devin_agent_env_ok(&patched));
+        let agent_env = patched.get(DEVIN_AGENT_ENV_KEY).and_then(|v| v.as_object()).unwrap();
+        let cli_env = agent_env.get("devin-cli").and_then(|v| v.as_object()).unwrap();
+        assert!(cli_env.get("HTTP_PROXY").and_then(|v| v.as_str()).map(is_current_proxy_value).unwrap_or(false));
+        assert!(cli_env.get("HTTPS_PROXY").and_then(|v| v.as_str()).map(is_current_proxy_value).unwrap_or(false));
+        assert_eq!(
+            cli_env.get("NO_PROXY"),
+            Some(&Value::String(DEVIN_AGENT_NO_PROXY.into()))
+        );
+        assert_eq!(
+            cli_env.get("SSL_CERT_FILE"),
+            Some(&Value::String(devin_cert_path().to_string_lossy().to_string()))
+        );
+        assert_eq!(cli_env.get("WINDSURF_API_SERVER_URL"), Some(&Value::String("https://server.codeium.com".into())));
+
+        // 用户原有配置未被破坏
+        assert!(patched.get("devin.acp.agentPreferences").is_some());
+
+        // 还原
+        assert_eq!(restore_settings_file("devin", &settings).unwrap(), true);
+        let restored = read_settings(&settings);
+        assert!(restored.get(PROXY_KEY).is_none());
+        assert!(restored.get(STRICT_SSL_KEY).is_none());
+        assert!(restored.get(DEVIN_AGENT_ENV_KEY).is_none());
+        assert!(restored.get(WINDSURF_AGENT_ENV_KEY).is_none());
+        assert_eq!(restored.get("editor.fontSize"), Some(&Value::from(14)));
+        assert!(restored.get("devin.acp.agentPreferences").is_some());
 
         let _ = fs::remove_dir_all(
             settings

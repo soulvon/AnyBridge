@@ -41,6 +41,14 @@ pub struct ClaudeDesktopBindings {
     pub haiku: String,
     #[serde(default)]
     pub fable: String,
+    #[serde(default)]
+    pub sonnet_name: String,
+    #[serde(default)]
+    pub opus_name: String,
+    #[serde(default)]
+    pub haiku_name: String,
+    #[serde(default)]
+    pub fable_name: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -275,6 +283,10 @@ pub fn normalize_routes(routes: &mut ProxyRoutes) {
         cd.opus = cd.opus.trim().to_string();
         cd.haiku = cd.haiku.trim().to_string();
         cd.fable = cd.fable.trim().to_string();
+        cd.sonnet_name = cd.sonnet_name.trim().to_string();
+        cd.opus_name = cd.opus_name.trim().to_string();
+        cd.haiku_name = cd.haiku_name.trim().to_string();
+        cd.fable_name = cd.fable_name.trim().to_string();
     }
 }
 
@@ -515,6 +527,10 @@ mod tests {
                 opus: "route-opus".into(),
                 haiku: " route-haiku ".into(),
                 fable: String::new(),
+                sonnet_name: " Kimi K2.7 ".into(),
+                opus_name: "GLM-5.1".into(),
+                haiku_name: " DeepSeek V4 ".into(),
+                fable_name: String::new(),
             }),
         };
         normalize_routes(&mut routes);
@@ -522,6 +538,8 @@ mod tests {
         assert_eq!(cd.sonnet, "route-sonnet");
         assert_eq!(cd.haiku, "route-haiku");
         assert_eq!(cd.fable, "");
+        assert_eq!(cd.sonnet_name, "Kimi K2.7");
+        assert_eq!(cd.haiku_name, "DeepSeek V4");
     }
 }
 

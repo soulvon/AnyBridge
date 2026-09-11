@@ -173,6 +173,8 @@ pub fn run() {
             commands::platforms::restore_grok_official_config,
             commands::platforms::restore_opencode_official_config,
             commands::platforms::repair_codex_session_visibility,
+            commands::platforms::read_platform_config_file,
+            commands::platforms::write_platform_config_file,
             commands::codex_desktop::restart_codex_desktop,
             commands::codex_desktop::start_codex_with_cdp,
             commands::platforms::load_codebuddy_models,

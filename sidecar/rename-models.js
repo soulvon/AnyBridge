@@ -67,6 +67,14 @@ function normalizeSlotVisibilityMode(mode) {
   return SLOT_VISIBILITY_MODES.has(s) ? s : 'official';
 }
 
+// 官方 protobuf GetUserStatus 的 field22 modelUid 用连字符分隔版本号
+// （如 gemini-3-7-flash-high、gpt-5-6-sol-medium），但 JSON API 与内置 catalog
+// 部分条目用点分隔（如 gemini-3.7-flash-high、gpt-5.6-sol）。
+// 归一到连字符格式，确保 rename 槽位 key 能命中官方响应里的 modelUid。
+function normalizeModelUid(uid) {
+  return String(uid || '').replace(/(\d)\.(\d)/g, '$1-$2');
+}
+
 function isCommonManagedSlot(uid, label = '') {
   const s = `${uid || ''} ${label || ''}`.toLowerCase();
   return /claude|opus|sonnet|haiku|gpt|codex|gemini|kimi|swe|grok|glm|deepseek/.test(s);
@@ -84,7 +92,7 @@ function slotMatchesUnlockScope(uid, label, unlockScope) {
   return false;
 }
 
-function fallbackRewritePlan(uid, label, unlockScope, slotVisibilityMode, wasDisabled) {
+function fallbackRewritePlan(uid, label, unlockScope, slotVisibilityMode, wasDisabled, ctx = null) {
   const visibility = normalizeSlotVisibilityMode(slotVisibilityMode);
   if (visibility === 'mapped') {
     // 只显示已映射槽位：未映射但官方原本可用的项也禁用掉。
@@ -671,8 +679,11 @@ function buildUnlockSet() {
   for (const s of slots) {
     if (s.enabled === false) continue;
     if (!s.modelUid) continue;
+    // 归一化槽位 modelUid：点/连字符版本号差异统一为官方连字符格式，
+    // 确保与 protobuf field22 的 modelUid 精确命中（否则点格式槽位会匹配失败）。
+    const uid = normalizeModelUid(s.modelUid);
     // 三级 label 查找: captured (用户抓的) > catalog (新形态 API ID) > BUILTIN_LABELS (旧兜底)
-    const orig = captured.get(s.modelUid) || catalogLabels().get(s.modelUid) || BUILTIN_LABELS[s.modelUid] || '';
+    const orig = captured.get(uid) || catalogLabels().get(uid) || BUILTIN_LABELS[uid] || '';
     const customName = s.displayName && s.displayName.trim();
     const labelText = customName || orig;
     const providerName = (s.targets && s.targets[0] && providerNames.get(s.targets[0].providerId)) || '未配置';
@@ -684,12 +695,12 @@ function buildUnlockSet() {
       apiModel,
     }) : '';
     const slotContextWindow = Number(s.contextWindow);
-    byUid.set(s.modelUid, {
+    byUid.set(uid, {
       newLabel,
       customName,
       providerName,
       apiModel,
-      wantImages: s.supportsImages !== false && canDeclareImagesForSlot(s.modelUid),
+      wantImages: s.supportsImages !== false && canDeclareImagesForSlot(uid),
       contextWindow: Number.isFinite(slotContextWindow) && slotContextWindow > 0
         ? Math.trunc(slotContextWindow)
         : null,
@@ -882,7 +893,8 @@ function existingRewriteSpec(uid, origLabel, wasDisabled, cfg, ctx) {
     origLabel,
     ctx.unlockScope,
     ctx.slotVisibilityMode,
-    wasDisabled
+    wasDisabled,
+    ctx
   );
   if (!plan || plan.status === 'hidden') return { keep: false };
 
@@ -1100,7 +1112,7 @@ function rewriteForUnlock(buf, counter, depth, ctx, state) {
             if (!templateTagBytes) templateTagBytes = tagBytes;
             if (!templateChild) templateChild = child;
 
-            const cfg = ctx.byUid.get(uid);
+            const cfg = ctx.byUid.get(uid) || ctx.byUid.get(normalizeModelUid(uid));
             const wasDisabled = findVarintField(child, 4) === 1;
             const origLabel = findField1Label(child) || '';
             const spec = existingRewriteSpec(uid, origLabel, wasDisabled, cfg, ctx);
@@ -1348,7 +1360,7 @@ function unlockInJson(text, unlockAll, byUid, defaultProviderName = '', labelTem
     const wasDisabled = /"disabled"\s*:\s*true/.test(obj);
     const overridePlan = visibleOverridePlan(uid, wasDisabled, slotVisibility);
     const plan = (!cfg && unlockAll)
-      ? (overridePlan || fallbackRewritePlan(uid, origLabel, unlockScope, slotVisibilityMode, wasDisabled))
+      ? (overridePlan || fallbackRewritePlan(uid, origLabel, unlockScope, slotVisibilityMode, wasDisabled, ctx))
       : null;
     const hideConfigured = !!(cfg && overridePlan && overridePlan.status === 'hidden');
     if (!cfg && unlockAll && !plan) continue;
@@ -1494,7 +1506,10 @@ export function unlockModels(resBody) {
     kind = 'connect';
     payload = p;
   } else {
-    return null;
+    // 纯 protobuf（Connect unary application/proto，devin-cli 的 GetCliModelConfigs 等）。
+    // 无帧封装，直接把整个 body 当 payload 改写；改写识别靠 field22 探测，未命中则上层返回 null。
+    kind = 'proto';
+    payload = resBody;
   }
 
   const isJson = payload[0] === 0x7b;
@@ -1526,7 +1541,7 @@ export function unlockModels(resBody) {
     RUNTIME_MODEL_SLOT_STATUS.set(uid, status);
   }
 
-  if (kind === 'plain') {
+  if (kind === 'plain' || kind === 'proto') {
     return { body: newPayload, changed, recompressed: false };
   }
   if (kind === 'gzip') {

@@ -190,6 +190,9 @@ function syncProxyEnhancementSummary() {
 
 function syncLocalProxyUi() {
   setText('globalProxyStatusText', proxyRunning ? '代理运行中' : '代理未启动');
+  if (typeof globalThis.updateClaudeDesktopProxyBadge === 'function') {
+    globalThis.updateClaudeDesktopProxyBadge(proxyRunning);
+  }
   setText('localProxyUnifiedUrl', localProxyOrigin());
   setText('localProxyOpenAiUrl', localProxyBaseUrl('openai'));
   setText('localProxyClaudeUrl', localProxyBaseUrl('anthropic'));
@@ -756,8 +759,8 @@ async function toggleProxy(mode = 'toggle') {
     setProxyButtonBusyText(mode === 'direct' || patched ? '停止中...' : '接入中...');
 
     if (mode === 'direct' || (mode === 'toggle' && patched)) {
-      const ok = await showCustomConfirm(`将停止 ${label} 接入 AnyBridge，并恢复为直连配置。`, '停止接入', 'warn');
-      if (!ok) return;
+      // 精简交互：不再单独弹「确认停止」窗口，直接执行恢复；
+      // 由后续「重启 IDE」弹窗（立即重启 / 稍后）作为唯一确认点。
       const report = await invoke('restore_ide_direct', { target });
       const warnings = [];
       if (report && report.ideConfig && !String(report.ideConfig).startsWith('ok')) warnings.push('IDE 配置: ' + report.ideConfig);

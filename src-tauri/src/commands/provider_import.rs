@@ -2317,7 +2317,8 @@ mod tests {
         let mut candidates = Vec::new();
         scan_cherry_persisted_root(Path::new("000123.log"), &roots[0], &mut candidates);
 
-        assert_eq!(candidates.len(), 1);
+        // v0.5.7 起支持导入 Gemini 供应商，测试数据里的两个供应商都应被解析
+        assert_eq!(candidates.len(), 2);
         let candidate = &candidates[0];
         assert_eq!(candidate.name, "Custom OpenAI");
         assert_eq!(candidate.api_format, ApiFormat::Openai);
@@ -2330,6 +2331,13 @@ mod tests {
             .warnings
             .iter()
             .any(|warning| warning.contains("未启用")));
+
+        let gemini = &candidates[1];
+        assert_eq!(gemini.name, "Gemini");
+        assert_eq!(gemini.api_format, ApiFormat::Gemini);
+        assert_eq!(gemini.api_host, "https://generativelanguage.googleapis.com");
+        assert_eq!(gemini.api_path.as_deref(), Some("/v1beta"));
+        assert_eq!(gemini.models, vec!["gemini-test"]);
     }
 
     #[test]
@@ -2343,9 +2351,11 @@ mod tests {
 
         let mut candidates = Vec::new();
         scan_cherry_persisted_root(Path::new("000123.ldb"), &roots[0], &mut candidates);
-        assert_eq!(candidates.len(), 1);
+        assert_eq!(candidates.len(), 2);
         assert_eq!(candidates[0].name, "Custom OpenAI");
         assert_eq!(candidates[0].api_path.as_deref(), Some("/v1/responses"));
+        assert_eq!(candidates[1].name, "Gemini");
+        assert_eq!(candidates[1].api_format, ApiFormat::Gemini);
     }
 
     fn cherry_persist_test_value() -> Vec<u8> {

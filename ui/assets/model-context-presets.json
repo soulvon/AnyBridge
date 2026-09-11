@@ -1,6 +1,6 @@
 {
-  "version": 2,
-  "updatedAt": "2026-09-04",
+  "version": 3,
+  "updatedAt": "2026-09-10",
   "source": "综合官方文档与公开横评（Anthropic / OpenAI / Google / 智谱 / DeepSeek / Kimi / Qwen / xAI / MiniMax 等）",
   "defaults": {
     "maxInputTokens": 128000,
@@ -33,11 +33,19 @@
     },
     {
       "id": "claude-sonnet-5",
-      "match": ["claude-sonnet-5", "claude-5-sonnet", "sonnet-5", "claude-5-fable"],
+      "match": ["claude-sonnet-5", "claude-5-sonnet", "sonnet-5"],
       "maxInputTokens": 1000000,
       "maxOutputTokens": 128000,
       "vendor": "anthropic",
       "note": "Claude 5 系 1M 上下文"
+    },
+    {
+      "id": "claude-fable-5",
+      "match": ["claude-fable-5", "claude-5-fable", "claude-fable-5-1", "claude-fable-5-1-low", "claude-fable-5-1-medium", "claude-fable-5-1-high", "claude-fable-5-1-xhigh", "claude-fable-5-1-max"],
+      "maxInputTokens": 1000000,
+      "maxOutputTokens": 128000,
+      "vendor": "anthropic",
+      "note": "Claude Fable 5 系 1M 上下文"
     },
     {
       "id": "claude-opus-4-6",
@@ -321,7 +329,7 @@
     },
     {
       "id": "glm-5.3",
-      "match": ["glm-5.3", "glm5.3", "glm_5.3", "glm-5-3", "glm_5_3"],
+      "match": ["glm-5.3", "glm5.3", "glm_5.3", "glm-5-3", "glm_5_3", "glm-5-3-low", "glm-5-3-high", "glm-5-3-max"],
       "maxInputTokens": 1000000,
       "maxOutputTokens": 128000,
       "vendor": "zhipu",
@@ -378,10 +386,10 @@
     {
       "id": "grok-4.6",
       "match": ["grok-4.6", "grok4.6", "grok_4.6", "grok-4-6"],
-      "maxInputTokens": 1000000,
+      "maxInputTokens": 500000,
       "maxOutputTokens": 32768,
       "vendor": "xai",
-      "note": "1M 上下文"
+      "note": "500K 上下文"
     },
     {
       "id": "grok-4.5",
@@ -432,6 +440,22 @@
       "note": "256K 上下文"
     },
     {
+      "id": "deepseek-v4",
+      "match": [
+        "deepseek-v4",
+        "deepseek-v4-pro",
+        "deepseek-v4-flash",
+        "deepseek-v4-lite",
+        "deepseek-v4-chat",
+        "deepseek-v4-reasoner",
+        "deepseek-v4.0"
+      ],
+      "maxInputTokens": 1000000,
+      "maxOutputTokens": 64000,
+      "vendor": "deepseek",
+      "note": "DeepSeek V4 全系官方 1M 上下文"
+    },
+    {
       "id": "deepseek-reasoner",
       "match": ["deepseek-reasoner", "deepseek-r1", "deepseek_r1"],
       "maxInputTokens": 128000,
@@ -441,11 +465,26 @@
     },
     {
       "id": "deepseek-chat",
-      "match": ["deepseek-chat", "deepseek-v3", "deepseek-v3.2", "deepseek-v4"],
+      "match": ["deepseek-chat", "deepseek-v3", "deepseek-v3.2"],
       "maxInputTokens": 128000,
       "maxOutputTokens": 16384,
       "vendor": "deepseek",
       "note": "官方常见 128K"
+    },
+    {
+      "id": "kimi-k3",
+      "match": [
+        "kimi-k3",
+        "kimi-k-3",
+        "kimi-k3-low",
+        "kimi-k3-high",
+        "kimi-k3-max",
+        "kimi-k3-preview"
+      ],
+      "maxInputTokens": 1000000,
+      "maxOutputTokens": 64000,
+      "vendor": "moonshot",
+      "note": "Kimi K3 官方 1M 上下文"
     },
     {
       "id": "kimi-k2.5",
@@ -659,6 +698,13 @@
       "note": "其他 Grok 默认 256K"
     },
     {
+      "id": "deepseek-v4-family",
+      "includesAny": ["deepseek-v4", "deepseek-v-4", "deepseek_v4"],
+      "maxInputTokens": 1000000,
+      "maxOutputTokens": 64000,
+      "note": "DeepSeek V4 系列 1M 上下文"
+    },
+    {
       "id": "deepseek-long",
       "includesAny": ["deepseek"],
       "requiresAny": ["long", "1m"],
@@ -672,6 +718,14 @@
       "maxInputTokens": 128000,
       "maxOutputTokens": 16384,
       "note": "DeepSeek 默认 128K"
+    },
+    {
+      "id": "kimi-k3-family",
+      "includesAny": ["kimi", "moonshot"],
+      "requiresAny": ["k3", "k-3"],
+      "maxInputTokens": 1000000,
+      "maxOutputTokens": 64000,
+      "note": "Kimi K3 系 1M 上下文"
     },
     {
       "id": "kimi-k2-family",

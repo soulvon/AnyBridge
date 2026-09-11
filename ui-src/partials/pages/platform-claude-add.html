@@ -1,18 +1,32 @@
-        <!-- ═══════ PAGE: PLATFORM · CLAUDE CODE · 添加模型（独立页面） ═══════ -->
+        <!-- ═══════ PAGE: PLATFORM · CLAUDE CODE · 添加/编辑配置（独立页面） ═══════ -->
         <div class="page" id="page-platform-claude-add" role="tabpanel" aria-labelledby="tab-platforms">
           <div class="platform-console-hero model-add-hero glass-card">
             <div class="platform-console-titlebar">
-              <button class="btn-ghost platform-console-back" data-action="navigateTo" data-arg="platform-claude-code">← 返回</button>
+              <button class="btn-ghost platform-console-back" data-action="closeClaudeCodeConfigEditor">← 返回</button>
               <div class="platform-console-titlewrap">
-                <strong>添加模型 · Claude Code</strong>
-                <span class="platform-console-sub">从统一供应商模型池选择并勾选模型，将自动建立 Claude Code 环境变量与设置，并写入 ~/.claude/settings.json。</span>
+                <strong id="claude-code-config-page-title">添加配置 · Claude Code</strong>
+                <span class="platform-console-sub" id="claude-code-config-page-sub">从现有 Anthropic 供应商创建或自由定制一份可切换的 Claude Code 独立配置。</span>
+              </div>
+              <div class="codex-page-hero-actions" style="display: flex; align-items: center; gap: 8px; margin-left: auto;">
+                <button class="btn-ghost" data-action="closeClaudeCodeConfigEditor">取消</button>
+                <button class="btn-primary" data-action="saveClaudeCodeConfigEditor" data-args="[false]">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>
+                    <polyline points="17 21 17 13 7 13 7 21"></polyline>
+                    <polyline points="7 3 7 8 15 8"></polyline>
+                  </svg>
+                  <span>保存配置</span>
+                </button>
+                <button class="btn-ghost accent" id="claude-code-config-save-switch-btn" data-action="saveClaudeCodeConfigEditor" data-args="[true]">
+                  <span>保存并切换</span>
+                </button>
               </div>
             </div>
           </div>
 
           <div class="cb-add-layout">
             <!-- 左列：供应商列表 -->
-            <aside class="cb-add-sidebar glass-card">
+            <aside class="cb-add-sidebar glass-card" id="claude-code-config-source-wrap">
               <div class="cb-add-search">
                 <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" fill="none" stroke-width="2"
                   stroke-linecap="round" stroke-linejoin="round">
@@ -53,63 +67,257 @@
               <div class="cb-add-provider-list" id="claude-add-provider-list"></div>
             </aside>
 
-            <!-- 右列：模型列表 -->
-            <section class="cb-add-main">
-              <div class="glass-card cb-add-models-card">
-                <div class="cb-add-models-head">
-                  <div>
-                    <div class="cb-add-models-title" id="claude-add-models-title">请选择供应商</div>
-                    <div class="cb-add-models-sub" id="claude-add-models-sub">左侧选择一个供应商，右侧将展示其可用模型</div>
+            <!-- 右列：主工作区（全量垂直滚动，展示完所有设置项） -->
+            <section class="cb-add-main codex-add-main">
+              <input type="hidden" id="claude-code-config-edit-id">
+              <input type="hidden" id="claude-code-config-source-id">
+              <textarea id="claude-code-config-models" class="codex-config-models-input" style="display:none;" aria-hidden="true" tabindex="-1"></textarea>
+
+              <!-- 卡片 1：基础连接信息 -->
+              <div class="glass-card" style="padding: 16px 20px;">
+                <div style="font-size: 14px; font-weight: 700; color: var(--text-primary); margin-bottom: 14px; display: flex; align-items: center;">
+                  <div style="display: flex; align-items: center; gap: 8px;">
+                    <span style="display: inline-block; width: 3px; height: 14px; background: var(--accent); border-radius: 2px;"></span>
+                    <span>基础连接信息</span>
                   </div>
-                  <div style="display:flex; gap:8px;">
-                    <button class="btn-ghost accent" data-action="claudeAddSelectAll">全选</button>
-                    <button class="btn-ghost secondary" data-action="claudeAddSelectNone">全不选</button>
-                    <button class="btn-primary" id="claude-add-confirm-page"
-                      disabled data-action="confirmAddClaudeModelsPage">
-                      <svg viewBox="0 0 24 24"
-                        style="width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;">
-                        <path d="M20 6L9 17l-5-5" />
+                </div>
+
+                <div style="display: grid; grid-template-columns: minmax(180px, 1fr) minmax(240px, 1.4fr); gap: 14px; margin-bottom: 14px;">
+                  <div style="display: flex; flex-direction: column; gap: 6px;">
+                    <label style="font-size: 12.5px; font-weight: 700; color: var(--text-secondary);">配置名称</label>
+                    <input id="claude-code-config-name" class="field-input" style="height: 36px; padding: 0 12px; font-size: 13px;" placeholder="例如：AnyRouter Claude"
+                      data-action="syncClaudeCodeRawConfigFromFields" data-events="input">
+                  </div>
+                  <div style="display: flex; flex-direction: column; gap: 6px;">
+                    <label style="font-size: 12.5px; font-weight: 700; color: var(--text-secondary);">Base URL (Anthropic 端点)</label>
+                    <input id="claude-code-config-base-url" class="field-input" style="height: 36px; padding: 0 12px; font-size: 13px;" placeholder="https://api.example.com"
+                      data-action="syncClaudeCodeRawConfigFromFields" data-events="input">
+                  </div>
+                </div>
+
+                <div style="display: flex; flex-direction: column; gap: 6px;">
+                  <div style="display: flex; align-items: center; justify-content: space-between;">
+                    <label style="font-size: 12.5px; font-weight: 700; color: var(--text-secondary);">API Key (访问凭证)</label>
+                    <button type="button" class="btn-ghost" id="claude-code-config-sync-token-btn"
+                      data-action="syncClaudeCodeConfigTokenFromSource" style="padding: 2px 8px; height: 24px; font-size: 11.5px; display: inline-flex; align-items: center; gap: 5px;" title="从关联的来源供应商拉取最新令牌和地址">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/>
                       </svg>
-                      <span class="model-action-label"> 保存选择</span>
+                      <span>同步来源令牌</span>
+                    </button>
+                  </div>
+                  <div class="codex-input-password-wrap" style="position: relative; width: 100%;">
+                    <input id="claude-code-config-api-key" class="field-input" type="password" style="height: 36px; padding: 0 40px 0 12px; font-size: 13px; width: 100%; box-sizing: border-box;" placeholder="sk-..." autocomplete="off"
+                      data-action="syncClaudeCodeRawConfigFromFields" data-events="input">
+                    <button type="button" class="codex-password-toggle-btn" id="claude-code-config-api-key-toggle"
+                      data-action="toggleClaudeCodeKeyVisibility" title="显示或隐藏 API Key" aria-label="显示或隐藏 API Key" style="position: absolute; right: 8px; top: 50%; transform: translateY(-50%); background: transparent; border: none; cursor: pointer; color: var(--text-muted); display: flex; align-items: center; justify-content: center; width: 26px; height: 26px;">
+                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"></path>
+                        <circle cx="12" cy="12" r="3"></circle>
+                      </svg>
                     </button>
                   </div>
                 </div>
-                <div class="cb-add-models-body" id="claude-add-models-list-page">
-                  <div class="cb-add-models-empty">请从左侧选择一个供应商</div>
-                </div>
               </div>
 
-              <!-- Claude Code 特性卡片：能力适配与网络重试参数 -->
-              <div class="glass-card cb-add-caps-card">
-                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
-                  <div class="cb-add-caps-title" style="margin: 0;">特性与重试参数</div>
+              <!-- 卡片 2：模型角色映射（CC Switch 规范） -->
+              <div class="glass-card cb-add-models-card claude-code-role-card" style="flex: 0 0 auto; overflow: visible !important; position: relative; z-index: 50;">
+                <div class="cb-add-models-head" style="padding: 14px 20px;">
+                  <div>
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                      <span style="display: inline-block; width: 3px; height: 14px; background: var(--accent); border-radius: 2px;"></span>
+                      <span class="cb-add-models-title">模型角色映射与 1M 上下文</span>
+                    </div>
+                    <div class="cb-add-models-sub" id="claude-code-config-model-status">配置各角色实际请求模型，勾选 1M 可声明百万上下文支持</div>
+                  </div>
                   <div style="display: flex; align-items: center; gap: 8px;">
-                    <span style="font-size: 11.5px; color: var(--text-secondary); font-weight: 600;">重试次数：</span>
-                    <input type="number" id="claude-add-max-retries" class="field-input" min="0" max="15" step="1" value="10" style="width: 60px; height: 28px; padding: 0 6px; font-size: 12px; text-align: center;">
+                    <button type="button" class="btn-ghost" id="claude-code-quick-set-btn" style="height: 28px; padding: 0 10px; font-size: 12px; display: inline-flex; align-items: center; gap: 5px;" onclick="claudeCodeQuickSetAllModels()" title="使用当前主模型快速铺满所有角色">
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3Z"/>
+                      </svg>
+                      <span>一键设置</span>
+                    </button>
+                    <button type="button" class="btn-ghost accent" id="claude-code-config-fetch-models-btn"
+                      data-action-chain='[{"fn":"fetchClaudeCodeConfigModels"}]' data-action="fetchClaudeCodeConfigModels" data-prevent data-stop>
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/>
+                      </svg>
+                      <span>拉取模型列表</span>
+                    </button>
                   </div>
                 </div>
 
-                <!-- 能力胶囊选项 -->
-                <div class="cb-add-caps">
-                  <label class="cb-add-cap-chip">
-                    <input type="checkbox" id="claude-add-cap-tools" checked>
-                    <span>原生工具调用 (Tools)</span>
-                  </label>
-                  <label class="cb-add-cap-chip">
-                    <input type="checkbox" id="claude-add-cap-thinking" checked>
-                    <span>深度思考 (Thinking)</span>
-                  </label>
-                  <label class="cb-add-cap-chip">
-                    <input type="checkbox" id="claude-add-cap-vision" checked>
-                    <span>视觉多模态 (Vision)</span>
-                  </label>
-                  <label class="cb-add-cap-chip">
-                    <input type="checkbox" id="claude-add-cap-unlock" checked>
-                    <span>Claude Code Unlock 兼容</span>
-                  </label>
+                <!-- 角色网格 -->
+                <div style="padding: 14px 20px;">
+                  <div class="claude-role-table">
+                    <div class="claude-role-row-header">
+                      <span>模型角色</span>
+                      <span>显示名称 (/model 菜单)</span>
+                      <span>实际请求模型 (API 传参)</span>
+                      <span style="text-align: center;">声明 1M</span>
+                    </div>
+
+                    <!-- 1. Sonnet (主力) -->
+                    <div class="claude-role-row">
+                      <div class="claude-role-badge">Sonnet</div>
+                      <input id="claude-model-name-sonnet" class="field-input" style="height: 36px; padding: 0 10px; font-size: 12.5px;" placeholder="例如 Claude 3.7 Sonnet" oninput="onClaudeRoleFieldInput()">
+                      <div class="custom-role-select" id="claude-role-select-sonnet">
+                        <input type="hidden" id="claude-model-id-sonnet">
+                      </div>
+                      <label class="claude-1m-toggle-box" id="claude-1m-box-sonnet" title="勾选后实际请求模型将携带 [1M] 上下文标识">
+                        <input type="checkbox" id="claude-1m-sonnet" onchange="onClaude1mCheckboxChanged('sonnet', this.checked)">
+                        <span>1M</span>
+                      </label>
+                    </div>
+
+                    <!-- 2. Opus (推理) -->
+                    <div class="claude-role-row">
+                      <div class="claude-role-badge">Opus</div>
+                      <input id="claude-model-name-opus" class="field-input" style="height: 36px; padding: 0 10px; font-size: 12.5px;" placeholder="例如 Claude 4.7 Opus" oninput="onClaudeRoleFieldInput()">
+                      <div class="custom-role-select" id="claude-role-select-opus">
+                        <input type="hidden" id="claude-model-id-opus">
+                      </div>
+                      <label class="claude-1m-toggle-box" id="claude-1m-box-opus" title="勾选后实际请求模型将携带 [1M] 上下文标识">
+                        <input type="checkbox" id="claude-1m-opus" onchange="onClaude1mCheckboxChanged('opus', this.checked)">
+                        <span>1M</span>
+                      </label>
+                    </div>
+
+                    <!-- 3. Fable (长程任务) -->
+                    <div class="claude-role-row">
+                      <div class="claude-role-badge">Fable</div>
+                      <input id="claude-model-name-fable" class="field-input" style="height: 36px; padding: 0 10px; font-size: 12.5px;" placeholder="例如 Claude Fable 5.1" oninput="onClaudeRoleFieldInput()">
+                      <div class="custom-role-select" id="claude-role-select-fable">
+                        <input type="hidden" id="claude-model-id-fable">
+                      </div>
+                      <label class="claude-1m-toggle-box" id="claude-1m-box-fable" title="勾选后实际请求模型将携带 [1M] 上下文标识">
+                        <input type="checkbox" id="claude-1m-fable" onchange="onClaude1mCheckboxChanged('fable', this.checked)">
+                        <span>1M</span>
+                      </label>
+                    </div>
+
+                    <!-- 4. Haiku (轻量快速) -->
+                    <div class="claude-role-row">
+                      <div class="claude-role-badge">Haiku</div>
+                      <input id="claude-model-name-haiku" class="field-input" style="height: 36px; padding: 0 10px; font-size: 12.5px;" placeholder="例如 Claude 3.5 Haiku" oninput="onClaudeRoleFieldInput()">
+                      <div class="custom-role-select" id="claude-role-select-haiku">
+                        <input type="hidden" id="claude-model-id-haiku">
+                      </div>
+                      <div style="text-align: center; color: var(--text-muted); font-size: 13px; line-height: 36px;">—</div>
+                    </div>
+
+                    <!-- 5. Subagent (子智能体) -->
+                    <div class="claude-role-row">
+                      <div class="claude-role-badge">Subagent</div>
+                      <div class="claude-subagent-note">不显示在 /model 菜单</div>
+                      <div class="custom-role-select" id="claude-role-select-subagent">
+                        <input type="hidden" id="claude-model-id-subagent">
+                      </div>
+                      <label class="claude-1m-toggle-box" id="claude-1m-box-subagent" title="勾选后实际请求模型将携带 [1M] 上下文标识">
+                        <input type="checkbox" id="claude-1m-subagent" onchange="onClaude1mCheckboxChanged('subagent', this.checked)">
+                        <span>1M</span>
+                      </label>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- 底部：默认兜底模型 -->
+                <div style="padding: 14px 20px; border-top: 1px solid var(--border); background: rgba(0,0,0,0.015);">
+                  <div style="display: flex; flex-direction: column; gap: 6px;">
+                    <div style="display: flex; align-items: center; justify-content: space-between;">
+                      <label style="font-size: 12.5px; font-weight: 700; color: var(--text-secondary);">默认兜底模型 (ANTHROPIC_MODEL)</label>
+                      <span style="font-size: 11px; color: var(--text-muted);">当终端未匹配具体角色时使用的默认模型</span>
+                    </div>
+                    <div style="display: grid; grid-template-columns: 1fr 76px; gap: 12px; align-items: center;">
+                      <div class="custom-role-select" id="claude-role-select-fallback">
+                        <input type="hidden" id="claude-code-config-model">
+                      </div>
+                      <label class="claude-1m-toggle-box" id="claude-1m-box-fallback" title="勾选后兜底模型将携带 [1M] 上下文标识">
+                        <input type="checkbox" id="claude-1m-fallback" onchange="onClaude1mCheckboxChanged('fallback', this.checked)">
+                        <span>1M</span>
+                      </label>
+                    </div>
+                  </div>
                 </div>
               </div>
 
+              <!-- 卡片 3：特性与重试参数 -->
+              <div class="glass-card" style="padding: 16px 20px; position: relative; z-index: 1;">
+                <div style="font-size: 14px; font-weight: 700; color: var(--text-primary); margin-bottom: 14px; display: flex; align-items: center; justify-content: space-between;">
+                  <div style="display: flex; align-items: center; gap: 8px;">
+                    <span style="display: inline-block; width: 3px; height: 14px; background: var(--accent); border-radius: 2px;"></span>
+                    <span>特性与重试参数</span>
+                  </div>
+                  <div style="display: flex; align-items: center; gap: 8px;">
+                    <span style="font-size: 12px; color: var(--text-secondary); font-weight: 600;">网络最大重试：</span>
+                    <input type="number" id="claude-add-max-retries" class="field-input" min="0" max="15" step="1" value="10" style="width: 70px; height: 30px; padding: 0 6px; font-size: 12px; text-align: center;">
+                  </div>
+                </div>
+
+                <div class="codex-toggle-grid">
+                  <div class="codex-toggle-card">
+                    <div class="codex-toggle-info">
+                      <span class="codex-toggle-title">原生工具调用 (Tools)</span>
+                      <span class="codex-toggle-desc">允许 Claude Code 执行 Bash 脚本、文件编辑和命令行调用</span>
+                    </div>
+                    <label class="switch" style="flex: 0 0 auto;">
+                      <input type="checkbox" id="claude-add-cap-tools" checked>
+                      <span class="slider"></span>
+                    </label>
+                  </div>
+
+                  <div class="codex-toggle-card">
+                    <div class="codex-toggle-info">
+                      <span class="codex-toggle-title">深度思考 (Thinking)</span>
+                      <span class="codex-toggle-desc">启用扩展思考能力（Extended Thinking），提升复杂任务推理深度</span>
+                    </div>
+                    <label class="switch" style="flex: 0 0 auto;">
+                      <input type="checkbox" id="claude-add-cap-thinking" checked>
+                      <span class="slider"></span>
+                    </label>
+                  </div>
+
+                  <div class="codex-toggle-card">
+                    <div class="codex-toggle-info">
+                      <span class="codex-toggle-title">视觉多模态 (Vision)</span>
+                      <span class="codex-toggle-desc">支持传入本地截图与图片文件进行视觉分析理解</span>
+                    </div>
+                    <label class="switch" style="flex: 0 0 auto;">
+                      <input type="checkbox" id="claude-add-cap-vision" checked>
+                      <span class="slider"></span>
+                    </label>
+                  </div>
+
+                  <div class="codex-toggle-card">
+                    <div class="codex-toggle-info">
+                      <span class="codex-toggle-title">Claude Code Unlock 兼容</span>
+                      <span class="codex-toggle-desc">对齐非官方中转渠道的请求头与握手规范，避免连接阻断</span>
+                    </div>
+                    <label class="switch" style="flex: 0 0 auto;">
+                      <input type="checkbox" id="claude-add-cap-unlock" checked>
+                      <span class="slider"></span>
+                    </label>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 卡片 4：实际配置文件内容（大模态弹窗） -->
+              <div class="glass-card" style="padding: 16px 20px; display: flex; align-items: center; justify-content: space-between; gap: 16px;">
+                <div style="display: flex; align-items: center; gap: 10px;">
+                  <span style="display: inline-block; width: 3px; height: 16px; background: var(--accent); border-radius: 2px;"></span>
+                  <div>
+                    <div style="font-weight: 700; color: var(--text-primary); font-size: 13.5px;">实际配置文件 (settings.json)</div>
+                    <div style="font-size: 12px; color: var(--text-muted); margin-top: 2px;">以大弹窗查看 ~/.claude/settings.json 原文与完整配置结构</div>
+                  </div>
+                </div>
+                <button type="button" class="btn-ghost accent" data-action="openPlatformRealConfigModal" data-arg="claude-code" style="display: inline-flex; align-items: center; gap: 6px; padding: 4px 14px; height: 32px; font-size: 12.5px; font-weight: 600;">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M12 20h9"/>
+                    <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
+                  </svg>
+                  <span>编辑查看</span>
+                </button>
+              </div>
             </section>
           </div>
         </div>

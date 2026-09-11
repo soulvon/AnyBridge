@@ -352,13 +352,14 @@ test('Claude Desktop maps requested roles to bound proxy routes from proxy-route
         { uid: 'route-haiku-uid', id: 'qwen-flash', enabled: true, targets: [{ providerId: 'qwen', model: 'flash' }] },
       ],
       claudeDesktop: {
-        sonnet: 'route-sonnet-uid',
+        sonnet: 'route-sonnet-uid[1m]',
         opus: 'route-opus-uid',
         haiku: 'route-haiku-uid',
         fable: '',
       },
     }), 'utf8');
 
+    // 勾选「声明 1M」后绑定值会带 [1m] 后缀，仍必须命中同一条本地路由
     const mappedSonnet = __localProxyTest.mapClaudeDesktopModel('claude-sonnet-5[1m]');
     assert.equal(mappedSonnet.model, 'kimi-k2.7-code');
 
@@ -396,8 +397,34 @@ test('Antigravity handler recognizes v1internal paths and builds injected models
       }
     ]
   });
-  assert.ok(models.some(m => m.name === 'models/deepseek-chat'));
-  assert.ok(models.some(m => m.name === 'models/gemini-3-pro'));
+  // 官方目录缺失时不得伪造任何官方模型（注入会触发前端 Preact 无限渲染死循环）
+  assert.equal(models.length, 2);
+  assert.ok(models.every(m => m.name.startsWith('models/MODEL_')));
+  assert.ok(models.some(m => /deepseek-chat/.test(m.displayName)));
+  assert.ok(models.some(m => /deepseek-reasoner/.test(m.displayName)));
+  assert.ok(!models.some(m => m.catalogKey.startsWith('MODEL_GOOGLE_GEMINI_')), '严禁注入官方 Gemini 模型');
+
+  const providers = new Map([['ag-provider', {
+    id: 'ag-provider',
+    name: 'AG Provider',
+    apiHost: 'http://127.0.0.1:9999',
+    apiPath: '/v1',
+    apiKey: 'test-key',
+    enabled: true,
+  }]]);
+  const resolved = __localProxyTest.resolveProxyModelForTest('deepseek-chat', 'gemini', 'antigravity', providers, {
+    antigravityConfigs: [{
+      id: 'ag-custom',
+      name: 'DeepSeek',
+      defaultModel: 'deepseek-chat',
+      models: ['deepseek-chat', 'deepseek-reasoner'],
+      sourceProviderId: 'ag-provider',
+      enabled: true,
+      injectModels: true,
+    }],
+  });
+  assert.equal(resolved.route.targets[0].providerId, 'ag-provider', 'Antigravity 专用配置必须优先于全局同名路由');
+  assert.equal(resolved.route.targets[0].model, 'deepseek-chat');
 
   const assist = mockAntigravityLoadCodeAssist();
   assert.ok(Array.isArray(assist.paidTier.availableCredits));

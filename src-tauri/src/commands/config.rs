@@ -559,6 +559,14 @@ pub struct ClaudeDesktopConfig {
     pub haiku_model: String,
     #[serde(rename = "fableModel", default, skip_serializing_if = "String::is_empty")]
     pub fable_model: String,
+    #[serde(rename = "sonnetName", default, skip_serializing_if = "String::is_empty")]
+    pub sonnet_name: String,
+    #[serde(rename = "opusName", default, skip_serializing_if = "String::is_empty")]
+    pub opus_name: String,
+    #[serde(rename = "haikuName", default, skip_serializing_if = "String::is_empty")]
+    pub haiku_name: String,
+    #[serde(rename = "fableName", default, skip_serializing_if = "String::is_empty")]
+    pub fable_name: String,
     #[serde(
         rename = "sourceProviderId",
         default,
@@ -680,6 +688,9 @@ pub struct AntigravityConfig {
     /// 是否注入到 Antigravity 下拉菜单中（默认 true）
     #[serde(rename = "injectModels", default = "default_true")]
     pub inject_models: bool,
+    /// 是否启用第三方图片理解
+    #[serde(rename = "useThirdPartyVision", default)]
+    pub use_third_party_vision: bool,
     /// 自定义模型目录
     #[serde(
         rename = "modelCatalog",
@@ -966,6 +977,13 @@ pub struct ProviderStore {
         skip_serializing_if = "Vec::is_empty"
     )]
     pub antigravity_configs: Vec<AntigravityConfig>,
+    /// Antigravity 运行模式："pure"（纯 BYOK 模式）或 "hybrid"（混合模式：官方+自建）。
+    #[serde(
+        rename = "antigravityMode",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub antigravity_mode: Option<String>,
     // `current`/激活概念已废弃，改用每槽位 targets 故障转移。保留字段仅为兼容旧文件反序列化，不再读写。
     #[serde(default, skip_serializing)]
     #[allow(dead_code)]

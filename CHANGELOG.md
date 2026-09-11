@@ -2,6 +2,16 @@
 
 All notable changes to AnyBridge will be documented in this file.
 
+## v0.5.8 - 2026-09-11
+
+- 修复 Antigravity 自定义 API 模型可显示但无法对话的问题：
+  - 根因是纯 BYOK 模型目录丢失了 Language Server 构建 Cascade 所需的内部模型注册，导致请求发往上游前即报 `unknown model key MODEL_PLACEHOLDER_M36/M50/M318: model not found`；同时自定义模型的运行枚举、`modelProvider` 与 `apiProvider` 协议族不一致，生成的 ModelInfo 无法稳定注册。
+  - 新增 M36、M50、M318 隐藏依赖模型，仅供 Language Server 内部使用，不加入模型下拉列表；这些内部生成请求统一路由到当前启用的 Antigravity BYOK 默认模型。
+  - 自定义模型按运行枚举同步生成匹配的 Anthropic/OpenAI/Gemini Provider 字段，并携带真实 `vertexModelId`，保证模型目录、执行器与上游路由一致。
+  - 使用真实 Antigravity Language Server 重启验证：模型解析错误清零；自定义主模型及 M36/M50/M318 内部模型均可经本地代理返回有效响应。
+- 修复 Antigravity 混合模式启动期网络卡死：使用 `AbortController` 硬超时覆盖 DNS、代理 CONNECT、TLS 与响应全生命周期，避免官方服务不可达时阻塞 IDE 状态刷新。
+- 完善 Antigravity 账号握手、模型目录、Token 计数、推理响应和遥测旁路处理，并补充协议三元组、隐藏依赖和内部路由回归测试。
+
 ## v0.5.7 - 2026-09-09
 
 - 紧急修复前端致命崩溃：`55-platforms.js` 引入 Antigravity 平台时 `openAntigravityAddPage` 未定义，模块加载链在挂载阶段抛出 ReferenceError 整体中断，导致「添加模型」按钮无响应、代理状态不刷新、CPA 套件状态不显示；已补齐函数定义（保留 `openAntigravityAddModal` 别名兼容），并在 `check:ui` 中新增 `mirrorFns` 挂载符号静态防呆检查，此类错误今后在打包前直接拦截。

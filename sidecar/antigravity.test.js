@@ -9,9 +9,15 @@ import {
   isAntigravityPath,
   getAntigravityMethod,
   buildAntigravityModelsList,
+  mergeAntigravityModelsResponse,
+  resolveAntigravityCustomModel,
   cleanAntigravityModelId,
   mockAntigravityLoadCodeAssist,
   mockAntigravityUserQuotaSummary,
+  mockAntigravityUserInfo,
+  mockAntigravityAdminControls,
+  mockAntigravityUserSettings,
+  isAntigravityBypassMetricsPath,
 } from './lib/antigravity-handler.js';
 import { __localProxyTest, handleLocalProxyRequest } from './local-proxy.js';
 
@@ -59,25 +65,19 @@ test('Antigravity handler: model catalog injection with custom models', () => {
   const list = buildAntigravityModelsList(mockProvidersJson);
   assert.ok(Array.isArray(list) && list.length > 0);
 
-  // 1. 自定义 Antigravity 模型已注入
-  const customModel1 = list.find(m => m.name === 'models/deepseek-ai/DeepSeek-V3');
-  assert.ok(customModel1, '应当包含用户配置的 deepseek-ai/DeepSeek-V3');
-  assert.match(customModel1.displayName, /DeepSeek-V3/);
+  // 自定义 Antigravity 模型以合法的语言服务器白名单枚举注入（catalogKey 带 byok- 前缀）
+  const customModels = list.filter(m => m.catalogKey.startsWith('byok-'));
+  assert.equal(customModels.length, 2);
+  assert.ok(customModels.some(m => /DeepSeek-V3/.test(m.displayName)));
+  assert.ok(customModels.some(m => /DeepSeek-R1/.test(m.displayName)));
 
-  const customModel2 = list.find(m => m.name === 'models/deepseek-ai/DeepSeek-R1');
-  assert.ok(customModel2, '应当包含用户配置的 deepseek-ai/DeepSeek-R1');
+  // 普通 providers 不能绕过 antigravityConfigs 被隐式注入
+  const gpt4o = list.find(m => m.displayName === 'gpt-4o');
+  assert.equal(gpt4o, undefined);
 
-  // 2. 启用的官方供应商模型已注入
-  const gpt4o = list.find(m => m.name === 'models/gpt-4o');
-  assert.ok(gpt4o, '应当包含启用的供应商模型 gpt-4o');
-
-  // 3. 禁用的供应商模型不应被注入
-  const disabled = list.find(m => m.name === 'models/disabled-model');
-  assert.equal(disabled, undefined, '禁用的供应商模型不应注入');
-
-  // 4. 默认兜底官方模型已注入
-  const geminiPro = list.find(m => m.name === 'models/gemini-3-pro');
-  assert.ok(geminiPro, '应当包含默认模型 gemini-3-pro');
+  // 官方目录缺失时严禁伪造官方模型（实测注入官方枚举会触发前端 Preact 无限渲染死循环）
+  const anyOfficial = list.find(m => m.catalogKey.startsWith('MODEL_GOOGLE_GEMINI_'));
+  assert.equal(anyOfficial, undefined);
 
   assert.equal(cleanAntigravityModelId('models/deepseek-ai/DeepSeek-V3'), 'deepseek-ai/DeepSeek-V3');
   assert.equal(cleanAntigravityModelId('deepseek-chat'), 'deepseek-chat');
@@ -86,13 +86,139 @@ test('Antigravity handler: model catalog injection with custom models', () => {
 test('Antigravity handler: quota & code assist mocks', () => {
   const codeAssist = mockAntigravityLoadCodeAssist();
   assert.equal(codeAssist.currentTier?.id, 'standard-tier');
-  assert.equal(codeAssist.cloudaicompanionProject, 'projects/antigravity-local');
+  assert.equal(codeAssist.cloudaicompanionProject, '');
   assert.ok(codeAssist.paidTier?.availableCredits?.[0]?.creditAmount > 0);
+  assert.ok(codeAssist.allowedTiers?.some(tier => tier.id === 'free-tier'));
+
+  const fallbackModels = mergeAntigravityModelsResponse({}, {});
+  for (const details of Object.values(fallbackModels.models)) {
+    assert.ok(details.model, '每个模型必须声明 model 枚举值');
+    assert.ok(Object.values(details.supportedMimeTypes || {}).every(value => typeof value === 'boolean'), 'supportedMimeTypes 必须是 map<string, bool>');
+  }
+
+  const customModels = mergeAntigravityModelsResponse({}, {
+    antigravityConfigs: [{
+      id: 'custom-1',
+      name: 'Custom Model',
+      defaultModel: 'vendor/model-a',
+      models: ['vendor/model-a', 'vendor/model-b'],
+      sourceProviderName: 'Vendor',
+      enabled: true,
+      injectModels: true,
+    }],
+  });
+  const customEntries = Object.entries(customModels.models)
+    .filter(([, details]) => details.tagDescription === 'BYOK');
+  assert.equal(customEntries.length, 2);
+  assert.ok(customEntries.every(([catalogKey]) => catalogKey.startsWith('byok-')), '自定义模型 map key 必须使用独立 catalogKey');
+  assert.ok(customEntries.every(([, details]) => details.model.startsWith('MODEL_')), '自定义模型必须使用合法预留运行枚举');
+  assert.equal(new Set(customEntries.map(([, details]) => details.model)).size, customEntries.length, '自定义模型运行枚举必须唯一');
+  assert.ok(customEntries.every(([, details]) => details.requestedModel === details.model && details.planModel === details.model));
+  assert.ok(customEntries.every(([, details]) => {
+    if (details.modelProvider === 'MODEL_PROVIDER_ANTHROPIC') {
+      return details.apiProvider === 'API_PROVIDER_ANTHROPIC_VERTEX';
+    }
+    if (details.modelProvider === 'MODEL_PROVIDER_OPENAI') {
+      return details.apiProvider === 'API_PROVIDER_OPENAI_VERTEX';
+    }
+    return details.apiProvider === 'API_PROVIDER_GOOGLE_GEMINI';
+  }), '运行枚举、模型供应商和 API 供应商必须保持同一协议族');
+  assert.ok(customEntries.every(([, details]) => details.vertexModelId), 'BYOK 模型必须携带真实上游模型 ID');
+  assert.ok(Array.isArray(customModels.agentModelSorts) && customModels.agentModelSorts.length > 0, '必须构建 agentModelSorts 确保 IDE 前端展示模型');
+  assert.ok(customModels.agentModelSorts[0].groups[0].modelIds.length > 0, 'agentModelSorts 分组必须包含注入的 BYOK 模型');
+  assert.ok(customModels.defaultAgentModelId, '必须设置合法存在的 defaultAgentModelId');
+
+  const internalDependencies = Object.entries(customModels.models)
+    .filter(([, details]) => ['MODEL_PLACEHOLDER_M36', 'MODEL_PLACEHOLDER_M50', 'MODEL_PLACEHOLDER_M318'].includes(details.model));
+  assert.equal(internalDependencies.length, 3, '纯 BYOK 模式必须注册 Language Server 所需的 M36/M50/M318 隐藏模型');
+  const visibleModelIds = customModels.agentModelSorts.flatMap(sort =>
+    (sort.groups || []).flatMap(group => group.modelIds || [])
+  );
+  assert.ok(internalDependencies.every(([catalogKey]) => !visibleModelIds.includes(catalogKey)), '内部依赖模型不得出现在用户模型下拉框');
+  assert.equal(resolveAntigravityCustomModel('MODEL_PLACEHOLDER_M36', {
+    antigravityConfigs: [{
+      id: 'custom-1',
+      name: 'Custom Model',
+      defaultModel: 'vendor/model-a',
+      models: ['vendor/model-a', 'vendor/model-b'],
+      sourceProviderName: 'Vendor',
+      enabled: true,
+      injectModels: true,
+    }],
+    platforms: { antigravity: { providerId: 'custom-1' } },
+  })?.upstreamModel, 'vendor/model-a', 'M36 必须路由到当前选中的 BYOK 默认模型');
+  assert.equal(resolveAntigravityCustomModel('MODEL_PLACEHOLDER_M50', {
+    antigravityConfigs: [{
+      id: 'custom-1',
+      name: 'Custom Model',
+      defaultModel: 'vendor/model-a',
+      models: ['vendor/model-a', 'vendor/model-b'],
+      sourceProviderName: 'Vendor',
+      enabled: true,
+      injectModels: true,
+    }],
+    platforms: { antigravity: { providerId: 'custom-1' } },
+  })?.upstreamModel, 'vendor/model-a', 'M50 必须路由到当前选中的 BYOK 默认模型');
+  assert.equal(resolveAntigravityCustomModel('MODEL_PLACEHOLDER_M318', {
+    antigravityConfigs: [{
+      id: 'custom-1',
+      name: 'Custom Model',
+      defaultModel: 'vendor/model-a',
+      models: ['vendor/model-a', 'vendor/model-b'],
+      sourceProviderName: 'Vendor',
+      enabled: true,
+      injectModels: true,
+    }],
+    platforms: { antigravity: { providerId: 'custom-1' } },
+  })?.upstreamModel, 'vendor/model-a', 'M318 必须路由到当前选中的 BYOK 默认模型');
+
+  for (const [catalogKey, details] of customEntries) {
+    const byRuntime = resolveAntigravityCustomModel(details.model, {
+      antigravityConfigs: [{
+        id: 'custom-1',
+        name: 'Custom Model',
+        defaultModel: 'vendor/model-a',
+        models: ['vendor/model-a', 'vendor/model-b'],
+        sourceProviderName: 'Vendor',
+        enabled: true,
+        injectModels: true,
+      }],
+    });
+    const byCatalog = resolveAntigravityCustomModel(catalogKey, {
+      antigravityConfigs: [{
+        id: 'custom-1',
+        name: 'Custom Model',
+        defaultModel: 'vendor/model-a',
+        models: ['vendor/model-a', 'vendor/model-b'],
+        sourceProviderName: 'Vendor',
+        enabled: true,
+        injectModels: true,
+      }],
+    });
+    assert.ok(byRuntime?.upstreamModel);
+    assert.notEqual(byRuntime.upstreamModel, details.model, 'placeholder 必须反向映射为真实上游模型');
+    assert.equal(byCatalog?.upstreamModel, byRuntime.upstreamModel);
+  }
 
   const quota = mockAntigravityUserQuotaSummary();
   assert.ok(Array.isArray(quota.userQuotaSummary?.quotas));
   assert.ok(quota.userQuotaSummary.quotas.length > 0);
   assert.equal(quota.userQuotaSummary.quotas[0].status, 'ACTIVE');
+
+  const userInfo = mockAntigravityUserInfo();
+  assert.equal(userInfo.email, 'user@anybridge.local');
+  assert.equal(userInfo.userTier?.id, 'standard-tier');
+
+  const adminControls = mockAntigravityAdminControls();
+  assert.equal(adminControls.adminControls?.allFeaturesEnabled, true);
+
+  const userSettings = mockAntigravityUserSettings();
+  assert.equal(userSettings.userSettings?.telemetryEnabled, false);
+
+  assert.equal(isAntigravityBypassMetricsPath('/v1internal:recordCodeAssistMetrics'), true);
+  assert.equal(isAntigravityBypassMetricsPath('/v1internal:recordTrajectoryAnalytics'), true);
+  assert.equal(isAntigravityBypassMetricsPath('/v1internal:listExperiments'), true);
+  assert.equal(isAntigravityBypassMetricsPath('/v1internal:fetchAvailableModels'), false);
 });
 
 test('Antigravity request normalization: nested request payload', () => {
@@ -155,9 +281,21 @@ test('Antigravity HTTP 端点模拟: fetchAvailableModels & loadCodeAssist', asy
     assert.equal(assistRes.status, 200);
     const assistJson = await assistRes.json();
     assert.equal(assistJson.currentTier?.id, 'standard-tier');
-    assert.equal(assistJson.cloudaicompanionProject, 'projects/antigravity-local');
+    assert.equal(assistJson.cloudaicompanionProject, '');
 
-    // 2. 测试 fetchAvailableModels
+    // 2. 测试 onboardUser 必须返回已完成的 Long-running Operation，禁止轮询 /v1internal/undefined
+    const onboardRes = await fetch(`http://127.0.0.1:${port}/v1internal:onboardUser`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ tierId: 'free-tier' }),
+    });
+    assert.equal(onboardRes.status, 200);
+    const onboardJson = await onboardRes.json();
+    assert.equal(onboardJson.done, true);
+    assert.ok(onboardJson.name);
+    assert.ok(onboardJson.response && typeof onboardJson.response === 'object');
+
+    // 3. 测试 fetchAvailableModels
     const modelsRes = await fetch(`http://127.0.0.1:${port}/v1internal:fetchAvailableModels`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -165,10 +303,14 @@ test('Antigravity HTTP 端点模拟: fetchAvailableModels & loadCodeAssist', asy
     });
     assert.equal(modelsRes.status, 200);
     const modelsJson = await modelsRes.json();
-    assert.ok(Array.isArray(modelsJson.models) && modelsJson.models.length > 0);
-    assert.ok(modelsJson.models.some(m => m.name === 'models/gemini-3-pro'));
+    assert.ok(modelsJson.models && typeof modelsJson.models === 'object' && !Array.isArray(modelsJson.models));
+    assert.ok(Object.entries(modelsJson.models).every(([key, details]) => {
+      if (!key.startsWith('byok-')) return true;
+      return details.model.startsWith('MODEL_');
+    }));
+    assert.ok(Array.isArray(modelsJson.agentModelSorts));
 
-    // 3. 测试 retrieveUserQuotaSummary
+    // 4. 测试 retrieveUserQuotaSummary
     const quotaRes = await fetch(`http://127.0.0.1:${port}/v1internal:retrieveUserQuotaSummary`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -178,15 +320,46 @@ test('Antigravity HTTP 端点模拟: fetchAvailableModels & loadCodeAssist', asy
     const quotaJson = await quotaRes.json();
     assert.ok(quotaJson.userQuotaSummary?.quotas?.length > 0);
 
-    // 4. 测试 onboardUser
-    const onboardRes = await fetch(`http://127.0.0.1:${port}/v1internal:onboardUser`, {
+    // 5. 测试 fetchUserInfo
+    const userRes = await fetch(`http://127.0.0.1:${port}/v1internal:fetchUserInfo`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({}),
     });
-    assert.equal(onboardRes.status, 200);
-    const onboardJson = await onboardRes.json();
-    assert.equal(onboardJson.status, 'ONBOARDED');
+    assert.equal(userRes.status, 200);
+    const userJson = await userRes.json();
+    assert.equal(userJson.name, 'AnyBridge User');
+    assert.equal(userJson.userTier?.id, 'standard-tier');
+
+    // 6. 测试 fetchAdminControls
+    const adminRes = await fetch(`http://127.0.0.1:${port}/v1internal:fetchAdminControls`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({}),
+    });
+    assert.equal(adminRes.status, 200);
+    const adminJson = await adminRes.json();
+    assert.equal(adminJson.adminControls?.allFeaturesEnabled, true);
+
+    // 7. 测试指标旁路拦截: recordCodeAssistMetrics (0ms 秒回 200 {})
+    const metricRes = await fetch(`http://127.0.0.1:${port}/v1internal:recordCodeAssistMetrics`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ event: 'test' }),
+    });
+    assert.equal(metricRes.status, 200);
+    const metricJson = await metricRes.json();
+    assert.deepEqual(metricJson, {});
+
+    // 8. 测试其他未知探测接口安全兜底 (200 {})
+    const unknownRes = await fetch(`http://127.0.0.1:${port}/v1internal:unknownProbingMethod`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({}),
+    });
+    assert.equal(unknownRes.status, 200);
+    const unknownJson = await unknownRes.json();
+    assert.deepEqual(unknownJson, {});
   } finally {
     server.close();
   }

@@ -1,18 +1,29 @@
-        <!-- ═══════ PAGE: PLATFORM · CODEX · 添加模型（独立页面） ═══════ -->
+        <!-- ═══════ PAGE: PLATFORM · CODEX · 添加/编辑配置（独立页面） ═══════ -->
         <div class="page" id="page-platform-codex-add" role="tabpanel" aria-labelledby="tab-platforms">
           <div class="platform-console-hero model-add-hero glass-card">
             <div class="platform-console-titlebar">
-              <button class="btn-ghost platform-console-back" data-action="navigateTo" data-arg="platform-codex">← 返回</button>
+              <button class="btn-ghost platform-console-back" data-action="closeCodexConfigEditor">← 返回</button>
               <div class="platform-console-titlewrap">
-                <strong>添加模型 · Codex</strong>
-                <span class="platform-console-sub">从统一供应商模型池选择并勾选模型，自动建立 Codex 模型适配配置并支持桌面端与终端随时切换。</span>
+                <strong id="codex-config-page-title">添加配置 · Codex</strong>
+                <span class="platform-console-sub" id="codex-config-page-sub">从现有供应商创建或自由定制一份可切换的 Codex Responses 配置方案。</span>
+              </div>
+              <div class="codex-page-hero-actions" style="display: flex; align-items: center; gap: 8px; margin-left: auto;">
+                <button class="btn-ghost" data-action="closeCodexConfigEditor">取消</button>
+                <button class="btn-primary" data-action="saveCodexConfigEditor" data-args="[false]">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>
+                    <polyline points="17 21 17 13 7 13 7 21"></polyline>
+                    <polyline points="7 3 7 8 15 8"></polyline>
+                  </svg>
+                  <span>保存配置</span>
+                </button>
               </div>
             </div>
           </div>
 
           <div class="cb-add-layout">
             <!-- 左列：供应商列表 -->
-            <aside class="cb-add-sidebar glass-card">
+            <aside class="cb-add-sidebar glass-card" id="codex-config-source-wrap">
               <div class="cb-add-search">
                 <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" fill="none" stroke-width="2"
                   stroke-linecap="round" stroke-linejoin="round">
@@ -53,110 +64,287 @@
               <div class="cb-add-provider-list" id="codex-add-provider-list"></div>
             </aside>
 
-            <!-- 右列：模型列表 -->
-            <section class="cb-add-main">
-              <div class="glass-card cb-add-models-card">
-                <div class="cb-add-models-head">
-                  <div>
-                    <div class="cb-add-models-title" id="codex-add-models-title">请选择供应商</div>
-                    <div class="cb-add-models-sub" id="codex-add-models-sub">左侧选择一个供应商，右侧将展示其可用模型</div>
+            <!-- 右列：主工作区（全量垂直滚动，展示完所有设置项） -->
+            <section class="cb-add-main codex-add-main">
+              <input type="hidden" id="codex-config-edit-id">
+              <input type="hidden" id="codex-config-source-id">
+              <input type="hidden" id="codex-config-model">
+              <textarea id="codex-config-models" class="codex-config-models-input" style="display:none;" aria-hidden="true" tabindex="-1"></textarea>
+
+              <!-- 卡片 1：基础连接信息（全新高质感设计） -->
+              <div class="glass-card" style="padding: 16px 20px;">
+                <div style="font-size: 14px; font-weight: 700; color: var(--text-primary); margin-bottom: 14px; display: flex; align-items: center; justify-content: space-between;">
+                  <div style="display: flex; align-items: center; gap: 8px;">
+                    <span style="display: inline-block; width: 3px; height: 14px; background: var(--accent); border-radius: 2px;"></span>
+                    <span>基础连接信息</span>
                   </div>
-                  <div style="display:flex; gap:8px;">
-                    <button class="btn-ghost accent" data-action="codexAddSelectAll">全选</button>
-                    <button class="btn-ghost secondary" data-action="codexAddSelectNone">全不选</button>
-                    <button class="btn-primary" id="codex-add-confirm-page"
-                      disabled data-action="confirmAddCodexModelsPage">
-                      <svg viewBox="0 0 24 24"
-                        style="width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;">
-                        <path d="M20 6L9 17l-5-5" />
+                  <span style="font-size: 12px; font-weight: normal; color: var(--text-muted);">从左侧点击供应商一键填入，亦支持自由修改</span>
+                </div>
+
+                <div style="display: grid; grid-template-columns: minmax(180px, 1fr) minmax(240px, 1.4fr); gap: 14px; margin-bottom: 14px;">
+                  <div style="display: flex; flex-direction: column; gap: 6px;">
+                    <label style="font-size: 12.5px; font-weight: 700; color: var(--text-secondary);">配置名称</label>
+                    <input id="codex-config-name" class="field-input" style="height: 36px; padding: 0 12px; font-size: 13px;" placeholder="例如：AnyRouter" data-action="syncCodexRawConfigFromFields" data-events="input">
+                  </div>
+                  <div style="display: flex; flex-direction: column; gap: 6px;">
+                    <label style="font-size: 12.5px; font-weight: 700; color: var(--text-secondary);">Base URL (API 端点)</label>
+                    <input id="codex-config-base-url" class="field-input" style="height: 36px; padding: 0 12px; font-size: 13px;" placeholder="https://api.example.com/v1" data-action="syncCodexRawConfigFromFields" data-events="input">
+                  </div>
+                </div>
+
+                <div style="display: flex; flex-direction: column; gap: 6px;">
+                  <div style="display: flex; align-items: center; justify-content: space-between;">
+                    <label style="font-size: 12.5px; font-weight: 700; color: var(--text-secondary);">API Key (访问凭证)</label>
+                    <button type="button" class="btn-ghost" id="codex-config-sync-token-btn"
+                      data-action="syncCodexConfigTokenFromSource" style="padding: 2px 8px; height: 24px; font-size: 11.5px; display: inline-flex; align-items: center; gap: 5px;" title="从关联的来源供应商拉取最新令牌和地址">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/>
                       </svg>
-                      <span class="model-action-label"> 保存选择</span>
+                      <span>同步来源令牌</span>
+                    </button>
+                  </div>
+                  <div class="codex-input-password-wrap" style="position: relative; width: 100%;">
+                    <input id="codex-config-api-key" class="field-input" type="password" style="height: 36px; padding: 0 40px 0 12px; font-size: 13px; width: 100%; box-sizing: border-box;" placeholder="sk-..." autocomplete="off" data-action="syncCodexRawConfigFromFields" data-events="input">
+                    <button type="button" class="codex-password-toggle-btn" id="codex-config-api-key-toggle"
+                      data-action="toggleCodexKeyVisibility" title="显示或隐藏 API Key" aria-label="显示或隐藏 API Key" style="position: absolute; right: 8px; top: 50%; transform: translateY(-50%); background: transparent; border: none; cursor: pointer; color: var(--text-muted); display: flex; align-items: center; justify-content: center; width: 26px; height: 26px;">
+                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"></path>
+                        <circle cx="12" cy="12" r="3"></circle>
+                      </svg>
                     </button>
                   </div>
                 </div>
-                <div class="cb-add-models-body" id="codex-add-models-list-page">
-                  <div class="cb-add-models-empty">请从左侧选择一个供应商</div>
+              </div>
+
+              <!-- 卡片 2：模型管理（一体化整体设计） -->
+              <div class="glass-card cb-add-models-card" style="flex: 0 0 auto;">
+                <div class="cb-add-models-head" style="padding: 14px 20px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--border);">
+                  <div>
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                      <span style="display: inline-block; width: 3px; height: 14px; background: var(--accent); border-radius: 2px;"></span>
+                      <span class="cb-add-models-title">模型管理</span>
+                    </div>
+                    <div class="cb-add-models-sub" id="codex-config-model-status">选择供应商后拉取模型列表</div>
+                  </div>
+                  <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
+                    <button type="button" class="btn-ghost" style="padding: 2px 8px; height: 26px; font-size: 11.5px;" data-action="batchSetCodexModelCatalog" data-args="[true]" title="全选模型加入目录">全选</button>
+                    <button type="button" class="btn-ghost" style="padding: 2px 8px; height: 26px; font-size: 11.5px;" data-action="batchSetCodexModelCatalog" data-args="[false]" title="清空目录选择">清空</button>
+                    <button type="button" class="btn-ghost" style="padding: 2px 8px; height: 26px; font-size: 11.5px;" data-action="batchSetCodexDefaultModel" data-arg="clear" title="清除当前默认模型标记">清空默认</button>
+                    <span style="display: inline-block; width: 1px; height: 14px; background: var(--border); margin: 0 4px;"></span>
+                    <button type="button" class="btn-ghost accent" id="codex-config-fetch-models-btn" data-action="fetchCodexConfigModels" style="padding: 2px 10px; height: 26px; font-size: 11.5px; display: inline-flex; align-items: center; gap: 5px;">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/>
+                      </svg>
+                      <span>拉取模型</span>
+                    </button>
+                    <button type="button" class="btn-ghost secondary" data-action="addCodexModelEntry" style="padding: 2px 10px; height: 26px; font-size: 11.5px; display: inline-flex; align-items: center; gap: 4px;">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                        <line x1="12" y1="5" x2="12" y2="19" />
+                        <line x1="5" y1="12" x2="19" y2="12" />
+                      </svg>
+                      <span>添加模型</span>
+                    </button>
+                  </div>
+                </div>
+                <div class="codex-config-model-list" id="codex-config-model-list" style="max-height: 400px; min-height: 120px; overflow-y: auto; padding: 12px 20px;">
+                  <div class="codex-config-model-empty">还没有模型，点击右上角拉取或手动添加。</div>
                 </div>
               </div>
 
-              <!-- Codex 特性卡片：路由模式、桌面版注入与上游协议选项 -->
-              <div class="glass-card cb-add-caps-card">
-                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
-                  <div class="cb-add-caps-title" style="margin: 0;">Codex 运行与适配选项</div>
-                  <details style="font-size: 11.5px; cursor: pointer;">
-                    <summary style="color: var(--accent); font-weight: 600; user-select: none; outline: none;">
-                      高级推理与子代理设置 (可选展开)
-                    </summary>
-                    <div style="margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); display: flex; flex-direction: column; gap: 10px; cursor: default;" onclick="event.stopPropagation()">
-                      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px;">
-                        <div class="cb-edit-field">
-                          <label style="font-size: 11.5px; color: var(--text-secondary); margin-bottom: 4px; display: block;">Thinking 参数注入</label>
-                          <select id="codex-add-reasoning-thinking" class="field-input" style="height: 32px; padding: 0 8px; font-size: 12px;">
-                            <option value="none">不注入</option>
-                            <option value="thinking">thinking</option>
-                            <option value="enable_thinking">enable_thinking</option>
-                            <option value="reasoning_split">reasoning_split</option>
-                          </select>
-                        </div>
-                        <div class="cb-edit-field">
-                          <label style="font-size: 11.5px; color: var(--text-secondary); margin-bottom: 4px; display: block;">Effort 参数注入</label>
-                          <select id="codex-add-reasoning-effort" class="field-input" style="height: 32px; padding: 0 8px; font-size: 12px;">
-                            <option value="none">不注入</option>
-                            <option value="reasoning_effort">reasoning_effort</option>
-                            <option value="reasoning.effort">reasoning.effort</option>
-                          </select>
-                        </div>
-                        <div class="cb-edit-field">
-                          <label style="font-size: 11.5px; color: var(--text-secondary); margin-bottom: 4px; display: block;">子代理最大并发数</label>
-                          <input type="number" id="codex-add-agents-max-threads" class="field-input" min="1" step="1" value="6" style="height: 32px; padding: 0 8px; font-size: 12px;">
-                        </div>
-                      </div>
+              <!-- 卡片 3：运行与适配选项（全新现代 Toggle 卡片网格 + 分段控制器） -->
+              <div class="glass-card" style="padding: 16px 20px;">
+                <div style="font-size: 14px; font-weight: 700; color: var(--text-primary); margin-bottom: 14px; display: flex; align-items: center; gap: 8px;">
+                  <span style="display: inline-block; width: 3px; height: 14px; background: var(--accent); border-radius: 2px;"></span>
+                  <span>运行与适配选项</span>
+                </div>
+
+                <div class="codex-toggle-grid">
+                  <div class="codex-toggle-card">
+                    <div class="codex-toggle-info">
+                      <span class="codex-toggle-title">路由模式（本地代理 :7450）</span>
+                      <span class="codex-toggle-desc">通过 AnyBridge 本地代理转发与协议转换，适合仅支持 Chat 的供应商</span>
                     </div>
-                  </details>
-                </div>
-
-                <!-- 核心特性开关胶囊 -->
-                <div class="cb-add-caps" style="margin-bottom: 12px;">
-                  <label class="cb-add-cap-chip">
-                    <input type="checkbox" id="codex-add-route-through-proxy" checked>
-                    <span>路由模式 (本地代理 :7450 协议转换)</span>
-                  </label>
-                  <label class="cb-add-cap-chip">
-                    <input type="checkbox" id="codex-add-inject-models" checked>
-                    <span>桌面版注入显示所有模型 (CDP)</span>
-                  </label>
-                  <label class="cb-add-cap-chip">
-                    <input type="checkbox" id="codex-add-unify-session-history" checked>
-                    <span>统一会话历史</span>
-                  </label>
-                  <label class="cb-add-cap-chip">
-                    <input type="checkbox" id="codex-add-preserve-official-auth">
-                    <span>保留官方登录态</span>
-                  </label>
-                </div>
-
-                <!-- 接口协议单选胶囊 -->
-                <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding-top: 8px; border-top: 1px dashed var(--border);">
-                  <span style="font-size: 11.5px; color: var(--text-secondary); font-weight: 700;">接口协议：</span>
-                  <div class="cb-add-caps" style="gap: 8px;">
-                    <label class="cb-add-cap-chip" style="padding: 5px 11px; font-size: 11px;">
-                      <input type="radio" name="codex-add-wire-api-radio" value="auto" checked data-action="setCodexAddWireApi" data-events="change" data-arg="auto">
-                      <span>自动识别</span>
-                      <span class="protocol-chip-badge">默认</span>
+                    <label class="switch" style="flex: 0 0 auto;">
+                      <input type="checkbox" id="codex-config-route-through-proxy" checked>
+                      <span class="slider"></span>
                     </label>
-                    <label class="cb-add-cap-chip" style="padding: 5px 11px; font-size: 11px;">
-                      <input type="radio" name="codex-add-wire-api-radio" value="responses" data-action="setCodexAddWireApi" data-events="change" data-arg="responses">
+                  </div>
+
+                  <div class="codex-toggle-card">
+                    <div class="codex-toggle-info">
+                      <span class="codex-toggle-title">桌面版显示所有模型</span>
+                      <span class="codex-toggle-desc">向 Codex 桌面版注入解锁脚本，在模型选择器中显示所有自定义模型</span>
+                    </div>
+                    <label class="switch" style="flex: 0 0 auto;">
+                      <input type="checkbox" id="codex-config-inject-models" checked data-action="onCodexConfigInjectModelsChange" data-events="change">
+                      <span class="slider"></span>
+                    </label>
+                  </div>
+
+                  <div class="codex-toggle-card">
+                    <div class="codex-toggle-info">
+                      <span class="codex-toggle-title">统一会话历史</span>
+                      <span class="codex-toggle-desc">官方与第三方历史会话统一在同个桶中显示，切换配置不丢失历史</span>
+                    </div>
+                    <label class="switch" style="flex: 0 0 auto;">
+                      <input type="checkbox" id="codex-config-unify-session-history" checked>
+                      <span class="slider"></span>
+                    </label>
+                  </div>
+
+                  <div class="codex-toggle-card">
+                    <div class="codex-toggle-info">
+                      <span class="codex-toggle-title">保留官方登录态</span>
+                      <span class="codex-toggle-desc">使用官方 OAuth 登录态认证，请求直接转发至第三方渠道（与注入互斥）</span>
+                    </div>
+                    <label class="switch" style="flex: 0 0 auto;">
+                      <input type="checkbox" id="codex-config-preserve-official-auth" data-action="onCodexConfigPreserveOfficialAuthChange" data-events="change">
+                      <span class="slider"></span>
+                    </label>
+                  </div>
+                </div>
+
+                <div style="display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap; padding-top: 14px; border-top: 1px solid var(--border);">
+                  <div style="display: flex; align-items: center; gap: 10px;">
+                    <span style="font-size: 13px; font-weight: 700; color: var(--text-secondary);">接口协议</span>
+                    <span style="font-size: 11.5px; color: var(--text-muted);">决定本地代理请求供应商时使用的端点协议</span>
+                  </div>
+                  <div class="codex-protocol-segmented">
+                    <label class="codex-segment-item">
+                      <input type="radio" name="codex-config-wire-api-radio" value="auto" checked data-action="setCodexConfigWireApiRadio" data-events="change" data-arg="auto">
+                      <span>自动识别</span>
+                      <span class="badge">推荐</span>
+                    </label>
+                    <label class="codex-segment-item">
+                      <input type="radio" name="codex-config-wire-api-radio" value="responses" data-action="setCodexConfigWireApiRadio" data-events="change" data-arg="responses">
                       <span>Responses</span>
                     </label>
-                    <label class="cb-add-cap-chip" style="padding: 5px 11px; font-size: 11px;">
-                      <input type="radio" name="codex-add-wire-api-radio" value="chat" data-action="setCodexAddWireApi" data-events="change" data-arg="chat">
+                    <label class="codex-segment-item">
+                      <input type="radio" name="codex-config-wire-api-radio" value="chat" data-action="setCodexConfigWireApiRadio" data-events="change" data-arg="chat">
                       <span>OpenAI 兼容</span>
                     </label>
                   </div>
-                  <input type="hidden" id="codex-add-wire-api" value="auto">
+                  <input type="hidden" id="codex-config-wire-api" value="auto">
                 </div>
               </div>
 
+              <!-- 卡片 4：高级推理与子代理设置（一体化整体设计） -->
+              <div class="glass-card" style="padding: 16px 20px;">
+                <div style="font-size: 14px; font-weight: 700; color: var(--text-primary); margin-bottom: 14px; display: flex; align-items: center; justify-content: space-between;">
+                  <div style="display: flex; align-items: center; gap: 8px;">
+                    <span style="display: inline-block; width: 3px; height: 14px; background: var(--accent); border-radius: 2px;"></span>
+                    <span>高级推理与子代理设置</span>
+                  </div>
+                  <span style="font-size: 12px; color: var(--text-muted);">默认保持缺省即可，需要定制多智能体或深度思考时展开</span>
+                </div>
+
+                <div style="display: flex; flex-direction: column; gap: 10px;">
+                  <!-- 子代理 -->
+                  <details class="codex-config-field codex-config-field-wide codex-agents-panel" style="margin: 0; border: 1px solid var(--border); border-radius: 10px; padding: 12px 16px; background: var(--bg-card-deep, rgba(0,0,0,0.015));">
+                    <summary class="platform-collapse-summary" style="font-weight: 700; font-size: 13px; color: var(--text-primary);">
+                      <div style="display: flex; align-items: center; gap: 8px;">
+                        <span>Codex 子代理设置</span>
+                        <span class="codex-agents-count-pill" style="font-weight: normal; font-size: 11px;">已配置 <b id="codex-agents-count">0</b></span>
+                      </div>
+                      <div style="display: flex; align-items: center; gap: 8px;">
+                        <span style="font-size: 11.5px; color: var(--text-muted); font-weight: normal;">多智能体并发与调用</span>
+                        <svg class="platform-collapse-caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+                          <polyline points="9 18 15 12 9 6"></polyline>
+                        </svg>
+                      </div>
+                    </summary>
+                    <div class="codex-config-agents-body" style="padding-top: 14px; border-top: 1px solid var(--border); margin-top: 10px;">
+                      <div class="codex-agent-global-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin-bottom: 12px;">
+                        <label class="codex-config-field" style="margin:0;">
+                          <span>最大并发</span>
+                          <input id="codex-agents-max-threads" class="field-input" type="number" min="1" step="1" value="6">
+                        </label>
+                        <label class="codex-config-field" style="margin:0;">
+                          <span>最大嵌套深度</span>
+                          <input id="codex-agents-max-depth" class="field-input" type="number" min="1" step="1" value="1">
+                        </label>
+                        <label class="codex-config-field" style="margin:0;">
+                          <span>任务超时（秒）</span>
+                          <input id="codex-agents-job-timeout" class="field-input" type="number" min="1" step="1" value="1800">
+                        </label>
+                      </div>
+                      <div class="codex-agents-toolbar" style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+                        <span style="font-size: 12px; color: var(--text-muted);">子代理只会在用户明确要求 Codex 调用时使用。</span>
+                        <button type="button" class="codex-config-fetch-btn" data-action="addCodexAgent">+ 添加子代理</button>
+                      </div>
+                      <div class="codex-agents-list" id="codex-agents-list"></div>
+                    </div>
+                  </details>
+
+                  <!-- 推理参数 -->
+                  <details class="codex-config-field codex-config-field-wide codex-config-reasoning-panel" style="margin: 0; border: 1px solid var(--border); border-radius: 10px; padding: 12px 16px; background: var(--bg-card-deep, rgba(0,0,0,0.015));">
+                    <summary class="platform-collapse-summary" style="font-weight: 700; font-size: 13px; color: var(--text-primary);">
+                      <span>Reasoning 推理参数配置</span>
+                      <div style="display: flex; align-items: center; gap: 8px;">
+                        <span style="font-size: 11.5px; color: var(--text-muted); font-weight: normal;">Thinking 与 Effort 参数注入 (Chat 模式专用)</span>
+                        <svg class="platform-collapse-caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+                          <polyline points="9 18 15 12 9 6"></polyline>
+                        </svg>
+                      </div>
+                    </summary>
+                    <div class="codex-config-reasoning-body" style="padding-top: 14px; border-top: 1px solid var(--border); margin-top: 10px; display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px;">
+                      <label class="codex-config-field" style="margin:0;">
+                        <span>Thinking 参数注入</span>
+                        <select id="codex-config-reasoning-thinking" class="field-input">
+                          <option value="none">不注入</option>
+                          <option value="thinking">thinking</option>
+                          <option value="enable_thinking">enable_thinking</option>
+                          <option value="reasoning_split">reasoning_split</option>
+                        </select>
+                      </label>
+                      <label class="codex-config-field" style="margin:0;">
+                        <span>Effort 参数注入</span>
+                        <select id="codex-config-reasoning-effort" class="field-input">
+                          <option value="none">不注入</option>
+                          <option value="reasoning_effort">reasoning_effort</option>
+                          <option value="reasoning.effort">reasoning.effort</option>
+                        </select>
+                      </label>
+                      <label class="codex-config-field" style="margin:0;">
+                        <span>Effort 值映射</span>
+                        <select id="codex-config-reasoning-effort-mode" class="field-input">
+                          <option value="passthrough">passthrough（原样透传）</option>
+                          <option value="deepseek">deepseek（max/xhigh → max，其余 → high）</option>
+                          <option value="low_high">low_high（minimal/low → low，其余 → high）</option>
+                          <option value="openrouter">openrouter（max/xhigh → xhigh，其余原样）</option>
+                        </select>
+                      </label>
+                      <label class="codex-config-field" style="margin:0;">
+                        <span>Reasoning 输出格式</span>
+                        <select id="codex-config-reasoning-output" class="field-input">
+                          <option value="auto">auto（自动检测）</option>
+                          <option value="reasoning_content">reasoning_content</option>
+                          <option value="reasoning">reasoning</option>
+                          <option value="reasoning_details">reasoning_details</option>
+                        </select>
+                      </label>
+                    </div>
+                  </details>
+                </div>
+              </div>
+
+              <!-- 卡片 5：实际配置文件查看器（大模态弹窗） -->
+              <div class="glass-card" style="padding: 16px 20px; display: flex; align-items: center; justify-content: space-between; gap: 16px;">
+                <div style="display: flex; align-items: center; gap: 10px;">
+                  <span style="display: inline-block; width: 3px; height: 16px; background: var(--accent); border-radius: 2px;"></span>
+                  <div>
+                    <div style="font-weight: 700; color: var(--text-primary); font-size: 13.5px;">实际配置文件 (config.toml)</div>
+                    <div style="font-size: 12px; color: var(--text-muted); margin-top: 2px;">以大弹窗查看 ~/.codex/config.toml 原文与完整嵌套结构</div>
+                  </div>
+                </div>
+                <button type="button" class="btn-ghost accent" data-action="openPlatformRealConfigModal" data-arg="codex" style="display: inline-flex; align-items: center; gap: 6px; padding: 4px 14px; height: 32px; font-size: 12.5px; font-weight: 600;">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M12 20h9"/>
+                    <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
+                  </svg>
+                  <span>编辑查看</span>
+                </button>
+              </div>
             </section>
           </div>
         </div>

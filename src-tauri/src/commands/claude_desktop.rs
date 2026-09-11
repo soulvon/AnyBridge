@@ -378,41 +378,72 @@ pub fn resolve_model_specs(bindings: &ClaudeDesktopBindings) -> Result<Vec<Model
     let mut specs = Vec::new();
 
     let resolve_one = |route_ref: &str, default_name: &str| -> Result<ModelSpec, String> {
-        let clean = route_ref.trim();
-        if clean.is_empty() {
-            return Err(format!("Claude Desktop {default_name} 角色尚未绑定代理模型"));
+        if route_ref.trim().is_empty() {
+            return Err(format!("Claude Desktop {default_name} 角色尚未绑定模型"));
         }
-        let route = find_route_by_uid(&routes, clean)
+        // 前端勾选「声明 1M」时会给绑定值追加 [1m] 后缀，比对路由前必须先剥离
+        let marker_1m = is_one_m_candidate(route_ref);
+        let clean = strip_one_m_marker_str(route_ref);
+        if let Some(route) = find_route_by_uid(&routes, &clean)
             .or_else(|| routes.routes.iter().find(|r| r.id == clean))
-            .ok_or_else(|| format!("绑定的代理模型不存在: {clean}"))?;
-        if !route.enabled {
-            return Err(format!("绑定的代理模型已禁用: {}", route.id));
+        {
+            if !route.enabled {
+                return Err(format!("绑定的代理模型已禁用: {}", route.id));
+            }
+            if route.targets.is_empty() {
+                return Err(format!("绑定的代理模型没有上游目标: {}", route.id));
+            }
+            let is_1m = marker_1m
+                || is_one_m_candidate(&route.id)
+                || is_one_m_candidate(&route.display_name)
+                || route.targets.iter().any(|t| is_one_m_candidate(&t.model));
+            let raw_label = if !route.display_name.is_empty() {
+                &route.display_name
+            } else {
+                &route.id
+            };
+            let label = strip_one_m_marker_str(raw_label);
+            return Ok(ModelSpec {
+                name: default_name.to_string(),
+                label_override: Some(label),
+                supports_1m: is_1m,
+            });
         }
-        if route.targets.is_empty() {
-            return Err(format!("绑定的代理模型没有上游目标: {}", route.id));
-        }
-        let is_1m = is_one_m_candidate(&route.id)
-            || is_one_m_candidate(&route.display_name)
-            || route.targets.iter().any(|t| is_one_m_candidate(&t.model));
-        let raw_label = if !route.display_name.is_empty() {
-            &route.display_name
-        } else {
-            &route.id
-        };
-        let label = strip_one_m_marker_str(raw_label);
+
+        // 绑定的是具体供应商模型或自定义模型标识
         Ok(ModelSpec {
             name: default_name.to_string(),
-            label_override: Some(label),
-            supports_1m: is_1m,
+            label_override: Some(clean),
+            supports_1m: marker_1m,
         })
     };
 
-    specs.push(resolve_one(&bindings.sonnet, CLAUDE_SONNET_ROUTE)?);
-    specs.push(resolve_one(&bindings.opus, CLAUDE_OPUS_ROUTE)?);
-    specs.push(resolve_one(&bindings.haiku, CLAUDE_HAIKU_ROUTE)?);
+    let get_spec_with_custom_name = |mut spec: ModelSpec, custom_name: &str| -> ModelSpec {
+        let trimmed = custom_name.trim();
+        if !trimmed.is_empty() {
+            spec.label_override = Some(trimmed.to_string());
+        }
+        spec
+    };
+
+    specs.push(get_spec_with_custom_name(
+        resolve_one(&bindings.sonnet, CLAUDE_SONNET_ROUTE)?,
+        &bindings.sonnet_name,
+    ));
+    specs.push(get_spec_with_custom_name(
+        resolve_one(&bindings.opus, CLAUDE_OPUS_ROUTE)?,
+        &bindings.opus_name,
+    ));
+    specs.push(get_spec_with_custom_name(
+        resolve_one(&bindings.haiku, CLAUDE_HAIKU_ROUTE)?,
+        &bindings.haiku_name,
+    ));
 
     if !bindings.fable.trim().is_empty() {
-        specs.push(resolve_one(&bindings.fable, CLAUDE_FABLE_ROUTE)?);
+        specs.push(get_spec_with_custom_name(
+            resolve_one(&bindings.fable, CLAUDE_FABLE_ROUTE)?,
+            &bindings.fable_name,
+        ));
     }
 
     Ok(specs)
@@ -546,8 +577,12 @@ pub fn get_status_sync() -> Result<ClaudeDesktopStatus, String> {
 // ═══════ TAURI COMMANDS ═══════
 
 #[tauri::command]
-pub fn get_claude_desktop_status() -> Result<ClaudeDesktopStatus, String> {
-    get_status_sync()
+pub fn get_claude_desktop_status(
+    proxy_state: tauri::State<crate::commands::proxy::ProxyState>,
+) -> Result<ClaudeDesktopStatus, String> {
+    let mut status = get_status_sync()?;
+    status.proxy_running = crate::commands::proxy::get_proxy_status(proxy_state).running;
+    Ok(status)
 }
 
 #[tauri::command]

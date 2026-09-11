@@ -31,9 +31,10 @@ export function tryGunzip(buf) {
 
 /**
  * Wrap a protobuf message in a Connect-RPC envelope.
- * Always gzip-compresses (flags=1) for consistency with real Windsurf.
+ * 默认不压缩：Connect 协议要求客户端始终支持未压缩帧，而新版 Devin Local
+ * 明确拒绝压缩 envelope（即使响应声明了 gzip）。需要压缩的旧调用方可显式传 true。
  */
-export function wrapEnvelope(protoBuf, compress = true) {
+export function wrapEnvelope(protoBuf, compress = false) {
   if (compress) {
     const compressed = gzipSync(protoBuf);
     const header = Buffer.alloc(5);
@@ -57,9 +58,9 @@ export function endOfStreamEnvelope() {
 }
 
 function endOfStreamJsonEnvelope(payload) {
-  const jsonTrailers = gzipSync(Buffer.from(JSON.stringify(payload || {})));
+  const jsonTrailers = Buffer.from(JSON.stringify(payload || {}));
   const header = Buffer.alloc(5);
-  header[0] = 3; // flags = end-of-stream + compressed
+  header[0] = 2; // flags = end-of-stream, uncompressed
   header.writeUInt32BE(jsonTrailers.length, 1);
   return Buffer.concat([header, jsonTrailers]);
 }
@@ -153,7 +154,6 @@ export function unaryHeaders() {
 export function streamHeaders() {
   return {
     'content-type': 'application/connect+proto',
-    'connect-content-encoding': 'gzip',
     'transfer-encoding': 'chunked',
   };
 }

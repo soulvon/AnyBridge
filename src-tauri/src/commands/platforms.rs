@@ -589,14 +589,6 @@ impl Platform {
             }
         }
 
-        #[cfg(windows)]
-        {
-            use std::os::windows::process::CommandExt;
-            let _ = std::process::Command::new("setx")
-                .args(&["CLOUD_CODE_URL", &proxy_url])
-                .creation_flags(0x0800_0000)
-                .output();
-        }
         Ok(())
     }
 
@@ -2724,6 +2716,25 @@ fn strip_one_m_marker(model: &str) -> &str {
     }
 }
 
+fn is_claude_model(model: &str) -> bool {
+    model.to_ascii_lowercase().contains("claude")
+}
+
+fn ensure_one_m_marker_if_needed(model: &str, is_anyrouter: bool) -> String {
+    let trimmed = model.trim();
+    if is_anyrouter && is_claude_model(trimmed) {
+        if trimmed.ends_with("[1m]") || trimmed.ends_with("[1M]") {
+            trimmed.to_string()
+        } else if !trimmed.is_empty() {
+            format!("{trimmed}[1m]")
+        } else {
+            String::new()
+        }
+    } else {
+        strip_one_m_marker(trimmed).to_string()
+    }
+}
+
 fn set_claude_model_env(env: &mut Map<String, Value>, model: &str) {
     let raw_model = model.trim();
     let display_name = strip_one_m_marker(raw_model);
@@ -2762,34 +2773,43 @@ fn normalize_claude_settings_model_env(settings: &mut Value, fallback_model: &st
         return;
     };
 
+    let base_url = env.get("ANTHROPIC_BASE_URL").and_then(Value::as_str).unwrap_or("");
+    let is_anyrouter = base_url.to_ascii_lowercase().contains("anyrouter");
+
     let fallback = {
         let fallback_model = fallback_model.trim();
         if fallback_model.is_empty() {
             None
         } else {
-            Some(fallback_model.to_string())
+            Some(ensure_one_m_marker_if_needed(fallback_model, is_anyrouter))
         }
     };
-    let primary = clone_claude_env_string(env, "ANTHROPIC_MODEL").or_else(|| fallback.clone());
+    let primary = clone_claude_env_string(env, "ANTHROPIC_MODEL")
+        .map(|m| ensure_one_m_marker_if_needed(&m, is_anyrouter))
+        .or_else(|| fallback.clone());
     set_claude_env_if_missing(env, "ANTHROPIC_MODEL", primary.clone());
 
     let small_fast = clone_claude_env_string(env, "ANTHROPIC_SMALL_FAST_MODEL");
     let haiku = clone_claude_env_string(env, "ANTHROPIC_DEFAULT_HAIKU_MODEL")
         .or_else(|| clone_claude_env_string(env, "ANTHROPIC_DEFAULT_HAIKU_MODEL_NAME"))
         .or_else(|| small_fast.clone())
-        .or_else(|| primary.clone());
+        .or_else(|| primary.clone())
+        .map(|m| ensure_one_m_marker_if_needed(&m, is_anyrouter));
     let sonnet = clone_claude_env_string(env, "ANTHROPIC_DEFAULT_SONNET_MODEL")
         .or_else(|| clone_claude_env_string(env, "ANTHROPIC_DEFAULT_SONNET_MODEL_NAME"))
         .or_else(|| primary.clone())
-        .or_else(|| small_fast.clone());
+        .or_else(|| small_fast.clone())
+        .map(|m| ensure_one_m_marker_if_needed(&m, is_anyrouter));
     let opus = clone_claude_env_string(env, "ANTHROPIC_DEFAULT_OPUS_MODEL")
         .or_else(|| clone_claude_env_string(env, "ANTHROPIC_DEFAULT_OPUS_MODEL_NAME"))
         .or_else(|| primary.clone())
-        .or_else(|| small_fast.clone());
+        .or_else(|| small_fast.clone())
+        .map(|m| ensure_one_m_marker_if_needed(&m, is_anyrouter));
     let fable = clone_claude_env_string(env, "ANTHROPIC_DEFAULT_FABLE_MODEL")
         .or_else(|| clone_claude_env_string(env, "ANTHROPIC_DEFAULT_FABLE_MODEL_NAME"))
         .or_else(|| primary.clone())
-        .or_else(|| opus.clone());
+        .or_else(|| opus.clone())
+        .map(|m| ensure_one_m_marker_if_needed(&m, is_anyrouter));
 
     let haiku_name = haiku.as_deref().map(strip_one_m_marker).map(str::to_string);
     let sonnet_name = sonnet.as_deref().map(strip_one_m_marker).map(str::to_string);
@@ -2805,7 +2825,55 @@ fn normalize_claude_settings_model_env(settings: &mut Value, fallback_model: &st
     set_claude_env_if_missing(env, "ANTHROPIC_DEFAULT_FABLE_MODEL", fable);
     set_claude_env_if_missing(env, "ANTHROPIC_DEFAULT_FABLE_MODEL_NAME", fable_name);
 
+    if is_anyrouter {
+        for key in [
+            "ANTHROPIC_MODEL",
+            "ANTHROPIC_DEFAULT_HAIKU_MODEL",
+            "ANTHROPIC_DEFAULT_SONNET_MODEL",
+            "ANTHROPIC_DEFAULT_OPUS_MODEL",
+            "ANTHROPIC_DEFAULT_FABLE_MODEL",
+        ] {
+            if let Some(val) = env.get(key).and_then(Value::as_str) {
+                if is_claude_model(val) {
+                    if !val.ends_with("[1m]") && !val.ends_with("[1M]") && !val.trim().is_empty() {
+                        let upgraded = format!("{}[1m]", val.trim());
+                        env.insert(key.to_string(), Value::String(upgraded));
+                    }
+                } else {
+                    let stripped = strip_one_m_marker(val);
+                    env.insert(key.to_string(), Value::String(stripped.to_string()));
+                }
+            }
+        }
+        for name_key in [
+            "ANTHROPIC_DEFAULT_HAIKU_MODEL_NAME",
+            "ANTHROPIC_DEFAULT_SONNET_MODEL_NAME",
+            "ANTHROPIC_DEFAULT_OPUS_MODEL_NAME",
+            "ANTHROPIC_DEFAULT_FABLE_MODEL_NAME",
+        ] {
+            if let Some(val) = env.get(name_key).and_then(Value::as_str) {
+                let stripped = strip_one_m_marker(val);
+                env.insert(name_key.to_string(), Value::String(stripped.to_string()));
+            }
+        }
+    }
+
     env.remove("ANTHROPIC_SMALL_FAST_MODEL");
+
+    if is_anyrouter {
+        if let Some(model_val) = settings.get_mut("model") {
+            if let Some(s) = model_val.as_str() {
+                if is_claude_model(s) {
+                    if !s.ends_with("[1m]") && !s.ends_with("[1M]") && !s.trim().is_empty() {
+                        *model_val = Value::String(format!("{}[1m]", s.trim()));
+                    }
+                } else {
+                    let stripped = strip_one_m_marker(s);
+                    *model_val = Value::String(stripped.to_string());
+                }
+            }
+        }
+    }
 }
 
 fn read_claude_config_info(path: &PathBuf) -> Result<Option<ClaudeConfigInfo>, String> {
@@ -2871,8 +2939,18 @@ fn claude_settings_from_config(config: &ClaudeCodeConfig, mask_token: bool) -> V
 
     let provider = Provider::from(config.clone());
     let base = claude_base_url(&provider);
-    let model = provider.default_model.trim();
-    let display_name = strip_one_m_marker(model);
+    let is_anyrouter = base.to_ascii_lowercase().contains("anyrouter") || config.name.to_ascii_lowercase().contains("anyrouter");
+    let raw_model = provider.default_model.trim();
+    let model = if is_anyrouter && is_claude_model(raw_model) {
+        if !raw_model.ends_with("[1m]") && !raw_model.ends_with("[1M]") && !raw_model.is_empty() {
+            format!("{raw_model}[1m]")
+        } else {
+            raw_model.to_string()
+        }
+    } else {
+        strip_one_m_marker(raw_model).to_string()
+    };
+    let display_name = strip_one_m_marker(&model);
     let token = if mask_token {
         mask_key(&provider.api_key)
     } else {
@@ -4407,6 +4485,10 @@ pub fn preview_platform_switch(platform: String, provider_id: String) -> Result<
                 opus: cfg.opus_model.clone(),
                 haiku: cfg.haiku_model.clone(),
                 fable: cfg.fable_model.clone(),
+                sonnet_name: cfg.sonnet_name.clone(),
+                opus_name: cfg.opus_name.clone(),
+                haiku_name: cfg.haiku_name.clone(),
+                fable_name: cfg.fable_name.clone(),
             })
         } else {
             None
@@ -4465,6 +4547,10 @@ fn switch_platform_sync(
                 opus: cfg.opus_model.clone(),
                 haiku: cfg.haiku_model.clone(),
                 fable: cfg.fable_model.clone(),
+                sonnet_name: cfg.sonnet_name.clone(),
+                opus_name: cfg.opus_name.clone(),
+                haiku_name: cfg.haiku_name.clone(),
+                fable_name: cfg.fable_name.clone(),
             })
         } else {
             None
@@ -4939,6 +5025,32 @@ pub fn repair_codex_session_visibility(
         .config_path()
         .ok_or_else(|| "无法定位用户主目录".to_string())?;
     super::codex_session_visibility::repair_default_codex_session_visibility(&path)
+}
+
+/// 读取指定平台在本地磁盘上的真实完整配置文件内容（原样读取，保留所有空行、注释与嵌套结构）。
+#[tauri::command]
+pub fn read_platform_config_file(platform: String) -> Result<String, String> {
+    let plat = Platform::from_id(&platform).ok_or_else(|| format!("未知平台: {platform}"))?;
+    let path = plat.config_path().ok_or_else(|| "无法定位该平台配置路径".to_string())?;
+    if !path.exists() {
+        return Ok(String::new());
+    }
+    fs::read_to_string(&path).map_err(|e| format!("读取配置文件失败: {e}"))
+}
+
+/// 将编辑修改后的文本内容原样写回本地磁盘的真实配置文件（自动安全备份 + 原子写入）。
+#[tauri::command]
+pub fn write_platform_config_file(platform: String, content: String) -> Result<bool, String> {
+    let plat = Platform::from_id(&platform).ok_or_else(|| format!("未知平台: {platform}"))?;
+    let path = plat.config_path().ok_or_else(|| "无法定位该平台配置路径".to_string())?;
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(|e| format!("创建配置目录失败: {e}"))?;
+    }
+    if path.exists() {
+        let _ = ensure_backup(&path);
+    }
+    super::write_atomic(&path, content.as_bytes()).map_err(|e| format!("写入配置文件失败: {e}"))?;
+    Ok(true)
 }
 
 // ─── CodeBuddy 自定义模型管理命令 ────────────────────────────

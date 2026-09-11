@@ -20,6 +20,35 @@
                   <line x1="21" y1="21" x2="16.65" y2="16.65" />
                 </svg>
                 <input type="text" id="antigravity-add-search" placeholder="搜索供应商…" data-action="onAntigravityAddSearch" data-events="input">
+                <div class="provider-sort-control platform-add-sort-control" id="antigravityAddSortControl">
+                  <button type="button" class="provider-sort-trigger platform-add-sort-trigger" id="antigravityAddSortTrigger"
+                    aria-haspopup="listbox" aria-expanded="false"
+                    aria-controls="antigravityAddSortMenu" aria-label="供应商排序" title="供应商排序" data-action="toggleAntigravityAddSort" data-pass-event>
+                    <svg class="provider-sort-icon" width="14" height="14" viewBox="0 0 24 24" fill="none"
+                      stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"
+                      aria-hidden="true">
+                      <path d="M8 3v18"></path>
+                      <path d="m4 7 4-4 4 4"></path>
+                      <path d="M16 21V3"></path>
+                      <path d="m20 17-4 4-4-4"></path>
+                    </svg>
+                    <span id="antigravityAddSortLabel">默认排序</span>
+                    <svg class="provider-sort-caret" width="13" height="13" viewBox="0 0 24 24" fill="none"
+                      stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"
+                      aria-hidden="true">
+                      <path d="m6 9 6 6 6-6"></path>
+                    </svg>
+                  </button>
+                  <div class="provider-sort-menu platform-add-sort-menu" id="antigravityAddSortMenu" role="listbox"
+                    aria-label="供应商排序">
+                    <button type="button" class="provider-sort-option platform-add-sort-option" role="option"
+                      data-sort-mode="default" data-action="chooseAntigravityAddSortMode" data-arg="default">默认排序</button>
+                    <button type="button" class="provider-sort-option platform-add-sort-option" role="option"
+                      data-sort-mode="name-asc" data-action="chooseAntigravityAddSortMode" data-arg="name-asc">名称正序</button>
+                    <button type="button" class="provider-sort-option platform-add-sort-option" role="option"
+                      data-sort-mode="name-desc" data-action="chooseAntigravityAddSortMode" data-arg="name-desc">名称反序</button>
+                  </div>
+                </div>
               </div>
               <div class="cb-add-provider-list" id="antigravity-add-provider-list"></div>
             </aside>

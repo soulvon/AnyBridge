@@ -46,9 +46,77 @@ globalThis.PROVIDER_IMPORT_SOURCE_OPTIONS = [
   { key: 'cherry-studio', label: 'Cherry Studio' },
 ];
 
-function sortModelsNaturally(list) {
-  if (!Array.isArray(list)) return [];
-  return [...list].sort((a, b) => String(a || '').localeCompare(String(b || ''), undefined, { numeric: true, sensitivity: 'base' }));
+function getModelFamilyRank(modelId, preferredFamily = '') {
+  const raw = String(modelId || '').trim();
+  const s = raw.replace(/\s*\(.*?\)\s*$/, '').toLowerCase();
+
+  if (preferredFamily) {
+    const pref = preferredFamily.toLowerCase();
+    if (pref === 'claude' && /claude|opus|sonnet|haiku|fable/.test(s)) return 5;
+    if ((pref === 'codex' || pref === 'gpt') && (/gpt|chatgpt|^o[134]|\bcodex\b/.test(s))) return 5;
+    if (pref === 'grok' && /grok/.test(s)) return 5;
+    if (pref === 'gemini' && /gemini|gemma/.test(s)) return 5;
+  }
+
+  if (/image|video|imagine|sora|dall-e|tts|speech|audio|embed|moderation/.test(s)) return 70;
+  if (/claude|opus|sonnet|haiku|fable/.test(s)) return 10;
+  if (/gpt|chatgpt|^o[134]|\bcodex\b/.test(s)) return 20;
+  if (/gemini|gemma/.test(s)) return 30;
+  if (/deepseek/.test(s)) return 40;
+  if (/grok/.test(s)) return 50;
+  if (/qwen|qwq|qvq|glm|chatglm|kimi|moonshot|mistral|llama|minimax|doubao|hunyuan|baichuan|yi|internlm/.test(s)) return 60;
+  return 65;
+}
+
+function compareModelNames(a, b) {
+  const sa = String(a || '').trim();
+  const sb = String(b || '').trim();
+  if (sa === sb) return 0;
+
+  const pureA = sa.replace(/\s*\(.*?\)\s*$/, '');
+  const pureB = sb.replace(/\s*\(.*?\)\s*$/, '');
+
+  const numRegex = /(\d+(?:\.\d+)*)/;
+  const ma = pureA.match(numRegex);
+  const mb = pureB.match(numRegex);
+  if (ma && mb) {
+    const preA = pureA.slice(0, ma.index).toLowerCase();
+    const preB = pureB.slice(0, mb.index).toLowerCase();
+    if (preA === preB) {
+      const vaParts = ma[1].split('.').map(n => parseFloat(n) || 0);
+      const vbParts = mb[1].split('.').map(n => parseFloat(n) || 0);
+      const maxLen = Math.max(vaParts.length, vbParts.length);
+      for (let i = 0; i < maxLen; i++) {
+        const na = vaParts[i] ?? 0;
+        const nb = vbParts[i] ?? 0;
+        if (na !== nb) return nb - na;
+      }
+    }
+  }
+
+  return sa.localeCompare(sb, undefined, { numeric: true, sensitivity: 'base' });
+}
+
+function sortRoleSelectItems(items, preferredFamily = '') {
+  if (!Array.isArray(items)) return [];
+  return [...items].sort((a, b) => {
+    const aSaved = (a?.provider === '已保存' || a?.label === '已保存') ? 1 : 0;
+    const bSaved = (b?.provider === '已保存' || b?.label === '已保存') ? 1 : 0;
+    if (aSaved !== bSaved) return bSaved - aSaved;
+
+    const idA = typeof a === 'string' ? a : (a?.id || a?.model || a?.name || String(a || ''));
+    const idB = typeof b === 'string' ? b : (b?.id || b?.model || b?.name || String(b || ''));
+
+    const rankA = getModelFamilyRank(idA, preferredFamily);
+    const rankB = getModelFamilyRank(idB, preferredFamily);
+    if (rankA !== rankB) return rankA - rankB;
+
+    return compareModelNames(idA, idB);
+  });
+}
+
+function sortModelsNaturally(list, preferredFamily = '') {
+  return sortRoleSelectItems(list, preferredFamily);
 }
 
 function providerSelectedModels(p) {
@@ -237,7 +305,8 @@ globalThis.CPA_LOCAL_PROVIDER_ID = 'cpa-local';
 function localProxyProviderModelsEntry() {
   const port = (typeof getLocalProxyPort === 'function') ? getLocalProxyPort() : 7450;
   const apiKey = (typeof getLocalProxyKeyValue === 'function') ? getLocalProxyKeyValue() : '';
-  const models = (typeof getLocalProxyModels === 'function') ? getLocalProxyModels('openai') : [];
+  const rawModels = (typeof getLocalProxyModels === 'function') ? getLocalProxyModels('openai') : [];
+  const models = sortRoleSelectItems(rawModels);
   return {
     providerId: LOCAL_PROXY_PROVIDER_ID,
     providerName: 'AnyBridge',
@@ -279,6 +348,42 @@ function isCpaLocalProvider(p) {
   return false;
 }
 
+function isAnyBridgeLocalProxy(p) {
+  if (!p) return false;
+  if (p.isLocalProxy === true || p.meta?.localProxy === true) return true;
+  const id = String(p.providerId || p.id || p.provider_id || '').toLowerCase();
+  if (id === LOCAL_PROXY_PROVIDER_ID || id === 'anybridge-local-proxy' || id === 'anybridge' || id === 'local-proxy') return true;
+  const name = String(p.providerName || p.name || '').trim().toLowerCase();
+  if (name === 'anybridge' || name.startsWith('anybridge')) return true;
+  return false;
+}
+
+function isCpaLocalProxy(p) {
+  return isCpaLocalProvider(p);
+}
+
+function isOtherBuiltinProxy(p) {
+  if (!p) return false;
+  if (isAnyBridgeLocalProxy(p) || isCpaLocalProxy(p)) return false;
+  if (p.isBuiltin === true || p.builtin === true || p.meta?.builtin === true || p.meta?.isBuiltin === true) return true;
+  if (p.meta?.pluginProxy === true || p.isPluginProxy === true || p.meta?.isProxy === true || p.isProxy === true) return true;
+  if (p.meta?.cpaLocal === true || p.meta?.localProxy === true) return true;
+  const host = String(p.apiHost || p.api_host || '').toLowerCase();
+  if ((host.includes('127.0.0.1') || host.includes('localhost')) && (p.meta?.plugin || p.meta?.extension || p.pluginId)) return true;
+  return false;
+}
+
+function isBuiltinProxyEntry(p) {
+  return isAnyBridgeLocalProxy(p) || isCpaLocalProxy(p) || isOtherBuiltinProxy(p);
+}
+
+function builtinProxySortRank(p) {
+  if (isAnyBridgeLocalProxy(p)) return 1;
+  if (isCpaLocalProxy(p)) return 2;
+  if (isOtherBuiltinProxy(p)) return 3;
+  return 999;
+}
+
 function builtinProviderBadgeHtml(p) {
   if (isLocalProxyProvider(p)) {
     return '<span class="provider-builtin-badge">本地代理</span>';
@@ -293,7 +398,8 @@ function syncLocalProxyProvider() {
   if (!providerStore || !Array.isArray(providerStore.providers)) return;
   const port = (typeof getLocalProxyPort === 'function') ? getLocalProxyPort() : 7450;
   const apiKey = (typeof getLocalProxyKeyValue === 'function') ? getLocalProxyKeyValue() : '';
-  const models = (typeof getLocalProxyModels === 'function') ? getLocalProxyModels('openai') : [];
+  const rawModels = (typeof getLocalProxyModels === 'function') ? getLocalProxyModels('openai') : [];
+  const models = sortRoleSelectItems(rawModels);
   const defaultModel = (typeof getLocalProxyDefaultModel === 'function') ? getLocalProxyDefaultModel('openai') : '';
   const provider = {
     id: LOCAL_PROXY_PROVIDER_ID,
@@ -688,17 +794,52 @@ function providerUnlockTagsHtml(p) {
 function providerUnlockIconSvg(p) {
   const active = providerUnlockLabels(p).length > 0;
   return active
-    ? `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="11" width="18" height="10" rx="2"></rect><path d="M7 11V7a5 5 0 0 1 9.5-2.2"></path></svg>`
-    : `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="11" width="18" height="10" rx="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>`;
-}
-
-function providerUnlockCardButtonHtml(p) {
-  const isUnlocked = providerUnlockLabels(p).length > 0;
-  return `<button class="btn-ghost provider-unlock-action ${isUnlocked ? 'active' : ''}" data-action="openProviderUnlockModal" data-arg="${escAttr(p.id)}" title="供应商解锁限制">${isUnlocked ? '已解锁限制' : '解锁限制'}</button>`;
+    ? `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="11" width="18" height="10" rx="2"></rect><path d="M7 11V7a5 5 0 0 1 9.5-2.2"></path></svg>`
+    : `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="11" width="18" height="10" rx="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>`;
 }
 
 function providerUnlockListButtonHtml(p) {
-  return `<button class="provider-list-icon-btn provider-unlock-list-btn ${providerUnlockLabels(p).length ? 'active' : ''}" data-action="openProviderUnlockModal" data-arg="${escAttr(p.id)}" title="解锁限制" aria-label="解锁限制 ${escAttr(p.name || p.id)}">${providerUnlockIconSvg(p)}</button>`;
+  return `<button class="btn-icon model-map-action-btn provider-list-icon-btn provider-unlock-list-btn ${providerUnlockLabels(p).length ? 'active' : ''}" data-action="openProviderUnlockModal" data-arg="${escAttr(p.id)}" title="解锁限制" aria-label="解锁限制 ${escAttr(p.name || p.id)}">${providerUnlockIconSvg(p)}</button>`;
+}
+
+const PROVIDER_ACTION_ICON_PATHS = {
+  test: '<path d="M10 2v7.3a4 4 0 0 1-.54 2L4.2 20.1A1.3 1.3 0 0 0 5.32 22h13.36a1.3 1.3 0 0 0 1.12-1.9l-5.26-8.8a4 4 0 0 1-.54-2V2"></path><path d="M8.5 2h7"></path><path d="M7.5 15h9"></path>',
+  edit: '<path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>',
+  delete: '<polyline points="3 6 5 6 21 6"></polyline><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path><path d="M10 11v6M14 11v6"></path><path d="M9 6V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"></path>',
+};
+
+// 供应商行操作统一使用图标按钮（与代理模型列表 /.btn-icon 一致）
+function providerActionIconButtonHtml(icon, { action, arg, label, title = '', extraClass = '' }) {
+  const fullLabel = title || label;
+  return `<button class="btn-icon model-map-action-btn provider-list-icon-btn${extraClass ? ` ${extraClass}` : ''}" data-action="${action}" data-arg="${escAttr(arg)}" title="${escAttr(fullLabel)}" aria-label="${escAttr(label)}">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${PROVIDER_ACTION_ICON_PATHS[icon]}</svg>
+    </button>`;
+}
+
+function providerActionButtonsHtml(p) {
+  const builtin = isBuiltinProvider(p);
+  const isLocalProxy = isLocalProxyProvider(p);
+  const nameLabel = p.name || p.id;
+  const testButton = providerActionIconButtonHtml('test', {
+    action: 'testProvider',
+    arg: p.id,
+    label: `测试 ${nameLabel}`,
+    title: '测试',
+  });
+  const editButton = providerActionIconButtonHtml('edit', {
+    action: isLocalProxy ? 'navigateToProxyModels' : 'openProviderEditor',
+    arg: p.id,
+    label: `编辑 ${nameLabel}`,
+    title: '编辑',
+  });
+  const deleteButton = providerActionIconButtonHtml('delete', {
+    action: 'deleteProvider',
+    arg: p.id,
+    label: `删除 ${nameLabel}`,
+    title: '删除',
+    extraClass: 'danger',
+  });
+  return `${testButton}${providerUnlockListButtonHtml(p)}${editButton}${builtin || isLocalProxy ? '' : deleteButton}`;
 }
 
 
@@ -799,20 +940,11 @@ function renderProviderCards(list) {
     const builtinBadge = builtinProviderBadgeHtml(p);
     const toggleHtml = builtin
       ? ''
-      : `<div class="toggle ${enabled ? 'on' : ''}" title="${enabled ? '已启用，点击禁用' : '未启用，点击启用'}" data-action="toggleProviderEnabled" data-arg="${escAttr(p.id)}"></div>`;
-    const isLocalProxy = isLocalProxyProvider(p);
-    const actionsHtml = isLocalProxy
-      ? `<button class="btn-ghost" data-action="testProvider" data-arg="${escAttr(p.id)}">测试</button>
-         ${providerUnlockCardButtonHtml(p)}
-         <button class="btn-ghost" data-action="navigateToProxyModels">编辑</button>`
-      : builtin
-      ? `<button class="btn-ghost" data-action="testProvider" data-arg="${escAttr(p.id)}">测试</button>
-         ${providerUnlockCardButtonHtml(p)}
-         <button class="btn-ghost" data-action="openProviderEditor" data-arg="${escAttr(p.id)}">编辑</button>`
-      : `<button class="btn-ghost" data-action="testProvider" data-arg="${escAttr(p.id)}">测试</button>
-         ${providerUnlockCardButtonHtml(p)}
-         <button class="btn-ghost" data-action="openProviderEditor" data-arg="${escAttr(p.id)}">编辑</button>
-         <button class="btn-ghost" data-action="deleteProvider" data-arg="${escAttr(p.id)}">删除</button>`;
+      : `<label class="toggle-switch" title="${enabled ? '已启用，点击禁用' : '未启用，点击启用'}">
+          <input type="checkbox" ${enabled ? 'checked' : ''} data-action="toggleProviderEnabled" data-events="change" data-arg="${escAttr(p.id)}">
+          <span class="toggle-slider"></span>
+        </label>`;
+    const actionsHtml = providerActionButtonsHtml(p);
 
     const selectCheckHtml = builtin
       ? ''
@@ -876,63 +1008,13 @@ function renderProviderListTable(list) {
             const selected = providerSelectedIds.has(p.id);
             const builtin = isBuiltinProvider(p);
             const builtinBadge = builtinProviderBadgeHtml(p);
-            const isLocalProxy = isLocalProxyProvider(p);
-            const actionButtons = isLocalProxy
-              ? `<button class="provider-list-icon-btn" data-action="testProvider" data-arg="${escAttr(p.id)}" title="测试" aria-label="测试 ${escAttr(p.name || p.id)}">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                    <path d="M10 2v7.3a4 4 0 0 1-.54 2L4.2 20.1A1.3 1.3 0 0 0 5.32 22h13.36a1.3 1.3 0 0 0 1.12-1.9l-5.26-8.8a4 4 0 0 1-.54-2V2"></path>
-                    <path d="M8.5 2h7"></path>
-                    <path d="M7.5 15h9"></path>
-                  </svg>
-                </button>
-                ${providerUnlockListButtonHtml(p)}
-                <button class="provider-list-icon-btn" data-action="navigateToProxyModels" title="编辑" aria-label="编辑">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                    <path d="M12 20h9"></path>
-                    <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"></path>
-                  </svg>
-                </button>`
-              : builtin
-              ? `<button class="provider-list-icon-btn" data-action="testProvider" data-arg="${escAttr(p.id)}" title="测试" aria-label="测试 ${escAttr(p.name || p.id)}">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                    <path d="M10 2v7.3a4 4 0 0 1-.54 2L4.2 20.1A1.3 1.3 0 0 0 5.32 22h13.36a1.3 1.3 0 0 0 1.12-1.9l-5.26-8.8a4 4 0 0 1-.54-2V2"></path>
-                    <path d="M8.5 2h7"></path>
-                    <path d="M7.5 15h9"></path>
-                  </svg>
-                </button>
-                ${providerUnlockListButtonHtml(p)}
-                <button class="provider-list-icon-btn" data-action="openProviderEditor" data-arg="${escAttr(p.id)}" title="编辑" aria-label="编辑 ${escAttr(p.name || p.id)}">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                    <path d="M12 20h9"></path>
-                    <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"></path>
-                  </svg>
-                </button>`
-              : `<button class="provider-list-icon-btn" data-action="testProvider" data-arg="${escAttr(p.id)}" title="测试" aria-label="测试 ${escAttr(p.name || p.id)}">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                    <path d="M10 2v7.3a4 4 0 0 1-.54 2L4.2 20.1A1.3 1.3 0 0 0 5.32 22h13.36a1.3 1.3 0 0 0 1.12-1.9l-5.26-8.8a4 4 0 0 1-.54-2V2"></path>
-                    <path d="M8.5 2h7"></path>
-                    <path d="M7.5 15h9"></path>
-                  </svg>
-                </button>
-                ${providerUnlockListButtonHtml(p)}
-                <button class="provider-list-icon-btn" data-action="openProviderEditor" data-arg="${escAttr(p.id)}" title="编辑" aria-label="编辑 ${escAttr(p.name || p.id)}">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                    <path d="M12 20h9"></path>
-                    <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"></path>
-                  </svg>
-                </button>
-                <button class="provider-list-icon-btn danger" data-action="deleteProvider" data-arg="${escAttr(p.id)}" title="删除" aria-label="删除 ${escAttr(p.name || p.id)}">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                    <path d="M3 6h18"></path>
-                    <path d="M8 6V4h8v2"></path>
-                    <path d="M19 6l-1 14H6L5 6"></path>
-                    <path d="M10 11v5"></path>
-                    <path d="M14 11v5"></path>
-                  </svg>
-                </button>`;
+            const actionButtons = providerActionButtonsHtml(p);
             const toggleHtml = builtin
               ? ''
-              : `<div class="toggle ${enabled ? 'on' : ''}" title="${enabled ? '已启用，点击禁用' : '未启用，点击启用'}" data-action="toggleProviderEnabled" data-arg="${escAttr(p.id)}"></div>`;
+              : `<label class="toggle-switch" title="${enabled ? '已启用，点击禁用' : '未启用，点击启用'}">
+                  <input type="checkbox" ${enabled ? 'checked' : ''} data-action="toggleProviderEnabled" data-events="change" data-arg="${escAttr(p.id)}">
+                  <span class="toggle-slider"></span>
+                </label>`;
             return `
               <tr class="${selected ? 'selected' : ''} ${builtin ? 'provider-list-row-builtin' : ''}">
                 <td class="provider-list-check-col">
@@ -2957,6 +3039,9 @@ syncEvalCombos();
 // ---- P3 globalThis mirror (functions/classes) ----
 (function mirrorFns(g) {
   g.sortModelsNaturally = sortModelsNaturally;
+  g.sortRoleSelectItems = sortRoleSelectItems;
+  g.getModelFamilyRank = getModelFamilyRank;
+  g.compareModelNames = compareModelNames;
   g.providerSelectedModels = providerSelectedModels;
   g.providerCapabilities = providerCapabilities;
   g.capabilityBadges = capabilityBadges;
@@ -2977,6 +3062,11 @@ syncEvalCombos();
   g.isVirtualBuiltinProvider = isVirtualBuiltinProvider;
   g.isLocalProxyProvider = isLocalProxyProvider;
   g.isCpaLocalProvider = isCpaLocalProvider;
+  g.isAnyBridgeLocalProxy = isAnyBridgeLocalProxy;
+  g.isCpaLocalProxy = isCpaLocalProxy;
+  g.isOtherBuiltinProxy = isOtherBuiltinProxy;
+  g.isBuiltinProxyEntry = isBuiltinProxyEntry;
+  g.builtinProxySortRank = builtinProxySortRank;
   g.builtinProviderBadgeHtml = builtinProviderBadgeHtml;
   g.localProxyProviderModelsEntry = localProxyProviderModelsEntry;
   g.isLocalProxyProviderEntry = isLocalProxyProviderEntry;
@@ -3013,8 +3103,8 @@ syncEvalCombos();
   g.providerUnlockSummaryHtml = providerUnlockSummaryHtml;
   g.providerUnlockTagsHtml = providerUnlockTagsHtml;
   g.providerUnlockIconSvg = providerUnlockIconSvg;
-  g.providerUnlockCardButtonHtml = providerUnlockCardButtonHtml;
   g.providerUnlockListButtonHtml = providerUnlockListButtonHtml;
+  g.providerActionButtonsHtml = providerActionButtonsHtml;
   g.ensureProviderUnlockModal = ensureProviderUnlockModal;
   g.openProviderUnlockModal = openProviderUnlockModal;
   g.closeProviderUnlockModal = closeProviderUnlockModal;

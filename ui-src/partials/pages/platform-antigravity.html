@@ -14,6 +14,14 @@
             </div>
 
             <div class="platform-console-actions">
+              <!-- Antigravity 运行模式分段切换器（零遮挡、现代化胶囊外观） -->
+              <div class="antigravity-mode-segmented" id="antigravityModeSegmented" role="group" aria-label="Antigravity 运行模式">
+                <button type="button" class="antigravity-mode-seg-btn is-active" data-mode="pure"
+                  data-action="selectAntigravityMode" data-args='["pure"]' title="纯 BYOK 模式：免登谷歌，纯走自建 Key">纯 BYOK</button>
+                <button type="button" class="antigravity-mode-seg-btn" data-mode="hybrid"
+                  data-action="selectAntigravityMode" data-args='["hybrid"]' title="混合模式：保留官方额度，注入自建模型">混合模式</button>
+              </div>
+
               <button class="btn-primary platform-proxy-primary" id="antigravity-main-btn" data-action="antigravityPrimaryAction" aria-label="一键接入 Antigravity">
                 <span class="proxy-btn-action">
                   <svg class="proxy-btn-icon" width="14" height="14" viewBox="0 0 24 24" fill="none"
@@ -79,6 +87,7 @@
                 <button class="btn-ghost secondary provider-bulk-btn" id="antigravity-bulk-select-visible-btn" data-action="antigravityToggleSelectAllVisible">选择当前</button>
                 <button class="btn-ghost success provider-bulk-btn" id="antigravity-bulk-enable-btn" disabled data-action="antigravityBulkEnableAction">启用</button>
                 <button class="btn-ghost warn provider-bulk-btn" id="antigravity-bulk-disable-btn" disabled data-action="antigravityBulkDisableAction">停用</button>
+                <button class="btn-ghost accent provider-bulk-btn" id="antigravity-bulk-vision-btn" disabled data-action="antigravityBulkThirdPartyVisionAction">启用第三方图片</button>
                 <button class="btn-ghost danger provider-bulk-btn" id="antigravity-bulk-remove-btn" disabled data-action="antigravityBulkRemoveAction">从 Antigravity 移除</button>
               </div>
             </div>
@@ -117,11 +126,12 @@
             <table class="wb-model-table" id="antigravity-model-table" style="display: none; border: none; box-shadow: none; border-radius: 0; width: 100%;">
               <colgroup>
                 <col class="cb-col-select" style="width: 44px;">
-                <col style="width: 24%;">
                 <col style="width: 22%;">
-                <col style="width: 18%;">
-                <col style="width: 14%;">
-                <col style="width: 90px;">
+                <col style="width: 20%;">
+                <col style="width: 16%;">
+                <col style="width: 12%;">
+                <col style="width: 86px;">
+                <col style="width: 130px;">
                 <col style="width: 70px;">
               </colgroup>
               <thead>
@@ -137,6 +147,17 @@
                   <th>所属供应商</th>
                   <th>上游协议</th>
                   <th style="text-align: center;">操作</th>
+                  <th style="text-align: center;">
+                    <span class="model-map-display-head" style="display:inline-flex;align-items:center;justify-content:center;gap:4px;">
+                      <span>第三方图片理解</span>
+                      <button class="btn-ghost accent model-map-settings-btn" title="配置图片理解模型" aria-label="配置图片理解模型" data-action="navigateToProxyEnhancement">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
+                          <circle cx="12" cy="12" r="3"></circle>
+                          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+                        </svg>
+                      </button>
+                    </span>
+                  </th>
                   <th style="text-align: center;">启用</th>
                 </tr>
               </thead>
@@ -232,9 +253,16 @@
               </label>
               <label class="codex-config-toggle-row">
                 <span class="codex-config-toggle-label">注入至 Antigravity 模型下拉菜单</span>
-                <label class="switch">
+                <label class="toggle-switch">
                   <input type="checkbox" id="antigravity-config-inject-models" checked>
-                  <span class="slider"></span>
+                  <span class="toggle-slider"></span>
+                </label>
+              </label>
+              <label class="codex-config-toggle-row" style="margin-top: 10px;">
+                <span class="codex-config-toggle-label">启用第三方图片理解</span>
+                <label class="toggle-switch">
+                  <input type="checkbox" id="antigravity-config-use-third-party-vision">
+                  <span class="toggle-slider"></span>
                 </label>
               </label>
             </div>

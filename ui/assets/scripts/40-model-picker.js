@@ -664,6 +664,10 @@ function updateModelFilterTabCounts() {
   for (const [key, count] of Object.entries(counts)) {
     const el = document.getElementById(`count-tab-${key}`);
     if (el) el.textContent = count;
+    const tabEl = el ? el.closest('.model-filter-tab') : document.querySelector(`.model-filter-tab[data-arg="${key}"]`);
+    if (tabEl && key !== 'all') {
+      tabEl.classList.toggle('is-empty', count === 0);
+    }
   }
 }
 
@@ -682,7 +686,11 @@ function toggleModelSort() {
   const btn = document.getElementById('modelFilterSortBtn');
   if (btn) {
     btn.classList.toggle('active', modelPanelSortMode === 'asc');
-    btn.title = modelPanelSortMode === 'asc' ? '当前：名称 A-Z 排序（点击切回默认）' : '当前：默认排序（点击切换 A-Z）';
+    btn.title = modelPanelSortMode === 'asc' ? '当前：名称 A-Z 升序（点击切回默认）' : '当前：默认排序（点击切换 A-Z 升序）';
+    const label = btn.querySelector('.model-sort-label');
+    if (label) {
+      label.textContent = modelPanelSortMode === 'asc' ? 'A-Z 已启用' : 'A-Z';
+    }
   }
   filterModelPanel();
 }
@@ -745,7 +753,12 @@ function toggleModelSearch() {
 
 function clearModelSearch() {
   const input = document.getElementById('modelSearchInput');
-  if (input) input.value = '';
+  if (input) {
+    input.value = '';
+    input.focus();
+  }
+  const clearBtn = document.getElementById('modelSearchClearBtn');
+  if (clearBtn) clearBtn.style.display = 'none';
   filterModelPanel();
 }
 
@@ -854,9 +867,15 @@ function updateSelectedModelsUI() {
 }
 
 function filterModelPanel() {
-  const query = (document.getElementById('modelSearchInput')?.value || '').toLowerCase().trim();
+  const searchInput = document.getElementById('modelSearchInput');
+  const query = (searchInput?.value || '').toLowerCase().trim();
   const body = document.getElementById('modelPanelBody');
   if (!body) return;
+
+  const clearBtn = document.getElementById('modelSearchClearBtn');
+  if (clearBtn) {
+    clearBtn.style.display = query ? 'inline-flex' : 'none';
+  }
 
   // 1. 更新顶部各分类模型数量 Badge
   updateModelFilterTabCounts();
@@ -1286,7 +1305,11 @@ function openProviderEditor(id) {
   if (sortBtn) {
     sortBtn.classList.remove('active');
     sortBtn.title = '切换模型排序 (默认 / 名称 A-Z)';
+    const label = sortBtn.querySelector('.model-sort-label');
+    if (label) label.textContent = 'A-Z';
   }
+  const clearBtn = document.getElementById('modelSearchClearBtn');
+  if (clearBtn) clearBtn.style.display = 'none';
   updateModelFilterTabCounts();
 
   // 重置 UI 的 Tab 选中状态

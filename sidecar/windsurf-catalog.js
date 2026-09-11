@@ -1598,6 +1598,14 @@ export const WINDSURF_CATALOG = [
     "noApiIdHint": null
   },
   {
+    "label": "SWE-1.6 (Slow)",
+    "modelUid": "swe-1-6-slow",
+    "apiId": "swe-1-6-slow",
+    "contextWindow": 200000,
+    "supportsImages": true,
+    "noApiIdHint": null
+  },
+  {
     "label": "SWE-1.6 Fast",
     "modelUid": "swe-1-6-fast",
     "apiId": "swe-1-6-fast",
@@ -1649,7 +1657,7 @@ export const WINDSURF_CATALOG = [
     "label": "GPT-6 Astra",
     "modelUid": "gpt-6-astra",
     "apiId": "gpt-6-astra",
-    "contextWindow": 200000,
+    "contextWindow": 1000000,
     "supportsImages": true,
     "noApiIdHint": null
   },
@@ -1657,7 +1665,7 @@ export const WINDSURF_CATALOG = [
     "label": "GPT-6 Astra No Thinking",
     "modelUid": "gpt-6-astra-none",
     "apiId": "gpt-6-astra",
-    "contextWindow": 200000,
+    "contextWindow": 1000000,
     "supportsImages": true,
     "noApiIdHint": null
   },
@@ -1665,7 +1673,7 @@ export const WINDSURF_CATALOG = [
     "label": "GPT-6 Astra Low Thinking",
     "modelUid": "gpt-6-astra-low",
     "apiId": "gpt-6-astra",
-    "contextWindow": 200000,
+    "contextWindow": 1000000,
     "supportsImages": true,
     "noApiIdHint": null
   },
@@ -1673,7 +1681,7 @@ export const WINDSURF_CATALOG = [
     "label": "GPT-6 Astra Medium Thinking",
     "modelUid": "gpt-6-astra-medium",
     "apiId": "gpt-6-astra",
-    "contextWindow": 200000,
+    "contextWindow": 1000000,
     "supportsImages": true,
     "noApiIdHint": null
   },
@@ -1681,7 +1689,7 @@ export const WINDSURF_CATALOG = [
     "label": "GPT-6 Astra High Thinking",
     "modelUid": "gpt-6-astra-high",
     "apiId": "gpt-6-astra",
-    "contextWindow": 200000,
+    "contextWindow": 1000000,
     "supportsImages": true,
     "noApiIdHint": null
   },
@@ -1689,7 +1697,7 @@ export const WINDSURF_CATALOG = [
     "label": "GPT-6 Astra XHigh Thinking",
     "modelUid": "gpt-6-astra-xhigh",
     "apiId": "gpt-6-astra",
-    "contextWindow": 200000,
+    "contextWindow": 1000000,
     "supportsImages": true,
     "noApiIdHint": null
   },
@@ -1697,7 +1705,7 @@ export const WINDSURF_CATALOG = [
     "label": "GPT-6 Astra Max Thinking",
     "modelUid": "gpt-6-astra-max",
     "apiId": "gpt-6-astra",
-    "contextWindow": 200000,
+    "contextWindow": 1000000,
     "supportsImages": true,
     "noApiIdHint": null
   },
@@ -1705,7 +1713,7 @@ export const WINDSURF_CATALOG = [
     "label": "GPT-6 Astra No Thinking Fast",
     "modelUid": "gpt-6-astra-none-priority",
     "apiId": "gpt-6-astra",
-    "contextWindow": 200000,
+    "contextWindow": 1000000,
     "supportsImages": true,
     "noApiIdHint": null
   },
@@ -1713,7 +1721,7 @@ export const WINDSURF_CATALOG = [
     "label": "GPT-6 Astra Low Thinking Fast",
     "modelUid": "gpt-6-astra-low-priority",
     "apiId": "gpt-6-astra",
-    "contextWindow": 200000,
+    "contextWindow": 1000000,
     "supportsImages": true,
     "noApiIdHint": null
   },
@@ -1721,7 +1729,7 @@ export const WINDSURF_CATALOG = [
     "label": "GPT-6 Astra Medium Thinking Fast",
     "modelUid": "gpt-6-astra-medium-priority",
     "apiId": "gpt-6-astra",
-    "contextWindow": 200000,
+    "contextWindow": 1000000,
     "supportsImages": true,
     "noApiIdHint": null
   },
@@ -1729,7 +1737,7 @@ export const WINDSURF_CATALOG = [
     "label": "GPT-6 Astra High Thinking Fast",
     "modelUid": "gpt-6-astra-high-priority",
     "apiId": "gpt-6-astra",
-    "contextWindow": 200000,
+    "contextWindow": 1000000,
     "supportsImages": true,
     "noApiIdHint": null
   },
@@ -1737,7 +1745,7 @@ export const WINDSURF_CATALOG = [
     "label": "GPT-6 Astra XHigh Thinking Fast",
     "modelUid": "gpt-6-astra-xhigh-priority",
     "apiId": "gpt-6-astra",
-    "contextWindow": 200000,
+    "contextWindow": 1000000,
     "supportsImages": true,
     "noApiIdHint": null
   },
@@ -1745,7 +1753,7 @@ export const WINDSURF_CATALOG = [
     "label": "GPT-6 Astra Max Thinking Fast",
     "modelUid": "gpt-6-astra-max-priority",
     "apiId": "gpt-6-astra",
-    "contextWindow": 200000,
+    "contextWindow": 1000000,
     "supportsImages": true,
     "noApiIdHint": null
   },
@@ -1753,7 +1761,7 @@ export const WINDSURF_CATALOG = [
     "label": "GPT-5.6 Sol",
     "modelUid": "gpt-5.6-sol",
     "apiId": "gpt-5.6-sol",
-    "contextWindow": 200000,
+    "contextWindow": 1000000,
     "supportsImages": true,
     "noApiIdHint": null
   },
@@ -1761,7 +1769,7 @@ export const WINDSURF_CATALOG = [
     "label": "GPT-5.6 Luna",
     "modelUid": "gpt-5.6-luna",
     "apiId": "gpt-5.6-luna",
-    "contextWindow": 200000,
+    "contextWindow": 1000000,
     "supportsImages": true,
     "noApiIdHint": null
   },
@@ -1769,7 +1777,7 @@ export const WINDSURF_CATALOG = [
     "label": "GPT-5.6 Terra",
     "modelUid": "gpt-5.6-terra",
     "apiId": "gpt-5.6-terra",
-    "contextWindow": 200000,
+    "contextWindow": 1000000,
     "supportsImages": true,
     "noApiIdHint": null
   },
@@ -1929,7 +1937,7 @@ export const WINDSURF_CATALOG = [
     "label": "Grok 4.6",
     "modelUid": "grok-4.6",
     "apiId": "grok-4.6",
-    "contextWindow": 200000,
+    "contextWindow": 500000,
     "supportsImages": true,
     "noApiIdHint": null
   },
@@ -1937,7 +1945,7 @@ export const WINDSURF_CATALOG = [
     "label": "Grok 4.6 Low",
     "modelUid": "grok-4-6-low",
     "apiId": "grok-4.6",
-    "contextWindow": 200000,
+    "contextWindow": 500000,
     "supportsImages": true,
     "noApiIdHint": null
   },
@@ -1945,7 +1953,7 @@ export const WINDSURF_CATALOG = [
     "label": "Grok 4.6 Medium",
     "modelUid": "grok-4-6-medium",
     "apiId": "grok-4.6",
-    "contextWindow": 200000,
+    "contextWindow": 500000,
     "supportsImages": true,
     "noApiIdHint": null
   },
@@ -1953,7 +1961,7 @@ export const WINDSURF_CATALOG = [
     "label": "Grok 4.6 High",
     "modelUid": "grok-4-6-high",
     "apiId": "grok-4.6",
-    "contextWindow": 200000,
+    "contextWindow": 500000,
     "supportsImages": true,
     "noApiIdHint": null
   },
@@ -1961,7 +1969,7 @@ export const WINDSURF_CATALOG = [
     "label": "Grok 4.6 XHigh",
     "modelUid": "grok-4-6-xhigh",
     "apiId": "grok-4.6",
-    "contextWindow": 200000,
+    "contextWindow": 500000,
     "supportsImages": true,
     "noApiIdHint": null
   },
@@ -1969,7 +1977,7 @@ export const WINDSURF_CATALOG = [
     "label": "DeepSeek V4 Pro",
     "modelUid": "deepseek-v4-pro",
     "apiId": "deepseek-v4-pro",
-    "contextWindow": 128000,
+    "contextWindow": 1048576,
     "supportsImages": true,
     "noApiIdHint": null
   },
@@ -1977,7 +1985,7 @@ export const WINDSURF_CATALOG = [
     "label": "DeepSeek V4 Flash",
     "modelUid": "deepseek-v4-flash",
     "apiId": "deepseek-v4-flash",
-    "contextWindow": 128000,
+    "contextWindow": 1048576,
     "supportsImages": true,
     "noApiIdHint": null
   },
@@ -1985,7 +1993,7 @@ export const WINDSURF_CATALOG = [
     "label": "GLM-5.3",
     "modelUid": "glm-5.3",
     "apiId": "glm-5.3",
-    "contextWindow": 128000,
+    "contextWindow": 1000000,
     "supportsImages": true,
     "noApiIdHint": null
   },
@@ -1993,7 +2001,7 @@ export const WINDSURF_CATALOG = [
     "label": "GLM-5.3 Low",
     "modelUid": "glm-5-3-low",
     "apiId": "glm-5.3",
-    "contextWindow": 128000,
+    "contextWindow": 1000000,
     "supportsImages": true,
     "noApiIdHint": null
   },
@@ -2001,7 +2009,7 @@ export const WINDSURF_CATALOG = [
     "label": "GLM-5.3 High",
     "modelUid": "glm-5-3-high",
     "apiId": "glm-5.3",
-    "contextWindow": 128000,
+    "contextWindow": 1000000,
     "supportsImages": true,
     "noApiIdHint": null
   },
@@ -2009,7 +2017,7 @@ export const WINDSURF_CATALOG = [
     "label": "GLM-5.3 Max",
     "modelUid": "glm-5-3-max",
     "apiId": "glm-5.3",
-    "contextWindow": 128000,
+    "contextWindow": 1000000,
     "supportsImages": true,
     "noApiIdHint": null
   },
@@ -2017,7 +2025,7 @@ export const WINDSURF_CATALOG = [
     "label": "Kimi K3",
     "modelUid": "kimi-k3",
     "apiId": "kimi-k3",
-    "contextWindow": 200000,
+    "contextWindow": 1048576,
     "supportsImages": true,
     "noApiIdHint": null
   },
@@ -2025,7 +2033,7 @@ export const WINDSURF_CATALOG = [
     "label": "Kimi K3 Low",
     "modelUid": "kimi-k3-low",
     "apiId": "kimi-k3",
-    "contextWindow": 200000,
+    "contextWindow": 1048576,
     "supportsImages": true,
     "noApiIdHint": null
   },
@@ -2033,7 +2041,7 @@ export const WINDSURF_CATALOG = [
     "label": "Kimi K3 High",
     "modelUid": "kimi-k3-high",
     "apiId": "kimi-k3",
-    "contextWindow": 200000,
+    "contextWindow": 1048576,
     "supportsImages": true,
     "noApiIdHint": null
   },
@@ -2041,22 +2049,22 @@ export const WINDSURF_CATALOG = [
     "label": "Kimi K3 Max",
     "modelUid": "kimi-k3-max",
     "apiId": "kimi-k3",
-    "contextWindow": 200000,
+    "contextWindow": 1048576,
     "supportsImages": true,
     "noApiIdHint": null
   },
   {
     "label": "Gemini 3.7 Flash High",
-    "modelUid": "gemini-3.7-flash-high",
-    "apiId": "gemini-3.7-flash-high",
+    "modelUid": "gemini-3-7-flash-high",
+    "apiId": "gemini-3-7-flash-high",
     "contextWindow": 1000000,
     "supportsImages": true,
     "noApiIdHint": null
   },
   {
     "label": "Gemini 3.8 Flash High",
-    "modelUid": "gemini-3.8-flash-high",
-    "apiId": "gemini-3.8-flash-high",
+    "modelUid": "gemini-3-8-flash-high",
+    "apiId": "gemini-3-8-flash-high",
     "contextWindow": 1000000,
     "supportsImages": true,
     "noApiIdHint": null

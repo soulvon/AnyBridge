@@ -1,0 +1,47 @@
+  <!-- ═══════ MODAL: 平台真实配置文件查看与编辑器 ═══════ -->
+  <div id="platform-real-config-modal" class="modal-overlay">
+    <div class="modal-container" style="width: min(920px, 94vw); max-width: 920px; height: 86vh; max-height: 740px; min-height: 520px; display: flex; flex-direction: column;">
+      <div class="modal-header" style="display: flex; align-items: center; justify-content: space-between; padding: 16px 20px; border-bottom: 1px solid var(--border);">
+        <div>
+          <div class="modal-title" id="platform-real-config-modal-title" style="font-size: 15px; font-weight: 800; color: var(--text-primary);">配置文件编辑与查看</div>
+          <div id="platform-real-config-modal-path" style="font-size: 12px; color: var(--text-muted); font-family: var(--font-mono, monospace); margin-top: 2px;"></div>
+        </div>
+        <button type="button" class="modal-close-icon" aria-label="关闭" data-action="closePlatformRealConfigModal">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M18 6L6 18"></path>
+            <path d="M6 6l12 12"></path>
+          </svg>
+        </button>
+      </div>
+
+      <div class="modal-body" style="flex: 1 1 auto; min-height: 0; padding: 16px 20px; display: flex; flex-direction: column; gap: 12px;">
+        <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px;">
+          <span style="font-size: 12px; color: var(--text-muted);">已从本地磁盘原样读取，保留所有空行与注释，支持直接编辑修改：</span>
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <button type="button" class="btn-ghost" data-action="reloadPlatformRealConfigModal" style="padding: 2px 10px; height: 28px; font-size: 12px; display: inline-flex; align-items: center; gap: 5px;">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/>
+              </svg>
+              <span>重载磁盘原文</span>
+            </button>
+            <button type="button" class="btn-ghost secondary" data-action="copyPlatformRealConfigModal" style="padding: 2px 12px; height: 28px; font-size: 12px; display: inline-flex; align-items: center; gap: 5px;">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                <rect width="14" height="14" x="8" y="8" rx="2" ry="2"/>
+                <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/>
+              </svg>
+              <span>复制全文</span>
+            </button>
+          </div>
+        </div>
+        <textarea id="platform-real-config-modal-textarea" class="claude-code-raw-config-input" spellcheck="false" style="flex: 1 1 auto; width: 100%; height: 100%; min-height: 380px; max-height: none; font-family: Consolas, Monaco, Cascadia Code, JetBrains Mono, monospace !important; font-size: 12.5px !important; line-height: 1.6 !important; white-space: pre !important; overflow: auto !important; padding: 14px 16px; box-sizing: border-box; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-card-deep, rgba(0,0,0,0.03)); color: var(--text-primary); resize: none;"></textarea>
+      </div>
+
+      <div class="modal-footer" style="padding: 12px 20px; border-top: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between;">
+        <span style="font-size: 12px; color: var(--text-muted);">保存将原样写回本地磁盘，保存前已自动在同目录建立备份。</span>
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <button type="button" class="modal-btn modal-btn-ghost" data-action="closePlatformRealConfigModal">取 消</button>
+          <button type="button" class="modal-btn modal-btn-confirm" id="platform-real-config-modal-save-btn" data-action="savePlatformRealConfigModal">保存修改</button>
+        </div>
+      </div>
+    </div>
+  </div>

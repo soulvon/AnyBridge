@@ -896,6 +896,7 @@ function syncCodexConfigAuthInjectMutualExclusion(source) {
     // 打开编辑器或保存前：preserve 优先
     inject.checked = false;
   }
+  syncCodexRawConfigFromFields();
 }
 
 function onCodexConfigInjectModelsChange() {
@@ -954,10 +955,26 @@ function renderCodexConfigSourceList(selectedId = '') {
 }
 
 function applyCodexConfigSource(providerId) {
-  const source = (providerStore.providers || []).find(p => p && p.id === providerId);
+  let source = (providerStore.providers || []).find(p => p && (p.id === providerId || p.providerId === providerId));
+  if (!source && Array.isArray(codexProviderModels)) {
+    const pm = codexProviderModels.find(p => p && (p.providerId === providerId || p.id === providerId));
+    if (pm) {
+      source = {
+        id: pm.providerId || pm.id,
+        name: pm.providerName || pm.name,
+        apiHost: pm.apiHost,
+        apiPath: pm.apiPath || '/v1',
+        apiKey: pm.apiKey || '',
+        models: (pm.models || []).map(m => typeof m === 'string' ? m : m.id),
+      };
+    }
+  }
   if (!source) return;
   codexConfigSetInputValue('codex-config-source-id', source.id);
-  codexConfigSetInputValue('codex-config-name', source.name || '');
+  const nameInput = document.getElementById('codex-config-name');
+  if (codexConfigEditorMode === 'create' || !nameInput?.value.trim()) {
+    codexConfigSetInputValue('codex-config-name', source.name || '');
+  }
   codexConfigSetInputValue('codex-config-base-url', codexConfigDisplayBaseUrl(source));
   codexConfigSetInputValue('codex-config-api-key', source.apiKey || '');
   renderReasoningConfig(source.codexChatReasoning);
@@ -966,7 +983,8 @@ function applyCodexConfigSource(providerId) {
   const catalog = source.modelCatalog || [];
   const providerModels = codexConfigModelList(source);
   const merged = mergeCatalogAndModels(catalog, providerModels);
-  renderCodexModelManager(merged, '', '已带入来源信息，请拉取模型列表。');
+  const defaultModel = source.defaultModel || (merged[0]?.model || '');
+  renderCodexModelManager(merged, defaultModel, merged.length ? `已带入 ${merged.length} 个模型` : '已带入来源信息，可拉取模型列表。');
 }
 
 function selectCodexConfigSource(providerId) {
@@ -979,10 +997,50 @@ function onCodexConfigSourceChange() {
   selectCodexConfigSource(select?.value || '');
 }
 
+function sanitizePlatformModelName(name) {
+  if (!name || typeof name !== 'string') return '';
+  return name
+    .replace(/\x1b\[[0-9;]*[a-zA-Z]/g, '')
+    .replace(/\[\s*\]/g, '')
+    .replace(/\[\s*$/g, '')
+    .trim();
+}
+
+function isAnyRouterEndpoint(url = '', name = '') {
+  const s = `${url || ''} ${name || ''}`.toLowerCase();
+  return s.includes('anyrouter');
+}
+
+function isClaudeModel(name = '') {
+  return String(name || '').toLowerCase().includes('claude');
+}
+
+function ensureOneMContextMarker(model, isAnyRouter = false) {
+  const clean = sanitizePlatformModelName(model);
+  if (!clean) return '';
+  const isClaude = isClaudeModel(clean);
+  if (isAnyRouter && isClaude) {
+    if (clean.toLowerCase().endsWith('[1m]')) return clean;
+    return `${clean}[1m]`;
+  }
+  if (clean.toLowerCase().endsWith('[1m]')) {
+    return clean.slice(0, -4).trim();
+  }
+  return clean;
+}
+
+function stripOneMContextMarker(model) {
+  let m = String(model || '').trim();
+  if (m.toLowerCase().endsWith('[1m]')) {
+    m = m.slice(0, -4).trim();
+  }
+  return m;
+}
+
 function codexConfigModelList(provider) {
   const list = Array.isArray(provider?.models) ? provider.models : [];
-  const models = list.map(m => String(m || '').trim()).filter(Boolean);
-  const fallback = String(provider?.defaultModel || '').trim();
+  const models = list.map(m => sanitizePlatformModelName(m)).filter(Boolean);
+  const fallback = sanitizePlatformModelName(provider?.defaultModel || '');
   if (fallback && !models.includes(fallback)) models.unshift(fallback);
   return [...new Set(models)];
 }
@@ -990,18 +1048,18 @@ function codexConfigModelList(provider) {
 function codexConfigParseModels(value, defaultModel) {
   const parts = String(value || '')
     .split(/[\n,，]/)
-    .map(x => x.trim())
+    .map(x => sanitizePlatformModelName(x))
     .filter(Boolean);
-  const first = String(defaultModel || '').trim();
+  const first = sanitizePlatformModelName(defaultModel);
   const models = first ? [first, ...parts] : parts;
   return [...new Set(models)];
 }
 
 function codexConfigNormalizeModels(models, defaultModel = '') {
   const list = (Array.isArray(models) ? models : String(models || '').split(/[\n,，]/))
-    .map(m => String(m || '').trim())
+    .map(m => sanitizePlatformModelName(m))
     .filter(Boolean);
-  const first = String(defaultModel || '').trim();
+  const first = sanitizePlatformModelName(defaultModel);
   return [...new Set(first ? [first, ...list] : list)];
 }
 
@@ -1031,7 +1089,8 @@ function mergeCatalogAndModels(catalog, models) {
     seen.add(m);
     result.push({ model: m, displayName: '', contextWindow: '', inCatalog: true, isDefault: false });
   }
-  return result;
+  const sortFn = typeof sortRoleSelectItems === 'function' ? sortRoleSelectItems : (list) => list;
+  return sortFn(result, 'codex');
 }
 
 function codexConfigSetModelStatus(text, tone = '') {
@@ -1047,6 +1106,195 @@ function codexConfigSetFetchLoading(loading) {
   btn.disabled = !!loading;
   btn.classList.toggle('is-loading', !!loading);
   btn.textContent = loading ? '拉取中...' : '拉取模型';
+}
+
+let currentViewingRealConfigPlatform = 'codex';
+
+async function openPlatformRealConfigModal(platform = 'codex') {
+  currentViewingRealConfigPlatform = platform;
+  const modal = document.getElementById('platform-real-config-modal');
+  if (!modal) return;
+
+  const titleMap = {
+    'codex': { title: '配置文件实际内容 · config.toml', file: '~/.codex/config.toml' },
+    'claude-code': { title: '配置文件实际内容 · settings.json', file: '~/.claude/settings.json' },
+    'opencode': { title: '配置文件实际内容 · opencode.json', file: '~/.config/opencode/opencode.json' },
+    'grok': { title: '配置文件实际内容 · config.toml', file: '~/.grok/config.toml' },
+    'claude-desktop': { title: '配置文件实际内容 · claude_desktop_config.json', file: 'Claude-3p/claude_desktop_config.json' }
+  };
+
+  const meta = titleMap[platform] || { title: `配置文件实际内容 · ${platform}`, file: '本地磁盘配置文件' };
+  const titleEl = document.getElementById('platform-real-config-modal-title');
+  const pathEl = document.getElementById('platform-real-config-modal-path');
+  if (titleEl) titleEl.textContent = meta.title;
+  if (pathEl) pathEl.textContent = `文件路径：${meta.file}`;
+
+  modal.classList.add('active');
+  await reloadPlatformRealConfigModal(false);
+}
+
+function closePlatformRealConfigModal() {
+  document.getElementById('platform-real-config-modal')?.classList.remove('active');
+}
+
+async function reloadPlatformRealConfigModal(notify = true) {
+  await loadPlatformRealConfigFile(currentViewingRealConfigPlatform, 'platform-real-config-modal-textarea', notify);
+}
+
+function copyPlatformRealConfigModal() {
+  copyRawConfigText('platform-real-config-modal-textarea', `${currentViewingRealConfigPlatform} 配置文件内容`);
+}
+
+async function savePlatformRealConfigModal() {
+  const textarea = document.getElementById('platform-real-config-modal-textarea');
+  if (!textarea) return;
+  const content = textarea.value;
+  const saveBtn = document.getElementById('platform-real-config-modal-save-btn');
+  if (saveBtn) {
+    saveBtn.disabled = true;
+    saveBtn.textContent = '保存中…';
+  }
+  try {
+    const ok = await invoke('write_platform_config_file', {
+      platform: currentViewingRealConfigPlatform,
+      content,
+    });
+    if (ok) {
+      if (typeof showBottomToast === 'function') {
+        showBottomToast(`已成功保存并写回 ${currentViewingRealConfigPlatform} 磁盘配置文件`, 'success');
+      } else {
+        showCustomAlert('已成功保存并写回磁盘配置文件。', '保存成功', 'success');
+      }
+      closePlatformRealConfigModal();
+      if (typeof refreshPlatforms === 'function') {
+        refreshPlatforms();
+      }
+    }
+  } catch (e) {
+    console.error(`[platforms] 写入配置文件失败:`, e);
+    showCustomAlert(String(e), '保存失败', 'error');
+  } finally {
+    if (saveBtn) {
+      saveBtn.disabled = false;
+      saveBtn.textContent = '保存修改';
+    }
+  }
+}
+
+async function loadPlatformRealConfigFile(platform, textareaId, notify = false) {
+  const textarea = document.getElementById(textareaId);
+  if (!textarea) return false;
+  try {
+    const content = await invoke('read_platform_config_file', { platform });
+    if (content && content.trim()) {
+      textarea.value = content;
+      if (notify && typeof showBottomToast === 'function') {
+        showBottomToast(`已从磁盘重新载入 ${platform} 配置文件原文`, 'success');
+      }
+      return true;
+    } else {
+      if (notify && typeof showBottomToast === 'function') {
+        showBottomToast(`磁盘上尚未检测到 ${platform} 配置文件，已呈现预设模版`, 'info');
+      }
+    }
+  } catch (e) {
+    console.warn(`[platforms] 读取 ${platform} 磁盘配置文件失败:`, e);
+    if (notify && typeof showCustomAlert === 'function') {
+      showCustomAlert(String(e), '读取配置文件失败', 'error');
+    }
+  }
+  return false;
+}
+
+function copyRawConfigText(textareaId, label = '配置文本') {
+  const el = document.getElementById(textareaId);
+  if (!el || !el.value.trim()) {
+    showCustomAlert('暂无可复制的内容。', '提示', 'info');
+    return;
+  }
+  const text = el.value;
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(() => {
+      if (typeof showBottomToast === 'function') {
+        showBottomToast(`已复制 ${label} 到剪贴板`, 'success');
+      } else {
+        showCustomAlert(`已复制 ${label} 到剪贴板。`, '复制成功', 'success');
+      }
+    }).catch(() => {
+      el.select();
+      document.execCommand('copy');
+      showCustomAlert(`已复制 ${label} 到剪贴板。`, '复制成功', 'success');
+    });
+  } else {
+    el.select();
+    document.execCommand('copy');
+    showCustomAlert(`已复制 ${label} 到剪贴板。`, '复制成功', 'success');
+  }
+}
+
+function syncCodexRawConfigFromFields() {
+  const textarea = document.getElementById('codex-config-raw-toml');
+  if (!textarea) return;
+  const name = document.getElementById('codex-config-name')?.value.trim() || 'CustomProvider';
+  const baseUrl = document.getElementById('codex-config-base-url')?.value.trim() || 'http://127.0.0.1:7450/v1';
+  const apiKey = document.getElementById('codex-config-api-key')?.value.trim() || '';
+  const defaultModel = document.getElementById('codex-config-model')?.value.trim() || '';
+  const routeThroughProxy = document.getElementById('codex-config-route-through-proxy')?.checked !== false;
+  const preserveAuth = document.getElementById('codex-config-preserve-official-auth')?.checked === true;
+
+  const effectiveBase = routeThroughProxy ? 'http://127.0.0.1:7450/v1' : baseUrl;
+
+  const lines = [
+    `# ~/.codex/config.toml 当前配置段落预览`
+  ];
+  if (defaultModel) lines.push(`model = "${defaultModel}"`);
+  lines.push(`model_provider = "codex_local_access"\n`);
+  lines.push(`[model_providers.codex_local_access]`);
+  lines.push(`name = "${name}"`);
+  lines.push(`base_url = "${effectiveBase}"`);
+  lines.push(`wire_api = "responses"`);
+  if (preserveAuth) {
+    lines.push(`requires_openai_auth = true`);
+  } else {
+    lines.push(`requires_openai_auth = false`);
+    if (apiKey) lines.push(`experimental_bearer_token = "${apiKey}"`);
+  }
+
+  const entries = typeof getCodexModelEntries === 'function' ? getCodexModelEntries() : [];
+  const inCatalog = entries.filter(e => e.inCatalog);
+  if (inCatalog.length) {
+    lines.push('');
+    for (const m of inCatalog) {
+      lines.push(`[[model_providers.codex_local_access.models]]`);
+      lines.push(`name = "${m.model}"`);
+      if (m.displayName) lines.push(`display_name = "${m.displayName}"`);
+      if (m.contextWindow) lines.push(`context_window = ${m.contextWindow}`);
+    }
+  }
+  textarea.value = lines.join('\n');
+}
+
+function syncGrokRawConfigFromFields() {
+  const textarea = document.getElementById('grok-config-raw-toml');
+  if (!textarea) return;
+  const name = document.getElementById('grok-config-name')?.value.trim() || 'Custom';
+  const baseUrl = document.getElementById('grok-config-base-url')?.value.trim() || 'https://api.deepseek.com/v1';
+  const apiKey = document.getElementById('grok-config-api-key')?.value.trim() || '';
+  const model = document.getElementById('grok-config-model')?.value.trim() || 'deepseek-chat';
+  const backend = document.getElementById('grok-config-backend')?.value.trim() || 'chat_completions';
+
+  const key = (name || 'custom').toLowerCase().replace(/[^a-z0-9_]/g, '_');
+  const lines = [
+    `# ~/.grok/config.toml 自定义模型配置段落预览`,
+    `default_model = "${model}"\n`,
+    `[models.${key}]`,
+    `name = "${name}"`,
+    `base_url = "${baseUrl}"`,
+    `api_key = "${apiKey || 'sk-...'}"`,
+    `model = "${model}"`,
+    `api_backend = "${backend}"`
+  ];
+  textarea.value = lines.join('\n');
 }
 
 function renderCodexModelManager(entries, defaultModel = '', status = '') {
@@ -1105,6 +1353,7 @@ function renderCodexModelManager(entries, defaultModel = '', status = '') {
   if (document.getElementById('codex-agents-list')) {
     renderCodexAgentsPanel(null, codexAgentsState);
   }
+  syncCodexRawConfigFromFields();
 }
 
 // 从状态缓存读（避免 re-render 时 DOM 已被替换导致读到旧值）
@@ -1556,6 +1805,10 @@ function toggleCodexKeyVisibility() {
   togglePasswordInputVisibility('codex-config-api-key', 'codex-config-api-key-toggle');
 }
 
+function toggleClaudeDesktopKeyVisibility() {
+  togglePasswordInputVisibility('claude-desktop-config-api-key', 'claude-desktop-config-api-key-toggle');
+}
+
 function toggleClaudeCodeKeyVisibility() {
   togglePasswordInputVisibility('claude-code-config-api-key', 'claude-code-config-api-key-toggle');
 }
@@ -1658,12 +1911,11 @@ function syncOpenCodeConfigTokenFromSource() {
 }
 
 async function openCodexAddModal() {
-  navigateTo('platform-codex-add');
-  await initCodexAddPage();
+  await openCodexConfigEditor();
 }
 
 function openCodexProviderAdd() {
-  openCodexAddModal();
+  openCodexConfigEditor();
 }
 
 async function initCodexAddPage() {
@@ -1727,8 +1979,7 @@ function renderCodexAddProviderList() {
 function selectCodexAddProvider(providerId) {
   codexAddSelectedProvider = providerId;
   renderCodexAddProviderList();
-  renderCodexAddModels();
-  updateCodexAddConfirmButton();
+  applyCodexConfigSource(providerId);
 }
 
 function renderCodexAddModels() {
@@ -1764,7 +2015,10 @@ function renderCodexAddModels() {
   const existingConfig = codexConfigs.find(c => c.sourceProviderId === provider.providerId || c.name === provider.providerName);
   const existingModels = new Set(existingConfig?.models || []);
 
-  body.innerHTML = provider.models.map((m) => {
+  const sortFn = typeof sortRoleSelectItems === 'function' ? sortRoleSelectItems : (list) => list;
+  const sortedModels = sortFn(provider.models, 'codex');
+
+  body.innerHTML = sortedModels.map((m) => {
     const exists = existingModels.has(m.id);
     return `
       <label class="cb-add-model-row ${exists ? 'already-added' : ''}" data-existing="${exists ? 'true' : 'false'}">
@@ -1795,12 +2049,7 @@ function codexAddSelectNone() {
 }
 
 function setCodexAddWireApi(api) {
-  const normalized = api || 'auto';
-  const hidden = document.getElementById('codex-add-wire-api');
-  if (hidden) hidden.value = normalized;
-  document.querySelectorAll('input[name="codex-add-wire-api-radio"]').forEach(r => {
-    r.checked = r.value === normalized;
-  });
+  setCodexConfigWireApiRadio(api);
 }
 
 async function confirmAddCodexModelsPage() {
@@ -1871,67 +2120,85 @@ async function confirmAddCodexModelsPage() {
   }
 }
 
-function openCodexConfigEditor(providerId = '') {
-  if (!providerId) {
-    openCodexAddModal();
-    return;
-  }
-  resetPasswordInputVisibility('codex-config-api-key', 'codex-config-api-key-toggle');
-  const provider = providerId ? codexConfigProviderById(providerId) : null;
-  if (providerId && !provider) {
-    showCustomAlert('配置不存在或尚未加载。', '无法编辑', 'warn');
-    return;
-  }
-  codexConfigEditorMode = provider ? 'edit' : 'create';
-  const modal = document.getElementById('codex-config-modal');
-  const title = document.getElementById('codex-config-modal-title');
-  const sub = document.getElementById('codex-config-modal-sub');
-  const sourceWrap = document.getElementById('codex-config-source-wrap');
-  const layout = document.getElementById('codex-config-editor-layout');
-  const models = codexConfigModelList(provider);
+function setCodexConfigWireApiRadio(api) {
+  const normalized = api || 'auto';
+  const hidden = document.getElementById('codex-config-wire-api') || document.getElementById('codex-add-wire-api');
+  if (hidden) hidden.value = normalized;
+  document.querySelectorAll('input[name="codex-config-wire-api-radio"], input[name="codex-add-wire-api-radio"]').forEach(r => {
+    r.checked = r.value === normalized;
+  });
+  refreshCodexWireApiAutoLabel();
+  syncCodexRawConfigFromFields();
+}
 
-  if (title) title.textContent = provider ? '编辑 Codex 配置' : '添加 Codex 配置';
-  if (sub) sub.textContent = provider
-    ? `正在编辑「${provider.name || provider.id}」这份 Codex 配置。`
-    : '从现有供应商创建一份可切换的 Codex Responses 配置。';
-  if (sourceWrap) sourceWrap.classList.toggle('is-hidden', !!provider);
-  if (layout) {
-    layout.classList.toggle('is-editing', !!provider);
-    layout.classList.toggle('is-creating', !provider);
+async function openCodexConfigEditor(providerId = '') {
+  resetPasswordInputVisibility('codex-config-api-key', 'codex-config-api-key-toggle');
+  navigateTo('platform-codex-add');
+  await initCodexConfigEditorPage(providerId);
+}
+
+async function initCodexConfigEditorPage(providerId = '') {
+  try {
+    codexProviderModels = await invoke('list_provider_models') || [];
+  } catch (e) {
+    codexProviderModels = [];
+  }
+  if (typeof localProxyProviderModelsEntry === 'function') {
+    const lp = localProxyProviderModelsEntry();
+    codexProviderModels = codexProviderModels.filter(p => !isLocalProxyProviderEntry(p));
+    codexProviderModels.unshift(lp);
+  }
+  codexAddSearchKw = '';
+  const searchInput = document.getElementById('codex-add-search');
+  if (searchInput) searchInput.value = '';
+
+  const provider = providerId ? codexConfigProviderById(providerId) : null;
+  codexConfigEditorMode = provider ? 'edit' : 'create';
+
+  const titleEl = document.getElementById('codex-config-page-title');
+  const subEl = document.getElementById('codex-config-page-sub');
+  if (titleEl) {
+    titleEl.textContent = provider ? '编辑配置 · Codex' : '添加配置 · Codex';
+  }
+  if (subEl) {
+    subEl.textContent = provider
+      ? `正在编辑「${provider.name || provider.id}」这份 Codex 配置。`
+      : '从现有供应商创建或自由定制一份可切换的 Codex Responses 配置方案。';
   }
 
   codexConfigSetInputValue('codex-config-edit-id', provider?.id || '');
+
   if (provider) {
+    codexAddSelectedProvider = provider.sourceProviderId || null;
+    renderCodexAddProviderList();
+
     codexConfigSetInputValue('codex-config-source-id', provider.sourceProviderId || '');
     codexConfigSetInputValue('codex-config-name', provider.name || '');
     codexConfigSetInputValue('codex-config-base-url', codexConfigDisplayBaseUrl(provider));
     codexConfigSetInputValue('codex-config-api-key', provider.apiKey || '');
-    document.getElementById('codex-config-route-through-proxy').checked = provider.routeThroughProxy !== false;
-    document.getElementById('codex-config-preserve-official-auth').checked = !!provider.preserveOfficialAuth;
-    // preserve 优先：保留官方登录时强制关闭注入
-    document.getElementById('codex-config-inject-models').checked =
-      !provider.preserveOfficialAuth && provider.injectModels !== false;
-    document.getElementById('codex-config-unify-session-history').checked = provider.unifySessionHistory !== false;
-    // wireApiAuto 缺失（存量配置）按 auto 处理：保存时会按来源供应商重新推断，自动纠正历史误判。
-    codexConfigSetInputValue(
-      'codex-config-wire-api',
+    const routeEl = document.getElementById('codex-config-route-through-proxy');
+    if (routeEl) routeEl.checked = provider.routeThroughProxy !== false;
+    const preserveEl = document.getElementById('codex-config-preserve-official-auth');
+    if (preserveEl) preserveEl.checked = !!provider.preserveOfficialAuth;
+    const injectEl = document.getElementById('codex-config-inject-models');
+    if (injectEl) injectEl.checked = !provider.preserveOfficialAuth && provider.injectModels !== false;
+    const unifyEl = document.getElementById('codex-config-unify-session-history');
+    if (unifyEl) unifyEl.checked = provider.unifySessionHistory !== false;
+
+    setCodexConfigWireApiRadio(
       provider.wireApiAuto === false ? (codexWireApiOf(provider) || 'responses') : 'auto'
     );
-    refreshCodexWireApiAutoLabel();
     syncCodexConfigAuthInjectMutualExclusion();
     renderReasoningConfig(provider.codexChatReasoning);
-    // 合并 catalog 和 models 到统一列表
+
     const catalog = provider.modelCatalog || [];
     const providerModels = codexConfigModelList(provider);
     const merged = mergeCatalogAndModels(catalog, providerModels);
     const defaultModel = provider.defaultModel || '';
-    // 标记默认模型
     if (defaultModel) {
       const dm = merged.find(e => e.model === defaultModel);
       if (dm) dm.isDefault = true;
     }
-    // 编辑模式：不在 saved catalog 里的模型默认不勾选（保留用户之前取消的选择）
-    // 创建模式：所有模型默认勾选
     const catalogSet = new Set(catalog.map(e => e.model));
     for (const e of merged) {
       if (!catalogSet.has(e.model)) {
@@ -1941,34 +2208,50 @@ function openCodexConfigEditor(providerId = '') {
     renderCodexModelManager(merged, defaultModel, merged.length ? `已保存 ${merged.length} 个模型` : '可重新拉取模型列表');
     renderCodexAgentsPanel(provider.agentsConfig || { maxThreads: 6, maxDepth: 1, jobMaxRuntimeSeconds: 1800 }, provider.agents || []);
   } else {
+    codexConfigSetInputValue('codex-config-source-id', '');
     codexConfigSetInputValue('codex-config-name', '');
     codexConfigSetInputValue('codex-config-base-url', '');
     codexConfigSetInputValue('codex-config-api-key', '');
-    document.getElementById('codex-config-route-through-proxy').checked = true;
-    document.getElementById('codex-config-inject-models').checked = true;
-    document.getElementById('codex-config-preserve-official-auth').checked = false;
-    document.getElementById('codex-config-unify-session-history').checked = true;
-    codexConfigSetInputValue('codex-config-wire-api', 'auto');
+    const routeEl = document.getElementById('codex-config-route-through-proxy');
+    if (routeEl) routeEl.checked = true;
+    const injectEl = document.getElementById('codex-config-inject-models');
+    if (injectEl) injectEl.checked = true;
+    const preserveEl = document.getElementById('codex-config-preserve-official-auth');
+    if (preserveEl) preserveEl.checked = false;
+    const unifyEl = document.getElementById('codex-config-unify-session-history');
+    if (unifyEl) unifyEl.checked = true;
+
+    setCodexConfigWireApiRadio('auto');
     syncCodexConfigAuthInjectMutualExclusion();
     renderReasoningConfig(null);
     renderCodexModelManager([], '', '选择供应商后拉取模型列表');
     renderCodexAgentsPanel({ maxThreads: 6, maxDepth: 1, jobMaxRuntimeSeconds: 1800 }, []);
-    const picked = renderCodexConfigSourceList('');
-    if (picked) applyCodexConfigSource(picked);
+
+    const firstProvider = codexProviderModels[0];
+    if (firstProvider) {
+      codexAddSelectedProvider = firstProvider.providerId;
+      renderCodexAddProviderList();
+      applyCodexConfigSource(firstProvider.providerId);
+    } else {
+      codexAddSelectedProvider = null;
+      renderCodexAddProviderList();
+    }
   }
 
-  if (modal) modal.classList.add('active');
+  const hasRealDiskFile = await loadPlatformRealConfigFile('codex', 'codex-config-raw-toml');
+  if (!hasRealDiskFile) {
+    syncCodexRawConfigFromFields();
+  }
+
   window.setTimeout(() => {
-    const target = provider
-      ? document.getElementById('codex-config-name')
-      : document.querySelector('#codex-config-source-list .codex-config-source-item.active');
-    target?.focus();
-  }, 30);
+    document.getElementById('codex-config-name')?.focus();
+  }, 50);
 }
 
 function closeCodexConfigEditor() {
   resetPasswordInputVisibility('codex-config-api-key', 'codex-config-api-key-toggle');
   document.getElementById('codex-config-modal')?.classList.remove('active');
+  navigateTo('platform-codex');
 }
 
 async function syncCodexConfigUiAfterStoreChange() {
@@ -2009,6 +2292,16 @@ async function saveCodexConfigEditor(switchAfter = false) {
   }
   if (!name || !baseUrl || !apiKey) {
     showCustomAlert('请填写配置名称、Base URL 和 API Key。', '配置不完整', 'warn');
+    return;
+  }
+
+  // 避免同名配置混淆校验
+  const isDuplicateName = (providerStore.codexConfigs || []).some(
+    p => p && p.id !== editId && String(p.name || '').trim().toLowerCase() === name.toLowerCase()
+  );
+  if (isDuplicateName) {
+    showCustomAlert(`已存在名为「${name}」的 Codex 配置，请更换名称以作区分（例如 ${name}-2）。`, '配置名称重复', 'warn');
+    document.getElementById('codex-config-name')?.focus();
     return;
   }
   if (!models.length) {
@@ -2098,15 +2391,15 @@ async function saveCodexConfigEditor(switchAfter = false) {
 
 function codexActionIcon(type) {
   if (type === 'delete') {
-    return '<svg aria-hidden="true" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"></path><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path><path d="M10 11v6"></path><path d="M14 11v6"></path></svg>';
+    return '<svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"/></svg>';
   }
   if (type === 'config') {
-    return '<svg aria-hidden="true" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>';
+    return '<svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>';
   }
   if (type === 'start') {
-    return '<svg aria-hidden="true" width="15" height="15" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="0.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="6 4 20 12 6 20 6 4"></polygon></svg>';
+    return '<svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="0.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="6 4 20 12 6 20 6 4"></polygon></svg>';
   }
-  return '<svg aria-hidden="true" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"></path><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"></path></svg>';
+  return '<svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>';
 }
 
 function codexReconfigureAction(action, disabled) {
@@ -2116,22 +2409,22 @@ function codexReconfigureAction(action, disabled) {
 function renderCodexConfigCard(config) {
   const disabled = platformBusy === (config.platformId || 'codex');
   const editButton = config.editAction
-    ? `<button class="btn-icon codex-icon-action" type="button" title="编辑" aria-label="编辑 ${platformEsc(config.name)}" ${disabled ? 'disabled' : ''} data-action-call="${platformEsc(config.editAction)}">${codexActionIcon('edit')}</button>`
+    ? `<button class="btn-icon model-map-action-btn codex-icon-action" type="button" title="编辑" aria-label="编辑 ${platformEsc(config.name)}" ${disabled ? 'disabled' : ''} data-action-call="${platformEsc(config.editAction)}">${codexActionIcon('edit')}</button>`
     : '';
   const deleteButton = config.deleteAction
-    ? `<button class="btn-icon danger codex-icon-action codex-delete-action" type="button" title="删除" aria-label="删除 ${platformEsc(config.name)}" ${disabled ? 'disabled' : ''} data-action-call="${platformEsc(config.deleteAction)}">${codexActionIcon('delete')}</button>`
+    ? `<button class="btn-icon model-map-action-btn danger codex-icon-action codex-delete-action" type="button" title="删除" aria-label="删除 ${platformEsc(config.name)}" ${disabled ? 'disabled' : ''} data-action-call="${platformEsc(config.deleteAction)}">${codexActionIcon('delete')}</button>`
     : '';
   const removeButton = config.removeAction
-    ? `<button class="btn-icon danger codex-icon-action codex-delete-action" type="button" title="${platformEsc(config.removeLabel || '移除')}" aria-label="从 live 配置移除 ${platformEsc(config.name)}" ${disabled ? 'disabled' : ''} data-action-call="${platformEsc(config.removeAction)}">${codexActionIcon('delete')}</button>`
+    ? `<button class="btn-icon model-map-action-btn danger codex-icon-action codex-delete-action" type="button" title="${platformEsc(config.removeLabel || '移除')}" aria-label="从 live 配置移除 ${platformEsc(config.name)}" ${disabled ? 'disabled' : ''} data-action-call="${platformEsc(config.removeAction)}">${codexActionIcon('delete')}</button>`
     : '';
   const configButton = config.configAction
-    ? `<button class="btn-icon codex-icon-action" type="button" title="${platformEsc(config.configLabel || '配置模型')}" aria-label="${platformEsc(config.configLabel || '配置')} ${platformEsc(config.name)}" ${disabled ? 'disabled' : ''} data-action-call="${platformEsc(config.configAction)}">${codexActionIcon('config')}</button>`
+    ? `<button class="btn-icon model-map-action-btn codex-icon-action" type="button" title="${platformEsc(config.configLabel || '配置模型')}" aria-label="${platformEsc(config.configLabel || '配置')} ${platformEsc(config.name)}" ${disabled ? 'disabled' : ''} data-action-call="${platformEsc(config.configAction)}">${codexActionIcon('config')}</button>`
     : '';
   const desktopSupported = codexDesktopAutomationSupported();
   const startDisabled = disabled || !desktopSupported;
   const startTitle = desktopSupported ? '重启 Codex 桌面版' : '仅 Windows 支持自动启动 / 注入 Codex Desktop';
   const startButton = config.startAction
-    ? `<button class="btn-icon codex-icon-action" type="button" title="${platformEsc(startTitle)}" aria-label="启动 Codex ${platformEsc(config.name)}" ${startDisabled ? 'disabled' : ''} data-action-call="${platformEsc(config.startAction)}">${codexActionIcon('start')}</button>`
+    ? `<button class="btn-icon model-map-action-btn codex-icon-action" type="button" title="${platformEsc(startTitle)}" aria-label="启动 Codex ${platformEsc(config.name)}" ${startDisabled ? 'disabled' : ''} data-action-call="${platformEsc(config.startAction)}">${codexActionIcon('start')}</button>`
     : '';
   const switchButton = config.current || !config.action
     ? ''
@@ -2331,32 +2624,85 @@ function antigravityPageRoot() {
   return document.getElementById('page-platform-antigravity');
 }
 
+// ═══════ Antigravity 运行模式切换（纯 BYOK vs 混合模式） ═══════
+function getAntigravityCurrentMode() {
+  return (providerStore && providerStore.antigravityMode === 'hybrid') ? 'hybrid' : 'pure';
+}
+
+function syncAntigravityModeUi(mode) {
+  const currentMode = mode || getAntigravityCurrentMode();
+  const btns = document.querySelectorAll('.antigravity-mode-seg-btn');
+  btns.forEach(btn => {
+    const btnMode = btn.dataset.mode;
+    btn.classList.toggle('is-active', btnMode === currentMode);
+  });
+}
+
+async function selectAntigravityMode(mode) {
+  const targetMode = mode === 'hybrid' ? 'hybrid' : 'pure';
+  if (!providerStore) providerStore = {};
+  syncAntigravityModeUi(targetMode);
+  if (providerStore.antigravityMode === targetMode) return;
+
+  providerStore.antigravityMode = targetMode;
+
+  try {
+    if (typeof invoke === 'function') {
+      await invoke('save_providers', { store: providerStore });
+    }
+    const modeDesc = targetMode === 'hybrid' ? '混合模式（保留官方 + 自建）' : '纯 BYOK 模式（免登谷歌，纯走自建）';
+    if (typeof showBottomToast === 'function') {
+      showBottomToast(`已切换为${modeDesc}`, 'success');
+    }
+    if (typeof addLog === 'function') {
+      addLog('info', `Antigravity 运行模式已切换为：${targetMode}`);
+    }
+  } catch (e) {
+    if (typeof showBottomToast === 'function') {
+      showBottomToast('保存模式失败: ' + (e?.message || e), 'error');
+    }
+  }
+}
+
 async function antigravityRefreshConsole(options = {}) {
   const root = antigravityPageRoot();
   if (!root) return;
 
+  syncAntigravityModeUi();
+
   const info = platformInfoOf('antigravity');
   const managed = !!info?.managedByAnyBridge;
 
-  // 1. 更新顶部接入状态与按钮 (对齐 Cursor 一键接入 / 停止接入)
+  // 1. 更新顶部接入状态与按钮 (完全对齐 Windsurf / Cursor 统一接入规范)
   const mainBtn = document.getElementById('antigravity-main-btn');
   const mainBtnText = document.getElementById('antigravity-main-btn-text');
+  const mainBtnIcon = mainBtn?.querySelector('.proxy-btn-icon');
   const restoreBtn = document.getElementById('antigravityRestoreBtn');
 
   if (mainBtn && mainBtnText) {
+    mainBtn.classList.add('platform-proxy-primary');
+    mainBtn.classList.remove('platform-proxy-active');
     if (managed) {
-      mainBtn.classList.remove('platform-proxy-primary');
-      mainBtn.classList.add('platform-proxy-active');
-      mainBtnText.textContent = '已接入 Antigravity';
+      mainBtn.classList.add('is-connected');
+      if (mainBtnIcon) {
+        mainBtnIcon.innerHTML = '<path d="M20 6 9 17l-5-5" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"/>';
+      }
+      mainBtnText.textContent = '已接入';
+      mainBtn.setAttribute('aria-label', 'Antigravity 已接入 AnyBridge');
     } else {
-      mainBtn.classList.add('platform-proxy-primary');
-      mainBtn.classList.remove('platform-proxy-active');
+      mainBtn.classList.remove('is-connected');
+      if (mainBtnIcon) {
+        mainBtnIcon.innerHTML = '<polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" fill="currentColor" />';
+      }
       mainBtnText.textContent = '一键接入';
+      mainBtn.setAttribute('aria-label', '一键接入 Antigravity');
     }
   }
 
   if (restoreBtn) {
     restoreBtn.disabled = !managed;
+    restoreBtn.classList.toggle('is-danger', managed);
+    restoreBtn.setAttribute('aria-label', managed ? '停止 Antigravity 接入 AnyBridge' : 'Antigravity 当前未接入');
   }
 
   bindRevealPathLabel('antigravity-config-path-label', info?.configPath || platformDef('antigravity').configHint);
@@ -2412,7 +2758,7 @@ function antigravityRenderTableRows() {
   if (list.length === 0) {
     tbody.innerHTML = `
       <tr>
-        <td colspan="7" style="text-align: center; color: var(--text-muted); padding: 36px 0;">
+        <td colspan="8" style="text-align: center; color: var(--text-muted); padding: 36px 0;">
           未找到匹配「${platformEsc(kw)}」的 Antigravity 模型
         </td>
       </tr>
@@ -2420,6 +2766,7 @@ function antigravityRenderTableRows() {
     return;
   }
 
+  const hasVisionModels = (modelMapStore?.visionModels?.imageModels?.length || 0) > 0;
   let html = '';
   list.forEach(item => {
     const isChecked = _antigravitySelectedSet.has(item.id);
@@ -2427,11 +2774,16 @@ function antigravityRenderTableRows() {
     const exposedModel = (item.defaultModel || item.id).trim();
     const providerName = (item.sourceProviderName || item.name || '自定义供应商').trim();
     const isEnabled = item.enabled !== false && item.injectModels !== false;
+    const isVisionEnabled = item.useThirdPartyVision === true;
     const protocol = (item.apiFormat || 'openai').toUpperCase();
 
     const iconHtml = (typeof renderModelIcon === 'function')
       ? renderModelIcon(exposedModel, { size: 20 })
       : `<span style="color:var(--accent);">✦</span>`;
+
+    const visionTitle = !hasVisionModels
+      ? '请先在「代理增强」中配置图片理解模型'
+      : (isVisionEnabled ? '已启用第三方图片理解（点击关闭）' : '启用后图片将使用第三方模型理解（点击启用）');
 
     html += `
       <tr class="${isChecked ? 'cb-model-row-selected is-selected' : ''}" data-config-id="${platformEsc(item.id)}" style="min-height: 52px;">
@@ -2460,20 +2812,26 @@ function antigravityRenderTableRows() {
         <td>
           <span class="platform-badge" style="font-size:11px;padding:1px 6px;background:var(--bg-input);border:1px solid var(--border);border-radius:4px;">${platformEsc(protocol)}</span>
         </td>
-        <td style="text-align: center;">
-          <div style="display:inline-flex;align-items:center;gap:4px;">
-            <button class="btn-icon" type="button" title="编辑" onclick="editAntigravityProviderConfig('${platformEsc(item.id)}')">
-              ${codexActionIcon('edit')}
+        <td>
+          <div class="model-map-actions">
+            <button class="btn-icon model-map-action-btn" type="button" title="编辑模型" aria-label="编辑模型" onclick="editAntigravityProviderConfig('${platformEsc(item.id)}')">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
             </button>
-            <button class="btn-icon danger" type="button" title="删除" onclick="deleteAntigravityProviderConfig('${platformEsc(item.id)}')">
-              ${codexActionIcon('delete')}
+            <button class="btn-icon model-map-action-btn danger" type="button" title="从 Antigravity 移除" aria-label="从 Antigravity 移除" onclick="deleteAntigravityProviderConfig('${platformEsc(item.id)}')">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"/></svg>
             </button>
           </div>
         </td>
-        <td style="text-align: center;">
-          <label class="switch" style="margin:0 auto;">
+        <td class="model-map-toggle-cell">
+          <label class="toggle-switch" title="${platformEsc(visionTitle)}">
+            <input type="checkbox" ${isVisionEnabled ? 'checked' : ''} onchange="antigravityToggleThirdPartyVision('${platformEsc(item.id)}', this.checked)">
+            <span class="toggle-slider"></span>
+          </label>
+        </td>
+        <td class="model-map-toggle-cell">
+          <label class="toggle-switch" title="${isEnabled ? '已向 Antigravity 暴露（点击停用）' : '已停用（点击启用）'}">
             <input type="checkbox" ${isEnabled ? 'checked' : ''} onchange="antigravityToggleModelEnabled('${platformEsc(item.id)}', this.checked)">
-            <span class="slider"></span>
+            <span class="toggle-slider"></span>
           </label>
         </td>
       </tr>
@@ -2525,11 +2883,48 @@ function antigravityUpdateBulkActionButtons() {
 
   const enableBtn = document.getElementById('antigravity-bulk-enable-btn');
   const disableBtn = document.getElementById('antigravity-bulk-disable-btn');
+  const visionBtn = document.getElementById('antigravity-bulk-vision-btn');
   const removeBtn = document.getElementById('antigravity-bulk-remove-btn');
 
   if (enableBtn) enableBtn.disabled = count === 0;
   if (disableBtn) disableBtn.disabled = count === 0;
+  if (visionBtn) visionBtn.disabled = count === 0;
   if (removeBtn) removeBtn.disabled = count === 0;
+}
+
+async function antigravityToggleThirdPartyVision(id, checked) {
+  if (!Array.isArray(providerStore?.antigravityConfigs)) return;
+  const target = providerStore.antigravityConfigs.find(c => c.id === id);
+  if (!target) return;
+
+  const hasVisionModels = (modelMapStore?.visionModels?.imageModels?.length || 0) > 0;
+  if (checked && !hasVisionModels) {
+    showCustomAlert('请先在「代理增强」中配置图片理解模型。', '无法启用', 'warn');
+    antigravityRenderTableRows();
+    return;
+  }
+
+  target.useThirdPartyVision = !!checked;
+  antigravityRenderTableRows();
+  await syncAntigravityConfigUiAfterStoreChange();
+}
+
+async function antigravityBulkThirdPartyVisionAction() {
+  if (!Array.isArray(providerStore?.antigravityConfigs) || _antigravitySelectedSet.size === 0) return;
+  const hasVisionModels = (modelMapStore?.visionModels?.imageModels?.length || 0) > 0;
+  if (!hasVisionModels) {
+    showCustomAlert('请先在「代理增强」中配置第三方图片理解模型。', '无法启用', 'warn');
+    return;
+  }
+
+  providerStore.antigravityConfigs.forEach(c => {
+    if (_antigravitySelectedSet.has(c.id)) {
+      c.useThirdPartyVision = true;
+    }
+  });
+  antigravityRenderTableRows();
+  await syncAntigravityConfigUiAfterStoreChange();
+  showBottomToast(`已批量启用 ${_antigravitySelectedSet.size} 个模型的第三方图片理解`, 'success');
 }
 
 async function antigravityToggleModelEnabled(id, checked) {
@@ -2580,40 +2975,38 @@ async function antigravityBulkRemoveAction() {
 }
 
 async function antigravityPrimaryAction() {
+  const info = platformInfoOf('antigravity');
+  if (info?.managedByAnyBridge) {
+    showCustomAlert('Antigravity 当前已成功接入 AnyBridge。\n\n如需断开连接，请点击右侧「停止接入」按钮。', '已处于接入状态', 'info');
+    return;
+  }
+
   const configs = Array.isArray(providerStore?.antigravityConfigs) ? providerStore.antigravityConfigs : [];
   const activeProviderId = configs.find(c => c.enabled !== false)?.id || configs[0]?.id || '';
 
-  await runSwitchFlow({
-    title: '接入 Antigravity',
-    lead: '将把 Antigravity 代理端点指向 AnyBridge，并在模型列表中注入配置的第三方模型。\n\n接入后请重启 Antigravity IDE。',
-    confirmText: '立即接入',
-    platform: 'antigravity',
-    runningMessage: '正在准备接入 Antigravity…',
-    successTitle: '接入完成',
-    failureTitle: '接入失败',
-    skipConfirm: false,
-    task: async ({ setMessage }) => {
-      setPlatformBusy('antigravity', true);
-      try {
-        setMessage('正在配置 settings.json 与环境变量…');
-        const result = assertSwitchResultOk(
-          await invoke('switch_platform', { platform: 'antigravity', providerId: activeProviderId }),
-          'Antigravity 接入失败'
-        );
-        if (typeof addLog === 'function') {
-          addLog('ok', result.message || 'Antigravity 已成功接入 AnyBridge');
-        }
-        setMessage('正在刷新状态…');
-        await refreshPlatforms({ silent: true, reloadProviders: false });
-        antigravityRefreshConsole({ silent: true });
-        return {
-          message: `${result.message || 'Antigravity 已成功接入。'}\n\n请重启 Antigravity IDE 使配置生效。`,
-        };
-      } finally {
-        setPlatformBusy('antigravity', false);
-      }
-    },
-  });
+  setPlatformBusy('antigravity', true);
+  try {
+    if (typeof addLog === 'function') addLog('info', '正在配置 Antigravity 接入 settings.json 与环境变量…');
+    const result = assertSwitchResultOk(
+      await invoke('switch_platform', { platform: 'antigravity', providerId: activeProviderId }),
+      'Antigravity 接入失败'
+    );
+    if (typeof addLog === 'function') {
+      addLog('ok', result.message || 'Antigravity 已成功接入 AnyBridge');
+    }
+    await refreshPlatforms({ silent: true, reloadProviders: false });
+    antigravityRefreshConsole({ silent: true });
+
+    // 精简交互：不再单独弹前置确认窗口，直接由唯一的「重启 IDE」弹窗作为确认点
+    if (typeof promptRestartIde === 'function') {
+      await promptRestartIde('Antigravity 已接入 AnyBridge，重启 IDE 后生效。', 'antigravity', { mode: 'proxy' });
+    }
+  } catch (e) {
+    if (typeof addLog === 'function') addLog('err', 'Antigravity 接入失败: ' + e);
+    showCustomAlert(String(e?.message || e), '接入失败', 'error');
+  } finally {
+    setPlatformBusy('antigravity', false);
+  }
 }
 
 async function antigravityRestoreAction() {
@@ -2624,38 +3017,40 @@ async function antigravityRestoreAction() {
 async function restoreAntigravityOfficialConfig() {
   const info = platformInfoOf('antigravity') || {};
   const alreadyOfficial = !info.managedByAnyBridge;
-  const message = alreadyOfficial
-    ? 'Antigravity 当前已经是官方直连模式。仍要清理配置吗？'
-    : '将把 Antigravity 切回官方直连环境，清理 jetski.cloudCodeUrl 配置并还原环境变量。\n\n切换后请重启 Antigravity。';
-  await runSwitchFlow({
-    title: '切回官方直连',
-    lead: message,
-    confirmText: '确认切回',
-    platform: 'antigravity',
-    runningMessage: '正在准备切回官方配置…',
-    successTitle: '切换完成',
-    failureTitle: '切回官方失败',
-    skipConfirm: false,
-    task: async ({ setMessage }) => {
-      setPlatformBusy('antigravity', true);
-      try {
-        setMessage('正在恢复 Antigravity 官方配置…');
-        const result = assertSwitchResultOk(
-          await invoke('restore_antigravity_official_config'),
-          'Antigravity 官方配置还原失败'
-        );
-        if (typeof addLog === 'function') {
-          addLog('ok', result.message || 'Antigravity 已恢复官方模式');
-        }
-        await refreshPlatforms({ silent: true, reloadProviders: false });
-        return {
-          message: `${result.message || 'Antigravity 已恢复官方配置。'}\n\n请重启 Antigravity IDE 使修改生效。`,
-        };
-      } finally {
-        setPlatformBusy('antigravity', false);
-      }
-    },
-  });
+  if (alreadyOfficial) {
+    showCustomAlert('Antigravity 当前已经是官方直连模式，无需重复恢复。', '提示', 'info');
+    return;
+  }
+
+  setPlatformBusy('antigravity', true);
+  try {
+    if (typeof addLog === 'function') addLog('info', '正在恢复 Antigravity 官方配置…');
+    const result = assertSwitchResultOk(
+      await invoke('restore_antigravity_official_config'),
+      'Antigravity 官方配置还原失败'
+    );
+    if (typeof addLog === 'function') {
+      addLog('ok', result.message || 'Antigravity 已恢复官方模式');
+    }
+    await refreshPlatforms({ silent: true, reloadProviders: false });
+    antigravityRefreshConsole({ silent: true });
+
+    // 精简交互：不再单独弹前置确认窗口，直接由唯一的「重启 IDE」弹窗作为确认点
+    if (typeof promptRestartIde === 'function') {
+      await promptRestartIde('Antigravity 已切回官方直连，重启 IDE 后生效。', 'antigravity', { mode: 'direct' });
+    }
+  } catch (e) {
+    if (typeof addLog === 'function') addLog('err', 'Antigravity 切回官方失败: ' + e);
+    showCustomAlert(String(e?.message || e), '切回官方失败', 'error');
+  } finally {
+    setPlatformBusy('antigravity', false);
+  }
+}
+
+function renderAntigravityConfigList(info = {}) {
+  if (typeof antigravityRefreshConsole === 'function') {
+    antigravityRefreshConsole({ silent: true });
+  }
 }
 
 async function syncAntigravityConfigUiAfterStoreChange() {
@@ -2664,7 +3059,9 @@ async function syncAntigravityConfigUiAfterStoreChange() {
     if (!ok) return false;
   }
   if (typeof renderProviders === 'function') renderProviders();
-  renderAntigravityConfigList(platformInfoOf('antigravity') || {});
+  if (typeof renderEvalProviderOptions === 'function') renderEvalProviderOptions();
+  if (typeof renderModelMap === 'function') await renderModelMap();
+  if (typeof antigravityRefreshConsole === 'function') antigravityRefreshConsole({ silent: true });
   renderPlatformProviderOptions();
   return true;
 }
@@ -2686,10 +3083,14 @@ async function initAntigravityAddPage() {
     antigravityProviderModels = antigravityProviderModels.filter(p => !isLocalProxyProviderEntry(p));
     antigravityProviderModels.unshift(lp);
   }
-  antigravityAddSelectedProvider = null;
   antigravityAddSearchKw = '';
   const searchInput = document.getElementById('antigravity-add-search');
   if (searchInput) searchInput.value = '';
+
+  const sorted = platformAddVisibleProviders(antigravityProviderModels, '');
+  const firstWithModels = sorted.find(p => p.models && p.models.length > 0) || sorted[0];
+  antigravityAddSelectedProvider = firstWithModels ? firstWithModels.providerId : null;
+
   renderAntigravityAddProviderList();
   renderAntigravityAddModels();
   updateAntigravityAddConfirmButton();
@@ -2703,6 +3104,7 @@ function onAntigravityAddSearch() {
 
 function renderAntigravityAddProviderList() {
   const list = document.getElementById('antigravity-add-provider-list');
+  syncPlatformAddSortControl('antigravity');
   if (!list) return;
   if (!antigravityProviderModels.length) {
     list.innerHTML = '<div class="cb-add-prov-empty">暂无供应商，请先在「供应商」页添加</div>';
@@ -2768,10 +3170,18 @@ function renderAntigravityAddModels() {
   }
 
   const agConfigs = Array.isArray(providerStore?.antigravityConfigs) ? providerStore.antigravityConfigs : [];
-  const existingConfig = agConfigs.find(c => c.sourceProviderId === provider.providerId || c.name === provider.providerName);
-  const existingModels = new Set(existingConfig?.models || []);
+  const existingModels = new Set();
+  agConfigs.forEach(c => {
+    if (c.sourceProviderId === provider.providerId || c.sourceProviderName === provider.providerName || c.name === provider.providerName) {
+      if (c.defaultModel) existingModels.add(c.defaultModel);
+      if (Array.isArray(c.models)) c.models.forEach(m => existingModels.add(m));
+    }
+  });
 
-  body.innerHTML = provider.models.map((m) => {
+  const sortFn = typeof sortRoleSelectItems === 'function' ? sortRoleSelectItems : (list) => list;
+  const sortedModels = sortFn(provider.models);
+
+  body.innerHTML = sortedModels.map((m) => {
     const exists = existingModels.has(m.id);
     return `
       <label class="cb-add-model-row ${exists ? 'already-added' : ''}">
@@ -2803,42 +3213,72 @@ function antigravityAddSelectNone() {
 
 async function confirmAddAntigravityModelsPage() {
   const provider = antigravityProviderModels.find(p => p.providerId === antigravityAddSelectedProvider);
-  if (!provider) return;
+  if (!provider) {
+    showCustomAlert('请先在左侧选择供应商。', '未选择供应商', 'warn');
+    return;
+  }
 
   const checkedBoxes = document.querySelectorAll('.antigravity-add-model-check:checked');
   const checkedModelIds = Array.from(checkedBoxes).map(cb => cb.dataset.modelId).filter(Boolean);
-  if (!checkedModelIds.length) return;
-
-  if (!Array.isArray(providerStore.antigravityConfigs)) {
-    providerStore.antigravityConfigs = [];
+  if (!checkedModelIds.length) {
+    showCustomAlert('请至少勾选一个模型。', '未勾选模型', 'warn');
+    return;
   }
 
-  checkedModelIds.forEach(modelId => {
-    const entryId = `ag-${provider.providerId}-${modelId}`.replace(/[^a-zA-Z0-9_-]/g, '_');
-    const existing = providerStore.antigravityConfigs.find(c => c.id === entryId || (c.sourceProviderId === provider.providerId && c.defaultModel === modelId));
-    if (!existing) {
-      providerStore.antigravityConfigs.push({
-        id: entryId,
-        name: modelId,
-        apiHost: provider.apiHost || '',
-        apiPath: provider.apiPath || '',
-        apiKey: provider.apiKey || '',
-        apiFormat: provider.apiFormat || 'openai',
-        defaultModel: modelId,
-        models: [modelId],
-        enabled: true,
-        injectModels: true,
-        sourceProviderId: provider.providerId,
-        sourceProviderName: provider.providerName,
-      });
-    }
-  });
+  const btn = document.getElementById('antigravity-add-confirm-page');
+  const label = btn ? btn.querySelector('.model-action-label') : null;
+  const originalLabel = label ? label.textContent : ` 保存选择 (${checkedModelIds.length})`;
+  if (btn) {
+    btn.disabled = true;
+    if (label) label.textContent = ' 保存中...';
+  }
 
-  const ok = await syncAntigravityConfigUiAfterStoreChange();
-  if (ok) {
-    showBottomToast(`已成功添加 ${checkedModelIds.length} 个模型到 Antigravity`, 'success');
-    navigateTo('platform-antigravity');
-    antigravityRefreshConsole({ silent: true });
+  try {
+    if (!Array.isArray(providerStore.antigravityConfigs)) {
+      providerStore.antigravityConfigs = [];
+    }
+
+    checkedModelIds.forEach(modelId => {
+      const entryId = `ag-${provider.providerId}-${modelId}`.replace(/[^a-zA-Z0-9_-]/g, '_');
+      const existing = providerStore.antigravityConfigs.find(c => c.id === entryId || (c.sourceProviderId === provider.providerId && c.defaultModel === modelId));
+      if (existing) {
+        existing.enabled = true;
+        existing.injectModels = true;
+        existing.apiHost = provider.apiHost || existing.apiHost || '';
+        existing.apiPath = provider.apiPath || existing.apiPath || '';
+        existing.apiKey = provider.apiKey || existing.apiKey || '';
+        existing.apiFormat = provider.apiFormat || existing.apiFormat || 'openai';
+      } else {
+        providerStore.antigravityConfigs.push({
+          id: entryId,
+          name: modelId,
+          apiHost: provider.apiHost || '',
+          apiPath: provider.apiPath || '',
+          apiKey: provider.apiKey || '',
+          apiFormat: provider.apiFormat || 'openai',
+          defaultModel: modelId,
+          models: [modelId],
+          enabled: true,
+          injectModels: true,
+          sourceProviderId: provider.providerId,
+          sourceProviderName: provider.providerName,
+        });
+      }
+    });
+
+    const ok = await syncAntigravityConfigUiAfterStoreChange();
+    if (ok) {
+      navigateTo('platform-antigravity');
+      antigravityRefreshConsole({ silent: true });
+    }
+  } catch (err) {
+    console.error('[antigravity-add] confirm add failed:', err);
+    showCustomAlert('添加模型失败: ' + err, '添加异常', 'error');
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      if (label) label.textContent = originalLabel;
+    }
   }
 }
 
@@ -2860,12 +3300,14 @@ function openAntigravityConfigEditor(providerId = '') {
   const modelEl = document.getElementById('antigravity-config-model');
   const apiFormatEl = document.getElementById('antigravity-config-api-format');
   const injectModelsEl = document.getElementById('antigravity-config-inject-models');
+  const visionEl = document.getElementById('antigravity-config-use-third-party-vision');
 
   if (editIdEl) editIdEl.value = provider.id || '';
   if (nameEl) nameEl.value = provider.name || '';
   if (modelEl) modelEl.value = provider.defaultModel || '';
   if (apiFormatEl) apiFormatEl.value = provider.apiFormat || 'openai';
   if (injectModelsEl) injectModelsEl.checked = provider.injectModels !== false;
+  if (visionEl) visionEl.checked = provider.useThirdPartyVision === true;
 
   if (modal) modal.classList.add('active');
 }
@@ -2881,9 +3323,16 @@ async function saveAntigravityConfigEditor() {
   const defaultModel = String(document.getElementById('antigravity-config-model')?.value || '').trim();
   const apiFormat = String(document.getElementById('antigravity-config-api-format')?.value || 'openai').trim();
   const injectModels = document.getElementById('antigravity-config-inject-models')?.checked !== false;
+  const useThirdPartyVision = document.getElementById('antigravity-config-use-third-party-vision')?.checked === true;
 
   if (!name) {
     showCustomAlert('显示名称不能为空。', '保存失败', 'warn');
+    return;
+  }
+
+  const hasVisionModels = (modelMapStore?.visionModels?.imageModels?.length || 0) > 0;
+  if (useThirdPartyVision && !hasVisionModels) {
+    showCustomAlert('请先在「代理增强」中配置图片理解模型，才能启用第三方图片理解。', '无法启用图片理解', 'warn');
     return;
   }
 
@@ -2897,6 +3346,7 @@ async function saveAntigravityConfigEditor() {
     existing.defaultModel = defaultModel;
     existing.apiFormat = apiFormat;
     existing.injectModels = injectModels;
+    existing.useThirdPartyVision = useThirdPartyVision;
   }
 
   const ok = await syncAntigravityConfigUiAfterStoreChange();
@@ -3021,7 +3471,7 @@ function claudeCodeModelCandidatesFromEnv(env = {}) {
     env.ANTHROPIC_DEFAULT_FABLE_MODEL_NAME,
     env.ANTHROPIC_DEFAULT_HAIKU_MODEL_NAME,
     env.ANTHROPIC_SMALL_FAST_MODEL,
-  ].map(value => String(value || '').trim()).filter(Boolean);
+  ].map(value => sanitizePlatformModelName(value)).filter(Boolean);
 }
 
 function claudeCodeSeededSettingsConfig(baseUrl, apiKey, model) {
@@ -3048,24 +3498,56 @@ function claudeCodeNormalizeSettingsConfig(settings, baseUrl, apiKey, model) {
   const env = normalized.env;
   if (!env.ANTHROPIC_BASE_URL && baseUrl) env.ANTHROPIC_BASE_URL = baseUrl;
   if (!env.ANTHROPIC_AUTH_TOKEN && !env.ANTHROPIC_API_KEY && !normalized.apiKey && apiKey) env.ANTHROPIC_AUTH_TOKEN = apiKey;
-  const cleanModel = String(model || '').trim();
-  if (cleanModel) {
-    const fields = [
-      'ANTHROPIC_MODEL',
-      'ANTHROPIC_DEFAULT_HAIKU_MODEL',
-      'ANTHROPIC_DEFAULT_HAIKU_MODEL_NAME',
-      'ANTHROPIC_DEFAULT_SONNET_MODEL',
-      'ANTHROPIC_DEFAULT_SONNET_MODEL_NAME',
-      'ANTHROPIC_DEFAULT_OPUS_MODEL',
-      'ANTHROPIC_DEFAULT_OPUS_MODEL_NAME',
-      'ANTHROPIC_DEFAULT_FABLE_MODEL',
-      'ANTHROPIC_DEFAULT_FABLE_MODEL_NAME',
-    ];
-    fields.forEach(field => {
-      if (!env[field]) env[field] = cleanModel;
-    });
-    delete env.ANTHROPIC_SMALL_FAST_MODEL;
+
+  const effectiveUrl = env.ANTHROPIC_BASE_URL || baseUrl || '';
+  const isAnyRouter = isAnyRouterEndpoint(effectiveUrl, settings?.name || '');
+  const cleanModel = sanitizePlatformModelName(model);
+  const targetModel = ensureOneMContextMarker(cleanModel, isAnyRouter);
+  const displayName = stripOneMContextMarker(targetModel);
+
+  const modelFields = [
+    'ANTHROPIC_MODEL',
+    'ANTHROPIC_DEFAULT_HAIKU_MODEL',
+    'ANTHROPIC_DEFAULT_SONNET_MODEL',
+    'ANTHROPIC_DEFAULT_OPUS_MODEL',
+    'ANTHROPIC_DEFAULT_FABLE_MODEL',
+  ];
+  modelFields.forEach(field => {
+    if (env[field]) {
+      const cleanFieldVal = sanitizePlatformModelName(env[field]);
+      env[field] = ensureOneMContextMarker(cleanFieldVal, isAnyRouter);
+    } else if (targetModel) {
+      env[field] = targetModel;
+    }
+  });
+
+  const nameFields = [
+    'ANTHROPIC_DEFAULT_HAIKU_MODEL_NAME',
+    'ANTHROPIC_DEFAULT_SONNET_MODEL_NAME',
+    'ANTHROPIC_DEFAULT_OPUS_MODEL_NAME',
+    'ANTHROPIC_DEFAULT_FABLE_MODEL_NAME',
+  ];
+  nameFields.forEach(field => {
+    if (env[field]) {
+      env[field] = stripOneMContextMarker(sanitizePlatformModelName(env[field]));
+    } else if (displayName) {
+      env[field] = displayName;
+    }
+  });
+
+  if (isAnyRouter) {
+    if (env.ANTHROPIC_REASONING_MODEL) {
+      env.ANTHROPIC_REASONING_MODEL = ensureOneMContextMarker(env.ANTHROPIC_REASONING_MODEL, true);
+    }
+    if (env.CLAUDE_CODE_SUBAGENT_MODEL) {
+      env.CLAUDE_CODE_SUBAGENT_MODEL = ensureOneMContextMarker(env.CLAUDE_CODE_SUBAGENT_MODEL, true);
+    }
+    if (normalized.model) {
+      normalized.model = ensureOneMContextMarker(normalized.model, true);
+    }
   }
+
+  delete env.ANTHROPIC_SMALL_FAST_MODEL;
   if (!('$schema' in normalized)) normalized.$schema = 'https://json.schemastore.org/claude-code-settings.json';
   if (!('includeCoAuthoredBy' in normalized)) normalized.includeCoAuthoredBy = false;
   if (!('permissions' in normalized)) normalized.permissions = {};
@@ -3127,11 +3609,113 @@ function claudeCodeRawConfigTextFromSettings(settings) {
   return JSON.stringify(settings, null, 2);
 }
 
+function claudeCodeBuildSettingsForProvider(provider, models = null) {
+  const modelList = models || codexConfigModelList(provider);
+  const baseUrl = claudeCodeConfigDisplayBaseUrl(provider);
+  const isAnyRouter = isAnyRouterEndpoint(baseUrl, provider?.name || '');
+  const cleanDefault = ensureOneMContextMarker(provider?.defaultModel || modelList[0] || '', isAnyRouter);
+  return claudeCodeNormalizeSettingsConfig(
+    claudeCodeFallbackSettingsConfig(provider, modelList),
+    baseUrl,
+    provider?.apiKey || '',
+    cleanDefault
+  );
+}
+
+const CLAUDE_ROLES = [
+  { role: 'sonnet', modelKey: 'ANTHROPIC_DEFAULT_SONNET_MODEL', nameKey: 'ANTHROPIC_DEFAULT_SONNET_MODEL_NAME', label: 'Sonnet', has1m: true },
+  { role: 'opus', modelKey: 'ANTHROPIC_DEFAULT_OPUS_MODEL', nameKey: 'ANTHROPIC_DEFAULT_OPUS_MODEL_NAME', label: 'Opus', has1m: true },
+  { role: 'fable', modelKey: 'ANTHROPIC_DEFAULT_FABLE_MODEL', nameKey: 'ANTHROPIC_DEFAULT_FABLE_MODEL_NAME', label: 'Fable', has1m: true },
+  { role: 'haiku', modelKey: 'ANTHROPIC_DEFAULT_HAIKU_MODEL', nameKey: 'ANTHROPIC_DEFAULT_HAIKU_MODEL_NAME', label: 'Haiku', has1m: false },
+  { role: 'subagent', modelKey: 'CLAUDE_CODE_SUBAGENT_MODEL', nameKey: null, label: 'Subagent', has1m: true },
+];
+
+function hasClaude1mMarker(val) {
+  return /\[1m\]$/i.test(String(val || '').trim());
+}
+
+function stripClaude1mMarker(val) {
+  return String(val || '').trim().replace(/\[1m\]$/i, '').trim();
+}
+
+function applyClaude1mMarker(val, enabled) {
+  const base = stripClaude1mMarker(val);
+  if (!base) return '';
+  return enabled ? `${base}[1M]` : base;
+}
+
+function onClaude1mCheckboxChanged(role, checked) {
+  const box = document.getElementById(`claude-1m-box-${role}`);
+  if (box) box.classList.toggle('active', !!checked);
+  syncClaudeCodeRawConfigFromFields();
+}
+
+function setClaude1mCheckbox(role, checked) {
+  const cb = document.getElementById(`claude-1m-${role}`);
+  if (cb) cb.checked = !!checked;
+  const box = document.getElementById(`claude-1m-box-${role}`);
+  if (box) box.classList.toggle('active', !!checked);
+}
+
+function getClaude1mCheckbox(role) {
+  const cb = document.getElementById(`claude-1m-${role}`);
+  return !!cb?.checked;
+}
+
+function onClaudeRoleFieldInput() {
+  syncClaudeCodeRawConfigFromFields();
+}
+
 function claudeCodeSettingsFromFields() {
-  const baseUrl = document.getElementById('claude-code-config-base-url')?.value || '';
-  const apiKey = document.getElementById('claude-code-config-api-key')?.value || '';
-  const model = document.getElementById('claude-code-config-model')?.value || '';
-  return claudeCodeSeededSettingsConfig(baseUrl, apiKey, model);
+  const baseUrl = String(document.getElementById('claude-code-config-base-url')?.value || '').trim();
+  const apiKey = String(document.getElementById('claude-code-config-api-key')?.value || '').trim();
+
+  const settings = {
+    $schema: 'https://json.schemastore.org/claude-code-settings.json',
+    includeCoAuthoredBy: false,
+    env: {},
+    permissions: {},
+    hooks: {},
+    mcpServers: {}
+  };
+
+  const env = settings.env;
+  if (baseUrl) env.ANTHROPIC_BASE_URL = baseUrl;
+  if (apiKey) env.ANTHROPIC_AUTH_TOKEN = apiKey;
+
+  // 1. 各角色模型
+  CLAUDE_ROLES.forEach(r => {
+    const idVal = String(document.getElementById(`claude-model-id-${r.role}`)?.value || '').trim();
+    const nameVal = String(document.getElementById(`claude-model-name-${r.role}`)?.value || '').trim();
+    const use1m = r.has1m ? getClaude1mCheckbox(r.role) : false;
+
+    if (idVal) {
+      env[r.modelKey] = applyClaude1mMarker(idVal, use1m);
+    }
+    if (r.nameKey && (nameVal || idVal)) {
+      env[r.nameKey] = stripClaude1mMarker(nameVal || idVal);
+    }
+  });
+
+  // 2. 默认兜底模型
+  const fbVal = String(document.getElementById('claude-code-config-model')?.value || '').trim();
+  const fb1m = getClaude1mCheckbox('fallback');
+  if (fbVal) {
+    env.ANTHROPIC_MODEL = applyClaude1mMarker(fbVal, fb1m);
+    settings.model = env.ANTHROPIC_MODEL;
+  } else if (env.ANTHROPIC_DEFAULT_SONNET_MODEL) {
+    env.ANTHROPIC_MODEL = env.ANTHROPIC_DEFAULT_SONNET_MODEL;
+    settings.model = env.ANTHROPIC_MODEL;
+  }
+
+  // 3. 特性与重试参数
+  const maxRetries = document.getElementById('claude-add-max-retries')?.value;
+  if (maxRetries != null && maxRetries !== '') {
+    const num = parseInt(maxRetries, 10);
+    if (!isNaN(num)) env.MAX_RETRIES = String(num);
+  }
+
+  return settings;
 }
 
 function claudeCodeSettingsTextFromFields() {
@@ -3142,23 +3726,8 @@ function claudeCodeSetRawSettings(settings) {
   codexConfigSetInputValue('claude-code-config-raw-json', claudeCodeRawConfigTextFromSettings(settings));
 }
 
-function claudeCodeBuildSettingsForProvider(provider, models = null) {
-  const modelList = models || codexConfigModelList(provider);
-  return claudeCodeNormalizeSettingsConfig(
-    claudeCodeFallbackSettingsConfig(provider, modelList),
-    claudeCodeConfigDisplayBaseUrl(provider),
-    provider?.apiKey || '',
-    provider?.defaultModel || modelList[0] || ''
-  );
-}
-
 function claudeCodeCreateSettingsFromCurrentFields() {
-  return claudeCodeNormalizeSettingsConfig(
-    claudeCodeSettingsFromFields(),
-    document.getElementById('claude-code-config-base-url')?.value || '',
-    document.getElementById('claude-code-config-api-key')?.value || '',
-    document.getElementById('claude-code-config-model')?.value || ''
-  );
+  return claudeCodeSettingsFromFields();
 }
 
 function claudeCodeConfigObjectFromRawOrFields() {
@@ -3185,7 +3754,7 @@ function claudeCodeApplyRawConfigToFields(settings) {
   const apiKey = claudeCodeApiKeyFromEnv(env);
   if (baseUrl) codexConfigSetInputValue('claude-code-config-base-url', baseUrl);
   if (apiKey) codexConfigSetInputValue('claude-code-config-api-key', apiKey);
-  claudeCodeApplyModelCandidates(settings);
+  claudeCodeApplySettingsToRoleForm(settings);
 }
 
 function onClaudeCodeRawConfigInput() {
@@ -3208,7 +3777,6 @@ function onClaudeCodeRawConfigInput() {
 }
 
 function onClaudeCodeDefaultModelInput() {
-  renderClaudeCodeConfigModelList();
   syncClaudeCodeRawConfigFromFields();
 }
 
@@ -3249,16 +3817,282 @@ function renderClaudeCodeConfigSourceList(selectedId = '') {
   return picked;
 }
 
+globalThis.claudeCodeAvailableModels = [];
+
+function refreshAllClaudeRoleSelects(models = null) {
+  if (Array.isArray(models)) {
+    const clean = models.map(stripClaude1mMarker).filter(Boolean);
+    claudeCodeAvailableModels = [...new Set(clean)];
+  }
+
+  const roleConfigs = [
+    { containerId: 'claude-role-select-sonnet', hiddenInputId: 'claude-model-id-sonnet', role: 'sonnet' },
+    { containerId: 'claude-role-select-opus', hiddenInputId: 'claude-model-id-opus', role: 'opus' },
+    { containerId: 'claude-role-select-fable', hiddenInputId: 'claude-model-id-fable', role: 'fable', optional: true },
+    { containerId: 'claude-role-select-haiku', hiddenInputId: 'claude-model-id-haiku', role: 'haiku' },
+    { containerId: 'claude-role-select-subagent', hiddenInputId: 'claude-model-id-subagent', role: 'subagent' },
+    { containerId: 'claude-role-select-fallback', hiddenInputId: 'claude-code-config-model', role: 'fallback' },
+  ];
+
+  const sourceId = document.getElementById('claude-code-config-source-id')?.value;
+  const p = (providerStore.providers || []).find(x => x.id === sourceId);
+  const groupLabel = p?.name ? `供应商【${p.name}】可用模型 (${claudeCodeAvailableModels.length})` : `可用模型列表 (${claudeCodeAvailableModels.length})`;
+
+  const renderFn = typeof globalThis.renderCustomRoleSelect === 'function' ? globalThis.renderCustomRoleSelect : null;
+
+  roleConfigs.forEach(({ containerId, hiddenInputId, role, optional }) => {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+    let hiddenInput = document.getElementById(hiddenInputId);
+    if (!hiddenInput) {
+      hiddenInput = document.createElement('input');
+      hiddenInput.type = 'hidden';
+      hiddenInput.id = hiddenInputId;
+      container.appendChild(hiddenInput);
+    }
+    let curVal = stripClaude1mMarker(hiddenInput.value || '');
+
+    // 如果还没有值且非可选，给第一个模型作为默认值
+    if (!curVal && !optional && claudeCodeAvailableModels.length) {
+      curVal = claudeCodeAvailableModels[0];
+      hiddenInput.value = curVal;
+    }
+
+    const availableItems = claudeCodeAvailableModels.map(m => ({ id: m, label: m, provider: '' }));
+    if (curVal && !availableItems.some(it => it.id === curVal)) {
+      availableItems.unshift({ id: curVal, label: curVal, provider: '已保存' });
+    }
+
+    if (renderFn) {
+      renderFn({
+        containerId,
+        hiddenInputId,
+        role,
+        currentValue: curVal,
+        groupLabel,
+        items: availableItems,
+        optional: !!optional,
+      });
+    }
+  });
+}
+
+function setClaudeRoleSelectValue(id, val) {
+  let hiddenInput = document.getElementById(id);
+  const clean = stripClaude1mMarker(val || '');
+  if (hiddenInput) {
+    hiddenInput.value = clean;
+  }
+  refreshAllClaudeRoleSelects();
+}
+
+function isGenericClaudeRoleName(name = '', role = '') {
+  if (!name) return true;
+  const s = name.trim().toLowerCase();
+  return s === role.toLowerCase() || s.startsWith('claude') || s.includes('sonnet') || s.includes('opus') || s.includes('fable') || s.includes('haiku');
+}
+
+async function onClaudeRoleSelectChange(role, value) {
+  const hiddenInputId = `claude-model-id-${role}`;
+  let hiddenInput = document.getElementById(hiddenInputId);
+  if (hiddenInput) {
+    hiddenInput.value = value;
+  }
+
+  // 联动显示名称：自动更新为选中的模型名称
+  const cleanVal = stripClaude1mMarker(value || '');
+  const nameInput = document.getElementById(`claude-model-name-${role}`);
+  if (nameInput) {
+    nameInput.value = cleanVal;
+  }
+
+  // 联动 1M 勾选
+  const baseUrl = document.getElementById('claude-code-config-base-url')?.value || '';
+  const name = document.getElementById('claude-code-config-name')?.value || '';
+  const isAnyRouter = isAnyRouterEndpoint(baseUrl, name);
+  const roleMeta = CLAUDE_ROLES.find(r => r.role === role);
+  if (roleMeta && roleMeta.has1m) {
+    setClaude1mCheckbox(role, isAnyRouter && isClaudeModel(value));
+  }
+
+  refreshAllClaudeRoleSelects();
+  syncClaudeCodeRawConfigFromFields();
+}
+
+async function onClaudeFallbackSelectChange(value) {
+  let hiddenInput = document.getElementById('claude-code-config-model');
+  if (hiddenInput) {
+    hiddenInput.value = value;
+  }
+
+  const baseUrl = document.getElementById('claude-code-config-base-url')?.value || '';
+  const name = document.getElementById('claude-code-config-name')?.value || '';
+  const isAnyRouter = isAnyRouterEndpoint(baseUrl, name);
+  setClaude1mCheckbox('fallback', isAnyRouter && isClaudeModel(value));
+
+  refreshAllClaudeRoleSelects();
+  syncClaudeCodeRawConfigFromFields();
+}
+
+function claudeCodeApplySettingsToRoleForm(settings, provider = null) {
+  const env = settings && typeof settings === 'object' ? settings.env || {} : {};
+
+  // 收集所有已配置的模型并刷新下拉框
+  const modelsInConfig = [];
+  CLAUDE_ROLES.forEach(r => {
+    if (env[r.modelKey]) modelsInConfig.push(env[r.modelKey]);
+  });
+  if (env.ANTHROPIC_MODEL) modelsInConfig.push(env.ANTHROPIC_MODEL);
+  if (settings?.model) modelsInConfig.push(settings.model);
+  if (provider?.defaultModel) modelsInConfig.push(provider.defaultModel);
+  if (Array.isArray(provider?.models)) modelsInConfig.push(...provider.models);
+  refreshAllClaudeRoleSelects(modelsInConfig);
+
+  // 2. 各角色回填
+  CLAUDE_ROLES.forEach(r => {
+    const rawModel = env[r.modelKey] || '';
+    const rawName = r.nameKey ? (env[r.nameKey] || '') : '';
+    const cleanId = stripClaude1mMarker(rawModel);
+    const cleanName = stripClaude1mMarker(rawName || cleanId);
+    const use1m = r.has1m ? hasClaude1mMarker(rawModel) : false;
+
+    if (cleanId) setClaudeRoleSelectValue(`claude-model-id-${r.role}`, cleanId);
+    if (r.nameKey) {
+      const nameInput = document.getElementById(`claude-model-name-${r.role}`);
+      if (nameInput) nameInput.value = cleanName;
+    }
+    if (r.has1m) {
+      setClaude1mCheckbox(r.role, use1m);
+    }
+  });
+
+  // 3. 兜底模型回填
+  const rawFallback = env.ANTHROPIC_MODEL || settings?.model || provider?.defaultModel || '';
+  const cleanFallback = stripClaude1mMarker(rawFallback);
+  const fallback1m = hasClaude1mMarker(rawFallback);
+  if (cleanFallback) setClaudeRoleSelectValue('claude-code-config-model', cleanFallback);
+  setClaude1mCheckbox('fallback', fallback1m);
+
+  // 如果某些角色为空，用 fallback 补齐
+  if (cleanFallback) {
+    CLAUDE_ROLES.forEach(r => {
+      const sel = document.getElementById(`claude-model-id-${r.role}`);
+      if (sel && !sel.value) {
+        setClaudeRoleSelectValue(`claude-model-id-${r.role}`, cleanFallback);
+        if (r.has1m) setClaude1mCheckbox(r.role, fallback1m);
+      }
+      if (r.nameKey) {
+        const nameInput = document.getElementById(`claude-model-name-${r.role}`);
+        if (nameInput && !nameInput.value.trim()) {
+          nameInput.value = cleanFallback;
+        }
+      }
+    });
+  }
+
+  // 4. 重试与特性
+  if (env.MAX_RETRIES != null) {
+    const maxRetriesEl = document.getElementById('claude-add-max-retries');
+    if (maxRetriesEl) maxRetriesEl.value = env.MAX_RETRIES;
+  }
+}
+
+function claudeCodeExtractModelsFromRoleForm() {
+  const models = [];
+  CLAUDE_ROLES.forEach(r => {
+    const idVal = String(document.getElementById(`claude-model-id-${r.role}`)?.value || '').trim();
+    const use1m = r.has1m ? getClaude1mCheckbox(r.role) : false;
+    if (idVal && idVal !== '__custom__') models.push(applyClaude1mMarker(idVal, use1m));
+  });
+  const fbVal = String(document.getElementById('claude-code-config-model')?.value || '').trim();
+  const fb1m = getClaude1mCheckbox('fallback');
+  if (fbVal && fbVal !== '__custom__') models.push(applyClaude1mMarker(fbVal, fb1m));
+  return [...new Set(models.filter(Boolean))];
+}
+
+function claudeCodeQuickSetAllModels() {
+  const fbVal = document.getElementById('claude-code-config-model')?.value?.trim();
+  const sonnetVal = document.getElementById('claude-model-id-sonnet')?.value?.trim();
+  const opusVal = document.getElementById('claude-model-id-opus')?.value?.trim();
+  const fableVal = document.getElementById('claude-model-id-fable')?.value?.trim();
+  const haikuVal = document.getElementById('claude-model-id-haiku')?.value?.trim();
+  const subagentVal = document.getElementById('claude-model-id-subagent')?.value?.trim();
+
+  const sourceVal = (fbVal && fbVal !== '__custom__')
+    ? fbVal
+    : (sonnetVal && sonnetVal !== '__custom__')
+    ? sonnetVal
+    : (opusVal && opusVal !== '__custom__')
+    ? opusVal
+    : (fableVal && fableVal !== '__custom__')
+    ? fableVal
+    : (haikuVal && haikuVal !== '__custom__')
+    ? haikuVal
+    : (subagentVal && subagentVal !== '__custom__')
+    ? subagentVal
+    : '';
+
+  if (!sourceVal) {
+    showCustomAlert('请先在上方任意角色下拉框或默认兜底模型中选择一个模型。', '未指定模型', 'info');
+    return;
+  }
+
+  const cleanId = stripClaude1mMarker(sourceVal);
+  const baseUrl = document.getElementById('claude-code-config-base-url')?.value || '';
+  const name = document.getElementById('claude-code-config-name')?.value || '';
+  const isAnyRouter = isAnyRouterEndpoint(baseUrl, name);
+  const use1m = isAnyRouter && isClaudeModel(cleanId);
+
+  CLAUDE_ROLES.forEach(r => {
+    setClaudeRoleSelectValue(`claude-model-id-${r.role}`, cleanId);
+    if (r.nameKey) {
+      const nameInput = document.getElementById(`claude-model-name-${r.role}`);
+      if (nameInput) nameInput.value = cleanId;
+    }
+    if (r.has1m) {
+      setClaude1mCheckbox(r.role, use1m);
+    }
+  });
+
+  setClaudeRoleSelectValue('claude-code-config-model', cleanId);
+  setClaude1mCheckbox('fallback', use1m);
+
+  syncClaudeCodeRawConfigFromFields();
+  if (typeof addLog === 'function') addLog('ok', `已将模型「${cleanId}」一键应用到所有角色`);
+  showCustomAlert(`已将「${cleanId}」一键应用到所有角色。`, '设置成功', 'success');
+}
+
 function applyClaudeCodeConfigSource(providerId) {
   const source = (providerStore.providers || []).find(p => p && p.id === providerId);
   if (!source) return;
   codexConfigSetInputValue('claude-code-config-source-id', source.id);
   codexConfigSetInputValue('claude-code-config-name', source.name || '');
-  codexConfigSetInputValue('claude-code-config-base-url', claudeCodeConfigDisplayBaseUrl(source));
+  const baseUrl = claudeCodeConfigDisplayBaseUrl(source);
+  codexConfigSetInputValue('claude-code-config-base-url', baseUrl);
   codexConfigSetInputValue('claude-code-config-api-key', source.apiKey || '');
+
+  const isAnyRouter = isAnyRouterEndpoint(baseUrl, source.name || '');
   const models = codexConfigModelList(source);
-  codexConfigSetInputValue('claude-code-config-model', source.defaultModel || models[0] || '');
-  claudeCodeConfigSetModels(models, source.defaultModel || models[0] || '', models.length ? `已带入 ${models.length} 个模型` : '已带入来源信息，请拉取模型列表。');
+  refreshAllClaudeRoleSelects(models);
+
+  const fallbackModel = stripClaude1mMarker(source.defaultModel || models[0] || 'claude-3-7-sonnet-20250219');
+  const isClaude = isClaudeModel(fallbackModel);
+  const use1m = isAnyRouter && isClaude;
+
+  // 铺满所有角色下拉框
+  CLAUDE_ROLES.forEach(r => {
+    setClaudeRoleSelectValue(`claude-model-id-${r.role}`, fallbackModel);
+    if (r.nameKey) {
+      const nameInput = document.getElementById(`claude-model-name-${r.role}`);
+      if (nameInput) nameInput.value = fallbackModel;
+    }
+    if (r.has1m) setClaude1mCheckbox(r.role, use1m);
+  });
+
+  setClaudeRoleSelectValue('claude-code-config-model', fallbackModel);
+  setClaude1mCheckbox('fallback', use1m);
+
+  claudeCodeConfigSetModelStatus(`已带入 ${models.length} 个模型到下拉框`, 'success');
   syncClaudeCodeRawConfigFromFields();
 }
 
@@ -3280,52 +4114,6 @@ function claudeCodeConfigSetFetchLoading(loading) {
   btn.disabled = !!loading;
   btn.classList.toggle('is-loading', !!loading);
   btn.textContent = loading ? '拉取中...' : '拉取模型列表';
-}
-
-function claudeCodeConfigSetModels(models, defaultModel = '', status = '') {
-  const normalized = codexConfigNormalizeModels(models, defaultModel);
-  codexConfigSetInputValue('claude-code-config-models', normalized.join('\n'));
-  codexConfigSetInputValue('claude-code-config-model', defaultModel || normalized[0] || '');
-  renderClaudeCodeConfigModelList(normalized);
-  if (status) claudeCodeConfigSetModelStatus(status);
-}
-
-function renderClaudeCodeConfigModelList(models = null) {
-  const list = document.getElementById('claude-code-config-model-list');
-  if (!list) return;
-  const defaultModel = String(document.getElementById('claude-code-config-model')?.value || '').trim();
-  const source = models || codexConfigParseModels(document.getElementById('claude-code-config-models')?.value, defaultModel);
-  if (!source.length) {
-    list.innerHTML = '<div class="codex-config-model-empty">还没有模型，点击右上角按钮拉取。</div>';
-    return;
-  }
-  list.innerHTML = source.map(model => {
-    const isDefault = model === defaultModel;
-    const icon = typeof renderModelIcon === 'function' ? renderModelIcon(model) : '';
-    return `
-      <button type="button" class="codex-config-model-option opencode-model-option ${isDefault ? 'active' : ''}" data-model="${platformEsc(model)}" title="${platformEsc(model)}" role="radio" aria-checked="${isDefault ? 'true' : 'false'}">
-        <span class="opencode-model-icon-wrap">${icon}</span>
-        <span class="opencode-model-name">${platformEsc(model)}</span>
-        ${isDefault ? '<span class="opencode-model-default-badge">默认</span>' : ''}
-      </button>
-    `;
-  }).join('');
-  list.setAttribute('role', 'radiogroup');
-  list.onclick = (event) => {
-    const item = event.target.closest('.codex-config-model-option');
-    if (!item || !list.contains(item)) return;
-    event.preventDefault();
-    event.stopPropagation();
-    selectClaudeCodeConfigModel(item.dataset.model || '');
-  };
-}
-
-function selectClaudeCodeConfigModel(model) {
-  codexConfigSetInputValue('claude-code-config-model', model);
-  const models = codexConfigNormalizeModels(document.getElementById('claude-code-config-models')?.value, model);
-  codexConfigSetInputValue('claude-code-config-models', models.join('\n'));
-  renderClaudeCodeConfigModelList(models);
-  syncClaudeCodeRawConfigFromFields();
 }
 
 function claudeCodeConfigEndpointParts(baseUrl) {
@@ -3398,11 +4186,51 @@ async function fetchClaudeCodeConfigModels() {
     }
     if (!result?.models?.length) throw lastError || new Error('接口返回的模型列表为空');
     if (seq !== claudeCodeConfigModelFetchSeq) return;
-    const models = codexConfigNormalizeModels(result?.models || []);
+    const isAnyRouter = isAnyRouterEndpoint(baseUrl, document.getElementById('claude-code-config-name')?.value || '');
+    let rawModels = result?.models || [];
+    let models = codexConfigNormalizeModels(rawModels);
     if (!models.length) throw new Error('接口返回的模型列表为空');
-    const current = String(document.getElementById('claude-code-config-model')?.value || '').trim();
-    const picked = current && models.includes(current) ? current : models[0];
-    claudeCodeConfigSetModels(models, picked, `已拉取 ${models.length} 个模型`);
+
+    // 刷新所有下拉框选项
+    refreshAllClaudeRoleSelects(models);
+
+    // 同步更新当前选中供应商在界面列表与内存中的模型，并持久化
+    const currentSourceId = document.getElementById('claude-code-config-source-id')?.value;
+    if (currentSourceId) {
+      const pInList = (claudeProviderModels || []).find(p => p.providerId === currentSourceId);
+      if (pInList) {
+        pInList.models = models.map(m => ({ id: m, name: m }));
+      }
+      const pInStore = (providerStore.providers || []).find(p => p.id === currentSourceId);
+      if (pInStore) {
+        pInStore.models = [...models];
+        if (typeof persistProviders === 'function') {
+          persistProviders();
+        }
+      }
+      renderClaudeAddProviderList();
+    }
+
+    // 如果当前各角色全为空，则以第一个模型自动一键铺满
+    const currentFb = document.getElementById('claude-code-config-model')?.value?.trim();
+    const currentSonnet = document.getElementById('claude-model-id-sonnet')?.value?.trim();
+    if ((!currentFb || currentFb === '__custom__') && (!currentSonnet || currentSonnet === '__custom__') && models[0]) {
+      const clean = stripClaude1mMarker(models[0]);
+      const use1m = isAnyRouter && isClaudeModel(clean);
+
+      CLAUDE_ROLES.forEach(r => {
+        setClaudeRoleSelectValue(`claude-model-id-${r.role}`, clean);
+        if (r.nameKey) {
+          const nameInput = document.getElementById(`claude-model-name-${r.role}`);
+          if (nameInput) nameInput.value = clean;
+        }
+        if (r.has1m) setClaude1mCheckbox(r.role, use1m);
+      });
+      setClaudeRoleSelectValue('claude-code-config-model', clean);
+      setClaude1mCheckbox('fallback', use1m);
+    }
+
+    claudeCodeConfigSetModelStatus(`已拉取 ${models.length} 个模型（可在下拉框中直接点选）`, 'success');
     syncClaudeCodeRawConfigFromFields();
     if (typeof addLog === 'function') addLog('ok', `Claude Code 配置模型拉取成功: ${models.length} 个`);
   } catch (e) {
@@ -3439,15 +4267,14 @@ function claudeCodeConfigMatchesSearch(config) {
 }
 
 async function openClaudeCodeAddModal() {
-  navigateTo('platform-claude-add');
-  await initClaudeAddPage();
+  await openClaudeCodeConfigEditor();
 }
 
 function openClaudeCodeProviderAdd() {
-  openClaudeCodeAddModal();
+  openClaudeCodeConfigEditor();
 }
 
-async function initClaudeAddPage() {
+async function initClaudeCodeConfigEditorPage(providerId = '') {
   try {
     claudeProviderModels = await invoke('list_provider_models') || [];
   } catch (e) {
@@ -3458,13 +4285,84 @@ async function initClaudeAddPage() {
     claudeProviderModels = claudeProviderModels.filter(p => !isLocalProxyProviderEntry(p));
     claudeProviderModels.unshift(lp);
   }
-  claudeAddSelectedProvider = null;
   claudeAddSearchKw = '';
   const searchInput = document.getElementById('claude-add-search');
   if (searchInput) searchInput.value = '';
-  renderClaudeAddProviderList();
-  renderClaudeAddModels();
-  updateClaudeAddConfirmButton();
+
+  const provider = providerId ? claudeCodeConfigProviderById(providerId) : null;
+  claudeCodeConfigEditorMode = provider ? 'edit' : 'create';
+
+  const titleEl = document.getElementById('claude-code-config-page-title');
+  const subEl = document.getElementById('claude-code-config-page-sub');
+  if (titleEl) {
+    titleEl.textContent = provider ? '编辑配置 · Claude Code' : '添加配置 · Claude Code';
+  }
+  if (subEl) {
+    subEl.textContent = provider
+      ? `正在编辑「${provider.name || provider.id}」这份 Claude Code 配置。`
+      : '从现有 Anthropic 供应商创建或自由定制一份可切换的 Claude Code 独立配置。';
+  }
+
+  codexConfigSetInputValue('claude-code-config-edit-id', provider?.id || '');
+
+  if (provider) {
+    claudeAddSelectedProvider = provider.sourceProviderId || null;
+    renderClaudeAddProviderList();
+
+    codexConfigSetInputValue('claude-code-config-source-id', provider.sourceProviderId || '');
+    codexConfigSetInputValue('claude-code-config-name', provider.name || '');
+    const baseUrl = claudeCodeConfigDisplayBaseUrl(provider);
+    codexConfigSetInputValue('claude-code-config-base-url', baseUrl);
+    codexConfigSetInputValue('claude-code-config-api-key', provider.apiKey || '');
+
+    // 回填角色模型与 1M 复选框
+    claudeCodeApplySettingsToRoleForm(provider.settingsConfig, provider);
+
+    const sourceProvider = (providerStore.providers || []).find(p => p.id === provider.sourceProviderId);
+    const sourceModels = sourceProvider ? codexConfigModelList(sourceProvider) : [];
+    const models = codexConfigModelList(provider);
+    const allCandidates = [...new Set([...models, ...sourceModels])];
+    refreshAllClaudeRoleSelects(allCandidates);
+    claudeCodeConfigSetModelStatus(`已加载「${provider.name || provider.id}」配置`, 'success');
+    claudeCodeSetRawSettings(provider.settingsConfig || claudeCodeBuildSettingsForProvider(provider, models));
+  } else {
+    codexConfigSetInputValue('claude-code-config-source-id', '');
+    codexConfigSetInputValue('claude-code-config-name', '');
+    codexConfigSetInputValue('claude-code-config-base-url', '');
+    codexConfigSetInputValue('claude-code-config-api-key', '');
+    refreshAllClaudeRoleSelects([]);
+    setClaudeRoleSelectValue('claude-code-config-model', '');
+    CLAUDE_ROLES.forEach(r => {
+      setClaudeRoleSelectValue(`claude-model-id-${r.role}`, '');
+      if (r.nameKey) {
+        const nameInput = document.getElementById(`claude-model-name-${r.role}`);
+        if (nameInput) nameInput.value = '';
+      }
+      if (r.has1m) setClaude1mCheckbox(r.role, false);
+    });
+    setClaude1mCheckbox('fallback', false);
+    claudeCodeConfigSetModelStatus('请选择左侧供应商带入或手动填写', '');
+
+    const firstProvider = claudeProviderModels[0];
+    if (firstProvider) {
+      claudeAddSelectedProvider = firstProvider.providerId;
+      renderClaudeAddProviderList();
+      applyClaudeCodeConfigSource(firstProvider.providerId);
+    } else {
+      claudeAddSelectedProvider = null;
+      renderClaudeAddProviderList();
+    }
+  }
+
+  await loadPlatformRealConfigFile('claude-code', 'claude-code-config-raw-json');
+
+  window.setTimeout(() => {
+    document.getElementById('claude-code-config-name')?.focus();
+  }, 50);
+}
+
+async function initClaudeAddPage() {
+  await initClaudeCodeConfigEditorPage();
 }
 
 function onClaudeAddSearch() {
@@ -3507,8 +4405,7 @@ function renderClaudeAddProviderList() {
 function selectClaudeAddProvider(providerId) {
   claudeAddSelectedProvider = providerId;
   renderClaudeAddProviderList();
-  renderClaudeAddModels();
-  updateClaudeAddConfirmButton();
+  applyClaudeCodeConfigSource(providerId);
 }
 
 function renderClaudeAddModels() {
@@ -3544,7 +4441,10 @@ function renderClaudeAddModels() {
   const existingConfig = claudeConfigs.find(c => c.sourceProviderId === provider.providerId || c.name === provider.providerName);
   const existingModels = new Set(existingConfig?.models || []);
 
-  body.innerHTML = provider.models.map((m) => {
+  const sortFn = typeof sortRoleSelectItems === 'function' ? sortRoleSelectItems : (list) => list;
+  const sortedModels = sortFn(provider.models, 'claude');
+
+  body.innerHTML = sortedModels.map((m) => {
     const exists = existingModels.has(m.id);
     return `
       <label class="cb-add-model-row ${exists ? 'already-added' : ''}" data-existing="${exists ? 'true' : 'false'}">
@@ -3643,67 +4543,16 @@ async function confirmAddClaudeModelsPage() {
   }
 }
 
-function openClaudeCodeConfigEditor(providerId = '') {
-  if (!providerId) {
-    openClaudeCodeAddModal();
-    return;
-  }
+async function openClaudeCodeConfigEditor(providerId = '') {
   resetPasswordInputVisibility('claude-code-config-api-key', 'claude-code-config-api-key-toggle');
-  const provider = providerId ? claudeCodeConfigProviderById(providerId) : null;
-  if (providerId && !provider) {
-    showCustomAlert('配置不存在或尚未加载。', '无法编辑', 'warn');
-    return;
-  }
-  claudeCodeConfigEditorMode = provider ? 'edit' : 'create';
-  const modal = document.getElementById('claude-code-config-modal');
-  const title = document.getElementById('claude-code-config-modal-title');
-  const sub = document.getElementById('claude-code-config-modal-sub');
-  const sourceWrap = document.getElementById('claude-code-config-source-wrap');
-  const layout = document.getElementById('claude-code-config-editor-layout');
-  const models = codexConfigModelList(provider);
-
-  if (title) title.textContent = provider ? '编辑 Claude Code 配置' : '添加 Claude Code 配置';
-  if (sub) sub.textContent = provider
-    ? `正在编辑「${provider.name || provider.id}」这份 Claude Code 配置。`
-    : '从现有 Anthropic 供应商创建一份独立可切换配置。';
-  if (sourceWrap) sourceWrap.classList.toggle('is-hidden', !!provider);
-  if (layout) {
-    layout.classList.toggle('is-editing', !!provider);
-    layout.classList.toggle('is-creating', !provider);
-  }
-
-  codexConfigSetInputValue('claude-code-config-edit-id', provider?.id || '');
-  if (provider) {
-    codexConfigSetInputValue('claude-code-config-source-id', provider.sourceProviderId || '');
-    codexConfigSetInputValue('claude-code-config-name', provider.name || '');
-    codexConfigSetInputValue('claude-code-config-base-url', claudeCodeConfigDisplayBaseUrl(provider));
-    codexConfigSetInputValue('claude-code-config-api-key', provider.apiKey || '');
-    codexConfigSetInputValue('claude-code-config-model', provider.defaultModel || models[0] || '');
-    claudeCodeConfigSetModels(models, provider.defaultModel || models[0] || '', models.length ? `已保存 ${models.length} 个模型` : '可重新拉取模型列表');
-    claudeCodeSetRawSettings(claudeCodeBuildSettingsForProvider(provider, models));
-  } else {
-    codexConfigSetInputValue('claude-code-config-name', '');
-    codexConfigSetInputValue('claude-code-config-base-url', '');
-    codexConfigSetInputValue('claude-code-config-api-key', '');
-    codexConfigSetInputValue('claude-code-config-model', '');
-    claudeCodeConfigSetModels([], '', '选择供应商后拉取模型列表');
-    const picked = renderClaudeCodeConfigSourceList('');
-    if (picked) applyClaudeCodeConfigSource(picked);
-    else syncClaudeCodeRawConfigFromFields();
-  }
-
-  if (modal) modal.classList.add('active');
-  window.setTimeout(() => {
-    const target = provider
-      ? document.getElementById('claude-code-config-name')
-      : document.querySelector('#claude-code-config-source-list .codex-config-source-item.active');
-    target?.focus();
-  }, 30);
+  navigateTo('platform-claude-add');
+  await initClaudeCodeConfigEditorPage(providerId);
 }
 
 function closeClaudeCodeConfigEditor() {
   resetPasswordInputVisibility('claude-code-config-api-key', 'claude-code-config-api-key-toggle');
   document.getElementById('claude-code-config-modal')?.classList.remove('active');
+  navigateTo('platform-claude-code');
 }
 
 async function syncClaudeCodeConfigUiAfterStoreChange() {
@@ -3726,6 +4575,8 @@ async function saveClaudeCodeConfigEditor(switchAfter = false) {
   let baseUrl = String(document.getElementById('claude-code-config-base-url')?.value || '').trim();
   let apiKey = String(document.getElementById('claude-code-config-api-key')?.value || '').trim();
   let defaultModel = String(document.getElementById('claude-code-config-model')?.value || '').trim();
+  const isAnyRouter = isAnyRouterEndpoint(baseUrl, name);
+  defaultModel = ensureOneMContextMarker(defaultModel, isAnyRouter);
   let settingsConfig = null;
   try {
     settingsConfig = claudeCodeConfigObjectFromRawOrFields();
@@ -3743,21 +4594,23 @@ async function saveClaudeCodeConfigEditor(switchAfter = false) {
   baseUrl = claudeCodeBaseUrlFromEnv(env) || baseUrl;
   apiKey = claudeCodeApiKeyFromSettings(settingsConfig) || apiKey;
   defaultModel = claudeCodeEnvModel(settingsConfig) || defaultModel;
-  const models = codexConfigNormalizeModels([
-    ...claudeCodeModelCandidatesFromEnv(env),
-    ...codexConfigParseModels(document.getElementById('claude-code-config-models')?.value, defaultModel),
-  ], defaultModel);
-
-  if (!editId && !sourceId) {
-    showCustomAlert('请先选择一个现有供应商。', '没有配置来源', 'warn');
-    return;
-  }
-  if (!name || !baseUrl || !apiKey || !defaultModel) {
-    showCustomAlert('请填写配置名称、Base URL、API Key 和默认模型。', '配置不完整', 'warn');
-    return;
-  }
+  const models = claudeCodeExtractModelsFromRoleForm();
   if (!models.length) {
-    showCustomAlert('请至少填写一个模型。', '配置不完整', 'warn');
+    showCustomAlert('请至少在角色映射表中输入一个模型（例如 Sonnet 或默认兜底模型）。', '模型未填写', 'warn');
+    return;
+  }
+  if (!defaultModel) {
+    defaultModel = models[0];
+    codexConfigSetInputValue('claude-code-config-model', defaultModel);
+  }
+
+  // 避免同名配置混淆校验
+  const isDuplicateName = (providerStore.claudeCodeConfigs || []).some(
+    p => p && p.id !== editId && String(p.name || '').trim().toLowerCase() === name.toLowerCase()
+  );
+  if (isDuplicateName) {
+    showCustomAlert(`已存在名为「${name}」的 Claude Code 配置，请更换名称以作区分（例如 ${name}-2）。`, '配置名称重复', 'warn');
+    document.getElementById('claude-code-config-name')?.focus();
     return;
   }
 
@@ -4268,7 +5121,9 @@ function renderOpenCodeConfigModelList(models = null) {
   const list = document.getElementById('opencode-config-model-list');
   if (!list) return;
   const defaultModel = String(document.getElementById('opencode-config-model')?.value || '').trim();
-  const source = models || codexConfigParseModels(document.getElementById('opencode-config-models')?.value, defaultModel);
+  const rawSource = models || codexConfigParseModels(document.getElementById('opencode-config-models')?.value, defaultModel);
+  const sortFn = typeof sortRoleSelectItems === 'function' ? sortRoleSelectItems : (list) => list;
+  const source = sortFn(rawSource);
   if (!source.length) {
     list.innerHTML = '<div class="codex-config-model-empty">还没有模型，点击右上角按钮拉取。</div>';
     return;
@@ -4277,16 +5132,16 @@ function renderOpenCodeConfigModelList(models = null) {
     const isDefault = model === defaultModel;
     const icon = typeof renderModelIcon === 'function' ? renderModelIcon(model) : '';
     return `
-      <button type="button" class="codex-config-model-option opencode-model-option ${isDefault ? 'active' : ''}" data-model="${platformEsc(model)}" title="${platformEsc(model)}" role="radio" aria-checked="${isDefault ? 'true' : 'false'}">
+      <div class="opencode-model-option ${isDefault ? 'active' : ''}" data-model="${platformEsc(model)}" title="${platformEsc(model)}" role="radio" aria-checked="${isDefault ? 'true' : 'false'}">
         <span class="opencode-model-icon-wrap">${icon}</span>
         <span class="opencode-model-name">${platformEsc(model)}</span>
-        ${isDefault ? '<span class="opencode-model-default-badge">默认</span>' : ''}
-      </button>
+        ${isDefault ? '<span class="opencode-model-default-badge">默认 ✓</span>' : '<span style="font-size:11px;color:var(--text-muted);opacity:0.8;margin-left:auto;">点击设为默认</span>'}
+      </div>
     `;
   }).join('');
   list.setAttribute('role', 'radiogroup');
   list.onclick = (event) => {
-    const item = event.target.closest('.codex-config-model-option');
+    const item = event.target.closest('.opencode-model-option');
     if (!item || !list.contains(item)) return;
     event.preventDefault();
     event.stopPropagation();
@@ -4376,33 +5231,84 @@ function opencodeConfigMatchesSearch(config) {
 }
 
 async function openOpenCodeAddModal() {
-  navigateTo('platform-opencode-add');
-  await initOpenCodeAddPage();
+  await openOpenCodeConfigEditor();
 }
 
 function openOpenCodeProviderAdd() {
-  openOpenCodeAddModal();
+  openOpenCodeConfigEditor();
 }
 
-async function initOpenCodeAddPage() {
+async function initOpenCodeConfigEditorPage(providerId = '') {
   try {
     opencodeProviderModels = await invoke('list_provider_models') || [];
   } catch (e) {
     opencodeProviderModels = [];
   }
-  // 注入 AnyBridge 本地代理供应商到列表首位
   if (typeof localProxyProviderModelsEntry === 'function') {
     const lp = localProxyProviderModelsEntry();
     opencodeProviderModels = opencodeProviderModels.filter(p => !isLocalProxyProviderEntry(p));
     opencodeProviderModels.unshift(lp);
   }
-  opencodeAddSelectedProvider = null;
   opencodeAddSearchKw = '';
   const searchInput = document.getElementById('opencode-add-search');
   if (searchInput) searchInput.value = '';
-  renderOpenCodeAddProviderList();
-  renderOpenCodeAddModels();
-  updateOpenCodeAddConfirmButton();
+
+  const provider = providerId ? opencodeConfigProviderById(providerId) : null;
+  opencodeConfigEditorMode = provider ? 'edit' : 'create';
+
+  const titleEl = document.getElementById('opencode-config-page-title');
+  const subEl = document.getElementById('opencode-config-page-sub');
+  if (titleEl) {
+    titleEl.textContent = provider ? '编辑配置 · OpenCode' : '添加配置 · OpenCode';
+  }
+  if (subEl) {
+    subEl.textContent = provider
+      ? `正在编辑「${provider.name || provider.id}」这份 OpenCode 配置。`
+      : '从现有供应商创建或自由定制一份独立 OpenCode provider 配置方案。';
+  }
+
+  codexConfigSetInputValue('opencode-config-edit-id', provider?.id || '');
+
+  if (provider) {
+    opencodeAddSelectedProvider = provider.sourceProviderId || null;
+    renderOpenCodeAddProviderList();
+
+    codexConfigSetInputValue('opencode-config-source-id', provider.sourceProviderId || '');
+    codexConfigSetInputValue('opencode-config-name', provider.name || '');
+    codexConfigSetInputValue('opencode-config-base-url', opencodeConfigDisplayBaseUrl(provider));
+    codexConfigSetInputValue('opencode-config-api-key', provider.apiKey || '');
+    const models = codexConfigModelList(provider);
+    codexConfigSetInputValue('opencode-config-model', provider.defaultModel || models[0] || '');
+    opencodeConfigSetModels(models, provider.defaultModel || models[0] || '', models.length ? `已保存 ${models.length} 个模型` : '可重新拉取模型列表');
+    opencodeSetRawSettings(opencodeBuildSettingsForProvider(provider, models));
+  } else {
+    codexConfigSetInputValue('opencode-config-source-id', '');
+    codexConfigSetInputValue('opencode-config-name', '');
+    codexConfigSetInputValue('opencode-config-base-url', '');
+    codexConfigSetInputValue('opencode-config-api-key', '');
+    codexConfigSetInputValue('opencode-config-model', '');
+    opencodeConfigSetModels([], '', '选择供应商后拉取模型列表');
+
+    const firstProvider = opencodeProviderModels[0];
+    if (firstProvider) {
+      opencodeAddSelectedProvider = firstProvider.providerId;
+      renderOpenCodeAddProviderList();
+      applyOpenCodeConfigSource(firstProvider.providerId);
+    } else {
+      opencodeAddSelectedProvider = null;
+      renderOpenCodeAddProviderList();
+    }
+  }
+
+  await loadPlatformRealConfigFile('opencode', 'opencode-config-raw-json');
+
+  window.setTimeout(() => {
+    document.getElementById('opencode-config-name')?.focus();
+  }, 50);
+}
+
+async function initOpenCodeAddPage() {
+  await initOpenCodeConfigEditorPage();
 }
 
 function onOpenCodeAddSearch() {
@@ -4445,8 +5351,7 @@ function renderOpenCodeAddProviderList() {
 function selectOpenCodeAddProvider(providerId) {
   opencodeAddSelectedProvider = providerId;
   renderOpenCodeAddProviderList();
-  renderOpenCodeAddModels();
-  updateOpenCodeAddConfirmButton();
+  applyOpenCodeConfigSource(providerId);
 }
 
 function renderOpenCodeAddModels() {
@@ -4482,7 +5387,10 @@ function renderOpenCodeAddModels() {
   const existingConfig = opencodeConfigs.find(c => c.sourceProviderId === provider.providerId || c.name === provider.providerName);
   const existingModels = new Set(existingConfig?.models || []);
 
-  body.innerHTML = provider.models.map((m) => {
+  const sortFn = typeof sortRoleSelectItems === 'function' ? sortRoleSelectItems : (list) => list;
+  const sortedModels = sortFn(provider.models);
+
+  body.innerHTML = sortedModels.map((m) => {
     const exists = existingModels.has(m.id);
     return `
       <label class="cb-add-model-row ${exists ? 'already-added' : ''}" data-existing="${exists ? 'true' : 'false'}">
@@ -4575,66 +5483,16 @@ async function confirmAddOpenCodeModelsPage() {
   }
 }
 
-function openOpenCodeConfigEditor(providerId = '') {
+async function openOpenCodeConfigEditor(providerId = '') {
   resetPasswordInputVisibility('opencode-config-api-key', 'opencode-config-api-key-toggle');
-  const searchInput = document.getElementById('opencode-source-search-input');
-  if (searchInput) searchInput.value = '';
-  globalThis.opencodeSourceSearchKw = '';
-  const provider = providerId ? opencodeConfigProviderById(providerId) : null;
-  if (providerId && !provider) {
-    showCustomAlert('配置不存在或尚未加载。', '无法编辑', 'warn');
-    return;
-  }
-  opencodeConfigEditorMode = provider ? 'edit' : 'create';
-  const modal = document.getElementById('opencode-config-modal');
-  const title = document.getElementById('opencode-config-modal-title');
-  const sub = document.getElementById('opencode-config-modal-sub');
-  const sourceWrap = document.getElementById('opencode-config-source-wrap');
-  const layout = document.getElementById('opencode-config-editor-layout');
-  const models = codexConfigModelList(provider);
-
-  if (title) title.textContent = provider ? '编辑 OpenCode 配置' : '添加 OpenCode 配置';
-  if (sub) sub.textContent = provider
-    ? `正在编辑「${provider.name || provider.id}」这份 OpenCode 配置。`
-    : '从现有 OpenAI 供应商创建一份独立 OpenCode provider 配置。';
-  if (sourceWrap) sourceWrap.classList.toggle('is-hidden', !!provider);
-  if (layout) {
-    layout.classList.toggle('is-editing', !!provider);
-    layout.classList.toggle('is-creating', !provider);
-  }
-
-  codexConfigSetInputValue('opencode-config-edit-id', provider?.id || '');
-  if (provider) {
-    codexConfigSetInputValue('opencode-config-source-id', provider.sourceProviderId || '');
-    codexConfigSetInputValue('opencode-config-name', provider.name || '');
-    codexConfigSetInputValue('opencode-config-base-url', opencodeConfigDisplayBaseUrl(provider));
-    codexConfigSetInputValue('opencode-config-api-key', provider.apiKey || '');
-    codexConfigSetInputValue('opencode-config-model', provider.defaultModel || models[0] || '');
-    opencodeConfigSetModels(models, provider.defaultModel || models[0] || '', models.length ? `已保存 ${models.length} 个模型` : '可重新拉取模型列表');
-    opencodeSetRawSettings(opencodeBuildSettingsForProvider(provider, models));
-  } else {
-    codexConfigSetInputValue('opencode-config-name', '');
-    codexConfigSetInputValue('opencode-config-base-url', '');
-    codexConfigSetInputValue('opencode-config-api-key', '');
-    codexConfigSetInputValue('opencode-config-model', '');
-    opencodeConfigSetModels([], '', '选择供应商后拉取模型列表');
-    const picked = renderOpenCodeConfigSourceList('');
-    if (picked) applyOpenCodeConfigSource(picked);
-    else syncOpenCodeRawConfigFromFields();
-  }
-
-  if (modal) modal.classList.add('active');
-  window.setTimeout(() => {
-    const target = provider
-      ? document.getElementById('opencode-config-name')
-      : document.querySelector('#opencode-config-source-list .codex-config-source-item.active');
-    target?.focus();
-  }, 30);
+  navigateTo('platform-opencode-add');
+  await initOpenCodeConfigEditorPage(providerId);
 }
 
 function closeOpenCodeConfigEditor() {
   resetPasswordInputVisibility('opencode-config-api-key', 'opencode-config-api-key-toggle');
   document.getElementById('opencode-config-modal')?.classList.remove('active');
+  navigateTo('platform-opencode');
 }
 
 async function syncOpenCodeConfigUiAfterStoreChange() {
@@ -4685,6 +5543,16 @@ async function saveOpenCodeConfigEditor(addAfter = false) {
   }
   if (!name || !baseUrl || !apiKey || !defaultModel) {
     showCustomAlert('请填写配置名称、Base URL、API Key 和默认模型。', '配置不完整', 'warn');
+    return;
+  }
+
+  // 避免同名配置混淆校验
+  const isDuplicateName = (providerStore.opencodeConfigs || []).some(
+    p => p && p.id !== editId && String(p.name || '').trim().toLowerCase() === name.toLowerCase()
+  );
+  if (isDuplicateName) {
+    showCustomAlert(`已存在名为「${name}」的 OpenCode 配置，请更换名称以作区分（例如 ${name}-2）。`, '配置名称重复', 'warn');
+    document.getElementById('opencode-config-name')?.focus();
     return;
   }
   if (!models.length) {
@@ -5053,44 +5921,122 @@ function selectGrokConfigSource(providerId) {
   if (picked) applyGrokConfigSource(picked);
 }
 
+function setGrokConfigBackendRadio(backend) {
+  const normalized = backend || 'chat_completions';
+  const hidden = document.getElementById('grok-config-backend') || document.getElementById('grok-add-backend');
+  if (hidden) hidden.value = normalized;
+  document.querySelectorAll('input[name="grok-config-backend-radio"], input[name="grok-add-backend-radio"]').forEach(r => {
+    r.checked = r.value === normalized;
+  });
+  syncGrokRawConfigFromFields();
+}
+
+function setGrokAddBackend(backend) {
+  setGrokConfigBackendRadio(backend);
+}
+
+function renderGrokConfigModelChips(models) {
+  const chipsWrap = document.getElementById('grok-config-model-chips');
+  if (!chipsWrap) return;
+  const sortFn = typeof sortRoleSelectItems === 'function' ? sortRoleSelectItems : (l) => l;
+  const list = sortFn(Array.isArray(models) ? models : [], 'grok');
+  if (!list.length) {
+    chipsWrap.innerHTML = '<span style="font-size:11.5px;color:var(--text-muted);">暂无模型，可手动输入</span>';
+    syncGrokRawConfigFromFields();
+    return;
+  }
+  chipsWrap.innerHTML = list.map(m => {
+    const id = typeof m === 'string' ? m : (m.id || '');
+    return `<button type="button" class="btn-ghost secondary" style="padding: 2px 8px; font-size: 11.5px; height: 26px;" onclick="document.getElementById('grok-config-model').value='${platformEsc(id)}';if(typeof syncGrokRawConfigFromFields==='function')syncGrokRawConfigFromFields();">${platformEsc(id)}</button>`;
+  }).join('');
+  syncGrokRawConfigFromFields();
+}
+
 async function openGrokAddModal() {
-  navigateTo('platform-grok-add');
-  await initGrokAddPage();
+  await openGrokConfigEditor();
 }
 
 function openGrokConfigAdd() {
-  openGrokAddModal();
+  openGrokConfigEditor();
 }
 
-async function initGrokAddPage() {
+async function initGrokConfigEditorPage(providerId = '') {
   try {
     grokProviderModels = await invoke('list_provider_models') || [];
   } catch (e) {
     grokProviderModels = [];
   }
-  // 注入 AnyBridge 本地代理供应商到列表首位
   if (typeof localProxyProviderModelsEntry === 'function') {
     const lp = localProxyProviderModelsEntry();
     grokProviderModels = grokProviderModels.filter(p => !isLocalProxyProviderEntry(p));
     grokProviderModels.unshift(lp);
   }
-  grokAddSelectedProvider = null;
   grokAddSearchKw = '';
   const searchInput = document.getElementById('grok-add-search');
   if (searchInput) searchInput.value = '';
-  setGrokAddBackend('chat_completions');
-  renderGrokAddProviderList();
-  renderGrokAddModels();
-  updateGrokAddConfirmButton();
+
+  const provider = providerId ? grokConfigProviderById(providerId) : null;
+  grokConfigEditorMode = provider ? 'edit' : 'create';
+
+  const titleEl = document.getElementById('grok-config-page-title');
+  const subEl = document.getElementById('grok-config-page-sub');
+  if (titleEl) {
+    titleEl.textContent = provider ? '编辑配置 · Grok' : '添加配置 · Grok';
+  }
+  if (subEl) {
+    subEl.textContent = provider
+      ? `正在编辑「${provider.name || provider.id}」这份 Grok 模型配置。`
+      : '从现有供应商创建或自由定制一份 Grok Build CLI 自定义模型配置方案。';
+  }
+
+  codexConfigSetInputValue('grok-config-edit-id', provider?.id || '');
+
+  if (provider) {
+    grokAddSelectedProvider = provider.sourceProviderId || null;
+    renderGrokAddProviderList();
+
+    codexConfigSetInputValue('grok-config-source-id', provider.sourceProviderId || '');
+    codexConfigSetInputValue('grok-config-name', provider.name || '');
+    const url = provider.apiHost ? (provider.apiHost.replace(/\/+$/, '') + (provider.apiPath || '/v1')) : '';
+    codexConfigSetInputValue('grok-config-base-url', url);
+    codexConfigSetInputValue('grok-config-api-key', provider.apiKey || '');
+    codexConfigSetInputValue('grok-config-model', provider.defaultModel || '');
+    setGrokConfigBackendRadio(provider.apiBackend || 'chat_completions');
+
+    const source = (providerStore.providers || []).find(p => p.id === provider.sourceProviderId);
+    renderGrokConfigModelChips(source ? source.models : [provider.defaultModel]);
+  } else {
+    codexConfigSetInputValue('grok-config-source-id', '');
+    codexConfigSetInputValue('grok-config-name', '');
+    codexConfigSetInputValue('grok-config-base-url', '');
+    codexConfigSetInputValue('grok-config-api-key', '');
+    codexConfigSetInputValue('grok-config-model', '');
+    setGrokConfigBackendRadio('chat_completions');
+
+    const firstProvider = grokProviderModels[0];
+    if (firstProvider) {
+      grokAddSelectedProvider = firstProvider.providerId;
+      renderGrokAddProviderList();
+      applyGrokConfigSource(firstProvider);
+    } else {
+      grokAddSelectedProvider = null;
+      renderGrokAddProviderList();
+      renderGrokConfigModelChips([]);
+    }
+  }
+
+  const hasRealDiskFile = await loadPlatformRealConfigFile('grok', 'grok-config-raw-toml');
+  if (!hasRealDiskFile) {
+    syncGrokRawConfigFromFields();
+  }
+
+  window.setTimeout(() => {
+    document.getElementById('grok-config-name')?.focus();
+  }, 50);
 }
 
-function setGrokAddBackend(backend) {
-  const normalized = backend || 'chat_completions';
-  const hidden = document.getElementById('grok-add-backend');
-  if (hidden) hidden.value = normalized;
-  document.querySelectorAll('input[name="grok-add-backend-radio"]').forEach(r => {
-    r.checked = r.value === normalized;
-  });
+async function initGrokAddPage() {
+  await initGrokConfigEditorPage();
 }
 
 function onGrokAddSearch() {
@@ -5133,8 +6079,11 @@ function renderGrokAddProviderList() {
 function selectGrokAddProvider(providerId) {
   grokAddSelectedProvider = providerId;
   renderGrokAddProviderList();
-  renderGrokAddModels();
-  updateGrokAddConfirmButton();
+  const provider = grokProviderModels.find(p => p.providerId === providerId);
+  if (provider) {
+    applyGrokConfigSource(provider);
+    renderGrokConfigModelChips(provider.models || []);
+  }
 }
 
 function renderGrokAddModels() {
@@ -5167,7 +6116,10 @@ function renderGrokAddModels() {
   }
 
   const grokConfigs = Array.isArray(providerStore?.grokConfigs) ? providerStore.grokConfigs : [];
-  body.innerHTML = provider.models.map((m) => {
+  const sortFn = typeof sortRoleSelectItems === 'function' ? sortRoleSelectItems : (list) => list;
+  const sortedModels = sortFn(provider.models, 'grok');
+
+  body.innerHTML = sortedModels.map((m) => {
     const exists = grokConfigs.some(cfg =>
       (cfg.sourceProviderId === provider.providerId || cfg.id === `grok-${grok_sanitize_key(provider.providerId)}-${grok_sanitize_key(m.id)}`) && cfg.defaultModel === m.id
     );
@@ -5256,65 +6208,16 @@ async function confirmAddGrokModelsPage() {
   }
 }
 
-function openGrokConfigEditor(providerId = '') {
-  if (!providerId) {
-    openGrokAddModal();
-    return;
-  }
+async function openGrokConfigEditor(providerId = '') {
   resetPasswordInputVisibility('grok-config-api-key', 'grok-config-api-key-toggle');
-  const provider = providerId ? grokConfigProviderById(providerId) : null;
-  if (providerId && !provider) {
-    showCustomAlert('配置不存在或尚未加载。', '无法编辑', 'warn');
-    return;
-  }
-  grokConfigEditorMode = provider ? 'edit' : 'create';
-  const modal = document.getElementById('grok-config-modal');
-  const title = document.getElementById('grok-config-modal-title');
-  const sub = document.getElementById('grok-config-modal-sub');
-  const sourceWrap = document.getElementById('grok-config-source-wrap');
-  const layout = document.getElementById('grok-config-editor-layout');
-
-  if (title) title.textContent = provider ? '编辑 Grok 配置' : '添加 Grok 配置';
-  if (sub) sub.textContent = provider
-    ? `正在编辑「${provider.name || provider.id}」这份 Grok 模型配置。`
-    : '从现有 OpenAI 供应商创建一份 Grok Build CLI 自定义模型配置。';
-  if (sourceWrap) sourceWrap.classList.toggle('is-hidden', !!provider);
-  if (layout) {
-    layout.classList.toggle('is-editing', !!provider);
-    layout.classList.toggle('is-creating', !provider);
-  }
-
-  codexConfigSetInputValue('grok-config-edit-id', provider?.id || '');
-  if (provider) {
-    codexConfigSetInputValue('grok-config-source-id', provider.sourceProviderId || '');
-    codexConfigSetInputValue('grok-config-name', provider.name || '');
-    const url = provider.apiHost ? (provider.apiHost.replace(/\/+$/, '') + (provider.apiPath || '/v1')) : '';
-    codexConfigSetInputValue('grok-config-base-url', url);
-    codexConfigSetInputValue('grok-config-api-key', provider.apiKey || '');
-    codexConfigSetInputValue('grok-config-model', provider.defaultModel || '');
-    const backendSelect = document.getElementById('grok-config-backend');
-    if (backendSelect) backendSelect.value = provider.apiBackend || 'chat_completions';
-  } else {
-    codexConfigSetInputValue('grok-config-name', '');
-    codexConfigSetInputValue('grok-config-base-url', '');
-    codexConfigSetInputValue('grok-config-api-key', '');
-    codexConfigSetInputValue('grok-config-model', '');
-    const picked = renderGrokConfigSourceList('');
-    if (picked) applyGrokConfigSource(picked);
-  }
-
-  if (modal) modal.classList.add('active');
-  window.setTimeout(() => {
-    const target = provider
-      ? document.getElementById('grok-config-name')
-      : document.querySelector('#grok-config-source-list .codex-config-source-item.active');
-    target?.focus();
-  }, 30);
+  navigateTo('platform-grok-add');
+  await initGrokConfigEditorPage(providerId);
 }
 
 function closeGrokConfigEditor() {
   resetPasswordInputVisibility('grok-config-api-key', 'grok-config-api-key-toggle');
   document.getElementById('grok-config-modal')?.classList.remove('active');
+  navigateTo('platform-grok');
 }
 
 function syncGrokConfigTokenFromSource() {
@@ -5354,6 +6257,16 @@ async function saveGrokConfigEditor(addAfter = false) {
 
   if (!name) {
     showCustomAlert('请输入配置名称。', '无法保存', 'warn');
+    return;
+  }
+
+  // 避免同名配置混淆校验
+  const isDuplicateName = (providerStore.grokConfigs || []).some(
+    p => p && p.id !== editId && String(p.name || '').trim().toLowerCase() === name.toLowerCase()
+  );
+  if (isDuplicateName) {
+    showCustomAlert(`已存在名为「${name}」的 Grok 配置，请更换名称以作区分（例如 ${name}-2）。`, '配置名称重复', 'warn');
+    document.getElementById('grok-config-name')?.focus();
     return;
   }
   if (!rawBaseUrl) {
@@ -6041,23 +6954,23 @@ function cursorRenderTableRows() {
         <td>
           <div style="font-size:12.5px;color:var(--text-primary);font-weight:600;">${cursorEsc(providerName)}</div>
         </td>
-        <td style="text-align: center;">
-          <div style="display:inline-flex;align-items:center;justify-content:center;gap:6px;">
-            <button class="btn-icon" style="width:28px;height:28px;min-width:28px;" onclick="openCursorEditModal('${cursorEsc(item.id)}')" title="编辑模型">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+        <td>
+          <div class="model-map-actions">
+            <button class="btn-icon model-map-action-btn" onclick="openCursorEditModal('${cursorEsc(item.id)}')" title="编辑模型" aria-label="编辑模型">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
             </button>
-            <button class="btn-icon danger" style="width:28px;height:28px;min-width:28px;" onclick="cursorRemoveSingleModel('${cursorEsc(item.id)}', '${cursorEsc(displayName)}')" title="从 Cursor 移除">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"/></svg>
+            <button class="btn-icon model-map-action-btn danger" onclick="cursorRemoveSingleModel('${cursorEsc(item.id)}', '${cursorEsc(displayName)}')" title="从 Cursor 移除" aria-label="从 Cursor 移除">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"/></svg>
             </button>
           </div>
         </td>
-        <td style="text-align: center;">
+        <td class="model-map-toggle-cell">
           <label class="toggle-switch" title="${cursorEsc(visionTitle)}">
             <input type="checkbox" ${isVisionEnabled ? 'checked' : ''} onchange="cursorToggleThirdPartyVision('${cursorEsc(item.id)}', this.checked)">
             <span class="toggle-slider"></span>
           </label>
         </td>
-        <td style="text-align: center;">
+        <td class="model-map-toggle-cell">
           <label class="toggle-switch" title="${isEnabled ? '已向 Cursor 暴露（点击停用）' : '已停用（点击启用）'}">
             <input type="checkbox" ${isEnabled ? 'checked' : ''} onchange="cursorToggleModelEnabled('${cursorEsc(item.id)}', this.checked)">
             <span class="toggle-slider"></span>
@@ -7086,7 +7999,10 @@ function renderCursorAddModels() {
 
   const selectedForProv = _cursorAddSelectedModels.get(provider.providerId) || new Set();
 
-  body.innerHTML = models.map(m => {
+  const sortFn = typeof sortRoleSelectItems === 'function' ? sortRoleSelectItems : (list) => list;
+  const sortedModels = sortFn(models);
+
+  body.innerHTML = sortedModels.map(m => {
     const isAlready = !!m.alreadyAdded;
     const isSelected = selectedForProv.has(m.id);
     const caps = [];
@@ -7316,12 +8232,6 @@ async function cursorEnableAction() {
 // 还原直连 / 停用
 async function cursorDisableAction() {
   if (cursorConsoleBusy) return;
-  const ok = await showCustomConfirm(
-    '确定要停止 Cursor Core 并还原直连吗？\n这将恢复你原先在 Cursor settings.json 中的原始代理配置。',
-    '还原 Cursor 直连',
-    'warn'
-  );
-  if (!ok) return;
 
   cursorSetBusy(true, '正在停止...');
   try {
@@ -8086,7 +8996,7 @@ globalThis.PLATFORM_ADD_PROVIDER_SORT_LABELS = {
   'name-asc': '名称正序',
   'name-desc': '名称反序',
 };
-globalThis.PLATFORM_ADD_SORT_PREFIXES = ['cb', 'wb', 'zc', 'grok', 'opencode', 'codex', 'claude', 'cursor'];
+globalThis.PLATFORM_ADD_SORT_PREFIXES = ['cb', 'wb', 'zc', 'grok', 'opencode', 'codex', 'claude', 'cursor', 'claudeDesktop', 'antigravity'];
 globalThis.platformAddProviderSortMode = (() => {
   try {
     return normalizePlatformAddProviderSortMode(localStorage.getItem(PLATFORM_ADD_PROVIDER_SORT_STORAGE_KEY));
@@ -8228,6 +9138,11 @@ function renderPlatformAddProviderLists() {
   renderCodexAddProviderList();
   renderClaudeAddProviderList();
   renderCursorAddProviderList();
+  renderAntigravityAddProviderList();
+  if (typeof renderClaudeDesktopSourceList === 'function') {
+    const activeId = document.getElementById('claude-desktop-config-source-id')?.value || '';
+    renderClaudeDesktopSourceList(activeId);
+  }
 }
 
 function setPlatformAddProviderSortMode(mode) {
@@ -8303,6 +9218,10 @@ function toggleCodexAddSort(event) { togglePlatformAddSortMenu('codex', event); 
 function chooseCodexAddSortMode(mode) { choosePlatformAddSortMode('codex', mode); }
 function toggleClaudeAddSort(event) { togglePlatformAddSortMenu('claude', event); }
 function chooseClaudeAddSortMode(mode) { choosePlatformAddSortMode('claude', mode); }
+function toggleClaudeDesktopAddSort(event) { togglePlatformAddSortMenu('claudeDesktop', event); }
+function chooseClaudeDesktopAddSortMode(mode) { choosePlatformAddSortMode('claudeDesktop', mode); }
+function toggleAntigravityAddSort(event) { togglePlatformAddSortMenu('antigravity', event); }
+function chooseAntigravityAddSortMode(mode) { choosePlatformAddSortMode('antigravity', mode); }
 
 document.addEventListener('click', event => {
   const insideSortControl = PLATFORM_ADD_SORT_PREFIXES.some(prefix => {
@@ -9545,7 +10464,10 @@ function renderCbAddModels() {
     return;
   }
 
-  body.innerHTML = provider.models.map((m) => {
+  const sortFn = typeof sortRoleSelectItems === 'function' ? sortRoleSelectItems : (list) => list;
+  const sortedModels = sortFn(provider.models);
+
+  body.innerHTML = sortedModels.map((m) => {
     const exists = cbModels.some(model => model.id === m.id);
     return `
       <label class="cb-add-model-row ${exists ? 'already-added' : ''}" data-existing="${exists ? 'true' : 'false'}">
@@ -9683,21 +10605,21 @@ function createCbRowFactory(prefix) {
         <span class="${cls}-context-pill" title="${esc(contextTitle)}">${esc(contextLabel)}</span>
       </td>
       <td><div style="display:flex; gap:6px; flex-wrap:wrap;">${caps.join('') || '<span style="color:var(--text-muted);font-size:12px;">—</span>'}</div></td>
-      <td style="text-align:center;">
+      <td>
+        <div class="model-map-actions">
+          <button class="btn-icon model-map-action-btn" data-action="openCbEditModal" data-args="[&quot;${prefix}&quot;,${index}]" title="编辑模型" aria-label="编辑模型">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+          </button>
+          <button class="btn-icon model-map-action-btn danger" data-action="${deleteFn}" data-args="[${index}]" title="删除模型" aria-label="删除模型">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"/></svg>
+          </button>
+        </div>
+      </td>
+      <td class="model-map-toggle-cell">
         <label class="toggle-switch" title="${enabled ? '已启用' : '已停用'}">
           <input type="checkbox" ${enabled ? 'checked' : ''} data-action="${toggleFn}" data-events="change" data-args="[${index}]" data-pass-checked>
           <span class="toggle-slider"></span>
         </label>
-      </td>
-      <td>
-        <div style="display:flex; gap:8px; justify-content:center;">
-          <button class="btn-icon model-map-action-btn" data-action="openCbEditModal" data-args="[&quot;${prefix}&quot;,${index}]" title="编辑模型">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-          </button>
-          <button class="btn-icon model-map-action-btn danger" data-action="${deleteFn}" data-args="[${index}]" title="删除模型">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"/></svg>
-          </button>
-        </div>
       </td>
     </tr>
   `;
@@ -10292,7 +11214,11 @@ function renderWbAddModels() {
     body.innerHTML = '<div class="wb-add-models-empty">该供应商暂无模型</div>';
     return;
   }
-  body.innerHTML = provider.models.map((m) => {
+
+  const sortFn = typeof sortRoleSelectItems === 'function' ? sortRoleSelectItems : (list) => list;
+  const sortedModels = sortFn(provider.models);
+
+  body.innerHTML = sortedModels.map((m) => {
     const exists = wbModels.some(model => model.id === m.id);
     return `
       <label class="wb-add-model-row ${exists ? 'already-added' : ''}" data-existing="${exists ? 'true' : 'false'}">
@@ -10569,7 +11495,11 @@ function renderZcAddModels() {
     return;
   }
   const zcodeProviderId = zcProviderIdForProvider(provider);
-  body.innerHTML = provider.models.map((m) => {
+
+  const sortFn = typeof sortRoleSelectItems === 'function' ? sortRoleSelectItems : (list) => list;
+  const sortedModels = sortFn(provider.models);
+
+  body.innerHTML = sortedModels.map((m) => {
     const exists = zcModels.some(model => zcProviderModelKey(model) === zcProviderModelKeyParts(zcodeProviderId, m.id));
     return `
       <label class="wb-add-model-row zc-add-model-row ${exists ? 'already-added' : ''}" data-existing="${exists ? 'true' : 'false'}">
@@ -10931,10 +11861,13 @@ window.zcDrop = function(e) {
   g.openCodexConfigEditor = openCodexConfigEditor;
   g.closeCodexConfigEditor = closeCodexConfigEditor;
   g.toggleCodexKeyVisibility = toggleCodexKeyVisibility;
+  g.toggleClaudeDesktopKeyVisibility = toggleClaudeDesktopKeyVisibility;
   g.toggleClaudeCodeKeyVisibility = toggleClaudeCodeKeyVisibility;
   g.toggleOpenCodeKeyVisibility = toggleOpenCodeKeyVisibility;
   g.toggleGrokKeyVisibility = toggleGrokKeyVisibility;
   g.togglePasswordVisibility = togglePasswordVisibility;
+  g.togglePasswordInputVisibility = togglePasswordInputVisibility;
+  g.resetPasswordInputVisibility = resetPasswordInputVisibility;
   g.syncCodexConfigTokenFromSource = syncCodexConfigTokenFromSource;
   g.syncClaudeCodeConfigTokenFromSource = syncClaudeCodeConfigTokenFromSource;
   g.syncOpenCodeConfigTokenFromSource = syncOpenCodeConfigTokenFromSource;
@@ -10981,9 +11914,17 @@ window.zcDrop = function(e) {
   g.selectClaudeCodeConfigSource = selectClaudeCodeConfigSource;
   g.claudeCodeConfigSetModelStatus = claudeCodeConfigSetModelStatus;
   g.claudeCodeConfigSetFetchLoading = claudeCodeConfigSetFetchLoading;
-  g.claudeCodeConfigSetModels = claudeCodeConfigSetModels;
-  g.renderClaudeCodeConfigModelList = renderClaudeCodeConfigModelList;
-  g.selectClaudeCodeConfigModel = selectClaudeCodeConfigModel;
+  g.claudeCodeQuickSetAllModels = claudeCodeQuickSetAllModels;
+  g.onClaude1mCheckboxChanged = onClaude1mCheckboxChanged;
+  g.setClaude1mCheckbox = setClaude1mCheckbox;
+  g.getClaude1mCheckbox = getClaude1mCheckbox;
+  g.onClaudeRoleFieldInput = onClaudeRoleFieldInput;
+  g.onClaudeRoleSelectChange = onClaudeRoleSelectChange;
+  g.onClaudeFallbackSelectChange = onClaudeFallbackSelectChange;
+  g.refreshAllClaudeRoleSelects = refreshAllClaudeRoleSelects;
+  g.setClaudeRoleSelectValue = setClaudeRoleSelectValue;
+  g.claudeCodeApplySettingsToRoleForm = claudeCodeApplySettingsToRoleForm;
+  g.claudeCodeExtractModelsFromRoleForm = claudeCodeExtractModelsFromRoleForm;
   g.claudeCodeConfigEndpointParts = claudeCodeConfigEndpointParts;
   g.claudeCodeConfigModelEndpointParts = claudeCodeConfigModelEndpointParts;
   g.fetchClaudeCodeConfigModelsWithFormat = fetchClaudeCodeConfigModelsWithFormat;
@@ -11037,6 +11978,7 @@ window.zcDrop = function(e) {
   g.opencodeConfigMatchesSearch = opencodeConfigMatchesSearch;
   g.openOpenCodeAddModal = openOpenCodeAddModal;
   g.initOpenCodeAddPage = initOpenCodeAddPage;
+  g.initOpenCodeConfigEditorPage = initOpenCodeConfigEditorPage;
   g.onOpenCodeAddSearch = onOpenCodeAddSearch;
   g.renderOpenCodeAddProviderList = renderOpenCodeAddProviderList;
   g.selectOpenCodeAddProvider = selectOpenCodeAddProvider;
@@ -11065,6 +12007,17 @@ window.zcDrop = function(e) {
   g.selectGrokConfigSource = selectGrokConfigSource;
   g.openGrokAddModal = openGrokAddModal;
   g.initGrokAddPage = initGrokAddPage;
+  g.initGrokConfigEditorPage = initGrokConfigEditorPage;
+  g.setGrokConfigBackendRadio = setGrokConfigBackendRadio;
+  g.copyRawConfigText = copyRawConfigText;
+  g.loadPlatformRealConfigFile = loadPlatformRealConfigFile;
+  g.openPlatformRealConfigModal = openPlatformRealConfigModal;
+  g.closePlatformRealConfigModal = closePlatformRealConfigModal;
+  g.reloadPlatformRealConfigModal = reloadPlatformRealConfigModal;
+  g.copyPlatformRealConfigModal = copyPlatformRealConfigModal;
+  g.savePlatformRealConfigModal = savePlatformRealConfigModal;
+  g.syncCodexRawConfigFromFields = syncCodexRawConfigFromFields;
+  g.syncGrokRawConfigFromFields = syncGrokRawConfigFromFields;
   g.onGrokAddSearch = onGrokAddSearch;
   g.renderGrokAddProviderList = renderGrokAddProviderList;
   g.selectGrokAddProvider = selectGrokAddProvider;
@@ -11095,6 +12048,7 @@ window.zcDrop = function(e) {
   g.startCodexWithCdp = startCodexWithCdp;
   g.openClaudeCodeAddModal = openClaudeCodeAddModal;
   g.initClaudeAddPage = initClaudeAddPage;
+  g.initClaudeCodeConfigEditorPage = initClaudeCodeConfigEditorPage;
   g.onClaudeAddSearch = onClaudeAddSearch;
   g.renderClaudeAddProviderList = renderClaudeAddProviderList;
   g.selectClaudeAddProvider = selectClaudeAddProvider;
@@ -11105,6 +12059,10 @@ window.zcDrop = function(e) {
   g.confirmAddClaudeModelsPage = confirmAddClaudeModelsPage;
   g.toggleClaudeAddSort = toggleClaudeAddSort;
   g.chooseClaudeAddSortMode = chooseClaudeAddSortMode;
+  g.toggleClaudeDesktopAddSort = toggleClaudeDesktopAddSort;
+  g.chooseClaudeDesktopAddSortMode = chooseClaudeDesktopAddSortMode;
+  g.toggleAntigravityAddSort = toggleAntigravityAddSort;
+  g.chooseAntigravityAddSortMode = chooseAntigravityAddSortMode;
   g.openClaudeCodeProviderAdd = openClaudeCodeProviderAdd;
   g.openClaudeCodeConfigEditor = openClaudeCodeConfigEditor;
   g.closeClaudeCodeConfigEditor = closeClaudeCodeConfigEditor;
@@ -11127,6 +12085,8 @@ window.zcDrop = function(e) {
   g.codexAddSelectAll = codexAddSelectAll;
   g.codexAddSelectNone = codexAddSelectNone;
   g.setCodexAddWireApi = setCodexAddWireApi;
+  g.setCodexConfigWireApiRadio = setCodexConfigWireApiRadio;
+  g.initCodexConfigEditorPage = initCodexConfigEditorPage;
   g.confirmAddCodexModelsPage = confirmAddCodexModelsPage;
   g.toggleCodexAddSort = toggleCodexAddSort;
   g.chooseCodexAddSortMode = chooseCodexAddSortMode;
@@ -11134,6 +12094,8 @@ window.zcDrop = function(e) {
   g.openAntigravityAddPage = openAntigravityAddPage;
   g.openAntigravityAddModal = openAntigravityAddModal;
   g.antigravityRefreshConsole = antigravityRefreshConsole;
+  g.renderAntigravityConfigList = renderAntigravityConfigList;
+  g.syncAntigravityConfigUiAfterStoreChange = syncAntigravityConfigUiAfterStoreChange;
   g.antigravityPrimaryAction = antigravityPrimaryAction;
   g.antigravityRestoreAction = antigravityRestoreAction;
   g.antigravityFilterModels = antigravityFilterModels;
@@ -11142,14 +12104,18 @@ window.zcDrop = function(e) {
   g.antigravityToggleRowSelect = antigravityToggleRowSelect;
   g.antigravityBulkEnableAction = antigravityBulkEnableAction;
   g.antigravityBulkDisableAction = antigravityBulkDisableAction;
+  g.antigravityBulkThirdPartyVisionAction = antigravityBulkThirdPartyVisionAction;
   g.antigravityBulkRemoveAction = antigravityBulkRemoveAction;
   g.antigravityRenderTableRows = antigravityRenderTableRows;
   g.renderAntigravityPageStatus = renderAntigravityPageStatus;
   g.antigravityRefreshConsole = antigravityRefreshConsole;
   g.antigravityToggleModelEnabled = antigravityToggleModelEnabled;
+  g.antigravityToggleThirdPartyVision = antigravityToggleThirdPartyVision;
   g.openAntigravitySettingsModal = openAntigravitySettingsModal;
   g.closeAntigravitySettingsModal = closeAntigravitySettingsModal;
   g.saveAntigravitySettingsModal = saveAntigravitySettingsModal;
+  g.selectAntigravityMode = selectAntigravityMode;
+  g.syncAntigravityModeUi = syncAntigravityModeUi;
   g.initAntigravityAddPage = initAntigravityAddPage;
   g.onAntigravityAddSearch = onAntigravityAddSearch;
   g.renderAntigravityAddProviderList = renderAntigravityAddProviderList;

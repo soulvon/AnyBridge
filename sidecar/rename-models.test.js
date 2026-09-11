@@ -132,3 +132,71 @@ test('missing slot.contextWindow keeps upstream contextWindow', () => withConfig
     .find(item => item.modelUid === 'MODEL_CONFIGURED');
   assert.equal(row.contextWindow, 32000);
 }));
+
+test('official visibility keeps officially available models and does not release disabled ones', () => withConfigDir((dir) => {
+  fs.writeFileSync(path.join(dir, 'providers.json'), JSON.stringify({
+    providers: [{ id: 'p1', name: 'CPA' }],
+  }), 'utf8');
+  fs.writeFileSync(path.join(dir, 'ide-models.json'), JSON.stringify({
+    accountModelIds: ['swe-1-6-slow', 'MODEL_CLAUDE_3_5_SONNET'],
+    models: [
+      { modelUid: 'swe-1-6-slow', label: 'SWE-1.6 Slow' },
+      { modelUid: 'MODEL_CLAUDE_3_5_SONNET', label: 'Claude 3.5 Sonnet' },
+    ],
+  }), 'utf8');
+  fs.writeFileSync(path.join(dir, 'model-map.json'), JSON.stringify({
+    slotVisibilityMode: 'official',
+    slots: [{
+      modelUid: 'gemini-3-7-flash-medium',
+      displayName: 'gemini-3.8-flash-high',
+      enabled: true,
+      targets: [{ providerId: 'p1', model: 'gemini-3.8-flash-high' }],
+    }],
+  }), 'utf8');
+
+  const result = unlockModels(statusBody([
+    { modelUid: 'swe-1-6-slow', label: 'SWE-1.6 Slow', disabled: false },
+    { modelUid: 'MODEL_CLAUDE_3_5_SONNET', label: 'Claude 3.5 Sonnet', disabled: true },
+    { modelUid: 'gemini-3-7-flash-medium', label: 'Gemini 3.7 Flash Medium', disabled: true },
+    { modelUid: 'RANDOM_UNKNOWN_MODEL', label: 'Random Unknown', disabled: true },
+  ]));
+
+  assert.ok(result);
+  const json = JSON.parse(result.body.toString('utf8'));
+  const rows = json.userStatus.cascadeModelConfigData.clientModelConfigs;
+  assert.equal(rows.length, 2);
+  assert.equal(rows.find(r => r.modelUid === 'gemini-3-7-flash-medium').label, 'gemini-3.8-flash-high (CPA)');
+  assert.equal(rows.find(r => r.modelUid === 'gemini-3-7-flash-medium').disabled, false);
+  assert.equal(rows.find(r => r.modelUid === 'swe-1-6-slow').label, 'SWE-1.6 Slow (官方)');
+  assert.equal(rows.find(r => r.modelUid === 'swe-1-6-slow').disabled, false);
+  assert.equal(rows.find(r => r.modelUid === 'MODEL_CLAUDE_3_5_SONNET'), undefined);
+  assert.equal(rows.find(r => r.modelUid === 'RANDOM_UNKNOWN_MODEL'), undefined);
+}));
+
+test('normalizes dotted modelUid (gemini-3.7) to dash format for matching official response', () => withConfigDir((dir) => {
+  fs.writeFileSync(path.join(dir, 'providers.json'), JSON.stringify({
+    providers: [{ id: 'p1', name: 'CPA' }],
+  }), 'utf8');
+  // 槽位用点格式（JSON API / catalog 旧数据），官方 protobuf 响应用连字符格式
+  fs.writeFileSync(path.join(dir, 'model-map.json'), JSON.stringify({
+    slotVisibilityMode: 'official',
+    slots: [{
+      modelUid: 'gemini-3.7-flash-high',
+      displayName: 'gemini-3.7-flash-high',
+      enabled: true,
+      targets: [{ providerId: 'p1', model: 'gemini-3.7-flash-high' }],
+    }],
+  }), 'utf8');
+
+  const result = unlockModels(statusBody([
+    { modelUid: 'gemini-3-7-flash-high', label: 'Gemini 3.7 Flash High', disabled: true },
+  ]));
+
+  assert.ok(result);
+  const json = JSON.parse(result.body.toString('utf8'));
+  const rows = json.userStatus.cascadeModelConfigData.clientModelConfigs;
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].modelUid, 'gemini-3-7-flash-high');
+  assert.equal(rows[0].label, 'gemini-3.7-flash-high (CPA)');
+  assert.equal(rows[0].disabled, false);
+}));

@@ -737,18 +737,24 @@ const IDE_EXE_KEY: &str = "ideExePath";
 const DEVIN_EXE_KEY: &str = "devinExePath";
 #[cfg(target_os = "windows")]
 const CURSOR_EXE_KEY: &str = "cursorExePath";
+#[cfg(target_os = "windows")]
+const ANTIGRAVITY_EXE_KEY: &str = "antigravityExePath";
 #[cfg(target_os = "macos")]
 const WINDSURF_APP_KEY: &str = "windsurfAppPath";
 #[cfg(target_os = "macos")]
 const DEVIN_APP_KEY: &str = "devinAppPath";
 #[cfg(target_os = "macos")]
 const CURSOR_APP_KEY: &str = "cursorAppPath";
+#[cfg(target_os = "macos")]
+const ANTIGRAVITY_APP_KEY: &str = "antigravityAppPath";
 #[cfg(target_os = "linux")]
 const WINDSURF_BIN_KEY: &str = "windsurfBinPath";
 #[cfg(target_os = "linux")]
 const DEVIN_BIN_KEY: &str = "devinBinPath";
 #[cfg(target_os = "linux")]
 const CURSOR_BIN_KEY: &str = "cursorBinPath";
+#[cfg(target_os = "linux")]
+const ANTIGRAVITY_BIN_KEY: &str = "antigravityBinPath";
 
 /// 根据 target 返回配置键名。
 #[cfg(target_os = "windows")]
@@ -756,6 +762,7 @@ fn ide_exe_key(target: &str) -> &'static str {
     match target {
         "devin" => DEVIN_EXE_KEY,
         "cursor" => CURSOR_EXE_KEY,
+        "antigravity" => ANTIGRAVITY_EXE_KEY,
         _ => IDE_EXE_KEY,
     }
 }
@@ -765,6 +772,7 @@ fn ide_app_key(target: &str) -> &'static str {
     match target {
         "devin" => DEVIN_APP_KEY,
         "cursor" => CURSOR_APP_KEY,
+        "antigravity" => ANTIGRAVITY_APP_KEY,
         _ => WINDSURF_APP_KEY,
     }
 }
@@ -774,6 +782,7 @@ fn ide_bin_key(target: &str) -> &'static str {
     match target {
         "devin" => DEVIN_BIN_KEY,
         "cursor" => CURSOR_BIN_KEY,
+        "antigravity" => ANTIGRAVITY_BIN_KEY,
         _ => WINDSURF_BIN_KEY,
     }
 }
@@ -785,6 +794,7 @@ fn ide_exe_filename(target: &str) -> &'static str {
     match target {
         "devin" => "Devin.exe",
         "cursor" => "Cursor.exe",
+        "antigravity" => "Antigravity IDE.exe",
         _ => "Windsurf.exe",
     }
 }
@@ -794,6 +804,7 @@ fn ide_app_filename(target: &str) -> &'static str {
     match target {
         "devin" => "Devin.app",
         "cursor" => "Cursor.app",
+        "antigravity" => "Antigravity IDE.app",
         _ => "Windsurf.app",
     }
 }
@@ -803,15 +814,17 @@ fn ide_bin_filename(target: &str) -> &'static str {
     match target {
         "devin" => "devin",
         "cursor" => "cursor",
+        "antigravity" => "antigravity-ide",
         _ => "windsurf",
     }
 }
 
-/// 根据 target 返回文件夹名（Windsurf/Devin）。
+/// 根据 target 返回文件夹名（Windsurf/Devin/Antigravity IDE）。
 fn ide_dir_name(target: &str) -> &'static str {
     match target {
         "devin" => "Devin",
         "cursor" => "Cursor",
+        "antigravity" => "Antigravity IDE",
         _ => "Windsurf",
     }
 }
@@ -862,6 +875,7 @@ fn is_ide_exe_for_target(target: &str, path: &std::path::Path) -> bool {
                 || (file_name.eq_ignore_ascii_case("Windsurf.exe") && in_devin_dir)
         }
         "cursor" => file_name.eq_ignore_ascii_case("Cursor.exe"),
+        "antigravity" => file_name.eq_ignore_ascii_case("Antigravity IDE.exe"),
         _ => file_name.eq_ignore_ascii_case("Windsurf.exe") && !in_devin_dir,
     }
 }
@@ -912,6 +926,7 @@ fn common_ide_candidates(target: &str) -> Vec<std::path::PathBuf> {
                 .join(exe_name),
         );
         push(root.join("Programs").join(dir_name).join(exe_name));
+        push(root.join("Program").join(dir_name).join(exe_name));
         push(root.join(dir_name).join(exe_name));
     }
 
@@ -945,7 +960,15 @@ pub(crate) fn find_ide_exe(target: &str) -> Option<std::path::PathBuf> {
         Some(p)
     };
 
-    // 2. 运行中进程的真实路径
+    // 2. 常见安装位置（纯文件系统检查，毫秒级）。放在 PowerShell 探测之前，
+    //    覆盖默认安装与自定义盘符（含 Program\ 单数目录），避免每次接入都冷启动 PowerShell。
+    for p in common_ide_candidates(target) {
+        if is_ide_exe_for_target(target, &p) {
+            return cache_and_return(p);
+        }
+    }
+
+    // 3. 运行中进程的真实路径（仅在常见位置未命中时兜底，冷启动 PowerShell 较慢）。
     // Devin 的主进程名仍为 Windsurf.exe，需通过路径过滤区分；
     // Windsurf 的主进程也是 Windsurf.exe，无需额外过滤。
     let ps_query = if target == "devin" {
@@ -956,6 +979,10 @@ pub(crate) fn find_ide_exe(target: &str) -> Option<std::path::PathBuf> {
     } else if target == "cursor" {
         format!(
             r#"Get-Process Cursor -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty Path"#
+        )
+    } else if target == "antigravity" {
+        format!(
+            r#"Get-Process 'Antigravity IDE' -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty Path"#
         )
     } else {
         format!(
@@ -988,14 +1015,7 @@ pub(crate) fn find_ide_exe(target: &str) -> Option<std::path::PathBuf> {
         }
     }
 
-    // 3. 常见安装位置。除系统盘外，也扫描 D:/E: 等盘的浅层 Program Files。
-    for p in common_ide_candidates(target) {
-        if is_ide_exe_for_target(target, &p) {
-            return cache_and_return(p);
-        }
-    }
-
-    // 4. 注册表卸载项
+    // 4. 注册表卸载项（兜底，冷启动 PowerShell 较慢）
     if let Some(p) = find_ide_exe_from_registry(target) {
         if p.exists() {
             return cache_and_return(p);
@@ -1379,6 +1399,8 @@ fn restart_ide_impl(target: String) -> Result<String, String> {
         } else {
             let image = if t == "cursor" {
                 "Cursor.exe"
+            } else if t == "antigravity" {
+                "Antigravity IDE.exe"
             } else {
                 "Windsurf.exe"
             };
@@ -1716,6 +1738,8 @@ pub fn is_ide_running(name: String) -> bool {
             )
         } else if n == "cursor" {
             format!(r#"Get-Process Cursor -ErrorAction SilentlyContinue | Select-Object -First 1"#)
+        } else if n == "antigravity" {
+            format!(r#"Get-Process 'Antigravity IDE' -ErrorAction SilentlyContinue | Select-Object -First 1"#)
         } else {
             format!(
                 r#"Get-Process Windsurf -ErrorAction SilentlyContinue | Where-Object {{ $_.Path -and $_.Path -notmatch '[\\/]devin[\\/]' }} | Select-Object -First 1"#

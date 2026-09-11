@@ -79,13 +79,17 @@ function normalizeProxyRoute(route = {}) {
 
 function normalizeProxyRoutesStore(store = {}) {
   const routes = Array.isArray(store.routes) ? store.routes.map(normalizeProxyRoute).filter(route => route.id) : [];
-  const cd = store.claudeDesktop || store.claude_desktop;
+  const cd = store.claudeDesktop;
   const claudeDesktop = cd && typeof cd === 'object' ? {
     sonnet: String(cd.sonnet || '').trim(),
     opus: String(cd.opus || '').trim(),
     haiku: String(cd.haiku || '').trim(),
     fable: String(cd.fable || '').trim(),
-  } : (store.claudeDesktop || null);
+    sonnetName: String(cd.sonnetName || '').trim(),
+    opusName: String(cd.opusName || '').trim(),
+    haikuName: String(cd.haikuName || '').trim(),
+    fableName: String(cd.fableName || '').trim(),
+  } : null;
   return {
     version: Number(store.version) || 1,
     defaultModelId: '',

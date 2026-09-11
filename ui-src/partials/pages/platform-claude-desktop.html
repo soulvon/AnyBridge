@@ -1,7 +1,7 @@
         <!-- ═══════ PAGE: PLATFORM · CLAUDE DESKTOP ═══════ -->
         <div class="page" id="page-platform-claude-desktop" role="tabpanel" aria-labelledby="tab-platforms">
           <section class="codex-manager-shell claude-desktop-manager-shell">
-            <div class="platform-console-hero glass-card codex-manager-hero">
+            <div class="platform-console-hero glass-card codex-manager-hero" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:16px;">
               <div class="platform-console-titlebar">
                 <div class="platform-console-icon codex-manager-icon"><img src="assets/icons/platform-claude-desktop.svg"
                     alt="Claude Desktop"></div>
@@ -9,6 +9,14 @@
                   <strong>Claude Desktop</strong>
                   <span id="platform-claude-desktop-headline">Anthropic 桌面客户端 · 管理本地路由与角色模型映射</span>
                 </div>
+              </div>
+              <div class="platform-console-actions" id="claude-desktop-hero-actions">
+                <button type="button" class="btn-ghost success claude-desktop-mode-badge-btn" id="claude-desktop-hero-mode-btn"
+                  onclick="onClaudeDesktopHeroModeClick()" title="点击查看或切换连接模式"
+                  style="height: 36px; padding: 0 14px; font-size: 13px; font-weight: 600; display: inline-flex; align-items: center; gap: 8px; border-radius: 8px; cursor: pointer; transition: all 0.2s ease;">
+                  <span class="claude-desktop-mode-dot" style="width:8px;height:8px;border-radius:50%;background:#10b981;box-shadow:0 0 8px rgba(16,185,129,0.6);display:inline-block;"></span>
+                  <span>代理模式 (本地路由)</span>
+                </button>
               </div>
             </div>
 
@@ -45,107 +53,6 @@
               </div>
             </div>
 
-            <div class="glass-card" style="padding:14px 20px;margin-top:12px;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;">
-              <div>
-                <strong style="font-size:13.5px;color:var(--text-primary);display:block;margin-bottom:2px;">本地路由服务</strong>
-                <span id="claude-desktop-gateway-url-hint" style="font-size:12px;color:var(--text-muted);font-family:var(--font-mono, monospace);">http://127.0.0.1:7450/claude-desktop</span>
-              </div>
-              <div style="display:flex;align-items:center;gap:10px;">
-                <span id="claude-desktop-proxy-status-badge" class="badge" style="background:var(--bg-glass-heavy);color:var(--text-muted);font-size:12px;">代理未启动</span>
-                <button type="button" class="btn-ghost accent" style="font-size:12px;height:32px;padding:0 12px;" data-action="openProxyRoutesFromPlatform">管理代理模型</button>
-              </div>
-            </div>
-
-            <p class="codex-safe-note">配置文件路径：<code id="claude-desktop-config-path-label" class="reveal-path" title="点击打开所在文件夹">Claude-3p/claude_desktop_config.json</code>。切换后重启 Claude Desktop 生效，使用代理模型需保持 AnyBridge 运行。</p>
+            <p class="codex-safe-note" style="margin-top: 14px;">配置文件路径：<code id="claude-desktop-config-path-label" class="reveal-path" title="点击打开所在文件夹">Claude-3p/claude_desktop_config.json</code><button type="button" class="btn-ghost accent" data-action="openPlatformRealConfigModal" data-arg="claude-desktop" style="height: 22px; padding: 0 8px; font-size: 11px; margin-left: 8px;">编辑查看</button>。切换后重启 Claude Desktop 生效，使用代理模型需保持 AnyBridge 运行。</p>
           </section>
-        </div>
-
-        <!-- ═══════ MODAL: CLAUDE DESKTOP CONFIG ═══════ -->
-        <div class="modal-overlay" id="claude-desktop-config-modal">
-          <div class="modal-container codex-config-modal claude-desktop-config-modal">
-            <div class="modal-header codex-config-modal-head">
-              <div>
-                <div class="modal-title" id="claude-desktop-config-modal-title">添加 Claude Desktop 配置</div>
-                <div class="codex-config-modal-sub" id="claude-desktop-config-modal-sub">配置桌面端本地路由与各档位角色的模型映射。</div>
-              </div>
-              <button class="modal-close-icon" aria-label="关闭配置编辑" data-action="closeClaudeDesktopConfigEditor">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"
-                  stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M18 6L6 18"></path>
-                  <path d="M6 6l12 12"></path>
-                </svg>
-              </button>
-            </div>
-            <div class="modal-body codex-config-modal-body">
-              <input type="hidden" id="claude-desktop-config-edit-id">
-              <input type="hidden" id="claude-desktop-config-source-id">
-              <div class="codex-config-editor-layout" id="claude-desktop-config-editor-layout">
-                <aside class="codex-config-source" id="claude-desktop-config-source-wrap">
-                  <div class="codex-config-source-head">
-                    <span>快捷选择供应商</span>
-                    <strong id="claude-desktop-config-source-count">0</strong>
-                  </div>
-                  <div class="codex-config-source-list" id="claude-desktop-config-source-list"></div>
-                  <div class="codex-config-source-hint" id="claude-desktop-config-source-hint">点选供应商可快速带入名称与密钥，或直接选择现有代理模型映射。</div>
-                </aside>
-                <div class="codex-config-form-grid">
-                  <section class="config-section">
-                    <div class="config-section-title">基础信息</div>
-                    <div class="config-section-body">
-                      <label class="codex-config-field">
-                        <span>配置名称</span>
-                        <input id="claude-desktop-config-name" class="field-input" placeholder="例如：AnyRouter 旗舰方案 / Kimi 深度推理">
-                      </label>
-                      <label class="codex-config-field">
-                        <span>连接模式</span>
-                        <select id="claude-desktop-config-mode" class="field-input">
-                          <option value="proxy">本地路由映射（推荐，支持任意供应商与模型）</option>
-                          <option value="direct">直连模式（要求供应商原生兼容 Anthropic 角色）</option>
-                        </select>
-                      </label>
-                    </div>
-                  </section>
-                  <section class="config-section">
-                    <div class="config-section-title">角色档位映射</div>
-                    <div class="config-section-body">
-                      <div class="codex-config-source-hint" style="margin-bottom:10px;">
-                        Claude Desktop 客户端菜单识别固定的角色标识，在此为各档位指定映射的实际模型：
-                      </div>
-                      <label class="codex-config-field">
-                        <span>Sonnet 档（对应 claude-sonnet-5，默认主模型）*</span>
-                        <select id="claude-desktop-config-sonnet" class="field-input">
-                          <option value="">请选择模型或代理路由</option>
-                        </select>
-                      </label>
-                      <label class="codex-config-field">
-                        <span>Opus 档（对应 claude-opus-5，深度推理）*</span>
-                        <select id="claude-desktop-config-opus" class="field-input">
-                          <option value="">请选择模型或代理路由</option>
-                        </select>
-                      </label>
-                      <label class="codex-config-field">
-                        <span>Haiku 档（对应 claude-haiku-4-5，轻量快速）*</span>
-                        <select id="claude-desktop-config-haiku" class="field-input">
-                          <option value="">请选择模型或代理路由</option>
-                        </select>
-                      </label>
-                      <label class="codex-config-field">
-                        <span>Fable 档（对应 claude-fable-5，可选扩展）</span>
-                        <select id="claude-desktop-config-fable" class="field-input">
-                          <option value="">(未启用)</option>
-                        </select>
-                      </label>
-                    </div>
-                  </section>
-                </div>
-              </div>
-            </div>
-            <div class="modal-footer codex-config-modal-footer">
-              <div class="codex-config-editor-note">保存后出现在配置列表中，点击「切换」才会写入 Claude Desktop 当前配置文件。</div>
-              <button class="modal-btn modal-btn-ghost" data-action="closeClaudeDesktopConfigEditor">取消</button>
-              <button class="modal-btn modal-btn-cancel" data-action="saveClaudeDesktopConfigEditor" data-args="[false]">保存配置</button>
-              <button class="modal-btn modal-btn-confirm" id="claude-desktop-config-save-switch-btn"
-                data-action="saveClaudeDesktopConfigEditor" data-args="[true]">保存并切换</button>
-            </div>
-          </div>
         </div>

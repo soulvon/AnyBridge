@@ -2681,15 +2681,40 @@ function targetsWithSlotRoute(targets, slotUid) {
 
 function getAllProviderModels() {
   const list = [];
+
+  // 1. 内置 AnyBridge 本地代理供应商模型
+  if (typeof localProxyProviderModelsEntry === 'function') {
+    const lp = localProxyProviderModelsEntry();
+    if (lp && Array.isArray(lp.models) && lp.models.length > 0) {
+      lp.models.forEach(m => {
+        const modelId = typeof m === 'string' ? m : (m.id || m.name);
+        if (modelId) {
+          list.push({
+            providerId: lp.providerId,
+            providerName: lp.providerName || 'AnyBridge',
+            model: modelId,
+            isLocalProxy: true,
+            meta: { localProxy: true, builtin: true }
+          });
+        }
+      });
+    }
+  }
+
+  // 2. 遍历其他启用的供应商（排除重复的本地代理）
   (providerStore.providers || []).forEach(p => {
     if (p.enabled !== false && p.meta?.codexConfig !== true && !isLocalProxyProvider(p)) {
       const models = Array.isArray(p.models) && p.models.length > 0 ? p.models : (p.defaultModel ? [p.defaultModel] : []);
       models.forEach(m => {
-        list.push({
-          providerId: p.id,
-          providerName: p.name,
-          model: m
-        });
+        const modelId = typeof m === 'string' ? m : (m.id || m.name);
+        if (modelId) {
+          list.push({
+            providerId: p.id,
+            providerName: p.name,
+            model: modelId,
+            meta: p.meta
+          });
+        }
       });
     }
   });
@@ -2719,15 +2744,39 @@ function renderMappingModelCatalog() {
   // 渲染供应商快速筛选栏
   const providerBar = document.getElementById('mappingCatalogProviderBar');
   const providerIds = [...new Set(allModels.map(m => m.providerId))];
+
+  // 排序供应商筛选胶囊：内置代理（AnyBridge 第一、CPA 第二、其它内置第三）固定靠前排在最前面，其余常规第三方供应商按名称字母正序排序
+  providerIds.sort((a, b) => {
+    const provA = (providerStore.providers || []).find(p => p.id === a || p.providerId === a)
+      || (a === (globalThis.LOCAL_PROXY_PROVIDER_ID || 'anybridge-local-proxy') ? { id: a, name: 'AnyBridge', meta: { localProxy: true } } : { id: a, name: a });
+    const provB = (providerStore.providers || []).find(p => p.id === b || p.providerId === b)
+      || (b === (globalThis.LOCAL_PROXY_PROVIDER_ID || 'anybridge-local-proxy') ? { id: b, name: 'AnyBridge', meta: { localProxy: true } } : { id: b, name: b });
+
+    const rankA = typeof builtinProxySortRank === 'function' ? builtinProxySortRank(provA) : (typeof isAnyBridgeLocalProxy === 'function' && isAnyBridgeLocalProxy(provA) ? 1 : (typeof isCpaLocalProxy === 'function' && isCpaLocalProxy(provA) ? 2 : 999));
+    const rankB = typeof builtinProxySortRank === 'function' ? builtinProxySortRank(provB) : (typeof isAnyBridgeLocalProxy === 'function' && isAnyBridgeLocalProxy(provB) ? 1 : (typeof isCpaLocalProxy === 'function' && isCpaLocalProxy(provB) ? 2 : 999));
+
+    if (rankA !== rankB) return rankA - rankB;
+    const nameA = String(provA.name || provA.providerName || a).toLowerCase();
+    const nameB = String(provB.name || provB.providerName || b).toLowerCase();
+    return nameA.localeCompare(nameB, 'zh-CN');
+  });
+
   if (providerBar) {
     if (providerIds.length > 1) {
       const providerNames = {};
       allModels.forEach(m => { providerNames[m.providerId] = m.providerName; });
       providerBar.innerHTML = `
         <button data-set="mappingCatalogProvider" data-set-value="" data-action="renderMappingModelCatalog" style="height:22px;padding:0 8px;border-radius:6px;border:1px solid ${!mappingCatalogProvider ? 'var(--accent)' : 'var(--border)'};background:${!mappingCatalogProvider ? 'var(--accent-light)' : 'transparent'};color:${!mappingCatalogProvider ? 'var(--accent)' : 'var(--text-muted)'};font-size:10px;font-weight:700;cursor:pointer;">全部 ${allModels.length}</button>
-        ${providerIds.map(pid => `
-          <button data-set="mappingCatalogProvider" data-set-value="${escAttr(pid)}" data-action="renderMappingModelCatalog" style="height:22px;padding:0 8px;border-radius:6px;border:1px solid ${mappingCatalogProvider === pid ? 'var(--accent)' : 'var(--border)'};background:${mappingCatalogProvider === pid ? 'var(--accent-light)' : 'transparent'};color:${mappingCatalogProvider === pid ? 'var(--accent)' : 'var(--text-muted)'};font-size:10px;font-weight:700;cursor:pointer;">${escAttr(providerNames[pid] || pid)} ${allModels.filter(m => m.providerId === pid).length}</button>
-        `).join('')}
+        ${providerIds.map(pid => {
+          const prov = (providerStore.providers || []).find(p => p.id === pid || p.providerId === pid) || (pid === (globalThis.LOCAL_PROXY_PROVIDER_ID || 'anybridge-local-proxy') ? { id: pid, name: 'AnyBridge', meta: { localProxy: true } } : { id: pid, name: pid });
+          const isBuiltin = typeof isBuiltinProxyEntry === 'function' ? isBuiltinProxyEntry(prov) : ((typeof isAnyBridgeLocalProxy === 'function' && isAnyBridgeLocalProxy(prov)) || (typeof isCpaLocalProxy === 'function' && isCpaLocalProxy(prov)));
+          const isSelected = mappingCatalogProvider === pid;
+          const count = allModels.filter(m => m.providerId === pid).length;
+          const name = providerNames[pid] || pid;
+          return `
+            <button data-set="mappingCatalogProvider" data-set-value="${escAttr(pid)}" data-action="renderMappingModelCatalog" style="height:22px;padding:0 8px;border-radius:6px;border:1px solid ${isSelected ? 'var(--accent)' : (isBuiltin ? 'rgba(37,99,235,0.28)' : 'var(--border)')};background:${isSelected ? 'var(--accent-light)' : (isBuiltin ? 'rgba(37,99,235,0.06)' : 'transparent')};color:${isSelected ? 'var(--accent)' : (isBuiltin ? 'var(--accent)' : 'var(--text-muted)')};font-size:10px;font-weight:700;cursor:pointer;">${isBuiltin ? '<span style="display:inline-block;width:5px;height:5px;border-radius:50%;background:var(--accent);margin-right:4px;vertical-align:middle;"></span>' : ''}${escAttr(name)} ${count}</button>
+          `;
+        }).join('')}
       `;
       providerBar.style.display = 'flex';
     } else {
@@ -2799,8 +2848,8 @@ function renderMappingModelCatalog() {
             <span style="font-size:12px; font-weight:600; color:var(--text-primary); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
               ${escAttr(item.model)}
             </span>
-            <span style="font-size:10px; color:var(--text-muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
-              ${escAttr(item.providerName)}
+            <span style="font-size:10px; color:var(--text-muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; display:inline-flex; align-items:center;">
+              ${escAttr(item.providerName)}${item.isLocalProxy || (typeof isCpaLocalProxy === 'function' && isCpaLocalProxy({ id: item.providerId, name: item.providerName })) ? '<span style="font-size:9px;margin-left:5px;padding:0 4px;border-radius:3px;background:rgba(37,99,235,0.1);color:var(--accent);font-weight:700;line-height:1.4;">本地代理</span>' : ''}
             </span>
           </div>
         </div>

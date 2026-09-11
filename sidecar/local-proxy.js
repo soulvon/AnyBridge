@@ -38,10 +38,17 @@ import { codexAuthJsonPath } from './lib/codex-home.js';
 import {
   isAntigravityPath,
   getAntigravityMethod,
-  buildAntigravityModelsList,
-  cleanAntigravityModelId,
+  mergeAntigravityModelsResponse,
+  fetchOfficialAntigravityModels,
+  forwardToOfficialAntigravity,
+  resolveAntigravityCustomModel,
   mockAntigravityLoadCodeAssist,
   mockAntigravityUserQuotaSummary,
+  mockAntigravityUserInfo,
+  mockAntigravityAdminControls,
+  mockAntigravityUserSettings,
+  isAntigravityBypassMetricsPath,
+  singleflight,
 } from './lib/antigravity-handler.js';
 
 const AGENT = new https.Agent({ keepAlive: true, maxSockets: 64, maxFreeSockets: 16 });
@@ -439,13 +446,35 @@ function mapClaudeDesktopModel(requestedModel) {
   else if (role === 'fable') targetRef = bindings.fable || bindings.opus;
 
   if (targetRef) {
-    const route = (store?.routes || []).find(r => r.uid === targetRef || r.id === targetRef);
+    const cleanTarget = stripOneMContextMarker(targetRef);
+    const route = (store?.routes || []).find(r => r.uid === cleanTarget || r.id === cleanTarget);
     if (route) {
       if (!route.enabled) {
         return { error: `Claude Desktop 绑定的代理模型已禁用: ${route.id}` };
       }
       return { model: route.id, original: requestedModel, route };
     }
+
+    // 支持直接绑定具体供应商的模型：按当前配置的源供应商精确解析。
+    // 禁止按模型名猜测供应商（同名模型在多家供应商存在时会静默错配），
+    // 源供应商缺失时让失败明确暴露。
+    const providers = loadProviders();
+    const storeJson = readProvidersJson();
+    const currentId = storeJson?.platforms?.['claude-desktop']?.providerId;
+    const currentCfg = (storeJson?.claudeDesktopConfigs || []).find(c => c.id === currentId);
+    const sourceProvider = currentCfg?.sourceProviderId ? providers.get(currentCfg.sourceProviderId) : null;
+    if (!sourceProvider || sourceProvider.enabled === false) {
+      return { error: `Claude Desktop 绑定的模型 [${cleanTarget}] 无法解析：当前配置未关联有效的源供应商。` };
+    }
+    const dynamicRoute = {
+      id: cleanTarget,
+      enabled: true,
+      targets: [{
+        providerId: sourceProvider.id,
+        model: cleanTarget,
+      }],
+    };
+    return { model: cleanTarget, original: requestedModel, route: dynamicRoute };
   }
 
   // 直连回退：尝试直接匹配同名已配置路由
@@ -468,20 +497,23 @@ function handleClaudeDesktopModels(res) {
 
   const isOneMCandidate = (routeRef) => {
     if (!routeRef) return false;
-    const r = (store?.routes || []).find(x => x.uid === routeRef || x.id === routeRef);
-    if (!r) return false;
-    const self1m = /\[1m\]|1m/i.test(r.id || '') || /\[1m\]|1m/i.test(r.displayName || '');
-    const target1m = Array.isArray(r.targets) && r.targets.some(t => /\[1m\]|1m/i.test(t.model || ''));
-    return self1m || target1m;
+    const clean = String(routeRef).trim();
+    const r = (store?.routes || []).find(x => x.uid === clean || x.id === clean);
+    if (r) {
+      const self1m = /\[1m\]|1m/i.test(r.id || '') || /\[1m\]|1m/i.test(r.displayName || '');
+      const target1m = Array.isArray(r.targets) && r.targets.some(t => /\[1m\]|1m/i.test(t.model || ''));
+      if (self1m || target1m) return true;
+    }
+    return /\[1m\]|1m/i.test(clean);
   };
 
   const models = [
-    { id: 'claude-sonnet-5', type: 'model', created_at: '2024-01-01T00:00:00Z', supports1m: isOneMCandidate(bindings.sonnet) },
-    { id: 'claude-opus-5', type: 'model', created_at: '2024-01-01T00:00:00Z', supports1m: isOneMCandidate(bindings.opus) },
-    { id: 'claude-haiku-4-5', type: 'model', created_at: '2024-01-01T00:00:00Z', supports1m: isOneMCandidate(bindings.haiku) },
+    { id: 'claude-sonnet-5', type: 'model', display_name: bindings.sonnetName || 'Claude Sonnet 5', created_at: '2024-01-01T00:00:00Z', supports1m: isOneMCandidate(bindings.sonnet) },
+    { id: 'claude-opus-5', type: 'model', display_name: bindings.opusName || 'Claude Opus 5', created_at: '2024-01-01T00:00:00Z', supports1m: isOneMCandidate(bindings.opus) },
+    { id: 'claude-haiku-4-5', type: 'model', display_name: bindings.haikuName || 'Claude Haiku 4.5', created_at: '2024-01-01T00:00:00Z', supports1m: isOneMCandidate(bindings.haiku) },
   ];
   if (bindings.fable && String(bindings.fable).trim()) {
-    models.push({ id: 'claude-fable-5', type: 'model', created_at: '2024-01-01T00:00:00Z', supports1m: isOneMCandidate(bindings.fable) });
+    models.push({ id: 'claude-fable-5', type: 'model', display_name: bindings.fableName || 'Claude Fable 5', created_at: '2024-01-01T00:00:00Z', supports1m: isOneMCandidate(bindings.fable) });
   }
   sendJson(res, 200, {
     data: models,
@@ -794,8 +826,34 @@ function routeAsSlot(route) {
   };
 }
 
+function resolveAntigravityProxyModel(model, providers = loadProviders(), providersJson = readProvidersJson()) {
+  const requested = String(model || '').trim();
+  const customModel = resolveAntigravityCustomModel(requested, providersJson);
+  const provider = (customModel?.config?.sourceProviderId ? providers.get(customModel.config.sourceProviderId) : null)
+    || (customModel?.config?.id ? providers.get(customModel.config.id) : null);
+  if (!customModel || !provider || provider.enabled === false) return null;
+  const dynamicRoute = {
+    id: requested,
+    enabled: true,
+    enhancement: {
+      thirdPartyVision: customModel.config.useThirdPartyVision === true,
+    },
+    targets: [{
+      providerId: provider.id,
+      model: customModel.upstreamModel,
+      apiFormat: customModel.config.apiFormat || null,
+      apiPath: customModel.config.apiPath || null,
+    }],
+  };
+  return { slot: routeAsSlot(dynamicRoute), route: dynamicRoute };
+}
+
 function resolveProxyModel(model, kind, options = {}) {
   const scope = options.scope || 'default';
+  if (scope === 'antigravity') {
+    const antigravityResolved = resolveAntigravityProxyModel(model);
+    if (antigravityResolved) return antigravityResolved;
+  }
   const store = proxyRouteStore(scope);
   if (store.loadError) return { error: `${proxyRouteStoreReadErrorPrefix(scope)}: ${store.loadError}` };
   if (!store.fileExists) return { error: proxyRouteStoreMissingMessage(scope) };
@@ -816,43 +874,9 @@ function resolveProxyModel(model, kind, options = {}) {
   }
   const route = lookup.get(requested);
   if (!route) {
-    const providers = loadProviders();
-    const matchedProvider = Array.from(providers.values()).find(p =>
-      p && p.enabled !== false && (
-        p.id === requested
-        || p.name === requested
-        || p.defaultModel === requested
-        || (Array.isArray(p.models) && p.models.includes(requested))
-        || (Array.isArray(p.modelCatalog) && p.modelCatalog.some(e => e.model === requested))
-      )
-    );
-    if (matchedProvider) {
-      const dynamicRoute = {
-        id: requested,
-        enabled: true,
-        targets: [{
-          providerId: matchedProvider.id,
-          model: matchedProvider.defaultModel || requested,
-        }],
-      };
-      return { slot: routeAsSlot(dynamicRoute), route: dynamicRoute };
-    }
-    if (scope === 'antigravity') {
-      const store = readProvidersJson();
-      const agState = store.platforms?.antigravity;
-      const agProvider = agState?.providerId ? providers.get(agState.providerId) : Array.from(providers.values()).find(p => p && p.enabled !== false);
-      if (agProvider) {
-        const dynamicRoute = {
-          id: requested,
-          enabled: true,
-          targets: [{
-            providerId: agProvider.id,
-            model: agProvider.defaultModel || requested,
-          }],
-        };
-        return { slot: routeAsSlot(dynamicRoute), route: dynamicRoute };
-      }
-    }
+    // 不做供应商猜测兜底：模型不在代理路由列表中就让失败明确暴露。
+    // 供应商+模型的精确解析只允许发生在入口（如 mapClaudeDesktopModel），
+    // 并通过 ctx.pinnedRoute 显式透传，禁止在此按名字静默猜供应商。
     const routeWithOtherFormat = routes.find(route => routeAliases(route, lookupOptions).includes(requested));
     if (routeWithOtherFormat) {
       return { error: `模型 ${requested} 未暴露为 ${localProxyKind(kind)} 兼容入口。` };
@@ -880,6 +904,12 @@ export const __localProxyTest = {
   stripOneMContextMarker,
   resolveClaudeDesktopRole,
   mapClaudeDesktopModel,
+  resolveProxyModelForTest(model, kind, scope, providers, providersJson) {
+    if (scope === 'antigravity') {
+      return resolveAntigravityProxyModel(model, providers, providersJson);
+    }
+    return resolveProxyModel(model, kind, { scope });
+  },
 };
 
 function hasImage(messages) {
@@ -1565,10 +1595,12 @@ function logRequest(ctx, phase) {
 
 export async function execute(ctx) {
   const scope = ctx.proxyRouteScope || 'default';
-  const resolved = resolveProxyModel(ctx.model, ctx.kind, {
-    scope,
-    applyRename: !isCodexProxyScope(scope),
-  });
+  const resolved = ctx.pinnedRoute
+    ? { slot: routeAsSlot(ctx.pinnedRoute), route: ctx.pinnedRoute }
+    : resolveProxyModel(ctx.model, ctx.kind, {
+      scope,
+      applyRename: !isCodexProxyScope(scope),
+    });
   if (resolved.error) throw new Error(resolved.error);
   const providers = loadProviders();
   const mapConfig = loadModelMapConfig();
@@ -2099,6 +2131,10 @@ export async function handleLocalProxyRequest(req, res, body) {
       json.model = mapped.model;
       const ctx = attachScope(normalizeRequest('anthropic', json));
       ctx.originalModel = mapped.original;
+      // mapClaudeDesktopModel 已按"源供应商优先"解析出精确路由（供应商+模型），
+      // 必须透传给 execute，否则 execute 会按模型名重新兜底解析，
+      // 同名模型在多家供应商都存在时会错配供应商并被改写为对方 defaultModel。
+      ctx.pinnedRoute = mapped.route || null;
       sendAnthropic(ctx, res, await execute(ctx));
       return;
     }
@@ -2128,42 +2164,167 @@ export async function handleLocalProxyRequest(req, res, body) {
       return;
     }
     if (isAntigravityPath(p)) {
+      // 1. 指标、遥测与环境探测：在入口处 0ms 秒回 200 {}，彻底杜绝后台 Language Server 阻塞
+      if (isAntigravityBypassMetricsPath(p)) {
+        sendJson(res, 200, {});
+        return;
+      }
+
       const method = getAntigravityMethod(p);
+      const providersJson = readProvidersJson();
+      const isHybrid = providersJson.antigravityMode === 'hybrid';
+
+      // 2. 账号生命周期与授权握手
+      // pure 模式：全本地自治秒级返回（免登录，零外网依赖，杜绝任何超时卡死）
+      // hybrid 模式：尝试透传给 Google 官方（保留真实登录与官方配额），网络不可用时优雅回退本地 Mock
       if (method === 'loadCodeAssist') {
-        sendJson(res, 200, mockAntigravityLoadCodeAssist());
+        if (isHybrid) {
+          await forwardToOfficialAntigravity(req, res, {
+            body,
+            onFailed: () => sendJson(res, 200, mockAntigravityLoadCodeAssist()),
+          });
+          return;
+        }
+        const payload = await singleflight('ag_load_code_assist', 10000, async () => {
+          return mockAntigravityLoadCodeAssist();
+        });
+        sendJson(res, 200, payload);
         return;
       }
       if (method === 'onboardUser') {
-        sendJson(res, 200, { status: 'ONBOARDED' });
+        if (isHybrid) {
+          await forwardToOfficialAntigravity(req, res, {
+            body,
+            onFailed: () => sendJson(res, 200, {
+              name: 'operations/anybridge-onboard',
+              done: true,
+              response: {
+                cloudaicompanionProject: { id: '', name: '', projectNumber: '0' },
+                status: { statusCode: 'ONBOARDED', displayMessage: 'AnyBridge onboarding complete' },
+              },
+            }),
+          });
+          return;
+        }
+        sendJson(res, 200, {
+          name: 'operations/anybridge-onboard',
+          done: true,
+          response: {
+            cloudaicompanionProject: {
+              id: '',
+              name: '',
+              projectNumber: '0',
+            },
+            status: {
+              statusCode: 'ONBOARDED',
+              displayMessage: 'AnyBridge onboarding complete',
+            },
+          },
+        });
         return;
       }
-      if (method === 'retrieveUserQuotaSummary') {
-        sendJson(res, 200, mockAntigravityUserQuotaSummary());
+      if (method === 'retrieveUserQuotaSummary' || method === 'retrieveUserQuota') {
+        if (isHybrid) {
+          await forwardToOfficialAntigravity(req, res, {
+            body,
+            onFailed: () => sendJson(res, 200, mockAntigravityUserQuotaSummary()),
+          });
+          return;
+        }
+        const payload = await singleflight('ag_user_quota_summary', 10000, async () => {
+          return mockAntigravityUserQuotaSummary();
+        });
+        sendJson(res, 200, payload);
         return;
       }
+      if (method === 'fetchUserInfo') {
+        if (isHybrid) {
+          await forwardToOfficialAntigravity(req, res, {
+            body,
+            onFailed: () => sendJson(res, 200, mockAntigravityUserInfo()),
+          });
+          return;
+        }
+        const payload = await singleflight('ag_user_info', 10000, async () => {
+          return mockAntigravityUserInfo();
+        });
+        sendJson(res, 200, payload);
+        return;
+      }
+      if (method === 'fetchAdminControls') {
+        if (isHybrid) {
+          await forwardToOfficialAntigravity(req, res, {
+            body,
+            onFailed: () => sendJson(res, 200, mockAntigravityAdminControls()),
+          });
+          return;
+        }
+        const payload = await singleflight('ag_admin_controls', 10000, async () => {
+          return mockAntigravityAdminControls();
+        });
+        sendJson(res, 200, payload);
+        return;
+      }
+      if (method === 'getCodeAssistGlobalUserSetting' || method === 'setUserSettings') {
+        if (isHybrid) {
+          await forwardToOfficialAntigravity(req, res, {
+            body,
+            onFailed: () => sendJson(res, 200, mockAntigravityUserSettings()),
+          });
+          return;
+        }
+        sendJson(res, 200, mockAntigravityUserSettings());
+        return;
+      }
+
+      // 3. 模型列表：fetchAvailableModels
+      // pure 模式：全本地自治，带 agentModelSorts 与 defaultAgentModelId 规范秒级直出
+      // hybrid 模式：尝试同步 Google 官方模型并合并 AnyBridge 自建模型
       if (method === 'fetchAvailableModels') {
-        const providersJson = readProvidersJson();
-        sendJson(res, 200, { models: buildAntigravityModelsList(providersJson) });
+        const cacheKey = isHybrid ? 'ag_fetch_models_hybrid' : 'ag_fetch_models_pure';
+        const modelsPayload = await singleflight(cacheKey, 15000, async () => {
+          let officialData = null;
+          if (isHybrid && typeof fetchOfficialAntigravityModels === 'function') {
+            try {
+              officialData = await fetchOfficialAntigravityModels(req, body);
+            } catch {}
+          }
+          return mergeAntigravityModelsResponse(officialData, readProvidersJson());
+        });
+        sendJson(res, 200, modelsPayload);
         return;
       }
-      if (method === 'countTokens') {
-        const cleanModel = cleanAntigravityModelId(json.model || 'gemini-3-pro');
-        const ctx = attachScope(normalizeRequest('gemini', { ...json, model: cleanModel }));
-        const totalTokens = await executeGeminiCountTokens(ctx).catch(() => 100);
-        sendJson(res, 200, { totalTokens });
-        return;
-      }
+
+      // 4. 模型推理生成：streamGenerateContent / generateContent
       if (method === 'streamGenerateContent' || method === 'generateContent') {
-        const stream = method === 'streamGenerateContent';
-        const asSse = new URL(req.url, 'http://localhost').searchParams.get('alt') === 'sse' || stream;
         const reqData = (json.request && typeof json.request === 'object') ? json.request : json;
-        const cleanModel = cleanAntigravityModelId(json.model || reqData.model || '');
-        const providersJson = readProvidersJson();
-        const targetModel = cleanModel || resolveDefaultAntigravityModel(providersJson);
+        const requestedModel = json.model || reqData.model || '';
+        const customModel = resolveAntigravityCustomModel(requestedModel, providersJson);
+
+        // 诊断日志：IDE 实际发送的模型 key 与请求骨架（输出到 sidecar stderr，可在代理页日志查看）
+        console.error(`[antigravity] ${method} requestedModel=${JSON.stringify(requestedModel)} resolved=${customModel ? customModel.upstreamModel : 'null'} topLevelKeys=${JSON.stringify(Object.keys(json))} customOverride=${JSON.stringify(json.customModelInfoOverride || reqData.customModelInfoOverride || null)}`);
+
+        if (!customModel) {
+          // 混合模式下未命中的模型直接透传给 Google 官方
+          if (isHybrid) {
+            await forwardToOfficialAntigravity(req, res, { body });
+            return;
+          }
+          sendJson(res, 400, {
+            error: {
+              code: 400,
+              message: `未找到模型 [${requestedModel}] 对应的 Provider 配置，请在 AnyBridge 中添加并启用该模型。`,
+              status: 'INVALID_ARGUMENT',
+            },
+          });
+          return;
+        }
+
+        const stream = method === 'streamGenerateContent';
 
         const source = {
           ...reqData,
-          model: targetModel,
+          model: customModel.upstreamModel,
           stream,
           generationConfig: reqData.generationConfig || json.generationConfig,
           systemInstruction: reqData.systemInstruction || json.systemInstruction,
@@ -2172,17 +2333,38 @@ export async function handleLocalProxyRequest(req, res, body) {
         const ctx = attachScope(normalizeRequest('gemini', source));
         const result = await execute(ctx);
         const payload = geminiResponsePayload(ctx, result);
-        const agPayload = { response: payload };
 
         if (stream) {
           res.writeHead(200, cors({ 'content-type': 'text/event-stream; charset=utf-8', ...(result.extraHeaders || {}) }));
-          sse(res, null, agPayload);
+          sse(res, null, payload);
           res.end();
         } else {
-          sendJson(res, 200, agPayload, result.extraHeaders || {});
+          sendJson(res, 200, payload, result.extraHeaders || {});
         }
         return;
       }
+
+      // 5. Token 计数：countTokens
+      if (method === 'countTokens') {
+        const customModel = resolveAntigravityCustomModel(json.model || json.request?.model || '', providersJson);
+        if (!customModel && isHybrid) {
+          await forwardToOfficialAntigravity(req, res, { body });
+          return;
+        }
+        const source = json.request && typeof json.request === 'object' ? json.request : json;
+        const targetModel = customModel?.upstreamModel || json.model || source.model || 'model';
+        const ctx = attachScope(normalizeRequest('gemini', { ...source, model: targetModel }));
+        let totalTokens = 0;
+        try {
+          totalTokens = await executeGeminiCountTokens(ctx);
+        } catch {
+          totalTokens = estimateTokens(ctx.messages, ctx.system) || 1;
+        }
+        sendJson(res, 200, { totalTokens: totalTokens || 1 });
+        return;
+      }
+
+      // 6. 其它所有未明确拦截的内部探测请求：安全返回 200 {}
       sendJson(res, 200, {});
       return;
     }
