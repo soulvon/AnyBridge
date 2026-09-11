@@ -47,13 +47,23 @@ AnyBridge 解决的就是这件事：
 
 ## 🖼️ 界面预览
 
-AnyBridge 提供桌面控制台，不需要手写复杂配置。供应商、模型映射、代理路由、平台接入和增强功能都可以在同一个界面里完成。
+AnyBridge 提供现代化的桌面控制台，不需要手写复杂规则。供应商、模型映射、代理路由、平台接入和扩展增强都可以在同一个界面里直观搞定。
 
-![AnyBridge Devin 接入控制台](docs/assets/anybridge-platform-console.png)
+### 1. 平台接入与模型映射
+直观管理 12 大 AI 编程工具（Devin、Windsurf、Cursor、Codex、Claude Code 等），右侧自由映射模型槽位：
+![AnyBridge 平台接入控制台](docs/assets/anybridge-platform-console.png)
 
-| 供应商统一管理 | 本地代理模型路由 |
+### 2. 供应商统一管理 & Vision Fallback 视觉回退
+集中维护 CPA、商汤 SenseNova、MiniMax 等多渠道 API，支持从 Cherry Studio / CC Switch 一键导入配置，并为纯文本模型配置第三方图片理解：
+| 供应商统一管理列表 | 供应商编辑与 Vision Fallback 设置 |
 |---|---|
-| ![AnyBridge 供应商管理](docs/assets/anybridge-provider-console.png) | ![AnyBridge 代理模型路由](docs/assets/anybridge-proxy-routes.png) |
+| ![AnyBridge 供应商管理](docs/assets/anybridge-provider-console.png) | ![AnyBridge 视觉回退设置](docs/assets/anybridge-provider-detail.png) |
+
+### 3. 仪表盘与本地代理网关
+实时监控服务健康度、Token 消耗，内置 CA 证书一键信任与动态路由表：
+| 桌面控制台仪表盘 | 本地代理网关与路由管理 |
+|---|---|
+| ![AnyBridge 仪表盘](docs/assets/anybridge-dashboard.png) | ![AnyBridge 代理模型路由](docs/assets/anybridge-proxy-routes.png) |
 
 ---
 
@@ -622,8 +632,9 @@ npm run start
 代理启动后，打开桌面 UI 配一下供应商和平台切换。或者你也可以直接写配置文件：
 
 ```bash
-# 配置文件在 %APPDATA%/com.anybridge/providers.json（Windows）
-# 或者 ~/.config/com.anybridge/providers.json（Linux/Mac）
+# 配置文件在 %APPDATA%\anybridge\providers.json（Windows）
+# 或 ~/.config/anybridge/providers.json（Linux）
+# 或 ~/Library/Application Support/anybridge/providers.json（macOS）
 ```
 
 然后在桌面 UI 里点一下对应平台的「切换」，AnyBridge 就会自动把 API Key 写到那个工具的配置文件里。
@@ -647,7 +658,7 @@ npm run start
 # 4. 重启 IDE
 ```
 
-你也可以直接写配置文件（`%APPDATA%/com.anybridge/providers.json`），支持混搭各种模型：
+你也可以直接写配置文件（`%APPDATA%\anybridge\providers.json`），支持混搭各种模型：
 
 ```json
 [
@@ -942,6 +953,12 @@ AnyBridge 会修改本地工具的配置，代理模式会拦截 HTTPS 流量。
 - 用代理模式前，看看工具的服务条款和公司的安全规定
 - 你的 API Key 只留在本地，AnyBridge 不会往外传
 - **本项目与 Windsurf、Devin、OpenAI、Anthropic 等公司没有关系**
+
+---
+
+## 🙏 致谢
+
+感谢 [Linux.do](https://linux.do) 社区。
 
 ---
 
