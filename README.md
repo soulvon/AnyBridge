@@ -2,7 +2,7 @@
 
 # 🚀 AnyBridge
 
-**把自己的 API Key、模型和 AI 编程工具统一接起来。**
+**统一管理供应商，支持 Windsurf/Devin/Cursor/Codex等多个工具的BYOK**
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Tauri v2](https://img.shields.io/badge/Tauri-v2-24c8db.svg?logo=tauri)](https://tauri.app/)
@@ -988,15 +988,4 @@ AnyBridge 会修改本地工具的配置，代理模式会拦截 HTTPS 流量。
 
 [MIT](LICENSE) © 2026 [soulvon](https://github.com/soulvon)
 
----
 
-<div align="center">
-**AnyBridge —— 打破锁定，自带密钥。**
-
-<p align="center">
-  <a href="https://github.com/soulvon/AnyBridge/issues">报 Bug</a> •
-  <a href="https://github.com/soulvon/AnyBridge/discussions">提建议</a> •
-  <a href="https://github.com/soulvon/AnyBridge">GitHub 主页</a>
-</p>
-
-</div>
