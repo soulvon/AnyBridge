@@ -760,7 +760,7 @@ function renderCustomRoleSelect({
           <circle cx="11" cy="11" r="8"></circle>
           <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
         </svg>
-        <input type="text" class="custom-role-select-search-input" placeholder="搜索模型..." oninput="filterCustomRoleMenu('${containerId}', this.value)" autocomplete="off">
+        <input type="text" class="custom-role-select-search-input" placeholder="搜索模型" oninput="filterCustomRoleMenu('${containerId}', this.value)" autocomplete="off">
       </div>
     `;
   }

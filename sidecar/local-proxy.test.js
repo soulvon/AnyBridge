@@ -431,6 +431,26 @@ test('Antigravity handler recognizes v1internal paths and builds injected models
   assert.equal(assist.paidTier.availableCredits[0].creditAmount, 1000000);
 });
 
+test('Antigravity true streaming converts OpenAI chunks to Gemini frames incrementally', () => {
+  const converter = __localProxyTest.createGeminiStreamFromOpenAIChat();
+  const textFrames = converter.write({ choices: [{ delta: { content: '你好' } }] });
+  assert.equal(textFrames.length, 1);
+  assert.equal(textFrames[0].content.parts[0].text, '你好');
+  assert.equal(textFrames[0].finishReason, 'OTHER', '中间内容帧用 OTHER，不以 STOP 提前终止');
+
+  converter.write({ choices: [{ delta: { tool_calls: [{ index: 0, id: 'call_1', function: { name: 'browser_subagent', arguments: '{"ta' } }] } }] });
+  converter.write({ choices: [{ delta: { tool_calls: [{ index: 0, function: { arguments: 'sk":"x"}' } }] } }] });
+
+  const flushed = converter.flush();
+  const toolFrame = flushed.find(candidate => candidate.finishReason === 'TOOL_CALL');
+  assert.ok(toolFrame, '工具调用必须产出 TOOL_CALL 帧');
+  assert.equal(toolFrame.content.parts[0].functionCall.name, 'browser_subagent');
+  assert.deepEqual(toolFrame.content.parts[0].functionCall.args, { task: 'x' });
+  const stopFrame = flushed[flushed.length - 1];
+  assert.equal(stopFrame.finishReason, 'STOP');
+  assert.deepEqual(stopFrame.content.parts, [], '终止帧必须是空 parts 的 STOP');
+});
+
 test('Gemini uppercase tool schema is normalized to lowercase JSON Schema for OpenAI upstream', () => {
   const ctx = __localProxyTest.normalizeRequest('gemini', {
     model: 'local-model',

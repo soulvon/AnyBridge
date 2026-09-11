@@ -26,7 +26,7 @@
 
 AnyBridge 是一个本地运行的 BYOK（Bring Your Own Key）桥接工具，帮你把自己的 API Key、模型供应商和常用 AI 编程工具连在一起。
 
-现在 AI 编程工具很多，比如 Windsurf、Devin、Cursor、Claude Code、Codex、OpenCode 等，但它们通常各有自己的套餐、模型白名单和配置方式。你可能已经有 Anthropic、OpenAI、DeepSeek、智谱、MiniMax 或自建 OpenAI 兼容服务的 Key，却没法直接在某个工具里自由使用。
+现在 AI 编程工具很多，比如 Devin、Windsurf、Cursor、Codex、Claude Code、Claude Desktop、CodeBuddy、WorkBuddy、Grok、ZCode、OpenCode、Antigravity 等，但它们通常各有自己的套餐、模型白名单和配置方式。你可能已经有 Anthropic、OpenAI、DeepSeek、智谱、MiniMax、商汤、Gemini 或自建 OpenAI 兼容服务（如 CPA）的 Key，却没法直接在某个工具里自由使用。
 
 AnyBridge 解决的就是这件事：
 
@@ -74,6 +74,22 @@ AnyBridge 提供桌面控制台，不需要手写复杂配置。供应商、模�
 ```json
 [
   {
+    "name": "CPA 本地网关",
+    "format": "openai",
+    "api_key": "cpa-xxxx",
+    "base_url": "http://localhost:8310/v1",
+    "enabled": true,
+    "models": ["gemini-3.8-flash-high", "gemini-3.7-flash-high", "gemini-3.6-flash-high"]
+  },
+  {
+    "name": "商汤 SenseNova",
+    "format": "openai",
+    "api_key": "sk-xxxx",
+    "base_url": "https://api.sensenova.cn/compatible-mode/v1",
+    "enabled": true,
+    "models": ["deepseek-v4-pro", "deepseek-v4-flash", "glm-5.2", "kimi-k3"]
+  },
+  {
     "name": "Anthropic 直连",
     "format": "anthropic",
     "api_key": "sk-ant-xxxx",
@@ -88,22 +104,6 @@ AnyBridge 提供桌面控制台，不需要手写复杂配置。供应商、模�
     "base_url": "https://api.openai.com/v1",
     "enabled": true,
     "models": ["gpt-5.5", "o4-mini"]
-  },
-  {
-    "name": "智谱 GLM",
-    "format": "openai",
-    "api_key": "zhipu-xxxx",
-    "base_url": "https://open.bigmodel.cn/api/paas/v4",
-    "enabled": true,
-    "models": ["glm-5.2", "glm-5.1"]
-  },
-  {
-    "name": "DeepSeek",
-    "format": "openai",
-    "api_key": "sk-xxxx",
-    "base_url": "https://api.deepseek.com",
-    "enabled": true,
-    "models": ["deepseek-v4-pro", "deepseek-v4-flash"]
   }
 ]
 ```
@@ -800,15 +800,18 @@ npm run tauri:dev
 
 | 工具 | 接入方式 | 状态 |
 |---|---|---|
-| Windsurf | 本地代理 | ✅ 能用 |
-| Devin | 本地代理 | ✅ 能用 |
-| Cursor | 本地代理 | ✅ 能用 |
-| Claude Code | 配置切换 | ✅ 能用 |
-| Codex | 配置切换 | ✅ 能用 |
-| CodeBuddy | 配置切换 | ✅ 能用 |
-| OpenCode | 配置切换 | ✅ 能用 |
-| ZCode | 配置切换 | ✅ 能用 |
-| WorkBuddy | 配置切换 | ✅ 能用 |
+| Devin | 本地代理（MITM / 补丁） | ✅ 完美支持 |
+| Windsurf | 本地代理（MITM / 补丁） | ✅ 完美支持 |
+| Cursor | 本地代理（MITM） | ✅ 完美支持 |
+| Codex | 配置切换 / CDP 注入 | ✅ 完美支持 |
+| Claude Code | 配置切换 | ✅ 完美支持 |
+| Claude Desktop | 配置切换 | ✅ 完美支持 |
+| CodeBuddy | 配置切换 | ✅ 完美支持 |
+| WorkBuddy | 配置切换 | ✅ 完美支持 |
+| Grok | 配置切换 | ✅ 完美支持 |
+| ZCode | 配置切换 | ✅ 完美支持 |
+| OpenCode | 配置切换 | ✅ 完美支持 |
+| Antigravity | 配置切换 / 代理 | ✅ 完美支持 |
 
 ---
 

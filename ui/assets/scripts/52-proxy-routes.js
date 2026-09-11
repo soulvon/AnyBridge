@@ -579,7 +579,19 @@ function renderProxyRoutes() {
       route.id,
       renderedId,
       route.source,
-      ...(route.targets || []).flatMap(t => [t.providerId, proxyRouteProviderName(t.providerId), t.model, t.apiFormat, t.unlock, proxyRouteTargetRouteLabel(t)])
+      ...(route.targets || []).flatMap(t => {
+        const p = providerStore?.providers?.find(x => x.id === t.providerId);
+        return [
+          t.providerId,
+          proxyRouteProviderName(t.providerId),
+          t.model,
+          t.apiFormat,
+          t.unlock,
+          proxyRouteTargetRouteLabel(t),
+          p?.baseUrl,
+          p?.apiHost
+        ];
+      })
     ].join(' ').toLowerCase();
     return !query || hay.includes(query);
   });

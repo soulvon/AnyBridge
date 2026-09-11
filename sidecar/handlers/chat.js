@@ -7,8 +7,8 @@ import http from 'node:http';
 import https from 'node:https';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
+import { configDir } from '../lib/config-dir.js';
 import {
   applyCodexUnlockRequiredFields,
   buildClaudeCodeUnlockPayload,
@@ -625,20 +625,6 @@ function checkChatRateLimit(model, rpm) {
   if (bucket.count >= rpm) return false;
   bucket.count++;
   return true;
-}
-
-function appConfigDir(name) {
-  if (process.platform === 'darwin') return path.join(os.homedir(), 'Library', 'Application Support', name);
-  if (process.platform === 'linux') return path.join(process.env.XDG_CONFIG_HOME || path.join(os.homedir(), '.config'), name);
-  return process.env.APPDATA ? path.join(process.env.APPDATA, name) : path.join(os.homedir(), 'AppData', 'Roaming', name);
-}
-
-function configDir() {
-  if (process.env.BYOK_CONFIG_DIR) return process.env.BYOK_CONFIG_DIR;
-  const next = appConfigDir('anybridge');
-  if (fs.existsSync(next)) return next;
-  const legacy = appConfigDir('ide-byok');
-  return fs.existsSync(legacy) ? legacy : next;
 }
 
 function logEnhancedChatRequest(entry) {

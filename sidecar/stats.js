@@ -6,7 +6,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import os from 'node:os';
+import { configDir } from './lib/config-dir.js';
 
 function todayKey() {
   return new Date().toISOString().slice(0, 10);
@@ -15,20 +15,6 @@ function todayKey() {
 const PERSIST_DEBOUNCE_MS = 500;
 const DEFAULT_STATS_RETENTION_DAYS = 365;
 let persistTimer = null;
-
-function configDir() {
-  if (process.env.BYOK_CONFIG_DIR) return process.env.BYOK_CONFIG_DIR;
-  const next = appConfigDir('anybridge');
-  if (fs.existsSync(next)) return next;
-  const legacy = appConfigDir('ide-byok');
-  return fs.existsSync(legacy) ? legacy : next;
-}
-
-function appConfigDir(name) {
-  if (process.platform === 'darwin') return path.join(os.homedir(), 'Library', 'Application Support', name);
-  if (process.platform === 'linux') return path.join(process.env.XDG_CONFIG_HOME || path.join(os.homedir(), '.config'), name);
-  return process.env.APPDATA ? path.join(process.env.APPDATA, name) : path.join(os.homedir(), 'AppData', 'Roaming', name);
-}
 
 function statsPath() {
   return path.join(configDir(), 'stats.json');

@@ -15,7 +15,7 @@
 import { tryGunzip, gzipSync } from './connect.js';
 import fs from 'node:fs';
 import path from 'node:path';
-import os from 'node:os';
+import { configDir } from './lib/config-dir.js';
 // 引入 catalog 确保 pkg 静态分析时把 windsurf-catalog.js 拉进 bundle
 // (实际读取走 JSON 文件, 但 import 让打包器能识别依赖)
 import { WINDSURF_CATALOG } from './windsurf-catalog.js';
@@ -25,20 +25,6 @@ const RUNTIME_MODEL_SLOT_STATUS = new Map();
 export function getRuntimeModelSlotStatus(modelUid) {
   if (!modelUid) return null;
   return RUNTIME_MODEL_SLOT_STATUS.get(modelUid) || null;
-}
-
-function configDir() {
-  if (process.env.BYOK_CONFIG_DIR) return process.env.BYOK_CONFIG_DIR;
-  const next = appConfigDir('anybridge');
-  if (fs.existsSync(next)) return next;
-  const legacy = appConfigDir('ide-byok');
-  return fs.existsSync(legacy) ? legacy : next;
-}
-
-function appConfigDir(name) {
-  if (process.platform === 'darwin') return path.join(os.homedir(), 'Library', 'Application Support', name);
-  if (process.platform === 'linux') return path.join(process.env.XDG_CONFIG_HOME || path.join(os.homedir(), '.config'), name);
-  return process.env.APPDATA ? path.join(process.env.APPDATA, name) : path.join(os.homedir(), 'AppData', 'Roaming', name);
 }
 
 // 渲染显示模板。

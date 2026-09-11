@@ -5096,14 +5096,22 @@ fn codebuddy_config_path(platform: &str) -> Result<PathBuf, String> {
     Ok(dir.join("models.json"))
 }
 
+/// 项目级配置目录。
+///
+/// 桌面应用的当前工作目录由启动方式决定：macOS 从 Finder/Launchpad 启动是 `/`，
+/// Windows 从开始菜单启动是安装目录（Program Files），Linux 从 .desktop 启动是 $HOME。
+/// 它不代表任何项目，用它推断项目级配置会把 models.json 写到系统目录
+/// （Windows 上还会触发 UAC 虚拟化，导致保存结果「消失」）。
+/// 因此桌面端只支持用户级配置，项目级必须显式报错而不是猜路径。
 fn codebuddy_project_config_path(platform: &str) -> Result<PathBuf, String> {
-    let cwd = std::env::current_dir().map_err(|e| format!("无法定位当前工作目录: {e}"))?;
     let dir_name = match platform {
         PLATFORM_CODEBUDDY => ".codebuddy",
         PLATFORM_WORKBUDDY => ".workbuddy",
         _ => return Err(format!("未知 CodeBuddy 平台: {platform}")),
     };
-    Ok(cwd.join(dir_name).join("models.json"))
+    Err(format!(
+        "桌面端无法确定 {dir_name} 的项目级配置目录（当前工作目录不指向任何项目），请改用用户级配置 (~/{dir_name}/models.json)"
+    ))
 }
 
 fn codebuddy_config_path_for_scope(platform: &str, scope: Option<&str>) -> Result<PathBuf, String> {
@@ -5115,23 +5123,7 @@ fn codebuddy_config_path_for_scope(platform: &str, scope: Option<&str>) -> Resul
 }
 
 fn codebuddy_load_candidate(platform: &str) -> Result<(PathBuf, &'static str), String> {
-    let user_path = codebuddy_config_path(platform)?;
-    if user_path.exists() {
-        let raw = fs::read_to_string(&user_path).map_err(|e| format!("读取失败: {e}"))?;
-        if !raw.trim().is_empty() {
-            return Ok((user_path, "user"));
-        }
-    }
-
-    let project_path = codebuddy_project_config_path(platform)?;
-    if project_path.exists() {
-        let raw = fs::read_to_string(&project_path).map_err(|e| format!("读取失败: {e}"))?;
-        if !raw.trim().is_empty() {
-            return Ok((project_path, "project"));
-        }
-    }
-
-    Ok((user_path, "user"))
+    Ok((codebuddy_config_path(platform)?, "user"))
 }
 
 fn attach_codebuddy_config_meta(

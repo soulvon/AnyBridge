@@ -25,7 +25,7 @@
     "build:ui:watch": "node scripts/build-ui.mjs --watch",
     "build:desktop": "npm run build:ui && npm run build:cursor-core",
     "build:cursor-core": "python scripts/build/build_cursor_core.py",
-    "check:cursor-core": "set CARGO_BUILD_JOBS=1&& set CARGO_INCREMENTAL=0&& cargo check --manifest-path cursor-core/Cargo.toml --lib",
+    "check:cursor-core": "cargo check --config \"build.jobs=1\" --config \"build.incremental=false\" --manifest-path cursor-core/Cargo.toml --lib",
     "check:cursor": "node scripts/check-cursor-proxy.mjs",
     "check:ui": "node scripts/check-ui.mjs",
     "tauri": "tauri",

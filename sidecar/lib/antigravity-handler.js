@@ -239,6 +239,20 @@ function addAntigravityInternalModels(models) {
   }
 }
 
+// 记录 IDE 最近一次实际使用的 BYOK 模型；内部依赖模型（checkpoint / fast model）
+// 会跟随它，避免默认 provider 冷却时内部请求持续失败并把错误提示插入对话。
+let lastActiveIdentity = null;
+
+function isIdentityUsable(identity, providersJson = {}) {
+  if (!identity?.config?.id || !identity?.upstreamModel) return false;
+  const configs = Array.isArray(providersJson.antigravityConfigs) ? providersJson.antigravityConfigs : [];
+  return configs.some(config =>
+    config && config.id === identity.config.id
+    && config.enabled !== false && config.injectModels !== false
+    && Array.isArray(config.models) && config.models.includes(identity.upstreamModel)
+  );
+}
+
 /**
  * 判断目标模型是否为 AnyBridge 中配置并启用的第三方接入模型。
  * 兼容 IDE 实际发送的 MODEL_PLACEHOLDER_Mxxx、目录中的 byok-* catalogKey 以及原始上游模型 ID。
@@ -256,8 +270,11 @@ export function resolveAntigravityCustomModel(modelId, providersJson = {}) {
     || String(dependency.catalogKey || '').toLowerCase() === normalized
   );
   if (internal) {
-    const active = activeAntigravityIdentity(providersJson);
-    return active ? { ...active, exposedModel: active.upstreamModel } : null;
+    // 内部依赖模型优先跟随用户当前正在使用的模型：默认 provider 冷却时，
+    // 若仍路由到它会持续失败并把错误提示插入对话；跟随当前模型可保持可用。
+    const preferred = isIdentityUsable(lastActiveIdentity, providersJson) ? lastActiveIdentity : null;
+    const active = preferred || activeAntigravityIdentity(providersJson);
+    return active ? { ...active, exposedModel: active.upstreamModel, isInternalDependency: true } : null;
   }
   for (const identity of buildAntigravityCustomModelIdentities(providersJson)) {
     const { config, upstreamModel, runtimeModelId, catalogKey } = identity;
@@ -269,6 +286,7 @@ export function resolveAntigravityCustomModel(modelId, providersJson = {}) {
       config.name,
     ].map(cleanAntigravityModelId).filter(Boolean).map(value => value.toLowerCase());
     if (acceptedIds.includes(normalized)) {
+      lastActiveIdentity = { config, upstreamModel, runtimeModelId, catalogKey };
       return {
         config,
         upstreamModel,

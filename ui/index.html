@@ -844,7 +844,7 @@
                               <circle cx="11" cy="11" r="8"></circle>
                               <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
                             </svg>
-                            <input type="text" id="modelSearchInput" placeholder="搜索模型 ID、系列或关键字..." data-action="filterModelPanel" data-events="input">
+                            <input type="text" id="modelSearchInput" placeholder="搜索模型 ID、系列或关键字" data-action="filterModelPanel" data-events="input">
                             <button type="button" class="model-search-clear-btn" id="modelSearchClearBtn" data-action="clearModelSearch" title="清空搜索" style="display:none;">
                               <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
                                 <line x1="18" y1="6" x2="6" y2="18"></line>
@@ -1029,7 +1029,7 @@
                 <!-- 槽位搜索栏 -->
                 <div
                   style="padding:10px 18px; border-bottom:1px solid var(--border); background:rgba(0,0,0,0.01); display:flex; gap:8px; align-items:center; flex:0 0 auto;">
-                  <input type="text" id="slotCatalogSearch" placeholder="搜索槽位名 / modelUid..."
+                  <input type="text" id="slotCatalogSearch" placeholder="搜索槽位名或 modelUid"
                     style="padding:8px 12px; border-radius:8px; font-size:12px; flex:1; min-width:0; border:1px solid var(--border); background:var(--bg-input); outline:none; transition:all 0.2s;" data-action="filterSlotCatalog" data-events="input">
                   <select id="slotCatalogSort"
                     style="height:32px;padding:0 8px;border:1px solid var(--border);background:var(--bg-input);color:var(--text-primary);border-radius:8px;font-size:11px;outline:none;cursor:pointer;" data-assign="slotCatalogSort" data-action="filterSlotCatalog" data-events="change">
@@ -1080,7 +1080,7 @@
                 <!-- 映射模型搜索栏 -->
                 <div
                   style="padding:10px 18px; border-bottom:1px solid var(--border); background:rgba(0,0,0,0.01); display:flex; gap:8px; align-items:center; flex:0 0 auto;">
-                  <input type="text" id="mappingModelSearch" placeholder="搜索已配置的模型名称/供应商..."
+                  <input type="text" id="mappingModelSearch" placeholder="搜索已配置模型或供应商"
                     style="padding:8px 12px; border-radius:8px; font-size:12px; flex:1; min-width:0; border:1px solid var(--border); background:var(--bg-input); outline:none; transition:all 0.2s;" data-action="renderMappingModelCatalog" data-events="input">
                   <select id="mappingCatalogSort"
                     style="height:32px;padding:0 8px;border:1px solid var(--border);background:var(--bg-input);color:var(--text-primary);border-radius:8px;font-size:11px;outline:none;cursor:pointer;" data-assign="mappingCatalogSort" data-action="renderMappingModelCatalog" data-events="change">
@@ -1820,7 +1820,7 @@
                   <circle cx="11" cy="11" r="8"></circle>
                   <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
                 </svg>
-                <input type="text" id="model-search-input" placeholder="搜索已映射模型、槽位或供应商" data-action="filterModelTable" data-events="input">
+                <input type="text" id="model-search-input" placeholder="搜索模型、供应商或地址" data-action="filterModelTable" data-events="input">
               </label>
               <span class="model-map-count-pill" id="modelMapBulkCount">共 0 个</span>
               <div class="model-map-bulk-actions">
@@ -2634,7 +2634,7 @@
                       <circle cx="11" cy="11" r="8"></circle>
                       <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
                     </svg>
-                    <input id="proxyRoutesSearch" type="text" placeholder="搜索模型 ID、供应商或上游模型"
+                    <input id="proxyRoutesSearch" type="text" placeholder="搜索模型、供应商或地址"
  data-action="renderProxyRoutes" data-events="input">
                   </label>
                   <span class="model-map-count-pill" id="proxyRoutesBulkCount">共 0 个</span>
@@ -3503,7 +3503,7 @@
                   <circle cx="11" cy="11" r="8" />
                   <line x1="21" y1="21" x2="16.65" y2="16.65" />
                 </svg>
-                <input type="text" id="cursor-add-search" placeholder="搜索供应商…" data-action="onCursorAddSearch" data-events="input">
+                <input type="text" id="cursor-add-search" placeholder="搜索供应商" data-action="onCursorAddSearch" data-events="input">
                 <div class="provider-sort-control platform-add-sort-control" id="cursorAddSortControl">
                   <button type="button" class="provider-sort-trigger platform-add-sort-trigger" id="cursorAddSortTrigger"
                     aria-haspopup="listbox" aria-expanded="false"
@@ -3708,7 +3708,7 @@
                   <circle cx="11" cy="11" r="8" />
                   <line x1="21" y1="21" x2="16.65" y2="16.65" />
                 </svg>
-                <input type="text" id="claude-add-search" placeholder="搜索供应商…" data-action="onClaudeAddSearch" data-events="input">
+                <input type="text" id="claude-add-search" placeholder="搜索供应商" data-action="onClaudeAddSearch" data-events="input">
                 <div class="provider-sort-control platform-add-sort-control" id="claudeAddSortControl">
                   <button type="button" class="provider-sort-trigger platform-add-sort-trigger" id="claudeAddSortTrigger"
                     aria-haspopup="listbox" aria-expanded="false"
@@ -4089,7 +4089,7 @@
                   <circle cx="11" cy="11" r="8" />
                   <line x1="21" y1="21" x2="16.65" y2="16.65" />
                 </svg>
-                <input type="text" id="claude-desktop-source-search-input" placeholder="搜索供应商…" data-action="onClaudeDesktopSourceSearch" data-events="input">
+                <input type="text" id="claude-desktop-source-search-input" placeholder="搜索供应商" data-action="onClaudeDesktopSourceSearch" data-events="input">
                 <div class="provider-sort-control platform-add-sort-control" id="claudeDesktopAddSortControl">
                   <button type="button" class="provider-sort-trigger platform-add-sort-trigger" id="claudeDesktopAddSortTrigger"
                     aria-haspopup="listbox" aria-expanded="false"
@@ -4392,7 +4392,7 @@
                   <circle cx="11" cy="11" r="8" />
                   <line x1="21" y1="21" x2="16.65" y2="16.65" />
                 </svg>
-                <input type="text" id="codex-add-search" placeholder="搜索供应商…" data-action="onCodexAddSearch" data-events="input">
+                <input type="text" id="codex-add-search" placeholder="搜索供应商" data-action="onCodexAddSearch" data-events="input">
                 <div class="provider-sort-control platform-add-sort-control" id="codexAddSortControl">
                   <button type="button" class="provider-sort-trigger platform-add-sort-trigger" id="codexAddSortTrigger"
                     aria-haspopup="listbox" aria-expanded="false"
@@ -5005,7 +5005,7 @@
                   <circle cx="11" cy="11" r="8" />
                   <line x1="21" y1="21" x2="16.65" y2="16.65" />
                 </svg>
-                <input type="text" id="antigravity-add-search" placeholder="搜索供应商…" data-action="onAntigravityAddSearch" data-events="input">
+                <input type="text" id="antigravity-add-search" placeholder="搜索供应商" data-action="onAntigravityAddSearch" data-events="input">
                 <div class="provider-sort-control platform-add-sort-control" id="antigravityAddSortControl">
                   <button type="button" class="provider-sort-trigger platform-add-sort-trigger" id="antigravityAddSortTrigger"
                     aria-haspopup="listbox" aria-expanded="false"
@@ -5342,7 +5342,7 @@
                   <circle cx="11" cy="11" r="8" />
                   <line x1="21" y1="21" x2="16.65" y2="16.65" />
                 </svg>
-                <input type="text" id="cb-add-search" placeholder="搜索供应商…" data-action="onCbAddSearch" data-events="input">
+                <input type="text" id="cb-add-search" placeholder="搜索供应商" data-action="onCbAddSearch" data-events="input">
                 <div class="provider-sort-control platform-add-sort-control" id="cbAddSortControl">
                   <button type="button" class="provider-sort-trigger platform-add-sort-trigger" id="cbAddSortTrigger"
  aria-haspopup="listbox" aria-expanded="false"
@@ -5510,7 +5510,7 @@
                   <circle cx="11" cy="11" r="8" />
                   <line x1="21" y1="21" x2="16.65" y2="16.65" />
                 </svg>
-                <input type="text" id="opencode-add-search" placeholder="搜索供应商…" data-action="onOpenCodeAddSearch" data-events="input">
+                <input type="text" id="opencode-add-search" placeholder="搜索供应商" data-action="onOpenCodeAddSearch" data-events="input">
                 <div class="provider-sort-control platform-add-sort-control" id="opencodeAddSortControl">
                   <button type="button" class="provider-sort-trigger platform-add-sort-trigger" id="opencodeAddSortTrigger"
                     aria-haspopup="listbox" aria-expanded="false"
@@ -5859,7 +5859,7 @@
                   <circle cx="11" cy="11" r="8" />
                   <line x1="21" y1="21" x2="16.65" y2="16.65" />
                 </svg>
-                <input type="text" id="zc-add-search" placeholder="搜索供应商…" data-action="onZcAddSearch" data-events="input">
+                <input type="text" id="zc-add-search" placeholder="搜索供应商" data-action="onZcAddSearch" data-events="input">
                 <div class="provider-sort-control platform-add-sort-control" id="zcAddSortControl">
                   <button type="button" class="provider-sort-trigger platform-add-sort-trigger" id="zcAddSortTrigger"
  aria-haspopup="listbox" aria-expanded="false"
@@ -6320,7 +6320,7 @@
                   <circle cx="11" cy="11" r="8" />
                   <line x1="21" y1="21" x2="16.65" y2="16.65" />
                 </svg>
-                <input type="text" id="wb-add-search" placeholder="搜索供应商…" data-action="onWbAddSearch" data-events="input">
+                <input type="text" id="wb-add-search" placeholder="搜索供应商" data-action="onWbAddSearch" data-events="input">
                 <div class="provider-sort-control platform-add-sort-control" id="wbAddSortControl">
                   <button type="button" class="provider-sort-trigger platform-add-sort-trigger" id="wbAddSortTrigger"
  aria-haspopup="listbox" aria-expanded="false"
@@ -6485,7 +6485,7 @@
                   <circle cx="11" cy="11" r="8" />
                   <line x1="21" y1="21" x2="16.65" y2="16.65" />
                 </svg>
-                <input type="text" id="grok-add-search" placeholder="搜索供应商…" data-action="onGrokAddSearch" data-events="input">
+                <input type="text" id="grok-add-search" placeholder="搜索供应商" data-action="onGrokAddSearch" data-events="input">
                 <div class="provider-sort-control platform-add-sort-control" id="grokAddSortControl">
                   <button type="button" class="provider-sort-trigger platform-add-sort-trigger" id="grokAddSortTrigger"
                     aria-haspopup="listbox" aria-expanded="false"

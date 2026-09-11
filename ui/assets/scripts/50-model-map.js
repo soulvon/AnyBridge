@@ -714,15 +714,17 @@ function filterModelTable() {
       continue;
     }
 
-    // cells[0]=复选框 cells[1]=显示名 cells[2]=原模型名
+    // cells[0]=复选框 cells[1]=显示名 cells[2]=原模型名 cells[3]=映射目标/供应商
     const display = (row.cells[1]?.textContent || '').toLowerCase();
     const orig = (row.cells[2]?.textContent || '').toLowerCase();
+    const target = (row.cells[3]?.textContent || '').toLowerCase();
     const slot = (row.dataset.modelUid || '').toLowerCase();
 
     // 搜索匹配
     const matchesSearch = query === '' ||
       orig.includes(query) ||
       display.includes(query) ||
+      target.includes(query) ||
       slot.includes(query);
 
     if (matchesSearch) {

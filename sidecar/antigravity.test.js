@@ -432,6 +432,22 @@ test('Antigravity internal dependency catalog keys resolve to the active BYOK mo
   }
 });
 
+test('Antigravity internal dependency follows the most recently used BYOK model', () => {
+  const providersJson = {
+    antigravityConfigs: [
+      { id: 'cpa', name: 'CPA', defaultModel: 'gpt-5.6-luna', models: ['gpt-5.6-luna'], enabled: true, injectModels: true },
+      { id: 'shangtang', name: 'ShangTang', defaultModel: 'deepseek-v4-flash', models: ['deepseek-v4-flash'], enabled: true, injectModels: true },
+    ],
+    platforms: { antigravity: { providerId: 'cpa' } },
+  };
+  // 先解析一次用户实际在用的模型，建立“最近使用”记录
+  assert.equal(resolveAntigravityCustomModel('deepseek-v4-flash', providersJson)?.upstreamModel, 'deepseek-v4-flash');
+  // 内部依赖模型应跟随用户当前模型，而不是平台默认的 cpa/gpt-5.6-luna（后者可能正在冷却）
+  const internal = resolveAntigravityCustomModel('anybridge-internal-checkpoint', providersJson);
+  assert.equal(internal?.upstreamModel, 'deepseek-v4-flash', '内部模型必须跟随用户当前使用的模型');
+  assert.equal(internal?.isInternalDependency, true);
+});
+
 test('Antigravity 自定义模型到 OpenAI 上游请求体双向转换', () => {
   const agRequest = {
     model: 'models/deepseek-chat',

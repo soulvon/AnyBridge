@@ -5,8 +5,8 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import http from 'node:http';
 import https from 'node:https';
-import os from 'node:os';
 import path from 'node:path';
+import { configDir } from './lib/config-dir.js';
 import {
   applyCodexUnlockRequiredFields,
   buildClaudeCodeUnlockPayload,
@@ -55,20 +55,6 @@ const AGENT = new https.Agent({ keepAlive: true, maxSockets: 64, maxFreeSockets:
 const HTTP_AGENT = new http.Agent({ keepAlive: true, maxSockets: 64, maxFreeSockets: 16 });
 const RETRYABLE_STATUS = new Set([408, 425, 429, 500, 502, 503, 504, 529]);
 const RETRYABLE_CODES = new Set(['ECONNRESET', 'ETIMEDOUT', 'ENOTFOUND', 'EAI_AGAIN', 'ECONNREFUSED', 'EPIPE', 'EHOSTUNREACH', 'ENETUNREACH']);
-
-function appConfigDir(name) {
-  if (process.platform === 'darwin') return path.join(os.homedir(), 'Library', 'Application Support', name);
-  if (process.platform === 'linux') return path.join(process.env.XDG_CONFIG_HOME || path.join(os.homedir(), '.config'), name);
-  return process.env.APPDATA ? path.join(process.env.APPDATA, name) : path.join(os.homedir(), 'AppData', 'Roaming', name);
-}
-
-function configDir() {
-  if (process.env.BYOK_CONFIG_DIR) return process.env.BYOK_CONFIG_DIR;
-  const next = appConfigDir('anybridge');
-  if (fs.existsSync(next)) return next;
-  const legacy = appConfigDir('ide-byok');
-  return fs.existsSync(legacy) ? legacy : next;
-}
 
 function readLocalConfig() {
   try {
@@ -903,6 +889,7 @@ export const __localProxyTest = {
   normalizeToolParameters,
   antigravityErrorSnapshot,
   writeAntigravityStreamError,
+  createGeminiStreamFromOpenAIChat,
   sendGemini,
   sendGeminiStream,
   geminiModelFromPath,
@@ -1763,6 +1750,37 @@ export async function execute(ctx) {
           });
           break;
         }
+        // ── 真流式路径（Antigravity / Gemini 入口 + OpenAI 兼容上游）──
+        // 直接 pipe 上游 SSE，避免缓冲：长回复时 Language Server 不会因等待整包而超时。
+        if (effective.stream === true && ctx.kind === 'gemini' && conn.format === 'openai') {
+          const streamPayload = { ...payload, stream: true };
+          const r = await requestUpstreamStream(conn, streamPayload, enhancement);
+          recordLatency(r.durationMs);
+          if (r.statusCode >= 200 && r.statusCode < 300) {
+            const extraRespHeaders = {};
+            if (enhancement.customHeadersEnabled === true && Array.isArray(enhancement.responseHeaders)) {
+              for (const h of enhancement.responseHeaders) {
+                if (h && h.key) extraRespHeaders[h.key] = h.value;
+              }
+            }
+            return { conn, stream: true, upstreamResponse: r.response, extraHeaders: extraRespHeaders, watchdog: r.watchdog };
+          }
+          const errorText = await collectStreamBody(r.response);
+          const errorJson = safeParse(errorText);
+          const msg = compactText(upstreamMessage({ statusCode: r.statusCode, json: errorJson, text: errorText }));
+          if (policy.enabled && retryCount < policy.maxRetries && retryable(r.statusCode) && Date.now() - started < policy.totalMs) {
+            retryCount++; recordRetry({ count: 1, reason: `HTTP ${r.statusCode}: ${msg}` }); await sleep(retryDelay(retryCount, policy)); continue;
+          }
+          failures.push({
+            providerName: conn.providerName,
+            statusCode: r.statusCode,
+            headers: r.headers,
+            body: errorText,
+            message: msg,
+            wireApi: conn.wireApi,
+          });
+          break;
+        }
         // ── 非流式路径（原有逻辑）──
         const r = await requestUpstream(conn, payload, enhancement);
         recordLatency(r.durationMs);
@@ -2116,6 +2134,63 @@ function writeAntigravityStreamError(res, ctx, message) {
   res.end();
 }
 
+// 把上游 OpenAI chat SSE chunk 增量转换成 Gemini candidate，供 Antigravity 真流式使用。
+// 直接 pipe 上游流可避免缓冲：长回复时 Language Server 不会因等待整包而超时。
+function createGeminiStreamFromOpenAIChat() {
+  const toolCalls = new Map();
+  let usage = null;
+  return {
+    write(chunk) {
+      const out = [];
+      if (chunk?.usage) usage = chunk.usage;
+      const choice = chunk?.choices?.[0];
+      if (!choice) return out;
+      const delta = choice.delta || {};
+      if (typeof delta.content === 'string' && delta.content) {
+        out.push({ content: { role: 'model', parts: [{ text: delta.content }] }, finishReason: 'OTHER', index: 0 });
+      }
+      if (typeof delta.reasoning_content === 'string' && delta.reasoning_content) {
+        out.push({ content: { role: 'model', parts: [{ text: delta.reasoning_content, thought: true }] }, finishReason: 'OTHER', index: 0 });
+      }
+      for (const call of delta.tool_calls || []) {
+        const index = call.index ?? 0;
+        const current = toolCalls.get(index) || { id: '', name: '', args: '' };
+        if (call.id) current.id = call.id;
+        if (call.function?.name) current.name = call.function.name;
+        if (call.function?.arguments) current.args += call.function.arguments;
+        toolCalls.set(index, current);
+      }
+      return out;
+    },
+    flush() {
+      const out = [];
+      if (toolCalls.size) {
+        const parts = [];
+        for (const call of toolCalls.values()) {
+          let args = {};
+          try { args = call.args ? JSON.parse(call.args) : {}; } catch { args = {}; }
+          parts.push({
+            functionCall: { ...(call.id ? { id: call.id } : {}), name: call.name, args },
+            thoughtSignature: 'skip_thought_signature_validator',
+          });
+        }
+        out.push({ content: { role: 'model', parts }, finishReason: 'TOOL_CALL', index: 0 });
+      }
+      out.push({ content: { parts: [], role: 'model' }, finishReason: 'STOP', index: 0 });
+      return out;
+    },
+    getUsage() {
+      return usage
+        ? {
+          inputTokens: Number(usage.prompt_tokens) || 0,
+          outputTokens: Number(usage.completion_tokens) || 0,
+          cachedTokens: Number(usage.prompt_tokens_details?.cached_tokens) || 0,
+        }
+        : null;
+    },
+  };
+}
+
 function sendGemini(ctx, res, result) {
   sendJson(res, 200, geminiResponsePayload(ctx, result), result.extraHeaders || {});
 }
@@ -2438,6 +2513,19 @@ export async function handleLocalProxyRequest(req, res, body) {
         try {
           result = await execute(ctx);
         } catch (e) {
+          // 内部依赖模型（checkpoint / fast）失败不打扰用户：回空响应，错误只进诊断日志
+          if (customModel?.isInternalDependency) {
+            console.error(`[antigravity] internal dependency request failed: ${e?.message || String(e)}`);
+            const empty = antigravityEnvelope({ candidates: [{ content: { parts: [], role: 'model' }, finishReason: 'STOP', index: 0 }] });
+            if (stream) {
+              res.writeHead(200, cors({ 'content-type': 'text/event-stream; charset=utf-8' }));
+              sse(res, null, empty);
+              res.end();
+            } else {
+              sendJson(res, 200, empty);
+            }
+            return;
+          }
           if (stream) {
             // 流式端点必须回 SSE；直接回错误 JSON 会让 Antigravity LS 空指针崩溃。
             writeAntigravityStreamError(res, ctx, e?.message || String(e));
@@ -2452,9 +2540,34 @@ export async function handleLocalProxyRequest(req, res, body) {
         }
 
         if (stream) {
-          // Cloud Code 流式语义：内容帧用 OTHER / TOOL_CALL，随后补一个空 parts 的 STOP 终止帧
+          const extra = result.extraHeaders || {};
+          if (result.stream === true && result.upstreamResponse) {
+            // 真流式：逐块把上游 OpenAI SSE 转成 Gemini 帧，避免缓冲导致长回复时 LS 等待超时
+            res.writeHead(200, cors({ 'content-type': 'text/event-stream; charset=utf-8', ...extra }));
+            const converter = createGeminiStreamFromOpenAIChat();
+            const watchdog = result.watchdog;
+            try {
+              for await (const chunk of parseSSEStream(result.upstreamResponse, {
+                onChunk: () => { if (watchdog) watchdog.touch(); },
+              })) {
+                for (const candidate of converter.write(chunk)) {
+                  sse(res, null, antigravityEnvelope({ candidates: [candidate] }));
+                }
+              }
+            } catch {
+              // 流中断时仍要补发终止帧，否则 LS 会一直等待
+            }
+            for (const candidate of converter.flush()) {
+              sse(res, null, antigravityEnvelope({ candidates: [candidate] }));
+            }
+            const streamUsage = converter.getUsage();
+            if (streamUsage) recordUsage(streamUsage);
+            res.end();
+            return;
+          }
+          // 缓冲回退：内容帧 + 空 STOP 终止帧
           if (payload.candidates?.[0] && !hasToolCalls) payload.candidates[0].finishReason = 'OTHER';
-          res.writeHead(200, cors({ 'content-type': 'text/event-stream; charset=utf-8', ...(result.extraHeaders || {}) }));
+          res.writeHead(200, cors({ 'content-type': 'text/event-stream; charset=utf-8', ...extra }));
           sse(res, null, antigravityEnvelope(payload));
           sse(res, null, antigravityEnvelope({ candidates: [{ content: { parts: [], role: 'model' }, finishReason: 'STOP', index: 0 }] }));
           res.end();

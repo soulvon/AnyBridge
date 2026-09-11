@@ -3,27 +3,16 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import os from 'node:os';
-
-function configDir() {
-  if (process.env.BYOK_CONFIG_DIR) return process.env.BYOK_CONFIG_DIR;
-  const next = appConfigDir('anybridge');
-  if (fs.existsSync(next)) return next;
-  const legacy = appConfigDir('ide-byok');
-  return fs.existsSync(legacy) ? legacy : next;
-}
-
-function appConfigDir(name) {
-  if (process.platform === 'darwin') return path.join(os.homedir(), 'Library', 'Application Support', name);
-  if (process.platform === 'linux') return path.join(process.env.XDG_CONFIG_HOME || path.join(os.homedir(), '.config'), name);
-  return process.env.APPDATA ? path.join(process.env.APPDATA, name) : path.join(os.homedir(), 'AppData', 'Roaming', name);
-}
+import { configDir } from './lib/config-dir.js';
 
 const LOG_DIR = path.join(configDir(), 'mitm-logs');
 const RPC_AUDIT_DIR = path.join(configDir(), 'rpc-audit');
-// 本地工具默认开启日志，方便排障。可用 BYOK_MITM_LOG=false 显式关闭。
-const MITM_LOG_ENABLED = !/^(false|0|off)$/i.test(String(process.env.BYOK_MITM_LOG ?? 'true'));
-const RPC_AUDIT_ENABLED = !/^(false|0|off)$/i.test(String(process.env.BYOK_RPC_AUDIT ?? 'true'));
+// 默认关闭：请求/响应体持续落盘会长期占用磁盘，且 body 里可能有敏感内容。
+// 排障时设置 BYOK_MITM_LOG=true 开启；BYOK_MITM_FULL_LOG=true 写完整 body（默认截断 8KB）。
+// 注意这是模块级开关（进程启动时读取一次），与 model-map.json 的
+// enhancement.requestLogging（UI「请求日志」开关，按请求实时判断，写 proxy-logs）相互独立。
+const MITM_LOG_ENABLED = /^(true|1|on)$/i.test(String(process.env.BYOK_MITM_LOG || 'false'));
+const RPC_AUDIT_ENABLED = /^(true|1|on)$/i.test(String(process.env.BYOK_RPC_AUDIT || 'false'));
 const MITM_FULL_LOG = /^(true|1|on)$/i.test(String(process.env.BYOK_MITM_FULL_LOG || 'false'));
 const MITM_MAX_BODY_BYTES = parseInt(process.env.BYOK_MITM_MAX_BODY_BYTES || '8192', 10);
 

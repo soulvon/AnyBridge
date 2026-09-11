@@ -6,9 +6,9 @@
 
 import crypto from 'node:crypto';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import zlib from 'node:zlib';
+import { configDir } from './lib/config-dir.js';
 import { endOfStreamEnvelope, endOfStreamErrorEnvelope, wrapEnvelope } from './connect.js';
 import { getProxyRoutes } from './config-cache.js';
 import { execute as executeLocalProxy } from './local-proxy.js';
@@ -86,19 +86,6 @@ const CURSOR_AGENT_SYSTEM = [
   'Only claim you inspected or changed local files after using the corresponding Cursor tool, or when the user provided the content in chat.',
 ].join('\n');
 
-function appConfigDir(name) {
-  if (process.platform === 'darwin') return path.join(os.homedir(), 'Library', 'Application Support', name);
-  if (process.platform === 'linux') return path.join(process.env.XDG_CONFIG_HOME || path.join(os.homedir(), '.config'), name);
-  return process.env.APPDATA ? path.join(process.env.APPDATA, name) : path.join(os.homedir(), 'AppData', 'Roaming', name);
-}
-
-function configDir() {
-  if (process.env.BYOK_CONFIG_DIR) return process.env.BYOK_CONFIG_DIR;
-  const next = appConfigDir('anybridge');
-  if (fs.existsSync(next)) return next;
-  const legacy = appConfigDir('ide-byok');
-  return fs.existsSync(legacy) ? legacy : next;
-}
 
 function cursorHistoryDir() {
   return path.join(configDir(), 'cursor-history');

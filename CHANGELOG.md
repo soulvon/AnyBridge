@@ -4,6 +4,11 @@ All notable changes to AnyBridge will be documented in this file.
 
 ## v0.5.8 - 2026-09-11
 
+- 优化 Antigravity 稳定性与对话体验：
+  - 内部依赖模型（checkpoint / fast model）现在跟随用户**当前正在使用**的 BYOK 模型，而不是平台默认 provider；默认 provider（如冷却中的 CPA）不再拖累内部请求。
+  - 内部依赖模型失败时静默返回空响应，错误只写入诊断日志，不再把 `[AnyBridge] 上游请求失败` 提示条插入对话。
+  - `v1internal:streamGenerateContent` 改为**真流式透传**：直接 pipe 上游 SSE 并逐块转换为 Gemini 帧（中间帧 `OTHER`，工具调用 `TOOL_CALL`，末尾补空 `STOP`），避免缓冲导致长回复时 Language Server 等待超时；上游不支持时自动回退到缓冲模式。
+  - 新增回归测试（流式转换、内部模型跟随），`local-proxy` 与 `antigravity` 共 31 项全部通过。
 - 修复 Antigravity 流式响应缺少 Cloud Code 信封导致 Language Server 空指针崩溃的根本问题：
   - 根因：`v1internal:generateContent` / `v1internal:streamGenerateContent` 的正确响应格式是 Cloud Code 信封 `{ response, traceId, metadata }`；此前返回裸 `candidates`，LS 解析时取 `envelope.Response` 得到 nil，在 `generation.go:680` / `stream_helpers.go:181` 空指针崩溃（进程 `exit code 2`，界面永久卡在 "Working."）。参考开源实现 `vahapogut/antigravity-add-model` 的 `{ response: { candidates: [...] }, traceId: '', metadata: {} }` 格式修正。
   - 修复：两个生成端点统一包信封；流式先发内容帧（`finishReason` 用 `OTHER` / `TOOL_CALL`），随后补一个空 `parts` 的 `STOP` 终止帧；工具调用时标记 `TOOL_CALL`。
