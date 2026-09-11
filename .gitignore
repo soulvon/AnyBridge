@@ -106,6 +106,9 @@ dev-tauri.err
 *.bak.jpg
 *.bak
 
+# 发布渠道推广文案（不进版本库）
+宣传.md
+
 # Temporary dev notes
 findings.md
 progress.md
