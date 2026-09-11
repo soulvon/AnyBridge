@@ -168,24 +168,6 @@ jobs:
             python scripts/build/build_cursor_core.py
           fi
 
-      # macOS 要求 App 内所有 Mach-O 二进制（包括 externalBin）必须具备有效签名（哪怕是 ad-hoc 签名）。
-      # pkg 将 JS 注入基础二进制会破坏原有代码签名，且交叉编译产物也未带签名。
-      # Tauri 的 signingIdentity 仅签署主 App Bundle，不会递归签署 externalBin。
-      # 此处在进入 Tauri 打包前，对所有 externalBin 进行强制 ad-hoc 签名并严格校验。
-      - name: Ad-hoc sign external binaries (macOS)
-        if: startsWith(matrix.platform, 'macos')
-        shell: bash
-        run: |
-          set -euo pipefail
-          for bin in src-tauri/binaries/*; do
-            if [ -f "$bin" ]; then
-              echo "Ad-hoc signing: $bin"
-              chmod +x "$bin"
-              codesign --force --sign - "$bin"
-              codesign --verify --verbose=2 "$bin"
-            fi
-          done
-
       - name: Build the app
         uses: tauri-apps/tauri-action@v0
         env:
@@ -200,6 +182,71 @@ jobs:
           releaseDraft: true
           prerelease: false
           args: ${{ matrix.tauri_args }}
+
+      # Tauri 2.x 打包时会用 bundle.macOS.entitlements 统一签署 externalBin
+      # （anybridge-proxy / anybridge-cursor-core）与外层 App Bundle，因此不需要
+      # 在打包前预签名（预签名会被覆盖，且校验的是中间文件而非最终产物）。
+      #
+      # 必须校验最终产物：mac 版「代理无法启动」的根因就是 sidecar 在 Hardened
+      # Runtime 下缺少 JIT entitlement，进程启动瞬间被系统以信号 5 (SIGTRAP) 终止。
+      # 这里同时做签名校验、entitlement 断言和启动冒烟，任一失败即中断发布。
+      - name: Verify macOS bundle signing and sidecar JIT entitlements
+        if: startsWith(matrix.platform, 'macos')
+        shell: bash
+        run: |
+          set -euo pipefail
+          APP="src-tauri/target/${{ matrix.rust_target }}/release/bundle/macos/AnyBridge.app"
+          SIDECAR="$APP/Contents/MacOS/anybridge-proxy"
+          if [ ! -f "$SIDECAR" ]; then
+            echo "FATAL: 未找到打包后的 sidecar: $SIDECAR"
+            exit 1
+          fi
+
+          echo "--- verify app bundle ---"
+          codesign --verify --deep --strict --verbose=2 "$APP"
+
+          echo "--- sidecar codesign flags ---"
+          codesign -dv --verbose=4 "$SIDECAR" 2>&1 | tee /tmp/sidecar-flags.txt
+          if ! grep -Eq '\(runtime\)' /tmp/sidecar-flags.txt; then
+            echo "FATAL: sidecar 未启用 Hardened Runtime，签名链路与预期不一致"
+            exit 1
+          fi
+
+          echo "--- sidecar entitlements ---"
+          codesign -d --entitlements :- "$SIDECAR" > /tmp/sidecar.entitlements
+          plutil -convert json -o - /tmp/sidecar.entitlements || true
+          for key in \
+            com.apple.security.cs.allow-jit \
+            com.apple.security.cs.allow-unsigned-executable-memory; do
+            # plutil 对 boolean true 输出 "1"，缺失时命令失败，统一归入 missing
+            value="$(plutil -extract "$key" raw -o - /tmp/sidecar.entitlements 2>/dev/null || echo missing)"
+            echo "$key = $value"
+            if [ "$value" != "1" ]; then
+              echo "FATAL: sidecar 缺少 entitlement 或值不为 true: $key"
+              exit 1
+            fi
+          done
+
+          echo "--- sidecar launch smoke test (SIGTRAP guard) ---"
+          CFG_DIR="$(mktemp -d)"
+          BYOK_CONFIG_DIR="$CFG_DIR" API_PORT=17450 INFERENCE_PORT=17451 \
+            "$SIDECAR" > /tmp/sidecar.log 2>&1 &
+          pid=$!
+          sleep 5
+          if kill -0 "$pid" 2>/dev/null; then
+            echo "✅ sidecar 启动后持续存活，JIT / 签名链路正常"
+            kill "$pid" 2>/dev/null || true
+          else
+            code=0
+            wait "$pid" || code=$?
+            echo "sidecar 已退出，退出码=$code"
+            cat /tmp/sidecar.log || true
+            if [ "$code" -gt 128 ]; then
+              echo "FATAL: sidecar 被信号 $((code - 128)) 终止，签名 / JIT entitlement 仍有问题"
+              exit 1
+            fi
+            echo "sidecar 以退出码结束（非信号终止），不属于本次签名问题"
+          fi
 
   rebuild-latest-json:
     name: Rebuild latest.json and publish release

@@ -761,19 +761,35 @@ function clearPlatformRailDragMarkers(except) {
 
 globalThis.platformRailDragging = null;
 
+function clearDragShift() {
+  getPlatformRailItems().forEach(it => {
+    it.classList.remove('is-drag-shift-up', 'is-drag-shift-down');
+  });
+}
+
+function applyDragShift(targetItem, placeAbove) {
+  // 保持向后兼容镜像导出
+}
+
 function bindPlatformRailDragAndDrop() {
   const rail = getPlatformRailElement();
   if (!rail || rail.dataset.dndBound === '1') return;
   rail.dataset.dndBound = '1';
 
-  // 禁用原生 HTML5 拖拽，改用 pointer 事件实现"手机图标拖动"效果
+  // 禁用原生 HTML5 拖拽，改用 pointer 事件
   getPlatformRailItems().forEach(item => {
     item.draggable = false;
     item.querySelectorAll('.platform-rail-handle').forEach(h => { h.draggable = false; });
   });
 
-  let drag = null;       // { item, clone, started, startX, startY, offsetX, offsetY, width }
+  // 阻止原生拖拽默认行为
+  rail.addEventListener('dragstart', (e) => e.preventDefault());
+
+  const sidebar = rail.closest('.app-sidebar') || rail.parentElement;
+
+  let drag = null;
   let suppressClick = false;
+  let autoScrollRaf = null;
 
   const HANDLE_VARS = [
     '--handle-width', '--handle-height', '--handle-justify-self', '--handle-align-self',
@@ -789,134 +805,230 @@ function bindPlatformRailDragAndDrop() {
       const val = cs.getPropertyValue(v).trim();
       if (val) target.style.setProperty(v, val);
     });
-    // 手柄跟随 rail 当前 opacity（默认 0 = 隐藏，不强制显示）
     target.style.setProperty('--handle-dot-color', cs.getPropertyValue('--handle-dot-color-drag').trim());
     target.style.setProperty('--handle-dot-color-dark', cs.getPropertyValue('--handle-dot-color-drag-dark').trim());
   }
 
-  function findDropTarget(clientY) {
-    const items = getPlatformRailItems();
-    for (const it of items) {
-      if (it === drag.item) continue;
+  function startDrag(e) {
+    drag.started = true;
+    const allItems = getPlatformRailItems();
+    drag.items = allItems;
+    drag.sourceIndex = allItems.indexOf(drag.item);
+    drag.targetIndex = drag.sourceIndex;
+
+    const itemRect = drag.item.getBoundingClientRect();
+    const mb = parseFloat(getComputedStyle(drag.item).marginBottom) || 7;
+    drag.shiftDistance = itemRect.height + mb;
+    rail.style.setProperty('--drag-shift-distance', `${drag.shiftDistance}px`);
+
+    // 记录在静态无位移状态下各项相对于 rail 顶部的原始中心 Y
+    const railRect = rail.getBoundingClientRect();
+    drag.itemCenters = allItems.map(it => {
       const r = it.getBoundingClientRect();
-      if (clientY >= r.top && clientY <= r.bottom) {
-        return { item: it, placeAbove: (clientY - r.top) < r.height / 2 };
+      return (r.top - railRect.top) + r.height / 2;
+    });
+
+    // 创建克隆体
+    const clone = drag.item.cloneNode(true);
+    clone.classList.add('is-drag-clone');
+    clone.removeAttribute('onclick');
+    clone.removeAttribute('data-platform-rail');
+    clone.style.left = itemRect.left + 'px';
+    clone.style.top = (e.clientY - drag.offsetY) + 'px';
+    clone.style.width = drag.width + 'px';
+    copyHandleVars(clone);
+    document.body.appendChild(clone);
+    drag.clone = clone;
+
+    // 隐藏原项
+    drag.item.style.opacity = '0';
+    platformRailDragging = drag.item;
+    document.body.classList.add('is-platform-rail-dragging');
+
+    try {
+      if (drag.item.setPointerCapture && drag.pointerId !== undefined) {
+        drag.item.setPointerCapture(drag.pointerId);
       }
-    }
-    return null;
+    } catch (_) {}
   }
 
-  // ── pointerdown：记录起点，暂不启动 ──
+  function updateShifts(targetIndex) {
+    const { items, sourceIndex } = drag;
+    if (sourceIndex < 0) return;
+
+    items.forEach((it, idx) => {
+      it.classList.remove('is-drag-shift-up', 'is-drag-shift-down');
+      if (it === drag.item) return;
+
+      if (sourceIndex < targetIndex) {
+        // 向下拖动：原位到目标位之间的项向上移补位
+        if (idx > sourceIndex && idx <= targetIndex) {
+          it.classList.add('is-drag-shift-up');
+        }
+      } else if (sourceIndex > targetIndex) {
+        // 向上拖动：目标位到原位之间的项向下移腾位
+        if (idx >= targetIndex && idx < sourceIndex) {
+          it.classList.add('is-drag-shift-down');
+        }
+      }
+    });
+  }
+
+  function computeTargetIndex(cursorRailY) {
+    const { sourceIndex, itemCenters } = drag;
+    let index = 0;
+    for (let i = 0; i < itemCenters.length; i++) {
+      if (i === sourceIndex) continue;
+      if (cursorRailY > itemCenters[i]) {
+        index++;
+      }
+    }
+    return Math.max(0, Math.min(index, itemCenters.length - 1));
+  }
+
+  function handleAutoScroll(clientY) {
+    if (!sidebar) return;
+    const sidebarRect = sidebar.getBoundingClientRect();
+    const threshold = 45;
+    const maxSpeed = 10;
+
+    let speed = 0;
+    if (clientY < sidebarRect.top + threshold) {
+      const ratio = 1 - Math.max(0, clientY - sidebarRect.top) / threshold;
+      speed = -Math.round(ratio * maxSpeed);
+    } else if (clientY > sidebarRect.bottom - threshold) {
+      const ratio = 1 - Math.max(0, sidebarRect.bottom - clientY) / threshold;
+      speed = Math.round(ratio * maxSpeed);
+    }
+
+    if (speed !== 0) {
+      if (!autoScrollRaf) {
+        const scrollStep = () => {
+          if (!drag || !drag.started) {
+            autoScrollRaf = null;
+            return;
+          }
+          sidebar.scrollTop += speed;
+          if (lastMoveEvent) processDragMove(lastMoveEvent);
+          autoScrollRaf = requestAnimationFrame(scrollStep);
+        };
+        autoScrollRaf = requestAnimationFrame(scrollStep);
+      }
+    } else if (autoScrollRaf) {
+      cancelAnimationFrame(autoScrollRaf);
+      autoScrollRaf = null;
+    }
+  }
+
+  let dragRafPending = false;
+  let lastMoveEvent = null;
+
+  function processDragMove(e) {
+    if (!drag) return;
+    if (!drag.started) {
+      if (Math.abs(e.clientX - drag.startX) < 4 && Math.abs(e.clientY - drag.startY) < 4) return;
+      startDrag(e);
+    }
+
+    const railRect = rail.getBoundingClientRect();
+    drag.clone.style.left = railRect.left + 'px';
+    drag.clone.style.top = (e.clientY - drag.offsetY) + 'px';
+
+    const cursorRailY = e.clientY - railRect.top;
+    const newTargetIndex = computeTargetIndex(cursorRailY);
+
+    if (newTargetIndex !== drag.targetIndex) {
+      drag.targetIndex = newTargetIndex;
+      updateShifts(newTargetIndex);
+    }
+
+    handleAutoScroll(e.clientY);
+  }
+
   rail.addEventListener('pointerdown', (e) => {
     if (e.button !== 0) return;
     const item = e.target.closest('.platform-rail-item[data-platform-rail]');
     if (!item) return;
     const rect = item.getBoundingClientRect();
     drag = {
-      item, started: false,
-      startX: e.clientX, startY: e.clientY,
+      item,
+      pointerId: e.pointerId,
+      started: false,
+      startX: e.clientX,
+      startY: e.clientY,
       offsetX: e.clientX - rect.left,
       offsetY: e.clientY - rect.top,
       width: rect.width,
+      items: [],
+      sourceIndex: -1,
+      targetIndex: -1,
+      shiftDistance: 53,
+      itemCenters: [],
     };
   });
-
-  // ── pointermove：超阈值才启动，rAF 节流防抖 ──
-  let dragRafPending = false;
-  let lastMoveEvent = null;
-  let shiftDebounceTimer = null;
-  const SHIFT_DEBOUNCE_MS = 70;
-
-  function applyShiftNow() {
-    if (!lastMoveEvent) return;
-    const drop = findDropTarget(lastMoveEvent.clientY);
-    clearPlatformRailDragMarkers();
-    clearDragShift();
-    if (drop) {
-      drop.item.classList.toggle('is-drag-over-top', drop.placeAbove);
-      drop.item.classList.toggle('is-drag-over-bottom', !drop.placeAbove);
-      applyDragShift(drop.item, drop.placeAbove);
-    }
-  }
-
-  function scheduleShift() {
-    if (shiftDebounceTimer) clearTimeout(shiftDebounceTimer);
-    shiftDebounceTimer = setTimeout(() => {
-      shiftDebounceTimer = null;
-      applyShiftNow();
-    }, SHIFT_DEBOUNCE_MS);
-  }
-
-  function processDragMove() {
-    dragRafPending = false;
-    if (!drag || !lastMoveEvent) return;
-    const e = lastMoveEvent;
-    if (!drag.started) {
-      if (Math.abs(e.clientX - drag.startX) < 5 && Math.abs(e.clientY - drag.startY) < 5) return;
-      drag.started = true;
-      // 创建克隆体
-      const rect = drag.item.getBoundingClientRect();
-      const clone = drag.item.cloneNode(true);
-      clone.classList.add('is-drag-clone');
-      clone.removeAttribute('onclick');
-      clone.removeAttribute('data-platform-rail');
-      clone.style.left = rect.left + 'px';
-      clone.style.top = rect.top + 'px';
-      clone.style.width = drag.width + 'px';
-      copyHandleVars(clone);
-      document.body.appendChild(clone);
-      drag.clone = clone;
-      // 隐藏原项
-      drag.item.style.opacity = '0';
-      platformRailDragging = drag.item;
-    }
-    // 克隆体跟随鼠标（仅垂直方向，水平锁定在原位）—— 每帧更新，不防抖
-    drag.clone.style.top = (e.clientY - drag.offsetY) + 'px';
-    // 按钮变动防抖：光标停 70ms 才重排，避免快速移动时抖动
-    scheduleShift();
-  }
 
   document.addEventListener('pointermove', (e) => {
     if (!drag) return;
     lastMoveEvent = e;
     if (dragRafPending) return;
     dragRafPending = true;
-    requestAnimationFrame(processDragMove);
+    requestAnimationFrame(() => {
+      dragRafPending = false;
+      if (lastMoveEvent) processDragMove(lastMoveEvent);
+    });
   });
 
-  // ── pointerup / pointercancel：归位 ──
   function finishDrag(e, cancelled) {
     if (!drag) return;
-    // 清理未触发的 shift 防抖定时器
-    if (shiftDebounceTimer) { clearTimeout(shiftDebounceTimer); shiftDebounceTimer = null; }
-    if (!drag.started) { drag = null; return; }
+    if (autoScrollRaf) {
+      cancelAnimationFrame(autoScrollRaf);
+      autoScrollRaf = null;
+    }
 
-    const drop = cancelled ? null : findDropTarget(e.clientY);
+    const currentDrag = drag;
+    drag = null;
+    document.body.classList.remove('is-platform-rail-dragging');
 
-    // 移除克隆体
-    drag.clone.remove();
-    // 恢复原项
-    drag.item.style.opacity = '';
+    if (!currentDrag.started) return;
 
-    if (drop) {
-      const parent = drag.item.parentNode;
-      if (drop.placeAbove) parent.insertBefore(drag.item, drop.item);
-      else parent.insertBefore(drag.item, drop.item.nextSibling);
+    try {
+      if (currentDrag.item.releasePointerCapture && currentDrag.pointerId !== undefined) {
+        currentDrag.item.releasePointerCapture(currentDrag.pointerId);
+      }
+    } catch (_) {}
+
+    if (currentDrag.clone) currentDrag.clone.remove();
+    currentDrag.item.style.opacity = '';
+
+    const { items, sourceIndex, targetIndex } = currentDrag;
+
+    // 关键优化：切换 DOM 前临时关闭过渡，避免 class 清除与 DOM 移动时反向闪烁
+    rail.classList.add('no-transition');
+    clearDragShift();
+    rail.style.removeProperty('--drag-shift-distance');
+    platformRailDragging = null;
+    suppressClick = true;
+
+    if (!cancelled && targetIndex >= 0 && targetIndex !== sourceIndex && items[targetIndex]) {
+      const parent = currentDrag.item.parentNode;
+      if (targetIndex > sourceIndex) {
+        parent.insertBefore(currentDrag.item, items[targetIndex].nextSibling);
+      } else {
+        parent.insertBefore(currentDrag.item, items[targetIndex]);
+      }
       persistPlatformRailOrder();
       if (typeof showBottomToast === 'function') {
         showBottomToast('接入平台顺序已更新', 'success');
       }
     }
-    clearPlatformRailDragMarkers();
-    clearDragShift();
-    platformRailDragging = null;
-    suppressClick = true;
-    drag = null;
+
+    void rail.offsetHeight; // 强制回流
+    rail.classList.remove('no-transition');
   }
+
   document.addEventListener('pointerup', (e) => finishDrag(e, false));
   document.addEventListener('pointercancel', (e) => finishDrag(e, true));
 
-  // 拖拽刚结束时吞掉 click，避免触发 onclick 跳转页面
   rail.addEventListener('click', (e) => {
     if (suppressClick) {
       e.preventDefault();
@@ -924,41 +1036,6 @@ function bindPlatformRailDragAndDrop() {
       suppressClick = false;
     }
   }, true);
-}
-
-// ── "自然流动"辅助：源位与目标位之间的项上移，目标位之后的项下移 ──
-function applyDragShift(targetItem, placeAbove) {
-  const items = getPlatformRailItems();
-  const targetIndex = items.indexOf(targetItem);
-  const sourceIndex = items.indexOf(platformRailDragging);
-  if (targetIndex < 0 || sourceIndex < 0) return;
-
-  // 插入位置：落在目标上方 = 插到目标之前，落在下方 = 插到目标之后
-  const insertIndex = placeAbove ? targetIndex : targetIndex + 1;
-
-  items.forEach((it, idx) => {
-    it.classList.remove('is-drag-shift-up', 'is-drag-shift-down');
-    if (it === platformRailDragging) return;
-
-    if (sourceIndex < insertIndex) {
-      // 向下拖：源位和目标位之间的项上移补位
-      if (idx > sourceIndex && idx < insertIndex) {
-        it.classList.add('is-drag-shift-up');
-      }
-    } else if (sourceIndex > insertIndex) {
-      // 向上拖：目标位和源位之间的项下移撑开
-      if (idx >= insertIndex && idx < sourceIndex) {
-        it.classList.add('is-drag-shift-down');
-      }
-    }
-    // sourceIndex == insertIndex：原位不动，不 shift
-  });
-}
-
-function clearDragShift() {
-  getPlatformRailItems().forEach(it => {
-    it.classList.remove('is-drag-shift-up', 'is-drag-shift-down');
-  });
 }
 
 function initPlatformRailOrder() {

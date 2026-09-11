@@ -348,6 +348,14 @@ fn format_exit_status(status: &std::process::ExitStatus) -> String {
         use std::os::unix::process::ExitStatusExt;
         if let Some(sig) = status.signal() {
             let note = match sig {
+                5 => {
+                    if cfg!(target_os = "macos") {
+                        " (SIGTRAP - macOS 上常见于 Hardened Runtime 下 sidecar 缺少 \
+                         allow-jit entitlement，V8 无法申请 JIT 内存)"
+                    } else {
+                        " (SIGTRAP - 断点/陷阱指令，常见于 V8 断言失败或调试中断)"
+                    }
+                }
                 9 => " (SIGKILL - 常见于 macOS 签名损坏或被系统强杀)",
                 11 => " (SIGSEGV - 内存段错误)",
                 6 => " (SIGABRT - 进程异常中止)",

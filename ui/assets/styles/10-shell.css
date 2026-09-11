@@ -865,7 +865,20 @@ textarea:focus-visible,
   font-family: inherit;
   text-align: left;
   cursor: pointer;
-  transition: background var(--duration-fast) var(--ease), border-color var(--duration-fast) var(--ease), color var(--duration-fast) var(--ease), transform var(--duration-normal) var(--ease), box-shadow var(--duration-normal) var(--ease);
+  touch-action: none;
+  -webkit-user-drag: none;
+  user-select: none;
+  transition: background var(--duration-fast) var(--ease), border-color var(--duration-fast) var(--ease), color var(--duration-fast) var(--ease), transform 200ms cubic-bezier(0.2, 0, 0, 1), box-shadow var(--duration-normal) var(--ease);
+}
+
+.platform-rail.no-transition .platform-rail-item {
+  transition: none !important;
+}
+
+body.is-platform-rail-dragging,
+body.is-platform-rail-dragging * {
+  cursor: grabbing !important;
+  user-select: none !important;
 }
 
 .platform-rail-item:hover {
@@ -908,45 +921,42 @@ textarea:focus-visible,
   opacity: 0.72;
 }
 
-/* 拖拽时"自然流动"：源位与目标位之间的项上移补位，目标位之后的项下移撑开 */
+/* 拖拽时自然流动让位：支持根据项高度动态位移 */
 .platform-rail-item.is-drag-shift-up {
-  transform: translateY(-53px);
+  transform: translateY(calc(-1 * var(--drag-shift-distance, 53px)));
 }
 .platform-rail-item.is-drag-shift-down {
-  transform: translateY(53px);
+  transform: translateY(var(--drag-shift-distance, 53px));
 }
 
-/* 拖拽克隆体：跟随鼠标浮动（手机图标拖动效果） */
+/* 拖拽克隆体：跟随鼠标浮动 */
 .platform-rail-item.is-drag-clone {
   position: fixed;
   pointer-events: none;
   z-index: 10050;
   margin: 0;
-  transform: scale(1.06) translateY(-3px);
-  background-color: rgba(255, 255, 255, 0.58);
-  backdrop-filter: blur(18px) saturate(160%);
-  -webkit-backdrop-filter: blur(18px) saturate(160%);
-  border: 1px solid rgba(255, 255, 255, 0.6);
+  transform: scale(1.03) translateY(-1px);
+  background-color: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(16px) saturate(160%);
+  -webkit-backdrop-filter: blur(16px) saturate(160%);
+  border: 1px solid rgba(18, 97, 166, 0.26);
   box-shadow:
-    0 20px 36px -10px rgba(15, 23, 42, 0.3),
-    0 8px 14px -4px rgba(15, 23, 42, 0.2),
-    0 0 0 1px rgba(18, 97, 166, 0.22),
-    0 0 28px rgba(18, 97, 166, 0.2),
-    inset 0 1px 0 rgba(255, 255, 255, 0.7);
+    0 16px 32px -8px rgba(15, 23, 42, 0.22),
+    0 6px 12px -3px rgba(15, 23, 42, 0.12),
+    0 0 0 1px rgba(18, 97, 166, 0.14);
   cursor: grabbing;
-  transition: transform 120ms cubic-bezier(0.4, 0, 0.2, 1);
+  transition: transform 120ms cubic-bezier(0.2, 0, 0, 1);
   -webkit-app-region: no-drag;
   app-region: no-drag;
 }
 
 [data-theme="dark"] .platform-rail-item.is-drag-clone {
-  background-color: rgba(26, 30, 40, 0.6);
-  border-color: rgba(255, 255, 255, 0.14);
+  background-color: rgba(28, 36, 48, 0.88);
+  border-color: rgba(90, 176, 230, 0.32);
   box-shadow:
-    0 20px 36px -10px rgba(0, 0, 0, 0.55),
-    0 8px 14px -4px rgba(0, 0, 0, 0.4),
-    0 0 0 1px rgba(90, 176, 230, 0.25),
-    0 0 28px rgba(90, 176, 230, 0.22),
+    0 16px 32px -8px rgba(0, 0, 0, 0.58),
+    0 6px 12px -3px rgba(0, 0, 0, 0.38),
+    0 0 0 1px rgba(90, 176, 230, 0.18),
     inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
 

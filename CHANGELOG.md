@@ -2,6 +2,14 @@
 
 All notable changes to AnyBridge will be documented in this file.
 
+## v0.5.9 - 2026-09-11
+
+- 修复 macOS 版代理无法启动：sidecar 启动瞬间被系统以信号 5（SIGTRAP）终止，界面报「代理主端口 7450 未监听」。
+  - 根因：Tauri 2 的 `bundle.macOS.hardenedRuntime` 默认为 `true`，签名时会以 Hardened Runtime 签署 bundle 内全部可执行文件（含 externalBin）；项目此前未配置 entitlements，pkg 打在 Node.js 运行时上的 `anybridge-proxy` 缺少 `com.apple.security.cs.allow-jit` / `allow-unsigned-executable-memory`，V8 初始化时无法申请 JIT 可执行内存而被 trap。
+  - 修复：新增 `src-tauri/entitlements.plist` 并在 `tauri.conf.json` 的 `bundle.macOS.entitlements` 引用，只声明 JIT 必需项，不额外放宽库校验（`disable-library-validation`）。
+  - 发布门禁：移除会被 Tauri 覆盖的打包前预签名，改为在打包后校验最终 `AnyBridge.app`——整包 `codesign --verify --deep --strict`、断言 sidecar 的 Hardened Runtime 标记与两项 JIT entitlement，并用独立配置目录做 5 秒启动冒烟，被信号终止即中断发布。
+- 诊断增强：sidecar 退出状态为信号 5 时，日志按平台给出可读说明（macOS 指向 JIT entitlement，其他 Unix 指向通用断点/陷阱）。
+
 ## v0.5.8 - 2026-09-11
 
 - 优化 Antigravity 稳定性与对话体验：

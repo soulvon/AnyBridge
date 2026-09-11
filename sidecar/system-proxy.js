@@ -33,19 +33,50 @@ function readWindowsInternetSetting(name) {
   }
 }
 
+function readMacSystemProxy() {
+  if (process.platform !== 'darwin') return '';
+  try {
+    const output = execFileSync('scutil', ['--proxy'], { encoding: 'utf8', timeout: 1500 });
+    if (/HTTPSEnable\s*:\s*1/.test(output)) {
+      const hostMatch = output.match(/HTTPSProxy\s*:\s*([^\s]+)/);
+      const portMatch = output.match(/HTTPSPort\s*:\s*([0-9]+)/);
+      if (hostMatch && portMatch) {
+        return `http://${hostMatch[1]}:${portMatch[1]}`;
+      }
+    }
+    if (/HTTPEnable\s*:\s*1/.test(output)) {
+      const hostMatch = output.match(/HTTPProxy\s*:\s*([^\s]+)/);
+      const portMatch = output.match(/HTTPPort\s*:\s*([0-9]+)/);
+      if (hostMatch && portMatch) {
+        return `http://${hostMatch[1]}:${portMatch[1]}`;
+      }
+    }
+    return '';
+  } catch {
+    return '';
+  }
+}
+
 export function getSystemProxyUrl() {
   const explicitProxy = process.env.ANYBRIDGE_UPSTREAM_PROXY || process.env.BYOK_UPSTREAM_PROXY;
   if (explicitProxy) return parseProxyServer(explicitProxy);
 
-  if (process.platform !== 'win32') {
-    const envProxy = process.env.HTTPS_PROXY || process.env.https_proxy
-      || process.env.HTTP_PROXY || process.env.http_proxy
-      || process.env.ALL_PROXY || process.env.all_proxy;
-    return envProxy ? parseProxyServer(envProxy) : '';
+  const envProxy = process.env.HTTPS_PROXY || process.env.https_proxy
+    || process.env.HTTP_PROXY || process.env.http_proxy
+    || process.env.ALL_PROXY || process.env.all_proxy;
+  if (envProxy) return parseProxyServer(envProxy);
+
+  if (process.platform === 'darwin') {
+    return parseProxyServer(readMacSystemProxy());
   }
-  const enabled = readWindowsInternetSetting('ProxyEnable');
-  if (enabled !== '1' && !/^0x?1$/i.test(enabled)) return '';
-  return parseProxyServer(readWindowsInternetSetting('ProxyServer'));
+
+  if (process.platform === 'win32') {
+    const enabled = readWindowsInternetSetting('ProxyEnable');
+    if (enabled !== '1' && !/^0x?1$/i.test(enabled)) return '';
+    return parseProxyServer(readWindowsInternetSetting('ProxyServer'));
+  }
+
+  return '';
 }
 
 class HttpsOverHttpProxyAgent extends https.Agent {

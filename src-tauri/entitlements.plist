@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!--
+      Tauri 2 的 bundle.macOS.hardenedRuntime 默认值为 true，签名时会把这同一份
+      entitlements 应用到 bundle 内所有可执行文件（主程序 + externalBin：
+      anybridge-proxy / anybridge-cursor-core）。
+
+      anybridge-proxy 是用 pkg 打在 Node.js 运行时上的二进制，V8 需要申请 JIT
+      可执行内存；在 Hardened Runtime 下缺少下面两项 entitlement 时，V8 初始化会
+      失败，进程在启动瞬间被 trap（macOS 上报为信号 5 / SIGTRAP），表现为
+      「代理进程已退出（终止信号: 5）」+ 端口 7450 未监听。
+
+      这里只声明 JIT 必需项，不再放宽库校验（disable-library-validation）：
+      sidecar 不加载第三方 dylib 或原生模块，且该 entitlement 会同时作用到主程序
+      与 anybridge-cursor-core，属于不必要的攻击面。
+    -->
+    <key>com.apple.security.cs.allow-jit</key>
+    <true/>
+    <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+    <true/>
+</dict>
+</plist>

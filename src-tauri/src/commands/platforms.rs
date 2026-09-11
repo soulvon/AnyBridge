@@ -565,7 +565,7 @@ impl Platform {
         let proxy_url = format!("http://127.0.0.1:{}", port);
 
         let mut targets = vec![path.clone()];
-        if let Some(data_dir) = dirs::data_dir() {
+        if let Some(data_dir) = vscode_like_data_dir() {
             let ide_path = data_dir.join("Antigravity IDE").join("User").join("settings.json");
             let app_path = data_dir.join("Antigravity").join("User").join("settings.json");
             if !targets.contains(&ide_path) && (ide_path.exists() || ide_path.parent().map(|p| p.exists()).unwrap_or(false)) {
@@ -594,7 +594,7 @@ impl Platform {
 
     fn apply_antigravity_official(&self, path: &PathBuf) -> Result<(), String> {
         let mut targets = vec![path.clone()];
-        if let Some(data_dir) = dirs::data_dir() {
+        if let Some(data_dir) = vscode_like_data_dir() {
             let ide_path = data_dir.join("Antigravity IDE").join("User").join("settings.json");
             let app_path = data_dir.join("Antigravity").join("User").join("settings.json");
             if !targets.contains(&ide_path) && ide_path.exists() {
@@ -1238,8 +1238,19 @@ fn app_data_dir(name: &str) -> Option<PathBuf> {
     Some(dir)
 }
 
+fn vscode_like_data_dir() -> Option<PathBuf> {
+    #[cfg(target_os = "macos")]
+    {
+        dirs::data_dir()
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        dirs::config_dir()
+    }
+}
+
 fn antigravity_config_dir() -> Option<PathBuf> {
-    let data_dir = dirs::data_dir()?;
+    let data_dir = vscode_like_data_dir()?;
     let ide_user = data_dir.join("Antigravity IDE").join("User");
     if ide_user.exists() {
         return Some(ide_user);

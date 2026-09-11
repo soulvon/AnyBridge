@@ -264,7 +264,19 @@ fn start_impl(app: AppHandle, state: &CursorCoreState) -> Result<(), String> {
         )
         .api_port;
         let binary = resolve_binary(&app)?;
-        let mut command = Command::new(binary);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            if let Ok(metadata) = std::fs::metadata(&binary) {
+                let mut permissions = metadata.permissions();
+                let mode = permissions.mode();
+                if mode & 0o111 != 0o111 {
+                    permissions.set_mode(mode | 0o755);
+                    let _ = std::fs::set_permissions(&binary, permissions);
+                }
+            }
+        }
+        let mut command = Command::new(&binary);
         command
             .env("ANYBRIDGE_CONFIG_DIR", &config_dir)
             .env("ANYBRIDGE_ROUTES_PATH", &routes)
