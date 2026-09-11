@@ -901,6 +901,8 @@ export const __localProxyTest = {
   openAITools,
   anthropicTools,
   normalizeToolParameters,
+  antigravityErrorSnapshot,
+  writeAntigravityStreamError,
   sendGemini,
   sendGeminiStream,
   geminiModelFromPath,
@@ -2085,6 +2087,28 @@ function geminiResponsePayload(ctx, result) {
   };
 }
 
+// Antigravity LS 的流式客户端无法解析非 SSE 错误体（2.5.5 会空指针崩溃，
+// 见 generation.go:680 / stream_helpers.go:181，进程直接 exit code 2）。
+// 上游失败时必须降级为协议合法的 SSE 快照，把错误文本作为模型回复返回，
+// 保证 Agent 不会永久卡在 "Working."。
+function antigravityErrorSnapshot(ctx, message) {
+  const text = `[AnyBridge] 上游请求失败：${message}`;
+  return {
+    candidates: [{
+      content: { role: 'model', parts: [{ text }] },
+      finishReason: 'STOP',
+      index: 0,
+    }],
+    ...(ctx?.model ? { modelVersion: ctx.model } : {}),
+  };
+}
+
+function writeAntigravityStreamError(res, ctx, message) {
+  res.writeHead(200, cors({ 'content-type': 'text/event-stream; charset=utf-8' }));
+  sse(res, null, antigravityErrorSnapshot(ctx, message));
+  res.end();
+}
+
 function sendGemini(ctx, res, result) {
   sendJson(res, 200, geminiResponsePayload(ctx, result), result.extraHeaders || {});
 }
@@ -2398,7 +2422,17 @@ export async function handleLocalProxyRequest(req, res, body) {
           tools: reqData.tools || json.tools,
         };
         const ctx = attachScope(normalizeRequest('gemini', source));
-        const result = await execute(ctx);
+        let result;
+        try {
+          result = await execute(ctx);
+        } catch (e) {
+          if (stream) {
+            // 流式端点必须回 SSE；直接回错误 JSON 会让 Antigravity LS 空指针崩溃。
+            writeAntigravityStreamError(res, ctx, e?.message || String(e));
+            return;
+          }
+          throw e;
+        }
         const payload = geminiResponsePayload(ctx, result);
 
         if (stream) {

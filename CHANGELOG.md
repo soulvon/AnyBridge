@@ -2,6 +2,14 @@
 
 All notable changes to AnyBridge will be documented in this file.
 
+## v0.5.10 - 2026-09-11
+
+- 修复 Antigravity Agent 卡在 "Working." 不回复的致命问题：
+  - 根因：`/v1internal:streamGenerateContent` 在上游失败（如商汤 `HTTP 429: inference exceeds tpm/rpm limit` 或 `HTTP 400: inference request is invalid`）时，代理返回的是 HTTP 错误 + `application/json`；Antigravity Language Server 2.5.5 的流式解析器把该响应当流处理，触发空指针崩溃（`panic: runtime error: invalid memory address or nil pointer dereference`，`generation.go:680` / `stream_helpers.go:181`），进程 `exit code 2`，界面永久停留在 "Working."。
+  - 修复：Antigravity `streamGenerateContent` 分支捕获上游异常后统一降级为协议合法的 SSE 快照（HTTP 200 + `text/event-stream`），把错误信息作为模型文本回复返回，Agent 不再崩溃或卡死，用户能直接看到上游失败原因。
+  - 新增回归测试，`local-proxy` 与 `antigravity` 共 28 项全部通过。
+  - 说明：商汤通道当前存在 `tpm/rpm` 限流，`gpt-5.6-luna(CPA)` 的 codex 额度仍在冷却；本次修复解决的是“上游报错时代理导致 LS 崩溃”，不改变上游配额本身。
+
 ## v0.5.9 - 2026-09-11
 
 - 修复 Antigravity 自定义模型能显示、但 Agent 对话被上游拒绝的问题：

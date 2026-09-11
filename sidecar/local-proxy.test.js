@@ -478,6 +478,26 @@ test('Anthropic upstream also receives lowercase JSON Schema for Gemini tools', 
   assert.equal(anthropic[0].input_schema.properties.task.type, 'string');
 });
 
+test('Antigravity stream errors degrade to a valid SSE snapshot instead of a crashing JSON error', () => {
+  const chunks = [];
+  const headers = [];
+  const res = {
+    writeHead(status, h) { headers.push({ status, h }); },
+    write(chunk) { chunks.push(String(chunk)); },
+    end() {},
+  };
+  __localProxyTest.writeAntigravityStreamError(res, { model: 'deepseek-v4-flash' }, '商汤: HTTP 429: inference exceeds tpm/rpm limit');
+  assert.equal(headers[0].status, 200, '流式端点即使上游失败也必须回 200 SSE，否则 LS 会崩溃');
+  assert.ok(String(headers[0].h['content-type']).startsWith('text/event-stream'));
+  const body = chunks.join('');
+  assert.ok(body.startsWith('data: '), '必须是 SSE data 帧');
+  const payload = JSON.parse(body.slice(6).trim());
+  assert.equal(payload.candidates[0].content.role, 'model');
+  assert.equal(payload.candidates[0].finishReason, 'STOP');
+  assert.ok(String(payload.candidates[0].content.parts[0].text).includes('429'));
+  assert.equal(payload.modelVersion, 'deepseek-v4-flash');
+});
+
 test('Gemini upstream keeps Google uppercase schema enums (no cross-protocol corruption)', () => {
   const ctx = __localProxyTest.normalizeRequest('gemini', {
     model: 'local-model',
