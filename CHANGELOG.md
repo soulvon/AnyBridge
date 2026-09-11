@@ -2,7 +2,7 @@
 
 All notable changes to AnyBridge will be documented in this file.
 
-## v0.5.10 - 2026-09-11
+## v0.5.8 - 2026-09-11
 
 - 修复 Antigravity Agent 卡在 "Working." 不回复的致命问题：
   - 根因：`/v1internal:streamGenerateContent` 在上游失败（如商汤 `HTTP 429: inference exceeds tpm/rpm limit` 或 `HTTP 400: inference request is invalid`）时，代理返回的是 HTTP 错误 + `application/json`；Antigravity Language Server 2.5.5 的流式解析器把该响应当流处理，触发空指针崩溃（`panic: runtime error: invalid memory address or nil pointer dereference`，`generation.go:680` / `stream_helpers.go:181`），进程 `exit code 2`，界面永久停留在 "Working."。
@@ -10,14 +10,10 @@ All notable changes to AnyBridge will be documented in this file.
   - 新增回归测试，`local-proxy` 与 `antigravity` 共 28 项全部通过。
   - 说明：商汤通道当前存在 `tpm/rpm` 限流，`gpt-5.6-luna(CPA)` 的 codex 额度仍在冷却；本次修复解决的是“上游报错时代理导致 LS 崩溃”，不改变上游配额本身。
 
-## v0.5.9 - 2026-09-11
-
 - 修复 Antigravity 自定义模型能显示、但 Agent 对话被上游拒绝的问题：
   - 根因是 Antigravity 发送 Gemini / Google 风格工具声明，参数 schema 使用 protobuf 大写枚举（`type: "OBJECT"` / `"STRING"`）；代理原样透传给 OpenAI 兼容上游，导致 CPA 返回 `HTTP 400: Invalid schema for function 'browser_subagent': 'STRING' is not valid under any of the given schemas.`，界面表现为 `Agent execution terminated due to error`。
   - 新增工具 schema 递归归一化：将 `STRING/NUMBER/INTEGER/BOOLEAN/ARRAY/OBJECT`（含 protobuf 数字枚举 1–6）转换为小写 JSON Schema，并递归处理 `properties` / `items` / `anyOf|oneOf|allOf`；仅在输出到 OpenAI / Anthropic 上游时生效，`normalizeGeminiTools` 保持不变，Gemini 上游仍收到 Google 大写枚举，避免反向破坏。
   - 补充 3 条回归测试：OpenAI / Anthropic 必须收到小写 schema、Gemini 上游必须保留大写枚举；`local-proxy` 与 `antigravity` 测试共 27 项全部通过。
-
-## v0.5.8 - 2026-09-11
 
 - 修复 Antigravity 自定义 API 模型可显示但无法对话的问题：
   - 根因是纯 BYOK 模型目录丢失了 Language Server 构建 Cascade 所需的内部模型注册，导致请求发往上游前即报 `unknown model key MODEL_PLACEHOLDER_M36/M50/M318: model not found`；同时自定义模型的运行枚举、`modelProvider` 与 `apiProvider` 协议族不一致，生成的 ModelInfo 无法稳定注册。

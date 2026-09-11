@@ -408,6 +408,30 @@ test('Antigravity 协议流式输出: 思考链 (Thinking) 与工具调用 (Tool
   assert.equal(toolPart.thoughtSignature, 'skip_thought_signature_validator');
 });
 
+test('Antigravity internal dependency catalog keys resolve to the active BYOK model', () => {
+  const providersJson = {
+    antigravityConfigs: [{
+      id: 'custom-1',
+      name: 'Custom Model',
+      defaultModel: 'vendor/model-a',
+      models: ['vendor/model-a'],
+      sourceProviderName: 'Vendor',
+      enabled: true,
+      injectModels: true,
+    }],
+    platforms: { antigravity: { providerId: 'custom-1' } },
+  };
+  // LS 实际用目录键请求内部 checkpoint / fast model；只认运行枚举会导致 400 并崩溃
+  for (const key of ['anybridge-internal-checkpoint', 'anybridge-internal-fast-model', 'anybridge-internal-checkpoint-fallback']) {
+    const resolved = resolveAntigravityCustomModel(key, providersJson);
+    assert.ok(resolved, `内部目录键 ${key} 必须能解析到 BYOK 模型`);
+    assert.equal(resolved.upstreamModel, 'vendor/model-a');
+  }
+  for (const runtime of ['MODEL_PLACEHOLDER_M36', 'MODEL_PLACEHOLDER_M50', 'MODEL_PLACEHOLDER_M318']) {
+    assert.equal(resolveAntigravityCustomModel(runtime, providersJson)?.upstreamModel, 'vendor/model-a');
+  }
+});
+
 test('Antigravity 自定义模型到 OpenAI 上游请求体双向转换', () => {
   const agRequest = {
     model: 'models/deepseek-chat',

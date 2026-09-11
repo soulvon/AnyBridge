@@ -2401,6 +2401,11 @@ export async function handleLocalProxyRequest(req, res, body) {
             await forwardToOfficialAntigravity(req, res, { body });
             return;
           }
+          if (method === 'streamGenerateContent') {
+            // 流式端点即使模型未解析也必须回 SSE；回 JSON 错误会让 LS 空指针崩溃。
+            writeAntigravityStreamError(res, { model: requestedModel }, `未找到模型 [${requestedModel}] 对应的 Provider 配置，请在 AnyBridge 中添加并启用该模型。`);
+            return;
+          }
           sendJson(res, 400, {
             error: {
               code: 400,

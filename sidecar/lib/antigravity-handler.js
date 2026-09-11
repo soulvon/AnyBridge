@@ -247,7 +247,15 @@ export function resolveAntigravityCustomModel(modelId, providersJson = {}) {
   const requested = cleanAntigravityModelId(modelId);
   if (!requested) return null;
   const normalized = requested.toLowerCase();
-  if (ANTIGRAVITY_INTERNAL_RUNTIME_MODELS.some(dependency => dependency.runtimeModelId.toLowerCase() === normalized)) {
+  // 内部依赖模型既可能以运行枚举（MODEL_PLACEHOLDER_M50）发送，
+  // 也可能以目录键（anybridge-internal-checkpoint）发送，两者都必须识别。
+  // 只认运行枚举会导致 LS 请求内部 checkpoint / fast model 时解析失败，
+  // 代理返回 400 JSON，LS 在流式解析时空指针崩溃（generation.go:680）。
+  const internal = ANTIGRAVITY_INTERNAL_RUNTIME_MODELS.find(dependency =>
+    dependency.runtimeModelId.toLowerCase() === normalized
+    || String(dependency.catalogKey || '').toLowerCase() === normalized
+  );
+  if (internal) {
     const active = activeAntigravityIdentity(providersJson);
     return active ? { ...active, exposedModel: active.upstreamModel } : null;
   }
