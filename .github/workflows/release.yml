@@ -207,7 +207,9 @@ jobs:
 
           echo "--- sidecar codesign flags ---"
           codesign -dv --verbose=4 "$SIDECAR" 2>&1 | tee /tmp/sidecar-flags.txt
-          if ! grep -Eq '\(runtime\)' /tmp/sidecar-flags.txt; then
+          # flags 形如 flags=0x10002(adhoc,runtime)：runtime 只是其中一个标记，
+          # 不能按孤立的 "(runtime)" 精确匹配，否则会误判为未启用 Hardened Runtime
+          if ! grep -Eq 'flags=0x[0-9a-f]+\([^)]*runtime' /tmp/sidecar-flags.txt; then
             echo "FATAL: sidecar 未启用 Hardened Runtime，签名链路与预期不一致"
             exit 1
           fi
