@@ -1120,6 +1120,22 @@ async fn fetch_latest_release_via_web_redirect(repo: &str) -> Result<GithubRelea
 }
 
 async fn fetch_latest_release(repo: &str) -> Result<GithubRelease, String> {
+    let mut last_err = String::new();
+    for attempt in 0..3u32 {
+        match fetch_latest_release_attempt(repo).await {
+            Ok(result) => return Ok(result),
+            Err(e) => {
+                last_err = e;
+                if attempt < 2 {
+                    tokio::time::sleep(Duration::from_secs(2 * (attempt + 1) as u64)).await;
+                }
+            }
+        }
+    }
+    Err(last_err)
+}
+
+async fn fetch_latest_release_attempt(repo: &str) -> Result<GithubRelease, String> {
     let client = build_github_api_client()?;
     let url = format!("https://api.github.com/repos/{}/releases/latest", repo);
     let response = client
@@ -1155,17 +1171,10 @@ pub async fn extension_list_managed_services() -> Result<Vec<ExtensionServiceSta
 
 #[tauri::command]
 pub async fn extension_check_cpa_updates() -> Result<CpaUpdateReport, String> {
-    let suite = scan_cpa_suite();
-    let cli_current = suite
-        .components
-        .iter()
-        .find(|component| component.id == "cli-proxy-api")
-        .and_then(|component| component.version.clone());
-    let cpamp_current = suite
-        .components
-        .iter()
-        .find(|component| component.id == "cpa-manager-plus")
-        .and_then(|component| component.version.clone());
+    let cli_install = find_component_install("cli-proxy-api", parse_cli_version);
+    let cpamp_install = find_component_install("cpa-manager-plus", parse_cpamp_version);
+    let cli_current = cli_install.as_ref().and_then(|c| c.version.clone());
+    let cpamp_current = cpamp_install.as_ref().and_then(|c| c.version.clone());
 
     let (cli_latest, cpamp_latest) = tokio::try_join!(
         fetch_latest_release("router-for-me/CLIProxyAPI"),
@@ -1175,6 +1184,16 @@ pub async fn extension_check_cpa_updates() -> Result<CpaUpdateReport, String> {
     let checked_at = chrono::Utc::now().to_rfc3339();
     let cli_latest_version = normalize_version(&cli_latest.tag_name);
     let cpamp_latest_version = normalize_version(&cpamp_latest.tag_name);
+
+    // 已安装但版本无法识别时视为可更新，避免误报"已是最新版本"
+    let cli_update_available = match cli_current.as_deref() {
+        Some(current) => is_newer_version(&cli_latest_version, current).unwrap_or(true),
+        None => cli_install.is_some(),
+    };
+    let cpamp_update_available = match cpamp_current.as_deref() {
+        Some(current) => is_newer_version(&cpamp_latest_version, current).unwrap_or(true),
+        None => cpamp_install.is_some(),
+    };
 
     Ok(CpaUpdateReport {
         id: CPA_SUITE_ID.into(),
@@ -1186,9 +1205,7 @@ pub async fn extension_check_cpa_updates() -> Result<CpaUpdateReport, String> {
                 repository: "router-for-me/CLIProxyAPI".into(),
                 current_version: cli_current.clone(),
                 latest_version: cli_latest_version.clone(),
-                update_available: cli_current
-                    .as_deref()
-                    .and_then(|current| is_newer_version(&cli_latest_version, current)),
+                update_available: Some(cli_update_available),
                 release_url: cli_latest.html_url,
                 published_at: cli_latest.published_at,
             },
@@ -1198,9 +1215,7 @@ pub async fn extension_check_cpa_updates() -> Result<CpaUpdateReport, String> {
                 repository: "seakee/CPA-Manager-Plus".into(),
                 current_version: cpamp_current.clone(),
                 latest_version: cpamp_latest_version.clone(),
-                update_available: cpamp_current
-                    .as_deref()
-                    .and_then(|current| is_newer_version(&cpamp_latest_version, current)),
+                update_available: Some(cpamp_update_available),
                 release_url: cpamp_latest.html_url,
                 published_at: cpamp_latest.published_at,
             },
@@ -1478,6 +1493,7 @@ pub async fn extension_switch_cpa_version(
     cpamp_version: Option<String>,
     restart: Option<bool>,
 ) -> Result<ExtensionServiceStatus, String> {
+    let _guard = cpa_deploy_lock().lock().await;
     let (pref_cli, pref_cpamp) = read_preferred_component_versions();
     let target_cli = cli_version
         .as_deref()
@@ -2053,6 +2069,7 @@ pub async fn extension_update_cpa_suite(
     app: AppHandle,
     install_dir: Option<String>,
 ) -> Result<ExtensionServiceStatus, String> {
+    let _guard = cpa_deploy_lock().lock().await;
     let report = extension_check_cpa_updates().await?;
     let has_update = report
         .components
@@ -2089,7 +2106,7 @@ pub async fn extension_update_cpa_suite(
         return Err("更新失败：服务停止后端口未释放，请稍后重试。".into());
     }
 
-    match extension_deploy_cpa_suite(app.clone(), install_dir).await {
+    match deploy_cpa_suite_inner(app.clone(), install_dir).await {
         Ok(result) => Ok(result),
         Err(e) => {
             // 更新失败，尝试恢复旧服务
@@ -2106,6 +2123,13 @@ pub async fn extension_update_cpa_suite(
 }
 
 // ═══════ 部署 ═══════
+
+/// CPA 套件部署/更新/安装/切换的全局互斥锁，防止并发操作互相干扰
+static CPA_DEPLOY_LOCK: std::sync::OnceLock<tokio::sync::Mutex<()>> = std::sync::OnceLock::new();
+
+fn cpa_deploy_lock() -> &'static tokio::sync::Mutex<()> {
+    CPA_DEPLOY_LOCK.get_or_init(|| tokio::sync::Mutex::new(()))
+}
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -2677,13 +2701,49 @@ async fn download_asset(
 }
 
 fn extract_archive(archive_path: &Path, target_dir: &Path) -> Result<(), String> {
-    // Clean up any stale files from previous failed extraction attempts
-    if target_dir.exists() {
-        let _ = fs::remove_dir_all(target_dir);
-    }
-    fs::create_dir_all(target_dir)
-        .map_err(|e| format!("无法创建目标目录 {}: {}", target_dir.display(), e))?;
+    // 原子化解压：先解压到同级临时目录，成功后整体替换目标目录，
+    // 避免解压中断在 versions/ 下留下"半成品目录"被误认为有效安装。
+    let parent = target_dir
+        .parent()
+        .ok_or_else(|| format!("目标目录缺少父目录: {}", target_dir.display()))?;
+    fs::create_dir_all(parent)
+        .map_err(|e| format!("无法创建父目录 {}: {}", parent.display(), e))?;
+    let stem = target_dir
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("component");
+    let staging = parent.join(format!(".extracting-{}", stem));
 
+    if staging.exists() {
+        fs::remove_dir_all(&staging)
+            .map_err(|e| format!("无法清理临时解压目录 {}: {}", staging.display(), e))?;
+    }
+    fs::create_dir_all(&staging)
+        .map_err(|e| format!("无法创建临时解压目录 {}: {}", staging.display(), e))?;
+
+    if let Err(e) = extract_archive_into(archive_path, &staging) {
+        let _ = fs::remove_dir_all(&staging);
+        return Err(e);
+    }
+
+    // 解压成功后整体替换目标目录
+    if target_dir.exists() {
+        fs::remove_dir_all(target_dir)
+            .map_err(|e| format!("无法移除旧目录 {}: {}", target_dir.display(), e))?;
+    }
+    fs::rename(&staging, target_dir).map_err(|e| {
+        let _ = fs::remove_dir_all(&staging);
+        format!(
+            "无法将临时目录 {} 重命名为 {}: {}",
+            staging.display(),
+            target_dir.display(),
+            e
+        )
+    })?;
+    Ok(())
+}
+
+fn extract_archive_into(archive_path: &Path, staging_dir: &Path) -> Result<(), String> {
     let name = archive_path
         .file_name()
         .and_then(|n| n.to_str())
@@ -2691,9 +2751,9 @@ fn extract_archive(archive_path: &Path, target_dir: &Path) -> Result<(), String>
         .to_lowercase();
 
     if name.ends_with(".zip") {
-        extract_zip_archive(archive_path, target_dir)?;
+        extract_zip_archive(archive_path, staging_dir)?;
     } else if name.ends_with(".tar.gz") || name.ends_with(".tgz") {
-        extract_tar_gz_archive(archive_path, target_dir)?;
+        extract_tar_gz_archive(archive_path, staging_dir)?;
     } else {
         return Err(format!(
             "不支持的安装包格式: {}（需要 .zip 或 .tar.gz）",
@@ -3374,6 +3434,15 @@ pub async fn extension_deploy_cpa_suite(
     app: AppHandle,
     install_dir: Option<String>,
 ) -> Result<ExtensionServiceStatus, String> {
+    let _guard = cpa_deploy_lock().lock().await;
+    deploy_cpa_suite_inner(app, install_dir).await
+}
+
+/// 实际部署逻辑。调用方需自行持有 cpa_deploy_lock()。
+async fn deploy_cpa_suite_inner(
+    app: AppHandle,
+    install_dir: Option<String>,
+) -> Result<ExtensionServiceStatus, String> {
     let current = scan_cpa_suite();
     if current.status == "running" {
         return Err("CPA 套件已在运行中。如需重新部署，请先停止服务。".into());
@@ -3418,70 +3487,94 @@ pub async fn extension_deploy_cpa_suite(
         }
     };
 
-    // 3. 下载 CPA
-    emit_deploy_progress(
-        &app,
-        "download_cpa",
-        &format!(
-            "下载 CLIProxyAPI {} ({})...",
-            cpa_version,
-            size_msg(cpa_asset.size)
-        ),
-        10,
-    );
-    let cpa_archive = download_asset(
-        &cpa_asset.browser_download_url,
-        &format!(
-            "anybridge_cpa_{}.{}",
-            cpa_version,
-            archive_suffix(&cpa_asset.name)
-        ),
-        &app,
-        10,
-        35,
-    )
-    .await?;
-
-    // 4. 下载 CPAMP
-    emit_deploy_progress(
-        &app,
-        "download_cpamp",
-        &format!(
-            "下载 CPA Manager Plus {} ({})...",
-            cpamp_version,
-            size_msg(cpamp_asset.size)
-        ),
-        40,
-    );
-    let cpamp_archive = download_asset(
-        &cpamp_asset.browser_download_url,
-        &format!(
-            "anybridge_cpamp_{}.{}",
-            cpamp_version,
-            archive_suffix(&cpamp_asset.name)
-        ),
-        &app,
-        40,
-        60,
-    )
-    .await?;
-
-    // 4.5. 记录旧版本安装目录，用于后续数据迁移
-    let old_cli_dir = find_component_install("cli-proxy-api", parse_cli_version)
-        .map(|c| c.dir);
-
-    // 5. 准备目录
+    // 3. 准备目录（提前到下载前，用于检测本地已有目标版本，跳过重复下载）
     let root = resolve_cpa_install_dir(install_dir);
     let versions = root.join("versions");
     persist_cpa_install_dir(&root)?;
     let cpa_dir = versions.join(format!("CLIProxyAPI_{}", cpa_version));
     let cpamp_dir = versions.join(format!("cpa-manager-plus_v{}", cpamp_version));
 
-    // 6. 解压 CPA
-    emit_deploy_progress(&app, "extract_cpa", "解压 CLIProxyAPI...", 65);
-    {
+    // 4. 记录旧版本安装目录，用于后续数据迁移
+    let old_cli_dir = find_component_install("cli-proxy-api", parse_cli_version)
+        .map(|c| c.dir);
+
+    // 5. 下载 CPA（目标版本已在本地则跳过，避免更新未变更组件时重复下载）
+    let cpa_archive = if find_exe_in_dir(&cpa_dir, "cli-proxy-api").is_ok() {
+        emit_deploy_progress(
+            &app,
+            "download_cpa",
+            &format!("CLIProxyAPI {} 已在本地，跳过下载", cpa_version),
+            10,
+        );
+        None
+    } else {
+        emit_deploy_progress(
+            &app,
+            "download_cpa",
+            &format!(
+                "下载 CLIProxyAPI {} ({})...",
+                cpa_version,
+                size_msg(cpa_asset.size)
+            ),
+            10,
+        );
+        Some(
+            download_asset(
+                &cpa_asset.browser_download_url,
+                &format!(
+                    "anybridge_cpa_{}.{}",
+                    cpa_version,
+                    archive_suffix(&cpa_asset.name)
+                ),
+                &app,
+                10,
+                35,
+            )
+            .await?,
+        )
+    };
+
+    // 6. 下载 CPAMP（同上）
+    let cpamp_archive = if find_exe_in_dir(&cpamp_dir, "cpa-manager-plus").is_ok() {
+        emit_deploy_progress(
+            &app,
+            "download_cpamp",
+            &format!("CPA Manager Plus {} 已在本地，跳过下载", cpamp_version),
+            40,
+        );
+        None
+    } else {
+        emit_deploy_progress(
+            &app,
+            "download_cpamp",
+            &format!(
+                "下载 CPA Manager Plus {} ({})...",
+                cpamp_version,
+                size_msg(cpamp_asset.size)
+            ),
+            40,
+        );
+        Some(
+            download_asset(
+                &cpamp_asset.browser_download_url,
+                &format!(
+                    "anybridge_cpamp_{}.{}",
+                    cpamp_version,
+                    archive_suffix(&cpamp_asset.name)
+                ),
+                &app,
+                40,
+                60,
+            )
+            .await?,
+        )
+    };
+
+    // 7. 解压 CPA
+    if let Some(archive) = &cpa_archive {
+        emit_deploy_progress(&app, "extract_cpa", "解压 CLIProxyAPI...", 65);
         let dir = cpa_dir.clone();
-        let archive = cpa_archive.clone();
+        let archive = archive.clone();
         tauri::async_runtime::spawn_blocking(move || {
             let res = extract_archive(&archive, &dir);
             let _ = fs::remove_file(&archive);
@@ -3491,11 +3584,11 @@ pub async fn extension_deploy_cpa_suite(
         .map_err(|e| e.to_string())??;
     }
 
-    // 7. 解压 CPAMP
-    emit_deploy_progress(&app, "extract_cpamp", "解压 CPA Manager Plus...", 70);
-    {
+    // 8. 解压 CPAMP
+    if let Some(archive) = &cpamp_archive {
+        emit_deploy_progress(&app, "extract_cpamp", "解压 CPA Manager Plus...", 70);
         let dir = cpamp_dir.clone();
-        let archive = cpamp_archive.clone();
+        let archive = archive.clone();
         tauri::async_runtime::spawn_blocking(move || {
             let res = extract_archive(&archive, &dir);
             let _ = fs::remove_file(&archive);
@@ -3505,7 +3598,7 @@ pub async fn extension_deploy_cpa_suite(
         .map_err(|e| e.to_string())??;
     }
 
-    // 7.5. 迁移旧版本 auth/ 和 plugins/ 到新版本目录，保留用户配置
+    // 8.5. 迁移旧版本 auth/ 和 plugins/ 到新版本目录，保留用户配置
     // 同版本重装时 old == new，自拷既无意义，Windows 上还可能因文件自复制失败。
     if let Some(old) = &old_cli_dir {
         if old != &cpa_dir {
@@ -3797,6 +3890,7 @@ pub async fn extension_install_cpa_version(
     cpamp_version: Option<String>,
     restart: Option<bool>,
 ) -> Result<ExtensionServiceStatus, String> {
+    let _guard = cpa_deploy_lock().lock().await;
     let (pref_cli, pref_cpamp) = read_preferred_component_versions();
     let target_cli = cli_version
         .as_deref()

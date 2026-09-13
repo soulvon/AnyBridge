@@ -2,6 +2,14 @@
 
 All notable changes to AnyBridge will be documented in this file.
 
+## v0.5.12 - 2026-09-13
+
+- 修复 Windsurf / Devin 接入后每次启动都弹出「安装似乎损坏，请重新安装」（`Your XXX installation appears to be corrupt. Please reinstall.`）：
+  - 根因：VS Code 完整性校验在 workbench 启动时，会按 `product.json` 的 `checksums` 清单逐一校验核心文件（`workbench.html`、`workbench.desktop.main.js`、`sessions.*` 等共 10 个）的 SHA-256；AnyBridge 注入模型卡片脚本会改写 `workbench.html`，哈希必然失配。且 Windsurf / Devin 未配置 `checksumFailMoreInfoUrl`，提示走的是纯 `notificationService.notify` 分支，连「不再提示」按钮都没有，用户根本无法关闭。
+  - 修复：接入代理时一并接管 `product.json`——先备份为 `product.json.byok-origin`（与汉化插件的 `.origin` 互不覆盖），再清空顶层 `checksums` 清单；workbench 的 `_isPure()` 拿到空清单时循环 0 次，直接判定 `isPure=true`，提示从源头消失。整个过程不改动任何核心文件内容，还原直连时连同备份一起还原，两者失败互不影响。
+  - 未采用「重算哈希写回 checksums」的做法：`workbench.html` 常被汉化插件同时改写，重算后插件再改一次仍会失配，只能反复修补，故选择一次性清空。
+  - 新增 5 项单测覆盖 `checksums` 定位边界：嵌套同名键、顶层值恰为字符串 `"checksums"`、值为 `null`、无该字段、值内含转义引号与花括号。
+
 ## v0.5.11 - 2026-09-11
 
 - 修复 macOS 版代理无法启动：sidecar 启动瞬间被系统以信号 5（SIGTRAP）终止，界面报「代理主端口 7450 未监听」。
