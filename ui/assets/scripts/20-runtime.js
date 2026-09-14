@@ -312,30 +312,31 @@ function syncIdeProxyButton() {
   const icon = btn.querySelector('.proxy-btn-icon');
   const text = btn.querySelector('.proxy-btn-text');
   const stateText = btn.querySelector('[data-proxy-state-text]');
+  const _t = (k, p) => (typeof window.t === 'function' ? window.t(k, p) : k);
   const label = ideDisplayLabel(target);
   btn.classList.remove('running', 'warning', 'is-connected');
   if (restoreBtn) {
-    restoreBtn.textContent = '停止接入';
+    restoreBtn.textContent = _t('停止接入');
     restoreBtn.classList.toggle('is-danger', patched);
     restoreBtn.disabled = !patched;
-    restoreBtn.setAttribute('aria-label', patched ? `停止 ${label} 接入 AnyBridge` : `${label} 当前未接入`);
+    restoreBtn.setAttribute('aria-label', patched ? _t(`停止 ${label} 接入 AnyBridge`) : `${label}`);
   }
   if (patched) {
     btn.classList.add('is-connected');
     if (icon) {
       icon.innerHTML = '<path d="M20 6 9 17l-5-5" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"/>';
     }
-    if (text) text.textContent = '已接入';
-    if (stateText) stateText.textContent = proxyRunning ? '代理运行中' : '代理未运行';
-    btn.setAttribute('aria-label', `${label} 已接入 AnyBridge`);
+    if (text) text.textContent = _t('已接入');
+    if (stateText) stateText.textContent = proxyRunning ? _t('代理运行中') : _t('代理未运行');
+    btn.setAttribute('aria-label', `${label} ${_t('已接入')}`);
     return;
   }
   if (icon) {
     icon.innerHTML = '<polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" fill="currentColor"/>';
   }
-  if (text) text.textContent = '一键接入';
-  if (stateText) stateText.textContent = '未接入';
-  btn.setAttribute('aria-label', `${label} 一键接入 AnyBridge`);
+  if (text) text.textContent = _t('一键接入');
+  if (stateText) stateText.textContent = _t('未接入');
+  btn.setAttribute('aria-label', `${label} ${_t('一键接入')}`);
 }
 
 async function refreshIdeProxyStatus(targetOverride = '') {

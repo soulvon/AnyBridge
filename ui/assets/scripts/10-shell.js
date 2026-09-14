@@ -516,13 +516,14 @@ function setPlatformRailActive(platformId) {
 function updateProxyPlatformCopy(platformId) {
   const id = normalizeProxyPlatform(platformId);
   const meta = PROXY_PLATFORM_META[id] || PROXY_PLATFORM_META.windsurf;
+  const _t = (k, p) => (typeof window.t === 'function' ? window.t(k, p) : k);
   const title = document.getElementById('proxy-platform-title');
   const subtitle = document.getElementById('proxy-platform-subtitle');
   const icon = document.getElementById('proxy-platform-icon');
   const kiteAd = document.getElementById('proxy-platform-kite-ad');
   const kiteAdCopy = document.getElementById('proxy-platform-kite-ad-copy');
-  if (title) title.textContent = meta.title || meta.label;
-  if (subtitle) subtitle.textContent = meta.subtitle;
+  if (title) title.textContent = _t(meta.title) || meta.label;
+  if (subtitle) subtitle.textContent = _t(meta.subtitle);
   if (icon) {
     icon.src = meta.icon;
     icon.alt = meta.label;
@@ -532,16 +533,16 @@ function updateProxyPlatformCopy(platformId) {
     kiteAd.hidden = !showAd;
     kiteAd.classList.toggle('is-hidden', !showAd);
     kiteAd.dataset.platform = id;
-    kiteAd.setAttribute('aria-label', showAd ? `打开 Kite 插件安装选项（${meta.label}）` : 'Kite 插件安装选项');
+    kiteAd.setAttribute('aria-label', showAd ? _t(`打开 Kite 插件安装选项（${meta.label}）`) : _t('Kite 插件安装选项'));
   }
   if (kiteAdCopy && meta.kiteAd) {
-    kiteAdCopy.textContent = meta.kiteAd;
+    kiteAdCopy.textContent = _t(meta.kiteAd);
   }
   const kiteModalPlatform = document.getElementById('kite-plugin-platform-label');
   if (kiteModalPlatform) kiteModalPlatform.textContent = meta.label;
   const emptySubtitle = document.getElementById('model-map-empty-subtitle');
   if (emptySubtitle) {
-    emptySubtitle.textContent = `添加第一个模型映射，让 ${meta.label || '当前平台'} 使用你指定的 AI 供应商与模型能力。`;
+    emptySubtitle.textContent = _t(`添加第一个模型映射，让 ${meta.label || '当前平台'} 使用你指定的 AI 供应商与模型能力。`);
   }
 }
 
@@ -651,6 +652,23 @@ function syncPlatformRailForPage(pageId) {
     setPlatformRailActive(target);
   }
 }
+
+window.addEventListener('byok-language-change', (e) => {
+  if (!e?.detail?.previousLanguage) return;
+  try {
+    const ad = document.getElementById('proxy-platform-kite-ad');
+    const current = ad?.dataset?.platform || (typeof getTargetIde === 'function' ? getTargetIde() : 'windsurf');
+    updateProxyPlatformCopy(current);
+    if (typeof refreshIdeProxyStatus === 'function') {
+      refreshIdeProxyStatus(current).catch(() => {});
+    }
+    if (globalThis.modelMapLoaded && typeof syncModelMapSelectionState === 'function') {
+      syncModelMapSelectionState();
+    }
+  } catch (err) {
+    console.warn('[byok-language-change] handler error:', err);
+  }
+});
 
 // ═══════ PLATFORM RAIL · DRAG & DROP REORDER ═══════
 globalThis.PLATFORM_RAIL_ORDER_KEY = 'anybridge.platformRailOrder';

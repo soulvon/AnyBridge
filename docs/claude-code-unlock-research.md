@@ -8,7 +8,7 @@
 
 ## 一、问题背景
 
-AnyBridge 的 Claude Code Unlock 机制通过构造 Anthropic Messages API 请求，将 IDE（Windsurf/Devin 等）的聊天请求转发到 AnyRouter 中转站 `https://anyrouter.top`。
+AnyBridge 的 Claude Code Unlock 机制通过构造 Anthropic Messages API 请求，将 IDE（Windsurf/Devin 等）的会话请求转发到 AnyRouter 中转站 `https://anyrouter.top`。
 
 近期代码改动导致调用时返回 HTTP 503 `Service Unavailable`，工具调用功能完全不可用。
 
@@ -46,7 +46,7 @@ Claude Code CLI v2.1.220 发送两类请求：
 | 请求 | 用途 | Body 大小 | tools 大小 | system 大小 |
 |------|------|-----------|------------|-------------|
 | 请求 1 | Title 生成（轻量） | 2,254 bytes | 0（空数组） | 1,468 chars |
-| 请求 2 | 主聊天（完整） | 114,441 bytes | 95,450 chars（30 tools） | 11,160 chars |
+| 请求 2 | 主会话（完整） | 114,441 bytes | 95,450 chars（30 tools） | 11,160 chars |
 
 ### 3.2 完整 Headers
 
@@ -71,7 +71,7 @@ x-api-key: <key>
 x-app: cli
 ```
 
-### 3.3 Body 字段（主聊天请求）
+### 3.3 Body 字段（主会话请求）
 
 ```json
 {
@@ -109,7 +109,7 @@ x-app: cli
 2. **`system` 是多 block 数组**：第一个 block 是 `"You are a Claude agent, built on Anthropic's Claude Agent SDK."`，不是旧版的 `"You are Claude Code, Anthropic's official CLI for Claude."`
 3. **`thinking` 多了 `display: "omitted"`**
 4. **新增 `context_management` 字段**：`{ edits: [{ type: "clear_thinking_20251015", keep: "all" }] }`
-5. **主聊天工具请求的 `anthropic-beta` 有 9 个值**；标题请求使用另一组 beta（包含 `structured-outputs-2025-12-15`），不能混用
+5. **主会话工具请求的 `anthropic-beta` 有 9 个值**；标题请求使用另一组 beta（包含 `structured-outputs-2025-12-15`），不能混用
 6. **`tools` 是 30 个工具，95KB**（体积大头）
 
 ---
@@ -140,8 +140,8 @@ x-app: cli
 使用临时 Claude Code 配置，将 `ANTHROPIC_BASE_URL` 指向本地 MITM；MITM 固定把请求转发到 `https://anyrouter.top`，未修改用户现有 Claude 配置。命令使用 `claude-opus-5[1m]`，AnyRouter 收到的真实请求为：
 
 - Body `model`：`claude-opus-5`，没有 `[1m]` 后缀
-- 主聊天/工具请求的 `anthropic-beta`：9 个值，最后两个为 `effort-2025-11-24,fallback-credit-2026-06-01`
-- 主聊天请求包含 `context_management`、`thinking.display="omitted"`、`output_config.effort="high"` 和完整 tools
+- 主会话/工具请求的 `anthropic-beta`：9 个值，最后两个为 `effort-2025-11-24,fallback-credit-2026-06-01`
+- 主会话请求包含 `context_management`、`thinking.display="omitted"`、`output_config.effort="high"` 和完整 tools
 - AnyRouter 响应：HTTP 200，SSE `message_start`、`content_block_delta`，正文返回 `Hello`
 - 完整日志：`docs/claude-code-unlock-research/anyrouter-cli-success-2026-08-01.log`
 
@@ -165,14 +165,14 @@ x-app: cli
 
 | 文件 | 修改内容 |
 |------|---------|
-| `sidecar/lib/codex-unlock.js` | `anthropic-beta` 从 5 个值对齐到真实主聊天的 9 个值；`thinking` 加 `display: "omitted"`；新增 `context_management` 字段；去掉 `systemPrompt` 参数，始终用 Claude Code 标识 |
+| `sidecar/lib/codex-unlock.js` | `anthropic-beta` 从 5 个值对齐到真实主会话的 9 个值；`thinking` 加 `display: "omitted"`；新增 `context_management` 字段；去掉 `systemPrompt` 参数，始终用 Claude Code 标识 |
 | `sidecar/handlers/chat.js` | `streamAnthropic` 中调用 `buildClaudeCodeUnlockPayload` 时不再传 `systemPrompt` |
 
 ### 5.2 修复前后对比（第一轮，已过时）
 
 | 字段 | 修复前 | 修复后 | 抓包真实值 |
 |------|--------|--------|-----------|
-| `anthropic-beta` | 5 个值 | 9 个主聊天值 | 9 个主聊天值 |
+| `anthropic-beta` | 5 个值 | 9 个主会话值 | 9 个主会话值 |
 | `thinking` | `{ type: "adaptive" }` | `{ type: "adaptive", display: "omitted" }` | `{ type: "adaptive", display: "omitted" }` |
 | `context_management` | 无 | `{ edits: [{ type: "clear_thinking_20251015", keep: "all" }] }` | 同左 |
 | `system` | 可被 systemPrompt 覆盖 | 始终用 Claude Code 标识 | Claude Code / Agent SDK 标识 |

@@ -233,7 +233,7 @@ try {
   const bugbotErrorStatus = parseFields(getField(bugbotErrorResponse, 2, 2).value);
   assert.equal(getField(bugbotErrorStatus, 1, 0).value, 4);
   const bugbotErrorEnd = readEnvelope(bugbot.body(), bugbotErrorFrame.next);
-  assert.equal(bugbotErrorEnd.flags, 3);
+  assert.equal(bugbotErrorEnd.flags, 2);
 
   __cursorProxyTest.resetToolWaitsForTest();
   const readExecBody = __cursorProxyTest.buildReadExecServerMessage({
@@ -1187,7 +1187,7 @@ try {
   assert.equal(heartbeatEnvelope.flags, 1);
   assert.equal(getField(parseFields(heartbeatEnvelope.payload), 13, 2).value.length, 0);
   const heartbeatEnd = readEnvelope(backgroundInteraction.body(), heartbeatEnvelope.next);
-  assert.equal(heartbeatEnd.flags, 3);
+  assert.equal(heartbeatEnd.flags, 2);
   assert.deepEqual(JSON.parse(heartbeatEnd.payload.toString('utf8')), {});
   assert.equal(heartbeatEnd.next, backgroundInteraction.body().length);
 

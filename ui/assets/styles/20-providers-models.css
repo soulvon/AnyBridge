@@ -2308,9 +2308,9 @@ html[data-theme="dark"] .model-item-icon-image .model-icon-image-dark,
 .model-table .model-col-origin { width: 18%; }
 .model-table .model-col-raw { width: 10%; }
 .model-table .model-col-target { width: 26%; }
-.model-table .model-col-action { width: 70px; }
-.model-table .model-col-vision { width: 124px; }
-.model-table .model-col-toggle { width: 60px; }
+.model-table .model-col-action { width: 72px; }
+.model-table .model-col-vision { width: 136px; }
+.model-table .model-col-toggle { width: 72px; }
 .model-table th {
   text-align: left; padding: 12px 18px;
   font-size: 14px; font-weight: 700; color: var(--text-secondary);
@@ -2319,16 +2319,24 @@ html[data-theme="dark"] .model-item-icon-image .model-icon-image-dark,
   border-bottom: 1px solid var(--border);
 }
 .model-map-table th {
-  padding-left: 14px;
-  padding-right: 14px;
-  font-size: 14px;
+  padding-left: 10px;
+  padding-right: 10px;
+  font-size: 13px;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .model-map-display-head {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  min-width: 0;
+  max-width: 100%;
+  vertical-align: middle;
+}
+.model-map-display-head > span:first-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .model-map-settings-btn.btn-ghost {
   --btn-height: 24px;

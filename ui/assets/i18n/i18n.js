@@ -2,7 +2,7 @@
   const DEFAULT_LANGUAGE = 'zh-CN';
   const CONFIG_KEY = 'APP_LANGUAGE';
   const LOCAL_STORAGE_KEY = 'byok-language';
-  const ATTRS = ['title', 'placeholder', 'aria-label'];
+  const ATTRS = ['title', 'placeholder', 'aria-label', 'alt'];
   const SKIP_TAGS = new Set(['SCRIPT', 'STYLE', 'TEXTAREA', 'CODE', 'PRE']);
   const LANGUAGE_LABELS = {
     'zh-CN': '简体中文',
@@ -34,11 +34,28 @@
 
   function translate(source, params, language) {
     const key = String(source == null ? '' : source);
-    const catalog = catalogOf(language || currentLanguage);
-    const value = (catalog.translations && Object.prototype.hasOwnProperty.call(catalog.translations, key))
-      ? catalog.translations[key]
-      : key;
-    return interpolate(value, params);
+    const lang = normalizeLanguage(language || currentLanguage);
+    const catalog = catalogOf(lang);
+    if (catalog.translations && Object.prototype.hasOwnProperty.call(catalog.translations, key)) {
+      return interpolate(catalog.translations[key], params);
+    }
+    if (lang === 'en-US') {
+      let m = key.match(/^共\s*(\d+)\s*个$/);
+      if (m) return `Total ${m[1]}`;
+      m = key.match(/^共\s*(\d+)\s*个结果$/);
+      if (m) return `${m[1]} results`;
+      m = key.match(/^(\d+)\/(\d+)\s*个结果$/);
+      if (m) return `${m[1]}/${m[2]} results`;
+      m = key.match(/^已选择\s*(\d+)\s*\/\s*(\d+)$/);
+      if (m) return `Selected ${m[1]} / ${m[2]}`;
+      m = key.match(/^已选择\s*(\d+)\s*\/\s*共\s*(\d+)\s*个$/);
+      if (m) return `Selected ${m[1]} / Total ${m[2]}`;
+      m = key.match(/^共\s*(\d+)\s*个可用模型/);
+      if (m) return key.replace(/^共\s*(\d+)\s*个可用模型/, `Total $1 available models`);
+      m = key.match(/^共\s*(\d+)\s*个模型/);
+      if (m) return key.replace(/^共\s*(\d+)\s*个模型/, `Total $1 models`);
+    }
+    return interpolate(key, params);
   }
 
   function shouldSkip(node) {
@@ -234,8 +251,11 @@
     observer = new MutationObserver((mutations) => {
       if (translating) return;
       mutations.forEach((mutation) => {
-        mutation.addedNodes.forEach((node) => translateNode(node));
-        if (mutation.type === 'attributes') translateNode(mutation.target);
+        if (mutation.type === 'childList') {
+          mutation.addedNodes.forEach((node) => translateNode(node));
+        } else if (mutation.type === 'attributes') {
+          translateNode(mutation.target);
+        }
       });
     });
     observer.observe(document.body, {

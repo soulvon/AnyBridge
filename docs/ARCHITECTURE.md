@@ -1,5 +1,7 @@
 # Architecture
 
+[English](ARCHITECTURE.md) • [简体中文](ARCHITECTURE_zh.md)
+
 AnyBridge has three main parts:
 
 - Tauri desktop shell in `src-tauri/`

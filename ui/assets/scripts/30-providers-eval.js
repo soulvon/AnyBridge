@@ -149,14 +149,15 @@ function providerCapabilities(p, modelId = null) {
 function capabilityBadges(p, compact = false, modelId = null) {
   const c = providerCapabilities(p, modelId);
   const showModelCaps = !!modelId;
+  const _t = (k) => (typeof window.t === 'function' ? window.t(k) : k);
   const mk = (label, on, title) => `
     <span class="tag" title="${escAttr(title || label)}" style="background:${on ? 'var(--success-dim)' : 'var(--bg-input)'}; color:${on ? 'var(--success)' : 'var(--text-muted)'}; border:1px solid ${on ? 'rgba(22,163,74,.22)' : 'var(--border)'}; font-size:${compact ? '10px' : '11px'}; padding:${compact ? '2px 6px' : '3px 8px'}; border-radius:7px;">${escAttr(label)}</span>`;
   return [
-    mk('流式', c.stream),
-    showModelCaps ? mk('视觉', c.vision, c.vision ? '该模型已标记支持图片理解' : '该模型未标记图片理解') : '',
-    showModelCaps ? mk('工具', c.tools, c.tools ? '该模型已标记支持工具调用' : '该模型未标记工具调用') : '',
-    c.gzip ? mk('Gzip', true, '已启用请求体 gzip 压缩') : '',
-    c.toolSchemaCompatGemini ? mk('Schema兼容', true, '已启用 Gemini 工具 Schema 兼容模式（自动学习）') : '',
+    mk(_t('流式'), c.stream),
+    showModelCaps ? mk(_t('视觉'), c.vision, c.vision ? _t('该模型已标记支持图片理解') : _t('该模型未标记图片理解')) : '',
+    showModelCaps ? mk(_t('工具'), c.tools, c.tools ? _t('该模型已标记支持工具调用') : _t('该模型未标记工具调用')) : '',
+    c.gzip ? mk('Gzip', true, _t('已启用请求体 gzip 压缩')) : '',
+    c.toolSchemaCompatGemini ? mk(_t('Schema兼容'), true, _t('已启用 Gemini 工具 Schema 兼容模式（自动学习）')) : '',
   ].filter(Boolean).join('');
 }
 
@@ -211,10 +212,11 @@ function visionStatusStyle(state) {
 }
 
 function slotVisionAssessment(uid, targets, supportsImages = true) {
+  const _t = (k) => (typeof window.t === 'function' ? window.t(k) : k);
   if (supportsImages) {
-    return { state: 'ok', label: '支持图片理解', title: '该槽位已启用图片理解' };
+    return { state: 'ok', label: _t('支持图片理解'), title: _t('该槽位已启用图片理解') };
   }
-  return { state: 'off', label: '不支持图片理解', title: '该槽位未启用图片理解' };
+  return { state: 'off', label: _t('不支持图片理解'), title: _t('该槽位未启用图片理解') };
 }
 
 function renderVisionPill(info, compact = false) {

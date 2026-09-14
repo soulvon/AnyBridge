@@ -1,5 +1,7 @@
 # Development
 
+[English](DEVELOPMENT.md) • [简体中文](DEVELOPMENT_zh.md)
+
 ## Requirements
 
 - Node.js 20+

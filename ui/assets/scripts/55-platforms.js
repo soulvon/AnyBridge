@@ -2682,20 +2682,21 @@ async function antigravityRefreshConsole(options = {}) {
   if (mainBtn && mainBtnText) {
     mainBtn.classList.add('platform-proxy-primary');
     mainBtn.classList.remove('platform-proxy-active');
+    const _t = (k, p) => (typeof window.t === 'function' ? window.t(k, p) : k);
     if (managed) {
       mainBtn.classList.add('is-connected');
       if (mainBtnIcon) {
         mainBtnIcon.innerHTML = '<path d="M20 6 9 17l-5-5" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"/>';
       }
-      mainBtnText.textContent = '已接入';
-      mainBtn.setAttribute('aria-label', 'Antigravity 已接入 AnyBridge');
+      mainBtnText.textContent = _t('已接入');
+      mainBtn.setAttribute('aria-label', `Antigravity ${_t('已接入')}`);
     } else {
       mainBtn.classList.remove('is-connected');
       if (mainBtnIcon) {
         mainBtnIcon.innerHTML = '<polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" fill="currentColor" />';
       }
-      mainBtnText.textContent = '一键接入';
-      mainBtn.setAttribute('aria-label', '一键接入 Antigravity');
+      mainBtnText.textContent = _t('一键接入');
+      mainBtn.setAttribute('aria-label', `Antigravity ${_t('一键接入')}`);
     }
   }
 
@@ -6825,25 +6826,26 @@ async function cursorRefreshConsole(options = {}) {
 
     if (mainBtn && mainBtnText) {
       const icon = mainBtn.querySelector('.proxy-btn-icon');
+      const _t = (k, p) => (typeof window.t === 'function' ? window.t(k, p) : k);
       if (running) {
         mainBtn.classList.add('is-connected');
         if (icon) {
           icon.innerHTML = '<path d="M20 6 9 17l-5-5" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"/>';
         }
-        mainBtnText.textContent = '已接入';
-        mainBtn.setAttribute('aria-label', 'Cursor 已接入 AnyBridge');
+        mainBtnText.textContent = _t('已接入');
+        mainBtn.setAttribute('aria-label', `Cursor ${_t('已接入')}`);
       } else if (!certReady && canRepair) {
         mainBtn.classList.remove('is-connected');
         if (icon) {
           icon.innerHTML = '<polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" fill="currentColor" />';
         }
-        mainBtnText.textContent = '安装证书';
+        mainBtnText.textContent = _t('安装证书');
       } else if (configuredCount === 0) {
         mainBtn.classList.remove('is-connected');
         if (icon) {
           icon.innerHTML = '<polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" fill="currentColor" />';
         }
-        mainBtnText.textContent = '添加模型';
+        mainBtnText.textContent = _t('添加模型');
       } else {
         mainBtn.classList.remove('is-connected');
         if (icon) {

@@ -2,6 +2,21 @@
 
 All notable changes to AnyBridge will be documented in this file.
 
+## v0.5.13 - 2026-09-14
+
+- 修复国际化（英文模式）下表头文本过长导致字形重叠错位（`Third-party image understandiEngable`）的问题：
+  - 将表头文本统一规范为「图片理解」（`Vision`），优化列宽分配并增加文本截断防溢出样式，根治叠字错位。
+- 全面完善中英文国际化覆盖与动态文本同步：
+  - 补全 Windsurf、Devin、Cursor 控制台副标题、Kite 推荐插件、接入状态按钮（`Connected` / `One-Click Access`）、能力徽章（`Stream` / `Vision` / `Tools`）等全套英文国际化词条。
+  - 优化动态数字匹配引擎（`Total X` / `Selected X / Y` 等），全平台模型数量统计 100% 自动对齐英文，支持语言切换实时热更新。
+- 修复应用启动时概率性卡死假死与配置加载阻塞的致命问题：
+  - 根因：`i18n.js` 的 `MutationObserver` 监听选项中包含了 `characterData: true`，在文本翻译改写 `nodeValue` 时触发了无限微任务递归死循环，导致主线程被占满，阻塞了后续的 `init()`、配置读取与代理健康检查。
+  - 修复：移除 `characterData` 递归监听，恢复安全的 DOM 树变动监听机制，启动阶段增加语言切换保护与异常捕获，确保配置数据与代理状态秒级加载。
+- 深度重构中英文官方文档（README.md / README_en.md）：
+  - 摒弃虚假噱头，转为以开发者真实痛点为导向（第三方渠道接入、免翻隐藏目录手写配置、代理增强、CPA 反代、在线拉取模型列表等）；
+  - 构建“极简快速上手 ➔ 核心技术实现原理（ASCII 架构图、Connect-RPC 协议转译、CDP 动态注入、专属解锁协议隔离）➔ 开发者指南”的三段式文档体系；
+  - 纠正全量架构与功能预览截图，单图独占一行，图文严格对齐。
+
 ## v0.5.12 - 2026-09-13
 
 - 修复 Windsurf / Devin 接入后每次启动都弹出「安装似乎损坏，请重新安装」（`Your XXX installation appears to be corrupt. Please reinstall.`）：
@@ -300,7 +315,7 @@ All notable changes to AnyBridge will be documented in this file.
 - 修复 Codex 历史会话可见性：同步修复 rollout / archived_sessions 与 official state sqlite 中的 `model_provider`，避免重启后索引回滚。
 - 平台页增加「修复会话历史」操作与切换提示，说明统一会话历史与索引修复行为。
 - 修复 Devin/Windsurf BYOK 上游失败时错误 HTML/原始 body 被当作 assistant 正文写入会话上下文的问题。
-- 恢复默认使用 Connect-RPC 原生流错误帧（`BYOK_NATIVE_ERRORS=true`），避免错误进入聊天上下文与会话标题。
+- 恢复默认使用 Connect-RPC 原生流错误帧（`BYOK_NATIVE_ERRORS=true`），避免错误进入会话上下文与会话标题。
 - 清洗 Cloudflare/HTML 错误页：只提取短可读摘要，不再透传整页 HTML。
 - 增强扩展中心 CPA Suite 更新稳定性：GitHub Release 获取重试、更新失败回滚旧服务。
 

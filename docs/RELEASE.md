@@ -1,5 +1,7 @@
 # Release
 
+[English](RELEASE.md) • [简体中文](RELEASE_zh.md)
+
 AnyBridge uses GitHub Actions to build release assets and Tauri updater metadata.
 
 ## Versioning

@@ -1,5 +1,7 @@
 # Cursor 后端接口（Gemini 前端对接）
 
+[English](cursor-backend-api_en.md) • [简体中文](cursor-backend-api.md)
+
 本文件仅描述前端可调用的 Tauri 命令。Cursor 页面可完全独立实现，不应再调用旧的 `switch_ide_to_proxy({ target: "cursor" })`、`cursorAuth` 字符串状态或 Node `cursor-proxy.js`。
 
 ## 命令

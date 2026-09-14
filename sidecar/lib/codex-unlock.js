@@ -2,7 +2,7 @@ import crypto from 'node:crypto';
 import { getClaudeCodeCliTools, getClaudeCodeCliVersion } from './claude-code-cli-tools.js';
 import { CLAUDE_CODE_NATIVE_TOOLS } from './claude-code-native-tools-data.js';
 
-// 对齐 2026-08-02 Claude Code CLI v2.1.220 真实抓包的主聊天请求 beta
+// 对齐 2026-08-02 Claude Code CLI v2.1.220 真实抓包的主会话请求 beta
 // 多余的 beta（thinking-token-count/context-management/prompt-caching-scope）会导致 AnyRouter 429
 const CLAUDE_CODE_BETA = [
   'claude-code-20250219',

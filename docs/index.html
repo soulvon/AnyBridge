@@ -25,11 +25,11 @@
     property="og:description"
     content="把自己的 API 密钥、模型供应商和 AI 编程工具统一接起来。支持本地代理、配置切换、本地 OpenAI 兼容网关、模型映射、视觉降级和实时诊断。"
   />
-  <meta property="og:image" content="https://soulvon.github.io/AnyBridge/assets/anybridge-platform-console.png" />
+  <meta property="og:image" content="https://soulvon.github.io/AnyBridge/assets/anybridge-platform-cursor.png" />
   <meta name="twitter:card" content="summary_large_image" />
   <meta name="twitter:title" content="AnyBridge - 自定义 API 工具" />
   <meta name="twitter:description" content="用一套本地控制面连接 Codex、Cursor、Claude Code、Windsurf、Devin、OpenCode 和你的模型供应商。" />
-  <meta name="twitter:image" content="https://soulvon.github.io/AnyBridge/assets/anybridge-platform-console.png" />
+  <meta name="twitter:image" content="https://soulvon.github.io/AnyBridge/assets/anybridge-platform-cursor.png" />
   <link
     rel="icon"
     href="assets/anybridge-logo.svg"
@@ -1421,7 +1421,7 @@
           <div class="hero-metrics" aria-label="项目关键词">
             <div class="metric">
               <b>本地代理</b>
-              <span>Windsurf / Devin / Cursor 的聊天请求走本机路由，其他流量正常放行。</span>
+              <span>Windsurf / Devin / Cursor 的会话请求走本机路由，其他流量正常放行。</span>
             </div>
             <div class="metric">
               <b>配置切换</b>
@@ -1440,7 +1440,7 @@
 
         <div class="hero-visual reveal">
           <div class="hero-shot">
-            <img src="assets/anybridge-platform-console.png" alt="AnyBridge 平台接入控制台截图" />
+            <img src="assets/anybridge-platform-cursor.png" alt="AnyBridge 平台接入控制台截图" />
           </div>
           <div class="route-card" aria-label="本地链路示意">
             <div class="route-card-title">
@@ -1516,10 +1516,10 @@
           <article class="mode-card reveal">
             <b>01 本地代理</b>
             <h3>本地代理模式</h3>
-            <p>适合不直接开放自定义密钥的桌面编程工具，通过本机代理识别并转发聊天请求。</p>
+            <p>适合不直接开放自定义密钥的桌面编程工具，通过本机代理识别并转发会话请求。</p>
             <ul>
               <li>Windsurf / Devin / Cursor</li>
-              <li>聊天请求转发到你的模型</li>
+              <li>会话请求转发到你的模型</li>
               <li>登录、索引、补全等流量正常放行</li>
             </ul>
           </article>
@@ -1592,15 +1592,15 @@
               <span class="tool-status">推荐代理</span>
             </div>
             <div class="tool-tags">
-              <span>聊天请求转发</span>
+              <span>会话请求转发</span>
               <span>模型列表替换</span>
               <span>Kite 可搭配</span>
             </div>
-            <p class="tool-desc">Windsurf 不适合手动填自定义 API。AnyBridge 通过本机代理接管聊天相关请求，并把你配置的模型展示给 Windsurf 使用。</p>
+            <p class="tool-desc">Windsurf 不适合手动填自定义 API。AnyBridge 通过本机代理接管会话相关请求，并把你配置的模型展示给 Windsurf 使用。</p>
             <div class="tool-mode-list">
               <div class="tool-mode proxy">
                 <strong>代理接入</strong>
-                <p>在 Windsurf 页面一键接入，按提示安装证书并重启 Windsurf。聊天走 AnyBridge，登录、索引、补全等非聊天流量正常放行。</p>
+                <p>在 Windsurf 页面一键接入，按提示安装证书并重启 Windsurf。会话走 AnyBridge，登录、索引、补全等非会话流量正常放行。</p>
               </div>
             </div>
             <ul>
@@ -1624,10 +1624,10 @@
             </div>
             <div class="tool-tags">
               <span>Connect-RPC</span>
-              <span>只处理聊天</span>
+              <span>仅处理会话</span>
               <span>Kite 可搭配</span>
             </div>
-            <p class="tool-desc">Devin 的聊天请求适合通过 AnyBridge 本机代理接入。AnyBridge 会识别聊天调用，转换为你配置的供应商格式。</p>
+            <p class="tool-desc">Devin 的会话请求适合通过 AnyBridge 本机代理接入。AnyBridge 会识别会话调用，转换为你配置的供应商格式。</p>
             <div class="tool-mode-list">
               <div class="tool-mode proxy">
                 <strong>代理接入</strong>
@@ -1637,7 +1637,7 @@
             <ul>
               <li>可以使用自己的 Anthropic、OpenAI 或兼容模型。</li>
               <li>代理层可以做重试、故障切换和日志统计。</li>
-              <li>非聊天请求不强行接管，降低对原工具功能的影响。</li>
+              <li>非会话请求不强行接管，降低对原工具功能的影响。</li>
             </ul>
             <div class="tool-card-foot">适合人群：想在 Devin 中使用自己的模型池，同时保留 Devin 原有体验。</div>
           </article>
@@ -1968,17 +1968,17 @@
             </div>
           </article>
           <article class="screen-card reveal">
-            <img src="assets/anybridge-proxy-routes.png" alt="AnyBridge 本地代理模型路由截图" />
+            <img src="assets/anybridge-proxy-overview.png" alt="AnyBridge 本地代理概览截图" />
             <div class="screen-card-body">
-              <h3>本地代理模型路由</h3>
-              <p>把供应商模型添加到本地代理列表，配置能力标签、备用模型和命名规则。</p>
+              <h3>本地代理网关</h3>
+              <p>统一管理 Sidecar 服务、本地代理入口、本地 Key 与代理端口。</p>
             </div>
           </article>
           <article class="screen-card reveal">
-            <img src="assets/anybridge-kite-plugin.png" alt="AnyBridge 内置 Kite 插件入口截图" />
+            <img src="assets/anybridge-platform-codex.png" alt="AnyBridge Codex 平台配置截图" />
             <div class="screen-card-body">
-              <h3>Kite 插件联动</h3>
-              <p>面向 Devin / Windsurf 的增强入口，可与 AnyBridge 的模型接入能力配合使用。</p>
+              <h3>平台一键切换</h3>
+              <p>Codex / Claude Code 等配置一键切换与恢复，官方与第三方互不干扰。</p>
             </div>
           </article>
         </div>
@@ -2005,7 +2005,7 @@
               <div class="tech-tag">本地代理</div>
               <div>
                 <h3>负责请求转发</h3>
-                <p>工具发来的聊天请求会进入本机代理，再按你的模型映射发到对应供应商。</p>
+                <p>工具发来的会话请求会进入本机代理，再按你的模型映射发到对应供应商。</p>
               </div>
             </article>
             <article class="tech-item reveal">

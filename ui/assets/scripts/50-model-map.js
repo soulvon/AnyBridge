@@ -820,10 +820,11 @@ function syncModelMapSelectionState() {
   const total = (modelMapStore.slots || []).length;
   const selected = modelMapSelectedIds.size;
   const countEl = document.getElementById('modelMapBulkCount');
+  const _t = (k, p) => (typeof window.t === 'function' ? window.t(k, p) : k);
   if (countEl) {
     countEl.textContent = selected
-      ? `已选择 ${selected} / ${total}`
-      : `共 ${total} 个`;
+      ? _t('已选择 {selected} / {total}', { selected, total })
+      : _t('共 {total} 个', { total });
     countEl.classList.toggle('is-active', selected > 0);
   }
   const disabled = modelMapBulkRunning || selected === 0;
@@ -837,8 +838,8 @@ function syncModelMapSelectionState() {
   if (selectVisibleBtn) {
     selectVisibleBtn.disabled = modelMapBulkRunning || visibleIds.length === 0;
     selectVisibleBtn.textContent = visibleIds.length && visibleIds.every(uid => modelMapSelectedIds.has(uid))
-      ? '取消当前'
-      : '选择当前';
+      ? _t('取消当前')
+      : _t('选择当前');
   }
   // 表头全选框的 indeterminate 与 checked 态
   const selectAll = document.getElementById('modelMapSelectAll');
