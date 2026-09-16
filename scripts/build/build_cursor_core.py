@@ -61,6 +61,14 @@ def main():
     shutil.copy2(source, destination)
     if "windows" not in triple:
         destination.chmod(0o755)
+        strip_bin = shutil.which("strip")
+        if strip_bin:
+            strip_args = [strip_bin]
+            if "linux" in triple:
+                strip_args.append("--strip-all")
+            strip_args.append(str(destination))
+            print(f"[strip] stripping {destination}...")
+            subprocess.run(strip_args, check=False)
     if "darwin" in triple and shutil.which("codesign"):
         print(f"[codesign] signing {destination} with ad-hoc signature...")
         subprocess.run(["codesign", "--force", "--sign", "-", str(destination)], check=False)

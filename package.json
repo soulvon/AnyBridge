@@ -30,8 +30,8 @@
     "check:ui": "node scripts/check-ui.mjs",
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
-    "tauri:build": "tauri build",
-    "tauri:build:local": "tauri build --config src-tauri/tauri.local.conf.json"
+    "tauri:build": "node scripts/build/tauri_build.mjs",
+    "tauri:build:local": "node scripts/build/tauri_build.mjs --config src-tauri/tauri.local.conf.json"
   },
   "keywords": [
     "anybridge",
