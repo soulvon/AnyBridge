@@ -2,6 +2,14 @@
 
 All notable changes to AnyBridge will be documented in this file.
 
+## v0.5.15 - 2026-09-17
+
+- 深度解决 Devin 1.126.0+ 新版架构适配与新旧版本交互体验一致性：
+  - 根治模型列表重复与显示不全：重构 `model-aliases.js` 映射机制，采用严格 1:1 精确靶向对齐（如 `kimi-k3` 唯一对齐 `kimi-k3-high`，`glm-5-2-max` 独占改写），从源头彻底杜绝同家族多思考档位重复列表问题，同时保持旧版简写名无感兼容。
+  - 解锁 Cascade 原生流式体验：彻底解除新版前端对老版 Cascade 会话模式的强制隐藏与切换拦截，用户可随时在 Agent 切换菜单（`Ctrl+'`）中切回 Cascade，重获毫秒级实时逐字打字机与无阻断交互手感。
+  - 优化 Devin Local 免打扰编码体验：支持在 `settings.json` 中自动配置 `mode: "accept-edits"`，消除代码变更时的频繁弹窗打断，找回流畅编码心流。
+  - 根除语言包升级死锁白屏：排查并加固国际化 `lAo` 容错处理，防止因旧版语言包缓存缺失新版本新增系统词条（如 21158）导致主渲染进程崩溃抛错。
+
 ## v0.5.14 - 2026-09-16
 
 - 修复 Arch Linux / Manjaro 环境下系统 CA 证书安装失败问题（Fixes #25）：

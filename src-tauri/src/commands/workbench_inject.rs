@@ -18,6 +18,7 @@ const BYOK_BLOCK_START: &str = "<!-- byok-cards-start -->";
 const BYOK_BLOCK_END: &str = "<!-- byok-cards-end -->";
 const BYOK_VERSION_MARKER: &str = "<!-- byok-cards-v1 -->";
 const BACKUP_SUFFIX: &str = ".byok-origin";
+const NLS_BACKUP_SUFFIX: &str = ".byok-nls-origin";
 
 /// 原子写：同目录临时文件 + rename，避免写 workbench.html 中途崩溃留下截断 HTML。
 /// Windows 上 rename 可能因文件锁失败，重试 3 次。
@@ -139,6 +140,109 @@ pub(crate) fn workbench_html_path(target: &str) -> Option<PathBuf> {
 pub(crate) fn product_json_path(target: &str) -> Option<PathBuf> {
     let p = ide_app_dir(target)?.join("product.json");
     if p.exists() { Some(p) } else { None }
+}
+
+/// workbench.desktop.main.js 路径（NLS 取词函数所在的主 bundle）。
+fn workbench_main_js_path(target: &str) -> Option<PathBuf> {
+    let p = ide_app_dir(target)?.join("out")
+        .join("vs")
+        .join("workbench")
+        .join("workbench.desktop.main.js");
+    if p.exists() { Some(p) } else { None }
+}
+
+// ---------------------------------------------------------------------------
+// NLS 容错加固（防语言包缺词条白屏）
+//
+// 背景：Devin/Windsurf 的国际化取词函数在语言包缺失词条时会直接
+//   throw new Error(`!!! NLS MISSING: ${id} !!!`)
+// 导致整个渲染进程崩溃白屏。典型触发场景：用户装了第三方中文包，
+// IDE 升级后新增了系统词条，但旧语言包没有对应翻译。
+//
+// 修复：把 throw 替换为 return ""，缺失时优雅降级为空文本而不是崩溃。
+// IDE 升级后 workbench.desktop.main.js 会被覆盖回原厂版本（throw 恢复），
+// 下次注入时自动重新加固，无需用户手动干预。
+// ---------------------------------------------------------------------------
+
+/// 将 JS 源码中所有 NLS MISSING throw 替换为安全返回。
+/// 返回 (新内容, 替换次数)；无匹配返回 None。
+fn replace_nls_throws(content: &str) -> Option<(String, usize)> {
+    const MARKER: &str = "!!! NLS MISSING: ";
+    const THROW_PREFIX: &str = "throw new Error(`";
+    const THROW_SUFFIX: &str = "`)";
+
+    let mut result = content.to_string();
+    let mut count = 0usize;
+
+    loop {
+        let marker_pos = match result.find(MARKER) {
+            Some(pos) => pos,
+            None => break,
+        };
+        // 从 marker 向前找 throw 语句开头
+        let throw_start = match result[..marker_pos].rfind(THROW_PREFIX) {
+            Some(pos) => pos,
+            None => break,
+        };
+        // 从 marker 向后找模板闭合反引号 + Error() 闭合括号
+        let throw_end = match result[marker_pos..].find(THROW_SUFFIX) {
+            Some(pos) => marker_pos + pos + THROW_SUFFIX.len(),
+            None => break,
+        };
+        result = format!("{}return \"\"{}", &result[..throw_start], &result[throw_end..]);
+        count += 1;
+    }
+
+    if count > 0 { Some((result, count)) } else { None }
+}
+
+/// 接入代理时加固 NLS 取词函数（幂等：已修补或无匹配则跳过）。
+/// 返回 Ok(true) 表示发生了修改。
+fn patch_nls_tolerant(target: &str) -> Result<bool, String> {
+    let Some(js_path) = workbench_main_js_path(target) else {
+        return Ok(false);
+    };
+
+    let content = fs::read_to_string(&js_path)
+        .map_err(|e| format!("读取 workbench.desktop.main.js 失败: {}", e))?;
+
+    // 已无 NLS MISSING throw → 已修补或该版本不存在此问题
+    if !content.contains("!!! NLS MISSING: ") {
+        return Ok(false);
+    }
+
+    // 备份原厂文件（幂等：仅首次写入，后续 IDE 升级由 inject_workbench_html
+    // 的同名逻辑刷新 workbench.html 备份，此处同理只在原厂状态下备份）
+    let backup = PathBuf::from(format!("{}{}", js_path.to_string_lossy(), NLS_BACKUP_SUFFIX));
+    if !backup.exists() {
+        fs::write(&backup, &content)
+            .map_err(|e| format!("备份 workbench.desktop.main.js 失败: {}", e))?;
+    }
+
+    let Some((patched, count)) = replace_nls_throws(&content) else {
+        return Ok(false);
+    };
+
+    write_atomic(&js_path, &patched)
+        .map_err(|e| format!("写入 workbench.desktop.main.js 失败: {}", e))?;
+    Ok(true)
+}
+
+/// 还原直连时还原 NLS 原厂文件（有备份才还原，否则跳过）。
+fn restore_nls(target: &str) -> Result<bool, String> {
+    let Some(js_path) = workbench_main_js_path(target) else {
+        return Ok(false);
+    };
+    let backup = PathBuf::from(format!("{}{}", js_path.to_string_lossy(), NLS_BACKUP_SUFFIX));
+    if !backup.exists() {
+        return Ok(false);
+    }
+    let orig = fs::read_to_string(&backup)
+        .map_err(|e| format!("读取 NLS 备份失败: {}", e))?;
+    write_atomic(&js_path, &orig)
+        .map_err(|e| format!("还原 workbench.desktop.main.js 失败: {}", e))?;
+    let _ = fs::remove_file(&backup);
+    Ok(true)
 }
 
 // ---------------------------------------------------------------------------
@@ -267,9 +371,8 @@ pub(crate) fn clear_product_checksums(target: &str) -> Result<bool, String> {
     }
 
     let backup = PathBuf::from(format!("{}{}", path.to_string_lossy(), BACKUP_SUFFIX));
-    if !backup.exists() {
-        fs::write(&backup, &content).map_err(|e| format!("备份 product.json 失败: {}", e))?;
-    }
+    // 只要当前 product.json 包含未清空的真实校验清单，就更新原厂备份，确保备份与当前 IDE 升级后的版本严格一致。
+    fs::write(&backup, &content).map_err(|e| format!("备份 product.json 失败: {}", e))?;
 
     let mut patched = String::with_capacity(content.len());
     patched.push_str(&content[..start]);
@@ -340,14 +443,18 @@ fn strip_byok_block(html: &str) -> String {
     out
 }
 
-/// 接入代理时接管 IDE：注入 byok-cards.js，并清空 product.json 的完整性校验清单。
+/// 接入代理时接管 IDE：注入 byok-cards.js，清空 product.json 的完整性校验清单，
+/// 并加固 NLS 取词函数防止语言包缺词条白屏。
 /// 返回 Ok(true) 表示发生了写入（需重启 IDE 生效）；Ok(false) 表示已是最新无需改动。
 pub fn inject(script: &str, target: &str) -> Result<bool, String> {
     let html_changed = inject_workbench_html(script, target)?;
     // 即便 HTML 本次没变（已注入过），也要确保校验清单是清空状态：
     // 用户或 IDE 更新把它写回原厂值后，"安装损坏"提示会重新弹出。
     let product_changed = clear_product_checksums(target)?;
-    Ok(html_changed || product_changed)
+    // NLS 容错加固：IDE 升级后 workbench.desktop.main.js 被覆盖回原厂（throw 恢复），
+    // 每次注入时自动重新检测并修补，确保所有 AnyBridge 用户都不会因语言包缺词条白屏。
+    let nls_changed = patch_nls_tolerant(target)?;
+    Ok(html_changed || product_changed || nls_changed)
 }
 
 /// 向 workbench.html 注入脚本。
@@ -368,11 +475,10 @@ fn inject_workbench_html(script: &str, target: &str) -> Result<bool, String> {
         return Ok(false);
     }
 
-    // 幂等备份：仅当备份不存在时写入纯净副本。
+    // 走到这里说明当前 html 是未注入的（新装或 IDE 更新后的原厂文件），
+    // 直接刷新备份，确保备份始终对应当前安装的原厂版本。
     let backup = PathBuf::from(format!("{}{}", path.to_string_lossy(), BACKUP_SUFFIX));
-    if !backup.exists() {
-        fs::write(&backup, &html).map_err(|e| format!("备份 workbench.html 失败: {}", e))?;
-    }
+    fs::write(&backup, &html).map_err(|e| format!("备份 workbench.html 失败: {}", e))?;
 
     let mut new_html = strip_byok_block(&html);
     new_html = ensure_csp_unsafe_inline(&new_html);
@@ -394,13 +500,14 @@ fn inject_workbench_html(script: &str, target: &str) -> Result<bool, String> {
     Ok(true)
 }
 
-/// 还原直连时还原 IDE：恢复 workbench.html，并还原 product.json 的完整性校验清单。
+/// 还原直连时还原 IDE：恢复 workbench.html、product.json 的完整性校验清单和 NLS 原厂文件。
 /// 幂等：无注入痕迹时返回 Ok(false)。
 pub fn restore(target: &str) -> Result<bool, String> {
-    // 两个文件都要还原，任一失败都不影响另一个执行，
+    // 三个文件都要还原，任一失败都不影响另一个执行，
     // 否则会留下"文件已还原但校验清单仍为空"的半截状态。
     let product_result = restore_product_json(target);
     let html_result = restore_workbench_html(target);
+    let nls_result = restore_nls(target);
 
     let mut changed = false;
     let mut errors: Vec<String> = Vec::new();
@@ -409,6 +516,10 @@ pub fn restore(target: &str) -> Result<bool, String> {
         Err(e) => errors.push(e),
     }
     match html_result {
+        Ok(v) => changed |= v,
+        Err(e) => errors.push(e),
+    }
+    match nls_result {
         Ok(v) => changed |= v,
         Err(e) => errors.push(e),
     }
@@ -496,5 +607,50 @@ mod tests {
         let out = cleared(content).unwrap();
         let v: serde_json::Value = serde_json::from_str(&out).unwrap();
         assert_eq!(v["note"], "he said \"{}\" ok");
+    }
+
+    // ── NLS 容错加固 ──────────────────────────────────────────
+
+    #[test]
+    fn replaces_single_nls_throw() {
+        let content = r#"function lAo(r,i){let e=tit()?.[r];if(typeof e!="string"){if(typeof i=="string")return i;throw new Error(`!!! NLS MISSING: ${r} !!!`)}return e}"#;
+        let (out, count) = replace_nls_throws(content).expect("应替换成功");
+        assert_eq!(count, 1);
+        assert!(!out.contains("NLS MISSING"), "替换后不应残留 NLS MISSING");
+        assert!(out.contains("return \"\""), "应包含 return \"\"");
+        // 函数其余部分不变
+        assert!(out.contains("function lAo(r,i)"));
+        assert!(out.contains("return e}"));
+    }
+
+    #[test]
+    fn replaces_multiple_nls_throws() {
+        let content = "a throw new Error(`!!! NLS MISSING: ${x} !!!`) b throw new Error(`!!! NLS MISSING: ${y} !!!`) c";
+        let (out, count) = replace_nls_throws(content).expect("应替换成功");
+        assert_eq!(count, 2);
+        assert_eq!(out.matches("NLS MISSING").count(), 0);
+        assert_eq!(out.matches("return \"\"").count(), 2);
+    }
+
+    #[test]
+    fn returns_none_when_no_nls_throw() {
+        assert!(replace_nls_throws("no nls here").is_none());
+        assert!(replace_nls_throws("").is_none());
+    }
+
+    #[test]
+    fn idempotent_after_patch() {
+        let content = r#"throw new Error(`!!! NLS MISSING: ${r} !!!`)"#;
+        let (patched, _) = replace_nls_throws(content).unwrap();
+        // 修补后再跑一次应无匹配
+        assert!(replace_nls_throws(&patched).is_none());
+    }
+
+    #[test]
+    fn handles_different_variable_names() {
+        // 不同版本 minified 变量名不同，确保都能匹配
+        let content = "throw new Error(`!!! NLS MISSING: ${messageId} !!!`)";
+        let (out, _) = replace_nls_throws(content).unwrap();
+        assert!(!out.contains("NLS MISSING"));
     }
 }

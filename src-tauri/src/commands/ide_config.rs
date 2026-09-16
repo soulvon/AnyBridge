@@ -13,8 +13,14 @@ const PROXY_KERBEROS_KEY: &str = "http.proxyKerberosServicePrincipal";
 const LEGACY_CURSOR_PROXY_KEYS: &[&str] = &["systemCertificatesV2", "useHttp1", "disableHttp2"];
 const DEVIN_AGENT_ENV_KEY: &str = "devin.acp.agentEnv";
 const WINDSURF_AGENT_ENV_KEY: &str = "windsurf.acp.agentEnv";
+const DEVIN_PREFERRED_AGENT_KEY: &str = "devin.acp.preferredAgent";
+// NO_PROXY 排除直连域名：只排除真正需要绕过本地代理的 devin 官方 API 域名。
+// 注意：不能把 unleash.codeium.com（feature flag 域名）加入 NO_PROXY，
+// 该域名在某些网络环境下直连超时，会导致 devin-cli 启动时
+// "remote config revalidation failed: operation timed out" 警告并拖慢 1~2s。
+// 走 AnyBridge 本地代理反而更快（代理有上游翻墙通道）。
 const DEVIN_AGENT_NO_PROXY: &str =
-    "unleash.codeium.com,api.devin.ai,app.devin.ai,static.devin.ai,cli.devin.ai,devin.ai";
+    "api.devin.ai,app.devin.ai,static.devin.ai,cli.devin.ai,devin.ai";
 
 /// MITM CA 根证书路径。新版 devin-cli（rustls-native-certs 0.8）在 Windows 上
 /// 对 SSL_CERT_FILE 采用「平台证书库 + 该文件」合并语义：带上它可确保
@@ -182,7 +188,7 @@ fn managed_proxy_keys(target: &str) -> Vec<&'static str> {
             PROXY_KERBEROS_KEY,
         ]);
     } else if target == "devin" {
-        keys.extend([DEVIN_AGENT_ENV_KEY, WINDSURF_AGENT_ENV_KEY]);
+        keys.extend([DEVIN_AGENT_ENV_KEY, WINDSURF_AGENT_ENV_KEY, DEVIN_PREFERRED_AGENT_KEY]);
     }
     keys
 }
@@ -330,6 +336,15 @@ fn patch_settings_file(target: &str, settings: &PathBuf) -> Result<bool, String>
         }
     } else if target == "devin" {
         patch_devin_agent_env(&mut obj, &proxy_value);
+        // 首次接入时锁定默认 Agent 为 Devin Local，防止新版 ACP Registry
+        // 5s 超时导致前端回退到其他 Agent（qoder/claude 等）再切回来的抖动。
+        // 只在用户尚未自行设置时写入；已有值则尊重用户选择不覆盖。
+        if !obj.contains_key(DEVIN_PREFERRED_AGENT_KEY) {
+            obj.insert(
+                DEVIN_PREFERRED_AGENT_KEY.into(),
+                Value::String("devin-cli".into()),
+            );
+        }
     }
     write_object(&settings, &obj)?;
     Ok(true)

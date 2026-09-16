@@ -16,7 +16,7 @@ import { tryGunzip, gzipSync } from './connect.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import { configDir } from './lib/config-dir.js';
-import { getEquivalentModelUids, getPreferredDevinModelUid } from './lib/model-aliases.js';
+import { getEquivalentModelUids, getCanonicalDevinUid } from './lib/model-aliases.js';
 // 引入 catalog 确保 pkg 静态分析时把 windsurf-catalog.js 拉进 bundle
 // (实际读取走 JSON 文件, 但 import 让打包器能识别依赖)
 import { WINDSURF_CATALOG } from './windsurf-catalog.js';
@@ -695,17 +695,16 @@ function buildUnlockSet() {
     };
     byUid.set(uid, slotEntry);
 
-    // 自动为新旧版本建立等价别名映射（例如 kimi-k3 与 kimi-k3-high 等）
-    // 确保新版 Devin Local 的白名单交集校验通过，同时不影响旧版客户端
-    const equivalents = getEquivalentModelUids(uid);
-    for (const eqUid of equivalents) {
-      if (!byUid.has(eqUid)) {
-        byUid.set(eqUid, {
-          ...slotEntry,
-          isAlias: true,
-          aliasOf: uid,
-        });
-      }
+    // 贴合使用习惯：严格 1:1 映射！
+    // 若槽位填的是旧版简写名（如 kimi-k3、deepseek-v4-pro），仅挂载新版 Devin Local 的唯一对应项（如 kimi-k3-high），
+    // 绝不将同家族的 low / max / 1m 等其它档位一并改名，杜绝重复列表！
+    const canonicalUid = getCanonicalDevinUid(s.modelUid);
+    if (canonicalUid && canonicalUid !== uid && !byUid.has(canonicalUid)) {
+      byUid.set(canonicalUid, {
+        ...slotEntry,
+        isAlias: true,
+        aliasOf: uid,
+      });
     }
   }
 
@@ -727,17 +726,16 @@ function buildUnlockSet() {
       wantImages: i.supportsImages !== false && canDeclareImagesForSlot(i.modelUid),
       source: 'injected',
     };
-    byUid.set(i.modelUid, injEntry);
+    const normUid = normalizeModelUid(i.modelUid);
+    byUid.set(normUid, injEntry);
 
-    const equivalents = getEquivalentModelUids(i.modelUid);
-    for (const eqUid of equivalents) {
-      if (!byUid.has(eqUid)) {
-        byUid.set(eqUid, {
-          ...injEntry,
-          isAlias: true,
-          aliasOf: i.modelUid,
-        });
-      }
+    const canonicalUid = getCanonicalDevinUid(i.modelUid);
+    if (canonicalUid && canonicalUid !== normUid && !byUid.has(canonicalUid)) {
+      byUid.set(canonicalUid, {
+        ...injEntry,
+        isAlias: true,
+        aliasOf: normUid,
+      });
     }
   }
 
@@ -935,12 +933,12 @@ function configuredMissingSpecs(seenUids, ctx) {
   for (const [uid, cfg] of ctx.byUid) {
     if (!uid || seenUids.has(uid) || hiddenByVisibility(uid, ctx.slotVisibility)) continue;
     if (cfg.isAlias) {
-      // 1. 如果该别名所在的等价组已有任何成员在上游响应中出现，不重复注入
-      const group = getEquivalentModelUids(uid);
-      if (group.some(id => seenUids.has(id))) continue;
-      // 2. 只有新版首选 Devin Local UID 才作为缺失条目注入（避免产生过多无用变体）
-      const preferred = getPreferredDevinModelUid(cfg.aliasOf || uid);
-      if (uid !== preferred) continue;
+      // 1. 如果该别名关联的原槽位已在响应中，不重复注入
+      if (cfg.aliasOf && seenUids.has(cfg.aliasOf)) continue;
+    } else {
+      // 2. 如果主项未在响应中，但其新版规范名已在响应中，不重复注入
+      const canonical = getCanonicalDevinUid(uid);
+      if (canonical && seenUids.has(canonical)) continue;
     }
     const catalog = catalogByUid().get(uid);
     const fallbackLabel = catalog?.label || catalogLabels().get(uid) || BUILTIN_LABELS[uid] || uid;
