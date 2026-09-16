@@ -8,6 +8,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { configDir } from './lib/config-dir.js';
 import { getModelMapConfig, getProviders, getSlots, markProvidersDirty } from './config-cache.js';
+import { getEquivalentModelUids, normalizeModelUid } from './lib/model-aliases.js';
 
 function providersPath() {
   return path.join(configDir(), 'providers.json');
@@ -205,7 +206,15 @@ export function loadModelMapConfig() {
 // 返回该 modelUid 对应的槽位（启用且有 targets 才算可路由），否则 null。
 export function getSlot(modelUid) {
   if (!modelUid) return null;
-  const entry = getSlots().get(modelUid);
+  const slots = getSlots();
+  let entry = slots.get(modelUid) || slots.get(normalizeModelUid(modelUid));
+  if (!entry) {
+    const candidates = getEquivalentModelUids(modelUid);
+    for (const cand of candidates) {
+      entry = slots.get(cand) || slots.get(normalizeModelUid(cand));
+      if (entry && entry.kind === 'slot') break;
+    }
+  }
   if (!entry || entry.kind !== 'slot') return null;
   const slot = entry.data;
   if (!slot || slot.enabled === false) return null;
@@ -216,7 +225,15 @@ export function getSlot(modelUid) {
 // kind: 'unconfigured'（已注入但没配 providerId/model）/ 'configured'（可用）
 export function getInjectedByUid(modelUid) {
   if (!modelUid) return null;
-  const entry = getSlots().get(modelUid);
+  const slots = getSlots();
+  let entry = slots.get(modelUid) || slots.get(normalizeModelUid(modelUid));
+  if (!entry) {
+    const candidates = getEquivalentModelUids(modelUid);
+    for (const cand of candidates) {
+      entry = slots.get(cand) || slots.get(normalizeModelUid(cand));
+      if (entry && entry.kind === 'injected') break;
+    }
+  }
   if (!entry || entry.kind !== 'injected') return null;
   const inj = entry.data;
   const hasProvider = inj.providerId && inj.providerId.length > 0;

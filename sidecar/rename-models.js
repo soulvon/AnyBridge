@@ -16,6 +16,7 @@ import { tryGunzip, gzipSync } from './connect.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import { configDir } from './lib/config-dir.js';
+import { getEquivalentModelUids, getPreferredDevinModelUid } from './lib/model-aliases.js';
 // 引入 catalog 确保 pkg 静态分析时把 windsurf-catalog.js 拉进 bundle
 // (实际读取走 JSON 文件, 但 import 让打包器能识别依赖)
 import { WINDSURF_CATALOG } from './windsurf-catalog.js';
@@ -681,7 +682,7 @@ function buildUnlockSet() {
       apiModel,
     }) : '';
     const slotContextWindow = Number(s.contextWindow);
-    byUid.set(uid, {
+    const slotEntry = {
       newLabel,
       customName,
       providerName,
@@ -691,7 +692,21 @@ function buildUnlockSet() {
         ? Math.trunc(slotContextWindow)
         : null,
       source: 'rename',
-    });
+    };
+    byUid.set(uid, slotEntry);
+
+    // 自动为新旧版本建立等价别名映射（例如 kimi-k3 与 kimi-k3-high 等）
+    // 确保新版 Devin Local 的白名单交集校验通过，同时不影响旧版客户端
+    const equivalents = getEquivalentModelUids(uid);
+    for (const eqUid of equivalents) {
+      if (!byUid.has(eqUid)) {
+        byUid.set(eqUid, {
+          ...slotEntry,
+          isAlias: true,
+          aliasOf: uid,
+        });
+      }
+    }
   }
 
   // 2) 注入项（解锁灰色模型）
@@ -707,11 +722,23 @@ function buildUnlockSet() {
       apiModel: i.model || '',
     });
     if (newLabel === orig) continue;
-    byUid.set(i.modelUid, {
+    const injEntry = {
       newLabel,
       wantImages: i.supportsImages !== false && canDeclareImagesForSlot(i.modelUid),
       source: 'injected',
-    });
+    };
+    byUid.set(i.modelUid, injEntry);
+
+    const equivalents = getEquivalentModelUids(i.modelUid);
+    for (const eqUid of equivalents) {
+      if (!byUid.has(eqUid)) {
+        byUid.set(eqUid, {
+          ...injEntry,
+          isAlias: true,
+          aliasOf: i.modelUid,
+        });
+      }
+    }
   }
 
   // Devin/Windsurf 客户端会基于隐藏 apiId 做二次去重。若两个 BYOK 槽位
@@ -907,6 +934,14 @@ function configuredMissingSpecs(seenUids, ctx) {
   const specs = [];
   for (const [uid, cfg] of ctx.byUid) {
     if (!uid || seenUids.has(uid) || hiddenByVisibility(uid, ctx.slotVisibility)) continue;
+    if (cfg.isAlias) {
+      // 1. 如果该别名所在的等价组已有任何成员在上游响应中出现，不重复注入
+      const group = getEquivalentModelUids(uid);
+      if (group.some(id => seenUids.has(id))) continue;
+      // 2. 只有新版首选 Devin Local UID 才作为缺失条目注入（避免产生过多无用变体）
+      const preferred = getPreferredDevinModelUid(cfg.aliasOf || uid);
+      if (uid !== preferred) continue;
+    }
     const catalog = catalogByUid().get(uid);
     const fallbackLabel = catalog?.label || catalogLabels().get(uid) || BUILTIN_LABELS[uid] || uid;
     specs.push({

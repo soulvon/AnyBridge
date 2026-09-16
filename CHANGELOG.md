@@ -2,6 +2,18 @@
 
 All notable changes to AnyBridge will be documented in this file.
 
+## v0.5.14 - 2026-09-16
+
+- 修复 Arch Linux / Manjaro 环境下系统 CA 证书安装失败问题（Fixes #25）：
+  - 调整证书路径检测优先级：优先检测 Arch / Manjaro 真实证书目录 `/etc/ca-certificates/trust-source/anchors`，避免因系统自带 `update-ca-trust` 工具而误判为 Fedora/RHEL 分支写入不存在的 `/etc/pki/...`。
+  - 复制证书命令统一使用 `install -D` 参数，防止目标父目录不存在时报错，并适配 Arch 下执行 `update-ca-trust extract` 或 `trust extract-compat`。
+- 修复 Linux AppImage 打包时 strip 破坏 Node.js pkg 产物导致代理进程秒退白屏（Fixes #26）：
+  - 根因：`anybridge-proxy` 是使用 `@yao-pkg/pkg` 打包的单文件 Node.js 运行时，payload 追加在二进制末尾且硬编码绝对偏移量。Tauri 打包 Linux AppImage 时底层 `linuxdeploy` 默认执行无差别全局 `strip`，导致 ELF 头部偏移前移，Node 引导代码读取 payload 错位崩溃（`SyntaxError: Unexpected identifier 'instance'`）。
+  - 实施分层精准 Strip 机制：在 Linux 打包环境注入 `NO_STRIP="true"` 防止破坏 Node.js pkg 二进制；同时在 Rust 侧单独开启 `[profile.release] strip = true` 与 LTO 优化，并在编译脚本中显式执行 strip，使 `anybridge-cursor-core` 降至 ~15MB，兼顾稳定性与极致轻量包体。
+- 增强 Devin Local / Windsurf 跨版本模型别名映射与兼容性：
+  - 新增跨版本模型别名解析模块（`model-aliases.js`），建立双向等价解析索引，支持 `kimi-k3` / `kimi-k3-high` / `kimi-k3-max`、`deepseek-v4-pro` / `deepseek-v4-pro-high`、`glm-5`、`gemini`、`claude` 等等价变体。
+  - 优化路由与注入逻辑：`provider-pool` 支持等价别名槽位检索；`rename-models` 自动补全等价别名映射并防重复注入，确保新版 Devin Local 的白名单交集校验 100% 通过，且不影响旧版客户端。
+
 ## v0.5.13 - 2026-09-14
 
 - 修复国际化（英文模式）下表头文本过长导致字形重叠错位（`Third-party image understandiEngable`）的问题：
