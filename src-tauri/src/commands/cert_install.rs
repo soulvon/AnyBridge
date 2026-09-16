@@ -1133,25 +1133,46 @@ mod platform {
         if command_exists("update-ca-certificates") {
             let anchor = system_anchor_path();
             let script = format!(
-                "install -m 0644 {} {} && update-ca-certificates",
+                "install -D -m 0644 {} {} && update-ca-certificates",
                 cert_q,
                 shell_quote(&anchor.to_string_lossy())
             );
             return run_pkexec_script(&script);
         }
 
+        // Arch Linux / Manjaro:
+        // 在 Arch/Manjaro 上通常同时有 update-ca-trust 和 trust，但系统 anchors 路径是 /etc/ca-certificates/trust-source/anchors
+        let arch_anchor_dir = Path::new("/etc/ca-certificates/trust-source/anchors");
+        if arch_anchor_dir.is_dir()
+            || (!Path::new("/etc/pki/ca-trust/source/anchors").is_dir() && command_exists("trust"))
+        {
+            let arch_anchor = arch_anchor_dir.join("anybridge-local-ca.crt");
+            let update_cmd = if command_exists("update-ca-trust") {
+                "update-ca-trust extract"
+            } else {
+                "trust extract-compat"
+            };
+            let script = format!(
+                "install -D -m 0644 {} {} && {}",
+                cert_q,
+                shell_quote(&arch_anchor.to_string_lossy()),
+                update_cmd
+            );
+            return run_pkexec_script(&script);
+        }
+
         // Fedora/RHEL/CentOS: update-ca-trust
-        if command_exists("update-ca-trust") {
+        if command_exists("update-ca-trust") || Path::new("/etc/pki/ca-trust/source/anchors").is_dir() {
             let pki = PathBuf::from("/etc/pki/ca-trust/source/anchors/anybridge-local-ca.crt");
             let script = format!(
-                "install -m 0644 {} {} && update-ca-trust extract",
+                "install -D -m 0644 {} {} && update-ca-trust extract",
                 cert_q,
                 shell_quote(&pki.to_string_lossy())
             );
             return run_pkexec_script(&script);
         }
 
-        // Arch: trust extract-compat after placing in /etc/ca-certificates/trust-source/anchors
+        // Generic Arch fallback with trust
         if command_exists("trust") {
             let arch_anchor = PathBuf::from(
                 "/etc/ca-certificates/trust-source/anchors/anybridge-local-ca.crt",
