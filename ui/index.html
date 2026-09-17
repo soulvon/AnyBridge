@@ -1053,34 +1053,17 @@
                 <div class="slot-editor-card-head">
                   <span class="slot-editor-card-title">选择映射模型</span>
                 </div>
-                <!-- 映射参数配置区 (移到右卡片顶部，节省底部空间) -->
+                <!-- 映射参数配置区 (左侧显示名自适应撑满，右侧参数组向右对齐) -->
                 <div
-                  style="padding:10px 18px; border-bottom:1px solid var(--border); background:rgba(0,0,0,0.01); display:flex; flex-direction:column; gap:8px; flex:0 0 auto;">
-                  <div style="display:flex; gap:8px; align-items:center;">
-                    <input class="field-input" id="slot-display" placeholder="自定义显示名（留空使用模型原始名）"
-                      style="padding:7px 11px; font-size:12px; border-radius:8px; flex:1; min-width:0; height:32px;">
-                    <div style="display:flex; gap:6px; align-items:center; flex-shrink:0;">
-                      <input class="field-input" id="slot-context-window" type="number" min="1" step="1"
-                        placeholder="上下文窗口"
-                        title="留空 = 使用 catalog / 上游原值"
-                        style="padding:7px 10px; font-size:12px; border-radius:8px; width:100px; height:32px;">
-                      <div id="slot-context-presets" style="display:flex; gap:4px; flex-wrap:wrap;">
-                        <button type="button" id="btn-slot-context-recommend" class="slot-ctx-preset" data-action="applyRecommendedSlotContextWindow"
-                          style="height:32px;padding:0 8px;border-radius:7px;border:1px solid var(--accent);background:var(--accent);color:#fff;font-size:11px;font-weight:600;cursor:pointer;" title="按映射模型推荐上下文（与 CodeBuddy 同源）">推荐</button>
-                        <button type="button" class="slot-ctx-preset" data-action="setSlotContextPreset" data-args="[200000]"
-                          style="height:32px;padding:0 8px;border-radius:7px;border:1px solid var(--border);background:var(--bg-input);color:var(--text-muted);font-size:11px;font-weight:600;cursor:pointer;">200K</button>
-                        <button type="button" class="slot-ctx-preset" data-action="setSlotContextPreset" data-args="[1000000]"
-                          style="height:32px;padding:0 8px;border-radius:7px;border:1px solid var(--border);background:var(--bg-input);color:var(--text-muted);font-size:11px;font-weight:600;cursor:pointer;">1M</button>
-                      </div>
-                    </div>
-                  </div>
-                  <div style="display:flex; gap:8px; align-items:center;">
-                    <span style="font-size:11px;color:var(--text-muted);flex-shrink:0;" title="目标模型的思考档位（thinking effort）">思考档位</span>
+                  style="padding:10px 18px; border-bottom:1px solid var(--border); background:rgba(0,0,0,0.01); display:flex; gap:10px; align-items:center; flex:0 0 auto;">
+                  <input class="field-input" id="slot-display" placeholder="自定义显示名（留空使用模型原始名）"
+                    style="padding:0 11px; font-size:12px; border-radius:8px; flex:1; min-width:0; height:32px;">
+                  <div style="display:flex; gap:8px; align-items:center; flex-shrink:0; margin-left:auto;">
                     <select id="slot-thinking-effort" class="field-input"
-                      style="padding:0 10px; font-size:12px; border-radius:8px; flex:1; min-width:0; height:32px;"
-                      title="自动 = 按 Devin 所选模型档位解析并转换到目标模型；关闭 = 禁用思考">
-                      <option value="auto">自动（跟随 Devin 档位）</option>
-                      <option value="off">关闭</option>
+                      style="padding:0 6px; font-size:12px; border-radius:8px; width:112px; height:32px; flex:0 0 auto; cursor:pointer;"
+                      title="目标模型的思考档位（thinking effort）：自动 = 跟随原档位解析；关闭 = 禁用思考">
+                      <option value="auto">思考·自动</option>
+                      <option value="off">思考·关闭</option>
                       <option value="minimal">minimal</option>
                       <option value="low">low</option>
                       <option value="medium">medium</option>
@@ -1088,6 +1071,20 @@
                       <option value="xhigh">xhigh</option>
                       <option value="max">max</option>
                     </select>
+                    <div style="display:flex; gap:5px; align-items:center; flex:0 0 auto;">
+                      <input class="field-input" id="slot-context-window" type="number" min="1" step="1"
+                        placeholder="上下文"
+                        title="上下文窗口限制（tokens），留空 = 使用 catalog / 上游原值"
+                        style="padding:0 6px; font-size:12px; border-radius:8px; width:92px; height:32px; text-align:center; flex:0 0 auto;">
+                      <div id="slot-context-presets" style="display:flex; gap:4px; align-items:center;">
+                        <button type="button" id="btn-slot-context-recommend" class="slot-ctx-preset" data-action="applyRecommendedSlotContextWindow"
+                          style="height:32px;padding:0 8px;border-radius:7px;border:1px solid var(--accent);background:var(--accent);color:#fff;font-size:11px;font-weight:600;cursor:pointer;white-space:nowrap;" title="按映射模型推荐上下文（与 CodeBuddy 同源）">推荐</button>
+                        <button type="button" class="slot-ctx-preset" data-action="setSlotContextPreset" data-args="[200000]"
+                          style="height:32px;padding:0 7px;border-radius:7px;border:1px solid var(--border);background:var(--bg-input);color:var(--text-muted);font-size:11px;font-weight:600;cursor:pointer;" title="200,000 tokens">200K</button>
+                        <button type="button" class="slot-ctx-preset" data-action="setSlotContextPreset" data-args="[1000000]"
+                          style="height:32px;padding:0 7px;border-radius:7px;border:1px solid var(--border);background:var(--bg-input);color:var(--text-muted);font-size:11px;font-weight:600;cursor:pointer;" title="1,000,000 tokens">1M</button>
+                      </div>
+                    </div>
                   </div>
                   <input type="hidden" id="slot-edit-uid">
                   <select class="model-select" id="slot-uid-select" style="display:none;"></select>

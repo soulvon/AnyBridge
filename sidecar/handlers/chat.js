@@ -9,6 +9,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { configDir } from '../lib/config-dir.js';
+import { cleanupExpiredLogs } from '../lib/log-cleanup.js';
 import {
   applyCodexUnlockRequiredFields,
   buildClaudeCodeUnlockPayload,
@@ -638,6 +639,7 @@ function logEnhancedChatRequest(entry) {
   try {
     const dir = path.join(configDir(), 'proxy-logs');
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    cleanupExpiredLogs();
     const date = new Date().toISOString().slice(0, 10);
     const file = path.join(dir, `proxy-${date}.jsonl`);
     fs.appendFileSync(file, JSON.stringify({

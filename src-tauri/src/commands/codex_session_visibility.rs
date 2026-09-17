@@ -116,6 +116,16 @@ pub fn repair_default_codex_session_visibility(
         updated_sqlite_row_count, changed_rollout_file_count
     );
 
+    // 修复成功后删除 sqlite 备份目录：备份只服务于「失败回滚」，成功即失去
+    // 作用。state db 随会话增长可达数十 MB，不清理会在 ~/.codex 下长期残留
+    // 冗余大文件（失败路径保留备份供排查，不受影响）。
+    if let Err(cleanup_error) = fs::remove_dir_all(&backup_dir) {
+        eprintln!(
+            "[SessionVisibility] 清理备份目录失败（不影响修复结果）: {} ({})",
+            backup_dir.display(), cleanup_error
+        );
+    }
+
     Ok(CodexSessionVisibilityRepairSummary {
         target_provider,
         changed_rollout_file_count,
@@ -547,6 +557,11 @@ fn backup_sqlite_only(data_dir: &Path, _target_provider: &str) -> Result<PathBuf
         now_epoch_millis(),
         BACKUP_SUFFIX
     ));
+    // 同名目录已存在（同毫秒连续修复，或上次失败回滚后保留）时先清掉，
+    // 避免 VACUUM INTO 因目标已存在而报错，也防止目录内旧文件混入本次备份。
+    if backup_dir.exists() {
+        let _ = fs::remove_dir_all(&backup_dir);
+    }
     fs::create_dir_all(&backup_dir)
         .map_err(|error| format!("创建备份目录失败 ({}): {}", backup_dir.display(), error))?;
     backup_sqlite_database(data_dir, &backup_dir)?;

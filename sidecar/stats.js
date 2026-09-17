@@ -7,6 +7,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { configDir } from './lib/config-dir.js';
+import { cleanupExpiredLogs } from './lib/log-cleanup.js';
 
 function todayKey() {
   return new Date().toISOString().slice(0, 10);
@@ -152,6 +153,7 @@ function normalizeVisionFallback(value) {
 function appendVisionLog(record) {
   try {
     fs.mkdirSync(visionLogDir(), { recursive: true });
+    cleanupExpiredLogs();
     fs.appendFile(visionLogPath(), JSON.stringify(record) + '\n', 'utf8', (e) => {
       if (e) console.error('[stats] failed to write vision log: ' + e.message);
     });

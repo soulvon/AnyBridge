@@ -211,15 +211,14 @@ fn patch_nls_tolerant(target: &str) -> Result<bool, String> {
         return Ok(false);
     }
 
-    // 备份原厂文件（幂等：仅首次写入，后续 IDE 升级由 inject_workbench_html
-    // 的同名逻辑刷新 workbench.html 备份，此处同理只在原厂状态下备份）
+    // 备份原厂文件：走到这里 content 必含 NLS MISSING throw（原厂态），总是刷新备份，
+    // 确保备份与当前安装版本严格一致。IDE 升级会覆盖 main.js 但不会删旧备份，
+    // 若只写一次，停止接入时会把旧版本文件还原回去，造成 workbench 新旧版本错配。
     let backup = PathBuf::from(format!("{}{}", js_path.to_string_lossy(), NLS_BACKUP_SUFFIX));
-    if !backup.exists() {
-        fs::write(&backup, &content)
-            .map_err(|e| format!("备份 workbench.desktop.main.js 失败: {}", e))?;
-    }
+    fs::write(&backup, &content)
+        .map_err(|e| format!("备份 workbench.desktop.main.js 失败: {}", e))?;
 
-    let Some((patched, count)) = replace_nls_throws(&content) else {
+    let Some((patched, _count)) = replace_nls_throws(&content) else {
         return Ok(false);
     };
 
@@ -229,6 +228,8 @@ fn patch_nls_tolerant(target: &str) -> Result<bool, String> {
 }
 
 /// 还原直连时还原 NLS 原厂文件（有备份才还原，否则跳过）。
+/// 版本防护：IDE 升级会把 main.js 覆盖回新版原厂，此时旧备份不能往回覆盖，
+/// 否则新旧文件版本错配（可能引发前端异常降级，如误入屏幕阅读器模式）。
 fn restore_nls(target: &str) -> Result<bool, String> {
     let Some(js_path) = workbench_main_js_path(target) else {
         return Ok(false);
@@ -237,6 +238,26 @@ fn restore_nls(target: &str) -> Result<bool, String> {
     if !backup.exists() {
         return Ok(false);
     }
+
+    // 防护 1：当前 main.js 仍含 NLS MISSING throw = 原厂态（未被我们 patch，
+    // 常见于 IDE 升级覆盖后），无需还原；备份必属旧版本，直接淘汰。
+    let current = fs::read_to_string(&js_path).map_err(|e| e.to_string())?;
+    if current.contains("!!! NLS MISSING: ") {
+        let _ = fs::remove_file(&backup);
+        return Ok(false);
+    }
+    // 防护 2：当前 workbench.html 已无注入块 = IDE 升级后的原生状态。
+    // html 与 main.js 同属 resources/app，升级必然同时覆盖，此时 NLS 备份
+    // 即使内容上"看起来已 patch"，也极可能是旧版本残留，一并淘汰跳过。
+    if let Some(html_path) = workbench_html_path(target) {
+        if let Ok(html) = fs::read_to_string(&html_path) {
+            if !html.contains(BYOK_BLOCK_START) {
+                let _ = fs::remove_file(&backup);
+                return Ok(false);
+            }
+        }
+    }
+
     let orig = fs::read_to_string(&backup)
         .map_err(|e| format!("读取 NLS 备份失败: {}", e))?;
     write_atomic(&js_path, &orig)
@@ -391,6 +412,18 @@ pub(crate) fn restore_product_json(target: &str) -> Result<bool, String> {
     let backup = PathBuf::from(format!("{}{}", path.to_string_lossy(), BACKUP_SUFFIX));
 
     if backup.exists() {
+        // 版本防护：当前 checksums 已是原厂非空状态（IDE 升级覆盖回原厂），
+        // 说明清单并未被我们清空，无需还原；备份必属旧版本，直接淘汰，
+        // 避免把旧版本 product.json（含旧版路径/版本号）覆盖到新版安装上。
+        let current = fs::read_to_string(&path).map_err(|e| e.to_string())?;
+        let current_patched = match find_checksums_object(&current) {
+            Some((start, end)) => current[start..end].trim() == "{}",
+            None => false,
+        };
+        if !current_patched {
+            let _ = fs::remove_file(&backup);
+            return Ok(false);
+        }
         let orig = fs::read_to_string(&backup).map_err(|e| e.to_string())?;
         write_atomic(&path, &orig).map_err(|e| format!("还原 product.json 失败: {}", e))?;
         let _ = fs::remove_file(&backup);
@@ -538,6 +571,14 @@ fn restore_workbench_html(target: &str) -> Result<bool, String> {
     let backup = PathBuf::from(format!("{}{}", path.to_string_lossy(), BACKUP_SUFFIX));
 
     if backup.exists() {
+        // 版本防护：当前 html 已无注入块 = IDE 升级覆盖成新版原厂文件（未被我们
+        // 注入）。此时备份一定来自旧版本，覆盖回去会造成 workbench 新旧文件
+        // 版本错配，引发前端异常降级。丢弃过期备份并跳过还原。
+        let current = fs::read_to_string(&path).map_err(|e| e.to_string())?;
+        if !current.contains(BYOK_BLOCK_START) {
+            let _ = fs::remove_file(&backup);
+            return Ok(false);
+        }
         let orig = fs::read_to_string(&backup).map_err(|e| e.to_string())?;
         write_atomic(&path, &orig).map_err(|e| format!("还原 workbench.html 失败: {}", e))?;
         let _ = fs::remove_file(&backup);

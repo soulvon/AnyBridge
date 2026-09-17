@@ -260,6 +260,34 @@ pub fn export_proxy_logs(entries: Vec<ExportLogEntry>) -> Result<String, String>
         ));
     }
     std::fs::write(&path, content).map_err(|e| format!("写入日志文件失败: {}", e))?;
+
+    // 清理历史导出：每次导出都是一份完整日志快照（可能数 MB），只保留最近
+    // 10 份，防止用户目录 log-exports 无限堆积。
+    const MAX_EXPORTS: usize = 10;
+    if let Ok(items) = std::fs::read_dir(&export_dir) {
+        let mut files: Vec<std::path::PathBuf> = items
+            .flatten()
+            .filter(|entry| {
+                entry
+                    .file_name()
+                    .to_string_lossy()
+                    .starts_with("byok-logs-")
+            })
+            .map(|entry| entry.path())
+            .collect();
+        if files.len() > MAX_EXPORTS {
+            files.sort_by_key(|p| {
+                std::fs::metadata(p)
+                    .and_then(|m| m.modified())
+                    .map(|t| t.duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0))
+                    .unwrap_or(0)
+            });
+            for stale in files.iter().take(files.len() - MAX_EXPORTS) {
+                let _ = std::fs::remove_file(stale);
+            }
+        }
+    }
+
     Ok(path.to_string_lossy().to_string())
 }
 

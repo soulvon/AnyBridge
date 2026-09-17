@@ -2,6 +2,17 @@
 
 All notable changes to AnyBridge will be documented in this file.
 
+## v0.5.16 - 2026-09-17
+
+- 修复 Devin/Windsurf「一键接入 → 停止接入」循环中 IDE 自动升级后，还原操作用旧版本备份覆盖新版原厂文件导致的 workbench 新旧版本错配（表现为客户端误入屏幕阅读器模式、界面 NLS 文案错乱，重装可临时恢复）：
+  - `restore_workbench_html` / `restore_nls` / `restore_product_json` 三个还原函数增加版本感知防护：检测到当前文件已是 IDE 升级后的原厂状态时，丢弃过期备份并跳过还原，绝不让旧版本文件覆盖新版本安装。
+  - `patch_nls_tolerant` 备份策略从「仅首次写入」改为「原厂态总是刷新」，确保备份与当前安装版本严格一致。
+- 用户目录日志防堆积治理（此前只增不删，实测单用户堆积 1.2 GB+）：
+  - 新增统一清理模块 `sidecar/lib/log-cleanup.js`：`proxy-logs` / `mitm-logs` / `rpc-audit` / `vision-logs` 四类按天滚动日志默认保留 7 天（`BYOK_LOG_RETENTION_DAYS` 可覆盖），过期自动删除；按自然日节流扫描，写入路径零感知。
+  - 「导出日志」只保留最近 10 份，历史导出文件自动回收。
+- 修复 Codex 历史会话可见性修复成功后，sqlite 备份目录（可达数十 MB）永久残留在 `~/.codex` 的问题：修复成功即清理备份；备份前先清理同名残留目录，避免 `VACUUM INTO` 冲突。
+- 槽位编辑器布局优化：映射参数区（显示名 / 思考档位 / 上下文窗口）合并为单行紧凑布局，思考档位选项文案改为「思考·自动 / 思考·关闭」。
+
 ## v0.5.15 - 2026-09-17
 
 - 深度解决 Devin 1.126.0+ 新版架构适配与新旧版本交互体验一致性：

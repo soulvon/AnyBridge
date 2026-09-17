@@ -4,6 +4,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { configDir } from './lib/config-dir.js';
+import { cleanupExpiredLogs } from './lib/log-cleanup.js';
 
 const LOG_DIR = path.join(configDir(), 'mitm-logs');
 const RPC_AUDIT_DIR = path.join(configDir(), 'rpc-audit');
@@ -103,6 +104,7 @@ function slim(entry) {
  */
 export function mitmLog(entry) {
   if (!MITM_LOG_ENABLED) return;
+  cleanupExpiredLogs();
   const record = {
     ts: new Date().toISOString(),
     ...slim(entry),
@@ -132,6 +134,7 @@ export function mitmLog(entry) {
  */
 export function rpcAuditLog(entry) {
   if (!RPC_AUDIT_ENABLED) return;
+  cleanupExpiredLogs();
   const record = {
     ts: new Date().toISOString(),
     ...entry,
