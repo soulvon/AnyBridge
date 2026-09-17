@@ -56,7 +56,7 @@ test('unlockModels=false keeps configured routes but does not rewrite unconfigur
   assert.equal(rows.length, 2);
   assert.deepEqual(rows.find(row => row.modelUid === 'MODEL_CONFIGURED'), {
     modelUid: 'MODEL_CONFIGURED',
-    label: 'Configured Model via Provider One',
+    label: 'MODEL_CONFIGURED>Configured Model via Provider One',
     disabled: false,
     supportsImages: true,
   });
@@ -165,7 +165,7 @@ test('official visibility keeps officially available models and does not release
   const json = JSON.parse(result.body.toString('utf8'));
   const rows = json.userStatus.cascadeModelConfigData.clientModelConfigs;
   assert.equal(rows.length, 2);
-  assert.equal(rows.find(r => r.modelUid === 'gemini-3-7-flash-medium').label, 'gemini-3.8-flash-high (CPA)');
+  assert.equal(rows.find(r => r.modelUid === 'gemini-3-7-flash-medium').label, 'gemini-3-7-flash-medium>gemini-3.8-flash-medium (CPA)');
   assert.equal(rows.find(r => r.modelUid === 'gemini-3-7-flash-medium').disabled, false);
   assert.equal(rows.find(r => r.modelUid === 'swe-1-6-slow').label, 'SWE-1.6 Slow (官方)');
   assert.equal(rows.find(r => r.modelUid === 'swe-1-6-slow').disabled, false);
@@ -197,6 +197,51 @@ test('normalizes dotted modelUid (gemini-3.7) to dash format for matching offici
   const rows = json.userStatus.cascadeModelConfigData.clientModelConfigs;
   assert.equal(rows.length, 1);
   assert.equal(rows[0].modelUid, 'gemini-3-7-flash-high');
-  assert.equal(rows[0].label, 'gemini-3.7-flash-high (CPA)');
+  assert.equal(rows[0].label, 'gemini-3-7-flash-high>gemini-3.7-flash-high (CPA)');
   assert.equal(rows[0].disabled, false);
+}));
+
+test('mapped label carries source uid prefix and effective effort suffix on target name', () => withConfigDir((dir) => {
+  fs.writeFileSync(path.join(dir, 'providers.json'), JSON.stringify({
+    providers: [{ id: 'p1', name: 'CPA' }],
+  }), 'utf8');
+  fs.writeFileSync(path.join(dir, 'model-map.json'), JSON.stringify({
+    slotVisibilityMode: 'official',
+    slots: [
+      {
+        modelUid: 'gpt-5-6-sol-medium',
+        displayName: 'gpt-5.6-sol',
+        enabled: true,
+        targets: [{ providerId: 'p1', model: 'gpt-5.6-sol' }],
+      },
+      {
+        // thinkingEffort 固定档位优先于 uid 后缀
+        modelUid: 'gpt-6-astra-medium',
+        displayName: 'gpt-6-astra',
+        enabled: true,
+        thinkingEffort: 'xhigh',
+        targets: [{ providerId: 'p1', model: 'gpt-6-astra' }],
+      },
+      {
+        // 无档位后缀的 uid 不在目标名上追加
+        modelUid: 'claude-fable-5-1',
+        displayName: 'gpt-6-astra',
+        enabled: true,
+        targets: [{ providerId: 'p1', model: 'gpt-6-astra' }],
+      },
+    ],
+  }), 'utf8');
+
+  const result = unlockModels(statusBody([
+    { modelUid: 'gpt-5-6-sol-medium', label: 'GPT-5.6 Sol Medium Thinking', disabled: true },
+    { modelUid: 'gpt-6-astra-medium', label: 'GPT-6 Astra Medium Thinking', disabled: true },
+    { modelUid: 'claude-fable-5-1', label: 'Claude Fable 5.1', disabled: true },
+  ]));
+
+  assert.ok(result);
+  const json = JSON.parse(result.body.toString('utf8'));
+  const rows = json.userStatus.cascadeModelConfigData.clientModelConfigs;
+  assert.equal(rows.find(r => r.modelUid === 'gpt-5-6-sol-medium').label, 'gpt-5-6-sol-medium>gpt-5.6-sol-medium (CPA)');
+  assert.equal(rows.find(r => r.modelUid === 'gpt-6-astra-medium').label, 'gpt-6-astra-medium>gpt-6-astra-xhigh (CPA)');
+  assert.equal(rows.find(r => r.modelUid === 'claude-fable-5-1').label, 'claude-fable-5-1>gpt-6-astra (CPA)');
 }));

@@ -122,15 +122,70 @@ function renderTemplate(tpl, vars) {
   return out;
 }
 
+// modelUid 尾部的档位/修饰 token，词表与 lib/thinking-effort.js 保持一致。
+// 该模块反向 import 了本文件的 catalogEntryForUid，为避免循环依赖这里做最小复制，
+// 仅用于 label 展示（不决定上游转发）。
+const UID_EFFORT_TOKENS = new Set(['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max', 'thinking', 'reasoning']);
+const UID_MODIFIER_TOKENS = new Set(['fast', 'priority', '1m', 'slow', 'lightning']);
+
+// 从 modelUid 尾部提取档位 token（先剥掉 -fast/-priority/-1m 等修饰后缀）。
+// 'max'/'thinking' 严格说可能是名字一部分，但 uid 既然带了该后缀，
+// 拼进 label 反映原始槽位语义即可。
+function effortTokenFromUid(uid) {
+  const tokens = String(uid || '').toLowerCase().split(/[-_]+/).filter(Boolean);
+  while (tokens.length && UID_MODIFIER_TOKENS.has(tokens[tokens.length - 1])) tokens.pop();
+  const last = tokens[tokens.length - 1] || '';
+  return UID_EFFORT_TOKENS.has(last) ? last : '';
+}
+
+// 归一化 slot.thinkingEffort：显式 off → 'off'；固定档位 → 档位；其余 → 'auto'。
+// 与 lib/thinking-effort.js 的 normalizeThinkingEffortConfig 对齐的最小实现。
+function slotEffortOverride(value) {
+  const raw = String(value || '').trim().toLowerCase();
+  if (['off', 'none', 'disable', 'disabled', 'false', 'no'].includes(raw)) return 'off';
+  if (['on', 'enabled', 'true'].includes(raw)) return 'high';
+  if (['minimal', 'low', 'medium', 'high', 'xhigh', 'max'].includes(raw)) return raw;
+  return 'auto';
+}
+
+// 该条目实际生效的档位：slot.thinkingEffort 配置优先，auto 时跟随 modelUid 后缀。
+function effectiveEffortToken(cfg, uid) {
+  const cfgLevel = slotEffortOverride(cfg && cfg.thinkingEffort);
+  if (cfgLevel === 'off') return '';
+  if (cfgLevel !== 'auto') return cfgLevel;
+  return effortTokenFromUid(uid);
+}
+
+// 剥掉自定义名尾部已有的档位词（-medium/-high 等），便于替换为实际生效档位，
+// 避免出现 'xxx-high-medium' 这种双档位尾巴。
+function stripTrailingEffortToken(name) {
+  const s = String(name || '');
+  const m = s.match(/[-_]([a-z0-9]+)$/i);
+  if (m && UID_EFFORT_TOKENS.has(m[1].toLowerCase())) return s.slice(0, m.index);
+  return s;
+}
+
 function configuredLabelFromRuntime(cfg, fallbackLabel, uid, labelTemplate, namePrefix) {
-  if (cfg && cfg.newLabel) return cfg.newLabel;
-  if (!cfg || cfg.source !== 'rename') return cfg ? cfg.newLabel : '';
-  return renderTemplate(labelTemplate, {
-    prefix: namePrefix,
-    label: cfg.customName || fallbackLabel || uid,
-    provider: cfg.providerName || '未配置',
-    apiModel: cfg.apiModel || '',
-  });
+  let rendered = cfg ? cfg.newLabel : '';
+  // rename 槽位且配了自定义名：把该条目实际生效的档位拼到目标名尾部。
+  // 例：uid gpt-5-6-sol-medium + displayName gpt-5.6-sol → 'gpt-5.6-sol-medium'。
+  // 无自定义名时用官方原 label（本身已含档位文字），不再追加。
+  if (cfg && cfg.source === 'rename' && cfg.customName) {
+    const effort = effectiveEffortToken(cfg, uid);
+    if (effort) {
+      rendered = renderTemplate(labelTemplate, {
+        prefix: namePrefix,
+        label: `${stripTrailingEffortToken(cfg.customName)}-${effort}`,
+        provider: cfg.providerName || '未配置',
+        apiModel: cfg.apiModel || '',
+      });
+    }
+  }
+  // 客户端按 model_info.apiId 归并 model family；同 apiId 的多个映射槽位会被
+  // apiIdOverride 拆成单变体孤立 family，看不到原模型与档位。给映射 label 统一
+  // 加原始 modelUid 前缀（uid 自带 -medium/-high 等档位后缀），便于识别：
+  //   claude-fable-5-1-medium>gpt-6-astra-medium (cliproxyapi)
+  return rendered && uid ? `${uid}>${rendered}` : rendered;
 }
 
 function configuredApiIdForUid(uid) {
@@ -701,6 +756,7 @@ function buildUnlockSet() {
       customName,
       providerName,
       apiModel,
+      thinkingEffort: s.thinkingEffort,
       wantImages: s.supportsImages !== false && canDeclareImagesForSlot(uid),
       contextWindow: Number.isFinite(slotContextWindow) && slotContextWindow > 0
         ? Math.trunc(slotContextWindow)
