@@ -246,6 +246,7 @@ export function getInjectedByUid(modelUid) {
     apiFormat: inj.apiFormat || inj.api_format || null,
     apiPath: inj.apiPath || inj.api_path || null,
     unlock: inj.unlock || null,
+    thinkingEffort: inj.thinkingEffort || inj.thinking_effort || null,
     supportsImages: inj.supportsImages !== false,
     status: (hasProvider && hasModel) ? 'configured' : 'unconfigured',
   };
