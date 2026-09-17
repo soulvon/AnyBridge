@@ -564,8 +564,19 @@ async function renderModelMap() {
         const firstTarget = (s.targets && s.targets[0]) || null;
         const providerName = firstTarget ? providerNameOf(firstTarget.providerId) : '';
         const apiModel = firstTarget ? firstTarget.model : '';
+        const slotThinkingEffort = (firstTarget && firstTarget.thinkingEffort) || s.thinkingEffort || '';
         const display = renderLabelTemplate(tpl, {
-          prefix, label: baseName, provider: providerName, apiModel
+          prefix,
+          label: baseName,
+          provider: providerName,
+          apiModel,
+          slotUid: displayUidForLabel(s.modelUid),
+          effort: effectiveEffortToken(slotThinkingEffort, s.modelUid),
+          context: formatContextWindow(s.contextWindow),
+        }, {
+          showSlotUid: !!modelMapStore.showSlotUid,
+          showThinkingEffort: !!modelMapStore.showThinkingEffort,
+          showContextWindow: !!modelMapStore.showContextWindow,
         });
         const slotIconKey = typeof getModelIconKey === 'function'
           ? (getModelIconKey(apiModel) || getModelIconKey(baseName) || getModelIconKey(s.modelUid) || getModelIconKey(orig))
@@ -1878,23 +1889,157 @@ async function toggleSlotThirdPartyVision(uid, enabled) {
 // 模板含 {provider} 且 provider 空 → 「未设置」
 globalThis.DEFAULT_LABEL_TEMPLATE = '{prefix} {label} ({provider})';
 globalThis.SIMPLE_LABEL_TEMPLATE_BASE = '{prefix} {label}';
-globalThis.TEMPLATE_VAR_NAMES = ['prefix', 'label', 'provider', 'apiModel'];
+globalThis.TEMPLATE_VAR_NAMES = ['prefix', 'label', 'provider', 'apiModel', 'slotUid', 'effort', 'context'];
 globalThis.labelTemplateModalMode = 'simple';
 
-function renderLabelTemplate(tpl, vars) {
+const UID_EFFORT_TOKENS = new Set(['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max', 'thinking', 'reasoning']);
+const UID_MODIFIER_TOKENS = new Set(['fast', 'priority', '1m', 'slow', 'lightning']);
+
+function effortTokenFromUid(uid) {
+  const tokens = String(uid || '').toLowerCase().split(/[-_]+/).filter(Boolean);
+  while (tokens.length && UID_MODIFIER_TOKENS.has(tokens[tokens.length - 1])) tokens.pop();
+  const last = tokens[tokens.length - 1] || '';
+  return UID_EFFORT_TOKENS.has(last) ? last : '';
+}
+
+function slotEffortOverride(value) {
+  const raw = String(value || '').trim().toLowerCase();
+  if (['off', 'none', 'disable', 'disabled', 'false', 'no'].includes(raw)) return 'off';
+  if (['on', 'enabled', 'true'].includes(raw)) return 'high';
+  if (['minimal', 'low', 'medium', 'high', 'xhigh', 'max'].includes(raw)) return raw;
+  return 'auto';
+}
+
+// 前端本地最小别名映射（与 sidecar/lib/model-aliases.js 保持同源）：
+// 旧版简写名 → 新版 Devin Local 唯一官方代表 UID，用于档位自动解析兜底。
+const SHORTHAND_TO_DEVIN_CANONICAL = {
+  'kimi-k3': 'kimi-k3-high',
+  'deepseek-v4-pro': 'deepseek-v4-pro-high',
+  'deepseek-v4-flash': 'deepseek-v4-flash-high',
+  'deepseek-v4-1-flash': 'deepseek-v4-1-flash-high',
+  'deepseek-v4.1-flash': 'deepseek-v4-1-flash-high',
+  'glm-5-2': 'glm-5-2-max',
+  'glm-5.2': 'glm-5-2-max',
+  'glm-5-3': 'glm-5-3-high',
+  'glm-5.3': 'glm-5-3-high',
+  'gemini-3-6-flash': 'gemini-3-6-flash-high',
+  'gemini-3.6-flash': 'gemini-3-6-flash-high',
+  'gemini-3-7-flash': 'gemini-3-7-flash-high',
+  'gemini-3.7-flash': 'gemini-3-7-flash-high',
+  'gemini-3-8-flash': 'gemini-3-8-flash-high',
+  'gemini-3.8-flash': 'gemini-3-8-flash-high',
+  'gemini-3-1-pro': 'gemini-3-1-pro-high',
+  'gemini-3.1-pro': 'gemini-3-1-pro-high',
+  'claude-opus-5': 'claude-opus-5-high',
+  'claude-sonnet-5': 'claude-sonnet-5-medium',
+};
+
+function canonicalDevinUidOf(uid) {
+  const raw = String(uid || '').trim();
+  if (!raw) return '';
+  const lower = raw.toLowerCase();
+  const norm = lower.replace(/(\d)\.(\d)/g, '$1-$2');
+  return SHORTHAND_TO_DEVIN_CANONICAL[lower] || SHORTHAND_TO_DEVIN_CANONICAL[norm] || norm;
+}
+
+function effectiveEffortToken(thinkingEffort, uid) {
+  const cfgLevel = slotEffortOverride(thinkingEffort);
+  if (cfgLevel === 'off') return '';
+  if (cfgLevel !== 'auto') return cfgLevel;
+  // 自动模式：简写名先映射为官方规范名再提取档位（deepseek-v4-pro → high）。
+  const canonical = canonicalDevinUidOf(uid) || uid || '';
+  return effortTokenFromUid(canonical);
+}
+
+function stripTrailingEffortToken(name) {
+  const s = String(name || '');
+  const m = s.match(/[-_\s]([a-z0-9]+)$/i);
+  if (m && UID_EFFORT_TOKENS.has(m[1].toLowerCase())) return s.slice(0, m.index).trimEnd();
+  return s;
+}
+
+function formatEffortDisplay(effort) {
+  if (!effort) return '';
+  const s = String(effort).toLowerCase();
+  const map = {
+    minimal: 'Minimal',
+    low: 'Low',
+    medium: 'Medium',
+    high: 'High',
+    xhigh: 'XHigh',
+    max: 'Max',
+    none: 'None',
+  };
+  return map[s] || (s.charAt(0).toUpperCase() + s.slice(1));
+}
+
+function formatContextWindow(num) {
+  const n = Number(num);
+  if (!Number.isFinite(n) || n <= 0) return '';
+  if (n >= 1000000) {
+    const m = n >= 1048576 ? Math.round(n / 1048576) : Math.round(n / 1000000);
+    return `${m}M`;
+  }
+  if (n >= 1000) {
+    if (n % 1024 === 0 && n % 1000 !== 0) {
+      return `${Math.round(n / 1024)}K`;
+    }
+    return `${Math.round(n / 1000)}K`;
+  }
+  return String(n);
+}
+
+// 展示层 UID 美化：官方下发 UID 的版本号用连字符分隔（gemini-3-7-flash-high），
+// 界面展示还原为点号（gemini-3.7-flash-high），与官方 label 写法一致。
+function displayUidForLabel(uid) {
+  const s = String(uid || '');
+  if (!s) return '';
+  return s.replace(/(\d)-(\d)(?=\b|[-_])/g, '$1.$2');
+}
+
+function renderLabelTemplate(tpl, vars, options = {}) {
   const tmpl = (tpl && tpl.trim()) || DEFAULT_LABEL_TEMPLATE;
+  const {
+    showSlotUid = false,
+    showThinkingEffort = false,
+    showContextWindow = false,
+  } = options;
+
+  let baseLabel = vars.label || '';
+  const effortDisplay = formatEffortDisplay(vars.effort || '');
+  const context = vars.context || '';
+
+  const hasEffortVar = /\{effort\}/i.test(tmpl);
+  if (showThinkingEffort && effortDisplay && !hasEffortVar) {
+    baseLabel = `${stripTrailingEffortToken(baseLabel)} ${effortDisplay}`;
+  }
+
+  const hasContextVar = /\{context\}/i.test(tmpl);
+  if (showContextWindow && context && !hasContextVar) {
+    baseLabel = `${baseLabel} [${context}]`;
+  }
+
   const hasProvider = /\bprovider\b/.test(tmpl);
   const v = {
     prefix: vars.prefix || '',
-    label: vars.label || '',
+    label: baseLabel,
     provider: vars.provider || (hasProvider ? '未设置' : ''),
     apiModel: vars.apiModel || '',
+    slotUid: vars.slotUid || '',
+    effort: effortDisplay,
+    context: context,
   };
   let out = tmpl;
   for (const k of TEMPLATE_VAR_NAMES) {
     out = out.replace(new RegExp('\\{' + k + '\\}', 'g'), v[k]);
   }
   out = out.replace(/[ \t]{2,}/g, ' ').trim();
+
+  const hasSlotUidVar = /\{slotUid\}/i.test(tmpl);
+  if (showSlotUid && vars.slotUid && !hasSlotUidVar && out) {
+    out = `${vars.slotUid}>${out}`;
+  }
+
   return out;
 }
 
@@ -1950,12 +2095,21 @@ function openModelMapSettings() {
   const prefixInput = document.getElementById('model-name-prefix-modal');
   const suffixInput = document.getElementById('model-name-suffix-modal');
   const tplInput = document.getElementById('model-label-template-modal');
+  const effortCheckbox = document.getElementById('model-show-effort-modal');
+  const slotUidCheckbox = document.getElementById('model-show-slot-uid-modal');
+  const contextCheckbox = document.getElementById('model-show-context-modal');
+
   if (prefixInput) prefixInput.value = modelMapStore.namePrefix || '';
   const currentTpl = modelMapStore.labelTemplate || '';
   const simpleSuffix = suffixFromSimpleLabelTemplate(currentTpl);
   labelTemplateModalMode = simpleSuffix === null ? 'custom' : 'simple';
   if (suffixInput) suffixInput.value = simpleSuffix === null ? '' : simpleSuffix;
   if (tplInput) tplInput.value = simpleSuffix === null ? (currentTpl || DEFAULT_LABEL_TEMPLATE) : composeSimpleLabelTemplate(simpleSuffix);
+
+  if (effortCheckbox) effortCheckbox.checked = !!modelMapStore.showThinkingEffort;
+  if (slotUidCheckbox) slotUidCheckbox.checked = !!modelMapStore.showSlotUid;
+  if (contextCheckbox) contextCheckbox.checked = !!modelMapStore.showContextWindow;
+
   const advanced = document.getElementById('label-template-advanced');
   if (advanced) advanced.open = labelTemplateModalMode === 'custom';
   // 渲染预览
@@ -1981,6 +2135,68 @@ function onModalAdvancedLabelTemplateInput() {
   updateModalLabelTemplatePreview();
 }
 
+function onModalDisplayOptionChange() {
+  updateModalLabelTemplatePreview();
+}
+
+// 快速设置前缀
+function setQuickPrefix(val) {
+  const prefixInput = document.getElementById('model-name-prefix-modal');
+  if (!prefixInput) return;
+  prefixInput.value = val || '';
+  onModalSimpleLabelInput();
+}
+
+// 快速设置后缀
+function setQuickSuffix(val) {
+  const suffixInput = document.getElementById('model-name-suffix-modal');
+  if (!suffixInput) return;
+  suffixInput.value = val || '';
+  onModalSimpleLabelInput();
+}
+
+// 在高级模板输入框光标处插入占位符或符号胶囊
+function insertTemplateToken(token) {
+  const tplInput = document.getElementById('model-label-template-modal');
+  if (!tplInput) return;
+  labelTemplateModalMode = 'custom';
+  const advanced = document.getElementById('label-template-advanced');
+  if (advanced && !advanced.open) advanced.open = true;
+
+  const start = tplInput.selectionStart ?? tplInput.value.length;
+  const end = tplInput.selectionEnd ?? tplInput.value.length;
+  const val = tplInput.value;
+
+  // 智能补空格：如果插入的是占位符，且前面不是空格或左括号/分隔符，补前导空格
+  let insertText = token;
+  const isVar = /^\{.*\}$/.test(token);
+  if (isVar && start > 0 && !/[\s(\[{>]/.test(val.charAt(start - 1))) {
+    insertText = ' ' + insertText;
+  }
+  if (isVar && end < val.length && !/[\s)\]}]/.test(val.charAt(end))) {
+    insertText = insertText + ' ';
+  }
+
+  tplInput.value = val.substring(0, start) + insertText + val.substring(end);
+  tplInput.focus();
+  const newPos = start + insertText.length;
+  tplInput.setSelectionRange(newPos, newPos);
+
+  updateModalLabelTemplatePreview();
+}
+
+// 一键应用推荐预设模板
+function applyPresetTemplate(tpl) {
+  const tplInput = document.getElementById('model-label-template-modal');
+  if (!tplInput) return;
+  labelTemplateModalMode = 'custom';
+  const advanced = document.getElementById('label-template-advanced');
+  if (advanced && !advanced.open) advanced.open = true;
+  tplInput.value = tpl || '';
+  tplInput.focus();
+  updateModalLabelTemplatePreview();
+}
+
 function onLabelTemplateAdvancedToggle() {
   const advanced = document.getElementById('label-template-advanced');
   const tplInput = document.getElementById('model-label-template-modal');
@@ -2003,34 +2219,95 @@ function updateModalLabelTemplatePreview() {
   if (labelTemplateModalMode === 'simple' && tplInput) tplInput.value = tpl;
   const prefixInput = document.getElementById('model-name-prefix-modal');
   const prefix = prefixInput ? prefixInput.value.trim() : '';
-  const cases = [
-    { from: 'Claude Opus 4.8', label: 'Claude Opus 4.8', provider: '君の公益', apiModel: 'claude-opus-4-8' },
-    { from: 'Gemini 3 Flash', label: 'Gemini 3 Flash', provider: '黑鸟白', apiModel: 'gemini-3-flash' },
-    { from: 'GLM 5.1', label: 'GLM 5.1', provider: '', apiModel: 'glm-5-1' },
-  ];
+
+  const showEffort = !!document.getElementById('model-show-effort-modal')?.checked;
+  const showSlotUid = !!document.getElementById('model-show-slot-uid-modal')?.checked;
+  const showContext = !!document.getElementById('model-show-context-modal')?.checked;
+  const opts = { showSlotUid, showThinkingEffort: showEffort, showContextWindow: showContext };
+
+  // 同步卡片高亮样式
+  document.getElementById('opt-row-effort')?.classList.toggle('active', showEffort);
+  document.getElementById('opt-row-slotuid')?.classList.toggle('active', showSlotUid);
+  document.getElementById('opt-row-context')?.classList.toggle('active', showContext);
+
+  // 实时预览数据源：优先取用户当前实际配置的前 3 个槽位！所见即所得！
+  let cases = [];
+  const configuredSlots = (modelMapStore && Array.isArray(modelMapStore.slots))
+    ? modelMapStore.slots.filter(s => s && s.enabled !== false && s.modelUid)
+    : [];
+
+  if (configuredSlots.length > 0) {
+    cases = configuredSlots.slice(0, 4).map(s => {
+      const orig = originalNameOf(s.modelUid);
+      const customName = s.displayName && s.displayName.trim();
+      const baseName = customName || orig;
+      const firstTarget = (s.targets && s.targets[0]) || null;
+      const providerName = firstTarget ? providerNameOf(firstTarget.providerId) : '';
+      const apiModel = firstTarget ? firstTarget.model : '';
+      const slotThinkingEffort = (firstTarget && firstTarget.thinkingEffort) || s.thinkingEffort || '';
+      return {
+        from: s.modelUid,
+        slotUid: s.modelUid,
+        label: baseName,
+        provider: providerName,
+        apiModel: apiModel,
+        effort: effectiveEffortToken(slotThinkingEffort, s.modelUid),
+        context: formatContextWindow(s.contextWindow),
+      };
+    });
+  }
+
+  const subtitleEl = document.getElementById('label-template-preview-subtitle');
+  if (cases.length > 0) {
+    if (subtitleEl) subtitleEl.textContent = '基于当前已添加模型实时呈现';
+  } else {
+    if (subtitleEl) subtitleEl.textContent = '未添加模型，展示官方代表性示例';
+    cases = [
+      { from: 'gemini-3.8-flash-high', slotUid: 'gemini-3.8-flash-high', label: 'Gemini 3.8 Flash', provider: 'CPA', apiModel: 'gemini-3.8-flash', effort: 'high', context: '1M' },
+      { from: 'gemini-3.7-flash-high', slotUid: 'gemini-3.7-flash-high', label: 'Gemini 3.7 Flash', provider: '黑鸟白', apiModel: 'gemini-3.7-flash', effort: 'high', context: '1M' },
+      { from: 'claude-opus-4-8-medium', slotUid: 'claude-opus-4-8-medium', label: 'Claude Opus 4.8', provider: '君の公益', apiModel: 'claude-opus-4-8', effort: 'medium', context: '1M' },
+      { from: 'glm-5-2-max', slotUid: 'glm-5-2-max', label: 'GLM 5.2', provider: '', apiModel: 'glm-5.2', effort: 'max', context: '128K' },
+    ];
+  }
   const html = cases.map(c => {
-    const out = renderLabelTemplate(tpl, { prefix, ...c });
-    return `<div style="display:grid;grid-template-columns:minmax(120px,1fr) 16px minmax(220px,1.4fr);gap:8px;align-items:center;line-height:1.5;min-width:0;">
-      <span style="color:var(--text-muted);font-size:10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(c.from)}</span>
-      <span style="color:var(--text-muted);text-align:center;">→</span>
-      <span style="color:var(--text-primary);font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escapeHtml(out)}">${escapeHtml(out)}</span>
+    const out = renderLabelTemplate(tpl, { prefix, ...c }, opts);
+    return `<div class="label-preview-row">
+      <span class="label-preview-orig" title="${escapeHtml(c.from)}">${escapeHtml(c.from)}</span>
+      <span class="label-preview-arrow">→</span>
+      <span class="label-preview-result" title="${escapeHtml(out)}">${escapeHtml(out)}</span>
     </div>`;
   }).join('');
-  preview.innerHTML = `<div style="font-size:10px;color:var(--text-muted);margin-bottom:2px;">保存后列表会这样显示：</div>${html}`;
+  preview.innerHTML = html;
 }
 
-// 模态框保存按钮:同步两个字段 + 持久化 + 重新渲染列表
+// 模态框保存按钮:同步字段 + 持久化 + 重新渲染列表
 async function saveModelMapSettingsFromModal() {
   const prefixInput = document.getElementById('model-name-prefix-modal');
   const suffixInput = document.getElementById('model-name-suffix-modal');
   const tplInput = document.getElementById('model-label-template-modal');
+  const effortCheckbox = document.getElementById('model-show-effort-modal');
+  const slotUidCheckbox = document.getElementById('model-show-slot-uid-modal');
+  const contextCheckbox = document.getElementById('model-show-context-modal');
+
   const newPrefix = prefixInput ? prefixInput.value.trim() : '';
   const newTpl = labelTemplateForStoreFromModal();
+  const newShowEffort = !!effortCheckbox?.checked;
+  const newShowSlotUid = !!slotUidCheckbox?.checked;
+  const newShowContext = !!contextCheckbox?.checked;
+
   const prevPrefix = modelMapStore.namePrefix || '';
   const prevTpl = modelMapStore.labelTemplate || '';
+  const prevShowEffort = !!modelMapStore.showThinkingEffort;
+  const prevShowSlotUid = !!modelMapStore.showSlotUid;
+  const prevShowContext = !!modelMapStore.showContextWindow;
+
   let changed = false;
   if (newPrefix !== prevPrefix) { modelMapStore.namePrefix = newPrefix; changed = true; }
   if (newTpl !== prevTpl) { modelMapStore.labelTemplate = newTpl; changed = true; }
+  if (newShowEffort !== prevShowEffort) { modelMapStore.showThinkingEffort = newShowEffort; changed = true; }
+  if (newShowSlotUid !== prevShowSlotUid) { modelMapStore.showSlotUid = newShowSlotUid; changed = true; }
+  if (newShowContext !== prevShowContext) { modelMapStore.showContextWindow = newShowContext; changed = true; }
+
   if (!changed) {
     addLog('info', '未改动');
     closeModelMapSettings();
@@ -2048,17 +2325,24 @@ async function saveModelMapSettingsFromModal() {
         parts.push(suffix ? `后缀=${suffix}` : '清除后缀');
       }
     }
-    addLog('ok', '已保存显示设置: ' + parts.join(' / '));
+    if (newShowEffort !== prevShowEffort) parts.push(`思考档位=${newShowEffort ? '显示' : '隐藏'}`);
+    if (newShowSlotUid !== prevShowSlotUid) parts.push(`原始槽位=${newShowSlotUid ? '显示' : '隐藏'}`);
+    if (newShowContext !== prevShowContext) parts.push(`上下文=${newShowContext ? '显示' : '隐藏'}`);
+    addLog('ok', `显示名设置已更新（${parts.join('，')}）`);
     closeModelMapSettings();
   } else {
     // 持久化失败 → 回滚
     modelMapStore.namePrefix = prevPrefix;
     modelMapStore.labelTemplate = prevTpl;
+    modelMapStore.showThinkingEffort = prevShowEffort;
+    modelMapStore.showSlotUid = prevShowSlotUid;
+    modelMapStore.showContextWindow = prevShowContext;
     if (prefixInput) prefixInput.value = prevPrefix;
     if (tplInput) tplInput.value = prevTpl;
     const prevSuffix = suffixFromSimpleLabelTemplate(prevTpl);
     if (suffixInput) suffixInput.value = prevSuffix === null ? '' : prevSuffix;
     labelTemplateModalMode = prevSuffix === null ? 'custom' : 'simple';
+    addLog('err', '保存显示设置失败');
   }
 }
 
@@ -3807,6 +4091,11 @@ async function saveFailoverFromEditor() {
   g.onLabelTemplateAdvancedToggle = onLabelTemplateAdvancedToggle;
   g.onModalLabelTemplateInput = onModalLabelTemplateInput;
   g.updateModalLabelTemplatePreview = updateModalLabelTemplatePreview;
+  g.onModalDisplayOptionChange = onModalDisplayOptionChange;
+  g.setQuickPrefix = setQuickPrefix;
+  g.setQuickSuffix = setQuickSuffix;
+  g.insertTemplateToken = insertTemplateToken;
+  g.applyPresetTemplate = applyPresetTemplate;
   g.saveModelMapSettingsFromModal = saveModelMapSettingsFromModal;
   g.normalizeUnlockScope = normalizeUnlockScope;
   g.normalizeSlotVisibilityMode = normalizeSlotVisibilityMode;

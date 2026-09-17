@@ -1236,79 +1236,170 @@
           </div>
         </div>
 
-        <!-- 显示名设置（前缀/后缀 + 高级自定义） -->
+        <!-- 显示名设置（前缀/后缀 + 快捷胶囊 + 附加模式 + 高级自定义） -->
         <div id="modelMapSettingsModal" class="editor-overlay"
-          style="position:fixed;inset:0;z-index:1000;background:rgba(0,0,0,0.45);align-items:center;justify-content:center;">
-          <div class="glass-card"
-            style="width:680px;max-width:95vw;display:flex;flex-direction:column;max-height:90vh;">
+          style="position:fixed;inset:0;z-index:1000;background:rgba(0,0,0,0.5);backdrop-filter:blur(8px);align-items:center;justify-content:center;">
+          <div class="glass-card model-map-settings-card">
             <div class="card-header" style="display:flex;align-items:center;justify-content:space-between;gap:12px;">
               <div>
-                <div class="card-title"><span class="dot"></span> 显示名设置</div>
-                <div style="font-size:11px;color:var(--text-muted);margin-top:4px;">决定 Windsurf / Devin 下拉框里看到的模型名字。
-                </div>
+                <div class="card-title" style="font-size:15px;font-weight:750;"><span class="dot"></span> 显示名设置</div>
+                <div style="font-size:11.5px;color:var(--text-muted);margin-top:4px;">决定 Windsurf / Devin 下拉列表中看到的模型名字。</div>
               </div>
               <button class="btn-ghost"
- style="border:none;background:transparent;cursor:pointer;font-size:18px;color:var(--text-muted);line-height:1;" data-action="closeModelMapSettings">×</button>
+                style="border:none;background:transparent;cursor:pointer;font-size:18px;color:var(--text-muted);line-height:1;padding:4px 8px;border-radius:6px;" data-action="closeModelMapSettings">×</button>
             </div>
-            <div class="card-body"
-              style="padding:16px 20px;display:flex;flex-direction:column;gap:14px;flex:1;overflow-y:auto;">
-              <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;">
-                <label style="display:flex;flex-direction:column;gap:7px;min-width:0;">
-                  <span style="font-size:12px;font-weight:700;color:var(--text-primary);white-space:nowrap;">前缀</span>
-                  <input type="text" id="model-name-prefix-modal" placeholder="例如 (BYOK)"
- 
- style="width:100%;padding:10px 12px;border-radius:8px;font-size:12px;border:1px solid var(--border);background:var(--bg-input);color:var(--text-primary);outline:none;box-sizing:border-box;" data-action="onModalSimpleLabelInput" data-events="input">
-                </label>
-                <label style="display:flex;flex-direction:column;gap:7px;min-width:0;">
-                  <span style="font-size:12px;font-weight:700;color:var(--text-primary);white-space:nowrap;">后缀</span>
-                  <input type="text" id="model-name-suffix-modal" placeholder="例如 (君の公益)"
- 
- style="width:100%;padding:10px 12px;border-radius:8px;font-size:12px;border:1px solid var(--border);background:var(--bg-input);color:var(--text-primary);outline:none;box-sizing:border-box;" data-action="onModalSimpleLabelInput" data-events="input">
-                </label>
-              </div>
-              <div style="font-size:11px;color:var(--text-muted);line-height:1.5;">
-                常用：前缀填 <code
-                  style="background:var(--bg-input);padding:1px 4px;border-radius:3px;">(BYOK)</code>；后缀可直接填固定文字，填 <code
-                  style="background:var(--bg-input);padding:1px 4px;border-radius:3px;">({provider})</code> 会自动换成供应商名。
+            <div class="card-body" style="overflow-y:auto;">
+              <!-- 前缀与后缀快速设置卡片 -->
+              <div class="settings-section-card" style="background:var(--bg-card);border:1px solid var(--border);">
+                <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;">
+                  <div style="display:flex;flex-direction:column;gap:6px;min-width:0;">
+                    <div style="display:flex;justify-content:space-between;align-items:center;">
+                      <span style="font-size:12px;font-weight:700;color:var(--text-primary);">前缀</span>
+                      <div class="chip-bar" style="gap:4px;">
+                        <button type="button" class="chip-btn" data-action="setQuickPrefix" data-arg="(BYOK)">+ (BYOK)</button>
+                        <button type="button" class="chip-btn" data-action="setQuickPrefix" data-arg="[Any]">+ [Any]</button>
+                        <button type="button" class="chip-btn" style="color:var(--text-muted);" data-action="setQuickPrefix" data-arg="">清空</button>
+                      </div>
+                    </div>
+                    <input type="text" id="model-name-prefix-modal" placeholder="例如 (BYOK)"
+                      style="width:100%;padding:8px 12px;border-radius:8px;font-size:12px;border:1px solid var(--border);background:var(--bg-input);color:var(--text-primary);outline:none;box-sizing:border-box;" data-action="onModalSimpleLabelInput" data-events="input">
+                  </div>
+                  <div style="display:flex;flex-direction:column;gap:6px;min-width:0;">
+                    <div style="display:flex;justify-content:space-between;align-items:center;">
+                      <span style="font-size:12px;font-weight:700;color:var(--text-primary);">后缀</span>
+                      <div class="chip-bar" style="gap:4px;">
+                        <button type="button" class="chip-btn" data-action="setQuickSuffix" data-arg="({provider})">+ ({provider})</button>
+                        <button type="button" class="chip-btn" data-action="setQuickSuffix" data-arg="({apiModel})">+ ({apiModel})</button>
+                        <button type="button" class="chip-btn" style="color:var(--text-muted);" data-action="setQuickSuffix" data-arg="">清空</button>
+                      </div>
+                    </div>
+                    <input type="text" id="model-name-suffix-modal" placeholder="例如 (君の公益)"
+                      style="width:100%;padding:8px 12px;border-radius:8px;font-size:12px;border:1px solid var(--border);background:var(--bg-input);color:var(--text-primary);outline:none;box-sizing:border-box;" data-action="onModalSimpleLabelInput" data-events="input">
+                  </div>
+                </div>
+                <div style="font-size:11px;color:var(--text-muted);line-height:1.5;">
+                  常用组合：前缀填 <code>(BYOK)</code>；后缀填 <code>({provider})</code> 自动替换为当前供应商名。
+                </div>
               </div>
 
-              <details id="label-template-advanced" ontoggle="onLabelTemplateAdvancedToggle()"
-                style="border:1px solid var(--border);border-radius:9px;background:var(--bg-input);padding:10px 12px;">
-                <summary style="cursor:pointer;font-size:12px;font-weight:700;color:var(--text-secondary);">高级：自己写显示格式
+              <!-- 附加信息（快捷开关）卡片 -->
+              <div class="settings-section-card">
+                <div class="settings-section-title">
+                  <span>附加信息显示模式</span>
+                  <span>可选在名字中直观呈现槽位来源与参数</span>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:6px;">
+                  <label class="settings-option-item" id="opt-row-effort">
+                    <input type="checkbox" id="model-show-effort-modal" data-action="onModalDisplayOptionChange" data-events="change">
+                    <div style="display:flex;flex-direction:column;gap:2px;">
+                      <span style="font-size:12.5px;font-weight:650;color:var(--text-primary);display:inline-flex;align-items:center;gap:6px;">
+                        <span>显示思考档位</span>
+                        <span style="font-size:10px;padding:1px 5px;border-radius:4px;background:rgba(18, 97, 166, 0.08);color:var(--accent);font-weight:normal;">Thinking Effort</span>
+                      </span>
+                      <span style="font-size:11px;color:var(--text-muted);">在模型名后追加实际生效档位（例如：<code>High</code>、<code>Medium</code>）</span>
+                    </div>
+                  </label>
+                  <label class="settings-option-item" id="opt-row-slotuid">
+                    <input type="checkbox" id="model-show-slot-uid-modal" data-action="onModalDisplayOptionChange" data-events="change">
+                    <div style="display:flex;flex-direction:column;gap:2px;">
+                      <span style="font-size:12.5px;font-weight:650;color:var(--text-primary);display:inline-flex;align-items:center;gap:6px;">
+                        <span>显示原始槽位名</span>
+                        <span style="font-size:10px;padding:1px 5px;border-radius:4px;background:rgba(18, 97, 166, 0.08);color:var(--accent);font-weight:normal;">Slot UID</span>
+                      </span>
+                      <span style="font-size:11px;color:var(--text-muted);">在前部标明占用的官方槽位（例如：<code>gemini-3.7-flash-high &gt; gpt-5.6-sol</code>）</span>
+                    </div>
+                  </label>
+                  <label class="settings-option-item" id="opt-row-context">
+                    <input type="checkbox" id="model-show-context-modal" data-action="onModalDisplayOptionChange" data-events="change">
+                    <div style="display:flex;flex-direction:column;gap:2px;">
+                      <span style="font-size:12.5px;font-weight:650;color:var(--text-primary);display:inline-flex;align-items:center;gap:6px;">
+                        <span>显示上下文窗口</span>
+                        <span style="font-size:10px;padding:1px 5px;border-radius:4px;background:rgba(18, 97, 166, 0.08);color:var(--accent);font-weight:normal;">Context Window</span>
+                      </span>
+                      <span style="font-size:11px;color:var(--text-muted);">在模型名旁标注配置的上下文大小（例如：<code>[1M]</code>、<code>[200K]</code>）</span>
+                    </div>
+                  </label>
+                </div>
+              </div>
+
+              <!-- 高级自定义显示格式（点击胶囊快速填入，彻底告别手敲花括号） -->
+              <details id="label-template-advanced" ontoggle="onLabelTemplateAdvancedToggle()" class="settings-section-card" style="padding:12px 16px;">
+                <summary style="cursor:pointer;font-size:12.5px;font-weight:700;color:var(--text-secondary);display:flex;align-items:center;justify-content:space-between;">
+                  <span>高级：自己写显示格式（点按胶囊快速填入）</span>
+                  <span style="font-size:11px;color:var(--accent);font-weight:600;">展开组合</span>
                 </summary>
-                <div style="margin-top:10px;display:flex;flex-direction:column;gap:7px;">
-                  <input type="text" id="model-label-template-modal" placeholder="{prefix} {label} ({provider})"
- style="width:100%;padding:8px 12px;border-radius:8px;font-size:12px;border:1px solid var(--border);background:var(--bg-card);color:var(--text-primary);outline:none;box-sizing:border-box;font-family:var(--font-mono);"
- data-action="onModalAdvancedLabelTemplateInput" data-events="input">
-                  <div style="font-size:10px;color:var(--text-muted);line-height:1.5;">
-                    可用字段：<code style="background:var(--bg-card);padding:1px 4px;border-radius:3px;">{prefix}</code> 前缀，
-                    <code style="background:var(--bg-card);padding:1px 4px;border-radius:3px;">{label}</code> 显示名，
-                    <code style="background:var(--bg-card);padding:1px 4px;border-radius:3px;">{provider}</code> 供应商，
-                    <code style="background:var(--bg-card);padding:1px 4px;border-radius:3px;">{apiModel}</code> 接口模型名。
+                <div style="margin-top:12px;display:flex;flex-direction:column;gap:11px;">
+                  <!-- 常用推荐预设胶囊 -->
+                  <div>
+                    <div style="font-size:11px;font-weight:600;color:var(--text-muted);margin-bottom:6px;">常用预设格式（点击一键替换）：</div>
+                    <div class="chip-bar">
+                      <button type="button" class="chip-btn preset-chip" data-action="applyPresetTemplate" data-arg="{prefix} {label} ({provider})">默认标准</button>
+                      <button type="button" class="chip-btn preset-chip" data-action="applyPresetTemplate" data-arg="{prefix} {label} {effort} [{context}] ({provider})">带档位与上下文</button>
+                      <button type="button" class="chip-btn preset-chip" data-action="applyPresetTemplate" data-arg="{slotUid} > {label} {effort} ({provider})">槽位直显</button>
+                      <button type="button" class="chip-btn preset-chip" data-action="applyPresetTemplate" data-arg="{label} · {effort}">极简纯名</button>
+                    </div>
+                  </div>
+
+                  <!-- 模板输入框 -->
+                  <div style="display:flex;flex-direction:column;gap:4px;">
+                    <div style="font-size:11px;font-weight:600;color:var(--text-muted);">自定义模板字符串：</div>
+                    <input type="text" id="model-label-template-modal" placeholder="{prefix} {label} ({provider})"
+                      style="width:100%;padding:9px 12px;border-radius:8px;font-size:12px;border:1px solid var(--border);background:var(--bg-card);color:var(--text-primary);outline:none;box-sizing:border-box;font-family:var(--font-mono);box-shadow:var(--shadow-sm);"
+                      data-action="onModalAdvancedLabelTemplateInput" data-events="input">
+                  </div>
+
+                  <!-- 点按插入字段胶囊群 -->
+                  <div>
+                    <div style="font-size:11px;font-weight:600;color:var(--text-muted);margin-bottom:6px;">点按胶囊快速插入到当前光标：</div>
+                    <div class="chip-bar">
+                      <button type="button" class="chip-btn" data-action="insertTemplateToken" data-arg="{prefix}">+ {prefix} 前缀</button>
+                      <button type="button" class="chip-btn" data-action="insertTemplateToken" data-arg="{label}">+ {label} 显示名</button>
+                      <button type="button" class="chip-btn" data-action="insertTemplateToken" data-arg="{provider}">+ {provider} 供应商</button>
+                      <button type="button" class="chip-btn" data-action="insertTemplateToken" data-arg="{effort}">+ {effort} 思考档位</button>
+                      <button type="button" class="chip-btn" data-action="insertTemplateToken" data-arg="{context}">+ {context} 上下文</button>
+                      <button type="button" class="chip-btn" data-action="insertTemplateToken" data-arg="{slotUid}">+ {slotUid} 原始槽位</button>
+                      <button type="button" class="chip-btn" data-action="insertTemplateToken" data-arg="{apiModel}">+ {apiModel} 接口模型</button>
+                    </div>
+                  </div>
+
+                  <!-- 标点胶囊 -->
+                  <div class="chip-bar" style="gap:4px;">
+                    <span style="font-size:11px;color:var(--text-muted);margin-right:2px;">常用符号:</span>
+                    <button type="button" class="chip-btn" style="padding:2px 7px;" data-action="insertTemplateToken" data-arg="(">(</button>
+                    <button type="button" class="chip-btn" style="padding:2px 7px;" data-action="insertTemplateToken" data-arg=")">)</button>
+                    <button type="button" class="chip-btn" style="padding:2px 7px;" data-action="insertTemplateToken" data-arg="[">[</button>
+                    <button type="button" class="chip-btn" style="padding:2px 7px;" data-action="insertTemplateToken" data-arg="]">]</button>
+                    <button type="button" class="chip-btn" style="padding:2px 7px;" data-action="insertTemplateToken" data-arg=" > "> &gt; </button>
+                    <button type="button" class="chip-btn" style="padding:2px 7px;" data-action="insertTemplateToken" data-arg=" · "> · </button>
+                    <button type="button" class="chip-btn" style="padding:2px 7px;" data-action="insertTemplateToken" data-arg=" - "> - </button>
                   </div>
                 </div>
               </details>
 
-              <div>
-                <div style="font-size:12px;font-weight:700;color:var(--text-primary);margin-bottom:6px;">实际效果</div>
+              <!-- 实际呈现预览卡片 -->
+              <div class="settings-section-card" style="background:var(--bg-card);">
+                <div class="settings-section-title">
+                  <span style="font-size:12px;font-weight:700;color:var(--text-primary);">实时效果预览</span>
+                  <span id="label-template-preview-subtitle" style="font-size:10.5px;color:var(--text-muted);">基于当前已配置模型实时呈现</span>
+                </div>
                 <div id="label-template-preview"
-                  style="display:flex;flex-direction:column;gap:7px;padding:10px 12px;background:var(--bg-input);border:1px dashed var(--border);border-radius:8px;font-size:11px;">
+                  style="display:flex;flex-direction:column;gap:6px;padding:8px;background:var(--bg-input);border-radius:9px;border:1px solid var(--border);">
                 </div>
               </div>
             </div>
             <div class="provider-footer"
-              style="display:flex;justify-content:flex-end;gap:12px;padding:12px 20px;border-top:1px solid var(--border);">
+              style="display:flex;justify-content:flex-end;gap:12px;padding:14px 24px;border-top:1px solid var(--border);background:var(--bg-card);">
               <button class="btn-ghost secondary"
- style="padding:10px 20px;border-radius:10px;font-size:12px;font-weight:600;" data-action="closeModelMapSettings">取消</button>
+                style="padding:10px 20px;border-radius:10px;font-size:12px;font-weight:600;" data-action="closeModelMapSettings">取消</button>
               <button class="btn-primary"
- style="padding:10px 24px;border-radius:10px;font-size:12px;font-weight:700;display:inline-flex;align-items:center;gap:6px;" data-action="saveModelMapSettingsFromModal">
+                style="padding:10px 24px;border-radius:10px;font-size:12px;font-weight:700;display:inline-flex;align-items:center;gap:6px;" data-action="saveModelMapSettingsFromModal">
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
                   stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;">
                   <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>
                   <polyline points="17 21 17 13 7 13 7 21"></polyline>
                   <polyline points="7 3 7 8 15 8"></polyline>
                 </svg>
-                <span>保存</span>
+                <span>保存设置</span>
               </button>
             </div>
           </div>

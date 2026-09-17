@@ -407,6 +407,15 @@ pub struct ModelMap {
     /// 兄弟硬性规则:模板含 {provider} 且无 provider → 渲染为「未设置」。
     #[serde(rename = "labelTemplate", default)]
     pub label_template: String,
+    /// 是否在显示名中展示原始槽位 ID 前缀（如 uid>...）。
+    #[serde(rename = "showSlotUid", default)]
+    pub show_slot_uid: bool,
+    /// 是否在模型名后追加实际生效的思考档位（如 -high、-medium）。
+    #[serde(rename = "showThinkingEffort", default)]
+    pub show_thinking_effort: bool,
+    /// 是否在模型名旁标注配置的上下文窗口（如 [1M]、[200K]）。
+    #[serde(rename = "showContextWindow", default)]
+    pub show_context_window: bool,
     /// 模型槽位解锁范围：all/common/configured/claude/gpt/gemini/code。
     /// all 默认全量解锁；common 只解锁常用模型族；configured 仅解锁已显式配置项。
     #[serde(rename = "unlockScope", default = "default_unlock_scope")]
@@ -502,6 +511,9 @@ pub(crate) fn read_map() -> Result<ModelMap, String> {
         return Ok(ModelMap {
             name_prefix: String::new(),
             label_template: String::new(),
+            show_slot_uid: false,
+            show_thinking_effort: false,
+            show_context_window: false,
             unlock_scope: default_unlock_scope(),
             slot_display_mode: default_slot_display_mode(),
             slot_visibility_mode: default_slot_visibility_mode(),

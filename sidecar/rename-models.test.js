@@ -200,3 +200,84 @@ test('normalizes dotted modelUid (gemini-3.7) to dash format for matching offici
   assert.equal(rows[0].label, 'gemini-3.7-flash-high (CPA)');
   assert.equal(rows[0].disabled, false);
 }));
+
+test('label display options: showSlotUid, showThinkingEffort, showContextWindow', () => withConfigDir((dir) => {
+  fs.writeFileSync(path.join(dir, 'providers.json'), JSON.stringify({
+    providers: [{ id: 'p1', name: 'CPA' }],
+  }), 'utf8');
+  fs.writeFileSync(path.join(dir, 'model-map.json'), JSON.stringify({
+    showSlotUid: true,
+    showThinkingEffort: true,
+    showContextWindow: true,
+    slots: [{
+      modelUid: 'gemini-3-7-flash-high',
+      displayName: 'gemini-flash',
+      enabled: true,
+      contextWindow: 1048576,
+      thinkingEffort: 'auto',
+      targets: [{ providerId: 'p1', model: 'gemini-flash' }],
+    }],
+  }), 'utf8');
+
+  const result = unlockModels(statusBody([
+    { modelUid: 'gemini-3-7-flash-high', label: 'Gemini 3.7 Flash High', disabled: false },
+  ]));
+
+  assert.ok(result);
+  const json = JSON.parse(result.body.toString('utf8'));
+  const rows = json.userStatus.cascadeModelConfigData.clientModelConfigs;
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].label, 'gemini-3.7-flash-high>gemini-flash High [1M] (CPA)');
+}));
+
+test('advanced label template supports {slotUid}, {effort}, {context}', () => withConfigDir((dir) => {
+  fs.writeFileSync(path.join(dir, 'providers.json'), JSON.stringify({
+    providers: [{ id: 'p1', name: 'CPA' }],
+  }), 'utf8');
+  fs.writeFileSync(path.join(dir, 'model-map.json'), JSON.stringify({
+    labelTemplate: '{slotUid} :: {label} :: {effort} :: {context} ({provider})',
+    slots: [{
+      modelUid: 'gpt-5-6-sol-medium',
+      displayName: 'GPT-5.6',
+      enabled: true,
+      contextWindow: 200000,
+      thinkingEffort: 'low',
+      targets: [{ providerId: 'p1', model: 'gpt-5.6' }],
+    }],
+  }), 'utf8');
+
+  const result = unlockModels(statusBody([
+    { modelUid: 'gpt-5-6-sol-medium', label: 'GPT-5.6 Sol Medium', disabled: false },
+  ]));
+
+  assert.ok(result);
+  const json = JSON.parse(result.body.toString('utf8'));
+  const rows = json.userStatus.cascadeModelConfigData.clientModelConfigs;
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].label, 'gpt-5.6-sol-medium :: GPT-5.6 :: Low :: 200K (CPA)');
+}));
+
+test('shorthand slot uid resolves canonical effort (deepseek-v4-pro → High)', () => withConfigDir((dir) => {
+  fs.writeFileSync(path.join(dir, 'providers.json'), JSON.stringify({
+    providers: [{ id: 'p1', name: '商汤' }],
+  }), 'utf8');
+  fs.writeFileSync(path.join(dir, 'model-map.json'), JSON.stringify({
+    showThinkingEffort: true,
+    slots: [{
+      modelUid: 'deepseek-v4-pro',
+      displayName: 'deepseek-v4-pro',
+      enabled: true,
+      targets: [{ providerId: 'p1', model: 'deepseek-v4-pro' }],
+    }],
+  }), 'utf8');
+
+  const result = unlockModels(statusBody([
+    { modelUid: 'deepseek-v4-pro', label: 'DeepSeek V4 Pro', disabled: false },
+  ]));
+
+  assert.ok(result);
+  const json = JSON.parse(result.body.toString('utf8'));
+  const rows = json.userStatus.cascadeModelConfigData.clientModelConfigs;
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].label, 'deepseek-v4-pro High (商汤)');
+}));

@@ -2787,6 +2787,183 @@
   line-height: 1.25;
 }
 
+/* ═══════ 显示名设置模态框专属现代样式 ═══════ */
+.model-map-settings-card {
+  width: 680px;
+  max-width: 95vw;
+  display: flex;
+  flex-direction: column;
+  max-height: 90vh;
+  border-radius: 18px !important;
+  background: var(--bg-card) !important;
+  border: 1px solid var(--border) !important;
+  box-shadow: 0 24px 64px -12px rgba(15, 23, 42, 0.28), 0 0 0 1px rgba(255, 255, 255, 0.1) inset !important;
+  overflow: hidden;
+}
+.model-map-settings-card .card-header {
+  padding: 18px 24px !important;
+  border-bottom: 1px solid var(--border) !important;
+  background: var(--bg-card) !important;
+}
+.model-map-settings-card .card-body {
+  padding: 20px 24px !important;
+  display: flex;
+  flex-direction: column;
+  gap: 16px !important;
+  background: var(--bg-card);
+}
+.model-map-settings-card .provider-footer {
+  padding: 14px 24px !important;
+  border-top: 1px solid var(--border) !important;
+  background: var(--bg-card) !important;
+}
+
+/* 选项卡片容器 */
+.settings-section-card {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg-input);
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.settings-section-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.settings-section-title span:first-child {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--text-secondary);
+}
+.settings-section-title span:last-child {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+/* 可选开关卡片行 */
+.settings-option-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 9px 12px;
+  border-radius: 9px;
+  cursor: pointer;
+  user-select: none;
+  border: 1px solid var(--border);
+  background: var(--bg-card);
+  transition: all 0.15s ease;
+}
+.settings-option-item:hover {
+  background: var(--bg-hover);
+  border-color: var(--border-strong, var(--border));
+}
+.settings-option-item.active {
+  background: rgba(18, 97, 166, 0.08) !important;
+  border-color: var(--accent) !important;
+}
+.settings-option-item input[type="checkbox"] {
+  margin-top: 3px;
+  accent-color: var(--accent);
+  cursor: pointer;
+  width: 15px;
+  height: 15px;
+  flex-shrink: 0;
+}
+
+/* 弹窗内高亮代码块统一样式：告别刺眼白底，使用柔和精致的品牌微蓝底色 */
+.model-map-settings-card code {
+  background: rgba(18, 97, 166, 0.08) !important;
+  color: var(--accent) !important;
+  border: 1px solid rgba(18, 97, 166, 0.22) !important;
+  padding: 1.5px 6px !important;
+  border-radius: 4px !important;
+  font-family: var(--font-mono) !important;
+  font-size: 11px !important;
+  font-weight: 600 !important;
+}
+
+/* 胶囊标签按钮群 */
+.chip-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+.chip-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 9px;
+  font-size: 11px;
+  font-weight: 600;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--bg-card);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  user-select: none;
+  line-height: 1.4;
+}
+.chip-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-light);
+  transform: translateY(-1px);
+}
+.chip-btn:active {
+  transform: translateY(0);
+}
+.chip-btn.preset-chip {
+  background: var(--bg-card);
+  border-color: var(--border);
+  color: var(--text-primary);
+  box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+}
+.chip-btn.preset-chip:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-light);
+}
+
+/* 预览条目 */
+.label-preview-row {
+  display: grid;
+  grid-template-columns: minmax(130px, 1.2fr) 20px minmax(200px, 1.8fr);
+  gap: 10px;
+  align-items: center;
+  padding: 7px 10px;
+  border-radius: 8px;
+  font-size: 11.5px;
+  line-height: 1.4;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+}
+.label-preview-orig {
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.label-preview-arrow {
+  color: var(--text-muted);
+  text-align: center;
+  font-weight: bold;
+}
+.label-preview-result {
+  color: var(--text-primary);
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+
 #page-provider-editor #providerModalSubtitle {
   margin-top: 3px;
   color: var(--text-secondary);

@@ -38,9 +38,9 @@ export function getRuntimeModelSlotStatus(modelUid) {
 // 渲染后会 trim 收尾,再去掉连续多空格,避免出现 "(BYOK) Claude ()" 之类的尾巴。
 //
 // 变量白名单(避免用户模板里写别的占位符导致泄漏):
-//   {prefix} {label} {provider} {apiModel}
+//   {prefix} {label} {provider} {apiModel} {slotUid} {effort} {context}
 const DEFAULT_LABEL_TEMPLATE = '{prefix} {label} ({provider})';
-const TEMPLATE_VARS = ['prefix', 'label', 'provider', 'apiModel'];
+const TEMPLATE_VARS = ['prefix', 'label', 'provider', 'apiModel', 'slotUid', 'effort', 'context'];
 const UNLOCK_SCOPES = new Set(['all', 'common', 'configured', 'claude', 'gpt', 'gemini', 'code']);
 const SLOT_VISIBILITY_MODES = new Set(['mapped', 'official', 'all']);
 
@@ -110,6 +110,9 @@ function renderTemplate(tpl, vars) {
     label:    vars.label    || '',
     provider: vars.provider || (hasProvider ? '未设置' : ''),
     apiModel: vars.apiModel || '',
+    slotUid:  vars.slotUid  || '',
+    effort:   vars.effort   || '',
+    context:  vars.context  || '',
   };
   let out = tmpl;
   for (const k of TEMPLATE_VARS) {
@@ -122,15 +125,148 @@ function renderTemplate(tpl, vars) {
   return out;
 }
 
-function configuredLabelFromRuntime(cfg, fallbackLabel, uid, labelTemplate, namePrefix) {
-  if (cfg && cfg.newLabel) return cfg.newLabel;
-  if (!cfg || cfg.source !== 'rename') return cfg ? cfg.newLabel : '';
-  return renderTemplate(labelTemplate, {
+// modelUid 尾部的档位/修饰 token，词表与 lib/thinking-effort.js 保持一致。
+const UID_EFFORT_TOKENS = new Set(['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max', 'thinking', 'reasoning']);
+const UID_MODIFIER_TOKENS = new Set(['fast', 'priority', '1m', 'slow', 'lightning']);
+
+function effortTokenFromUid(uid) {
+  const tokens = String(uid || '').toLowerCase().split(/[-_]+/).filter(Boolean);
+  while (tokens.length && UID_MODIFIER_TOKENS.has(tokens[tokens.length - 1])) tokens.pop();
+  const last = tokens[tokens.length - 1] || '';
+  return UID_EFFORT_TOKENS.has(last) ? last : '';
+}
+
+function slotEffortOverride(value) {
+  const raw = String(value || '').trim().toLowerCase();
+  if (['off', 'none', 'disable', 'disabled', 'false', 'no'].includes(raw)) return 'off';
+  if (['on', 'enabled', 'true'].includes(raw)) return 'high';
+  if (['minimal', 'low', 'medium', 'high', 'xhigh', 'max'].includes(raw)) return raw;
+  return 'auto';
+}
+
+function effectiveEffortToken(thinkingEffort, uid) {
+  const cfgLevel = slotEffortOverride(thinkingEffort);
+  if (cfgLevel === 'off') return '';
+  if (cfgLevel !== 'auto') return cfgLevel;
+  // 自动模式下先用规范官方 UID 剥离：旧版简写名（kimi-k3 / deepseek-v4-pro /
+  // glm-5-2 等）本身不带档位后缀，其官方规范名（kimi-k3-high / deepseek-v4-pro-high /
+  // glm-5-2-max）才带。直接解析简写名会把 'pro'、'k3' 误当名字尾巴而漏判档位。
+  const canonical = getCanonicalDevinUid(uid) || uid || '';
+  return effortTokenFromUid(canonical);
+}
+
+function stripTrailingEffortToken(name) {
+  const s = String(name || '');
+  const m = s.match(/[-_\s]([a-z0-9]+)$/i);
+  if (m && UID_EFFORT_TOKENS.has(m[1].toLowerCase())) return s.slice(0, m.index).trimEnd();
+  return s;
+}
+
+function formatEffortDisplay(effort) {
+  if (!effort) return '';
+  const s = String(effort).toLowerCase();
+  const map = {
+    minimal: 'Minimal',
+    low: 'Low',
+    medium: 'Medium',
+    high: 'High',
+    xhigh: 'XHigh',
+    max: 'Max',
+    none: 'None',
+  };
+  return map[s] || (s.charAt(0).toUpperCase() + s.slice(1));
+}
+
+function formatContextWindow(num) {
+  const n = Number(num);
+  if (!Number.isFinite(n) || n <= 0) return '';
+  if (n >= 1000000) {
+    const m = n >= 1048576 ? Math.round(n / 1048576) : Math.round(n / 1000000);
+    return `${m}M`;
+  }
+  if (n >= 1000) {
+    if (n % 1024 === 0 && n % 1000 !== 0) {
+      return `${Math.round(n / 1024)}K`;
+    }
+    return `${Math.round(n / 1000)}K`;
+  }
+  return String(n);
+}
+
+// 展示层 UID 美化：官方下发 UID 里的版本号用连字符分隔（gemini-3-7-flash-high、
+// glm-5-2-max），界面直接裸展示可读性差。把「单数字-单数字」还原为点号版本
+// （3-7 → 3.7、5-2 → 5.2、2-6 → 2.6），与官方 label 的 "Gemini 3.7 Flash" 写法一致。
+// 仅处理单个数字间的连字符，不会误伤 deepseek-v4-pro（4 是 v 前缀的一部分）、
+// kimi-k3、swe-1-6（模式不符）这类非版本片段。
+function displayUidForLabel(uid) {
+  const s = String(uid || '');
+  if (!s) return '';
+  return s.replace(/(\d)-(\d)(?=\b|[-_])/g, '$1.$2');
+}
+
+function formatSlotLabel(customName, fallbackLabel, uid, opts = {}) {
+  const {
+    labelTemplate = '',
+    namePrefix = '',
+    providerName = '未配置',
+    apiModel = '',
+    thinkingEffort = '',
+    contextWindow = null,
+    showSlotUid = false,
+    showThinkingEffort = false,
+    showContextWindow = false,
+  } = opts;
+
+  let baseLabel = (customName && customName.trim()) || fallbackLabel || uid || '';
+  const effort = effectiveEffortToken(thinkingEffort, uid);
+  const effortDisplay = formatEffortDisplay(effort);
+  const context = formatContextWindow(contextWindow);
+
+  const tpl = (labelTemplate && labelTemplate.trim()) || DEFAULT_LABEL_TEMPLATE;
+  const hasEffortVar = /\{effort\}/i.test(tpl);
+  if (showThinkingEffort && effortDisplay && !hasEffortVar) {
+    baseLabel = `${stripTrailingEffortToken(baseLabel)} ${effortDisplay}`;
+  }
+
+  const hasContextVar = /\{context\}/i.test(tpl);
+  if (showContextWindow && context && !hasContextVar) {
+    baseLabel = `${baseLabel} [${context}]`;
+  }
+
+  const displayUid = displayUidForLabel(uid);
+  const vars = {
     prefix: namePrefix,
-    label: cfg.customName || fallbackLabel || uid,
-    provider: cfg.providerName || '未配置',
+    label: baseLabel,
+    provider: providerName,
+    apiModel,
+    slotUid: displayUid,
+    effort: effortDisplay,
+    context: context || '',
+  };
+  let rendered = renderTemplate(labelTemplate, vars);
+
+  const hasSlotUidVar = /\{slotUid\}/i.test(tpl);
+  if (showSlotUid && uid && !hasSlotUidVar && rendered) {
+    rendered = `${displayUid}>${rendered}`;
+  }
+
+  return rendered;
+}
+
+function configuredLabelFromRuntime(cfg, fallbackLabel, uid, labelTemplate, namePrefix, ctx = null) {
+  if (!cfg || cfg.source !== 'rename') return cfg ? cfg.newLabel : '';
+  const opts = {
+    labelTemplate: (ctx && ctx.labelTemplate) || labelTemplate,
+    namePrefix: (ctx && ctx.namePrefix) || namePrefix,
+    providerName: cfg.providerName || '未配置',
     apiModel: cfg.apiModel || '',
-  });
+    thinkingEffort: cfg.thinkingEffort || '',
+    contextWindow: cfg.contextWindow || null,
+    showSlotUid: !!(ctx && ctx.showSlotUid),
+    showThinkingEffort: !!(ctx && ctx.showThinkingEffort),
+    showContextWindow: !!(ctx && ctx.showContextWindow),
+  };
+  return formatSlotLabel(cfg.customName, fallbackLabel, uid, opts);
 }
 
 function configuredApiIdForUid(uid) {
@@ -643,6 +779,9 @@ function buildUnlockSet() {
 
   let namePrefix = '';
   let labelTemplate = '';
+  let showSlotUid = false;
+  let showThinkingEffort = false;
+  let showContextWindow = false;
   let unlockScope = 'all';
   let slotVisibilityMode = 'official';
   let slotVisibility = new Map();
@@ -652,6 +791,9 @@ function buildUnlockSet() {
     const m = JSON.parse(fs.readFileSync(path.join(dir, 'model-map.json'), 'utf8'));
     namePrefix = (m.namePrefix || '').trim();
     labelTemplate = (m.labelTemplate || '').trim();
+    showSlotUid = m.showSlotUid === true;
+    showThinkingEffort = m.showThinkingEffort === true;
+    showContextWindow = m.showContextWindow === true;
     unlockScope = normalizeUnlockScope(m.unlockScope || m.slotDisplayMode);
     slotVisibilityMode = normalizeSlotVisibilityMode(m.slotVisibilityMode);
     unlockAll = !(m.enhancement && typeof m.enhancement === 'object' && m.enhancement.unlockModels === false);
@@ -686,25 +828,32 @@ function buildUnlockSet() {
     // 三级 label 查找: captured (用户抓的) > catalog (新形态 API ID) > BUILTIN_LABELS (旧兜底)
     const orig = captured.get(uid) || catalogLabels().get(uid) || BUILTIN_LABELS[uid] || '';
     const customName = s.displayName && s.displayName.trim();
-    const labelText = customName || orig;
     const providerName = (s.targets && s.targets[0] && providerNames.get(s.targets[0].providerId)) || '未配置';
     const apiModel = (s.targets && s.targets[0] && s.targets[0].model) || '';
-    const newLabel = labelText ? renderTemplate(labelTemplate, {
-      prefix: namePrefix,
-      label: labelText,
-      provider: providerName,
-      apiModel,
-    }) : '';
+    const slotThinkingEffort = (s.targets && s.targets[0] && s.targets[0].thinkingEffort) || s.thinkingEffort || '';
     const slotContextWindow = Number(s.contextWindow);
+    const validContextWindow = Number.isFinite(slotContextWindow) && slotContextWindow > 0
+      ? Math.trunc(slotContextWindow)
+      : null;
+    const newLabel = formatSlotLabel(customName, orig, uid, {
+      labelTemplate,
+      namePrefix,
+      providerName,
+      apiModel,
+      thinkingEffort: slotThinkingEffort,
+      contextWindow: validContextWindow,
+      showSlotUid,
+      showThinkingEffort,
+      showContextWindow,
+    });
     const slotEntry = {
       newLabel,
       customName,
       providerName,
       apiModel,
+      thinkingEffort: slotThinkingEffort,
       wantImages: s.supportsImages !== false && canDeclareImagesForSlot(uid),
-      contextWindow: Number.isFinite(slotContextWindow) && slotContextWindow > 0
-        ? Math.trunc(slotContextWindow)
-        : null,
+      contextWindow: validContextWindow,
       source: 'rename',
     };
     byUid.set(uid, slotEntry);
@@ -787,7 +936,19 @@ function buildUnlockSet() {
     }
   } catch { /* 无 providers → 走 renderTemplate 的「未设置」兜底 */ }
 
-  return { unlockAll, byUid, defaultProviderName, labelTemplate, namePrefix, unlockScope, slotVisibilityMode, slotVisibility };
+  return {
+    unlockAll,
+    byUid,
+    defaultProviderName,
+    labelTemplate,
+    namePrefix,
+    unlockScope,
+    slotVisibilityMode,
+    slotVisibility,
+    showSlotUid,
+    showThinkingEffort,
+    showContextWindow,
+  };
 }
 
 // 在一个 protobuf 子 message 中查找 field1 (label) 的字符串值。
@@ -898,7 +1059,7 @@ function existingRewriteSpec(uid, origLabel, wasDisabled, cfg, ctx) {
     return {
       keep: true,
       uid,
-      newLabel: configuredLabelFromRuntime(cfg, origLabel, uid, ctx.labelTemplate, ctx.namePrefix),
+      newLabel: configuredLabelFromRuntime(cfg, origLabel, uid, ctx.labelTemplate, ctx.namePrefix, ctx),
       wantImages: cfg.wantImages,
       apiIdOverride: cfg.apiIdOverride || '',
       contextWindow: cfg.contextWindow || null,
@@ -958,7 +1119,7 @@ function configuredMissingSpecs(seenUids, ctx) {
     const fallbackLabel = catalog?.label || catalogLabels().get(uid) || BUILTIN_LABELS[uid] || uid;
     specs.push({
       uid,
-      newLabel: configuredLabelFromRuntime(cfg, fallbackLabel, uid, ctx.labelTemplate, ctx.namePrefix),
+      newLabel: configuredLabelFromRuntime(cfg, fallbackLabel, uid, ctx.labelTemplate, ctx.namePrefix, ctx),
       wantImages: cfg.wantImages,
       apiIdOverride: cfg.apiIdOverride || '',
       contextWindow: cfg.contextWindow || null,
@@ -1088,9 +1249,22 @@ function rewriteModelInfoFields(buf, meta) {
 
 // 递归重写 protobuf，将 ClientModelConfig 条目按 byUid 配置改写 + 全部解锁（unlockAll）。
 // 返回 { body: Buffer, changed: number } 或 null（无改动）。
-function unlockInProto(payload, unlockAll, byUid, defaultProviderName, labelTemplate, namePrefix, unlockScope, slotVisibilityMode, slotVisibility, runtimeStatus) {
+function unlockInProto(payload, unlockAll, byUid, defaultProviderName, labelTemplate, namePrefix, unlockScope, slotVisibilityMode, slotVisibility, runtimeStatus, extra = {}) {
   const counter = { n: 0 };
-  const ctx = { unlockAll, byUid, defaultProviderName, labelTemplate, namePrefix, unlockScope, slotVisibilityMode, slotVisibility, runtimeStatus };
+  const ctx = {
+    unlockAll,
+    byUid,
+    defaultProviderName,
+    labelTemplate,
+    namePrefix,
+    unlockScope,
+    slotVisibilityMode,
+    slotVisibility,
+    runtimeStatus,
+    showSlotUid: extra.showSlotUid === true,
+    showThinkingEffort: extra.showThinkingEffort === true,
+    showContextWindow: extra.showContextWindow === true,
+  };
   const state = { injected: false };
   const out = rewriteForUnlock(payload, counter, 8, ctx, state);
   if (counter.n === 0) return null;
@@ -1326,8 +1500,21 @@ function rewriteConfigFields(buf, { modelUid, apiIdOverride, newLabel, wantImage
 // 按 JSON 对象边界精确定位，避免误改相邻条目。
 // unlockAll=true 时所有 ClientModelConfig 条目都处理；否则只处理 byUid 中的项。
 // 每个条目可同时改 3 件事: label（rename/injected） / disabled（解锁） / supportsImages。
-function unlockInJson(text, unlockAll, byUid, defaultProviderName = '', labelTemplate = '', namePrefix = '', unlockScope = 'all', slotVisibilityMode = 'official', slotVisibility = null, runtimeStatus = null) {
-  const ctx = { unlockAll, byUid, defaultProviderName, labelTemplate, namePrefix, unlockScope, slotVisibilityMode, slotVisibility, runtimeStatus };
+function unlockInJson(text, unlockAll, byUid, defaultProviderName = '', labelTemplate = '', namePrefix = '', unlockScope = 'all', slotVisibilityMode = 'official', slotVisibility = null, runtimeStatus = null, extra = {}) {
+  const ctx = {
+    unlockAll,
+    byUid,
+    defaultProviderName,
+    labelTemplate,
+    namePrefix,
+    unlockScope,
+    slotVisibilityMode,
+    slotVisibility,
+    runtimeStatus,
+    showSlotUid: extra.showSlotUid === true,
+    showThinkingEffort: extra.showThinkingEffort === true,
+    showContextWindow: extra.showContextWindow === true,
+  };
   try {
     const root = JSON.parse(text);
     const arr = root?.userStatus?.cascadeModelConfigData?.clientModelConfigs;
@@ -1517,8 +1704,21 @@ function findObjectEnd(text, objStart) {
 export function unlockModels(resBody) {
   if (!resBody || resBody.length < 2) return null;
 
-  const { unlockAll, byUid, defaultProviderName, labelTemplate, namePrefix, unlockScope, slotVisibilityMode, slotVisibility } = buildUnlockSet();
+  const {
+    unlockAll,
+    byUid,
+    defaultProviderName,
+    labelTemplate,
+    namePrefix,
+    unlockScope,
+    slotVisibilityMode,
+    slotVisibility,
+    showSlotUid,
+    showThinkingEffort,
+    showContextWindow,
+  } = buildUnlockSet();
   if (!unlockAll && byUid.size === 0) return null; // 路由未开启且无配置，不改
+  const extra = { showSlotUid, showThinkingEffort, showContextWindow };
 
   const b0 = resBody[0];
   let kind, payload;
@@ -1552,7 +1752,7 @@ export function unlockModels(resBody) {
   if (isJson) {
     const text = payload.toString('utf8');
     if (text.indexOf('"modelUid"') === -1) return null;
-    const r = unlockInJson(text, unlockAll, byUid, defaultProviderName, labelTemplate, namePrefix, unlockScope, slotVisibilityMode, slotVisibility, runtimeStatus);
+    const r = unlockInJson(text, unlockAll, byUid, defaultProviderName, labelTemplate, namePrefix, unlockScope, slotVisibilityMode, slotVisibility, runtimeStatus, extra);
     if (r.changed === 0) {
       RUNTIME_MODEL_SLOT_STATUS.clear();
       return null;
@@ -1560,7 +1760,7 @@ export function unlockModels(resBody) {
     newPayload = Buffer.from(r.text, 'utf8');
     changed = r.changed;
   } else {
-    const r = unlockInProto(payload, unlockAll, byUid, defaultProviderName, labelTemplate, namePrefix, unlockScope, slotVisibilityMode, slotVisibility, runtimeStatus);
+    const r = unlockInProto(payload, unlockAll, byUid, defaultProviderName, labelTemplate, namePrefix, unlockScope, slotVisibilityMode, slotVisibility, runtimeStatus, extra);
     if (!r) {
       RUNTIME_MODEL_SLOT_STATUS.clear();
       return null;
