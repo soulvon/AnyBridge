@@ -1386,6 +1386,8 @@ fn restart_ide_impl(target: String) -> Result<String, String> {
     };
     #[cfg(target_os = "windows")]
     {
+        // 收集 taskkill 失败原因（拒绝访问等），最终报错时附带给用户，便于自助定位。
+        let mut kill_report = String::new();
         let exe = find_ide_exe(&t)
             .ok_or_else(|| format!("未找到 {} 安装位置，请手动重启", ide_dir_name(&t)))?;
 
@@ -1400,28 +1402,51 @@ fn restart_ide_impl(target: String) -> Result<String, String> {
             if install_dir.is_empty() {
                 return Err("无法确定 Devin 安装目录，请手动重启".into());
             }
-            // PowerShell 仅负责筛选出目标 PID（按安装目录路径过滤，同时覆盖
-            // Windsurf.exe 和 Devin.exe 两个主进程名）。实际 kill 在 Rust 侧用
-            // taskkill /F /T 完成——避免在 PowerShell 内 `& taskkill` spawn 外部
-            // 子进程，每个进程都会弹一个 CMD 窗口。
+            // PID 筛选与 is_ide_running 的判定保持同源（路径含 devin 目录名，
+            // 排除 Windsurf 的 devin 扩展插件目录），并叠加安装目录前缀精确匹配
+            // 取并集。此前只按 find_ide_exe 父目录前缀精确匹配，重装/自定义安装
+            // 路径后与实际运行进程目录错位，会出现"一个都没杀到，检测却仍命中"
+            // 的稳定误报"进程未能终止"。
             let pid_script = format!(
-                r#"$dir = '{}'; foreach ($name in @('Windsurf','Devin')) {{ Get-Process $name -ErrorAction SilentlyContinue | Where-Object {{ $_.Path -and $_.Path.StartsWith($dir, 'CurrentCultureIgnoreCase') }} | ForEach-Object {{ $_.Id }} }}"#,
-                install_dir.replace('\'', "''")
+                r#"$dir = '{dir}'; $seen = @{{}}; foreach ($name in @('Windsurf','Devin')) {{ Get-Process $name -ErrorAction SilentlyContinue | Where-Object {{ $_.Path -and ($_.Path.StartsWith($dir, 'CurrentCultureIgnoreCase') -or ($_.Path -match '[\\/]devin[\\/]' -and $_.Path -notmatch 'extensions[/\\]windsurf[/\\]devin')) }} | ForEach-Object {{ if (-not $seen.ContainsKey($_.Id)) {{ $seen[$_.Id] = $true; $_.Id }} }} }}"#,
+                dir = install_dir.replace('\'', "''")
             );
-            if let Ok(out) = Command::new("powershell")
-                .args(["-NoProfile", "-Command", &pid_script])
-                .creation_flags(0x0800_0000)
-                .output()
-            {
-                for line in String::from_utf8_lossy(&out.stdout).lines() {
-                    let pid = line.trim();
-                    if pid.is_empty() {
-                        continue;
+            // 最多 3 轮：枚举 PID → 强杀 → 等 1s 复查。子进程可能在父进程死后
+            // 才陆续退出，单轮枚举 + 单次等待偶有漏杀。
+            for _round in 0..3 {
+                let mut pids: Vec<String> = Vec::new();
+                if let Ok(out) = Command::new("powershell")
+                    .args(["-NoProfile", "-Command", &pid_script])
+                    .creation_flags(0x0800_0000)
+                    .output()
+                {
+                    for line in String::from_utf8_lossy(&out.stdout).lines() {
+                        let pid = line.trim();
+                        if !pid.is_empty() {
+                            pids.push(pid.to_string());
+                        }
                     }
-                    let _ = Command::new("taskkill")
+                }
+                if pids.is_empty() {
+                    break;
+                }
+                for pid in &pids {
+                    if let Ok(out) = Command::new("taskkill")
                         .args(["/F", "/T", "/PID", pid])
                         .creation_flags(0x0800_0000)
-                        .output();
+                        .output()
+                    {
+                        if !out.status.success() {
+                            let stderr = String::from_utf8_lossy(&out.stderr).trim().to_string();
+                            if !stderr.is_empty() {
+                                kill_report = stderr;
+                            }
+                        }
+                    }
+                }
+                std::thread::sleep(std::time::Duration::from_millis(1000));
+                if !is_ide_running(t.clone()) {
+                    break;
                 }
             }
         } else {
@@ -1433,15 +1458,23 @@ fn restart_ide_impl(target: String) -> Result<String, String> {
                 "Windsurf.exe"
             };
             // 用 taskkill /F /T /IM 杀整个进程树（含 renderer/GPU 子进程）
-            let _ = Command::new("taskkill")
+            if let Ok(out) = Command::new("taskkill")
                 .args(["/IM", image, "/F", "/T"])
                 .creation_flags(0x0800_0000)
-                .output();
+                .output()
+            {
+                if !out.status.success() {
+                    let stderr = String::from_utf8_lossy(&out.stderr).trim().to_string();
+                    if !stderr.is_empty() {
+                        kill_report = stderr;
+                    }
+                }
+            }
         }
 
-        // 等待进程退出，最多 3 秒（验证是否真的杀死了）
+        // 等待进程退出，最多 6 秒（验证是否真的杀死了）
         let mut dead = false;
-        for _ in 0..6 {
+        for _ in 0..12 {
             std::thread::sleep(std::time::Duration::from_millis(500));
             if !is_ide_running(t.clone()) {
                 dead = true;
@@ -1449,9 +1482,15 @@ fn restart_ide_impl(target: String) -> Result<String, String> {
             }
         }
         if !dead {
+            let hint = if kill_report.is_empty() {
+                String::new()
+            } else {
+                format!("（kill 输出：{}）", kill_report)
+            };
             return Err(format!(
-                "{} 进程未能终止，请手动关闭后重试",
-                ide_dir_name(&t)
+                "{} 进程未能终止，请手动关闭后重试{}",
+                ide_dir_name(&t),
+                hint
             ));
         }
 
