@@ -112,6 +112,21 @@
                       </div>
                     </div>
                   </div>
+                  <div style="display:flex; gap:8px; align-items:center;">
+                    <span style="font-size:11px;color:var(--text-muted);flex-shrink:0;" title="目标模型的思考档位（thinking effort）">思考档位</span>
+                    <select id="slot-thinking-effort" class="field-input"
+                      style="padding:0 10px; font-size:12px; border-radius:8px; flex:1; min-width:0; height:32px;"
+                      title="自动 = 按 Devin 所选模型档位解析并转换到目标模型；关闭 = 禁用思考">
+                      <option value="auto">自动（跟随 Devin 档位）</option>
+                      <option value="off">关闭</option>
+                      <option value="minimal">minimal</option>
+                      <option value="low">low</option>
+                      <option value="medium">medium</option>
+                      <option value="high">high</option>
+                      <option value="xhigh">xhigh</option>
+                      <option value="max">max</option>
+                    </select>
+                  </div>
                   <input type="hidden" id="slot-edit-uid">
                   <select class="model-select" id="slot-uid-select" style="display:none;"></select>
                 </div>

@@ -108,6 +108,13 @@ pub struct Target {
     /// 目标请求使用哪个供应商解锁模板。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub unlock: Option<String>,
+    /// 思考档位覆盖。auto/缺省 = 从 Devin modelUid 解析并转换；其余值按目标族词表钳制后下发。
+    #[serde(
+        rename = "thinkingEffort",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub thinking_effort: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -165,10 +172,7 @@ pub struct EnhancementConfig {
         default = "default_codex_stream_max_retries"
     )]
     pub codex_stream_max_retries: u32,
-    #[serde(
-        rename = "claudeMaxRetries",
-        default = "default_claude_max_retries"
-    )]
+    #[serde(rename = "claudeMaxRetries", default = "default_claude_max_retries")]
     pub claude_max_retries: u32,
     #[serde(rename = "selfHeal", default)]
     pub self_heal: SelfHealConfig,
@@ -333,7 +337,11 @@ pub struct Slot {
     #[serde(rename = "useThirdPartyVision", default)]
     pub use_third_party_vision: bool,
     /// 覆盖 GetUserStatus 下发的上下文窗口（token）。None = 使用 windsurf-catalog / 上游原值。
-    #[serde(rename = "contextWindow", default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        rename = "contextWindow",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
     pub context_window: Option<u64>,
     #[serde(default)]
     pub targets: Vec<Target>,
@@ -368,6 +376,13 @@ pub struct InjectedSlot {
     /// 注入槽位目标请求使用哪个供应商解锁模板。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub unlock: Option<String>,
+    /// 思考档位覆盖。auto/缺省 = 从 modelUid/label 解析并转换；其余值按目标族词表钳制后下发。
+    #[serde(
+        rename = "thinkingEffort",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub thinking_effort: Option<String>,
     /// 解锁后该模型是否允许发送图片。默认 true。
     #[serde(rename = "supportsImages", default = "default_true")]
     pub supports_images: bool,

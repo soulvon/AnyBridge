@@ -39,6 +39,13 @@ import {
   enabledSearchSources,
   executeSearchWithFailover,
 } from './search-sources.js';
+import {
+  applyThinkingToPayload,
+  clampEffortLevel,
+  describeThinking,
+  effortVocabForConn,
+  resolveThinkingEffort,
+} from '../lib/thinking-effort.js';
 
 // ─── Config ────────────────────────────────────────────────
 
@@ -693,6 +700,26 @@ function isPromptCacheRejected(statusCode, body = '') {
   return /cache[_ -]?control|prompt[_ -]?cache|prompt caching|anthropic-beta|unknown field|extra_forbidden|unrecognized|unsupported/i.test(String(body || ''));
 }
 
+// 环境变量显式指定了 reasoning effort → 覆盖一切（最高优先级）
+function envReasoningEffort() {
+  if (!OPENAI_REASONING_EFFORT || /^(off|none|false|0)$/i.test(OPENAI_REASONING_EFFORT)) return '';
+  return OPENAI_REASONING_EFFORT;
+}
+
+// 上游拒绝 thinking/reasoning 参数（400/422 且报错提及这些字段）→ 去掉档位参数重试一次。
+function isThinkingParamRejected(statusCode, body = '') {
+  if (![400, 422].includes(statusCode)) return false;
+  return /thinking|output[_-]?config|reasoning|effort/i.test(String(body || ''));
+}
+
+// 把解析好的思考档位写进 payload。Claude Code unlock 契约必须保持
+// adaptive+output_config 结构，'off' 档降级为 low 而不是 disabled。
+function injectThinking(apiPayload, conn, thinking) {
+  let t = thinking;
+  if (t?.mode === 'off' && conn?.unlockKind === 'claudeCode') t = { ...t, mode: 'level', level: 'low' };
+  applyThinkingToPayload(apiPayload, conn, t);
+}
+
 function recordStreamLatency(startedAt) {
   if (startedAt) recordLatency(Date.now() - startedAt);
 }
@@ -788,6 +815,7 @@ export function handleGetChatMessage(req, res, body) {
         apiFormat: injected.apiFormat,
         apiPath: injected.apiPath,
         unlock: injected.unlock,
+        thinkingEffort: injected.thinkingEffort,
       }],
       routeKind: 'injected',
     };
@@ -917,7 +945,14 @@ export function handleGetChatMessage(req, res, body) {
     const routeMode = conn.unlockKind
       ? `${conn.format}/${conn.unlockKind}`
       : (conn.routeSource && conn.routeSource !== 'target-apiFormat' ? `${conn.format}/${conn.routeSource}` : conn.format);
-    console.log(`  ➡️  目标#${idx}: ${conn.providerName} (${routeMode}) → ${conn.model}${conn.capabilities?.gzip ? ' [gzip]' : ''}`);
+    // 思考档位：目标配置优先，auto 时从 Devin modelUid 解析并按目标族词表钳制。
+    // 仅 anthropic/openai 协议支持注入；gemini 原生格式暂无档位参数，跳过以免误报。
+    const effortSupported = conn.format === 'anthropic' || conn.format === 'openai';
+    const envEffort = envReasoningEffort();
+    const envLevel = envEffort && clampEffortLevel(envEffort, effortVocabForConn(conn));
+    const thinking = !effortSupported ? null
+      : (envLevel ? { mode: 'level', level: envLevel, source: 'env' } : resolveThinkingEffort(target, requestedModel, conn));
+    console.log(`  ➡️  目标#${idx}: ${conn.providerName} (${routeMode}) → ${conn.model}${conn.capabilities?.gzip ? ' [gzip]' : ''}${thinking ? ` [effort=${describeThinking(thinking)}${thinking.source === 'config' ? '' : `/${thinking.source}`}]` : ''}`);
     recordRequest({ provider: conn.providerName, requestedModel, resolvedModel: conn.model });
 
     const sys = systemPrompt;
@@ -1042,6 +1077,7 @@ export function handleGetChatMessage(req, res, body) {
         resolvedModel: conn.model,
         requestedModel,
         serviceTier,
+        thinking,
         messageId,
         conn,
         enhancement,
@@ -1213,7 +1249,7 @@ async function streamSearchAgentLoop(req, res, opts) {
   }
 }
 
-function requestAnthropicBuffered(req, res, { systemPrompt, messages, tools, toolChoice, resolvedModel, messageId, conn, enhancement = {}, promptCacheRetry = false, bindActiveReq = null }) {
+function requestAnthropicBuffered(req, res, { systemPrompt, messages, tools, toolChoice, resolvedModel, messageId, conn, enhancement = {}, thinking = null, promptCacheRetry = false, bindActiveReq = null }) {
   return providerInflightGate.run(providerGateKey(conn), () => new Promise((resolve) => {
     const claudeCodeUnlock = claudeCodeUnlockForTarget(conn);
     const targetPath = claudeCodeUnlock?.wireApi || conn.apiPath;
@@ -1249,6 +1285,7 @@ function requestAnthropicBuffered(req, res, { systemPrompt, messages, tools, too
         if (toolChoice) apiPayload.tool_choice = toolChoice;
       }
     }
+    injectThinking(apiPayload, conn, thinking);
     applyPayloadParamOverrides(apiPayload, enhancement, 'max_tokens');
 
     const apiBody = JSON.stringify(apiPayload);
@@ -1287,6 +1324,24 @@ function requestAnthropicBuffered(req, res, { systemPrompt, messages, tools, too
           if (failed) return;
           failed = true;
           mitmLog({ direction: 'downstream', providerName: conn.providerName, model: resolvedModel, format: 'anthropic', request: { method: 'POST', url: requestUrl }, response: { statusCode: apiRes.statusCode, headers: apiRes.headers, body: errBody } });
+          if (thinking && isThinkingParamRejected(apiRes.statusCode, errBody)) {
+            console.warn(`  ♻️  ${conn.providerName} / ${resolvedModel} 不接受思考档位参数，本次移除后重试一次`);
+            apiReq.destroy();
+            requestAnthropicBuffered(req, res, {
+              systemPrompt,
+              messages,
+              tools,
+              toolChoice,
+              resolvedModel,
+              messageId,
+              conn,
+              enhancement,
+              thinking: null,
+              promptCacheRetry,
+              bindActiveReq,
+            }).then(resolve);
+            return;
+          }
           if (usePromptCache && !promptCacheRetry && isPromptCacheRejected(apiRes.statusCode, errBody)) {
             console.warn(`  ♻️  ${conn.providerName} / ${resolvedModel} 不接受 cache_control，本次移除后重试一次`);
             apiReq.destroy();
@@ -1299,6 +1354,7 @@ function requestAnthropicBuffered(req, res, { systemPrompt, messages, tools, too
               messageId,
               conn,
               enhancement,
+              thinking,
               promptCacheRetry: true,
               bindActiveReq,
             }).then(resolve);
@@ -1396,7 +1452,7 @@ function requestOpenAIBuffered(req, res, opts) {
   return requestOpenAIResponsesBuffered(req, res, opts);
 }
 
-function requestOpenAIResponsesBuffered(req, res, { systemPrompt, messages, tools, toolChoice, resolvedModel, requestedModel, serviceTier, messageId, conn, enhancement = {}, schemaCompatRetry = false, bindActiveReq = null }) {
+function requestOpenAIResponsesBuffered(req, res, { systemPrompt, messages, tools, toolChoice, resolvedModel, requestedModel, serviceTier, messageId, conn, enhancement = {}, thinking = null, schemaCompatRetry = false, bindActiveReq = null }) {
   return providerInflightGate.run(providerGateKey(conn), () => new Promise((resolve) => {
     const codexUnlock = codexUnlockForTarget(conn);
     // unlock 只加 headers，不影响 payload 和 agent loop
@@ -1429,6 +1485,7 @@ function requestOpenAIResponsesBuffered(req, res, { systemPrompt, messages, tool
     if (codexUnlock) {
       applyCodexUnlockRequiredFields(apiPayload, codexUnlock);
     }
+    injectThinking(apiPayload, conn, thinking);
     applyPayloadParamOverrides(apiPayload, enhancement, 'max_output_tokens');
 
     const apiBody = JSON.stringify(apiPayload);
@@ -1470,6 +1527,26 @@ function requestOpenAIResponsesBuffered(req, res, { systemPrompt, messages, tool
           if (failed) return;
           failed = true;
           mitmLog({ direction: 'downstream', providerName: conn.providerName, model: resolvedModel, format: 'openai-responses', request: { method: 'POST', url: requestUrl }, response: { statusCode: apiRes.statusCode, headers: apiRes.headers, body: errBody } });
+          if (thinking && isThinkingParamRejected(apiRes.statusCode, errBody)) {
+            console.warn(`  ♻️  ${conn.providerName} / ${resolvedModel} 不接受思考档位参数，本次移除后重试一次`);
+            apiReq.destroy();
+            requestOpenAIResponsesBuffered(req, res, {
+              systemPrompt,
+              messages,
+              tools,
+              toolChoice,
+              resolvedModel,
+              requestedModel,
+              serviceTier,
+              messageId,
+              conn,
+              enhancement,
+              thinking: null,
+              schemaCompatRetry,
+              bindActiveReq,
+            }).then(resolve);
+            return;
+          }
           if (!schemaCompatRetry && shouldAutoEnableGeminiSchemaCompat(apiRes.statusCode, errBody) && tools && tools.length > 0) {
             const remembered = rememberProviderToolSchemaCompat(conn.providerId, 'gemini');
             if (remembered) console.log(`  🧠 已记住 ${conn.providerName} 的工具 Schema 兼容模式: gemini`);
@@ -1486,6 +1563,7 @@ function requestOpenAIResponsesBuffered(req, res, { systemPrompt, messages, tool
               messageId,
               conn: { ...conn, capabilities: { ...(conn.capabilities || {}), toolSchemaCompat: 'gemini' } },
               enhancement,
+              thinking,
               schemaCompatRetry: true,
               bindActiveReq,
             }).then(resolve);
@@ -1579,7 +1657,7 @@ function requestOpenAIResponsesBuffered(req, res, { systemPrompt, messages, tool
   }));
 }
 
-function requestOpenAIChatCompletionsBuffered(req, res, { systemPrompt, messages, tools, toolChoice, resolvedModel, serviceTier, messageId, conn, enhancement = {}, schemaCompatRetry = false, bindActiveReq = null }) {
+function requestOpenAIChatCompletionsBuffered(req, res, { systemPrompt, messages, tools, toolChoice, resolvedModel, serviceTier, messageId, conn, enhancement = {}, thinking = null, schemaCompatRetry = false, bindActiveReq = null }) {
   return providerInflightGate.run(providerGateKey(conn), () => new Promise((resolve) => {
     const forceGeminiCompat = schemaCompatRetry || conn.capabilities?.toolSchemaCompat === 'gemini';
     const apiPayload = {
@@ -1599,6 +1677,7 @@ function requestOpenAIChatCompletionsBuffered(req, res, { systemPrompt, messages
         else if (toolChoice.type === 'tool') apiPayload.tool_choice = { type: 'function', function: { name: toolChoice.name } };
       }
     }
+    injectThinking(apiPayload, conn, thinking);
     applyPayloadParamOverrides(apiPayload, enhancement, 'max_tokens');
 
     const apiBody = JSON.stringify(apiPayload);
@@ -1632,6 +1711,25 @@ function requestOpenAIChatCompletionsBuffered(req, res, { systemPrompt, messages
           if (failed) return;
           failed = true;
           mitmLog({ direction: 'downstream', providerName: conn.providerName, model: resolvedModel, format: 'openai-chat', request: { method: 'POST', url: requestUrl }, response: { statusCode: apiRes.statusCode, headers: apiRes.headers, body: errBody } });
+          if (thinking && isThinkingParamRejected(apiRes.statusCode, errBody)) {
+            console.warn(`  ♻️  ${conn.providerName} / ${resolvedModel} 不接受思考档位参数，本次移除后重试一次`);
+            apiReq.destroy();
+            requestOpenAIChatCompletionsBuffered(req, res, {
+              systemPrompt,
+              messages,
+              tools,
+              toolChoice,
+              resolvedModel,
+              serviceTier,
+              messageId,
+              conn,
+              enhancement,
+              thinking: null,
+              schemaCompatRetry,
+              bindActiveReq,
+            }).then(resolve);
+            return;
+          }
           if (!schemaCompatRetry && shouldAutoEnableGeminiSchemaCompat(apiRes.statusCode, errBody) && tools && tools.length > 0) {
             const remembered = rememberProviderToolSchemaCompat(conn.providerId, 'gemini');
             if (remembered) console.log(`  🧠 已记住 ${conn.providerName} 的工具 Schema 兼容模式: gemini`);
@@ -1647,6 +1745,7 @@ function requestOpenAIChatCompletionsBuffered(req, res, { systemPrompt, messages
               messageId,
               conn: { ...conn, capabilities: { ...(conn.capabilities || {}), toolSchemaCompat: 'gemini' } },
               enhancement,
+              thinking,
               schemaCompatRetry: true,
               bindActiveReq,
             }).then(resolve);
@@ -1732,7 +1831,7 @@ function requestOpenAIChatCompletionsBuffered(req, res, { systemPrompt, messages
   }));
 }
 
-async function streamAnthropic(req, res, { systemPrompt, messages, tools, toolChoice, resolvedModel, messageId, conn, enhancement = {}, onFailover, promptCacheRetry = false, bindActiveReq = null }) {
+async function streamAnthropic(req, res, { systemPrompt, messages, tools, toolChoice, resolvedModel, messageId, conn, enhancement = {}, thinking = null, onFailover, promptCacheRetry = false, bindActiveReq = null }) {
   const freeSlot = await providerInflightGate.acquire(providerGateKey(conn));
   let slotFreed = false;
   const freeOnce = () => {
@@ -1766,6 +1865,7 @@ async function streamAnthropic(req, res, { systemPrompt, messages, tools, toolCh
   if (claudeCodeUnlock && sentTools && sentTools.length > 0 && toolChoice) {
     apiPayload.tool_choice = toolChoice;
   }
+  injectThinking(apiPayload, conn, thinking);
   applyPayloadParamOverrides(apiPayload, enhancement, 'max_tokens');
   const apiBody = JSON.stringify(apiPayload);
   const processor = new AnthropicStreamProcessor(messageId, resolvedModel);
@@ -1813,6 +1913,30 @@ async function streamAnthropic(req, res, { systemPrompt, messages, tools, toolCh
         console.error(`  ❌ Body: ${errBody.slice(0, 300)}`);
         mitmLog({ direction: 'downstream', providerName: conn.providerName, model: resolvedModel, format: 'anthropic', request: { method: 'POST', url: requestUrl }, response: { statusCode: apiRes.statusCode, headers: apiRes.headers, body: errBody } });
 
+        if (thinking && isThinkingParamRejected(apiRes.statusCode, errBody) && !res.headersSent) {
+          console.warn(`  ♻️  ${conn.providerName} / ${resolvedModel} 不接受思考档位参数，本次移除后重试一次`);
+          freeOnce();
+          apiReq.destroy();
+          if (!failed) {
+            failed = true;
+            return streamAnthropic(req, res, {
+              systemPrompt,
+              messages,
+              tools,
+              toolChoice,
+              resolvedModel,
+              messageId,
+              conn,
+              enhancement,
+              thinking: null,
+              onFailover,
+              promptCacheRetry,
+              bindActiveReq,
+            });
+          }
+          return;
+        }
+
         if (usePromptCache && !promptCacheRetry && isPromptCacheRejected(apiRes.statusCode, errBody) && !res.headersSent) {
           console.warn(`  ♻️  ${conn.providerName} / ${resolvedModel} 不接受 cache_control，本次移除后重试一次`);
           freeOnce();
@@ -1828,6 +1952,7 @@ async function streamAnthropic(req, res, { systemPrompt, messages, tools, toolCh
               messageId,
               conn,
               enhancement,
+              thinking,
               onFailover,
               promptCacheRetry: true,
               bindActiveReq,
@@ -1931,10 +2056,10 @@ async function streamAnthropic(req, res, { systemPrompt, messages, tools, toolCh
 
 // ─── OpenAI Responses API streaming ─────────────────────────
 
-async function streamOpenAI(req, res, { systemPrompt, messages, tools, toolChoice, resolvedModel, requestedModel, serviceTier, messageId, conn, enhancement = {}, onFailover, schemaCompatRetry = false, bindActiveReq = null }) {
+async function streamOpenAI(req, res, { systemPrompt, messages, tools, toolChoice, resolvedModel, requestedModel, serviceTier, messageId, conn, enhancement = {}, thinking = null, onFailover, schemaCompatRetry = false, bindActiveReq = null }) {
   const codexUnlock = codexUnlockForTarget(conn);
   if (!codexUnlock && conn.apiPath.includes('/chat/completions')) {
-    return streamOpenAIChatCompletions(req, res, { systemPrompt, messages, tools, toolChoice, resolvedModel, serviceTier, messageId, conn, enhancement, onFailover, schemaCompatRetry, bindActiveReq });
+    return streamOpenAIChatCompletions(req, res, { systemPrompt, messages, tools, toolChoice, resolvedModel, serviceTier, messageId, conn, enhancement, thinking, onFailover, schemaCompatRetry, bindActiveReq });
   }
 
   const freeSlot = await providerInflightGate.acquire(providerGateKey(conn));
@@ -1986,6 +2111,7 @@ async function streamOpenAI(req, res, { systemPrompt, messages, tools, toolChoic
   if (codexUnlock) {
     applyCodexUnlockRequiredFields(apiPayload, codexUnlock);
   }
+  injectThinking(apiPayload, conn, thinking);
   applyPayloadParamOverrides(apiPayload, enhancement, 'max_output_tokens');
 
   const targetPath = codexUnlock?.wireApi || conn.apiPath;
@@ -2031,6 +2157,32 @@ async function streamOpenAI(req, res, { systemPrompt, messages, tools, toolChoic
         console.error(`  ❌ Body: ${errBody.slice(0, 300)}`);
         mitmLog({ direction: 'downstream', providerName: conn.providerName, model: resolvedModel, format: 'openai-responses', request: { method: 'POST', url: requestUrl }, response: { statusCode: apiRes.statusCode, headers: apiRes.headers, body: errBody } });
 
+        if (thinking && isThinkingParamRejected(apiRes.statusCode, errBody) && !res.headersSent) {
+          console.warn(`  ♻️  ${conn.providerName} / ${resolvedModel} 不接受思考档位参数，本次移除后重试一次`);
+          freeOnce();
+          apiReq.destroy();
+          if (!failed) {
+            failed = true;
+            return streamOpenAI(req, res, {
+              systemPrompt,
+              messages,
+              tools,
+              toolChoice,
+              resolvedModel,
+              requestedModel,
+              serviceTier,
+              messageId,
+              conn,
+              enhancement,
+              thinking: null,
+              onFailover,
+              schemaCompatRetry,
+              bindActiveReq,
+            });
+          }
+          return;
+        }
+
         if (!schemaCompatRetry && shouldAutoEnableGeminiSchemaCompat(apiRes.statusCode, errBody) && tools && tools.length > 0 && !res.headersSent) {
           const remembered = rememberProviderToolSchemaCompat(conn.providerId, 'gemini');
           if (remembered) {
@@ -2052,6 +2204,7 @@ async function streamOpenAI(req, res, { systemPrompt, messages, tools, toolChoic
               messageId,
               conn: { ...conn, capabilities: { ...(conn.capabilities || {}), toolSchemaCompat: 'gemini' } },
               enhancement,
+              thinking,
               onFailover,
               schemaCompatRetry: true,
               bindActiveReq,
@@ -2162,7 +2315,7 @@ async function streamOpenAI(req, res, { systemPrompt, messages, tools, toolChoic
 
 // ─── OpenAI Chat Completions API streaming ──────────────────
 
-async function streamOpenAIChatCompletions(req, res, { systemPrompt, messages, tools, toolChoice, resolvedModel, serviceTier, messageId, conn, enhancement = {}, onFailover, schemaCompatRetry = false, bindActiveReq = null }) {
+async function streamOpenAIChatCompletions(req, res, { systemPrompt, messages, tools, toolChoice, resolvedModel, serviceTier, messageId, conn, enhancement = {}, thinking = null, onFailover, schemaCompatRetry = false, bindActiveReq = null }) {
   const freeSlot = await providerInflightGate.acquire(providerGateKey(conn));
   let slotFreed = false;
   const freeOnce = () => {
@@ -2196,6 +2349,7 @@ async function streamOpenAIChatCompletions(req, res, { systemPrompt, messages, t
       else if (toolChoice.type === 'tool') apiPayload.tool_choice = { type: 'function', function: { name: toolChoice.name } };
     }
   }
+  injectThinking(apiPayload, conn, thinking);
   applyPayloadParamOverrides(apiPayload, enhancement, 'max_tokens');
   const apiBody = JSON.stringify(apiPayload);
   const extraHeaders = enhancementRequestHeaders(enhancement);
@@ -2228,6 +2382,31 @@ async function streamOpenAIChatCompletions(req, res, { systemPrompt, messages, t
         console.error(`  ❌ Body: ${errBody.slice(0, 300)}`);
         mitmLog({ direction: 'downstream', providerName: conn.providerName, model: resolvedModel, format: 'openai-chat', request: { method: 'POST', url: requestUrl }, response: { statusCode: apiRes.statusCode, headers: apiRes.headers, body: errBody } });
 
+        if (thinking && isThinkingParamRejected(apiRes.statusCode, errBody) && !res.headersSent) {
+          console.warn(`  ♻️  ${conn.providerName} / ${resolvedModel} 不接受思考档位参数，本次移除后重试一次`);
+          freeOnce();
+          apiReq.destroy();
+          if (!failed) {
+            failed = true;
+            return streamOpenAIChatCompletions(req, res, {
+              systemPrompt,
+              messages,
+              tools,
+              toolChoice,
+              resolvedModel,
+              serviceTier,
+              messageId,
+              conn,
+              enhancement,
+              thinking: null,
+              onFailover,
+              schemaCompatRetry,
+              bindActiveReq,
+            });
+          }
+          return;
+        }
+
         if (!schemaCompatRetry && shouldAutoEnableGeminiSchemaCompat(apiRes.statusCode, errBody) && tools && tools.length > 0 && !res.headersSent) {
           const remembered = rememberProviderToolSchemaCompat(conn.providerId, 'gemini');
           if (remembered) {
@@ -2248,6 +2427,7 @@ async function streamOpenAIChatCompletions(req, res, { systemPrompt, messages, t
               messageId,
               conn: { ...conn, capabilities: { ...(conn.capabilities || {}), toolSchemaCompat: 'gemini' } },
               enhancement,
+              thinking,
               onFailover,
               schemaCompatRetry: true,
               bindActiveReq,

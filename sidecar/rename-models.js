@@ -248,6 +248,20 @@ function catalogByUid() {
   return _catalogByUid;
 }
 
+// 供 thinking-effort.js 使用：按 modelUid 查 catalog 条目（label/apiId），
+// 点/横杠两种分隔符都尝试（官方响应用横杠，catalog 部分条目用点）。
+export function catalogEntryForUid(uid) {
+  const raw = String(uid || '');
+  if (!raw) return null;
+  const byUid = catalogByUid();
+  return byUid.get(raw) || byUid.get(raw.replace(/(\d)\.(\d)/g, '$1-$2')) || null;
+}
+
+// 供 thinking-effort.js 做兄弟档位探测：返回全部 catalog modelUid 的 Map。
+export function catalogEntries() {
+  return catalogByUid();
+}
+
 // 改名表来源:model-map.json 的槽位。需要把「原始 label → 新名」
 // 配对，但 model-map 只有 modelUid+displayName，原始 label 来自 captured ide-models.json
 // (优先) 或内置 BUILTIN_LABELS (兜底)。热加载，每次响应读最新配置。

@@ -470,6 +470,9 @@ function renderTargetChain(targets) {
     const label = p ? p.name : (t.providerId || '?');
     const modelText = `${escAttr(label)}/${escAttr(t.model || '默认模型')}`;
     const routeText = targetRouteLabel(t);
+    const effortText = String(t.thinkingEffort || t.thinking_effort || '').trim().toLowerCase();
+    const effortBadge = effortText && effortText !== 'auto'
+      ? `<span class="target-cap-muted" title="思考档位覆盖">🧠${escAttr(effortText)}</span>` : '';
     const badges = p ? capabilityBadges(p, true, t.model || p.defaultModel || null) : '';
     const caps = badges || (invalid ? '<span class="target-cap-muted">供应商不可用</span>' : '<span class="target-cap-muted">未标记能力</span>');
     return `
@@ -478,6 +481,7 @@ function renderTargetChain(targets) {
           <span class="target-order">${i + 1}</span>
           <span class="target-model-text">${modelText}</span>
           <span class="target-cap-muted">${escAttr(routeText)}</span>
+          ${effortBadge}
           ${invalid ? '<span class="target-warning">⚠</span>' : ''}
         </div>
         <div class="target-cap-line">${caps}</div>
@@ -2660,6 +2664,18 @@ function targetRouteValue(target, slotUid) {
   return AUTO_ROUTE_VALUE;
 }
 
+// 思考档位选项：auto=跟随 Devin modelUid 解析；off=显式关闭；其余按目标族词表钳制。
+const THINKING_EFFORT_OPTIONS = [
+  ['auto', '思考·自动'],
+  ['off', '思考·关闭'],
+  ['minimal', 'minimal'],
+  ['low', 'low'],
+  ['medium', 'medium'],
+  ['high', 'high'],
+  ['xhigh', 'xhigh'],
+  ['max', 'max'],
+];
+
 function targetWithSlotRoute(target, slotUid) {
   const providerId = String(target?.providerId || '').trim();
   const model = String(target?.model || '').trim();
@@ -2667,6 +2683,9 @@ function targetWithSlotRoute(target, slotUid) {
   applyRouteToTarget(out, targetRouteValue(target, slotUid));
   const apiPath = String(target?.apiPath || target?.api_path || '').trim();
   if (apiPath) out.apiPath = apiPath;
+  // 思考档位：auto/空 = 默认行为，不落盘；其余值保留
+  const effort = String(target?.thinkingEffort || target?.thinking_effort || '').trim().toLowerCase();
+  if (effort && effort !== 'auto') out.thinkingEffort = effort;
   return out;
 }
 
@@ -3257,6 +3276,12 @@ async function openSlotEditor(uid) {
     applyDisplayNameByMode();
   }
   setSlotContextWindowInput(editing ? editing.contextWindow : null);
+  // 思考档位：编辑态取首个 target 的已存值（本页为槽位级统一设置），新建态默认 auto
+  const effortSel = document.getElementById('slot-thinking-effort');
+  if (effortSel) {
+    const savedEffort = String(editing?.targets?.[0]?.thinkingEffort || editing?.targets?.[0]?.thinking_effort || 'auto').toLowerCase();
+    effortSel.value = THINKING_EFFORT_OPTIONS.some(([v]) => v === savedEffort) ? savedEffort : 'auto';
+  }
   refreshSlotContextRecommendHint();
   // 切到「添加/编辑映射」普通 page，保持顶部 tab 栏可见
   navigateTo('slot-editor');
@@ -3399,12 +3424,29 @@ function applyRecommendedSlotContextWindow() {
   }
 }
 
+// 读取映射编辑页的思考档位下拉；非法值回落 auto。
+function readSlotThinkingEffortInput() {
+  const raw = String(document.getElementById('slot-thinking-effort')?.value || 'auto').trim().toLowerCase();
+  return THINKING_EFFORT_OPTIONS.some(([v]) => v === raw) ? raw : 'auto';
+}
+
+// 槽位编辑页的思考档位是槽位级设置，统一应用到所有选中映射目标。
+function applyThinkingEffortToTargets(targets, effort) {
+  return (targets || []).map(t => {
+    const out = { ...t };
+    if (effort && effort !== 'auto') out.thinkingEffort = effort;
+    else delete out.thinkingEffort;
+    return out;
+  });
+}
+
 async function saveSlotFromEditor() {
   const editUid = document.getElementById('slot-edit-uid').value;
   const selectedUid = document.getElementById('slot-uid-select').value;
   const uid = selectedUid || editUid;
   const display = document.getElementById('slot-display').value.trim();
   const contextWindow = readSlotContextWindowInput();
+  const thinkingEffort = readSlotThinkingEffortInput();
   const supportsImages = true;  // 默认始终启用图片支持
   if (!uid) { addLog('warn', '请选择模型槽位'); return; }
 
@@ -3424,7 +3466,7 @@ async function saveSlotFromEditor() {
       s.displayName = display;
       s.supportsImages = supportsImages;
       applySlotContextWindow(s, contextWindow);
-      s.targets = targetsWithSlotRoute(selectedMappingTargets, uid);
+      s.targets = targetsWithSlotRoute(applyThinkingEffortToTargets(selectedMappingTargets, thinkingEffort), uid);
     }
   } else {
     if (modelMapStore.slots.some(x => x.modelUid === uid)) {
@@ -3437,7 +3479,7 @@ async function saveSlotFromEditor() {
       enabled: true,
       supportsImages,
       useThirdPartyVision: false,
-      targets: targetsWithSlotRoute(selectedMappingTargets, uid)
+      targets: targetsWithSlotRoute(applyThinkingEffortToTargets(selectedMappingTargets, thinkingEffort), uid)
     };
     applySlotContextWindow(slot, contextWindow);
     modelMapStore.slots.push(slot);
@@ -3545,6 +3587,10 @@ function renderFailoverRows() {
     const routeOpts = targetRouteOptionsForProvider(cur, routeValue).map(opt =>
       `<option value="${escAttr(opt.value)}"${opt.value === routeValue ? ' selected' : ''}>${escAttr(opt.label)}</option>`
     ).join('');
+    const effortValue = String(row.thinkingEffort || 'auto').toLowerCase();
+    const effortOpts = THINKING_EFFORT_OPTIONS.map(([v, l]) =>
+      `<option value="${v}"${v === effortValue ? ' selected' : ''}>${l}</option>`
+    ).join('');
 
     return `
       <div style="display:flex;flex-direction:column;gap:6px" data-fo-idx="${i}">
@@ -3552,6 +3598,7 @@ function renderFailoverRows() {
           <span style="width:20px;text-align:center;color:var(--text-muted)">${marks[i] || (i + 1)}</span>
           <select class="input-sm" style="flex:1" data-action="updateFailoverRow" data-events="change" data-args="[${i},&quot;providerId&quot;]" data-pass-value>${invalidOpt}${provOpts}</select>
           <select class="input-sm" style="flex:0 0 132px" data-action="updateFailoverRow" data-events="change" data-args="[${i},&quot;route&quot;]" data-pass-value>${routeOpts}</select>
+          <select class="input-sm" style="flex:0 0 96px" title="思考档位：自动=按 Devin 所选模型档位转换；关闭=禁用思考" data-action="updateFailoverRow" data-events="change" data-args="[${i},&quot;thinkingEffort&quot;]" data-pass-value>${effortOpts}</select>
           <select class="input-sm" style="flex:1; text-align: left;" data-action="updateFailoverRow" data-events="change" data-args="[${i},&quot;model&quot;]" data-pass-value>
             <option value=""${!row.model ? ' selected' : ''}>默认模型</option>
             ${modelOpts}
