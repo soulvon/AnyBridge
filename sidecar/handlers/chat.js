@@ -1385,6 +1385,11 @@ function requestAnthropicBuffered(req, res, { systemPrompt, messages, tools, too
 }
 
 function requestOpenAIBuffered(req, res, opts) {
+  // codex unlock 目标始终走 Responses 契约（wireApi），不能按 apiPath 分发到
+  // chat/completions——那会丢掉 unlock 必需字段与 Codex 身份头，被网关 503。
+  if (codexUnlockForTarget(opts.conn)) {
+    return requestOpenAIResponsesBuffered(req, res, opts);
+  }
   if (isOpenAIChatCompletionsPath(opts.conn.apiPath)) {
     return requestOpenAIChatCompletionsBuffered(req, res, opts);
   }
@@ -1427,7 +1432,10 @@ function requestOpenAIResponsesBuffered(req, res, { systemPrompt, messages, tool
     applyPayloadParamOverrides(apiPayload, enhancement, 'max_output_tokens');
 
     const apiBody = JSON.stringify(apiPayload);
-    const authHeaders = { authorization: `Bearer ${conn.apiKey}` };
+    // codex unlock：身份头与 payload.prompt_cache_key 对齐（Codex 会话亲和）
+    const authHeaders = codexUnlock
+      ? codexUnlockHeaders(conn, apiPayload.prompt_cache_key)
+      : { authorization: `Bearer ${conn.apiKey}` };
     const extraHeaders = enhancementRequestHeaders(enhancement);
     const requestUrl = upstreamUrl(conn, targetPath);
     mitmLog({
@@ -1982,7 +1990,7 @@ async function streamOpenAI(req, res, { systemPrompt, messages, tools, toolChoic
 
   const targetPath = codexUnlock?.wireApi || conn.apiPath;
   const apiBody = JSON.stringify(apiPayload);
-  const authHeaders = codexUnlock ? codexUnlockHeaders(conn) : { authorization: `Bearer ${conn.apiKey}` };
+  const authHeaders = codexUnlock ? codexUnlockHeaders(conn, apiPayload.prompt_cache_key) : { authorization: `Bearer ${conn.apiKey}` };
   const extraHeaders = enhancementRequestHeaders(enhancement);
   const requestUrl = upstreamUrl(conn, targetPath);
   // MITM 日志：记录上游请求

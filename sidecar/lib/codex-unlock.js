@@ -72,7 +72,9 @@ export function applyCodexUnlockRequiredFields(payload, unlock) {
   // store:false: local proxy never needs upstream response persistence; some
   // third-party Responses gateways hit disk/temp floors when store defaults on.
   payload.include = unlock.include;
-  payload.prompt_cache_key = generateUUIDv7();
+  // prompt_cache_key 与 Codex CLI 一致：同一会话内保持稳定（按首条 user 输入派生），
+  // 让上游的 prompt 缓存/auth 亲和能命中；随机 UUID 会让每轮都换缓存键。
+  payload.prompt_cache_key = buildCodexPromptCacheKey(payload.input);
   payload.store = false;
   return payload;
 }
@@ -121,11 +123,22 @@ export function buildCodexUnlockClientMetadata(sessionId = CODEX_SESSION_ID) {
   };
 }
 
-export function codexUnlockHeaders(conn) {
+export function codexUnlockHeaders(conn, sessionId = CODEX_SESSION_ID) {
+  // 对齐 Codex CLI 真实抓包：cliproxyapi 等 Codex 网关依据
+  // x-openai-internal-codex-responses-lite 区分 Responses Lite 契约，
+  // 缺少该头会被路由到普通渠道并返回 503；session/thread/client-request-id
+  // 与会话级 prompt_cache_key 对齐，供上游会话亲和与审计。
+  const meta = buildCodexUnlockClientMetadata(sessionId);
   return {
     authorization: `Bearer ${conn.apiKey}`,
     originator: 'Codex Desktop',
     'user-agent': CODEX_DESKTOP_USER_AGENT,
+    'session-id': meta.session_id,
+    'thread-id': meta.thread_id,
+    'x-client-request-id': meta.session_id,
+    'x-codex-window-id': meta['x-codex-window-id'],
+    'x-codex-turn-metadata': meta['x-codex-turn-metadata'],
+    'x-openai-internal-codex-responses-lite': 'true',
   };
 }
 
