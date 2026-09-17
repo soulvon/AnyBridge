@@ -6,6 +6,7 @@ import {
   buildClaudeCodeUnlockPayload,
   claudeCodeUnlockForTarget,
   codexUnlockForTarget,
+  codexUnlockHeaders,
 } from './codex-unlock.js';
 
 const providerUnlocks = {
@@ -73,5 +74,25 @@ describe('Codex supplier unlock routing', () => {
     assert.deepEqual(payload.include, ['reasoning.encrypted_content']);
     assert.equal(payload.store, false);
     assert.match(payload.prompt_cache_key, /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+  });
+
+  it('keeps prompt_cache_key stable for the same conversation input', () => {
+    const unlock = codexUnlockForTarget({ unlocks: providerUnlocks, unlockKind: 'codex' });
+    const a = applyCodexUnlockRequiredFields({ input: [{ role: 'user', content: 'hello-conv-a' }] }, unlock);
+    const b = applyCodexUnlockRequiredFields({ input: [{ role: 'user', content: 'hello-conv-a' }] }, unlock);
+    const c = applyCodexUnlockRequiredFields({ input: [{ role: 'user', content: 'hello-conv-c' }] }, unlock);
+    assert.equal(a.prompt_cache_key, b.prompt_cache_key);
+    assert.notEqual(a.prompt_cache_key, c.prompt_cache_key);
+  });
+
+  it('sends the Codex Lite identity headers required by Codex gateways', () => {
+    const headers = codexUnlockHeaders({ apiKey: 'sk-test' }, 'sess-123');
+    assert.equal(headers.authorization, 'Bearer sk-test');
+    assert.equal(headers['x-openai-internal-codex-responses-lite'], 'true');
+    assert.equal(headers['session-id'], 'sess-123');
+    assert.equal(headers['thread-id'], 'sess-123');
+    assert.equal(headers['x-client-request-id'], 'sess-123');
+    assert.equal(headers['x-codex-window-id'], 'sess-123:0');
+    assert.ok(headers['x-codex-turn-metadata'].includes('"session_id":"sess-123"'));
   });
 });

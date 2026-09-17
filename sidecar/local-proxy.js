@@ -1196,9 +1196,9 @@ function upstreamBody(conn, ctx) {
   return cleanBody({ ...extras, model: conn.model, messages: openAIChatMessages(ctx.system, ctx.messages), max_tokens: ctx.maxTokens, temperature: ctx.temperature, stream: false, tools: openAITools(ctx.tools), tool_choice: ctx.toolChoice || undefined });
 }
 
-function authHeaders(conn) {
+function authHeaders(conn, sessionId) {
   if (conn.format === 'gemini') return { 'x-goog-api-key': conn.apiKey };
-  if (conn.format === 'openai' && conn.unlockKind === 'codex') return codexUnlockHeaders(conn);
+  if (conn.format === 'openai' && conn.unlockKind === 'codex') return codexUnlockHeaders(conn, sessionId);
   if (conn.format === 'openai') return { authorization: `Bearer ${conn.apiKey}` };
   if (conn.format === 'anthropic' && conn.unlockKind === 'claudeCode') return claudeCodeUnlockHeaders(conn);
   const h = { 'anthropic-version': '2023-06-01' };
@@ -1234,7 +1234,7 @@ function requestUpstream(conn, payload, enhancement = {}) {
         if (h && h.key) extraHeaders[h.key] = h.value;
       }
     }
-    const requestConfig = upstreamRequestOptions(conn, { 'content-type': 'application/json', 'content-length': body.length, ...authHeaders(conn), ...extraHeaders });
+    const requestConfig = upstreamRequestOptions(conn, { 'content-type': 'application/json', 'content-length': body.length, ...authHeaders(conn, payload?.prompt_cache_key), ...extraHeaders });
     const req = requestConfig.module.request(requestConfig.options, apiRes => {
       const chunks = [];
       apiRes.on('data', c => chunks.push(c));
@@ -1274,7 +1274,7 @@ async function requestUpstreamStream(conn, payload, enhancement = {}) {
     const requestConfig = upstreamRequestOptions(conn, {
       'content-type': 'application/json',
       'content-length': body.length,
-      ...authHeaders(conn),
+      ...authHeaders(conn, payload?.prompt_cache_key),
       ...extraHeaders,
     });
 
