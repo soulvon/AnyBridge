@@ -2917,6 +2917,607 @@
 .chip-btn:active {
   transform: translateY(0);
 }
+
+/* ═══════ 故障转移管线链模态框专属样式 (Pipeline Architecture) ═══════ */
+.failover-modal-overlay {
+  position: fixed !important;
+  inset: 0 !important;
+  z-index: 1000 !important;
+  background: rgba(15, 23, 42, 0.55) !important;
+  backdrop-filter: blur(10px) !important;
+  -webkit-backdrop-filter: blur(10px) !important;
+  align-items: center !important;
+  justify-content: center !important;
+}
+
+.failover-modal-card {
+  width: 800px !important;
+  max-width: 95vw !important;
+  height: min(650px, 86vh) !important;
+  min-height: 480px !important;
+  max-height: 86vh !important;
+  display: flex !important;
+  flex-direction: column !important;
+  background: #ffffff !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 16px !important;
+  box-shadow: 0 24px 64px -12px rgba(15, 23, 42, 0.35), 0 0 0 1px rgba(255, 255, 255, 0.1) inset !important;
+  overflow: hidden !important;
+}
+
+[data-theme="dark"] .failover-modal-card,
+html[data-theme="dark"] .failover-modal-card {
+  background: #18222c !important;
+  border-color: var(--border-strong) !important;
+  box-shadow: 0 24px 64px -12px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.05) inset !important;
+}
+
+.failover-modal-header {
+  padding: 18px 24px !important;
+  border-bottom: 1px solid var(--border) !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  background: #ffffff !important;
+  flex-shrink: 0 !important;
+}
+
+[data-theme="dark"] .failover-modal-header {
+  background: #18222c !important;
+}
+
+.failover-header-text .card-title {
+  font-size: 15px !important;
+  font-weight: 750 !important;
+  color: var(--text-primary) !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+}
+
+.failover-header-text .card-subtitle {
+  font-size: 11.5px !important;
+  color: var(--text-muted) !important;
+  margin-top: 4px !important;
+}
+
+.failover-close-btn {
+  border: none !important;
+  background: transparent !important;
+  cursor: pointer !important;
+  color: var(--text-muted) !important;
+  padding: 6px !important;
+  border-radius: 8px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  transition: all var(--duration-fast) var(--ease) !important;
+}
+
+.failover-close-btn:hover {
+  background: var(--bg-hover) !important;
+  color: var(--text-primary) !important;
+}
+
+.failover-modal-body {
+  padding: 20px 24px 30px 24px !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 0 !important;
+  overflow-y: auto !important;
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  background: #f8fafc !important;
+}
+
+[data-theme="dark"] .failover-modal-body {
+  background: #121921 !important;
+}
+
+/* 列表容器 */
+.failover-pipeline-list {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 0 !important;
+}
+
+/* 节点卡片整体 */
+.failover-pipeline-node {
+  position: relative !important;
+  background: #ffffff !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 12px !important;
+  padding: 12px 16px !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 10px !important;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.04) !important;
+  transition: all var(--duration-fast) var(--ease) !important;
+}
+
+[data-theme="dark"] .failover-pipeline-node {
+  background: #1a2430 !important;
+  border-color: var(--border) !important;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.2) !important;
+}
+
+.failover-pipeline-node:hover {
+  border-color: var(--border-strong) !important;
+}
+
+/* 首选主节点高亮 */
+.failover-pipeline-node.is-primary {
+  border-color: rgba(17, 135, 93, 0.35) !important;
+  background: #ffffff !important;
+}
+
+[data-theme="dark"] .failover-pipeline-node.is-primary {
+  border-color: rgba(72, 199, 142, 0.35) !important;
+  background: #1a2430 !important;
+}
+
+/* 节点顶部状态条 */
+.failover-node-header {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 12px !important;
+}
+
+.failover-node-tag-group {
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+}
+
+.failover-node-badge {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 5px !important;
+  padding: 2.5px 8px !important;
+  border-radius: 6px !important;
+  font-size: 11.5px !important;
+  font-weight: 700 !important;
+  user-select: none !important;
+  line-height: 1.4 !important;
+}
+
+.failover-node-badge.is-primary {
+  background: rgba(17, 135, 93, 0.1) !important;
+  color: #0e704e !important;
+  border: 1px solid rgba(17, 135, 93, 0.22) !important;
+}
+
+[data-theme="dark"] .failover-node-badge.is-primary {
+  background: rgba(72, 199, 142, 0.15) !important;
+  color: #48c78e !important;
+  border-color: rgba(72, 199, 142, 0.3) !important;
+}
+
+.failover-node-badge.is-backup {
+  background: var(--accent-light) !important;
+  color: var(--accent) !important;
+  border: 1px solid rgba(18, 97, 166, 0.2) !important;
+}
+
+[data-theme="dark"] .failover-node-badge.is-backup {
+  border-color: rgba(90, 176, 230, 0.3) !important;
+}
+
+.failover-node-hint {
+  font-size: 11px !important;
+  color: var(--text-muted) !important;
+}
+
+/* 节点操作按钮组 */
+.failover-node-actions {
+  display: flex !important;
+  align-items: center !important;
+  gap: 4px !important;
+}
+
+.failover-action-btn {
+  width: 26px !important;
+  height: 26px !important;
+  padding: 0 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  border-radius: 6px !important;
+  border: 1px solid var(--border) !important;
+  background: var(--bg-card) !important;
+  color: var(--text-secondary) !important;
+  cursor: pointer !important;
+  transition: all var(--duration-fast) var(--ease) !important;
+}
+
+.failover-action-btn:hover:not(:disabled) {
+  background: var(--bg-hover) !important;
+  color: var(--text-primary) !important;
+  border-color: var(--border-strong) !important;
+}
+
+.failover-action-btn:disabled {
+  opacity: 0.3 !important;
+  cursor: not-allowed !important;
+  border-color: transparent !important;
+}
+
+.failover-action-btn.danger:hover:not(:disabled) {
+  background: var(--danger-dim) !important;
+  color: var(--danger) !important;
+  border-color: var(--danger) !important;
+}
+
+/* 核心流向行 */
+.failover-node-main-row {
+  display: flex !important;
+  align-items: center !important;
+  gap: 12px !important;
+  width: 100% !important;
+}
+
+.failover-field-item {
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+}
+
+.failover-field-item.field-prov {
+  flex: 1.1 !important;
+  min-width: 150px !important;
+}
+
+.failover-field-item.field-model {
+  flex: 2 !important;
+  min-width: 220px !important;
+}
+
+.failover-field-label {
+  font-size: 11.5px !important;
+  font-weight: 650 !important;
+  color: var(--text-secondary) !important;
+  white-space: nowrap !important;
+  flex-shrink: 0 !important;
+}
+
+.failover-field-select {
+  width: 100% !important;
+  height: 32px !important;
+  padding: 0 10px !important;
+  border-radius: 7px !important;
+  border: 1px solid var(--border) !important;
+  background: var(--bg-input) !important;
+  color: var(--text-primary) !important;
+  font-size: 12px !important;
+  font-weight: 500 !important;
+  outline: none !important;
+  transition: border-color var(--duration-fast) var(--ease) !important;
+}
+
+.failover-field-select:focus {
+  border-color: var(--accent) !important;
+}
+
+.failover-arrow-separator {
+  color: var(--accent) !important;
+  opacity: 0.7 !important;
+  flex-shrink: 0 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+}
+
+/* 辅助设置与能力标签行 */
+.failover-node-sub-row {
+  display: flex !important;
+  align-items: center !important;
+  gap: 12px !important;
+  flex-wrap: wrap !important;
+  padding-top: 6px !important;
+  border-top: 1px dashed var(--border) !important;
+}
+
+.failover-sub-controls {
+  display: flex !important;
+  align-items: center !important;
+  gap: 10px !important;
+}
+
+.failover-mini-field {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+}
+
+.failover-mini-label {
+  font-size: 11px !important;
+  color: var(--text-muted) !important;
+  white-space: nowrap !important;
+}
+
+/* ═══════ 故障转移现代自定义下拉选择组件 (Custom Dropdown System) ═══════ */
+.fo-dropdown {
+  position: relative !important;
+  display: inline-flex !important;
+  flex: 1 !important;
+  min-width: 0 !important;
+}
+
+.fo-dropdown-trigger {
+  width: 100% !important;
+  height: 34px !important;
+  padding: 0 10px 0 12px !important;
+  border-radius: 8px !important;
+  border: 1px solid var(--border) !important;
+  background: var(--bg-input) !important;
+  color: var(--text-primary) !important;
+  font-size: 12px !important;
+  font-weight: 550 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 8px !important;
+  cursor: pointer !important;
+  transition: all var(--duration-fast) var(--ease) !important;
+  user-select: none !important;
+  box-sizing: border-box !important;
+}
+
+.fo-dropdown-trigger:hover {
+  border-color: var(--border-strong) !important;
+  background: var(--bg-hover) !important;
+}
+
+.fo-dropdown.is-open .fo-dropdown-trigger {
+  border-color: var(--accent) !important;
+  box-shadow: 0 0 0 2px var(--accent-light) !important;
+  background: var(--bg-card) !important;
+}
+
+.fo-dropdown-value {
+  flex: 1 !important;
+  text-align: left !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+}
+
+.fo-dropdown-arrow {
+  color: var(--text-muted) !important;
+  flex-shrink: 0 !important;
+  transition: transform var(--duration-fast) var(--ease) !important;
+}
+
+.fo-dropdown.is-open .fo-dropdown-arrow {
+  transform: rotate(180deg) !important;
+  color: var(--accent) !important;
+}
+
+/* 浮动下拉菜单面板 */
+.fo-dropdown-menu {
+  position: absolute !important;
+  top: calc(100% + 4px) !important;
+  left: 0 !important;
+  min-width: 100% !important;
+  width: max-content !important;
+  max-width: 280px !important;
+  background: #ffffff !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 9px !important;
+  box-shadow: 0 10px 28px -4px rgba(15, 23, 42, 0.2), 0 2px 6px rgba(15, 23, 42, 0.06) !important;
+  z-index: 1200 !important;
+  padding: 4px !important;
+  box-sizing: border-box !important;
+  display: none;
+  flex-direction: column !important;
+  gap: 3px !important;
+  animation: foMenuFadeDown 0.14s ease !important;
+}
+
+[data-theme="dark"] .fo-dropdown-menu {
+  background: #1e2836 !important;
+  border-color: var(--border-strong) !important;
+  box-shadow: 0 14px 32px -4px rgba(0, 0, 0, 0.65), 0 2px 6px rgba(0, 0, 0, 0.3) !important;
+}
+
+.fo-dropdown.is-open .fo-dropdown-menu {
+  display: flex !important;
+}
+
+@keyframes foMenuFadeDown {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* 搜索过滤框 */
+.fo-dropdown-search {
+  padding: 3px 3px 5px 3px !important;
+  border-bottom: 1px solid var(--border) !important;
+}
+
+.fo-dropdown-search-input {
+  width: 100% !important;
+  height: 26px !important;
+  padding: 0 8px !important;
+  border-radius: 5px !important;
+  border: 1px solid var(--border) !important;
+  background: var(--bg-input) !important;
+  color: var(--text-primary) !important;
+  font-size: 11px !important;
+  outline: none !important;
+  box-sizing: border-box !important;
+}
+
+.fo-dropdown-search-input:focus {
+  border-color: var(--accent) !important;
+}
+
+.fo-dropdown-list {
+  max-height: 140px !important;
+  overflow-y: auto !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 1px !important;
+}
+
+.fo-dropdown-item {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 8px !important;
+  padding: 5px 8px !important;
+  border-radius: 5px !important;
+  font-size: 11.5px !important;
+  color: var(--text-primary) !important;
+  cursor: pointer !important;
+  transition: all var(--duration-fast) var(--ease) !important;
+  user-select: none !important;
+  white-space: nowrap !important;
+}
+
+.fo-dropdown-item:hover {
+  background: var(--accent-light) !important;
+  color: var(--accent) !important;
+}
+
+.fo-dropdown-item.is-selected {
+  background: var(--accent-light) !important;
+  color: var(--accent) !important;
+  font-weight: 700 !important;
+}
+
+.fo-item-check {
+  color: var(--accent) !important;
+  flex-shrink: 0 !important;
+}
+
+.fo-item-custom-btn {
+  margin-top: 4px !important;
+  padding: 7px 10px !important;
+  border-top: 1px dashed var(--border) !important;
+  color: var(--accent) !important;
+  font-size: 11.5px !important;
+  font-weight: 600 !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+  cursor: pointer !important;
+  border-radius: 6px !important;
+  transition: background var(--duration-fast) var(--ease) !important;
+}
+
+.fo-item-custom-btn:hover {
+  background: var(--accent-light) !important;
+}
+
+/* 微型尺寸 (用于协议路由与思考档位) */
+.fo-dropdown.is-mini {
+  flex: none !important;
+}
+
+.fo-dropdown.is-mini .fo-dropdown-trigger {
+  height: 25px !important;
+  padding: 0 6px 0 8px !important;
+  border-radius: 6px !important;
+  font-size: 11px !important;
+  gap: 4px !important;
+  min-width: 80px !important;
+}
+
+.fo-dropdown.is-mini .fo-dropdown-menu {
+  min-width: 120px !important;
+  max-width: 200px !important;
+}
+
+.fo-dropdown.is-mini .fo-dropdown-item {
+  padding: 4px 8px !important;
+  font-size: 11px !important;
+}
+
+.failover-caps-inline {
+  display: flex !important;
+  align-items: center !important;
+  gap: 4px !important;
+  margin-left: 4px !important;
+  flex-wrap: wrap !important;
+}
+
+/* 节点之间的向下流转连接器 */
+.failover-pipeline-connector {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  padding: 6px 0 !important;
+  user-select: none !important;
+}
+
+.failover-connector-pill {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 4px !important;
+  padding: 2px 10px !important;
+  border-radius: 12px !important;
+  font-size: 10.5px !important;
+  color: var(--text-muted) !important;
+  background: var(--border) !important;
+}
+
+.failover-connector-pill svg {
+  opacity: 0.8 !important;
+}
+
+/* 添加备选目标按钮 */
+.failover-add-btn {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 6px !important;
+  width: 100% !important;
+  padding: 10px 16px !important;
+  border-radius: 10px !important;
+  border: 1px dashed var(--border-strong) !important;
+  background: transparent !important;
+  color: var(--accent) !important;
+  font-size: 12.5px !important;
+  font-weight: 600 !important;
+  cursor: pointer !important;
+  transition: all var(--duration-fast) var(--ease) !important;
+  margin-top: 12px !important;
+}
+
+.failover-add-btn:hover {
+  background: var(--accent-light) !important;
+  border-color: var(--accent) !important;
+}
+
+/* 底部操作栏 */
+.failover-modal-footer {
+  padding: 14px 24px !important;
+  border-top: 1px solid var(--border) !important;
+  background: #ffffff !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  flex-shrink: 0 !important;
+}
+
+[data-theme="dark"] .failover-modal-footer {
+  background: #18222c !important;
+}
+
+.failover-footer-tip {
+  font-size: 11.5px !important;
+  color: var(--text-muted) !important;
+  display: flex !important;
+  align-items: center !important;
+}
+
+.failover-footer-actions {
+  display: flex !important;
+  align-items: center !important;
+  gap: 10px !important;
+}
 .chip-btn.preset-chip {
   background: var(--bg-card);
   border-color: var(--border);
