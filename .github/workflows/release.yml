@@ -246,6 +246,44 @@ jobs:
             echo "sidecar 以退出码结束（非信号终止），不属于本次签名问题"
           fi
 
+      # ───────── Linux：修复 AppImage 内被 patchelf 破坏的 sidecar ─────────
+      # linuxdeploy(no exclude 选项) 会对 AppDir/usr/bin 下所有 ELF 写入 RUNPATH，
+      # patchelf 重排 ELF 使 pkg 追加在尾部的 JS payload 偏移错位 -> sidecar 启动
+      # 即 SyntaxError 秒退 -> AppImage 白屏、代理端口不监听 (Issue #33)。
+      # NO_STRIP 只能挡 strip，挡不住 patchelf，因此打包后必须还原原始 sidecar。
+      - name: Repair AppImage sidecar broken by linuxdeploy patchelf
+        if: startsWith(matrix.platform, 'ubuntu')
+        shell: bash
+        run: |
+          set -euo pipefail
+          APPIMAGE="$(ls src-tauri/target/release/bundle/appimage/*.AppImage | head -1)"
+          echo "Repairing AppImage: $APPIMAGE"
+          python3 scripts/release/repair_appimage_sidecar.py \
+            --appimage "$APPIMAGE" \
+            --sidecar "src-tauri/binaries/${{ matrix.sidecar_output }}"
+
+      # 修复后 AppImage 内容已变，原 updater 签名失效，必须重签并覆盖上传
+      - name: Re-sign and re-upload repaired AppImage
+        if: startsWith(matrix.platform, 'ubuntu')
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          VERSION: ${{ needs.prepare-release.outputs.version }}
+        run: |
+          set -euo pipefail
+          APPIMAGE="$(ls src-tauri/target/release/bundle/appimage/*.AppImage | head -1)"
+          printf '%s' "$TAURI_SIGNING_PRIVATE_KEY" > /tmp/tauri-sign.key
+          npx @tauri-apps/cli signer sign "$APPIMAGE" \
+            --private-key /tmp/tauri-sign.key \
+            --private-key-password "$TAURI_SIGNING_PRIVATE_KEY_PASSWORD"
+          rm -f /tmp/tauri-sign.key
+          test -s "${APPIMAGE}.sig"
+          echo "Uploading repaired AppImage and fresh signature"
+          gh release upload "v${VERSION}" --repo "${{ github.repository }}" \
+            "$APPIMAGE" "${APPIMAGE}.sig" --clobber
+
   rebuild-latest-json:
     name: Rebuild latest.json and publish release
     needs:
