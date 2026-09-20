@@ -179,9 +179,11 @@ def main():
             fatal('覆盖后 hash 仍不一致，还原失败')
 
         # 4) 重新打包
+        # linuxdeploy-plugin-appimage 只接受 --appdir（传 --output 会被拒绝并打印 usage），
+        # 它内部调用 appimagetool，产物输出到调用时的当前工作目录。
         env = os.environ.copy()
         env['ARCH'] = args.arch
-        run([plugin, '--appdir', root, '--output', 'appimage'], cwd=workdir, env=env)
+        run([plugin, '--appdir', root], cwd=workdir, env=env)
 
         produced = [p for p in glob.glob(os.path.join(workdir, '*.AppImage'))]
         if not produced:
