@@ -464,13 +464,20 @@ cd AnyBridge
 npm install
 cd sidecar && npm install && cd ..
 
+# Build sidecar binaries (output to src-tauri/binaries/, gitignored, required on first run)
+python scripts/build/build_sidecar_plain.py
+python scripts/build/build_cursor_core.py
+
 # Launch in desktop dev mode
 npm run tauri:dev
 ```
 
+> ⚠️ `npm run tauri:dev` does not rebuild the sidecars. Re-run the matching script after changing `sidecar/` or `cursor-core/` code.
+
 ### Build Binary
 ```bash
 # Compile desktop release installer (output in src-tauri/target/release/bundle/)
+# Requires the sidecar binaries from the previous step (anybridge-proxy is not built automatically)
 npm run tauri:build
 ```
 

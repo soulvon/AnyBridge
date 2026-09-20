@@ -468,13 +468,20 @@ cd AnyBridge
 npm install
 cd sidecar && npm install && cd ..
 
+# 构建 sidecar 二进制（输出到 src-tauri/binaries/，已被 Git 忽略，首次必须执行）
+python scripts/build/build_sidecar_plain.py
+python scripts/build/build_cursor_core.py
+
 # 启动桌面开发模式
 npm run tauri:dev
 ```
 
+> ⚠️ `npm run tauri:dev` 不会自动构建 sidecar。若修改了 `sidecar/` 或 `cursor-core/` 代码，需重新执行对应脚本。
+
 ### 3. 构建发布包
 ```bash
 # 编译生成桌面端安装程序（生成产物位于 src-tauri/target/release/bundle/）
+# 需先完成上一步的 sidecar 构建（anybridge-proxy 不会被自动构建）
 npm run tauri:build
 ```
 
