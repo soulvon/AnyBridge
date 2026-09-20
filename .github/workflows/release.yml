@@ -275,9 +275,11 @@ jobs:
           set -euo pipefail
           APPIMAGE="$(ls src-tauri/target/release/bundle/appimage/*.AppImage | head -1)"
           printf '%s' "$TAURI_SIGNING_PRIVATE_KEY" > /tmp/tauri-sign.key
+          # signer sign 无强制覆盖选项，先清掉 tauri-action 为损坏产物生成的旧签名
+          rm -f "${APPIMAGE}.sig"
           npx @tauri-apps/cli signer sign "$APPIMAGE" \
-            --private-key /tmp/tauri-sign.key \
-            --private-key-password "$TAURI_SIGNING_PRIVATE_KEY_PASSWORD"
+            --private-key-path /tmp/tauri-sign.key \
+            --password "$TAURI_SIGNING_PRIVATE_KEY_PASSWORD"
           rm -f /tmp/tauri-sign.key
           test -s "${APPIMAGE}.sig"
           echo "Uploading repaired AppImage and fresh signature"
