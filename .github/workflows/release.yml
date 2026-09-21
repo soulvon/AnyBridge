@@ -268,18 +268,21 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          # 刻意不使用 TAURI_SIGNING_PRIVATE_KEY / TAURI_SIGNING_PRIVATE_KEY_PASSWORD:
+          # CLI 的 --private-key 自带这两个 env 默认值，env 中存在时会与显式传入的
+          # --private-key-path 互斥冲突（"cannot be used with"），故改用中性变量名。
+          SIGNING_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          SIGNING_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           VERSION: ${{ needs.prepare-release.outputs.version }}
         run: |
           set -euo pipefail
           APPIMAGE="$(ls src-tauri/target/release/bundle/appimage/*.AppImage | head -1)"
-          printf '%s' "$TAURI_SIGNING_PRIVATE_KEY" > /tmp/tauri-sign.key
+          printf '%s' "$SIGNING_KEY" > /tmp/tauri-sign.key
           # signer sign 无强制覆盖选项，先清掉 tauri-action 为损坏产物生成的旧签名
           rm -f "${APPIMAGE}.sig"
           npx @tauri-apps/cli signer sign "$APPIMAGE" \
             --private-key-path /tmp/tauri-sign.key \
-            --password "$TAURI_SIGNING_PRIVATE_KEY_PASSWORD"
+            --password "$SIGNING_KEY_PASSWORD"
           rm -f /tmp/tauri-sign.key
           test -s "${APPIMAGE}.sig"
           echo "Uploading repaired AppImage and fresh signature"
