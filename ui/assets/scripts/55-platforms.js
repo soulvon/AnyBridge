@@ -9818,6 +9818,48 @@ function cbEditModelsRef(prefix) {
 
 globalThis.cbEditCurrent = { prefix: null, index: -1 };
 
+// ─── ZCode 思考档位（reasoningLevel）─────────────────────────────
+// ZCode 把选中的档位值直接透传为请求的 reasoning_effort，因此只提供上游通用的
+// 标准档位值；不做按模型 ID 的自动推断——未知模型一律默认不选，由使用者按
+// 上游支持情况勾选，留空 = 不配置（回落 ZCode 内置默认，零风险）。
+const ZC_REASONING_LEVEL_VALUES = ['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'];
+const ZC_REASONING_LEVEL_PRESET_BUTTONS = [
+  { label: '常用三档', levels: ['low', 'medium', 'high'] },
+  { label: '全选', levels: [...ZC_REASONING_LEVEL_VALUES] },
+  { label: '清空', levels: [] },
+];
+
+function zcRenderReasoningLevelChips(selected) {
+  const box = document.getElementById('cb-edit-reasoning-levels');
+  if (!box) return;
+  const sel = new Set(selected || []);
+  box.innerHTML = ZC_REASONING_LEVEL_VALUES.map((value) => `
+    <label>
+      <input type="checkbox" value="${value}" ${sel.has(value) ? 'checked' : ''}>
+      <span>${value}</span>
+    </label>`).join('');
+}
+
+function zcRenderReasoningLevelPresets() {
+  const box = document.getElementById('cb-edit-reasoning-presets');
+  if (!box || box.dataset.bound === '1') return;
+  box.innerHTML = ZC_REASONING_LEVEL_PRESET_BUTTONS.map((preset, i) => `
+    <button type="button" data-level-preset="${i}">${preset.label}</button>`).join('');
+  box.addEventListener('click', (event) => {
+    const btn = event.target.closest('[data-level-preset]');
+    if (!btn) return;
+    const preset = ZC_REASONING_LEVEL_PRESET_BUTTONS[Number(btn.dataset.levelPreset)];
+    if (preset) zcRenderReasoningLevelChips(preset.levels);
+  });
+  box.dataset.bound = '1';
+}
+
+function zcCollectReasoningLevels() {
+  return Array.from(
+    document.querySelectorAll('#cb-edit-reasoning-levels input[type="checkbox"]:checked')
+  ).map((el) => el.value);
+}
+
 function openCbEditModal(prefix, index) {
   const ref = cbEditModelsRef(prefix);
   const model = ref.models[index];
@@ -9843,6 +9885,37 @@ function openCbEditModal(prefix, index) {
   platformSetValue('cb-edit-tools', !!model.supportsToolCall);
   platformSetValue('cb-edit-images', !!model.supportsImages);
   platformSetValue('cb-edit-reasoning', !!model.supportsReasoning);
+
+  // 思考档位：仅 ZCode 显示（ZCode 的 optionSpecs.reasoningLevel 是唯一真实生效通道）。
+  // 不做按 ID 推断：有保存值回填，否则默认全不选（留空 = 不配置，回落 ZCode 内置默认）。
+  const levelsField = document.getElementById('cb-edit-reasoning-levels-field');
+  const levelsMapField = document.getElementById('cb-edit-reasoning-map-field');
+  if (prefix === 'Zc' && levelsField) {
+    levelsField.style.display = '';
+    if (levelsMapField) levelsMapField.style.display = '';
+    zcRenderReasoningLevelChips(
+      Array.isArray(model.reasoningLevels) ? model.reasoningLevels : []
+    );
+    zcRenderReasoningLevelPresets();
+    const mapEl = document.getElementById('cb-edit-reasoning-map');
+    if (mapEl) mapEl.value = model.reasoningLevelMap || '';
+    const detailsEl = document.getElementById('cb-edit-reasoning-map-field');
+    if (detailsEl) detailsEl.open = !!(model.reasoningLevelMap && model.reasoningLevelMap.trim());
+    const hint = document.getElementById('cb-edit-reasoning-hint');
+    if (hint) {
+      hint.textContent = '仅勾选上游模型支持的档位（如 gpt-5.6 系支持全套，gemini/claude 走模型名后缀请留空）；切换档位在 ZCode 聊天界面的模型选择器中进行';
+    }
+  } else {
+    if (levelsField) levelsField.style.display = 'none';
+    if (levelsMapField) levelsMapField.style.display = 'none';
+  }
+
+  // ZCode 的个人配置不含工具调用字段（由 ZCode 内置默认恒为启用），隐藏无效勾选避免误导。
+  const toolsField = document.getElementById('cb-edit-tools');
+  if (toolsField) {
+    const toolsLabel = toolsField.closest('label');
+    if (toolsLabel) toolsLabel.style.display = prefix === 'Zc' ? 'none' : '';
+  }
 
   const recInput = cbRecommendContextWindow(model.id || '');
   const recOutput = cbRecommendMaxOutputTokens(model.id || '');
@@ -9979,6 +10052,16 @@ async function saveCbEditFromModal() {
   if (supportsToolCall) entry.supportsToolCall = true;
   if (supportsImages) entry.supportsImages = true;
   if (supportsReasoning) entry.supportsReasoning = true;
+
+  // ZCode：思考档位写入条目（空数组 = 不配置，覆盖旧值实现"清除"）
+  if (prefix === 'Zc') {
+    const reasoningLevels = zcCollectReasoningLevels();
+    if (reasoningLevels.length > 0) {
+      entry.reasoningLevels = reasoningLevels;
+      const mapRaw = (document.getElementById('cb-edit-reasoning-map')?.value || '').trim();
+      if (mapRaw) entry.reasoningLevelMap = mapRaw;
+    }
+  }
 
   // WorkBuddy 必须保持 useCustomProtocol；从 CodeBuddy 同步过来的模型也要补写
   if (prefix === 'Wb' || ref.platform === WB_PLATFORM) entry.useCustomProtocol = true;

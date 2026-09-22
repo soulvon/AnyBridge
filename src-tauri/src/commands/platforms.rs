@@ -15,7 +15,7 @@
 use serde::Serialize;
 use serde_json::{Map, Value};
 use sha2::{Digest, Sha256};
-use std::collections::{BTreeMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -978,6 +978,7 @@ impl Platform {
             apply_zcode_config_file(&cli_path, p)?;
         }
 
+        sync_zcode_personal_config(&zcode_sync_models_from_provider(p))?;
         Ok(())
     }
 
@@ -1127,6 +1128,9 @@ impl Platform {
             let mut restored = restore_one_file(&path)?;
             if let Some(cli_path) = self.zcode_cli_config_path() {
                 restored = restore_one_file(&cli_path)? || restored;
+            }
+            if let Ok(personal_path) = zcode_personal_config_path() {
+                restored = restore_one_file(&personal_path)? || restored;
             }
             return Ok(restored);
         }
@@ -3673,7 +3677,73 @@ fn zcode_cli_config_path() -> Result<PathBuf, String> {
     Ok(home.join(".zcode").join("cli").join("config.json"))
 }
 
-fn zcode_model_item(provider_id: &str, provider: &Value, model_id: &str, model: &Value) -> Value {
+/// 读取 provider_config.json 的个人模型规则，提取 (providerId, modelId) → (档位 values, map)。
+/// 用于 load 回读：让 AnyBridge 编辑框能回显用户在 ZCode 内或上次同步配置的思考档位。
+fn zcode_personal_reasoning_lookup() -> HashMap<(String, String), (Vec<String>, Option<String>)> {
+    let mut lookup = HashMap::new();
+    let Ok(path) = zcode_personal_config_path() else {
+        return lookup;
+    };
+    let Ok(raw) = fs::read_to_string(path) else {
+        return lookup;
+    };
+    let Ok(value) = json5::from_str::<Value>(&raw) else {
+        return lookup;
+    };
+    let Some(rules) = value
+        .get("config")
+        .and_then(|c| c.get("modelConfigRules"))
+        .and_then(|m| m.get("providerModelRules"))
+        .and_then(Value::as_array)
+    else {
+        return lookup;
+    };
+    for rule in rules {
+        let Some(provider_id) = rule.get("providerId").and_then(Value::as_str) else {
+            continue;
+        };
+        let Some(model_id) = rule.get("modelId").and_then(Value::as_str) else {
+            continue;
+        };
+        let Some(level_cfg) = rule
+            .get("config")
+            .and_then(|c| c.get("optionSpecs"))
+            .and_then(|o| o.get("reasoningLevel"))
+        else {
+            continue;
+        };
+        let values: Vec<String> = level_cfg
+            .get("values")
+            .and_then(Value::as_array)
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(Value::as_str)
+                    .map(str::to_string)
+                    .collect()
+            })
+            .unwrap_or_default();
+        if values.is_empty() {
+            continue;
+        }
+        let map = level_cfg
+            .get("map")
+            .and_then(Value::as_str)
+            .map(str::to_string);
+        lookup.insert(
+            (provider_id.to_string(), model_id.to_string()),
+            (values, map),
+        );
+    }
+    lookup
+}
+
+fn zcode_model_item(
+    provider_id: &str,
+    provider: &Value,
+    model_id: &str,
+    model: &Value,
+    reasoning_lookup: &HashMap<(String, String), (Vec<String>, Option<String>)>,
+) -> Value {
     let provider_name = provider
         .get("name")
         .and_then(Value::as_str)
@@ -3727,6 +3797,12 @@ fn zcode_model_item(provider_id: &str, provider: &Value, model_id: &str, model: 
         if let Some(value) = max_output_tokens {
             obj.insert("maxOutputTokens".to_string(), serde_json::json!(value));
         }
+        if let Some((values, map)) = reasoning_lookup.get(&(provider_id.to_string(), model_id.to_string())) {
+            obj.insert("reasoningLevels".to_string(), serde_json::json!(values));
+            if let Some(map) = map {
+                obj.insert("reasoningLevelMap".to_string(), serde_json::json!(map));
+            }
+        }
     }
     item
 }
@@ -3761,6 +3837,7 @@ fn load_zcode_models() -> Result<serde_json::Value, String> {
     let value: Value = json5::from_str(&raw).map_err(|e| format!("解析失败: {e}"))?;
     let mut models = Vec::new();
     let mut available = Vec::new();
+    let reasoning_lookup = zcode_personal_reasoning_lookup();
     if let Some(providers) = value.get("provider").and_then(Value::as_object) {
         for (provider_id, provider) in providers {
             let kind = provider
@@ -3780,7 +3857,13 @@ fn load_zcode_models() -> Result<serde_json::Value, String> {
             if let Some(provider_models) = provider.get("models").and_then(Value::as_object) {
                 for (model_id, model) in provider_models {
                     available.push(model_id.clone());
-                    models.push(zcode_model_item(provider_id, provider, model_id, model));
+                    models.push(zcode_model_item(
+                        provider_id,
+                        provider,
+                        model_id,
+                        model,
+                        &reasoning_lookup,
+                    ));
                 }
             }
         }
@@ -3946,6 +4029,352 @@ fn write_zcode_models_to_path(path: &PathBuf, models: &[Value]) -> Result<(), St
     obj.insert("provider".to_string(), Value::Object(provider_obj));
     let json = serde_json::to_string_pretty(&Value::Object(obj)).map_err(|e| e.to_string())?;
     super::write_atomic(path, json.as_bytes()).map_err(|e| format!("写入失败: {e}"))
+}
+
+fn zcode_personal_config_path() -> Result<PathBuf, String> {
+    let home = dirs::home_dir().ok_or("无法定位用户主目录")?;
+    Ok(home.join(".zcode").join("v2").join("provider_config.json"))
+}
+
+/// provider_config.json 里属于 AnyBridge 托管的 providerId 判定。
+fn zcode_personal_is_managed_id(provider_id: &str) -> bool {
+    provider_id == ZCODE_PROVIDER_ID
+        || provider_id.starts_with("AnyBridge-")
+        || provider_id.starts_with("anybridge")
+        || provider_id.starts_with("ide-byok")
+}
+
+fn zcode_obj_mut<'a>(
+    value: &'a mut Value,
+    err: &str,
+) -> Result<&'a mut Map<String, Value>, String> {
+    value.as_object_mut().ok_or_else(|| err.to_string())
+}
+
+fn zcode_arr_mut<'a>(value: &'a mut Value, err: &str) -> Result<&'a mut Vec<Value>, String> {
+    value.as_array_mut().ok_or_else(|| err.to_string())
+}
+
+/// 从 Provider 构造同步 provider_config.json 所需的模型列表
+/// （与 apply_zcode 写 config.json 的口径一致：仅默认模型）。
+fn zcode_sync_models_from_provider(p: &Provider) -> Vec<Value> {
+    let model_id = zcode_model_id(p);
+    let caps = p
+        .model_caps
+        .get(p.default_model.trim())
+        .cloned()
+        .unwrap_or_default();
+    let supports_images = p.capabilities.vision || caps.vision;
+    let vendor = if p.name.trim().is_empty() {
+        "AnyBridge"
+    } else {
+        p.name.trim()
+    };
+    vec![serde_json::json!({
+        "id": model_id,
+        "name": vendor,
+        "vendor": vendor,
+        "url": zcode_base_url_from_provider(p),
+        "apiKey": p.api_key,
+        "supportsImages": supports_images,
+        "maxInputTokens": recommend_context_window(&model_id),
+    })]
+}
+
+/// ZCode v0.21+ 运行时只读个人配置 `~/.zcode/v2/provider_config.json`；
+/// `config.json` 仅为首次启动的 legacy 导入源，且导入只迁移 contextWindow、
+/// 会丢弃 modalities（图片支持）等能力字段，导致模型在 ZCode 内默认
+/// `inputFormat.supportsImage=false`（图片理解被禁用）。
+///
+/// 这里把 AnyBridge 管理的供应商与模型能力同步进该文件：
+///   - providerRules：按 `AnyBridge-{hash(vendor|baseURL)}` upsert，保留 enabled 等未知字段；
+///   - providerModelRules：为每个模型写入 contextWindow / inputFormat.supportsImage /
+///     maxOutputTokens.max，并保留用户在 ZCode 内手动勾选的 supportsVideo /
+///     supportsPdf / supportsNativeWebSearch 等字段；
+///   - 清理已删除模型的残留托管规则，其余供应商原样保留。
+///
+/// ZCode 对该文件有约 1s 的轮询监听，外部修改会被自动加载；legacy 导入
+/// 只在文件不存在时触发，不会覆盖我们的同步结果。
+fn sync_zcode_personal_config(models: &[Value]) -> Result<(), String> {
+    let path = zcode_personal_config_path()?;
+    sync_zcode_personal_config_at(&path, models)
+}
+
+fn sync_zcode_personal_config_at(path: &Path, models: &[Value]) -> Result<(), String> {
+    let path_buf = path.to_path_buf();
+    ensure_parent_dir(&path_buf)?;
+    ensure_backup(&path_buf)?;
+
+    let raw = if path.exists() {
+        fs::read_to_string(path).map_err(|e| format!("读取 provider_config.json 失败: {e}"))?
+    } else {
+        String::new()
+    };
+    let mut root: Map<String, Value> = if raw.trim().is_empty() {
+        serde_json::json!({
+            "schemaVersion": 1,
+            "config": {
+                "providerConfigRules": {
+                    "providerRules": []
+                },
+                "modelConfigRules": {
+                    "providerModelRules": [],
+                    "manualProviderModelRules": []
+                }
+            }
+        })
+        .as_object()
+        .cloned()
+        .expect("静态 JSON 字面量必为对象")
+    } else {
+        parse_json_object(&raw, "provider_config.json")?
+    };
+
+    let config = zcode_obj_mut(
+        root.entry("config")
+            .or_insert_with(|| Value::Object(Map::new())),
+        "provider_config.json 的 config 字段不是对象",
+    )?;
+
+    // ── 按 vendor|baseURL 分组，providerId 与 config.json 的 provider 键一致 ──
+    let mut groups: BTreeMap<String, (String, String, String, Vec<(String, &Value)>)> =
+        BTreeMap::new();
+    for model in models {
+        let model_id = model
+            .get("id")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .trim()
+            .to_string();
+        if model_id.is_empty() {
+            continue;
+        }
+        let provider_id = zcode_provider_id_from_model(model, 0);
+        let vendor = model
+            .get("vendor")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .unwrap_or("Custom")
+            .to_string();
+        let base_url = zcode_normalize_base_url(
+            model.get("url").and_then(Value::as_str).unwrap_or_default(),
+        );
+        let api_key = model
+            .get("apiKey")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string();
+        groups
+            .entry(provider_id)
+            .or_insert_with(|| (vendor, base_url, api_key, Vec::new()))
+            .3
+            .push((model_id, model));
+    }
+
+    let current_provider_ids: HashSet<String> = groups.keys().cloned().collect();
+    let mut current_pairs: HashSet<(String, String)> = HashSet::new();
+    for (provider_id, (_, _, _, group_models)) in &groups {
+        for (model_id, _) in group_models {
+            current_pairs.insert((provider_id.clone(), model_id.clone()));
+        }
+    }
+
+    // ── providerRules：移除失效托管规则，再 upsert 当前规则 ──
+    let provider_rules_cfg = zcode_obj_mut(
+        config
+            .entry("providerConfigRules")
+            .or_insert_with(|| Value::Object(Map::new())),
+        "provider_config.json 的 providerConfigRules 字段不是对象",
+    )?;
+    let provider_rules = zcode_arr_mut(
+        provider_rules_cfg
+            .entry("providerRules")
+            .or_insert_with(|| Value::Array(Vec::new())),
+        "provider_config.json 的 providerRules 字段不是数组",
+    )?;
+    provider_rules.retain(|rule| {
+        let id = rule
+            .get("providerId")
+            .and_then(Value::as_str)
+            .unwrap_or_default();
+        !(zcode_personal_is_managed_id(id) && !current_provider_ids.contains(id))
+    });
+    for (provider_id, (vendor, base_url, api_key, group_models)) in &groups {
+        let model_ids: Vec<String> = group_models.iter().map(|(id, _)| id.clone()).collect();
+        let existing = provider_rules
+            .iter()
+            .position(|rule| rule.get("providerId").and_then(Value::as_str) == Some(provider_id));
+        let rule = match existing {
+            Some(index) => &mut provider_rules[index],
+            None => {
+                provider_rules.push(serde_json::json!({ "providerId": provider_id }));
+                provider_rules.last_mut().expect("刚 push 的元素必存在")
+            }
+        };
+        let rule_obj = zcode_obj_mut(rule, "providerRules 条目不是对象")?;
+        rule_obj.insert("providerName".to_string(), serde_json::json!(vendor));
+        let cfg = zcode_obj_mut(
+            rule_obj
+                .entry("config")
+                .or_insert_with(|| Value::Object(Map::new())),
+            "providerRules 条目的 config 不是对象",
+        )?;
+        cfg.insert(
+            "group".to_string(),
+            Value::String("standard-personal".to_string()),
+        );
+        let access = zcode_obj_mut(
+            cfg.entry("access")
+                .or_insert_with(|| Value::Object(Map::new())),
+            "providerRules 的 access 不是对象",
+        )?;
+        access.insert("type".to_string(), Value::String("api-key".to_string()));
+        access.insert("apiKey".to_string(), serde_json::json!(api_key));
+        let api = zcode_obj_mut(
+            cfg.entry("api").or_insert_with(|| Value::Object(Map::new())),
+            "providerRules 的 api 不是对象",
+        )?;
+        api.insert(
+            "type".to_string(),
+            Value::String("openai-chat-completions".to_string()),
+        );
+        api.insert("baseUrl".to_string(), serde_json::json!(base_url));
+        cfg.insert("personalModelIds".to_string(), serde_json::json!(model_ids));
+        cfg.insert("modelOrder".to_string(), serde_json::json!(model_ids));
+    }
+
+    // ── providerModelRules：清理失效规则，再逐模型 upsert 能力字段 ──
+    let model_rules_cfg = zcode_obj_mut(
+        config
+            .entry("modelConfigRules")
+            .or_insert_with(|| Value::Object(Map::new())),
+        "provider_config.json 的 modelConfigRules 字段不是对象",
+    )?;
+    let model_rules = zcode_arr_mut(
+        model_rules_cfg
+            .entry("providerModelRules")
+            .or_insert_with(|| Value::Array(Vec::new())),
+        "provider_config.json 的 providerModelRules 字段不是数组",
+    )?;
+    model_rules.retain(|rule| {
+        let provider_id = rule
+            .get("providerId")
+            .and_then(Value::as_str)
+            .unwrap_or_default();
+        if !zcode_personal_is_managed_id(provider_id) {
+            return true;
+        }
+        let model_id = rule
+            .get("modelId")
+            .and_then(Value::as_str)
+            .unwrap_or_default();
+        current_pairs.contains(&(provider_id.to_string(), model_id.to_string()))
+    });
+    for (provider_id, (_, _, _, group_models)) in &groups {
+        for (model_id, model) in group_models {
+            let supports_images = model
+                .get("supportsImages")
+                .and_then(Value::as_bool)
+                .unwrap_or(false);
+            let context_window = model
+                .get("maxInputTokens")
+                .and_then(Value::as_u64)
+                .unwrap_or_else(|| recommend_context_window(model_id));
+            let max_output = model.get("maxOutputTokens").and_then(Value::as_u64);
+
+            let existing = model_rules.iter().position(|rule| {
+                rule.get("providerId").and_then(Value::as_str) == Some(provider_id)
+                    && rule.get("modelId").and_then(Value::as_str) == Some(model_id)
+            });
+            let rule = match existing {
+                Some(index) => &mut model_rules[index],
+                None => {
+                    model_rules.push(serde_json::json!({
+                        "providerId": provider_id,
+                        "modelId": model_id,
+                        "config": {},
+                    }));
+                    model_rules.last_mut().expect("刚 push 的元素必存在")
+                }
+            };
+            let rule_obj = zcode_obj_mut(rule, "providerModelRules 条目不是对象")?;
+            let cfg = zcode_obj_mut(
+                rule_obj
+                    .entry("config")
+                    .or_insert_with(|| Value::Object(Map::new())),
+                "providerModelRules 条目的 config 不是对象",
+            )?;
+            let props = zcode_obj_mut(
+                cfg.entry("properties")
+                    .or_insert_with(|| Value::Object(Map::new())),
+                "providerModelRules 的 properties 不是对象",
+            )?;
+            props.insert("contextWindow".to_string(), serde_json::json!(context_window));
+            // 只管理 supportsImage；保留用户在 ZCode 内手动勾选的 supportsVideo / supportsPdf
+            let input_format = zcode_obj_mut(
+                props
+                    .entry("inputFormat")
+                    .or_insert_with(|| Value::Object(Map::new())),
+                "providerModelRules 的 inputFormat 不是对象",
+            )?;
+            input_format.insert("supportsImage".to_string(), serde_json::json!(supports_images));
+
+            // 思考档位：AnyBridge 全权管理 optionSpecs.reasoningLevel。
+            // values 非空 → 写入（选中值由 ZCode 透传为 reasoning_effort）；空 → 移除恢复内置默认。
+            // map 由条目字段 reasoningLevelMap 提供：空 = 移除（回落 ZCode 内置 "{}"，即值透传）。
+            let reasoning_levels: Vec<String> = model
+                .get("reasoningLevels")
+                .and_then(Value::as_array)
+                .map(|arr| {
+                    arr.iter()
+                        .filter_map(Value::as_str)
+                        .map(str::to_string)
+                        .collect()
+                })
+                .unwrap_or_default();
+            let reasoning_map = model
+                .get("reasoningLevelMap")
+                .and_then(Value::as_str)
+                .map(str::to_string);
+            if !reasoning_levels.is_empty() || reasoning_map.is_some() || max_output.is_some() {
+                let specs = zcode_obj_mut(
+                    cfg.entry("optionSpecs")
+                        .or_insert_with(|| Value::Object(Map::new())),
+                    "providerModelRules 的 optionSpecs 不是对象",
+                )?;
+                if let Some(max_output) = max_output {
+                    let max_tokens = zcode_obj_mut(
+                        specs.entry("maxOutputTokens")
+                            .or_insert_with(|| Value::Object(Map::new())),
+                        "providerModelRules 的 maxOutputTokens 不是对象",
+                    )?;
+                    max_tokens.insert("max".to_string(), serde_json::json!(max_output));
+                }
+                if reasoning_levels.is_empty() {
+                    specs.remove("reasoningLevel");
+                } else {
+                    let level_cfg = zcode_obj_mut(
+                        specs.entry("reasoningLevel")
+                            .or_insert_with(|| Value::Object(Map::new())),
+                        "providerModelRules 的 reasoningLevel 不是对象",
+                    )?;
+                    level_cfg.insert("values".to_string(), serde_json::json!(reasoning_levels));
+                    match reasoning_map.as_deref().map(str::trim) {
+                        Some(map) if !map.is_empty() => {
+                            level_cfg.insert("map".to_string(), Value::String(map.to_string()));
+                        }
+                        _ => {
+                            level_cfg.remove("map");
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    let json = serde_json::to_string_pretty(&Value::Object(root)).map_err(|e| e.to_string())?;
+    super::write_atomic(path, json.as_bytes()).map_err(|e| format!("写入 provider_config.json 失败: {e}"))
 }
 
 fn codebuddy_supports_reasoning(model: &str) -> bool {
@@ -5206,6 +5635,7 @@ pub fn save_codebuddy_models(
         write_zcode_models_to_path(&path, &models)?;
         let cli_path = zcode_cli_config_path()?;
         write_zcode_models_to_path(&cli_path, &models)?;
+        sync_zcode_personal_config(&models)?;
         return Ok(path.to_string_lossy().to_string());
     }
 
@@ -6621,6 +7051,227 @@ name = "Official Grok"
         assert!(val.get("model").is_none());
         assert!(val["provider"].get("managed-deepseek").is_none());
         assert_eq!(val["provider"]["user-custom"]["name"].as_str(), Some("User Custom Manual"));
+
+        let _ = fs::remove_dir_all(path.parent().unwrap());
+    }
+
+    fn zcode_sync_test_path(name: &str) -> PathBuf {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let dir = std::env::temp_dir().join(format!("anybridge-{name}-{nanos}"));
+        fs::create_dir_all(&dir).unwrap();
+        dir.join("provider_config.json")
+    }
+
+    fn zcode_sync_model(id: &str, vendor: &str, url: &str, supports_images: bool) -> Value {
+        serde_json::json!({
+            "id": id,
+            "name": vendor,
+            "vendor": vendor,
+            "url": url,
+            "apiKey": "sk-test",
+            "providerId": "AnyBridge-35222063",
+            "supportsImages": supports_images,
+            "maxInputTokens": 1000000,
+            "maxOutputTokens": 65536,
+        })
+    }
+
+    #[test]
+    fn zcode_sync_writes_image_support_into_personal_config() {
+        let path = zcode_sync_test_path("zc-sync-fresh");
+        let models = vec![zcode_sync_model("gemini-3.8-flash-high", "CPA", "http://127.0.0.1:8317/v1", true)];
+        sync_zcode_personal_config_at(&path, &models).unwrap();
+
+        let val: Value = serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
+        let provider_id = val["config"]["providerConfigRules"]["providerRules"][0]["providerId"]
+            .as_str()
+            .unwrap();
+        assert!(provider_id.starts_with("AnyBridge-"));
+        let rules = &val["config"]["modelConfigRules"]["providerModelRules"];
+        assert_eq!(rules.as_array().unwrap().len(), 1);
+        assert_eq!(rules[0]["modelId"], "gemini-3.8-flash-high");
+        assert_eq!(rules[0]["config"]["properties"]["inputFormat"]["supportsImage"], true);
+        assert_eq!(rules[0]["config"]["properties"]["contextWindow"], 1000000);
+        assert_eq!(rules[0]["config"]["optionSpecs"]["maxOutputTokens"]["max"], 65536);
+
+        let _ = fs::remove_dir_all(path.parent().unwrap());
+    }
+
+    #[test]
+    fn zcode_sync_preserves_manual_modality_fields_and_other_providers() {
+        let path = zcode_sync_test_path("zc-sync-merge");
+        fs::write(
+            &path,
+            r#"{
+  "schemaVersion": 1,
+  "config": {
+    "providerConfigRules": {
+      "providerRules": [
+        {
+          "providerId": "AnyBridge-35222063",
+          "providerName": "CPA",
+          "enabled": false,
+          "config": {
+            "group": "standard-personal",
+            "access": { "type": "api-key", "apiKey": "sk-old" },
+            "api": { "type": "openai-chat-completions", "baseUrl": "http://127.0.0.1:8317/v1" },
+            "personalModelIds": ["gemini-3.8-flash-high"]
+          }
+        }
+      ]
+    },
+    "modelConfigRules": {
+      "providerModelRules": [
+        {
+          "providerId": "AnyBridge-35222063",
+          "modelId": "gemini-3.8-flash-high",
+          "config": {
+            "properties": {
+              "contextWindow": 999,
+              "inputFormat": { "supportsImage": false, "supportsVideo": true, "supportsPdf": true },
+              "supportsNativeWebSearch": true
+            }
+          }
+        },
+        {
+          "providerId": "user-own",
+          "modelId": "glm-4.7",
+          "config": { "properties": { "inputFormat": { "supportsImage": true } } }
+        }
+      ],
+      "manualProviderModelRules": []
+    }
+  }
+}"#,
+        )
+        .unwrap();
+
+        let models = vec![zcode_sync_model("gemini-3.8-flash-high", "CPA", "http://127.0.0.1:8317/v1", true)];
+        sync_zcode_personal_config_at(&path, &models).unwrap();
+
+        let val: Value = serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
+        let rule = &val["config"]["modelConfigRules"]["providerModelRules"][0];
+        // AnyBridge 管理的字段被更新
+        assert_eq!(rule["config"]["properties"]["contextWindow"], 1000000);
+        assert_eq!(rule["config"]["properties"]["inputFormat"]["supportsImage"], true);
+        // 用户手动勾选的字段被保留
+        assert_eq!(rule["config"]["properties"]["inputFormat"]["supportsVideo"], true);
+        assert_eq!(rule["config"]["properties"]["inputFormat"]["supportsPdf"], true);
+        assert_eq!(rule["config"]["properties"]["supportsNativeWebSearch"], true);
+        // provider 级未知字段（enabled）保留，apiKey 更新
+        let provider_rule = &val["config"]["providerConfigRules"]["providerRules"][0];
+        assert_eq!(provider_rule["enabled"], false);
+        assert_eq!(provider_rule["config"]["access"]["apiKey"], "sk-test");
+        // 其它供应商规则原样保留
+        let other = &val["config"]["modelConfigRules"]["providerModelRules"][1];
+        assert_eq!(other["providerId"], "user-own");
+        assert_eq!(other["config"]["properties"]["inputFormat"]["supportsImage"], true);
+
+        let _ = fs::remove_dir_all(path.parent().unwrap());
+    }
+
+    #[test]
+    fn zcode_sync_writes_and_clears_reasoning_levels() {
+        let path = zcode_sync_test_path("zc-sync-levels");
+        // 预置：模型已有旧档位（含 map），验证覆盖与清除语义
+        fs::write(
+            &path,
+            r#"{
+  "schemaVersion": 1,
+  "config": {
+    "providerConfigRules": { "providerRules": [] },
+    "modelConfigRules": {
+      "providerModelRules": [
+        {
+          "providerId": "AnyBridge-35222063",
+          "modelId": "gpt-5.6-luna",
+          "config": { "optionSpecs": { "reasoningLevel": { "values": ["disabled"], "map": "{}" } } }
+        },
+        {
+          "providerId": "AnyBridge-35222063",
+          "modelId": "gemini-3.8-flash-high",
+          "config": { "optionSpecs": { "reasoningLevel": { "values": ["enabled"], "map": "{}" } } }
+        }
+      ],
+      "manualProviderModelRules": []
+    }
+  }
+}"#,
+        )
+        .unwrap();
+
+        let models = vec![
+            {
+                let mut m = zcode_sync_model("gpt-5.6-luna", "CPA", "http://127.0.0.1:8317/v1", true);
+                m["reasoningLevels"] = serde_json::json!(["none", "low", "medium", "high", "xhigh", "max"]);
+                m["reasoningLevelMap"] = serde_json::json!("{}");
+                m
+            },
+            // gemini 不配档位：预置的 reasoningLevel 应被移除（恢复内置默认）
+            zcode_sync_model("gemini-3.8-flash-high", "CPA", "http://127.0.0.1:8317/v1", true),
+        ];
+        sync_zcode_personal_config_at(&path, &models).unwrap();
+
+        let val: Value = serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
+        let rules = val["config"]["modelConfigRules"]["providerModelRules"]
+            .as_array()
+            .unwrap();
+        let luna = rules
+            .iter()
+            .find(|r| r["modelId"] == "gpt-5.6-luna")
+            .unwrap();
+        assert_eq!(
+            luna["config"]["optionSpecs"]["reasoningLevel"]["values"],
+            serde_json::json!(["none", "low", "medium", "high", "xhigh", "max"])
+        );
+        assert_eq!(luna["config"]["optionSpecs"]["reasoningLevel"]["map"], "{}");
+        let gemini = rules
+            .iter()
+            .find(|r| r["modelId"] == "gemini-3.8-flash-high")
+            .unwrap();
+        assert!(gemini["config"]["optionSpecs"].get("reasoningLevel").is_none());
+
+        let _ = fs::remove_dir_all(path.parent().unwrap());
+    }
+
+    #[test]
+    fn zcode_sync_removes_stale_models_and_disables_image() {
+        let path = zcode_sync_test_path("zc-sync-stale");
+        fs::write(
+            &path,
+            r#"{
+  "schemaVersion": 1,
+  "config": {
+    "providerConfigRules": { "providerRules": [] },
+    "modelConfigRules": {
+      "providerModelRules": [
+        {
+          "providerId": "AnyBridge-stalehash",
+          "modelId": "removed-model",
+          "config": { "properties": { "contextWindow": 123 } }
+        }
+      ],
+      "manualProviderModelRules": []
+    }
+  }
+}"#,
+        )
+        .unwrap();
+
+        let models = vec![zcode_sync_model("gemini-3.1-pro-low", "CPA", "http://127.0.0.1:8317/v1", false)];
+        sync_zcode_personal_config_at(&path, &models).unwrap();
+
+        let val: Value = serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
+        let rules = val["config"]["modelConfigRules"]["providerModelRules"]
+            .as_array()
+            .unwrap();
+        assert_eq!(rules.len(), 1);
+        assert_eq!(rules[0]["modelId"], "gemini-3.1-pro-low");
+        // 无 vision 能力时显式关闭图片输入
+        assert_eq!(rules[0]["config"]["properties"]["inputFormat"]["supportsImage"], false);
 
         let _ = fs::remove_dir_all(path.parent().unwrap());
     }

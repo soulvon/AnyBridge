@@ -4187,6 +4187,84 @@ html[data-theme="dark"] .failover-modal-card {
   display: none !important;
 }
 
+/* ─── 供应商模型复制按钮 ─── */
+.model-item-name-wrap {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.model-item-name-wrap .model-item-name {
+  min-width: 0;
+  max-width: fit-content;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.selected-model-name-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.selected-model-name-wrap .selected-model-name {
+  min-width: 0;
+  max-width: fit-content;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.model-item-copy-btn,
+.selected-model-copy-btn {
+  opacity: 0;
+  transition: opacity 0.15s ease, background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+  width: 22px !important;
+  height: 22px !important;
+  min-width: 22px !important;
+  padding: 0 !important;
+  border-radius: 6px !important;
+  border: 1px solid var(--border) !important;
+  background: var(--bg-card) !important;
+  color: var(--text-muted) !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  cursor: pointer !important;
+  flex-shrink: 0 !important;
+}
+
+.model-item-copy-btn:hover,
+.selected-model-copy-btn:hover {
+  opacity: 1 !important;
+  color: var(--accent) !important;
+  border-color: var(--accent) !important;
+  background: var(--accent-light) !important;
+}
+
+.model-item:hover .model-item-copy-btn,
+.selected-model-row:hover .selected-model-copy-btn {
+  opacity: 1;
+}
+
+[data-theme="dark"] .model-item-copy-btn,
+[data-theme="dark"] .selected-model-copy-btn {
+  background: var(--bg-input) !important;
+  border-color: var(--border) !important;
+}
+
+[data-theme="dark"] .model-item-copy-btn:hover,
+[data-theme="dark"] .selected-model-copy-btn:hover {
+  background: var(--accent-light) !important;
+  border-color: var(--accent) !important;
+  color: var(--accent) !important;
+}
+
 [data-theme="dark"] #page-provider-editor .provider-editor-workspace,
 [data-theme="dark"] #page-provider-editor .model-slots-head,
 [data-theme="dark"] #page-provider-editor .provider-editor-left,

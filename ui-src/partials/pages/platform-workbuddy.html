@@ -254,31 +254,31 @@
 
         <!-- ═══════ 编辑模型模态框（四个平台共用） ═══════ -->
         <div class="modal-overlay" id="cb-edit-modal">
-          <div class="modal-container" style="max-width:640px; width:94%; padding:0; overflow:hidden;">
+          <div class="modal-container" style="max-width:780px; width:92%; padding:0; overflow:hidden; border-radius:14px; box-shadow:0 24px 60px rgba(0,0,0,0.24);">
             <!-- 标题栏（与 failoverModal 统一风格） -->
             <div class="control-bar glass-card"
-              style="padding:14px 22px; border-radius:0; margin-bottom:0; display:flex; align-items:center; justify-content:space-between; min-height:auto;">
-              <div class="model-slots-title" style="display:flex; align-items:center; gap:10px;">
+              style="padding:15px 24px; border-radius:0; margin-bottom:0; display:flex; align-items:center; justify-content:space-between; min-height:auto; border-bottom:1px solid var(--border);">
+              <div class="model-slots-title" style="display:flex; align-items:center; gap:12px;">
                 <span
-                  style="width:32px; height:32px; display:inline-flex; align-items:center; justify-content:center; border-radius:9px; background:var(--cb-grad-soft); color:var(--accent); box-shadow:var(--shadow-sm); flex-shrink:0;">
+                  style="width:34px; height:34px; display:inline-flex; align-items:center; justify-content:center; border-radius:10px; background:var(--cb-grad-soft); color:var(--accent); box-shadow:var(--shadow-sm); flex-shrink:0;">
                   <svg viewBox="0 0 24 24"
-                    style="width:16px; height:16px; stroke:currentColor; fill:none; stroke-width:2; stroke-linecap:round; stroke-linejoin:round;">
+                    style="width:17px; height:17px; stroke:currentColor; fill:none; stroke-width:2; stroke-linecap:round; stroke-linejoin:round;">
                     <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
                     <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
                   </svg>
                 </span>
                 <div>
                   <h2 id="cb-edit-modal-title"
-                    style="font-size:14px; font-weight:700; margin:0; color:var(--text-primary);">编辑模型</h2>
-                  <div style="font-size:11px; color:var(--text-muted);">修改模型配置参数</div>
+                    style="font-size:15px; font-weight:700; margin:0; color:var(--text-primary);">编辑模型</h2>
+                  <div style="font-size:12px; color:var(--text-muted); margin-top:2px;">配置模型参数、上下文窗口与推理能力</div>
                 </div>
               </div>
-              <div class="model-slots-actions" style="display:flex; gap:8px;">
+              <div class="model-slots-actions" style="display:flex; gap:10px;">
                 <button class="btn-ghost secondary"
- style="border-radius:10px; padding:0 16px; font-size:13px; font-weight:600; height:36px;" data-action="closeCbEditModal">取消</button>
+                  style="border-radius:9px; padding:0 18px; font-size:13px; font-weight:600; height:36px;" data-action="closeCbEditModal">取消</button>
                 <button class="btn-primary"
- style="border-radius:10px; padding:0 18px; font-size:13px; font-weight:600; height:36px; display:flex; align-items:center; gap:6px;" data-action="saveCbEditFromModal">
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+                  style="border-radius:9px; padding:0 20px; font-size:13px; font-weight:600; height:36px; display:flex; align-items:center; gap:6px;" data-action="saveCbEditFromModal">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
                     stroke-linecap="round" stroke-linejoin="round">
                     <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>
                     <polyline points="17 21 17 13 7 13 7 21"></polyline>
@@ -288,73 +288,108 @@
                 </button>
               </div>
             </div>
+
             <!-- 表单区 -->
-            <div class="card-body cb-edit-modal-body" style="padding:18px 22px; max-height:65vh; overflow-y:auto; display:flex; flex-direction:column; gap:14px;">
-              <!-- 分组 1: 必填配置 -->
+            <div class="card-body cb-edit-modal-body" style="padding:15px 22px; max-height:85vh; overflow-y:auto; display:flex; flex-direction:column; gap:11px;">
+              <!-- 分组 1: 基础配置（2 列网格） -->
               <div class="cb-edit-section">
                 <div class="cb-edit-section-header">
-                  <span class="cb-edit-section-tag">REQUIRED</span>
+                  <span class="cb-edit-section-tag">必填</span>
                   <span class="cb-edit-section-title">基础配置</span>
                 </div>
-                <div class="cb-edit-fields-grid">
-                  <div class="cb-edit-field">
+                <div class="cb-edit-grid-2col">
+                  <div class="cb-edit-form-item">
                     <label for="cb-edit-id">模型 ID <span style="color:var(--danger);">*</span></label>
                     <input type="text" id="cb-edit-id" placeholder="模型唯一标识符，如 gpt-5.4">
                   </div>
-                  <div class="cb-edit-field">
+                  <div class="cb-edit-form-item">
                     <label for="cb-edit-vendor">供应商 <span style="color:var(--danger);">*</span></label>
                     <input type="text" id="cb-edit-vendor" placeholder="模型供应商，如 OpenAI / Google / 自定义">
                   </div>
-                  <div class="cb-edit-field">
+                  <div class="cb-edit-form-item">
                     <label for="cb-edit-url">接口地址 <span style="color:var(--danger);">*</span></label>
                     <input type="text" id="cb-edit-url" placeholder="API 基础地址，如 https://api.openai.com/v1">
                   </div>
-                  <div class="cb-edit-field">
+                  <div class="cb-edit-form-item">
                     <label for="cb-edit-key">API 密钥 <span style="color:var(--danger);">*</span></label>
                     <input type="text" id="cb-edit-key" placeholder="API 密钥（实际密钥值，非环境变量名）">
                   </div>
                 </div>
               </div>
 
-              <!-- 分组 2: 选填参数 -->
+              <!-- 分组 2: 上下文与生成参数（3 列网格，完美等宽对齐） -->
               <div class="cb-edit-section">
-                <div class="cb-edit-section-header">
-                  <span class="cb-edit-section-tag optional">OPTIONAL</span>
-                  <span class="cb-edit-section-title">上下文与生成参数</span>
+                <div class="cb-edit-section-header" style="justify-content:space-between;">
+                  <div style="display:flex; align-items:center; gap:8px;">
+                    <span class="cb-edit-section-tag optional">选填</span>
+                    <span class="cb-edit-section-title">上下文与生成参数</span>
+                  </div>
+                  <button type="button" class="cb-edit-recommend-btn" id="btn-cb-edit-recommend" data-action="cbFillRecommendedContext" title="根据当前模型 ID 自动填入官方推荐的上下文与输出设置">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
+                      <path d="M3 3v5h5"/>
+                      <path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/>
+                      <path d="M16 21h5v-5"/>
+                    </svg>
+                    填入官方推荐值
+                  </button>
                 </div>
-                <div class="cb-edit-fields-grid">
-                  <div class="cb-edit-field">
+                <div class="cb-edit-grid-3col">
+                  <div class="cb-edit-form-item">
                     <label for="cb-edit-max-input">上下文窗口</label>
-                    <div style="display:flex; gap:8px; align-items:center; min-width:0;">
-                      <input type="number" id="cb-edit-max-input" placeholder="如 128000 / 500000 / 1000000" style="flex:1;">
-                      <button type="button" class="btn-ghost secondary" id="btn-cb-edit-recommend" style="font-size:12px; height:34px; padding:0 12px; border-radius:7px; cursor:pointer; white-space:nowrap; flex-shrink:0;" data-action="cbFillRecommendedContext" title="根据当前模型 ID 填入官方推荐的上下文与输出设置">填入推荐值</button>
-                    </div>
+                    <input type="number" id="cb-edit-max-input" placeholder="如 128000 / 1000000">
                   </div>
-                  <div class="cb-edit-field">
-                    <label for="cb-edit-max-output">最大输出</label>
-                    <input type="number" id="cb-edit-max-output" placeholder="最大生成 token 数，如 4096 / 8192 / 16384">
+                  <div class="cb-edit-form-item">
+                    <label for="cb-edit-max-output">最大输出 Token <span class="cb-edit-label-tip">生成上限</span></label>
+                    <input type="number" id="cb-edit-max-output" placeholder="如 4096 / 65536">
                   </div>
-                  <div class="cb-edit-field">
-                    <label for="cb-edit-temperature">采样温度</label>
-                    <input type="number" id="cb-edit-temperature" placeholder="0~2，值越高输出越随机（默认 1.0）" step="0.1" min="0" max="2">
+                  <div class="cb-edit-form-item">
+                    <label for="cb-edit-temperature">采样温度 <span class="cb-edit-label-tip">默认 1.0</span></label>
+                    <input type="number" id="cb-edit-temperature" placeholder="0~2，留空默认" step="0.1" min="0" max="2">
                   </div>
                 </div>
               </div>
 
-              <!-- 分组 3: 模型能力 -->
+              <!-- 分组 3: 模型能力与推理档位 -->
               <div class="cb-edit-section">
                 <div class="cb-edit-section-header">
-                  <span class="cb-edit-section-tag caps">CAPABILITIES</span>
-                  <span class="cb-edit-section-title">模型能力支持</span>
+                  <span class="cb-edit-section-tag caps">能力</span>
+                  <span class="cb-edit-section-title">模型特性与推理设置</span>
                 </div>
-                <div class="cb-edit-field" style="margin-bottom:0;">
-                  <label>支持特性</label>
+                
+                <div class="cb-edit-form-item">
+                  <label style="margin-bottom:4px;">支持特性</label>
                   <div class="cb-edit-caps">
                     <label><input type="checkbox" id="cb-edit-tools"> 工具调用</label>
                     <label><input type="checkbox" id="cb-edit-images"> 图片识别</label>
                     <label><input type="checkbox" id="cb-edit-reasoning"> 深度推理</label>
                   </div>
                 </div>
+
+                <!-- 思考档位专属面板 (仅 ZCode 显示) -->
+                <div id="cb-edit-reasoning-levels-field" class="zc-reasoning-panel" style="display:none;">
+                  <div class="zc-reasoning-panel-header">
+                    <div class="zc-reasoning-title-group">
+                      <span class="zc-reasoning-title">思考档位</span>
+                      <span class="zc-reasoning-subtitle">选中的档位可在聊天界面自由切换，留空则保持默认</span>
+                    </div>
+                    <div id="cb-edit-reasoning-presets" class="zc-reasoning-presets"></div>
+                  </div>
+                  <div id="cb-edit-reasoning-levels" class="zc-reasoning-chips"></div>
+                  <div id="cb-edit-reasoning-hint" class="zc-reasoning-hint"></div>
+                </div>
+
+                <!-- 高级映射（优雅折叠） -->
+                <details id="cb-edit-reasoning-map-field" class="zc-advanced-accordion" style="display:none;">
+                  <summary class="zc-advanced-summary">
+                    <svg class="zc-summary-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"></polyline></svg>
+                    <span>高级选项：档位参数映射表达式 (可选)</span>
+                  </summary>
+                  <div class="zc-advanced-body">
+                    <textarea id="cb-edit-reasoning-map" rows="3" placeholder='表达式返回 JSON 对象，例如：{"thinking":{"type":"enabled","budget_tokens":10000}}'></textarea>
+                    <div class="zc-advanced-desc">留空时，档位值将直接作为 <code>reasoning_effort</code> 字段透传给上游。若上游需要特定的 JSON 结构才需配置。</div>
+                  </div>
+                </details>
               </div>
             </div>
           </div>

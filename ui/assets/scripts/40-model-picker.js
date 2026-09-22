@@ -832,7 +832,12 @@ function updateSelectedModelsUI() {
             ${renderModelIcon(m)}
             <div class="selected-model-text">
               <div class="selected-model-name-row">
-                <span class="selected-model-name" title="${escAttr(m)}">${escAttr(m)}</span>
+                <div class="selected-model-name-wrap">
+                  <span class="selected-model-name" title="${escAttr(m)}">${escAttr(m)}</span>
+                  <button type="button" class="btn-icon model-id-copy-btn selected-model-copy-btn" data-action="copyTextToClipboard" data-args="[&quot;${escAttr(m)}&quot;,&quot;模型 ID&quot;]" data-stop onclick="event.stopPropagation()" title="复制模型 ID" aria-label="复制模型 ID">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                  </button>
+                </div>
                 ${idx === 0 ? '<span class="selected-model-default">默认</span>' : ''}
                 ${modelCapBadges(m)}
               </div>
@@ -923,7 +928,12 @@ function filterModelPanel() {
             return `
               <div class="model-item ${isSelected ? 'selected' : ''}" data-action="selectModel" data-arg="${escAttr(m)}">
                 ${renderModelIcon(m)}
-                <span class="model-item-name">${escAttr(m)}</span>
+                <div class="model-item-name-wrap">
+                  <span class="model-item-name" title="${escAttr(m)}">${escAttr(m)}</span>
+                  <button type="button" class="btn-icon model-id-copy-btn model-item-copy-btn" data-action="copyTextToClipboard" data-args="[&quot;${escAttr(m)}&quot;,&quot;模型 ID&quot;]" data-stop onclick="event.stopPropagation()" title="复制模型 ID" aria-label="复制模型 ID">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                  </button>
+                </div>
                 <div style="display:flex; gap:4px; align-items:center; flex-shrink:0; margin-right:8px;">
                   ${getModelBadges(m)}
                 </div>

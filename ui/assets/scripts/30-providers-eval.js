@@ -554,7 +554,7 @@ function providerModelBadges(p, limit = Infinity) {
   const shown = modelsList.slice(0, limit);
   const chips = shown.map((m, idx) => {
     return `
-      <span class="tag provider-model-chip">
+      <span class="tag provider-model-chip" data-action="copyTextToClipboard" data-args="[&quot;${escAttr(m)}&quot;,&quot;模型 ID&quot;]" title="点击复制模型 ID: ${escAttr(m)}" style="cursor:pointer;">
         ${typeof renderModelIcon === 'function' ? renderModelIcon(m) : ''}
         <span class="provider-model-chip-text">${escAttr(m)}</span>
         ${idx === 0 ? '<span class="provider-model-default">(默认)</span>' : ''}

@@ -462,8 +462,14 @@ async function copyTextToClipboard(text, label) {
   try {
     await navigator.clipboard.writeText(text);
     addLog('ok', `已复制${label || ''}`);
+    if (typeof showBottomToast === 'function') {
+      showBottomToast(`已复制 ${label || '内容'} 到剪贴板`, 'success');
+    }
   } catch (e) {
     addLog('err', `复制失败: ${e}`);
+    if (typeof showBottomToast === 'function') {
+      showBottomToast(`复制失败: ${e?.message || e}`, 'error');
+    }
   }
 }
 
