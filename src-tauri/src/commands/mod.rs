@@ -1,3 +1,5 @@
+pub mod antigravity_loc_payload;
+pub mod antigravity_localization;
 pub mod cert_install;
 pub mod claude_desktop;
 pub mod codex_desktop;

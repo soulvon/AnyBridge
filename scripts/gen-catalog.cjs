@@ -98,12 +98,24 @@ function recommendContext(slug) {
 
 // Our custom models
 const customModels = [
+  { slug: 'gpt-6.1-sol', display_name: 'gpt-6.1-sol' },
+  { slug: 'gpt-6-astra', display_name: 'gpt-6-astra' },
+  { slug: 'claude-opus-5-5', display_name: 'claude-opus-5.5' },
+  { slug: 'claude-sonnet-5-5', display_name: 'claude-sonnet-5.5' },
+  { slug: 'grok-4.7', display_name: 'grok-4.7' },
+  { slug: 'qwen3.8-max', display_name: 'qwen3.8-max' },
+  { slug: 'qwen3.8-flash', display_name: 'qwen3.8-flash' },
+  { slug: 'minimax-m3.1', display_name: 'minimax-m3.1' },
   { slug: 'minimax-m3', display_name: 'minimax-m3' },
+  { slug: 'deepseek-v4.1-flash', display_name: 'deepseek-v4.1-flash' },
   { slug: 'deepseek-v4-pro', display_name: 'deepseek-v4-pro' },
   { slug: 'deepseek-v4-flash', display_name: 'deepseek-v4-flash' },
+  { slug: 'glm-5.3', display_name: 'glm-5.3' },
   { slug: 'glm-5.2', display_name: 'glm-5.2' },
   { slug: 'glm-5.1', display_name: 'glm-5.1' },
   { slug: 'glm-5', display_name: 'glm-5' },
+  { slug: 'kimi-k3', display_name: 'kimi-k3' },
+  { slug: 'kimi-k2.8', display_name: 'kimi-k2.8' },
   { slug: 'kimi-k2.7-code', display_name: 'kimi-k2.7-code' },
   { slug: 'kimi-k2.6', display_name: 'kimi-k2.6' },
   { slug: 'kimi-k2.5', display_name: 'kimi-k2.5' },
@@ -113,6 +125,7 @@ const customModels = [
   { slug: 'qwen3.7-plus', display_name: 'qwen3.7-plus' },
   { slug: 'qwen3.6-plus', display_name: 'qwen3.6-plus' },
   { slug: 'qwen3.5-plus', display_name: 'qwen3.5-plus' },
+  { slug: 'hy4-preview', display_name: 'hy4-preview' },
   { slug: 'hy3-preview', display_name: 'hy3-preview' },
 ].map((m) => ({ ...m, context_window: recommendContext(m.slug) }));
 

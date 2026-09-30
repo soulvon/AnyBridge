@@ -51,9 +51,18 @@ globalThis.PLATFORM_DEFS = {
     name: 'Antigravity',
     vendor: 'Google',
     requiredApiFormat: 'openai',
+    configHint: 'Antigravity/User/settings.json',
+    summary: '写入 jetski.cloudCodeUrl，将独立桌面端请求重定向至 AnyBridge 本地代理',
+    note: '支持独立 Agent 桌面控制台接入、上下文长记忆保护与模型下拉列表注入。',
+  },
+  'antigravity-ide': {
+    id: 'antigravity-ide',
+    name: 'Antigravity IDE',
+    vendor: 'Google',
+    requiredApiFormat: 'openai',
     configHint: 'Antigravity IDE/User/settings.json',
-    summary: '写入 jetski.cloudCodeUrl 与环境变量，本地转换并优化上下文策略',
-    note: '支持主流服务商接入、上下文长记忆保护与模型下拉列表注入。',
+    summary: '写入 jetski.cloudCodeUrl 与系统设置，本地转换并优化上下文策略',
+    note: '支持 VS Code 编程 IDE 接入、上下文长记忆保护与模型下拉列表注入。',
   },
   codebuddy: {
     id: 'codebuddy',
@@ -358,7 +367,7 @@ function platformProviderList(platformId) {
   if (platformId === 'codex') {
     return Array.isArray(providerStore?.codexConfigs) ? providerStore.codexConfigs.filter(p => !platformIsLocalProxyConfig(p)) : [];
   }
-  if (platformId === 'antigravity') {
+  if (platformId === 'antigravity' || platformId === 'antigravity-ide') {
     return Array.isArray(providerStore?.antigravityConfigs) ? providerStore.antigravityConfigs.filter(p => !platformIsLocalProxyConfig(p)) : [];
   }
   if (platformId === 'opencode') {
@@ -604,8 +613,8 @@ function renderPlatformDetailStatuses() {
       if (info) renderCodexPageStatus(info);
       return;
     }
-    if (platformId === 'antigravity') {
-      renderAntigravityPageStatus(info || { id: 'antigravity', installed: false });
+    if (platformId === 'antigravity' || platformId === 'antigravity-ide') {
+      renderAntigravityPageStatus(info || { id: platformId, installed: false });
       return;
     }
     if (platformId === 'claude-code') {
@@ -2615,6 +2624,20 @@ globalThis.antigravityAddSearchKw = '';
 globalThis._antigravitySearchKeyword = '';
 globalThis._antigravitySelectedSet = new Set();
 globalThis.antigravityConfigEditorMode = 'edit';
+globalThis._currentAntigravityTarget = 'antigravity';
+
+function getAntigravityTarget() {
+  return globalThis._currentAntigravityTarget === 'antigravity-ide' ? 'antigravity-ide' : 'antigravity';
+}
+
+function switchAntigravityClientTarget(target) {
+  globalThis._currentAntigravityTarget = target === 'antigravity-ide' ? 'antigravity-ide' : 'antigravity';
+  if (typeof setPlatformRailActive === 'function') {
+    setPlatformRailActive(globalThis._currentAntigravityTarget);
+  }
+  antigravityRefreshConsole({ silent: true });
+}
+globalThis.switchAntigravityClientTarget = switchAntigravityClientTarget;
 
 function renderAntigravityPageStatus(info) {
   antigravityRefreshConsole({ silent: true });
@@ -2670,14 +2693,34 @@ async function antigravityRefreshConsole(options = {}) {
 
   syncAntigravityModeUi();
 
-  const info = platformInfoOf('antigravity');
+  const target = getAntigravityTarget();
+  const isIde = target === 'antigravity-ide';
+  const info = platformInfoOf(target);
   const managed = !!info?.managedByAnyBridge;
 
-  // 1. 更新顶部接入状态与按钮 (完全对齐 Windsurf / Cursor 统一接入规范)
+  // 1. 更新头部图标、标题与副标题
+  const iconImg = document.getElementById('antigravity-platform-icon');
+  const titleEl = document.getElementById('antigravity-platform-title');
+  const subtitleEl = document.getElementById('antigravity-platform-subtitle');
+  if (iconImg) {
+    iconImg.src = isIde ? './assets/icons/platform-antigravity-ide.png' : './assets/icons/platform-antigravity-hub.png';
+    iconImg.alt = isIde ? 'Antigravity IDE' : 'Antigravity';
+  }
+  if (titleEl) {
+    titleEl.textContent = isIde ? 'Antigravity IDE 接入控制台' : 'Antigravity 接入控制台';
+  }
+  if (subtitleEl) {
+    subtitleEl.textContent = isIde
+      ? 'Google 编程 IDE · 管理端点重定向与模型映射'
+      : 'Google 桌面 Agent · 管理端点重定向与模型映射';
+  }
+
+  // 2. 更新顶部接入状态与按钮 (完全对齐 Windsurf / Cursor 统一接入规范)
   const mainBtn = document.getElementById('antigravity-main-btn');
   const mainBtnText = document.getElementById('antigravity-main-btn-text');
   const mainBtnIcon = mainBtn?.querySelector('.proxy-btn-icon');
   const restoreBtn = document.getElementById('antigravityRestoreBtn');
+  const clientName = isIde ? 'Antigravity IDE' : 'Antigravity';
 
   if (mainBtn && mainBtnText) {
     mainBtn.classList.add('platform-proxy-primary');
@@ -2689,34 +2732,246 @@ async function antigravityRefreshConsole(options = {}) {
         mainBtnIcon.innerHTML = '<path d="M20 6 9 17l-5-5" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"/>';
       }
       mainBtnText.textContent = _t('已接入');
-      mainBtn.setAttribute('aria-label', `Antigravity ${_t('已接入')}`);
+      mainBtn.setAttribute('aria-label', `${clientName} ${_t('已接入')}`);
     } else {
       mainBtn.classList.remove('is-connected');
       if (mainBtnIcon) {
         mainBtnIcon.innerHTML = '<polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" fill="currentColor" />';
       }
       mainBtnText.textContent = _t('一键接入');
-      mainBtn.setAttribute('aria-label', `Antigravity ${_t('一键接入')}`);
+      mainBtn.setAttribute('aria-label', `${clientName} ${_t('一键接入')}`);
     }
   }
 
   if (restoreBtn) {
     restoreBtn.disabled = !managed;
     restoreBtn.classList.toggle('is-danger', managed);
-    restoreBtn.setAttribute('aria-label', managed ? '停止 Antigravity 接入 AnyBridge' : 'Antigravity 当前未接入');
+    restoreBtn.setAttribute('aria-label', managed ? `停止 ${clientName} 接入 AnyBridge` : `${clientName} 当前未接入`);
   }
 
-  bindRevealPathLabel('antigravity-config-path-label', info?.configPath || platformDef('antigravity').configHint);
+  bindRevealPathLabel('antigravity-config-path-label', info?.configPath || (isIde ? 'Antigravity IDE/User/settings.json' : 'Antigravity/User/settings.json'));
 
-  // 2. 清理不存在的选中项
+  // 4. 清理不存在的选中项
   const configs = Array.isArray(providerStore?.antigravityConfigs) ? providerStore.antigravityConfigs : [];
   const validIds = new Set(configs.map(c => c.id));
   _antigravitySelectedSet = new Set(Array.from(_antigravitySelectedSet).filter(id => validIds.has(id)));
 
-  // 3. 渲染数据表格
+  // 5. 渲染数据表格
   antigravityRenderTableRows();
   antigravityUpdateBulkActionButtons();
+  void refreshAntigravityLangStatus();
 }
+
+// ═══════ Antigravity 一键汉化与模态框日志管理 ═══════
+
+function appendAntigravityLangLog(text, level = 'info') {
+  const box = document.getElementById('antigravityLangLogBox');
+  if (!box) return;
+  const time = new Date().toLocaleTimeString('zh-CN', { hour12: false });
+  let prefix = '[信息]';
+  if (level === 'ok') prefix = '[成功]';
+  else if (level === 'warn') prefix = '[警告]';
+  else if (level === 'err') prefix = '[错误]';
+  const line = document.createElement('div');
+  line.textContent = `[${time}] ${prefix} ${text}`;
+  if (level === 'ok') line.style.color = 'var(--success)';
+  else if (level === 'warn') line.style.color = 'var(--accent-warm)';
+  else if (level === 'err') line.style.color = 'var(--danger)';
+  box.appendChild(line);
+  box.scrollTop = box.scrollHeight;
+}
+
+function clearAntigravityLangLog() {
+  const box = document.getElementById('antigravityLangLogBox');
+  if (box) box.textContent = '';
+}
+
+function openAntigravityLangModal() {
+  const modal = document.getElementById('antigravityLangModal');
+  if (!modal) return;
+  modal.classList.add('active');
+  const target = getAntigravityTarget();
+  const platName = target === 'antigravity-ide' ? 'Antigravity IDE' : 'Antigravity';
+  const clientNameEl = document.getElementById('antigravityLangModalClientName');
+  if (clientNameEl) clientNameEl.textContent = platName;
+  clearAntigravityLangLog();
+  appendAntigravityLangLog(`已打开 ${platName} 汉化管理面板，正在探测环境状态...`);
+  void refreshAntigravityLangStatus(true);
+}
+
+function closeAntigravityLangModal() {
+  const modal = document.getElementById('antigravityLangModal');
+  if (modal) modal.classList.remove('active');
+}
+
+async function refreshAntigravityLangStatus(updateModal = false) {
+  if (typeof invoke !== 'function') return;
+  const target = getAntigravityTarget();
+  const platName = target === 'antigravity-ide' ? 'Antigravity IDE' : 'Antigravity';
+  try {
+    const status = await invoke('get_antigravity_localization_status', { target });
+    const btnText = document.getElementById('antigravityLangBtnText');
+    const langBtn = document.getElementById('antigravityLangBtn');
+
+    if (btnText && langBtn) {
+      if (status?.localized) {
+        btnText.textContent = '已汉化';
+        langBtn.classList.add('success');
+        langBtn.classList.remove('secondary');
+      } else {
+        btnText.textContent = '一键汉化';
+        langBtn.classList.remove('success');
+        langBtn.classList.add('secondary');
+      }
+    }
+
+    if (updateModal) {
+      const badge = document.getElementById('antigravityLangModalStatusBadge');
+      const verEl = document.getElementById('antigravityLangModalVer');
+      const restoreBtn = document.getElementById('antigravityLangModalRestoreBtn');
+      const applyBtn = document.getElementById('antigravityLangModalApplyBtn');
+
+      if (badge) {
+        if (status?.localized) {
+          badge.textContent = '已深度汉化';
+          badge.style.background = 'rgba(16, 185, 129, 0.15)';
+          badge.style.color = '#10b981';
+        } else {
+          badge.textContent = '未汉化';
+          badge.style.background = 'rgba(239, 68, 68, 0.15)';
+          badge.style.color = '#ef4444';
+        }
+      }
+      if (verEl && status?.currentVersion) {
+        verEl.textContent = 'v' + status.currentVersion;
+      }
+      if (restoreBtn) {
+        restoreBtn.disabled = !status?.localized;
+      }
+      if (applyBtn) {
+        applyBtn.textContent = status?.localized ? '重新应用汉化' : '一键应用汉化';
+      }
+
+      if (status?.installed) {
+        appendAntigravityLangLog(`检测到 ${platName} 已安装，当前状态: ${status.localized ? '已汉化' : '官方英文未汉化'}`);
+      } else {
+        appendAntigravityLangLog(`未检测到 ${platName} 的标准安装目录，请先安装该客户端`, 'warn');
+      }
+    }
+  } catch (err) {
+    if (updateModal) appendAntigravityLangLog(`状态探测异常: ${err}`, 'err');
+  }
+}
+
+// 汉化专用重启确认：复用与「一键接入」同一套精致重启弹窗，仅文案按汉化语义定制
+async function confirmRestartAntigravityClient(actionDesc) {
+  const target = getAntigravityTarget();
+  const platName = target === 'antigravity-ide' ? 'Antigravity IDE' : 'Antigravity';
+  if (typeof promptRestartIde !== 'function') return false;
+
+  const restarted = await promptRestartIde(
+    `${platName} ${actionDesc}，需要重启客户端后生效。`,
+    target,
+    {
+      title: `重启 ${platName}`,
+      statusText: '汉化补丁已写入本地客户端资源，重启后中文界面即刻生效。',
+      skipAutoPreference: true
+    }
+  );
+
+  if (restarted) {
+    appendAntigravityLangLog(`${platName} 已重启，中文界面已生效`, 'ok');
+  } else {
+    appendAntigravityLangLog(`已选择稍后重启，下次启动客户端后生效`);
+  }
+  return restarted;
+}
+
+async function applyAntigravityLocalizationAction() {
+  const target = getAntigravityTarget();
+  const platName = target === 'antigravity-ide' ? 'Antigravity IDE' : 'Antigravity';
+
+  appendAntigravityLangLog(`----------------------------------------`);
+  appendAntigravityLangLog(`[1/4] 正在检测 ${platName} 安装与文件权限...`);
+  setPlatformBusy(target, true);
+  try {
+    appendAntigravityLangLog(`[2/4] 正在为官方原版资源生成安全备份...`);
+    appendAntigravityLangLog(`[3/4] 正在注入高性能 DOM 本地化引擎与沙盒免疫装甲...`);
+    const res = await invoke('apply_antigravity_localization', { target });
+    appendAntigravityLangLog(`[4/4] ${res?.message || '汉化注入完成！'}`, 'ok');
+    await refreshAntigravityLangStatus(true);
+    if (typeof showBottomToast === 'function') {
+      showBottomToast(res?.message || `${platName} 汉化成功`, 'success');
+    }
+    await confirmRestartAntigravityClient('汉化补丁已成功注入');
+  } catch (e) {
+    appendAntigravityLangLog(`汉化失败: ${e?.message || e}`, 'err');
+    showCustomAlert(String(e?.message || e), '汉化失败', 'error');
+  } finally {
+    setPlatformBusy(target, false);
+  }
+}
+
+async function restoreAntigravityLocalizationAction() {
+  const target = getAntigravityTarget();
+  const platName = target === 'antigravity-ide' ? 'Antigravity IDE' : 'Antigravity';
+
+  appendAntigravityLangLog(`----------------------------------------`);
+  appendAntigravityLangLog(`[1/2] 正在检索 ${platName} 官方原版备份并准备还原...`);
+  setPlatformBusy(target, true);
+  try {
+    const res = await invoke('restore_antigravity_localization', { target });
+    appendAntigravityLangLog(`[2/2] ${res?.message || '已成功还原官方英文原版！'}`, 'ok');
+    await refreshAntigravityLangStatus(true);
+    if (typeof showBottomToast === 'function') {
+      showBottomToast(res?.message || `${platName} 已恢复英文原版`, 'success');
+    }
+    await confirmRestartAntigravityClient('已还原官方英文原版');
+  } catch (e) {
+    appendAntigravityLangLog(`还原英文失败: ${e?.message || e}`, 'err');
+    showCustomAlert(String(e?.message || e), '还原失败', 'error');
+  } finally {
+    setPlatformBusy(target, false);
+  }
+}
+
+async function checkAntigravityLocalizationUpdateAction() {
+  appendAntigravityLangLog(`----------------------------------------`);
+  appendAntigravityLangLog(`正在连通 GitHub API 检查开源汉化仓库最新 Release...`);
+  try {
+    const info = await invoke('check_antigravity_localization_update');
+    appendAntigravityLangLog(`GitHub 响应成功: 最新版本 tag=${info?.latestVersion || '未知'}`);
+    if (info?.hasUpdate) {
+      appendAntigravityLangLog(`发现新版汉化补丁 v${info.latestVersion} (当前 v${info.currentVersion})！`, 'ok');
+      const ok = await showCustomConfirm(
+        `检测到 GitHub 上游汉化仓库发布了新版 v${info.latestVersion}。\n\n是否立即下载同步最新词库并重新应用汉化？`,
+        '发现汉化新版本',
+        'info'
+      );
+      if (ok) {
+        appendAntigravityLangLog(`正在下载最新词库与脚本至本地热更新缓存...`);
+        const dl = await invoke('download_antigravity_localization_update');
+        appendAntigravityLangLog(`词库下载成功: ${dl?.message}`, 'ok');
+        await applyAntigravityLocalizationAction();
+      }
+    } else {
+      appendAntigravityLangLog(`当前词库已是最新版本 (v${info?.currentVersion || '2.18.1'})，无需更新`, 'ok');
+      if (typeof showBottomToast === 'function') {
+        showBottomToast(`当前汉化词库已是最新版本 (v${info?.currentVersion || '2.18.1'})`, 'success');
+      }
+    }
+  } catch (e) {
+    appendAntigravityLangLog(`检查在线更新失败（不影响离线使用内置汉化）: ${e}`, 'warn');
+    showCustomAlert('检查在线更新失败（将使用内置离线汉化词库）：\n' + String(e?.message || e), '检查提示', 'info');
+  }
+}
+
+globalThis.openAntigravityLangModal = openAntigravityLangModal;
+globalThis.closeAntigravityLangModal = closeAntigravityLangModal;
+globalThis.clearAntigravityLangLog = clearAntigravityLangLog;
+globalThis.applyAntigravityLocalizationAction = applyAntigravityLocalizationAction;
+globalThis.restoreAntigravityLocalizationAction = restoreAntigravityLocalizationAction;
+globalThis.checkAntigravityLocalizationUpdateAction = checkAntigravityLocalizationUpdateAction;
 
 function antigravityGetFilteredList() {
   const configs = Array.isArray(providerStore?.antigravityConfigs) ? providerStore.antigravityConfigs : [];
@@ -2978,37 +3233,39 @@ async function antigravityBulkRemoveAction() {
 }
 
 async function antigravityPrimaryAction() {
-  const info = platformInfoOf('antigravity');
+  const target = getAntigravityTarget();
+  const info = platformInfoOf(target);
+  const platName = target === 'antigravity-ide' ? 'Antigravity IDE' : 'Antigravity';
+
   if (info?.managedByAnyBridge) {
-    showCustomAlert('Antigravity 当前已成功接入 AnyBridge。\n\n如需断开连接，请点击右侧「停止接入」按钮。', '已处于接入状态', 'info');
+    showCustomAlert(`${platName} 当前已成功接入 AnyBridge。\n\n如需断开连接，请点击右侧「停止接入」按钮。`, '已处于接入状态', 'info');
     return;
   }
 
   const configs = Array.isArray(providerStore?.antigravityConfigs) ? providerStore.antigravityConfigs : [];
   const activeProviderId = configs.find(c => c.enabled !== false)?.id || configs[0]?.id || '';
 
-  setPlatformBusy('antigravity', true);
+  setPlatformBusy(target, true);
   try {
-    if (typeof addLog === 'function') addLog('info', '正在配置 Antigravity 接入 settings.json 与环境变量…');
+    if (typeof addLog === 'function') addLog('info', `正在配置 ${platName} 接入 settings.json 与端点代理…`);
     const result = assertSwitchResultOk(
-      await invoke('switch_platform', { platform: 'antigravity', providerId: activeProviderId }),
-      'Antigravity 接入失败'
+      await invoke('switch_platform', { platform: target, providerId: activeProviderId }),
+      `${platName} 接入失败`
     );
     if (typeof addLog === 'function') {
-      addLog('ok', result.message || 'Antigravity 已成功接入 AnyBridge');
+      addLog('ok', result.message || `${platName} 已成功接入 AnyBridge`);
     }
     await refreshPlatforms({ silent: true, reloadProviders: false });
     antigravityRefreshConsole({ silent: true });
 
-    // 精简交互：不再单独弹前置确认窗口，直接由唯一的「重启 IDE」弹窗作为确认点
     if (typeof promptRestartIde === 'function') {
-      await promptRestartIde('Antigravity 已接入 AnyBridge，重启 IDE 后生效。', 'antigravity', { mode: 'proxy' });
+      await promptRestartIde(`${platName} 已接入 AnyBridge，重启客户端后生效。`, target, { mode: 'proxy' });
     }
   } catch (e) {
-    if (typeof addLog === 'function') addLog('err', 'Antigravity 接入失败: ' + e);
+    if (typeof addLog === 'function') addLog('err', `${platName} 接入失败: ` + e);
     showCustomAlert(String(e?.message || e), '接入失败', 'error');
   } finally {
-    setPlatformBusy('antigravity', false);
+    setPlatformBusy(target, false);
   }
 }
 
@@ -3018,35 +3275,36 @@ async function antigravityRestoreAction() {
 }
 
 async function restoreAntigravityOfficialConfig() {
-  const info = platformInfoOf('antigravity') || {};
+  const target = getAntigravityTarget();
+  const info = platformInfoOf(target) || {};
+  const platName = target === 'antigravity-ide' ? 'Antigravity IDE' : 'Antigravity';
   const alreadyOfficial = !info.managedByAnyBridge;
   if (alreadyOfficial) {
-    showCustomAlert('Antigravity 当前已经是官方直连模式，无需重复恢复。', '提示', 'info');
+    showCustomAlert(`${platName} 当前已经是官方直连模式，无需重复恢复。`, '提示', 'info');
     return;
   }
 
-  setPlatformBusy('antigravity', true);
+  setPlatformBusy(target, true);
   try {
-    if (typeof addLog === 'function') addLog('info', '正在恢复 Antigravity 官方配置…');
+    if (typeof addLog === 'function') addLog('info', `正在恢复 ${platName} 官方配置…`);
     const result = assertSwitchResultOk(
-      await invoke('restore_antigravity_official_config'),
-      'Antigravity 官方配置还原失败'
+      await invoke('restore_antigravity_official_config', { platform: target }),
+      `${platName} 官方配置还原失败`
     );
     if (typeof addLog === 'function') {
-      addLog('ok', result.message || 'Antigravity 已恢复官方模式');
+      addLog('ok', result.message || `${platName} 已恢复官方模式`);
     }
     await refreshPlatforms({ silent: true, reloadProviders: false });
     antigravityRefreshConsole({ silent: true });
 
-    // 精简交互：不再单独弹前置确认窗口，直接由唯一的「重启 IDE」弹窗作为确认点
     if (typeof promptRestartIde === 'function') {
-      await promptRestartIde('Antigravity 已切回官方直连，重启 IDE 后生效。', 'antigravity', { mode: 'direct' });
+      await promptRestartIde(`${platName} 已切回官方直连，重启客户端后生效。`, target, { mode: 'direct' });
     }
   } catch (e) {
-    if (typeof addLog === 'function') addLog('err', 'Antigravity 切回官方失败: ' + e);
+    if (typeof addLog === 'function') addLog('err', `${platName} 切回官方失败: ` + e);
     showCustomAlert(String(e?.message || e), '切回官方失败', 'error');
   } finally {
-    setPlatformBusy('antigravity', false);
+    setPlatformBusy(target, false);
   }
 }
 
@@ -8404,7 +8662,8 @@ function cursorInstallCert() { return cursorInstallCertAction(); }
 function cursorOpenStats() { return cursorOpenProxyLogs(); }
 
 function openPlatformPage(platformId) {
-  navigateTo(`platform-${platformId}`);
+  const targetPage = platformId === 'antigravity-ide' ? 'platform-antigravity' : `platform-${platformId}`;
+  navigateTo(targetPage);
   renderPlatformDetailStatuses();
   renderPlatformProviderOptions();
   if (platformId === 'cursor') {
@@ -8414,7 +8673,12 @@ function openPlatformPage(platformId) {
     cursorRefreshConsole({ silent: true }).catch(e => {
       if (typeof addLog === 'function') addLog('err', 'Cursor 控制台刷新失败: ' + e);
     });
-  } else if (platformId === 'antigravity') {
+  } else if (platformId === 'antigravity' || platformId === 'antigravity-ide') {
+    globalThis._currentAntigravityTarget = platformId;
+    // navigateTo 会按页面映射把侧边栏高亮重置为「反重力」，此处需按实际目标纠正
+    if (typeof setPlatformRailActive === 'function') {
+      setPlatformRailActive(platformId);
+    }
     antigravityRefreshConsole({ silent: true });
     antigravityRenderTableRows();
   } else if (platformId === 'codebuddy') {
@@ -12208,6 +12472,12 @@ window.zcDrop = function(e) {
   g.openAntigravitySettingsModal = openAntigravitySettingsModal;
   g.closeAntigravitySettingsModal = closeAntigravitySettingsModal;
   g.saveAntigravitySettingsModal = saveAntigravitySettingsModal;
+  g.openAntigravityLangModal = openAntigravityLangModal;
+  g.closeAntigravityLangModal = closeAntigravityLangModal;
+  g.clearAntigravityLangLog = clearAntigravityLangLog;
+  g.applyAntigravityLocalizationAction = applyAntigravityLocalizationAction;
+  g.restoreAntigravityLocalizationAction = restoreAntigravityLocalizationAction;
+  g.checkAntigravityLocalizationUpdateAction = checkAntigravityLocalizationUpdateAction;
   g.selectAntigravityMode = selectAntigravityMode;
   g.syncAntigravityModeUi = syncAntigravityModeUi;
   g.initAntigravityAddPage = initAntigravityAddPage;

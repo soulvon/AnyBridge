@@ -1537,6 +1537,14 @@
       "noApiIdHint": null
     },
     {
+      "label": "Kimi K2.8",
+      "modelUid": "kimi-k2-8",
+      "apiId": "kimi-k2.8",
+      "contextWindow": 262144,
+      "supportsImages": true,
+      "noApiIdHint": null
+    },
+    {
       "label": "MiniMax M2.5",
       "modelUid": "minimax-m2-5",
       "apiId": "minimax-m2-5",
@@ -2085,6 +2093,302 @@
       "modelUid": "inkling-max",
       "apiId": "inkling-max",
       "contextWindow": 128000,
+      "supportsImages": true,
+      "noApiIdHint": null
+    },
+    {
+      "label": "GPT-6.1 Sol",
+      "modelUid": "gpt-6-1-sol",
+      "apiId": "gpt-6.1-sol",
+      "contextWindow": 1050000,
+      "supportsImages": true,
+      "noApiIdHint": null
+    },
+    {
+      "label": "GPT-6.1 Sol Low Thinking",
+      "modelUid": "gpt-6-1-sol-low",
+      "apiId": "gpt-6.1-sol",
+      "contextWindow": 1050000,
+      "supportsImages": true,
+      "noApiIdHint": null
+    },
+    {
+      "label": "GPT-6.1 Sol Medium Thinking",
+      "modelUid": "gpt-6-1-sol-medium",
+      "apiId": "gpt-6.1-sol",
+      "contextWindow": 1050000,
+      "supportsImages": true,
+      "noApiIdHint": null
+    },
+    {
+      "label": "GPT-6.1 Sol High Thinking",
+      "modelUid": "gpt-6-1-sol-high",
+      "apiId": "gpt-6.1-sol",
+      "contextWindow": 1050000,
+      "supportsImages": true,
+      "noApiIdHint": null
+    },
+    {
+      "label": "GPT-6.1 Sol XHigh Thinking",
+      "modelUid": "gpt-6-1-sol-xhigh",
+      "apiId": "gpt-6.1-sol",
+      "contextWindow": 1050000,
+      "supportsImages": true,
+      "noApiIdHint": null
+    },
+    {
+      "label": "GPT-6.1 Sol Max Thinking",
+      "modelUid": "gpt-6-1-sol-max",
+      "apiId": "gpt-6.1-sol",
+      "contextWindow": 1050000,
+      "supportsImages": true,
+      "noApiIdHint": null
+    },
+    {
+      "label": "GPT-6 Sol",
+      "modelUid": "gpt-6-sol",
+      "apiId": "gpt-6-sol",
+      "contextWindow": 1050000,
+      "supportsImages": true,
+      "noApiIdHint": null
+    },
+    {
+      "label": "GPT-6 Luna",
+      "modelUid": "gpt-6-luna",
+      "apiId": "gpt-6-luna",
+      "contextWindow": 1050000,
+      "supportsImages": true,
+      "noApiIdHint": null
+    },
+    {
+      "label": "Claude Opus 5.5",
+      "modelUid": "claude-opus-5-5",
+      "apiId": "claude-opus-5.5",
+      "contextWindow": 1000000,
+      "supportsImages": true,
+      "noApiIdHint": null
+    },
+    {
+      "label": "Claude Opus 5.5 Low",
+      "modelUid": "claude-opus-5-5-low",
+      "apiId": "claude-opus-5.5",
+      "contextWindow": 1000000,
+      "supportsImages": true,
+      "noApiIdHint": null
+    },
+    {
+      "label": "Claude Opus 5.5 Medium",
+      "modelUid": "claude-opus-5-5-medium",
+      "apiId": "claude-opus-5.5",
+      "contextWindow": 1000000,
+      "supportsImages": true,
+      "noApiIdHint": null
+    },
+    {
+      "label": "Claude Opus 5.5 High",
+      "modelUid": "claude-opus-5-5-high",
+      "apiId": "claude-opus-5.5",
+      "contextWindow": 1000000,
+      "supportsImages": true,
+      "noApiIdHint": null
+    },
+    {
+      "label": "Claude Opus 5.5 XHigh",
+      "modelUid": "claude-opus-5-5-xhigh",
+      "apiId": "claude-opus-5.5",
+      "contextWindow": 1000000,
+      "supportsImages": true,
+      "noApiIdHint": null
+    },
+    {
+      "label": "Claude Opus 5.5 Max",
+      "modelUid": "claude-opus-5-5-max",
+      "apiId": "claude-opus-5.5",
+      "contextWindow": 1000000,
+      "supportsImages": true,
+      "noApiIdHint": null
+    },
+    {
+      "label": "Claude Sonnet 5.5",
+      "modelUid": "claude-sonnet-5-5",
+      "apiId": "claude-sonnet-5.5",
+      "contextWindow": 1000000,
+      "supportsImages": true,
+      "noApiIdHint": null
+    },
+    {
+      "label": "Claude Sonnet 5.5 Medium",
+      "modelUid": "claude-sonnet-5-5-medium",
+      "apiId": "claude-sonnet-5.5",
+      "contextWindow": 1000000,
+      "supportsImages": true,
+      "noApiIdHint": null
+    },
+    {
+      "label": "Claude Sonnet 5.5 High",
+      "modelUid": "claude-sonnet-5-5-high",
+      "apiId": "claude-sonnet-5.5",
+      "contextWindow": 1000000,
+      "supportsImages": true,
+      "noApiIdHint": null
+    },
+    {
+      "label": "Claude Sonnet 5.5 Low",
+      "modelUid": "claude-sonnet-5-5-low",
+      "apiId": "claude-sonnet-5.5",
+      "contextWindow": 1000000,
+      "supportsImages": true,
+      "noApiIdHint": null
+    },
+    {
+      "label": "Claude Sonnet 5.5 XHigh",
+      "modelUid": "claude-sonnet-5-5-xhigh",
+      "apiId": "claude-sonnet-5.5",
+      "contextWindow": 1000000,
+      "supportsImages": true,
+      "noApiIdHint": null
+    },
+    {
+      "label": "Claude Sonnet 5.5 Max",
+      "modelUid": "claude-sonnet-5-5-max",
+      "apiId": "claude-sonnet-5.5",
+      "contextWindow": 1000000,
+      "supportsImages": true,
+      "noApiIdHint": null
+    },
+    {
+      "label": "Grok 4.7",
+      "modelUid": "grok-4.7",
+      "apiId": "grok-4.7",
+      "contextWindow": 500000,
+      "supportsImages": true,
+      "noApiIdHint": null
+    },
+    {
+      "label": "Grok 4.7 Low",
+      "modelUid": "grok-4-7-low",
+      "apiId": "grok-4.7",
+      "contextWindow": 500000,
+      "supportsImages": true,
+      "noApiIdHint": null
+    },
+    {
+      "label": "Grok 4.7 Medium",
+      "modelUid": "grok-4-7-medium",
+      "apiId": "grok-4.7",
+      "contextWindow": 500000,
+      "supportsImages": true,
+      "noApiIdHint": null
+    },
+    {
+      "label": "Grok 4.7 High",
+      "modelUid": "grok-4-7-high",
+      "apiId": "grok-4.7",
+      "contextWindow": 500000,
+      "supportsImages": true,
+      "noApiIdHint": null
+    },
+    {
+      "label": "Grok 4.7 XHigh",
+      "modelUid": "grok-4-7-xhigh",
+      "apiId": "grok-4.7",
+      "contextWindow": 500000,
+      "supportsImages": true,
+      "noApiIdHint": null
+    },
+    {
+      "label": "DeepSeek V4.1 Flash",
+      "modelUid": "deepseek-v4-1-flash",
+      "apiId": "deepseek-v4.1-flash",
+      "contextWindow": 1048576,
+      "supportsImages": true,
+      "noApiIdHint": null
+    },
+    {
+      "label": "DeepSeek V4.1 Flash High",
+      "modelUid": "deepseek-v4-1-flash-high",
+      "apiId": "deepseek-v4.1-flash",
+      "contextWindow": 1048576,
+      "supportsImages": true,
+      "noApiIdHint": null
+    },
+    {
+      "label": "Qwen 3.8 Max",
+      "modelUid": "qwen3-8-max",
+      "apiId": "qwen3.8-max",
+      "contextWindow": 1000000,
+      "supportsImages": true,
+      "noApiIdHint": null
+    },
+    {
+      "label": "Qwen 3.8 Max High",
+      "modelUid": "qwen3-8-max-high",
+      "apiId": "qwen3.8-max",
+      "contextWindow": 1000000,
+      "supportsImages": true,
+      "noApiIdHint": null
+    },
+    {
+      "label": "Qwen 3.8 Flash",
+      "modelUid": "qwen3-8-flash",
+      "apiId": "qwen3.8-flash",
+      "contextWindow": 1000000,
+      "supportsImages": true,
+      "noApiIdHint": null
+    },
+    {
+      "label": "Qwen 3.8 Flash High",
+      "modelUid": "qwen3-8-flash-high",
+      "apiId": "qwen3.8-flash",
+      "contextWindow": 1000000,
+      "supportsImages": true,
+      "noApiIdHint": null
+    },
+    {
+      "label": "MiniMax M3.1 Flash Preview",
+      "modelUid": "minimax-m3-1-flash-preview",
+      "apiId": "minimax-m3.1-flash-preview",
+      "contextWindow": 1000000,
+      "supportsImages": true,
+      "noApiIdHint": null
+    },
+    {
+      "label": "MiniMax M3",
+      "modelUid": "minimax-m3",
+      "apiId": "minimax-m3",
+      "contextWindow": 1048576,
+      "supportsImages": true,
+      "noApiIdHint": null
+    },
+    {
+      "label": "Hunyuan 4 Preview",
+      "modelUid": "hy4-preview",
+      "apiId": "hy4-preview",
+      "contextWindow": 1048576,
+      "supportsImages": true,
+      "noApiIdHint": null
+    },
+    {
+      "label": "MiMo V2.6 Flash",
+      "modelUid": "mimo-v2-6-flash",
+      "apiId": "mimo-v2.6-flash",
+      "contextWindow": 1048576,
+      "supportsImages": true,
+      "noApiIdHint": null
+    },
+    {
+      "label": "MiMo V2.6 Pro",
+      "modelUid": "mimo-v2-6-pro",
+      "apiId": "mimo-v2.6-pro",
+      "contextWindow": 1048576,
+      "supportsImages": true,
+      "noApiIdHint": null
+    },
+    {
+      "label": "GLM Flash Latest",
+      "modelUid": "glm-flash-latest",
+      "apiId": "glm-flash-latest",
+      "contextWindow": 1310720,
       "supportsImages": true,
       "noApiIdHint": null
     }

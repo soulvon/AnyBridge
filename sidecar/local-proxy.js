@@ -78,7 +78,7 @@ function readProvidersJson() {
 }
 
 function resolveDefaultAntigravityModel(providersJson = readProvidersJson()) {
-  const state = providersJson.platforms?.antigravity;
+  const state = providersJson.platforms?.['antigravity-ide'] || providersJson.platforms?.antigravity;
   if (state?.providerId) {
     const cfg = (providersJson.antigravityConfigs || []).find(c => c.id === state.providerId);
     if (cfg?.defaultModel) return cfg.defaultModel;

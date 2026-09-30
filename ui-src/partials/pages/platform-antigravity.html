@@ -5,12 +5,26 @@
           <section class="platform-console-head glass-card platform-hero-card">
             <div class="platform-console-titlebar">
               <div class="platform-console-icon">
-                <img id="antigravity-platform-icon" src="./assets/icons/platform-antigravity.png" alt="Antigravity">
+                <img id="antigravity-platform-icon" src="./assets/icons/platform-antigravity-hub.png" alt="Antigravity">
               </div>
               <div class="platform-console-copy">
                 <h1 id="antigravity-platform-title">Antigravity 接入控制台</h1>
-                <p id="antigravity-platform-subtitle">Google 编程 IDE · 管理端点重定向与模型映射</p>
+                <p id="antigravity-platform-subtitle">Google 桌面 Agent · 管理端点重定向与模型映射</p>
               </div>
+
+              <!-- 紧随标题后的汉化按钮（用户红框指定位置） -->
+              <button type="button" class="btn-ghost secondary platform-lang-action-btn" id="antigravityLangBtn" data-action="openAntigravityLangModal"
+                style="display: inline-flex; align-items: center; gap: 6px; padding: 4px 12px; border-radius: 8px; font-size: 12px; font-weight: 600; height: 30px; margin-left: 4px; flex-shrink: 0;">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink: 0;">
+                  <path d="m5 8 6 6"/>
+                  <path d="m4 14 6-6 2-3"/>
+                  <path d="M2 5h12"/>
+                  <path d="M7 2h1"/>
+                  <path d="m22 22-5-10-5 10"/>
+                  <path d="M14 18h6"/>
+                </svg>
+                <span id="antigravityLangBtnText">一键汉化</span>
+              </button>
             </div>
 
             <div class="platform-console-actions">
@@ -41,7 +55,7 @@
             <div class="model-map-toolbar-main">
               <div class="model-map-title-block">
                 <h2>模型列表</h2>
-                <span>从统一供应商模型池添加，启用后自动注入到 Antigravity 编辑器模型下拉框。</span>
+                <span>从统一供应商模型池添加，启用后自动注入到反重力客户端模型下拉框（桌面端与 IDE 共享）。</span>
               </div>
               <div class="model-map-toolbar-actions">
                 <button class="btn-primary model-map-command-btn" data-action="openAntigravityAddPage">
@@ -269,6 +283,70 @@
             <div class="modal-footer codex-config-modal-foot">
               <button class="btn-ghost" data-action="closeAntigravityConfigEditor">取消</button>
               <button class="btn-primary" data-action="saveAntigravityConfigEditor">保存</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- ═══════ ANTIGRAVITY 界面汉化与日志弹窗 ═══════ -->
+        <div class="modal-overlay" id="antigravityLangModal" role="dialog" aria-modal="true" aria-labelledby="antigravityLangModalTitle" data-action="closeAntigravityLangModal" data-only-self>
+          <div class="modal-container" style="max-width: 580px; width: 92%; border-radius: 16px; overflow: hidden; padding: 0; box-shadow: var(--shadow-xl, 0 24px 38px 3px rgba(0,0,0,0.18)); border: 1px solid var(--border);">
+            <div class="modal-header" style="padding: 16px 22px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; background: var(--bg-card);">
+              <div style="display: flex; align-items: center; gap: 12px;">
+                <div style="width: 36px; height: 36px; border-radius: 10px; background: rgba(37, 99, 235, 0.08); color: var(--accent); display: flex; align-items: center; justify-content: center; flex-shrink: 0; border: 1px solid rgba(37, 99, 235, 0.15);">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="m5 8 6 6"/>
+                    <path d="m4 14 6-6 2-3"/>
+                    <path d="M2 5h12"/>
+                    <path d="M7 2h1"/>
+                    <path d="m22 22-5-10-5 10"/>
+                    <path d="M14 18h6"/>
+                  </svg>
+                </div>
+                <div>
+                  <div class="modal-title" id="antigravityLangModalTitle" style="font-size: 15px; font-weight: 750; color: var(--text-primary); line-height: 1.25;">Antigravity 界面汉化</div>
+                  <div id="antigravityLangModalSubtitle" style="font-size: 11.5px; color: var(--text-muted); margin-top: 3px;">深度本地化引擎 · 智能物理免疫保护</div>
+                </div>
+              </div>
+              <button type="button" class="btn-ghost icon-btn" data-action="closeAntigravityLangModal" aria-label="关闭" style="width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center; color: var(--text-muted); transition: all 0.15s ease;">✕</button>
+            </div>
+
+            <div class="modal-body" style="padding: 20px 22px; background: var(--bg-card); display: flex; flex-direction: column; gap: 14px;">
+              <!-- 客户端信息与特性条目 -->
+              <div style="background: var(--bg-glass-elevated, rgba(255,255,255,0.04)); border: 1px solid var(--border-subtle, rgba(255,255,255,0.06)); border-radius: 10px; padding: 12px 14px; font-size: 12px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                  <span style="color: var(--text-muted);">目标客户端：</span>
+                  <strong id="antigravityLangModalClientName" style="color: var(--text-primary);">Antigravity</strong>
+                </div>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                  <span style="color: var(--text-muted);">当前状态：</span>
+                  <span id="antigravityLangModalStatusBadge" class="status-badge" style="padding: 2px 8px; border-radius: 999px; font-size: 11px; background: rgba(16, 185, 129, 0.1); color: #10b981;">检测中</span>
+                </div>
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                  <span style="color: var(--text-muted);">词库版本：</span>
+                  <span style="color: var(--text-secondary); font-family: var(--font-mono);" id="antigravityLangModalVer">v2.18.1</span>
+                </div>
+              </div>
+
+              <!-- 执行状态与日志输出框 -->
+              <div>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                  <span style="font-size: 12px; font-weight: 600; color: var(--text-primary);">执行进度与日志</span>
+                  <button type="button" class="btn-ghost" data-action="clearAntigravityLangLog" style="font-size: 11px; padding: 2px 6px; height: auto;">清空日志</button>
+                </div>
+                <pre id="antigravityLangLogBox" style="margin: 0; background: var(--bg-primary); color: var(--text-secondary); font-family: var(--font-mono); padding: 12px 14px; border-radius: 8px; font-size: 11.5px; line-height: 1.65; max-height: 150px; min-height: 90px; overflow-y: auto; white-space: pre-wrap; border: 1px solid var(--border);"></pre>
+              </div>
+
+              <div style="font-size: 11px; color: var(--text-muted); line-height: 1.45;">
+                物理免疫沙盒已就绪：代码区、用户打字框与 AI 模型的思考链受物理隔离保护，绝不误译代码。
+              </div>
+            </div>
+
+            <div class="modal-footer" style="padding: 12px 22px; border-top: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; background: var(--bg-card);">
+              <button type="button" class="btn-ghost" id="antigravityLangModalCheckUpdateBtn" data-action="checkAntigravityLocalizationUpdateAction" style="font-size: 12px;">检查在线词库更新</button>
+              <div style="display: flex; gap: 8px;">
+                <button type="button" class="btn-ghost danger" id="antigravityLangModalRestoreBtn" data-action="restoreAntigravityLocalizationAction" style="font-size: 12px;" disabled>还原官方英文</button>
+                <button type="button" class="btn-primary" id="antigravityLangModalApplyBtn" data-action="applyAntigravityLocalizationAction" style="font-size: 12px;">一键应用汉化</button>
+              </div>
             </div>
           </div>
         </div>

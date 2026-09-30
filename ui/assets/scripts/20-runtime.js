@@ -936,6 +936,8 @@ async function restartIdeNow(target) {
 }
 
 // 代理/直连切换后，提示并询问是否一键重启 IDE 使其生效。
+// 非代理场景（如界面汉化）可通过 options 传入定制标题/状态文案，并用
+// skipAutoPreference 跳过「切换代理后自动重启」偏好与代理专属勾选项。
 function promptRestartIde(leadText, targetOverride, options = {}) {
   if (!invoke) return Promise.resolve(false);
   const target = targetOverride || activeProxyTarget || getTargetIde();
@@ -944,7 +946,7 @@ function promptRestartIde(leadText, targetOverride, options = {}) {
   const lead = leadText || `${label} 代理状态已变更，需重启 IDE 才能生效。`;
   const detail = String(options.detail || '').trim();
 
-  if (shouldAutoRestartIdeAfterSwitch()) {
+  if (!options.skipAutoPreference && shouldAutoRestartIdeAfterSwitch()) {
     addLog('info', `按偏好自动重启 ${label}`);
     return restartIdeNow(target);
   }
@@ -965,18 +967,22 @@ function promptRestartIde(leadText, targetOverride, options = {}) {
       return;
     }
 
-    if (titleEl) titleEl.textContent = `重启 ${label} 以应用${mode === 'direct' ? '直连' : '代理'}`;
+    if (titleEl) titleEl.textContent = options.title || `重启 ${label} 以应用${mode === 'direct' ? '直连' : '代理'}`;
     if (leadEl) leadEl.textContent = lead;
     if (statusEl) {
-      statusEl.textContent = mode === 'direct'
+      statusEl.textContent = options.statusText || (mode === 'direct'
         ? '已恢复直连配置，重启后 IDE 不再经过 AnyBridge。'
-        : '已写入 AnyBridge 代理配置，本地代理服务已启动。';
+        : '已写入 AnyBridge 代理配置，本地代理服务已启动。');
     }
     if (detailEl) {
       detailEl.textContent = detail ? `提示：${detail}` : '';
       detailEl.style.display = detail ? '' : 'none';
     }
-    if (autoInput) autoInput.checked = false;
+    // 非代理场景隐藏代理专属的自动重启勾选项
+    if (autoInput) {
+      autoInput.checked = false;
+      autoInput.closest('.ide-restart-option').style.display = options.skipAutoPreference ? 'none' : '';
+    }
     btnLater.disabled = false;
     btnNow.disabled = false;
     btnNow.textContent = '立即重启';

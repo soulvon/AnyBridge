@@ -767,6 +767,8 @@ const DEVIN_EXE_KEY: &str = "devinExePath";
 const CURSOR_EXE_KEY: &str = "cursorExePath";
 #[cfg(target_os = "windows")]
 const ANTIGRAVITY_EXE_KEY: &str = "antigravityExePath";
+#[cfg(target_os = "windows")]
+const ANTIGRAVITY_IDE_EXE_KEY: &str = "antigravityIdeExePath";
 #[cfg(target_os = "macos")]
 const WINDSURF_APP_KEY: &str = "windsurfAppPath";
 #[cfg(target_os = "macos")]
@@ -775,6 +777,8 @@ const DEVIN_APP_KEY: &str = "devinAppPath";
 const CURSOR_APP_KEY: &str = "cursorAppPath";
 #[cfg(target_os = "macos")]
 const ANTIGRAVITY_APP_KEY: &str = "antigravityAppPath";
+#[cfg(target_os = "macos")]
+const ANTIGRAVITY_IDE_APP_KEY: &str = "antigravityIdeAppPath";
 #[cfg(target_os = "linux")]
 const WINDSURF_BIN_KEY: &str = "windsurfBinPath";
 #[cfg(target_os = "linux")]
@@ -783,6 +787,8 @@ const DEVIN_BIN_KEY: &str = "devinBinPath";
 const CURSOR_BIN_KEY: &str = "cursorBinPath";
 #[cfg(target_os = "linux")]
 const ANTIGRAVITY_BIN_KEY: &str = "antigravityBinPath";
+#[cfg(target_os = "linux")]
+const ANTIGRAVITY_IDE_BIN_KEY: &str = "antigravityIdeBinPath";
 
 /// 根据 target 返回配置键名。
 #[cfg(target_os = "windows")]
@@ -790,6 +796,7 @@ fn ide_exe_key(target: &str) -> &'static str {
     match target {
         "devin" => DEVIN_EXE_KEY,
         "cursor" => CURSOR_EXE_KEY,
+        "antigravity-ide" => ANTIGRAVITY_IDE_EXE_KEY,
         "antigravity" => ANTIGRAVITY_EXE_KEY,
         _ => IDE_EXE_KEY,
     }
@@ -800,6 +807,7 @@ fn ide_app_key(target: &str) -> &'static str {
     match target {
         "devin" => DEVIN_APP_KEY,
         "cursor" => CURSOR_APP_KEY,
+        "antigravity-ide" => ANTIGRAVITY_IDE_APP_KEY,
         "antigravity" => ANTIGRAVITY_APP_KEY,
         _ => WINDSURF_APP_KEY,
     }
@@ -810,6 +818,7 @@ fn ide_bin_key(target: &str) -> &'static str {
     match target {
         "devin" => DEVIN_BIN_KEY,
         "cursor" => CURSOR_BIN_KEY,
+        "antigravity-ide" => ANTIGRAVITY_IDE_BIN_KEY,
         "antigravity" => ANTIGRAVITY_BIN_KEY,
         _ => WINDSURF_BIN_KEY,
     }
@@ -822,7 +831,8 @@ fn ide_exe_filename(target: &str) -> &'static str {
     match target {
         "devin" => "Devin.exe",
         "cursor" => "Cursor.exe",
-        "antigravity" => "Antigravity IDE.exe",
+        "antigravity-ide" => "Antigravity IDE.exe",
+        "antigravity" => "Antigravity.exe",
         _ => "Windsurf.exe",
     }
 }
@@ -832,7 +842,8 @@ fn ide_app_filename(target: &str) -> &'static str {
     match target {
         "devin" => "Devin.app",
         "cursor" => "Cursor.app",
-        "antigravity" => "Antigravity IDE.app",
+        "antigravity-ide" => "Antigravity IDE.app",
+        "antigravity" => "Antigravity.app",
         _ => "Windsurf.app",
     }
 }
@@ -842,17 +853,19 @@ fn ide_bin_filename(target: &str) -> &'static str {
     match target {
         "devin" => "devin",
         "cursor" => "cursor",
-        "antigravity" => "antigravity-ide",
+        "antigravity-ide" => "antigravity-ide",
+        "antigravity" => "antigravity",
         _ => "windsurf",
     }
 }
 
-/// 根据 target 返回文件夹名（Windsurf/Devin/Antigravity IDE）。
+/// 根据 target 返回文件夹名（Windsurf/Devin/Antigravity IDE/antigravity）。
 fn ide_dir_name(target: &str) -> &'static str {
     match target {
         "devin" => "Devin",
         "cursor" => "Cursor",
-        "antigravity" => "Antigravity IDE",
+        "antigravity-ide" => "Antigravity IDE",
+        "antigravity" => "antigravity",
         _ => "Windsurf",
     }
 }
@@ -903,7 +916,8 @@ fn is_ide_exe_for_target(target: &str, path: &std::path::Path) -> bool {
                 || (file_name.eq_ignore_ascii_case("Windsurf.exe") && in_devin_dir)
         }
         "cursor" => file_name.eq_ignore_ascii_case("Cursor.exe"),
-        "antigravity" => file_name.eq_ignore_ascii_case("Antigravity IDE.exe"),
+        "antigravity-ide" => file_name.eq_ignore_ascii_case("Antigravity IDE.exe"),
+        "antigravity" => file_name.eq_ignore_ascii_case("Antigravity.exe"),
         _ => file_name.eq_ignore_ascii_case("Windsurf.exe") && !in_devin_dir,
     }
 }
@@ -1008,9 +1022,13 @@ pub(crate) fn find_ide_exe(target: &str) -> Option<std::path::PathBuf> {
         format!(
             r#"Get-Process Cursor -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty Path"#
         )
-    } else if target == "antigravity" {
+    } else if target == "antigravity-ide" {
         format!(
             r#"Get-Process 'Antigravity IDE' -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty Path"#
+        )
+    } else if target == "antigravity" {
+        format!(
+            r#"Get-Process Antigravity -ErrorAction SilentlyContinue | Where-Object {{ $_.Path -and $_.Path -notmatch 'Antigravity IDE' }} | Select-Object -First 1 -ExpandProperty Path"#
         )
     } else {
         format!(
@@ -1452,8 +1470,10 @@ fn restart_ide_impl(target: String) -> Result<String, String> {
         } else {
             let image = if t == "cursor" {
                 "Cursor.exe"
-            } else if t == "antigravity" {
+            } else if t == "antigravity-ide" {
                 "Antigravity IDE.exe"
+            } else if t == "antigravity" {
+                "Antigravity.exe"
             } else {
                 "Windsurf.exe"
             };
@@ -1472,11 +1492,32 @@ fn restart_ide_impl(target: String) -> Result<String, String> {
             }
         }
 
-        // 等待进程退出，最多 6 秒（验证是否真的杀死了）
+        // 等待进程退出（验证是否真的杀死了）。
+        // cursor / antigravity / antigravity-ide 的映像名全局唯一，用 tasklist 按映像名
+        // 轮询（单次 ~100ms）；不要逐轮冷启动 PowerShell（单次 1~3s，12 轮会让重启
+        // 卡 15~40s，用户以为死机）。windsurf/devin 因映像名共用必须走路径过滤，保持原判。
+        let unique_image = match t.as_str() {
+            "cursor" => Some("Cursor.exe"),
+            "antigravity-ide" => Some("Antigravity IDE.exe"),
+            "antigravity" => Some("Antigravity.exe"),
+            _ => None,
+        };
         let mut dead = false;
         for _ in 0..12 {
             std::thread::sleep(std::time::Duration::from_millis(500));
-            if !is_ide_running(t.clone()) {
+            let running = if let Some(image) = unique_image {
+                Command::new("tasklist")
+                    .args(["/FI", &format!("IMAGENAME eq {}", image), "/FO", "CSV", "/NH"])
+                    .creation_flags(0x0800_0000)
+                    .output()
+                    .map(|out| {
+                        String::from_utf8_lossy(&out.stdout).contains(image)
+                    })
+                    .unwrap_or(false)
+            } else {
+                is_ide_running(t.clone())
+            };
+            if !running {
                 dead = true;
                 break;
             }
@@ -1805,8 +1846,10 @@ pub fn is_ide_running(name: String) -> bool {
             )
         } else if n == "cursor" {
             format!(r#"Get-Process Cursor -ErrorAction SilentlyContinue | Select-Object -First 1"#)
-        } else if n == "antigravity" {
+        } else if n == "antigravity-ide" {
             format!(r#"Get-Process 'Antigravity IDE' -ErrorAction SilentlyContinue | Select-Object -First 1"#)
+        } else if n == "antigravity" {
+            format!(r#"Get-Process Antigravity -ErrorAction SilentlyContinue | Where-Object {{ $_.Path -and $_.Path -notmatch 'Antigravity IDE' }} | Select-Object -First 1"#)
         } else {
             format!(
                 r#"Get-Process Windsurf -ErrorAction SilentlyContinue | Where-Object {{ $_.Path -and $_.Path -notmatch '[\\/]devin[\\/]' }} | Select-Object -First 1"#

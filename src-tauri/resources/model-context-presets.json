@@ -1,6 +1,6 @@
 {
-  "version": 3,
-  "updatedAt": "2026-09-10",
+  "version": 4,
+  "updatedAt": "2026-09-30",
   "source": "综合官方文档与公开横评（Anthropic / OpenAI / Google / 智谱 / DeepSeek / Kimi / Qwen / xAI / MiniMax 等）",
   "defaults": {
     "maxInputTokens": 128000,
@@ -8,8 +8,220 @@
   },
   "models": [
     {
+      "id": "ling-3.0",
+      "match": [
+        "ling-3-0-flash",
+        "ling-3.0-flash",
+        "ling-3.0",
+        "ling-3-0",
+        "ling-3"
+      ],
+      "maxInputTokens": 262144,
+      "maxOutputTokens": 32000,
+      "vendor": "bailing",
+      "note": "百灵 Ling 3.0 256K 上下文"
+    },
+    {
+      "id": "hy4-preview",
+      "match": [
+        "hy4-preview",
+        "hy4",
+        "hunyuan-4",
+        "hunyuan4",
+        "hunyuan-4-preview"
+      ],
+      "maxInputTokens": 1048576,
+      "maxOutputTokens": 65536,
+      "vendor": "tencent",
+      "note": "混元 4 Preview 1M 上下文"
+    },
+    {
+      "id": "mimo-v2.6",
+      "match": [
+        "mimo-v2.6-flash",
+        "mimo-v2-6-flash",
+        "mimo-v2.6-pro",
+        "mimo-v2-6-pro",
+        "mimo-v2.6",
+        "mimo-v2-6",
+        "mimo-v2.5",
+        "mimo-v2-5",
+        "mimo-v2.5-pro",
+        "mimo-v2-5-pro"
+      ],
+      "maxInputTokens": 1048576,
+      "maxOutputTokens": 131072,
+      "vendor": "xiaomi",
+      "note": "MiMo V2.5/V2.6 1M 上下文 / 128K 输出"
+    },
+    {
+      "id": "glm-flash-latest",
+      "match": [
+        "glm-flash-latest",
+        "glm-flash"
+      ],
+      "maxInputTokens": 1310720,
+      "maxOutputTokens": 131072,
+      "vendor": "zhipu",
+      "note": "GLM Flash Latest 1.3M 上下文"
+    },
+    {
+      "id": "minimax-m3.1",
+      "match": [
+        "minimax-m3.1-flash-preview",
+        "minimax-m3-1-flash-preview",
+        "minimax-m3.1",
+        "minimax-m3-1",
+        "minimax-m3.1-flash"
+      ],
+      "maxInputTokens": 1000000,
+      "maxOutputTokens": 131072,
+      "vendor": "minimax",
+      "note": "MiniMax M3.1 Flash 1M 上下文"
+    },
+    {
+      "id": "qwen3.8-flash",
+      "match": [
+        "qwen3.8-flash",
+        "qwen3-8-flash",
+        "qwen3.8-flash-next",
+        "qwen3-8-flash-next",
+        "qwen3.8-27b",
+        "qwen3-8-27b",
+        "qwen3.8-2.4t-a95b",
+        "qwen3-8-2-4t-a95b",
+        "qwen3-8-flash-high"
+      ],
+      "maxInputTokens": 1000000,
+      "maxOutputTokens": 131072,
+      "vendor": "alibaba",
+      "note": "Qwen 3.8 Flash 系列 1M 上下文 / 128K 输出"
+    },
+    {
+      "id": "qwen3.8-max",
+      "match": [
+        "qwen3.8-max",
+        "qwen3-8-max",
+        "qwen3.8-max-preview",
+        "qwen3-8-max-preview",
+        "qwen3-8-max-high"
+      ],
+      "maxInputTokens": 1000000,
+      "maxOutputTokens": 128000,
+      "vendor": "alibaba",
+      "note": "Qwen 3.8 Max 官方 1M 上下文 / 128K 输出"
+    },
+    {
+      "id": "deepseek-v4.1",
+      "match": [
+        "deepseek-v4.1-flash",
+        "deepseek-v4-1-flash",
+        "deepseek-v4.1",
+        "deepseek-v4-1",
+        "deepseek-flash",
+        "deepseek-v4-1-flash-high"
+      ],
+      "maxInputTokens": 1048576,
+      "maxOutputTokens": 393216,
+      "vendor": "deepseek",
+      "note": "DeepSeek V4.1 Flash 1M 上下文 / 384K 输出"
+    },
+    {
+      "id": "grok-4.7",
+      "match": [
+        "grok-4.7",
+        "grok-4-7",
+        "grok4.7",
+        "grok_4.7",
+        "grok_4_7",
+        "grok-4-7-high",
+        "grok-4-7-medium",
+        "grok-4-7-low",
+        "grok-4-7-xhigh"
+      ],
+      "maxInputTokens": 500000,
+      "maxOutputTokens": 500000,
+      "vendor": "xai",
+      "note": "Grok 4.7 500K 上下文 / 500K 输出"
+    },
+    {
+      "id": "claude-sonnet-5-5",
+      "match": [
+        "claude-sonnet-5-5",
+        "claude-sonnet-5.5",
+        "claude-5-5-sonnet",
+        "claude-5.5-sonnet",
+        "sonnet-5-5",
+        "sonnet-5.5",
+        "claude-sonnet-5-5-medium",
+        "claude-sonnet-5-5-high",
+        "claude-sonnet-5-5-low",
+        "claude-sonnet-5-5-xhigh",
+        "claude-sonnet-5-5-max"
+      ],
+      "maxInputTokens": 1000000,
+      "maxOutputTokens": 128000,
+      "vendor": "anthropic",
+      "note": "Claude Sonnet 5.5 1M 上下文 / 128K 输出"
+    },
+    {
+      "id": "claude-opus-5-5",
+      "match": [
+        "claude-opus-5-5",
+        "claude-opus-5.5",
+        "claude-5-5-opus",
+        "claude-5.5-opus",
+        "opus-5-5",
+        "opus-5.5",
+        "claude-opus-5-5-high",
+        "claude-opus-5-5-medium",
+        "claude-opus-5-5-low",
+        "claude-opus-5-5-max",
+        "claude-opus-5-5-xhigh"
+      ],
+      "maxInputTokens": 1000000,
+      "maxOutputTokens": 128000,
+      "vendor": "anthropic",
+      "note": "Claude Opus 5.5 1M 上下文 / 128K 输出"
+    },
+    {
+      "id": "gpt-6-luna",
+      "match": [
+        "gpt-6-luna",
+        "gpt-6.0-luna",
+        "gpt6-luna"
+      ],
+      "maxInputTokens": 1050000,
+      "maxOutputTokens": 128000,
+      "vendor": "openai",
+      "note": "GPT-6 Luna 官方 1.05M 上下文 / 128K 输出"
+    },
+    {
+      "id": "gpt-6.1-sol",
+      "match": [
+        "gpt-6.1-sol",
+        "gpt-6-1-sol",
+        "gpt-6.1sol",
+        "gpt6.1-sol",
+        "gpt-6-1-sol-low",
+        "gpt-6-1-sol-high",
+        "gpt-6-1-sol-medium",
+        "gpt-6-1-sol-xhigh",
+        "gpt-6-1-sol-max"
+      ],
+      "maxInputTokens": 1050000,
+      "maxOutputTokens": 128000,
+      "vendor": "openai",
+      "note": "GPT-6.1 Sol 官方 1.05M 上下文 / 128K 输出"
+    },
+    {
       "id": "claude-opus-4-8",
-      "match": ["claude-opus-4-8", "claude-opus-4.8", "opus-4-8", "opus-4.8"],
+      "match": [
+        "claude-opus-4-8",
+        "claude-opus-4.8",
+        "opus-4-8",
+        "opus-4.8"
+      ],
       "maxInputTokens": 1000000,
       "maxOutputTokens": 128000,
       "vendor": "anthropic",
@@ -17,7 +229,12 @@
     },
     {
       "id": "claude-opus-4-7",
-      "match": ["claude-opus-4-7", "claude-opus-4.7", "opus-4-7", "opus-4.7"],
+      "match": [
+        "claude-opus-4-7",
+        "claude-opus-4.7",
+        "opus-4-7",
+        "opus-4.7"
+      ],
       "maxInputTokens": 1000000,
       "maxOutputTokens": 128000,
       "vendor": "anthropic",
@@ -25,7 +242,15 @@
     },
     {
       "id": "claude-opus-5",
-      "match": ["claude-opus-5", "claude-5-opus", "opus-5", "claude-opus-5-low", "claude-opus-5-medium", "claude-opus-5-high", "claude-opus-5-max"],
+      "match": [
+        "claude-opus-5",
+        "claude-5-opus",
+        "opus-5",
+        "claude-opus-5-low",
+        "claude-opus-5-medium",
+        "claude-opus-5-high",
+        "claude-opus-5-max"
+      ],
       "maxInputTokens": 1000000,
       "maxOutputTokens": 128000,
       "vendor": "anthropic",
@@ -33,7 +258,11 @@
     },
     {
       "id": "claude-sonnet-5",
-      "match": ["claude-sonnet-5", "claude-5-sonnet", "sonnet-5"],
+      "match": [
+        "claude-sonnet-5",
+        "claude-5-sonnet",
+        "sonnet-5"
+      ],
       "maxInputTokens": 1000000,
       "maxOutputTokens": 128000,
       "vendor": "anthropic",
@@ -41,7 +270,16 @@
     },
     {
       "id": "claude-fable-5",
-      "match": ["claude-fable-5", "claude-5-fable", "claude-fable-5-1", "claude-fable-5-1-low", "claude-fable-5-1-medium", "claude-fable-5-1-high", "claude-fable-5-1-xhigh", "claude-fable-5-1-max"],
+      "match": [
+        "claude-fable-5",
+        "claude-5-fable",
+        "claude-fable-5-1",
+        "claude-fable-5-1-low",
+        "claude-fable-5-1-medium",
+        "claude-fable-5-1-high",
+        "claude-fable-5-1-xhigh",
+        "claude-fable-5-1-max"
+      ],
       "maxInputTokens": 1000000,
       "maxOutputTokens": 128000,
       "vendor": "anthropic",
@@ -49,7 +287,14 @@
     },
     {
       "id": "claude-opus-4-6",
-      "match": ["claude-opus-4-6", "claude-opus-4.6", "claude-opus-4_6", "opus-4-6", "opus-4.6", "claude-opus-4-6-thinking"],
+      "match": [
+        "claude-opus-4-6",
+        "claude-opus-4.6",
+        "claude-opus-4_6",
+        "opus-4-6",
+        "opus-4.6",
+        "claude-opus-4-6-thinking"
+      ],
       "maxInputTokens": 1000000,
       "maxOutputTokens": 128000,
       "vendor": "anthropic",
@@ -57,7 +302,13 @@
     },
     {
       "id": "claude-sonnet-4-6",
-      "match": ["claude-sonnet-4-6", "claude-sonnet-4.6", "claude-sonnet-4_6", "sonnet-4-6", "sonnet-4.6"],
+      "match": [
+        "claude-sonnet-4-6",
+        "claude-sonnet-4.6",
+        "claude-sonnet-4_6",
+        "sonnet-4-6",
+        "sonnet-4.6"
+      ],
       "maxInputTokens": 1000000,
       "maxOutputTokens": 64000,
       "vendor": "anthropic",
@@ -65,7 +316,12 @@
     },
     {
       "id": "claude-haiku-4-5",
-      "match": ["claude-haiku-4-5", "claude-haiku-4.5", "haiku-4-5", "haiku-4.5"],
+      "match": [
+        "claude-haiku-4-5",
+        "claude-haiku-4.5",
+        "haiku-4-5",
+        "haiku-4.5"
+      ],
       "maxInputTokens": 200000,
       "maxOutputTokens": 32000,
       "vendor": "anthropic",
@@ -73,7 +329,12 @@
     },
     {
       "id": "claude-sonnet-4-5",
-      "match": ["claude-sonnet-4-5", "claude-sonnet-4.5", "sonnet-4-5", "sonnet-4.5"],
+      "match": [
+        "claude-sonnet-4-5",
+        "claude-sonnet-4.5",
+        "sonnet-4-5",
+        "sonnet-4.5"
+      ],
       "maxInputTokens": 1000000,
       "maxOutputTokens": 64000,
       "vendor": "anthropic",
@@ -81,7 +342,11 @@
     },
     {
       "id": "claude-opus-4",
-      "match": ["claude-opus-4", "claude-4-opus", "opus-4"],
+      "match": [
+        "claude-opus-4",
+        "claude-4-opus",
+        "opus-4"
+      ],
       "maxInputTokens": 200000,
       "maxOutputTokens": 32000,
       "vendor": "anthropic",
@@ -89,7 +354,11 @@
     },
     {
       "id": "claude-sonnet-4",
-      "match": ["claude-sonnet-4", "claude-4-sonnet", "sonnet-4"],
+      "match": [
+        "claude-sonnet-4",
+        "claude-4-sonnet",
+        "sonnet-4"
+      ],
       "maxInputTokens": 200000,
       "maxOutputTokens": 32000,
       "vendor": "anthropic",
@@ -97,7 +366,13 @@
     },
     {
       "id": "claude-3-7-sonnet",
-      "match": ["claude-3-7-sonnet", "claude-3.7-sonnet", "claude-3_7-sonnet", "sonnet-3-7", "sonnet-3.7"],
+      "match": [
+        "claude-3-7-sonnet",
+        "claude-3.7-sonnet",
+        "claude-3_7-sonnet",
+        "sonnet-3-7",
+        "sonnet-3.7"
+      ],
       "maxInputTokens": 200000,
       "maxOutputTokens": 64000,
       "vendor": "anthropic",
@@ -105,7 +380,12 @@
     },
     {
       "id": "claude-3-5-sonnet",
-      "match": ["claude-3-5-sonnet", "claude-3.5-sonnet", "sonnet-3-5", "sonnet-3.5"],
+      "match": [
+        "claude-3-5-sonnet",
+        "claude-3.5-sonnet",
+        "sonnet-3-5",
+        "sonnet-3.5"
+      ],
       "maxInputTokens": 200000,
       "maxOutputTokens": 8192,
       "vendor": "anthropic",
@@ -113,7 +393,12 @@
     },
     {
       "id": "claude-3-5-haiku",
-      "match": ["claude-3-5-haiku", "claude-3.5-haiku", "haiku-3-5", "haiku-3.5"],
+      "match": [
+        "claude-3-5-haiku",
+        "claude-3.5-haiku",
+        "haiku-3-5",
+        "haiku-3.5"
+      ],
       "maxInputTokens": 200000,
       "maxOutputTokens": 8192,
       "vendor": "anthropic",
@@ -121,15 +406,32 @@
     },
     {
       "id": "gpt-6",
-      "match": ["gpt-6", "gpt6", "gpt-6-astra", "gpt6-astra", "astra"],
-      "maxInputTokens": 1000000,
+      "match": [
+        "gpt-6",
+        "gpt6",
+        "gpt-6-astra",
+        "gpt6-astra",
+        "astra",
+        "gpt-6-astra-pro",
+        "gpt-6-sol",
+        "gpt-6.0-sol"
+      ],
+      "maxInputTokens": 1050000,
       "maxOutputTokens": 128000,
       "vendor": "openai",
-      "note": "GPT-6 Astra 1M 上下文 / 128K 输出"
+      "note": "GPT-6 Astra 1.05M 上下文 / 128K 输出"
     },
     {
       "id": "gpt-5.6",
-      "match": ["gpt-5.6", "gpt-5-6", "gpt5.6", "gpt5-6", "gpt-5.6-sol", "gpt-5.6-luna", "gpt-5.6-terra"],
+      "match": [
+        "gpt-5.6",
+        "gpt-5-6",
+        "gpt5.6",
+        "gpt5-6",
+        "gpt-5.6-sol",
+        "gpt-5.6-luna",
+        "gpt-5.6-terra"
+      ],
       "maxInputTokens": 1000000,
       "maxOutputTokens": 128000,
       "vendor": "openai",
@@ -137,7 +439,12 @@
     },
     {
       "id": "gpt-5.5",
-      "match": ["gpt-5.5", "gpt-5-5", "gpt5.5", "gpt5-5"],
+      "match": [
+        "gpt-5.5",
+        "gpt-5-5",
+        "gpt5.5",
+        "gpt5-5"
+      ],
       "maxInputTokens": 1000000,
       "maxOutputTokens": 128000,
       "vendor": "openai",
@@ -145,7 +452,13 @@
     },
     {
       "id": "gpt-5.4",
-      "match": ["gpt-5.4", "gpt-5-4", "gpt5.4", "gpt5-4", "gpt-5.4-mini"],
+      "match": [
+        "gpt-5.4",
+        "gpt-5-4",
+        "gpt5.4",
+        "gpt5-4",
+        "gpt-5.4-mini"
+      ],
       "maxInputTokens": 1000000,
       "maxOutputTokens": 128000,
       "vendor": "openai",
@@ -153,7 +466,11 @@
     },
     {
       "id": "gpt-5.3-codex-spark",
-      "match": ["gpt-5.3-codex-spark", "gpt-5.3-codex", "codex-spark"],
+      "match": [
+        "gpt-5.3-codex-spark",
+        "gpt-5.3-codex",
+        "codex-spark"
+      ],
       "maxInputTokens": 400000,
       "maxOutputTokens": 32768,
       "vendor": "openai",
@@ -161,7 +478,12 @@
     },
     {
       "id": "gpt-5.2",
-      "match": ["gpt-5.2", "gpt-5-2", "gpt5.2", "gpt5-2"],
+      "match": [
+        "gpt-5.2",
+        "gpt-5-2",
+        "gpt5.2",
+        "gpt5-2"
+      ],
       "maxInputTokens": 400000,
       "maxOutputTokens": 32768,
       "vendor": "openai",
@@ -169,7 +491,10 @@
     },
     {
       "id": "gpt-5",
-      "match": ["gpt-5", "gpt5"],
+      "match": [
+        "gpt-5",
+        "gpt5"
+      ],
       "maxInputTokens": 400000,
       "maxOutputTokens": 32768,
       "vendor": "openai",
@@ -177,7 +502,12 @@
     },
     {
       "id": "gpt-4.5",
-      "match": ["gpt-4.5", "gpt-4-5", "gpt4.5", "gpt-4.5-preview"],
+      "match": [
+        "gpt-4.5",
+        "gpt-4-5",
+        "gpt4.5",
+        "gpt-4.5-preview"
+      ],
       "maxInputTokens": 128000,
       "maxOutputTokens": 16384,
       "vendor": "openai",
@@ -185,7 +515,12 @@
     },
     {
       "id": "gpt-4.1",
-      "match": ["gpt-4.1", "gpt-4-1", "gpt4.1", "gpt4-1"],
+      "match": [
+        "gpt-4.1",
+        "gpt-4-1",
+        "gpt4.1",
+        "gpt4-1"
+      ],
       "maxInputTokens": 1000000,
       "maxOutputTokens": 32768,
       "vendor": "openai",
@@ -193,7 +528,10 @@
     },
     {
       "id": "gpt-4o",
-      "match": ["gpt-4o", "gpt4o"],
+      "match": [
+        "gpt-4o",
+        "gpt4o"
+      ],
       "maxInputTokens": 128000,
       "maxOutputTokens": 16384,
       "vendor": "openai",
@@ -201,7 +539,10 @@
     },
     {
       "id": "gpt-oss-120b-medium",
-      "match": ["gpt-oss-120b-medium", "gpt-oss"],
+      "match": [
+        "gpt-oss-120b-medium",
+        "gpt-oss"
+      ],
       "maxInputTokens": 128000,
       "maxOutputTokens": 8192,
       "vendor": "openai",
@@ -209,7 +550,9 @@
     },
     {
       "id": "codex-auto-review",
-      "match": ["codex-auto-review"],
+      "match": [
+        "codex-auto-review"
+      ],
       "maxInputTokens": 200000,
       "maxOutputTokens": 32768,
       "vendor": "openai",
@@ -217,7 +560,13 @@
     },
     {
       "id": "o3",
-      "match": ["o3", "o3-pro", "o3-mini", "o3-mini-high", "o3-deep-research"],
+      "match": [
+        "o3",
+        "o3-pro",
+        "o3-mini",
+        "o3-mini-high",
+        "o3-deep-research"
+      ],
       "maxInputTokens": 200000,
       "maxOutputTokens": 100000,
       "vendor": "openai",
@@ -225,7 +574,10 @@
     },
     {
       "id": "o4-mini",
-      "match": ["o4-mini", "o4mini"],
+      "match": [
+        "o4-mini",
+        "o4mini"
+      ],
       "maxInputTokens": 200000,
       "maxOutputTokens": 100000,
       "vendor": "openai",
@@ -233,7 +585,12 @@
     },
     {
       "id": "o1",
-      "match": ["o1", "o1-pro", "o1-mini", "o1-preview"],
+      "match": [
+        "o1",
+        "o1-pro",
+        "o1-mini",
+        "o1-preview"
+      ],
       "maxInputTokens": 200000,
       "maxOutputTokens": 100000,
       "vendor": "openai",
@@ -241,7 +598,12 @@
     },
     {
       "id": "gemini-3.8-flash",
-      "match": ["gemini-3.8-flash", "gemini-3.8flash", "gemini3.8-flash", "gemini-3.8-flash-high"],
+      "match": [
+        "gemini-3.8-flash",
+        "gemini-3.8flash",
+        "gemini3.8-flash",
+        "gemini-3.8-flash-high"
+      ],
       "maxInputTokens": 1000000,
       "maxOutputTokens": 65536,
       "vendor": "google",
@@ -249,7 +611,13 @@
     },
     {
       "id": "gemini-3.7-flash",
-      "match": ["gemini-3.7-flash", "gemini-3.7flash", "gemini3.7-flash", "gemini-3.7-flash-high", "gemini-3.7-flash-thinking"],
+      "match": [
+        "gemini-3.7-flash",
+        "gemini-3.7flash",
+        "gemini3.7-flash",
+        "gemini-3.7-flash-high",
+        "gemini-3.7-flash-thinking"
+      ],
       "maxInputTokens": 1000000,
       "maxOutputTokens": 65536,
       "vendor": "google",
@@ -257,7 +625,12 @@
     },
     {
       "id": "gemini-3.6-flash",
-      "match": ["gemini-3.6-flash", "gemini-3.6flash", "gemini3.6-flash", "gemini-3.6-flash-high"],
+      "match": [
+        "gemini-3.6-flash",
+        "gemini-3.6flash",
+        "gemini3.6-flash",
+        "gemini-3.6-flash-high"
+      ],
       "maxInputTokens": 1000000,
       "maxOutputTokens": 65536,
       "vendor": "google",
@@ -265,7 +638,14 @@
     },
     {
       "id": "gemini-3-flash",
-      "match": ["gemini-3-flash", "gemini-3.0-flash", "gemini3-flash", "gemini-3.1-flash", "gemini-3.1-flash-lite", "gemini-3.1-flash-image"],
+      "match": [
+        "gemini-3-flash",
+        "gemini-3.0-flash",
+        "gemini3-flash",
+        "gemini-3.1-flash",
+        "gemini-3.1-flash-lite",
+        "gemini-3.1-flash-image"
+      ],
       "maxInputTokens": 1000000,
       "maxOutputTokens": 65536,
       "vendor": "google",
@@ -273,7 +653,14 @@
     },
     {
       "id": "gemini-3-pro",
-      "match": ["gemini-3-pro", "gemini-3.0-pro", "gemini3-pro", "gemini-3.1-pro", "gemini-3.1-pro-low", "gemini-pro-agent"],
+      "match": [
+        "gemini-3-pro",
+        "gemini-3.0-pro",
+        "gemini3-pro",
+        "gemini-3.1-pro",
+        "gemini-3.1-pro-low",
+        "gemini-pro-agent"
+      ],
       "maxInputTokens": 1000000,
       "maxOutputTokens": 65536,
       "vendor": "google",
@@ -281,7 +668,11 @@
     },
     {
       "id": "gemini-2.5-pro",
-      "match": ["gemini-2.5-pro", "gemini-2.5pro", "gemini2.5-pro"],
+      "match": [
+        "gemini-2.5-pro",
+        "gemini-2.5pro",
+        "gemini2.5-pro"
+      ],
       "maxInputTokens": 1000000,
       "maxOutputTokens": 65536,
       "vendor": "google",
@@ -289,7 +680,11 @@
     },
     {
       "id": "gemini-2.5-flash",
-      "match": ["gemini-2.5-flash", "gemini-2.5flash", "gemini2.5-flash"],
+      "match": [
+        "gemini-2.5-flash",
+        "gemini-2.5flash",
+        "gemini2.5-flash"
+      ],
       "maxInputTokens": 1000000,
       "maxOutputTokens": 65536,
       "vendor": "google",
@@ -297,7 +692,11 @@
     },
     {
       "id": "gemini-2.0-pro",
-      "match": ["gemini-2.0-pro", "gemini-2-pro", "gemini-2.0-pro-exp"],
+      "match": [
+        "gemini-2.0-pro",
+        "gemini-2-pro",
+        "gemini-2.0-pro-exp"
+      ],
       "maxInputTokens": 2000000,
       "maxOutputTokens": 65536,
       "vendor": "google",
@@ -305,7 +704,12 @@
     },
     {
       "id": "gemini-2.0-flash",
-      "match": ["gemini-2.0-flash", "gemini-2-flash", "gemini-2.0-flash-thinking", "gemini-2.0-flash-exp"],
+      "match": [
+        "gemini-2.0-flash",
+        "gemini-2-flash",
+        "gemini-2.0-flash-thinking",
+        "gemini-2.0-flash-exp"
+      ],
       "maxInputTokens": 1000000,
       "maxOutputTokens": 65536,
       "vendor": "google",
@@ -313,7 +717,11 @@
     },
     {
       "id": "gemini-1.5-pro",
-      "match": ["gemini-1.5-pro", "gemini-1.5pro", "gemini1.5-pro"],
+      "match": [
+        "gemini-1.5-pro",
+        "gemini-1.5pro",
+        "gemini1.5-pro"
+      ],
       "maxInputTokens": 2000000,
       "maxOutputTokens": 65536,
       "vendor": "google",
@@ -321,7 +729,11 @@
     },
     {
       "id": "gemini-1.5-flash",
-      "match": ["gemini-1.5-flash", "gemini-1.5flash", "gemini1.5-flash"],
+      "match": [
+        "gemini-1.5-flash",
+        "gemini-1.5flash",
+        "gemini1.5-flash"
+      ],
       "maxInputTokens": 1000000,
       "maxOutputTokens": 65536,
       "vendor": "google",
@@ -329,7 +741,16 @@
     },
     {
       "id": "glm-5.3",
-      "match": ["glm-5.3", "glm5.3", "glm_5.3", "glm-5-3", "glm_5_3", "glm-5-3-low", "glm-5-3-high", "glm-5-3-max"],
+      "match": [
+        "glm-5.3",
+        "glm5.3",
+        "glm_5.3",
+        "glm-5-3",
+        "glm_5_3",
+        "glm-5-3-low",
+        "glm-5-3-high",
+        "glm-5-3-max"
+      ],
       "maxInputTokens": 1000000,
       "maxOutputTokens": 128000,
       "vendor": "zhipu",
@@ -337,7 +758,13 @@
     },
     {
       "id": "glm-5.2",
-      "match": ["glm-5.2", "glm5.2", "glm_5.2", "glm-5-2", "glm_5_2"],
+      "match": [
+        "glm-5.2",
+        "glm5.2",
+        "glm_5.2",
+        "glm-5-2",
+        "glm_5_2"
+      ],
       "maxInputTokens": 1000000,
       "maxOutputTokens": 128000,
       "vendor": "zhipu",
@@ -345,7 +772,12 @@
     },
     {
       "id": "glm-5.1",
-      "match": ["glm-5.1", "glm5.1", "glm_5.1", "glm-5-1"],
+      "match": [
+        "glm-5.1",
+        "glm5.1",
+        "glm_5.1",
+        "glm-5-1"
+      ],
       "maxInputTokens": 200000,
       "maxOutputTokens": 16384,
       "vendor": "zhipu",
@@ -353,7 +785,10 @@
     },
     {
       "id": "glm-5",
-      "match": ["glm-5", "glm5"],
+      "match": [
+        "glm-5",
+        "glm5"
+      ],
       "maxInputTokens": 200000,
       "maxOutputTokens": 16384,
       "vendor": "zhipu",
@@ -361,7 +796,11 @@
     },
     {
       "id": "glm-4.6",
-      "match": ["glm-4.6", "glm4.6", "glm-4-6"],
+      "match": [
+        "glm-4.6",
+        "glm4.6",
+        "glm-4-6"
+      ],
       "maxInputTokens": 200000,
       "maxOutputTokens": 16384,
       "vendor": "zhipu",
@@ -369,7 +808,11 @@
     },
     {
       "id": "glm-4.5",
-      "match": ["glm-4.5", "glm4.5", "glm-4-5"],
+      "match": [
+        "glm-4.5",
+        "glm4.5",
+        "glm-4-5"
+      ],
       "maxInputTokens": 200000,
       "maxOutputTokens": 16384,
       "vendor": "zhipu",
@@ -377,7 +820,11 @@
     },
     {
       "id": "glm-4-flash",
-      "match": ["glm-4-flash", "glm4-flash", "glm-4.flash"],
+      "match": [
+        "glm-4-flash",
+        "glm4-flash",
+        "glm-4.flash"
+      ],
       "maxInputTokens": 128000,
       "maxOutputTokens": 8192,
       "vendor": "zhipu",
@@ -385,7 +832,12 @@
     },
     {
       "id": "grok-4.6",
-      "match": ["grok-4.6", "grok4.6", "grok_4.6", "grok-4-6"],
+      "match": [
+        "grok-4.6",
+        "grok4.6",
+        "grok_4.6",
+        "grok-4-6"
+      ],
       "maxInputTokens": 500000,
       "maxOutputTokens": 32768,
       "vendor": "xai",
@@ -393,7 +845,13 @@
     },
     {
       "id": "grok-4.5",
-      "match": ["grok-4.5", "grok4.5", "grok_4.5", "grok-4-5", "grok_4_5"],
+      "match": [
+        "grok-4.5",
+        "grok4.5",
+        "grok_4.5",
+        "grok-4-5",
+        "grok_4_5"
+      ],
       "maxInputTokens": 500000,
       "maxOutputTokens": 32768,
       "vendor": "xai",
@@ -401,7 +859,14 @@
     },
     {
       "id": "grok-4.20",
-      "match": ["grok-4.20", "grok4.20", "grok_4.20", "grok-4.20-0309-reasoning", "grok-4.20-0309-non-reasoning", "grok-4.20-multi-agent-0309"],
+      "match": [
+        "grok-4.20",
+        "grok4.20",
+        "grok_4.20",
+        "grok-4.20-0309-reasoning",
+        "grok-4.20-0309-non-reasoning",
+        "grok-4.20-multi-agent-0309"
+      ],
       "maxInputTokens": 1000000,
       "maxOutputTokens": 32768,
       "vendor": "xai",
@@ -409,7 +874,11 @@
     },
     {
       "id": "grok-4.3",
-      "match": ["grok-4.3", "grok4.3", "grok-4-3"],
+      "match": [
+        "grok-4.3",
+        "grok4.3",
+        "grok-4-3"
+      ],
       "maxInputTokens": 1000000,
       "maxOutputTokens": 32768,
       "vendor": "xai",
@@ -417,7 +886,13 @@
     },
     {
       "id": "grok-3",
-      "match": ["grok-3", "grok3", "grok-3-mini", "grok-3-mini-fast", "grok-3-fast"],
+      "match": [
+        "grok-3",
+        "grok3",
+        "grok-3-mini",
+        "grok-3-mini-fast",
+        "grok-3-fast"
+      ],
       "maxInputTokens": 1000000,
       "maxOutputTokens": 32768,
       "vendor": "xai",
@@ -425,7 +900,10 @@
     },
     {
       "id": "grok-build-0.1",
-      "match": ["grok-build-0.1", "grok-build"],
+      "match": [
+        "grok-build-0.1",
+        "grok-build"
+      ],
       "maxInputTokens": 256000,
       "maxOutputTokens": 16384,
       "vendor": "xai",
@@ -433,7 +911,11 @@
     },
     {
       "id": "grok-composer-2.5",
-      "match": ["grok-composer-2.5-fast", "grok-composer-2.5", "grok-composer"],
+      "match": [
+        "grok-composer-2.5-fast",
+        "grok-composer-2.5",
+        "grok-composer"
+      ],
       "maxInputTokens": 256000,
       "maxOutputTokens": 16384,
       "vendor": "xai",
@@ -457,7 +939,11 @@
     },
     {
       "id": "deepseek-reasoner",
-      "match": ["deepseek-reasoner", "deepseek-r1", "deepseek_r1"],
+      "match": [
+        "deepseek-reasoner",
+        "deepseek-r1",
+        "deepseek_r1"
+      ],
       "maxInputTokens": 128000,
       "maxOutputTokens": 64000,
       "vendor": "deepseek",
@@ -465,7 +951,11 @@
     },
     {
       "id": "deepseek-chat",
-      "match": ["deepseek-chat", "deepseek-v3", "deepseek-v3.2"],
+      "match": [
+        "deepseek-chat",
+        "deepseek-v3",
+        "deepseek-v3.2"
+      ],
       "maxInputTokens": 128000,
       "maxOutputTokens": 16384,
       "vendor": "deepseek",
@@ -488,7 +978,10 @@
     },
     {
       "id": "kimi-k2.5",
-      "match": ["kimi-k2.5", "kimi-k2-5"],
+      "match": [
+        "kimi-k2.5",
+        "kimi-k2-5"
+      ],
       "maxInputTokens": 256000,
       "maxOutputTokens": 16384,
       "vendor": "moonshot",
@@ -496,15 +989,36 @@
     },
     {
       "id": "kimi-k2.6",
-      "match": ["kimi-k2.6", "kimi-k2-6"],
+      "match": [
+        "kimi-k2.6",
+        "kimi-k2-6"
+      ],
       "maxInputTokens": 256000,
       "maxOutputTokens": 16384,
       "vendor": "moonshot",
       "note": "256K"
     },
     {
+      "id": "kimi-k2.8",
+      "match": [
+        "kimi-k2.8",
+        "kimi-k2-8",
+        "kimi-2.8",
+        "kimi-2-8",
+        "kimi-k2.8-code"
+      ],
+      "maxInputTokens": 262144,
+      "maxOutputTokens": 262144,
+      "vendor": "moonshot",
+      "note": "Kimi K2.8 官方 256K 上下文"
+    },
+    {
       "id": "kimi-k2.7",
-      "match": ["kimi-k2.7", "kimi-k2-7", "kimi-k2.7-code"],
+      "match": [
+        "kimi-k2.7",
+        "kimi-k2-7",
+        "kimi-k2.7-code"
+      ],
       "maxInputTokens": 256000,
       "maxOutputTokens": 16384,
       "vendor": "moonshot",
@@ -512,7 +1026,11 @@
     },
     {
       "id": "qwen3.5-plus",
-      "match": ["qwen3.5-plus", "qwen-3.5-plus", "qwen3-5-plus"],
+      "match": [
+        "qwen3.5-plus",
+        "qwen-3.5-plus",
+        "qwen3-5-plus"
+      ],
       "maxInputTokens": 1000000,
       "maxOutputTokens": 32768,
       "vendor": "alibaba",
@@ -520,7 +1038,11 @@
     },
     {
       "id": "qwen-flash",
-      "match": ["qwen-flash", "qwen3-flash", "qwen3.5-flash"],
+      "match": [
+        "qwen-flash",
+        "qwen3-flash",
+        "qwen3.5-flash"
+      ],
       "maxInputTokens": 1000000,
       "maxOutputTokens": 32768,
       "vendor": "alibaba",
@@ -528,7 +1050,11 @@
     },
     {
       "id": "qwen3-max",
-      "match": ["qwen3-max", "qwen-3-max", "qwen3.max"],
+      "match": [
+        "qwen3-max",
+        "qwen-3-max",
+        "qwen3.max"
+      ],
       "maxInputTokens": 262144,
       "maxOutputTokens": 32768,
       "vendor": "alibaba",
@@ -536,7 +1062,11 @@
     },
     {
       "id": "qwen3.7-max",
-      "match": ["qwen3.7-max", "qwen3.7-plus", "qwen3.6-plus"],
+      "match": [
+        "qwen3.7-max",
+        "qwen3.7-plus",
+        "qwen3.6-plus"
+      ],
       "maxInputTokens": 256000,
       "maxOutputTokens": 32768,
       "vendor": "alibaba",
@@ -544,7 +1074,11 @@
     },
     {
       "id": "minimax-m2.7",
-      "match": ["minimax-m2.7", "minimax-m2-7", "minimax-m2.7-highspeed"],
+      "match": [
+        "minimax-m2.7",
+        "minimax-m2-7",
+        "minimax-m2.7-highspeed"
+      ],
       "maxInputTokens": 1000000,
       "maxOutputTokens": 32768,
       "vendor": "minimax",
@@ -552,7 +1086,10 @@
     },
     {
       "id": "minimax-m2.5",
-      "match": ["minimax-m2.5", "minimax-m2-5"],
+      "match": [
+        "minimax-m2.5",
+        "minimax-m2-5"
+      ],
       "maxInputTokens": 200000,
       "maxOutputTokens": 16384,
       "vendor": "minimax",
@@ -560,15 +1097,26 @@
     },
     {
       "id": "minimax-m3",
-      "match": ["minimax-m3", "minimax-m3.0"],
-      "maxInputTokens": 200000,
-      "maxOutputTokens": 16384,
+      "match": [
+        "minimax-m3",
+        "minimax-m3.0"
+      ],
+      "maxInputTokens": 1048576,
+      "maxOutputTokens": 524288,
       "vendor": "minimax",
-      "note": "200K"
+      "note": "MiniMax M3 1M 上下文 / 512K 输出"
     },
     {
       "id": "swe-series",
-      "match": ["swe-1.7", "swe-1-7", "swe-1.6", "swe-1-6", "swe-1.5", "swe-1-5", "swe-1p5"],
+      "match": [
+        "swe-1.7",
+        "swe-1-7",
+        "swe-1.6",
+        "swe-1-6",
+        "swe-1.5",
+        "swe-1-5",
+        "swe-1p5"
+      ],
       "maxInputTokens": 200000,
       "maxOutputTokens": 32768,
       "vendor": "windsurf",
@@ -576,7 +1124,11 @@
     },
     {
       "id": "hy3-preview",
-      "match": ["hy3-preview", "hy3", "hunyuan-3"],
+      "match": [
+        "hy3-preview",
+        "hy3",
+        "hunyuan-3"
+      ],
       "maxInputTokens": 256000,
       "maxOutputTokens": 16384,
       "vendor": "tencent",
@@ -585,202 +1137,367 @@
   ],
   "patterns": [
     {
+      "id": "ling-family",
+      "includesAny": [
+        "ling-3",
+        "ling3"
+      ],
+      "maxInputTokens": 262144,
+      "maxOutputTokens": 32000,
+      "note": "百灵 Ling 3.0 系列 256K"
+    },
+    {
+      "id": "hunyuan-4-family",
+      "includesAny": [
+        "hy4",
+        "hy-4",
+        "hunyuan-4",
+        "hunyuan4"
+      ],
+      "maxInputTokens": 1048576,
+      "maxOutputTokens": 65536,
+      "note": "混元 4 系列 1M 上下文"
+    },
+    {
+      "id": "mimo-family",
+      "includesAny": [
+        "mimo"
+      ],
+      "maxInputTokens": 1048576,
+      "maxOutputTokens": 131072,
+      "note": "MiMo 系 1M 上下文"
+    },
+    {
+      "id": "qwen3.8-family",
+      "includesAny": [
+        "qwen3.8",
+        "qwen3-8",
+        "qwen-3.8"
+      ],
+      "maxInputTokens": 1000000,
+      "maxOutputTokens": 128000,
+      "note": "Qwen3.8 系 1M 上下文"
+    },
+    {
+      "id": "gpt-6-family",
+      "includesAny": [
+        "gpt-6",
+        "gpt6"
+      ],
+      "maxInputTokens": 1050000,
+      "maxOutputTokens": 128000,
+      "note": "GPT-6 系默认 1.05M"
+    },
+    {
       "id": "marker-1m",
-      "includesAny": ["1m", "1000k", "1048576", "1000000"],
+      "includesAny": [
+        "1m",
+        "1000k",
+        "1048576",
+        "1000000"
+      ],
       "maxInputTokens": 1000000,
       "maxOutputTokens": 32768,
       "note": "ID 含 1M 标记"
     },
     {
       "id": "marker-500k",
-      "includesAny": ["500k", "512k"],
+      "includesAny": [
+        "500k",
+        "512k"
+      ],
       "maxInputTokens": 500000,
       "maxOutputTokens": 32768,
       "note": "ID 含 500K 标记"
     },
     {
       "id": "marker-256k",
-      "includesAny": ["256k"],
+      "includesAny": [
+        "256k"
+      ],
       "maxInputTokens": 256000,
       "maxOutputTokens": 16384,
       "note": "ID 含 256K 标记"
     },
     {
       "id": "marker-200k",
-      "includesAny": ["200k"],
+      "includesAny": [
+        "200k"
+      ],
       "maxInputTokens": 200000,
       "maxOutputTokens": 16384,
       "note": "ID 含 200K 标记"
     },
     {
       "id": "claude-family",
-      "includesAny": ["claude"],
+      "includesAny": [
+        "claude"
+      ],
       "maxInputTokens": 200000,
       "maxOutputTokens": 32000,
       "note": "Claude 默认 200K"
     },
     {
       "id": "gemini-pro-family",
-      "includesAny": ["gemini"],
-      "requiresAny": ["pro"],
+      "includesAny": [
+        "gemini"
+      ],
+      "requiresAny": [
+        "pro"
+      ],
       "maxInputTokens": 2000000,
       "maxOutputTokens": 65536,
       "note": "Gemini Pro 系列 2M"
     },
     {
       "id": "gemini-family",
-      "includesAny": ["gemini"],
+      "includesAny": [
+        "gemini"
+      ],
       "maxInputTokens": 1000000,
       "maxOutputTokens": 65536,
       "note": "Gemini 常见 1M"
     },
     {
       "id": "gpt-5-family",
-      "includesAny": ["gpt-5", "gpt5"],
+      "includesAny": [
+        "gpt-5",
+        "gpt5"
+      ],
       "maxInputTokens": 400000,
       "maxOutputTokens": 32768,
       "note": "GPT-5 系默认 400K"
     },
     {
       "id": "gpt-4.1-family",
-      "includesAny": ["gpt-4.1", "gpt4.1"],
+      "includesAny": [
+        "gpt-4.1",
+        "gpt4.1"
+      ],
       "maxInputTokens": 1000000,
       "maxOutputTokens": 32768,
       "note": "GPT-4.1 系 1M"
     },
     {
       "id": "gpt-4o-family",
-      "includesAny": ["gpt-4o", "gpt4o", "gpt-4-turbo", "gpt-4.0"],
+      "includesAny": [
+        "gpt-4o",
+        "gpt4o",
+        "gpt-4-turbo",
+        "gpt-4.0"
+      ],
       "maxInputTokens": 128000,
       "maxOutputTokens": 16384,
       "note": "GPT-4o / Turbo 128K"
     },
     {
       "id": "openai-o-series",
-      "includesAny": ["o1-", "o3-", "o4-", "o1.", "o3.", "o4."],
+      "includesAny": [
+        "o1-",
+        "o3-",
+        "o4-",
+        "o1.",
+        "o3.",
+        "o4."
+      ],
       "maxInputTokens": 200000,
       "maxOutputTokens": 100000,
       "note": "OpenAI o 系列 200K（要求 oN- 前缀，避免误伤）"
     },
     {
       "id": "glm-5-long",
-      "includesAny": ["glm-5.3", "glm5.3", "glm_5.3", "glm-5-3", "glm-5.2", "glm5.2", "glm_5.2", "glm-5-2"],
+      "includesAny": [
+        "glm-5.3",
+        "glm5.3",
+        "glm_5.3",
+        "glm-5-3",
+        "glm-5.2",
+        "glm5.2",
+        "glm_5.2",
+        "glm-5-2"
+      ],
       "maxInputTokens": 1000000,
       "maxOutputTokens": 128000,
       "note": "GLM-5.2 / 5.3 官方支持 1M 上下文"
     },
     {
       "id": "glm-5-family",
-      "includesAny": ["glm-5", "glm5", "glm-4.6", "glm4.6", "glm-4.5", "glm4.5"],
+      "includesAny": [
+        "glm-5",
+        "glm5",
+        "glm-4.6",
+        "glm4.6",
+        "glm-4.5",
+        "glm4.5"
+      ],
       "maxInputTokens": 200000,
       "maxOutputTokens": 16384,
       "note": "GLM-5 / 4.5+ 常见 200K"
     },
     {
       "id": "glm-family",
-      "includesAny": ["glm"],
+      "includesAny": [
+        "glm"
+      ],
       "maxInputTokens": 128000,
       "maxOutputTokens": 8192,
       "note": "其他 GLM 默认 128K"
     },
     {
       "id": "grok-3-family",
-      "includesAny": ["grok-3", "grok3"],
+      "includesAny": [
+        "grok-3",
+        "grok3"
+      ],
       "maxInputTokens": 1000000,
       "maxOutputTokens": 32768,
       "note": "Grok-3 系常见 1M"
     },
     {
       "id": "grok-family",
-      "includesAny": ["grok"],
+      "includesAny": [
+        "grok"
+      ],
       "maxInputTokens": 256000,
       "maxOutputTokens": 32768,
       "note": "其他 Grok 默认 256K"
     },
     {
       "id": "deepseek-v4-family",
-      "includesAny": ["deepseek-v4", "deepseek-v-4", "deepseek_v4"],
+      "includesAny": [
+        "deepseek-v4",
+        "deepseek-v-4",
+        "deepseek_v4"
+      ],
       "maxInputTokens": 1000000,
       "maxOutputTokens": 64000,
       "note": "DeepSeek V4 系列 1M 上下文"
     },
     {
       "id": "deepseek-long",
-      "includesAny": ["deepseek"],
-      "requiresAny": ["long", "1m"],
+      "includesAny": [
+        "deepseek"
+      ],
+      "requiresAny": [
+        "long",
+        "1m"
+      ],
       "maxInputTokens": 1000000,
       "maxOutputTokens": 32768,
       "note": "DeepSeek 长上下文变体"
     },
     {
       "id": "deepseek-family",
-      "includesAny": ["deepseek"],
+      "includesAny": [
+        "deepseek"
+      ],
       "maxInputTokens": 128000,
       "maxOutputTokens": 16384,
       "note": "DeepSeek 默认 128K"
     },
     {
       "id": "kimi-k3-family",
-      "includesAny": ["kimi", "moonshot"],
-      "requiresAny": ["k3", "k-3"],
+      "includesAny": [
+        "kimi",
+        "moonshot"
+      ],
+      "requiresAny": [
+        "k3",
+        "k-3"
+      ],
       "maxInputTokens": 1000000,
       "maxOutputTokens": 64000,
       "note": "Kimi K3 系 1M 上下文"
     },
     {
       "id": "kimi-k2-family",
-      "includesAny": ["kimi", "moonshot"],
-      "requiresAny": ["k2", "k-2"],
+      "includesAny": [
+        "kimi",
+        "moonshot"
+      ],
+      "requiresAny": [
+        "k2",
+        "k-2"
+      ],
       "maxInputTokens": 256000,
       "maxOutputTokens": 16384,
       "note": "Kimi K2 系 256K"
     },
     {
       "id": "kimi-family",
-      "includesAny": ["kimi", "moonshot"],
+      "includesAny": [
+        "kimi",
+        "moonshot"
+      ],
       "maxInputTokens": 128000,
       "maxOutputTokens": 8192,
       "note": "其他 Kimi 默认 128K"
     },
     {
       "id": "qwen-long",
-      "includesAny": ["qwen"],
-      "requiresAny": ["long", "1m", "1000k"],
+      "includesAny": [
+        "qwen"
+      ],
+      "requiresAny": [
+        "long",
+        "1m",
+        "1000k"
+      ],
       "maxInputTokens": 1000000,
       "maxOutputTokens": 32768,
       "note": "Qwen 长上下文变体"
     },
     {
       "id": "qwen3-family",
-      "includesAny": ["qwen3", "qwen-3", "qwen2.5", "qwen-2.5"],
+      "includesAny": [
+        "qwen3",
+        "qwen-3",
+        "qwen2.5",
+        "qwen-2.5"
+      ],
       "maxInputTokens": 256000,
       "maxOutputTokens": 32768,
       "note": "Qwen3 / 2.5 常见 256K"
     },
     {
       "id": "qwen-family",
-      "includesAny": ["qwen"],
+      "includesAny": [
+        "qwen"
+      ],
       "maxInputTokens": 128000,
       "maxOutputTokens": 8192,
       "note": "其他 Qwen 默认 128K"
     },
     {
       "id": "minimax-family",
-      "includesAny": ["minimax", "abab"],
+      "includesAny": [
+        "minimax",
+        "abab"
+      ],
       "maxInputTokens": 200000,
       "maxOutputTokens": 16384,
       "note": "MiniMax 默认 200K"
     },
     {
       "id": "doubao-family",
-      "includesAny": ["doubao", "doubao-seed", "seedream", "seed-1", "seed1."],
+      "includesAny": [
+        "doubao",
+        "doubao-seed",
+        "seedream",
+        "seed-1",
+        "seed1."
+      ],
       "maxInputTokens": 256000,
       "maxOutputTokens": 16384,
       "note": "豆包 / Seed 256K（不用裸 seed，避免误伤）"
     },
     {
       "id": "yi-family",
-      "includesAny": ["yi-", "yi1", "01-ai"],
+      "includesAny": [
+        "yi-",
+        "yi1",
+        "01-ai"
+      ],
       "maxInputTokens": 200000,
       "maxOutputTokens": 16384,
       "note": "零一万物 200K"

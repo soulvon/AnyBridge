@@ -20,6 +20,7 @@ globalThis.PLATFORM_SHELL_PAGES = new Set([
   'platform-codex',
   'platform-codex-add',
   'platform-antigravity',
+  'platform-antigravity-ide',
   'platform-antigravity-add',
   'platform-codebuddy',
   'platform-codebuddy-add',
@@ -135,6 +136,7 @@ function navigateTo(pageId) {
     'platform-codex': 'models',
     'platform-codex-add': 'models',
     'platform-antigravity': 'models',
+    'platform-antigravity-ide': 'models',
     'platform-antigravity-add': 'models',
     'platform-codebuddy': 'models',
     'platform-codebuddy-add': 'models',
@@ -628,6 +630,7 @@ function syncPlatformRailForPage(pageId) {
     'platform-codex': 'codex',
     'platform-codex-add': 'codex',
     'platform-antigravity': 'antigravity',
+    'platform-antigravity-ide': 'antigravity-ide',
     'platform-antigravity-add': 'antigravity',
     'platform-codebuddy': 'codebuddy',
     'platform-codebuddy-add': 'codebuddy',
@@ -676,6 +679,8 @@ globalThis.DEFAULT_PLATFORM_RAIL_ORDER = [
   'devin',
   'windsurf',
   'cursor',
+  'antigravity',
+  'antigravity-ide',
   'codex',
   'claude-code',
   'claude-desktop',
@@ -717,6 +722,23 @@ function readPlatformRailOrder() {
       if (ccIdx !== -1 && cdIdx !== -1 && cdIdx !== ccIdx + 1) {
         filtered.splice(cdIdx, 1);
         filtered.splice(ccIdx + 1, 0, 'claude-desktop');
+        writePlatformRailOrder(filtered);
+      }
+    }
+    if (!filtered.includes('antigravity-ide')) {
+      const agIdx = filtered.indexOf('antigravity');
+      if (agIdx !== -1) {
+        filtered.splice(agIdx + 1, 0, 'antigravity-ide');
+      } else {
+        filtered.push('antigravity-ide');
+      }
+      writePlatformRailOrder(filtered);
+    } else {
+      const ideIdx = filtered.indexOf('antigravity-ide');
+      const agIdx = filtered.indexOf('antigravity');
+      if (agIdx !== -1 && ideIdx !== -1 && ideIdx !== agIdx + 1) {
+        filtered.splice(ideIdx, 1);
+        filtered.splice(agIdx + 1, 0, 'antigravity-ide');
         writePlatformRailOrder(filtered);
       }
     }

@@ -10,6 +10,10 @@ globalThis.DEFAULT_MODEL_FALLBACK_SVG = `<svg viewBox="0 0 24 24" fill="none" xm
 const DEFAULT_MODEL_FALLBACK_SVG = globalThis.DEFAULT_MODEL_FALLBACK_SVG;
 
 globalThis.MODEL_ICON_PATTERNS = [
+  // GPT 6 series：目前上游仅提供 Astra 一套专属图标，
+  // GPT-6 Astra / Sol / Luna / 6.1 Sol 统一复用它。
+  // 若后续为 Sol/Luna 单独出图标，需在此拆分为独立 key。
+  [/gpt-6/i, 'gpt-6-astra'],
   // GPT 5.6 series (most specific first; APIs use both `5.6` and `5-6`)
   [/gpt-5[.-]6-luna/i, 'gpt-5-6-luna'],
   [/gpt-5[.-]6-sol/i, 'gpt-5-6-sol'],
@@ -250,6 +254,7 @@ globalThis.MODEL_ICON_FILES = {
   'gpt-5-nano': 'gpt-5-nano.svg',
   'gpt-5-pro': 'gpt-5-pro.svg',
   'gpt-5': 'gpt-5.svg',
+  'gpt-6-astra': 'gpt-6-astra.svg',
   'gpt-audio-1-5': 'gpt-audio-1-5.svg',
   'gpt-audio-mini': 'gpt-audio-mini.svg',
   'gpt-audio': 'gpt-audio.svg',
@@ -549,6 +554,8 @@ function getModelGroup(modelId) {
     claude: 'Claude 系列',
     codegeex: 'CodeGeeX 系列',
     gpt: 'GPT 系列',
+    'gpt-6': 'GPT 系列',
+    'gpt-6-astra': 'GPT 系列',
     'gpt-5': 'GPT 系列',
     'gpt-5-1': 'GPT 系列',
     'gpt-5-1-chat': 'GPT 系列',

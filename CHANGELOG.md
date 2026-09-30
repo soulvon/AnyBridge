@@ -2,6 +2,21 @@
 
 All notable changes to AnyBridge will be documented in this file.
 
+## v0.5.23 - 2026-09-30
+
+- 反重力双端（Antigravity / Antigravity IDE）独立拆分与接入支持：
+  - 平台 ID 与安装路径彻底分离：`antigravity` 对应白色独立桌面端（Hub / Agent），`antigravity-ide` 对应黑色编程编辑器（VS Code 架构），进程探测、安装路径查找、重启目标映像名逐一区分，杜绝双端互相误判。
+  - 白色桌面端支持 AnyBridge 接管：在 Rust 侧原生实现 `app.asar` 解析与端点补丁注入，将 `--cloud_code_endpoint` 改为优先读取用户配置 `jetski.cloudCodeUrl`；先备份官方原版、再追加改写文件并同步更新 offset/size/SHA256 完整性信息，支持热重载语言服务即时生效。
+  - 双端共享同一套模型池与运行模式配置，接入/停止接入状态分别独立管理。
+- 新增 Antigravity 界面一键汉化与在线词库热更新：
+  - 控制台标题右侧提供汉化入口，弹出汉化管理模态框，内置浅色主题实时日志流（按级别着色，使用项目标准等宽字体）。
+  - 白色桌面端：向 `dist/preload.js` 注入高性能 DOM 本地化引擎，内置物理免疫沙盒——代码区（Monaco）、用户输入框与 AI 思考链绝对隔离，只翻译界面文案，绝不误译代码与 Prompt。
+  - 黑色 IDE：注入 workbench overlay 并清空 `product.json` checksums，根除 VS Code「安装似乎损坏」弹窗。
+  - 在线热更新：连通 GitHub 上游汉化仓库检测最新 Release，真实抽取并落盘词典（实测 2119 条），经 serde_json 重新序列化保证注入脚本语法 100% 合法；失败时诚实报错，不再伪造成功。
+  - 支持一键还原官方英文原版；还原仅使用汉化前备份，绝不回退 BYOK 端点补丁。
+- 修复重启客户端长时间卡顿：等待进程退出改用 `tasklist` 按映像名快速轮询（单次 ~100ms），替代每轮冷启动 PowerShell（单次 1~3s，12 轮会卡 15~40s 看似死机）。
+- 汉化与代理流程的重启弹窗统一复用同一套精致弹窗，通过选项定制标题与状态文案，并隔离「切换代理后自动重启」偏好，避免汉化时误触发强杀。
+
 ## v0.5.22 - 2026-09-22
 
 - 修复 ZCode (v0.21.0+) 自定义模型图片理解完全失效问题：

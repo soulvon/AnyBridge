@@ -353,7 +353,8 @@ AnyBridge applies tailored integration mechanisms based on each tool's underlyin
 | **Assistants & Ext** | **CodeBuddy** | Desktop / Ext | Direct config writing without manual JSON configuration | ✅ Supported |
 | | **WorkBuddy** | Desktop / Ext | Direct configuration integration for custom models and team gateways | ✅ Supported |
 | | **Grok / ZCode** | Various Ext | Rapid custom endpoint setup with instant reset support | ✅ Supported |
-| | **Antigravity** | AI Dev Tool | Dual support for direct config writing and local proxy connection | ✅ Supported |
+| | **Antigravity** | Standalone Desktop Agent | Endpoint patch injection plus config writing, with one-click UI localization | ✅ Supported |
+| | **Antigravity IDE** | VS Code-based Editor | Native config writing and env sync, with one-click UI localization | ✅ Supported |
 | **Universal Ecosystem**| **Cline / Continue / Aider** | External Plugins | Local Reverse Proxy: Universal `:7450/v1` OpenAI / Anthropic compatible endpoint | ✅ Compatible |
 
 ---

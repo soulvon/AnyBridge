@@ -209,7 +209,8 @@ const ANTIGRAVITY_INTERNAL_RUNTIME_MODELS = [
 
 function activeAntigravityIdentity(providersJson = {}) {
   const identities = buildAntigravityCustomModelIdentities(providersJson);
-  const activeId = providersJson.platforms?.antigravity?.providerId;
+  const activeId = providersJson.platforms?.['antigravity-ide']?.providerId
+    || providersJson.platforms?.antigravity?.providerId;
   if (activeId) {
     const active = identities.filter(identity =>
       identity.config?.id === activeId || identity.config?.name === activeId
@@ -332,7 +333,8 @@ export function defaultOfficialModelsResponse() {
 }
 
 function resolveDefaultAntigravityCatalogKey(providersJson = {}, injectedIds = []) {
-  const activeId = providersJson.platforms?.antigravity?.providerId;
+  const activeId = providersJson.platforms?.['antigravity-ide']?.providerId
+    || providersJson.platforms?.antigravity?.providerId;
   const identities = buildAntigravityCustomModelIdentities(providersJson);
   if (activeId) {
     const found = identities.find(i => i.config?.id === activeId || i.config?.name === activeId);

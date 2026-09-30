@@ -1914,6 +1914,9 @@ function slotEffortOverride(value) {
 // 旧版简写名 → 新版 Devin Local 唯一官方代表 UID，用于档位自动解析兜底。
 const SHORTHAND_TO_DEVIN_CANONICAL = {
   'kimi-k3': 'kimi-k3-high',
+  'kimi-k2-8': 'kimi-k2-8',
+  'kimi-k2.8': 'kimi-k2-8',
+  'kimi-2.8': 'kimi-k2-8',
   'deepseek-v4-pro': 'deepseek-v4-pro-high',
   'deepseek-v4-flash': 'deepseek-v4-flash-high',
   'deepseek-v4-1-flash': 'deepseek-v4-1-flash-high',
@@ -1931,7 +1934,28 @@ const SHORTHAND_TO_DEVIN_CANONICAL = {
   'gemini-3-1-pro': 'gemini-3-1-pro-high',
   'gemini-3.1-pro': 'gemini-3-1-pro-high',
   'claude-opus-5': 'claude-opus-5-high',
+  'claude-opus-5-5': 'claude-opus-5-5-high',
+  'claude-opus-5.5': 'claude-opus-5-5-high',
   'claude-sonnet-5': 'claude-sonnet-5-medium',
+  'claude-sonnet-5-5': 'claude-sonnet-5-5-medium',
+  'claude-sonnet-5.5': 'claude-sonnet-5-5-medium',
+  'claude-fable-5-1': 'claude-fable-5-1-high',
+  'claude-fable-5.1': 'claude-fable-5-1-high',
+  'gpt-6-1-sol': 'gpt-6-1-sol-low',
+  'gpt-6.1-sol': 'gpt-6-1-sol-low',
+  'gpt-6-astra': 'gpt-6-astra-high',
+  'gpt-6': 'gpt-6-astra-high',
+  'grok-4-7': 'grok-4-7-high',
+  'grok-4.7': 'grok-4-7-high',
+  'qwen3-8-flash': 'qwen3-8-flash-high',
+  'qwen3.8-flash': 'qwen3-8-flash-high',
+  'qwen3-8-max': 'qwen3-8-max-high',
+  'qwen3.8-max': 'qwen3-8-max-high',
+  'minimax-m3-1': 'minimax-m3-1-flash-preview',
+  'minimax-m3.1': 'minimax-m3-1-flash-preview',
+  'hy4': 'hy4-preview',
+  'swe-1-6': 'swe-1-6',
+  'swe-1-7': 'swe-1-7',
 };
 
 function canonicalDevinUidOf(uid) {

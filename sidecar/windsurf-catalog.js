@@ -1,6 +1,6 @@
 // windsurf-catalog.js — Windsurf 模型全量目录
 // 数据源: Pro 账号 GetUserStatus 缓存 (ide-models.json) + 历史 catalog 合并
-// 最终 260 条
+// 最终 299 条
 //
 // 字段:
 //   label          Windsurf 显示名 (GetUserStatus.field1)
@@ -11,7 +11,53 @@
 //   tag            分类 (chat/codex/swe) — 用于 GUI 分组显示
 //
 // 一一对应原则: 注入项的 modelUid 必须 == Windsurf 真实 ID，禁止共用骨架
-
+//
+// ⚠️ 未经抓包验证的推断条目（共 38 条）
+// 下列 modelUid 由命名规律推断，尚未经真实 GetUserStatus 响应校验。
+// 若 Windsurf 官方未上架对应模型，注入项会因白名单交集校验失败而无法在下拉框显示。
+// 建议接入后抓一次真实响应校准，确认后删除本段注释。
+//
+// [较高可信] 同代已有完整档位先例（claude-opus-5 / gpt-6-astra 系）:
+//   - gpt-6-1-sol
+//   - gpt-6-1-sol-low
+//   - gpt-6-1-sol-medium
+//   - gpt-6-1-sol-high
+//   - gpt-6-1-sol-xhigh
+//   - gpt-6-1-sol-max
+//   - gpt-6-sol
+//   - gpt-6-luna
+//   - claude-opus-5-5
+//   - claude-opus-5-5-low
+//   - claude-opus-5-5-medium
+//   - claude-opus-5-5-high
+//   - claude-opus-5-5-xhigh
+//   - claude-opus-5-5-max
+//   - claude-sonnet-5-5
+//   - claude-sonnet-5-5-medium
+//   - claude-sonnet-5-5-high
+//   - claude-sonnet-5-5-low
+//   - claude-sonnet-5-5-xhigh
+//   - claude-sonnet-5-5-max
+//   - grok-4.7
+//   - grok-4-7-low
+//   - grok-4-7-medium
+//   - grok-4-7-high
+//   - grok-4-7-xhigh
+//   - deepseek-v4-1-flash
+//   - deepseek-v4-1-flash-high
+//
+// [较低可信] Windsurf 此前无该厂商条目，无命名规律可依:
+//   - kimi-k2-8
+//   - qwen3-8-max
+//   - qwen3-8-max-high
+//   - qwen3-8-flash
+//   - qwen3-8-flash-high
+//   - minimax-m3-1-flash-preview
+//   - minimax-m3
+//   - hy4-preview
+//   - mimo-v2-6-flash
+//   - mimo-v2-6-pro
+//   - glm-flash-latest
 export const WINDSURF_CATALOG = [
   {
     "label": "Claude 3.5 Haiku",
@@ -1550,6 +1596,14 @@ export const WINDSURF_CATALOG = [
     "noApiIdHint": null
   },
   {
+    "label": "Kimi K2.8",
+    "modelUid": "kimi-k2-8",
+    "apiId": "kimi-k2.8",
+    "contextWindow": 262144,
+    "supportsImages": true,
+    "noApiIdHint": null
+  },
+  {
     "label": "MiniMax M2.5",
     "modelUid": "minimax-m2-5",
     "apiId": "minimax-m2-5",
@@ -2098,6 +2152,302 @@ export const WINDSURF_CATALOG = [
     "modelUid": "inkling-max",
     "apiId": "inkling-max",
     "contextWindow": 128000,
+    "supportsImages": true,
+    "noApiIdHint": null
+  },
+  {
+    "label": "GPT-6.1 Sol",
+    "modelUid": "gpt-6-1-sol",
+    "apiId": "gpt-6.1-sol",
+    "contextWindow": 1050000,
+    "supportsImages": true,
+    "noApiIdHint": null
+  },
+  {
+    "label": "GPT-6.1 Sol Low Thinking",
+    "modelUid": "gpt-6-1-sol-low",
+    "apiId": "gpt-6.1-sol",
+    "contextWindow": 1050000,
+    "supportsImages": true,
+    "noApiIdHint": null
+  },
+  {
+    "label": "GPT-6.1 Sol Medium Thinking",
+    "modelUid": "gpt-6-1-sol-medium",
+    "apiId": "gpt-6.1-sol",
+    "contextWindow": 1050000,
+    "supportsImages": true,
+    "noApiIdHint": null
+  },
+  {
+    "label": "GPT-6.1 Sol High Thinking",
+    "modelUid": "gpt-6-1-sol-high",
+    "apiId": "gpt-6.1-sol",
+    "contextWindow": 1050000,
+    "supportsImages": true,
+    "noApiIdHint": null
+  },
+  {
+    "label": "GPT-6.1 Sol XHigh Thinking",
+    "modelUid": "gpt-6-1-sol-xhigh",
+    "apiId": "gpt-6.1-sol",
+    "contextWindow": 1050000,
+    "supportsImages": true,
+    "noApiIdHint": null
+  },
+  {
+    "label": "GPT-6.1 Sol Max Thinking",
+    "modelUid": "gpt-6-1-sol-max",
+    "apiId": "gpt-6.1-sol",
+    "contextWindow": 1050000,
+    "supportsImages": true,
+    "noApiIdHint": null
+  },
+  {
+    "label": "GPT-6 Sol",
+    "modelUid": "gpt-6-sol",
+    "apiId": "gpt-6-sol",
+    "contextWindow": 1050000,
+    "supportsImages": true,
+    "noApiIdHint": null
+  },
+  {
+    "label": "GPT-6 Luna",
+    "modelUid": "gpt-6-luna",
+    "apiId": "gpt-6-luna",
+    "contextWindow": 1050000,
+    "supportsImages": true,
+    "noApiIdHint": null
+  },
+  {
+    "label": "Claude Opus 5.5",
+    "modelUid": "claude-opus-5-5",
+    "apiId": "claude-opus-5.5",
+    "contextWindow": 1000000,
+    "supportsImages": true,
+    "noApiIdHint": null
+  },
+  {
+    "label": "Claude Opus 5.5 Low",
+    "modelUid": "claude-opus-5-5-low",
+    "apiId": "claude-opus-5.5",
+    "contextWindow": 1000000,
+    "supportsImages": true,
+    "noApiIdHint": null
+  },
+  {
+    "label": "Claude Opus 5.5 Medium",
+    "modelUid": "claude-opus-5-5-medium",
+    "apiId": "claude-opus-5.5",
+    "contextWindow": 1000000,
+    "supportsImages": true,
+    "noApiIdHint": null
+  },
+  {
+    "label": "Claude Opus 5.5 High",
+    "modelUid": "claude-opus-5-5-high",
+    "apiId": "claude-opus-5.5",
+    "contextWindow": 1000000,
+    "supportsImages": true,
+    "noApiIdHint": null
+  },
+  {
+    "label": "Claude Opus 5.5 XHigh",
+    "modelUid": "claude-opus-5-5-xhigh",
+    "apiId": "claude-opus-5.5",
+    "contextWindow": 1000000,
+    "supportsImages": true,
+    "noApiIdHint": null
+  },
+  {
+    "label": "Claude Opus 5.5 Max",
+    "modelUid": "claude-opus-5-5-max",
+    "apiId": "claude-opus-5.5",
+    "contextWindow": 1000000,
+    "supportsImages": true,
+    "noApiIdHint": null
+  },
+  {
+    "label": "Claude Sonnet 5.5",
+    "modelUid": "claude-sonnet-5-5",
+    "apiId": "claude-sonnet-5.5",
+    "contextWindow": 1000000,
+    "supportsImages": true,
+    "noApiIdHint": null
+  },
+  {
+    "label": "Claude Sonnet 5.5 Medium",
+    "modelUid": "claude-sonnet-5-5-medium",
+    "apiId": "claude-sonnet-5.5",
+    "contextWindow": 1000000,
+    "supportsImages": true,
+    "noApiIdHint": null
+  },
+  {
+    "label": "Claude Sonnet 5.5 High",
+    "modelUid": "claude-sonnet-5-5-high",
+    "apiId": "claude-sonnet-5.5",
+    "contextWindow": 1000000,
+    "supportsImages": true,
+    "noApiIdHint": null
+  },
+  {
+    "label": "Claude Sonnet 5.5 Low",
+    "modelUid": "claude-sonnet-5-5-low",
+    "apiId": "claude-sonnet-5.5",
+    "contextWindow": 1000000,
+    "supportsImages": true,
+    "noApiIdHint": null
+  },
+  {
+    "label": "Claude Sonnet 5.5 XHigh",
+    "modelUid": "claude-sonnet-5-5-xhigh",
+    "apiId": "claude-sonnet-5.5",
+    "contextWindow": 1000000,
+    "supportsImages": true,
+    "noApiIdHint": null
+  },
+  {
+    "label": "Claude Sonnet 5.5 Max",
+    "modelUid": "claude-sonnet-5-5-max",
+    "apiId": "claude-sonnet-5.5",
+    "contextWindow": 1000000,
+    "supportsImages": true,
+    "noApiIdHint": null
+  },
+  {
+    "label": "Grok 4.7",
+    "modelUid": "grok-4.7",
+    "apiId": "grok-4.7",
+    "contextWindow": 500000,
+    "supportsImages": true,
+    "noApiIdHint": null
+  },
+  {
+    "label": "Grok 4.7 Low",
+    "modelUid": "grok-4-7-low",
+    "apiId": "grok-4.7",
+    "contextWindow": 500000,
+    "supportsImages": true,
+    "noApiIdHint": null
+  },
+  {
+    "label": "Grok 4.7 Medium",
+    "modelUid": "grok-4-7-medium",
+    "apiId": "grok-4.7",
+    "contextWindow": 500000,
+    "supportsImages": true,
+    "noApiIdHint": null
+  },
+  {
+    "label": "Grok 4.7 High",
+    "modelUid": "grok-4-7-high",
+    "apiId": "grok-4.7",
+    "contextWindow": 500000,
+    "supportsImages": true,
+    "noApiIdHint": null
+  },
+  {
+    "label": "Grok 4.7 XHigh",
+    "modelUid": "grok-4-7-xhigh",
+    "apiId": "grok-4.7",
+    "contextWindow": 500000,
+    "supportsImages": true,
+    "noApiIdHint": null
+  },
+  {
+    "label": "DeepSeek V4.1 Flash",
+    "modelUid": "deepseek-v4-1-flash",
+    "apiId": "deepseek-v4.1-flash",
+    "contextWindow": 1048576,
+    "supportsImages": true,
+    "noApiIdHint": null
+  },
+  {
+    "label": "DeepSeek V4.1 Flash High",
+    "modelUid": "deepseek-v4-1-flash-high",
+    "apiId": "deepseek-v4.1-flash",
+    "contextWindow": 1048576,
+    "supportsImages": true,
+    "noApiIdHint": null
+  },
+  {
+    "label": "Qwen 3.8 Max",
+    "modelUid": "qwen3-8-max",
+    "apiId": "qwen3.8-max",
+    "contextWindow": 1000000,
+    "supportsImages": true,
+    "noApiIdHint": null
+  },
+  {
+    "label": "Qwen 3.8 Max High",
+    "modelUid": "qwen3-8-max-high",
+    "apiId": "qwen3.8-max",
+    "contextWindow": 1000000,
+    "supportsImages": true,
+    "noApiIdHint": null
+  },
+  {
+    "label": "Qwen 3.8 Flash",
+    "modelUid": "qwen3-8-flash",
+    "apiId": "qwen3.8-flash",
+    "contextWindow": 1000000,
+    "supportsImages": true,
+    "noApiIdHint": null
+  },
+  {
+    "label": "Qwen 3.8 Flash High",
+    "modelUid": "qwen3-8-flash-high",
+    "apiId": "qwen3.8-flash",
+    "contextWindow": 1000000,
+    "supportsImages": true,
+    "noApiIdHint": null
+  },
+  {
+    "label": "MiniMax M3.1 Flash Preview",
+    "modelUid": "minimax-m3-1-flash-preview",
+    "apiId": "minimax-m3.1-flash-preview",
+    "contextWindow": 1000000,
+    "supportsImages": true,
+    "noApiIdHint": null
+  },
+  {
+    "label": "MiniMax M3",
+    "modelUid": "minimax-m3",
+    "apiId": "minimax-m3",
+    "contextWindow": 1048576,
+    "supportsImages": true,
+    "noApiIdHint": null
+  },
+  {
+    "label": "Hunyuan 4 Preview",
+    "modelUid": "hy4-preview",
+    "apiId": "hy4-preview",
+    "contextWindow": 1048576,
+    "supportsImages": true,
+    "noApiIdHint": null
+  },
+  {
+    "label": "MiMo V2.6 Flash",
+    "modelUid": "mimo-v2-6-flash",
+    "apiId": "mimo-v2.6-flash",
+    "contextWindow": 1048576,
+    "supportsImages": true,
+    "noApiIdHint": null
+  },
+  {
+    "label": "MiMo V2.6 Pro",
+    "modelUid": "mimo-v2-6-pro",
+    "apiId": "mimo-v2.6-pro",
+    "contextWindow": 1048576,
+    "supportsImages": true,
+    "noApiIdHint": null
+  },
+  {
+    "label": "GLM Flash Latest",
+    "modelUid": "glm-flash-latest",
+    "apiId": "glm-flash-latest",
+    "contextWindow": 1310720,
     "supportsImages": true,
     "noApiIdHint": null
   }

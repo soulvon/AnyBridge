@@ -28,6 +28,7 @@ use super::config::{
 };
 
 const PLATFORM_ANTIGRAVITY: &str = "antigravity";
+const PLATFORM_ANTIGRAVITY_IDE: &str = "antigravity-ide";
 const PLATFORM_CLAUDE_CODE: &str = "claude-code";
 const PLATFORM_CLAUDE_DESKTOP: &str = "claude-desktop";
 const PLATFORM_CODEX: &str = "codex";
@@ -198,6 +199,7 @@ pub struct SwitchResult {
 
 enum Platform {
     Antigravity,
+    AntigravityIde,
     ClaudeCode,
     ClaudeDesktop,
     Codex,
@@ -212,6 +214,7 @@ impl Platform {
     fn from_id(id: &str) -> Option<Self> {
         match id {
             PLATFORM_ANTIGRAVITY => Some(Platform::Antigravity),
+            PLATFORM_ANTIGRAVITY_IDE => Some(Platform::AntigravityIde),
             PLATFORM_CLAUDE_CODE => Some(Platform::ClaudeCode),
             PLATFORM_CLAUDE_DESKTOP => Some(Platform::ClaudeDesktop),
             PLATFORM_CODEX => Some(Platform::Codex),
@@ -227,6 +230,7 @@ impl Platform {
     fn id(&self) -> &'static str {
         match self {
             Platform::Antigravity => PLATFORM_ANTIGRAVITY,
+            Platform::AntigravityIde => PLATFORM_ANTIGRAVITY_IDE,
             Platform::ClaudeCode => PLATFORM_CLAUDE_CODE,
             Platform::ClaudeDesktop => PLATFORM_CLAUDE_DESKTOP,
             Platform::Codex => PLATFORM_CODEX,
@@ -241,6 +245,7 @@ impl Platform {
     fn display_name(&self) -> &'static str {
         match self {
             Platform::Antigravity => "Antigravity",
+            Platform::AntigravityIde => "Antigravity IDE",
             Platform::ClaudeCode => "Claude Code",
             Platform::ClaudeDesktop => "Claude Desktop",
             Platform::Codex => "Codex",
@@ -254,7 +259,7 @@ impl Platform {
 
     fn vendor(&self) -> &'static str {
         match self {
-            Platform::Antigravity => "Google",
+            Platform::Antigravity | Platform::AntigravityIde => "Google",
             Platform::ClaudeCode | Platform::ClaudeDesktop => "Anthropic",
             Platform::Codex => "OpenAI",
             Platform::CodeBuddy => "Tencent Cloud",
@@ -270,6 +275,7 @@ impl Platform {
         match self {
             Platform::ClaudeCode | Platform::ClaudeDesktop => "anthropic",
             Platform::Antigravity
+            | Platform::AntigravityIde
             | Platform::Codex
             | Platform::CodeBuddy
             | Platform::Grok
@@ -282,7 +288,8 @@ impl Platform {
     /// 配置目录（用于检测是否安装）。
     fn config_dir(&self) -> Option<PathBuf> {
         match self {
-            Platform::Antigravity => antigravity_config_dir(),
+            Platform::Antigravity => antigravity_hub_config_dir(),
+            Platform::AntigravityIde => antigravity_ide_config_dir(),
             Platform::ClaudeDesktop => super::claude_desktop::current_platform_paths()
                 .ok()
                 .map(|p| p.threep_dir),
@@ -301,7 +308,7 @@ impl Platform {
                     Platform::OpenCode => home.join(".config").join("opencode"),
                     Platform::WorkBuddy => home.join(".workbuddy"),
                     Platform::ZCode => home.join(".zcode"),
-                    Platform::Antigravity | Platform::ClaudeDesktop | Platform::Codex => unreachable!(),
+                    Platform::Antigravity | Platform::AntigravityIde | Platform::ClaudeDesktop | Platform::Codex => unreachable!(),
                 })
             }
         }
@@ -316,7 +323,7 @@ impl Platform {
             _ => {
                 let dir = self.config_dir()?;
                 Some(match self {
-                    Platform::Antigravity => dir.join("settings.json"),
+                    Platform::Antigravity | Platform::AntigravityIde => dir.join("settings.json"),
                     Platform::ClaudeCode => dir.join("settings.json"),
                     Platform::Codex => dir.join("config.toml"),
                     Platform::CodeBuddy => dir.join("models.json"),
@@ -371,15 +378,36 @@ impl Platform {
         }
         match self {
             Platform::Antigravity => {
+                if let Some(local) = dirs::data_local_dir() {
+                    if local.join("Programs").join("antigravity").join("Antigravity.exe").exists() {
+                        return true;
+                    }
+                }
                 if let Some(data) = dirs::data_dir() {
-                    if data.join("Antigravity IDE").exists() || data.join("Antigravity").exists() {
+                    if data.join("Antigravity").exists() {
                         return true;
                     }
                 }
                 if let Some(home) = dirs::home_dir() {
-                    if home.join(".gemini").join("antigravity").exists()
-                        || home.join(".antigravity-ide").exists()
-                    {
+                    if home.join(".gemini").join("antigravity").exists() {
+                        return true;
+                    }
+                }
+                false
+            }
+            Platform::AntigravityIde => {
+                if let Some(local) = dirs::data_local_dir() {
+                    if local.join("Programs").join("Antigravity IDE").join("Antigravity IDE.exe").exists() {
+                        return true;
+                    }
+                }
+                if let Some(data) = dirs::data_dir() {
+                    if data.join("Antigravity IDE").exists() {
+                        return true;
+                    }
+                }
+                if let Some(home) = dirs::home_dir() {
+                    if home.join(".gemini").join("antigravity-ide").exists() {
                         return true;
                     }
                 }
@@ -433,12 +461,12 @@ impl Platform {
     /// 生成将写入的配置片段（预览用，token 脱敏），不落盘。
     fn preview(&self, p: &Provider) -> Result<String, String> {
         match self {
-            Platform::Antigravity => {
+            Platform::Antigravity | Platform::AntigravityIde => {
                 let ports = super::config::configured_proxy_ports();
                 let port = ports.api_port;
                 let preview = serde_json::json!({
                     "jetski.cloudCodeUrl": format!("http://127.0.0.1:{}", port),
-                    "// 说明": format!("已接管 Antigravity，当前绑定模型：{}", p.default_model)
+                    "// 说明": format!("已接管 {}，当前绑定模型：{}", self.display_name(), p.default_model)
                 });
                 serde_json::to_string_pretty(&preview).map_err(|e| e.to_string())
             }
@@ -545,6 +573,7 @@ impl Platform {
 
         match self {
             Platform::Antigravity => self.apply_antigravity(&path, p)?,
+            Platform::AntigravityIde => self.apply_antigravity_ide(&path, p)?,
             Platform::ClaudeDesktop => {
                 super::claude_desktop::apply_claude_desktop_sync(None)?;
             }
@@ -559,59 +588,70 @@ impl Platform {
         Ok(path)
     }
 
-    fn apply_antigravity(&self, path: &PathBuf, _p: &Provider) -> Result<(), String> {
+    fn apply_antigravity_ide(&self, path: &PathBuf, _p: &Provider) -> Result<(), String> {
         let ports = super::config::configured_proxy_ports();
         let port = ports.api_port;
         let proxy_url = format!("http://127.0.0.1:{}", port);
 
-        let mut targets = vec![path.clone()];
-        if let Some(data_dir) = vscode_like_data_dir() {
-            let ide_path = data_dir.join("Antigravity IDE").join("User").join("settings.json");
-            let app_path = data_dir.join("Antigravity").join("User").join("settings.json");
-            if !targets.contains(&ide_path) && (ide_path.exists() || ide_path.parent().map(|p| p.exists()).unwrap_or(false)) {
-                targets.push(ide_path);
-            }
-            if !targets.contains(&app_path) && (app_path.exists() || app_path.parent().map(|p| p.exists()).unwrap_or(false)) {
-                targets.push(app_path);
-            }
-        }
-
-        for target in &targets {
-            let raw = if target.exists() {
-                fs::read_to_string(target).unwrap_or_default()
-            } else {
-                String::new()
-            };
-            let mut obj = super::ide_config::parse_object(&raw).unwrap_or_default();
-            obj.insert("jetski.cloudCodeUrl".into(), Value::String(proxy_url.clone()));
-            if let Ok(content) = serde_json::to_string_pretty(&Value::Object(obj)) {
-                let _ = super::write_atomic(target, content.as_bytes());
-            }
+        let raw = if path.exists() {
+            fs::read_to_string(path).unwrap_or_default()
+        } else {
+            String::new()
+        };
+        let mut obj = super::ide_config::parse_object(&raw).unwrap_or_default();
+        obj.insert("jetski.cloudCodeUrl".into(), Value::String(proxy_url));
+        if let Ok(content) = serde_json::to_string_pretty(&Value::Object(obj)) {
+            let _ = super::write_atomic(path, content.as_bytes());
         }
 
         Ok(())
     }
 
-    fn apply_antigravity_official(&self, path: &PathBuf) -> Result<(), String> {
-        let mut targets = vec![path.clone()];
-        if let Some(data_dir) = vscode_like_data_dir() {
-            let ide_path = data_dir.join("Antigravity IDE").join("User").join("settings.json");
-            let app_path = data_dir.join("Antigravity").join("User").join("settings.json");
-            if !targets.contains(&ide_path) && ide_path.exists() {
-                targets.push(ide_path);
-            }
-            if !targets.contains(&app_path) && app_path.exists() {
-                targets.push(app_path);
-            }
+    fn apply_antigravity(&self, path: &PathBuf, _p: &Provider) -> Result<(), String> {
+        let ports = super::config::configured_proxy_ports();
+        let port = ports.api_port;
+        let proxy_url = format!("http://127.0.0.1:{}", port);
+
+        // 1. 确保白色桌面端 app.asar 已经打上端点补丁（失败必须中断接入，
+        //    否则 LS 会以未补丁状态启动、静默走官方端点，造成「假接入」）
+        //    路径查找必须跨平台：macOS 在 /Applications/Antigravity.app 下，
+        //    Linux 在 ~/.local/share 下，不能只认 Windows 的 Programs 布局。
+        if let Some(asar_path) = super::antigravity_localization::hub_asar_path() {
+            patch_antigravity_hub_asar(&asar_path)?;
         }
 
-        for target in &targets {
-            if !target.exists() { continue; }
-            if let Ok(raw) = fs::read_to_string(target) {
+        // 2. 写入用户配置 settings.json
+        let raw = if path.exists() {
+            fs::read_to_string(path).unwrap_or_default()
+        } else {
+            String::new()
+        };
+        let mut obj = super::ide_config::parse_object(&raw).unwrap_or_default();
+        obj.insert("jetski.cloudCodeUrl".into(), Value::String(proxy_url));
+        if let Ok(content) = serde_json::to_string_pretty(&Value::Object(obj)) {
+            let _ = super::write_atomic(path, content.as_bytes());
+        }
+
+        // 3. 若正在运行语言服务，终止它促使其热重启重载新配置
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            let cmd = r#"Get-CimInstance Win32_Process -Filter "name = 'language_server.exe'" | Where-Object { $_.Path -like "*antigravity\resources\bin*" } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }"#;
+            let _ = std::process::Command::new("powershell")
+                .args(&["-NoProfile", "-Command", cmd])
+                .creation_flags(0x0800_0000)
+                .output();
+        }
+        Ok(())
+    }
+
+    fn apply_antigravity_ide_official(&self, path: &PathBuf) -> Result<(), String> {
+        if path.exists() {
+            if let Ok(raw) = fs::read_to_string(path) {
                 if let Ok(mut obj) = super::ide_config::parse_object(&raw) {
                     obj.remove("jetski.cloudCodeUrl");
                     if let Ok(content) = serde_json::to_string_pretty(&Value::Object(obj)) {
-                        let _ = super::write_atomic(target, content.as_bytes());
+                        let _ = super::write_atomic(path, content.as_bytes());
                     }
                 }
             }
@@ -622,6 +662,30 @@ impl Platform {
             use std::os::windows::process::CommandExt;
             let _ = std::process::Command::new("reg")
                 .args(&["delete", "HKCU\\Environment", "/v", "CLOUD_CODE_URL", "/f"])
+                .creation_flags(0x0800_0000)
+                .output();
+        }
+        Ok(())
+    }
+
+    fn apply_antigravity_official(&self, path: &PathBuf) -> Result<(), String> {
+        if path.exists() {
+            if let Ok(raw) = fs::read_to_string(path) {
+                if let Ok(mut obj) = super::ide_config::parse_object(&raw) {
+                    obj.remove("jetski.cloudCodeUrl");
+                    if let Ok(content) = serde_json::to_string_pretty(&Value::Object(obj)) {
+                        let _ = super::write_atomic(path, content.as_bytes());
+                    }
+                }
+            }
+        }
+
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            let cmd = r#"Get-CimInstance Win32_Process -Filter "name = 'language_server.exe'" | Where-Object { $_.Path -like "*antigravity\resources\bin*" } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }"#;
+            let _ = std::process::Command::new("powershell")
+                .args(&["-NoProfile", "-Command", cmd])
                 .creation_flags(0x0800_0000)
                 .output();
         }
@@ -1105,13 +1169,13 @@ impl Platform {
             if !restored {
                 let _ = self.apply_antigravity_official(&path);
             }
-            #[cfg(windows)]
-            {
-                use std::os::windows::process::CommandExt;
-                let _ = std::process::Command::new("reg")
-                    .args(&["delete", "HKCU\\Environment", "/v", "CLOUD_CODE_URL", "/f"])
-                    .creation_flags(0x0800_0000)
-                    .output();
+            return Ok(restored || true);
+        }
+
+        if matches!(self, Platform::AntigravityIde) {
+            let restored = restore_one_file(&path)?;
+            if !restored {
+                let _ = self.apply_antigravity_ide_official(&path);
             }
             return Ok(restored || true);
         }
@@ -1253,25 +1317,130 @@ fn vscode_like_data_dir() -> Option<PathBuf> {
     }
 }
 
-fn antigravity_config_dir() -> Option<PathBuf> {
+fn antigravity_hub_config_dir() -> Option<PathBuf> {
     let data_dir = vscode_like_data_dir()?;
-    let ide_user = data_dir.join("Antigravity IDE").join("User");
-    if ide_user.exists() {
-        return Some(ide_user);
-    }
     let app_user = data_dir.join("Antigravity").join("User");
     if app_user.exists() {
         return Some(app_user);
-    }
-    let ide_base = data_dir.join("Antigravity IDE");
-    if ide_base.exists() {
-        return Some(ide_user);
     }
     let app_base = data_dir.join("Antigravity");
     if app_base.exists() {
         return Some(app_user);
     }
+    Some(app_user)
+}
+
+fn antigravity_ide_config_dir() -> Option<PathBuf> {
+    let data_dir = vscode_like_data_dir()?;
+    let ide_user = data_dir.join("Antigravity IDE").join("User");
+    if ide_user.exists() {
+        return Some(ide_user);
+    }
+    let ide_base = data_dir.join("Antigravity IDE");
+    if ide_base.exists() {
+        return Some(ide_user);
+    }
     Some(ide_user)
+}
+
+#[allow(dead_code)]
+fn antigravity_config_dir() -> Option<PathBuf> {
+    antigravity_hub_config_dir().or_else(antigravity_ide_config_dir)
+}
+
+fn patch_antigravity_hub_asar(asar_path: &std::path::Path) -> Result<(), String> {
+    let bytes = fs::read(asar_path).map_err(|e| format!("读取 asar 失败: {e}"))?;
+    if bytes.len() < 16 {
+        return Err("asar 文件太小".to_string());
+    }
+    let json_size = u32::from_le_bytes(bytes[12..16].try_into().unwrap()) as usize;
+    if bytes.len() < 16 + json_size {
+        return Err("asar header 大小异常".to_string());
+    }
+    let header_str = std::str::from_utf8(&bytes[16..16 + json_size])
+        .map_err(|e| format!("解析 asar header utf8 失败: {e}"))?;
+    let mut header: Value =
+        serde_json::from_str(header_str).map_err(|e| format!("解析 asar header json 失败: {e}"))?;
+
+    let ls_node = header
+        .get_mut("files")
+        .and_then(|f| f.get_mut("dist"))
+        .and_then(|d| d.get_mut("files"))
+        .and_then(|f| f.get_mut("languageServer.js"))
+        .and_then(|n| n.as_object_mut())
+        .ok_or_else(|| "未在 asar 中找到 dist/languageServer.js 节点".to_string())?;
+
+    let offset: usize = ls_node
+        .get("offset")
+        .and_then(|v| v.as_str())
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(0);
+    let size: usize = ls_node.get("size").and_then(|v| v.as_u64()).unwrap_or(0) as usize;
+    let payload_start = 16 + json_size;
+    if bytes.len() < payload_start + offset + size {
+        return Err("asar payload 越界".to_string());
+    }
+    let original_code = std::str::from_utf8(&bytes[payload_start + offset..payload_start + offset + size])
+        .map_err(|e| format!("解析 languageServer.js 失败: {e}"))?;
+
+    if original_code.contains("jetski.cloudCodeUrl") {
+        return Ok(());
+    }
+
+    let bak_path = asar_path.with_file_name("app.asar.official.bak");
+    if !bak_path.exists() {
+        let _ = fs::copy(asar_path, &bak_path);
+    }
+
+    let target_lf = "'--cloud_code_endpoint',\n            'https://daily-cloudcode-pa.googleapis.com',";
+    let target_crlf = "'--cloud_code_endpoint',\r\n            'https://daily-cloudcode-pa.googleapis.com',";
+    let injected = "'--cloud_code_endpoint',\n            (() => { try { const cfg = path_1.default.join(electron_1.app.getPath('userData'), 'User', 'settings.json'); if (fs.existsSync(cfg)) { const val = JSON.parse(fs.readFileSync(cfg, 'utf8'))['jetski.cloudCodeUrl']; if (val && typeof val === 'string') return val.trim(); } } catch(_) {} return process.env.CLOUD_CODE_URL || 'https://daily-cloudcode-pa.googleapis.com'; })(),";
+
+    let new_code = if original_code.contains(target_lf) {
+        original_code.replace(target_lf, injected)
+    } else if original_code.contains(target_crlf) {
+        original_code.replace(target_crlf, injected)
+    } else {
+        return Err("未找到目标 cloud_code_endpoint 字段".to_string());
+    };
+
+    let new_code_bytes = new_code.as_bytes();
+    let old_payload = &bytes[payload_start..];
+    let new_offset = old_payload.len();
+
+    use sha2::{Digest, Sha256};
+    let mut hasher = Sha256::new();
+    hasher.update(new_code_bytes);
+    let hash_hex = hex::encode(hasher.finalize());
+
+    ls_node.insert("offset".to_string(), serde_json::json!(new_offset.to_string()));
+    ls_node.insert("size".to_string(), serde_json::json!(new_code_bytes.len()));
+    ls_node.insert(
+        "integrity".to_string(),
+        serde_json::json!({
+            "algorithm": "SHA256",
+            "hash": hash_hex.clone(),
+            "blockSize": 4194304,
+            "blocks": [hash_hex]
+        }),
+    );
+
+    let new_header_json = serde_json::to_string(&header).map_err(|e| e.to_string())?;
+    let new_header_bytes = new_header_json.as_bytes();
+    let new_json_size = new_header_bytes.len() as u32;
+
+    let mut final_bytes =
+        Vec::with_capacity(16 + new_header_bytes.len() + old_payload.len() + new_code_bytes.len());
+    final_bytes.extend_from_slice(&4u32.to_le_bytes());
+    final_bytes.extend_from_slice(&(new_json_size + 8).to_le_bytes());
+    final_bytes.extend_from_slice(&(new_json_size + 4).to_le_bytes());
+    final_bytes.extend_from_slice(&new_json_size.to_le_bytes());
+    final_bytes.extend_from_slice(new_header_bytes);
+    final_bytes.extend_from_slice(old_payload);
+    final_bytes.extend_from_slice(new_code_bytes);
+
+    fs::write(asar_path, final_bytes).map_err(|e| format!("写入 asar 补丁失败: {e}"))?;
+    Ok(())
 }
 
 fn read_antigravity_config_info(path: &PathBuf) -> Result<Option<AntigravityConfigInfo>, String> {
@@ -1296,7 +1465,12 @@ fn read_antigravity_config_info(path: &PathBuf) -> Result<Option<AntigravityConf
         .map(|u| u.contains("127.0.0.1") || u.contains("localhost"))
         .unwrap_or(false);
     let is_official = cloud_code_url.is_none()
-        || cloud_code_url.as_deref() == Some("https://cloudcode-pa.googleapis.com");
+        || matches!(
+            cloud_code_url.as_deref(),
+            Some("https://cloudcode-pa.googleapis.com")
+                | Some("https://daily-cloudcode-pa.googleapis.com")
+                | Some("https://daily-cloudcode-pa.sandbox.googleapis.com")
+        );
     Ok(Some(AntigravityConfigInfo {
         cloud_code_url,
         managed_by_any_bridge: managed,
@@ -1317,7 +1491,7 @@ fn resolve_platform_config(
     store: &ProviderStore,
     id: &str,
 ) -> Result<Provider, String> {
-    if matches!(plat, Platform::Antigravity) {
+    if matches!(plat, Platform::Antigravity | Platform::AntigravityIde) {
         if let Some(config) = store
             .antigravity_configs
             .iter()
@@ -4586,6 +4760,7 @@ fn detect_platforms_sync() -> Result<Vec<PlatformInfo>, String> {
     let store = read_provider_store().unwrap_or_default();
     let platforms = [
         Platform::Antigravity,
+        Platform::AntigravityIde,
         Platform::ClaudeCode,
         Platform::ClaudeDesktop,
         Platform::Codex,
@@ -4609,7 +4784,7 @@ fn detect_platforms_sync() -> Result<Vec<PlatformInfo>, String> {
         let mut current_provider_id = state.map(|s| s.provider_id.clone());
         let mut applied_at = state.map(|s| s.applied_at.clone());
         let mut current_provider_name = current_provider_id.as_ref().and_then(|pid| {
-            if matches!(plat, Platform::Antigravity) {
+            if matches!(plat, Platform::Antigravity | Platform::AntigravityIde) {
                 store
                     .antigravity_configs
                     .iter()
@@ -4798,7 +4973,7 @@ fn detect_platforms_sync() -> Result<Vec<PlatformInfo>, String> {
                     }
                 }
             }
-        } else if matches!(plat, Platform::Antigravity) {
+        } else if matches!(plat, Platform::Antigravity | Platform::AntigravityIde) {
             if let Some(path) = config_path_buf.as_ref() {
                 match read_antigravity_config_info(path) {
                     Ok(Some(info)) => {
@@ -5245,12 +5420,16 @@ pub fn restore_platform(app: AppHandle, platform: String) -> Result<bool, String
 
 /// 切回 Antigravity 官方环境：清理 AnyBridge 写入的 jetski.cloudCodeUrl 及环境变量，保留其他设置。
 #[tauri::command]
-pub fn restore_antigravity_official_config(app: AppHandle) -> Result<SwitchResult, String> {
-    let plat = Platform::Antigravity;
+pub fn restore_antigravity_official_config(
+    app: AppHandle,
+    platform: Option<String>,
+) -> Result<SwitchResult, String> {
+    let plat_id = platform.unwrap_or_else(|| PLATFORM_ANTIGRAVITY.to_string());
+    let plat = Platform::from_id(&plat_id).unwrap_or(Platform::Antigravity);
     emit_switch_progress(&app, plat.id(), "backup", "正在备份当前配置…");
     let path = plat
         .config_path()
-        .ok_or_else(|| "无法定位 Antigravity 用户配置路径".to_string())?;
+        .ok_or_else(|| format!("无法定位 {} 用户配置路径", plat.display_name()))?;
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).map_err(|e| format!("创建配置目录失败: {e}"))?;
     }
@@ -5258,7 +5437,11 @@ pub fn restore_antigravity_official_config(app: AppHandle) -> Result<SwitchResul
         ensure_backup(&path)?;
     }
     emit_switch_progress(&app, plat.id(), "writing", "正在恢复官方配置…");
-    plat.apply_antigravity_official(&path)?;
+    if matches!(plat, Platform::AntigravityIde) {
+        plat.apply_antigravity_ide_official(&path)?;
+    } else {
+        plat.apply_antigravity_official(&path)?;
+    }
 
     emit_switch_progress(&app, plat.id(), "saving", "正在清除接管记录…");
     if let Ok(mut store) = read_provider_store() {
@@ -5272,7 +5455,7 @@ pub fn restore_antigravity_official_config(app: AppHandle) -> Result<SwitchResul
     emit_switch_progress(&app, plat.id(), "done", "已切回官方配置");
     Ok(SwitchResult {
         ok: true,
-        message: "已切回 Antigravity 官方配置，重启 Antigravity 后生效".to_string(),
+        message: format!("已切回 {} 官方配置，重启后生效", plat.display_name()),
         config_path,
         backup_path: backup,
     })
