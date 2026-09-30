@@ -5,7 +5,8 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 const CURRENT_EMBEDDED_VERSION: &str = "2.18.1";
-const GITHUB_REPO_API: &str = "https://api.github.com/repos/liominsb/Antigravity-Chinese-Localization/releases/latest";
+const GITHUB_REPO_API: &str =
+    "https://api.github.com/repos/liominsb/Antigravity-Chinese-Localization/releases/latest";
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -32,7 +33,10 @@ pub struct LocalizationOperationResult {
 
 fn cache_dir() -> PathBuf {
     if let Some(dir) = dirs::data_dir() {
-        let p = dir.join("AnyBridge").join("localization").join("antigravity");
+        let p = dir
+            .join("AnyBridge")
+            .join("localization")
+            .join("antigravity");
         let _ = fs::create_dir_all(&p);
         p
     } else {
@@ -44,19 +48,40 @@ pub(crate) fn hub_asar_path() -> Option<PathBuf> {
     #[cfg(target_os = "windows")]
     {
         let local = dirs::data_local_dir()?;
-        let p = local.join("Programs").join("antigravity").join("resources").join("app.asar");
-        if p.exists() { Some(p) } else { None }
+        let p = local
+            .join("Programs")
+            .join("antigravity")
+            .join("resources")
+            .join("app.asar");
+        if p.exists() {
+            Some(p)
+        } else {
+            None
+        }
     }
     #[cfg(target_os = "macos")]
     {
         let p = PathBuf::from("/Applications/Antigravity.app/Contents/Resources/app.asar");
-        if p.exists() { Some(p) } else { None }
+        if p.exists() {
+            Some(p)
+        } else {
+            None
+        }
     }
     #[cfg(target_os = "linux")]
     {
         let home = dirs::home_dir()?;
-        let p = home.join(".local").join("share").join("antigravity").join("resources").join("app.asar");
-        if p.exists() { Some(p) } else { None }
+        let p = home
+            .join(".local")
+            .join("share")
+            .join("antigravity")
+            .join("resources")
+            .join("app.asar");
+        if p.exists() {
+            Some(p)
+        } else {
+            None
+        }
     }
 }
 
@@ -75,17 +100,29 @@ pub(crate) fn ide_workbench_html_path() -> Option<PathBuf> {
             .join("electron-browser")
             .join("workbench")
             .join("workbench.html");
-        if p.exists() { Some(p) } else { None }
+        if p.exists() {
+            Some(p)
+        } else {
+            None
+        }
     }
     #[cfg(target_os = "macos")]
     {
         let p = PathBuf::from("/Applications/Antigravity IDE.app/Contents/Resources/app/out/vs/code/electron-browser/workbench/workbench.html");
-        if p.exists() { Some(p) } else { None }
+        if p.exists() {
+            Some(p)
+        } else {
+            None
+        }
     }
     #[cfg(target_os = "linux")]
     {
         let p = PathBuf::from("/usr/share/antigravity-ide/resources/app/out/vs/code/electron-browser/workbench/workbench.html");
-        if p.exists() { Some(p) } else { None }
+        if p.exists() {
+            Some(p)
+        } else {
+            None
+        }
     }
 }
 
@@ -99,17 +136,30 @@ pub(crate) fn ide_product_json_path() -> Option<PathBuf> {
             .join("resources")
             .join("app")
             .join("product.json");
-        if p.exists() { Some(p) } else { None }
+        if p.exists() {
+            Some(p)
+        } else {
+            None
+        }
     }
     #[cfg(target_os = "macos")]
     {
-        let p = PathBuf::from("/Applications/Antigravity IDE.app/Contents/Resources/app/product.json");
-        if p.exists() { Some(p) } else { None }
+        let p =
+            PathBuf::from("/Applications/Antigravity IDE.app/Contents/Resources/app/product.json");
+        if p.exists() {
+            Some(p)
+        } else {
+            None
+        }
     }
     #[cfg(target_os = "linux")]
     {
         let p = PathBuf::from("/usr/share/antigravity-ide/resources/app/product.json");
-        if p.exists() { Some(p) } else { None }
+        if p.exists() {
+            Some(p)
+        } else {
+            None
+        }
     }
 }
 
@@ -201,12 +251,22 @@ fn get_ide_payload() -> String {
 }
 
 fn is_hub_localized(asar_path: &Path) -> bool {
-    let Ok(bytes) = fs::read(asar_path) else { return false; };
-    if bytes.len() < 16 { return false; }
+    let Ok(bytes) = fs::read(asar_path) else {
+        return false;
+    };
+    if bytes.len() < 16 {
+        return false;
+    }
     let json_size = u32::from_le_bytes(bytes[12..16].try_into().unwrap()) as usize;
-    if bytes.len() < 16 + json_size { return false; }
-    let Ok(header_str) = std::str::from_utf8(&bytes[16..16 + json_size]) else { return false; };
-    let Ok(header) = serde_json::from_str::<Value>(header_str) else { return false; };
+    if bytes.len() < 16 + json_size {
+        return false;
+    }
+    let Ok(header_str) = std::str::from_utf8(&bytes[16..16 + json_size]) else {
+        return false;
+    };
+    let Ok(header) = serde_json::from_str::<Value>(header_str) else {
+        return false;
+    };
 
     let Some(preload_node) = header
         .get("files")
@@ -222,19 +282,28 @@ fn is_hub_localized(asar_path: &Path) -> bool {
         .and_then(|v| v.as_str())
         .and_then(|s| s.parse().ok())
         .unwrap_or(0);
-    let size: usize = preload_node.get("size").and_then(|v| v.as_u64()).unwrap_or(0) as usize;
+    let size: usize = preload_node
+        .get("size")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(0) as usize;
     let payload_start = 16 + json_size;
-    if bytes.len() < payload_start + offset + size { return false; }
+    if bytes.len() < payload_start + offset + size {
+        return false;
+    }
 
-    let Ok(code) = std::str::from_utf8(&bytes[payload_start + offset..payload_start + offset + size]) else {
+    let Ok(code) =
+        std::str::from_utf8(&bytes[payload_start + offset..payload_start + offset + size])
+    else {
         return false;
     };
-    code.contains("__antigravityHansInjected") || code.contains("Antigravity 2.0 Chinese Localization Engine")
+    code.contains("__antigravityHansInjected")
+        || code.contains("Antigravity 2.0 Chinese Localization Engine")
 }
 
 fn is_ide_localized(html_path: &Path) -> bool {
     if let Ok(content) = fs::read_to_string(html_path) {
-        return content.contains("antigravity-hans-overlay.js") || content.contains("__antigravityIdeHansInjected");
+        return content.contains("antigravity-hans-overlay.js")
+            || content.contains("__antigravityIdeHansInjected");
     }
     false
 }
@@ -266,14 +335,18 @@ fn patch_hub_asar(asar_path: &Path) -> Result<(), String> {
         .and_then(|v| v.as_str())
         .and_then(|s| s.parse().ok())
         .unwrap_or(0);
-    let size: usize = preload_node.get("size").and_then(|v| v.as_u64()).unwrap_or(0) as usize;
+    let size: usize = preload_node
+        .get("size")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(0) as usize;
     let payload_start = 16 + json_size;
     if bytes.len() < payload_start + offset + size {
         return Err("app.asar payload 越界".to_string());
     }
 
-    let original_code = std::str::from_utf8(&bytes[payload_start + offset..payload_start + offset + size])
-        .map_err(|e| format!("解析 preload.js 失败: {e}"))?;
+    let original_code =
+        std::str::from_utf8(&bytes[payload_start + offset..payload_start + offset + size])
+            .map_err(|e| format!("解析 preload.js 失败: {e}"))?;
 
     // 保留初次纯净原版备份
     let bak_path = asar_path.with_file_name("app.asar.lang.bak");
@@ -282,7 +355,9 @@ fn patch_hub_asar(asar_path: &Path) -> Result<(), String> {
     }
 
     // 截断旧汉化块并追加新汉化代码
-    let clean_base = if let Some(idx) = original_code.find("// Antigravity Chinese Localization Engine") {
+    let clean_base = if let Some(idx) =
+        original_code.find("// Antigravity Chinese Localization Engine")
+    {
         original_code[..idx].trim_end()
     } else if let Some(idx) = original_code.find("// Antigravity 2.0 Chinese Localization Engine") {
         original_code[..idx].trim_end()
@@ -326,17 +401,21 @@ fn patch_hub_asar(asar_path: &Path) -> Result<(), String> {
     final_bytes.extend_from_slice(old_payload);
     final_bytes.extend_from_slice(new_code_bytes);
 
-    fs::write(asar_path, final_bytes).map_err(|e| format!("写入汉化补丁失败（请先关闭 Antigravity 客户端后重试）: {e}"))?;
+    fs::write(asar_path, final_bytes)
+        .map_err(|e| format!("写入汉化补丁失败（请先关闭 Antigravity 客户端后重试）: {e}"))?;
     Ok(())
 }
 
 fn patch_ide_workbench(html_path: &Path, product_json: &Path) -> Result<(), String> {
-    let workbench_dir = html_path.parent().ok_or_else(|| "无法获取 workbench 目录".to_string())?;
+    let workbench_dir = html_path
+        .parent()
+        .ok_or_else(|| "无法获取 workbench 目录".to_string())?;
     let overlay_path = workbench_dir.join("antigravity-hans-overlay.js");
     fs::write(&overlay_path, get_ide_payload().trim().as_bytes())
         .map_err(|e| format!("写出 overlay 脚本失败: {e}"))?;
 
-    let html_content = fs::read_to_string(html_path).map_err(|e| format!("读取 workbench.html 失败: {e}"))?;
+    let html_content =
+        fs::read_to_string(html_path).map_err(|e| format!("读取 workbench.html 失败: {e}"))?;
     let bak_path = html_path.with_file_name("workbench.html.lang.bak");
     if !bak_path.exists() && !html_content.contains("antigravity-hans-overlay.js") {
         let _ = fs::copy(html_path, &bak_path);
@@ -345,9 +424,19 @@ fn patch_ide_workbench(html_path: &Path, product_json: &Path) -> Result<(), Stri
     let script_tag = "<script src=\"antigravity-hans-overlay.js\"></script>";
     if !html_content.contains(script_tag) {
         let new_html = if let Some(idx) = html_content.rfind("</body>") {
-            format!("{}\n\t{}\n{}", &html_content[..idx], script_tag, &html_content[idx..])
+            format!(
+                "{}\n\t{}\n{}",
+                &html_content[..idx],
+                script_tag,
+                &html_content[idx..]
+            )
         } else if let Some(idx) = html_content.rfind("</html>") {
-            format!("{}\n\t{}\n{}", &html_content[..idx], script_tag, &html_content[idx..])
+            format!(
+                "{}\n\t{}\n{}",
+                &html_content[..idx],
+                script_tag,
+                &html_content[idx..]
+            )
         } else {
             format!("{}\n{}", html_content, script_tag)
         };
@@ -444,9 +533,15 @@ pub fn get_antigravity_localization_status(target: String) -> AntigravityLocaliz
 }
 
 #[tauri::command]
-pub fn apply_antigravity_localization(target: String) -> Result<LocalizationOperationResult, String> {
+pub fn apply_antigravity_localization(
+    target: String,
+) -> Result<LocalizationOperationResult, String> {
     let is_ide = target == "antigravity-ide";
-    let plat_name = if is_ide { "Antigravity IDE" } else { "Antigravity" };
+    let plat_name = if is_ide {
+        "Antigravity IDE"
+    } else {
+        "Antigravity"
+    };
 
     if is_ide {
         let html_path = ide_workbench_html_path()
@@ -468,9 +563,15 @@ pub fn apply_antigravity_localization(target: String) -> Result<LocalizationOper
 }
 
 #[tauri::command]
-pub fn restore_antigravity_localization(target: String) -> Result<LocalizationOperationResult, String> {
+pub fn restore_antigravity_localization(
+    target: String,
+) -> Result<LocalizationOperationResult, String> {
     let is_ide = target == "antigravity-ide";
-    let plat_name = if is_ide { "Antigravity IDE" } else { "Antigravity" };
+    let plat_name = if is_ide {
+        "Antigravity IDE"
+    } else {
+        "Antigravity"
+    };
 
     if is_ide {
         let html_path = ide_workbench_html_path()
@@ -479,8 +580,8 @@ pub fn restore_antigravity_localization(target: String) -> Result<LocalizationOp
             .unwrap_or_else(|| html_path.parent().unwrap().join("product.json"));
         restore_ide_workbench(&html_path, &product_json)?;
     } else {
-        let asar_path = hub_asar_path()
-            .ok_or_else(|| "未找到 Antigravity 桌面端安装目录".to_string())?;
+        let asar_path =
+            hub_asar_path().ok_or_else(|| "未找到 Antigravity 桌面端安装目录".to_string())?;
         restore_hub_asar(&asar_path)?;
     }
 
@@ -492,7 +593,8 @@ pub fn restore_antigravity_localization(target: String) -> Result<LocalizationOp
 }
 
 #[tauri::command]
-pub async fn check_antigravity_localization_update() -> Result<AntigravityLocalizationStatus, String> {
+pub async fn check_antigravity_localization_update() -> Result<AntigravityLocalizationStatus, String>
+{
     let client = reqwest::Client::builder()
         .user_agent("AnyBridge-Desktop-Client")
         .timeout(std::time::Duration::from_secs(5))
@@ -510,7 +612,11 @@ pub async fn check_antigravity_localization_update() -> Result<AntigravityLocali
     }
 
     let val = resp.json::<Value>().await.map_err(|e| e.to_string())?;
-    let tag = val.get("tag_name").and_then(|v| v.as_str()).unwrap_or("").to_string();
+    let tag = val
+        .get("tag_name")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
     let clean_tag = tag.trim_start_matches(|c| c == 'v' || c == 'V').to_string();
     let current = read_cached_version();
     let has_update = !clean_tag.is_empty() && clean_tag != current;
@@ -522,15 +628,25 @@ pub async fn check_antigravity_localization_update() -> Result<AntigravityLocali
         current_version: current,
         latest_version: Some(clean_tag),
         has_update,
-        release_name: val.get("name").and_then(|v| v.as_str()).map(|s| s.to_string()),
-        release_url: val.get("html_url").and_then(|v| v.as_str()).map(|s| s.to_string()),
-        published_at: val.get("published_at").and_then(|v| v.as_str()).map(|s| s.to_string()),
+        release_name: val
+            .get("name")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string()),
+        release_url: val
+            .get("html_url")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string()),
+        published_at: val
+            .get("published_at")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string()),
         message: None,
     })
 }
 
 #[tauri::command]
-pub async fn download_antigravity_localization_update() -> Result<LocalizationOperationResult, String> {
+pub async fn download_antigravity_localization_update(
+) -> Result<LocalizationOperationResult, String> {
     let client = reqwest::Client::builder()
         .user_agent("AnyBridge-Desktop-Client")
         .timeout(std::time::Duration::from_secs(10))
@@ -538,7 +654,9 @@ pub async fn download_antigravity_localization_update() -> Result<LocalizationOp
         .map_err(|e| e.to_string())?;
 
     let check = check_antigravity_localization_update().await?;
-    let latest_ver = check.latest_version.unwrap_or_else(|| CURRENT_EMBEDDED_VERSION.to_string());
+    let latest_ver = check
+        .latest_version
+        .unwrap_or_else(|| CURRENT_EMBEDDED_VERSION.to_string());
 
     let script_url = "https://raw.githubusercontent.com/liominsb/Antigravity-Chinese-Localization/master/localize.js";
     let resp = client
@@ -549,26 +667,37 @@ pub async fn download_antigravity_localization_update() -> Result<LocalizationOp
     if !resp.status().is_success() {
         return Err(format!("下载上游汉化脚本失败: HTTP {}", resp.status()));
     }
-    let code = resp.text().await.map_err(|e| format!("读取上游汉化脚本失败: {e}"))?;
+    let code = resp
+        .text()
+        .await
+        .map_err(|e| format!("读取上游汉化脚本失败: {e}"))?;
 
-    let (override_js, count) = extract_dictionary_override(&code)
-        .ok_or_else(|| "上游脚本结构变化，未能解析出汉化词典（已保留内置离线词库不受影响）".to_string())?;
+    let (override_js, count) = extract_dictionary_override(&code).ok_or_else(|| {
+        "上游脚本结构变化，未能解析出汉化词典（已保留内置离线词库不受影响）".to_string()
+    })?;
 
-    fs::write(cache_dir().join("antigravity-hub-dict.js"), override_js.as_bytes())
-        .map_err(|e| format!("写入热更新词库缓存失败: {e}"))?;
+    fs::write(
+        cache_dir().join("antigravity-hub-dict.js"),
+        override_js.as_bytes(),
+    )
+    .map_err(|e| format!("写入热更新词库缓存失败: {e}"))?;
     let meta_json = json!({
         "version": latest_ver,
         "updatedAt": chrono::Utc::now().to_rfc3339(),
         "entries": count
     });
-    fs::write(cache_dir().join("metadata.json"), meta_json.to_string().as_bytes())
-        .map_err(|e| format!("写入词库版本记录失败: {e}"))?;
+    fs::write(
+        cache_dir().join("metadata.json"),
+        meta_json.to_string().as_bytes(),
+    )
+    .map_err(|e| format!("写入词库版本记录失败: {e}"))?;
 
     Ok(LocalizationOperationResult {
         ok: true,
-        message: format!("已同步上游最新汉化词库 v{}（{} 条词条），请重新应用汉化生效", latest_ver, count),
+        message: format!(
+            "已同步上游最新汉化词库 v{}（{} 条词条），请重新应用汉化生效",
+            latest_ver, count
+        ),
         localized: true,
     })
 }
-
-

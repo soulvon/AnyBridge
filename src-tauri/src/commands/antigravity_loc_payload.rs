@@ -200,4 +200,3 @@ pub const IDE_LOCALIZATION_JS: &str = r#"
   }
 })();
 "#;
-

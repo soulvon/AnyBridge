@@ -140,9 +140,7 @@ fn write_mitm_cert_bundle(certs_dir: &std::path::Path) -> Result<(), String> {
 }
 
 #[cfg(test)]
-pub(crate) fn write_mitm_cert_bundle_for_test(
-    certs_dir: &std::path::Path,
-) -> Result<(), String> {
+pub(crate) fn write_mitm_cert_bundle_for_test(certs_dir: &std::path::Path) -> Result<(), String> {
     write_mitm_cert_bundle(certs_dir)
 }
 
@@ -279,7 +277,11 @@ pub fn export_proxy_logs(entries: Vec<ExportLogEntry>) -> Result<String, String>
             files.sort_by_key(|p| {
                 std::fs::metadata(p)
                     .and_then(|m| m.modified())
-                    .map(|t| t.duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0))
+                    .map(|t| {
+                        t.duration_since(std::time::UNIX_EPOCH)
+                            .map(|d| d.as_secs())
+                            .unwrap_or(0)
+                    })
                     .unwrap_or(0)
             });
             for stale in files.iter().take(files.len() - MAX_EXPORTS) {
@@ -390,10 +392,7 @@ pub fn set_autostart(enabled: bool) -> Result<(), String> {
         if enabled {
             std::fs::create_dir_all(&autostart_dir).map_err(|e| e.to_string())?;
             // Desktop Entry Spec: Exec 值中的空格/引号需要转义
-            let exec = format!(
-                "\"{}\"",
-                exe.replace('\\', "\\\\").replace('"', "\\\"")
-            );
+            let exec = format!("\"{}\"", exe.replace('\\', "\\\\").replace('"', "\\\""));
             let desktop_content = format!(
                 "[Desktop Entry]\nType=Application\nName=AnyBridge\nExec={}\nHidden=false\nX-GNOME-Autostart-enabled=true\n",
                 exec
@@ -598,9 +597,7 @@ fn write_atomic(path: &std::path::Path, contents: impl AsRef<[u8]>) -> Result<()
     })?;
     let tmp = parent.join(format!(
         ".{}.{}.tmp",
-        path.file_name()
-            .and_then(|s| s.to_str())
-            .unwrap_or("cert"),
+        path.file_name().and_then(|s| s.to_str()).unwrap_or("cert"),
         std::process::id()
     ));
     std::fs::write(&tmp, contents.as_ref()).map_err(|e| {
@@ -673,8 +670,14 @@ pub fn ensure_mitm_certs_ex(force: bool) -> Result<(std::path::PathBuf, bool), S
 
     let cert_ok = cert_path.metadata().map(|m| m.len() > 0).unwrap_or(false);
     let key_ok = key_path.metadata().map(|m| m.len() > 0).unwrap_or(false);
-    let leaf_ok = leaf_cert_path.metadata().map(|m| m.len() > 0).unwrap_or(false)
-        && leaf_key_path.metadata().map(|m| m.len() > 0).unwrap_or(false)
+    let leaf_ok = leaf_cert_path
+        .metadata()
+        .map(|m| m.len() > 0)
+        .unwrap_or(false)
+        && leaf_key_path
+            .metadata()
+            .map(|m| m.len() > 0)
+            .unwrap_or(false)
         && validate_mitm_cert_files(&leaf_cert_path, &leaf_key_path).is_ok();
     let san_ok = std::fs::read_to_string(&san_marker_path)
         .map(|s| s.trim() == MITM_CERT_SAN_VERSION)
@@ -692,8 +695,14 @@ pub fn ensure_mitm_certs_ex(force: bool) -> Result<(std::path::PathBuf, bool), S
         // 回读校验：避免磁盘满/权限问题导致「写入成功但文件为空」
         let cert_ok = cert_path.metadata().map(|m| m.len() > 0).unwrap_or(false);
         let key_ok = key_path.metadata().map(|m| m.len() > 0).unwrap_or(false);
-        let leaf_ok = leaf_cert_path.metadata().map(|m| m.len() > 0).unwrap_or(false)
-            && leaf_key_path.metadata().map(|m| m.len() > 0).unwrap_or(false);
+        let leaf_ok = leaf_cert_path
+            .metadata()
+            .map(|m| m.len() > 0)
+            .unwrap_or(false)
+            && leaf_key_path
+                .metadata()
+                .map(|m| m.len() > 0)
+                .unwrap_or(false);
         let san_ok = std::fs::read_to_string(&san_marker_path)
             .map(|s| s.trim() == MITM_CERT_SAN_VERSION)
             .unwrap_or(false);
@@ -720,9 +729,9 @@ pub async fn generate_certs() -> Result<String, String> {
     let handle = tauri::async_runtime::spawn_blocking(|| generate_certs_ex(false));
     match tokio::time::timeout(std::time::Duration::from_secs(60), handle).await {
         Ok(join) => join.map_err(|e| format!("证书生成任务失败: {}", e))?,
-        Err(_) => Err(
-            "证书生成超时（60s）。请重试；若仍失败请到「环境检测」点「清理并重装」".into(),
-        ),
+        Err(_) => {
+            Err("证书生成超时（60s）。请重试；若仍失败请到「环境检测」点「清理并重装」".into())
+        }
     }
 }
 
@@ -1507,12 +1516,16 @@ fn restart_ide_impl(target: String) -> Result<String, String> {
             std::thread::sleep(std::time::Duration::from_millis(500));
             let running = if let Some(image) = unique_image {
                 Command::new("tasklist")
-                    .args(["/FI", &format!("IMAGENAME eq {}", image), "/FO", "CSV", "/NH"])
+                    .args([
+                        "/FI",
+                        &format!("IMAGENAME eq {}", image),
+                        "/FO",
+                        "CSV",
+                        "/NH",
+                    ])
                     .creation_flags(0x0800_0000)
                     .output()
-                    .map(|out| {
-                        String::from_utf8_lossy(&out.stdout).contains(image)
-                    })
+                    .map(|out| String::from_utf8_lossy(&out.stdout).contains(image))
                     .unwrap_or(false)
             } else {
                 is_ide_running(t.clone())
@@ -1746,7 +1759,9 @@ fn unix_ide_pids(target: &str) -> Vec<u32> {
             continue;
         }
         let mut parts = line.splitn(2, char::is_whitespace);
-        let Some(pid_str) = parts.next() else { continue };
+        let Some(pid_str) = parts.next() else {
+            continue;
+        };
         let Some(cmd) = parts.next() else { continue };
         let Ok(pid) = pid_str.trim().parse::<u32>() else {
             continue;
@@ -1847,9 +1862,13 @@ pub fn is_ide_running(name: String) -> bool {
         } else if n == "cursor" {
             format!(r#"Get-Process Cursor -ErrorAction SilentlyContinue | Select-Object -First 1"#)
         } else if n == "antigravity-ide" {
-            format!(r#"Get-Process 'Antigravity IDE' -ErrorAction SilentlyContinue | Select-Object -First 1"#)
+            format!(
+                r#"Get-Process 'Antigravity IDE' -ErrorAction SilentlyContinue | Select-Object -First 1"#
+            )
         } else if n == "antigravity" {
-            format!(r#"Get-Process Antigravity -ErrorAction SilentlyContinue | Where-Object {{ $_.Path -and $_.Path -notmatch 'Antigravity IDE' }} | Select-Object -First 1"#)
+            format!(
+                r#"Get-Process Antigravity -ErrorAction SilentlyContinue | Where-Object {{ $_.Path -and $_.Path -notmatch 'Antigravity IDE' }} | Select-Object -First 1"#
+            )
         } else {
             format!(
                 r#"Get-Process Windsurf -ErrorAction SilentlyContinue | Where-Object {{ $_.Path -and $_.Path -notmatch '[\\/]devin[\\/]' }} | Select-Object -First 1"#

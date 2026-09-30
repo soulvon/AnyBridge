@@ -23,8 +23,8 @@ use tauri::{AppHandle, Emitter};
 use toml_edit::{value, Array, DocumentMut, Item, Table};
 
 use super::config::{
-    read_provider_store, write_provider_store, AgentsGlobalConfig,
-    ClaudeCodeConfig, ModelCatalogEntry, OpenCodeConfig, PlatformState, Provider, ProviderStore,
+    read_provider_store, write_provider_store, AgentsGlobalConfig, ClaudeCodeConfig,
+    ModelCatalogEntry, OpenCodeConfig, PlatformState, Provider, ProviderStore,
 };
 
 const PLATFORM_ANTIGRAVITY: &str = "antigravity";
@@ -308,7 +308,10 @@ impl Platform {
                     Platform::OpenCode => home.join(".config").join("opencode"),
                     Platform::WorkBuddy => home.join(".workbuddy"),
                     Platform::ZCode => home.join(".zcode"),
-                    Platform::Antigravity | Platform::AntigravityIde | Platform::ClaudeDesktop | Platform::Codex => unreachable!(),
+                    Platform::Antigravity
+                    | Platform::AntigravityIde
+                    | Platform::ClaudeDesktop
+                    | Platform::Codex => unreachable!(),
                 })
             }
         }
@@ -379,7 +382,12 @@ impl Platform {
         match self {
             Platform::Antigravity => {
                 if let Some(local) = dirs::data_local_dir() {
-                    if local.join("Programs").join("antigravity").join("Antigravity.exe").exists() {
+                    if local
+                        .join("Programs")
+                        .join("antigravity")
+                        .join("Antigravity.exe")
+                        .exists()
+                    {
                         return true;
                     }
                 }
@@ -397,7 +405,12 @@ impl Platform {
             }
             Platform::AntigravityIde => {
                 if let Some(local) = dirs::data_local_dir() {
-                    if local.join("Programs").join("Antigravity IDE").join("Antigravity IDE.exe").exists() {
+                    if local
+                        .join("Programs")
+                        .join("Antigravity IDE")
+                        .join("Antigravity IDE.exe")
+                        .exists()
+                    {
                         return true;
                     }
                 }
@@ -510,7 +523,9 @@ impl Platform {
                 let auth_line = if p.preserve_official_auth {
                     "requires_openai_auth = true".to_string()
                 } else {
-                    format!("requires_openai_auth = false\nexperimental_bearer_token = \"{masked}\"")
+                    format!(
+                        "requires_openai_auth = false\nexperimental_bearer_token = \"{masked}\""
+                    )
                 };
                 Ok(format!(
                     "model = \"{model}\"\nmodel_provider = \"{CODEX_RUNTIME_MODEL_PROVIDER_ID}\"{catalog_line}\n\n[model_providers.{CODEX_RUNTIME_MODEL_PROVIDER_ID}]\nname = \"{name}\"\nbase_url = \"{base}\"\nwire_api = \"responses\"\n{auth_line}\n{CODEX_ANYBRIDGE_MANAGED_FLAG} = true"
@@ -543,7 +558,11 @@ impl Platform {
             Platform::Grok => {
                 let base = openai_base_url(p);
                 let raw_model = p.default_model.trim();
-                let model = toml_escape(if raw_model.is_empty() { "default" } else { raw_model });
+                let model = toml_escape(if raw_model.is_empty() {
+                    "default"
+                } else {
+                    raw_model
+                });
                 let masked = mask_key(&p.api_key);
                 let name = toml_escape(&p.name);
                 let key = grok_sanitize_key(&p.id);
@@ -824,15 +843,16 @@ impl Platform {
         let enhancement = super::model_map::read_map()
             .map(|m| m.enhancement)
             .unwrap_or_default();
-        provider_table["request_max_retries"] =
-            value(enhancement.codex_request_max_retries as i64);
-        provider_table["stream_max_retries"] =
-            value(enhancement.codex_stream_max_retries as i64);
+        provider_table["request_max_retries"] = value(enhancement.codex_request_max_retries as i64);
+        provider_table["stream_max_retries"] = value(enhancement.codex_stream_max_retries as i64);
 
         // ── 模型目录：让 Codex 显示自定义模型列表 ──
         // catalog 目录必须与 config.toml 同目录；禁止回退到进程 CWD。
         let catalog_dir = path.parent().ok_or_else(|| {
-            format!("无法定位 Codex 配置目录（config 路径异常）: {}", path.display())
+            format!(
+                "无法定位 Codex 配置目录（config 路径异常）: {}",
+                path.display()
+            )
         })?;
         let catalog_entries = resolve_codex_model_catalog_entries(p);
         if !catalog_entries.is_empty() {
@@ -851,7 +871,11 @@ impl Platform {
         finalize_codex_agents_files(path, agents_finalize)
     }
 
-    fn apply_codex_official(&self, path: &PathBuf, unify_session_history: bool) -> Result<(), String> {
+    fn apply_codex_official(
+        &self,
+        path: &PathBuf,
+        unify_session_history: bool,
+    ) -> Result<(), String> {
         let raw = if path.exists() {
             fs::read_to_string(path).map_err(|e| e.to_string())?
         } else {
@@ -888,7 +912,9 @@ impl Platform {
                 .or_insert(Item::Table(Table::new()))
                 .as_table_mut()
                 .ok_or_else(|| {
-                    format!("config.toml 的 model_providers.{CODEX_RUNTIME_MODEL_PROVIDER_ID} 不是表")
+                    format!(
+                        "config.toml 的 model_providers.{CODEX_RUNTIME_MODEL_PROVIDER_ID} 不是表"
+                    )
                 })?;
             provider_table["name"] = value("OpenAI 官方");
             provider_table["wire_api"] = value("responses");
@@ -1010,7 +1036,11 @@ impl Platform {
         }
         let mut obj = parse_json_object(&raw, "opencode.json")?;
 
-        let mut managed_ids: Vec<String> = store.opencode_configs.iter().map(|c| c.id.clone()).collect();
+        let mut managed_ids: Vec<String> = store
+            .opencode_configs
+            .iter()
+            .map(|c| c.id.clone())
+            .collect();
         managed_ids.push(PLATFORM_OPENCODE.to_string());
         managed_ids.push("anybridge-local-proxy".to_string());
         managed_ids.push("anybridge-local-proxy-opencode".to_string());
@@ -1078,7 +1108,11 @@ impl Platform {
 
         let mut entry = Table::new();
         let raw_model = p.default_model.trim();
-        let model_val = if raw_model.is_empty() { "default" } else { raw_model };
+        let model_val = if raw_model.is_empty() {
+            "default"
+        } else {
+            raw_model
+        };
         let backend = if !p.wire_api.trim().is_empty() {
             p.wire_api.trim()
         } else {
@@ -1137,7 +1171,8 @@ impl Platform {
 
         if let Some(def) = current_default {
             if keys_to_remove.contains(&def) || def == "anybridge" {
-                if let Some(models_table) = doc.get_mut("models").and_then(Item::as_table_like_mut) {
+                if let Some(models_table) = doc.get_mut("models").and_then(Item::as_table_like_mut)
+                {
                     models_table.remove("default");
                     if models_table.is_empty() {
                         doc.remove("models");
@@ -1380,8 +1415,9 @@ fn patch_antigravity_hub_asar(asar_path: &std::path::Path) -> Result<(), String>
     if bytes.len() < payload_start + offset + size {
         return Err("asar payload 越界".to_string());
     }
-    let original_code = std::str::from_utf8(&bytes[payload_start + offset..payload_start + offset + size])
-        .map_err(|e| format!("解析 languageServer.js 失败: {e}"))?;
+    let original_code =
+        std::str::from_utf8(&bytes[payload_start + offset..payload_start + offset + size])
+            .map_err(|e| format!("解析 languageServer.js 失败: {e}"))?;
 
     if original_code.contains("jetski.cloudCodeUrl") {
         return Ok(());
@@ -1392,8 +1428,10 @@ fn patch_antigravity_hub_asar(asar_path: &std::path::Path) -> Result<(), String>
         let _ = fs::copy(asar_path, &bak_path);
     }
 
-    let target_lf = "'--cloud_code_endpoint',\n            'https://daily-cloudcode-pa.googleapis.com',";
-    let target_crlf = "'--cloud_code_endpoint',\r\n            'https://daily-cloudcode-pa.googleapis.com',";
+    let target_lf =
+        "'--cloud_code_endpoint',\n            'https://daily-cloudcode-pa.googleapis.com',";
+    let target_crlf =
+        "'--cloud_code_endpoint',\r\n            'https://daily-cloudcode-pa.googleapis.com',";
     let injected = "'--cloud_code_endpoint',\n            (() => { try { const cfg = path_1.default.join(electron_1.app.getPath('userData'), 'User', 'settings.json'); if (fs.existsSync(cfg)) { const val = JSON.parse(fs.readFileSync(cfg, 'utf8'))['jetski.cloudCodeUrl']; if (val && typeof val === 'string') return val.trim(); } } catch(_) {} return process.env.CLOUD_CODE_URL || 'https://daily-cloudcode-pa.googleapis.com'; })(),";
 
     let new_code = if original_code.contains(target_lf) {
@@ -1413,7 +1451,10 @@ fn patch_antigravity_hub_asar(asar_path: &std::path::Path) -> Result<(), String>
     hasher.update(new_code_bytes);
     let hash_hex = hex::encode(hasher.finalize());
 
-    ls_node.insert("offset".to_string(), serde_json::json!(new_offset.to_string()));
+    ls_node.insert(
+        "offset".to_string(),
+        serde_json::json!(new_offset.to_string()),
+    );
     ls_node.insert("size".to_string(), serde_json::json!(new_code_bytes.len()));
     ls_node.insert(
         "integrity".to_string(),
@@ -1900,7 +1941,12 @@ pub(crate) fn read_codex_model_template() -> Option<serde_json::Value> {
                         })
                         .or_else(|| {
                             models.iter().find(|m| {
-                                is_codex_official_template_candidate(m, &catalog_slugs, false, false)
+                                is_codex_official_template_candidate(
+                                    m,
+                                    &catalog_slugs,
+                                    false,
+                                    false,
+                                )
                             })
                         })
                         .cloned();
@@ -2033,9 +2079,9 @@ pub(crate) fn generate_model_catalog_json(entries: &[ModelCatalogEntry]) -> Resu
                     .clone()
                     .expect("legacy_template verified above for non-bundled models");
                 let display_name = e.display_name.as_deref().unwrap_or(e.model.as_str());
-                let ctx = e.context_window.unwrap_or_else(|| {
-                    recommend_context_window(&e.model)
-                });
+                let ctx = e
+                    .context_window
+                    .unwrap_or_else(|| recommend_context_window(&e.model));
                 obj["slug"] = serde_json::json!(e.model);
                 obj["display_name"] = serde_json::json!(display_name);
                 obj["description"] = serde_json::json!(display_name);
@@ -2578,11 +2624,7 @@ fn apply_codex_auto_wire_api(provider: &mut Provider, store: &mut ProviderStore,
         return;
     };
     provider.wire_api = resolved.clone();
-    if let Some(config) = store
-        .codex_configs
-        .iter_mut()
-        .find(|c| c.id == config_id)
-    {
+    if let Some(config) = store.codex_configs.iter_mut().find(|c| c.id == config_id) {
         config.wire_api = resolved;
     }
 }
@@ -2808,8 +2850,7 @@ fn read_codex_config_info(path: &PathBuf) -> Result<Option<CodexConfigInfo>, Str
             .and_then(|table| toml_table_string(table, "name"))
             .map(|name| {
                 let trimmed = name.trim();
-                trimmed.eq_ignore_ascii_case("openai")
-                    || trimmed == "OpenAI 官方"
+                trimmed.eq_ignore_ascii_case("openai") || trimmed == "OpenAI 官方"
             })
             .unwrap_or(false)
             && base_url.is_none()
@@ -2898,7 +2939,10 @@ fn json_string_candidates(map: Option<&Map<String, Value>>, keys: &[&str]) -> Ve
 
 fn strip_one_m_marker(model: &str) -> &str {
     let trimmed = model.trim();
-    if let Some(stripped) = trimmed.strip_suffix("[1m]").or_else(|| trimmed.strip_suffix("[1M]")) {
+    if let Some(stripped) = trimmed
+        .strip_suffix("[1m]")
+        .or_else(|| trimmed.strip_suffix("[1M]"))
+    {
         stripped.trim()
     } else {
         trimmed
@@ -2927,15 +2971,33 @@ fn ensure_one_m_marker_if_needed(model: &str, is_anyrouter: bool) -> String {
 fn set_claude_model_env(env: &mut Map<String, Value>, model: &str) {
     let raw_model = model.trim();
     let display_name = strip_one_m_marker(raw_model);
-    env.insert("ANTHROPIC_MODEL".to_string(), Value::String(raw_model.to_string()));
+    env.insert(
+        "ANTHROPIC_MODEL".to_string(),
+        Value::String(raw_model.to_string()),
+    );
     for (model_key, name_key) in [
-        ("ANTHROPIC_DEFAULT_HAIKU_MODEL", "ANTHROPIC_DEFAULT_HAIKU_MODEL_NAME"),
-        ("ANTHROPIC_DEFAULT_SONNET_MODEL", "ANTHROPIC_DEFAULT_SONNET_MODEL_NAME"),
-        ("ANTHROPIC_DEFAULT_OPUS_MODEL", "ANTHROPIC_DEFAULT_OPUS_MODEL_NAME"),
-        ("ANTHROPIC_DEFAULT_FABLE_MODEL", "ANTHROPIC_DEFAULT_FABLE_MODEL_NAME"),
+        (
+            "ANTHROPIC_DEFAULT_HAIKU_MODEL",
+            "ANTHROPIC_DEFAULT_HAIKU_MODEL_NAME",
+        ),
+        (
+            "ANTHROPIC_DEFAULT_SONNET_MODEL",
+            "ANTHROPIC_DEFAULT_SONNET_MODEL_NAME",
+        ),
+        (
+            "ANTHROPIC_DEFAULT_OPUS_MODEL",
+            "ANTHROPIC_DEFAULT_OPUS_MODEL_NAME",
+        ),
+        (
+            "ANTHROPIC_DEFAULT_FABLE_MODEL",
+            "ANTHROPIC_DEFAULT_FABLE_MODEL_NAME",
+        ),
     ] {
         env.insert(model_key.to_string(), Value::String(raw_model.to_string()));
-        env.insert(name_key.to_string(), Value::String(display_name.to_string()));
+        env.insert(
+            name_key.to_string(),
+            Value::String(display_name.to_string()),
+        );
     }
     env.remove("ANTHROPIC_SMALL_FAST_MODEL");
 }
@@ -2962,7 +3024,10 @@ fn normalize_claude_settings_model_env(settings: &mut Value, fallback_model: &st
         return;
     };
 
-    let base_url = env.get("ANTHROPIC_BASE_URL").and_then(Value::as_str).unwrap_or("");
+    let base_url = env
+        .get("ANTHROPIC_BASE_URL")
+        .and_then(Value::as_str)
+        .unwrap_or("");
     let is_anyrouter = base_url.to_ascii_lowercase().contains("anyrouter");
 
     let fallback = {
@@ -3001,7 +3066,10 @@ fn normalize_claude_settings_model_env(settings: &mut Value, fallback_model: &st
         .map(|m| ensure_one_m_marker_if_needed(&m, is_anyrouter));
 
     let haiku_name = haiku.as_deref().map(strip_one_m_marker).map(str::to_string);
-    let sonnet_name = sonnet.as_deref().map(strip_one_m_marker).map(str::to_string);
+    let sonnet_name = sonnet
+        .as_deref()
+        .map(strip_one_m_marker)
+        .map(str::to_string);
     let opus_name = opus.as_deref().map(strip_one_m_marker).map(str::to_string);
     let fable_name = fable.as_deref().map(strip_one_m_marker).map(str::to_string);
 
@@ -3128,7 +3196,8 @@ fn claude_settings_from_config(config: &ClaudeCodeConfig, mask_token: bool) -> V
 
     let provider = Provider::from(config.clone());
     let base = claude_base_url(&provider);
-    let is_anyrouter = base.to_ascii_lowercase().contains("anyrouter") || config.name.to_ascii_lowercase().contains("anyrouter");
+    let is_anyrouter = base.to_ascii_lowercase().contains("anyrouter")
+        || config.name.to_ascii_lowercase().contains("anyrouter");
     let raw_model = provider.default_model.trim();
     let model = if is_anyrouter && is_claude_model(raw_model) {
         if !raw_model.ends_with("[1m]") && !raw_model.ends_with("[1M]") && !raw_model.is_empty() {
@@ -3569,9 +3638,7 @@ fn load_model_context_presets() -> ModelContextPresets {
     match serde_json::from_str::<ModelContextPresets>(MODEL_CONTEXT_PRESETS_JSON) {
         Ok(parsed) => parsed,
         Err(err) => {
-            eprintln!(
-                "[model-context-presets] 内置 JSON 解析失败，回退默认值: {err}"
-            );
+            eprintln!("[model-context-presets] 内置 JSON 解析失败，回退默认值: {err}");
             ModelContextPresets::default()
         }
     }
@@ -3709,7 +3776,9 @@ fn resolve_model_context_preset(model_id: &str) -> (u64, u64) {
             if score > best_score {
                 best_score = score;
                 best_in = entry.max_input_tokens.unwrap_or(defaults.max_input_tokens);
-                best_out = entry.max_output_tokens.unwrap_or(defaults.max_output_tokens);
+                best_out = entry
+                    .max_output_tokens
+                    .unwrap_or(defaults.max_output_tokens);
             }
         }
     }
@@ -3729,7 +3798,9 @@ fn resolve_model_context_preset(model_id: &str) -> (u64, u64) {
         }
         return (
             entry.max_input_tokens.unwrap_or(defaults.max_input_tokens),
-            entry.max_output_tokens.unwrap_or(defaults.max_output_tokens),
+            entry
+                .max_output_tokens
+                .unwrap_or(defaults.max_output_tokens),
         );
     }
 
@@ -3744,7 +3815,6 @@ fn recommend_context_window(model_id: &str) -> u64 {
 fn recommend_max_output_tokens(model_id: &str) -> u64 {
     resolve_model_context_preset(model_id).1
 }
-
 
 fn zcode_provider_entry(p: &Provider, api_key: &str) -> Value {
     let model_id = zcode_model_id(p);
@@ -3971,7 +4041,9 @@ fn zcode_model_item(
         if let Some(value) = max_output_tokens {
             obj.insert("maxOutputTokens".to_string(), serde_json::json!(value));
         }
-        if let Some((values, map)) = reasoning_lookup.get(&(provider_id.to_string(), model_id.to_string())) {
+        if let Some((values, map)) =
+            reasoning_lookup.get(&(provider_id.to_string(), model_id.to_string()))
+        {
             obj.insert("reasoningLevels".to_string(), serde_json::json!(values));
             if let Some(map) = map {
                 obj.insert("reasoningLevelMap".to_string(), serde_json::json!(map));
@@ -4331,9 +4403,8 @@ fn sync_zcode_personal_config_at(path: &Path, models: &[Value]) -> Result<(), St
             .filter(|s| !s.is_empty())
             .unwrap_or("Custom")
             .to_string();
-        let base_url = zcode_normalize_base_url(
-            model.get("url").and_then(Value::as_str).unwrap_or_default(),
-        );
+        let base_url =
+            zcode_normalize_base_url(model.get("url").and_then(Value::as_str).unwrap_or_default());
         let api_key = model
             .get("apiKey")
             .and_then(Value::as_str)
@@ -4406,7 +4477,8 @@ fn sync_zcode_personal_config_at(path: &Path, models: &[Value]) -> Result<(), St
         access.insert("type".to_string(), Value::String("api-key".to_string()));
         access.insert("apiKey".to_string(), serde_json::json!(api_key));
         let api = zcode_obj_mut(
-            cfg.entry("api").or_insert_with(|| Value::Object(Map::new())),
+            cfg.entry("api")
+                .or_insert_with(|| Value::Object(Map::new())),
             "providerRules 的 api 不是对象",
         )?;
         api.insert(
@@ -4484,7 +4556,10 @@ fn sync_zcode_personal_config_at(path: &Path, models: &[Value]) -> Result<(), St
                     .or_insert_with(|| Value::Object(Map::new())),
                 "providerModelRules 的 properties 不是对象",
             )?;
-            props.insert("contextWindow".to_string(), serde_json::json!(context_window));
+            props.insert(
+                "contextWindow".to_string(),
+                serde_json::json!(context_window),
+            );
             // 只管理 supportsImage；保留用户在 ZCode 内手动勾选的 supportsVideo / supportsPdf
             let input_format = zcode_obj_mut(
                 props
@@ -4492,7 +4567,10 @@ fn sync_zcode_personal_config_at(path: &Path, models: &[Value]) -> Result<(), St
                     .or_insert_with(|| Value::Object(Map::new())),
                 "providerModelRules 的 inputFormat 不是对象",
             )?;
-            input_format.insert("supportsImage".to_string(), serde_json::json!(supports_images));
+            input_format.insert(
+                "supportsImage".to_string(),
+                serde_json::json!(supports_images),
+            );
 
             // 思考档位：AnyBridge 全权管理 optionSpecs.reasoningLevel。
             // values 非空 → 写入（选中值由 ZCode 透传为 reasoning_effort）；空 → 移除恢复内置默认。
@@ -4519,7 +4597,8 @@ fn sync_zcode_personal_config_at(path: &Path, models: &[Value]) -> Result<(), St
                 )?;
                 if let Some(max_output) = max_output {
                     let max_tokens = zcode_obj_mut(
-                        specs.entry("maxOutputTokens")
+                        specs
+                            .entry("maxOutputTokens")
                             .or_insert_with(|| Value::Object(Map::new())),
                         "providerModelRules 的 maxOutputTokens 不是对象",
                     )?;
@@ -4529,7 +4608,8 @@ fn sync_zcode_personal_config_at(path: &Path, models: &[Value]) -> Result<(), St
                     specs.remove("reasoningLevel");
                 } else {
                     let level_cfg = zcode_obj_mut(
-                        specs.entry("reasoningLevel")
+                        specs
+                            .entry("reasoningLevel")
                             .or_insert_with(|| Value::Object(Map::new())),
                         "providerModelRules 的 reasoningLevel 不是对象",
                     )?;
@@ -4548,7 +4628,8 @@ fn sync_zcode_personal_config_at(path: &Path, models: &[Value]) -> Result<(), St
     }
 
     let json = serde_json::to_string_pretty(&Value::Object(root)).map_err(|e| e.to_string())?;
-    super::write_atomic(path, json.as_bytes()).map_err(|e| format!("写入 provider_config.json 失败: {e}"))
+    super::write_atomic(path, json.as_bytes())
+        .map_err(|e| format!("写入 provider_config.json 失败: {e}"))
 }
 
 fn codebuddy_supports_reasoning(model: &str) -> bool {
@@ -4692,7 +4773,13 @@ fn toml_escape(s: &str) -> String {
 fn grok_sanitize_key(key: &str) -> String {
     let s: String = key
         .chars()
-        .map(|c| if c.is_ascii_alphanumeric() || c == '-' || c == '_' { c } else { '-' })
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '-' || c == '_' {
+                c
+            } else {
+                '-'
+            }
+        })
         .collect();
     let trimmed = s.trim_matches('-');
     if trimmed.is_empty() {
@@ -4702,7 +4789,9 @@ fn grok_sanitize_key(key: &str) -> String {
     }
 }
 
-fn read_grok_config_info(path: &PathBuf) -> Result<Option<(Option<String>, Option<String>, bool, Vec<String>)>, String> {
+fn read_grok_config_info(
+    path: &PathBuf,
+) -> Result<Option<(Option<String>, Option<String>, bool, Vec<String>)>, String> {
     if !path.exists() {
         return Ok(None);
     }
@@ -5052,7 +5141,13 @@ fn detect_platforms_sync() -> Result<Vec<PlatformInfo>, String> {
                                 current_provider_id = Some(def_id.clone());
                                 current_provider_name = name.or_else(|| Some(def_id.clone()));
                                 managed_by_any_bridge = is_managed
-                                    || state.as_ref().map(|s| s.provider_id == def_id || grok_sanitize_key(&s.provider_id) == def_id).unwrap_or(false);
+                                    || state
+                                        .as_ref()
+                                        .map(|s| {
+                                            s.provider_id == def_id
+                                                || grok_sanitize_key(&s.provider_id) == def_id
+                                        })
+                                        .unwrap_or(false);
                             }
                         } else if state.is_none() {
                             managed_by_any_bridge = false;
@@ -5094,7 +5189,11 @@ pub fn preview_platform_switch(platform: String, provider_id: String) -> Result<
     let plat = Platform::from_id(&platform).ok_or_else(|| format!("未知平台: {platform}"))?;
     if matches!(plat, Platform::ClaudeDesktop) {
         let store = read_provider_store()?;
-        let bindings = if let Some(cfg) = store.claude_desktop_configs.iter().find(|c| c.id == provider_id) {
+        let bindings = if let Some(cfg) = store
+            .claude_desktop_configs
+            .iter()
+            .find(|c| c.id == provider_id)
+        {
             Some(super::proxy_routes::ClaudeDesktopBindings {
                 sonnet: cfg.sonnet_model.clone(),
                 opus: cfg.opus_model.clone(),
@@ -5154,9 +5253,18 @@ fn switch_platform_sync(
 ) -> Result<SwitchResult, String> {
     let plat = Platform::from_id(platform).ok_or_else(|| format!("未知平台: {platform}"))?;
     if matches!(plat, Platform::ClaudeDesktop) {
-        emit_switch_progress(app, plat.id(), "writing", "正在写入 Claude Desktop 路由配置…");
+        emit_switch_progress(
+            app,
+            plat.id(),
+            "writing",
+            "正在写入 Claude Desktop 路由配置…",
+        );
         let mut store = read_provider_store()?;
-        let bindings = if let Some(cfg) = store.claude_desktop_configs.iter().find(|c| c.id == provider_id) {
+        let bindings = if let Some(cfg) = store
+            .claude_desktop_configs
+            .iter()
+            .find(|c| c.id == provider_id)
+        {
             Some(super::proxy_routes::ClaudeDesktopBindings {
                 sonnet: cfg.sonnet_model.clone(),
                 opus: cfg.opus_model.clone(),
@@ -5570,11 +5678,9 @@ pub fn restore_opencode_official_config(app: AppHandle) -> Result<SwitchResult, 
 /// 切回 Codex 官方 OpenAI 配置：不依赖 .byok-bak，不修改 auth.json。
 #[tauri::command]
 pub async fn restore_codex_official_config(app: AppHandle) -> Result<SwitchResult, String> {
-    tauri::async_runtime::spawn_blocking(move || {
-        restore_codex_official_config_sync(&app)
-    })
-    .await
-    .map_err(|e| format!("切回官方配置任务执行失败: {e}"))?
+    tauri::async_runtime::spawn_blocking(move || restore_codex_official_config_sync(&app))
+        .await
+        .map_err(|e| format!("切回官方配置任务执行失败: {e}"))?
 }
 
 fn restore_codex_official_config_sync(app: &AppHandle) -> Result<SwitchResult, String> {
@@ -5654,7 +5760,9 @@ pub fn repair_codex_session_visibility(
 #[tauri::command]
 pub fn read_platform_config_file(platform: String) -> Result<String, String> {
     let plat = Platform::from_id(&platform).ok_or_else(|| format!("未知平台: {platform}"))?;
-    let path = plat.config_path().ok_or_else(|| "无法定位该平台配置路径".to_string())?;
+    let path = plat
+        .config_path()
+        .ok_or_else(|| "无法定位该平台配置路径".to_string())?;
     if !path.exists() {
         return Ok(String::new());
     }
@@ -5665,7 +5773,9 @@ pub fn read_platform_config_file(platform: String) -> Result<String, String> {
 #[tauri::command]
 pub fn write_platform_config_file(platform: String, content: String) -> Result<bool, String> {
     let plat = Platform::from_id(&platform).ok_or_else(|| format!("未知平台: {platform}"))?;
-    let path = plat.config_path().ok_or_else(|| "无法定位该平台配置路径".to_string())?;
+    let path = plat
+        .config_path()
+        .ok_or_else(|| "无法定位该平台配置路径".to_string())?;
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).map_err(|e| format!("创建配置目录失败: {e}"))?;
     }
@@ -6280,20 +6390,16 @@ wire_api = "responses"
                 .as_bool(),
             Some(false)
         );
-        assert!(
-            doc["model_providers"][CODEX_RUNTIME_MODEL_PROVIDER_ID]
-                .as_table()
-                .unwrap()
-                .get("env_key")
-                .is_none()
-        );
-        assert!(
-            doc["model_providers"][CODEX_RUNTIME_MODEL_PROVIDER_ID]
-                .as_table()
-                .unwrap()
-                .get("auth")
-                .is_none()
-        );
+        assert!(doc["model_providers"][CODEX_RUNTIME_MODEL_PROVIDER_ID]
+            .as_table()
+            .unwrap()
+            .get("env_key")
+            .is_none());
+        assert!(doc["model_providers"][CODEX_RUNTIME_MODEL_PROVIDER_ID]
+            .as_table()
+            .unwrap()
+            .get("auth")
+            .is_none());
         assert_eq!(
             doc["model_providers"][CODEX_RUNTIME_MODEL_PROVIDER_ID][CODEX_ANYBRIDGE_MANAGED_FLAG]
                 .as_bool(),
@@ -6348,7 +6454,9 @@ args = ["token"]
         let expected_codex_bearer = codex_bearer_token().unwrap();
 
         assert_eq!(
-            provider.get("requires_openai_auth").and_then(|v| v.as_bool()),
+            provider
+                .get("requires_openai_auth")
+                .and_then(|v| v.as_bool()),
             Some(false)
         );
         assert_eq!(
@@ -6393,7 +6501,9 @@ anybridge_managed = true
             .unwrap();
 
         assert_eq!(
-            provider.get("requires_openai_auth").and_then(|v| v.as_bool()),
+            provider
+                .get("requires_openai_auth")
+                .and_then(|v| v.as_bool()),
             Some(true)
         );
         assert!(provider.get("experimental_bearer_token").is_none());
@@ -6567,8 +6677,10 @@ name = "OpenAI"
 
         let raw = fs::read_to_string(&path).unwrap();
         let doc = raw.parse::<DocumentMut>().unwrap();
-        assert!(doc.get("service_tier").is_none(),
-            "service_tier should be removed when switching to third-party provider");
+        assert!(
+            doc.get("service_tier").is_none(),
+            "service_tier should be removed when switching to third-party provider"
+        );
         assert_eq!(
             doc["model_provider"].as_str(),
             Some(CODEX_RUNTIME_MODEL_PROVIDER_ID)
@@ -6638,7 +6750,10 @@ wire_api = "responses"
             "https://example.com/zen/go/v1"
         );
         provider.api_path = Some("/api/v2".to_string());
-        assert_eq!(codex_direct_base_url(&provider), "https://example.com/api/v2");
+        assert_eq!(
+            codex_direct_base_url(&provider),
+            "https://example.com/api/v2"
+        );
 
         // 空路径不能产生 "https://host/" —— 否则 Codex 拼成 "https://host//responses"。
         for empty in [None, Some(String::new()), Some("/".to_string())] {
@@ -6680,9 +6795,7 @@ wire_api = "responses"
         .unwrap()
     }
 
-    fn test_store_with_chat_source(
-        config: crate::commands::config::CodexConfig,
-    ) -> ProviderStore {
+    fn test_store_with_chat_source(config: crate::commands::config::CodexConfig) -> ProviderStore {
         let mut source = test_openai_provider();
         source.id = "prov-chat".to_string();
         source.api_path = Some("/v1/chat/completions".to_string());
@@ -6972,9 +7085,14 @@ anybridge_managed = true
         let provider = doc["model_providers"][CODEX_RUNTIME_MODEL_PROVIDER_ID]
             .as_table()
             .unwrap();
-        assert_eq!(provider.get("name").and_then(|v| v.as_str()), Some("OpenAI 官方"));
         assert_eq!(
-            provider.get("requires_openai_auth").and_then(|v| v.as_bool()),
+            provider.get("name").and_then(|v| v.as_str()),
+            Some("OpenAI 官方")
+        );
+        assert_eq!(
+            provider
+                .get("requires_openai_auth")
+                .and_then(|v| v.as_bool()),
             Some(true)
         );
         assert!(provider.get("base_url").is_none());
@@ -7119,14 +7237,23 @@ name = "Official Grok"
         let doc = raw.parse::<DocumentMut>().unwrap();
         assert_eq!(doc["cli"]["auto_update"].as_bool(), Some(false));
         assert_eq!(doc["models"]["default"].as_str(), Some("deepseek"));
-        assert_eq!(doc["model"]["existing"]["name"].as_str(), Some("Official Grok"));
+        assert_eq!(
+            doc["model"]["existing"]["name"].as_str(),
+            Some("Official Grok")
+        );
 
         let deepseek_table = doc["model"]["deepseek"].as_table().unwrap();
         assert_eq!(deepseek_table["name"].as_str(), Some("DeepSeek"));
         assert_eq!(deepseek_table["model"].as_str(), Some("deepseek-coder"));
-        assert_eq!(deepseek_table["base_url"].as_str(), Some("https://api.deepseek.com/v1"));
+        assert_eq!(
+            deepseek_table["base_url"].as_str(),
+            Some("https://api.deepseek.com/v1")
+        );
         assert_eq!(deepseek_table["api_key"].as_str(), Some("sk-1234567890"));
-        assert_eq!(deepseek_table["api_backend"].as_str(), Some("chat_completions"));
+        assert_eq!(
+            deepseek_table["api_backend"].as_str(),
+            Some("chat_completions")
+        );
         assert_eq!(deepseek_table["anybridge_managed"].as_bool(), Some(true));
 
         let info = read_grok_config_info(&path).unwrap().unwrap();
@@ -7146,8 +7273,17 @@ name = "Official Grok"
         let raw3 = fs::read_to_string(&path).unwrap();
         let doc3 = raw3.parse::<DocumentMut>().unwrap();
         assert_eq!(doc3["cli"]["auto_update"].as_bool(), Some(false));
-        assert_eq!(doc3["model"]["existing"]["name"].as_str(), Some("Official Grok"));
-        assert!(doc3.get("model").unwrap().as_table().unwrap().get("deepseek").is_none());
+        assert_eq!(
+            doc3["model"]["existing"]["name"].as_str(),
+            Some("Official Grok")
+        );
+        assert!(doc3
+            .get("model")
+            .unwrap()
+            .as_table()
+            .unwrap()
+            .get("deepseek")
+            .is_none());
         assert!(doc3.get("models").is_none());
 
         let info2 = read_grok_config_info(&path).unwrap().unwrap();
@@ -7178,14 +7314,26 @@ name = "Official Grok"
         let raw = fs::read_to_string(&path).unwrap();
         let doc = raw.parse::<DocumentMut>().unwrap();
         assert_eq!(doc["models"]["default"].as_str(), Some("custom-grok-model"));
-        assert_eq!(doc["model"]["custom-grok-model"]["name"].as_str(), Some("My Custom"));
-        assert_eq!(doc["model"]["custom-grok-model"]["model"].as_str(), Some("gpt-4o"));
+        assert_eq!(
+            doc["model"]["custom-grok-model"]["name"].as_str(),
+            Some("My Custom")
+        );
+        assert_eq!(
+            doc["model"]["custom-grok-model"]["model"].as_str(),
+            Some("gpt-4o")
+        );
 
         // 验证切回官方后托管段与 models.default 被清理
         Platform::Grok.apply_grok_official(&path).unwrap();
         let raw2 = fs::read_to_string(&path).unwrap();
         let doc2 = raw2.parse::<DocumentMut>().unwrap();
-        assert!(doc2.get("model").unwrap().as_table().unwrap().get("custom-grok-model").is_none());
+        assert!(doc2
+            .get("model")
+            .unwrap()
+            .as_table()
+            .unwrap()
+            .get("custom-grok-model")
+            .is_none());
         assert!(doc2.get("models").is_none());
 
         let _ = fs::remove_dir_all(path.parent().unwrap());
@@ -7227,13 +7375,18 @@ name = "Official Grok"
             source_provider_name: String::new(),
         });
 
-        Platform::OpenCode.apply_opencode_official(&path, &store).unwrap();
+        Platform::OpenCode
+            .apply_opencode_official(&path, &store)
+            .unwrap();
 
         let raw = fs::read_to_string(&path).unwrap();
         let val: Value = serde_json::from_str(&raw).unwrap();
         assert!(val.get("model").is_none());
         assert!(val["provider"].get("managed-deepseek").is_none());
-        assert_eq!(val["provider"]["user-custom"]["name"].as_str(), Some("User Custom Manual"));
+        assert_eq!(
+            val["provider"]["user-custom"]["name"].as_str(),
+            Some("User Custom Manual")
+        );
 
         let _ = fs::remove_dir_all(path.parent().unwrap());
     }
@@ -7265,7 +7418,12 @@ name = "Official Grok"
     #[test]
     fn zcode_sync_writes_image_support_into_personal_config() {
         let path = zcode_sync_test_path("zc-sync-fresh");
-        let models = vec![zcode_sync_model("gemini-3.8-flash-high", "CPA", "http://127.0.0.1:8317/v1", true)];
+        let models = vec![zcode_sync_model(
+            "gemini-3.8-flash-high",
+            "CPA",
+            "http://127.0.0.1:8317/v1",
+            true,
+        )];
         sync_zcode_personal_config_at(&path, &models).unwrap();
 
         let val: Value = serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
@@ -7276,9 +7434,15 @@ name = "Official Grok"
         let rules = &val["config"]["modelConfigRules"]["providerModelRules"];
         assert_eq!(rules.as_array().unwrap().len(), 1);
         assert_eq!(rules[0]["modelId"], "gemini-3.8-flash-high");
-        assert_eq!(rules[0]["config"]["properties"]["inputFormat"]["supportsImage"], true);
+        assert_eq!(
+            rules[0]["config"]["properties"]["inputFormat"]["supportsImage"],
+            true
+        );
         assert_eq!(rules[0]["config"]["properties"]["contextWindow"], 1000000);
-        assert_eq!(rules[0]["config"]["optionSpecs"]["maxOutputTokens"]["max"], 65536);
+        assert_eq!(
+            rules[0]["config"]["optionSpecs"]["maxOutputTokens"]["max"],
+            65536
+        );
 
         let _ = fs::remove_dir_all(path.parent().unwrap());
     }
@@ -7332,18 +7496,35 @@ name = "Official Grok"
         )
         .unwrap();
 
-        let models = vec![zcode_sync_model("gemini-3.8-flash-high", "CPA", "http://127.0.0.1:8317/v1", true)];
+        let models = vec![zcode_sync_model(
+            "gemini-3.8-flash-high",
+            "CPA",
+            "http://127.0.0.1:8317/v1",
+            true,
+        )];
         sync_zcode_personal_config_at(&path, &models).unwrap();
 
         let val: Value = serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
         let rule = &val["config"]["modelConfigRules"]["providerModelRules"][0];
         // AnyBridge 管理的字段被更新
         assert_eq!(rule["config"]["properties"]["contextWindow"], 1000000);
-        assert_eq!(rule["config"]["properties"]["inputFormat"]["supportsImage"], true);
+        assert_eq!(
+            rule["config"]["properties"]["inputFormat"]["supportsImage"],
+            true
+        );
         // 用户手动勾选的字段被保留
-        assert_eq!(rule["config"]["properties"]["inputFormat"]["supportsVideo"], true);
-        assert_eq!(rule["config"]["properties"]["inputFormat"]["supportsPdf"], true);
-        assert_eq!(rule["config"]["properties"]["supportsNativeWebSearch"], true);
+        assert_eq!(
+            rule["config"]["properties"]["inputFormat"]["supportsVideo"],
+            true
+        );
+        assert_eq!(
+            rule["config"]["properties"]["inputFormat"]["supportsPdf"],
+            true
+        );
+        assert_eq!(
+            rule["config"]["properties"]["supportsNativeWebSearch"],
+            true
+        );
         // provider 级未知字段（enabled）保留，apiKey 更新
         let provider_rule = &val["config"]["providerConfigRules"]["providerRules"][0];
         assert_eq!(provider_rule["enabled"], false);
@@ -7351,7 +7532,10 @@ name = "Official Grok"
         // 其它供应商规则原样保留
         let other = &val["config"]["modelConfigRules"]["providerModelRules"][1];
         assert_eq!(other["providerId"], "user-own");
-        assert_eq!(other["config"]["properties"]["inputFormat"]["supportsImage"], true);
+        assert_eq!(
+            other["config"]["properties"]["inputFormat"]["supportsImage"],
+            true
+        );
 
         let _ = fs::remove_dir_all(path.parent().unwrap());
     }
@@ -7388,13 +7572,20 @@ name = "Official Grok"
 
         let models = vec![
             {
-                let mut m = zcode_sync_model("gpt-5.6-luna", "CPA", "http://127.0.0.1:8317/v1", true);
-                m["reasoningLevels"] = serde_json::json!(["none", "low", "medium", "high", "xhigh", "max"]);
+                let mut m =
+                    zcode_sync_model("gpt-5.6-luna", "CPA", "http://127.0.0.1:8317/v1", true);
+                m["reasoningLevels"] =
+                    serde_json::json!(["none", "low", "medium", "high", "xhigh", "max"]);
                 m["reasoningLevelMap"] = serde_json::json!("{}");
                 m
             },
             // gemini 不配档位：预置的 reasoningLevel 应被移除（恢复内置默认）
-            zcode_sync_model("gemini-3.8-flash-high", "CPA", "http://127.0.0.1:8317/v1", true),
+            zcode_sync_model(
+                "gemini-3.8-flash-high",
+                "CPA",
+                "http://127.0.0.1:8317/v1",
+                true,
+            ),
         ];
         sync_zcode_personal_config_at(&path, &models).unwrap();
 
@@ -7415,7 +7606,9 @@ name = "Official Grok"
             .iter()
             .find(|r| r["modelId"] == "gemini-3.8-flash-high")
             .unwrap();
-        assert!(gemini["config"]["optionSpecs"].get("reasoningLevel").is_none());
+        assert!(gemini["config"]["optionSpecs"]
+            .get("reasoningLevel")
+            .is_none());
 
         let _ = fs::remove_dir_all(path.parent().unwrap());
     }
@@ -7444,7 +7637,12 @@ name = "Official Grok"
         )
         .unwrap();
 
-        let models = vec![zcode_sync_model("gemini-3.1-pro-low", "CPA", "http://127.0.0.1:8317/v1", false)];
+        let models = vec![zcode_sync_model(
+            "gemini-3.1-pro-low",
+            "CPA",
+            "http://127.0.0.1:8317/v1",
+            false,
+        )];
         sync_zcode_personal_config_at(&path, &models).unwrap();
 
         let val: Value = serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
@@ -7454,7 +7652,10 @@ name = "Official Grok"
         assert_eq!(rules.len(), 1);
         assert_eq!(rules[0]["modelId"], "gemini-3.1-pro-low");
         // 无 vision 能力时显式关闭图片输入
-        assert_eq!(rules[0]["config"]["properties"]["inputFormat"]["supportsImage"], false);
+        assert_eq!(
+            rules[0]["config"]["properties"]["inputFormat"]["supportsImage"],
+            false
+        );
 
         let _ = fs::remove_dir_all(path.parent().unwrap());
     }
