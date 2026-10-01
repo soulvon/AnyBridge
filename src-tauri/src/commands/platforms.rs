@@ -1411,7 +1411,9 @@ fn patch_antigravity_hub_asar(asar_path: &std::path::Path) -> Result<(), String>
         .and_then(|s| s.parse().ok())
         .unwrap_or(0);
     let size: usize = ls_node.get("size").and_then(|v| v.as_u64()).unwrap_or(0) as usize;
-    let payload_start = 16 + json_size;
+    // payload 基准 = 8 + bytes[4..8]（pickle 声明的 header 总长，已含对齐填充）
+    let declared_header_size = u32::from_le_bytes(bytes[4..8].try_into().unwrap()) as usize;
+    let payload_start = super::antigravity_localization::asar_payload_start(declared_header_size);
     if bytes.len() < payload_start + offset + size {
         return Err("asar payload 越界".to_string());
     }
@@ -1469,14 +1471,19 @@ fn patch_antigravity_hub_asar(asar_path: &std::path::Path) -> Result<(), String>
     let new_header_json = serde_json::to_string(&header).map_err(|e| e.to_string())?;
     let new_header_bytes = new_header_json.as_bytes();
     let new_json_size = new_header_bytes.len() as u32;
+    // header 之后必须补 0..3 字节填充到 4 字节对齐，否则 Electron 读取整体错位
+    let padding_len = super::antigravity_localization::asar_padding_len(new_header_bytes.len());
 
-    let mut final_bytes =
-        Vec::with_capacity(16 + new_header_bytes.len() + old_payload.len() + new_code_bytes.len());
+    let mut final_bytes = Vec::with_capacity(
+        16 + new_header_bytes.len() + padding_len + old_payload.len() + new_code_bytes.len(),
+    );
+    // pickle 尺寸字段必须包含 padding：Electron 以 8 + bytes[4..8] 定位 payload
     final_bytes.extend_from_slice(&4u32.to_le_bytes());
-    final_bytes.extend_from_slice(&(new_json_size + 8).to_le_bytes());
-    final_bytes.extend_from_slice(&(new_json_size + 4).to_le_bytes());
+    final_bytes.extend_from_slice(&((new_json_size as usize + 8 + padding_len) as u32).to_le_bytes());
+    final_bytes.extend_from_slice(&((new_json_size as usize + 4 + padding_len) as u32).to_le_bytes());
     final_bytes.extend_from_slice(&new_json_size.to_le_bytes());
     final_bytes.extend_from_slice(new_header_bytes);
+    final_bytes.extend_from_slice(&vec![0u8; padding_len]);
     final_bytes.extend_from_slice(old_payload);
     final_bytes.extend_from_slice(new_code_bytes);
 

@@ -31,6 +31,25 @@ pub struct LocalizationOperationResult {
     pub localized: bool,
 }
 
+/// asar payload 的真实起点：`8 + 头部声明的 header 总长（bytes[4..8]）`。
+///
+/// asar 头部是 Chromium pickle 格式：`[4][headerBufLen][4][jsonLen][json][padding]`，
+/// Electron 以 `8 + bytes[4..8]` 为 payload 基准（headerBufLen 已含 padding）。
+/// 若直接用 `16 + jsonLen` 会把 pickle 的 0..3 字节对齐填充算进 payload，
+/// 导致所有文件读取偏移、注入内容混入上一个文件的尾部碎片而语法非法。
+/// 注意写回时 `[4..8]`/`[8..12]` 字段必须同步加上 padding（见 asar_padding_len），
+/// 否则会出现"声明基准"与"实际布局"错位、客户端启动即崩。
+pub(crate) fn asar_payload_start(declared_header_size: usize) -> usize {
+    8 + declared_header_size
+}
+
+/// header JSON 之后需要补的 pickle 对齐填充字节数（0..3）。
+/// 写回时必须同时把 padding 加进 `[4..8]` 与 `[8..12]` 字段。
+pub(crate) fn asar_padding_len(json_len: usize) -> usize {
+    let raw = 16 + json_len;
+    ((raw + 3) & !3) - raw
+}
+
 fn cache_dir() -> PathBuf {
     if let Some(dir) = dirs::data_dir() {
         let p = dir
@@ -240,16 +259,6 @@ fn extract_dictionary_override(source: &str) -> Option<(String, usize)> {
     Some((format!("window.__ANYBRIDGE_HANS_DICT = {};", json), count))
 }
 
-fn get_ide_payload() -> String {
-    let cached = cache_dir().join("antigravity-ide.js");
-    if let Ok(content) = fs::read_to_string(&cached) {
-        if !content.trim().is_empty() {
-            return content;
-        }
-    }
-    super::antigravity_loc_payload::IDE_LOCALIZATION_JS.to_string()
-}
-
 fn is_hub_localized(asar_path: &Path) -> bool {
     let Ok(bytes) = fs::read(asar_path) else {
         return false;
@@ -286,7 +295,8 @@ fn is_hub_localized(asar_path: &Path) -> bool {
         .get("size")
         .and_then(|v| v.as_u64())
         .unwrap_or(0) as usize;
-    let payload_start = 16 + json_size;
+    let declared_header_size = u32::from_le_bytes(bytes[4..8].try_into().unwrap()) as usize;
+    let payload_start = asar_payload_start(declared_header_size);
     if bytes.len() < payload_start + offset + size {
         return false;
     }
@@ -339,7 +349,8 @@ fn patch_hub_asar(asar_path: &Path) -> Result<(), String> {
         .get("size")
         .and_then(|v| v.as_u64())
         .unwrap_or(0) as usize;
-    let payload_start = 16 + json_size;
+    let declared_header_size = u32::from_le_bytes(bytes[4..8].try_into().unwrap()) as usize;
+    let payload_start = asar_payload_start(declared_header_size);
     if bytes.len() < payload_start + offset + size {
         return Err("app.asar payload 越界".to_string());
     }
@@ -391,75 +402,24 @@ fn patch_hub_asar(asar_path: &Path) -> Result<(), String> {
     let new_header_bytes = new_header_json.as_bytes();
     let new_json_size = new_header_bytes.len() as u32;
 
-    let mut final_bytes =
-        Vec::with_capacity(16 + new_header_bytes.len() + old_payload.len() + new_code_bytes.len());
+    // header 之后必须补 0..3 字节填充到 4 字节对齐：Electron 从
+    // align4(16 + header_size) 起算 payload，不补则所有文件整体错位、客户端崩溃。
+    let padding_len = asar_padding_len(new_header_bytes.len());
+    let mut final_bytes = Vec::with_capacity(
+        16 + new_header_bytes.len() + padding_len + old_payload.len() + new_code_bytes.len(),
+    );
+    // pickle 尺寸字段必须包含 padding：Electron 以 8 + bytes[4..8] 定位 payload
     final_bytes.extend_from_slice(&4u32.to_le_bytes());
-    final_bytes.extend_from_slice(&(new_json_size + 8).to_le_bytes());
-    final_bytes.extend_from_slice(&(new_json_size + 4).to_le_bytes());
+    final_bytes.extend_from_slice(&((new_json_size as usize + 8 + padding_len) as u32).to_le_bytes());
+    final_bytes.extend_from_slice(&((new_json_size as usize + 4 + padding_len) as u32).to_le_bytes());
     final_bytes.extend_from_slice(&new_json_size.to_le_bytes());
     final_bytes.extend_from_slice(new_header_bytes);
+    final_bytes.extend_from_slice(&vec![0u8; padding_len]);
     final_bytes.extend_from_slice(old_payload);
     final_bytes.extend_from_slice(new_code_bytes);
 
     fs::write(asar_path, final_bytes)
         .map_err(|e| format!("写入汉化补丁失败（请先关闭 Antigravity 客户端后重试）: {e}"))?;
-    Ok(())
-}
-
-fn patch_ide_workbench(html_path: &Path, product_json: &Path) -> Result<(), String> {
-    let workbench_dir = html_path
-        .parent()
-        .ok_or_else(|| "无法获取 workbench 目录".to_string())?;
-    let overlay_path = workbench_dir.join("antigravity-hans-overlay.js");
-    fs::write(&overlay_path, get_ide_payload().trim().as_bytes())
-        .map_err(|e| format!("写出 overlay 脚本失败: {e}"))?;
-
-    let html_content =
-        fs::read_to_string(html_path).map_err(|e| format!("读取 workbench.html 失败: {e}"))?;
-    let bak_path = html_path.with_file_name("workbench.html.lang.bak");
-    if !bak_path.exists() && !html_content.contains("antigravity-hans-overlay.js") {
-        let _ = fs::copy(html_path, &bak_path);
-    }
-
-    let script_tag = "<script src=\"antigravity-hans-overlay.js\"></script>";
-    if !html_content.contains(script_tag) {
-        let new_html = if let Some(idx) = html_content.rfind("</body>") {
-            format!(
-                "{}\n\t{}\n{}",
-                &html_content[..idx],
-                script_tag,
-                &html_content[idx..]
-            )
-        } else if let Some(idx) = html_content.rfind("</html>") {
-            format!(
-                "{}\n\t{}\n{}",
-                &html_content[..idx],
-                script_tag,
-                &html_content[idx..]
-            )
-        } else {
-            format!("{}\n{}", html_content, script_tag)
-        };
-        fs::write(html_path, new_html.as_bytes())
-            .map_err(|e| format!("写入 workbench.html 失败（请先关闭 Antigravity IDE）: {e}"))?;
-    }
-
-    // 清空 product.json 中的 checksums 避免 VS Code 弹窗警告“安装似乎损坏”
-    if product_json.exists() {
-        let prod_content = fs::read_to_string(product_json).unwrap_or_default();
-        let prod_bak = product_json.with_file_name("product.json.lang.bak");
-        if !prod_bak.exists() {
-            let _ = fs::copy(product_json, &prod_bak);
-        }
-        if let Ok(mut val) = serde_json::from_str::<Value>(&prod_content) {
-            if let Some(obj) = val.as_object_mut() {
-                obj.insert("checksums".to_string(), json!({}));
-                if let Ok(new_prod) = serde_json::to_string_pretty(&val) {
-                    let _ = fs::write(product_json, new_prod.as_bytes());
-                }
-            }
-        }
-    }
     Ok(())
 }
 
@@ -544,16 +504,18 @@ pub fn apply_antigravity_localization(
     };
 
     if is_ide {
-        let html_path = ide_workbench_html_path()
-            .ok_or_else(|| "未找到 Antigravity IDE 安装目录，请先安装该应用".to_string())?;
-        let product_json = ide_product_json_path()
-            .ok_or_else(|| "未找到 Antigravity IDE 的 product.json".to_string())?;
-        patch_ide_workbench(&html_path, &product_json)?;
-    } else {
-        let asar_path = hub_asar_path()
-            .ok_or_else(|| "未找到 Antigravity 桌面端安装目录，请先安装该应用".to_string())?;
-        patch_hub_asar(&asar_path)?;
+        // IDE 界面汉化已移除：它需要改写 IDE 安装包资源并清空校验和，
+        // 官方升级后会失效甚至影响启动，风险高于收益。
+        // 还原能力保留（见 restore_antigravity_localization），用于清理历史汉化。
+        return Err(
+            "Antigravity IDE 的界面汉化功能已移除。如需清理历史汉化，请点击「还原官方英文」"
+                .to_string(),
+        );
     }
+
+    let asar_path = hub_asar_path()
+        .ok_or_else(|| "未找到 Antigravity 桌面端安装目录，请先安装该应用".to_string())?;
+    patch_hub_asar(&asar_path)?;
 
     Ok(LocalizationOperationResult {
         ok: true,

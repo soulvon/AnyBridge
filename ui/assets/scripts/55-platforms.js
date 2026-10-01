@@ -2786,7 +2786,27 @@ function clearAntigravityLangLog() {
   if (box) box.textContent = '';
 }
 
-function openAntigravityLangModal() {
+async function openAntigravityLangModal() {
+  // IDE 界面汉化已移除：仅在"已汉化"时直接执行还原，用于清理历史汉化
+  if (getAntigravityTarget() === 'antigravity-ide') {
+    try {
+      const st = await invoke('get_antigravity_localization_status', { target: 'antigravity-ide' });
+      if (st?.localized) {
+        await restoreAntigravityLocalizationAction();
+      } else if (typeof showCustomAlert === 'function') {
+        showCustomAlert(
+          'Antigravity IDE 的界面汉化功能已移除。\n\n独立桌面端（Antigravity）仍支持一键汉化。',
+          '提示',
+          'info'
+        );
+      }
+    } catch (e) {
+      if (typeof showCustomAlert === 'function') {
+        showCustomAlert(String(e?.message || e), '操作失败', 'error');
+      }
+    }
+    return;
+  }
   const modal = document.getElementById('antigravityLangModal');
   if (!modal) return;
   modal.classList.add('active');
@@ -2808,6 +2828,25 @@ async function refreshAntigravityLangStatus(updateModal = false) {
   if (typeof invoke !== 'function') return;
   const target = getAntigravityTarget();
   const platName = target === 'antigravity-ide' ? 'Antigravity IDE' : 'Antigravity';
+
+  // Antigravity IDE 的界面汉化已移除：它需要改写 IDE 安装包资源并清空校验和，
+  // 客户端升级后会失效甚至影响启动，风险高于收益。仅保留独立桌面端（Hub）的汉化。
+  // 但若 IDE 已被历史版本汉化过，仍保留入口以便一键清理还原。
+  const langBtnEl = document.getElementById('antigravityLangBtn');
+  const btnTextEl = document.getElementById('antigravityLangBtnText');
+  if (target === 'antigravity-ide') {
+    try {
+      const st = await invoke('get_antigravity_localization_status', { target });
+      const isLocalized = !!st?.localized;
+      if (langBtnEl) langBtnEl.style.display = isLocalized ? '' : 'none';
+      if (btnTextEl && isLocalized) btnTextEl.textContent = '还原官方英文';
+    } catch {
+      if (langBtnEl) langBtnEl.style.display = 'none';
+    }
+    return;
+  }
+  if (langBtnEl) langBtnEl.style.display = '';
+
   try {
     const status = await invoke('get_antigravity_localization_status', { target });
     const btnText = document.getElementById('antigravityLangBtnText');

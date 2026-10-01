@@ -1550,10 +1550,36 @@ fn restart_ide_impl(target: String) -> Result<String, String> {
 
         // 启动新 IDE 进程，设置 CREATE_NO_WINDOW 防止 CMD 窗口弹出
         const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-        Command::new(&exe)
+        let mut child = Command::new(&exe)
             .creation_flags(CREATE_NO_WINDOW)
             .spawn()
             .map_err(|e| format!("重启 {} 失败: {}", ide_dir_name(&t), e))?;
+
+        // 沙箱兜底：部分 Windows 机器上 Chromium 沙箱初始化失败，表现为启动后数秒内
+        // 静默退出（ExitCode 0x80000003），官方原版同样复现，与我们的补丁无关。
+        // 检测到秒退后自动改用 --no-sandbox 重试，避免用户遇到"重启后打不开"。
+        let mut exited_early = false;
+        for _ in 0..10 {
+            std::thread::sleep(std::time::Duration::from_millis(250));
+            match child.try_wait() {
+                Ok(Some(_)) => {
+                    exited_early = true;
+                    break;
+                }
+                Ok(None) => {}
+                Err(_) => break,
+            }
+        }
+        if exited_early {
+            let _ = Command::new(&exe)
+                .arg("--no-sandbox")
+                .creation_flags(CREATE_NO_WINDOW)
+                .spawn();
+            return Ok(format!(
+                "已重启 {}（检测到沙箱启动失败，已自动改用兼容模式）",
+                ide_dir_name(&t)
+            ));
+        }
 
         Ok(format!("已重启 {}", ide_dir_name(&t)))
     }
