@@ -389,10 +389,37 @@ jobs:
           TAG="v${VERSION}"
           gh release upload "$TAG" --repo "$SOURCE_REPO" latest.json latest-*.json SHA256SUMS.txt --clobber
 
-      - name: Publish release
+      - name: Publish release (private source repo)
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: bash
         run: |
           set -euo pipefail
           gh release edit "v${VERSION}" --repo "$SOURCE_REPO" --draft=false --prerelease=false --latest
+
+      # 公开分发仓库只承载安装包、签名与 latest.json。缺少这一步时，
+      # 版本只存在于私有仓库，公开仓库会长期停在旧版本，用户端收不到更新。
+      - name: Publish to public release repository
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_REPO_TOKEN }}
+          PUBLIC_REPO: soulvon/AnyBridge-Release
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG="v${VERSION}"
+          if [ -z "${GH_TOKEN:-}" ]; then
+            echo "FATAL: RELEASE_REPO_TOKEN 未配置，无法发布到公开仓库"
+            exit 1
+          fi
+          if gh release view "$TAG" --repo "$PUBLIC_REPO" >/dev/null 2>&1; then
+            echo "公开仓库已存在 $TAG，更新其资产"
+          else
+            gh release create "$TAG" --repo "$PUBLIC_REPO" \
+              --title "AnyBridge $TAG" \
+              --notes-file release-notes.md
+          fi
+          # 上传安装包、updater 资产、签名与更新清单
+          gh release upload "$TAG" --repo "$PUBLIC_REPO" \
+            release-assets/* latest.json latest-*.json SHA256SUMS.txt --clobber
+          gh release edit "$TAG" --repo "$PUBLIC_REPO" --draft=false --prerelease=false --latest
+          echo "已在公开仓库发布 $TAG 并标记为 latest"
