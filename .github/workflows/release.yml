@@ -352,6 +352,7 @@ jobs:
           node scripts/release/build_merged_latest_json.cjs \
             --version "${VERSION}" \
             --repo "${SOURCE_REPO}" \
+            --public-repo "soulvon/AnyBridge-Release" \
             --assets-dir "release-assets" \
             --notes-file "release-notes.md" \
             --published-at "${PUBLISHED_AT}" \

@@ -60,7 +60,7 @@ function findAsset(assets, pattern, label) {
   return hit;
 }
 
-function buildPlatformEntry(assetName, signatures, repo, version) {
+function buildPlatformEntry(assetName, signatures, publicRepo, version) {
   if (!assetName) return null;
   const signature = signatures.get(assetName);
   if (!signature) {
@@ -86,6 +86,8 @@ function main() {
   const notesFile = requiredArg(args, 'notes-file');
   const publishedAt = normalizePubDate(requiredArg(args, 'published-at'));
   const output = args.output || 'latest.json';
+  // 资产下载 URL 必须指向公开分发仓库，否则用户端无权限下载私有仓库资产。
+  const publicRepo = args['public-repo'] || repo;
 
   if (!fs.existsSync(assetsDir) || !fs.statSync(assetsDir).isDirectory()) {
     throw new Error(`Assets directory not found: ${assetsDir}`);
@@ -118,14 +120,14 @@ function main() {
   const linuxX64Deb = findAsset(assets, /_amd64\.deb(?:\.tar\.gz)?$/, 'linux-x86_64-deb');
   const linuxArmDeb = findAsset(assets, /_arm64\.deb(?:\.tar\.gz)?$/, 'linux-aarch64-deb');
 
-  const darwinAarch64Entry = buildPlatformEntry(darwinAarch64Tar, signatures, repo, version);
-  const darwinX64Entry = buildPlatformEntry(darwinX64Tar, signatures, repo, version);
-  const windowsMsiEntry = buildPlatformEntry(windowsMsi, signatures, repo, version);
-  const windowsNsisEntry = buildPlatformEntry(windowsNsis, signatures, repo, version);
-  const linuxX64AppImageEntry = buildPlatformEntry(linuxX64AppImage, signatures, repo, version);
-  const linuxArmAppImageEntry = buildPlatformEntry(linuxArmAppImage, signatures, repo, version);
-  const linuxX64DebEntry = buildPlatformEntry(linuxX64Deb, signatures, repo, version);
-  const linuxArmDebEntry = buildPlatformEntry(linuxArmDeb, signatures, repo, version);
+  const darwinAarch64Entry = buildPlatformEntry(darwinAarch64Tar, signatures, publicRepo, version);
+  const darwinX64Entry = buildPlatformEntry(darwinX64Tar, signatures, publicRepo, version);
+  const windowsMsiEntry = buildPlatformEntry(windowsMsi, signatures, publicRepo, version);
+  const windowsNsisEntry = buildPlatformEntry(windowsNsis, signatures, publicRepo, version);
+  const linuxX64AppImageEntry = buildPlatformEntry(linuxX64AppImage, signatures, publicRepo, version);
+  const linuxArmAppImageEntry = buildPlatformEntry(linuxArmAppImage, signatures, publicRepo, version);
+  const linuxX64DebEntry = buildPlatformEntry(linuxX64Deb, signatures, publicRepo, version);
+  const linuxArmDebEntry = buildPlatformEntry(linuxArmDeb, signatures, publicRepo, version);
 
   const platforms = {};
   if (darwinAarch64Entry) {
