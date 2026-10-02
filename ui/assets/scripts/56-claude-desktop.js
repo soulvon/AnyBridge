@@ -677,6 +677,10 @@ function selectCustomRoleItem(containerId, hiddenInputId, value, role) {
     if (typeof onClaudeDesktopRoleSelectChange === 'function') {
       onClaudeDesktopRoleSelectChange(role, value);
     }
+  } else if (containerId.startsWith('grok-subagent-select-')) {
+    if (typeof onGrokSubagentModelSelected === 'function') {
+      onGrokSubagentModelSelected(containerId, value);
+    }
   } else if (role === 'fallback') {
     if (typeof onClaudeFallbackSelectChange === 'function') {
       onClaudeFallbackSelectChange(value);

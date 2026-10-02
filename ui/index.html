@@ -6808,23 +6808,56 @@
                 </div>
               </div>
 
-              <!-- 卡片 2：模型选择与配置 -->
-              <div class="glass-card" style="padding: 16px 20px;">
-                <div style="font-size: 14px; font-weight: 700; color: var(--text-primary); margin-bottom: 14px; display: flex; align-items: center; gap: 8px;">
-                  <span style="display: inline-block; width: 3px; height: 14px; background: var(--accent); border-radius: 2px;"></span>
-                  <span>模型选择</span>
+              <!-- 卡片 2：模型管理（多模型注册到 ~/.grok/config.toml） -->
+              <div class="glass-card cb-add-models-card">
+                <div class="cb-add-models-head" style="padding: 14px 20px;">
+                  <div>
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                      <span style="display: inline-block; width: 3px; height: 14px; background: var(--accent); border-radius: 2px;"></span>
+                      <span class="cb-add-models-title">模型管理</span>
+                    </div>
+                    <div class="cb-add-models-sub" id="grok-config-model-status">勾选要注册的模型，标「默认」的作为 Grok 启动模型</div>
+                  </div>
+                  <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
+                    <button type="button" class="btn-ghost" style="padding: 2px 8px; height: 26px; font-size: 11.5px;" data-action="batchSetGrokModelCatalog" data-args="[true]" title="全选模型加入目录">全选</button>
+                    <button type="button" class="btn-ghost" style="padding: 2px 8px; height: 26px; font-size: 11.5px;" data-action="batchSetGrokModelCatalog" data-args="[false]" title="清空目录选择">清空</button>
+                    <button type="button" class="btn-ghost" style="padding: 2px 8px; height: 26px; font-size: 11.5px;" data-action="batchSetGrokDefaultModel" data-arg="clear" title="清除当前默认模型标记">清空默认</button>
+                    <span style="display: inline-block; width: 1px; height: 14px; background: var(--border); margin: 0 4px;"></span>
+                    <button type="button" class="btn-ghost accent" id="grok-config-fetch-models-btn" data-action="fetchGrokConfigModels" style="padding: 2px 10px; height: 26px; font-size: 11.5px; display: inline-flex; align-items: center; gap: 5px;">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/>
+                      </svg>
+                      <span>拉取模型</span>
+                    </button>
+                    <button type="button" class="btn-ghost secondary" data-action="addGrokModelEntry" style="padding: 2px 10px; height: 26px; font-size: 11.5px; display: inline-flex; align-items: center; gap: 4px;">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                        <line x1="12" y1="5" x2="12" y2="19" />
+                        <line x1="5" y1="12" x2="19" y2="12" />
+                      </svg>
+                      <span>添加模型</span>
+                    </button>
+                  </div>
                 </div>
-                <div style="display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px;">
-                  <label style="font-size: 12.5px; font-weight: 700; color: var(--text-secondary);">模型名称 (Model)</label>
-                  <input id="grok-config-model" class="field-input" style="height: 36px; padding: 0 12px; font-size: 13px;" placeholder="例如：deepseek-chat、gpt-4o" data-action="syncGrokRawConfigFromFields" data-events="input">
+                <div class="codex-config-model-list" id="grok-config-model-list" style="max-height: 400px; min-height: 120px; overflow-y: auto; padding: 12px 20px;">
+                  <div class="codex-config-model-empty">还没有模型，点击右上角拉取或手动添加。</div>
                 </div>
-                <div id="grok-config-model-list-wrap">
-                  <div style="font-size: 11.5px; color: var(--text-muted); margin-bottom: 6px;">来源供应商包含的模型（点击快速填入）：</div>
-                  <div id="grok-config-model-chips" style="display: flex; flex-wrap: wrap; gap: 6px; max-height: 140px; overflow-y: auto;"></div>
-                </div>
+                <p style="font-size: 11.5px; color: var(--text-muted); padding: 0 20px 14px; margin: 0; line-height: 1.6;">勾选的模型会各自写入一段配置注册进 Grok，之后用 /model 或 Ctrl+M 直接切换；「默认」决定 Grok 启动模型。上下文窗口决定自动压缩时机——留空按模型自动推荐，请按供应商实际值在「编辑」里确认。</p>
               </div>
 
-              <!-- 卡片 3：接口协议 -->
+              <!-- 卡片 3：子代理模型（可选覆盖） -->
+              <div class="glass-card" style="padding: 16px 20px;">
+                <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px;">
+                  <div style="display: flex; align-items: center; gap: 8px;">
+                    <span style="display: inline-block; width: 3px; height: 14px; background: var(--accent); border-radius: 2px;"></span>
+                    <span style="font-size: 14px; font-weight: 700; color: var(--text-primary);">子代理模型</span>
+                  </div>
+                  <button type="button" class="btn-ghost" data-action="addGrokSubagentRow" style="height: 28px; padding: 0 10px; font-size: 12px;">添加类型</button>
+                </div>
+                <p style="font-size: 11.5px; color: var(--text-muted); margin: 0 0 12px; line-height: 1.6;">Grok 派生探索、规划等子代理时各自独立计费与占用上下文。留「继承主模型」表示跟随主会话模型（默认行为），不做任何覆盖。</p>
+                <div id="grok-subagent-rows" style="display: flex; flex-direction: column; gap: 10px;"></div>
+              </div>
+
+              <!-- 卡片 4：接口协议 -->
               <div class="glass-card" style="padding: 16px 20px;">
                 <div style="font-size: 14px; font-weight: 700; color: var(--text-primary); margin-bottom: 14px; display: flex; align-items: center; gap: 8px;">
                   <span style="display: inline-block; width: 3px; height: 14px; background: var(--accent); border-radius: 2px;"></span>

@@ -1405,6 +1405,36 @@ pub fn set_windsurf_path(path: String) -> Result<(), String> {
     set_ide_path(path)
 }
 
+/// 沙箱兼容标记：记录某平台因 Chromium 沙箱初始化失败而需要 --no-sandbox 启动。
+/// 存储于应用数据目录的 sandbox_compat.json，按平台 ID 记录布尔值。
+fn sandbox_compat_flag(platform: &str) -> bool {
+    if let Some(dir) = dirs::data_dir() {
+        let p = dir.join("AnyBridge").join("sandbox_compat.json");
+        if let Ok(raw) = std::fs::read_to_string(&p) {
+            if let Ok(v) = serde_json::from_str::<serde_json::Value>(&raw) {
+                return v.get(platform).and_then(|x| x.as_bool()).unwrap_or(false);
+            }
+        }
+    }
+    false
+}
+
+fn set_sandbox_compat_flag(platform: &str, enabled: bool) {
+    if let Some(dir) = dirs::data_dir() {
+        let dir = dir.join("AnyBridge");
+        let _ = std::fs::create_dir_all(&dir);
+        let p = dir.join("sandbox_compat.json");
+        let mut obj = std::fs::read_to_string(&p)
+            .ok()
+            .and_then(|raw| {
+                serde_json::from_str::<serde_json::Map<String, serde_json::Value>>(&raw).ok()
+            })
+            .unwrap_or_default();
+        obj.insert(platform.to_string(), serde_json::Value::Bool(enabled));
+        let _ = std::fs::write(&p, serde_json::to_string(&obj).unwrap_or_default());
+    }
+}
+
 fn restart_ide_impl(target: String) -> Result<String, String> {
     let t = if target == "auto" {
         detect_target_ide()
@@ -1550,16 +1580,26 @@ fn restart_ide_impl(target: String) -> Result<String, String> {
 
         // 启动新 IDE 进程，设置 CREATE_NO_WINDOW 防止 CMD 窗口弹出
         const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-        let mut child = Command::new(&exe)
-            .creation_flags(CREATE_NO_WINDOW)
-            .spawn()
-            .map_err(|e| format!("重启 {} 失败: {}", ide_dir_name(&t), e))?;
+        let spawn_client = |args: &[&str]| -> Result<std::process::Child, String> {
+            Command::new(&exe)
+                .args(args)
+                .creation_flags(CREATE_NO_WINDOW)
+                .spawn()
+                .map_err(|e| format!("重启 {} 失败: {}", ide_dir_name(&t), e))
+        };
 
         // 沙箱兜底：部分 Windows 机器上 Chromium 沙箱初始化失败，表现为启动后数秒内
         // 静默退出（ExitCode 0x80000003），官方原版同样复现，与我们的补丁无关。
-        // 检测到秒退后自动改用 --no-sandbox 重试，避免用户遇到"重启后打不开"。
+        // 实测崩溃可晚至启动后约 5 秒，因此观察窗口取 6 秒；一旦确认崩溃，
+        // 记住该平台需要兼容模式，之后重启直接带 --no-sandbox，不再重复等待。
+        if sandbox_compat_flag(&t) {
+            spawn_client(&["--no-sandbox"])?;
+            return Ok(format!("已重启 {}（兼容模式）", ide_dir_name(&t)));
+        }
+
+        let mut child = spawn_client(&[])?;
         let mut exited_early = false;
-        for _ in 0..10 {
+        for _ in 0..24 {
             std::thread::sleep(std::time::Duration::from_millis(250));
             match child.try_wait() {
                 Ok(Some(_)) => {
@@ -1571,12 +1611,10 @@ fn restart_ide_impl(target: String) -> Result<String, String> {
             }
         }
         if exited_early {
-            let _ = Command::new(&exe)
-                .arg("--no-sandbox")
-                .creation_flags(CREATE_NO_WINDOW)
-                .spawn();
+            set_sandbox_compat_flag(&t, true);
+            spawn_client(&["--no-sandbox"])?;
             return Ok(format!(
-                "已重启 {}（检测到沙箱启动失败，已自动改用兼容模式）",
+                "已重启 {}（检测到沙箱启动失败，已自动改用兼容模式并记住该设置）",
                 ide_dir_name(&t)
             ));
         }

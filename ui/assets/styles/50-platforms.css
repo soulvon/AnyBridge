@@ -3025,12 +3025,14 @@ button.codex-reconfigure-action:disabled {
   background: var(--accent-light);
 }
 
-#codex-config-model-list {
+#codex-config-model-list,
+#grok-config-model-list {
   grid-template-columns: 1fr;
   max-height: 280px;
 }
 
-#codex-config-model-list .codex-config-model-option {
+#codex-config-model-list .codex-config-model-option,
+#grok-config-model-list .codex-config-model-option {
   display: flex;
   align-items: center;
   height: auto;
@@ -3041,12 +3043,15 @@ button.codex-reconfigure-action:disabled {
   gap: 8px;
 }
 
-#codex-config-model-list .codex-config-model-option::before {
+#codex-config-model-list .codex-config-model-option::before,
+#grok-config-model-list .codex-config-model-option::before {
   display: none;
 }
 
 #codex-config-model-list .codex-config-model-option input[type="checkbox"],
-#codex-config-model-list .codex-config-model-option input[type="radio"] {
+#codex-config-model-list .codex-config-model-option input[type="radio"],
+#grok-config-model-list .codex-config-model-option input[type="checkbox"],
+#grok-config-model-list .codex-config-model-option input[type="radio"] {
   width: 14px;
   height: 14px;
   cursor: pointer;
@@ -3055,7 +3060,8 @@ button.codex-reconfigure-action:disabled {
   margin: 0;
 }
 
-#codex-config-model-list .codex-model-icon-wrap {
+#codex-config-model-list .codex-model-icon-wrap,
+#grok-config-model-list .codex-model-icon-wrap {
   flex: 0 0 auto;
   display: inline-flex;
   align-items: center;
@@ -3064,14 +3070,16 @@ button.codex-reconfigure-action:disabled {
   height: 22px;
 }
 
-#codex-config-model-list .codex-model-icon-wrap .model-item-icon {
+#codex-config-model-list .codex-model-icon-wrap .model-item-icon,
+#grok-config-model-list .codex-model-icon-wrap .model-item-icon {
   width: 20px;
   height: 20px;
   margin: 0;
   flex-shrink: 0;
 }
 
-#codex-config-model-list .codex-model-name {
+#codex-config-model-list .codex-model-name,
+#grok-config-model-list .codex-model-name {
   flex: 1 1 auto;
   min-width: 0;
   overflow: hidden;
@@ -3085,14 +3093,17 @@ button.codex-reconfigure-action:disabled {
 }
 
 #codex-config-model-list .codex-model-display-name,
-#codex-config-model-list .codex-model-ctx {
+#codex-config-model-list .codex-model-ctx,
+#grok-config-model-list .codex-model-display-name,
+#grok-config-model-list .codex-model-ctx {
   flex: 0 0 auto;
   color: var(--text-muted);
   font-weight: 500;
   font-size: 11px;
 }
 
-#codex-config-model-list .codex-model-actions {
+#codex-config-model-list .codex-model-actions,
+#grok-config-model-list .codex-model-actions {
   flex: 0 0 auto;
   margin-left: auto;
   display: inline-flex;
@@ -3100,7 +3111,8 @@ button.codex-reconfigure-action:disabled {
   gap: 6px;
 }
 
-#codex-config-model-list .codex-config-model-option::after {
+#codex-config-model-list .codex-config-model-option::after,
+#grok-config-model-list .codex-config-model-option::after {
   content: '';
   position: absolute;
   inset: -1px;
@@ -3110,21 +3122,26 @@ button.codex-reconfigure-action:disabled {
   transition: border-color 0.16s ease;
 }
 
-#codex-config-model-list .codex-config-model-option:hover::after {
+#codex-config-model-list .codex-config-model-option:hover::after,
+#grok-config-model-list .codex-config-model-option:hover::after {
   border-color: rgba(18, 97, 166, 0.18);
 }
 
-#codex-config-model-list .codex-config-model-option.active::after {
+#codex-config-model-list .codex-config-model-option.active::after,
+#grok-config-model-list .codex-config-model-option.active::after {
   border-color: rgba(18, 97, 166, 0.5);
 }
 
-#codex-config-model-list .codex-config-model-option input[type="radio"]:disabled {
+#codex-config-model-list .codex-config-model-option input[type="radio"]:disabled,
+#grok-config-model-list .codex-config-model-option input[type="radio"]:disabled {
   opacity: 0.3;
   cursor: not-allowed;
 }
 
 #codex-config-model-list .codex-config-model-option .codex-config-catalog-del,
-#codex-config-model-list .codex-config-model-option .codex-config-fetch-btn {
+#codex-config-model-list .codex-config-model-option .codex-config-fetch-btn,
+#grok-config-model-list .codex-config-model-option .codex-config-catalog-del,
+#grok-config-model-list .codex-config-model-option .codex-config-fetch-btn {
   height: 26px;
   padding: 0 8px;
   font-size: 11px;

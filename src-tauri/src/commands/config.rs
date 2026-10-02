@@ -276,6 +276,30 @@ pub struct Provider {
     /// Codex 专有：配置级子代理定义
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub agents: Vec<CodexAgent>,
+    /// Grok 专有：模型上下文窗口（token），写入 ~/.grok/config.toml 的 context_window。
+    /// 不写时 Grok 一律按 200,000 处理，会导致小上下文模型永远不会触发自动压缩。
+    #[serde(
+        rename = "contextWindow",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub context_window: Option<u32>,
+    /// Grok 专有：每个注册模型各自的上下文窗口（token），键为模型 ID。
+    /// 一次注册多个模型时，各模型上下文往往不同，逐模型记录才不会让小上下文模型溢出。
+    #[serde(
+        rename = "modelContexts",
+        default,
+        skip_serializing_if = "HashMap::is_empty"
+    )]
+    pub model_contexts: HashMap<String, u32>,
+    /// Grok 专有：子代理模型覆盖，键为子代理类型名（explore / plan / general-purpose …），
+    /// 值为模型段 key。留空的类型继承主会话模型（Grok 默认行为）。
+    #[serde(
+        rename = "subagentModels",
+        default,
+        skip_serializing_if = "HashMap::is_empty"
+    )]
+    pub subagent_models: HashMap<String, String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -661,6 +685,29 @@ pub struct GrokConfig {
         skip_serializing_if = "String::is_empty"
     )]
     pub source_provider_name: String,
+    /// 上下文窗口（token）。写入 ~/.grok/config.toml 的 context_window，
+    /// 决定 Grok 何时触发自动压缩；留空会让 Grok 按 200,000 处理。
+    #[serde(
+        rename = "contextWindow",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub context_window: Option<u32>,
+    /// 每个注册模型各自的上下文窗口（token），键为模型 ID。
+    #[serde(
+        rename = "modelContexts",
+        default,
+        skip_serializing_if = "HashMap::is_empty"
+    )]
+    pub model_contexts: HashMap<String, u32>,
+    /// 子代理模型覆盖，键为子代理类型名（explore / plan / general-purpose …），
+    /// 值为模型段 key。留空的类型继承主会话模型（Grok 默认行为）。
+    #[serde(
+        rename = "subagentModels",
+        default,
+        skip_serializing_if = "HashMap::is_empty"
+    )]
+    pub subagent_models: HashMap<String, String>,
 }
 
 fn default_grok_backend() -> String {
@@ -757,6 +804,9 @@ impl From<AntigravityConfig> for Provider {
             codex_chat_reasoning: None,
             agents_config: None,
             agents: Vec::new(),
+            context_window: None,
+            model_contexts: HashMap::new(),
+            subagent_models: HashMap::new(),
         }
     }
 }
@@ -789,6 +839,9 @@ impl From<CodexConfig> for Provider {
             codex_chat_reasoning: config.codex_chat_reasoning,
             agents_config: config.agents_config,
             agents: config.agents,
+            context_window: None,
+            model_contexts: HashMap::new(),
+            subagent_models: HashMap::new(),
         }
     }
 }
@@ -821,6 +874,9 @@ impl From<OpenCodeConfig> for Provider {
             codex_chat_reasoning: None,
             agents_config: None,
             agents: Vec::new(),
+            context_window: None,
+            model_contexts: HashMap::new(),
+            subagent_models: HashMap::new(),
         }
     }
 }
@@ -853,6 +909,9 @@ impl From<GrokConfig> for Provider {
             codex_chat_reasoning: None,
             agents_config: None,
             agents: Vec::new(),
+            context_window: config.context_window,
+            model_contexts: config.model_contexts,
+            subagent_models: config.subagent_models,
         }
     }
 }
@@ -885,6 +944,9 @@ impl From<ClaudeCodeConfig> for Provider {
             codex_chat_reasoning: None,
             agents_config: None,
             agents: Vec::new(),
+            context_window: None,
+            model_contexts: HashMap::new(),
+            subagent_models: HashMap::new(),
         }
     }
 }

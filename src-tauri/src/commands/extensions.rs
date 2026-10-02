@@ -1,5 +1,6 @@
 use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::fs;
 use std::io::{BufRead, BufReader, Write};
 use std::net::{SocketAddr, TcpStream};
@@ -3363,6 +3364,9 @@ fn auto_add_cpa_provider(api_key: &str) -> Result<(), String> {
         codex_chat_reasoning: None,
         agents_config: None,
         agents: Vec::new(),
+        context_window: None,
+        model_contexts: HashMap::new(),
+        subagent_models: HashMap::new(),
     };
 
     // 尽量插到列表前部（前端仍会把 AnyBridge 置顶、CPA 紧随其后）

@@ -24,7 +24,10 @@ export const OFFICIAL_ANTIGRAVITY_HOST = OFFICIAL_ANTIGRAVITY_HOSTS[0];
 
 // 官方出站单次尝试硬超时：必须覆盖 DNS 解析 / 代理 CONNECT / TLS / 响应全阶段。
 // https.request 的 timeout 选项无法约束连接建立期，黑洞网络下会无限挂起并拖死 hybrid 握手。
-export const OFFICIAL_ATTEMPT_TIMEOUT_MS = 1200;
+// 官方转发常经用户系统代理（Clash 等），实测单次请求可达 2~9 秒且波动大；
+// 1.2s 的旧值会永久掐断混合模式的官方模型。流式响应开始下发后硬超时会被取消，
+// 因此这里只影响"连接 + 等待响应头"阶段。
+export const OFFICIAL_ATTEMPT_TIMEOUT_MS = 15000;
 
 // Singleflight 状态管理与平滑短效缓存（杜绝 IDE 启动阶段的请求风暴与重复探测）
 const inFlightPromises = new Map();
@@ -496,6 +499,12 @@ function officialHeaders(reqHeaders, payload, host) {
   delete headers['keep-alive'];
   delete headers['transfer-encoding'];
   delete headers['content-length'];
+  // 不透传压缩协商：Node 手动 https 请求不会自动解压，官方一旦按 gzip/br
+  // 返回压缩体，JSON.parse 就会失败，混合模式的官方目录会被整个丢弃。
+  // 显式要求明文响应。
+  delete headers['accept-encoding'];
+  delete headers['Accept-Encoding'];
+  headers['accept-encoding'] = 'identity';
   headers.host = host || OFFICIAL_ANTIGRAVITY_HOST;
   if (payload) headers['content-length'] = String(payload.length);
   return headers;
@@ -514,6 +523,9 @@ function officialRequestWithHardTimeout(host, options, payload, onResponse, time
   return new Promise((resolve) => {
     const abort = new AbortController();
     const timer = setTimeout(() => abort.abort(), timeoutMs);
+    // 允许流式转发在响应头到达后取消硬超时：官方模型的 streamGenerateContent
+    // 往往持续数十秒，保留全生命周期超时会把长生成中途掐断，混合模式必失败。
+    const clearHardTimer = () => clearTimeout(timer);
     let settled = false;
     const finish = (value) => {
       if (settled) return;
@@ -529,7 +541,7 @@ function officialRequestWithHardTimeout(host, options, payload, onResponse, time
       signal: abort.signal,
       ...options,
     }, (upstreamRes) => {
-      onResponse(upstreamRes, finish);
+      onResponse(upstreamRes, finish, clearHardTimer);
     });
     upstream.on('error', () => finish(null));
     upstream.on('timeout', () => {
@@ -576,7 +588,7 @@ export async function fetchOfficialAntigravityModels(req, body) {
       : (Buffer.isBuffer(body) ? body : Buffer.from(typeof body === 'string' ? body : JSON.stringify(body), 'utf8'));
     const results = await Promise.all(
       OFFICIAL_ANTIGRAVITY_HOSTS.map(host =>
-        officialRequestOnce(host, req, payload, '/v1internal:fetchAvailableModels', url.search, 1500)
+        officialRequestOnce(host, req, payload, '/v1internal:fetchAvailableModels', url.search, 15000)
       )
     );
     const ok = results.find(r => r && r.statusCode >= 200 && r.statusCode < 300 && r.body);
@@ -625,13 +637,15 @@ export async function forwardToOfficialAntigravity(req, res, { body, customPath,
           timeout: OFFICIAL_ATTEMPT_TIMEOUT_MS,
         },
         payload,
-        (fwdRes, finish) => {
+        (fwdRes, finish, clearHardTimer) => {
           // 如果官方返回 401 / 403 且提供了兜底回调，立即优雅切换到兜底响应，绝不向客户端下发 401 导致掉登录
           if ((fwdRes.statusCode === 401 || fwdRes.statusCode === 403) && typeof onFailed === 'function') {
             fwdRes.resume();
             finish(false);
             return;
           }
+          // 响应头已到达并即将开始下发，取消硬超时，避免数十秒的长流式生成被中途掐断
+          if (typeof clearHardTimer === 'function') clearHardTimer();
           const resHeaders = { ...fwdRes.headers };
           resHeaders['access-control-allow-origin'] = '*';
           resHeaders['access-control-allow-methods'] = 'GET, POST, PUT, DELETE, OPTIONS';

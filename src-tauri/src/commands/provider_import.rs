@@ -439,6 +439,9 @@ pub fn import_providers(
             codex_chat_reasoning: None,
             agents_config: None,
             agents: Vec::new(),
+            context_window: None,
+            model_contexts: HashMap::new(),
+            subagent_models: HashMap::new(),
         };
         store.providers.push(provider);
         imported += 1;

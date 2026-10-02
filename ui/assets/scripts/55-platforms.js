@@ -1289,20 +1289,45 @@ function syncGrokRawConfigFromFields() {
   const name = document.getElementById('grok-config-name')?.value.trim() || 'Custom';
   const baseUrl = document.getElementById('grok-config-base-url')?.value.trim() || 'https://api.deepseek.com/v1';
   const apiKey = document.getElementById('grok-config-api-key')?.value.trim() || '';
-  const model = document.getElementById('grok-config-model')?.value.trim() || 'deepseek-chat';
   const backend = document.getElementById('grok-config-backend')?.value.trim() || 'chat_completions';
+  const editId = document.getElementById('grok-config-edit-id')?.value.trim();
 
-  const key = (name || 'custom').toLowerCase().replace(/[^a-z0-9_]/g, '_');
+  const entries = grokRegisteredEntries();
+  const defaultModel = entries.find(e => e.isDefault)?.model || entries[0]?.model || '';
+  const key = grok_sanitize_key(editId || name || 'custom');
   const lines = [
     `# ~/.grok/config.toml 自定义模型配置段落预览`,
-    `default_model = "${model}"\n`,
-    `[models.${key}]`,
-    `name = "${name}"`,
-    `base_url = "${baseUrl}"`,
-    `api_key = "${apiKey || 'sk-...'}"`,
-    `model = "${model}"`,
-    `api_backend = "${backend}"`
+    `[models]`,
+    `default = "${defaultModel ? key : ''}"`,
   ];
+
+  entries.forEach(entry => {
+    const isDefault = entry.model === defaultModel;
+    const sectionKey = isDefault ? key : `${key}--${grok_sanitize_key(entry.model)}`;
+    const sectionName = isDefault ? name : `${name} · ${entry.model}`;
+    lines.push(
+      ``,
+      `[model.${sectionKey}]`,
+      `name = "${sectionName}"`,
+      `model = "${entry.model}"`,
+      `base_url = "${baseUrl}"`,
+      `api_key = "${apiKey || 'sk-...'}"`,
+      `api_backend = "${backend}"`
+    );
+    if (entry.contextWindow) lines.push(`context_window = ${entry.contextWindow}`);
+    lines.push(`anybridge_managed = true`);
+  });
+
+  const subagentEntries = Object.entries(grokSubagentModels || {})
+    .filter(([agent, target]) => String(agent).trim() && String(target).trim())
+    .sort((a, b) => String(a[0]).localeCompare(String(b[0])));
+  if (subagentEntries.length) {
+    lines.push(``, `[subagents.models]`);
+    subagentEntries.forEach(([agent, target]) => {
+      lines.push(`${String(agent).trim()} = "${String(target).trim()}"`);
+    });
+  }
+
   textarea.value = lines.join('\n');
 }
 
@@ -3262,9 +3287,7 @@ async function antigravityBulkRemoveAction() {
   if (!Array.isArray(providerStore?.antigravityConfigs)) return;
   const count = _antigravitySelectedSet.size;
   if (count === 0) return;
-  const ok = await showCustomConfirm(`确认从 Antigravity 列表中移除选中的 ${count} 个模型吗？`, '移除模型', 'warn');
-  if (!ok) return;
-
+  // 批量移除模型同样直接生效，不再二次确认。
   providerStore.antigravityConfigs = providerStore.antigravityConfigs.filter(c => !_antigravitySelectedSet.has(c.id));
   _antigravitySelectedSet.clear();
   await syncAntigravityConfigUiAfterStoreChange();
@@ -3656,17 +3679,15 @@ async function saveAntigravityConfigEditor() {
   }
 }
 
-function deleteAntigravityProviderConfig(providerId) {
+async function deleteAntigravityProviderConfig(providerId) {
   const configs = Array.isArray(providerStore?.antigravityConfigs) ? providerStore.antigravityConfigs : [];
   const provider = configs.find(c => c.id === providerId);
   if (!provider) return;
-  showCustomConfirm(`确认从 Antigravity 列表中移除「${provider.name || provider.defaultModel}」吗？`, '移除模型', 'warn').then(async ok => {
-    if (!ok) return;
-    providerStore.antigravityConfigs = providerStore.antigravityConfigs.filter(p => p.id !== providerId);
-    _antigravitySelectedSet.delete(providerId);
-    await syncAntigravityConfigUiAfterStoreChange();
-    if (typeof addLog === 'function') addLog('info', `已移除 Antigravity 模型: ${provider.name || provider.defaultModel}`);
-  });
+  // 删除模型为轻量可逆操作（模型池条目），不再二次确认，直接移除并保存。
+  providerStore.antigravityConfigs = providerStore.antigravityConfigs.filter(p => p.id !== providerId);
+  _antigravitySelectedSet.delete(providerId);
+  await syncAntigravityConfigUiAfterStoreChange();
+  if (typeof addLog === 'function') addLog('info', `已移除 Antigravity 模型: ${provider.name || provider.defaultModel}`);
 }
 
 function editAntigravityProviderConfig(providerId) {
@@ -6138,8 +6159,22 @@ function grok_sanitize_key(key) {
   return s || 'anybridge';
 }
 
+/** 配置卡片上的模型摘要：单模型显示模型名，多模型显示「主模型 等 N 个模型」 */
+function grokConfigModelLabel(cfg) {
+  const primary = cfg?.defaultModel || '默认模型未设置';
+  const all = (Array.isArray(cfg?.models) ? cfg.models : []).filter(Boolean);
+  const extras = all.filter(id => id !== primary);
+  return extras.length ? `${primary} 等 ${extras.length + 1} 个模型` : primary;
+}
+
 function grokConfigProviderById(id) {
   return (providerStore.grokConfigs || []).find(p => p && p.id === id) || null;
+}
+
+/** 按模型推荐上下文窗口；拿不到推荐值时退回 128000（Grok 省略该字段会按 200000 处理） */
+function grokRecommendContextWindow(modelId) {
+  const value = Number(cbRecommendContextWindow(modelId));
+  return Number.isFinite(value) && value > 0 ? value : 128000;
 }
 
 function grokConfigSourceProviders() {
@@ -6183,10 +6218,37 @@ function renderGrokConfigSourceList(selectedId = '') {
 function applyGrokConfigSource(source) {
   if (!source) return;
   codexConfigSetInputValue('grok-config-source-id', source.id);
-  codexConfigSetInputValue('grok-config-name', source.name || '');
+  // list_provider_models 返回的字段是 providerName（不是 name），直接读 name 永远为空；
+  // 与 Codex 一致：仅新建或名称为空时回填，不覆盖编辑中已改过的名称。
+  const nameInput = document.getElementById('grok-config-name');
+  if (grokConfigEditorMode === 'create' || !nameInput?.value.trim()) {
+    codexConfigSetInputValue('grok-config-name', source.providerName || source.name || '');
+  }
   codexConfigSetInputValue('grok-config-base-url', openai_base_url_from_source(source));
   codexConfigSetInputValue('grok-config-api-key', source.apiKey || '');
-  codexConfigSetInputValue('grok-config-model', source.defaultModel || '');
+  // 选供应商后：把它的模型池铺进列表，默认模型标默认并注册
+  const pool = grokModelIdsOf(source.models || []);
+  const entries = pool.map(id => ({
+    model: id,
+    displayName: '',
+    contextWindow: grokRecommendContextWindow(id),
+    inCatalog: id === (source.defaultModel || '') || pool.length === 1,
+    isDefault: id === (source.defaultModel || '') || pool.length === 1,
+  }));
+  if (!entries.length && source.defaultModel) {
+    entries.push({
+      model: source.defaultModel,
+      displayName: '',
+      contextWindow: grokRecommendContextWindow(source.defaultModel),
+      inCatalog: true,
+      isDefault: true,
+    });
+  }
+  // 换供应商 = 换模型段 key，旧的子代理覆盖指向的段已不存在，重置避免写出悬空引用
+  grokSubagentModels = {};
+  grokSubagentCustomTypes = [];
+  const sortFn = typeof sortRoleSelectItems === 'function' ? sortRoleSelectItems : (list) => list;
+  renderGrokModelManager(sortFn(entries, 'grok'), source.defaultModel || '');
   const backendSelect = document.getElementById('grok-config-backend');
   if (backendSelect) backendSelect.value = 'chat_completions';
 }
@@ -6235,21 +6297,378 @@ function setGrokAddBackend(backend) {
   setGrokConfigBackendRadio(backend);
 }
 
-function renderGrokConfigModelChips(models) {
-  const chipsWrap = document.getElementById('grok-config-model-chips');
-  if (!chipsWrap) return;
-  const sortFn = typeof sortRoleSelectItems === 'function' ? sortRoleSelectItems : (l) => l;
-  const list = sortFn(Array.isArray(models) ? models : [], 'grok');
+// ── Grok 模型管理（多模型注册，交互对齐 Codex 配置页） ──
+
+function grokConfigSetModelStatus(text, tone = '') {
+  const el = document.getElementById('grok-config-model-status');
+  if (!el) return;
+  el.textContent = text || '';
+  el.dataset.tone = tone || '';
+}
+
+function grokConfigSetFetchLoading(loading) {
+  const btn = document.getElementById('grok-config-fetch-models-btn');
+  if (!btn) return;
+  btn.disabled = !!loading;
+  btn.classList.toggle('is-loading', !!loading);
+  btn.textContent = loading ? '拉取中...' : '拉取模型';
+}
+
+function setGrokModelEntriesState(entries) {
+  grokModelEntriesState = (Array.isArray(entries) ? entries : []).map(e => ({ ...e }));
+}
+
+function getGrokModelEntries() {
+  if (grokModelEntriesState.length) {
+    return grokModelEntriesState.map(e => ({ ...e }));
+  }
+  const container = document.getElementById('grok-config-model-list');
+  if (!container) return [];
+  const entries = [];
+  for (const row of container.querySelectorAll('.codex-config-model-option[data-idx]')) {
+    const checkbox = row.querySelector('input[type="checkbox"]');
+    const model = row.dataset.model || '';
+    if (!checkbox || !model) continue;
+    const entry = { model, inCatalog: checkbox.checked, isDefault: row.classList.contains('active') };
+    const displayName = row.dataset.display || '';
+    if (displayName) entry.displayName = displayName;
+    const ctx = Number(row.dataset.ctx || '');
+    if (Number.isFinite(ctx) && ctx > 0) entry.contextWindow = ctx;
+    entries.push(entry);
+  }
+  return entries;
+}
+
+function grokEntryContext(entry) {
+  const n = Number(entry?.contextWindow);
+  if (Number.isFinite(n) && n > 0) return n;
+  return grokRecommendContextWindow(entry?.model || '');
+}
+
+/** 已勾选注册的模型项 */
+function grokRegisteredEntries() {
+  return getGrokModelEntries().filter(e => e.inCatalog && e.model);
+}
+
+function renderGrokModelManager(entries, defaultModel = '', status = '') {
+  const container = document.getElementById('grok-config-model-list');
+  if (!container) return;
+  const list = Array.isArray(entries) ? entries : [];
+  if (defaultModel) {
+    list.forEach(e => { e.isDefault = e.inCatalog && e.model === defaultModel; });
+  }
+  setGrokModelEntriesState(list);
+
   if (!list.length) {
-    chipsWrap.innerHTML = '<span style="font-size:11.5px;color:var(--text-muted);">暂无模型，可手动输入</span>';
+    container.innerHTML = '<div class="codex-config-model-empty">还没有模型，点击右上角拉取或手动添加。</div>';
+    grokConfigSetModelStatus(status || '选择供应商后拉取模型列表');
+    renderGrokSubagentRows();
     syncGrokRawConfigFromFields();
     return;
   }
-  chipsWrap.innerHTML = list.map(m => {
-    const id = typeof m === 'string' ? m : (m.id || '');
-    return `<button type="button" class="btn-ghost secondary" style="padding: 2px 8px; font-size: 11.5px; height: 26px;" onclick="document.getElementById('grok-config-model').value='${platformEsc(id)}';if(typeof syncGrokRawConfigFromFields==='function')syncGrokRawConfigFromFields();">${platformEsc(id)}</button>`;
+
+  const inCat = list.filter(e => e.inCatalog).length;
+  if (!status) {
+    grokConfigSetModelStatus(`已保存 ${inCat} 个模型`);
+  }
+
+  container.innerHTML = list.map((entry, i) => {
+    const model = platformEsc(entry.model || '');
+    const displayName = platformEsc(entry.displayName || '');
+    const ctx = entry.contextWindow ? platformEsc(cbFormatContextTokens(entry.contextWindow)) : '';
+    const checked = entry.inCatalog ? 'checked' : '';
+    const isDefault = !!entry.isDefault;
+    const activeClass = isDefault ? ' active' : '';
+    const defaultBtnClass = isDefault ? 'codex-model-default-btn is-default' : 'codex-model-default-btn';
+    const defaultBtnText = isDefault ? '默认 ✓' : '设为默认';
+    const defaultBtnClick = isDefault
+      ? `selectGrokDefaultModel('')`
+      : `selectGrokDefaultModel('${model}')`;
+    const icon = typeof renderModelIcon === 'function' ? renderModelIcon(entry.model) : '';
+    return `<div class="codex-config-model-option${activeClass}" data-idx="${i}" data-model="${model}" data-display="${displayName}" data-ctx="${entry.contextWindow || ''}">
+      <input type="checkbox" ${checked} data-action="toggleGrokModelCatalog" data-events="change" data-args="[${i}]" title="加入模型目录">
+      <span class="codex-model-icon-wrap">${icon}</span>
+      <span class="codex-model-name" title="${model}">${model}</span>
+      ${displayName ? `<span class="codex-model-display-name">${displayName}</span>` : ''}
+      ${ctx ? `<span class="codex-model-ctx">${ctx}</span>` : ''}
+      <div class="codex-model-actions">
+        <button type="button" class="${defaultBtnClass}" data-action-call="${defaultBtnClick}">${defaultBtnText}</button>
+        <button type="button" class="codex-config-fetch-btn" data-action="editGrokModelEntry" data-args="[${i}]">编辑</button>
+        <button type="button" class="codex-config-catalog-del" data-action="removeGrokModelEntry" data-args="[${i}]">删除</button>
+      </div>
+    </div>`;
   }).join('');
+  if (status) grokConfigSetModelStatus(status);
+  // 模型池变化会影响子代理下拉的可选值，跟着刷新
+  renderGrokSubagentRows();
   syncGrokRawConfigFromFields();
+}
+
+function toggleGrokModelCatalog(idx) {
+  if (!grokModelEntriesState[idx]) return;
+  grokModelEntriesState[idx].inCatalog = !grokModelEntriesState[idx].inCatalog;
+  if (!grokModelEntriesState[idx].inCatalog) grokModelEntriesState[idx].isDefault = false;
+  const defaultModel = grokModelEntriesState.find(e => e.isDefault)?.model || '';
+  renderGrokModelManager(grokModelEntriesState, defaultModel);
+}
+
+function cancelGrokModelEdit() {
+  const entries = getGrokModelEntries();
+  renderGrokModelManager(entries, entries.find(e => e.isDefault)?.model || '');
+}
+
+function selectGrokDefaultModel(model) {
+  const entries = getGrokModelEntries();
+  const defaultModel = String(model || '').trim();
+  entries.forEach(e => { e.isDefault = e.inCatalog && e.model === defaultModel; });
+  renderGrokModelManager(entries, defaultModel);
+  grokConfigSetModelStatus(defaultModel ? `默认模型：${defaultModel}` : '已清空默认模型', defaultModel ? 'success' : '');
+}
+
+function addGrokModelEntry() {
+  const entries = getGrokModelEntries();
+  entries.push({ model: '', displayName: '', contextWindow: '', inCatalog: true, isDefault: false });
+  renderGrokModelManager(entries, entries.find(e => e.isDefault)?.model || '');
+  editGrokModelEntry(entries.length - 1);
+}
+
+function editGrokModelEntry(idx) {
+  const container = document.getElementById('grok-config-model-list');
+  if (!container) return;
+  const row = container.querySelectorAll('.codex-config-model-option[data-idx]')[idx];
+  if (!row) return;
+  const entries = getGrokModelEntries();
+  const entry = entries[idx];
+  if (!entry) return;
+  row.classList.remove('active');
+  row.innerHTML = `<div class="codex-config-catalog-row" style="width:100%">
+    <input class="field-input" placeholder="模型 ID" value="${platformEsc(entry.model)}">
+    <input class="field-input" placeholder="显示名（可选）" value="${platformEsc(entry.displayName)}">
+    <input class="field-input" placeholder="上下文窗口" value="${platformEsc(String(entry.contextWindow || ''))}">
+    <div style="display:flex;gap:4px">
+      <button type="button" class="codex-config-fetch-btn" data-action="saveGrokModelEdit" data-args="[${idx}]">确定</button>
+      <button type="button" class="codex-config-catalog-del" data-action="cancelGrokModelEdit">取消</button>
+    </div>
+  </div>`;
+  row.querySelector('.field-input')?.focus();
+}
+
+function saveGrokModelEdit(idx) {
+  const container = document.getElementById('grok-config-model-list');
+  if (!container) return;
+  const row = container.querySelectorAll('.codex-config-model-option[data-idx]')[idx];
+  if (!row) return;
+  const entries = getGrokModelEntries();
+  const inputs = row.querySelectorAll('.field-input');
+  const model = inputs[0]?.value?.trim() || '';
+  if (!model) return;
+  const ctxStr = inputs[2]?.value?.trim() || '';
+  if (ctxStr) {
+    const ctx = Number(ctxStr);
+    if (!Number.isInteger(ctx) || ctx < 8192) {
+      showCustomAlert('上下文窗口必须是 ≥ 8192 的整数（token），或留空使用推荐值。', '无法保存', 'warn');
+      return;
+    }
+    entries[idx].contextWindow = ctx;
+  } else {
+    delete entries[idx].contextWindow;
+  }
+  entries[idx].model = model;
+  entries[idx].displayName = inputs[1]?.value?.trim() || '';
+  const defaultModel = entries.find(e => e.isDefault)?.model || '';
+  renderGrokModelManager(entries, defaultModel);
+}
+
+function removeGrokModelEntry(idx) {
+  const entries = getGrokModelEntries();
+  if (!entries[idx]) return;
+  entries.splice(idx, 1);
+  const defaultModel = entries.find(e => e.isDefault)?.model || '';
+  renderGrokModelManager(entries, defaultModel);
+}
+
+function batchSetGrokModelCatalog(inCatalog) {
+  const entries = getGrokModelEntries();
+  if (!entries.length) return;
+  entries.forEach(e => {
+    e.inCatalog = inCatalog;
+    if (!inCatalog) e.isDefault = false;
+  });
+  const defaultModel = entries.find(e => e.isDefault)?.model || '';
+  renderGrokModelManager(entries, defaultModel);
+  grokConfigSetModelStatus(inCatalog ? `已加入 ${entries.length} 个模型到目录` : `已清空目录`, inCatalog ? 'success' : '');
+  setTimeout(() => renderGrokModelManager(getGrokModelEntries(), grokConfigGetDefaultModel()), 1500);
+}
+
+function batchSetGrokDefaultModel() {
+  const entries = getGrokModelEntries();
+  if (!entries.length) return;
+  entries.forEach(e => { e.isDefault = false; });
+  renderGrokModelManager(entries, '');
+  grokConfigSetModelStatus('已清空默认模型', '');
+  setTimeout(() => renderGrokModelManager(getGrokModelEntries(), ''), 1500);
+}
+
+function grokConfigGetDefaultModel() {
+  const entries = getGrokModelEntries();
+  return entries.find(e => e.isDefault)?.model || '';
+}
+
+// ── Grok 子代理模型覆盖（[subagents.models]） ──
+
+const GROK_SUBAGENT_TYPES = [
+  { id: 'explore', desc: '只读研究：检索、读文件、grep，不改文件' },
+  { id: 'plan', desc: '实施计划：探索代码库后产出方案，不改文件' },
+  { id: 'general-purpose', desc: '通用代理：可写文件的全能子代理' },
+];
+
+globalThis.grokSubagentModels = {};
+globalThis.grokSubagentCustomTypes = [];
+
+function grokSubagentTypeList() {
+  const builtinIds = GROK_SUBAGENT_TYPES.map(t => t.id);
+  const custom = (grokSubagentCustomTypes || []).filter(id => id && !builtinIds.includes(id));
+  return [...GROK_SUBAGENT_TYPES, ...custom.map(id => ({ id, desc: '自定义类型' }))];
+}
+
+/** 模型对应的 config.toml 段 key（与后端 apply_grok 的命名规则一致） */
+function grokSectionKeyOf(model, defaultModel, baseKey) {
+  if (!model) return '';
+  return model === defaultModel ? baseKey : `${baseKey}--${grok_sanitize_key(model)}`;
+}
+
+function renderGrokSubagentRows() {
+  const wrap = document.getElementById('grok-subagent-rows');
+  if (!wrap) return;
+  const entries = grokRegisteredEntries();
+  if (!entries.length) {
+    wrap.innerHTML = '<div class="codex-config-model-empty" style="min-height: 72px;">先在「模型管理」里注册模型，再为子代理指定</div>';
+    return;
+  }
+  const defaultModel = entries.find(e => e.isDefault)?.model || entries[0].model;
+  const editId = document.getElementById('grok-config-edit-id')?.value.trim();
+  const name = document.getElementById('grok-config-name')?.value.trim();
+  const baseKey = grok_sanitize_key(editId || name || 'custom');
+  const items = entries.map(e => ({
+    id: grokSectionKeyOf(e.model, defaultModel, baseKey),
+    label: e.model,
+  }));
+
+  const types = grokSubagentTypeList();
+  wrap.innerHTML = types.map(type => {
+    const isCustom = !GROK_SUBAGENT_TYPES.some(t => t.id === type.id);
+    return `
+      <div class="grok-subagent-row" data-agent="${platformEsc(type.id)}" style="display: grid; grid-template-columns: minmax(140px, 1fr) minmax(220px, 1.5fr) 64px; gap: 12px; align-items: center;">
+        <div>
+          <div style="font-size: 12.5px; font-weight: 700; color: var(--text-primary); font-family: var(--font-mono);">${platformEsc(type.id)}</div>
+          <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">${platformEsc(type.desc)}</div>
+        </div>
+        <div class="custom-role-select" id="grok-subagent-select-${platformEsc(type.id)}"></div>
+        ${isCustom
+          ? `<button type="button" class="btn-ghost warn" data-action="removeGrokSubagentRow" data-arg="${platformEsc(type.id)}" style="height: 28px; padding: 0 10px; font-size: 11.5px;">移除</button>`
+          : '<span></span>'}
+      </div>`;
+  }).join('');
+
+  if (typeof renderCustomRoleSelect !== 'function') return;
+  types.forEach(type => {
+    renderCustomRoleSelect({
+      containerId: `grok-subagent-select-${type.id}`,
+      hiddenInputId: `grok-subagent-input-${type.id}`,
+      role: 'subagent',
+      currentValue: grokSubagentModels?.[type.id] || '',
+      groupLabel: '已注册模型',
+      items,
+      optional: true,
+    });
+  });
+  syncGrokRawConfigFromFields();
+}
+
+function onGrokSubagentModelSelected(containerId, value) {
+  const agent = String(containerId || '').replace('grok-subagent-select-', '');
+  if (!agent) return;
+  if (!grokSubagentModels) grokSubagentModels = {};
+  if (value) grokSubagentModels[agent] = value;
+  else delete grokSubagentModels[agent];
+  renderGrokSubagentRows();
+}
+
+async function addGrokSubagentRow() {
+  const typed = (typeof showCustomPrompt === 'function')
+    ? await showCustomPrompt('输入子代理类型名（内置 explore / plan / general-purpose 已在列表中，这里填自定义类型，如 bug-analyzer、code-reviewer）', '添加子代理类型', '')
+    : prompt('输入子代理类型名：', '');
+  const id = String(typed || '').trim();
+  if (!id) return;
+  if (!grokSubagentCustomTypes) grokSubagentCustomTypes = [];
+  if (!grokSubagentCustomTypes.includes(id) && !GROK_SUBAGENT_TYPES.some(t => t.id === id)) {
+    grokSubagentCustomTypes.push(id);
+  }
+  renderGrokSubagentRows();
+}
+
+function removeGrokSubagentRow(agent) {
+  const id = String(agent || '').trim();
+  if (!id) return;
+  grokSubagentCustomTypes = (grokSubagentCustomTypes || []).filter(x => x !== id);
+  if (grokSubagentModels) delete grokSubagentModels[id];
+  renderGrokSubagentRows();
+}
+
+async function fetchGrokConfigModels() {
+  if (!invoke) return;
+  const seq = ++grokConfigModelFetchSeq;
+  const baseUrl = String(document.getElementById('grok-config-base-url')?.value || '').trim();
+  const apiKey = String(document.getElementById('grok-config-api-key')?.value || '').trim();
+  if (!baseUrl || !apiKey) {
+    showCustomAlert('请先填写 Base URL 和 API Key。', '无法拉取模型', 'warn');
+    return;
+  }
+
+  grokConfigSetFetchLoading(true);
+  grokConfigSetModelStatus('正在拉取模型列表...', 'loading');
+  try {
+    const endpoint = grokConfigEndpointParts(baseUrl);
+    const result = await invoke('fetch_models', {
+      args: {
+        host: endpoint.apiHost,
+        api_key: apiKey,
+        api_format: 'openai',
+        path: endpoint.apiPath || '/v1',
+      }
+    });
+    if (seq !== grokConfigModelFetchSeq) return;
+    const fetchedModels = (result?.models || []).map(m => String(m || '').trim()).filter(Boolean);
+    if (!fetchedModels.length) throw new Error('接口返回的模型列表为空');
+    // 合并到已有列表：已有的保留注册状态，新拉取的默认不勾选
+    const existing = getGrokModelEntries();
+    const existingMap = new Map(existing.map(e => [e.model, e]));
+    const merged = [...existing.map(e => ({ ...e }))];
+    for (const model of fetchedModels) {
+      if (!existingMap.has(model)) {
+        merged.push({ model, displayName: '', contextWindow: '', inCatalog: false, isDefault: false });
+      }
+    }
+    const sortFn = typeof sortRoleSelectItems === 'function' ? sortRoleSelectItems : (list) => list;
+    const sorted = sortFn(merged, 'grok');
+    const currentDefault = existing.find(e => e.isDefault)?.model || '';
+    renderGrokModelManager(sorted, currentDefault, `已拉取 ${fetchedModels.length} 个模型`);
+    if (typeof addLog === 'function') addLog('ok', `Grok 配置模型拉取成功: ${fetchedModels.length} 个`);
+  } catch (e) {
+    if (seq !== grokConfigModelFetchSeq) return;
+    grokConfigSetModelStatus('拉取失败，可手动添加模型', 'error');
+    if (typeof addLog === 'function') addLog('warn', `Grok 配置模型拉取失败: ${e}`);
+    showCustomAlert(String(e), '模型拉取失败', 'error');
+  } finally {
+    if (seq === grokConfigModelFetchSeq) grokConfigSetFetchLoading(false);
+  }
+}
+
+/** 来源供应商的模型 ID 列表（用于选供应商后预填列表） */
+function grokModelIdsOf(models) {
+  return (Array.isArray(models) ? models : [])
+    .map(m => (typeof m === 'string' ? m : (m?.id || '')))
+    .filter(Boolean);
 }
 
 async function openGrokAddModal() {
@@ -6300,18 +6719,42 @@ async function initGrokConfigEditorPage(providerId = '') {
     const url = provider.apiHost ? (provider.apiHost.replace(/\/+$/, '') + (provider.apiPath || '/v1')) : '';
     codexConfigSetInputValue('grok-config-base-url', url);
     codexConfigSetInputValue('grok-config-api-key', provider.apiKey || '');
-    codexConfigSetInputValue('grok-config-model', provider.defaultModel || '');
     setGrokConfigBackendRadio(provider.apiBackend || 'chat_completions');
 
+    // 回填已注册模型（历史配置只有 defaultModel 时等价于只注册它），
+    // 再叠加来源供应商的模型池，未注册的不勾选，方便直接勾上
+    const registered = (Array.isArray(provider.models) && provider.models.length)
+      ? provider.models.filter(Boolean)
+      : [provider.defaultModel].filter(Boolean);
     const source = (providerStore.providers || []).find(p => p.id === provider.sourceProviderId);
-    renderGrokConfigModelChips(source ? source.models : [provider.defaultModel]);
+    const pool = grokModelIdsOf(source ? source.models : []);
+    const known = new Set(registered);
+    const entries = registered.map(id => ({
+      model: id,
+      displayName: '',
+      contextWindow: provider.modelContexts?.[id] || grokRecommendContextWindow(id),
+      inCatalog: true,
+      isDefault: id === provider.defaultModel,
+    }));
+    pool.forEach(id => {
+      if (known.has(id)) return;
+      known.add(id);
+      entries.push({ model: id, displayName: '', contextWindow: grokRecommendContextWindow(id), inCatalog: false, isDefault: false });
+    });
+    const sortFn = typeof sortRoleSelectItems === 'function' ? sortRoleSelectItems : (list) => list;
+    // 子代理覆盖回填（自定义类型 = 不在内置列表里的键）
+    grokSubagentModels = { ...(provider.subagentModels || {}) };
+    grokSubagentCustomTypes = Object.keys(grokSubagentModels)
+      .filter(id => !GROK_SUBAGENT_TYPES.some(t => t.id === id));
+    renderGrokModelManager(sortFn(entries, 'grok'), provider.defaultModel || '');
   } else {
     codexConfigSetInputValue('grok-config-source-id', '');
     codexConfigSetInputValue('grok-config-name', '');
     codexConfigSetInputValue('grok-config-base-url', '');
     codexConfigSetInputValue('grok-config-api-key', '');
-    codexConfigSetInputValue('grok-config-model', '');
     setGrokConfigBackendRadio('chat_completions');
+    grokSubagentModels = {};
+    grokSubagentCustomTypes = [];
 
     const firstProvider = grokProviderModels[0];
     if (firstProvider) {
@@ -6321,7 +6764,7 @@ async function initGrokConfigEditorPage(providerId = '') {
     } else {
       grokAddSelectedProvider = null;
       renderGrokAddProviderList();
-      renderGrokConfigModelChips([]);
+      renderGrokModelManager([], '');
     }
   }
 
@@ -6382,7 +6825,6 @@ function selectGrokAddProvider(providerId) {
   const provider = grokProviderModels.find(p => p.providerId === providerId);
   if (provider) {
     applyGrokConfigSource(provider);
-    renderGrokConfigModelChips(provider.models || []);
   }
 }
 
@@ -6488,6 +6930,7 @@ async function confirmAddGrokModelsPage() {
       apiKey: provider.apiKey || '',
       defaultModel: modelId,
       apiBackend: apiBackend,
+      contextWindow: grokRecommendContextWindow(modelId),
       sourceProviderId: provider.providerId,
       sourceProviderName: provider.providerName,
     };
@@ -6529,7 +6972,20 @@ function syncGrokConfigTokenFromSource() {
   }
   codexConfigSetInputValue('grok-config-api-key', source.apiKey || '');
   codexConfigSetInputValue('grok-config-base-url', openai_base_url_from_source(source));
-  if (source.defaultModel) codexConfigSetInputValue('grok-config-model', source.defaultModel);
+  if (source.defaultModel) {
+    // 同步令牌后按新来源刷新模型列表，默认模型保持注册
+    const current = getGrokModelEntries();
+    const seen = new Set(current.map(e => e.model));
+    const merged = [...current.map(e => ({ ...e }))];
+    grokModelIdsOf(source.models || []).forEach(id => {
+      if (seen.has(id)) return;
+      seen.add(id);
+      merged.push({ model: id, displayName: '', contextWindow: grokRecommendContextWindow(id), inCatalog: false, isDefault: false });
+    });
+    const sortFn = typeof sortRoleSelectItems === 'function' ? sortRoleSelectItems : (list) => list;
+    const defaultModel = current.find(e => e.isDefault)?.model || source.defaultModel;
+    renderGrokModelManager(sortFn(merged, 'grok'), defaultModel);
+  }
   if (typeof addLog === 'function') addLog('info', `已从来源供应商「${source.name}」同步最新配置`);
 }
 
@@ -6548,12 +7004,15 @@ async function syncGrokConfigUiAfterStoreChange() {
 
 async function saveGrokConfigEditor(addAfter = false) {
   const editId = document.getElementById('grok-config-edit-id')?.value.trim();
-  const name = document.getElementById('grok-config-name')?.value.trim();
+  const sourceId = document.getElementById('grok-config-source-id')?.value.trim();
+  // 名称留空时自动取来源供应商名，别让用户卡在这一步
+  const name = document.getElementById('grok-config-name')?.value.trim()
+    || (providerStore.providers || []).find(p => p && p.id === sourceId)?.name
+    || (grokProviderModels || []).find(p => p && p.providerId === sourceId)?.providerName
+    || '';
   const rawBaseUrl = document.getElementById('grok-config-base-url')?.value.trim();
   const apiKey = document.getElementById('grok-config-api-key')?.value.trim();
-  const defaultModel = document.getElementById('grok-config-model')?.value.trim();
   const apiBackend = document.getElementById('grok-config-backend')?.value.trim() || 'chat_completions';
-  const sourceId = document.getElementById('grok-config-source-id')?.value.trim();
 
   if (!name) {
     showCustomAlert('请输入配置名称。', '无法保存', 'warn');
@@ -6574,9 +7033,34 @@ async function saveGrokConfigEditor(addAfter = false) {
     return;
   }
 
+  const registered = grokRegisteredEntries();
+  if (!registered.length) {
+    showCustomAlert('请至少勾选注册一个模型（列表里勾选，或点「添加模型」手动输入）。', '无法保存', 'warn');
+    return;
+  }
+  // 没有显式设默认时取第一个注册模型，避免 [models].default 指向不存在的段
+  const defaultEntry = registered.find(e => e.isDefault) || registered[0];
+  const defaultModel = defaultEntry.model;
+  registered.forEach(e => { e.isDefault = e.model === defaultModel; });
+
   const endpoint = grokConfigEndpointParts(rawBaseUrl);
   const existing = editId ? grokConfigProviderById(editId) : null;
   const source = sourceId ? (providerStore.providers || []).find(p => p && p.id === sourceId) : null;
+
+  const models = registered.map(e => e.model);
+  // 逐模型的上下文窗口：留空的按模型推荐值填，避免小上下文模型按 200,000 处理永不压缩
+  const modelContexts = {};
+  registered.forEach(e => {
+    modelContexts[e.model] = grokEntryContext(e);
+  });
+  const contextWindow = modelContexts[defaultModel];
+  // 子代理覆盖：留空（继承主模型）的类型不落盘
+  const subagentModels = {};
+  Object.entries(grokSubagentModels || {}).forEach(([agent, target]) => {
+    if (String(agent).trim() && String(target).trim()) {
+      subagentModels[String(agent).trim()] = String(target).trim();
+    }
+  });
 
   const config = {
     ...(existing || {}),
@@ -6585,10 +7069,14 @@ async function saveGrokConfigEditor(addAfter = false) {
     apiHost: endpoint.apiHost,
     apiPath: endpoint.apiPath || '/v1',
     apiKey,
-    defaultModel: defaultModel || 'default',
+    defaultModel,
+    models,
     apiBackend,
     sourceProviderId: sourceId || existing?.sourceProviderId || '',
     sourceProviderName: source?.name || existing?.sourceProviderName || '',
+    contextWindow,
+    modelContexts,
+    subagentModels,
   };
 
   const previous = typeof cloneProviderStore === 'function'
@@ -6659,8 +7147,15 @@ async function applyGrokProviderConfig(providerId) {
   const provider = grokConfigProviderById(providerId);
   const label = provider?.name || providerId;
   const model = provider?.defaultModel || '默认模型';
+  const contextWindow = provider?.contextWindow
+    ? `${provider.contextWindow} token`
+    : '未设置（Grok 会按 200,000 处理）';
+  const extraCount = Math.max(0, (Array.isArray(provider?.models) ? provider.models.length : 1) - 1);
+  const registerLine = extraCount
+    ? `\n同时注册：${extraCount + 1} 个模型（其余用 /model 或 Ctrl+M 切换）`
+    : '';
   const ok = await showCustomConfirm(
-    `将把 Grok Build CLI 默认模型切换为「${label}」。\n\n模型：${model}\n配置文件：~/.grok/config.toml\n\n下次在终端启动 grok 即可生效。`,
+    `将把 Grok Build CLI 默认模型切换为「${label}」。\n\n模型：${model}\n上下文窗口：${contextWindow}${registerLine}\n配置文件：~/.grok/config.toml\n\n下次在终端启动 grok 即可生效。`,
     '切换 Grok 配置',
     'warn'
   );
@@ -6773,7 +7268,7 @@ function renderGrokConfigList(info) {
       tone: isCurrent ? 'third live' : 'third',
       current: isCurrent,
       currentLabel: '当前使用',
-      model: cfg.defaultModel || '默认模型未设置',
+      model: `${grokConfigModelLabel(cfg)} · 上下文 ${cfg.contextWindow ? cbFormatContextTokens(cfg.contextWindow) : '未设置'}`,
       endpoint: baseUrl,
       protocol: backendLabel,
       action: `applyGrokProviderConfig(${platformJsArg(cfg.id)})`,
@@ -7525,15 +8020,7 @@ async function cursorBulkDisableAction() {
 async function cursorBulkRemoveAction() {
   if (_cursorSelectedSet.size === 0) return;
   const count = _cursorSelectedSet.size;
-  const ok = await showCustomConfirm(
-    `确定要从 Cursor 移除选中的 ${count} 个模型绑定吗？
-
-注意：此操作仅移除 Cursor 中的选用关系，不会删除统一供应商和共享路由。`,
-    '移除模型绑定',
-    'warn'
-  );
-  if (!ok) return;
-
+  // 仅移除 Cursor 中的选用关系（不影响统一供应商与共享路由），直接生效不再二次确认。
   cursorEnsureBridge();
   const ids = Array.from(_cursorSelectedSet);
   const prevList = _cursorModelsList.slice();
@@ -7573,15 +8060,7 @@ async function cursorToggleModelEnabled(bindingId, enabled) {
 
 // 单个模型移除
 async function cursorRemoveSingleModel(bindingId, displayName) {
-  const ok = await showCustomConfirm(
-    `确定要从 Cursor 移除「${displayName}」吗？
-
-此操作仅从 Cursor 列表中移除，不会影响共享路由及其他 IDE。`,
-    '移除模型',
-    'warn'
-  );
-  if (!ok) return;
-
+  // 仅从 Cursor 列表移除（不影响共享路由与其他 IDE），直接生效不再二次确认。
   cursorEnsureBridge();
   const prevList = _cursorModelsList.slice();
   _cursorModelsList = _cursorModelsList.filter(m => m.id !== bindingId);
@@ -9291,6 +9770,8 @@ globalThis.cbAddSelectedProvider = null; // 当前在「添加」页面选中的
 globalThis.cbAddSearchKw = '';
 globalThis.grokProviderModels = [];
 globalThis.grokAddSelectedProvider = null;
+globalThis.grokModelEntriesState = [];
+globalThis.grokConfigModelFetchSeq = 0;
 globalThis.grokAddSearchKw = '';
 globalThis.opencodeProviderModels = [];
 globalThis.opencodeAddSelectedProvider = null;
@@ -12438,6 +12919,29 @@ window.zcDrop = function(e) {
   g.onGrokConfigSearch = onGrokConfigSearch;
   g.renderGrokConfigList = renderGrokConfigList;
   g.restoreGrokOfficialConfig = restoreGrokOfficialConfig;
+  g.grokConfigSetModelStatus = grokConfigSetModelStatus;
+  g.grokConfigSetFetchLoading = grokConfigSetFetchLoading;
+  g.setGrokModelEntriesState = setGrokModelEntriesState;
+  g.getGrokModelEntries = getGrokModelEntries;
+  g.grokEntryContext = grokEntryContext;
+  g.grokRegisteredEntries = grokRegisteredEntries;
+  g.renderGrokModelManager = renderGrokModelManager;
+  g.toggleGrokModelCatalog = toggleGrokModelCatalog;
+  g.cancelGrokModelEdit = cancelGrokModelEdit;
+  g.selectGrokDefaultModel = selectGrokDefaultModel;
+  g.addGrokModelEntry = addGrokModelEntry;
+  g.editGrokModelEntry = editGrokModelEntry;
+  g.saveGrokModelEdit = saveGrokModelEdit;
+  g.removeGrokModelEntry = removeGrokModelEntry;
+  g.batchSetGrokModelCatalog = batchSetGrokModelCatalog;
+  g.batchSetGrokDefaultModel = batchSetGrokDefaultModel;
+  g.grokConfigGetDefaultModel = grokConfigGetDefaultModel;
+  g.fetchGrokConfigModels = fetchGrokConfigModels;
+  g.renderGrokSubagentRows = renderGrokSubagentRows;
+  g.onGrokSubagentModelSelected = onGrokSubagentModelSelected;
+  g.addGrokSubagentRow = addGrokSubagentRow;
+  g.removeGrokSubagentRow = removeGrokSubagentRow;
+  g.grokSectionKeyOf = grokSectionKeyOf;
   g.restoreClaudeCodeOfficialConfig = restoreClaudeCodeOfficialConfig;
   g.applyClaudeCodeProviderConfig = applyClaudeCodeProviderConfig;
   g.onCodexConfigSearch = onCodexConfigSearch;

@@ -558,22 +558,60 @@ impl Platform {
             Platform::Grok => {
                 let base = openai_base_url(p);
                 let raw_model = p.default_model.trim();
-                let model = toml_escape(if raw_model.is_empty() {
+                let model_id = if raw_model.is_empty() {
                     "default"
                 } else {
                     raw_model
-                });
+                };
+                let model = toml_escape(model_id);
                 let masked = mask_key(&p.api_key);
-                let name = toml_escape(&p.name);
+                let name = toml_escape(&format!("{} · {}", p.name, model_id));
                 let key = grok_sanitize_key(&p.id);
                 let backend = if !p.wire_api.trim().is_empty() {
                     p.wire_api.trim()
                 } else {
                     "chat_completions"
                 };
-                Ok(format!(
-                    "[models]\ndefault = \"{key}\"\n\n[model.{key}]\nname = \"{name}\"\nmodel = \"{model}\"\nbase_url = \"{base}\"\napi_key = \"{masked}\"\napi_backend = \"{backend}\"\nanybridge_managed = true"
-                ))
+                let context_line = match grok_model_context(p, model_id) {
+                    Some(ctx) => format!("\ncontext_window = {ctx}"),
+                    None => String::new(),
+                };
+                let mut out = format!(
+                    "[models]\ndefault = \"{key}\"\n\n[model.{key}]\nname = \"{name}\"\nmodel = \"{model}\"\nbase_url = \"{base}\"\napi_key = \"{masked}\"\napi_backend = \"{backend}\"{context_line}\nanybridge_managed = true"
+                );
+                for extra in p.models.iter() {
+                    let id = extra.trim();
+                    if id.is_empty() || id == model_id {
+                        continue;
+                    }
+                    let extra_key = format!("{key}--{}", grok_sanitize_key(id));
+                    let extra_name = toml_escape(&format!("{} · {}", p.name, id));
+                    let extra_model = toml_escape(id);
+                    let extra_ctx = match grok_model_context(p, id) {
+                        Some(ctx) => format!("\ncontext_window = {ctx}"),
+                        None => String::new(),
+                    };
+                    out.push_str(&format!(
+                        "\n\n[model.{extra_key}]\nname = \"{extra_name}\"\nmodel = \"{extra_model}\"\nbase_url = \"{base}\"\napi_key = \"{masked}\"\napi_backend = \"{backend}\"{extra_ctx}\nanybridge_managed = true"
+                    ));
+                }
+                if !p.subagent_models.is_empty() {
+                    let mut agents: Vec<(&String, &String)> = p.subagent_models.iter().collect();
+                    agents.sort_by(|a, b| a.0.cmp(b.0));
+                    let mut lines = String::new();
+                    for (agent, model_key) in agents {
+                        let name = agent.trim();
+                        let target = model_key.trim();
+                        if name.is_empty() || target.is_empty() {
+                            continue;
+                        }
+                        lines.push_str(&format!("\n{} = \"{}\"", name, toml_escape(target)));
+                    }
+                    if !lines.is_empty() {
+                        out.push_str(&format!("\n\n[subagents.models]{lines}"));
+                    }
+                }
+                Ok(out)
             }
         }
     }
@@ -1102,11 +1140,36 @@ impl Platform {
         if !doc.contains_key("model") {
             doc.insert("model", Item::Table(Table::new()));
         }
+
+        // 本配置上次写入的段（主段 + 附加模型段）先清掉，
+        // 否则取消勾选的模型会作为幽灵段留在 config.toml 里，Grok 仍会列出它们。
+        let stale_prefix = format!("{section_key}--");
+        let mut stale_keys = Vec::new();
+        if let Some(existing) = doc.get("model").and_then(Item::as_table_like) {
+            for (key, val) in existing.iter() {
+                if key != section_key && !key.starts_with(&stale_prefix) {
+                    continue;
+                }
+                let managed = val
+                    .as_table_like()
+                    .and_then(|t| t.get("anybridge_managed"))
+                    .and_then(Item::as_bool)
+                    .unwrap_or(false);
+                if managed {
+                    stale_keys.push(key.to_string());
+                }
+            }
+        }
+        if let Some(existing) = doc.get_mut("model").and_then(Item::as_table_like_mut) {
+            for key in &stale_keys {
+                existing.remove(key);
+            }
+        }
+
         let model_table = doc["model"]
             .as_table_like_mut()
             .ok_or_else(|| "Grok config.toml 中的 model 不是 table".to_string())?;
 
-        let mut entry = Table::new();
         let raw_model = p.default_model.trim();
         let model_val = if raw_model.is_empty() {
             "default"
@@ -1118,14 +1181,125 @@ impl Platform {
         } else {
             "chat_completions"
         };
-        entry.insert("name", value(&p.name));
+        let base_url = openai_base_url(p);
+
+        // 附加模型：同一供应商下注册多个模型，可在 Grok 里用 /model 或 Ctrl+M 切换。
+        // 主模型单独占 section_key，保持与旧版配置兼容。
+        let mut extra_models: Vec<&str> = Vec::new();
+        for candidate in &p.models {
+            let id = candidate.trim();
+            if id.is_empty() || id == model_val || extra_models.contains(&id) {
+                continue;
+            }
+            extra_models.push(id);
+        }
+
+        let mut entry = Table::new();
+        // Grok 在状态栏 / 模型选择器里显示的是 name（display name）而不是 model id，
+        // 只写配置名会让人看不出当前跑的是哪个模型，所以统一带上模型名。
+        entry.insert("name", value(&format!("{} · {}", p.name, model_val)));
         entry.insert("model", value(model_val));
-        entry.insert("base_url", value(openai_base_url(p)));
+        entry.insert("base_url", value(base_url.as_str()));
         entry.insert("api_key", value(&p.api_key));
         entry.insert("api_backend", value(backend));
+        // Grok 只认显式值：不写 context_window 时它一律按 200,000 处理，
+        // 小上下文模型永远不会触发自动压缩，最终在 SSE 流里溢出并被判定为可重试错误。
+        if let Some(ctx) = grok_model_context(p, model_val) {
+            entry.insert("context_window", value(i64::from(ctx)));
+        }
         entry.insert("anybridge_managed", value(true));
 
         model_table.insert(&section_key, Item::Table(entry));
+
+        for id in extra_models {
+            let mut extra = Table::new();
+            extra.insert("name", value(format!("{} · {}", p.name, id).as_str()));
+            extra.insert("model", value(id));
+            extra.insert("base_url", value(base_url.as_str()));
+            extra.insert("api_key", value(&p.api_key));
+            extra.insert("api_backend", value(backend));
+            if let Some(ctx) = grok_model_context(p, id) {
+                extra.insert("context_window", value(i64::from(ctx)));
+            }
+            extra.insert("anybridge_managed", value(true));
+            model_table.insert(
+                &format!("{section_key}--{}", grok_sanitize_key(id)),
+                Item::Table(extra),
+            );
+        }
+
+        // 子代理模型覆盖：只给用户显式指定过的类型写项，其余类型 Grok 自动继承主会话模型。
+        // 清理策略：仅移除「值指向本配置模型段」的项，用户手写指向内置模型的项一律不动。
+        let own_prefix = format!("{section_key}--");
+        let mut stale_agents = Vec::new();
+        if let Some(sub) = doc.get("subagents").and_then(Item::as_table_like) {
+            if let Some(agent_models) = sub.get("models").and_then(Item::as_table_like) {
+                for (agent, val) in agent_models.iter() {
+                    let target = val.as_str().unwrap_or_default();
+                    if target == section_key || target.starts_with(&own_prefix) {
+                        stale_agents.push(agent.to_string());
+                    }
+                }
+            }
+        }
+        if !stale_agents.is_empty() {
+            if let Some(agent_models) = doc
+                .get_mut("subagents")
+                .and_then(Item::as_table_like_mut)
+                .and_then(|t| t.get_mut("models"))
+                .and_then(Item::as_table_like_mut)
+            {
+                for agent in &stale_agents {
+                    agent_models.remove(agent);
+                }
+            }
+        }
+
+        if !p.subagent_models.is_empty() {
+            if !doc.contains_key("subagents") {
+                doc.insert("subagents", Item::Table(Table::new()));
+            }
+            let sub_table = doc["subagents"]
+                .as_table_like_mut()
+                .ok_or_else(|| "Grok config.toml 中的 subagents 不是 table".to_string())?;
+            // 实测（1.0.30）：只写 [subagents.models] 而不显式 enabled = true 时，
+            // spawn_subagent 工具会从工具列表里消失，子代理功能整体失效。
+            sub_table.insert("enabled", value(true));
+            if !sub_table.contains_key("models") {
+                sub_table.insert("models", Item::Table(Table::new()));
+            }
+            let agent_models = sub_table
+                .get_mut("models")
+                .and_then(Item::as_table_like_mut)
+                .ok_or_else(|| "Grok config.toml 中的 subagents.models 不是 table".to_string())?;
+            for (agent, model_key) in &p.subagent_models {
+                let agent_name = agent.trim();
+                let target = model_key.trim();
+                if agent_name.is_empty() || target.is_empty() {
+                    continue;
+                }
+                agent_models.insert(agent_name, value(target));
+            }
+        }
+
+        // 清空后的空表顺手移除：models 空时把 AnyBridge 写的 enabled/models 一并清掉，
+        // subagents 由此为空才整体移除（用户手写的 toggle/roles/personas 不受影响）。
+        let mut drop_subagents = false;
+        if let Some(sub) = doc.get_mut("subagents").and_then(Item::as_table_like_mut) {
+            let models_empty = sub
+                .get("models")
+                .and_then(Item::as_table_like)
+                .map(|t| t.is_empty())
+                .unwrap_or(true);
+            if models_empty {
+                sub.remove("models");
+                sub.remove("enabled");
+                drop_subagents = sub.is_empty();
+            }
+        }
+        if drop_subagents {
+            doc.remove("subagents");
+        }
 
         super::write_atomic(path, doc.to_string().as_bytes())
     }
@@ -1421,7 +1595,16 @@ fn patch_antigravity_hub_asar(asar_path: &std::path::Path) -> Result<(), String>
         std::str::from_utf8(&bytes[payload_start + offset..payload_start + offset + size])
             .map_err(|e| format!("解析 languageServer.js 失败: {e}"))?;
 
-    if original_code.contains("jetski.cloudCodeUrl") {
+    // 自愈：先用正则清除任意历史注入（旧版注入依赖 languageServer.js 顶部的 fs/path/electron，
+    // 客户端升级后这些导入可能消失，导致语言服务崩溃循环），还原为官方端点串后再注入当前版本。
+    let re_injected = regex::Regex::new(r"(?s)'--cloud_code_endpoint',\s*\(\(\)\s*=>\s*\{.*?\}\)\(\),")
+        .map_err(|e| format!("正则编译失败: {e}"))?;
+    let official_pair = "'--cloud_code_endpoint',\n            'https://daily-cloudcode-pa.googleapis.com',";
+    let base_code = re_injected
+        .replace(original_code, official_pair)
+        .to_string();
+
+    if base_code.contains("jetski.cloudCodeUrl") {
         return Ok(());
     }
 
@@ -1434,12 +1617,14 @@ fn patch_antigravity_hub_asar(asar_path: &std::path::Path) -> Result<(), String>
         "'--cloud_code_endpoint',\n            'https://daily-cloudcode-pa.googleapis.com',";
     let target_crlf =
         "'--cloud_code_endpoint',\r\n            'https://daily-cloudcode-pa.googleapis.com',";
-    let injected = "'--cloud_code_endpoint',\n            (() => { try { const cfg = path_1.default.join(electron_1.app.getPath('userData'), 'User', 'settings.json'); if (fs.existsSync(cfg)) { const val = JSON.parse(fs.readFileSync(cfg, 'utf8'))['jetski.cloudCodeUrl']; if (val && typeof val === 'string') return val.trim(); } } catch(_) {} return process.env.CLOUD_CODE_URL || 'https://daily-cloudcode-pa.googleapis.com'; })(),";
+    // 注入代码必须自带 require：客户端升级后 languageServer.js 顶部不一定导入
+    // fs / path / electron，直接引用外部标识符会抛 ReferenceError，导致语言服务崩溃循环。
+    let injected = "'--cloud_code_endpoint',\n            (() => { try { const fs = require('fs'); const path = require('path'); const { app } = require('electron'); const cfg = path.join(app.getPath('userData'), 'User', 'settings.json'); if (fs.existsSync(cfg)) { const val = JSON.parse(fs.readFileSync(cfg, 'utf8'))['jetski.cloudCodeUrl']; if (val && typeof val === 'string') return val.trim(); } } catch(_) {} return process.env.CLOUD_CODE_URL || 'https://daily-cloudcode-pa.googleapis.com'; })(),";
 
-    let new_code = if original_code.contains(target_lf) {
-        original_code.replace(target_lf, injected)
-    } else if original_code.contains(target_crlf) {
-        original_code.replace(target_crlf, injected)
+    let new_code = if base_code.contains(target_lf) {
+        base_code.replace(target_lf, injected)
+    } else if base_code.contains(target_crlf) {
+        base_code.replace(target_crlf, injected)
     } else {
         return Err("未找到目标 cloud_code_endpoint 字段".to_string());
     };
@@ -4796,6 +4981,11 @@ fn grok_sanitize_key(key: &str) -> String {
     }
 }
 
+/// 取某个注册模型的上下文窗口：优先逐模型表，回退到配置级值。
+fn grok_model_context(p: &Provider, model: &str) -> Option<u32> {
+    p.model_contexts.get(model).copied().or(p.context_window)
+}
+
 fn read_grok_config_info(
     path: &PathBuf,
 ) -> Result<Option<(Option<String>, Option<String>, bool, Vec<String>)>, String> {
@@ -4818,7 +5008,17 @@ fn read_grok_config_info(
 
     let mut live_ids = Vec::new();
     if let Some(model_table) = doc.get("model").and_then(Item::as_table_like) {
-        for (key, _) in model_table.iter() {
+        for (key, val) in model_table.iter() {
+            // AnyBridge 注册的附加模型段（<配置key>--<模型名>）属于宿主配置的一部分，
+            // 不是可独立切换的配置，不能当成「外部写入」列出来。
+            let managed = val
+                .as_table_like()
+                .and_then(|t| t.get("anybridge_managed"))
+                .and_then(Item::as_bool)
+                .unwrap_or(false);
+            if managed && key.contains("--") {
+                continue;
+            }
             live_ids.push(key.to_string());
         }
     }
@@ -6065,6 +6265,9 @@ mod tests {
             codex_chat_reasoning: None,
             agents_config: None,
             agents: Vec::new(),
+            context_window: None,
+            model_contexts: HashMap::new(),
+            subagent_models: HashMap::new(),
         }
     }
 
@@ -6097,6 +6300,9 @@ mod tests {
             codex_chat_reasoning: None,
             agents_config: None,
             agents: Vec::new(),
+            context_window: None,
+            model_contexts: HashMap::new(),
+            subagent_models: HashMap::new(),
         }
     }
 
@@ -7237,6 +7443,7 @@ name = "Official Grok"
         provider.api_host = "https://api.deepseek.com".to_string();
         provider.api_path = Some("/v1/chat/completions".to_string());
         provider.api_key = "sk-1234567890".to_string();
+        provider.context_window = Some(65536);
 
         Platform::Grok.apply_grok(&path, &provider).unwrap();
 
@@ -7250,7 +7457,11 @@ name = "Official Grok"
         );
 
         let deepseek_table = doc["model"]["deepseek"].as_table().unwrap();
-        assert_eq!(deepseek_table["name"].as_str(), Some("DeepSeek"));
+        // display name 要带模型名，否则 Grok 状态栏只显示配置名看不出模型
+        assert_eq!(
+            deepseek_table["name"].as_str(),
+            Some("DeepSeek · deepseek-coder")
+        );
         assert_eq!(deepseek_table["model"].as_str(), Some("deepseek-coder"));
         assert_eq!(
             deepseek_table["base_url"].as_str(),
@@ -7261,11 +7472,12 @@ name = "Official Grok"
             deepseek_table["api_backend"].as_str(),
             Some("chat_completions")
         );
+        assert_eq!(deepseek_table["context_window"].as_integer(), Some(65536));
         assert_eq!(deepseek_table["anybridge_managed"].as_bool(), Some(true));
 
         let info = read_grok_config_info(&path).unwrap().unwrap();
         assert_eq!(info.0.as_deref(), Some("deepseek"));
-        assert_eq!(info.1.as_deref(), Some("DeepSeek"));
+        assert_eq!(info.1.as_deref(), Some("DeepSeek · deepseek-coder"));
         assert_eq!(info.2, true);
 
         // 测试 default_model 为空时的回退
@@ -7300,6 +7512,192 @@ name = "Official Grok"
     }
 
     #[test]
+    fn apply_grok_writes_context_window_only_when_configured() {
+        let path = temp_config_path("grok-context-window");
+        let mut provider = test_openai_provider();
+        provider.id = "ctx-model".to_string();
+        provider.name = "Ctx Model".to_string();
+        provider.default_model = "deepseek-chat".to_string();
+        provider.api_host = "https://api.deepseek.com".to_string();
+        provider.api_path = Some("/v1".to_string());
+        provider.api_key = "sk-ctx".to_string();
+
+        // 未配置时不写该字段
+        Platform::Grok.apply_grok(&path, &provider).unwrap();
+        let doc = fs::read_to_string(&path)
+            .unwrap()
+            .parse::<DocumentMut>()
+            .unwrap();
+        let table = doc["model"]["ctx-model"].as_table().unwrap();
+        assert!(table.get("context_window").is_none());
+
+        // 配置后写入整数，且预览同步
+        provider.context_window = Some(131072);
+        Platform::Grok.apply_grok(&path, &provider).unwrap();
+        let doc2 = fs::read_to_string(&path)
+            .unwrap()
+            .parse::<DocumentMut>()
+            .unwrap();
+        assert_eq!(
+            doc2["model"]["ctx-model"]
+                .as_table()
+                .unwrap()
+                .get("context_window")
+                .and_then(Item::as_integer),
+            Some(131072)
+        );
+
+        let preview = Platform::Grok.preview(&provider).unwrap();
+        assert!(preview.contains("context_window = 131072"));
+
+        let _ = fs::remove_dir_all(path.parent().unwrap());
+    }
+
+    #[test]
+    fn apply_grok_registers_multiple_models_and_prunes_stale_sections() {
+        use std::collections::HashMap;
+
+        let path = temp_config_path("grok-multi-model");
+        fs::write(
+            &path,
+            "[model.foreign]\nmodel = \"keep-me\"\nname = \"Foreign\"\n",
+        )
+        .unwrap();
+
+        let mut provider = test_openai_provider();
+        provider.id = "cpa".to_string();
+        provider.name = "CPA".to_string();
+        provider.default_model = "model-a".to_string();
+        provider.api_host = "https://api.example.com".to_string();
+        provider.api_path = Some("/v1".to_string());
+        provider.api_key = "sk-multi".to_string();
+        provider.models = vec!["model-a".to_string(), "model-b".to_string()];
+        provider.model_contexts =
+            HashMap::from([("model-a".to_string(), 200000u32), ("model-b".to_string(), 64000u32)]);
+
+        Platform::Grok.apply_grok(&path, &provider).unwrap();
+
+        let doc = fs::read_to_string(&path)
+            .unwrap()
+            .parse::<DocumentMut>()
+            .unwrap();
+        assert_eq!(doc["models"]["default"].as_str(), Some("cpa"));
+        assert_eq!(doc["model"]["cpa"]["model"].as_str(), Some("model-a"));
+        assert_eq!(
+            doc["model"]["cpa"].as_table().unwrap()["context_window"].as_integer(),
+            Some(200000)
+        );
+        let extra = doc["model"]["cpa--model-b"].as_table().unwrap();
+        assert_eq!(extra["model"].as_str(), Some("model-b"));
+        assert_eq!(extra["context_window"].as_integer(), Some(64000));
+        assert_eq!(extra["api_key"].as_str(), Some("sk-multi"));
+        // 非 AnyBridge 托管的段必须原样保留
+        assert_eq!(doc["model"]["foreign"]["model"].as_str(), Some("keep-me"));
+
+        // 附加模型段是宿主配置的一部分，不能作为独立「外部配置」列出
+        let info = read_grok_config_info(&path).unwrap().unwrap();
+        assert!(info.3.iter().any(|k| k == "cpa"));
+        assert!(info.3.iter().any(|k| k == "foreign"));
+        assert!(!info.3.iter().any(|k| k == "cpa--model-b"));
+
+        // 取消勾选 model-b 后，它的段必须消失，主段保留
+        provider.models = vec!["model-a".to_string()];
+        Platform::Grok.apply_grok(&path, &provider).unwrap();
+
+        let doc2 = fs::read_to_string(&path)
+            .unwrap()
+            .parse::<DocumentMut>()
+            .unwrap();
+        assert!(doc2["model"].as_table().unwrap().get("cpa--model-b").is_none());
+        assert_eq!(doc2["model"]["cpa"]["model"].as_str(), Some("model-a"));
+        assert_eq!(doc2["model"]["foreign"]["model"].as_str(), Some("keep-me"));
+
+        let _ = fs::remove_dir_all(path.parent().unwrap());
+    }
+
+    #[test]
+    fn apply_grok_writes_subagent_models_and_prunes_own_entries() {
+        use std::collections::HashMap;
+
+        // 用户手写的子代理映射，必须原样保留
+        let path = temp_config_path("grok-subagents");
+        fs::write(&path, "[subagents.models]\nmanual = \"grok-4.6\"\n").unwrap();
+
+        let mut provider = test_openai_provider();
+        provider.id = "cpa".to_string();
+        provider.name = "CPA".to_string();
+        provider.default_model = "model-a".to_string();
+        provider.api_host = "https://api.example.com".to_string();
+        provider.api_path = Some("/v1".to_string());
+        provider.api_key = "sk-sub".to_string();
+        provider.models = vec!["model-a".to_string(), "model-b".to_string()];
+        provider.subagent_models = HashMap::from([
+            ("explore".to_string(), "cpa--model-b".to_string()),
+            ("plan".to_string(), "cpa".to_string()),
+        ]);
+
+        Platform::Grok.apply_grok(&path, &provider).unwrap();
+        let doc = fs::read_to_string(&path)
+            .unwrap()
+            .parse::<DocumentMut>()
+            .unwrap();
+        // 实测：models 存在时必须显式 enabled = true，否则 spawn_subagent 工具消失
+        assert_eq!(doc["subagents"]["enabled"].as_bool(), Some(true));
+        let agents = doc["subagents"]["models"].as_table().unwrap();
+        assert_eq!(agents["explore"].as_str(), Some("cpa--model-b"));
+        assert_eq!(agents["plan"].as_str(), Some("cpa"));
+        assert_eq!(agents["manual"].as_str(), Some("grok-4.6"));
+
+        // 取消 explore 的覆盖后，本配置写的那条必须消失；用户手写项不能动
+        provider.subagent_models = HashMap::from([("plan".to_string(), "cpa".to_string())]);
+        Platform::Grok.apply_grok(&path, &provider).unwrap();
+        let doc2 = fs::read_to_string(&path)
+            .unwrap()
+            .parse::<DocumentMut>()
+            .unwrap();
+        let agents2 = doc2["subagents"]["models"].as_table().unwrap();
+        assert!(agents2.get("explore").is_none());
+        assert_eq!(agents2["plan"].as_str(), Some("cpa"));
+        assert_eq!(agents2["manual"].as_str(), Some("grok-4.6"));
+
+        let _ = fs::remove_dir_all(path.parent().unwrap());
+    }
+
+    #[test]
+    fn apply_grok_removes_empty_subagents_table() {
+        use std::collections::HashMap;
+
+        let path = temp_config_path("grok-subagents-empty");
+        let mut provider = test_openai_provider();
+        provider.id = "cpa".to_string();
+        provider.name = "CPA".to_string();
+        provider.default_model = "model-a".to_string();
+        provider.api_host = "https://api.example.com".to_string();
+        provider.api_path = Some("/v1".to_string());
+        provider.api_key = "sk-sub".to_string();
+        provider.subagent_models =
+            HashMap::from([("explore".to_string(), "cpa".to_string())]);
+
+        Platform::Grok.apply_grok(&path, &provider).unwrap();
+        let doc = fs::read_to_string(&path)
+            .unwrap()
+            .parse::<DocumentMut>()
+            .unwrap();
+        assert_eq!(doc["subagents"]["models"]["explore"].as_str(), Some("cpa"));
+
+        // 全部取消后，不留空段
+        provider.subagent_models = HashMap::new();
+        Platform::Grok.apply_grok(&path, &provider).unwrap();
+        let doc2 = fs::read_to_string(&path)
+            .unwrap()
+            .parse::<DocumentMut>()
+            .unwrap();
+        assert!(doc2.get("subagents").is_none());
+
+        let _ = fs::remove_dir_all(path.parent().unwrap());
+    }
+
+    #[test]
     fn apply_grok_creates_file_if_missing_and_restores_cleanly() {
         let path = temp_config_path("grok-missing-init");
         if path.exists() {
@@ -7323,7 +7721,7 @@ name = "Official Grok"
         assert_eq!(doc["models"]["default"].as_str(), Some("custom-grok-model"));
         assert_eq!(
             doc["model"]["custom-grok-model"]["name"].as_str(),
-            Some("My Custom")
+            Some("My Custom · gpt-4o")
         );
         assert_eq!(
             doc["model"]["custom-grok-model"]["model"].as_str(),
