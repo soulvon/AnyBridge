@@ -68,7 +68,7 @@ function buildPlatformEntry(assetName, signatures, publicRepo, version) {
   }
   return {
     signature,
-    url: buildUrl(repo, version, assetName),
+    url: buildUrl(publicRepo, version, assetName),
   };
 }
 
