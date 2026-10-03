@@ -659,6 +659,28 @@ test('ResolveTarget respects explicit unlock regardless of model name', () => {
   assert.equal(conn.apiPath, '/v1/messages?beta=true');
 });
 
+test('Responses input: assistant history must use output_text', () => {
+  const ctx = __localProxyTest.normalizeRequest('openai', {
+    model: 'gpt-6-astra',
+    messages: [
+      { role: 'user', content: 'hi' },
+      { role: 'assistant', content: '我先写入文件', tool_calls: [{ id: 'call_1', type: 'function', function: { name: 'write_file', arguments: '{"path":"a.html"}' } }] },
+      { role: 'tool', tool_call_id: 'call_1', content: 'ok' },
+    ],
+  });
+  const input = __localProxyTest.openAIResponsesInput(ctx.messages);
+  assert.equal(input[0].content[0].type, 'input_text', 'user 历史用 input_text');
+  assert.equal(input[1].content[0].type, 'output_text', 'assistant 输出历史必须用 output_text，否则 AnyRouter 返回 520');
+  assert.equal(input[2].type, 'function_call');
+  assert.equal(input[3].type, 'function_call_output');
+});
+
+test('Cloudflare 5xx (520-524) are retryable', () => {
+  for (const status of [520, 521, 522, 523, 524]) {
+    assert.ok(__localProxyTest.RETRYABLE_STATUS.has(status), `HTTP ${status} 必须自动重试，否则 AnyRouter 偶发瞬断会直接暴露为 503`);
+  }
+});
+
 test('ResolveTarget: smart model-name inference only when nothing is explicit', () => {
   const provider = {
     id: 'p-test-plain',

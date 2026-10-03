@@ -27,6 +27,9 @@ import {
   chatErrorToResponseError,
   createResponsesSSEFromChat,
 } from './lib/responses-chat-transform.js';
+import {
+  createChatSSEConverter,
+} from './lib/chat-sse-transform.js';
 import { DEFAULT_SELF_HEAL_CONFIG, tryHeal } from './lib/self-heal.js';
 import {
   attachUpstreamWatchdog,
@@ -54,7 +57,9 @@ import {
 
 const AGENT = new https.Agent({ keepAlive: true, maxSockets: 64, maxFreeSockets: 16 });
 const HTTP_AGENT = new http.Agent({ keepAlive: true, maxSockets: 64, maxFreeSockets: 16 });
-const RETRYABLE_STATUS = new Set([408, 425, 429, 500, 502, 503, 504, 529]);
+// 520~524 是 Cloudflare 系上游瞬断（AnyRouter 偶发 520 的错误率可达 30%），
+// 必须纳入自动重试，否则用户侧表现为无法恢复的 503。
+const RETRYABLE_STATUS = new Set([408, 425, 429, 500, 502, 503, 504, 520, 521, 522, 523, 524, 529]);
 const RETRYABLE_CODES = new Set(['ECONNRESET', 'ETIMEDOUT', 'ENOTFOUND', 'EAI_AGAIN', 'ECONNREFUSED', 'EPIPE', 'EHOSTUNREACH', 'ENETUNREACH']);
 
 function readLocalConfig() {
@@ -943,6 +948,7 @@ function resolveProxyModel(model, kind, options = {}) {
 }
 
 export const __localProxyTest = {
+  RETRYABLE_STATUS,
   buildExposedIdLookup,
   renderedProxyRouteId,
   routeSupportsKind,
@@ -1079,7 +1085,14 @@ function openAIResponsesInput(messages) {
         });
       } else {
         const converted = openAIPartFromAnthropic(p, 'responses');
-        if (converted) content.push(converted);
+        if (converted) {
+          // Responses 规范：assistant 的输出历史必须用 output_text，
+          // 用 input_text 会被上游判非法（AnyRouter 实测返回 520）。
+          if (role === 'assistant' && converted.type === 'input_text') {
+            converted.type = 'output_text';
+          }
+          content.push(converted);
+        }
       }
     }
     flush();
@@ -1898,6 +1911,56 @@ export async function execute(ctx) {
           });
           break;
         }
+        // ── 真流式路径：chat 入站（CodeBuddy/ZCode/WorkBuddy/OpenCode）+ 流式请求 ──
+        // 上游逐块产出（Responses SSE / Anthropic SSE / Chat SSE），出口按 Chat SSE 增量转发。
+        // 长输出（写完整 HTML 等）不再因等整包而撞首字节超时，客户端也能打字机式消费。
+        if (ctx.kind === 'openai' && effective.stream === true && conn.format !== 'gemini') {
+          const streamPayload = { ...payload, stream: true };
+          const r = await requestUpstreamStream(conn, streamPayload, enhancement);
+          recordLatency(r.durationMs);
+          if (r.statusCode >= 200 && r.statusCode < 300) {
+            const extraRespHeaders = {};
+            if (enhancement.customHeadersEnabled === true && Array.isArray(enhancement.responseHeaders)) {
+              for (const h of enhancement.responseHeaders) {
+                if (h && h.key) extraRespHeaders[h.key] = h.value;
+              }
+            }
+            const contentType = String(r.response.headers?.['content-type'] || '');
+            // 上游忽略 stream 参数直接返回完整 JSON 时，降级为缓冲路径（出口仍为非流式）
+            if (!contentType.includes('text/event-stream')) {
+              const text = await collectStreamBody(r.response);
+              const json = safeParse(text);
+              const bodyText = extractText(conn, json);
+              const toolCalls = extractToolCalls(conn, json);
+              const usage = usageFrom(conn, json, estimateTokens(effective.messages, effective.system), Math.ceil(bodyText.length / 4));
+              recordUsage(usage);
+              return { conn, text: bodyText, toolCalls, json, usage, extraHeaders: extraRespHeaders };
+            }
+            return { conn, stream: true, upstreamResponse: r.response, extraHeaders: extraRespHeaders, watchdog: r.watchdog };
+          }
+          const errorText = await collectStreamBody(r.response);
+          const errorJson = safeParse(errorText);
+          const msg = compactText(upstreamMessage({ statusCode: r.statusCode, json: errorJson, text: errorText }));
+          if (conn.format === 'anthropic' && selfHealCfg.enabled) {
+            const healed = tryHeal(payload, r.statusCode, errorText, selfHealCfg, healState);
+            if (healed.healed) {
+              console.log(`[local-proxy] [self-heal] ${healed.kind} triggered, retrying`);
+              continue;
+            }
+          }
+          if (policy.enabled && retryCount < policy.maxRetries && retryable(r.statusCode) && Date.now() - started < policy.totalMs) {
+            retryCount++; recordRetry({ count: 1, reason: `HTTP ${r.statusCode}: ${msg}` }); await sleep(retryDelay(retryCount, policy)); continue;
+          }
+          failures.push({
+            providerName: conn.providerName,
+            statusCode: r.statusCode,
+            headers: r.headers,
+            body: errorText,
+            message: msg,
+            wireApi: conn.wireApi,
+          });
+          break;
+        }
         // ── 真流式路径（Antigravity / Gemini 入口 + OpenAI 兼容上游）──
         // 直接 pipe 上游 SSE，避免缓冲：长回复时 Language Server 不会因等待整包而超时。
         if (effective.stream === true && ctx.kind === 'gemini' && conn.format === 'openai') {
@@ -2078,6 +2141,56 @@ function sendOpenAIChat(ctx, res, result) {
     });
   }
   sendJson(res, 200, { id, object: 'chat.completion', created, model: ctx.model, choices: [{ index: 0, message, finish_reason: finishReason }], usage: openAIUsage(result.usage) }, extra);
+}
+
+// 真流式出口：消费上游 SSE（Responses / Anthropic / Chat），逐块转成 Chat SSE 下发。
+// 上游形态由 createChatSSEConverter 按 conn 判定；首字节前的失败已在上游请求层重试，
+// 这里只管增量转发与收尾（finish + usage + [DONE]）。
+async function sendOpenAIChatStream(ctx, res, result) {
+  const id = `chatcmpl-${crypto.randomUUID()}`;
+  const created = Math.floor(Date.now() / 1000);
+  const extra = result.extraHeaders || {};
+  res.writeHead(200, cors({ 'content-type': 'text/event-stream; charset=utf-8', ...extra }));
+  const chunk = (choices, usage) => {
+    const base = { id, object: 'chat.completion.chunk', created, model: ctx.model, choices };
+    if (usage) base.usage = usage;
+    return base;
+  };
+  sse(res, null, chunk([{ index: 0, delta: { role: 'assistant' }, finish_reason: null }]));
+  const keepalive = startSseKeepalive(res);
+  const watchdog = result.watchdog;
+  const converter = createChatSSEConverter(result.conn, ctx.model, id, created);
+  let upstreamFailed = false;
+  try {
+    for await (const event of parseSSEStream(result.upstreamResponse, { onChunk: () => { if (watchdog) watchdog.touch(); } })) {
+      keepalive.touch();
+      // 上游流内错误事件（AnyRouter 偶发 / Anthropic error）：转发给客户端，避免"空回复"假成功
+      if (event?.type === 'error' || event?.type === 'response.failed') {
+        const message = event.error?.message
+          || event.response?.error?.message
+          || event.message
+          || 'upstream stream error';
+        sse(res, null, { error: { message, type: 'upstream_error' } });
+        recordError({ provider: result.conn?.providerName || 'local-proxy', message });
+        upstreamFailed = true;
+        break;
+      }
+      for (const out of converter.write(event)) sse(res, null, out);
+    }
+    if (!upstreamFailed) {
+      for (const out of converter.flush()) sse(res, null, out);
+      const usage = converter.getUsage();
+      if (usage) recordUsage(usageFrom({ format: 'openai' }, { usage: { prompt_tokens: usage.prompt_tokens, completion_tokens: usage.completion_tokens, input_tokens_details: usage.prompt_tokens_details } }, 0, 0));
+    }
+  } catch (e) {
+    // 流中途失败：已发出的 chunk 无法收回，按 SSE 错误事件告知客户端（与 OpenAI 流式错误语义一致）
+    try { sse(res, null, { error: { message: e?.message || 'stream error', type: 'upstream_error' } }); } catch { /* ignore */ }
+  } finally {
+    if (watchdog) watchdog.clear();
+    keepalive.stop();
+    try { res.write('data: [DONE]\n\n'); } catch { /* ignore */ }
+    try { res.end(); } catch { /* ignore */ }
+  }
 }
 
 function responseObject(ctx, result, id) {
@@ -2484,7 +2597,14 @@ export async function handleLocalProxyRequest(req, res, body) {
   }
   if (p.endsWith('/messages/count_tokens')) { handleCountTokens(json, res); return; }
   try {
-    if (p === '/v1/chat/completions' || p === '/chat/completions' || p === '/codex/v1/chat/completions') { const ctx = attachScope(normalizeRequest('openai', json)); sendOpenAIChat(ctx, res, await execute(ctx)); return; }
+    if (p === '/v1/chat/completions' || p === '/chat/completions' || p === '/codex/v1/chat/completions') {
+      const ctx = attachScope(normalizeRequest('openai', json));
+      const result = await execute(ctx);
+      // 真流式：上游流式增量转发；否则走原有的（假流式 / 非流式）出口
+      if (result.stream === true) { await sendOpenAIChatStream(ctx, res, result); return; }
+      sendOpenAIChat(ctx, res, result);
+      return;
+    }
     if (p === '/v1/responses' || p === '/responses' || p === '/codex/v1/responses') { const ctx = attachScope(normalizeRequest('responses', json)); sendOpenAIResponses(ctx, res, await execute(ctx)); return; }
     if (p === '/claude-desktop/v1/messages' || p === '/claude-desktop/messages') {
       const mapped = mapClaudeDesktopModel(json.model);

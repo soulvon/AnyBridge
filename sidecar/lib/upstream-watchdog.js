@@ -22,8 +22,12 @@ function intEnv(names, fallback, min = 0) {
 
 /** Hard ceiling for a single upstream request (connect + stream). Default 5 min. */
 export const UPSTREAM_TIMEOUT_MS = intEnv(['UPSTREAM_TIMEOUT_MS', 'API_TIMEOUT_MS'], 300_000, 1000);
-/** Time to first response headers. Default 90s. */
-export const UPSTREAM_TTFB_MS = intEnv(['UPSTREAM_TTFB_MS', 'BYOK_TTFB_MS'], 90_000, 1000);
+/**
+ * Time to first response headers. Default 180s.
+ * 中转站（如 AnyRouter）处理带工具历史的请求实测可达 85-90s 首字节，
+ * 90s 阈值会把成功边缘的请求掐掉；hardMs(300s) 仍是绝对上限。
+ */
+export const UPSTREAM_TTFB_MS = intEnv(['UPSTREAM_TTFB_MS', 'BYOK_TTFB_MS'], 180_000, 1000);
 /**
  * Max silence between upstream stream chunks after the stream has started.
  * Default 300s — reasoning models (Grok/o-series) can think for minutes with no tokens;
