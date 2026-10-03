@@ -1414,6 +1414,17 @@ impl Platform {
 
 // ─── 辅助函数 ──────────────────────────────────────────────────
 
+/// 用户自行配置的字段：供应商条目（codebuddy_model_entry / workbuddy_model_entry）
+/// 不会生成这些键，因此合并时需要显式从旧条目搬过来。
+const CODEBUDDY_USER_FIELDS: &[&str] = &[
+    "temperature",
+    "modelId",
+    "maxImageCount",
+    "disabledMultimodal",
+    "reasoning",
+    "enabled",
+];
+
 fn upsert_models_json_entry(
     obj: &mut Map<String, Value>,
     model_id: &str,
@@ -1428,11 +1439,39 @@ fn upsert_models_json_entry(
 
     let mut replaced = false;
     for item in models_arr.iter_mut() {
-        if item.get("id").and_then(Value::as_str) == Some(model_id) {
+        if item.get("id").and_then(Value::as_str) != Some(model_id) {
+            continue;
+        }
+        let old = item.as_object().cloned().unwrap_or_default();
+
+        // 换了供应商（接口地址或密钥变了）：直接用新条目，不继承旧模型的个性化配置。
+        let same_provider = old.get("url").and_then(Value::as_str)
+            == new_model.get("url").and_then(Value::as_str)
+            && old.get("apiKey").and_then(Value::as_str)
+                == new_model.get("apiKey").and_then(Value::as_str);
+        if !same_provider {
             *item = new_model.clone();
             replaced = true;
             break;
         }
+
+        // 同一供应商：以供应商条目为基底，把用户自行配置的字段搬过来。
+        // 上下限也保留旧值，让用户针对渠道限制做的手工修正（如输出上限 32000）
+        // 不会在点「应用」时被推荐值冲掉；新条目仍会用推荐值兜底。
+        let mut merged = new_model.as_object().cloned().unwrap_or_default();
+        for key in CODEBUDDY_USER_FIELDS {
+            if let Some(value) = old.get(*key) {
+                merged.insert((*key).to_string(), value.clone());
+            }
+        }
+        for key in ["maxInputTokens", "maxOutputTokens"] {
+            if let Some(value) = old.get(key) {
+                merged.insert(key.to_string(), value.clone());
+            }
+        }
+        *item = Value::Object(merged);
+        replaced = true;
+        break;
     }
     if !replaced {
         models_arr.push(new_model);
@@ -6234,6 +6273,72 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("anybridge-{name}-{nanos}"));
         fs::create_dir_all(&dir).unwrap();
         dir.join("settings.json")
+    }
+
+    fn models_json_obj(raw: &str) -> Map<String, Value> {
+        let value: Value = serde_json::from_str(raw).unwrap();
+        value.as_object().cloned().unwrap()
+    }
+
+    #[test]
+    fn upsert_models_json_entry_keeps_user_settings_for_same_provider() {
+        let mut obj = models_json_obj(
+            r#"{
+              "models": [{
+                "id": "grok-4.7", "name": "黑与白Grok", "vendor": "user",
+                "url": "https://ai.hybgzs.com/v1/chat/completions", "apiKey": "k1",
+                "maxInputTokens": 500000, "maxOutputTokens": 32000,
+                "temperature": 0.3, "modelId": "grok-4.7",
+                "reasoning": { "supportedEfforts": ["high"] }
+              }]
+            }"#,
+        );
+        let new_model = serde_json::json!({
+            "id": "grok-4.7", "name": "黑与白Grok", "vendor": "user",
+            "url": "https://ai.hybgzs.com/v1/chat/completions", "apiKey": "k1",
+            "maxInputTokens": 500000, "maxOutputTokens": 64000,
+            "supportsToolCall": true
+        });
+        upsert_models_json_entry(&mut obj, "grok-4.7", new_model).unwrap();
+
+        let entry = &obj.get("models").unwrap().as_array().unwrap()[0];
+        // 供应商字段照常写入
+        assert_eq!(entry["supportsToolCall"], true);
+        // 用户手工下调的输出上限不被推荐值覆盖
+        assert_eq!(entry["maxOutputTokens"], 32000);
+        // 用户个性化字段保留
+        assert_eq!(entry["temperature"], 0.3);
+        assert_eq!(entry["modelId"], "grok-4.7");
+        assert_eq!(entry["reasoning"]["supportedEfforts"][0], "high");
+    }
+
+    #[test]
+    fn upsert_models_json_entry_replaces_entry_when_provider_changes() {
+        let mut obj = models_json_obj(
+            r#"{
+              "models": [{
+                "id": "grok-4.7", "name": "旧供应商", "vendor": "user",
+                "url": "https://old.example.com/v1/chat/completions", "apiKey": "old-key",
+                "maxInputTokens": 500000, "maxOutputTokens": 32000,
+                "temperature": 0.3, "reasoning": { "supportedEfforts": ["high"] }
+              }]
+            }"#,
+        );
+        let new_model = serde_json::json!({
+            "id": "grok-4.7", "name": "新供应商", "vendor": "user",
+            "url": "https://new.example.com/v1/chat/completions", "apiKey": "new-key",
+            "maxInputTokens": 500000, "maxOutputTokens": 64000,
+            "supportsToolCall": true
+        });
+        upsert_models_json_entry(&mut obj, "grok-4.7", new_model).unwrap();
+
+        let entry = &obj.get("models").unwrap().as_array().unwrap()[0];
+        assert_eq!(entry["name"], "新供应商");
+        assert_eq!(entry["apiKey"], "new-key");
+        assert_eq!(entry["maxOutputTokens"], 64000);
+        // 换供应商后不继承旧模型的个性化配置
+        assert!(entry.get("temperature").is_none());
+        assert!(entry.get("reasoning").is_none());
     }
 
     fn test_openai_provider() -> Provider {

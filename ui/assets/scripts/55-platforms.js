@@ -10553,7 +10553,11 @@ function cbApplyProviderModelSelection(prefix, provider, checkSelector, platform
             built.maxOutputTokens = existing.maxOutputTokens;
           }
         }
-        if (existing.temperature != null) built.temperature = existing.temperature;
+        // 用户个性化字段整体迁移（温度 / 实际请求 ID / 图片上限 / 多模态开关 / 思考档位等），
+        // 避免"从供应商重新添加"时被固定字段重建冲掉
+        for (const key of ['temperature', 'modelId', 'maxImageCount', 'disabledMultimodal', 'reasoning', 'reasoningLevels', 'reasoningLevelMap']) {
+          if (existing[key] !== undefined) built[key] = cloneTencentBuddyJson(existing[key]);
+        }
         if (existing.enabled === false) built.enabled = false;
       }
       return built;
@@ -10633,7 +10637,11 @@ function zcRenderReasoningLevelPresets() {
     const btn = event.target.closest('[data-level-preset]');
     if (!btn) return;
     const preset = ZC_REASONING_LEVEL_PRESET_BUTTONS[Number(btn.dataset.levelPreset)];
-    if (preset) zcRenderReasoningLevelChips(preset.levels);
+    if (!preset) return;
+    zcRenderReasoningLevelChips(preset.levels);
+    // Buddy 平台：档位集合变化后同步刷新"默认档位"下拉
+    const sel = document.getElementById('cb-edit-default-effort');
+    if (sel) cbRenderDefaultEffortOptions(sel.value);
   });
   box.dataset.bound = '1';
 }
@@ -10642,6 +10650,32 @@ function zcCollectReasoningLevels() {
   return Array.from(
     document.querySelectorAll('#cb-edit-reasoning-levels input[type="checkbox"]:checked')
   ).map((el) => el.value);
+}
+
+// ─── CodeBuddy / WorkBuddy 思考档位（reasoning.supportedEfforts / defaultEffort）──
+// CodeBuddy 客户端默认按界面档位（最高档）发起请求；模型条目里给出 supportedEfforts
+// 白名单后，白名单外的请求档位会自动回落到 defaultEffort，避免上游因不认某档位报错。
+
+/** 档位勾选变化时，同步刷新"默认档位"下拉的可选项 */
+function cbBindEffortChipsSync() {
+  const box = document.getElementById('cb-edit-reasoning-levels');
+  if (!box || box.dataset.effortSync === '1') return;
+  box.addEventListener('change', () => {
+    const sel = document.getElementById('cb-edit-default-effort');
+    cbRenderDefaultEffortOptions(sel ? sel.value : '');
+  });
+  box.dataset.effortSync = '1';
+}
+
+/** 渲染默认档位下拉：选项 = 当前已勾选的档位，首个"（不指定）"表示留空 */
+function cbRenderDefaultEffortOptions(selected) {
+  const sel = document.getElementById('cb-edit-default-effort');
+  if (!sel) return;
+  const efforts = zcCollectReasoningLevels();
+  const keep = efforts.includes(selected) ? selected : '';
+  sel.innerHTML = ['', ...efforts]
+    .map((v) => `<option value="${v}" ${v === keep ? 'selected' : ''}>${v || '（不指定）'}</option>`)
+    .join('');
 }
 
 function openCbEditModal(prefix, index) {
@@ -10670,28 +10704,61 @@ function openCbEditModal(prefix, index) {
   platformSetValue('cb-edit-images', !!model.supportsImages);
   platformSetValue('cb-edit-reasoning', !!model.supportsReasoning);
 
-  // 思考档位：仅 ZCode 显示（ZCode 的 optionSpecs.reasoningLevel 是唯一真实生效通道）。
-  // 不做按 ID 推断：有保存值回填，否则默认全不选（留空 = 不配置，回落 ZCode 内置默认）。
+  // CodeBuddy/WorkBuddy 专属字段：实际请求 ID / 图片数量上限 / 禁用多模态
+  platformSetValue('cb-edit-model-override', model.modelId || '');
+  platformSetValue('cb-edit-max-images', model.maxImageCount != null ? model.maxImageCount : '');
+  platformSetValue('cb-edit-disabled-multimodal', !!model.disabledMultimodal);
+  const buddyOnlyFields = ['cb-edit-model-override-item', 'cb-edit-max-images-item', 'cb-edit-disabled-multimodal-item'];
+  for (const fieldId of buddyOnlyFields) {
+    const el = document.getElementById(fieldId);
+    if (el) el.style.display = isBuddyEdit ? '' : 'none';
+  }
+
+  // 思考档位面板：ZCode 走 optionSpecs.reasoningLevel；CodeBuddy/WorkBuddy 走模型条目的
+  // reasoning 对象（supportedEfforts 白名单 + defaultEffort 回落档）。
+  // 不做按 ID 推断：有保存值回填，否则默认全不选（留空 = 不配置，保持客户端默认透传）。
   const levelsField = document.getElementById('cb-edit-reasoning-levels-field');
   const levelsMapField = document.getElementById('cb-edit-reasoning-map-field');
-  if (prefix === 'Zc' && levelsField) {
-    levelsField.style.display = '';
-    if (levelsMapField) levelsMapField.style.display = '';
-    zcRenderReasoningLevelChips(
-      Array.isArray(model.reasoningLevels) ? model.reasoningLevels : []
-    );
+  const buddyEffortExtra = document.getElementById('cb-edit-buddy-effort-extra');
+  const reasoningTitle = document.getElementById('cb-edit-reasoning-title');
+  const reasoningSubtitle = document.getElementById('cb-edit-reasoning-subtitle');
+  const reasoningHint = document.getElementById('cb-edit-reasoning-hint');
+  const showReasoningLevels = prefix === 'Zc' || isBuddyEdit;
+  if (levelsField) levelsField.style.display = showReasoningLevels ? '' : 'none';
+  if (showReasoningLevels) {
     zcRenderReasoningLevelPresets();
-    const mapEl = document.getElementById('cb-edit-reasoning-map');
-    if (mapEl) mapEl.value = model.reasoningLevelMap || '';
-    const detailsEl = document.getElementById('cb-edit-reasoning-map-field');
-    if (detailsEl) detailsEl.open = !!(model.reasoningLevelMap && model.reasoningLevelMap.trim());
-    const hint = document.getElementById('cb-edit-reasoning-hint');
-    if (hint) {
-      hint.textContent = '仅勾选上游模型支持的档位（如 gpt-5.6 系支持全套，gemini/claude 走模型名后缀请留空）；切换档位在 ZCode 聊天界面的模型选择器中进行';
+    if (prefix === 'Zc') {
+      if (levelsMapField) levelsMapField.style.display = '';
+      if (buddyEffortExtra) buddyEffortExtra.style.display = 'none';
+      if (reasoningTitle) reasoningTitle.textContent = '思考档位';
+      if (reasoningSubtitle) reasoningSubtitle.textContent = '选中的档位可在聊天界面自由切换，留空则保持默认';
+      zcRenderReasoningLevelChips(
+        Array.isArray(model.reasoningLevels) ? model.reasoningLevels : []
+      );
+      const mapEl = document.getElementById('cb-edit-reasoning-map');
+      if (mapEl) mapEl.value = model.reasoningLevelMap || '';
+      const detailsEl = document.getElementById('cb-edit-reasoning-map-field');
+      if (detailsEl) detailsEl.open = !!(model.reasoningLevelMap && model.reasoningLevelMap.trim());
+      if (reasoningHint) {
+        reasoningHint.textContent = '仅勾选上游模型支持的档位（如 gpt-5.6 系支持全套，gemini/claude 走模型名后缀请留空）；切换档位在 ZCode 聊天界面的模型选择器中进行';
+      }
+    } else {
+      if (levelsMapField) levelsMapField.style.display = 'none';
+      if (buddyEffortExtra) buddyEffortExtra.style.display = '';
+      if (reasoningTitle) reasoningTitle.textContent = '思考档位白名单';
+      if (reasoningSubtitle) reasoningSubtitle.textContent = '只勾选上游实际支持的档位，未勾选的档位永远不会被发送';
+      zcRenderReasoningLevelChips(
+        Array.isArray(model.reasoning?.supportedEfforts) ? model.reasoning.supportedEfforts : []
+      );
+      cbBindEffortChipsSync();
+      cbRenderDefaultEffortOptions(model.reasoning?.defaultEffort || '');
+      if (reasoningHint) {
+        reasoningHint.textContent = '留空 = 不限制（客户端请求的档位原样透传给上游）；配置白名单后，白名单外的请求档位会自动回落到默认档，可避免上游不认某个档位时报 400';
+      }
     }
   } else {
-    if (levelsField) levelsField.style.display = 'none';
     if (levelsMapField) levelsMapField.style.display = 'none';
+    if (buddyEffortExtra) buddyEffortExtra.style.display = 'none';
   }
 
   // ZCode 的个人配置不含工具调用字段（由 ZCode 内置默认恒为启用），隐藏无效勾选避免误导。
@@ -10822,28 +10889,57 @@ async function saveCbEditFromModal() {
   const temperature = parseNum(tempStr);
 
   // Buddy：vendor 固定 "user"，name 用展示名；ZCode：name/vendor 同值保留旧语义。
+  // 以原条目为基底展开，保留外部写入/同步进来的其他字段。
   const oldId = model.id || '';
   const entry = {
+    ...model,
     id,
     name: displayName,
     vendor: isBuddyEdit ? 'user' : displayName,
     url,
     apiKey,
   };
-  if (maxInput != null) entry.maxInputTokens = maxInput;
-  if (maxOutput != null) entry.maxOutputTokens = maxOutput;
-  if (temperature != null) entry.temperature = temperature;
-  if (supportsToolCall) entry.supportsToolCall = true;
-  if (supportsImages) entry.supportsImages = true;
-  if (supportsReasoning) entry.supportsReasoning = true;
+  // 留空或取消勾选时显式删除键，保证"清空即清除"语义
+  if (maxInput != null) entry.maxInputTokens = maxInput; else delete entry.maxInputTokens;
+  if (maxOutput != null) entry.maxOutputTokens = maxOutput; else delete entry.maxOutputTokens;
+  if (temperature != null) entry.temperature = temperature; else delete entry.temperature;
+  if (supportsToolCall) entry.supportsToolCall = true; else delete entry.supportsToolCall;
+  if (supportsImages) entry.supportsImages = true; else delete entry.supportsImages;
+  if (supportsReasoning) entry.supportsReasoning = true; else delete entry.supportsReasoning;
 
-  // ZCode：思考档位写入条目（空数组 = 不配置，覆盖旧值实现"清除"）
+  // CodeBuddy/WorkBuddy 专属字段（ZCode 条目不写这些键）
+  if (isBuddyEdit) {
+    const modelOverride = (document.getElementById('cb-edit-model-override')?.value || '').trim();
+    if (modelOverride) entry.modelId = modelOverride; else delete entry.modelId;
+
+    // 0 会被 CodeBuddy 按 falsy 回落到默认 20，非正数等同留空
+    const maxImages = parseNum((document.getElementById('cb-edit-max-images')?.value || '').trim());
+    if (maxImages != null && maxImages > 0) entry.maxImageCount = maxImages;
+    else delete entry.maxImageCount;
+
+    if (document.getElementById('cb-edit-disabled-multimodal')?.checked) entry.disabledMultimodal = true;
+    else delete entry.disabledMultimodal;
+
+    // 思考档位白名单 + 默认档位（留空 = 不配置，删除旧键实现清除）
+    const efforts = zcCollectReasoningLevels();
+    const defEffort = (document.getElementById('cb-edit-default-effort')?.value || '').trim();
+    const reasoning = {};
+    if (efforts.length > 0) reasoning.supportedEfforts = efforts;
+    if (defEffort && (efforts.length === 0 || efforts.includes(defEffort))) reasoning.defaultEffort = defEffort;
+    if (Object.keys(reasoning).length > 0) entry.reasoning = reasoning;
+    else delete entry.reasoning;
+  }
+
+  // ZCode：思考档位写入条目（空数组 = 不配置，删除旧键实现"清除"）
   if (prefix === 'Zc') {
     const reasoningLevels = zcCollectReasoningLevels();
     if (reasoningLevels.length > 0) {
       entry.reasoningLevels = reasoningLevels;
       const mapRaw = (document.getElementById('cb-edit-reasoning-map')?.value || '').trim();
       if (mapRaw) entry.reasoningLevelMap = mapRaw;
+    } else {
+      delete entry.reasoningLevels;
+      delete entry.reasoningLevelMap;
     }
   }
 

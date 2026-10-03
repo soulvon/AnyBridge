@@ -6,6 +6,7 @@ import path from 'node:path';
 
 import { invalidate } from './config-cache.js';
 import { __localProxyTest } from './local-proxy.js';
+import { resolveTarget } from './provider-pool.js';
 
 test('paramOverrides maps public max_tokens alias to internal maxTokens', () => {
   const ctx = __localProxyTest.normalizeRequest('openai', {
@@ -536,4 +537,144 @@ test('Gemini upstream keeps Google uppercase schema enums (no cross-protocol cor
   // normalizeGeminiTools 不改写原始 schema，Gemini 目标仍应拿到 Google 大写枚举
   assert.equal(ctx.tools[0].function.parameters.type, 'OBJECT');
   assert.equal(ctx.tools[0].function.parameters.properties.task.type, 'STRING');
+});
+
+test('Responses upstream receives flat tools (AnyRouter 520 regression)', () => {
+  const ctx = __localProxyTest.normalizeRequest('openai', {
+    model: 'gpt-6-astra',
+    messages: [{ role: 'user', content: 'list files' }],
+    tools: [{ type: 'function', function: { name: 'list_files', description: 'List files', parameters: { type: 'object', properties: { path: { type: 'string' } } } } }],
+    tool_choice: 'auto',
+  });
+  const conn = {
+    format: 'openai',
+    apiPath: '/v1/responses',
+    unlockKind: 'codex',
+    model: 'gpt-6-astra',
+    unlocks: { codex: { enabled: true, include: ['reasoning.encrypted_content'], wireApi: '/v1/responses' } },
+  };
+  const body = __localProxyTest.upstreamBody(conn, ctx);
+  assert.equal(body.tools[0].name, 'list_files', 'Responses tools 必须是扁平结构（顶层 name），嵌套会被 AnyRouter 判非法返回 520');
+  assert.equal(body.tools[0].function, undefined, 'Responses tools 不能带 Chat 风格 function 嵌套');
+  assert.equal(body.tools[0].parameters.type, 'object');
+  assert.equal(body.include[0], 'reasoning.encrypted_content');
+});
+
+test('Chat tools stay nested for chat completions upstream', () => {
+  const ctx = __localProxyTest.normalizeRequest('openai', {
+    model: 'local-model',
+    messages: [{ role: 'user', content: 'hi' }],
+    tools: [{ type: 'function', function: { name: 'list_files', parameters: { type: 'object', properties: {} } } }],
+  });
+  const conn = { format: 'openai', apiPath: '/v1/chat/completions', model: 'local-model' };
+  const body = __localProxyTest.upstreamBody(conn, ctx);
+  assert.equal(body.tools[0].function.name, 'list_files');
+});
+
+test('Chat tool history converts to tool_use/tool_result and Responses items', () => {
+  const argumentsJson = '{"path":"."}';
+  const ctx = __localProxyTest.normalizeRequest('openai', {
+    model: 'gpt-6-astra',
+    messages: [
+      { role: 'user', content: 'list files' },
+      { role: 'assistant', content: '', tool_calls: [{ id: 'call_1', type: 'function', function: { name: 'list_files', arguments: argumentsJson } }] },
+      { role: 'tool', tool_call_id: 'call_1', content: 'a.txt' },
+    ],
+  });
+  const assistant = ctx.messages[1];
+  assert.equal(assistant.role, 'assistant');
+  assert.equal(assistant.content[0].type, 'tool_use');
+  assert.equal(assistant.content[0].name, 'list_files');
+  assert.deepEqual(assistant.content[0].input, { path: '.' });
+  const toolMsg = ctx.messages[2];
+  assert.equal(toolMsg.role, 'user', '连续工具结果必须收敛到 user 侧的 tool_result');
+  assert.equal(toolMsg.content[0].type, 'tool_result');
+  assert.equal(toolMsg.content[0].tool_use_id, 'call_1');
+  const input = __localProxyTest.openAIResponsesInput(ctx.messages);
+  assert.deepEqual(input[1], { type: 'function_call', call_id: 'call_1', name: 'list_files', arguments: argumentsJson });
+  assert.deepEqual(input[2], { type: 'function_call_output', call_id: 'call_1', output: 'a.txt' });
+});
+
+test('sendOpenAIChat emits tool_calls for streaming and non-streaming', () => {
+  const toolCalls = [{ id: 'call_1', name: 'list_files', arguments: { path: '.' } }];
+  const streamChunks = [];
+  const streamRes = { writeHead() {}, write(s) { streamChunks.push(s); }, end() {} };
+  __localProxyTest.sendOpenAIChat({ stream: true, model: 'm' }, streamRes, { text: '', toolCalls });
+  const streamBody = streamChunks.join('');
+  assert.ok(streamBody.includes('"tool_calls"'), '流式必须下发 tool_calls');
+  assert.ok(streamBody.includes('"finish_reason":"tool_calls"'), '有工具调用时 finish_reason 必须是 tool_calls');
+  let jsonBody = null;
+  const jsonRes = { writeHead() {}, write() {}, end(s) { jsonBody = JSON.parse(s); } };
+  __localProxyTest.sendOpenAIChat({ stream: false, model: 'm' }, jsonRes, { text: '', toolCalls, usage: {} });
+  assert.equal(jsonBody.choices[0].message.tool_calls[0].function.name, 'list_files');
+  assert.equal(jsonBody.choices[0].finish_reason, 'tool_calls');
+});
+
+test('responsesToolChoice flattens Chat-style function choice', () => {
+  assert.deepEqual(__localProxyTest.responsesToolChoice({ type: 'function', function: { name: 'list_files' } }), { type: 'function', name: 'list_files' });
+  assert.equal(__localProxyTest.responsesToolChoice('auto'), 'auto');
+});
+
+test('Claude Code unlock keeps client system and client tools', () => {
+  const ctx = __localProxyTest.normalizeRequest('openai', {
+    model: 'gpt-6-astra-cc-format',
+    // Chat Completions 客户端（CodeBuddy/ZCode）通过 system 角色消息下发提示词
+    messages: [
+      { role: 'system', content: 'You are a coding assistant in an IDE.' },
+      { role: 'user', content: 'list files' },
+    ],
+    tools: [{ type: 'function', function: { name: 'list_files', parameters: { type: 'object', properties: {} } } }],
+    tool_choice: 'auto',
+  });
+  const conn = {
+    format: 'anthropic',
+    apiPath: '/v1/messages?beta=true',
+    unlockKind: 'claudeCode',
+    model: 'gpt-6-astra-cc-format',
+    unlocks: { claudeCode: { enabled: true, wireApi: '/v1/messages?beta=true' } },
+  };
+  const body = __localProxyTest.upstreamBody(conn, ctx);
+  assert.ok(body.system[0].text.includes('Claude agent'), '第一个 system block 必须是指纹');
+  assert.equal(body.system[1].text, 'You are a coding assistant in an IDE.', '客户端 system 不能丢');
+  assert.ok(body.tools.length >= 22, '必须是 21 个原生指纹 tools 加上客户端 tools');
+  assert.ok(body.tools.some(t => t.name === 'list_files' && t.input_schema), '客户端 tools 必须带 input_schema');
+  assert.deepEqual(body.tool_choice, { type: 'auto' }, 'OpenAI 字符串 tool_choice 必须转成 Anthropic 对象');
+});
+
+test('ResolveTarget respects explicit unlock regardless of model name', () => {
+  const provider = {
+    id: 'p-test-anyrouter',
+    name: 'AnyRouter(test)',
+    apiHost: 'https://anyrouter.top',
+    apiKey: 'sk-test',
+    enabled: true,
+    unlocks: {
+      codex: { enabled: true, wireApi: '/v1/responses' },
+      claudeCode: { enabled: true, wireApi: '/v1/messages?beta=true' },
+    },
+  };
+  const providers = new Map([[provider.id, provider]]);
+  const conn = resolveTarget({ providerId: provider.id, model: 'gpt-6-astra-cc-format', apiFormat: 'anthropic', unlock: 'claudeCode' }, providers);
+  assert.equal(conn.unlockKind, 'claudeCode', 'gpt 命名的模型也能走 Claude Code 解锁，不能按名字静默降级');
+  assert.equal(conn.apiPath, '/v1/messages?beta=true');
+});
+
+test('ResolveTarget: smart model-name inference only when nothing is explicit', () => {
+  const provider = {
+    id: 'p-test-plain',
+    name: 'Relay(test)',
+    apiHost: 'https://relay.example.com',
+    apiKey: 'sk-test',
+    enabled: true,
+  };
+  const providers = new Map([[provider.id, provider]]);
+  // 全自动：接口格式与解锁都没指定 → 按模型名智能推断
+  assert.equal(resolveTarget({ providerId: provider.id, model: 'gpt-6-astra' }, providers).format, 'openai');
+  assert.equal(resolveTarget({ providerId: provider.id, model: 'claude-opus-5-5' }, providers).format, 'anthropic');
+  // 手动指定接口格式 → 覆盖模型名推断
+  assert.equal(
+    resolveTarget({ providerId: provider.id, model: 'gpt-6-astra', apiFormat: 'anthropic' }, providers).format,
+    'anthropic',
+    '显式 apiFormat 必须赢过模型名推断',
+  );
 });

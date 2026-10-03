@@ -123,6 +123,16 @@
                 <button type="button" class="proxy-route-format-seg-btn" data-value="anthropic" data-action-chain="[{&quot;fn&quot;:&quot;updateProxyRouteTarget&quot;,&quot;args&quot;:[0,&quot;apiFormat&quot;,&quot;anthropic&quot;]},{&quot;fn&quot;:&quot;syncProxyRouteFormatSeg&quot;,&quot;args&quot;:[&quot;anthropic&quot;]}]" data-action="updateProxyRouteTarget">Claude</button>
                 <button type="button" class="proxy-route-format-seg-btn" data-value="gemini" data-action-chain="[{&quot;fn&quot;:&quot;updateProxyRouteTarget&quot;,&quot;args&quot;:[0,&quot;apiFormat&quot;,&quot;gemini&quot;]},{&quot;fn&quot;:&quot;syncProxyRouteFormatSeg&quot;,&quot;args&quot;:[&quot;gemini&quot;]}]" data-action="updateProxyRouteTarget">Gemini</button>
               </div>
+              <small class="proxy-route-editor-option-hint">自动 = 按解锁方式和模型名智能推断；智能猜错时在这里手动指定。</small>
+            </div>
+            <div class="proxy-route-editor-option-group">
+              <div class="proxy-route-editor-option-group-title">解锁方式</div>
+              <div class="proxy-route-format-seg" id="proxyRoutePrimaryUnlockInput">
+                <button type="button" class="proxy-route-format-seg-btn" data-value="" data-action-chain="[{&quot;fn&quot;:&quot;updateProxyRouteTarget&quot;,&quot;args&quot;:[0,&quot;unlock&quot;,&quot;&quot;]},{&quot;fn&quot;:&quot;syncProxyRouteUnlockSeg&quot;,&quot;args&quot;:[&quot;&quot;]}]" data-action="updateProxyRouteTarget">自动</button>
+                <button type="button" class="proxy-route-format-seg-btn" data-value="codex" data-action-chain="[{&quot;fn&quot;:&quot;updateProxyRouteTarget&quot;,&quot;args&quot;:[0,&quot;unlock&quot;,&quot;codex&quot;]},{&quot;fn&quot;:&quot;syncProxyRouteUnlockSeg&quot;,&quot;args&quot;:[&quot;codex&quot;]}]" data-action="updateProxyRouteTarget">Codex 解锁</button>
+                <button type="button" class="proxy-route-format-seg-btn" data-value="claudeCode" data-action-chain="[{&quot;fn&quot;:&quot;updateProxyRouteTarget&quot;,&quot;args&quot;:[0,&quot;unlock&quot;,&quot;claudeCode&quot;]},{&quot;fn&quot;:&quot;syncProxyRouteUnlockSeg&quot;,&quot;args&quot;:[&quot;claudeCode&quot;]}]" data-action="updateProxyRouteTarget">Claude Code 解锁</button>
+              </div>
+              <small class="proxy-route-editor-option-hint">解锁决定上游请求契约：Codex → Responses，Claude Code → Messages。手动选择优先生效，接口格式自动联动。</small>
             </div>
             <div class="proxy-route-editor-option-group">
               <div class="proxy-route-editor-option-group-title">请求和错误</div>

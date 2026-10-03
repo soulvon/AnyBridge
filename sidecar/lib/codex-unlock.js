@@ -172,7 +172,7 @@ export function claudeCodeUnlockForTarget(conn) {
   return normalizeClaudeCodeUnlock(conn.unlocks?.claudeCode);
 }
 
-export function buildClaudeCodeUnlockPayload({ model, system, messages, maxTokens, stream = true, tools }) {
+export function buildClaudeCodeUnlockPayload({ model, system, messages, maxTokens, stream = true, tools, toolChoice }) {
   const systemBlocks = Array.isArray(system)
     ? system.filter(block => block && typeof block === 'object' && typeof block.text === 'string')
     : (system ? [{ type: 'text', text: String(system) }] : []);
@@ -209,6 +209,10 @@ export function buildClaudeCodeUnlockPayload({ model, system, messages, maxToken
     payload.tools = [...nativeTools, ...uniqueClient];
   } else if (clientTools.length > 0) {
     payload.tools = clientTools;
+  }
+  // tool_choice 必须是 Anthropic 对象形态（{type:'auto'|'any'|'tool'}）；不传时上游按 auto 处理
+  if (toolChoice && typeof toolChoice === 'object' && toolChoice.type) {
+    payload.tool_choice = toolChoice;
   }
   return payload;
 }

@@ -135,20 +135,18 @@ function proxyRouteUnlockForModelFamily(family) {
   return '';
 }
 
+// 解锁方式遵循「手动指定优先，智能推断兜底」：
+// 1) target.unlock 是显式选择，只要供应商开启了解锁就原样保留（模型名不否决手动配置）；
+// 2) 未指定解锁时，按显式接口格式推导；
+// 3) 接口格式也未指定时，才按模型名智能推断。
+// 智能推断可能猜错（如 gpt 命名但只支持 messages 契约的模型），猜错时用户可手动修正。
 function proxyRouteDefaultUnlockForTarget(providerId, apiFormat = '', model = '') {
   const fmt = normalizeProxyRouteFormat(apiFormat);
-  const familyUnlock = proxyRouteUnlockForModelFamily(proxyRouteModelFamily(model));
   if (fmt === 'gemini') return '';
-  if (fmt === 'anthropic') {
-    if (familyUnlock === 'codex') return '';
-    return proxyRouteProviderUnlockEnabled(providerId, 'claudeCode') ? 'claudeCode' : '';
-  }
-  if (fmt === 'openai') {
-    if (familyUnlock === 'claudeCode') return '';
-    return proxyRouteProviderUnlockEnabled(providerId, 'codex') ? 'codex' : '';
-  }
+  if (fmt === 'anthropic') return proxyRouteProviderUnlockEnabled(providerId, 'claudeCode') ? 'claudeCode' : '';
+  if (fmt === 'openai') return proxyRouteProviderUnlockEnabled(providerId, 'codex') ? 'codex' : '';
+  const familyUnlock = proxyRouteUnlockForModelFamily(proxyRouteModelFamily(model));
   if (familyUnlock) {
-    // 模型族已识别：只认对应解锁，绝不回退到另一种（会路由到错误端点）
     return proxyRouteProviderUnlockEnabled(providerId, familyUnlock) ? familyUnlock : '';
   }
   if (proxyRouteProviderUnlockEnabled(providerId, 'codex')) return 'codex';
@@ -159,15 +157,11 @@ function proxyRouteDefaultUnlockForTarget(providerId, apiFormat = '', model = ''
 function proxyRouteTargetWithDefaultUnlock(target = {}) {
   const out = normalizeProxyRouteTarget(target);
   const currentUnlock = normalizeProxyRouteUnlock(out.unlock);
-  const familyUnlock = proxyRouteUnlockForModelFamily(proxyRouteModelFamily(out.model));
-  const conflicts = !!(currentUnlock && familyUnlock && currentUnlock !== familyUnlock);
-  if (currentUnlock && !conflicts && proxyRouteProviderUnlockEnabled(out.providerId, currentUnlock)) {
+  if (currentUnlock && proxyRouteProviderUnlockEnabled(out.providerId, currentUnlock)) {
     out.unlock = currentUnlock;
     out.apiFormat = proxyRouteApiFormatForUnlock(currentUnlock);
     return out;
   }
-  // 已有解锁与模型族冲突时一并清掉 apiFormat，否则残留的协议会继续指向错误端点
-  if (conflicts) out.apiFormat = '';
   const nextUnlock = proxyRouteDefaultUnlockForTarget(out.providerId, out.apiFormat, out.model);
   out.unlock = nextUnlock;
   if (nextUnlock) out.apiFormat = proxyRouteApiFormatForUnlock(nextUnlock);
@@ -301,40 +295,16 @@ function getProxyRouteDefaultModel(format = 'openai') {
   return models[0] || '';
 }
 
-// 纠正存量配置中解锁类型与模型族冲突的目标
-// (如 claude 系模型被标上 Codex 解锁)
-// 必须在 providerStore 就绪后调用，否则读不到解锁开关会误清正确配置。
-function migrateProxyRouteUnlockConflicts() {
-  if (!Array.isArray(providerStore?.providers) || !providerStore.providers.length) return 0;
-  let fixed = 0;
-  for (const route of proxyRoutesStore?.routes || []) {
-    if (!Array.isArray(route.targets)) continue;
-    route.targets = route.targets.map(target => {
-      const unlock = normalizeProxyRouteUnlock(target.unlock);
-      const familyUnlock = proxyRouteUnlockForModelFamily(proxyRouteModelFamily(target.model));
-      if (!unlock || !familyUnlock || unlock === familyUnlock) return target;
-      fixed++;
-      return proxyRouteTargetWithDefaultUnlock(target);
-    });
-  }
-  return fixed;
-}
-
 async function loadProxyRoutes() {
   if (!invoke) return;
   try {
     const store = await invoke('load_proxy_routes');
     proxyRoutesStore = normalizeProxyRoutesStore(store);
     globalThis.proxyRoutesStoreLoaded = true;
-    const fixedTargets = migrateProxyRouteUnlockConflicts();
     renderProxyRoutes();
     if (typeof syncLocalProxyUi === 'function') syncLocalProxyUi();
     if (typeof syncLocalProxyProvider === 'function') syncLocalProxyProvider();
     if (typeof renderProviders === 'function') renderProviders();
-    if (fixedTargets) {
-      addLog('warn', `已修正 ${fixedTargets} 个与模型不匹配的解锁配置(如 claude 系模型错用 Codex 解锁)`);
-      await saveProxyRoutes({ silent: true });
-    }
   } catch (e) {
     addLog('err', '加载本地代理模型列表失败: ' + e);
   }
@@ -819,12 +789,22 @@ function renderProxyRoutePrimaryTargetEditor() {
   if (providerInput) providerInput.innerHTML = providerOptions(target.providerId);
   if (modelInput) modelInput.value = target.model || '';
   syncProxyRouteFormatSeg(normalizeProxyRouteFormat(target.apiFormat));
+  syncProxyRouteUnlockSeg(normalizeProxyRouteUnlock(target.unlock));
 }
 
 function syncProxyRouteFormatSeg(value) {
   const container = document.getElementById('proxyRoutePrimaryFormatInput');
   if (!container) return;
   const normalized = normalizeProxyRouteFormat(value);
+  container.querySelectorAll('.proxy-route-format-seg-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.value === normalized);
+  });
+}
+
+function syncProxyRouteUnlockSeg(value) {
+  const container = document.getElementById('proxyRoutePrimaryUnlockInput');
+  if (!container) return;
+  const normalized = normalizeProxyRouteUnlock(value);
   container.querySelectorAll('.proxy-route-format-seg-btn').forEach(btn => {
     btn.classList.toggle('active', btn.dataset.value === normalized);
   });
@@ -1250,7 +1230,8 @@ function renderProxyRouteBackupPicker() {
 function updateProxyRouteTarget(index, field, value) {
   if (!proxyRouteDraftTargets[index]) return;
   proxyRouteDraftTargets[index][field] = field === 'apiFormat' ? normalizeProxyRouteFormat(value) : String(value || '').trim();
-  if (field === 'providerId' || field === 'apiFormat' || field === 'model') {
+  if (field === 'providerId' || field === 'apiFormat' || field === 'model' || field === 'unlock') {
+    // WithDefaultUnlock 尊重显式 unlock（手动优先），仅在未指定时按格式/模型名智能推导
     proxyRouteDraftTargets[index] = proxyRouteTargetWithDefaultUnlock(proxyRouteDraftTargets[index]);
   }
   // 手动输入模型名时，自动推断能力
@@ -1780,7 +1761,6 @@ async function saveProxyRouteRenameFromModal() {
   g.proxyRouteUnlockForModelFamily = proxyRouteUnlockForModelFamily;
   g.proxyRouteDefaultUnlockForTarget = proxyRouteDefaultUnlockForTarget;
   g.proxyRouteTargetWithDefaultUnlock = proxyRouteTargetWithDefaultUnlock;
-  g.migrateProxyRouteUnlockConflicts = migrateProxyRouteUnlockConflicts;
   g.proxyRouteProviderInitial = proxyRouteProviderInitial;
   g.proxyRouteProviderEntry = proxyRouteProviderEntry;
   g.proxyRouteProviderModel = proxyRouteProviderModel;
@@ -1819,6 +1799,7 @@ async function saveProxyRouteRenameFromModal() {
   g.providerOptions = providerOptions;
   g.renderProxyRoutePrimaryTargetEditor = renderProxyRoutePrimaryTargetEditor;
   g.syncProxyRouteFormatSeg = syncProxyRouteFormatSeg;
+  g.syncProxyRouteUnlockSeg = syncProxyRouteUnlockSeg;
   g.onProxyRouteProviderSearch = onProxyRouteProviderSearch;
   g.syncProxyRouteEditorConfirmState = syncProxyRouteEditorConfirmState;
   g.updateProxyRouteEditorConfirmText = updateProxyRouteEditorConfirmText;

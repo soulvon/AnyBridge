@@ -7500,6 +7500,11 @@ td.display-name-cell {
   gap: 10px 14px;
 }
 
+/* 落单的字段整行占位，避免网格右侧留白 */
+.cb-edit-form-item-full {
+  grid-column: 1 / -1;
+}
+
 @media (max-width: 680px) {
   .cb-edit-grid-2col,
   .cb-edit-grid-3col {
@@ -7552,6 +7557,26 @@ td.display-name-cell {
 }
 
 .cb-edit-form-item input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+}
+
+.cb-edit-form-item select {
+  width: 100%;
+  min-width: 0;
+  height: 35px;
+  padding: 0 11px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--bg-card);
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 12.5px;
+  outline: none;
+  transition: border-color var(--duration-fast) var(--ease), box-shadow var(--duration-fast) var(--ease);
+}
+
+.cb-edit-form-item select:focus {
   border-color: var(--accent);
   box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
 }
@@ -11673,6 +11698,13 @@ details[open] > .platform-collapse-summary .platform-collapse-caret {
   color: var(--text-muted);
   font-size: 11px;
   font-weight: 900;
+}
+.proxy-route-editor-option-hint {
+  display: block;
+  margin-top: 6px;
+  color: var(--text-muted);
+  font-size: 11px;
+  line-height: 1.5;
 }
 .proxy-route-editor-options {
   display: flex;

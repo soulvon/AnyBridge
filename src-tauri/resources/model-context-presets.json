@@ -1,6 +1,6 @@
 {
-  "version": 4,
-  "updatedAt": "2026-09-30",
+  "version": 6,
+  "updatedAt": "2026-10-03",
   "source": "综合官方文档与公开横评（Anthropic / OpenAI / Google / 智谱 / DeepSeek / Kimi / Qwen / xAI / MiniMax 等）",
   "defaults": {
     "maxInputTokens": 128000,
@@ -122,9 +122,9 @@
         "deepseek-v4-1-flash-high"
       ],
       "maxInputTokens": 1048576,
-      "maxOutputTokens": 393216,
+      "maxOutputTokens": 384000,
       "vendor": "deepseek",
-      "note": "DeepSeek V4.1 Flash 1M 上下文 / 384K 输出"
+      "note": "DeepSeek V4.1 Flash 1M 上下文；输出上限按渠道实测 384000 计（393216 会被商汤等渠道以 max_tokens 越界拒绝）"
     },
     {
       "id": "grok-4.7",
@@ -140,9 +140,9 @@
         "grok-4-7-xhigh"
       ],
       "maxInputTokens": 500000,
-      "maxOutputTokens": 500000,
+      "maxOutputTokens": 64000,
       "vendor": "xai",
-      "note": "Grok 4.7 500K 上下文 / 500K 输出"
+      "note": "Grok 4.7 500K 上下文；官方标称 500K 输出，但实测多数中转站上游渠道超 64K 即 400 invalid_parameter，推荐 64000"
     },
     {
       "id": "claude-sonnet-5-5",

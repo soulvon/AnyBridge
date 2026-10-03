@@ -176,7 +176,17 @@ function inferApiFormatFromHost(host) {
   return null;
 }
 
-function inferTargetRouteFormat({ targetApiFormat, unlockApiFormat, targetUnlock, explicitPath, providerPath, host }) {
+// 模型名启发：只作最后兜底（手动 unlock > 显式 apiFormat > 端点/host 推断 > 模型名）。
+// 启发可能猜错（如 gpt-6-astra-cc-format 实际只支持 messages 契约），
+// 所以运行时永远允许 target.unlock / apiFormat 显式覆盖，猜测结果不否决任何显式配置。
+function inferApiFormatFromModelName(model) {
+  const m = String(model || '').toLowerCase();
+  if (/claude|opus|sonnet|haiku|fable/.test(m)) return 'anthropic';
+  if (/gpt|swe|codex/.test(m) || /^o[134]/.test(m)) return 'openai';
+  return null;
+}
+
+function inferTargetRouteFormat({ targetApiFormat, unlockApiFormat, targetUnlock, explicitPath, providerPath, host, model }) {
   if (unlockApiFormat) return { format: unlockApiFormat, source: targetUnlock };
   if (targetApiFormat) return { format: targetApiFormat, source: 'target-apiFormat' };
 
@@ -190,6 +200,9 @@ function inferTargetRouteFormat({ targetApiFormat, unlockApiFormat, targetUnlock
 
   const hostFormat = inferApiFormatFromHost(host);
   if (hostFormat) return { format: hostFormat, source: 'host' };
+
+  const modelNameFormat = inferApiFormatFromModelName(model);
+  if (modelNameFormat) return { format: modelNameFormat, source: 'model-name-heuristic' };
 
   return { format: 'openai', source: 'auto-default-openai' };
 }
@@ -332,14 +345,10 @@ export function resolveTarget(target, providers) {
   if (effectiveUnlock && !providerUnlockEnabled(p, effectiveUnlock)) {
     effectiveUnlock = null;
   }
-  // 运行时模型族与解锁类型不匹配 → 也不加 unlock 参数
-  const modelLower = String(target.model || '').toLowerCase();
-  if (effectiveUnlock === 'claudeCode' && (modelLower.includes('gpt') || modelLower.includes('swe') || modelLower.startsWith('o1') || modelLower.startsWith('o3') || modelLower.startsWith('o4'))) {
-    effectiveUnlock = null;
-  }
-  if (effectiveUnlock === 'codex' && (modelLower.includes('claude') || modelLower.includes('opus') || modelLower.includes('sonnet') || modelLower.includes('fable') || modelLower.includes('haiku'))) {
-    effectiveUnlock = null;
-  }
+  // 协议族不再按模型名猜测：AnyRouter 存在 gpt 命名却只支持 messages 契约的模型
+  // （如 gpt-6-astra-cc-format，走 /v1/responses 会 400 not implemented）。
+  // 是否解锁、走哪个契约由 target.unlock + apiFormat 显式声明；配错时由上游明确报错，
+  // 而不是在本地静默改写请求契约。
   const unlockApiFormat = apiFormatForUnlock(effectiveUnlock);
   if (targetApiFormat && unlockApiFormat && targetApiFormat !== unlockApiFormat) {
     return { error: `目标协议 ${targetApiFormat} 与${effectiveUnlock === 'codex' ? ' Codex' : ' Claude Code'} 解锁不匹配` };
@@ -354,10 +363,10 @@ export function resolveTarget(target, providers) {
     return { error: `${effectiveUnlock === 'codex' ? 'Codex' : 'Claude Code'} 解锁目标不支持覆盖 apiPath；请留空并使用供应商解锁模板 ${cleanApiPath(unlockWireApi)}` };
   }
   const providerPath = p.apiPath || p.api_path || null;
-  const route = inferTargetRouteFormat({ targetApiFormat, unlockApiFormat, targetUnlock: effectiveUnlock, explicitPath, providerPath, host });
+  const modelId = target.model || p.defaultModel;
+  const route = inferTargetRouteFormat({ targetApiFormat, unlockApiFormat, targetUnlock: effectiveUnlock, explicitPath, providerPath, host, model: modelId });
   if (route?.error) return { error: route.error };
   const routeFormat = route.format;
-  const modelId = target.model || p.defaultModel;
   const configuredPath = (explicitPath || unlockWireApi || providerPath) && (explicitPath || unlockWireApi || providerPath) !== '/'
     ? (explicitPath || unlockWireApi || providerPath)
     : null;

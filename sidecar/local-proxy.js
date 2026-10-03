@@ -592,6 +592,34 @@ function openAIPartFromAnthropic(part, mode = 'chat') {
   return null;
 }
 
+// 工具结果内容归一为字符串：OpenAI tool 消息与 Responses function_call_output
+// 的 output 都是字符串；数组形式（部分客户端）按 text 片段拼接。
+function toolResultOutputText(raw) {
+  if (typeof raw === 'string') return raw;
+  if (Array.isArray(raw)) return raw.map(p => (typeof p === 'string' ? p : (p?.text || ''))).join('\n');
+  if (raw == null) return '';
+  return JSON.stringify(raw);
+}
+
+// 连续的工具调用 / 工具结果合并进同一条消息，避免上游收到无法交替的相邻同 role 消息。
+function appendToolUseBlock(messages, block) {
+  const last = messages[messages.length - 1];
+  if (last && last.role === 'assistant' && last.content.some(p => p.type === 'tool_use')) {
+    last.content.push(block);
+    return;
+  }
+  messages.push({ role: 'assistant', content: [block] });
+}
+
+function appendToolResultBlock(messages, block) {
+  const last = messages[messages.length - 1];
+  if (last && last.role === 'user' && last.content.some(p => p.type === 'tool_result')) {
+    last.content.push(block);
+    return;
+  }
+  messages.push({ role: 'user', content: [block] });
+}
+
 function normalizeOpenAI(body) {
   const messages = [];
   let system = String(body.instructions || '').trim();
@@ -599,6 +627,24 @@ function normalizeOpenAI(body) {
   const rows = typeof input === 'string' ? [{ role: 'user', content: input }] : (Array.isArray(input) ? input : []);
   for (const msg of rows) {
     if (!msg || typeof msg !== 'object') continue;
+    // Responses 入站：历史中的 function_call / function_call_output 项
+    if (msg.type === 'function_call') {
+      appendToolUseBlock(messages, {
+        type: 'tool_use',
+        id: String(msg.call_id || msg.id || ''),
+        name: String(msg.name || ''),
+        input: parseJsonObject(msg.arguments || '{}'),
+      });
+      continue;
+    }
+    if (msg.type === 'function_call_output') {
+      appendToolResultBlock(messages, {
+        type: 'tool_result',
+        tool_use_id: String(msg.call_id || msg.id || ''),
+        content: toolResultOutputText(msg.output),
+      });
+      continue;
+    }
     const role = msg.role === 'assistant' ? 'assistant' : (msg.role === 'system' ? 'system' : 'user');
     const raw = msg.content ?? msg.text ?? '';
     if (role === 'system') {
@@ -606,7 +652,26 @@ function normalizeOpenAI(body) {
       system = [system, text].filter(Boolean).join('\n');
       continue;
     }
+    // Chat 入站：工具结果消息（role: tool）
+    if (msg.role === 'tool' || msg.tool_call_id) {
+      appendToolResultBlock(messages, {
+        type: 'tool_result',
+        tool_use_id: String(msg.tool_call_id || ''),
+        content: toolResultOutputText(raw),
+      });
+      continue;
+    }
     const content = typeof raw === 'string' ? [textPart(raw)].filter(Boolean) : (Array.isArray(raw) ? raw.map(anthropicPartFromOpenAI).filter(Boolean) : []);
+    // Chat 入站：助手历史里的工具调用
+    for (const call of (Array.isArray(msg.tool_calls) ? msg.tool_calls : [])) {
+      if (!call?.function?.name) continue;
+      content.push({
+        type: 'tool_use',
+        id: String(call.id || ''),
+        name: String(call.function.name),
+        input: parseJsonObject(call.function.arguments || '{}'),
+      });
+    }
     messages.push({ role, content });
   }
   return { system, messages };
@@ -882,11 +947,15 @@ export const __localProxyTest = {
   renderedProxyRouteId,
   routeSupportsKind,
   normalizeRequest,
+  normalizeOpenAI,
+  openAIResponsesInput,
+  sendOpenAIChat,
   applyParamOverrides,
   applyToolEnhancement,
   upstreamBody,
   openAITools,
   anthropicTools,
+  responsesToolChoice,
   normalizeToolParameters,
   antigravityErrorSnapshot,
   writeAntigravityStreamError,
@@ -969,8 +1038,53 @@ function openAIChatMessages(system, messages) {
   return out;
 }
 
+// Chat 风格 tool_choice {type:'function', function:{name}} → Responses 扁平 {type:'function', name}
+function responsesToolChoice(choice) {
+  if (!choice || typeof choice !== 'object') return choice;
+  if (choice.type === 'function' && choice.function?.name) {
+    return { type: 'function', name: choice.function.name };
+  }
+  return choice;
+}
+
+// Responses input 是 item 数组：普通消息保留 {role, content}，
+// 工具调用 / 工具结果必须输出为 function_call / function_call_output 项，
+// 否则上游看不到工具历史（角色退化、结构丢失）。
 function openAIResponsesInput(messages) {
-  return messages.map(m => ({ role: m.role === 'assistant' ? 'assistant' : 'user', content: (m.content || []).map(p => openAIPartFromAnthropic(p, 'responses')).filter(Boolean) }));
+  const out = [];
+  for (const m of messages) {
+    const role = m.role === 'assistant' ? 'assistant' : 'user';
+    let content = [];
+    const flush = () => {
+      if (content.length > 0) {
+        out.push({ role, content });
+        content = [];
+      }
+    };
+    for (const p of (m.content || [])) {
+      if (p?.type === 'tool_use') {
+        flush();
+        out.push({
+          type: 'function_call',
+          call_id: String(p.id || ''),
+          name: String(p.name || ''),
+          arguments: typeof p.input === 'string' ? p.input : JSON.stringify(p.input || {}),
+        });
+      } else if (p?.type === 'tool_result') {
+        flush();
+        out.push({
+          type: 'function_call_output',
+          call_id: String(p.tool_use_id || ''),
+          output: toolResultOutputText(p.content),
+        });
+      } else {
+        const converted = openAIPartFromAnthropic(p, 'responses');
+        if (converted) content.push(converted);
+      }
+    }
+    flush();
+  }
+  return out;
 }
 
 // Google 的 protobuf Schema.Type 是 UPPERCASE 枚举（STRING/OBJECT/...），
@@ -1014,42 +1128,67 @@ function normalizeToolParameters(schema) {
   return out;
 }
 
+// 客户端工具形态有三种：Chat 嵌套 {type,function:{...}}、Responses 扁平 {type,name,...}、
+// Anthropic 原生 {name,input_schema}。Codex CLI / 桌面版与 Responses 兼容客户端发的是扁平格式，
+// 任一形态漏都会让工具被静默丢弃（模型侧看不到工具，工具回合直接断）。
+function toolDescriptor(tool) {
+  if (tool?.type === 'function' && tool.function?.name) {
+    return { name: tool.function.name, description: tool.function.description || '', schema: tool.function.parameters };
+  }
+  if (tool?.type === 'function' && tool?.name) {
+    return { name: tool.name, description: tool.description || '', schema: tool.parameters };
+  }
+  if (tool?.name && tool.input_schema) {
+    return { name: tool.name, description: tool.description || '', schema: tool.input_schema };
+  }
+  return null;
+}
+
+// OpenAI tool_choice（字符串或 {type:'function',function:{name}}）→ Anthropic {type:'auto'|'any'|'tool'}。
+// Anthropic 不认识字符串形式，也不支持 none，透传会直接 400。
+function anthropicToolChoice(choice) {
+  if (!choice) return undefined;
+  if (typeof choice === 'string') {
+    const lower = choice.toLowerCase();
+    if (lower === 'auto') return { type: 'auto' };
+    if (lower === 'required' || lower === 'any') return { type: 'any' };
+    return undefined;
+  }
+  if (typeof choice === 'object') {
+    if (choice.type === 'auto' || choice.type === 'any' || choice.type === 'tool') return choice;
+    const name = choice.name || choice.function?.name;
+    if (name) return { type: 'tool', name };
+  }
+  return undefined;
+}
+
 function anthropicTools(tools) {
   const out = [];
   for (const tool of tools || []) {
-    if (tool?.name && tool.input_schema) {
-      out.push({ ...tool, input_schema: normalizeToolParameters(tool.input_schema) });
-    } else if (tool?.type === 'function' && tool.function?.name) {
-      out.push({
-        name: tool.function.name,
-        description: tool.function.description || '',
-        input_schema: normalizeToolParameters(tool.function.parameters) || { type: 'object', properties: {} },
-      });
-    }
+    const descriptor = toolDescriptor(tool);
+    if (!descriptor) continue;
+    out.push({
+      name: descriptor.name,
+      description: descriptor.description,
+      input_schema: normalizeToolParameters(descriptor.schema) || { type: 'object', properties: {} },
+    });
   }
   return out.length ? out : undefined;
 }
 
-function openAITools(tools) {
+// chatCompletions=true → Chat Completions 嵌套格式 {type, function:{name,...}}；
+// chatCompletions=false → Responses 扁平格式 {type, name, description, parameters}。
+// Responses 端点收到嵌套格式会被 AnyRouter 判为非法请求返回 520。
+function openAITools(tools, { chatCompletions = true } = {}) {
   const out = [];
   for (const tool of tools || []) {
-    if (tool?.type === 'function' && tool.function?.name) {
-      out.push({
-        type: 'function',
-        function: {
-          ...tool.function,
-          parameters: normalizeToolParameters(tool.function.parameters) || { type: 'object', properties: {} },
-        },
-      });
-    } else if (tool?.name && tool.input_schema) {
-      out.push({
-        type: 'function',
-        function: {
-          name: tool.name,
-          description: tool.description || '',
-          parameters: normalizeToolParameters(tool.input_schema) || { type: 'object', properties: {} },
-        },
-      });
+    const descriptor = toolDescriptor(tool);
+    if (!descriptor) continue;
+    const parameters = normalizeToolParameters(descriptor.schema) || { type: 'object', properties: {} };
+    if (chatCompletions) {
+      out.push({ type: 'function', function: { name: descriptor.name, description: descriptor.description, parameters } });
+    } else {
+      out.push({ type: 'function', name: descriptor.name, description: descriptor.description, parameters });
     }
   }
   return out.length ? out : undefined;
@@ -1146,12 +1285,18 @@ function upstreamBody(conn, ctx) {
     if (claudeCodeUnlock) {
       return buildClaudeCodeUnlockPayload({
         model: conn.model,
+        // 客户端 system 必须保留（工具的 agent 提示词都在里面）；
+        // buildClaudeCodeUnlockPayload 会在缺少标识时前置 Claude Code 指纹 block，校验仍通过。
+        system: ctx.system,
         messages: anthropicMessages,
         maxTokens: ctx.maxTokens,
         stream: false,
+        // 客户端 tools 去重追加在 21 个原生指纹 tools 之后，否则上游模型看不到客户端工具
+        tools: anthropicTools(ctx.tools),
+        toolChoice: anthropicToolChoice(ctx.toolChoice),
       });
     }
-    return cleanBody({ ...extras, model: conn.model, system: ctx.system || undefined, messages: anthropicMessages, max_tokens: ctx.maxTokens, temperature: ctx.temperature, stream: false, thinking: ctx.rawBody?.thinking || undefined, tools: anthropicTools(ctx.tools), tool_choice: ctx.toolChoice || undefined });
+    return cleanBody({ ...extras, model: conn.model, system: ctx.system || undefined, messages: anthropicMessages, max_tokens: ctx.maxTokens, temperature: ctx.temperature, stream: false, thinking: ctx.rawBody?.thinking || undefined, tools: anthropicTools(ctx.tools), tool_choice: anthropicToolChoice(ctx.toolChoice) });
   }
   if (conn.format === 'gemini') {
     return cleanBody({
@@ -1183,8 +1328,9 @@ function upstreamBody(conn, ctx) {
       max_output_tokens: codexUnlock ? undefined : ctx.maxTokens,
       temperature: ctx.temperature,
       stream: false,
-      tools: openAITools(ctx.tools),
-      tool_choice: ctx.toolChoice || undefined,
+      // Responses 端点要求扁平 tools；嵌套格式（Chat 风格）会被 AnyRouter 判为非法请求返回 520
+      tools: openAITools(ctx.tools, { chatCompletions: false }),
+      tool_choice: responsesToolChoice(ctx.toolChoice) || undefined,
     };
     // Proxy never retrieves stored responses; always disable server-side store
     // so client/preserveExtraParams cannot re-enable upstream disk persistence.
@@ -1878,17 +2024,60 @@ function anthropicUsage(usage = {}) {
 }
 function sse(res, event, data) { if (event) res.write(`event: ${event}\n`); res.write(`data: ${JSON.stringify(data)}\n\n`); }
 
+function chatCompletionToolCall(call, index) {
+  return {
+    index,
+    id: call.id || `call_${crypto.randomUUID().replace(/-/g, '').slice(0, 24)}`,
+    type: 'function',
+    function: { name: call.name, arguments: JSON.stringify(call.arguments || {}) },
+  };
+}
+
 function sendOpenAIChat(ctx, res, result) {
   const id = `chatcmpl-${crypto.randomUUID()}`;
   const extra = result.extraHeaders || {};
+  const created = Math.floor(Date.now() / 1000);
+  const toolCalls = Array.isArray(result.toolCalls) ? result.toolCalls : [];
+  const finishReason = toolCalls.length > 0 ? 'tool_calls' : 'stop';
   if (ctx.stream) {
     res.writeHead(200, cors({ 'content-type': 'text/event-stream; charset=utf-8', ...extra }));
-    sse(res, null, { id, object: 'chat.completion.chunk', created: Math.floor(Date.now() / 1000), model: ctx.model, choices: [{ index: 0, delta: { role: 'assistant' }, finish_reason: null }] });
-    if (result.text) sse(res, null, { id, object: 'chat.completion.chunk', created: Math.floor(Date.now() / 1000), model: ctx.model, choices: [{ index: 0, delta: { content: result.text }, finish_reason: null }] });
-    sse(res, null, { id, object: 'chat.completion.chunk', created: Math.floor(Date.now() / 1000), model: ctx.model, choices: [{ index: 0, delta: {}, finish_reason: 'stop' }] });
+    const chunk = (choices) => ({ id, object: 'chat.completion.chunk', created, model: ctx.model, choices });
+    sse(res, null, chunk([{ index: 0, delta: { role: 'assistant' }, finish_reason: null }]));
+    if (result.text) sse(res, null, chunk([{ index: 0, delta: { content: result.text }, finish_reason: null }]));
+    if (toolCalls.length > 0) {
+      // 首块声明调用 id 与函数名，第二块补全 arguments，与客户端流式增量协议一致
+      sse(res, null, chunk([{
+        index: 0,
+        delta: {
+          tool_calls: toolCalls.map((call, i) => {
+            const { function: fn, ...rest } = chatCompletionToolCall(call, i);
+            return { ...rest, function: { ...fn, arguments: '' } };
+          }),
+        },
+        finish_reason: null,
+      }]));
+      sse(res, null, chunk([{
+        index: 0,
+        delta: {
+          tool_calls: toolCalls.map((call, i) => ({
+            index: i,
+            function: { arguments: JSON.stringify(call.arguments || {}) },
+          })),
+        },
+        finish_reason: null,
+      }]));
+    }
+    sse(res, null, chunk([{ index: 0, delta: {}, finish_reason: finishReason }]));
     res.write('data: [DONE]\n\n'); res.end(); return;
   }
-  sendJson(res, 200, { id, object: 'chat.completion', created: Math.floor(Date.now() / 1000), model: ctx.model, choices: [{ index: 0, message: { role: 'assistant', content: result.text }, finish_reason: 'stop' }], usage: openAIUsage(result.usage) }, extra);
+  const message = { role: 'assistant', content: result.text || '' };
+  if (toolCalls.length > 0) {
+    message.tool_calls = toolCalls.map((call, i) => {
+      const { index, ...rest } = chatCompletionToolCall(call, i);
+      return rest;
+    });
+  }
+  sendJson(res, 200, { id, object: 'chat.completion', created, model: ctx.model, choices: [{ index: 0, message, finish_reason: finishReason }], usage: openAIUsage(result.usage) }, extra);
 }
 
 function responseObject(ctx, result, id) {
