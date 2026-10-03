@@ -286,8 +286,8 @@ jobs:
           rm -f /tmp/tauri-sign.key
           test -s "${APPIMAGE}.sig"
           echo "Uploading repaired AppImage and fresh signature"
-          gh release upload "v${VERSION}" --repo "${{ github.repository }}" \
-            "$APPIMAGE" "${APPIMAGE}.sig" --clobber
+          bash scripts/release/upload_release_assets.sh "v${VERSION}" "${{ github.repository }}" \
+            "$APPIMAGE" "${APPIMAGE}.sig"
 
   rebuild-latest-json:
     name: Rebuild latest.json and publish release
@@ -388,7 +388,7 @@ jobs:
         run: |
           set -euo pipefail
           TAG="v${VERSION}"
-          gh release upload "$TAG" --repo "$SOURCE_REPO" latest.json latest-*.json SHA256SUMS.txt --clobber
+          bash scripts/release/upload_release_assets.sh "$TAG" "$SOURCE_REPO" latest.json latest-*.json SHA256SUMS.txt
 
       - name: Publish release (private source repo)
         env:
@@ -420,7 +420,7 @@ jobs:
               --notes-file release-notes.md
           fi
           # 上传安装包、updater 资产、签名与更新清单
-          gh release upload "$TAG" --repo "$PUBLIC_REPO" \
-            release-assets/* latest.json latest-*.json SHA256SUMS.txt --clobber
+          bash scripts/release/upload_release_assets.sh "$TAG" "$PUBLIC_REPO" \
+            release-assets/* latest.json latest-*.json SHA256SUMS.txt
           gh release edit "$TAG" --repo "$PUBLIC_REPO" --draft=false --prerelease=false --latest
           echo "已在公开仓库发布 $TAG 并标记为 latest"
