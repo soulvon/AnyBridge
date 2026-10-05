@@ -3,7 +3,7 @@
 # 🚀 AnyBridge
 
 ### Connect Third-Party Relays & Custom Models to Any AI Coding Tool
-**All-in-One BYOK (Bring Your Own Key) Desktop Bridge · Supporting 12+ Desktop IDEs & CLI Tools**
+**All-in-One BYOK (Bring Your Own Key) Desktop Bridge · Supporting 12+ AI Agents (IDEs & CLI Tools)**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Tauri v2](https://img.shields.io/badge/Tauri-v2-24c8db.svg?logo=tauri)](https://tauri.app/)

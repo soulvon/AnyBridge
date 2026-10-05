@@ -3,7 +3,7 @@
 # 🚀 AnyBridge
 
 ### 让各类 AI 编程工具自由接入,快捷的配置第三方渠道商自定义模型
-**AI 编程助手的一站式 BYOK（自带渠道 / Key）本地客户端 · 支持 12+ 款桌面 IDE 与 CLI 工具**
+**AI 编程助手的一站式 BYOK（自带渠道 / Key）本地客户端 · 支持 12+ 款智能体（IDE / CLI 工具）**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Tauri v2](https://img.shields.io/badge/Tauri-v2-24c8db.svg?logo=tauri)](https://tauri.app/)
