@@ -1,6 +1,6 @@
 [package]
 name = "anybridge"
-version = "0.5.27"
+version = "0.5.28"
 description = "AnyBridge desktop client"
 authors = ["soulvon"]
 edition = "2021"
@@ -46,6 +46,7 @@ tar = "0.4"
 rand = "0.8"
 futures-util = "0.3"
 rfd = "0.15"
+serde_yaml = "0.9.34"
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.59", features = [

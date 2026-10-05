@@ -770,8 +770,14 @@ textarea:focus-visible,
     linear-gradient(180deg, rgba(255, 255, 255, 0.58), rgba(255, 255, 255, 0.16)),
     var(--bg-glass);
   box-shadow: 1px 0 0 rgba(255, 255, 255, 0.52) inset;
-  scrollbar-width: thin;
-  scrollbar-color: var(--bg-secondary) transparent;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.app-sidebar::-webkit-scrollbar {
+  width: 0 !important;
+  height: 0 !important;
+  display: none !important;
 }
 
 [data-theme="dark"] .app-sidebar {
@@ -780,7 +786,7 @@ textarea:focus-visible,
     #151E26;
   border-right-color: rgba(255, 255, 255, 0.095);
   box-shadow: 1px 0 0 rgba(255, 255, 255, 0.045) inset, 16px 0 34px -36px rgba(0, 0, 0, 0.72);
-  scrollbar-color: rgba(71, 85, 105, 0.9) transparent;
+  scrollbar-width: none;
 }
 
 .sidebar-nav-block {
@@ -814,28 +820,6 @@ textarea:focus-visible,
 }
 
 .platform-rail {
-  /* ── Drag handle tunables（手柄参数，临时调参面板控制） ── */
-  --handle-width: 30px;
-  --handle-height: 26px;
-  --handle-justify-self: center;
-  --handle-align-self: center;
-  --handle-opacity: 0;              /* 拖拽手柄常驻隐藏（拖拽体验由整行胶囊负责） */
-  --handle-opacity-hover: 0;
-  --handle-dot-radius: 1.9px;
-  --handle-dot-color: rgba(100, 116, 139, 0.7);
-  --handle-dot-color-drag: rgba(18, 97, 166, 0.85);
-  --handle-dot-color-dark: rgba(148, 163, 184, 0.7);
-  --handle-dot-color-drag-dark: rgba(90, 176, 230, 0.9);
-  --handle-dot-padding-x: 5px;
-  --handle-dot-padding-y: 5px;
-  --handle-dot-col-spacing: 7px;
-  --handle-dot-row-spacing: 7px;
-  --handle-shadow-on: 1;            /* 0=关闭 1=开启 */
-  --handle-shadow-color: rgba(15, 23, 42, 0.16);
-  --handle-shadow-offset-x: 2px;
-  --handle-shadow-offset-y: 2px;
-  --handle-shadow-blur: 1px;
-
   min-height: 0;
   overflow: visible;
   padding: 0;
@@ -852,10 +836,9 @@ textarea:focus-visible,
 .platform-rail-item {
   width: 100%;
   min-height: 46px;
-  display: grid;
-  grid-template-columns: 22px 34px minmax(0, 1fr);
+  display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
   margin-bottom: 7px;
   padding: 7px 10px;
   border: 1px solid transparent;
@@ -996,75 +979,7 @@ body.is-platform-rail-dragging * {
 }
 
 .platform-rail-handle {
-  display: block;
-  width: var(--handle-width);
-  height: var(--handle-height);
-  justify-self: var(--handle-justify-self);
-  align-self: var(--handle-align-self);
-  background: transparent;
-  border: 0;
-  /* drop-shadow 跟随 6 个圆点的实际形状（不依赖容器背景） */
-  filter: drop-shadow(
-    calc(var(--handle-shadow-on) * var(--handle-shadow-offset-x))
-    calc(var(--handle-shadow-on) * var(--handle-shadow-offset-y))
-    calc(var(--handle-shadow-on) * var(--handle-shadow-blur))
-    var(--handle-shadow-color)
-  );
-  background-image:
-    radial-gradient(circle at var(--handle-dot-padding-x) var(--handle-dot-padding-y), var(--handle-dot-color) var(--handle-dot-radius), transparent calc(var(--handle-dot-radius) + 0.3px)),
-    radial-gradient(circle at var(--handle-dot-padding-x) calc(var(--handle-dot-padding-y) + var(--handle-dot-row-spacing) * 1), var(--handle-dot-color) var(--handle-dot-radius), transparent calc(var(--handle-dot-radius) + 0.3px)),
-    radial-gradient(circle at var(--handle-dot-padding-x) calc(var(--handle-dot-padding-y) + var(--handle-dot-row-spacing) * 2), var(--handle-dot-color) var(--handle-dot-radius), transparent calc(var(--handle-dot-radius) + 0.3px)),
-    radial-gradient(circle at calc(var(--handle-dot-padding-x) + var(--handle-dot-col-spacing)) var(--handle-dot-padding-y), var(--handle-dot-color) var(--handle-dot-radius), transparent calc(var(--handle-dot-radius) + 0.3px)),
-    radial-gradient(circle at calc(var(--handle-dot-padding-x) + var(--handle-dot-col-spacing)) calc(var(--handle-dot-padding-y) + var(--handle-dot-row-spacing) * 1), var(--handle-dot-color) var(--handle-dot-radius), transparent calc(var(--handle-dot-radius) + 0.3px)),
-    radial-gradient(circle at calc(var(--handle-dot-padding-x) + var(--handle-dot-col-spacing)) calc(var(--handle-dot-padding-y) + var(--handle-dot-row-spacing) * 2), var(--handle-dot-color) var(--handle-dot-radius), transparent calc(var(--handle-dot-radius) + 0.3px));
-  background-repeat: no-repeat;
-  opacity: var(--handle-opacity);
-  cursor: grab;
-  transition:
-    opacity var(--duration-fast) var(--ease),
-    filter var(--duration-fast) var(--ease),
-    transform var(--duration-fast) var(--ease);
-  flex-shrink: 0;
-  -webkit-user-select: none;
-  user-select: none;
-  touch-action: none;
-}
-
-.platform-rail-item:hover .platform-rail-handle {
-  opacity: var(--handle-opacity-hover);
-}
-
-.platform-rail-item.is-dragging .platform-rail-handle {
-  cursor: grabbing;
-  opacity: 1;
-  /* 拖拽时手柄只换颜色，不浮动（整行胶囊负责浮动效果） */
-  background-image:
-    radial-gradient(circle at var(--handle-dot-padding-x) var(--handle-dot-padding-y), var(--handle-dot-color-drag) var(--handle-dot-radius), transparent calc(var(--handle-dot-radius) + 0.3px)),
-    radial-gradient(circle at var(--handle-dot-padding-x) calc(var(--handle-dot-padding-y) + var(--handle-dot-row-spacing) * 1), var(--handle-dot-color-drag) var(--handle-dot-radius), transparent calc(var(--handle-dot-radius) + 0.3px)),
-    radial-gradient(circle at var(--handle-dot-padding-x) calc(var(--handle-dot-padding-y) + var(--handle-dot-row-spacing) * 2), var(--handle-dot-color-drag) var(--handle-dot-radius), transparent calc(var(--handle-dot-radius) + 0.3px)),
-    radial-gradient(circle at calc(var(--handle-dot-padding-x) + var(--handle-dot-col-spacing)) var(--handle-dot-padding-y), var(--handle-dot-color-drag) var(--handle-dot-radius), transparent calc(var(--handle-dot-radius) + 0.3px)),
-    radial-gradient(circle at calc(var(--handle-dot-padding-x) + var(--handle-dot-col-spacing)) calc(var(--handle-dot-padding-y) + var(--handle-dot-row-spacing) * 1), var(--handle-dot-color-drag) var(--handle-dot-radius), transparent calc(var(--handle-dot-radius) + 0.3px)),
-    radial-gradient(circle at calc(var(--handle-dot-padding-x) + var(--handle-dot-col-spacing)) calc(var(--handle-dot-padding-y) + var(--handle-dot-row-spacing) * 2), var(--handle-dot-color-drag) var(--handle-dot-radius), transparent calc(var(--handle-dot-radius) + 0.3px)));
-}
-
-[data-theme="dark"] .platform-rail-handle {
-  background-image:
-    radial-gradient(circle at var(--handle-dot-padding-x) var(--handle-dot-padding-y), var(--handle-dot-color-dark) var(--handle-dot-radius), transparent calc(var(--handle-dot-radius) + 0.3px)),
-    radial-gradient(circle at var(--handle-dot-padding-x) calc(var(--handle-dot-padding-y) + var(--handle-dot-row-spacing) * 1), var(--handle-dot-color-dark) var(--handle-dot-radius), transparent calc(var(--handle-dot-radius) + 0.3px)),
-    radial-gradient(circle at var(--handle-dot-padding-x) calc(var(--handle-dot-padding-y) + var(--handle-dot-row-spacing) * 2), var(--handle-dot-color-dark) var(--handle-dot-radius), transparent calc(var(--handle-dot-radius) + 0.3px)),
-    radial-gradient(circle at calc(var(--handle-dot-padding-x) + var(--handle-dot-col-spacing)) var(--handle-dot-padding-y), var(--handle-dot-color-dark) var(--handle-dot-radius), transparent calc(var(--handle-dot-radius) + 0.3px)),
-    radial-gradient(circle at calc(var(--handle-dot-padding-x) + var(--handle-dot-col-spacing)) calc(var(--handle-dot-padding-y) + var(--handle-dot-row-spacing) * 1), var(--handle-dot-color-dark) var(--handle-dot-radius), transparent calc(var(--handle-dot-radius) + 0.3px)),
-    radial-gradient(circle at calc(var(--handle-dot-padding-x) + var(--handle-dot-col-spacing)) calc(var(--handle-dot-padding-y) + var(--handle-dot-row-spacing) * 2), var(--handle-dot-color-dark) var(--handle-dot-radius), transparent calc(var(--handle-dot-radius) + 0.3px));
-}
-
-[data-theme="dark"] .platform-rail-item.is-dragging .platform-rail-handle {
-  background-image:
-    radial-gradient(circle at var(--handle-dot-padding-x) var(--handle-dot-padding-y), var(--handle-dot-color-drag-dark) var(--handle-dot-radius), transparent calc(var(--handle-dot-radius) + 0.3px)),
-    radial-gradient(circle at var(--handle-dot-padding-x) calc(var(--handle-dot-padding-y) + var(--handle-dot-row-spacing) * 1), var(--handle-dot-color-drag-dark) var(--handle-dot-radius), transparent calc(var(--handle-dot-radius) + 0.3px)),
-    radial-gradient(circle at var(--handle-dot-padding-x) calc(var(--handle-dot-padding-y) + var(--handle-dot-row-spacing) * 2), var(--handle-dot-color-drag-dark) var(--handle-dot-radius), transparent calc(var(--handle-dot-radius) + 0.3px)),
-    radial-gradient(circle at calc(var(--handle-dot-padding-x) + var(--handle-dot-col-spacing)) var(--handle-dot-padding-y), var(--handle-dot-color-drag-dark) var(--handle-dot-radius), transparent calc(var(--handle-dot-radius) + 0.3px)),
-    radial-gradient(circle at calc(var(--handle-dot-padding-x) + var(--handle-dot-col-spacing)) calc(var(--handle-dot-padding-y) + var(--handle-dot-row-spacing) * 1), var(--handle-dot-color-drag-dark) var(--handle-dot-radius), transparent calc(var(--handle-dot-radius) + 0.3px)),
-    radial-gradient(circle at calc(var(--handle-dot-padding-x) + var(--handle-dot-col-spacing)) calc(var(--handle-dot-padding-y) + var(--handle-dot-row-spacing) * 2), var(--handle-dot-color-drag-dark) var(--handle-dot-radius), transparent calc(var(--handle-dot-radius) + 0.3px)));
+  display: none !important;
 }
 
 .platform-rail-icon {
@@ -1081,6 +996,7 @@ body.is-platform-rail-dragging * {
   font-weight: 900;
   box-shadow: none;
   overflow: hidden;
+  flex-shrink: 0;
 }
 
 [data-theme="dark"] .platform-rail-icon {

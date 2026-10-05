@@ -73,6 +73,12 @@ const nameMap = {
   'PLATFORM · ZCODE · 添加模型（独立页面）': 'platform-zcode-add',
   'PLATFORM · WORKBUDDY': 'platform-workbuddy',
   'PLATFORM · WORKBUDDY · 添加模型（独立页面）': 'platform-workbuddy-add',
+  'PLATFORM · PI': 'platform-pi',
+  'PLATFORM · PI · 添加模型（独立页面）': 'platform-pi-add',
+  'PLATFORM · HERMES': 'platform-hermes',
+  'PLATFORM · HERMES · 添加模型（独立页面）': 'platform-hermes-add',
+  'PLATFORM · DEEPSEEK HARNESS': 'platform-deepseek-harness',
+  'PLATFORM · DEEPSEEK HARNESS · 添加模型（独立页面）': 'platform-deepseek-harness-add',
   SETTINGS: 'settings',
 };
 

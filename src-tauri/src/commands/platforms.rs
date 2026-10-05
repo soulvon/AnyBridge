@@ -14,6 +14,7 @@
 
 use serde::Serialize;
 use serde_json::{Map, Value};
+use serde_yaml::Value as YamlValue;
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fs;
@@ -37,6 +38,27 @@ const PLATFORM_GROK: &str = "grok";
 const PLATFORM_OPENCODE: &str = "opencode";
 const PLATFORM_WORKBUDDY: &str = "workbuddy";
 const PLATFORM_ZCODE: &str = "zcode";
+const PLATFORM_PI: &str = "pi";
+const PLATFORM_HERMES: &str = "hermes";
+const PLATFORM_DEEPSEEK_HARNESS: &str = "deepseek-harness";
+/// Pi models.json 中由 AnyBridge 写入的 provider 统一前缀（`anybridge-<模型 id>`），
+/// 加载 / 覆盖 / 还原只操作这些条目，用户手写的 provider（如 local）原样保留。
+const PI_PROVIDER_PREFIX: &str = "anybridge";
+/// Hermes custom_providers 中由 AnyBridge 写入的条目前缀。
+const HERMES_PROVIDER_PREFIX: &str = "anybridge";
+/// DeepSeek Harness settings.yaml（llm-pi-ai.providers）中受管 provider 的前缀。
+const HARNESS_PROVIDER_PREFIX: &str = "anybridge";
+/// DeepSeek Harness 凭据引用名前缀（写入 .credentials.yaml 的 refs）。
+const HARNESS_CREDENTIAL_PREFIX: &str = "ANYBRIDGE";
+/// Pi 内建 API 实现名（OpenAI 兼容协议）。
+const PI_API_OPENAI_COMPLETIONS: &str = "openai-completions";
+const PI_API_OPENAI_RESPONSES: &str = "openai-responses";
+/// AnyBridge 在 Pi 目录下维护的「已停用条目」状态文件。
+/// Pi 的 provider/model 没有 enabled 概念，停用的条目写进这里而不是 models.json，
+/// 这样 Pi 里不再出现，AnyBridge 表格里的停用状态也持久保留。
+/// 受管平台的表格状态文件（客户端不读取它）：保存完整条目快照。
+/// 用途有二：还原停用条目；补齐客户端配置格式承载不了的字段（如 Hermes 的能力/输出上限）。
+const MANAGED_MODELS_STATE_FILE: &str = "anybridge-models-state.json";
 const CLAUDE_MODEL_ENV_KEYS: &[&str] = &[
     "ANTHROPIC_MODEL",
     "ANTHROPIC_REASONING_MODEL",
@@ -208,6 +230,9 @@ enum Platform {
     OpenCode,
     WorkBuddy,
     ZCode,
+    Pi,
+    Hermes,
+    DeepSeekHarness,
 }
 
 impl Platform {
@@ -223,6 +248,9 @@ impl Platform {
             PLATFORM_OPENCODE => Some(Platform::OpenCode),
             PLATFORM_WORKBUDDY => Some(Platform::WorkBuddy),
             PLATFORM_ZCODE => Some(Platform::ZCode),
+            PLATFORM_PI => Some(Platform::Pi),
+            PLATFORM_HERMES => Some(Platform::Hermes),
+            PLATFORM_DEEPSEEK_HARNESS => Some(Platform::DeepSeekHarness),
             _ => None,
         }
     }
@@ -239,6 +267,9 @@ impl Platform {
             Platform::OpenCode => PLATFORM_OPENCODE,
             Platform::WorkBuddy => PLATFORM_WORKBUDDY,
             Platform::ZCode => PLATFORM_ZCODE,
+            Platform::Pi => PLATFORM_PI,
+            Platform::Hermes => PLATFORM_HERMES,
+            Platform::DeepSeekHarness => PLATFORM_DEEPSEEK_HARNESS,
         }
     }
 
@@ -254,6 +285,9 @@ impl Platform {
             Platform::OpenCode => "OpenCode",
             Platform::WorkBuddy => "WorkBuddy",
             Platform::ZCode => "ZCode",
+            Platform::Pi => "Pi",
+            Platform::Hermes => "Hermes",
+            Platform::DeepSeekHarness => "DeepSeek Harness",
         }
     }
 
@@ -267,6 +301,9 @@ impl Platform {
             Platform::OpenCode => "OpenCode",
             Platform::WorkBuddy => "Tencent Cloud",
             Platform::ZCode => "Z.AI",
+            Platform::Pi => "Earendil Works",
+            Platform::Hermes => "Nous Research",
+            Platform::DeepSeekHarness => "DeepSeek",
         }
     }
 
@@ -281,6 +318,9 @@ impl Platform {
             | Platform::Grok
             | Platform::OpenCode
             | Platform::WorkBuddy
+            | Platform::Pi
+            | Platform::Hermes
+            | Platform::DeepSeekHarness
             | Platform::ZCode => "openai",
         }
     }
@@ -294,12 +334,15 @@ impl Platform {
                 .ok()
                 .map(|p| p.threep_dir),
             Platform::Codex => codex_home(),
+            Platform::Hermes => Some(hermes_config_dir()?),
+            Platform::DeepSeekHarness => Some(deepseek_harness_home()?),
             Platform::ClaudeCode
             | Platform::CodeBuddy
             | Platform::Grok
             | Platform::OpenCode
             | Platform::WorkBuddy
-            | Platform::ZCode => {
+            | Platform::ZCode
+            | Platform::Pi => {
                 let home = dirs::home_dir()?;
                 Some(match self {
                     Platform::ClaudeCode => home.join(".claude"),
@@ -308,10 +351,13 @@ impl Platform {
                     Platform::OpenCode => home.join(".config").join("opencode"),
                     Platform::WorkBuddy => home.join(".workbuddy"),
                     Platform::ZCode => home.join(".zcode"),
+                    Platform::Pi => home.join(".pi").join("agent"),
                     Platform::Antigravity
                     | Platform::AntigravityIde
                     | Platform::ClaudeDesktop
-                    | Platform::Codex => unreachable!(),
+                    | Platform::Codex
+                    | Platform::Hermes
+                    | Platform::DeepSeekHarness => unreachable!(),
                 })
             }
         }
@@ -342,6 +388,9 @@ impl Platform {
                     }
                     Platform::WorkBuddy => dir.join("models.json"),
                     Platform::ZCode => dir.join("v2").join("config.json"),
+                    Platform::Pi => dir.join("models.json"),
+                    Platform::Hermes => dir.join("config.yaml"),
+                    Platform::DeepSeekHarness => dir.join("settings.yaml"),
                     Platform::ClaudeDesktop => unreachable!(),
                 })
             }
@@ -367,6 +416,38 @@ impl Platform {
         }
         let home = dirs::home_dir()?;
         Some(home.join(".zcode").join("cli").join("config.json"))
+    }
+
+    /// Pi 的 settings.json（默认模型等偏好，随 models.json 一起接管与还原）。
+    fn pi_settings_path(&self) -> Option<PathBuf> {
+        if !matches!(self, Platform::Pi) {
+            return None;
+        }
+        Some(self.config_dir()?.join("settings.json"))
+    }
+
+    /// AnyBridge 维护的 Pi「已停用条目」状态文件（Pi 不读取它）。
+    fn pi_disabled_models_path(&self) -> Option<PathBuf> {
+        if !matches!(self, Platform::Pi) {
+            return None;
+        }
+        Some(self.config_dir()?.join(MANAGED_MODELS_STATE_FILE))
+    }
+
+    /// DeepSeek Harness 凭据文件：provider 只存 `apiKeyEnv` 引用，密钥本体写在这里。
+    fn deepseek_harness_credentials_path(&self) -> Option<PathBuf> {
+        if !matches!(self, Platform::DeepSeekHarness) {
+            return None;
+        }
+        Some(self.config_dir()?.join(".credentials.yaml"))
+    }
+
+    /// 受管模型表格的「已停用条目」状态文件（Hermes / DeepSeek Harness）。
+    fn managed_disabled_models_path(&self) -> Option<PathBuf> {
+        if !matches!(self, Platform::Hermes | Platform::DeepSeekHarness) {
+            return None;
+        }
+        Some(self.config_dir()?.join(MANAGED_MODELS_STATE_FILE))
     }
 
     /// 检测工具是否安装：配置目录存在即视为已安装（文件可能尚未生成）。
@@ -446,6 +527,16 @@ impl Platform {
                         .map(|d| d.exists())
                         .unwrap_or(false)
             }
+            // Pi 的配置目录可能尚未生成（只装了 CLI），~/.pi 存在同样视为已安装。
+            Platform::Pi => dirs::home_dir()
+                .map(|home| home.join(".pi").exists())
+                .unwrap_or(false),
+            // Hermes / DeepSeek Harness：配置目录存在即已安装（配置文件可能尚未生成）
+            Platform::Hermes => self
+                .config_dir()
+                .map(|d| d.exists() || self.config_path().map(|p| p.exists()).unwrap_or(false))
+                .unwrap_or(false),
+            Platform::DeepSeekHarness => self.config_dir().map(|d| d.exists()).unwrap_or(false),
             _ => false,
         }
     }
@@ -468,7 +559,15 @@ impl Platform {
             .zcode_cli_config_path()
             .map(|p| backup_path(&p).exists())
             .unwrap_or(false);
-        main || auth || zcode_cli
+        let pi_settings = self
+            .pi_settings_path()
+            .map(|p| backup_path(&p).exists())
+            .unwrap_or(false);
+        let harness_credentials = self
+            .deepseek_harness_credentials_path()
+            .map(|p| backup_path(&p).exists())
+            .unwrap_or(false);
+        main || auth || zcode_cli || pi_settings || harness_credentials
     }
 
     /// 生成将写入的配置片段（预览用，token 脱敏），不落盘。
@@ -613,6 +712,21 @@ impl Platform {
                 }
                 Ok(out)
             }
+            Platform::Pi => {
+                let entries = pi_entries_from_provider(p);
+                let preview = pi_preview_value(&entries)?;
+                serde_json::to_string_pretty(&preview).map_err(|e| e.to_string())
+            }
+            Platform::Hermes => {
+                let entries = pi_entries_from_provider(p);
+                let preview = hermes_preview_value(&entries)?;
+                serde_yaml::to_string(&preview).map_err(|e| e.to_string())
+            }
+            Platform::DeepSeekHarness => {
+                let entries = pi_entries_from_provider(p);
+                let preview = harness_preview_value(&entries)?;
+                serde_yaml::to_string(&preview).map_err(|e| e.to_string())
+            }
         }
     }
 
@@ -641,8 +755,27 @@ impl Platform {
             Platform::OpenCode => self.apply_opencode(&path, p)?,
             Platform::WorkBuddy => self.apply_workbuddy(&path, p)?,
             Platform::ZCode => self.apply_zcode(&path, p)?,
+            Platform::Pi => self.apply_pi(&path, p)?,
+            Platform::Hermes => write_hermes_managed_models(&path, &hermes_entries_from_provider(p))?,
+            Platform::DeepSeekHarness => {
+                let credentials = self
+                    .deepseek_harness_credentials_path()
+                    .ok_or("无法定位 DeepSeek Harness 凭据路径")?;
+                write_harness_managed_models(
+                    &path,
+                    &credentials,
+                    &harness_entries_from_provider(p),
+                )?
+            }
         }
         Ok(path)
+    }
+
+    /// Pi：把供应商的模型写成 models.json 里的 `anybridge-<模型 id>` provider，
+    /// 并把首条模型设为 Pi 默认模型（settings.json）。
+    fn apply_pi(&self, path: &PathBuf, p: &Provider) -> Result<(), String> {
+        let entries = pi_entries_from_provider(p);
+        write_pi_managed_models(path, &entries)
     }
 
     fn apply_antigravity_ide(&self, path: &PathBuf, _p: &Provider) -> Result<(), String> {
@@ -1378,7 +1511,8 @@ impl Platform {
             if !restored {
                 let _ = self.apply_antigravity_official(&path);
             }
-            return Ok(restored || true);
+            // 要么已从备份还原，要么已回写官方配置，都视为还原成功
+            return Ok(true);
         }
 
         if matches!(self, Platform::AntigravityIde) {
@@ -1386,7 +1520,7 @@ impl Platform {
             if !restored {
                 let _ = self.apply_antigravity_ide_official(&path);
             }
-            return Ok(restored || true);
+            return Ok(true);
         }
 
         if matches!(self, Platform::OpenCode) {
@@ -1404,6 +1538,43 @@ impl Platform {
             }
             if let Ok(personal_path) = zcode_personal_config_path() {
                 restored = restore_one_file(&personal_path)? || restored;
+            }
+            return Ok(restored);
+        }
+
+        if matches!(self, Platform::Pi) {
+            let mut restored = restore_one_file(&path)?;
+            if let Some(settings_path) = self.pi_settings_path() {
+                restored = restore_one_file(&settings_path)? || restored;
+            }
+            // 停用状态文件由 AnyBridge 维护，还原时一并清除
+            if let Some(disabled_path) = self.pi_disabled_models_path() {
+                if disabled_path.exists() {
+                    fs::remove_file(&disabled_path).map_err(|e| e.to_string())?;
+                }
+            }
+            return Ok(restored);
+        }
+
+        if matches!(self, Platform::Hermes) {
+            let restored = restore_one_file(&path)?;
+            if let Some(disabled_path) = self.managed_disabled_models_path() {
+                if disabled_path.exists() {
+                    fs::remove_file(&disabled_path).map_err(|e| e.to_string())?;
+                }
+            }
+            return Ok(restored);
+        }
+
+        if matches!(self, Platform::DeepSeekHarness) {
+            let mut restored = restore_one_file(&path)?;
+            if let Some(credentials) = self.deepseek_harness_credentials_path() {
+                restored = restore_one_file(&credentials)? || restored;
+            }
+            if let Some(disabled_path) = self.managed_disabled_models_path() {
+                if disabled_path.exists() {
+                    fs::remove_file(&disabled_path).map_err(|e| e.to_string())?;
+                }
             }
             return Ok(restored);
         }
@@ -1483,6 +1654,1608 @@ fn upsert_models_json_entry(
     obj.remove("availableModels");
 
     Ok(())
+}
+
+// ─── Pi（Pi Coding Agent）─────────────────────────────────────────
+//
+// 按照与 ZCode 一致的逻辑：按供应商（vendor + baseURL + api + apiKey）分组写入
+// ~/.pi/agent/models.json 的 providers，同一供应商的所有模型归入同一个 provider。
+// 这样在 Pi 终端与 PiDeck 桌面客户端中，模型选择器会按供应商折叠分组，
+// 不再出现每个模型单独占一个分组（1 模型）的割裂情况。
+//
+// 规则：
+// 1. 同一 vendor + baseURL + apiKey 的模型聚合到同一个 provider 条目；
+// 2. provider 的 key 优先使用供应商名称（如 "商汤"、"CPA"、"黑与白Grok"），
+//    若为空或通用名称则回落为 "AnyBridge"；
+// 3. 每一个由 AnyBridge 写入的 provider 对象都带有 `"_source": "anybridge"` 标记；
+// 4. 用户手写的 provider（如 local）未带该标记且不以 anybridge- 开头，绝不触碰；
+// 5. 首条启用的模型写入 settings.json 的 defaultProvider / defaultModel；
+// 6. 停用条目存入 anybridge-models-state.json，随时可重新启用。
+
+fn pi_is_managed_provider(provider_id: &str, provider: &Value) -> bool {
+    let source = provider
+        .get("_source")
+        .or_else(|| provider.get("source"))
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    source == "anybridge"
+        || source == "ide-byok"
+        || provider_id == PI_PROVIDER_PREFIX
+        || provider_id.starts_with(&format!("{PI_PROVIDER_PREFIX}-"))
+        || provider_id.starts_with("AnyBridge-")
+}
+
+fn pi_is_managed_provider_id(dir: &Path, provider_id: &str) -> bool {
+    if provider_id == PI_PROVIDER_PREFIX
+        || provider_id.starts_with(&format!("{PI_PROVIDER_PREFIX}-"))
+        || provider_id.starts_with("AnyBridge-")
+    {
+        return true;
+    }
+    let models_path = dir.join("models.json");
+    if let Ok(raw) = fs::read_to_string(&models_path) {
+        if let Ok(obj) = serde_json::from_str::<Value>(&raw) {
+            if let Some(prov) = obj.get("providers").and_then(|p| p.get(provider_id)) {
+                return pi_is_managed_provider(provider_id, prov);
+            }
+        }
+    }
+    false
+}
+
+fn pi_entry_enabled(entry: &Value) -> bool {
+    entry
+        .get("enabled")
+        .and_then(Value::as_bool)
+        .unwrap_or(true)
+}
+
+fn pi_positive_u64(value: Option<&Value>) -> Option<u64> {
+    let n = value?.as_f64()?;
+    if n > 0.0 {
+        Some(n as u64)
+    } else {
+        None
+    }
+}
+
+/// 完整端点 URL → Pi 的 (baseUrl, api)：
+/// 以 /responses 结尾走 openai-responses，否则按 chat completions 处理。
+fn pi_endpoint_parts(url: &str) -> (String, &'static str) {
+    let trimmed = url.trim().trim_end_matches('/');
+    let lower = trimmed.to_ascii_lowercase();
+    if let Some(base) = lower.strip_suffix("/responses") {
+        let base = trimmed[..base.len()].trim_end_matches('/').to_string();
+        (base, PI_API_OPENAI_RESPONSES)
+    } else if let Some(base) = lower.strip_suffix("/chat/completions") {
+        let base = trimmed[..base.len()].trim_end_matches('/').to_string();
+        (base, PI_API_OPENAI_COMPLETIONS)
+    } else {
+        (trimmed.to_string(), PI_API_OPENAI_COMPLETIONS)
+    }
+}
+
+/// Pi 的 (baseUrl, api) → 表格展示用完整端点 URL。
+fn pi_full_endpoint(base_url: &str, api: &str) -> String {
+    let base = base_url.trim().trim_end_matches('/');
+    if api == PI_API_OPENAI_RESPONSES {
+        format!("{base}/responses")
+    } else {
+        format!("{base}/chat/completions")
+    }
+}
+
+struct PiGroupBuilder {
+    vendor: String,
+    base_url: String,
+    api: &'static str,
+    api_key: String,
+    models: Vec<Value>,
+}
+
+/// 将表格条目列表构建为 Pi 的 providers 映射（按 vendor+baseUrl+api+apiKey 分组）。
+/// `mask` 为 true 时 apiKey 脱敏（预览用）。
+fn pi_build_providers_map(
+    entries: &[Value],
+    existing_unmanaged: &Map<String, Value>,
+    mask: bool,
+) -> Result<(Map<String, Value>, Option<(String, String)>), String> {
+    let mut groups: Vec<PiGroupBuilder> = Vec::new();
+
+    for entry in entries {
+        if !pi_entry_enabled(entry) {
+            continue;
+        }
+        let model_id = entry
+            .get("id")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .trim()
+            .to_string();
+        if model_id.is_empty() {
+            continue;
+        }
+        let url = entry
+            .get("url")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .trim()
+            .to_string();
+        if url.is_empty() {
+            return Err(format!("模型 {model_id} 缺少接口地址"));
+        }
+        let (base_url, api) = pi_endpoint_parts(&url);
+        let api_key = entry
+            .get("apiKey")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_string();
+        let vendor = entry
+            .get("vendor")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|s| !s.is_empty() && *s != "user" && *s != "custom")
+            .unwrap_or("AnyBridge")
+            .to_string();
+
+        let display_name = entry
+            .get("name")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|s| !s.is_empty() && *s != vendor)
+            .unwrap_or(&model_id)
+            .to_string();
+        let supports_images = entry
+            .get("supportsImages")
+            .and_then(Value::as_bool)
+            .unwrap_or(false);
+        let supports_reasoning = entry
+            .get("supportsReasoning")
+            .and_then(Value::as_bool)
+            .unwrap_or(false);
+
+        let mut model_obj = Map::new();
+        model_obj.insert("id".to_string(), Value::String(model_id.clone()));
+        if display_name != model_id {
+            model_obj.insert("name".to_string(), Value::String(display_name));
+        }
+        if supports_reasoning {
+            model_obj.insert("reasoning".to_string(), Value::Bool(true));
+        }
+        if let Some(ctx) = pi_positive_u64(entry.get("maxInputTokens")) {
+            model_obj.insert("contextWindow".to_string(), serde_json::json!(ctx));
+        }
+        if let Some(max_out) = pi_positive_u64(entry.get("maxOutputTokens")) {
+            model_obj.insert("maxTokens".to_string(), serde_json::json!(max_out));
+        }
+        let input = if supports_images {
+            vec![Value::String("text".to_string()), Value::String("image".to_string())]
+        } else {
+            vec![Value::String("text".to_string())]
+        };
+        model_obj.insert("input".to_string(), Value::Array(input));
+        if let Some(temperature) = entry.get("temperature").and_then(Value::as_f64) {
+            model_obj.insert(
+                "samplingParams".to_string(),
+                serde_json::json!({ "temperature": temperature }),
+            );
+        }
+
+        if let Some(g) = groups.iter_mut().find(|g| {
+            g.vendor == vendor && g.base_url == base_url && g.api == api && g.api_key == api_key
+        }) {
+            if !g.models.iter().any(|m| m.get("id").and_then(Value::as_str) == Some(&model_id)) {
+                g.models.push(Value::Object(model_obj));
+            }
+        } else {
+            groups.push(PiGroupBuilder {
+                vendor,
+                base_url,
+                api,
+                api_key,
+                models: vec![Value::Object(model_obj)],
+            });
+        }
+    }
+
+    let mut used_ids: HashSet<String> = existing_unmanaged.keys().cloned().collect();
+    let mut providers = Map::new();
+    let mut default_pair: Option<(String, String)> = None;
+
+    for group in groups {
+        let candidate = if group.vendor.trim().is_empty() {
+            "AnyBridge".to_string()
+        } else {
+            group.vendor.clone()
+        };
+        let mut provider_id = candidate.clone();
+        if used_ids.contains(&provider_id) {
+            let mut suffix = 2;
+            while used_ids.contains(&format!("{candidate}-{suffix}")) {
+                suffix += 1;
+            }
+            provider_id = format!("{candidate}-{suffix}");
+        }
+        used_ids.insert(provider_id.clone());
+
+        if default_pair.is_none() {
+            if let Some(first_m) = group.models.first() {
+                if let Some(mid) = first_m.get("id").and_then(Value::as_str) {
+                    default_pair = Some((provider_id.clone(), mid.to_string()));
+                }
+            }
+        }
+
+        let mut prov = Map::new();
+        prov.insert("baseUrl".to_string(), Value::String(group.base_url));
+        prov.insert("api".to_string(), Value::String(group.api.to_string()));
+        if !group.api_key.is_empty() {
+            let key_val = if mask {
+                mask_key(&group.api_key)
+            } else {
+                group.api_key
+            };
+            prov.insert("apiKey".to_string(), Value::String(key_val));
+        }
+        prov.insert("_source".to_string(), Value::String("anybridge".to_string()));
+        prov.insert("models".to_string(), Value::Array(group.models));
+
+        providers.insert(provider_id, Value::Object(prov));
+    }
+
+    Ok((providers, default_pair))
+}
+
+/// models.json 里受管 provider → 表格条目。
+fn pi_entries_from_provider_map(provider_id: &str, provider: &Map<String, Value>) -> Vec<Value> {
+    let base_url = provider
+        .get("baseUrl")
+        .and_then(Value::as_str)
+        .unwrap_or("");
+    let api = provider
+        .get("api")
+        .and_then(Value::as_str)
+        .unwrap_or(PI_API_OPENAI_COMPLETIONS);
+    let api_key = provider
+        .get("apiKey")
+        .and_then(Value::as_str)
+        .unwrap_or("");
+    let url = pi_full_endpoint(base_url, api);
+    let vendor = provider_id.to_string();
+    let models = provider
+        .get("models")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+
+    models
+        .iter()
+        .filter_map(|m| {
+            let id = m.get("id").and_then(Value::as_str)?.trim().to_string();
+            if id.is_empty() {
+                return None;
+            }
+            let name = m
+                .get("name")
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .unwrap_or(id.as_str())
+                .to_string();
+            let supports_images = m
+                .get("input")
+                .and_then(Value::as_array)
+                .map(|arr| arr.iter().any(|v| v.as_str() == Some("image")))
+                .unwrap_or(false);
+            let supports_reasoning = m
+                .get("reasoning")
+                .and_then(Value::as_bool)
+                .unwrap_or(false);
+            let temperature = m
+                .get("samplingParams")
+                .and_then(|sp| sp.get("temperature"))
+                .and_then(Value::as_f64);
+            let mut entry = serde_json::json!({
+                "id": id,
+                "name": name,
+                "vendor": vendor,
+                "url": url,
+                "apiKey": api_key,
+                "supportsToolCall": true,
+                "supportsImages": supports_images,
+                "supportsReasoning": supports_reasoning,
+                "enabled": true,
+            });
+            if let Some(ctx) = pi_positive_u64(m.get("contextWindow")) {
+                entry["maxInputTokens"] = serde_json::json!(ctx);
+            }
+            if let Some(max_out) = pi_positive_u64(m.get("maxTokens")) {
+                entry["maxOutputTokens"] = serde_json::json!(max_out);
+            }
+            if let Some(t) = temperature {
+                entry["temperature"] = serde_json::json!(t);
+            }
+            Some(entry)
+        })
+        .collect()
+}
+
+/// 供应商（providerStore 条目）→ Pi 表格条目（用于「从供应商切换」与预览）。
+fn pi_entries_from_provider(p: &Provider) -> Vec<Value> {
+    let endpoint = provider_endpoint_url(p);
+    let full_url = if endpoint.to_ascii_lowercase().ends_with("/responses") {
+        endpoint
+    } else {
+        codebuddy_chat_url(p)
+    };
+    let mut ids: Vec<String> = Vec::new();
+    let default_model = p.default_model.trim().to_string();
+    if !default_model.is_empty() {
+        ids.push(default_model);
+    }
+    for m in &p.models {
+        let id = m.trim().to_string();
+        if !id.is_empty() && !ids.iter().any(|existing| existing == &id) {
+            ids.push(id);
+        }
+    }
+    ids.into_iter()
+        .map(|id| {
+            let caps = p.model_caps.get(id.trim()).cloned().unwrap_or_default();
+            serde_json::json!({
+                "id": id.clone(),
+                "name": id,
+                "vendor": p.name,
+                "url": full_url,
+                "apiKey": p.api_key,
+                "maxInputTokens": recommend_context_window(id.trim()),
+                "maxOutputTokens": recommend_max_output_tokens(id.trim()),
+                "supportsToolCall": p.capabilities.tools || caps.tools,
+                "supportsImages": p.capabilities.vision || caps.vision,
+                "supportsReasoning": codebuddy_supports_reasoning(id.trim()),
+                "enabled": true,
+            })
+        })
+        .collect()
+}
+
+/// 预览：将写入的 providers 片段（apiKey 脱敏）+ 默认模型。
+fn pi_preview_value(entries: &[Value]) -> Result<Value, String> {
+    let (providers, default_pair) = pi_build_providers_map(entries, &Map::new(), true)?;
+    let (default_provider, default_model) = match default_pair {
+        Some((p, m)) => (Value::String(p), Value::String(m)),
+        None => (Value::Null, Value::Null),
+    };
+    Ok(serde_json::json!({
+        "defaultProvider": default_provider,
+        "defaultModel": default_model,
+        "providers": Value::Object(providers),
+    }))
+}
+
+/// 把状态快照合并进表格数据：
+/// 客户端配置解析出的条目为基底，缺失的字段用快照补齐（客户端格式承载不了的字段），
+/// 快照里独有的条目即停用条目，原样追加。
+fn merge_managed_state(models: &mut Vec<Value>, dir: &Path) -> Result<(), String> {
+    let saved = managed_read_state(dir)?;
+    let mut by_id: HashMap<String, &Value> = HashMap::new();
+    for entry in &saved {
+        if let Some(id) = entry.get("id").and_then(Value::as_str) {
+            by_id.insert(id.to_string(), entry);
+        }
+    }
+
+    let mut seen: HashSet<String> = HashSet::new();
+    for entry in models.iter_mut() {
+        let Some(id) = entry
+            .get("id")
+            .and_then(Value::as_str)
+            .map(str::to_string)
+        else {
+            continue;
+        };
+        seen.insert(id.clone());
+        let Some(saved_entry) = by_id.get(&id) else {
+            continue;
+        };
+        let Some(saved_obj) = saved_entry.as_object() else {
+            continue;
+        };
+        if let Some(obj) = entry.as_object_mut() {
+            for (key, value) in saved_obj {
+                // 客户端配置已有的键以配置为准，只补齐配置里不存在的字段
+                if !obj.contains_key(key) {
+                    obj.insert(key.clone(), value.clone());
+                }
+            }
+        }
+    }
+
+    for entry in &saved {
+        let id = entry
+            .get("id")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_string();
+        if id.is_empty() || seen.contains(&id) {
+            continue;
+        }
+        seen.insert(id);
+        models.push(entry.clone());
+    }
+    Ok(())
+}
+
+/// 更新 Pi settings.json 的默认模型（只改这两个键，其余配置原样保留）。
+fn pi_update_settings_default(
+    dir: &Path,
+    provider_id: &str,
+    model_id: &str,
+) -> Result<(), String> {
+    let path = dir.join("settings.json");
+    ensure_backup(&path)?;
+    let raw = if path.exists() {
+        fs::read_to_string(&path).map_err(|e| format!("读取 Pi settings.json 失败: {e}"))?
+    } else {
+        String::new()
+    };
+    let mut obj = parse_json_object(&raw, "settings.json")?;
+    obj.insert(
+        "defaultProvider".to_string(),
+        Value::String(provider_id.to_string()),
+    );
+    obj.insert("defaultModel".to_string(), Value::String(model_id.to_string()));
+    let json = serde_json::to_string_pretty(&Value::Object(obj)).map_err(|e| e.to_string())?;
+    super::write_atomic(&path, format!("{json}\n").as_bytes())
+}
+
+/// 全部停用/清空后，清掉指向受管 provider 的默认模型（避免 Pi 启动即报错）。
+fn pi_clear_settings_default(dir: &Path) -> Result<(), String> {
+    let path = dir.join("settings.json");
+    if !path.exists() {
+        return Ok(());
+    }
+    let raw = fs::read_to_string(&path).map_err(|e| format!("读取 Pi settings.json 失败: {e}"))?;
+    let mut obj = parse_json_object(&raw, "settings.json")?;
+    let Some(prov_id) = obj.get("defaultProvider").and_then(Value::as_str) else {
+        return Ok(());
+    };
+    if !pi_is_managed_provider_id(dir, prov_id) {
+        return Ok(());
+    }
+    ensure_backup(&path)?;
+    obj.remove("defaultProvider");
+    obj.remove("defaultModel");
+    let json = serde_json::to_string_pretty(&Value::Object(obj)).map_err(|e| e.to_string())?;
+    super::write_atomic(&path, format!("{json}\n").as_bytes())
+}
+
+/// 写入 Pi models.json：全量替换受管 provider（按供应商聚合），
+/// 停用条目移入状态文件（Pi 侧不再出现），首条启用条目设为默认模型。
+fn write_pi_managed_models(models_path: &PathBuf, entries: &[Value]) -> Result<(), String> {
+    ensure_parent_dir(models_path)?;
+    ensure_backup(models_path)?;
+
+    let raw = if models_path.exists() {
+        fs::read_to_string(models_path).map_err(|e| format!("读取 Pi models.json 失败: {e}"))?
+    } else {
+        String::new()
+    };
+    let mut obj = parse_json_object(&raw, "models.json")?;
+
+    let mut unmanaged = obj
+        .get("providers")
+        .and_then(Value::as_object)
+        .cloned()
+        .unwrap_or_default();
+    unmanaged.retain(|key, val| !pi_is_managed_provider(key, val));
+
+    let (managed_providers, default_pair) = pi_build_providers_map(entries, &unmanaged, false)?;
+
+    let mut final_providers = unmanaged;
+    for (k, v) in managed_providers {
+        final_providers.insert(k, v);
+    }
+
+    obj.insert("providers".to_string(), Value::Object(final_providers));
+    let json = serde_json::to_string_pretty(&Value::Object(obj)).map_err(|e| e.to_string())?;
+    super::write_atomic(models_path, format!("{json}\n").as_bytes())?;
+
+    let dir = models_path
+        .parent()
+        .ok_or_else(|| "Pi 配置路径无父目录".to_string())?;
+    // 完整快照：还原停用条目，并补齐客户端配置承载不了的字段
+    managed_write_state(dir, entries)?;
+
+    if let Some((provider_id, model_id)) = default_pair {
+        pi_update_settings_default(dir, &provider_id, &model_id)?;
+    } else {
+        // 全部停用/清空时，之前写入的默认模型会指向已删除的 provider，必须清掉
+        pi_clear_settings_default(dir)?;
+    }
+    Ok(())
+}
+
+// ─── Hermes Agent / DeepSeek Harness（YAML 配置）─────────────────
+//
+// 两者都写 YAML，但 Hermes 的 config.yaml 是一份上千行、几乎全是文档注释的配置：
+// 整体反序列化再序列化会把注释全部丢掉。因此这里只替换受管的顶层键块，
+// 文件其余内容（注释、空行、其它配置）逐字保留。
+
+/// Hermes 配置目录：HERMES_HOME > Windows `%LOCALAPPDATA%\hermes` > `~/.hermes`。
+fn hermes_config_dir() -> Option<PathBuf> {
+    if let Ok(dir) = std::env::var("HERMES_HOME") {
+        let dir = dir.trim();
+        if !dir.is_empty() {
+            return Some(PathBuf::from(dir));
+        }
+    }
+    if cfg!(target_os = "windows") {
+        let local = std::env::var("LOCALAPPDATA")
+            .ok()
+            .map(|v| v.trim().to_string())
+            .filter(|v| !v.is_empty())
+            .map(PathBuf::from)
+            .or_else(dirs::data_local_dir)?;
+        return Some(local.join("hermes"));
+    }
+    Some(dirs::home_dir()?.join(".hermes"))
+}
+
+/// DeepSeek Harness home：DSH_HOME > `~/.dsh`。
+fn deepseek_harness_home() -> Option<PathBuf> {
+    if let Ok(dir) = std::env::var("DSH_HOME") {
+        let dir = dir.trim();
+        if !dir.is_empty() {
+            return Some(PathBuf::from(dir));
+        }
+    }
+    Some(dirs::home_dir()?.join(".dsh"))
+}
+
+/// 顶层键行：无缩进、非注释、非列表项，形如 `key:` 或 `key: value`。
+fn yaml_is_top_level_key(line: &str) -> bool {
+    if line.starts_with(' ') || line.starts_with('\t') {
+        return false;
+    }
+    let trimmed = line.trim_end();
+    if trimmed.is_empty() || trimmed.starts_with('#') || trimmed.starts_with('-') {
+        return false;
+    }
+    trimmed
+        .split_once(':')
+        .map(|(key, _)| !key.is_empty())
+        .unwrap_or(false)
+}
+
+fn yaml_is_comment(line: &str) -> bool {
+    line.trim_start().starts_with('#')
+}
+
+/// 顶层键 `key` 的位置：键行索引 + 块结束位置（不含键行）。
+fn yaml_top_level_block_range(lines: &[&str], key: &str) -> Option<(usize, usize)> {
+    let prefix = format!("{key}:");
+    let key_index = lines.iter().position(|l| {
+        l.trim_end() == prefix.as_str() || (l.starts_with(&prefix) && yaml_is_top_level_key(l))
+    })?;
+    let mut end = lines.len();
+    for i in (key_index + 1)..lines.len() {
+        if yaml_is_top_level_key(lines[i]) {
+            end = i;
+            break;
+        }
+    }
+    // 尾部空行与"紧贴下一个键"的顶层注释不属于本块，留给下一个键
+    while end > key_index + 1 {
+        let last = lines[end - 1];
+        let top_comment = yaml_is_comment(last) && !last.starts_with(' ') && !last.starts_with('\t');
+        if last.trim().is_empty() || top_comment {
+            end -= 1;
+        } else {
+            break;
+        }
+    }
+    Some((key_index, end))
+}
+
+fn yaml_restore_line_ending(source: &str, rendered: String) -> String {
+    if source.contains("\r\n") {
+        rendered.replace('\n', "\r\n")
+    } else {
+        rendered
+    }
+}
+
+/// 替换（不存在则追加）顶层键块；文件其余内容逐字保留。
+fn yaml_set_top_level_block(source: &str, key: &str, block: &str) -> String {
+    let normalized = source.replace("\r\n", "\n");
+    let lines: Vec<&str> = normalized.split('\n').collect();
+    let has_block = !block.trim().is_empty();
+    let out = if let Some((key_index, end)) = yaml_top_level_block_range(&lines, key) {
+        let mut out: Vec<String> = lines[..key_index].iter().map(|l| l.to_string()).collect();
+        if has_block {
+            // 键行可能带内联值（`custom_providers: []`），统一规范化成单独的键行
+            out.push(format!("{key}:"));
+            out.push(block.trim_end_matches('\n').to_string());
+        }
+        out.extend(lines[end..].iter().map(|l| l.to_string()));
+        out.join("\n")
+    } else {
+        let mut out = normalized.trim_end_matches('\n').to_string();
+        if !out.is_empty() {
+            out.push_str("\n\n");
+        }
+        if has_block {
+            out.push_str(&format!("{key}:\n{block}"));
+        }
+        out
+    };
+    yaml_restore_line_ending(source, out)
+}
+
+/// 在顶层键 `section` 的块内设置标量键（保留块内其它内容与注释）。
+fn yaml_set_scalar_in_block(source: &str, section: &str, key: &str, value: &str) -> String {
+    let normalized = source.replace("\r\n", "\n");
+    let lines: Vec<&str> = normalized.split('\n').collect();
+    let Some((key_index, end)) = yaml_top_level_block_range(&lines, section) else {
+        return yaml_set_top_level_block(source, section, &format!("  {key}: {value}"));
+    };
+    let prefix = format!("  {key}:");
+    let mut out: Vec<String> = Vec::new();
+    let mut replaced = false;
+    for (i, line) in lines.iter().enumerate() {
+        if i > key_index && i < end && !replaced && line.trim_end().starts_with(&prefix) {
+            out.push(format!("  {key}: {value}"));
+            replaced = true;
+            continue;
+        }
+        out.push(line.to_string());
+    }
+    if !replaced {
+        out.insert(end, format!("  {key}: {value}"));
+    }
+    yaml_restore_line_ending(source, out.join("\n"))
+}
+
+/// 顶层标量键（如 credentials 的 version）。
+fn yaml_set_top_level_scalar(source: &str, key: &str, value: &str) -> String {
+    let normalized = source.replace("\r\n", "\n");
+    let lines: Vec<&str> = normalized.split('\n').collect();
+    let prefix = format!("{key}:");
+    let mut out: Vec<String> = Vec::new();
+    let mut replaced = false;
+    for line in &lines {
+        if !replaced && line.trim_end().starts_with(&prefix) && yaml_is_top_level_key(line) {
+            out.push(format!("{key}: {value}"));
+            replaced = true;
+            continue;
+        }
+        out.push(line.to_string());
+    }
+    if !replaced {
+        out.insert(0, format!("{key}: {value}"));
+    }
+    yaml_restore_line_ending(source, out.join("\n"))
+}
+
+/// 删除顶层键 `section` 块内的标量键（保留块内其它内容与注释）。
+fn yaml_remove_scalar_in_block(source: &str, section: &str, key: &str) -> String {
+    let normalized = source.replace("\r\n", "\n");
+    let lines: Vec<&str> = normalized.split('\n').collect();
+    let Some((key_index, end)) = yaml_top_level_block_range(&lines, section) else {
+        return source.to_string();
+    };
+    let prefix = format!("  {key}:");
+    let mut out: Vec<String> = Vec::new();
+    for (i, line) in lines.iter().enumerate() {
+        if i > key_index && i < end && line.trim_end().starts_with(&prefix) {
+            continue;
+        }
+        out.push(line.to_string());
+    }
+    yaml_restore_line_ending(source, out.join("\n"))
+}
+
+/// 渲染为合法 YAML 标量（必要时自动加引号）。
+fn yaml_scalar(value: &str) -> String {
+    let rendered = serde_yaml::to_string(&YamlValue::String(value.to_string()))
+        .unwrap_or_else(|_| format!("'{value}'"));
+    rendered
+        .trim()
+        .trim_start_matches("---")
+        .trim()
+        .to_string()
+}
+
+fn parse_yaml_value(raw: &str, label: &str) -> Result<YamlValue, String> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return Ok(YamlValue::Mapping(serde_yaml::Mapping::new()));
+    }
+    serde_yaml::from_str(trimmed).map_err(|e| format!("解析 {label} 失败: {e}"))
+}
+
+/// 把一个 YAML 值渲染成缩进后的块文本（不含键行）。
+fn yaml_block_for_value(value: &YamlValue, indent: usize) -> Result<String, String> {
+    let rendered = serde_yaml::to_string(value).map_err(|e| format!("生成 YAML 失败: {e}"))?;
+    let body = rendered.strip_prefix("---\n").unwrap_or(&rendered);
+    let pad = " ".repeat(indent);
+    Ok(body
+        .trim_end()
+        .lines()
+        .map(|l| {
+            if l.trim().is_empty() {
+                String::new()
+            } else {
+                format!("{pad}{l}")
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("\n"))
+}
+
+/// 写入完整条目快照（含停用条目）。
+fn managed_write_state(dir: &Path, entries: &[Value]) -> Result<(), String> {
+    let path = dir.join(MANAGED_MODELS_STATE_FILE);
+    if entries.is_empty() {
+        if path.exists() {
+            fs::remove_file(&path).map_err(|e| e.to_string())?;
+        }
+        return Ok(());
+    }
+    let payload = serde_json::json!({ "models": entries });
+    let text = serde_json::to_string_pretty(&payload).map_err(|e| e.to_string())?;
+    super::write_atomic(&path, format!("{text}\n").as_bytes())
+}
+
+fn managed_read_state(dir: &Path) -> Result<Vec<Value>, String> {
+    let path = dir.join(MANAGED_MODELS_STATE_FILE);
+    if !path.exists() {
+        return Ok(Vec::new());
+    }
+    let raw = fs::read_to_string(&path).map_err(|e| format!("读取模型状态文件失败: {e}"))?;
+    let value: Value = serde_json::from_str(&raw)
+        .map_err(|e| format!("模型状态文件损坏（{e}），请检查 {path:?}"))?;
+    Ok(value
+        .get("models")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default())
+}
+
+fn entry_string(entry: &Value, key: &str) -> String {
+    entry
+        .get(key)
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .trim()
+        .to_string()
+}
+
+fn entry_bool(entry: &Value, key: &str) -> bool {
+    entry.get(key).and_then(Value::as_bool).unwrap_or(false)
+}
+
+/// 供应商 → 通用表格条目（Hermes / Harness 与 Pi 共用同一套条目格式）。
+fn hermes_entries_from_provider(p: &Provider) -> Vec<Value> {
+    pi_entries_from_provider(p)
+}
+
+fn harness_entries_from_provider(p: &Provider) -> Vec<Value> {
+    pi_entries_from_provider(p)
+}
+
+// ─── Hermes Agent ───────────────────────────────────────────────
+//
+// 写法与 Pi 对齐：按供应商分组，每个供应商一个 custom_providers 条目，
+// name = 供应商显示名（Hermes 模型选择器直接展示该名称），全部模型收敛进
+// models 映射，首条模型作为该条目默认模型，首条启用供应商设为全局默认。
+// 受管条目识别：旧格式的 anybridge- 前缀 + 状态快照里记录过的供应商名
+// （Hermes 的 custom_providers 是社区格式，不承载 AnyBridge 标记字段）。
+
+fn hermes_is_managed_provider(name: &str) -> bool {
+    name == HERMES_PROVIDER_PREFIX
+        || name.starts_with(&format!("{HERMES_PROVIDER_PREFIX}-"))
+}
+
+/// 状态快照里出现过的供应商名（这些名字的 custom_providers 条目都归 AnyBridge 管）。
+/// 注意必须在 managed_write_state 覆盖快照之前调用。
+fn hermes_managed_names_from_state(dir: &Path) -> HashSet<String> {
+    managed_read_state(dir)
+        .unwrap_or_default()
+        .iter()
+        .filter_map(|entry| {
+            entry
+                .get("vendor")
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .or_else(|| entry.get("name").and_then(Value::as_str).map(str::trim))
+                .filter(|s| !s.is_empty())
+                .map(str::to_string)
+        })
+        .collect()
+}
+
+/// 条目是否属于 AnyBridge 受管（旧 anybridge- 前缀，或供应商名在快照中）。
+fn hermes_entry_is_managed(name: &str, managed_names: &HashSet<String>) -> bool {
+    hermes_is_managed_provider(name) || managed_names.contains(name)
+}
+
+#[derive(Clone)]
+struct HermesGroup {
+    /// 供应商显示名，写入 custom_providers.name（Hermes 选择器展示用）
+    name: String,
+    base_url: String,
+    api_mode: &'static str,
+    api_key: String,
+    /// 该供应商下的全部模型 ID（保序去重）
+    models: Vec<String>,
+}
+
+/// 表格条目 → 供应商分组（按 名称+base_url+api_mode+apiKey 聚合，与 Pi 一致）。
+fn hermes_build_groups(entries: &[Value]) -> Result<Vec<HermesGroup>, String> {
+    let mut groups: Vec<HermesGroup> = Vec::new();
+    for entry in entries {
+        if !pi_entry_enabled(entry) {
+            continue;
+        }
+        let model_id = entry_string(entry, "id");
+        if model_id.is_empty() {
+            continue;
+        }
+        let url = entry_string(entry, "url");
+        if url.is_empty() {
+            return Err(format!("模型 {model_id} 缺少接口地址"));
+        }
+        let (base_url, api) = pi_endpoint_parts(&url);
+        let api_mode = if api == PI_API_OPENAI_RESPONSES {
+            "codex_responses"
+        } else {
+            "chat_completions"
+        };
+        let api_key = entry_string(entry, "apiKey");
+        // 供应商名：vendor 优先，缺失时回落 name（外部导入/旧数据可能只有 name）
+        let name = entry
+            .get("vendor")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|s| !s.is_empty() && *s != "user" && *s != "custom")
+            .or_else(|| {
+                entry
+                    .get("name")
+                    .and_then(Value::as_str)
+                    .map(str::trim)
+                    .filter(|s| !s.is_empty() && *s != "user" && *s != "custom")
+            })
+            .unwrap_or("AnyBridge")
+            .to_string();
+        if let Some(g) = groups.iter_mut().find(|g| {
+            g.name == name && g.base_url == base_url && g.api_mode == api_mode && g.api_key == api_key
+        }) {
+            if !g.models.contains(&model_id) {
+                g.models.push(model_id);
+            }
+        } else {
+            groups.push(HermesGroup {
+                name,
+                base_url,
+                api_mode,
+                api_key,
+                models: vec![model_id],
+            });
+        }
+    }
+    Ok(groups)
+}
+
+/// 分组 → Hermes custom_providers 条目（apiKey 可打码用于预览）。
+fn hermes_group_entry(group: &HermesGroup, mask: bool) -> YamlValue {
+    let mut provider = serde_yaml::Mapping::new();
+    provider.insert(
+        YamlValue::String("name".to_string()),
+        YamlValue::String(group.name.clone()),
+    );
+    provider.insert(
+        YamlValue::String("base_url".to_string()),
+        YamlValue::String(group.base_url.clone()),
+    );
+    if !group.api_key.is_empty() {
+        let key = if mask {
+            mask_key(&group.api_key)
+        } else {
+            group.api_key.clone()
+        };
+        provider.insert(YamlValue::String("api_key".to_string()), YamlValue::String(key));
+    }
+    provider.insert(
+        YamlValue::String("api_mode".to_string()),
+        YamlValue::String(group.api_mode.to_string()),
+    );
+    // 首条模型作为该供应商的默认模型
+    if let Some(first) = group.models.first() {
+        provider.insert(
+            YamlValue::String("model".to_string()),
+            YamlValue::String(first.clone()),
+        );
+    }
+    let mut models = serde_yaml::Mapping::new();
+    for model_id in &group.models {
+        models.insert(
+            YamlValue::String(model_id.clone()),
+            YamlValue::Mapping(serde_yaml::Mapping::new()),
+        );
+    }
+    provider.insert(YamlValue::String("models".to_string()), YamlValue::Mapping(models));
+    YamlValue::Mapping(provider)
+}
+
+/// Hermes config.yaml → 表格条目（只展开受管 provider，每个模型一行）。
+fn hermes_entries_from_config(root: &YamlValue, managed_names: &HashSet<String>) -> Vec<Value> {
+    let Some(providers) = root
+        .get("custom_providers")
+        .and_then(YamlValue::as_sequence)
+    else {
+        return Vec::new();
+    };
+    let mut entries = Vec::new();
+    for item in providers {
+        let Some(name) = item
+            .get("name")
+            .and_then(YamlValue::as_str)
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+        else {
+            continue;
+        };
+        if !hermes_entry_is_managed(name, managed_names) {
+            continue;
+        }
+        // 旧格式（name=anybridge-<模型>）的供应商名记录在 display_name 兜底字段
+        let vendor = if hermes_is_managed_provider(name) {
+            item.get("display_name")
+                .and_then(YamlValue::as_str)
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .unwrap_or(name)
+        } else {
+            name
+        };
+        let base_url = item
+            .get("base_url")
+            .and_then(YamlValue::as_str)
+            .unwrap_or("");
+        let api_mode = item
+            .get("api_mode")
+            .and_then(YamlValue::as_str)
+            .unwrap_or("chat_completions");
+        let url = if api_mode == "codex_responses" {
+            format!("{}/responses", base_url.trim_end_matches('/'))
+        } else {
+            format!("{}/chat/completions", base_url.trim_end_matches('/'))
+        };
+        let api_key = item.get("api_key").and_then(YamlValue::as_str).unwrap_or("");
+        let mut model_ids: Vec<String> = Vec::new();
+        if let Some(models) = item.get("models").and_then(YamlValue::as_mapping) {
+            for key in models.keys() {
+                if let Some(id) = key.as_str().map(str::trim).filter(|s| !s.is_empty()) {
+                    model_ids.push(id.to_string());
+                }
+            }
+        }
+        if model_ids.is_empty() {
+            if let Some(id) = item.get("model").and_then(YamlValue::as_str) {
+                model_ids.push(id.to_string());
+            }
+        }
+        for model_id in model_ids {
+            entries.push(serde_json::json!({
+                "id": model_id,
+                "name": vendor,
+                "vendor": vendor,
+                "url": url,
+                "apiKey": api_key,
+                // Hermes 的条目格式不承载能力/上限字段，交给状态快照补齐
+                // （此处硬编码会以"配置已有键"的名义挡住快照合并）
+                "enabled": true,
+            }));
+        }
+    }
+    entries
+}
+
+fn hermes_preview_value(entries: &[Value]) -> Result<YamlValue, String> {
+    let groups = hermes_build_groups(entries)?;
+    let providers: Vec<YamlValue> = groups.iter().map(|g| hermes_group_entry(g, true)).collect();
+    let mut model = serde_yaml::Mapping::new();
+    if let Some(first) = groups.first() {
+        if let Some(model_id) = first.models.first() {
+            model.insert(
+                YamlValue::String("default".to_string()),
+                YamlValue::String(model_id.clone()),
+            );
+            model.insert(
+                YamlValue::String("provider".to_string()),
+                YamlValue::String(first.name.clone()),
+            );
+            model.insert(
+                YamlValue::String("base_url".to_string()),
+                YamlValue::String(first.base_url.clone()),
+            );
+        }
+    }
+    let mut root = serde_yaml::Mapping::new();
+    root.insert(
+        YamlValue::String("custom_providers".to_string()),
+        YamlValue::Sequence(providers),
+    );
+    root.insert(YamlValue::String("model".to_string()), YamlValue::Mapping(model));
+    Ok(YamlValue::Mapping(root))
+}
+
+/// 写入 Hermes：custom_providers 全量替换受管条目（按供应商分组）+ model 段设置默认模型。
+fn write_hermes_managed_models(path: &PathBuf, entries: &[Value]) -> Result<(), String> {
+    ensure_parent_dir(path)?;
+    ensure_backup(path)?;
+    let raw = if path.exists() {
+        fs::read_to_string(path).map_err(|e| format!("读取 Hermes config.yaml 失败: {e}"))?
+    } else {
+        String::new()
+    };
+    let root = parse_yaml_value(&raw, "config.yaml")?;
+
+    // 受管识别必须用“旧状态”快照，且先读后写（函数末尾的 managed_write_state 会覆盖它）
+    let dir = path
+        .parent()
+        .ok_or_else(|| "Hermes 配置路径无父目录".to_string())?;
+    let managed_names = hermes_managed_names_from_state(dir);
+
+    // 用户手写的 provider 原样保留
+    let mut retained: Vec<YamlValue> = Vec::new();
+    if let Some(list) = root.get("custom_providers").and_then(YamlValue::as_sequence) {
+        for item in list {
+            let name = item.get("name").and_then(YamlValue::as_str).unwrap_or("");
+            if hermes_entry_is_managed(name, &managed_names) {
+                continue;
+            }
+            retained.push(item.clone());
+        }
+    }
+
+    let groups = hermes_build_groups(entries)?;
+    let mut used: HashSet<String> = retained
+        .iter()
+        .filter_map(|item| {
+            item.get("name")
+                .and_then(YamlValue::as_str)
+                .map(str::to_string)
+        })
+        .collect();
+    let mut default_pair: Option<(String, String, String)> = None;
+    for group in &groups {
+        // 与用户条目重名的供应商：追加后缀保证唯一
+        let mut provider_name = group.name.clone();
+        if used.contains(&provider_name) {
+            let mut suffix = 2;
+            while used.contains(&format!("{provider_name}-{suffix}")) {
+                suffix += 1;
+            }
+            provider_name = format!("{provider_name}-{suffix}");
+        }
+        used.insert(provider_name.clone());
+        let renamed = HermesGroup {
+            name: provider_name.clone(),
+            ..group.clone()
+        };
+        if default_pair.is_none() {
+            if let Some(model_id) = renamed.models.first() {
+                default_pair = Some((provider_name, model_id.clone(), renamed.base_url.clone()));
+            }
+        }
+        retained.push(hermes_group_entry(&renamed, false));
+    }
+
+    let providers_block = yaml_block_for_value(&YamlValue::Sequence(retained), 2)?;
+    let mut next = yaml_set_top_level_block(&raw, "custom_providers", &providers_block);
+    if let Some((provider_name, model_id, base_url)) = default_pair {
+        next = yaml_set_scalar_in_block(&next, "model", "default", &yaml_scalar(&model_id));
+        next = yaml_set_scalar_in_block(&next, "model", "provider", &yaml_scalar(&provider_name));
+        next = yaml_set_scalar_in_block(&next, "model", "base_url", &yaml_scalar(&base_url));
+    } else {
+        // 全部停用/清空时，之前写入的默认模型会指向已删除的 provider，必须清掉
+        let provider_points_to_managed = root
+            .get("model")
+            .and_then(|m| m.get("provider"))
+            .and_then(YamlValue::as_str)
+            .map(|p| hermes_entry_is_managed(p, &managed_names))
+            .unwrap_or(false);
+        if provider_points_to_managed {
+            next = yaml_remove_scalar_in_block(&next, "model", "provider");
+            next = yaml_remove_scalar_in_block(&next, "model", "default");
+        }
+    }
+    // 落盘前验证语法，避免写入损坏用户配置
+    parse_yaml_value(&next, "config.yaml")?;
+    super::write_atomic(path, next.as_bytes())?;
+
+    // 完整快照：还原停用条目，并补齐 Hermes 格式承载不了的字段
+    managed_write_state(dir, entries)
+}
+
+// ─── DeepSeek Harness ───────────────────────────────────────────
+//
+// 写法与 Pi/Hermes 对齐：按供应商分组，每个供应商一个 providers 键
+// （anybridge-<供应商 slug>，保留前缀以便识别受管条目），displayName =
+// 供应商显示名（DSH 界面展示用），全部模型收敛进 models 列表（每行只写
+// id 与能力字段，界面按 id 展示模型名）。密钥仍存 .credentials.yaml 的
+// refs，provider 内用 apiKeyEnv 引用。
+
+/// 供应商 → ascii 安全的 id 片段：非法字符折叠为 -；纯非 ascii（如中文）
+/// 供应商名用 FNV-1a 稳定哈希，保证 apiKeyEnv 始终是合法环境变量名。
+fn harness_vendor_slug(vendor: &str) -> String {
+    let mut slug = String::new();
+    let mut last_dash = false;
+    for ch in vendor.trim().chars() {
+        if ch.is_ascii_alphanumeric() || ch == '_' {
+            slug.push(ch);
+            last_dash = false;
+        } else if !last_dash {
+            slug.push('-');
+            last_dash = true;
+        }
+    }
+    let slug = slug.trim_matches('-').to_string();
+    if slug.is_empty() {
+        let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
+        for b in vendor.trim().as_bytes() {
+            hash ^= u64::from(*b);
+            hash = hash.wrapping_mul(0x100_0000_01b3);
+        }
+        format!("g{hash:08x}")
+    } else {
+        slug
+    }
+}
+
+fn harness_provider_id(vendor: &str) -> String {
+    format!("{HARNESS_PROVIDER_PREFIX}-{}", harness_vendor_slug(vendor))
+}
+
+/// 凭据引用名：provider 里存 apiKeyEnv，密钥本体在 .credentials.yaml 的 refs 里。
+/// 从最终的 provider id 派生，保证与条目一一对应（slug 碰撞加后缀后也不重复）。
+fn harness_credential_env(provider_id: &str) -> String {
+    let tail = provider_id
+        .strip_prefix(&format!("{HARNESS_PROVIDER_PREFIX}-"))
+        .unwrap_or(provider_id);
+    format!(
+        "{HARNESS_CREDENTIAL_PREFIX}_{}",
+        tail.to_ascii_uppercase().replace('-', "_")
+    )
+}
+
+fn harness_is_managed_provider(id: &str) -> bool {
+    id == HARNESS_PROVIDER_PREFIX
+        || id.starts_with(&format!("{HARNESS_PROVIDER_PREFIX}-"))
+}
+
+#[derive(Clone)]
+struct HarnessGroup {
+    /// 供应商显示名，写入 displayName（DSH 界面展示用）
+    name: String,
+    base_url: String,
+    api: &'static str,
+    api_key: String,
+    /// 该供应商下的全部模型（含能力字段，保序去重）
+    models: Vec<YamlValue>,
+}
+
+/// 表格条目 → 供应商分组（按 名称+baseURL+api+apiKey 聚合，与 Pi/Hermes 一致）。
+fn harness_build_groups(entries: &[Value]) -> Result<Vec<HarnessGroup>, String> {
+    let mut groups: Vec<HarnessGroup> = Vec::new();
+    for entry in entries {
+        if !pi_entry_enabled(entry) {
+            continue;
+        }
+        let model_id = entry_string(entry, "id");
+        if model_id.is_empty() {
+            continue;
+        }
+        let url = entry_string(entry, "url");
+        if url.is_empty() {
+            return Err(format!("模型 {model_id} 缺少接口地址"));
+        }
+        let (base_url, api) = pi_endpoint_parts(&url);
+        let api_key = entry_string(entry, "apiKey");
+        // 供应商名：vendor 优先，缺失时回落 name（外部导入/旧数据可能只有 name）
+        let name = entry
+            .get("vendor")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|s| !s.is_empty() && *s != "user" && *s != "custom")
+            .or_else(|| {
+                entry
+                    .get("name")
+                    .and_then(Value::as_str)
+                    .map(str::trim)
+                    .filter(|s| !s.is_empty() && *s != "user" && *s != "custom")
+            })
+            .unwrap_or("AnyBridge")
+            .to_string();
+
+        let mut model = serde_yaml::Mapping::new();
+        model.insert(
+            YamlValue::String("id".to_string()),
+            YamlValue::String(model_id.clone()),
+        );
+        if entry_bool(entry, "supportsReasoning") {
+            model.insert(
+                YamlValue::String("reasoning".to_string()),
+                YamlValue::Bool(true),
+            );
+        }
+        if let Some(ctx) = pi_positive_u64(entry.get("maxInputTokens")) {
+            model.insert(
+                YamlValue::String("contextWindow".to_string()),
+                YamlValue::Number(ctx.into()),
+            );
+        }
+        let input = if entry_bool(entry, "supportsImages") {
+            vec![
+                YamlValue::String("text".to_string()),
+                YamlValue::String("image".to_string()),
+            ]
+        } else {
+            vec![YamlValue::String("text".to_string())]
+        };
+        model.insert(YamlValue::String("input".to_string()), YamlValue::Sequence(input));
+
+        if let Some(g) = groups.iter_mut().find(|g| {
+            g.name == name && g.base_url == base_url && g.api == api && g.api_key == api_key
+        }) {
+            let duplicate = g
+                .models
+                .iter()
+                .any(|m| m.get("id").and_then(YamlValue::as_str) == Some(model_id.as_str()));
+            if !duplicate {
+                g.models.push(YamlValue::Mapping(model));
+            }
+        } else {
+            groups.push(HarnessGroup {
+                name,
+                base_url,
+                api,
+                api_key,
+                models: vec![YamlValue::Mapping(model)],
+            });
+        }
+    }
+    Ok(groups)
+}
+
+/// 分组 → Harness provider（含凭据引用名与密钥；`mask` 用于预览）。
+/// provider_id 由调用方保证唯一（slug 可能撞名），凭据引用名随之一致。
+fn harness_group_provider_entry(
+    group: &HarnessGroup,
+    provider_id: &str,
+    mask: bool,
+) -> (YamlValue, String, String) {
+    let env = harness_credential_env(provider_id);
+    let mut provider = serde_yaml::Mapping::new();
+    provider.insert(
+        YamlValue::String("displayName".to_string()),
+        YamlValue::String(group.name.clone()),
+    );
+    provider.insert(
+        YamlValue::String("apiKeyEnv".to_string()),
+        YamlValue::String(env.clone()),
+    );
+    provider.insert(
+        YamlValue::String("api".to_string()),
+        YamlValue::String(group.api.to_string()),
+    );
+    provider.insert(
+        YamlValue::String("baseURL".to_string()),
+        YamlValue::String(group.base_url.clone()),
+    );
+    provider.insert(
+        YamlValue::String("models".to_string()),
+        YamlValue::Sequence(group.models.clone()),
+    );
+    (
+        YamlValue::Mapping(provider),
+        env,
+        if mask {
+            mask_key(&group.api_key)
+        } else {
+            group.api_key.clone()
+        },
+    )
+}
+
+/// Harness settings.yaml + credentials → 表格条目。
+fn harness_entries_from_settings(
+    settings: &YamlValue,
+    credentials: &YamlValue,
+) -> Vec<Value> {
+    let refs = credentials
+        .get("refs")
+        .and_then(YamlValue::as_mapping)
+        .cloned()
+        .unwrap_or_default();
+    let Some(providers) = settings
+        .get("llm-pi-ai")
+        .and_then(|v| v.get("providers"))
+        .and_then(YamlValue::as_mapping)
+    else {
+        return Vec::new();
+    };
+    let mut entries = Vec::new();
+    for (key, value) in providers {
+        let Some(id) = key.as_str() else { continue };
+        if !harness_is_managed_provider(id) {
+            continue;
+        }
+        let Some(models) = value.get("models").and_then(YamlValue::as_sequence) else {
+            continue;
+        };
+        let display_name = value
+            .get("displayName")
+            .and_then(YamlValue::as_str)
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .unwrap_or(id)
+            .to_string();
+        let base_url = value
+            .get("baseURL")
+            .and_then(YamlValue::as_str)
+            .unwrap_or("")
+            .to_string();
+        let api = value
+            .get("api")
+            .and_then(YamlValue::as_str)
+            .unwrap_or(PI_API_OPENAI_COMPLETIONS);
+        let url = if api == PI_API_OPENAI_RESPONSES {
+            format!("{}/responses", base_url.trim_end_matches('/'))
+        } else {
+            format!("{}/chat/completions", base_url.trim_end_matches('/'))
+        };
+        let api_key = value
+            .get("apiKeyEnv")
+            .and_then(YamlValue::as_str)
+            .and_then(|env| refs.get(YamlValue::String(env.to_string())))
+            .and_then(YamlValue::as_str)
+            .unwrap_or("")
+            .to_string();
+        // 每个模型展开为一行；模型名按 id 展示，供应商名统一取 displayName
+        for model in models {
+            let Some(model_id) = model.get("id").and_then(YamlValue::as_str) else {
+                continue;
+            };
+            let supports_images = model
+                .get("input")
+                .and_then(YamlValue::as_sequence)
+                .map(|list| list.iter().any(|v| v.as_str() == Some("image")))
+                .unwrap_or(false);
+            let mut entry = serde_json::json!({
+                "id": model_id,
+                "name": display_name,
+                "vendor": display_name,
+                "url": url,
+                "apiKey": api_key,
+                "supportsImages": supports_images,
+                "supportsReasoning": model.get("reasoning").and_then(YamlValue::as_bool).unwrap_or(false),
+                "enabled": true,
+            });
+            if let Some(ctx) = model.get("contextWindow").and_then(YamlValue::as_u64) {
+                entry["maxInputTokens"] = serde_json::json!(ctx);
+            }
+            entries.push(entry);
+        }
+    }
+    entries
+}
+
+fn harness_preview_value(entries: &[Value]) -> Result<YamlValue, String> {
+    let groups = harness_build_groups(entries)?;
+    let mut providers = serde_yaml::Mapping::new();
+    let mut refs = serde_yaml::Mapping::new();
+    let mut used: HashSet<String> = HashSet::new();
+    let mut default_pair: Option<(String, String)> = None;
+    for group in &groups {
+        // 先唯一化 id，再按最终 id 构造条目与凭据引用名，避免 slug 撞名覆盖
+        let base_id = harness_provider_id(&group.name);
+        let mut provider_id = base_id.clone();
+        if used.contains(&provider_id) {
+            let mut suffix = 2;
+            while used.contains(&format!("{provider_id}-{suffix}")) {
+                suffix += 1;
+            }
+            provider_id = format!("{provider_id}-{suffix}");
+        }
+        used.insert(provider_id.clone());
+        let (provider, env, api_key) = harness_group_provider_entry(group, &provider_id, true);
+        if default_pair.is_none() {
+            if let Some(first) = group.models.first() {
+                if let Some(model_id) = first.get("id").and_then(YamlValue::as_str) {
+                    default_pair = Some((provider_id.clone(), model_id.to_string()));
+                }
+            }
+        }
+        refs.insert(YamlValue::String(env), YamlValue::String(api_key));
+        providers.insert(YamlValue::String(provider_id), provider);
+    }
+    let mut llm = serde_yaml::Mapping::new();
+    llm.insert(
+        YamlValue::String("providers".to_string()),
+        YamlValue::Mapping(providers),
+    );
+    let mut selection = serde_yaml::Mapping::new();
+    if let Some((provider_id, model_id)) = default_pair {
+        selection.insert(
+            YamlValue::String("provider".to_string()),
+            YamlValue::String(provider_id),
+        );
+        selection.insert(
+            YamlValue::String("model".to_string()),
+            YamlValue::String(model_id),
+        );
+    }
+    let mut root = serde_yaml::Mapping::new();
+    root.insert(YamlValue::String("llm-pi-ai".to_string()), YamlValue::Mapping(llm));
+    root.insert(
+        YamlValue::String("agent-default-model".to_string()),
+        YamlValue::Mapping(selection),
+    );
+    root.insert(YamlValue::String(".credentials refs".to_string()), YamlValue::Mapping(refs));
+    Ok(YamlValue::Mapping(root))
+}
+
+/// 写入 DeepSeek Harness：settings.yaml（providers + 默认模型）+ .credentials.yaml（refs）。
+fn write_harness_managed_models(
+    settings_path: &PathBuf,
+    credentials_path: &PathBuf,
+    entries: &[Value],
+) -> Result<(), String> {
+    ensure_parent_dir(settings_path)?;
+    ensure_backup(settings_path)?;
+    ensure_backup(credentials_path)?;
+
+    let settings_raw = if settings_path.exists() {
+        fs::read_to_string(settings_path)
+            .map_err(|e| format!("读取 DeepSeek Harness settings.yaml 失败: {e}"))?
+    } else {
+        String::new()
+    };
+    let credentials_raw = if credentials_path.exists() {
+        fs::read_to_string(credentials_path)
+            .map_err(|e| format!("读取 DeepSeek Harness 凭据失败: {e}"))?
+    } else {
+        String::new()
+    };
+    let settings_root = parse_yaml_value(&settings_raw, "settings.yaml")?;
+    let credentials_root = parse_yaml_value(&credentials_raw, ".credentials.yaml")?;
+
+    // llm-pi-ai 以原 mapping 为基底：providers 之外的兄弟字段（用户自己的配置）原样保留
+    let mut llm = settings_root
+        .get("llm-pi-ai")
+        .and_then(YamlValue::as_mapping)
+        .cloned()
+        .unwrap_or_default();
+    // 保留用户手写的 provider 与非受管凭据引用
+    let mut providers = serde_yaml::Mapping::new();
+    if let Some(existing) = settings_root
+        .get("llm-pi-ai")
+        .and_then(|v| v.get("providers"))
+        .and_then(YamlValue::as_mapping)
+    {
+        for (key, value) in existing {
+            if key
+                .as_str()
+                .map(harness_is_managed_provider)
+                .unwrap_or(false)
+            {
+                continue;
+            }
+            providers.insert(key.clone(), value.clone());
+        }
+    }
+    let mut refs = serde_yaml::Mapping::new();
+    if let Some(existing) = credentials_root.get("refs").and_then(YamlValue::as_mapping) {
+        for (key, value) in existing {
+            let is_managed = key
+                .as_str()
+                .map(|env| env.starts_with(&format!("{HARNESS_CREDENTIAL_PREFIX}_")))
+                .unwrap_or(false);
+            if is_managed {
+                continue;
+            }
+            refs.insert(key.clone(), value.clone());
+        }
+    }
+
+    let mut used: HashSet<String> = providers
+        .keys()
+        .filter_map(|k| k.as_str().map(str::to_string))
+        .collect();
+    let mut default_pair: Option<(String, String)> = None;
+    for group in &harness_build_groups(entries)? {
+        // 先唯一化 id，再按最终 id 构造条目与凭据引用名，避免 slug 撞名覆盖
+        let base_id = harness_provider_id(&group.name);
+        let mut provider_id = base_id.clone();
+        if used.contains(&provider_id) {
+            let mut suffix = 2;
+            while used.contains(&format!("{provider_id}-{suffix}")) {
+                suffix += 1;
+            }
+            provider_id = format!("{provider_id}-{suffix}");
+        }
+        used.insert(provider_id.clone());
+        let (provider, env, api_key) = harness_group_provider_entry(group, &provider_id, false);
+        if !api_key.is_empty() {
+            refs.insert(YamlValue::String(env), YamlValue::String(api_key));
+        }
+        if default_pair.is_none() {
+            if let Some(first) = group.models.first() {
+                if let Some(model_id) = first.get("id").and_then(YamlValue::as_str) {
+                    default_pair = Some((provider_id.clone(), model_id.to_string()));
+                }
+            }
+        }
+        providers.insert(YamlValue::String(provider_id), provider);
+    }
+
+    llm.insert(
+        YamlValue::String("providers".to_string()),
+        YamlValue::Mapping(providers),
+    );
+    let llm_block = yaml_block_for_value(&YamlValue::Mapping(llm), 2)?;
+    let mut next = yaml_set_top_level_block(&settings_raw, "llm-pi-ai", &llm_block);
+    if let Some((provider_id, model_id)) = default_pair {
+        let mut selection = serde_yaml::Mapping::new();
+        selection.insert(
+            YamlValue::String("provider".to_string()),
+            YamlValue::String(provider_id),
+        );
+        selection.insert(
+            YamlValue::String("model".to_string()),
+            YamlValue::String(model_id),
+        );
+        let block = yaml_block_for_value(&YamlValue::Mapping(selection), 2)?;
+        next = yaml_set_top_level_block(&next, "agent-default-model", &block);
+    } else {
+        // 全部停用/清空时，之前写入的默认模型会指向已删除的 provider，必须清掉
+        let provider_points_to_managed = settings_root
+            .get("agent-default-model")
+            .and_then(|m| m.get("provider"))
+            .and_then(YamlValue::as_str)
+            .map(harness_is_managed_provider)
+            .unwrap_or(false);
+        if provider_points_to_managed {
+            next = yaml_set_top_level_block(&next, "agent-default-model", "");
+        }
+    }
+    parse_yaml_value(&next, "settings.yaml")?;
+
+    // 凭据文件：保留 records 与其它引用，只重写受管 refs。
+    // 先写凭据再写 settings：settings 引用的 apiKeyEnv 一定已经存在
+    let mut credentials_next = yaml_set_top_level_block(
+        &credentials_raw,
+        "refs",
+        &yaml_block_for_value(&YamlValue::Mapping(refs), 2)?,
+    );
+    if credentials_root.get("version").is_none() {
+        // DSH 会拒绝缺少 version 的凭据文件
+        credentials_next = yaml_set_top_level_scalar(&credentials_next, "version", "1");
+    }
+    parse_yaml_value(&credentials_next, ".credentials.yaml")?;
+    super::write_atomic(credentials_path, credentials_next.as_bytes())?;
+    super::write_atomic(settings_path, next.as_bytes())?;
+
+    let dir = settings_path
+        .parent()
+        .ok_or_else(|| "DeepSeek Harness 配置路径无父目录".to_string())?;
+    // 完整快照：还原停用条目，并补齐 Harness 格式承载不了的字段
+    managed_write_state(dir, entries)
 }
 
 fn backup_path(path: &PathBuf) -> PathBuf {
@@ -5104,6 +6877,9 @@ fn detect_platforms_sync() -> Result<Vec<PlatformInfo>, String> {
         Platform::OpenCode,
         Platform::WorkBuddy,
         Platform::ZCode,
+        Platform::Pi,
+        Platform::Hermes,
+        Platform::DeepSeekHarness,
     ];
     let mut out = Vec::with_capacity(platforms.len());
 
@@ -6189,6 +7965,161 @@ pub fn save_codebuddy_models(
     });
     let json = serde_json::to_string_pretty(&payload).map_err(|e| format!("序列化失败: {e}"))?;
     super::write_atomic(&path, json.as_bytes()).map_err(|e| format!("写入失败: {e}"))?;
+    Ok(path.to_string_lossy().to_string())
+}
+
+/// 读取 Pi 受管模型：models.json 里 anybridge-* provider + 停用状态文件合并。
+#[tauri::command]
+pub fn load_pi_models() -> Result<serde_json::Value, String> {
+    let plat = Platform::Pi;
+    let path = plat.config_path().ok_or("无法定位 Pi 配置路径")?;
+    let dir = plat.config_dir().ok_or("无法定位 Pi 配置目录")?;
+
+    let mut models: Vec<serde_json::Value> = Vec::new();
+    if path.exists() {
+        let raw =
+            fs::read_to_string(&path).map_err(|e| format!("读取 Pi models.json 失败: {e}"))?;
+        let obj = parse_json_object(&raw, "models.json")?;
+        if let Some(providers) = obj.get("providers").and_then(Value::as_object) {
+            for (provider_id, provider) in providers {
+                if !pi_is_managed_provider(provider_id, provider) {
+                    continue;
+                }
+                if let Some(map) = provider.as_object() {
+                    models.extend(pi_entries_from_provider_map(provider_id, map));
+                }
+            }
+        }
+    }
+
+    merge_managed_state(&mut models, &dir)?;
+
+    Ok(serde_json::json!({
+        "models": models,
+        "availableModels": [],
+        "_configPath": path.to_string_lossy().to_string(),
+        "_configScope": "user",
+        "_settingsPath": plat
+            .pi_settings_path()
+            .map(|p| p.to_string_lossy().to_string())
+            .unwrap_or_default(),
+    }))
+}
+
+/// 保存 Pi 模型表格：写 models.json（受管条目全量替换）+ settings.json 默认模型。
+#[tauri::command]
+pub fn save_pi_models(
+    models: Vec<serde_json::Value>,
+    available_models: Vec<String>,
+    scope: Option<String>,
+) -> Result<String, String> {
+    let _ = available_models; // Pi 没有可用模型白名单概念；保留参数与其他平台命令同构
+    let _ = scope; // Pi 只支持用户级配置
+    let path = Platform::Pi
+        .config_path()
+        .ok_or("无法定位 Pi 配置路径")?;
+    write_pi_managed_models(&path, &models)?;
+    Ok(path.to_string_lossy().to_string())
+}
+
+/// 读取 Hermes 受管模型：config.yaml 的 custom_providers + 停用状态文件。
+#[tauri::command]
+pub fn load_hermes_models() -> Result<serde_json::Value, String> {
+    let plat = Platform::Hermes;
+    let path = plat.config_path().ok_or("无法定位 Hermes 配置路径")?;
+    let dir = plat.config_dir().ok_or("无法定位 Hermes 配置目录")?;
+    let root = if path.exists() {
+        let raw = fs::read_to_string(&path)
+            .map_err(|e| format!("读取 Hermes config.yaml 失败: {e}"))?;
+        parse_yaml_value(&raw, "config.yaml")?
+    } else {
+        YamlValue::Mapping(serde_yaml::Mapping::new())
+    };
+    let managed_names = hermes_managed_names_from_state(&dir);
+    let mut models = hermes_entries_from_config(&root, &managed_names);
+    merge_managed_state(&mut models, &dir)?;
+    Ok(serde_json::json!({
+        "models": models,
+        "availableModels": [],
+        "_configPath": path.to_string_lossy().to_string(),
+        "_configScope": "user",
+    }))
+}
+
+/// 保存 Hermes 模型表格：写 custom_providers 与默认模型。
+#[tauri::command]
+pub fn save_hermes_models(
+    models: Vec<serde_json::Value>,
+    available_models: Vec<String>,
+    scope: Option<String>,
+) -> Result<String, String> {
+    let _ = available_models; // Hermes 没有可用模型白名单概念
+    let _ = scope; // Hermes 只支持用户级配置
+    let path = Platform::Hermes
+        .config_path()
+        .ok_or("无法定位 Hermes 配置路径")?;
+    write_hermes_managed_models(&path, &models)?;
+    Ok(path.to_string_lossy().to_string())
+}
+
+/// 读取 DeepSeek Harness 受管模型：settings.yaml 的 llm-pi-ai.providers
+/// 与 .credentials.yaml 的 refs 共同还原条目。
+#[tauri::command]
+pub fn load_deepseek_harness_models() -> Result<serde_json::Value, String> {
+    let plat = Platform::DeepSeekHarness;
+    let path = plat
+        .config_path()
+        .ok_or("无法定位 DeepSeek Harness 配置路径")?;
+    let credentials_path = plat
+        .deepseek_harness_credentials_path()
+        .ok_or("无法定位 DeepSeek Harness 凭据路径")?;
+    let dir = plat
+        .config_dir()
+        .ok_or("无法定位 DeepSeek Harness 配置目录")?;
+
+    let settings = if path.exists() {
+        let raw = fs::read_to_string(&path)
+            .map_err(|e| format!("读取 DeepSeek Harness settings.yaml 失败: {e}"))?;
+        parse_yaml_value(&raw, "settings.yaml")?
+    } else {
+        YamlValue::Mapping(serde_yaml::Mapping::new())
+    };
+    let credentials = if credentials_path.exists() {
+        let raw = fs::read_to_string(&credentials_path)
+            .map_err(|e| format!("读取 DeepSeek Harness 凭据失败: {e}"))?;
+        parse_yaml_value(&raw, ".credentials.yaml")?
+    } else {
+        YamlValue::Mapping(serde_yaml::Mapping::new())
+    };
+
+    let mut models = harness_entries_from_settings(&settings, &credentials);
+    merge_managed_state(&mut models, &dir)?;
+    Ok(serde_json::json!({
+        "models": models,
+        "availableModels": [],
+        "_configPath": path.to_string_lossy().to_string(),
+        "_configScope": "user",
+        "_credentialsPath": credentials_path.to_string_lossy().to_string(),
+    }))
+}
+
+/// 保存 DeepSeek Harness 模型表格：写 settings.yaml 与 .credentials.yaml。
+#[tauri::command]
+pub fn save_deepseek_harness_models(
+    models: Vec<serde_json::Value>,
+    available_models: Vec<String>,
+    scope: Option<String>,
+) -> Result<String, String> {
+    let _ = available_models; // Harness 没有可用模型白名单概念
+    let _ = scope; // Harness 只支持用户级配置
+    let plat = Platform::DeepSeekHarness;
+    let path = plat
+        .config_path()
+        .ok_or("无法定位 DeepSeek Harness 配置路径")?;
+    let credentials_path = plat
+        .deepseek_harness_credentials_path()
+        .ok_or("无法定位 DeepSeek Harness 凭据路径")?;
+    write_harness_managed_models(&path, &credentials_path, &models)?;
     Ok(path.to_string_lossy().to_string())
 }
 
@@ -8168,5 +10099,581 @@ name = "Official Grok"
         );
 
         let _ = fs::remove_dir_all(path.parent().unwrap());
+    }
+
+    // ─── Pi ───────────────────────────────────────────────
+
+    fn pi_test_dir(name: &str) -> PathBuf {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let dir = std::env::temp_dir().join(format!("anybridge-pi-{name}-{nanos}"));
+        fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    #[test]
+    fn pi_endpoint_parts_detects_api_kind() {
+        assert_eq!(
+            pi_endpoint_parts("https://api.example.com/v1/chat/completions"),
+            (
+                "https://api.example.com/v1".to_string(),
+                PI_API_OPENAI_COMPLETIONS
+            )
+        );
+        assert_eq!(
+            pi_endpoint_parts("https://api.example.com/v1/responses/"),
+            (
+                "https://api.example.com/v1".to_string(),
+                PI_API_OPENAI_RESPONSES
+            )
+        );
+        assert_eq!(
+            pi_endpoint_parts("https://api.example.com/v1"),
+            (
+                "https://api.example.com/v1".to_string(),
+                PI_API_OPENAI_COMPLETIONS
+            )
+        );
+    }
+
+    #[test]
+    fn pi_build_providers_map_groups_models_by_vendor() {
+        let entries = vec![
+            serde_json::json!({
+                "id": "deepseek-v4-flash",
+                "name": "deepseek-v4-flash",
+                "vendor": "商汤",
+                "url": "https://token.sensenova.cn/v1/chat/completions",
+                "apiKey": "sk-sensenova",
+                "maxInputTokens": 1000000,
+                "maxOutputTokens": 64000,
+                "supportsImages": true,
+                "supportsReasoning": true,
+                "enabled": true,
+            }),
+            serde_json::json!({
+                "id": "deepseek-v4-pro",
+                "name": "deepseek-v4-pro",
+                "vendor": "商汤",
+                "url": "https://token.sensenova.cn/v1/chat/completions",
+                "apiKey": "sk-sensenova",
+                "maxInputTokens": 1000000,
+                "maxOutputTokens": 64000,
+                "supportsImages": true,
+                "supportsReasoning": true,
+                "enabled": true,
+            }),
+            serde_json::json!({
+                "id": "gemini-3.8-flash-high",
+                "name": "Gemini 3.8 Flash High",
+                "vendor": "CPA",
+                "url": "http://127.0.0.1:8317/v1/chat/completions",
+                "apiKey": "sk-cpa",
+                "enabled": true,
+            }),
+        ];
+        let (providers, default_pair) =
+            pi_build_providers_map(&entries, &Map::new(), false).unwrap();
+        // 应该只有两个 provider：商汤（2 个模型）和 CPA（1 个模型）
+        assert_eq!(providers.len(), 2);
+        assert!(providers.contains_key("商汤"));
+        assert!(providers.contains_key("CPA"));
+
+        let sensenova = &providers["商汤"];
+        assert_eq!(sensenova["baseUrl"], "https://token.sensenova.cn/v1");
+        assert_eq!(sensenova["api"], PI_API_OPENAI_COMPLETIONS);
+        assert_eq!(sensenova["_source"], "anybridge");
+        let models = sensenova["models"].as_array().unwrap();
+        assert_eq!(models.len(), 2);
+        assert_eq!(models[0]["id"], "deepseek-v4-flash");
+        assert_eq!(models[1]["id"], "deepseek-v4-pro");
+
+        let cpa = &providers["CPA"];
+        assert_eq!(cpa["baseUrl"], "http://127.0.0.1:8317/v1");
+        assert_eq!(cpa["models"].as_array().unwrap().len(), 1);
+
+        assert_eq!(
+            default_pair,
+            Some(("商汤".to_string(), "deepseek-v4-flash".to_string()))
+        );
+    }
+
+    #[test]
+    fn write_pi_managed_models_preserves_user_providers_and_sets_default() {
+        let dir = pi_test_dir("write-managed");
+        let models_path = dir.join("models.json");
+        fs::write(
+            &models_path,
+            r#"{
+  "providers": {
+    "local": { "baseUrl": "http://127.0.0.1:8317/v1", "api": "openai-completions", "apiKey": "sk-local", "models": [{"id": "keep-me"}] },
+    "anybridge-old": { "baseUrl": "https://stale.example.com/v1", "api": "openai-completions", "apiKey": "old", "models": [{"id": "stale"}] }
+  }
+}"#,
+        )
+        .unwrap();
+        fs::write(
+            dir.join("settings.json"),
+            r#"{"theme":"dark","defaultProvider":"local","defaultModel":"keep-me","packages":["npm:pi-tracker"]}"#,
+        )
+        .unwrap();
+
+        let entries = vec![
+            serde_json::json!({
+                "id": "gpt-5.4", "name": "gpt-5.4", "vendor": "CPA",
+                "url": "https://api.example.com/v1/chat/completions",
+                "apiKey": "sk-a", "maxInputTokens": 128000, "maxOutputTokens": 16384,
+                "supportsImages": true, "supportsReasoning": true, "enabled": true,
+            }),
+            serde_json::json!({
+                "id": "disabled-model", "name": "disabled-model", "vendor": "CPA",
+                "url": "https://api.example.com/v1/chat/completions",
+                "apiKey": "sk-a", "enabled": false,
+            }),
+        ];
+        write_pi_managed_models(&models_path, &entries).unwrap();
+
+        let val: Value = serde_json::from_str(&fs::read_to_string(&models_path).unwrap()).unwrap();
+        let providers = val["providers"].as_object().unwrap();
+        // 用户手写 provider 原样保留，旧的托管条目被清掉
+        assert!(providers.contains_key("local"));
+        assert!(!providers.contains_key("anybridge-old"));
+        // CPA 作为分组 provider 写入
+        assert!(providers.contains_key("CPA"));
+        assert_eq!(providers["CPA"]["models"][0]["id"], "gpt-5.4");
+        // 停用条目不出现在 models.json
+        assert_eq!(providers["CPA"]["models"].as_array().unwrap().len(), 1);
+
+        // 状态文件保存完整条目快照（含启用的），供表格恢复停用状态与补齐字段
+        let state: Value =
+            serde_json::from_str(&fs::read_to_string(dir.join(MANAGED_MODELS_STATE_FILE)).unwrap())
+                .unwrap();
+        let state_ids: Vec<String> = state["models"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|m| m["id"].as_str().unwrap_or("").to_string())
+            .collect();
+        assert_eq!(
+            state_ids,
+            vec!["gpt-5.4".to_string(), "disabled-model".to_string()]
+        );
+
+        // settings.json：只改默认模型，其余设置保留
+        let settings: Value =
+            serde_json::from_str(&fs::read_to_string(dir.join("settings.json")).unwrap()).unwrap();
+        assert_eq!(settings["defaultProvider"], "CPA");
+        assert_eq!(settings["defaultModel"], "gpt-5.4");
+        assert_eq!(settings["theme"], "dark");
+        assert_eq!(settings["packages"][0], "npm:pi-tracker");
+
+        // 备份生成（还原按钮依赖）
+        assert!(backup_path(&models_path).exists());
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn pi_entries_from_provider_map_roundtrips_fields() {
+        let provider: Map<String, Value> = serde_json::from_value(serde_json::json!({
+            "baseUrl": "http://127.0.0.1:7450/v1",
+            "api": "openai-completions",
+            "apiKey": "sk-lp",
+            "models": [{
+                "id": "any-model", "name": "AnyBridge 本地代理", "reasoning": true,
+                "contextWindow": 200000, "maxTokens": 32000, "input": ["text", "image"]
+            }]
+        }))
+        .unwrap();
+        let entries = pi_entries_from_provider_map("AnyBridge 本地代理", &provider);
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0]["id"], "any-model");
+        assert_eq!(entries[0]["name"], "AnyBridge 本地代理");
+        assert_eq!(entries[0]["vendor"], "AnyBridge 本地代理");
+        assert_eq!(entries[0]["url"], "http://127.0.0.1:7450/v1/chat/completions");
+        assert_eq!(entries[0]["maxInputTokens"], 200000);
+        assert_eq!(entries[0]["maxOutputTokens"], 32000);
+        assert_eq!(entries[0]["supportsImages"], true);
+        assert_eq!(entries[0]["supportsReasoning"], true);
+        assert_eq!(entries[0]["enabled"], true);
+    }
+
+    #[test]
+    fn write_pi_managed_models_disambiguates_colliding_provider_ids() {
+        let dir = pi_test_dir("slug-collision");
+        let models_path = dir.join("models.json");
+        let entries = vec![
+            serde_json::json!({
+                "id": "m1", "name": "m1", "vendor": "商汤",
+                "url": "https://a.example.com/v1/chat/completions",
+                "apiKey": "sk-a", "enabled": true,
+            }),
+            serde_json::json!({
+                "id": "m2", "name": "m2", "vendor": "商汤",
+                // 相同 vendor 但不同 URL，应作为不同 provider 分组消歧
+                "url": "https://b.example.com/v1/chat/completions",
+                "apiKey": "sk-b", "enabled": true,
+            }),
+        ];
+        write_pi_managed_models(&models_path, &entries).unwrap();
+
+        let val: Value = serde_json::from_str(&fs::read_to_string(&models_path).unwrap()).unwrap();
+        let providers = val["providers"].as_object().unwrap();
+        assert!(providers.contains_key("商汤"));
+        assert!(providers.contains_key("商汤-2"));
+
+        let settings: Value =
+            serde_json::from_str(&fs::read_to_string(dir.join("settings.json")).unwrap()).unwrap();
+        assert_eq!(settings["defaultProvider"], "商汤");
+        assert_eq!(settings["defaultModel"], "m1");
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    // ─── Hermes Agent / DeepSeek Harness ────────────────────────
+
+    fn temp_managed_dir(name: &str) -> PathBuf {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let dir = std::env::temp_dir().join(format!("anybridge-managed-{name}-{nanos}"));
+        fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    #[test]
+    fn yaml_block_edit_preserves_comments_and_other_sections() {
+        let source = "# top comment\nmodel:\n  # keep me\n  default: old\n  base_url: https://keep.example/v1\n\n# next section\nterminal:\n  theme: dark\n";
+        let out = yaml_set_top_level_block(
+            source,
+            "custom_providers",
+            "  - name: anybridge-test\n    base_url: https://x/v1",
+        );
+        assert!(out.contains("# top comment"));
+        assert!(out.contains("# keep me"));
+        assert!(out.contains("# next section"));
+        assert!(out.contains("theme: dark"));
+        let parsed: YamlValue = serde_yaml::from_str(&out).unwrap();
+        assert_eq!(parsed["terminal"]["theme"], YamlValue::String("dark".into()));
+        assert_eq!(
+            parsed["model"]["base_url"],
+            YamlValue::String("https://keep.example/v1".into())
+        );
+        assert_eq!(
+            parsed["custom_providers"][0]["name"],
+            YamlValue::String("anybridge-test".into())
+        );
+    }
+
+    #[test]
+    fn yaml_block_edit_replaces_existing_block_without_touching_next_key() {
+        let source = "custom_providers:\n  - name: stale\n\n# belongs to model\nmodel:\n  default: old\n";
+        let out = yaml_set_top_level_block(source, "custom_providers", "  - name: fresh");
+        assert!(!out.contains("stale"));
+        assert!(out.contains("- name: fresh"));
+        // 下一个键之前的注释仍然保留
+        assert!(out.contains("# belongs to model"));
+        assert!(out.contains("default: old"));
+        // 键不重复、块内容正确
+        let parsed: YamlValue = serde_yaml::from_str(&out).unwrap();
+        assert_eq!(parsed["custom_providers"].as_sequence().unwrap().len(), 1);
+        assert_eq!(
+            parsed["custom_providers"][0]["name"],
+            YamlValue::String("fresh".into())
+        );
+    }
+
+    #[test]
+    fn yaml_scalar_edit_updates_key_in_place() {
+        let source = "model:\n  default: old\n  base_url: https://keep/v1\n";
+        let out = yaml_set_scalar_in_block(source, "model", "default", &yaml_scalar("new-model"));
+        let parsed: YamlValue = serde_yaml::from_str(&out).unwrap();
+        assert_eq!(parsed["model"]["default"], YamlValue::String("new-model".into()));
+        assert_eq!(
+            parsed["model"]["base_url"],
+            YamlValue::String("https://keep/v1".into())
+        );
+    }
+
+    #[test]
+    fn write_hermes_managed_models_keeps_user_config_and_sets_default() {
+        let dir = temp_managed_dir("hermes");
+        let path = dir.join("config.yaml");
+        fs::write(
+            &path,
+            "# Hermes docs\nmodel:\n  # keep\n  default: old\n  base_url: https://user.example/v1\nterminal:\n  theme: dark\ncustom_providers:\n  - name: mine\n    base_url: https://mine.example/v1\n  - name: anybridge-old-model\n    display_name: CPA\n    base_url: https://stale.example/v1\n    api_key: sk-old\n    api_mode: chat_completions\n    model: old-model\n    models:\n      old-model: {}\n",
+        )
+        .unwrap();
+        let entries = vec![
+            serde_json::json!({
+                "id": "gpt-5.4", "name": "CPA",
+                "url": "https://api.example.com/v1/chat/completions",
+                "apiKey": "sk-h", "maxInputTokens": 200000,
+                "supportsImages": true, "supportsReasoning": true, "enabled": true,
+            }),
+            serde_json::json!({
+                "id": "glm-5.2", "name": "CPA",
+                "url": "https://api.example.com/v1/chat/completions",
+                "apiKey": "sk-h", "enabled": true,
+            }),
+            serde_json::json!({
+                "id": "off-model", "name": "CPA",
+                "url": "https://api.example.com/v1/chat/completions",
+                "apiKey": "sk-h", "enabled": false,
+            }),
+        ];
+        write_hermes_managed_models(&path, &entries).unwrap();
+
+        let out = fs::read_to_string(&path).unwrap();
+        assert!(out.contains("# Hermes docs"));
+        assert!(out.contains("# keep"));
+        assert!(out.contains("theme: dark"));
+        let parsed: YamlValue = serde_yaml::from_str(&out).unwrap();
+        let providers = parsed["custom_providers"].as_sequence().unwrap();
+        let names: Vec<String> = providers
+            .iter()
+            .map(|i| i["name"].as_str().unwrap_or("").to_string())
+            .collect();
+        // 用户条目保留；旧格式 anybridge-* 条目被替换；同供应商收敛为一个分组条目
+        assert!(names.contains(&"mine".to_string()));
+        assert!(!names.iter().any(|n| n.starts_with("anybridge")));
+        assert_eq!(names.iter().filter(|n| *n == "CPA").count(), 1);
+        let cpa = providers
+            .iter()
+            .find(|i| i["name"].as_str() == Some("CPA"))
+            .unwrap();
+        assert_eq!(
+            cpa["base_url"],
+            YamlValue::String("https://api.example.com/v1".into())
+        );
+        assert_eq!(cpa["model"], YamlValue::String("gpt-5.4".into()));
+        assert!(cpa["models"].get("gpt-5.4").is_some());
+        assert!(cpa["models"].get("glm-5.2").is_some());
+        assert!(cpa.get("display_name").is_none());
+        assert!(!out.contains("off-model"));
+        assert_eq!(
+            parsed["model"]["default"],
+            YamlValue::String("gpt-5.4".into())
+        );
+        assert_eq!(parsed["model"]["provider"], YamlValue::String("CPA".into()));
+        let state = managed_read_state(&dir).unwrap();
+        let state_ids: Vec<String> = state
+            .iter()
+            .map(|m| m["id"].as_str().unwrap_or("").to_string())
+            .collect();
+        assert_eq!(
+            state_ids,
+            vec!["gpt-5.4".to_string(), "glm-5.2".to_string(), "off-model".to_string()]
+        );
+        assert!(backup_path(&path).exists());
+
+        // 二次保存：分组条目通过状态快照识别并原位替换，不产生重复
+        write_hermes_managed_models(&path, &entries).unwrap();
+        let parsed: YamlValue = serde_yaml::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
+        let names: Vec<String> = parsed["custom_providers"]
+            .as_sequence()
+            .unwrap()
+            .iter()
+            .map(|i| i["name"].as_str().unwrap_or("").to_string())
+            .collect();
+        assert_eq!(names.iter().filter(|n| *n == "CPA").count(), 1);
+        assert!(names.contains(&"mine".to_string()));
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn write_harness_managed_models_writes_settings_and_credentials() {
+        let dir = temp_managed_dir("harness");
+        let settings_path = dir.join("settings.yaml");
+        let credentials_path = dir.join(".credentials.yaml");
+        fs::write(
+            &credentials_path,
+            "version: 1\nrecords:\n  client-connection/browser-session:\n    kind: grant\n",
+        )
+        .unwrap();
+        let entries = vec![
+            serde_json::json!({
+                "id": "gpt-5.4", "name": "CPA",
+                "url": "https://api.example.com/v1/chat/completions",
+                "apiKey": "sk-d", "maxInputTokens": 128000,
+                "supportsImages": true, "supportsReasoning": true, "enabled": true,
+            }),
+            serde_json::json!({
+                "id": "glm-5.2", "name": "CPA",
+                "url": "https://api.example.com/v1/chat/completions",
+                "apiKey": "sk-d", "enabled": true,
+            }),
+            serde_json::json!({
+                "id": "deepseek-v4-flash", "name": "商汤",
+                "url": "https://b.example.com/v1/chat/completions",
+                "apiKey": "sk-b", "enabled": true,
+            }),
+        ];
+        write_harness_managed_models(&settings_path, &credentials_path, &entries).unwrap();
+
+        let parsed: YamlValue =
+            serde_yaml::from_str(&fs::read_to_string(&settings_path).unwrap()).unwrap();
+        assert_eq!(
+            parsed["agent-default-model"]["provider"],
+            YamlValue::String("anybridge-CPA".into())
+        );
+        assert_eq!(
+            parsed["agent-default-model"]["model"],
+            YamlValue::String("gpt-5.4".into())
+        );
+        let provider = &parsed["llm-pi-ai"]["providers"]["anybridge-CPA"];
+        assert_eq!(provider["displayName"], YamlValue::String("CPA".into()));
+        assert_eq!(
+            provider["baseURL"],
+            YamlValue::String("https://api.example.com/v1".into())
+        );
+        assert_eq!(
+            provider["api"],
+            YamlValue::String(PI_API_OPENAI_COMPLETIONS.to_string())
+        );
+        assert_eq!(
+            provider["apiKeyEnv"],
+            YamlValue::String("ANYBRIDGE_CPA".into())
+        );
+        // 同供应商模型收敛进 models 列表，模型行只保留 id + 能力字段（界面按 id 展示）
+        let models = provider["models"].as_sequence().unwrap();
+        assert_eq!(models.len(), 2);
+        assert_eq!(models[0]["id"], YamlValue::String("gpt-5.4".into()));
+        assert_eq!(models[1]["id"], YamlValue::String("glm-5.2".into()));
+        assert!(models[0].get("name").is_none());
+        assert_eq!(models[0]["contextWindow"], YamlValue::Number(128000.into()));
+        assert_eq!(
+            models[0]["input"],
+            YamlValue::Sequence(vec![
+                YamlValue::String("text".into()),
+                YamlValue::String("image".into())
+            ])
+        );
+        // 中文供应商：ascii slug 退化为稳定哈希，仍是合法的环境变量名
+        let provider_keys: Vec<String> = parsed["llm-pi-ai"]["providers"]
+            .as_mapping()
+            .unwrap()
+            .keys()
+            .filter_map(|k| k.as_str().map(str::to_string))
+            .collect();
+        assert_eq!(provider_keys.len(), 2);
+        let dsh_key = provider_keys
+            .iter()
+            .find(|k| k.starts_with("anybridge-g") && k.as_str() != "anybridge-CPA")
+            .unwrap();
+        assert_eq!(
+            parsed["llm-pi-ai"]["providers"][dsh_key.as_str()]["displayName"],
+            YamlValue::String("商汤".into())
+        );
+
+        let creds: YamlValue =
+            serde_yaml::from_str(&fs::read_to_string(&credentials_path).unwrap()).unwrap();
+        assert_eq!(creds["version"], YamlValue::Number(serde_yaml::Number::from(1)));
+        assert_eq!(
+            creds["refs"]["ANYBRIDGE_CPA"],
+            YamlValue::String("sk-d".into())
+        );
+        // 用户既有凭据记录保留
+        assert!(creds["records"]
+            .get("client-connection/browser-session")
+            .is_some());
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn hermes_roundtrip_preserves_model_metadata() {
+        // 核心回归：Hermes 的 YAML 格式承载不了能力/输出上限/温度等字段，
+        // 必须由状态快照补齐，否则保存后重新加载会静默丢失用户的自定义设置
+        let dir = temp_managed_dir("hermes-roundtrip");
+        let path = dir.join("config.yaml");
+        let entries = vec![serde_json::json!({
+            "id": "gpt-5.4", "name": "CPA",
+            "url": "https://api.example.com/v1/chat/completions",
+            "apiKey": "sk-h", "maxInputTokens": 200000, "maxOutputTokens": 64000,
+            "supportsImages": false, "supportsReasoning": true, "temperature": 0.7,
+            "enabled": true,
+        })];
+        write_hermes_managed_models(&path, &entries).unwrap();
+
+        let root = parse_yaml_value(&fs::read_to_string(&path).unwrap(), "config.yaml").unwrap();
+        let managed_names = hermes_managed_names_from_state(&dir);
+        let mut models = hermes_entries_from_config(&root, &managed_names);
+        merge_managed_state(&mut models, &dir).unwrap();
+
+        assert_eq!(models.len(), 1);
+        assert_eq!(models[0]["id"], "gpt-5.4");
+        assert_eq!(models[0]["vendor"], "CPA");
+        assert_eq!(models[0]["supportsImages"], false);
+        assert_eq!(models[0]["supportsReasoning"], true);
+        assert_eq!(models[0]["maxInputTokens"], 200000);
+        assert_eq!(models[0]["maxOutputTokens"], 64000);
+        assert_eq!(models[0]["temperature"], 0.7);
+
+        // 全部停用：默认模型必须被清理，不能留下指向已删除 provider 的悬空引用
+        let disabled_entries = vec![serde_json::json!({
+            "id": "gpt-5.4", "name": "CPA",
+            "url": "https://api.example.com/v1/chat/completions",
+            "apiKey": "sk-h", "enabled": false,
+        })];
+        write_hermes_managed_models(&path, &disabled_entries).unwrap();
+        let root = parse_yaml_value(&fs::read_to_string(&path).unwrap(), "config.yaml").unwrap();
+        assert!(root["model"].get("default").is_none());
+        assert!(root["model"].get("provider").is_none());
+        // 用户的 base_url 与其它段保留
+        assert!(root.get("model").is_some());
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn hermes_and_harness_entries_roundtrip() {
+        // 旧格式：name = anybridge-<模型>，靠前缀识别；分组格式：name = 供应商名，靠快照识别
+        let root: YamlValue = serde_yaml::from_str(
+            "custom_providers:\n  - name: anybridge-gpt-5-4\n    display_name: CPA\n    base_url: https://api.example.com/v1\n    api_key: sk-h\n    api_mode: chat_completions\n    model: gpt-5.4\n    models:\n      gpt-5.4: {}\n  - name: 商汤\n    base_url: https://b.example/v1\n    api_key: sk-b\n    api_mode: chat_completions\n    model: glm-5.2\n    models:\n      glm-5.2: {}\n      kimi-k3: {}\n",
+        )
+        .unwrap();
+        let managed_names: HashSet<String> = ["商汤".to_string()].into_iter().collect();
+        let entries = hermes_entries_from_config(&root, &managed_names);
+        assert_eq!(entries.len(), 3);
+        assert_eq!(entries[0]["id"], "gpt-5.4");
+        assert_eq!(entries[0]["vendor"], "CPA");
+        assert_eq!(
+            entries[0]["url"],
+            "https://api.example.com/v1/chat/completions"
+        );
+        assert_eq!(entries[0]["apiKey"], "sk-h");
+        assert_eq!(entries[1]["id"], "glm-5.2");
+        assert_eq!(entries[1]["vendor"], "商汤");
+        assert_eq!(entries[2]["id"], "kimi-k3");
+        assert_eq!(entries[2]["vendor"], "商汤");
+        // 不在快照且无前缀的用户条目不展开
+        let entries = hermes_entries_from_config(&root, &HashSet::new())
+            .into_iter()
+            .filter(|e| e["vendor"] == "CPA")
+            .count();
+        assert_eq!(entries, 1);
+
+        let settings: YamlValue = serde_yaml::from_str(
+            "llm-pi-ai:\n  providers:\n    anybridge-CPA:\n      displayName: CPA\n      apiKeyEnv: ANYBRIDGE_CPA\n      api: openai-completions\n      baseURL: https://api.example.com/v1\n      models:\n        - id: gpt-5.4\n          input: [text, image]\n          reasoning: true\n          contextWindow: 128000\n        - id: glm-5.2\n          input: [text]\n",
+        )
+        .unwrap();
+        let creds: YamlValue =
+            serde_yaml::from_str("version: 1\nrefs:\n  ANYBRIDGE_CPA: sk-d\n").unwrap();
+        let entries = harness_entries_from_settings(&settings, &creds);
+        assert_eq!(entries.len(), 2);
+        assert_eq!(entries[0]["id"], "gpt-5.4");
+        assert_eq!(entries[0]["vendor"], "CPA");
+        assert_eq!(entries[0]["apiKey"], "sk-d");
+        assert_eq!(entries[0]["supportsImages"], true);
+        assert_eq!(entries[0]["supportsReasoning"], true);
+        assert_eq!(entries[0]["maxInputTokens"], 128000);
+        assert_eq!(entries[1]["id"], "glm-5.2");
+        assert_eq!(entries[1]["vendor"], "CPA");
+        assert_eq!(entries[1]["supportsImages"], false);
     }
 }

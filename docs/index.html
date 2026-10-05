@@ -1554,6 +1554,9 @@
           <div class="tool-pill">CodeBuddy</div>
           <div class="tool-pill">ZCode</div>
           <div class="tool-pill">WorkBuddy</div>
+          <div class="tool-pill">Pi</div>
+          <div class="tool-pill">Hermes</div>
+          <div class="tool-pill">DeepSeek Harness</div>
         </div>
       </div>
     </section>
@@ -1855,6 +1858,41 @@
           <article class="tool-card reveal">
             <div class="tool-card-head">
               <div class="tool-title">
+                <span class="tool-logo"><img src="assets/icons/platform-pi.svg" alt="" /></span>
+                <div>
+                  <span class="tool-card-kicker">自定义渠道模型</span>
+                  <h3>Pi</h3>
+                </div>
+              </div>
+              <span class="tool-status">直连 / 代理</span>
+            </div>
+            <div class="tool-tags">
+              <span>providers 写入</span>
+              <span>独立启停</span>
+              <span>一键还原</span>
+            </div>
+            <p class="tool-desc">Pi 是极简可扩展的终端编码 Agent，AnyBridge 支持把自定义渠道模型写入 models.json，并把首条启用模型设为默认模型。</p>
+            <div class="tool-mode-list">
+              <div class="tool-mode direct">
+                <strong>直连模式</strong>
+                <p>模型条目直接指向你的供应商端点，写入后不依赖 AnyBridge 常驻。</p>
+              </div>
+              <div class="tool-mode proxy">
+                <strong>代理模式</strong>
+                <p>从「AnyBridge 本地代理」导入模型，请求统一进 127.0.0.1:7450，获得看图备用与请求日志。</p>
+              </div>
+            </div>
+            <ul>
+              <li>只维护 anybridge- 前缀条目，原有 provider（如 local）与其它设置原样保留。</li>
+              <li>模型可单独启停，停用条目不会出现在 Pi 中。</li>
+              <li>首次写入自动备份 models.json 与 settings.json，可一键还原。</li>
+            </ul>
+            <div class="tool-card-foot">适合人群：日常用 Pi 写代码，想接中转站或本地代理模型池的开发者。</div>
+          </article>
+
+          <article class="tool-card reveal">
+            <div class="tool-card-head">
+              <div class="tool-title">
                 <span class="tool-logo"><img src="assets/icons/platform-zcode.svg" alt="" /></span>
                 <div>
                   <span class="tool-card-kicker">自定义模型列表</span>
@@ -2069,7 +2107,7 @@
           </article>
           <article class="faq-card reveal">
             <h3>支持哪些 AI 编程工具？</h3>
-            <p>目前覆盖 Windsurf、Devin、Cursor、Codex、Claude Code、OpenCode、CodeBuddy、ZCode 和 WorkBuddy 等工具。</p>
+            <p>目前覆盖 Windsurf、Devin、Cursor、Codex、Claude Code、OpenCode、CodeBuddy、ZCode、WorkBuddy、Pi、Hermes 和 DeepSeek Harness 等工具。</p>
           </article>
         </div>
       </div>

@@ -12127,6 +12127,48 @@ html[data-theme="dark"] .endpoint-brand-icon-dark,
   text-decoration: underline;
 }
 
+.platform-config-inline-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin: 0 4px;
+  padding: 1px 6px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--accent);
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.3;
+  text-decoration: none;
+  cursor: pointer;
+  vertical-align: baseline;
+  transition: all var(--duration-fast, 120ms) ease;
+}
+
+.platform-config-inline-link:hover {
+  background: rgba(43, 161, 143, 0.08);
+  border-color: rgba(43, 161, 143, 0.22);
+  text-decoration: none;
+}
+
+[data-theme="dark"] .platform-config-inline-link:hover {
+  background: rgba(56, 189, 248, 0.12);
+  border-color: rgba(56, 189, 248, 0.28);
+}
+
+.platform-config-inline-link svg {
+  flex-shrink: 0;
+  opacity: 0.8;
+  transition: transform var(--duration-fast, 120ms) ease;
+}
+
+.platform-config-inline-link:hover svg {
+  opacity: 1;
+  transform: translate(1px, -1px);
+}
+
 
 /* 代理页 · 统计 / 日志 tab 挂载区 */
 .proxy-stats-mount,

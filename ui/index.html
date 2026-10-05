@@ -39,7 +39,7 @@
             <path d="M951.901 244.015l-413.3-238.57a33.606 33.606 0 0 0-33.909 0L91.3 244.016c-10.426 6.12-16.99 17.221-16.99 29.346v477.184c0 12.149 6.447 23.343 16.99 29.37l413.3 238.662c5.213 2.933 11.101 4.515 16.99 4.515 5.794 0 11.775-1.582 16.988-4.515l413.3-238.661c10.427-6.121 16.99-17.222 16.99-29.37V273.36a33.908 33.908 0 0 0-16.966-29.346zM892.23 726.016l-370.618 213.97-370.642-213.97v-427.87L521.588 84.178l370.642 213.97v427.869z m8.797 5.073"></path>
             <path d="M285.207 348.393a34.095 34.095 0 0 0-46.336 12.567 33.908 33.908 0 0 0 12.474 46.36l235.94 136.215v269.498a33.745 33.745 0 0 0 33.884 33.885 33.745 33.745 0 0 0 33.886-33.885V543.977L791.9 407.227a34.025 34.025 0 0 0 12.451-46.36 34.025 34.025 0 0 0-46.336-12.474l-236.404 136.54-236.405-136.54z m0 0"></path>
           </svg>
-          <span>平台</span>
+          <span>智能体</span>
         </button>
         <button type="button" class="tab-item" id="tab-providers" data-page="providers" role="tab" aria-selected="false"
           aria-controls="page-providers" tabindex="-1">
@@ -239,6 +239,27 @@
           <span class="platform-rail-icon"><img src="./assets/icons/platform-opencode.svg" alt=""
               aria-hidden="true"></span>
           <span class="platform-rail-label">OpenCode</span>
+        </button>
+        <button type="button" class="platform-rail-item" data-platform-rail="pi" draggable="true"
+ data-action="openPlatformPage" data-arg="pi">
+          <span class="platform-rail-handle" draggable="true" aria-hidden="true"></span>
+          <span class="platform-rail-icon"><img src="./assets/icons/platform-pi.svg" alt=""
+              aria-hidden="true"></span>
+          <span class="platform-rail-label">Pi</span>
+        </button>
+        <button type="button" class="platform-rail-item" data-platform-rail="hermes" draggable="true"
+ data-action="openPlatformPage" data-arg="hermes">
+          <span class="platform-rail-handle" draggable="true" aria-hidden="true"></span>
+          <span class="platform-rail-icon"><img src="./assets/icons/platform-hermes.svg" alt=""
+              aria-hidden="true"></span>
+          <span class="platform-rail-label">Hermes</span>
+        </button>
+        <button type="button" class="platform-rail-item" data-platform-rail="deepseek-harness" draggable="true"
+ data-action="openPlatformPage" data-arg="deepseek-harness">
+          <span class="platform-rail-handle" draggable="true" aria-hidden="true"></span>
+          <span class="platform-rail-icon"><img src="./assets/icons/platform-deepseek-harness.svg" alt=""
+              aria-hidden="true"></span>
+          <span class="platform-rail-label">DeepSeek Harness</span>
         </button>
           </div>
         </div>
@@ -3789,7 +3810,7 @@
               </div>
             </div>
 
-            <p class="codex-safe-note">配置文件路径：<code id="claude-code-config-path-label">~/.claude/settings.json</code><button type="button" class="btn-ghost accent" data-action="openPlatformRealConfigModal" data-arg="claude-code" style="height: 22px; padding: 0 8px; font-size: 11px; margin-left: 8px;">编辑查看</button>。切换后重启 Claude Code 生效，无需保持 AnyBridge 运行。</p>
+            <p class="codex-safe-note">配置文件路径：<code id="claude-code-config-path-label">~/.claude/settings.json</code><button type="button" class="platform-config-inline-link" data-action="openPlatformRealConfigModal" data-arg="claude-code" title="查看并编辑配置文件原文"><span>查看配置</span><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg></button>。切换后重启 Claude Code 生效，无需保持 AnyBridge 运行。</p>
           </section>
         </div>
 
@@ -4110,7 +4131,7 @@
                     <path d="M12 20h9"/>
                     <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
                   </svg>
-                  <span>编辑查看</span>
+                  <span>查看配置文件</span>
                 </button>
               </div>
             </section>
@@ -4171,7 +4192,7 @@
               </div>
             </div>
 
-            <p class="codex-safe-note" style="margin-top: 14px;">配置文件路径：<code id="claude-desktop-config-path-label" class="reveal-path" title="点击打开所在文件夹">Claude-3p/claude_desktop_config.json</code><button type="button" class="btn-ghost accent" data-action="openPlatformRealConfigModal" data-arg="claude-desktop" style="height: 22px; padding: 0 8px; font-size: 11px; margin-left: 8px;">编辑查看</button>。切换后重启 Claude Desktop 生效，使用代理模型需保持 AnyBridge 运行。</p>
+            <p class="codex-safe-note" style="margin-top: 14px;">配置文件路径：<code id="claude-desktop-config-path-label" class="reveal-path" title="点击打开所在文件夹">Claude-3p/claude_desktop_config.json</code><button type="button" class="platform-config-inline-link" data-action="openPlatformRealConfigModal" data-arg="claude-desktop" title="查看并编辑配置文件原文"><span>查看配置</span><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg></button>。切换后重启 Claude Desktop 生效，使用代理模型需保持 AnyBridge 运行。</p>
           </section>
         </div>
         <!-- ═══════ PAGE: PLATFORM · CLAUDE DESKTOP · 添加/编辑配置（独立页面） ═══════ -->
@@ -4406,7 +4427,7 @@
                     <path d="M12 20h9"/>
                     <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
                   </svg>
-                  <span>编辑查看</span>
+                  <span>查看配置文件</span>
                 </button>
               </div>
             </section>
@@ -4476,7 +4497,7 @@
               </div>
             </div>
 
-            <p class="codex-safe-note">配置文件路径：<code id="codex-config-path-label">~/.codex/config.toml</code><button type="button" class="btn-ghost accent" data-action="openPlatformRealConfigModal" data-arg="codex" style="height: 22px; padding: 0 8px; font-size: 11px; margin-left: 8px;">编辑查看</button>。切换后重启 Codex 生效，AnyBridge 会保留 MCP、桌面和项目配置。</p>
+            <p class="codex-safe-note">配置文件路径：<code id="codex-config-path-label">~/.codex/config.toml</code><button type="button" class="platform-config-inline-link" data-action="openPlatformRealConfigModal" data-arg="codex" title="查看并编辑配置文件原文"><span>查看配置</span><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg></button>。切换后重启 Codex 生效，AnyBridge 会保留 MCP、桌面和项目配置。</p>
           </section>
         </div>
 
@@ -4824,7 +4845,7 @@
                     <path d="M12 20h9"/>
                     <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
                   </svg>
-                  <span>编辑查看</span>
+                  <span>查看配置文件</span>
                 </button>
               </div>
             </section>
@@ -5669,7 +5690,7 @@
               </div>
             </div>
 
-            <p class="codex-safe-note">配置文件路径：<code id="opencode-config-path-label">~/.config/opencode/opencode.json</code><button type="button" class="btn-ghost accent" data-action="openPlatformRealConfigModal" data-arg="opencode" style="height: 22px; padding: 0 8px; font-size: 11px; margin-left: 8px;">编辑查看</button>。切换后在 OpenCode 中即时生效，无需保持 AnyBridge 运行。</p>
+            <p class="codex-safe-note">配置文件路径：<code id="opencode-config-path-label">~/.config/opencode/opencode.json</code><button type="button" class="platform-config-inline-link" data-action="openPlatformRealConfigModal" data-arg="opencode" title="查看并编辑配置文件原文"><span>查看配置</span><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg></button>。切换后在 OpenCode 中即时生效，无需保持 AnyBridge 运行。</p>
           </section>
         </div>
 
@@ -5842,7 +5863,7 @@
                     <path d="M12 20h9"/>
                     <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
                   </svg>
-                  <span>编辑查看</span>
+                  <span>查看配置文件</span>
                 </button>
               </div>
             </section>
@@ -6693,7 +6714,7 @@
               </div>
             </div>
 
-            <p class="codex-safe-note">配置文件路径：<code id="grok-config-path-label">~/.grok/config.toml</code><button type="button" class="btn-ghost accent" data-action="openPlatformRealConfigModal" data-arg="grok" style="height: 22px; padding: 0 8px; font-size: 11px; margin-left: 8px;">编辑查看</button>。切换后在终端重新执行 <code>grok</code> 生效，无需保持 AnyBridge 运行。</p>
+            <p class="codex-safe-note">配置文件路径：<code id="grok-config-path-label">~/.grok/config.toml</code><button type="button" class="platform-config-inline-link" data-action="openPlatformRealConfigModal" data-arg="grok" title="查看并编辑配置文件原文"><span>查看配置</span><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg></button>。切换后在终端重新执行 <code>grok</code> 生效，无需保持 AnyBridge 运行。</p>
           </section>
         </div>
         <!-- ═══════ PAGE: PLATFORM · GROK · 添加/编辑配置（独立页面） ═══════ -->
@@ -6911,9 +6932,898 @@
                     <path d="M12 20h9"/>
                     <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
                   </svg>
-                  <span>编辑查看</span>
+                  <span>查看配置文件</span>
                 </button>
               </div>
+            </section>
+          </div>
+        </div>
+        <!-- ═══════ PAGE: PLATFORM · PI ═══════ -->
+        <div class="page" id="page-platform-pi" role="tabpanel" aria-labelledby="tab-platforms">
+          <div class="platform-console-hero glass-card">
+            <div class="platform-console-titlebar">
+              <div class="platform-console-icon"><img src="assets/icons/platform-pi.svg" alt="Pi"></div>
+              <div class="platform-console-titlewrap">
+                <strong>Pi</strong>
+                <span>Earendil Works 终端编码 Agent · 管理自定义渠道模型</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- 列表视图 -->
+          <div id="pi-list-view">
+            <!-- 控制栏 -->
+            <div class="control-bar glass-card platform-model-toolbar">
+              <!-- 第一行：标题 + 操作按钮 -->
+              <div class="platform-model-toolbar-main">
+                <div class="platform-model-title-block">
+                  <h2>模型列表</h2>
+                  <span>管理 Pi 自定义渠道模型，保存后写入 models.json 并设置默认模型。</span>
+                </div>
+                <div class="platform-model-toolbar-actions">
+                <button class="btn-primary platform-model-btn" data-action="openPiAddModal">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="12" y1="5" x2="12" y2="19" />
+                    <line x1="5" y1="12" x2="19" y2="12" />
+                  </svg>
+                  添加模型
+                </button>
+                <button class="btn-ghost danger cb-bulk-delete-btn" id="pi-delete-selected-btn"
+ disabled title="删除勾选的模型" data-action="deleteSelectedPiModels">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="3 6 5 6 21 6" />
+                    <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+                    <path d="M10 11v6M14 11v6" />
+                    <path d="M9 6V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2" />
+                  </svg>
+                  <span class="cb-bulk-delete-label">删除选中</span>
+                </button>
+                <button class="btn-ghost success platform-model-btn" data-action="savePiModels">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
+                    <polyline points="17 21 17 13 7 13 7 21" />
+                    <polyline points="7 3 7 8 15 8" />
+                  </svg>
+                  保存
+                </button>
+                <button class="btn-ghost warn platform-model-btn" id="platform-pi-restore"
+ data-action="restorePlatform" data-arg="pi" title="还原接管前的 models.json 与 settings.json">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="1 4 1 10 7 10" />
+                    <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" />
+                  </svg>
+                  还原备份
+                </button>
+                </div>
+              </div>
+              <!-- 第二行：搜索 + 计数 + 工具按钮 -->
+              <div class="platform-model-bulk-row">
+                <label class="platform-model-search">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="11" cy="11" r="8"></circle>
+                    <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                  </svg>
+                  <input type="text" id="pi-model-search" placeholder="搜索模型、供应商或地址"
+ data-action="onPiModelSearch" data-events="input">
+                </label>
+                <span class="platform-model-count-pill" id="pi-model-count">共 0 个</span>
+                <span class="platform-model-divider"></span>
+                <button class="btn-ghost accent platform-model-btn-icon"
+ title="导入" data-click-id="pi-import-file">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                    <polyline points="17 8 12 3 7 8" />
+                    <line x1="12" y1="3" x2="12" y2="15" />
+                  </svg>
+                </button>
+                <input type="file" id="pi-import-file" accept=".json" style="display:none;"
+ data-action="importPiModels" data-events="change" data-pass-event>
+                <button class="btn-ghost accent platform-model-btn-icon"
+ title="导出" data-action="exportPiModels">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                    <polyline points="7 10 12 15 17 10" />
+                    <line x1="12" y1="15" x2="12" y2="3" />
+                  </svg>
+                </button>
+                <button class="btn-ghost accent platform-model-btn-icon" data-json-toggle="pi" aria-pressed="false"
+ title="JSON 编辑" data-action="togglePiJsonEditor">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="16 18 22 12 16 6" />
+                    <polyline points="8 6 2 12 8 18" />
+                  </svg>
+                </button>
+                <button class="btn-ghost accent platform-model-btn-icon"
+ title="刷新" data-action="loadPiModels">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="23 4 23 10 17 10" />
+                    <polyline points="1 20 1 14 7 14" />
+                    <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+
+            <!-- 模型表格 -->
+            <div class="glass-card" style="overflow: hidden; margin-bottom: 20px;" id="pi-drop-zone"
+              ondragover="piDragOver(event)" ondragleave="piDragLeave(event)" ondrop="piDrop(event)">
+              <div class="wb-model-empty" id="pi-model-empty"
+                style="display:none; padding:40px 20px; text-align:center;">
+                <div class="wb-empty-icon">
+                  <svg viewBox="0 0 24 24">
+                    <rect x="3" y="3" width="18" height="18" rx="2" />
+                    <line x1="9" y1="9" x2="15" y2="9" />
+                    <line x1="9" y1="13" x2="15" y2="13" />
+                    <line x1="9" y1="17" x2="13" y2="17" />
+                  </svg>
+                </div>
+                <div class="wb-empty-title">尚未配置自定义模型</div>
+                <div class="wb-empty-subtitle">添加第一个模型，让 Pi 使用你指定的 AI 供应商与模型能力。</div>
+                <button type="button" class="btn-primary wb-empty-action" data-action="openPiAddModal">
+                  <svg viewBox="0 0 24 24">
+                    <line x1="12" y1="5" x2="12" y2="19" />
+                    <line x1="5" y1="12" x2="19" y2="12" />
+                  </svg>
+                  添加模型
+                </button>
+                <div class="wb-empty-steps">
+                  <span class="wb-empty-step"><span class="wb-empty-step-num">1</span> 选择供应商</span>
+                  <span class="wb-empty-step"><span class="wb-empty-step-num">2</span> 勾选模型</span>
+                  <span class="wb-empty-step"><span class="wb-empty-step-num">3</span> 保存配置</span>
+                  <span class="wb-empty-step"><span class="wb-empty-step-num">或</span> 拖入 JSON</span>
+                </div>
+              </div>
+              <table class="wb-model-table" id="pi-model-table"
+                style="border: none; box-shadow: none; border-radius: 0;">
+                <colgroup>
+                  <col class="wb-col-select">
+                  <col class="wb-col-id">
+                  <col class="wb-col-vendor">
+                  <col class="wb-col-context">
+                  <col class="wb-col-caps">
+                  <col class="wb-col-action">
+                  <col class="wb-col-enabled">
+                </colgroup>
+                <thead>
+                  <tr>
+                    <th class="cb-select-head"><input type="checkbox" id="pi-select-all" aria-label="选择当前列表"
+ title="选择当前列表" data-action="toggleCbModelSelectAll" data-events="change" data-args="[&quot;Pi&quot;]" data-pass-checked></th>
+                    <th>模型 ID</th>
+                    <th>供应商</th>
+                    <th>上下文</th>
+                    <th>能力</th>
+                    <th>操作</th>
+                    <th>启用</th>
+                  </tr>
+                </thead>
+                <tbody id="pi-model-tbody"></tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- JSON 编辑器视图 -->
+          <div id="pi-json-view" class="glass-card" style="display:none; padding:20px;">
+            <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;">
+              <h2 style="font-size:14px; font-weight:700; margin:0;">JSON 编辑器</h2>
+              <div style="display:flex; gap:8px;">
+                <button class="btn-ghost accent" style="padding:4px 12px; font-size:12px;"
+ data-action="formatPiJson">格式化</button>
+                <button class="btn-primary" style="padding:4px 12px; font-size:12px;"
+ data-action="applyPiJson">应用</button>
+                <button class="btn-ghost secondary" style="padding:4px 12px; font-size:12px;"
+ data-action="togglePiJsonEditor">返回列表</button>
+              </div>
+            </div>
+            <div id="pi-json-editor-wrap" class="wb-json-editor-wrap model-json-panel">
+              <textarea id="pi-json-editor"
+                style="width:100%; min-height:400px; font-family:var(--font-mono); font-size:12px; line-height:1.6; padding:12px; border:1px solid var(--border-strong); border-radius:8px; background:var(--bg-glass); color:var(--text-primary); resize:vertical; tab-size:2;"
+                spellcheck="false"></textarea>
+              <div id="pi-json-error" style="display:none; margin-top:6px; font-size:12px; color:var(--danger);"></div>
+            </div>
+          </div>
+
+          <p class="platform-hint" style="margin:0 4px;">
+            配置文件路径（<span id="pi-config-scope-label">用户级</span>）：<code
+              id="pi-config-path-label">~/.pi/agent/models.json</code><button type="button" class="platform-config-inline-link" data-action="openPlatformRealConfigModal" data-arg="pi" title="查看并编辑配置文件原文"><span>查看配置</span><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg></button>，默认模型写入
+            <code>~/.pi/agent/settings.json</code>。保存后自动备份原文件，原有 provider 与其它设置会保留。
+          </p>
+        </div>
+        <!-- ═══════ PAGE: PLATFORM · PI · 添加模型（独立页面） ═══════ -->
+        <div class="page" id="page-platform-pi-add" role="tabpanel" aria-labelledby="tab-platforms">
+          <div class="platform-console-hero model-add-hero glass-card">
+            <div class="platform-console-titlebar">
+              <button class="btn-ghost platform-console-back" data-action="navigateTo" data-arg="platform-pi">← 返回</button>
+              <div class="platform-console-titlewrap">
+                <strong>添加模型 · Pi</strong>
+              </div>
+            </div>
+          </div>
+
+          <div class="wb-add-layout">
+            <aside class="wb-add-sidebar glass-card">
+              <div class="wb-add-search">
+                <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" fill="none" stroke-width="2"
+                  stroke-linecap="round" stroke-linejoin="round">
+                  <circle cx="11" cy="11" r="8" />
+                  <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                </svg>
+                <input type="text" id="pi-add-search" placeholder="搜索供应商" data-action="onPiAddSearch" data-events="input">
+                <div class="provider-sort-control platform-add-sort-control" id="piAddSortControl">
+                  <button type="button" class="provider-sort-trigger platform-add-sort-trigger" id="piAddSortTrigger"
+ aria-haspopup="listbox" aria-expanded="false"
+ aria-controls="piAddSortMenu" aria-label="供应商排序" title="供应商排序" data-action="togglePiAddSort" data-pass-event>
+                    <svg class="provider-sort-icon" width="14" height="14" viewBox="0 0 24 24" fill="none"
+                      stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"
+                      aria-hidden="true">
+                      <path d="M8 3v18"></path>
+                      <path d="m4 7 4-4 4 4"></path>
+                      <path d="M16 21V3"></path>
+                      <path d="m20 17-4 4-4-4"></path>
+                    </svg>
+                    <span id="piAddSortLabel">默认排序</span>
+                    <svg class="provider-sort-caret" width="13" height="13" viewBox="0 0 24 24" fill="none"
+                      stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"
+                      aria-hidden="true">
+                      <path d="m6 9 6 6 6-6"></path>
+                    </svg>
+                  </button>
+                  <div class="provider-sort-menu platform-add-sort-menu" id="piAddSortMenu" role="listbox"
+                    aria-label="供应商排序">
+                    <button type="button" class="provider-sort-option platform-add-sort-option" role="option"
+ data-sort-mode="default" data-action="choosePiAddSortMode" data-arg="default">默认排序</button>
+                    <button type="button" class="provider-sort-option platform-add-sort-option" role="option"
+ data-sort-mode="name-asc" data-action="choosePiAddSortMode" data-arg="name-asc">名称正序</button>
+                    <button type="button" class="provider-sort-option platform-add-sort-option" role="option"
+ data-sort-mode="name-desc" data-action="choosePiAddSortMode" data-arg="name-desc">名称反序</button>
+                  </div>
+                </div>
+              </div>
+              <div class="wb-add-provider-list" id="pi-add-provider-list"></div>
+            </aside>
+
+            <section class="wb-add-main">
+              <div class="glass-card wb-add-models-card">
+                <div class="wb-add-models-head">
+                  <div>
+                    <div class="wb-add-models-title" id="pi-add-models-title">请选择供应商</div>
+                    <div class="wb-add-models-sub" id="pi-add-models-sub">左侧选择一个供应商，右侧将展示其可用模型</div>
+                  </div>
+                  <div style="display:flex; gap:8px;">
+                    <button class="btn-ghost accent" data-action="piAddSelectAll">全选</button>
+                    <button class="btn-ghost secondary" data-action="piAddSelectNone">全不选</button>
+                    <button class="btn-primary" id="pi-add-confirm-page" disabled data-action="confirmAddPiModelsPage">
+                      <svg viewBox="0 0 24 24"
+                        style="width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;">
+                        <path d="M20 6L9 17l-5-5" />
+                      </svg>
+                      <span class="model-action-label"> 保存选择</span>
+                    </button>
+                  </div>
+                </div>
+                <div class="wb-add-models-body" id="pi-add-models-list-page">
+                  <div class="wb-add-models-empty">请从左侧选择一个供应商</div>
+                </div>
+              </div>
+
+              <div class="glass-card wb-add-caps-card">
+                <div class="wb-add-caps-title">能力</div>
+                <div class="wb-add-caps">
+                  <label class="wb-add-cap-chip">
+                    <input type="checkbox" id="pi-add-page-images" checked>
+                    <span>图片</span>
+                  </label>
+                  <label class="wb-add-cap-chip">
+                    <input type="checkbox" id="pi-add-page-tools" checked>
+                    <span>工具</span>
+                  </label>
+                  <label class="wb-add-cap-chip">
+                    <input type="checkbox" id="pi-add-page-reasoning" checked>
+                    <span>推理</span>
+                  </label>
+                </div>
+              </div>
+
+            </section>
+          </div>
+        </div>
+        <!-- ═══════ PAGE: PLATFORM · PI ═══════ -->
+        <div class="page" id="page-platform-hermes" role="tabpanel" aria-labelledby="tab-platforms">
+          <div class="platform-console-hero glass-card">
+            <div class="platform-console-titlebar">
+              <div class="platform-console-icon"><img src="assets/icons/platform-hermes.svg" alt="Hermes"></div>
+              <div class="platform-console-titlewrap">
+                <strong>Hermes</strong>
+                <span>Nous Research 终端 Agent · 管理自定义渠道模型</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- 列表视图 -->
+          <div id="hermes-list-view">
+            <!-- 控制栏 -->
+            <div class="control-bar glass-card platform-model-toolbar">
+              <!-- 第一行：标题 + 操作按钮 -->
+              <div class="platform-model-toolbar-main">
+                <div class="platform-model-title-block">
+                  <h2>模型列表</h2>
+                  <span>管理 Hermes 自定义渠道模型，保存后写入 config.yaml 并设置默认模型。</span>
+                </div>
+                <div class="platform-model-toolbar-actions">
+                <button class="btn-primary platform-model-btn" data-action="openHermesAddModal">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="12" y1="5" x2="12" y2="19" />
+                    <line x1="5" y1="12" x2="19" y2="12" />
+                  </svg>
+                  添加模型
+                </button>
+                <button class="btn-ghost danger cb-bulk-delete-btn" id="hermes-delete-selected-btn"
+ disabled title="删除勾选的模型" data-action="deleteSelectedHermesModels">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="3 6 5 6 21 6" />
+                    <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+                    <path d="M10 11v6M14 11v6" />
+                    <path d="M9 6V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2" />
+                  </svg>
+                  <span class="cb-bulk-delete-label">删除选中</span>
+                </button>
+                <button class="btn-ghost success platform-model-btn" data-action="saveHermesModels">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
+                    <polyline points="17 21 17 13 7 13 7 21" />
+                    <polyline points="7 3 7 8 15 8" />
+                  </svg>
+                  保存
+                </button>
+                <button class="btn-ghost warn platform-model-btn" id="platform-hermes-restore"
+ data-action="restorePlatform" data-arg="hermes" title="还原接管前的 config.yaml">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="1 4 1 10 7 10" />
+                    <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" />
+                  </svg>
+                  还原备份
+                </button>
+                </div>
+              </div>
+              <!-- 第二行：搜索 + 计数 + 工具按钮 -->
+              <div class="platform-model-bulk-row">
+                <label class="platform-model-search">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="11" cy="11" r="8"></circle>
+                    <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                  </svg>
+                  <input type="text" id="hermes-model-search" placeholder="搜索模型、供应商或地址"
+ data-action="onHermesModelSearch" data-events="input">
+                </label>
+                <span class="platform-model-count-pill" id="hermes-model-count">共 0 个</span>
+                <span class="platform-model-divider"></span>
+                <button class="btn-ghost accent platform-model-btn-icon"
+ title="导入" data-click-id="hermes-import-file">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                    <polyline points="17 8 12 3 7 8" />
+                    <line x1="12" y1="3" x2="12" y2="15" />
+                  </svg>
+                </button>
+                <input type="file" id="hermes-import-file" accept=".json" style="display:none;"
+ data-action="importHermesModels" data-events="change" data-pass-event>
+                <button class="btn-ghost accent platform-model-btn-icon"
+ title="导出" data-action="exportHermesModels">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                    <polyline points="7 10 12 15 17 10" />
+                    <line x1="12" y1="15" x2="12" y2="3" />
+                  </svg>
+                </button>
+                <button class="btn-ghost accent platform-model-btn-icon" data-json-toggle="hermes" aria-pressed="false"
+ title="JSON 编辑" data-action="toggleHermesJsonEditor">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="16 18 22 12 16 6" />
+                    <polyline points="8 6 2 12 8 18" />
+                  </svg>
+                </button>
+                <button class="btn-ghost accent platform-model-btn-icon"
+ title="刷新" data-action="loadHermesModels">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="23 4 23 10 17 10" />
+                    <polyline points="1 20 1 14 7 14" />
+                    <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+
+            <!-- 模型表格 -->
+            <div class="glass-card" style="overflow: hidden; margin-bottom: 20px;" id="hermes-drop-zone"
+              ondragover="hermesDragOver(event)" ondragleave="hermesDragLeave(event)" ondrop="hermesDrop(event)">
+              <div class="wb-model-empty" id="hermes-model-empty"
+                style="display:none; padding:40px 20px; text-align:center;">
+                <div class="wb-empty-icon">
+                  <svg viewBox="0 0 24 24">
+                    <rect x="3" y="3" width="18" height="18" rx="2" />
+                    <line x1="9" y1="9" x2="15" y2="9" />
+                    <line x1="9" y1="13" x2="15" y2="13" />
+                    <line x1="9" y1="17" x2="13" y2="17" />
+                  </svg>
+                </div>
+                <div class="wb-empty-title">尚未配置自定义模型</div>
+                <div class="wb-empty-subtitle">添加第一个模型，让 Hermes 使用你指定的 AI 供应商与模型能力。</div>
+                <button type="button" class="btn-primary wb-empty-action" data-action="openHermesAddModal">
+                  <svg viewBox="0 0 24 24">
+                    <line x1="12" y1="5" x2="12" y2="19" />
+                    <line x1="5" y1="12" x2="19" y2="12" />
+                  </svg>
+                  添加模型
+                </button>
+                <div class="wb-empty-steps">
+                  <span class="wb-empty-step"><span class="wb-empty-step-num">1</span> 选择供应商</span>
+                  <span class="wb-empty-step"><span class="wb-empty-step-num">2</span> 勾选模型</span>
+                  <span class="wb-empty-step"><span class="wb-empty-step-num">3</span> 保存配置</span>
+                  <span class="wb-empty-step"><span class="wb-empty-step-num">或</span> 拖入 JSON</span>
+                </div>
+              </div>
+              <table class="wb-model-table" id="hermes-model-table"
+                style="border: none; box-shadow: none; border-radius: 0;">
+                <colgroup>
+                  <col class="wb-col-select">
+                  <col class="wb-col-id">
+                  <col class="wb-col-vendor">
+                  <col class="wb-col-context">
+                  <col class="wb-col-caps">
+                  <col class="wb-col-action">
+                  <col class="wb-col-enabled">
+                </colgroup>
+                <thead>
+                  <tr>
+                    <th class="cb-select-head"><input type="checkbox" id="hermes-select-all" aria-label="选择当前列表"
+ title="选择当前列表" data-action="toggleCbModelSelectAll" data-events="change" data-args="[&quot;Hermes&quot;]" data-pass-checked></th>
+                    <th>模型 ID</th>
+                    <th>供应商</th>
+                    <th>上下文</th>
+                    <th>能力</th>
+                    <th>操作</th>
+                    <th>启用</th>
+                  </tr>
+                </thead>
+                <tbody id="hermes-model-tbody"></tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- JSON 编辑器视图 -->
+          <div id="hermes-json-view" class="glass-card" style="display:none; padding:20px;">
+            <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;">
+              <h2 style="font-size:14px; font-weight:700; margin:0;">JSON 编辑器</h2>
+              <div style="display:flex; gap:8px;">
+                <button class="btn-ghost accent" style="padding:4px 12px; font-size:12px;"
+ data-action="formatHermesJson">格式化</button>
+                <button class="btn-primary" style="padding:4px 12px; font-size:12px;"
+ data-action="applyHermesJson">应用</button>
+                <button class="btn-ghost secondary" style="padding:4px 12px; font-size:12px;"
+ data-action="toggleHermesJsonEditor">返回列表</button>
+              </div>
+            </div>
+            <div id="hermes-json-editor-wrap" class="wb-json-editor-wrap model-json-panel">
+              <textarea id="hermes-json-editor"
+                style="width:100%; min-height:400px; font-family:var(--font-mono); font-size:12px; line-height:1.6; padding:12px; border:1px solid var(--border-strong); border-radius:8px; background:var(--bg-glass); color:var(--text-primary); resize:vertical; tab-size:2;"
+                spellcheck="false"></textarea>
+              <div id="hermes-json-error" style="display:none; margin-top:6px; font-size:12px; color:var(--danger);"></div>
+            </div>
+          </div>
+
+          <p class="platform-hint" style="margin:0 4px;">
+            配置文件路径（<span id="hermes-config-scope-label">用户级</span>）：<code
+              id="hermes-config-path-label">~/.hermes/config.yaml</code><button type="button" class="platform-config-inline-link" data-action="openPlatformRealConfigModal" data-arg="hermes" title="查看并编辑配置文件原文"><span>查看配置</span><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg></button>，默认模型写入同一文件的 model 段。保存后自动备份原文件，其余配置与注释会保留。
+          </p>
+        </div>
+        <!-- ═══════ PAGE: PLATFORM · PI · 添加模型（独立页面） ═══════ -->
+        <div class="page" id="page-platform-hermes-add" role="tabpanel" aria-labelledby="tab-platforms">
+          <div class="platform-console-hero model-add-hero glass-card">
+            <div class="platform-console-titlebar">
+              <button class="btn-ghost platform-console-back" data-action="navigateTo" data-arg="platform-hermes">← 返回</button>
+              <div class="platform-console-titlewrap">
+                <strong>添加模型 · Hermes</strong>
+              </div>
+            </div>
+          </div>
+
+          <div class="wb-add-layout">
+            <aside class="wb-add-sidebar glass-card">
+              <div class="wb-add-search">
+                <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" fill="none" stroke-width="2"
+                  stroke-linecap="round" stroke-linejoin="round">
+                  <circle cx="11" cy="11" r="8" />
+                  <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                </svg>
+                <input type="text" id="hermes-add-search" placeholder="搜索供应商" data-action="onHermesAddSearch" data-events="input">
+                <div class="provider-sort-control platform-add-sort-control" id="hermesAddSortControl">
+                  <button type="button" class="provider-sort-trigger platform-add-sort-trigger" id="hermesAddSortTrigger"
+ aria-haspopup="listbox" aria-expanded="false"
+ aria-controls="hermesAddSortMenu" aria-label="供应商排序" title="供应商排序" data-action="toggleHermesAddSort" data-pass-event>
+                    <svg class="provider-sort-icon" width="14" height="14" viewBox="0 0 24 24" fill="none"
+                      stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"
+                      aria-hidden="true">
+                      <path d="M8 3v18"></path>
+                      <path d="m4 7 4-4 4 4"></path>
+                      <path d="M16 21V3"></path>
+                      <path d="m20 17-4 4-4-4"></path>
+                    </svg>
+                    <span id="hermesAddSortLabel">默认排序</span>
+                    <svg class="provider-sort-caret" width="13" height="13" viewBox="0 0 24 24" fill="none"
+                      stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"
+                      aria-hidden="true">
+                      <path d="m6 9 6 6 6-6"></path>
+                    </svg>
+                  </button>
+                  <div class="provider-sort-menu platform-add-sort-menu" id="hermesAddSortMenu" role="listbox"
+                    aria-label="供应商排序">
+                    <button type="button" class="provider-sort-option platform-add-sort-option" role="option"
+ data-sort-mode="default" data-action="chooseHermesAddSortMode" data-arg="default">默认排序</button>
+                    <button type="button" class="provider-sort-option platform-add-sort-option" role="option"
+ data-sort-mode="name-asc" data-action="chooseHermesAddSortMode" data-arg="name-asc">名称正序</button>
+                    <button type="button" class="provider-sort-option platform-add-sort-option" role="option"
+ data-sort-mode="name-desc" data-action="chooseHermesAddSortMode" data-arg="name-desc">名称反序</button>
+                  </div>
+                </div>
+              </div>
+              <div class="wb-add-provider-list" id="hermes-add-provider-list"></div>
+            </aside>
+
+            <section class="wb-add-main">
+              <div class="glass-card wb-add-models-card">
+                <div class="wb-add-models-head">
+                  <div>
+                    <div class="wb-add-models-title" id="hermes-add-models-title">请选择供应商</div>
+                    <div class="wb-add-models-sub" id="hermes-add-models-sub">左侧选择一个供应商，右侧将展示其可用模型</div>
+                  </div>
+                  <div style="display:flex; gap:8px;">
+                    <button class="btn-ghost accent" data-action="hermesAddSelectAll">全选</button>
+                    <button class="btn-ghost secondary" data-action="hermesAddSelectNone">全不选</button>
+                    <button class="btn-primary" id="hermes-add-confirm-page" disabled data-action="confirmAddHermesModelsPage">
+                      <svg viewBox="0 0 24 24"
+                        style="width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;">
+                        <path d="M20 6L9 17l-5-5" />
+                      </svg>
+                      <span class="model-action-label"> 保存选择</span>
+                    </button>
+                  </div>
+                </div>
+                <div class="wb-add-models-body" id="hermes-add-models-list-page">
+                  <div class="wb-add-models-empty">请从左侧选择一个供应商</div>
+                </div>
+              </div>
+
+              <div class="glass-card wb-add-caps-card">
+                <div class="wb-add-caps-title">能力</div>
+                <div class="wb-add-caps">
+                  <label class="wb-add-cap-chip">
+                    <input type="checkbox" id="hermes-add-page-images" checked>
+                    <span>图片</span>
+                  </label>
+                  <label class="wb-add-cap-chip">
+                    <input type="checkbox" id="hermes-add-page-tools" checked>
+                    <span>工具</span>
+                  </label>
+                  <label class="wb-add-cap-chip">
+                    <input type="checkbox" id="hermes-add-page-reasoning" checked>
+                    <span>推理</span>
+                  </label>
+                </div>
+              </div>
+
+            </section>
+          </div>
+        </div>
+        <!-- ═══════ PAGE: PLATFORM · PI ═══════ -->
+        <div class="page" id="page-platform-deepseek-harness" role="tabpanel" aria-labelledby="tab-platforms">
+          <div class="platform-console-hero glass-card">
+            <div class="platform-console-titlebar">
+              <div class="platform-console-icon"><img src="assets/icons/platform-deepseek-harness.svg" alt="Dsh"></div>
+              <div class="platform-console-titlewrap">
+                <strong>DeepSeek Harness</strong>
+                <span>DeepSeek 终端 Agent · 管理自定义渠道模型</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- 列表视图 -->
+          <div id="dsh-list-view">
+            <!-- 控制栏 -->
+            <div class="control-bar glass-card platform-model-toolbar">
+              <!-- 第一行：标题 + 操作按钮 -->
+              <div class="platform-model-toolbar-main">
+                <div class="platform-model-title-block">
+                  <h2>模型列表</h2>
+                  <span>管理 DeepSeek Harness 自定义渠道模型，保存后写入 settings.yaml 与 .credentials.yaml。</span>
+                </div>
+                <div class="platform-model-toolbar-actions">
+                <button class="btn-primary platform-model-btn" data-action="openDshAddModal">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="12" y1="5" x2="12" y2="19" />
+                    <line x1="5" y1="12" x2="19" y2="12" />
+                  </svg>
+                  添加模型
+                </button>
+                <button class="btn-ghost danger cb-bulk-delete-btn" id="dsh-delete-selected-btn"
+ disabled title="删除勾选的模型" data-action="deleteSelectedDshModels">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="3 6 5 6 21 6" />
+                    <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+                    <path d="M10 11v6M14 11v6" />
+                    <path d="M9 6V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2" />
+                  </svg>
+                  <span class="cb-bulk-delete-label">删除选中</span>
+                </button>
+                <button class="btn-ghost success platform-model-btn" data-action="saveDshModels">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
+                    <polyline points="17 21 17 13 7 13 7 21" />
+                    <polyline points="7 3 7 8 15 8" />
+                  </svg>
+                  保存
+                </button>
+                <button class="btn-ghost warn platform-model-btn" id="platform-deepseek-harness-restore"
+ data-action="restorePlatform" data-arg="deepseek-harness" title="还原接管前的 settings.yaml 与 .credentials.yaml">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="1 4 1 10 7 10" />
+                    <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" />
+                  </svg>
+                  还原备份
+                </button>
+                </div>
+              </div>
+              <!-- 第二行：搜索 + 计数 + 工具按钮 -->
+              <div class="platform-model-bulk-row">
+                <label class="platform-model-search">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="11" cy="11" r="8"></circle>
+                    <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                  </svg>
+                  <input type="text" id="dsh-model-search" placeholder="搜索模型、供应商或地址"
+ data-action="onDshModelSearch" data-events="input">
+                </label>
+                <span class="platform-model-count-pill" id="dsh-model-count">共 0 个</span>
+                <span class="platform-model-divider"></span>
+                <button class="btn-ghost accent platform-model-btn-icon"
+ title="导入" data-click-id="dsh-import-file">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                    <polyline points="17 8 12 3 7 8" />
+                    <line x1="12" y1="3" x2="12" y2="15" />
+                  </svg>
+                </button>
+                <input type="file" id="dsh-import-file" accept=".json" style="display:none;"
+ data-action="importDshModels" data-events="change" data-pass-event>
+                <button class="btn-ghost accent platform-model-btn-icon"
+ title="导出" data-action="exportDshModels">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                    <polyline points="7 10 12 15 17 10" />
+                    <line x1="12" y1="15" x2="12" y2="3" />
+                  </svg>
+                </button>
+                <button class="btn-ghost accent platform-model-btn-icon" data-json-toggle="dsh" aria-pressed="false"
+ title="JSON 编辑" data-action="toggleDshJsonEditor">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="16 18 22 12 16 6" />
+                    <polyline points="8 6 2 12 8 18" />
+                  </svg>
+                </button>
+                <button class="btn-ghost accent platform-model-btn-icon"
+ title="刷新" data-action="loadDshModels">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="23 4 23 10 17 10" />
+                    <polyline points="1 20 1 14 7 14" />
+                    <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+
+            <!-- 模型表格 -->
+            <div class="glass-card" style="overflow: hidden; margin-bottom: 20px;" id="dsh-drop-zone"
+              ondragover="dshDragOver(event)" ondragleave="dshDragLeave(event)" ondrop="dshDrop(event)">
+              <div class="wb-model-empty" id="dsh-model-empty"
+                style="display:none; padding:40px 20px; text-align:center;">
+                <div class="wb-empty-icon">
+                  <svg viewBox="0 0 24 24">
+                    <rect x="3" y="3" width="18" height="18" rx="2" />
+                    <line x1="9" y1="9" x2="15" y2="9" />
+                    <line x1="9" y1="13" x2="15" y2="13" />
+                    <line x1="9" y1="17" x2="13" y2="17" />
+                  </svg>
+                </div>
+                <div class="wb-empty-title">尚未配置自定义模型</div>
+                <div class="wb-empty-subtitle">添加第一个模型，让 Dsh 使用你指定的 AI 供应商与模型能力。</div>
+                <button type="button" class="btn-primary wb-empty-action" data-action="openDshAddModal">
+                  <svg viewBox="0 0 24 24">
+                    <line x1="12" y1="5" x2="12" y2="19" />
+                    <line x1="5" y1="12" x2="19" y2="12" />
+                  </svg>
+                  添加模型
+                </button>
+                <div class="wb-empty-steps">
+                  <span class="wb-empty-step"><span class="wb-empty-step-num">1</span> 选择供应商</span>
+                  <span class="wb-empty-step"><span class="wb-empty-step-num">2</span> 勾选模型</span>
+                  <span class="wb-empty-step"><span class="wb-empty-step-num">3</span> 保存配置</span>
+                  <span class="wb-empty-step"><span class="wb-empty-step-num">或</span> 拖入 JSON</span>
+                </div>
+              </div>
+              <table class="wb-model-table" id="dsh-model-table"
+                style="border: none; box-shadow: none; border-radius: 0;">
+                <colgroup>
+                  <col class="wb-col-select">
+                  <col class="wb-col-id">
+                  <col class="wb-col-vendor">
+                  <col class="wb-col-context">
+                  <col class="wb-col-caps">
+                  <col class="wb-col-action">
+                  <col class="wb-col-enabled">
+                </colgroup>
+                <thead>
+                  <tr>
+                    <th class="cb-select-head"><input type="checkbox" id="dsh-select-all" aria-label="选择当前列表"
+ title="选择当前列表" data-action="toggleCbModelSelectAll" data-events="change" data-args="[&quot;Dsh&quot;]" data-pass-checked></th>
+                    <th>模型 ID</th>
+                    <th>供应商</th>
+                    <th>上下文</th>
+                    <th>能力</th>
+                    <th>操作</th>
+                    <th>启用</th>
+                  </tr>
+                </thead>
+                <tbody id="dsh-model-tbody"></tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- JSON 编辑器视图 -->
+          <div id="dsh-json-view" class="glass-card" style="display:none; padding:20px;">
+            <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;">
+              <h2 style="font-size:14px; font-weight:700; margin:0;">JSON 编辑器</h2>
+              <div style="display:flex; gap:8px;">
+                <button class="btn-ghost accent" style="padding:4px 12px; font-size:12px;"
+ data-action="formatDshJson">格式化</button>
+                <button class="btn-primary" style="padding:4px 12px; font-size:12px;"
+ data-action="applyDshJson">应用</button>
+                <button class="btn-ghost secondary" style="padding:4px 12px; font-size:12px;"
+ data-action="toggleDshJsonEditor">返回列表</button>
+              </div>
+            </div>
+            <div id="dsh-json-editor-wrap" class="wb-json-editor-wrap model-json-panel">
+              <textarea id="dsh-json-editor"
+                style="width:100%; min-height:400px; font-family:var(--font-mono); font-size:12px; line-height:1.6; padding:12px; border:1px solid var(--border-strong); border-radius:8px; background:var(--bg-glass); color:var(--text-primary); resize:vertical; tab-size:2;"
+                spellcheck="false"></textarea>
+              <div id="dsh-json-error" style="display:none; margin-top:6px; font-size:12px; color:var(--danger);"></div>
+            </div>
+          </div>
+
+          <p class="platform-hint" style="margin:0 4px;">
+            配置文件路径（<span id="dsh-config-scope-label">用户级</span>）：<code
+              id="dsh-config-path-label">~/.dsh/settings.yaml</code><button type="button" class="platform-config-inline-link" data-action="openPlatformRealConfigModal" data-arg="deepseek-harness" title="查看并编辑配置文件原文"><span>查看配置</span><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg></button>，密钥写入 <code>~/.dsh/.credentials.yaml</code>。保存后自动备份原文件，其余配置会保留。
+          </p>
+        </div>
+        <!-- ═══════ PAGE: PLATFORM · PI · 添加模型（独立页面） ═══════ -->
+        <div class="page" id="page-platform-deepseek-harness-add" role="tabpanel" aria-labelledby="tab-platforms">
+          <div class="platform-console-hero model-add-hero glass-card">
+            <div class="platform-console-titlebar">
+              <button class="btn-ghost platform-console-back" data-action="navigateTo" data-arg="platform-deepseek-harness">← 返回</button>
+              <div class="platform-console-titlewrap">
+                <strong>添加模型 · Dsh</strong>
+              </div>
+            </div>
+          </div>
+
+          <div class="wb-add-layout">
+            <aside class="wb-add-sidebar glass-card">
+              <div class="wb-add-search">
+                <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" fill="none" stroke-width="2"
+                  stroke-linecap="round" stroke-linejoin="round">
+                  <circle cx="11" cy="11" r="8" />
+                  <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                </svg>
+                <input type="text" id="dsh-add-search" placeholder="搜索供应商" data-action="onDshAddSearch" data-events="input">
+                <div class="provider-sort-control platform-add-sort-control" id="dshAddSortControl">
+                  <button type="button" class="provider-sort-trigger platform-add-sort-trigger" id="dshAddSortTrigger"
+ aria-haspopup="listbox" aria-expanded="false"
+ aria-controls="dshAddSortMenu" aria-label="供应商排序" title="供应商排序" data-action="toggleDshAddSort" data-pass-event>
+                    <svg class="provider-sort-icon" width="14" height="14" viewBox="0 0 24 24" fill="none"
+                      stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"
+                      aria-hidden="true">
+                      <path d="M8 3v18"></path>
+                      <path d="m4 7 4-4 4 4"></path>
+                      <path d="M16 21V3"></path>
+                      <path d="m20 17-4 4-4-4"></path>
+                    </svg>
+                    <span id="dshAddSortLabel">默认排序</span>
+                    <svg class="provider-sort-caret" width="13" height="13" viewBox="0 0 24 24" fill="none"
+                      stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"
+                      aria-hidden="true">
+                      <path d="m6 9 6 6 6-6"></path>
+                    </svg>
+                  </button>
+                  <div class="provider-sort-menu platform-add-sort-menu" id="dshAddSortMenu" role="listbox"
+                    aria-label="供应商排序">
+                    <button type="button" class="provider-sort-option platform-add-sort-option" role="option"
+ data-sort-mode="default" data-action="chooseDshAddSortMode" data-arg="default">默认排序</button>
+                    <button type="button" class="provider-sort-option platform-add-sort-option" role="option"
+ data-sort-mode="name-asc" data-action="chooseDshAddSortMode" data-arg="name-asc">名称正序</button>
+                    <button type="button" class="provider-sort-option platform-add-sort-option" role="option"
+ data-sort-mode="name-desc" data-action="chooseDshAddSortMode" data-arg="name-desc">名称反序</button>
+                  </div>
+                </div>
+              </div>
+              <div class="wb-add-provider-list" id="dsh-add-provider-list"></div>
+            </aside>
+
+            <section class="wb-add-main">
+              <div class="glass-card wb-add-models-card">
+                <div class="wb-add-models-head">
+                  <div>
+                    <div class="wb-add-models-title" id="dsh-add-models-title">请选择供应商</div>
+                    <div class="wb-add-models-sub" id="dsh-add-models-sub">左侧选择一个供应商，右侧将展示其可用模型</div>
+                  </div>
+                  <div style="display:flex; gap:8px;">
+                    <button class="btn-ghost accent" data-action="dshAddSelectAll">全选</button>
+                    <button class="btn-ghost secondary" data-action="dshAddSelectNone">全不选</button>
+                    <button class="btn-primary" id="dsh-add-confirm-page" disabled data-action="confirmAddDshModelsPage">
+                      <svg viewBox="0 0 24 24"
+                        style="width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;">
+                        <path d="M20 6L9 17l-5-5" />
+                      </svg>
+                      <span class="model-action-label"> 保存选择</span>
+                    </button>
+                  </div>
+                </div>
+                <div class="wb-add-models-body" id="dsh-add-models-list-page">
+                  <div class="wb-add-models-empty">请从左侧选择一个供应商</div>
+                </div>
+              </div>
+
+              <div class="glass-card wb-add-caps-card">
+                <div class="wb-add-caps-title">能力</div>
+                <div class="wb-add-caps">
+                  <label class="wb-add-cap-chip">
+                    <input type="checkbox" id="dsh-add-page-images" checked>
+                    <span>图片</span>
+                  </label>
+                  <label class="wb-add-cap-chip">
+                    <input type="checkbox" id="dsh-add-page-tools" checked>
+                    <span>工具</span>
+                  </label>
+                  <label class="wb-add-cap-chip">
+                    <input type="checkbox" id="dsh-add-page-reasoning" checked>
+                    <span>推理</span>
+                  </label>
+                </div>
+              </div>
+
             </section>
           </div>
         </div>

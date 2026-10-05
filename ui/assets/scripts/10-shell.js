@@ -31,7 +31,13 @@ globalThis.PLATFORM_SHELL_PAGES = new Set([
   'platform-workbuddy',
   'platform-workbuddy-add',
   'platform-grok',
-  'platform-grok-add'
+  'platform-grok-add',
+  'platform-pi',
+  'platform-pi-add',
+  'platform-hermes',
+  'platform-hermes-add',
+  'platform-deepseek-harness',
+  'platform-deepseek-harness-add'
 ]);
 
 function normalizePlatformSection(section) {
@@ -147,7 +153,13 @@ function navigateTo(pageId) {
     'platform-workbuddy': 'models',
     'platform-workbuddy-add': 'models',
     'platform-grok': 'models',
-    'platform-grok-add': 'models'
+    'platform-grok-add': 'models',
+    'platform-pi': 'models',
+    'platform-pi-add': 'models',
+    'platform-hermes': 'models',
+    'platform-hermes-add': 'models',
+    'platform-deepseek-harness': 'models',
+    'platform-deepseek-harness-add': 'models'
   };
   const activeTabPageId = pageId === 'platform-proxy' && activePlatformSection === 'settings'
     ? 'models'
@@ -641,7 +653,13 @@ function syncPlatformRailForPage(pageId) {
     'platform-workbuddy': 'workbuddy',
     'platform-workbuddy-add': 'workbuddy',
     'platform-grok': 'grok',
-    'platform-grok-add': 'grok'
+    'platform-grok-add': 'grok',
+    'platform-pi': 'pi',
+    'platform-pi-add': 'pi',
+    'platform-hermes': 'hermes',
+    'platform-hermes-add': 'hermes',
+    'platform-deepseek-harness': 'deepseek-harness',
+    'platform-deepseek-harness-add': 'deepseek-harness'
   };
   if (pageToPlatform[pageId]) {
     setPlatformRailActive(pageToPlatform[pageId]);
@@ -688,7 +706,10 @@ globalThis.DEFAULT_PLATFORM_RAIL_ORDER = [
   'workbuddy',
   'grok',
   'zcode',
-  'opencode'
+  'opencode',
+  'pi',
+  'hermes',
+  'deepseek-harness'
 ];
 
 function getPlatformRailElement() {
@@ -739,6 +760,16 @@ function readPlatformRailOrder() {
       if (agIdx !== -1 && ideIdx !== -1 && ideIdx !== agIdx + 1) {
         filtered.splice(ideIdx, 1);
         filtered.splice(agIdx + 1, 0, 'antigravity-ide');
+        writePlatformRailOrder(filtered);
+      }
+    }
+    if (!filtered.includes('pi')) {
+      filtered.push('pi');
+      writePlatformRailOrder(filtered);
+    }
+    for (const platformId of ['hermes', 'deepseek-harness']) {
+      if (!filtered.includes(platformId)) {
+        filtered.push(platformId);
         writePlatformRailOrder(filtered);
       }
     }

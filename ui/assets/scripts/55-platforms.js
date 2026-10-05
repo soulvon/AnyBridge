@@ -109,6 +109,41 @@ globalThis.PLATFORM_DEFS = {
     summary: '写入 models.json 自定义模型，使用完整 Chat Completions 端点',
     note: '会设置 useCustomProtocol=true，避免 WorkBuddy 额外拼接路径。',
   },
+  hermes: {
+    id: 'hermes',
+    name: 'Hermes',
+    vendor: 'Nous Research',
+    requiredApiFormat: 'openai',
+    configHint: '~/.hermes/config.yaml',
+    summary: '按供应商分组写入 custom_providers（name=供应商名，模型收敛进 models），并把首条启用模型设为默认模型',
+    note: '受管条目通过本地状态快照识别（旧 anybridge- 前缀条目自动迁移），原有配置与注释会保留；Windows 上读取 %LOCALAPPDATA%\\hermes。',
+  },
+  'deepseek-harness': {
+    id: 'deepseek-harness',
+    name: 'DeepSeek Harness',
+    vendor: 'DeepSeek',
+    requiredApiFormat: 'openai',
+    configHint: '~/.dsh/settings.yaml',
+    summary: '按供应商分组写入 llm-pi-ai.providers（displayName=供应商名，模型按 ID 展示），密钥存入 .credentials.yaml',
+    note: '只维护 anybridge- 前缀条目，用户手写的 provider 与凭据记录会保留。',
+  },
+  pi: {
+    id: 'pi',
+    name: 'Pi',
+    vendor: 'Earendil Works',
+    requiredApiFormat: 'openai',
+    configHint: '~/.pi/agent/models.json',
+    summary: '以 providers 写入自定义渠道模型，并把首条启用模型设为默认模型',
+    note: 'AnyBridge 只管理 anybridge- 前缀的条目，原有 provider（如 local）与其它设置会保留。',
+  },
+};
+
+/// 受管模型表格平台：表格前缀 -> Rust 平台 id。
+/// Pi / Hermes / DeepSeek Harness 共用同一套表格交互，差异只在读写命令与配置文件格式。
+globalThis.MANAGED_MODEL_PLATFORM_IDS = {
+  Pi: 'pi',
+  Hermes: 'hermes',
+  Dsh: 'deepseek-harness',
 };
 
 function platformEsc(s) {
@@ -1129,6 +1164,9 @@ async function openPlatformRealConfigModal(platform = 'codex') {
     'claude-code': { title: '配置文件实际内容 · settings.json', file: '~/.claude/settings.json' },
     'opencode': { title: '配置文件实际内容 · opencode.json', file: '~/.config/opencode/opencode.json' },
     'grok': { title: '配置文件实际内容 · config.toml', file: '~/.grok/config.toml' },
+    'pi': { title: '配置文件实际内容 · models.json', file: '~/.pi/agent/models.json' },
+    'hermes': { title: '配置文件实际内容 · config.yaml', file: '~/.hermes/config.yaml' },
+    'deepseek-harness': { title: '配置文件实际内容 · settings.yaml', file: '~/.dsh/settings.yaml' },
     'claude-desktop': { title: '配置文件实际内容 · claude_desktop_config.json', file: 'Claude-3p/claude_desktop_config.json' }
   };
 
@@ -9205,6 +9243,12 @@ function openPlatformPage(platformId) {
     loadWbModels();
   } else if (platformId === 'zcode') {
     loadZcModels();
+  } else if (platformId === 'pi') {
+    loadPiModels();
+  } else if (platformId === 'hermes') {
+    loadHermesModels();
+  } else if (platformId === 'deepseek-harness') {
+    loadDshModels();
   } else if (platformId === 'grok') {
     renderGrokPageStatus(platformInfoOf('grok') || {});
   } else if (platformId === 'claude-desktop') {
@@ -9749,7 +9793,13 @@ async function restorePlatform(platformId) {
     hideSwitchProgress();
     setPlatformBusy(platformId, false);
     if (platformId === 'codex' || platformId === 'opencode' || platformId === 'grok') renderPlatformDetailStatuses();
-    else onPlatformProviderChange(platformId);
+    else {
+      const managedPrefix = Object.keys(MANAGED_MODEL_PLATFORM_IDS).find(
+        (prefix) => MANAGED_MODEL_PLATFORM_IDS[prefix] === platformId,
+      );
+      if (managedPrefix) globalThis[`load${managedPrefix}Models`]();
+      else onPlatformProviderChange(platformId);
+    }
   }
 }
 
@@ -9759,6 +9809,9 @@ async function restorePlatform(platformId) {
 globalThis.cbRowFactory = createCbRowFactory('Cb');
 globalThis.wbRowFactory = createCbRowFactory('Wb');
 globalThis.zcRowFactory = createCbRowFactory('Zc');
+globalThis.piRowFactory = createCbRowFactory('Pi');
+globalThis.hermesRowFactory = createCbRowFactory('Hermes');
+globalThis.dshRowFactory = createCbRowFactory('Dsh');
 
 globalThis.cbModels = [];
 globalThis.cbAvailableModels = [];
@@ -9791,7 +9844,7 @@ globalThis.PLATFORM_ADD_PROVIDER_SORT_LABELS = {
   'name-asc': '名称正序',
   'name-desc': '名称反序',
 };
-globalThis.PLATFORM_ADD_SORT_PREFIXES = ['cb', 'wb', 'zc', 'grok', 'opencode', 'codex', 'claude', 'cursor', 'claudeDesktop', 'antigravity'];
+globalThis.PLATFORM_ADD_SORT_PREFIXES = ['cb', 'wb', 'zc', 'pi', 'hermes', 'dsh', 'grok', 'opencode', 'codex', 'claude', 'cursor', 'claudeDesktop', 'antigravity'];
 globalThis.platformAddProviderSortMode = (() => {
   try {
     return normalizePlatformAddProviderSortMode(localStorage.getItem(PLATFORM_ADD_PROVIDER_SORT_STORAGE_KEY));
@@ -9803,6 +9856,9 @@ globalThis.cbSelectedModelIds = {
   Cb: new Set(),
   Wb: new Set(),
   Zc: new Set(),
+  Pi: new Set(),
+  Hermes: new Set(),
+  Dsh: new Set(),
 };
 
 function normalizePlatformAddProviderSortMode(mode) {
@@ -10005,6 +10061,8 @@ function toggleWbAddSort(event) { togglePlatformAddSortMenu('wb', event); }
 function chooseWbAddSortMode(mode) { choosePlatformAddSortMode('wb', mode); }
 function toggleZcAddSort(event) { togglePlatformAddSortMenu('zc', event); }
 function chooseZcAddSortMode(mode) { choosePlatformAddSortMode('zc', mode); }
+function togglePiAddSort(event) { togglePlatformAddSortMenu('pi', event); }
+function choosePiAddSortMode(mode) { choosePlatformAddSortMode('pi', mode); }
 function toggleGrokAddSort(event) { togglePlatformAddSortMenu('grok', event); }
 function chooseGrokAddSortMode(mode) { choosePlatformAddSortMode('grok', mode); }
 function toggleOpenCodeAddSort(event) { togglePlatformAddSortMenu('opencode', event); }
@@ -10601,6 +10659,19 @@ function cbCapabilityPill(cls, type, label) {
 function cbEditModelsRef(prefix) {
   if (prefix === 'Cb') return { models: cbModels, available: () => cbAvailableModels, render: renderCodeBuddyModels, replace: (oldId, id) => { cbAvailableModels = cbReplaceAvailableModel(cbAvailableModels, oldId, id); }, platform: CB_PLATFORM };
   if (prefix === 'Zc') return { models: zcModels, available: () => zcAvailableModels, render: renderZcModels, replace: (oldId, id) => { zcAvailableModels = cbReplaceAvailableModel(zcAvailableModels, oldId, id); }, platform: ZC_PLATFORM };
+  if (MANAGED_MODEL_PLATFORM_IDS[prefix]) {
+    const id = prefix.toLowerCase();
+    return {
+      models: globalThis[`${id}Models`],
+      available: () => globalThis[`${id}AvailableModels`],
+      render: globalThis[`render${prefix}Models`],
+      replace: (oldId, newId) => {
+        globalThis[`${id}AvailableModels`] =
+          cbReplaceAvailableModel(globalThis[`${id}AvailableModels`], oldId, newId);
+      },
+      platform: MANAGED_MODEL_PLATFORM_IDS[prefix],
+    };
+  }
   return { models: wbModels, available: () => wbAvailableModels, render: renderWbModels, replace: (oldId, id) => { wbAvailableModels = cbReplaceAvailableModel(wbAvailableModels, oldId, id); }, platform: WB_PLATFORM };
 }
 
@@ -10688,9 +10759,11 @@ function openCbEditModal(prefix, index) {
   if (!modal) return;
 
   // Buddy 平台：编辑框展示 name（展示名），vendor 固定为 user 写入时再处理。
-  // ZCode：保留 vendor/name 合并编辑。
+  // ZCode：保留 vendor/name 合并编辑。Pi：name 即展示名，vendor 仅用于表格分组展示。
   const isBuddyEdit = prefix === 'Cb' || prefix === 'Wb';
-  const vendorOrName = isBuddyEdit
+  // 受管平台（Pi / Hermes / Dsh）的供应商字段同样是「展示名」语义
+  const isDisplayNameEdit = isBuddyEdit || !!MANAGED_MODEL_PLATFORM_IDS[prefix];
+  const vendorOrName = isDisplayNameEdit
     ? (model.name || model.id || '')
     : (model.vendor || model.name || '');
   platformSetValue('cb-edit-id', model.id || '');
@@ -10778,19 +10851,18 @@ function openCbEditModal(prefix, index) {
   // 标题展示平台名
   const titleEl = document.getElementById('cb-edit-modal-title');
   if (titleEl) {
-    const platformLabel = prefix === 'Cb' ? 'CodeBuddy'      : prefix === 'Zc' ? 'ZCode'
-      : 'WorkBuddy';
+    const platformLabel = PLATFORM_DEFS[ref.platform]?.name || prefix;
     titleEl.textContent = `编辑模型 · ${platformLabel}`;
   }
   const vendorLabel = document.querySelector('label[for="cb-edit-vendor"]');
   const vendorInput = document.getElementById('cb-edit-vendor');
   if (vendorLabel) {
-    vendorLabel.innerHTML = isBuddyEdit
+    vendorLabel.innerHTML = isDisplayNameEdit
       ? '展示名 <span style="color:var(--danger);">*</span>'
       : '供应商 <span style="color:var(--danger);">*</span>';
   }
   if (vendorInput) {
-    vendorInput.placeholder = isBuddyEdit
+    vendorInput.placeholder = isDisplayNameEdit
       ? '供应商展示名，如 CPA / OpenAI'
       : '模型供应商，如 OpenAI / Google / 黑与白';
   }
@@ -10804,7 +10876,9 @@ function openCbEditModal(prefix, index) {
   if (urlInput) {
     urlInput.placeholder = prefix === 'Zc'
       ? 'OpenAI 兼容基础地址，如 https://api.example.com/v1'
-      : 'API 端点完整路径，必须以 /chat/completions 结尾';
+      : prefix === 'Pi'
+        ? 'OpenAI 兼容端点完整路径，如 https://api.example.com/v1/chat/completions'
+        : 'API 端点完整路径，必须以 /chat/completions 结尾';
   }
 
   modal.classList.add('active');
@@ -10862,7 +10936,7 @@ async function saveCbEditFromModal() {
   // 必填校验
   const missing = [];
   if (!id) missing.push('模型 ID');
-  if (!displayName) missing.push(isBuddyEdit ? '展示名' : '供应商');
+  if (!displayName) missing.push(isBuddyEdit || prefix === 'Pi' ? '展示名' : '供应商');
   if (!url) missing.push('接口地址');
   if (!apiKey) missing.push('API 密钥');
   if (missing.length) {
@@ -10967,6 +11041,9 @@ async function saveCbEditFromModal() {
 function cbModelsByClass(cls) {
   if (cls === 'cb') return cbModels;
   if (cls === 'zc') return zcModels;
+  if (MANAGED_MODEL_PLATFORM_IDS[cls.charAt(0).toUpperCase() + cls.slice(1)]) {
+    return globalThis[`${cls}Models`];
+  }
   return wbModels;
 }
 
@@ -11062,6 +11139,18 @@ function cbModelListRef(prefix) {
       setAvailable: (available) => { zcAvailableModels = available; },
       render: renderZcModels,
       save: saveZcModels,
+    };
+  }
+  if (MANAGED_MODEL_PLATFORM_IDS[prefix]) {
+    const id = prefix.toLowerCase();
+    return {
+      domPrefix: id,
+      getModels: () => globalThis[`${id}Models`],
+      setModels: (models) => { globalThis[`${id}Models`] = models; },
+      getAvailable: () => globalThis[`${id}AvailableModels`],
+      setAvailable: (available) => { globalThis[`${id}AvailableModels`] = available; },
+      render: globalThis[`render${prefix}Models`],
+      save: globalThis[`save${prefix}Models`],
     };
   }
   return {
@@ -11511,7 +11600,7 @@ function confirmAddCodeBuddyModels() { openCodeBuddyAddModal(); }
 
 function createCbRowFactory(prefix) {
   const id = prefix.toLowerCase();
-  const cls = prefix === 'Zc' ? 'wb' : id;
+  const cls = prefix === 'Zc' || prefix === 'Pi' ? 'wb' : id;
   const dataAttr = `data-${id}-index`;
   const esc = platformEsc;
   const maskKey = (k) => {
@@ -11520,20 +11609,11 @@ function createCbRowFactory(prefix) {
     return k.slice(0, 6) + '***' + k.slice(-4);
   };
 
-  const getEditingIndex = () => {
-    if (prefix === 'Cb') return cbEditingIndex;
-    if (prefix === 'Zc') return zcEditingIndex;
-    return wbEditingIndex;
-  };
-  const setEditingIndex = (v) => {
-    if (prefix === 'Cb') cbEditingIndex = v;
-    else if (prefix === 'Zc') zcEditingIndex = v;
-    else wbEditingIndex = v;
-  };
-  const editFn = prefix === 'Cb' ? 'editCbModel'    : prefix === 'Zc' ? 'editZcModel'
-    : 'editWbModel';
-  const deleteFn = prefix === 'Cb' ? 'deleteCbModel'    : prefix === 'Zc' ? 'deleteZcModel'
-    : 'deleteWbModel';
+  // Pi / Hermes / Dsh 等受管平台的状态与函数按 dom 前缀统一命名，避免逐个分支
+  const getEditingIndex = () => globalThis[`${id}EditingIndex`];
+  const setEditingIndex = (v) => { globalThis[`${id}EditingIndex`] = v; };
+  const editFn = `edit${prefix}Model`;
+  const deleteFn = `delete${prefix}Model`;
 
   return function modelRow(model, index) {
     // Buddy 固定 vendor=user，列表展示优先 name/id，避免全部显示成 "user"。
@@ -11547,8 +11627,7 @@ function createCbRowFactory(prefix) {
     if (model.supportsReasoning) caps.push(cbCapabilityPill(cls, 'reason', '推理'));
 
     const enabled = model.enabled !== false;
-    const toggleFn = prefix === 'Cb' ? 'toggleCbModelEnabled'      : prefix === 'Zc' ? 'toggleZcModelEnabled'
-      : 'toggleWbModelEnabled';
+    const toggleFn = `toggle${prefix}ModelEnabled`;
     const contextTokens = model.maxInputTokens != null ? model.maxInputTokens : null;
     const contextLabel = cbFormatContextTokens(contextTokens);
     const contextTitle = contextTokens != null && Number.isFinite(Number(contextTokens))
@@ -11608,6 +11687,9 @@ function createCbRowFactory(prefix) {
     if (platformId === 'codebuddy') loadCodeBuddyModels();
     else if (platformId === 'workbuddy') loadWbModels();
     else if (platformId === 'zcode') loadZcModels();
+    else if (platformId === 'pi') loadPiModels();
+    else if (platformId === 'hermes') loadHermesModels();
+    else if (platformId === 'deepseek-harness') loadDshModels();
     else if (platformId === 'antigravity') {
       antigravityRefreshConsole({ silent: true });
       antigravityRenderTableRows();
@@ -11953,6 +12035,358 @@ createCbIoHandlers(
   renderZcModels, saveZcModels, loadZcModels,
   'ZCode'
 );
+
+// ═══════ 受管模型表格平台（Pi / Hermes / DeepSeek Harness）═══════
+//
+// 三个平台的配置文件格式各不相同（Pi 写 models.json 的 providers，Hermes 写 config.yaml 的
+// custom_providers，DeepSeek Harness 写 settings.yaml + .credentials.yaml），但界面交互完全
+// 一致：加载 → 表格编辑 → 保存 → 添加页。差异只在读写命令与文案，因此共用这一份实现，
+// 按前缀生成各平台的全局状态与函数。
+
+function createManagedModelsPlatform({
+  prefix, // 表格前缀：'Pi' | 'Hermes' | 'Dsh'
+  domPrefix, // DOM id 与全局状态前缀：'pi' | 'hermes' | 'dsh'
+  loadCommand, // 后端读取命令
+  saveCommand, // 后端保存命令
+  fallbackPath, // 配置文件展示路径
+}) {
+  const modelsKey = `${domPrefix}Models`;
+  const availableKey = `${domPrefix}AvailableModels`;
+  const providerModelsKey = `${domPrefix}ProviderModels`;
+  const editingKey = `${domPrefix}EditingIndex`;
+  const addSelectedKey = `${domPrefix}AddSelectedProvider`;
+  const addSearchKey = `${domPrefix}AddSearchKw`;
+  const scopeKey = `${domPrefix}ConfigScope`;
+  const rowFactory = globalThis[`${domPrefix}RowFactory`];
+  const checkClass = `.${domPrefix}-add-model-check`;
+  const platformId = MANAGED_MODEL_PLATFORM_IDS[prefix];
+  const label = PLATFORM_DEFS[platformId]?.name || prefix;
+
+  globalThis[modelsKey] = [];
+  globalThis[availableKey] = [];
+  globalThis[scopeKey] = 'user';
+  globalThis[providerModelsKey] = [];
+  globalThis[editingKey] = -1;
+  globalThis[addSelectedKey] = null;
+  globalThis[addSearchKey] = '';
+
+  const define = (name, fn) => {
+    globalThis[name] = fn;
+    window[name] = fn;
+  };
+
+  define(`${domPrefix}ModelRow`, (model, index) => rowFactory(model, index));
+
+  define(`load${prefix}Models`, async () => {
+    if (!invoke) return;
+    try {
+      const data = await invoke(loadCommand);
+      const rawModels = Array.isArray(data.models) ? data.models : [];
+      globalThis[modelsKey] = cbNormalizeModelsContext(rawModels);
+      globalThis[availableKey] = Array.isArray(data.availableModels) ? data.availableModels : [];
+      const meta = cbApplyConfigMeta(domPrefix, data, fallbackPath);
+      globalThis[scopeKey] = meta.scope;
+      globalThis[`render${prefix}Models`]();
+      if (typeof addLog === 'function') addLog('ok', `${label} 模型列表已加载`);
+    } catch (e) {
+      if (typeof addLog === 'function') addLog('err', `加载 ${label} 模型失败: ${e}`);
+      showCustomAlert(String(e), '加载失败', 'error');
+    }
+  });
+
+  define(`render${prefix}Models`, () => {
+    const tbody = document.getElementById(`${domPrefix}-model-tbody`);
+    const empty = document.getElementById(`${domPrefix}-model-empty`);
+    const table = document.getElementById(`${domPrefix}-model-table`);
+    if (!tbody) return;
+    const models = globalThis[modelsKey];
+    cbUpdateConsoleStats(domPrefix, models);
+
+    if (!models.length) {
+      tbody.innerHTML = '';
+      if (empty) empty.style.display = '';
+      if (table) table.style.display = 'none';
+      cbSyncSelectionState(prefix);
+      return;
+    }
+
+    const entries = cbFilteredModelEntries(models, domPrefix);
+    if (empty) empty.style.display = 'none';
+    if (table) table.style.display = 'table';
+    tbody.innerHTML = entries.length
+      ? entries
+        .map(({ model, index }) => globalThis[`${domPrefix}ModelRow`](model, index))
+        .join('')
+      : cbNoResultRow(domPrefix);
+    cbSyncSelectionState(prefix);
+  });
+
+  define(`edit${prefix}Model`, (index) => openCbEditModal(prefix, index));
+  define(`cancel${prefix}Edit`, () => closeCbEditModal());
+  define(`save${prefix}Edit`, (index) => saveCbEditFromModal(index));
+  define(`delete${prefix}Model`, (index) => cbDeleteModelByIndex(prefix, index));
+  define(`deleteSelected${prefix}Models`, () => cbDeleteSelectedModels(prefix));
+  define(`on${prefix}ModelSearch`, () => globalThis[`render${prefix}Models`]());
+
+  define(`toggle${prefix}ModelEnabled`, async (index, checked) => {
+    const model = globalThis[modelsKey][index];
+    if (!model) return;
+    const previous = model.enabled !== false;
+    model.enabled = checked;
+    globalThis[`render${prefix}Models`]();
+    const saved = await globalThis[`save${prefix}Models`]({ silent: true });
+    if (!saved) {
+      model.enabled = previous;
+      globalThis[`render${prefix}Models`]();
+    }
+  });
+
+  define(`save${prefix}Models`, async (options = {}) => {
+    if (!invoke) {
+      const error = new Error('当前环境缺少 Tauri invoke，无法保存配置');
+      if (!options.silent) showCustomAlert(error.message, '保存失败', 'error');
+      if (options.throwOnError) throw error;
+      return false;
+    }
+    try {
+      globalThis[modelsKey] = cbNormalizeModelsContext(globalThis[modelsKey]);
+      globalThis[availableKey] =
+        cbMergeAvailableModels(globalThis[availableKey], globalThis[modelsKey]);
+      const path = await invoke(saveCommand, {
+        models: globalThis[modelsKey],
+        availableModels: globalThis[availableKey],
+        scope: globalThis[scopeKey],
+      });
+      const meta = cbApplyConfigMeta(
+        domPrefix,
+        { _configPath: path, _configScope: globalThis[scopeKey] },
+        path,
+      );
+      globalThis[scopeKey] = meta.scope;
+      if (typeof addLog === 'function') addLog('ok', `${label} 配置已保存到 ${path}`);
+      if (!options.silent) showCustomAlert(`配置已保存到 ${path}`, '保存成功', 'success');
+      return path;
+    } catch (e) {
+      if (typeof addLog === 'function') addLog('err', `保存 ${label} 配置失败: ${e}`);
+      if (!options.silent) showCustomAlert(String(e), '保存失败', 'error');
+      if (options.throwOnError) throw e;
+      return false;
+    }
+  });
+
+  define(`open${prefix}AddModal`, async () => {
+    navigateTo(`platform-${platformId}-add`);
+    await globalThis[`init${prefix}AddPage`]();
+  });
+  // 兼容沿用旧入口的调用
+  define(`close${prefix}AddModal`, () => {});
+  define(`on${prefix}AddProviderChange`, () => {});
+  define(`confirmAdd${prefix}Models`, () => globalThis[`open${prefix}AddModal`]());
+
+  define(`init${prefix}AddPage`, async () => {
+    try {
+      globalThis[providerModelsKey] = (await invoke('list_provider_models')) || [];
+    } catch (e) {
+      globalThis[providerModelsKey] = [];
+    }
+    // 注入 AnyBridge 本地代理供应商到首位：不想直连渠道时从这里导入模型，走 :7450 本地代理
+    if (typeof localProxyProviderModelsEntry === 'function') {
+      const lp = localProxyProviderModelsEntry();
+      globalThis[providerModelsKey] = globalThis[providerModelsKey].filter(
+        (p) => !isLocalProxyProviderEntry(p),
+      );
+      globalThis[providerModelsKey].unshift(lp);
+    }
+    globalThis[addSelectedKey] = null;
+    globalThis[addSearchKey] = '';
+    const searchInput = document.getElementById(`${domPrefix}-add-search`);
+    if (searchInput) searchInput.value = '';
+    globalThis[`render${prefix}AddProviderList`]();
+    globalThis[`render${prefix}AddModels`]();
+    globalThis[`update${prefix}AddConfirmButton`]();
+  });
+
+  define(`on${prefix}AddSearch`, () => {
+    const input = document.getElementById(`${domPrefix}-add-search`);
+    globalThis[addSearchKey] = (input?.value || '').trim().toLowerCase();
+    globalThis[`render${prefix}AddProviderList`]();
+  });
+
+  define(`render${prefix}AddProviderList`, () => {
+    const list = document.getElementById(`${domPrefix}-add-provider-list`);
+    syncPlatformAddSortControl(domPrefix);
+    if (!list) return;
+    const providers = globalThis[providerModelsKey];
+    if (!providers.length) {
+      list.innerHTML = '<div class="wb-add-prov-empty">暂无供应商，请先在「供应商」页添加</div>';
+      return;
+    }
+    const filtered = platformAddVisibleProviders(providers, globalThis[addSearchKey]);
+    if (!filtered.length) {
+      list.innerHTML = '<div class="wb-add-prov-empty">没有匹配的供应商</div>';
+      return;
+    }
+    list.innerHTML = filtered
+      .map((p) => {
+        const initial = (p.providerName || '?').charAt(0).toUpperCase();
+        const enabled = p.enabled !== false;
+        const isActive = globalThis[addSelectedKey] === p.providerId;
+        const isBuiltin = isBuiltinProxyEntry(p);
+        const iconHtml = isBuiltin
+          ? '<span class="wb-add-prov-icon wb-add-prov-icon-builtin" title="内置本地代理"><span>本地</span><span>代理</span></span>'
+          : `<span class="wb-add-prov-icon">${platformEsc(initial)}</span>`;
+        return `
+      <div class="wb-add-prov-item ${isActive ? 'active' : ''} ${enabled ? '' : 'disabled'} ${isBuiltin ? 'is-local-proxy' : ''}" data-action="select${prefix}AddProvider" data-arg="${platformEsc(p.providerId)}">
+        ${iconHtml}
+        <span class="wb-add-prov-name">${platformEsc(p.providerName)}</span>
+        <span class="wb-add-prov-count">${p.models.length}</span>
+      </div>
+    `;
+      })
+      .join('');
+  });
+
+  define(`select${prefix}AddProvider`, (providerId) => {
+    globalThis[addSelectedKey] = providerId;
+    globalThis[`render${prefix}AddProviderList`]();
+    globalThis[`render${prefix}AddModels`]();
+    globalThis[`update${prefix}AddConfirmButton`]();
+  });
+
+  define(`render${prefix}AddModels`, () => {
+    const titleEl = document.getElementById(`${domPrefix}-add-models-title`);
+    const subEl = document.getElementById(`${domPrefix}-add-models-sub`);
+    const body = document.getElementById(`${domPrefix}-add-models-list-page`);
+    if (!body) return;
+    if (!globalThis[addSelectedKey]) {
+      titleEl.textContent = '请选择供应商';
+      subEl.textContent = '左侧选择一个供应商，右侧将展示其可用模型';
+      body.innerHTML = '<div class="wb-add-models-empty">请从左侧选择一个供应商</div>';
+      return;
+    }
+    const provider = globalThis[providerModelsKey].find(
+      (p) => p.providerId === globalThis[addSelectedKey],
+    );
+    if (!provider) {
+      titleEl.textContent = '供应商未找到';
+      body.innerHTML = '<div class="wb-add-models-empty">供应商未找到</div>';
+      return;
+    }
+    titleEl.textContent = provider.providerName;
+    subEl.textContent = `共 ${provider.models.length} 个模型，勾选要保留或添加的项`;
+    if (!provider.models.length) {
+      body.innerHTML = '<div class="wb-add-models-empty">该供应商暂无模型</div>';
+      return;
+    }
+
+    const sortFn = typeof sortRoleSelectItems === 'function' ? sortRoleSelectItems : (l) => l;
+    const sortedModels = sortFn(provider.models);
+
+    body.innerHTML = sortedModels
+      .map((m) => {
+        const exists = globalThis[modelsKey].some((model) => model.id === m.id);
+        return `
+      <label class="wb-add-model-row ${exists ? 'already-added' : ''}" data-existing="${exists ? 'true' : 'false'}">
+        <input type="checkbox" class="wb-add-model-check ${domPrefix}-add-model-check" data-model-id="${platformEsc(m.id)}" data-model-name="${platformEsc(m.name || m.id)}" ${exists ? 'checked' : ''} data-action="cbOnAddModelCheckChanged" data-events="change" data-pass-this data-arg="update${prefix}AddConfirmButton">
+        ${cbAddModelIdentity(m.id)}
+      </label>
+    `;
+      })
+      .join('');
+  });
+
+  define(`update${prefix}AddConfirmButton`, () => {
+    const btn = document.getElementById(`${domPrefix}-add-confirm-page`);
+    if (!btn) return;
+    const total = document.querySelectorAll(checkClass).length;
+    const checks = document.querySelectorAll(`${checkClass}:checked`);
+    btn.disabled = total === 0;
+    cbSetButtonLabel(btn, ` 保存选择 (${checks.length})`);
+  });
+
+  define(`${domPrefix}AddSelectAll`, () =>
+    cbSetAddModelChecks(checkClass, true, globalThis[`update${prefix}AddConfirmButton`]));
+  define(`${domPrefix}AddSelectNone`, () =>
+    cbSetAddModelChecks(checkClass, false, globalThis[`update${prefix}AddConfirmButton`]));
+
+  define(`confirmAdd${prefix}ModelsPage`, async () => {
+    if (!globalThis[addSelectedKey]) return;
+    const provider = globalThis[providerModelsKey].find(
+      (p) => p.providerId === globalThis[addSelectedKey],
+    );
+    if (!provider) return;
+    const btn = document.getElementById(`${domPrefix}-add-confirm-page`);
+    const originalBtnText = cbGetButtonLabel(btn);
+    const checks = document.querySelectorAll(`${checkClass}:checked`);
+    if (btn) {
+      btn.disabled = true;
+      cbSetButtonLabel(btn, ' 保存中...');
+    }
+    const previousModels = globalThis[modelsKey].slice();
+    const previousAvailableModels = globalThis[availableKey].slice();
+    const result = cbApplyProviderModelSelection(prefix, provider, checkClass, platformId);
+    globalThis[`render${prefix}Models`]();
+    try {
+      await globalThis[`save${prefix}Models`]({ silent: true, throwOnError: true });
+      navigateTo(`platform-${platformId}`);
+      showBottomToast(`已保存选择（${result.selectedCount} 个模型）`, 'success');
+    } catch (e) {
+      globalThis[modelsKey] = previousModels;
+      globalThis[availableKey] = previousAvailableModels;
+      globalThis[`render${prefix}Models`]();
+      showCustomAlert(`保存失败，未写入配置：${e}`, '保存失败', 'error');
+      if (btn) {
+        btn.disabled = false;
+        cbSetButtonLabel(btn, originalBtnText || ` 保存选择 (${checks.length})`);
+      }
+    }
+  });
+
+  define(`toggle${prefix}AddSort`, (event) => togglePlatformAddSortMenu(domPrefix, event));
+  define(`choose${prefix}AddSortMode`, (mode) => choosePlatformAddSortMode(domPrefix, mode));
+
+  // 拖拽导入与 JSON 编辑器（与 CodeBuddy 系列共用同一批工厂）
+  createCbDropHandlers(
+    prefix,
+    () => globalThis[modelsKey], (v) => { globalThis[modelsKey] = v; },
+    () => globalThis[availableKey], (v) => { globalThis[availableKey] = v; },
+    globalThis[`render${prefix}Models`], label
+  );
+
+  createCbIoHandlers(
+    prefix, platformId,
+    () => globalThis[modelsKey], (v) => { globalThis[modelsKey] = v; },
+    () => globalThis[availableKey], (v) => { globalThis[availableKey] = v; },
+    globalThis[`render${prefix}Models`], globalThis[`save${prefix}Models`], globalThis[`load${prefix}Models`],
+    label
+  );
+}
+
+// ═══════ Pi 自定义模型管理 ═══════
+
+createManagedModelsPlatform({
+  prefix: 'Pi',
+  domPrefix: 'pi',
+  loadCommand: 'load_pi_models',
+  saveCommand: 'save_pi_models',
+  fallbackPath: '~/.pi/agent/models.json',
+});
+
+createManagedModelsPlatform({
+  prefix: 'Hermes',
+  domPrefix: 'hermes',
+  loadCommand: 'load_hermes_models',
+  saveCommand: 'save_hermes_models',
+  fallbackPath: '~/.hermes/config.yaml',
+});
+
+createManagedModelsPlatform({
+  prefix: 'Dsh',
+  domPrefix: 'dsh',
+  loadCommand: 'load_deepseek_harness_models',
+  saveCommand: 'save_deepseek_harness_models',
+  fallbackPath: '~/.dsh/settings.yaml',
+});
 
 // ═══════ WorkBuddy 自定义模型管理 ═══════
 
@@ -13376,6 +13810,7 @@ window.zcDrop = function(e) {
   g.zcAddSelectAll = zcAddSelectAll;
   g.zcAddSelectNone = zcAddSelectNone;
   g.confirmAddZcModelsPage = confirmAddZcModelsPage;
+
   g.zcFlatToNative = zcFlatToNative;
   g.zcReasoningEnabled = zcReasoningEnabled;
   g.zcNativeToFlat = zcNativeToFlat;

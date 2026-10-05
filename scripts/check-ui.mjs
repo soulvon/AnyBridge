@@ -78,6 +78,12 @@ const requiredPageIds = [
   'page-platform-workbuddy-add',
   'page-platform-grok',
   'page-platform-grok-add',
+  'page-platform-pi',
+  'page-platform-pi-add',
+  'page-platform-hermes',
+  'page-platform-hermes-add',
+  'page-platform-deepseek-harness',
+  'page-platform-deepseek-harness-add',
   'page-settings',
 ];
 

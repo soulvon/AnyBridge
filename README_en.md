@@ -350,6 +350,9 @@ AnyBridge applies tailored integration mechanisms based on each tool's underlyin
 | **Terminal CLI** | **Claude Code** | Terminal CLI | Direct Config Writing: No manual JSON hacking; supports Thinking / Beta headers | ✅ Supported |
 | | **Codex CLI** | Terminal CLI | Automatic configuration generation for custom relays and self-hosted endpoints | ✅ Supported |
 | | **OpenCode** | Terminal CLI | Direct configuration setup, eliminating manual environment variable edits | ✅ Supported |
+| | **Pi** | Terminal CLI | Writes vendor-grouped channels into providers, with per-model toggle and one-click restore | ✅ Supported |
+| | **Hermes** | Terminal CLI | Writes vendor-grouped channels into custom_providers, models and keys collapsed per vendor | ✅ Supported |
+| | **DeepSeek Harness** | Terminal CLI | Writes vendor-grouped channels into llm-pi-ai.providers, keys stored separately in the credentials file | ✅ Supported |
 | **Assistants & Ext** | **CodeBuddy** | Desktop / Ext | Direct config writing without manual JSON configuration | ✅ Supported |
 | | **WorkBuddy** | Desktop / Ext | Direct configuration integration for custom models and team gateways | ✅ Supported |
 | | **Grok / ZCode** | Various Ext | Rapid custom endpoint setup with instant reset support | ✅ Supported |
