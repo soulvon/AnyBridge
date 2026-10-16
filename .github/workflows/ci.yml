@@ -64,5 +64,31 @@ jobs:
       - name: Cargo check
         run: cargo check --manifest-path src-tauri/Cargo.toml
 
+      - name: Prepare LOCAL_PROXY_KEY used by config-dependent tests
+        # 部分 Codex 测试经 codex_bearer_token() 读取本机配置目录里的 LOCAL_PROXY_KEY，
+        # 该值在开发者机器上由应用首次启动自动生成；CI 是干净容器，这里显式写入，
+        # 避免测试成败取决于 runner 上是否先跑过 AnyBridge。
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json, os, pathlib, sys
+
+          home = pathlib.Path.home()
+          if sys.platform == "win32":
+              root = pathlib.Path(os.environ.get("APPDATA", home / "AppData" / "Roaming"))
+          elif sys.platform == "darwin":
+              root = home / "Library" / "Application Support"
+          else:
+              root = pathlib.Path(os.environ.get("XDG_CONFIG_HOME", home / ".config"))
+
+          config_dir = root / "anybridge"
+          config_dir.mkdir(parents=True, exist_ok=True)
+          config_file = config_dir / "byok-config.json"
+          data = json.loads(config_file.read_text(encoding="utf-8")) if config_file.exists() else {}
+          data["LOCAL_PROXY_KEY"] = "ci-local-proxy-key-for-unit-tests"
+          config_file.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+          print("prepared", config_file)
+          PY
+
       - name: Rust unit tests
         run: npm run test:rust

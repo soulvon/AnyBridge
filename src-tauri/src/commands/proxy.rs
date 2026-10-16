@@ -564,7 +564,10 @@ mod log_classification_tests {
         });
 
         assert!(crate::commands::system::acquire_mitm_package_lock(&certs_dir, true).is_err());
-        assert!(stop_managed_proxy(&proxy.0, Some(pid)).unwrap());
+        assert_eq!(
+            stop_managed_proxy(&proxy.0, Some(pid)).unwrap(),
+            StopStatus::Stopped
+        );
         let write_lock = crate::commands::system::acquire_mitm_package_lock(&certs_dir, true);
         assert!(write_lock.is_ok(), "confirmed child exit must release the shared package lock");
         drop(write_lock);
