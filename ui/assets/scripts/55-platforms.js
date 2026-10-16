@@ -9179,14 +9179,23 @@ async function cursorInstallCertAction() {
   cursorSetBusy(true);
   try {
     cursorEnsureBridge();
-    const result = await invoke('cert_install');
+    const result = await invoke('cert_install', { requestId: window.newCertRequestId() });
     if (typeof addLog === 'function') addLog('ok', 'CA 证书安装完成: ' + result);
     await cursorRefreshConsole();
     await syncCursorSettingsModalData();
     showCustomAlert(result || 'AnyBridge Local CA 根证书已安装并信任。', '证书已安装', 'success');
   } catch (e) {
-    if (typeof addLog === 'function') addLog('err', 'CA 安装失败: ' + e);
-    showCustomAlert(String(e), '证书安装失败', 'error');
+    const errMsg = String(e);
+    if (typeof addLog === 'function') addLog('err', 'CA 安装失败: ' + errMsg);
+    if (errMsg.includes('请先停止代理') || errMsg.includes('请等待完成后再操作')) {
+      showCustomAlert(
+        errMsg + '\n\n请先停止代理，再到「平台 > 设置 > 环境检测」点击「一键安装证书」。',
+        '需先停止代理',
+        'warning'
+      );
+    } else {
+      showCustomAlert(errMsg, '证书安装失败', 'error');
+    }
   } finally {
     cursorSetBusy(false);
   }

@@ -31,7 +31,13 @@ import { httpsAgentFor } from './system-proxy.js';
 import { attachPluginRoutes } from './plugin-loader.js';
 import { createRateLimitedLogger } from './lib/log-rate-limit.js';
 
-Object.assign(console, createRateLimitedLogger(console));
+// 只给高频重复诊断套用去重限流，不替换全局 console：
+// 第三方依赖的日志和一次性错误必须完整可见，排查时也不能被 60s 窗口吞掉最后一跳。
+const diagLog = createRateLimitedLogger(console);
+
+// 经 stdout 上报给桌面的结构化事件；桌面按相同字符串解析，
+// 改动这里必须同步 src-tauri/src/commands/proxy.rs 的事件识别分支。
+const TLS_CLIENT_CERT_REJECTED_EVENT = 'ANYBRIDGE_EVENT:TLS_CLIENT_CERT_REJECTED';
 
 function intEnv(name, fallback, min = 1) {
   const n = parseInt(process.env[name] || '', 10);
@@ -213,8 +219,6 @@ let requestCounter = 0;
 // `unknown ca`、`certificate verify failed`。
 // 出现这类错误时 MITM 直接断，模型改写不会执行（表现为"还是原模型"），必须让人能自查。
 const CA_COMMON_NAME_HINT = '「AnyBridge Local CA」';
-const CERT_REJECTION_LOG_INTERVAL_MS = 60_000;
-let lastCertRejectionLogAt = 0;
 function mitmCertRejected(err) {
   const text = String((err && (err.message || err.code)) || '').toLowerCase();
   if (!text) return false;
@@ -239,7 +243,6 @@ let lastModelListSig = '';
 let lastModelListCapturedAt = 0;
 let lastModelCaptureLogAt = 0;
 let lastModelRewriteLogAt = 0;
-let lastTakeoverLogAt = 0;
 // unlockModels 结果缓存：同一秒内输入相同 → 复用上次结果
 let lastUnlockInputSig = '';
 let lastUnlockResult = null;
@@ -593,12 +596,12 @@ function proxyToCodeium(req, res, body, id, opts = {}) {
         const shouldRewriteModels = proxyRes.statusCode === 200
           && (method === 'GetUserStatus' || method === 'GetCliModelConfigs');
         if (shouldRewriteModels) {
-          // 接管心跳：这一条请求证明 IDE 的流量确实经过了代理
+          // 接管心跳：这一条请求证明 IDE 的流量确实经过了代理。
+          // 同一结构的心跳每秒可达 8-10 次，交由 diagLog 去重限流，不再各自手写计时器。
           noteTakeoverRequest(upstream);
-          if (Date.now() - lastTakeoverLogAt >= 10000) {
-            lastTakeoverLogAt = Date.now();
-            console.log(`  [#${id}] takeover heartbeat: target=${upstream === 'server.codeium.com' ? 'devin' : 'windsurf'} method=${method} status=${proxyRes.statusCode}`);
-          }
+          diagLog.log(
+            `takeover heartbeat: target=${upstream === 'server.codeium.com' ? 'devin' : 'windsurf'} method=${method} status=${proxyRes.statusCode}`
+          );
           // 抓取原始模型清单(改名前)→ 缓存供 GUI 添加映射时选用（仅 GetUserStatus，清单最全）。
           // 性能优化：每秒 8-10 次心跳 → 节流到 30s 一次 + 签名比对
           // 注意：unlockModels 仍然每次都做（必须做，下拉框要看到 BYOK 项）
@@ -1339,17 +1342,14 @@ server.on('connect', (req, clientSocket, head) => {
       // 客户端不认我们的证书时，光甩一行 OpenSSL 内部错误没人看得懂，
       // 直接把排查动作写清楚（这种失败会导致模型改写不生效，表现为"还是原模型"）。
       if (mitmCertRejected(err)) {
-        // 原始 TLS 错误仍逐次记录；只节流重复结构事件和操作指引，避免握手风暴刷屏。
-        const nowMs = Date.now();
-        if (nowMs - lastCertRejectionLogAt >= CERT_REJECTION_LOG_INTERVAL_MS) {
-          lastCertRejectionLogAt = nowMs;
-          console.error('ANYBRIDGE_EVENT:TLS_CLIENT_CERT_REJECTED');
-          console.error(
-            `  [#${id}] ❗ 客户端拒绝了 MITM 证书 → 请到「平台(智能体) > 设置 > 环境检测」点「清理并重装」，` +
-            '并在系统弹窗里允许授权；然后完全退出 IDE 再打开。若仍失败，检查系统钥匙串/证书库里 ' +
-            `${CA_COMMON_NAME_HINT} 是否为「始终信任」。`
-          );
-        }
+        // 原始 TLS 错误仍逐次记录；重复的结构事件和操作指引交给 diagLog 去重，避免握手风暴刷屏。
+        diagLog.error(TLS_CLIENT_CERT_REJECTED_EVENT);
+        // 去重按整行文本匹配，因此这条指引不带请求序号；逐次明细由上面的原始错误行承担。
+        diagLog.error(
+          '❗ 客户端拒绝了 MITM 证书 → 请到「平台(智能体) > 设置 > 环境检测」点「清理并重装」，' +
+          '并在系统弹窗里允许授权；然后完全退出 IDE 再打开。若仍失败，检查系统钥匙串/证书库里 ' +
+          `${CA_COMMON_NAME_HINT} 是否为「始终信任」。`
+        );
       }
       if (!clientSocket.destroyed) clientSocket.destroy();
     });

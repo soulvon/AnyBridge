@@ -1336,7 +1336,7 @@ async function generateCerts() {
   if (!invoke) return;
   const status = (typeof _platformEl === 'function' ? _platformEl('cert-status') : document.getElementById('cert-status'));
   try {
-    const result = await invoke('generate_certs');
+    const result = await invoke('generate_certs', { requestId: window.newCertRequestId() });
     if (status) status.textContent = result + '（重启代理后生效）';
     addLog('ok', '证书: ' + result);
   } catch (e) {

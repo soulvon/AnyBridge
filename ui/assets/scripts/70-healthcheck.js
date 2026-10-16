@@ -559,11 +559,15 @@
       addLog && addLog('warn', '证书安装进度监听不可用: ' + e);
     }
   }
-  async function invokeCertTask(command) {
-    await ensureCertInstallProgressListener();
-    const requestId = typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+  // 健康页与其他入口共用同一套证书进度关联约定：调用方生成一次，事件按它回传。
+  window.newCertRequestId = function newCertRequestId() {
+    return typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
       ? crypto.randomUUID()
       : `cert-ui-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  };
+  async function invokeCertTask(command) {
+    await ensureCertInstallProgressListener();
+    const requestId = window.newCertRequestId();
     _activeCertOperationId = requestId;
     try {
       return await invoke(command, { requestId });

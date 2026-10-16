@@ -47,6 +47,9 @@ jobs:
       - name: Check UI
         run: npm run check:ui
 
+      - name: Node unit tests
+        run: npm run test:unit
+
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
 
@@ -60,3 +63,6 @@ jobs:
 
       - name: Cargo check
         run: cargo check --manifest-path src-tauri/Cargo.toml
+
+      - name: Rust unit tests
+        run: npm run test:rust

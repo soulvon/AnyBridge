@@ -670,8 +670,8 @@ fn write_atomic(path: &std::path::Path, contents: impl AsRef<[u8]>) -> Result<()
         )
     })?;
 
-    // 目录可能由旧版本创建，写入前收紧到 Unix 0700，避免私钥目录被其他用户枚举。
-    restrict_cert_dir_permissions(parent)?;
+    // 目录权限由证书包写入入口统一收紧（prepare_mitm_candidate / ensure_mitm_certs_in_dir），
+    // 这里逐文件不再重复 chmod，避免同一次提交里反复修改目录属性。
 
     // 进程号和纳秒时间戳降低并发任务或崩溃残留造成的临时文件名冲突。
     // 下层仍使用 create_new，最终保证不覆盖同名文件或符号链接。
@@ -1051,6 +1051,8 @@ fn prepare_mitm_candidate(
         .duration_since(std::time::UNIX_EPOCH)
         .map_err(|e| e.to_string())?.as_nanos();
     let candidate = certs_dir.join(format!(".candidate-{}-{stamp}", std::process::id()));
+    // mode() 只在 Unix 存在；Windows 上 builder 不需要可变绑定。
+    #[cfg_attr(not(unix), allow(unused_mut))]
     let mut builder = std::fs::DirBuilder::new();
     #[cfg(unix)]
     {
