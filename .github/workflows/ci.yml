@@ -85,7 +85,10 @@ jobs:
           config_dir.mkdir(parents=True, exist_ok=True)
           config_file = config_dir / "byok-config.json"
           data = json.loads(config_file.read_text(encoding="utf-8")) if config_file.exists() else {}
-          data["LOCAL_PROXY_KEY"] = "ci-local-proxy-key-for-unit-tests"
+          # 真实结构是 {"values": {...}}，写错层级会被解析为缺省而静默读不到。
+          values = data.get("values") or {}
+          values["LOCAL_PROXY_KEY"] = "ci-local-proxy-key-for-unit-tests"
+          data["values"] = values
           config_file.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
           print("prepared", config_file)
           PY
