@@ -30,14 +30,11 @@ import { mitmLog, rpcAuditLog } from './mitm-logger.js';
 import { httpsAgentFor } from './system-proxy.js';
 import { attachPluginRoutes } from './plugin-loader.js';
 import { createRateLimitedLogger } from './lib/log-rate-limit.js';
+import { mitmCertRejected, TLS_CLIENT_CERT_REJECTED_EVENT } from './lib/tls-diagnostics.js';
 
 // 只给高频重复诊断套用去重限流，不替换全局 console：
 // 第三方依赖的日志和一次性错误必须完整可见，排查时也不能被 60s 窗口吞掉最后一跳。
 const diagLog = createRateLimitedLogger(console);
-
-// 经 stdout 上报给桌面的结构化事件；桌面按相同字符串解析，
-// 改动这里必须同步 src-tauri/src/commands/proxy.rs 的事件识别分支。
-const TLS_CLIENT_CERT_REJECTED_EVENT = 'ANYBRIDGE_EVENT:TLS_CLIENT_CERT_REJECTED';
 
 function intEnv(name, fallback, min = 1) {
   const n = parseInt(process.env[name] || '', 10);
@@ -214,23 +211,7 @@ try {
 
 let requestCounter = 0;
 
-// 客户端在 TLS 握手阶段拒掉我们证书的判定。
-// 典型报文：`ssl/tls alert bad certificate ... SSL alert number 42`、
-// `unknown ca`、`certificate verify failed`。
-// 出现这类错误时 MITM 直接断，模型改写不会执行（表现为"还是原模型"），必须让人能自查。
 const CA_COMMON_NAME_HINT = '「AnyBridge Local CA」';
-function mitmCertRejected(err) {
-  const text = String((err && (err.message || err.code)) || '').toLowerCase();
-  if (!text) return false;
-  return (
-    text.includes('bad certificate')
-    || text.includes('unknown ca')
-    || text.includes('certificate verify failed')
-    || text.includes('unable to verify')
-    || text.includes('self signed certificate in certificate chain')
-    || text.includes('alert number 42')
-  );
-}
 
 // MITM 连接的上游主机映射：记录每个 TLS socket 对应的原始 CONNECT 目标。
 // Devin 连 server.codeium.com，Windsurf 连 server.self-serve.windsurf.com，
