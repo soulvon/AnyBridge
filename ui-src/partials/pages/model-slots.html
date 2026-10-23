@@ -396,12 +396,10 @@
                 <div style="font-size:11px;color:var(--text-muted);margin-top:4px;">配置手动增强能力和第三方图片理解故障转移链。</div>
               </div>
               <div style="display:flex;align-items:center;gap:8px;">
-                <button class="btn-ghost warn"
- style="padding:7px 14px;border-radius:8px;font-size:12px;font-weight:600;" data-action="resetProxyEnhancementDefaults">重置默认</button>
                 <button class="btn-primary"
- style="padding:7px 18px;border-radius:8px;font-size:12px;font-weight:700;" data-action="closeProxyEnhancement">完成</button>
+                  style="padding:7px 18px;border-radius:8px;font-size:12px;font-weight:700;" data-action="closeProxyEnhancement">完成</button>
                 <button class="btn-ghost"
- style="border:none;background:transparent;cursor:pointer;font-size:18px;color:var(--text-muted);line-height:1;padding:0 4px;" data-action="closeProxyEnhancement">×</button>
+                  style="border:none;background:transparent;cursor:pointer;font-size:18px;color:var(--text-muted);line-height:1;padding:0 4px;" data-action="closeProxyEnhancement">×</button>
               </div>
             </div>
             <div class="card-body proxy-enhancement-body"
@@ -527,19 +525,31 @@
                     <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;">
                       <label style="display:flex;flex-direction:column;gap:6px;padding:12px;border:1px solid var(--border);border-radius:9px;background:var(--bg-input);">
                         <span style="font-size:11px;font-weight:800;color:var(--text-primary);">最大重试次数</span>
-                        <input id="enhancement-retryMaxRetries" type="number" min="0" step="1" style="width:100%;height:32px;padding:0 9px;border-radius:8px;border:1px solid var(--border);background:var(--bg-card);color:var(--text-primary);font-size:12px;outline:none;" data-action="updateEnhancementNumber" data-events="change" data-args="[&quot;retryMaxRetries&quot;]" data-pass-this>
+                        <div style="display:flex;align-items:center;gap:8px;">
+                          <input id="enhancement-retryMaxRetries" type="number" min="0" step="1" style="flex:1;min-width:0;height:32px;padding:0 9px;border-radius:8px;border:1px solid var(--border);background:var(--bg-card);color:var(--text-primary);font-size:12px;outline:none;" data-actions='{"input":{"action":"onEnhancementNumberInput","args":["retryMaxRetries"],"passThis":true},"change":{"action":"updateEnhancementNumber","args":["retryMaxRetries"],"passThis":true}}'>
+                          <button type="button" class="btn-ghost secondary" id="enhancement-reset-retryMaxRetries" style="display:none;height:32px;padding:0 12px;border-radius:8px;font-size:12px;font-weight:600;white-space:nowrap;cursor:pointer;" data-action="resetSingleEnhancement" data-arg="retryMaxRetries" data-stop>重置</button>
+                        </div>
                       </label>
                       <label style="display:flex;flex-direction:column;gap:6px;padding:12px;border:1px solid var(--border);border-radius:9px;background:var(--bg-input);">
                         <span style="font-size:11px;font-weight:800;color:var(--text-primary);">基础等待 (ms)</span>
-                        <input id="enhancement-retryBaseMs" type="number" min="1" step="100" style="width:100%;height:32px;padding:0 9px;border-radius:8px;border:1px solid var(--border);background:var(--bg-card);color:var(--text-primary);font-size:12px;outline:none;" data-action="updateEnhancementNumber" data-events="change" data-args="[&quot;retryBaseMs&quot;]" data-pass-this>
+                        <div style="display:flex;align-items:center;gap:8px;">
+                          <input id="enhancement-retryBaseMs" type="number" min="1" step="100" style="flex:1;min-width:0;height:32px;padding:0 9px;border-radius:8px;border:1px solid var(--border);background:var(--bg-card);color:var(--text-primary);font-size:12px;outline:none;" data-actions='{"input":{"action":"onEnhancementNumberInput","args":["retryBaseMs"],"passThis":true},"change":{"action":"updateEnhancementNumber","args":["retryBaseMs"],"passThis":true}}'>
+                          <button type="button" class="btn-ghost secondary" id="enhancement-reset-retryBaseMs" style="display:none;height:32px;padding:0 12px;border-radius:8px;font-size:12px;font-weight:600;white-space:nowrap;cursor:pointer;" data-action="resetSingleEnhancement" data-arg="retryBaseMs" data-stop>重置</button>
+                        </div>
                       </label>
                       <label style="display:flex;flex-direction:column;gap:6px;padding:12px;border:1px solid var(--border);border-radius:9px;background:var(--bg-input);">
                         <span style="font-size:11px;font-weight:800;color:var(--text-primary);">单次等待上限 (ms)</span>
-                        <input id="enhancement-retryCapMs" type="number" min="1" step="100" style="width:100%;height:32px;padding:0 9px;border-radius:8px;border:1px solid var(--border);background:var(--bg-card);color:var(--text-primary);font-size:12px;outline:none;" data-action="updateEnhancementNumber" data-events="change" data-args="[&quot;retryCapMs&quot;]" data-pass-this>
+                        <div style="display:flex;align-items:center;gap:8px;">
+                          <input id="enhancement-retryCapMs" type="number" min="1" step="100" style="flex:1;min-width:0;height:32px;padding:0 9px;border-radius:8px;border:1px solid var(--border);background:var(--bg-card);color:var(--text-primary);font-size:12px;outline:none;" data-actions='{"input":{"action":"onEnhancementNumberInput","args":["retryCapMs"],"passThis":true},"change":{"action":"updateEnhancementNumber","args":["retryCapMs"],"passThis":true}}'>
+                          <button type="button" class="btn-ghost secondary" id="enhancement-reset-retryCapMs" style="display:none;height:32px;padding:0 12px;border-radius:8px;font-size:12px;font-weight:600;white-space:nowrap;cursor:pointer;" data-action="resetSingleEnhancement" data-arg="retryCapMs" data-stop>重置</button>
+                        </div>
                       </label>
                       <label style="display:flex;flex-direction:column;gap:6px;padding:12px;border:1px solid var(--border);border-radius:9px;background:var(--bg-input);">
                         <span style="font-size:11px;font-weight:800;color:var(--text-primary);">最大总耗时 (秒)</span>
-                        <input id="enhancement-retryTotalSeconds" type="number" min="1" step="1" style="width:100%;height:32px;padding:0 9px;border-radius:8px;border:1px solid var(--border);background:var(--bg-card);color:var(--text-primary);font-size:12px;outline:none;" data-action="updateEnhancementNumber" data-events="change" data-args="[&quot;retryTotalSeconds&quot;]" data-pass-this>
+                        <div style="display:flex;align-items:center;gap:8px;">
+                          <input id="enhancement-retryTotalSeconds" type="number" min="1" step="1" style="flex:1;min-width:0;height:32px;padding:0 9px;border-radius:8px;border:1px solid var(--border);background:var(--bg-card);color:var(--text-primary);font-size:12px;outline:none;" data-actions='{"input":{"action":"onEnhancementNumberInput","args":["retryTotalSeconds"],"passThis":true},"change":{"action":"updateEnhancementNumber","args":["retryTotalSeconds"],"passThis":true}}'>
+                          <button type="button" class="btn-ghost secondary" id="enhancement-reset-retryTotalSeconds" style="display:none;height:32px;padding:0 12px;border-radius:8px;font-size:12px;font-weight:600;white-space:nowrap;cursor:pointer;" data-action="resetSingleEnhancement" data-arg="retryTotalSeconds" data-stop>重置</button>
+                        </div>
                       </label>
                     </div>
 
@@ -567,7 +577,10 @@
                     <label style="display:flex;flex-direction:column;gap:6px;padding:12px;border:1px solid var(--border);border-radius:9px;background:var(--bg-input);margin-bottom:10px;">
                       <span style="font-size:11px;font-weight:800;color:var(--text-primary);">首字节超时 (秒)</span>
                       <small style="font-size:10px;color:var(--text-muted);">上游这么久还没返回第一个字节，就判定这个目标失败并切换下一个。带大量工具历史的中转站实测可达 85-90 秒，不建议低于 90。</small>
-                      <input id="enhancement-failoverTtfbSeconds" type="number" min="1" step="10" style="width:100%;height:32px;padding:0 9px;border-radius:8px;border:1px solid var(--border);background:var(--bg-card);color:var(--text-primary);font-size:12px;outline:none;" data-action="updateEnhancementNumber" data-events="change" data-args="[&quot;failoverTtfbSeconds&quot;]" data-pass-this>
+                      <div style="display:flex;align-items:center;gap:8px;">
+                        <input id="enhancement-failoverTtfbSeconds" type="number" min="1" step="10" style="flex:1;min-width:0;height:32px;padding:0 9px;border-radius:8px;border:1px solid var(--border);background:var(--bg-card);color:var(--text-primary);font-size:12px;outline:none;" data-actions='{"input":{"action":"onEnhancementNumberInput","args":["failoverTtfbSeconds"],"passThis":true},"change":{"action":"updateEnhancementNumber","args":["failoverTtfbSeconds"],"passThis":true}}'>
+                        <button type="button" class="btn-ghost secondary" id="enhancement-reset-failoverTtfbSeconds" style="display:none;height:32px;padding:0 12px;border-radius:8px;font-size:12px;font-weight:600;white-space:nowrap;cursor:pointer;" data-action="resetSingleEnhancement" data-arg="failoverTtfbSeconds" data-stop>重置</button>
+                      </div>
                     </label>
 
                     <label style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px;border:1px solid var(--border);border-radius:9px;background:var(--bg-input);margin-bottom:10px;">
@@ -579,20 +592,29 @@
                       <label style="display:flex;flex-direction:column;gap:6px;padding:12px;border:1px solid var(--border);border-radius:9px;background:var(--bg-input);">
                         <span style="font-size:11px;font-weight:800;color:var(--text-primary);">瞬时错误冷却 (秒)</span>
                         <small style="font-size:10px;color:var(--text-muted);">5xx / 超时 / 网络错误的首次冷却；反复失败每次翻倍，到上限封顶。0 = 不冷却。</small>
-                        <input id="enhancement-cooldownTransientSeconds" type="number" min="0" step="10" style="width:100%;height:32px;padding:0 9px;border-radius:8px;border:1px solid var(--border);background:var(--bg-card);color:var(--text-primary);font-size:12px;outline:none;" data-action="updateEnhancementNumber" data-events="change" data-args="[&quot;cooldownTransientSeconds&quot;]" data-pass-this>
+                        <div style="display:flex;align-items:center;gap:8px;">
+                          <input id="enhancement-cooldownTransientSeconds" type="number" min="0" step="10" style="flex:1;min-width:0;height:32px;padding:0 9px;border-radius:8px;border:1px solid var(--border);background:var(--bg-card);color:var(--text-primary);font-size:12px;outline:none;" data-actions='{"input":{"action":"onEnhancementNumberInput","args":["cooldownTransientSeconds"],"passThis":true},"change":{"action":"updateEnhancementNumber","args":["cooldownTransientSeconds"],"passThis":true}}'>
+                          <button type="button" class="btn-ghost secondary" id="enhancement-reset-cooldownTransientSeconds" style="display:none;height:32px;padding:0 12px;border-radius:8px;font-size:12px;font-weight:600;white-space:nowrap;cursor:pointer;" data-action="resetSingleEnhancement" data-arg="cooldownTransientSeconds" data-stop>重置</button>
+                        </div>
                       </label>
                       <label style="display:flex;flex-direction:column;gap:6px;padding:12px;border:1px solid var(--border);border-radius:9px;background:var(--bg-input);">
                         <span style="font-size:11px;font-weight:800;color:var(--text-primary);">冷却上限 (秒)</span>
                         <small style="font-size:10px;color:var(--text-muted);">翻倍后的封顶值，也就是持续失败的节点最长会被跳过多久。</small>
-                        <input id="enhancement-cooldownMaxSeconds" type="number" min="1" step="60" style="width:100%;height:32px;padding:0 9px;border-radius:8px;border:1px solid var(--border);background:var(--bg-card);color:var(--text-primary);font-size:12px;outline:none;" data-action="updateEnhancementNumber" data-events="change" data-args="[&quot;cooldownMaxSeconds&quot;]" data-pass-this>
+                        <div style="display:flex;align-items:center;gap:8px;">
+                          <input id="enhancement-cooldownMaxSeconds" type="number" min="1" step="60" style="flex:1;min-width:0;height:32px;padding:0 9px;border-radius:8px;border:1px solid var(--border);background:var(--bg-card);color:var(--text-primary);font-size:12px;outline:none;" data-actions='{"input":{"action":"onEnhancementNumberInput","args":["cooldownMaxSeconds"],"passThis":true},"change":{"action":"updateEnhancementNumber","args":["cooldownMaxSeconds"],"passThis":true}}'>
+                          <button type="button" class="btn-ghost secondary" id="enhancement-reset-cooldownMaxSeconds" style="display:none;height:32px;padding:0 12px;border-radius:8px;font-size:12px;font-weight:600;white-space:nowrap;cursor:pointer;" data-action="resetSingleEnhancement" data-arg="cooldownMaxSeconds" data-stop>重置</button>
+                        </div>
                       </label>
                       <label style="display:flex;flex-direction:column;gap:6px;padding:12px;border:1px solid var(--border);border-radius:9px;background:var(--bg-input);">
                         <span style="font-size:11px;font-weight:800;color:var(--text-primary);">不可用冷却 (秒)</span>
                         <small style="font-size:10px;color:var(--text-muted);">401 / 403 / 模型不存在，一次失败即按此值冷却。0 = 不冷却。</small>
-                        <input id="enhancement-cooldownAuthSeconds" type="number" min="0" step="60" style="width:100%;height:32px;padding:0 9px;border-radius:8px;border:1px solid var(--border);background:var(--bg-card);color:var(--text-primary);font-size:12px;outline:none;" data-action="updateEnhancementNumber" data-events="change" data-args="[&quot;cooldownAuthSeconds&quot;]" data-pass-this>
+                        <div style="display:flex;align-items:center;gap:8px;">
+                          <input id="enhancement-cooldownAuthSeconds" type="number" min="0" step="60" style="flex:1;min-width:0;height:32px;padding:0 9px;border-radius:8px;border:1px solid var(--border);background:var(--bg-card);color:var(--text-primary);font-size:12px;outline:none;" data-actions='{"input":{"action":"onEnhancementNumberInput","args":["cooldownAuthSeconds"],"passThis":true},"change":{"action":"updateEnhancementNumber","args":["cooldownAuthSeconds"],"passThis":true}}'>
+                          <button type="button" class="btn-ghost secondary" id="enhancement-reset-cooldownAuthSeconds" style="display:none;height:32px;padding:0 12px;border-radius:8px;font-size:12px;font-weight:600;white-space:nowrap;cursor:pointer;" data-action="resetSingleEnhancement" data-arg="cooldownAuthSeconds" data-stop>重置</button>
+                        </div>
                       </label>
                     </div>
-                    <small style="display:block;font-size:10px;color:var(--text-muted);margin-top:10px;">429 限流和超长上下文这类请求自身的问题不会冷却目标；全部目标都在冷却时仍会按解冻先后依次尝试，不会直接报错。</small>
+                    <small style="display:block;font-size:10px;color:var(--text-muted);margin-top:10px;">429 限流和超长上下文这类请求自身的问题不会冷却目标；若全部节点都在冷却期内，则直接报错，不再盲目重试。</small>
                   </div>
                   <!-- Panel: Prompt Injection -->
                   <div class="proxy-enhancement-pane" data-enhancement-pane="prompt">

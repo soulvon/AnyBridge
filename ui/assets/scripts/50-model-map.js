@@ -155,6 +155,11 @@ function ensureModelMapDefaults() {
     webSearchMaxResults: normalizeEnhancementInt(cur.webSearchMaxResults, DEFAULT_PROXY_ENHANCEMENT.webSearchMaxResults, 1),
     webSearchMaxRounds: normalizeEnhancementInt(cur.webSearchMaxRounds, DEFAULT_PROXY_ENHANCEMENT.webSearchMaxRounds, 1),
     autoRouting: cur.autoRouting !== false,
+    failoverTtfbSeconds: normalizeEnhancementInt(cur.failoverTtfbSeconds, DEFAULT_PROXY_ENHANCEMENT.failoverTtfbSeconds, 1),
+    cooldownEnabled: cur.cooldownEnabled !== false,
+    cooldownTransientSeconds: normalizeEnhancementInt(cur.cooldownTransientSeconds, DEFAULT_PROXY_ENHANCEMENT.cooldownTransientSeconds, 0),
+    cooldownMaxSeconds: normalizeEnhancementInt(cur.cooldownMaxSeconds, DEFAULT_PROXY_ENHANCEMENT.cooldownMaxSeconds, 1),
+    cooldownAuthSeconds: normalizeEnhancementInt(cur.cooldownAuthSeconds, DEFAULT_PROXY_ENHANCEMENT.cooldownAuthSeconds, 0),
     unlockModels: cur.unlockModels !== false,
     systemPromptPrefix: String(cur.systemPromptPrefix || ''),
     systemPromptPrefixEnabled: cur.systemPromptPrefixEnabled === true,
@@ -1004,6 +1009,7 @@ function renderProxyEnhancement() {
     'failoverTtfbSeconds', 'cooldownTransientSeconds', 'cooldownMaxSeconds', 'cooldownAuthSeconds'].forEach(key => {
     const el = document.getElementById(`enhancement-${key}`);
     if (el) el.value = e[key];
+    syncEnhancementResetButton(key, e[key]);
   });
   ['visionMaxTokens', 'visionContextMode', 'visionMultiImageMode'].forEach(key => {
     const el = document.getElementById(`enhancement-${key}`);
@@ -1212,6 +1218,8 @@ function setRetryConfigControlsEnabled(enabled) {
   ['retryMaxRetries', 'retryBaseMs', 'retryCapMs', 'retryTotalSeconds'].forEach(key => {
     const el = document.getElementById(`enhancement-${key}`);
     if (el) el.disabled = !enabled;
+    const btn = document.getElementById(`enhancement-reset-${key}`);
+    if (btn) btn.disabled = !enabled;
   });
 }
 
@@ -1219,7 +1227,35 @@ function setCooldownConfigControlsEnabled(enabled) {
   ['cooldownTransientSeconds', 'cooldownMaxSeconds', 'cooldownAuthSeconds'].forEach(key => {
     const el = document.getElementById(`enhancement-${key}`);
     if (el) el.disabled = !enabled;
+    const btn = document.getElementById(`enhancement-reset-${key}`);
+    if (btn) btn.disabled = !enabled;
   });
+}
+
+function syncEnhancementResetButton(key, val) {
+  const btn = document.getElementById(`enhancement-reset-${key}`);
+  if (!btn) return;
+  const defaultVal = DEFAULT_PROXY_ENHANCEMENT[key];
+  if (defaultVal === undefined) return;
+  const isDefault = val !== '' && val !== null && val !== undefined && !Number.isNaN(Number(val)) && Number(val) === Number(defaultVal);
+  btn.style.display = isDefault ? 'none' : 'inline-flex';
+}
+
+function onEnhancementNumberInput(input, key) {
+  syncEnhancementResetButton(key, input.value.trim());
+}
+
+function resetSingleEnhancement(key) {
+  ensureModelMapDefaults();
+  if (!Object.prototype.hasOwnProperty.call(DEFAULT_PROXY_ENHANCEMENT, key)) return;
+  const defaultVal = DEFAULT_PROXY_ENHANCEMENT[key];
+  modelMapStore.enhancement[key] = defaultVal;
+  const input = document.getElementById(`enhancement-${key}`);
+  if (input) {
+    input.value = defaultVal;
+  }
+  syncEnhancementResetButton(key, defaultVal);
+  autoSaveEnhancement();
 }
 
 function setSelfHealControlsEnabled(enabled) {
@@ -1239,6 +1275,7 @@ function updateEnhancementNumber(input, key) {
   const value = normalizeEnhancementInt(input.value, DEFAULT_PROXY_ENHANCEMENT[key], min);
   modelMapStore.enhancement[key] = value;
   input.value = value;
+  syncEnhancementResetButton(key, value);
   autoSaveEnhancement();
 }
 
@@ -4255,6 +4292,9 @@ async function saveFailoverFromEditor() {
   g.setCooldownConfigControlsEnabled = setCooldownConfigControlsEnabled;
   g.setSelfHealControlsEnabled = setSelfHealControlsEnabled;
   g.updateEnhancementNumber = updateEnhancementNumber;
+  g.onEnhancementNumberInput = onEnhancementNumberInput;
+  g.resetSingleEnhancement = resetSingleEnhancement;
+  g.syncEnhancementResetButton = syncEnhancementResetButton;
   g.updateVisionMultiImageMode = updateVisionMultiImageMode;
   g.autoSaveEnhancement = autoSaveEnhancement;
   g.saveProxyEnhancement = saveProxyEnhancement;
