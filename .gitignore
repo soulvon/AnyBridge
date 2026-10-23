@@ -115,3 +115,24 @@ findings.md
 progress.md
 task_plan.md
 待办.md
+
+# 一次性诊断/复现脚本：绑定本机账号、本机 anybridge 配置与本机绝对路径，
+# 对其他人不可复现（AnyRouter 二轮卡住/520、Qoder 抓包、Antigravity 逆向的排查产物）
+scripts/ab-*
+scripts/bisect-*
+scripts/cycle-*
+scripts/direct-*
+scripts/matrix-timing.*
+scripts/repro-*
+scripts/stability-*
+scripts/stress-*
+scripts/validate-*
+scripts/verify-*
+scripts/probe-*
+scripts/check-tool-shape.*
+scripts/check-ui-unlock-priority.*
+scripts/find-cmd.*
+scripts/find-sec.*
+scripts/read-tier.*
+qoder-*.cjs
+tmp_*.mjs
