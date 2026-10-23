@@ -1990,7 +1990,13 @@ export async function execute(ctx) {
   const routed = filterTargets(resolvedTargets, cooldownPolicy);
   if (routed.cooling.length) {
     const lines = routed.cooling.map(c => `${c.target.providerId}${c.target.model ? `/${c.target.model}` : ''}(剩 ${Math.ceil(c.remainingMs / 1000)}s)`);
-    console.warn(`[local-proxy] 🧊 跳过 ${routed.cooling.length} 个冷却中的目标: ${lines.join(', ')}${routed.allCooling ? '；全部目标都在冷却，按解冻顺序尝试' : ''}`);
+    console.warn(`[local-proxy] 🧊 跳过 ${routed.cooling.length} 个冷却中的目标: ${lines.join(', ')}`);
+  }
+  if (routed.allCooling) {
+    const minWait = Math.ceil(Math.min(...routed.cooling.map(c => c.remainingMs)) / 1000);
+    const msg = `模型「${ctx.model}」的所有上游目标均在冷却期内（最短剩余 ${minWait} 秒解冻），按策略直接阻断报错。`;
+    recordError({ provider: 'failover-cooldown', message: msg });
+    throw new LocalProxyUpstreamError(msg, { status: 503, type: 'upstream_error' });
   }
   for (const target of routed.targets) {
     const conn = resolveTarget(target, providers);

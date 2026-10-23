@@ -895,7 +895,15 @@ export function handleGetChatMessage(req, res, body) {
   }
   if (routed.cooling.length) {
     const lines = routed.cooling.map(c => `${c.target.providerId}${c.target.model ? `/${c.target.model}` : ''}(剩 ${Math.ceil(c.remainingMs / 1000)}s)`);
-    console.warn(`  🧊 跳过 ${routed.cooling.length} 个冷却中的目标: ${lines.join(', ')}${routed.allCooling ? '；全部目标都在冷却，按解冻顺序尝试' : ''}`);
+    console.warn(`  🧊 跳过 ${routed.cooling.length} 个冷却中的目标: ${lines.join(', ')}`);
+  }
+  if (routed.allCooling) {
+    const minWait = Math.ceil(Math.min(...routed.cooling.map(c => c.remainingMs)) / 1000);
+    const msg = `模型「${slot.displayName || requestedModel}」的所有上游目标均在冷却期内（最短剩余 ${minWait} 秒解冻），按策略直接阻断报错。`;
+    console.error(`  ❌ ${msg}`);
+    recordError({ provider: 'failover-cooldown', message: msg });
+    sendTerminalError(res, messageId, msg, 'resource_exhausted');
+    return;
   }
   if (hasImages) {
     const imgCount = messages.reduce((n, m) => n + (Array.isArray(m.content) ? m.content.filter(b => b.type === 'image').length : 0), 0);

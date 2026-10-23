@@ -132,13 +132,8 @@ export function filterTargets(targets, policy = DEFAULTS) {
     }
   }
   if (alive.length > 0) return { targets: alive, cooling, allCooling: false };
-  // 全部目标都在冷却：按解冻时间从早到晚仍全部返回，宁可慢也不让请求直接失败。
-  const ordered = [...targets].sort((a, b) => {
-    const ra = state.get(targetKey(a));
-    const rb = state.get(targetKey(b));
-    return (ra?.until || 0) - (rb?.until || 0);
-  });
-  return { targets: ordered, cooling, allCooling: true };
+  // 全部目标都在冷却中：按需求直接返回空列表由外层阻断报错，不做隐式重试。
+  return { targets: [], cooling, allCooling: true };
 }
 
 export function clearAll() {
