@@ -11,6 +11,7 @@ certs/*.pem
 
 # Local capture/debug outputs that may contain account data
 _dbg_*
+.tmp*
 scripts/archive-temp/
 scripts/data/_real_*
 scripts/data/*request*.json

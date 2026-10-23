@@ -558,6 +558,7 @@ function updateProxyPlatformCopy(platformId) {
   if (emptySubtitle) {
     emptySubtitle.textContent = _t(`添加第一个模型映射，让 ${meta.label || '当前平台'} 使用你指定的 AI 供应商与模型能力。`);
   }
+  void refreshProxyLangStatus();
 }
 
 function currentKitePluginPlatform() {
@@ -1360,6 +1361,263 @@ function updateFlowIdeTarget(ide) {
     flowSub.textContent = ideLabel;
   }
 }
+
+// ═══════ 界面汉化通用工厂（Windsurf/Devin/Cursor 共用） ═══════
+// DOM id 前缀 + 平台 id 参数化：data-action 绑定到实例化后的具体函数。
+
+function proxyLangPlatform() {
+  const ide = typeof getTargetIde === 'function' ? getTargetIde() : 'windsurf';
+  return (ide === 'devin' || ide === 'windsurf') ? ide : null;
+}
+
+function makeLangActions(prefix, getPlatform, displayName) {
+  const el = (id) => document.getElementById(prefix + id);
+  const name = () => displayName || (getPlatform() === 'devin' ? 'Devin Desktop' : 'Windsurf');
+
+  function appendLog(text, level = 'info') {
+    const box = el('LogBox');
+    if (!box) return;
+    const time = new Date().toLocaleTimeString('zh-CN', { hour12: false });
+    let prefixTag = '[信息]';
+    if (level === 'ok') prefixTag = '[成功]';
+    else if (level === 'warn') prefixTag = '[警告]';
+    else if (level === 'err') prefixTag = '[错误]';
+    box.textContent += `${time} ${prefixTag} ${text}\n`;
+    box.scrollTop = box.scrollHeight;
+  }
+
+  function clearLog() {
+    const box = el('LogBox');
+    if (box) box.textContent = '';
+  }
+
+  async function refreshStatus(updateModal = false) {
+    const btn = el('Btn');
+    const platform = getPlatform();
+    if (!btn) return;
+    if (!platform) {
+      btn.style.display = 'none';
+      return;
+    }
+    btn.style.display = '';
+    if (typeof invoke !== 'function') return;
+    try {
+      const st = await invoke('get_app_localization_status', { platform });
+      const textEl = el('BtnText');
+      if (textEl) textEl.textContent = st?.localized ? '已汉化' : '一键汉化';
+      btn.classList.toggle('success', !!st?.localized);
+      btn.classList.toggle('secondary', !st?.localized);
+      if (updateModal) {
+        const clientName = name();
+        const badge = el('ModalStatusBadge');
+        if (badge) {
+          if (st?.localized) {
+            badge.textContent = '已汉化';
+            badge.style.background = 'rgba(16, 185, 129, 0.15)';
+            badge.style.color = '#10b981';
+          } else {
+            badge.textContent = '未汉化';
+            badge.style.background = 'rgba(239, 68, 68, 0.15)';
+            badge.style.color = '#ef4444';
+          }
+        }
+        const verEl = el('ModalVer');
+        if (verEl && st?.currentVersion) verEl.textContent = 'v' + st.currentVersion;
+        const langPackEl = el('ModalLangPack');
+        if (langPackEl) {
+          langPackEl.textContent = st?.langPackInstalled ? '已安装' : '未安装';
+          langPackEl.style.color = st?.langPackInstalled ? '#10b981' : 'var(--text-muted)';
+        }
+        const restoreBtn = el('ModalRestoreBtn');
+        if (restoreBtn) restoreBtn.disabled = !st?.localized;
+        const applyBtn = el('ModalApplyBtn');
+        if (applyBtn) applyBtn.textContent = st?.localized ? '重新应用汉化' : '一键应用汉化';
+        if (st?.installed) {
+          appendLog(`检测到 ${clientName} 已安装，当前状态: ${st.localized ? '已汉化' : '官方英文未汉化'}`);
+        } else {
+          appendLog(`未检测到 ${clientName} 的标准安装目录，请先安装并运行一次该客户端`, 'warn');
+        }
+      }
+    } catch (err) {
+      if (updateModal) appendLog(`状态探测异常: ${err}`, 'err');
+    }
+  }
+
+  function openModal() {
+    const modal = el('Modal');
+    const platform = getPlatform();
+    if (!modal || !platform) return;
+    const clientName = name();
+    const titleEl = el('ModalTitle');
+    if (titleEl) titleEl.textContent = `${clientName} 界面汉化`;
+    const clientNameEl = el('ModalClientName');
+    if (clientNameEl) clientNameEl.textContent = clientName;
+    clearLog();
+    modal.classList.add('active');
+    appendLog(`已打开 ${clientName} 汉化管理面板，正在探测环境状态...`);
+    void refreshStatus(true);
+  }
+
+  function closeModal() {
+    const modal = el('Modal');
+    if (modal) modal.classList.remove('active');
+  }
+
+  // 与白色反重力（Antigravity 桌面端汉化）的操作交互对齐：
+  // apply/restore 成功后弹统一的重启确认窗，支持一键重启客户端。
+  async function confirmRestart(actionDesc, statusText) {
+    const target = getPlatform();
+    if (typeof promptRestartIde !== 'function') return;
+    const restarted = await promptRestartIde(
+      `${name()} ${actionDesc}，需要重启客户端后生效。`,
+      target,
+      {
+        title: `重启 ${name()}`,
+        statusText: statusText || '汉化补丁已写入本地客户端资源，重启后界面即刻生效。',
+        skipAutoPreference: true,
+      }
+    );
+    if (restarted) {
+      appendLog(`${name()} 已重启，界面变更已生效`, 'ok');
+    } else {
+      appendLog(`已选择稍后重启，下次启动客户端后生效`);
+    }
+  }
+
+  async function applyAction() {
+    const platform = getPlatform();
+    if (!platform) return;
+    const clientName = name();
+    appendLog('----------------------------------------');
+    const applyBtn = el('ModalApplyBtn');
+    if (applyBtn) applyBtn.disabled = true;
+    try {
+      // 词库策略（对齐反馈：每次检查更新太慢）：apply 不做更新检查，
+      // 本地有词库直接用（手动更新走「检查在线词库更新」按钮）。
+      // 仅 Claude 首次使用（本地无词库缓存）时自动下载，否则它无法汉化。
+      appendLog(`[1/4] 正在准备词库...`);
+      try {
+        const st = await invoke('get_app_localization_status', { platform });
+        if (platform === 'claude-desktop' && !st?.langPackInstalled) {
+          appendLog(`本地暂无词库，正在下载（约 1MB，仅首次）...`);
+          const dl = await invoke('download_app_localization_update', { platform });
+          appendLog(`词库下载成功: ${dl?.message}`, 'ok');
+        } else {
+          appendLog(`词库已就绪 (v${st?.currentVersion || 'baseline'}）`);
+        }
+      } catch (e) {
+        appendLog(`词库准备失败（可点「检查在线词库更新」重试）: ${e}`, 'warn');
+      }
+      // 第二步：应用汉化
+      appendLog(`[2/4] 正在检测 ${clientName} 安装与文件权限...`);
+      appendLog(`[3/4] 正在备份原厂资源并注入界面汉化...`);
+      const res = await invoke('apply_app_localization', { platform });
+      appendLog(`[4/4] ${res?.message || '汉化注入完成！'}`, 'ok');
+      await refreshStatus(true);
+      if (typeof showBottomToast === 'function') {
+        showBottomToast(res?.message || `${clientName} 汉化成功`, 'success', { duration: 6000 });
+      }
+      appendLog('升级保活已开启：客户端升级覆盖后，AnyBridge 运行时会自动重新注入');
+      await confirmRestart('汉化补丁已成功注入', '汉化补丁已写入本地客户端资源，重启后中文界面即刻生效。');
+    } catch (e) {
+      appendLog(`汉化失败: ${e?.message || e}`, 'err');
+      if (typeof showCustomAlert === 'function') {
+        showCustomAlert(String(e?.message || e), '汉化失败', 'error');
+      }
+    } finally {
+      if (applyBtn) applyBtn.disabled = false;
+    }
+  }
+
+  async function restoreAction() {
+    const platform = getPlatform();
+    if (!platform) return;
+    const clientName = name();
+    appendLog('----------------------------------------');
+    appendLog(`[1/2] 正在检索 ${clientName} 官方原版备份并准备还原...`);
+    const restoreBtn = el('ModalRestoreBtn');
+    if (restoreBtn) restoreBtn.disabled = true;
+    try {
+      const res = await invoke('restore_app_localization', { platform });
+      appendLog(`[2/2] ${res?.message || '已成功还原官方英文原版！'}`, 'ok');
+      await refreshStatus(true);
+      if (typeof showBottomToast === 'function') {
+        showBottomToast(res?.message || `${clientName} 已恢复英文原版`, 'success', { duration: 6000 });
+      }
+      await confirmRestart('已还原官方英文原版', '已还原官方英文原版，重启后恢复英文界面。');
+    } catch (e) {
+      appendLog(`还原英文失败: ${e?.message || e}`, 'err');
+      if (typeof showCustomAlert === 'function') {
+        showCustomAlert(String(e?.message || e), '还原失败', 'error');
+      }
+    } finally {
+      if (restoreBtn) restoreBtn.disabled = false;
+    }
+  }
+
+  async function checkUpdateAction() {
+    const platform = getPlatform();
+    if (!platform) return;
+    appendLog('----------------------------------------');
+    appendLog('正在连通 GitHub 检查开源汉化仓库最新词库...');
+    try {
+      const info = await invoke('check_app_localization_update', { platform });
+      appendLog(`GitHub 响应成功: 上游词库 sha=${info?.latestVersion || '未知'}`);
+      if (info?.hasUpdate) {
+        appendLog(`发现新版汉化词库（当前 v${info.currentVersion}），正在下载...`, 'ok');
+        appendLog('正在下载最新词库至本地热更新缓存...');
+        const dl = await invoke('download_app_localization_update', { platform });
+        appendLog(`词库下载成功: ${dl?.message}`, 'ok');
+        // 只下载，不自动应用：是否注入、何时注入由用户决定（应用按钮才是注入入口）
+        appendLog('新词库已就绪，点击「重新应用汉化」即可生效', 'warn');
+        if (typeof showBottomToast === 'function') {
+          showBottomToast('词库已更新，点击「重新应用汉化」生效', 'success');
+        }
+      } else {
+        appendLog(`当前词库已是最新版本 (v${info?.currentVersion || 'baseline'})，无需更新`, 'ok');
+        if (typeof showBottomToast === 'function') {
+          showBottomToast(`当前汉化词库已是最新版本 (v${info?.currentVersion || 'baseline'})`, 'success');
+        }
+      }
+    } catch (e) {
+      appendLog(`检查在线更新失败（不影响离线使用内置汉化）: ${e}`, 'warn');
+      if (typeof showCustomAlert === 'function') {
+        showCustomAlert('检查在线更新失败（将使用内置离线汉化词库）：\n' + String(e?.message || e), '检查提示', 'info');
+      }
+    }
+  }
+
+  return { appendLog, clearLog, refreshStatus, openModal, closeModal, applyAction, restoreAction, checkUpdateAction };
+}
+
+// 实例：Windsurf/Devin（models 页，平台跟随 IDE 选择器）、Cursor、Claude Desktop
+const proxyLangActions = makeLangActions('proxyLang', () => proxyLangPlatform());
+const cursorLangActions = makeLangActions('cursorLang', () => 'cursor', 'Cursor');
+const claudeLangActions = makeLangActions('claudeLang', () => 'claude-desktop', 'Claude Desktop');
+
+globalThis.openProxyLangModal = proxyLangActions.openModal;
+globalThis.closeProxyLangModal = proxyLangActions.closeModal;
+globalThis.clearProxyLangLog = proxyLangActions.clearLog;
+globalThis.applyProxyLocalizationAction = proxyLangActions.applyAction;
+globalThis.restoreProxyLocalizationAction = proxyLangActions.restoreAction;
+globalThis.checkProxyLocalizationUpdateAction = proxyLangActions.checkUpdateAction;
+globalThis.refreshProxyLangStatus = proxyLangActions.refreshStatus;
+
+globalThis.openCursorLangModal = cursorLangActions.openModal;
+globalThis.closeCursorLangModal = cursorLangActions.closeModal;
+globalThis.clearCursorLangLog = cursorLangActions.clearLog;
+globalThis.applyCursorLocalizationAction = cursorLangActions.applyAction;
+globalThis.restoreCursorLocalizationAction = cursorLangActions.restoreAction;
+globalThis.checkCursorLocalizationUpdateAction = cursorLangActions.checkUpdateAction;
+globalThis.refreshCursorLangStatus = cursorLangActions.refreshStatus;
+
+globalThis.openClaudeLangModal = claudeLangActions.openModal;
+globalThis.closeClaudeLangModal = claudeLangActions.closeModal;
+globalThis.clearClaudeLangLog = claudeLangActions.clearLog;
+globalThis.applyClaudeLocalizationAction = claudeLangActions.applyAction;
+globalThis.restoreClaudeLocalizationAction = claudeLangActions.restoreAction;
+globalThis.checkClaudeLocalizationUpdateAction = claudeLangActions.checkUpdateAction;
+globalThis.refreshClaudeLangStatus = claudeLangActions.refreshStatus;
 
 // ---- P3 globalThis mirror (functions/classes) ----
 (function mirrorFns(g) {

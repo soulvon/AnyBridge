@@ -23,11 +23,18 @@ function intEnv(names, fallback, min = 0) {
 /** Hard ceiling for a single upstream request (connect + stream). Default 5 min. */
 export const UPSTREAM_TIMEOUT_MS = intEnv(['UPSTREAM_TIMEOUT_MS', 'API_TIMEOUT_MS'], 300_000, 1000);
 /**
- * Time to first response headers. Default 180s.
+ * Time to first response headers. Default 120s.
  * 中转站（如 AnyRouter）处理带工具历史的请求实测可达 85-90s 首字节，
  * 90s 阈值会把成功边缘的请求掐掉；hardMs(300s) 仍是绝对上限。
+ * 从 180s 下调到 120s：挂起判定越晚，故障转移到备用目标就越慢。
  */
-export const UPSTREAM_TTFB_MS = intEnv(['UPSTREAM_TTFB_MS', 'BYOK_TTFB_MS'], 180_000, 1000);
+export const UPSTREAM_TTFB_MS = intEnv(['UPSTREAM_TTFB_MS', 'BYOK_TTFB_MS'], 120_000, 1000);
+
+/** 代理增强的「首字节超时（秒）」覆盖；未配置时回退模块默认。 */
+export function ttfbMsFromEnhancement(enhancement) {
+  const seconds = Number(enhancement?.failoverTtfbSeconds);
+  return Number.isFinite(seconds) && seconds > 0 ? seconds * 1000 : undefined;
+}
 /**
  * Max silence between upstream stream chunks after the stream has started.
  * Default 300s — reasoning models (Grok/o-series) can think for minutes with no tokens;

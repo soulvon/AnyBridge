@@ -30,6 +30,11 @@ globalThis.DEFAULT_PROXY_ENHANCEMENT = Object.freeze({
   webSearchMaxResults: 5,
   webSearchMaxRounds: 3,
   autoRouting: true,
+  failoverTtfbSeconds: 120,
+  cooldownEnabled: true,
+  cooldownTransientSeconds: 60,
+  cooldownMaxSeconds: 600,
+  cooldownAuthSeconds: 600,
   unlockModels: true,
   systemPromptPrefix: '',
   systemPromptPrefixEnabled: false,
@@ -991,11 +996,12 @@ function renderProxyEnhancement() {
   const e = modelMapStore.enhancement;
   ['retry', 'imageFallback', 'autoRouting', 'unlockModels', 'requestLogging',
     'systemPromptPrefixEnabled', 'customHeadersEnabled', 'toolFilterEnabled',
-    'paramOverridesEnabled', 'rateLimitEnabled', 'webSearchEnabled'].forEach(key => {
+    'paramOverridesEnabled', 'rateLimitEnabled', 'webSearchEnabled', 'cooldownEnabled'].forEach(key => {
     const el = document.getElementById(`enhancement-${key}`);
     if (el) el.checked = e[key] === true;
   });
-  ['retryMaxRetries', 'retryBaseMs', 'retryCapMs', 'retryTotalSeconds', 'rateLimitRpm', 'visionBatchSize', 'visionContextMaxChars', 'webSearchMaxResults', 'webSearchMaxRounds'].forEach(key => {
+  ['retryMaxRetries', 'retryBaseMs', 'retryCapMs', 'retryTotalSeconds', 'rateLimitRpm', 'visionBatchSize', 'visionContextMaxChars', 'webSearchMaxResults', 'webSearchMaxRounds',
+    'failoverTtfbSeconds', 'cooldownTransientSeconds', 'cooldownMaxSeconds', 'cooldownAuthSeconds'].forEach(key => {
     const el = document.getElementById(`enhancement-${key}`);
     if (el) el.value = e[key];
   });
@@ -1008,6 +1014,7 @@ function renderProxyEnhancement() {
     if (el) el.checked = e.selfHeal?.[key] !== false;
   });
   setRetryConfigControlsEnabled(e.retry !== false);
+  setCooldownConfigControlsEnabled(e.cooldownEnabled !== false);
   setSelfHealControlsEnabled(e.selfHeal?.enabled !== false);
   setPanelControlsEnabled('systemPromptPrefix', e.systemPromptPrefixEnabled === true);
   setPanelControlsEnabled('customHeaders', e.customHeadersEnabled === true);
@@ -1144,6 +1151,7 @@ function toggleEnhancement(input, key) {
   if (!Object.prototype.hasOwnProperty.call(DEFAULT_PROXY_ENHANCEMENT, key)) return;
   modelMapStore.enhancement[key] = input.checked === true;
   if (key === 'retry') setRetryConfigControlsEnabled(modelMapStore.enhancement.retry !== false);
+  if (key === 'cooldownEnabled') setCooldownConfigControlsEnabled(modelMapStore.enhancement.cooldownEnabled !== false);
   // 面板开关：切换时启用/禁用对应输入控件
   if (key === 'systemPromptPrefixEnabled') setPanelControlsEnabled('systemPromptPrefix', input.checked);
   if (key === 'customHeadersEnabled') setPanelControlsEnabled('customHeaders', input.checked);
@@ -1207,6 +1215,13 @@ function setRetryConfigControlsEnabled(enabled) {
   });
 }
 
+function setCooldownConfigControlsEnabled(enabled) {
+  ['cooldownTransientSeconds', 'cooldownMaxSeconds', 'cooldownAuthSeconds'].forEach(key => {
+    const el = document.getElementById(`enhancement-${key}`);
+    if (el) el.disabled = !enabled;
+  });
+}
+
 function setSelfHealControlsEnabled(enabled) {
   ['signature', 'budget', 'media'].forEach(key => {
     const el = document.getElementById(`enhancement-selfHeal-${key}`);
@@ -1219,7 +1234,8 @@ function updateEnhancementNumber(input, key) {
   if (!Object.prototype.hasOwnProperty.call(DEFAULT_PROXY_ENHANCEMENT, key)) return;
   const min = key === 'visionMaxTokens' ? 64
     : key === 'visionContextMaxChars' ? 500
-      : (key === 'retryMaxRetries' || key === 'rateLimitRpm') ? 0 : 1;
+      : (key === 'retryMaxRetries' || key === 'rateLimitRpm'
+        || key === 'cooldownTransientSeconds' || key === 'cooldownAuthSeconds') ? 0 : 1;
   const value = normalizeEnhancementInt(input.value, DEFAULT_PROXY_ENHANCEMENT[key], min);
   modelMapStore.enhancement[key] = value;
   input.value = value;
@@ -4236,6 +4252,7 @@ async function saveFailoverFromEditor() {
   g.setVisionOptionControlsEnabled = setVisionOptionControlsEnabled;
   g.setVisionBatchSizeEnabled = setVisionBatchSizeEnabled;
   g.setRetryConfigControlsEnabled = setRetryConfigControlsEnabled;
+  g.setCooldownConfigControlsEnabled = setCooldownConfigControlsEnabled;
   g.setSelfHealControlsEnabled = setSelfHealControlsEnabled;
   g.updateEnhancementNumber = updateEnhancementNumber;
   g.updateVisionMultiImageMode = updateVisionMultiImageMode;

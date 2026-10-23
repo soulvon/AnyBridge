@@ -5,8 +5,8 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 const CURRENT_EMBEDDED_VERSION: &str = "2.18.1";
-const GITHUB_REPO_API: &str =
-    "https://api.github.com/repos/liominsb/Antigravity-Chinese-Localization/releases/latest";
+const UPSTREAM_RAW_URL: &str =
+    "https://raw.githubusercontent.com/liominsb/Antigravity-Chinese-Localization/master/localize.js";
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -194,6 +194,20 @@ fn read_cached_version() -> String {
     CURRENT_EMBEDDED_VERSION.to_string()
 }
 
+/// 本地缓存的词库内容指纹（metadata.json 的 sha 字段）。
+/// 空 = 从未同步过（还在跑内置基线）→ 视为有更新。
+fn read_cached_sha() -> String {
+    let meta_path = cache_dir().join("metadata.json");
+    if let Ok(raw) = fs::read_to_string(&meta_path) {
+        if let Ok(val) = serde_json::from_str::<Value>(&raw) {
+            if let Some(v) = val.get("sha").and_then(|v| v.as_str()) {
+                return v.to_string();
+            }
+        }
+    }
+    String::new()
+}
+
 fn get_hub_payload() -> String {
     // 热更新层：上游词典覆盖块（若存在）优先于内置基线词典合并生效
     let cached = cache_dir().join("antigravity-hub-dict.js");
@@ -259,18 +273,28 @@ fn extract_dictionary_override(source: &str) -> Option<(String, usize)> {
     Some((format!("window.__ANYBRIDGE_HANS_DICT = {};", json), count))
 }
 
+/// 检测 Hub 是否已汉化：只读 asar 的 header 区与 preload.js 段，不读全文件。
+/// 曾经 fs::read 整个 4.5MB asar：Windows Defender 实时扫描 + serde 解析 header
+/// 合计几百毫秒，且调用方是同步命令会占住 Tauri 主线程，点按钮观感"卡半天"。
 fn is_hub_localized(asar_path: &Path) -> bool {
-    let Ok(bytes) = fs::read(asar_path) else {
+    use std::io::{Read, Seek, SeekFrom};
+    let Ok(mut file) = fs::File::open(asar_path) else {
         return false;
     };
-    if bytes.len() < 16 {
+    // pickle 头 16 字节：[4][headerBufLen][4][jsonLen]...
+    let mut head = [0u8; 16];
+    if file.read_exact(&mut head).is_err() {
         return false;
     }
-    let json_size = u32::from_le_bytes(bytes[12..16].try_into().unwrap()) as usize;
-    if bytes.len() < 16 + json_size {
+    let json_size = u32::from_le_bytes(head[12..16].try_into().unwrap()) as usize;
+    let declared_header_size = u32::from_le_bytes(head[4..8].try_into().unwrap()) as usize;
+    let payload_start = asar_payload_start(declared_header_size);
+    // 只读 header JSON（asar 全部文件条目，几百 KB），跳过 4.5MB payload
+    let mut header_bytes = vec![0u8; json_size];
+    if file.read_exact(&mut header_bytes).is_err() {
         return false;
     }
-    let Ok(header_str) = std::str::from_utf8(&bytes[16..16 + json_size]) else {
+    let Ok(header_str) = std::str::from_utf8(&header_bytes) else {
         return false;
     };
     let Ok(header) = serde_json::from_str::<Value>(header_str) else {
@@ -295,15 +319,21 @@ fn is_hub_localized(asar_path: &Path) -> bool {
         .get("size")
         .and_then(|v| v.as_u64())
         .unwrap_or(0) as usize;
-    let declared_header_size = u32::from_le_bytes(bytes[4..8].try_into().unwrap()) as usize;
-    let payload_start = asar_payload_start(declared_header_size);
-    if bytes.len() < payload_start + offset + size {
+    if size == 0 {
         return false;
     }
-
-    let Ok(code) =
-        std::str::from_utf8(&bytes[payload_start + offset..payload_start + offset + size])
-    else {
+    // seek 到 preload.js 段，只读这一段
+    if file
+        .seek(SeekFrom::Start((payload_start + offset) as u64))
+        .is_err()
+    {
+        return false;
+    }
+    let mut code_bytes = vec![0u8; size];
+    if file.read_exact(&mut code_bytes).is_err() {
+        return false;
+    }
+    let Ok(code) = std::str::from_utf8(&code_bytes) else {
         return false;
     };
     code.contains("__antigravityHansInjected")
@@ -461,8 +491,22 @@ fn restore_ide_workbench(html_path: &Path, product_json: &Path) -> Result<(), St
     Ok(())
 }
 
-#[tauri::command]
-pub fn get_antigravity_localization_status(target: String) -> AntigravityLocalizationStatus {
+/// 状态查询结果缓存：界面会在页面加载、打开面板、apply/restore 后反复查状态，
+/// 每次都读 asar/磁盘太浪费。3 秒 TTL 足够覆盖连续查询，apply/restore 主动失效。
+static STATUS_CACHE: std::sync::OnceLock<
+    std::sync::Mutex<Option<(std::time::Instant, AntigravityLocalizationStatus)>>,
+> = std::sync::OnceLock::new();
+const STATUS_CACHE_TTL: std::time::Duration = std::time::Duration::from_secs(3);
+
+fn invalidate_status_cache() {
+    if let Some(m) = STATUS_CACHE.get() {
+        if let Ok(mut slot) = m.lock() {
+            *slot = None;
+        }
+    }
+}
+
+fn build_antigravity_status(target: &str) -> AntigravityLocalizationStatus {
     let is_ide = target == "antigravity-ide";
     let (installed, localized) = if is_ide {
         if let Some(html) = ide_workbench_html_path() {
@@ -479,7 +523,7 @@ pub fn get_antigravity_localization_status(target: String) -> AntigravityLocaliz
     };
 
     AntigravityLocalizationStatus {
-        target,
+        target: target.to_string(),
         installed,
         localized,
         current_version: read_cached_version(),
@@ -490,6 +534,31 @@ pub fn get_antigravity_localization_status(target: String) -> AntigravityLocaliz
         published_at: None,
         message: None,
     }
+}
+
+#[tauri::command]
+pub async fn get_antigravity_localization_status(
+    target: String,
+) -> Result<AntigravityLocalizationStatus, String> {
+    // 异步 + spawn_blocking：磁盘读绝不占 Tauri 主线程（否则点按钮观感卡顿）
+    tauri::async_runtime::spawn_blocking(move || {
+        let cache = STATUS_CACHE.get_or_init(|| std::sync::Mutex::new(None));
+        {
+            let slot = cache.lock().unwrap();
+            if let Some((ts, st)) = slot.as_ref() {
+                if ts.elapsed() < STATUS_CACHE_TTL && st.target == target {
+                    return Ok(st.clone());
+                }
+            }
+        }
+        let st = build_antigravity_status(&target);
+        if let Ok(mut slot) = cache.lock() {
+            *slot = Some((std::time::Instant::now(), st.clone()));
+        }
+        Ok(st)
+    })
+    .await
+    .map_err(|e| format!("状态查询任务失败: {}", e))?
 }
 
 #[tauri::command]
@@ -516,6 +585,7 @@ pub fn apply_antigravity_localization(
     let asar_path = hub_asar_path()
         .ok_or_else(|| "未找到 Antigravity 桌面端安装目录，请先安装该应用".to_string())?;
     patch_hub_asar(&asar_path)?;
+    invalidate_status_cache();
 
     Ok(LocalizationOperationResult {
         ok: true,
@@ -546,6 +616,7 @@ pub fn restore_antigravity_localization(
             hub_asar_path().ok_or_else(|| "未找到 Antigravity 桌面端安装目录".to_string())?;
         restore_hub_asar(&asar_path)?;
     }
+    invalidate_status_cache();
 
     Ok(LocalizationOperationResult {
         ok: true,
@@ -557,51 +628,24 @@ pub fn restore_antigravity_localization(
 #[tauri::command]
 pub async fn check_antigravity_localization_update() -> Result<AntigravityLocalizationStatus, String>
 {
-    let client = reqwest::Client::builder()
-        .user_agent("AnyBridge-Desktop-Client")
-        .timeout(std::time::Duration::from_secs(5))
-        .build()
-        .map_err(|e| e.to_string())?;
-
-    let resp = client
-        .get(GITHUB_REPO_API)
-        .send()
-        .await
-        .map_err(|e| format!("检查在线汉化更新失败: {e}"))?;
-
-    if !resp.status().is_success() {
-        return Err(format!("GitHub API 响应异常: HTTP {}", resp.status()));
-    }
-
-    let val = resp.json::<Value>().await.map_err(|e| e.to_string())?;
-    let tag = val
-        .get("tag_name")
-        .and_then(|v| v.as_str())
-        .unwrap_or("")
-        .to_string();
-    let clean_tag = tag.trim_start_matches(|c| c == 'v' || c == 'V').to_string();
+    // 不再打 api.github.com releases API：未认证限额 60 次/小时按出口 IP 计，
+    // Clash 共享节点必被耗尽（实测 HTTP 403）。改为 raw 直下上游 localize.js
+    // 后做内容哈希比对——raw 是 CDN 不设限，镜像兜底见 fetch_github_content。
+    let content = super::fetch_github_content(UPSTREAM_RAW_URL, 30).await?;
+    let remote_sha = super::content_sha256(&content);
     let current = read_cached_version();
-    let has_update = !clean_tag.is_empty() && clean_tag != current;
+    let has_update = read_cached_sha() != remote_sha;
 
     Ok(AntigravityLocalizationStatus {
         target: "antigravity".to_string(),
         installed: true,
         localized: true,
         current_version: current,
-        latest_version: Some(clean_tag),
+        latest_version: Some(remote_sha[..8.min(remote_sha.len())].to_string()),
         has_update,
-        release_name: val
-            .get("name")
-            .and_then(|v| v.as_str())
-            .map(|s| s.to_string()),
-        release_url: val
-            .get("html_url")
-            .and_then(|v| v.as_str())
-            .map(|s| s.to_string()),
-        published_at: val
-            .get("published_at")
-            .and_then(|v| v.as_str())
-            .map(|s| s.to_string()),
+        release_name: None,
+        release_url: None,
+        published_at: None,
         message: None,
     })
 }
@@ -609,32 +653,11 @@ pub async fn check_antigravity_localization_update() -> Result<AntigravityLocali
 #[tauri::command]
 pub async fn download_antigravity_localization_update(
 ) -> Result<LocalizationOperationResult, String> {
-    let client = reqwest::Client::builder()
-        .user_agent("AnyBridge-Desktop-Client")
-        .timeout(std::time::Duration::from_secs(10))
-        .build()
-        .map_err(|e| e.to_string())?;
+    // 直接下载 raw（镜像兜底），不再先调 check——那会白下载一次。
+    let content = super::fetch_github_content(UPSTREAM_RAW_URL, 60).await?;
+    let remote_sha = super::content_sha256(&content);
 
-    let check = check_antigravity_localization_update().await?;
-    let latest_ver = check
-        .latest_version
-        .unwrap_or_else(|| CURRENT_EMBEDDED_VERSION.to_string());
-
-    let script_url = "https://raw.githubusercontent.com/liominsb/Antigravity-Chinese-Localization/master/localize.js";
-    let resp = client
-        .get(script_url)
-        .send()
-        .await
-        .map_err(|e| format!("下载上游汉化脚本失败: {e}"))?;
-    if !resp.status().is_success() {
-        return Err(format!("下载上游汉化脚本失败: HTTP {}", resp.status()));
-    }
-    let code = resp
-        .text()
-        .await
-        .map_err(|e| format!("读取上游汉化脚本失败: {e}"))?;
-
-    let (override_js, count) = extract_dictionary_override(&code).ok_or_else(|| {
+    let (override_js, count) = extract_dictionary_override(&content).ok_or_else(|| {
         "上游脚本结构变化，未能解析出汉化词典（已保留内置离线词库不受影响）".to_string()
     })?;
 
@@ -644,7 +667,8 @@ pub async fn download_antigravity_localization_update(
     )
     .map_err(|e| format!("写入热更新词库缓存失败: {e}"))?;
     let meta_json = json!({
-        "version": latest_ver,
+        "version": remote_sha[..8.min(remote_sha.len())],
+        "sha": remote_sha,
         "updatedAt": chrono::Utc::now().to_rfc3339(),
         "entries": count
     });
@@ -657,8 +681,8 @@ pub async fn download_antigravity_localization_update(
     Ok(LocalizationOperationResult {
         ok: true,
         message: format!(
-            "已同步上游最新汉化词库 v{}（{} 条词条），请重新应用汉化生效",
-            latest_ver, count
+            "已同步上游最新汉化词库（{} 条词条），请重新应用汉化生效",
+            count
         ),
         localized: true,
     })

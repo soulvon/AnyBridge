@@ -112,6 +112,23 @@ fn build_mirror_url(original_url: &str, mirror: &GithubMirror) -> String {
     }
 }
 
+/// 生成下载候选清单：原始 URL 优先，其后是各启用镜像的改写 URL（去重）。
+/// 供其他模块（如汉化词库更新）复用扩展体系的镜像配置——
+/// 用户在扩展页加的镜像这里自动生效。
+pub(crate) fn mirror_candidates(original_url: &str) -> Vec<String> {
+    let mut out = vec![original_url.to_string()];
+    for m in load_mirrors() {
+        if !m.enabled {
+            continue;
+        }
+        let candidate = build_mirror_url(original_url, &m);
+        if candidate != original_url && !out.contains(&candidate) {
+            out.push(candidate);
+        }
+    }
+    out
+}
+
 /// 并发测速：对每个启用的镜像发起 Range 请求下载 512KB，按耗时排序
 async fn speed_test_mirrors(test_url: &str) -> Vec<(GithubMirror, u64)> {
     let mirrors: Vec<GithubMirror> = load_mirrors()

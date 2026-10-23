@@ -94,6 +94,22 @@ fn default_web_search_max_rounds() -> u32 {
     3
 }
 
+fn default_failover_ttfb_seconds() -> u32 {
+    120
+}
+
+fn default_cooldown_transient_seconds() -> u32 {
+    60
+}
+
+fn default_cooldown_max_seconds() -> u32 {
+    600
+}
+
+fn default_cooldown_auth_seconds() -> u32 {
+    600
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Target {
     #[serde(rename = "providerId")]
@@ -208,6 +224,27 @@ pub struct EnhancementConfig {
     pub web_search_max_rounds: u32,
     #[serde(rename = "autoRouting", default = "default_true")]
     pub auto_routing: bool,
+    /// 上游首字节超时（秒）。超时即判定该目标失败并切换下一个目标。
+    #[serde(
+        rename = "failoverTtfbSeconds",
+        default = "default_failover_ttfb_seconds"
+    )]
+    pub failover_ttfb_seconds: u32,
+    /// 失败目标冷却总开关。关闭后失败不再跳过该目标。
+    #[serde(rename = "cooldownEnabled", default = "default_true")]
+    pub cooldown_enabled: bool,
+    /// 瞬时错误（5xx / 超时 / 网络）的首次冷却秒数，反复失败按 2 倍递增。
+    #[serde(
+        rename = "cooldownTransientSeconds",
+        default = "default_cooldown_transient_seconds"
+    )]
+    pub cooldown_transient_seconds: u32,
+    /// 冷却时长上限（秒）。
+    #[serde(rename = "cooldownMaxSeconds", default = "default_cooldown_max_seconds")]
+    pub cooldown_max_seconds: u32,
+    /// 鉴权/权限/模型不可用类错误的冷却秒数，一次失败即按此值冷却。
+    #[serde(rename = "cooldownAuthSeconds", default = "default_cooldown_auth_seconds")]
+    pub cooldown_auth_seconds: u32,
     #[serde(rename = "unlockModels", default = "default_true")]
     pub unlock_models: bool,
     #[serde(rename = "systemPromptPrefix", default)]
@@ -262,6 +299,11 @@ impl Default for EnhancementConfig {
             web_search_max_results: default_web_search_max_results(),
             web_search_max_rounds: default_web_search_max_rounds(),
             auto_routing: true,
+            failover_ttfb_seconds: default_failover_ttfb_seconds(),
+            cooldown_enabled: true,
+            cooldown_transient_seconds: default_cooldown_transient_seconds(),
+            cooldown_max_seconds: default_cooldown_max_seconds(),
+            cooldown_auth_seconds: default_cooldown_auth_seconds(),
             unlock_models: true,
             system_prompt_prefix: String::new(),
             system_prompt_prefix_enabled: false,

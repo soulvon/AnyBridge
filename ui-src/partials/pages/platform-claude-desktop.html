@@ -11,6 +11,18 @@
                 </div>
               </div>
               <div class="platform-console-actions" id="claude-desktop-hero-actions">
+                <button type="button" class="btn-ghost secondary platform-lang-action-btn" id="claudeLangBtn" data-action="openClaudeLangModal"
+                  style="display: none; align-items: center; gap: 6px; padding: 4px 12px; border-radius: 8px; font-size: 12px; font-weight: 600; height: 30px; flex-shrink: 0;">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink: 0;">
+                    <path d="m5 8 6 6"/>
+                    <path d="m4 14 6-6 2-3"/>
+                    <path d="M2 5h12"/>
+                    <path d="M7 2h1"/>
+                    <path d="m22 22-5-10-5 10"/>
+                    <path d="M14 18h6"/>
+                  </svg>
+                  <span id="claudeLangBtnText">一键汉化</span>
+                </button>
                 <button type="button" class="btn-ghost success claude-desktop-mode-badge-btn" id="claude-desktop-hero-mode-btn"
                   onclick="onClaudeDesktopHeroModeClick()" title="点击查看或切换连接模式"
                   style="height: 36px; padding: 0 14px; font-size: 13px; font-weight: 600; display: inline-flex; align-items: center; gap: 8px; border-radius: 8px; cursor: pointer; transition: all 0.2s ease;">
@@ -55,4 +67,71 @@
 
             <p class="codex-safe-note" style="margin-top: 14px;">配置文件路径：<code id="claude-desktop-config-path-label" class="reveal-path" title="点击打开所在文件夹">Claude-3p/claude_desktop_config.json</code><button type="button" class="platform-config-inline-link" data-action="openPlatformRealConfigModal" data-arg="claude-desktop" title="查看并编辑配置文件原文"><span>查看配置</span><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg></button>。切换后重启 Claude Desktop 生效，使用代理模型需保持 AnyBridge 运行。</p>
           </section>
+
+          <!-- ═══════ CLAUDE DESKTOP 界面汉化与日志弹窗 ═══════ -->
+          <div class="modal-overlay" id="claudeLangModal" role="dialog" aria-modal="true" aria-labelledby="claudeLangModalTitle" data-action="closeClaudeLangModal" data-only-self>
+            <div class="modal-container" style="max-width: 580px; width: 92%; border-radius: 16px; overflow: hidden; padding: 0; box-shadow: var(--shadow-xl, 0 24px 38px 3px rgba(0,0,0,0.18)); border: 1px solid var(--border);">
+              <div class="modal-header" style="padding: 16px 22px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; background: var(--bg-card);">
+                <div style="display: flex; align-items: center; gap: 12px;">
+                  <div style="width: 36px; height: 36px; border-radius: 10px; background: rgba(37, 99, 235, 0.08); color: var(--accent); display: flex; align-items: center; justify-content: center; flex-shrink: 0; border: 1px solid rgba(37, 99, 235, 0.15);">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                      <path d="m5 8 6 6"/>
+                      <path d="m4 14 6-6 2-3"/>
+                      <path d="M2 5h12"/>
+                      <path d="M7 2h1"/>
+                      <path d="m22 22-5-10-5 10"/>
+                      <path d="M14 18h6"/>
+                    </svg>
+                  </div>
+                  <div>
+                    <div class="modal-title" id="claudeLangModalTitle" style="font-size: 15px; font-weight: 750; color: var(--text-primary); line-height: 1.25;">Claude Desktop 界面汉化</div>
+                    <div id="claudeLangModalSubtitle" style="font-size: 11.5px; color: var(--text-warning, #d97706); margin-top: 3px;">⚠ 新版主界面在线加载，本地汉化暂不生效（详见说明）</div>
+                  </div>
+                </div>
+                <button type="button" class="btn-ghost icon-btn" data-action="closeClaudeLangModal" aria-label="关闭" style="width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center; color: var(--text-muted); transition: all 0.15s ease;">✕</button>
+              </div>
+
+              <div class="modal-body" style="padding: 20px 22px; background: var(--bg-card); display: flex; flex-direction: column; gap: 14px;">
+                <div style="background: var(--bg-glass-elevated, rgba(255,255,255,0.04)); border: 1px solid var(--border-subtle, rgba(255,255,255,0.06)); border-radius: 10px; padding: 12px 14px; font-size: 12px;">
+                  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                    <span style="color: var(--text-muted);">目标客户端：</span>
+                    <strong id="claudeLangModalClientName" style="color: var(--text-primary);">Claude Desktop</strong>
+                  </div>
+                  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                    <span style="color: var(--text-muted);">当前状态：</span>
+                    <span id="claudeLangModalStatusBadge" class="status-badge" style="padding: 2px 8px; border-radius: 999px; font-size: 11px; background: rgba(16, 185, 129, 0.1); color: #10b981;">检测中</span>
+                  </div>
+                  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                    <span style="color: var(--text-muted);">词库版本：</span>
+                    <span style="color: var(--text-secondary); font-family: var(--font-mono);" id="claudeLangModalVer">baseline</span>
+                  </div>
+                  <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <span style="color: var(--text-muted);">中文词库：</span>
+                    <span id="claudeLangModalLangPack" style="color: var(--text-muted);">检测中</span>
+                  </div>
+                </div>
+
+                <div>
+                  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                    <span style="font-size: 12px; font-weight: 600; color: var(--text-primary);">执行进度与日志</span>
+                    <button type="button" class="btn-ghost" data-action="clearClaudeLangLog" style="font-size: 11px; padding: 2px 8px; height: 22px; border-radius: 4px;">清空日志</button>
+                  </div>
+                  <pre id="claudeLangLogBox" style="margin: 0; background: var(--bg-primary); color: var(--text-secondary); font-family: var(--font-mono); padding: 12px 14px; border-radius: 8px; font-size: 11.5px; line-height: 1.65; height: 140px; min-height: 140px; max-height: 140px; overflow-y: auto; white-space: pre-wrap; word-break: break-all; border: 1px solid var(--border); box-sizing: border-box;"></pre>
+                </div>
+
+                <div style="font-size: 11px; color: var(--text-muted); line-height: 1.45; min-height: 32px;">
+                  <div style="color: var(--warning, #d97706); font-weight: 600; margin-bottom: 4px;">当前版本暂无法生效（上游社区已确认的限制）</div>
+                  新版 Claude Desktop 使用 Anthropic 账号登录时，主界面直接从 claude.ai 在线加载，不读取本地前端与翻译文件——本地改写方案对在线主界面均无效，仅菜单栏/托盘等本地部分可能生效。词典与基础设施已就绪（30,600+ 条），官方改回本地加载或支持中文后立即可用。
+                </div>
+              </div>
+
+              <div class="modal-footer" style="padding: 12px 22px; border-top: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; background: var(--bg-card); min-height: 56px; box-sizing: border-box;">
+                <button type="button" class="btn-ghost" id="claudeLangModalCheckUpdateBtn" data-action="checkClaudeLocalizationUpdateAction" style="height: 32px; padding: 0 14px; font-size: 12px; font-weight: 500; border-radius: 8px; display: inline-flex; align-items: center; justify-content: center;">检查在线词库更新</button>
+                <div style="display: flex; gap: 8px; align-items: center;">
+                  <button type="button" class="btn-ghost danger" id="claudeLangModalRestoreBtn" data-action="restoreClaudeLocalizationAction" style="height: 32px; padding: 0 14px; font-size: 12px; font-weight: 500; border-radius: 8px; display: inline-flex; align-items: center; justify-content: center;" disabled>还原官方英文</button>
+                  <button type="button" class="btn-primary" id="claudeLangModalApplyBtn" data-action="applyClaudeLocalizationAction" style="height: 32px; padding: 0 16px; font-size: 12px; font-weight: 600; border-radius: 8px; display: inline-flex; align-items: center; justify-content: center;">一键应用汉化</button>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>

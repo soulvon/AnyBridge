@@ -2850,26 +2850,6 @@ function clearAntigravityLangLog() {
 }
 
 async function openAntigravityLangModal() {
-  // IDE 界面汉化已移除：仅在"已汉化"时直接执行还原，用于清理历史汉化
-  if (getAntigravityTarget() === 'antigravity-ide') {
-    try {
-      const st = await invoke('get_antigravity_localization_status', { target: 'antigravity-ide' });
-      if (st?.localized) {
-        await restoreAntigravityLocalizationAction();
-      } else if (typeof showCustomAlert === 'function') {
-        showCustomAlert(
-          'Antigravity IDE 的界面汉化功能已移除。\n\n独立桌面端（Antigravity）仍支持一键汉化。',
-          '提示',
-          'info'
-        );
-      }
-    } catch (e) {
-      if (typeof showCustomAlert === 'function') {
-        showCustomAlert(String(e?.message || e), '操作失败', 'error');
-      }
-    }
-    return;
-  }
   const modal = document.getElementById('antigravityLangModal');
   if (!modal) return;
   modal.classList.add('active');
@@ -2892,26 +2872,16 @@ async function refreshAntigravityLangStatus(updateModal = false) {
   const target = getAntigravityTarget();
   const platName = target === 'antigravity-ide' ? 'Antigravity IDE' : 'Antigravity';
 
-  // Antigravity IDE 的界面汉化已移除：它需要改写 IDE 安装包资源并清空校验和，
-  // 客户端升级后会失效甚至影响启动，风险高于收益。仅保留独立桌面端（Hub）的汉化。
-  // 但若 IDE 已被历史版本汉化过，仍保留入口以便一键清理还原。
+  // Antigravity IDE 与 Windsurf/Devin/Cursor 同构（workbench 注入 + 保活），
+  // 走通用 app_localization 命令；独立桌面端（Hub）走 asar 注入的专用命令。
   const langBtnEl = document.getElementById('antigravityLangBtn');
   const btnTextEl = document.getElementById('antigravityLangBtnText');
-  if (target === 'antigravity-ide') {
-    try {
-      const st = await invoke('get_antigravity_localization_status', { target });
-      const isLocalized = !!st?.localized;
-      if (langBtnEl) langBtnEl.style.display = isLocalized ? '' : 'none';
-      if (btnTextEl && isLocalized) btnTextEl.textContent = '还原官方英文';
-    } catch {
-      if (langBtnEl) langBtnEl.style.display = 'none';
-    }
-    return;
-  }
   if (langBtnEl) langBtnEl.style.display = '';
 
   try {
-    const status = await invoke('get_antigravity_localization_status', { target });
+    const status = target === 'antigravity-ide'
+      ? await invoke('get_app_localization_status', { platform: 'antigravity-ide' })
+      : await invoke('get_antigravity_localization_status', { target });
     const btnText = document.getElementById('antigravityLangBtnText');
     const langBtn = document.getElementById('antigravityLangBtn');
 
@@ -2992,15 +2962,36 @@ async function confirmRestartAntigravityClient(actionDesc) {
 async function applyAntigravityLocalizationAction() {
   const target = getAntigravityTarget();
   const platName = target === 'antigravity-ide' ? 'Antigravity IDE' : 'Antigravity';
+  const isIde = target === 'antigravity-ide';
 
   appendAntigravityLangLog(`----------------------------------------`);
-  appendAntigravityLangLog(`[1/4] 正在检测 ${platName} 安装与文件权限...`);
   setPlatformBusy(target, true);
   try {
-    appendAntigravityLangLog(`[2/4] 正在为官方原版资源生成安全备份...`);
-    appendAntigravityLangLog(`[3/4] 正在注入高性能 DOM 本地化引擎与沙盒免疫装甲...`);
-    const res = await invoke('apply_antigravity_localization', { target });
-    appendAntigravityLangLog(`[4/4] ${res?.message || '汉化注入完成！'}`, 'ok');
+    // 词库策略（对齐反馈）：apply 不做更新检查，本地有词库直接用；
+    // 仅当本地完全没有词库时（antigravity-ide 首次）自动下载。
+    appendAntigravityLangLog(`[1/5] 正在准备词库...`);
+    try {
+      const st = isIde
+        ? await invoke('get_app_localization_status', { platform: 'antigravity-ide' })
+        : null;
+      if (isIde && !st?.langPackInstalled) {
+        appendAntigravityLangLog(`本地暂无词库，正在下载...`);
+        const dl = await invoke('download_app_localization_update', { platform: 'antigravity-ide' });
+        appendAntigravityLangLog(`词库下载成功: ${dl?.message}`, 'ok');
+      } else {
+        appendAntigravityLangLog(`词库已就绪 (v${st?.currentVersion || 'baseline'}）`);
+      }
+    } catch (e) {
+      appendAntigravityLangLog(`词库准备失败（可点「检查在线词库更新」重试）: ${e}`, 'warn');
+    }
+    // 第二步：应用汉化
+    appendAntigravityLangLog(`[2/5] 正在检测 ${platName} 安装与文件权限...`);
+    appendAntigravityLangLog(`[3/5] 正在为官方原版资源生成安全备份...`);
+    appendAntigravityLangLog(`[4/5] 正在注入高性能 DOM 本地化引擎与沙盒免疫装甲...`);
+    const res = isIde
+      ? await invoke('apply_app_localization', { platform: 'antigravity-ide' })
+      : await invoke('apply_antigravity_localization', { target });
+    appendAntigravityLangLog(`[5/5] ${res?.message || '汉化注入完成！'}`, 'ok');
     await refreshAntigravityLangStatus(true);
     if (typeof showBottomToast === 'function') {
       showBottomToast(res?.message || `${platName} 汉化成功`, 'success');
@@ -3017,12 +3008,15 @@ async function applyAntigravityLocalizationAction() {
 async function restoreAntigravityLocalizationAction() {
   const target = getAntigravityTarget();
   const platName = target === 'antigravity-ide' ? 'Antigravity IDE' : 'Antigravity';
+  const isIde = target === 'antigravity-ide';
 
   appendAntigravityLangLog(`----------------------------------------`);
   appendAntigravityLangLog(`[1/2] 正在检索 ${platName} 官方原版备份并准备还原...`);
   setPlatformBusy(target, true);
   try {
-    const res = await invoke('restore_antigravity_localization', { target });
+    const res = isIde
+      ? await invoke('restore_app_localization', { platform: 'antigravity-ide' })
+      : await invoke('restore_antigravity_localization', { target });
     appendAntigravityLangLog(`[2/2] ${res?.message || '已成功还原官方英文原版！'}`, 'ok');
     await refreshAntigravityLangStatus(true);
     if (typeof showBottomToast === 'function') {
@@ -3038,28 +3032,31 @@ async function restoreAntigravityLocalizationAction() {
 }
 
 async function checkAntigravityLocalizationUpdateAction() {
+  const target = getAntigravityTarget();
+  const isIde = target === 'antigravity-ide';
   appendAntigravityLangLog(`----------------------------------------`);
-  appendAntigravityLangLog(`正在连通 GitHub API 检查开源汉化仓库最新 Release...`);
+  appendAntigravityLangLog(`正在从 GitHub（含镜像）拉取上游汉化词库...`);
   try {
-    const info = await invoke('check_antigravity_localization_update');
-    appendAntigravityLangLog(`GitHub 响应成功: 最新版本 tag=${info?.latestVersion || '未知'}`);
+    const info = isIde
+      ? await invoke('check_app_localization_update', { platform: 'antigravity-ide' })
+      : await invoke('check_antigravity_localization_update');
+    appendAntigravityLangLog(`上游词库响应成功: 内容指纹=${info?.latestVersion || '未知'}`);
     if (info?.hasUpdate) {
-      appendAntigravityLangLog(`发现新版汉化补丁 v${info.latestVersion} (当前 v${info.currentVersion})！`, 'ok');
-      const ok = await showCustomConfirm(
-        `检测到 GitHub 上游汉化仓库发布了新版 v${info.latestVersion}。\n\n是否立即下载同步最新词库并重新应用汉化？`,
-        '发现汉化新版本',
-        'info'
-      );
-      if (ok) {
-        appendAntigravityLangLog(`正在下载最新词库与脚本至本地热更新缓存...`);
-        const dl = await invoke('download_antigravity_localization_update');
-        appendAntigravityLangLog(`词库下载成功: ${dl?.message}`, 'ok');
-        await applyAntigravityLocalizationAction();
+      appendAntigravityLangLog(`发现新版汉化词库（当前 v${info.currentVersion}），正在下载...`, 'ok');
+      appendAntigravityLangLog(`正在下载最新词库与脚本至本地热更新缓存...`);
+      const dl = isIde
+        ? await invoke('download_app_localization_update', { platform: 'antigravity-ide' })
+        : await invoke('download_antigravity_localization_update');
+      appendAntigravityLangLog(`词库下载成功: ${dl?.message}`, 'ok');
+      // 只下载，不自动应用：是否注入、何时注入由用户决定（应用按钮才是注入入口）
+      appendAntigravityLangLog(`新词库已就绪，点击「应用汉化」即可生效`, 'warn');
+      if (typeof showBottomToast === 'function') {
+        showBottomToast('词库已更新，点击「应用汉化」生效', 'success');
       }
     } else {
-      appendAntigravityLangLog(`当前词库已是最新版本 (v${info?.currentVersion || '2.18.1'})，无需更新`, 'ok');
+      appendAntigravityLangLog(`当前词库已是最新版本 (v${info?.currentVersion || 'baseline'})，无需更新`, 'ok');
       if (typeof showBottomToast === 'function') {
-        showBottomToast(`当前汉化词库已是最新版本 (v${info?.currentVersion || '2.18.1'})`, 'success');
+        showBottomToast(`当前汉化词库已是最新版本 (v${info?.currentVersion || 'baseline'})`, 'success');
       }
     }
   } catch (e) {
@@ -7638,6 +7635,11 @@ async function cursorRefreshConsole(options = {}) {
       }
     }
     cursorUpdateTagStyleSelects(_cursorProviderTagStyle);
+
+    // 界面汉化按钮状态（与 Rust 保活 keeper 同一数据源）
+    if (typeof refreshCursorLangStatus === 'function') {
+      void refreshCursorLangStatus();
+    }
 
     const running = !!status?.running;
     const certReady = !!status?.certificateReady;

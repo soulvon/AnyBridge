@@ -33,6 +33,7 @@ import {
   attachUpstreamWatchdog,
   providerGateKey,
   providerInflightGate,
+  ttfbMsFromEnhancement,
 } from '../lib/upstream-watchdog.js';
 import {
   buildToolErrorContent,
@@ -47,6 +48,13 @@ import {
   effortVocabForConn,
   resolveThinkingEffort,
 } from '../lib/thinking-effort.js';
+import {
+  cooldownPolicyFromEnhancement,
+  filterTargets,
+  markFailure,
+  markSuccess,
+  targetKey,
+} from '../lib/provider-cooldown.js';
 
 // ─── Config ────────────────────────────────────────────────
 
@@ -876,9 +884,18 @@ export function handleGetChatMessage(req, res, body) {
   console.log(`  📝 System: ${systemPrompt.length} chars  💬 Messages: ${messages.length}${tools ? `  🔧 Tools: ${tools.length}` : ''}`);
 
   const hasImages = messages.some(messageHasImage);
-  const routingTargets = autoRoutingEnabled ? [...slot.targets] : [slot.targets[0]];
+  const cooldownPolicy = cooldownPolicyFromEnhancement(enhancement);
+  // 自动路由开启时才谈冷却：只配一个目标时跳过它没有意义。
+  const routed = autoRoutingEnabled
+    ? filterTargets(slot.targets, cooldownPolicy)
+    : { targets: [slot.targets[0]], cooling: [], allCooling: false };
+  const routingTargets = routed.targets;
   if (!autoRoutingEnabled && slot.targets.length > 1) {
     console.log(`  🧭 模型自动路由已关闭：只使用第 1 个目标，忽略其余 ${slot.targets.length - 1} 个备用目标`);
+  }
+  if (routed.cooling.length) {
+    const lines = routed.cooling.map(c => `${c.target.providerId}${c.target.model ? `/${c.target.model}` : ''}(剩 ${Math.ceil(c.remainingMs / 1000)}s)`);
+    console.warn(`  🧊 跳过 ${routed.cooling.length} 个冷却中的目标: ${lines.join(', ')}${routed.allCooling ? '；全部目标都在冷却，按解冻顺序尝试' : ''}`);
   }
   if (hasImages) {
     const imgCount = messages.reduce((n, m) => n + (Array.isArray(m.content) ? m.content.filter(b => b.type === 'image').length : 0), 0);
@@ -901,8 +918,14 @@ export function handleGetChatMessage(req, res, body) {
   let currentApiReq = null;
   let retryTimer = null;
   let clientClosed = false;
+  // 当前尝试的目标与它是否失败：响应正常结束且未失败 → 解除该目标的冷却。
+  let currentAttemptKey = null;
+  let currentAttemptFailed = false;
   res.on('close', () => {
     clientClosed = !res.writableEnded;
+    if (!clientClosed && currentAttemptKey && !currentAttemptFailed) {
+      markSuccess(currentAttemptKey);
+    }
     if (retryTimer) {
       clearTimeout(retryTimer);
       retryTimer = null;
@@ -928,8 +951,11 @@ export function handleGetChatMessage(req, res, body) {
     const target = routingTargets[idx];
     const conn = resolveTarget(target, providers);
     idx++;
+    currentAttemptKey = targetKey(target);
+    currentAttemptFailed = false;
 
     if (conn.error) {
+      // 本地配置错误（供应商不存在/已禁用/协议不匹配）不是上游故障，冷却只会让改完配置还得干等。
       const hasNextTarget = idx < routingTargets.length;
       console.warn(`  ⚠️  目标#${idx} ${target.providerId} 跳过: ${conn.error}${hasNextTarget ? ' → 切换下一个' : ''}`);
       rememberFailure({
@@ -1022,10 +1048,11 @@ export function handleGetChatMessage(req, res, body) {
 
       const onFailover = (reason, meta = {}) => {
         if (clientClosed || res.writableEnded) return;
+        const elapsed = Date.now() - targetStartedAt;
         const canRetry = retryPolicy.enabled
           && !res.headersSent
           && retryCount < retryPolicy.maxRetries
-          && (retryCount === 0 || (Date.now() - targetStartedAt) < retryPolicy.totalMs)
+          && elapsed < retryPolicy.totalMs
           && isRetryableFailure(reason, meta);
 
         if (canRetry) {
@@ -1038,6 +1065,17 @@ export function handleGetChatMessage(req, res, body) {
 
         const hasNextTarget = idx < routingTargets.length;
         console.warn(`  ⚠️  ${conn.providerName} 失败(${reason})${hasNextTarget ? ' → 切换下一个' : ''}`);
+        currentAttemptFailed = true;
+        if (routingTargets.length > 1) {
+          markFailure(currentAttemptKey, {
+            statusCode: meta.statusCode,
+            code: meta.code,
+            reason,
+            body: meta.body,
+            providerName: conn.providerName,
+            model: conn.model,
+          }, cooldownPolicy);
+        }
         rememberFailure({
           providerId: conn.providerId,
           providerName: conn.providerName,
@@ -1058,6 +1096,8 @@ export function handleGetChatMessage(req, res, body) {
         const reason = toolInjection.searchInjection.reason || '当前目标不支持联网搜索';
         const hasNextTarget = idx < routingTargets.length;
         console.warn(`  ⚠️  ${conn.providerName} 跳过: ${reason}${hasNextTarget ? ' → 切换下一个' : ''}`);
+        // 目标能力不满足算这次尝试没成，但不属于上游故障，不记冷却
+        currentAttemptFailed = true;
         rememberFailure({
           providerId: conn.providerId,
           providerName: conn.providerName,
@@ -1102,6 +1142,7 @@ export function handleGetChatMessage(req, res, body) {
     startTargetRequest().catch(err => {
       console.error(`  ❌ startTargetRequest 异常: ${err.message}`);
       if (res.headersSent) return;
+      currentAttemptFailed = true;
       rememberFailure({
         providerId: conn.providerId,
         providerName: conn.providerName,
@@ -1437,7 +1478,7 @@ function requestAnthropicBuffered(req, res, { systemPrompt, messages, tools, too
         message: `BYOK 连接上游失败：${conn.providerName} / ${resolvedModel}（${clampText(err.message, 120)}）。请检查网络、代理和 API Host。`,
       });
     });
-    attachUpstreamWatchdog(apiReq, { label: `${conn.providerName}/${resolvedModel} anthropic-buffered` });
+    attachUpstreamWatchdog(apiReq, { label: `${conn.providerName}/${resolvedModel} anthropic-buffered`, ttfbMs: ttfbMsFromEnhancement(enhancement) });
     apiReq.end(apiBody);
   }));
 }
@@ -1654,7 +1695,7 @@ function requestOpenAIResponsesBuffered(req, res, { systemPrompt, messages, tool
         message: `BYOK 连接上游失败：${conn.providerName} / ${resolvedModel}（${clampText(err.message, 120)}）。请检查网络、代理和 API Host。`,
       });
     });
-    attachUpstreamWatchdog(apiReq, { label: `${conn.providerName}/${resolvedModel} openai-responses-buffered` });
+    attachUpstreamWatchdog(apiReq, { label: `${conn.providerName}/${resolvedModel} openai-responses-buffered`, ttfbMs: ttfbMsFromEnhancement(enhancement) });
     apiReq.end(finalBody);
   }));
 }
@@ -1828,7 +1869,7 @@ function requestOpenAIChatCompletionsBuffered(req, res, { systemPrompt, messages
         message: `BYOK 连接上游失败：${conn.providerName} / ${resolvedModel}（${clampText(err.message, 120)}）。请检查网络、代理和 API Host。`,
       });
     });
-    attachUpstreamWatchdog(apiReq, { label: `${conn.providerName}/${resolvedModel} openai-chat-buffered` });
+    attachUpstreamWatchdog(apiReq, { label: `${conn.providerName}/${resolvedModel} openai-chat-buffered`, ttfbMs: ttfbMsFromEnhancement(enhancement) });
     apiReq.end(apiBody);
   }));
 }
@@ -2050,7 +2091,7 @@ async function streamAnthropic(req, res, { systemPrompt, messages, tools, toolCh
     }
   });
 
-  attachUpstreamWatchdog(apiReq, { label: `${conn.providerName}/${resolvedModel} anthropic` });
+  attachUpstreamWatchdog(apiReq, { label: `${conn.providerName}/${resolvedModel} anthropic`, ttfbMs: ttfbMsFromEnhancement(enhancement) });
 
   apiReq.end(apiBody);
   return apiReq;
@@ -2309,7 +2350,7 @@ async function streamOpenAI(req, res, { systemPrompt, messages, tools, toolChoic
     }
   });
 
-  attachUpstreamWatchdog(apiReq, { label: `${conn.providerName}/${resolvedModel} openai-responses` });
+  attachUpstreamWatchdog(apiReq, { label: `${conn.providerName}/${resolvedModel} openai-responses`, ttfbMs: ttfbMsFromEnhancement(enhancement) });
 
   apiReq.end(finalBody);
   return apiReq;
@@ -2521,7 +2562,7 @@ async function streamOpenAIChatCompletions(req, res, { systemPrompt, messages, t
     }
   });
 
-  attachUpstreamWatchdog(apiReq, { label: `${conn.providerName}/${resolvedModel} openai-chat` });
+  attachUpstreamWatchdog(apiReq, { label: `${conn.providerName}/${resolvedModel} openai-chat`, ttfbMs: ttfbMsFromEnhancement(enhancement) });
 
   apiReq.end(apiBody);
   return apiReq;

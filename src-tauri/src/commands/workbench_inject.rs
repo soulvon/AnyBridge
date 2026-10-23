@@ -17,6 +17,10 @@ use std::path::PathBuf;
 const BYOK_BLOCK_START: &str = "<!-- byok-cards-start -->";
 const BYOK_BLOCK_END: &str = "<!-- byok-cards-end -->";
 const BYOK_VERSION_MARKER: &str = "<!-- byok-cards-v1 -->";
+/// 汉化注入块标记（与 app_localization 模块共用同一常量，避免两处定义漂移）。
+/// byok 的还原逻辑要识别它：汉化还在时不能还原完整性校验清单，
+/// 也不能用备份整体覆盖（会把汉化块抹掉）。
+pub(crate) const HANS_BLOCK_START: &str = "<!-- anybridge-hans-start -->";
 const BACKUP_SUFFIX: &str = ".byok-origin";
 const NLS_BACKUP_SUFFIX: &str = ".byok-nls-origin";
 
@@ -126,14 +130,21 @@ pub(crate) fn ide_app_dir(target: &str) -> Option<PathBuf> {
 }
 
 /// 从 IDE 可执行文件路径推出 workbench.html 路径。
+/// 候选含 electron-sandbox：Cursor 等发行版把 workbench 放在 sandbox 目录
+/// （Kite 的 enhancementInjector 同样列了三个候选，只认 browser 会定位失败）。
 pub(crate) fn workbench_html_path(target: &str) -> Option<PathBuf> {
-    let p = ide_app_dir(target)?.join(PathBuf::from("out")
-        .join("vs")
-        .join("code")
-        .join("electron-browser")
-        .join("workbench")
-        .join("workbench.html"));
-    if p.exists() { Some(p) } else { None }
+    let base = ide_app_dir(target)?;
+    for sub in [
+        "electron-browser",
+        "electron-sandbox",
+        "browser",
+    ] {
+        let p = base.join("out").join("vs").join("code").join(sub).join("workbench").join("workbench.html");
+        if p.exists() {
+            return Some(p);
+        }
+    }
+    None
 }
 
 /// IDE 的 product.json（存放 VS Code 完整性校验 checksums 的清单）。
@@ -197,8 +208,9 @@ fn replace_nls_throws(content: &str) -> Option<(String, usize)> {
 }
 
 /// 接入代理时加固 NLS 取词函数（幂等：已修补或无匹配则跳过）。
+/// 汉化模块同样调用：装了第三方中文语言包后缺词条会 throw 白屏，这是必要防护。
 /// 返回 Ok(true) 表示发生了修改。
-fn patch_nls_tolerant(target: &str) -> Result<bool, String> {
+pub(crate) fn patch_nls_tolerant(target: &str) -> Result<bool, String> {
     let Some(js_path) = workbench_main_js_path(target) else {
         return Ok(false);
     };
@@ -442,7 +454,7 @@ pub(crate) fn restore_product_json(target: &str) -> Result<bool, String> {
 
 /// 在 CSP 的 script-src 指令里补上 'unsafe-inline'，让注入的 inline <script> 能执行。
 /// 已有则原样返回。只动 script-src，不碰其它指令。
-fn ensure_csp_unsafe_inline(html: &str) -> String {
+pub(crate) fn ensure_csp_unsafe_inline(html: &str) -> String {
     // 找 "script-src" 后面到下一个 ';' 之间的内容，若没有 'unsafe-inline' 就插入。
     let Some(idx) = html.find("script-src") else {
         return html.to_string();
@@ -480,6 +492,9 @@ fn strip_byok_block(html: &str) -> String {
 /// 并加固 NLS 取词函数防止语言包缺词条白屏。
 /// 返回 Ok(true) 表示发生了写入（需重启 IDE 生效）；Ok(false) 表示已是最新无需改动。
 pub fn inject(script: &str, target: &str) -> Result<bool, String> {
+    // 持全局注入锁：与汉化 apply/restore、保活 keeper 互斥，
+    // 防并发读-改-写互相覆盖（详见 commands::inject_lock 注释）。
+    let _guard = super::inject_lock();
     let html_changed = inject_workbench_html(script, target)?;
     // 即便 HTML 本次没变（已注入过），也要确保校验清单是清空状态：
     // 用户或 IDE 更新把它写回原厂值后，"安装损坏"提示会重新弹出。
@@ -536,9 +551,24 @@ fn inject_workbench_html(script: &str, target: &str) -> Result<bool, String> {
 /// 还原直连时还原 IDE：恢复 workbench.html、product.json 的完整性校验清单和 NLS 原厂文件。
 /// 幂等：无注入痕迹时返回 Ok(false)。
 pub fn restore(target: &str) -> Result<bool, String> {
+    // 持全局注入锁：与汉化 apply/restore、保活 keeper 互斥，
+    // 防并发读-改-写互相覆盖（详见 commands::inject_lock 注释）。
+    let _guard = super::inject_lock();
+    // 汉化注入还在时不能还原校验清单：checksums 恢复后 IDE 会校验被改写的
+    // workbench.html 并弹"安装已损坏"（与 app_localization 还原时的判断对称：
+    // 那边 byok 在时也同样保留清空状态）。
+    let hans_present = workbench_html_path(target)
+        .and_then(|p| fs::read_to_string(p).ok())
+        .map(|html| html.contains(HANS_BLOCK_START))
+        .unwrap_or(false);
+
     // 三个文件都要还原，任一失败都不影响另一个执行，
     // 否则会留下"文件已还原但校验清单仍为空"的半截状态。
-    let product_result = restore_product_json(target);
+    let product_result = if hans_present {
+        Ok(false)
+    } else {
+        restore_product_json(target)
+    };
     let html_result = restore_workbench_html(target);
     let nls_result = restore_nls(target);
 
@@ -562,42 +592,59 @@ pub fn restore(target: &str) -> Result<bool, String> {
     Ok(changed)
 }
 
-/// 还原 workbench.html：优先用备份整体覆盖，否则仅剥离 byok 块。
+/// 还原 workbench.html：只剥离自己的 byok 块，绝不用备份整体覆盖。
+/// 备份是"接入前"快照：先接入后汉化的场景下备份没有汉化块，整体覆盖会把
+/// 汉化注入一并抹掉（app_localization 早期同款坑，那边已改剥离，必须对齐）。
 /// 幂等：无注入痕迹时返回 Ok(false)。
 fn restore_workbench_html(target: &str) -> Result<bool, String> {
     let Some(path) = workbench_html_path(target) else {
         return Ok(false);
     };
     let backup = PathBuf::from(format!("{}{}", path.to_string_lossy(), BACKUP_SUFFIX));
-
-    if backup.exists() {
-        // 版本防护：当前 html 已无注入块 = IDE 升级覆盖成新版原厂文件（未被我们
-        // 注入）。此时备份一定来自旧版本，覆盖回去会造成 workbench 新旧文件
-        // 版本错配，引发前端异常降级。丢弃过期备份并跳过还原。
-        let current = fs::read_to_string(&path).map_err(|e| e.to_string())?;
-        if !current.contains(BYOK_BLOCK_START) {
-            let _ = fs::remove_file(&backup);
-            return Ok(false);
-        }
-        let orig = fs::read_to_string(&backup).map_err(|e| e.to_string())?;
-        write_atomic(&path, &orig).map_err(|e| format!("还原 workbench.html 失败: {}", e))?;
-        let _ = fs::remove_file(&backup);
-        return Ok(true);
-    }
-
-    // 无备份：尝试只剥离自己的块（兜底，不动其它注入）。
     let html = fs::read_to_string(&path).map_err(|e| e.to_string())?;
+
     if !html.contains(BYOK_BLOCK_START) {
+        // 无注入块（IDE 升级覆盖成新版原厂，或已还原过）：备份必属旧版本，
+        // 覆盖回去会造成版本错配，直接淘汰。
+        if backup.exists() {
+            let _ = fs::remove_file(&backup);
+        }
         return Ok(false);
     }
+    if !html.contains(BYOK_BLOCK_END) {
+        // 块标记不完整（写入中断/外部改写）：如实报错并保留备份供手动还原，
+        // 不做危险的整体覆盖。
+        return Err(format!(
+            "BYOK 注入块标记不完整，无法安全还原。请重装客户端，或用备份 {} 手动覆盖",
+            backup.display()
+        ));
+    }
     let cleaned = strip_byok_block(&html);
-    write_atomic(&path, &cleaned).map_err(|e| format!("清理 workbench.html 失败: {}", e))?;
+    write_atomic(&path, &cleaned).map_err(|e| format!("还原 workbench.html 失败: {e}"))?;
+    if backup.exists() {
+        let _ = fs::remove_file(&backup);
+    }
     Ok(true)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn strips_byok_block_and_keeps_hans_block() {
+        // 还原 BYOK 只剥自己的块：汉化注入块必须原样保留（备份覆盖会抹掉它）
+        let html = "<html><body>\n<!-- byok-cards-start -->\n<!-- byok-cards-v1 -->\n<script>byok</script>\n<!-- byok-cards-end -->\n<!-- anybridge-hans-start -->\n<script>hans</script>\n<!-- anybridge-hans-end -->\n</body></html>";
+        let out = strip_byok_block(html);
+        assert!(!out.contains("byok-cards-start"), "BYOK 块必须移除");
+        assert!(!out.contains("byok"));
+        assert!(out.contains(HANS_BLOCK_START), "汉化块必须保留");
+        assert!(out.contains("hans"));
+        assert!(out.contains("</body>"), "结构必须完整");
+        // 反向：只有汉化块时 strip byok 是 noop
+        let only_hans = "<html><body><!-- anybridge-hans-start --><script>hans</script><!-- anybridge-hans-end --></body></html>";
+        assert_eq!(strip_byok_block(only_hans), only_hans);
+    }
 
     /// 把定位到的 checksums 对象替换成 {}，返回处理后的完整内容。
     fn cleared(content: &str) -> Option<String> {

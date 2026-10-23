@@ -1555,6 +1555,7 @@
                   <button type="button" class="proxy-enhancement-tab" data-enhancement-panel="search">联网搜索</button>
                   <button type="button" class="proxy-enhancement-tab" data-enhancement-panel="general">通用设置</button>
                   <button type="button" class="proxy-enhancement-tab" data-enhancement-panel="retry">请求重试</button>
+                  <button type="button" class="proxy-enhancement-tab" data-enhancement-panel="failover">故障转移</button>
                   <button type="button" class="proxy-enhancement-tab" data-enhancement-panel="prompt">提示词注入</button>
                   <button type="button" class="proxy-enhancement-tab" data-enhancement-panel="headers">自定义请求头</button>
                   <button type="button" class="proxy-enhancement-tab" data-enhancement-panel="tools">工具过滤</button>
@@ -1703,6 +1704,38 @@
                         <span class="toggle-switch"><input id="enhancement-selfHeal-media" type="checkbox" data-action="toggleSelfHeal" data-events="change" data-args="[&quot;media&quot;]" data-pass-this><span class="toggle-slider"></span></span>
                       </label>
                     </div>
+                  </div>
+                  <!-- Panel: Failover -->
+                  <div class="proxy-enhancement-pane" data-enhancement-pane="failover">
+                    <label style="display:flex;flex-direction:column;gap:6px;padding:12px;border:1px solid var(--border);border-radius:9px;background:var(--bg-input);margin-bottom:10px;">
+                      <span style="font-size:11px;font-weight:800;color:var(--text-primary);">首字节超时 (秒)</span>
+                      <small style="font-size:10px;color:var(--text-muted);">上游这么久还没返回第一个字节，就判定这个目标失败并切换下一个。带大量工具历史的中转站实测可达 85-90 秒，不建议低于 90。</small>
+                      <input id="enhancement-failoverTtfbSeconds" type="number" min="1" step="10" style="width:100%;height:32px;padding:0 9px;border-radius:8px;border:1px solid var(--border);background:var(--bg-card);color:var(--text-primary);font-size:12px;outline:none;" data-action="updateEnhancementNumber" data-events="change" data-args="[&quot;failoverTtfbSeconds&quot;]" data-pass-this>
+                    </label>
+
+                    <label style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px;border:1px solid var(--border);border-radius:9px;background:var(--bg-input);margin-bottom:10px;">
+                      <span style="display:flex;flex-direction:column;gap:3px;min-width:0;"><strong style="font-size:12px;color:var(--text-primary);">失败目标冷却</strong><small style="font-size:10px;color:var(--text-muted);">某个目标确认失败后，一段时间内不再选它，直接打下一个</small></span>
+                      <span class="toggle-switch"><input id="enhancement-cooldownEnabled" type="checkbox" data-action="toggleEnhancement" data-events="change" data-args="[&quot;cooldownEnabled&quot;]" data-pass-this><span class="toggle-slider"></span></span>
+                    </label>
+
+                    <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;">
+                      <label style="display:flex;flex-direction:column;gap:6px;padding:12px;border:1px solid var(--border);border-radius:9px;background:var(--bg-input);">
+                        <span style="font-size:11px;font-weight:800;color:var(--text-primary);">瞬时错误冷却 (秒)</span>
+                        <small style="font-size:10px;color:var(--text-muted);">5xx / 超时 / 网络错误的首次冷却；反复失败每次翻倍，到上限封顶。0 = 不冷却。</small>
+                        <input id="enhancement-cooldownTransientSeconds" type="number" min="0" step="10" style="width:100%;height:32px;padding:0 9px;border-radius:8px;border:1px solid var(--border);background:var(--bg-card);color:var(--text-primary);font-size:12px;outline:none;" data-action="updateEnhancementNumber" data-events="change" data-args="[&quot;cooldownTransientSeconds&quot;]" data-pass-this>
+                      </label>
+                      <label style="display:flex;flex-direction:column;gap:6px;padding:12px;border:1px solid var(--border);border-radius:9px;background:var(--bg-input);">
+                        <span style="font-size:11px;font-weight:800;color:var(--text-primary);">冷却上限 (秒)</span>
+                        <small style="font-size:10px;color:var(--text-muted);">翻倍后的封顶值，也就是持续失败的节点最长会被跳过多久。</small>
+                        <input id="enhancement-cooldownMaxSeconds" type="number" min="1" step="60" style="width:100%;height:32px;padding:0 9px;border-radius:8px;border:1px solid var(--border);background:var(--bg-card);color:var(--text-primary);font-size:12px;outline:none;" data-action="updateEnhancementNumber" data-events="change" data-args="[&quot;cooldownMaxSeconds&quot;]" data-pass-this>
+                      </label>
+                      <label style="display:flex;flex-direction:column;gap:6px;padding:12px;border:1px solid var(--border);border-radius:9px;background:var(--bg-input);">
+                        <span style="font-size:11px;font-weight:800;color:var(--text-primary);">不可用冷却 (秒)</span>
+                        <small style="font-size:10px;color:var(--text-muted);">401 / 403 / 模型不存在，一次失败即按此值冷却。0 = 不冷却。</small>
+                        <input id="enhancement-cooldownAuthSeconds" type="number" min="0" step="60" style="width:100%;height:32px;padding:0 9px;border-radius:8px;border:1px solid var(--border);background:var(--bg-card);color:var(--text-primary);font-size:12px;outline:none;" data-action="updateEnhancementNumber" data-events="change" data-args="[&quot;cooldownAuthSeconds&quot;]" data-pass-this>
+                      </label>
+                    </div>
+                    <small style="display:block;font-size:10px;color:var(--text-muted);margin-top:10px;">429 限流和超长上下文这类请求自身的问题不会冷却目标；全部目标都在冷却时仍会按解冻先后依次尝试，不会直接报错。</small>
                   </div>
                   <!-- Panel: Prompt Injection -->
                   <div class="proxy-enhancement-pane" data-enhancement-pane="prompt">
@@ -1895,14 +1928,17 @@
               <span class="platform-kite-ad-arrow" aria-hidden="true">↗</span>
             </button>
             <div class="platform-console-actions">
-              <button class="btn-primary platform-proxy-primary" id="proxyBtn" data-proxy-action="proxy" aria-label="一键接入 Devin">
-                <span class="proxy-btn-action">
-                  <svg class="proxy-btn-icon" width="14" height="14" viewBox="0 0 24 24" fill="none"
-                    stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                    <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" fill="currentColor" />
-                  </svg>
-                  <span class="proxy-btn-text">一键接入</span>
-                </span>
+              <button type="button" class="btn-ghost secondary platform-lang-action-btn" id="proxyLangBtn" data-action="openProxyLangModal"
+                style="display: none; align-items: center; gap: 6px; padding: 4px 12px; border-radius: 8px; font-size: 12px; font-weight: 600; height: 30px; flex-shrink: 0;">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink: 0;">
+                  <path d="m5 8 6 6"/>
+                  <path d="m4 14 6-6 2-3"/>
+                  <path d="M2 5h12"/>
+                  <path d="M7 2h1"/>
+                  <path d="m22 22-5-10-5 10"/>
+                  <path d="M14 18h6"/>
+                </svg>
+                <span id="proxyLangBtnText">一键汉化</span>
               </button>
               <button class="btn-ghost accent platform-refresh-proxy" id="proxyRefreshBtn" data-action="refreshCurrentProxyPlatformStatus">刷新状态</button>
               <button class="btn-ghost danger platform-stop-proxy" id="proxyRestoreBtn" data-action="restoreCurrentProxyPlatformDirect">停止接入</button>
@@ -2058,6 +2094,72 @@
               </thead>
               <tbody id="modelMapBody"></tbody>
             </table>
+          </div>
+        </div>
+
+        <!-- ═══════ WINDSURF / DEVIN 界面汉化与日志弹窗 ═══════ -->
+        <div class="modal-overlay" id="proxyLangModal" role="dialog" aria-modal="true" aria-labelledby="proxyLangModalTitle" data-action="closeProxyLangModal" data-only-self>
+          <div class="modal-container" style="max-width: 580px; width: 92%; border-radius: 16px; overflow: hidden; padding: 0; box-shadow: var(--shadow-xl, 0 24px 38px 3px rgba(0,0,0,0.18)); border: 1px solid var(--border);">
+            <div class="modal-header" style="padding: 16px 22px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; background: var(--bg-card);">
+              <div style="display: flex; align-items: center; gap: 12px;">
+                <div style="width: 36px; height: 36px; border-radius: 10px; background: rgba(37, 99, 235, 0.08); color: var(--accent); display: flex; align-items: center; justify-content: center; flex-shrink: 0; border: 1px solid rgba(37, 99, 235, 0.15);">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="m5 8 6 6"/>
+                    <path d="m4 14 6-6 2-3"/>
+                    <path d="M2 5h12"/>
+                    <path d="M7 2h1"/>
+                    <path d="m22 22-5-10-5 10"/>
+                    <path d="M14 18h6"/>
+                  </svg>
+                </div>
+                <div>
+                  <div class="modal-title" id="proxyLangModalTitle" style="font-size: 15px; font-weight: 750; color: var(--text-primary); line-height: 1.25;">Windsurf 界面汉化</div>
+                  <div id="proxyLangModalSubtitle" style="font-size: 11.5px; color: var(--text-muted); margin-top: 3px;">DOM 增量翻译引擎 · 非破坏性注入</div>
+                </div>
+              </div>
+              <button type="button" class="btn-ghost icon-btn" data-action="closeProxyLangModal" aria-label="关闭" style="width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center; color: var(--text-muted); transition: all 0.15s ease;">✕</button>
+            </div>
+
+            <div class="modal-body" style="padding: 20px 22px; background: var(--bg-card); display: flex; flex-direction: column; gap: 14px;">
+              <div style="background: var(--bg-glass-elevated, rgba(255,255,255,0.04)); border: 1px solid var(--border-subtle, rgba(255,255,255,0.06)); border-radius: 10px; padding: 12px 14px; font-size: 12px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                  <span style="color: var(--text-muted);">目标客户端：</span>
+                  <strong id="proxyLangModalClientName" style="color: var(--text-primary);">Windsurf</strong>
+                </div>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                  <span style="color: var(--text-muted);">当前状态：</span>
+                  <span id="proxyLangModalStatusBadge" class="status-badge" style="padding: 2px 8px; border-radius: 999px; font-size: 11px; background: rgba(16, 185, 129, 0.1); color: #10b981;">检测中</span>
+                </div>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                  <span style="color: var(--text-muted);">词库版本：</span>
+                  <span style="color: var(--text-secondary); font-family: var(--font-mono);" id="proxyLangModalVer">baseline</span>
+                </div>
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                  <span style="color: var(--text-muted);">中文语言包：</span>
+                  <span id="proxyLangModalLangPack" style="color: var(--text-muted);">检测中</span>
+                </div>
+              </div>
+
+              <div>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                  <span style="font-size: 12px; font-weight: 600; color: var(--text-primary);">执行进度与日志</span>
+                  <button type="button" class="btn-ghost" data-action="clearProxyLangLog" style="font-size: 11px; padding: 2px 8px; height: 22px; border-radius: 4px;">清空日志</button>
+                </div>
+                <pre id="proxyLangLogBox" style="margin: 0; background: var(--bg-primary); color: var(--text-secondary); font-family: var(--font-mono); padding: 12px 14px; border-radius: 8px; font-size: 11.5px; line-height: 1.65; height: 140px; min-height: 140px; max-height: 140px; overflow-y: auto; white-space: pre-wrap; word-break: break-all; border: 1px solid var(--border); box-sizing: border-box;"></pre>
+              </div>
+
+              <div style="font-size: 11px; color: var(--text-muted); line-height: 1.45; min-height: 32px;">
+                汉化覆盖 Windsurf / Devin 专有界面（Cascade、设置页、菜单等）；代码区与输入框受物理隔离保护，绝不误译。未安装官方中文语言包时会自动下载安装并切换显示语言。客户端升级覆盖后，AnyBridge 运行时会自动重新注入，无需手动操作。
+              </div>
+            </div>
+
+            <div class="modal-footer" style="padding: 12px 22px; border-top: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; background: var(--bg-card); min-height: 56px; box-sizing: border-box;">
+              <button type="button" class="btn-ghost" id="proxyLangModalCheckUpdateBtn" data-action="checkProxyLocalizationUpdateAction" style="height: 32px; padding: 0 14px; font-size: 12px; font-weight: 500; border-radius: 8px; display: inline-flex; align-items: center; justify-content: center;">检查在线词库更新</button>
+              <div style="display: flex; gap: 8px; align-items: center;">
+                <button type="button" class="btn-ghost danger" id="proxyLangModalRestoreBtn" data-action="restoreProxyLocalizationAction" style="height: 32px; padding: 0 14px; font-size: 12px; font-weight: 500; border-radius: 8px; display: inline-flex; align-items: center; justify-content: center;" disabled>还原官方英文</button>
+                <button type="button" class="btn-primary" id="proxyLangModalApplyBtn" data-action="applyProxyLocalizationAction" style="height: 32px; padding: 0 16px; font-size: 12px; font-weight: 600; border-radius: 8px; display: inline-flex; align-items: center; justify-content: center;">一键应用汉化</button>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -2921,6 +3023,18 @@
             </div>
 
             <div class="platform-console-actions">
+              <button type="button" class="btn-ghost secondary platform-lang-action-btn" id="cursorLangBtn" data-action="openCursorLangModal"
+                style="display: none; align-items: center; gap: 6px; padding: 4px 12px; border-radius: 8px; font-size: 12px; font-weight: 600; height: 30px; flex-shrink: 0;">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink: 0;">
+                  <path d="m5 8 6 6"/>
+                  <path d="m4 14 6-6 2-3"/>
+                  <path d="M2 5h12"/>
+                  <path d="M7 2h1"/>
+                  <path d="m22 22-5-10-5 10"/>
+                  <path d="M14 18h6"/>
+                </svg>
+                <span id="cursorLangBtnText">一键汉化</span>
+              </button>
               <button class="btn-primary platform-proxy-primary" id="cursor-main-btn" data-action="cursorPrimaryAction" aria-label="一键接入 Cursor">
                 <span class="proxy-btn-action">
                   <svg class="proxy-btn-icon" width="14" height="14" viewBox="0 0 24 24" fill="none"
@@ -3626,6 +3740,72 @@
 
           </div>
         </div>
+
+        <!-- ═══════ CURSOR 界面汉化与日志弹窗 ═══════ -->
+        <div class="modal-overlay" id="cursorLangModal" role="dialog" aria-modal="true" aria-labelledby="cursorLangModalTitle" data-action="closeCursorLangModal" data-only-self>
+          <div class="modal-container" style="max-width: 580px; width: 92%; border-radius: 16px; overflow: hidden; padding: 0; box-shadow: var(--shadow-xl, 0 24px 38px 3px rgba(0,0,0,0.18)); border: 1px solid var(--border);">
+            <div class="modal-header" style="padding: 16px 22px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; background: var(--bg-card);">
+              <div style="display: flex; align-items: center; gap: 12px;">
+                <div style="width: 36px; height: 36px; border-radius: 10px; background: rgba(37, 99, 235, 0.08); color: var(--accent); display: flex; align-items: center; justify-content: center; flex-shrink: 0; border: 1px solid rgba(37, 99, 235, 0.15);">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="m5 8 6 6"/>
+                    <path d="m4 14 6-6 2-3"/>
+                    <path d="M2 5h12"/>
+                    <path d="M7 2h1"/>
+                    <path d="m22 22-5-10-5 10"/>
+                    <path d="M14 18h6"/>
+                  </svg>
+                </div>
+                <div>
+                  <div class="modal-title" id="cursorLangModalTitle" style="font-size: 15px; font-weight: 750; color: var(--text-primary); line-height: 1.25;">Cursor 界面汉化</div>
+                  <div id="cursorLangModalSubtitle" style="font-size: 11.5px; color: var(--text-muted); margin-top: 3px;">DOM 增量翻译引擎 · 非破坏性注入</div>
+                </div>
+              </div>
+              <button type="button" class="btn-ghost icon-btn" data-action="closeCursorLangModal" aria-label="关闭" style="width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center; color: var(--text-muted); transition: all 0.15s ease;">✕</button>
+            </div>
+
+            <div class="modal-body" style="padding: 20px 22px; background: var(--bg-card); display: flex; flex-direction: column; gap: 14px;">
+              <div style="background: var(--bg-glass-elevated, rgba(255,255,255,0.04)); border: 1px solid var(--border-subtle, rgba(255,255,255,0.06)); border-radius: 10px; padding: 12px 14px; font-size: 12px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                  <span style="color: var(--text-muted);">目标客户端：</span>
+                  <strong id="cursorLangModalClientName" style="color: var(--text-primary);">Cursor</strong>
+                </div>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                  <span style="color: var(--text-muted);">当前状态：</span>
+                  <span id="cursorLangModalStatusBadge" class="status-badge" style="padding: 2px 8px; border-radius: 999px; font-size: 11px; background: rgba(16, 185, 129, 0.1); color: #10b981;">检测中</span>
+                </div>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                  <span style="color: var(--text-muted);">词库版本：</span>
+                  <span style="color: var(--text-secondary); font-family: var(--font-mono);" id="cursorLangModalVer">baseline</span>
+                </div>
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                  <span style="color: var(--text-muted);">中文语言包：</span>
+                  <span id="cursorLangModalLangPack" style="color: var(--text-muted);">检测中</span>
+                </div>
+              </div>
+
+              <div>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                  <span style="font-size: 12px; font-weight: 600; color: var(--text-primary);">执行进度与日志</span>
+                  <button type="button" class="btn-ghost" data-action="clearCursorLangLog" style="font-size: 11px; padding: 2px 8px; height: 22px; border-radius: 4px;">清空日志</button>
+                </div>
+                <pre id="cursorLangLogBox" style="margin: 0; background: var(--bg-primary); color: var(--text-secondary); font-family: var(--font-mono); padding: 12px 14px; border-radius: 8px; font-size: 11.5px; line-height: 1.65; height: 140px; min-height: 140px; max-height: 140px; overflow-y: auto; white-space: pre-wrap; word-break: break-all; border: 1px solid var(--border); box-sizing: border-box;"></pre>
+              </div>
+
+              <div style="font-size: 11px; color: var(--text-muted); line-height: 1.45; min-height: 32px;">
+                汉化覆盖 Cursor 专有界面（设置页、Agent、代码补全、插件等，2700+ 词条）；代码区与输入框受物理隔离保护，绝不误译。未安装官方中文语言包时会自动下载安装并切换显示语言。客户端升级覆盖后，AnyBridge 运行时会自动重新注入，无需手动操作。
+              </div>
+            </div>
+
+            <div class="modal-footer" style="padding: 12px 22px; border-top: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; background: var(--bg-card); min-height: 56px; box-sizing: border-box;">
+              <button type="button" class="btn-ghost" id="cursorLangModalCheckUpdateBtn" data-action="checkCursorLocalizationUpdateAction" style="height: 32px; padding: 0 14px; font-size: 12px; font-weight: 500; border-radius: 8px; display: inline-flex; align-items: center; justify-content: center;">检查在线词库更新</button>
+              <div style="display: flex; gap: 8px; align-items: center;">
+                <button type="button" class="btn-ghost danger" id="cursorLangModalRestoreBtn" data-action="restoreCursorLocalizationAction" style="height: 32px; padding: 0 14px; font-size: 12px; font-weight: 500; border-radius: 8px; display: inline-flex; align-items: center; justify-content: center;" disabled>还原官方英文</button>
+                <button type="button" class="btn-primary" id="cursorLangModalApplyBtn" data-action="applyCursorLocalizationAction" style="height: 32px; padding: 0 16px; font-size: 12px; font-weight: 600; border-radius: 8px; display: inline-flex; align-items: center; justify-content: center;">一键应用汉化</button>
+              </div>
+            </div>
+          </div>
+        </div>
         <!-- ═══════ PAGE: PLATFORM · CURSOR · 添加模型（独立页面） ═══════ -->
         <div class="page" id="page-platform-cursor-add" role="tabpanel" aria-labelledby="tab-platforms">
           <div class="platform-console-hero model-add-hero glass-card">
@@ -4153,6 +4333,18 @@
                 </div>
               </div>
               <div class="platform-console-actions" id="claude-desktop-hero-actions">
+                <button type="button" class="btn-ghost secondary platform-lang-action-btn" id="claudeLangBtn" data-action="openClaudeLangModal"
+                  style="display: none; align-items: center; gap: 6px; padding: 4px 12px; border-radius: 8px; font-size: 12px; font-weight: 600; height: 30px; flex-shrink: 0;">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink: 0;">
+                    <path d="m5 8 6 6"/>
+                    <path d="m4 14 6-6 2-3"/>
+                    <path d="M2 5h12"/>
+                    <path d="M7 2h1"/>
+                    <path d="m22 22-5-10-5 10"/>
+                    <path d="M14 18h6"/>
+                  </svg>
+                  <span id="claudeLangBtnText">一键汉化</span>
+                </button>
                 <button type="button" class="btn-ghost success claude-desktop-mode-badge-btn" id="claude-desktop-hero-mode-btn"
                   onclick="onClaudeDesktopHeroModeClick()" title="点击查看或切换连接模式"
                   style="height: 36px; padding: 0 14px; font-size: 13px; font-weight: 600; display: inline-flex; align-items: center; gap: 8px; border-radius: 8px; cursor: pointer; transition: all 0.2s ease;">
@@ -4197,6 +4389,73 @@
 
             <p class="codex-safe-note" style="margin-top: 14px;">配置文件路径：<code id="claude-desktop-config-path-label" class="reveal-path" title="点击打开所在文件夹">Claude-3p/claude_desktop_config.json</code><button type="button" class="platform-config-inline-link" data-action="openPlatformRealConfigModal" data-arg="claude-desktop" title="查看并编辑配置文件原文"><span>查看配置</span><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg></button>。切换后重启 Claude Desktop 生效，使用代理模型需保持 AnyBridge 运行。</p>
           </section>
+
+          <!-- ═══════ CLAUDE DESKTOP 界面汉化与日志弹窗 ═══════ -->
+          <div class="modal-overlay" id="claudeLangModal" role="dialog" aria-modal="true" aria-labelledby="claudeLangModalTitle" data-action="closeClaudeLangModal" data-only-self>
+            <div class="modal-container" style="max-width: 580px; width: 92%; border-radius: 16px; overflow: hidden; padding: 0; box-shadow: var(--shadow-xl, 0 24px 38px 3px rgba(0,0,0,0.18)); border: 1px solid var(--border);">
+              <div class="modal-header" style="padding: 16px 22px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; background: var(--bg-card);">
+                <div style="display: flex; align-items: center; gap: 12px;">
+                  <div style="width: 36px; height: 36px; border-radius: 10px; background: rgba(37, 99, 235, 0.08); color: var(--accent); display: flex; align-items: center; justify-content: center; flex-shrink: 0; border: 1px solid rgba(37, 99, 235, 0.15);">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                      <path d="m5 8 6 6"/>
+                      <path d="m4 14 6-6 2-3"/>
+                      <path d="M2 5h12"/>
+                      <path d="M7 2h1"/>
+                      <path d="m22 22-5-10-5 10"/>
+                      <path d="M14 18h6"/>
+                    </svg>
+                  </div>
+                  <div>
+                    <div class="modal-title" id="claudeLangModalTitle" style="font-size: 15px; font-weight: 750; color: var(--text-primary); line-height: 1.25;">Claude Desktop 界面汉化</div>
+                    <div id="claudeLangModalSubtitle" style="font-size: 11.5px; color: var(--text-warning, #d97706); margin-top: 3px;">⚠ 新版主界面在线加载，本地汉化暂不生效（详见说明）</div>
+                  </div>
+                </div>
+                <button type="button" class="btn-ghost icon-btn" data-action="closeClaudeLangModal" aria-label="关闭" style="width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center; color: var(--text-muted); transition: all 0.15s ease;">✕</button>
+              </div>
+
+              <div class="modal-body" style="padding: 20px 22px; background: var(--bg-card); display: flex; flex-direction: column; gap: 14px;">
+                <div style="background: var(--bg-glass-elevated, rgba(255,255,255,0.04)); border: 1px solid var(--border-subtle, rgba(255,255,255,0.06)); border-radius: 10px; padding: 12px 14px; font-size: 12px;">
+                  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                    <span style="color: var(--text-muted);">目标客户端：</span>
+                    <strong id="claudeLangModalClientName" style="color: var(--text-primary);">Claude Desktop</strong>
+                  </div>
+                  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                    <span style="color: var(--text-muted);">当前状态：</span>
+                    <span id="claudeLangModalStatusBadge" class="status-badge" style="padding: 2px 8px; border-radius: 999px; font-size: 11px; background: rgba(16, 185, 129, 0.1); color: #10b981;">检测中</span>
+                  </div>
+                  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                    <span style="color: var(--text-muted);">词库版本：</span>
+                    <span style="color: var(--text-secondary); font-family: var(--font-mono);" id="claudeLangModalVer">baseline</span>
+                  </div>
+                  <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <span style="color: var(--text-muted);">中文词库：</span>
+                    <span id="claudeLangModalLangPack" style="color: var(--text-muted);">检测中</span>
+                  </div>
+                </div>
+
+                <div>
+                  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                    <span style="font-size: 12px; font-weight: 600; color: var(--text-primary);">执行进度与日志</span>
+                    <button type="button" class="btn-ghost" data-action="clearClaudeLangLog" style="font-size: 11px; padding: 2px 8px; height: 22px; border-radius: 4px;">清空日志</button>
+                  </div>
+                  <pre id="claudeLangLogBox" style="margin: 0; background: var(--bg-primary); color: var(--text-secondary); font-family: var(--font-mono); padding: 12px 14px; border-radius: 8px; font-size: 11.5px; line-height: 1.65; height: 140px; min-height: 140px; max-height: 140px; overflow-y: auto; white-space: pre-wrap; word-break: break-all; border: 1px solid var(--border); box-sizing: border-box;"></pre>
+                </div>
+
+                <div style="font-size: 11px; color: var(--text-muted); line-height: 1.45; min-height: 32px;">
+                  <div style="color: var(--warning, #d97706); font-weight: 600; margin-bottom: 4px;">当前版本暂无法生效（上游社区已确认的限制）</div>
+                  新版 Claude Desktop 使用 Anthropic 账号登录时，主界面直接从 claude.ai 在线加载，不读取本地前端与翻译文件——本地改写方案对在线主界面均无效，仅菜单栏/托盘等本地部分可能生效。词典与基础设施已就绪（30,600+ 条），官方改回本地加载或支持中文后立即可用。
+                </div>
+              </div>
+
+              <div class="modal-footer" style="padding: 12px 22px; border-top: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; background: var(--bg-card); min-height: 56px; box-sizing: border-box;">
+                <button type="button" class="btn-ghost" id="claudeLangModalCheckUpdateBtn" data-action="checkClaudeLocalizationUpdateAction" style="height: 32px; padding: 0 14px; font-size: 12px; font-weight: 500; border-radius: 8px; display: inline-flex; align-items: center; justify-content: center;">检查在线词库更新</button>
+                <div style="display: flex; gap: 8px; align-items: center;">
+                  <button type="button" class="btn-ghost danger" id="claudeLangModalRestoreBtn" data-action="restoreClaudeLocalizationAction" style="height: 32px; padding: 0 14px; font-size: 12px; font-weight: 500; border-radius: 8px; display: inline-flex; align-items: center; justify-content: center;" disabled>还原官方英文</button>
+                  <button type="button" class="btn-primary" id="claudeLangModalApplyBtn" data-action="applyClaudeLocalizationAction" style="height: 32px; padding: 0 16px; font-size: 12px; font-weight: 600; border-radius: 8px; display: inline-flex; align-items: center; justify-content: center;">一键应用汉化</button>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
         <!-- ═══════ PAGE: PLATFORM · CLAUDE DESKTOP · 添加/编辑配置（独立页面） ═══════ -->
         <div class="page" id="page-platform-claude-desktop-add" role="tabpanel" aria-labelledby="tab-platforms">
@@ -5187,21 +5446,21 @@
               <div>
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
                   <span style="font-size: 12px; font-weight: 600; color: var(--text-primary);">执行进度与日志</span>
-                  <button type="button" class="btn-ghost" data-action="clearAntigravityLangLog" style="font-size: 11px; padding: 2px 6px; height: auto;">清空日志</button>
+                  <button type="button" class="btn-ghost" data-action="clearAntigravityLangLog" style="font-size: 11px; padding: 2px 8px; height: 22px; border-radius: 4px;">清空日志</button>
                 </div>
-                <pre id="antigravityLangLogBox" style="margin: 0; background: var(--bg-primary); color: var(--text-secondary); font-family: var(--font-mono); padding: 12px 14px; border-radius: 8px; font-size: 11.5px; line-height: 1.65; max-height: 150px; min-height: 90px; overflow-y: auto; white-space: pre-wrap; border: 1px solid var(--border);"></pre>
+                <pre id="antigravityLangLogBox" style="margin: 0; background: var(--bg-primary); color: var(--text-secondary); font-family: var(--font-mono); padding: 12px 14px; border-radius: 8px; font-size: 11.5px; line-height: 1.65; height: 140px; min-height: 140px; max-height: 140px; overflow-y: auto; white-space: pre-wrap; word-break: break-all; border: 1px solid var(--border); box-sizing: border-box;"></pre>
               </div>
 
-              <div style="font-size: 11px; color: var(--text-muted); line-height: 1.45;">
+              <div style="font-size: 11px; color: var(--text-muted); line-height: 1.45; min-height: 32px;">
                 物理免疫沙盒已就绪：代码区、用户打字框与 AI 模型的思考链受物理隔离保护，绝不误译代码。
               </div>
             </div>
 
-            <div class="modal-footer" style="padding: 12px 22px; border-top: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; background: var(--bg-card);">
-              <button type="button" class="btn-ghost" id="antigravityLangModalCheckUpdateBtn" data-action="checkAntigravityLocalizationUpdateAction" style="font-size: 12px;">检查在线词库更新</button>
-              <div style="display: flex; gap: 8px;">
-                <button type="button" class="btn-ghost danger" id="antigravityLangModalRestoreBtn" data-action="restoreAntigravityLocalizationAction" style="font-size: 12px;" disabled>还原官方英文</button>
-                <button type="button" class="btn-primary" id="antigravityLangModalApplyBtn" data-action="applyAntigravityLocalizationAction" style="font-size: 12px;">一键应用汉化</button>
+            <div class="modal-footer" style="padding: 12px 22px; border-top: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; background: var(--bg-card); min-height: 56px; box-sizing: border-box;">
+              <button type="button" class="btn-ghost" id="antigravityLangModalCheckUpdateBtn" data-action="checkAntigravityLocalizationUpdateAction" style="height: 32px; padding: 0 14px; font-size: 12px; font-weight: 500; border-radius: 8px; display: inline-flex; align-items: center; justify-content: center;">检查在线词库更新</button>
+              <div style="display: flex; gap: 8px; align-items: center;">
+                <button type="button" class="btn-ghost danger" id="antigravityLangModalRestoreBtn" data-action="restoreAntigravityLocalizationAction" style="height: 32px; padding: 0 14px; font-size: 12px; font-weight: 500; border-radius: 8px; display: inline-flex; align-items: center; justify-content: center;" disabled>还原官方英文</button>
+                <button type="button" class="btn-primary" id="antigravityLangModalApplyBtn" data-action="applyAntigravityLocalizationAction" style="height: 32px; padding: 0 16px; font-size: 12px; font-weight: 600; border-radius: 8px; display: inline-flex; align-items: center; justify-content: center;">一键应用汉化</button>
               </div>
             </div>
           </div>

@@ -306,6 +306,11 @@ async function loadClaudeDesktopConsole() {
   const pathLabel = document.getElementById('claude-desktop-config-path-label');
   const gatewayHint = document.getElementById('claude-desktop-gateway-url-hint');
 
+  // 界面汉化按钮状态（与 Rust 保活 keeper 同一数据源）
+  if (typeof refreshClaudeLangStatus === 'function') {
+    void refreshClaudeLangStatus();
+  }
+
   // 先用内存状态立即渲染一次，避免界面卡在“正在加载…”
   renderClaudeDesktopConfigList();
 

@@ -49,6 +49,10 @@ pub fn run() {
             // 仅在 injectModels=true 且 preserveOfficialAuth=false 时工作；不会因 CLI/app-server 残留凭空启动 Desktop。
             commands::codex_desktop::spawn_codex_desktop_watcher(app.handle().clone());
 
+            // 启动 Windsurf/Devin 汉化保活 keeper：客户端升级覆盖注入后自动重注入。
+            // 未开启过汉化时零开销（仅一次文件存在性判断）。
+            commands::app_localization::spawn_localization_keeper(app.handle().clone());
+
             // 默认启动代理（AUTO_START_PROXY 默认为 true，可在设置里关闭）。
             // 启动前已通过 kill_sidecar_process 清理孤儿 sidecar，
             // dev 模式额外清理残留 node 进程。
@@ -174,6 +178,11 @@ pub fn run() {
             commands::antigravity_localization::restore_antigravity_localization,
             commands::antigravity_localization::check_antigravity_localization_update,
             commands::antigravity_localization::download_antigravity_localization_update,
+            commands::app_localization::get_app_localization_status,
+            commands::app_localization::apply_app_localization,
+            commands::app_localization::restore_app_localization,
+            commands::app_localization::check_app_localization_update,
+            commands::app_localization::download_app_localization_update,
             commands::platforms::restore_claude_official_config,
             commands::platforms::restore_codex_official_config,
             commands::platforms::restore_grok_official_config,

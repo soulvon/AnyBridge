@@ -512,7 +512,14 @@ async function regenerateLocalProxyKey() {
 globalThis._inFlightToggles = new Set();
 
 function ideDisplayLabel(ide) {
-  const labels = { windsurf: 'Windsurf', devin: 'Devin', cursor: 'Cursor', auto: '自动检测' };
+  const labels = {
+    windsurf: 'Windsurf',
+    devin: 'Devin',
+    cursor: 'Cursor',
+    auto: '自动检测',
+    'antigravity-ide': 'Antigravity IDE',
+    'claude-desktop': 'Claude Desktop',
+  };
   return labels[ide] || (ide ? ide.charAt(0).toUpperCase() + ide.slice(1) : 'Windsurf');
 }
 

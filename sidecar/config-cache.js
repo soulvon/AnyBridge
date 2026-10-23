@@ -18,6 +18,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { configDir } from './lib/config-dir.js';
+import { clearAll as clearTargetCooldowns } from './lib/provider-cooldown.js';
 
 function positiveInt(value, fallback, min = 0) {
   const n = parseInt(value, 10);
@@ -68,6 +69,9 @@ function loadEntry(entry, file, transform) {
     entry.dirty = false;
     return entry.data;
   }
+  // 配置真的被改过：旧的冷却记录可能已经不成立（比如换掉了坏掉的 key），
+  // 否则用户改完配置还得干等冷却结束。
+  if (entry.mtimeMs !== 0 && r.stat.mtimeMs !== entry.mtimeMs) clearTargetCooldowns();
   entry.mtimeMs = r.stat.mtimeMs;
   entry.loadedAt = now;
   entry.data = transform ? transform(r.json) : r.json;
@@ -232,6 +236,14 @@ function transformModelMap(json) {
     webSearchMaxResults: positiveInt(enhancement.webSearchMaxResults, 5, 1),
     webSearchMaxRounds: positiveInt(enhancement.webSearchMaxRounds, 3, 1),
     autoRouting: enhancement.autoRouting !== false,
+    // 上游首字节超时：挂起多久判定目标失败并切换下一个（秒）。
+    failoverTtfbSeconds: positiveInt(enhancement.failoverTtfbSeconds, 120, 1),
+    cooldownEnabled: enhancement.cooldownEnabled !== false,
+    // 瞬时错误首次冷却秒数（0 = 不冷却）；反复失败按 2 倍递增到上限。
+    cooldownTransientSeconds: positiveInt(enhancement.cooldownTransientSeconds, 60, 0),
+    cooldownMaxSeconds: positiveInt(enhancement.cooldownMaxSeconds, 600, 1),
+    // 鉴权/权限/模型不可用类：一次失败即按此值冷却（0 = 不冷却）。
+    cooldownAuthSeconds: positiveInt(enhancement.cooldownAuthSeconds, 600, 0),
     unlockModels: enhancement.unlockModels !== false,
     systemPromptPrefix: String(enhancement.systemPromptPrefix || ''),
     systemPromptPrefixEnabled: enhancement.systemPromptPrefixEnabled === true,

@@ -331,21 +331,21 @@
               <div>
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
                   <span style="font-size: 12px; font-weight: 600; color: var(--text-primary);">执行进度与日志</span>
-                  <button type="button" class="btn-ghost" data-action="clearAntigravityLangLog" style="font-size: 11px; padding: 2px 6px; height: auto;">清空日志</button>
+                  <button type="button" class="btn-ghost" data-action="clearAntigravityLangLog" style="font-size: 11px; padding: 2px 8px; height: 22px; border-radius: 4px;">清空日志</button>
                 </div>
-                <pre id="antigravityLangLogBox" style="margin: 0; background: var(--bg-primary); color: var(--text-secondary); font-family: var(--font-mono); padding: 12px 14px; border-radius: 8px; font-size: 11.5px; line-height: 1.65; max-height: 150px; min-height: 90px; overflow-y: auto; white-space: pre-wrap; border: 1px solid var(--border);"></pre>
+                <pre id="antigravityLangLogBox" style="margin: 0; background: var(--bg-primary); color: var(--text-secondary); font-family: var(--font-mono); padding: 12px 14px; border-radius: 8px; font-size: 11.5px; line-height: 1.65; height: 140px; min-height: 140px; max-height: 140px; overflow-y: auto; white-space: pre-wrap; word-break: break-all; border: 1px solid var(--border); box-sizing: border-box;"></pre>
               </div>
 
-              <div style="font-size: 11px; color: var(--text-muted); line-height: 1.45;">
+              <div style="font-size: 11px; color: var(--text-muted); line-height: 1.45; min-height: 32px;">
                 物理免疫沙盒已就绪：代码区、用户打字框与 AI 模型的思考链受物理隔离保护，绝不误译代码。
               </div>
             </div>
 
-            <div class="modal-footer" style="padding: 12px 22px; border-top: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; background: var(--bg-card);">
-              <button type="button" class="btn-ghost" id="antigravityLangModalCheckUpdateBtn" data-action="checkAntigravityLocalizationUpdateAction" style="font-size: 12px;">检查在线词库更新</button>
-              <div style="display: flex; gap: 8px;">
-                <button type="button" class="btn-ghost danger" id="antigravityLangModalRestoreBtn" data-action="restoreAntigravityLocalizationAction" style="font-size: 12px;" disabled>还原官方英文</button>
-                <button type="button" class="btn-primary" id="antigravityLangModalApplyBtn" data-action="applyAntigravityLocalizationAction" style="font-size: 12px;">一键应用汉化</button>
+            <div class="modal-footer" style="padding: 12px 22px; border-top: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; background: var(--bg-card); min-height: 56px; box-sizing: border-box;">
+              <button type="button" class="btn-ghost" id="antigravityLangModalCheckUpdateBtn" data-action="checkAntigravityLocalizationUpdateAction" style="height: 32px; padding: 0 14px; font-size: 12px; font-weight: 500; border-radius: 8px; display: inline-flex; align-items: center; justify-content: center;">检查在线词库更新</button>
+              <div style="display: flex; gap: 8px; align-items: center;">
+                <button type="button" class="btn-ghost danger" id="antigravityLangModalRestoreBtn" data-action="restoreAntigravityLocalizationAction" style="height: 32px; padding: 0 14px; font-size: 12px; font-weight: 500; border-radius: 8px; display: inline-flex; align-items: center; justify-content: center;" disabled>还原官方英文</button>
+                <button type="button" class="btn-primary" id="antigravityLangModalApplyBtn" data-action="applyAntigravityLocalizationAction" style="height: 32px; padding: 0 16px; font-size: 12px; font-weight: 600; border-radius: 8px; display: inline-flex; align-items: center; justify-content: center;">一键应用汉化</button>
               </div>
             </div>
           </div>

@@ -36,7 +36,15 @@ import {
   providerGateKey,
   providerInflightGate,
   startSseKeepalive,
+  ttfbMsFromEnhancement,
 } from './lib/upstream-watchdog.js';
+import {
+  cooldownPolicyFromEnhancement,
+  filterTargets,
+  markFailure,
+  markSuccess,
+  targetKey,
+} from './lib/provider-cooldown.js';
 import { executeSearchWithFailover } from './handlers/search-sources.js';
 import { codexAuthJsonPath } from './lib/codex-home.js';
 import {
@@ -1467,7 +1475,7 @@ function requestUpstream(conn, payload, enhancement = {}) {
       });
       apiRes.on('error', reject);
     });
-    const watchdog = attachUpstreamWatchdog(req, { label });
+    const watchdog = attachUpstreamWatchdog(req, { label, ttfbMs: ttfbMsFromEnhancement(enhancement) });
     req.on('error', (err) => {
       watchdog.clear();
       reject(err);
@@ -1526,7 +1534,7 @@ async function requestUpstreamStream(conn, payload, enhancement = {}) {
         watchdog,
       });
     });
-    watchdog = attachUpstreamWatchdog(req, { label });
+    watchdog = attachUpstreamWatchdog(req, { label, ttfbMs: ttfbMsFromEnhancement(enhancement) });
     req.on('error', (err) => {
       watchdog.clear();
       freeOnce();
@@ -1978,9 +1986,17 @@ export async function execute(ctx) {
     }
     resolvedTargets.push(innerTarget);
   }
-  for (const target of resolvedTargets) {
+  const cooldownPolicy = cooldownPolicyFromEnhancement(enhancement);
+  const routed = filterTargets(resolvedTargets, cooldownPolicy);
+  if (routed.cooling.length) {
+    const lines = routed.cooling.map(c => `${c.target.providerId}${c.target.model ? `/${c.target.model}` : ''}(剩 ${Math.ceil(c.remainingMs / 1000)}s)`);
+    console.warn(`[local-proxy] 🧊 跳过 ${routed.cooling.length} 个冷却中的目标: ${lines.join(', ')}${routed.allCooling ? '；全部目标都在冷却，按解冻顺序尝试' : ''}`);
+  }
+  for (const target of routed.targets) {
     const conn = resolveTarget(target, providers);
+    // 本地配置错误不是上游故障，冷却只会让改完配置还得干等
     if (conn.error) { failures.push({ providerName: target.providerId, message: conn.error }); continue; }
+    const failuresBefore = failures.length;
     recordRequest({ provider: conn.providerName, requestedModel: ctx.model, resolvedModel: conn.model });
     let payload = upstreamBody(conn, effective);
     const started = Date.now();
@@ -1992,7 +2008,7 @@ export async function execute(ctx) {
         // ── 真流式路径：wireApi=chat 且客户端请求 stream（仅 Responses API）──
         if (conn.wireApi === 'chat' && ctx.kind === 'responses' && effective.stream === true) {
           const r = await requestUpstreamStream(conn, payload, enhancement);
-          recordLatency(r.durationMs);
+          recordLatency(r.durationMs); markSuccess(targetKey(target));
           if (r.statusCode >= 200 && r.statusCode < 300) {
             const extraRespHeaders = {};
             if (enhancement.customHeadersEnabled === true && Array.isArray(enhancement.responseHeaders)) {
@@ -2033,7 +2049,7 @@ export async function execute(ctx) {
         if (ctx.kind === 'openai' && effective.stream === true && conn.format !== 'gemini') {
           const streamPayload = { ...payload, stream: true };
           const r = await requestUpstreamStream(conn, streamPayload, enhancement);
-          recordLatency(r.durationMs);
+          recordLatency(r.durationMs); markSuccess(targetKey(target));
           if (r.statusCode >= 200 && r.statusCode < 300) {
             const extraRespHeaders = {};
             if (enhancement.customHeadersEnabled === true && Array.isArray(enhancement.responseHeaders)) {
@@ -2082,7 +2098,7 @@ export async function execute(ctx) {
         if (effective.stream === true && ctx.kind === 'gemini' && conn.format === 'openai') {
           const streamPayload = { ...payload, stream: true };
           const r = await requestUpstreamStream(conn, streamPayload, enhancement);
-          recordLatency(r.durationMs);
+          recordLatency(r.durationMs); markSuccess(targetKey(target));
           if (r.statusCode >= 200 && r.statusCode < 300) {
             const extraRespHeaders = {};
             if (enhancement.customHeadersEnabled === true && Array.isArray(enhancement.responseHeaders)) {
@@ -2110,7 +2126,7 @@ export async function execute(ctx) {
         }
         // ── 非流式路径（原有逻辑）──
         const r = await requestUpstream(conn, payload, enhancement);
-        recordLatency(r.durationMs);
+        recordLatency(r.durationMs); markSuccess(targetKey(target));
         if (r.statusCode >= 200 && r.statusCode < 300) {
           const text = extractText(conn, r.json);
           const toolCalls = extractToolCalls(conn, r.json);
@@ -2160,6 +2176,18 @@ export async function execute(ctx) {
         }
         failures.push({ providerName: conn.providerName, code, message: e.message || String(e) }); break;
       }
+    }
+    // 该目标耗尽重试仍失败 → 计入冷却，后续请求不再白白打它一次
+    if (routed.targets.length > 1 && failures.length > failuresBefore) {
+      const last = failures[failures.length - 1];
+      markFailure(targetKey(target), {
+        statusCode: last.statusCode,
+        code: last.code,
+        reason: last.message,
+        body: last.body,
+        providerName: conn.providerName,
+        model: conn.model,
+      }, cooldownPolicy);
     }
   }
   const lastUpstreamResponse = [...failures].reverse().find(f => f.statusCode && typeof f.body === 'string');

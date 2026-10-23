@@ -1310,6 +1310,7 @@ fn ide_exe_filename(target: &str) -> &'static str {
         "cursor" => "Cursor.exe",
         "antigravity-ide" => "Antigravity IDE.exe",
         "antigravity" => "Antigravity.exe",
+        "claude-desktop" | "claude" => "Claude.exe",
         _ => "Windsurf.exe",
     }
 }
@@ -1321,6 +1322,7 @@ fn ide_app_filename(target: &str) -> &'static str {
         "cursor" => "Cursor.app",
         "antigravity-ide" => "Antigravity IDE.app",
         "antigravity" => "Antigravity.app",
+        "claude-desktop" | "claude" => "Claude.app",
         _ => "Windsurf.app",
     }
 }
@@ -1343,6 +1345,7 @@ fn ide_dir_name(target: &str) -> &'static str {
         "cursor" => "Cursor",
         "antigravity-ide" => "Antigravity IDE",
         "antigravity" => "antigravity",
+        "claude-desktop" | "claude" => "Claude",
         _ => "Windsurf",
     }
 }
@@ -1431,6 +1434,19 @@ fn common_ide_candidates(target: &str) -> Vec<std::path::PathBuf> {
 
     if let Some(local) = dirs::data_local_dir() {
         push(local.join("Programs").join(dir_name).join(exe_name));
+        // Claude 官网版装在 %LOCALAPPDATA%\AnthropicClaude 下的最新 app-x.x.x 目录
+        if target == "claude-desktop" || target == "claude" {
+            let claude_root = local.join("AnthropicClaude");
+            if let Ok(entries) = std::fs::read_dir(&claude_root) {
+                for e in entries.flatten() {
+                    let p = e.path();
+                    if p.is_dir() {
+                        push(p.join("Claude.exe"));
+                        push(p.join("app").join("Claude.exe"));
+                    }
+                }
+            }
+        }
     }
     for var in ["ProgramFiles", "ProgramFiles(x86)"] {
         if let Ok(pf) = std::env::var(var) {
@@ -1506,6 +1522,10 @@ pub(crate) fn find_ide_exe(target: &str) -> Option<std::path::PathBuf> {
     } else if target == "antigravity" {
         format!(
             r#"Get-Process Antigravity -ErrorAction SilentlyContinue | Where-Object {{ $_.Path -and $_.Path -notmatch 'Antigravity IDE' }} | Select-Object -First 1 -ExpandProperty Path"#
+        )
+    } else if target == "claude-desktop" || target == "claude" {
+        format!(
+            r#"$hit = Get-Process Claude -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty Path; if (-not $hit) {{ $appx = Get-AppxPackage -Name '*Claude*' -ErrorAction SilentlyContinue | Sort-Object Version -Descending | Select-Object -First 1; if ($appx -and $appx.InstallLocation) {{ $c = Join-Path $appx.InstallLocation 'app\Claude.exe'; if (Test-Path $c) {{ $hit = $c }} }} }}; if ($hit) {{ Write-Output $hit }}"#
         )
     } else {
         format!(
@@ -2017,6 +2037,8 @@ fn restart_ide_impl(target: String) -> Result<String, String> {
                 "Antigravity IDE.exe"
             } else if t == "antigravity" {
                 "Antigravity.exe"
+            } else if t == "claude-desktop" || t == "claude" {
+                "Claude.exe"
             } else {
                 "Windsurf.exe"
             };
@@ -2036,13 +2058,14 @@ fn restart_ide_impl(target: String) -> Result<String, String> {
         }
 
         // 等待进程退出（验证是否真的杀死了）。
-        // cursor / antigravity / antigravity-ide 的映像名全局唯一，用 tasklist 按映像名
+        // cursor / antigravity / antigravity-ide / claude 的映像名全局唯一，用 tasklist 按映像名
         // 轮询（单次 ~100ms）；不要逐轮冷启动 PowerShell（单次 1~3s，12 轮会让重启
         // 卡 15~40s，用户以为死机）。windsurf/devin 因映像名共用必须走路径过滤，保持原判。
         let unique_image = match t.as_str() {
             "cursor" => Some("Cursor.exe"),
             "antigravity-ide" => Some("Antigravity IDE.exe"),
             "antigravity" => Some("Antigravity.exe"),
+            "claude-desktop" | "claude" => Some("Claude.exe"),
             _ => None,
         };
         let mut dead = false;
@@ -2084,6 +2107,19 @@ fn restart_ide_impl(target: String) -> Result<String, String> {
 
         // 启动新 IDE 进程，设置 CREATE_NO_WINDOW 防止 CMD 窗口弹出
         const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        let is_claude = t == "claude-desktop" || t == "claude";
+        let is_msix_claude = is_claude && exe.to_string_lossy().contains("WindowsApps");
+
+        if is_msix_claude {
+            // 商店版 Claude 必须通过 shell:AppsFolder 激活，不能直接 CreateProcess
+            let _ = Command::new("explorer.exe")
+                .arg("shell:AppsFolder\\Claude_pzs8sxrjxfjjc!Claude")
+                .creation_flags(CREATE_NO_WINDOW)
+                .spawn()
+                .map_err(|e| format!("启动 Claude 失败: {e}"))?;
+            return Ok(format!("已重启 {}", ide_dir_name(&t)));
+        }
+
         let spawn_client = |args: &[&str]| -> Result<std::process::Child, String> {
             Command::new(&exe)
                 .args(args)
@@ -2470,6 +2506,10 @@ pub fn is_ide_running(name: String) -> bool {
         } else if n == "antigravity" {
             format!(
                 r#"Get-Process Antigravity -ErrorAction SilentlyContinue | Where-Object {{ $_.Path -and $_.Path -notmatch 'Antigravity IDE' }} | Select-Object -First 1"#
+            )
+        } else if n == "claude-desktop" || n == "claude" {
+            format!(
+                r#"Get-Process Claude -ErrorAction SilentlyContinue | Select-Object -First 1"#
             )
         } else {
             format!(
