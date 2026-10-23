@@ -94,6 +94,12 @@ impl PromptAssets {
     }
 
     fn read(mut asset: impl FnMut(&str) -> Result<Option<String>>) -> Result<Self> {
+        // 行尾统一为 \n：prompt 资产是与上游逐字节比对过的捕获产物，
+        // Windows 检出或编辑器写入的 \r\n 会让渲染结果静默漂移，
+        // 同一份仓库在不同机器上发出不同的 prompt。
+        let mut asset = |path: &str| -> Result<Option<String>> {
+            Ok(asset(path)?.map(|text| text.replace("\r\n", "\n")))
+        };
         let catalog = Catalog::parse(
             &asset("tools.json")?
                 .ok_or_else(|| Error::Config("missing Cursor tools.json".into()))?,

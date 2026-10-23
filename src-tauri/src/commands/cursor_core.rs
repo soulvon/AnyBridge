@@ -1,12 +1,13 @@
 use serde::Serialize;
 use std::{
+    io::{BufRead, BufReader, Read},
     net::{IpAddr, Ipv4Addr, SocketAddr, TcpStream},
     path::PathBuf,
     process::{Command, Stdio},
     sync::{atomic::{AtomicBool, Ordering}, Mutex},
     time::Duration,
 };
-use tauri::{AppHandle, Manager, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 
 #[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
@@ -285,13 +286,17 @@ fn start_impl(app: AppHandle, state: &CursorCoreState) -> Result<(), String> {
             .env("ANYBRIDGE_GATEWAY_URL", format!("http://127.0.0.1:{proxy_port}"))
             .env("ANYBRIDGE_LOCAL_PROXY_KEY", key)
             .env("ANYBRIDGE_CURSOR_LISTEN_ADDR", format!("127.0.0.1:{port}"))
-            .stdout(Stdio::null())
-            .stderr(Stdio::null());
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
         #[cfg(target_os = "windows")]
         command.creation_flags(CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP);
-        let child = command
+        let mut child = command
             .spawn()
             .map_err(|error| format!("启动 Cursor Core 失败: {error}"))?;
+        // Cursor Core 是长期驻留进程，stdout 不会 EOF：两个管道必须分别起线程并行读，
+        // 串行读取会让管道填满后反向阻塞 core，且日志面板看不到任何诊断输出。
+        spawn_cursor_core_log_reader(app.clone(), child.stdout.take());
+        spawn_cursor_core_log_reader(app.clone(), child.stderr.take());
         *state.child.lock().unwrap_or_else(|e| e.into_inner()) = Some(CursorCoreChild {
             child: Mutex::new(child),
         });
@@ -314,6 +319,36 @@ fn stop_impl(state: &CursorCoreState) -> Result<(), String> {
         child.kill()?;
     }
     Ok(())
+}
+
+/// 把 Cursor Core 的 stdout/stderr 逐行转成 UI 日志，发到与 sidecar 相同的
+/// `proxy-log` 事件，让「代理日志」面板能看到 core 的诊断输出。
+///
+/// core 是长期驻留进程，管道不会 EOF：stdout 与 stderr 必须分别起线程并行读取，
+/// 串行读取会让另一个管道填满后反向阻塞 core（与 sidecar 的约束相同）。
+fn spawn_cursor_core_log_reader<R>(app: AppHandle, pipe: Option<R>)
+where
+    R: Read + Send + 'static,
+{
+    let Some(pipe) = pipe else {
+        return;
+    };
+    std::thread::spawn(move || {
+        let reader = BufReader::new(pipe);
+        for line in reader.lines().flatten() {
+            let trimmed = line.trim_end();
+            if trimmed.is_empty() {
+                continue;
+            }
+            let _ = app.emit(
+                "proxy-log",
+                crate::commands::proxy::LogLine {
+                    level: crate::commands::proxy::classify(trimmed),
+                    msg: format!("[cursor-core] {trimmed}"),
+                },
+            );
+        }
+    });
 }
 
 async fn core_request(

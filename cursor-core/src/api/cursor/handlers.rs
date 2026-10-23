@@ -373,13 +373,12 @@ fn parent_headers(headers: &HeaderMap) -> Result<Option<TransportParent>> {
     let tool_call_id = header_text(headers, "x-parent-agent-tool-call-id")?;
     match (request_id, tool_call_id) {
         (None, None) => Ok(None),
-        (Some(request_id), Some(tool_call_id)) => Ok(Some(TransportParent {
-            request_id: request_id.into(),
-            tool_call_id: tool_call_id.into(),
+        // Cursor 这两个头是分别发的：子代理请求可能只带父请求 ID，或者只带父工具调用 ID。
+        // 只有"两个都没有"才表示这次请求没有父元数据；只有一个也是合法客户端行为。
+        (request_id, tool_call_id) => Ok(Some(TransportParent {
+            request_id: request_id.map(str::to_owned),
+            tool_call_id: tool_call_id.map(str::to_owned),
         })),
-        _ => Err(crate::Error::Protocol(
-            "Cursor subagent request must include both parent headers".into(),
-        )),
     }
 }
 

@@ -17,7 +17,7 @@ async fn route_sync_replaces_stale_models_atomically() {
         r#"{"routes":[{"id":"first","displayName":"First","enabled":true,"exposedFormats":["openai"],"targets":[{"providerId":"p","model":"m"}]}]}"#,
     )
     .unwrap();
-    sync_routes_to_store(&store, &routes, "http://127.0.0.1:7450", "key")
+    sync_routes_to_store(&store, &routes, None, "http://127.0.0.1:7450", "key")
         .await
         .unwrap();
     assert_eq!(store.models().await.unwrap()[0].model_id, "first");
@@ -27,7 +27,7 @@ async fn route_sync_replaces_stale_models_atomically() {
         r#"{"routes":[{"id":"second","displayName":"Second","enabled":true,"exposedFormats":["openai"],"targets":[{"providerId":"p","model":"m"}]}]}"#,
     )
     .unwrap();
-    sync_routes_to_store(&store, &routes, "http://127.0.0.1:7450", "key")
+    sync_routes_to_store(&store, &routes, None, "http://127.0.0.1:7450", "key")
         .await
         .unwrap();
 

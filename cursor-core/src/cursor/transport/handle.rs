@@ -19,8 +19,9 @@ use super::{OutputHub, TransportAdmission, TransportLifecycle};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct TransportParent {
-    pub request_id: String,
-    pub tool_call_id: String,
+    /// Cursor 会独立地发这两个头：子代理请求可能只带父请求 ID，或者只带父工具调用 ID。
+    pub request_id: Option<String>,
+    pub tool_call_id: Option<String>,
 }
 
 #[derive(Clone)]
@@ -81,8 +82,14 @@ impl TransportHandle {
     }
 
     pub fn set_parent(&self, parent: TransportParent) -> Result<()> {
-        if parent.request_id.is_empty() || parent.tool_call_id.is_empty() {
-            return Err(Error::Protocol("Cursor parent ids are required".into()));
+        // 只有"两个都没有"或"给了空串"才拒绝：Cursor 允许只带其中一个头。
+        if (parent.request_id.is_none() && parent.tool_call_id.is_none())
+            || parent.request_id.as_ref().is_some_and(String::is_empty)
+            || parent.tool_call_id.as_ref().is_some_and(String::is_empty)
+        {
+            return Err(Error::Protocol(
+                "Cursor parent ids must not be empty".into(),
+            ));
         }
         if self.parent.get().is_some_and(|current| current != &parent) {
             return Err(Error::Protocol(format!(

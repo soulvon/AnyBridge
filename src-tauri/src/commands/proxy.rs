@@ -420,7 +420,7 @@ pub fn group_report(report: &ProxyPreflightReport) -> GroupedHealthReport {
 }
 
 // TLS/CONNECT 拒绝优先于箭头等成功标记，避免含恢复指引的错误行被误标为成功。
-fn classify(line: &str) -> String {
+pub(crate) fn classify(line: &str) -> String {
     if line.contains('❌')
         || line.contains("Error")
         || line.contains("ERROR")

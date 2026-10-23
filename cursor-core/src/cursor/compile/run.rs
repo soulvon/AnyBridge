@@ -1,6 +1,7 @@
 //! Compiles an AgentRunRequest into a PreparedRun.
 use std::collections::BTreeMap;
 
+use prost::Message as _;
 use uuid::Uuid;
 
 use crate::{
@@ -399,6 +400,20 @@ fn execution_run_id(request_id: &str) -> RunId {
     RunId::new(format!("{request_id}:{}", &execution_id[..8]))
 }
 
+/// Windows Cursor 会发**没有** `message_id` 的子代理启动消息。
+///
+/// 从消息内容里推出一个稳定的 identity（而不是拒绝请求）：同一条 kickoff 换一个
+/// request id 重试时，落到的仍是同一个 `input_id` 与同一个运行时事件（幂等，不会
+/// 产生重复 turn）；同一会话里内容不同的消息各自保有独立身份。
+fn synthetic_message_id(user: &pb::UserMessage) -> String {
+    let mut identity = user.clone();
+    identity.message_id = String::new();
+    format!(
+        "synthetic:{}",
+        BlobId::digest(&identity.encode_to_vec()).to_base64()
+    )
+}
+
 fn action(request: &pb::AgentRunRequest) -> Result<ActionProjection> {
     let conversation_mode = request
         .conversation_state
@@ -431,15 +446,16 @@ fn action(request: &pb::AgentRunRequest) -> Result<ActionProjection> {
             } else {
                 user.mode
             };
-            if user.message_id.is_empty() {
-                return Err(Error::Protocol(
-                    "Cursor user message action has no message_id".into(),
-                ));
+            let mut turn_user = user.clone();
+            if turn_user.message_id.is_empty() {
+                // Windows 客户端的子代理 kickoff 不带 message_id；从内容推出稳定身份，
+                // 让重试保持幂等（见 synthetic_message_id）。
+                turn_user.message_id = synthetic_message_id(&turn_user);
             }
-            if user.text.trim() == "/summarize" {
+            if turn_user.text.trim() == "/summarize" {
                 return Ok(ActionProjection {
                     mode,
-                    turn_user: Some(user.clone()),
+                    turn_user: Some(turn_user),
                     action_context: String::new(),
                     event_id: None,
                     input_id: None,
@@ -456,15 +472,16 @@ fn action(request: &pb::AgentRunRequest) -> Result<ActionProjection> {
                 .map(str::to_string)
                 .collect::<Vec<_>>();
             context.extend(
-                user.subagent_system_reminder
+                turn_user
+                    .subagent_system_reminder
                     .iter()
                     .filter(|text| !text.is_empty())
                     .cloned(),
             );
-            let input_id = format!("cursor:user:{}", user.message_id);
+            let input_id = format!("cursor:user:{}", turn_user.message_id);
             Ok(ActionProjection {
                 mode,
-                turn_user: Some(user.clone()),
+                turn_user: Some(turn_user),
                 action_context: context.join("\n\n"),
                 event_id: None,
                 input_id: Some(input_id),
