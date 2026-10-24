@@ -122,7 +122,7 @@ pub(crate) fn emit_switch_progress(app: &AppHandle, platform: &str, step: &str, 
 
 // ─── 返回给前端的结构 ──────────────────────────────────────────
 
-#[derive(Serialize)]
+#[derive(Serialize, Clone)]
 pub struct PlatformInfo {
     pub id: String,
     #[serde(rename = "displayName")]
@@ -6956,11 +6956,42 @@ fn read_grok_config_info(
 // ═══════ TAURI COMMANDS ═══════
 
 /// 检测所有支持的平台：安装状态 + 当前接管的供应商 + 备份是否存在。
+///
+/// 3 秒结果缓存：全量检测要扫 13 个平台（其中 Claude Desktop 每次都要
+/// spawn PowerShell 查 Appx，1-3 秒），面板切换/操作后的连带刷新会频繁
+/// 触发——短缓存让连续点击立即返回，也把刷新耗时从"每次全扫"降为偶发。
+static DETECT_CACHE: std::sync::Mutex<Option<(std::time::Instant, Vec<PlatformInfo>)>> =
+    std::sync::Mutex::new(None);
+
+/// 任何改变平台接管状态的操作（接入/还原/汉化）之后都必须调用，
+/// 否则 3 秒缓存会让随后的 detect_platforms 返回过期状态。
+pub(crate) fn invalidate_detect_cache() {
+    if let Ok(mut cache) = DETECT_CACHE.lock() {
+        *cache = None;
+    }
+}
+
 #[tauri::command]
 pub async fn detect_platforms() -> Result<Vec<PlatformInfo>, String> {
-    tauri::async_runtime::spawn_blocking(detect_platforms_sync)
+    // 缓存命中（3 秒内）直接返回
+    {
+        let cache = DETECT_CACHE.lock().unwrap_or_else(|p| p.into_inner());
+        if let Some((at, list)) = cache.as_ref() {
+            if at.elapsed() < std::time::Duration::from_secs(3) {
+                let cloned: Vec<PlatformInfo> = list.clone();
+                return Ok(cloned);
+            }
+        }
+    }
+    let result = tauri::async_runtime::spawn_blocking(detect_platforms_sync)
         .await
-        .map_err(|e| format!("检测平台状态任务执行失败: {e}"))?
+        .map_err(|e| format!("检测平台状态任务执行失败: {e}"))?;
+    if let Ok(list) = &result {
+        let cloned: Vec<PlatformInfo> = list.clone();
+        let mut cache = DETECT_CACHE.lock().unwrap_or_else(|p| p.into_inner());
+        *cache = Some((std::time::Instant::now(), cloned));
+    }
+    result
 }
 
 fn detect_platforms_sync() -> Result<Vec<PlatformInfo>, String> {
@@ -7360,11 +7391,15 @@ pub async fn switch_platform(
     platform: String,
     provider_id: String,
 ) -> Result<SwitchResult, String> {
-    tauri::async_runtime::spawn_blocking(move || {
+    let result = tauri::async_runtime::spawn_blocking(move || {
         switch_platform_sync(&app, &platform, &provider_id)
     })
     .await
-    .map_err(|e| format!("切换平台任务执行失败: {e}"))?
+    .map_err(|e| format!("切换平台任务执行失败: {e}"))?;
+    if result.is_ok() {
+        invalidate_detect_cache();
+    }
+    result
 }
 
 fn switch_platform_sync(
@@ -7630,32 +7665,54 @@ pub fn remove_opencode_config_from_live(provider_id: String) -> Result<SwitchRes
 }
 
 /// 从备份还原平台配置（回到 AnyBridge 接管前的状态），并清除接管记录。
+///
+/// async + spawn_blocking：plat.restore() 含 asar 补丁等重文件 IO，
+/// 同步 command 在 Tauri 主线程执行会冻结整个 UI（与汉化卡死同款问题）。
 #[tauri::command]
-pub fn restore_platform(app: AppHandle, platform: String) -> Result<bool, String> {
-    let plat = Platform::from_id(&platform).ok_or_else(|| format!("未知平台: {platform}"))?;
-    emit_switch_progress(&app, plat.id(), "backup", "正在从备份还原配置…");
+pub async fn restore_platform(app: AppHandle, platform: String) -> Result<bool, String> {
+    tauri::async_runtime::spawn_blocking(move || restore_platform_sync(&app, &platform))
+        .await
+        .map_err(|e| format!("还原平台任务执行失败: {e}"))?
+}
+
+fn restore_platform_sync(app: &AppHandle, platform: &str) -> Result<bool, String> {
+    let plat = Platform::from_id(platform).ok_or_else(|| format!("未知平台: {platform}"))?;
+    emit_switch_progress(app, plat.id(), "backup", "正在从备份还原配置…");
     let restored = plat.restore()?;
 
-    emit_switch_progress(&app, plat.id(), "saving", "正在清除接管记录…");
+    emit_switch_progress(app, plat.id(), "saving", "正在清除接管记录…");
     // 无论是否有备份，都清除接管记录（接管状态以备份为准）。
     if let Ok(mut store) = read_provider_store() {
         if store.platforms.remove(plat.id()).is_some() {
             let _ = write_provider_store(&store);
         }
     }
-    emit_switch_progress(&app, plat.id(), "done", "还原完成");
+    invalidate_detect_cache();
+    emit_switch_progress(app, plat.id(), "done", "还原完成");
     Ok(restored)
 }
 
 /// 切回 Antigravity 官方环境：清理 AnyBridge 写入的 jetski.cloudCodeUrl 及环境变量，保留其他设置。
+/// async + spawn_blocking：备份/写配置是重文件 IO，同步会冻结 UI（同 restore_platform）。
 #[tauri::command]
-pub fn restore_antigravity_official_config(
+pub async fn restore_antigravity_official_config(
     app: AppHandle,
     platform: Option<String>,
 ) -> Result<SwitchResult, String> {
-    let plat_id = platform.unwrap_or_else(|| PLATFORM_ANTIGRAVITY.to_string());
+    tauri::async_runtime::spawn_blocking(move || {
+        restore_antigravity_official_config_sync(&app, platform.as_deref())
+    })
+    .await
+    .map_err(|e| format!("还原 Antigravity 任务执行失败: {e}"))?
+}
+
+fn restore_antigravity_official_config_sync(
+    app: &AppHandle,
+    platform: Option<&str>,
+) -> Result<SwitchResult, String> {
+    let plat_id = platform.unwrap_or(PLATFORM_ANTIGRAVITY).to_string();
     let plat = Platform::from_id(&plat_id).unwrap_or(Platform::Antigravity);
-    emit_switch_progress(&app, plat.id(), "backup", "正在备份当前配置…");
+    emit_switch_progress(app, plat.id(), "backup", "正在备份当前配置…");
     let path = plat
         .config_path()
         .ok_or_else(|| format!("无法定位 {} 用户配置路径", plat.display_name()))?;
@@ -7665,14 +7722,14 @@ pub fn restore_antigravity_official_config(
     if path.exists() {
         ensure_backup(&path)?;
     }
-    emit_switch_progress(&app, plat.id(), "writing", "正在恢复官方配置…");
+    emit_switch_progress(app, plat.id(), "writing", "正在恢复官方配置…");
     if matches!(plat, Platform::AntigravityIde) {
         plat.apply_antigravity_ide_official(&path)?;
     } else {
         plat.apply_antigravity_official(&path)?;
     }
 
-    emit_switch_progress(&app, plat.id(), "saving", "正在清除接管记录…");
+    emit_switch_progress(app, plat.id(), "saving", "正在清除接管记录…");
     if let Ok(mut store) = read_provider_store() {
         if store.platforms.remove(plat.id()).is_some() {
             let _ = write_provider_store(&store);
@@ -7681,7 +7738,7 @@ pub fn restore_antigravity_official_config(
 
     let config_path = path.to_string_lossy().to_string();
     let backup = backup_path(&path).to_string_lossy().to_string();
-    emit_switch_progress(&app, plat.id(), "done", "已切回官方配置");
+    emit_switch_progress(app, plat.id(), "done", "已切回官方配置");
     Ok(SwitchResult {
         ok: true,
         message: format!("已切回 {} 官方配置，重启后生效", plat.display_name()),
