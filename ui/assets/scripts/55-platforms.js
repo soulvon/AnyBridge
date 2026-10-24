@@ -2955,8 +2955,9 @@ async function confirmRestartAntigravityClient(actionDesc) {
   const platName = target === 'antigravity-ide' ? 'Antigravity IDE' : 'Antigravity';
   if (typeof promptRestartIde !== 'function') return false;
 
+  // lead 不带客户端名：标题（"重启 {客户端}"）已含，重复显得冗余（各平台统一）。
   const restarted = await promptRestartIde(
-    `${platName} ${actionDesc}，是否立即重启客户端使其生效？`,
+    `${actionDesc}，是否立即重启客户端使其生效？`,
     target,
     {
       title: `重启 ${platName}`,

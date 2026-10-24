@@ -1466,11 +1466,12 @@ function makeLangActions(prefix, getPlatform, displayName) {
 
   // 与白色反重力（Antigravity 桌面端汉化）的操作交互对齐：
   // apply/restore 成功后弹统一的重启确认窗，支持一键重启客户端。
+  // 注意：lead 不带客户端名——标题（"重启 {客户端}"）已经有，重复显得冗余。
   async function confirmRestart(actionDesc, statusText) {
     const target = getPlatform();
     if (typeof promptRestartIde !== 'function') return;
     const restarted = await promptRestartIde(
-      `${name()} ${actionDesc}，是否立即重启客户端使其生效？`,
+      `${actionDesc}，是否立即重启客户端使其生效？`,
       target,
       {
         title: `重启 ${name()}`,
