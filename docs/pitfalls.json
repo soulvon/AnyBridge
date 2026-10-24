@@ -1,0 +1,95 @@
+{
+  "version": 1,
+  "note": "结构化坑点库：每条坑都带可机器验证的判据（check），由 scripts/check-key-features.mjs 逐条执行。严禁只写文档——沉淀必须能反馈到工作流。",
+  "pitfalls": [
+    {
+      "id": "workbench-size-threshold",
+      "title": "workbench.html 不能用体积阈值判断损坏",
+      "symptom": "Devin 原厂 workbench.html 只有 1.7KB（界面靠 workbench.js 加载），体积阈值会把健康文件判成损坏并拒绝注入",
+      "lesson": "损坏判据必须用结构完整性（是否含 </body>），中断的写入一定写不到闭合标签；体积在合法文件间差异极大且残骸大小不可预测",
+      "check": { "type": "source_contains", "file": "src-tauri/src/commands/app_localization.rs", "must_contain": "fn is_valid_workbench" },
+      "check_not": { "type": "source_not_regex", "file": "src-tauri/src/commands/app_localization.rs", "must_not_match": "MIN_VALID_WORKBENCH_LEN:\\s*usize\\s*=\\s*\\d{3,}" },
+      "severity": "high"
+    },
+    {
+      "id": "lang-pack-partial-check",
+      "title": "语言包「已安装」必须覆盖完整生效链",
+      "symptom": "只看扩展目录存在 → 目录在但被 .obsolete 标记 / 注册表指向第三方包 → 实际没生效，apply 跳过修复，界面回退英文",
+      "lesson": "任何『是否已生效』的判定必须覆盖完整链路：文件存在 + 未被废弃标记 + 注册表指向正确 + 运行时配置生效",
+      "check": { "type": "source_contains", "file": "src-tauri/src/commands/app_localization.rs", "must_contain": "条件 2：不在 .obsolete" },
+      "severity": "high"
+    },
+    {
+      "id": "symmetric-path-halved",
+      "title": "成对逻辑（接入/还原、apply/restore）必须收敛到同一函数",
+      "symptom": "改了 apply_antigravity 忘了 apply_antigravity_official；改了接入忘了还原 → 一半路径仍走慢/错逻辑",
+      "lesson": "对称操作共用同一实现（如 kill_antigravity_language_server），结构上杜绝漏改；改任一处前必须先列全对称路径",
+      "check": { "type": "source_contains", "file": "src-tauri/src/commands/platforms.rs", "must_contain": "Self::kill_antigravity_language_server" },
+      "severity": "high"
+    },
+    {
+      "id": "csp-nonce-inline-script",
+      "title": "内联脚本必须带 CSP nonce",
+      "symptom": "Devin 的 CSP 含 nonce → 'unsafe-inline' 被忽略 → 注入脚本从未执行（汉化『注入了但不生效』）",
+      "lesson": "注入内联 script 前先提取 CSP nonce 并带上；无 nonce 的平台退回普通标签",
+      "check": { "type": "source_contains", "file": "src-tauri/src/commands/app_localization.rs", "must_contain": "extract_csp_nonce" },
+      "severity": "high"
+    },
+    {
+      "id": "keeper-lock-reentry",
+      "title": "持锁后不得调用会再次加锁的函数",
+      "symptom": "keeper 线程持 inject_lock 后调 apply，apply 内部再加同一把锁 → 不可重入死锁，并阻塞用户的汉化请求",
+      "lesson": "加锁入口与无锁内部实现分离（apply / apply_inner），并在注释里写明锁纪律",
+      "check": { "type": "source_contains", "file": "src-tauri/src/commands/app_localization.rs", "must_contain": "fn apply_inner" },
+      "severity": "high"
+    },
+    {
+      "id": "sync-command-blocks-ui",
+      "title": "同步 Tauri command 阻塞主线程",
+      "symptom": "点汉化/接入后界面冻结转圈（语言包网络请求、PowerShell CIM 查询在主线程执行）",
+      "lesson": "含 IO/子进程/网络的命令一律 async + spawn_blocking；对称的 apply/restore 必须同时改",
+      "check": { "type": "source_contains", "file": "src-tauri/src/commands/app_localization.rs", "must_contain": "pub async fn apply_app_localization" },
+      "severity": "high"
+    },
+    {
+      "id": "byok-strip-must-keep-hans",
+      "title": "BYOK 还原必须剥离式而非整体覆盖",
+      "symptom": "从备份整体覆盖 workbench.html 会把汉化块一起抹掉",
+      "lesson": "还原只剥离自己的块，保留其它注入块；并用单测锁住该行为",
+      "check": { "type": "source_contains", "file": "src-tauri/src/commands/workbench_inject.rs", "must_contain": "汉化块必须保留" },
+      "severity": "high"
+    },
+    {
+      "id": "slow-cim-query",
+      "title": "进程查询不要用 PowerShell Get-CimInstance",
+      "symptom": "CIM/WMI 查询 1-3 秒，每次接入/还原都要等（表现为点击后卡顿）",
+      "lesson": "改用原生 Toolhelp32 枚举进程 + 路径比对；保留原有路径过滤语义避免误杀同名进程",
+      "check": { "type": "source_not_regex", "file": "src-tauri/src/commands/platforms.rs", "must_not_match": "Get-CimInstance\\s+Win32_Process" },
+      "severity": "medium"
+    },
+    {
+      "id": "refresh-before-modal",
+      "title": "善后刷新不得挡在用户反馈（弹窗/警告）前面",
+      "symptom": "点接入后卡 1-2 秒才弹重启确认窗",
+      "lesson": "先给反馈，后刷新；刷新数据来源是 invoke 已返回的 report，后置安全",
+      "check": { "type": "source_contains", "file": "ui/assets/scripts/55-platforms.js", "must_contain": "重启确认是用户点这一下的第一诉求" },
+      "severity": "medium"
+    },
+    {
+      "id": "argv-json-is-jsonc",
+      "title": "argv.json 是 JSONC（带 // 注释），不能纯 JSON 解析",
+      "symptom": "JSON.parse 失败 → 误判 locale 未设置；解析失败时用空对象覆盖会丢用户配置",
+      "lesson": "剥注释后再解析；解析失败必须报错中止，绝不覆盖原文件",
+      "check": { "type": "source_contains", "file": "src-tauri/src/commands/app_localization.rs", "must_contain": "fn parse_jsonc" },
+      "severity": "medium"
+    },
+    {
+      "id": "env-reset-breaks-idempotent-fix",
+      "title": "客户端重装/升级会重置外部状态，幂等修复的前提会被破坏",
+      "symptom": "重装 Devin 后 .obsolete 重新标记、注册表指回第三方包，而 apply 因『判定为已安装』跳过修复",
+      "lesson": "『已安装』判定要能识别重置态；保活/重入时要能自动修复，而不是假定环境不变",
+      "check": { "type": "source_contains", "file": "src-tauri/src/commands/app_localization.rs", "must_contain": "条件 3：languagepacks.json" },
+      "severity": "high"
+    }
+  ]
+}

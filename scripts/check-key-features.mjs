@@ -61,7 +61,75 @@ for (const f of fs.readdirSync(scriptsDir).filter(f => f.endsWith('.js'))) {
 }
 
 // ─────────────────────────────────────────────────────────────
-// [3] 关键判据回归（出过事故的点，源码级断言）
+// [3] 坑点库逐条执行（docs/pitfalls.json —— 沉淀必须能反馈工作流，
+//     而不是躺在文档里；每条坑都带可机器验证的判据）
+// ─────────────────────────────────────────────────────────────
+section('坑点库（docs/pitfalls.json 逐条验证）');
+{
+  const pfPath = path.join(root, 'docs', 'pitfalls.json');
+  if (!fs.existsSync(pfPath)) {
+    ok('坑点库存在', false, 'docs/pitfalls.json 缺失');
+  } else {
+    const pf = JSON.parse(fs.readFileSync(pfPath, 'utf8'));
+    ok(`坑点库已加载（${pf.pitfalls.length} 条）`, true);
+    for (const p of pf.pitfalls) {
+      const c = p.check;
+      if (!c) { ok(`[${p.id}] 有判据`, false); continue; }
+      const file = path.join(root, c.file);
+      if (!fs.existsSync(file)) { ok(`[${p.id}] ${c.file} 存在`, false); continue; }
+      const src = fs.readFileSync(file, 'utf8');
+      let pass = false;
+      if (c.type === 'source_contains') pass = src.includes(c.must_contain);
+      else if (c.type === 'source_not_regex') pass = !new RegExp(c.must_not_match).test(src);
+      ok(`[${p.id}] ${p.title}`, pass, pass ? '' : `判据未满足（${c.type}）`);
+      // 额外的 must_not 判据
+      if (pass && p.check_not) {
+        const n = p.check_not;
+        const nf = path.join(root, n.file);
+        if (fs.existsSync(nf)) {
+          const nsrc = fs.readFileSync(nf, 'utf8');
+          const okNot = !new RegExp(n.must_not_match).test(nsrc);
+          ok(`[${p.id}] 反向判据（不得回退）`, okNot);
+        }
+      }
+    }
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+// [3.5] 对称路径检查（专治「改 A 漏 B」：接入↔还原、apply↔restore）
+// ─────────────────────────────────────────────────────────────
+section('对称路径（接入↔还原 / apply↔restore 必须一致）');
+{
+  // 3.5.1 命令级：成对的 apply_/restore_ 命令异步化状态必须一致
+  const cmds = [];
+  for (const f of fs.readdirSync(path.join(root, 'src-tauri/src/commands'))) {
+    if (!f.endsWith('.rs')) continue;
+    const src = fs.readFileSync(path.join(root, 'src-tauri/src/commands', f), 'utf8');
+    const re = /#\[tauri::command\]\s*(?:pub\s+)?(async\s+)?fn\s+(\w+)/g;
+    let m;
+    while ((m = re.exec(src))) cmds.push({ name: m[2], async: !!m[1] });
+  }
+  const byName = new Map(cmds.map(c => [c.name, c]));
+  const asym = [];
+  for (const c of cmds) {
+    if (!/^(apply|restore)_/.test(c.name)) continue;
+    const paired = c.name.replace(/^(apply|restore)_/, (_, k) => (k === 'apply' ? 'restore_' : 'apply_'));
+    const other = byName.get(paired);
+    if (other && other.async !== c.async) {
+      asym.push(`${c.name}(${c.async ? 'async' : 'sync'}) ↔ ${other.name}(${other.async ? 'async' : 'sync'})`);
+    }
+  }
+  ok('apply/restore 命令对异步化一致', asym.length === 0, asym.join('; '));
+
+  // 3.5.2 Antigravity 接入与还原共用同一杀进程实现（曾漏改还原路径）
+  const pf = fs.readFileSync(path.join(root, 'src-tauri/src/commands/platforms.rs'), 'utf8');
+  const killCalls = (pf.match(/Self::kill_antigravity_language_server\(\)/g) || []).length;
+  ok('Antigravity 接入+还原都调用同一 kill 实现', killCalls >= 2, `调用点 ${killCalls} 处（应≥2）`);
+}
+
+// ─────────────────────────────────────────────────────────────
+// [4] 关键判据回归（出过事故的点，源码级断言）
 // ─────────────────────────────────────────────────────────────
 section('关键判据（源码级回归断言）');
 
