@@ -1411,14 +1411,15 @@ function makeLangActions(prefix, getPlatform, displayName) {
         const clientName = name();
         const badge = el('ModalStatusBadge');
         if (badge) {
+          // 未汉化是正常状态，用中性色而不是警告红
           if (st?.localized) {
             badge.textContent = '已汉化';
             badge.style.background = 'rgba(16, 185, 129, 0.15)';
             badge.style.color = '#10b981';
           } else {
             badge.textContent = '未汉化';
-            badge.style.background = 'rgba(239, 68, 68, 0.15)';
-            badge.style.color = '#ef4444';
+            badge.style.background = 'var(--bg-glass-elevated, rgba(255,255,255,0.06))';
+            badge.style.color = 'var(--text-muted)';
           }
         }
         const verEl = el('ModalVer');
@@ -1495,7 +1496,7 @@ function makeLangActions(prefix, getPlatform, displayName) {
       // 词库策略（对齐反馈：每次检查更新太慢）：apply 不做更新检查，
       // 本地有词库直接用（手动更新走「检查在线词库更新」按钮）。
       // 仅 Claude 首次使用（本地无词库缓存）时自动下载，否则它无法汉化。
-      appendLog(`[1/4] 正在准备词库...`);
+      appendLog(`[1/4] 正在准备中文词库...`);
       try {
         const st = await invoke('get_app_localization_status', { platform });
         if (platform === 'claude-desktop' && !st?.langPackInstalled) {
@@ -1509,8 +1510,8 @@ function makeLangActions(prefix, getPlatform, displayName) {
         appendLog(`词库准备失败（可点「检查在线词库更新」重试）: ${e}`, 'warn');
       }
       // 第二步：应用汉化
-      appendLog(`[2/4] 正在检测 ${clientName} 安装与文件权限...`);
-      appendLog(`[3/4] 正在备份原厂资源并注入界面汉化...`);
+      appendLog(`[2/4] 正在检测 ${clientName} 安装与写入权限...`);
+      appendLog(`[3/4] 正在备份原版资源并写入汉化...`);
       const res = await invoke('apply_app_localization', { platform });
       appendLog(`[4/4] ${res?.message || '汉化注入完成！'}`, 'ok');
       await refreshStatus(true);
@@ -1559,10 +1560,10 @@ function makeLangActions(prefix, getPlatform, displayName) {
     const platform = getPlatform();
     if (!platform) return;
     appendLog('----------------------------------------');
-    appendLog('正在连通 GitHub 检查开源汉化仓库最新词库...');
+    appendLog('正在检查上游词库更新...');
     try {
       const info = await invoke('check_app_localization_update', { platform });
-      appendLog(`GitHub 响应成功: 上游词库 sha=${info?.latestVersion || '未知'}`);
+      appendLog(`上游词库版本: ${info?.latestVersion || '未知'}`);
       if (info?.hasUpdate) {
         appendLog(`发现新版汉化词库（当前 v${info.currentVersion}），正在下载...`, 'ok');
         appendLog('正在下载最新词库至本地热更新缓存...');

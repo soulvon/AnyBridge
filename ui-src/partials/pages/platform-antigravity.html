@@ -304,7 +304,7 @@
                 </div>
                 <div>
                   <div class="modal-title" id="antigravityLangModalTitle" style="font-size: 15px; font-weight: 750; color: var(--text-primary); line-height: 1.25;">Antigravity 界面汉化</div>
-                  <div id="antigravityLangModalSubtitle" style="font-size: 11.5px; color: var(--text-muted); margin-top: 3px;">深度本地化引擎 · 智能物理免疫保护</div>
+                  <div id="antigravityLangModalSubtitle" style="font-size: 11.5px; color: var(--text-muted); margin-top: 3px;">界面即时翻译，不改动官方文件 · 升级后自动保持</div>
                 </div>
               </div>
               <button type="button" class="btn-ghost icon-btn" data-action="closeAntigravityLangModal" aria-label="关闭" style="width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center; color: var(--text-muted); transition: all 0.15s ease;">✕</button>
@@ -321,9 +321,13 @@
                   <span style="color: var(--text-muted);">当前状态：</span>
                   <span id="antigravityLangModalStatusBadge" class="status-badge" style="padding: 2px 8px; border-radius: 999px; font-size: 11px; background: rgba(16, 185, 129, 0.1); color: #10b981;">检测中</span>
                 </div>
-                <div style="display: flex; justify-content: space-between; align-items: center;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
                   <span style="color: var(--text-muted);">词库版本：</span>
-                  <span style="color: var(--text-secondary); font-family: var(--font-mono);" id="antigravityLangModalVer">v2.18.1</span>
+                  <span style="color: var(--text-secondary); font-family: var(--font-mono);" id="antigravityLangModalVer">baseline</span>
+                </div>
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                  <span style="color: var(--text-muted);">中文语言包：</span>
+                  <span id="antigravityLangModalLangPack" style="color: var(--text-muted);">检测中</span>
                 </div>
               </div>
 
@@ -337,7 +341,7 @@
               </div>
 
               <div style="font-size: 11px; color: var(--text-muted); line-height: 1.45; min-height: 32px;">
-                物理免疫沙盒已就绪：代码区、用户打字框与 AI 模型的思考链受物理隔离保护，绝不误译代码。
+                汉化覆盖 Antigravity 的界面文案，代码区、输入框与模型思考内容不会被误译。重启客户端后生效，随时可一键还原成英文；客户端升级后会自动重新应用，你不用手动处理。
               </div>
             </div>
 

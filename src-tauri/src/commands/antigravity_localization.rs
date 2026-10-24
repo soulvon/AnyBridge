@@ -589,7 +589,7 @@ pub fn apply_antigravity_localization(
 
     Ok(LocalizationOperationResult {
         ok: true,
-        message: format!("{} 汉化补丁已应用成功，重启客户端后生效", plat_name),
+        message: format!("{} 汉化已应用成功，重启客户端后生效", plat_name),
         localized: true,
     })
 }

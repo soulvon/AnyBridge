@@ -1373,7 +1373,7 @@ fn apply(platform: &str, elevate: bool) -> Result<LocalizationOperationResult, S
     };
 
     let mut message = format!(
-        "{} 汉化补丁已应用成功（{} 条词条），重启客户端后生效",
+        "{} 汉化已应用成功（{} 条词条），重启客户端后生效",
         display, entries
     );
     if let Some(note) = locale_note.or(lang_note) {
@@ -1512,10 +1512,7 @@ fn apply_claude(elevate: bool) -> Result<LocalizationOperationResult, String> {
     set_enabled("claude-desktop");
     invalidate_status_cache();
 
-    let mut message = format!(
-        "Claude Desktop 汉化已应用（{} 条词条，注入 {}）",
-        entries, store_rel
-    );
+    let mut message = format!("Claude Desktop 汉化已应用成功（{} 条词条）", entries);
     if locale_changed {
         message.push_str("，显示语言已切换为简体中文");
     }

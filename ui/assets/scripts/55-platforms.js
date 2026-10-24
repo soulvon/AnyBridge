@@ -2904,18 +2904,32 @@ async function refreshAntigravityLangStatus(updateModal = false) {
       const applyBtn = document.getElementById('antigravityLangModalApplyBtn');
 
       if (badge) {
+        // 与其它平台统一：已汉化=绿，未汉化=中性灰（未汉化是正常状态，不用警告色）
         if (status?.localized) {
-          badge.textContent = '已深度汉化';
+          badge.textContent = '已汉化';
           badge.style.background = 'rgba(16, 185, 129, 0.15)';
           badge.style.color = '#10b981';
         } else {
           badge.textContent = '未汉化';
-          badge.style.background = 'rgba(239, 68, 68, 0.15)';
-          badge.style.color = '#ef4444';
+          badge.style.background = 'var(--bg-glass-elevated, rgba(255,255,255,0.06))';
+          badge.style.color = 'var(--text-muted)';
         }
       }
       if (verEl && status?.currentVersion) {
         verEl.textContent = 'v' + status.currentVersion;
+      }
+      // 第 4 行与其它平台对齐：IDE 走 app_localization（有语言包状态），
+      // Hub 是 asar 注入不需要语言包，显示同理状态而非空白。
+      const langPackEl = document.getElementById('antigravityLangModalLangPack');
+      if (langPackEl) {
+        if (isIde) {
+          const ok = !!status?.langPackInstalled;
+          langPackEl.textContent = ok ? '已安装' : '未安装';
+          langPackEl.style.color = ok ? '#10b981' : 'var(--text-muted)';
+        } else {
+          langPackEl.textContent = '无需安装（内置词库）';
+          langPackEl.style.color = 'var(--text-muted)';
+        }
       }
       if (restoreBtn) {
         restoreBtn.disabled = !status?.localized;
@@ -2969,7 +2983,7 @@ async function applyAntigravityLocalizationAction() {
   try {
     // 词库策略（对齐反馈）：apply 不做更新检查，本地有词库直接用；
     // 仅当本地完全没有词库时（antigravity-ide 首次）自动下载。
-    appendAntigravityLangLog(`[1/5] 正在准备词库...`);
+    appendAntigravityLangLog(`[1/4] 正在准备中文词库...`);
     try {
       const st = isIde
         ? await invoke('get_app_localization_status', { platform: 'antigravity-ide' })
@@ -2985,13 +2999,12 @@ async function applyAntigravityLocalizationAction() {
       appendAntigravityLangLog(`词库准备失败（可点「检查在线词库更新」重试）: ${e}`, 'warn');
     }
     // 第二步：应用汉化
-    appendAntigravityLangLog(`[2/5] 正在检测 ${platName} 安装与文件权限...`);
-    appendAntigravityLangLog(`[3/5] 正在为官方原版资源生成安全备份...`);
-    appendAntigravityLangLog(`[4/5] 正在注入高性能 DOM 本地化引擎与沙盒免疫装甲...`);
+    appendAntigravityLangLog(`[2/4] 正在检测 ${platName} 安装与写入权限...`);
+    appendAntigravityLangLog(`[3/4] 正在备份原版资源并写入汉化...`);
     const res = isIde
       ? await invoke('apply_app_localization', { platform: 'antigravity-ide' })
       : await invoke('apply_antigravity_localization', { target });
-    appendAntigravityLangLog(`[5/5] ${res?.message || '汉化注入完成！'}`, 'ok');
+    appendAntigravityLangLog(`[4/4] ${res?.message || '汉化注入完成！'}`, 'ok');
     await refreshAntigravityLangStatus(true);
     if (typeof showBottomToast === 'function') {
       showBottomToast(res?.message || `${platName} 汉化成功`, 'success');
@@ -3035,23 +3048,22 @@ async function checkAntigravityLocalizationUpdateAction() {
   const target = getAntigravityTarget();
   const isIde = target === 'antigravity-ide';
   appendAntigravityLangLog(`----------------------------------------`);
-  appendAntigravityLangLog(`正在从 GitHub（含镜像）拉取上游汉化词库...`);
+  appendAntigravityLangLog(`正在检查上游词库更新...`);
   try {
     const info = isIde
       ? await invoke('check_app_localization_update', { platform: 'antigravity-ide' })
       : await invoke('check_antigravity_localization_update');
-    appendAntigravityLangLog(`上游词库响应成功: 内容指纹=${info?.latestVersion || '未知'}`);
+    appendAntigravityLangLog(`上游词库版本: ${info?.latestVersion || '未知'}`);
     if (info?.hasUpdate) {
-      appendAntigravityLangLog(`发现新版汉化词库（当前 v${info.currentVersion}），正在下载...`, 'ok');
-      appendAntigravityLangLog(`正在下载最新词库与脚本至本地热更新缓存...`);
+      appendAntigravityLangLog(`发现新版词库（当前 v${info.currentVersion}），正在下载...`, 'ok');
       const dl = isIde
         ? await invoke('download_app_localization_update', { platform: 'antigravity-ide' })
         : await invoke('download_antigravity_localization_update');
       appendAntigravityLangLog(`词库下载成功: ${dl?.message}`, 'ok');
       // 只下载，不自动应用：是否注入、何时注入由用户决定（应用按钮才是注入入口）
-      appendAntigravityLangLog(`新词库已就绪，点击「应用汉化」即可生效`, 'warn');
+      appendAntigravityLangLog(`新词库已就绪，点击「重新应用汉化」即可生效`, 'warn');
       if (typeof showBottomToast === 'function') {
-        showBottomToast('词库已更新，点击「应用汉化」生效', 'success');
+        showBottomToast('词库已更新，点击「重新应用汉化」生效', 'success');
       }
     } else {
       appendAntigravityLangLog(`当前词库已是最新版本 (v${info?.currentVersion || 'baseline'})，无需更新`, 'ok');
