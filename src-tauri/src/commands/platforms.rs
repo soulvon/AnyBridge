@@ -823,17 +823,82 @@ impl Platform {
             let _ = super::write_atomic(path, content.as_bytes());
         }
 
-        // 3. 若正在运行语言服务，终止它促使其热重启重载新配置
+        // 3. 若正在运行语言服务，终止它促使其热重启重载新配置。
+        //    用原生 API 枚举进程，不再 spawn PowerShell——Get-CimInstance 的
+        //    CIM 查询实测 1-3 秒，是「一键接入」点击后卡顿的主因。
         #[cfg(windows)]
-        {
-            use std::os::windows::process::CommandExt;
-            let cmd = r#"Get-CimInstance Win32_Process -Filter "name = 'language_server.exe'" | Where-Object { $_.Path -like "*antigravity\resources\bin*" } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }"#;
-            let _ = std::process::Command::new("powershell")
-                .args(&["-NoProfile", "-Command", cmd])
-                .creation_flags(0x0800_0000)
-                .output();
-        }
+        Self::kill_antigravity_language_server();
         Ok(())
+    }
+
+    /// 终止 Antigravity 自己的语言服务进程（促使其热重启加载新端点配置）。
+    ///
+    /// 关键：必须按**可执行文件路径**过滤，只杀 `antigravity\resources\bin` 下
+    /// 的进程——其它产品（Windsurf 等）也可能有同名 `language_server.exe`。
+    ///
+    /// 性能：原生 Toolhelp32 快照枚举全部进程只要几十毫秒；
+    /// 原实现用 PowerShell 的 Get-CimInstance（WMI/CIM 查询）要 1-3 秒。
+    #[cfg(windows)]
+    fn kill_antigravity_language_server() {
+        use windows_sys::Win32::Foundation::{CloseHandle, INVALID_HANDLE_VALUE};
+        use windows_sys::Win32::System::Diagnostics::ToolHelp::{
+            CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W,
+            TH32CS_SNAPPROCESS,
+        };
+        use windows_sys::Win32::System::Threading::{
+            OpenProcess, QueryFullProcessImageNameW, TerminateProcess, PROCESS_NAME_WIN32,
+            PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_TERMINATE,
+        };
+
+        unsafe {
+            let snap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+            if snap == INVALID_HANDLE_VALUE {
+                return;
+            }
+            let mut entry: PROCESSENTRY32W = std::mem::zeroed();
+            entry.dwSize = std::mem::size_of::<PROCESSENTRY32W>() as u32;
+
+            if Process32FirstW(snap, &mut entry) != 0 {
+                loop {
+                    let end = entry
+                        .szExeFile
+                        .iter()
+                        .position(|&c| c == 0)
+                        .unwrap_or(entry.szExeFile.len());
+                    let exe_name = String::from_utf16_lossy(&entry.szExeFile[..end]);
+                    let pid = entry.th32ProcessID;
+
+                    if exe_name.eq_ignore_ascii_case("language_server.exe") && pid != 0 {
+                        // 取完整路径确认是 Antigravity 的语言服务
+                        let h = OpenProcess(
+                            PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_TERMINATE,
+                            0,
+                            pid,
+                        );
+                        // HANDLE 在 windows-sys 0.59 是 *mut c_void，按指针判空
+                        if !h.is_null() {
+                            let mut buf = [0u16; 1024];
+                            let mut len = buf.len() as u32;
+                            if QueryFullProcessImageNameW(h, PROCESS_NAME_WIN32, buf.as_mut_ptr(), &mut len)
+                                != 0
+                            {
+                                let full = String::from_utf16_lossy(&buf[..len as usize]);
+                                let lower = full.to_lowercase().replace('/', "\\");
+                                if lower.contains("antigravity\\resources\\bin") {
+                                    let _ = TerminateProcess(h, 1);
+                                }
+                            }
+                            CloseHandle(h);
+                        }
+                    }
+
+                    if Process32NextW(snap, &mut entry) == 0 {
+                        break;
+                    }
+                }
+            }
+            CloseHandle(snap);
+        }
     }
 
     fn apply_antigravity_ide_official(&self, path: &PathBuf) -> Result<(), String> {
