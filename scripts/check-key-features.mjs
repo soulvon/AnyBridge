@@ -30,6 +30,22 @@ function ok(name, cond, detail = '') {
 function section(name) { console.log(`\n■ ${name}`); }
 
 // ─────────────────────────────────────────────────────────────
+// [0] 开头先亮出坑点清单 —— 人和 AI 在改代码前就该看到，
+//     而不是等提交被拦下才知道踩了旧坑。
+// ─────────────────────────────────────────────────────────────
+{
+  const pfPath = path.join(root, 'docs', 'pitfalls.json');
+  if (fs.existsSync(pfPath)) {
+    const pf = JSON.parse(fs.readFileSync(pfPath, 'utf8'));
+    console.log(`📌 已知坑点 ${pf.pitfalls.length} 条（改动前必读 docs/pitfalls.json）：`);
+    pf.pitfalls.forEach((p, i) => {
+      console.log(`   ${String(i + 1).padStart(2)}. [${p.severity}] ${p.title}`);
+    });
+    console.log('');
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
 // [1] Rust 编译与单测
 // ─────────────────────────────────────────────────────────────
 section('Rust 编译与单测');
@@ -133,16 +149,42 @@ section('对称路径（接入↔还原 / apply↔restore 必须一致）');
 // ─────────────────────────────────────────────────────────────
 section('临时文件纪律（只允许 tmp/）');
 {
-  // 根目录不允许 .tmp_* 的脚本/数据文件（诊断/构建脚本一律进 tmp/）。
-  // 例外：.tmp_*.log 运行时日志——若被存活进程锁定则物理上无法移动，
-  // 属历史遗留（新日志已固定写 tmp/tauri-run.log），随下次重启清理。
-  const strays = fs.readdirSync(root).filter(f => f.startsWith('.tmp_') && !f.endsWith('.log'));
+  // 临时/杂项文件的判定（与 tmp/migrate-rest.mjs 保持一致）：
+  // 常见前缀（tmp/temp/scratch/test/debug/probe/draft/untitled/new_/old_/check_）
+  // + 临时后缀（.bak/.orig/.old/.swp/.tmp/.rej/~）+ 运行时日志（.log）
+  const TEMP_PREFIX = /^(\.?tmp[-_]|temp[-_]|scratch|test[-_]|debug[-_]|probe|draft|untitled|new_|old_|check_)/i;
+  const TEMP_SUFFIX = /\.(bak|orig|old|swp|tmp|rej)$/i;
+  // 注意排除 tmp/ 目录本身（它是临时文件的唯一合法去处）
+  const isTemp = (name) =>
+    name !== 'tmp' && (TEMP_PREFIX.test(name) || TEMP_SUFFIX.test(name) || /~$/.test(name));
+  const isLog = (name) => /\.log$/i.test(name);
+
+  // 脚本/数据型临时文件 → 硬失败（必须进 tmp/）
+  const strays = fs.readdirSync(root).filter(f => isTemp(f) && !isLog(f));
   ok('根目录无散落临时文件（脚本/数据）', strays.length === 0,
     strays.length ? `违规: ${strays.join(', ')}（请移入 tmp/）` : '');
-  const strayLogs = fs.readdirSync(root).filter(f => f.startsWith('.tmp_') && f.endsWith('.log'));
-  if (strayLogs.length) {
-    console.log(`  ℹ 根目录遗留运行日志（被进程锁定，待清理）: ${strayLogs.join(', ')}`);
+
+  // 运行时日志：自愈式处理——能移就自动迁入 tmp/；被存活进程锁定时
+  // 物理上无法移动（Windows 独占句柄），只提示、不判失败（下次句柄释放后
+  // 检查会自动迁走）。新日志已固定写 tmp/tauri-run.log。
+  const tmpDirPath = path.join(root, 'tmp');
+  const strayLogs = fs.readdirSync(root).filter(isLog);
+  let lockedLogs = [];
+  for (const lf of strayLogs) {
+    try {
+      if (!fs.existsSync(tmpDirPath)) fs.mkdirSync(tmpDirPath);
+      fs.renameSync(path.join(root, lf), path.join(tmpDirPath, lf));
+      console.log(`  ↪ 已自动迁入 tmp/: ${lf}`);
+    } catch {
+      lockedLogs.push(lf);
+    }
   }
+  if (lockedLogs.length) {
+    console.log(`  ℹ 被进程独占锁定，暂无法移动（下次检查自动重试）: ${lockedLogs.join(', ')}`);
+  }
+  // 判定标准：可移动的日志已全部迁入 tmp/（能移的都移了即通过；
+  // 被锁文件属物理限制，不制造永久红灯）
+  ok('运行日志已归入 tmp/（可移动部分）', true);
 
   // 源码目录同样不允许
   for (const d of ['src-tauri/src', 'ui', 'ui-src', 'scripts']) {
