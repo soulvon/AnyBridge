@@ -11,6 +11,19 @@
 	'use strict';
 	const LOG_PREFIX = '[AnyBridge-Loc]';
 	const settings = { localizationEnabled: true, localizationMode: 'realtime' };
+
+	// ========== 首屏防闪：注入即隐藏，翻译完成后一次性显现 ==========
+	// 为什么需要：DOM 引擎是"渲染后替换"，不隐藏的话每次打开都会先看到英文
+	// 闪一下再变中文（用户反馈的"卡一下"）。隐藏后直接呈现中文。
+	// 8 秒兜底 + 调用方 finally 双保险，任何异常都不会让界面永久隐藏。
+	let _abRevealed = false;
+	function _abReveal() {
+		if (_abRevealed) return;
+		_abRevealed = true;
+		try { document.documentElement.style.visibility = ''; } catch (e) {}
+	}
+	let _abFailsafe = setTimeout(_abReveal, 8000);
+	try { document.documentElement.style.visibility = 'hidden'; } catch (e) {}
 	// ========== 汉化功能 ==========
 	// v8.5.5：把"易被误伤"的元素（code/kbd/samp/var）从 EXCLUDE_SELECTOR 拆出，
 	// 仅当其祖先含 CODE_CONTEXT_REQUIRED 之一时才算"代码区"才跳过。
@@ -4383,6 +4396,42 @@
 	["Search MCPs...", "搜索 MCP..."],
 	["No MCPs Found", "未找到 MCP"],
 	["Recent Workspaces", "最近工作区"],
+	// ========== AnyBridge 补丁 5：App settings / Customize（截图实测补充） ==========
+	["Keep workspace in Agent Command Center", "在智能体指挥中心保留工作区"],
+	["Show the window's own folders instead of the active session's folders.", "显示窗口自身的文件夹，而非当前会话的文件夹。"],
+	["Agent Command Center location", "智能体指挥中心位置"],
+	["Where the Agent Command Center opens.", "智能体指挥中心的打开位置。"],
+	["Current window", "当前窗口"],
+	["Enable Fast Context", "启用快速上下文"],
+	["Allow Devin's Fast Context agent to retrieve relevant code with SWE-grep", "允许 Devin 的快速上下文智能体通过 SWE-grep 检索相关代码"],
+	["Let Devin view and edit files in .gitignore", "允许 Devin 查看和编辑 .gitignore 中的文件"],
+	["Reduce activity when hidden", "隐藏时降低活动"],
+	["Slows Devin down in the background to save CPU and battery", "在后台降低 Devin 活动，以节省 CPU 与电量"],
+	["Toggle terminal", "切换终端"],
+	["Ask Devin", "询问 Devin"],
+	["Share Conversation", "共享对话"],
+	["Open Customizations", "打开自定义"],
+	["Agents view", "智能体视图"],
+	["IDE view", "IDE 视图"],
+	["Install plugins for This computer", "为此计算机安装插件"],
+	["Bundles of skills, rules, hooks, MCPs, and subagents installed across cloud and local", "跨云端与本地安装的技能、规则、钩子、MCP 与子智能体集合"],
+	["Search plugins", "搜索插件"],
+	["Available on this machine", "本机可用"],
+	["Plugins your local Devin agent found but hasn't installed", "本地 Devin 智能体发现但尚未安装的插件"],
+	["Customize your Devin", "自定义你的 Devin"],
+	["Manage the plugins, skills, MCPs, and hooks Devin can use, for you and your org.", "管理 Devin 可用的插件、技能、MCP 与钩子（个人与组织）。"],
+	["Install from the marketplace", "从插件市场安装"],
+	["Browse existing plugins and install them into your setup.", "浏览现有插件并安装到你的环境。"],
+	["Shared across every surface", "所有界面共享"],
+	["Your plugins load in cloud sessions, the Devin CLI, and Devin Desktop.", "你的插件会在云端会话、Devin CLI 和 Devin Desktop 中加载。"],
+	["Devin can add plugins for you", "Devin 可帮你添加插件"],
+	["Have Devin make skills, install MCP server, or setup third-party plugins.", "让 Devin 创建技能、安装 MCP 服务或配置第三方插件。"],
+	["Memory files", "记忆文件"],
+	["No memory files yet. Ask Devin in a session to remember something.", "还没有记忆文件。在会话中让 Devin 记住某些内容。"],
+	["What Devin remembers about you and your work across sessions. Personal to you and not shared with your organization.", "Devin 跨会话记住的关于你和你的工作的信息。仅个人可见，不与组织共享。"],
+	["Google's AI coding agent", "Google 的 AI 编程智能体"],
+	["IBM Bob is your AI-Powered Development Partner", "IBM Bob 是你 AI 驱动的开发伙伴"],
+	["Where the Agent Command Center opens", "智能体指挥中心的打开位置"],
 ]);
 	
 	const REGEX_TRANSLATIONS = [
@@ -5104,17 +5153,35 @@
 	
 	// (Settings UI removed — moved to sidebar panel)
 	// ========== AnyBridge 启动入口 ==========
-	// 与 Kite 的差异：不等 3s 定时兜底，先同步全量扫一遍再起 observer，
-	// 首屏即刻中文（注入发生在页面加载早期，此时 DOM 尚未渲染完，
-	// observer 会捕获后续增量；这里的全量扫兜住已存在的节点）。
+	// 等 workbench 真正渲染出内容再扫：扫太早会扫到空 body，显现后 React 才
+	// 渲染英文，等于又闪一次。条件：出现 workbench 根节点且已有实质文本。
+	// 最多等 6 秒（60 × 100ms），超时无条件开扫，绝不把用户卡在隐藏状态。
+	let _abWaitCount = 0;
+	function _abWaitReady() {
+		if (document.readyState === 'loading') {
+			document.addEventListener('DOMContentLoaded', _abWaitReady, { once: true });
+			return;
+		}
+		const hasRoot = !!document.querySelector('.monaco-workbench, #workbench\.parts, #workbench');
+		const textLen = (document.body && document.body.innerText || '').trim().length;
+		if ((hasRoot && textLen > 200) || ++_abWaitCount > 60) {
+			anybridgeLocStart();
+			return;
+		}
+		setTimeout(_abWaitReady, 100);
+	}
+
 	function anybridgeLocStart() {
-		if (!settings.localizationEnabled) return;
-		try { scanAndTranslate(document.body); } catch (e) { console.warn(LOG_PREFIX, '首次扫描失败:', e); }
+		if (!settings.localizationEnabled) { _abReveal(); return; }
+		try {
+			scanAndTranslate(document.body);
+		} catch (e) {
+			console.warn(LOG_PREFIX, '首次扫描失败:', e);
+		} finally {
+			clearTimeout(_abFailsafe);
+			_abReveal();
+		}
 		startLocalizationObserver();
 	}
-	if (document.readyState === 'loading') {
-		window.addEventListener('DOMContentLoaded', () => setTimeout(anybridgeLocStart, 200));
-	} else {
-		setTimeout(anybridgeLocStart, 200);
-	}
+	_abWaitReady();
 })();
