@@ -1069,6 +1069,28 @@
 	['Tip: Type @ to conversation to bring in context from another chat', '提示：在对话中输入 @ 可从其他聊天中引入上下文'],
 	['Extensions', '扩展'],
 	['Quota resets daily/weekly', '配额每每日/每周重置'],
+	// ========== AnyBridge 补丁 2：Devin App settings（截图实测补充） ==========
+	['Back to app', '返回应用'],
+	['App settings', '应用设置'],
+	['Personal', '个人'],
+	['Organization', '组织'],
+	['Preferences', '偏好设置'],
+	['Search settings...', '搜索设置...'],
+	['Share terminal activity', '共享终端活动'],
+	['Let Devin see commands and output from your integrated terminal.', '让 Devin 查看集成终端中的命令与输出。'],
+	['Share user edits', '共享用户编辑'],
+	['Let Devin see which files you edit and create in your workspace, and let a Devin Cloud session read unsaved edits when it reads a file on this machine.', '让 Devin 查看你在工作区中编辑和创建的文件；Devin Cloud 会话读取本机文件时也可读取未保存的编辑。'],
+	['Run save actions on agent edits', '对智能体编辑执行保存操作'],
+	['Run format-on-save and code actions on save (e.g. gofmt) when Devin edits a file.', '当 Devin 编辑文件时，执行保存时的格式化与代码操作（如 gofmt）。'],
+	['Agent notifications', '智能体通知'],
+	['Notify when an agent session finishes or needs your input while in the background', '智能体会话结束或在后台需要你输入时通知'],
+	['Remote agent hosts', '远程智能体主机'],
+	['Connect to agents on remote machines over SSH.', '通过 SSH 连接远程机器上的智能体。'],
+	['Connect on startup', '启动时连接'],
+	['Connect to saved hosts automatically on startup.', '启动时自动连接已保存的主机。'],
+	['Auto-fix lints', '自动修复 lint'],
+	['Devin detects lint errors from its own edits and may fix them automatically. May increase tool usage', 'Devin 检测自身编辑产生的 lint 错误并自动修复。可能增加工具使用量。'],
+	['Devin continues past the invocation limit without prompting; otherwise it stops and asks you to continue', 'Devin 在达到调用上限后继续而不提示；否则会停下并询问是否继续。'],
 ]);
 	
 	const REGEX_TRANSLATIONS = [
