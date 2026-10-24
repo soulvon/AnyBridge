@@ -382,6 +382,22 @@ fn read_cached_sha(platform: &str) -> String {
     String::new()
 }
 
+/// 从 workbench.html 的 CSP 里提取 script-src 的 nonce 值。
+///
+/// 为什么必须带它：CSP3 规范规定——**script-src 里出现 nonce 时，'unsafe-inline'
+/// 会被浏览器忽略**，只有带匹配 nonce 属性的内联脚本才允许执行。
+/// 实测：Devin 的 CSP 是 `script-src 'unsafe-inline' ... 'nonce-0c6a828f1297'`，
+/// 我们注入的块没带 nonce → 脚本被 CSP 直接拒绝、一次都没执行（表现为"注入了
+/// 但汉化不生效"）；而 Windsurf 的 CSP 没有 nonce、只有 'unsafe-inline' →
+/// 同样的注入就能跑。这正是两个平台表现不同的唯一原因。
+pub(crate) fn extract_csp_nonce(html: &str) -> Option<String> {
+    // 形如：'nonce-0c6a828f1297'
+    let re = regex::Regex::new(r"'nonce-([A-Za-z0-9]+)'").ok()?;
+    re.captures(html)
+        .and_then(|c| c.get(1))
+        .map(|m| m.as_str().to_string())
+}
+
 /// workbench.html 是否结构完整（可用于注入）。
 ///
 /// 只能用**结构**判断，绝不能用体积：各发行版体积差异极大且都合法——
@@ -1323,6 +1339,12 @@ fn installed_lang_pack_version(platform: &str) -> Option<String> {
 
 /// `elevate`：是否允许在权限不足时弹一次性 UAC 自动授权。
 /// 界面操作（命令）传 true；keeper 等后台场景传 false——失败静默跳过下周期重试。
+///
+/// 锁纪律：本函数是**外部入口**，负责拿 inject_lock；真正的注入逻辑在
+/// `apply_inner`（**不加锁**，假定调用方已持锁）。这样 keeper 才能在持锁
+/// 状态下调用注入而不触发 std::sync::Mutex 的不可重入死锁
+/// （实测事故：keeper 持锁 → 调 apply → apply 再加锁 → 同线程死锁，
+/// 并把用户的汉化请求一起堵死）。
 fn apply(platform: &str, elevate: bool) -> Result<LocalizationOperationResult, String> {
     if platform == "claude-desktop" {
         return apply_claude(elevate);
@@ -1352,7 +1374,15 @@ fn apply(platform: &str, elevate: bool) -> Result<LocalizationOperationResult, S
     // 注入段持全局锁：与 BYOK 接入/还原、保活 keeper 互斥，
     // 防并发读-改-写互相覆盖（详见 commands::inject_lock 注释）。
     let _guard = super::inject_lock();
+    apply_inner(platform, &display, &lang_note)
+}
 
+/// 注入段实现（**调用方必须已持有 inject_lock**，见 apply 的锁纪律说明）。
+fn apply_inner(
+    platform: &str,
+    display: &str,
+    lang_note: &Option<String>,
+) -> Result<LocalizationOperationResult, String> {
     let html_path = workbench_html_path(platform).ok_or_else(|| {
         format!(
             "未定位到 {} 的 workbench.html（请先安装并运行一次 {} 后重试）",
@@ -1400,10 +1430,16 @@ fn apply(platform: &str, elevate: bool) -> Result<LocalizationOperationResult, S
     let with_csp = ensure_csp_unsafe_inline(&stripped);
     let script = hans_script(platform);
     let entries = count_entries(&script);
+    // CSP 有 nonce 时内联脚本必须带同名 nonce 才能执行（详见 extract_csp_nonce 注释）
+    let open_tag = match extract_csp_nonce(&html) {
+        Some(n) => format!("<script nonce=\"{}\">", n),
+        None => "<script>".to_string(),
+    };
     let block = format!(
-        "\n{start}\n{ver}\n<script>\n{script}\n</script>\n{end}\n",
+        "\n{start}\n{ver}\n{open}\n{script}\n</script>\n{end}\n",
         start = HANS_BLOCK_START,
         ver = HANS_VERSION_MARKER,
+        open = open_tag,
         script = script,
         end = HANS_BLOCK_END,
     );
@@ -1453,7 +1489,7 @@ fn apply(platform: &str, elevate: bool) -> Result<LocalizationOperationResult, S
         "{} 汉化已应用成功（{} 条词条），重启客户端后生效",
         display, entries
     );
-    if let Some(note) = locale_note.or(lang_note) {
+    if let Some(note) = locale_note.or(lang_note.clone()) {
         message.push_str(&note);
     } else if !lang_pack_installed(platform) {
         message.push_str(
@@ -1701,6 +1737,7 @@ fn keeper_should_reinject(platform: &str, enabled: bool) -> bool {
 fn keeper_tick(app: &tauri::AppHandle, platform: &str) {
     // 判定 + 重注入全程持锁：若判定在锁外，用户可能在判定后、注入前点了还原，
     // 而 keeper 手里是旧的"需重注入"结论 → 块被写回"复活"。
+    // 注意：持锁后只能调 apply_inner（apply 会再次加锁 → 不可重入死锁，实测事故）。
     let _guard = super::inject_lock();
     if !keeper_should_reinject(platform, is_enabled(platform)) {
         return;
@@ -1708,7 +1745,7 @@ fn keeper_tick(app: &tauri::AppHandle, platform: &str) {
     // 被 IDE 升级覆盖 → 重注入（apply 幂等；IDE 运行中文件被锁则 Err，下周期重试）。
     // elevate=false：keeper 是后台线程，权限不足时绝不去弹 UAC，静默等下周期。
     let display = platform_meta(platform).map(|m| m.0).unwrap_or(platform);
-    match apply(platform, false) {
+    match apply_inner(platform, &display, &None) {
         Ok(_) => {
             eprintln!("[loc-keeper] {} 汉化被客户端升级覆盖，已自动重注入", display);
             let _ = app.emit(
@@ -2123,6 +2160,19 @@ module.exports = {};"#,
     /// 损坏判据必须是"结构完整性"，不能是"体积够大"：
     /// Devin 原厂 workbench.html 只有约 1.7KB（合法），Windsurf 300KB+，
     /// 而中断残骸可以是任意大小——体积无法区分，只有 </body> 能。
+    /// CSP nonce：script-src 出现 nonce 时 'unsafe-inline' 被忽略，
+    /// 注入块必须带同名 nonce 才能执行（Devin 有、Windsurf 没有——这是两平台
+    /// 汉化表现不同的唯一原因）。
+    #[test]
+    fn extracts_csp_nonce_from_script_src() {
+        let devin_like = r#"<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' 'self' 'unsafe-eval' blob: 'nonce-0c6a828f1297'; style-src 'self' 'unsafe-inline';">"#;
+        assert_eq!(extract_csp_nonce(devin_like).as_deref(), Some("0c6a828f1297"));
+        // 无 nonce 的（Windsurf 形态）→ 返回 None，注入退回无 nonce 标签
+        let windsurf_like = r#"content="script-src 'self' 'unsafe-eval' blob: 'unsafe-inline';""#;
+        assert_eq!(extract_csp_nonce(windsurf_like), None);
+        assert_eq!(extract_csp_nonce("no csp here"), None);
+    }
+
     #[test]
     fn small_but_valid_workbench_is_accepted() {
         // Devin 形态：极小但结构完整 → 必须接受

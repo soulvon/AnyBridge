@@ -531,10 +531,17 @@ fn inject_workbench_html(script: &str, target: &str) -> Result<bool, String> {
     let mut new_html = strip_byok_block(&html);
     new_html = ensure_csp_unsafe_inline(&new_html);
 
+    // CSP 有 nonce 时内联脚本必须带同名 nonce 才执行（Devin 就是这种情况，
+    // 详见 super::app_localization::extract_csp_nonce 的说明）
+    let open_tag = match super::app_localization::extract_csp_nonce(&new_html) {
+        Some(n) => format!("<script nonce=\"{}\">", n),
+        None => "<script>".to_string(),
+    };
     let injection = format!(
-        "\n{start}\n{ver}\n<script>\n{script}\n</script>\n{end}\n",
+        "\n{start}\n{ver}\n{open}\n{script}\n</script>\n{end}\n",
         start = BYOK_BLOCK_START,
         ver = BYOK_VERSION_MARKER,
+        open = open_tag,
         script = script,
         end = BYOK_BLOCK_END,
     );
