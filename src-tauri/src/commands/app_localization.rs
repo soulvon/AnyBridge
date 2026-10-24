@@ -53,11 +53,14 @@ const LANG_PACK_DIR_PREFIX: &str = "ms-ceintl.vscode-language-pack-zh-hans";
 const LANG_PACK_EXTENSION_ID: &str = "ms-ceintl.vscode-language-pack-zh-hans";
 
 /// 内置基线（离线兜底）：
-/// - windsurf-localization-baseline.js：通用引擎（DOM 观察 + 增量翻译，已去除
-///   上游自带的悬浮开关按钮与 800ms 启动延迟）
-/// - 各平台词典 JSON：windsurf/cursor/antigravity-ide 均为「内置引擎 + 平台词典」组装
+/// - windsurf-localization-baseline.js / devin-localization-baseline.js：
+///   Windsurf/Devin 专用**完整汉化模块**（引擎 + 820/817 条人工词典，源自 Kite
+///   windsurf/devin-better.js 的汉化模块，经 v8.x 长期实战打磨）。这两个平台
+///   的专有 UI（设置页内容、Cascade/Codebuddy 面板、输入区、Plan/Quota 等）
+///   只有这套词典覆盖得全，VS Code 官方语言包只翻核心。
+/// - cursor/antigravity-ide：内置引擎模板 + 平台词典 JSON 组装（词典量较小）。
 const BASELINE_SCRIPT: &str = include_str!("windsurf-localization-baseline.js");
-const WINDSURF_BASELINE_DICT: &str = include_str!("windsurf-dictionary-baseline.json");
+const DEVIN_BASELINE_SCRIPT: &str = include_str!("devin-localization-baseline.js");
 const CURSOR_BASELINE_DICT: &str = include_str!("cursor-dictionary-baseline.json");
 const AG_IDE_BASELINE_DICT: &str = include_str!("antigravity-ide-dictionary-baseline.json");
 
@@ -313,20 +316,32 @@ fn extract_dictionary_from_localize(source: &str) -> Option<Value> {
     }))
 }
 
-/// 平台基线词典（windsurf/devin/cursor/antigravity-ide 共用同一引擎模板组装）。
+/// 平台基线词典（cursor/antigravity-ide 用内置引擎模板组装）。
+/// windsurf/devin 不走此路——它们用内嵌的完整汉化模块（引擎+词典一体，
+/// 词典量 800+ 且覆盖专有 UI，上游停更的词库反而是倒退）。
 fn baseline_dict(platform: &str) -> Option<&'static str> {
     match platform {
-        "windsurf" | "devin" => Some(WINDSURF_BASELINE_DICT),
         "cursor" => Some(CURSOR_BASELINE_DICT),
         "antigravity-ide" => Some(AG_IDE_BASELINE_DICT),
         _ => None,
     }
 }
 
-/// 汉化脚本内容：热更新缓存的词典 JSON 与内置引擎模板组装；无缓存用内置基线词典。
-/// 统一组装路径的好处：引擎始终是内置的可控版本（无上游悬浮按钮/启动延迟），
-/// 词典跟着上游热更新走。
+/// 汉化脚本内容。
+///
+/// Windsurf/Devin：直接内嵌**完整汉化模块**（引擎 + 800+ 条人工词典一体）。
+/// 这两个平台的专有 UI 词条只有这套词典覆盖得全（VS Code 官方语言包只翻核心，
+/// 上游 good9527 词库已停更且不含专有 UI），故不走"词典热更新替换"路径——
+/// 否则用户点更新后拿到的是覆盖更少的上游词典，反而倒退。
+///
+/// Cursor/Antigravity IDE：内置引擎模板 + 平台词典组装（词典量较小，
+/// 保留热更新能力：有缓存词典用缓存的，否则用内置基线）。
 fn hans_script(platform: &str) -> String {
+    match platform {
+        "windsurf" => return BASELINE_SCRIPT.to_string(),
+        "devin" => return DEVIN_BASELINE_SCRIPT.to_string(),
+        _ => {}
+    }
     let Some(baseline) = baseline_dict(platform) else {
         return BASELINE_SCRIPT.to_string();
     };
@@ -340,6 +355,10 @@ fn hans_script(platform: &str) -> String {
 }
 
 fn read_cached_version(platform: &str) -> String {
+    // Windsurf/Devin 用内嵌完整词典（无热更新缓存），版本标识为 builtin
+    if platform == "windsurf" || platform == "devin" {
+        return "builtin".to_string();
+    }
     let meta_path = cache_dir(platform).join("metadata.json");
     if let Ok(raw) = fs::read_to_string(&meta_path) {
         if let Ok(val) = serde_json::from_str::<Value>(&raw) {
@@ -389,12 +408,6 @@ fn clear_enabled(platform: &str) {
     let _ = fs::remove_file(enabled_marker_path(platform));
 }
 
-/// 语言包相关（extensions/ 目录所在）统一走 ide_extensions_dir；
-/// locale 开关（argv.json）与语言包注册（languagepacks.json）走 ide_state_dir。
-fn user_data_dir(platform: &str) -> Option<PathBuf> {
-    ide_extensions_dir(platform)
-}
-
 /// IDE 内置引擎版本：优先 product.json 的 vscodeVersion 字段（Cursor 等发行版
 /// 用自己的版本号，如 3.15.6，而内置 VS Code 引擎在 vscodeVersion，如 1.128.0），
 /// 回退 version 字段（Windsurf 系的 version 即引擎对齐版本）。
@@ -421,8 +434,8 @@ fn compatible_lang_pack_dir(platform: &str) -> Option<PathBuf> {
     if want.len() < 2 {
         return None;
     }
-    let ud = user_data_dir(platform)?;
-    let entries = fs::read_dir(ud.join("extensions")).ok()?;
+    let ext_dir = ide_extensions_dir(platform)?;
+    let entries = fs::read_dir(&ext_dir).ok()?;
     let mut matched: Option<PathBuf> = None;
     for e in entries.flatten() {
         let name = e.file_name().to_string_lossy().to_string();
@@ -1009,10 +1022,10 @@ fn unzip_extension(zip_path: &Path, target: &Path) -> Result<(), String> {
 /// VS Code 按登记表 + 目录扫描双源加载扩展：只隔离/替换目录而不清登记，
 /// 登记条目会指向不存在的目录，扩展面板报 "Unable to read file" 无法清除。
 fn unregister_extension(platform: &str, extension_id: &str) {
-    let Some(ud) = user_data_dir(platform) else {
+    let Some(ext_dir) = ide_extensions_dir(platform) else {
         return;
     };
-    let path = ud.join("extensions").join("extensions.json");
+    let path = ext_dir.join("extensions.json");
     let Ok(raw) = fs::read_to_string(&path) else {
         return;
     };
@@ -1042,10 +1055,10 @@ fn unregister_extension(platform: &str, extension_id: &str) {
 /// 手动放置的语言包若被标记（卸载残留/扫描异常），目录和 package.json 都合法
 /// 也不会被加载，现象是"装了但扩展面板看不到"。
 fn clear_obsolete_mark(platform: &str, extension_id: &str) {
-    let Some(ud) = user_data_dir(platform) else {
+    let Some(ext_dir) = ide_extensions_dir(platform) else {
         return;
     };
-    let path = ud.join("extensions").join(".obsolete");
+    let path = ext_dir.join(".obsolete");
     let Ok(raw) = fs::read_to_string(&path) else {
         return;
     };
@@ -1075,8 +1088,8 @@ fn install_language_pack(platform: &str) -> Result<bool, String> {
     // 清理不兼容的旧语言包（如引擎 1.110.1 配了 1.126.0）：对当前引擎无效，
     // 留着会让 VS Code 的语言包选择器选中它导致界面回退英文。
     // 重命名为点前缀目录（VS Code 忽略隐藏目录），不直接删用户文件。
-    if let Some(ud) = user_data_dir(platform) {
-        if let Ok(entries) = fs::read_dir(ud.join("extensions")) {
+    if let Some(ext_dir) = ide_extensions_dir(platform) {
+        if let Ok(entries) = fs::read_dir(&ext_dir) {
             for e in entries.flatten() {
                 let name = e.file_name().to_string_lossy().to_string();
                 if !name.starts_with(LANG_PACK_DIR_PREFIX) {
@@ -1173,11 +1186,10 @@ fn install_language_pack(platform: &str) -> Result<bool, String> {
         .map_err(|e| format!("读取语言包 VSIX 失败: {e}"))?;
     fs::write(&vsix_path, &bytes).map_err(|e| format!("保存 VSIX 失败: {e}"))?;
 
-    let Some(ud) = user_data_dir(platform) else {
-        return Err("未找到 IDE 用户数据目录，无法安装语言包".to_string());
+    let Some(ext_dir) = ide_extensions_dir(platform) else {
+        return Err("未找到 IDE 扩展目录，无法安装语言包".to_string());
     };
-    let target = ud
-        .join("extensions")
+    let target = ext_dir
         .join(format!("ms-ceintl.vscode-language-pack-zh-hans-{version}"));
     let _ = fs::remove_dir_all(&target); // 旧半截安装清理
     unzip_extension(&vsix_path, &target)?;
@@ -1745,6 +1757,14 @@ pub async fn check_app_localization_update(
     platform_meta(&platform).ok_or_else(|| format!("不支持的平台: {}", platform))?;
     let mut status = build_status(&platform)?;
 
+    // Windsurf/Devin 用内嵌的完整汉化模块（820 条人工词典，持续随版本发布更新），
+    // 上游词库已停更且不含专有 UI 词条——检查只会拿到更差的词典，直接告知已最新。
+    if platform == "windsurf" || platform == "devin" {
+        status.latest_version = Some("builtin".to_string());
+        status.has_update = false;
+        return Ok(status);
+    }
+
     let content = fetch_upstream_content(&platform).await?;
     let remote_sha = content_sha256(&content);
     let local_sha = read_cached_sha(&platform);
@@ -1759,6 +1779,17 @@ pub async fn download_app_localization_update(
     platform: String,
 ) -> Result<LocalizationOperationResult, String> {
     platform_meta(&platform).ok_or_else(|| format!("不支持的平台: {}", platform))?;
+    // 同 check：这两个平台用内置完整模块，不下载上游（下载了也不会被注入使用）
+    if platform == "windsurf" || platform == "devin" {
+        return Ok(LocalizationOperationResult {
+            ok: true,
+            message: format!(
+                "{} 使用内置完整词典（800+ 条，覆盖专有界面），已是最新，无需下载",
+                platform_meta(&platform).map(|m| m.0).unwrap_or(&platform)
+            ),
+            localized: is_localized(&platform),
+        });
+    }
     let content = fetch_upstream_content(&platform).await?;
     let remote_sha = content_sha256(&content);
 
@@ -2014,23 +2045,38 @@ module.exports = {};"#,
     }
 
     #[test]
-    fn windsurf_baseline_dictionary_is_usable() {
-        let script = build_script_from_dictionary(WINDSURF_BASELINE_DICT)
-            .expect("Windsurf 基线词典应能组装出脚本");
-        assert!(script.contains("MutationObserver"), "应保留通用引擎");
-        assert!(!script.contains("createToggleButton"), "引擎不应含上游悬浮按钮");
-        assert!(!script.contains("setTimeout(init, 800)"), "不应有 800ms 启动延迟");
-        let n = count_entries(&script);
-        assert!(n > 100, "Windsurf 词典应 100+ 词条，实际 {}", n);
+    fn windsurf_baseline_module_is_complete() {
+        // Windsurf/Devin 用内嵌完整汉化模块（引擎 + 词典一体）：必须带齐引擎四件套
+        // 与三类词典，且词条量是人工打磨级别（800+，不是 137 条的小词典）。
+        for (name, script) in [
+            ("windsurf", BASELINE_SCRIPT),
+            ("devin", DEVIN_BASELINE_SCRIPT),
+        ] {
+            assert!(script.contains("MutationObserver"), "{name} 应有实时观察引擎");
+            assert!(script.contains("const TRANSLATIONS = new Map(["), "{name} 应有静态词典");
+            assert!(script.contains("const REGEX_TRANSLATIONS"), "{name} 应有正则词典");
+            assert!(script.contains("const SOFT_TRANSLATIONS"), "{name} 应有软翻译");
+            assert!(script.contains("const EXCLUDE_SELECTOR"), "{name} 应有防误伤排除区");
+            assert!(script.contains("function scanAndTranslate"), "{name} 应有全量扫描");
+            assert!(script.contains("function startLocalizationObserver"), "{name} 应有观察启动");
+            assert!(script.contains("function revertLocalization"), "{name} 应支持还原");
+            assert!(script.contains("anybridgeLocStart"), "{name} 应有启动入口");
+            assert!(!script.contains("createToggleButton"), "{name} 不得含上游悬浮按钮");
+            let n = count_entries(script);
+            assert!(n > 500, "{name} 词典应 500+ 词条，实际 {}", n);
+        }
+        // 平台内容差异：Devin 版有 Devin 专有条目（两者词典各自独立演化）
+        assert!(BASELINE_SCRIPT.contains("Windsurf"));
+        assert!(DEVIN_BASELINE_SCRIPT.contains("Devin"));
     }
 
     #[test]
     fn extracts_dictionary_from_windsurf_script() {
-        // 用内置基线脚本反向验证抽取（基线即从该格式抽得）
+        // 用内置基线脚本反向验证抽取（完整模块的 TRANSLATIONS 可被抽回词典 JSON）
         let dict = extract_dictionary_from_windsurf_script(BASELINE_SCRIPT)
             .expect("应能从脚本抽取词典");
         let entries = dict["sections"][0]["entries"].as_array().unwrap();
-        assert_eq!(entries.len(), 137, "应抽出 137 条词条");
+        assert!(entries.len() > 500, "完整模块应抽出 500+ 词条，实际 {}", entries.len());
         assert_eq!(entries[0], json!(["User Interface", "用户界面"]));
         // 结构异常
         assert!(extract_dictionary_from_windsurf_script("no translations here").is_none());
