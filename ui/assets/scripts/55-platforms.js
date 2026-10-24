@@ -2871,6 +2871,7 @@ async function refreshAntigravityLangStatus(updateModal = false) {
   if (typeof invoke !== 'function') return;
   const target = getAntigravityTarget();
   const platName = target === 'antigravity-ide' ? 'Antigravity IDE' : 'Antigravity';
+  const isIde = target === 'antigravity-ide';
 
   // Antigravity IDE 与 Windsurf/Devin/Cursor 同构（workbench 注入 + 保活），
   // 走通用 app_localization 命令；独立桌面端（Hub）走 asar 注入的专用命令。
