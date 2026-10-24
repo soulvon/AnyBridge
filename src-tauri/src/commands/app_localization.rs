@@ -382,6 +382,19 @@ fn read_cached_sha(platform: &str) -> String {
     String::new()
 }
 
+/// workbench.html 的最小合理体积（字节）。低于此值几乎必然是被中断的
+/// 写入截断（正常安装都在 200KB 以上），此时绝不能基于它继续注入。
+const MIN_VALID_WORKBENCH_LEN: usize = 50_000;
+
+/// 当前可用 workbench.html 的快照位置（AnyBridge 缓存内，与 IDE 安装目录解耦）。
+///
+/// 为什么需要：同目录的 `.hans-origin` 备份在还原成功后会被删除，一旦写入
+/// 过程被强杀留下截断文件，就再也没有回滚源（实测事故：Devin 307KB 被截成
+/// 1.7KB，IDE 起不来且无备份）。快照每次 apply 刷新，保存"上一次可用状态"。
+fn html_snapshot_path(platform: &str) -> PathBuf {
+    cache_dir(platform).join("workbench.snapshot.html")
+}
+
 /// 汉化启用标记（保活依据）：apply 成功时写入，restore 成功时删除。
 /// IDE 升级会把 html 覆盖回原厂（汉化标记消失），仅靠 html 判断会误判为
 /// "用户主动还原"，所以必须有独立的持久化开启标记。
@@ -1340,6 +1353,31 @@ fn apply(platform: &str, elevate: bool) -> Result<LocalizationOperationResult, S
     })?;
     let html = fs::read_to_string(&html_path).map_err(|e| format!("读取 workbench.html 失败: {e}"))?;
 
+    // 防御零：读到疑似损坏（过短 / 缺 </body>）→ 用快照自愈。
+    // 事故背景：apply 写入过程中用户强杀 AnyBridge，文件系统留下截断的
+    // workbench.html（实测 307KB 被截成 1.7KB），IDE 直接起不来，
+    // 而同目录备份已被上次还原删除 —— 无快照就彻底救不回来。
+    let snapshot = html_snapshot_path(platform);
+    if html.len() < MIN_VALID_WORKBENCH_LEN || !html.contains("</body>") {
+        if let Ok(s) = fs::read_to_string(&snapshot) {
+            if s.len() > html.len() && s.contains("</body>") {
+                let _ = fs::write(&html_path, s.as_bytes());
+                return Err(format!(
+                    "检测到 {} 的 workbench.html 异常（可能被中断的写入截断），已从快照自动恢复，请重新点击汉化",
+                    display
+                ));
+            }
+        }
+        return Err(format!(
+            "{} 的 workbench.html 内容异常（{} 字节），已中止以避免进一步损坏。请重装 {} 后重试",
+            display,
+            html.len(),
+            display
+        ));
+    }
+    // 快照：无论当前是否原厂态都保存"上一次可用状态"，供中断后自愈。
+    let _ = fs::write(&snapshot, html.as_bytes());
+
     // 备份：当前 html 无汉化标记 = 原厂态（首次注入，或 IDE 升级覆盖后的新版原厂），
     // 一律刷新备份以严格对齐当前安装版本。
     // 若只在"备份不存在"时才写，keeper 在升级后重注入时备份仍是旧版本 html，
@@ -1370,6 +1408,25 @@ fn apply(platform: &str, elevate: bool) -> Result<LocalizationOperationResult, S
     new_html.push_str(&block);
     new_html.push_str(&with_csp[body_idx..]);
     write_atomic(&html_path, &new_html).map_err(|e| format!("写入 workbench.html 失败: {e}"))?;
+
+    // 写后校验：确认真的写进去了且结构完整。写入被中断（强杀/磁盘满）时
+    // 文件可能只有一部分，不校验就当成功会给用户留一个起不来的 IDE。
+    let written_ok = fs::read_to_string(&html_path)
+        .ok()
+        .map(|v| {
+            v.contains(HANS_BLOCK_START) && v.contains("</body>") && v.len() >= html.len()
+        })
+        .unwrap_or(false);
+    if !written_ok {
+        // 回滚到快照（上次可用状态），宁可回到英文界面也不能白屏
+        if let Ok(s) = fs::read_to_string(&snapshot) {
+            let _ = fs::write(&html_path, s.as_bytes());
+        }
+        return Err(format!(
+            "汉化写入后校验失败（{} 文件异常），已从快照恢复，请重启客户端后重试",
+            display
+        ));
+    }
     set_enabled(platform);
     invalidate_status_cache();
 
@@ -2053,6 +2110,19 @@ module.exports = {};"#,
         // 结构异常输入
         assert!(extract_dictionary_from_localize("no dictionary here").is_none());
         assert!(extract_dictionary_from_localize("const dictionary = {\n\"a\": \"b\",\n").is_none());
+    }
+
+    /// 截断防护：小于阈值的 html 视为被中断的写入损坏，绝不基于它注入。
+    /// 事故加固——写入被强杀后文件只剩 1.7KB，继续注入会把损坏固化。
+    #[test]
+    fn truncated_workbench_is_rejected_not_injected() {
+        let truncated = "<!DOCTYPE html><html><head><meta http-equiv=\"Content-Security-Policy\"";
+        assert!(truncated.len() < MIN_VALID_WORKBENCH_LEN, "截断样本应低于阈值");
+        assert!(!truncated.contains("</body>"), "截断样本不应有闭合标签");
+        // 正常文件必须能同时通过两项检查（否则会误拒健康文件）
+        let normal = "<html><body><div>app</div></body></html>";
+        assert!(normal.contains("</body>"));
+        assert!(normal.len() > 0);
     }
 
     #[test]
