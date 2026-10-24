@@ -382,9 +382,17 @@ fn read_cached_sha(platform: &str) -> String {
     String::new()
 }
 
-/// workbench.html 的最小合理体积（字节）。低于此值几乎必然是被中断的
-/// 写入截断（正常安装都在 200KB 以上），此时绝不能基于它继续注入。
-const MIN_VALID_WORKBENCH_LEN: usize = 50_000;
+/// workbench.html 是否结构完整（可用于注入）。
+///
+/// 只能用**结构**判断，绝不能用体积：各发行版体积差异极大且都合法——
+/// Windsurf 原厂 300KB+，Devin 原厂只有约 1.7KB（界面靠 workbench.js 加载，
+/// html 只是个壳）。而且"被中断的写入残骸"可以是任意大小，与合法小文件
+/// 在体积上无法区分（实测踩过：体积阈值把健康的 Devin 判成损坏）。
+///
+/// 可靠判据是闭合标签：`</body>` 位于文件末尾，写入被中断就一定写不到它。
+fn is_valid_workbench(html: &str) -> bool {
+    html.contains("</body>")
+}
 
 /// 当前可用 workbench.html 的快照位置（AnyBridge 缓存内，与 IDE 安装目录解耦）。
 ///
@@ -1358,7 +1366,7 @@ fn apply(platform: &str, elevate: bool) -> Result<LocalizationOperationResult, S
     // workbench.html（实测 307KB 被截成 1.7KB），IDE 直接起不来，
     // 而同目录备份已被上次还原删除 —— 无快照就彻底救不回来。
     let snapshot = html_snapshot_path(platform);
-    if html.len() < MIN_VALID_WORKBENCH_LEN || !html.contains("</body>") {
+    if !is_valid_workbench(&html) {
         if let Ok(s) = fs::read_to_string(&snapshot) {
             if s.len() > html.len() && s.contains("</body>") {
                 let _ = fs::write(&html_path, s.as_bytes());
@@ -2112,17 +2120,22 @@ module.exports = {};"#,
         assert!(extract_dictionary_from_localize("const dictionary = {\n\"a\": \"b\",\n").is_none());
     }
 
-    /// 截断防护：小于阈值的 html 视为被中断的写入损坏，绝不基于它注入。
-    /// 事故加固——写入被强杀后文件只剩 1.7KB，继续注入会把损坏固化。
+    /// 损坏判据必须是"结构完整性"，不能是"体积够大"：
+    /// Devin 原厂 workbench.html 只有约 1.7KB（合法），Windsurf 300KB+，
+    /// 而中断残骸可以是任意大小——体积无法区分，只有 </body> 能。
     #[test]
-    fn truncated_workbench_is_rejected_not_injected() {
+    fn small_but_valid_workbench_is_accepted() {
+        // Devin 形态：极小但结构完整 → 必须接受
+        let devin_like = "<!DOCTYPE html><html><head><meta charset=\"utf-8\"></head><body><script src=\"workbench.js\"></script></body></html>";
+        assert!(is_valid_workbench(devin_like), "小而完整的 workbench 必须被接受（{} 字节）", devin_like.len());
+        // Windsurf 形态：大而完整 → 接受
+        let windsurf_like = format!("<html><head>{}</head><body>app</body></html>", "x".repeat(1000));
+        assert!(is_valid_workbench(&windsurf_like));
+        // 真正损坏：缺闭合标签（写入被中断）→ 拒绝
         let truncated = "<!DOCTYPE html><html><head><meta http-equiv=\"Content-Security-Policy\"";
-        assert!(truncated.len() < MIN_VALID_WORKBENCH_LEN, "截断样本应低于阈值");
-        assert!(!truncated.contains("</body>"), "截断样本不应有闭合标签");
-        // 正常文件必须能同时通过两项检查（否则会误拒健康文件）
-        let normal = "<html><body><div>app</div></body></html>";
-        assert!(normal.contains("</body>"));
-        assert!(normal.len() > 0);
+        assert!(!is_valid_workbench(truncated), "截断样本（缺 </body>）必须被拒");
+        assert!(!is_valid_workbench(""), "空文件必须被拒");
+        assert!(!is_valid_workbench("<html><body>unclosed"), "未闭合必须被拒");
     }
 
     #[test]
