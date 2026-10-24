@@ -3369,12 +3369,16 @@ async function antigravityPrimaryAction() {
     if (typeof addLog === 'function') {
       addLog('ok', result.message || `${platName} 已成功接入 AnyBridge`);
     }
-    await refreshPlatforms({ silent: true, reloadProviders: false });
-    antigravityRefreshConsole({ silent: true });
 
+    // 重启确认是用户点这一下的第一诉求：先弹窗，状态刷新放到弹窗响应之后。
+    // 原顺序（刷新 13 个平台状态 → 重绘 → 才弹窗）会让点击后卡 1-2 秒才见反馈，
+    // 而那些善后工作并不需要挡在弹窗前面。
     if (typeof promptRestartIde === 'function') {
+      setPlatformBusy(target, false); // 解除忙碌态，弹窗立刻可交互
       await promptRestartIde('已接入 AnyBridge，重启后生效。', target, { mode: 'proxy', statusText: null });
     }
+    await refreshPlatforms({ silent: true, reloadProviders: false });
+    antigravityRefreshConsole({ silent: true });
   } catch (e) {
     if (typeof addLog === 'function') addLog('err', `${platName} 接入失败: ` + e);
     showCustomAlert(String(e?.message || e), '接入失败', 'error');
@@ -3408,12 +3412,15 @@ async function restoreAntigravityOfficialConfig() {
     if (typeof addLog === 'function') {
       addLog('ok', result.message || `${platName} 已恢复官方模式`);
     }
-    await refreshPlatforms({ silent: true, reloadProviders: false });
-    antigravityRefreshConsole({ silent: true });
 
+    // 同 antigravityPrimaryAction：重启确认优先弹，状态刷新后置，
+    // 避免点击后卡 1-2 秒才出现弹窗。
     if (typeof promptRestartIde === 'function') {
+      setPlatformBusy(target, false);
       await promptRestartIde('已切回官方直连，重启后生效。', target, { mode: 'direct', statusText: null });
     }
+    await refreshPlatforms({ silent: true, reloadProviders: false });
+    antigravityRefreshConsole({ silent: true });
   } catch (e) {
     if (typeof addLog === 'function') addLog('err', `${platName} 切回官方失败: ` + e);
     showCustomAlert(String(e?.message || e), '切回官方失败', 'error');
