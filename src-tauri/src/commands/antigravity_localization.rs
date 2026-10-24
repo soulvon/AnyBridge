@@ -349,15 +349,23 @@ fn is_ide_localized(html_path: &Path) -> bool {
 }
 
 fn patch_hub_asar(asar_path: &Path) -> Result<(), String> {
-    let bytes = fs::read(asar_path).map_err(|e| format!("读取 app.asar 失败: {e}"))?;
-    if bytes.len() < 16 {
-        return Err("app.asar 文件大小异常".to_string());
-    }
-    let json_size = u32::from_le_bytes(bytes[12..16].try_into().unwrap()) as usize;
-    if bytes.len() < 16 + json_size {
+    use std::io::{Read, Seek, SeekFrom};
+
+    // ── 轻量读：只读 header + preload.js 段（几 MB）。构造期望内容后与现值
+    //    比对，一致（重复点「一键汉化」且词库/引擎未变）则跳过几百 MB 的
+    //    asar 全量重写——原先每次都读写整个文件，是点击后卡顿数秒的主因。
+    let mut f = fs::File::open(asar_path).map_err(|e| format!("读取 app.asar 失败: {e}"))?;
+    let mut head16 = [0u8; 16];
+    f.read_exact(&mut head16).map_err(|e| format!("读取 asar 头失败: {e}"))?;
+    let json_size = u32::from_le_bytes(head16[12..16].try_into().unwrap()) as usize;
+    if json_size == 0 || json_size > 64 * 1024 * 1024 {
         return Err("app.asar header 大小异常".to_string());
     }
-    let header_str = std::str::from_utf8(&bytes[16..16 + json_size])
+
+    let mut header_bytes = vec![0u8; 16 + json_size];
+    f.seek(SeekFrom::Start(0)).map_err(|e| e.to_string())?;
+    f.read_exact(&mut header_bytes).map_err(|e| format!("读取 asar header 失败: {e}"))?;
+    let header_str = std::str::from_utf8(&header_bytes[16..])
         .map_err(|e| format!("解析 header UTF-8 失败: {e}"))?;
     let mut header: Value =
         serde_json::from_str(header_str).map_err(|e| format!("解析 header JSON 失败: {e}"))?;
@@ -379,15 +387,19 @@ fn patch_hub_asar(asar_path: &Path) -> Result<(), String> {
         .get("size")
         .and_then(|v| v.as_u64())
         .unwrap_or(0) as usize;
-    let declared_header_size = u32::from_le_bytes(bytes[4..8].try_into().unwrap()) as usize;
+    let declared_header_size = u32::from_le_bytes(head16[4..8].try_into().unwrap()) as usize;
     let payload_start = asar_payload_start(declared_header_size);
-    if bytes.len() < payload_start + offset + size {
-        return Err("app.asar payload 越界".to_string());
+    if size == 0 || size > 256 * 1024 * 1024 {
+        return Err("preload.js 段大小异常".to_string());
     }
 
+    f.seek(SeekFrom::Start((payload_start + offset) as u64))
+        .map_err(|e| e.to_string())?;
+    let mut preload_buf = vec![0u8; size];
+    f.read_exact(&mut preload_buf).map_err(|e| format!("读取 preload.js 失败: {e}"))?;
     let original_code =
-        std::str::from_utf8(&bytes[payload_start + offset..payload_start + offset + size])
-            .map_err(|e| format!("解析 preload.js 失败: {e}"))?;
+        std::str::from_utf8(&preload_buf).map_err(|e| format!("解析 preload.js 失败: {e}"))?.to_string();
+    drop(f);
 
     // 保留初次纯净原版备份
     let bak_path = asar_path.with_file_name("app.asar.lang.bak");
@@ -399,14 +411,36 @@ fn patch_hub_asar(asar_path: &Path) -> Result<(), String> {
     let clean_base = if let Some(idx) =
         original_code.find("// Antigravity Chinese Localization Engine")
     {
-        original_code[..idx].trim_end()
+        original_code[..idx].trim_end().to_string()
     } else if let Some(idx) = original_code.find("// Antigravity 2.0 Chinese Localization Engine") {
-        original_code[..idx].trim_end()
+        original_code[..idx].trim_end().to_string()
     } else {
-        original_code
+        original_code.clone()
     };
 
     let new_code = format!("{}\n\n{}\n", clean_base, get_hub_payload().trim());
+
+    // 幂等：内容一致 → 跳过几百 MB 的 asar 全量重写
+    if original_code == new_code {
+        return Ok(());
+    }
+
+    // 内容有变（首次 / 词库更新 / 引擎升级）→ 全量读 asar 改 header 后写回
+    let bytes = fs::read(asar_path).map_err(|e| format!("读取 app.asar 失败: {e}"))?;
+    if bytes.len() < 16 + json_size {
+        return Err("app.asar header 大小异常".to_string());
+    }
+    let header_str = std::str::from_utf8(&bytes[16..16 + json_size])
+        .map_err(|e| format!("解析 header UTF-8 失败: {e}"))?;
+    let mut header: Value =
+        serde_json::from_str(header_str).map_err(|e| format!("解析 header JSON 失败: {e}"))?;
+    let preload_node = header
+        .get_mut("files")
+        .and_then(|f| f.get_mut("dist"))
+        .and_then(|d| d.get_mut("files"))
+        .and_then(|f| f.get_mut("preload.js"))
+        .and_then(|n| n.as_object_mut())
+        .ok_or_else(|| "未在 app.asar 中找到 dist/preload.js".to_string())?;
     let new_code_bytes = new_code.as_bytes();
     let old_payload = &bytes[payload_start..];
     let new_offset = old_payload.len();
