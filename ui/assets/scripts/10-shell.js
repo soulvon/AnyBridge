@@ -1470,16 +1470,21 @@ function makeLangActions(prefix, getPlatform, displayName) {
     const target = getPlatform();
     if (typeof promptRestartIde !== 'function') return;
     const restarted = await promptRestartIde(
-      `${name()} ${actionDesc}，需要重启客户端后生效。`,
+      `${name()} ${actionDesc}，是否立即重启客户端使其生效？`,
       target,
       {
         title: `重启 ${name()}`,
-        statusText: statusText || '汉化补丁已写入本地客户端资源，重启后界面即刻生效。',
+        // 要点已并入上方问句，隐藏重复的状态条；「重启会强制关闭 IDE」的警示保留
+        statusText: null,
         skipAutoPreference: true,
       }
     );
     if (restarted) {
       appendLog(`${name()} 已重启，界面变更已生效`, 'ok');
+      // 重启成功后关掉汉化面板（客户端已重启，面板任务完成）
+      const modalMap = { windsurf: 'proxyLangModal', devin: 'proxyLangModal', cursor: 'cursorLangModal', 'claude-desktop': 'claudeLangModal' };
+      const modalId = modalMap[target];
+      if (modalId) el(modalId)?.classList.remove('active');
     } else {
       appendLog(`已选择稍后重启，下次启动客户端后生效`);
     }

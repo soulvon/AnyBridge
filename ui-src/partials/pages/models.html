@@ -192,7 +192,7 @@
         <!-- ═══════ WINDSURF / DEVIN 界面汉化与日志弹窗 ═══════ -->
         <div class="modal-overlay" id="proxyLangModal" role="dialog" aria-modal="true" aria-labelledby="proxyLangModalTitle" data-action="closeProxyLangModal" data-only-self>
           <div class="modal-container" style="max-width: 580px; width: 92%; border-radius: 16px; overflow: hidden; padding: 0; box-shadow: var(--shadow-xl, 0 24px 38px 3px rgba(0,0,0,0.18)); border: 1px solid var(--border);">
-            <div class="modal-header" style="padding: 16px 22px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; background: var(--bg-card);">
+            <div class="modal-header" style="padding: 16px 22px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between;">
               <div style="display: flex; align-items: center; gap: 12px;">
                 <div style="width: 36px; height: 36px; border-radius: 10px; background: rgba(37, 99, 235, 0.08); color: var(--accent); display: flex; align-items: center; justify-content: center; flex-shrink: 0; border: 1px solid rgba(37, 99, 235, 0.15);">
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -212,7 +212,7 @@
               <button type="button" class="btn-ghost icon-btn" data-action="closeProxyLangModal" aria-label="关闭" style="width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center; color: var(--text-muted); transition: all 0.15s ease;">✕</button>
             </div>
 
-            <div class="modal-body" style="padding: 20px 22px; background: var(--bg-card); display: flex; flex-direction: column; gap: 14px;">
+            <div class="modal-body" style="padding: 20px 22px; display: flex; flex-direction: column; gap: 14px;">
               <div style="background: var(--bg-glass-elevated, rgba(255,255,255,0.04)); border: 1px solid var(--border-subtle, rgba(255,255,255,0.06)); border-radius: 10px; padding: 12px 14px; font-size: 12px;">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
                   <span style="color: var(--text-muted);">目标客户端：</span>
@@ -240,12 +240,12 @@
                 <pre id="proxyLangLogBox" style="margin: 0; background: var(--bg-primary); color: var(--text-secondary); font-family: var(--font-mono); padding: 12px 14px; border-radius: 8px; font-size: 11.5px; line-height: 1.65; height: 140px; min-height: 140px; max-height: 140px; overflow-y: auto; white-space: pre-wrap; word-break: break-all; border: 1px solid var(--border); box-sizing: border-box;"></pre>
               </div>
 
-              <div style="font-size: 11px; color: var(--text-muted); line-height: 1.45; min-height: 32px;">
-                汉化覆盖 Windsurf / Devin 的专有界面（Cascade、设置页、菜单等），代码区和输入框不会被误译。中文语言包缺失时会自动安装并切换显示语言。重启客户端后生效，随时可一键还原成英文；客户端升级后会自动重新应用，你不用手动处理。
+              <div style="font-size: 11px; color: var(--text-muted); line-height: 1.45; min-height: 48px;">
+                汉化覆盖 Windsurf / Devin 的主窗口界面（菜单、Cascade、设置页等），代码区和输入框不会被误译。中文语言包缺失时会自动安装并切换显示语言。重启客户端后生效，随时可一键还原成英文；客户端升级后会自动重新应用，你不用手动处理。单独弹出的「Windsurf Settings」设置窗口是官方远程页面，暂不在汉化范围内。
               </div>
             </div>
 
-            <div class="modal-footer" style="padding: 12px 22px; border-top: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; background: var(--bg-card); min-height: 56px; box-sizing: border-box;">
+            <div class="modal-footer" style="padding: 12px 22px; border-top: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; min-height: 56px; box-sizing: border-box;">
               <button type="button" class="btn-ghost" id="proxyLangModalCheckUpdateBtn" data-action="checkProxyLocalizationUpdateAction" style="height: 32px; padding: 0 14px; font-size: 12px; font-weight: 500; border-radius: 8px; display: inline-flex; align-items: center; justify-content: center;">检查在线词库更新</button>
               <div style="display: flex; gap: 8px; align-items: center;">
                 <button type="button" class="btn-ghost danger" id="proxyLangModalRestoreBtn" data-action="restoreProxyLocalizationAction" style="height: 32px; padding: 0 14px; font-size: 12px; font-weight: 500; border-radius: 8px; display: inline-flex; align-items: center; justify-content: center;" disabled>还原官方英文</button>

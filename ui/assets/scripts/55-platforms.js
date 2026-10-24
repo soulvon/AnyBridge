@@ -2956,17 +2956,20 @@ async function confirmRestartAntigravityClient(actionDesc) {
   if (typeof promptRestartIde !== 'function') return false;
 
   const restarted = await promptRestartIde(
-    `${platName} ${actionDesc}，需要重启客户端后生效。`,
+    `${platName} ${actionDesc}，是否立即重启客户端使其生效？`,
     target,
     {
       title: `重启 ${platName}`,
-      statusText: '汉化补丁已写入本地客户端资源，重启后中文界面即刻生效。',
+      // 要点已并入上方问句，隐藏重复的状态条；「重启会强制关闭 IDE」的警示保留
+      statusText: null,
       skipAutoPreference: true
     }
   );
 
   if (restarted) {
     appendAntigravityLangLog(`${platName} 已重启，中文界面已生效`, 'ok');
+    // 重启成功后关掉汉化面板
+    document.getElementById('antigravityLangModal')?.classList.remove('active');
   } else {
     appendAntigravityLangLog(`已选择稍后重启，下次启动客户端后生效`);
   }

@@ -1018,9 +1018,16 @@ function promptRestartIde(leadText, targetOverride, options = {}) {
     if (titleEl) titleEl.textContent = options.title || `重启 ${label} 以应用${mode === 'direct' ? '直连' : '代理'}`;
     if (leadEl) leadEl.textContent = lead;
     if (statusEl) {
-      statusEl.textContent = options.statusText || (mode === 'direct'
-        ? '已恢复直连配置，重启后 IDE 不再经过 AnyBridge。'
-        : '已写入 AnyBridge 代理配置，本地代理服务已启动。');
+      // statusText 传 null 表示调用方已把要点写进 lead，避免同一句话出现两遍
+      if (options.statusText === null) {
+        statusEl.textContent = '';
+        statusEl.style.display = 'none';
+      } else {
+        statusEl.style.display = '';
+        statusEl.textContent = options.statusText || (mode === 'direct'
+          ? '已恢复直连配置，重启后 IDE 不再经过 AnyBridge。'
+          : '已写入 AnyBridge 代理配置，本地代理服务已启动。');
+      }
     }
     if (detailEl) {
       detailEl.textContent = detail ? `提示：${detail}` : '';

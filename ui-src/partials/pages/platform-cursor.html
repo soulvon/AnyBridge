@@ -180,7 +180,7 @@
         <div class="modal-overlay" id="cursorTagStyleModal" role="dialog" aria-modal="true" aria-labelledby="cursorTagStyleModalTitle" data-action="closeCursorTagStyleModal" data-only-self>
           <div class="modal-container" style="max-width: 800px; width: 92%; border-radius: 16px; overflow: hidden; padding: 0; box-shadow: var(--shadow-xl, 0 24px 38px 3px rgba(0,0,0,0.12), 0 9px 46px 8px rgba(0,0,0,0.08)); border: 1px solid var(--border);">
             <!-- 头部：精致标题栏与关闭图标 -->
-            <div class="modal-header" style="padding: 18px 24px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; background: var(--bg-card);">
+            <div class="modal-header" style="padding: 18px 24px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between;">
               <div style="display: flex; align-items: center; gap: 12px;">
                 <div style="width: 36px; height: 36px; border-radius: 10px; background: rgba(37, 99, 235, 0.08); color: var(--accent); display: flex; align-items: center; justify-content: center; flex-shrink: 0; border: 1px solid rgba(37, 99, 235, 0.15);">
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
@@ -327,7 +327,7 @@
         <div class="modal-overlay" id="cursorEditModelModal" role="dialog" aria-modal="true" aria-labelledby="cursorEditModalTitle" data-action="closeCursorEditModal" data-only-self>
           <div class="modal-container" style="max-width: 540px; width: 92%; border-radius: 16px; overflow: hidden; padding: 0; box-shadow: var(--shadow-xl, 0 20px 25px -5px rgba(0,0,0,0.1), 0 10px 10px -5px rgba(0,0,0,0.04));">
             <!-- 头部 -->
-            <div class="modal-header" style="padding: 16px 22px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; background: var(--bg-card);">
+            <div class="modal-header" style="padding: 16px 22px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between;">
               <div style="display: flex; align-items: center; gap: 10px;">
                 <div style="width: 32px; height: 32px; border-radius: 9px; background: rgba(37, 99, 235, 0.1); color: var(--accent); display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
@@ -735,7 +735,7 @@
         <!-- ═══════ CURSOR 界面汉化与日志弹窗 ═══════ -->
         <div class="modal-overlay" id="cursorLangModal" role="dialog" aria-modal="true" aria-labelledby="cursorLangModalTitle" data-action="closeCursorLangModal" data-only-self>
           <div class="modal-container" style="max-width: 580px; width: 92%; border-radius: 16px; overflow: hidden; padding: 0; box-shadow: var(--shadow-xl, 0 24px 38px 3px rgba(0,0,0,0.18)); border: 1px solid var(--border);">
-            <div class="modal-header" style="padding: 16px 22px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; background: var(--bg-card);">
+            <div class="modal-header" style="padding: 16px 22px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between;">
               <div style="display: flex; align-items: center; gap: 12px;">
                 <div style="width: 36px; height: 36px; border-radius: 10px; background: rgba(37, 99, 235, 0.08); color: var(--accent); display: flex; align-items: center; justify-content: center; flex-shrink: 0; border: 1px solid rgba(37, 99, 235, 0.15);">
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -755,7 +755,7 @@
               <button type="button" class="btn-ghost icon-btn" data-action="closeCursorLangModal" aria-label="关闭" style="width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center; color: var(--text-muted); transition: all 0.15s ease;">✕</button>
             </div>
 
-            <div class="modal-body" style="padding: 20px 22px; background: var(--bg-card); display: flex; flex-direction: column; gap: 14px;">
+            <div class="modal-body" style="padding: 20px 22px; display: flex; flex-direction: column; gap: 14px;">
               <div style="background: var(--bg-glass-elevated, rgba(255,255,255,0.04)); border: 1px solid var(--border-subtle, rgba(255,255,255,0.06)); border-radius: 10px; padding: 12px 14px; font-size: 12px;">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
                   <span style="color: var(--text-muted);">目标客户端：</span>
@@ -788,7 +788,7 @@
               </div>
             </div>
 
-            <div class="modal-footer" style="padding: 12px 22px; border-top: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; background: var(--bg-card); min-height: 56px; box-sizing: border-box;">
+            <div class="modal-footer" style="padding: 12px 22px; border-top: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; min-height: 56px; box-sizing: border-box;">
               <button type="button" class="btn-ghost" id="cursorLangModalCheckUpdateBtn" data-action="checkCursorLocalizationUpdateAction" style="height: 32px; padding: 0 14px; font-size: 12px; font-weight: 500; border-radius: 8px; display: inline-flex; align-items: center; justify-content: center;">检查在线词库更新</button>
               <div style="display: flex; gap: 8px; align-items: center;">
                 <button type="button" class="btn-ghost danger" id="cursorLangModalRestoreBtn" data-action="restoreCursorLocalizationAction" style="height: 32px; padding: 0 14px; font-size: 12px; font-weight: 500; border-radius: 8px; display: inline-flex; align-items: center; justify-content: center;" disabled>还原官方英文</button>
