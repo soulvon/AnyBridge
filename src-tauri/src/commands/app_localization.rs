@@ -355,9 +355,11 @@ fn hans_script(platform: &str) -> String {
 }
 
 fn read_cached_version(platform: &str) -> String {
-    // Windsurf/Devin 用内嵌完整词典（无热更新缓存），版本标识为 builtin
+    // Windsurf/Devin 用内嵌完整词典（无热更新缓存）：显示真实词条数，
+    // 比 "builtin" 对用户有意义（面板上直接看到"内置 3300+ 条"）。
     if platform == "windsurf" || platform == "devin" {
-        return "builtin".to_string();
+        let script = if platform == "devin" { DEVIN_BASELINE_SCRIPT } else { BASELINE_SCRIPT };
+        return format!("内置 {} 条", count_entries(script));
     }
     let meta_path = cache_dir(platform).join("metadata.json");
     if let Ok(raw) = fs::read_to_string(&meta_path) {

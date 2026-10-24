@@ -246,7 +246,8 @@
             </div>
 
             <div class="modal-footer" style="padding: 12px 22px; border-top: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; min-height: 56px; box-sizing: border-box;">
-              <button type="button" class="btn-ghost" id="proxyLangModalCheckUpdateBtn" data-action="checkProxyLocalizationUpdateAction" style="height: 32px; padding: 0 14px; font-size: 12px; font-weight: 500; border-radius: 8px; display: inline-flex; align-items: center; justify-content: center;">检查在线词库更新</button>
+              <!-- 无「检查在线词库更新」：这两个平台用内置词典（随版本发布），
+                   没有在线词库可更新，按了只会提示"已是最新"，属于无效按钮 -->
               <div style="display: flex; gap: 8px; align-items: center;">
                 <button type="button" class="btn-ghost danger" id="proxyLangModalRestoreBtn" data-action="restoreProxyLocalizationAction" style="height: 32px; padding: 0 14px; font-size: 12px; font-weight: 500; border-radius: 8px; display: inline-flex; align-items: center; justify-content: center;" disabled>还原官方英文</button>
                 <button type="button" class="btn-primary" id="proxyLangModalApplyBtn" data-action="applyProxyLocalizationAction" style="height: 32px; padding: 0 16px; font-size: 12px; font-weight: 600; border-radius: 8px; display: inline-flex; align-items: center; justify-content: center;">一键应用汉化</button>
