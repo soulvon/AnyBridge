@@ -96,6 +96,15 @@
 ### 只提交该提交的（强制）
 
 - **`git add` 精确指定文件**，禁止 `git add -A` / `git add .` / `git commit -a`
+- **文档只提交「说明文档」，设计/调研文档不入库**：
+
+  | 类型 | 例子 | 入库 |
+  |---|---|---|
+  | 说明文档（给使用者/贡献者） | `README`、`CHANGELOG`、`AGENTS.md`、`docs/{ARCHITECTURE,DEVELOPMENT,RELEASE,MACOS_TROUBLESHOOTING,WORKFLOW}`、各处 `README`、PR 模板 | ✅ |
+  | 运行时资源（程序的一部分） | `cursor-core/prompt/**`（提示词模板）、`sidecar/prompts/**`、`src-tauri/resources/**`（插件自带说明/prompt） | ✅ |
+  | 设计/调研/规划文档 | 调研报告、方案设计、逆向分析、规划稿、`spec/**` | ❌ 放本地或 `tmp/` |
+
+  检查脚本对已跟踪的 `.md` 做**白名单校验**——不在清单内直接报错。
 - 永不入库：`tmp/`、`node_modules/`、`src-tauri/target/`、`*.log`、`*.bak`、
   `.env`（仅 `.env.example` 可入库）、`*.pem` / `*.key` / `*.pfx` / `*.p12`、
   `*.tmp`、`.tmp_*`、`tmp_*`、编辑器/工具目录（`.codebuddy/`、`.vscode/`、`.idea/`）

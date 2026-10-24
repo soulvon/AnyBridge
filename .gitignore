@@ -137,3 +137,15 @@ scripts/find-sec.*
 scripts/read-tier.*
 qoder-*.cjs
 tmp_*.mjs
+
+# 设计/调研/规划文档（内部过程产物，不入库；只提交说明文档）
+docs/*research*.md
+docs/*-research*.md
+docs/*-api*.md
+docs/*-api_en.md
+docs/*设计*.md
+docs/*调研*.md
+docs/*方案*.md
+docs/*规划*.md
+docs/*总结*.md
+docs/*分析*.md

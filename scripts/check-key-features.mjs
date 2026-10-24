@@ -273,6 +273,43 @@ section('提交卫生（不该提交的不提交）');
     }
   }
   ok('暂存内容无明文密钥', leaked.length === 0, leaked.join(', '));
+
+  // 3.7.5 文档纪律：只允许「说明文档」入库，设计/调研/规划文档不入库
+  //
+  // 区分标准：
+  //   ✅ 说明文档：给使用者/贡献者看的（README、CHANGELOG、AGENTS、
+  //      架构/开发/发布/排障/WORKFLOW），以及**运行时资源**（Cursor 提示词
+  //      模板、sidecar 与插件自带的 prompt/deploy 说明——它们是程序的一部分）
+  //   ❌ 设计文档：开发过程产物（调研报告、方案设计、规划、逆向分析），
+  //      随迭代快速过期，入库只会变成噪音和泄密风险
+  const DOC_ALLOW = [
+    /^README(_en)?\.md$/i,
+    /^CHANGELOG\.md$/i,
+    /^AGENTS\.md$/i,
+    /^docs\/(ARCHITECTURE|DEVELOPMENT|RELEASE|MACOS_TROUBLESHOOTING|WORKFLOW)(_zh)?\.md$/i,
+    /(^|\/)README\.md$/i,
+    /^\.github\/pull_request_template\.md$/i,
+    /^cursor-core\/prompt\//,        // 运行时提示词模板（程序资源）
+    /^cursor-core\/UPSTREAM\.md$/i,  // 上游来源说明
+    /^sidecar\/prompts\//,           // 运行时 prompt
+    /^src-tauri\/resources\//,       // 插件自带说明与运行时 prompt
+  ];
+  const trackedMd = files.filter(f => /\.md$/i.test(f));
+  const docViolations = trackedMd.filter(f => !DOC_ALLOW.some(re => re.test(f)));
+  ok('已跟踪文档均为说明文档（无设计/调研文档）', docViolations.length === 0,
+    docViolations.length ? `不应入库：${docViolations.join(', ')}` : '');
+
+  // 暂存区同样检查（pre-commit 时拦住新加的设计文档）。
+  // 只看新增/修改（--diff-filter=AM）：删除设计文档恰恰是正确操作，不该报错。
+  let stagedAddMod = '';
+  try {
+    stagedAddMod = execSync('git diff --cached --name-only --diff-filter=AM', {
+      cwd: root, encoding: 'utf8', stdio: 'pipe',
+    });
+  } catch {}
+  const stagedMd = stagedAddMod.split('\n').filter(Boolean).filter(f => /\.md$/i.test(f));
+  const stagedDocBad = stagedMd.filter(f => !DOC_ALLOW.some(re => re.test(f)));
+  ok('暂存区无新增设计/调研文档', stagedDocBad.length === 0, stagedDocBad.join(', '));
 }
 
 // ─────────────────────────────────────────────────────────────
