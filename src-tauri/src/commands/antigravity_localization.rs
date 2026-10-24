@@ -350,6 +350,7 @@ fn is_ide_localized(html_path: &Path) -> bool {
 
 fn patch_hub_asar(asar_path: &Path) -> Result<(), String> {
     use std::io::{Read, Seek, SeekFrom};
+    let _t0 = std::time::Instant::now();
 
     // ── 轻量读：只读 header + preload.js 段（几 MB）。构造期望内容后与现值
     //    比对，一致（重复点「一键汉化」且词库/引擎未变）则跳过几百 MB 的
@@ -419,9 +420,12 @@ fn patch_hub_asar(asar_path: &Path) -> Result<(), String> {
     };
 
     let new_code = format!("{}\n\n{}\n", clean_base, get_hub_payload().trim());
+    eprintln!("[ag-loc] patch: 轻量读+构造耗时 {:?}", _t0.elapsed());
 
     // 幂等：内容一致 → 跳过几百 MB 的 asar 全量重写
     if original_code == new_code {
+        
+        eprintln!("[ag-loc] patch: 内容一致跳过写回");
         return Ok(());
     }
 
@@ -609,6 +613,8 @@ pub async fn apply_antigravity_localization(
 fn apply_antigravity_localization_sync(
     target: String,
 ) -> Result<LocalizationOperationResult, String> {
+    let _t0 = std::time::Instant::now();
+    eprintln!("[ag-loc] apply sync 开始");
     let is_ide = target == "antigravity-ide";
     let plat_name = if is_ide {
         "Antigravity IDE"
