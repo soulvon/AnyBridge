@@ -26,6 +26,24 @@ pub fn run() {
         .manage(ProviderImportScanState::default())
         .manage(PluginState::new())
         .setup(|app| {
+            // panic 落盘：tauri dev 下 stderr 可能被缓冲吞掉，进程异常退出
+            // （实测 exit code 0xffffffff）时拿不到任何线索。写文件最可靠。
+            std::panic::set_hook(Box::new(|info| {
+                let msg = format!(
+                    "[panic] {}\nlocation: {}\ninfo: {}\n",
+                    chrono::Local::now().to_rfc3339(),
+                    info.location().map(|l| format!("{}:{}", l.file(), l.line())).unwrap_or_default(),
+                    info.payload().downcast_ref::<String>().cloned().unwrap_or_else(|| {
+                        info.payload().downcast_ref::<&str>().map(|s| s.to_string()).unwrap_or_default()
+                    }),
+                );
+                eprintln!("{}", msg);
+                let _ = std::fs::write(
+                    std::env::temp_dir().join("anybridge-panic.log"),
+                    msg,
+                );
+            }));
+
             // 启动时先清理上一轮崩溃或异常退出后残留的孤儿 sidecar 进程，
             // 避免旧进程锁住 anybridge-proxy.exe 导致升级安装失败。
             commands::proxy::kill_sidecar_process();
