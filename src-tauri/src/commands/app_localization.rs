@@ -508,13 +508,12 @@ fn parse_version_dir(name: &str) -> Vec<u32> {
     out
 }
 
-/// 在 Claude 安装根目录（AnthropicClaude）下挑语言文件：
-/// 只认 `<版本目录>/resources/app/resources/ion-dist/i18n/en-US.json` 结构，
-/// 并取**版本号最大**的那个。
+/// 在 Claude 安装根目录（AnthropicClaude）下挑 ion-dist 目录：
+/// 只认 `<版本目录>/resources/app/resources/ion-dist` 结构，并取**版本号最大**的那个。
 ///
 /// 必须挑最新版本：Claude 升级后旧版本目录会残留，若打到旧目录等于没汉化，
 /// 且现象是"点了汉化但界面没变"，极难排查。
-fn pick_claude_i18n(root: &Path) -> Option<PathBuf> {
+fn pick_claude_ion_dist(root: &Path) -> Option<PathBuf> {
     let entries = fs::read_dir(root).ok()?;
     let mut best: Option<(Vec<u32>, PathBuf)> = None;
     for e in entries.flatten() {
@@ -526,10 +525,8 @@ fn pick_claude_i18n(root: &Path) -> Option<PathBuf> {
             .join("resources")
             .join("app")
             .join("resources")
-            .join("ion-dist")
-            .join("i18n")
-            .join("en-US.json");
-        if !candidate.exists() {
+            .join("ion-dist");
+        if !candidate.join("index.html").exists() {
             continue;
         }
         // 取不到文件名的条目跳过即可，不能用 `?`：那会放弃整个搜索并丢掉已找到的候选
@@ -544,11 +541,11 @@ fn pick_claude_i18n(root: &Path) -> Option<PathBuf> {
     best.map(|(_, p)| p)
 }
 
-/// Claude Desktop 的 en-US.json 路径。
-/// 优先官网安装版（%LOCALAPPDATA%\AnthropicClaude 下最新版本目录），
-/// 结构不匹配时退化为限深递归；商店版（MSIX/WindowsApps）通过 Appx 清单定位。
+/// Claude Desktop 的 ion-dist 目录（前端资源根）。
+/// 官网安装版优先（%LOCALAPPDATA%\AnthropicClaude 最新版本目录），
+/// 商店版（MSIX/WindowsApps）通过 Appx 清单定位。
 #[cfg(target_os = "windows")]
-fn claude_i18n_path() -> Option<PathBuf> {
+fn claude_ion_dist_dir() -> Option<PathBuf> {
     use std::os::windows::process::CommandExt;
     use std::process::Command;
 
@@ -556,18 +553,13 @@ fn claude_i18n_path() -> Option<PathBuf> {
     if let Some(local) = dirs::data_local_dir() {
         let root = local.join("AnthropicClaude");
         if root.is_dir() {
-            if let Some(found) = pick_claude_i18n(&root) {
-                return Some(found);
-            }
-            // 结构不符合预期（版本布局变更）时兜底递归，限深避免全盘扫描
-            if let Some(found) = find_file_recursive(&root, "en-US.json", 6) {
+            if let Some(found) = pick_claude_ion_dist(&root) {
                 return Some(found);
             }
         }
     }
-    // 2. 商店版：Appx InstallLocation/app/resources/ion-dist/i18n/en-US.json
-    // 包名用 "*Claude*" 通配符（对齐上游 Find-ClaudeI18nFile）：精确名 'Claude'
-    // 在部分机器上匹配不到商店版包。
+    // 2. 商店版：Appx InstallLocation/app/resources/ion-dist
+    // 包名用 "*Claude*" 通配符：精确名 'Claude' 在部分机器上匹配不到商店版包。
     let out = Command::new("powershell")
         .args([
             "-NoProfile",
@@ -582,10 +574,8 @@ fn claude_i18n_path() -> Option<PathBuf> {
         let p = PathBuf::from(install)
             .join("app")
             .join("resources")
-            .join("ion-dist")
-            .join("i18n")
-            .join("en-US.json");
-        if p.exists() {
+            .join("ion-dist");
+        if p.join("index.html").exists() {
             return Some(p);
         }
     }
@@ -593,51 +583,300 @@ fn claude_i18n_path() -> Option<PathBuf> {
 }
 
 #[cfg(not(target_os = "windows"))]
-fn claude_i18n_path() -> Option<PathBuf> {
-    // macOS: /Applications/Claude.app/Contents/Resources/app/resources/ion-dist/i18n/en-US.json
+fn claude_ion_dist_dir() -> Option<PathBuf> {
+    // macOS: /Applications/Claude.app/Contents/Resources/app/resources/ion-dist
     let p = PathBuf::from(
-        "/Applications/Claude.app/Contents/Resources/app/resources/ion-dist/i18n/en-US.json",
+        "/Applications/Claude.app/Contents/Resources/app/resources/ion-dist",
     );
-    if p.exists() {
+    if p.join("index.html").exists() {
         return Some(p);
     }
     None
 }
 
-/// 限深递归查找文件（避免全盘扫描）。
-fn find_file_recursive(root: &Path, name: &str, max_depth: usize) -> Option<PathBuf> {
-    fn walk(dir: &Path, name: &str, depth: usize) -> Option<PathBuf> {
-        let entries = fs::read_dir(dir).ok()?;
-        for e in entries.flatten() {
-            let p = e.path();
-            if p.is_file() && p.file_name().map(|n| n == name).unwrap_or(false) {
-                return Some(p);
-            }
-            if depth > 0 && p.is_dir() {
-                if let Some(found) = walk(&p, name, depth - 1) {
-                    return Some(found);
-                }
-            }
-        }
-        None
+/// 注入标记：index.html 里出现它即视为已汉化（也是 keeper 的判据）。
+const CLAUDE_ZH_MARKER: &str = "__anybridgeZh3";
+/// Claude 注入的语言 locale。
+const CLAUDE_ZH_LOCALE: &str = "zh-Hans";
+
+/// 授权目录/文件的写权限（MSIX 的 WindowsApps 受保护目录）。
+/// 目录用 (OI)(CI) 让新建文件继承；文件单独授权才能改写已存在的 index.html。
+#[cfg(target_os = "windows")]
+fn grant_acl(path: &Path, is_dir: bool) -> Result<(), String> {
+    use std::os::windows::process::CommandExt;
+    let hidden = 0x0800_0000;
+    let p = path.to_string_lossy().to_string();
+    let suffix = if is_dir { ":(OI)(CI)F" } else { ":F" };
+    let _ = std::process::Command::new("takeown.exe")
+        .args(["/F", &p, "/A"])
+        .creation_flags(hidden)
+        .status();
+    let mut grants = vec!["Administrators".to_string(), "*S-1-5-32-544".to_string()];
+    if let Ok(user) = std::env::var("USERNAME") {
+        grants.push(user);
     }
-    walk(root, name, max_depth)
+    for who in grants {
+        let _ = std::process::Command::new("icacls.exe")
+            .args([&p, "/grant", &format!("{}{}", who, suffix)])
+            .creation_flags(hidden)
+            .status();
+    }
+    Ok(())
 }
 
-/// Claude 是否已汉化：en-US.json 里中文字符超过阈值即视为已覆盖
-/// （与上游 doctor 的诊断判据一致：>500 个中文字符）。
+#[cfg(not(target_os = "windows"))]
+fn grant_acl(_path: &Path, _is_dir: bool) -> Result<(), String> {
+    Ok(())
+}
+
+/// 扫描 ion-dist 找语言 store 模块与导出别名。
+///
+/// Claude 每次升级都会重新混淆打包，模块文件名与导出别名都会变
+/// （1.49585 是 shared-3-DO6JrgpN.js / Rd，3.6556 是 shared-52-uHFNjl7C.js / Wp），
+/// 所以必须运行时按特征扫描，不能硬编码。
+fn detect_claude_store(dist: &Path) -> Option<(String, String)> {
+    let assets = dist.join("assets");
+    let mut stack = vec![assets];
+    while let Some(dir) = stack.pop() {
+        let Ok(entries) = fs::read_dir(&dir) else {
+            continue;
+        };
+        for e in entries.flatten() {
+            let p = e.path();
+            if p.is_dir() {
+                stack.push(p);
+                continue;
+            }
+            if p.extension().and_then(|x| x.to_str()) != Some("js") {
+                continue;
+            }
+            let Ok(src) = fs::read_to_string(&p) else {
+                continue;
+            };
+            // 语言 store 的初始化特征
+            if !src.contains("messagesLocale:null") {
+                continue;
+            }
+            let Some((sym, exp)) = extract_store_symbols(&src) else {
+                continue;
+            };
+            let _ = sym;
+            let rel = p
+                .strip_prefix(dist)
+                .ok()?
+                .to_string_lossy()
+                .replace('\\', "/");
+            return Some((rel, exp));
+        }
+    }
+    None
+}
+
+/// 从 store 模块源码提取「store 变量符号」与「导出别名」。
+/// 形如：`...,Oy=Oi((e,t)=>({messages:{},messagesLocale:null,...` + `export{... Oy as Wp ...}`
+fn extract_store_symbols(src: &str) -> Option<(String, String)> {
+    let anchor = src.find("messagesLocale:null")?;
+    // store 定义形如：`...,js=Dn((e,t)=>({messages:{},messagesLocale:null...`
+    // 取 anchor 之前**最靠后**的 `符号=函数((e,t)=>(` 匹配。
+    let head = &src[..anchor];
+    let re_def = regex::Regex::new(r"([$\w]+)\s*=\s*[$\w]+\s*\(\(e,t\)\s*=>").ok()?;
+    let sym = re_def
+        .captures_iter(head)
+        .last()?
+        .get(1)?
+        .as_str()
+        .to_string();
+    let escaped = sym.replace('$', "\\$");
+    let re = regex::Regex::new(&format!(
+        r"[,{{]\s*{}\s+as\s+([$\w]+)\s*[,}}]",
+        escaped
+    ))
+    .ok()?;
+    let exp = re.captures(src)?.get(1)?.as_str().to_string();
+    Some((sym, exp))
+}
+
+/// 生成注入脚本：声明 zh-Hans 目录（meta 要求 **两段** hash `locale:h1.h2`），
+/// 再调 store 的 setLocaleOverride 切语言。
+/// 词典已就位于 /i18n/zh-Hans.json，前端按 locale 自行请求，故脚本极小。
+fn claude_inject_snippet(store_rel: &str, store_export: &str) -> String {
+    format!(
+        r#"
+<script>
+/* AnyBridge Claude 中文注入：声明 zh-Hans 目录（两段 hash）并运行时切换语言。
+   词典位于 /i18n/{{locale}}.json，前端自行加载。 marker: {marker} */
+(function(){{
+  if(window.{marker}) return; window.{marker}=1;
+  function declare(){{
+    try{{
+      var m=document.querySelector('meta[name="i18n-catalogs"]');
+      if(!m){{ m=document.createElement('meta'); m.name='i18n-catalogs'; document.head.appendChild(m); }}
+      var cur=m.getAttribute('data-i18n-catalogs')||'';
+      if(!/(^|,){locale}:/.test(cur)){{
+        m.setAttribute('data-i18n-catalogs',(cur?cur+',':'')+'{locale}:1.1');
+      }}
+    }}catch(e){{}}
+  }}
+  async function applyZh(){{
+    try{{
+      declare();
+      var mod=await import('/{store_rel}');
+      var store=mod['{store_export}'];
+      if(!store||typeof store.getState!=='function'){{ console.warn('[anybridge-zh] store missing'); return; }}
+      var st=store.getState();
+      if(typeof st.setLocaleOverride!=='function'){{ console.warn('[anybridge-zh] api missing'); return; }}
+      if(st.localeOverride!=='{locale}'){{ st.setLocaleOverride('{locale}'); }}
+      console.info('[anybridge-zh] applied');
+    }}catch(e){{ console.warn('[anybridge-zh] failed:', e && (e.message||e)); }}
+  }}
+  document.addEventListener('DOMContentLoaded',function(){{ declare(); applyZh(); }});
+  window.addEventListener('load',function(){{ declare(); applyZh(); }});
+  var n=0,t=setInterval(function(){{ declare(); if(n===0||n===10||n===20||n===30) applyZh(); if(++n>50) clearInterval(t); }},300);
+}})();
+</script>
+"#,
+        marker = CLAUDE_ZH_MARKER,
+        locale = CLAUDE_ZH_LOCALE,
+        store_rel = store_rel,
+        store_export = store_export,
+    )
+}
+
+/// 剥离 index.html 里我们注入的脚本（幂等重注入用）。
+fn claude_strip_inject(html: &str) -> String {
+    let re = regex::Regex::new(r"(?s)<script>\s*/\* AnyBridge Claude 中文注入.*?</script>").unwrap();
+    re.replace_all(html, "").to_string()
+}
+
+/// 注入（或刷新）index.html 的脚本，返回是否有改动。
+fn claude_inject_index(dist: &Path, snippet: &str) -> Result<bool, String> {
+    let idx = dist.join("index.html");
+    let raw = fs::read_to_string(&idx).map_err(|e| format!("读取 index.html 失败: {e}"))?;
+    let cleaned = claude_strip_inject(&raw);
+    let injected = if let Some(pos) = cleaned.find("</head>") {
+        let mut out = String::with_capacity(cleaned.len() + snippet.len());
+        out.push_str(&cleaned[..pos]);
+        out.push_str(snippet);
+        out.push_str(&cleaned[pos..]);
+        out
+    } else {
+        format!("{cleaned}{snippet}")
+    };
+    if injected == raw {
+        return Ok(false);
+    }
+    // index.html 是已存在文件，必须单文件授权（目录 inherit 只对新文件生效）
+    grant_acl(&idx, false)?;
+    fs::write(&idx, injected.as_bytes()).map_err(|e| format!("写入 index.html 失败: {e}"))?;
+    Ok(true)
+}
+
+/// 写 Claude 的中文词典文件：/i18n/zh-Hans.json 与 /i18n/dynamic/zh-Hans.json。
+/// 返回写入的 base 词条数。
+fn claude_write_zh_dicts(dist: &Path) -> Result<usize, String> {
+    let cache = cache_dir("claude-desktop");
+    let dict_path = cache.join(script_cache_name("claude-desktop"));
+    let raw = fs::read_to_string(&dict_path).map_err(|_| {
+        "本地暂无中文词库，请先点击「检查在线词库更新」下载".to_string()
+    })?;
+    let va: Value =
+        serde_json::from_str(&raw).map_err(|e| format!("词库缓存解析失败: {e}"))?;
+    let map = va.as_object().ok_or("词库缓存格式异常（非 JSON 对象）")?;
+    if map.is_empty() {
+        return Err("词库缓存为空，已中止写入".to_string());
+    }
+
+    let i18n = dist.join("i18n");
+    let dynamic = i18n.join("dynamic");
+    let _ = fs::create_dir_all(&dynamic);
+    grant_acl(&i18n, true)?;
+
+    let base_out = serde_json::to_string(&va).map_err(|e| e.to_string())?;
+    fs::write(i18n.join(format!("{CLAUDE_ZH_LOCALE}.json")), base_out.as_bytes())
+        .map_err(|e| format!("写入 zh-Hans 词典失败: {e}"))?;
+
+    // dynamic 词典：缓存目录里若有 dynamic 就用，否则空对象兜底
+    let dyn_src = cache.join("dynamic-zh-CN.json");
+    let dyn_out = fs::read_to_string(&dyn_src)
+        .ok()
+        .and_then(|s| serde_json::from_str::<Value>(&s).ok())
+        .unwrap_or_else(|| json!({}));
+    fs::write(
+        dynamic.join(format!("{CLAUDE_ZH_LOCALE}.json")),
+        serde_json::to_string(&dyn_out).unwrap_or_else(|_| "{}".to_string()).as_bytes(),
+    )
+    .map_err(|e| format!("写入 dynamic 词典失败: {e}"))?;
+
+    Ok(map.len())
+}
+
+/// Claude 的用户配置文件（config.json，含 locale 字段）。
+fn claude_config_path() -> Option<PathBuf> {
+    #[cfg(target_os = "windows")]
+    {
+        std::env::var_os("APPDATA")
+            .map(PathBuf::from)
+            .map(|p| p.join("Claude").join("config.json"))
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        dirs::home_dir().map(|h| {
+            h.join("Library")
+                .join("Application Support")
+                .join("Claude")
+                .join("config.json")
+        })
+    }
+}
+
+/// 把 config.json 的 locale 设为指定值（幂等），返回是否有改动。
+/// Claude 升级会重写该文件，因此每次 apply 都要重设。
+fn claude_set_locale(locale: &str, restore: bool) -> Result<bool, String> {
+    let Some(cfg) = claude_config_path() else {
+        return Ok(false);
+    };
+    if !cfg.exists() {
+        return Ok(false);
+    }
+    let raw = fs::read_to_string(&cfg).map_err(|e| format!("读取 config.json 失败: {e}"))?;
+    let mut doc: Value = match serde_json::from_str(&raw) {
+        Ok(v) => v,
+        // 解析失败绝不覆盖用户配置
+        Err(_) => return Err("Claude config.json 解析失败，已跳过语言设置".to_string()),
+    };
+    let cur = doc.get("locale").and_then(|v| v.as_str()).unwrap_or("");
+    let target = if restore { "en-US" } else { locale };
+    if cur == target {
+        return Ok(false);
+    }
+    if let Some(obj) = doc.as_object_mut() {
+        obj.insert("locale".to_string(), json!(target));
+    }
+    // 备份一次原始配置，便于排查
+    let bak = cfg.with_extension("json.anybridge-bak");
+    if !bak.exists() {
+        let _ = fs::write(&bak, raw.as_bytes());
+    }
+    fs::write(&cfg, serde_json::to_string_pretty(&doc).unwrap_or(raw).as_bytes())
+        .map_err(|e| format!("写入 config.json 失败: {e}"))?;
+    Ok(true)
+}
+
+/// Claude 是否已汉化：index.html 里有我们的注入标记且 zh-Hans 词典就位。
+/// 用注入标记而不是"中文字符数"，因为升级会覆盖整个目录，标记随之消失。
 fn is_claude_localized() -> bool {
-    let Some(path) = claude_i18n_path() else {
+    let Some(dist) = claude_ion_dist_dir() else {
         return false;
     };
-    match fs::read_to_string(&path) {
-        Ok(content) => content
-            .chars()
-            .filter(|c| ('\u{4e00}'..='\u{9fa5}').contains(c))
-            .count()
-            > 500,
-        Err(_) => false,
+    let Ok(html) = fs::read_to_string(dist.join("index.html")) else {
+        return false;
+    };
+    if !html.contains(CLAUDE_ZH_MARKER) {
+        return false;
     }
+    dist.join("i18n")
+        .join(format!("{CLAUDE_ZH_LOCALE}.json"))
+        .exists()
 }
 
 fn is_localized(platform: &str) -> bool {
@@ -662,7 +901,7 @@ fn is_installed(platform: &str) -> bool {
         return false;
     }
     if platform == "claude-desktop" {
-        claude_i18n_path().is_some()
+        claude_ion_dist_dir().is_some()
     } else {
         workbench_html_path(platform).is_some()
     }
@@ -1216,265 +1455,112 @@ fn restore(platform: &str, elevate: bool) -> Result<LocalizationOperationResult,
     })
 }
 
-/// 合并词典：有译文的 key 写中文，其余保留英文。返回 (合并后 JSON, 翻译条数)。
-/// 纯函数，便于单测；对已汉化文件重复执行也幂等（中文 value 不在译文里时保留）。
+/// Claude Desktop 汉化（i18n 目录注入方案，实测可行）：
+/// 1. 定位 ion-dist（Claude 升级会换新目录，每次重新定位）
+/// 2. 授权目录与 index.html（MSIX 受保护目录需要 takeown + icacls）
+/// 3. 写 /i18n/zh-Hans.json + /i18n/dynamic/zh-Hans.json（词典来自热更新缓存）
+/// 4. 扫描语言 store 模块与导出别名（版本相关，绝不硬编码）
+/// 5. 注入 index.html：声明 zh-Hans 目录（meta 两段 hash）+ setLocaleOverride
+/// 6. config.json locale=zh-Hans
 ///
-/// 关键：**追加**词典中存在但 en-US.json 没有的 id。Claude 用 react-intl，
-/// 语言文件是「id → 文案」的覆盖集——新版 Claude 新增的文案 id（如设置面板
-/// 7JGu5oG/Uu）不在旧 en-US.json 里，词典有译文但不追加就永远查不到（显示英文）。
-/// react-intl 只查自己认识的 id，多写的条目无副作用。
-fn merge_i18n(
-    en_json: &str,
-    zh_map: &serde_json::Map<String, Value>,
-) -> Result<(String, usize), String> {
-    let en: Value =
-        serde_json::from_str(en_json).map_err(|e| format!("en-US.json 解析失败: {e}"))?;
-    let en_map = en.as_object().ok_or("en-US.json 格式异常（非 JSON 对象）")?;
-    // 空对象/空输入一律拒绝：否则合并结果也是空，写回即把语言文件清空
-    if en_map.is_empty() || en_json.trim().is_empty() {
-        return Err("en-US.json 内容为空，拒绝合并（保护原语言文件）".to_string());
-    }
-    let mut merged = serde_json::Map::new();
-    let mut translated = 0usize;
-    // 第一轮：en 已有的 key——有译文写中文，未覆盖保留英文
-    for (k, v) in en_map {
-        match zh_map.get(k).and_then(|z| z.as_str()) {
-            Some(zh_val) if !zh_val.is_empty() => {
-                merged.insert(k.clone(), json!(zh_val));
-                translated += 1;
-            }
-            _ => {
-                merged.insert(k.clone(), v.clone());
-            }
-        }
-    }
-    // 第二轮：词典里有、en 没有的新 id——追加，覆盖新版 Claude 的新增文案
-    for (k, v) in zh_map {
-        if merged.contains_key(k) {
-            continue;
-        }
-        if let Some(zh_val) = v.as_str() {
-            if !zh_val.is_empty() {
-                merged.insert(k.clone(), json!(zh_val));
-                translated += 1;
-            }
-        }
-    }
-    let out = serde_json::to_string(&Value::Object(merged)).map_err(|e| e.to_string())?;
-    Ok((out, translated))
-}
-
-/// Claude Desktop 汉化：合并覆盖 en-US.json（有译文的 key 写中文，其余保留英文）。
-/// 词库 22,000 条 / 1MB 不内置基线，首次需先「检查在线词库更新」下载到本地缓存。
-/// 确保语言文件可写。
-///
-/// 直接写失败时（微软商店版 MSIX 的语言文件在 WindowsApps 受保护目录），
-/// 按上游 Claude-Desktop-Chinese 项目的方案授权：takeown 接管所有权 +
-/// icacls 给管理员组和当前用户完全控制权（只改这一个文件的 ACL，最小侵入）。
-///
-/// 授权需要管理员权限，分两轮：
-/// 1. 静默执行——AnyBridge 已是管理员时直接成功，无任何感知；
-/// 2. `allow_uac=true` 时走一次性 UAC 提权执行同批命令（弹一次 UAC 点"是"即可，
-///    不重启 AnyBridge）；keeper 等后台场景传 false——失败了就静默跳过下周期重试，
-///    绝不突然弹 UAC 吓用户。
-/// 授权一次后长期有效（Claude 更新会重置，届时再走一次）。
-#[cfg(target_os = "windows")]
-fn ensure_writable_file(path: &Path, allow_uac: bool) -> Result<(), String> {
-    use std::os::windows::process::CommandExt;
-    let writable = || fs::OpenOptions::new().read(true).write(true).open(path).is_ok();
-    if writable() {
-        return Ok(());
-    }
-    let p = path.to_string_lossy().to_string();
-    let hidden = 0x0800_0000; // CREATE_NO_WINDOW
-    // 第一轮：静默授权（AnyBridge 已是管理员时成功）。
-    // 参数格式对齐上游 install.ps1 的 Ensure-WritableFile：
-    // takeown /F <file> /A；icacls /grant "*S-1-5-32-544:F"；icacls /grant "<user>:(F)"
-    // （本机实测 /grant Administrators:F + <user>:F 也可用，两种格式都跑一遍最稳）
-    let _ = std::process::Command::new("takeown.exe")
-        .args(["/F", &p, "/A"])
-        .creation_flags(hidden)
-        .status();
-    for grant in ["*S-1-5-32-544:F", "Administrators:F"] {
-        let _ = std::process::Command::new("icacls.exe")
-            .args([&p, "/grant", grant])
-            .creation_flags(hidden)
-            .status();
-    }
-    if let Ok(user) = std::env::var("USERNAME") {
-        for grant in [format!("{}:(F)", user), format!("{}:F", user)] {
-            let _ = std::process::Command::new("icacls.exe")
-                .args([&p, "/grant", &grant])
-                .creation_flags(hidden)
-                .status();
-        }
-    }
-    if writable() {
-        return Ok(());
-    }
-    // 第二轮：一次性 UAC 提权执行同批授权命令（Start-Process -Verb RunAs -Wait）
-    if allow_uac {
-        let user = std::env::var("USERNAME").unwrap_or_else(|_| "Administrators".to_string());
-        let inner = format!(
-            "takeown /F \"{}\" /A; icacls \"{}\" /grant Administrators:F; icacls \"{}\" /grant \"{}\":F",
-            p, p, p, user
-        );
-        let outer = format!(
-            "Start-Process powershell -ArgumentList '-NoProfile','-Command','{}' -Verb RunAs -Wait",
-            inner.replace('\'', "''")
-        );
-        let ok = std::process::Command::new("powershell.exe")
-            .args(["-NoProfile", "-WindowStyle", "Hidden", "-Command", &outer])
-            .creation_flags(hidden)
-            .status()
-            .map(|s| s.success())
-            .unwrap_or(false);
-        if ok && writable() {
-            return Ok(());
-        }
-        return Err(
-            "语言文件授权未完成（UAC 可能被取消）。微软商店版位于受保护目录：请重新点击汉化并在 UAC 弹窗点【是】，或改用官网安装版".to_string(),
-        );
-    }
-    Err(format!(
-        "语言文件不可写，且当前不允许自动提权。微软商店版位于受保护目录，首次汉化需授权（请从界面手动触发）"
-    ))
-}
-
-#[cfg(not(target_os = "windows"))]
-fn ensure_writable_file(path: &Path, _allow_uac: bool) -> Result<(), String> {
-    match fs::OpenOptions::new().read(true).write(true).open(path) {
-        Ok(_) => Ok(()),
-        Err(e) => Err(format!("语言文件不可写（{}）", e)),
-    }
-}
-
+/// 注意：改 en-US.json 是无效路线——react-intl 的默认语言直接用组件内联的
+/// defaultMessage，根本不读 en-US.json；且前端只认 meta 里声明过的 locale。
 fn apply_claude(elevate: bool) -> Result<LocalizationOperationResult, String> {
-    let i18n_path = claude_i18n_path().ok_or_else(|| {
-        "未定位到 Claude Desktop 的语言文件（请先安装并运行一次 Claude Desktop）".to_string()
+    let _ = elevate; // 授权走 grant_acl（静默，必要时由系统弹 UAC）
+    let dist = claude_ion_dist_dir().ok_or_else(|| {
+        "未定位到 Claude Desktop 的界面资源（ion-dist）。请先安装并运行一次 Claude Desktop"
+            .to_string()
     })?;
 
-    // 可写性预检 + 自动授权（商店版 MSIX 受保护目录，上游同款方案）
-    ensure_writable_file(&i18n_path, elevate)?;
-
-    let cache = cache_dir("claude-desktop");
-    let dict_path = cache.join(script_cache_name("claude-desktop"));
-    if !dict_path.exists() {
+    // 1. 授权：ion-dist 与其 i18n 目录（新装/升级后的目录没有写权限）
+    grant_acl(&dist, true)?;
+    grant_acl(&dist.join("i18n"), true)?;
+    // 授权后仍不可写 = 非管理员运行且 ACL 未授权，给出可操作的指引而不是裸错误
+    if fs::OpenOptions::new()
+        .write(true)
+        .open(dist.join("index.html"))
+        .is_err()
+    {
         return Err(
-            "本地暂无中文词库，请先点击「检查在线词库更新」下载（22,000+ 条，约 1MB）".to_string(),
+            "无权限写入 Claude 安装目录（微软商店版位于受保护目录）。请以管理员身份运行 AnyBridge 后重试，或改用官网安装版"
+                .to_string(),
         );
     }
-    let zh_str = fs::read_to_string(&dict_path).map_err(|e| format!("读取词库缓存失败: {e}"))?;
-    let zh: Value = serde_json::from_str(&zh_str).map_err(|e| format!("词库缓存解析失败: {e}"))?;
-    let zh_map = zh.as_object().ok_or("词库缓存格式异常（非 JSON 对象）")?;
 
-    let en_str = fs::read_to_string(&i18n_path).map_err(|e| format!("读取 en-US.json 失败: {e}"))?;
+    // 2. 写词典
+    let entries = claude_write_zh_dicts(&dist)?;
 
-    // 备份原版（仅首次；还原后再应用时备份已在，保留不动）
-    let backup = cache.join("en-US-original.json");
-    if !backup.exists() {
-        fs::write(&backup, en_str.as_bytes())
-            .map_err(|e| format!("备份原版语言文件失败: {e}"))?;
+    // 3. 扫描 store 模块（版本变化时文件名/导出别名都会变）
+    let (store_rel, store_export) = detect_claude_store(&dist).ok_or_else(|| {
+        "未能定位 Claude 的语言运行时模块（版本可能已变更）。已保留词典，请反馈该问题".to_string()
+    })?;
+
+    // 4. 注入 index.html
+    let snippet = claude_inject_snippet(&store_rel, &store_export);
+    claude_inject_index(&dist, &snippet)?;
+
+    // 5. 切语言（config.json）
+    let locale_changed = claude_set_locale(CLAUDE_ZH_LOCALE, false)?;
+
+    // 6. 校验：index.html 必须真的带上了标记
+    let html = fs::read_to_string(dist.join("index.html"))
+        .map_err(|e| format!("写入后读取 index.html 失败: {e}"))?;
+    if !html.contains(CLAUDE_ZH_MARKER) {
+        return Err("注入校验失败：index.html 未包含汉化标记".to_string());
     }
 
-    // 合并：有译文写中文，未覆盖保留英文（对已汉化文件重复执行也幂等）
-    let (out, translated) = merge_i18n(&en_str, zh_map)?;
-    // 防御一：合并结果为空/无 key 时绝不写（空文件会让全部文案 fallback 英文，
-    // 且原版内容已丢失——实测踩过：0 字节的 en-US.json 让界面半英半中）
-    if serde_json::from_str::<Value>(&out)
-        .ok()
-        .and_then(|v| v.as_object().map(|m| m.len()))
-        .unwrap_or(0)
-        == 0
-    {
-        return Err("合并结果为空，已中止写入以保护原语言文件".to_string());
-    }
-    // 写入策略对齐上游 install.ps1：
-    // 1) 直接写文件内容（只依赖文件 ACL，商店版授权后可行）
-    // 2) 失败则写临时文件 + Copy 覆盖兜底（Copy 也只动文件内容）
-    // 3) 最多重试 5 次，间隔递增——运行中的 Claude 可能短暂持有文件
-    // 绝不能用 write_atomic（tmp + rename）：WindowsApps 目录是 TrustedInstaller
-    // 拥有，rename 替换需要目录级删除权限，单文件授权了照样拒绝访问（os error 5）。
-    let tmp_path = cache_dir("claude-desktop").join("en-US-patched.json");
-    let mut last_err = String::new();
-    let mut written = false;
-    for i in 1..=5u32 {
-        match fs::write(&i18n_path, out.as_bytes()) {
-            Ok(_) => {
-                written = true;
-                break;
-            }
-            Err(e) => {
-                last_err = e.to_string();
-                if fs::write(&tmp_path, out.as_bytes()).is_ok()
-                    && fs::copy(&tmp_path, &i18n_path).is_ok()
-                {
-                    written = true;
-                    break;
-                }
-                std::thread::sleep(std::time::Duration::from_millis(300 * i as u64));
-            }
-        }
-    }
-    let _ = fs::remove_file(&tmp_path);
-    if !written {
-        return Err(format!("写入语言文件失败: {}", last_err));
-    }
-    // 防御二：写后读回校验。运行中的 Claude 可能持有该文件（mmap/锁），
-    // 直接写有截断风险——读回确认非空且可解析，否则从备份恢复原版并如实报错。
-    let verify_ok = fs::read_to_string(&i18n_path)
-        .ok()
-        .and_then(|s| serde_json::from_str::<Value>(&s).ok())
-        .and_then(|v| v.as_object().map(|m| !m.is_empty()))
-        .unwrap_or(false);
-    if !verify_ok {
-        if let Ok(orig) = fs::read_to_string(&backup) {
-            let _ = fs::write(&i18n_path, orig.as_bytes());
-        }
-        return Err("写入后校验失败（语言文件异常），已从备份恢复原版，请重启客户端后重试".to_string());
-    }
     set_enabled("claude-desktop");
     invalidate_status_cache();
 
-    // 总条数 = 语言文件原文的 key 数（合并前后一致）
-    let en_total = serde_json::from_str::<Value>(&en_str)
-        .ok()
-        .and_then(|v| v.as_object().map(|m| m.len()))
-        .unwrap_or(0);
-
+    let mut message = format!(
+        "Claude Desktop 汉化已应用（{} 条词条，注入 {}）",
+        entries, store_rel
+    );
+    if locale_changed {
+        message.push_str("，显示语言已切换为简体中文");
+    }
+    message.push_str("，重启客户端后生效");
     Ok(LocalizationOperationResult {
         ok: true,
-        message: format!(
-            "Claude Desktop 汉化已应用（{}/{} 条文案），重启客户端后生效",
-            translated, en_total
-        ),
+        message,
         localized: true,
     })
 }
 
-/// Claude Desktop 还原：从备份整体覆盖 en-US.json。
+/// Claude Desktop 还原：剥离 index.html 注入、删除 zh-Hans 词典、locale 恢复 en-US。
 fn restore_claude(elevate: bool) -> Result<LocalizationOperationResult, String> {
-    let i18n_path = claude_i18n_path()
-        .ok_or_else(|| "未定位到 Claude Desktop 的语言文件".to_string())?;
-    // 还原同样要写文件：商店版授权一次后 ACL 已生效，这里幂等确认一次
-    ensure_writable_file(&i18n_path, elevate)?;
-    let backup = cache_dir("claude-desktop").join("en-US-original.json");
+    let _ = elevate;
+    let dist = claude_ion_dist_dir()
+        .ok_or_else(|| "未定位到 Claude Desktop 的界面资源".to_string())?;
 
+    let idx = dist.join("index.html");
     let mut changed = false;
-    if backup.exists() {
-        let orig = fs::read_to_string(&backup).map_err(|e| e.to_string())?;
-        // 同 apply：直接写内容（WindowsApps 目录不允许 rename 替换）
-        fs::write(&i18n_path, orig.as_bytes()).map_err(|e| format!("还原语言文件失败: {e}"))?;
-        let _ = fs::remove_file(&backup);
+    if let Ok(html) = fs::read_to_string(&idx) {
+        let stripped = claude_strip_inject(&html);
+        if stripped != html {
+            grant_acl(&idx, false)?;
+            fs::write(&idx, stripped.as_bytes())
+                .map_err(|e| format!("还原 index.html 失败: {e}"))?;
+            changed = true;
+        }
+    }
+    // 删掉我们放的词典（Claude 自己的语言文件不碰）
+    for p in [
+        dist.join("i18n").join(format!("{CLAUDE_ZH_LOCALE}.json")),
+        dist.join("i18n").join("dynamic").join(format!("{CLAUDE_ZH_LOCALE}.json")),
+    ] {
+        if p.exists() {
+            grant_acl(&p, false)?;
+            if fs::remove_file(&p).is_ok() {
+                changed = true;
+            }
+        }
+    }
+    if claude_set_locale("en-US", true)? {
         changed = true;
-        invalidate_status_cache();
-    } else if is_claude_localized() {
-        // 已汉化但备份丢失：无从得知原版内容，如实上报而不是假装还原成功
-        return Err(
-            "未找到汉化前备份，无法还原。重装 Claude Desktop 可恢复官方英文".to_string(),
-        );
     }
     clear_enabled("claude-desktop");
+    invalidate_status_cache();
 
     Ok(LocalizationOperationResult {
         ok: true,
@@ -1873,38 +1959,40 @@ mod tests {
     }
 
     #[test]
-    fn merges_i18n_with_translation_and_fallback() {
-        let en = r#"{"k1":"Settings","k2":"Unknown Key","k3":""}"#;
-        let mut zh = serde_json::Map::new();
-        zh.insert("k1".to_string(), json!("设置"));
-        // k2 无译文 → 保留英文；k3 译文为空 → 保留英文
-        zh.insert("k3".to_string(), json!(""));
-        // new-id 是新版 Claude 新增的文案 id（en-US.json 里没有）→ 应追加
-        zh.insert("new-id".to_string(), json!("新界面文案"));
-        let (out, translated) = merge_i18n(en, &zh).expect("合并应成功");
-        assert_eq!(translated, 2, "k1 翻译 + new-id 追加");
-        let v: Value = serde_json::from_str(&out).unwrap();
-        assert_eq!(v["k1"], json!("设置"));
-        assert_eq!(v["k2"], json!("Unknown Key"));
-        assert_eq!(v["k3"], json!(""));
-        assert_eq!(v["new-id"], json!("新界面文案"), "新 id 应被追加");
-        // 幂等：对已合并结果再跑一次不劣化
-        let (out2, t2) = merge_i18n(&out, &zh).unwrap();
-        assert_eq!(t2, 2);
-        let v2: Value = serde_json::from_str(&out2).unwrap();
-        assert_eq!(v2["k1"], json!("设置"));
-        assert_eq!(v2["new-id"], json!("新界面文案"));
+    fn claude_inject_snippet_declares_two_segment_meta() {
+        // 前端解析 meta 的正则只认两段 hash：locale:h1.h2。
+        // 写成三段（历史 bug）条目会被静默丢弃 → 语言白名单没有 zh-Hans → 界面不生效。
+        let s = claude_inject_snippet("assets/v1/x.js", "Wp");
+        assert!(s.contains("zh-Hans:1.1"), "meta 条目必须是两段 hash");
+        assert!(!s.contains("zh-Hans:1.1.1"), "不得写成三段");
+        assert!(s.contains("mod['Wp']"), "必须按扫描到的导出别名取 store");
+        assert!(s.contains(CLAUDE_ZH_MARKER), "必须带注入标记供 keeper 判定");
+        assert!(s.contains("setLocaleOverride"), "必须调语言切换 API");
     }
 
     #[test]
-    fn merge_i18n_rejects_non_object() {
-        let zh = serde_json::Map::new();
-        assert!(merge_i18n("[1,2,3]", &zh).is_err());
-        assert!(merge_i18n("not json", &zh).is_err());
-        // 空对象/空串必须拒绝：否则写回会把语言文件清空（实测事故）
-        assert!(merge_i18n("{}", &zh).is_err());
-        assert!(merge_i18n("", &zh).is_err());
-        assert!(merge_i18n("   ", &zh).is_err());
+    fn claude_strip_inject_removes_script_only() {
+        let injected = format!(
+            "<html><head>{}</head><body>app</body></html>",
+            claude_inject_snippet("assets/v1/x.js", "Wp")
+        );
+        let stripped = claude_strip_inject(&injected);
+        assert!(!stripped.contains(CLAUDE_ZH_MARKER), "注入脚本必须被剥离");
+        assert!(stripped.contains("<body>app</body>"), "页面原有内容必须保留");
+        // 未注入的页面剥离后应完全不变（幂等）
+        let clean = "<html><head></head><body>app</body></html>";
+        assert_eq!(claude_strip_inject(clean), clean);
+    }
+
+    #[test]
+    fn extract_store_symbols_handles_minified_export() {
+        // 真实形态：store 变量在逗号后定义，导出用 `X as Y` 起别名
+        let src = r#"var As=Object.keys(Ts),js=Dn((e,t)=>({messages:{},messagesLocale:null,gates:[],setLocaleOverride:t=>e({localeOverride:t})}));export{tk as $,js as Rd,a_ as $a}"#;
+        let (sym, exp) = extract_store_symbols(src).expect("应能提取");
+        assert_eq!(sym, "js");
+        assert_eq!(exp, "Rd");
+        // 无导出别名的模块视为无效（不能瞎猜）
+        assert!(extract_store_symbols("var x=Dn((e,t)=>({messages:{},messagesLocale:null}))").is_none());
     }
 
     #[test]
@@ -2033,14 +2121,14 @@ module.exports = {};"#,
                 .join("app")
                 .join("resources")
                 .join("ion-dist")
-                .join("i18n")
         };
         for ver in ["app-1.0.0", "app-2.3.1", "app-1.9.9"] {
             let dir = layout(ver);
             fs::create_dir_all(&dir).unwrap();
-            fs::write(dir.join("en-US.json"), "{}").unwrap();
+            // 只认含 index.html 的目录（ion-dist 的判定依据）
+            fs::write(dir.join("index.html"), "<html></html>").unwrap();
         }
-        let picked = pick_claude_i18n(&root).expect("应定位到语言文件");
+        let picked = pick_claude_ion_dist(&root).expect("应定位到 ion-dist");
         assert!(
             picked.to_string_lossy().contains("app-2.3.1"),
             "应选最新版本目录，实际: {}",
@@ -2052,7 +2140,6 @@ module.exports = {};"#,
     #[test]
     fn is_installed_uses_platform_specific_path() {
         // claude 与 vscode 系判定来源不同，但 keeper 与 status 必须共用同一结果
-        assert!(!is_installed("claude-desktop") || claude_i18n_path().is_some());
         for p in ["cursor", "windsurf", "devin"] {
             assert_eq!(is_installed(p), workbench_html_path(p).is_some());
         }
@@ -2107,17 +2194,13 @@ module.exports = {};"#,
     }
 
     #[test]
-    fn ensure_writable_file_ok_for_normal_file() {
-        // 普通可写文件：直接放行，不进授权分支
-        let dir = std::env::temp_dir().join("anybridge-test-writable");
-        let _ = fs::remove_dir_all(&dir);
-        fs::create_dir_all(&dir).unwrap();
-        let f = dir.join("en-US.json");
-        fs::write(&f, "{}").unwrap();
-        ensure_writable_file(&f, false).expect("普通文件应可写");
-        // 不存在的文件：授权后仍失败（但不应 panic）
-        assert!(ensure_writable_file(&dir.join("nonexistent.json"), false).is_err());
-        let _ = fs::remove_dir_all(&dir);
+    fn claude_io_paths_are_relative_safe() {
+        // 注入脚本里的 store 路径必须是相对 ion-dist 根的 URL 路径（以 / 开头），
+        // 且不能带反斜杠——Windows 路径直接拼进 import() 会让前端 404。
+        let rel = "assets/v1/shared-52-uHFNjl7C.js";
+        let s = claude_inject_snippet(rel, "Wp");
+        assert!(s.contains("import('/assets/v1/shared-52-uHFNjl7C.js')"), "路径应为根相对 URL");
+        assert!(!s.contains("import('/assets\\\\"), "不得出现反斜杠路径");
     }
 
     #[test]

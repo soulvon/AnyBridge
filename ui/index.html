@@ -4429,7 +4429,7 @@
                   </div>
                   <div>
                     <div class="modal-title" id="claudeLangModalTitle" style="font-size: 15px; font-weight: 750; color: var(--text-primary); line-height: 1.25;">Claude Desktop 界面汉化</div>
-                    <div id="claudeLangModalSubtitle" style="font-size: 11.5px; color: var(--text-warning, #d97706); margin-top: 3px;">⚠ 新版主界面在线加载，本地汉化暂不生效（详见说明）</div>
+                    <div id="claudeLangModalSubtitle" style="font-size: 11.5px; color: var(--text-muted); margin-top: 3px;">i18n 目录注入 · 30,600+ 词条 · 升级后自动保活</div>
                   </div>
                 </div>
                 <button type="button" class="btn-ghost icon-btn" data-action="closeClaudeLangModal" aria-label="关闭" style="width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center; color: var(--text-muted); transition: all 0.15s ease;">✕</button>
@@ -4464,8 +4464,7 @@
                 </div>
 
                 <div style="font-size: 11px; color: var(--text-muted); line-height: 1.45; min-height: 32px;">
-                  <div style="color: var(--warning, #d97706); font-weight: 600; margin-bottom: 4px;">当前版本暂无法生效（上游社区已确认的限制）</div>
-                  新版 Claude Desktop 使用 Anthropic 账号登录时，主界面直接从 claude.ai 在线加载，不读取本地前端与翻译文件——本地改写方案对在线主界面均无效，仅菜单栏/托盘等本地部分可能生效。词典与基础设施已就绪（30,600+ 条），官方改回本地加载或支持中文后立即可用。
+                  注入方式：向 Claude 的 i18n 目录写入简体中文词库，并在页面内声明 zh-Hans 语言、切换显示语言（不改动官方英文原文，可随时一键还原）。微软商店版需要写入安装目录权限，首次可能需要以管理员身份运行 AnyBridge。客户端升级覆盖后，AnyBridge 运行时会自动重新注入。
                 </div>
               </div>
 

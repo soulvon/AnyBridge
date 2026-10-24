@@ -1246,6 +1246,8 @@ const CURSOR_EXE_KEY: &str = "cursorExePath";
 const ANTIGRAVITY_EXE_KEY: &str = "antigravityExePath";
 #[cfg(target_os = "windows")]
 const ANTIGRAVITY_IDE_EXE_KEY: &str = "antigravityIdeExePath";
+#[cfg(target_os = "windows")]
+const CLAUDE_EXE_KEY: &str = "claudeExePath";
 #[cfg(target_os = "macos")]
 const WINDSURF_APP_KEY: &str = "windsurfAppPath";
 #[cfg(target_os = "macos")]
@@ -1256,6 +1258,8 @@ const CURSOR_APP_KEY: &str = "cursorAppPath";
 const ANTIGRAVITY_APP_KEY: &str = "antigravityAppPath";
 #[cfg(target_os = "macos")]
 const ANTIGRAVITY_IDE_APP_KEY: &str = "antigravityIdeAppPath";
+#[cfg(target_os = "macos")]
+const CLAUDE_APP_KEY: &str = "claudeAppPath";
 #[cfg(target_os = "linux")]
 const WINDSURF_BIN_KEY: &str = "windsurfBinPath";
 #[cfg(target_os = "linux")]
@@ -1266,6 +1270,8 @@ const CURSOR_BIN_KEY: &str = "cursorBinPath";
 const ANTIGRAVITY_BIN_KEY: &str = "antigravityBinPath";
 #[cfg(target_os = "linux")]
 const ANTIGRAVITY_IDE_BIN_KEY: &str = "antigravityIdeBinPath";
+#[cfg(target_os = "linux")]
+const CLAUDE_BIN_KEY: &str = "claudeBinPath";
 
 /// 根据 target 返回配置键名。
 #[cfg(target_os = "windows")]
@@ -1275,6 +1281,9 @@ fn ide_exe_key(target: &str) -> &'static str {
         "cursor" => CURSOR_EXE_KEY,
         "antigravity-ide" => ANTIGRAVITY_IDE_EXE_KEY,
         "antigravity" => ANTIGRAVITY_EXE_KEY,
+        // 必须独立 key：落到默认分支会读到 Windsurf 的缓存路径，
+        // 重启 Claude 时就会误杀 Windsurf（实测事故）
+        "claude-desktop" | "claude" => CLAUDE_EXE_KEY,
         _ => IDE_EXE_KEY,
     }
 }
@@ -1286,6 +1295,7 @@ fn ide_app_key(target: &str) -> &'static str {
         "cursor" => CURSOR_APP_KEY,
         "antigravity-ide" => ANTIGRAVITY_IDE_APP_KEY,
         "antigravity" => ANTIGRAVITY_APP_KEY,
+        "claude-desktop" | "claude" => CLAUDE_APP_KEY,
         _ => WINDSURF_APP_KEY,
     }
 }
@@ -1297,6 +1307,7 @@ fn ide_bin_key(target: &str) -> &'static str {
         "cursor" => CURSOR_BIN_KEY,
         "antigravity-ide" => ANTIGRAVITY_IDE_BIN_KEY,
         "antigravity" => ANTIGRAVITY_BIN_KEY,
+        "claude-desktop" | "claude" => CLAUDE_BIN_KEY,
         _ => WINDSURF_BIN_KEY,
     }
 }
@@ -1398,6 +1409,7 @@ fn is_ide_exe_for_target(target: &str, path: &std::path::Path) -> bool {
         "cursor" => file_name.eq_ignore_ascii_case("Cursor.exe"),
         "antigravity-ide" => file_name.eq_ignore_ascii_case("Antigravity IDE.exe"),
         "antigravity" => file_name.eq_ignore_ascii_case("Antigravity.exe"),
+        "claude-desktop" | "claude" => file_name.eq_ignore_ascii_case("Claude.exe"),
         _ => file_name.eq_ignore_ascii_case("Windsurf.exe") && !in_devin_dir,
     }
 }
@@ -2706,6 +2718,35 @@ pub fn detect_target_ide() -> String {
 mod tests {
     use super::*;
     use std::collections::BTreeSet;
+
+    /// 回归：Claude 必须用自己的配置 key / 文件名 / 目录名。
+    /// 落到默认分支会读到 Windsurf 的缓存路径，重启 Claude 时误杀 Windsurf（实测事故）。
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn claude_never_falls_back_to_windsurf() {
+        for target in ["claude-desktop", "claude"] {
+            assert_eq!(ide_exe_key(target), CLAUDE_EXE_KEY, "{target} 必须用独立 key");
+            assert_ne!(ide_exe_key(target), IDE_EXE_KEY, "{target} 不得落到 Windsurf key");
+            assert_eq!(ide_exe_filename(target), "Claude.exe");
+            assert_eq!(ide_dir_name(target), "Claude");
+        }
+    }
+
+    /// 回归：各平台的 key 必须互不相同，避免互相读到对方的缓存路径。
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn ide_keys_are_distinct_per_target() {
+        let keys = [
+            ide_exe_key("windsurf"),
+            ide_exe_key("devin"),
+            ide_exe_key("cursor"),
+            ide_exe_key("antigravity"),
+            ide_exe_key("antigravity-ide"),
+            ide_exe_key("claude-desktop"),
+        ];
+        let unique: BTreeSet<&str> = keys.iter().copied().collect();
+        assert_eq!(unique.len(), keys.len(), "各平台 key 必须互不相同: {keys:?}");
+    }
 
     // 每项证书测试使用独立临时目录，避免并发测试读写同一路径。
     fn unique_temp_dir() -> std::path::PathBuf {
