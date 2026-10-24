@@ -7857,7 +7857,15 @@ fn restore_antigravity_official_config_sync(
 
 /// 切回 Claude Code 官方环境：清理 AnyBridge 写入的 ANTHROPIC_* env 字段，保留其他设置。
 #[tauri::command]
-pub fn restore_claude_official_config(app: AppHandle) -> Result<SwitchResult, String> {
+/// async + spawn_blocking：备份 + 写配置是文件 IO，同步 command 在主线程
+/// 执行会阻塞 UI。与 restore_codex_official_config / restore_platform 对称。
+pub async fn restore_claude_official_config(app: AppHandle) -> Result<SwitchResult, String> {
+    tauri::async_runtime::spawn_blocking(move || restore_claude_official_config_sync(&app))
+        .await
+        .map_err(|e| format!("还原任务执行失败: {e}"))?
+}
+/// spawn_blocking 内部实现（勿直接在主线程调用）
+fn restore_claude_official_config_sync(app: &AppHandle) -> Result<SwitchResult, String>{
     let plat = Platform::ClaudeCode;
     emit_switch_progress(&app, plat.id(), "backup", "正在备份当前配置…");
     let path = plat
@@ -7892,7 +7900,15 @@ pub fn restore_claude_official_config(app: AppHandle) -> Result<SwitchResult, St
 
 /// 切回 Grok 官方环境：清理 AnyBridge 写入的 [models].default 及 [model.<id>] 托管字段。
 #[tauri::command]
-pub fn restore_grok_official_config(app: AppHandle) -> Result<SwitchResult, String> {
+/// async + spawn_blocking：备份 + 写配置是文件 IO，同步 command 在主线程
+/// 执行会阻塞 UI。与 restore_codex_official_config / restore_platform 对称。
+pub async fn restore_grok_official_config(app: AppHandle) -> Result<SwitchResult, String> {
+    tauri::async_runtime::spawn_blocking(move || restore_grok_official_config_sync(&app))
+        .await
+        .map_err(|e| format!("还原任务执行失败: {e}"))?
+}
+/// spawn_blocking 内部实现（勿直接在主线程调用）
+fn restore_grok_official_config_sync(app: &AppHandle) -> Result<SwitchResult, String>{
     let plat = Platform::Grok;
     emit_switch_progress(&app, plat.id(), "backup", "正在备份当前配置…");
     let path = plat
@@ -7927,7 +7943,15 @@ pub fn restore_grok_official_config(app: AppHandle) -> Result<SwitchResult, Stri
 
 /// 切回 OpenCode 官方环境 (Zen / Go)：清理 AnyBridge 写入的托管 provider 与 model 指向。
 #[tauri::command]
-pub fn restore_opencode_official_config(app: AppHandle) -> Result<SwitchResult, String> {
+/// async + spawn_blocking：备份 + 写配置是文件 IO，同步 command 在主线程
+/// 执行会阻塞 UI。与 restore_codex_official_config / restore_platform 对称。
+pub async fn restore_opencode_official_config(app: AppHandle) -> Result<SwitchResult, String> {
+    tauri::async_runtime::spawn_blocking(move || restore_opencode_official_config_sync(&app))
+        .await
+        .map_err(|e| format!("还原任务执行失败: {e}"))?
+}
+/// spawn_blocking 内部实现（勿直接在主线程调用）
+fn restore_opencode_official_config_sync(app: &AppHandle) -> Result<SwitchResult, String>{
     let plat = Platform::OpenCode;
     let store = read_provider_store()?;
     emit_switch_progress(&app, plat.id(), "backup", "正在备份当前配置…");

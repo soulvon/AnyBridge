@@ -577,24 +577,38 @@ pub fn get_status_sync() -> Result<ClaudeDesktopStatus, String> {
 // ═══════ TAURI COMMANDS ═══════
 
 #[tauri::command]
-pub fn get_claude_desktop_status(
-    proxy_state: tauri::State<crate::commands::proxy::ProxyState>,
+/// async + spawn_blocking：get_status_sync 内部会 spawn PowerShell 查商店版
+/// 安装路径（秒级），同步 command 在主线程执行会冻结 UI（与 Antigravity
+/// 「一键接入」卡顿同款问题）。
+///
+/// 注意：tauri::State 不能 move 进 spawn_blocking 闭包，先取出需要的 bool。
+pub async fn get_claude_desktop_status(
+    proxy_state: tauri::State<'_, crate::commands::proxy::ProxyState>,
 ) -> Result<ClaudeDesktopStatus, String> {
-    let mut status = get_status_sync()?;
-    status.proxy_running = crate::commands::proxy::get_proxy_status(proxy_state).running;
-    Ok(status)
+    let proxy_running = crate::commands::proxy::get_proxy_status(proxy_state).running;
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut status = get_status_sync()?;
+        status.proxy_running = proxy_running;
+        Ok(status)
+    })
+    .await
+    .map_err(|e| format!("状态查询任务执行失败: {e}"))?
 }
 
 #[tauri::command]
-pub fn apply_claude_desktop(
+pub async fn apply_claude_desktop(
     bindings: Option<ClaudeDesktopBindings>,
 ) -> Result<SwitchResult, String> {
-    apply_claude_desktop_sync(bindings)
+    tauri::async_runtime::spawn_blocking(move || apply_claude_desktop_sync(bindings))
+        .await
+        .map_err(|e| format!("接入任务执行失败: {e}"))?
 }
 
 #[tauri::command]
-pub fn restore_claude_desktop() -> Result<SwitchResult, String> {
-    restore_claude_desktop_sync()
+pub async fn restore_claude_desktop() -> Result<SwitchResult, String> {
+    tauri::async_runtime::spawn_blocking(restore_claude_desktop_sync)
+        .await
+        .map_err(|e| format!("还原任务执行失败: {e}"))?
 }
 
 #[tauri::command]
