@@ -2,6 +2,16 @@
 
 All notable changes to AnyBridge will be documented in this file.
 
+## v0.5.40 - 2026-10-24
+
+- Claude Desktop 汉化改为真正生效的方案：此前走的「合并 en-US.json」是被证伪的路线——react-intl 的默认语言直接用组件内联的 defaultMessage，根本不读该文件。现在改为向 Claude 的 i18n 目录写入简体中文词库（30,600+ 条），并在页面内声明 zh-Hans 语言、调用语言 store 切换显示语言，实测设置面板等界面全部中文。
+- 语言 store 模块与导出别名改为运行时扫描：Claude 每次升级都会重新混淆打包（1.49585 → 3.6556 的模块名与导出名都变了），硬编码必然失效，现在按特征自动定位。
+- MSIX 商店版自动授权：写入受保护目录前自动 takeown + icacls，并在授权后仍不可写时给出可操作提示（以管理员身份运行或改用官网版）。
+- 修复重启 Claude 却杀掉 Windsurf：配置 key 映射表漏了 Claude 分支，导致 `claude-desktop` 落到 Windsurf 的 key 并读到其安装路径。三个平台的 key 映射补齐，并新增回归测试保证各平台 key 互不相同。
+- 五个平台汉化面板文案与交互统一：副标题、说明文字、执行流程（统一 4 步）、检查更新提示、结果提示、状态徽章配色（未汉化改为中性灰），以及 Antigravity 面板补齐缺失的「中文语言包」信息行。
+- 汉化弹窗视觉修复：日志区固定高度占位（不再随日志增多撑大弹窗），底部按钮统一高度与内边距，消除一大一小与塌陷。
+- 全平台支持一键重启客户端：底层补齐 Claude Desktop 的杀进程与启动（商店版走 AppsFolder 激活，官网版直接拉起）。
+
 ## v0.5.39 - 2026-10-24
 
 - 修复 Windows 端 Cursor 多任务（Multitask）子代理起不来：子代理的启动消息不带 `message_id`，且 `x-parent-request-id` / `x-parent-agent-tool-call-id` 是分别发送的，此前这两类请求在调用模型之前就被判为非法，表现为主对话一切正常、子代理却永远停在「Planning next moves」。现在缺失 `message_id` 时从消息内容派生稳定身份（同一条消息重试仍落到同一次请求，幂等），两个父头各自独立可选。
