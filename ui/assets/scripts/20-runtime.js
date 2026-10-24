@@ -303,24 +303,34 @@ function updateProxyPageState(running, tone = '') {
 }
 
 function syncIdeProxyButton() {
-  const btn = document.getElementById('proxyBtn');
-  if (!btn) return;
-  const restoreBtn = document.getElementById('proxyRestoreBtn');
   const target = normalizeIdeProxyTargetValue(typeof getTargetIde === 'function' ? getTargetIde() : 'windsurf');
   const status = ideProxyStatusByTarget[target] || {};
   const patched = !!status.patched;
-  const icon = btn.querySelector('.proxy-btn-icon');
-  const text = btn.querySelector('.proxy-btn-text');
-  const stateText = btn.querySelector('[data-proxy-state-text]');
   const _t = (k, p) => (typeof window.t === 'function' ? window.t(k, p) : k);
   const label = ideDisplayLabel(target);
-  btn.classList.remove('running', 'warning', 'is-connected');
+
+  // 「停止接入」必须先同步，且不能依赖 proxyBtn 是否存在——
+  // 平台控制台页（如 Devin）只有停止按钮、没有一键接入按钮，
+  // 原先 `if (!btn) return` 会让这里直接跳过，导致未接入时按钮仍可点，
+  // 点了才弹「当前未接入代理」（用户感知为"点不了停止"）。
+  const restoreBtn = document.getElementById('proxyRestoreBtn');
   if (restoreBtn) {
     restoreBtn.textContent = _t('停止接入');
     restoreBtn.classList.toggle('is-danger', patched);
     restoreBtn.disabled = !patched;
-    restoreBtn.setAttribute('aria-label', patched ? _t(`停止 ${label} 接入 AnyBridge`) : `${label}`);
+    restoreBtn.title = patched ? '' : '当前未接入，无需停止';
+    restoreBtn.setAttribute(
+      'aria-label',
+      patched ? _t(`停止 ${label} 接入 AnyBridge`) : `${label} ${_t('当前未接入')}`
+    );
   }
+
+  const btn = document.getElementById('proxyBtn');
+  if (!btn) return;
+  const icon = btn.querySelector('.proxy-btn-icon');
+  const text = btn.querySelector('.proxy-btn-text');
+  const stateText = btn.querySelector('[data-proxy-state-text]');
+  btn.classList.remove('running', 'warning', 'is-connected');
   if (patched) {
     btn.classList.add('is-connected');
     if (icon) {
