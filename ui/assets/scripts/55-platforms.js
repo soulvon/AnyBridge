@@ -1167,7 +1167,14 @@ async function openPlatformRealConfigModal(platform = 'codex') {
     'pi': { title: '配置文件实际内容 · models.json', file: '~/.pi/agent/models.json' },
     'hermes': { title: '配置文件实际内容 · config.yaml', file: '~/.hermes/config.yaml' },
     'deepseek-harness': { title: '配置文件实际内容 · settings.yaml', file: '~/.dsh/settings.yaml' },
-    'claude-desktop': { title: '配置文件实际内容 · claude_desktop_config.json', file: 'Claude-3p/claude_desktop_config.json' }
+    'claude-desktop': { title: '配置文件实际内容 · claude_desktop_config.json', file: 'Claude-3p/claude_desktop_config.json' },
+    // Antigravity 双端与其余平台补齐：后端 read/write_platform_config_file 走
+    // Platform::from_id，本就支持这些 id，此前只是前端标题映射缺失。
+    'antigravity': { title: '配置文件实际内容 · settings.json', file: '%APPDATA%\\Antigravity\\User\\settings.json' },
+    'antigravity-ide': { title: '配置文件实际内容 · settings.json', file: '%APPDATA%\\Antigravity IDE\\User\\settings.json' },
+    'codebuddy': { title: '配置文件实际内容 · settings.json', file: '~/.codebuddy/settings.json' },
+    'workbuddy': { title: '配置文件实际内容 · settings.json', file: '~/.workbuddy/settings.json' },
+    'zcode': { title: '配置文件实际内容 · settings.json', file: '~/.zcode/settings.json' }
   };
 
   const meta = titleMap[platform] || { title: `配置文件实际内容 · ${platform}`, file: '本地磁盘配置文件' };
@@ -2813,6 +2820,12 @@ async function antigravityRefreshConsole(options = {}) {
   }
 
   bindRevealPathLabel('antigravity-config-path-label', info?.configPath || (isIde ? 'Antigravity IDE/User/settings.json' : 'Antigravity/User/settings.json'));
+
+  // 「查看配置」按钮的 data-arg 跟随当前客户端（Hub / IDE），否则会读错平台的配置
+  const configViewBtn = document.getElementById('antigravity-config-view-btn');
+  if (configViewBtn) {
+    configViewBtn.dataset.arg = isIde ? 'antigravity-ide' : 'antigravity';
+  }
 
   // 4. 清理不存在的选中项
   const configs = Array.isArray(providerStore?.antigravityConfigs) ? providerStore.antigravityConfigs : [];
