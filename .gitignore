@@ -149,3 +149,7 @@ docs/*方案*.md
 docs/*规划*.md
 docs/*总结*.md
 docs/*分析*.md
+
+# 例外：这两个是通用校验工具（无本机路径依赖），保留入库
+!scripts/verify-docs-page.cjs
+!scripts/verify-ui-baseline.mjs

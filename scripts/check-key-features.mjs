@@ -310,6 +310,19 @@ section('提交卫生（不该提交的不提交）');
   const stagedMd = stagedAddMod.split('\n').filter(Boolean).filter(f => /\.md$/i.test(f));
   const stagedDocBad = stagedMd.filter(f => !DOC_ALLOW.some(re => re.test(f)));
   ok('暂存区无新增设计/调研文档', stagedDocBad.length === 0, stagedDocBad.join(', '));
+
+  // 3.7.6 经典陷阱：.gitignore 对**已跟踪**文件无效。
+  // 先提交、后加忽略规则的文件仍会留在库里（实测曾有 5 个探针/测试脚本）。
+  // 这条断言保证「以为忽略了其实还在」的情况不再积累。
+  let ignoredButTracked = '';
+  try {
+    ignoredButTracked = execSync('git ls-files -i -c --exclude-standard', {
+      cwd: root, encoding: 'utf8', stdio: 'pipe',
+    });
+  } catch {}
+  const ibt = ignoredButTracked.split('\n').filter(Boolean);
+  ok('无「已跟踪却匹配 gitignore」的文件', ibt.length === 0,
+    ibt.length ? `${ibt.join(', ')} → 需 git rm --cached 或加 ! 例外` : '');
 }
 
 // ─────────────────────────────────────────────────────────────
