@@ -1511,14 +1511,18 @@ pub async fn extension_list_cpa_versions() -> Result<CpaVersionCatalog, String> 
     })
 }
 
-fn ensure_cpa_config_for_version(cli_dir: &Path, root: &Path) -> Result<(), String> {
+fn ensure_cpa_config_for_version(
+    cli_dir: &Path,
+    root: &Path,
+    old_config: Option<&Path>,
+) -> Result<(), String> {
     let secrets = if root.join("secrets.json").is_file() {
         read_cpa_secrets(root)?
     } else {
         return Ok(());
     };
     // 切换版本时强制写入当前 secrets，避免旧版 config.yaml 仍是其它密钥
-    write_cpa_config(cli_dir, &secrets.management_key, &secrets.api_key)?;
+    write_cpa_config(cli_dir, &secrets.management_key, &secrets.api_key, old_config)?;
     Ok(())
 }
 
@@ -1579,7 +1583,19 @@ pub async fn extension_switch_cpa_version(
     }
 
     let root = current_cpa_install_root();
-    ensure_cpa_config_for_version(&cli_install.dir, &root)?;
+    // 记录旧版本安装目录（此时 installed.json 仍指向旧版本）：auth/ 与 plugins/
+    // 需迁移到新版本目录，plugins 配置段需在重写 config.yaml 时保留，
+    // 否则升级/切换后插件文件虽在、启用状态却被模板抹掉，需用户手工重新启用。
+    let old_cli_dir = find_component_install("cli-proxy-api", parse_cli_version).map(|c| c.dir);
+    if let Some(old) = &old_cli_dir {
+        // 同版本时 old == new，自拷既无意义，Windows 上还可能因文件自复制失败
+        if old != &cli_install.dir {
+            copy_dir_contents(&old.join("auth"), &cli_install.dir.join("auth"))?;
+            copy_dir_contents(&old.join("plugins"), &cli_install.dir.join("plugins"))?;
+        }
+    }
+    let old_config = old_cli_dir.as_ref().map(|d| d.join("config.yaml"));
+    ensure_cpa_config_for_version(&cli_install.dir, &root, old_config.as_deref())?;
     write_installed_json(&root, &target_cli, &target_cpamp)?;
 
     // 写入 CPAMP 配置并迁移数据到共享目录
@@ -3223,11 +3239,16 @@ async fn wait_for_http_with_key(port: u16, path: &str, label: &str, max_retries:
     ))
 }
 
-fn write_cpa_config(dir: &Path, mgmt_key: &str, api_key: &str) -> Result<(), String> {
+fn write_cpa_config(
+    dir: &Path,
+    mgmt_key: &str,
+    api_key: &str,
+    old_config: Option<&Path>,
+) -> Result<(), String> {
     let settings = read_cpa_settings();
     let proxy_url = resolve_cpa_proxy_url(&settings).unwrap_or_default();
     let proxy_escaped = yaml_escape_double_quoted(&proxy_url);
-    let content = format!(
+    let mut content = format!(
         "host: \"127.0.0.1\"\n\
          port: 8317\n\
          tls:\n\
@@ -3254,14 +3275,54 @@ fn write_cpa_config(dir: &Path, mgmt_key: &str, api_key: &str) -> Result<(), Str
          \x20 strategy: \"round-robin\"\n\
          \x20 session-affinity: false\n\
          \x20 session-affinity-ttl: \"1h\"\n\
-         plugins:\n\
-         \x20 enabled: true\n\
-         \x20 dir: \"plugins\"\n\
          ws-auth: true\n",
         mgmt_key, api_key, proxy_escaped
     );
+    // plugins 段（含各插件的启用状态与配置）只持久化在 config.yaml 中，
+    // auth/ 与 plugins/ 目录虽已随版本迁移，若此处被模板重写抹掉，
+    // 升级/切换版本后插件会静默变为未启用。优先保留旧版本配置，解析失败时回落默认值。
+    let plugins_section = old_config
+        .and_then(extract_plugins_section)
+        .unwrap_or_else(default_plugins_section);
+    let mut wrap = serde_yaml::Mapping::new();
+    wrap.insert(
+        serde_yaml::Value::String("plugins".to_string()),
+        plugins_section,
+    );
+    if let Ok(yaml) = serde_yaml::to_string(&serde_yaml::Value::Mapping(wrap)) {
+        content.push_str(&yaml);
+    }
     let target = dir.join("config.yaml");
     fs::write(&target, content).map_err(|e| format!("写入 CPA config.yaml 失败: {}", e))
+}
+
+/// 从旧版本 config.yaml 提取 plugins 段；文件不存在、解析失败或字段缺失时返回 None。
+fn extract_plugins_section(old_config: &Path) -> Option<serde_yaml::Value> {
+    let content = fs::read_to_string(old_config).ok()?;
+    let doc: serde_yaml::Value = serde_yaml::from_str(&content).ok()?;
+    let mapping = doc.as_mapping()?;
+    let (_, plugins) = mapping
+        .iter()
+        .find(|(k, _)| k.as_str() == Some("plugins"))?;
+    if plugins.is_mapping() {
+        Some(plugins.clone())
+    } else {
+        None
+    }
+}
+
+/// 全新安装时的默认 plugins 段（与历史模板一致）。
+fn default_plugins_section() -> serde_yaml::Value {
+    let mut m = serde_yaml::Mapping::new();
+    m.insert(
+        serde_yaml::Value::String("enabled".to_string()),
+        serde_yaml::Value::Bool(true),
+    );
+    m.insert(
+        serde_yaml::Value::String("dir".to_string()),
+        serde_yaml::Value::String("plugins".to_string()),
+    );
+    serde_yaml::Value::Mapping(m)
 }
 
 fn write_cpamp_config(dir: &Path, data_dir: &Path) -> Result<(), String> {
@@ -3741,10 +3802,12 @@ async fn deploy_cpa_suite_inner(
 
     let cpa_dir_c = cpa_dir.clone();
     let root_c = root.clone();
+    // 保留旧版本 config.yaml 的 plugins 段（目录迁移已由上方 8.5 步完成）
+    let old_config = old_cli_dir.as_ref().map(|d| d.join("config.yaml"));
     let mgmt_key = secrets.management_key.clone();
     let api_key = secrets.api_key.clone();
     tauri::async_runtime::spawn_blocking(move || {
-        write_cpa_config(&cpa_dir_c, &mgmt_key, &api_key)?;
+        write_cpa_config(&cpa_dir_c, &mgmt_key, &api_key, old_config.as_deref())?;
         write_secrets(&root_c, &secrets)?;
         write_installed_json(&root_c, &cpa_version, &cpamp_version)?;
         Ok::<_, String>(())
@@ -4068,7 +4131,24 @@ pub async fn extension_install_cpa_version(
         s
     };
 
-    write_cpa_config(&cpa_dir, &secrets.management_key, &secrets.api_key)?;
+    // 记录旧版本安装目录（installed.json 尚未更新）：auth/ 与 plugins/ 需迁移到
+    // 新版本目录，plugins 配置段需在重写 config.yaml 时保留，
+    // 否则安装/切换版本后插件文件虽在、启用状态却被模板抹掉，需用户手工重新启用。
+    let old_cli_dir = find_component_install("cli-proxy-api", parse_cli_version).map(|c| c.dir);
+    if let Some(old) = &old_cli_dir {
+        // 同版本重装时 old == new，自拷既无意义，Windows 上还可能因文件自复制失败
+        if old != &cpa_dir {
+            copy_dir_contents(&old.join("auth"), &cpa_dir.join("auth"))?;
+            copy_dir_contents(&old.join("plugins"), &cpa_dir.join("plugins"))?;
+        }
+    }
+    let old_config = old_cli_dir.as_ref().map(|d| d.join("config.yaml"));
+    write_cpa_config(
+        &cpa_dir,
+        &secrets.management_key,
+        &secrets.api_key,
+        old_config.as_deref(),
+    )?;
     write_installed_json(&root, &target_cli, &target_cpamp)?;
 
     // 写入 CPAMP 配置，dataDir 指向共享数据目录
@@ -4141,4 +4221,75 @@ pub async fn extension_speed_test_mirrors() -> Result<Vec<MirrorSpeedResult>, St
             success: d != u64::MAX,
         })
         .collect())
+}
+
+#[cfg(test)]
+mod plugins_preserve_tests {
+    use super::*;
+
+    #[test]
+    fn plugins_section_survives_config_rewrite() {
+        let dir = std::env::temp_dir().join(format!(
+            "anybridge-cpa-plugins-test-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+
+        // 旧版本 config.yaml：含插件启用状态与配置
+        let old = dir.join("old-config.yaml");
+        fs::write(
+            &old,
+            "host: \"127.0.0.1\"\nplugins:\n  enabled: true\n  dir: \"plugins\"\n  configs:\n    oc2cpa:\n      enabled: true\n      dynamic_models: true\n      usage_log: true\nws-auth: true\n",
+        )
+        .unwrap();
+
+        // 1. 提取：plugins 段完整取出
+        let section = extract_plugins_section(&old).expect("应提取到 plugins 段");
+        let yaml = serde_yaml::to_string(&section).unwrap();
+        assert!(yaml.contains("oc2cpa"), "提取结果应含插件配置");
+        assert!(yaml.contains("dynamic_models: true"), "提取结果应含插件参数");
+
+        // 2. 重写：模板 + 保留的 plugins 段，密钥同时刷新
+        let new_dir = dir.join("new-version");
+        fs::create_dir_all(&new_dir).unwrap();
+        write_cpa_config(&new_dir, "mgmt-key-123", "sk-api-456", Some(&old)).unwrap();
+        let written = fs::read_to_string(new_dir.join("config.yaml")).unwrap();
+        assert!(written.contains("oc2cpa"), "新配置必须保留插件配置段");
+        assert!(written.contains("dynamic_models: true"), "新配置必须保留插件参数");
+        assert!(written.contains("mgmt-key-123"), "新配置必须写入当前管理密钥");
+        assert!(written.contains("sk-api-456"), "新配置必须写入当前 API 密钥");
+        // 保留段必须是顶层 plugins 键，不能被嵌套进别的键
+        assert!(
+            written.lines().any(|l| l == "plugins:"),
+            "plugins 必须是顶层键"
+        );
+        // 旧配置内容可被重新解析
+        let reparsed: serde_yaml::Value = serde_yaml::from_str(&written).unwrap();
+        let plugins = reparsed
+            .as_mapping()
+            .unwrap()
+            .iter()
+            .find(|(k, _)| k.as_str() == Some("plugins"))
+            .map(|(_, v)| v.clone())
+            .expect("重写后应能解析出 plugins 段");
+        assert!(plugins.is_mapping());
+
+        // 3. 无旧配置（全新安装）：回落默认段
+        let bare_dir = dir.join("bare-version");
+        fs::create_dir_all(&bare_dir).unwrap();
+        write_cpa_config(&bare_dir, "k", "k", None).unwrap();
+        let bare = fs::read_to_string(bare_dir.join("config.yaml")).unwrap();
+        assert!(bare.contains("plugins:"), "全新安装也应有 plugins 段");
+        assert!(bare.contains("dir: plugins"), "默认段 dir 为 plugins");
+        assert!(!bare.contains("oc2cpa"), "全新安装不应残留旧插件配置");
+
+        // 4. 旧配置损坏/不存在：不 panic，回落默认段
+        let broken = dir.join("broken.yaml");
+        fs::write(&broken, "plugins: [这不是mapping").unwrap();
+        assert!(extract_plugins_section(&broken).is_none());
+        assert!(extract_plugins_section(&dir.join("not-exist.yaml")).is_none());
+
+        let _ = fs::remove_dir_all(&dir);
+    }
 }
