@@ -936,15 +936,10 @@ impl Platform {
             }
         }
 
+        // 终止语言服务促使其热重启加载官方端点。
+        // 与 apply_antigravity 同源：用原生 API，不用 PowerShell CIM（1-3 秒）。
         #[cfg(windows)]
-        {
-            use std::os::windows::process::CommandExt;
-            let cmd = r#"Get-CimInstance Win32_Process -Filter "name = 'language_server.exe'" | Where-Object { $_.Path -like "*antigravity\resources\bin*" } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }"#;
-            let _ = std::process::Command::new("powershell")
-                .args(&["-NoProfile", "-Command", cmd])
-                .creation_flags(0x0800_0000)
-                .output();
-        }
+        Self::kill_antigravity_language_server();
         Ok(())
     }
 
