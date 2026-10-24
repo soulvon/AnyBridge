@@ -3372,7 +3372,7 @@ async function antigravityPrimaryAction() {
     antigravityRefreshConsole({ silent: true });
 
     if (typeof promptRestartIde === 'function') {
-      await promptRestartIde(`${platName} 已接入 AnyBridge，重启客户端后生效。`, target, { mode: 'proxy' });
+      await promptRestartIde('已接入 AnyBridge，重启后生效。', target, { mode: 'proxy', statusText: null });
     }
   } catch (e) {
     if (typeof addLog === 'function') addLog('err', `${platName} 接入失败: ` + e);
@@ -3411,7 +3411,7 @@ async function restoreAntigravityOfficialConfig() {
     antigravityRefreshConsole({ silent: true });
 
     if (typeof promptRestartIde === 'function') {
-      await promptRestartIde(`${platName} 已切回官方直连，重启客户端后生效。`, target, { mode: 'direct' });
+      await promptRestartIde('已切回官方直连，重启后生效。', target, { mode: 'direct', statusText: null });
     }
   } catch (e) {
     if (typeof addLog === 'function') addLog('err', `${platName} 切回官方失败: ` + e);
@@ -9052,9 +9052,10 @@ async function cursorEnableAction() {
     await cursorRefreshConsole({ silent: true });
 
     if (typeof promptRestartIde === 'function') {
-      await promptRestartIde('Cursor 接入服务已成功启动并配置！需重启 Cursor 才能生效。', 'cursor', {
+      await promptRestartIde('接入服务已启动，重启后生效。', 'cursor', {
         mode: 'proxy',
-        detail: '重启后请在右下角模型列表中选择配置好的自备模型。'
+        statusText: null,
+        detail: '重启后在右下角模型列表选择自备模型。'
       });
     } else {
       showCustomAlert(
@@ -9088,8 +9089,9 @@ async function cursorDisableAction() {
     await cursorRefreshConsole({ silent: true });
 
     if (typeof promptRestartIde === 'function') {
-      await promptRestartIde('Cursor 已还原为直连配置，需重启 Cursor 才能生效。', 'cursor', {
-        mode: 'direct'
+      await promptRestartIde('已还原为直连配置，重启后生效。', 'cursor', {
+        mode: 'direct',
+        statusText: null
       });
     } else {
       showCustomAlert('Cursor 已成功还原直连配置。重启 Cursor 后配置即可生效。', '还原完成', 'success');

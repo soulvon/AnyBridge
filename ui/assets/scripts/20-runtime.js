@@ -765,9 +765,9 @@ async function toggleProxy(mode = 'toggle') {
       const takeoverFresh = isTakeoverFresh(takeover);
       if (!takeoverFresh && takeoverWarmupElapsed(takeover)) {
         await promptRestartIde(
-          `${label} 已接入，但代理还没收到 ${label} 的模型请求 —— 通常是 ${label} 在写入代理配置后没有重启（macOS 必须 Cmd+Q 完全退出）。重启后配置才会生效。`,
+          `代理还没收到 ${label} 的模型请求，通常是写入配置后未重启（macOS 需 Cmd+Q 完全退出）。`,
           target,
-          { mode: 'proxy' },
+          { mode: 'proxy', statusText: null },
         );
         return;
       }
@@ -802,7 +802,7 @@ async function toggleProxy(mode = 'toggle') {
         showCustomAlert(warnings.join('\n'), '停止接入提示', 'warn');
       } else {
         addLog('ok', `${label} 已停止接入`);
-        await promptRestartIde(`${label} 已停止接入并恢复直连，重启 IDE 后生效。`, target, { mode: 'direct' });
+        await promptRestartIde('已恢复直连，重启后生效。', target, { mode: 'direct', statusText: null });
       }
       return;
     }
@@ -840,8 +840,9 @@ async function toggleProxy(mode = 'toggle') {
     addLog('ok', `${label} 已切换到 AnyBridge 本地代理`);
     if (injectWarn) addLog('warn', `${label} 卡片注入提示: ${injectWarn}`);
     if (cursorState && target === 'cursor') addLog('ok', `Cursor 状态已写入: ${cursorState}`);
-    await promptRestartIde(`${label} 已切到代理，本地代理已启动，重启 IDE 后生效。`, target, {
+    await promptRestartIde('已切到代理，重启后生效。', target, {
       mode: 'proxy',
+      statusText: null,
       detail: injectWarn
     });
   } catch (e) {
@@ -1015,22 +1016,34 @@ function promptRestartIde(leadText, targetOverride, options = {}) {
       return;
     }
 
+    const isDesktopApp = target === 'claude-desktop' || target === 'claude' || target === 'antigravity';
+    const appKind = isDesktopApp ? '客户端' : 'IDE';
+
     if (titleEl) titleEl.textContent = options.title || `重启 ${label} 以应用${mode === 'direct' ? '直连' : '代理'}`;
     if (leadEl) leadEl.textContent = lead;
-    if (statusEl) {
-      // statusText 传 null 表示调用方已把要点写进 lead，避免同一句话出现两遍
+
+    const statusBox = statusEl ? statusEl.closest('.ide-restart-status') : null;
+    if (statusBox) {
+      // options.statusText === null 时隐藏整个卡片与小圆点，避免留下空框
       if (options.statusText === null) {
-        statusEl.textContent = '';
-        statusEl.style.display = 'none';
+        statusBox.style.display = 'none';
+        if (statusEl) statusEl.textContent = '';
       } else {
-        statusEl.style.display = '';
-        statusEl.textContent = options.statusText || (mode === 'direct'
-          ? '已恢复直连配置，重启后 IDE 不再经过 AnyBridge。'
-          : '已写入 AnyBridge 代理配置，本地代理服务已启动。');
+        statusBox.style.display = '';
+        if (statusEl) {
+          statusEl.textContent = options.statusText || (mode === 'direct'
+            ? `已恢复直连配置，重启后 ${appKind} 不再经过 AnyBridge。`
+            : `已写入 AnyBridge 代理配置，本地代理服务已启动。`);
+        }
       }
     }
+
+    const warningTextEl = modal.querySelector('.modal-warning span:last-child');
+    if (warningTextEl) {
+      warningTextEl.innerHTML = `重启会<strong>强制关闭</strong> ${appKind}，请先保存所有未保存的工作。`;
+    }
     if (detailEl) {
-      detailEl.textContent = detail ? `提示：${detail}` : '';
+      detailEl.textContent = detail || '';
       detailEl.style.display = detail ? '' : 'none';
     }
     // 非代理场景隐藏代理专属的自动重启勾选项
