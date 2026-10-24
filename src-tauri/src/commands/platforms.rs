@@ -3377,13 +3377,61 @@ fn antigravity_config_dir() -> Option<PathBuf> {
 }
 
 fn patch_antigravity_hub_asar(asar_path: &std::path::Path) -> Result<(), String> {
+    use std::io::{Read, Seek, SeekFrom};
+
+    // ── 轻量预检：只读 header + languageServer.js 段（几 MB），
+    //    已打补丁时直接返回。原先每次接入都全量读几百 MB 的 asar 做幂等检查，
+    //    这是「一键接入 / 停止接入」点击后卡顿数秒的主要来源。
+    let mut f = fs::File::open(asar_path).map_err(|e| format!("读取 asar 失败: {e}"))?;
+    let mut head16 = [0u8; 16];
+    f.read_exact(&mut head16).map_err(|e| format!("读取 asar 头失败: {e}"))?;
+    let json_size = u32::from_le_bytes(head16[12..16].try_into().unwrap()) as usize;
+    if json_size == 0 || json_size > 64 * 1024 * 1024 {
+        return Err("asar header 大小异常".to_string());
+    }
+
+    let mut header_bytes = vec![0u8; 16 + json_size];
+    f.seek(SeekFrom::Start(0)).map_err(|e| e.to_string())?;
+    f.read_exact(&mut header_bytes).map_err(|e| format!("读取 asar header 失败: {e}"))?;
+    let header_str = std::str::from_utf8(&header_bytes[16..])
+        .map_err(|e| format!("解析 asar header utf8 失败: {e}"))?;
+    let header: Value =
+        serde_json::from_str(header_str).map_err(|e| format!("解析 asar header json 失败: {e}"))?;
+
+    let ls_probe = header
+        .pointer("/files/dist/files/languageServer.js")
+        .cloned()
+        .ok_or_else(|| "未在 asar 中找到 dist/languageServer.js 节点".to_string())?;
+    let offset: usize = ls_probe
+        .get("offset")
+        .and_then(|v| v.as_str())
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(0);
+    let ls_size: usize = ls_probe.get("size").and_then(|v| v.as_u64()).unwrap_or(0) as usize;
+    let declared_header_size = u32::from_le_bytes(head16[4..8].try_into().unwrap()) as usize;
+    let payload_start = super::antigravity_localization::asar_payload_start(declared_header_size);
+    if ls_size == 0 || ls_size > 256 * 1024 * 1024 {
+        return Err("languageServer.js 段大小异常".to_string());
+    }
+
+    // 只读 LS 段，检查注入标记
+    f.seek(SeekFrom::Start((payload_start + offset) as u64))
+        .map_err(|e| e.to_string())?;
+    let mut ls_buf = vec![0u8; ls_size];
+    f.read_exact(&mut ls_buf).map_err(|e| format!("读取 languageServer.js 失败: {e}"))?;
+    if std::str::from_utf8(&ls_buf)
+        .map(|c| c.contains("jetski.cloudCodeUrl"))
+        .unwrap_or(false)
+    {
+        // 已打补丁：无需重写 asar，直接返回（从秒级降到毫秒级）
+        return Ok(());
+    }
+    drop(f);
+
+    // ── 未打补丁（或旧版注入格式）→ 全量读文件走注入路径
     let bytes = fs::read(asar_path).map_err(|e| format!("读取 asar 失败: {e}"))?;
     if bytes.len() < 16 {
         return Err("asar 文件太小".to_string());
-    }
-    let json_size = u32::from_le_bytes(bytes[12..16].try_into().unwrap()) as usize;
-    if bytes.len() < 16 + json_size {
-        return Err("asar header 大小异常".to_string());
     }
     let header_str = std::str::from_utf8(&bytes[16..16 + json_size])
         .map_err(|e| format!("解析 asar header utf8 失败: {e}"))?;
