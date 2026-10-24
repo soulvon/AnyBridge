@@ -129,6 +129,42 @@ section('对称路径（接入↔还原 / apply↔restore 必须一致）');
 }
 
 // ─────────────────────────────────────────────────────────────
+// [3.6] 临时文件纪律：只允许放 tmp/，根目录与源码目录不允许
+// ─────────────────────────────────────────────────────────────
+section('临时文件纪律（只允许 tmp/）');
+{
+  // 根目录不允许 .tmp_* 的脚本/数据文件（诊断/构建脚本一律进 tmp/）。
+  // 例外：.tmp_*.log 运行时日志——若被存活进程锁定则物理上无法移动，
+  // 属历史遗留（新日志已固定写 tmp/tauri-run.log），随下次重启清理。
+  const strays = fs.readdirSync(root).filter(f => f.startsWith('.tmp_') && !f.endsWith('.log'));
+  ok('根目录无散落临时文件（脚本/数据）', strays.length === 0,
+    strays.length ? `违规: ${strays.join(', ')}（请移入 tmp/）` : '');
+  const strayLogs = fs.readdirSync(root).filter(f => f.startsWith('.tmp_') && f.endsWith('.log'));
+  if (strayLogs.length) {
+    console.log(`  ℹ 根目录遗留运行日志（被进程锁定，待清理）: ${strayLogs.join(', ')}`);
+  }
+
+  // 源码目录同样不允许
+  for (const d of ['src-tauri/src', 'ui', 'ui-src', 'scripts']) {
+    const full = path.join(root, d);
+    if (!fs.existsSync(full)) continue;
+    const bad = [];
+    const scan = (dir, depth) => {
+      if (depth > 4) return;
+      for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+        if (e.name.startsWith('.tmp_')) bad.push(path.join(dir, e.name).replace(root + path.sep, ''));
+        else if (e.isDirectory()) scan(path.join(dir, e.name), depth + 1);
+      }
+    };
+    scan(full, 0);
+    ok(`${d}/ 无散落临时文件`, bad.length === 0, bad.join(', '));
+  }
+
+  // tmp/ 目录存在（临时文件的唯一去处）
+  ok('tmp/ 目录存在', fs.existsSync(path.join(root, 'tmp')));
+}
+
+// ─────────────────────────────────────────────────────────────
 // [4] 关键判据回归（出过事故的点，源码级断言）
 // ─────────────────────────────────────────────────────────────
 section('关键判据（源码级回归断言）');

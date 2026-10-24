@@ -90,6 +90,14 @@
       "lesson": "『已安装』判定要能识别重置态；保活/重入时要能自动修复，而不是假定环境不变",
       "check": { "type": "source_contains", "file": "src-tauri/src/commands/app_localization.rs", "must_contain": "条件 3：languagepacks.json" },
       "severity": "high"
+    },
+    {
+      "id": "tmp-files-in-root",
+      "title": "临时文件散落根目录/源码目录",
+      "symptom": "根目录堆了 80 个 .tmp_* 脚本与日志，仓库可读性崩坏，且容易误提交",
+      "lesson": "诊断/构建临时脚本一律放 tmp/（gitignore 忽略）；运行日志固定写 tmp/tauri-run.log；检查脚本强制校验根目录与源码目录",
+      "check": { "type": "source_contains", "file": "scripts/check-key-features.mjs", "must_contain": "临时文件纪律" },
+      "severity": "low"
     }
   ]
 }
