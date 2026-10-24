@@ -34,7 +34,8 @@
     "tauri": "tauri",
     "tauri:dev": "npm run check:rust && tauri dev",
     "tauri:build": "npm run check:rust && node scripts/build/tauri_build.mjs",
-    "tauri:build:local": "npm run check:rust && node scripts/build/tauri_build.mjs --config src-tauri/tauri.local.conf.json"
+    "tauri:build:local": "npm run check:rust && node scripts/build/tauri_build.mjs --config src-tauri/tauri.local.conf.json",
+    "check:features": "node scripts/check-key-features.mjs"
   },
   "keywords": [
     "anybridge",

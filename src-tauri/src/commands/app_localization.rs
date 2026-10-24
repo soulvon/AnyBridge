@@ -493,9 +493,64 @@ fn compatible_lang_pack_dir(platform: &str) -> Option<PathBuf> {
     matched
 }
 
-/// 是否已安装与当前引擎兼容的 VS Code 官方简体中文语言包。
+/// 是否已安装**且实际生效**的 VS Code 官方简体中文语言包。
+///
+/// 「生效」必须同时满足三个条件，缺一即视为未安装（apply 会走修复流程）：
+/// 1. 扩展目录存在与引擎兼容的官方包目录（`compatible_lang_pack_dir`）
+/// 2. 该目录**不在** `.obsolete` 废弃列表里——VS Code 扩展扫描器直接跳过
+///    被标记的目录，"装了但被标记"等于没装（实测：Devin 重装后注册表重置、
+///    官方包被标记废弃，旧判定只看目录存在就跳过了修复，界面回退英文）
+/// 3. `languagepacks.json` 的 zh-cn 已注册到官方包 id——注册指向第三方残缺
+///    包时，引擎加载的词条极少，同样等于没装
 fn lang_pack_installed(platform: &str) -> bool {
-    compatible_lang_pack_dir(platform).is_some()
+    let Some(pack_dir) = compatible_lang_pack_dir(platform) else {
+        return false;
+    };
+    let Some(ext_dir) = ide_extensions_dir(platform) else {
+        return false;
+    };
+
+    // 条件 2：不在 .obsolete 废弃列表
+    let dir_name = pack_dir
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_default();
+    let obsolete_path = ext_dir.join(".obsolete");
+    if let Ok(raw) = fs::read_to_string(&obsolete_path) {
+        if let Ok(val) = serde_json::from_str::<serde_json::Value>(&raw) {
+            if let Some(map) = val.as_object() {
+                if map.keys().any(|k| k.starts_with(&dir_name)) {
+                    return false; // 被标记废弃 → 未生效
+                }
+            }
+        }
+    }
+
+    // 条件 3：languagepacks.json 已注册到官方包
+    if let Some(state_dir) = ide_state_dir(platform) {
+        let lp_path = state_dir.join("languagepacks.json");
+        let registered_ok = fs::read_to_string(&lp_path)
+            .ok()
+            .and_then(|raw| serde_json::from_str::<serde_json::Value>(&raw).ok())
+            .and_then(|v| v.get("zh-cn").cloned())
+            .and_then(|zh| zh.get("extensions").cloned())
+            .and_then(|e| e.as_array().cloned())
+            .map(|arr| {
+                arr.iter().any(|e| {
+                    e.get("extensionIdentifier")
+                        .and_then(|i| i.get("id"))
+                        .and_then(|id| id.as_str())
+                        .map(|id| id.eq_ignore_ascii_case(LANG_PACK_EXTENSION_ID))
+                        .unwrap_or(false)
+                })
+            })
+            .unwrap_or(false);
+        if !registered_ok {
+            return false; // 未注册或注册到第三方包 → 未生效
+        }
+    }
+
+    true
 }
 
 /// 原子写：同目录临时文件 + rename，避免写一半崩溃留下截断 HTML。
