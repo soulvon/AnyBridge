@@ -93,6 +93,20 @@
   - 未完成但不便提交的改动用 `git stash`，**不要长时间堆在工作区**
   - 改动量大时按模块分批提交，避免一次巨型提交难以回滚
 
+### 只提交该提交的（强制）
+
+- **`git add` 精确指定文件**，禁止 `git add -A` / `git add .` / `git commit -a`
+- 永不入库：`tmp/`、`node_modules/`、`src-tauri/target/`、`*.log`、`*.bak`、
+  `.env`（仅 `.env.example` 可入库）、`*.pem` / `*.key` / `*.pfx` / `*.p12`、
+  `*.tmp`、`.tmp_*`、`tmp_*`、编辑器/工具目录（`.codebuddy/`、`.vscode/`、`.idea/`）
+- `ui/index.html` 是 **Tauri 的 frontendDist**（dev 直接读取），属于**应入库**的构建产物；
+  `ui/index.html.baseline` 才是本地对比用，已被忽略
+- 检查脚本「提交卫生」段会验证四项：
+  1. 关键忽略规则确实生效（`git check-ignore`）
+  2. 已跟踪文件里无日志/临时/敏感/构建产物
+  3. 暂存区无非预期文件
+  4. 暂存内容无明文密钥（`sk-xxx` / `ghp_xxx` / `AKIA...`）
+
 ---
 
 ## 六、检查脚本覆盖项（当前 57 项）

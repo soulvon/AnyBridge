@@ -207,6 +207,75 @@ section('临时文件纪律（只允许 tmp/）');
 }
 
 // ─────────────────────────────────────────────────────────────
+// [3.7] 提交卫生：不该入库的东西必须被 gitignore 挡住
+// ─────────────────────────────────────────────────────────────
+section('提交卫生（不该提交的不提交）');
+{
+  // 3.7.1 关键忽略规则必须存在且真实生效（防规则被误删/失效）
+  const mustIgnore = [
+    ['tmp/', '临时文件目录'],
+    ['.codebuddy/', 'AI 工具配置目录'],
+    ['src-tauri/target/', 'Rust 构建产物'],
+    ['node_modules/', '依赖目录'],
+  ];
+  for (const [pat, label] of mustIgnore) {
+    let ignored = false;
+    try {
+      execSync(`git check-ignore -q "${pat}__probe__"`, { cwd: root, stdio: 'pipe' });
+      ignored = true;
+    } catch { ignored = false; }
+    ok(`${pat} 被 gitignore 覆盖（${label}）`, ignored, ignored ? '' : '规则缺失或失效');
+  }
+
+  // 3.7.2 已跟踪文件里不得有 日志/临时/敏感/构建产物
+  let tracked = '';
+  try {
+    tracked = execSync('git ls-files', { cwd: root, encoding: 'utf8', stdio: 'pipe' });
+  } catch {}
+  const files = tracked.split('\n').filter(Boolean);
+  const banned = files.filter(f => {
+    if (/^(tmp\/|node_modules\/|src-tauri\/target\/|cursor-core\/target\/)/.test(f)) return true;
+    if (/\.(log|bak|orig|swp|rej)$/i.test(f)) return true;
+    if (/^\.tmp_|^tmp_/.test(path.basename(f))) return true;
+    // 敏感文件（.env.example / .gitkeep 属正当模板，放行）
+    if (/(^|\/)\.env$/.test(f)) return true;
+    if (/\.(pem|key|pfx|p12)$/i.test(f) && !/\.gitkeep$/.test(f)) return true;
+    return false;
+  });
+  ok('已跟踪文件无日志/临时/敏感/构建产物', banned.length === 0,
+    banned.slice(0, 6).join(', ') + (banned.length > 6 ? ` …共 ${banned.length} 个` : ''));
+
+  // 3.7.3 暂存区（pre-commit 时）不得含不该提交的文件
+  let staged = '';
+  try {
+    staged = execSync('git diff --cached --name-only', { cwd: root, encoding: 'utf8', stdio: 'pipe' });
+  } catch {}
+  const stagedBad = staged.split('\n').filter(Boolean).filter(f => {
+    if (/^(tmp\/|node_modules\/|src-tauri\/target\/)/.test(f)) return true;
+    if (/\.(log|bak|orig|swp|rej)$/i.test(f)) return true;
+    if (/^\.tmp_|^tmp_/.test(path.basename(f))) return true;
+    if (/(^|\/)\.env$/.test(f)) return true;
+    if (/\.(pem|key|pfx|p12)$/i.test(f)) return true;
+    return false;
+  });
+  ok('暂存区无非预期文件', stagedBad.length === 0, stagedBad.join(', '));
+
+  // 3.7.4 敏感值扫一遍暂存区的源码改动（防止把 key/token 提交上去）
+  const secretRe = /(sk-[A-Za-z0-9]{20,}|ghp_[A-Za-z0-9]{20,}|AKIA[0-9A-Z]{16})/;
+  let leaked = [];
+  if (staged.trim()) {
+    for (const f of staged.split('\n').filter(Boolean)) {
+      if (!/\.(rs|js|mjs|ts|json|toml|html|md)$/i.test(f)) continue;
+      try {
+        const content = execSync(`git show :${JSON.stringify(f)}`, { cwd: root, encoding: 'utf8', stdio: 'pipe' });
+        if (secretRe.test(content)) leaked.push(f);
+      } catch {}
+    }
+  }
+  ok('暂存内容无明文密钥', leaked.length === 0, leaked.join(', '));
+}
+
+// ─────────────────────────────────────────────────────────────
 // [4] 关键判据回归（出过事故的点，源码级断言）
 // ─────────────────────────────────────────────────────────────
 section('关键判据（源码级回归断言）');

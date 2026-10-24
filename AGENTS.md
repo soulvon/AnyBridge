@@ -32,6 +32,10 @@ npm run check:features      # = node scripts/check-key-features.mjs
    **且** 注册表指向官方包。
 3. **临时文件只允许 `tmp/`**：诊断脚本、探针、日志、备份一律进 `tmp/`；
    根目录与源码目录禁止 `.tmp_*` / `*.log` / `*.bak` 等（检查会拦）。
+4. **只提交该提交的**：`git add` 精确指定文件，**不要用 `git add -A` / `git add .`**。
+   以下永不入库：`tmp/`、`node_modules/`、`*-target/`、`*.log`、`*.bak`、
+   `.env`（`.env.example` 除外）、`*.pem/*.key/*.pfx`、本地构建产物。
+   检查脚本会审「忽略规则是否生效 + 已跟踪文件 + 暂存区 + 明文密钥」四项。
 
 ## 3. 项目约定补充
 
