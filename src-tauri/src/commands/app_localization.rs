@@ -1740,14 +1740,25 @@ pub async fn get_app_localization_status(
     .map_err(|e| format!("状态查询任务失败: {}", e))?
 }
 
+/// 必须是 async + spawn_blocking：同步 command 在 Tauri 主线程执行，
+/// apply 里的语言包网络请求（60s 超时）/文件 IO 会把整个 UI 冻住
+/// （实测事故：点汉化后界面卡死，鼠标转圈）。
 #[tauri::command]
-pub fn apply_app_localization(platform: String) -> Result<LocalizationOperationResult, String> {
-    apply(&platform, true)
+pub async fn apply_app_localization(
+    platform: String,
+) -> Result<LocalizationOperationResult, String> {
+    tauri::async_runtime::spawn_blocking(move || apply(&platform, true))
+        .await
+        .map_err(|e| format!("汉化任务失败: {}", e))?
 }
 
 #[tauri::command]
-pub fn restore_app_localization(platform: String) -> Result<LocalizationOperationResult, String> {
-    restore(&platform, true)
+pub async fn restore_app_localization(
+    platform: String,
+) -> Result<LocalizationOperationResult, String> {
+    tauri::async_runtime::spawn_blocking(move || restore(&platform, true))
+        .await
+        .map_err(|e| format!("还原任务失败: {}", e))?
 }
 
 #[tauri::command]
