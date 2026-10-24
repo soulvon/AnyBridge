@@ -20,6 +20,19 @@
               <span class="platform-kite-ad-arrow" aria-hidden="true">↗</span>
             </button>
             <div class="platform-console-actions">
+              <!-- 一键接入：与「停止接入」成对。文案由 syncIdeProxyButton 维护
+                   （未接入="一键接入"，已接入="已接入"），点击走 toggleProxy 自动判定方向。
+                   注意：此前重构时这个按钮连同 data-proxy-action 绑定一起被删掉了，
+                   导致 Devin/Windsurf 控制台只剩「停止接入」，用户无法接入。 -->
+              <button class="btn-primary platform-proxy-primary" id="proxyBtn" data-action="toggleProxy" aria-label="一键接入">
+                <span class="proxy-btn-action">
+                  <svg class="proxy-btn-icon" width="14" height="14" viewBox="0 0 24 24" fill="none"
+                    stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" fill="currentColor" />
+                  </svg>
+                  <span class="proxy-btn-text">一键接入</span>
+                </span>
+              </button>
               <button type="button" class="btn-ghost secondary platform-lang-action-btn" id="proxyLangBtn" data-action="openProxyLangModal"
                 style="display: none; align-items: center; gap: 6px; padding: 4px 12px; border-radius: 8px; font-size: 12px; font-weight: 600; height: 30px; flex-shrink: 0;">
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink: 0;">
