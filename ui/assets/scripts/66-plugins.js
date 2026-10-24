@@ -563,9 +563,9 @@ function renderPluginCard(plugin) {
   const nameTd = document.createElement('td');
   nameTd.className = 'plugin-name-cell';
   const markText = manifest.short || (manifest.id === 'jimeng2api' ? 'JM' : (manifest.name || manifest.id).slice(0, 2).toUpperCase());
-  const accent = typeof manifest.accent === 'string' && manifest.accent.startsWith('#') ? manifest.accent : '#2563eb';
-  const markBg = `${accent}1f`;
-  const markColor = accent;
+  const hasBrandAccent = typeof manifest.accent === 'string' && manifest.accent.startsWith('#');
+  const markBg = hasBrandAccent ? `${manifest.accent}1f` : 'rgba(var(--accent-rgb), 0.12)';
+  const markColor = hasBrandAccent ? manifest.accent : 'var(--accent)';
   nameTd.innerHTML = `
     <div class="plugin-identity-cell">
       <span class="plugin-card-mark" style="background: ${markBg}; color: ${markColor}; font-weight: 800;">${markText}</span>

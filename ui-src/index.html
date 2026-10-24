@@ -1,11 +1,24 @@
 <!DOCTYPE html>
-<html lang="zh-CN" data-theme="light">
+<html lang="zh-CN" data-theme="light" data-scheme="light">
 
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>AnyBridge</title>
   <link rel="stylesheet" href="./assets/app.css">
+  <script>
+    (function () {
+      try {
+        var schemeOf = { light: 'light', dark: 'dark', claude: 'light', eva: 'dark' };
+        var saved = localStorage.getItem('byok-theme');
+        var id = schemeOf[saved] ? saved : 'light';
+        var root = document.documentElement;
+        root.setAttribute('data-theme', id);
+        root.setAttribute('data-scheme', schemeOf[id]);
+        root.style.colorScheme = schemeOf[id];
+      } catch (e) {}
+    })();
+  </script>
 </head>
 
 <body>
@@ -17,7 +30,23 @@
       <div class="topbar-left">
         <div class="brand">
           <span class="brand-logo-frame" aria-hidden="true">
-            <img class="brand-logo" src="./assets/anybridge-logo.svg" alt="">
+            <svg class="brand-logo" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="AnyBridge logo">
+              <defs>
+                <clipPath id="brandLogoClip">
+                  <path d="M1023.976411 534.211283c-0.899979-65.0985-54.398747-117.997282-119.497248-118.197277-41.499044-0.199995-78.198199 20.799521-99.797701 52.698786-4.499896 6.699846-13.299694 9.09979-20.499527 5.399876L398.590818 280.017139c-6.999839-3.499919-10.39976-11.69973-7.999816-19.199557 6.099859-19.199558 9.399783-39.599088 9.399783-60.7986C399.990785 88.721546 308.092902-1.676371 196.795466 0.023589 87.797977 1.72355 0 90.621502 0 200.018982c0 92.597867 62.898551 170.396075 148.196586 193.195549 6.999839 1.899956 11.799728 8.199811 11.799728 15.399646v253.994148c0 7.199834-4.799889 13.399691-11.599733 15.399646C81.198129 697.007533 31.999263 758.806109 31.999263 832.004423c0 88.597959 71.998341 160.296307 160.5963 159.996314 88.09797-0.299993 159.396328-71.798346 159.396328-159.996314v-1.399968c0-6.099859 3.399922-11.69973 8.799797-14.399668l425.990187-214.495059c6.999839-3.499919 15.499643-1.499965 20.099537 4.79989 21.799498 29.999309 57.198682 49.598857 97.197761 49.598857 66.798461-0.099998 120.897215-54.798738 119.897238-121.897192z m-282.59349 18.599572l-393.990924 198.395429c-7.299832 3.699915-16.299625 1.199972-20.699523-5.699868-20.799521-32.399254-52.998779-56.698694-90.897906-67.498445-6.899841-1.999954-11.799728-8.199811-11.799728-15.399646V412.314091c0-7.699823 5.499873-14.299671 12.9997-15.699638 42.299026-7.899818 79.898159-29.09933 108.297505-59.098638 4.799889-5.099883 12.499712-6.399853 18.799567-3.199927l377.291309 189.995623c11.69973 5.899864 11.69973 22.599479 0 28.499344z"/>
+                </clipPath>
+              </defs>
+              <g transform="translate(9 9) scale(.029296875)">
+                <g clip-path="url(#brandLogoClip)">
+                  <path d="M318 286 L830 544" stroke="#747D88" stroke-width="130" stroke-linecap="round" stroke-linejoin="round"/>
+                  <path d="M300 760 L830 544" stroke="#A3A9B1" stroke-width="130" stroke-linecap="round" stroke-linejoin="round"/>
+                  <path d="M192 372 L192 682" stroke="#68717B" stroke-width="130" stroke-linecap="round" stroke-linejoin="round"/>
+                  <circle cx="200" cy="200" r="200" fill="var(--logo-node-1, #2B9FD7)" stroke="#FFFFFF" stroke-opacity=".26" stroke-width="18"/>
+                  <circle cx="192" cy="832" r="160" fill="var(--logo-node-2, #52D4BD)" stroke="#FFFFFF" stroke-opacity=".26" stroke-width="18"/>
+                  <circle cx="904" cy="536" r="120" fill="var(--logo-node-3, #29B6C8)" stroke="#FFFFFF" stroke-opacity=".26" stroke-width="18"/>
+                </g>
+              </g>
+            </svg>
           </span>
           <div class="brand-name" aria-label="AnyBridge">
             <span>Any</span>
@@ -70,20 +99,110 @@
           <span id="globalProxyStatusText">代理未启动</span>
         </button>
         <div class="topbar-action-cluster" aria-label="快捷操作">
-          <button type="button" class="topbar-action-btn topbar-action-theme" id="topbarThemeToggle"
- title="切换主题" aria-label="切换主题" data-action="toggleTheme">
-            <svg class="topbar-theme-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1"
-              stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <circle cx="12" cy="12" r="4"></circle>
-              <path d="M12 2v2"></path><path d="M12 20v2"></path><path d="m4.93 4.93 1.41 1.41"></path>
-              <path d="m17.66 17.66 1.41 1.41"></path><path d="M2 12h2"></path><path d="M20 12h2"></path>
-              <path d="m6.34 17.66-1.41 1.41"></path><path d="m19.07 4.93-1.41 1.41"></path>
-            </svg>
-            <svg class="topbar-theme-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1"
-              stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <path d="M20.5 14.4A8.5 8.5 0 1 1 9.6 3.5 7 7 0 0 0 20.5 14.4Z"></path>
-            </svg>
-          </button>
+          <div class="topbar-theme-wrap">
+            <button type="button" class="topbar-action-btn topbar-action-theme" id="topbarThemeToggle"
+              title="切换主题" aria-label="切换主题" aria-haspopup="menu" aria-expanded="false"
+              data-action="toggleThemeMenu">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                stroke-linejoin="round" aria-hidden="true">
+                <path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.93 0 1.65-.75 1.65-1.69 0-.44-.18-.84-.44-1.13-.29-.29-.44-.65-.44-1.12a1.64 1.64 0 0 1 1.67-1.67h2c3.05 0 5.56-2.5 5.56-5.55C21.97 6.01 17.46 2 12 2Z"></path>
+                <circle cx="13.5" cy="6.5" r=".6" fill="currentColor"></circle>
+                <circle cx="17.5" cy="10.5" r=".6" fill="currentColor"></circle>
+                <circle cx="8.5" cy="7.5" r=".6" fill="currentColor"></circle>
+                <circle cx="6.5" cy="12.5" r=".6" fill="currentColor"></circle>
+              </svg>
+            </button>
+            <div class="theme-menu" id="themeMenu" role="menu" aria-label="主题" hidden>
+              <button type="button" class="theme-menu-item" role="menuitemradio" aria-checked="false"
+                data-theme-id="light" data-action="setTheme" data-arg="light">
+                <span class="theme-swatch theme-swatch-light" aria-hidden="true">
+                  <span class="sw-titlebar"><i></i><i></i><i></i></span>
+                  <span class="sw-body">
+                    <span class="sw-side"></span>
+                    <span class="sw-main">
+                      <span class="sw-accent"></span>
+                      <span class="sw-line"></span>
+                      <span class="sw-line is-short"></span>
+                    </span>
+                  </span>
+                </span>
+                <span class="theme-menu-text">
+                  <strong>工作台浅色</strong>
+                  <em>冷灰蓝</em>
+                </span>
+                <svg class="theme-menu-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"
+                  stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="m20 6-11 11-5-5"></path>
+                </svg>
+              </button>
+              <button type="button" class="theme-menu-item" role="menuitemradio" aria-checked="false"
+                data-theme-id="dark" data-action="setTheme" data-arg="dark">
+                <span class="theme-swatch theme-swatch-dark" aria-hidden="true">
+                  <span class="sw-titlebar"><i></i><i></i><i></i></span>
+                  <span class="sw-body">
+                    <span class="sw-side"></span>
+                    <span class="sw-main">
+                      <span class="sw-accent"></span>
+                      <span class="sw-line"></span>
+                      <span class="sw-line is-short"></span>
+                    </span>
+                  </span>
+                </span>
+                <span class="theme-menu-text">
+                  <strong>工作台深色</strong>
+                  <em>墨蓝</em>
+                </span>
+                <svg class="theme-menu-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"
+                  stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="m20 6-11 11-5-5"></path>
+                </svg>
+              </button>
+              <button type="button" class="theme-menu-item" role="menuitemradio" aria-checked="false"
+                data-theme-id="claude" data-action="setTheme" data-arg="claude">
+                <span class="theme-swatch theme-swatch-claude" aria-hidden="true">
+                  <span class="sw-titlebar"><i></i><i></i><i></i></span>
+                  <span class="sw-body">
+                    <span class="sw-side"></span>
+                    <span class="sw-main">
+                      <span class="sw-accent"></span>
+                      <span class="sw-line"></span>
+                      <span class="sw-line is-short"></span>
+                    </span>
+                  </span>
+                </span>
+                <span class="theme-menu-text">
+                  <strong>暖沙 Claude</strong>
+                  <em>米白暖橙</em>
+                </span>
+                <svg class="theme-menu-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"
+                  stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="m20 6-11 11-5-5"></path>
+                </svg>
+              </button>
+              <button type="button" class="theme-menu-item" role="menuitemradio" aria-checked="false"
+                data-theme-id="eva" data-action="setTheme" data-arg="eva">
+                <span class="theme-swatch theme-swatch-eva" aria-hidden="true">
+                  <span class="sw-titlebar"><i></i><i></i><i></i></span>
+                  <span class="sw-body">
+                    <span class="sw-side"></span>
+                    <span class="sw-main">
+                      <span class="sw-accent"></span>
+                      <span class="sw-line"></span>
+                      <span class="sw-line is-short"></span>
+                    </span>
+                  </span>
+                </span>
+                <span class="theme-menu-text">
+                  <strong>霓虹 EVA</strong>
+                  <em>深空薄荷</em>
+                </span>
+                <svg class="theme-menu-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"
+                  stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="m20 6-11 11-5-5"></path>
+                </svg>
+              </button>
+            </div>
+          </div>
           <a class="topbar-action-btn" href="https://github.com/soulvon/AnyBridge" target="_blank"
             rel="noreferrer" title="打开 GitHub" aria-label="打开 GitHub">
             <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">

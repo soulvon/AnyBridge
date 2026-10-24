@@ -77,28 +77,85 @@
 
           <!-- ═══ 1. 外观设置 ═══ -->
           <div class="settings-panel active" data-panel-id="appearance">
-            <div class="setting-row">
+            <div class="setting-row setting-row-theme">
               <div>
                 <div class="setting-label">主题</div>
-                <div class="setting-desc" id="theme-setting-desc">当前使用浅色主题</div>
+                <div class="setting-desc" id="theme-setting-desc">当前使用工作台浅色</div>
               </div>
-              <div class="setting-ctrl">
-                <button type="button" class="theme-setting-btn" id="settings-theme-toggle"
-                  aria-label="切换主题" data-action="toggleTheme">
-                  <span class="theme-setting-icon" aria-hidden="true">
-                    <svg class="theme-setting-sun" width="15" height="15" viewBox="0 0 24 24" fill="none"
-                      stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-                      <circle cx="12" cy="12" r="4"></circle>
-                      <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"></path>
-                    </svg>
-                    <svg class="theme-setting-moon" width="15" height="15" viewBox="0 0 24 24" fill="none"
-                      stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-                      <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"></path>
-                    </svg>
+            </div>
+            <div class="theme-card-grid" id="themeCardGrid" role="radiogroup" aria-label="主题">
+              <button type="button" class="theme-card" role="radio" aria-checked="false"
+                data-theme-id="light" data-action="setTheme" data-arg="light">
+                <span class="theme-card-preview theme-card-preview-light" aria-hidden="true">
+                  <span class="tcp-titlebar"><i></i><i></i><i></i></span>
+                  <span class="tcp-body">
+                    <span class="tcp-side"></span>
+                    <span class="tcp-main">
+                      <span class="tcp-accent"></span>
+                      <span class="tcp-line"></span>
+                      <span class="tcp-line is-short"></span>
+                    </span>
                   </span>
-                  <span id="theme-setting-label">切换至深色</span>
-                </button>
-              </div>
+                </span>
+                <span class="theme-card-meta">
+                  <strong>工作台浅色</strong>
+                  <em>冷灰蓝</em>
+                </span>
+              </button>
+              <button type="button" class="theme-card" role="radio" aria-checked="false"
+                data-theme-id="dark" data-action="setTheme" data-arg="dark">
+                <span class="theme-card-preview theme-card-preview-dark" aria-hidden="true">
+                  <span class="tcp-titlebar"><i></i><i></i><i></i></span>
+                  <span class="tcp-body">
+                    <span class="tcp-side"></span>
+                    <span class="tcp-main">
+                      <span class="tcp-accent"></span>
+                      <span class="tcp-line"></span>
+                      <span class="tcp-line is-short"></span>
+                    </span>
+                  </span>
+                </span>
+                <span class="theme-card-meta">
+                  <strong>工作台深色</strong>
+                  <em>墨蓝</em>
+                </span>
+              </button>
+              <button type="button" class="theme-card" role="radio" aria-checked="false"
+                data-theme-id="claude" data-action="setTheme" data-arg="claude">
+                <span class="theme-card-preview theme-card-preview-claude" aria-hidden="true">
+                  <span class="tcp-titlebar"><i></i><i></i><i></i></span>
+                  <span class="tcp-body">
+                    <span class="tcp-side"></span>
+                    <span class="tcp-main">
+                      <span class="tcp-accent"></span>
+                      <span class="tcp-line"></span>
+                      <span class="tcp-line is-short"></span>
+                    </span>
+                  </span>
+                </span>
+                <span class="theme-card-meta">
+                  <strong>暖沙 Claude</strong>
+                  <em>米白暖橙</em>
+                </span>
+              </button>
+              <button type="button" class="theme-card" role="radio" aria-checked="false"
+                data-theme-id="eva" data-action="setTheme" data-arg="eva">
+                <span class="theme-card-preview theme-card-preview-eva" aria-hidden="true">
+                  <span class="tcp-titlebar"><i></i><i></i><i></i></span>
+                  <span class="tcp-body">
+                    <span class="tcp-side"></span>
+                    <span class="tcp-main">
+                      <span class="tcp-accent"></span>
+                      <span class="tcp-line"></span>
+                      <span class="tcp-line is-short"></span>
+                    </span>
+                  </span>
+                </span>
+                <span class="theme-card-meta">
+                  <strong>霓虹 EVA</strong>
+                  <em>深空薄荷</em>
+                </span>
+              </button>
             </div>
             <div class="setting-row">
               <div>

@@ -216,7 +216,7 @@
 .plugin-control-bar .provider-bulk-btn.active {
   background: var(--accent-light);
   color: var(--accent);
-  border-color: rgba(18, 97, 166, 0.28);
+  border-color: rgba(var(--accent-rgb), 0.28);
 }
 
 .plugin-card-head {
@@ -872,7 +872,7 @@
   box-sizing: border-box;
 }
 
-[data-theme='dark'] .plugin-deploy-log {
+[data-scheme='dark'] .plugin-deploy-log {
   background: var(--bg-card, #1e293b);
   border-color: var(--border, #334155);
   color: var(--text-secondary, #cbd5e1);

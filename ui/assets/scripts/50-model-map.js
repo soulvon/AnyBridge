@@ -2797,10 +2797,10 @@ function buildSlotVisibilityRows() {
 
 function renderSlotStatusPill(row) {
   const styles = {
-    mapped: ['已映射', 'rgba(37,99,235,.10)', 'var(--accent)', 'rgba(37,99,235,.24)'],
+    mapped: ['已映射', 'rgba(var(--accent-rgb), .10)', 'var(--accent)', 'rgba(var(--accent-rgb), .24)'],
     'mapped-off': ['已映射', 'var(--bg-input)', 'var(--text-muted)', 'var(--border)'],
     official: ['官方', 'rgba(22,163,74,.10)', 'var(--success,#16a34a)', 'rgba(22,163,74,.24)'],
-    configured: ['已配置', 'rgba(13,148,136,.10)', 'var(--accent-secondary,#0d9488)', 'rgba(13,148,136,.24)'],
+    configured: ['已配置', 'rgba(var(--accent-secondary-rgb), .10)', 'var(--accent-secondary)', 'rgba(var(--accent-secondary-rgb), .24)'],
     unconfigured: ['未配置', 'rgba(217,119,6,.10)', 'var(--warn,#d97706)', 'rgba(217,119,6,.24)'],
   };
   const s = styles[row.status] || styles.unconfigured;

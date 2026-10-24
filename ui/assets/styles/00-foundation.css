@@ -42,7 +42,7 @@
   src: url('../../fonts/jbm-600.woff2') format('woff2');
 }
 
-/* ═══════ TOKENS — Precision Workbench Light ═══════ */
+/* ═══════ TOKENS — 浅色基线（默认主题，暖沙/工作台共用底盘） ═══════ */
 :root {
   --bg-primary: #EEF1F5;
   --bg-secondary: #E2E7EE;
@@ -58,6 +58,35 @@
   --accent-warm: #D97706;
   --accent-light: rgba(18, 97, 166, 0.1);
   --accent-glow: rgba(18, 97, 166, 0.2);
+  --accent-rgb: 18, 97, 166;
+  --accent-secondary-rgb: 14, 159, 139;
+  --accent-bright-rgb: 55, 199, 165;
+
+  --topbar-bg: linear-gradient(180deg, rgba(245, 248, 252, 0.98) 0%, rgba(235, 241, 248, 0.95) 100%);
+  --topbar-segment-bg: linear-gradient(180deg, rgba(250, 252, 255, 0.85), rgba(232, 239, 247, 0.7));
+  --topbar-border: rgba(var(--accent-rgb), 0.1);
+  --topbar-shadow: 0 1px 0 rgba(255, 255, 255, 0.6) inset, 0 8px 24px -24px rgba(17, 24, 39, 0.25);
+  --pill-running-bg: linear-gradient(135deg, #13B67D, #087D5D);
+  --pill-running-shadow: 0 10px 18px -13px rgba(8, 126, 93, 0.74);
+  --brand-frame-bg: linear-gradient(145deg, rgba(255, 255, 255, 0.94), rgba(235, 239, 244, 0.9));
+  --brand-frame-border: rgba(116, 128, 143, 0.22);
+  --logo-node-1: #2B9FD7;
+  --logo-node-2: #52D4BD;
+  --logo-node-3: #29B6C8;
+
+  --sidebar-bg: linear-gradient(180deg, rgba(255, 255, 255, 0.58), rgba(255, 255, 255, 0.16)), var(--bg-glass);
+  --sidebar-border: var(--border);
+  --sidebar-shadow: 1px 0 0 rgba(255, 255, 255, 0.52) inset;
+  --sidebar-icon-bg: #FFFFFF;
+  --sidebar-icon-border: rgba(17, 24, 39, 0.08);
+  --sidebar-icon-shadow: 0 1px 2px rgba(17, 24, 39, 0.06);
+  --sidebar-item-color: var(--text-secondary);
+  --sidebar-item-hover-bg: var(--bg-hover);
+  --sidebar-item-hover-color: var(--text-primary);
+  --sidebar-active-bg: var(--accent-light);
+  --sidebar-active-border: rgba(var(--accent-rgb), 0.18);
+  --sidebar-active-color: var(--accent);
+  --sidebar-active-shadow: var(--shadow-sm);
   --success: #11875D;
   --success-dim: rgba(17, 135, 93, 0.11);
   --danger: #D43D3D;
@@ -90,7 +119,7 @@
   --shadow-card-hover:
     0 1px 0 rgba(255, 255, 255, 0.95) inset,
     0 2px 4px rgba(17, 24, 39, 0.05),
-    0 10px 22px -6px rgba(18, 97, 166, 0.18);
+    0 10px 22px -6px rgba(var(--accent-rgb), 0.18);
 
   --font-sans: 'Inter', 'Microsoft YaHei UI', 'Microsoft YaHei', 'PingFang SC', 'Hiragino Sans GB', 'Noto Sans CJK SC', 'Source Han Sans SC', 'Segoe UI', sans-serif;
   --font-body: var(--font-sans);
@@ -108,8 +137,8 @@
   --duration-normal: 200ms;
 }
 
-/* ═══════ TOKENS — Precision Workbench Dark ═══════ */
-[data-theme="dark"] {
+/* ═══════ TOKENS — 深色基线（所有深色主题共用底盘） ═══════ */
+[data-scheme="dark"] {
   --bg-primary: #11171D;
   --bg-secondary: #1A232B;
   --bg-card: rgba(28, 36, 44, 0.96);
@@ -123,6 +152,33 @@
   --accent-secondary: #37C7A5;
   --accent-light: rgba(90, 176, 230, 0.16);
   --accent-glow: rgba(90, 176, 230, 0.28);
+  --accent-rgb: 90, 176, 230;
+  --accent-secondary-rgb: 55, 199, 165;
+  --accent-bright-rgb: 55, 199, 165;
+
+  --topbar-bg: linear-gradient(180deg, rgba(38, 48, 58, 0.98) 0%, rgba(28, 38, 47, 0.96) 100%);
+  --topbar-segment-bg: linear-gradient(180deg, rgba(35, 45, 55, 0.9), rgba(20, 30, 38, 0.9));
+  --topbar-border: rgba(120, 170, 210, 0.16);
+  --topbar-shadow: 0 1px 0 rgba(255, 255, 255, 0.06) inset, 0 10px 24px -22px rgba(0, 0, 0, 0.82);
+  --pill-running-bg: linear-gradient(135deg, #13B67D, #087D5D);
+  --pill-running-shadow: 0 10px 18px -13px rgba(8, 126, 93, 0.74);
+  --logo-node-1: #4FB8E8;
+  --logo-node-2: #6FE3CE;
+  --logo-node-3: #3FC9DA;
+
+  --sidebar-bg: linear-gradient(180deg, rgba(28, 38, 47, 0.98), rgba(21, 30, 38, 0.98)), #151E26;
+  --sidebar-border: rgba(255, 255, 255, 0.095);
+  --sidebar-shadow: 1px 0 0 rgba(255, 255, 255, 0.045) inset, 16px 0 34px -36px rgba(0, 0, 0, 0.72);
+  --sidebar-icon-bg: #FFFFFF;
+  --sidebar-icon-border: rgba(255, 255, 255, 0.12);
+  --sidebar-icon-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+  --sidebar-item-color: #B4C0CC;
+  --sidebar-item-hover-bg: rgba(var(--accent-rgb), 0.075);
+  --sidebar-item-hover-color: var(--text-primary);
+  --sidebar-active-bg: linear-gradient(135deg, rgba(var(--accent-rgb), 0.18), rgba(var(--accent-secondary-rgb), 0.10)), rgba(255, 255, 255, 0.035);
+  --sidebar-active-border: rgba(var(--accent-rgb), 0.36);
+  --sidebar-active-color: #9AD8FF;
+  --sidebar-active-shadow: 0 12px 26px -22px rgba(var(--accent-rgb), 0.72), 0 1px 0 rgba(255, 255, 255, 0.08) inset;
   --success: #48C78E;
   --success-dim: rgba(72, 199, 142, 0.14);
   --danger: #FF6B6B;
@@ -154,6 +210,163 @@
     0 1px 0 rgba(255, 255, 255, 0.06) inset,
     0 2px 4px rgba(0, 0, 0, 0.28),
     0 10px 22px -6px rgba(90, 176, 230, 0.20);
+}
+
+/* ═══════ TOKENS — 暖沙 Claude（浅色主题覆盖） ═══════ */
+[data-theme="claude"] {
+  --bg-primary: #F2EBE0;
+  --bg-secondary: #E8DFD0;
+  --bg-card: rgba(253, 250, 244, 0.95);
+  --bg-hero: linear-gradient(135deg, #FAF6EE 0%, #F2EADF 48%, #E9DFD0 100%);
+  --bg-glass: rgba(253, 250, 244, 0.8);
+  --bg-input: rgba(58, 46, 34, 0.055);
+  --bg-hover: rgba(58, 46, 34, 0.075);
+
+  --accent: #C15F3C;
+  --accent-hover: #A34B2B;
+  --accent-secondary: #6F8A5B;
+  --accent-warm: #C08A2E;
+  --accent-light: rgba(193, 95, 60, 0.11);
+  --accent-glow: rgba(193, 95, 60, 0.22);
+  --accent-rgb: 193, 95, 60;
+  --accent-secondary-rgb: 111, 138, 91;
+  --accent-bright-rgb: 222, 170, 100;
+
+  --topbar-bg: linear-gradient(180deg, rgba(243, 233, 218, 0.98) 0%, rgba(234, 222, 204, 0.96) 100%);
+  --topbar-segment-bg: linear-gradient(180deg, rgba(253, 250, 244, 0.85), rgba(240, 232, 219, 0.7));
+  --topbar-border: rgba(150, 92, 46, 0.24);
+  --topbar-shadow: 0 1px 0 rgba(255, 255, 255, 0.55) inset, 0 12px 26px -18px rgba(96, 62, 30, 0.38);
+  --pill-running-bg: linear-gradient(135deg, #E08A4F, #C15F3C);
+  --pill-running-shadow: 0 10px 18px -13px rgba(150, 74, 40, 0.74);
+  --brand-frame-bg: linear-gradient(145deg, rgba(255, 253, 248, 0.95), rgba(240, 232, 219, 0.92));
+  --brand-frame-border: rgba(140, 110, 80, 0.25);
+  --logo-node-1: #D97757;
+  --logo-node-2: #E3B23C;
+  --logo-node-3: #C15F3C;
+
+  --sidebar-bg: linear-gradient(180deg, #EBE1D2 0%, #E2D5C3 100%);
+  --sidebar-border: rgba(150, 92, 46, 0.20);
+  --sidebar-shadow: 1px 0 0 rgba(255, 255, 255, 0.5) inset;
+  --sidebar-icon-bg: #FAF6EE;
+  --sidebar-icon-border: rgba(140, 110, 80, 0.22);
+  --sidebar-icon-shadow: 0 1px 3px rgba(74, 55, 34, 0.10);
+  --sidebar-item-color: #524A3F;
+  --sidebar-item-hover-bg: rgba(193, 95, 60, 0.08);
+  --sidebar-item-hover-color: #2B2620;
+  --sidebar-active-bg: rgba(193, 95, 60, 0.12);
+  --sidebar-active-border: rgba(193, 95, 60, 0.28);
+  --sidebar-active-color: #C15F3C;
+  --sidebar-active-shadow: 0 1px 2px rgba(74, 55, 34, 0.08);
+  --success: #517F5D;
+  --success-dim: rgba(81, 127, 93, 0.12);
+  --danger: #B4463C;
+  --danger-dim: rgba(180, 70, 60, 0.11);
+  --warn: #B1771C;
+  --accent-warm-dim: rgba(192, 138, 46, 0.12);
+
+  --text-primary: #2B2620;
+  --text-secondary: #524A3F;
+  --text-muted: #857A6B;
+  --text-dim: #857A6B;
+  --text-inverse: #FFFFFF;
+  --button-on-solid: #FFFFFF;
+
+  --border: rgba(43, 38, 32, 0.10);
+  --border-strong: rgba(43, 38, 32, 0.20);
+  --table-th-bg: rgba(193, 95, 60, 0.06);
+
+  --shadow-sm:
+    0 1px 0 rgba(255, 255, 255, 0.8) inset,
+    0 1px 2px rgba(74, 55, 34, 0.07);
+  --shadow-md:
+    0 1px 0 rgba(255, 255, 255, 0.82) inset,
+    0 6px 16px rgba(74, 55, 34, 0.10),
+    0 1px 3px rgba(74, 55, 34, 0.07);
+  --shadow-card:
+    0 1px 0 rgba(255, 255, 255, 0.9) inset,
+    0 1px 2px rgba(74, 55, 34, 0.05),
+    0 6px 14px -4px rgba(74, 55, 34, 0.12);
+  --shadow-card-hover:
+    0 1px 0 rgba(255, 255, 255, 0.95) inset,
+    0 2px 4px rgba(74, 55, 34, 0.06),
+    0 10px 22px -6px rgba(193, 95, 60, 0.20);
+}
+
+/* ═══════ TOKENS — 霓虹 EVA（深色主题覆盖：深空曜黑 + 电光靛紫 + 赛博薄荷青翠点睛） ═══════ */
+[data-theme="eva"] {
+  --bg-primary: #090A0F;
+  --bg-secondary: #10121A;
+  --bg-card: rgba(17, 19, 27, 0.96);
+  --bg-hero: linear-gradient(135deg, #090A0F 0%, #10131F 52%, #0A0C13 100%);
+  --bg-glass: rgba(16, 18, 26, 0.88);
+  --bg-input: rgba(255, 255, 255, 0.055);
+  --bg-hover: rgba(255, 255, 255, 0.08);
+
+  --accent: #6366F1;
+  --accent-hover: #4F46E5;
+  --accent-secondary: #2DD4BF;
+  --accent-warm: #FFB020;
+  --accent-light: rgba(99, 102, 241, 0.15);
+  --accent-glow: rgba(99, 102, 241, 0.25);
+  --accent-rgb: 99, 102, 241;
+  --accent-secondary-rgb: 45, 212, 191;
+  --accent-bright-rgb: 52, 211, 153;
+
+  --topbar-bg: linear-gradient(180deg, rgba(16, 18, 25, 0.98) 0%, rgba(10, 11, 16, 0.96) 100%);
+  --topbar-segment-bg: linear-gradient(180deg, rgba(25, 28, 38, 0.9), rgba(16, 18, 25, 0.9));
+  --topbar-border: rgba(255, 255, 255, 0.08);
+  --topbar-shadow: 0 1px 0 rgba(255, 255, 255, 0.05) inset, 0 12px 26px -20px rgba(0, 0, 0, 0.85);
+  --pill-running-bg: linear-gradient(135deg, #2DD4BF, #059669);
+  --pill-running-shadow: 0 10px 18px -13px rgba(16, 185, 129, 0.74);
+  --logo-node-1: #9D7BFF;
+  --logo-node-2: #35D6E8;
+  --logo-node-3: #FF6B9D;
+
+  --sidebar-bg: linear-gradient(180deg, #07080C 0%, #0A0C11 100%);
+  --sidebar-border: rgba(255, 255, 255, 0.07);
+  --sidebar-shadow: 1px 0 0 rgba(255, 255, 255, 0.04) inset;
+  --sidebar-icon-bg: #F8F9FA;
+  --sidebar-icon-border: rgba(255, 255, 255, 0.14);
+  --sidebar-icon-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+  --sidebar-item-color: #828B9E;
+  --sidebar-item-hover-bg: rgba(99, 102, 241, 0.08);
+  --sidebar-item-hover-color: #FFFFFF;
+  --sidebar-active-bg: rgba(99, 102, 241, 0.16);
+  --sidebar-active-border: rgba(99, 102, 241, 0.38);
+  --sidebar-active-color: #FFFFFF;
+  --sidebar-active-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --success: #10B981;
+  --success-dim: rgba(16, 185, 129, 0.14);
+  --danger: #EF4444;
+  --danger-dim: rgba(239, 68, 68, 0.14);
+  --warn: #F59E0B;
+  --accent-warm-dim: rgba(245, 158, 11, 0.14);
+
+  --text-primary: #FFFFFF;
+  --text-secondary: #CBD5E1;
+  --text-muted: #828B9E;
+  --text-dim: #828B9E;
+  --text-inverse: #090A0F;
+  --button-on-solid: #FFFFFF;
+
+  --border: rgba(255, 255, 255, 0.09);
+  --border-strong: rgba(255, 255, 255, 0.18);
+  --table-th-bg: rgba(99, 102, 241, 0.08);
+
+  --shadow-sm:
+    0 1px 0 rgba(255, 255, 255, 0.04) inset,
+    0 1px 3px rgba(0, 0, 0, 0.45);
+  --shadow-md:
+    0 1px 0 rgba(255, 255, 255, 0.05) inset,
+    0 8px 20px rgba(0, 0, 0, 0.55);
+  --shadow-card:
+    0 1px 0 rgba(255, 255, 255, 0.04) inset,
+    0 1px 2px rgba(0, 0, 0, 0.4),
+    0 6px 14px -4px rgba(0, 0, 0, 0.65);
+  --shadow-card-hover:
+    0 1px 0 rgba(255, 255, 255, 0.06) inset,
+    0 2px 4px rgba(0, 0, 0, 0.45),
+    0 10px 24px -6px rgba(0, 0, 0, 0.7);
 }
 
 /* ═══════ SWITCH TOGGLE (开关样式) ═══════ */
@@ -319,8 +532,8 @@ samp {
   font-family: var(--font-mono);
 }
 
-[data-theme="dark"] body,
-html[data-theme="dark"] body {
+[data-scheme="dark"] body,
+html[data-scheme="dark"] body {
   color-scheme: dark;
 }
 

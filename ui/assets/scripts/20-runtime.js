@@ -1318,35 +1318,90 @@ function bindWindowControlHandlers() {
 }
 
 
-// ═══════ THEME TOGGLE ═══════
-function applyTheme(theme) {
-  document.documentElement.setAttribute('data-theme', theme);
-  const label = document.getElementById('theme-setting-label');
-  const desc = document.getElementById('theme-setting-desc');
-  const btn = document.getElementById('settings-theme-toggle');
-  const topbarBtn = document.getElementById('topbarThemeToggle');
-  const isDark = theme === 'dark';
-  if (label) label.textContent = isDark ? '切换至浅色' : '切换至深色';
-  if (desc) desc.textContent = isDark ? '当前使用深色主题' : '当前使用浅色主题';
-  if (btn) btn.title = isDark ? '切换至浅色主题' : '切换至深色主题';
-  if (topbarBtn) {
-    const nextLabel = isDark ? '切换至浅色主题' : '切换至深色主题';
-    topbarBtn.title = nextLabel;
-    topbarBtn.setAttribute('aria-label', nextLabel);
-  }
+// ═══════ THEME ═══════
+// data-scheme 决定明暗底盘（CSS 里 248 处组件特化依赖它），data-theme 只决定色板覆盖。
+const THEME_LIST = [
+  { id: 'light', scheme: 'light', label: '工作台浅色', desc: '当前使用工作台浅色' },
+  { id: 'dark', scheme: 'dark', label: '工作台深色', desc: '当前使用工作台深色' },
+  { id: 'claude', scheme: 'light', label: '暖沙 Claude', desc: '当前使用暖沙 Claude' },
+  { id: 'eva', scheme: 'dark', label: '霓虹 EVA', desc: '当前使用霓虹 EVA' },
+];
+const THEME_STORAGE_KEY = 'byok-theme';
+
+function themeMeta(id) {
+  return THEME_LIST.find(item => item.id === id) || THEME_LIST[0];
 }
-function toggleTheme() {
-  const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
-  const next = isDark ? 'light' : 'dark';
-  applyTheme(next);
+function currentThemeId() {
+  return themeMeta(document.documentElement.getAttribute('data-theme')).id;
+}
+function syncThemeUI(meta) {
+  const desc = document.getElementById('theme-setting-desc');
+  if (desc) desc.textContent = meta.desc;
+  const topbarBtn = document.getElementById('topbarThemeToggle');
+  if (topbarBtn) {
+    topbarBtn.title = '切换主题';
+    topbarBtn.setAttribute('aria-label', '切换主题');
+  }
+  document.querySelectorAll('.theme-menu-item, .theme-card').forEach(el => {
+    const active = el.getAttribute('data-theme-id') === meta.id;
+    el.classList.toggle('is-active', active);
+    el.setAttribute('aria-checked', active ? 'true' : 'false');
+  });
+}
+function applyTheme(theme) {
+  const meta = themeMeta(theme);
+  const root = document.documentElement;
+  root.setAttribute('data-theme', meta.id);
+  root.setAttribute('data-scheme', meta.scheme);
+  root.style.colorScheme = meta.scheme;
+  syncThemeUI(meta);
+}
+function setTheme(id) {
+  const prev = currentThemeId();
+  applyTheme(id);
   try {
-    localStorage.setItem('byok-theme', next);
+    localStorage.setItem(THEME_STORAGE_KEY, themeMeta(id).id);
   } catch (e) {
-    applyTheme(isDark ? 'dark' : 'light');
+    applyTheme(prev);
     addLog('err', '保存主题偏好失败: ' + e);
     if (typeof showCustomAlert === 'function') showCustomAlert(String(e), '保存失败', 'error');
+    return;
   }
+  closeThemeMenu();
 }
+function toggleTheme() {
+  // 兼容旧入口：在浅色系与深色系之间切换
+  setTheme(themeMeta(currentThemeId()).scheme === 'dark' ? 'light' : 'dark');
+}
+function openThemeMenu() {
+  const menu = document.getElementById('themeMenu');
+  const btn = document.getElementById('topbarThemeToggle');
+  if (!menu) return;
+  syncThemeUI(themeMeta(currentThemeId()));
+  menu.removeAttribute('hidden');
+  if (btn) btn.setAttribute('aria-expanded', 'true');
+}
+function closeThemeMenu() {
+  const menu = document.getElementById('themeMenu');
+  const btn = document.getElementById('topbarThemeToggle');
+  if (!menu || menu.hasAttribute('hidden')) return;
+  menu.setAttribute('hidden', '');
+  if (btn) btn.setAttribute('aria-expanded', 'false');
+}
+function toggleThemeMenu() {
+  const menu = document.getElementById('themeMenu');
+  if (!menu) return;
+  if (menu.hasAttribute('hidden')) openThemeMenu();
+  else closeThemeMenu();
+}
+document.addEventListener('click', (event) => {
+  const target = event.target;
+  if (target && target.closest && target.closest('.topbar-theme-wrap')) return;
+  closeThemeMenu();
+});
+document.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape') closeThemeMenu();
+});
 
 // ═══════ ACCESS GUIDE (replaces patch logic) ═══════
 async function openCertsDir() {
@@ -1629,6 +1684,10 @@ function setConfigToggleState(key, enabled) {
   g.bindWindowControlHandlers = bindWindowControlHandlers;
   g.applyTheme = applyTheme;
   g.toggleTheme = toggleTheme;
+  g.setTheme = setTheme;
+  g.currentThemeId = currentThemeId;
+  g.toggleThemeMenu = toggleThemeMenu;
+  g.closeThemeMenu = closeThemeMenu;
   g.openCertsDir = openCertsDir;
   g.openConfigDir = openConfigDir;
   g.generateCerts = generateCerts;

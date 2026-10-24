@@ -95,7 +95,7 @@
 }
 .provider-card:hover { box-shadow: var(--shadow-card-hover); transform: translateY(-2px); }
 .provider-card.selected {
-  border-color: rgba(18, 97, 166, 0.36);
+  border-color: rgba(var(--accent-rgb), 0.36);
   box-shadow: var(--shadow-card), 0 0 0 3px var(--accent-light);
 }
 
@@ -238,7 +238,7 @@
   display: none;
   width: 100%;
   padding: 5px;
-  border: 1px solid rgba(18, 97, 166, 0.18);
+  border: 1px solid rgba(var(--accent-rgb), 0.18);
   border-radius: 10px;
   background: var(--bg-card);
   box-shadow: var(--shadow-card-hover);
@@ -676,7 +676,7 @@
   font-size: 12px;
   line-height: 1.45;
 }
-[data-theme="dark"] .provider-import-notice {
+[data-scheme="dark"] .provider-import-notice {
   color: #fcd34d;
   border-color: rgba(251, 191, 36, 0.28);
   background: rgba(245, 158, 11, 0.15);
@@ -1131,15 +1131,15 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-[data-theme="dark"] .provider-import-results-panel,
-[data-theme="dark"] .provider-import-control {
+[data-scheme="dark"] .provider-import-results-panel,
+[data-scheme="dark"] .provider-import-control {
   background: rgba(26, 35, 43, 0.88);
   border-color: rgba(255, 255, 255, 0.10);
 }
-[data-theme="dark"] .provider-import-list {
+[data-scheme="dark"] .provider-import-list {
   background: rgba(17, 24, 31, 0.62);
 }
-[data-theme="dark"] .provider-import-scan-progress {
+[data-scheme="dark"] .provider-import-scan-progress {
   background: transparent;
   border-color: transparent;
 }
@@ -1172,7 +1172,7 @@
   background: var(--bg-input);
   color: var(--text-muted);
 }
-[data-theme="dark"] .provider-import-status-pill.warning {
+[data-scheme="dark"] .provider-import-status-pill.warning {
   color: #fcd34d;
   background: rgba(245,158,11,.15);
 }
@@ -1186,7 +1186,7 @@
   font-size: 12px;
   line-height: 1.45;
 }
-[data-theme="dark"] .provider-import-warning-text {
+[data-scheme="dark"] .provider-import-warning-text {
   color: #fcd34d;
 }
 .provider-import-footer {
@@ -1532,7 +1532,7 @@
   width: max-content;
   background: var(--accent-light);
   color: var(--accent);
-  border: 1px solid rgba(18, 97, 166, 0.18);
+  border: 1px solid rgba(var(--accent-rgb), 0.18);
   font-size: 10px;
   font-weight: 700;
 }
@@ -1766,14 +1766,14 @@
   overflow: hidden;
   background: #FFFFFF;
 }
-[data-theme="dark"] .model-item-icon {
+[data-scheme="dark"] .model-item-icon {
   background: #FFFFFF;
 }
 .model-item-icon.model-item-icon-image {
   border-radius: 6px;
   background: #FFFFFF;
 }
-[data-theme="dark"] .model-item-icon.model-item-icon-image {
+[data-scheme="dark"] .model-item-icon.model-item-icon-image {
   background: #FFFFFF;
 }
 .model-item-icon-image img {
@@ -1790,12 +1790,12 @@
 .model-item-icon-image .model-icon-image-dark {
   display: none;
 }
-html[data-theme="dark"] .model-item-icon-image .model-icon-has-dark,
-[data-theme="dark"] .model-item-icon-image .model-icon-has-dark {
+html[data-scheme="dark"] .model-item-icon-image .model-icon-has-dark,
+[data-scheme="dark"] .model-item-icon-image .model-icon-has-dark {
   display: block;
 }
-html[data-theme="dark"] .model-item-icon-image .model-icon-image-dark,
-[data-theme="dark"] .model-item-icon-image .model-icon-image-dark {
+html[data-scheme="dark"] .model-item-icon-image .model-icon-image-dark,
+[data-scheme="dark"] .model-item-icon-image .model-icon-image-dark {
   display: none;
 }
 .model-item-icon svg {
@@ -1808,7 +1808,7 @@ html[data-theme="dark"] .model-item-icon-image .model-icon-image-dark,
   border: 1px solid rgba(59, 130, 246, 0.15);
   box-sizing: border-box;
 }
-[data-theme="dark"] .model-item-icon.fallback {
+[data-scheme="dark"] .model-item-icon.fallback {
   background: #FFFFFF;
   color: #60a5fa;
   border-color: rgba(96, 165, 250, 0.22);
@@ -2065,7 +2065,7 @@ html[data-theme="dark"] .model-item-icon-image .model-icon-image-dark,
   background: rgba(239, 68, 68, 0.1);
 }
 
-[data-theme="dark"] .provider-list-icon-btn {
+[data-scheme="dark"] .provider-list-icon-btn {
   background: rgba(255, 255, 255, 0.05);
   border-color: rgba(255, 255, 255, 0.10);
   color: rgba(255, 255, 255, 0.85);
@@ -2073,15 +2073,15 @@ html[data-theme="dark"] .model-item-icon-image .model-icon-image-dark,
   -webkit-backdrop-filter: blur(10px) saturate(1.2);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
 }
-[data-theme="dark"] .provider-list-icon-btn.danger {
+[data-scheme="dark"] .provider-list-icon-btn.danger {
   color: var(--danger);
 }
-[data-theme="dark"] .provider-list-icon-btn:hover {
-  background: rgba(90, 176, 230, 0.12);
+[data-scheme="dark"] .provider-list-icon-btn:hover {
+  background: rgba(var(--accent-rgb), 0.12);
   color: var(--accent);
-  border-color: rgba(90, 176, 230, 0.35);
+  border-color: rgba(var(--accent-rgb), 0.35);
 }
-[data-theme="dark"] .provider-list-icon-btn.danger:hover {
+[data-scheme="dark"] .provider-list-icon-btn.danger:hover {
   background: rgba(239, 68, 68, 0.12);
   color: var(--danger);
   border-color: rgba(239, 68, 68, 0.35);
@@ -2151,7 +2151,7 @@ html[data-theme="dark"] .model-item-icon-image .model-icon-image-dark,
     var(--bg-card);
   overflow: hidden;
 }
-[data-theme="dark"] .model-map-control-bar {
+[data-scheme="dark"] .model-map-control-bar {
   background:
     linear-gradient(180deg, rgba(23, 29, 40, 0.92), rgba(16, 22, 32, 0.94)),
     var(--bg-card);
@@ -2275,10 +2275,10 @@ html[data-theme="dark"] .model-item-icon-image .model-icon-image-dark,
   margin: 0 auto;
 }
 .model-map-table tr.is-selected {
-  background: rgba(20, 184, 166, 0.08);
+  background: rgba(var(--accent-bright-rgb), 0.08);
 }
 .model-map-table tr.is-selected td {
-  border-color: rgba(20, 184, 166, 0.22);
+  border-color: rgba(var(--accent-bright-rgb), 0.22);
 }
 
 @media (max-width: 1120px) {
@@ -2542,9 +2542,9 @@ html[data-theme="dark"] .model-item-icon-image .model-icon-image-dark,
   max-width: 100%;
 }
 .tag-anthropic { background: rgba(212,165,116,0.12); color: #D4A574; }
-[data-theme="dark"] .tag-anthropic { color: #D4A574; }
+[data-scheme="dark"] .tag-anthropic { color: #D4A574; }
 .tag-openai { background: rgba(37,99,235,0.12); color: #2563EB; }
-[data-theme="dark"] .tag-openai { color: #60A5FA; }
+[data-scheme="dark"] .tag-openai { color: #60A5FA; }
 
 /* ═══════ PATCH LIST ═══════ */
 .patch-list { display: flex; flex-direction: column; gap: 10px; }

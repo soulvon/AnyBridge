@@ -30,10 +30,11 @@ async function init() {
   if (typeof initPlatformRailOrder === 'function') initPlatformRailOrder();
 
   try {
-
     const saved = localStorage.getItem('byok-theme');
-    if (saved) applyTheme(saved);
-  } catch {}
+    applyTheme(saved || currentThemeId());
+  } catch {
+    applyTheme(currentThemeId());
+  }
   if (typeof syncIdeRestartPromptSetting === 'function') syncIdeRestartPromptSetting();
 
   await loadAndFillConfig();
