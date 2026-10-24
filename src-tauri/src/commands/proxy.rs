@@ -1774,8 +1774,8 @@ fn run_proxy_preflight_inner(
         } else {
             "Windsurf"
         };
-        if !crate::commands::system::is_ide_running(target.clone())
-            && crate::commands::system::is_ide_running(other_target.into())
+        if !crate::commands::system::is_ide_running_sync(target.clone())
+            && crate::commands::system::is_ide_running_sync(other_target.into())
         {
             push_issue(
                 &mut issues,
@@ -1931,7 +1931,7 @@ fn run_proxy_preflight_inner(
         ),
     }
 
-    if crate::commands::system::is_ide_running(target.clone()) {
+    if crate::commands::system::is_ide_running_sync(target.clone()) {
         push_issue(
             &mut issues,
             "warn",

@@ -561,8 +561,18 @@ pub async fn get_antigravity_localization_status(
     .map_err(|e| format!("状态查询任务失败: {}", e))?
 }
 
+/// async + spawn_blocking：patch_hub_asar 是重文件 IO（读改写 asar 包），
+/// 同步 command 在 Tauri 主线程执行会冻结 UI。
 #[tauri::command]
-pub fn apply_antigravity_localization(
+pub async fn apply_antigravity_localization(
+    target: String,
+) -> Result<LocalizationOperationResult, String> {
+    tauri::async_runtime::spawn_blocking(move || apply_antigravity_localization_sync(target))
+        .await
+        .map_err(|e| format!("汉化任务执行失败: {e}"))?
+}
+
+fn apply_antigravity_localization_sync(
     target: String,
 ) -> Result<LocalizationOperationResult, String> {
     let is_ide = target == "antigravity-ide";
@@ -594,8 +604,17 @@ pub fn apply_antigravity_localization(
     })
 }
 
+/// async + spawn_blocking：restore_hub_asar / restore_ide_workbench 是重文件 IO。
 #[tauri::command]
-pub fn restore_antigravity_localization(
+pub async fn restore_antigravity_localization(
+    target: String,
+) -> Result<LocalizationOperationResult, String> {
+    tauri::async_runtime::spawn_blocking(move || restore_antigravity_localization_sync(target))
+        .await
+        .map_err(|e| format!("还原任务执行失败: {e}"))?
+}
+
+fn restore_antigravity_localization_sync(
     target: String,
 ) -> Result<LocalizationOperationResult, String> {
     let is_ide = target == "antigravity-ide";

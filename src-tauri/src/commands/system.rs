@@ -2038,7 +2038,7 @@ fn restart_ide_impl(target: String) -> Result<String, String> {
                     }
                 }
                 std::thread::sleep(std::time::Duration::from_millis(1000));
-                if !is_ide_running(t.clone()) {
+                if !is_ide_running_sync(t.clone()) {
                     break;
                 }
             }
@@ -2097,7 +2097,7 @@ fn restart_ide_impl(target: String) -> Result<String, String> {
                     .map(|out| String::from_utf8_lossy(&out.stdout).contains(image))
                     .unwrap_or(false)
             } else {
-                is_ide_running(t.clone())
+                is_ide_running_sync(t.clone())
             };
             if !running {
                 dead = true;
@@ -2277,7 +2277,7 @@ fn restart_ide_impl(target: String) -> Result<String, String> {
         let mut dead = false;
         for _ in 0..6 {
             std::thread::sleep(std::time::Duration::from_millis(500));
-            if !is_ide_running(t.clone()) {
+            if !is_ide_running_sync(t.clone()) {
                 dead = true;
                 break;
             }
@@ -2492,8 +2492,17 @@ fn find_ide_app_or_bin_path(target: &str) -> Option<std::path::PathBuf> {
     find_ide_bin(target)
 }
 
+/// async + spawn_blocking：内部 spawn PowerShell/pgrep 子进程（秒级），
+/// 同步 command 在主线程执行会阻塞 UI。
 #[tauri::command]
-pub fn is_ide_running(name: String) -> bool {
+pub async fn is_ide_running(name: String) -> bool {
+    tauri::async_runtime::spawn_blocking(move || is_ide_running_sync(name))
+        .await
+        .unwrap_or(false)
+}
+
+/// 同步实现：后端重启等待循环 / 诊断 / detect_target_ide 在同步上下文调用。
+pub(crate) fn is_ide_running_sync(name: String) -> bool {
     let n = if name == "auto" {
         detect_target_ide()
     } else {
@@ -2570,9 +2579,9 @@ pub fn is_ide_running(name: String) -> bool {
 
 #[tauri::command]
 pub fn detect_target_ide() -> String {
-    let windsurf_running = is_ide_running("windsurf".into());
-    let devin_running = is_ide_running("devin".into());
-    let cursor_running = is_ide_running("cursor".into());
+    let windsurf_running = is_ide_running_sync("windsurf".into());
+    let devin_running = is_ide_running_sync("devin".into());
+    let cursor_running = is_ide_running_sync("cursor".into());
 
     // 优先选择正在运行的 IDE
     if windsurf_running && !devin_running && !cursor_running {

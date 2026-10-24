@@ -494,9 +494,12 @@ pub fn restore_ide_config() -> Result<bool, String> {
 pub fn restore_ide_settings(target: String) -> Result<bool, String> {
     restore(&target)
 }
+/// async + spawn_blocking：status() 读 settings.json 并做进程探测，同步会阻塞 UI。
 #[tauri::command]
-pub fn get_ide_proxy_status(target: String) -> Result<IdeProxyStatus, String> {
-    status(&target)
+pub async fn get_ide_proxy_status(target: String) -> Result<IdeProxyStatus, String> {
+    tauri::async_runtime::spawn_blocking(move || status(&target))
+        .await
+        .map_err(|e| format!("状态查询任务执行失败: {e}"))?
 }
 
 #[cfg(test)]
