@@ -795,14 +795,21 @@ async function toggleProxy(mode = 'toggle') {
       if (report && report.ideConfig && !String(report.ideConfig).startsWith('ok')) warnings.push('IDE 配置: ' + report.ideConfig);
       if (report && report.workbenchInject && !String(report.workbenchInject).startsWith('ok')) warnings.push('卡片注入: ' + report.workbenchInject);
       if (report && report.cursorAuth && !String(report.cursorAuth).startsWith('ok')) warnings.push('Cursor 状态: ' + report.cursorAuth);
-      await refreshIdeProxyStatus(target);
-      setStatusPill(proxyRunning);
+      // 状态刷新是善后工作，不该挡在用户反馈（警告/重启确认）前面。
+      // 原顺序先 await 刷新（1-2 秒）才弹窗，点击后有明显卡顿感。
+      const refreshLater = () => {
+        refreshIdeProxyStatus(target)
+          .then(() => setStatusPill(proxyRunning))
+          .catch(() => {});
+      };
       if (warnings.length) {
         addLog('warn', `${label} 停止接入完成，但有提示: ${warnings.join('；')}`);
         showCustomAlert(warnings.join('\n'), '停止接入提示', 'warn');
+        refreshLater();
       } else {
         addLog('ok', `${label} 已停止接入`);
         await promptRestartIde('已恢复直连，重启后生效。', target, { mode: 'direct', statusText: null });
+        refreshLater();
       }
       return;
     }
@@ -829,8 +836,6 @@ async function toggleProxy(mode = 'toggle') {
 
     setProxyButtonBusyText('接入中...');
     const report = await invoke('switch_ide_to_proxy', { target });
-    await refreshIdeProxyStatus(target);
-    setStatusPill(proxyRunning);
     const injectWarn = report && report.workbenchInject && String(report.workbenchInject).startsWith('warn:')
       ? report.workbenchInject.replace(/^warn:\s*/, '')
       : '';
@@ -845,6 +850,9 @@ async function toggleProxy(mode = 'toggle') {
       statusText: null,
       detail: injectWarn
     });
+    // 弹窗响应后再刷新状态：刷新是善后工作，不该挡在重启确认前面
+    await refreshIdeProxyStatus(target);
+    setStatusPill(proxyRunning);
   } catch (e) {
     addLog('err', '平台代理切换失败: ' + e);
     showCustomAlert(String(e), '切换失败', 'error');
