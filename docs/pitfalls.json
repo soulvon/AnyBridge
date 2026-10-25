@@ -103,6 +103,14 @@
       "severity": "low"
     },
     {
+      "id": "fallback-masks-identity",
+      "title": "通用函数的兜底分支会掩盖调用方身份错误（兜底掩盖问题不允许）",
+      "symptom": "find_ide_exe('pi') 走 else 默认分支返回 Windsurf 路径，Pi/Hermes 页显示 Windsurf 的版本号 v1.110.1，数据错得悄无声息",
+      "lesson": "对未知输入必须显式拒绝（None/Error），禁止静默兜底到默认值。两类防线：①通用函数的默认分支只服务其文档明确支持的输入；②调用方（尤其对平台 id 列表循环调用的场景）必须先用白名单自证身份，再调通用函数。修复时配套单测钉死（gui_probe_returns_none_for_platforms_without_source）",
+      "check": { "type": "source_contains", "file": "src-tauri/src/commands/version_probe.rs", "must_contain": "白名单守卫" },
+      "severity": "high"
+    },
+    {
       "id": "read-failure-is-unknown",
       "title": "读失败 = 未知，绝不当「否」处理",
       "symptom": "来源 magpie LESSONS #8：IP 白名单文件读取失败被当「无白名单」处理 → 放行所有地址；reset 计数文件读不出被当「没花过」",
