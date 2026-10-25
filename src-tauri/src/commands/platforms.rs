@@ -7058,9 +7058,10 @@ pub struct PlatformUpdateInfo {
 
 #[tauri::command]
 pub async fn check_platform_update(platform: String) -> Result<PlatformUpdateInfo, String> {
-    // 两套体系都支持：
+    // 三套体系都支持：
     // - Platform enum 的 13 平台（CLI 探测 --version / GUI 读 product.json）
     // - ide_proxy 体系的 windsurf/devin/cursor（GUI 探测 product.json）
+    // - Agent 声明表新增的 agent（spec-only：CLI 探测 + 声明式安装证据）
     let (plat_id, npm_package, install_evidence) = match Platform::from_id(&platform) {
         Some(p) => (
             p.id().to_string(),
@@ -7075,7 +7076,15 @@ pub async fn check_platform_update(platform: String) -> Result<PlatformUpdateInf
                 .unwrap_or(false);
             (platform.clone(), None, evidence)
         }
-        None => return Err(format!("未知平台: {platform}")),
+        None => {
+            let spec = super::agent_spec::find(&platform)
+                .ok_or_else(|| format!("未知平台: {platform}"))?;
+            (
+                spec.id.to_string(),
+                spec.npm_package.map(|p| p.to_string()),
+                spec.detect_installed(),
+            )
+        }
     };
 
     let current = {
@@ -7128,12 +7137,24 @@ pub async fn check_platform_update(platform: String) -> Result<PlatformUpdateInf
 /// 的更新走官网下载，暂不在此实现。
 #[tauri::command]
 pub async fn update_platform_agent(platform: String) -> Result<PlatformUpdateInfo, String> {
-    let plat = Platform::from_id(&platform)
-        .ok_or_else(|| format!("{platform} 为 GUI 客户端，暂不支持在线更新（请从官网下载新版）"))?;
-    let plat_id = plat.id().to_string();
-    let npm_package = super::version_probe::cli_spec(plat.id())
-        .and_then(|s| s.npm_package.map(|p| p.to_string()))
-        .ok_or_else(|| format!("{} 暂不支持在线更新", plat.display_name()))?;
+    // 内置平台与声明表新增的 agent 都支持（有 npm 包即可更新）
+    let (plat_id, npm_package) = match Platform::from_id(&platform) {
+        Some(plat) => {
+            let pkg = super::version_probe::cli_spec(plat.id())
+                .and_then(|s| s.npm_package.map(|p| p.to_string()))
+                .ok_or_else(|| format!("{} 暂不支持在线更新", plat.display_name()))?;
+            (plat.id().to_string(), pkg)
+        }
+        None => {
+            let spec = super::agent_spec::find(&platform)
+                .ok_or_else(|| format!("{platform} 为 GUI 客户端，暂不支持在线更新（请从官网下载新版）"))?;
+            let pkg = spec
+                .npm_package
+                .map(|p| p.to_string())
+                .ok_or_else(|| format!("{} 暂不支持在线更新", spec.name))?;
+            (spec.id.to_string(), pkg)
+        }
+    };
 
     // 1. 查最新版本（async，主协程）
     let target_version = super::version_probe::npm_latest_version(&npm_package)

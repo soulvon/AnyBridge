@@ -554,6 +554,10 @@ async function refreshPlatforms(options = {}) {
     if (typeof refreshAllHeroVersions === 'function') {
       refreshAllHeroVersions();
     }
+    // 声明表新增的 agent → 追加到 rail（已有项完全不动）
+    if (typeof ensureRegistryRailItems === 'function') {
+      ensureRegistryRailItems().catch(() => {});
+    }
   } catch (e) {
     const grid = document.getElementById('platforms-grid');
     if (grid) {
@@ -9319,7 +9323,16 @@ function cursorInstallCert() { return cursorInstallCertAction(); }
 function cursorOpenStats() { return cursorOpenProxyLogs(); }
 
 function openPlatformPage(platformId) {
-  const targetPage = platformId === 'antigravity-ide' ? 'platform-antigravity' : `platform-${platformId}`;
+  // 声明表新增的 agent 没有内置页面 → 通用页（避免 navigateTo 打空）
+  const builtinPageId =
+    platformId === 'antigravity-ide' ? 'platform-antigravity' : `platform-${platformId}`;
+  if (!document.getElementById(`page-${builtinPageId}`) && !document.getElementById(builtinPageId)) {
+    if (typeof openGenericAgentPage === 'function') {
+      openGenericAgentPage(platformId);
+      return;
+    }
+  }
+  const targetPage = builtinPageId;
   navigateTo(targetPage);
   renderPlatformDetailStatuses();
   renderPlatformProviderOptions();
@@ -14050,10 +14063,17 @@ async function renderHeroVersion(platformId, elId) {
     if (!el.isConnected) return;
     if (el.dataset.versionSeq !== seq) return; // 已有更新的请求，丢弃本次结果
     if (el.dataset.versionTarget !== platformId) return;
-    // 静默策略（用户指定）：只在**有确定版本**时展示；未安装 / 版本未知 /
-    // 探测失败一律留空，不占位、不打扰。诊断信息只进日志面板。
+    // 静默策略：有版本才展示；版本未知/探测失败留空不打扰。
+    // 唯一例外：**未安装**时给一个轻量「安装」链接（一行小字，可复制安装命令）。
     if (!info || !info.current_version) {
-      el.innerHTML = '';
+      if (info && !info.installed) {
+        el.innerHTML =
+          '<button type="button" class="version-install-btn" data-action="installPlatformAgent" data-arg="' +
+          platformId +
+          '">安装</button>';
+      } else {
+        el.innerHTML = '';
+      }
       return;
     }
     if (info.has_update && info.latest_version) {
@@ -14083,6 +14103,42 @@ async function renderHeroVersion(platformId, elId) {
 }
 
 /**
+ * 安装引导（magpie 克制原则：不代跑安装，只复制可执行命令）。
+ * CLI 平台给 npm install -g <pkg>；GUI 客户端给官方下载页。
+ */
+async function installPlatformAgent(platform) {
+  if (!invoke && !(typeof bindTauriBridge === 'function' && bindTauriBridge())) {
+    showCustomAlert('Tauri 通道未就绪，请重启 AnyBridge 后重试。', '安装', 'error');
+    return;
+  }
+  try {
+    const guide = await invoke('get_platform_install_guide', { platform });
+    const target = guide.command || guide.official_url;
+    if (!target) {
+      showCustomAlert('暂无可用安装方式。', '安装', 'info');
+      return;
+    }
+    let tip = guide.command
+      ? '已复制安装命令：' + guide.command
+      : '已复制官方下载地址：' + guide.official_url;
+    if (guide.node_hint) {
+      tip += '（未检测到 Node，请先执行：' + guide.node_hint + '）';
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      await navigator.clipboard.writeText(target);
+    }
+    if (typeof showBottomToast === 'function') {
+      showBottomToast(tip, 'success', { duration: 6000 });
+    } else {
+      showCustomAlert(tip, '安装', 'info');
+    }
+    if (typeof addLog === 'function') addLog('info', tip);
+  } catch (e) {
+    showCustomAlert(String(e?.message || e), '安装', 'error');
+  }
+}
+
+/**
  * 一键更新平台 CLI（走官方 npm 命令 + 更新后验证，后端 magpie 模式）。
  */
 async function updatePlatformAgentAction(platform) {
@@ -14105,5 +14161,146 @@ async function updatePlatformAgentAction(platform) {
     const btn = document.querySelector('[data-action="updatePlatformAgentAction"][data-arg="' + platform + '"]');
     const lineEl = btn ? btn.closest('.platform-version-line') : null;
     if (lineEl && lineEl.id) renderHeroVersion(platform, lineEl.id);
+  }
+}
+
+
+// ─── 声明式 agent：rail 追加 + 通用页渲染 ───
+const _agentRegistryCache = { at: 0, list: [] };
+
+async function loadAgentRegistry(force = false) {
+  const now = Date.now();
+  if (!force && _agentRegistryCache.list.length && now - _agentRegistryCache.at < 30000) {
+    return _agentRegistryCache.list;
+  }
+  if (!invoke && !(typeof bindTauriBridge === 'function' && bindTauriBridge())) return [];
+  try {
+    const list = (await invoke('get_agent_registry')) || [];
+    _agentRegistryCache.list = list;
+    _agentRegistryCache.at = now;
+    return list;
+  } catch (e) {
+    if (typeof addLog === 'function') addLog('warn', '读取 Agent 声明表失败: ' + String(e?.message || e));
+    return [];
+  }
+}
+
+function _agentInitial(name) {
+  const t = String(name || '?').trim();
+  return t ? t.charAt(0).toUpperCase() : '?';
+}
+
+/**
+ * 把声明表中「尚无 rail 项」的 agent 追加到左侧导航末尾。
+ * 已有 16 项完全不动（顺序/行为/图标全保留），只做增量。
+ */
+async function ensureRegistryRailItems() {
+  const rail = document.querySelector('.platform-rail');
+  if (!rail) return;
+  const list = await loadAgentRegistry();
+  if (!list.length) return;
+  const known = new Set(
+    Array.from(rail.querySelectorAll('.platform-rail-item[data-platform-rail]')).map(
+      (el) => el.dataset.platformRail
+    )
+  );
+  let added = 0;
+  for (const entry of list) {
+    if (!entry || !entry.id || known.has(entry.id)) continue;
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'platform-rail-item';
+    btn.dataset.platformRail = entry.id;
+    btn.draggable = true;
+    btn.dataset.action = 'openPlatformPage';
+    btn.dataset.arg = entry.id;
+    const label = document.createElement('span');
+    label.className = 'platform-rail-label';
+    label.textContent = entry.name || entry.id;
+    const initial = document.createElement('span');
+    initial.className = 'platform-rail-initial';
+    initial.textContent = _agentInitial(entry.name || entry.id);
+    const iconWrap = document.createElement('span');
+    iconWrap.className = 'platform-rail-icon';
+    iconWrap.setAttribute('aria-hidden', 'true');
+    iconWrap.appendChild(initial);
+    const handle = document.createElement('span');
+    handle.className = 'platform-rail-handle';
+    handle.draggable = true;
+    handle.setAttribute('aria-hidden', 'true');
+    btn.appendChild(handle);
+    btn.appendChild(iconWrap);
+    btn.appendChild(label);
+    rail.appendChild(btn);
+    known.add(entry.id);
+    added++;
+  }
+  if (added && typeof addLog === 'function') addLog('info', 'Agent 声明表新增 ' + added + ' 个入口');
+}
+
+/** 通用页：填 Hero + 配置路径，渲染版本行 */
+async function openGenericAgentPage(platformId) {
+  const list = await loadAgentRegistry();
+  const entry = list.find((e) => e.id === platformId);
+  if (!entry) {
+    showCustomAlert('未在 Agent 声明表中找到: ' + platformId, '未知 Agent', 'error');
+    return;
+  }
+  const title = document.getElementById('generic-agent-title');
+  const initial = document.getElementById('generic-agent-initial');
+  const vendor = document.getElementById('generic-agent-vendor');
+  const pathInput = document.getElementById('generic-agent-config-path');
+  const note = document.getElementById('generic-agent-note');
+  if (title) title.textContent = entry.name || entry.id;
+  if (initial) initial.textContent = _agentInitial(entry.name || entry.id);
+  if (vendor) vendor.textContent = entry.vendor || '声明式接入';
+  if (pathInput) {
+    pathInput.value = entry.config_path || entry.config_dir || '';
+    pathInput.title = pathInput.value;
+  }
+  if (note) {
+    note.textContent = entry.installed
+      ? '该 agent 由 Agent 声明表注册；配置路径与版本由声明驱动。'
+      : '未检测到安装证据。安装后回到本页，点左侧「刷新检测」即可点亮。';
+  }
+  navigateTo('platform-generic');
+  setPlatformRailActive(platformId);
+  globalThis._currentGenericAgent = platformId;
+  renderHeroVersion(platformId, 'generic-agent-version');
+}
+
+/** 通用页「查看配置」：只读展示声明文件内容 */
+async function openGenericAgentConfig() {
+  const platformId = globalThis._currentGenericAgent;
+  if (!platformId) return;
+  if (!invoke && !(typeof bindTauriBridge === 'function' && bindTauriBridge())) return;
+  try {
+    const text = await invoke('read_agent_config_file', { platform: platformId });
+    const clipped = text.length > 4000 ? text.slice(0, 4000) + '\n…（已截断）' : text;
+    showCustomAlert(clipped, platformId + ' 配置（只读）', 'info');
+  } catch (e) {
+    showCustomAlert(String(e?.message || e), '读取配置失败', 'error');
+  }
+}
+
+// data-action 分发走 window[name]，追加在 IIFE 外的函数需显式导出
+globalThis.ensureRegistryRailItems = ensureRegistryRailItems;
+globalThis.openGenericAgentPage = openGenericAgentPage;
+globalThis.openGenericAgentConfig = openGenericAgentConfig;
+globalThis.loadAgentRegistry = loadAgentRegistry;
+
+// 首屏也追加一次（不依赖用户点「刷新检测」；延迟等 Tauri 通道就绪）
+if (typeof document !== 'undefined') {
+  const bootRegistryRail = () => {
+    setTimeout(() => {
+      try {
+        if (typeof ensureRegistryRailItems === 'function') ensureRegistryRailItems().catch(() => {});
+      } catch (_) {}
+    }, 900);
+  };
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', bootRegistryRail);
+  } else {
+    bootRegistryRail();
   }
 }

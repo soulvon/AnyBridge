@@ -12070,6 +12070,27 @@ html[data-scheme="dark"] .endpoint-brand-icon-dark,
 }
 .platform-version-line .version-arrow { color: var(--text-muted); }
 .platform-version-line .version-state.ok { color: var(--success, #10b981); font-weight: 650; }
+/* 未安装时的「安装」链接：与版本行同字号，克制不抢眼 */
+.platform-version-line .version-install-btn {
+  display: inline-flex;
+  align-items: center;
+  height: 22px;
+  padding: 0 9px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 650;
+  cursor: pointer;
+  transition: all 120ms ease;
+}
+.platform-version-line .version-install-btn:hover {
+  color: var(--accent);
+  border-color: rgba(43, 161, 143, 0.45);
+  background: rgba(43, 161, 143, 0.08);
+}
 .platform-version-line .version-state.muted { color: var(--text-muted); }
 .platform-version-line .version-update-btn {
   display: inline-flex; align-items: center; height: 22px; padding: 0 10px;
@@ -12080,4 +12101,19 @@ html[data-scheme="dark"] .endpoint-brand-icon-dark,
 }
 .platform-version-line .version-update-btn:hover {
   background: rgba(43, 161, 143, 0.2); border-color: rgba(43, 161, 143, 0.55);
+}
+
+/* 声明式 agent 无图标时的首字母徽标（与既有 rail 图标同尺寸） */
+.platform-rail-initial {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  background: rgba(43, 161, 143, 0.12);
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1;
 }

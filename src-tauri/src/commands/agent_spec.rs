@@ -134,16 +134,14 @@ impl AgentSpec {
         }
     }
 
-    /// 安装证据三选一（借鉴 magpie `Detected()`）：
-    /// 配置目录存在 / 配置文件存在 / CLI 可执行文件命中。
+    /// 安装证据（借鉴 magpie `Detected()`，但**文件优先**）：
+    /// ① 配置文件存在 → 已安装
+    /// ② CLI 可执行文件命中 → 已安装
+    /// ③ 只有「无 config_file（目录型 GUI 客户端）」才用配置目录存在作证据
+    ///
+    /// 为什么文件优先：配置目录可能被多个工具共用（如 `~/.gemini` 同时是
+    /// Antigravity 的目录），仅凭目录存在会把未安装的工具误判为已安装。
     pub fn detect_installed(&self) -> bool {
-        if self
-            .resolve_config_dir()
-            .map(|d| d.exists())
-            .unwrap_or(false)
-        {
-            return true;
-        }
         if self
             .resolve_config_path()
             .map(|p| p.exists())
@@ -155,6 +153,15 @@ impl AgentSpec {
             if super::version_probe::find_tool(bin).is_some() {
                 return true;
             }
+        }
+        let dir_only = matches!(self.config_file, FileSource::Name(""));
+        if dir_only
+            && self
+                .resolve_config_dir()
+                .map(|d| d.exists())
+                .unwrap_or(false)
+        {
+            return true;
         }
         false
     }
@@ -342,6 +349,21 @@ pub static AGENTS: &[AgentSpec] = &[
         npm_package: None,
         official_url: None,
     },
+    // ── 声明式扩展的第一个实例：新增 agent 只需下面这一个条目 ──
+    AgentSpec {
+        id: "gemini-cli",
+        name: "Gemini CLI",
+        vendor: "Google",
+        api_format: "openai",
+        family: Family::JsonConfig,
+        // 注意：~/.gemini 也会被 Antigravity 占用，所以证据以
+        // settings.json 与 gemini 可执行为准（detect_installed 文件优先）
+        config_dir: PathSource::Template("~/.gemini"),
+        config_file: FileSource::Name("settings.json"),
+        bin: Some("gemini"),
+        npm_package: Some("@google/gemini-cli"),
+        official_url: Some("https://github.com/google-gemini/gemini-cli"),
+    },
     AgentSpec {
         id: "deepseek-harness",
         name: "DeepSeek Harness",
@@ -420,9 +442,9 @@ pub fn validate_registry() -> Result<(), String> {
     Ok(())
 }
 
-/// 供前端/日志使用的摘要（未来动态页面渲染的数据源）。
+/// 前端 rail / 通用页的数据源：声明表 + 实时探测结果（只读）。
 #[derive(Serialize)]
-pub struct AgentSummary {
+pub struct AgentRegistryEntry {
     pub id: String,
     pub name: String,
     pub vendor: String,
@@ -430,21 +452,85 @@ pub struct AgentSummary {
     pub has_cli: bool,
     pub npm_package: Option<String>,
     pub official_url: Option<String>,
+    /// 安装证据（配置目录/配置/CLI 任一命中）
+    pub installed: bool,
+    /// 解析后的配置目录（展示用，解析失败为空串）
+    pub config_dir: String,
+    /// 解析后的配置文件路径（展示用）
+    pub config_path: String,
+    /// 是否已有内置页面（false = 前端用通用页渲染）
+    pub has_page: bool,
 }
 
-pub fn list_summaries() -> Vec<AgentSummary> {
+/// 已有内置页面的 agent（与 ui-src/partials/pages 对应）。
+/// 新增 agent 未列在这里 → 前端自动用通用页。
+const BUILTIN_PAGES: &[&str] = &[
+    "antigravity",
+    "antigravity-ide",
+    "claude-code",
+    "claude-desktop",
+    "codex",
+    "codebuddy",
+    "grok",
+    "opencode",
+    "workbuddy",
+    "zcode",
+    "pi",
+    "hermes",
+    "deepseek-harness",
+];
+
+pub fn list_registry() -> Vec<AgentRegistryEntry> {
     AGENTS
         .iter()
-        .map(|s| AgentSummary {
-            id: s.id.to_string(),
-            name: s.name.to_string(),
-            vendor: s.vendor.to_string(),
-            family: s.family.as_str().to_string(),
-            has_cli: s.bin.is_some(),
-            npm_package: s.npm_package.map(|p| p.to_string()),
-            official_url: s.official_url.map(|u| u.to_string()),
+        .map(|s| {
+            let config_dir = s
+                .resolve_config_dir()
+                .map(|p| p.to_string_lossy().to_string())
+                .unwrap_or_default();
+            let config_path = s
+                .resolve_config_path()
+                .map(|p| p.to_string_lossy().to_string())
+                .unwrap_or_default();
+            let installed = s.detect_installed();
+            AgentRegistryEntry {
+                id: s.id.to_string(),
+                name: s.name.to_string(),
+                vendor: s.vendor.to_string(),
+                family: s.family.as_str().to_string(),
+                has_cli: s.bin.is_some(),
+                npm_package: s.npm_package.map(|p| p.to_string()),
+                official_url: s.official_url.map(|u| u.to_string()),
+                installed,
+                config_dir,
+                config_path,
+                has_page: BUILTIN_PAGES.contains(&s.id),
+            }
         })
         .collect()
+}
+
+/// 只读配置内容（spec-only 平台用；内置平台仍走各自的读取逻辑）。
+pub fn read_declared_config(platform_id: &str) -> Result<String, String> {
+    let spec = find(platform_id).ok_or_else(|| format!("未声明的 agent: {platform_id}"))?;
+    let path = spec
+        .resolve_config_path()
+        .ok_or_else(|| "无法解析配置文件路径".to_string())?;
+    std::fs::read_to_string(&path)
+        .map_err(|e| format!("读取 {} 失败: {e}", path.to_string_lossy()))
+}
+
+// ─── Tauri 命令（前端 rail / 通用页） ───
+
+#[tauri::command]
+pub fn get_agent_registry() -> Vec<AgentRegistryEntry> {
+    list_registry()
+}
+
+/// 只读配置文件内容（通用页「查看配置」用）。
+#[tauri::command]
+pub fn read_agent_config_file(platform: String) -> Result<String, String> {
+    read_declared_config(&platform)
 }
 
 #[cfg(test)]
@@ -464,6 +550,18 @@ mod tests {
     fn rejects_unresolvable_template() {
         assert!(resolve_path_template("relative/path").is_none());
         assert!(resolve_path_template("%__ANYBRIDGE_NOT_SET__%/x").is_none());
+    }
+
+    /// 本机诊断：打印注册表（cargo test --lib debug_registry -- --ignored --nocapture）
+    #[test]
+    #[ignore]
+    fn debug_registry() {
+        for e in list_registry() {
+            println!(
+                "{} | {} | installed={} | has_page={} | {}",
+                e.id, e.name, e.installed, e.has_page, e.config_path
+            );
+        }
     }
 
     /// 注册表必须合法（社区 PR 的第一道门）
