@@ -1590,6 +1590,38 @@ function showProviderEditorTestToast(message, type = 'info', options = {}) {
   }
 }
 
+// ─── 测试结果展示位（R19/T2 的 #providerEditorTestResult）────────
+const PROVIDER_TEST_RESULT_ICONS = {
+  success: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>',
+  error: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="15" y1="9" x2="9" y2="15"></line><line x1="9" y1="9" x2="15" y2="15"></line></svg>'
+};
+
+// 结论写入结果区并持续保留，直到下次测试覆盖或离开页面清除；文案复用 toast 结论原文
+function setProviderEditorTestResult(type, message) {
+  const box = document.getElementById('providerEditorTestResult');
+  if (!box) return;
+  const isSuccess = type === 'success';
+  box.className = 'provider-editor-test-result ' + (isSuccess ? 'is-success' : 'is-error');
+  const icon = document.createElement('span');
+  icon.className = 'result-icon';
+  icon.innerHTML = PROVIDER_TEST_RESULT_ICONS[isSuccess ? 'success' : 'error'];
+  const text = document.createElement('span');
+  text.className = 'result-text';
+  text.textContent = String(message || '');
+  box.innerHTML = '';
+  box.appendChild(icon);
+  box.appendChild(text);
+  box.hidden = false;
+}
+
+function clearProviderEditorTestResult() {
+  const box = document.getElementById('providerEditorTestResult');
+  if (!box) return;
+  box.hidden = true;
+  box.className = 'provider-editor-test-result';
+  box.innerHTML = '';
+}
+
 async function testProviderInEditor() {
   if (!invoke) {
     showProviderEditorTestToast('应用通道未就绪，无法测试连接', 'error');
@@ -1616,6 +1648,8 @@ async function testProviderInEditor() {
 
   setProviderEditorTestButtonState(true);
   showProviderEditorTestToast(`正在测试 ${model}...`, 'info', { duration: 1400 });
+  // 会话判据：离开编辑器页后到达的结论不写入结果区（防止切页回来残留旧结论）
+  const editorPageActive = () => document.getElementById('page-provider-editor')?.classList.contains('active');
   try {
     const result = await invoke('test_connection', {
       args: { host: endpoint.apiHost, api_key: apiKey, path: endpoint.apiPath || null, api_format: fmt, model }
@@ -1627,10 +1661,12 @@ async function testProviderInEditor() {
       const gzipEl = document.getElementById('pf-cap-gzip');
       if (gzipEl && c.gzip !== undefined) gzipEl.checked = c.gzip;
     }
+    if (editorPageActive()) setProviderEditorTestResult('success', `连接测试通过：${msg}`);
     showProviderEditorTestToast(`连接测试通过：${msg}`, 'success', { duration: 3200 });
     addLog('ok', '连接测试: ' + msg);
   } catch (e) {
     const message = String(e) || '失败';
+    if (editorPageActive()) setProviderEditorTestResult('error', `连接测试失败：${message}`);
     if (typeof showCustomAlert === 'function') {
       showCustomAlert(message, '连接测试失败', 'error');
     } else {
@@ -1795,6 +1831,8 @@ async function fetchModelsForEditor(options = {}) {
   g.testProvider = testProvider;
   g.setProviderEditorTestButtonState = setProviderEditorTestButtonState;
   g.showProviderEditorTestToast = showProviderEditorTestToast;
+  g.setProviderEditorTestResult = setProviderEditorTestResult;
+  g.clearProviderEditorTestResult = clearProviderEditorTestResult;
   g.testProviderInEditor = testProviderInEditor;
   g.fetchModelsForEditor = fetchModelsForEditor;
 })(globalThis);
