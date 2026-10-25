@@ -23,6 +23,9 @@ const TRUTH = {
       return null;
     }
   },
+  // 纯 Electron：真相源用 PowerShell 进程路径 + asar（独立于后端 Toolhelp32）
+  workbuddy: () => probeElectronAsar('WorkBuddy').version,
+  zcode: () => probeElectronAsar('ZCode').version,
   // 注：truth 与探测同口径（product.json 的 version = 应用版本）；
   antigravity: () =>
     peVersion(path.join(process.env.LOCALAPPDATA || '', 'Programs', 'antigravity', 'Antigravity.exe')),
@@ -222,12 +225,30 @@ function probeClaudeAppx() {
   return { version: null, dir: null };
 }
 
+// 纯 Electron 应用（WorkBuddy / ZCode）：进程路径 → resources/app.asar →
+// 内嵌 package.json 的 version。真相源用 PowerShell 取进程路径（与后端
+// Toolhelp32 是两条独立实现）。基准值已由用户「关于」对话框核对：
+// WorkBuddy 5.8.3 / ZCode 3.16.2。
+function probeElectronAsar(exeName) {
+  try {
+    const exe = execSync(
+      `powershell -NoProfile -Command "(Get-Process -Name '${exeName}' -ErrorAction SilentlyContinue | Select-Object -First 1).Path"`,
+      { encoding: 'utf8', timeout: 12000, stdio: ['ignore', 'pipe', 'ignore'] }
+    ).trim();
+    if (!exe) return { version: null, dir: null };
+    const dir = path.dirname(exe);
+    const asar = path.join(dir, 'resources', 'app.asar');
+    if (!fs.existsSync(asar)) return { version: null, dir };
+    return { version: asarVersion(asar), dir };
+  } catch {
+    return { version: null, dir: null };
+  }
+}
+
 // Antigravity Hub（Electron）：版本在 app.asar 内的 package.json（汉化同款定位链）
-function probeAntigravityHub() {
-  const base = path.join(process.env.LOCALAPPDATA || '', 'Programs', 'antigravity');
-  const asar = path.join(base, 'resources', 'app.asar');
-  if (!fs.existsSync(asar)) return { version: null, dir: base };
-  const fd = fs.openSync(asar, 'r');
+// 通用 asar 解析：header + payload_start = 8 + declared
+function asarVersion(asarPath) {
+  const fd = fs.openSync(asarPath, 'r');
   try {
     const head = Buffer.alloc(16);
     fs.readSync(fd, head, 0, 16, 0);
@@ -236,18 +257,25 @@ function probeAntigravityHub() {
     fs.readSync(fd, hb, 0, hb.length, 0);
     const header = JSON.parse(hb.slice(16).toString('utf8'));
     const node = header.files && header.files['package.json'];
-    if (!node) return { version: null, dir: base };
+    if (!node) return null;
     const declared = head.readUInt32LE(4);
     const payloadStart = 8 + declared;
     const buf = Buffer.alloc(node.size);
     fs.readSync(fd, buf, 0, node.size, payloadStart + parseInt(node.offset));
     const pkg = JSON.parse(buf.toString('utf8'));
-    return { version: pkg.version || null, dir: base };
+    return pkg.version || null;
   } catch {
-    return { version: null, dir: base };
+    return null;
   } finally {
     fs.closeSync(fd);
   }
+}
+
+function probeAntigravityHub() {
+  const base = path.join(process.env.LOCALAPPDATA || '', 'Programs', 'antigravity');
+  const asar = path.join(base, 'resources', 'app.asar');
+  if (!fs.existsSync(asar)) return { version: null, dir: base };
+  return { version: asarVersion(asar), dir: base };
 }
 
 // GUI：原生注册表算法的近似复刻（这里用 reg query 枚举子键，仅对照用）
@@ -300,9 +328,12 @@ const GUI = {
   antigravity: 'Antigravity',
   'antigravity-ide': 'Antigravity IDE',
   'claude-desktop': 'Claude',
+  // 纯 Electron：版本在 resources/app.asar 内 package.json
+  workbuddy: 'WorkBuddy',
+  zcode: 'ZCode',
 };
 // 无 CLI、无安装目录版本源的平台（诚实显示「已安装 · 版本未知」）
-const NO_PROBE = ['workbuddy', 'zcode'];
+const NO_PROBE = [];
 
 console.log('═'.repeat(88));
 console.log('平台版本探测对照表（探测算法结果 vs 独立真相源）');
@@ -350,6 +381,9 @@ for (const [id, display] of Object.entries(GUI)) {
   let via = viaCommon.version ? viaCommon : probeGuiRegistry(id, display);
   if (id === 'antigravity') via = probeAntigravityHub();
   if (id === 'claude-desktop') via = probeClaudeAppx();
+  if (id === 'workbuddy' || id === 'zcode') {
+    via = probeElectronAsar(id === 'workbuddy' ? 'WorkBuddy' : 'ZCode');
+  }
   const truth = TRUTH[id]?.();
   const probeV = via.version;
   const ok = (truth === null && probeV === null) || (truth !== null && probeV === truth);

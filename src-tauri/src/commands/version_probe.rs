@@ -405,6 +405,17 @@ pub fn installed_gui_version(platform_id: &str) -> Option<String> {
         return version;
     }
 
+    // 纯 Electron 应用（WorkBuddy / ZCode）：版本在 resources/app.asar 内
+    if let Some(exe_name) = electron_main_exe(platform_id) {
+        let key = format!("gui:{}", platform_id);
+        if let Some(hit) = cache_get(&key, Duration::from_secs(600)) {
+            return hit;
+        }
+        let version = electron_asar_version(exe_name);
+        cache_put(key, version.clone());
+        return version;
+    }
+
     // 白名单守卫：只有已知 GUI 平台才走 GUI 探测。
     // 否则 find_ide_exe 对未知 id（pi/hermes/codebuddy…）会走其默认分支
     // （= Windsurf），把 Windsurf 的版本安到无关平台头上
@@ -494,12 +505,20 @@ fn claude_desktop_appx_version() -> Option<String> {
 /// asar 解析与汉化的 patch_hub_asar 同一套格式约定（header + payload_start）。
 #[cfg(windows)]
 fn antigravity_hub_version() -> Option<String> {
+    let asar_path = super::antigravity_localization::hub_asar_path()?;
+    asar_package_version(&asar_path)
+}
+
+/// 读 Electron asar 内 package.json 的 version。
+/// 格式与 patch_hub_asar 一致：16 字节头 + JSON header，
+/// payload_start = 8 + declared。
+#[cfg(windows)]
+fn asar_package_version(asar_path: &std::path::Path) -> Option<String> {
     use serde_json::Value;
     use std::fs;
     use std::io::{Read, Seek, SeekFrom};
 
-    let asar_path = super::antigravity_localization::hub_asar_path()?;
-    let mut f = fs::File::open(&asar_path).ok()?;
+    let mut f = fs::File::open(asar_path).ok()?;
     let mut head16 = [0u8; 16];
     f.read_exact(&mut head16).ok()?;
     let json_size = u32::from_le_bytes(head16[12..16].try_into().ok()?) as usize;
@@ -524,6 +543,84 @@ fn antigravity_hub_version() -> Option<String> {
     f.read_exact(&mut buf).ok()?;
     let pkg: Value = serde_json::from_slice(&buf).ok()?;
     pkg.get("version")?.as_str().map(|s| s.to_string())
+}
+
+
+/// 纯 Electron 应用（WorkBuddy / ZCode）：主进程 exe 名。
+/// 它们没有 VS Code 的 product.json，版本只在 resources/app.asar 内。
+/// 陷阱：安装根的 version 文件是 Electron 运行时版本
+/// （实测 WorkBuddy = 37.10.3-42），不是应用版本，不能用。
+#[cfg(windows)]
+fn electron_main_exe(platform_id: &str) -> Option<&'static str> {
+    match platform_id {
+        "workbuddy" => Some("WorkBuddy.exe"),
+        "zcode" => Some("ZCode.exe"),
+        _ => None,
+    }
+}
+
+/// 从运行中的 Electron 主进程定位 resources/app.asar 并读应用版本。
+#[cfg(windows)]
+fn electron_asar_version(exe_name: &str) -> Option<String> {
+    let dir = running_process_dir(exe_name)?;
+    asar_package_version(&dir.join("resources").join("app.asar"))
+}
+
+/// 运行中进程的可执行文件所在目录（Toolhelp32，毫秒级）。
+#[cfg(windows)]
+fn running_process_dir(exe_name: &str) -> Option<std::path::PathBuf> {
+    use windows_sys::Win32::Foundation::{CloseHandle, INVALID_HANDLE_VALUE};
+    use windows_sys::Win32::System::Diagnostics::ToolHelp::{
+        CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W,
+        TH32CS_SNAPPROCESS,
+    };
+    use windows_sys::Win32::System::Threading::{
+        OpenProcess, QueryFullProcessImageNameW, PROCESS_NAME_WIN32,
+        PROCESS_QUERY_LIMITED_INFORMATION,
+    };
+
+    unsafe {
+        let snap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+        if snap == INVALID_HANDLE_VALUE {
+            return None;
+        }
+        let mut entry: PROCESSENTRY32W = std::mem::zeroed();
+        entry.dwSize = std::mem::size_of::<PROCESSENTRY32W>() as u32;
+        let mut result = None;
+
+        if Process32FirstW(snap, &mut entry) != 0 {
+            loop {
+                let end = entry.szExeFile.iter().position(|&c| c == 0).unwrap_or(0);
+                let name = String::from_utf16_lossy(&entry.szExeFile[..end]);
+                if name.eq_ignore_ascii_case(exe_name) && entry.th32ProcessID != 0 {
+                    let h = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, entry.th32ProcessID);
+                    if !h.is_null() {
+                        let mut buf = [0u16; 1024];
+                        let mut len = buf.len() as u32;
+                        if QueryFullProcessImageNameW(
+                            h,
+                            PROCESS_NAME_WIN32,
+                            buf.as_mut_ptr(),
+                            &mut len,
+                        ) != 0
+                        {
+                            let exe_path = std::path::PathBuf::from(String::from_utf16_lossy(
+                                &buf[..len as usize],
+                            ));
+                            result = exe_path.parent().map(|d| d.to_path_buf());
+                        }
+                        CloseHandle(h);
+                    }
+                    break;
+                }
+                if Process32NextW(snap, &mut entry) == 0 {
+                    break;
+                }
+            }
+        }
+        CloseHandle(snap);
+        result
+    }
 }
 
 /// 旧实现保留备查（注册表枚举 + 进程枚举），已不再被调用。
@@ -655,67 +752,24 @@ fn legacy_gui_probe_registry(platform_id: &str) -> Option<String> {
     version
 }
 
-/// 从运行中的客户端主进程反推安装目录。
-/// Toolhelp32 枚举进程（与 kill_antigravity_language_server 同款，毫秒级），
-/// 找到主进程 exe 后向上回溯到含 `resources\app\product.json` 的目录。
+/// 从运行中的客户端主进程反推安装目录（含 resources/app/product.json）。
+///
+/// 复用 running_process_dir（唯一的 Toolhelp32 实现），避免两份进程枚举。
 #[cfg(windows)]
 pub fn running_client_install_dir(exe_name: &str) -> Option<PathBuf> {
-    use windows_sys::Win32::Foundation::{CloseHandle, INVALID_HANDLE_VALUE};
-    use windows_sys::Win32::System::Diagnostics::ToolHelp::{
-        CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W,
-        TH32CS_SNAPPROCESS,
-    };
-    use windows_sys::Win32::System::Threading::{
-        OpenProcess, QueryFullProcessImageNameW, PROCESS_NAME_WIN32,
-        PROCESS_QUERY_LIMITED_INFORMATION,
-    };
-
-    unsafe {
-        let snap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
-        if snap == INVALID_HANDLE_VALUE {
-            return None;
+    let mut cur = running_process_dir(exe_name)?;
+    for _ in 0..4 {
+        if cur
+            .join("resources")
+            .join("app")
+            .join("product.json")
+            .is_file()
+        {
+            return Some(cur);
         }
-        let mut entry: PROCESSENTRY32W = std::mem::zeroed();
-        entry.dwSize = std::mem::size_of::<PROCESSENTRY32W>() as u32;
-        let mut result = None;
-
-        if Process32FirstW(snap, &mut entry) != 0 {
-            loop {
-                let end = entry.szExeFile.iter().position(|&c| c == 0).unwrap_or(0);
-                let name = String::from_utf16_lossy(&entry.szExeFile[..end]);
-                if name.eq_ignore_ascii_case(exe_name) && entry.th32ProcessID != 0 {
-                    let h = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, entry.th32ProcessID);
-                    if !h.is_null() {
-                        let mut buf = [0u16; 1024];
-                        let mut len = buf.len() as u32;
-                        if QueryFullProcessImageNameW(h, PROCESS_NAME_WIN32, buf.as_mut_ptr(), &mut len)
-                            != 0
-                        {
-                            let exe_path =
-                                PathBuf::from(String::from_utf16_lossy(&buf[..len as usize]));
-                            // exe 在 <install>\Xxx.exe，product.json 在 <install>\resources\app\
-                            let mut dir = exe_path.parent().map(|p| p.to_path_buf());
-                            for _ in 0..4 {
-                                let Some(d) = dir else { break };
-                                if d.join("resources").join("app").join("product.json").is_file() {
-                                    result = Some(d);
-                                    break;
-                                }
-                                dir = d.parent().map(|p| p.to_path_buf());
-                            }
-                        }
-                        CloseHandle(h);
-                    }
-                    break;
-                }
-                if Process32NextW(snap, &mut entry) == 0 {
-                    break;
-                }
-            }
-        }
-        CloseHandle(snap);
-        result
+        cur = cur.parent()?.to_path_buf();
     }
+    None
 }
 
 #[cfg(not(windows))]
@@ -920,18 +974,12 @@ mod tests {
     /// 默认分支（= Windsurf）拿到版本。实测曾让 Pi/Hermes 页显示
     /// Windsurf 的 v1.110.1。
     ///
-    /// 注意：claude-desktop 已不在列表——它走 Appx 安装目录名解析
-    /// （Claude_3.6556.2.0_x64__xxx），有自己的版本源。
+    /// 注意：以下平台已有自己的版本源，不在本测试列表：
+    /// - claude-desktop：Appx 安装目录名（Claude_3.6556.2.0_x64__xxx）
+    /// - workbuddy / zcode：运行进程的 resources/app.asar 内 package.json
     #[test]
     fn gui_probe_returns_none_for_platforms_without_source() {
-        for id in [
-            "pi",
-            "hermes",
-            "codebuddy",
-            "workbuddy",
-            "zcode",
-            "deepseek-harness",
-        ] {
+        for id in ["pi", "hermes", "codebuddy", "deepseek-harness"] {
             assert_eq!(
                 installed_gui_version(id),
                 None,
@@ -951,7 +999,16 @@ mod tests {
     #[test]
     #[ignore]
     fn debug_gui_versions() {
-        for id in ["windsurf", "devin", "cursor", "claude-desktop", "antigravity"] {
+        for id in [
+            "windsurf",
+            "devin",
+            "cursor",
+            "claude-desktop",
+            "antigravity",
+            "antigravity-ide",
+            "workbuddy",
+            "zcode",
+        ] {
             println!("{id} => {:?}", installed_gui_version(id));
         }
     }
