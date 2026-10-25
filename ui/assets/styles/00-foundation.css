@@ -541,3 +541,26 @@ html[data-scheme="dark"] body {
 .app {
   display: flex; flex-direction: column; height: 100vh;
 }
+
+/* ─── 加载态指示器（开发规范：加载中必须动态） ─── */
+.ab-spinner {
+  display: inline-block;
+  flex: 0 0 auto;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: ab-spin 0.7s linear infinite;
+  vertical-align: -2px;
+  opacity: 0.85;
+}
+.ab-loading {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+@keyframes ab-spin {
+  to { transform: rotate(360deg); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ab-spinner { animation-duration: 1.6s; }
+}

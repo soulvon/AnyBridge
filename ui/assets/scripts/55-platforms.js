@@ -539,7 +539,7 @@ async function refreshPlatforms(options = {}) {
   const btn = document.getElementById('platforms-refresh-btn');
   if (btn && !options.silent) {
     btn.disabled = true;
-    btn.textContent = '检测中...';
+    btn.innerHTML = loadingHtml('检测中…');
   }
 
   try {
@@ -1253,7 +1253,7 @@ async function savePlatformRealConfigModal() {
   const saveBtn = document.getElementById('platform-real-config-modal-save-btn');
   if (saveBtn) {
     saveBtn.disabled = true;
-    saveBtn.textContent = '保存中…';
+    saveBtn.innerHTML = loadingHtml('保存中…');
   }
   try {
     const ok = await invoke('write_platform_config_file', {
@@ -3676,7 +3676,7 @@ async function confirmAddAntigravityModelsPage() {
   const originalLabel = label ? label.textContent : ` 保存选择 (${checkedModelIds.length})`;
   if (btn) {
     btn.disabled = true;
-    if (label) label.textContent = ' 保存中...';
+    if (label) label.innerHTML = loadingHtml('保存中…');
   }
 
   try {
@@ -9057,7 +9057,7 @@ async function confirmAddCursorModelsPage() {
   const originalLabel = label ? label.textContent : ' 保存选择';
   if (btn) {
     btn.disabled = true;
-    if (label) label.textContent = ' 保存中...';
+    if (label) label.innerHTML = loadingHtml('保存中…');
   }
 
   cursorEnsureBridge();
@@ -9697,7 +9697,7 @@ function updateSwitchProgress(payload) {
     if (payload.step === 'done') {
       titleEl.textContent = '完成';
     } else {
-      titleEl.textContent = '正在切换配置…';
+      titleEl.innerHTML = loadingHtml('正在切换配置…');
     }
   }
 }
@@ -14133,7 +14133,7 @@ async function updatePlatformAgentAction(platform) {
   const originalLabel = btn ? btn.textContent : '';
   if (btn) {
     btn.disabled = true;
-    btn.textContent = originalLabel === '安装' ? '安装中…' : '更新中…';
+    btn.innerHTML = loadingHtml(originalLabel === '安装' ? '安装中…' : '更新中…');
   }
   if (typeof showBottomToast === 'function') {
     showBottomToast('正在执行 npm 安装，请稍候（可能需要 10-60 秒）…', 'info', { duration: 4000 });

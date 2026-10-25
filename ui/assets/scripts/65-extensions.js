@@ -606,7 +606,12 @@ function renderCpaActions(status, _installed, hasUpdate) {
   primary.title = config.primary.title || '';
   bindCpaActionButton(primary, isTransient ? null : config.primary.action);
 
-  primary.textContent = config.primary.label;
+  // 加载态（如「检测中…」）必须带 spinner：静态文字看起来和卡住没区别
+  if (config.primary.disabled) {
+    primary.innerHTML = loadingHtml(config.primary.label);
+  } else {
+    primary.textContent = config.primary.label;
+  }
   if (isTransient) {
     const spinner = document.createElement('span');
     spinner.className = 'btn-spinner';
@@ -2446,7 +2451,7 @@ async function openCpaVersionSwitchModal() {
   setCpaVersionProgress(false, 0, '');
   if (loadingEl) { loadingEl.hidden = false; loadingEl.textContent = '正在加载本地与 GitHub 版本列表...'; }
   if (bodyEl) bodyEl.hidden = true;
-  if (confirmBtn) { confirmBtn.disabled = true; confirmBtn.textContent = '加载中...'; }
+  if (confirmBtn) { confirmBtn.disabled = true; confirmBtn.innerHTML = loadingHtml('加载中…'); }
   modal.classList.add('active');
   var onEsc = function (e) { if (e.key === 'Escape' && !cpaVersionBusy) closeCpaVersionSwitchModal(); };
   document.addEventListener('keydown', onEsc);

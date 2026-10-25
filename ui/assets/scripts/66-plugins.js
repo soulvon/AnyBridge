@@ -734,7 +734,7 @@ async function checkPluginUpdate(pluginId, opts = {}) {
   }
 
   const updateBtns = document.querySelectorAll(`[data-action="checkPluginUpdate"][data-arg="${pluginId}"]`);
-  updateBtns.forEach(b => { b.disabled = true; b.textContent = '检测中...'; });
+  updateBtns.forEach(b => { b.disabled = true; b.innerHTML = loadingHtml('检测中…'); });
 
   try {
     const report = await pluginInvoke('plugin_check_update', { pluginId });
@@ -1047,7 +1047,7 @@ async function openPluginDeployDialog(pluginId) {
     confirmView.style.display = 'none';
     progressView.style.display = '';
     okBtn.disabled = true;
-    okBtn.textContent = '安装中...';
+    okBtn.innerHTML = loadingHtml('安装中…');
     cancelBtn.textContent = '后台运行';
 
     try {
@@ -1321,7 +1321,7 @@ async function selectPluginPanel(panelId) {
   body.replaceChildren();
   const loading = document.createElement('p');
   loading.className = 'plugin-panel-loading';
-  loading.textContent = '加载中...';
+  loading.innerHTML = loadingHtml('加载中…');
   body.appendChild(loading);
 
   const panel = visiblePanels(plugin.manifest).find((p) => p.id === panelId);

@@ -1460,7 +1460,7 @@ async function runSettingsEnvironmentCheck() {
   const btn = document.getElementById('env-check-btn');
   const summary = document.getElementById('env-check-summary');
   if (btn) btn.disabled = true;
-  if (summary) summary.textContent = '体检中，正在自动修复可处理的问题…';
+  if (summary) summary.innerHTML = loadingHtml('体检中，正在自动修复可处理的问题…');
   try {
     const result = await runEnvironmentCheck({ target: getTargetIde(), prefix: '手动体检', renderTo: 'env-check-results' });
     if (summary) {

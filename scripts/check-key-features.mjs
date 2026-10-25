@@ -549,6 +549,53 @@ section('data-action 处理器可达性（点击必须有反馈）');
 }
 
 // ─────────────────────────────────────────────────────────────
+// [3.9c] 加载态必须动态（静态「加载中…」= 用户无法区分卡死）
+//   规则：禁止 textContent = '…中…' 这类静态加载文案，必须用
+//   loadingHtml() / setLoading()（带 spinner）。见 AGENTS.md 4.1。
+// ─────────────────────────────────────────────────────────────
+section('加载态动态化（禁止静态 loading 文案）');
+{
+  const LOADING_WORDS = /(加载|更新|保存|检测|安装|处理|刷新|同步|导入|导出|写入|探测|切换|体检|执行)/;
+  const STATIC_ASSIGN = /(textContent|innerText)\s*=\s*(['"`])([^'"`]*)\2/;
+  const violations = [];
+  const walk = (dir, depth) => {
+    if (depth > 6) return;
+    for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+      if (['node_modules', 'target', '.git', 'tmp'].includes(e.name)) continue;
+      const p = path.join(dir, e.name);
+      if (e.isDirectory()) {
+        walk(p, depth + 1);
+        continue;
+      }
+      if (!e.name.endsWith('.js')) continue;
+      const lines = fs.readFileSync(p, 'utf8').split('\n');
+      lines.forEach((l, i) => {
+        if (/^\s*(\/\/|\*|\/\*)/.test(l)) return;
+        const m = l.match(STATIC_ASSIGN);
+        if (!m) return;
+        const text = m[3];
+        if (!LOADING_WORDS.test(text)) return;
+        // 「…中」才是 loading 语义；「已保存」「保存修改」「检查更新」等是常态文案
+        if (!/中\s*(…|\.\.\.)?['"`]?\s*$/.test(text)) return;
+        violations.push(`${p.replace(root + path.sep, '').split(path.sep).join('/')}:${i + 1}  ${text.slice(0, 40)}`);
+      });
+    }
+  };
+  walk(path.join(root, 'ui/assets/scripts'), 0);
+
+  ok('无静态 loading 文案（一律用 loadingHtml / setLoading）',
+    violations.length === 0,
+    violations.slice(0, 6).join(' | '));
+
+  // 基础设施必须在位（防止有人删掉 spinner 实现）
+  const fb = fs.readFileSync(path.join(root, 'ui/assets/scripts/ui/feedback.js'), 'utf8');
+  ok('loadingHtml / setLoading 已提供且挂到 globalThis',
+    /function loadingHtml/.test(fb) && /g\.loadingHtml\s*=/.test(fb) && /g\.setLoading\s*=/.test(fb));
+  const css = fs.readFileSync(path.join(root, 'ui/assets/styles/00-foundation.css'), 'utf8');
+  ok('spinner 动画样式存在', /\.ab-spinner\s*\{/.test(css) && /@keyframes ab-spin/.test(css));
+}
+
+// ─────────────────────────────────────────────────────────────
 // [3.10] Agent 声明表（社区扩展入口的完整性）
 //   新增 agent = 一个 spec 条目；这里强制每条声明字段完整、
 //   id 唯一、与既有 Platform 对齐（Rust 侧 registry_is_valid 单测兜底语义）

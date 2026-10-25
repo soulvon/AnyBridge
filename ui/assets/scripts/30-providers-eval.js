@@ -1867,7 +1867,7 @@ async function importSelectedProviders() {
   const btn = document.getElementById('provider-import-confirm-btn');
   if (btn) {
     btn.disabled = true;
-    btn.textContent = '导入中…';
+    btn.innerHTML = loadingHtml('导入中…');
   }
   try {
     const result = await invoke('import_providers', { candidates: selected });
@@ -2525,10 +2525,14 @@ function renderEvalRunning(provider, model, apiFormat = getEvalApiFormat()) {
   const result = document.getElementById('eval-result');
   if (empty) {
     empty.style.display = 'grid';
-    empty.textContent = '正在执行全面检测...';
+    empty.innerHTML = loadingHtml('正在执行全面检测…');
   }
   if (result) result.style.display = 'none';
-  setEvalText('eval-report-state', '检测中');
+  {
+    // 加载态必须动态（开发规范）：静态「检测中」看起来像卡住
+    const _st = document.getElementById('eval-report-state');
+    if (_st) _st.innerHTML = loadingHtml('检测中…');
+  }
   setEvalText('eval-report-target', `${provider?.name || '--'} · ${model || '--'} · ${protocol} · 全面检测`);
   setEvalText('eval-report-id', 'pending');
   setEvalText('eval-report-clock', evalFormatTime(Date.now()));

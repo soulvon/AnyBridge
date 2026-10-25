@@ -294,7 +294,7 @@ async function pbConfirmAdd(pid) {
   const orig = btn ? btn.textContent : '';
   if (btn) {
     btn.disabled = true;
-    btn.textContent = '保存中…';
+    btn.innerHTML = loadingHtml('保存中…');
   }
   try {
     const existing = _pbModels[pid] || [];

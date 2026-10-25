@@ -307,8 +307,43 @@ export function showCustomPrompt(message, defaultValue, title) {
   });
 }
 
+/**
+ * 加载态（开发规范：任何「加载中」必须带动态指示，禁止静态文字——
+ * 静止的「加载中…」和卡住没区别，用户会焦虑）。
+ */
+export function spinnerHtml(size = 12) {
+  const px = Math.max(10, Math.min(20, Number(size) || 12));
+  return `<span class="ab-spinner" style="width:${px}px;height:${px}px" aria-hidden="true"></span>`;
+}
+
+export function loadingHtml(text, size) {
+  return `<span class="ab-loading">${spinnerHtml(size)}<span>${text || '加载中…'}</span></span>`;
+}
+
+/** 置忙碌态：记录原内容，按钮禁用 + 动态文案 */
+export function setLoading(el, text, size) {
+  if (!el) return;
+  if (el.dataset.prevHtml == null) el.dataset.prevHtml = el.innerHTML;
+  if ('disabled' in el) el.disabled = true;
+  el.innerHTML = loadingHtml(text, size);
+}
+
+/** 解除忙碌态：恢复原内容与可点击 */
+export function clearLoading(el) {
+  if (!el) return;
+  if ('disabled' in el) el.disabled = false;
+  if (el.dataset.prevHtml != null) {
+    el.innerHTML = el.dataset.prevHtml;
+    delete el.dataset.prevHtml;
+  }
+}
+
 const g = globalThis;
 g.showCustomAlert = showCustomAlert;
 g.showBottomToast = showBottomToast;
 g.showCustomConfirm = showCustomConfirm;
 g.showCustomPrompt = showCustomPrompt;
+g.spinnerHtml = spinnerHtml;
+g.loadingHtml = loadingHtml;
+g.setLoading = setLoading;
+g.clearLoading = clearLoading;

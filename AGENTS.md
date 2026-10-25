@@ -48,6 +48,16 @@ npm run verify
 4. **兜底不得掩盖身份**：通用函数对未知输入必须显式拒绝（None/Error），
    禁止静默兜底到默认值；调用方对 id 列表循环调用前先用白名单自证身份
    （事故：Pi 页显示 Windsurf 版本，见坑点 `fallback-masks-identity`）。
+4.1 **加载中必须动态，且不得阻塞**（前端体验纪律）：
+   - 任何耗时操作（>150ms）**点击后立刻给反馈**：按钮进入忙碌态（禁用 + 动态文案），
+     或 toast/骨架屏；不允许"点了没反应"。
+   - 「加载中 / 更新中 / 保存中 / 检测中 / 导入中」等文案**必须带 spinner**
+     （`loadingHtml('…')` / `setLoading(el, '…')`，定义在 `ui/feedback.js`），
+     静态文字与卡死无法区分，用户会焦虑。
+   - 恢复时用 `clearLoading(el)` 或原 `innerHTML` 快照，禁止硬编码恢复文案
+     （会丢掉原按钮的图标/结构）。
+   - 长任务（>3s）额外给一句耗时预期（如「可能需要 10-60 秒」）。
+   - 检查脚本强制：JS 里出现 `textContent = '…中…'` 这类静态加载文案即失败。
 4.2 **新增 Agent = 一条声明**（扩展入口，`src-tauri/src/commands/agent_spec.rs`）：
    - 元数据（id/名称/厂商/API 格式/配置路径/CLI bin/npm 包/官网）唯一真源在
      `AGENTS` 表；新增「配置式 agent」只需照抄同族条目加一条

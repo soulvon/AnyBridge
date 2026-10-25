@@ -1384,7 +1384,7 @@ async function saveProxyRouteEditor() {
     const originalText = btn?.textContent || '保存模型';
     if (btn) {
       btn.disabled = true;
-      btn.textContent = '保存中...';
+      btn.innerHTML = loadingHtml('保存中…');
     }
     const idx = proxyRoutesStore.routes.findIndex(item => item.id === proxyRouteEditingId);
     if (idx >= 0) proxyRoutesStore.routes[idx] = route;
@@ -1465,7 +1465,7 @@ async function saveProxyRouteEditor() {
   const originalText = btn?.textContent || '添加到列表';
   if (btn) {
     btn.disabled = true;
-    btn.textContent = '保存中...';
+    btn.innerHTML = loadingHtml('保存中…');
   }
   const ok = await saveProxyRoutes({ silent: true });
   if (!ok) {

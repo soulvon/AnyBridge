@@ -278,7 +278,7 @@
     const md = buildMarkdownReport(_lastReport);
     if (!md) return;
     const btn = _hEl('health-export-md-btn');
-    if (btn) { btn.disabled = true; btn.dataset.oldText = btn.textContent; btn.textContent = '导出中...'; }
+    if (btn) { btn.disabled = true; btn.dataset.oldText = btn.textContent; btn.innerHTML = loadingHtml('导出中…'); }
     try {
       const ts = new Date().toISOString().replace(/[-:T]/g, '').slice(0, 14);
       const filename = 'byok-healthcheck-' + ts + '.md';
@@ -509,7 +509,7 @@
     if (state === 'busy') {
       if (btn) {
         btn.disabled = true;
-        btn.textContent = '安装中...';
+        btn.innerHTML = loadingHtml('安装中…');
       }
       if (uninstallBtn) uninstallBtn.disabled = true;
     } else {
