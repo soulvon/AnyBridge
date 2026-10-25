@@ -467,6 +467,15 @@ impl Platform {
         if self.config_dir().map(|d| d.exists()).unwrap_or(false) {
             return true;
         }
+        // magpie 三选一的 Bin 分支：CLI 可执行文件命中 = 已安装。
+        // 实测场景：Hermes 的 CLI 装在 %LOCALAPPDATA%\hermes\bin（uv tool），
+        // 但 ~/.hermes 配置目录尚未生成——只看配置目录会误报「未安装」。
+        // find_tool 自带 5 分钟缓存（含注册表 PATH 与 npm 前缀目录）。
+        if let Some(bin) = self.cli_bin() {
+            if super::version_probe::find_tool(bin).is_some() {
+                return true;
+            }
+        }
         match self {
             Platform::Antigravity => {
                 if let Some(local) = dirs::data_local_dir() {
@@ -545,6 +554,25 @@ impl Platform {
                 .unwrap_or(false),
             Platform::DeepSeekHarness => self.config_dir().map(|d| d.exists()).unwrap_or(false),
             _ => false,
+        }
+    }
+
+    /// 该平台对应的 CLI 可执行名（检测/版本探测共用，借鉴 magpie 的 Bin 字段）。
+    fn cli_bin(&self) -> Option<&'static str> {
+        match self {
+            Platform::ClaudeCode => Some("claude"),
+            Platform::Codex => Some("codex"),
+            Platform::Grok => Some("grok"),
+            Platform::OpenCode => Some("opencode"),
+            Platform::CodeBuddy => Some("codebuddy"),
+            Platform::WorkBuddy => Some("workbuddy"),
+            Platform::ZCode => Some("zcode"),
+            Platform::Pi => Some("pi"),
+            Platform::Hermes => Some("hermes"),
+            Platform::DeepSeekHarness => Some("dsh"),
+            Platform::Antigravity
+            | Platform::AntigravityIde
+            | Platform::ClaudeDesktop => None,
         }
     }
 

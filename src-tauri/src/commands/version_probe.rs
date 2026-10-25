@@ -43,6 +43,25 @@ pub fn cli_spec(platform_id: &str) -> Option<CliSpec> {
             bin: "opencode",
             npm_package: Some("opencode-ai"),
         },
+        // 本机实测确认的 CLI（npm 全局包名从 .cmd shim 里读出）：
+        "codebuddy" => CliSpec {
+            bin: "codebuddy",
+            npm_package: Some("@tencent-ai/codebuddy-code"),
+        },
+        "pi" => CliSpec {
+            bin: "pi",
+            npm_package: Some("@earendil-works/pi-coding-agent"),
+        },
+        "deepseek-harness" => CliSpec {
+            bin: "dsh",
+            npm_package: Some("@deepseek-ai/dsh"),
+        },
+        // Hermes 是 uv tool 安装（%LOCALAPPDATA%\hermes\bin\hermes.cmd），
+        // 没有 npm 包 → 能探测已装版本，但无「最新版本」可比
+        "hermes" => CliSpec {
+            bin: "hermes",
+            npm_package: None,
+        },
         _ => return None,
     };
     Some(spec)
@@ -68,6 +87,21 @@ pub fn gui_product(platform_id: &str) -> Option<(&'static str, &'static str)> {
 /// 往往没有 npm.cmd，`npm prefix -g` 会直接失败（实测：Codex 已装却
 /// 显示"未安装"就是踩的这个，对应 magpie #1771 同类坑）。
 pub fn find_tool(bin: &str) -> Option<PathBuf> {
+    // 缓存：detect_platforms 对 13 个平台循环检测时会反复调用，
+    // 每次 3 个子进程（reg×2 + npm）代价太高。
+    let cache_key = format!("findtool:{}", bin);
+    if let Some(hit) = cache_get(&cache_key, Duration::from_secs(300)) {
+        return hit.map(PathBuf::from);
+    }
+    let result = find_tool_uncached(bin);
+    cache_put(
+        cache_key,
+        result.as_ref().map(|p| p.to_string_lossy().to_string()),
+    );
+    result
+}
+
+fn find_tool_uncached(bin: &str) -> Option<PathBuf> {
     // npm 全局在 Windows 生成 .cmd shim（不是 .exe）——必须多后缀尝试，
     // 否则 PATH 里明明有 codex.cmd 却报「未安装」（实测踩中）。
     let candidates: Vec<String> = if cfg!(windows) {

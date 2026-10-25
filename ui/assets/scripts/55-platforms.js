@@ -599,6 +599,10 @@ function refreshAllHeroVersions() {
     ['hermes', 'hermes-platform-version'],
     ['deepseek-harness', 'deepseek-harness-platform-version'],
     ['antigravity', 'antigravity-platform-version'],
+    // Claude Desktop：其页面自身的 refresh 函数前置了多次 await
+    // （loadProxyRoutes / get_claude_desktop_status），任一处挂起就永远
+    // 到不了版本行渲染（实测一直停在「检测中」）。统一在此兜住。
+    ['claude-desktop', 'claude-desktop-platform-version'],
   ];
   ids.forEach(([pid, elId]) => renderHeroVersion(pid, elId));
 }

@@ -30,6 +30,11 @@ const TRUTH = {
     return null;
   },
   grok: () => runVersion(path.join(home, '.grok', 'bin', 'grok.exe')),
+  // 新增 CLI 的真相源：直接从 PATH/npm 全局目录跑 --version
+  codebuddy: () => runFromPath('codebuddy'),
+  pi: () => runFromPath('pi'),
+  'deepseek-harness': () => runFromPath('dsh'),
+  hermes: () => runFromPath('hermes'),
   opencode: () => {
     const dirs = (process.env.PATH || '').split(';');
     for (const d of dirs) {
@@ -56,6 +61,17 @@ function findProductJson(bases) {
   }
   return null;
 }
+// 从 PATH 找命令并跑 --version（真相源，与探测算法独立）
+function runFromPath(cmd) {
+  try {
+    const out = execSync(`"${cmd}" --version`, { timeout: 10000, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
+    const m = out.match(/(\d+\.\d+\.\d+[^\s]*)/);
+    return m ? m[1] : out.trim().split('\n')[0]?.slice(0, 40) || null;
+  } catch {
+    return null;
+  }
+}
+
 function runVersion(bin) {
   if (!fs.existsSync(bin)) return null;
   try {
@@ -177,9 +193,20 @@ function probeGuiRegistry(platformId, display) {
 }
 
 // ── 3. 平台清单与期望 ──
-const CLI = { 'claude-code': 'claude', 'codex': 'codex', 'grok': 'grok', 'opencode': 'opencode' };
+const CLI = {
+  'claude-code': 'claude',
+  'codex': 'codex',
+  'grok': 'grok',
+  'opencode': 'opencode',
+  // 实测确认的 CLI（npm 全局包 / uv tool）
+  'codebuddy': 'codebuddy',
+  'pi': 'pi',
+  'deepseek-harness': 'dsh',
+  'hermes': 'hermes',
+};
 const GUI = { windsurf: 'Windsurf', devin: 'Devin', cursor: 'Cursor', antigravity: 'Antigravity', 'antigravity-ide': 'Antigravity IDE' };
-const NO_PROBE = ['claude-desktop', 'codebuddy', 'workbuddy', 'zcode', 'pi', 'hermes', 'deepseek-harness'];
+// 无 CLI、无 GUI product.json 的平台（诚实显示「已安装 · 版本未知」）
+const NO_PROBE = ['claude-desktop', 'workbuddy', 'zcode'];
 
 console.log('═'.repeat(88));
 console.log('平台版本探测对照表（探测算法结果 vs 独立真相源）');
