@@ -427,17 +427,41 @@ pub fn installed_gui_version(platform_id: &str) -> Option<String> {
     let version = std::fs::read_to_string(&product)
         .ok()
         .and_then(|raw| serde_json::from_str::<serde_json::Value>(&raw).ok())
-        .and_then(|v| {
-            // VS Code fork：version = 应用版本（Windsurf 1.101.1），
-            // vscodeVersion = 引擎版本（1.110.1）。展示应用版本，与
-            // 客户端「关于」页一致。
-            v.get("version")
-                .and_then(|x| x.as_str())
-                .map(|s| s.to_string())
-        });
+        .and_then(|v| product_version_from_json(&v));
 
     cache_put(key, version.clone());
     version
+}
+
+/// 从 VS Code fork 的 product.json 取**产品版本**（客户端「关于」页显示的）。
+///
+/// 坑：`version` 字段在这些 fork 里通常是 **VS Code 引擎版本**，不是产品版本。
+/// 实测（用户对照「关于」对话框）：
+/// - Windsurf：windsurfVersion=2.3.15 ✓ / version=1.110.1（引擎）✗
+/// - Devin：windsurfVersion=3.11.216 ✓ / version=1.126.0（引擎）✗
+///   （Devin 继承了 Windsurf 的字段名）
+/// - Antigravity IDE：ideVersion=2.5.5 ✓ / version=1.107.0（引擎）✗
+/// - Cursor：version=3.15.6 ✓ / vscodeVersion=1.128.0（引擎）
+///
+/// 取值顺序：专有字段 → `version`（且不能等于 vscodeVersion，否则说明它只是引擎）。
+pub fn product_version_from_json(v: &serde_json::Value) -> Option<String> {
+    for key in ["windsurfVersion", "ideVersion", "productVersion", "appVersion"] {
+        if let Some(ver) = v.get(key).and_then(|x| x.as_str()) {
+            if !ver.is_empty() {
+                return Some(ver.to_string());
+            }
+        }
+    }
+    let ver = v.get("version").and_then(|x| x.as_str())?;
+    if let Some(engine) = v.get("vscodeVersion").and_then(|x| x.as_str()) {
+        if engine == ver {
+            return None; // version 与引擎版本相同 → 它只是引擎版本，不冒充产品版本
+        }
+    }
+    if ver.is_empty() {
+        return None;
+    }
+    Some(ver.to_string())
 }
 
 /// Claude Desktop（Appx 商店版）：从安装目录名解析版本。
@@ -917,6 +941,34 @@ mod tests {
         for id in ["windsurf", "devin", "cursor", "claude-desktop", "antigravity"] {
             println!("{id} => {:?}", installed_gui_version(id));
         }
+    }
+
+    /// 产品版本取值：`version` 在这些 fork 里是引擎版本，必须优先专有字段
+    /// （用户对照「关于」对话框实测：Windsurf 2.3.15 / Devin 3.11.216 /
+    ///  Antigravity IDE 2.5.5，而 version 分别是 1.110.1 / 1.126.0 / 1.107.0）
+    #[test]
+    fn product_version_prefers_vendor_field() {
+        let windsurf: serde_json::Value =
+            serde_json::from_str(r#"{"version":"1.110.1","windsurfVersion":"2.3.15"}"#).unwrap();
+        assert_eq!(product_version_from_json(&windsurf).as_deref(), Some("2.3.15"));
+
+        let devin: serde_json::Value =
+            serde_json::from_str(r#"{"version":"1.126.0","windsurfVersion":"3.11.216"}"#).unwrap();
+        assert_eq!(product_version_from_json(&devin).as_deref(), Some("3.11.216"));
+
+        let ag_ide: serde_json::Value =
+            serde_json::from_str(r#"{"version":"1.107.0","ideVersion":"2.5.5"}"#).unwrap();
+        assert_eq!(product_version_from_json(&ag_ide).as_deref(), Some("2.5.5"));
+
+        // Cursor：version 就是产品版本，vscodeVersion 才是引擎
+        let cursor: serde_json::Value =
+            serde_json::from_str(r#"{"version":"3.15.6","vscodeVersion":"1.128.0"}"#).unwrap();
+        assert_eq!(product_version_from_json(&cursor).as_deref(), Some("3.15.6"));
+
+        // version == vscodeVersion → 只是引擎版本，不冒充
+        let engine_only: serde_json::Value =
+            serde_json::from_str(r#"{"version":"1.128.0","vscodeVersion":"1.128.0"}"#).unwrap();
+        assert_eq!(product_version_from_json(&engine_only), None);
     }
 
     /// semver 对比的基本语义

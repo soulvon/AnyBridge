@@ -7,14 +7,14 @@ const home = os.homedir();
 
 // ── 1. 独立真相源（与后端探测算法完全不同的路径，用于交叉验证） ──
 const TRUTH = {
-  windsurf: () => readJson('E:/Program/Windsurf/resources/app/product.json')?.version,
-  devin: () => readJson('E:/Program/devin/resources/app/product.json')?.version,
+  windsurf: () => productVersion(readJson('E:/Program/Windsurf/resources/app/product.json')),
+  devin: () => productVersion(readJson('E:/Program/devin/resources/app/product.json')),
   cursor: () => {
     const cands = [
       path.join(home, 'AppData', 'Local', 'Programs', 'cursor', 'resources', 'app', 'product.json'),
       'E:/Program/Cursor/resources/app/product.json',
     ];
-    return cands.map(readJson).find(v => v)?.version;
+    return productVersion(cands.map(readJson).find(v => v));
   },
   // Claude Desktop（Appx 商店版）：真相源走 Get-AppxPackage 的 Version
   'claude-desktop': () => {
@@ -78,10 +78,20 @@ function readJson(p) {
     return null;
   }
 }
+// 与后端 product_version_from_json 同口径：专有字段优先（version 多为引擎版本）
+function productVersion(pj) {
+  if (!pj) return null;
+  for (const k of ['windsurfVersion', 'ideVersion', 'productVersion', 'appVersion']) {
+    if (pj[k]) return pj[k];
+  }
+  if (pj.version && pj.version !== pj.vscodeVersion) return pj.version;
+  return null;
+}
+
 function findProductJson(bases) {
   for (const b of bases) {
     const j = readJson(path.join(b, 'resources', 'app', 'product.json'));
-    if (j) return j.version;
+    if (j) return productVersion(j);
   }
   return null;
 }
@@ -247,7 +257,8 @@ function probeGuiRegistry(platformId, display) {
             const loc = locOut.split('REG_SZ').pop()?.trim();
             if (!loc) continue;
             const pj = readJson(path.join(loc, 'resources', 'app', 'product.json'));
-            if (pj?.version) return { version: pj.version, dir: loc };
+            const pv = productVersion(pj);
+            if (pv) return { version: pv, dir: loc };
           } catch {}
         } catch {}
       }
@@ -314,7 +325,7 @@ function probeGuiCommonLocation(platformId) {
   };
   for (const base of cands[platformId] || []) {
     const pj = readJson(path.join(base, 'resources', 'app', 'product.json'));
-    if (pj) return { version: pj.version || null, dir: base, vscodeVersion: pj.vscodeVersion || null };
+    if (pj) return { version: productVersion(pj), dir: base, vscodeVersion: pj.vscodeVersion || null };
   }
   return { version: null, dir: null };
 }
