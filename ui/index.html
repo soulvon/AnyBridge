@@ -4095,46 +4095,49 @@
         <!-- ═══════ PAGE: PLATFORM · CLAUDE CODE ═══════ -->
         <div class="page" id="page-platform-claude-code" role="tabpanel" aria-labelledby="tab-platforms">
           <section class="codex-manager-shell claude-code-manager-shell">
-            <div class="platform-console-hero glass-card codex-manager-hero">
+            <section class="platform-console-head glass-card platform-hero-card">
               <div class="platform-console-titlebar">
-                <div class="platform-console-icon codex-manager-icon"><img src="assets/icons/platform-claude-code.svg"
-                    alt="Claude Code"></div>
-                <div class="platform-console-titlewrap">
-                  <strong>Claude Code</strong>
-                  <span id="platform-claude-code-headline">Anthropic 终端智能体 CLI · 管理官方与第三方兼容配置</span>
+                <div class="platform-console-icon"><img src="./assets/icons/platform-claude-code.svg" alt="Claude Code"></div>
+                <div class="platform-console-copy">
+                  <h1>Claude Code 接入控制台</h1>
+                  <p id="platform-claude-code-headline">Anthropic 终端智能体 CLI · 管理官方与第三方兼容配置</p>
                 </div>
               </div>
-            </div>
+            </section>
 
-            <div class="control-bar glass-card codex-manager-toolbar">
-              <div class="codex-toolbar-left">
-                <!-- 板块标题：与 Antigravity「模型列表」结构一致，统一各平台页视觉 -->
+            <div class="control-bar glass-card model-map-control-bar">
+              <div class="model-map-toolbar-main">
                 <div class="model-map-title-block">
                   <h2>配置列表</h2>
                   <span>管理官方与第三方兼容配置，切换后重启客户端生效。</span>
                 </div>
-                <div class="codex-search">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
-                    stroke-linecap="round" stroke-linejoin="round">
-                    <circle cx="11" cy="11" r="8"></circle>
-                    <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-                  </svg>
-                  <input type="text" id="claude-code-config-search" placeholder="搜索配置、模型或地址"
- data-action="onClaudeCodeConfigSearch" data-events="input">
+                <div class="model-map-toolbar-actions">
+                  <button class="btn-primary codex-add-config-btn" data-action="openClaudeCodeConfigEditor">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                      stroke-linecap="round" stroke-linejoin="round">
+                      <line x1="12" y1="5" x2="12" y2="19" />
+                      <line x1="5" y1="12" x2="19" y2="12" />
+                    </svg>
+                    添加配置
+                  </button>
+                  <button class="btn-ghost accent codex-refresh-btn" data-action="refreshPlatforms">刷新</button>
+                  <button class="btn-ghost warn codex-restore-btn" id="platform-claude-code-restore"
+                    data-action="restorePlatform" data-arg="claude-code">还原备份</button>
                 </div>
               </div>
-              <div class="codex-toolbar-actions">
-                <button class="btn-primary codex-add-config-btn" data-action="openClaudeCodeConfigEditor">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
-                    stroke-linecap="round" stroke-linejoin="round">
-                    <line x1="12" y1="5" x2="12" y2="19" />
-                    <line x1="5" y1="12" x2="19" y2="12" />
-                  </svg>
-                  添加配置
-                </button>
-                <button class="btn-ghost accent codex-refresh-btn" data-action="refreshPlatforms">刷新</button>
-                <button class="btn-ghost warn codex-restore-btn" id="platform-claude-code-restore"
-                  data-action="restorePlatform" data-arg="claude-code">还原备份</button>
+
+              <div class="model-map-bulk-row" style="display:flex;align-items:center;justify-content:space-between;gap:12px;">
+                <div style="display:flex;align-items:center;gap:10px;flex:1;min-width:0;">
+                  <label class="model-map-search" style="max-width:340px;width:100%;">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"
+                      stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                      <circle cx="11" cy="11" r="8"></circle>
+                      <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                    </svg>
+                    <input type="text" id="claude-code-config-search" placeholder="搜索配置、模型或地址"
+                      data-action="onClaudeCodeConfigSearch" data-events="input">
+                  </label>
+                </div>
               </div>
             </div>
 
@@ -4484,13 +4487,12 @@
         <!-- ═══════ PAGE: PLATFORM · CLAUDE DESKTOP ═══════ -->
         <div class="page" id="page-platform-claude-desktop" role="tabpanel" aria-labelledby="tab-platforms">
           <section class="codex-manager-shell claude-desktop-manager-shell">
-            <div class="platform-console-hero glass-card codex-manager-hero" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:16px;">
+            <section class="platform-console-head glass-card platform-hero-card">
               <div class="platform-console-titlebar">
-                <div class="platform-console-icon codex-manager-icon"><img src="assets/icons/platform-claude-desktop.svg"
-                    alt="Claude Desktop"></div>
-                <div class="platform-console-titlewrap">
-                  <strong>Claude Desktop</strong>
-                  <span id="platform-claude-desktop-headline">Anthropic 桌面客户端 · 管理本地路由与角色模型映射</span>
+                <div class="platform-console-icon"><img src="./assets/icons/platform-claude-desktop.svg" alt="Claude Desktop"></div>
+                <div class="platform-console-copy">
+                  <h1>Claude Desktop 接入控制台</h1>
+                  <p id="platform-claude-desktop-headline">Anthropic 桌面客户端 · 管理本地路由与角色模型映射</p>
                 </div>
               </div>
               <div class="platform-console-actions" id="claude-desktop-hero-actions">
@@ -4513,37 +4515,41 @@
                   <span>代理模式 (本地路由)</span>
                 </button>
               </div>
-            </div>
+            </section>
 
-            <div class="control-bar glass-card codex-manager-toolbar">
-              <div class="codex-toolbar-left">
-                <!-- 板块标题：与 Antigravity「模型列表」结构一致，统一各平台页视觉 -->
+            <div class="control-bar glass-card model-map-control-bar">
+              <div class="model-map-toolbar-main">
                 <div class="model-map-title-block">
                   <h2>配置列表</h2>
                   <span>管理角色档位与本地网关绑定，切换后重启客户端生效。</span>
                 </div>
-                <div class="codex-search">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
-                    stroke-linecap="round" stroke-linejoin="round">
-                    <circle cx="11" cy="11" r="8"></circle>
-                    <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-                  </svg>
-                  <input type="text" id="claude-desktop-config-search" placeholder="搜索配置、模型或地址"
-                    data-action="onClaudeDesktopConfigSearch" data-events="input">
+                <div class="model-map-toolbar-actions">
+                  <button class="btn-primary codex-add-config-btn" data-action="openClaudeDesktopAddModal">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                      stroke-linecap="round" stroke-linejoin="round">
+                      <line x1="12" y1="5" x2="12" y2="19" />
+                      <line x1="5" y1="12" x2="19" y2="12" />
+                    </svg>
+                    添加配置
+                  </button>
+                  <button class="btn-ghost accent codex-refresh-btn" data-action="refreshClaudeDesktopAction">刷新</button>
+                  <button class="btn-ghost warn codex-restore-btn" id="platform-claude-desktop-restore"
+                    data-action="restorePlatform" data-arg="claude-desktop">还原官方模式</button>
                 </div>
               </div>
-              <div class="codex-toolbar-actions">
-                <button class="btn-primary codex-add-config-btn" data-action="openClaudeDesktopAddModal">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
-                    stroke-linecap="round" stroke-linejoin="round">
-                    <line x1="12" y1="5" x2="12" y2="19" />
-                    <line x1="5" y1="12" x2="19" y2="12" />
-                  </svg>
-                  添加配置
-                </button>
-                <button class="btn-ghost accent codex-refresh-btn" data-action="refreshClaudeDesktopAction">刷新</button>
-                <button class="btn-ghost warn codex-restore-btn" id="platform-claude-desktop-restore"
-                  data-action="restorePlatform" data-arg="claude-desktop">还原官方模式</button>
+
+              <div class="model-map-bulk-row" style="display:flex;align-items:center;justify-content:space-between;gap:12px;">
+                <div style="display:flex;align-items:center;gap:10px;flex:1;min-width:0;">
+                  <label class="model-map-search" style="max-width:340px;width:100%;">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"
+                      stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                      <circle cx="11" cy="11" r="8"></circle>
+                      <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                    </svg>
+                    <input type="text" id="claude-desktop-config-search" placeholder="搜索配置、模型或地址"
+                      data-action="onClaudeDesktopConfigSearch" data-events="input">
+                  </label>
+                </div>
               </div>
             </div>
 
@@ -4863,46 +4869,49 @@
         <!-- ═══════ PAGE: PLATFORM · CODEX ═══════ -->
         <div class="page" id="page-platform-codex" role="tabpanel" aria-labelledby="tab-platforms">
           <section class="codex-manager-shell">
-            <div class="platform-console-hero glass-card codex-manager-hero">
+            <section class="platform-console-head glass-card platform-hero-card">
               <div class="platform-console-titlebar">
-                <div class="platform-console-icon codex-manager-icon"><img src="assets/icons/platform-codex.svg"
-                    alt="Codex"></div>
-                <div class="platform-console-titlewrap">
-                  <strong>Codex</strong>
-                  <span id="platform-codex-headline">OpenAI 终端智能体 CLI · 管理官方与第三方兼容配置</span>
+                <div class="platform-console-icon"><img src="./assets/icons/platform-codex.svg" alt="Codex"></div>
+                <div class="platform-console-copy">
+                  <h1>Codex 接入控制台</h1>
+                  <p id="platform-codex-headline">OpenAI 终端智能体 CLI · 管理官方与第三方兼容配置</p>
                 </div>
               </div>
-            </div>
+            </section>
 
-            <div class="control-bar glass-card codex-manager-toolbar">
-              <div class="codex-toolbar-left">
-                <!-- 板块标题：与 Antigravity「模型列表」结构一致，统一各平台页视觉 -->
+            <div class="control-bar glass-card model-map-control-bar">
+              <div class="model-map-toolbar-main">
                 <div class="model-map-title-block">
                   <h2>配置列表</h2>
                   <span>管理官方与第三方配置，切换后重启客户端生效。</span>
                 </div>
-                <div class="codex-search">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
-                    stroke-linecap="round" stroke-linejoin="round">
-                    <circle cx="11" cy="11" r="8"></circle>
-                    <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-                  </svg>
-                  <input type="text" id="codex-config-search" placeholder="搜索配置、模型或地址" data-action="onCodexConfigSearch" data-events="input">
+                <div class="model-map-toolbar-actions">
+                  <button class="btn-primary codex-add-config-btn" data-action="openCodexConfigEditor">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                      stroke-linecap="round" stroke-linejoin="round">
+                      <line x1="12" y1="5" x2="12" y2="19" />
+                      <line x1="5" y1="12" x2="19" y2="12" />
+                    </svg>
+                    添加配置
+                  </button>
+                  <button class="btn-ghost accent codex-refresh-btn" data-action="refreshPlatforms">刷新</button>
+                  <button class="btn-ghost accent codex-repair-sessions-btn" data-action="repairCodexSessionVisibility" title="对齐会话索引到当前 model_provider，使历史会话重新可见">修复会话历史</button>
+                  <button class="btn-ghost warn codex-restore-btn" id="platform-codex-restore"
+                    data-action="restorePlatform" data-arg="codex">还原备份</button>
                 </div>
               </div>
-              <div class="codex-toolbar-actions">
-                <button class="btn-primary codex-add-config-btn" data-action="openCodexConfigEditor">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
-                    stroke-linecap="round" stroke-linejoin="round">
-                    <line x1="12" y1="5" x2="12" y2="19" />
-                    <line x1="5" y1="12" x2="19" y2="12" />
-                  </svg>
-                  添加配置
-                </button>
-                <button class="btn-ghost accent codex-refresh-btn" data-action="refreshPlatforms">刷新</button>
-                <button class="btn-ghost accent codex-repair-sessions-btn" data-action="repairCodexSessionVisibility" title="对齐会话索引到当前 model_provider，使历史会话重新可见">修复会话历史</button>
-                <button class="btn-ghost warn codex-restore-btn" id="platform-codex-restore"
- data-action="restorePlatform" data-arg="codex">还原备份</button>
+
+              <div class="model-map-bulk-row" style="display:flex;align-items:center;justify-content:space-between;gap:12px;">
+                <div style="display:flex;align-items:center;gap:10px;flex:1;min-width:0;">
+                  <label class="model-map-search" style="max-width:340px;width:100%;">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"
+                      stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                      <circle cx="11" cy="11" r="8"></circle>
+                      <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                    </svg>
+                    <input type="text" id="codex-config-search" placeholder="搜索配置、模型或地址" data-action="onCodexConfigSearch" data-events="input">
+                  </label>
+                </div>
               </div>
             </div>
 
@@ -6091,46 +6100,49 @@
         <!-- ═══════ PAGE: PLATFORM · OPENCODE ═══════ -->
         <div class="page" id="page-platform-opencode" role="tabpanel" aria-labelledby="tab-platforms">
           <section class="codex-manager-shell opencode-manager-shell">
-            <div class="platform-console-hero glass-card codex-manager-hero">
+            <section class="platform-console-head glass-card platform-hero-card">
               <div class="platform-console-titlebar">
-                <div class="platform-console-icon codex-manager-icon"><img src="assets/icons/platform-opencode.svg"
-                    alt="OpenCode"></div>
-                <div class="platform-console-titlewrap">
-                  <strong>OpenCode</strong>
-                  <span id="platform-opencode-headline">开源终端 AI 助手 CLI · 管理独立 Provider 配置</span>
+                <div class="platform-console-icon"><img src="./assets/icons/platform-opencode.svg" alt="OpenCode"></div>
+                <div class="platform-console-copy">
+                  <h1>OpenCode 接入控制台</h1>
+                  <p id="platform-opencode-headline">开源终端 AI 助手 CLI · 管理独立 Provider 配置</p>
                 </div>
               </div>
-            </div>
+            </section>
 
-            <div class="control-bar glass-card codex-manager-toolbar">
-              <div class="codex-toolbar-left">
-                <!-- 板块标题：与 Antigravity「模型列表」结构一致，统一各平台页视觉 -->
+            <div class="control-bar glass-card model-map-control-bar">
+              <div class="model-map-toolbar-main">
                 <div class="model-map-title-block">
                   <h2>配置列表</h2>
                   <span>管理模型供应商配置，切换后重启客户端生效。</span>
                 </div>
-                <div class="codex-search">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
-                    stroke-linecap="round" stroke-linejoin="round">
-                    <circle cx="11" cy="11" r="8"></circle>
-                    <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-                  </svg>
-                  <input type="text" id="opencode-config-search" placeholder="搜索配置、模型或地址"
- data-action="onOpenCodeConfigSearch" data-events="input">
+                <div class="model-map-toolbar-actions">
+                  <button class="btn-primary codex-add-config-btn" data-action="openOpenCodeConfigEditor">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                      stroke-linecap="round" stroke-linejoin="round">
+                      <line x1="12" y1="5" x2="12" y2="19" />
+                      <line x1="5" y1="12" x2="19" y2="12" />
+                    </svg>
+                    添加配置
+                  </button>
+                  <button class="btn-ghost accent codex-refresh-btn" data-action="refreshPlatforms">刷新</button>
+                  <button class="btn-ghost warn codex-restore-btn" id="platform-opencode-restore"
+                    data-action="restorePlatform" data-arg="opencode">还原备份</button>
                 </div>
               </div>
-              <div class="codex-toolbar-actions">
-                <button class="btn-primary codex-add-config-btn" data-action="openOpenCodeConfigEditor">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
-                    stroke-linecap="round" stroke-linejoin="round">
-                    <line x1="12" y1="5" x2="12" y2="19" />
-                    <line x1="5" y1="12" x2="19" y2="12" />
-                  </svg>
-                  添加配置
-                </button>
-                <button class="btn-ghost accent codex-refresh-btn" data-action="refreshPlatforms">刷新</button>
-                <button class="btn-ghost warn codex-restore-btn" id="platform-opencode-restore"
-                  data-action="restorePlatform" data-arg="opencode">还原备份</button>
+
+              <div class="model-map-bulk-row" style="display:flex;align-items:center;justify-content:space-between;gap:12px;">
+                <div style="display:flex;align-items:center;gap:10px;flex:1;min-width:0;">
+                  <label class="model-map-search" style="max-width:340px;width:100%;">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"
+                      stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                      <circle cx="11" cy="11" r="8"></circle>
+                      <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                    </svg>
+                    <input type="text" id="opencode-config-search" placeholder="搜索配置、模型或地址"
+                      data-action="onOpenCodeConfigSearch" data-events="input">
+                  </label>
+                </div>
               </div>
             </div>
 
@@ -7132,46 +7144,49 @@
         <!-- ═══════ PAGE: PLATFORM · GROK ═══════ -->
         <div class="page" id="page-platform-grok" role="tabpanel" aria-labelledby="tab-platforms">
           <section class="codex-manager-shell grok-manager-shell">
-            <div class="platform-console-hero glass-card codex-manager-hero">
+            <section class="platform-console-head glass-card platform-hero-card">
               <div class="platform-console-titlebar">
-                <div class="platform-console-icon codex-manager-icon"><img src="assets/icons/platform-grok.svg"
-                    alt="Grok"></div>
-                <div class="platform-console-titlewrap">
-                  <strong>Grok</strong>
-                  <span id="platform-grok-headline">xAI 终端智能体 CLI · 管理自定义模型与端点配置</span>
+                <div class="platform-console-icon"><img src="./assets/icons/platform-grok.svg" alt="Grok"></div>
+                <div class="platform-console-copy">
+                  <h1>Grok 接入控制台</h1>
+                  <p id="platform-grok-headline">xAI 终端智能体 CLI · 管理自定义模型与端点配置</p>
                 </div>
               </div>
-            </div>
+            </section>
 
-            <div class="control-bar glass-card codex-manager-toolbar">
-              <div class="codex-toolbar-left">
-                <!-- 板块标题：与 Antigravity「模型列表」结构一致，统一各平台页视觉 -->
+            <div class="control-bar glass-card model-map-control-bar">
+              <div class="model-map-toolbar-main">
                 <div class="model-map-title-block">
                   <h2>配置列表</h2>
                   <span>管理官方与第三方配置，切换后重启客户端生效。</span>
                 </div>
-                <div class="codex-search">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
-                    stroke-linecap="round" stroke-linejoin="round">
-                    <circle cx="11" cy="11" r="8"></circle>
-                    <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-                  </svg>
-                  <input type="text" id="grok-config-search" placeholder="搜索配置、模型或地址"
-                    data-action="onGrokConfigSearch" data-events="input">
+                <div class="model-map-toolbar-actions">
+                  <button class="btn-primary codex-add-config-btn" data-action="openGrokConfigEditor">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                      stroke-linecap="round" stroke-linejoin="round">
+                      <line x1="12" y1="5" x2="12" y2="19" />
+                      <line x1="5" y1="12" x2="19" y2="12" />
+                    </svg>
+                    添加配置
+                  </button>
+                  <button class="btn-ghost accent codex-refresh-btn" data-action="refreshPlatforms">刷新</button>
+                  <button class="btn-ghost warn codex-restore-btn" id="platform-grok-restore"
+                    data-action="restorePlatform" data-arg="grok">还原备份</button>
                 </div>
               </div>
-              <div class="codex-toolbar-actions">
-                <button class="btn-primary codex-add-config-btn" data-action="openGrokConfigEditor">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
-                    stroke-linecap="round" stroke-linejoin="round">
-                    <line x1="12" y1="5" x2="12" y2="19" />
-                    <line x1="5" y1="12" x2="19" y2="12" />
-                  </svg>
-                  添加配置
-                </button>
-                <button class="btn-ghost accent codex-refresh-btn" data-action="refreshPlatforms">刷新</button>
-                <button class="btn-ghost warn codex-restore-btn" id="platform-grok-restore"
-                  data-action="restorePlatform" data-arg="grok">还原备份</button>
+
+              <div class="model-map-bulk-row" style="display:flex;align-items:center;justify-content:space-between;gap:12px;">
+                <div style="display:flex;align-items:center;gap:10px;flex:1;min-width:0;">
+                  <label class="model-map-search" style="max-width:340px;width:100%;">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"
+                      stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                      <circle cx="11" cy="11" r="8"></circle>
+                      <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                    </svg>
+                    <input type="text" id="grok-config-search" placeholder="搜索配置、模型或地址"
+                      data-action="onGrokConfigSearch" data-events="input">
+                  </label>
+                </div>
               </div>
             </div>
 

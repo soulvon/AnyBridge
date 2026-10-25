@@ -1539,9 +1539,13 @@
 
 /* Codex simple handoff flow */
 .codex-manager-shell {
-  display: grid;
-  gap: 16px;
+  display: block;
   width: 100%;
+}
+
+.codex-card-list-shell {
+  overflow: hidden;
+  margin-bottom: 14px !important;
 }
 
 .codex-manager-hero {
