@@ -1,5 +1,14 @@
 # AnyBridge — AI 开发约定（入口）
 
+<!-- experience:begin -->
+## 通用开发经验（自动注入，勿手改本段）
+
+- 中央库：`C:\Users\admin\Desktop\dev-experience`
+- 开工先读 `machine/INDEX.md`；写新逻辑前查能力清单，并复述复用了什么。
+- 修改已知事故区域时，提交信息必须声明 `Lesson-Checked: <id>`；不适用则写 `Experience-Override: <原因>`。
+- 新增经验：复制 `toolkit/templates/incident.md`，运行 `node toolkit/build.mjs`。
+<!-- experience:end -->
+
 > 任何 AI 工具进本仓库，先读完这一页，再动手。
 > 详细内容在 `docs/`，此处只放**入口与强制项**，避免多处重复导致漂移。
 
