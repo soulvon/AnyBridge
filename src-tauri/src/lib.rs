@@ -185,6 +185,8 @@ pub fn run() {
             commands::ide_models::refresh_ide_models,
             commands::windsurf_catalog::list_windsurf_catalog,
             commands::platforms::detect_platforms,
+            commands::platforms::check_platform_update,
+            commands::platforms::update_platform_agent,
             commands::platforms::preview_platform_switch,
             commands::platforms::switch_platform,
             commands::platforms::remove_opencode_config_from_live,

@@ -2056,18 +2056,9 @@
               </div>
               <div class="platform-console-copy">
                 <h1 id="proxy-platform-title">Devin 接入控制台</h1>
-                <p id="proxy-platform-subtitle">本机代理、MITM 证书、Devin 配置和模型路由集中管理。</p>
+                <p class="platform-version-line" id="proxy-platform-version">检测中…</p>
               </div>
             </div>
-            <button type="button" class="platform-kite-ad" id="proxy-platform-kite-ad"
- aria-label="打开 Kite 插件安装选项" data-action="openKitePluginModal">
-              <span class="platform-kite-ad-badge">Kite</span>
-              <span class="platform-kite-ad-copy">
-                <strong>插件推荐</strong>
-                <span id="proxy-platform-kite-ad-copy">Kite 插件：Devin 增强入口</span>
-              </span>
-              <span class="platform-kite-ad-arrow" aria-hidden="true">↗</span>
-            </button>
             <div class="platform-console-actions">
               <!-- 顺序约定：汉化 → 接入 → 刷新 → 停止（汉化是独立于代理接入的能力，排在前面） -->
               <button type="button" class="btn-ghost secondary platform-lang-action-btn" id="proxyLangBtn" data-action="openProxyLangModal"
@@ -3173,8 +3164,8 @@
                 <img id="cursor-platform-icon" src="./assets/icons/platform-cursor.svg" alt="Cursor">
               </div>
               <div class="platform-console-copy">
-                <h1 id="cursor-platform-title">Cursor 接入控制台</h1>
-                <p id="cursor-platform-subtitle">AI 代码编辑器 · 管理代理路由与模型映射</p>
+                <h1 id="cursor-platform-title">Cursor</h1>
+                <p class="platform-version-line" id="cursor-platform-version">检测中…</p>
               </div>
             </div>
 
@@ -4099,8 +4090,8 @@
               <div class="platform-console-titlebar">
                 <div class="platform-console-icon"><img src="./assets/icons/platform-claude-code.svg" alt="Claude Code"></div>
                 <div class="platform-console-copy">
-                  <h1>Claude Code 接入控制台</h1>
-                  <p id="platform-claude-code-headline">Anthropic 终端智能体 CLI · 管理官方与第三方兼容配置</p>
+                  <h1>Claude Code</h1>
+                  <p class="platform-version-line" id="claude-code-platform-version">检测中…</p>
                 </div>
               </div>
             </section>
@@ -4491,8 +4482,8 @@
               <div class="platform-console-titlebar">
                 <div class="platform-console-icon"><img src="./assets/icons/platform-claude-desktop.svg" alt="Claude Desktop"></div>
                 <div class="platform-console-copy">
-                  <h1>Claude Desktop 接入控制台</h1>
-                  <p id="platform-claude-desktop-headline">Anthropic 桌面客户端 · 管理本地路由与角色模型映射</p>
+                  <h1>Claude Desktop</h1>
+                  <p class="platform-version-line" id="claude-desktop-platform-version">检测中…</p>
                 </div>
               </div>
               <div class="platform-console-actions" id="claude-desktop-hero-actions">
@@ -4873,8 +4864,8 @@
               <div class="platform-console-titlebar">
                 <div class="platform-console-icon"><img src="./assets/icons/platform-codex.svg" alt="Codex"></div>
                 <div class="platform-console-copy">
-                  <h1>Codex 接入控制台</h1>
-                  <p id="platform-codex-headline">OpenAI 终端智能体 CLI · 管理官方与第三方兼容配置</p>
+                  <h1>Codex</h1>
+                  <p class="platform-version-line" id="codex-platform-version">检测中…</p>
                 </div>
               </div>
             </section>
@@ -6104,8 +6095,8 @@
               <div class="platform-console-titlebar">
                 <div class="platform-console-icon"><img src="./assets/icons/platform-opencode.svg" alt="OpenCode"></div>
                 <div class="platform-console-copy">
-                  <h1>OpenCode 接入控制台</h1>
-                  <p id="platform-opencode-headline">开源终端 AI 助手 CLI · 管理独立 Provider 配置</p>
+                  <h1>OpenCode</h1>
+                  <p class="platform-version-line" id="opencode-platform-version">检测中…</p>
                 </div>
               </div>
             </section>
@@ -7148,8 +7139,8 @@
               <div class="platform-console-titlebar">
                 <div class="platform-console-icon"><img src="./assets/icons/platform-grok.svg" alt="Grok"></div>
                 <div class="platform-console-copy">
-                  <h1>Grok 接入控制台</h1>
-                  <p id="platform-grok-headline">xAI 终端智能体 CLI · 管理自定义模型与端点配置</p>
+                  <h1>Grok</h1>
+                  <p class="platform-version-line" id="grok-platform-version">检测中…</p>
                 </div>
               </div>
             </section>
@@ -9001,67 +8992,6 @@
       </div>
       <div class="modal-footer">
         <button id="custom-alert-ok-btn" class="modal-btn modal-btn-confirm" style="min-width: 80px;">确定</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- Kite 插件安装选择 -->
-  <div id="kite-plugin-modal" class="modal-overlay" data-action="closeKitePluginModal" data-only-self>
-    <div class="modal-container kite-plugin-modal">
-      <div class="modal-header kite-plugin-modal-header">
-        <div class="modal-title kite-plugin-title">
-          <span class="kite-plugin-mark">Kite</span>
-          <span>安装 Kite 插件</span>
-        </div>
-        <button type="button" class="modal-close-icon kite-plugin-close"
- aria-label="关闭 Kite 插件安装弹窗" data-action="closeKitePluginModal">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
-            stroke-linecap="round" stroke-linejoin="round">
-            <path d="M18 6 6 18"></path>
-            <path d="m6 6 12 12"></path>
-          </svg>
-        </button>
-      </div>
-      <div class="modal-body kite-plugin-body">
-        <p>
-          为 <strong id="kite-plugin-platform-label">Devin</strong> 安装 Kite 增强插件。安装会下载 GitHub latest release
-          中的 <code>.vsix</code> 文件，并调用对应 IDE 的扩展安装命令。
-        </p>
-        <div class="kite-plugin-choice-grid">
-          <button type="button" class="kite-plugin-choice kite-plugin-choice-install" id="kite-plugin-install-btn"
- data-action="installKitePlugin">
-            <span class="kite-plugin-choice-icon">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"
-                stroke-linecap="round" stroke-linejoin="round">
-                <path d="M12 3v12"></path>
-                <path d="m7 10 5 5 5-5"></path>
-                <path d="M5 21h14"></path>
-              </svg>
-            </span>
-            <span>
-              <strong>一键安装</strong>
-              <small>直接安装到当前平台</small>
-            </span>
-          </button>
-          <a class="kite-plugin-choice kite-plugin-choice-project" href="https://github.com/soulvon/Kite"
- target="_blank" rel="noopener noreferrer" data-action="closeKitePluginModal">
-            <span class="kite-plugin-choice-icon">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"
-                stroke-linecap="round" stroke-linejoin="round">
-                <path d="M7 17 17 7"></path>
-                <path d="M8 7h9v9"></path>
-                <path d="M5 5v14h14"></path>
-              </svg>
-            </span>
-            <span>
-              <strong>项目页面</strong>
-              <small>查看源码和说明</small>
-            </span>
-          </a>
-        </div>
-        <div class="kite-plugin-note">
-          如果安装失败，AnyBridge 会显示 GitHub 下载或 IDE 安装命令的原始错误，方便继续排查。
-        </div>
       </div>
     </div>
   </div>

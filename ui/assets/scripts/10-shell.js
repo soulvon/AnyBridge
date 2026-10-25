@@ -493,14 +493,14 @@ syncPlatformSubtabsForPage('platform-proxy');
 globalThis.PROXY_PLATFORM_META = {
   windsurf: {
     label: 'Windsurf',
-    title: 'Windsurf 接入控制台',
+    title: 'Windsurf',
     short: 'Windsurf',
     icon: './assets/icons/platform-windsurf.svg',
     subtitle: '本机代理、MITM 证书、Windsurf 配置和模型路由集中管理。'
   },
   devin: {
     label: 'Devin',
-    title: 'Devin 接入控制台',
+    title: 'Devin',
     short: 'Devin',
     icon: './assets/icons/platform-devin.svg',
     subtitle: '本机代理、MITM 证书、Devin 配置和模型路由集中管理。'
@@ -541,6 +541,10 @@ function updateProxyPlatformCopy(platformId) {
   const emptySubtitle = document.getElementById('model-map-empty-subtitle');
   if (emptySubtitle) {
     emptySubtitle.textContent = _t(`添加第一个模型映射，让 ${meta.label || '当前平台'} 使用你指定的 AI 供应商与模型能力。`);
+  }
+  // Hero 版本行（windsurf/devin 共用此页，target 随 rail 切换）
+  if (typeof renderHeroVersion === 'function') {
+    renderHeroVersion(id, 'proxy-platform-version');
   }
   void refreshProxyLangStatus();
 }

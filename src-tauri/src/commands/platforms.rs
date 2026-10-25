@@ -124,6 +124,13 @@ pub(crate) fn emit_switch_progress(app: &AppHandle, platform: &str, step: &str, 
 
 #[derive(Serialize, Clone)]
 pub struct PlatformInfo {
+    /// 已安装版本（CLI 跑 --version / GUI 读 product.json）；
+    /// None = 未安装或版本未知（读失败=未知，不编造）
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub version: Option<String>,
+    /// npm 包名（有 CLI spec 的平台才有，用于「检查更新」）
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub npm_package: Option<String>,
     pub id: String,
     #[serde(rename = "displayName")]
     pub display_name: String,
@@ -7102,6 +7109,121 @@ pub async fn detect_platforms() -> Result<Vec<PlatformInfo>, String> {
     result
 }
 
+/// 单平台更新检查：已装版本 + npm 最新版本 + 是否有新版。
+/// 借鉴 magpie cliupdate.go：已装版本走缓存（10 分钟），latest 走 npm
+/// registry（6 小时缓存）；读失败 = None（未知），绝不编造。
+#[derive(serde::Serialize)]
+pub struct PlatformUpdateInfo {
+    pub platform: String,
+    pub installed: bool,
+    pub current_version: Option<String>,
+    pub latest_version: Option<String>,
+    pub has_update: bool,
+    pub npm_package: Option<String>,
+}
+
+#[tauri::command]
+pub async fn check_platform_update(platform: String) -> Result<PlatformUpdateInfo, String> {
+    // 两套体系都支持：
+    // - Platform enum 的 13 平台（CLI 探测 --version / GUI 读 product.json）
+    // - ide_proxy 体系的 windsurf/devin/cursor（GUI 探测 product.json）
+    let (plat_id, npm_package) = match Platform::from_id(&platform) {
+        Some(p) => (
+            p.id().to_string(),
+            super::version_probe::cli_spec(p.id())
+                .and_then(|s| s.npm_package.map(|x| x.to_string())),
+        ),
+        None if super::version_probe::gui_product(&platform).is_some() => {
+            (platform.clone(), None)
+        }
+        None => return Err(format!("未知平台: {platform}")),
+    };
+
+    let current = {
+        let pid = plat_id.clone();
+        tauri::async_runtime::spawn_blocking(move || {
+            super::version_probe::installed_version(&pid)
+        })
+        .await
+        .map_err(|e| format!("版本探测任务执行失败: {e}"))?
+    };
+
+    // GUI 平台（Windsurf/Devin/Cursor/Antigravity）没有 npm 包名，latest
+    // 当前返回 None（未知）；官网 release feed 等有真实需求再接入。
+    let latest = if current.is_some() {
+        match npm_package.as_deref() {
+            Some(pkg) => super::version_probe::npm_latest_version(pkg).await,
+            None => None,
+        }
+    } else {
+        None
+    };
+
+    let has_update = match (&latest, &current) {
+        (Some(l), Some(c)) => super::version_probe::is_newer(l, c),
+        _ => false,
+    };
+
+    Ok(PlatformUpdateInfo {
+        platform: plat_id,
+        installed: current.is_some(),
+        current_version: current,
+        latest_version: latest,
+        has_update,
+        npm_package,
+    })
+}
+
+/// 一键更新平台 CLI（走官方 npm 命令 + 更新后验证），返回更新后的状态。
+/// 仅支持有 npm 包的 CLI 平台；GUI 客户端（Windsurf/Devin/Cursor/Antigravity）
+/// 的更新走官网下载，暂不在此实现。
+#[tauri::command]
+pub async fn update_platform_agent(platform: String) -> Result<PlatformUpdateInfo, String> {
+    let plat = Platform::from_id(&platform)
+        .ok_or_else(|| format!("{platform} 为 GUI 客户端，暂不支持在线更新（请从官网下载新版）"))?;
+    let plat_id = plat.id().to_string();
+    let npm_package = super::version_probe::cli_spec(plat.id())
+        .and_then(|s| s.npm_package.map(|p| p.to_string()))
+        .ok_or_else(|| format!("{} 暂不支持在线更新", plat.display_name()))?;
+
+    // 1. 查最新版本（async，主协程）
+    let target_version = super::version_probe::npm_latest_version(&npm_package)
+        .await
+        .ok_or_else(|| "无法获取最新版本号（网络不可达），请稍后重试".to_string())?;
+
+    // 2. 执行更新（sync 重活 → spawn_blocking）
+    let pkg_for_update = npm_package.clone();
+    let plat_id_for_update = plat_id.clone();
+    let target_for_update = target_version.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        super::version_probe::update_npm_package_sync(
+            &pkg_for_update,
+            &plat_id_for_update,
+            &target_for_update,
+        )
+    })
+    .await
+    .map_err(|e| format!("更新任务执行失败: {e}"))??;
+
+    // 3. 验证 + 组装结果（latest 缓存仍是刚才查的，直接复用）
+    let current_version = super::version_probe::installed_version(&plat_id);
+    let latest_version = super::version_probe::npm_latest_version(&npm_package).await;
+    let has_update = match (&latest_version, &current_version) {
+        (Some(l), Some(c)) => super::version_probe::is_newer(l, c),
+        _ => false,
+    };
+
+    invalidate_detect_cache();
+    Ok(PlatformUpdateInfo {
+        platform: plat_id,
+        installed: current_version.is_some(),
+        current_version,
+        latest_version,
+        has_update,
+        npm_package: Some(npm_package),
+    })
+}
+
 fn detect_platforms_sync() -> Result<Vec<PlatformInfo>, String> {
     let store = read_provider_store().unwrap_or_default();
     let platforms = [
@@ -7421,12 +7543,27 @@ fn detect_platforms_sync() -> Result<Vec<PlatformInfo>, String> {
             }
         }
 
+        // 版本探测：CLI 跑 --version（缓存 10 分钟）/ GUI 读 product.json。
+        // 未安装的平台跳过探测（省子进程开销）；读失败 = None（版本未知）。
+        let installed = plat.detect_installed();
+        let (version, npm_package) = if installed {
+            (
+                super::version_probe::installed_version(plat.id()),
+                super::version_probe::cli_spec(plat.id())
+                    .and_then(|s| s.npm_package.map(|p| p.to_string())),
+            )
+        } else {
+            (None, None)
+        };
+
         out.push(PlatformInfo {
             id: plat.id().to_string(),
             display_name: plat.display_name().to_string(),
             vendor: plat.vendor().to_string(),
             required_api_format: plat.required_api_format().to_string(),
-            installed: plat.detect_installed(),
+            installed,
+            version,
+            npm_package,
             config_path,
             backup_exists,
             current_provider_id,
@@ -9076,6 +9213,74 @@ wire_api = "responses"
             doc["projects"]["E:/project/demo"]["trust_level"].as_str(),
             Some("trusted")
         );
+
+        let _ = fs::remove_dir_all(path.parent().unwrap());
+    }
+
+    #[test]
+    fn codex_apply_restore_contract_is_idempotent_and_preserves_user_edits() {
+        let path = temp_config_path("codex-contract");
+        let initial = r#"
+model = "old-model"
+model_provider = "old"
+
+[mcp_servers.docs]
+command = "node"
+
+[projects."E:/project/demo"]
+trust_level = "trusted"
+
+[model_providers.old]
+base_url = "https://old.example.com/v1"
+wire_api = "responses"
+"#;
+        fs::write(&path, initial).unwrap();
+
+        let provider = test_openai_provider();
+        Platform::Codex.apply_codex(&path, &provider).unwrap();
+        let first = fs::read_to_string(&path).unwrap();
+
+        // 重复接入必须幂等：不能重复注入、不能改变无关区块的顺序或内容。
+        Platform::Codex.apply_codex(&path, &provider).unwrap();
+        let second = fs::read_to_string(&path).unwrap();
+        assert_eq!(first, second, "重复 apply_codex 必须产出完全一致的配置");
+
+        // 用户在两次同步之间手动改的项目配置必须被下一次同步保留。
+        let edited = first.replace("trust_level = \"trusted\"", "trust_level = \"untrusted\"");
+        assert_ne!(edited, first);
+        fs::write(&path, &edited).unwrap();
+        Platform::Codex.apply_codex(&path, &provider).unwrap();
+        let after_user_edit = fs::read_to_string(&path).unwrap();
+        assert!(after_user_edit.contains("trust_level = \"untrusted\""));
+        assert!(after_user_edit.contains("[mcp_servers.docs]"));
+        assert!(after_user_edit.contains("https://old.example.com/v1"));
+
+        // 切回官方只撤销 AnyBridge 托管状态，仍然不能吞掉用户配置。
+        Platform::Codex.apply_codex_official(&path, true).unwrap();
+        let after_restore = fs::read_to_string(&path).unwrap();
+        let doc = after_restore.parse::<DocumentMut>().unwrap();
+        assert_eq!(
+            doc["projects"]["E:/project/demo"]["trust_level"].as_str(),
+            Some("untrusted")
+        );
+        assert_eq!(
+            doc["mcp_servers"]["docs"]["command"].as_str(),
+            Some("node")
+        );
+        assert_eq!(
+            doc["model_providers"]["old"]["base_url"].as_str(),
+            Some("https://old.example.com/v1")
+        );
+        assert!(doc.get("model").is_none());
+        let managed = doc["model_providers"][CODEX_RUNTIME_MODEL_PROVIDER_ID]
+            .as_table()
+            .unwrap();
+        assert_eq!(
+            managed.get("requires_openai_auth").and_then(|v| v.as_bool()),
+            Some(true)
+        );
+        assert!(managed.get("experimental_bearer_token").is_none());
+        assert!(managed.get("base_url").is_none());
 
         let _ = fs::remove_dir_all(path.parent().unwrap());
     }

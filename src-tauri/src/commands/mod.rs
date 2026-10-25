@@ -22,6 +22,7 @@ pub mod proxy;
 pub mod proxy_routes;
 pub mod system;
 pub mod update;
+pub mod version_probe;
 pub mod windsurf_catalog;
 pub mod workbench_inject;
 

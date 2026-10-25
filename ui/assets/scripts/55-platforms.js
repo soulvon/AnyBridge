@@ -792,12 +792,10 @@ function codexField(label, value, extra = '') {
 }
 
 function renderCodexPageStatus(info) {
-  const headline = document.getElementById('platform-codex-headline');
   const pill = document.getElementById('platform-codex-state-pill');
   const currentLabel = document.getElementById('codex-current-label');
 
   const meta = codexStatusMeta(info);
-  if (headline) headline.textContent = 'OpenAI 终端智能体 CLI · 管理官方与第三方兼容配置';
 
   if (pill) {
     pill.textContent = meta.label;
@@ -805,32 +803,31 @@ function renderCodexPageStatus(info) {
   }
   if (currentLabel) currentLabel.textContent = meta.label;
   bindRevealPathLabel('codex-config-path-label', info.configPath || platformDef('codex').configHint);
+  renderHeroVersion('codex', 'codex-platform-version');
   renderCodexConfigList(info);
   renderPlatformNativeRetry();
 }
 
 function renderClaudeCodePageStatus(info) {
-  const headline = document.getElementById('platform-claude-code-headline');
   const currentLabel = document.getElementById('claude-code-current-label');
 
   const meta = claudeCodeStatusMeta(info);
 
-  if (headline) headline.textContent = 'Anthropic 终端智能体 CLI · 管理官方与第三方兼容配置';
   if (currentLabel) currentLabel.textContent = meta.label;
   bindRevealPathLabel('claude-code-config-path-label', info.configPath || platformDef('claude-code').configHint);
+  renderHeroVersion('claude-code', 'claude-code-platform-version');
   renderClaudeCodeConfigList(info);
   renderPlatformNativeRetry();
 }
 
 function renderOpenCodePageStatus(info) {
-  const headline = document.getElementById('platform-opencode-headline');
   const currentLabel = document.getElementById('opencode-current-label');
 
   const meta = openCodeStatusMeta(info);
 
-  if (headline) headline.textContent = '开源终端 AI 助手 CLI · 管理独立 Provider 配置';
   if (currentLabel) currentLabel.textContent = meta.label;
   bindRevealPathLabel('opencode-config-path-label', info.configPath || platformDef('opencode').configHint);
+  renderHeroVersion('opencode', 'opencode-platform-version');
   renderOpenCodeConfigList(info);
 }
 
@@ -6257,9 +6254,8 @@ function grokConfigSourceProviders() {
 }
 
 function renderGrokPageStatus(info) {
-  const headline = document.getElementById('platform-grok-headline');
-  if (headline) headline.textContent = 'xAI 终端智能体 CLI · 管理自定义模型与端点配置';
   bindRevealPathLabel('grok-config-path-label', info.configPath || platformDef('grok').configHint);
+  renderHeroVersion('grok', 'grok-platform-version');
   renderGrokConfigList(info);
 }
 
@@ -7742,6 +7738,11 @@ async function cursorRefreshConsole(options = {}) {
 
     cursorRenderTableRows();
     cursorUpdateBulkActionButtons();
+
+    // Hero 版本行
+    if (typeof renderHeroVersion === 'function') {
+      renderHeroVersion('cursor', 'cursor-platform-version');
+    }
 
   } catch (err) {
     console.error('[cursor] refresh error:', err);
@@ -13967,3 +13968,72 @@ window.zcDrop = function(e) {
     }
   }
 })(globalThis);
+
+
+// ═══════ Hero 版本行（借鉴 magpie：版本探测 + 更新检查 + 一键更新） ═══════
+
+const _heroVersionBusy = {};
+
+/**
+ * 渲染平台 Hero 卡的版本行。
+ * 四种状态：未安装 / 版本未知 / 已是最新 / 可更新（带一键更新按钮）。
+ * check_platform_update 后端自带缓存（版本 10 分钟、latest 6 小时），
+ * 重复调用代价低。
+ */
+async function renderHeroVersion(platformId, elId) {
+  const el = document.getElementById(elId);
+  if (!el || _heroVersionBusy[platformId]) return;
+  if (typeof invoke !== 'function' && !(typeof bindTauriBridge === 'function' && bindTauriBridge())) return;
+  _heroVersionBusy[platformId] = true;
+  try {
+    const info = await invoke('check_platform_update', { platform: platformId });
+    if (!el.isConnected) return;
+    if (!info || !info.installed) {
+      el.innerHTML = '<span class="version-state muted">未安装</span>';
+      return;
+    }
+    if (info.has_update && info.latest_version) {
+      el.innerHTML =
+        '<span class="version-num">v' + info.current_version + '</span>' +
+        '<span class="version-arrow">→</span>' +
+        '<span class="version-num latest">v' + info.latest_version + '</span>' +
+        '<button type="button" class="version-update-btn" data-action="updatePlatformAgentAction" data-arg="' + platformId + '">一键更新</button>';
+    } else if (info.current_version) {
+      el.innerHTML =
+        '<span class="version-num">v' + info.current_version + '</span>' +
+        '<span class="version-state ok">已是最新</span>';
+    } else {
+      el.innerHTML = '<span class="version-state muted">版本未知</span>';
+    }
+  } catch (_) {
+    el.textContent = '';
+  } finally {
+    delete _heroVersionBusy[platformId];
+  }
+}
+
+/**
+ * 一键更新平台 CLI（走官方 npm 命令 + 更新后验证，后端 magpie 模式）。
+ */
+async function updatePlatformAgentAction(platform) {
+  if (!invoke && !(typeof bindTauriBridge === 'function' && bindTauriBridge())) {
+    showCustomAlert('Tauri 通道未就绪，请重启 AnyBridge 后重试。', '更新失败', 'error');
+    return;
+  }
+  if (typeof addLog === 'function') addLog('info', '开始更新 ' + platform + ' …');
+  try {
+    const info = await invoke('update_platform_agent', { platform });
+    const msg = '已更新到 v' + info.current_version;
+    if (typeof addLog === 'function') addLog('ok', msg);
+    if (typeof showBottomToast === 'function') showBottomToast(msg, 'success');
+  } catch (e) {
+    const message = String(e?.message || e);
+    if (typeof addLog === 'function') addLog('err', platform + ' 更新失败: ' + message);
+    if (typeof showCustomAlert === 'function') showCustomAlert(message, platform + ' 更新失败', 'error');
+  } finally {
+    // 无论成败都刷新版本行（失败详情已在弹窗/toast 里）
+    const btn = document.querySelector('[data-action="updatePlatformAgentAction"][data-arg="' + platform + '"]');
+    const lineEl = btn ? btn.closest('.platform-version-line') : null;
+    if (lineEl && lineEl.id) renderHeroVersion(platform, lineEl.id);
+  }
+}

@@ -342,6 +342,9 @@ async function loadClaudeDesktopConsole() {
 
     renderClaudeDesktopConfigList(status);
     updateClaudeDesktopModeHeader(status);
+    if (typeof renderHeroVersion === 'function') {
+      renderHeroVersion('claude-desktop', 'claude-desktop-platform-version');
+    }
   } catch (e) {
     console.error('加载 Claude Desktop 状态失败:', e);
     renderClaudeDesktopConfigList();

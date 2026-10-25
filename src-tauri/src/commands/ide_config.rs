@@ -151,6 +151,10 @@ pub struct IdeProxyStatus {
     pub proxy_value: String,
     pub strict_ssl: Option<bool>,
     pub settings_path: String,
+    /// 客户端版本（读 product.json，注册表定位安装目录）；
+    /// None = 未安装或版本未知（读失败=未知，不编造）
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub version: Option<String>,
 }
 
 /// 根据目标 IDE 获取 settings.json 路径
@@ -439,6 +443,7 @@ pub fn status(target: &str) -> Result<IdeProxyStatus, String> {
             proxy_value: String::new(),
             strict_ssl: None,
             settings_path: String::new(),
+            version: None,
         });
     };
     if !settings.exists() {
@@ -448,6 +453,7 @@ pub fn status(target: &str) -> Result<IdeProxyStatus, String> {
             proxy_value: String::new(),
             strict_ssl: None,
             settings_path: settings.to_string_lossy().to_string(),
+            version: None,
         });
     }
     let raw = fs::read_to_string(&settings).map_err(|e| e.to_string())?;
@@ -467,6 +473,7 @@ pub fn status(target: &str) -> Result<IdeProxyStatus, String> {
         proxy_value,
         strict_ssl,
         settings_path: settings.to_string_lossy().to_string(),
+        version: super::version_probe::installed_gui_version(target),
     })
 }
 // ═══════ TAURI COMMANDS ═══════
