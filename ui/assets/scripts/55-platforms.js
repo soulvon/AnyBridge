@@ -550,6 +550,10 @@ async function refreshPlatforms(options = {}) {
     renderPlatformCards();
     renderPlatformDetailStatuses();
     renderPlatformProviderOptions();
+    // Hero 版本行（无专属 render 的平台统一在此刷；有专属 render 的平台另行调用）
+    if (typeof refreshAllHeroVersions === 'function') {
+      refreshAllHeroVersions();
+    }
   } catch (e) {
     const grid = document.getElementById('platforms-grid');
     if (grid) {
@@ -562,6 +566,25 @@ async function refreshPlatforms(options = {}) {
       btn.textContent = '刷新检测';
     }
   }
+}
+
+/**
+ * 刷新所有「无专属 render 函数」平台的 Hero 版本行
+ * （有专属 render 的平台在各自函数里调，避免重复触发）。
+ * 元素不存在的页面自动跳过（renderHeroVersion 判空）。
+ */
+function refreshAllHeroVersions() {
+  const ids = [
+    ['codebuddy', 'codebuddy-platform-version'],
+    ['workbuddy', 'workbuddy-platform-version'],
+    ['zcode', 'zcode-platform-version'],
+    ['pi', 'pi-platform-version'],
+    ['hermes', 'hermes-platform-version'],
+    ['deepseek-harness', 'deepseek-harness-platform-version'],
+    ['antigravity', 'antigravity-platform-version'],
+  ];
+  if (typeof renderHeroVersion !== 'function') return;
+  ids.forEach(([pid, elId]) => renderHeroVersion(pid, elId));
 }
 
 function renderPlatformCards() {
