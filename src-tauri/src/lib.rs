@@ -186,6 +186,8 @@ pub fn run() {
             commands::windsurf_catalog::list_windsurf_catalog,
             commands::platforms::detect_platforms,
             commands::agent_spec::get_agent_registry,
+            commands::declared_apply::apply_declared_agent,
+            commands::declared_apply::restore_declared_agent,
             commands::agent_spec::read_agent_config_file,
             commands::platforms::check_platform_update,
             commands::platforms::get_platform_install_guide,

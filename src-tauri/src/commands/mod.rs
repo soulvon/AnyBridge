@@ -1,6 +1,7 @@
 pub mod antigravity_loc_payload;
 pub mod antigravity_localization;
 pub mod agent_spec;
+pub mod declared_apply;
 pub mod app_localization;
 pub mod cert_install;
 pub mod claude_desktop;

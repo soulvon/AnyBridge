@@ -77,6 +77,28 @@ pub enum FileSource {
     Resolver(fn() -> Option<PathBuf>),
 }
 
+/// 注入落点：一条声明的某个值写到哪。
+#[derive(Clone, Copy, Debug)]
+pub enum InjectTarget {
+    /// dotenv 文件的键（如 GOOGLE_GEMINI_BASE_URL）
+    Env { key: &'static str },
+    /// JSON 配置文件的 JSON Pointer（如 /model/name）
+    Json { pointer: &'static str },
+}
+
+/// 接入方式声明：endpoint / api_key / model 各写到哪里。
+///
+/// 字段留 None = 该值无处可写（例如某些 CLI 只认环境变量）；
+/// 全部 None 表示该 agent 暂不支持一键接入（诚实降级）。
+#[derive(Clone, Copy, Debug)]
+pub struct InjectSpec {
+    pub endpoint: Option<InjectTarget>,
+    pub api_key: Option<InjectTarget>,
+    pub model: Option<InjectTarget>,
+    /// dotenv 文件名（相对配置目录），默认 ".env"
+    pub env_file: &'static str,
+}
+
 /// 一个 agent 的声明（社区 PR 只填这里）。
 #[derive(Clone, Copy, Debug)]
 pub struct AgentSpec {
@@ -100,6 +122,8 @@ pub struct AgentSpec {
     pub npm_package: Option<&'static str>,
     /// 官方地址
     pub official_url: Option<&'static str>,
+    /// 接入方式（None = 暂不支持一键接入）
+    pub inject: Option<InjectSpec>,
 }
 
 impl AgentSpec {
@@ -216,6 +240,7 @@ pub static AGENTS: &[AgentSpec] = &[
         bin: None,
         npm_package: None,
         official_url: Some("https://antigravity.google/download"),
+        inject: None,
     },
     AgentSpec {
         id: "antigravity-ide",
@@ -228,6 +253,7 @@ pub static AGENTS: &[AgentSpec] = &[
         bin: None,
         npm_package: None,
         official_url: Some("https://antigravity.google/download"),
+        inject: None,
     },
     AgentSpec {
         id: "claude-code",
@@ -240,6 +266,7 @@ pub static AGENTS: &[AgentSpec] = &[
         bin: Some("claude"),
         npm_package: Some("@anthropic-ai/claude-code"),
         official_url: Some("https://docs.anthropic.com/en/docs/claude-code"),
+        inject: None,
     },
     AgentSpec {
         id: "claude-desktop",
@@ -252,6 +279,7 @@ pub static AGENTS: &[AgentSpec] = &[
         bin: None,
         npm_package: None,
         official_url: Some("https://claude.com/download"),
+        inject: None,
     },
     AgentSpec {
         id: "codex",
@@ -264,6 +292,7 @@ pub static AGENTS: &[AgentSpec] = &[
         bin: Some("codex"),
         npm_package: Some("@openai/codex"),
         official_url: Some("https://github.com/openai/codex"),
+        inject: None,
     },
     AgentSpec {
         id: "codebuddy",
@@ -276,6 +305,7 @@ pub static AGENTS: &[AgentSpec] = &[
         bin: Some("codebuddy"),
         npm_package: Some("@tencent-ai/codebuddy-code"),
         official_url: Some("https://copilot.tencent.com"),
+        inject: None,
     },
     AgentSpec {
         id: "grok",
@@ -288,6 +318,7 @@ pub static AGENTS: &[AgentSpec] = &[
         bin: Some("grok"),
         npm_package: Some("@vibe-kit/grok-cli"),
         official_url: Some("https://x.ai/cli"),
+        inject: None,
     },
     AgentSpec {
         id: "opencode",
@@ -300,6 +331,7 @@ pub static AGENTS: &[AgentSpec] = &[
         bin: Some("opencode"),
         npm_package: Some("opencode-ai"),
         official_url: Some("https://opencode.ai"),
+        inject: None,
     },
     AgentSpec {
         id: "workbuddy",
@@ -312,6 +344,7 @@ pub static AGENTS: &[AgentSpec] = &[
         bin: None,
         npm_package: None,
         official_url: None,
+        inject: None,
     },
     AgentSpec {
         id: "zcode",
@@ -324,6 +357,7 @@ pub static AGENTS: &[AgentSpec] = &[
         bin: None,
         npm_package: None,
         official_url: None,
+        inject: None,
     },
     AgentSpec {
         id: "pi",
@@ -336,6 +370,7 @@ pub static AGENTS: &[AgentSpec] = &[
         bin: Some("pi"),
         npm_package: Some("@earendil-works/pi-coding-agent"),
         official_url: None,
+        inject: None,
     },
     AgentSpec {
         id: "hermes",
@@ -348,6 +383,7 @@ pub static AGENTS: &[AgentSpec] = &[
         bin: Some("hermes"),
         npm_package: None,
         official_url: None,
+        inject: None,
     },
     // ── 声明式扩展的第一个实例：新增 agent 只需下面这一个条目 ──
     AgentSpec {
@@ -363,6 +399,7 @@ pub static AGENTS: &[AgentSpec] = &[
         bin: Some("gemini"),
         npm_package: Some("@google/gemini-cli"),
         official_url: Some("https://github.com/google-gemini/gemini-cli"),
+        inject: None,
     },
     AgentSpec {
         id: "deepseek-harness",
@@ -375,6 +412,7 @@ pub static AGENTS: &[AgentSpec] = &[
         bin: Some("dsh"),
         npm_package: Some("@deepseek-ai/dsh"),
         official_url: None,
+        inject: None,
     },
 ];
 
