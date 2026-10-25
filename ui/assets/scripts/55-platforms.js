@@ -14200,6 +14200,18 @@ async function ensureRegistryRailItems() {
     const iconWrap = document.createElement('span');
     iconWrap.className = 'platform-rail-icon';
     iconWrap.setAttribute('aria-hidden', 'true');
+    // 图标约定：assets/icons/platform-<id>.svg；有图用图，无图回退首字母
+    // （社区加 agent 时放一张同名 svg 即可，无需改代码）
+    const iconImg = document.createElement('img');
+    iconImg.src = './assets/icons/' + (entry.icon || 'platform-' + entry.id + '.svg');
+    iconImg.alt = '';
+    iconImg.onload = () => {
+      initial.style.display = 'none';
+    };
+    iconImg.onerror = () => {
+      iconImg.remove();
+    };
+    iconWrap.appendChild(iconImg);
     iconWrap.appendChild(initial);
     const handle = document.createElement('span');
     handle.className = 'platform-rail-handle';
@@ -14364,6 +14376,16 @@ async function genericAgentRestore() {
   }
 }
 
+/** 通用页「刷新状态」：清缓存后重新拉声明表 + 重渲版本行 */
+async function refreshGenericAgentStatus() {
+  const platformId = globalThis._currentGenericAgent;
+  if (!platformId) return;
+  _agentRegistryCache.at = 0;
+  _agentRegistryCache.list = [];
+  if (typeof addLog === 'function') addLog('info', '刷新 ' + platformId + ' 状态…');
+  await openGenericAgentPage(platformId);
+}
+
 /** 通用页「查看配置」：只读展示声明文件内容 */
 async function openGenericAgentConfig() {
   const platformId = globalThis._currentGenericAgent;
@@ -14385,6 +14407,7 @@ globalThis.openGenericAgentConfig = openGenericAgentConfig;
 globalThis.genericAgentApply = genericAgentApply;
 globalThis.fillGenericAgentProviders = fillGenericAgentProviders;
 globalThis.fillGenericAgentModels = fillGenericAgentModels;
+globalThis.refreshGenericAgentStatus = refreshGenericAgentStatus;
 globalThis.genericAgentRestore = genericAgentRestore;
 globalThis.loadAgentRegistry = loadAgentRegistry;
 

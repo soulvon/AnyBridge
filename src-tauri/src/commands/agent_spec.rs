@@ -571,6 +571,8 @@ pub struct AgentRegistryEntry {
     pub config_path: String,
     /// 是否已有内置页面（false = 前端用通用页渲染）
     pub has_page: bool,
+    /// 图标文件名约定：`platform-<id>.svg`（前端找不到图时回退首字母）
+    pub icon: String,
 }
 
 /// 已有内置页面的 agent（与 ui-src/partials/pages 对应）。
@@ -620,6 +622,7 @@ pub fn list_registry() -> Vec<AgentRegistryEntry> {
                 config_dir,
                 config_path,
                 has_page: BUILTIN_PAGES.contains(&s.id),
+                icon: format!("platform-{}.svg", s.id),
             }
         })
         .collect()
