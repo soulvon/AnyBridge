@@ -1,21 +1,16 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
-import { execSync } from 'node:child_process';
+import { execSync, execFileSync } from 'node:child_process';
 
 const home = os.homedir();
 
 // ── 1. 独立真相源（与后端探测算法完全不同的路径，用于交叉验证） ──
 const TRUTH = {
-  windsurf: () => productVersion(readJson('E:/Program/Windsurf/resources/app/product.json')),
-  devin: () => productVersion(readJson('E:/Program/devin/resources/app/product.json')),
-  cursor: () => {
-    const cands = [
-      path.join(home, 'AppData', 'Local', 'Programs', 'cursor', 'resources', 'app', 'product.json'),
-      'E:/Program/Cursor/resources/app/product.json',
-    ];
-    return productVersion(cands.map(readJson).find(v => v));
-  },
+  // GUI 平台真相 = exe 的 PE VersionInfo（与 product.json 完全独立的第二个源）
+  windsurf: () => peVersion('E:/Program/Windsurf/Windsurf.exe'),
+  devin: () => peVersion('E:/Program/devin/Devin.exe'),
+  cursor: () => peVersion(path.join(home, 'AppData', 'Local', 'Programs', 'cursor', 'Cursor.exe')),
   // Claude Desktop（Appx 商店版）：真相源走 Get-AppxPackage 的 Version
   'claude-desktop': () => {
     try {
@@ -29,8 +24,10 @@ const TRUTH = {
     }
   },
   // 注：truth 与探测同口径（product.json 的 version = 应用版本）；
-  antigravity: () => probeAntigravityHub().version,
-  'antigravity-ide': () => findProductJson(['C:/Program Files/Antigravity IDE', 'E:/Program/Antigravity IDE', path.join(home, 'AppData', 'Local', 'Programs', 'Antigravity IDE')]),
+  antigravity: () =>
+    peVersion(path.join(process.env.LOCALAPPDATA || '', 'Programs', 'antigravity', 'Antigravity.exe')),
+  'antigravity-ide': () =>
+    peVersion(path.join(home, 'AppData', 'Local', 'Programs', 'Antigravity IDE', 'Antigravity IDE.exe')),
   'claude-code': () => runVersion(path.join(home, '.local', 'bin', 'claude.exe')),
   codex: () => {
     // PATH 找 codex.cmd
@@ -78,6 +75,23 @@ function readJson(p) {
     return null;
   }
 }
+// PE VersionInfo：**独立于 product.json** 的版本源（Windows 可执行文件资源），
+// 用作 GUI 平台的交叉验证真相——避免「探测和真相复用同一假设」的自我印证。
+function peVersion(exe) {
+  if (!exe || !fs.existsSync(exe)) return null;
+  try {
+    const script = `(Get-Item '${exe.replace(/'/g, "''")}').VersionInfo.FileVersion`;
+    const out = execFileSync('powershell', ['-NoProfile', '-Command', script], {
+      encoding: 'utf8',
+      timeout: 20000,
+      stdio: ['ignore', 'pipe', 'ignore'],
+    }).trim();
+    return out || null;
+  } catch {
+    return null;
+  }
+}
+
 // 与后端 product_version_from_json 同口径：专有字段优先（version 多为引擎版本）
 function productVersion(pj) {
   if (!pj) return null;

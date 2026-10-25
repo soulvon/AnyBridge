@@ -111,6 +111,14 @@
       "severity": "high"
     },
     {
+      "id": "self-confirming-verification",
+      "title": "验证脚本的『真相源』复用被测实现的假设（自我印证，永远绿灯）",
+      "symptom": "版本探测读 product.json 的 version，verify 脚本的 truth 也读同一字段——即使字段语义错（把引擎版本当产品版本），对照表也永远显示一致，测试形同虚设",
+      "lesson": "真相源必须来自**独立的第二条路径**：GUI 产品版本用 exe 的 PE VersionInfo（Windows 资源，完全不读 product.json）、包管理视角用 npm ls、外部权威用官方注册表/关于页。发现手段：拿用户可见的『关于对话框』人工核对一次，凡是与它不一致就是取值错。产品版本在 VS Code fork 里要按专有字段取（windsurfVersion / ideVersion），version 通常是引擎版本",
+      "check": { "type": "source_contains", "file": "scripts/verify-version-probe.mjs", "must_contain": "PE VersionInfo" },
+      "severity": "high"
+    },
+    {
       "id": "hardcoded-path",
       "title": "硬编码盘符/用户目录/安装路径（多平台与多用户必炸）",
       "symptom": "路径写成 C:\\Users\\admin\\... 或 E:\\Program\\Windsurf，换用户/换盘符/换平台直接失效",
