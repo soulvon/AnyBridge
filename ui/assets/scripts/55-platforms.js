@@ -2827,6 +2827,10 @@ async function antigravityRefreshConsole(options = {}) {
       ? 'Google 编程 IDE · 管理端点重定向与模型映射'
       : 'Google 桌面 Agent · 管理端点重定向与模型映射';
   }
+  // 版本行跟随当前客户端（Hub ⇄ IDE）——两者版本号不同，切换时必须重渲
+  if (typeof renderHeroVersion === 'function') {
+    renderHeroVersion(target, 'antigravity-platform-version');
+  }
 
   // 2. 更新顶部接入状态与按钮 (完全对齐 Windsurf / Cursor 统一接入规范)
   const mainBtn = document.getElementById('antigravity-main-btn');

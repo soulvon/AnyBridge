@@ -8842,6 +8842,8 @@ details[open] > .platform-collapse-summary .platform-collapse-caret {
 
 .platform-hero-card,
 .platform-console-hero {
+  /* 版本号绝对定位到右下角的基准 */
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: flex-start;
@@ -12038,10 +12040,10 @@ html[data-scheme="dark"] .endpoint-brand-icon-dark,
 /* ─── Hero 标题行（名字 + 版本 + 更新操作同一行，垂直居中） ─── */
 .platform-title-line {
   display: flex;
-  align-items: center;
-  gap: 10px;
+  /* 大标题与小字版本按基线对齐，层级自然 */
+  align-items: baseline;
+  gap: 12px;
   flex-wrap: wrap;
-  min-height: 32px;
 }
 .platform-title-line h1 {
   margin: 0;
@@ -12049,11 +12051,13 @@ html[data-scheme="dark"] .endpoint-brand-icon-dark,
 }
 
 /* Hero 版本行（借鉴 magpie：版本探测/更新检查/一键更新）
+   设计：收在 Hero 右下角做安静的元信息（品牌名是主角）
    静默策略：无数据时不占位、不显示「检测中/未知」等噪音 */
 .platform-version-line {
   display: inline-flex; align-items: center; gap: 7px;
-  margin: 0; font-size: 12px; font-weight: 650; line-height: 1.35;
+  margin: 0; font-size: 12px; font-weight: 600; line-height: 1.35;
   color: var(--text-muted);
+  letter-spacing: 0.2px;
 }
 .platform-version-line:empty {
   display: none;
