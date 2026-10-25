@@ -542,7 +542,11 @@ function updateProxyPlatformCopy(platformId) {
   if (emptySubtitle) {
     emptySubtitle.textContent = _t(`添加第一个模型映射，让 ${meta.label || '当前平台'} 使用你指定的 AI 供应商与模型能力。`);
   }
-  // Hero 版本行（windsurf/devin 共用此页，target 随 rail 切换）
+  // Hero 版本行：rail 切换时必须用 rail 的真实目标刷新。
+  // 注意不能用 refreshAllHeroVersions 里的 getTargetIde()——那是全局 IDE
+  // 选择器的值，不随 rail 变化，会导致 Devin 页显示 Windsurf 的版本。
+  // 此处为用户交互路径，55-platforms.js 必然已加载；初始化早期调用有
+  // typeof 守卫兜底。
   if (typeof renderHeroVersion === 'function') {
     renderHeroVersion(id, 'proxy-platform-version');
   }
