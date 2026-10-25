@@ -574,6 +574,12 @@ async function refreshPlatforms(options = {}) {
  * 元素不存在的页面自动跳过（renderHeroVersion 判空）。
  */
 function refreshAllHeroVersions() {
+  if (typeof renderHeroVersion !== 'function') return;
+  // windsurf/devin/cursor 共用 models/cursor 页的版本行，随当前 rail 目标刷新
+  // （调用点原先在 10-shell.js 的 updateProxyPlatformCopy，页面初始化时
+  //  55-platforms.js 尚未加载，typeof 检查静默跳过 → 永远停在「检测中」）
+  const ideTarget = typeof getTargetIde === 'function' ? getTargetIde() : 'windsurf';
+  renderHeroVersion(ideTarget, 'proxy-platform-version');
   const ids = [
     ['codebuddy', 'codebuddy-platform-version'],
     ['workbuddy', 'workbuddy-platform-version'],
@@ -583,7 +589,6 @@ function refreshAllHeroVersions() {
     ['deepseek-harness', 'deepseek-harness-platform-version'],
     ['antigravity', 'antigravity-platform-version'],
   ];
-  if (typeof renderHeroVersion !== 'function') return;
   ids.forEach(([pid, elId]) => renderHeroVersion(pid, elId));
 }
 
@@ -14015,11 +14020,13 @@ async function renderHeroVersion(platformId, elId) {
       new Promise((_, rej) => setTimeout(() => rej(new Error('version probe timeout')), 15000)),
     ]);
     if (!el.isConnected) return;
+    // 三态语义：未安装（无安装证据）/ 已装但版本未知 / 已装有版本。
+    // 版本探测失败绝不当「未安装」（坑点库 read-failure-is-unknown）。
     if (!info || !info.installed) {
       el.innerHTML = '<span class="version-state muted">未安装</span>';
       return;
     }
-    if (info.has_update && info.latest_version) {
+    if (info.has_update && info.latest_version && info.current_version) {
       el.innerHTML =
         '<span class="version-num">v' + info.current_version + '</span>' +
         '<span class="version-arrow">→</span>' +
@@ -14030,7 +14037,7 @@ async function renderHeroVersion(platformId, elId) {
         '<span class="version-num">v' + info.current_version + '</span>' +
         '<span class="version-state ok">已是最新</span>';
     } else {
-      el.innerHTML = '<span class="version-state muted">版本未知</span>';
+      el.innerHTML = '<span class="version-state muted">已安装 · 版本未知</span>';
     }
   } catch (_) {
     el.textContent = '';

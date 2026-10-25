@@ -7127,14 +7127,19 @@ pub async fn check_platform_update(platform: String) -> Result<PlatformUpdateInf
     // 两套体系都支持：
     // - Platform enum 的 13 平台（CLI 探测 --version / GUI 读 product.json）
     // - ide_proxy 体系的 windsurf/devin/cursor（GUI 探测 product.json）
-    let (plat_id, npm_package) = match Platform::from_id(&platform) {
+    let (plat_id, npm_package, install_evidence) = match Platform::from_id(&platform) {
         Some(p) => (
             p.id().to_string(),
             super::version_probe::cli_spec(p.id())
                 .and_then(|s| s.npm_package.map(|x| x.to_string())),
+            p.detect_installed(),
         ),
         None if super::version_probe::gui_product(&platform).is_some() => {
-            (platform.clone(), None)
+            // windsurf/devin/cursor：settings.json 存在 = 有安装证据
+            let evidence = super::ide_config::settings_path(&platform)
+                .map(|p| p.exists())
+                .unwrap_or(false);
+            (platform.clone(), None, evidence)
         }
         None => return Err(format!("未知平台: {platform}")),
     };
@@ -7147,6 +7152,11 @@ pub async fn check_platform_update(platform: String) -> Result<PlatformUpdateInf
         .await
         .map_err(|e| format!("版本探测任务执行失败: {e}"))?
     };
+
+    // 三态语义（坑点库 read-failure-is-unknown）：
+    // installed = 有安装证据（配置目录/文件存在），与版本探测是否成功无关；
+    // 版本探测失败 = 已安装但版本未知，绝不当「未安装」。
+    let installed = install_evidence || current.is_some();
 
     // GUI 平台（Windsurf/Devin/Cursor/Antigravity）没有 npm 包名，latest
     // 当前返回 None（未知）；官网 release feed 等有真实需求再接入。
@@ -7166,7 +7176,7 @@ pub async fn check_platform_update(platform: String) -> Result<PlatformUpdateInf
 
     Ok(PlatformUpdateInfo {
         platform: plat_id,
-        installed: current.is_some(),
+        installed,
         current_version: current,
         latest_version: latest,
         has_update,
