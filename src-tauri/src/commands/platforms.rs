@@ -568,7 +568,7 @@ impl Platform {
                 ))
             }
             Platform::CodeBuddy => {
-                let preview_model = codebuddy_model_entry(p, &mask_key(&p.api_key));
+                let preview_model = buddy_model_entry(p, &mask_key(&p.api_key), false);
                 // 不写 availableModels：客户端会把该字段当白名单整表替换，导致官方模型消失。
                 let preview = serde_json::json!({
                     "models": [preview_model],
@@ -580,7 +580,7 @@ impl Platform {
                 serde_json::to_string_pretty(&preview).map_err(|e| e.to_string())
             }
             Platform::WorkBuddy => {
-                let preview_model = workbuddy_model_entry(p, &mask_key(&p.api_key));
+                let preview_model = buddy_model_entry(p, &mask_key(&p.api_key), true);
                 // 不写 availableModels：客户端会把该字段当白名单整表替换，导致官方模型消失。
                 let preview = serde_json::json!({
                     "models": [preview_model],
@@ -1140,37 +1140,13 @@ impl Platform {
     }
 
     fn apply_codebuddy(&self, path: &PathBuf, p: &Provider) -> Result<(), String> {
-        let raw = if path.exists() {
-            fs::read_to_string(path).map_err(|e| e.to_string())?
-        } else {
-            String::new()
-        };
-        let mut obj = parse_json_object(&raw, "models.json")?;
-
-        let model_id = codebuddy_model_id(p);
-        let new_model = codebuddy_model_entry(p, &p.api_key);
-
-        upsert_models_json_entry(&mut obj, &model_id, new_model)?;
-
-        let json = serde_json::to_string_pretty(&Value::Object(obj)).map_err(|e| e.to_string())?;
-        super::write_atomic(path, json.as_bytes())
+        // CodeBuddy / WorkBuddy 同一形状（models.json 数组 upsert），
+        // 唯一差异是 WorkBuddy 多一个 useCustomProtocol 字段。
+        apply_buddy_models_json(path, p, false)
     }
 
     fn apply_workbuddy(&self, path: &PathBuf, p: &Provider) -> Result<(), String> {
-        let raw = if path.exists() {
-            fs::read_to_string(path).map_err(|e| e.to_string())?
-        } else {
-            String::new()
-        };
-        let mut obj = parse_json_object(&raw, "models.json")?;
-
-        let model_id = workbuddy_model_id(p);
-        let new_model = workbuddy_model_entry(p, &p.api_key);
-
-        upsert_models_json_entry(&mut obj, &model_id, new_model)?;
-
-        let json = serde_json::to_string_pretty(&Value::Object(obj)).map_err(|e| e.to_string())?;
-        super::write_atomic(path, json.as_bytes())
+        apply_buddy_models_json(path, p, true)
     }
 
     fn apply_opencode(&self, path: &PathBuf, p: &Provider) -> Result<(), String> {
@@ -5459,7 +5435,30 @@ fn buddy_display_name(p: &Provider, model_id: &str) -> String {
     }
 }
 
-fn codebuddy_model_entry(p: &Provider, api_key: &str) -> Value {
+/// CodeBuddy / WorkBuddy 共用的 models.json 写入（数组 upsert）。
+///
+/// 两个平台此前各有一份逐字相同的 apply 壳与 25/27 行的 entry 构造，
+/// 唯一差异是 WorkBuddy 的 `useCustomProtocol`。收敛成一处，
+/// 新增同类平台只需再加一个 `true/false` 调用。
+fn apply_buddy_models_json(
+    path: &PathBuf,
+    p: &Provider,
+    use_custom_protocol: bool,
+) -> Result<(), String> {
+    let raw = if path.exists() {
+        fs::read_to_string(path).map_err(|e| e.to_string())?
+    } else {
+        String::new()
+    };
+    let mut obj = parse_json_object(&raw, "models.json")?;
+    let model_id = codebuddy_model_id(p);
+    let entry = buddy_model_entry(p, &p.api_key, use_custom_protocol);
+    upsert_models_json_entry(&mut obj, &model_id, entry)?;
+    let json = serde_json::to_string_pretty(&Value::Object(obj)).map_err(|e| e.to_string())?;
+    super::write_atomic(path, json.as_bytes())
+}
+
+fn buddy_model_entry(p: &Provider, api_key: &str, use_custom_protocol: bool) -> Value {
     let model_id = codebuddy_model_id(p);
     let display_name = buddy_display_name(p, &model_id);
 
@@ -5471,7 +5470,10 @@ fn codebuddy_model_entry(p: &Provider, api_key: &str) -> Value {
 
     // 新版 WorkBuddy / CodeBuddy 仅当 vendor == "user" 时识别为自定义模型；
     // 写入供应商名会被归到「第三方模型」并可能覆盖官方同名模型。
-    serde_json::json!({
+    //
+    // WorkBuddy 额外要 useCustomProtocol=true（此时客户端不再拼接路径，
+    // url 必须是完整 /v1/chat/completions 端点——codebuddy_chat_url 已满足）。
+    let mut entry = serde_json::json!({
         "id": model_id,
         "name": display_name,
         "vendor": "user",
@@ -5482,40 +5484,11 @@ fn codebuddy_model_entry(p: &Provider, api_key: &str) -> Value {
         "supportsToolCall": p.capabilities.tools || caps.tools,
         "supportsImages": p.capabilities.vision || caps.vision,
         "supportsReasoning": codebuddy_supports_reasoning(p.default_model.trim()),
-    })
-}
-
-fn workbuddy_model_id(p: &Provider) -> String {
-    // 与 CodeBuddy 一致：使用真实模型名作为 id，避免请求体 model=byok-xxx。
-    codebuddy_model_id(p)
-}
-
-fn workbuddy_model_entry(p: &Provider, api_key: &str) -> Value {
-    let model_id = workbuddy_model_id(p);
-    let display_name = buddy_display_name(p, &model_id);
-
-    let caps = p
-        .model_caps
-        .get(p.default_model.trim())
-        .cloned()
-        .unwrap_or_default();
-
-    // WorkBuddy 在 useCustomProtocol=true 时不会再拼接路径，url 必须是完整
-    // /v1/chat/completions 端点（与 codebuddy_chat_url 输出一致）。
-    // vendor 必须是 "user"，否则新版会把条目归类为第三方模型。
-    serde_json::json!({
-        "id": model_id,
-        "name": display_name,
-        "vendor": "user",
-        "apiKey": api_key,
-        "maxInputTokens": recommend_context_window(&model_id),
-        "maxOutputTokens": recommend_max_output_tokens(&model_id),
-        "url": codebuddy_chat_url(p),
-        "useCustomProtocol": true,
-        "supportsToolCall": p.capabilities.tools || caps.tools,
-        "supportsImages": p.capabilities.vision || caps.vision,
-        "supportsReasoning": codebuddy_supports_reasoning(p.default_model.trim()),
-    })
+    });
+    if use_custom_protocol {
+        entry["useCustomProtocol"] = Value::Bool(true);
+    }
+    entry
 }
 
 fn opencode_model_id(p: &Provider) -> String {
