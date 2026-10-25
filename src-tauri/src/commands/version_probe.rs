@@ -296,6 +296,14 @@ fn parse_version_line(text: &str) -> Option<String> {
 /// 动手前先盘点现有资产（房间里的大象）。
 #[cfg(windows)]
 pub fn installed_gui_version(platform_id: &str) -> Option<String> {
+    // 白名单守卫：只有已知 GUI 平台才走 GUI 探测。
+    // 否则 find_ide_exe 对未知 id（pi/hermes/codebuddy…）会走其默认分支
+    // （= Windsurf），把 Windsurf 的版本安到无关平台头上
+    // （实测：Pi/Hermes 页显示 v1.110.1）。
+    if platform_id != "antigravity" && gui_product(platform_id).is_none() {
+        return None;
+    }
+
     let key = format!("gui:{}", platform_id);
     if let Some(hit) = cache_get(&key, Duration::from_secs(600)) {
         return hit;
@@ -748,5 +756,43 @@ pub fn update_npm_package_sync(
             "更新命令已执行，但无法读取新版本。请检查 {} 是否仍可用",
             spec.bin
         )),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// 回归：无 GUI 探测源的平台（pi/hermes 等）不得从 find_ide_exe 的
+    /// 默认分支（= Windsurf）拿到版本。实测曾让 Pi/Hermes 页显示
+    /// Windsurf 的 v1.110.1。
+    #[test]
+    fn gui_probe_returns_none_for_platforms_without_source() {
+        for id in [
+            "pi",
+            "hermes",
+            "codebuddy",
+            "workbuddy",
+            "zcode",
+            "deepseek-harness",
+            "claude-desktop",
+        ] {
+            assert_eq!(
+                installed_gui_version(id),
+                None,
+                "{id} 无 GUI 探测源，不应返回版本"
+            );
+        }
+    }
+
+    /// semver 对比的基本语义
+    #[test]
+    fn is_newer_semantics() {
+        assert!(is_newer("2.0.0", "1.9.9"));
+        assert!(is_newer("0.184.0", "0.163.0"));
+        assert!(!is_newer("1.0.0", "1.0.0"));
+        assert!(!is_newer("1.0.0", "2.0.0"));
+        // 预发布视为较旧（实用语义）：beta 版 latest 不打扰正式版用户
+        assert!(!is_newer("1.0.0-beta.1", "1.0.0"));
     }
 }
