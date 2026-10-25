@@ -272,13 +272,60 @@ fn parse_version_line(text: &str) -> Option<String> {
     None
 }
 
-/// GUI 客户端版本：原生注册表 API 枚举卸载键找 InstallLocation → product.json。
+/// GUI 客户端版本：**直接复用一键注入的安装目录定位链**。
 ///
-/// 性能：原实现用 `reg query /s /f` 全树递归（3 个 hive × 数千键），
-/// 实测秒级到挂起级（Devin 页「检测中」卡住的根因，与 CIM 查询同款慢）；
-/// 原生 RegEnumKeyExW 枚举 + RegQueryValueExW 读值是毫秒级。
+/// 房间里的大象：workbench_inject::ide_app_dir(target) → system::find_ide_exe()
+/// 是本项目久经实战的四层探测（配置缓存自愈 → 常见位置（含自定义盘符
+/// E:\Program\devin）→ 运行进程（路径过滤区分 Devin/Windsurf 同名主进程）
+/// → 注册表），一键注入/汉化/语言包全靠它定位安装目录。
+///
+/// 教训：本函数曾两度重造轮子（reg query 全树搜索、Toolhelp32 进程枚举），
+/// 前者挂起（Devin 卡「检测中」），后者在本机仍因「自定义安装无卸载键」
+/// 落空——而 find_ide_exe 的第②层（common_ide_candidates）早已覆盖。
+/// 修正：版本探测只是安装目录定位的一个消费方，不是新的探测体系。
+/// GUI 客户端版本：**直接复用一键注入的安装目录定位链**（最终形态）。
+///
+/// 复盘：本函数曾两度重造轮子——
+/// ① `reg query /s /f` 全树搜索：挂起（Devin 卡「检测中」，CIM 同款慢）；
+/// ② 原生注册表枚举 + Toolhelp32 进程枚举：本机仍落空（自定义安装
+///    E:\Program\devin 未写卸载键，运行中进程也可能不在）。
+/// 而一键注入的 `ide_app_dir → find_ide_exe` 四层探测（缓存自愈 →
+/// 常见位置含自定义盘符 → 运行进程路径过滤 → 注册表）早已解决这一切，
+/// workbench/语言包/检查脚本全在用它。
+/// 教训沉淀：版本探测只是「安装目录定位」的一个消费方，不是新的探测体系；
+/// 动手前先盘点现有资产（房间里的大象）。
 #[cfg(windows)]
 pub fn installed_gui_version(platform_id: &str) -> Option<String> {
+    // ide_app_dir 返回 <install>\resources\app，带路径缓存（首次后毫秒级）。
+    let app_dir = super::workbench_inject::ide_app_dir(platform_id)?;
+
+    let key = format!("gui:{}", platform_id);
+    if let Some(hit) = cache_get(&key, Duration::from_secs(600)) {
+        return hit;
+    }
+
+    let product = app_dir.join("product.json");
+    let version = std::fs::read_to_string(&product)
+        .ok()
+        .and_then(|raw| serde_json::from_str::<serde_json::Value>(&raw).ok())
+        .and_then(|v| {
+            // VS Code fork：version = 应用版本（Windsurf 1.101.1），
+            // vscodeVersion = 引擎版本（1.110.1）。展示应用版本，与
+            // 客户端「关于」页一致。
+            v.get("version")
+                .and_then(|x| x.as_str())
+                .map(|s| s.to_string())
+        });
+
+    cache_put(key, version.clone());
+    version
+}
+
+/// 旧实现保留备查（注册表枚举 + 进程枚举），已不再被调用。
+/// 在 find_ide_exe 体系全面失效的机器上才有价值，届时再启用。
+#[cfg(windows)]
+#[allow(dead_code)]
+fn legacy_gui_probe_registry(platform_id: &str) -> Option<String> {
     use windows_sys::Win32::Foundation::ERROR_NO_MORE_ITEMS;
     use windows_sys::Win32::System::Registry::{
         RegCloseKey, RegEnumKeyExW, RegOpenKeyExW, HKEY, HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE,
@@ -293,6 +340,32 @@ pub fn installed_gui_version(platform_id: &str) -> Option<String> {
 
     let mut version: Option<String> = None;
 
+    // ① 运行中进程路径（最可靠）：客户端正在运行 → 主进程 exe 所在目录
+    //    即安装目录。本机实测：Windsurf/Devin/Cursor 装在自定义目录且
+    //    未写卸载键，注册表路线完全失效，进程路线秒级命中。
+    let main_exe = match platform_id {
+        "windsurf" => Some("Windsurf.exe"),
+        "devin" => Some("Devin.exe"),
+        "cursor" => Some("Cursor.exe"),
+        "antigravity" => Some("antigravity.exe"),
+        "antigravity-ide" => Some("Antigravity IDE.exe"),
+        _ => None,
+    };
+    if let Some(exe_name) = main_exe {
+        if let Some(install_dir) = running_client_install_dir(exe_name) {
+            let product = install_dir.join(rel);
+            if let Ok(content) = std::fs::read_to_string(&product) {
+                if let Ok(v) = serde_json::from_str::<serde_json::Value>(&content) {
+                    if let Some(ver) = v.get("version").and_then(|x| x.as_str()) {
+                        version = Some(ver.to_string());
+                    }
+                }
+            }
+        }
+    }
+
+    // ② 注册表卸载键（安装器写了卸载键的机器上有效）
+    if version.is_none() {
     'hives: for hive_root in [HKEY_LOCAL_MACHINE, HKEY_CURRENT_USER] {
         for sub in [
             r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall",
@@ -371,9 +444,78 @@ pub fn installed_gui_version(platform_id: &str) -> Option<String> {
             }
         }
     }
+    } // if version.is_none()
 
     cache_put(key, version.clone());
     version
+}
+
+/// 从运行中的客户端主进程反推安装目录。
+/// Toolhelp32 枚举进程（与 kill_antigravity_language_server 同款，毫秒级），
+/// 找到主进程 exe 后向上回溯到含 `resources\app\product.json` 的目录。
+#[cfg(windows)]
+pub fn running_client_install_dir(exe_name: &str) -> Option<PathBuf> {
+    use windows_sys::Win32::Foundation::{CloseHandle, INVALID_HANDLE_VALUE};
+    use windows_sys::Win32::System::Diagnostics::ToolHelp::{
+        CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W,
+        TH32CS_SNAPPROCESS,
+    };
+    use windows_sys::Win32::System::Threading::{
+        OpenProcess, QueryFullProcessImageNameW, PROCESS_NAME_WIN32,
+        PROCESS_QUERY_LIMITED_INFORMATION,
+    };
+
+    unsafe {
+        let snap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+        if snap == INVALID_HANDLE_VALUE {
+            return None;
+        }
+        let mut entry: PROCESSENTRY32W = std::mem::zeroed();
+        entry.dwSize = std::mem::size_of::<PROCESSENTRY32W>() as u32;
+        let mut result = None;
+
+        if Process32FirstW(snap, &mut entry) != 0 {
+            loop {
+                let end = entry.szExeFile.iter().position(|&c| c == 0).unwrap_or(0);
+                let name = String::from_utf16_lossy(&entry.szExeFile[..end]);
+                if name.eq_ignore_ascii_case(exe_name) && entry.th32ProcessID != 0 {
+                    let h = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, entry.th32ProcessID);
+                    if !h.is_null() {
+                        let mut buf = [0u16; 1024];
+                        let mut len = buf.len() as u32;
+                        if QueryFullProcessImageNameW(h, PROCESS_NAME_WIN32, buf.as_mut_ptr(), &mut len)
+                            != 0
+                        {
+                            let exe_path =
+                                PathBuf::from(String::from_utf16_lossy(&buf[..len as usize]));
+                            // exe 在 <install>\Xxx.exe，product.json 在 <install>\resources\app\
+                            let mut dir = exe_path.parent().map(|p| p.to_path_buf());
+                            for _ in 0..4 {
+                                let Some(d) = dir else { break };
+                                if d.join("resources").join("app").join("product.json").is_file() {
+                                    result = Some(d);
+                                    break;
+                                }
+                                dir = d.parent().map(|p| p.to_path_buf());
+                            }
+                        }
+                        CloseHandle(h);
+                    }
+                    break;
+                }
+                if Process32NextW(snap, &mut entry) == 0 {
+                    break;
+                }
+            }
+        }
+        CloseHandle(snap);
+        result
+    }
+}
+
+#[cfg(not(windows))]
+pub fn running_client_install_dir(_exe_name: &str) -> Option<std::path::PathBuf> {
+    None
 }
 
 #[cfg(windows)]
