@@ -63,8 +63,18 @@ pub fn gui_product(platform_id: &str) -> Option<(&'static str, &'static str)> {
 
 /// 深度查找可执行文件：PATH → 注册表 PATH（HKLM+HKCU）→ npm 全局前缀。
 /// 借鉴 magpie path_windows.go。
+///
+/// 关键：**静态标准目录优先，不依赖 spawn npm**——GUI 进程的 PATH 里
+/// 往往没有 npm.cmd，`npm prefix -g` 会直接失败（实测：Codex 已装却
+/// 显示"未安装"就是踩的这个，对应 magpie #1771 同类坑）。
 pub fn find_tool(bin: &str) -> Option<PathBuf> {
-    let exe = format!("{}.exe", bin);
+    // npm 全局在 Windows 生成 .cmd shim（不是 .exe）——必须多后缀尝试，
+    // 否则 PATH 里明明有 codex.cmd 却报「未安装」（实测踩中）。
+    let candidates: Vec<String> = if cfg!(windows) {
+        vec![format!("{bin}.exe"), format!("{bin}.cmd"), format!("{bin}.bat")]
+    } else {
+        vec![bin.to_string()]
+    };
     let mut dirs: Vec<PathBuf> = Vec::new();
 
     // 1. 当前进程 PATH
@@ -72,15 +82,32 @@ pub fn find_tool(bin: &str) -> Option<PathBuf> {
         dirs.extend(std::env::split_paths(&path_var));
     }
 
-    // 2. 注册表 PATH（HKLM 系统级 + HKCU 用户级，展开 %VAR%）
-    for (hive, key) in [
-        (
-            "HKLM",
-            r"HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Environment",
-        ),
-        ("HKCU", r"HKCU\Environment"),
+    // 2. 静态标准目录（无需 spawn，覆盖 99% 的安装位置）
+    if let Some(home) = dirs::home_dir() {
+        for d in [
+            // npm 全局默认前缀（npm i -g 在 Windows 的落点）
+            home.join("AppData").join("Roaming").join("npm"),
+            // 官方独立安装器/vendor 目录
+            home.join(".local").join("bin"),
+            home.join(".claude").join("local"),
+            home.join(".codex").join("bin"),
+            home.join(".grok").join("bin"),
+            home.join(".opencode").join("bin"),
+            // 版本管理器
+            home.join(".volta").join("bin"),
+            home.join(".bun").join("bin"),
+            home.join(".npm-global"),
+            home.join("AppData").join("Local").join("Programs"),
+        ] {
+            dirs.push(d);
+        }
+    }
+
+    // 3. 注册表 PATH（HKLM 系统级 + HKCU 用户级，展开 %VAR%）
+    for key in [
+        r"HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Environment",
+        r"HKCU\Environment",
     ] {
-        let _ = hive;
         if let Ok(out) = std::process::Command::new("reg")
             .args(["query", key, "/v", "Path"])
             .creation_flags_windows()
@@ -88,9 +115,11 @@ pub fn find_tool(bin: &str) -> Option<PathBuf> {
         {
             let text = String::from_utf8_lossy(&out.stdout).to_string();
             if let Some(line) = text.lines().find(|l| l.contains("Path")) {
-                if let Some(raw) = line.split("REG_EXPAND_SZ").nth(1).or_else(|| {
-                    line.split("REG_SZ").nth(1)
-                }) {
+                if let Some(raw) = line
+                    .split("REG_EXPAND_SZ")
+                    .nth(1)
+                    .or_else(|| line.split("REG_SZ").nth(1))
+                {
                     let expanded = expand_env_vars(raw.trim());
                     dirs.extend(std::env::split_paths(&expanded));
                 }
@@ -98,7 +127,7 @@ pub fn find_tool(bin: &str) -> Option<PathBuf> {
         }
     }
 
-    // 3. npm 全局前缀（npm i -g 的落点）与常见用户工具目录
+    // 4. npm 全局前缀（补充：spawn 成功才加，失败不致命）
     if let Ok(out) = std::process::Command::new("npm")
         .args(["prefix", "-g"])
         .creation_flags_windows()
@@ -109,20 +138,9 @@ pub fn find_tool(bin: &str) -> Option<PathBuf> {
             dirs.push(PathBuf::from(prefix));
         }
     }
-    if let Some(home) = dirs::home_dir() {
-        for d in [
-            home.join(".local").join("bin"),
-            home.join("AppData").join("Roaming").join("npm"),
-            home.join("AppData").join("Local").join("Programs"),
-            home.join(".volta").join("bin"),
-            home.join(".bun").join("bin"),
-        ] {
-            dirs.push(d);
-        }
-    }
 
     dirs.into_iter()
-        .map(|d| d.join(&exe))
+        .flat_map(|d| candidates.iter().map(move |c| d.join(c)))
         .find(|p| p.is_file())
 }
 
@@ -254,67 +272,175 @@ fn parse_version_line(text: &str) -> Option<String> {
     None
 }
 
-/// GUI 客户端版本：注册表卸载键找 InstallLocation → product.json。
+/// GUI 客户端版本：原生注册表 API 枚举卸载键找 InstallLocation → product.json。
+///
+/// 性能：原实现用 `reg query /s /f` 全树递归（3 个 hive × 数千键），
+/// 实测秒级到挂起级（Devin 页「检测中」卡住的根因，与 CIM 查询同款慢）；
+/// 原生 RegEnumKeyExW 枚举 + RegQueryValueExW 读值是毫秒级。
+#[cfg(windows)]
 pub fn installed_gui_version(platform_id: &str) -> Option<String> {
+    use windows_sys::Win32::Foundation::ERROR_NO_MORE_ITEMS;
+    use windows_sys::Win32::System::Registry::{
+        RegCloseKey, RegEnumKeyExW, RegOpenKeyExW, HKEY, HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE,
+        KEY_READ,
+    };
+
     let (display, rel) = gui_product(platform_id)?;
     let key = format!("gui:{}", platform_id);
     if let Some(hit) = cache_get(&key, Duration::from_secs(600)) {
         return hit;
     }
 
-    let mut version = None;
-    // 1. 注册表卸载键（HKLM 64/32 + HKCU）
-    for hive in [
-        r"HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall",
-        r"HKLM\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall",
-        r"HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall",
-    ] {
-        if let Ok(out) = std::process::Command::new("reg")
-            .args(["query", hive, "/s", "/f", display, "/d"])
-            .creation_flags_windows()
-            .output()
-        {
-            let text = String::from_utf8_lossy(&out.stdout).to_string();
-            // 卸载键路径形如 ...\Uninstall\{xxx}，逐个查 InstallLocation
-            for line in text.lines() {
-                let line = line.trim();
-                if !line.starts_with("HKEY_") {
+    let mut version: Option<String> = None;
+
+    'hives: for hive_root in [HKEY_LOCAL_MACHINE, HKEY_CURRENT_USER] {
+        for sub in [
+            r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall",
+            r"SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall",
+        ] {
+            unsafe {
+                let mut uninstall: HKEY = std::ptr::null_mut();
+                if RegOpenKeyExW(hive_root, wide(sub).as_ptr(), 0, KEY_READ, &mut uninstall) != 0 {
                     continue;
                 }
-                if let Ok(detail) = std::process::Command::new("reg")
-                    .args(["query", line, "/v", "InstallLocation"])
-                    .creation_flags_windows()
-                    .output()
-                {
-                    let dt = String::from_utf8_lossy(&detail.stdout).to_string();
-                    if let Some(kv) = dt.lines().find(|l| l.contains("InstallLocation")) {
-                        let loc = kv.split("REG_SZ").nth(1).unwrap_or("").trim();
-                        if loc.is_empty() {
-                            continue;
+                let mut index = 0u32;
+                loop {
+                    let mut name_buf = [0u16; 256];
+                    let mut name_len = name_buf.len() as u32;
+                    if RegEnumKeyExW(
+                        uninstall,
+                        index,
+                        name_buf.as_mut_ptr(),
+                        &mut name_len,
+                        std::ptr::null_mut(),
+                        std::ptr::null_mut(),
+                        std::ptr::null_mut(),
+                        std::ptr::null_mut(),
+                    ) == ERROR_NO_MORE_ITEMS
+                    {
+                        break;
+                    }
+                    index += 1;
+
+                    let sub_name = String::from_utf16_lossy(&name_buf[..name_len as usize]);
+                    let child_path = format!("{}\\{}", sub, sub_name);
+                    let mut child: HKEY = std::ptr::null_mut();
+                    if RegOpenKeyExW(hive_root, wide(&child_path).as_ptr(), 0, KEY_READ, &mut child)
+                        != 0
+                    {
+                        continue;
+                    }
+
+                    // DisplayName 包含目标名（大小写不敏感）才算
+                    let display_name = reg_read_string(child, "DisplayName");
+                    let matched = display_name
+                        .as_deref()
+                        .map(|d| d.to_lowercase().contains(&display.to_lowercase()))
+                        .unwrap_or(false);
+
+                    if matched {
+                        let mut loc = reg_read_string(child, "InstallLocation");
+                        if loc.is_none() {
+                            // InstallLocation 可能是 REG_EXPAND_SZ
+                            loc = reg_read_string_expanded(child, "InstallLocation");
                         }
-                        let product = PathBuf::from(loc).join(rel);
-                        if let Ok(content) = std::fs::read_to_string(&product) {
-                            if let Ok(v) = serde_json::from_str::<serde_json::Value>(&content) {
-                                if let Some(ver) = v.get("version").and_then(|x| x.as_str()) {
-                                    version = Some(ver.to_string());
-                                    break;
+                        if let Some(dir) = loc.filter(|s| !s.trim().is_empty()) {
+                            let product = PathBuf::from(dir.trim().trim_matches('"')).join(rel);
+                            if let Ok(content) = std::fs::read_to_string(&product) {
+                                if let Ok(v) =
+                                    serde_json::from_str::<serde_json::Value>(&content)
+                                {
+                                    if let Some(ver) =
+                                        v.get("version").and_then(|x| x.as_str())
+                                    {
+                                        version = Some(ver.to_string());
+                                    }
                                 }
                             }
                         }
                     }
+                    RegCloseKey(child);
+                    if version.is_some() {
+                        break;
+                    }
                 }
-                if version.is_some() {
-                    break;
-                }
+                RegCloseKey(uninstall);
             }
-        }
-        if version.is_some() {
-            break;
+            if version.is_some() {
+                break 'hives;
+            }
         }
     }
 
     cache_put(key, version.clone());
     version
+}
+
+#[cfg(windows)]
+fn wide(s: &str) -> Vec<u16> {
+    s.encode_utf16().chain(std::iter::once(0)).collect()
+}
+
+#[cfg(windows)]
+use windows_sys::Win32::System::Registry::{HKEY, REG_EXPAND_SZ, REG_SZ};
+
+/// 读 REG_SZ 字符串值。
+#[cfg(windows)]
+fn reg_read_string(hkey: HKEY, name: &str) -> Option<String> {
+    unsafe {
+        use windows_sys::Win32::System::Registry::RegQueryValueExW;
+        let mut buf = [0u16; 1024];
+        let mut size = (buf.len() * 2) as u32;
+        let mut kind = 0u32;
+        if RegQueryValueExW(
+            hkey,
+            wide(name).as_ptr(),
+            std::ptr::null_mut(),
+            &mut kind,
+            buf.as_mut_ptr() as *mut u8,
+            &mut size,
+        ) == 0
+        {
+            let len = (size as usize) / 2;
+            let s = String::from_utf16_lossy(&buf[..len]);
+            Some(s.trim_end_matches('\0').to_string())
+        } else {
+            None
+        }
+    }
+}
+
+/// 读 REG_EXPAND_SZ 并展开 %VAR%。
+#[cfg(windows)]
+fn reg_read_string_expanded(hkey: HKEY, name: &str) -> Option<String> {
+    unsafe {
+        use windows_sys::Win32::System::Registry::RegQueryValueExW;
+        let mut buf = [0u16; 2048];
+        let mut size = (buf.len() * 2) as u32;
+        let mut kind = 0u32;
+        if RegQueryValueExW(
+            hkey,
+            wide(name).as_ptr(),
+            std::ptr::null_mut(),
+            &mut kind,
+            buf.as_mut_ptr() as *mut u8,
+            &mut size,
+        ) == 0
+            && (kind == REG_SZ || kind == REG_EXPAND_SZ)
+        {
+            let len = (size as usize) / 2;
+            let s = String::from_utf16_lossy(&buf[..len]).trim_end_matches('\0').to_string();
+            Some(expand_env_vars(&s))
+        } else {
+            None
+        }
+    }
+}
+
+/// 非 Windows：无注册表，暂不支持 GUI 版本探测（返回 None = 未知）。
+#[cfg(not(windows))]
+pub fn installed_gui_version(_platform_id: &str) -> Option<String> {
+    None
 }
 
 /// 统一入口：平台已装版本（CLI 或 GUI 自动选择）。

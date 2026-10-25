@@ -13986,7 +13986,11 @@ async function renderHeroVersion(platformId, elId) {
   if (typeof invoke !== 'function' && !(typeof bindTauriBridge === 'function' && bindTauriBridge())) return;
   _heroVersionBusy[platformId] = true;
   try {
-    const info = await invoke('check_platform_update', { platform: platformId });
+    // 15 秒超时兜底：注册表/子进程异常挂起时不再停留在「检测中」
+    const info = await Promise.race([
+      invoke('check_platform_update', { platform: platformId }),
+      new Promise((_, rej) => setTimeout(() => rej(new Error('version probe timeout')), 15000)),
+    ]);
     if (!el.isConnected) return;
     if (!info || !info.installed) {
       el.innerHTML = '<span class="version-state muted">未安装</span>';
