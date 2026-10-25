@@ -4,9 +4,9 @@
 ## 通用开发经验（自动注入，勿手改本段）
 
 - 中央库：`C:\Users\admin\Desktop\dev-experience`
-- 开工先读 `machine/INDEX.md`；写新逻辑前查能力清单，并复述复用了什么。
-- 修改已知事故区域时，提交信息必须声明 `Lesson-Checked: <id>`；不适用则写 `Experience-Override: <原因>`。
-- 新增经验：复制 `toolkit/templates/incident.md`，运行 `node toolkit/build.mjs`。
+- 开工先读 `机器索引/索引.md`；写新逻辑前查能力清单，并复述复用了什么。
+- 修改已知事故区域时，提交信息必须写 `已核对: <编号>`；不适用则写 `豁免: <原因>`。
+- 新增经验：复制 `toolkit/templates/事故记录.md`，运行 `node toolkit/build.mjs`。
 <!-- experience:end -->
 
 > 任何 AI 工具进本仓库，先读完这一页，再动手。
