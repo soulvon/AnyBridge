@@ -16,6 +16,18 @@ const TRUTH = {
     ];
     return cands.map(readJson).find(v => v)?.version;
   },
+  // Claude Desktop（Appx 商店版）：真相源走 Get-AppxPackage 的 Version
+  'claude-desktop': () => {
+    try {
+      const out = execSync(
+        'powershell -NoProfile -Command "(Get-AppxPackage -Name \'*Claude*\' | Sort-Object Version -Descending | Select-Object -First 1).Version.ToString()"',
+        { encoding: 'utf8', timeout: 15000, stdio: ['ignore', 'pipe', 'ignore'] }
+      ).trim();
+      return out || null;
+    } catch {
+      return null;
+    }
+  },
   // 注：truth 与探测同口径（product.json 的 version = 应用版本）；
   antigravity: () => probeAntigravityHub().version,
   'antigravity-ide': () => findProductJson(['C:/Program Files/Antigravity IDE', 'E:/Program/Antigravity IDE', path.join(home, 'AppData', 'Local', 'Programs', 'Antigravity IDE')]),
@@ -33,7 +45,19 @@ const TRUTH = {
   // 新增 CLI 的真相源：直接从 PATH/npm 全局目录跑 --version
   codebuddy: () => runFromPath('codebuddy'),
   pi: () => runFromPath('pi'),
-  'deepseek-harness': () => runFromPath('dsh'),
+  // dsh 不响应 --version：真相源走 npm 包管理器视角（与探测使用的
+  // package.json 文件系统视角相互独立）
+  'deepseek-harness': () => {
+    try {
+      const out = execSync('npm ls -g @deepseek-ai/dsh --json', {
+        encoding: 'utf8', timeout: 15000, stdio: ['ignore', 'pipe', 'ignore'],
+      });
+      const j = JSON.parse(out);
+      return j.dependencies?.['@deepseek-ai/dsh']?.version || null;
+    } catch {
+      return null;
+    }
+  },
   hermes: () => runFromPath('hermes'),
   opencode: () => {
     const dirs = (process.env.PATH || '').split(';');
@@ -127,11 +151,51 @@ function findTool(bin) {
   return null;
 }
 
+// npm 全局包版本回退（模拟后端 package_json_version：CLI 不报版本时读包内 package.json）
+const NPM_PKG = {
+  'claude-code': '@anthropic-ai/claude-code',
+  'codex': '@openai/codex',
+  'grok': null,
+  'opencode': 'opencode-ai',
+  'codebuddy': '@tencent-ai/codebuddy-code',
+  'pi': '@earendil-works/pi-coding-agent',
+  'deepseek-harness': '@deepseek-ai/dsh',
+  'hermes': null,
+};
+function packageJsonVersion(pkg) {
+  if (!pkg) return null;
+  try {
+    const prefix = execSync('npm prefix -g', { encoding: 'utf8', timeout: 15000, stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+    const cands = [
+      path.join(prefix, 'node_modules', pkg, 'package.json'),
+      path.join(prefix, pkg, 'package.json'),
+    ];
+    for (const p of cands) {
+      const j = readJson(p);
+      if (j?.version) return j.version;
+    }
+  } catch {}
+  return null;
+}
+
 function probeCli(platformId, bin) {
   const found = findTool(bin);
   if (!found) return { version: null, found: null };
-  const v = runVersion(found);
+  const v = runVersion(found) || packageJsonVersion(NPM_PKG[platformId]);
   return { version: v, found };
+}
+
+// Claude Desktop（Appx 商店版）：从安装目录名 Claude_<ver>_x64__xxx 解析
+function probeClaudeAppx() {
+  try {
+    const out = execSync(
+      'powershell -NoProfile -Command "(Get-AppxPackage -Name \'*Claude*\' | Sort-Object Version -Descending | Select-Object -First 1).InstallLocation"',
+      { encoding: 'utf8', timeout: 15000, stdio: ['ignore', 'pipe', 'ignore'] }
+    ).trim();
+    const m = out.match(/Claude_([\d.]+)_/);
+    if (m) return { version: m[1], dir: out };
+  } catch {}
+  return { version: null, dir: null };
 }
 
 // Antigravity Hub（Electron）：版本在 app.asar 内的 package.json（汉化同款定位链）
@@ -204,9 +268,16 @@ const CLI = {
   'deepseek-harness': 'dsh',
   'hermes': 'hermes',
 };
-const GUI = { windsurf: 'Windsurf', devin: 'Devin', cursor: 'Cursor', antigravity: 'Antigravity', 'antigravity-ide': 'Antigravity IDE' };
-// 无 CLI、无 GUI product.json 的平台（诚实显示「已安装 · 版本未知」）
-const NO_PROBE = ['claude-desktop', 'workbuddy', 'zcode'];
+const GUI = {
+  windsurf: 'Windsurf',
+  devin: 'Devin',
+  cursor: 'Cursor',
+  antigravity: 'Antigravity',
+  'antigravity-ide': 'Antigravity IDE',
+  'claude-desktop': 'Claude',
+};
+// 无 CLI、无安装目录版本源的平台（诚实显示「已安装 · 版本未知」）
+const NO_PROBE = ['workbuddy', 'zcode'];
 
 console.log('═'.repeat(88));
 console.log('平台版本探测对照表（探测算法结果 vs 独立真相源）');
@@ -253,6 +324,7 @@ for (const [id, display] of Object.entries(GUI)) {
   const viaCommon = probeGuiCommonLocation(id);
   let via = viaCommon.version ? viaCommon : probeGuiRegistry(id, display);
   if (id === 'antigravity') via = probeAntigravityHub();
+  if (id === 'claude-desktop') via = probeClaudeAppx();
   const truth = TRUTH[id]?.();
   const probeV = via.version;
   const ok = (truth === null && probeV === null) || (truth !== null && probeV === truth);
