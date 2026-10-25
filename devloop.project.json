@@ -1,0 +1,20 @@
+{
+  "scope": "anybridge",
+  "rules": {
+    "cursor-responses-empty-reply": {
+      "paths": [
+        "sidecar/local-proxy.js",
+        "sidecar/handlers/openai-stream.js",
+        "sidecar/lib/responses-chat-transform.js"
+      ],
+      "check": "sidecar/local-proxy.test.js::sendOpenAIResponses: 假流式必须发送 function_call 的完整 output_item 事件"
+    },
+    "route-alias-conflict-poison": {
+      "paths": [
+        "sidecar/local-proxy.js",
+        "sidecar/config-cache.js"
+      ],
+      "check": "sidecar/local-proxy.test.js::buildExposedIdLookup: 字面 ID 优先,渲染别名冲突跳过并告警,不再毒化全局"
+    }
+  }
+}
