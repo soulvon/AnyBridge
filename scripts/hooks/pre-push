@@ -1,0 +1,21 @@
+#!/bin/sh
+# 推送前运行与 CI 相同的完整验证；失败时阻止推送。
+
+cd "$(git rev-parse --show-toplevel)" || {
+  echo "无法定位仓库根目录，推送已阻止。"
+  exit 1
+}
+
+if ! command -v node >/dev/null 2>&1 || ! command -v npm >/dev/null 2>&1; then
+  echo "未找到 Node.js/npm，无法执行完整验证，推送已阻止。"
+  exit 1
+fi
+
+npm run verify
+status=$?
+if [ $status -ne 0 ]; then
+  echo "完整验证未通过，推送已阻止。请修复后重跑 npm run verify。"
+  exit 1
+fi
+
+exit 0

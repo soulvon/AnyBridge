@@ -20,12 +20,26 @@ import { execSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const mode = (process.argv[2] || 'all').replace(/^--/, '');
+if (!['all', 'fast', 'rust', 'live'].includes(mode)) {
+  console.error(`未知检查模式: ${mode}；可选 all、fast、rust、live`);
+  process.exit(2);
+}
+const runFast = mode === 'all' || mode === 'fast';
+const runRust = mode === 'all' || mode === 'rust';
+const runLive = mode === 'all' || mode === 'live';
 let failed = 0;
 let passed = 0;
+let warned = 0;
 
 function ok(name, cond, detail = '') {
   if (cond) { passed++; console.log(`  ✅ ${name}`); }
   else { failed++; console.log(`  ❌ ${name}${detail ? ' — ' + detail : ''}`); }
+}
+// 提示档：可见但不阻断，用于存量风格债务；硬规则由 ok() 承担
+function warn(name, detail = '') {
+  warned++;
+  console.log(`  ⚠ 提示 ${name}${detail ? ' — ' + detail : ''}`);
 }
 function section(name) { console.log(`\n■ ${name}`); }
 
@@ -48,23 +62,26 @@ function section(name) { console.log(`\n■ ${name}`); }
 // ─────────────────────────────────────────────────────────────
 // [1] Rust 编译与单测
 // ─────────────────────────────────────────────────────────────
-section('Rust 编译与单测');
-try {
-  execSync('cargo check --message-format short', { cwd: path.join(root, 'src-tauri'), stdio: 'pipe' });
-  ok('cargo check 零错误', true);
-} catch (e) {
-  ok('cargo check 零错误', false, (e.stderr || e.message || '').slice(0, 300));
-}
-try {
-  const out = execSync('cargo test --lib', { cwd: path.join(root, 'src-tauri'), stdio: 'pipe', encoding: 'utf8' });
-  ok('cargo test 全量单测通过', /test result: ok/.test(out));
-} catch (e) {
-  ok('cargo test 全量单测通过', false, (e.stdout || e.message || '').slice(-300));
+if (runRust) {
+  section('Rust 编译与单测');
+  try {
+    execSync('cargo check --message-format short', { cwd: path.join(root, 'src-tauri'), stdio: 'pipe' });
+    ok('cargo check 零错误', true);
+  } catch (e) {
+    ok('cargo check 零错误', false, (e.stderr || e.message || '').slice(0, 300));
+  }
+  try {
+    const out = execSync('cargo test --lib', { cwd: path.join(root, 'src-tauri'), stdio: 'pipe', encoding: 'utf8' });
+    ok('cargo test 全量单测通过', /test result: ok/.test(out));
+  } catch (e) {
+    ok('cargo test 全量单测通过', false, (e.stdout || e.message || '').slice(-300));
+  }
 }
 
 // ─────────────────────────────────────────────────────────────
 // [2] UI 脚本语法（运行时动态加载，build:ui 不校验它们）
 // ─────────────────────────────────────────────────────────────
+if (runFast) {
 section('UI 脚本语法');
 const scriptsDir = path.join(root, 'ui', 'assets', 'scripts');
 for (const f of fs.readdirSync(scriptsDir).filter(f => f.endsWith('.js'))) {
@@ -107,6 +124,16 @@ section('坑点库（docs/pitfalls.json 逐条验证）');
           const okNot = !new RegExp(n.must_not_match).test(nsrc);
           ok(`[${p.id}] 反向判据（不得回退）`, okNot);
         }
+      }
+      // 行为测试引用：由 test:unit / cargo test 实际执行，这里只防止引用漂移
+      if (p.regression_test) {
+        const [refFile, ...refParts] = p.regression_test.split('::');
+        const refPath = path.join(root, refFile);
+        const refName = refParts.join('::');
+        const refExists = fs.existsSync(refPath);
+        const refSource = refExists ? fs.readFileSync(refPath, 'utf8') : '';
+        ok(`[${p.id}] 行为测试引用未漂移`, refExists && refSource.includes(refName),
+          refExists ? `未找到: ${refName}` : `${refFile} 不存在`);
       }
     }
   }
@@ -287,6 +314,7 @@ section('提交卫生（不该提交的不提交）');
     /^CHANGELOG\.md$/i,
     /^AGENTS\.md$/i,
     /^docs\/(ARCHITECTURE|DEVELOPMENT|RELEASE|MACOS_TROUBLESHOOTING|WORKFLOW)(_zh)?\.md$/i,
+    /^docs\/subsystems\/[a-z0-9-]+\.md$/i,
     /(^|\/)README\.md$/i,
     /^\.github\/pull_request_template\.md$/i,
     /^cursor-core\/prompt\//,        // 运行时提示词模板（程序资源）
@@ -355,8 +383,110 @@ section('关键判据（源码级回归断言）');
 }
 
 // ─────────────────────────────────────────────────────────────
+// [3.8] UI 设计铁律守卫：硬规则拦提交，存量风格债务进提示档
+//   档位依据 2026-10-25 全量试跑数据（先报告后定档，拒绝拍脑袋硬规则）：
+//   uppercase 存量 5 处已清零 → 硬规则；breath/ripple/wave 类动画名 0 处 → 硬规则；
+//   pulse/glow/shimmer、蓝紫点缀色、<12px 字号、border-left → 提示档。
+// ─────────────────────────────────────────────────────────────
+section('UI 设计铁律守卫（ui-src + ui/assets）');
+{
+  const uiFiles = [];
+  const collectUi = (dir) => {
+    const abs = path.join(root, dir);
+    if (!fs.existsSync(abs)) return;
+    for (const e of fs.readdirSync(abs, { withFileTypes: true })) {
+      if (e.name === 'node_modules') continue;
+      const rel = `${dir}/${e.name}`;
+      if (e.isDirectory()) collectUi(rel);
+      else if (/\.(html|css|js)$/i.test(e.name)) uiFiles.push(rel);
+    }
+  };
+  collectUi('ui-src');
+  collectUi('ui/assets');
+  ok('UI 源文件可扫描', uiFiles.length > 0, '未收集到 ui-src / ui-assets 文件');
+
+  const scanUi = (re) => {
+    const hits = [];
+    for (const rel of uiFiles) {
+      const src = fs.readFileSync(path.join(root, rel), 'utf8');
+      const m = src.match(re);
+      if (m && m.length) hits.push({ file: rel, count: m.length });
+    }
+    return hits;
+  };
+  const total = (hits) => hits.reduce((n, h) => n + h.count, 0);
+  const topFiles = (hits) => hits.sort((a, b) => b.count - a.count).slice(0, 3)
+    .map(h => `${h.file}(${h.count})`).join(', ');
+
+  // [硬] 全大写英文标签（设计铁律 7）
+  const upper = scanUi(/text-transform:\s*uppercase/gi);
+  ok('全大写英文标签已清零（text-transform: uppercase）', upper.length === 0,
+    upper.map(h => `${h.file}(${h.count})`).join(', '));
+
+  // [硬] 被禁的廉价动效关键帧（雷达波纹/呼吸微光类，设计铁律 6）
+  const bannedAnim = scanUi(/@keyframes\s+[\w-]*(?:breath|ripple|wave|扩散|波纹|呼吸|微光)[\w-]*/gi);
+  ok('被禁动效关键帧为零（breath/ripple/wave 类）', bannedAnim.length === 0,
+    bannedAnim.map(h => `${h.file}(${h.count})`).join(', '));
+
+  // [提示] pulse/glow/shimmer 关键帧——多为状态点呼吸，骨架屏 shimmer 豁免（铁律 2 要求骨架屏）
+  const softAnim = scanUi(/@keyframes\s+[\w-]*(?:pulse|glow|shimmer)[\w-]*/gi)
+    .filter(h => !/skeleton/i.test(h.file));
+  if (softAnim.length) warn(`pulse/glow/shimmer 关键帧 ${total(softAnim)} 处待人工定性`,
+    `${topFiles(softAnim)}（状态点呼吸合法，装饰性光效应删）`);
+
+  // [提示] 蓝紫系点缀色（设计铁律 6；供应商图标等功能性用色需人工甄别）
+  const purple = scanUi(/#(?:6366f1|818cf8|4f46e5|4338ca|8b5cf6|7c3aed|6d28d9|a78bfa|c4b5fd|9333ea|7e22ce)\b/gi);
+  if (purple.length) warn(`蓝紫系色值 ${total(purple)} 处`, `${topFiles(purple)}（功能性点缀可保留，禁作整体配色/渐变背景）`);
+
+  // [提示] 字号 <12px（设计铁律 5；存量约 489 处，清理属全局视觉改版，待拍板）
+  const smallFont = scanUi(/font-size:\s*(?:[0-9]|1[01])(?:\.\d+)?px\b/gi);
+  if (smallFont.length) warn(`字号低于 12px ${total(smallFont)} 处`, `${topFiles(smallFont)}（存量债务，新增代码不得再增）`);
+
+  // [提示] 左侧彩条装饰（设计铁律 12；CSS 三角形是合法误报）
+  const leftBar = scanUi(/border-left:\s*[1-9]\d*px/g);
+  if (leftBar.length) warn(`border-left 装饰 ${total(leftBar)} 处`, `${topFiles(leftBar)}（含三角形绘制误报，真彩条应换用背景/伪元素）`);
+}
+
+// ─────────────────────────────────────────────────────────────
+// [3.9] 新增文件行数守卫：只拦新增，存量豁免（防巨型文件持续入场）
+// ─────────────────────────────────────────────────────────────
+section('新增文件行数守卫（>1500 行阻断，>1000 行提示）');
+{
+  let newFiles = '';
+  try {
+    newFiles = execSync('git diff --cached --name-only --diff-filter=A', { cwd: root, encoding: 'utf8', stdio: 'pipe' });
+  } catch {}
+  if (!newFiles.trim()) {
+    try {
+      newFiles = execSync('git ls-files -o --exclude-standard', { cwd: root, encoding: 'utf8', stdio: 'pipe' });
+    } catch {}
+  }
+  const codeExt = /\.(js|mjs|cjs|ts|jsx|tsx|rs|py|css|html)$/i;
+  const candidates = newFiles.split('\n').filter(Boolean)
+    .filter(f => codeExt.test(f))
+    .filter(f => !/^tmp\//.test(f))
+    .filter(f => f !== 'ui/index.html');
+  if (candidates.length === 0) {
+    console.log('  ⏭ 暂无新增代码文件，跳过');
+  } else {
+    for (const f of candidates) {
+      const lines = fs.readFileSync(path.join(root, f), 'utf8').split('\n').length;
+      if (lines > 1500) {
+        ok(`新增文件 ${f} 行数（${lines} 行）`, false, '超过 1500 行硬上限：新增文件必须拆分入场');
+      } else if (lines > 1000) {
+        warn(`新增文件 ${f} 行数（${lines} 行）`, '超过 1000 行提示线：建议拆分后再提交');
+      } else {
+        ok(`新增文件 ${f} 行数（${lines} 行）`, true);
+      }
+    }
+  }
+}
+}
+
+// ─────────────────────────────────────────────────────────────
 // [4] 本机环境实况（已启用汉化的客户端必须链路完整）
 // ─────────────────────────────────────────────────────────────
+if (runLive) {
 section('本机环境（已启用汉化的客户端）');
 const home = os.homedir();
 const PACK_ID = 'ms-ceintl.vscode-language-pack-zh-hans';
@@ -451,11 +581,12 @@ checkClient('Devin', {
   dotDir: '.devin',
   appDataDir: 'Devin',
 });
+}
 
 // ─────────────────────────────────────────────────────────────
 // 汇总
 // ─────────────────────────────────────────────────────────────
 console.log(`\n════════════════════════════════════`);
-console.log(`通过 ${passed} ｜ 失败 ${failed}`);
+console.log(`通过 ${passed} ｜ 失败 ${failed} ｜ 提示 ${warned}`);
 console.log(failed === 0 ? '✅ 全部通过' : '❌ 存在失败项——必须修复后重跑，任务不得结束');
 process.exit(failed === 0 ? 0 : 1);

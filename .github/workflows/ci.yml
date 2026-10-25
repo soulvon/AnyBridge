@@ -44,25 +44,16 @@ jobs:
         working-directory: sidecar
         run: npm ci
 
-      - name: Check UI
-        run: npm run check:ui
-
-      - name: Node unit tests
-        run: npm run test:unit
-
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Build sidecar for Cargo check
+      - name: Build external binaries for Cargo checks
         shell: bash
         run: |
           set -euo pipefail
           HOST="$(rustc -vV | awk '/^host: / {print $2}')"
           python scripts/build/build_sidecar_plain.py --platform "$HOST"
           python scripts/build/build_cursor_core.py --target "$HOST"
-
-      - name: Cargo check
-        run: cargo check --manifest-path src-tauri/Cargo.toml
 
       - name: Prepare LOCAL_PROXY_KEY used by config-dependent tests
         # 部分 Codex 测试经 codex_bearer_token() 读取本机配置目录里的 LOCAL_PROXY_KEY，
@@ -93,5 +84,5 @@ jobs:
           print("prepared", config_file)
           PY
 
-      - name: Rust unit tests
-        run: npm run test:rust
+      - name: Verify
+        run: npm run verify

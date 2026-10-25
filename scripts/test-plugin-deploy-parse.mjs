@@ -42,7 +42,12 @@ check(
   src.steps.some((s) => /start & verify/i.test(s.title)) &&
     !parsed.strategies.docker.steps.some((s) => /start & verify/i.test(s.title))
 );
-check('docker 策略只有自己的 2 个步骤', parsed.strategies.docker.steps.length === 2);
+check(
+  'docker 策略保留 Clone Source、Prepare Config、Start Container 三步',
+  parsed.strategies.docker.steps.length === 3 &&
+    ['Clone Source', 'Prepare Config', 'Start Container'].every((title, i) =>
+      parsed.strategies.docker.steps[i]?.title === title)
+);
 
 const vars = {
   installPath: 'C:\\install',

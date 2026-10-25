@@ -842,7 +842,6 @@
   font-size: 11px;
   font-weight: 850;
   letter-spacing: 0.14em;
-  text-transform: uppercase;
 }
 
 #notification-center-modal .notification-center-header h2 {
@@ -1079,7 +1078,6 @@
   font-size: 11px;
   font-weight: 850;
   letter-spacing: 0.14em;
-  text-transform: uppercase;
 }
 
 #log-viewer-modal .log-viewer-header h2 {
@@ -1408,7 +1406,6 @@
   font-size: 11px;
   font-weight: 800;
   letter-spacing: 0.14em;
-  text-transform: uppercase;
 }
 
 #onboarding-guide-modal .onboarding-guide-hero h2 {

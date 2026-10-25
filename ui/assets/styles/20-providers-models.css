@@ -1561,7 +1561,7 @@
 .field:last-child { margin-bottom: 0; }
 .field-label {
   font-size: 11px; color: var(--text-muted); font-weight: 600;
-  text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 5px;
+  letter-spacing: 0.04em; margin-bottom: 5px;
 }
 .field-input {
   width: 100%; background: var(--bg-input); border: 1px solid var(--border);

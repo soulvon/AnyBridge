@@ -1,28 +1,21 @@
 #!/bin/sh
-# 关键功能回归检查 —— 不通过不允许提交。
-#
-# 背景：项目多次出现「改 A 导致 B 回归」「上次修的下次又坏」，
-# 因此把回归检查前置到提交环节，让沉淀的坑点真正反馈到工作流
-# （而不是只写在文档里）。
-#
-# 安装： cp scripts/hooks/pre-commit .git/hooks/pre-commit && chmod +x .git/hooks/pre-commit
-# 绕过（仅紧急）： git commit --no-verify
+# 提交前运行快速、确定性的检查；失败时阻止提交。
+# 安装：cp scripts/hooks/pre-commit .git/hooks/pre-commit
 
-cd "$(git rev-parse --show-toplevel)" || exit 0
+cd "$(git rev-parse --show-toplevel)" || {
+  echo "无法定位仓库根目录，提交已阻止。"
+  exit 1
+}
 
 if ! command -v node >/dev/null 2>&1; then
-  echo "⚠ 未找到 node，跳过回归检查"
-  exit 0
+  echo "未找到 Node.js，无法执行提交检查，提交已阻止。"
+  exit 1
 fi
 
-node scripts/check-key-features.mjs
+node scripts/check-ui.mjs && node scripts/check-key-features.mjs --fast
 status=$?
-
 if [ $status -ne 0 ]; then
-  echo ""
-  echo "❌ 回归检查未通过，提交已阻止。"
-  echo "   请修复失败项后重新提交。"
-  echo "   紧急绕过： git commit --no-verify"
+  echo "提交检查未通过，提交已阻止。请修复后重新提交。"
   exit 1
 fi
 
