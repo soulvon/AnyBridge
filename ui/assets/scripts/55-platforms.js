@@ -14013,6 +14013,10 @@ async function renderHeroVersion(platformId, elId) {
   if (!el || _heroVersionBusy[platformId]) return;
   if (typeof invoke !== 'function' && !(typeof bindTauriBridge === 'function' && bindTauriBridge())) return;
   _heroVersionBusy[platformId] = true;
+  // 记录发起目标：windsurf/devin/cursor 共用同一版本行元素，
+  // rail 快速切换时旧请求的后到结果不得覆盖新平台的（实测竞态：
+  // Devin 页显示 Windsurf 的版本号）
+  el.dataset.versionTarget = platformId;
   try {
     // 15 秒超时兜底：注册表/子进程异常挂起时不再停留在「检测中」
     const info = await Promise.race([
@@ -14020,6 +14024,7 @@ async function renderHeroVersion(platformId, elId) {
       new Promise((_, rej) => setTimeout(() => rej(new Error('version probe timeout')), 15000)),
     ]);
     if (!el.isConnected) return;
+    if (el.dataset.versionTarget !== platformId) return; // 已切到其它平台，丢弃旧结果
     // 三态语义：未安装（无安装证据）/ 已装但版本未知 / 已装有版本。
     // 版本探测失败绝不当「未安装」（坑点库 read-failure-is-unknown）。
     if (!info || !info.installed) {
@@ -14033,9 +14038,9 @@ async function renderHeroVersion(platformId, elId) {
         '<span class="version-num latest">v' + info.latest_version + '</span>' +
         '<button type="button" class="version-update-btn" data-action="updatePlatformAgentAction" data-arg="' + platformId + '">一键更新</button>';
     } else if (info.current_version) {
-      el.innerHTML =
-        '<span class="version-num">v' + info.current_version + '</span>' +
-        '<span class="version-state ok">已是最新</span>';
+      // 无 latest 数据（GUI 客户端无 npm 源，如已停更的 Windsurf）时
+      // 只显示版本号——「已是最新」在没有对比数据时是误导
+      el.innerHTML = '<span class="version-num">v' + info.current_version + '</span>';
     } else {
       el.innerHTML = '<span class="version-state muted">已安装 · 版本未知</span>';
     }

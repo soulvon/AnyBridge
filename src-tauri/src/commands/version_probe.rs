@@ -296,13 +296,21 @@ fn parse_version_line(text: &str) -> Option<String> {
 /// 动手前先盘点现有资产（房间里的大象）。
 #[cfg(windows)]
 pub fn installed_gui_version(platform_id: &str) -> Option<String> {
-    // ide_app_dir 返回 <install>\resources\app，带路径缓存（首次后毫秒级）。
-    let app_dir = super::workbench_inject::ide_app_dir(platform_id)?;
-
     let key = format!("gui:{}", platform_id);
     if let Some(hit) = cache_get(&key, Duration::from_secs(600)) {
         return hit;
     }
+
+    // Antigravity Hub 是 Electron 应用（非 VS Code fork），没有 resources/app，
+    // 版本在 app.asar 内的 package.json——hub_asar_path() 是汉化/接入同款定位链。
+    if platform_id == "antigravity" {
+        let version = antigravity_hub_version();
+        cache_put(key, version.clone());
+        return version;
+    }
+
+    // ide_app_dir 返回 <install>\resources\app，带路径缓存（首次后毫秒级）。
+    let app_dir = super::workbench_inject::ide_app_dir(platform_id)?;
 
     let product = app_dir.join("product.json");
     let version = std::fs::read_to_string(&product)
@@ -319,6 +327,42 @@ pub fn installed_gui_version(platform_id: &str) -> Option<String> {
 
     cache_put(key, version.clone());
     version
+}
+
+/// Antigravity Hub 的应用版本：读 app.asar 内的 package.json。
+/// asar 解析与汉化的 patch_hub_asar 同一套格式约定（header + payload_start）。
+#[cfg(windows)]
+fn antigravity_hub_version() -> Option<String> {
+    use serde_json::Value;
+    use std::fs;
+    use std::io::{Read, Seek, SeekFrom};
+
+    let asar_path = super::antigravity_localization::hub_asar_path()?;
+    let mut f = fs::File::open(&asar_path).ok()?;
+    let mut head16 = [0u8; 16];
+    f.read_exact(&mut head16).ok()?;
+    let json_size = u32::from_le_bytes(head16[12..16].try_into().ok()?) as usize;
+    if json_size == 0 || json_size > 64 * 1024 * 1024 {
+        return None;
+    }
+    let mut header_bytes = vec![0u8; 16 + json_size];
+    f.seek(SeekFrom::Start(0)).ok()?;
+    f.read_exact(&mut header_bytes).ok()?;
+    let header: Value =
+        serde_json::from_str(std::str::from_utf8(&header_bytes[16..]).ok()?).ok()?;
+    let node = header.pointer("/files/package.json")?.clone();
+    let offset: usize = node.get("offset")?.as_str()?.parse().ok()?;
+    let size: usize = node.get("size")?.as_u64()? as usize;
+    if size == 0 || size > 4 * 1024 * 1024 {
+        return None;
+    }
+    let declared = u32::from_le_bytes(header_bytes[4..8].try_into().ok()?) as usize;
+    let payload_start = super::antigravity_localization::asar_payload_start(declared);
+    let mut buf = vec![0u8; size];
+    f.seek(SeekFrom::Start((payload_start + offset) as u64)).ok()?;
+    f.read_exact(&mut buf).ok()?;
+    let pkg: Value = serde_json::from_slice(&buf).ok()?;
+    pkg.get("version")?.as_str().map(|s| s.to_string())
 }
 
 /// 旧实现保留备查（注册表枚举 + 进程枚举），已不再被调用。

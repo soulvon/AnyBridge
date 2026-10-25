@@ -17,7 +17,7 @@ const TRUTH = {
     return cands.map(readJson).find(v => v)?.version;
   },
   // 注：truth 与探测同口径（product.json 的 version = 应用版本）；
-  antigravity: () => findProductJson(['C:/Program Files/Antigravity', 'E:/Program/Antigravity', path.join(home, 'AppData', 'Local', 'Programs', 'Antigravity')]),
+  antigravity: () => probeAntigravityHub().version,
   'antigravity-ide': () => findProductJson(['C:/Program Files/Antigravity IDE', 'E:/Program/Antigravity IDE', path.join(home, 'AppData', 'Local', 'Programs', 'Antigravity IDE')]),
   'claude-code': () => runVersion(path.join(home, '.local', 'bin', 'claude.exe')),
   codex: () => {
@@ -118,6 +118,34 @@ function probeCli(platformId, bin) {
   return { version: v, found };
 }
 
+// Antigravity Hub（Electron）：版本在 app.asar 内的 package.json（汉化同款定位链）
+function probeAntigravityHub() {
+  const base = path.join(process.env.LOCALAPPDATA || '', 'Programs', 'antigravity');
+  const asar = path.join(base, 'resources', 'app.asar');
+  if (!fs.existsSync(asar)) return { version: null, dir: base };
+  const fd = fs.openSync(asar, 'r');
+  try {
+    const head = Buffer.alloc(16);
+    fs.readSync(fd, head, 0, 16, 0);
+    const jsonSize = head.readUInt32LE(12);
+    const hb = Buffer.alloc(16 + jsonSize);
+    fs.readSync(fd, hb, 0, hb.length, 0);
+    const header = JSON.parse(hb.slice(16).toString('utf8'));
+    const node = header.files && header.files['package.json'];
+    if (!node) return { version: null, dir: base };
+    const declared = head.readUInt32LE(4);
+    const payloadStart = 8 + declared;
+    const buf = Buffer.alloc(node.size);
+    fs.readSync(fd, buf, 0, node.size, payloadStart + parseInt(node.offset));
+    const pkg = JSON.parse(buf.toString('utf8'));
+    return { version: pkg.version || null, dir: base };
+  } catch {
+    return { version: null, dir: base };
+  } finally {
+    fs.closeSync(fd);
+  }
+}
+
 // GUI：原生注册表算法的近似复刻（这里用 reg query 枚举子键，仅对照用）
 function probeGuiRegistry(platformId, display) {
   const hives = [
@@ -196,13 +224,14 @@ function probeGuiCommonLocation(platformId) {
 for (const [id, display] of Object.entries(GUI)) {
   // 与 find_ide_exe 同序：常见位置 → 运行进程 → 注册表
   const viaCommon = probeGuiCommonLocation(id);
-  const gui = viaCommon.version ? viaCommon : probeGuiRegistry(id, display);
+  let via = viaCommon.version ? viaCommon : probeGuiRegistry(id, display);
+  if (id === 'antigravity') via = probeAntigravityHub();
   const truth = TRUTH[id]?.();
-  const probeV = gui.version;
+  const probeV = via.version;
   const ok = (truth === null && probeV === null) || (truth !== null && probeV === truth);
   if (!ok) problems++;
-  const vs = gui.vscodeVersion ? ` 引擎=${gui.vscodeVersion}` : '';
-  console.log(`[${ok ? 'OK ' : 'DIFF'}] ${id.padEnd(16)} 探测=${(probeV || 'null').padEnd(12)} 真相=${(truth || 'n/a').padEnd(12)} dir=${gui.dir || 'NOT FOUND'}${vs}`);
+  const vs = via.vscodeVersion ? ` 引擎=${via.vscodeVersion}` : '';
+  console.log(`[${ok ? 'OK ' : 'DIFF'}] ${id.padEnd(16)} 探测=${(probeV || 'null').padEnd(12)} 真相=${(truth || 'n/a').padEnd(12)} dir=${via.dir || 'NOT FOUND'}${vs}`);
 }
 
 for (const id of NO_PROBE) {
