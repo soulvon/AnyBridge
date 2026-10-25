@@ -14268,9 +14268,12 @@ async function fillGenericAgentProviders(selectedId) {
   if (!list.length) {
     sel.innerHTML = '<option value="">（无可用供应商，请先添加）</option>';
     sel.disabled = true;
+    globalThis._genericProviders = [];
+    fillGenericAgentModels();
     return;
   }
   sel.disabled = false;
+  globalThis._genericProviders = list;
   const keep = selectedId || sel.value;
   sel.innerHTML = list
     .map((p) => {
@@ -14279,6 +14282,33 @@ async function fillGenericAgentProviders(selectedId) {
     })
     .join('');
   if (keep && list.some((p) => p.id === keep)) sel.value = keep;
+  // 切换供应商 → 模型选项跟着换
+  sel.onchange = () => fillGenericAgentModels();
+  fillGenericAgentModels();
+}
+
+/**
+ * 填充模型下拉：选项来自所选供应商的 models 列表（为空则回退默认模型）。
+ * 模型只影响「写入配置的值」，不做模型池管理（那是配置式平台页的职责）。
+ */
+function fillGenericAgentModels() {
+  const sel = document.getElementById('generic-agent-model');
+  if (!sel) return;
+  const provSel = document.getElementById('generic-agent-provider');
+  const list = globalThis._genericProviders || [];
+  const current = list.find((p) => p.id === (provSel ? provSel.value : ''));
+  const models = (current && Array.isArray(current.models) ? current.models : []).filter(Boolean);
+  const fallback = current && current.defaultModel ? [current.defaultModel] : [];
+  const options = models.length ? models : fallback;
+  if (!options.length) {
+    sel.innerHTML = '<option value="">（默认模型）</option>';
+    return;
+  }
+  const keep = current && current.defaultModel;
+  sel.innerHTML = options
+    .map((m) => '<option value="' + m + '">' + m + '</option>')
+    .join('');
+  if (keep && options.includes(keep)) sel.value = keep;
 }
 
 /** 通用页「一键接入」：按所选供应商写入 endpoint/key/model */
@@ -14291,10 +14321,13 @@ async function genericAgentApply() {
   }
   const sel = document.getElementById('generic-agent-provider');
   const providerId = sel && !sel.disabled ? sel.value : '';
+  const modelSel = document.getElementById('generic-agent-model');
+  const chosenModel = modelSel && modelSel.value ? modelSel.value : null;
   try {
     const msg = await invoke('apply_declared_platform', {
       platform: platformId,
       providerId: providerId || null,
+      model: chosenModel,
     });
     if (typeof showBottomToast === 'function') {
       showBottomToast(msg, 'success', { duration: 5200 });
@@ -14351,6 +14384,7 @@ globalThis.openGenericAgentPage = openGenericAgentPage;
 globalThis.openGenericAgentConfig = openGenericAgentConfig;
 globalThis.genericAgentApply = genericAgentApply;
 globalThis.fillGenericAgentProviders = fillGenericAgentProviders;
+globalThis.fillGenericAgentModels = fillGenericAgentModels;
 globalThis.genericAgentRestore = genericAgentRestore;
 globalThis.loadAgentRegistry = loadAgentRegistry;
 

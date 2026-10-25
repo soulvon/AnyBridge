@@ -273,6 +273,7 @@ pub fn restore_declared_agent(platform: String) -> Result<(), String> {
 pub fn apply_declared_platform(
     platform: String,
     provider_id: Option<String>,
+    model: Option<String>,
 ) -> Result<String, String> {
     let spec = super::agent_spec::find(&platform)
         .ok_or_else(|| format!("未声明的 agent: {platform}"))?;
@@ -291,13 +292,18 @@ pub fn apply_declared_platform(
     };
 
     let endpoint = super::platforms::declared_base_url(p);
-    let model = p.default_model.trim();
+    // 模型优先用前端选择的值（用户可切换），否则用供应商默认模型
+    let chosen = model
+        .as_deref()
+        .map(|m| m.trim())
+        .filter(|m| !m.is_empty())
+        .unwrap_or_else(|| p.default_model.trim());
     let touched = apply_declared(
         spec,
         &InjectPlan {
             endpoint: &endpoint,
             api_key: &p.api_key,
-            model: if model.is_empty() { None } else { Some(model) },
+            model: if chosen.is_empty() { None } else { Some(chosen) },
         },
     )?;
 
