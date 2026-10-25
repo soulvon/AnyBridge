@@ -89,6 +89,49 @@ test('responseObject: openai 上游的 tool_calls 必须转成 function_call 输
   assert.deepEqual(JSON.parse(fc.arguments), { city: '北京' });
 });
 
+test('sendOpenAIResponses: 假流式必须发送 function_call 的完整 output_item 事件', () => {
+  const chunks = [];
+  const res = {
+    writeHead() {},
+    write(chunk) { chunks.push(String(chunk)); },
+    end() {},
+  };
+  __localProxyTest.sendOpenAIResponses(
+    { model: 'm', stream: true },
+    res,
+    {
+      text: '',
+      toolCalls: [{ id: 'call-1', name: 'list_files', arguments: { path: '.' } }],
+      usage: { inputTokens: 3, outputTokens: 5 },
+    },
+  );
+
+  const events = chunks.join('').split('\n\n').flatMap((block) => {
+    const data = block.split('\n').find((line) => line.startsWith('data: '))?.slice(6);
+    return data && data !== '[DONE]' ? [JSON.parse(data)] : [];
+  });
+  assert.deepEqual(events.map((event) => event.type), [
+    'response.created',
+    'response.output_item.added',
+    'response.output_text.delta',
+    'response.output_text.done',
+    'response.output_item.done',
+    'response.output_item.added',
+    'response.output_item.done',
+    'response.completed',
+  ]);
+
+  const added = events[5];
+  const done = events[6];
+  assert.equal(added.output_index, 1);
+  assert.equal(added.item.type, 'function_call');
+  assert.equal(added.item.status, 'in_progress');
+  assert.equal(done.output_index, 1);
+  assert.equal(done.item.call_id, 'call-1');
+  assert.deepEqual(JSON.parse(done.item.arguments), { path: '.' });
+  assert.equal(events.at(-1).response.output[1].type, 'function_call');
+});
+
 test('responseObject: 纯文本回复保持单一 message 输出项', () => {
   const obj = __localProxyTest.responseObject(
     { model: 'm' },

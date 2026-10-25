@@ -1021,6 +1021,7 @@ export const __localProxyTest = {
   normalizeOpenAI,
   openAIResponsesInput,
   sendOpenAIChat,
+  sendOpenAIResponses,
   applyParamOverrides,
   applyToolEnhancement,
   upstreamBody,

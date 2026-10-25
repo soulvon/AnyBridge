@@ -8,6 +8,7 @@
       "symptom": "Devin 原厂 workbench.html 只有 1.7KB（界面靠 workbench.js 加载），体积阈值会把健康文件判成损坏并拒绝注入",
       "lesson": "损坏判据必须用结构完整性（是否含 </body>），中断的写入一定写不到闭合标签；体积在合法文件间差异极大且残骸大小不可预测",
       "check": { "type": "source_contains", "file": "src-tauri/src/commands/app_localization.rs", "must_contain": "fn is_valid_workbench" },
+      "regression_test": "src-tauri/src/commands/app_localization.rs::small_but_valid_workbench_is_accepted",
       "check_not": { "type": "source_not_regex", "file": "src-tauri/src/commands/app_localization.rs", "must_not_match": "MIN_VALID_WORKBENCH_LEN:\\s*usize\\s*=\\s*\\d{3,}" },
       "severity": "high"
     },
@@ -57,6 +58,7 @@
       "symptom": "从备份整体覆盖 workbench.html 会把汉化块一起抹掉",
       "lesson": "还原只剥离自己的块，保留其它注入块；并用单测锁住该行为",
       "check": { "type": "source_contains", "file": "src-tauri/src/commands/workbench_inject.rs", "must_contain": "汉化块必须保留" },
+      "regression_test": "src-tauri/src/commands/workbench_inject.rs::strips_byok_block_and_keeps_hans_block",
       "severity": "high"
     },
     {
@@ -81,6 +83,7 @@
       "symptom": "JSON.parse 失败 → 误判 locale 未设置；解析失败时用空对象覆盖会丢用户配置",
       "lesson": "剥注释后再解析；解析失败必须报错中止，绝不覆盖原文件",
       "check": { "type": "source_contains", "file": "src-tauri/src/commands/app_localization.rs", "must_contain": "fn parse_jsonc" },
+      "regression_test": "src-tauri/src/commands/app_localization.rs::parses_jsonc_argv",
       "severity": "medium"
     },
     {
@@ -122,6 +125,24 @@
       "lesson": "setInterval 驱动的状态刷新都要先判 document.hidden；恢复可见时立即补一次刷新（visibilitychange 监听）",
       "check": { "type": "source_contains", "file": "ui/assets/scripts/20-runtime.js", "must_contain": "document.hidden" },
       "severity": "medium"
+    },
+    {
+      "id": "responses-fake-stream-tool-events",
+      "title": "Responses 假流式必须发出 function_call 的 output_item 事件",
+      "symptom": "openai 上游返回 tool_calls 时只给 message，result.toolCalls 被丢弃，Cursor/Agent 收到空回复",
+      "lesson": "responseObject 必须包含 function_call；sendOpenAIResponses 的 ctx.stream 分支必须为每个附加输出项发送 added/done，且 output_index 从 1 开始。行为由完整 SSE 事件序列测试锁定",
+      "check": { "type": "source_contains", "file": "sidecar/local-proxy.test.js", "must_contain": "sendOpenAIResponses: 假流式必须发送 function_call 的完整 output_item 事件" },
+      "regression_test": "sidecar/local-proxy.test.js::sendOpenAIResponses: 假流式必须发送 function_call 的完整 output_item 事件",
+      "severity": "high"
+    },
+    {
+      "id": "local-proxy-alias-conflict-poison",
+      "title": "本地代理一条别名冲突不得毒化全部模型路由",
+      "symptom": "命名规则渲染出的别名与另一条路由字面 ID 相同时曾直接 throw，导致包括无关模型在内的所有解析 502",
+      "lesson": "查找表两段式构建：字面 ID 优先且真重复必须报错；渲染别名冲突跳过并告警，不放大为全局故障。行为由事故配置复刻测试锁定",
+      "check": { "type": "source_contains", "file": "sidecar/local-proxy.test.js", "must_contain": "buildExposedIdLookup: 字面 ID 优先,渲染别名冲突跳过并告警,不再毒化全局" },
+      "regression_test": "sidecar/local-proxy.test.js::buildExposedIdLookup: 字面 ID 优先,渲染别名冲突跳过并告警,不再毒化全局",
+      "severity": "high"
     }
   ]
 }
