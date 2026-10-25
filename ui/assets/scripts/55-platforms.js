@@ -14248,9 +14248,16 @@ async function openGenericAgentPage(platformId) {
     pathInput.title = pathInput.value;
   }
   if (note) {
-    note.textContent = entry.installed
-      ? '该 agent 由 Agent 声明表注册；配置路径与版本由声明驱动。'
-      : '未检测到安装证据。安装后回到本页，点左侧「刷新检测」即可点亮。';
+    const parts = [];
+    if (entry.installed) {
+      parts.push('该 agent 由 Agent 声明表注册；配置路径与版本由声明驱动。');
+    } else {
+      parts.push('未检测到安装证据。安装后回到本页，点「刷新状态」即可点亮。');
+    }
+    if (entry.current_model) {
+      parts.push('当前写入模型：' + entry.current_model + '。');
+    }
+    note.textContent = parts.join('');
   }
   navigateTo('platform-generic');
   setPlatformRailActive(platformId);

@@ -573,6 +573,8 @@ pub struct AgentRegistryEntry {
     pub has_page: bool,
     /// 图标文件名约定：`platform-<id>.svg`（前端找不到图时回退首字母）
     pub icon: String,
+    /// 配置里已写入的模型值（未接入/不支持时为 None）
+    pub current_model: Option<String>,
 }
 
 /// 已有内置页面的 agent（与 ui-src/partials/pages 对应）。
@@ -623,9 +625,39 @@ pub fn list_registry() -> Vec<AgentRegistryEntry> {
                 config_path,
                 has_page: BUILTIN_PAGES.contains(&s.id),
                 icon: format!("platform-{}.svg", s.id),
+                current_model: read_declared_model(s.id),
             }
         })
         .collect()
+}
+
+/// 读当前配置里**已写入的模型值**（inject.model 的目标位置）。
+///
+/// 用于通用页回显「当前模型」——避免用户不知道接入时写进了什么。
+pub fn read_declared_model(platform_id: &str) -> Option<String> {
+    let spec = find(platform_id)?;
+    let inject = spec.inject?;
+    match inject.model? {
+        InjectTarget::Env { key } => {
+            let dir = spec.resolve_config_dir()?;
+            let content = std::fs::read_to_string(dir.join(inject.env_file)).ok()?;
+            super::declared_apply::get_env(&content, key)
+        }
+        InjectTarget::Json { pointer } => {
+            let path = spec.resolve_config_path()?;
+            let content = std::fs::read_to_string(path).ok()?;
+            let v: serde_json::Value = serde_json::from_str(&content).ok()?;
+            let mut cur = &v;
+            for seg in pointer
+                .trim_start_matches('/')
+                .split('/')
+                .filter(|s| !s.is_empty())
+            {
+                cur = cur.get(seg)?;
+            }
+            cur.as_str().map(|s| s.to_string())
+        }
+    }
 }
 
 /// 只读配置内容（spec-only 平台用；内置平台仍走各自的读取逻辑）。

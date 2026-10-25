@@ -93,6 +93,12 @@ pub fn run() {
             // CPA 套件：已安装且开启「跟随软件启动」时自动拉起（默认开启）。
             commands::extensions::maybe_auto_start_cpa_suite();
 
+            // Agent 声明表自检：内置声明写错会让平台列表 / 探测静默失准，
+            // 启动时校验一次并落到 stderr（编译期字段完整，这里兜路径语义）。
+            if let Err(e) = commands::agent_spec::validate_registry() {
+                eprintln!("[agent_spec] 声明表校验失败: {e}");
+            }
+
             Ok(())
         })
         .on_window_event(|window, event| {
@@ -192,7 +198,6 @@ pub fn run() {
             commands::declared_apply::restore_declared_agent,
             commands::agent_spec::read_agent_config_file,
             commands::platforms::check_platform_update,
-            commands::platforms::get_platform_install_guide,
             commands::platforms::update_platform_agent,
             commands::platforms::preview_platform_switch,
             commands::platforms::switch_platform,

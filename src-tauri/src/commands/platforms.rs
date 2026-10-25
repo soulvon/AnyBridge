@@ -7178,57 +7178,6 @@ pub async fn update_platform_agent(platform: String) -> Result<PlatformUpdateInf
     })
 }
 
-/// 安装引导（magpie 的克制原则：**不代跑安装**，只给可复制命令）。
-///
-/// - CLI 平台：`npm install -g <pkg>`（包名取自 cli_spec，与版本/更新共用同一份定义）
-/// - npm 不在 PATH：附带 Node 引导命令（winget）
-/// - GUI 客户端：官方下载页
-#[derive(serde::Serialize)]
-pub struct PlatformInstallGuide {
-    pub platform: String,
-    /// 可复制的安装命令（CLI 平台）
-    pub command: Option<String>,
-    /// Node 缺失时的引导命令
-    pub node_hint: Option<String>,
-    /// GUI 客户端的官方下载页
-    pub official_url: Option<String>,
-}
-
-#[tauri::command]
-pub fn get_platform_install_guide(platform: String) -> Result<PlatformInstallGuide, String> {
-    let command = Platform::from_id(&platform)
-        .and_then(|p| super::version_probe::cli_spec(p.id()))
-        .and_then(|s| s.npm_package)
-        .map(|pkg| format!("npm install -g {}", pkg));
-
-    let official_url = match platform.as_str() {
-        "windsurf" => Some("https://windsurf.com/download".to_string()),
-        "devin" => Some("https://devin.ai".to_string()),
-        "cursor" => Some("https://cursor.com/downloads".to_string()),
-        "antigravity" | "antigravity-ide" => Some("https://antigravity.google/download".to_string()),
-        "claude-desktop" => Some("https://claude.com/download".to_string()),
-        _ => None,
-    };
-
-    // Node 缺失时才给引导链（有 Node 就不多嘴）
-    let node_hint = if command.is_some() && super::version_probe::find_tool("npm").is_none() {
-        Some("winget install OpenJS.NodeJS.LTS".to_string())
-    } else {
-        None
-    };
-
-    if command.is_none() && official_url.is_none() {
-        return Err(format!("{platform} 暂无安装方式"));
-    }
-
-    Ok(PlatformInstallGuide {
-        platform,
-        command,
-        node_hint,
-        official_url,
-    })
-}
-
 fn detect_platforms_sync() -> Result<Vec<PlatformInfo>, String> {
     let store = read_provider_store().unwrap_or_default();
     let platforms = [

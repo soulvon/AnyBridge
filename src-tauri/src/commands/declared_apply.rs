@@ -74,7 +74,8 @@ pub fn upsert_env(content: &str, key: &str, value: &str) -> String {
     out
 }
 
-/// 从 dotenv 读 key 的值。
+/// 从 dotenv 读 key 的值（当前由单测与「当前模型回显」共用）。
+#[allow(dead_code)]
 pub fn get_env(content: &str, key: &str) -> Option<String> {
     for line in content.lines() {
         let trimmed = line.trim_start();
