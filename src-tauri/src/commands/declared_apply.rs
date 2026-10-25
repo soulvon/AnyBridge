@@ -113,13 +113,24 @@ pub fn set_json_pointer(root: &mut Value, pointer: &str, value: &str) -> Result<
 
 /// 按声明写入该 agent 的 endpoint / api_key / model。返回改动过的文件路径。
 pub fn apply_declared(spec: &AgentSpec, plan: &InjectPlan) -> Result<Vec<PathBuf>, String> {
-    let inject = spec
-        .inject
-        .ok_or_else(|| format!("{} 尚未声明接入方式（inject）", spec.name))?;
     let dir = spec
         .resolve_config_dir()
         .ok_or_else(|| "无法解析配置目录".to_string())?;
-    std::fs::create_dir_all(&dir).map_err(|e| format!("创建配置目录失败: {e}"))?;
+    let cfg = spec.resolve_config_path();
+    apply_declared_with_paths(spec, &dir, cfg.as_deref(), plan)
+}
+
+/// 路径显式版本（单测用临时目录，不碰真实配置）。
+pub fn apply_declared_with_paths(
+    spec: &AgentSpec,
+    dir: &Path,
+    config_path: Option<&Path>,
+    plan: &InjectPlan,
+) -> Result<Vec<PathBuf>, String> {
+    let inject = spec
+        .inject
+        .ok_or_else(|| format!("{} 尚未声明接入方式（inject）", spec.name))?;
+    std::fs::create_dir_all(dir).map_err(|e| format!("创建配置目录失败: {e}"))?;
 
     let mut touched = Vec::new();
 
@@ -160,9 +171,9 @@ pub fn apply_declared(spec: &AgentSpec, plan: &InjectPlan) -> Result<Vec<PathBuf
     .collect();
 
     if !json_targets.is_empty() {
-        let cfg = spec
-            .resolve_config_path()
-            .ok_or_else(|| "无法解析配置文件路径".to_string())?;
+        let cfg = config_path
+            .ok_or_else(|| "无法解析配置文件路径".to_string())?
+            .to_path_buf();
         ensure_backup(&cfg)?;
         let raw = std::fs::read_to_string(&cfg).unwrap_or_else(|_| "{}".to_string());
         let mut root: Value = if raw.trim().is_empty() {
@@ -254,6 +265,51 @@ pub fn restore_declared_agent(platform: String) -> Result<(), String> {
     restore_declared(spec)
 }
 
+/// 一键接入（声明式平台）：自动取第一个已启用且有 key 的供应商。
+/// 返回人类可读的结果（含供应商名与被写入的文件）。
+#[tauri::command]
+pub fn apply_declared_platform(platform: String) -> Result<String, String> {
+    let spec = super::agent_spec::find(&platform)
+        .ok_or_else(|| format!("未声明的 agent: {platform}"))?;
+    let store = super::config::read_provider_store()?;
+    let p = store
+        .providers
+        .iter()
+        .find(|p| p.enabled && !p.api_key.trim().is_empty())
+        .ok_or_else(|| "没有可用的供应商：请先在「供应商」页添加并启用一个".to_string())?;
+
+    let endpoint = super::platforms::declared_base_url(p);
+    let model = p.default_model.trim();
+    let touched = apply_declared(
+        spec,
+        &InjectPlan {
+            endpoint: &endpoint,
+            api_key: &p.api_key,
+            model: if model.is_empty() { None } else { Some(model) },
+        },
+    )?;
+
+    let files: Vec<String> = touched
+        .iter()
+        .map(|x| x.to_string_lossy().to_string())
+        .collect();
+    Ok(format!(
+        "已接入 {}（供应商：{}）→ 写入 {}",
+        spec.name,
+        p.name,
+        files.join("、")
+    ))
+}
+
+/// 停止接入（声明式平台）：从备份还原。
+#[tauri::command]
+pub fn restore_declared_platform(platform: String) -> Result<String, String> {
+    let spec = super::agent_spec::find(&platform)
+        .ok_or_else(|| format!("未声明的 agent: {platform}"))?;
+    restore_declared(spec)?;
+    Ok(format!("已还原 {} 的配置", spec.name))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -291,5 +347,69 @@ mod tests {
         let mut v: Value = serde_json::from_str(r#"{"model":"old"}"#).unwrap();
         set_json_pointer(&mut v, "/model/name", "x").unwrap();
         assert_eq!(v["model"]["name"], "x");
+    }
+
+    /// 端到端：临时目录里走完 备份 → 写入 → 还原（不碰真实配置）
+    #[test]
+    fn apply_then_restore_roundtrip_in_temp_dir() {
+        let spec = super::super::agent_spec::find("gemini-cli").expect("gemini-cli 应已声明");
+        let dir = std::env::temp_dir().join(format!("anybridge-declared-{}", std::process::id()));
+        let cfg = dir.join("settings.json");
+        std::fs::create_dir_all(&dir).unwrap();
+        // 原文件存在，用于验证「备份 → 还原」字节级一致
+        let original = r#"{"keep":true,"model":{"name":"old"}}"#;
+        std::fs::write(&cfg, original).unwrap();
+
+        let plan = InjectPlan {
+            endpoint: "http://127.0.0.1:8317",
+            api_key: "sk-test",
+            model: Some("gemini-3-pro"),
+        };
+        let touched =
+            apply_declared_with_paths(spec, &dir, Some(&cfg), &plan).expect("apply 应成功");
+        assert!(touched.len() >= 2, "应写入 .env 与 settings.json");
+
+        // .env 已写入两个键
+        let env = std::fs::read_to_string(dir.join(".env")).unwrap();
+        assert_eq!(
+            get_env(&env, "GOOGLE_GEMINI_BASE_URL").as_deref(),
+            Some("http://127.0.0.1:8317")
+        );
+        assert_eq!(get_env(&env, "GEMINI_API_KEY").as_deref(), Some("sk-test"));
+
+        // settings.json 的 model.name 已更新，其它字段保留
+        let v: Value = serde_json::from_str(&std::fs::read_to_string(&cfg).unwrap()).unwrap();
+        assert_eq!(v["model"]["name"], "gemini-3-pro");
+        assert_eq!(v["keep"], true);
+
+        // 还原：settings.json 回到原始内容；.env 原先不存在 → 被删除
+        restore_paths(&dir, Some(&cfg), ".env").expect("restore 应成功");
+        assert_eq!(std::fs::read_to_string(&cfg).unwrap(), original);
+        assert!(!dir.join(".env").exists(), "原不存在的 .env 应被删除");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// 还原的路径显式版本（单测用）；生产走 restore_declared
+    fn restore_paths(dir: &Path, config_path: Option<&Path>, env_file: &str) -> Result<(), String> {
+        let mut candidates: Vec<PathBuf> = Vec::new();
+        if let Some(p) = config_path {
+            candidates.push(p.to_path_buf());
+        }
+        candidates.push(dir.join(env_file));
+        for path in candidates {
+            let bak = bak_path(&path);
+            if !bak.exists() {
+                continue;
+            }
+            let content = std::fs::read(&bak).map_err(|e| e.to_string())?;
+            if content == b"__ANYBRIDGE_ABSENT__" {
+                let _ = std::fs::remove_file(&path);
+            } else {
+                write_atomic(&path, &content)?;
+            }
+            let _ = std::fs::remove_file(&bak);
+        }
+        Ok(())
     }
 }

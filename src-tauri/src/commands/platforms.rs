@@ -3696,6 +3696,15 @@ fn strip_first_matching_suffix(value: &str, suffixes: &[&str]) -> String {
 }
 
 /// Claude Code 的 base_url：Claude Code 会自动加 /v1/messages，base 不应带 /v1。
+/// 声明式注入用的 base URL：去掉 /v1、/messages 等端点后缀，
+/// 供 CLI 的 *_BASE_URL 变量使用（如 GOOGLE_GEMINI_BASE_URL）。
+pub(crate) fn declared_base_url(p: &Provider) -> String {
+    strip_first_matching_suffix(
+        &provider_endpoint_url(p),
+        &["/v1/messages", "/messages", "/v1"],
+    )
+}
+
 fn claude_base_url(p: &Provider) -> String {
     strip_first_matching_suffix(
         &provider_endpoint_url(p),

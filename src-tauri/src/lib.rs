@@ -187,6 +187,8 @@ pub fn run() {
             commands::platforms::detect_platforms,
             commands::agent_spec::get_agent_registry,
             commands::declared_apply::apply_declared_agent,
+            commands::declared_apply::apply_declared_platform,
+            commands::declared_apply::restore_declared_platform,
             commands::declared_apply::restore_declared_agent,
             commands::agent_spec::read_agent_config_file,
             commands::platforms::check_platform_update,

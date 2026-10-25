@@ -14269,6 +14269,51 @@ async function openGenericAgentPage(platformId) {
   renderHeroVersion(platformId, 'generic-agent-version');
 }
 
+/** 通用页「一键接入」：后端按声明写入 endpoint/key/model（自动选第一个可用供应商） */
+async function genericAgentApply() {
+  const platformId = globalThis._currentGenericAgent;
+  if (!platformId) return;
+  if (!invoke && !(typeof bindTauriBridge === 'function' && bindTauriBridge())) {
+    showCustomAlert('Tauri 通道未就绪，请重启 AnyBridge 后重试。', '接入', 'error');
+    return;
+  }
+  try {
+    const msg = await invoke('apply_declared_platform', { platform: platformId });
+    if (typeof showBottomToast === 'function') {
+      showBottomToast(msg, 'success', { duration: 5200 });
+    } else {
+      showCustomAlert(msg, '接入完成', 'success');
+    }
+    if (typeof addLog === 'function') addLog('ok', msg);
+    await openGenericAgentPage(platformId);
+  } catch (e) {
+    showCustomAlert(String(e?.message || e), '接入失败', 'error');
+    if (typeof addLog === 'function') addLog('err', '声明式接入失败: ' + String(e?.message || e));
+  }
+}
+
+/** 通用页「停止接入」：从 .anybridge-bak 还原 */
+async function genericAgentRestore() {
+  const platformId = globalThis._currentGenericAgent;
+  if (!platformId) return;
+  if (!invoke && !(typeof bindTauriBridge === 'function' && bindTauriBridge())) {
+    showCustomAlert('Tauri 通道未就绪，请重启 AnyBridge 后重试。', '停止接入', 'error');
+    return;
+  }
+  try {
+    const msg = await invoke('restore_declared_platform', { platform: platformId });
+    if (typeof showBottomToast === 'function') {
+      showBottomToast(msg, 'success');
+    } else {
+      showCustomAlert(msg, '已还原', 'success');
+    }
+    if (typeof addLog === 'function') addLog('ok', msg);
+    await openGenericAgentPage(platformId);
+  } catch (e) {
+    showCustomAlert(String(e?.message || e), '停止接入失败', 'error');
+  }
+}
+
 /** 通用页「查看配置」：只读展示声明文件内容 */
 async function openGenericAgentConfig() {
   const platformId = globalThis._currentGenericAgent;
@@ -14287,6 +14332,8 @@ async function openGenericAgentConfig() {
 globalThis.ensureRegistryRailItems = ensureRegistryRailItems;
 globalThis.openGenericAgentPage = openGenericAgentPage;
 globalThis.openGenericAgentConfig = openGenericAgentConfig;
+globalThis.genericAgentApply = genericAgentApply;
+globalThis.genericAgentRestore = genericAgentRestore;
 globalThis.loadAgentRegistry = loadAgentRegistry;
 
 // 首屏也追加一次（不依赖用户点「刷新检测」；延迟等 Tauri 通道就绪）

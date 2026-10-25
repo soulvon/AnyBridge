@@ -399,7 +399,20 @@ pub static AGENTS: &[AgentSpec] = &[
         bin: Some("gemini"),
         npm_package: Some("@google/gemini-cli"),
         official_url: Some("https://github.com/google-gemini/gemini-cli"),
-        inject: None,
+        // 接入方式（magpie 实测）：端点与密钥写 ~/.gemini/.env，
+        // 模型名写 settings.json 的 model.name
+        inject: Some(InjectSpec {
+            endpoint: Some(InjectTarget::Env {
+                key: "GOOGLE_GEMINI_BASE_URL",
+            }),
+            api_key: Some(InjectTarget::Env {
+                key: "GEMINI_API_KEY",
+            }),
+            model: Some(InjectTarget::Json {
+                pointer: "/model/name",
+            }),
+            env_file: ".env",
+        }),
     },
     AgentSpec {
         id: "deepseek-harness",
