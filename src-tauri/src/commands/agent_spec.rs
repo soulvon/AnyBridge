@@ -229,6 +229,48 @@ pub fn resolve_path_template(tpl: &str) -> Option<PathBuf> {
 
 /// 平台元数据的唯一真源。
 pub static AGENTS: &[AgentSpec] = &[
+    // ── MITM 代理族：接入走 ide_proxy（起代理 + 改 settings），
+    //    这里统一的是「元数据 / 探测 / 版本」口径 —— family = MitmProxy。
+    //    inject 为 None：写入逻辑由 ide_proxy 负责，不走声明式单字段注入。
+    AgentSpec {
+        id: "windsurf",
+        name: "Windsurf",
+        vendor: "Codeium",
+        api_format: "openai",
+        family: Family::MitmProxy,
+        config_dir: PathSource::Resolver(windsurf_settings_dir),
+        config_file: FileSource::Name("settings.json"),
+        bin: None,
+        npm_package: None,
+        official_url: Some("https://windsurf.com/download"),
+        inject: None,
+    },
+    AgentSpec {
+        id: "devin",
+        name: "Devin",
+        vendor: "Codeium",
+        api_format: "openai",
+        family: Family::MitmProxy,
+        config_dir: PathSource::Resolver(devin_settings_dir),
+        config_file: FileSource::Name("settings.json"),
+        bin: None,
+        npm_package: None,
+        official_url: Some("https://devin.ai"),
+        inject: None,
+    },
+    AgentSpec {
+        id: "cursor",
+        name: "Cursor",
+        vendor: "Anysphere",
+        api_format: "openai",
+        family: Family::MitmProxy,
+        config_dir: PathSource::Resolver(cursor_settings_dir),
+        config_file: FileSource::Name("settings.json"),
+        bin: None,
+        npm_package: None,
+        official_url: Some("https://cursor.com/downloads"),
+        inject: None,
+    },
     AgentSpec {
         id: "antigravity",
         name: "Antigravity",
@@ -429,6 +471,24 @@ pub static AGENTS: &[AgentSpec] = &[
     },
 ];
 
+/// MITM 族的配置目录 = VS Code settings.json 所在目录。
+/// 复用 ide_config::settings_path（一键注入的同款定位），不另造路径规则。
+fn ide_settings_dir(target: &str) -> Option<PathBuf> {
+    super::ide_config::settings_path(target).and_then(|p| p.parent().map(|d| d.to_path_buf()))
+}
+
+fn windsurf_settings_dir() -> Option<PathBuf> {
+    ide_settings_dir("windsurf")
+}
+
+fn devin_settings_dir() -> Option<PathBuf> {
+    ide_settings_dir("devin")
+}
+
+fn cursor_settings_dir() -> Option<PathBuf> {
+    ide_settings_dir("cursor")
+}
+
 fn claude_desktop_config_dir() -> Option<PathBuf> {
     super::claude_desktop::current_platform_paths()
         .ok()
@@ -516,6 +576,10 @@ pub struct AgentRegistryEntry {
 /// 已有内置页面的 agent（与 ui-src/partials/pages 对应）。
 /// 新增 agent 未列在这里 → 前端自动用通用页。
 const BUILTIN_PAGES: &[&str] = &[
+    // MITM 三平台：Windsurf/Devin 共用 models.html，Cursor 用 platform-cursor.html
+    "windsurf",
+    "devin",
+    "cursor",
     "antigravity",
     "antigravity-ide",
     "claude-code",
@@ -649,6 +713,9 @@ mod tests {
     #[test]
     fn metadata_snapshot() {
         let expected: &[(&str, &str, &str, &str, &str, Option<&str>, Option<&str>)] = &[
+            ("windsurf", "Windsurf", "Codeium", "openai", "settings.json", None, None),
+            ("devin", "Devin", "Codeium", "openai", "settings.json", None, None),
+            ("cursor", "Cursor", "Anysphere", "openai", "settings.json", None, None),
             ("antigravity", "Antigravity", "Google", "openai", "settings.json", None, None),
             ("antigravity-ide", "Antigravity IDE", "Google", "openai", "settings.json", None, None),
             ("claude-code", "Claude Code", "Anthropic", "anthropic", "settings.json", Some("claude"), Some("@anthropic-ai/claude-code")),
