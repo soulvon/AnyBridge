@@ -1574,7 +1574,14 @@ function setProviderEditorTestButtonState(loading) {
   const label = btn.querySelector('.provider-editor-test-label') || btn.querySelector('span:last-child');
   btn.disabled = !!loading;
   btn.classList.toggle('is-loading', !!loading);
-  if (label) label.textContent = loading ? '测试中...' : '测试连接';
+  if (!label) return;
+  // 加载态必须动态（开发规范）：静态「测试中...」和卡住没区别
+  if (loading) {
+    label.innerHTML =
+      typeof loadingHtml === 'function' ? loadingHtml('测试中…', 12) : '测试中…';
+  } else {
+    label.textContent = '测试连接';
+  }
 }
 
 function showProviderEditorTestToast(message, type = 'info', options = {}) {
