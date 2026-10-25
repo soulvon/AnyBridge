@@ -7091,7 +7091,11 @@ pub async fn check_platform_update(platform: String) -> Result<PlatformUpdateInf
     let latest = if current.is_some() {
         match npm_package.as_deref() {
             Some(pkg) => super::version_probe::npm_latest_version(pkg).await,
-            None => None,
+            // 没有 npm 包（如 grok 官方 CLI）→ 走官方版本通道
+            None => match super::agent_spec::find(&plat_id).and_then(|s| s.latest_channel) {
+                Some(urls) => super::version_probe::channel_latest_version(urls).await,
+                None => None,
+            },
         }
     } else {
         None

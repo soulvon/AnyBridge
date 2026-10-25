@@ -946,6 +946,41 @@ pub async fn npm_latest_version(npm_package: &str) -> Option<String> {
     v
 }
 
+/// 官方版本通道（channel pointer）：响应体就是纯文本版本号，如 "1.0.70"。
+///
+/// 借鉴 magpie 的 grokLatest/channelVersion：官方 CLI 常通过静态文件暴露
+/// 当前通道版本，这对「没有 npm 包」的平台是唯一可靠的最新版本来源。
+/// 多个 URL 按顺序尝试，全部失败返回 None（= 未知，不猜）。
+pub async fn channel_latest_version(urls: &[&str]) -> Option<String> {
+    let key = format!("channel-latest:{}", urls.join(","));
+    if let Some(hit) = cache_get(&key, Duration::from_secs(6 * 3600)) {
+        return hit;
+    }
+    let client = crate::commands::apply_system_proxy(reqwest::Client::builder())
+        .user_agent("AnyBridge-VersionCheck")
+        .timeout(Duration::from_secs(8))
+        .build()
+        .ok()?;
+    for url in urls {
+        let Ok(resp) = client.get(*url).send().await else {
+            continue;
+        };
+        if !resp.status().is_success() {
+            continue;
+        }
+        let Ok(body) = resp.text().await else {
+            continue;
+        };
+        let v = body.trim().trim_start_matches('v').trim().to_string();
+        // 必须是形如 1.2.3 的版本号（整个响应体就是版本）
+        if v.chars().next().map(|c| c.is_ascii_digit()).unwrap_or(false) && v.contains('.') {
+            cache_put(key, Some(v.clone()));
+            return Some(v);
+        }
+    }
+    None
+}
+
 /// 简易 semver 比较：latest 是否比 current 新（只比数字段，预发布视为较旧）。
 pub fn is_newer(latest: &str, current: &str) -> bool {
     fn parts(v: &str) -> Vec<u64> {
@@ -1065,6 +1100,17 @@ mod tests {
                 "{id} 无 GUI 探测源，不应返回版本"
             );
         }
+    }
+
+    /// 本机诊断：官方版本通道（grok 这类无 npm 包的平台）
+    #[tokio::test]
+    #[ignore]
+    async fn debug_channel_latest() {
+        let urls = [
+            "https://x.ai/cli/stable",
+            "https://storage.googleapis.com/grok-build-public-artifacts/cli/stable",
+        ];
+        println!("grok channel latest = {:?}", channel_latest_version(&urls).await);
     }
 
     /// 本机诊断：npm 一键安装/更新能力探针 + npm 实际定位

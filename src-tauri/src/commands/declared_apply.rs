@@ -390,6 +390,7 @@ mod tests {
         }),
         self_update: None,
         gui_exe_prefix: None,
+        latest_channel: None,
     };
 
     /// 端到端：临时目录里走完 备份 → 写入 → 还原（不碰真实配置）

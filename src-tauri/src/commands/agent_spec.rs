@@ -140,6 +140,13 @@ pub struct AgentSpec {
     pub official_url: Option<&'static str>,
     /// 接入方式（None = 暂不支持一键接入）
     pub inject: Option<InjectSpec>,
+    /// 官方版本指针（channel pointer）：一组 URL，响应体就是纯文本版本号。
+    ///
+    /// 用于「没有 npm 包、但官方提供版本通道」的平台（借鉴 magpie 的
+    /// grokLatest）：实测 grok 官方 CLI 1.0.30 的最新版是 1.0.70，来自
+    /// storage.googleapis.com/grok-build-public-artifacts/cli/stable，
+    /// 而 npm 上没有官方包（@vibe-kit/grok-cli 是另一个产品）。
+    pub latest_channel: Option<&'static [&'static str]>,
     /// 官方自更新命令（有则优先于 npm）
     pub self_update: Option<SelfUpdate>,
     /// 桌面 IDE 的进程名前缀（如 "codebuddy"）：版本从安装目录读，
@@ -268,6 +275,7 @@ pub static AGENTS: &[AgentSpec] = &[
         inject: None,
         self_update: None,
         gui_exe_prefix: None,
+        latest_channel: None,
     },
     AgentSpec {
         id: "devin",
@@ -283,6 +291,7 @@ pub static AGENTS: &[AgentSpec] = &[
         inject: None,
         self_update: None,
         gui_exe_prefix: None,
+        latest_channel: None,
     },
     AgentSpec {
         id: "cursor",
@@ -298,6 +307,7 @@ pub static AGENTS: &[AgentSpec] = &[
         inject: None,
         self_update: None,
         gui_exe_prefix: None,
+        latest_channel: None,
     },
     AgentSpec {
         id: "antigravity",
@@ -313,6 +323,7 @@ pub static AGENTS: &[AgentSpec] = &[
         inject: None,
         self_update: None,
         gui_exe_prefix: None,
+        latest_channel: None,
     },
     AgentSpec {
         id: "antigravity-ide",
@@ -328,6 +339,7 @@ pub static AGENTS: &[AgentSpec] = &[
         inject: None,
         self_update: None,
         gui_exe_prefix: None,
+        latest_channel: None,
     },
     AgentSpec {
         id: "claude-code",
@@ -349,6 +361,7 @@ pub static AGENTS: &[AgentSpec] = &[
             subcommand: &["update"],
         }),
         gui_exe_prefix: None,
+        latest_channel: None,
     },
     AgentSpec {
         id: "claude-desktop",
@@ -364,6 +377,7 @@ pub static AGENTS: &[AgentSpec] = &[
         inject: None,
         self_update: None,
         gui_exe_prefix: None,
+        latest_channel: None,
     },
     AgentSpec {
         id: "codex",
@@ -379,6 +393,7 @@ pub static AGENTS: &[AgentSpec] = &[
         inject: None,
         self_update: Some(SelfUpdate { subcommand: &["update"] }),
         gui_exe_prefix: None,
+        latest_channel: None,
     },
     AgentSpec {
         id: "codebuddy",
@@ -395,6 +410,7 @@ pub static AGENTS: &[AgentSpec] = &[
         inject: None,
         self_update: None,
         gui_exe_prefix: Some("codebuddy"),
+        latest_channel: None,
     },
     AgentSpec {
         id: "grok",
@@ -416,6 +432,12 @@ pub static AGENTS: &[AgentSpec] = &[
             subcommand: &["update"],
         }),
         gui_exe_prefix: None,
+        // 官方版本通道（magpie 同思路）：x.ai 优先，GCS 为备份
+        // 实测本机 1.0.30，官方 stable 通道为 1.0.70
+        latest_channel: Some(&[
+            "https://x.ai/cli/stable",
+            "https://storage.googleapis.com/grok-build-public-artifacts/cli/stable",
+        ]),
     },
     AgentSpec {
         id: "opencode",
@@ -431,6 +453,7 @@ pub static AGENTS: &[AgentSpec] = &[
         inject: None,
         self_update: None,
         gui_exe_prefix: None,
+        latest_channel: None,
     },
     AgentSpec {
         id: "workbuddy",
@@ -446,6 +469,7 @@ pub static AGENTS: &[AgentSpec] = &[
         inject: None,
         self_update: None,
         gui_exe_prefix: None,
+        latest_channel: None,
     },
     AgentSpec {
         id: "zcode",
@@ -461,6 +485,7 @@ pub static AGENTS: &[AgentSpec] = &[
         inject: None,
         self_update: None,
         gui_exe_prefix: None,
+        latest_channel: None,
     },
     AgentSpec {
         id: "pi",
@@ -476,6 +501,7 @@ pub static AGENTS: &[AgentSpec] = &[
         inject: None,
         self_update: Some(SelfUpdate { subcommand: &["update", "self"] }),
         gui_exe_prefix: None,
+        latest_channel: None,
     },
     AgentSpec {
         id: "hermes",
@@ -491,6 +517,7 @@ pub static AGENTS: &[AgentSpec] = &[
         inject: None,
         self_update: Some(SelfUpdate { subcommand: &["update"] }),
         gui_exe_prefix: None,
+        latest_channel: None,
     },
     // ── 新增 agent 的写法（示例，默认不注册）──
     //
@@ -533,6 +560,7 @@ pub static AGENTS: &[AgentSpec] = &[
         inject: None,
         self_update: None,
         gui_exe_prefix: None,
+        latest_channel: None,
     },
 ];
 
