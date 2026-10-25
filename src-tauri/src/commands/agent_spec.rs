@@ -87,6 +87,15 @@ pub enum FileSource {
 pub struct SelfUpdate {
     /// 子命令参数，如 ["update"]
     pub subcommand: &'static [&'static str],
+    /// 官方命令需要的环境变量覆盖。
+    ///
+    /// grok 实测（2026-10-26）：不设 `GROK_INSTALLER` 时它把自装（~/.grok/bin）
+    /// 误判为 npm 安装，走 npm 更新分支——Windows 上 npm 只有 npm.cmd，
+    /// Rust CreateProcess 不解析 PATHEXT → 报 "program not found"，更新必失败。
+    /// 显式 `GROK_INSTALLER=internal`（官方枚举 internal/npm/gh-release 之一）
+    /// 后走自下载通道正常（实测 `--check --json` error=null、update 返回
+    /// "Already up to date"）。
+    pub env: Option<&'static [(&'static str, &'static str)]>,
 }
 
 /// 注入落点：一条声明的某个值写到哪。
@@ -359,6 +368,7 @@ pub static AGENTS: &[AgentSpec] = &[
         // 升级的是另一份，验证会一直读到旧版本号。
         self_update: Some(SelfUpdate {
             subcommand: &["update"],
+            env: None,
         }),
         gui_exe_prefix: None,
         latest_channel: None,
@@ -391,7 +401,7 @@ pub static AGENTS: &[AgentSpec] = &[
         npm_package: Some("@openai/codex"),
         official_url: Some("https://github.com/openai/codex"),
         inject: None,
-        self_update: Some(SelfUpdate { subcommand: &["update"] }),
+        self_update: Some(SelfUpdate { subcommand: &["update"], env: None }),
         gui_exe_prefix: None,
         latest_channel: None,
     },
@@ -427,9 +437,14 @@ pub static AGENTS: &[AgentSpec] = &[
         official_url: Some("https://x.ai/cli"),
         inject: None,
         // 官方 grok update（实测 --help 有 "update  Check for updates or
-        // install a specific version"）；npm 无官方包，不能走 npm
+        // install a specific version"）；npm 无官方包，不能走 npm。
+        // 必须显式 GROK_INSTALLER=internal：缺省时 grok 把自装误判为 npm
+        // （--check --json 自报 installer=npm、error="program not found"），
+        // Windows 上 spawn npm（只有 npm.cmd）必失败；设为 internal 后
+        // --check 返回 error=null、update 返回 "Already up to date"。
         self_update: Some(SelfUpdate {
             subcommand: &["update"],
+            env: Some(&[("GROK_INSTALLER", "internal")]),
         }),
         gui_exe_prefix: None,
         // 官方版本通道（magpie 同思路）：x.ai 优先，GCS 为备份
@@ -499,7 +514,7 @@ pub static AGENTS: &[AgentSpec] = &[
         npm_package: Some("@earendil-works/pi-coding-agent"),
         official_url: None,
         inject: None,
-        self_update: Some(SelfUpdate { subcommand: &["update", "self"] }),
+        self_update: Some(SelfUpdate { subcommand: &["update", "self"], env: None }),
         gui_exe_prefix: None,
         latest_channel: None,
     },
@@ -515,7 +530,7 @@ pub static AGENTS: &[AgentSpec] = &[
         npm_package: None,
         official_url: None,
         inject: None,
-        self_update: Some(SelfUpdate { subcommand: &["update"] }),
+        self_update: Some(SelfUpdate { subcommand: &["update"], env: None }),
         gui_exe_prefix: None,
         latest_channel: None,
     },

@@ -7146,8 +7146,24 @@ pub async fn update_platform_agent(platform: String) -> Result<PlatformUpdateInf
             if let Some(bin) = spec.bin {
                 let id_for_update = resolved_id.clone();
                 let args: Vec<&str> = su.subcommand.to_vec();
+                let env: Vec<(String, String)> = su
+                    .env
+                    .map(|pairs| {
+                        pairs
+                            .iter()
+                            .map(|(k, v)| (k.to_string(), v.to_string()))
+                            .collect()
+                    })
+                    .unwrap_or_default();
                 tauri::async_runtime::spawn_blocking(move || {
-                    super::version_probe::run_self_update_sync(bin, &args, &id_for_update)
+                    let env_refs: Vec<(&str, &str)> =
+                        env.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect();
+                    super::version_probe::run_self_update_sync(
+                        bin,
+                        &args,
+                        if env_refs.is_empty() { None } else { Some(&env_refs) },
+                        &id_for_update,
+                    )
                 })
                 .await
                 .map_err(|e| format!("更新任务执行失败: {e}"))??;

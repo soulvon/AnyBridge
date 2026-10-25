@@ -613,12 +613,22 @@ fn electron_app_version(dir: &std::path::Path) -> Option<String> {
 ///
 /// 不强制要求版本号立即变化——官方渠道可能尚未推送（实测 native 版与
 /// npm 版发布不同步），硬判「更新失败」会误导用户。
-pub fn run_self_update_sync(bin: &str, args: &[&str], platform_id: &str) -> Result<(), String> {
+pub fn run_self_update_sync(
+    bin: &str,
+    args: &[&str],
+    env: Option<&[(&str, &str)]>,
+    platform_id: &str,
+) -> Result<(), String> {
     let path =
         find_tool(bin).ok_or_else(|| format!("未找到 {bin} 可执行文件，无法执行官方更新命令"))?;
-    let out = std::process::Command::new(&path)
-        .args(args)
-        .creation_flags_windows()
+    let mut cmd = std::process::Command::new(&path);
+    cmd.args(args).creation_flags_windows();
+    // 声明式环境变量覆盖（如 grok 必须 GROK_INSTALLER=internal，
+    // 否则它误判安装方式为 npm，Windows 上 spawn npm 必失败）
+    if let Some(pairs) = env {
+        cmd.envs(pairs.iter().map(|(k, v)| (*k, *v)));
+    }
+    let out = cmd
         .output()
         .map_err(|e| format!("执行官方更新命令失败: {e}"))?;
     if !out.status.success() {
