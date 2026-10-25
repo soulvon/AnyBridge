@@ -12035,11 +12035,28 @@ html[data-scheme="dark"] .endpoint-brand-icon-dark,
   max-height: min(70vh, 720px);
 }
 
-/* ─── Hero 版本行（借鉴 magpie：版本探测/更新检查/一键更新） ─── */
+/* ─── Hero 标题行（名字 + 版本 + 更新操作同一行，垂直居中） ─── */
+.platform-title-line {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  min-height: 32px;
+}
+.platform-title-line h1 {
+  margin: 0;
+  line-height: 1.2;
+}
+
+/* Hero 版本行（借鉴 magpie：版本探测/更新检查/一键更新）
+   静默策略：无数据时不占位、不显示「检测中/未知」等噪音 */
 .platform-version-line {
-  display: flex; align-items: center; gap: 7px;
+  display: inline-flex; align-items: center; gap: 7px;
   margin: 0; font-size: 12px; font-weight: 650; line-height: 1.35;
   color: var(--text-muted);
+}
+.platform-version-line:empty {
+  display: none;
 }
 .platform-version-line .version-num {
   color: var(--text-secondary); font-variant-numeric: tabular-nums;

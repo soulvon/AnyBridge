@@ -14046,24 +14046,22 @@ async function renderHeroVersion(platformId, elId) {
     if (!el.isConnected) return;
     if (el.dataset.versionSeq !== seq) return; // 已有更新的请求，丢弃本次结果
     if (el.dataset.versionTarget !== platformId) return;
-    // 三态语义：未安装（无安装证据）/ 已装但版本未知 / 已装有版本。
-    // 版本探测失败绝不当「未安装」（坑点库 read-failure-is-unknown）。
-    if (!info || !info.installed) {
-      el.innerHTML = '<span class="version-state muted">未安装</span>';
+    // 静默策略（用户指定）：只在**有确定版本**时展示；未安装 / 版本未知 /
+    // 探测失败一律留空，不占位、不打扰。诊断信息只进日志面板。
+    if (!info || !info.current_version) {
+      el.innerHTML = '';
       return;
     }
-    if (info.has_update && info.latest_version && info.current_version) {
+    if (info.has_update && info.latest_version) {
       el.innerHTML =
         '<span class="version-num">v' + info.current_version + '</span>' +
         '<span class="version-arrow">→</span>' +
         '<span class="version-num latest">v' + info.latest_version + '</span>' +
-        '<button type="button" class="version-update-btn" data-action="updatePlatformAgentAction" data-arg="' + platformId + '">一键更新</button>';
-    } else if (info.current_version) {
-      // 无 latest 数据（GUI 客户端无 npm 源，如已停更的 Windsurf）时
-      // 只显示版本号——「已是最新」在没有对比数据时是误导
-      el.innerHTML = '<span class="version-num">v' + info.current_version + '</span>';
+        '<button type="button" class="version-update-btn" data-action="updatePlatformAgentAction" data-arg="' + platformId + '">更新</button>';
     } else {
-      el.innerHTML = '<span class="version-state muted">已安装 · 版本未知</span>';
+      // 无 latest 数据（GUI 客户端无 npm 源，如已停更的 Windsurf）：
+      // 只显示版本号，不查、不说「已是最新」
+      el.innerHTML = '<span class="version-num">v' + info.current_version + '</span>';
     }
   } catch (e) {
     // 显式留痕：invoke 失败/超时时可在日志面板看到原因，
@@ -14071,8 +14069,9 @@ async function renderHeroVersion(platformId, elId) {
     if (typeof addLog === 'function') {
       addLog('warn', `版本探测失败（${platformId}）: ${String(e?.message || e)}`);
     }
+    // 静默：失败不占位，只留日志
     if (el.dataset.versionSeq === seq) {
-      el.innerHTML = '<span class="version-state muted">检测失败</span>';
+      el.innerHTML = '';
     }
   } finally {
     delete _heroVersionBusy[platformId];
