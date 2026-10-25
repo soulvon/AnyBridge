@@ -948,6 +948,9 @@ globalThis._statusFailStreak = 0;
 globalThis._refreshStatusInFlight = false;
 async function refreshStatus() {
   if (!invoke) return;
+  // 可见性守卫（借鉴 magpie）：窗口最小化/遮挡时不做状态轮询，
+  // 避免后台空转；恢复可见时立即补一次刷新。
+  if (typeof document !== 'undefined' && document.hidden) return;
   if (_refreshStatusInFlight) return;
   _refreshStatusInFlight = true;
   try {
@@ -963,6 +966,14 @@ async function refreshStatus() {
   } finally {
     _refreshStatusInFlight = false;
   }
+}
+// 恢复可见时立即补一次刷新（守卫跳过的周期在这里补齐）
+if (typeof document !== 'undefined') {
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden && typeof refreshStatus === 'function') {
+      refreshStatus().catch(() => {});
+    }
+  });
 }
 // ─── 接管心跳 ───
 // IDE 只在启动时读取 settings.json 里的代理配置，所以「配置已写入(patched)」不等于生效。

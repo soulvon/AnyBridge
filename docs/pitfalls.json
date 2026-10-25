@@ -98,6 +98,30 @@
       "lesson": "诊断/构建临时脚本一律放 tmp/（gitignore 忽略）；运行日志固定写 tmp/tauri-run.log；检查脚本强制校验根目录与源码目录",
       "check": { "type": "source_contains", "file": "scripts/check-key-features.mjs", "must_contain": "临时文件纪律" },
       "severity": "low"
+    },
+    {
+      "id": "read-failure-is-unknown",
+      "title": "读失败 = 未知，绝不当「否」处理",
+      "symptom": "来源 magpie LESSONS #8：IP 白名单文件读取失败被当「无白名单」处理 → 放行所有地址；reset 计数文件读不出被当「没花过」",
+      "lesson": "任何「读取配置/状态文件」失败时，语义必须是『未知』并走保守路径（提示用户/保持现状/触发修复），绝不能静默当作否定值（false/0/空列表）继续往下走。语言包判定读失败 → 视为未安装走修复流程是对的；但安全类判定（白名单、配额）读失败绝不能放行",
+      "check": { "type": "source_contains", "file": "docs/WORKFLOW.md", "must_contain": "读失败" },
+      "severity": "high"
+    },
+    {
+      "id": "subprocess-no-window",
+      "title": "GUI 程序 spawn 控制台子进程必须 CREATE_NO_WINDOW",
+      "symptom": "来源 magpie（proc/proc.go 包注释）：Windows GUI 程序（无控制台）每 spawn 一个 CLI（powershell/taskkill/reg/tasklist）就会弹一个黑色控制台窗，一闪而过极扎眼",
+      "lesson": "Windows 上所有子进程统一加 creation_flags(0x0800_0000)（CREATE_NO_WINDOW）；新增 spawn 点必须带，审计脚本已验证全项目 30 处覆盖",
+      "check": { "type": "source_contains", "file": "scripts/check-key-features.mjs", "must_contain": "提交卫生" },
+      "severity": "medium"
+    },
+    {
+      "id": "poll-visibility-guard",
+      "title": "后台轮询必须带可见性守卫",
+      "symptom": "来源 magpie：窗口最小化/遮挡时轮询照跑，白白消耗资源；大量轮询任务还会拖慢前台响应",
+      "lesson": "setInterval 驱动的状态刷新都要先判 document.hidden；恢复可见时立即补一次刷新（visibilitychange 监听）",
+      "check": { "type": "source_contains", "file": "ui/assets/scripts/20-runtime.js", "must_contain": "document.hidden" },
+      "severity": "medium"
     }
   ]
 }
