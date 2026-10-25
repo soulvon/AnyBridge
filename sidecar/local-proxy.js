@@ -1064,7 +1064,26 @@ function retryPolicy(enhancement = {}) {
 }
 
 function sleep(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
-function retryDelay(attempt, policy) { return Math.round(Math.random() * Math.min(policy.capMs, policy.baseMs * Math.pow(2, Math.max(0, attempt - 1)))); }
+// Retry-After 解析（秒数或 HTTP-date），毫秒；无头/非法值返回 0（T6 决策三）
+function retryAfterMs(headers) {
+  const raw = headers?.['retry-after'];
+  if (!raw) return 0;
+  const val = Array.isArray(raw) ? raw[0] : raw;
+  const seconds = parseInt(val, 10);
+  if (Number.isFinite(seconds)) return Math.max(seconds, 0) * 1000;
+  const at = Date.parse(val);
+  if (!Number.isNaN(at)) return Math.max(at - Date.now(), 0);
+  return 0;
+}
+// 重试退避：full jitter 与 Retry-After 取大；并 clamp 到剩余墙钟预算，
+// 修正「最后一次 sleep 排程后总耗时超出预算」的溢出（T6 决策二/三）。
+// 在途请求本身不受预算掐断——预算约束的是重试决策与退避等待。
+function retryDelay(attempt, policy, headers, elapsedMs) {
+  const exp = Math.min(policy.capMs, policy.baseMs * Math.pow(2, Math.max(0, attempt - 1)));
+  const ra = Math.min(retryAfterMs(headers), policy.capMs);
+  const remaining = Math.max(0, policy.totalMs - Math.max(0, elapsedMs || 0));
+  return Math.round(Math.min(Math.max(Math.random() * exp, ra), remaining));
+}
 function retryable(status, code) { return status ? RETRYABLE_STATUS.has(status) : RETRYABLE_CODES.has(code); }
 
 function openAIChatMessages(system, messages) {
@@ -2038,7 +2057,7 @@ export async function execute(ctx) {
             }
           }
           if (policy.enabled && retryCount < policy.maxRetries && retryable(r.statusCode) && Date.now() - started < policy.totalMs) {
-            retryCount++; recordRetry({ count: 1, reason: `HTTP ${r.statusCode}: ${msg}` }); await sleep(retryDelay(retryCount, policy)); continue;
+            retryCount++; recordRetry({ count: 1, reason: `HTTP ${r.statusCode}: ${msg}`, provider: conn.providerName }); await sleep(retryDelay(retryCount, policy, r.headers, Date.now() - started)); continue;
           }
           failures.push({
             providerName: conn.providerName,
@@ -2088,7 +2107,7 @@ export async function execute(ctx) {
             }
           }
           if (policy.enabled && retryCount < policy.maxRetries && retryable(r.statusCode) && Date.now() - started < policy.totalMs) {
-            retryCount++; recordRetry({ count: 1, reason: `HTTP ${r.statusCode}: ${msg}` }); await sleep(retryDelay(retryCount, policy)); continue;
+            retryCount++; recordRetry({ count: 1, reason: `HTTP ${r.statusCode}: ${msg}`, provider: conn.providerName }); await sleep(retryDelay(retryCount, policy, r.headers, Date.now() - started)); continue;
           }
           failures.push({
             providerName: conn.providerName,
@@ -2119,7 +2138,7 @@ export async function execute(ctx) {
           const errorJson = safeParse(errorText);
           const msg = compactText(upstreamMessage({ statusCode: r.statusCode, json: errorJson, text: errorText }));
           if (policy.enabled && retryCount < policy.maxRetries && retryable(r.statusCode) && Date.now() - started < policy.totalMs) {
-            retryCount++; recordRetry({ count: 1, reason: `HTTP ${r.statusCode}: ${msg}` }); await sleep(retryDelay(retryCount, policy)); continue;
+            retryCount++; recordRetry({ count: 1, reason: `HTTP ${r.statusCode}: ${msg}`, provider: conn.providerName }); await sleep(retryDelay(retryCount, policy, r.headers, Date.now() - started)); continue;
           }
           failures.push({
             providerName: conn.providerName,
@@ -2165,7 +2184,7 @@ export async function execute(ctx) {
           }
         }
         if (policy.enabled && retryCount < policy.maxRetries && retryable(r.statusCode) && Date.now() - started < policy.totalMs) {
-          retryCount++; recordRetry({ count: 1, reason: `HTTP ${r.statusCode}: ${msg}` }); await sleep(retryDelay(retryCount, policy)); continue;
+          retryCount++; recordRetry({ count: 1, reason: `HTTP ${r.statusCode}: ${msg}`, provider: conn.providerName }); await sleep(retryDelay(retryCount, policy, r.headers, Date.now() - started)); continue;
         }
         failures.push({
           providerName: conn.providerName,
@@ -2179,7 +2198,7 @@ export async function execute(ctx) {
       } catch (e) {
         const code = e?.code || e?.message;
         if (policy.enabled && retryCount < policy.maxRetries && retryable(0, code) && Date.now() - started < policy.totalMs) {
-          retryCount++; recordRetry({ count: 1, reason: code || 'network error' }); await sleep(retryDelay(retryCount, policy)); continue;
+          retryCount++; recordRetry({ count: 1, reason: code || 'network error', provider: conn.providerName }); await sleep(retryDelay(retryCount, policy, null, Date.now() - started)); continue;
         }
         failures.push({ providerName: conn.providerName, code, message: e.message || String(e) }); break;
       }

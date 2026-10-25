@@ -1188,6 +1188,23 @@ function renderProxyStats() {
   return refreshStats();
 }
 
+// 把 sidecar stats.recent 里的重试事件接到前端日志面板（R11/T5）。
+// refreshStats 每 3s 轮询一次；key 去重防止同一事件重复入账（stats 接口为全量快照而非增量流）。
+function consumeRetryLogEvents(recent) {
+  const events = Array.isArray(recent) ? recent.filter((e) => e && e.type === 'retry') : [];
+  if (!events.length) return;
+  const seen = globalThis._retryLogKeys instanceof Set ? globalThis._retryLogKeys : new Set();
+  globalThis._retryLogKeys = seen;
+  for (const ev of events.slice().reverse()) {
+    const key = `${ev.ts}|${ev.count}|${ev.reason}|${ev.provider || ''}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    while (seen.size > 200) seen.delete(seen.values().next().value);
+    const who = ev.provider ? `${ev.provider} ` : '';
+    addLog('warn', `${who}上游重试 ×${ev.count}：${ev.reason || '未知原因'}`);
+  }
+}
+
 async function refreshStats() {
   if (!invoke) return;
   if (_toggling) return;
@@ -1199,6 +1216,7 @@ async function refreshStats() {
   refreshStats._inFlight = true;
   try {
     const s = await invoke('get_stats');
+    consumeRetryLogEvents(s.recent);
     const r = s.rate || {};
     const totalTokens = Number(s.totalTokens) || 0;
     const inputTokens = Number(s.inputTokens) || 0;

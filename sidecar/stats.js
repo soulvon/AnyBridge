@@ -64,6 +64,7 @@ function dailySnapshot() {
     retries: state.retries,
     lastRetries: state.lastRetries,
     lastRetryReason: state.lastRetryReason,
+    upstreamAttempts: state.upstreamAttempts,
     visionFallback: state.visionFallback,
   };
 }
@@ -179,6 +180,7 @@ function applyPersistedState(saved) {
   state.retries = Number.isFinite(saved.retries) ? saved.retries : 0;
   state.lastRetries = Number.isFinite(saved.lastRetries) ? saved.lastRetries : 0;
   state.lastRetryReason = saved.lastRetryReason || null;
+  state.upstreamAttempts = Number.isFinite(saved.upstreamAttempts) ? saved.upstreamAttempts : 0;
   state.visionFallback = normalizeVisionFallback(saved.visionFallback);
   state.history = saved.history && typeof saved.history === 'object' && !Array.isArray(saved.history) ? saved.history : {};
 }
@@ -229,6 +231,7 @@ const state = {
   retries: 0,           // 累计重试次数
   lastRetries: 0,       // 最近一次请求的重试次数
   lastRetryReason: null, // 最近一次重试原因
+  upstreamAttempts: 0,  // 上游实际收到的请求总数（= requests + retries，R11/T5）
   visionFallback: emptyVisionFallback(),
   history: {},
 };
@@ -250,6 +253,7 @@ function rollDayIfNeeded() {
     state.recent = [];
     state.lastError = null;
     state.retries = 0;
+    state.upstreamAttempts = 0;
     state.visionFallback = emptyVisionFallback();
     schedulePersist();
   }
@@ -263,6 +267,7 @@ function pushRecent(entry) {
 export function recordRequest({ provider, requestedModel, resolvedModel }) {
   rollDayIfNeeded();
   state.requests += 1;
+  state.upstreamAttempts += 1;
   state.lastProvider = provider;
   state.lastModel = resolvedModel;
   const k = resolvedModel || 'unknown';
@@ -307,12 +312,13 @@ export function recordLatency(ms) {
   b.latencySamples += 1;
 }
 
-export function recordRetry({ count, reason }) {
+export function recordRetry({ count, reason, provider }) {
   rollDayIfNeeded();
   state.retries += count;
+  state.upstreamAttempts += count; // 上游实际收到的请求总数（R11/T5 口径：requests 不含重试，attempts 单独对账）
   state.lastRetries = count;
   state.lastRetryReason = reason || null;
-  pushRecent({ type: 'retry', count, reason });
+  pushRecent({ type: 'retry', count, reason, provider });
   schedulePersist();
 }
 
@@ -460,6 +466,7 @@ export function snapshot() {
     retries: state.retries,
     lastRetries: state.lastRetries,
     lastRetryReason: state.lastRetryReason,
+    upstreamAttempts: state.upstreamAttempts,
     visionFallback: state.visionFallback,
     visionLogFile: visionLogPath(),
     historyDays: Object.keys(state.history).length,
