@@ -14123,6 +14123,19 @@ async function updatePlatformAgentAction(platform) {
     showCustomAlert('Tauri 通道未就绪，请重启 AnyBridge 后重试。', '更新失败', 'error');
     return;
   }
+  // 即时反馈：npm install -g 需要十几到几十秒，期间必须让用户看到「在跑」，
+  // 否则点了没反应（实测用户误判为按钮失效）。
+  const btn = document.querySelector(
+    '[data-action="updatePlatformAgentAction"][data-arg="' + platform + '"]'
+  );
+  const originalLabel = btn ? btn.textContent : '';
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = originalLabel === '安装' ? '安装中…' : '更新中…';
+  }
+  if (typeof showBottomToast === 'function') {
+    showBottomToast('正在执行 npm 安装，请稍候（可能需要 10-60 秒）…', 'info', { duration: 4000 });
+  }
   if (typeof addLog === 'function') addLog('info', '开始更新 ' + platform + ' …');
   try {
     const info = await invoke('update_platform_agent', { platform });
@@ -14134,8 +14147,11 @@ async function updatePlatformAgentAction(platform) {
     if (typeof addLog === 'function') addLog('err', platform + ' 更新失败: ' + message);
     if (typeof showCustomAlert === 'function') showCustomAlert(message, platform + ' 更新失败', 'error');
   } finally {
-    // 无论成败都刷新版本行（失败详情已在弹窗/toast 里）
-    const btn = document.querySelector('[data-action="updatePlatformAgentAction"][data-arg="' + platform + '"]');
+    // 恢复按钮（版本行重渲后新按钮会是正确文案；重渲失败时至少不让按钮卡死）
+    if (btn && btn.isConnected) {
+      btn.disabled = false;
+      btn.textContent = originalLabel;
+    }
     const lineEl = btn ? btn.closest('.platform-version-line') : null;
     if (lineEl && lineEl.id) renderHeroVersion(platform, lineEl.id);
   }

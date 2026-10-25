@@ -78,7 +78,11 @@ pub enum FileSource {
 }
 
 /// 注入落点：一条声明的某个值写到哪。
+///
+/// 当前没有内置声明启用 inject（示例见 AGENTS 表里的注释），
+/// 能力由「新增 agent」流程使用，故标 allow(dead_code)。
 #[derive(Clone, Copy, Debug)]
+#[allow(dead_code)]
 pub enum InjectTarget {
     /// dotenv 文件的键（如 GOOGLE_GEMINI_BASE_URL）
     Env { key: &'static str },

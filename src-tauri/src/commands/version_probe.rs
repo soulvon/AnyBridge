@@ -917,18 +917,22 @@ pub fn update_npm_package_sync(
     let bin_path =
         find_tool(spec.bin).ok_or_else(|| format!("未找到 {} 可执行文件，无法定位 npm", spec.bin))?;
 
-    // 用检测到的 npm（bin 同目录通常有 npm.cmd / npm）
-    let npm = bin_path
-        .parent()
-        .map(|d| {
-            #[cfg(windows)]
-            {
-                d.join("npm.cmd")
-            }
-            #[cfg(not(windows))]
-            d.join("npm")
-        })
-        .unwrap_or_else(|| PathBuf::from("npm"));
+    // npm 定位：必须走 find_tool（深度 PATH + 注册表）。
+    // 踩过的坑：曾用「CLI 同目录的 npm.cmd」——当 CLI 装在自定义 prefix
+    // （如 E:\cache\node_modules）时那里根本没有 npm，导致更新点了没反应。
+    let npm = find_tool("npm").unwrap_or_else(|| {
+        bin_path
+            .parent()
+            .map(|d| {
+                #[cfg(windows)]
+                {
+                    d.join("npm.cmd")
+                }
+                #[cfg(not(windows))]
+                d.join("npm")
+            })
+            .unwrap_or_else(|| PathBuf::from("npm"))
+    });
 
     let out = std::process::Command::new(&npm)
         .args(["install", "-g", &format!("{}@{}", npm_package, target_version)])
