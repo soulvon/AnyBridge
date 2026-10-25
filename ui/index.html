@@ -2060,19 +2060,7 @@
               </div>
             </div>
             <div class="platform-console-actions">
-              <!-- 顺序约定：汉化 → 接入 → 刷新 → 停止（汉化是独立于代理接入的能力，排在前面） -->
-              <button type="button" class="btn-ghost secondary platform-lang-action-btn" id="proxyLangBtn" data-action="openProxyLangModal"
-                style="display: none; align-items: center; gap: 6px; padding: 4px 12px; border-radius: 8px; font-size: 12px; font-weight: 600; height: 30px; flex-shrink: 0;">
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink: 0;">
-                  <path d="m5 8 6 6"/>
-                  <path d="m4 14 6-6 2-3"/>
-                  <path d="M2 5h12"/>
-                  <path d="M7 2h1"/>
-                  <path d="m22 22-5-10-5 10"/>
-                  <path d="M14 18h6"/>
-                </svg>
-                <span id="proxyLangBtnText">一键汉化</span>
-              </button>
+              <!-- 顺序约定：接入 → 刷新 → 停止 → 汉化（汉化放最右，用户指定） -->
               <!-- 一键接入：与「停止接入」成对。文案由 syncIdeProxyButton 维护
                    （未接入="一键接入"，已接入="已接入"），点击走 toggleProxy 自动判定方向。
                    注意：此前重构时这个按钮连同 data-proxy-action 绑定一起被删掉了，
@@ -2088,6 +2076,18 @@
               </button>
               <button class="btn-ghost accent platform-refresh-proxy" id="proxyRefreshBtn" data-action="refreshCurrentProxyPlatformStatus">刷新状态</button>
               <button class="btn-ghost danger platform-stop-proxy" id="proxyRestoreBtn" data-action="restoreCurrentProxyPlatformDirect">停止接入</button>
+              <button type="button" class="btn-ghost secondary platform-lang-action-btn" id="proxyLangBtn" data-action="openProxyLangModal"
+                style="display: none; align-items: center; gap: 6px; padding: 4px 12px; border-radius: 8px; font-size: 12px; font-weight: 600; height: 30px; flex-shrink: 0;">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink: 0;">
+                  <path d="m5 8 6 6"/>
+                  <path d="m4 14 6-6 2-3"/>
+                  <path d="M2 5h12"/>
+                  <path d="M7 2h1"/>
+                  <path d="m22 22-5-10-5 10"/>
+                  <path d="M14 18h6"/>
+                </svg>
+                <span id="proxyLangBtnText">一键汉化</span>
+              </button>
             </div>
           </section>
           <div class="control-bar glass-card model-map-control-bar">
@@ -3170,6 +3170,17 @@
             </div>
 
             <div class="platform-console-actions">
+              <button class="btn-primary platform-proxy-primary" id="cursor-main-btn" data-action="cursorPrimaryAction" aria-label="一键接入 Cursor">
+                <span class="proxy-btn-action">
+                  <svg class="proxy-btn-icon" width="14" height="14" viewBox="0 0 24 24" fill="none"
+                    stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" fill="currentColor" />
+                  </svg>
+                  <span class="proxy-btn-text" id="cursor-main-btn-text">一键接入</span>
+                </span>
+              </button>
+              <button class="btn-ghost accent platform-refresh-proxy" id="cursorRefreshBtn" data-action="cursorRefreshConsole">刷新状态</button>
+              <button class="btn-ghost danger platform-stop-proxy" id="cursorRestoreBtn" data-action="cursorDisableAction" disabled>停止接入</button>
               <button type="button" class="btn-ghost secondary platform-lang-action-btn" id="cursorLangBtn" data-action="openCursorLangModal"
                 style="display: none; align-items: center; gap: 6px; padding: 4px 12px; border-radius: 8px; font-size: 12px; font-weight: 600; height: 30px; flex-shrink: 0;">
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink: 0;">
@@ -3182,17 +3193,6 @@
                 </svg>
                 <span id="cursorLangBtnText">一键汉化</span>
               </button>
-              <button class="btn-primary platform-proxy-primary" id="cursor-main-btn" data-action="cursorPrimaryAction" aria-label="一键接入 Cursor">
-                <span class="proxy-btn-action">
-                  <svg class="proxy-btn-icon" width="14" height="14" viewBox="0 0 24 24" fill="none"
-                    stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                    <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" fill="currentColor" />
-                  </svg>
-                  <span class="proxy-btn-text" id="cursor-main-btn-text">一键接入</span>
-                </span>
-              </button>
-              <button class="btn-ghost accent platform-refresh-proxy" id="cursorRefreshBtn" data-action="cursorRefreshConsole">刷新状态</button>
-              <button class="btn-ghost danger platform-stop-proxy" id="cursorRestoreBtn" data-action="cursorDisableAction" disabled>停止接入</button>
             </div>
           </section>
 
@@ -4487,6 +4487,13 @@
                 </div>
               </div>
               <div class="platform-console-actions" id="claude-desktop-hero-actions">
+                <button type="button" class="btn-ghost success claude-desktop-mode-badge-btn" id="claude-desktop-hero-mode-btn"
+                  onclick="onClaudeDesktopHeroModeClick()" title="点击查看或切换连接模式"
+                  style="height: 36px; padding: 0 14px; font-size: 13px; font-weight: 600; display: inline-flex; align-items: center; gap: 8px; border-radius: 8px; cursor: pointer; transition: all 0.2s ease;">
+                  <span class="claude-desktop-mode-dot" style="width:8px;height:8px;border-radius:50%;background:#10b981;box-shadow:0 0 8px rgba(16,185,129,0.6);display:inline-block;"></span>
+                  <span>代理模式 (本地路由)</span>
+                </button>
+                <!-- 汉化放最右（用户指定） -->
                 <button type="button" class="btn-ghost secondary platform-lang-action-btn" id="claudeLangBtn" data-action="openClaudeLangModal"
                   style="display: none; align-items: center; gap: 6px; padding: 4px 12px; border-radius: 8px; font-size: 12px; font-weight: 600; height: 30px; flex-shrink: 0;">
                   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink: 0;">
@@ -4498,12 +4505,6 @@
                     <path d="M14 18h6"/>
                   </svg>
                   <span id="claudeLangBtnText">一键汉化</span>
-                </button>
-                <button type="button" class="btn-ghost success claude-desktop-mode-badge-btn" id="claude-desktop-hero-mode-btn"
-                  onclick="onClaudeDesktopHeroModeClick()" title="点击查看或切换连接模式"
-                  style="height: 36px; padding: 0 14px; font-size: 13px; font-weight: 600; display: inline-flex; align-items: center; gap: 8px; border-radius: 8px; cursor: pointer; transition: all 0.2s ease;">
-                  <span class="claude-desktop-mode-dot" style="width:8px;height:8px;border-radius:50%;background:#10b981;box-shadow:0 0 8px rgba(16,185,129,0.6);display:inline-block;"></span>
-                  <span>代理模式 (本地路由)</span>
                 </button>
               </div>
             </section>
@@ -5297,19 +5298,6 @@
                 <p class="platform-version-line" id="antigravity-platform-version">检测中…</p>
               </div>
 
-              <!-- 紧随标题后的汉化按钮（用户红框指定位置） -->
-              <button type="button" class="btn-ghost secondary platform-lang-action-btn" id="antigravityLangBtn" data-action="openAntigravityLangModal"
-                style="display: inline-flex; align-items: center; gap: 6px; padding: 4px 12px; border-radius: 8px; font-size: 12px; font-weight: 600; height: 30px; margin-left: 4px; flex-shrink: 0;">
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink: 0;">
-                  <path d="m5 8 6 6"/>
-                  <path d="m4 14 6-6 2-3"/>
-                  <path d="M2 5h12"/>
-                  <path d="M7 2h1"/>
-                  <path d="m22 22-5-10-5 10"/>
-                  <path d="M14 18h6"/>
-                </svg>
-                <span id="antigravityLangBtnText">一键汉化</span>
-              </button>
             </div>
 
             <div class="platform-console-actions">
@@ -5332,6 +5320,19 @@
               </button>
               <button class="btn-ghost accent platform-refresh-proxy" id="antigravityRefreshBtn" data-action="antigravityRefreshConsole">刷新状态</button>
               <button class="btn-ghost danger platform-stop-proxy" id="antigravityRestoreBtn" data-action="antigravityRestoreAction" disabled>停止接入</button>
+              <!-- 汉化放最右（用户指定）：独立于代理接入的能力 -->
+              <button type="button" class="btn-ghost secondary platform-lang-action-btn" id="antigravityLangBtn" data-action="openAntigravityLangModal"
+                style="display: inline-flex; align-items: center; gap: 6px; padding: 4px 12px; border-radius: 8px; font-size: 12px; font-weight: 600; height: 30px; flex-shrink: 0;">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink: 0;">
+                  <path d="m5 8 6 6"/>
+                  <path d="m4 14 6-6 2-3"/>
+                  <path d="M2 5h12"/>
+                  <path d="M7 2h1"/>
+                  <path d="m22 22-5-10-5 10"/>
+                  <path d="M14 18h6"/>
+                </svg>
+                <span id="antigravityLangBtnText">一键汉化</span>
+              </button>
             </div>
           </section>
 

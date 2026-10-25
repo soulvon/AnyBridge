@@ -10,6 +10,13 @@
                 </div>
               </div>
               <div class="platform-console-actions" id="claude-desktop-hero-actions">
+                <button type="button" class="btn-ghost success claude-desktop-mode-badge-btn" id="claude-desktop-hero-mode-btn"
+                  onclick="onClaudeDesktopHeroModeClick()" title="点击查看或切换连接模式"
+                  style="height: 36px; padding: 0 14px; font-size: 13px; font-weight: 600; display: inline-flex; align-items: center; gap: 8px; border-radius: 8px; cursor: pointer; transition: all 0.2s ease;">
+                  <span class="claude-desktop-mode-dot" style="width:8px;height:8px;border-radius:50%;background:#10b981;box-shadow:0 0 8px rgba(16,185,129,0.6);display:inline-block;"></span>
+                  <span>代理模式 (本地路由)</span>
+                </button>
+                <!-- 汉化放最右（用户指定） -->
                 <button type="button" class="btn-ghost secondary platform-lang-action-btn" id="claudeLangBtn" data-action="openClaudeLangModal"
                   style="display: none; align-items: center; gap: 6px; padding: 4px 12px; border-radius: 8px; font-size: 12px; font-weight: 600; height: 30px; flex-shrink: 0;">
                   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink: 0;">
@@ -21,12 +28,6 @@
                     <path d="M14 18h6"/>
                   </svg>
                   <span id="claudeLangBtnText">一键汉化</span>
-                </button>
-                <button type="button" class="btn-ghost success claude-desktop-mode-badge-btn" id="claude-desktop-hero-mode-btn"
-                  onclick="onClaudeDesktopHeroModeClick()" title="点击查看或切换连接模式"
-                  style="height: 36px; padding: 0 14px; font-size: 13px; font-weight: 600; display: inline-flex; align-items: center; gap: 8px; border-radius: 8px; cursor: pointer; transition: all 0.2s ease;">
-                  <span class="claude-desktop-mode-dot" style="width:8px;height:8px;border-radius:50%;background:#10b981;box-shadow:0 0 8px rgba(16,185,129,0.6);display:inline-block;"></span>
-                  <span>代理模式 (本地路由)</span>
                 </button>
               </div>
             </section>

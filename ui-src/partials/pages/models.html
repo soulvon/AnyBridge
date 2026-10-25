@@ -11,19 +11,7 @@
               </div>
             </div>
             <div class="platform-console-actions">
-              <!-- 顺序约定：汉化 → 接入 → 刷新 → 停止（汉化是独立于代理接入的能力，排在前面） -->
-              <button type="button" class="btn-ghost secondary platform-lang-action-btn" id="proxyLangBtn" data-action="openProxyLangModal"
-                style="display: none; align-items: center; gap: 6px; padding: 4px 12px; border-radius: 8px; font-size: 12px; font-weight: 600; height: 30px; flex-shrink: 0;">
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink: 0;">
-                  <path d="m5 8 6 6"/>
-                  <path d="m4 14 6-6 2-3"/>
-                  <path d="M2 5h12"/>
-                  <path d="M7 2h1"/>
-                  <path d="m22 22-5-10-5 10"/>
-                  <path d="M14 18h6"/>
-                </svg>
-                <span id="proxyLangBtnText">一键汉化</span>
-              </button>
+              <!-- 顺序约定：接入 → 刷新 → 停止 → 汉化（汉化放最右，用户指定） -->
               <!-- 一键接入：与「停止接入」成对。文案由 syncIdeProxyButton 维护
                    （未接入="一键接入"，已接入="已接入"），点击走 toggleProxy 自动判定方向。
                    注意：此前重构时这个按钮连同 data-proxy-action 绑定一起被删掉了，
@@ -39,6 +27,18 @@
               </button>
               <button class="btn-ghost accent platform-refresh-proxy" id="proxyRefreshBtn" data-action="refreshCurrentProxyPlatformStatus">刷新状态</button>
               <button class="btn-ghost danger platform-stop-proxy" id="proxyRestoreBtn" data-action="restoreCurrentProxyPlatformDirect">停止接入</button>
+              <button type="button" class="btn-ghost secondary platform-lang-action-btn" id="proxyLangBtn" data-action="openProxyLangModal"
+                style="display: none; align-items: center; gap: 6px; padding: 4px 12px; border-radius: 8px; font-size: 12px; font-weight: 600; height: 30px; flex-shrink: 0;">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink: 0;">
+                  <path d="m5 8 6 6"/>
+                  <path d="m4 14 6-6 2-3"/>
+                  <path d="M2 5h12"/>
+                  <path d="M7 2h1"/>
+                  <path d="m22 22-5-10-5 10"/>
+                  <path d="M14 18h6"/>
+                </svg>
+                <span id="proxyLangBtnText">一键汉化</span>
+              </button>
             </div>
           </section>
           <div class="control-bar glass-card model-map-control-bar">
