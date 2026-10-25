@@ -1590,21 +1590,27 @@ function showProviderEditorTestToast(message, type = 'info', options = {}) {
   }
 }
 
-// ─── 测试结果展示位（R19/T2 的 #providerEditorTestResult）────────
-const PROVIDER_TEST_RESULT_ICONS = {
+// ─── 编辑器结果展示条（T2 测试结果 / T4 拉取结果共用，#providerEditorTestResult / #providerFetchResult）────────
+const EDITOR_RESULT_BAR_ICONS = {
   success: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>',
   error: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="15" y1="9" x2="9" y2="15"></line><line x1="9" y1="9" x2="15" y2="15"></line></svg>'
 };
 
-// 结论写入结果区并持续保留，直到下次测试覆盖或离开页面清除；文案复用 toast 结论原文
-function setProviderEditorTestResult(type, message) {
-  const box = document.getElementById('providerEditorTestResult');
+// 会话判据：离开编辑器页后到达的结论不写入结果区（防止切页回来残留旧结论）
+function isProviderEditorPageActive() {
+  return document.getElementById('page-provider-editor')?.classList.contains('active') === true;
+}
+
+// 结论写入结果条并持续保留，直到下次操作覆盖或离开页面清除；文案复用既有结论原文
+function setEditorResultBar(type, message, boxId) {
+  const box = document.getElementById(boxId);
   if (!box) return;
   const isSuccess = type === 'success';
-  box.className = 'provider-editor-test-result ' + (isSuccess ? 'is-success' : 'is-error');
+  box.classList.remove('is-success', 'is-error');
+  box.classList.add(isSuccess ? 'is-success' : 'is-error');
   const icon = document.createElement('span');
   icon.className = 'result-icon';
-  icon.innerHTML = PROVIDER_TEST_RESULT_ICONS[isSuccess ? 'success' : 'error'];
+  icon.innerHTML = EDITOR_RESULT_BAR_ICONS[isSuccess ? 'success' : 'error'];
   const text = document.createElement('span');
   text.className = 'result-text';
   text.textContent = String(message || '');
@@ -1614,11 +1620,11 @@ function setProviderEditorTestResult(type, message) {
   box.hidden = false;
 }
 
-function clearProviderEditorTestResult() {
-  const box = document.getElementById('providerEditorTestResult');
+function clearEditorResultBar(boxId) {
+  const box = document.getElementById(boxId);
   if (!box) return;
   box.hidden = true;
-  box.className = 'provider-editor-test-result';
+  box.classList.remove('is-success', 'is-error');
   box.innerHTML = '';
 }
 
@@ -1648,8 +1654,6 @@ async function testProviderInEditor() {
 
   setProviderEditorTestButtonState(true);
   showProviderEditorTestToast(`正在测试 ${model}...`, 'info', { duration: 1400 });
-  // 会话判据：离开编辑器页后到达的结论不写入结果区（防止切页回来残留旧结论）
-  const editorPageActive = () => document.getElementById('page-provider-editor')?.classList.contains('active');
   try {
     const result = await invoke('test_connection', {
       args: { host: endpoint.apiHost, api_key: apiKey, path: endpoint.apiPath || null, api_format: fmt, model }
@@ -1661,12 +1665,12 @@ async function testProviderInEditor() {
       const gzipEl = document.getElementById('pf-cap-gzip');
       if (gzipEl && c.gzip !== undefined) gzipEl.checked = c.gzip;
     }
-    if (editorPageActive()) setProviderEditorTestResult('success', `连接测试通过：${msg}`);
+    if (isProviderEditorPageActive()) setEditorResultBar('success', `连接测试通过：${msg}`, 'providerEditorTestResult');
     showProviderEditorTestToast(`连接测试通过：${msg}`, 'success', { duration: 3200 });
     addLog('ok', '连接测试: ' + msg);
   } catch (e) {
     const message = String(e) || '失败';
-    if (editorPageActive()) setProviderEditorTestResult('error', `连接测试失败：${message}`);
+    if (isProviderEditorPageActive()) setEditorResultBar('error', `连接测试失败：${message}`, 'providerEditorTestResult');
     if (typeof showCustomAlert === 'function') {
       showCustomAlert(message, '连接测试失败', 'error');
     } else {
@@ -1761,6 +1765,7 @@ async function fetchModelsForEditor(options = {}) {
 
       modelGroupStates = {};
       filterModelPanel();
+      if (isProviderEditorPageActive()) setEditorResultBar('success', `获取到 ${succeeded.models.length} 个模型`, 'providerFetchResult');
       addLog('ok', `✅ 用 ${fmtLabel(succeeded.fmt)} 协议成功拉取到 ${succeeded.models.length} 个模型`);
     } else {
       throw lastError || new Error('未知错误');
@@ -1768,6 +1773,7 @@ async function fetchModelsForEditor(options = {}) {
   } catch (e) {
     // No more default preset list overrides - strictly show what is configured
     addLog('warn', `线上拉取失败 (${e})。你可检查配置、或使用底部输入框手动添加自定义模型 ID。`);
+    if (isProviderEditorPageActive()) setEditorResultBar('error', `拉取失败：${String(e)}`, 'providerFetchResult');
     // Keep local selections visible; a transient remote failure should not make saved models disappear.
     const modelInput = document.getElementById('pf-model');
     const modelVal = modelInput ? modelInput.value : '';
@@ -1831,8 +1837,8 @@ async function fetchModelsForEditor(options = {}) {
   g.testProvider = testProvider;
   g.setProviderEditorTestButtonState = setProviderEditorTestButtonState;
   g.showProviderEditorTestToast = showProviderEditorTestToast;
-  g.setProviderEditorTestResult = setProviderEditorTestResult;
-  g.clearProviderEditorTestResult = clearProviderEditorTestResult;
+  g.setEditorResultBar = setEditorResultBar;
+  g.clearEditorResultBar = clearEditorResultBar;
   g.testProviderInEditor = testProviderInEditor;
   g.fetchModelsForEditor = fetchModelsForEditor;
 })(globalThis);

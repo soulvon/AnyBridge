@@ -207,9 +207,10 @@ function navigateTo(pageId) {
   } else if (typeof onExtensionsPageLeave === 'function') {
     onExtensionsPageLeave();
   }
-  // R19/T3：离开供应商编辑器页即清测试结论（回列表/切 tab/进 eval 都走这里；settings 是弹窗早退不算离开）
-  if (pageId !== 'provider-editor' && typeof clearProviderEditorTestResult === 'function') {
-    clearProviderEditorTestResult();
+  // R19/T3 + R22/T4：离开供应商编辑器页即清结果条（回列表/切 tab/进 eval 都走这里；settings 是弹窗早退不算离开）
+  if (pageId !== 'provider-editor' && typeof clearEditorResultBar === 'function') {
+    clearEditorResultBar('providerEditorTestResult');
+    clearEditorResultBar('providerFetchResult');
   }
   syncPlatformRailForPage(pageId);
   syncPlatformSubtabsForPage(pageId);
