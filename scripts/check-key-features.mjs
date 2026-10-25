@@ -327,6 +327,7 @@ section('提交卫生（不该提交的不提交）');
     /^docs\/capabilities\.md$/i,
     /^docs\/(ARCHITECTURE|DEVELOPMENT|RELEASE|MACOS_TROUBLESHOOTING|WORKFLOW)(_zh)?\.md$/i,
     /^docs\/subsystems\/[a-z0-9-]+\.md$/i,
+    /^docs\/experience\/.+\.md$/i,   // 项目层经验草稿（devloop 自动采集）
     /(^|\/)README\.md$/i,
     /^\.github\/pull_request_template\.md$/i,
     /^cursor-core\/prompt\//,        // 运行时提示词模板（程序资源）
@@ -466,6 +467,92 @@ section('平台守卫（Windows API 需 cfg 守卫）');
   }
   ok(`Windows API 调用（${apiLines} 处）均在 cfg 守卫内（白名单除外）`, strict.length === 0,
     strict.slice(0, 6).join(', ') + (strict.length > 6 ? ` …共 ${strict.length} 处` : ''));
+}
+
+// ─────────────────────────────────────────────────────────────
+// [3.9b] data-action 处理器可达性（点击必须有反馈）
+//   背景：main.js 是 ES module，顶层 function 不会挂到 window；
+//   data-action 通过 window[name] 解析 → 漏导出 = 点击静默失效
+//   （实测事故：Codex 页「更新」按钮点了没反应）。
+//   规则：新增 data-action 必须有可达 handler；已知未实现的进白名单，
+//   且白名单只减不增（修好后必须从清单移除，否则本检查失败）。
+// ─────────────────────────────────────────────────────────────
+section('data-action 处理器可达性（点击必须有反馈）');
+{
+  const ACTION_RE = /data-action="([A-Za-z0-9_]+)"/g;
+  const actionNames = new Set();
+  const scan = (dir, exts, cb) => {
+    if (!fs.existsSync(dir)) return;
+    const walk = (cur, depth) => {
+      if (depth > 6) return;
+      for (const e of fs.readdirSync(cur, { withFileTypes: true })) {
+        if (['node_modules', 'target', '.git', 'tmp'].includes(e.name)) continue;
+        const p = path.join(cur, e.name);
+        if (e.isDirectory()) walk(p, depth + 1);
+        else if (exts.some((x) => e.name.endsWith(x))) cb(fs.readFileSync(p, 'utf8'));
+      }
+    };
+    walk(dir, 0);
+  };
+  scan(path.join(root, 'ui-src'), ['.html'], (s) => {
+    for (const m of s.matchAll(ACTION_RE)) actionNames.add(m[1]);
+  });
+  scan(path.join(root, 'ui/assets/scripts'), ['.js'], (s) => {
+    // 跳过注释行：05-actions.js 的文档注释里有 data-action="fnName" 示例
+    const codeOnly = s
+      .split('\n')
+      .filter((line) => !/^\s*(\/\/|\*|\/\*)/.test(line))
+      .join('\n');
+    for (const m of codeOnly.matchAll(ACTION_RE)) actionNames.add(m[1]);
+  });
+
+  const reachable = new Set();
+  scan(path.join(root, 'ui/assets/scripts'), ['.js'], (s) => {
+    for (const m of s.matchAll(/globalThis\.([A-Za-z0-9_]+)\s*=/g)) reachable.add(m[1]);
+    for (const m of s.matchAll(/\bwindow\.([A-Za-z0-9_]+)\s*=/g)) reachable.add(m[1]);
+    for (const m of s.matchAll(/\bg\.([A-Za-z0-9_]+)\s*=/g)) reachable.add(m[1]);
+    for (const m of s.matchAll(/Object\.assign\(\s*globalThis\s*,\s*\{([^}]+)\}/g)) {
+      for (const part of m[1].split(',')) {
+        const name = part.split(':')[0].trim();
+        if (/^[A-Za-z0-9_]+$/.test(name)) reachable.add(name);
+      }
+    }
+  });
+
+  // 已知未实现（Pi / Hermes / DeepSeek Harness 的模型 CRUD 从未实现；
+  // CodeBuddy 系的导入导出 / JSON 编辑器同理）。修好一个就删一个。
+  const KNOWN_MISSING = new Set([
+    'applyCbJson', 'applyDshJson', 'applyHermesJson', 'applyPiJson', 'applyWbJson',
+    'chooseDshAddSortMode', 'chooseHermesAddSortMode',
+    'confirmAddDshModelsPage', 'confirmAddHermesModelsPage', 'confirmAddPiModelsPage',
+    'deleteSelectedDshModels', 'deleteSelectedHermesModels', 'deleteSelectedPiModels',
+    'dshAddSelectAll', 'dshAddSelectNone',
+    'exportCbModels', 'exportDshModels', 'exportHermesModels', 'exportPiModels', 'exportWbModels',
+    'formatCbJson', 'formatDshJson', 'formatHermesJson', 'formatPiJson', 'formatWbJson', 'formatZcJson',
+    'hermesAddSelectAll', 'hermesAddSelectNone',
+    'importCbModels', 'importDshModels', 'importHermesModels', 'importPiModels', 'importWbModels',
+    'loadDshModels', 'loadHermesModels', 'loadPiModels',
+    'onDshAddSearch', 'onDshModelSearch', 'onHermesAddSearch', 'onHermesModelSearch', 'onPiAddSearch', 'onPiModelSearch',
+    'openDshAddModal', 'openHermesAddModal', 'openPiAddModal',
+    'piAddSelectAll', 'piAddSelectNone',
+    'saveDshModels', 'saveHermesModels', 'savePiModels',
+    'toggleCbJsonEditor', 'toggleDshAddSort', 'toggleDshJsonEditor',
+    'toggleHermesAddSort', 'toggleHermesJsonEditor', 'togglePiJsonEditor', 'toggleWbJsonEditor',
+  ]);
+
+  const missing = [...actionNames].filter((n) => !reachable.has(n));
+  const unexpected = missing.filter((n) => !KNOWN_MISSING.has(n)).sort();
+  const stale = [...KNOWN_MISSING].filter((n) => !missing.includes(n)).sort();
+
+  ok(`data-action 共 ${actionNames.size} 个，均有可达 handler 或已登记未实现`,
+    unexpected.length === 0,
+    unexpected.length ? `新增未实现：${unexpected.slice(0, 6).join(', ')}` : '');
+  ok('未实现白名单无过期条目（修好一个就要删一个）',
+    stale.length === 0,
+    stale.length ? `${stale.slice(0, 6).join(', ')} → 已实现，请从 KNOWN_MISSING 移除` : '');
+  if (missing.length) {
+    console.log(`  ℹ 已知未实现（点击会提示「尚未实现」）：${missing.length} 个`);
+  }
 }
 
 // ─────────────────────────────────────────────────────────────

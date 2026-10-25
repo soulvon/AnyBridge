@@ -89,11 +89,30 @@
     return declared.split(/\s+/).includes(name);
   }
 
+  /**
+   * 缺失处理器统一报可见错误（用户原则：点击必须有反馈，该暴露的暴露）。
+   * 同一 action 只提示一次，避免连点刷屏。
+   */
+  const _reportedMissing = new Set();
+  function reportMissingHandler(name) {
+    if (_reportedMissing.has(name)) return;
+    _reportedMissing.add(name);
+    const msg = '该操作尚未实现（缺少处理器: ' + name + '）';
+    if (typeof window.showBottomToast === 'function') {
+      window.showBottomToast(msg, 'error', { duration: 6000 });
+    } else if (typeof window.showCustomAlert === 'function') {
+      window.showCustomAlert(msg, '未实现', 'error');
+    } else {
+      console.error('[actions] ' + msg);
+    }
+  }
+
   function invokeStep(step, el, event) {
     const fnName = step.fn || step.action;
     const fn = resolveHandler(fnName);
     if (!fn) {
       console.error('[actions] missing handler:', fnName);
+      reportMissingHandler(fnName);
       return;
     }
     const args = Array.isArray(step.args) ? step.args.slice() : [];
@@ -275,7 +294,9 @@
 
     const fn = resolveHandler(action);
     if (!fn) {
+      // 暴露而非掩盖：点击没反应是最糟的体验，必须让用户立刻看到原因。
       console.error('[actions] missing global handler:', action);
+      reportMissingHandler(action);
       return;
     }
 

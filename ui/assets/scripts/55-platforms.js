@@ -14016,6 +14016,8 @@ window.zcDrop = function(e) {
   }
 
   g.renderPlatformNativeRetry = renderPlatformNativeRetry;
+  g.choosePiAddSortMode = choosePiAddSortMode;
+  g.togglePiAddSort = togglePiAddSort;
   g.saveCodexNativeRetry = saveCodexNativeRetry;
   g.saveClaudeNativeRetry = saveClaudeNativeRetry;
 
@@ -14431,6 +14433,7 @@ globalThis.genericAgentApply = genericAgentApply;
 globalThis.fillGenericAgentProviders = fillGenericAgentProviders;
 globalThis.fillGenericAgentModels = fillGenericAgentModels;
 globalThis.refreshGenericAgentStatus = refreshGenericAgentStatus;
+globalThis.updatePlatformAgentAction = updatePlatformAgentAction;
 globalThis.genericAgentRestore = genericAgentRestore;
 globalThis.loadAgentRegistry = loadAgentRegistry;
 
