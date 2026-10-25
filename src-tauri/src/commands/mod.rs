@@ -13,7 +13,6 @@ pub mod eval;
 pub mod extensions;
 pub mod ide_config;
 pub mod ide_models;
-pub mod kite_plugin;
 pub mod model_map;
 pub mod platforms;
 pub mod plugin_asset;

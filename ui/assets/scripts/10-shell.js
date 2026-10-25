@@ -496,16 +496,14 @@ globalThis.PROXY_PLATFORM_META = {
     title: 'Windsurf 接入控制台',
     short: 'Windsurf',
     icon: './assets/icons/platform-windsurf.svg',
-    subtitle: '本机代理、MITM 证书、Windsurf 配置和模型路由集中管理。',
-    kiteAd: 'Kite 插件：Windsurf 增强入口'
+    subtitle: '本机代理、MITM 证书、Windsurf 配置和模型路由集中管理。'
   },
   devin: {
     label: 'Devin',
     title: 'Devin 接入控制台',
     short: 'Devin',
     icon: './assets/icons/platform-devin.svg',
-    subtitle: '本机代理、MITM 证书、Devin 配置和模型路由集中管理。',
-    kiteAd: 'Kite 插件：Devin 增强入口'
+    subtitle: '本机代理、MITM 证书、Devin 配置和模型路由集中管理。'
   },
   cursor: {
     label: 'Cursor',
@@ -534,102 +532,17 @@ function updateProxyPlatformCopy(platformId) {
   const title = document.getElementById('proxy-platform-title');
   const subtitle = document.getElementById('proxy-platform-subtitle');
   const icon = document.getElementById('proxy-platform-icon');
-  const kiteAd = document.getElementById('proxy-platform-kite-ad');
-  const kiteAdCopy = document.getElementById('proxy-platform-kite-ad-copy');
   if (title) title.textContent = _t(meta.title) || meta.label;
   if (subtitle) subtitle.textContent = _t(meta.subtitle);
   if (icon) {
     icon.src = meta.icon;
     icon.alt = meta.label;
   }
-  if (kiteAd) {
-    const showAd = Boolean(meta.kiteAd);
-    kiteAd.hidden = !showAd;
-    kiteAd.classList.toggle('is-hidden', !showAd);
-    kiteAd.dataset.platform = id;
-    kiteAd.setAttribute('aria-label', showAd ? _t(`打开 Kite 插件安装选项（${meta.label}）`) : _t('Kite 插件安装选项'));
-  }
-  if (kiteAdCopy && meta.kiteAd) {
-    kiteAdCopy.textContent = _t(meta.kiteAd);
-  }
-  const kiteModalPlatform = document.getElementById('kite-plugin-platform-label');
-  if (kiteModalPlatform) kiteModalPlatform.textContent = meta.label;
   const emptySubtitle = document.getElementById('model-map-empty-subtitle');
   if (emptySubtitle) {
     emptySubtitle.textContent = _t(`添加第一个模型映射，让 ${meta.label || '当前平台'} 使用你指定的 AI 供应商与模型能力。`);
   }
   void refreshProxyLangStatus();
-}
-
-function currentKitePluginPlatform() {
-  const ad = document.getElementById('proxy-platform-kite-ad');
-  const fromAd = ad?.dataset?.platform;
-  if (fromAd === 'windsurf' || fromAd === 'devin') return fromAd;
-  const fromSelect = typeof getTargetIde === 'function' ? getTargetIde() : '';
-  return fromSelect === 'devin' ? 'devin' : 'windsurf';
-}
-
-function openKitePluginModal() {
-  const modal = document.getElementById('kite-plugin-modal');
-  const platform = currentKitePluginPlatform();
-  const meta = PROXY_PLATFORM_META[platform] || PROXY_PLATFORM_META.windsurf;
-  const label = document.getElementById('kite-plugin-platform-label');
-  const installBtn = document.getElementById('kite-plugin-install-btn');
-  if (label) label.textContent = meta.label;
-  if (installBtn) {
-    installBtn.disabled = false;
-    installBtn.classList.remove('is-loading');
-    const title = installBtn.querySelector('strong');
-    if (title) title.textContent = '一键安装';
-  }
-  if (!modal) return;
-  modal.classList.add('active');
-  document.addEventListener('keydown', closeKitePluginModalOnEsc);
-}
-
-function closeKitePluginModal() {
-  const modal = document.getElementById('kite-plugin-modal');
-  if (modal) modal.classList.remove('active');
-  document.removeEventListener('keydown', closeKitePluginModalOnEsc);
-}
-
-function closeKitePluginModalOnEsc(event) {
-  if (event.key === 'Escape') closeKitePluginModal();
-}
-
-async function installKitePlugin() {
-  const platform = currentKitePluginPlatform();
-  const meta = PROXY_PLATFORM_META[platform] || PROXY_PLATFORM_META.windsurf;
-  const installBtn = document.getElementById('kite-plugin-install-btn');
-  if (!invoke && !bindTauriBridge()) {
-    showCustomAlert('Tauri 通道未就绪，无法执行本机安装命令。请重启 AnyBridge 后再试。', 'Kite 安装失败', 'error');
-    return;
-  }
-  if (installBtn) {
-    installBtn.disabled = true;
-    installBtn.classList.add('is-loading');
-    const title = installBtn.querySelector('strong');
-    if (title) title.textContent = '安装中...';
-  }
-  try {
-    if (typeof addLog === 'function') addLog('info', `开始为 ${meta.label} 安装 Kite 插件`);
-    const result = await invoke('install_kite_plugin', { target: platform });
-    const message = result?.message || `Kite 插件已安装到 ${meta.label}`;
-    closeKitePluginModal();
-    if (typeof addLog === 'function') addLog('ok', message);
-    if (typeof showBottomToast === 'function') showBottomToast(message, 'success', { duration: 3600 });
-    showCustomAlert(message, 'Kite 安装完成', 'success');
-  } catch (e) {
-    const message = String(e?.message || e);
-    if (typeof addLog === 'function') addLog('err', `Kite 安装失败: ${message}`);
-    showCustomAlert(message, 'Kite 安装失败', 'error');
-    if (installBtn) {
-      installBtn.disabled = false;
-      installBtn.classList.remove('is-loading');
-      const title = installBtn.querySelector('strong');
-      if (title) title.textContent = '一键安装';
-    }
-  }
 }
 
 function syncPlatformRailForPage(pageId) {
@@ -678,8 +591,7 @@ function syncPlatformRailForPage(pageId) {
 window.addEventListener('byok-language-change', (e) => {
   if (!e?.detail?.previousLanguage) return;
   try {
-    const ad = document.getElementById('proxy-platform-kite-ad');
-    const current = ad?.dataset?.platform || (typeof getTargetIde === 'function' ? getTargetIde() : 'windsurf');
+    const current = typeof getTargetIde === 'function' ? getTargetIde() : 'windsurf';
     updateProxyPlatformCopy(current);
     if (typeof refreshIdeProxyStatus === 'function') {
       refreshIdeProxyStatus(current).catch(() => {});
@@ -1656,11 +1568,6 @@ globalThis.refreshClaudeLangStatus = claudeLangActions.refreshStatus;
   g.normalizeProxyPlatform = normalizeProxyPlatform;
   g.setPlatformRailActive = setPlatformRailActive;
   g.updateProxyPlatformCopy = updateProxyPlatformCopy;
-  g.currentKitePluginPlatform = currentKitePluginPlatform;
-  g.openKitePluginModal = openKitePluginModal;
-  g.closeKitePluginModal = closeKitePluginModal;
-  g.closeKitePluginModalOnEsc = closeKitePluginModalOnEsc;
-  g.installKitePlugin = installKitePlugin;
   g.syncPlatformRailForPage = syncPlatformRailForPage;
   g.getPlatformRailElement = getPlatformRailElement;
   g.getPlatformRailItems = getPlatformRailItems;

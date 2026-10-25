@@ -67,9 +67,6 @@
       '安全关闭并重新拉起 Cursor IDE 客户端，使其重新建立本地 TLS 代理连接。': 'Gracefully shut down and relaunch Cursor IDE to re-establish local TLS proxy connection.',
       '安全性': 'Security',
       '安装': 'Install',
-      '安装 Kite 插件': 'Install Kite extension',
-      '安装 Kite 增强插件。安装会下载 GitHub latest release\n          中的': 'Install Kite extension. Download latest release from GitHub\n          containing ',
-      '安装 Kite 增强插件。安装会下载 GitHub latest release\\n          中的': 'Install Kite extension. Download latest release from GitHub\\n          containing ',
       '安装插件': 'Install plugin',
       '安装目录': 'Installation directory',
       '安装证书': 'Install certificate',
@@ -227,7 +224,6 @@
       '打开': 'Open',
       '打开 AnyBridge 后立即启动本地代理': 'Start the local proxy immediately after AnyBridge opens',
       '打开 GitHub': 'Open GitHub',
-      '打开 Kite 插件安装选项': 'Open Kite plugin installation options',
       '打开代理控制台': 'Open proxy console',
       '打开发布页': 'Open releases page',
       '打开快速指南': 'Open quick guide',
@@ -431,7 +427,6 @@
       '故障转移 ·': 'Failover ·',
       '关闭': 'Close',
       '关闭 (Esc)': 'Close (Esc)',
-      '关闭 Kite 插件安装弹窗': 'Close Kite extension install modal',
       '关闭编辑': 'Close editor',
       '关闭测试结果': 'Close test results',
       '关闭导入弹窗': 'Close import modal',
@@ -1586,7 +1581,6 @@
       'inference-proxy.js (行内 AI 编辑)': 'inference-proxy.js (inline AI editing)',
       'JSON 编辑': 'JSON Edit',
       'JSON 编辑器': 'JSON editor',
-      'Kite 插件：Devin 增强入口': 'Kite Extension: Devin Enhancement Portal',
       'L2-L3 适配': 'L2-L3 Adaptation',
       'Low (轻度思考)': 'Low (Light thinking)',
       'low_high（minimal/low → low，其余 → high）': 'low_high (minimal/low → low, others → high)',
@@ -1655,15 +1649,10 @@
       '显示名设置：前缀 / 后缀': 'Display Name Settings: Prefix / Suffix',
       '配置图片理解模型': 'Configure Vision Model',
 
-      // ─── 平台副标题与 Kite 推荐插件文案 ───
+      // ─── 平台副标题与推荐插件文案 ───
       '本机代理、MITM 证书、Windsurf 配置和模型路由集中管理。': 'Centralized management of local proxy, MITM certs, Windsurf configs, and model routing.',
       '本机代理、MITM 证书、Devin 配置和模型路由集中管理。': 'Centralized management of local proxy, MITM certs, Devin configs, and model routing.',
       'Cursor 通过本机 MITM 入口接入代理模型、对话工具流、Background Composer 和会话落盘。': 'Cursor connects via local MITM proxy for proxy models, chat tools, Background Composer, and session persistence.',
-      'Kite 插件：Windsurf 增强入口': 'Kite: Windsurf Enhancement',
-      'Kite 插件：Devin 增强入口': 'Kite: Devin Enhancement',
-      '打开 Kite 插件安装选项（Windsurf）': 'Open Kite plugin installation options (Windsurf)',
-      '打开 Kite 插件安装选项（Devin）': 'Open Kite plugin installation options (Devin)',
-      '插件推荐': 'Recommended Plugins',
 
       // ─── 表格列与能力标签 ───
       '图片理解': 'Vision',
