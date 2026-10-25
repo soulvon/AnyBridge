@@ -522,20 +522,13 @@ section('data-action 处理器可达性（点击必须有反馈）');
   // 已知未实现（Pi / Hermes / DeepSeek Harness 的模型 CRUD 从未实现；
   // CodeBuddy 系的导入导出 / JSON 编辑器同理）。修好一个就删一个。
   const KNOWN_MISSING = new Set([
+    // JSON 编辑器 / 导入导出 / 排序菜单：CodeBuddy 系与 Pi 系的这批按钮
+    // 目前只有 UI，功能待实现（点击会明确提示「尚未实现」）。
     'applyCbJson', 'applyDshJson', 'applyHermesJson', 'applyPiJson', 'applyWbJson',
     'chooseDshAddSortMode', 'chooseHermesAddSortMode',
-    'confirmAddDshModelsPage', 'confirmAddHermesModelsPage', 'confirmAddPiModelsPage',
-    'deleteSelectedDshModels', 'deleteSelectedHermesModels', 'deleteSelectedPiModels',
-    'dshAddSelectAll', 'dshAddSelectNone',
     'exportCbModels', 'exportDshModels', 'exportHermesModels', 'exportPiModels', 'exportWbModels',
     'formatCbJson', 'formatDshJson', 'formatHermesJson', 'formatPiJson', 'formatWbJson', 'formatZcJson',
-    'hermesAddSelectAll', 'hermesAddSelectNone',
     'importCbModels', 'importDshModels', 'importHermesModels', 'importPiModels', 'importWbModels',
-    'loadDshModels', 'loadHermesModels', 'loadPiModels',
-    'onDshAddSearch', 'onDshModelSearch', 'onHermesAddSearch', 'onHermesModelSearch', 'onPiAddSearch', 'onPiModelSearch',
-    'openDshAddModal', 'openHermesAddModal', 'openPiAddModal',
-    'piAddSelectAll', 'piAddSelectNone',
-    'saveDshModels', 'saveHermesModels', 'savePiModels',
     'toggleCbJsonEditor', 'toggleDshAddSort', 'toggleDshJsonEditor',
     'toggleHermesAddSort', 'toggleHermesJsonEditor', 'togglePiJsonEditor', 'toggleWbJsonEditor',
   ]);

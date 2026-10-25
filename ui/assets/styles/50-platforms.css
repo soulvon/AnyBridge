@@ -12117,3 +12117,36 @@ html[data-scheme="dark"] .endpoint-brand-icon-dark,
   font-weight: 800;
   line-height: 1;
 }
+
+/* Pi/Hermes/DeepSeek Harness 添加模型页：供应商与模型勾选 */
+.pb-add-provider {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 12px;
+  margin-bottom: 6px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  text-align: left;
+}
+.pb-add-provider:hover { border-color: rgba(43, 161, 143, 0.45); }
+.pb-add-provider.active {
+  border-color: var(--accent);
+  background: rgba(43, 161, 143, 0.08);
+}
+.pb-add-provider small { color: var(--text-muted); }
+.pb-add-model-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 4px;
+  font-size: 12px;
+  cursor: pointer;
+}
