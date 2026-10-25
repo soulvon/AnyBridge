@@ -111,6 +111,22 @@
       "severity": "high"
     },
     {
+      "id": "hardcoded-path",
+      "title": "硬编码盘符/用户目录/安装路径（多平台与多用户必炸）",
+      "symptom": "路径写成 C:\\Users\\admin\\... 或 E:\\Program\\Windsurf，换用户/换盘符/换平台直接失效",
+      "lesson": "所有路径必须由 dirs 抽象（home_dir/data_dir/data_local_dir）+ PathBuf::join 组合；安装位置用动态探测（find_ide_exe 四层链）。检查脚本对生产代码（src-tauri/src、ui/assets/scripts、ui-src）强校验，注释与 tests 模块豁免，C:\\Windows 系统目录兜底豁免",
+      "check": { "type": "source_contains", "file": "scripts/check-key-features.mjs", "must_contain": "路径可移植性" },
+      "severity": "high"
+    },
+    {
+      "id": "platform-api-without-cfg",
+      "title": "平台专属 API 未加 cfg 守卫（跨平台编译必炸）",
+      "symptom": "creation_flags / windows_sys:: / CommandExt 直接用在无 #[cfg(windows)] 的函数里，mac/linux 编译直接失败",
+      "lesson": "平台专属能力要么用 trait 抽象双实现（HideWindow 模式：Windows 用 CREATE_NO_WINDOW、其它 no-op），要么整函数 #[cfg] 守卫。检查脚本核验 80 处 Windows API 调用均在 cfg 上下文内；cert_install（UAC/证书子系统）列入白名单待多平台化时重构",
+      "check": { "type": "source_contains", "file": "src-tauri/src/commands/system.rs", "must_contain": "trait HideWindow" },
+      "severity": "high"
+    },
+    {
       "id": "read-failure-is-unknown",
       "title": "读失败 = 未知，绝不当「否」处理",
       "symptom": "来源 magpie LESSONS #8：IP 白名单文件读取失败被当「无白名单」处理 → 放行所有地址；reset 计数文件读不出被当「没花过」",

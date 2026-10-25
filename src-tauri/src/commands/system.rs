@@ -222,9 +222,6 @@ pub struct ExportLogEntry {
     msg: String,
 }
 
-#[cfg(target_os = "windows")]
-use std::os::windows::process::CommandExt;
-
 pub fn build_tray(app: &AppHandle) -> tauri::Result<()> {
     let show = MenuItem::with_id(app, "show", "显示窗口", true, None::<&str>)?;
     let start = MenuItem::with_id(app, "start", "启动代理", true, None::<&str>)?;
@@ -388,7 +385,7 @@ pub fn set_autostart(enabled: bool) -> Result<(), String> {
                     &run_value,
                     "/f",
                 ])
-                .creation_flags(0x0800_0000)
+                .hide_window()
                 .output()
                 .map_err(|e| e.to_string())?;
             if !output.status.success() {
@@ -401,7 +398,7 @@ pub fn set_autostart(enabled: bool) -> Result<(), String> {
             for value_name in ["AnyBridge", "IDEBYOK"] {
                 let _ = Command::new("reg")
                     .args(["delete", key, "/v", value_name, "/f"])
-                    .creation_flags(0x0800_0000)
+                    .hide_window()
                     .output();
             }
         }
@@ -486,7 +483,7 @@ pub fn get_autostart() -> Result<bool, String> {
         for value_name in ["AnyBridge", "IDEBYOK"] {
             let output = Command::new("reg")
                 .args(["query", key, "/v", value_name])
-                .creation_flags(0x0800_0000)
+                .hide_window()
                 .output()
                 .map_err(|e| e.to_string())?;
             if output.status.success() {
@@ -1546,7 +1543,7 @@ pub(crate) fn find_ide_exe(target: &str) -> Option<std::path::PathBuf> {
     };
     if let Ok(out) = Command::new("powershell")
         .args(["-NoProfile", "-Command", &ps_query])
-        .creation_flags(0x0800_0000)
+        .hide_window()
         .output()
     {
         let path = String::from_utf8_lossy(&out.stdout).trim().to_string();
@@ -1644,7 +1641,7 @@ $candidates | Where-Object {{ $_ }} | Select-Object -Unique
 
     let out = Command::new("powershell")
         .args(["-NoProfile", "-Command", &script])
-        .creation_flags(0x0800_0000)
+        .hide_window()
         .output()
         .ok()?;
     for line in String::from_utf8_lossy(&out.stdout).lines() {
@@ -1971,6 +1968,28 @@ fn macos_running_pids_for(app: &std::path::Path) -> Vec<u32> {
     pids
 }
 
+/// 跨平台「隐藏控制台窗口」抽象：Windows 用 CREATE_NO_WINDOW，
+/// 其它平台 no-op。替代直接调链条上的 `creation_flags`（Windows 专属
+/// 扩展 trait，未守卫会导致 mac/linux 编译失败）。
+trait HideWindow {
+    fn hide_window(&mut self) -> &mut Self;
+}
+
+#[cfg(windows)]
+impl HideWindow for std::process::Command {
+    fn hide_window(&mut self) -> &mut Self {
+        use std::os::windows::process::CommandExt;
+        self.creation_flags(0x0800_0000)
+    }
+}
+
+#[cfg(not(windows))]
+impl HideWindow for std::process::Command {
+    fn hide_window(&mut self) -> &mut Self {
+        self
+    }
+}
+
 fn restart_ide_impl(target: String) -> Result<String, String> {
     let t = if target == "auto" {
         detect_target_ide()
@@ -2010,7 +2029,7 @@ fn restart_ide_impl(target: String) -> Result<String, String> {
                 let mut pids: Vec<String> = Vec::new();
                 if let Ok(out) = Command::new("powershell")
                     .args(["-NoProfile", "-Command", &pid_script])
-                    .creation_flags(0x0800_0000)
+                    .hide_window()
                     .output()
                 {
                     for line in String::from_utf8_lossy(&out.stdout).lines() {
@@ -2026,7 +2045,7 @@ fn restart_ide_impl(target: String) -> Result<String, String> {
                 for pid in &pids {
                     if let Ok(out) = Command::new("taskkill")
                         .args(["/F", "/T", "/PID", pid])
-                        .creation_flags(0x0800_0000)
+                        .hide_window()
                         .output()
                     {
                         if !out.status.success() {
@@ -2057,7 +2076,7 @@ fn restart_ide_impl(target: String) -> Result<String, String> {
             // 用 taskkill /F /T /IM 杀整个进程树（含 renderer/GPU 子进程）
             if let Ok(out) = Command::new("taskkill")
                 .args(["/IM", image, "/F", "/T"])
-                .creation_flags(0x0800_0000)
+                .hide_window()
                 .output()
             {
                 if !out.status.success() {
@@ -2092,7 +2111,7 @@ fn restart_ide_impl(target: String) -> Result<String, String> {
                         "CSV",
                         "/NH",
                     ])
-                    .creation_flags(0x0800_0000)
+                    .hide_window()
                     .output()
                     .map(|out| String::from_utf8_lossy(&out.stdout).contains(image))
                     .unwrap_or(false)
@@ -2117,8 +2136,8 @@ fn restart_ide_impl(target: String) -> Result<String, String> {
             ));
         }
 
-        // 启动新 IDE 进程，设置 CREATE_NO_WINDOW 防止 CMD 窗口弹出
-        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        // 启动新 IDE 进程（hide_window() 在 Windows 上等价 CREATE_NO_WINDOW，
+        // 防止 CMD 窗口弹出；其它平台 no-op）
         let is_claude = t == "claude-desktop" || t == "claude";
         let is_msix_claude = is_claude && exe.to_string_lossy().contains("WindowsApps");
 
@@ -2126,7 +2145,7 @@ fn restart_ide_impl(target: String) -> Result<String, String> {
             // 商店版 Claude 必须通过 shell:AppsFolder 激活，不能直接 CreateProcess
             let _ = Command::new("explorer.exe")
                 .arg("shell:AppsFolder\\Claude_pzs8sxrjxfjjc!Claude")
-                .creation_flags(CREATE_NO_WINDOW)
+                .hide_window()
                 .spawn()
                 .map_err(|e| format!("启动 Claude 失败: {e}"))?;
             return Ok(format!("已重启 {}", ide_dir_name(&t)));
@@ -2135,7 +2154,7 @@ fn restart_ide_impl(target: String) -> Result<String, String> {
         let spawn_client = |args: &[&str]| -> Result<std::process::Child, String> {
             Command::new(&exe)
                 .args(args)
-                .creation_flags(CREATE_NO_WINDOW)
+                .hide_window()
                 .spawn()
                 .map_err(|e| format!("重启 {} 失败: {}", ide_dir_name(&t), e))
         };
@@ -2539,7 +2558,7 @@ pub(crate) fn is_ide_running_sync(name: String) -> bool {
         };
         if let Ok(out) = Command::new("powershell")
             .args(["-NoProfile", "-Command", &ps_query])
-            .creation_flags(0x0800_0000)
+            .hide_window()
             .output()
         {
             !out.stdout.is_empty()

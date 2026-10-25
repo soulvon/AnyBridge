@@ -366,6 +366,109 @@ section('提交卫生（不该提交的不提交）');
 }
 
 // ─────────────────────────────────────────────────────────────
+// [3.8] 路径可移植性（多平台兼容 / 不同用户名 / 不同安装位置）
+//      不写死盘符、不写死用户目录、不写死安装路径。
+//      参照 magpie：所有路径来自 dirs/appdir 抽象 + PathBuf::join。
+// ─────────────────────────────────────────────────────────────
+section('路径可移植性（禁止硬编码盘符/用户目录/安装路径）');
+{
+  // 硬编码模式：盘符绝对路径（C:\Program ...）、Windows 用户目录、Unix 用户目录
+  const HARDCODED = /([A-Za-z]:[\\/](?:Program|Users|Windows|ProgramData))|(C:[\\/]Users[\\/][A-Za-z0-9._-]+)|(\/[Uu]sers\/[A-Za-z0-9._-]+)|(\/home\/[A-Za-z0-9._-]+)/;
+  const isComment = (line) => /^\s*(\/\/|\/\*|\*|#|<!--|""")/.test(line);
+
+  const scanFiles = (dirs, exts) => {
+    const out = [];
+    for (const d of dirs) {
+      const full = path.join(root, d);
+      if (!fs.existsSync(full)) continue;
+      const walk = (cur, depth) => {
+        if (depth > 5) return;
+        for (const e of fs.readdirSync(cur, { withFileTypes: true })) {
+          if (['node_modules', 'target', '.git', 'tmp'].includes(e.name)) continue;
+          const p = path.join(cur, e.name);
+          if (e.isDirectory()) walk(p, depth + 1);
+          else if (exts.some(x => e.name.endsWith(x))) out.push(p);
+        }
+      };
+      walk(full, 0);
+    }
+    return out;
+  };
+
+  const violations = [];
+  for (const file of scanFiles(['src-tauri/src', 'ui/assets/scripts', 'ui-src'], ['.rs', '.js', '.mjs', '.html'])) {
+    const rel = file.replace(root + path.sep, '').split(path.sep).join('/');
+    const lines = fs.readFileSync(file, 'utf8').split('\n');
+    // Rust 文件：tests 模块之后全部豁免（测试样本路径是合法输入）
+    let testStart = -1;
+    if (file.endsWith('.rs')) {
+      const idx = lines.findIndex(l => /^\s*(#\[cfg\(test\)\]|mod tests)/.test(l));
+      if (idx >= 0) testStart = idx;
+    }
+    lines.forEach((line, i) => {
+      if (isComment(line)) return;
+      if (testStart >= 0 && i > testStart) return;
+      // 豁免：C:\Windows 是 OS 固定系统目录（SystemRoot 环境变量缺失时的
+      // 最后兜底），不属于「用户/安装路径硬编码」。
+      const probe = line.replace(/C:\\+Windows/gi, '');
+      if (!HARDCODED.test(probe)) return;
+      violations.push(`${rel}:${i + 1}`);
+    });
+  }
+  ok('生产代码无硬编码盘符/用户目录', violations.length === 0,
+    violations.slice(0, 6).join(', ') + (violations.length > 6 ? ` …共 ${violations.length} 处` : ''));
+
+  // 路径来源必须走 dirs / PathBuf::join（抽查关键目录解析函数是否用了 dirs）
+  const platSrc = fs.readFileSync(path.join(root, 'src-tauri/src/commands/platforms.rs'), 'utf8');
+  ok('平台配置目录解析使用 dirs 抽象', /dirs::(home_dir|data_dir|data_local_dir|config_dir)/.test(platSrc));
+}
+
+// ─────────────────────────────────────────────────────────────
+// [3.9] 平台守卫：Windows 专属 API 必须处于 cfg(windows) 上下文
+//      （将来加 macOS/Linux 目标时，未守卫的代码会直接编译失败）
+// ─────────────────────────────────────────────────────────────
+section('平台守卫（Windows API 需 cfg 守卫）');
+{
+  const WIN_API = /windows_sys::|creation_flags\(|CommandExt/;
+  const GUARD = /cfg\(\s*(windows|target_os\s*=\s*"windows")\s*\)/;
+  const unguarded = [];
+  let apiLines = 0;
+
+  const walk = (dir, depth) => {
+    if (depth > 5) return;
+    for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+      const p = path.join(dir, e.name);
+      if (e.isDirectory()) { walk(p, depth + 1); continue; }
+      if (!e.name.endsWith('.rs')) continue;
+      const lines = fs.readFileSync(p, 'utf8').split('\n');
+      lines.forEach((line, i) => {
+        if (!WIN_API.test(line) || isCommentLine(line)) return;
+        apiLines++;
+        // 向上 80 行内需有 cfg 守卫（覆盖函数级 / 块级 cfg）
+        const ctx = lines.slice(Math.max(0, i - 80), i + 2).join('\n');
+        if (!GUARD.test(ctx)) {
+          unguarded.push(`${p.replace(root + path.sep, '').split(path.sep).join('/')}:${i + 1}`);
+        }
+      });
+    }
+  };
+  const isCommentLine = (l) => /^\s*(\/\/|\/\*|\*)/.test(l);
+  walk(path.join(root, 'src-tauri/src'), 0);
+
+  // 白名单：UAC / 证书子系统整体是 Windows 语义（certutil + registry + ShellExecuteExW），
+  // 历史代码未做函数级 cfg。多平台化时需统一重构（提权在 mac 是 osascript、linux 是 pkexec）。
+  // 新文件一律不得进白名单——新增平台专属代码必须 cfg 守卫。
+  const PLATFORM_WHITELIST = new Set(['src-tauri/src/commands/cert_install.rs']);
+  const strict = unguarded.filter(x => !PLATFORM_WHITELIST.has(x.split(':')[0]));
+  const whitelisted = unguarded.filter(x => PLATFORM_WHITELIST.has(x.split(':')[0]));
+  if (whitelisted.length) {
+    console.log(`  ℹ 白名单（UAC/证书子系统，待多平台化）：${whitelisted.length} 处`);
+  }
+  ok(`Windows API 调用（${apiLines} 处）均在 cfg 守卫内（白名单除外）`, strict.length === 0,
+    strict.slice(0, 6).join(', ') + (strict.length > 6 ? ` …共 ${strict.length} 处` : ''));
+}
+
+// ─────────────────────────────────────────────────────────────
 // [4] 关键判据回归（出过事故的点，源码级断言）
 // ─────────────────────────────────────────────────────────────
 section('关键判据（源码级回归断言）');

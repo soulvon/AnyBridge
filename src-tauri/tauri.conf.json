@@ -26,18 +26,26 @@
     ],
     "security": {
       "csp": "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self' ipc: http://ipc.localhost; object-src 'none'; base-uri 'self'; frame-ancestors 'none'",
-      "dangerousDisableAssetCspModification": ["script-src", "style-src"]
+      "dangerousDisableAssetCspModification": [
+        "script-src",
+        "style-src"
+      ]
     }
   },
   "bundle": {
     "active": true,
-    "targets": "all",
+    "targets": [
+      "nsis",
+      "msi"
+    ],
     "createUpdaterArtifacts": true,
     "externalBin": [
       "binaries/anybridge-proxy",
       "binaries/anybridge-cursor-core"
     ],
-    "resources": ["resources/**/*"],
+    "resources": [
+      "resources/**/*"
+    ],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",

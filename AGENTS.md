@@ -38,6 +38,13 @@ npm run verify
 4. **兜底不得掩盖身份**：通用函数对未知输入必须显式拒绝（None/Error），
    禁止静默兜底到默认值；调用方对 id 列表循环调用前先用白名单自证身份
    （事故：Pi 页显示 Windsurf 版本，见坑点 `fallback-masks-identity`）。
+4.5 **路径不得写死 + 平台 API 必须守仓库**（多平台/多用户纪律）：
+   - 路径一律 `dirs::*` + `PathBuf::join`（用户名、盘符、安装位置全动态）
+   - 安装位置探测统一走 `find_ide_exe` 四层链 / `ide_app_dir`，不许自造
+   - Windows 专属 API（`creation_flags` / `windows_sys::`）必须处于
+     `#[cfg(windows)]` 上下文，跨平台能力用 trait 双实现（见 `HideWindow`）
+   - 检查脚本强制：生产代码禁硬编码盘符/用户目录；80 处 Windows API
+     逐一核验守卫（`cert_install` UAC 子系统在白名单，待多平台化重构）
 5. **只提交该提交的**：`git add` 精确指定文件，**不要用 `git add -A` / `git add .`**。
    以下永不入库：`tmp/`、`node_modules/`、`*-target/`、`*.log`、`*.bak`、
    `.env`（`.env.example` 除外）、`*.pem/*.key/*.pfx`、本地构建产物。
