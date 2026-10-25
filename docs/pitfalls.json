@@ -7,9 +7,17 @@
       "title": "workbench.html 不能用体积阈值判断损坏",
       "symptom": "Devin 原厂 workbench.html 只有 1.7KB（界面靠 workbench.js 加载），体积阈值会把健康文件判成损坏并拒绝注入",
       "lesson": "损坏判据必须用结构完整性（是否含 </body>），中断的写入一定写不到闭合标签；体积在合法文件间差异极大且残骸大小不可预测",
-      "check": { "type": "source_contains", "file": "src-tauri/src/commands/app_localization.rs", "must_contain": "fn is_valid_workbench" },
+      "check": {
+        "type": "source_contains",
+        "file": "src-tauri/src/commands/app_localization.rs",
+        "must_contain": "fn is_valid_workbench"
+      },
       "regression_test": "src-tauri/src/commands/app_localization.rs::small_but_valid_workbench_is_accepted",
-      "check_not": { "type": "source_not_regex", "file": "src-tauri/src/commands/app_localization.rs", "must_not_match": "MIN_VALID_WORKBENCH_LEN:\\s*usize\\s*=\\s*\\d{3,}" },
+      "check_not": {
+        "type": "source_not_regex",
+        "file": "src-tauri/src/commands/app_localization.rs",
+        "must_not_match": "MIN_VALID_WORKBENCH_LEN:\\s*usize\\s*=\\s*\\d{3,}"
+      },
       "severity": "high"
     },
     {
@@ -17,7 +25,11 @@
       "title": "语言包「已安装」必须覆盖完整生效链",
       "symptom": "只看扩展目录存在 → 目录在但被 .obsolete 标记 / 注册表指向第三方包 → 实际没生效，apply 跳过修复，界面回退英文",
       "lesson": "任何『是否已生效』的判定必须覆盖完整链路：文件存在 + 未被废弃标记 + 注册表指向正确 + 运行时配置生效",
-      "check": { "type": "source_contains", "file": "src-tauri/src/commands/app_localization.rs", "must_contain": "条件 2：不在 .obsolete" },
+      "check": {
+        "type": "source_contains",
+        "file": "src-tauri/src/commands/app_localization.rs",
+        "must_contain": "条件 2：不在 .obsolete"
+      },
       "severity": "high"
     },
     {
@@ -25,7 +37,11 @@
       "title": "成对逻辑（接入/还原、apply/restore）必须收敛到同一函数",
       "symptom": "改了 apply_antigravity 忘了 apply_antigravity_official；改了接入忘了还原 → 一半路径仍走慢/错逻辑",
       "lesson": "对称操作共用同一实现（如 kill_antigravity_language_server），结构上杜绝漏改；改任一处前必须先列全对称路径",
-      "check": { "type": "source_contains", "file": "src-tauri/src/commands/platforms.rs", "must_contain": "Self::kill_antigravity_language_server" },
+      "check": {
+        "type": "source_contains",
+        "file": "src-tauri/src/commands/platforms.rs",
+        "must_contain": "Self::kill_antigravity_language_server"
+      },
       "severity": "high"
     },
     {
@@ -33,7 +49,11 @@
       "title": "内联脚本必须带 CSP nonce",
       "symptom": "Devin 的 CSP 含 nonce → 'unsafe-inline' 被忽略 → 注入脚本从未执行（汉化『注入了但不生效』）",
       "lesson": "注入内联 script 前先提取 CSP nonce 并带上；无 nonce 的平台退回普通标签",
-      "check": { "type": "source_contains", "file": "src-tauri/src/commands/app_localization.rs", "must_contain": "extract_csp_nonce" },
+      "check": {
+        "type": "source_contains",
+        "file": "src-tauri/src/commands/app_localization.rs",
+        "must_contain": "extract_csp_nonce"
+      },
       "severity": "high"
     },
     {
@@ -41,7 +61,11 @@
       "title": "持锁后不得调用会再次加锁的函数",
       "symptom": "keeper 线程持 inject_lock 后调 apply，apply 内部再加同一把锁 → 不可重入死锁，并阻塞用户的汉化请求",
       "lesson": "加锁入口与无锁内部实现分离（apply / apply_inner），并在注释里写明锁纪律",
-      "check": { "type": "source_contains", "file": "src-tauri/src/commands/app_localization.rs", "must_contain": "fn apply_inner" },
+      "check": {
+        "type": "source_contains",
+        "file": "src-tauri/src/commands/app_localization.rs",
+        "must_contain": "fn apply_inner"
+      },
       "severity": "high"
     },
     {
@@ -49,7 +73,11 @@
       "title": "同步 Tauri command 阻塞主线程",
       "symptom": "点汉化/接入后界面冻结转圈（语言包网络请求、PowerShell CIM 查询在主线程执行）",
       "lesson": "含 IO/子进程/网络的命令一律 async + spawn_blocking；对称的 apply/restore 必须同时改",
-      "check": { "type": "source_contains", "file": "src-tauri/src/commands/app_localization.rs", "must_contain": "pub async fn apply_app_localization" },
+      "check": {
+        "type": "source_contains",
+        "file": "src-tauri/src/commands/app_localization.rs",
+        "must_contain": "pub async fn apply_app_localization"
+      },
       "severity": "high"
     },
     {
@@ -57,7 +85,11 @@
       "title": "BYOK 还原必须剥离式而非整体覆盖",
       "symptom": "从备份整体覆盖 workbench.html 会把汉化块一起抹掉",
       "lesson": "还原只剥离自己的块，保留其它注入块；并用单测锁住该行为",
-      "check": { "type": "source_contains", "file": "src-tauri/src/commands/workbench_inject.rs", "must_contain": "汉化块必须保留" },
+      "check": {
+        "type": "source_contains",
+        "file": "src-tauri/src/commands/workbench_inject.rs",
+        "must_contain": "汉化块必须保留"
+      },
       "regression_test": "src-tauri/src/commands/workbench_inject.rs::strips_byok_block_and_keeps_hans_block",
       "severity": "high"
     },
@@ -66,7 +98,11 @@
       "title": "进程查询不要用 PowerShell Get-CimInstance",
       "symptom": "CIM/WMI 查询 1-3 秒，每次接入/还原都要等（表现为点击后卡顿）",
       "lesson": "改用原生 Toolhelp32 枚举进程 + 路径比对；保留原有路径过滤语义避免误杀同名进程",
-      "check": { "type": "source_not_regex", "file": "src-tauri/src/commands/platforms.rs", "must_not_match": "Get-CimInstance\\s+Win32_Process" },
+      "check": {
+        "type": "source_not_regex",
+        "file": "src-tauri/src/commands/platforms.rs",
+        "must_not_match": "Get-CimInstance\\s+Win32_Process"
+      },
       "severity": "medium"
     },
     {
@@ -74,7 +110,11 @@
       "title": "善后刷新不得挡在用户反馈（弹窗/警告）前面",
       "symptom": "点接入后卡 1-2 秒才弹重启确认窗",
       "lesson": "先给反馈，后刷新；刷新数据来源是 invoke 已返回的 report，后置安全",
-      "check": { "type": "source_contains", "file": "ui/assets/scripts/55-platforms.js", "must_contain": "重启确认是用户点这一下的第一诉求" },
+      "check": {
+        "type": "source_contains",
+        "file": "ui/assets/scripts/55-platforms.js",
+        "must_contain": "重启确认是用户点这一下的第一诉求"
+      },
       "severity": "medium"
     },
     {
@@ -82,7 +122,11 @@
       "title": "argv.json 是 JSONC（带 // 注释），不能纯 JSON 解析",
       "symptom": "JSON.parse 失败 → 误判 locale 未设置；解析失败时用空对象覆盖会丢用户配置",
       "lesson": "剥注释后再解析；解析失败必须报错中止，绝不覆盖原文件",
-      "check": { "type": "source_contains", "file": "src-tauri/src/commands/app_localization.rs", "must_contain": "fn parse_jsonc" },
+      "check": {
+        "type": "source_contains",
+        "file": "src-tauri/src/commands/app_localization.rs",
+        "must_contain": "fn parse_jsonc"
+      },
       "regression_test": "src-tauri/src/commands/app_localization.rs::parses_jsonc_argv",
       "severity": "medium"
     },
@@ -91,7 +135,11 @@
       "title": "客户端重装/升级会重置外部状态，幂等修复的前提会被破坏",
       "symptom": "重装 Devin 后 .obsolete 重新标记、注册表指回第三方包，而 apply 因『判定为已安装』跳过修复",
       "lesson": "『已安装』判定要能识别重置态；保活/重入时要能自动修复，而不是假定环境不变",
-      "check": { "type": "source_contains", "file": "src-tauri/src/commands/app_localization.rs", "must_contain": "条件 3：languagepacks.json" },
+      "check": {
+        "type": "source_contains",
+        "file": "src-tauri/src/commands/app_localization.rs",
+        "must_contain": "条件 3：languagepacks.json"
+      },
       "severity": "high"
     },
     {
@@ -99,7 +147,11 @@
       "title": "临时文件散落根目录/源码目录",
       "symptom": "根目录堆了 80 个 .tmp_* 脚本与日志，仓库可读性崩坏，且容易误提交",
       "lesson": "诊断/构建临时脚本一律放 tmp/（gitignore 忽略）；运行日志固定写 tmp/tauri-run.log；检查脚本强制校验根目录与源码目录",
-      "check": { "type": "source_contains", "file": "scripts/check-key-features.mjs", "must_contain": "临时文件纪律" },
+      "check": {
+        "type": "source_contains",
+        "file": "scripts/check-key-features.mjs",
+        "must_contain": "临时文件纪律"
+      },
       "severity": "low"
     },
     {
@@ -107,7 +159,11 @@
       "title": "通用函数的兜底分支会掩盖调用方身份错误（兜底掩盖问题不允许）",
       "symptom": "find_ide_exe('pi') 走 else 默认分支返回 Windsurf 路径，Pi/Hermes 页显示 Windsurf 的版本号 v1.110.1，数据错得悄无声息",
       "lesson": "对未知输入必须显式拒绝（None/Error），禁止静默兜底到默认值。两类防线：①通用函数的默认分支只服务其文档明确支持的输入；②调用方（尤其对平台 id 列表循环调用的场景）必须先用白名单自证身份，再调通用函数。修复时配套单测钉死（gui_probe_returns_none_for_platforms_without_source）",
-      "check": { "type": "source_contains", "file": "src-tauri/src/commands/version_probe.rs", "must_contain": "白名单守卫" },
+      "check": {
+        "type": "source_contains",
+        "file": "src-tauri/src/commands/version_probe.rs",
+        "must_contain": "白名单守卫"
+      },
       "severity": "high"
     },
     {
@@ -115,7 +171,11 @@
       "title": "验证脚本的『真相源』复用被测实现的假设（自我印证，永远绿灯）",
       "symptom": "版本探测读 product.json 的 version，verify 脚本的 truth 也读同一字段——即使字段语义错（把引擎版本当产品版本），对照表也永远显示一致，测试形同虚设",
       "lesson": "真相源必须来自**独立的第二条路径**：GUI 产品版本用 exe 的 PE VersionInfo（Windows 资源，完全不读 product.json）、包管理视角用 npm ls、外部权威用官方注册表/关于页。发现手段：拿用户可见的『关于对话框』人工核对一次，凡是与它不一致就是取值错。产品版本在 VS Code fork 里要按专有字段取（windsurfVersion / ideVersion），version 通常是引擎版本",
-      "check": { "type": "source_contains", "file": "scripts/verify-version-probe.mjs", "must_contain": "PE VersionInfo" },
+      "check": {
+        "type": "source_contains",
+        "file": "scripts/verify-version-probe.mjs",
+        "must_contain": "PE VersionInfo"
+      },
       "severity": "high"
     },
     {
@@ -123,7 +183,11 @@
       "title": "硬编码盘符/用户目录/安装路径（多平台与多用户必炸）",
       "symptom": "路径写成 C:\\Users\\admin\\... 或 E:\\Program\\Windsurf，换用户/换盘符/换平台直接失效",
       "lesson": "所有路径必须由 dirs 抽象（home_dir/data_dir/data_local_dir）+ PathBuf::join 组合；安装位置用动态探测（find_ide_exe 四层链）。检查脚本对生产代码（src-tauri/src、ui/assets/scripts、ui-src）强校验，注释与 tests 模块豁免，C:\\Windows 系统目录兜底豁免",
-      "check": { "type": "source_contains", "file": "scripts/check-key-features.mjs", "must_contain": "路径可移植性" },
+      "check": {
+        "type": "source_contains",
+        "file": "scripts/check-key-features.mjs",
+        "must_contain": "路径可移植性"
+      },
       "severity": "high"
     },
     {
@@ -131,7 +195,11 @@
       "title": "平台专属 API 未加 cfg 守卫（跨平台编译必炸）",
       "symptom": "creation_flags / windows_sys:: / CommandExt 直接用在无 #[cfg(windows)] 的函数里，mac/linux 编译直接失败",
       "lesson": "平台专属能力要么用 trait 抽象双实现（HideWindow 模式：Windows 用 CREATE_NO_WINDOW、其它 no-op），要么整函数 #[cfg] 守卫。检查脚本核验 80 处 Windows API 调用均在 cfg 上下文内；cert_install（UAC/证书子系统）列入白名单待多平台化时重构",
-      "check": { "type": "source_contains", "file": "src-tauri/src/commands/system.rs", "must_contain": "trait HideWindow" },
+      "check": {
+        "type": "source_contains",
+        "file": "src-tauri/src/commands/system.rs",
+        "must_contain": "trait HideWindow"
+      },
       "severity": "high"
     },
     {
@@ -139,7 +207,11 @@
       "title": "读失败 = 未知，绝不当「否」处理",
       "symptom": "来源 magpie LESSONS #8：IP 白名单文件读取失败被当「无白名单」处理 → 放行所有地址；reset 计数文件读不出被当「没花过」",
       "lesson": "任何「读取配置/状态文件」失败时，语义必须是『未知』并走保守路径（提示用户/保持现状/触发修复），绝不能静默当作否定值（false/0/空列表）继续往下走。语言包判定读失败 → 视为未安装走修复流程是对的；但安全类判定（白名单、配额）读失败绝不能放行",
-      "check": { "type": "source_contains", "file": "docs/WORKFLOW.md", "must_contain": "读失败" },
+      "check": {
+        "type": "source_contains",
+        "file": "docs/WORKFLOW.md",
+        "must_contain": "读失败"
+      },
       "severity": "high"
     },
     {
@@ -147,7 +219,11 @@
       "title": "GUI 程序 spawn 控制台子进程必须 CREATE_NO_WINDOW",
       "symptom": "来源 magpie（proc/proc.go 包注释）：Windows GUI 程序（无控制台）每 spawn 一个 CLI（powershell/taskkill/reg/tasklist）就会弹一个黑色控制台窗，一闪而过极扎眼",
       "lesson": "Windows 上所有子进程统一加 creation_flags(0x0800_0000)（CREATE_NO_WINDOW）；新增 spawn 点必须带，审计脚本已验证全项目 30 处覆盖",
-      "check": { "type": "source_contains", "file": "scripts/check-key-features.mjs", "must_contain": "提交卫生" },
+      "check": {
+        "type": "source_contains",
+        "file": "scripts/check-key-features.mjs",
+        "must_contain": "提交卫生"
+      },
       "severity": "medium"
     },
     {
@@ -155,7 +231,11 @@
       "title": "后台轮询必须带可见性守卫",
       "symptom": "来源 magpie：窗口最小化/遮挡时轮询照跑，白白消耗资源；大量轮询任务还会拖慢前台响应",
       "lesson": "setInterval 驱动的状态刷新都要先判 document.hidden；恢复可见时立即补一次刷新（visibilitychange 监听）",
-      "check": { "type": "source_contains", "file": "ui/assets/scripts/20-runtime.js", "must_contain": "document.hidden" },
+      "check": {
+        "type": "source_contains",
+        "file": "ui/assets/scripts/20-runtime.js",
+        "must_contain": "document.hidden"
+      },
       "severity": "medium"
     },
     {
@@ -163,7 +243,11 @@
       "title": "Responses 假流式必须发出 function_call 的 output_item 事件",
       "symptom": "openai 上游返回 tool_calls 时只给 message，result.toolCalls 被丢弃，Cursor/Agent 收到空回复",
       "lesson": "responseObject 必须包含 function_call；sendOpenAIResponses 的 ctx.stream 分支必须为每个附加输出项发送 added/done，且 output_index 从 1 开始。行为由完整 SSE 事件序列测试锁定",
-      "check": { "type": "source_contains", "file": "sidecar/local-proxy.test.js", "must_contain": "sendOpenAIResponses: 假流式必须发送 function_call 的完整 output_item 事件" },
+      "check": {
+        "type": "source_contains",
+        "file": "sidecar/local-proxy.test.js",
+        "must_contain": "sendOpenAIResponses: 假流式必须发送 function_call 的完整 output_item 事件"
+      },
       "regression_test": "sidecar/local-proxy.test.js::sendOpenAIResponses: 假流式必须发送 function_call 的完整 output_item 事件",
       "severity": "high"
     },
@@ -172,8 +256,24 @@
       "title": "本地代理一条别名冲突不得毒化全部模型路由",
       "symptom": "命名规则渲染出的别名与另一条路由字面 ID 相同时曾直接 throw，导致包括无关模型在内的所有解析 502",
       "lesson": "查找表两段式构建：字面 ID 优先且真重复必须报错；渲染别名冲突跳过并告警，不放大为全局故障。行为由事故配置复刻测试锁定",
-      "check": { "type": "source_contains", "file": "sidecar/local-proxy.test.js", "must_contain": "buildExposedIdLookup: 字面 ID 优先,渲染别名冲突跳过并告警,不再毒化全局" },
+      "check": {
+        "type": "source_contains",
+        "file": "sidecar/local-proxy.test.js",
+        "must_contain": "buildExposedIdLookup: 字面 ID 优先,渲染别名冲突跳过并告警,不再毒化全局"
+      },
       "regression_test": "sidecar/local-proxy.test.js::buildExposedIdLookup: 字面 ID 优先,渲染别名冲突跳过并告警,不再毒化全局",
+      "severity": "high"
+    },
+    {
+      "id": "wrong-npm-package",
+      "title": "npm 包名“看起来像”就填——会装错产品",
+      "symptom": "grok 的 npm 包填成 @vibe-kit/grok-cli（第三方 0.0.34），而本机是 xAI 官方 grok CLI 1.0.30；点更新会装上另一个产品",
+      "lesson": "凡声明 npm 包，必须先 `npm view <pkg> version` 核对该包最新版本与用户实际安装版本是否同一产品线；同一产品若有官方自更新命令（claude/codex/grok/pi/hermes 均支持 `xxx update`），优先走官方命令，npm 仅作回退。桌面 IDE 一律不得填同名 CLI 的 npm 包（CodeBuddy IDE 1.106.1 vs CLI 2.171.0）",
+      "check": {
+        "type": "source_contains",
+        "file": "src-tauri/src/commands/agent_spec.rs",
+        "must_contain": "无 npm 包"
+      },
       "severity": "high"
     }
   ]
