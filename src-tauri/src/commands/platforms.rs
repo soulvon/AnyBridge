@@ -226,7 +226,7 @@ pub struct SwitchResult {
 
 // ─── 平台抽象 ──────────────────────────────────────────────────
 
-enum Platform {
+pub(crate) enum Platform {
     Antigravity,
     AntigravityIde,
     ClaudeCode,
@@ -243,7 +243,7 @@ enum Platform {
 }
 
 impl Platform {
-    fn from_id(id: &str) -> Option<Self> {
+    pub(crate) fn from_id(id: &str) -> Option<Self> {
         match id {
             PLATFORM_ANTIGRAVITY => Some(Platform::Antigravity),
             PLATFORM_ANTIGRAVITY_IDE => Some(Platform::AntigravityIde),
@@ -262,7 +262,7 @@ impl Platform {
         }
     }
 
-    fn id(&self) -> &'static str {
+    pub(crate) fn id(&self) -> &'static str {
         match self {
             Platform::Antigravity => PLATFORM_ANTIGRAVITY,
             Platform::AntigravityIde => PLATFORM_ANTIGRAVITY_IDE,
@@ -280,128 +280,31 @@ impl Platform {
         }
     }
 
-    fn display_name(&self) -> &'static str {
-        match self {
-            Platform::Antigravity => "Antigravity",
-            Platform::AntigravityIde => "Antigravity IDE",
-            Platform::ClaudeCode => "Claude Code",
-            Platform::ClaudeDesktop => "Claude Desktop",
-            Platform::Codex => "Codex",
-            Platform::CodeBuddy => "CodeBuddy",
-            Platform::Grok => "Grok",
-            Platform::OpenCode => "OpenCode",
-            Platform::WorkBuddy => "WorkBuddy",
-            Platform::ZCode => "ZCode",
-            Platform::Pi => "Pi",
-            Platform::Hermes => "Hermes",
-            Platform::DeepSeekHarness => "DeepSeek Harness",
-        }
+    pub(crate) fn display_name(&self) -> &'static str {
+        // 元数据单一真源：agent_spec::AGENTS（新增平台只需加一条声明）
+        super::agent_spec::find(self.id()).map(|s| s.name).unwrap_or("Unknown")
     }
 
-    fn vendor(&self) -> &'static str {
-        match self {
-            Platform::Antigravity | Platform::AntigravityIde => "Google",
-            Platform::ClaudeCode | Platform::ClaudeDesktop => "Anthropic",
-            Platform::Codex => "OpenAI",
-            Platform::CodeBuddy => "Tencent Cloud",
-            Platform::Grok => "xAI",
-            Platform::OpenCode => "OpenCode",
-            Platform::WorkBuddy => "Tencent Cloud",
-            Platform::ZCode => "Z.AI",
-            Platform::Pi => "Earendil Works",
-            Platform::Hermes => "Nous Research",
-            Platform::DeepSeekHarness => "DeepSeek",
-        }
+    pub(crate) fn vendor(&self) -> &'static str {
+        super::agent_spec::find(self.id()).map(|s| s.vendor).unwrap_or("Unknown")
     }
 
     /// 该平台需要的中转站协议格式。
-    fn required_api_format(&self) -> &'static str {
-        match self {
-            Platform::ClaudeCode | Platform::ClaudeDesktop => "anthropic",
-            Platform::Antigravity
-            | Platform::AntigravityIde
-            | Platform::Codex
-            | Platform::CodeBuddy
-            | Platform::Grok
-            | Platform::OpenCode
-            | Platform::WorkBuddy
-            | Platform::Pi
-            | Platform::Hermes
-            | Platform::DeepSeekHarness
-            | Platform::ZCode => "openai",
-        }
+    pub(crate) fn required_api_format(&self) -> &'static str {
+        super::agent_spec::find(self.id())
+            .map(|s| s.api_format)
+            .unwrap_or("openai")
     }
 
     /// 配置目录（用于检测是否安装）。
-    fn config_dir(&self) -> Option<PathBuf> {
-        match self {
-            Platform::Antigravity => antigravity_hub_config_dir(),
-            Platform::AntigravityIde => antigravity_ide_config_dir(),
-            Platform::ClaudeDesktop => super::claude_desktop::current_platform_paths()
-                .ok()
-                .map(|p| p.threep_dir),
-            Platform::Codex => codex_home(),
-            Platform::Hermes => Some(hermes_config_dir()?),
-            Platform::DeepSeekHarness => Some(deepseek_harness_home()?),
-            Platform::ClaudeCode
-            | Platform::CodeBuddy
-            | Platform::Grok
-            | Platform::OpenCode
-            | Platform::WorkBuddy
-            | Platform::ZCode
-            | Platform::Pi => {
-                let home = dirs::home_dir()?;
-                Some(match self {
-                    Platform::ClaudeCode => home.join(".claude"),
-                    Platform::CodeBuddy => home.join(".codebuddy"),
-                    Platform::Grok => home.join(".grok"),
-                    Platform::OpenCode => home.join(".config").join("opencode"),
-                    Platform::WorkBuddy => home.join(".workbuddy"),
-                    Platform::ZCode => home.join(".zcode"),
-                    Platform::Pi => home.join(".pi").join("agent"),
-                    Platform::Antigravity
-                    | Platform::AntigravityIde
-                    | Platform::ClaudeDesktop
-                    | Platform::Codex
-                    | Platform::Hermes
-                    | Platform::DeepSeekHarness => unreachable!(),
-                })
-            }
-        }
+    pub(crate) fn config_dir(&self) -> Option<PathBuf> {
+        // 路径解析统一走声明（模板展开 / 复用既有定位函数）
+        super::agent_spec::find(self.id())?.resolve_config_dir()
     }
 
     /// 配置文件路径。
-    fn config_path(&self) -> Option<PathBuf> {
-        match self {
-            Platform::ClaudeDesktop => super::claude_desktop::current_platform_paths()
-                .ok()
-                .map(|p| p.threep_config_path),
-            _ => {
-                let dir = self.config_dir()?;
-                Some(match self {
-                    Platform::Antigravity | Platform::AntigravityIde => dir.join("settings.json"),
-                    Platform::ClaudeCode => dir.join("settings.json"),
-                    Platform::Codex => dir.join("config.toml"),
-                    Platform::CodeBuddy => dir.join("models.json"),
-                    Platform::Grok => dir.join("config.toml"),
-                    Platform::OpenCode => {
-                        let json = dir.join("opencode.json");
-                        let jsonc = dir.join("opencode.jsonc");
-                        if !json.exists() && jsonc.exists() {
-                            jsonc
-                        } else {
-                            json
-                        }
-                    }
-                    Platform::WorkBuddy => dir.join("models.json"),
-                    Platform::ZCode => dir.join("v2").join("config.json"),
-                    Platform::Pi => dir.join("models.json"),
-                    Platform::Hermes => dir.join("config.yaml"),
-                    Platform::DeepSeekHarness => dir.join("settings.yaml"),
-                    Platform::ClaudeDesktop => unreachable!(),
-                })
-            }
-        }
+    pub(crate) fn config_path(&self) -> Option<PathBuf> {
+        super::agent_spec::find(self.id())?.resolve_config_path()
     }
 
     fn opencode_auth_path(&self) -> Option<PathBuf> {
@@ -2285,7 +2188,7 @@ fn write_pi_managed_models(models_path: &PathBuf, entries: &[Value]) -> Result<(
 // 文件其余内容（注释、空行、其它配置）逐字保留。
 
 /// Hermes 配置目录：HERMES_HOME > Windows `%LOCALAPPDATA%\hermes` > `~/.hermes`。
-fn hermes_config_dir() -> Option<PathBuf> {
+pub(crate) fn hermes_config_dir() -> Option<PathBuf> {
     if let Ok(dir) = std::env::var("HERMES_HOME") {
         let dir = dir.trim();
         if !dir.is_empty() {
@@ -2305,7 +2208,7 @@ fn hermes_config_dir() -> Option<PathBuf> {
 }
 
 /// DeepSeek Harness home：DSH_HOME > `~/.dsh`。
-fn deepseek_harness_home() -> Option<PathBuf> {
+pub(crate) fn deepseek_harness_home() -> Option<PathBuf> {
     if let Ok(dir) = std::env::var("DSH_HOME") {
         let dir = dir.trim();
         if !dir.is_empty() {
@@ -3440,7 +3343,7 @@ fn vscode_like_data_dir() -> Option<PathBuf> {
     }
 }
 
-fn antigravity_hub_config_dir() -> Option<PathBuf> {
+pub(crate) fn antigravity_hub_config_dir() -> Option<PathBuf> {
     let data_dir = vscode_like_data_dir()?;
     let app_user = data_dir.join("Antigravity").join("User");
     if app_user.exists() {
@@ -3453,7 +3356,7 @@ fn antigravity_hub_config_dir() -> Option<PathBuf> {
     Some(app_user)
 }
 
-fn antigravity_ide_config_dir() -> Option<PathBuf> {
+pub(crate) fn antigravity_ide_config_dir() -> Option<PathBuf> {
     let data_dir = vscode_like_data_dir()?;
     let ide_user = data_dir.join("Antigravity IDE").join("User");
     if ide_user.exists() {
@@ -7148,6 +7051,9 @@ pub struct PlatformUpdateInfo {
     pub latest_version: Option<String>,
     pub has_update: bool,
     pub npm_package: Option<String>,
+    /// 环境是否允许一键安装/更新（npm 可用 + 全局前缀免提权可写）。
+    /// false 时前端不展示按钮，只显示「未安装」/纯版本号。
+    pub can_auto_update: bool,
 }
 
 #[tauri::command]
@@ -7202,6 +7108,10 @@ pub async fn check_platform_update(platform: String) -> Result<PlatformUpdateInf
         _ => false,
     };
 
+    // 一键安装/更新的能力位：有 npm 包 + 环境可写（探针缓存 5 分钟）
+    let can_auto_update =
+        npm_package.is_some() && super::version_probe::npm_install_capability();
+
     Ok(PlatformUpdateInfo {
         platform: plat_id,
         installed,
@@ -7209,6 +7119,7 @@ pub async fn check_platform_update(platform: String) -> Result<PlatformUpdateInf
         latest_version: latest,
         has_update,
         npm_package,
+        can_auto_update,
     })
 }
 
@@ -7252,6 +7163,7 @@ pub async fn update_platform_agent(platform: String) -> Result<PlatformUpdateInf
     };
 
     invalidate_detect_cache();
+    let can_auto_update = super::version_probe::npm_install_capability();
     Ok(PlatformUpdateInfo {
         platform: plat_id,
         installed: current_version.is_some(),
@@ -7259,6 +7171,58 @@ pub async fn update_platform_agent(platform: String) -> Result<PlatformUpdateInf
         latest_version,
         has_update,
         npm_package: Some(npm_package),
+        can_auto_update,
+    })
+}
+
+/// 安装引导（magpie 的克制原则：**不代跑安装**，只给可复制命令）。
+///
+/// - CLI 平台：`npm install -g <pkg>`（包名取自 cli_spec，与版本/更新共用同一份定义）
+/// - npm 不在 PATH：附带 Node 引导命令（winget）
+/// - GUI 客户端：官方下载页
+#[derive(serde::Serialize)]
+pub struct PlatformInstallGuide {
+    pub platform: String,
+    /// 可复制的安装命令（CLI 平台）
+    pub command: Option<String>,
+    /// Node 缺失时的引导命令
+    pub node_hint: Option<String>,
+    /// GUI 客户端的官方下载页
+    pub official_url: Option<String>,
+}
+
+#[tauri::command]
+pub fn get_platform_install_guide(platform: String) -> Result<PlatformInstallGuide, String> {
+    let command = Platform::from_id(&platform)
+        .and_then(|p| super::version_probe::cli_spec(p.id()))
+        .and_then(|s| s.npm_package)
+        .map(|pkg| format!("npm install -g {}", pkg));
+
+    let official_url = match platform.as_str() {
+        "windsurf" => Some("https://windsurf.com/download".to_string()),
+        "devin" => Some("https://devin.ai".to_string()),
+        "cursor" => Some("https://cursor.com/downloads".to_string()),
+        "antigravity" | "antigravity-ide" => Some("https://antigravity.google/download".to_string()),
+        "claude-desktop" => Some("https://claude.com/download".to_string()),
+        _ => None,
+    };
+
+    // Node 缺失时才给引导链（有 Node 就不多嘴）
+    let node_hint = if command.is_some() && super::version_probe::find_tool("npm").is_none() {
+        Some("winget install OpenJS.NodeJS.LTS".to_string())
+    } else {
+        None
+    };
+
+    if command.is_none() && official_url.is_none() {
+        return Err(format!("{platform} 暂无安装方式"));
+    }
+
+    Ok(PlatformInstallGuide {
+        platform,
+        command,
+        node_hint,
+        official_url,
     })
 }
 

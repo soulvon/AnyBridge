@@ -47,6 +47,14 @@ npm run verify
 4. **兜底不得掩盖身份**：通用函数对未知输入必须显式拒绝（None/Error），
    禁止静默兜底到默认值；调用方对 id 列表循环调用前先用白名单自证身份
    （事故：Pi 页显示 Windsurf 版本，见坑点 `fallback-masks-identity`）。
+4.2 **新增 Agent = 一条声明**（扩展入口，`src-tauri/src/commands/agent_spec.rs`）：
+   - 元数据（id/名称/厂商/API 格式/配置路径/CLI bin/npm 包/官网）唯一真源在
+     `AGENTS` 表；新增「配置式 agent」只需照抄同族条目加一条
+   - `PathSource::Template("~/.xxx")` = 标准路径；特殊平台用
+     `PathSource::Resolver(既有定位函数)`，**不要写第二套探测**
+   - 脚手架：`node scripts/new-agent.mjs <id>` → 打印模板与自查清单
+   - 校验：`npm run check:features`（声明完整性）+ 单测 `metadata_snapshot`
+     （关键字段快照，改错立刻红）+ `npm run verify:versions`（探测对照）
 4.5 **路径不得写死 + 平台 API 必须守仓库**（多平台/多用户纪律）：
    - 路径一律 `dirs::*` + `PathBuf::join`（用户名、盘符、安装位置全动态）
    - 安装位置探测统一走 `find_ide_exe` 四层链 / `ide_app_dir`，不许自造

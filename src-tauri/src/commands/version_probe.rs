@@ -18,6 +18,7 @@ use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
 /// CLI 探测规格（类似 magpie 的 cliSpecs）。
+#[derive(Debug)]
 pub struct CliSpec {
     pub bin: &'static str,
     pub npm_package: Option<&'static str>,
@@ -293,6 +294,38 @@ pub fn installed_cli_version(platform_id: &str) -> Option<String> {
     }
     cache_put(key, version.clone());
     version
+}
+
+/// npm 全局安装能力探针（缓存 5 分钟）：
+/// ① npm 在 PATH ② 全局前缀**可写**（免 UAC）。
+/// 只有两项都满足才在 UI 上展示「一键安装/更新」——不能成功的动作不该展示。
+pub fn npm_install_capability() -> bool {
+    let key = "npm:install-capable";
+    if let Some(hit) = cache_get(key, Duration::from_secs(300)) {
+        return hit.as_deref() == Some("1");
+    }
+    let ok = (|| -> bool {
+        if find_tool("npm").is_none() {
+            return false;
+        }
+        let Some(prefix) = npm_global_prefix() else {
+            return false;
+        };
+        // 写探针：能建临时文件即免提权可写（Program Files 下会失败）
+        let probe = prefix.join(".anybridge-write-probe");
+        match std::fs::write(&probe, b"1") {
+            Ok(_) => {
+                let _ = std::fs::remove_file(&probe);
+                true
+            }
+            Err(_) => false,
+        }
+    })();
+    cache_put(
+        key.to_string(),
+        Some(if ok { "1".into() } else { "0".into() }),
+    );
+    ok
 }
 
 /// npm 全局前缀（缓存 5 分钟；`npm prefix -g` 单次 1s+）。

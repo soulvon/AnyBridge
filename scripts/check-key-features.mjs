@@ -469,6 +469,38 @@ section('平台守卫（Windows API 需 cfg 守卫）');
 }
 
 // ─────────────────────────────────────────────────────────────
+// [3.10] Agent 声明表（社区扩展入口的完整性）
+//   新增 agent = 一个 spec 条目；这里强制每条声明字段完整、
+//   id 唯一、与既有 Platform 对齐（Rust 侧 registry_is_valid 单测兜底语义）
+// ─────────────────────────────────────────────────────────────
+section('Agent 声明表（扩展入口）');
+{
+  const specPath = path.join(root, 'src-tauri/src/commands/agent_spec.rs');
+  ok('AgentSpec 声明模块存在', fs.existsSync(specPath));
+  if (fs.existsSync(specPath)) {
+    const src = fs.readFileSync(specPath, 'utf8');
+    ok('声明表 AGENTS 存在', /pub static AGENTS: &\[AgentSpec\]/.test(src));
+
+    const ids = [...src.matchAll(/\n\s+id: "([a-z0-9-]+)"/g)].map(m => m[1]);
+    const uniq = new Set(ids);
+    ok('声明 id 唯一', ids.length === uniq.size,
+      ids.length !== uniq.size ? '存在重复 id' : '');
+    ok('内置平台声明齐全（≥13）', ids.length >= 13, `实际 ${ids.length}`);
+
+    // 每条声明必须有 family / config_dir / config_file / api_format
+    const blocks = src.split('AgentSpec {').slice(1).filter(b => /\n\s+id: "/.test(b));
+    const incomplete = blocks.filter(
+      b => !/family: Family::/.test(b) || !/config_dir: PathSource::/.test(b) || !/config_file: FileSource::/.test(b) || !/api_format: "/.test(b)
+    );
+    ok('每条声明字段完整（family/config_dir/config_file/api_format）', incomplete.length === 0,
+      incomplete.length ? `${incomplete.length} 条不完整` : '');
+
+    // 新增 agent 的脚手架必须存在（降低社区 PR 门槛）
+    ok('扩展脚手架 scripts/new-agent.mjs 存在', fs.existsSync(path.join(root, 'scripts/new-agent.mjs')));
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
 // [4] 关键判据回归（出过事故的点，源码级断言）
 // ─────────────────────────────────────────────────────────────
 section('关键判据（源码级回归断言）');
