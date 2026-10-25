@@ -44,8 +44,8 @@ function warn(name, detail = '') {
 function section(name) { console.log(`\n■ ${name}`); }
 
 // ─────────────────────────────────────────────────────────────
-// [0] 开头先亮出坑点清单 —— 人和 AI 在改代码前就该看到，
-//     而不是等提交被拦下才知道踩了旧坑。
+// [0] 开头先亮出坑点与核心能力清单 —— 人和 AI 在改代码前就该看到，
+//     而不是等提交被拦下才知道踩了旧坑或重复造了轮子。
 // ─────────────────────────────────────────────────────────────
 {
   const pfPath = path.join(root, 'docs', 'pitfalls.json');
@@ -55,6 +55,17 @@ function section(name) { console.log(`\n■ ${name}`); }
     pf.pitfalls.forEach((p, i) => {
       console.log(`   ${String(i + 1).padStart(2)}. [${p.severity}] ${p.title}`);
     });
+    console.log('');
+  }
+  const capPath = path.join(root, 'docs', 'capabilities.md');
+  if (fs.existsSync(capPath)) {
+    console.log(`🛡️ 核心能力清单（改动前必查 docs/capabilities.md，严禁重复造轮子）：`);
+    const capContent = fs.readFileSync(capPath, 'utf8');
+    const matches = capContent.matchAll(/\|\s*\*\*([^*]+)\*\*\s*\|\s*`([^`]+)`/g);
+    let idx = 1;
+    for (const m of matches) {
+      console.log(`   ${String(idx++).padStart(2)}. ${m[1]} → ${m[2]}`);
+    }
     console.log('');
   }
 }
@@ -313,6 +324,7 @@ section('提交卫生（不该提交的不提交）');
     /^README(_en)?\.md$/i,
     /^CHANGELOG\.md$/i,
     /^AGENTS\.md$/i,
+    /^docs\/capabilities\.md$/i,
     /^docs\/(ARCHITECTURE|DEVELOPMENT|RELEASE|MACOS_TROUBLESHOOTING|WORKFLOW)(_zh)?\.md$/i,
     /^docs\/subsystems\/[a-z0-9-]+\.md$/i,
     /(^|\/)README\.md$/i,

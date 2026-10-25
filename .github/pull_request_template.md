@@ -5,6 +5,7 @@
 
 ## Impact
 
+- Existing implementation considered (列出检索到的现有模块/函数；严禁重复实现已存在能力):
 - Symmetric paths checked (apply/restore, connect/disconnect, etc.):
 - Existing configs, user edits and compatibility:
 - Unrelated changes excluded, or reason included:
