@@ -910,6 +910,15 @@ mod tests {
         }
     }
 
+    /// 本机诊断（cargo test --lib debug_gui_versions -- --ignored --nocapture）
+    #[test]
+    #[ignore]
+    fn debug_gui_versions() {
+        for id in ["windsurf", "devin", "cursor", "claude-desktop", "antigravity"] {
+            println!("{id} => {:?}", installed_gui_version(id));
+        }
+    }
+
     /// semver 对比的基本语义
     #[test]
     fn is_newer_semantics() {

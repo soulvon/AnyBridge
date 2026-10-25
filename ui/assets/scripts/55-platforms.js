@@ -586,8 +586,11 @@ function currentRailPlatform() {
 
 function refreshAllHeroVersions() {
   if (typeof renderHeroVersion !== 'function') return;
-  // 共用页（models）的版本行按 rail 实际选中项刷新
-  const ideTarget = currentRailPlatform();
+  // 共用页（models）的版本行按 rail 实际选中项刷新；rail 无 active 时
+  // 回退到目标 IDE 选择器（两者正常同步，异常时也不留空窗）
+  const ideTarget =
+    currentRailPlatform() ||
+    (typeof getTargetIde === 'function' ? normalizeIdeProxyTargetValue(getTargetIde()) : null);
   if (ideTarget && ['windsurf', 'devin', 'cursor'].includes(ideTarget)) {
     renderHeroVersion(ideTarget, 'proxy-platform-version');
   }
@@ -14028,9 +14031,11 @@ async function renderHeroVersion(platformId, elId) {
   if (!el || _heroVersionBusy[platformId]) return;
   if (typeof invoke !== 'function' && !(typeof bindTauriBridge === 'function' && bindTauriBridge())) return;
   _heroVersionBusy[platformId] = true;
-  // 记录发起目标：windsurf/devin/cursor 共用同一版本行元素，
-  // rail 快速切换时旧请求的后到结果不得覆盖新平台的（实测竞态：
-  // Devin 页显示 Windsurf 的版本号）
+  // 请求序号：共用同一版本行元素时（windsurf/devin/cursor 共页），
+  // 只有**最后一次发起**的请求结果可以落盘。比 platformId 比较更严格
+  // （同平台连续请求也不会互相覆盖），且不依赖 rail DOM 状态。
+  const seq = String(Number(el.dataset.versionSeq || 0) + 1);
+  el.dataset.versionSeq = seq;
   el.dataset.versionTarget = platformId;
   try {
     // 15 秒超时兜底：注册表/子进程异常挂起时不再停留在「检测中」
@@ -14039,12 +14044,8 @@ async function renderHeroVersion(platformId, elId) {
       new Promise((_, rej) => setTimeout(() => rej(new Error('version probe timeout')), 15000)),
     ]);
     if (!el.isConnected) return;
-    if (el.dataset.versionTarget !== platformId) return; // 已切到其它平台，丢弃旧结果
-    // 共用页再校验一次 rail 归属（防止 getTargetIde/其它调用方用错目标）
-    if (elId === 'proxy-platform-version') {
-      const rail = typeof currentRailPlatform === 'function' ? currentRailPlatform() : null;
-      if (rail && rail !== platformId) return;
-    }
+    if (el.dataset.versionSeq !== seq) return; // 已有更新的请求，丢弃本次结果
+    if (el.dataset.versionTarget !== platformId) return;
     // 三态语义：未安装（无安装证据）/ 已装但版本未知 / 已装有版本。
     // 版本探测失败绝不当「未安装」（坑点库 read-failure-is-unknown）。
     if (!info || !info.installed) {
@@ -14064,8 +14065,15 @@ async function renderHeroVersion(platformId, elId) {
     } else {
       el.innerHTML = '<span class="version-state muted">已安装 · 版本未知</span>';
     }
-  } catch (_) {
-    el.textContent = '';
+  } catch (e) {
+    // 显式留痕：invoke 失败/超时时可在日志面板看到原因，
+    // 不再静默清空（静默会让人误以为「版本一样」）
+    if (typeof addLog === 'function') {
+      addLog('warn', `版本探测失败（${platformId}）: ${String(e?.message || e)}`);
+    }
+    if (el.dataset.versionSeq === seq) {
+      el.innerHTML = '<span class="version-state muted">检测失败</span>';
+    }
   } finally {
     delete _heroVersionBusy[platformId];
   }
