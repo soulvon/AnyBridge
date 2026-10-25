@@ -70,6 +70,17 @@ Build a local package without updater artifacts:
 npm run tauri:build:local
 ```
 
+This command rebuilds the current sidecar first; Tauri's `beforeBuildCommand`
+then builds the UI and cursor-core, so the local package cannot silently reuse a
+stale external binary. To run full validation and build the package:
+
+```bash
+npm run verify:release
+```
+
+A successful build is not a substitute for the required installation or runtime
+smoke test for the changed release paths.
+
 ## Signed Release Build
 
 The release workflow needs these repository secrets:

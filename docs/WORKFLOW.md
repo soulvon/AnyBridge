@@ -7,44 +7,52 @@
 
 ## 一、每次改动的强制动作
 
-1. **改前：列影响面**
-   - 查该函数的所有调用方（`search_content` 函数名）
-   - 查它的**对称函数**：`apply_x ↔ restore_x`、`接入 ↔ 还原`、`汉化 ↔ 还原`
-   - 对称逻辑优先**收敛到同一个函数**（如 `kill_antigravity_language_server`），
-     而不是在两处各写一份
+1. **改前：确定真实影响面**
+   - 查该函数的调用方，以及 `apply_x ↔ restore_x`、接入 ↔ 还原等对称路径。
+   - 改动跨模块行为时，先读 `docs/subsystems/` 中对应的运行契约。
+   - 明确旧配置、旧数据和用户手动修改是否必须保留。
 
-2. **改后：跑回归检查**
+2. **修复 Bug：先证明测试能抓住事故**
+   - 用事故的真实输入写行为测试，先在未修复实现上确认它失败，再修复至通过。
+   - 不能只测叶子函数：协议转换要断言完整输出事件，配置修改要断言写入后的文件，
+     接入/还原要断言整条状态变化。
+   - 纯静态规则（禁止某 API、禁止绕过统一封装）使用 Guard；行为正确性必须用行为测试。
+
+3. **改后：运行统一验证**
    ```bash
-   npm run check:features      # 或 node scripts/check-key-features.mjs
+   npm run verify
    ```
-   **失败不许收工**，必须修复后重跑至全绿。
+   它依次执行快速检查、自动发现的全部 Node 单元测试、Rust 编译与全量单测、
+   cursor-core 检查。失败不许收工；未运行的检查必须明确写明，不能省略。
 
-3. **提交时自动卡**：已装 pre-commit 钩子，检查不通过**阻止提交**
-   （紧急绕过 `git commit --no-verify`，但事后必须补跑）
+4. **提交与推送自动拦截**
+   - `pre-commit`：运行 `npm run check:fast`，不执行真实客户端检查。
+   - `pre-push`：运行与 CI 相同的 `npm run verify`。
+   - 缺少 Node.js、无法定位仓库等环境错误必须阻止操作，不得静默放行。
 
 ---
 
 ## 二、坑点如何沉淀（重点）
 
-坑**不写进散文文档**，而是写进 `docs/pitfalls.json`：
+坑记录在 `docs/pitfalls.json`，并与真正的验证关联：
 
 ```json
 {
   "id": "唯一标识",
   "title": "一句话",
   "symptom": "当时的现象",
-  "lesson": "教训（判据层面的原则）",
-  "check": { "type": "source_contains", "file": "相对路径", "must_contain": "关键源码串" },
+  "lesson": "根因与以后必须遵守的规则",
+  "check": { "type": "source_not_regex", "file": "相对路径", "must_not_match": "危险写法" },
+  "regression_test": "测试文件::测试名",
   "severity": "high|medium"
 }
 ```
 
-`check` 字段由 `scripts/check-key-features.mjs` **逐条执行**：
-- `source_contains`：源码必须包含某串（保证修复还在）
-- `source_not_regex`：源码不得匹配某正则（防止回退到错误写法）
-
-**这样沉淀出来的坑会真正反馈到工作流**——每次提交都会验证，
-而不是躺在文档里等人想起。新增坑点后必须跑一次检查确认判据写得对。
+- `check` 用于静态 Guard；`source_contains` 不能单独证明函数行为正确。
+- `regression_test` 指向行为测试，由 `npm run test:unit` 或 Rust 全量测试实际执行；
+  检查脚本会校验引用没有漂移。
+- 新事故至少要有行为测试；重复出现或属于跨模块共性规则时，再补静态 Guard。
+- 改变子系统接口、状态、运行路径或失败语义时，对应契约文档与代码同一次提交。
 
 ---
 
@@ -92,11 +100,13 @@
 ## 六、Git 提交规范
 
 - **一个改动一个提交**，提交信息说明「改了什么 + 为什么」
-- 提交前 pre-commit 自动跑检查（不通过阻止提交）
+- 提交前 pre-commit 运行快速检查；推送前 pre-push 运行完整 `npm run verify`
 - 多窗口/多会话同时开发同一项目时：
-  - 先 `git pull` 再动手
-  - 未完成但不便提交的改动用 `git stash`，**不要长时间堆在工作区**
+  - **一个工作树只允许一个写入会话**；第二个会话必须另开分支或 Git worktree
+  - 开工前先看 `git status --short --branch`，确认自己在目标分支、没有误吃别人的未提交改动
+  - **不要共用 stash**；一个会话的 `git stash pop` 可能拿走另一个会话的现场
   - 改动量大时按模块分批提交，避免一次巨型提交难以回滚
+  - 合并方向必须串行：先合并/推送一方，另一方再 rebase 并重跑 `npm run verify`
 
 ### 只提交该提交的（强制）
 
@@ -123,11 +133,15 @@
 
 ---
 
-## 六、检查脚本覆盖项（当前 57 项）
+## 七、检查入口分层（以命令为准，不维护手工清单）
 
-1. Rust 编译 + 全量单测
-2. UI 运行时脚本语法（17 个，build:ui 不校验它们）
-3. **坑点库逐条验证**（11 条）
-4. **对称路径检查**（apply/restore 异步化一致、共用实现）
-5. 关键判据断言（结构完整性、nonce、防死锁、asar 幂等…）
-6. 本机环境实况（已启用汉化的客户端链路完整性）
+| 命令 | 用途 | 时机 |
+|---|---|---|
+| `npm run check:fast` | UI 结构/语法、设计铁律守卫（uppercase/被禁动效硬拦；动画名/蓝紫色/小字号/彩条提示）、坑点 Guard、对称路径、新增文件行数守卫（>1500 阻断）、提交卫生 | pre-commit；开发中快速自查 |
+| `npm run test:unit` | 自动发现 Node 侧单元测试 | pre-push / CI / 本地验证 |
+| `node scripts/check-key-features.mjs --rust` | Rust 编译 + 全量单测 | pre-push / CI / 本地验证 |
+| `npm run verify` | 快速检查 + Node 单测 + Rust 检查 + cursor-core 检查 | pre-push、PR、CI |
+| `npm run check:live` | 本机真实 Windsurf/Devin 配置与汉化链路 | 显式手动验收，不冒充单元测试 |
+| `npm run verify:release` | 完整验证 + 重新构建本地安装包 | 发布前；仍需按范围做产物/真机验收 |
+
+不要在 CI 里另写一套命令清单；CI 的最终验证步骤就是 `npm run verify`。

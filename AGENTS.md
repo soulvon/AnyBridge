@@ -7,21 +7,22 @@
 
 | 顺序 | 动作 |
 |---|---|
-| 1 | 读 `docs/pitfalls.json` —— **坑点库**（每条都是真实事故，带可执行判据） |
-| 2 | 读 `docs/WORKFLOW.md` —— 开发工作流（改前列对称影响面、改后跑检查） |
-| 3 | 确认本次改动是否触及某条坑点的场景 |
+| 1 | 读 `docs/pitfalls.json` —— **坑点库**（真实事故、Guard 与行为测试索引） |
+| 2 | 读 `docs/WORKFLOW.md` —— 开发工作流（影响面、红绿测试、统一验证） |
+| 3 | 跨模块改动先读 `docs/subsystems/README.md` 中对应的运行契约 |
+| 4 | 确认本次改动触及的坑点、对称路径和旧配置兼容要求 |
 
 ## 1. 改完必做（强制，不通过不许收工）
 
 ```bash
-npm run check:features      # = node scripts/check-key-features.mjs
+npm run verify
 ```
 
-- 覆盖：Rust 编译 + 单测、UI 脚本语法、坑点库逐条判据、对称路径、
-  临时文件纪律、关键判据断言、本机已启用汉化客户端的链路实况
-- **失败必须修复后重跑至全绿**
-- `pre-commit` 钩子会自动再跑一次，不通过阻止提交
-  （安装：`cp scripts/hooks/pre-commit .git/hooks/ && chmod +x .git/hooks/pre-commit`）
+- 覆盖：快速 Guard、自动发现的全部 Node 单测、Rust 编译与全量单测、cursor-core 检查。
+- Bug 修复必须先确认新增测试在未修复实现上失败，再恢复修复并跑至全绿。
+- `pre-commit` 自动跑 `npm run check:fast`；`pre-push` 自动跑与 CI 相同的 `npm run verify`。
+- 本机真实客户端检查独立为 `npm run check:live`，不冒充干净环境单元测试。
+- 安装钩子：`cp scripts/hooks/pre-commit scripts/hooks/pre-push .git/hooks/`。
 
 ## 2. 三条最容易踩的规矩
 

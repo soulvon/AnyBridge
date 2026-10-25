@@ -56,6 +56,16 @@ python scripts/build/build_sidecar_plain.py --platform x86_64-unknown-linux-gnu
 npm run tauri:build:local
 ```
 
+该命令会先重新构建当前 Sidecar，再由 Tauri 的 `beforeBuildCommand` 构建 UI 与
+cursor-core，避免把旧外部二进制打进安装包。发布前需要完整验证并构建时运行：
+
+```bash
+npm run verify:release
+```
+
+它等价于先执行 `npm run verify`，再执行本地安装包构建；构建成功不等于已经完成
+真实安装后的功能 Smoke，涉及发布链路的功能仍需按改动范围单独验收。
+
 ## 签名发布流程
 
 发布工作流需要以下仓库 Secrets：
