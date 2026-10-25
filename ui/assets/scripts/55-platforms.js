@@ -573,13 +573,24 @@ async function refreshPlatforms(options = {}) {
  * （有专属 render 的平台在各自函数里调，避免重复触发）。
  * 元素不存在的页面自动跳过（renderHeroVersion 判空）。
  */
+/**
+ * 当前左侧 rail 选中的平台 id（用户所见即所得的唯一权威来源）。
+ * 注意：不能用 getTargetIde()——那是「目标 IDE」下拉框的值，与 rail
+ * 不同步；用它刷新共用页版本行会把 Devin 的版本画到 Windsurf 页上
+ * （实测事故）。
+ */
+function currentRailPlatform() {
+  const el = document.querySelector('.platform-rail-item.active[data-platform-rail]');
+  return (el && el.dataset && el.dataset.platformRail) || null;
+}
+
 function refreshAllHeroVersions() {
   if (typeof renderHeroVersion !== 'function') return;
-  // windsurf/devin/cursor 共用 models/cursor 页的版本行，随当前 rail 目标刷新
-  // （调用点原先在 10-shell.js 的 updateProxyPlatformCopy，页面初始化时
-  //  55-platforms.js 尚未加载，typeof 检查静默跳过 → 永远停在「检测中」）
-  const ideTarget = typeof getTargetIde === 'function' ? getTargetIde() : 'windsurf';
-  renderHeroVersion(ideTarget, 'proxy-platform-version');
+  // 共用页（models）的版本行按 rail 实际选中项刷新
+  const ideTarget = currentRailPlatform();
+  if (ideTarget && ['windsurf', 'devin', 'cursor'].includes(ideTarget)) {
+    renderHeroVersion(ideTarget, 'proxy-platform-version');
+  }
   const ids = [
     ['codebuddy', 'codebuddy-platform-version'],
     ['workbuddy', 'workbuddy-platform-version'],
@@ -2802,7 +2813,7 @@ async function antigravityRefreshConsole(options = {}) {
     iconImg.alt = isIde ? 'Antigravity IDE' : 'Antigravity';
   }
   if (titleEl) {
-    titleEl.textContent = isIde ? 'Antigravity IDE 接入控制台' : 'Antigravity 接入控制台';
+    titleEl.textContent = isIde ? 'Antigravity IDE' : 'Antigravity';
   }
   if (subtitleEl) {
     subtitleEl.textContent = isIde
@@ -14025,6 +14036,11 @@ async function renderHeroVersion(platformId, elId) {
     ]);
     if (!el.isConnected) return;
     if (el.dataset.versionTarget !== platformId) return; // 已切到其它平台，丢弃旧结果
+    // 共用页再校验一次 rail 归属（防止 getTargetIde/其它调用方用错目标）
+    if (elId === 'proxy-platform-version') {
+      const rail = typeof currentRailPlatform === 'function' ? currentRailPlatform() : null;
+      if (rail && rail !== platformId) return;
+    }
     // 三态语义：未安装（无安装证据）/ 已装但版本未知 / 已装有版本。
     // 版本探测失败绝不当「未安装」（坑点库 read-failure-is-unknown）。
     if (!info || !info.installed) {
