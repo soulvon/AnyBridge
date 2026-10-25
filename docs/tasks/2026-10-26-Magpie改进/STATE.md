@@ -23,6 +23,7 @@
 - **T2 完成（2026-10-26）**：编辑器新增测试结果展示位 `#providerEditorTestResult`（空态 hidden 不占位、成功/失败两态 CSS 就绪，未动测试逻辑/文案/尺寸），证据见 `T2-证据.md`；人工视觉验收通过。
 - **T3 完成（2026-10-26）**：`testProviderInEditor` 成功/失败结论写入结果区（两态 + 图标，文案逐字复用 toast 原文，toast/弹窗保留）；清除收口在 `navigateTo`，迟到结论带页面活跃判据防残留，证据见 `T3-证据.md`；三场景人工验收待确认。
 - **T4 完成（2026-10-26）**：拉取模型结论写入 `#providerFetchResult`（成功「获取到 N 个模型」/ 失败「拉取失败：${e}」，复用 R22 与红字原文，协议回退与面板交互未动）；结果条助手泛化为 `setEditorResultBar`/`clearEditorResultBar`（行为等价），证据见 `T4-证据.md`；两场景人工验收待确认。
+- **T6 完成（2026-10-26）**：四项决策落盘 `T6-结论.md`——maxRetries 维持 5（存量配置固化实证 + 默认预算下溢出 0%）、预算维持每目标 60s + clamp 修溢出、Retry-After v1 支持（对齐 chat.js 模式）、统计口径维持 + 新增 upstream_attempts；审计发现 chat.js 平行重试实现 7 处分歧（统一列下一轮）。T5 解除阻塞，落地清单见结论 §6。
 
 ### T1 关键结论（供 T5 直接引用）
 
@@ -35,7 +36,7 @@
 
 ## 未完成 / 未验证
 
-- T5 未开始（被 T6 决策阻塞）。
+- T5 未开始（T6 决策已备齐，落地清单见 `T6-结论.md` §6）。
 - R7（改名后引用）、R20（表单校验）、R16（拆分统计）、R9（代理回退）、R10（上游故障）状态待确认。
 - T1 遗留未验证项 6 条，见 `T1-结论.md` §5（厂商 Retry-After 语义、429 退避时长、墙钟预算溢出、断流时各 IDE 的 UI 表现、三条转发路径是否另有重试、冷却×重试联合最坏耗时）。
 
@@ -50,12 +51,7 @@
 ## 未决问题
 
 - ~~T1 结论：哪些错误可重试、重试次数上限、是否影响流式响应。~~ → 已解决，见 `T1-结论.md`。
-- **T6（spike，T5 前置）四项决策待定**：
-  1. `maxRetries` 默认值——5 是否下调（多目标放大后最坏 18 次上游请求）；
-  2. 总墙钟预算——如何修正「最后一次 sleep 排程后超出预算」的溢出（T1 §5 第 3 条）；
-  3. v1 是否支持 `Retry-After`（当前转发链路忽略该头，仅走指数退避）；
-  4. 统计口径——`requests` = 客户端请求数（不含重试），`upstream_attempts` / `retries` 单独计。
-- T6 待办：审计 `inference-proxy.js` / `handlers/chat.js` 是否另藏重试逻辑（T1 未覆盖）。
+- ~~T6 四项决策（maxRetries / 墙钟预算 / Retry-After / 统计口径）+ 双链路审计。~~ → 已解决，见 `T6-结论.md`（维持 5 / clamp 修溢出 / RA 支持 / 新增 upstream_attempts；chat.js 平行实现 7 处分歧列下一轮统一）。
 - R7：`rename` 是否已同步更新所有引用。
 - R20：`onHostChange` 是否已具备校验提示能力。
 - R16：sidecar `/__byok/stats` 是否返回按模型/供应商拆分的数据。
@@ -65,7 +61,7 @@
 
 > 只写一项。写了两项以上，说明任务还没拆完，先别开工。
 
-1. T6：决策 spike——定下重试策略四项默认值（maxRetries / 总墙钟预算 / Retry-After / 统计口径）+ 审计 inference-proxy 与 handlers/chat 是否另藏重试，产出 `T6-结论.md`（T5 的前置，验收见 02_tasks.md T6 行）。
+1. T5：按 T6 决策收敛现有重试——clamp 修预算溢出、execute() 补 Retry-After（clamp 至 capMs）、stats 新增 upstream_attempts、重试日志接 UI（落地清单见 `T6-结论.md` §6，验收见 02_tasks.md T5 行）。
 
 ## 当前约束
 
