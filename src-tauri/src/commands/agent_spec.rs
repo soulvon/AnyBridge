@@ -427,35 +427,33 @@ pub static AGENTS: &[AgentSpec] = &[
         official_url: None,
         inject: None,
     },
-    // ── 声明式扩展的第一个实例：新增 agent 只需下面这一个条目 ──
-    AgentSpec {
-        id: "gemini-cli",
-        name: "Gemini CLI",
-        vendor: "Google",
-        api_format: "openai",
-        family: Family::JsonConfig,
-        // 注意：~/.gemini 也会被 Antigravity 占用，所以证据以
-        // settings.json 与 gemini 可执行为准（detect_installed 文件优先）
-        config_dir: PathSource::Template("~/.gemini"),
-        config_file: FileSource::Name("settings.json"),
-        bin: Some("gemini"),
-        npm_package: Some("@google/gemini-cli"),
-        official_url: Some("https://github.com/google-gemini/gemini-cli"),
-        // 接入方式（magpie 实测）：端点与密钥写 ~/.gemini/.env，
-        // 模型名写 settings.json 的 model.name
-        inject: Some(InjectSpec {
-            endpoint: Some(InjectTarget::Env {
-                key: "GOOGLE_GEMINI_BASE_URL",
-            }),
-            api_key: Some(InjectTarget::Env {
-                key: "GEMINI_API_KEY",
-            }),
-            model: Some(InjectTarget::Json {
-                pointer: "/model/name",
-            }),
-            env_file: ".env",
-        }),
-    },
+    // ── 新增 agent 的写法（示例，默认不注册）──
+    //
+    // 需要一个新 agent 时：
+    //   1. node scripts/new-agent.mjs <id>   → 打印模板
+    //   2. 取消下面注释、按实际值填写（尤其 inject：决定怎么写入配置）
+    //   3. npm run check:features            → 机器校验字段完整性
+    //
+    // 示例（Gemini CLI，字段来自 magpie 实测）：
+    //
+    // AgentSpec {
+    //     id: "gemini-cli",
+    //     name: "Gemini CLI",
+    //     vendor: "Google",
+    //     api_format: "openai",
+    //     family: Family::JsonConfig,
+    //     config_dir: PathSource::Template("~/.gemini"),
+    //     config_file: FileSource::Name("settings.json"),
+    //     bin: Some("gemini"),
+    //     npm_package: Some("@google/gemini-cli"),
+    //     official_url: Some("https://github.com/google-gemini/gemini-cli"),
+    //     inject: Some(InjectSpec {
+    //         endpoint: Some(InjectTarget::Env { key: "GOOGLE_GEMINI_BASE_URL" }),
+    //         api_key: Some(InjectTarget::Env { key: "GEMINI_API_KEY" }),
+    //         model: Some(InjectTarget::Json { pointer: "/model/name" }),
+    //         env_file: ".env",
+    //     }),
+    // },
     AgentSpec {
         id: "deepseek-harness",
         name: "DeepSeek Harness",

@@ -368,10 +368,32 @@ mod tests {
         assert_eq!(v["model"]["name"], "x");
     }
 
+    /// 单测专用声明：不依赖生产注册表（AGENTS 只放真实支持的平台）
+    const TEST_SPEC: AgentSpec = AgentSpec {
+        id: "test-agent",
+        name: "Test Agent",
+        vendor: "Test",
+        api_format: "openai",
+        family: super::super::agent_spec::Family::JsonConfig,
+        config_dir: super::super::agent_spec::PathSource::Template("~/.test-agent"),
+        config_file: super::super::agent_spec::FileSource::Name("settings.json"),
+        bin: Some("test-agent"),
+        npm_package: None,
+        official_url: None,
+        inject: Some(super::super::agent_spec::InjectSpec {
+            endpoint: Some(InjectTarget::Env { key: "TEST_BASE_URL" }),
+            api_key: Some(InjectTarget::Env { key: "TEST_API_KEY" }),
+            model: Some(InjectTarget::Json {
+                pointer: "/model/name",
+            }),
+            env_file: ".env",
+        }),
+    };
+
     /// 端到端：临时目录里走完 备份 → 写入 → 还原（不碰真实配置）
     #[test]
     fn apply_then_restore_roundtrip_in_temp_dir() {
-        let spec = super::super::agent_spec::find("gemini-cli").expect("gemini-cli 应已声明");
+        let spec = &TEST_SPEC;
         let dir = std::env::temp_dir().join(format!("anybridge-declared-{}", std::process::id()));
         let cfg = dir.join("settings.json");
         std::fs::create_dir_all(&dir).unwrap();
@@ -391,10 +413,10 @@ mod tests {
         // .env 已写入两个键
         let env = std::fs::read_to_string(dir.join(".env")).unwrap();
         assert_eq!(
-            get_env(&env, "GOOGLE_GEMINI_BASE_URL").as_deref(),
+            get_env(&env, "TEST_BASE_URL").as_deref(),
             Some("http://127.0.0.1:8317")
         );
-        assert_eq!(get_env(&env, "GEMINI_API_KEY").as_deref(), Some("sk-test"));
+        assert_eq!(get_env(&env, "TEST_API_KEY").as_deref(), Some("sk-test"));
 
         // settings.json 的 model.name 已更新，其它字段保留
         let v: Value = serde_json::from_str(&std::fs::read_to_string(&cfg).unwrap()).unwrap();
