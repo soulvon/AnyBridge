@@ -2505,6 +2505,44 @@
   opacity: .72;
 }
 
+/* 测试结果展示位（R19/T2）：空态 hidden 不占位，成功/失败两态 */
+.provider-editor-test-result[hidden] {
+  display: none;
+}
+.provider-editor-test-result {
+  flex: 0 0 auto;
+  min-width: 0;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 7px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--bg-card);
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+.provider-editor-test-result .result-icon {
+  flex: 0 0 auto;
+  display: inline-flex;
+  margin-top: 1px;
+}
+.provider-editor-test-result .result-text {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.provider-editor-test-result.is-success {
+  border-color: var(--success);
+  background: var(--success-dim);
+  color: var(--success);
+}
+.provider-editor-test-result.is-error {
+  border-color: var(--danger);
+  background: var(--danger-dim);
+  color: var(--danger);
+}
+
 .model-slots-workspace {
   flex: 1 1 auto;
   min-height: 0;
