@@ -499,26 +499,28 @@ mod tests {
     /// 防止有人误改声明（改错立刻红）。
     #[test]
     fn metadata_snapshot() {
-        let expected: &[(&str, &str, &str, &str, &str)] = &[
-            ("antigravity", "Antigravity", "Google", "openai", "settings.json"),
-            ("antigravity-ide", "Antigravity IDE", "Google", "openai", "settings.json"),
-            ("claude-code", "Claude Code", "Anthropic", "anthropic", "settings.json"),
-            ("claude-desktop", "Claude Desktop", "Anthropic", "anthropic", ""),
-            ("codex", "Codex", "OpenAI", "openai", "config.toml"),
-            ("codebuddy", "CodeBuddy", "Tencent Cloud", "openai", "models.json"),
-            ("grok", "Grok", "xAI", "openai", "config.toml"),
-            ("opencode", "OpenCode", "OpenCode", "openai", "opencode.json"),
-            ("workbuddy", "WorkBuddy", "Tencent Cloud", "openai", "models.json"),
-            ("zcode", "ZCode", "Z.AI", "openai", "config.json"),
-            ("pi", "Pi", "Earendil Works", "openai", "models.json"),
-            ("hermes", "Hermes", "Nous Research", "openai", "config.yaml"),
-            ("deepseek-harness", "DeepSeek Harness", "DeepSeek", "openai", "settings.yaml"),
+        let expected: &[(&str, &str, &str, &str, &str, Option<&str>, Option<&str>)] = &[
+            ("antigravity", "Antigravity", "Google", "openai", "settings.json", None, None),
+            ("antigravity-ide", "Antigravity IDE", "Google", "openai", "settings.json", None, None),
+            ("claude-code", "Claude Code", "Anthropic", "anthropic", "settings.json", Some("claude"), Some("@anthropic-ai/claude-code")),
+            ("claude-desktop", "Claude Desktop", "Anthropic", "anthropic", "", None, None),
+            ("codex", "Codex", "OpenAI", "openai", "config.toml", Some("codex"), Some("@openai/codex")),
+            ("codebuddy", "CodeBuddy", "Tencent Cloud", "openai", "models.json", Some("codebuddy"), Some("@tencent-ai/codebuddy-code")),
+            ("grok", "Grok", "xAI", "openai", "config.toml", Some("grok"), Some("@vibe-kit/grok-cli")),
+            ("opencode", "OpenCode", "OpenCode", "openai", "opencode.json", Some("opencode"), Some("opencode-ai")),
+            ("workbuddy", "WorkBuddy", "Tencent Cloud", "openai", "models.json", None, None),
+            ("zcode", "ZCode", "Z.AI", "openai", "config.json", None, None),
+            ("pi", "Pi", "Earendil Works", "openai", "models.json", Some("pi"), Some("@earendil-works/pi-coding-agent")),
+            ("hermes", "Hermes", "Nous Research", "openai", "config.yaml", Some("hermes"), None),
+            ("deepseek-harness", "DeepSeek Harness", "DeepSeek", "openai", "settings.yaml", Some("dsh"), Some("@deepseek-ai/dsh")),
         ];
-        for (id, name, vendor, api, file_tail) in expected.iter().copied() {
+        for (id, name, vendor, api, file_tail, bin, npm) in expected.iter().copied() {
             let spec = find(id).unwrap_or_else(|| panic!("缺少声明: {id}"));
             assert_eq!(spec.name, name, "{id} 名称被改动");
             assert_eq!(spec.vendor, vendor, "{id} 厂商被改动");
             assert_eq!(spec.api_format, api, "{id} API 格式被改动");
+            assert_eq!(spec.bin, bin, "{id} CLI 命令名被改动");
+            assert_eq!(spec.npm_package, npm, "{id} npm 包名被改动");
             if !file_tail.is_empty() {
                 let path = spec.resolve_config_path().expect("配置路径应可解析");
                 let shown = path.to_string_lossy();
@@ -530,26 +532,5 @@ mod tests {
         }
     }
 
-    /// CLI 元数据与 version_probe::cli_spec 一致
-    #[test]
-    fn spec_cli_matches_cli_spec() {
-        for spec in AGENTS {
-            let legacy = crate::commands::version_probe::cli_spec(spec.id);
-            match (spec.bin, legacy) {
-                (Some(bin), Some(l)) => {
-                    assert_eq!(bin, l.bin, "{} bin 不一致", spec.id);
-                    assert_eq!(
-                        spec.npm_package, l.npm_package,
-                        "{} npm 包不一致",
-                        spec.id
-                    );
-                }
-                (None, None) => {}
-                (a, b) => panic!(
-                    "{} CLI 元数据不一致: spec.bin={:?} legacy={:?}",
-                    spec.id, a, b
-                ),
-            }
-        }
-    }
+
 }

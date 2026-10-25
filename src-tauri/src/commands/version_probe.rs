@@ -27,45 +27,14 @@ pub struct CliSpec {
 /// 平台 id → CLI 规格。只列有把握的（bin 名与 npm 包名经核实）；
 /// 没把握的返回 None，版本行显示「已安装」不带版本号。
 pub fn cli_spec(platform_id: &str) -> Option<CliSpec> {
-    let spec = match platform_id {
-        "claude-code" => CliSpec {
-            bin: "claude",
-            npm_package: Some("@anthropic-ai/claude-code"),
-        },
-        "codex" => CliSpec {
-            bin: "codex",
-            npm_package: Some("@openai/codex"),
-        },
-        "grok" => CliSpec {
-            bin: "grok",
-            npm_package: Some("@vibe-kit/grok-cli"),
-        },
-        "opencode" => CliSpec {
-            bin: "opencode",
-            npm_package: Some("opencode-ai"),
-        },
-        // 本机实测确认的 CLI（npm 全局包名从 .cmd shim 里读出）：
-        "codebuddy" => CliSpec {
-            bin: "codebuddy",
-            npm_package: Some("@tencent-ai/codebuddy-code"),
-        },
-        "pi" => CliSpec {
-            bin: "pi",
-            npm_package: Some("@earendil-works/pi-coding-agent"),
-        },
-        "deepseek-harness" => CliSpec {
-            bin: "dsh",
-            npm_package: Some("@deepseek-ai/dsh"),
-        },
-        // Hermes 是 uv tool 安装（%LOCALAPPDATA%\hermes\bin\hermes.cmd），
-        // 没有 npm 包 → 能探测已装版本，但无「最新版本」可比
-        "hermes" => CliSpec {
-            bin: "hermes",
-            npm_package: None,
-        },
-        _ => return None,
-    };
-    Some(spec)
+    // 单一真源：CLI 元数据（bin / npm 包）来自 agent_spec::AGENTS。
+    // 新增带 CLI 的 agent 只需在声明里填 bin/npm_package，无需改这里。
+    let spec = super::agent_spec::find(platform_id)?;
+    let bin = spec.bin?;
+    Some(CliSpec {
+        bin,
+        npm_package: spec.npm_package,
+    })
 }
 
 /// GUI 客户端（VS Code fork）的注册表卸载名与 product.json 相对路径。
