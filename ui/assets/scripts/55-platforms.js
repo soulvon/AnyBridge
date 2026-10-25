@@ -14066,8 +14066,10 @@ async function renderHeroVersion(platformId, elId) {
     if (el.dataset.versionSeq !== seq) return; // 已有更新的请求，丢弃本次结果
     if (el.dataset.versionTarget !== platformId) return;
     // 静默策略：有版本才展示；版本未知/探测失败留空不打扰。
-    // 探针降级（用户要求）：环境允许（can_auto_update = npm 可用 + 全局
-    // 目录免提权可写）才给「安装/更新」按钮；不允许只显示状态文字。
+    // 按钮能力位分两类：「安装/更新」npm 平台看 can_auto_update（npm 可用 +
+    // 全局目录免提权可写）；官方自更新平台（grok/hermes，has_self_update）
+    // 只要有 update 命令就给按钮，不看 npm 能力位（npm_package 为 None 时
+    // can_auto_update 恒 false，见下方两处使用点）。
     if (!info || !info.current_version) {
       if (info && !info.installed) {
         el.innerHTML = info.can_auto_update
@@ -14081,7 +14083,11 @@ async function renderHeroVersion(platformId, elId) {
       return;
     }
     if (info.has_update && info.latest_version) {
-      const updateBtn = info.can_auto_update
+      // 自更新平台（grok update 等官方命令）不依赖 npm 能力位——
+      // npm_package 为 None 时 can_auto_update 恒 false，会把 grok 的
+      // 「更新」按钮吞掉（实测 v1.0.30 → v1.0.70 只显示箭头无按钮）
+      const canShowUpdate = info.can_auto_update || info.has_self_update;
+      const updateBtn = canShowUpdate
         ? '<button type="button" class="version-update-btn" data-action="updatePlatformAgentAction" data-arg="' +
           platformId +
           '">更新</button>'
@@ -14098,7 +14104,7 @@ async function renderHeroVersion(platformId, elId) {
       // 只有「拿不到 latest」时才给自更新入口（命令自己会检查）；
       // 有 latest 且已是最新 → 不加按钮，否则更新完按钮还挂着，像没生效
       const selfUpdateBtn =
-        info.has_self_update && info.can_auto_update && !info.latest_version
+        info.has_self_update && !info.latest_version
           ? '<button type="button" class="version-update-btn" data-action="updatePlatformAgentAction" data-arg="' +
             platformId +
             '">更新</button>'

@@ -7153,9 +7153,16 @@ pub async fn update_platform_agent(platform: String) -> Result<PlatformUpdateInf
                 .map_err(|e| format!("更新任务执行失败: {e}"))??;
 
                 let current_version = super::version_probe::installed_version(&resolved_id);
+                // latest 复测与 check_platform_update 同源：npm 包走 registry，
+                // 无 npm 包的自更新平台（grok 官方 CLI）走官方版本通道——
+                // 否则 latest 恒 None → has_update 恒 false，更新完成后
+                // 前端无从判断「已是最新」，按钮状态收不了尾
                 let latest_version = match spec.npm_package {
                     Some(pkg) => super::version_probe::npm_latest_version(pkg).await,
-                    None => None,
+                    None => match spec.latest_channel {
+                        Some(urls) => super::version_probe::channel_latest_version(urls).await,
+                        None => None,
+                    },
                 };
                 let has_update = match (&latest_version, &current_version) {
                     (Some(l), Some(c)) => super::version_probe::is_newer(l, c),
