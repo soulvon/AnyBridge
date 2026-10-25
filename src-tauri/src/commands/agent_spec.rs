@@ -77,6 +77,18 @@ pub enum FileSource {
     Resolver(fn() -> Option<PathBuf>),
 }
 
+/// 官方自更新命令（如 Claude Code 的 `claude update`）。
+///
+/// 为什么优先于 npm：官方命令知道自己是 native 安装器还是包管理器装的，
+/// 实测 claude 同时存在 `~/.local/bin/claude.exe`（官方版，PATH 优先）与
+/// npm 全局版——只跑 npm install -g 升级的是另一份，验证时读到的仍是
+/// 官方版旧版本号，于是误报「更新失败」。
+#[derive(Clone, Copy, Debug)]
+pub struct SelfUpdate {
+    /// 子命令参数，如 ["update"]
+    pub subcommand: &'static [&'static str],
+}
+
 /// 注入落点：一条声明的某个值写到哪。
 ///
 /// 当前没有内置声明启用 inject（示例见 AGENTS 表里的注释），
@@ -128,6 +140,12 @@ pub struct AgentSpec {
     pub official_url: Option<&'static str>,
     /// 接入方式（None = 暂不支持一键接入）
     pub inject: Option<InjectSpec>,
+    /// 官方自更新命令（有则优先于 npm）
+    pub self_update: Option<SelfUpdate>,
+    /// 桌面 IDE 的进程名前缀（如 "codebuddy"）：版本从安装目录读，
+    /// 而不是从同名 CLI 读——两者是不同产品
+    /// （实测 CodeBuddy IDE 1.106.1 vs CLI 2.171.0）
+    pub gui_exe_prefix: Option<&'static str>,
 }
 
 impl AgentSpec {
@@ -248,6 +266,8 @@ pub static AGENTS: &[AgentSpec] = &[
         npm_package: None,
         official_url: Some("https://windsurf.com/download"),
         inject: None,
+        self_update: None,
+        gui_exe_prefix: None,
     },
     AgentSpec {
         id: "devin",
@@ -261,6 +281,8 @@ pub static AGENTS: &[AgentSpec] = &[
         npm_package: None,
         official_url: Some("https://devin.ai"),
         inject: None,
+        self_update: None,
+        gui_exe_prefix: None,
     },
     AgentSpec {
         id: "cursor",
@@ -274,6 +296,8 @@ pub static AGENTS: &[AgentSpec] = &[
         npm_package: None,
         official_url: Some("https://cursor.com/downloads"),
         inject: None,
+        self_update: None,
+        gui_exe_prefix: None,
     },
     AgentSpec {
         id: "antigravity",
@@ -287,6 +311,8 @@ pub static AGENTS: &[AgentSpec] = &[
         npm_package: None,
         official_url: Some("https://antigravity.google/download"),
         inject: None,
+        self_update: None,
+        gui_exe_prefix: None,
     },
     AgentSpec {
         id: "antigravity-ide",
@@ -300,6 +326,8 @@ pub static AGENTS: &[AgentSpec] = &[
         npm_package: None,
         official_url: Some("https://antigravity.google/download"),
         inject: None,
+        self_update: None,
+        gui_exe_prefix: None,
     },
     AgentSpec {
         id: "claude-code",
@@ -313,6 +341,14 @@ pub static AGENTS: &[AgentSpec] = &[
         npm_package: Some("@anthropic-ai/claude-code"),
         official_url: Some("https://docs.anthropic.com/en/docs/claude-code"),
         inject: None,
+        // 官方自更新：实测 `claude update` 存在，且会按自己的安装方式更新
+        // （native 安装器 / package manager）。必须优先于 npm —— 本机同时
+        // 存在 ~/.local/bin/claude.exe（PATH 优先）与 npm 全局版，只跑 npm
+        // 升级的是另一份，验证会一直读到旧版本号。
+        self_update: Some(SelfUpdate {
+            subcommand: &["update"],
+        }),
+        gui_exe_prefix: None,
     },
     AgentSpec {
         id: "claude-desktop",
@@ -326,6 +362,8 @@ pub static AGENTS: &[AgentSpec] = &[
         npm_package: None,
         official_url: Some("https://claude.com/download"),
         inject: None,
+        self_update: None,
+        gui_exe_prefix: None,
     },
     AgentSpec {
         id: "codex",
@@ -339,6 +377,8 @@ pub static AGENTS: &[AgentSpec] = &[
         npm_package: Some("@openai/codex"),
         official_url: Some("https://github.com/openai/codex"),
         inject: None,
+        self_update: None,
+        gui_exe_prefix: None,
     },
     AgentSpec {
         id: "codebuddy",
@@ -348,10 +388,13 @@ pub static AGENTS: &[AgentSpec] = &[
         family: Family::JsonConfig,
         config_dir: PathSource::Template("~/.codebuddy"),
         config_file: FileSource::Name("models.json"),
-        bin: Some("codebuddy"),
-        npm_package: Some("@tencent-ai/codebuddy-code"),
+        // 桌面 IDE（非 CLI）：不加 bin，避免读到同名 CLI 的版本
+        bin: None,
+        npm_package: None,
         official_url: Some("https://copilot.tencent.com"),
         inject: None,
+        self_update: None,
+        gui_exe_prefix: Some("codebuddy"),
     },
     AgentSpec {
         id: "grok",
@@ -365,6 +408,8 @@ pub static AGENTS: &[AgentSpec] = &[
         npm_package: Some("@vibe-kit/grok-cli"),
         official_url: Some("https://x.ai/cli"),
         inject: None,
+        self_update: None,
+        gui_exe_prefix: None,
     },
     AgentSpec {
         id: "opencode",
@@ -378,6 +423,8 @@ pub static AGENTS: &[AgentSpec] = &[
         npm_package: Some("opencode-ai"),
         official_url: Some("https://opencode.ai"),
         inject: None,
+        self_update: None,
+        gui_exe_prefix: None,
     },
     AgentSpec {
         id: "workbuddy",
@@ -391,6 +438,8 @@ pub static AGENTS: &[AgentSpec] = &[
         npm_package: None,
         official_url: None,
         inject: None,
+        self_update: None,
+        gui_exe_prefix: None,
     },
     AgentSpec {
         id: "zcode",
@@ -404,6 +453,8 @@ pub static AGENTS: &[AgentSpec] = &[
         npm_package: None,
         official_url: None,
         inject: None,
+        self_update: None,
+        gui_exe_prefix: None,
     },
     AgentSpec {
         id: "pi",
@@ -417,6 +468,8 @@ pub static AGENTS: &[AgentSpec] = &[
         npm_package: Some("@earendil-works/pi-coding-agent"),
         official_url: None,
         inject: None,
+        self_update: None,
+        gui_exe_prefix: None,
     },
     AgentSpec {
         id: "hermes",
@@ -430,6 +483,8 @@ pub static AGENTS: &[AgentSpec] = &[
         npm_package: None,
         official_url: None,
         inject: None,
+        self_update: None,
+        gui_exe_prefix: None,
     },
     // ── 新增 agent 的写法（示例，默认不注册）──
     //
@@ -470,6 +525,8 @@ pub static AGENTS: &[AgentSpec] = &[
         npm_package: Some("@deepseek-ai/dsh"),
         official_url: None,
         inject: None,
+        self_update: None,
+        gui_exe_prefix: None,
     },
 ];
 
@@ -704,6 +761,23 @@ mod tests {
         assert!(resolve_path_template("%__ANYBRIDGE_NOT_SET__%/x").is_none());
     }
 
+    /// 本机诊断：自更新 / 桌面 IDE 声明
+    #[test]
+    #[ignore]
+    fn debug_self_update() {
+        for id in ["claude-code", "codex", "codebuddy"] {
+            let sp = find(id).unwrap();
+            println!(
+                "{}: self_update={:?} bin={:?} npm={:?} gui_prefix={:?}",
+                id,
+                sp.self_update.map(|x| x.subcommand),
+                sp.bin,
+                sp.npm_package,
+                sp.gui_exe_prefix
+            );
+        }
+    }
+
     /// 本机诊断：打印注册表（cargo test --lib debug_registry -- --ignored --nocapture）
     #[test]
     #[ignore]
@@ -758,7 +832,9 @@ mod tests {
             ("claude-code", "Claude Code", "Anthropic", "anthropic", "settings.json", Some("claude"), Some("@anthropic-ai/claude-code")),
             ("claude-desktop", "Claude Desktop", "Anthropic", "anthropic", "", None, None),
             ("codex", "Codex", "OpenAI", "openai", "config.toml", Some("codex"), Some("@openai/codex")),
-            ("codebuddy", "CodeBuddy", "Tencent Cloud", "openai", "models.json", Some("codebuddy"), Some("@tencent-ai/codebuddy-code")),
+            // CodeBuddy 是**桌面 IDE**（实测 IDE 1.106.1 vs CLI 2.171.0）：
+            // 版本读安装目录，不用同名 CLI，也不引导 npm 更新
+            ("codebuddy", "CodeBuddy", "Tencent Cloud", "openai", "models.json", None, None),
             ("grok", "Grok", "xAI", "openai", "config.toml", Some("grok"), Some("@vibe-kit/grok-cli")),
             ("opencode", "OpenCode", "OpenCode", "openai", "opencode.json", Some("opencode"), Some("opencode-ai")),
             ("workbuddy", "WorkBuddy", "Tencent Cloud", "openai", "models.json", None, None),

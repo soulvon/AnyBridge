@@ -7119,7 +7119,51 @@ pub async fn check_platform_update(platform: String) -> Result<PlatformUpdateInf
 /// 的更新走官网下载，暂不在此实现。
 #[tauri::command]
 pub async fn update_platform_agent(platform: String) -> Result<PlatformUpdateInfo, String> {
-    // 内置平台与声明表新增的 agent 都支持（有 npm 包即可更新）
+    let resolved_id = Platform::from_id(&platform)
+        .map(|p| p.id().to_string())
+        .unwrap_or_else(|| platform.clone());
+
+    // ① 官方自更新命令优先（如 `claude update`）。
+    //
+    // 原因（实测）：claude 同时存在官方安装器版（~/.local/bin/claude.exe，
+    // PATH 优先）与 npm 全局版。只跑 npm install -g 升级的是另一份，验证时
+    // 读到的仍是官方版旧版本，于是误报「更新失败」。官方命令知道自己是哪种
+    // 安装方式，交给它最可靠。
+    if let Some(spec) = super::agent_spec::find(&resolved_id) {
+        if let Some(su) = spec.self_update {
+            if let Some(bin) = spec.bin {
+                let id_for_update = resolved_id.clone();
+                let args: Vec<&str> = su.subcommand.to_vec();
+                tauri::async_runtime::spawn_blocking(move || {
+                    super::version_probe::run_self_update_sync(bin, &args, &id_for_update)
+                })
+                .await
+                .map_err(|e| format!("更新任务执行失败: {e}"))??;
+
+                let current_version = super::version_probe::installed_version(&resolved_id);
+                let latest_version = match spec.npm_package {
+                    Some(pkg) => super::version_probe::npm_latest_version(pkg).await,
+                    None => None,
+                };
+                let has_update = match (&latest_version, &current_version) {
+                    (Some(l), Some(c)) => super::version_probe::is_newer(l, c),
+                    _ => false,
+                };
+                invalidate_detect_cache();
+                return Ok(PlatformUpdateInfo {
+                    platform: resolved_id,
+                    installed: current_version.is_some(),
+                    current_version,
+                    latest_version,
+                    has_update,
+                    npm_package: spec.npm_package.map(|p| p.to_string()),
+                    can_auto_update: true,
+                });
+            }
+        }
+    }
+
+    // ② 回退：npm 全局安装（内置平台与声明表新增的 agent 都支持）
     let (plat_id, npm_package) = match Platform::from_id(&platform) {
         Some(plat) => {
             let pkg = super::version_probe::cli_spec(plat.id())

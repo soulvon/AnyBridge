@@ -416,6 +416,20 @@ pub fn installed_gui_version(platform_id: &str) -> Option<String> {
         return version;
     }
 
+    // 桌面 IDE 型（CodeBuddy）：版本在安装目录，不在同名 CLI 里。
+    // 实测 CodeBuddy IDE 1.106.1 vs CLI 2.171.0，混用会显示错版本。
+    if let Some(spec) = super::agent_spec::find(platform_id) {
+        if let Some(prefix) = spec.gui_exe_prefix {
+            let key = format!("gui:{}", platform_id);
+            if let Some(hit) = cache_get(&key, Duration::from_secs(600)) {
+                return hit;
+            }
+            let version = running_process_dir_by_prefix(prefix).and_then(|d| electron_app_version(&d));
+            cache_put(key, version.clone());
+            return version;
+        }
+    }
+
     // 白名单守卫：只有已知 GUI 平台才走 GUI 探测。
     // 否则 find_ide_exe 对未知 id（pi/hermes/codebuddy…）会走其默认分支
     // （= Windsurf），把 Windsurf 的版本安到无关平台头上
@@ -566,9 +580,67 @@ fn electron_asar_version(exe_name: &str) -> Option<String> {
     asar_package_version(&dir.join("resources").join("app.asar"))
 }
 
-/// 运行中进程的可执行文件所在目录（Toolhelp32，毫秒级）。
+/// 运行中进程的可执行文件所在目录（精确 exe 名）。
 #[cfg(windows)]
 fn running_process_dir(exe_name: &str) -> Option<std::path::PathBuf> {
+    running_process_dir_matching(|n| n.eq_ignore_ascii_case(exe_name))
+}
+
+/// 按前缀匹配进程名（CodeBuddy 有 "CodeBuddy CN.exe" 等地区变体）。
+#[cfg(windows)]
+fn running_process_dir_by_prefix(prefix: &str) -> Option<std::path::PathBuf> {
+    let p = prefix.to_ascii_lowercase();
+    running_process_dir_matching(move |n| n.to_ascii_lowercase().starts_with(&p))
+}
+
+/// Electron 应用版本：resources/app/package.json 优先，回退 app.asar 内嵌。
+#[cfg(windows)]
+fn electron_app_version(dir: &std::path::Path) -> Option<String> {
+    let pkg = dir.join("resources").join("app").join("package.json");
+    if let Ok(raw) = std::fs::read_to_string(&pkg) {
+        if let Ok(v) = serde_json::from_str::<serde_json::Value>(&raw) {
+            if let Some(ver) = v.get("version").and_then(|x| x.as_str()) {
+                if !ver.is_empty() {
+                    return Some(ver.to_string());
+                }
+            }
+        }
+    }
+    asar_package_version(&dir.join("resources").join("app.asar"))
+}
+
+/// 官方自更新（如 `claude update`）：命令成功即视为完成。
+///
+/// 不强制要求版本号立即变化——官方渠道可能尚未推送（实测 native 版与
+/// npm 版发布不同步），硬判「更新失败」会误导用户。
+pub fn run_self_update_sync(bin: &str, args: &[&str], platform_id: &str) -> Result<(), String> {
+    let path =
+        find_tool(bin).ok_or_else(|| format!("未找到 {bin} 可执行文件，无法执行官方更新命令"))?;
+    let out = std::process::Command::new(&path)
+        .args(args)
+        .creation_flags_windows()
+        .output()
+        .map_err(|e| format!("执行官方更新命令失败: {e}"))?;
+    if !out.status.success() {
+        let err = String::from_utf8_lossy(&out.stderr).trim().to_string();
+        let detail = if err.is_empty() {
+            String::from_utf8_lossy(&out.stdout).trim().to_string()
+        } else {
+            err
+        };
+        return Err(format!(
+            "官方更新命令失败（exit={:?}）: {}",
+            out.status.code(),
+            detail.chars().take(300).collect::<String>()
+        ));
+    }
+    invalidate_version_cache(platform_id);
+    Ok(())
+}
+
+/// Toolhelp32 进程枚举（唯一实现）：pred 决定匹配哪个进程。
+#[cfg(windows)]
+fn running_process_dir_matching<F: Fn(&str) -> bool>(pred: F) -> Option<std::path::PathBuf> {
     use windows_sys::Win32::Foundation::{CloseHandle, INVALID_HANDLE_VALUE};
     use windows_sys::Win32::System::Diagnostics::ToolHelp::{
         CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W,
@@ -592,7 +664,7 @@ fn running_process_dir(exe_name: &str) -> Option<std::path::PathBuf> {
             loop {
                 let end = entry.szExeFile.iter().position(|&c| c == 0).unwrap_or(0);
                 let name = String::from_utf16_lossy(&entry.szExeFile[..end]);
-                if name.eq_ignore_ascii_case(exe_name) && entry.th32ProcessID != 0 {
+                if pred(&name) && entry.th32ProcessID != 0 {
                     let h = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, entry.th32ProcessID);
                     if !h.is_null() {
                         let mut buf = [0u16; 1024];
@@ -983,7 +1055,10 @@ mod tests {
     /// - workbuddy / zcode：运行进程的 resources/app.asar 内 package.json
     #[test]
     fn gui_probe_returns_none_for_platforms_without_source() {
-        for id in ["pi", "hermes", "codebuddy", "deepseek-harness"] {
+        // codebuddy 已改为桌面 IDE 版本源（gui_exe_prefix → 安装目录
+        // resources/app/package.json，实测 1.106.1），不在本列表；
+        // workbuddy / zcode 也有源（Electron asar），只是进程未运行时为 None
+        for id in ["pi", "hermes", "deepseek-harness"] {
             assert_eq!(
                 installed_gui_version(id),
                 None,
@@ -992,11 +1067,14 @@ mod tests {
         }
     }
 
-    /// 本机诊断：npm 一键安装/更新能力探针
+    /// 本机诊断：npm 一键安装/更新能力探针 + npm 实际定位
     #[test]
     #[ignore]
     fn debug_install_capability() {
         println!("npm_install_capability = {}", npm_install_capability());
+        println!("find_tool(npm)   = {:?}", find_tool("npm"));
+        println!("find_tool(codex) = {:?}", find_tool("codex"));
+        println!("npm prefix       = {:?}", npm_global_prefix());
     }
 
     /// 本机诊断（cargo test --lib debug_gui_versions -- --ignored --nocapture）

@@ -26,12 +26,26 @@ const TRUTH = {
   // 纯 Electron：真相源用 PowerShell 进程路径 + asar（独立于后端 Toolhelp32）
   workbuddy: () => probeElectronAsar('WorkBuddy').version,
   zcode: () => probeElectronAsar('ZCode').version,
+  // CodeBuddy 是桌面 IDE（进程名有地区变体）：真相 = 安装目录 package.json
+  codebuddy: () => probeElectronApp('CodeBuddy').version,
   // 注：truth 与探测同口径（product.json 的 version = 应用版本）；
   antigravity: () =>
     peVersion(path.join(process.env.LOCALAPPDATA || '', 'Programs', 'antigravity', 'Antigravity.exe')),
   'antigravity-ide': () =>
     peVersion(path.join(home, 'AppData', 'Local', 'Programs', 'Antigravity IDE', 'Antigravity IDE.exe')),
-  'claude-code': () => runVersion(path.join(home, '.local', 'bin', 'claude.exe')),
+  'claude-code': () => {
+    // 真相同口径于「用户在终端敲 claude 会跑到哪一份」：where 的第一条可执行
+    try {
+      const out = execSync('where claude', { encoding: 'utf8', timeout: 10000, stdio: ['ignore', 'pipe', 'ignore'] });
+      const first = out
+        .split(/\r?\n/)
+        .map((x) => x.trim())
+        .filter((x) => /\.(exe|cmd|bat)$/i.test(x))[0];
+      return first ? runVersion(first) : null;
+    } catch {
+      return null;
+    }
+  },
   codex: () => {
     // PATH 找 codex.cmd
     const dirs = (process.env.PATH || '').split(';');
@@ -43,7 +57,6 @@ const TRUTH = {
   },
   grok: () => runVersion(path.join(home, '.grok', 'bin', 'grok.exe')),
   // 新增 CLI 的真相源：直接从 PATH/npm 全局目录跑 --version
-  codebuddy: () => runFromPath('codebuddy'),
   pi: () => runFromPath('pi'),
   // dsh 不响应 --version：真相源走 npm 包管理器视角（与探测使用的
   // package.json 文件系统视角相互独立）
@@ -184,7 +197,6 @@ const NPM_PKG = {
   'codex': '@openai/codex',
   'grok': null,
   'opencode': 'opencode-ai',
-  'codebuddy': '@tencent-ai/codebuddy-code',
   'pi': '@earendil-works/pi-coding-agent',
   'deepseek-harness': '@deepseek-ai/dsh',
   'hermes': null,
@@ -223,6 +235,33 @@ function probeClaudeAppx() {
     if (m) return { version: m[1], dir: out };
   } catch {}
   return { version: null, dir: null };
+}
+
+// 桌面 IDE（CodeBuddy，进程名有地区变体 "CodeBuddy CN.exe"）：
+// 前缀匹配进程 → resources/app/package.json 的 version。
+function probeElectronApp(namePrefix) {
+  try {
+    // 用 execFileSync 传参，避免 cmd 的引号解析问题
+    const script = `(Get-Process -Name '${namePrefix}*' -ErrorAction SilentlyContinue | Select-Object -First 1).Path`;
+    const exe = execFileSync('powershell', ['-NoProfile', '-Command', script], {
+      encoding: 'utf8',
+      timeout: 12000,
+      stdio: ['ignore', 'pipe', 'ignore'],
+    }).trim();
+    if (!exe) return { version: null, dir: null };
+    const dir = path.dirname(exe);
+    const pkg = path.join(dir, 'resources', 'app', 'package.json');
+    if (fs.existsSync(pkg)) {
+      const j = readJson(pkg);
+      if (j?.version) return { version: j.version, dir };
+    }
+    const asar = path.join(dir, 'resources', 'app.asar');
+    if (fs.existsSync(asar)) return { version: asarVersion(asar), dir };
+    return { version: null, dir };
+  } catch (e) {
+    if (process.env.VERIFY_DEBUG) console.error('[probeElectronApp] ' + namePrefix + ': ' + e.message);
+    return { version: null, dir: null };
+  }
 }
 
 // 纯 Electron 应用（WorkBuddy / ZCode）：进程路径 → resources/app.asar →
@@ -316,7 +355,6 @@ const CLI = {
   'grok': 'grok',
   'opencode': 'opencode',
   // 实测确认的 CLI（npm 全局包 / uv tool）
-  'codebuddy': 'codebuddy',
   'pi': 'pi',
   'deepseek-harness': 'dsh',
   'hermes': 'hermes',
@@ -330,6 +368,8 @@ const GUI = {
   'claude-desktop': 'Claude',
   // 纯 Electron：版本在 resources/app.asar 内 package.json
   workbuddy: 'WorkBuddy',
+  // 桌面 IDE（非 CLI）：版本在安装目录 resources/app/package.json
+  codebuddy: 'CodeBuddy',
   zcode: 'ZCode',
 };
 // 无 CLI、无安装目录版本源的平台（诚实显示「已安装 · 版本未知」）
@@ -381,6 +421,7 @@ for (const [id, display] of Object.entries(GUI)) {
   let via = viaCommon.version ? viaCommon : probeGuiRegistry(id, display);
   if (id === 'antigravity') via = probeAntigravityHub();
   if (id === 'claude-desktop') via = probeClaudeAppx();
+  if (id === 'codebuddy') via = probeElectronApp('CodeBuddy');
   if (id === 'workbuddy' || id === 'zcode') {
     via = probeElectronAsar(id === 'workbuddy' ? 'WorkBuddy' : 'ZCode');
   }
