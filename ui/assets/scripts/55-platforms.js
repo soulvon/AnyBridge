@@ -14095,8 +14095,10 @@ async function renderHeroVersion(platformId, elId) {
       // 无 latest 数据：
       // - 有官方自更新命令（grok/hermes）→ 给「更新」按钮（命令会自行检查）
       // - 否则（GUI 客户端无 npm 源，如已停更的 Windsurf）→ 只显示版本号
+      // 只有「拿不到 latest」时才给自更新入口（命令自己会检查）；
+      // 有 latest 且已是最新 → 不加按钮，否则更新完按钮还挂着，像没生效
       const selfUpdateBtn =
-        info.has_self_update && info.can_auto_update
+        info.has_self_update && info.can_auto_update && !info.latest_version
           ? '<button type="button" class="version-update-btn" data-action="updatePlatformAgentAction" data-arg="' +
             platformId +
             '">更新</button>'
@@ -14143,7 +14145,7 @@ async function updatePlatformAgentAction(platform) {
     btn.innerHTML = loadingHtml(originalLabel === '安装' ? '安装中…' : '更新中…');
   }
   if (typeof showBottomToast === 'function') {
-    showBottomToast('正在执行 npm 安装，请稍候（可能需要 10-60 秒）…', 'info', { duration: 4000 });
+    showBottomToast('正在安装…', 'info', { duration: 3000 });
   }
   if (typeof addLog === 'function') addLog('info', '开始更新 ' + platform + ' …');
   try {
