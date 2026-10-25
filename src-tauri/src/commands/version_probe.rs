@@ -303,7 +303,11 @@ fn npm_global_prefix() -> Option<PathBuf> {
     if let Some(hit) = cache_get(key, Duration::from_secs(300)) {
         return hit.map(PathBuf::from);
     }
-    let out = std::process::Command::new("npm")
+    // 必须用 find_tool 定位到的完整路径：Windows 上只有 npm.cmd，
+    // `Command::new("npm")` 会直接 spawn 失败（探针恒 false → 安装/更新
+    // 按钮永不显示）。
+    let npm_bin = find_tool("npm").unwrap_or_else(|| PathBuf::from("npm"));
+    let out = std::process::Command::new(&npm_bin)
         .args(["prefix", "-g"])
         .creation_flags_windows()
         .output()
@@ -934,6 +938,13 @@ mod tests {
                 "{id} 无 GUI 探测源，不应返回版本"
             );
         }
+    }
+
+    /// 本机诊断：npm 一键安装/更新能力探针
+    #[test]
+    #[ignore]
+    fn debug_install_capability() {
+        println!("npm_install_capability = {}", npm_install_capability());
     }
 
     /// 本机诊断（cargo test --lib debug_gui_versions -- --ignored --nocapture）

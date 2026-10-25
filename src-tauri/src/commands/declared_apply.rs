@@ -265,18 +265,30 @@ pub fn restore_declared_agent(platform: String) -> Result<(), String> {
     restore_declared(spec)
 }
 
-/// 一键接入（声明式平台）：自动取第一个已启用且有 key 的供应商。
-/// 返回人类可读的结果（含供应商名与被写入的文件）。
+/// 一键接入（声明式平台）。
+///
+/// `provider_id` 指定用哪个供应商；不传则取第一个已启用且有 key 的
+/// （保持「零配置可用」，同时允许用户主动选择）。
 #[tauri::command]
-pub fn apply_declared_platform(platform: String) -> Result<String, String> {
+pub fn apply_declared_platform(
+    platform: String,
+    provider_id: Option<String>,
+) -> Result<String, String> {
     let spec = super::agent_spec::find(&platform)
         .ok_or_else(|| format!("未声明的 agent: {platform}"))?;
     let store = super::config::read_provider_store()?;
-    let p = store
-        .providers
-        .iter()
-        .find(|p| p.enabled && !p.api_key.trim().is_empty())
-        .ok_or_else(|| "没有可用的供应商：请先在「供应商」页添加并启用一个".to_string())?;
+    let p = match provider_id.as_deref() {
+        Some(id) if !id.is_empty() => store
+            .providers
+            .iter()
+            .find(|p| p.id == id)
+            .ok_or_else(|| format!("供应商不存在: {id}"))?,
+        _ => store
+            .providers
+            .iter()
+            .find(|p| p.enabled && !p.api_key.trim().is_empty())
+            .ok_or_else(|| "没有可用的供应商：请先在「供应商」页添加并启用一个".to_string())?,
+    };
 
     let endpoint = super::platforms::declared_base_url(p);
     let model = p.default_model.trim();

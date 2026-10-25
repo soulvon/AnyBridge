@@ -14064,24 +14064,31 @@ async function renderHeroVersion(platformId, elId) {
     if (el.dataset.versionSeq !== seq) return; // 已有更新的请求，丢弃本次结果
     if (el.dataset.versionTarget !== platformId) return;
     // 静默策略：有版本才展示；版本未知/探测失败留空不打扰。
-    // 唯一例外：**未安装**时给一个轻量「安装」链接（一行小字，可复制安装命令）。
+    // 探针降级（用户要求）：环境允许（can_auto_update = npm 可用 + 全局
+    // 目录免提权可写）才给「安装/更新」按钮；不允许只显示状态文字。
     if (!info || !info.current_version) {
       if (info && !info.installed) {
-        el.innerHTML =
-          '<button type="button" class="version-install-btn" data-action="installPlatformAgent" data-arg="' +
-          platformId +
-          '">安装</button>';
+        el.innerHTML = info.can_auto_update
+          ? '<button type="button" class="version-install-btn" data-action="updatePlatformAgentAction" data-arg="' +
+            platformId +
+            '">安装</button>'
+          : '<span class="version-state muted">未安装</span>';
       } else {
         el.innerHTML = '';
       }
       return;
     }
     if (info.has_update && info.latest_version) {
+      const updateBtn = info.can_auto_update
+        ? '<button type="button" class="version-update-btn" data-action="updatePlatformAgentAction" data-arg="' +
+          platformId +
+          '">更新</button>'
+        : '';
       el.innerHTML =
         '<span class="version-num">v' + info.current_version + '</span>' +
         '<span class="version-arrow">→</span>' +
         '<span class="version-num latest">v' + info.latest_version + '</span>' +
-        '<button type="button" class="version-update-btn" data-action="updatePlatformAgentAction" data-arg="' + platformId + '">更新</button>';
+        updateBtn;
     } else {
       // 无 latest 数据（GUI 客户端无 npm 源，如已停更的 Windsurf）：
       // 只显示版本号，不查、不说「已是最新」
@@ -14106,37 +14113,7 @@ async function renderHeroVersion(platformId, elId) {
  * 安装引导（magpie 克制原则：不代跑安装，只复制可执行命令）。
  * CLI 平台给 npm install -g <pkg>；GUI 客户端给官方下载页。
  */
-async function installPlatformAgent(platform) {
-  if (!invoke && !(typeof bindTauriBridge === 'function' && bindTauriBridge())) {
-    showCustomAlert('Tauri 通道未就绪，请重启 AnyBridge 后重试。', '安装', 'error');
-    return;
-  }
-  try {
-    const guide = await invoke('get_platform_install_guide', { platform });
-    const target = guide.command || guide.official_url;
-    if (!target) {
-      showCustomAlert('暂无可用安装方式。', '安装', 'info');
-      return;
-    }
-    let tip = guide.command
-      ? '已复制安装命令：' + guide.command
-      : '已复制官方下载地址：' + guide.official_url;
-    if (guide.node_hint) {
-      tip += '（未检测到 Node，请先执行：' + guide.node_hint + '）';
-    }
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-      await navigator.clipboard.writeText(target);
-    }
-    if (typeof showBottomToast === 'function') {
-      showBottomToast(tip, 'success', { duration: 6000 });
-    } else {
-      showCustomAlert(tip, '安装', 'info');
-    }
-    if (typeof addLog === 'function') addLog('info', tip);
-  } catch (e) {
-    showCustomAlert(String(e?.message || e), '安装', 'error');
-  }
-}
+
 
 /**
  * 一键更新平台 CLI（走官方 npm 命令 + 更新后验证，后端 magpie 模式）。
@@ -14149,7 +14126,7 @@ async function updatePlatformAgentAction(platform) {
   if (typeof addLog === 'function') addLog('info', '开始更新 ' + platform + ' …');
   try {
     const info = await invoke('update_platform_agent', { platform });
-    const msg = '已更新到 v' + info.current_version;
+    const msg = '已完成，当前 v' + info.current_version;
     if (typeof addLog === 'function') addLog('ok', msg);
     if (typeof showBottomToast === 'function') showBottomToast(msg, 'success');
   } catch (e) {
@@ -14267,9 +14244,44 @@ async function openGenericAgentPage(platformId) {
   setPlatformRailActive(platformId);
   globalThis._currentGenericAgent = platformId;
   renderHeroVersion(platformId, 'generic-agent-version');
+  if (typeof fillGenericAgentProviders === 'function') {
+    fillGenericAgentProviders().catch(() => {});
+  }
 }
 
-/** 通用页「一键接入」：后端按声明写入 endpoint/key/model（自动选第一个可用供应商） */
+/**
+ * 填充通用页的供应商下拉（只列「已启用且有 key」的——不可用的供应商
+ * 选了也会失败，不如不展示）。
+ */
+async function fillGenericAgentProviders(selectedId) {
+  const sel = document.getElementById('generic-agent-provider');
+  if (!sel) return;
+  let list = [];
+  try {
+    const store = await invoke('load_providers');
+    list = (store && store.providers ? store.providers : []).filter(
+      (p) => p.enabled && String(p.apiKey || '').trim()
+    );
+  } catch (e) {
+    if (typeof addLog === 'function') addLog('warn', '读取供应商列表失败: ' + String(e?.message || e));
+  }
+  if (!list.length) {
+    sel.innerHTML = '<option value="">（无可用供应商，请先添加）</option>';
+    sel.disabled = true;
+    return;
+  }
+  sel.disabled = false;
+  const keep = selectedId || sel.value;
+  sel.innerHTML = list
+    .map((p) => {
+      const label = p.name || p.id;
+      return '<option value="' + p.id + '">' + label + '</option>';
+    })
+    .join('');
+  if (keep && list.some((p) => p.id === keep)) sel.value = keep;
+}
+
+/** 通用页「一键接入」：按所选供应商写入 endpoint/key/model */
 async function genericAgentApply() {
   const platformId = globalThis._currentGenericAgent;
   if (!platformId) return;
@@ -14277,8 +14289,13 @@ async function genericAgentApply() {
     showCustomAlert('Tauri 通道未就绪，请重启 AnyBridge 后重试。', '接入', 'error');
     return;
   }
+  const sel = document.getElementById('generic-agent-provider');
+  const providerId = sel && !sel.disabled ? sel.value : '';
   try {
-    const msg = await invoke('apply_declared_platform', { platform: platformId });
+    const msg = await invoke('apply_declared_platform', {
+      platform: platformId,
+      providerId: providerId || null,
+    });
     if (typeof showBottomToast === 'function') {
       showBottomToast(msg, 'success', { duration: 5200 });
     } else {
@@ -14333,6 +14350,7 @@ globalThis.ensureRegistryRailItems = ensureRegistryRailItems;
 globalThis.openGenericAgentPage = openGenericAgentPage;
 globalThis.openGenericAgentConfig = openGenericAgentConfig;
 globalThis.genericAgentApply = genericAgentApply;
+globalThis.fillGenericAgentProviders = fillGenericAgentProviders;
 globalThis.genericAgentRestore = genericAgentRestore;
 globalThis.loadAgentRegistry = loadAgentRegistry;
 
