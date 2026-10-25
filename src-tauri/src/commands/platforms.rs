@@ -7033,6 +7033,9 @@ pub struct PlatformUpdateInfo {
     pub latest_version: Option<String>,
     pub has_update: bool,
     pub npm_package: Option<String>,
+    /// 是否有官方自更新命令（claude update / grok update / hermes update…）。
+    /// 无 npm 包但支持官方命令的平台（grok/hermes）靠它显示更新入口。
+    pub has_self_update: bool,
     /// 环境是否允许一键安装/更新（npm 可用 + 全局前缀免提权可写）。
     /// false 时前端不展示按钮，只显示「未安装」/纯版本号。
     pub can_auto_update: bool,
@@ -7102,6 +7105,10 @@ pub async fn check_platform_update(platform: String) -> Result<PlatformUpdateInf
     // 一键安装/更新的能力位：有 npm 包 + 环境可写（探针缓存 5 分钟）
     let can_auto_update =
         npm_package.is_some() && super::version_probe::npm_install_capability();
+    // 官方自更新能力（与平台 id 绑定；先取值避免 plat_id 被 move 后借用）
+    let has_self_update = super::agent_spec::find(&plat_id)
+        .map(|s| s.self_update.is_some())
+        .unwrap_or(false);
 
     Ok(PlatformUpdateInfo {
         platform: plat_id,
@@ -7110,6 +7117,7 @@ pub async fn check_platform_update(platform: String) -> Result<PlatformUpdateInf
         latest_version: latest,
         has_update,
         npm_package,
+        has_self_update,
         can_auto_update,
     })
 }
@@ -7157,6 +7165,7 @@ pub async fn update_platform_agent(platform: String) -> Result<PlatformUpdateInf
                     latest_version,
                     has_update,
                     npm_package: spec.npm_package.map(|p| p.to_string()),
+                    has_self_update: true,
                     can_auto_update: true,
                 });
             }
@@ -7211,6 +7220,9 @@ pub async fn update_platform_agent(platform: String) -> Result<PlatformUpdateInf
 
     invalidate_detect_cache();
     let can_auto_update = super::version_probe::npm_install_capability();
+    let has_self_update = super::agent_spec::find(&plat_id)
+        .map(|s| s.self_update.is_some())
+        .unwrap_or(false);
     Ok(PlatformUpdateInfo {
         platform: plat_id,
         installed: current_version.is_some(),
@@ -7218,6 +7230,7 @@ pub async fn update_platform_agent(platform: String) -> Result<PlatformUpdateInf
         latest_version,
         has_update,
         npm_package: Some(npm_package),
+        has_self_update,
         can_auto_update,
     })
 }

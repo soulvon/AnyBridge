@@ -14092,9 +14092,16 @@ async function renderHeroVersion(platformId, elId) {
         '<span class="version-num latest">v' + info.latest_version + '</span>' +
         updateBtn;
     } else {
-      // 无 latest 数据（GUI 客户端无 npm 源，如已停更的 Windsurf）：
-      // 只显示版本号，不查、不说「已是最新」
-      el.innerHTML = '<span class="version-num">v' + info.current_version + '</span>';
+      // 无 latest 数据：
+      // - 有官方自更新命令（grok/hermes）→ 给「更新」按钮（命令会自行检查）
+      // - 否则（GUI 客户端无 npm 源，如已停更的 Windsurf）→ 只显示版本号
+      const selfUpdateBtn =
+        info.has_self_update && info.can_auto_update
+          ? '<button type="button" class="version-update-btn" data-action="updatePlatformAgentAction" data-arg="' +
+            platformId +
+            '">更新</button>'
+          : '';
+      el.innerHTML = '<span class="version-num">v' + info.current_version + '</span>' + selfUpdateBtn;
     }
   } catch (e) {
     // 显式留痕：invoke 失败/超时时可在日志面板看到原因，

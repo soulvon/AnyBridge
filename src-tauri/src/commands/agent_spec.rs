@@ -377,7 +377,7 @@ pub static AGENTS: &[AgentSpec] = &[
         npm_package: Some("@openai/codex"),
         official_url: Some("https://github.com/openai/codex"),
         inject: None,
-        self_update: None,
+        self_update: Some(SelfUpdate { subcommand: &["update"] }),
         gui_exe_prefix: None,
     },
     AgentSpec {
@@ -405,10 +405,16 @@ pub static AGENTS: &[AgentSpec] = &[
         config_dir: PathSource::Template("~/.grok"),
         config_file: FileSource::Name("config.toml"),
         bin: Some("grok"),
-        npm_package: Some("@vibe-kit/grok-cli"),
+        // 无 npm 包：@vibe-kit/grok-cli 是第三方包（0.0.34），
+        // 与本机 xAI 官方 grok CLI（1.0.30，~/.grok/bin）不是一个产品
+        npm_package: None,
         official_url: Some("https://x.ai/cli"),
         inject: None,
-        self_update: None,
+        // 官方 grok update（实测 --help 有 "update  Check for updates or
+        // install a specific version"）；npm 无官方包，不能走 npm
+        self_update: Some(SelfUpdate {
+            subcommand: &["update"],
+        }),
         gui_exe_prefix: None,
     },
     AgentSpec {
@@ -468,7 +474,7 @@ pub static AGENTS: &[AgentSpec] = &[
         npm_package: Some("@earendil-works/pi-coding-agent"),
         official_url: None,
         inject: None,
-        self_update: None,
+        self_update: Some(SelfUpdate { subcommand: &["update", "self"] }),
         gui_exe_prefix: None,
     },
     AgentSpec {
@@ -483,7 +489,7 @@ pub static AGENTS: &[AgentSpec] = &[
         npm_package: None,
         official_url: None,
         inject: None,
-        self_update: None,
+        self_update: Some(SelfUpdate { subcommand: &["update"] }),
         gui_exe_prefix: None,
     },
     // ── 新增 agent 的写法（示例，默认不注册）──
@@ -835,7 +841,9 @@ mod tests {
             // CodeBuddy 是**桌面 IDE**（实测 IDE 1.106.1 vs CLI 2.171.0）：
             // 版本读安装目录，不用同名 CLI，也不引导 npm 更新
             ("codebuddy", "CodeBuddy", "Tencent Cloud", "openai", "models.json", None, None),
-            ("grok", "Grok", "xAI", "openai", "config.toml", Some("grok"), Some("@vibe-kit/grok-cli")),
+            // grok：npm 上无 xAI 官方包（@vibe-kit/grok-cli 是第三方，0.0.34
+            // 与本机官方 CLI 1.0.30 不是一个产品）→ npm 置 None，走 grok update
+            ("grok", "Grok", "xAI", "openai", "config.toml", Some("grok"), None),
             ("opencode", "OpenCode", "OpenCode", "openai", "opencode.json", Some("opencode"), Some("opencode-ai")),
             ("workbuddy", "WorkBuddy", "Tencent Cloud", "openai", "models.json", None, None),
             ("zcode", "ZCode", "Z.AI", "openai", "config.json", None, None),
