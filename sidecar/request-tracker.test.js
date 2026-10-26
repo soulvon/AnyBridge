@@ -149,6 +149,22 @@ describe('request-tracker 口径', () => {
     assert.throws(() => tracker.endAttempt({ status: 'ok' }), /without beginAttempt/);
   });
 
+  it('结算后晚到的 fail/abort 不改账本也不抛错（socket 事件时序）', () => {
+    const tracker = createTracker({ client: 'devin', route: 'chat', requestedModel: 'gpt-x' });
+    tracker.beginAttempt({ provider: 'A', model: 'm-a' });
+    tracker.endAttempt({ status: 'ok', usage: { inputTokens: 5, outputTokens: 1 } });
+
+    const d = delta(() => {
+      tracker.finish();
+      tracker.fail('upstream-stream', 'late error after finish');
+      tracker.abort('late close');
+    });
+
+    assert.equal(tracker.summary().status, 'ok');
+    assert.equal(d.errors, 0);
+    assert.equal(d.input, 5);
+  });
+
   it('无终态声明的请求显式标记为失败而非成功', () => {
     const tracker = createTracker({ client: 'devin', route: 'chat', requestedModel: 'gpt-x' });
     tracker.beginAttempt({ provider: 'A', model: 'm-a' });

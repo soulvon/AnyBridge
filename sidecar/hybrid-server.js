@@ -18,6 +18,7 @@ import { EventEmitter } from 'node:events';
 import { pathToFileURL, fileURLToPath } from 'node:url';
 import { listenWithReclaim } from './port-utils.js';
 import { handleGetChatMessage, shouldIntercept } from './handlers/chat.js';
+import { createTracker } from './request-tracker.js';
 import { handleLocalProxyRequest, isLocalProxyRequest } from './local-proxy.js';
 import { handleCursorRequest } from './cursor-proxy.js';
 import { injectWithRetry, listTargets, isAlreadyInjected, readInjectableModels } from './lib/codex-desktop-cdp.js';
@@ -1008,19 +1009,22 @@ function handleRequest(req, res) {
           console.log(`  [DEBUG-RAW-IMG] scan err: ${e.message}`);
         }
       }
+      const tracker = createTracker({ client: 'direct', route: 'chat' });
       try {
-        const result = handleGetChatMessage(req, res, body);
+        const result = handleGetChatMessage(req, res, body, tracker);
         if (result && typeof result.catch === 'function') {
           result.catch(err => {
             console.error(`[${now()}] #${id} Chat error: ${err.message}`);
             if (!res.headersSent) res.writeHead(500);
             if (!res.writableEnded) res.end();
+            tracker.finish();
           });
         }
       } catch (err) {
         console.error(`[${now()}] #${id} Chat error: ${err.message}`);
         if (!res.headersSent) res.writeHead(500);
         if (!res.writableEnded) res.end();
+        tracker.finish();
       }
       return;
     }
@@ -1208,19 +1212,25 @@ const mitmServer = http.createServer((req, res) => {
       const reqContentType = String(req.headers['content-type'] || '');
       const isUnaryRequest = reqContentType.includes('application/proto') && !reqContentType.includes('connect+proto');
       const targetRes = isUnaryRequest ? makeUnaryResponseCollector(res) : res;
+      const tracker = createTracker({
+        client: upstreamHost && upstreamHost.includes('windsurf') ? 'windsurf' : 'devin',
+        route: 'chat',
+      });
       try {
-        const result = handleGetChatMessage(req, targetRes, body);
+        const result = handleGetChatMessage(req, targetRes, body, tracker);
         if (result && typeof result.catch === 'function') {
           result.catch(err => {
             console.error(`[${now()}] #${id} Chat error: ${err.message}`);
             if (!targetRes.headersSent) targetRes.writeHead(500);
             if (!targetRes.writableEnded) targetRes.end();
+            tracker.finish();
           });
         }
       } catch (err) {
         console.error(`[${now()}] #${id} Chat error: ${err.message}`);
         if (!targetRes.headersSent) targetRes.writeHead(500);
         if (!targetRes.writableEnded) targetRes.end();
+        tracker.finish();
       }
       return;
     }

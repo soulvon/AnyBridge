@@ -156,8 +156,10 @@ export class RequestTracker {
   }
 
   // 客户端断开。进 requests，不进 errors（用户主动取消不应拉高错误率）。
+  // 已结算后到达的 abort 是合法的晚到事件（socket 关闭总在响应结束之后），
+  // 不再影响账本；这不是错误兜底，而是结算语义。
   abort(message) {
-    if (this.finalized) throw new Error('[tracker] abort after finish');
+    if (this.finalized) return this;
     if (!this.status) this.status = 'aborted';
     this.errorKind = this.errorKind || 'client-abort';
     this.errorMessage = message || this.errorMessage || null;
@@ -165,8 +167,9 @@ export class RequestTracker {
   }
 
   // 触达上游后的失败，或本地处理失败（vision/search）。不覆盖已定状态。
+  // 同上：结算后晚到的网络错误不改账本。
   fail(kind, message) {
-    if (this.finalized) throw new Error('[tracker] fail after finish');
+    if (this.finalized) return this;
     if (this.status === 'ok') throw new Error('[tracker] fail conflicts with status=ok');
     if (!this.status) this.status = 'failed';
     this.errorKind = kind || this.errorKind || 'unknown';

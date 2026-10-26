@@ -23,7 +23,6 @@ import { buildErrorChunk } from './build-response.js';
 import { AnthropicStreamProcessor, parseSSEChunk } from './anthropic-stream.js';
 import { OpenAIChatCompletionsStreamProcessor, OpenAIStreamProcessor, parseOpenAISSEChunk } from './openai-stream.js';
 import { wrapEnvelope, endOfStreamEnvelope, endOfStreamErrorEnvelope, streamHeaders, gzipSync, unwrapRequest } from '../connect.js';
-import { recordRequest, recordUsage, recordError, recordLatency } from '../stats.js';
 import { getInjectedByUid, getSlot, loadModelMapConfig, loadProviders, resolveTarget, rememberProviderToolSchemaCompat, updateModelCapabilities } from '../provider-pool.js';
 import { mitmLog } from '../mitm-logger.js';
 import { getRuntimeModelSlotStatus } from '../rename-models.js';
@@ -306,6 +305,7 @@ function sendTerminalError(res, messageId, message, code = 'unavailable') {
     res.write(endOfStreamEnvelope());
   }
   res.end();
+  trackerOf(res).finish();
 }
 
 // ─── Service tier (fast mode) ──────────────────────────────
@@ -730,8 +730,12 @@ function injectThinking(apiPayload, conn, thinking) {
   applyThinkingToPayload(apiPayload, conn, t);
 }
 
-function recordStreamLatency(startedAt) {
-  if (startedAt) recordLatency(Date.now() - startedAt);
+// 请求级 tracker 挂在 res 上：深层流处理函数无需改签名即可访问；
+// 缺失时显式抛错，不静默降级为「不统计」。
+function trackerOf(res) {
+  const tracker = res && res.__byokTracker;
+  if (!tracker) throw new Error('[chat] request tracker missing on response');
+  return tracker;
 }
 
 function isGeminiModel(model = '') {
@@ -785,12 +789,15 @@ export function shouldIntercept(body, headers) {
 
 // ─── Main handler ──────────────────────────────────────────
 
-export function handleGetChatMessage(req, res, body) {
+export function handleGetChatMessage(req, res, body, tracker) {
+  if (!tracker) throw new Error('[chat] handleGetChatMessage requires a request tracker');
+  res.__byokTracker = tracker;
   let { systemPrompt, messages, tools, toolChoice, requestedModel, initiator } =
     parseGetChatMessageRequest(body, req.headers);
 
   const messageId = crypto.randomUUID();
-  let slot = getSlot(requestedModel);
+  tracker.bindRequestId(messageId);
+  tracker.requestedModel = requestedModel;  let slot = getSlot(requestedModel);
   const injected = slot ? null : getInjectedByUid(requestedModel);
   const runtimeSlot = slot || injected ? null : getRuntimeModelSlotStatus(requestedModel);
 
@@ -798,7 +805,7 @@ export function handleGetChatMessage(req, res, body) {
     const label = injected.label || requestedModel;
     const msg = `模型槽位「${label}」已解锁但尚未配置 BYOK 映射。请在「模型槽位管理」中选择供应商并填写 model 字段。`;
     console.warn(`  ⚠️  ${msg}`);
-    recordError({ provider: 'model-slot', message: msg });
+    tracker.reject('unconfigured', msg);
     sendTerminalError(res, messageId, msg, 'invalid_argument');
     return;
   }
@@ -807,7 +814,7 @@ export function handleGetChatMessage(req, res, body) {
     const label = runtimeSlot.label || requestedModel;
     const msg = `模型槽位「${label}」已解锁但尚未配置 BYOK 映射。请在「模型槽位管理」中选择供应商并填写 model 字段。`;
     console.warn(`  ⚠️  ${msg}`);
-    recordError({ provider: 'model-slot', message: msg });
+    tracker.reject('unconfigured', msg);
     sendTerminalError(res, messageId, msg, 'invalid_argument');
     return;
   }
@@ -836,7 +843,7 @@ export function handleGetChatMessage(req, res, body) {
     const label = slot?.displayName || requestedModel;
     const msg = `模型映射「${label}」已启用但尚未配置目标供应商。请在「模型映射」中编辑该行并添加供应商/model。`;
     console.warn(`  ⚠️  ${msg}`);
-    recordError({ provider: 'model-slot', message: msg });
+    tracker.reject('unconfigured', msg);
     sendTerminalError(res, messageId, msg, 'invalid_argument');
     return;
   }
@@ -853,6 +860,7 @@ export function handleGetChatMessage(req, res, body) {
   const toolEnhancement = applyChatToolEnhancement(tools, toolChoice, enhancement);
   if (toolEnhancement.error) {
     console.warn(`  ⚠️  ${toolEnhancement.error}`);
+    tracker.reject('invalid-tool', toolEnhancement.error);
     sendTerminalError(res, messageId, toolEnhancement.error, 'invalid_argument');
     return;
   }
@@ -864,7 +872,7 @@ export function handleGetChatMessage(req, res, body) {
     if (!allowed) {
       const msg = `请求频率超限：${enhancement.rateLimitRpm} RPM`;
       console.warn(`  ⚠️  ${msg}`);
-      recordError({ provider: 'rate-limit', message: msg });
+      tracker.reject('rate-limit', msg);
       sendTerminalError(res, messageId, msg, 'resource_exhausted');
       return;
     }
@@ -901,7 +909,7 @@ export function handleGetChatMessage(req, res, body) {
     const minWait = Math.ceil(Math.min(...routed.cooling.map(c => c.remainingMs)) / 1000);
     const msg = `模型「${slot.displayName || requestedModel}」的所有上游目标均在冷却期内（最短剩余 ${minWait} 秒解冻），按策略直接阻断报错。`;
     console.error(`  ❌ ${msg}`);
-    recordError({ provider: 'failover-cooldown', message: msg });
+    tracker.reject('cooldown', msg);
     sendTerminalError(res, messageId, msg, 'resource_exhausted');
     return;
   }
@@ -931,7 +939,10 @@ export function handleGetChatMessage(req, res, body) {
   let currentAttemptFailed = false;
   res.on('close', () => {
     clientClosed = !res.writableEnded;
-    if (!clientClosed && currentAttemptKey && !currentAttemptFailed) {
+    if (clientClosed) {
+      tracker.abort('client closed');
+      tracker.finish();
+    }    if (!clientClosed && currentAttemptKey && !currentAttemptFailed) {
       markSuccess(currentAttemptKey);
     }
     if (retryTimer) {
@@ -949,7 +960,7 @@ export function handleGetChatMessage(req, res, body) {
     if (idx >= routingTargets.length) {
       const label = routingTargets.length > 1 ? `所有 ${routingTargets.length} 个目标均失败` : '目标失败';
       console.error(`  ❌ ${label}: ${errors.join(' | ')}`);
-      recordError({ provider: 'failover', message: errors.join(' | ') });
+      tracker.fail('failover', errors.join(' | '));
       if (!res.writableEnded) {
         sendTerminalError(res, messageId, providerFailureMessage(failures), connectCodeForFailures(failures));
       }
@@ -989,7 +1000,7 @@ export function handleGetChatMessage(req, res, body) {
     const thinking = !effortSupported ? null
       : (envLevel ? { mode: 'level', level: envLevel, source: 'env' } : resolveThinkingEffort(target, requestedModel, conn));
     console.log(`  ➡️  目标#${idx}: ${conn.providerName} (${routeMode}) → ${conn.model}${conn.capabilities?.gzip ? ' [gzip]' : ''}${thinking ? ` [effort=${describeThinking(thinking)}${thinking.source === 'config' ? '' : `/${thinking.source}`}]` : ''}`);
-    recordRequest({ provider: conn.providerName, requestedModel, resolvedModel: conn.model });
+    tracker.beginAttempt({ provider: conn.providerName, providerId: conn.providerId, model: conn.model });
 
     const sys = systemPrompt;
     const targetStartedAt = Date.now();
@@ -1012,7 +1023,7 @@ export function handleGetChatMessage(req, res, body) {
         if (configuredVisionModels.length === 0) {
           const msg = `槽位「${slot.displayName || requestedModel}」已启用第三方图片理解，但代理增强里没有配置图片理解模型。`;
           console.error(`  ❌ ${msg}`);
-          recordError({ provider: 'vision-fallback', message: msg });
+          tracker.fail('vision-config', msg);
           sendTerminalError(res, messageId, msg, 'invalid_argument');
           return;
         }
@@ -1048,7 +1059,7 @@ export function handleGetChatMessage(req, res, body) {
         } catch (e) {
           const msg = `第三方图片理解失败：${e.message}`;
           console.error(`  ❌ ${msg}`);
-          recordError({ provider: 'vision-fallback', message: msg });
+          tracker.fail('vision', msg);
           sendTerminalError(res, messageId, msg, 'unavailable');
           return;
         }
@@ -1065,7 +1076,7 @@ export function handleGetChatMessage(req, res, body) {
 
         if (canRetry) {
           retryCount++;
-          const delay = Math.round(retryDelayMs(retryCount, meta, retryPolicy));
+          tracker.noteRetry(reason);          const delay = Math.round(retryDelayMs(retryCount, meta, retryPolicy));
           console.warn(`  ⏳ ${conn.providerName} 失败(${reason})，${delay}ms 后重试 ${retryCount}/${retryPolicy.maxRetries}`);
           retryTimer = setTimeout(() => startTargetRequest(), delay);
           return;
@@ -1074,6 +1085,7 @@ export function handleGetChatMessage(req, res, body) {
         const hasNextTarget = idx < routingTargets.length;
         console.warn(`  ⚠️  ${conn.providerName} 失败(${reason})${hasNextTarget ? ' → 切换下一个' : ''}`);
         currentAttemptFailed = true;
+        tracker.endAttempt({ status: 'failed', statusCode: meta.statusCode ?? null, error: reason });
         if (routingTargets.length > 1) {
           markFailure(currentAttemptKey, {
             statusCode: meta.statusCode,
@@ -1190,9 +1202,9 @@ function flushBufferedStreamResult(res, result, { enhancement, conn, resolvedMod
   }
   res.write(endOfStreamEnvelope());
   res.end();
-  recordStreamLatency(result.streamStartedAt);
+  trackerOf(res).endAttempt({ status: 'ok', statusCode: 200, ms: Date.now() - result.streamStartedAt, usage: result.processor?.usage || {} });
   markModelSuccess(conn, resolvedModel, messages, tools);
-  recordUsage(result.processor?.usage || {});
+  trackerOf(res).finish();
   logEnhancedChatResponse(enhancement, conn, resolvedModel, result.processor);
   mitmLog({
     direction: 'downstream',
@@ -1222,6 +1234,7 @@ async function streamSearchAgentLoop(req, res, opts) {
   const toolName = searchInjection.toolName || 'web_search';
   const sources = enabledSearchSources(searchModels);
   if (sources.length === 0) {
+    trackerOf(res).fail('search-config', 'no enabled search source');
     sendTerminalError(res, messageId, '联网搜索已开启，但没有启用的搜索源。请先在代理增强中添加搜索源。', 'invalid_argument');
     return;
   }
@@ -1242,10 +1255,12 @@ async function streamSearchAgentLoop(req, res, opts) {
       return;
     }
     if (result.kind === 'terminal-error') {
+      trackerOf(res).fail('search', result.message);
       sendTerminalError(res, messageId, result.message, result.code || 'unavailable');
       return;
     }
     if (result.kind !== 'success') {
+      trackerOf(res).fail('search', 'unknown upstream result');
       sendTerminalError(res, messageId, `联网搜索 agent loop 收到未知上游结果: ${result.kind || 'unknown'}`, 'unavailable');
       return;
     }
@@ -1261,12 +1276,14 @@ async function streamSearchAgentLoop(req, res, opts) {
 
     if (otherToolCalls.length > 0) {
       const names = otherToolCalls.map(call => call.name || call.id || '(unknown)').join(', ');
+      trackerOf(res).fail('search-conflict', 'web_search mixed with client tools');
       sendTerminalError(res, messageId, `模型同时请求联网搜索和客户端工具（${names}），AnyBridge 无法同时接管并透传，已中止以避免未处理的 web_search 泄漏。`, 'invalid_argument');
       return;
     }
 
     searchRounds += 1;
     if (searchRounds > maxRounds) {
+      trackerOf(res).fail('search-exhausted', 'max rounds exceeded');
       sendTerminalError(res, messageId, `联网搜索 agent loop 超过最大轮次 ${maxRounds}。模型仍在请求 web_search，已中止。`, 'resource_exhausted');
       return;
     }
@@ -2041,9 +2058,9 @@ async function streamAnthropic(req, res, { systemPrompt, messages, tools, toolCh
         if (processor.isDone && !res.writableEnded) {
           res.write(endOfStreamEnvelope());
           res.end();
-          recordStreamLatency(streamStartedAt);
+          trackerOf(res).endAttempt({ status: 'ok', statusCode: 200, ms: Date.now() - streamStartedAt, usage: processor.usage });
           markModelSuccess(conn, resolvedModel, messages, sentTools);
-          recordUsage(processor.usage);
+          trackerOf(res).finish();
           logEnhancedChatResponse(enhancement, conn, resolvedModel, processor);
           mitmLog({ direction: 'downstream', providerName: conn.providerName, model: resolvedModel, format: 'anthropic', request: { method: 'POST', url: requestUrl }, response: { statusCode: 200, headers: { 'content-type': 'text/event-stream' }, body: `[USAGE] ${JSON.stringify(processor.usage)}\n\n${rawOutput.join('\n\n')}` } });
           console.log(`  ✅ Stream done (stop: ${processor.stopReason})`);
@@ -2070,9 +2087,9 @@ async function streamAnthropic(req, res, { systemPrompt, messages, tools, toolCh
       if (!res.writableEnded) {
         res.write(endOfStreamEnvelope());
         res.end();
-        recordStreamLatency(streamStartedAt);
+        trackerOf(res).endAttempt({ status: 'ok', statusCode: 200, ms: Date.now() - streamStartedAt, usage: processor.usage });
         markModelSuccess(conn, resolvedModel, messages, sentTools);
-        recordUsage(processor.usage);
+        trackerOf(res).finish();
         logEnhancedChatResponse(enhancement, conn, resolvedModel, processor);
         mitmLog({ direction: 'downstream', providerName: conn.providerName, model: resolvedModel, format: 'anthropic', request: { method: 'POST', url: requestUrl }, response: { statusCode: 200, headers: { 'content-type': 'text/event-stream' }, body: `[USAGE] ${JSON.stringify(processor.usage)}\n\n${rawOutput.join('\n\n')}` } });
         console.log(`  ✅ Stream ended (stop: ${processor.stopReason || 'forced'})`);
@@ -2081,7 +2098,7 @@ async function streamAnthropic(req, res, { systemPrompt, messages, tools, toolCh
 
     apiRes.on('error', (err) => {
       console.error(`  ❌ Anthropic stream error: ${err.message}`);
-      if (!res.writableEnded) {
+      trackerOf(res).fail('upstream-stream', err.message);      if (!res.writableEnded) {
         sendTerminalError(res, messageId, `BYOK 上游流中断：${conn.providerName} / ${resolvedModel}（${clampText(err.message, 120)}）。请稍后重试或切换备用供应商。`, 'unavailable');
       }
     });
@@ -2095,6 +2112,7 @@ async function streamAnthropic(req, res, { systemPrompt, messages, tools, toolCh
     // 连接阶段失败（headersSent=false）→ 还能切换下一个供应商。
     if (!failed && !res.headersSent) { failed = true; onFailover(err.message, { code: err.code }); return; }
     if (!res.writableEnded) {
+      trackerOf(res).fail('network', err.message);
       sendTerminalError(res, messageId, `BYOK 连接上游失败：${conn.providerName} / ${resolvedModel}（${clampText(err.message, 120)}）。请检查网络、代理和 API Host。`, 'unavailable');
     }
   });
@@ -2299,9 +2317,9 @@ async function streamOpenAI(req, res, { systemPrompt, messages, tools, toolChoic
       if (processor.isDone && !res.writableEnded) {
         res.write(endOfStreamEnvelope());
         res.end();
-        recordStreamLatency(streamStartedAt);
+        trackerOf(res).endAttempt({ status: 'ok', statusCode: 200, ms: Date.now() - streamStartedAt, usage: processor.usage });
         markModelSuccess(conn, resolvedModel, messages, tools);
-        recordUsage(processor.usage);
+        trackerOf(res).finish();
         logEnhancedChatResponse(enhancement, conn, resolvedModel, processor);
         mitmLog({ direction: 'downstream', providerName: conn.providerName, model: resolvedModel, format: 'openai-responses', request: { method: 'POST', url: requestUrl }, response: { statusCode: 200, headers: { 'content-type': 'text/event-stream' }, body: `[USAGE] ${JSON.stringify(processor.usage)}\n\n${rawOutput.join('\n\n')}` } });
         console.log(`  ✅ OpenAI stream done (stop: ${processor.stopReason})`);
@@ -2330,9 +2348,9 @@ async function streamOpenAI(req, res, { systemPrompt, messages, tools, toolChoic
       if (!res.writableEnded) {
         res.write(endOfStreamEnvelope());
         res.end();
-        recordStreamLatency(streamStartedAt);
+        trackerOf(res).endAttempt({ status: 'ok', statusCode: 200, ms: Date.now() - streamStartedAt, usage: processor.usage });
         markModelSuccess(conn, resolvedModel, messages, tools);
-        recordUsage(processor.usage);
+        trackerOf(res).finish();
         logEnhancedChatResponse(enhancement, conn, resolvedModel, processor);
         mitmLog({ direction: 'downstream', providerName: conn.providerName, model: resolvedModel, format: 'openai-responses', request: { method: 'POST', url: requestUrl }, response: { statusCode: 200, headers: { 'content-type': 'text/event-stream' }, body: `[USAGE] ${JSON.stringify(processor.usage)}\n\n${rawOutput.join('\n\n')}` } });
         console.log(`  ✅ OpenAI stream ended (stop: ${processor.stopReason})`);
@@ -2341,7 +2359,7 @@ async function streamOpenAI(req, res, { systemPrompt, messages, tools, toolChoic
 
     apiRes.on('error', (err) => {
       console.error(`  ❌ OpenAI stream error: ${err.message}`);
-      if (!res.writableEnded) {
+      trackerOf(res).fail('upstream-stream', err.message);      if (!res.writableEnded) {
         sendTerminalError(res, messageId, `BYOK 上游流中断：${conn.providerName} / ${resolvedModel}（${clampText(err.message, 120)}）。请稍后重试或切换备用供应商。`, 'unavailable');
       }
     });
@@ -2354,6 +2372,7 @@ async function streamOpenAI(req, res, { systemPrompt, messages, tools, toolChoic
     console.error(`  ❌ ${conn.providerName} 连接错误: ${err.message}`);
     if (!failed && !res.headersSent) { failed = true; onFailover(err.message, { code: err.code }); return; }
     if (!res.writableEnded) {
+      trackerOf(res).fail('network', err.message);
       sendTerminalError(res, messageId, `BYOK 连接上游失败：${conn.providerName} / ${resolvedModel}（${clampText(err.message, 120)}）。请检查网络、代理和 API Host。`, 'unavailable');
     }
   });
@@ -2515,9 +2534,9 @@ async function streamOpenAIChatCompletions(req, res, { systemPrompt, messages, t
       if (processor.isDone && !res.writableEnded) {
         res.write(endOfStreamEnvelope());
         res.end();
-        recordStreamLatency(streamStartedAt);
+        trackerOf(res).endAttempt({ status: 'ok', statusCode: 200, ms: Date.now() - streamStartedAt, usage: processor.usage });
         markModelSuccess(conn, resolvedModel, messages, tools);
-        recordUsage(processor.usage);
+        trackerOf(res).finish();
         logEnhancedChatResponse(enhancement, conn, resolvedModel, processor);
         mitmLog({ direction: 'downstream', providerName: conn.providerName, model: resolvedModel, format: 'openai-chat', request: { method: 'POST', url: requestUrl }, response: { statusCode: 200, headers: { 'content-type': 'text/event-stream' }, body: `[USAGE] ${JSON.stringify(processor.usage)}\n\n${rawOutput.join('\n\n')}` } });
         console.log(`  ✅ OpenAI chat stream done (stop: ${processor.stopReason})`);
@@ -2542,9 +2561,9 @@ async function streamOpenAIChatCompletions(req, res, { systemPrompt, messages, t
       if (!res.writableEnded) {
         res.write(endOfStreamEnvelope());
         res.end();
-        recordStreamLatency(streamStartedAt);
+        trackerOf(res).endAttempt({ status: 'ok', statusCode: 200, ms: Date.now() - streamStartedAt, usage: processor.usage });
         markModelSuccess(conn, resolvedModel, messages, tools);
-        recordUsage(processor.usage);
+        trackerOf(res).finish();
         logEnhancedChatResponse(enhancement, conn, resolvedModel, processor);
         mitmLog({ direction: 'downstream', providerName: conn.providerName, model: resolvedModel, format: 'openai-chat', request: { method: 'POST', url: requestUrl }, response: { statusCode: 200, headers: { 'content-type': 'text/event-stream' }, body: `[USAGE] ${JSON.stringify(processor.usage)}\n\n${rawOutput.join('\n\n')}` } });
         console.log(`  ✅ OpenAI chat stream ended (stop: ${processor.stopReason})`);
@@ -2553,7 +2572,7 @@ async function streamOpenAIChatCompletions(req, res, { systemPrompt, messages, t
 
     apiRes.on('error', (err) => {
       console.error(`  ❌ OpenAI chat stream error: ${err.message}`);
-      if (!res.writableEnded) {
+      trackerOf(res).fail('upstream-stream', err.message);      if (!res.writableEnded) {
         sendTerminalError(res, messageId, `BYOK 上游流中断：${conn.providerName} / ${resolvedModel}（${clampText(err.message, 120)}）。请稍后重试或切换备用供应商。`, 'unavailable');
       }
     });
@@ -2566,6 +2585,7 @@ async function streamOpenAIChatCompletions(req, res, { systemPrompt, messages, t
     console.error(`  ❌ ${conn.providerName} 连接错误: ${err.message}`);
     if (!failed && !res.headersSent) { failed = true; onFailover(err.message, { code: err.code }); return; }
     if (!res.writableEnded) {
+      trackerOf(res).fail('network', err.message);
       sendTerminalError(res, messageId, `BYOK 连接上游失败：${conn.providerName} / ${resolvedModel}（${clampText(err.message, 120)}）。请检查网络、代理和 API Host。`, 'unavailable');
     }
   });

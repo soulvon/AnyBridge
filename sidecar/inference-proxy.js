@@ -12,6 +12,7 @@ import http2 from 'node:http2';
 import https from 'node:https';
 import { httpsAgentFor } from './system-proxy.js';
 import { handleGetChatMessage } from './handlers/chat.js';
+import { createTracker } from './request-tracker.js';
 import { listenWithReclaim } from './port-utils.js';
 
 const PORT = parseInt(process.env.INFERENCE_PORT || '7451', 10);
@@ -139,7 +140,7 @@ function adaptStreamForChatHandler(body, stream, headers) {
     },
   };
 
-  handleGetChatMessage(fakeReq, fakeRes, body);
+  handleGetChatMessage(fakeReq, fakeRes, body, createTracker({ client: 'inference-proxy', route: 'chat' }));
 }
 
 // ─── HTTP/2 server ───────────────────────────────────────
