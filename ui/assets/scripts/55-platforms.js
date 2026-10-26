@@ -14135,11 +14135,16 @@ async function renderHeroVersion(platformId, elId) {
 /**
  * 一键更新平台 CLI（走官方 npm 命令 + 更新后验证，后端 magpie 模式）。
  */
+const _updateBusy = {};
+
 async function updatePlatformAgentAction(platform) {
   if (!invoke && !(typeof bindTauriBridge === 'function' && bindTauriBridge())) {
     showCustomAlert('Tauri 通道未就绪，请重启 AnyBridge 后重试。', '更新失败', 'error');
     return;
   }
+  // 同平台在途守卫：连点/版本行重渲后再次触发，都不该让两次安装并发跑
+  if (_updateBusy[platform]) return;
+  _updateBusy[platform] = true;
   // 即时反馈：npm install -g 需要十几到几十秒，期间必须让用户看到「在跑」，
   // 否则点了没反应（实测用户误判为按钮失效）。
   const btn = document.querySelector(
@@ -14156,14 +14161,26 @@ async function updatePlatformAgentAction(platform) {
   if (typeof addLog === 'function') addLog('info', '开始更新 ' + platform + ' …');
   try {
     const info = await invoke('update_platform_agent', { platform });
-    const msg = '已完成，当前 v' + info.current_version;
+    // 如实呈现硬校验结论：升上去了 / 执行了但版本没变 / 校验未过已回滚
+    const from = info.updated_from ? 'v' + info.updated_from : null;
+    const to = info.current_version ? 'v' + info.current_version : null;
+    let msg;
+    if (info.outcome === 'rolled_back') {
+      msg = '更新后校验未通过，已回滚到 ' + (to || '原版本');
+    } else if (info.outcome === 'upgraded' && from && to) {
+      msg = '已完成 ' + from + ' → ' + to;
+    } else {
+      msg = '更新已执行，当前仍是 ' + (to || '未知版本') + '（官方渠道可能尚未推送）';
+    }
     if (typeof addLog === 'function') addLog('ok', msg);
-    if (typeof showBottomToast === 'function') showBottomToast(msg, 'success');
+    const toastType = info.outcome === 'rolled_back' ? 'warn' : 'success';
+    if (typeof showBottomToast === 'function') showBottomToast(msg, toastType);
   } catch (e) {
     const message = String(e?.message || e);
     if (typeof addLog === 'function') addLog('err', platform + ' 更新失败: ' + message);
     if (typeof showCustomAlert === 'function') showCustomAlert(message, platform + ' 更新失败', 'error');
   } finally {
+    _updateBusy[platform] = false;
     // 恢复按钮（版本行重渲后新按钮会是正确文案；重渲失败时至少不让按钮卡死）
     if (btn && btn.isConnected) {
       btn.disabled = false;

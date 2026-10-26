@@ -251,11 +251,11 @@ pub fn installed_cli_version(platform_id: &str) -> Option<String> {
     // 输出）回退到 npm 包内的 package.json（magpie 的 installMethod 思路，
     // npm 生态特有增强）。
     let mut version = None;
-    if let Ok(out) = std::process::Command::new(&bin_path)
-        .args(spec_args(platform_id))
-        .creation_flags_windows()
-        .output()
-    {
+    // 探测必须带超时：个别 CLI 的 --version 会挂起（等待输入/网络/卡死），
+    // 无超时会拖住整个平台检测循环（13 个平台串行探测），表现为界面长时间无响应
+    let mut probe = std::process::Command::new(&bin_path);
+    probe.args(spec_args(platform_id)).creation_flags_windows();
+    if let Ok(out) = spawn_with_timeout(probe, Duration::from_secs(10)) {
         version = parse_version_line(&String::from_utf8_lossy(&out.stdout));
     }
     if version.is_none() {
@@ -609,10 +609,78 @@ fn electron_app_version(dir: &std::path::Path) -> Option<String> {
     asar_package_version(&dir.join("resources").join("app.asar"))
 }
 
+/// 子进程执行带超时：更新命令可能卡在下载或网络上，不能无限等待
+/// （无限等待 = spawn_blocking 线程永久占用 + UI 一直转圈，用户无从判断）。
+/// 超时后按本次启动的 PID 精确终止（不按进程名扫，避免误伤同名进程）。
+pub fn spawn_with_timeout(
+    mut cmd: std::process::Command,
+    timeout: Duration,
+) -> Result<std::process::Output, String> {
+    use std::process::Stdio;
+    let mut child = cmd
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|e| format!("启动子进程失败: {e}"))?;
+    let pid = child.id();
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let _ = tx.send(child.wait_with_output());
+    });
+    match rx.recv_timeout(timeout) {
+        Ok(Ok(out)) => Ok(out),
+        Ok(Err(e)) => Err(format!("读取子进程输出失败: {e}")),
+        Err(_) => {
+            kill_update_pid(pid);
+            Err(format!(
+                "命令执行超时（{} 分钟），已终止。可稍后重试，或到终端手动执行",
+                timeout.as_secs() / 60
+            ))
+        }
+    }
+}
+
+/// 按 PID 终止（只杀本次启动的进程及其子进程）
+fn kill_update_pid(pid: u32) {
+    #[cfg(windows)]
+    {
+        let _ = std::process::Command::new("taskkill")
+            .args(["/PID", &pid.to_string(), "/F", "/T"])
+            .creation_flags_windows()
+            .output();
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = std::process::Command::new("kill")
+            .args(["-9", &pid.to_string()])
+            .output();
+    }
+}
+
+/// 硬校验：CLI 二进制是否真的能启动。
+///
+/// 为什么不能只看版本号：`installed_cli_version` 在 CLI 无输出时会回退到
+/// npm 包内的 package.json——文件损坏但包元数据还在时会「读到旧版本号」，
+/// 于是把坏掉的 CLI 当成可用。这里直接启动一次二进制，能起来才算数。
+pub fn cli_binary_runs(platform_id: &str) -> bool {
+    let Some(spec) = cli_spec(platform_id) else {
+        return false;
+    };
+    let Some(bin_path) = find_tool(spec.bin) else {
+        return false;
+    };
+    let mut cmd = std::process::Command::new(&bin_path);
+    cmd.args(spec_args(platform_id)).creation_flags_windows();
+    spawn_with_timeout(cmd, Duration::from_secs(20)).is_ok()
+}
+
 /// 官方自更新（如 `claude update`）：命令成功即视为完成。
 ///
 /// 不强制要求版本号立即变化——官方渠道可能尚未推送（实测 native 版与
 /// npm 版发布不同步），硬判「更新失败」会误导用户。
+/// 但**必须硬校验二进制仍可启动**（见 cli_binary_runs），
+/// 更新后起不来 = 失败，不能算成功。
 pub fn run_self_update_sync(
     bin: &str,
     args: &[&str],
@@ -628,8 +696,9 @@ pub fn run_self_update_sync(
     if let Some(pairs) = env {
         cmd.envs(pairs.iter().map(|(k, v)| (*k, *v)));
     }
-    let out = cmd
-        .output()
+    // 超时 10 分钟：自更新要下载完整二进制（实测 grok 1.0.70 约 168MB），
+    // 但要防网络挂起把线程和 UI 永久拖住
+    let out = spawn_with_timeout(cmd, Duration::from_secs(600))
         .map_err(|e| format!("执行官方更新命令失败: {e}"))?;
     if !out.status.success() {
         let err = String::from_utf8_lossy(&out.stderr).trim().to_string();
@@ -1051,10 +1120,10 @@ pub fn update_npm_package_sync(
             .unwrap_or_else(|| PathBuf::from("npm"))
     });
 
-    let out = std::process::Command::new(&npm)
-        .args(["install", "-g", &format!("{}@{}", npm_package, target_version)])
-        .creation_flags_windows()
-        .output()
+    let mut cmd = std::process::Command::new(&npm);
+    cmd.args(["install", "-g", &format!("{}@{}", npm_package, target_version)])
+        .creation_flags_windows();
+    let out = spawn_with_timeout(cmd, Duration::from_secs(600))
         .map_err(|e| format!("启动 npm 失败: {e}"))?;
 
     if !out.status.success() {
@@ -1075,6 +1144,13 @@ pub fn update_npm_package_sync(
 
     // 验证（magpie 教训：更新后必须确认版本真变了，没变要报错）
     invalidate_version_cache(platform_id);
+    // 硬校验：先看二进制能不能起来——package.json 回退会让坏掉的安装也「读到版本号」
+    if !cli_binary_runs(platform_id) {
+        return Err(format!(
+            "更新命令已执行，但 {} 无法启动（二进制可能损坏）。手动恢复：npm install -g {}@{}",
+            spec.bin, npm_package, target_version
+        ));
+    }
     match installed_cli_version(platform_id) {
         Some(v) if !is_newer(target_version, &v) => Ok(v),
         Some(v) => Err(format!(

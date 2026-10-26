@@ -7039,6 +7039,40 @@ pub struct PlatformUpdateInfo {
     /// 环境是否允许一键安装/更新（npm 可用 + 全局前缀免提权可写）。
     /// false 时前端不展示按钮，只显示「未安装」/纯版本号。
     pub can_auto_update: bool,
+    /// 更新前版本（仅 update_platform_agent 返回时非 None）：
+    /// UI 用它展示「v1.3.0 → v1.4.0」或回滚后「已回到 v1.3.0」。
+    pub updated_from: Option<String>,
+    /// 硬校验产出的更新结论：
+    /// - "unchanged"：未执行更新（check 场景），或执行了但版本没变（仍可用）
+    /// - "upgraded"：版本真的前进了
+    /// - "rolled_back"：更新后校验未通过，已回滚到原版本
+    pub outcome: &'static str,
+}
+
+/// 同平台更新互斥：连点/多入口触发会让两个 npm install 同时改同一个全局目录，
+/// 轻则竞态失败，重则把安装写坏。按平台 id 加在途集合。
+static UPDATE_INFLIGHT: std::sync::OnceLock<std::sync::Mutex<std::collections::HashSet<String>>> =
+    std::sync::OnceLock::new();
+
+fn update_inflight_set() -> &'static std::sync::Mutex<std::collections::HashSet<String>> {
+    UPDATE_INFLIGHT.get_or_init(|| std::sync::Mutex::new(std::collections::HashSet::new()))
+}
+
+/// 锁中毒不致命：取回内部数据继续用，避免一次 panic 后整块功能永久不可用。
+fn begin_update(id: &str) -> Result<(), String> {
+    let mut guard = update_inflight_set()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    if !guard.insert(id.to_string()) {
+        return Err(format!("{id} 正在更新中，请等待本次完成"));
+    }
+    Ok(())
+}
+
+fn end_update(id: &str) {
+    if let Ok(mut guard) = update_inflight_set().lock() {
+        guard.remove(id);
+    }
 }
 
 #[tauri::command]
@@ -7123,6 +7157,8 @@ pub async fn check_platform_update(platform: String) -> Result<PlatformUpdateInf
         npm_package,
         has_self_update,
         can_auto_update,
+        updated_from: None,
+        outcome: "unchanged",
     })
 }
 
@@ -7131,9 +7167,27 @@ pub async fn check_platform_update(platform: String) -> Result<PlatformUpdateInf
 /// 的更新走官网下载，暂不在此实现。
 #[tauri::command]
 pub async fn update_platform_agent(platform: String) -> Result<PlatformUpdateInfo, String> {
+    // 互斥在外层：无论内部从哪个出口返回都解锁，不会漏（连点也不会并发装）
+    begin_update(&platform)?;
+    let result = update_platform_agent_inner(platform.clone()).await;
+    end_update(&platform);
+    result
+}
+
+async fn update_platform_agent_inner(platform: String) -> Result<PlatformUpdateInfo, String> {
     let resolved_id = Platform::from_id(&platform)
         .map(|p| p.id().to_string())
         .unwrap_or_else(|| platform.clone());
+
+    // 更新前基线：回滚与「是否真的前进」的判据都靠它（探测自带 10s 超时）
+    let before = {
+        let id = resolved_id.clone();
+        tauri::async_runtime::spawn_blocking(move || {
+            super::version_probe::installed_version(&id)
+        })
+        .await
+        .map_err(|e| format!("版本探测任务执行失败: {e}"))?
+    };
 
     // ① 官方自更新命令优先（如 `claude update`）。
     //
@@ -7146,6 +7200,8 @@ pub async fn update_platform_agent(platform: String) -> Result<PlatformUpdateInf
             if let Some(bin) = spec.bin {
                 let id_for_update = resolved_id.clone();
                 let args: Vec<&str> = su.subcommand.to_vec();
+                // 失败提示里给用户可手动执行的命令（args 稍后被闭包 move，先算好）
+                let official_cmd = format!("{} {}", bin, args.join(" "));
                 let env: Vec<(String, String)> = su
                     .env
                     .map(|pairs| {
@@ -7168,6 +7224,7 @@ pub async fn update_platform_agent(platform: String) -> Result<PlatformUpdateInf
                 .await
                 .map_err(|e| format!("更新任务执行失败: {e}"))??;
 
+                super::version_probe::invalidate_version_cache(&resolved_id);
                 let current_version = super::version_probe::installed_version(&resolved_id);
                 // latest 复测与 check_platform_update 同源：npm 包走 registry，
                 // 无 npm 包的自更新平台（grok 官方 CLI）走官方版本通道——
@@ -7184,6 +7241,26 @@ pub async fn update_platform_agent(platform: String) -> Result<PlatformUpdateInf
                     (Some(l), Some(c)) => super::version_probe::is_newer(l, c),
                     _ => false,
                 };
+                // 硬校验：官方命令退出 0 ≠ 更新成功。
+                // ① 二进制必须还能启动（下到一半的二进制会让 CLI 直接不可用）
+                // ② 版本不得倒退（比更新前更旧 = 异常，必须报出来）
+                if !super::version_probe::cli_binary_runs(&resolved_id) {
+                    return Err(format!(
+                        "官方更新命令已执行，但 {bin} 无法启动（二进制可能损坏）。请到终端重跑：{official_cmd}"
+                    ));
+                }
+                if let (Some(b), Some(c)) = (&before, &current_version) {
+                    if super::version_probe::is_newer(b, c) {
+                        return Err(format!(
+                            "更新后版本倒退：v{b} → v{c}（异常）。请到终端重跑：{official_cmd}"
+                        ));
+                    }
+                }
+                let outcome = if current_version.as_deref() != before.as_deref() {
+                    "upgraded"
+                } else {
+                    "unchanged"
+                };
                 invalidate_detect_cache();
                 return Ok(PlatformUpdateInfo {
                     platform: resolved_id,
@@ -7194,6 +7271,8 @@ pub async fn update_platform_agent(platform: String) -> Result<PlatformUpdateInf
                     npm_package: spec.npm_package.map(|p| p.to_string()),
                     has_self_update: true,
                     can_auto_update: true,
+                    updated_from: before,
+                    outcome,
                 });
             }
         }
@@ -7227,7 +7306,7 @@ pub async fn update_platform_agent(platform: String) -> Result<PlatformUpdateInf
     let pkg_for_update = npm_package.clone();
     let plat_id_for_update = plat_id.clone();
     let target_for_update = target_version.clone();
-    tauri::async_runtime::spawn_blocking(move || {
+    let update_result = tauri::async_runtime::spawn_blocking(move || {
         super::version_probe::update_npm_package_sync(
             &pkg_for_update,
             &plat_id_for_update,
@@ -7235,14 +7314,67 @@ pub async fn update_platform_agent(platform: String) -> Result<PlatformUpdateInf
         )
     })
     .await
-    .map_err(|e| format!("更新任务执行失败: {e}"))??;
+    .map_err(|e| format!("更新任务执行失败: {e}"))?;
+
+    // 硬校验失败（版本没到位 / 二进制起不来）→ 回滚到更新前版本：
+    // 更新不能把 CLI 变成不可用，最坏情况是「停在原来的版本」
+    if let Err(update_err) = update_result {
+        let Some(prev) = before.clone() else {
+            return Err(format!(
+                "{update_err}（无原版本可回滚，请手动执行：npm install -g {npm_package}@{target_version}）"
+            ));
+        };
+        let rb_pkg = npm_package.clone();
+        let rb_id = plat_id.clone();
+        let rb_ver = prev.clone();
+        let rolled = tauri::async_runtime::spawn_blocking(move || {
+            super::version_probe::update_npm_package_sync(&rb_pkg, &rb_id, &rb_ver)
+        })
+        .await
+        .map_err(|e| format!("回滚任务执行失败: {e}"))?;
+        super::version_probe::invalidate_version_cache(&plat_id);
+        if rolled.is_ok() && super::version_probe::cli_binary_runs(&plat_id) {
+            let restored = super::version_probe::installed_version(&plat_id);
+            let latest_version = super::version_probe::npm_latest_version(&npm_package).await;
+            let has_update = match (&latest_version, &restored) {
+                (Some(l), Some(c)) => super::version_probe::is_newer(l, c),
+                _ => false,
+            };
+            invalidate_detect_cache();
+            let can_auto_update = super::version_probe::npm_install_capability();
+            let has_self_update = super::agent_spec::find(&plat_id)
+                .map(|s| s.self_update.is_some())
+                .unwrap_or(false);
+            return Ok(PlatformUpdateInfo {
+                platform: plat_id,
+                installed: restored.is_some(),
+                current_version: restored,
+                latest_version,
+                has_update,
+                npm_package: Some(npm_package),
+                has_self_update,
+                can_auto_update,
+                updated_from: Some(prev),
+                outcome: "rolled_back",
+            });
+        }
+        return Err(format!(
+            "{update_err}；回滚到 v{prev} 也未成功，请手动执行：npm install -g {npm_package}@{prev}"
+        ));
+    }
 
     // 3. 验证 + 组装结果（latest 缓存仍是刚才查的，直接复用）
+    super::version_probe::invalidate_version_cache(&plat_id);
     let current_version = super::version_probe::installed_version(&plat_id);
     let latest_version = super::version_probe::npm_latest_version(&npm_package).await;
     let has_update = match (&latest_version, &current_version) {
         (Some(l), Some(c)) => super::version_probe::is_newer(l, c),
         _ => false,
+    };
+    let outcome = if current_version.as_deref() != before.as_deref() {
+        "upgraded"
+    } else {
+        "unchanged"
     };
 
     invalidate_detect_cache();
@@ -7259,6 +7391,8 @@ pub async fn update_platform_agent(platform: String) -> Result<PlatformUpdateInf
         npm_package: Some(npm_package),
         has_self_update,
         can_auto_update,
+        updated_from: before,
+        outcome,
     })
 }
 
