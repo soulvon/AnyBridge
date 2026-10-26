@@ -43,6 +43,20 @@ pub struct FileState {
     pub mtime_ms: u64,
 }
 
+/// CPA 账号维度用量（来自 CLIProxyAPI 套件的 usage.sqlite，只读）。
+#[derive(Serialize, Deserialize, Clone, Default, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct CpaAccountUsage {
+    pub account: String,
+    pub provider: String,
+    pub requests: u64,
+    pub failed: u64,
+    pub input: u64,
+    pub output: u64,
+    pub cache_read: u64,
+    pub cache_write: u64,
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct LocalUsageIndex {
@@ -53,7 +67,13 @@ pub struct LocalUsageIndex {
     /// day -> model -> usage（Cursor，来自 cursor-core.db，每次全量重算）
     #[serde(default)]
     pub cursor_days: BTreeMap<String, BTreeMap<String, ModelUsage>>,
-    /// source id (claude-code / codex / cursor) -> usage
+    /// day -> model -> usage（CPA / CLIProxyAPI 套件，按账号日聚合表推导）
+    #[serde(default)]
+    pub cpa_days: BTreeMap<String, BTreeMap<String, ModelUsage>>,
+    /// CPA 账号维度汇总（全量重算，按消耗排序）
+    #[serde(default)]
+    pub cpa_accounts: Vec<CpaAccountUsage>,
+    /// source id (claude-code / codex / cursor / cpa) -> usage
     pub sources: BTreeMap<String, SourceUsage>,
     /// 文件路径 -> 已读偏移
     pub files: BTreeMap<String, FileState>,
@@ -68,6 +88,8 @@ impl Default for LocalUsageIndex {
             scanned_at: 0,
             days: BTreeMap::new(),
             cursor_days: BTreeMap::new(),
+            cpa_days: BTreeMap::new(),
+            cpa_accounts: Vec::new(),
             sources: BTreeMap::new(),
             files: BTreeMap::new(),
             errors: Vec::new(),
@@ -255,6 +277,118 @@ fn home_dir() -> Option<PathBuf> {
     dirs::home_dir()
 }
 
+/// CPA（CLIProxyAPI 套件）用量库位置：<LocalAppData>/anybridge/extensions/services/cpa-suite/cpamp-data/usage.sqlite
+fn cpa_usage_db_path() -> Option<PathBuf> {
+    let base = dirs::data_local_dir()?;
+    let path = base
+        .join("anybridge")
+        .join("extensions")
+        .join("services")
+        .join("cpa-suite")
+        .join("cpamp-data")
+        .join("usage.sqlite");
+    if path.is_file() {
+        Some(path)
+    } else {
+        None
+    }
+}
+
+/// 从 CPA 的账号日聚合表读取用量（只读、全量重算、幂等）。
+///
+/// 用聚合表而不是 usage_events 明细：CPA 自己的 rollup 已按 天×账号×模型 折好，
+/// 1.9GB 明细库不必逐行扫描。账号名取 auth_label_snapshot → account_snapshot → unknown。
+pub fn scan_cpa_db_at(index: &mut LocalUsageIndex, path: &Path) -> Result<(), String> {
+    if !path.is_file() {
+        return Ok(());
+    }
+    let conn = rusqlite::Connection::open_with_flags(
+        path,
+        rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY | rusqlite::OpenFlags::SQLITE_OPEN_NO_MUTEX,
+    )
+    .map_err(|e| format!("打开 CPA usage.sqlite 失败: {e}"))?;
+
+    let mut days: BTreeMap<String, BTreeMap<String, ModelUsage>> = BTreeMap::new();
+    let mut by_account: BTreeMap<(String, String), CpaAccountUsage> = BTreeMap::new();
+    let mut total = SourceUsage::default();
+
+    {
+        let mut stmt = conn
+            .prepare(
+                "SELECT strftime('%Y-%m-%d', bucket_ms/1000, 'unixepoch') AS day, \
+                        COALESCE(NULLIF(model, ''), 'unknown') AS model, \
+                        COALESCE(NULLIF(auth_label_snapshot, ''), NULLIF(account_snapshot, ''), 'unknown') AS account, \
+                        COALESCE(NULLIF(provider, ''), 'unknown') AS provider, \
+                        SUM(calls), SUM(failed), \
+                        SUM(COALESCE(input_tokens, 0)), SUM(COALESCE(output_tokens, 0)), \
+                        SUM(COALESCE(cache_read_tokens, 0)), SUM(COALESCE(cache_creation_tokens, 0)) \
+                 FROM usage_monitoring_account_daily_rollups_v1 \
+                 GROUP BY day, model, account, provider",
+            )
+            .map_err(|e| format!("准备 CPA 查询失败: {e}"))?;
+        let mut rows = stmt.query([]).map_err(|e| format!("执行 CPA 查询失败: {e}"))?;
+        while let Some(row) = rows.next().map_err(|e| format!("读取 CPA 行失败: {e}"))? {
+            let day: String = row.get(0).map_err(|e| format!("day: {e}"))?;
+            let model: String = row.get(1).map_err(|e| format!("model: {e}"))?;
+            let account: String = row.get(2).map_err(|e| format!("account: {e}"))?;
+            let provider: String = row.get(3).map_err(|e| format!("provider: {e}"))?;
+            let calls = row.get::<_, i64>(4).unwrap_or(0).max(0) as u64;
+            let failed = row.get::<_, i64>(5).unwrap_or(0).max(0) as u64;
+            let input = row.get::<_, i64>(6).unwrap_or(0).max(0) as u64;
+            let output = row.get::<_, i64>(7).unwrap_or(0).max(0) as u64;
+            let cache_read = row.get::<_, i64>(8).unwrap_or(0).max(0) as u64;
+            let cache_write = row.get::<_, i64>(9).unwrap_or(0).max(0) as u64;
+
+            let entry = days
+                .entry(day)
+                .or_default()
+                .entry(model)
+                .or_default();
+            entry.requests += calls;
+            entry.input += input;
+            entry.output += output;
+            entry.cache_read += cache_read;
+            entry.cache_write += cache_write;
+
+            let acc = by_account
+                .entry((account.clone(), provider.clone()))
+                .or_insert_with(|| CpaAccountUsage {
+                    account,
+                    provider,
+                    ..Default::default()
+                });
+            acc.requests += calls;
+            acc.failed += failed;
+            acc.input += input;
+            acc.output += output;
+            acc.cache_read += cache_read;
+            acc.cache_write += cache_write;
+
+            total.requests += calls;
+            total.input += input;
+            total.output += output;
+            total.cache_read += cache_read;
+            total.cache_write += cache_write;
+        }
+    }
+
+    if total.requests > 0 {
+        index.sources.insert("cpa".to_string(), total);
+    } else {
+        index.sources.remove("cpa");
+    }
+    let mut accounts: Vec<CpaAccountUsage> = by_account.into_values().collect();
+    // 消耗大的排前面，前端直接截断展示。
+    accounts.sort_by(|a, b| {
+        let ta = a.input + a.output;
+        let tb = b.input + b.output;
+        tb.cmp(&ta)
+    });
+    index.cpa_days = days;
+    index.cpa_accounts = accounts;
+    Ok(())
+}
+
 /// 从 cursor-core.db 的 llm_calls 表全量重算 Cursor 侧用量。
 /// 只读打开，不写客户端数据库；每次覆盖 cursor_days，天然幂等。
 pub fn scan_cursor_db_at(index: &mut LocalUsageIndex, path: &Path) -> Result<(), String> {
@@ -338,6 +472,13 @@ pub fn scan_all_sync() -> Result<LocalUsageIndex, String> {
         .join("cursor-core.db");
     if let Err(e) = scan_cursor_db_at(&mut index, &cursor_db) {
         index.errors.push(e);
+    }
+
+    // CPA（CLIProxyAPI 套件）：读它自己的账号日聚合，补上账号维度。
+    if let Some(cpa_db) = cpa_usage_db_path() {
+        if let Err(e) = scan_cpa_db_at(&mut index, &cpa_db) {
+            index.errors.push(e);
+        }
     }
 
     index.version = INDEX_VERSION;
@@ -495,6 +636,46 @@ mod tests {
         scan_cursor_db_at(&mut index, &db).unwrap();
         assert_eq!(index.sources["cursor"].requests, 3);
         assert_eq!(index.cursor_days.len(), 2);
+
+        let _ = fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn cpa_account_rollups_aggregate_and_stay_idempotent() {
+        let tmp = std::env::temp_dir().join(format!("anybridge-usage-cpa-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+        let db = tmp.join("usage.sqlite");
+        {
+            let conn = rusqlite::Connection::open(&db).unwrap();
+            conn.execute_batch(
+                "CREATE TABLE usage_monitoring_account_daily_rollups_v1 (
+                    bucket_ms INTEGER, model TEXT, auth_label_snapshot TEXT, account_snapshot TEXT,
+                    provider TEXT, calls INTEGER, failed INTEGER, input_tokens INTEGER,
+                    output_tokens INTEGER, cache_read_tokens INTEGER, cache_creation_tokens INTEGER
+                );
+                INSERT INTO usage_monitoring_account_daily_rollups_v1 VALUES
+                    (1793000000000, 'claude-sonnet-4', 'acc-a', 'a@x.com', 'claude', 10, 1, 1000, 100, 500, 0),
+                    (1793000000000, 'claude-sonnet-4', 'acc-b', 'b@x.com', 'claude', 2, 0, 50, 5, 0, 0),
+                    (1793100000000, 'gemini-3.8-flash-high', 'acc-a', 'a@x.com', 'gemini', 3, 0, 9, 3, 0, 2);",
+            )
+            .unwrap();
+        }
+
+        let mut index = LocalUsageIndex::default();
+        scan_cpa_db_at(&mut index, &db).unwrap();
+        assert_eq!(index.sources["cpa"].requests, 15);
+        assert_eq!(index.cpa_days.len(), 2);
+        assert_eq!(index.cpa_accounts.len(), 3);
+        // 按 tokens 排序：acc-a('claude') 1100 > acc-a('gemini') 12 > acc-b 55? —— 断言消耗最大的在最前
+        let top = &index.cpa_accounts[0];
+        assert_eq!(top.account, "acc-a");
+        assert_eq!(top.requests, 10);
+
+        // 幂等：二次扫描结果不变
+        scan_cpa_db_at(&mut index, &db).unwrap();
+        assert_eq!(index.sources["cpa"].requests, 15);
+        assert_eq!(index.cpa_accounts.len(), 3);
 
         let _ = fs::remove_dir_all(&tmp);
     }

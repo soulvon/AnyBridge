@@ -22,6 +22,7 @@ function statsT(key) {
 
 function fmtNum(n) {
   const v = Number(n) || 0;
+  if (v >= 1_000_000_000) return (v / 1_000_000_000).toFixed(1) + 'B';
   if (v >= 1_000_000) return (v / 1_000_000).toFixed(v >= 10_000_000 ? 0 : 1) + 'M';
   if (v >= 1_000) return (v / 1_000).toFixed(v >= 10_000 ? 0 : 1) + 'K';
   return String(v);
@@ -90,12 +91,13 @@ function buildDaySeries() {
     const gw = gatewayByDay.get(day) || {};
     const claude = STATS_STATE.local?.days?.[day] || {};
     const cursor = STATS_STATE.local?.cursorDays?.[day] || {};
+    const cpa = STATS_STATE.local?.cpaDays?.[day] || {};
 
     let localInput = 0;
     let localOutput = 0;
     let localCache = 0;
     let localRequests = 0;
-    for (const usage of [...Object.values(claude), ...Object.values(cursor)]) {
+    for (const usage of [...Object.values(claude), ...Object.values(cursor), ...Object.values(cpa)]) {
       localInput += Number(usage.input) || 0;
       localOutput += Number(usage.output) || 0;
       localCache += (Number(usage.cache_read) || 0) + (Number(usage.cache_write) || 0);
@@ -206,6 +208,10 @@ function collectModelUsage(series) {
     if (!days.has(day)) continue;
     for (const [model, usage] of Object.entries(models)) add(model, usage);
   }
+  for (const [day, models] of Object.entries(STATS_STATE.local?.cpaDays || {})) {
+    if (!days.has(day)) continue;
+    for (const [model, usage] of Object.entries(models)) add(model, usage);
+  }
   return [...acc.entries()].sort((a, b) => b[1].tokens - a[1].tokens);
 }
 
@@ -228,6 +234,13 @@ function renderStatsRank(series) {
   }).join('');
 }
 
+function escapeText(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
 function renderStatsSources() {
   const host = document.getElementById('statsSources');
   if (!host) return;
@@ -244,12 +257,27 @@ function renderStatsSources() {
   for (const [name, usage] of rows) {
     const label = name === 'claude-code' ? 'Claude Code（本地日志）'
       : name === 'cursor' ? 'Cursor（cursor-core 记录）'
-        : name;
+        : name === 'cpa' ? 'CPA 套件（账号池）'
+          : name;
     parts.push(`<div class="stats-source-row">
-      <span class="stats-source-name">${label}</span>
+      <span class="stats-source-name">${escapeText(label)}</span>
       <span class="stats-source-meta">${fmtNum(usage.requests)} 次 · ↑${fmtNum(usage.input)} ↓${fmtNum(usage.output)}</span>
     </div>`);
   }
+
+  const accounts = STATS_STATE.local?.cpaAccounts || [];
+  if (accounts.length) {
+    const accountRows = accounts.slice(0, 6).map((acc) => `
+      <div class="stats-source-row stats-account-row">
+        <span class="stats-source-name">${escapeText(acc.account)}</span>
+        <span class="stats-source-meta">${fmtNum(acc.requests)} 次 · ↑${fmtNum(acc.input)} ↓${fmtNum(acc.output)}${acc.failed ? ` · 失败 ${acc.failed}` : ''}</span>
+      </div>`).join('');
+    parts.push(`<div class="stats-account-block">
+      <div class="stats-account-title">CPA 账号</div>
+      ${accountRows}
+    </div>`);
+  }
+
   if (!parts.length) {
     host.innerHTML = '<div class="stats-empty">还没有数据源。跑一次请求，或安装 Claude Code 后点击刷新。</div>';
     return;
