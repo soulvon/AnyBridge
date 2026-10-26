@@ -195,10 +195,11 @@ export class RequestTracker {
       this.errorMessage = this.errorMessage || 'request finished without terminal status';
     }
 
-    // rejected 且从未触达上游：旧实现不计 requests，这里按新口径补一次。
-    if (this.status === 'rejected' && this.attempts.length === 0) {
+    // 从未发起上游尝试的请求（预检拒绝、路由解析失败、无可用目标）也要计入 requests：
+    // 它们是真实发生的请求，只是没到达上游。旧实现只记 errors 不记 requests，导致错误率能超 100%。
+    if (this.attempts.length === 0) {
       recordRequest({
-        provider: this.errorKind,
+        provider: this.errorKind || 'unknown',
         requestedModel: this.requestedModel,
         resolvedModel: null,
       });

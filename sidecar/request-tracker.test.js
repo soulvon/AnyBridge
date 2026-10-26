@@ -52,6 +52,19 @@ describe('request-tracker 口径', () => {
     assert.equal(tracker.summary().servedModel, 'gemini-3.8-flash-high');
   });
 
+  it('从未发起上游尝试的失败（路由解析失败）也计入 requests', () => {
+    const tracker = createTracker({ client: 'local-proxy', route: 'local-proxy', requestedModel: 'gpt-x' });
+
+    const d = delta(() => {
+      tracker.fail('route-unresolved', '没有匹配的路由');
+      tracker.finish();
+    });
+
+    assert.equal(d.requests, 1);
+    assert.equal(d.errors, 1);
+    assert.equal(tracker.summary().attempts.length, 0);
+  });
+
   it('预检拒绝：计入 requests 与 errors（新口径，errorRate 恒 ≤ 100%）', () => {
     const tracker = createTracker({ client: 'devin', route: 'chat', requestedModel: 'gpt-x' });
 

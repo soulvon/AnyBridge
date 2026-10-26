@@ -20,7 +20,8 @@ import { getCodexProxyRoutes, getProxyRoutes } from './config-cache.js';
 import { loadModelMapConfig, loadProviders, resolveTarget } from './provider-pool.js';
 import { preprocessImagesWithThirdPartyVision } from './vision-fallback.js';
 import { httpsAgentFor } from './system-proxy.js';
-import { recordError, recordLatency, recordRequest, recordRetry, recordUsage } from './stats.js';
+import { recordError, recordLatency, recordUsage } from './stats.js';
+import { createTracker } from './request-tracker.js';
 import {
   responsesToChatCompletions,
   chatCompletionToResponse,
@@ -1927,6 +1928,8 @@ function logRequest(ctx, phase) {
 }
 
 export async function execute(ctx) {
+  const tracker = ctx.__tracker || createTracker({ client: ctx.client || null, route: 'local-proxy', requestedModel: ctx.model });
+  ctx.__tracker = tracker;
   const scope = ctx.proxyRouteScope || 'default';
   const resolved = ctx.pinnedRoute
     ? { slot: routeAsSlot(ctx.pinnedRoute), route: ctx.pinnedRoute }
@@ -1934,7 +1937,11 @@ export async function execute(ctx) {
       scope,
       applyRename: !isCodexProxyScope(scope),
     });
-  if (resolved.error) throw new Error(resolved.error);
+  if (resolved.error) {
+    tracker.fail('route-unresolved', resolved.error);
+    tracker.finish();
+    throw new Error(resolved.error);
+  }
   const providers = loadProviders();
   const mapConfig = loadModelMapConfig();
   const enhancement = { ...(mapConfig?.enhancement || {}) };
@@ -2015,7 +2022,8 @@ export async function execute(ctx) {
   if (routed.allCooling) {
     const minWait = Math.ceil(Math.min(...routed.cooling.map(c => c.remainingMs)) / 1000);
     const msg = `模型「${ctx.model}」的所有上游目标均在冷却期内（最短剩余 ${minWait} 秒解冻），按策略直接阻断报错。`;
-    recordError({ provider: 'failover-cooldown', message: msg });
+    tracker.reject('cooldown', msg);
+    tracker.finish();
     throw new LocalProxyUpstreamError(msg, { status: 503, type: 'upstream_error' });
   }
   for (const target of routed.targets) {
@@ -2023,7 +2031,7 @@ export async function execute(ctx) {
     // 本地配置错误不是上游故障，冷却只会让改完配置还得干等
     if (conn.error) { failures.push({ providerName: target.providerId, message: conn.error }); continue; }
     const failuresBefore = failures.length;
-    recordRequest({ provider: conn.providerName, requestedModel: ctx.model, resolvedModel: conn.model });
+    tracker.beginAttempt({ provider: conn.providerName, providerId: conn.providerId, model: conn.model });
     let payload = upstreamBody(conn, effective);
     const started = Date.now();
     let retryCount = 0;
@@ -2042,6 +2050,8 @@ export async function execute(ctx) {
                 if (h && h.key) extraRespHeaders[h.key] = h.value;
               }
             }
+            tracker.endAttempt({ status: 'ok', statusCode: r.statusCode, ms: r.durationMs });
+            tracker.finish();
             return { conn, stream: true, upstreamResponse: r.response, extraHeaders: extraRespHeaders, watchdog: r.watchdog };
           }
           // 非 2xx：收集错误 body，走重试逻辑
@@ -2057,7 +2067,7 @@ export async function execute(ctx) {
             }
           }
           if (policy.enabled && retryCount < policy.maxRetries && retryable(r.statusCode) && Date.now() - started < policy.totalMs) {
-            retryCount++; recordRetry({ count: 1, reason: `HTTP ${r.statusCode}: ${msg}`, provider: conn.providerName }); await sleep(retryDelay(retryCount, policy, r.headers, Date.now() - started)); continue;
+            retryCount++; tracker.noteRetry(`HTTP ${r.statusCode}: ${msg}`); await sleep(retryDelay(retryCount, policy, r.headers, Date.now() - started)); continue;
           }
           failures.push({
             providerName: conn.providerName,
@@ -2092,8 +2102,12 @@ export async function execute(ctx) {
               const toolCalls = extractToolCalls(conn, json);
               const usage = usageFrom(conn, json, estimateTokens(effective.messages, effective.system), Math.ceil(bodyText.length / 4));
               recordUsage(usage);
+              tracker.endAttempt({ status: 'ok', statusCode: r.statusCode, ms: r.durationMs });
+              tracker.finish();
               return { conn, text: bodyText, toolCalls, json, usage, extraHeaders: extraRespHeaders };
             }
+            tracker.endAttempt({ status: 'ok', statusCode: r.statusCode, ms: r.durationMs });
+            tracker.finish();
             return { conn, stream: true, upstreamResponse: r.response, extraHeaders: extraRespHeaders, watchdog: r.watchdog };
           }
           const errorText = await collectStreamBody(r.response);
@@ -2107,7 +2121,7 @@ export async function execute(ctx) {
             }
           }
           if (policy.enabled && retryCount < policy.maxRetries && retryable(r.statusCode) && Date.now() - started < policy.totalMs) {
-            retryCount++; recordRetry({ count: 1, reason: `HTTP ${r.statusCode}: ${msg}`, provider: conn.providerName }); await sleep(retryDelay(retryCount, policy, r.headers, Date.now() - started)); continue;
+            retryCount++; tracker.noteRetry(`HTTP ${r.statusCode}: ${msg}`); await sleep(retryDelay(retryCount, policy, r.headers, Date.now() - started)); continue;
           }
           failures.push({
             providerName: conn.providerName,
@@ -2132,13 +2146,15 @@ export async function execute(ctx) {
                 if (h && h.key) extraRespHeaders[h.key] = h.value;
               }
             }
+            tracker.endAttempt({ status: 'ok', statusCode: r.statusCode, ms: r.durationMs });
+            tracker.finish();
             return { conn, stream: true, upstreamResponse: r.response, extraHeaders: extraRespHeaders, watchdog: r.watchdog };
           }
           const errorText = await collectStreamBody(r.response);
           const errorJson = safeParse(errorText);
           const msg = compactText(upstreamMessage({ statusCode: r.statusCode, json: errorJson, text: errorText }));
           if (policy.enabled && retryCount < policy.maxRetries && retryable(r.statusCode) && Date.now() - started < policy.totalMs) {
-            retryCount++; recordRetry({ count: 1, reason: `HTTP ${r.statusCode}: ${msg}`, provider: conn.providerName }); await sleep(retryDelay(retryCount, policy, r.headers, Date.now() - started)); continue;
+            retryCount++; tracker.noteRetry(`HTTP ${r.statusCode}: ${msg}`); await sleep(retryDelay(retryCount, policy, r.headers, Date.now() - started)); continue;
           }
           failures.push({
             providerName: conn.providerName,
@@ -2172,6 +2188,8 @@ export async function execute(ctx) {
           const responseObj = conn.wireApi === 'chat' && r.json
             ? chatCompletionToResponse(r.json, conn.model)
             : null;
+          tracker.endAttempt({ status: 'ok', statusCode: r.statusCode, ms: r.durationMs });
+          tracker.finish();
           return { conn, text, toolCalls, json: r.json, usage, extraHeaders: extraRespHeaders, responseObj };
         }
         const msg = compactText(upstreamMessage(r));
@@ -2184,7 +2202,7 @@ export async function execute(ctx) {
           }
         }
         if (policy.enabled && retryCount < policy.maxRetries && retryable(r.statusCode) && Date.now() - started < policy.totalMs) {
-          retryCount++; recordRetry({ count: 1, reason: `HTTP ${r.statusCode}: ${msg}`, provider: conn.providerName }); await sleep(retryDelay(retryCount, policy, r.headers, Date.now() - started)); continue;
+          retryCount++; tracker.noteRetry(`HTTP ${r.statusCode}: ${msg}`); await sleep(retryDelay(retryCount, policy, r.headers, Date.now() - started)); continue;
         }
         failures.push({
           providerName: conn.providerName,
@@ -2198,7 +2216,7 @@ export async function execute(ctx) {
       } catch (e) {
         const code = e?.code || e?.message;
         if (policy.enabled && retryCount < policy.maxRetries && retryable(0, code) && Date.now() - started < policy.totalMs) {
-          retryCount++; recordRetry({ count: 1, reason: code || 'network error', provider: conn.providerName }); await sleep(retryDelay(retryCount, policy, null, Date.now() - started)); continue;
+          retryCount++; tracker.noteRetry(code || 'network error'); await sleep(retryDelay(retryCount, policy, null, Date.now() - started)); continue;
         }
         failures.push({ providerName: conn.providerName, code, message: e.message || String(e) }); break;
       }
@@ -2223,10 +2241,8 @@ export async function execute(ctx) {
   const lastRawErrorText = lastUpstreamResponse ? upstreamErrorText(lastUpstreamResponse.body) : '';
   if (lastUpstreamResponse && rawProviderErrors && lastRawErrorText) {
     const classification = classifyFailures([lastUpstreamResponse]);
-    recordError({
-      provider: 'local-proxy',
-      message: `${lastUpstreamResponse.providerName || 'provider'}: HTTP ${lastUpstreamResponse.statusCode}: ${lastUpstreamResponse.message || ''}`,
-    });
+    tracker.fail('upstream-http', `${lastUpstreamResponse.providerName || 'provider'}: HTTP ${lastUpstreamResponse.statusCode}: ${lastUpstreamResponse.message || ''}`);
+    tracker.finish();
     throw new LocalProxyUpstreamError(`upstream HTTP ${lastUpstreamResponse.statusCode}`, {
       status: classification.status,
       type: classification.type,
@@ -2248,7 +2264,8 @@ export async function execute(ctx) {
   const message = failures.length
     ? `模型「${ctx.model}」的上游目标都失败了：${failures.map(failureMessage).join('；')}${hint}`
     : `模型「${ctx.model}」没有可用的上游目标。`;
-  recordError({ provider: 'local-proxy', message });
+  tracker.fail('failover', message);
+  tracker.finish();
   throw new LocalProxyUpstreamError(message, classification);
 }
 
@@ -2729,6 +2746,7 @@ function handleCountTokens(body, res) {
 // Gemini countTokens：官方语义是对输入跑真实分词器。仅在原生 Gemini 目标上真实调用上游
 // models/{model}:countTokens；路由没有原生目标时不做字符估算冒充官方精确值，明确返回 501。
 async function executeGeminiCountTokens(ctx) {
+  const tracker = createTracker({ client: ctx.client || null, route: 'count-tokens', requestedModel: ctx.model });
   const scope = ctx.proxyRouteScope || 'default';
   const resolved = resolveProxyModel(ctx.model, 'gemini', { scope, applyRename: !isCodexProxyScope(scope) });
   if (resolved.error) throw new LocalProxyUpstreamError(resolved.error, { status: 400, type: 'invalid_request_error' });
@@ -2738,7 +2756,7 @@ async function executeGeminiCountTokens(ctx) {
     const conn = resolveTarget(target, providers);
     if (conn.error) { failures.push({ providerName: target.providerId, message: conn.error }); continue; }
     if (conn.format !== 'gemini') continue;
-    recordRequest({ provider: conn.providerName, requestedModel: ctx.model, resolvedModel: conn.model });
+    tracker.beginAttempt({ provider: conn.providerName, providerId: conn.providerId, model: conn.model });
     const payload = cleanBody({
       generateContentRequest: {
         model: `models/${conn.model}`,
@@ -2749,13 +2767,19 @@ async function executeGeminiCountTokens(ctx) {
     });
     const r = await requestUpstream(conn, payload, {});
     if (r.statusCode >= 200 && r.statusCode < 300 && Number.isFinite(Number(r.json?.totalTokens))) {
+      tracker.endAttempt({ status: 'ok', statusCode: r.statusCode });
+      tracker.finish();
       return Number(r.json.totalTokens);
     }
     failures.push({ providerName: conn.providerName, statusCode: r.statusCode, body: r.text, message: compactText(upstreamMessage(r)) });
   }
   if (failures.length) {
+    tracker.fail('upstream-http', `countTokens 上游失败：${failures.map(failureMessage).join('；')}`);
+    tracker.finish();
     throw new LocalProxyUpstreamError(`countTokens 上游失败：${failures.map(failureMessage).join('；')}`, { status: 502, type: 'upstream_error' });
   }
+  tracker.fail('not-implemented', 'countTokens requires a native Gemini target');
+  tracker.finish();
   throw new LocalProxyUpstreamError('countTokens 需要 Gemini Native 上游目标才能返回官方精确值；当前路由没有原生 Gemini 目标，本地不做字符估算冒充。', { status: 501, type: 'not_implemented' });
 }
 
@@ -2779,8 +2803,12 @@ export async function handleLocalProxyRequest(req, res, body) {
     return;
   }
   const scope = proxyScopeForPath(p);
+  // 一次请求一个 tracker；所有协议分支共用，终态在下方 catch/execute 内结算。
+  const tracker = createTracker({ client: 'local-proxy', route: 'local-proxy' });
+  res.__byokTracker = tracker;
   const attachScope = (ctx) => {
     ctx.proxyRouteScope = scope;
+    ctx.__tracker = tracker;
     return ctx;
   };
   if (req.method === 'GET' && (p === '/v1/models' || p === '/models' || p === '/codex/v1/models' || p === '/anthropic/v1/models' || p === '/v1beta/models' || p === '/claude-desktop/v1/models' || p === '/claude-desktop/models')) { handleModels(req, res); return; }
@@ -3132,6 +3160,8 @@ export async function handleLocalProxyRequest(req, res, body) {
     }
     sendError(res, 404, `未知本地代理路径: ${p}`);
   } catch (e) {
+    // 未在 execute 内结算的异常（配置读取失败等）在这里收口；已结算的 finish 为幂等。
+    tracker.finish();
     if (e.upstreamResponse) {
       sendRaw(res, e.upstreamResponse.statusCode || e.status || 502, e.upstreamResponse.body, e.upstreamResponse.headers);
       return;
