@@ -299,7 +299,9 @@ pub fn run() {
             commands::update::restart_app,
             commands::update::open_download_page,
             commands::update::open_url,
-        ])
+            commands::usage_scan::scan_local_usage,
+            commands::usage_scan::get_local_usage,
+            ])
         .plugin(tauri_plugin_updater::Builder::new().build())
         .build(tauri::generate_context!())
         .expect("error while running tauri application")

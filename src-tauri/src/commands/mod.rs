@@ -1,6 +1,7 @@
+pub mod agent_spec;
+pub mod agent_stash;
 pub mod antigravity_loc_payload;
 pub mod antigravity_localization;
-pub mod agent_spec;
 pub mod declared_apply;
 pub mod app_localization;
 pub mod cert_install;
@@ -15,6 +16,7 @@ pub mod eval;
 pub mod extensions;
 pub mod ide_config;
 pub mod ide_models;
+pub mod jsonc_edit;
 pub mod model_map;
 pub mod platforms;
 pub mod plugin_asset;
@@ -24,11 +26,12 @@ pub mod proxy;
 pub mod proxy_routes;
 pub mod system;
 pub mod update;
+pub mod usage_scan;
 pub mod version_probe;
 pub mod windsurf_catalog;
 pub mod workbench_inject;
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 #[cfg(target_os = "windows")]
 fn reg_query_current_user_internet_setting(value_name: &str) -> Option<String> {
@@ -210,12 +213,31 @@ pub(crate) fn content_sha256(content: &str) -> String {
 
 /// 原子写：先写同目录临时文件再 rename 覆盖，避免写入中途崩溃留下截断文件。
 /// Windows 上 rename 可能因杀毒软件/索引服务锁定目标文件而 EPERM，重试 3 次。
+///
+/// 加固点（重构 2026-10-26，无门控直接生效——均为缺陷修复，非语义变更）：
+/// 1. 符号链接保护：目标若是符号链接（dotfiles 用户把配置链接进仓库），
+///    旧实现 rename 会把链接本身替换成普通文件、链接断掉；现在解析到
+///    链接目标后对目标写入，链接保持原样。
+/// 2. 临时文件名唯一化：旧实现 `with_extension("byok-tmp")` 生成固定名，
+///    两个线程并发写同一文件会互相踩（先完成者的 rename 拿走临时文件，
+///    后者 fs::write 直接报错）。现在追加 pid + 纳秒。
 pub(crate) fn write_atomic(path: &Path, bytes: &[u8]) -> Result<(), String> {
-    let tmp = path.with_extension("byok-tmp");
+    let path = resolve_symlink_target(path);
+    let unique = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or_default();
+    let tmp = {
+        let name = path
+            .file_name()
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_else(|| "file".into());
+        path.with_file_name(format!("{name}.{}.{unique}.byok-tmp", std::process::id()))
+    };
     std::fs::write(&tmp, bytes).map_err(|e| e.to_string())?;
     let mut last_err = String::new();
     for i in 0..3u32 {
-        match std::fs::rename(&tmp, path) {
+        match std::fs::rename(&tmp, &path) {
             Ok(()) => return Ok(()),
             Err(e) => {
                 last_err = e.to_string();
@@ -225,4 +247,123 @@ pub(crate) fn write_atomic(path: &Path, bytes: &[u8]) -> Result<(), String> {
     }
     let _ = std::fs::remove_file(&tmp);
     Err(last_err)
+}
+
+#[cfg(test)]
+mod write_atomic_tests {
+    use super::*;
+
+    fn tmp_dir(name: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!(
+            "anybridge-watomic-{}-{}",
+            name,
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    #[test]
+    fn concurrent_writes_all_succeed_without_leftover() {
+        let dir = tmp_dir("concurrent");
+        let path = dir.join("config.json");
+        let mut handles = Vec::new();
+        for i in 0..8 {
+            let p = path.clone();
+            handles.push(std::thread::spawn(move || {
+                write_atomic(&p, format!("content-{i}").as_bytes())
+            }));
+        }
+        for h in handles {
+            h.join().unwrap().unwrap();
+        }
+        // 最终内容是某一次写入的完整内容（不损坏）
+        let final_content = std::fs::read_to_string(&path).unwrap();
+        assert!(
+            final_content.starts_with("content-"),
+            "最终内容应完整: {final_content}"
+        );
+        // 无临时文件残留
+        let leftovers: Vec<_> = std::fs::read_dir(&dir)
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .filter(|e| e.file_name().to_string_lossy().contains("byok-tmp"))
+            .collect();
+        assert!(leftovers.is_empty(), "不应残留临时文件");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn symlink_target_gets_the_write_and_link_survives() {
+        let dir = tmp_dir("symlink");
+        let real = dir.join("real-config.json");
+        let link = dir.join("linked-config.json");
+        std::fs::write(&real, b"original").unwrap();
+        let created = make_symlink(&link, &real);
+        if !created {
+            // Windows 无特权/开发者模式关闭时无法创建符号链接：跳过而非失败
+            eprintln!("跳过 symlink 测试：当前环境无法创建符号链接");
+            let _ = std::fs::remove_dir_all(&dir);
+            return;
+        }
+        write_atomic(&link, b"updated").unwrap();
+        assert!(
+            symlink_metadata_is_symlink(&link),
+            "写入后链接必须仍在（不得被替换成普通文件）"
+        );
+        assert_eq!(std::fs::read_to_string(&real).unwrap(), "updated", "内容应写到链接目标");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    fn make_symlink(link: &Path, target: &Path) -> bool {
+        #[cfg(unix)]
+        {
+            std::os::unix::fs::symlink(target, link).is_ok()
+        }
+        #[cfg(windows)]
+        {
+            std::os::windows::fs::symlink_file(target, link).is_ok()
+        }
+        #[cfg(not(any(unix, windows)))]
+        {
+            let _ = (link, target);
+            false
+        }
+    }
+
+    fn symlink_metadata_is_symlink(path: &Path) -> bool {
+        std::fs::symlink_metadata(path)
+            .map(|m| m.is_symlink())
+            .unwrap_or(false)
+    }
+}
+
+/// 符号链接解析：目标是符号链接（含多级）时返回最终指向的文件路径，
+/// 否则原样返回。解析中断/悬空链接时返回原路径——按原路径写入与旧行为一致，
+/// 绝不因链接状态异常而阻断写入。
+fn resolve_symlink_target(path: &Path) -> PathBuf {
+    let mut current = path.to_path_buf();
+    for _ in 0..16 {
+        match std::fs::symlink_metadata(&current) {
+            Ok(meta) if meta.is_symlink() => {
+                let link = match std::fs::read_link(&current) {
+                    Ok(l) => l,
+                    Err(_) => return path.to_path_buf(),
+                };
+                let next = if link.is_absolute() {
+                    link
+                } else {
+                    match current.parent() {
+                        Some(parent) => parent.join(link),
+                        None => return path.to_path_buf(),
+                    }
+                };
+                current = next;
+            }
+            _ => return current,
+        }
+    }
+    // 超过 16 层链接视为异常环，退回原路径（保守，不阻断）
+    path.to_path_buf()
 }
