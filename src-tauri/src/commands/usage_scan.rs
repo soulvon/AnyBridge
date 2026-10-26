@@ -359,6 +359,35 @@ pub fn get_local_usage() -> Result<LocalUsageIndex, String> {
     Ok(load_index())
 }
 
+/// 读取 sidecar 落盘的 stats.json 历史（按天，最近 N 天）。
+/// 只读文件，不改写：sidecar 是该文件的唯一写入方。
+#[tauri::command]
+pub fn get_stats_history(days: Option<u32>) -> Result<serde_json::Value, String> {
+    let path = crate::commands::config::config_dir_path().join("stats.json");
+    let limit = days.unwrap_or(30).clamp(1, 366) as usize;
+    if !path.is_file() {
+        return Ok(serde_json::json!({ "days": [] }));
+    }
+    let text = fs::read_to_string(&path).map_err(|e| format!("读取 stats.json 失败: {e}"))?;
+    let parsed: serde_json::Value =
+        serde_json::from_str(&text).map_err(|e| format!("stats.json 解析失败: {e}"))?;
+    let empty = serde_json::Map::new();
+    let days_obj = parsed
+        .get("days")
+        .and_then(|d| d.as_object())
+        .unwrap_or(&empty);
+    let mut keys: Vec<&String> = days_obj.keys().collect();
+    keys.sort();
+    let mut out: Vec<serde_json::Value> = keys
+        .iter()
+        .rev()
+        .take(limit)
+        .filter_map(|key| days_obj.get(*key).cloned())
+        .collect();
+    out.reverse();
+    Ok(serde_json::json!({ "days": out }))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

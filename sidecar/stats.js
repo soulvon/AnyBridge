@@ -48,6 +48,30 @@ function readStatsRetentionDays() {
   }
 }
 
+function costEstimate() {
+  const attributed = Object.values(state.byModelUsage).reduce(
+    (acc, u) => ({
+      input: acc.input + (Number(u?.input) || 0),
+      output: acc.output + (Number(u?.output) || 0),
+      cacheRead: acc.cacheRead + (Number(u?.cacheRead) || 0),
+      cacheWrite: acc.cacheWrite + (Number(u?.cacheWrite) || 0),
+    }),
+    { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+  );
+  const unattributed = {
+    input: Math.max(0, state.inputTokens - attributed.input),
+    output: Math.max(0, state.outputTokens - attributed.output),
+    cacheRead: Math.max(0, state.cachedTokens - attributed.cacheRead),
+    cacheWrite: Math.max(0, state.cacheCreationInputTokens - attributed.cacheWrite),
+  };
+  const priced = estimateCost(state.byModelUsage);
+  return {
+    totalUsd: priced.totalUsd + costOf(unattributed, '__unattributed__'),
+    unpricedModels: priced.unpricedModels,
+    unattributed,
+  };
+}
+
 function dailySnapshot() {
   return {
     day: state.day,
@@ -62,6 +86,7 @@ function dailySnapshot() {
     lastError: state.lastError,
     byModel: state.byModel,
     byModelUsage: state.byModelUsage,
+    estCostUsd: Number(costEstimate().totalUsd.toFixed(4)),
     recent: state.recent,
     retries: state.retries,
     lastRetries: state.lastRetries,
@@ -457,25 +482,9 @@ function rateStats() {
 export function snapshot() {
   rollDayIfNeeded();
   const totalTokens = state.inputTokens + state.outputTokens;
-  // 成本估算：按模型单价累加；未归属到具体模型的 tokens（流式补记）走默认价，
-  // 并单独标记数量，避免把「未知」伪装成精确值。
-  const attributed = Object.values(state.byModelUsage).reduce(
-    (acc, u) => ({
-      input: acc.input + (Number(u?.input) || 0),
-      output: acc.output + (Number(u?.output) || 0),
-      cacheRead: acc.cacheRead + (Number(u?.cacheRead) || 0),
-      cacheWrite: acc.cacheWrite + (Number(u?.cacheWrite) || 0),
-    }),
-    { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-  );
-  const unattributed = {
-    input: Math.max(0, state.inputTokens - attributed.input),
-    output: Math.max(0, state.outputTokens - attributed.output),
-    cacheRead: Math.max(0, state.cachedTokens - attributed.cacheRead),
-    cacheWrite: Math.max(0, state.cacheCreationInputTokens - attributed.cacheWrite),
-  };
-  const priced = estimateCost(state.byModelUsage);
-  const estCost = priced.totalUsd + costOf(unattributed, '__unattributed__');
+  // 成本估算：按模型单价累加；未归属 tokens 走默认价并单独标记（见 costEstimate）。
+  const cost = costEstimate();
+  const estCost = cost.totalUsd;
   return {
     startedAt: state.startedAt,
     uptimeSec: Math.floor((Date.now() - state.startedAt) / 1000),
@@ -488,14 +497,15 @@ export function snapshot() {
     totalTokens,
     estCostUsd: Number(estCost.toFixed(4)),
     pricing: {
-      unpricedModels: priced.unpricedModels,
-      unattributedTokens: unattributed.input + unattributed.output,
+      unpricedModels: cost.unpricedModels,
+      unattributedTokens: cost.unattributed.input + cost.unattributed.output,
     },
     lastProvider: state.lastProvider,
     lastModel: state.lastModel,
     lastError: state.lastError,
     byModel: state.byModel,
     byModelUsage: state.byModelUsage,
+    estCostUsd: Number(costEstimate().totalUsd.toFixed(4)),
     recent: state.recent,
     retries: state.retries,
     lastRetries: state.lastRetries,

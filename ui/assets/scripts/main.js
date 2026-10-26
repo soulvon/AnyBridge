@@ -20,6 +20,7 @@ import './57-pb-models.js';
 import './56-claude-desktop.js';
 import './65-extensions.js';
 import './66-plugins.js';
+import './67-stats.js';
 import './60-updater.js';
 import './70-healthcheck.js';
 import './90-init.js';

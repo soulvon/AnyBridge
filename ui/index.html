@@ -84,6 +84,16 @@
           </svg>
           <span>代理</span>
         </button>
+        <button type="button" class="tab-item" id="tab-stats" data-page="stats" role="tab" aria-selected="false"
+          aria-controls="page-stats" tabindex="-1">
+          <svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M3 3v18h18"></path>
+            <path d="M18 17V9"></path>
+            <path d="M13 17V5"></path>
+            <path d="M8 17v-3"></path>
+          </svg>
+          <span>统计</span>
+        </button>
         <button type="button" class="tab-item" id="tab-extensions" data-page="extensions" role="tab" aria-selected="false"
           aria-controls="page-extensions" tabindex="-1">
           <svg class="tab-icon tab-icon-fill" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
@@ -3202,6 +3212,97 @@
           </section>
         </div>
 
+        <!-- ═══════ PAGE: STATS（用量统计） ═══════ -->
+        <div class="page" id="page-stats" role="tabpanel" aria-labelledby="tab-stats">
+
+          <section class="stats-page">
+
+            <header class="stats-head">
+              <div class="stats-head-copy">
+                <h1 class="stats-title">统计</h1>
+                <p class="stats-sub">网关账本（经代理的请求）与本地日志（Claude Code / Cursor 自己落盘的用量）</p>
+              </div>
+              <div class="stats-controls">
+                <div class="stats-range" role="tablist" aria-label="时间范围">
+                  <button type="button" class="stats-range-btn active" data-stats-range="1" role="tab" aria-selected="true">今日</button>
+                  <button type="button" class="stats-range-btn" data-stats-range="7" role="tab" aria-selected="false">近 7 天</button>
+                  <button type="button" class="stats-range-btn" data-stats-range="30" role="tab" aria-selected="false">近 30 天</button>
+                  <button type="button" class="stats-range-btn" data-stats-range="0" role="tab" aria-selected="false">全部</button>
+                </div>
+                <button type="button" class="stats-refresh" id="statsRefreshBtn" title="重新读取统计">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M3 12a9 9 0 0 1 15.5-6.3L21 8"></path>
+                    <path d="M21 3v5h-5"></path>
+                    <path d="M21 12a9 9 0 0 1-15.5 6.3L3 16"></path>
+                    <path d="M3 21v-5h5"></path>
+                  </svg>
+                  <span>刷新</span>
+                </button>
+              </div>
+            </header>
+
+            <div class="stats-kpi-grid">
+              <article class="stats-kpi">
+                <div class="stats-kpi-label">请求数</div>
+                <div class="stats-kpi-value" id="statsKpiRequests">—</div>
+                <div class="stats-kpi-sub" id="statsKpiRequestsSub">等待数据</div>
+              </article>
+              <article class="stats-kpi">
+                <div class="stats-kpi-label">Token</div>
+                <div class="stats-kpi-value" id="statsKpiTokens">—</div>
+                <div class="stats-kpi-sub" id="statsKpiTokensSub">输入 / 输出 / 缓存</div>
+              </article>
+              <article class="stats-kpi">
+                <div class="stats-kpi-label">估算费用</div>
+                <div class="stats-kpi-value" id="statsKpiCost">—</div>
+                <div class="stats-kpi-sub" id="statsKpiCostSub">按模型单价估算，非账单</div>
+              </article>
+              <article class="stats-kpi">
+                <div class="stats-kpi-label">成功率</div>
+                <div class="stats-kpi-value" id="statsKpiSuccess">—</div>
+                <div class="stats-kpi-sub" id="statsKpiSuccessSub">网关侧口径</div>
+              </article>
+            </div>
+
+            <section class="stats-panel">
+              <div class="stats-panel-head">
+                <div>
+                  <div class="stats-panel-title">每日用量</div>
+                  <div class="stats-panel-sub">悬停查看当日输入 / 输出 / 缓存</div>
+                </div>
+                <div class="stats-legend">
+                  <span class="stats-legend-item stats-legend-input">输入</span>
+                  <span class="stats-legend-item stats-legend-output">输出</span>
+                  <span class="stats-legend-item stats-legend-cache">缓存</span>
+                </div>
+              </div>
+              <div class="stats-chart" id="statsTrendChart" aria-live="polite">
+                <div class="stats-empty">正在读取统计…</div>
+              </div>
+            </section>
+
+            <div class="stats-grid">
+              <section class="stats-panel">
+                <div class="stats-panel-head">
+                  <div class="stats-panel-title">按模型</div>
+                </div>
+                <div class="stats-rank" id="statsModelRank">
+                  <div class="stats-empty">暂无数据</div>
+                </div>
+              </section>
+
+              <section class="stats-panel">
+                <div class="stats-panel-head">
+                  <div class="stats-panel-title">数据来源</div>
+                </div>
+                <div class="stats-sources" id="statsSources">
+                  <div class="stats-empty">暂无数据</div>
+                </div>
+              </section>
+            </div>
+
+          </section>
+        </div>
         <!-- ═══════ PAGE: PLATFORM OVERVIEW ═══════ -->
         <div class="page" id="page-more-platforms" role="tabpanel" aria-labelledby="tab-platforms">
           <div class="control-bar glass-card"
