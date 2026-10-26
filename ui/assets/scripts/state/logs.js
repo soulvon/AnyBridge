@@ -7,6 +7,9 @@ import { bindTauriBridge } from '../api/bridge.js';
 import { escapeHtml } from '../ui/dom.js';
 
 export const MAX_LOGS = 500;
+/** 同级别同文案在窗口内合并为一条，右侧显示 ×N（避免配置加载类日志刷屏）。 */
+export const LOG_THROTTLE_MS = 30_000;
+const logThrottleIndex = new Map();
 export const LOG_FILTERS = ['all', 'ok', 'info', 'warn', 'err'];
 export const LOG_FILTER_LABELS = { all: '全部', ok: 'OK', info: 'INFO', warn: 'WARN', err: 'ERR' };
 export const LOG_VIEWER_LEVELS = ['ok', 'info', 'warn', 'err'];
@@ -40,10 +43,14 @@ export function nowTs() {
   return `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
 }
 
+function repeatSuffix(e) {
+  return Number(e.count) > 1 ? ` <span class="log-repeat">×${e.count}</span>` : '';
+}
+
 export function renderLogLine(e) {
   const level = escapeHtml(e.level);
   const label = escapeHtml(String(e.level || '').toUpperCase());
-  return `<div class="log-line" data-level="${level}"><span class="log-ts">${escapeHtml(e.ts)}</span><span class="log-lv ${level}">${label}</span><span class="log-msg">${escapeHtml(e.msg)}</span></div>`;
+  return `<div class="log-line" data-level="${level}"><span class="log-ts">${escapeHtml(e.ts)}</span><span class="log-lv ${level}">${label}</span><span class="log-msg">${escapeHtml(e.msg)}${repeatSuffix(e)}</span></div>`;
 }
 
 export function renderLogs() {
@@ -85,10 +92,29 @@ export function scheduleLogRender(scrollToBottom) {
 export function addLog(level, msg) {
   ensureState();
   const normalizedLevel = level === 'error' ? 'err' : level;
-  globalThis.logEntries.push({ ts: nowTs(), level: normalizedLevel, msg });
+  const key = `${normalizedLevel}\u0000${msg}`;
+  const now = Date.now();
+  const hit = logThrottleIndex.get(key);
+
+  if (hit && now - hit.at < LOG_THROTTLE_MS) {
+    const entry = globalThis.logEntries[hit.index];
+    if (entry) {
+      entry.count = (entry.count || 1) + 1;
+      entry.ts = nowTs();
+      hit.at = now;
+      scheduleLogRender(false);
+      return;
+    }
+    logThrottleIndex.delete(key);
+  }
+
+  globalThis.logEntries.push({ ts: nowTs(), level: normalizedLevel, msg, count: 1 });
   if (globalThis.logEntries.length > MAX_LOGS) {
     globalThis.logEntries = globalThis.logEntries.slice(-MAX_LOGS);
+    // 裁剪后索引失效：直接清空节流表，后续同类日志重新计数。
+    logThrottleIndex.clear();
   }
+  logThrottleIndex.set(key, { index: globalThis.logEntries.length - 1, at: now });
   scheduleLogRender(true);
 }
 
@@ -223,7 +249,7 @@ export function renderLogViewerLine(e) {
   return `<div class="log-viewer-line">
     <span class="log-viewer-ts">${escapeHtml(e.ts)}</span>
     <span class="log-viewer-lv ${escapeHtml(e.level)}">${escapeHtml(String(e.level).toUpperCase())}</span>
-    <span class="log-viewer-msg">${escapeHtml(e.msg)}</span>
+    <span class="log-viewer-msg">${escapeHtml(e.msg)}${repeatSuffix(e)}</span>
   </div>`;
 }
 

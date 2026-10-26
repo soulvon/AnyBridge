@@ -4378,3 +4378,6 @@
     flex-wrap: wrap;
   }
 }
+
+/* 日志节流合并计数（同文案 30s 内合并为一条） */
+.log-repeat { color: var(--text-muted); font-size: 12px; }
