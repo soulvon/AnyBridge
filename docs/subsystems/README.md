@@ -9,6 +9,7 @@ paths and failure behavior. They are not design proposals.
 | Local proxy protocol conversion and streams | [Protocol conversion](protocol-conversion.md) |
 | Codex integration, official restore and managed files | [Codex integration](codex-integration.md) |
 | External binaries, packaging and release validation | [Build and release](build-release.md) |
+| Usage counters, daily summary, request and body logs | [Usage statistics and logs](stats.md) |
 
 ## Maintenance rules
 
