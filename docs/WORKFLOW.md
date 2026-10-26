@@ -133,15 +133,17 @@
 
 ---
 
-## 七、检查入口分层（以命令为准，不维护手工清单）
+## 七、检查入口（命令以 `package.json` 的 `scripts` 为准）
 
-| 命令 | 用途 | 时机 |
-|---|---|---|
-| `npm run check:fast` | UI 结构/语法、设计铁律守卫（uppercase/被禁动效硬拦；动画名/蓝紫色/小字号/彩条提示）、坑点 Guard、对称路径、新增文件行数守卫（>1500 阻断）、提交卫生 | pre-commit；开发中快速自查 |
-| `npm run test:unit` | 自动发现 Node 侧单元测试 | pre-push / CI / 本地验证 |
-| `node scripts/check-key-features.mjs --rust` | Rust 编译 + 全量单测 | pre-push / CI / 本地验证 |
-| `npm run verify` | 快速检查 + Node 单测 + Rust 检查 + cursor-core 检查 | pre-push、PR、CI |
-| `npm run check:live` | 本机真实 Windsurf/Devin 配置与汉化链路 | 显式手动验收，不冒充单元测试 |
-| `npm run verify:release` | 完整验证 + 重新构建本地安装包 | 发布前；仍需按范围做产物/真机验收 |
+本文件**不维护命令清单和用途说明**——那与 `package.json` 是两处维护，新增检查项必然漂移。
+这里只约定「什么时候跑哪一档」，档位内部的检查项由脚本自身决定：
+
+| 时机 | 档位 |
+|---|---|
+| 每次提交（pre-commit 自动执行） | `check:fast` |
+| 推送 / 合并前（pre-push、CI） | `verify` |
+| 显式真机验收（不冒充单元测试） | `check:live` |
+| 发布前（完整验证 + 本地安装包） | `verify:release` |
 
 不要在 CI 里另写一套命令清单；CI 的最终验证步骤就是 `npm run verify`。
+注意：`check:live` 依赖本机真实客户端环境，只能在显式验收时跑，不得纳入 `verify`。
