@@ -19,23 +19,62 @@ deviations are listed explicitly so they are not mistaken for intended behavior.
 
 ## Runtime path
 
-1. `sidecar/handlers/chat.js`, `sidecar/local-proxy.js` and
-   `sidecar/cursor-proxy.js` call `recordRequest` immediately before each
-   upstream attempt, `recordUsage` when an upstream stream finishes, and
-   `recordError` on rejections and terminal failures.
-2. `recordRetry` is called by `sidecar/local-proxy.js` and `sidecar/retry.js`.
-3. Writes mutate in-memory state, then schedule a debounced `stats.json` write
-   (500ms, timer unref'd).
-4. `snapshot()` is read by the proxy console through the Tauri `get_stats`
-   command; it rolls the day over and prunes history older than
-   `STATS_RETENTION_DAYS` (default 365, clamped 1..3650, read from
-   `byok-config.json`).
+### Chat main path (request-tracker)
+
+1. Each entry point creates one tracker per request and passes it in:
+   `sidecar/hybrid-server.js` (HTTP `direct` and MITM `devin`/`windsurf`) and
+   `sidecar/inference-proxy.js`.
+2. `handleGetChatMessage(req, res, body, tracker)` requires the tracker, binds
+   `messageId` as `requestId`, and stores it on `res.__byokTracker`; deep stream
+   functions reach it through `trackerOf(res)` (missing tracker throws, it does
+   not silently skip accounting).
+3. `tracker.beginAttempt()` is called once per upstream attempt (same moment the
+   old `recordRequest` fired) and records `requests` plus the attempt entry.
+4. Success terminals call `tracker.endAttempt({ status: 'ok', usage, ms })`
+   followed by `tracker.finish()`.
+5. Error terminals all pass through `sendTerminalError`, which calls
+   `tracker.finish()`; the caller sets `reject()` / `fail()` / `abort()` first.
+6. `finish()` is the only ledger exit: it calls `recordUsage` + `recordLatency`
+   for `ok`, `recordError` for `failed` / `rejected`, and `recordRetry` when
+   retries happened. It is idempotent.
+
+### Local proxy path
+
+`sidecar/local-proxy.js` and `sidecar/cursor-proxy.js` still call the `stats.js`
+`record*` functions directly; they do not use the tracker yet.
+
+### Storage
+
+Writes mutate in-memory state, then schedule a debounced `stats.json` write
+(500ms, timer unref'd). `snapshot()` is read by the proxy console through the
+Tauri `get_stats` command; it rolls the day over and prunes history older than
+`STATS_RETENTION_DAYS` (default 365, clamped 1..3650, read from
+`byok-config.json`).
+
+## Tracker contract
+
+- `status` is one of `ok`, `failed`, `rejected`, `aborted` — no other values.
+- `errorKind` classifies the terminal: `unconfigured`, `invalid-tool`,
+  `rate-limit`, `cooldown`, `vision-config`, `vision`, `search-config`,
+  `search`, `search-conflict`, `search-exhausted`, `upstream-http`,
+  `upstream-stream`, `network`, `failover`, `unclassified`, `client-abort`.
+- `beginAttempt` requires provider and model; unknown identity throws instead of
+  defaulting.
+- `endAttempt` requires a preceding `beginAttempt` with no open attempt.
+- `fail` / `abort` after `finish` are no-ops (late socket events must not rewrite
+  a settled ledger); `beginAttempt` / `endAttempt` after `finish` throw.
+- A request that finishes with no terminal status is recorded as
+  `failed` / `unclassified`, never as success.
 
 ## Invariants
 
-- `requests` counts upstream attempts; `upstreamAttempts = requests + retries`.
-- `errors` counts `recordError` calls, which include locally rejected requests
-  that never reached an upstream.
+- `requests` = all attempts + one extra entry for requests rejected before any
+  attempt (so rejections are counted).
+- `errors` = `failed` + `rejected`; `aborted` counts in `requests` only.
+- `errorRate` is therefore mathematically bounded by 100%.
+- Tokens and latency come from the successful attempt only (failed attempts keep
+  their usage in `attempts` for inspection but do not contribute).
+- `upstreamAttempts = requests + retries`.
 - `estCostUsd` is a blended estimate (`input * 3 + output * 15` per million);
   cache tokens are recorded but do not contribute to the estimate.
 - History pruning is based on the date key, never on file mtime.
@@ -46,16 +85,15 @@ deviations are listed explicitly so they are not mistaken for intended behavior.
 
 ## Known deviations (current behavior, not targets)
 
-- `requests` excludes rejected requests while `errors` includes them, so the
-  60s `errorRate` can exceed 100%.
 - There is no per-request ledger: the in-day `recent` ring keeps the last 20
   entries and is not a substitute for request-level history.
 - Codeium RPC forwarding (`proxyToCodeium`), blocked/preflight responses and
   plugin upstream calls are not recorded in `stats.json`.
-- Retries inside `sidecar/handlers/chat.js` are not reported through
-  `recordRetry`, so `retries` only reflects the local-proxy path.
+- `sidecar/local-proxy.js` and `sidecar/cursor-proxy.js` do not use the tracker;
+  their retry/rejection accounting still differs from the chat path.
 - `byModel` is keyed by the resolved upstream model; requested identity and
   provider/account dimensions are not aggregated.
+- `estCostUsd` is a single blended rate; cache read/write are not priced.
 
 ## Verification
 
