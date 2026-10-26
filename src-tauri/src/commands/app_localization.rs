@@ -34,6 +34,7 @@ const HANS_BLOCK_END: &str = "<!-- anybridge-hans-end -->";
 const HANS_VERSION_MARKER: &str = "<!-- anybridge-hans-v1 -->";
 const HANS_BACKUP_SUFFIX: &str = ".hans-origin";
 const BYOK_BLOCK_START: &str = "<!-- byok-cards-start -->";
+const BYOK_BLOCK_END: &str = "<!-- byok-cards-end -->";
 
 const UPSTREAM_RAW_URL: &str =
     "https://raw.githubusercontent.com/KLFDan0534/windsurf-autoContinue/main/windsurf-localization.js";
@@ -581,6 +582,36 @@ fn strip_hans_block(html: &str) -> String {
     let mut out = String::with_capacity(html.len());
     out.push_str(&html[..s]);
     out.push_str(&html[end..]);
+    out
+}
+
+/// 快照自愈/回滚时保住 BYOK 注入块，避免两条链在异常路径上互相踩。
+///
+/// 场景：先汉化、后接入 BYOK 时，汉化快照生成于 BYOK 注入之前（快照只在
+/// 汉化 apply 时刷新），快照里没有 byok 块。若此后文件被截断（强杀/磁盘满）
+/// 触发快照自愈，整体覆盖会把 BYOK 块抹掉——界面卡片消失且用户无感知。
+///
+/// 判据：损坏文件里 start 与 end 标记都在才拼接（截断通常丢尾部，块可能仍完整）；
+/// 缺任一标记视为不完整，绝不拼接半截脚本。快照自带宽块时原样返回。
+fn snapshot_with_byok_preserved(current: &str, snapshot: &str) -> String {
+    if snapshot.contains(BYOK_BLOCK_START) {
+        return snapshot.to_string();
+    }
+    let (Some(s), Some(e)) = (current.find(BYOK_BLOCK_START), current.find(BYOK_BLOCK_END)) else {
+        return snapshot.to_string();
+    };
+    if e < s {
+        return snapshot.to_string();
+    }
+    let block = &current[s..e + BYOK_BLOCK_END.len()];
+    let Some(idx) = snapshot.rfind("</body>") else {
+        return snapshot.to_string();
+    };
+    let mut out = String::with_capacity(snapshot.len() + block.len() + 1);
+    out.push_str(&snapshot[..idx]);
+    out.push_str(block);
+    out.push('\n');
+    out.push_str(&snapshot[idx..]);
     out
 }
 
@@ -1456,7 +1487,9 @@ fn apply_inner(
     if !is_valid_workbench(&html) {
         if let Ok(s) = fs::read_to_string(&snapshot) {
             if s.len() > html.len() && s.contains("</body>") {
-                let _ = fs::write(&html_path, s.as_bytes());
+                // 自愈不能把 BYOK 注入块一起冲掉（快照可能生成于 BYOK 注入之前）
+                let restored = snapshot_with_byok_preserved(&html, &s);
+                let _ = write_atomic(&html_path, &restored);
                 return Err(format!(
                     "检测到 {} 的 workbench.html 异常（可能被中断的写入截断），已从快照自动恢复，请重新点击汉化",
                     display
@@ -1519,9 +1552,12 @@ fn apply_inner(
         })
         .unwrap_or(false);
     if !written_ok {
-        // 回滚到快照（上次可用状态），宁可回到英文界面也不能白屏
+        // 回滚到快照（上次可用状态），宁可回到英文界面也不能白屏。
+        // 同样要保住 BYOK 块：回滚是异常路径，不能顺手把另一条链的注入也抹掉
         if let Ok(s) = fs::read_to_string(&snapshot) {
-            let _ = fs::write(&html_path, s.as_bytes());
+            let current = fs::read_to_string(&html_path).unwrap_or_default();
+            let restored = snapshot_with_byok_preserved(&current, &s);
+            let _ = write_atomic(&html_path, &restored);
         }
         return Err(format!(
             "汉化写入后校验失败（{} 文件异常），已从快照恢复，请重启客户端后重试",
@@ -2101,6 +2137,31 @@ mod tests {
     fn strip_is_noop_without_block() {
         let html = "<html><body>clean</body></html>";
         assert_eq!(strip_hans_block(html), html);
+    }
+
+    #[test]
+    fn snapshot_restore_preserves_byok_block() {
+        // 快照自愈不能把 BYOK 注入块冲掉（快照可能生成于 BYOK 注入之前）
+        let broken = "<html><body><script>hans</script><!-- byok-cards-start -->\n<!-- byok-cards-v1 -->\n<script>byok</script>\n<!-- byok-cards-end -->";
+        let snapshot = "<html><body>orig</body></html>";
+        let out = snapshot_with_byok_preserved(broken, snapshot);
+        assert!(
+            out.contains(BYOK_BLOCK_START) && out.contains(BYOK_BLOCK_END),
+            "BYOK 块必须保留"
+        );
+        assert!(out.contains("</body>"), "结构必须完整");
+        assert!(
+            out.rfind(BYOK_BLOCK_START).unwrap() < out.rfind("</body>").unwrap(),
+            "BYOK 块必须写回 body 内"
+        );
+        // 快照已含 BYOK 块 → 原样返回（不重复拼接）
+        let snap_with = "<html><body><!-- byok-cards-start -->x<!-- byok-cards-end --></body></html>";
+        assert_eq!(snapshot_with_byok_preserved(broken, snap_with), snap_with);
+        // 损坏文件里块不完整（缺 end）→ 绝不拼半截脚本
+        let half = "<html><body><!-- byok-cards-start --><script>byok";
+        assert_eq!(snapshot_with_byok_preserved(half, snapshot), snapshot);
+        // 损坏文件里没有 BYOK 块 → 纯快照
+        assert_eq!(snapshot_with_byok_preserved("<html><body>", snapshot), snapshot);
     }
 
     #[test]
