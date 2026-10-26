@@ -3350,7 +3350,7 @@ fn antigravity_config_dir() -> Option<PathBuf> {
     antigravity_hub_config_dir().or_else(antigravity_ide_config_dir)
 }
 
-fn patch_antigravity_hub_asar(asar_path: &std::path::Path) -> Result<(), String> {
+pub(crate) fn patch_antigravity_hub_asar(asar_path: &std::path::Path) -> Result<(), String> {
     use std::io::{Read, Seek, SeekFrom};
 
     // ── 轻量预检：只读 header + languageServer.js 段（几 MB），

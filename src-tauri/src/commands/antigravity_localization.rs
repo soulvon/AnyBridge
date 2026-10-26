@@ -491,6 +491,57 @@ fn patch_hub_asar(asar_path: &Path) -> Result<(), String> {
     Ok(())
 }
 
+/// 当前 asar 是否已含 BYOK 端点补丁（languageServer.js 里有 jetski.cloudCodeUrl）。
+/// 用途见 restore_hub_asar：覆盖前记录，覆盖后把补丁打回去。
+fn hub_has_byok_patch(asar_path: &Path) -> bool {
+    use std::io::{Read, Seek, SeekFrom};
+    let Ok(mut f) = fs::File::open(asar_path) else {
+        return false;
+    };
+    let mut head16 = [0u8; 16];
+    if f.read_exact(&mut head16).is_err() {
+        return false;
+    }
+    let json_size = u32::from_le_bytes(head16[12..16].try_into().unwrap()) as usize;
+    if json_size == 0 || json_size > 64 * 1024 * 1024 {
+        return false;
+    }
+    let mut header_bytes = vec![0u8; 16 + json_size];
+    if f.seek(SeekFrom::Start(0)).is_err() || f.read_exact(&mut header_bytes).is_err() {
+        return false;
+    }
+    let Ok(header_str) = std::str::from_utf8(&header_bytes[16..]) else {
+        return false;
+    };
+    let Ok(header) = serde_json::from_str::<Value>(header_str) else {
+        return false;
+    };
+    let Some(ls) = header.pointer("/files/dist/files/languageServer.js") else {
+        return false;
+    };
+    let offset: usize = ls
+        .get("offset")
+        .and_then(|v| v.as_str())
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(0);
+    let size: usize = ls.get("size").and_then(|v| v.as_u64()).unwrap_or(0) as usize;
+    if size == 0 || size > 256 * 1024 * 1024 {
+        return false;
+    }
+    let declared = u32::from_le_bytes(head16[4..8].try_into().unwrap()) as usize;
+    let payload_start = asar_payload_start(declared);
+    if f.seek(SeekFrom::Start((payload_start + offset) as u64)).is_err() {
+        return false;
+    }
+    let mut buf = vec![0u8; size];
+    if f.read_exact(&mut buf).is_err() {
+        return false;
+    }
+    std::str::from_utf8(&buf)
+        .map(|c| c.contains("jetski.cloudCodeUrl"))
+        .unwrap_or(false)
+}
+
 fn restore_hub_asar(asar_path: &Path) -> Result<(), String> {
     // 只从汉化前备份还原。绝不回退到 app.asar.official.bak——那是 BYOK 接入前的
     // 纯净官方版，用它还原会连带抹掉 BYOK 端点补丁，造成接入静默失效。
@@ -498,8 +549,15 @@ fn restore_hub_asar(asar_path: &Path) -> Result<(), String> {
     if !bak_path.exists() {
         return Err("未找到汉化前备份（可能尚未应用过汉化），无需还原".to_string());
     }
+    // 反方向同理：lang.bak 是「汉化前」快照，先汉化后接入时它同样不含 BYOK 补丁。
+    // 覆盖前记录接入状态，覆盖后立即把 BYOK 补丁打回去——否则 settings.json 仍指向
+    // 本地代理（UI 显示已接入），而 asar 里的端点补丁已被抹掉（实际失效，静默）。
+    let byok_present = hub_has_byok_patch(asar_path);
     fs::copy(&bak_path, asar_path).map_err(|e| format!("从备份还原 app.asar 失败: {e}"))?;
     let _ = fs::remove_file(&bak_path);
+    if byok_present {
+        super::platforms::patch_antigravity_hub_asar(asar_path)?;
+    }
     Ok(())
 }
 
