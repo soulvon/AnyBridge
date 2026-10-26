@@ -23,8 +23,8 @@
     {
       "id": "lang-pack-partial-check",
       "title": "语言包「已安装」必须覆盖完整生效链",
-      "symptom": "只看扩展目录存在 → 目录在但被 .obsolete 标记 / 注册表指向第三方包 → 实际没生效，apply 跳过修复，界面回退英文",
-      "lesson": "任何『是否已生效』的判定必须覆盖完整链路：文件存在 + 未被废弃标记 + 注册表指向正确 + 运行时配置生效",
+      "symptom": "只看扩展目录存在 → 目录在但被 .obsolete 标记 / 注册的包目录不存在或没有核心翻译 → 实际没生效，apply 跳过修复，界面回退英文",
+      "lesson": "任何『是否已生效』的判定必须覆盖完整链路：目录存在 + 未被废弃标记 + 注册表指向的包真实生效（目录在 + 有核心翻译文件）。不限定官方包 id——功能完整的第三方中文包同样有效（实测 openubmc 包覆盖核心 + 100+ 内置扩展），旧判据只认官方包会把正常汉化误报为未生效",
       "check": {
         "type": "source_contains",
         "file": "src-tauri/src/commands/app_localization.rs",
@@ -133,8 +133,8 @@
     {
       "id": "env-reset-breaks-idempotent-fix",
       "title": "客户端重装/升级会重置外部状态，幂等修复的前提会被破坏",
-      "symptom": "重装 Devin 后 .obsolete 重新标记、注册表指回第三方包，而 apply 因『判定为已安装』跳过修复",
-      "lesson": "『已安装』判定要能识别重置态；保活/重入时要能自动修复，而不是假定环境不变",
+      "symptom": "重装/重启 IDE 后 .obsolete 重新标记、注册表被 IDE 用自己的内存状态写回，而 apply 因『判定为已安装』跳过修复",
+      "lesson": "『已安装』判定要能识别重置态；保活/重入时要能自动修复，而不是假定环境不变。另注意：IDE 运行中持有 .obsolete/languagepacks.json 的内存状态，外部修改可能在其启动/重载时被整体写回（实测 24 秒后被覆盖），修复动作要么在 IDE 退出时做，要么按「任意完整包生效」判以免误判",
       "check": {
         "type": "source_contains",
         "file": "src-tauri/src/commands/app_localization.rs",

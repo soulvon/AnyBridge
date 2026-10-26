@@ -617,7 +617,7 @@ pub fn spawn_with_timeout(
     timeout: Duration,
 ) -> Result<std::process::Output, String> {
     use std::process::Stdio;
-    let mut child = cmd
+    let child = cmd
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())

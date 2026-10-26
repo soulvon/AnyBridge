@@ -796,12 +796,14 @@ function checkClient(name, cfg) {
   ok(`${name} 已启用汉化 → workbench 含汉化块`, html.includes('<!-- anybridge-hans-start -->'));
   ok(`${name} 注入块带 CSP nonce（如原厂 CSP 有 nonce）`, !/nonce-[0-9a-f]+/.test(html) || html.includes('<script nonce='));
 
-  // 语言包三条件
+  // 语言包生效链（真相判据：语言包插件真实提供核心翻译；官方包或功能完整的第三方中文包都算）
+  // 汉化两层：①语言包插件（核心 UI，本段）②workbench 注入（专有 UI，上面已查）
   const extDir = path.join(home, `.${name.toLowerCase()}`, 'extensions');
   const ver = engineVersion(installRoot);
   if (!ver) { ok(`${name} 引擎版本可读`, false); return; }
   const want = ver.split('.').slice(0, 2).join('.');
 
+  // AnyBridge 自动安装的官方包（兜底）：存在与否只作提示——用户可能已用第三方中文包
   const packDir = fs.existsSync(extDir)
     ? fs.readdirSync(extDir).find(d => {
         if (!d.startsWith(PACK_ID)) return false;
@@ -811,38 +813,48 @@ function checkClient(name, cfg) {
         return parts === want;
       })
     : null;
-  ok(`${name} 官方语言包目录存在且版本匹配（${want}.x）`, !!packDir, packDir ? '' : `extensions 下无 ${PACK_ID}@${want}.x`);
-
-  if (packDir) {
-    const obsPath = path.join(extDir, '.obsolete');
-    let obsolete = false;
-    if (fs.existsSync(obsPath)) {
-      try {
-        const m = JSON.parse(fs.readFileSync(obsPath, 'utf8'));
-        obsolete = Object.keys(m).some(k => k.startsWith(packDir));
-      } catch {}
-    }
-    ok(`${name} 语言包未被 .obsolete 标记`, !obsolete);
-
-    const lpPath = path.join(process.env.APPDATA || '', appDataDir, 'languagepacks.json');
-    let registered = false;
-    try {
-      const lp = JSON.parse(fs.readFileSync(lpPath, 'utf8'));
-      registered = (lp['zh-cn']?.extensions || []).some(e =>
-        e.extensionIdentifier?.id?.toLowerCase() === PACK_ID);
-    } catch {}
-    ok(`${name} languagepacks.json 已注册官方包`, registered);
-
-    const argvPath = path.join(process.env.APPDATA || '', appDataDir, 'argv.json');
-    let localeOk = false;
-    try {
-      // argv.json 是 JSONC（VS Code 模板带 // 注释），与 Rust 侧 parse_jsonc 对齐
-      const raw = fs.readFileSync(argvPath, 'utf8');
-      const jsonish = raw.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
-      localeOk = JSON.parse(jsonish).locale === 'zh-cn';
-    } catch {}
-    ok(`${name} argv.json locale=zh-cn`, localeOk);
+  if (!packDir) {
+    warn(`${name} 官方语言包目录缺失（当前生效的可能是第三方中文包，不影响汉化）`);
   }
+
+  const obsPath = path.join(extDir, '.obsolete');
+  let obsoleteKeys = [];
+  try {
+    obsoleteKeys = Object.keys(JSON.parse(fs.readFileSync(obsPath, 'utf8'))).map(k => k.toLowerCase());
+  } catch {}
+
+  const lpPath = path.join(process.env.APPDATA || '', appDataDir, 'languagepacks.json');
+  let zh = {};
+  try {
+    zh = JSON.parse(fs.readFileSync(lpPath, 'utf8'))['zh-cn'] || {};
+  } catch {}
+
+  // 条件 1：核心翻译文件存在（能翻核心 UI 的硬证据，官方包与完整第三方包都满足）
+  const coreTr = zh.translations?.vscode;
+  ok(`${name} 语言包插件提供核心翻译（translations.vscode 存在）`,
+    !!(coreTr && fs.existsSync(coreTr)),
+    coreTr ? `文件缺失: ${coreTr}` : 'zh-cn.translations.vscode 缺失');
+
+  // 条件 2：至少一个注册的扩展真实加载（目录存在 + 未被 .obsolete 废弃）
+  const extNames = fs.existsSync(extDir) ? fs.readdirSync(extDir).map(d => d.toLowerCase()) : [];
+  const regIds = (zh.extensions || []).map(e => e.extensionIdentifier?.id).filter(Boolean);
+  const anyActive = regIds.some(id => {
+    const idl = id.toLowerCase();
+    if (obsoleteKeys.some(k => k.startsWith(idl))) return false;
+    return extNames.some(n => n === idl || n.startsWith(idl + '-'));
+  });
+  ok(`${name} 语言包插件已注册且目录存在、未被废弃`, anyActive,
+    anyActive ? '' : `注册项: ${JSON.stringify(regIds)}`);
+
+  const argvPath = path.join(process.env.APPDATA || '', appDataDir, 'argv.json');
+  let localeOk = false;
+  try {
+    // argv.json 是 JSONC（VS Code 模板带 // 注释），与 Rust 侧 parse_jsonc 对齐
+    const raw = fs.readFileSync(argvPath, 'utf8');
+    const jsonish = raw.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+    localeOk = JSON.parse(jsonish).locale === 'zh-cn';
+  } catch {}
+  ok(`${name} argv.json locale=zh-cn`, localeOk);
 }
 
 checkClient('Windsurf', {

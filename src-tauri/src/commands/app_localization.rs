@@ -494,64 +494,102 @@ fn compatible_lang_pack_dir(platform: &str) -> Option<PathBuf> {
     matched
 }
 
-/// 是否已安装**且实际生效**的 VS Code 官方简体中文语言包。
-///
-/// 「生效」必须同时满足三个条件，缺一即视为未安装（apply 会走修复流程）：
-/// 1. 扩展目录存在与引擎兼容的官方包目录（`compatible_lang_pack_dir`）
-/// 2. 该目录**不在** `.obsolete` 废弃列表里——VS Code 扩展扫描器直接跳过
-///    被标记的目录，"装了但被标记"等于没装（实测：Devin 重装后注册表重置、
-///    官方包被标记废弃，旧判定只看目录存在就跳过了修复，界面回退英文）
-/// 3. `languagepacks.json` 的 zh-cn 已注册到官方包 id——注册指向第三方残缺
-///    包时，引擎加载的词条极少，同样等于没装
-fn lang_pack_installed(platform: &str) -> bool {
-    let Some(pack_dir) = compatible_lang_pack_dir(platform) else {
-        return false;
+/// 读扩展目录的 `.obsolete` 废弃标记 key 集合（小写，用于前缀匹配）。
+fn obsolete_keys(ext_dir: &Path) -> Vec<String> {
+    let path = ext_dir.join(".obsolete");
+    let Ok(raw) = fs::read_to_string(&path) else {
+        return Vec::new();
     };
+    let Ok(val) = serde_json::from_str::<serde_json::Value>(&raw) else {
+        return Vec::new();
+    };
+    val.as_object()
+        .map(|m| m.keys().map(|k| k.to_lowercase()).collect())
+        .unwrap_or_default()
+}
+
+/// 按扩展 id 找扩展目录（目录名 == id 或以 `id-` 开头，大小写不敏感）。
+/// 第三方语言包目录常带后缀（如 `...-zh-hans-0.0.2-universal`），不能只做全等。
+fn extension_dir_for_id(ext_dir: &Path, id: &str) -> Option<PathBuf> {
+    let id_lower = id.to_lowercase();
+    let prefix = format!("{id_lower}-");
+    let entries = fs::read_dir(ext_dir).ok()?;
+    for e in entries.flatten() {
+        if !e.path().is_dir() {
+            continue;
+        }
+        let name = e.file_name().to_string_lossy().to_lowercase();
+        if name == id_lower || name.starts_with(&prefix) {
+            return Some(e.path());
+        }
+    }
+    None
+}
+
+/// 是否已安装**且实际生效**的中文语言包插件。
+///
+/// 汉化是两层叠加：①语言包插件（核心 UI：菜单/设置等）+ ②workbench 注入
+/// （专有 UI，见 apply_inner）。本函数只判①，且**不限定官方包**——
+/// 任意 zh-cn 语言包插件（含功能完整的第三方包）生效都算数。
+///
+/// 「生效」三条件，缺一视为未生效（apply 会走安装/注册修复）：
+/// 1. `translations.vscode` 指向的核心翻译文件存在——这是「能翻核心 UI」的硬证据；
+///    旧判据要求必须注册到官方包 id，会把「注册到功能完整的第三方中文包」
+///    （实测 openubmc 包覆盖核心 + 100+ 内置扩展、界面全中文）误判为未汉化
+/// 2. 条件 2：不在 .obsolete 废弃列表里——扩展扫描器直接跳过被标记的目录，
+///    "装了但被标记"等于没装（实测：Devin 重装后注册表重置、官方包被标记废弃）
+/// 3. 条件 3：languagepacks.json 的 zh-cn 注册项真实加载——注册的扩展目录存在
+///    才算数（不限定官方包 id；第三方完整包同样有效）
+fn lang_pack_installed(platform: &str) -> bool {
     let Some(ext_dir) = ide_extensions_dir(platform) else {
         return false;
     };
+    let Some(state_dir) = ide_state_dir(platform) else {
+        return false;
+    };
+    let lp_path = state_dir.join("languagepacks.json");
+    let Ok(raw) = fs::read_to_string(&lp_path) else {
+        return false;
+    };
+    let Ok(val) = serde_json::from_str::<serde_json::Value>(&raw) else {
+        return false;
+    };
+    let Some(zh) = val.get("zh-cn") else {
+        return false;
+    };
 
-    // 条件 2：不在 .obsolete 废弃列表
-    let dir_name = pack_dir
-        .file_name()
-        .map(|n| n.to_string_lossy().to_string())
-        .unwrap_or_default();
-    let obsolete_path = ext_dir.join(".obsolete");
-    if let Ok(raw) = fs::read_to_string(&obsolete_path) {
-        if let Ok(val) = serde_json::from_str::<serde_json::Value>(&raw) {
-            if let Some(map) = val.as_object() {
-                if map.keys().any(|k| k.starts_with(&dir_name)) {
-                    return false; // 被标记废弃 → 未生效
+    // 条件 2：核心翻译文件存在（官方包与完整第三方包都具备）
+    let core_translation_ok = zh
+        .get("translations")
+        .and_then(|t| t.get("vscode"))
+        .and_then(|v| v.as_str())
+        .map(|p| !p.trim().is_empty() && PathBuf::from(p).exists())
+        .unwrap_or(false);
+    if !core_translation_ok {
+        return false;
+    }
+
+    // 条件 3：至少一个注册项真实加载（目录存在 + 未被废弃）
+    let obsolete = obsolete_keys(&ext_dir);
+    zh.get("extensions")
+        .and_then(|e| e.as_array())
+        .map(|arr| {
+            arr.iter().any(|e| {
+                let Some(id) = e
+                    .get("extensionIdentifier")
+                    .and_then(|i| i.get("id"))
+                    .and_then(|id| id.as_str())
+                else {
+                    return false;
+                };
+                let id_lower = id.to_lowercase();
+                if obsolete.iter().any(|k| k.starts_with(&id_lower)) {
+                    return false;
                 }
-            }
-        }
-    }
-
-    // 条件 3：languagepacks.json 已注册到官方包
-    if let Some(state_dir) = ide_state_dir(platform) {
-        let lp_path = state_dir.join("languagepacks.json");
-        let registered_ok = fs::read_to_string(&lp_path)
-            .ok()
-            .and_then(|raw| serde_json::from_str::<serde_json::Value>(&raw).ok())
-            .and_then(|v| v.get("zh-cn").cloned())
-            .and_then(|zh| zh.get("extensions").cloned())
-            .and_then(|e| e.as_array().cloned())
-            .map(|arr| {
-                arr.iter().any(|e| {
-                    e.get("extensionIdentifier")
-                        .and_then(|i| i.get("id"))
-                        .and_then(|id| id.as_str())
-                        .map(|id| id.eq_ignore_ascii_case(LANG_PACK_EXTENSION_ID))
-                        .unwrap_or(false)
-                })
+                extension_dir_for_id(&ext_dir, id).is_some()
             })
-            .unwrap_or(false);
-        if !registered_ok {
-            return false; // 未注册或注册到第三方包 → 未生效
-        }
-    }
-
-    true
+        })
+        .unwrap_or(false)
 }
 
 /// 原子写：同目录临时文件 + rename，避免写一半崩溃留下截断 HTML。
@@ -1445,11 +1483,15 @@ fn apply(platform: &str, elevate: bool) -> Result<LocalizationOperationResult, S
     // 语言包安装走网络（Open VSX + VSIX 下载），绝不在注入锁内做——
     // 否则 keeper 会被几分钟的网络超时挡住。语言包操作与 html 注入互不相干。
     let mut lang_note: Option<String> = None;
-    // 无论已装还是本次安装，都清一次 obsolete 标记 + 补注册 languagepacks.json：
-    // 目录合法但被标记 = VS Code 扫描器跳过；没注册 = 装了也不生效（实测双双踩中）
+    // 无论已装还是本次安装，都清一次 obsolete 标记（目录合法但被标记 =
+    // VS Code 扫描器跳过，实测踩中）。
     clear_obsolete_mark(platform, LANG_PACK_EXTENSION_ID);
-    if let Some(ver) = installed_lang_pack_version(platform) {
-        register_language_pack(platform, &ver);
+    // 只在「当前还没有生效中的中文包」时才注册官方包：
+    // 用户已装并生效了第三方中文包（如 openubmc）时不抢注册，避免覆盖用户选择
+    if !lang_pack_installed(platform) {
+        if let Some(ver) = installed_lang_pack_version(platform) {
+            register_language_pack(platform, &ver);
+        }
     }
     if !lang_pack_installed(platform) {
         lang_note = match install_language_pack(platform) {
