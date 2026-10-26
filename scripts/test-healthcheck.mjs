@@ -19,6 +19,9 @@ function harness(invoke, tauriEvent = null) {
     tauriEvent,
     addLog: (level, message) => logs.push({ level, message }),
     showCustomAlert: (...args) => alerts.push(args),
+    // 加载态助手（真实实现在 ui/assets/scripts/ui/feedback.js，挂 globalThis）：
+    // 沙箱注入等价 stub，保证「按钮进入忙碌态」路径可执行
+    loadingHtml: (text) => `<span class="ab-loading">${text || '加载中…'}</span>`,
   });
   vm.runInContext(source, context);
   return { window: context.window, logs, alerts, buttons, summary, progress, progressText };

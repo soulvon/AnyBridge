@@ -2510,6 +2510,10 @@
 .provider-editor-op-result[hidden] {
   display: none;
 }
+/* 模型面板内的结果条不贴边，水平与工具栏内边距(16px)对齐 */
+#page-provider-editor .model-panel > .provider-editor-op-result {
+  margin: 10px 16px 0;
+}
 .provider-editor-test-result,
 .provider-editor-op-result {
   flex: 0 0 auto;
