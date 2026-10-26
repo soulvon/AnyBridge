@@ -8,6 +8,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { configDir } from './lib/config-dir.js';
 import { cleanupExpiredLogs } from './lib/log-cleanup.js';
+import { costOf, estimateCost } from './pricing.js';
 
 function todayKey() {
   return new Date().toISOString().slice(0, 10);
@@ -60,6 +61,7 @@ function dailySnapshot() {
     lastModel: state.lastModel,
     lastError: state.lastError,
     byModel: state.byModel,
+    byModelUsage: state.byModelUsage,
     recent: state.recent,
     retries: state.retries,
     lastRetries: state.lastRetries,
@@ -176,6 +178,7 @@ function applyPersistedState(saved) {
   state.lastModel = saved.lastModel || null;
   state.lastError = saved.lastError || null;
   state.byModel = saved.byModel && typeof saved.byModel === 'object' && !Array.isArray(saved.byModel) ? saved.byModel : {};
+  state.byModelUsage = saved.byModelUsage && typeof saved.byModelUsage === 'object' && !Array.isArray(saved.byModelUsage) ? saved.byModelUsage : {};
   state.recent = Array.isArray(saved.recent) ? saved.recent.slice(0, 20) : [];
   state.retries = Number.isFinite(saved.retries) ? saved.retries : 0;
   state.lastRetries = Number.isFinite(saved.lastRetries) ? saved.lastRetries : 0;
@@ -227,6 +230,7 @@ const state = {
   lastModel: null,
   lastError: null,
   byModel: {},
+  byModelUsage: {},
   recent: [],
   retries: 0,           // 累计重试次数
   lastRetries: 0,       // 最近一次请求的重试次数
@@ -250,6 +254,7 @@ function rollDayIfNeeded() {
     state.cachedTokens = 0;
     state.cacheCreationInputTokens = 0;
     state.byModel = {};
+    state.byModelUsage = {};
     state.recent = [];
     state.lastError = null;
     state.retries = 0;
@@ -277,7 +282,7 @@ export function recordRequest({ provider, requestedModel, resolvedModel }) {
   schedulePersist();
 }
 
-export function recordUsage({ inputTokens = 0, outputTokens = 0, cachedTokens = 0, cacheReadInputTokens = 0, cacheCreationInputTokens = 0 } = {}) {
+export function recordUsage({ model = null, inputTokens = 0, outputTokens = 0, cachedTokens = 0, cacheReadInputTokens = 0, cacheCreationInputTokens = 0 } = {}) {
   rollDayIfNeeded();
   const readTokens = Math.max(Number(cachedTokens) || 0, Number(cacheReadInputTokens) || 0);
   const creationTokens = Number(cacheCreationInputTokens) || 0;
@@ -285,6 +290,13 @@ export function recordUsage({ inputTokens = 0, outputTokens = 0, cachedTokens = 
   state.outputTokens += outputTokens;
   state.cachedTokens += readTokens;
   state.cacheCreationInputTokens += creationTokens;
+  if (model) {
+    const bucket = state.byModelUsage[model] || (state.byModelUsage[model] = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 });
+    bucket.input += inputTokens;
+    bucket.output += outputTokens;
+    bucket.cacheRead += readTokens;
+    bucket.cacheWrite += creationTokens;
+  }
   const b = activeBucket();
   b.inputTokens += inputTokens;
   b.outputTokens += outputTokens;
@@ -445,8 +457,25 @@ function rateStats() {
 export function snapshot() {
   rollDayIfNeeded();
   const totalTokens = state.inputTokens + state.outputTokens;
-  // Rough cost estimate (USD): Anthropic Sonnet-ish blended rate.
-  const estCost = (state.inputTokens * 3 + state.outputTokens * 15) / 1_000_000;
+  // 成本估算：按模型单价累加；未归属到具体模型的 tokens（流式补记）走默认价，
+  // 并单独标记数量，避免把「未知」伪装成精确值。
+  const attributed = Object.values(state.byModelUsage).reduce(
+    (acc, u) => ({
+      input: acc.input + (Number(u?.input) || 0),
+      output: acc.output + (Number(u?.output) || 0),
+      cacheRead: acc.cacheRead + (Number(u?.cacheRead) || 0),
+      cacheWrite: acc.cacheWrite + (Number(u?.cacheWrite) || 0),
+    }),
+    { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+  );
+  const unattributed = {
+    input: Math.max(0, state.inputTokens - attributed.input),
+    output: Math.max(0, state.outputTokens - attributed.output),
+    cacheRead: Math.max(0, state.cachedTokens - attributed.cacheRead),
+    cacheWrite: Math.max(0, state.cacheCreationInputTokens - attributed.cacheWrite),
+  };
+  const priced = estimateCost(state.byModelUsage);
+  const estCost = priced.totalUsd + costOf(unattributed, '__unattributed__');
   return {
     startedAt: state.startedAt,
     uptimeSec: Math.floor((Date.now() - state.startedAt) / 1000),
@@ -458,10 +487,15 @@ export function snapshot() {
     cacheCreationInputTokens: state.cacheCreationInputTokens,
     totalTokens,
     estCostUsd: Number(estCost.toFixed(4)),
+    pricing: {
+      unpricedModels: priced.unpricedModels,
+      unattributedTokens: unattributed.input + unattributed.output,
+    },
     lastProvider: state.lastProvider,
     lastModel: state.lastModel,
     lastError: state.lastError,
     byModel: state.byModel,
+    byModelUsage: state.byModelUsage,
     recent: state.recent,
     retries: state.retries,
     lastRetries: state.lastRetries,

@@ -14,6 +14,7 @@
 // 明确不做：本模块不写文件、不碰网络。明细账本由 usage-ledger.js 消费 finish 结果。
 
 import { recordError, recordLatency, recordRequest, recordRetry, recordUsage } from './stats.js';
+import { appendRecord } from './usage-ledger.js';
 
 const STATUSES = new Set(['ok', 'failed', 'rejected', 'aborted']);
 const ATTEMPT_STATUSES = new Set(['pending', 'ok', 'failed', 'skipped']);
@@ -207,6 +208,7 @@ export class RequestTracker {
 
     if (this.status === 'ok') {
       recordUsage({
+        model: this.servedModel,
         inputTokens: this.usage.input,
         outputTokens: this.usage.output,
         cachedTokens: this.usage.cacheRead,
@@ -226,7 +228,11 @@ export class RequestTracker {
     if (this.retries.count > 0) {
       recordRetry({ count: this.retries.count, reason: this.retries.lastReason, provider: this.provider });
     }
-    return this.summary();
+
+    // 明细账本：每请求一行（白名单字段，正文永不入账）。写失败不影响主流程。
+    const summary = this.summary();
+    appendRecord(summary);
+    return summary;
   }
 
   // 供明细账本（usage-ledger）消费的结构化快照。
