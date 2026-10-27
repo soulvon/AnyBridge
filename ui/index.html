@@ -3216,157 +3216,217 @@
           </section>
         </div>
 
-        <!-- ═══════ PAGE: STATS（用量与账本） ═══════ -->
+        <!-- ═══════ PAGE: STATS（EasyUI 现代控制台设计） ═══════ -->
         <div class="page" id="page-stats" role="tabpanel" aria-labelledby="tab-stats">
 
-          <section class="us-view">
+          <section class="ez-dashboard">
 
-            <!-- 1. 顶部控制头 (对标 magpie .usage-head) -->
-            <header class="us-head">
-              <div class="us-head-left">
-                <span class="us-head-title">用量统计</span>
-                <span class="us-source-badge" id="statsLiveBadge">实时账本</span>
-              </div>
-
-              <!-- 时间范围分段药丸 -->
-              <div class="us-segs" role="tablist" aria-label="时间周期">
-                <button type="button" class="us-seg-opt" data-stats-range="1" role="tab" aria-selected="false">今日</button>
-                <button type="button" class="us-seg-opt on" data-stats-range="7" role="tab" aria-selected="true">7 天</button>
-                <button type="button" class="us-seg-opt" data-stats-range="30" role="tab" aria-selected="false">30 天</button>
-                <button type="button" class="us-seg-opt" data-stats-range="0" role="tab" aria-selected="false">全部</button>
-              </div>
-
-              <div class="us-head-grow"></div>
-
-              <!-- 顶部汇总总支出 (对标 magpie .usage-cost: 估算费用在右上角静默呈现) -->
-              <div class="us-cost-sum" id="statsCostHead">
-                <span>总估算支出</span>
-                <b id="statsKpiCost">$0.00</b>
-              </div>
-
-              <!-- 刷新按钮 -->
-              <button type="button" class="us-btn-refresh" id="statsRefreshBtn" title="同步旁路客户端并重载">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                  <path d="M3 12a9 9 0 0 1 15.5-6.3L21 8"></path>
-                  <path d="M21 3v5h-5"></path>
-                  <path d="M21 12a9 9 0 0 1-15.5 6.3L3 16"></path>
-                  <path d="M3 21v-5h5"></path>
-                </svg>
-              </button>
-            </header>
-
-            <!-- 2. 四联无缝紧凑网格 (1px 缝隙边框，对标 magpie .stats + .kpi) -->
-            <div class="us-stats-grid">
-              <!-- KPI 1: Tokens -->
-              <div class="us-kpi">
-                <div class="us-kpi-main">
-                  <b id="statsKpiTokens">—</b>
-                </div>
-                <span class="us-kpi-label">TOKEN 消耗</span>
-                <small id="statsKpiTokensSub">0 in · 0 out</small>
-              </div>
-
-              <!-- KPI 2: 缓存命中 (Cache Read) -->
-              <div class="us-kpi">
-                <div class="us-kpi-main">
-                  <b id="statsKpiCache">—</b>
-                </div>
-                <span class="us-kpi-label">缓存读取</span>
-                <small id="statsKpiCacheSub">命中率 0%</small>
-              </div>
-
-              <!-- KPI 3: 请求频次 (Calls & Retried) -->
-              <div class="us-kpi">
-                <div class="us-kpi-main">
-                  <b id="statsKpiRequests">—</b>
-                </div>
-                <span class="us-kpi-label">请求调用</span>
-                <small id="statsKpiRequestsSub">0 失败 · 0 重试</small>
-              </div>
-
-              <!-- KPI 4: 成功率 (网关侧) -->
-              <div class="us-kpi">
-                <div class="us-kpi-main">
-                  <b id="statsKpiSuccess">—</b>
-                </div>
-                <span class="us-kpi-label">健康度</span>
-                <small id="statsKpiSuccessSub">网关无阻断</small>
-              </div>
-            </div>
-
-            <!-- 3. 时间线趋势卡片 (对标 magpie .chart: 72px 极简双层柱条 + 峰值提示 + 底部分布刻度) -->
-            <div class="us-chart-box">
-              <div class="us-chart-header">
-                <div class="us-chart-title-wrap">
-                  <span class="us-chart-title">每日消耗走势</span>
-                  <span class="us-chart-legend">
-                    <i class="dot-in"></i> 输入
-                    <i class="dot-out"></i> 输出
+            <!-- 1. 顶部控制栏：时间筛选 + 来源筛选 + 数据同步 -->
+            <header class="ez-header">
+              <div class="ez-header-meta">
+                <div class="ez-title-line">
+                  <h1 class="ez-title">用量监控与账本</h1>
+                  <span class="ez-badge is-live">
+                    <i class="ez-pulse-dot"></i> 实时对账
                   </span>
                 </div>
-                <div class="us-chart-peak" id="statsChartPeak">峰值: 0</div>
+                <p class="ez-subtitle">汇聚 AnyBridge 网关与本地客户端（CPA 套件、Claude Code、Cursor）全维日志</p>
               </div>
 
-              <div class="us-chart-bars-track" id="statsChartBars">
-                <!-- 动态填充 .us-bar 柱形 -->
-              </div>
+              <div class="ez-header-controls">
+                <!-- 时间范围切换 (EasyUI Pill Navigation) -->
+                <div class="ez-pill-nav" role="tablist" aria-label="统计周期">
+                  <button type="button" class="ez-pill-btn" data-stats-range="1" role="tab" aria-selected="false">今日</button>
+                  <button type="button" class="ez-pill-btn active" data-stats-range="7" role="tab" aria-selected="true">近 7 天</button>
+                  <button type="button" class="ez-pill-btn" data-stats-range="30" role="tab" aria-selected="false">近 30 天</button>
+                  <button type="button" class="ez-pill-btn" data-stats-range="0" role="tab" aria-selected="false">全部</button>
+                </div>
 
-              <div class="us-chart-labels" id="statsChartLabels">
-                <!-- 动态填充时间刻度 -->
+                <!-- 来源通道过滤 (EasyUI Segmented Filter) -->
+                <div class="ez-pill-nav" role="tablist" aria-label="数据来源">
+                  <button type="button" class="ez-pill-btn active" data-stats-source-filter="all" role="tab" aria-selected="true">全部来源</button>
+                  <button type="button" class="ez-pill-btn" data-stats-source-filter="cpa" role="tab" aria-selected="false">CPA 套件</button>
+                  <button type="button" class="ez-pill-btn" data-stats-source-filter="claude" role="tab" aria-selected="false">Claude Code</button>
+                  <button type="button" class="ez-pill-btn" data-stats-source-filter="gateway" role="tab" aria-selected="false">网关</button>
+                </div>
+
+                <!-- 同步数据按钮 -->
+                <button type="button" class="ez-btn-action" id="statsRefreshBtn" title="同步旁路文件与数据库">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M3 12a9 9 0 0 1 15.5-6.3L21 8"></path>
+                    <path d="M21 3v5h-5"></path>
+                    <path d="M21 12a9 9 0 0 1-15.5 6.3L3 16"></path>
+                    <path d="M3 21v-5h5"></path>
+                  </svg>
+                  <span>同步数据</span>
+                </button>
               </div>
+            </header>
+
+            <!-- 2. EasyUI StatGrid: 四联 KPI 指标卡 (支持 Sparkline, Delta Pill, 数值高亮) -->
+            <div class="ez-stat-grid">
+              <!-- KPI 1: 调用总次数 -->
+              <article class="ez-stat-card">
+                <div class="ez-stat-header">
+                  <span class="ez-stat-label">总请求调用</span>
+                  <span class="ez-delta-pill" id="statsTrendRequests">—</span>
+                </div>
+                <div class="ez-stat-val-group">
+                  <span class="ez-stat-value" id="statsKpiRequests">—</span>
+                  <span class="ez-stat-unit">次</span>
+                </div>
+                <!-- 底部微线图 -->
+                <div class="ez-sparkline-wrap">
+                  <svg class="ez-sparkline-svg" id="statsSparkRequests" viewBox="0 0 120 28" preserveAspectRatio="none" aria-hidden="true"></svg>
+                </div>
+                <div class="ez-stat-footer" id="statsKpiRequestsSub">全量通道调用汇总</div>
+              </article>
+
+              <!-- KPI 2: Token 吞吐与构成条 -->
+              <article class="ez-stat-card">
+                <div class="ez-stat-header">
+                  <span class="ez-stat-label">Token 吞吐量</span>
+                  <span class="ez-delta-pill" id="statsTrendTokens">—</span>
+                </div>
+                <div class="ez-stat-val-group">
+                  <span class="ez-stat-value" id="statsKpiTokens">—</span>
+                </div>
+                <!-- EasyUI 比例进度条 (三色平滑堆叠) -->
+                <div class="ez-token-track">
+                  <div class="ez-token-bar is-input" id="statsTokenInputSeg" style="width: 50%" title="输入 Token"></div>
+                  <div class="ez-token-bar is-output" id="statsTokenOutputSeg" style="width: 25%" title="输出 Token"></div>
+                  <div class="ez-token-bar is-cache" id="statsTokenCacheSeg" style="width: 25%" title="缓存 Token"></div>
+                </div>
+                <div class="ez-stat-footer" id="statsKpiTokensSub">输入 · 输出 · 缓存</div>
+              </article>
+
+              <!-- KPI 3: 估算费用 (强调货币感) -->
+              <article class="ez-stat-card">
+                <div class="ez-stat-header">
+                  <span class="ez-stat-label">模型估算支出</span>
+                  <span class="ez-delta-pill" id="statsTrendCost">—</span>
+                </div>
+                <div class="ez-stat-val-group is-currency">
+                  <span class="ez-stat-value" id="statsKpiCost">—</span>
+                </div>
+                <div class="ez-sparkline-wrap">
+                  <svg class="ez-sparkline-svg" id="statsSparkCost" viewBox="0 0 120 28" preserveAspectRatio="none" aria-hidden="true"></svg>
+                </div>
+                <div class="ez-stat-footer" id="statsKpiCostSub">按模型单价与缓存率计费</div>
+              </article>
+
+              <!-- KPI 4: 运行健康度 (结合 CPA 成功率指示) -->
+              <article class="ez-stat-card">
+                <div class="ez-stat-header">
+                  <span class="ez-stat-label">调用健康度</span>
+                  <span class="ez-status-tag is-ok" id="statsHealthStatus">通畅</span>
+                </div>
+                <div class="ez-stat-val-group">
+                  <span class="ez-stat-value" id="statsKpiSuccess">—</span>
+                </div>
+                <div class="ez-sparkline-wrap">
+                  <svg class="ez-sparkline-svg" id="statsSparkSuccess" viewBox="0 0 120 28" preserveAspectRatio="none" aria-hidden="true"></svg>
+                </div>
+                <div class="ez-stat-footer" id="statsKpiSuccessSub">网关阻断 / 错误统计</div>
+              </article>
             </div>
 
-            <!-- 4. 统计分组排行列表 (对标 magpie .row.stat: 谁 / 进度细线 / 吞吐数值 / 费用估算) -->
-            <div class="us-section-group">
-              <div class="us-section-head">
-                <span class="us-sec-title">用量归因与排行</span>
-                <div class="us-segs us-segs-sm" role="tablist" aria-label="排行视图">
-                  <button type="button" class="us-seg-opt on" data-stats-rank="model" role="tab" aria-selected="true">模型</button>
-                  <button type="button" class="us-seg-opt" data-stats-rank="account" role="tab" aria-selected="false">CPA 账号</button>
-                  <button type="button" class="us-seg-opt" data-stats-rank="source" role="tab" aria-selected="false">来源客户端</button>
+            <!-- 3. EasyUI Bar Chart 主趋势分析 (SVG 原生平滑渲染 + 双系列堆叠 + 交互 Tooltip) -->
+            <section class="ez-card ez-chart-section">
+              <div class="ez-card-header">
+                <div>
+                  <h2 class="ez-card-title">每日消耗与走势</h2>
+                  <span class="ez-card-subtitle" id="statsChartLegendNote">基于真实账本的日期分布；支持 Token、请求与费用三维切换</span>
+                </div>
+
+                <div class="ez-chart-actions">
+                  <!-- 图例 -->
+                  <div class="ez-legend-group">
+                    <span class="ez-legend-item"><i class="dot-in"></i> 输入</span>
+                    <span class="ez-legend-item"><i class="dot-out"></i> 输出</span>
+                    <span class="ez-legend-item"><i class="dot-cache"></i> 缓存</span>
+                    <span class="ez-legend-item"><i class="dot-freq"></i> 频次折线</span>
+                  </div>
+
+                  <!-- 指标切换器 -->
+                  <div class="ez-pill-nav ez-pill-sm" role="tablist" aria-label="图表指标">
+                    <button type="button" class="ez-pill-btn active" data-stats-metric="tokens" role="tab" aria-selected="true">Token</button>
+                    <button type="button" class="ez-pill-btn" data-stats-metric="requests" role="tab" aria-selected="false">调用频次</button>
+                    <button type="button" class="ez-pill-btn" data-stats-metric="cost" role="tab" aria-selected="false">估算支出</button>
+                  </div>
                 </div>
               </div>
 
-              <div class="us-rank-list" id="statsRankList">
-                <div class="us-none">正在读取排行榜...</div>
+              <!-- 图表主渲染容器 (240px 黄金高度 + 动态刻度 + SVG 柱形) -->
+              <div class="ez-chart-view" id="statsTrendChart" aria-live="polite">
+                <div class="ez-empty-state">正在汇总历史账本…</div>
               </div>
+            </section>
+
+            <!-- 4. 双栏深度分析：EasyUI Donut/排行分析 + 数据通道矩阵 -->
+            <div class="ez-grid-duo">
+              <!-- 左栏：维度占比排行榜 (多维切换) -->
+              <section class="ez-card">
+                <div class="ez-card-header">
+                  <div>
+                    <h2 class="ez-card-title">用量消耗排行</h2>
+                    <span class="ez-card-subtitle">按所选周期的总吞吐占比降序排序</span>
+                  </div>
+
+                  <div class="ez-pill-nav ez-pill-sm" role="tablist" aria-label="排行视图">
+                    <button type="button" class="ez-pill-btn active" data-stats-rank="model" role="tab" aria-selected="true">模型</button>
+                    <button type="button" class="ez-pill-btn" data-stats-rank="account" role="tab" aria-selected="false">CPA 账号</button>
+                    <button type="button" class="ez-pill-btn" data-stats-rank="source" role="tab" aria-selected="false">来源客户端</button>
+                  </div>
+                </div>
+
+                <div class="ez-rank-list" id="statsRankTable">
+                  <div class="ez-empty-state">暂无排行数据</div>
+                </div>
+              </section>
+
+              <!-- 右栏：挂载通道与 CPA 账号状态卡片矩阵 -->
+              <section class="ez-card">
+                <div class="ez-card-header">
+                  <div>
+                    <h2 class="ez-card-title">通道数据源就绪状态</h2>
+                    <span class="ez-card-subtitle" id="statsSourcesLastScan">自动同步各客户端工作目录</span>
+                  </div>
+                </div>
+
+                <div class="ez-channels-deck" id="statsSourcesDeck">
+                  <div class="ez-empty-state">正在检查通道数据…</div>
+                </div>
+              </section>
             </div>
 
-            <!-- 5. 挂载数据源总览 (微型卡片) -->
-            <div class="us-section-group">
-              <div class="us-section-head">
-                <span class="us-sec-title">数据通道源</span>
-                <span class="us-sec-meta" id="statsSourcesMeta">旁路日志实时挂载</span>
-              </div>
-              <div class="us-sources-deck" id="statsSourcesDeck">
-                <!-- 动态填充微卡片 -->
-              </div>
-            </div>
-
-            <!-- 6. 实时请求审计流 (对标 magpie .led) -->
-            <div class="us-section-group">
-              <div class="us-section-head">
-                <span class="us-sec-title">实时请求审计 (最近 20 条)</span>
-                <span class="us-sec-meta">路由链路与错误拦截</span>
+            <!-- 5. 实时调用审计流 (结构化表格) -->
+            <section class="ez-card">
+              <div class="ez-card-header">
+                <div>
+                  <h2 class="ez-card-title">网关实时请求审计</h2>
+                  <span class="ez-card-subtitle">记录请求侧模型到落地供应商的真实映射链路（最近 20 条）</span>
+                </div>
+                <span class="ez-badge">实时会话</span>
               </div>
 
-              <div class="us-ledger-wrap">
-                <table class="us-ledger-table" aria-label="请求调用列表">
+              <div class="ez-table-wrap">
+                <table class="ez-table" aria-label="请求调用明细">
                   <thead>
                     <tr>
-                      <th style="width: 85px;">时间</th>
-                      <th style="width: 65px;">状态</th>
-                      <th style="width: 120px;">通道</th>
-                      <th>模型映射 (请求 → 实际)</th>
-                      <th style="width: 90px; text-align: right;">消耗</th>
+                      <th style="width: 95px;">请求时间</th>
+                      <th style="width: 75px;">终态</th>
+                      <th style="width: 130px;">出口通道</th>
+                      <th>路由映射 (请求 → 实际)</th>
+                      <th style="width: 100px; text-align: right;">消耗 / 耗时</th>
                     </tr>
                   </thead>
                   <tbody id="statsRecentTbody">
-                    <tr><td colspan="5" class="us-none">当前无即时会话</td></tr>
+                    <tr><td colspan="5" class="ez-empty-state">当前无活跃会话</td></tr>
                   </tbody>
                 </table>
               </div>
-            </div>
+            </section>
 
           </section>
         </div>
