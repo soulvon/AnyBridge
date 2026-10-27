@@ -283,16 +283,28 @@ function renderStatsKpi(allSeries) {
 // ── 核心：Apache ECharts 专业走势大图渲染 ──
 function renderEchartsMainChart(series) {
   const el = document.getElementById('mainTrendEcharts');
-  if (!el || typeof echarts === 'undefined') return;
+  if (!el) return;
+
+  if (typeof echarts === 'undefined') {
+    el.innerHTML = '<div class="ez-empty-state">ECharts 引擎正在挂载，请稍候…</div>';
+    return;
+  }
 
   if (!series.length) {
     el.innerHTML = '<div class="ez-empty-state">当前时间范围暂无用量记录</div>';
     return;
   }
 
+  // 保证容器具备可见高度，避免被挤压成 0px
+  if (!el.clientHeight || el.clientHeight === 0) {
+    el.style.height = '250px';
+  }
+
   if (!mainEchartInstance) {
     mainEchartInstance = echarts.init(el);
     window.addEventListener('resize', () => mainEchartInstance?.resize());
+  } else {
+    mainEchartInstance.resize();
   }
 
   const days = series.map((r) => r.day.slice(5));
@@ -463,7 +475,6 @@ function renderEchartsMainChart(series) {
 
 // ── 排行多维数据收集 ──
 function collectRankRows(series) {
-  const days = new Set(series.map((r) => r.day));
   const rankKind = STATS_STATE.rank;
 
   if (rankKind === 'model') {
@@ -482,6 +493,8 @@ function collectRankRows(series) {
       map.set(model, cur);
     };
 
+    // 历程
+    const days = new Set(series.map((r) => r.day));
     for (const row of STATS_STATE.history) {
       if (!days.has(row.day) || !row.byModelUsage) continue;
       for (const [m, u] of Object.entries(row.byModelUsage)) add(m, u);
@@ -498,7 +511,17 @@ function collectRankRows(series) {
         for (const [m, u] of Object.entries(models)) add(m, u);
       }
     }
-    return [...map.values()].sort((a, b) => b.tokens - a.tokens).slice(0, 15);
+
+    // 若当前周期内无增量模型，退回展示全周期已有模型，杜绝空白
+    if (map.size === 0) {
+      for (const b of [local.days, local.cursorDays, local.cpaDays]) {
+        for (const models of Object.values(b || {})) {
+          for (const [m, u] of Object.entries(models || {})) add(m, u);
+        }
+      }
+    }
+
+    return [...map.values()].sort((a, b) => (b.tokens || b.requests) - (a.tokens || a.requests)).slice(0, 15);
   }
 
   if (rankKind === 'account') {
@@ -644,7 +667,11 @@ function renderStatsSourcesDeck() {
     `);
   }
 
-  host.innerHTML = cards.length ? cards.join('') : '<div class="ez-empty-state">未发现活跃通道</div>';
+  if (cards.length) {
+    host.innerHTML = cards.join('');
+  } else {
+    host.innerHTML = '<div class="ez-empty-state">未发现活跃通道</div>';
+  }
 
   const meta = document.getElementById('statsSourcesLastScan');
   if (meta && local.scannedAt) {
@@ -800,9 +827,8 @@ function bindStatsPage() {
 function initStatsPage() {
   if (!document.getElementById('page-stats')) return;
   bindStatsPage();
-  if (document.getElementById('page-stats').classList.contains('active')) {
-    loadStats({ silent: true });
-  }
+  // 无论当前是否处于激活状态，初始化时优先载入一次数据建立基础缓存
+  loadStats({ silent: true });
 }
 
 if (document.readyState === 'loading') {

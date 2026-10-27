@@ -12151,7 +12151,7 @@ html[data-scheme="dark"] .endpoint-brand-icon-dark,
   cursor: pointer;
 }
 
-/* ═══════ 统计页 (EasyUI 现代设计系统规范) ═══════ */
+/* ═══════ 统计页 (EasyUI 现代设计系统 + ECharts 控制舱规范) ═══════ */
 .ez-dashboard {
   display: flex;
   flex-direction: column;
@@ -12343,7 +12343,7 @@ html[data-scheme="dark"] .endpoint-brand-icon-dark,
   padding: 14px 16px 12px;
   display: flex;
   flex-direction: column;
-  min-height: 126px;
+  min-height: 128px;
   transition: transform 140ms ease, box-shadow 140ms ease;
 }
 .ez-stat-card:hover {
@@ -12428,14 +12428,11 @@ html[data-scheme="dark"] .endpoint-brand-icon-dark,
 .ez-token-bar.is-output { background: #10b981; }
 .ez-token-bar.is-cache { background: #8b5cf6; }
 
-.ez-sparkline-wrap {
-  margin-top: 6px;
-  height: 28px;
-}
-.ez-sparkline-svg {
+/* KPI 微型 ECharts Sparkline 画布 */
+.ez-sparkline-canvas {
   width: 100%;
-  height: 100%;
-  display: block;
+  height: 28px;
+  margin-top: 6px;
 }
 
 .ez-stat-footer {
@@ -12447,181 +12444,15 @@ html[data-scheme="dark"] .endpoint-brand-icon-dark,
   text-overflow: ellipsis;
 }
 
-/* EasyUI Bar Chart 趋势分析区 */
+/* ECharts 主趋势分析区 */
 .ez-chart-section {
-  padding: 16px 18px 14px;
+  padding: 16px 18px 12px;
 }
-.ez-chart-actions {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  flex-wrap: wrap;
-}
-.ez-legend-group {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  font-size: 11px;
-  color: var(--text-muted);
-}
-.ez-legend-item {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-}
-.ez-legend-item i {
-  display: inline-block;
-  width: 8px;
-  height: 8px;
-  border-radius: 2px;
-}
-.ez-legend-item .dot-in { background: #3b82f6; }
-.ez-legend-item .dot-out { background: #10b981; }
-.ez-legend-item .dot-cache { background: #8b5cf6; }
-.ez-legend-item .dot-freq { background: #f59e0b; border-radius: 50%; }
-
-.ez-chart-view {
-  min-height: 230px;
+.ez-echarts-container {
+  width: 100%;
+  height: 250px;
+  min-height: 250px;
   position: relative;
-  margin-top: 4px;
-}
-.ez-chart-scaffold {
-  display: flex;
-  gap: 10px;
-  height: 230px;
-  width: 100%;
-}
-.ez-axis-y {
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-  width: 44px;
-  padding-bottom: 22px;
-  padding-top: 6px;
-  text-align: right;
-  font-size: 10.5px;
-  color: var(--text-muted);
-  font-family: 'JetBrains Mono', monospace;
-  font-variant-numeric: tabular-nums;
-  user-select: none;
-}
-.ez-plot-stage {
-  position: relative;
-  flex: 1;
-  min-width: 0;
-  height: 100%;
-}
-.ez-grid-backdrop {
-  position: absolute;
-  inset: 0 0 22px 0;
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-  pointer-events: none;
-}
-.ez-grid-line {
-  border-bottom: 1px dashed var(--border);
-  width: 100%;
-}
-.ez-grid-line.is-zero {
-  border-bottom: 1px solid var(--border-strong, var(--border));
-}
-
-.ez-line-overlay {
-  position: absolute;
-  inset: 0 0 22px 0;
-  width: 100%;
-  height: calc(100% - 22px);
-  pointer-events: none;
-  z-index: 2;
-}
-.ez-line-overlay polyline {
-  fill: none;
-  stroke: #f59e0b;
-  stroke-width: 1.8;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  filter: drop-shadow(0 2px 4px rgba(245, 158, 11, 0.2));
-}
-
-.ez-bars-track {
-  display: flex;
-  align-items: flex-end;
-  gap: 10px;
-  width: 100%;
-  height: 100%;
-  position: relative;
-  z-index: 1;
-}
-.ez-bar-cell {
-  flex: 1;
-  height: 100%;
-  min-width: 8px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: flex-end;
-  cursor: pointer;
-  position: relative;
-}
-.ez-bar-val {
-  font-size: 10.5px;
-  color: var(--text-muted);
-  font-family: 'JetBrains Mono', monospace;
-  font-variant-numeric: tabular-nums;
-  height: 16px;
-  line-height: 16px;
-  opacity: 0.8;
-  white-space: nowrap;
-}
-.ez-bar-cell:hover .ez-bar-val {
-  opacity: 1;
-  color: var(--accent);
-  font-weight: 600;
-}
-.ez-bar-body {
-  width: 100%;
-  max-width: 28px;
-  height: calc(100% - 42px);
-  display: flex;
-  flex-direction: column;
-  justify-content: flex-end;
-  border-radius: 4px 4px 0 0;
-  background: rgba(148, 163, 184, 0.08);
-}
-.ez-bar-stack {
-  width: 100%;
-  display: flex;
-  flex-direction: column-reverse;
-  border-radius: 4px 4px 0 0;
-  overflow: hidden;
-  transition: transform 120ms ease;
-}
-.ez-bar-cell:hover .ez-bar-stack {
-  filter: brightness(1.08);
-  transform: scaleY(1.02);
-}
-.ez-seg {
-  width: 100%;
-  display: block;
-}
-.ez-seg.is-in { background: #3b82f6; }
-.ez-seg.is-out { background: #10b981; }
-.ez-seg.is-cache { background: #8b5cf6; }
-.ez-seg.is-fill {
-  background: linear-gradient(180deg, var(--accent) 0%, rgba(var(--accent-rgb), 0.7) 100%);
-}
-.ez-axis-x {
-  font-size: 10.5px;
-  color: var(--text-muted);
-  height: 22px;
-  line-height: 22px;
-  font-variant-numeric: tabular-nums;
-  user-select: none;
-}
-.ez-bar-cell:hover .ez-axis-x {
-  color: var(--text-primary);
-  font-weight: 600;
 }
 
 /* 核心双栏分析 */
