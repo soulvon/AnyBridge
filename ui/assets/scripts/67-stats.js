@@ -9,7 +9,8 @@
  */
 
 const STATS_STATE = {
-  range: 1,            // 1 / 7 / 30 / 0=全部
+  // 默认近 7 天：避免早上打开时「今日」还没流量，整页看起来是空的。
+  range: 7,            // 1 / 7 / 30 / 0=全部
   loading: false,
   gateway: null,       // snapshot
   history: [],         // [{ day, requests, inputTokens, ... }]
