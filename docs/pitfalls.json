@@ -275,6 +275,135 @@
         "must_contain": "无 npm 包"
       },
       "severity": "high"
+    },
+    {
+      "id": "panel-status-bar-hugs-edge",
+      "title": "自带内边距的面板里插入同层状态条必须补水平边距（贴边）",
+      "symptom": "供应商编辑页模型面板（.model-panel）的拉取结果条（providerFetchResult）左右贴面板边框；面板 header/工具栏/自定义行都有 16-20px 水平内边距，唯独它零边距，视觉突兀（用户标注『太靠边了』）",
+      "lesson": "面板各子元素自带 padding 时（如 .model-panel 的 header 20px、toolbar 16px、custom 20px），新增同层状态条/横幅必须补水平 margin 与面板节奏对齐（本例 16px 对齐工具栏）；页面级结果条与相邻卡片对齐即可不算贴边。检查脚本已设硬规则：.model-panel > .provider-editor-op-result 必须带 16px 水平 margin",
+      "check": {
+        "type": "source_contains",
+        "file": "scripts/check-key-features.mjs",
+        "must_contain": "面板内嵌状态条贴边"
+      },
+      "severity": "medium"
+    },
+    {
+      "id": "config-restore-must-preserve-user-values",
+      "title": "配置切换的还原必须保留用户原值与接管期间的无关改动",
+      "symptom": "切回官方只删托管键不写回原值 → 用户原来的 ANTHROPIC_BASE_URL（如公司代理）永久丢失；整文件备份还原会连带抹掉接管期间用户改的其它配置",
+      "lesson": "接入前把字段原值记入 agent-stash.json（original 只在首次记录幂等 + applied 记录我写的值）；还原按字段写回原值，被外部改过的字段（当前值 != applied）保留用户改动；无记录退回删托管键旧语义。行为由 ANYBRIDGE_FIELD_RESTORE 门控，默认关闭时与旧版完全一致。记账是纯增量总是开启，记账失败不阻断切换",
+      "check": {
+        "type": "source_contains",
+        "file": "src-tauri/src/commands/platforms.rs",
+        "must_contain": "restore_claude_fields_via_stash"
+      },
+      "regression_test": "src-tauri/src/commands/platforms.rs::supplier_apply_records_original_once_and_restore_writes_it_back",
+      "severity": "high"
+    },
+    {
+      "id": "json-write-must-preserve-format",
+      "title": "JSON 配置写入不得破坏注释与键顺序（保形门控）",
+      "symptom": "serde_json::to_string_pretty 全量重写丢注释，且键序被重排成字典序（未开 preserve_order）；用户 settings.json/opencode.json 的注释与排版被静默烧掉",
+      "lesson": "新写入走 jsonc_edit 保形编辑：只动目标键值对的文本区间，注释、键顺序、缩进、CRLF、BOM 全保留；定位失败报错中止，绝不静默退回全量重写。由 ANYBRIDGE_FORMAT_PRESERVING_JSON 门控，默认关闭走旧路径",
+      "check": {
+        "type": "source_contains",
+        "file": "src-tauri/src/commands/jsonc_edit.rs",
+        "must_contain": "保形"
+      },
+      "regression_test": "src-tauri/src/commands/jsonc_edit.rs::set_existing_key_replaces_value_only",
+      "severity": "high"
+    },
+    {
+      "id": "test-isolation-real-stash-and-env-gate",
+      "title": "测试禁止读真实账本/进程级门控 env，且门控 env 锁不可嵌套",
+      "symptom": "① 并行测试通过无参入口读到真实 agent-stash.json 与进程级 ANYBRIDGE_* env → 旧语义测试意外走字段级路径而失败；② 两个门控 helper 各自加锁且测试嵌套调用 → std Mutex 不可重入，测试挂死 60s+；③ 两个 cargo 进程抢 target 锁互相等待数小时",
+      "lesson": "① 涉及记账/还原的测试必须显式传临时 stash 目录并显式传门控开关（禁止走读 agent_stash_dir()/field_restore_enabled() 的无参入口）；② 门控 env 统一走 with_gates 单层 helper（一把锁设任意组合），严禁嵌套两个 helper；③ 同一时间只允许一个 cargo 进程，跑测试/检查前先确认无残留 cargo",
+      "check": {
+        "type": "source_contains",
+        "file": "src-tauri/src/commands/platforms.rs",
+        "must_contain": "严禁嵌套调用"
+      },
+      "regression_test": "src-tauri/src/commands/platforms.rs::opencode_preserving_roundtrip_keeps_comments",
+      "severity": "high"
+    }
+,
+    {
+      "id": "stats-single-ledger-exit",
+      "title": "chat 主链路禁止绕过 tracker 直调 stats",
+      "symptom": "改造前 chat.js 散落 30+ 处 recordRequest/recordUsage/recordError，新增终态分支不埋点就静默漏统计（实测漏 12 处：工具校验、联网搜索 5 处、流中断/连接失败 6 处）",
+      "lesson": "请求级统计只能通过 request-tracker 的 finish() 单一出口落账；chat 主链路出现任何 record* 直调即视为回退",
+      "check": {
+        "type": "source_not_regex",
+        "file": "sidecar/handlers/chat.js",
+        "must_not_match": "record(Usage|Request|Error|Retry|Latency)\\("
+      },
+      "regression_test": "sidecar/request-tracker.test.js::成功尝试：一次 request、token 与延迟按成功 attempt 结算",
+      "severity": "high"
+    },
+    {
+      "id": "stats-no-attempt-requests",
+      "title": "未发起上游尝试的失败也必须计入 requests",
+      "symptom": "路由解析失败/无可用目标的请求只记 error 不记 request，导致 errors > requests，60 秒错误率出现 >100% 的怪值",
+      "lesson": "requests 的口径是「进入统计的请求」而不是「到达上游的请求」；finish 时 attempts 为空必须补记一次 recordRequest",
+      "check": {
+        "type": "source_contains",
+        "file": "sidecar/request-tracker.js",
+        "must_contain": "this.attempts.length === 0"
+      },
+      "regression_test": "sidecar/request-tracker.test.js::从未发起上游尝试的失败（路由解析失败）也计入 requests",
+      "severity": "high"
+    },
+    {
+      "id": "cost-no-blended-hardcode",
+      "title": "成本估算禁止硬编码混合单价",
+      "symptom": "旧实现 (input*3 + output*15)/1e6 忽略 cache token，重度缓存场景成本高估 3~5 倍，且 byModel 数据不参与计价",
+      "lesson": "成本必须按模型单价表（含 cache read/write 分价）累加；未归属 tokens 走默认价并单独标记，不假装精确",
+      "check": {
+        "type": "source_not_regex",
+        "file": "sidecar/stats.js",
+        "must_not_match": "inputTokens \\* 3 \\+ outputTokens \\* 15"
+      },
+      "regression_test": "sidecar/pricing.test.js::cache token 参与计价（旧实现完全忽略）",
+      "severity": "medium"
+    },
+    {
+      "id": "usage-ledger-field-whitelist",
+      "title": "明细账本只写白名单字段，正文永不入账",
+      "symptom": "若直接把 tracker 记录序列化落盘，请求/响应正文与鉴权头会随账本外泄，且体积失控",
+      "lesson": "usage-ledger 必须经 pickLedgerFields 白名单裁剪；新增字段要显式加进 LEDGER_FIELDS 才允许落盘",
+      "check": {
+        "type": "source_contains",
+        "file": "sidecar/usage-ledger.js",
+        "must_contain": "LEDGER_FIELDS"
+      },
+      "regression_test": "sidecar/usage-ledger.test.js::白名单裁剪：正文等未知字段永不落盘",
+      "severity": "high"
+    },
+    {
+      "id": "log-throttle-exists",
+      "title": "运行日志必须节流合并，禁止同文案刷屏",
+      "symptom": "代理日志 18 条里 12 条是 [renderModelMap] 从磁盘读取到 N 个槽位 的重复输出，真实事件被淹没",
+      "lesson": "addLog 必须对「同级别同文案」在窗口内合并并显示 ×N；窗口常量保留在 LOG_THROTTLE_MS",
+      "check": {
+        "type": "source_contains",
+        "file": "ui/assets/scripts/state/logs.js",
+        "must_contain": "LOG_THROTTLE_MS"
+      },
+      "severity": "medium"
+    },
+    {
+      "id": "sidecar-pricing-table",
+      "title": "模型单价表是唯一计价来源",
+      "symptom": "若在快照或 UI 里另写一份价格，两处漂移后成本数字自相矛盾",
+      "lesson": "所有成本计算必须经 pricing.js 的 priceFor/estimateCost；禁止在别处硬编码单价",
+      "check": {
+        "type": "source_contains",
+        "file": "sidecar/pricing.js",
+        "must_contain": "export function priceFor"
+      },
+      "regression_test": "sidecar/pricing.test.js::已知模型族命中内置价",
+      "severity": "medium"
     }
   ]
 }

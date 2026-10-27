@@ -32,6 +32,7 @@
     "check:ui": "node scripts/check-ui.mjs",
     "check:fast": "npm run check:ui && node scripts/check-key-features.mjs --fast",
     "check:live": "node scripts/check-key-features.mjs --live",
+    "check:stats": "node scripts/check-stats.mjs",
     "test:unit": "node scripts/run-unit-tests.mjs",
     "test:rust": "cargo test --manifest-path src-tauri/Cargo.toml --lib",
     "verify": "npm run check:fast && npm run test:unit && node scripts/check-key-features.mjs --rust && npm run check:cursor-core",
