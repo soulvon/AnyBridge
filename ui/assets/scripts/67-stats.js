@@ -307,7 +307,13 @@ function renderEchartsMainChart(series) {
     mainEchartInstance = echartsLib.init(el);
     window.addEventListener('resize', () => mainEchartInstance?.resize());
   } else {
-    mainEchartInstance.resize();
+    // 若原容器曾被隐藏导致宽高为0，重新创建实例
+    if (mainEchartInstance.getWidth() === 0) {
+      mainEchartInstance.dispose();
+      mainEchartInstance = echartsLib.init(el);
+    } else {
+      mainEchartInstance.resize();
+    }
   }
 
   const days = series.map((r) => r.day.slice(5));
@@ -740,6 +746,13 @@ function renderStatsAll() {
   renderStatsRankTable(series);
   renderStatsSourcesDeck();
   renderStatsRecentTable();
+
+  // 若图表容器有实例，延迟一帧确保 layout 稳定后再次 resize
+  setTimeout(() => {
+    if (mainEchartInstance && typeof mainEchartInstance.resize === 'function') {
+      mainEchartInstance.resize();
+    }
+  }, 100);
 }
 
 async function loadStats({ silent = false } = {}) {

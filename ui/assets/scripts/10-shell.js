@@ -201,6 +201,9 @@ function navigateTo(pageId) {
   if (pageId === 'platform-claude-desktop' && typeof loadClaudeDesktopConsole === 'function') {
     loadClaudeDesktopConsole().catch(() => {});
   }
+  if (pageId === 'stats' && typeof loadStats === 'function') {
+    loadStats();
+  }
   if (pageId === 'extensions') {
     if (typeof onExtensionsPageEnter === 'function') onExtensionsPageEnter();
     else if (typeof refreshExtensionStatuses === 'function') refreshExtensionStatuses({ silent: true });
