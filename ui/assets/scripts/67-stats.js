@@ -39,6 +39,12 @@ function fmtCost(n) {
   return '$' + v.toFixed(2);
 }
 
+// 按当前指标选择格式化方式：费用走 $，其余走 K/M/B。
+// ECharts 的 yAxis formatter 依赖它，缺失会在 setOption 内抛 ReferenceError。
+function fmtMetric(value, metric) {
+  return metric === 'cost' ? fmtCost(value) : fmtNum(value);
+}
+
 function dayKeyLocal(d) {
   const pad = (x) => String(x).padStart(2, '0');
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
@@ -184,7 +190,7 @@ function renderEchartSpark(containerId, data, color) {
         showSymbol: false,
         lineStyle: { width: 1.8, color },
         areaStyle: {
-          color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+          color: new echartsLib.graphic.LinearGradient(0, 0, 0, 1, [
             { offset: 0, color: color + '33' },
             { offset: 1, color: color + '00' },
           ]),
@@ -303,17 +309,22 @@ function renderEchartsMainChart(series) {
     el.style.height = '250px';
   }
 
+  // ECharts 是把画布追加进容器，容器里若还留着占位文案会叠在图表底下。
+  // 以 ECharts 自己的实例标记为准：没有标记就说明容器不是它的，先清空。
+  if (!el.hasAttribute('_echarts_instance_')) {
+    el.innerHTML = '';
+  }
+
   if (!mainEchartInstance) {
     mainEchartInstance = echartsLib.init(el);
     window.addEventListener('resize', () => mainEchartInstance?.resize());
+  } else if (mainEchartInstance.getWidth() === 0) {
+    // 原容器曾被隐藏导致宽高为 0：丢弃死实例重建
+    mainEchartInstance.dispose();
+    el.innerHTML = '';
+    mainEchartInstance = echartsLib.init(el);
   } else {
-    // 若原容器曾被隐藏导致宽高为0，重新创建实例
-    if (mainEchartInstance.getWidth() === 0) {
-      mainEchartInstance.dispose();
-      mainEchartInstance = echartsLib.init(el);
-    } else {
-      mainEchartInstance.resize();
-    }
+    mainEchartInstance.resize();
   }
 
   const days = series.map((r) => r.day.slice(5));
@@ -359,7 +370,7 @@ function renderEchartsMainChart(series) {
         type: 'bar',
         data: series.map((r) => r.requests),
         itemStyle: {
-          color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+          color: new echartsLib.graphic.LinearGradient(0, 0, 0, 1, [
             { offset: 0, color: '#3b82f6' },
             { offset: 1, color: '#1d4ed8' },
           ]),
@@ -377,7 +388,7 @@ function renderEchartsMainChart(series) {
         type: 'bar',
         data: series.map((r) => r.cost),
         itemStyle: {
-          color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+          color: new echartsLib.graphic.LinearGradient(0, 0, 0, 1, [
             { offset: 0, color: '#f59e0b' },
             { offset: 1, color: '#d97706' },
           ]),
@@ -739,13 +750,28 @@ function renderStatsRecentTable() {
 }
 
 // ── 全量同步 ──
+// 逐块渲染：任何一块抛错只降级该块并留下可见错误，不再让整页停在占位文案。
+// （教训：ECharts formatter 引用未定义函数会让 renderStatsAll 从中间中断，
+//  表现为 KPI 有值、图表空白、其余面板一句「正在检查…」永不消失。）
 function renderStatsAll() {
   const series = buildDaySeries();
-  renderStatsKpi(series);
-  renderEchartsMainChart(series);
-  renderStatsRankTable(series);
-  renderStatsSourcesDeck();
-  renderStatsRecentTable();
+
+  const panels = [
+    ['KPI', () => renderStatsKpi(series)],
+    ['主图表', () => renderEchartsMainChart(series)],
+    ['排行', () => renderStatsRankTable(series)],
+    ['数据源', () => renderStatsSourcesDeck()],
+    ['最近请求', () => renderStatsRecentTable()],
+  ];
+
+  for (const [name, render] of panels) {
+    try {
+      render();
+    } catch (e) {
+      console.error(`[AnyBridge Stats] ${name} 渲染失败:`, e);
+      panicPanel(name, e);
+    }
+  }
 
   // 若图表容器有实例，延迟一帧确保 layout 稳定后再次 resize
   setTimeout(() => {
@@ -753,6 +779,21 @@ function renderStatsAll() {
       mainEchartInstance.resize();
     }
   }, 100);
+}
+
+/** 把失败落到对应面板上，避免「一句话永远转圈」这种假加载态。 */
+function panicPanel(name, error) {
+  const target = {
+    KPI: null,
+    主图表: 'mainTrendEcharts',
+    排行: 'statsRankTable',
+    数据源: 'statsSourcesDeck',
+    最近请求: 'statsRecentTbody',
+  }[name];
+  if (!target) return;
+  const el = document.getElementById(target);
+  if (!el) return;
+  el.innerHTML = `<div class="ez-empty-state">${name}渲染失败：${escapeText(error?.message || error)}</div>`;
 }
 
 async function loadStats({ silent = false } = {}) {
