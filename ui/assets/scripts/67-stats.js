@@ -290,12 +290,60 @@ function renderStatsSources() {
     : '');
 }
 
+function renderStatsRecent() {
+  const host = document.getElementById('statsRecent');
+  if (!host) return;
+  const rows = STATS_STATE.gateway?.recent || [];
+  if (!rows.length) {
+    host.innerHTML = '<div class="stats-empty">暂无请求记录</div>';
+    return;
+  }
+  const clamp = (text, max = 90) => {
+    const value = String(text ?? '');
+    return value.length > max ? `${value.slice(0, max)}…` : value;
+  };
+  host.innerHTML = rows.slice(0, 10).map((entry) => {
+    const ts = entry.ts ? new Date(entry.ts).toLocaleTimeString() : '—';
+    if (entry.type === 'request') {
+      const requested = entry.requestedModel || '';
+      const served = entry.resolvedModel || '';
+      const model = requested && served && requested !== served
+        ? `${escapeText(requested)} → ${escapeText(served)}`
+        : escapeText(served || requested || '—');
+      return `<div class="stats-recent-row">
+        <span class="stats-recent-ts">${ts}</span>
+        <span class="stats-recent-tag is-ok">请求</span>
+        <span class="stats-recent-model">${model}</span>
+        <span class="stats-recent-meta">${escapeText(entry.provider || '')}</span>
+      </div>`;
+    }
+    if (entry.type === 'error') {
+      return `<div class="stats-recent-row">
+        <span class="stats-recent-ts">${ts}</span>
+        <span class="stats-recent-tag is-err">错误</span>
+        <span class="stats-recent-model">${escapeText(clamp(entry.message))}</span>
+        <span class="stats-recent-meta">${escapeText(entry.provider || '')}</span>
+      </div>`;
+    }
+    if (entry.type === 'retry') {
+      return `<div class="stats-recent-row">
+        <span class="stats-recent-ts">${ts}</span>
+        <span class="stats-recent-tag is-warn">重试 ×${Number(entry.count) || 1}</span>
+        <span class="stats-recent-model">${escapeText(clamp(entry.reason))}</span>
+        <span class="stats-recent-meta">${escapeText(entry.provider || '')}</span>
+      </div>`;
+    }
+    return '';
+  }).join('');
+}
+
 function renderStatsAll() {
   const series = buildDaySeries();
   renderStatsKpi(series);
   renderStatsTrend(series);
   renderStatsRank(series);
   renderStatsSources();
+  renderStatsRecent();
 }
 
 function statsSkeleton() {
