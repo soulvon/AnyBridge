@@ -304,9 +304,9 @@ function renderEchartsMainChart(series) {
     return;
   }
 
-  // 保证容器具备可见高度，避免被挤压成 0px
-  if (!el.clientHeight || el.clientHeight === 0) {
-    el.style.height = '250px';
+  // 保证容器具备可见高度，避免被挤压
+  if (!el.clientHeight || el.clientHeight < 360) {
+    el.style.height = '380px';
   }
 
   // ECharts 是把画布追加进容器，容器里若还留着占位文案会叠在图表底下。
@@ -342,24 +342,42 @@ function renderEchartsMainChart(series) {
         type: 'bar',
         stack: 'tokens',
         data: series.map((r) => r.input),
-        itemStyle: { color: '#3b82f6', borderRadius: [0, 0, 0, 0] },
-        barMaxWidth: 30,
+        itemStyle: {
+          color: new echartsLib.graphic.LinearGradient(0, 0, 0, 1, [
+            { offset: 0, color: '#3b82f6' },
+            { offset: 1, color: '#2563eb' },
+          ]),
+          borderRadius: [0, 0, 0, 0],
+        },
+        barMaxWidth: 34,
       },
       {
         name: '输出 Token',
         type: 'bar',
         stack: 'tokens',
         data: series.map((r) => r.output),
-        itemStyle: { color: '#10b981', borderRadius: [0, 0, 0, 0] },
-        barMaxWidth: 30,
+        itemStyle: {
+          color: new echartsLib.graphic.LinearGradient(0, 0, 0, 1, [
+            { offset: 0, color: '#10b981' },
+            { offset: 1, color: '#059669' },
+          ]),
+          borderRadius: [0, 0, 0, 0],
+        },
+        barMaxWidth: 34,
       },
       {
         name: '缓存 Token',
         type: 'bar',
         stack: 'tokens',
         data: series.map((r) => r.cache),
-        itemStyle: { color: '#8b5cf6', borderRadius: [4, 4, 0, 0] },
-        barMaxWidth: 30,
+        itemStyle: {
+          color: new echartsLib.graphic.LinearGradient(0, 0, 0, 1, [
+            { offset: 0, color: '#a855f7' },
+            { offset: 1, color: '#9333ea' },
+          ]),
+          borderRadius: [5, 5, 0, 0],
+        },
+        barMaxWidth: 34,
       },
     ];
   } else if (metric === 'requests') {
@@ -401,15 +419,15 @@ function renderEchartsMainChart(series) {
 
   // 叠加高频短请求/长上下文对照平滑折线 (右轴)
   chartSeries.push({
-    name: '调用频次 (次)',
+    name: '调用频次',
     type: 'line',
     yAxisIndex: 1,
     smooth: true,
     data: series.map((r) => r.requests),
     symbol: 'circle',
     symbolSize: 6,
-    itemStyle: { color: '#f59e0b' },
-    lineStyle: { width: 2.2, color: '#f59e0b' },
+    itemStyle: { color: '#0ea5e9' },
+    lineStyle: { width: 2, color: '#0ea5e9', type: 'dashed' },
   });
 
   const option = {
@@ -442,15 +460,18 @@ function renderEchartsMainChart(series) {
     },
     legend: {
       data: chartSeries.map((s) => s.name),
-      right: 10,
-      top: 0,
-      textStyle: { color: '#64748b', fontSize: 11 },
+      right: 12,
+      top: -2,
+      textStyle: { color: '#64748b', fontSize: 11.5 },
       icon: 'roundRect',
+      itemWidth: 12,
+      itemHeight: 8,
+      itemGap: 14,
     },
     grid: {
       left: 12,
       right: 12,
-      top: 36,
+      top: 48,
       bottom: 12,
       containLabel: true,
     },
