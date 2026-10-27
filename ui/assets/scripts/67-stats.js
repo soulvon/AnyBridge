@@ -1,5 +1,5 @@
 /**
- * 67-stats.js — 统计引擎（全面适配 EasyUI 设计体系）
+ * 67-stats.js — 统计引擎（全面基于 Apache ECharts 矢量驱动）
  */
 
 const STATS_STATE = {
@@ -12,6 +12,9 @@ const STATS_STATE = {
   history: [],
   local: null,
 };
+
+let mainEchartInstance = null;
+const sparkInstances = {};
 
 function escapeText(value) {
   return String(value ?? '')
@@ -34,10 +37,6 @@ function fmtCost(n) {
   if (v < 0.01) return '$' + v.toFixed(4);
   if (v >= 1000) return '$' + (v / 1000).toFixed(2) + 'K';
   return '$' + v.toFixed(2);
-}
-
-function fmtMetric(value, metric) {
-  return metric === 'cost' ? fmtCost(value) : fmtNum(value);
 }
 
 function dayKeyLocal(d) {
@@ -63,7 +62,7 @@ function historyDaysToFetch() {
   return STATS_STATE.range === 0 ? 366 : Math.min(366, STATS_STATE.range * 2 + 1);
 }
 
-// ── 构建日序综合数据集（支持 EasyUI 通道筛选） ──
+// ── 构建日序综合数据集（支持来源过滤） ──
 function buildDaySeries() {
   const filter = STATS_STATE.sourceFilter;
   const includeGateway = filter === 'all' || filter === 'gateway';
@@ -161,44 +160,42 @@ function sumSeries(series) {
   return sum;
 }
 
-function metricValue(row, metric) {
-  if (metric === 'requests') return row.requests;
-  if (metric === 'cost') return row.cost;
-  return row.input + row.output + row.cache;
-}
+// ── ECharts 微型 Sparkline 渲染器 ──
+function renderEchartSpark(containerId, data, color) {
+  const el = document.getElementById(containerId);
+  if (!el || typeof echarts === 'undefined') return;
 
-// ── EasyUI Sparkline 微线图生成 ──
-function renderSparkSvg(id, values, colorVar = 'var(--accent, #1261A6)') {
-  const el = document.getElementById(id);
-  if (!el) return;
-  if (!values.length || values.every((v) => v === 0)) {
-    el.innerHTML = '';
-    return;
+  let inst = sparkInstances[containerId];
+  if (!inst) {
+    inst = echarts.init(el, null, { renderer: 'svg' });
+    sparkInstances[containerId] = inst;
   }
-  const max = Math.max(...values, 1);
-  const min = Math.min(...values);
-  const range = max - min || 1;
-  const w = 120;
-  const h = 28;
-  const pad = 2;
-  const step = w / Math.max(values.length - 1, 1);
 
-  const coords = values.map((v, i) => {
-    const x = i * step;
-    const y = h - pad - ((v - min) / range) * (h - pad * 2);
-    return `${x.toFixed(1)},${y.toFixed(1)}`;
-  });
+  const option = {
+    grid: { left: 0, right: 0, top: 2, bottom: 2 },
+    xAxis: { type: 'category', show: false },
+    yAxis: { type: 'value', show: false, min: 0 },
+    series: [
+      {
+        data,
+        type: 'line',
+        smooth: true,
+        showSymbol: false,
+        lineStyle: { width: 1.8, color },
+        areaStyle: {
+          color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+            { offset: 0, color: color + '33' },
+            { offset: 1, color: color + '00' },
+          ]),
+        },
+      },
+    ],
+  };
 
-  const polyline = coords.join(' ');
-  const area = `0,${h} ${polyline} ${w},${h}`;
-
-  el.innerHTML = `
-    <polygon points="${area}" fill="${colorVar}" fill-opacity="0.12"></polygon>
-    <polyline points="${polyline}" fill="none" stroke="${colorVar}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></polyline>
-  `;
+  inst.setOption(option, true);
 }
 
-// ── 渲染 EasyUI Delta 徽标 ──
+// ── 渲染 Delta Pill ──
 function renderDeltaPill(id, current, previous, { inverse = false } = {}) {
   const el = document.getElementById(id);
   if (!el) return;
@@ -215,7 +212,7 @@ function renderDeltaPill(id, current, previous, { inverse = false } = {}) {
   el.className = `ez-delta-pill ${good ? 'is-up' : 'is-down'}`;
 }
 
-// ── 渲染 StatGrid ──
+// ── 渲染 KPI 指标卡 ──
 function renderStatsKpi(allSeries) {
   const { current, previous } = splitRanges(allSeries);
   const sum = sumSeries(current);
@@ -273,109 +270,195 @@ function renderStatsKpi(allSeries) {
   renderDeltaPill('statsTrendTokens', totalTokens, prevTokens);
   renderDeltaPill('statsTrendCost', sum.cost, prev.cost);
 
-  // Sparklines
-  renderSparkSvg('statsSparkRequests', current.map((r) => r.requests), '#3b82f6');
-  renderSparkSvg('statsSparkCost', current.map((r) => r.cost), '#f59e0b');
-  renderSparkSvg('statsSparkSuccess', current.map((r) => (r.gatewayRequests > 0 ? Math.max(0, 100 - (r.errors / r.gatewayRequests) * 100) : 100)), '#10b981');
+  // ECharts Sparkline 微线图驱动
+  renderEchartSpark('sparkRequestsChart', current.map((r) => r.requests), '#3b82f6');
+  renderEchartSpark('sparkCostChart', current.map((r) => r.cost), '#f59e0b');
+  renderEchartSpark(
+    'sparkSuccessChart',
+    current.map((r) => (r.gatewayRequests > 0 ? Math.max(0, 100 - (r.errors / r.gatewayRequests) * 100) : 100)),
+    '#10b981',
+  );
 }
 
-// ── 渲染 EasyUI Bar Chart ──
-function renderStatsTrend(series) {
-  const host = document.getElementById('statsTrendChart');
-  if (!host) return;
-  const metric = STATS_STATE.metric;
+// ── 核心：Apache ECharts 专业走势大图渲染 ──
+function renderEchartsMainChart(series) {
+  const el = document.getElementById('mainTrendEcharts');
+  if (!el || typeof echarts === 'undefined') return;
 
   if (!series.length) {
-    host.innerHTML = '<div class="ez-empty-state">当前时间范围暂无用量记录</div>';
+    el.innerHTML = '<div class="ez-empty-state">当前时间范围暂无用量记录</div>';
     return;
   }
 
-  const values = series.map((r) => metricValue(r, metric));
-  const max = Math.max(...values, 1);
-  const maxRequests = Math.max(...series.map((r) => r.requests), 1);
+  if (!mainEchartInstance) {
+    mainEchartInstance = echarts.init(el);
+    window.addEventListener('resize', () => mainEchartInstance?.resize());
+  }
 
-  // 4 段 Y 轴刻度
-  const ticks = [1, 0.75, 0.5, 0.25, 0].map((ratio) => ({
-    ratio,
-    label: fmtMetric(max * ratio, metric),
-  }));
+  const days = series.map((r) => r.day.slice(5));
+  const metric = STATS_STATE.metric;
 
-  // 生成 EasyUI Stacked Bar
-  const barsHtml = series.map((row) => {
-    const totalVal = metricValue(row, metric);
-    const heightPct = (totalVal / max) * 100;
+  // 根据当前指标决定 series 配置
+  let chartSeries = [];
+  let yAxisLeftName = 'Token';
 
-    let segmentsHtml = '';
-    if (metric === 'tokens') {
-      const sumT = (row.input + row.output + row.cache) || 1;
-      const inPct = (row.input / sumT) * 100;
-      const outPct = (row.output / sumT) * 100;
-      const cachePct = (row.cache / sumT) * 100;
-      segmentsHtml = `
-        <div class="ez-bar-stack" style="height: ${Math.max(heightPct, 2).toFixed(1)}%;">
-          <span class="ez-seg is-cache" style="height: ${cachePct.toFixed(1)}%;"></span>
-          <span class="ez-seg is-out" style="height: ${outPct.toFixed(1)}%;"></span>
-          <span class="ez-seg is-in" style="height: ${inPct.toFixed(1)}%;"></span>
-        </div>
-      `;
-    } else {
-      segmentsHtml = `
-        <div class="ez-bar-stack" style="height: ${Math.max(heightPct, 2).toFixed(1)}%;">
-          <span class="ez-seg is-fill" style="height: 100%;"></span>
-        </div>
-      `;
-    }
+  if (metric === 'tokens') {
+    yAxisLeftName = 'Token 吞吐';
+    chartSeries = [
+      {
+        name: '输入 Token',
+        type: 'bar',
+        stack: 'tokens',
+        data: series.map((r) => r.input),
+        itemStyle: { color: '#3b82f6', borderRadius: [0, 0, 0, 0] },
+        barMaxWidth: 30,
+      },
+      {
+        name: '输出 Token',
+        type: 'bar',
+        stack: 'tokens',
+        data: series.map((r) => r.output),
+        itemStyle: { color: '#10b981', borderRadius: [0, 0, 0, 0] },
+        barMaxWidth: 30,
+      },
+      {
+        name: '缓存 Token',
+        type: 'bar',
+        stack: 'tokens',
+        data: series.map((r) => r.cache),
+        itemStyle: { color: '#8b5cf6', borderRadius: [4, 4, 0, 0] },
+        barMaxWidth: 30,
+      },
+    ];
+  } else if (metric === 'requests') {
+    yAxisLeftName = '调用频次';
+    chartSeries = [
+      {
+        name: '调用请求数',
+        type: 'bar',
+        data: series.map((r) => r.requests),
+        itemStyle: {
+          color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+            { offset: 0, color: '#3b82f6' },
+            { offset: 1, color: '#1d4ed8' },
+          ]),
+          borderRadius: [4, 4, 0, 0],
+        },
+        barMaxWidth: 32,
+      },
+    ];
+  } else {
+    // cost
+    yAxisLeftName = '估算费用 (USD)';
+    chartSeries = [
+      {
+        name: '费用支出',
+        type: 'bar',
+        data: series.map((r) => r.cost),
+        itemStyle: {
+          color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+            { offset: 0, color: '#f59e0b' },
+            { offset: 1, color: '#d97706' },
+          ]),
+          borderRadius: [4, 4, 0, 0],
+        },
+        barMaxWidth: 32,
+      },
+    ];
+  }
 
-    const shortDate = row.day.slice(5);
-    const tip = `日期: ${row.day}\n总Token: ${fmtNum(row.input + row.output + row.cache)} (入:${fmtNum(row.input)} 出:${fmtNum(row.output)} 缓:${fmtNum(row.cache)})\n调用: ${fmtNum(row.requests)} 次\n费用估算: ${fmtCost(row.cost)}`;
+  // 叠加高频短请求/长上下文对照平滑折线 (右轴)
+  chartSeries.push({
+    name: '调用频次 (次)',
+    type: 'line',
+    yAxisIndex: 1,
+    smooth: true,
+    data: series.map((r) => r.requests),
+    symbol: 'circle',
+    symbolSize: 6,
+    itemStyle: { color: '#f59e0b' },
+    lineStyle: { width: 2.2, color: '#f59e0b' },
+  });
 
-    return `
-      <div class="ez-bar-cell" title="${escapeText(tip)}">
-        <div class="ez-bar-val">${totalVal > 0 ? fmtMetric(totalVal, metric) : ''}</div>
-        <div class="ez-bar-body">
-          ${segmentsHtml}
-        </div>
-        <div class="ez-axis-x">${shortDate}</div>
-      </div>
-    `;
-  }).join('');
+  const option = {
+    tooltip: {
+      trigger: 'axis',
+      axisPointer: { type: 'cross', crossStyle: { color: '#999' } },
+      backgroundColor: 'rgba(255, 255, 255, 0.96)',
+      borderColor: '#e2e8f0',
+      borderWidth: 1,
+      textStyle: { color: '#1e293b', fontSize: 12 },
+      shadowColor: 'rgba(0, 0, 0, 0.08)',
+      shadowBlur: 10,
+      formatter: (params) => {
+        const item = series[params[0].dataIndex];
+        let html = `<div style="font-weight:600;margin-bottom:4px;color:#0f172a;">${item.day}</div>`;
+        params.forEach((p) => {
+          const val = p.seriesType === 'line' ? fmtNum(p.value) + ' 次' : fmtMetric(p.value, metric);
+          html += `<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin:2px 0;">
+            <span>${p.marker} ${p.seriesName}</span>
+            <b style="font-family:JetBrains Mono,monospace;">${val}</b>
+          </div>`;
+        });
+        if (metric === 'tokens') {
+          html += `<div style="border-top:1px solid #e2e8f0;margin-top:6px;padding-top:4px;font-size:11px;color:#64748b;">
+            总 Token: <b style="color:#0f172a;">${fmtNum(item.input + item.output + item.cache)}</b>
+          </div>`;
+        }
+        return html;
+      },
+    },
+    legend: {
+      data: chartSeries.map((s) => s.name),
+      right: 10,
+      top: 0,
+      textStyle: { color: '#64748b', fontSize: 11 },
+      icon: 'roundRect',
+    },
+    grid: {
+      left: 12,
+      right: 12,
+      top: 36,
+      bottom: 12,
+      containLabel: true,
+    },
+    xAxis: [
+      {
+        type: 'category',
+        data: days,
+        axisTick: { alignWithLabel: true },
+        axisLine: { lineStyle: { color: '#e2e8f0' } },
+        axisLabel: { color: '#64748b', fontSize: 11 },
+      },
+    ],
+    yAxis: [
+      {
+        type: 'value',
+        name: yAxisLeftName,
+        nameTextStyle: { color: '#64748b', fontSize: 11, align: 'left' },
+        axisLabel: {
+          color: '#64748b',
+          fontSize: 10.5,
+          formatter: (v) => fmtMetric(v, metric),
+        },
+        splitLine: { lineStyle: { type: 'dashed', color: '#f1f5f9' } },
+      },
+      {
+        type: 'value',
+        name: '调用量',
+        nameTextStyle: { color: '#64748b', fontSize: 11, align: 'right' },
+        axisLabel: {
+          color: '#64748b',
+          fontSize: 10.5,
+          formatter: (v) => fmtNum(v),
+        },
+        splitLine: { show: false },
+      },
+    ],
+    series: chartSeries,
+  };
 
-  // 折线覆盖
-  const step = series.length > 1 ? 100 / (series.length - 1) : 50;
-  const linePoints = series.map((row, i) => {
-    const x = (i * step).toFixed(2);
-    const y = (90 - (row.requests / maxRequests) * 78).toFixed(2);
-    return `${x},${y}`;
-  }).join(' ');
-
-  host.innerHTML = `
-    <div class="ez-chart-scaffold">
-      <div class="ez-axis-y">
-        ${ticks.map((t) => `<span>${t.label}</span>`).join('')}
-      </div>
-
-      <div class="ez-plot-stage">
-        <!-- 背景水平虚线 -->
-        <div class="ez-grid-backdrop">
-          <div class="ez-grid-line"></div>
-          <div class="ez-grid-line"></div>
-          <div class="ez-grid-line"></div>
-          <div class="ez-grid-line"></div>
-          <div class="ez-grid-line is-zero"></div>
-        </div>
-
-        <!-- 频次折线 -->
-        <svg class="ez-line-overlay" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
-          <polyline points="${linePoints}" vector-effect="non-scaling-stroke"></polyline>
-        </svg>
-
-        <!-- 柱形集合 -->
-        <div class="ez-bars-track">
-          ${barsHtml}
-        </div>
-      </div>
-    </div>
-  `;
+  mainEchartInstance.setOption(option, true);
 }
 
 // ── 排行多维数据收集 ──
@@ -623,7 +706,7 @@ function renderStatsRecentTable() {
 function renderStatsAll() {
   const series = buildDaySeries();
   renderStatsKpi(series);
-  renderStatsTrend(series);
+  renderEchartsMainChart(series);
   renderStatsRankTable(series);
   renderStatsSourcesDeck();
   renderStatsRecentTable();
@@ -679,7 +762,6 @@ function bindSeg(selector, attr, onChange) {
 }
 
 function bindStatsPage() {
-  // 时间周期切换
   bindSeg('#page-stats .ez-pill-nav[aria-label="统计周期"]', 'data-stats-range', (value) => {
     const next = Number(value);
     if (!Number.isFinite(next) || next === STATS_STATE.range) return;
@@ -687,19 +769,16 @@ function bindStatsPage() {
     loadStats();
   });
 
-  // 来源过滤切换
   bindSeg('#page-stats .ez-pill-nav[aria-label="数据来源"]', 'data-stats-source-filter', (value) => {
     STATS_STATE.sourceFilter = value;
     renderStatsAll();
   });
 
-  // 指标切换
   bindSeg('#page-stats .ez-pill-nav[aria-label="图表指标"]', 'data-stats-metric', (value) => {
     STATS_STATE.metric = value;
-    renderStatsTrend(buildDaySeries());
+    renderEchartsMainChart(buildDaySeries());
   });
 
-  // 排行视图切换
   bindSeg('#page-stats .ez-pill-nav[aria-label="排行视图"]', 'data-stats-rank', (value) => {
     STATS_STATE.rank = value;
     renderStatsRankTable(buildDaySeries());

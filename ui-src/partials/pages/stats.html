@@ -1,4 +1,4 @@
-        <!-- ═══════ PAGE: STATS（EasyUI 现代控制台设计） ═══════ -->
+        <!-- ═══════ PAGE: STATS（专业 ECharts 控制舱） ═══════ -->
         <div class="page" id="page-stats" role="tabpanel" aria-labelledby="tab-stats">
 
           <section class="ez-dashboard">
@@ -45,7 +45,7 @@
               </div>
             </header>
 
-            <!-- 2. EasyUI StatGrid: 四联 KPI 指标卡 (支持 Sparkline, Delta Pill, 数值高亮) -->
+            <!-- 2. EasyUI StatGrid: 四联 KPI 指标卡 (ECharts Sparkline 微线图驱动) -->
             <div class="ez-stat-grid">
               <!-- KPI 1: 调用总次数 -->
               <article class="ez-stat-card">
@@ -57,10 +57,7 @@
                   <span class="ez-stat-value" id="statsKpiRequests">—</span>
                   <span class="ez-stat-unit">次</span>
                 </div>
-                <!-- 底部微线图 -->
-                <div class="ez-sparkline-wrap">
-                  <svg class="ez-sparkline-svg" id="statsSparkRequests" viewBox="0 0 120 28" preserveAspectRatio="none" aria-hidden="true"></svg>
-                </div>
+                <div class="ez-sparkline-canvas" id="sparkRequestsChart"></div>
                 <div class="ez-stat-footer" id="statsKpiRequestsSub">全量通道调用汇总</div>
               </article>
 
@@ -73,7 +70,6 @@
                 <div class="ez-stat-val-group">
                   <span class="ez-stat-value" id="statsKpiTokens">—</span>
                 </div>
-                <!-- EasyUI 比例进度条 (三色平滑堆叠) -->
                 <div class="ez-token-track">
                   <div class="ez-token-bar is-input" id="statsTokenInputSeg" style="width: 50%" title="输入 Token"></div>
                   <div class="ez-token-bar is-output" id="statsTokenOutputSeg" style="width: 25%" title="输出 Token"></div>
@@ -82,7 +78,7 @@
                 <div class="ez-stat-footer" id="statsKpiTokensSub">输入 · 输出 · 缓存</div>
               </article>
 
-              <!-- KPI 3: 估算费用 (强调货币感) -->
+              <!-- KPI 3: 估算费用 -->
               <article class="ez-stat-card">
                 <div class="ez-stat-header">
                   <span class="ez-stat-label">模型估算支出</span>
@@ -91,13 +87,11 @@
                 <div class="ez-stat-val-group is-currency">
                   <span class="ez-stat-value" id="statsKpiCost">—</span>
                 </div>
-                <div class="ez-sparkline-wrap">
-                  <svg class="ez-sparkline-svg" id="statsSparkCost" viewBox="0 0 120 28" preserveAspectRatio="none" aria-hidden="true"></svg>
-                </div>
+                <div class="ez-sparkline-canvas" id="sparkCostChart"></div>
                 <div class="ez-stat-footer" id="statsKpiCostSub">按模型单价与缓存率计费</div>
               </article>
 
-              <!-- KPI 4: 运行健康度 (结合 CPA 成功率指示) -->
+              <!-- KPI 4: 运行健康度 -->
               <article class="ez-stat-card">
                 <div class="ez-stat-header">
                   <span class="ez-stat-label">调用健康度</span>
@@ -106,30 +100,20 @@
                 <div class="ez-stat-val-group">
                   <span class="ez-stat-value" id="statsKpiSuccess">—</span>
                 </div>
-                <div class="ez-sparkline-wrap">
-                  <svg class="ez-sparkline-svg" id="statsSparkSuccess" viewBox="0 0 120 28" preserveAspectRatio="none" aria-hidden="true"></svg>
-                </div>
+                <div class="ez-sparkline-canvas" id="sparkSuccessChart"></div>
                 <div class="ez-stat-footer" id="statsKpiSuccessSub">网关阻断 / 错误统计</div>
               </article>
             </div>
 
-            <!-- 3. EasyUI Bar Chart 主趋势分析 (SVG 原生平滑渲染 + 双系列堆叠 + 交互 Tooltip) -->
+            <!-- 3. 专业级 ECharts 每日主趋势大图 (双轴、平滑渐变面积、多层堆叠柱体、动态浮动 Tooltip) -->
             <section class="ez-card ez-chart-section">
               <div class="ez-card-header">
                 <div>
                   <h2 class="ez-card-title">每日消耗与走势</h2>
-                  <span class="ez-card-subtitle" id="statsChartLegendNote">基于真实账本的日期分布；支持 Token、请求与费用三维切换</span>
+                  <span class="ez-card-subtitle" id="statsChartLegendNote">ECharts 矢量引擎驱动：左轴展示吞吐量，右轴映射频次折线</span>
                 </div>
 
                 <div class="ez-chart-actions">
-                  <!-- 图例 -->
-                  <div class="ez-legend-group">
-                    <span class="ez-legend-item"><i class="dot-in"></i> 输入</span>
-                    <span class="ez-legend-item"><i class="dot-out"></i> 输出</span>
-                    <span class="ez-legend-item"><i class="dot-cache"></i> 缓存</span>
-                    <span class="ez-legend-item"><i class="dot-freq"></i> 频次折线</span>
-                  </div>
-
                   <!-- 指标切换器 -->
                   <div class="ez-pill-nav ez-pill-sm" role="tablist" aria-label="图表指标">
                     <button type="button" class="ez-pill-btn active" data-stats-metric="tokens" role="tab" aria-selected="true">Token</button>
@@ -139,15 +123,15 @@
                 </div>
               </div>
 
-              <!-- 图表主渲染容器 (240px 黄金高度 + 动态刻度 + SVG 柱形) -->
-              <div class="ez-chart-view" id="statsTrendChart" aria-live="polite">
-                <div class="ez-empty-state">正在汇总历史账本…</div>
+              <!-- ECharts 实例挂载节点 -->
+              <div class="ez-echarts-container" id="mainTrendEcharts">
+                <div class="ez-empty-state">正在初始化 ECharts 图表引擎…</div>
               </div>
             </section>
 
-            <!-- 4. 双栏深度分析：EasyUI Donut/排行分析 + 数据通道矩阵 -->
+            <!-- 4. 双栏深度分析：模型占比环形图/排行列表 + 数据通道矩阵 -->
             <div class="ez-grid-duo">
-              <!-- 左栏：维度占比排行榜 (多维切换) -->
+              <!-- 左栏：多维排行榜 -->
               <section class="ez-card">
                 <div class="ez-card-header">
                   <div>
