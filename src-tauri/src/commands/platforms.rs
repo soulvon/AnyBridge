@@ -160,8 +160,23 @@ pub struct PlatformInfo {
     pub claude_config: Option<ClaudeConfigInfo>,
     #[serde(rename = "antigravityConfig")]
     pub antigravity_config: Option<AntigravityConfigInfo>,
+    /// 配置漂移（Drift）：记账中「我最后写入的值」≠ 配置文件现值的字段。
+    /// 空 = 无漂移**或**无法判定（未记账/读失败=未知，前端不显示即不误报）。
+    #[serde(rename = "driftedFields", default, skip_serializing_if = "Vec::is_empty")]
+    pub drifted_fields: Vec<DriftField>,
     /// 检测/读取过程中的错误（如配置解析失败）
     pub error: Option<String>,
+}
+
+/// 一处配置漂移。借鉴 magpie applied.go 的 Drift，但只带 path + kind，
+/// **不带值**——记账字段含 AUTH_TOKEN，把值送到前端会泄露 key 到 UI。
+#[derive(Debug, Clone, Serialize)]
+pub struct DriftField {
+    /// JSON 路径（点号拼接，如 "env.ANTHROPIC_BASE_URL"）
+    pub path: String,
+    /// 漂移分类（由字段语义推断，仅用于前端文案）：
+    /// "unwired"（接入地址被改走）/ "replaced"（模型被改回）/ "changed"（其它）
+    pub kind: &'static str,
 }
 
 #[derive(Serialize, Clone)]
@@ -716,6 +731,11 @@ impl Platform {
     }
 
     fn apply_antigravity_ide(&self, path: &PathBuf, _p: &Provider) -> Result<(), String> {
+        self.apply_antigravity_ide_with_stash(path, &agent_stash_dir())
+    }
+
+    /// 记账可注入版：受管字段 = `jetski.cloudCodeUrl` 单键。
+    fn apply_antigravity_ide_with_stash(&self, path: &PathBuf, stash_dir: &Path) -> Result<(), String> {
         let ports = super::config::configured_proxy_ports();
         // 必须使用 https://localhost：LS 对明文 HTTP 端点会隐藏 boost /
         // teamwork-preview 等高级命令；证书为 AnyBridge Local CA 签发（SAN 含 localhost）
@@ -727,6 +747,23 @@ impl Platform {
             String::new()
         };
         let mut obj = super::ide_config::parse_object(&raw).unwrap_or_default();
+
+        // 记账（幂等；总是执行）
+        let plans = vec![super::agent_stash::FieldPlan {
+            path: vec!["jetski.cloudCodeUrl".into()],
+            current: obj
+                .get("jetski.cloudCodeUrl")
+                .and_then(Value::as_str)
+                .map(|s| super::agent_stash::Stashed::Str(s.to_string()))
+                .unwrap_or(super::agent_stash::Stashed::Absent),
+            new: super::agent_stash::Stashed::Str(proxy_url.clone()),
+        }];
+        if let Err(e) =
+            super::agent_stash::record_apply(stash_dir, &antigravity_ide_stash_key(), &plans)
+        {
+            eprintln!("[agent-stash] Antigravity IDE 记账失败（不影响切换）: {e}");
+        }
+
         obj.insert("jetski.cloudCodeUrl".into(), Value::String(proxy_url));
         if let Ok(content) = serde_json::to_string_pretty(&Value::Object(obj)) {
             let _ = super::write_atomic(path, content.as_bytes());
@@ -736,6 +773,11 @@ impl Platform {
     }
 
     fn apply_antigravity(&self, path: &PathBuf, _p: &Provider) -> Result<(), String> {
+        self.apply_antigravity_with_stash(path, &agent_stash_dir())
+    }
+
+    /// 记账可注入版：受管字段 = `jetski.cloudCodeUrl` 单键。
+    fn apply_antigravity_with_stash(&self, path: &PathBuf, stash_dir: &Path) -> Result<(), String> {
         let ports = super::config::configured_proxy_ports();
         // 必须使用 https://localhost：LS 对明文 HTTP 端点会隐藏 boost /
         // teamwork-preview 等高级命令；证书为 AnyBridge Local CA 签发（SAN 含 localhost）
@@ -756,6 +798,23 @@ impl Platform {
             String::new()
         };
         let mut obj = super::ide_config::parse_object(&raw).unwrap_or_default();
+
+        // 记账（幂等；总是执行）
+        let plans = vec![super::agent_stash::FieldPlan {
+            path: vec!["jetski.cloudCodeUrl".into()],
+            current: obj
+                .get("jetski.cloudCodeUrl")
+                .and_then(Value::as_str)
+                .map(|s| super::agent_stash::Stashed::Str(s.to_string()))
+                .unwrap_or(super::agent_stash::Stashed::Absent),
+            new: super::agent_stash::Stashed::Str(proxy_url.clone()),
+        }];
+        if let Err(e) =
+            super::agent_stash::record_apply(stash_dir, &antigravity_stash_key(), &plans)
+        {
+            eprintln!("[agent-stash] Antigravity 记账失败（不影响切换）: {e}");
+        }
+
         obj.insert("jetski.cloudCodeUrl".into(), Value::String(proxy_url));
         if let Ok(content) = serde_json::to_string_pretty(&Value::Object(obj)) {
             let _ = super::write_atomic(path, content.as_bytes());
@@ -840,6 +899,40 @@ impl Platform {
     }
 
     fn apply_antigravity_ide_official(&self, path: &PathBuf) -> Result<(), String> {
+        self.apply_antigravity_ide_official_with_stash(path, &agent_stash_dir())
+    }
+
+    fn apply_antigravity_ide_official_with_stash(
+        &self,
+        path: &PathBuf,
+        stash_dir: &Path,
+    ) -> Result<(), String> {
+        // 门控开启：字段级还原（用户自己设过 cloudCodeUrl 时写回原值）
+        if super::agent_stash::field_restore_enabled() {
+            match super::field_restore::restore_json_fields_via_stash(
+                path,
+                &antigravity_ide_stash_key(),
+                stash_dir,
+                "Antigravity IDE",
+            ) {
+                Ok(true) => {
+                    #[cfg(windows)]
+                    {
+                        use std::os::windows::process::CommandExt;
+                        let _ = std::process::Command::new("reg")
+                            .args(&["delete", "HKCU\\Environment", "/v", "CLOUD_CODE_URL", "/f"])
+                            .creation_flags(0x0800_0000)
+                            .output();
+                    }
+                    return Ok(());
+                }
+                Ok(false) => {}
+                Err(e) => {
+                    eprintln!("[agent-stash] Antigravity IDE 字段级还原失败，退回删键: {e}");
+                }
+            }
+        }
+
         if path.exists() {
             if let Ok(raw) = fs::read_to_string(path) {
                 if let Ok(mut obj) = super::ide_config::parse_object(&raw) {
@@ -863,6 +956,34 @@ impl Platform {
     }
 
     fn apply_antigravity_official(&self, path: &PathBuf) -> Result<(), String> {
+        self.apply_antigravity_official_with_stash(path, &agent_stash_dir())
+    }
+
+    fn apply_antigravity_official_with_stash(
+        &self,
+        path: &PathBuf,
+        stash_dir: &Path,
+    ) -> Result<(), String> {
+        // 门控开启：字段级还原
+        if super::agent_stash::field_restore_enabled() {
+            match super::field_restore::restore_json_fields_via_stash(
+                path,
+                &antigravity_stash_key(),
+                stash_dir,
+                "Antigravity",
+            ) {
+                Ok(true) => {
+                    #[cfg(windows)]
+                    Self::kill_antigravity_language_server();
+                    return Ok(());
+                }
+                Ok(false) => {}
+                Err(e) => {
+                    eprintln!("[agent-stash] Antigravity 字段级还原失败，退回删键: {e}");
+                }
+            }
+        }
+
         if path.exists() {
             if let Ok(raw) = fs::read_to_string(path) {
                 if let Ok(mut obj) = super::ide_config::parse_object(&raw) {
@@ -882,6 +1003,17 @@ impl Platform {
     }
 
     fn apply_claude(&self, path: &PathBuf, p: &Provider) -> Result<(), String> {
+        self.apply_claude_with_stash(path, p, &agent_stash_dir())
+    }
+
+    /// 接入 Claude Code（供应商直连）。`stash_dir` 显式注入（测试用临时目录）。
+    /// 记账总是执行（纯增量）；记账失败不阻断切换。
+    fn apply_claude_with_stash(
+        &self,
+        path: &PathBuf,
+        p: &Provider,
+        stash_dir: &Path,
+    ) -> Result<(), String> {
         let raw = if path.exists() {
             fs::read_to_string(path).map_err(|e| e.to_string())?
         } else {
@@ -899,17 +1031,77 @@ impl Platform {
 
         let base = claude_base_url(p);
         let model = p.default_model.trim().to_string();
+
+        // ── Claude Code 原生重试配置：从 model-map.json enhancement 读取 ──
+        let enhancement = super::model_map::read_map()
+            .map(|m| m.enhancement)
+            .unwrap_or_default();
+
+        // 记账：覆盖前记录原值（original 幂等）与本次写入值（applied）。
+        let plans = claude_env_field_plans(
+            env_obj,
+            &base,
+            &p.api_key,
+            &model,
+            Some(enhancement.claude_max_retries),
+        );
+        if let Err(e) = super::agent_stash::record_apply(stash_dir, &claude_stash_key(), &plans) {
+            eprintln!("[agent-stash] Claude Code 记账失败（不影响切换）: {e}");
+        }
+
+        // 门控：保形写入（在原文本上逐字段替换，注释/键序/缩进/CRLF/BOM 全保留）
+        if super::jsonc_edit::format_preserving_enabled() {
+            let mut text = raw.clone();
+            let set_env = |text: &mut String, key: &str, val: String| -> Result<(), String> {
+                *text = super::jsonc_edit::set_key(
+                    text,
+                    &["env", key],
+                    &super::jsonc_edit::JsoncValue::Str(val),
+                )?;
+                Ok(())
+            };
+            set_env(&mut text, "ANTHROPIC_BASE_URL", base.clone())?;
+            set_env(&mut text, "ANTHROPIC_AUTH_TOKEN", p.api_key.clone())?;
+            set_env(&mut text, "ANTHROPIC_MODEL", model.clone())?;
+            for (model_key, name_key) in [
+                (
+                    "ANTHROPIC_DEFAULT_HAIKU_MODEL",
+                    "ANTHROPIC_DEFAULT_HAIKU_MODEL_NAME",
+                ),
+                (
+                    "ANTHROPIC_DEFAULT_SONNET_MODEL",
+                    "ANTHROPIC_DEFAULT_SONNET_MODEL_NAME",
+                ),
+                (
+                    "ANTHROPIC_DEFAULT_OPUS_MODEL",
+                    "ANTHROPIC_DEFAULT_OPUS_MODEL_NAME",
+                ),
+                (
+                    "ANTHROPIC_DEFAULT_FABLE_MODEL",
+                    "ANTHROPIC_DEFAULT_FABLE_MODEL_NAME",
+                ),
+            ] {
+                set_env(&mut text, model_key, model.clone())?;
+                set_env(&mut text, name_key, strip_one_m_marker(&model).to_string())?;
+            }
+            set_env(
+                &mut text,
+                "CLAUDE_CODE_MAX_RETRIES",
+                enhancement.claude_max_retries.to_string(),
+            )?;
+            text = super::jsonc_edit::remove_key(
+                &text,
+                &["env", "ANTHROPIC_SMALL_FAST_MODEL"],
+            )?;
+            return super::write_atomic(path, text.as_bytes());
+        }
+
         env_obj.insert("ANTHROPIC_BASE_URL".into(), Value::String(base));
         env_obj.insert(
             "ANTHROPIC_AUTH_TOKEN".into(),
             Value::String(p.api_key.clone()),
         );
         set_claude_model_env(env_obj, &model);
-
-        // ── Claude Code 原生重试配置：从 model-map.json enhancement 读取 ──
-        let enhancement = super::model_map::read_map()
-            .map(|m| m.enhancement)
-            .unwrap_or_default();
         env_obj.insert(
             "CLAUDE_CODE_MAX_RETRIES".into(),
             Value::String(enhancement.claude_max_retries.to_string()),
@@ -919,7 +1111,22 @@ impl Platform {
         super::write_atomic(path, json.as_bytes())
     }
 
+    /// 切回官方（字段级还原门控见 agent_stash::field_restore_enabled）。
     fn apply_claude_official(&self, path: &PathBuf) -> Result<(), String> {
+        self.apply_claude_official_with_stash(
+            path,
+            super::agent_stash::field_restore_enabled(),
+            &agent_stash_dir(),
+        )
+    }
+
+    /// 切回官方核心实现。`field_restore` 显式传入（测试注入，生产读门控）。
+    fn apply_claude_official_with_stash(
+        &self,
+        path: &PathBuf,
+        field_restore: bool,
+        stash_dir: &Path,
+    ) -> Result<(), String> {
         if !path.exists() {
             return Ok(());
         }
@@ -930,6 +1137,20 @@ impl Platform {
         }
 
         let mut obj = super::ide_config::parse_object(&raw)?;
+
+        // 门控开启：优先字段级还原（写回原值，保留用户在接管期间的改动；
+        // 保形门控内聚在统一入口里，注释/键序随之保留）。
+        if field_restore {
+            match restore_claude_fields_via_stash(path, stash_dir) {
+                Ok(true) => return Ok(()),
+                Ok(false) => {}
+                Err(e) => {
+                    eprintln!("[agent-stash] Claude Code 字段级还原失败，退回删托管键: {e}");
+                }
+            }
+            // 无记账记录（或还原失败）→ 退回「删托管键」旧语义
+        }
+
         let remove_env = if let Some(env) = obj.get_mut("env").and_then(Value::as_object_mut) {
             for key in CLAUDE_MANAGED_ENV_KEYS {
                 env.remove(*key);
@@ -948,6 +1169,16 @@ impl Platform {
     }
 
     fn apply_codex(&self, path: &PathBuf, p: &Provider) -> Result<(), String> {
+        self.apply_codex_with_stash(path, p, &agent_stash_dir())
+    }
+
+    /// 记账可注入版（测试用临时目录隔离；生产走 agent_stash_dir()）。
+    fn apply_codex_with_stash(
+        &self,
+        path: &PathBuf,
+        p: &Provider,
+        stash_dir: &Path,
+    ) -> Result<(), String> {
         let raw = if path.exists() {
             fs::read_to_string(path).map_err(|e| e.to_string())?
         } else {
@@ -966,6 +1197,53 @@ impl Platform {
         };
         let bearer = codex_provider_bearer(p)?;
         let model = p.default_model.trim();
+
+        // 记账：apply 将覆盖/删除的顶层标量（original 幂等，总是执行）
+        {
+            let catalog_pointer = doc
+                .get("model_catalog_json")
+                .and_then(toml_item_string);
+            let plans = vec![
+                super::agent_stash::FieldPlan {
+                    path: vec!["model".into()],
+                    current: toml_top_current(&doc, "model"),
+                    new: if model.is_empty() {
+                        super::agent_stash::Stashed::Absent
+                    } else {
+                        super::agent_stash::Stashed::Str(model.to_string())
+                    },
+                },
+                super::agent_stash::FieldPlan {
+                    path: vec!["model_provider".into()],
+                    current: toml_top_current(&doc, "model_provider"),
+                    new: super::agent_stash::Stashed::Str(
+                        CODEX_RUNTIME_MODEL_PROVIDER_ID.to_string(),
+                    ),
+                },
+                super::agent_stash::FieldPlan {
+                    path: vec!["service_tier".into()],
+                    current: toml_top_current(&doc, "service_tier"),
+                    // 第三方 API 不支持 service_tier，接入即删除
+                    new: super::agent_stash::Stashed::Absent,
+                },
+                super::agent_stash::FieldPlan {
+                    path: vec!["model_catalog_json".into()],
+                    current: catalog_pointer
+                        .map(super::agent_stash::Stashed::Str)
+                        .unwrap_or(super::agent_stash::Stashed::Absent),
+                    new: if resolve_codex_model_catalog_entries(p).is_empty() {
+                        super::agent_stash::Stashed::Absent
+                    } else {
+                        super::agent_stash::Stashed::Str(CODEX_MODEL_CATALOG_FILENAME.to_string())
+                    },
+                },
+            ];
+            if let Err(e) =
+                super::agent_stash::record_apply(stash_dir, &codex_stash_key(), &plans)
+            {
+                eprintln!("[agent-stash] Codex 记账失败（不影响切换）: {e}");
+            }
+        }
 
         if !model.is_empty() {
             doc["model"] = value(model);
@@ -1046,97 +1324,7 @@ impl Platform {
         path: &PathBuf,
         unify_session_history: bool,
     ) -> Result<(), String> {
-        let raw = if path.exists() {
-            fs::read_to_string(path).map_err(|e| e.to_string())?
-        } else {
-            String::new()
-        };
-        let mut doc = raw
-            .parse::<DocumentMut>()
-            .map_err(|e| format!("config.toml 解析失败: {e}"))?;
-
-        if unify_session_history {
-            // 统一会话历史模式：保留 model_provider = codex_local_access，
-            // 配置 provider 使用官方 OAuth 认证（requires_openai_auth=true），
-            // 不设 base_url（Codex 回落到官方端点），不写 bearer_token。
-            // 这样官方会话和第三方会话都在 codex_local_access 桶中。
-            doc["model_provider"] = value(CODEX_RUNTIME_MODEL_PROVIDER_ID);
-            // 移除第三方模型指针（让 Codex 使用官方默认模型）
-            doc.as_table_mut().remove("model");
-            doc.as_table_mut().remove("model_catalog_json");
-
-            if let Some(catalog_dir) = path.parent() {
-                let _ = fs::remove_file(catalog_dir.join(CODEX_MODEL_CATALOG_FILENAME));
-            }
-
-            let providers = doc
-                .entry("model_providers")
-                .or_insert(Item::Table(Table::new()))
-                .as_table_mut()
-                .ok_or_else(|| "config.toml 的 model_providers 不是表".to_string())?;
-            providers.set_implicit(true);
-            providers.remove(CODEX_LEGACY_MODEL_PROVIDER_ID);
-
-            let provider_table = providers
-                .entry(CODEX_RUNTIME_MODEL_PROVIDER_ID)
-                .or_insert(Item::Table(Table::new()))
-                .as_table_mut()
-                .ok_or_else(|| {
-                    format!(
-                        "config.toml 的 model_providers.{CODEX_RUNTIME_MODEL_PROVIDER_ID} 不是表"
-                    )
-                })?;
-            provider_table["name"] = value("OpenAI 官方");
-            provider_table["wire_api"] = value("responses");
-            provider_table.remove("base_url");
-            apply_codex_provider_auth(provider_table, true, None);
-            provider_table[CODEX_ANYBRIDGE_MANAGED_FLAG] = value(true);
-
-            // ── Codex 原生重试配置：统一会话历史模式也写入 ──
-            let enhancement = super::model_map::read_map()
-                .map(|m| m.enhancement)
-                .unwrap_or_default();
-            provider_table["request_max_retries"] =
-                value(enhancement.codex_request_max_retries as i64);
-            provider_table["stream_max_retries"] =
-                value(enhancement.codex_stream_max_retries as i64);
-        } else {
-            // 原有行为：OpenAI Official uses Codex's built-in provider and auth.json login.
-            // Keep common settings, but remove the active third-party pointer.
-            doc.as_table_mut().remove("model");
-            doc.as_table_mut().remove("model_provider");
-            doc.as_table_mut().remove("model_catalog_json");
-
-            // 删除可能存在的模型目录文件
-            if let Some(catalog_dir) = path.parent() {
-                let _ = fs::remove_file(catalog_dir.join(CODEX_MODEL_CATALOG_FILENAME));
-            }
-
-            let providers_empty = doc["model_providers"]
-                .as_table_mut()
-                .map(|providers| {
-                    providers.remove(CODEX_LEGACY_MODEL_PROVIDER_ID);
-                    let should_remove_runtime = providers
-                        .get(CODEX_RUNTIME_MODEL_PROVIDER_ID)
-                        .and_then(Item::as_table)
-                        .map(|table| toml_table_bool(table, CODEX_ANYBRIDGE_MANAGED_FLAG))
-                        .unwrap_or(false);
-                    if should_remove_runtime {
-                        providers.remove(CODEX_RUNTIME_MODEL_PROVIDER_ID);
-                    }
-                    providers.is_empty()
-                })
-                .unwrap_or(false);
-            if providers_empty {
-                doc.as_table_mut().remove("model_providers");
-            }
-        }
-
-        let agents_finalize =
-            CodexAgentsFinalize::cleanup_only(cleanup_anybridge_codex_agents(path, &mut doc)?);
-
-        super::write_atomic(path, doc.to_string().as_bytes())?;
-        finalize_codex_agents_files(path, agents_finalize)
+        apply_codex_official_with_stash(path, unify_session_history, &agent_stash_dir())
     }
 
     fn apply_codebuddy(&self, path: &PathBuf, p: &Provider) -> Result<(), String> {
@@ -1173,49 +1361,23 @@ impl Platform {
     }
 
     fn apply_opencode_official(&self, path: &PathBuf, store: &ProviderStore) -> Result<(), String> {
-        if !path.exists() {
-            return Ok(());
-        }
-        let raw = fs::read_to_string(path).map_err(|e| format!("读取 opencode.json 失败: {e}"))?;
-        if raw.trim().is_empty() {
-            return Ok(());
-        }
-        let mut obj = parse_json_object(&raw, "opencode.json")?;
-
-        let mut managed_ids: Vec<String> = store
-            .opencode_configs
-            .iter()
-            .map(|c| c.id.clone())
-            .collect();
-        managed_ids.push(PLATFORM_OPENCODE.to_string());
-        managed_ids.push("anybridge-local-proxy".to_string());
-        managed_ids.push("anybridge-local-proxy-opencode".to_string());
-
-        if let Some(providers) = obj.get_mut("provider").and_then(Value::as_object_mut) {
-            for id in &managed_ids {
-                providers.remove(id);
-            }
-        }
-
-        let current_model = obj.get("model").and_then(Value::as_str);
-        if let Some(m) = current_model {
-            let provider_prefix = m.split('/').next().unwrap_or("").trim();
-            if managed_ids.iter().any(|id| id == provider_prefix) {
-                obj.remove("model");
-            }
-        }
-
-        let json = serde_json::to_string_pretty(&Value::Object(obj)).map_err(|e| e.to_string())?;
-        super::write_atomic(path, json.as_bytes())
+        apply_opencode_official_with_stash(path, store, &agent_stash_dir())
     }
 
     fn apply_zcode(&self, path: &PathBuf, p: &Provider) -> Result<(), String> {
-        apply_zcode_config_file(path, p)?;
+        let stash_dir = agent_stash_dir();
+        apply_zcode_config_file_with_stash(path, p, &zcode_stash_key("config.json"), &stash_dir)?;
 
         if let Some(cli_path) = self.zcode_cli_config_path() {
             ensure_parent_dir(&cli_path)?;
             ensure_backup(&cli_path)?;
-            apply_zcode_config_file(&cli_path, p)?;
+            // cli 配置是独立文件，账本键按文件名区分（original 幂等按键隔离）
+            apply_zcode_config_file_with_stash(
+                &cli_path,
+                p,
+                &zcode_stash_key("cli/config.json"),
+                &stash_dir,
+            )?;
         }
 
         sync_zcode_personal_config(&zcode_sync_models_from_provider(p))?;
@@ -1223,6 +1385,19 @@ impl Platform {
     }
 
     fn apply_grok(&self, path: &PathBuf, p: &Provider) -> Result<(), String> {
+        self.apply_grok_with_stash(path, p, &agent_stash_dir())
+    }
+
+    /// 记账可注入版（测试隔离；生产走 agent_stash_dir()）。
+    /// 本轮记账范围：`[models].default` 指针（最常被覆盖丢失的用户原值）。
+    /// `[model.<id>]` 托管表不在记账范围——official 按 anybridge_managed
+    /// flag 保守删除，用户自写同名表不受影响。
+    fn apply_grok_with_stash(
+        &self,
+        path: &PathBuf,
+        p: &Provider,
+        stash_dir: &Path,
+    ) -> Result<(), String> {
         let raw = if path.exists() {
             fs::read_to_string(path).map_err(|e| format!("读取 Grok 配置文件失败: {e}"))?
         } else {
@@ -1236,6 +1411,27 @@ impl Platform {
         };
 
         let section_key = grok_sanitize_key(&p.id);
+
+        // 记账：models.default 指针（original 幂等）
+        {
+            let current_default = doc
+                .get("models")
+                .and_then(Item::as_table_like)
+                .and_then(|t| t.get("default"))
+                .and_then(toml_item_string);
+            let plans = vec![super::agent_stash::FieldPlan {
+                path: vec!["models".into(), "default".into()],
+                current: current_default
+                    .map(super::agent_stash::Stashed::Str)
+                    .unwrap_or(super::agent_stash::Stashed::Absent),
+                new: super::agent_stash::Stashed::Str(section_key.clone()),
+            }];
+            if let Err(e) =
+                super::agent_stash::record_apply(stash_dir, &grok_stash_key(), &plans)
+            {
+                eprintln!("[agent-stash] Grok 记账失败（不影响切换）: {e}");
+            }
+        }
 
         if !doc.contains_key("models") {
             doc.insert("models", Item::Table(Table::new()));
@@ -1413,57 +1609,7 @@ impl Platform {
     }
 
     fn apply_grok_official(&self, path: &PathBuf) -> Result<(), String> {
-        if !path.exists() {
-            return Ok(());
-        }
-        let raw = fs::read_to_string(path).map_err(|e| format!("读取 Grok 配置文件失败: {e}"))?;
-        if raw.trim().is_empty() {
-            return Ok(());
-        }
-        let mut doc = raw
-            .parse::<DocumentMut>()
-            .map_err(|e| format!("解析 Grok config.toml 失败: {e}"))?;
-
-        let current_default = doc
-            .get("models")
-            .and_then(Item::as_table_like)
-            .and_then(|t| t.get("default"))
-            .and_then(toml_item_string);
-
-        let mut keys_to_remove = Vec::new();
-        if let Some(model_table) = doc.get("model").and_then(Item::as_table_like) {
-            for (key, val) in model_table.iter() {
-                if let Some(table) = val.as_table_like() {
-                    let is_managed = table
-                        .get("anybridge_managed")
-                        .and_then(Item::as_bool)
-                        .unwrap_or(false);
-                    if is_managed || key == "anybridge" {
-                        keys_to_remove.push(key.to_string());
-                    }
-                }
-            }
-        }
-
-        if let Some(model_table) = doc.get_mut("model").and_then(Item::as_table_like_mut) {
-            for key in &keys_to_remove {
-                model_table.remove(key);
-            }
-        }
-
-        if let Some(def) = current_default {
-            if keys_to_remove.contains(&def) || def == "anybridge" {
-                if let Some(models_table) = doc.get_mut("models").and_then(Item::as_table_like_mut)
-                {
-                    models_table.remove("default");
-                    if models_table.is_empty() {
-                        doc.remove("models");
-                    }
-                }
-            }
-        }
-
-        super::write_atomic(path, doc.to_string().as_bytes())
+        apply_grok_official_with_stash(path, &agent_stash_dir())
     }
 
     /// 从 `.byok-bak` 还原；无备份时不动文件（返回 false）。
@@ -1498,6 +1644,116 @@ impl Platform {
             return Ok(true);
         }
 
+        // Claude Code：门控开启时优先字段级还原（写回原值，保留接管期间
+        // 用户对其它字段的改动）；无记账记录或还原失败 → 退回整文件还原。
+        if matches!(self, Platform::ClaudeCode) && super::agent_stash::field_restore_enabled() {
+            match restore_claude_fields_via_stash(&path, &agent_stash_dir()) {
+                Ok(true) => return Ok(true),
+                Ok(false) => {}
+                Err(e) => {
+                    eprintln!("[agent-stash] Claude Code 字段级还原失败，退回整文件还原: {e}");
+                }
+            }
+        }
+
+        // OpenCode：同 Claude Code 的门控策略（opencode.json 字段级；
+        // auth.json 保持整文件备份还原，不在记账范围）。
+        if matches!(self, Platform::OpenCode) && super::agent_stash::field_restore_enabled() {
+            match restore_opencode_fields_via_stash(&path, &agent_stash_dir()) {
+                Ok(true) => {
+                    if let Some(auth_path) = self.opencode_auth_path() {
+                        restore_one_file(&auth_path)?;
+                    }
+                    return Ok(true);
+                }
+                Ok(false) => {}
+                Err(e) => {
+                    eprintln!("[agent-stash] OpenCode 字段级还原失败，退回整文件还原: {e}");
+                }
+            }
+        }
+
+        // ZCode：主配置与 cli 配置各自字段级还原；personal 配置无记账，
+        // 保持整文件还原；无任何账本记录 → 退回整文件还原。
+        if matches!(self, Platform::ZCode) && super::agent_stash::field_restore_enabled() {
+            let stash_dir = agent_stash_dir();
+            let main_ok =
+                super::field_restore::restore_json_fields_via_stash(
+                    &path,
+                    &zcode_stash_key("config.json"),
+                    &stash_dir,
+                    "ZCode",
+                )
+                .unwrap_or(false);
+            let mut cli_ok = false;
+            if let Some(cli_path) = self.zcode_cli_config_path() {
+                cli_ok = super::field_restore::restore_json_fields_via_stash(
+                    &cli_path,
+                    &zcode_stash_key("cli/config.json"),
+                    &stash_dir,
+                    "ZCode cli",
+                )
+                .unwrap_or(false);
+            }
+            if let Ok(personal_path) = zcode_personal_config_path() {
+                restore_one_file(&personal_path)?;
+            }
+            if main_ok || cli_ok {
+                return Ok(true);
+            }
+            // 无账本记录 → 落到下方整文件还原
+        }
+
+        // Buddy（CodeBuddy / WorkBuddy）：models.json 数组按 id 字段级还原。
+        if matches!(self, Platform::CodeBuddy | Platform::WorkBuddy)
+            && super::agent_stash::field_restore_enabled()
+        {
+            let platform_key = if matches!(self, Platform::WorkBuddy) {
+                "workbuddy"
+            } else {
+                "codebuddy"
+            };
+            match restore_buddy_fields_via_stash(&path, platform_key, &agent_stash_dir()) {
+                Ok(true) => return Ok(true),
+                Ok(false) => {}
+                Err(e) => {
+                    eprintln!("[agent-stash] Buddy 字段级还原失败，退回整文件还原: {e}");
+                }
+            }
+        }
+
+        // Pi：models.json 的 providers.<id>（对象键）+ settings.json 的默认指针
+        // 各自字段级还原；停用状态文件由 AnyBridge 维护，还原时清理。
+        if matches!(self, Platform::Pi) && super::agent_stash::field_restore_enabled() {
+            let stash_dir = agent_stash_dir();
+            let models_ok = super::field_restore::restore_json_fields_via_stash(
+                &path,
+                &pi_stash_key("models.json"),
+                &stash_dir,
+                "Pi models",
+            )
+            .unwrap_or(false);
+            let mut settings_ok = false;
+            if let Some(settings_path) = self.pi_settings_path() {
+                settings_ok = super::field_restore::restore_json_fields_via_stash(
+                    &settings_path,
+                    &pi_stash_key("settings.json"),
+                    &stash_dir,
+                    "Pi settings",
+                )
+                .unwrap_or(false);
+            }
+            if models_ok || settings_ok {
+                if let Some(disabled_path) = self.pi_disabled_models_path() {
+                    if disabled_path.exists() {
+                        let _ = fs::remove_file(&disabled_path);
+                    }
+                }
+                return Ok(true);
+            }
+            // 无账本记录 → 落到下方整文件还原
+        }
+
         if matches!(self, Platform::OpenCode) {
             let mut restored = restore_one_file(&path)?;
             if let Some(auth_path) = self.opencode_auth_path() {
@@ -1529,6 +1785,48 @@ impl Platform {
                 }
             }
             return Ok(restored);
+        }
+
+        // Hermes / DeepSeek Harness：块级 YAML 账本还原（custom_providers /
+        // llm-pi-ai / agent-default-model / refs）。用户接管期间动过的块整块
+        // 跳过，绝不覆盖；无账本记录 → 退回整文件还原。
+        if matches!(self, Platform::Hermes) && super::agent_stash::field_restore_enabled() {
+            match restore_yaml_fields_via_stash(
+                &path,
+                &hermes_stash_key(),
+                &agent_stash_dir(),
+                "Hermes",
+            ) {
+                Ok(true) => return Ok(true),
+                Ok(false) => {}
+                Err(e) => {
+                    eprintln!("[agent-stash] Hermes 块级还原失败，退回整文件还原: {e}");
+                }
+            }
+        }
+
+        if matches!(self, Platform::DeepSeekHarness) && super::agent_stash::field_restore_enabled() {
+            let stash_dir = agent_stash_dir();
+            let settings_ok = restore_yaml_fields_via_stash(
+                &path,
+                &harness_stash_key(),
+                &stash_dir,
+                "Harness settings",
+            )
+            .unwrap_or(false);
+            let mut cred_ok = false;
+            if let Some(credentials) = self.deepseek_harness_credentials_path() {
+                cred_ok = restore_yaml_fields_via_stash(
+                    &credentials,
+                    &harness_credentials_stash_key(),
+                    &stash_dir,
+                    "Harness credentials",
+                )
+                .unwrap_or(false);
+            }
+            if settings_ok || cred_ok {
+                return Ok(true);
+            }
         }
 
         if matches!(self, Platform::Hermes) {
@@ -2114,6 +2412,17 @@ fn pi_clear_settings_default(dir: &Path) -> Result<(), String> {
 /// 写入 Pi models.json：全量替换受管 provider（按供应商聚合），
 /// 停用条目移入状态文件（Pi 侧不再出现），首条启用条目设为默认模型。
 fn write_pi_managed_models(models_path: &PathBuf, entries: &[Value]) -> Result<(), String> {
+    write_pi_managed_models_with_stash(models_path, entries, &agent_stash_dir())
+}
+
+/// 记账可注入版。受管字段：
+/// - models.json 的 `providers.<id>`（全部受管条目，对象级 Json）
+/// - settings.json 的 `defaultProvider` / `defaultModel`（标量）
+fn write_pi_managed_models_with_stash(
+    models_path: &PathBuf,
+    entries: &[Value],
+    stash_dir: &Path,
+) -> Result<(), String> {
     ensure_parent_dir(models_path)?;
     ensure_backup(models_path)?;
 
@@ -2132,6 +2441,92 @@ fn write_pi_managed_models(models_path: &PathBuf, entries: &[Value]) -> Result<(
     unmanaged.retain(|key, val| !pi_is_managed_provider(key, val));
 
     let (managed_providers, default_pair) = pi_build_providers_map(entries, &unmanaged, false)?;
+
+    // 记账：将被替换/删除的全部受管条目 + 本次写入条目（original 幂等）
+    {
+        let mut existing_managed: Vec<String> = obj
+            .get("providers")
+            .and_then(Value::as_object)
+            .map(|m| {
+                m.iter()
+                    .filter(|(k, v)| pi_is_managed_provider(k, v))
+                    .map(|(k, _)| k.clone())
+                    .collect()
+            })
+            .unwrap_or_default();
+        existing_managed.sort();
+
+        let mut plans: Vec<super::agent_stash::FieldPlan> = Vec::new();
+        for id in &existing_managed {
+            let current = obj
+                .get("providers")
+                .and_then(|p| p.get(id))
+                .cloned()
+                .and_then(|v| super::agent_stash::Stashed::from_json_any(&v))
+                .unwrap_or(super::agent_stash::Stashed::Absent);
+            let applied = match managed_providers.get(id) {
+                Some(v) => super::agent_stash::Stashed::Json(v.to_string()),
+                None => super::agent_stash::Stashed::Absent, // 本次被替换集合剔除
+            };
+            plans.push(super::agent_stash::FieldPlan {
+                path: vec!["providers".into(), id.clone()],
+                current,
+                new: applied,
+            });
+        }
+        // 本次新增的条目（existing 里没有的）
+        for (k, v) in &managed_providers {
+            if existing_managed.contains(k) {
+                continue;
+            }
+            plans.push(super::agent_stash::FieldPlan {
+                path: vec!["providers".into(), k.clone()],
+                current: super::agent_stash::Stashed::Absent,
+                new: super::agent_stash::Stashed::Json(v.to_string()),
+            });
+        }
+        if let Err(e) = super::agent_stash::record_apply(stash_dir, &pi_stash_key("models.json"), &plans)
+        {
+            eprintln!("[agent-stash] Pi models.json 记账失败（不影响切换）: {e}");
+        }
+
+        // settings 默认模型指针记账（defaultProvider / defaultModel）
+        let settings_path = models_path.parent().map(|d| d.join("settings.json"));
+        let (cur_provider, cur_model) = settings_path
+            .as_deref()
+            .and_then(|p| fs::read_to_string(p).ok())
+            .and_then(|raw| parse_json_object(&raw, "settings.json").ok())
+            .map(|o| {
+                (
+                    o.get("defaultProvider").and_then(Value::as_str).map(String::from),
+                    o.get("defaultModel").and_then(Value::as_str).map(String::from),
+                )
+            })
+            .unwrap_or((None, None));
+        if let Some((np, nm)) = &default_pair {
+            let sp = vec![
+                super::agent_stash::FieldPlan {
+                    path: vec!["defaultProvider".into()],
+                    current: cur_provider
+                        .map(super::agent_stash::Stashed::Str)
+                        .unwrap_or(super::agent_stash::Stashed::Absent),
+                    new: super::agent_stash::Stashed::Str(np.clone()),
+                },
+                super::agent_stash::FieldPlan {
+                    path: vec!["defaultModel".into()],
+                    current: cur_model
+                        .map(super::agent_stash::Stashed::Str)
+                        .unwrap_or(super::agent_stash::Stashed::Absent),
+                    new: super::agent_stash::Stashed::Str(nm.clone()),
+                },
+            ];
+            if let Err(e) =
+                super::agent_stash::record_apply(stash_dir, &pi_stash_key("settings.json"), &sp)
+            {
+                eprintln!("[agent-stash] Pi settings.json 记账失败（不影响切换）: {e}");
+            }
+        }
+    }
 
     let mut final_providers = unmanaged;
     for (k, v) in managed_providers {
@@ -2335,6 +2730,112 @@ fn yaml_remove_scalar_in_block(source: &str, section: &str, key: &str) -> String
         out.push(line.to_string());
     }
     yaml_restore_line_ending(source, out.join("\n"))
+}
+
+// ─── YAML 块级账本还原（Hermes / DeepSeek Harness）──────────────
+//
+// 这两个平台的写入器是**块级保形**（整块文本替换，注释逐字保留），
+// 因此还原也走块级文本语义：账本用 Stashed::Str 存规范化块文本，
+// 还原时把「当前块文本」与 applied 比较——完全一致才写回 original
+// （用户接管期间动过该块则整块跳过，绝不覆盖）。这是与 JSON/TOML
+// 标量语义并列的第三种账本语义，故放在 YAML 辅助函数所在的本模块。
+
+/// 提取 `key` 顶层块的规范化文本（不存在 → None）。
+fn yaml_block_text(root: &YamlValue, key: &str) -> Option<String> {
+    let value = root.get(key)?;
+    if value.is_null() {
+        return None;
+    }
+    yaml_block_for_value(value, 2).ok()
+}
+
+/// YAML 块级/块内标量的字段级还原（通用入口）。
+///
+/// - `path.len()==1`：顶层块（文本比较 + `yaml_set_top_level_block` 写回；
+///   original=Absent → 写空块即删除该键）
+/// - `path.len()==2`：块内标量（`yaml_set_scalar_in_block` /
+///   `yaml_remove_scalar_in_block` 写回）
+fn restore_yaml_fields_via_stash(
+    path: &PathBuf,
+    stash_key: &super::agent_stash::StashKey,
+    stash_dir: &Path,
+    label: &str,
+) -> Result<bool, String> {
+    if !path.exists() {
+        return Ok(false);
+    }
+    let raw = fs::read_to_string(path).map_err(|e| e.to_string())?;
+    if raw.trim().is_empty() {
+        return Ok(false);
+    }
+    let entries = super::agent_stash::entries_for(stash_dir, stash_key)?;
+    if entries.is_empty() {
+        return Ok(false);
+    }
+    let root = parse_yaml_value(&raw, label)?;
+    let mut next = raw.clone();
+    let mut changed = false;
+
+    for entry in &entries {
+        match entry.path.len() {
+            1 => {
+                // 顶层块：文本级比较与写回
+                let key = &entry.path[0];
+                let now = yaml_block_text(&root, key)
+                    .map(super::agent_stash::Stashed::Str)
+                    .unwrap_or(super::agent_stash::Stashed::Absent);
+                if now != entry.applied {
+                    continue; // 用户动过该块：整块跳过，绝不覆盖
+                }
+                match &entry.original {
+                    super::agent_stash::Stashed::Absent => {
+                        next = yaml_set_top_level_block(&next, key, "");
+                    }
+                    super::agent_stash::Stashed::Str(block) => {
+                        next = yaml_set_top_level_block(&next, key, block);
+                    }
+                    _ => continue,
+                }
+                changed = true;
+            }
+            2 => {
+                // 块内标量
+                let block = &entry.path[0];
+                let key = &entry.path[1];
+                let now = root
+                    .get(block)
+                    .and_then(|b| b.get(key))
+                    .and_then(YamlValue::as_str)
+                    .map(|s| super::agent_stash::Stashed::Str(s.to_string()))
+                    .unwrap_or(super::agent_stash::Stashed::Absent);
+                if now != entry.applied {
+                    continue;
+                }
+                match &entry.original {
+                    super::agent_stash::Stashed::Absent => {
+                        next = yaml_remove_scalar_in_block(&next, block, key);
+                    }
+                    super::agent_stash::Stashed::Str(v) => {
+                        next = yaml_set_scalar_in_block(&next, block, key, &yaml_scalar(v));
+                    }
+                    _ => continue,
+                }
+                changed = true;
+            }
+            _ => {}
+        }
+    }
+
+    if !changed {
+        // 无任何可还原字段（全部被用户改过）：不清账——留给下一次判断
+        return Ok(true);
+    }
+    parse_yaml_value(&next, label)?;
+    super::write_atomic(path, next.as_bytes())?;
+    if let Err(e) = super::agent_stash::clear_for(stash_dir, stash_key) {
+        eprintln!("[agent-stash] {label} 清账失败: {e}");
+    }
+    Ok(true)
 }
 
 /// 渲染为合法 YAML 标量（必要时自动加引号）。
@@ -2676,6 +3177,17 @@ fn hermes_preview_value(entries: &[Value]) -> Result<YamlValue, String> {
 
 /// 写入 Hermes：custom_providers 全量替换受管条目（按供应商分组）+ model 段设置默认模型。
 fn write_hermes_managed_models(path: &PathBuf, entries: &[Value]) -> Result<(), String> {
+    write_hermes_managed_models_with_stash(path, entries, &agent_stash_dir())
+}
+
+/// 记账可注入版。受管字段（块级账本，Stashed::Str 存规范化块文本）：
+/// - `custom_providers` 顶层块
+/// - `model.default` / `model.provider` / `model.base_url` 块内标量
+fn write_hermes_managed_models_with_stash(
+    path: &PathBuf,
+    entries: &[Value],
+    stash_dir: &Path,
+) -> Result<(), String> {
     ensure_parent_dir(path)?;
     ensure_backup(path)?;
     let raw = if path.exists() {
@@ -2737,6 +3249,49 @@ fn write_hermes_managed_models(path: &PathBuf, entries: &[Value]) -> Result<(), 
     }
 
     let providers_block = yaml_block_for_value(&YamlValue::Sequence(retained), 2)?;
+
+    // 记账（块级）：custom_providers 块 + model 块内三个标量
+    {
+        let mut plans = vec![super::agent_stash::FieldPlan {
+            path: vec!["custom_providers".into()],
+            current: yaml_block_text(&root, "custom_providers")
+                .map(super::agent_stash::Stashed::Str)
+                .unwrap_or(super::agent_stash::Stashed::Absent),
+            new: super::agent_stash::Stashed::Str(providers_block.clone()),
+        }];
+        for key in ["default", "provider", "base_url"] {
+            let cur = root
+                .get("model")
+                .and_then(|m| m.get(key))
+                .and_then(YamlValue::as_str)
+                .map(|s| super::agent_stash::Stashed::Str(s.to_string()))
+                .unwrap_or(super::agent_stash::Stashed::Absent);
+            let new = match (key, &default_pair) {
+                ("default", Some((_, model_id, _))) => {
+                    super::agent_stash::Stashed::Str(model_id.clone())
+                }
+                ("provider", Some((provider_name, _, _))) => {
+                    super::agent_stash::Stashed::Str(provider_name.clone())
+                }
+                ("base_url", Some((_, _, base_url))) => {
+                    super::agent_stash::Stashed::Str(base_url.clone())
+                }
+                // 清空路径：这三个标量会被删除
+                _ => super::agent_stash::Stashed::Absent,
+            };
+            plans.push(super::agent_stash::FieldPlan {
+                path: vec!["model".into(), key.to_string()],
+                current: cur,
+                new,
+            });
+        }
+        if let Err(e) =
+            super::agent_stash::record_apply(stash_dir, &hermes_stash_key(), &plans)
+        {
+            eprintln!("[agent-stash] Hermes 记账失败（不影响切换）: {e}");
+        }
+    }
+
     let mut next = yaml_set_top_level_block(&raw, "custom_providers", &providers_block);
     if let Some((provider_name, model_id, base_url)) = default_pair {
         next = yaml_set_scalar_in_block(&next, "model", "default", &yaml_scalar(&model_id));
@@ -3091,11 +3646,49 @@ fn harness_preview_value(entries: &[Value]) -> Result<YamlValue, String> {
     Ok(YamlValue::Mapping(root))
 }
 
+fn hermes_stash_key() -> super::agent_stash::StashKey {
+    super::agent_stash::StashKey {
+        platform: "hermes",
+        file: "config.yaml",
+    }
+}
+
+fn harness_stash_key() -> super::agent_stash::StashKey {
+    super::agent_stash::StashKey {
+        platform: "deepseek-harness",
+        file: "settings.yaml",
+    }
+}
+
+fn harness_credentials_stash_key() -> super::agent_stash::StashKey {
+    super::agent_stash::StashKey {
+        platform: "deepseek-harness",
+        file: ".credentials.yaml",
+    }
+}
+
 /// 写入 DeepSeek Harness：settings.yaml（providers + 默认模型）+ .credentials.yaml（refs）。
 fn write_harness_managed_models(
     settings_path: &PathBuf,
     credentials_path: &PathBuf,
     entries: &[Value],
+) -> Result<(), String> {
+    write_harness_managed_models_with_stash(
+        settings_path,
+        credentials_path,
+        entries,
+        &agent_stash_dir(),
+    )
+}
+
+/// 记账可注入版。受管字段（块级账本）：
+/// - settings.yaml：`llm-pi-ai` 块、`agent-default-model` 块
+/// - .credentials.yaml：`refs` 块（独立账本键）
+fn write_harness_managed_models_with_stash(
+    settings_path: &PathBuf,
+    credentials_path: &PathBuf,
+    entries: &[Value],
+    stash_dir: &Path,
 ) -> Result<(), String> {
     ensure_parent_dir(settings_path)?;
     ensure_backup(settings_path)?;
@@ -3190,6 +3783,63 @@ fn write_harness_managed_models(
         YamlValue::Mapping(providers),
     );
     let llm_block = yaml_block_for_value(&YamlValue::Mapping(llm), 2)?;
+    // 记账（块级）：llm-pi-ai 块 + agent-default-model 块 + credentials 的 refs 块
+    {
+        let selection_block = default_pair.as_ref().map(|(pid, mid)| {
+            let mut selection = serde_yaml::Mapping::new();
+            selection.insert(
+                YamlValue::String("provider".to_string()),
+                YamlValue::String(pid.clone()),
+            );
+            selection.insert(
+                YamlValue::String("model".to_string()),
+                YamlValue::String(mid.clone()),
+            );
+            yaml_block_for_value(&YamlValue::Mapping(selection), 2)
+        });
+        let new_default_block = match selection_block {
+            Some(Ok(block)) => super::agent_stash::Stashed::Str(block),
+            _ => super::agent_stash::Stashed::Absent,
+        };
+        let plans = vec![
+            super::agent_stash::FieldPlan {
+                path: vec!["llm-pi-ai".into()],
+                current: yaml_block_text(&settings_root, "llm-pi-ai")
+                    .map(super::agent_stash::Stashed::Str)
+                    .unwrap_or(super::agent_stash::Stashed::Absent),
+                new: super::agent_stash::Stashed::Str(llm_block.clone()),
+            },
+            super::agent_stash::FieldPlan {
+                path: vec!["agent-default-model".into()],
+                current: yaml_block_text(&settings_root, "agent-default-model")
+                    .map(super::agent_stash::Stashed::Str)
+                    .unwrap_or(super::agent_stash::Stashed::Absent),
+                new: new_default_block,
+            },
+        ];
+        if let Err(e) =
+            super::agent_stash::record_apply(stash_dir, &harness_stash_key(), &plans)
+        {
+            eprintln!("[agent-stash] Harness settings 记账失败（不影响切换）: {e}");
+        }
+        // credentials：refs 块
+        let new_refs = yaml_block_for_value(&YamlValue::Mapping(refs.clone()), 2)?;
+        let cred_plans = vec![super::agent_stash::FieldPlan {
+            path: vec!["refs".into()],
+            current: yaml_block_text(&credentials_root, "refs")
+                .map(super::agent_stash::Stashed::Str)
+                .unwrap_or(super::agent_stash::Stashed::Absent),
+            new: super::agent_stash::Stashed::Str(new_refs),
+        }];
+        if let Err(e) = super::agent_stash::record_apply(
+            stash_dir,
+            &harness_credentials_stash_key(),
+            &cred_plans,
+        ) {
+            eprintln!("[agent-stash] Harness credentials 记账失败（不影响切换）: {e}");
+        }
+    }
+
     let mut next = yaml_set_top_level_block(&settings_raw, "llm-pi-ai", &llm_block);
     if let Some((provider_id, model_id)) = default_pair {
         let mut selection = serde_yaml::Mapping::new();
@@ -5270,6 +5920,245 @@ fn read_claude_config_info(path: &PathBuf) -> Result<Option<ClaudeConfigInfo>, S
     }))
 }
 
+// ─── 字段级记账与还原（配置切换重构 2026-10-26） ─────────────────
+//
+// 记账（apply 时总是执行，纯增量、无行为变化）：把「覆盖前原值 original」
+// 与「本次写入值 applied」记入独立账本 agent-stash.json。记账失败只影响
+// 字段级还原能力，绝不阻断切换主流程。
+//
+// 还原（门控 ANYBRIDGE_FIELD_RESTORE，默认关闭）：关闭时一切还原路径与
+// 旧版本完全一致（整文件备份覆盖 / 删托管键）。开启后按记录逐字段写回
+// 原值，被外部改过的字段保留用户改动；无记录时退回「删托管键」旧语义。
+
+fn claude_stash_key() -> super::agent_stash::StashKey {
+    super::agent_stash::StashKey {
+        platform: PLATFORM_CLAUDE_CODE,
+        file: "settings.json",
+    }
+}
+
+fn agent_stash_dir() -> PathBuf {
+    super::config::config_dir_path()
+}
+
+/// 按路径段读 JSON 值。
+fn json_value_at<'a>(root: &'a Value, path: &[String]) -> Option<&'a Value> {
+    let mut cur = root;
+    for seg in path {
+        cur = cur.get(seg)?;
+    }
+    Some(cur)
+}
+
+/// 漂移分类（借鉴 magpie applied.go 的 Drift kind，由字段语义推断）：
+/// 接入地址被改走 → "unwired"；模型被改回/换掉 → "replaced"；其余 → "changed"。
+fn drift_kind_of(path: &[String]) -> &'static str {
+    let last = path.last().map(|s| s.as_str()).unwrap_or_default();
+    if last.contains("BASE_URL") {
+        "unwired"
+    } else if last.contains("MODEL") {
+        "replaced"
+    } else {
+        "changed"
+    }
+}
+
+/// 检测 Claude Code 记账字段是否被外部改动（Drift）。
+///
+/// 只在有接管记录（stash 非空）时比对；stash 读失败 / settings.json 读失败 /
+/// 解析失败 = **未知**，返回空列表（前端不显示 ≠ 显示「无漂移」，见坑点
+/// read-failure-is-unknown：不把未知伪装成否定结论）。
+/// 值不返回——记账字段含 AUTH_TOKEN，路径和分类足够定位问题。
+pub(crate) fn detect_claude_drift(settings_path: &Path) -> Vec<DriftField> {
+    detect_claude_drift_in(&agent_stash_dir(), settings_path)
+}
+
+/// 内部实现：显式 dir 参数（测试注入临时目录），与 agent_stash 同款先例。
+fn detect_claude_drift_in(stash_dir: &Path, settings_path: &Path) -> Vec<DriftField> {
+    let entries = match super::agent_stash::entries_for(stash_dir, &claude_stash_key()) {
+            Ok(entries) => entries,
+            Err(e) => {
+                eprintln!("[agent-stash] 漂移检测读账本失败（视为未知）: {e}");
+                return Vec::new();
+            }
+        };
+    if entries.is_empty() {
+        return Vec::new();
+    }
+    let raw = match fs::read_to_string(settings_path) {
+        Ok(raw) => raw,
+        Err(e) => {
+            eprintln!("[agent-stash] 漂移检测读 settings.json 失败（视为未知）: {e}");
+            return Vec::new();
+        }
+    };
+    let obj = match parse_json_object(&raw, "settings.json") {
+        Ok(obj) => Value::Object(obj),
+        Err(e) => {
+            eprintln!("[agent-stash] 漂移检测解析 settings.json 失败（视为未知）: {e}");
+            return Vec::new();
+        }
+    };
+    entries
+        .iter()
+        .filter(|entry| {
+            let current = match json_value_at(&obj, &entry.path) {
+                Some(v) => super::agent_stash::Stashed::from_json(v),
+                None => Some(super::agent_stash::Stashed::Absent),
+            };
+            match current {
+                Some(current) => current != entry.applied,
+                // 键处是对象/数组（记账时被跳过的类型）——无法比对，不算漂移
+                None => false,
+            }
+        })
+        .map(|entry| DriftField {
+            path: entry.path.join("."),
+            kind: drift_kind_of(&entry.path),
+        })
+        .collect()
+}
+
+/// Claude Code env 记账计划（`apply_claude` 将覆盖/删除的全部字段）。
+/// `max_retries` 传 model-map enhancement 的值；None 表示本次不写该键。
+fn claude_env_field_plans(
+    env_obj: &Map<String, Value>,
+    base: &str,
+    token: &str,
+    model: &str,
+    max_retries: Option<u32>,
+) -> Vec<super::agent_stash::FieldPlan> {
+    let cur = |key: &str| -> super::agent_stash::Stashed {
+        env_obj
+            .get(key)
+            .and_then(super::agent_stash::Stashed::from_json)
+            .unwrap_or(super::agent_stash::Stashed::Absent)
+    };
+    let raw_model = model.trim();
+    let mut plans: Vec<super::agent_stash::FieldPlan> = Vec::new();
+    let mut push_str = |key: &str, value: String| {
+        plans.push(super::agent_stash::FieldPlan {
+            path: vec!["env".to_string(), key.to_string()],
+            current: cur(key),
+            new: super::agent_stash::Stashed::Str(value),
+        });
+    };
+    push_str("ANTHROPIC_BASE_URL", base.to_string());
+    push_str("ANTHROPIC_AUTH_TOKEN", token.to_string());
+    push_str("ANTHROPIC_MODEL", raw_model.to_string());
+    for (model_key, name_key) in [
+        (
+            "ANTHROPIC_DEFAULT_HAIKU_MODEL",
+            "ANTHROPIC_DEFAULT_HAIKU_MODEL_NAME",
+        ),
+        (
+            "ANTHROPIC_DEFAULT_SONNET_MODEL",
+            "ANTHROPIC_DEFAULT_SONNET_MODEL_NAME",
+        ),
+        (
+            "ANTHROPIC_DEFAULT_OPUS_MODEL",
+            "ANTHROPIC_DEFAULT_OPUS_MODEL_NAME",
+        ),
+        (
+            "ANTHROPIC_DEFAULT_FABLE_MODEL",
+            "ANTHROPIC_DEFAULT_FABLE_MODEL_NAME",
+        ),
+    ] {
+        push_str(model_key, raw_model.to_string());
+        push_str(name_key, strip_one_m_marker(raw_model).to_string());
+    }
+    if let Some(retries) = max_retries {
+        push_str("CLAUDE_CODE_MAX_RETRIES", retries.to_string());
+    }
+    // set_claude_model_env 会删除 SMALL_FAST_MODEL，applied 记 Absent
+    plans.push(super::agent_stash::FieldPlan {
+        path: vec!["env".to_string(), "ANTHROPIC_SMALL_FAST_MODEL".to_string()],
+        current: cur("ANTHROPIC_SMALL_FAST_MODEL"),
+        new: super::agent_stash::Stashed::Absent,
+    });
+    plans
+}
+
+/// 把 settings_obj 中将被合并覆盖的叶子路径收集为记账计划
+/// （与 `merge_json_object` 的深合并语义对齐：双方都是对象才递归；
+/// 整体替换的对象无法用标量记账，跳过——还原走旧路径兜底）。
+fn collect_claude_leaf_plans(
+    current: &Map<String, Value>,
+    incoming: &Map<String, Value>,
+    prefix: &mut Vec<String>,
+    plans: &mut Vec<super::agent_stash::FieldPlan>,
+) {
+    for (key, incoming_value) in incoming {
+        prefix.push(key.clone());
+        match incoming_value {
+            Value::Object(nested) => {
+                if let Some(Value::Object(cur_nested)) = current.get(key) {
+                    collect_claude_leaf_plans(cur_nested, nested, prefix, plans);
+                }
+            }
+            scalar => {
+                if let Some(new_stashed) = super::agent_stash::Stashed::from_json(scalar) {
+                    let current_stashed = current
+                        .get(key)
+                        .and_then(super::agent_stash::Stashed::from_json)
+                        .unwrap_or(super::agent_stash::Stashed::Absent);
+                    plans.push(super::agent_stash::FieldPlan {
+                        path: prefix.clone(),
+                        current: current_stashed,
+                        new: new_stashed,
+                    });
+                }
+            }
+        }
+        prefix.pop();
+    }
+}
+
+/// 把 settings 的标量叶子 flatten 成 (路径, 值) 列表（保形写入用）。
+/// 遇到对象/数组叶子报错——保形路径只处理标量，诚实失败优先于静默破坏。
+fn flatten_settings_scalars(
+    incoming: &Map<String, Value>,
+    prefix: &mut Vec<String>,
+    out: &mut Vec<(Vec<String>, super::jsonc_edit::JsoncValue)>,
+) -> Result<(), String> {
+    for (key, value) in incoming {
+        prefix.push(key.clone());
+        match value {
+            Value::Object(nested) => flatten_settings_scalars(nested, prefix, out)?,
+            scalar => {
+                let v = super::jsonc_edit::JsoncValue::from_json(scalar).ok_or_else(|| {
+                    format!(
+                        "settings 字段 {key} 不是标量，保形写入不支持；\
+                         可关闭 ANYBRIDGE_FORMAT_PRESERVING_JSON 走旧路径"
+                    )
+                })?;
+                out.push((prefix.clone(), v));
+            }
+        }
+        prefix.pop();
+    }
+    Ok(())
+}
+
+/// 字段级还原 Claude Code settings.json（统一入口，保形门控内聚）。
+///
+/// - 账本无记录 → Ok(false)，调用方退回旧路径
+/// - 保形门控开启（ANYBRIDGE_FORMAT_PRESERVING_JSON）→ 在原文本上逐字段
+///   set/remove，注释、键序、缩进、CRLF、BOM 全保留
+/// - 门控关闭 → parse 后逐字段写回再 pretty（与旧版输出格式一致）
+/// - 成功后清账（失败不阻断，残留账本下次还原时因 applied 不符自然保守）
+///
+/// 失败语义：账本损坏/读文件失败 → Err，调用方退回整文件还原旧路径。
+/// 语义实现收敛在 `field_restore::restore_json_fields_via_stash`（全平台一份）。
+fn restore_claude_fields_via_stash(path: &PathBuf, stash_dir: &Path) -> Result<bool, String> {
+    super::field_restore::restore_json_fields_via_stash(
+        path,
+        &claude_stash_key(),
+        stash_dir,
+        "Claude Code",
+    )
+}
+
 fn claude_settings_from_config(config: &ClaudeCodeConfig, mask_token: bool) -> Value {
     if let Some(settings) = config.settings_config.as_ref() {
         let mut out = settings.clone();
@@ -5350,6 +6239,16 @@ fn merge_json_object(target: &mut Map<String, Value>, source: &Map<String, Value
 }
 
 fn apply_claude_config_file(path: &PathBuf, config: &ClaudeCodeConfig) -> Result<(), String> {
+    apply_claude_config_file_with_stash(path, config, &agent_stash_dir())
+}
+
+/// 配置方案路径的 Claude Code 写入。`stash_dir` 显式注入（测试用临时目录）。
+/// 记账总是执行（纯增量）；记账失败不阻断切换。
+fn apply_claude_config_file_with_stash(
+    path: &PathBuf,
+    config: &ClaudeCodeConfig,
+    stash_dir: &Path,
+) -> Result<(), String> {
     let raw = if path.exists() {
         fs::read_to_string(path).map_err(|e| e.to_string())?
     } else {
@@ -5360,6 +6259,29 @@ fn apply_claude_config_file(path: &PathBuf, config: &ClaudeCodeConfig) -> Result
     let settings_obj = settings
         .as_object()
         .ok_or_else(|| "Claude Code 配置 JSON 顶层必须是对象".to_string())?;
+
+    // 记账：把将被合并覆盖的叶子路径记下来（original 幂等）
+    let mut plans = Vec::new();
+    collect_claude_leaf_plans(&obj, settings_obj, &mut Vec::new(), &mut plans);
+    if !plans.is_empty() {
+        if let Err(e) = super::agent_stash::record_apply(stash_dir, &claude_stash_key(), &plans) {
+            eprintln!("[agent-stash] Claude Code 记账失败（不影响切换）: {e}");
+        }
+    }
+
+    // 门控：保形写入（settings 的标量叶子逐个原位替换；对象叶子不支持，
+    // 报错并提示关闭门控——诚实失败优先于静默破坏）
+    if super::jsonc_edit::format_preserving_enabled() {
+        let mut ops = Vec::new();
+        flatten_settings_scalars(settings_obj, &mut Vec::new(), &mut ops)?;
+        let mut text = raw.clone();
+        for (leaf_path, value) in &ops {
+            let segs: Vec<&str> = leaf_path.iter().map(String::as_str).collect();
+            text = super::jsonc_edit::set_key(&text, &segs, value)?;
+        }
+        return super::write_atomic(path, text.as_bytes());
+    }
+
     merge_json_object(&mut obj, settings_obj);
     let json = serde_json::to_string_pretty(&Value::Object(obj)).map_err(|e| e.to_string())?;
     super::write_atomic(path, json.as_bytes())
@@ -5440,10 +6362,28 @@ fn buddy_display_name(p: &Provider, model_id: &str) -> String {
 /// 两个平台此前各有一份逐字相同的 apply 壳与 25/27 行的 entry 构造，
 /// 唯一差异是 WorkBuddy 的 `useCustomProtocol`。收敛成一处，
 /// 新增同类平台只需再加一个 `true/false` 调用。
+fn buddy_stash_key(platform: &'static str) -> super::agent_stash::StashKey {
+    super::agent_stash::StashKey {
+        platform,
+        file: "models.json",
+    }
+}
+
+/// Buddy（CodeBuddy/WorkBuddy 同构）接入：受管字段 = models 数组中
+/// `id == codebuddy_model_id(p)` 的条目（数组按 id 记账）。
 fn apply_buddy_models_json(
     path: &PathBuf,
     p: &Provider,
     use_custom_protocol: bool,
+) -> Result<(), String> {
+    apply_buddy_models_json_with_stash(path, p, use_custom_protocol, &agent_stash_dir())
+}
+
+fn apply_buddy_models_json_with_stash(
+    path: &PathBuf,
+    p: &Provider,
+    use_custom_protocol: bool,
+    stash_dir: &Path,
 ) -> Result<(), String> {
     let raw = if path.exists() {
         fs::read_to_string(path).map_err(|e| e.to_string())?
@@ -5453,9 +6393,49 @@ fn apply_buddy_models_json(
     let mut obj = parse_json_object(&raw, "models.json")?;
     let model_id = codebuddy_model_id(p);
     let entry = buddy_model_entry(p, &p.api_key, use_custom_protocol);
+
+    // 记账：models 数组中同 id 条目（original 幂等；数组按 id 记账）
+    let current = obj
+        .get("models")
+        .and_then(Value::as_array)
+        .and_then(|arr| {
+            arr.iter()
+                .find(|item| item.get("id").and_then(Value::as_str) == Some(model_id.as_str()))
+        })
+        .cloned()
+        .and_then(|v| super::agent_stash::Stashed::from_json_any(&v))
+        .unwrap_or(super::agent_stash::Stashed::Absent);
+    let platform_key = if use_custom_protocol {
+        buddy_stash_key("workbuddy")
+    } else {
+        buddy_stash_key("codebuddy")
+    };
+    let plans = vec![super::agent_stash::FieldPlan {
+        path: vec!["models".into(), model_id.clone()],
+        current,
+        new: super::agent_stash::Stashed::Json(entry.to_string()),
+    }];
+    if let Err(e) = super::agent_stash::record_apply(stash_dir, &platform_key, &plans) {
+        eprintln!("[agent-stash] Buddy 记账失败（不影响切换）: {e}");
+    }
+
     upsert_models_json_entry(&mut obj, &model_id, entry)?;
     let json = serde_json::to_string_pretty(&Value::Object(obj)).map_err(|e| e.to_string())?;
     super::write_atomic(path, json.as_bytes())
+}
+
+/// Buddy 字段级还原（数组按 id）。restore() 无参入口用。
+fn restore_buddy_fields_via_stash(
+    path: &PathBuf,
+    platform: &'static str,
+    stash_dir: &Path,
+) -> Result<bool, String> {
+    super::field_restore::restore_json_array_by_id_via_stash(
+        path,
+        &buddy_stash_key(platform),
+        stash_dir,
+        "Buddy",
+    )
 }
 
 fn buddy_model_entry(p: &Provider, api_key: &str, use_custom_protocol: bool) -> Value {
@@ -5623,6 +6603,69 @@ fn opencode_preview(p: &Provider) -> Value {
 }
 
 fn apply_opencode_config_file(path: &PathBuf, config: &OpenCodeConfig) -> Result<(), String> {
+    apply_opencode_config_file_with_stash(path, config, &agent_stash_dir())
+}
+
+fn opencode_stash_key() -> super::agent_stash::StashKey {
+    super::agent_stash::StashKey {
+        platform: "opencode",
+        file: "opencode.json",
+    }
+}
+
+fn codex_stash_key() -> super::agent_stash::StashKey {
+    super::agent_stash::StashKey {
+        platform: "codex",
+        file: "config.toml",
+    }
+}
+
+fn grok_stash_key() -> super::agent_stash::StashKey {
+    super::agent_stash::StashKey {
+        platform: "grok",
+        file: "config.toml",
+    }
+}
+
+fn antigravity_stash_key() -> super::agent_stash::StashKey {
+    super::agent_stash::StashKey {
+        platform: "antigravity",
+        file: "settings.json",
+    }
+}
+
+fn antigravity_ide_stash_key() -> super::agent_stash::StashKey {
+    super::agent_stash::StashKey {
+        platform: "antigravity-ide",
+        file: "settings.json",
+    }
+}
+
+fn pi_stash_key(file: &'static str) -> super::agent_stash::StashKey {
+    super::agent_stash::StashKey {
+        platform: "pi",
+        file,
+    }
+}
+
+// Hermes / DeepSeek Harness 的记账与还原待下一轮：两者是块级保形 YAML
+// （整块文本替换），需专门的块级账本语义，不在本轮半成品上线。
+
+/// TOML 顶层标量的当前值（字符串化；不存在/非字符串 → Absent）。
+fn toml_top_current(doc: &DocumentMut, key: &str) -> super::agent_stash::Stashed {
+    doc.get(key)
+        .and_then(toml_item_string)
+        .map(super::agent_stash::Stashed::Str)
+        .unwrap_or(super::agent_stash::Stashed::Absent)
+}
+
+/// OpenCode 接入（带记账）：受管字段 = `provider.<id>` 整对象 + `model` 标量。
+/// 记账总是执行（original 幂等）；保形门控开启时走 jsonc_edit 原位编辑。
+fn apply_opencode_config_file_with_stash(
+    path: &PathBuf,
+    config: &OpenCodeConfig,
+    stash_dir: &Path,
+) -> Result<(), String> {
     let raw = if path.exists() {
         fs::read_to_string(path).map_err(|e| e.to_string())?
     } else {
@@ -5638,6 +6681,59 @@ fn apply_opencode_config_file(path: &PathBuf, config: &OpenCodeConfig) -> Result
         return Err("OpenCode provider 配置 JSON 顶层必须是对象".to_string());
     }
     let model_key = opencode_default_model_key(config, &settings)?;
+    let model_value = format!("{}/{}", config.id, model_key);
+
+    // 记账：provider.<id>（对象 → Json 文本）与 model（标量）
+    let provider_now = obj
+        .get("provider")
+        .and_then(|v| v.get(&config.id))
+        .cloned();
+    let model_now = obj.get("model").and_then(Value::as_str).map(String::from);
+    let plans = vec![
+        super::agent_stash::FieldPlan {
+            path: vec!["provider".into(), config.id.clone()],
+            current: provider_now
+                .as_ref()
+                .and_then(super::agent_stash::Stashed::from_json_any)
+                .unwrap_or(super::agent_stash::Stashed::Absent),
+            new: super::agent_stash::Stashed::Json(settings.to_string()),
+        },
+        super::agent_stash::FieldPlan {
+            path: vec!["model".into()],
+            current: model_now
+                .clone()
+                .map(super::agent_stash::Stashed::Str)
+                .unwrap_or(super::agent_stash::Stashed::Absent),
+            new: super::agent_stash::Stashed::Str(model_value.clone()),
+        },
+    ];
+    if let Err(e) = super::agent_stash::record_apply(stash_dir, &opencode_stash_key(), &plans) {
+        eprintln!("[agent-stash] OpenCode 记账失败（不影响切换）: {e}");
+    }
+
+    // 门控：保形写入
+    if super::jsonc_edit::format_preserving_enabled() {
+        let mut text = raw.clone();
+        let schema_missing = obj.get("$schema").is_none();
+        if schema_missing {
+            text = super::jsonc_edit::set_key(
+                &text,
+                &["$schema"],
+                &super::jsonc_edit::JsoncValue::Str("https://opencode.ai/config.json".into()),
+            )?;
+        }
+        text = super::jsonc_edit::set_key(
+            &text,
+            &["provider", config.id.as_str()],
+            &super::jsonc_edit::JsoncValue::Raw(settings.to_string()),
+        )?;
+        text = super::jsonc_edit::set_key(
+            &text,
+            &["model"],
+            &super::jsonc_edit::JsoncValue::Str(model_value),
+        )?;
+        return super::write_atomic(path, text.as_bytes());
+    }
 
     let provider_value = obj
         .entry("provider")
@@ -5646,10 +6742,333 @@ fn apply_opencode_config_file(path: &PathBuf, config: &OpenCodeConfig) -> Result
         .as_object_mut()
         .ok_or_else(|| "opencode.json 的 provider 字段不是对象".to_string())?;
     provider_obj.insert(config.id.clone(), settings);
-    obj.insert(
-        "model".to_string(),
-        Value::String(format!("{}/{}", config.id, model_key)),
-    );
+    obj.insert("model".to_string(), Value::String(model_value));
+
+    let json = serde_json::to_string_pretty(&Value::Object(obj)).map_err(|e| e.to_string())?;
+    super::write_atomic(path, json.as_bytes())
+}
+
+/// OpenCode 字段级还原（统一入口，保形门控内聚）。
+///
+/// 受管字段语义：
+/// - `provider.<id>`：对象级——original=Json 文本 → 写回原对象；Absent → 删除
+/// - `model`：标量——original=Str → 写回；Absent → 删除
+/// - 当前值 != applied（被外部改过）→ 保留用户的值不还原
+///
+/// 语义实现收敛在 `field_restore::restore_json_fields_via_stash`（全平台一份）。
+/// 返回 true = 有账本记录并已处理（随后清账）；false = 无记录。
+fn restore_opencode_fields_via_stash(path: &PathBuf, stash_dir: &Path) -> Result<bool, String> {
+    super::field_restore::restore_json_fields_via_stash(
+        path,
+        &opencode_stash_key(),
+        stash_dir,
+        "OpenCode",
+    )
+}
+
+/// Codex 顶层标量字段级还原：按账本把未被外部改动的字段写回原值。
+///
+/// 返回已恢复的键集合（official 逻辑据此跳过对它们的删除/覆盖）。
+/// 不清账——official 完成后统一清。
+///
+/// `skip`：结构性不可恢复的键（诚实跳过，不假装恢复）——
+/// - unify 会话历史模式：provider 指针固定为 codex_local_access，model
+///   作为它的从属值一并跳过（恢复会指向不存在的 provider 配置）
+/// - 两种模式：model_catalog_json 指向的文件内容不可恢复，恢复悬空指针
+///   是坏状态，一律跳过
+///
+/// 语义实现收敛在 `field_restore::restore_toml_scalars_via_stash`。
+fn restore_codex_top_scalars_via_stash(
+    path: &PathBuf,
+    stash_dir: &Path,
+    skip: &[&str],
+) -> Result<std::collections::HashSet<String>, String> {
+    super::field_restore::restore_toml_scalars_via_stash(
+        path,
+        &codex_stash_key(),
+        stash_dir,
+        skip,
+        "Codex",
+    )
+}
+
+/// Codex 切回官方（带门控）：先按账本恢复顶层标量原值，再执行官方化清理
+/// （对已恢复的键跳过删除，避免把用户原值又抹掉）。
+fn apply_codex_official_with_stash(
+    path: &PathBuf,
+    unify_session_history: bool,
+    stash_dir: &Path,
+) -> Result<(), String> {
+    let raw = if path.exists() {
+        fs::read_to_string(path).map_err(|e| e.to_string())?
+    } else {
+        String::new()
+    };
+    let mut doc = raw
+        .parse::<DocumentMut>()
+        .map_err(|e| format!("config.toml 解析失败: {e}"))?;
+
+    // 门控开启：字段级恢复（toml_edit 保形；当前值 != applied 的键不动）。
+    // skip 语义见 restore_codex_top_scalars_via_stash：unify 模式下 provider
+    // 指针与其从属的 model 结构性不可恢复；catalog 指针一律跳过。
+    let mut restored: std::collections::HashSet<String> = std::collections::HashSet::new();
+    if super::agent_stash::field_restore_enabled() && path.exists() {
+        let skip: &[&str] = if unify_session_history {
+            &["model_provider", "model", "model_catalog_json"]
+        } else {
+            &["model_catalog_json"]
+        };
+        match restore_codex_top_scalars_via_stash(path, stash_dir, skip) {
+            Ok(keys) => restored = keys,
+            Err(e) => {
+                eprintln!("[agent-stash] Codex 字段级还原失败，退回删托管键: {e}");
+            }
+        }
+        // 重新读取（restore 可能已改写文件）
+        let raw2 = if path.exists() {
+            fs::read_to_string(path).map_err(|e| e.to_string())?
+        } else {
+            String::new()
+        };
+        doc = raw2
+            .parse::<DocumentMut>()
+            .map_err(|e| format!("config.toml 解析失败: {e}"))?;
+    }
+    let restored = &restored;
+
+    if unify_session_history {
+        // 统一会话历史模式：保留 model_provider = codex_local_access，
+        // 配置 provider 使用官方 OAuth 认证（requires_openai_auth=true），
+        // 不设 base_url（Codex 回落到官方端点），不写 bearer_token。
+        // 这样官方会话和第三方会话都在 codex_local_access 桶中。
+        doc["model_provider"] = value(CODEX_RUNTIME_MODEL_PROVIDER_ID);
+        // 移除第三方模型指针（让 Codex 使用官方默认模型）；已按账本恢复的键跳过
+        if !restored.contains("model") {
+            doc.as_table_mut().remove("model");
+        }
+        if !restored.contains("model_catalog_json") {
+            doc.as_table_mut().remove("model_catalog_json");
+        }
+
+        if let Some(catalog_dir) = path.parent() {
+            let _ = fs::remove_file(catalog_dir.join(CODEX_MODEL_CATALOG_FILENAME));
+        }
+
+        let providers = doc
+            .entry("model_providers")
+            .or_insert(Item::Table(Table::new()))
+            .as_table_mut()
+            .ok_or_else(|| "config.toml 的 model_providers 不是表".to_string())?;
+        providers.set_implicit(true);
+        providers.remove(CODEX_LEGACY_MODEL_PROVIDER_ID);
+
+        let provider_table = providers
+            .entry(CODEX_RUNTIME_MODEL_PROVIDER_ID)
+            .or_insert(Item::Table(Table::new()))
+            .as_table_mut()
+            .ok_or_else(|| {
+                format!(
+                    "config.toml 的 model_providers.{CODEX_RUNTIME_MODEL_PROVIDER_ID} 不是表"
+                )
+            })?;
+        provider_table["name"] = value("OpenAI 官方");
+        provider_table["wire_api"] = value("responses");
+        provider_table.remove("base_url");
+        apply_codex_provider_auth(provider_table, true, None);
+        provider_table[CODEX_ANYBRIDGE_MANAGED_FLAG] = value(true);
+
+        // ── Codex 原生重试配置：统一会话历史模式也写入 ──
+        let enhancement = super::model_map::read_map()
+            .map(|m| m.enhancement)
+            .unwrap_or_default();
+        provider_table["request_max_retries"] =
+            value(enhancement.codex_request_max_retries as i64);
+        provider_table["stream_max_retries"] =
+            value(enhancement.codex_stream_max_retries as i64);
+    } else {
+        // 原有行为：OpenAI Official uses Codex's built-in provider and auth.json login.
+        // Keep common settings, but remove the active third-party pointer.
+        // 已按账本恢复用户原值的键跳过删除。
+        if !restored.contains("model") {
+            doc.as_table_mut().remove("model");
+        }
+        if !restored.contains("model_provider") {
+            doc.as_table_mut().remove("model_provider");
+        }
+        if !restored.contains("model_catalog_json") {
+            doc.as_table_mut().remove("model_catalog_json");
+        }
+
+        // 删除可能存在的模型目录文件
+        if let Some(catalog_dir) = path.parent() {
+            let _ = fs::remove_file(catalog_dir.join(CODEX_MODEL_CATALOG_FILENAME));
+        }
+
+        let providers_empty = doc["model_providers"]
+            .as_table_mut()
+            .map(|providers| {
+                providers.remove(CODEX_LEGACY_MODEL_PROVIDER_ID);
+                let should_remove_runtime = providers
+                    .get(CODEX_RUNTIME_MODEL_PROVIDER_ID)
+                    .and_then(Item::as_table)
+                    .map(|table| toml_table_bool(table, CODEX_ANYBRIDGE_MANAGED_FLAG))
+                    .unwrap_or(false);
+                if should_remove_runtime {
+                    providers.remove(CODEX_RUNTIME_MODEL_PROVIDER_ID);
+                }
+                providers.is_empty()
+            })
+            .unwrap_or(false);
+        if providers_empty {
+            doc.as_table_mut().remove("model_providers");
+        }
+    }
+
+    let agents_finalize =
+        CodexAgentsFinalize::cleanup_only(cleanup_anybridge_codex_agents(path, &mut doc)?);
+
+    super::write_atomic(path, doc.to_string().as_bytes())?;
+    let agents_result = finalize_codex_agents_files(path, agents_finalize);
+    if let Err(e) = super::agent_stash::clear_for(stash_dir, &codex_stash_key()) {
+        eprintln!("[agent-stash] Codex 清账失败: {e}");
+    }
+    agents_result
+}
+
+/// Grok 切回官方（带门控）：先按账本恢复 `[models].default` 原值，
+/// 再执行托管表清理（对已恢复的 default 跳过删除，避免把用户原值抹掉）。
+fn apply_grok_official_with_stash(path: &PathBuf, stash_dir: &Path) -> Result<(), String> {
+    if !path.exists() {
+        return Ok(());
+    }
+    let raw = fs::read_to_string(path).map_err(|e| format!("读取 Grok 配置文件失败: {e}"))?;
+    if raw.trim().is_empty() {
+        return Ok(());
+    }
+    let mut doc = raw
+        .parse::<DocumentMut>()
+        .map_err(|e| format!("解析 Grok config.toml 失败: {e}"))?;
+
+    // 门控开启：字段级恢复 models.default（toml_edit 保形）
+    let mut default_restored = false;
+    if super::agent_stash::field_restore_enabled() {
+        match super::field_restore::restore_toml_scalars_via_stash(
+            path,
+            &grok_stash_key(),
+            stash_dir,
+            &[],
+            "Grok",
+        ) {
+            Ok(keys) => default_restored = keys.contains("models.default"),
+            Err(e) => {
+                eprintln!("[agent-stash] Grok 字段级还原失败，退回删托管键: {e}");
+            }
+        }
+        // 重新读取（restore 可能已改写文件）
+        let raw2 = fs::read_to_string(path).map_err(|e| format!("读取 Grok 配置文件失败: {e}"))?;
+        doc = raw2
+            .parse::<DocumentMut>()
+            .map_err(|e| format!("解析 Grok config.toml 失败: {e}"))?;
+    }
+
+    let current_default = doc
+        .get("models")
+        .and_then(Item::as_table_like)
+        .and_then(|t| t.get("default"))
+        .and_then(toml_item_string);
+
+    let mut keys_to_remove = Vec::new();
+    if let Some(model_table) = doc.get("model").and_then(Item::as_table_like) {
+        for (key, val) in model_table.iter() {
+            if let Some(table) = val.as_table_like() {
+                let is_managed = table
+                    .get("anybridge_managed")
+                    .and_then(Item::as_bool)
+                    .unwrap_or(false);
+                if is_managed || key == "anybridge" {
+                    keys_to_remove.push(key.to_string());
+                }
+            }
+        }
+    }
+
+    if let Some(model_table) = doc.get_mut("model").and_then(Item::as_table_like_mut) {
+        for key in &keys_to_remove {
+            model_table.remove(key);
+        }
+    }
+
+    // 已按账本恢复用户原 default 的跳过删除（避免把原值又抹掉）
+    if !default_restored {
+        if let Some(def) = current_default {
+            if keys_to_remove.contains(&def) || def == "anybridge" {
+                if let Some(models_table) =
+                    doc.get_mut("models").and_then(Item::as_table_like_mut)
+                {
+                    models_table.remove("default");
+                    if models_table.is_empty() {
+                        doc.remove("models");
+                    }
+                }
+            }
+        }
+    }
+
+    super::write_atomic(path, doc.to_string().as_bytes())?;
+    if let Err(e) = super::agent_stash::clear_for(stash_dir, &grok_stash_key()) {
+        eprintln!("[agent-stash] Grok 清账失败: {e}");
+    }
+    Ok(())
+}
+
+/// OpenCode 切回官方（带门控）：字段级还原优先，无记录退回删托管键旧语义。
+fn apply_opencode_official_with_stash(
+    path: &PathBuf,
+    store: &ProviderStore,
+    stash_dir: &Path,
+) -> Result<(), String> {
+    if !path.exists() {
+        return Ok(());
+    }
+    let raw = fs::read_to_string(path).map_err(|e| format!("读取 opencode.json 失败: {e}"))?;
+    if raw.trim().is_empty() {
+        return Ok(());
+    }
+    let mut obj = parse_json_object(&raw, "opencode.json")?;
+
+    // 门控开启：优先字段级还原（写回原值/保留用户改动；保形内聚）
+    if super::agent_stash::field_restore_enabled() {
+        match restore_opencode_fields_via_stash(path, stash_dir) {
+            Ok(true) => return Ok(()),
+            Ok(false) => {}
+            Err(e) => {
+                eprintln!("[agent-stash] OpenCode 字段级还原失败，退回删托管键: {e}");
+            }
+        }
+    }
+
+    let mut managed_ids: Vec<String> = store
+        .opencode_configs
+        .iter()
+        .map(|c| c.id.clone())
+        .collect();
+    managed_ids.push(PLATFORM_OPENCODE.to_string());
+    managed_ids.push("anybridge-local-proxy".to_string());
+    managed_ids.push("anybridge-local-proxy-opencode".to_string());
+
+    if let Some(providers) = obj.get_mut("provider").and_then(Value::as_object_mut) {
+        for id in &managed_ids {
+            providers.remove(id);
+        }
+    }
+
+    let current_model = obj.get("model").and_then(Value::as_str);
+    if let Some(m) = current_model {
+        let provider_prefix = m.split('/').next().unwrap_or("").trim();
+        if managed_ids.iter().any(|id| id == provider_prefix) {
+            obj.remove("model");
+        }
+    }
 
     let json = serde_json::to_string_pretty(&Value::Object(obj)).map_err(|e| e.to_string())?;
     super::write_atomic(path, json.as_bytes())
@@ -5980,7 +7399,22 @@ fn zcode_preview(p: &Provider, api_key: &str) -> Value {
     })
 }
 
-fn apply_zcode_config_file(path: &PathBuf, p: &Provider) -> Result<(), String> {
+fn zcode_stash_key(file: &'static str) -> super::agent_stash::StashKey {
+    super::agent_stash::StashKey {
+        platform: "zcode",
+        file,
+    }
+}
+
+/// ZCode 接入（带记账）：受管字段 = 将被 retain 删除的全部托管 provider
+/// 条目（对象级，`provider.<id>`）+ 本次写入的 `provider.AnyBridge`。
+/// `stash_key`：主配置与 cli 配置的文件名不同，账本键由调用方区分。
+fn apply_zcode_config_file_with_stash(
+    path: &PathBuf,
+    p: &Provider,
+    stash_key: &super::agent_stash::StashKey,
+    stash_dir: &Path,
+) -> Result<(), String> {
     let raw = if path.exists() {
         fs::read_to_string(path).map_err(|e| e.to_string())?
     } else {
@@ -5997,6 +7431,64 @@ fn apply_zcode_config_file(path: &PathBuf, p: &Provider) -> Result<(), String> {
     let provider_obj = provider_value
         .as_object_mut()
         .ok_or_else(|| "config.json 的 provider 字段不是对象".to_string())?;
+
+    // 记账：所有将被 retain 删除的托管条目 + 本次写入条目（original 幂等）
+    let mut plans = Vec::new();
+    let managed_ids: Vec<String> = provider_obj
+        .iter()
+        .filter(|(id, entry)| zcode_is_managed_provider(id, entry))
+        .map(|(id, _)| id.clone())
+        .collect();
+    for id in &managed_ids {
+        let current = provider_obj
+            .get(id)
+            .cloned()
+            .and_then(|v| super::agent_stash::Stashed::from_json_any(&v))
+            .unwrap_or(super::agent_stash::Stashed::Absent);
+        plans.push(super::agent_stash::FieldPlan {
+            path: vec!["provider".into(), id.clone()],
+            current,
+            new: if *id == ZCODE_PROVIDER_ID {
+                super::agent_stash::Stashed::Json(zcode_provider_entry(p, &p.api_key).to_string())
+            } else {
+                // 历史变体条目：本次会被删除
+                super::agent_stash::Stashed::Absent
+            },
+        });
+    }
+    if !managed_ids.contains(&ZCODE_PROVIDER_ID.to_string()) {
+        plans.push(super::agent_stash::FieldPlan {
+            path: vec!["provider".into(), ZCODE_PROVIDER_ID.to_string()],
+            current: super::agent_stash::Stashed::Absent,
+            new: super::agent_stash::Stashed::Json(zcode_provider_entry(p, &p.api_key).to_string()),
+        });
+    }
+    if let Err(e) = super::agent_stash::record_apply(stash_dir, stash_key, &plans) {
+        eprintln!("[agent-stash] ZCode 记账失败（不影响切换）: {e}");
+    }
+
+    // 门控：保形写入
+    if super::jsonc_edit::format_preserving_enabled() {
+        let mut text = raw.clone();
+        let schema_missing = obj.get("$schema").is_none();
+        if schema_missing {
+            text = super::jsonc_edit::set_key(
+                &text,
+                &["$schema"],
+                &super::jsonc_edit::JsoncValue::Str("https://zcode.z.ai/config.json".into()),
+            )?;
+        }
+        for id in &managed_ids {
+            text = super::jsonc_edit::remove_key(&text, &["provider", id.as_str()])?;
+        }
+        text = super::jsonc_edit::set_key(
+            &text,
+            &["provider", ZCODE_PROVIDER_ID],
+            &super::jsonc_edit::JsoncValue::Raw(zcode_provider_entry(p, &p.api_key).to_string()),
+        )?;
+        return super::write_atomic(path, text.as_bytes());
+    }
+
     provider_obj.retain(|provider_id, provider| !zcode_is_managed_provider(provider_id, provider));
     provider_obj.insert(
         ZCODE_PROVIDER_ID.to_string(),
@@ -6985,29 +8477,66 @@ fn read_grok_config_info(
 
 /// 检测所有支持的平台：安装状态 + 当前接管的供应商 + 备份是否存在。
 ///
-/// 3 秒结果缓存：全量检测要扫 13 个平台（其中 Claude Desktop 每次都要
-/// spawn PowerShell 查 Appx，1-3 秒），面板切换/操作后的连带刷新会频繁
-/// 触发——短缓存让连续点击立即返回，也把刷新耗时从"每次全扫"降为偶发。
-static DETECT_CACHE: std::sync::Mutex<Option<(std::time::Instant, Vec<PlatformInfo>)>> =
+/// 缓存失效策略（借鉴 magpie filememo）：按**输入文件指纹**（每个平台
+/// 配置文件及其备份、providers.json 的 mtime+size）失效，而不是时间
+/// TTL——磁盘没变就绝不重扫（旧实现 3 秒 TTL 下每次进 tab 都全扫
+/// 13 平台，其中 Claude Desktop 每次 spawn PowerShell 1-3 秒）。
+/// 外部改了配置文件 → 指纹变 → 自动重扫，漂移检测也随之刷新。
+static DETECT_CACHE: std::sync::Mutex<Option<(String, Vec<PlatformInfo>)>> =
     std::sync::Mutex::new(None);
 
 /// 任何改变平台接管状态的操作（接入/还原/汉化）之后都必须调用，
-/// 否则 3 秒缓存会让随后的 detect_platforms 返回过期状态。
+/// 否则指纹缓存会让随后的 detect_platforms 返回过期状态
+///（如 Claude Desktop 的 Appx 状态无文件指纹，只能靠它强制失效）。
 pub(crate) fn invalidate_detect_cache() {
     if let Ok(mut cache) = DETECT_CACHE.lock() {
         *cache = None;
     }
 }
 
+/// 检测输入指纹：所有会影响 detect_platforms_sync 结果的文件快照。
+/// stat 十几个文件是微秒级 metadata 调用，比 spawn PowerShell 便宜几个量级。
+fn detect_fingerprint() -> String {
+    let mut fp = String::new();
+    let mut stamp = |label: &str, path: Option<std::path::PathBuf>| {
+        let Some(path) = path else { return };
+        match std::fs::metadata(&path) {
+            Ok(meta) => {
+                let mtime = meta
+                    .modified()
+                    .ok()
+                    .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                    .map(|d| d.as_nanos())
+                    .unwrap_or(0);
+                fp.push_str(&format!("{label}:{}:{}:{};", path.display(), meta.len(), mtime));
+            }
+            // 文件不存在也是一种状态（未安装/已删除），一并进指纹
+            Err(_) => fp.push_str(&format!("{label}:{}:absent;", path.display())),
+        }
+    };
+    stamp("store", Some(super::config::providers_path()));
+    for plat in ALL_PLATFORMS {
+        let config = plat.config_path();
+        stamp(plat.id(), config.clone());
+        // 备份文件存在性进指纹（backupExists 展示给用户）
+        if let Some(cfg) = &config {
+            let mut bak = cfg.clone();
+            bak.as_mut_os_string().push(".byok-bak");
+            stamp("bak", Some(bak));
+        }
+    }
+    fp
+}
+
 #[tauri::command]
-pub async fn detect_platforms() -> Result<Vec<PlatformInfo>, String> {
-    // 缓存命中（3 秒内）直接返回
-    {
+pub async fn detect_platforms(force: Option<bool>) -> Result<Vec<PlatformInfo>, String> {
+    let force = force.unwrap_or(false);
+    if !force {
+        let fp = detect_fingerprint();
         let cache = DETECT_CACHE.lock().unwrap_or_else(|p| p.into_inner());
-        if let Some((at, list)) = cache.as_ref() {
-            if at.elapsed() < std::time::Duration::from_secs(3) {
-                let cloned: Vec<PlatformInfo> = list.clone();
-                return Ok(cloned);
+        if let Some((cached_fp, list)) = cache.as_ref() {
+            if *cached_fp == fp {
+                return Ok(list.clone());
             }
         }
     }
@@ -7015,9 +8544,11 @@ pub async fn detect_platforms() -> Result<Vec<PlatformInfo>, String> {
         .await
         .map_err(|e| format!("检测平台状态任务执行失败: {e}"))?;
     if let Ok(list) = &result {
-        let cloned: Vec<PlatformInfo> = list.clone();
+        // 以扫描完成时刻的指纹入库：扫描期间文件又变了也不亏——
+        // 下次进来指纹对不上，会重扫一次拿到最新状态
+        let fp = detect_fingerprint();
         let mut cache = DETECT_CACHE.lock().unwrap_or_else(|p| p.into_inner());
-        *cache = Some((std::time::Instant::now(), cloned));
+        *cache = Some((fp, list.clone()));
     }
     result
 }
@@ -7396,26 +8927,29 @@ async fn update_platform_agent_inner(platform: String) -> Result<PlatformUpdateI
     })
 }
 
+/// 全量检测的平台清单：detect_platforms_sync（扫描）与 detect_fingerprint
+///（指纹）共用同一份——新增平台只改这一处，杜绝两份清单漂移。
+const ALL_PLATFORMS: [Platform; 13] = [
+    Platform::Antigravity,
+    Platform::AntigravityIde,
+    Platform::ClaudeCode,
+    Platform::ClaudeDesktop,
+    Platform::Codex,
+    Platform::CodeBuddy,
+    Platform::Grok,
+    Platform::OpenCode,
+    Platform::WorkBuddy,
+    Platform::ZCode,
+    Platform::Pi,
+    Platform::Hermes,
+    Platform::DeepSeekHarness,
+];
+
 fn detect_platforms_sync() -> Result<Vec<PlatformInfo>, String> {
     let store = read_provider_store().unwrap_or_default();
-    let platforms = [
-        Platform::Antigravity,
-        Platform::AntigravityIde,
-        Platform::ClaudeCode,
-        Platform::ClaudeDesktop,
-        Platform::Codex,
-        Platform::CodeBuddy,
-        Platform::Grok,
-        Platform::OpenCode,
-        Platform::WorkBuddy,
-        Platform::ZCode,
-        Platform::Pi,
-        Platform::Hermes,
-        Platform::DeepSeekHarness,
-    ];
-    let mut out = Vec::with_capacity(platforms.len());
+    let mut out = Vec::with_capacity(ALL_PLATFORMS.len());
 
-    for plat in platforms {
+    for plat in ALL_PLATFORMS {
         let config_path_buf = plat.config_path();
         let config_path = config_path_buf
             .as_ref()
@@ -7480,6 +9014,7 @@ fn detect_platforms_sync() -> Result<Vec<PlatformInfo>, String> {
             }
         });
         let mut managed_by_any_bridge = state.is_some();
+        let mut drifted_fields: Vec<DriftField> = Vec::new();
         let mut claude_config = None;
         let mut codex_config = None;
         let mut antigravity_config = None;
@@ -7566,6 +9101,11 @@ fn detect_platforms_sync() -> Result<Vec<PlatformInfo>, String> {
                         }
                         info.managed_by_any_bridge = managed_by_any_bridge;
                         claude_config = Some(info);
+                        // 漂移检测：只在接管中（有记录且状态匹配）比对才有意义——
+                        // 未接管时字段本来就该是原值，报漂移只会误导
+                        if managed_by_any_bridge && state.is_some() {
+                            drifted_fields = detect_claude_drift(path);
+                        }
                     }
                     Ok(None) => {
                         managed_by_any_bridge = false;
@@ -7746,6 +9286,7 @@ fn detect_platforms_sync() -> Result<Vec<PlatformInfo>, String> {
             codex_config,
             claude_config,
             antigravity_config,
+            drifted_fields,
             error,
         });
     }
@@ -9250,6 +10791,442 @@ mod tests {
         let _ = fs::remove_dir_all(path.parent().unwrap());
     }
 
+    // ─── 字段级记账与还原（配置切换重构 2026-10-26） ─────────────
+
+    fn field_restore_tmp(name: &str) -> (PathBuf, PathBuf) {
+        let nanos = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
+        let dir = std::env::temp_dir().join(format!("anybridge-fieldrestore-{name}-{nanos}"));
+        fs::create_dir_all(&dir).unwrap();
+        (dir.join("settings.json"), dir.join("stash"))
+    }
+
+    const FIELD_RESTORE_ORIGINAL: &str = r#"{
+  "env": {
+    "ANTHROPIC_BASE_URL": "https://corp.example",
+    "ANTHROPIC_AUTH_TOKEN": "sk-user-original",
+    "ANTHROPIC_SMALL_FAST_MODEL": "claude-haiku-old"
+  },
+  "permissions": { "allow": ["Read"] }
+}"#;
+
+    /// 用户自己改过的字段在字段级还原时必须保留（当前值 != applied）。
+    #[test]
+    fn field_restore_keeps_user_edits_made_while_wired() {
+        let (path, stash) = field_restore_tmp("keep-user-edits");
+        fs::write(&path, FIELD_RESTORE_ORIGINAL).unwrap();
+        let plat = Platform::ClaudeCode;
+
+        // 接入
+        plat.apply_claude_with_stash(&path, &test_claude_provider(), &stash)
+            .unwrap();
+
+        // 接管期间用户手动改了 ANTHROPIC_MODEL
+        let mut obj =
+            crate::commands::ide_config::parse_object(&fs::read_to_string(&path).unwrap())
+                .unwrap();
+        obj["env"]["ANTHROPIC_MODEL"] = Value::String("user-picked".into());
+        fs::write(
+            &path,
+            serde_json::to_string_pretty(&Value::Object(obj)).unwrap(),
+        )
+        .unwrap();
+
+        // 切回官方（字段级）
+        plat.apply_claude_official_with_stash(&path, true, &stash)
+            .unwrap();
+
+        let value: Value = serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
+        let env = value.get("env").and_then(Value::as_object).unwrap();
+        assert_eq!(
+            env.get("ANTHROPIC_BASE_URL").and_then(Value::as_str),
+            Some("https://corp.example"),
+            "未被用户改动的字段必须写回原值"
+        );
+        assert_eq!(
+            env.get("ANTHROPIC_AUTH_TOKEN").and_then(Value::as_str),
+            Some("sk-user-original"),
+            "未被用户改动的字段必须写回原值"
+        );
+        assert_eq!(
+            env.get("ANTHROPIC_MODEL").and_then(Value::as_str),
+            Some("user-picked"),
+            "用户在接管期间改过的字段必须保留"
+        );
+        assert!(
+            value.get("permissions").is_some(),
+            "非托管字段必须原样保留"
+        );
+
+        // 清账完成
+        let stash_key = claude_stash_key();
+        assert!(crate::commands::agent_stash::entries_for(&stash, &stash_key)
+            .unwrap()
+            .is_empty());
+        let _ = fs::remove_dir_all(path.parent().unwrap());
+    }
+
+    /// 无记账记录时，门控开启也必须退回「删托管键」旧语义（不能丢清理能力）。
+    #[test]
+    fn field_restore_without_stash_falls_back_to_removal() {
+        let (path, stash) = field_restore_tmp("no-stash");
+        fs::write(
+            &path,
+            r#"{
+  "env": {
+    "ANTHROPIC_BASE_URL": "https://third.example",
+    "ANTHROPIC_AUTH_TOKEN": "sk-token",
+    "OTHER_KEY": "keep-me"
+  }
+}"#,
+        )
+        .unwrap();
+        let plat = Platform::ClaudeCode;
+        plat.apply_claude_official_with_stash(&path, true, &stash)
+            .unwrap();
+
+        let value: Value = serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
+        let env = value.get("env").and_then(Value::as_object).unwrap();
+        assert!(env.get("ANTHROPIC_BASE_URL").is_none(), "托管键必须清除");
+        assert!(env.get("ANTHROPIC_AUTH_TOKEN").is_none(), "托管键必须清除");
+        assert_eq!(
+            env.get("OTHER_KEY").and_then(Value::as_str),
+            Some("keep-me"),
+            "非托管键必须保留"
+        );
+        let _ = fs::remove_dir_all(path.parent().unwrap());
+    }
+
+    /// 门控关闭（默认）时行为与旧版完全一致：删托管键、保留其它。
+    #[test]
+    fn gate_off_keeps_legacy_removal_semantics() {
+        let (path, stash) = field_restore_tmp("gate-off");
+        fs::write(&path, FIELD_RESTORE_ORIGINAL).unwrap();
+        let plat = Platform::ClaudeCode;
+        plat.apply_claude_with_stash(&path, &test_claude_provider(), &stash)
+            .unwrap();
+        plat.apply_claude_official_with_stash(&path, false, &stash)
+            .unwrap();
+
+        let value: Value = serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
+        // 旧语义：env 清空后整个 env 对象被移除（FIELD_RESTORE_ORIGINAL 的
+        // env 只含托管键）；门控关闭时不写回任何原值
+        assert!(
+            value.get("env").is_none(),
+            "env 只含托管键且全被删除时，旧语义必须整体移除 env"
+        );
+        assert!(value.get("permissions").is_some());
+        // 记账仍在（记账与还原行为解耦）
+        assert!(
+            !crate::commands::agent_stash::entries_for(&stash, &claude_stash_key())
+                .unwrap()
+                .is_empty()
+        );
+        let _ = fs::remove_dir_all(path.parent().unwrap());
+    }
+
+    /// 供应商直连接入：original 只记首次，重复切换不覆盖（配合字段级还原）。
+    #[test]
+    fn supplier_apply_records_original_once_and_restore_writes_it_back() {
+        let (path, stash) = field_restore_tmp("apply-restore-roundtrip");
+        fs::write(&path, FIELD_RESTORE_ORIGINAL).unwrap();
+        let plat = Platform::ClaudeCode;
+
+        // 第一次接入（原值 corp）
+        plat.apply_claude_with_stash(&path, &test_claude_provider(), &stash)
+            .unwrap();
+        // 第二次切换到另一供应商（current 已是 anybridge 值）
+        let mut provider2 = test_claude_provider();
+        provider2.api_host = "https://other.example.com".into();
+        provider2.default_model = "other-model".into();
+        plat.apply_claude_with_stash(&path, &provider2, &stash)
+            .unwrap();
+
+        // original 必须保持 corp（不被第二次覆盖）
+        let entries = crate::commands::agent_stash::entries_for(&stash, &claude_stash_key())
+            .unwrap();
+        let base_entry = entries
+            .iter()
+            .find(|e| e.path.join(".") == "env.ANTHROPIC_BASE_URL")
+            .expect("必须有 BASE_URL 记账");
+        assert_eq!(
+            base_entry.original,
+            crate::commands::agent_stash::Stashed::s("https://corp.example")
+        );
+        assert_eq!(
+            base_entry.applied,
+            crate::commands::agent_stash::Stashed::s("https://other.example.com")
+        );
+
+        // 字段级还原
+        plat.apply_claude_official_with_stash(&path, true, &stash)
+            .unwrap();
+        let value: Value = serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
+        let env = value.get("env").and_then(Value::as_object).unwrap();
+        assert_eq!(
+            env.get("ANTHROPIC_BASE_URL").and_then(Value::as_str),
+            Some("https://corp.example"),
+            "两次切换后仍必须回到最初原值"
+        );
+        assert_eq!(
+            env.get("ANTHROPIC_AUTH_TOKEN").and_then(Value::as_str),
+            Some("sk-user-original")
+        );
+        // SMALL_FAST_MODEL 原本存在，接入时被删，还原时必须写回
+        assert_eq!(
+            env.get("ANTHROPIC_SMALL_FAST_MODEL").and_then(Value::as_str),
+            Some("claude-haiku-old"),
+            "接入时被删除的键必须按 original 写回"
+        );
+        assert!(
+            value.get("permissions").is_some(),
+            "非托管字段必须原样保留"
+        );
+        let _ = fs::remove_dir_all(path.parent().unwrap());
+    }
+
+    // ── Drift（配置漂移检测）行为测试 ─────────────────────────────
+
+    /// 外部改走 BASE_URL → 检出 drift 且分类为 unwired；未动 → 无漂移。
+    #[test]
+    fn drift_detected_when_external_changes_base_url() {
+        let (path, stash) = field_restore_tmp("drift-unwired");
+        fs::write(&path, FIELD_RESTORE_ORIGINAL).unwrap();
+        let plat = Platform::ClaudeCode;
+        plat.apply_claude_with_stash(&path, &test_claude_provider(), &stash)
+            .unwrap();
+
+        // 未被改动：无漂移
+        assert!(
+            detect_claude_drift_in(&stash, &path).is_empty(),
+            "apply 后没人动配置，不能报漂移"
+        );
+
+        // 外部把 BASE_URL 改走（如用户手填了另一家中转站）
+        let mut value: Value = serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
+        value["env"]["ANTHROPIC_BASE_URL"] = Value::String("https://rival.example".into());
+        fs::write(&path, serde_json::to_string_pretty(&value).unwrap()).unwrap();
+
+        let drift = detect_claude_drift_in(&stash, &path);
+        assert_eq!(drift.len(), 1, "只动了 BASE_URL 一处: {drift:?}");
+        assert_eq!(drift[0].path, "env.ANTHROPIC_BASE_URL");
+        assert_eq!(drift[0].kind, "unwired");
+        let _ = fs::remove_dir_all(path.parent().unwrap());
+    }
+
+    /// 模型被外部改回 → kind=replaced；键被外部删除（改回 absent）同样算漂移。
+    #[test]
+    fn drift_catches_replaced_model_and_removed_key() {
+        let (path, stash) = field_restore_tmp("drift-replaced");
+        fs::write(&path, FIELD_RESTORE_ORIGINAL).unwrap();
+        let plat = Platform::ClaudeCode;
+        plat.apply_claude_with_stash(&path, &test_claude_provider(), &stash)
+            .unwrap();
+
+        let mut value: Value = serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
+        value["env"]["ANTHROPIC_MODEL"] = Value::String("claude-official-model".into());
+        // applied 时 AUTH_TOKEN 被写入；外部把整个键删掉 = 改回 absent
+        value["env"].as_object_mut().unwrap().remove("ANTHROPIC_AUTH_TOKEN");
+        fs::write(&path, serde_json::to_string_pretty(&value).unwrap()).unwrap();
+
+        let drift = detect_claude_drift_in(&stash, &path);
+        let by_path = |p: &str| {
+            drift
+                .iter()
+                .find(|d| d.path == p)
+                .unwrap_or_else(|| panic!("必须检出 {p} 的漂移: {drift:?}"))
+        };
+        assert_eq!(by_path("env.ANTHROPIC_MODEL").kind, "replaced");
+        assert_eq!(by_path("env.ANTHROPIC_AUTH_TOKEN").kind, "changed");
+        let _ = fs::remove_dir_all(path.parent().unwrap());
+    }
+
+    /// 从未接管（空账本）→ 不报漂移（无记账无从比对，属「未知」而非「无漂移」，
+    /// 前端对空列表不渲染，不伪装成否定结论）。
+    #[test]
+    fn drift_without_ledger_is_unknown_not_negative() {
+        let (path, stash) = field_restore_tmp("drift-empty");
+        fs::write(&path, FIELD_RESTORE_ORIGINAL).unwrap();
+        assert!(detect_claude_drift_in(&stash, &path).is_empty());
+        let _ = fs::remove_dir_all(path.parent().unwrap());
+    }
+
+    /// DriftField 序列化只含 path + kind——记账字段含 AUTH_TOKEN，
+    /// 值一旦进结构就会泄露到 UI（结构性防泄露，锁死字段集）。
+    #[test]
+    fn drift_field_never_carries_values() {
+        let field = DriftField {
+            path: "env.ANTHROPIC_AUTH_TOKEN".into(),
+            kind: "changed",
+        };
+        let json = serde_json::to_value(&field).unwrap();
+        let mut keys: Vec<&str> = json.as_object().unwrap().keys().map(|s| s.as_str()).collect();
+        keys.sort_unstable();
+        assert_eq!(keys, vec!["kind", "path"], "DriftField 严禁携带值字段");
+    }
+
+    /// 记账与写入同一事务：apply 后立即字段级还原 = 字节级回到原文件内容
+    /// （托管字段子集）。配置方案路径（settings_config）同验。
+    #[test]
+    fn config_file_apply_then_field_restore_roundtrip() {
+        let (path, stash) = field_restore_tmp("config-roundtrip");
+        fs::write(&path, FIELD_RESTORE_ORIGINAL).unwrap();
+
+        let config = ClaudeCodeConfig {
+            id: "claude-config-rt".to_string(),
+            name: "RT Claude".to_string(),
+            api_host: "https://saved.example.com".to_string(),
+            api_key: "sk-saved".to_string(),
+            api_path: None,
+            default_model: "claude-saved-model".to_string(),
+            models: Vec::new(),
+            settings_config: Some(serde_json::json!({
+                "env": {
+                    "ANTHROPIC_BASE_URL": "https://saved.example.com",
+                    "ANTHROPIC_AUTH_TOKEN": "sk-saved",
+                    "ANTHROPIC_MODEL": "claude-saved-model"
+                }
+            })),
+            source_provider_id: String::new(),
+            source_provider_name: String::new(),
+        };
+        apply_claude_config_file_with_stash(&path, &config, &stash).unwrap();
+
+        Platform::ClaudeCode
+            .apply_claude_official_with_stash(&path, true, &stash)
+            .unwrap();
+
+        let value: Value = serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
+        let env = value.get("env").and_then(Value::as_object).unwrap();
+        assert_eq!(
+            env.get("ANTHROPIC_BASE_URL").and_then(Value::as_str),
+            Some("https://corp.example")
+        );
+        assert_eq!(
+            env.get("ANTHROPIC_AUTH_TOKEN").and_then(Value::as_str),
+            Some("sk-user-original")
+        );
+        assert!(
+            value.get("permissions").is_some(),
+            "settings_config 之外的顶层字段必须保留"
+        );
+        assert!(
+            crate::commands::agent_stash::entries_for(&stash, &claude_stash_key())
+                .unwrap()
+                .is_empty(),
+            "还原后必须清账"
+        );
+        let _ = fs::remove_dir_all(path.parent().unwrap());
+    }
+
+    // ─── 保形写入门控（ANYBRIDGE_FORMAT_PRESERVING_JSON） ─────────
+
+    use std::sync::Mutex as StdMutex;
+    static PRESERVING_ENV_LOCK: StdMutex<()> = StdMutex::new(());
+
+    /// 统一门控 helper：一把锁内设置任意组合的门控 env（进程级全局，
+    /// 测试必须互斥）。None = 不动该门控。**严禁嵌套调用**（std Mutex
+    /// 不可重入，套两层会死锁——曾把 opencode_preserving 测试挂死 60s+）。
+    fn with_gates<T>(
+        preserving: Option<bool>,
+        field_restore: Option<bool>,
+        f: impl FnOnce() -> T,
+    ) -> T {
+        let _g = PRESERVING_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|p| p.into_inner());
+        let set = |key: &str, v: Option<bool>| match v {
+            Some(true) => std::env::set_var(key, "1"),
+            Some(false) => std::env::set_var(key, "0"),
+            None => {}
+        };
+        set("ANYBRIDGE_FORMAT_PRESERVING_JSON", preserving);
+        set("ANYBRIDGE_FIELD_RESTORE", field_restore);
+        let out = f();
+        std::env::remove_var("ANYBRIDGE_FORMAT_PRESERVING_JSON");
+        std::env::remove_var("ANYBRIDGE_FIELD_RESTORE");
+        out
+    }
+
+    /// 串行化设置保形门控 env（进程级全局，测试必须互斥）。
+    fn with_preserving_json<T>(enabled: bool, f: impl FnOnce() -> T) -> T {
+        with_gates(Some(enabled), None, f)
+    }
+
+    const PRESERVING_ORIGINAL: &str = r#"{
+  // 我的注释：手动维护
+  "env": {
+    "ANTHROPIC_BASE_URL": "https://corp.example",
+    "CUSTOM": "keep"
+  }
+}"#;
+
+    /// 门控开启：接入后注释、键顺序、既有键全部保留，仅目标值变化。
+    #[test]
+    fn format_preserving_apply_keeps_comments_and_order() {
+        with_preserving_json(true, || {
+            let (path, stash) = field_restore_tmp("preserving-apply");
+            fs::write(&path, PRESERVING_ORIGINAL).unwrap();
+            Platform::ClaudeCode
+                .apply_claude_with_stash(&path, &test_claude_provider(), &stash)
+                .unwrap();
+
+            let out = fs::read_to_string(&path).unwrap();
+            assert!(out.contains("// 我的注释"), "注释必须保留");
+            assert!(out.contains("\"CUSTOM\": \"keep\""), "既有键必须保留");
+            let base_pos = out.find("ANTHROPIC_BASE_URL").unwrap();
+            let custom_pos = out.find("\"CUSTOM\"").unwrap();
+            assert!(base_pos < custom_pos, "键顺序必须保持原样");
+            // 保形输出含注释，必须用 json5 容错解析
+            let obj = crate::commands::ide_config::parse_object(&out).unwrap();
+            let env = obj.get("env").and_then(Value::as_object).unwrap();
+            assert_eq!(
+                env.get("ANTHROPIC_BASE_URL").and_then(Value::as_str),
+                Some("https://anthropic.example.com"),
+                "目标值必须更新"
+            );
+            assert_eq!(
+                env.get("ANTHROPIC_AUTH_TOKEN").and_then(Value::as_str),
+                Some("sk-ant-test-secret")
+            );
+            let _ = fs::remove_dir_all(path.parent().unwrap());
+        });
+    }
+
+    /// 门控开启：接入 → 切回官方 往返，注释保留 + 原值逐字段写回。
+    #[test]
+    fn format_preserving_restore_roundtrip_keeps_comments() {
+        with_preserving_json(true, || {
+            let (path, stash) = field_restore_tmp("preserving-roundtrip");
+            fs::write(&path, PRESERVING_ORIGINAL).unwrap();
+            let plat = Platform::ClaudeCode;
+            plat.apply_claude_with_stash(&path, &test_claude_provider(), &stash)
+                .unwrap();
+            plat.apply_claude_official_with_stash(&path, true, &stash)
+                .unwrap();
+
+            let out = fs::read_to_string(&path).unwrap();
+            assert!(out.contains("// 我的注释"), "往返后注释必须保留");
+            let obj = crate::commands::ide_config::parse_object(&out).unwrap();
+            let env = obj.get("env").and_then(Value::as_object).unwrap();
+            assert_eq!(
+                env.get("ANTHROPIC_BASE_URL").and_then(Value::as_str),
+                Some("https://corp.example"),
+                "原值必须写回"
+            );
+            assert_eq!(
+                env.get("CUSTOM").and_then(Value::as_str),
+                Some("keep"),
+                "非托管键必须保留"
+            );
+            // ANTHROPIC_MODEL 系列接入时新建、还原时应删除（original=Absent）
+            assert!(
+                env.get("ANTHROPIC_MODEL").is_none(),
+                "原本不存在的键必须删除"
+            );
+            let _ = fs::remove_dir_all(path.parent().unwrap());
+        });
+    }
+
     #[test]
     fn restore_claude_official_removes_all_managed_env_fields() {
         let path = temp_json_path("claude-restore");
@@ -9280,7 +11257,13 @@ mod tests {
         )
         .unwrap();
 
-        Platform::ClaudeCode.apply_claude_official(&path).unwrap();
+        // 显式 field_restore=false + 隔离 stash：本测试锁定「删托管键」旧语义。
+        // 不能走无参 apply_claude_official——它读真实 stash 与进程级门控 env，
+        // 并行测试的 env 泄漏会让本测试意外走字段级路径（隔离纪律）。
+        let stash = temp_json_path("claude-restore-stash").parent().unwrap().join("stash");
+        Platform::ClaudeCode
+            .apply_claude_official_with_stash(&path, false, &stash)
+            .unwrap();
 
         let raw = fs::read_to_string(&path).unwrap();
         let value: Value = serde_json::from_str(&raw).unwrap();
@@ -9832,6 +11815,179 @@ wire_api = "responses"
             r#"{{"id":"cfg-1","name":"Cfg","apiHost":"https://example.com","apiKey":"sk-x","defaultModel":"gpt-5","sourceProviderId":"{source_id}","wireApi":"responses"{extra}}}"#
         ))
         .unwrap()
+    }
+
+    // ─── Codex 记账 + 字段级还原 ────────────────────────────────
+
+    /// 临时目录版（config.toml + stash 子目录），不碰真实配置。
+    fn field_restore_tmp_toml(name: &str) -> (PathBuf, PathBuf) {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let dir = std::env::temp_dir().join(format!("anybridge-codexfr-{name}-{nanos}"));
+        fs::create_dir_all(&dir).unwrap();
+        (dir.join("config.toml"), dir.join("stash"))
+    }
+
+    const CODEX_USER_ORIGINAL: &str = r#"model = "my-model"
+model_provider = "my-provider"
+service_tier = "pro"
+
+[model_providers.my-provider]
+name = "My Provider"
+base_url = "https://my.example.com/v1"
+"#;
+
+    /// 非 unify 切回：model / model_provider / service_tier 全部写回用户原值。
+    /// 全程用临时 stash（apply 与 official 必须同一本账，且不得碰真实账本）。
+    #[test]
+    fn codex_field_restore_writes_back_user_scalars_non_unify() {
+        with_field_restore(true, || {
+            let (path, stash) = field_restore_tmp_toml("non-unify");
+            fs::write(&path, CODEX_USER_ORIGINAL).unwrap();
+
+            Platform::Codex
+                .apply_codex_with_stash(&path, &test_openai_provider(), &stash)
+                .unwrap();
+            let doc = fs::read_to_string(&path)
+                .unwrap()
+                .parse::<DocumentMut>()
+                .unwrap();
+            assert_eq!(
+                doc.get("model").and_then(toml_item_string).as_deref(),
+                Some("gpt-test"),
+                "接入后 model 被覆盖"
+            );
+            assert_eq!(
+                doc.get("model_provider")
+                    .and_then(toml_item_string)
+                    .as_deref(),
+                Some(CODEX_RUNTIME_MODEL_PROVIDER_ID),
+                "接入后 model_provider 被覆盖"
+            );
+            assert!(
+                doc.get("service_tier").is_none(),
+                "接入后 service_tier 被删除"
+            );
+
+            apply_codex_official_with_stash(&path, false, &stash).unwrap();
+
+            let doc = fs::read_to_string(&path)
+                .unwrap()
+                .parse::<DocumentMut>()
+                .unwrap();
+            assert_eq!(
+                doc.get("model").and_then(toml_item_string).as_deref(),
+                Some("my-model"),
+                "model 必须写回原值"
+            );
+            assert_eq!(
+                doc.get("model_provider")
+                    .and_then(toml_item_string)
+                    .as_deref(),
+                Some("my-provider"),
+                "model_provider 必须写回原值"
+            );
+            assert_eq!(
+                doc.get("service_tier")
+                    .and_then(toml_item_string)
+                    .as_deref(),
+                Some("pro"),
+                "service_tier 必须写回原值"
+            );
+            assert!(
+                doc.get("model_providers")
+                    .and_then(|i| i.get("my-provider"))
+                    .is_some(),
+                "用户自己的 provider 表必须原样保留"
+            );
+            assert!(
+                doc.get("model_providers")
+                    .and_then(|i| i.get(CODEX_RUNTIME_MODEL_PROVIDER_ID))
+                    .is_none(),
+                "托管 provider 表必须删除"
+            );
+            let _ = fs::remove_dir_all(path.parent().unwrap());
+        });
+    }
+
+    /// unify 切回：provider 指针与其从属的 model 结构性不可恢复（诚实跳过），
+    /// service_tier 照常恢复。
+    #[test]
+    fn codex_unify_skips_dependent_scalars_and_restores_service_tier() {
+        with_field_restore(true, || {
+            let (path, stash) = field_restore_tmp_toml("unify");
+            fs::write(&path, CODEX_USER_ORIGINAL).unwrap();
+
+            Platform::Codex
+                .apply_codex_with_stash(&path, &test_openai_provider(), &stash)
+                .unwrap();
+            apply_codex_official_with_stash(&path, true, &stash).unwrap();
+
+            let doc = fs::read_to_string(&path)
+                .unwrap()
+                .parse::<DocumentMut>()
+                .unwrap();
+            assert_eq!(
+                doc.get("model_provider")
+                    .and_then(toml_item_string)
+                    .as_deref(),
+                Some(CODEX_RUNTIME_MODEL_PROVIDER_ID),
+                "unify 模式 provider 指针固定（结构性不可恢复）"
+            );
+            assert!(
+                doc.get("model").is_none(),
+                "unify 模式 model 作为 provider 从属值一并跳过恢复"
+            );
+            assert_eq!(
+                doc.get("service_tier")
+                    .and_then(toml_item_string)
+                    .as_deref(),
+                Some("pro"),
+                "service_tier 与 provider 无关，必须恢复"
+            );
+            let _ = fs::remove_dir_all(path.parent().unwrap());
+        });
+    }
+
+    /// 无账本记录时门控开启也退回删托管键旧语义（清理能力不丢）。
+    #[test]
+    fn codex_official_without_stash_falls_back_to_removal() {
+        with_field_restore(true, || {
+            let (path, stash) = field_restore_tmp_toml("no-stash");
+            fs::write(
+                &path,
+                r#"model = "third-party-model"
+model_provider = "codex_local_access"
+
+[model_providers.codex_local_access]
+name = "Third"
+base_url = "https://third.example.com/v1"
+anybridge_managed = true
+"#,
+            )
+            .unwrap();
+
+            apply_codex_official_with_stash(&path, false, &stash).unwrap();
+
+            let doc = fs::read_to_string(&path)
+                .unwrap()
+                .parse::<DocumentMut>()
+                .unwrap();
+            assert!(doc.get("model").is_none(), "无账本时 model 必须删除");
+            assert!(
+                doc.get("model_provider").is_none(),
+                "无账本时 model_provider 必须删除"
+            );
+            assert!(
+                doc.get("model_providers")
+                    .and_then(|i| i.get(CODEX_RUNTIME_MODEL_PROVIDER_ID))
+                    .is_none(),
+                "managed provider 表必须删除"
+            );
+            let _ = fs::remove_dir_all(path.parent().unwrap());
+        });
     }
 
     fn test_store_with_chat_source(config: crate::commands::config::CodexConfig) -> ProviderStore {
@@ -10620,6 +12776,590 @@ name = "Official Grok"
         );
 
         let _ = fs::remove_dir_all(path.parent().unwrap());
+    }
+
+    // ─── OpenCode 记账 + 字段级还原 ─────────────────────────────
+
+    fn with_field_restore<T>(enabled: bool, f: impl FnOnce() -> T) -> T {
+        with_gates(None, Some(enabled), f)
+    }
+
+    fn opencode_test_config(id: &str) -> OpenCodeConfig {
+        OpenCodeConfig {
+            id: id.to_string(),
+            name: "Managed".to_string(),
+            api_host: "https://managed.example.com".to_string(),
+            api_key: "sk-managed".to_string(),
+            api_path: Some("/v1".to_string()),
+            default_model: "deepseek-coder".to_string(),
+            models: vec!["deepseek-coder".to_string()],
+            settings_config: None,
+            source_provider_id: String::new(),
+            source_provider_name: String::new(),
+        }
+    }
+
+    const OPENCODE_ORIGINAL: &str = r#"{
+  "$schema": "https://opencode.ai/config.json",
+  "model": "user-own/gpt-x",
+  "provider": {
+    "user-own": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "User Own"
+    }
+  }
+}"#;
+
+    /// 接入 → 切回：原本不存在的 provider 被删除，用户的 model 指回原值。
+    #[test]
+    fn opencode_field_restore_roundtrip_restores_user_state() {
+        with_field_restore(true, || {
+            let (path, stash) = field_restore_tmp("opencode-roundtrip");
+            fs::write(&path, OPENCODE_ORIGINAL).unwrap();
+
+            apply_opencode_config_file_with_stash(
+                &path,
+                &opencode_test_config("managed-deepseek"),
+                &stash,
+            )
+            .unwrap();
+            // 接入后：托管 provider 存在，model 指向它
+            let val: Value = serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
+            assert!(val["provider"].get("managed-deepseek").is_some());
+            assert_eq!(
+                val.get("model").and_then(Value::as_str),
+                Some("managed-deepseek/deepseek-coder")
+            );
+
+            let mut store = ProviderStore::default();
+            store
+                .opencode_configs
+                .push(opencode_test_config("managed-deepseek"));
+            apply_opencode_official_with_stash(&path, &store, &stash).unwrap();
+
+            let val: Value =
+                serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
+            assert!(
+                val["provider"].get("managed-deepseek").is_none(),
+                "原本不存在的托管 provider 必须删除"
+            );
+            assert_eq!(
+                val.get("model").and_then(Value::as_str),
+                Some("user-own/gpt-x"),
+                "用户的 model 指向必须写回原值"
+            );
+            assert_eq!(
+                val["provider"]["user-own"]["name"].as_str(),
+                Some("User Own"),
+                "用户自己的 provider 必须原样保留"
+            );
+            let _ = fs::remove_dir_all(path.parent().unwrap());
+        });
+    }
+
+    /// 接管期间用户改了 model → 切回时保留用户的值（不写回旧值）。
+    #[test]
+    fn opencode_field_restore_keeps_user_model_change() {
+        with_field_restore(true, || {
+            let (path, stash) = field_restore_tmp("opencode-user-model");
+            fs::write(&path, OPENCODE_ORIGINAL).unwrap();
+
+            apply_opencode_config_file_with_stash(
+                &path,
+                &opencode_test_config("managed-deepseek"),
+                &stash,
+            )
+            .unwrap();
+
+            // 用户接管期间手动改 model
+            let mut obj = parse_json_object(
+                &fs::read_to_string(&path).unwrap(),
+                "opencode.json",
+            )
+            .unwrap();
+            obj.insert("model".into(), Value::String("user-own/picked".into()));
+            fs::write(
+                &path,
+                serde_json::to_string_pretty(&Value::Object(obj)).unwrap(),
+            )
+            .unwrap();
+
+            let mut store = ProviderStore::default();
+            store
+                .opencode_configs
+                .push(opencode_test_config("managed-deepseek"));
+            apply_opencode_official_with_stash(&path, &store, &stash).unwrap();
+
+            let val: Value = serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
+            assert_eq!(
+                val.get("model").and_then(Value::as_str),
+                Some("user-own/picked"),
+                "用户接管期间改过的 model 必须保留"
+            );
+            assert!(
+                val["provider"].get("managed-deepseek").is_none(),
+                "托管 provider 仍必须删除"
+            );
+            let _ = fs::remove_dir_all(path.parent().unwrap());
+        });
+    }
+
+    /// 无账本记录时门控开启也退回删托管键旧语义（清理能力不丢）。
+    #[test]
+    fn opencode_official_without_stash_falls_back_to_removal() {
+        with_field_restore(true, || {
+            let (path, stash) = field_restore_tmp("opencode-no-stash");
+            fs::write(
+                &path,
+                r#"{
+  "$schema": "https://opencode.ai/config.json",
+  "model": "managed-deepseek/deepseek-coder",
+  "provider": {
+    "managed-deepseek": { "npm": "@ai-sdk/openai-compatible" },
+    "user-keep": { "npm": "@ai-sdk/openai-compatible" }
+  }
+}"#,
+            )
+            .unwrap();
+
+            let mut store = ProviderStore::default();
+            store
+                .opencode_configs
+                .push(opencode_test_config("managed-deepseek"));
+            apply_opencode_official_with_stash(&path, &store, &stash).unwrap();
+
+            let val: Value = serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
+            assert!(val["provider"].get("managed-deepseek").is_none());
+            assert_eq!(
+                val["provider"]["user-keep"]["npm"].as_str(),
+                Some("@ai-sdk/openai-compatible"),
+                "非托管 provider 必须保留"
+            );
+            let _ = fs::remove_dir_all(path.parent().unwrap());
+        });
+    }
+
+    /// 保形门控 + 字段级还原双开：往返后注释与既有成员结构保留。
+    /// 注意：必须用 with_gates 单层设置两个门控——嵌套两个 helper 会
+    /// 对同一把锁二次加锁死锁（std Mutex 不可重入）。
+    #[test]
+    fn opencode_preserving_roundtrip_keeps_comments() {
+        with_gates(Some(true), Some(true), || {
+                let (path, stash) = field_restore_tmp("opencode-preserving");
+                fs::write(&path, OPENCODE_ORIGINAL).unwrap();
+
+                apply_opencode_config_file_with_stash(
+                    &path,
+                    &opencode_test_config("managed-deepseek"),
+                    &stash,
+                )
+                .unwrap();
+                let out = fs::read_to_string(&path).unwrap();
+                assert!(out.contains("\"user-own\""), "接入后用户 provider 保留");
+                assert!(
+                    out.contains("@ai-sdk/openai-compatible"),
+                    "接入内容存在"
+                );
+
+                let mut store = ProviderStore::default();
+                store
+                    .opencode_configs
+                    .push(opencode_test_config("managed-deepseek"));
+                apply_opencode_official_with_stash(&path, &store, &stash).unwrap();
+
+                let out2 = fs::read_to_string(&path).unwrap();
+                let val: Value = serde_json::from_str(&out2).unwrap();
+                assert!(
+                    val["provider"].get("managed-deepseek").is_none(),
+                    "托管 provider 已删除"
+                );
+                assert_eq!(
+                    val.get("model").and_then(Value::as_str),
+                    Some("user-own/gpt-x"),
+                    "model 写回原值"
+                );
+                // 保形：provider 表仍是原缩进风格（user-own 在前）
+                assert!(out2.contains("@ai-sdk/openai-compatible"));
+                let _ = fs::remove_dir_all(path.parent().unwrap());
+        });
+    }
+
+    // ─── ZCode / Grok / Buddy / Antigravity / Pi 记账+还原 ────────
+
+    fn named_tmp_config(name: &str, file: &str) -> (PathBuf, PathBuf) {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let dir = std::env::temp_dir().join(format!("anybridge-{name}-{nanos}"));
+        fs::create_dir_all(&dir).unwrap();
+        (dir.join(file), dir.join("stash"))
+    }
+
+    /// ZCode：托管 provider 删除，用户 provider 原样保留。
+    #[test]
+    fn zcode_field_restore_roundtrip_keeps_user_provider() {
+        with_field_restore(true, || {
+            let (path, stash) = named_tmp_config("zcode-fr", "config.json");
+            fs::write(
+                &path,
+                r#"{
+  "$schema": "https://zcode.z.ai/config.json",
+  "provider": {
+    "Acme": { "type": "openai", "name": "Acme" }
+  }
+}"#,
+            )
+            .unwrap();
+
+            let p = test_openai_provider();
+            apply_zcode_config_file_with_stash(
+                &path,
+                &p,
+                &zcode_stash_key("config.json"),
+                &stash,
+            )
+            .unwrap();
+            let val: Value = serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
+            assert!(val["provider"].get(ZCODE_PROVIDER_ID).is_some());
+
+            crate::commands::field_restore::restore_json_fields_via_stash(
+                &path,
+                &zcode_stash_key("config.json"),
+                &stash,
+                "ZCode",
+            )
+            .unwrap();
+
+            let val: Value = serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
+            assert!(
+                val["provider"].get(ZCODE_PROVIDER_ID).is_none(),
+                "托管 provider 必须删除"
+            );
+            assert_eq!(
+                val["provider"]["Acme"]["name"].as_str(),
+                Some("Acme"),
+                "用户 provider 必须保留"
+            );
+            let _ = fs::remove_dir_all(path.parent().unwrap());
+        });
+    }
+
+    /// Grok：models.default 指针写回用户原值。
+    #[test]
+    fn grok_field_restore_writes_back_user_default() {
+        with_field_restore(true, || {
+            let (path, stash) = named_tmp_config("grok-fr", "config.toml");
+            fs::write(
+                &path,
+                "[terminal]\ntheme = \"dark\"\n\n[models]\ndefault = \"my-own\"\n",
+            )
+            .unwrap();
+
+            let p = test_openai_provider();
+            Platform::Grok
+                .apply_grok_with_stash(&path, &p, &stash)
+                .unwrap();
+            let doc = fs::read_to_string(&path)
+                .unwrap()
+                .parse::<DocumentMut>()
+                .unwrap();
+            assert_ne!(
+                doc["models"]["default"].as_str(),
+                Some("my-own"),
+                "接入后 default 被覆盖"
+            );
+
+            apply_grok_official_with_stash(&path, &stash).unwrap();
+
+            let doc = fs::read_to_string(&path)
+                .unwrap()
+                .parse::<DocumentMut>()
+                .unwrap();
+            assert_eq!(
+                doc["models"]["default"].as_str(),
+                Some("my-own"),
+                "default 必须写回用户原值"
+            );
+            assert!(
+                doc.get("terminal").is_some(),
+                "用户其它配置必须保留"
+            );
+            let _ = fs::remove_dir_all(path.parent().unwrap());
+        });
+    }
+
+    /// Buddy：models 数组按 id —— 托管条目删除、用户条目保留。
+    #[test]
+    fn buddy_field_restore_roundtrip_keeps_user_models() {
+        with_field_restore(true, || {
+            let (path, stash) = named_tmp_config("buddy-fr", "models.json");
+            fs::write(
+                &path,
+                r#"{
+  "models": [
+    { "id": "user-model", "name": "User Own", "vendor": "user" }
+  ]
+}"#,
+            )
+            .unwrap();
+
+            let p = test_openai_provider();
+            apply_buddy_models_json_with_stash(&path, &p, false, &stash).unwrap();
+            let val: Value = serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
+            assert!(
+                val["models"].as_array().unwrap().len() >= 2,
+                "接入后应有托管条目"
+            );
+
+            restore_buddy_fields_via_stash(&path, "codebuddy", &stash).unwrap();
+
+            let val: Value = serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
+            let arr = val["models"].as_array().unwrap();
+            assert_eq!(arr.len(), 1, "托管条目必须删除，仅剩用户条目");
+            assert_eq!(arr[0]["id"].as_str(), Some("user-model"));
+            let _ = fs::remove_dir_all(path.parent().unwrap());
+        });
+    }
+
+    /// Antigravity：用户自己设过 cloudCodeUrl → 切回时写回原值。
+    #[test]
+    fn antigravity_official_writes_back_user_url() {
+        with_field_restore(true, || {
+            let (path, stash) = named_tmp_config("antigravity-fr", "settings.json");
+            fs::write(&path, r#"{"jetski.cloudCodeUrl": "https://corp.proxy"}"#).unwrap();
+
+            // 预置账本（临时目录，隔离）：original=corp，applied=本地代理
+            let plans = vec![super::super::agent_stash::FieldPlan {
+                path: vec!["jetski.cloudCodeUrl".into()],
+                current: super::super::agent_stash::Stashed::Str("https://corp.proxy".into()),
+                new: super::super::agent_stash::Stashed::Str(
+                    "https://localhost:8443".into(),
+                ),
+            }];
+            super::super::agent_stash::record_apply(
+                &stash,
+                &antigravity_stash_key(),
+                &plans,
+            )
+            .unwrap();
+            fs::write(&path, r#"{"jetski.cloudCodeUrl": "https://localhost:8443"}"#).unwrap();
+
+            Platform::Antigravity
+                .apply_antigravity_official_with_stash(&path, &stash)
+                .unwrap();
+
+            let val: Value = serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
+            assert_eq!(
+                val["jetski.cloudCodeUrl"].as_str(),
+                Some("https://corp.proxy"),
+                "用户原 URL 必须写回"
+            );
+            let _ = fs::remove_dir_all(path.parent().unwrap());
+        });
+    }
+
+    /// Pi：providers 对象键 —— 托管条目删除、用户条目保留、settings 默认写回。
+    #[test]
+    fn pi_field_restore_roundtrip_keeps_user_provider() {
+        with_field_restore(true, || {
+            let (path, stash) = named_tmp_config("pi-fr", "models.json");
+            let settings = path.parent().unwrap().join("settings.json");
+            fs::write(
+                &path,
+                r#"{
+  "providers": {
+    "user-own": { "name": "User Own", "api": "https://user.example/v1" }
+  }
+}"#,
+            )
+            .unwrap();
+            fs::write(
+                &settings,
+                r#"{"defaultProvider": "user-own", "defaultModel": "user-m"}"#,
+            )
+            .unwrap();
+
+            let p = test_openai_provider();
+            write_pi_managed_models_with_stash(&path, &pi_entries_from_provider(&p), &stash)
+                .unwrap();
+            let val: Value = serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
+            // Pi 的托管识别靠条目的 `_source == "anybridge"`（键是 vendor 名）
+            assert!(
+                val["providers"]
+                    .as_object()
+                    .unwrap()
+                    .values()
+                    .any(|v| v.get("_source").and_then(Value::as_str) == Some("anybridge")),
+                "接入后应有 anybridge 托管条目"
+            );
+
+            // 字段级还原（models + settings）
+            crate::commands::field_restore::restore_json_fields_via_stash(
+                &path,
+                &pi_stash_key("models.json"),
+                &stash,
+                "Pi models",
+            )
+            .unwrap();
+            let settings_ok = crate::commands::field_restore::restore_json_fields_via_stash(
+                &settings,
+                &pi_stash_key("settings.json"),
+                &stash,
+                "Pi settings",
+            )
+            .unwrap();
+            assert!(settings_ok, "settings 默认指针应有账本并还原");
+
+            let val: Value = serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
+            let providers = val["providers"].as_object().unwrap();
+            assert!(
+                !providers
+                    .values()
+                    .any(|v| v.get("_source").and_then(Value::as_str) == Some("anybridge")),
+                "托管条目必须删除"
+            );
+            assert_eq!(
+                providers["user-own"]["name"].as_str(),
+                Some("User Own"),
+                "用户 provider 必须保留"
+            );
+            let sv: Value = serde_json::from_str(&fs::read_to_string(&settings).unwrap()).unwrap();
+            assert_eq!(
+                sv["defaultProvider"].as_str(),
+                Some("user-own"),
+                "默认 provider 必须写回"
+            );
+            assert_eq!(
+                sv["defaultModel"].as_str(),
+                Some("user-m"),
+                "默认模型必须写回"
+            );
+            let _ = fs::remove_dir_all(path.parent().unwrap());
+        });
+    }
+
+    // ─── Hermes / Harness 块级 YAML 记账+还原 ────────────────────
+
+    /// Hermes：custom_providers 块与 model 指针往返；注释保留。
+    #[test]
+    fn hermes_block_restore_roundtrip_keeps_user_config() {
+        with_field_restore(true, || {
+            let (path, stash) = named_tmp_config("hermes-fr", "config.yaml");
+            fs::write(
+                &path,
+                "# Hermes docs\nmodel:\n  # keep\n  default: user-model\n  provider: mine\n  base_url: https://mine.example/v1\nterminal:\n  theme: dark\ncustom_providers:\n  - name: mine\n    base_url: https://mine.example/v1\n",
+            )
+            .unwrap();
+            let entries = vec![serde_json::json!({
+                "id": "gpt-5.4", "name": "CPA",
+                "url": "https://api.example.com/v1/chat/completions",
+                "apiKey": "sk-h", "enabled": true,
+            })];
+
+            write_hermes_managed_models_with_stash(&path, &entries, &stash).unwrap();
+            let out = fs::read_to_string(&path).unwrap();
+            assert!(out.contains("# Hermes docs"), "注释必须保留");
+            assert!(
+                out.contains("CPA"),
+                "接入后应有 CPA 托管分组"
+            );
+
+            restore_yaml_fields_via_stash(&path, &hermes_stash_key(), &stash, "Hermes").unwrap();
+
+            let out = fs::read_to_string(&path).unwrap();
+            assert!(out.contains("# Hermes docs"), "还原后注释必须保留");
+            assert!(out.contains("  # keep"), "块内注释必须保留");
+            let parsed: YamlValue = serde_yaml::from_str(&out).unwrap();
+            let names: Vec<String> = parsed["custom_providers"]
+                .as_sequence()
+                .map(|s| {
+                    s.iter()
+                        .filter_map(|i| i["name"].as_str().map(str::to_string))
+                        .collect()
+                })
+                .unwrap_or_default();
+            assert_eq!(names, vec!["mine".to_string()], "托管分组删除、用户条目保留");
+            assert_eq!(
+                parsed["model"]["provider"].as_str(),
+                Some("mine"),
+                "默认 provider 必须写回"
+            );
+            assert_eq!(
+                parsed["model"]["default"].as_str(),
+                Some("user-model"),
+                "默认模型必须写回"
+            );
+            assert_eq!(
+                parsed["model"]["base_url"].as_str(),
+                Some("https://mine.example/v1"),
+                "默认 base_url 必须写回"
+            );
+            assert_eq!(
+                parsed["terminal"]["theme"].as_str(),
+                Some("dark"),
+                "用户其它配置必须保留"
+            );
+            let _ = fs::remove_dir_all(path.parent().unwrap());
+        });
+    }
+
+    /// Harness：settings 的 llm-pi-ai / agent-default-model 与 credentials 的
+    /// refs 往返；用户 provider 与其它字段保留。
+    #[test]
+    fn harness_block_restore_roundtrip_keeps_user_config() {
+        with_field_restore(true, || {
+            let (path, stash) = named_tmp_config("harness-fr", "settings.yaml");
+            let creds = path.parent().unwrap().join(".credentials.yaml");
+            fs::write(
+                &path,
+                "llm-pi-ai:\n  providers:\n    user-own:\n      displayName: User Own\n      baseURL: https://user.example/v1\ntelemetry:\n  enabled: false\n",
+            )
+            .unwrap();
+            fs::write(&creds, "version: 1\nrefs:\n  USER_KEY: sk-user\n").unwrap();
+
+            let entries = vec![serde_json::json!({
+                "id": "gpt-5.4", "name": "CPA",
+                "url": "https://api.example.com/v1/chat/completions",
+                "apiKey": "sk-h", "enabled": true,
+            })];
+            write_harness_managed_models_with_stash(&path, &creds, &entries, &stash).unwrap();
+
+            let out = fs::read_to_string(&path).unwrap();
+            assert!(out.contains("anybridge"), "接入后应有 anybridge provider");
+
+            restore_yaml_fields_via_stash(&path, &harness_stash_key(), &stash, "hs").unwrap();
+            restore_yaml_fields_via_stash(
+                &creds,
+                &harness_credentials_stash_key(),
+                &stash,
+                "hc",
+            )
+            .unwrap();
+
+            let out = fs::read_to_string(&path).unwrap();
+            let parsed: YamlValue = serde_yaml::from_str(&out).unwrap();
+            let providers = parsed["llm-pi-ai"]["providers"].as_mapping().unwrap();
+            let keys: Vec<String> = providers
+                .keys()
+                .filter_map(|k| k.as_str().map(str::to_string))
+                .collect();
+            assert_eq!(keys, vec!["user-own".to_string()], "托管 provider 删除、用户保留");
+            assert_eq!(
+                parsed["telemetry"]["enabled"].as_bool(),
+                Some(false),
+                "用户其它顶层配置必须保留"
+            );
+            let cred_out = fs::read_to_string(&creds).unwrap();
+            let cred_parsed: YamlValue = serde_yaml::from_str(&cred_out).unwrap();
+            let refs = cred_parsed["refs"].as_mapping().unwrap();
+            assert!(refs.contains_key(YamlValue::String("USER_KEY".into())), "用户凭据保留");
+            assert!(
+                !refs.keys().any(|k| k.as_str().map(|s| s.starts_with("ANYBRIDGE_")).unwrap_or(false)),
+                "托管凭据引用必须删除"
+            );
+            let _ = fs::remove_dir_all(path.parent().unwrap());
+        });
     }
 
     fn zcode_sync_test_path(name: &str) -> PathBuf {
