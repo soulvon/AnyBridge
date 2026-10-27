@@ -12151,73 +12151,77 @@ html[data-scheme="dark"] .endpoint-brand-icon-dark,
   cursor: pointer;
 }
 
-
 /* ═══════ 统计页 ═══════ */
 .stats-page { display: flex; flex-direction: column; gap: 12px; padding: 4px 2px 24px; }
 .stats-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
 .stats-title { font-size: 20px; font-weight: 600; margin: 0 0 4px; }
-.stats-sub { font-size: 12px; color: var(--text-muted); margin: 0; }
+.stats-sub { font-size: 12px; color: var(--text-muted); margin: 0; max-width: 720px; line-height: 1.5; }
 .stats-controls { display: flex; align-items: center; gap: 8px; }
+
 .stats-range { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; background: var(--bg-card); }
 .stats-range-btn { border: 0; background: transparent; padding: 0 12px; height: 32px; font-size: 12px; color: var(--text-muted); cursor: pointer; }
+.stats-range-btn:hover { color: var(--text-primary); }
 .stats-range-btn.active { background: rgba(59, 130, 246, 0.12); color: var(--text-primary); font-weight: 600; }
+
 .stats-refresh { display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-card); color: var(--text-primary); font-size: 12px; cursor: pointer; }
+.stats-refresh:hover { border-color: var(--border-strong, var(--border)); }
 .stats-refresh svg { width: 14px; height: 14px; }
 .stats-refresh.is-busy svg { animation: stats-spin 900ms linear infinite; }
 @keyframes stats-spin { to { transform: rotate(360deg); } }
+
+/* KPI */
 .stats-kpi-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
-.stats-kpi { position: relative; overflow: hidden; border: 1px solid var(--border); border-radius: 12px; background: var(--bg-card); box-shadow: var(--shadow-card); min-height: 96px; padding: 14px 16px; }
-.stats-kpi-label { font-size: 12px; color: var(--text-muted); margin-bottom: 6px; }
-.stats-kpi-value { font-size: 24px; font-weight: 600; line-height: 1.2; }
-.stats-kpi-sub { font-size: 12px; color: var(--text-muted); margin-top: 4px; }
+.stats-kpi { position: relative; border: 1px solid var(--border); border-radius: 12px; background: var(--bg-card); box-shadow: var(--shadow-card); min-height: 124px; padding: 14px 16px 8px; display: flex; flex-direction: column; }
+.stats-kpi-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.stats-kpi-label { font-size: 12px; color: var(--text-muted); }
+.stats-kpi-trend { font-size: 12px; font-variant-numeric: tabular-nums; padding: 1px 6px; border-radius: 5px; color: var(--text-muted); background: rgba(148, 163, 184, 0.12); }
+.stats-kpi-trend.is-good { color: #15803d; background: rgba(34, 197, 94, 0.12); }
+.stats-kpi-trend.is-bad { color: #b91c1c; background: rgba(239, 68, 68, 0.12); }
+.stats-kpi-value { font-size: 26px; font-weight: 600; line-height: 1.25; margin-top: 6px; font-variant-numeric: tabular-nums; }
+.stats-kpi-sub { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+.stats-spark { width: 100%; height: 26px; margin-top: auto; display: block; opacity: 0.9; }
+
+/* 面板 */
 .stats-panel { border: 1px solid var(--border); border-radius: 12px; background: var(--bg-card); box-shadow: var(--shadow-card); padding: 16px; min-height: 180px; }
 .stats-panel-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
 .stats-panel-title { font-size: 14px; font-weight: 600; }
 .stats-panel-sub { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
-.stats-legend { display: flex; gap: 12px; font-size: 12px; color: var(--text-muted); }
-.stats-legend-item::before { content: ""; display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 5px; vertical-align: 1px; }
-.stats-legend-input::before { background: #3b82f6; }
-.stats-legend-output::before { background: #22c55e; }
-.stats-legend-cache::before { background: #94a3b8; }
-.stats-chart { min-height: 220px; display: flex; align-items: flex-end; }
-.stats-bars { display: flex; align-items: flex-end; gap: 6px; width: 100%; height: 200px; padding-top: 8px; }
-.stats-bar-slot { flex: 1; min-width: 6px; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; height: 100%; gap: 6px; }
-.stats-bar { width: 100%; max-width: 36px; border-radius: 4px 4px 0 0; background: rgba(148, 163, 184, 0.16); display: flex; flex-direction: column-reverse; overflow: hidden; }
-.stats-bar-seg { display: block; width: 100%; }
-.stats-bar-input { background: #3b82f6; }
-.stats-bar-output { background: #22c55e; }
-.stats-bar-cache { background: #94a3b8; }
-.stats-bar-label { font-size: 12px; color: var(--text-muted); }
-.stats-grid { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 12px; }
-.stats-rank { display: flex; flex-direction: column; gap: 8px; }
-.stats-rank-row { display: grid; grid-template-columns: 140px minmax(0, 1fr) 64px; align-items: center; gap: 10px; font-size: 12px; }
-.stats-rank-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.stats-rank-bar { height: 8px; border-radius: 4px; background: rgba(148, 163, 184, 0.16); overflow: hidden; }
-.stats-rank-bar i { display: block; height: 100%; border-radius: 4px; background: #3b82f6; }
-.stats-rank-value { text-align: right; color: var(--text-muted); }
-.stats-sources { display: flex; flex-direction: column; gap: 8px; font-size: 12px; }
-.stats-source-row { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; }
-.stats-source-name { font-weight: 500; }
-.stats-source-meta { color: var(--text-muted); }
-.stats-source-foot { color: var(--text-muted); font-size: 12px; margin-top: 4px; }
-.stats-empty { color: var(--text-muted); font-size: 12px; padding: 24px 4px; }
-.stats-skeleton { width: 100%; height: 180px; border-radius: 10px; background: linear-gradient(90deg, rgba(148, 163, 184, 0.12) 25%, rgba(148, 163, 184, 0.2) 37%, rgba(148, 163, 184, 0.12) 63%); background-size: 400% 100%; animation: stats-shimmer 1.2s ease infinite; }
-@keyframes stats-shimmer { 0% { background-position: 100% 0; } 100% { background-position: 0 0; } }
-@media (max-width: 1200px) {
-  .stats-kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .stats-grid { grid-template-columns: 1fr; }
-}
 
-.stats-account-block { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); display: flex; flex-direction: column; gap: 8px; }
-.stats-account-title { font-size: 12px; color: var(--text-muted); }
-.stats-account-row { background: rgba(148, 163, 184, 0.06); }
+/* 分段切换 */
+.stats-seg { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; background: var(--bg-card); }
+.stats-seg-btn { border: 0; background: transparent; padding: 0 10px; height: 28px; font-size: 12px; color: var(--text-muted); cursor: pointer; }
+.stats-seg-btn:hover { color: var(--text-primary); }
+.stats-seg-btn.active { background: rgba(59, 130, 246, 0.12); color: var(--text-primary); font-weight: 600; }
 
-.proxy-analytics-hint { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--bg-card); font-size: 12px; color: var(--text-muted); }
-.proxy-analytics-link { border: 0; background: transparent; color: var(--accent-base, #3b82f6); font-size: 12px; cursor: pointer; padding: 0 4px; }
-.proxy-analytics-link:hover { text-decoration: underline; }
+/* 趋势图 */
+.stats-chart { min-height: 240px; display: flex; align-items: stretch; }
+.stats-chart-body { display: flex; gap: 10px; width: 100%; height: 240px; }
+.stats-axis { display: flex; flex-direction: column; justify-content: space-between; font-size: 12px; color: var(--text-muted); font-variant-numeric: tabular-nums; text-align: right; min-width: 44px; padding-bottom: 22px; }
+.stats-plot { position: relative; flex: 1; min-width: 0; }
+.stats-line { position: absolute; inset: 0 0 22px 0; width: 100%; height: calc(100% - 22px); pointer-events: none; }
+.stats-bars { display: flex; align-items: flex-end; gap: 6px; height: 100%; }
+.stats-bar-slot { flex: 1; min-width: 6px; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 4px; }
+.stats-bar-value { font-size: 12px; color: var(--text-muted); font-variant-numeric: tabular-nums; height: 16px; }
+.stats-bar { width: 100%; max-width: 34px; border-radius: 4px 4px 0 0; background: linear-gradient(180deg, rgba(59, 130, 246, 0.85), rgba(59, 130, 246, 0.45)); transition: height 160ms ease; }
+.stats-bar-slot:hover .stats-bar { background: linear-gradient(180deg, rgba(59, 130, 246, 1), rgba(59, 130, 246, 0.6)); }
+.stats-bar-label { font-size: 12px; color: var(--text-muted); height: 18px; }
 
+/* 排行表格 */
+.stats-table { display: flex; flex-direction: column; gap: 4px; }
+.stats-table-head, .stats-table-row { display: grid; grid-template-columns: minmax(0, 1.6fr) 80px 90px minmax(80px, 1fr); align-items: center; gap: 10px; font-size: 12px; padding: 6px 8px; }
+.stats-table-head { color: var(--text-muted); border-bottom: 1px solid var(--border); padding-bottom: 8px; }
+.stats-table-row { border-radius: 8px; }
+.stats-table-row:nth-child(odd) { background: rgba(148, 163, 184, 0.06); }
+.stats-table-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: flex; align-items: baseline; gap: 6px; }
+.stats-table-name em { font-style: normal; color: var(--text-muted); font-size: 12px; }
+.stats-table-num { text-align: right; font-variant-numeric: tabular-nums; color: var(--text-primary); }
+.stats-table-bar-col { height: 8px; border-radius: 4px; background: rgba(148, 163, 184, 0.16); overflow: hidden; }
+.stats-table-bar-col i { display: block; height: 100%; border-radius: 4px; background: #3b82f6; }
+.stats-table-note { color: var(--text-muted); font-size: 12px; margin-top: 6px; }
+
+/* 最近请求 */
 .stats-recent { display: flex; flex-direction: column; gap: 6px; }
-.stats-recent-row { display: grid; grid-template-columns: 72px 52px minmax(0, 1fr) 120px; align-items: center; gap: 10px; font-size: 12px; padding: 6px 8px; border-radius: 8px; }
+.stats-recent-row { display: grid; grid-template-columns: 72px 56px minmax(0, 1fr) 120px; align-items: center; gap: 10px; font-size: 12px; padding: 6px 8px; border-radius: 8px; }
 .stats-recent-row:nth-child(odd) { background: rgba(148, 163, 184, 0.06); }
 .stats-recent-ts { color: var(--text-muted); font-variant-numeric: tabular-nums; }
 .stats-recent-tag { font-size: 12px; padding: 1px 6px; border-radius: 5px; text-align: center; }
@@ -12226,3 +12230,18 @@ html[data-scheme="dark"] .endpoint-brand-icon-dark,
 .stats-recent-tag.is-warn { color: #b45309; background: rgba(245, 158, 11, 0.12); }
 .stats-recent-model { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .stats-recent-meta { color: var(--text-muted); text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* 空态与骨架 */
+.stats-empty { color: var(--text-muted); font-size: 12px; padding: 24px 4px; }
+.stats-skeleton { width: 100%; height: 200px; border-radius: 10px; background: linear-gradient(90deg, rgba(148, 163, 184, 0.12) 25%, rgba(148, 163, 184, 0.2) 37%, rgba(148, 163, 184, 0.12) 63%); background-size: 400% 100%; animation: stats-shimmer 1.2s ease infinite; }
+@keyframes stats-shimmer { 0% { background-position: 100% 0; } 100% { background-position: 0 0; } }
+
+/* 运行状态页引导 */
+.proxy-analytics-hint { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--bg-card); font-size: 12px; color: var(--text-muted); }
+.proxy-analytics-link { border: 0; background: transparent; color: var(--accent-base, #3b82f6); font-size: 12px; cursor: pointer; padding: 0 4px; }
+.proxy-analytics-link:hover { text-decoration: underline; }
+
+@media (max-width: 1200px) {
+  .stats-kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .stats-table-head, .stats-table-row { grid-template-columns: minmax(0, 1.4fr) 64px 72px minmax(60px, 1fr); }
+}
