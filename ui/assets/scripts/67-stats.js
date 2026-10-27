@@ -305,8 +305,8 @@ function renderEchartsMainChart(series) {
   }
 
   // 保证容器具备可见高度，避免被挤压
-  if (!el.clientHeight || el.clientHeight < 360) {
-    el.style.height = '380px';
+  if (!el.clientHeight || el.clientHeight < 280) {
+    el.style.height = '290px';
   }
 
   // ECharts 是把画布追加进容器，容器里若还留着占位文案会叠在图表底下。
@@ -328,112 +328,85 @@ function renderEchartsMainChart(series) {
   }
 
   const days = series.map((r) => r.day.slice(5));
-  const metric = STATS_STATE.metric;
 
-  // 根据当前指标决定 series 配置
-  let chartSeries = [];
-  let yAxisLeftName = 'Token';
-
-  if (metric === 'tokens') {
-    yAxisLeftName = 'Token 吞吐';
-    chartSeries = [
-      {
-        name: '输入 Token',
-        type: 'bar',
-        stack: 'tokens',
-        data: series.map((r) => r.input),
-        itemStyle: {
-          color: new echartsLib.graphic.LinearGradient(0, 0, 0, 1, [
-            { offset: 0, color: '#3b82f6' },
-            { offset: 1, color: '#2563eb' },
-          ]),
-          borderRadius: [0, 0, 0, 0],
-        },
-        barMaxWidth: 34,
+  // 专业多线面积图配置（按大厂监控与 CPA 视觉标准）
+  // 3 条平滑曲线穿透各个日期点，带底部透明渐变光晕，告别稀疏柱子
+  const chartSeries = [
+    {
+      name: '输入 Token',
+      type: 'line',
+      smooth: true,
+      showSymbol: false,
+      symbol: 'circle',
+      symbolSize: 6,
+      data: series.map((r) => r.input),
+      itemStyle: { color: '#3b82f6' },
+      lineStyle: { width: 2.2, color: '#3b82f6' },
+      areaStyle: {
+        color: new echartsLib.graphic.LinearGradient(0, 0, 0, 1, [
+          { offset: 0, color: 'rgba(59, 130, 246, 0.28)' },
+          { offset: 0.8, color: 'rgba(59, 130, 246, 0.02)' },
+          { offset: 1, color: 'transparent' },
+        ]),
       },
-      {
-        name: '输出 Token',
-        type: 'bar',
-        stack: 'tokens',
-        data: series.map((r) => r.output),
-        itemStyle: {
-          color: new echartsLib.graphic.LinearGradient(0, 0, 0, 1, [
-            { offset: 0, color: '#10b981' },
-            { offset: 1, color: '#059669' },
-          ]),
-          borderRadius: [0, 0, 0, 0],
-        },
-        barMaxWidth: 34,
+    },
+    {
+      name: '输出 Token',
+      type: 'line',
+      smooth: true,
+      showSymbol: false,
+      symbol: 'circle',
+      symbolSize: 6,
+      data: series.map((r) => r.output),
+      itemStyle: { color: '#10b981' },
+      lineStyle: { width: 2.2, color: '#10b981' },
+      areaStyle: {
+        color: new echartsLib.graphic.LinearGradient(0, 0, 0, 1, [
+          { offset: 0, color: 'rgba(16, 185, 129, 0.22)' },
+          { offset: 0.8, color: 'rgba(16, 185, 129, 0.02)' },
+          { offset: 1, color: 'transparent' },
+        ]),
       },
-      {
-        name: '缓存 Token',
-        type: 'bar',
-        stack: 'tokens',
-        data: series.map((r) => r.cache),
-        itemStyle: {
-          color: new echartsLib.graphic.LinearGradient(0, 0, 0, 1, [
-            { offset: 0, color: '#a855f7' },
-            { offset: 1, color: '#9333ea' },
-          ]),
-          borderRadius: [5, 5, 0, 0],
-        },
-        barMaxWidth: 34,
+    },
+    {
+      name: '缓存 Token',
+      type: 'line',
+      smooth: true,
+      showSymbol: false,
+      symbol: 'circle',
+      symbolSize: 6,
+      data: series.map((r) => r.cache),
+      itemStyle: { color: '#8b5cf6' },
+      lineStyle: { width: 2.2, color: '#8b5cf6' },
+      areaStyle: {
+        color: new echartsLib.graphic.LinearGradient(0, 0, 0, 1, [
+          { offset: 0, color: 'rgba(139, 92, 246, 0.20)' },
+          { offset: 0.8, color: 'rgba(139, 92, 246, 0.02)' },
+          { offset: 1, color: 'transparent' },
+        ]),
       },
-    ];
-  } else if (metric === 'requests') {
-    yAxisLeftName = '调用频次';
-    chartSeries = [
-      {
-        name: '调用请求数',
-        type: 'bar',
-        data: series.map((r) => r.requests),
-        itemStyle: {
-          color: new echartsLib.graphic.LinearGradient(0, 0, 0, 1, [
-            { offset: 0, color: '#3b82f6' },
-            { offset: 1, color: '#1d4ed8' },
-          ]),
-          borderRadius: [4, 4, 0, 0],
-        },
-        barMaxWidth: 32,
-      },
-    ];
-  } else {
-    // cost
-    yAxisLeftName = '估算费用 (USD)';
-    chartSeries = [
-      {
-        name: '费用支出',
-        type: 'bar',
-        data: series.map((r) => r.cost),
-        itemStyle: {
-          color: new echartsLib.graphic.LinearGradient(0, 0, 0, 1, [
-            { offset: 0, color: '#f59e0b' },
-            { offset: 1, color: '#d97706' },
-          ]),
-          borderRadius: [4, 4, 0, 0],
-        },
-        barMaxWidth: 32,
-      },
-    ];
-  }
-
-  // 叠加高频短请求/长上下文对照平滑折线 (右轴)
-  chartSeries.push({
-    name: '调用频次',
-    type: 'line',
-    yAxisIndex: 1,
-    smooth: true,
-    data: series.map((r) => r.requests),
-    symbol: 'circle',
-    symbolSize: 6,
-    itemStyle: { color: '#0ea5e9' },
-    lineStyle: { width: 2, color: '#0ea5e9', type: 'dashed' },
-  });
+    },
+    {
+      name: '调用频次',
+      type: 'line',
+      yAxisIndex: 1,
+      smooth: true,
+      showSymbol: false,
+      symbol: 'circle',
+      symbolSize: 5,
+      data: series.map((r) => r.requests),
+      itemStyle: { color: '#f59e0b' },
+      lineStyle: { width: 1.8, color: '#f59e0b', type: 'dashed' },
+    },
+  ];
 
   const option = {
     tooltip: {
       trigger: 'axis',
-      axisPointer: { type: 'cross', crossStyle: { color: '#999' } },
+      axisPointer: {
+        type: 'line',
+        lineStyle: { color: 'rgba(148, 163, 184, 0.5)', type: 'dashed', width: 1 },
+      },
       backgroundColor: 'rgba(255, 255, 255, 0.96)',
       borderColor: '#e2e8f0',
       borderWidth: 1,
@@ -444,17 +417,15 @@ function renderEchartsMainChart(series) {
         const item = series[params[0].dataIndex];
         let html = `<div style="font-weight:600;margin-bottom:4px;color:#0f172a;">${item.day}</div>`;
         params.forEach((p) => {
-          const val = p.seriesType === 'line' ? fmtNum(p.value) + ' 次' : fmtMetric(p.value, metric);
+          const val = p.seriesName === '调用频次' ? fmtNum(p.value) + ' 次' : fmtNum(p.value);
           html += `<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin:2px 0;">
             <span>${p.marker} ${p.seriesName}</span>
             <b style="font-family:JetBrains Mono,monospace;">${val}</b>
           </div>`;
         });
-        if (metric === 'tokens') {
-          html += `<div style="border-top:1px solid #e2e8f0;margin-top:6px;padding-top:4px;font-size:11px;color:#64748b;">
-            总 Token: <b style="color:#0f172a;">${fmtNum(item.input + item.output + item.cache)}</b>
-          </div>`;
-        }
+        html += `<div style="border-top:1px solid #e2e8f0;margin-top:6px;padding-top:4px;font-size:11px;color:#64748b;">
+          总 Token: <b style="color:#0f172a;">${fmtNum(item.input + item.output + item.cache)}</b>
+        </div>`;
         return html;
       },
     },
@@ -463,23 +434,24 @@ function renderEchartsMainChart(series) {
       right: 12,
       top: -2,
       textStyle: { color: '#64748b', fontSize: 11.5 },
-      icon: 'roundRect',
-      itemWidth: 12,
+      icon: 'circle',
+      itemWidth: 8,
       itemHeight: 8,
       itemGap: 14,
     },
     grid: {
       left: 12,
       right: 12,
-      top: 48,
+      top: 38,
       bottom: 12,
       containLabel: true,
     },
     xAxis: [
       {
         type: 'category',
+        boundaryGap: false, // 曲线紧贴左右两侧并穿透每一个日期节点，绝不留白空缺
         data: days,
-        axisTick: { alignWithLabel: true },
+        axisTick: { show: false },
         axisLine: { lineStyle: { color: '#e2e8f0' } },
         axisLabel: { color: '#64748b', fontSize: 11 },
       },
@@ -487,18 +459,18 @@ function renderEchartsMainChart(series) {
     yAxis: [
       {
         type: 'value',
-        name: yAxisLeftName,
+        name: 'Token 吞吐',
         nameTextStyle: { color: '#64748b', fontSize: 11, align: 'left' },
         axisLabel: {
           color: '#64748b',
           fontSize: 10.5,
-          formatter: (v) => fmtMetric(v, metric),
+          formatter: (v) => fmtNum(v),
         },
         splitLine: { lineStyle: { type: 'dashed', color: '#f1f5f9' } },
       },
       {
         type: 'value',
-        name: '调用量',
+        name: '调用频次',
         nameTextStyle: { color: '#64748b', fontSize: 11, align: 'right' },
         axisLabel: {
           color: '#64748b',

@@ -12340,10 +12340,10 @@ html[data-scheme="dark"] .endpoint-brand-icon-dark,
   border-radius: 12px;
   background: var(--bg-card);
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.02);
-  padding: 16px 18px 14px;
+  padding: 14px 16px 12px;
   display: flex;
   flex-direction: column;
-  min-height: 156px;
+  min-height: 128px;
   transition: transform 140ms ease, box-shadow 140ms ease;
 }
 .ez-stat-card:hover {
@@ -12431,9 +12431,9 @@ html[data-scheme="dark"] .endpoint-brand-icon-dark,
 /* KPI 微型 ECharts Sparkline 画布 */
 .ez-sparkline-canvas {
   width: 100%;
-  height: 44px;
-  margin-top: 10px;
-  margin-bottom: 4px;
+  height: 26px;
+  margin-top: 6px;
+  margin-bottom: 2px;
 }
 
 .ez-stat-footer {
@@ -12447,12 +12447,12 @@ html[data-scheme="dark"] .endpoint-brand-icon-dark,
 
 /* ECharts 主趋势分析区 */
 .ez-chart-section {
-  padding: 18px 20px 16px;
+  padding: 16px 18px 12px;
 }
 .ez-echarts-container {
   width: 100%;
-  height: 380px;
-  min-height: 380px;
+  height: 290px;
+  min-height: 290px;
   position: relative;
 }
 
