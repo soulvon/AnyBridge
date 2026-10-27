@@ -1,17 +1,10 @@
 /**
- * 67-stats.js — 统计与全局账本交互引擎
- *
- * 核心设计目标：
- * 1. 规避死板简陋的纯文本列表，采用现代控制台视觉（深浅模式兼容）。
- * 2. 精确计算 Token 输入/输出/缓存 3段堆叠柱状图，计算真实折线坐标。
- * 3. 整合 CPA、Claude Code、Cursor 与 网关的消耗，支持来源筛选。
+ * 67-stats.js — 统计与全局账本交互引擎（深度复刻 magpie 原生紧凑美学与排版算法）
  */
 
 const STATS_STATE = {
-  range: 7,             // 1 / 7 / 30 / 0=全部
-  sourceFilter: 'all',  // all / cpa / claude / gateway
-  metric: 'tokens',     // tokens / requests / cost
-  rank: 'model',        // model / account / source
+  range: 7,            // 1 / 7 / 30 / 0=全部
+  rank: 'model',       // model / account / source
   loading: false,
   gateway: null,
   history: [],
@@ -41,10 +34,6 @@ function fmtCost(n) {
   return '$' + v.toFixed(2);
 }
 
-function fmtMetric(value, metric) {
-  return metric === 'cost' ? fmtCost(value) : fmtNum(value);
-}
-
 function dayKeyLocal(d) {
   const pad = (x) => String(x).padStart(2, '0');
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
@@ -68,41 +57,36 @@ function historyDaysToFetch() {
   return STATS_STATE.range === 0 ? 366 : Math.min(366, STATS_STATE.range * 2 + 1);
 }
 
-// ── 构建日序综合数据集（支持来源过滤） ──
+// ── 构建日序综合数据集 ──
 function buildDaySeries() {
-  const filter = STATS_STATE.sourceFilter;
-  const includeGateway = filter === 'all' || filter === 'gateway';
-  const includeCpa = filter === 'all' || filter === 'cpa';
-  const includeClaude = filter === 'all' || filter === 'claude';
-  const includeCursor = filter === 'all';
-
   const gatewayByDay = new Map();
-  if (includeGateway) {
-    for (const row of STATS_STATE.history) gatewayByDay.set(row.day, row);
-    const snapshot = STATS_STATE.gateway;
-    if (snapshot) {
-      const today = dayKeyLocal(new Date());
-      const row = gatewayByDay.get(today) || { day: today };
-      gatewayByDay.set(today, {
-        ...row,
-        day: today,
-        requests: snapshot.requests,
-        errors: snapshot.errors,
-        inputTokens: snapshot.inputTokens,
-        outputTokens: snapshot.outputTokens,
-        cachedTokens: (snapshot.cachedTokens || 0) + (snapshot.cacheCreationInputTokens || 0),
-        estCostUsd: snapshot.estCostUsd,
-        byModelUsage: snapshot.byModelUsage,
-        byModel: snapshot.byModel,
-      });
-    }
+  for (const row of STATS_STATE.history) gatewayByDay.set(row.day, row);
+
+  const snapshot = STATS_STATE.gateway;
+  if (snapshot) {
+    const today = dayKeyLocal(new Date());
+    const row = gatewayByDay.get(today) || { day: today };
+    gatewayByDay.set(today, {
+      ...row,
+      day: today,
+      requests: snapshot.requests,
+      errors: snapshot.errors,
+      inputTokens: snapshot.inputTokens,
+      outputTokens: snapshot.outputTokens,
+      cachedTokens: (snapshot.cachedTokens || 0) + (snapshot.cacheCreationInputTokens || 0),
+      estCostUsd: snapshot.estCostUsd,
+      byModelUsage: snapshot.byModelUsage,
+      byModel: snapshot.byModel,
+    });
   }
 
   const local = STATS_STATE.local || {};
-  const allDays = new Set([...gatewayByDay.keys()]);
-  if (includeClaude) Object.keys(local.days || {}).forEach((d) => allDays.add(d));
-  if (includeCursor) Object.keys(local.cursorDays || {}).forEach((d) => allDays.add(d));
-  if (includeCpa) Object.keys(local.cpaDays || {}).forEach((d) => allDays.add(d));
+  const allDays = new Set([
+    ...gatewayByDay.keys(),
+    ...Object.keys(local.days || {}),
+    ...Object.keys(local.cursorDays || {}),
+    ...Object.keys(local.cpaDays || {}),
+  ]);
 
   const rows = [...allDays].sort().map((day) => {
     const gw = gatewayByDay.get(day) || {};
@@ -111,10 +95,11 @@ function buildDaySeries() {
     let localCache = 0;
     let localRequests = 0;
 
-    const sourcesToSum = [];
-    if (includeClaude && local.days?.[day]) sourcesToSum.push(...Object.values(local.days[day]));
-    if (includeCursor && local.cursorDays?.[day]) sourcesToSum.push(...Object.values(local.cursorDays[day]));
-    if (includeCpa && local.cpaDays?.[day]) sourcesToSum.push(...Object.values(local.cpaDays[day]));
+    const sourcesToSum = [
+      ...Object.values(local.days?.[day] || {}),
+      ...Object.values(local.cursorDays?.[day] || {}),
+      ...Object.values(local.cpaDays?.[day] || {}),
+    ];
 
     for (const u of sourcesToSum) {
       localInput += Number(u.input) || 0;
@@ -143,15 +128,6 @@ function buildDaySeries() {
   });
 }
 
-function splitRanges(series) {
-  const half = Math.floor(series.length / 2);
-  if (half === 0) return { current: series, previous: [] };
-  return {
-    current: series.slice(-half),
-    previous: series.slice(0, series.length - half),
-  };
-}
-
 function sumSeries(series) {
   const sum = { requests: 0, errors: 0, input: 0, output: 0, cache: 0, cost: 0, gatewayRequests: 0 };
   for (const row of series) {
@@ -166,225 +142,89 @@ function sumSeries(series) {
   return sum;
 }
 
-function metricValue(row, metric) {
-  if (metric === 'requests') return row.requests;
-  if (metric === 'cost') return row.cost;
-  return row.input + row.output + row.cache;
-}
-
-// ── 渲染迷你火花线 ──
-function renderSparkSvg(id, values, colorVar = 'var(--accent)') {
-  const el = document.getElementById(id);
-  if (!el) return;
-  if (!values.length || values.every((v) => v === 0)) {
-    el.innerHTML = '';
-    return;
-  }
-  const max = Math.max(...values, 1);
-  const min = Math.min(...values);
-  const range = max - min || 1;
-  const w = 120;
-  const h = 32;
-  const pad = 3;
-  const step = w / Math.max(values.length - 1, 1);
-
-  const coords = values.map((v, i) => {
-    const x = i * step;
-    const y = h - pad - ((v - min) / range) * (h - pad * 2);
-    return `${x.toFixed(1)},${y.toFixed(1)}`;
-  });
-
-  const polyline = coords.join(' ');
-  const area = `0,${h} ${polyline} ${w},${h}`;
-
-  el.innerHTML = `
-    <polygon points="${area}" fill="${colorVar}" fill-opacity="0.12"></polygon>
-    <polyline points="${polyline}" fill="none" stroke="${colorVar}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></polyline>
-  `;
-}
-
-// ── 渲染 KPI 4联卡 ──
-function renderTrendBadge(id, current, previous, { inverse = false } = {}) {
-  const el = document.getElementById(id);
-  if (!el) return;
-  if (!previous || previous <= 0) {
-    el.textContent = '持平';
-    el.className = 'stats-trend-badge is-neutral';
-    return;
-  }
-  const delta = (current - previous) / previous;
-  const pct = Math.abs(delta * 100);
-  const up = delta >= 0;
-  const good = inverse ? !up : up;
-  el.textContent = `${up ? '↑' : '↓'} ${pct >= 100 ? Math.round(pct) : pct.toFixed(1)}%`;
-  el.className = `stats-trend-badge ${good ? 'is-up' : 'is-down'}`;
-}
-
+// ── 渲染四联 KPI (对标 magpie .stats + .kpi) ──
 function renderStatsKpi(allSeries) {
-  const { current, previous } = splitRanges(allSeries);
-  const sum = sumSeries(current);
-  const prev = sumSeries(previous);
+  const sum = sumSeries(allSeries);
   const totalTokens = sum.input + sum.output + sum.cache;
-  const prevTokens = prev.input + prev.output + prev.cache;
+  const promptTokens = sum.input + sum.cache;
+  const cacheHitRate = promptTokens > 0 ? Math.round((sum.cache / promptTokens) * 100) : 0;
 
   const set = (id, text) => {
     const el = document.getElementById(id);
     if (el) el.textContent = text;
   };
 
-  set('statsKpiRequests', fmtNum(sum.requests));
-  set('statsKpiRequestsSub', STATS_STATE.range === 0 ? '历史全量累计' : `近 ${rangeDays()} 天调用量`);
-
-  set('statsKpiTokens', fmtNum(totalTokens));
-  set('statsKpiTokensSub', `输入 ${fmtNum(sum.input)} · 输出 ${fmtNum(sum.output)} · 缓存 ${fmtNum(sum.cache)}`);
-
-  // 计算三段比例
-  const safeTotal = totalTokens || 1;
-  const inputPct = Math.max(0, (sum.input / safeTotal) * 100);
-  const outputPct = Math.max(0, (sum.output / safeTotal) * 100);
-  const cachePct = Math.max(0, (sum.cache / safeTotal) * 100);
-
-  const inputEl = document.getElementById('statsTokenInputSeg');
-  const outputEl = document.getElementById('statsTokenOutputSeg');
-  const cacheEl = document.getElementById('statsTokenCacheSeg');
-  if (inputEl) inputEl.style.width = `${inputPct.toFixed(1)}%`;
-  if (outputEl) outputEl.style.width = `${outputPct.toFixed(1)}%`;
-  if (cacheEl) cacheEl.style.width = `${cachePct.toFixed(1)}%`;
-
+  // 右上角总估值
   set('statsKpiCost', fmtCost(sum.cost));
-  set('statsKpiCostSub', STATS_STATE.sourceFilter === 'gateway' ? '网关精确估算' : '含网关直连，旁路暂不计价');
 
-  const gwRequests = sum.gatewayRequests;
-  const successRate = gwRequests > 0 ? (1 - sum.errors / gwRequests) * 100 : 100;
+  // 1. Tokens
+  set('statsKpiTokens', fmtNum(totalTokens));
+  set('statsKpiTokensSub', `${fmtNum(sum.input)} in · ${fmtNum(sum.output)} out`);
+
+  // 2. Cache
+  set('statsKpiCache', fmtNum(sum.cache));
+  set('statsKpiCacheSub', `命中率 ${cacheHitRate}% · 节省支出`);
+
+  // 3. Calls
+  set('statsKpiRequests', fmtNum(sum.requests));
+  set('statsKpiRequestsSub', sum.errors > 0 ? `${fmtNum(sum.errors)} 失败 · 网关拦截` : '无异常调用');
+
+  // 4. 健康度
+  const gwReqs = sum.gatewayRequests;
+  const successRate = gwReqs > 0 ? (1 - sum.errors / gwReqs) * 100 : 100;
   set('statsKpiSuccess', `${successRate.toFixed(1)}%`);
-  set('statsKpiSuccessSub', sum.errors > 0 ? `网关阻断/错误 ${fmtNum(sum.errors)} 次` : '网关流量无异常阻断');
-
-  const healthPill = document.getElementById('statsHealthStatus');
-  if (healthPill) {
-    if (successRate >= 99) {
-      healthPill.className = 'stats-health-pill is-ok';
-      healthPill.textContent = '运行通畅';
-    } else if (successRate >= 90) {
-      healthPill.className = 'stats-health-pill is-warn';
-      healthPill.textContent = '偶发波动';
-    } else {
-      healthPill.className = 'stats-health-pill is-err';
-      healthPill.textContent = '异常频发';
-    }
-  }
-
-  renderTrendBadge('statsTrendRequests', sum.requests, prev.requests);
-  renderTrendBadge('statsTrendTokens', totalTokens, prevTokens);
-  renderTrendBadge('statsTrendCost', sum.cost, prev.cost);
-
-  // Sparklines
-  renderSparkSvg('statsSparkRequests', current.map((r) => r.requests), 'var(--accent, #1261A6)');
-  renderSparkSvg('statsSparkCost', current.map((r) => r.cost), 'var(--accent-warm, #D97706)');
-  renderSparkSvg('statsSparkSuccess', current.map((r) => (r.gatewayRequests > 0 ? Math.max(0, 100 - (r.errors / r.gatewayRequests) * 100) : 100)), 'var(--success, #11875D)');
+  set('statsKpiSuccessSub', gwReqs > 0 ? `网关流量 ${fmtNum(gwReqs)} 次` : '旁路无故障');
 }
 
-// ── 渲染主折柱混合大图 ──
-function renderStatsTrend(series) {
-  const host = document.getElementById('statsTrendChart');
-  if (!host) return;
-  const metric = STATS_STATE.metric;
+// ── 渲染 72px 极简走势图 (对标 magpie .chart) ──
+function renderStatsChart(series) {
+  const barsHost = document.getElementById('statsChartBars');
+  const labelsHost = document.getElementById('statsChartLabels');
+  const peakHost = document.getElementById('statsChartPeak');
+  if (!barsHost || !labelsHost) return;
 
   if (!series.length) {
-    host.innerHTML = '<div class="stats-empty-shimmer">当前时间范围暂无用量记录</div>';
+    barsHost.innerHTML = '<div class="us-none">暂无周期数据</div>';
+    labelsHost.innerHTML = '';
+    if (peakHost) peakHost.textContent = '峰值: 0';
     return;
   }
 
-  const values = series.map((r) => metricValue(r, metric));
-  const max = Math.max(...values, 1);
-  const maxRequests = Math.max(...series.map((r) => r.requests), 1);
+  // 峰值基于当天的 total tokens (input + output + cache)
+  const peaks = series.map((r) => r.input + r.output + r.cache);
+  const maxPeak = Math.max(...peaks, 1);
+  if (peakHost) peakHost.textContent = `峰值: ${fmtNum(maxPeak)}`;
 
-  // 4段 Y 轴刻度
-  const ticks = [1, 0.75, 0.5, 0.25, 0].map((ratio) => ({
-    ratio,
-    label: fmtMetric(max * ratio, metric),
-  }));
+  // 生成双层输入/输出柱形 (output 叠在 input 之上，对标 magpie .bar .in, .out)
+  barsHost.innerHTML = series.map((r) => {
+    const total = r.input + r.output + r.cache;
+    const inTokens = r.input + r.cache;
+    const inPct = ((inTokens / maxPeak) * 100).toFixed(1);
+    const outPct = ((r.output / maxPeak) * 100).toFixed(1);
 
-  // 生成三段堆叠柱或纯量柱
-  const barsHtml = series.map((row) => {
-    const totalVal = metricValue(row, metric);
-    const heightPct = (totalVal / max) * 100;
-
-    let segmentsHtml = '';
-    if (metric === 'tokens') {
-      const sumT = (row.input + row.output + row.cache) || 1;
-      const inPct = (row.input / sumT) * 100;
-      const outPct = (row.output / sumT) * 100;
-      const cachePct = (row.cache / sumT) * 100;
-      segmentsHtml = `
-        <div class="stats-bar-stack" style="height: ${Math.max(heightPct, 2).toFixed(1)}%;">
-          <span class="stats-seg-bar is-cache" style="height: ${cachePct.toFixed(1)}%;"></span>
-          <span class="stats-seg-bar is-output" style="height: ${outPct.toFixed(1)}%;"></span>
-          <span class="stats-seg-bar is-input" style="height: ${inPct.toFixed(1)}%;"></span>
-        </div>
-      `;
-    } else {
-      segmentsHtml = `
-        <div class="stats-bar-stack" style="height: ${Math.max(heightPct, 2).toFixed(1)}%;">
-          <span class="stats-seg-bar is-primary" style="height: 100%;"></span>
-        </div>
-      `;
-    }
-
-    const shortDate = row.day.slice(5);
-    const tip = `日期: ${row.day}\n总Token: ${fmtNum(row.input + row.output + row.cache)} (入:${fmtNum(row.input)} 出:${fmtNum(row.output)} 缓:${fmtNum(row.cache)})\n请求: ${fmtNum(row.requests)} 次\n费用估算: ${fmtCost(row.cost)}`;
+    const tip = `${r.day}\n总吞吐: ${fmtNum(total)} (入:${fmtNum(r.input)} 出:${fmtNum(r.output)} 缓:${fmtNum(r.cache)})\n调用: ${fmtNum(r.requests)} 次`;
 
     return `
-      <div class="stats-bar-col" title="${escapeText(tip)}">
-        <div class="stats-bar-hover-val">${totalVal > 0 ? fmtMetric(totalVal, metric) : ''}</div>
-        <div class="stats-bar-track">
-          ${segmentsHtml}
-        </div>
-        <div class="stats-bar-axis-x">${shortDate}</div>
+      <div class="us-bar" title="${escapeText(tip)}">
+        <i class="out" style="height: ${outPct}%;"></i>
+        <i class="in" style="height: ${inPct}%;"></i>
       </div>
     `;
   }).join('');
 
-  // 折线坐标映射
-  const step = series.length > 1 ? 100 / (series.length - 1) : 50;
-  const linePoints = series.map((row, i) => {
-    const x = (i * step).toFixed(2);
-    // 映射在 10% - 90% 高度区间
-    const y = (90 - (row.requests / maxRequests) * 78).toFixed(2);
-    return `${x},${y}`;
-  }).join(' ');
+  // 底部标签抽样算法 (对标 magpie every 规则: 8天以内天天下标，超过的隔开)
+  const n = series.length;
+  const every = n <= 8 ? 1 : n <= 31 ? Math.ceil(n / 6) : Math.ceil(n / 5);
 
-  host.innerHTML = `
-    <div class="stats-chart-scaffold">
-      <div class="stats-axis-y">
-        ${ticks.map((t) => `<span class="stats-tick-label">${t.label}</span>`).join('')}
-      </div>
-
-      <div class="stats-plot-area">
-        <!-- 背景水平网格参考线 -->
-        <div class="stats-grid-lines">
-          <div class="stats-grid-line"></div>
-          <div class="stats-grid-line"></div>
-          <div class="stats-grid-line"></div>
-          <div class="stats-grid-line"></div>
-          <div class="stats-grid-line is-base"></div>
-        </div>
-
-        <!-- 请求数趋势覆盖线 -->
-        <svg class="stats-req-line-svg" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
-          <polyline points="${linePoints}" vector-effect="non-scaling-stroke"></polyline>
-        </svg>
-
-        <!-- 柱状图集合 -->
-        <div class="stats-bars-flex">
-          ${barsHtml}
-        </div>
-      </div>
-    </div>
-  `;
+  labelsHost.innerHTML = series.map((r, i) => {
+    const isLast = (i === n - 1) && ((n - 1) % every >= every / 2);
+    const show = (i % every === 0) || isLast;
+    return `<span>${show ? r.day.slice(5) : ''}</span>`;
+  }).join('');
 }
 
-// ── 排行多维数据抽取 ──
-function collectRankRows(series) {
+// ── 渲染分组排行 (对标 magpie .row.stat: 名字/细线进度/单量/估值) ──
+function collectRankData(series) {
   const days = new Set(series.map((r) => r.day));
   const rankKind = STATS_STATE.rank;
 
@@ -404,7 +244,6 @@ function collectRankRows(series) {
       map.set(model, cur);
     };
 
-    // 历程
     for (const row of STATS_STATE.history) {
       if (!days.has(row.day) || !row.byModelUsage) continue;
       for (const [m, u] of Object.entries(row.byModelUsage)) add(m, u);
@@ -421,33 +260,36 @@ function collectRankRows(series) {
         for (const [m, u] of Object.entries(models)) add(m, u);
       }
     }
-    return [...map.values()].sort((a, b) => b.tokens - a.tokens).slice(0, 16);
+    return [...map.values()].sort((a, b) => b.tokens - a.tokens).slice(0, 15);
   }
 
   if (rankKind === 'account') {
     const accounts = STATS_STATE.local?.cpaAccounts || [];
     return accounts.map((acc) => ({
       name: acc.account,
-      badge: acc.provider,
+      sub: acc.provider || 'CPA',
       requests: Number(acc.requests) || 0,
       tokens: (Number(acc.input) || 0) + (Number(acc.output) || 0) + (Number(acc.cache_read) || 0) + (Number(acc.cache_write) || 0),
-      failed: Number(acc.failed) || 0,
-    })).sort((a, b) => b.tokens - a.tokens).slice(0, 16);
+      input: Number(acc.input) || 0,
+      output: Number(acc.output) || 0,
+    })).sort((a, b) => b.tokens - a.tokens).slice(0, 15);
   }
 
   // rankKind === 'source'
   const sources = STATS_STATE.local?.sources || {};
   const list = Object.entries(sources).map(([k, u]) => {
     let title = k;
-    let badge = '旁路日志';
-    if (k === 'claude-code') { title = 'Claude Code CLI'; badge = '~/.claude'; }
-    else if (k === 'cursor') { title = 'Cursor IDE'; badge = 'cursor-core.db'; }
-    else if (k === 'cpa') { title = 'CPA 套件代理池'; badge = 'usage.sqlite'; }
+    let sub = '旁路日志';
+    if (k === 'claude-code') { title = 'Claude Code CLI'; sub = '~/.claude projects'; }
+    else if (k === 'cursor') { title = 'Cursor IDE'; sub = 'cursor-core.db'; }
+    else if (k === 'cpa') { title = 'CPA 套件代理池'; sub = 'usage.sqlite 聚合'; }
     return {
       name: title,
-      badge,
+      sub,
       requests: Number(u.requests) || 0,
       tokens: (Number(u.input) || 0) + (Number(u.output) || 0) + (Number(u.cache_read) || 0) + (Number(u.cache_write) || 0),
+      input: Number(u.input) || 0,
+      output: Number(u.output) || 0,
     };
   });
 
@@ -455,69 +297,56 @@ function collectRankRows(series) {
     const g = STATS_STATE.gateway;
     list.push({
       name: 'AnyBridge 本地网关',
-      badge: '实时代理',
+      sub: '核心拦截通道',
       requests: Number(g.requests) || 0,
       tokens: (Number(g.inputTokens) || 0) + (Number(g.outputTokens) || 0) + (Number(g.cachedTokens) || 0),
+      input: Number(g.inputTokens) || 0,
+      output: Number(g.outputTokens) || 0,
     });
   }
 
   return list.sort((a, b) => b.tokens - a.tokens);
 }
 
-function renderStatsRankTable(series) {
-  const host = document.getElementById('statsRankTable');
+function renderStatsRank(series) {
+  const host = document.getElementById('statsRankList');
   if (!host) return;
-  const rows = collectRankRows(series);
+  const rows = collectRankData(series);
 
   if (!rows.length) {
-    host.innerHTML = '<div class="stats-empty">当前周期内无维度排行数据</div>';
+    host.innerHTML = '<div class="us-none">周期内未产生记录</div>';
     return;
   }
 
   const maxVal = Math.max(...rows.map((r) => r.tokens), 1);
 
-  host.innerHTML = `
-    <table class="stats-pro-table">
-      <thead>
-        <tr>
-          <th>名称 / 身份</th>
-          <th style="width: 110px; text-align: right;">调用频次</th>
-          <th style="width: 140px; text-align: right;">总计消耗</th>
-          <th style="width: 180px;">用量占比</th>
-        </tr>
-      </thead>
-      <tbody>
-        ${rows.map((row) => {
-          const pct = Math.max(1, Math.round((row.tokens / maxVal) * 100));
-          return `
-            <tr>
-              <td>
-                <div class="stats-name-col">
-                  <span class="stats-primary-text" title="${escapeText(row.name)}">${escapeText(row.name)}</span>
-                  ${row.badge ? `<span class="stats-sub-badge">${escapeText(row.badge)}</span>` : ''}
-                </div>
-              </td>
-              <td style="text-align: right;">
-                <span class="stats-num-mono">${fmtNum(row.requests)}</span>
-              </td>
-              <td style="text-align: right;">
-                <span class="stats-num-mono is-bold">${fmtNum(row.tokens)}</span>
-              </td>
-              <td>
-                <div class="stats-table-meter">
-                  <div class="stats-meter-fill" style="width: ${pct}%;"></div>
-                  <span class="stats-meter-text">${pct}%</span>
-                </div>
-              </td>
-            </tr>
-          `;
-        }).join('')}
-      </tbody>
-    </table>
-  `;
+  host.innerHTML = rows.map((r) => {
+    const pct = Math.max(1.5, (r.tokens / maxVal) * 100).toFixed(1);
+    const subText = r.sub || `${fmtNum(r.requests)} 次调用`;
+    const tokensSub = `${fmtNum(r.input || 0)} in · ${fmtNum(r.output || 0)} out`;
+
+    return `
+      <div class="us-stat-row">
+        <div class="us-stat-who">
+          <div class="us-stat-name" title="${escapeText(r.name)}">${escapeText(r.name)}</div>
+          <div class="us-stat-sub">${escapeText(subText)}</div>
+        </div>
+        <div class="us-stat-share" title="${pct}% 相对占比">
+          <i style="width: ${pct}%;"></i>
+        </div>
+        <div class="us-stat-num">
+          <b>${fmtNum(r.tokens)}</b>
+          <small>${tokensSub}</small>
+        </div>
+        <div class="us-stat-cost">
+          ${r.requests ? fmtNum(r.requests) + ' 次' : ''}
+        </div>
+      </div>
+    `;
+  }).join('');
 }
 
-// ── 渲染数据源与健康面板 ──
+// ── 渲染数据通道概况 ──
 function renderStatsSourcesDeck() {
   const host = document.getElementById('statsSourcesDeck');
   if (!host) return;
@@ -525,161 +354,135 @@ function renderStatsSourcesDeck() {
   const local = STATS_STATE.local || {};
   const sources = local.sources || {};
   const gateway = STATS_STATE.gateway;
-
   const cards = [];
 
-  // 网关卡
   if (gateway) {
     cards.push(`
-      <div class="stats-source-card">
-        <div class="stats-sc-head">
-          <span class="stats-sc-status is-active"></span>
-          <span class="stats-sc-title">AnyBridge 网关代理</span>
-          <span class="stats-sc-tag">核心</span>
+      <div class="us-sc-card">
+        <div class="us-sc-card-top">
+          <span class="us-sc-name">AnyBridge 网关</span>
+          <span class="us-sc-pill">在线</span>
         </div>
-        <div class="stats-sc-body">
-          <div class="stats-sc-stat"><span class="label">今日请求</span><strong>${fmtNum(gateway.requests)}</strong></div>
-          <div class="stats-sc-stat"><span class="label">Token</span><strong>${fmtNum((gateway.inputTokens || 0) + (gateway.outputTokens || 0))}</strong></div>
+        <div class="us-sc-nums">
+          <span>今日调用</span>
+          <b>${fmtNum(gateway.requests)} 次</b>
         </div>
       </div>
     `);
   }
 
-  // CPA 套件卡
   if (sources.cpa) {
-    const cpaAccCount = local.cpaAccounts ? local.cpaAccounts.length : 0;
+    const accs = local.cpaAccounts ? local.cpaAccounts.length : 0;
     cards.push(`
-      <div class="stats-source-card">
-        <div class="stats-sc-head">
-          <span class="stats-sc-status is-active"></span>
-          <span class="stats-sc-title">CPA 套件 (CLIProxyAPI)</span>
-          <span class="stats-sc-tag">已接入</span>
+      <div class="us-sc-card">
+        <div class="us-sc-card-top">
+          <span class="us-sc-name">CPA 套件代理池</span>
+          <span class="us-sc-pill">${accs} 账号</span>
         </div>
-        <div class="stats-sc-body">
-          <div class="stats-sc-stat"><span class="label">挂载账号</span><strong>${cpaAccCount} 个</strong></div>
-          <div class="stats-sc-stat"><span class="label">全量调用</span><strong>${fmtNum(sources.cpa.requests)}</strong></div>
-          <div class="stats-sc-stat"><span class="label">Token 吞吐</span><strong>${fmtNum(sources.cpa.input + sources.cpa.output)}</strong></div>
+        <div class="us-sc-nums">
+          <span>累计吞吐</span>
+          <b>${fmtNum(sources.cpa.input + sources.cpa.output)}</b>
         </div>
       </div>
     `);
   }
 
-  // Claude Code 卡
   if (sources['claude-code']) {
     cards.push(`
-      <div class="stats-source-card">
-        <div class="stats-sc-head">
-          <span class="stats-sc-status is-active"></span>
-          <span class="stats-sc-title">Claude Code CLI</span>
-          <span class="stats-sc-tag">本地旁路</span>
+      <div class="us-sc-card">
+        <div class="us-sc-card-top">
+          <span class="us-sc-name">Claude Code</span>
+          <span class="us-sc-pill">~/.claude</span>
         </div>
-        <div class="stats-sc-body">
-          <div class="stats-sc-stat"><span class="label">会话请求</span><strong>${fmtNum(sources['claude-code'].requests)}</strong></div>
-          <div class="stats-sc-stat"><span class="label">吞吐</span><strong>${fmtNum(sources['claude-code'].input + sources['claude-code'].output)}</strong></div>
+        <div class="us-sc-nums">
+          <span>会话调用</span>
+          <b>${fmtNum(sources['claude-code'].requests)} 次</b>
         </div>
       </div>
     `);
   }
 
-  // Cursor IDE 卡
   if (sources.cursor) {
     cards.push(`
-      <div class="stats-source-card">
-        <div class="stats-sc-head">
-          <span class="stats-sc-status is-active"></span>
-          <span class="stats-sc-title">Cursor Core 数据库</span>
-          <span class="stats-sc-tag">SQLite</span>
+      <div class="us-sc-card">
+        <div class="us-sc-card-top">
+          <span class="us-sc-name">Cursor Core</span>
+          <span class="us-sc-pill">SQLite</span>
         </div>
-        <div class="stats-sc-body">
-          <div class="stats-sc-stat"><span class="label">LLM Calls</span><strong>${fmtNum(sources.cursor.requests)}</strong></div>
-          <div class="stats-sc-stat"><span class="label">吞吐</span><strong>${fmtNum(sources.cursor.input + sources.cursor.output)}</strong></div>
+        <div class="us-sc-nums">
+          <span>数据库记录</span>
+          <b>${fmtNum(sources.cursor.requests)} 次</b>
         </div>
       </div>
     `);
   }
 
-  if (!cards.length) {
-    host.innerHTML = '<div class="stats-empty">未发现活跃的旁路数据源</div>';
-    return;
-  }
-
-  host.innerHTML = `<div class="stats-sources-grid">${cards.join('')}</div>`;
-
-  const meta = document.getElementById('statsSourcesLastScan');
-  if (meta && local.scannedAt) {
-    meta.textContent = `最近扫描同步于 ${new Date(local.scannedAt).toLocaleTimeString()}`;
-  }
+  host.innerHTML = cards.length ? cards.join('') : '<div class="us-none">无挂载通道</div>';
 }
 
-// ── 渲染实时审计日志表格 ──
+// ── 渲染实时请求审计表 (对标 magpie .led) ──
 function renderStatsRecentTable() {
   const tbody = document.getElementById('statsRecentTbody');
   if (!tbody) return;
   const rows = STATS_STATE.gateway?.recent || [];
 
   if (!rows.length) {
-    tbody.innerHTML = '<tr><td colspan="5" class="stats-empty">当前网关无最近会话调用</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="5" class="us-none">当前网关无最近会话调用</td></tr>';
     return;
   }
 
-  const clamp = (text, max = 80) => {
+  const clamp = (text, max = 75) => {
     const value = String(text ?? '');
     return value.length > max ? `${value.slice(0, max)}…` : value;
   };
 
   tbody.innerHTML = rows.slice(0, 20).map((e) => {
     const timeStr = e.ts ? new Date(e.ts).toLocaleTimeString() : '—';
-    let statusBadge = '<span class="stats-pill-status is-ok">成功</span>';
+    let statusBadge = '<span class="us-tag-ok">成功</span>';
     let routeDesc = '';
-    let metaText = escapeText(e.provider || '默认通道');
+    let metaText = escapeText(e.provider || '默认网关');
 
     if (e.type === 'error') {
-      statusBadge = '<span class="stats-pill-status is-err">失败</span>';
-      routeDesc = `<span class="stats-err-msg" title="${escapeText(e.message)}">${escapeText(clamp(e.message))}</span>`;
+      statusBadge = '<span class="us-tag-err">失败</span>';
+      routeDesc = `<span style="color:#b91c1c;">${escapeText(clamp(e.message))}</span>`;
     } else if (e.type === 'retry') {
-      statusBadge = `<span class="stats-pill-status is-warn">重试 ×${Number(e.count) || 1}</span>`;
-      routeDesc = `<span class="stats-warn-msg" title="${escapeText(e.reason)}">${escapeText(clamp(e.reason))}</span>`;
+      statusBadge = `<span class="us-tag-warn">重试 ×${Number(e.count) || 1}</span>`;
+      routeDesc = `<span style="color:#b45309;">${escapeText(clamp(e.reason))}</span>`;
     } else {
       const reqM = e.requestedModel || '';
       const resM = e.resolvedModel || '';
       if (reqM && resM && reqM !== resM) {
-        routeDesc = `<div class="stats-route-arrow"><span class="from">${escapeText(reqM)}</span><span class="arrow">→</span><span class="to">${escapeText(resM)}</span></div>`;
+        routeDesc = `<span>${escapeText(reqM)}</span><span class="us-arrow">→</span><b>${escapeText(resM)}</b>`;
       } else {
-        routeDesc = `<span class="stats-model-name">${escapeText(resM || reqM || '未指定')}</span>`;
+        routeDesc = `<span>${escapeText(resM || reqM || '未指定')}</span>`;
       }
     }
 
     return `
       <tr>
-        <td class="stats-time-cell">${timeStr}</td>
+        <td class="us-time">${timeStr}</td>
         <td>${statusBadge}</td>
-        <td class="stats-channel-cell">${metaText}</td>
+        <td>${metaText}</td>
         <td>${routeDesc}</td>
-        <td style="text-align: right;" class="stats-mono-cell">—</td>
+        <td style="text-align: right; font-family:'JetBrains Mono',monospace;">—</td>
       </tr>
     `;
   }).join('');
 }
 
-// ── 全量同步装配 ──
+// ── 全量同步 ──
 function renderStatsAll() {
   const series = buildDaySeries();
   renderStatsKpi(series);
-  renderStatsTrend(series);
-  renderStatsRankTable(series);
+  renderStatsChart(series);
+  renderStatsRank(series);
   renderStatsSourcesDeck();
   renderStatsRecentTable();
-}
-
-function statsSkeleton() {
-  const chart = document.getElementById('statsTrendChart');
-  if (chart) chart.innerHTML = '<div class="stats-empty-shimmer">正在汇总历史账本…</div>';
 }
 
 async function loadStats({ silent = false } = {}) {
   if (STATS_STATE.loading) return;
   STATS_STATE.loading = true;
-  if (!silent) statsSkeleton();
   const btn = document.getElementById('statsRefreshBtn');
   if (btn) btn.classList.add('is-busy');
 
@@ -695,7 +498,7 @@ async function loadStats({ silent = false } = {}) {
     STATS_STATE.local = local;
     renderStatsAll();
 
-    // 后台静默复查旁路源，获取新增后自刷新
+    // 触发旁路更新
     invoke('scan_local_usage').then((fresh) => {
       if (fresh) {
         STATS_STATE.local = fresh;
@@ -703,8 +506,7 @@ async function loadStats({ silent = false } = {}) {
       }
     }).catch(() => {});
   } catch (e) {
-    const chart = document.getElementById('statsTrendChart');
-    if (chart) chart.innerHTML = `<div class="stats-empty">统计加载失败：${escapeText(e?.message || e)}</div>`;
+    console.error('统计加载失败', e);
   } finally {
     STATS_STATE.loading = false;
     if (btn) btn.classList.remove('is-busy');
@@ -721,7 +523,7 @@ function bindSeg(selector, attr, onChange) {
     const value = btn.getAttribute(attr);
     host.querySelectorAll(`[${attr}]`).forEach((el) => {
       const active = el === btn;
-      el.classList.toggle('active', active);
+      el.classList.toggle('on', active);
       el.setAttribute('aria-selected', String(active));
     });
     onChange(value);
@@ -729,30 +531,18 @@ function bindSeg(selector, attr, onChange) {
 }
 
 function bindStatsPage() {
-  // 时间范围切换
-  bindSeg('#page-stats .stats-capsule-group[aria-label="时间范围"]', 'data-stats-range', (value) => {
+  // 时间周期切换
+  bindSeg('#page-stats .us-segs[aria-label="时间周期"]', 'data-stats-range', (value) => {
     const next = Number(value);
     if (!Number.isFinite(next) || next === STATS_STATE.range) return;
     STATS_STATE.range = next;
     loadStats();
   });
 
-  // 来源过滤切换
-  bindSeg('#page-stats .stats-capsule-group[aria-label="来源过滤"]', 'data-stats-source-filter', (value) => {
-    STATS_STATE.sourceFilter = value;
-    renderStatsAll();
-  });
-
-  // 指标切换
-  bindSeg('#page-stats .stats-seg-control[aria-label="图表指标"]', 'data-stats-metric', (value) => {
-    STATS_STATE.metric = value;
-    renderStatsTrend(buildDaySeries());
-  });
-
-  // 排行维度切换
-  bindSeg('#page-stats .stats-seg-control[aria-label="排行维度"]', 'data-stats-rank', (value) => {
+  // 排行视图切换
+  bindSeg('#page-stats .us-segs[aria-label="排行视图"]', 'data-stats-rank', (value) => {
     STATS_STATE.rank = value;
-    renderStatsRankTable(buildDaySeries());
+    renderStatsRank(buildDaySeries());
   });
 
   const refresh = document.getElementById('statsRefreshBtn');
