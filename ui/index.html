@@ -3221,109 +3221,204 @@
 
           <section class="stats-page">
 
-            <header class="stats-head">
-              <div class="stats-head-copy">
-                <h1 class="stats-title">统计</h1>
-                <p class="stats-sub">网关账本记录路由与重试，本地日志覆盖未经过代理的用量；两本账并列展示，不合并</p>
-              </div>
-              <div class="stats-controls">
-                <div class="stats-range" role="tablist" aria-label="时间范围">
-                  <button type="button" class="stats-range-btn" data-stats-range="1" role="tab" aria-selected="false">今日</button>
-                  <button type="button" class="stats-range-btn active" data-stats-range="7" role="tab" aria-selected="true">近 7 天</button>
-                  <button type="button" class="stats-range-btn" data-stats-range="30" role="tab" aria-selected="false">近 30 天</button>
-                  <button type="button" class="stats-range-btn" data-stats-range="0" role="tab" aria-selected="false">全部</button>
+            <!-- 顶部控制区：标题 + 筛选分段 + 来源切换 + 刷新 -->
+            <header class="stats-header-bar">
+              <div class="stats-header-main">
+                <div class="stats-title-group">
+                  <h1 class="stats-title">用量与账本</h1>
+                  <span class="stats-badge" id="statsLiveBadge">实时对账</span>
                 </div>
-                <button type="button" class="stats-refresh" id="statsRefreshBtn" title="重新读取统计">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <p class="stats-sub">跨客户端集中账本：网关实时请求与本地客户端（Claude Code / Cursor / CPA 套件）无损聚合</p>
+              </div>
+
+              <div class="stats-header-actions">
+                <div class="stats-filter-capsule">
+                  <span class="stats-capsule-label">时间</span>
+                  <div class="stats-capsule-group" role="tablist" aria-label="时间范围">
+                    <button type="button" class="stats-capsule-btn" data-stats-range="1" role="tab" aria-selected="false">今日</button>
+                    <button type="button" class="stats-capsule-btn active" data-stats-range="7" role="tab" aria-selected="true">近 7 天</button>
+                    <button type="button" class="stats-capsule-btn" data-stats-range="30" role="tab" aria-selected="false">近 30 天</button>
+                    <button type="button" class="stats-capsule-btn" data-stats-range="0" role="tab" aria-selected="false">全部</button>
+                  </div>
+                </div>
+
+                <div class="stats-filter-capsule">
+                  <span class="stats-capsule-label">来源</span>
+                  <div class="stats-capsule-group" role="tablist" aria-label="来源过滤">
+                    <button type="button" class="stats-capsule-btn active" data-stats-source-filter="all" role="tab" aria-selected="true">全部来源</button>
+                    <button type="button" class="stats-capsule-btn" data-stats-source-filter="cpa" role="tab" aria-selected="false">CPA 套件</button>
+                    <button type="button" class="stats-capsule-btn" data-stats-source-filter="claude" role="tab" aria-selected="false">Claude Code</button>
+                    <button type="button" class="stats-capsule-btn" data-stats-source-filter="gateway" role="tab" aria-selected="false">网关</button>
+                  </div>
+                </div>
+
+                <button type="button" class="stats-action-button" id="statsRefreshBtn" title="同步旁路日志与最新网关快照">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                     <path d="M3 12a9 9 0 0 1 15.5-6.3L21 8"></path>
                     <path d="M21 3v5h-5"></path>
                     <path d="M21 12a9 9 0 0 1-15.5 6.3L3 16"></path>
                     <path d="M3 21v-5h5"></path>
                   </svg>
-                  <span>刷新</span>
+                  <span>同步数据</span>
                 </button>
               </div>
             </header>
 
-            <div class="stats-kpi-grid">
-              <article class="stats-kpi">
-                <div class="stats-kpi-head">
-                  <span class="stats-kpi-label">请求数</span>
-                  <span class="stats-kpi-trend" id="statsTrendRequests">—</span>
+            <!-- KPI 四联仪表卡 -->
+            <div class="stats-metric-deck">
+              <article class="stats-card stats-kpi-card-v2" data-metric="requests">
+                <div class="stats-kpi-card-top">
+                  <span class="stats-kpi-name">总请求调用</span>
+                  <span class="stats-trend-badge" id="statsTrendRequests">—</span>
                 </div>
-                <div class="stats-kpi-value" id="statsKpiRequests">—</div>
-                <div class="stats-kpi-sub" id="statsKpiRequestsSub">等待数据</div>
-                <svg class="stats-spark" id="statsSparkRequests" viewBox="0 0 100 26" preserveAspectRatio="none" aria-hidden="true"></svg>
+                <div class="stats-kpi-big-num">
+                  <span id="statsKpiRequests">—</span>
+                  <span class="stats-unit">次</span>
+                </div>
+                <div class="stats-kpi-spark-wrap">
+                  <svg class="stats-spark-svg" id="statsSparkRequests" viewBox="0 0 120 32" preserveAspectRatio="none" aria-hidden="true"></svg>
+                </div>
+                <div class="stats-kpi-card-footer" id="statsKpiRequestsSub">网关与旁路客户端合计</div>
               </article>
-              <article class="stats-kpi">
-                <div class="stats-kpi-head">
-                  <span class="stats-kpi-label">Token</span>
-                  <span class="stats-kpi-trend" id="statsTrendTokens">—</span>
+
+              <article class="stats-card stats-kpi-card-v2" data-metric="tokens">
+                <div class="stats-kpi-card-top">
+                  <span class="stats-kpi-name">Token 吞吐</span>
+                  <span class="stats-trend-badge" id="statsTrendTokens">—</span>
                 </div>
-                <div class="stats-kpi-value" id="statsKpiTokens">—</div>
-                <div class="stats-kpi-sub" id="statsKpiTokensSub">输入 / 输出 / 缓存</div>
-                <svg class="stats-spark" id="statsSparkTokens" viewBox="0 0 100 26" preserveAspectRatio="none" aria-hidden="true"></svg>
+                <div class="stats-kpi-big-num">
+                  <span id="statsKpiTokens">—</span>
+                </div>
+                <div class="stats-kpi-token-bar">
+                  <div class="stats-token-seg is-input" id="statsTokenInputSeg" style="width: 50%" title="输入"></div>
+                  <div class="stats-token-seg is-output" id="statsTokenOutputSeg" style="width: 25%" title="输出"></div>
+                  <div class="stats-token-seg is-cache" id="statsTokenCacheSeg" style="width: 25%" title="缓存"></div>
+                </div>
+                <div class="stats-kpi-card-footer" id="statsKpiTokensSub">输入 / 输出 / 缓存</div>
               </article>
-              <article class="stats-kpi">
-                <div class="stats-kpi-head">
-                  <span class="stats-kpi-label">估算费用</span>
-                  <span class="stats-kpi-trend" id="statsTrendCost">—</span>
+
+              <article class="stats-card stats-kpi-card-v2" data-metric="cost">
+                <div class="stats-kpi-card-top">
+                  <span class="stats-kpi-name">模型估算支出</span>
+                  <span class="stats-trend-badge" id="statsTrendCost">—</span>
                 </div>
-                <div class="stats-kpi-value" id="statsKpiCost">—</div>
-                <div class="stats-kpi-sub" id="statsKpiCostSub">按模型单价估算，非账单</div>
-                <svg class="stats-spark" id="statsSparkCost" viewBox="0 0 100 26" preserveAspectRatio="none" aria-hidden="true"></svg>
+                <div class="stats-kpi-big-num is-currency">
+                  <span id="statsKpiCost">—</span>
+                </div>
+                <div class="stats-kpi-spark-wrap">
+                  <svg class="stats-spark-svg" id="statsSparkCost" viewBox="0 0 120 32" preserveAspectRatio="none" aria-hidden="true"></svg>
+                </div>
+                <div class="stats-kpi-card-footer" id="statsKpiCostSub">按模型单价与缓存率换算</div>
               </article>
-              <article class="stats-kpi">
-                <div class="stats-kpi-head">
-                  <span class="stats-kpi-label">成功率</span>
-                  <span class="stats-kpi-trend" id="statsTrendSuccess">—</span>
+
+              <article class="stats-card stats-kpi-card-v2" data-metric="health">
+                <div class="stats-kpi-card-top">
+                  <span class="stats-kpi-name">请求成功率</span>
+                  <span class="stats-health-pill is-ok" id="statsHealthStatus">运行健康</span>
                 </div>
-                <div class="stats-kpi-value" id="statsKpiSuccess">—</div>
-                <div class="stats-kpi-sub" id="statsKpiSuccessSub">网关侧口径</div>
-                <svg class="stats-spark" id="statsSparkSuccess" viewBox="0 0 100 26" preserveAspectRatio="none" aria-hidden="true"></svg>
+                <div class="stats-kpi-big-num">
+                  <span id="statsKpiSuccess">—</span>
+                </div>
+                <div class="stats-kpi-spark-wrap">
+                  <svg class="stats-spark-svg" id="statsSparkSuccess" viewBox="0 0 120 32" preserveAspectRatio="none" aria-hidden="true"></svg>
+                </div>
+                <div class="stats-kpi-card-footer" id="statsKpiSuccessSub">网关侧统计</div>
               </article>
             </div>
 
-            <section class="stats-panel">
-              <div class="stats-panel-head">
-                <div>
-                  <div class="stats-panel-title">每日用量</div>
-                  <div class="stats-panel-sub" id="statsChartSub">柱为当日 Token，折线为请求数</div>
+            <!-- 主图表区：每日用量趋势（专业双轴 + 悬浮详情卡） -->
+            <section class="stats-card stats-main-chart-card">
+              <div class="stats-section-head">
+                <div class="stats-section-titles">
+                  <h2 class="stats-section-h2">每日用量动态</h2>
+                  <span class="stats-section-meta" id="statsChartLegendNote">柱状堆叠输入/输出/缓存，浅色曲线对应请求频次</span>
                 </div>
-                <div class="stats-seg" role="tablist" aria-label="图表指标">
-                  <button type="button" class="stats-seg-btn active" data-stats-metric="tokens" role="tab" aria-selected="true">Token</button>
-                  <button type="button" class="stats-seg-btn" data-stats-metric="requests" role="tab" aria-selected="false">请求</button>
-                  <button type="button" class="stats-seg-btn" data-stats-metric="cost" role="tab" aria-selected="false">费用</button>
+
+                <div class="stats-chart-toolbar">
+                  <div class="stats-legend-pills">
+                    <span class="stats-legend-dot is-input">输入</span>
+                    <span class="stats-legend-dot is-output">输出</span>
+                    <span class="stats-legend-dot is-cache">缓存读写</span>
+                    <span class="stats-legend-dot is-line">调用频次</span>
+                  </div>
+
+                  <div class="stats-seg-control" role="tablist" aria-label="图表指标">
+                    <button type="button" class="stats-seg-item active" data-stats-metric="tokens" role="tab" aria-selected="true">Token</button>
+                    <button type="button" class="stats-seg-item" data-stats-metric="requests" role="tab" aria-selected="false">请求数</button>
+                    <button type="button" class="stats-seg-item" data-stats-metric="cost" role="tab" aria-selected="false">费用</button>
+                  </div>
                 </div>
               </div>
-              <div class="stats-chart" id="statsTrendChart" aria-live="polite">
-                <div class="stats-empty">正在读取统计…</div>
+
+              <div class="stats-chart-viewport" id="statsTrendChart" aria-live="polite">
+                <div class="stats-empty-shimmer">正在汇总历史账本…</div>
               </div>
             </section>
 
-            <section class="stats-panel">
-              <div class="stats-panel-head">
-                <div class="stats-panel-title">排行</div>
-                <div class="stats-seg" role="tablist" aria-label="排行维度">
-                  <button type="button" class="stats-seg-btn active" data-stats-rank="model" role="tab" aria-selected="true">模型</button>
-                  <button type="button" class="stats-seg-btn" data-stats-rank="account" role="tab" aria-selected="false">账号</button>
-                  <button type="button" class="stats-seg-btn" data-stats-rank="source" role="tab" aria-selected="false">来源</button>
-                </div>
-              </div>
-              <div class="stats-table" id="statsRankTable">
-                <div class="stats-empty">暂无数据</div>
-              </div>
-            </section>
+            <!-- 核心数据分析双栏：排行分析 + 来源分布与 CPA 账号池 -->
+            <div class="stats-analysis-duo">
+              <!-- 排行模块 -->
+              <section class="stats-card stats-sub-card">
+                <div class="stats-section-head">
+                  <div class="stats-section-titles">
+                    <h2 class="stats-section-h2">模型与维度消耗</h2>
+                    <span class="stats-section-meta" id="statsRankContextNote">按消耗权重降序排列</span>
+                  </div>
 
-            <section class="stats-panel">
-              <div class="stats-panel-head">
-                <div>
-                  <div class="stats-panel-title">最近请求</div>
-                  <div class="stats-panel-sub">网关实时快照；请求侧与上游模型不同时显示箭头</div>
+                  <div class="stats-seg-control" role="tablist" aria-label="排行维度">
+                    <button type="button" class="stats-seg-item active" data-stats-rank="model" role="tab" aria-selected="true">模型</button>
+                    <button type="button" class="stats-seg-item" data-stats-rank="account" role="tab" aria-selected="false">账号池</button>
+                    <button type="button" class="stats-seg-item" data-stats-rank="source" role="tab" aria-selected="false">客户端</button>
+                  </div>
+                </div>
+
+                <div class="stats-rank-scroll-wrap" id="statsRankTable">
+                  <div class="stats-empty">暂无排行数据</div>
+                </div>
+              </section>
+
+              <!-- 来源概况与状态 -->
+              <section class="stats-card stats-sub-card">
+                <div class="stats-section-head">
+                  <div class="stats-section-titles">
+                    <h2 class="stats-section-h2">数据源与就绪状态</h2>
+                    <span class="stats-section-meta" id="statsSourcesLastScan">旁路文件实时挂载</span>
+                  </div>
+                </div>
+
+                <div class="stats-sources-container" id="statsSourcesDeck">
+                  <div class="stats-empty">正在检查数据源…</div>
+                </div>
+              </section>
+            </div>
+
+            <!-- 最近请求日志（专业审计表格） -->
+            <section class="stats-card stats-sub-card">
+              <div class="stats-section-head">
+                <div class="stats-section-titles">
+                  <h2 class="stats-section-h2">实时请求审计</h2>
+                  <span class="stats-section-meta">捕获网关即时会话；标示请求模型到实际落地供应商的映射链路</span>
+                </div>
+                <div class="stats-table-actions">
+                  <span class="stats-table-badge" id="statsRecentTotal">最近 20 条</span>
                 </div>
               </div>
-              <div class="stats-recent" id="statsRecent">
-                <div class="stats-empty">暂无请求记录</div>
+
+              <div class="stats-audit-table-wrap">
+                <table class="stats-audit-table" aria-label="实时请求明细">
+                  <thead>
+                    <tr>
+                      <th style="width: 100px;">时间</th>
+                      <th style="width: 80px;">状态</th>
+                      <th style="width: 130px;">来源通道</th>
+                      <th>路由映射 (请求 → 实际)</th>
+                      <th style="width: 110px; text-align: right;">消耗 / 耗时</th>
+                    </tr>
+                  </thead>
+                  <tbody id="statsRecentTbody">
+                    <tr><td colspan="5" class="stats-empty">暂无即时请求</td></tr>
+                  </tbody>
+                </table>
               </div>
             </section>
 
