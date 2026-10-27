@@ -163,11 +163,12 @@ function sumSeries(series) {
 // ── ECharts 微型 Sparkline 渲染器 ──
 function renderEchartSpark(containerId, data, color) {
   const el = document.getElementById(containerId);
-  if (!el || typeof echarts === 'undefined') return;
+  const echartsLib = window.echarts || globalThis.echarts;
+  if (!el || !echartsLib) return;
 
   let inst = sparkInstances[containerId];
   if (!inst) {
-    inst = echarts.init(el, null, { renderer: 'svg' });
+    inst = echartsLib.init(el, null, { renderer: 'svg' });
     sparkInstances[containerId] = inst;
   }
 
@@ -285,7 +286,9 @@ function renderEchartsMainChart(series) {
   const el = document.getElementById('mainTrendEcharts');
   if (!el) return;
 
-  if (typeof echarts === 'undefined') {
+  const echartsLib = window.echarts || globalThis.echarts;
+  if (!echartsLib) {
+    console.warn('[AnyBridge Stats] echartsLib 尚未加载');
     el.innerHTML = '<div class="ez-empty-state">ECharts 引擎正在挂载，请稍候…</div>';
     return;
   }
@@ -301,7 +304,7 @@ function renderEchartsMainChart(series) {
   }
 
   if (!mainEchartInstance) {
-    mainEchartInstance = echarts.init(el);
+    mainEchartInstance = echartsLib.init(el);
     window.addEventListener('resize', () => mainEchartInstance?.resize());
   } else {
     mainEchartInstance.resize();
@@ -752,6 +755,13 @@ async function loadStats({ silent = false } = {}) {
       invoke('get_stats_history', { days: historyDaysToFetch() }).catch(() => ({ days: [] })),
       invoke('get_local_usage').catch(() => null),
     ]);
+    // 调试诊断日志，确保各数据源拿到后直观可见
+    console.log('[AnyBridge Stats] 数据包加载完成:', {
+      hasGateway: !!gateway,
+      historyCount: Array.isArray(history?.days) ? history.days.length : 0,
+      hasLocal: !!local,
+      localSources: local?.sources ? Object.keys(local.sources) : [],
+    });
     STATS_STATE.gateway = gateway;
     STATS_STATE.history = Array.isArray(history?.days) ? history.days : [];
     STATS_STATE.local = local;
