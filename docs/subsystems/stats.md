@@ -16,6 +16,10 @@ deviations are listed explicitly so they are not mistaken for intended behavior.
 | Log retention | Removes expired log directories on write. | `sidecar/lib/log-cleanup.js` |
 | Cursor call records | `runs` and `llm_calls` tables (timing chain, tokens, status, error kind). | `cursor-core/src/store/llm_calls.rs` |
 | Stats endpoint | `GET /__byok/stats`, local UI only, returns `snapshot()`. | `sidecar/hybrid-server.js` |
+| Per-request ledger | `usage/usage-YYYY-MM-DD.jsonl`, whitelist fields only, 90-day retention. | `sidecar/usage-ledger.js` |
+| Pricing | Built-in per-model unit prices (input/output/cache read/cache write). | `sidecar/pricing.js` |
+| Bypass scan | Reads agent-owned logs/databases and writes `usage-local.json`. | `src-tauri/src/commands/usage_scan.rs` |
+| Stats page | KPI, daily trend, model ranking, data sources. | `ui-src/partials/pages/stats.html`, `ui/assets/scripts/67-stats.js` |
 
 ## Runtime path
 
@@ -50,6 +54,39 @@ Writes mutate in-memory state, then schedule a debounced `stats.json` write
 Tauri `get_stats` command; it rolls the day over and prunes history older than
 `STATS_RETENTION_DAYS` (default 365, clamped 1..3650, read from
 `byok-config.json`).
+
+## Bypass sources (local logs)
+
+Statistics must survive the proxy being stopped or in development. The bypass
+scanner reads what the clients already write, never injects into them, and never
+requires traffic to pass through AnyBridge:
+
+| Source | Input | Aggregation |
+| --- | --- | --- |
+| `claude-code` | `~/.claude/projects/**/*.jsonl` assistant rows (`message.usage`) | Incremental by byte offset per file; file shrink resets the offset and re-reads. |
+| `cursor` | `<config>/cursor-core/cursor-core.db` `llm_calls` | Full recompute per scan (idempotent), read-only connection. |
+| `cpa` | `<LocalAppData>/anybridge/extensions/services/cpa-suite/cpamp-data/usage.sqlite` account daily rollups | Full recompute, read-only, grouped by day × account × model. |
+
+Rules:
+
+- Results land in `<config>/usage-local.json`, separate from `stats.json`.
+- Rejection by the scanner (missing file, unreadable database) is recorded in
+  `errors` and reported in the UI; it is never silently treated as zero usage.
+- Scanning runs in `spawn_blocking`; it must not run on the UI thread.
+- Codex sessions are not scanned yet: the local samples were empty files, so the
+  record shape is unverified. Do not guess a parser without a real sample.
+
+## Two ledgers, never merged
+
+- **Gateway ledger** (`stats.json` + `usage/*.jsonl`): requests that actually
+  passed through the proxy. Carries routing, retries and provider identity.
+- **Bypass ledger** (`usage-local.json`): usage reported by the clients
+  themselves. Carries account identity and is available even while the proxy is
+  stopped.
+
+The stats page sums both for request/token totals but keeps cost and success
+rate gateway-only, because bypass sources have no price and no error contract.
+Never merge them into one file: the same request may appear in both.
 
 ## Tracker contract
 
