@@ -34,10 +34,7 @@
   },
   "bundle": {
     "active": true,
-    "targets": [
-      "nsis",
-      "msi"
-    ],
+    "targets": "all",
     "createUpdaterArtifacts": true,
     "externalBin": [
       "binaries/anybridge-proxy",
