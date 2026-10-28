@@ -3,7 +3,7 @@
  */
 
 const STATS_STATE = {
-  range: 7,             // 1 / 7 / 30 / 0=全部
+  range: 14,            // 1 / 7 / 14 / 30 / 0=全部（默认 14 天提供密集丰满的数据点）
   sourceFilter: 'all',  // all / cpa / claude / gateway
   metric: 'tokens',     // tokens / requests / cost
   rank: 'model',        // model / account / source
@@ -330,17 +330,17 @@ function renderEchartsMainChart(series) {
   const days = series.map((r) => r.day.slice(5));
 
   // 专业多线面积图配置（按大厂监控与 CPA 视觉标准）
-  // 3 条平滑曲线穿透各个日期点，带底部透明渐变光晕，告别稀疏柱子
+  // 显式开启 symbol: true，每一个数据点带精致微圆点，悬浮放大，节点饱满不空洞
   const chartSeries = [
     {
       name: '输入 Token',
       type: 'line',
       smooth: true,
-      showSymbol: false,
+      showSymbol: true,
       symbol: 'circle',
-      symbolSize: 6,
+      symbolSize: 5,
       data: series.map((r) => r.input),
-      itemStyle: { color: '#3b82f6' },
+      itemStyle: { color: '#3b82f6', borderWidth: 2, borderColor: '#fff' },
       lineStyle: { width: 2.2, color: '#3b82f6' },
       areaStyle: {
         color: new echartsLib.graphic.LinearGradient(0, 0, 0, 1, [
@@ -354,11 +354,11 @@ function renderEchartsMainChart(series) {
       name: '输出 Token',
       type: 'line',
       smooth: true,
-      showSymbol: false,
+      showSymbol: true,
       symbol: 'circle',
-      symbolSize: 6,
+      symbolSize: 5,
       data: series.map((r) => r.output),
-      itemStyle: { color: '#10b981' },
+      itemStyle: { color: '#10b981', borderWidth: 2, borderColor: '#fff' },
       lineStyle: { width: 2.2, color: '#10b981' },
       areaStyle: {
         color: new echartsLib.graphic.LinearGradient(0, 0, 0, 1, [
@@ -372,11 +372,11 @@ function renderEchartsMainChart(series) {
       name: '缓存 Token',
       type: 'line',
       smooth: true,
-      showSymbol: false,
+      showSymbol: true,
       symbol: 'circle',
-      symbolSize: 6,
+      symbolSize: 5,
       data: series.map((r) => r.cache),
-      itemStyle: { color: '#8b5cf6' },
+      itemStyle: { color: '#8b5cf6', borderWidth: 2, borderColor: '#fff' },
       lineStyle: { width: 2.2, color: '#8b5cf6' },
       areaStyle: {
         color: new echartsLib.graphic.LinearGradient(0, 0, 0, 1, [
@@ -391,9 +391,9 @@ function renderEchartsMainChart(series) {
       type: 'line',
       yAxisIndex: 1,
       smooth: true,
-      showSymbol: false,
+      showSymbol: true,
       symbol: 'circle',
-      symbolSize: 5,
+      symbolSize: 4,
       data: series.map((r) => r.requests),
       itemStyle: { color: '#f59e0b' },
       lineStyle: { width: 1.8, color: '#f59e0b', type: 'dashed' },
