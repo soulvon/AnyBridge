@@ -78,6 +78,24 @@ Rules:
 - Codex sessions are not scanned yet: the local samples were empty files, so the
   record shape is unverified. Do not guess a parser without a real sample.
 
+### Evaluated and rejected (do not re-litigate)
+
+Investigated on 2026-10-29 with real local data; conclusions below are final
+until the client changes its storage format.
+
+| Source | Verdict | Evidence |
+| --- | --- | --- |
+| Gemini CLI (`~/.gemini/tmp/*/chats/session-*.json`) | **Won't add** | Format is clean (`model` + `tokens{input,output,cached}` per assistant message, 211 messages locally), but the CLI is being retired in favour of Antigravity CLI, which is out of support scope. |
+| Antigravity IDE (`~/.gemini/antigravity/conversations/*.db`) | Won't add | `gen_metadata` / `steps` hold protobuf blobs with no schema; a parser would be guesswork that breaks on version bumps. |
+| Codex | Blocked, not rejected | `rollout-*.jsonl` has `token_count` events but `info` is `null` (quota percentages only). The `input_tokens` string in `session_index.jsonl` is inside a prompt body, not a field — do not treat it as evidence. |
+| Trae | Won't add | `ModularData/ai-agent/database.db` (63 MB) is not SQLite (`file is not a database`); encrypted or private format. |
+| Zed | Won't add | All three `db.sqlite` files are 4 KB empty shells. |
+| CodeBuddy | Won't add | No usage artefact anywhere in `~/.codebuddy`. |
+| Windsurf | Won't add | `state.vscdb` only stores extension `lastUsed` timestamps. |
+| Grok / WorkBuddy | Won't add | Runtime logs / audit events, no per-call tokens. |
+| Claude Desktop | Won't add | No local database or jsonl holding usage. |
+| VS Code Copilot Chat | Won't add | Extension ships metadata only. |
+
 ## Two ledgers, never merged
 
 - **Gateway ledger** (`stats.json` + `usage/*.jsonl`): requests that actually
