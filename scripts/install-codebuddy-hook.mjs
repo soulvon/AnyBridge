@@ -44,8 +44,8 @@ provider:
 # 前端改动强制检查
 
 改 UI 前先读：
-- 通用规范：C:/Users/admin/Desktop/devloop/方法/04_前端与交互.md
-- 事故判例：C:/Users/admin/Desktop/devloop/记录/ 下 CSS / UI / 图标相关条目
+- 通用规范：F:/Ailoop/modules/devloop/方法/04_前端与交互.md
+- 事故判例：F:/Ailoop/modules/devloop/记录/ 下 CSS / UI / 图标相关条目
 
 硬性禁止：
 - 全大写英文标签、蓝紫渐变、廉价 glow / 雷达 / 呼吸动效、粗彩条、多层卡片。
