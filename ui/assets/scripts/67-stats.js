@@ -934,11 +934,34 @@ function panicPanel(name, error) {
   el.innerHTML = `<div class="ez-empty-state">${name}渲染失败：${escapeText(error?.message || error)}</div>`;
 }
 
+/** 首屏加载失败：骨架必须被替换成错误，绝不能让骨架一直转下去。 */
+function showStatsFailure(error) {
+  const message = escapeText(error?.message || error);
+  const panels = {
+    mainTrendEcharts: `<div class="ez-empty-state">统计加载失败：${message}</div>`,
+    statsRankTable: `<div class="ez-empty-state">统计加载失败：${message}</div>`,
+    statsSourcesDeck: `<div class="ez-empty-state">统计加载失败：${message}</div>`,
+  };
+  for (const [id, html] of Object.entries(panels)) {
+    const el = document.getElementById(id);
+    if (el) el.innerHTML = html;
+  }
+  const tbody = document.getElementById('statsRecentTbody');
+  if (tbody) {
+    tbody.innerHTML = `<tr><td colspan="5" class="ez-empty-state">统计加载失败：${message}</td></tr>`;
+  }
+}
+
 async function loadStats({ silent = false } = {}) {
   if (STATS_STATE.loading) return;
   STATS_STATE.loading = true;
   const btn = document.getElementById('statsRefreshBtn');
   if (btn) btn.classList.add('is-busy');
+
+  // 只有「还没有任何数据」时才上骨架；刷新时保留旧内容，避免闪一下变空再填回
+  const page = document.getElementById('page-stats');
+  const firstLoad = !STATS_STATE.gateway && STATS_STATE.history.length === 0;
+  if (firstLoad) page?.classList.add('stats-loading');
 
   try {
     if (typeof invoke !== 'function') throw new Error('Tauri bridge 未就绪');
@@ -947,13 +970,6 @@ async function loadStats({ silent = false } = {}) {
       invoke('get_stats_history', { days: historyDaysToFetch() }).catch(() => ({ days: [] })),
       invoke('get_local_usage').catch(() => null),
     ]);
-    // 调试诊断日志，确保各数据源拿到后直观可见
-    console.log('[AnyBridge Stats] 数据包加载完成:', {
-      hasGateway: !!gateway,
-      historyCount: Array.isArray(history?.days) ? history.days.length : 0,
-      hasLocal: !!local,
-      localSources: local?.sources ? Object.keys(local.sources) : [],
-    });
     STATS_STATE.gateway = gateway;
     STATS_STATE.history = Array.isArray(history?.days) ? history.days : [];
     STATS_STATE.local = local;
@@ -967,7 +983,9 @@ async function loadStats({ silent = false } = {}) {
     }).catch(() => {});
   } catch (e) {
     console.error('统计加载失败', e);
+    if (firstLoad) showStatsFailure(e);
   } finally {
+    page?.classList.remove('stats-loading');
     STATS_STATE.loading = false;
     if (btn) btn.classList.remove('is-busy');
   }

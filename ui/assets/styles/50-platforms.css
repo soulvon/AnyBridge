@@ -12657,3 +12657,40 @@ html[data-scheme="dark"] .endpoint-brand-icon-dark,
   .ez-grid-duo { grid-template-columns: 1fr; }
   .ez-channels-deck { grid-template-columns: 1fr; }
 }
+
+/* ── 统计页骨架屏（沿用 health-skeleton-shimmer，不另造视觉语言）── */
+.ez-skel-bone,
+#page-stats.stats-loading .ez-stat-value,
+#page-stats.stats-loading .ez-stat-footer,
+#page-stats.stats-loading .ez-stat-unit,
+#page-stats.stats-loading .ez-delta-pill {
+  border-radius: 6px;
+  background: linear-gradient(90deg, var(--bg-input) 0%, var(--bg-hover) 50%, var(--bg-input) 100%);
+  background-size: 200% 100%;
+  animation: health-skeleton-shimmer 1.3s ease-in-out infinite;
+}
+#page-stats.stats-loading .ez-stat-value,
+#page-stats.stats-loading .ez-stat-footer,
+#page-stats.stats-loading .ez-stat-unit,
+#page-stats.stats-loading .ez-delta-pill {
+  color: transparent;
+  display: inline-block;
+  min-width: 64px;
+}
+
+/* 图表骨架：一排高度渐次的骨条，示意正在取数 */
+.ez-skel-chart { display: flex; align-items: flex-end; gap: 10px; height: 100%; padding: 34px 4px 18px; box-sizing: border-box; }
+.ez-skel-chart i { flex: 1; border-radius: 4px 4px 0 0; }
+
+/* 排行骨架 */
+.ez-skel-rank { display: flex; flex-direction: column; gap: 12px; padding: 6px 0; }
+.ez-skel-rank-row { display: grid; grid-template-columns: minmax(0, 1.4fr) 70px 80px 100px; gap: 10px; align-items: center; }
+.ez-skel-rank-row span { height: 12px; }
+
+/* 数据源骨架 */
+.ez-skel-sources { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.ez-skel-sources span { height: 62px; border-radius: 9px; }
+
+/* 明细表骨架 */
+.ez-skel-table { display: flex; flex-direction: column; gap: 14px; padding: 8px 0; }
+.ez-skel-table span { height: 12px; }

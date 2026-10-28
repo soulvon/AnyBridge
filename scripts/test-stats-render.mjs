@@ -18,6 +18,11 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const html = fs.readFileSync(path.join(root, 'ui/index.html'), 'utf8');
 const code = fs.readFileSync(path.join(root, 'ui/assets/scripts/67-stats.js'), 'utf8');
 
+// 首屏必须是骨架屏，不能先甩一句「暂无排行数据」——那是把加载态说成空态。
+assert.match(html, /ez-skel-chart/, '首屏必须渲染图表骨架');
+assert.match(html, /ez-skel-rank/, '首屏必须渲染排行骨架');
+assert.doesNotMatch(html, /暂无排行数据/, '首屏不得显示「暂无排行数据」当加载态');
+
 const dom = new JSDOM(html, { url: 'http://localhost/', pretendToBeVisual: true });
 const { window } = dom;
 
@@ -153,6 +158,14 @@ assert.ok(sourcesHost.querySelectorAll('.ez-channel-card').length > 0, '数据�
 assert.doesNotMatch(sourcesHost.innerHTML, /正在检查通道数据/, '数据源不得停留在「正在检查」假加载态');
 assert.match(recentBody.innerHTML, /gemini-3-8-flash-high/, '最近请求必须展示「请求模型 → 实际模型」');
 assert.doesNotMatch(doc.body.innerHTML, /渲染失败/, '任何面板都不应进入错误态');
+
+// 骨架屏必须在数据到达后彻底消失，且加载态标记要摘掉
+assert.equal(doc.querySelectorAll('#page-stats .ez-skel-bone').length, 0, '数据到达后骨架必须全部清除');
+assert.equal(
+  doc.getElementById('page-stats').classList.contains('stats-loading'),
+  false,
+  '渲染完成后必须摘掉 stats-loading 标记',
+);
 
 // ── 来源筛选器必须由「实际扫到的来源」动态生成 ──
 const filterValues = () => [...doc.querySelectorAll('#page-stats [data-stats-source-filter]')]

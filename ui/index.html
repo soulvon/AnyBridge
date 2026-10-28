@@ -3330,9 +3330,22 @@
                 </div>
               </div>
 
-              <!-- ECharts 实例挂载节点 -->
+              <!-- ECharts 实例挂载节点：首屏为骨架，渲染前会被清空 -->
               <div class="ez-echarts-container" id="mainTrendEcharts">
-                <div class="ez-empty-state">正在初始化 ECharts 图表引擎…</div>
+                <div class="ez-skel-chart" aria-hidden="true">
+                  <i class="ez-skel-bone" style="height: 34%"></i>
+                  <i class="ez-skel-bone" style="height: 52%"></i>
+                  <i class="ez-skel-bone" style="height: 41%"></i>
+                  <i class="ez-skel-bone" style="height: 68%"></i>
+                  <i class="ez-skel-bone" style="height: 47%"></i>
+                  <i class="ez-skel-bone" style="height: 59%"></i>
+                  <i class="ez-skel-bone" style="height: 38%"></i>
+                  <i class="ez-skel-bone" style="height: 73%"></i>
+                  <i class="ez-skel-bone" style="height: 44%"></i>
+                  <i class="ez-skel-bone" style="height: 62%"></i>
+                  <i class="ez-skel-bone" style="height: 50%"></i>
+                  <i class="ez-skel-bone" style="height: 28%"></i>
+                </div>
               </div>
             </section>
 
@@ -3354,7 +3367,13 @@
                 </div>
 
                 <div class="ez-rank-list" id="statsRankTable">
-                  <div class="ez-empty-state">暂无排行数据</div>
+                  <div class="ez-skel-rank" aria-hidden="true">
+                    <div class="ez-skel-rank-row"><span class="ez-skel-bone" style="width: 62%"></span><span class="ez-skel-bone"></span><span class="ez-skel-bone"></span><span class="ez-skel-bone"></span></div>
+                    <div class="ez-skel-rank-row"><span class="ez-skel-bone" style="width: 48%"></span><span class="ez-skel-bone"></span><span class="ez-skel-bone"></span><span class="ez-skel-bone"></span></div>
+                    <div class="ez-skel-rank-row"><span class="ez-skel-bone" style="width: 71%"></span><span class="ez-skel-bone"></span><span class="ez-skel-bone"></span><span class="ez-skel-bone"></span></div>
+                    <div class="ez-skel-rank-row"><span class="ez-skel-bone" style="width: 39%"></span><span class="ez-skel-bone"></span><span class="ez-skel-bone"></span><span class="ez-skel-bone"></span></div>
+                    <div class="ez-skel-rank-row"><span class="ez-skel-bone" style="width: 55%"></span><span class="ez-skel-bone"></span><span class="ez-skel-bone"></span><span class="ez-skel-bone"></span></div>
+                  </div>
                 </div>
               </section>
 
@@ -3368,7 +3387,12 @@
                 </div>
 
                 <div class="ez-channels-deck" id="statsSourcesDeck">
-                  <div class="ez-empty-state">正在检查通道数据…</div>
+                  <div class="ez-skel-sources" aria-hidden="true">
+                    <span class="ez-skel-bone"></span>
+                    <span class="ez-skel-bone"></span>
+                    <span class="ez-skel-bone"></span>
+                    <span class="ez-skel-bone"></span>
+                  </div>
                 </div>
               </section>
             </div>
@@ -3395,7 +3419,16 @@
                     </tr>
                   </thead>
                   <tbody id="statsRecentTbody">
-                    <tr><td colspan="5" class="ez-empty-state">当前无活跃会话</td></tr>
+                    <tr>
+                      <td colspan="5">
+                        <div class="ez-skel-table" aria-hidden="true">
+                          <span class="ez-skel-bone" style="width: 88%"></span>
+                          <span class="ez-skel-bone" style="width: 74%"></span>
+                          <span class="ez-skel-bone" style="width: 92%"></span>
+                          <span class="ez-skel-bone" style="width: 66%"></span>
+                        </div>
+                      </td>
+                    </tr>
                   </tbody>
                 </table>
               </div>
