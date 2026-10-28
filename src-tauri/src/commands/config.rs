@@ -102,7 +102,7 @@ fn config_path() -> PathBuf {
     config_dir().join("byok-config.json")
 }
 
-fn providers_path() -> PathBuf {
+pub(crate) fn providers_path() -> PathBuf {
     config_dir().join("providers.json")
 }
 
