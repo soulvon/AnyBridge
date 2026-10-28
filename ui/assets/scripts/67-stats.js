@@ -505,7 +505,7 @@ function renderEchartsMainChart(series) {
     },
     legend: {
       data: chartSeries.map((s) => s.name),
-      right: 12,
+      right: 28,
       top: -2,
       textStyle: { color: '#64748b', fontSize: 11.5 },
       icon: 'circle',
@@ -515,8 +515,8 @@ function renderEchartsMainChart(series) {
     },
     grid: {
       left: 12,
-      right: 12,
-      top: 38,
+      right: 24,
+      top: 36,
       bottom: 12,
       containLabel: true,
     },
@@ -530,14 +530,14 @@ function renderEchartsMainChart(series) {
         axisLabel: {
           color: '#64748b',
           fontSize: 10.5,
-          interval: isToday ? 2 : 'auto', // 今日 24 小时每隔 2 小时显示一个刻度标签，干净清晰
+          interval: isToday ? 2 : 'auto',
         },
       },
     ],
     yAxis: [
       {
         type: 'value',
-        name: 'Token 吞吐',
+        name: 'Token',
         nameTextStyle: { color: '#64748b', fontSize: 11, align: 'left' },
         axisLabel: {
           color: '#64748b',
@@ -548,8 +548,8 @@ function renderEchartsMainChart(series) {
       },
       {
         type: 'value',
-        name: '调用频次',
-        nameTextStyle: { color: '#64748b', fontSize: 11, align: 'right' },
+        // 右轴不重复放名称，避免与图例的「调用频次」重叠
+        name: '',
         axisLabel: {
           color: '#64748b',
           fontSize: 10.5,
