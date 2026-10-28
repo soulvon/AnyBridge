@@ -12,14 +12,17 @@
 //   zcode        ~/.zcode/cli/db/db.sqlite 的 model_usage（全量重算）
 // 落盘：<config>/usage-local.json（与 stats.json 分离，互不覆盖）。
 
-use chrono::{TimeZone, Utc};
+use chrono::{Local, TimeZone};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::fs;
 use std::io::{BufRead, BufReader, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 
-const INDEX_VERSION: u32 = 1;
+/// 索引格式版本。日期口径变更时必须递增：旧桶按老口径分天，
+/// 与新桶混在一起会把同一天算两遍（如 UTC 日 + 本地日各一份）。
+/// v2：日键从 UTC 改为本地日。
+const INDEX_VERSION: u32 = 2;
 
 #[derive(Serialize, Deserialize, Clone, Default, PartialEq, Debug)]
 #[serde(rename_all = "camelCase")]
@@ -135,7 +138,10 @@ pub fn load_index() -> LocalUsageIndex {
         return LocalUsageIndex::default();
     };
     match serde_json::from_str::<LocalUsageIndex>(&text) {
-        Ok(index) => index,
+        Ok(index) if index.version == INDEX_VERSION => index,
+        // 旧口径的数据必须丢弃重建：日键口径变了（UTC → 本地日），
+        // 留着旧桶会把同一天按两种口径各算一遍。清空后下次扫描全量重算。
+        Ok(_) => LocalUsageIndex::default(),
         Err(e) => {
             // 解析失败：保留原文件不覆盖，返回空索引并记录原因（下次扫描会重建）。
             let mut empty = LocalUsageIndex::default();
@@ -154,14 +160,13 @@ fn save_index(index: &LocalUsageIndex) -> Result<(), String> {
     crate::commands::write_atomic(&path, text.as_bytes()).map_err(|e| format!("写入失败: {e}"))
 }
 
+/// ISO8601 时间戳 → **本地日**键。
+///
+/// 不能直接截前 10 位：那是 UTC 日。本地 00:00–08:00（UTC+8）时 UTC 还停在前一天，
+/// 截取会把这段流量记到昨天，导致「今日」在这些时段恒为 0。
 fn day_key(timestamp: &str) -> Option<String> {
-    // Claude 的 timestamp 是 ISO8601（2026-09-26T20:37:01.841Z），前 10 位即日期。
-    let day = timestamp.get(0..10)?;
-    if day.len() == 10 && day.as_bytes()[4] == b'-' {
-        Some(day.to_string())
-    } else {
-        None
-    }
+    let parsed = chrono::DateTime::parse_from_rfc3339(timestamp).ok()?;
+    Some(parsed.with_timezone(&Local).format("%Y-%m-%d").to_string())
 }
 
 fn num(value: Option<&serde_json::Value>) -> u64 {
@@ -335,7 +340,7 @@ pub fn scan_cpa_db_at(index: &mut LocalUsageIndex, path: &Path) -> Result<(), St
     {
         let mut stmt = conn
             .prepare(
-                "SELECT strftime('%Y-%m-%d', bucket_ms/1000, 'unixepoch') AS day, \
+                "SELECT strftime('%Y-%m-%d', bucket_ms/1000, 'unixepoch', 'localtime') AS day, \
                         COALESCE(NULLIF(model, ''), 'unknown') AS model, \
                         COALESCE(NULLIF(auth_label_snapshot, ''), NULLIF(account_snapshot, ''), 'unknown') AS account, \
                         COALESCE(NULLIF(provider, ''), 'unknown') AS provider, \
@@ -422,7 +427,7 @@ pub fn scan_cursor_db_at(index: &mut LocalUsageIndex, path: &Path) -> Result<(),
     .map_err(|e| format!("打开 cursor-core.db 失败: {e}"))?;
     let mut stmt = conn
         .prepare(
-            "SELECT strftime('%Y-%m-%d', created_at_ms/1000, 'unixepoch') AS day, \
+            "SELECT strftime('%Y-%m-%d', created_at_ms/1000, 'unixepoch', 'localtime') AS day, \
                     COALESCE(NULLIF(display_name, ''), model_id, 'unknown') AS model, \
                     COUNT(*), \
                     SUM(COALESCE(input_tokens, 0)), \
@@ -572,9 +577,9 @@ fn zcode_db_path() -> Option<PathBuf> {
     }
 }
 
-/// 毫秒时间戳 → UTC 日期键（`YYYY-MM-DD`），与 SQL 侧的 strftime 口径一致。
+/// 毫秒时间戳 → 本地日期键（`YYYY-MM-DD`），与 SQL 侧的 `'localtime'` 口径一致。
 fn day_key_from_ms(ms: u64) -> Option<String> {
-    let dt = Utc.timestamp_millis_opt(ms as i64).single()?;
+    let dt = Local.timestamp_millis_opt(ms as i64).single()?;
     Some(dt.format("%Y-%m-%d").to_string())
 }
 
@@ -715,7 +720,7 @@ pub fn scan_zcode_db_at(index: &mut LocalUsageIndex, path: &Path) -> Result<(), 
 
     let mut stmt = conn
         .prepare(
-            "SELECT strftime('%Y-%m-%d', started_at/1000, 'unixepoch') AS day, \
+            "SELECT strftime('%Y-%m-%d', started_at/1000, 'unixepoch', 'localtime') AS day, \
                     COALESCE(NULLIF(model_id, ''), 'unknown') AS model, \
                     COALESCE(provider_id, '') AS provider, \
                     COUNT(*), \
@@ -911,11 +916,18 @@ mod tests {
         )
     }
 
+    /// 日期键按**本地日**算，断言不能写死 `2026-09-26`（换台机器/时区就红）。
+    /// 这里用同一个转换函数推期望值，只验证「解析链路把时间戳传对了」。
+    fn local_day_of(iso: &str) -> String {
+        day_key(iso).expect("时间戳应可解析")
+    }
+
     #[test]
     fn parses_assistant_usage_and_skips_other_lines() {
-        let hit = claude_line("2026-09-26T20:37:01.841Z", "claude-sonnet-4", 100, 20, 30);
+        let ts = "2026-09-26T20:37:01.841Z";
+        let hit = claude_line(ts, "claude-sonnet-4", 100, 20, 30);
         let (day, model, usage) = parse_claude_line(&hit).expect("assistant 行应命中");
-        assert_eq!(day, "2026-09-26");
+        assert_eq!(day, local_day_of(ts));
         assert_eq!(model, "claude-sonnet-4");
         assert_eq!(usage.input, 100);
         assert_eq!(usage.output, 20);
@@ -946,7 +958,8 @@ mod tests {
 
         let mut index = LocalUsageIndex::default();
         scan_file(&mut index, "claude-code", &file).unwrap();
-        let day = index.days.get("2026-09-26").expect("应有当天聚合");
+        let day1 = local_day_of("2026-09-26T10:00:00.000Z");
+        let day = index.days.get(&day1).expect("应有当天聚合");
         let usage = day.get("claude-sonnet-4").expect("应有模型聚合");
         assert_eq!(usage.requests, 2);
         assert_eq!(usage.input, 150);
@@ -956,16 +969,18 @@ mod tests {
 
         // 二次扫描：文件未变，不应重复计数
         scan_file(&mut index, "claude-code", &file).unwrap();
-        assert_eq!(index.days["2026-09-26"]["claude-sonnet-4"].requests, 2);
+        assert_eq!(index.days[&day1]["claude-sonnet-4"].requests, 2);
 
         // 追加一行：只新增这一条
+        let ts2 = "2026-09-27T10:00:00.000Z";
+        let day2 = local_day_of(ts2);
         let mut content = fs::read_to_string(&file).unwrap();
-        content.push_str(&claude_line("2026-09-27T10:00:00.000Z", "claude-sonnet-4", 7, 3, 0));
+        content.push_str(&claude_line(ts2, "claude-sonnet-4", 7, 3, 0));
         content.push('\n');
         fs::write(&file, content).unwrap();
         scan_file(&mut index, "claude-code", &file).unwrap();
-        assert_eq!(index.days["2026-09-26"]["claude-sonnet-4"].requests, 2);
-        assert_eq!(index.days["2026-09-27"]["claude-sonnet-4"].requests, 1);
+        assert_eq!(index.days[&day1]["claude-sonnet-4"].requests, 2);
+        assert_eq!(index.days[&day2]["claude-sonnet-4"].requests, 1);
         assert_eq!(index.sources["claude-code"].requests, 3);
 
         let _ = fs::remove_dir_all(&tmp);
@@ -1070,7 +1085,9 @@ mod tests {
         scan_pi_usage_at(&mut index, &log).unwrap();
 
         // 只有 local 那条计入总量；模型名前缀被去掉，与网关侧同名对齐
-        let day2 = &index.pi_days["2026-01-02"]["glm-5.3"];
+        // 日期键是本地日，期望值同样由转换函数推出，避免绑死时区
+        let local_day = day_key_from_ms(1767312000000).unwrap();
+        let day2 = &index.pi_days[&local_day]["glm-5.3"];
         assert_eq!(day2.requests, 1);
         assert_eq!(day2.input, 10);
         assert_eq!(index.sources["pi"].requests, 1);
@@ -1136,7 +1153,8 @@ mod tests {
         assert_eq!(index.sources["zcode"].requests, 3);
         assert_eq!(index.sources["zcode"].input, 1510);
         assert_eq!(index.zcode_days.len(), 2);
-        assert_eq!(index.zcode_days["2026-01-01"]["gemini-3.8-flash-high"].requests, 2);
+        let day1 = day_key_from_ms(1767225600000).unwrap();
+        assert_eq!(index.zcode_days[&day1]["gemini-3.8-flash-high"].requests, 2);
         assert_eq!(index.overlapped["zcode"].requests, 1);
         assert_eq!(index.overlapped["zcode"].input, 9999);
 

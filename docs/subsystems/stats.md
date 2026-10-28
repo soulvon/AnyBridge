@@ -75,6 +75,11 @@ Rules:
 - Rejection by the scanner (missing file, unreadable database) is recorded in
   `errors` and reported in the UI; it is never silently treated as zero usage.
 - Scanning runs in `spawn_blocking`; it must not run on the UI thread.
+- **Day keys are the user's local day, on both sides.** SQL uses `strftime(..., 'unixepoch', 'localtime')`,
+  Rust timestamps go through `chrono::Local`, and the UI builds keys with `getFullYear/getMonth/getDate`.
+  Mixing local and UTC keys makes「今日」read zero every day between 00:00 and 08:00 at UTC+8
+  (UTC is still on the previous day). `INDEX_VERSION` must be bumped whenever this rule changes,
+  because old buckets keyed by the other calendar would double-count the same day.
 - Codex sessions are not scanned yet: the local samples were empty files, so the
   record shape is unverified. Do not guess a parser without a real sample.
 

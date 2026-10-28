@@ -434,6 +434,16 @@ function buildTodayHourlySeries() {
   return points;
 }
 
+/** 空态要连实例一起丢弃：否则残留画布会盖住文案，下次渲染也清不干净。 */
+function showChartEmptyState(el, text) {
+  if (mainEchartInstance) {
+    mainEchartInstance.dispose();
+    mainEchartInstance = null;
+  }
+  el.removeAttribute('_echarts_instance_');
+  el.innerHTML = `<div class="ez-empty-state">${escapeText(text)}</div>`;
+}
+
 // ── 核心：Apache ECharts 专业走势大图渲染 ──
 function renderEchartsMainChart(series) {
   const el = document.getElementById('mainTrendEcharts');
@@ -447,7 +457,7 @@ function renderEchartsMainChart(series) {
   }
 
   if (!series.length) {
-    el.innerHTML = '<div class="ez-empty-state">当前时间范围暂无用量记录</div>';
+    showChartEmptyState(el, '当前时间范围暂无用量记录');
     return;
   }
 
@@ -478,6 +488,15 @@ function renderEchartsMainChart(series) {
   const isToday = STATS_STATE.range === 1;
   const chartData = isToday ? buildTodayHourlySeries() : series;
   const xLabels = isToday ? chartData.map((p) => p.label) : chartData.map((r) => r.day.slice(5));
+
+  // 全 0 不要画图：ECharts 在零值域里会算出 0/1/1/1 这种坏刻度，看起来像坏了。
+  // 这种情况下直接给一句可操作的说明，比一张空图诚实。
+  const hasUsage = chartData.some((r) =>
+    (Number(r.input) || 0) + (Number(r.output) || 0) + (Number(r.cache) || 0) + (Number(r.requests) || 0) > 0);
+  if (!hasUsage) {
+    showChartEmptyState(el, '该时段没有用量记录，切换时间范围或来源试试');
+    return;
+  }
 
   // 专业多线面积图配置（按大厂监控与 CPA 视觉标准）
   // 显式开启 symbol: true，每一个数据点带精致微圆点，悬浮放大，节点饱满不空洞
