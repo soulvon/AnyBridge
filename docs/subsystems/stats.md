@@ -90,6 +90,26 @@ The stats page sums both for request/token totals but keeps cost and success
 rate gateway-only, because bypass sources have no price and no error contract.
 Never merge them into one file: the same request may appear in both.
 
+### Overlap dedupe
+
+A client that forwards through our own gateway (or through the CPA suite) writes
+the same call into its own log as well. Counting both inflates the total, so the
+client record carries an upstream marker and the overlap is excluded:
+
+| Client | Upstream marker | Overlapping ledger |
+| --- | --- | --- |
+| `zcode` | `model_usage.provider_id` such as `AnyBridge-35222063` | gateway |
+| `pi` | model prefix before `/` such as `CPA/…` or `AnyBridge/…` | cpa / gateway |
+
+Rules:
+
+- Only markers that name an own ledger are treated as overlap (`AnyBridge*`,
+  `CPA`); external providers (`AnyRouter`, `account:*`) and `local` stay counted.
+- Excluded amounts are recorded in `overlapped` per source and shown on the
+  channel card as「已去重 N 次」, so a shrinking total is never unexplained.
+- The dedupe is conservative: when a marker is unrecognised the usage is
+  counted, because undercounting silently is worse than asking the user to look.
+
 ## Tracker contract
 
 - `status` is one of `ok`, `failed`, `rejected`, `aborted` — no other values.

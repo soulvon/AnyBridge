@@ -12722,3 +12722,6 @@ html[data-scheme="dark"] .endpoint-brand-icon-dark,
 .ez-token-dot.is-input { background: #3b82f6; }
 .ez-token-dot.is-output { background: #10b981; }
 .ez-token-dot.is-cache { background: #8b5cf6; }
+
+/* 通道卡片里「已去重」这类说明行：弱化，不抢主数据 */
+.ez-ch-row.is-muted b { font-weight: 500; color: var(--text-muted); }

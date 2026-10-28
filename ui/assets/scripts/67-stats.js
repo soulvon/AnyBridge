@@ -790,47 +790,29 @@ function renderStatsSourcesDeck() {
     `);
   }
 
-  if (sources.cpa) {
-    const accs = local.cpaAccounts ? local.cpaAccounts.length : 0;
-    cards.push(`
-      <div class="ez-channel-card">
-        <div class="ez-ch-top">
-          <span class="ez-ch-name">CPA 套件 (CLIProxyAPI)</span>
-          <span class="ez-ch-badge">${accs} 账号</span>
-        </div>
-        <div class="ez-ch-stats">
-          <div class="ez-ch-row"><span>总调用</span><b>${fmtNum(sources.cpa.requests)} 次</b></div>
-          <div class="ez-ch-row"><span>全量吞吐</span><b>${fmtNum(sources.cpa.input + sources.cpa.output)}</b></div>
-        </div>
-      </div>
-    `);
-  }
+  const overlapped = local.overlapped || {};
+  for (const [id, usage] of Object.entries(sources)) {
+    const meta = BYPASS_SOURCE_META[id] || { label: id, hint: '' };
+    // CPA 额外显示账号数，其余显示读取位置
+    const badge = id === 'cpa'
+      ? `${(local.cpaAccounts || []).length} 账号`
+      : (meta.hint || '旁路日志');
+    // 经我们自己的账本转发过的部分已剔除，这里明确告知，避免「总量悄悄变小」
+    const dup = overlapped[id];
+    const dupLine = dup && dup.requests > 0
+      ? `<div class="ez-ch-row is-muted"><span>已去重</span><b>${fmtNum(dup.requests)} 次</b></div>`
+      : '';
 
-  if (sources['claude-code']) {
     cards.push(`
       <div class="ez-channel-card">
         <div class="ez-ch-top">
-          <span class="ez-ch-name">Claude Code CLI</span>
-          <span class="ez-ch-badge">~/.claude</span>
+          <span class="ez-ch-name">${escapeText(meta.label)}</span>
+          <span class="ez-ch-badge">${escapeText(badge)}</span>
         </div>
         <div class="ez-ch-stats">
-          <div class="ez-ch-row"><span>会话调用</span><b>${fmtNum(sources['claude-code'].requests)} 次</b></div>
-          <div class="ez-ch-row"><span>吞吐</span><b>${fmtNum(sources['claude-code'].input + sources['claude-code'].output)}</b></div>
-        </div>
-      </div>
-    `);
-  }
-
-  if (sources.cursor) {
-    cards.push(`
-      <div class="ez-channel-card">
-        <div class="ez-ch-top">
-          <span class="ez-ch-name">Cursor Core 数据库</span>
-          <span class="ez-ch-badge">SQLite</span>
-        </div>
-        <div class="ez-ch-stats">
-          <div class="ez-ch-row"><span>LLM Calls</span><b>${fmtNum(sources.cursor.requests)} 次</b></div>
-          <div class="ez-ch-row"><span>吞吐</span><b>${fmtNum(sources.cursor.input + sources.cursor.output)}</b></div>
+          <div class="ez-ch-row"><span>调用</span><b>${fmtNum(usage.requests)} 次</b></div>
+          <div class="ez-ch-row"><span>吞吐</span><b>${fmtNum((Number(usage.input) || 0) + (Number(usage.output) || 0))}</b></div>
+          ${dupLine}
         </div>
       </div>
     `);

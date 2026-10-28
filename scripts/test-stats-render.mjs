@@ -99,6 +99,11 @@ const localUsage = {
     cpa: { requests: 900, input: 900_000, output: 90_000, cacheRead: 400_000, cacheWrite: 0 },
     'claude-code': { requests: 42, input: 42_000, output: 4_200, cacheRead: 0, cacheWrite: 0 },
     cursor: { requests: 7, input: 7_000, output: 700, cacheRead: 0, cacheWrite: 0 },
+    pi: { requests: 5, input: 5_000, output: 500, cacheRead: 0, cacheWrite: 0 },
+  },
+  // pi 有 3 次是经 CPA 转发的，已被 CPA 账本记过 → 只留痕不计量
+  overlapped: {
+    pi: { requests: 3, input: 3_000, output: 300, cacheRead: 0, cacheWrite: 0 },
   },
   files: {},
   errors: [],
@@ -186,7 +191,12 @@ const filterValues = () => [...doc.querySelectorAll('#page-stats [data-stats-sou
   .map((b) => b.getAttribute('data-stats-source-filter'));
 
 const initialFilters = filterValues();
-assert.deepEqual(initialFilters, ['all', 'gateway', 'claude-code', 'cursor', 'cpa'], '来源筛选必须覆盖全部已扫到的来源（含 Cursor）');
+assert.deepEqual(initialFilters, ['all', 'gateway', 'claude-code', 'cursor', 'cpa', 'pi'], '来源筛选必须覆盖全部已扫到的来源（含 Cursor、Pi）');
+
+// 通道卡片要通用渲染：pi 也要有卡片，且显示「已去重」
+const deckHtml = doc.getElementById('statsSourcesDeck').innerHTML;
+assert.match(deckHtml, /Pi/, 'pi 必须有独立通道卡片，不能只在筛选器里出现');
+assert.match(deckHtml, /已去重/, '被其它账本统计过的部分必须在卡片上说明');
 
 // 选 Cursor 后，图表数据必须真的切到 cursorDays（选中即生效）
 const cursorBtn = doc.querySelector('#page-stats [data-stats-source-filter="cursor"]');

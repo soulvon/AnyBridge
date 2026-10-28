@@ -84,6 +84,12 @@ pub struct LocalUsageIndex {
     /// day -> model -> usage（zcode，读 cli/db/db.sqlite 的 model_usage，全量重算）
     #[serde(default)]
     pub zcode_days: BTreeMap<String, BTreeMap<String, ModelUsage>>,
+    /// source id -> 已被其它账本统计、因此未计入的用量（去重留痕）
+    ///
+    /// 客户端经自己的代理转发时，同一请求会同时出现在客户端日志和网关/CPA 账本里。
+    /// 这里按上游标识剔除重复部分，并把剔除量留档给 UI 显示，避免「总量悄悄变小」。
+    #[serde(default)]
+    pub overlapped: BTreeMap<String, SourceUsage>,
     /// source id (claude-code / codex / cursor / cpa / pi / zcode) -> usage
     pub sources: BTreeMap<String, SourceUsage>,
     /// 文件路径 -> 已读偏移
@@ -103,6 +109,7 @@ impl Default for LocalUsageIndex {
             cpa_accounts: Vec::new(),
             pi_days: BTreeMap::new(),
             zcode_days: BTreeMap::new(),
+            overlapped: BTreeMap::new(),
             sources: BTreeMap::new(),
             files: BTreeMap::new(),
             errors: Vec::new(),
@@ -580,6 +587,38 @@ fn strip_model_prefix(model: &str) -> &str {
     }
 }
 
+/// 客户端记录的上游标识若指向我们自己的账本，这条请求就已经被计过一次了。
+///
+/// 返回覆盖它的账本名（用于向用户解释），`None` 表示这是独立用量。
+/// 例：zcode 的 `AnyBridge-35222063`、pi 的 `CPA/...` 前缀。
+fn overlap_ledger(via: &str) -> Option<&'static str> {
+    let v = via.trim().to_ascii_lowercase();
+    if v.is_empty() {
+        return None;
+    }
+    if v.starts_with("anybridge") {
+        return Some("gateway");
+    }
+    if v == "cpa" || v.starts_with("cpa-") || v.starts_with("cpa_") {
+        return Some("cpa");
+    }
+    None
+}
+
+/// 把一条记录计入「重复量」账，返回其账本名。
+fn add_overlap(
+    overlapped: &mut BTreeMap<String, SourceUsage>,
+    source: &str,
+    usage: &ModelUsage,
+) {
+    let entry = overlapped.entry(source.to_string()).or_default();
+    entry.requests += usage.requests;
+    entry.input += usage.input;
+    entry.output += usage.output;
+    entry.cache_read += usage.cache_read;
+    entry.cache_write += usage.cache_write;
+}
+
 /// 读 pi 的 analytics/usage.jsonl。每行一个 JSON 数组：
 /// `[ts_ms, session, workspace, model, input, output, cache_read, cache_write, total, ?]`
 ///
@@ -593,6 +632,8 @@ pub fn scan_pi_usage_at(index: &mut LocalUsageIndex, path: &Path) -> Result<(), 
 
     let mut days: BTreeMap<String, BTreeMap<String, ModelUsage>> = BTreeMap::new();
     let mut total = SourceUsage::default();
+    // 全量重算：先清掉本来源上一轮的去重留痕，避免累积
+    index.overlapped.remove("pi");
 
     for line in text.lines() {
         let line = line.trim();
@@ -612,31 +653,44 @@ pub fn scan_pi_usage_at(index: &mut LocalUsageIndex, path: &Path) -> Result<(), 
         };
         let Some(day) = day_key_from_ms(ts) else { continue };
 
-        let model = arr.get(3).and_then(|v| v.as_str()).unwrap_or("");
-        let model = strip_model_prefix(model);
+        let raw_model = arr.get(3).and_then(|v| v.as_str()).unwrap_or("");
+        let model = strip_model_prefix(raw_model);
         if model.is_empty() {
             continue;
         }
+        // 前缀即上游：`CPA/...`、`AnyBridge/...` 已被对应账本记过，不重复计
+        let via = raw_model.split_once('/').map(|(p, _)| p).unwrap_or("");
 
         let num = |i: usize| -> u64 { arr.get(i).and_then(|v| v.as_u64()).unwrap_or(0) };
-        let (input, output, cache_read, cache_write) = (num(4), num(5), num(6), num(7));
+        let usage = ModelUsage {
+            requests: 1,
+            input: num(4),
+            output: num(5),
+            cache_read: num(6),
+            cache_write: num(7),
+        };
+
+        if overlap_ledger(via).is_some() {
+            add_overlap(&mut index.overlapped, "pi", &usage);
+            continue;
+        }
 
         let entry = days
             .entry(day)
             .or_default()
             .entry(model.to_string())
             .or_default();
-        entry.requests += 1;
-        entry.input += input;
-        entry.output += output;
-        entry.cache_read += cache_read;
-        entry.cache_write += cache_write;
+        entry.requests += usage.requests;
+        entry.input += usage.input;
+        entry.output += usage.output;
+        entry.cache_read += usage.cache_read;
+        entry.cache_write += usage.cache_write;
 
-        total.requests += 1;
-        total.input += input;
-        total.output += output;
-        total.cache_read += cache_read;
-        total.cache_write += cache_write;
+        total.requests += usage.requests;
+        total.input += usage.input;
+        total.output += usage.output;
+        total.cache_read += usage.cache_read;
+        total.cache_write += usage.cache_write;
     }
 
     if total.requests > 0 {
@@ -663,28 +717,40 @@ pub fn scan_zcode_db_at(index: &mut LocalUsageIndex, path: &Path) -> Result<(), 
         .prepare(
             "SELECT strftime('%Y-%m-%d', started_at/1000, 'unixepoch') AS day, \
                     COALESCE(NULLIF(model_id, ''), 'unknown') AS model, \
+                    COALESCE(provider_id, '') AS provider, \
                     COUNT(*), \
                     SUM(COALESCE(input_tokens, 0)), \
                     SUM(COALESCE(output_tokens, 0)), \
                     SUM(COALESCE(cache_read_input_tokens, 0)), \
                     SUM(COALESCE(cache_creation_input_tokens, 0)) \
-             FROM model_usage WHERE started_at > 0 GROUP BY day, model",
+             FROM model_usage WHERE started_at > 0 GROUP BY day, model, provider",
         )
         .map_err(|e| format!("准备 zcode 查询失败: {e}"))?;
     let mut rows = stmt.query([]).map_err(|e| format!("执行 zcode 查询失败: {e}"))?;
 
     let mut days: BTreeMap<String, BTreeMap<String, ModelUsage>> = BTreeMap::new();
     let mut total = SourceUsage::default();
+    // 全量重算：先清掉本来源上一轮的去重留痕，避免累积
+    index.overlapped.remove("zcode");
     while let Some(row) = rows.next().map_err(|e| format!("读取 zcode 行失败: {e}"))? {
         let day: String = row.get(0).map_err(|e| format!("zcode day: {e}"))?;
         let model: String = row.get(1).map_err(|e| format!("zcode model: {e}"))?;
+        let provider: String = row.get(2).map_err(|e| format!("zcode provider: {e}"))?;
         let usage = ModelUsage {
-            requests: row.get::<_, i64>(2).unwrap_or(0).max(0) as u64,
-            input: row.get::<_, i64>(3).unwrap_or(0).max(0) as u64,
-            output: row.get::<_, i64>(4).unwrap_or(0).max(0) as u64,
-            cache_read: row.get::<_, i64>(5).unwrap_or(0).max(0) as u64,
-            cache_write: row.get::<_, i64>(6).unwrap_or(0).max(0) as u64,
+            requests: row.get::<_, i64>(3).unwrap_or(0).max(0) as u64,
+            input: row.get::<_, i64>(4).unwrap_or(0).max(0) as u64,
+            output: row.get::<_, i64>(5).unwrap_or(0).max(0) as u64,
+            cache_read: row.get::<_, i64>(6).unwrap_or(0).max(0) as u64,
+            cache_write: row.get::<_, i64>(7).unwrap_or(0).max(0) as u64,
         };
+
+        // provider_id 形如 `AnyBridge-35222063` 说明这次调用走了我们自己的网关，
+        // 网关账本已经记过一次，不能再加到总量里。
+        if overlap_ledger(&provider).is_some() {
+            add_overlap(&mut index.overlapped, "zcode", &usage);
+            continue;
+        }
+
         total.requests += usage.requests;
         total.input += usage.input;
         total.output += usage.output;
@@ -990,8 +1056,10 @@ mod tests {
 
         // 1767225600000 = 2026-01-01T00:00:00Z，1767312000000 = 次日
         let lines = [
+            // 经 CPA 转发：CPA 账本已记，不进 pi 的总量，只进去重留痕
             r#"[1767225600000,"sess-a","/w","CPA/gemini-3.8-flash-high",1000,100,50,0,1100,0]"#,
             r#"[1767225700000,"sess-a","/w","CPA/gemini-3.8-flash-high",200,20,0,0,220,0]"#,
+            // local 是本地模型，独立用量
             r#"[1767312000000,"sess-b","/w","local/glm-5.3",10,2,0,0,12,0]"#,
             r#"not-json"#,
             r#"{"not":"an array"}"#,
@@ -1001,22 +1069,40 @@ mod tests {
         let mut index = LocalUsageIndex::default();
         scan_pi_usage_at(&mut index, &log).unwrap();
 
-        // 前缀被去掉，与网关侧模型名对齐到同一行
-        let day1 = &index.pi_days["2026-01-01"]["gemini-3.8-flash-high"];
-        assert_eq!(day1.requests, 2);
-        assert_eq!(day1.input, 1200);
-        assert_eq!(day1.output, 120);
-        assert_eq!(day1.cache_read, 50);
-        assert_eq!(index.pi_days["2026-01-02"]["glm-5.3"].requests, 1);
-        assert_eq!(index.sources["pi"].requests, 3);
-        assert_eq!(index.sources["pi"].input, 1210);
+        // 只有 local 那条计入总量；模型名前缀被去掉，与网关侧同名对齐
+        let day2 = &index.pi_days["2026-01-02"]["glm-5.3"];
+        assert_eq!(day2.requests, 1);
+        assert_eq!(day2.input, 10);
+        assert_eq!(index.sources["pi"].requests, 1);
+        assert_eq!(index.sources["pi"].input, 10);
+
+        // CPA 前缀的两条被识别为重复，只留痕不计量
+        let dup = &index.overlapped["pi"];
+        assert_eq!(dup.requests, 2);
+        assert_eq!(dup.input, 1200);
+        assert_eq!(dup.output, 120);
+        assert_eq!(dup.cache_read, 50);
 
         // 全量重算：再扫一次不得翻倍
         scan_pi_usage_at(&mut index, &log).unwrap();
-        assert_eq!(index.sources["pi"].requests, 3);
-        assert_eq!(index.pi_days.len(), 2);
+        assert_eq!(index.sources["pi"].requests, 1);
+        assert_eq!(index.overlapped["pi"].requests, 2);
+        assert_eq!(index.pi_days.len(), 1);
 
         let _ = fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn overlap_ledger_recognises_own_ledgers_only() {
+        assert_eq!(overlap_ledger("AnyBridge-35222063"), Some("gateway"));
+        assert_eq!(overlap_ledger("anybridge"), Some("gateway"));
+        assert_eq!(overlap_ledger("CPA"), Some("cpa"));
+        assert_eq!(overlap_ledger("cpa"), Some("cpa"));
+        // 外部供应商与本地模型不能被误判成我们自己的账本
+        assert_eq!(overlap_ledger("anyrouter"), None);
+        assert_eq!(overlap_ledger("local"), None);
+        assert_eq!(overlap_ledger("account:zai-start-plan"), None);
+        assert_eq!(overlap_ledger(""), None);
     }
 
     #[test]
@@ -1029,15 +1115,16 @@ mod tests {
             let conn = rusqlite::Connection::open(&db).unwrap();
             conn.execute_batch(
                 "CREATE TABLE model_usage (
-                    started_at INTEGER, model_id TEXT,
+                    started_at INTEGER, model_id TEXT, provider_id TEXT,
                     input_tokens INTEGER, output_tokens INTEGER,
                     cache_read_input_tokens INTEGER, cache_creation_input_tokens INTEGER
                 );
                 INSERT INTO model_usage VALUES
-                    (1767225600000, 'gemini-3.8-flash-high', 1000, 100, 500, 0),
-                    (1767225700000, 'gemini-3.8-flash-high', 500, 50, 0, 0),
-                    (1767312000000, 'GLM-5.3-Flash', 10, 2, 0, 4),
-                    (0, 'skipped-bad-row', 999, 999, 999, 999);",
+                    (1767225600000, 'gemini-3.8-flash-high', 'account:zai-start-plan', 1000, 100, 500, 0),
+                    (1767225700000, 'gemini-3.8-flash-high', 'account:zai-start-plan', 500, 50, 0, 0),
+                    (1767225800000, 'gemini-3.8-flash-high', 'AnyBridge-35222063', 9999, 9999, 0, 0),
+                    (1767312000000, 'GLM-5.3-Flash', 'account:bigmodel-start-plan', 10, 2, 0, 4),
+                    (0, 'skipped-bad-row', '', 999, 999, 999, 999);",
             )
             .unwrap();
         }
@@ -1045,13 +1132,17 @@ mod tests {
         let mut index = LocalUsageIndex::default();
         scan_zcode_db_at(&mut index, &db).unwrap();
 
-        assert_eq!(index.sources["zcode"].requests, 3); // started_at=0 的行被过滤
+        // started_at=0 被过滤；AnyBridge 那条已由网关统计，不计量
+        assert_eq!(index.sources["zcode"].requests, 3);
         assert_eq!(index.sources["zcode"].input, 1510);
         assert_eq!(index.zcode_days.len(), 2);
         assert_eq!(index.zcode_days["2026-01-01"]["gemini-3.8-flash-high"].requests, 2);
+        assert_eq!(index.overlapped["zcode"].requests, 1);
+        assert_eq!(index.overlapped["zcode"].input, 9999);
 
         scan_zcode_db_at(&mut index, &db).unwrap();
         assert_eq!(index.sources["zcode"].requests, 3);
+        assert_eq!(index.overlapped["zcode"].requests, 1);
 
         let _ = fs::remove_dir_all(&tmp);
     }
