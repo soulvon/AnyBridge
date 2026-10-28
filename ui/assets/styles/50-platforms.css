@@ -12694,7 +12694,10 @@ html[data-scheme="dark"] .endpoint-brand-icon-dark,
   width: 320px;
   border: 1px solid var(--border-strong, var(--border));
   border-radius: 10px;
-  background: var(--bg-card);
+  /* 弹层压在折线图上：--bg-card 只有 0.94 不透明度，直接用它会让下方的线透出来。
+     先用不透明的 --bg-primary 打底，再叠一层卡片色，得到与卡片一致且完全不透的表面。 */
+  background-color: var(--bg-primary);
+  background-image: linear-gradient(var(--bg-card), var(--bg-card));
   box-shadow: 0 12px 28px -12px rgba(0, 0, 0, 0.22);
   overflow: hidden;
 }
