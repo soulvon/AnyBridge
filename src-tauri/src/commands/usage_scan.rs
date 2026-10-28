@@ -448,12 +448,89 @@ pub fn scan_cursor_db_at(index: &mut LocalUsageIndex, path: &Path) -> Result<(),
     Ok(())
 }
 
+/// 用户可以开关采集的旁路来源（网关账本由 sidecar 写，不在此列）。
+pub const TOGGLEABLE_SOURCES: [&str; 3] = ["claude-code", "cursor", "cpa"];
+
+/// 读取被禁用采集的来源列表：config 里 `STATS_DISABLED_SOURCES`，逗号分隔。
+fn disabled_sources() -> Vec<String> {
+    crate::commands::config::read_config_value("STATS_DISABLED_SOURCES")
+        .map(|raw| {
+            raw.split(',')
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+fn is_disabled(disabled: &[String], id: &str) -> bool {
+    disabled.iter().any(|d| d == id)
+}
+
+/// 本机真实存在、可被采集的旁路来源。
+fn available_sources() -> Vec<String> {
+    let mut out = Vec::new();
+    if let Some(home) = home_dir() {
+        if home.join(".claude").join("projects").is_dir() {
+            out.push("claude-code".to_string());
+        }
+    }
+    let cursor_db = crate::commands::config::config_dir_path()
+        .join("cursor-core")
+        .join("cursor-core.db");
+    if cursor_db.is_file() {
+        out.push("cursor".to_string());
+    }
+    if cpa_usage_db_path().is_some() {
+        out.push("cpa".to_string());
+    }
+    out
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct StatsSettings {
+    /// 被用户关掉采集的来源
+    pub disabled_sources: Vec<String>,
+    /// 本机存在、支持采集的来源（UI 只列这些）
+    pub available_sources: Vec<String>,
+}
+
+#[tauri::command]
+pub fn get_stats_settings() -> Result<StatsSettings, String> {
+    Ok(StatsSettings {
+        disabled_sources: disabled_sources(),
+        available_sources: available_sources(),
+    })
+}
+
+/// 写入采集开关。只接受已知来源 id，避免把脏值写进配置。
+#[tauri::command]
+pub fn set_stats_settings(disabled_sources: Vec<String>) -> Result<StatsSettings, String> {
+    let cleaned: Vec<String> = disabled_sources
+        .into_iter()
+        .filter(|s| TOGGLEABLE_SOURCES.contains(&s.as_str()))
+        .collect();
+    crate::commands::config::write_config_value(
+        "STATS_DISABLED_SOURCES",
+        &cleaned.join(","),
+    )?;
+    get_stats_settings()
+}
+
 /// 扫描所有已支持的旁路数据源并持久化索引。
 pub fn scan_all_sync() -> Result<LocalUsageIndex, String> {
     let mut index = load_index();
     index.errors.clear();
+    let disabled = disabled_sources();
 
-    if let Some(home) = home_dir() {
+    if is_disabled(&disabled, "claude-code") {
+        // 关闭采集：清数据与读取偏移。偏移必须一起清，否则重新开启时会从旧 offset
+        // 继续读，而天级汇总已被清空——数字会永久少一段。
+        index.days.clear();
+        index.files.clear();
+        index.sources.remove("claude-code");
+    } else if let Some(home) = home_dir() {
         let claude_root = home.join(".claude").join("projects");
         if claude_root.is_dir() {
             let mut files = Vec::new();
@@ -467,16 +544,25 @@ pub fn scan_all_sync() -> Result<LocalUsageIndex, String> {
     }
 
     // Cursor：直接读 cursor-core 自己的调用账本（只读、全量重算、幂等）。
-    let cursor_db = crate::commands::config::config_dir_path()
-        .join("cursor-core")
-        .join("cursor-core.db");
-    if let Err(e) = scan_cursor_db_at(&mut index, &cursor_db) {
-        index.errors.push(e);
+    if is_disabled(&disabled, "cursor") {
+        index.cursor_days.clear();
+        index.sources.remove("cursor");
+    } else {
+        let cursor_db = crate::commands::config::config_dir_path()
+            .join("cursor-core")
+            .join("cursor-core.db");
+        if let Err(e) = scan_cursor_db_at(&mut index, &cursor_db) {
+            index.errors.push(e);
+        }
     }
 
     // CPA（CLIProxyAPI 套件）：读它自己的账号日聚合，补上账号维度。
     // 热插拔：若未安装或文件不存在，静默清空旧的 CPA 聚合缓存，不报错。
-    if let Some(cpa_db) = cpa_usage_db_path() {
+    if is_disabled(&disabled, "cpa") {
+        index.cpa_days.clear();
+        index.cpa_accounts.clear();
+        index.sources.remove("cpa");
+    } else if let Some(cpa_db) = cpa_usage_db_path() {
         if let Err(e) = scan_cpa_db_at(&mut index, &cpa_db) {
             index.errors.push(e);
         }

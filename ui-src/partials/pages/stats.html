@@ -30,6 +30,14 @@
                   <button type="button" class="ez-pill-btn active" data-stats-source-filter="all" role="tab" aria-selected="true">全部来源</button>
                 </div>
 
+                <!-- 采集设置入口 -->
+                <button type="button" class="ez-btn-action ez-btn-icon" id="statsSettingsBtn" title="采集设置" aria-haspopup="true" aria-expanded="false" aria-controls="statsSettingsPanel">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <circle cx="12" cy="12" r="3"></circle>
+                    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+                  </svg>
+                </button>
+
                 <!-- 同步数据按钮 -->
                 <button type="button" class="ez-btn-action" id="statsRefreshBtn" title="同步旁路文件与数据库">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -42,6 +50,20 @@
                 </button>
               </div>
             </header>
+
+            <!-- 采集设置浮层 -->
+            <div class="ez-popover" id="statsSettingsPanel" hidden>
+              <div class="ez-popover-head">
+                <span class="ez-popover-title">采集设置</span>
+                <button type="button" class="ez-popover-close" id="statsSettingsClose" aria-label="关闭设置">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+                    <path d="M18 6 6 18M6 6l12 12"></path>
+                  </svg>
+                </button>
+              </div>
+              <div class="ez-popover-body" id="statsSettingsBody"></div>
+              <div class="ez-popover-foot">关闭后不再扫描该来源，已采集数据会一并移出统计；网关账本始终记录。</div>
+            </div>
 
             <!-- 2. EasyUI StatGrid: 四联 KPI 指标卡 (ECharts Sparkline 微线图驱动) -->
             <div class="ez-stat-grid">

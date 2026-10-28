@@ -11,6 +11,15 @@ const STATS_STATE = {
   gateway: null,
   history: [],
   local: null,
+  // 采集开关：由 Rust 的 get_stats_settings 返回
+  settings: { disabledSources: [], availableSources: [] },
+};
+
+/** 可开关采集的旁路来源展示信息（网关账本由 sidecar 写，不在此列）。 */
+const BYPASS_SOURCE_META = {
+  'claude-code': { label: 'Claude Code', hint: '~/.claude' },
+  cursor: { label: 'Cursor', hint: 'cursor-core.db' },
+  cpa: { label: 'CPA 套件', hint: 'usage.sqlite' },
 };
 
 let mainEchartInstance = null;
@@ -885,6 +894,73 @@ function renderSourceControls() {
   }
 }
 
+// ── 采集设置：来源开关 ──
+function renderStatsSettings() {
+  const host = document.getElementById('statsSettingsBody');
+  if (!host) return;
+  const available = STATS_STATE.settings.availableSources || [];
+  const disabled = STATS_STATE.settings.disabledSources || [];
+
+  if (!available.length) {
+    host.innerHTML = '<div class="ez-setting-empty">本机未发现可采集的客户端</div>';
+    return;
+  }
+
+  host.innerHTML = available.map((id) => {
+    const meta = BYPASS_SOURCE_META[id] || { label: id, hint: '' };
+    const enabled = !disabled.includes(id);
+    return `<div class="ez-setting-row">
+      <span class="ez-setting-name">${escapeText(meta.label)}</span>
+      <span class="ez-setting-hint">${escapeText(meta.hint)}</span>
+      <div class="toggle-sm${enabled ? ' on' : ''}" role="switch" tabindex="0" aria-checked="${enabled}"
+           aria-label="${escapeText(meta.label)} 采集开关" data-stats-source-toggle="${escapeText(id)}"></div>
+    </div>`;
+  }).join('');
+}
+
+function setStatsSettingsOpen(open) {
+  const panel = document.getElementById('statsSettingsPanel');
+  const btn = document.getElementById('statsSettingsBtn');
+  if (!panel || !btn) return;
+  panel.hidden = !open;
+  btn.setAttribute('aria-expanded', String(open));
+  if (open) renderStatsSettings();
+}
+
+/** 切换单个来源的采集开关：先落盘，再重扫，最后整页重算。 */
+async function toggleSourceCollection(id) {
+  const current = new Set(STATS_STATE.settings.disabledSources || []);
+  if (current.has(id)) current.delete(id);
+  else current.add(id);
+
+  // 乐观更新，失败再回滚
+  const optimistic = [...current];
+  STATS_STATE.settings.disabledSources = optimistic;
+  renderStatsSettings();
+
+  try {
+    STATS_STATE.settings = await invoke('set_stats_settings', { disabledSources: optimistic });
+    const fresh = await invoke('scan_local_usage').catch(() => null);
+    if (fresh) STATS_STATE.local = fresh;
+    renderStatsSettings();
+    renderStatsAll();
+  } catch (e) {
+    console.error('[AnyBridge Stats] 保存采集设置失败:', e);
+    // 回滚到服务端真实状态，不留下与服务端不符的 UI
+    try {
+      STATS_STATE.settings = await invoke('get_stats_settings');
+    } catch {
+      STATS_STATE.settings.disabledSources = [];
+    }
+    renderStatsSettings();
+    const panel = document.getElementById('statsSettingsPanel');
+    if (panel) {
+      const foot = panel.querySelector('.ez-popover-foot');
+      if (foot) foot.textContent = `保存失败：${e?.message || e}`;
+    }
+  }
+}
+
 // ── 全量同步 ──
 // 逐块渲染：任何一块抛错只降级该块并留下可见错误，不再让整页停在占位文案。
 // （教训：ECharts formatter 引用未定义函数会让 renderStatsAll 从中间中断，
@@ -965,14 +1041,16 @@ async function loadStats({ silent = false } = {}) {
 
   try {
     if (typeof invoke !== 'function') throw new Error('Tauri bridge 未就绪');
-    const [gateway, history, local] = await Promise.all([
+    const [gateway, history, local, settings] = await Promise.all([
       invoke('get_stats').catch(() => null),
       invoke('get_stats_history', { days: historyDaysToFetch() }).catch(() => ({ days: [] })),
       invoke('get_local_usage').catch(() => null),
+      invoke('get_stats_settings').catch(() => null),
     ]);
     STATS_STATE.gateway = gateway;
     STATS_STATE.history = Array.isArray(history?.days) ? history.days : [];
     STATS_STATE.local = local;
+    if (settings) STATS_STATE.settings = settings;
     renderStatsAll();
 
     invoke('scan_local_usage').then((fresh) => {
@@ -1035,6 +1113,49 @@ function bindStatsPage() {
   if (refresh && !refresh.dataset.bound) {
     refresh.dataset.bound = '1';
     refresh.addEventListener('click', () => loadStats());
+  }
+
+  // 采集设置：齿轮开合 / 关闭 / 点外部收起 / 开关点击与键盘操作
+  const settingsBtn = document.getElementById('statsSettingsBtn');
+  const settingsPanel = document.getElementById('statsSettingsPanel');
+  const settingsClose = document.getElementById('statsSettingsClose');
+
+  if (settingsBtn && !settingsBtn.dataset.bound) {
+    settingsBtn.dataset.bound = '1';
+    settingsBtn.addEventListener('click', (event) => {
+      event.stopPropagation();
+      setStatsSettingsOpen(settingsPanel?.hidden !== false);
+    });
+  }
+
+  if (settingsClose && !settingsClose.dataset.bound) {
+    settingsClose.dataset.bound = '1';
+    settingsClose.addEventListener('click', () => setStatsSettingsOpen(false));
+  }
+
+  if (settingsPanel && !settingsPanel.dataset.bound) {
+    settingsPanel.dataset.bound = '1';
+    settingsPanel.addEventListener('click', (event) => {
+      // 面板内点击不冒泡到 document，避免刚开就被判为「点外部」收起
+      event.stopPropagation();
+      const toggle = event.target.closest('[data-stats-source-toggle]');
+      if (toggle) toggleSourceCollection(toggle.getAttribute('data-stats-source-toggle'));
+    });
+    settingsPanel.addEventListener('keydown', (event) => {
+      if (event.key !== 'Enter' && event.key !== ' ') return;
+      const toggle = event.target.closest('[data-stats-source-toggle]');
+      if (!toggle) return;
+      event.preventDefault();
+      toggleSourceCollection(toggle.getAttribute('data-stats-source-toggle'));
+    });
+  }
+
+  if (!document.body.dataset.statsSettingsBound) {
+    document.body.dataset.statsSettingsBound = '1';
+    document.addEventListener('click', () => setStatsSettingsOpen(false));
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape') setStatsSettingsOpen(false);
+    });
   }
 
   document.querySelectorAll('[data-page="stats"]').forEach((tab) => {

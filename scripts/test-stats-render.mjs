@@ -125,13 +125,27 @@ const snapshot = {
   ],
 };
 
-globalThis.invoke = window.invoke = async (command) => {
-  if (command === 'get_stats') return snapshot;
-  if (command === 'get_stats_history') return { days };
-  if (command === 'get_local_usage') return localUsage;
-  if (command === 'scan_local_usage') return localUsage;
-  throw new Error(`未预期的命令: ${command}`);
-};
+// 采集开关的服务端状态：测试里用内存对象代替 byok-config.json
+const settingsState = { disabledSources: [], availableSources: ['claude-code', 'cursor', 'cpa'] };
+let lastSetPayload = null;
+
+function makeInvoke({ local }) {
+  return async (command, args) => {
+    if (command === 'get_stats') return snapshot;
+    if (command === 'get_stats_history') return { days };
+    if (command === 'get_local_usage') return local;
+    if (command === 'scan_local_usage') return local;
+    if (command === 'get_stats_settings') return settingsState;
+    if (command === 'set_stats_settings') {
+      lastSetPayload = args;
+      settingsState.disabledSources = args.disabledSources;
+      return settingsState;
+    }
+    throw new Error(`未预期的命令: ${command}`);
+  };
+}
+
+globalThis.invoke = window.invoke = makeInvoke({ local: localUsage });
 
 // 被测模块在顶层就访问 document 与 window，导入前必须把 jsdom 的全局铺好
 globalThis.window = window;
@@ -182,6 +196,27 @@ assert.ok(cursorBtn.classList.contains('active'), '点击后 Cursor 必须成为
 const cursorKpi = doc.getElementById('statsKpiTokens').textContent;
 assert.ok(cursorKpi && cursorKpi !== '—', `选中 Cursor 后 KPI 必须出数（当前 ${cursorKpi}）`);
 
+// ── 采集设置：能列出真实存在的来源，并且开关真的落盘 ──
+doc.getElementById('statsSettingsBtn').click();
+const settingsBody = doc.getElementById('statsSettingsBody');
+assert.equal(
+  settingsBody.querySelectorAll('.ez-setting-row').length,
+  3,
+  '采集设置必须列出本机存在的 3 个旁路来源',
+);
+const cpaToggle = settingsBody.querySelector('[data-stats-source-toggle="cpa"]');
+assert.equal(cpaToggle.getAttribute('aria-checked'), 'true', '默认应处于开启采集状态');
+assert.ok(cpaToggle.classList.contains('on'), '开启态需带 on 样式');
+
+cpaToggle.click();
+await new Promise((resolve) => setTimeout(resolve, 120));
+assert.deepEqual(lastSetPayload?.disabledSources, ['cpa'], '关闭 CPA 采集必须写入 disabledSources');
+assert.equal(
+  doc.querySelector('#page-stats [data-stats-source-toggle="cpa"]').getAttribute('aria-checked'),
+  'false',
+  '重渲染后开关必须反映已关闭',
+);
+
 // ── 热插拔场景：CPA 未安装（sources 无 cpa、无账号、无日期桶） ──
 const withoutCpa = {
   ...localUsage,
@@ -192,13 +227,7 @@ const withoutCpa = {
   cpaDays: {},
   cpaAccounts: [],
 };
-globalThis.invoke = window.invoke = async (command) => {
-  if (command === 'get_stats') return snapshot;
-  if (command === 'get_stats_history') return { days };
-  if (command === 'get_local_usage') return withoutCpa;
-  if (command === 'scan_local_usage') return withoutCpa;
-  throw new Error(`未预期的命令: ${command}`);
-};
+globalThis.invoke = window.invoke = makeInvoke({ local: withoutCpa });
 
 await loadStats();
 await new Promise((resolve) => setTimeout(resolve, 150));

@@ -302,6 +302,8 @@ pub fn run() {
             commands::usage_scan::scan_local_usage,
             commands::usage_scan::get_local_usage,
             commands::usage_scan::get_stats_history,
+            commands::usage_scan::get_stats_settings,
+            commands::usage_scan::set_stats_settings,
             ])
         .plugin(tauri_plugin_updater::Builder::new().build())
         .build(tauri::generate_context!())
