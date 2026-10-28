@@ -235,6 +235,48 @@ fn fs_meta(p: &PathBuf) -> Option<FileMeta> {
     })
 }
 
+/// 版本探测失败记忆（借鉴 magpie versionsFailed #864）：跑 --version 被
+/// 杀软拦截/挂起等场景下，按「路径+大小+mtime」指纹记住失败——二进制不变
+/// 就不再重试子进程（600s TTL 缓存会让失败每 10 分钟反复触发杀软弹窗）。
+/// 二进制升级后指纹变化自然失效。
+fn failed_probes() -> &'static Mutex<HashMap<String, ()>> {
+    static FAILED: std::sync::OnceLock<Mutex<HashMap<String, ()>>> = std::sync::OnceLock::new();
+    FAILED.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+/// bin 是 npm shim（路径位于 node_modules 树内）时，直接读包的
+/// package.json 拿版本——零子进程（magpie npmVersion 思路：npm 装的 CLI
+/// 其包版本即安装版本，不必运行二进制）。返回 None 时调用方回退跑 --version。
+fn npm_shim_version(bin_path: &std::path::Path, npm_package: &str) -> Option<String> {
+    // 从 bin 向上找最近的 node_modules 目录（<prefix>/node_modules/.bin/foo → node_modules）
+    let mut cur = bin_path.parent()?;
+    let node_modules: &std::path::Path = loop {
+        if cur.file_name().and_then(|s| s.to_str()) == Some("node_modules") {
+            break cur;
+        }
+        cur = cur.parent()?;
+    };
+    for base in [
+        node_modules.to_path_buf(),
+        // 双层布局：prefix 被用户设成 .../node_modules 时包在其下再一层
+        node_modules.join("node_modules"),
+    ] {
+        let pkg_json = base.join(npm_package).join("package.json");
+        let Ok(raw) = std::fs::read_to_string(&pkg_json) else {
+            continue;
+        };
+        let Ok(v) = serde_json::from_str::<serde_json::Value>(&raw) else {
+            continue;
+        };
+        if let Some(ver) = v.get("version").and_then(|x| x.as_str()) {
+            if !ver.is_empty() {
+                return Some(ver.to_string());
+            }
+        }
+    }
+    None
+}
+
 /// 已装版本（CLI：跑 --version，带缓存；失败返回 None = 未知）。
 pub fn installed_cli_version(platform_id: &str) -> Option<String> {
     let spec = cli_spec(platform_id)?;
@@ -246,20 +288,35 @@ pub fn installed_cli_version(platform_id: &str) -> Option<String> {
     if let Some(hit) = cache_get(&key, Duration::from_secs(600)) {
         return hit;
     }
+    // 失败记忆：同指纹曾全失败 → 不再重试（返回 None = 未知）
+    if failed_probes().lock().map(|m| m.contains_key(&key)).unwrap_or(false) {
+        return None;
+    }
 
-    // 优先 CLI 自报版本；不响应 --version 的 CLI（如 dsh：任何参数都无
-    // 输出）回退到 npm 包内的 package.json（magpie 的 installMethod 思路，
-    // npm 生态特有增强）。
-    let mut version = None;
+    // npm shim 直读优先（零子进程）→ CLI 自报 → npm prefix 回退。
+    // 不响应 --version 的 CLI（如 dsh）走后两级（magpie installMethod 思路）。
+    let mut version = spec
+        .npm_package
+        .and_then(|pkg| npm_shim_version(&bin_path, pkg));
     // 探测必须带超时：个别 CLI 的 --version 会挂起（等待输入/网络/卡死），
     // 无超时会拖住整个平台检测循环（13 个平台串行探测），表现为界面长时间无响应
-    let mut probe = std::process::Command::new(&bin_path);
-    probe.args(spec_args(platform_id)).creation_flags_windows();
-    if let Ok(out) = spawn_with_timeout(probe, Duration::from_secs(10)) {
-        version = parse_version_line(&String::from_utf8_lossy(&out.stdout));
+    if version.is_none() {
+        let mut probe = std::process::Command::new(&bin_path);
+        probe.args(spec_args(platform_id)).creation_flags_windows();
+        if let Ok(out) = spawn_with_timeout(probe, Duration::from_secs(10)) {
+            version = parse_version_line(&String::from_utf8_lossy(&out.stdout));
+        }
     }
     if version.is_none() {
         version = spec.npm_package.and_then(package_json_version);
+    }
+
+    if let Ok(mut failed) = failed_probes().lock() {
+        if version.is_some() {
+            failed.remove(&key);
+        } else {
+            failed.insert(key.clone(), ());
+        }
     }
     cache_put(key, version.clone());
     version
@@ -1186,6 +1243,60 @@ mod tests {
                 "{id} 无 GUI 探测源，不应返回版本"
             );
         }
+    }
+
+    /// npm shim 直读：bin 位于 node_modules 树内（含 Windows .cmd shim 与
+    /// 双层 node_modules 布局）时从包内 package.json 拿版本；非 shim 路径
+    /// （原生安装，如 ~/.codex/bin）返回 None 回退跑 --version。
+    #[test]
+    fn npm_shim_version_reads_package_json() {
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let dir = std::env::temp_dir().join(format!("anybridge-shim-{nanos}"));
+
+        // 标准布局：<prefix>/node_modules/.bin/foo.cmd → <prefix>/node_modules/@scope/foo
+        let bin = dir.join("node_modules").join(".bin").join("foo.cmd");
+        std::fs::create_dir_all(bin.parent().unwrap()).unwrap();
+        let pkg_dir = dir.join("node_modules").join("@scope").join("foo");
+        std::fs::create_dir_all(&pkg_dir).unwrap();
+        std::fs::write(
+            pkg_dir.join("package.json"),
+            r#"{"name":"@scope/foo","version":"2.5.1"}"#,
+        )
+        .unwrap();
+        assert_eq!(
+            npm_shim_version(&bin, "@scope/foo").as_deref(),
+            Some("2.5.1"),
+            "shim 布局应直读包版本"
+        );
+
+        // 非 shim（原生安装）：路径无 node_modules 祖先 → None
+        let native = dir.join("codex").join("bin").join("codex.exe");
+        std::fs::create_dir_all(native.parent().unwrap()).unwrap();
+        assert!(
+            npm_shim_version(&native, "@scope/foo").is_none(),
+            "原生安装路径不得误读 npm 包版本"
+        );
+
+        // 双层布局：prefix 即 node_modules → 包在 node_modules/<pkg> 再下一层
+        let outer = dir.join("outer").join("node_modules").join(".bin").join("bar.cmd");
+        std::fs::create_dir_all(outer.parent().unwrap()).unwrap();
+        let nested = dir.join("outer").join("node_modules").join("node_modules").join("bar");
+        std::fs::create_dir_all(&nested).unwrap();
+        std::fs::write(
+            nested.join("package.json"),
+            r#"{"version":"0.9.0"}"#,
+        )
+        .unwrap();
+        assert_eq!(
+            npm_shim_version(&outer, "bar").as_deref(),
+            Some("0.9.0"),
+            "双层 node_modules 布局也应命中"
+        );
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     /// 本机诊断：官方版本通道（grok 这类无 npm 包的平台）

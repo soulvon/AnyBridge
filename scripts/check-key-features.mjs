@@ -719,6 +719,14 @@ section('UI 设计铁律守卫（ui-src + ui/assets）');
   // [提示] 左侧彩条装饰（设计铁律 12；CSS 三角形是合法误报）
   const leftBar = scanUi(/border-left:\s*[1-9]\d*px/g);
   if (leftBar.length) warn(`border-left 装饰 ${total(leftBar)} 处`, `${topFiles(leftBar)}（含三角形绘制误报，真彩条应换用背景/伪元素）`);
+
+  // [硬] 面板内嵌状态条贴边（设计铁律 3 安全间距；坑点 panel-status-bar-hugs-edge）：
+  //   自带 padding 的面板（.model-panel：header 20px / toolbar 16px / custom 20px）里，
+  //   同层插入的状态条必须补水平 margin，不得零边距贴面板边框（事故：供应商编辑页拉取结果条左右贴边）
+  const modalsCss = fs.readFileSync(path.join(root, 'ui/assets/styles/40-modals.css'), 'utf8');
+  const edgeGuard = /\.model-panel\s*>\s*\.provider-editor-op-result\s*\{[^}]*margin:[^;}]*16px/.test(modalsCss);
+  ok('面板内嵌状态条贴边已拦截（.model-panel > .provider-editor-op-result 需 16px 水平 margin）', edgeGuard,
+    'ui/assets/styles/40-modals.css 缺少 .model-panel > .provider-editor-op-result 的水平 margin 规则，状态条会贴面板边框');
 }
 
 // ─────────────────────────────────────────────────────────────

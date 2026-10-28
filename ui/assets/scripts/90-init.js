@@ -73,7 +73,15 @@ async function init() {
     await renderModelMap().catch(() => {});
   }
   if (typeof refreshPlatforms === 'function') {
-    await refreshPlatforms({ silent: true });
+    // 首屏不阻塞（借鉴 magpie pending 模式）：平台检测要全扫 13 个平台
+    // （Claude Desktop 冷扫必 spawn PowerShell 1-3 秒），await 会拖住后面
+    // 所有初始化步骤。骨架占位防塌陷，检测完成后 refreshPlatforms 内部
+    // 统一渲染；失败在 refreshPlatforms 的 catch 里有兜底提示。
+    const grid = document.getElementById('platforms-grid');
+    if (grid && !grid.childElementCount && typeof loadingHtml === 'function') {
+      grid.innerHTML = `<div class="platforms-empty">${loadingHtml('正在检测平台…')}</div>`;
+    }
+    refreshPlatforms({ silent: true }).catch(e => console.error('[Init] 平台检测失败:', e));
   }
   if (typeof cursorRefreshConsole === 'function') {
     cursorRefreshConsole({ silent: true }).catch(() => {});

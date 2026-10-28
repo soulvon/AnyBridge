@@ -546,7 +546,8 @@ async function refreshPlatforms(options = {}) {
     if (options.reloadProviders !== false && typeof loadProviders === 'function') {
       await loadProviders();
     }
-    platformInfos = await invoke('detect_platforms') || [];
+    // 手动点刷新 = 强制重扫（绕过指纹缓存）；自动连带刷新（silent）吃缓存
+    platformInfos = await invoke('detect_platforms', { force: !options.silent }) || [];
     renderPlatformCards();
     renderPlatformDetailStatuses();
     renderPlatformProviderOptions();
@@ -659,6 +660,12 @@ function renderPlatformCard(info) {
     : hasProvider
       ? platformStatusTag('外部配置', 'info')
       : platformStatusTag('未接管', 'muted');
+  // 配置漂移：接管中但记账字段被外部改动（Drift，借鉴 magpie）
+  const driftCount = Array.isArray(info.driftedFields) ? info.driftedFields.length : 0;
+  const driftTag = driftCount ? platformStatusTag('被外部修改', 'warn') : '';
+  const driftRow = driftCount
+    ? `<div class="platform-card-row"><span>配置漂移</span><strong>${driftCount} 处被外部改动</strong></div>`
+    : '';
 
   return `
     <article class="platform-card">
@@ -667,7 +674,7 @@ function renderPlatformCard(info) {
           <div class="platform-card-title">${platformEsc(def.name)}</div>
           <div class="platform-card-sub">${platformEsc(def.vendor)} · ${platformEsc(platformFormatLabel(def.requiredApiFormat))}</div>
         </div>
-        <div class="platform-card-tags">${status}${appliedTag}${backupTag}</div>
+        <div class="platform-card-tags">${status}${appliedTag}${backupTag}${driftTag}</div>
       </div>
       <div class="platform-card-body">
         <div class="platform-card-summary">${platformEsc(def.summary)}</div>
@@ -680,8 +687,12 @@ function renderPlatformCard(info) {
           <strong title="${platformEsc(path)}">${platformEsc(path)}</strong>
         </div>
         ${appliedAt ? `<div class="platform-card-row"><span>应用时间</span><strong>${platformEsc(appliedAt)}</strong></div>` : ''}
+        ${driftRow}
       </div>
       <div class="platform-card-actions">
+        ${info.id === 'claude-code' && driftCount && info.currentProviderId
+          ? `<button class="btn-primary platform-open-btn" data-action="applyClaudeCodeProviderConfig" data-arg="${platformEsc(info.currentProviderId)}">重新接入</button>`
+          : ''}
         <button class="btn-primary platform-open-btn" data-action="openPlatformPage" data-arg="${platformEsc(info.id)}">配置</button>
       </div>
     </article>
