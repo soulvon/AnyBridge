@@ -4,10 +4,15 @@
 // 未启动的时段）不经过网关，只能读客户端自己写的会话日志。这与 ccusage 类工具
 // 同一思路：统计器只读文件，不注入、不挂代理，开关不影响客户端使用。
 //
-// 当前支持：Claude Code（~/.claude/projects/**/*.jsonl，assistant 行带 usage）。
-// 增量：按文件记录 byte offset，只解析新增行；文件变小视为被截断，重置 offset 重扫。
+// 当前支持：
+//   claude-code  ~/.claude/projects/**/*.jsonl（增量，按 byte offset）
+//   cursor       <config>/cursor-core/cursor-core.db（全量重算）
+//   cpa          <LocalAppData>/.../cpa-suite/cpamp-data/usage.sqlite（全量重算）
+//   pi           ~/.pi/agent/analytics/usage.jsonl（全量重算）
+//   zcode        ~/.zcode/cli/db/db.sqlite 的 model_usage（全量重算）
 // 落盘：<config>/usage-local.json（与 stats.json 分离，互不覆盖）。
 
+use chrono::{TimeZone, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::fs;
@@ -73,7 +78,13 @@ pub struct LocalUsageIndex {
     /// CPA 账号维度汇总（全量重算，按消耗排序）
     #[serde(default)]
     pub cpa_accounts: Vec<CpaAccountUsage>,
-    /// source id (claude-code / codex / cursor / cpa) -> usage
+    /// day -> model -> usage（pi，读它自己的 analytics/usage.jsonl，全量重算）
+    #[serde(default)]
+    pub pi_days: BTreeMap<String, BTreeMap<String, ModelUsage>>,
+    /// day -> model -> usage（zcode，读 cli/db/db.sqlite 的 model_usage，全量重算）
+    #[serde(default)]
+    pub zcode_days: BTreeMap<String, BTreeMap<String, ModelUsage>>,
+    /// source id (claude-code / codex / cursor / cpa / pi / zcode) -> usage
     pub sources: BTreeMap<String, SourceUsage>,
     /// 文件路径 -> 已读偏移
     pub files: BTreeMap<String, FileState>,
@@ -90,6 +101,8 @@ impl Default for LocalUsageIndex {
             cursor_days: BTreeMap::new(),
             cpa_days: BTreeMap::new(),
             cpa_accounts: Vec::new(),
+            pi_days: BTreeMap::new(),
+            zcode_days: BTreeMap::new(),
             sources: BTreeMap::new(),
             files: BTreeMap::new(),
             errors: Vec::new(),
@@ -449,7 +462,7 @@ pub fn scan_cursor_db_at(index: &mut LocalUsageIndex, path: &Path) -> Result<(),
 }
 
 /// 用户可以开关采集的旁路来源（网关账本由 sidecar 写，不在此列）。
-pub const TOGGLEABLE_SOURCES: [&str; 3] = ["claude-code", "cursor", "cpa"];
+pub const TOGGLEABLE_SOURCES: [&str; 5] = ["claude-code", "cursor", "cpa", "pi", "zcode"];
 
 /// 读取被禁用采集的来源列表：config 里 `STATS_DISABLED_SOURCES`，逗号分隔。
 fn disabled_sources() -> Vec<String> {
@@ -484,6 +497,12 @@ fn available_sources() -> Vec<String> {
     if cpa_usage_db_path().is_some() {
         out.push("cpa".to_string());
     }
+    if pi_usage_path().is_some() {
+        out.push("pi".to_string());
+    }
+    if zcode_db_path().is_some() {
+        out.push("zcode".to_string());
+    }
     out
 }
 
@@ -516,6 +535,171 @@ pub fn set_stats_settings(disabled_sources: Vec<String>) -> Result<StatsSettings
         &cleaned.join(","),
     )?;
     get_stats_settings()
+}
+
+/// pi（PiDeck）用量日志：<home>/.pi/agent/analytics/usage.jsonl
+fn pi_usage_path() -> Option<PathBuf> {
+    let path = home_dir()?
+        .join(".pi")
+        .join("agent")
+        .join("analytics")
+        .join("usage.jsonl");
+    if path.is_file() {
+        Some(path)
+    } else {
+        None
+    }
+}
+
+/// zcode 用量库：<home>/.zcode/cli/db/db.sqlite
+fn zcode_db_path() -> Option<PathBuf> {
+    let path = home_dir()?
+        .join(".zcode")
+        .join("cli")
+        .join("db")
+        .join("db.sqlite");
+    if path.is_file() {
+        Some(path)
+    } else {
+        None
+    }
+}
+
+/// 毫秒时间戳 → UTC 日期键（`YYYY-MM-DD`），与 SQL 侧的 strftime 口径一致。
+fn day_key_from_ms(ms: u64) -> Option<String> {
+    let dt = Utc.timestamp_millis_opt(ms as i64).single()?;
+    Some(dt.format("%Y-%m-%d").to_string())
+}
+
+/// pi 的模型名带来源前缀（`CPA/gemini-3.8-flash-high`、`local/...`），
+/// 去掉前缀才能与网关侧模型名对齐到同一行排行。
+fn strip_model_prefix(model: &str) -> &str {
+    match model.split_once('/') {
+        Some((_, rest)) if !rest.trim().is_empty() => rest.trim(),
+        _ => model.trim(),
+    }
+}
+
+/// 读 pi 的 analytics/usage.jsonl。每行一个 JSON 数组：
+/// `[ts_ms, session, workspace, model, input, output, cache_read, cache_write, total, ?]`
+///
+/// 全量重算而不是增量：文件只有几百 KB、增长慢，重算远比维护偏移可靠——
+/// 偏移一旦与天级汇总不同步，就是永久少算一段且没有任何报错。
+pub fn scan_pi_usage_at(index: &mut LocalUsageIndex, path: &Path) -> Result<(), String> {
+    if !path.is_file() {
+        return Ok(());
+    }
+    let text = fs::read_to_string(path).map_err(|e| format!("读取 pi usage.jsonl 失败: {e}"))?;
+
+    let mut days: BTreeMap<String, BTreeMap<String, ModelUsage>> = BTreeMap::new();
+    let mut total = SourceUsage::default();
+
+    for line in text.lines() {
+        let line = line.trim();
+        if line.is_empty() {
+            continue;
+        }
+        let Ok(value) = serde_json::from_str::<serde_json::Value>(line) else {
+            continue;
+        };
+        let Some(arr) = value.as_array() else { continue };
+        if arr.len() < 6 {
+            continue;
+        }
+
+        let Some(ts) = arr.first().and_then(|v| v.as_u64()) else {
+            continue;
+        };
+        let Some(day) = day_key_from_ms(ts) else { continue };
+
+        let model = arr.get(3).and_then(|v| v.as_str()).unwrap_or("");
+        let model = strip_model_prefix(model);
+        if model.is_empty() {
+            continue;
+        }
+
+        let num = |i: usize| -> u64 { arr.get(i).and_then(|v| v.as_u64()).unwrap_or(0) };
+        let (input, output, cache_read, cache_write) = (num(4), num(5), num(6), num(7));
+
+        let entry = days
+            .entry(day)
+            .or_default()
+            .entry(model.to_string())
+            .or_default();
+        entry.requests += 1;
+        entry.input += input;
+        entry.output += output;
+        entry.cache_read += cache_read;
+        entry.cache_write += cache_write;
+
+        total.requests += 1;
+        total.input += input;
+        total.output += output;
+        total.cache_read += cache_read;
+        total.cache_write += cache_write;
+    }
+
+    if total.requests > 0 {
+        index.sources.insert("pi".to_string(), total);
+    } else {
+        index.sources.remove("pi");
+    }
+    index.pi_days = days;
+    Ok(())
+}
+
+/// 读 zcode 的 model_usage（天 × 模型聚合，只读、全量重算、幂等）。
+pub fn scan_zcode_db_at(index: &mut LocalUsageIndex, path: &Path) -> Result<(), String> {
+    if !path.is_file() {
+        return Ok(());
+    }
+    let conn = rusqlite::Connection::open_with_flags(
+        path,
+        rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY | rusqlite::OpenFlags::SQLITE_OPEN_NO_MUTEX,
+    )
+    .map_err(|e| format!("打开 zcode db.sqlite 失败: {e}"))?;
+
+    let mut stmt = conn
+        .prepare(
+            "SELECT strftime('%Y-%m-%d', started_at/1000, 'unixepoch') AS day, \
+                    COALESCE(NULLIF(model_id, ''), 'unknown') AS model, \
+                    COUNT(*), \
+                    SUM(COALESCE(input_tokens, 0)), \
+                    SUM(COALESCE(output_tokens, 0)), \
+                    SUM(COALESCE(cache_read_input_tokens, 0)), \
+                    SUM(COALESCE(cache_creation_input_tokens, 0)) \
+             FROM model_usage WHERE started_at > 0 GROUP BY day, model",
+        )
+        .map_err(|e| format!("准备 zcode 查询失败: {e}"))?;
+    let mut rows = stmt.query([]).map_err(|e| format!("执行 zcode 查询失败: {e}"))?;
+
+    let mut days: BTreeMap<String, BTreeMap<String, ModelUsage>> = BTreeMap::new();
+    let mut total = SourceUsage::default();
+    while let Some(row) = rows.next().map_err(|e| format!("读取 zcode 行失败: {e}"))? {
+        let day: String = row.get(0).map_err(|e| format!("zcode day: {e}"))?;
+        let model: String = row.get(1).map_err(|e| format!("zcode model: {e}"))?;
+        let usage = ModelUsage {
+            requests: row.get::<_, i64>(2).unwrap_or(0).max(0) as u64,
+            input: row.get::<_, i64>(3).unwrap_or(0).max(0) as u64,
+            output: row.get::<_, i64>(4).unwrap_or(0).max(0) as u64,
+            cache_read: row.get::<_, i64>(5).unwrap_or(0).max(0) as u64,
+            cache_write: row.get::<_, i64>(6).unwrap_or(0).max(0) as u64,
+        };
+        total.requests += usage.requests;
+        total.input += usage.input;
+        total.output += usage.output;
+        total.cache_read += usage.cache_read;
+        total.cache_write += usage.cache_write;
+        days.entry(day).or_default().insert(model, usage);
+    }
+
+    if total.requests > 0 {
+        index.sources.insert("zcode".to_string(), total);
+    } else {
+        index.sources.remove("zcode");
+    }
+    index.zcode_days = days;
+    Ok(())
 }
 
 /// 扫描所有已支持的旁路数据源并持久化索引。
@@ -570,6 +754,32 @@ pub fn scan_all_sync() -> Result<LocalUsageIndex, String> {
         index.cpa_days.clear();
         index.cpa_accounts.clear();
         index.sources.remove("cpa");
+    }
+
+    // pi：读它自己的 analytics/usage.jsonl（全量重算）。
+    if is_disabled(&disabled, "pi") {
+        index.pi_days.clear();
+        index.sources.remove("pi");
+    } else if let Some(pi_log) = pi_usage_path() {
+        if let Err(e) = scan_pi_usage_at(&mut index, &pi_log) {
+            index.errors.push(e);
+        }
+    } else {
+        index.pi_days.clear();
+        index.sources.remove("pi");
+    }
+
+    // zcode：读 cli/db/db.sqlite 的 model_usage（只读、全量重算）。
+    if is_disabled(&disabled, "zcode") {
+        index.zcode_days.clear();
+        index.sources.remove("zcode");
+    } else if let Some(zcode_db) = zcode_db_path() {
+        if let Err(e) = scan_zcode_db_at(&mut index, &zcode_db) {
+            index.errors.push(e);
+        }
+    } else {
+        index.zcode_days.clear();
+        index.sources.remove("zcode");
     }
 
     index.version = INDEX_VERSION;
@@ -767,6 +977,81 @@ mod tests {
         scan_cpa_db_at(&mut index, &db).unwrap();
         assert_eq!(index.sources["cpa"].requests, 15);
         assert_eq!(index.cpa_accounts.len(), 3);
+
+        let _ = fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn pi_usage_parses_arrays_and_strips_provider_prefix() {
+        let tmp = std::env::temp_dir().join(format!("anybridge-usage-pi-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+        let log = tmp.join("usage.jsonl");
+
+        // 1767225600000 = 2026-01-01T00:00:00Z，1767312000000 = 次日
+        let lines = [
+            r#"[1767225600000,"sess-a","/w","CPA/gemini-3.8-flash-high",1000,100,50,0,1100,0]"#,
+            r#"[1767225700000,"sess-a","/w","CPA/gemini-3.8-flash-high",200,20,0,0,220,0]"#,
+            r#"[1767312000000,"sess-b","/w","local/glm-5.3",10,2,0,0,12,0]"#,
+            r#"not-json"#,
+            r#"{"not":"an array"}"#,
+        ];
+        fs::write(&log, lines.join("\n") + "\n").unwrap();
+
+        let mut index = LocalUsageIndex::default();
+        scan_pi_usage_at(&mut index, &log).unwrap();
+
+        // 前缀被去掉，与网关侧模型名对齐到同一行
+        let day1 = &index.pi_days["2026-01-01"]["gemini-3.8-flash-high"];
+        assert_eq!(day1.requests, 2);
+        assert_eq!(day1.input, 1200);
+        assert_eq!(day1.output, 120);
+        assert_eq!(day1.cache_read, 50);
+        assert_eq!(index.pi_days["2026-01-02"]["glm-5.3"].requests, 1);
+        assert_eq!(index.sources["pi"].requests, 3);
+        assert_eq!(index.sources["pi"].input, 1210);
+
+        // 全量重算：再扫一次不得翻倍
+        scan_pi_usage_at(&mut index, &log).unwrap();
+        assert_eq!(index.sources["pi"].requests, 3);
+        assert_eq!(index.pi_days.len(), 2);
+
+        let _ = fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn zcode_model_usage_aggregates_by_day_and_is_idempotent() {
+        let tmp = std::env::temp_dir().join(format!("anybridge-usage-zcode-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+        let db = tmp.join("db.sqlite");
+        {
+            let conn = rusqlite::Connection::open(&db).unwrap();
+            conn.execute_batch(
+                "CREATE TABLE model_usage (
+                    started_at INTEGER, model_id TEXT,
+                    input_tokens INTEGER, output_tokens INTEGER,
+                    cache_read_input_tokens INTEGER, cache_creation_input_tokens INTEGER
+                );
+                INSERT INTO model_usage VALUES
+                    (1767225600000, 'gemini-3.8-flash-high', 1000, 100, 500, 0),
+                    (1767225700000, 'gemini-3.8-flash-high', 500, 50, 0, 0),
+                    (1767312000000, 'GLM-5.3-Flash', 10, 2, 0, 4),
+                    (0, 'skipped-bad-row', 999, 999, 999, 999);",
+            )
+            .unwrap();
+        }
+
+        let mut index = LocalUsageIndex::default();
+        scan_zcode_db_at(&mut index, &db).unwrap();
+
+        assert_eq!(index.sources["zcode"].requests, 3); // started_at=0 的行被过滤
+        assert_eq!(index.sources["zcode"].input, 1510);
+        assert_eq!(index.zcode_days.len(), 2);
+        assert_eq!(index.zcode_days["2026-01-01"]["gemini-3.8-flash-high"].requests, 2);
+
+        scan_zcode_db_at(&mut index, &db).unwrap();
+        assert_eq!(index.sources["zcode"].requests, 3);
 
         let _ = fs::remove_dir_all(&tmp);
     }

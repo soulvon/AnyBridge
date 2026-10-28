@@ -20,6 +20,8 @@ const BYPASS_SOURCE_META = {
   'claude-code': { label: 'Claude Code', hint: '~/.claude' },
   cursor: { label: 'Cursor', hint: 'cursor-core.db' },
   cpa: { label: 'CPA 套件', hint: 'usage.sqlite' },
+  pi: { label: 'Pi', hint: 'usage.jsonl' },
+  zcode: { label: 'ZCode', hint: 'model_usage' },
 };
 
 let mainEchartInstance = null;
@@ -84,6 +86,8 @@ const STATS_SOURCES = {
   'claude-code': { label: 'Claude Code', bucket: 'days' },
   cursor: { label: 'Cursor', bucket: 'cursorDays' },
   cpa: { label: 'CPA 套件', bucket: 'cpaDays' },
+  pi: { label: 'Pi', bucket: 'piDays' },
+  zcode: { label: 'ZCode', bucket: 'zcodeDays' },
 };
 
 function sourceLabel(id) {

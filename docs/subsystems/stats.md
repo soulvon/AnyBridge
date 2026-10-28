@@ -66,6 +66,8 @@ requires traffic to pass through AnyBridge:
 | `claude-code` | `~/.claude/projects/**/*.jsonl` assistant rows (`message.usage`) | Incremental by byte offset per file; file shrink resets the offset and re-reads. |
 | `cursor` | `<config>/cursor-core/cursor-core.db` `llm_calls` | Full recompute per scan (idempotent), read-only connection. |
 | `cpa` | `<LocalAppData>/anybridge/extensions/services/cpa-suite/cpamp-data/usage.sqlite` account daily rollups | Full recompute, read-only, grouped by day × account × model. |
+| `pi` | `~/.pi/agent/analytics/usage.jsonl`, one JSON array per call: `[ts_ms, session, workspace, model, input, output, cache_read, cache_write, total, ?]` | Full recompute (file is small and grows slowly; offsets would risk permanent undercounting). Provider prefix in `model` (`CPA/…`, `local/…`) is stripped so names align with the gateway ledger. |
+| `zcode` | `~/.zcode/cli/db/db.sqlite` `model_usage` | Full recompute, read-only, grouped by day × model; rows with `started_at = 0` are skipped. |
 
 Rules:
 
