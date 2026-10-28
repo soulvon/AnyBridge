@@ -89,9 +89,11 @@ const localUsage = {
     { account: 'alpha@example.com', provider: 'claude', requests: 500, failed: 3, input: 500_000, output: 50_000, cacheRead: 200_000, cacheWrite: 0 },
     { account: 'beta@example.com', provider: 'gemini', requests: 400, failed: 0, input: 400_000, output: 40_000, cacheRead: 200_000, cacheWrite: 0 },
   ],
+  // 故意带上 cursor，验证「所有扫到的来源都能被选中」，而不是只有写死的那几个
   sources: {
     cpa: { requests: 900, input: 900_000, output: 90_000, cacheRead: 400_000, cacheWrite: 0 },
     'claude-code': { requests: 42, input: 42_000, output: 4_200, cacheRead: 0, cacheWrite: 0 },
+    cursor: { requests: 7, input: 7_000, output: 700, cacheRead: 0, cacheWrite: 0 },
   },
   files: {},
   errors: [],
@@ -152,14 +154,28 @@ assert.doesNotMatch(sourcesHost.innerHTML, /正在检查通道数据/, '数据�
 assert.match(recentBody.innerHTML, /gemini-3-8-flash-high/, '最近请求必须展示「请求模型 → 实际模型」');
 assert.doesNotMatch(doc.body.innerHTML, /渲染失败/, '任何面板都不应进入错误态');
 
-// ── 热插拔场景：CPA 未安装（sources 无 cpa、无账号）时，入口必须自动隐藏 ──
-const cpaFilterBtn = doc.querySelector('#page-stats [data-stats-source-filter="cpa"]');
-const accountRankBtn = doc.querySelector('#page-stats [data-stats-rank="account"]');
-assert.equal(cpaFilterBtn.hidden, false, '有 CPA 数据时来源筛选必须可见');
+// ── 来源筛选器必须由「实际扫到的来源」动态生成 ──
+const filterValues = () => [...doc.querySelectorAll('#page-stats [data-stats-source-filter]')]
+  .map((b) => b.getAttribute('data-stats-source-filter'));
 
+const initialFilters = filterValues();
+assert.deepEqual(initialFilters, ['all', 'gateway', 'claude-code', 'cursor', 'cpa'], '来源筛选必须覆盖全部已扫到的来源（含 Cursor）');
+
+// 选 Cursor 后，图表数据必须真的切到 cursorDays（选中即生效）
+const cursorBtn = doc.querySelector('#page-stats [data-stats-source-filter="cursor"]');
+cursorBtn.click();
+await new Promise((resolve) => setTimeout(resolve, 80));
+assert.ok(cursorBtn.classList.contains('active'), '点击后 Cursor 必须成为选中态');
+const cursorKpi = doc.getElementById('statsKpiTokens').textContent;
+assert.ok(cursorKpi && cursorKpi !== '—', `选中 Cursor 后 KPI 必须出数（当前 ${cursorKpi}）`);
+
+// ── 热插拔场景：CPA 未安装（sources 无 cpa、无账号、无日期桶） ──
 const withoutCpa = {
   ...localUsage,
-  sources: { 'claude-code': localUsage.sources['claude-code'] },
+  sources: {
+    'claude-code': localUsage.sources['claude-code'],
+    cursor: localUsage.sources.cursor,
+  },
   cpaDays: {},
   cpaAccounts: [],
 };
@@ -175,10 +191,11 @@ await loadStats();
 await new Promise((resolve) => setTimeout(resolve, 150));
 
 assert.equal(
-  doc.querySelector('#page-stats [data-stats-source-filter="cpa"]').hidden,
-  true,
-  'CPA 未安装时来源筛选必须自动隐藏（热插拔）',
+  doc.querySelector('#page-stats [data-stats-source-filter="cpa"]'),
+  null,
+  'CPA 未安装时不该出现 CPA 筛选按钮（热插拔）',
 );
+assert.ok(filterValues().includes('cursor'), 'CPA 卸载后其余来源必须照常可选');
 assert.equal(
   doc.querySelector('#page-stats [data-stats-rank="account"]').hidden,
   true,
@@ -190,4 +207,4 @@ assert.match(
   '仍存在的数据源卡片必须正常渲染',
 );
 
-console.log('统计页渲染链：全部断言通过（含热插拔场景）');
+console.log('统计页渲染链：全部断言通过（含来源动态筛选与热插拔场景）');

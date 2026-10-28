@@ -25,12 +25,9 @@
                   <button type="button" class="ez-pill-btn" data-stats-range="0" role="tab" aria-selected="false">全部</button>
                 </div>
 
-                <!-- 来源通道过滤 (EasyUI Segmented Filter) -->
-                <div class="ez-pill-nav" role="tablist" aria-label="数据来源">
+                <!-- 来源通道过滤：由实际扫到的数据源动态生成（热插拔） -->
+                <div class="ez-pill-nav" id="statsSourceFilters" role="tablist" aria-label="数据来源">
                   <button type="button" class="ez-pill-btn active" data-stats-source-filter="all" role="tab" aria-selected="true">全部来源</button>
-                  <button type="button" class="ez-pill-btn" data-stats-source-filter="cpa" role="tab" aria-selected="false">CPA 套件</button>
-                  <button type="button" class="ez-pill-btn" data-stats-source-filter="claude" role="tab" aria-selected="false">Claude Code</button>
-                  <button type="button" class="ez-pill-btn" data-stats-source-filter="gateway" role="tab" aria-selected="false">网关</button>
                 </div>
 
                 <!-- 同步数据按钮 -->

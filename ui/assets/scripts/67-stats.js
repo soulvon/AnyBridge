@@ -68,16 +68,44 @@ function historyDaysToFetch() {
   return STATS_STATE.range === 0 ? 366 : Math.min(366, STATS_STATE.range * 2 + 1);
 }
 
+// ── 来源登记表：id → 展示名 + 取数方式 ──
+// 新增旁路来源只需在这里加一行（并由扫描器写入对应的 day 桶），筛选器会自动出现。
+const STATS_SOURCES = {
+  gateway: { label: '网关', bucket: null },
+  'claude-code': { label: 'Claude Code', bucket: 'days' },
+  cursor: { label: 'Cursor', bucket: 'cursorDays' },
+  cpa: { label: 'CPA 套件', bucket: 'cpaDays' },
+};
+
+function sourceLabel(id) {
+  return STATS_SOURCES[id]?.label || id;
+}
+
+/** 当前实际扫到的来源（含网关），顺序：网关 → 内置顺序 → 未知来源按 id 排。 */
+function discoveredSources() {
+  const sources = STATS_STATE.local?.sources || {};
+  const ids = new Set(Object.keys(sources));
+  if (STATS_STATE.gateway) ids.add('gateway');
+
+  const known = Object.keys(STATS_SOURCES).filter((id) => ids.has(id));
+  const unknown = [...ids].filter((id) => !STATS_SOURCES[id]).sort();
+  return [...known, ...unknown];
+}
+
+/** 该来源在给定日期桶里是否有数据（用于「有按钮就一定有数」）。 */
+function localBucketOf(id) {
+  const bucket = STATS_SOURCES[id]?.bucket;
+  if (!bucket) return null;
+  return STATS_STATE.local?.[bucket] || null;
+}
+
 // ── 构建日序综合数据集（支持来源过滤） ──
 function buildDaySeries() {
-  const filter = STATS_STATE.sourceFilter;
-  const includeGateway = filter === 'all' || filter === 'gateway';
-  const includeCpa = filter === 'all' || filter === 'cpa';
-  const includeClaude = filter === 'all' || filter === 'claude';
-  const includeCursor = filter === 'all';
+  const only = STATS_STATE.sourceFilter;
+  const include = (id) => only === 'all' || only === id;
 
   const gatewayByDay = new Map();
-  if (includeGateway) {
+  if (include('gateway')) {
     for (const row of STATS_STATE.history) gatewayByDay.set(row.day, row);
     const snapshot = STATS_STATE.gateway;
     if (snapshot) {
@@ -98,11 +126,16 @@ function buildDaySeries() {
     }
   }
 
-  const local = STATS_STATE.local || {};
+  // 参与本次统计的旁路桶（受来源筛选控制）
+  const activeBuckets = Object.keys(STATS_SOURCES)
+    .filter((id) => include(id))
+    .map(localBucketOf)
+    .filter(Boolean);
+
   const allDays = new Set([...gatewayByDay.keys()]);
-  if (includeClaude) Object.keys(local.days || {}).forEach((d) => allDays.add(d));
-  if (includeCursor) Object.keys(local.cursorDays || {}).forEach((d) => allDays.add(d));
-  if (includeCpa) Object.keys(local.cpaDays || {}).forEach((d) => allDays.add(d));
+  for (const bucket of activeBuckets) {
+    Object.keys(bucket).forEach((day) => allDays.add(day));
+  }
 
   const rows = [...allDays].sort().map((day) => {
     const gw = gatewayByDay.get(day) || {};
@@ -111,16 +144,13 @@ function buildDaySeries() {
     let localCache = 0;
     let localRequests = 0;
 
-    const sourcesToSum = [];
-    if (includeClaude && local.days?.[day]) sourcesToSum.push(...Object.values(local.days[day]));
-    if (includeCursor && local.cursorDays?.[day]) sourcesToSum.push(...Object.values(local.cursorDays[day]));
-    if (includeCpa && local.cpaDays?.[day]) sourcesToSum.push(...Object.values(local.cpaDays[day]));
-
-    for (const u of sourcesToSum) {
-      localInput += Number(u.input) || 0;
-      localOutput += Number(u.output) || 0;
-      localCache += (Number(u.cache_read) || 0) + (Number(u.cache_write) || 0);
-      localRequests += Number(u.requests) || 0;
+    for (const bucket of activeBuckets) {
+      for (const u of Object.values(bucket[day] || {})) {
+        localInput += Number(u.input) || 0;
+        localOutput += Number(u.output) || 0;
+        localCache += (Number(u.cache_read) || 0) + (Number(u.cache_write) || 0);
+        localRequests += Number(u.requests) || 0;
+      }
     }
 
     return {
@@ -820,49 +850,37 @@ function renderStatsRecentTable() {
   }).join('');
 }
 
-// ── 来源热插拔：按真实存在的数据源显隐筛选项 ──
-// CPA 未安装 / Claude Code 未使用时，对应按钮直接隐藏，不留点了没数据的死入口。
-function syncSourceAvailability() {
-  const sources = STATS_STATE.local?.sources || {};
-  const availability = {
-    all: true,
-    cpa: !!sources.cpa,
-    claude: !!sources['claude-code'],
-    gateway: !!STATS_STATE.gateway,
-  };
-
-  let activeHidden = false;
-  document.querySelectorAll('#page-stats [data-stats-source-filter]').forEach((btn) => {
-    const value = btn.getAttribute('data-stats-source-filter');
-    const visible = availability[value] !== false;
-    btn.hidden = !visible;
-    if (!visible && btn.classList.contains('active')) {
-      activeHidden = true;
-      btn.classList.remove('active');
-      btn.setAttribute('aria-selected', 'false');
+// ── 来源筛选器：按实际扫到的数据源动态生成（热插拔） ──
+// 没装的来源不会出现按钮，装了并扫到数据就自动多一个按钮，Cursor 之类不再选不到。
+function renderSourceControls() {
+  const host = document.getElementById('statsSourceFilters');
+  if (host) {
+    const ids = ['all', ...discoveredSources()];
+    // 选中的来源已经不存在（卸载/清空）时回退到「全部来源」
+    if (STATS_STATE.sourceFilter !== 'all' && !ids.includes(STATS_STATE.sourceFilter)) {
+      STATS_STATE.sourceFilter = 'all';
     }
-  });
-
-  // 当前选中的来源被隐藏时，回退到「全部来源」
-  if (activeHidden) {
-    STATS_STATE.sourceFilter = 'all';
-    const allBtn = document.querySelector('#page-stats [data-stats-source-filter="all"]');
-    if (allBtn) {
-      allBtn.classList.add('active');
-      allBtn.setAttribute('aria-selected', 'true');
-    }
+    host.innerHTML = ids.map((id) => {
+      const active = id === STATS_STATE.sourceFilter;
+      const label = id === 'all' ? '全部来源' : sourceLabel(id);
+      return `<button type="button" class="ez-pill-btn${active ? ' active' : ''}" data-stats-source-filter="${escapeText(id)}" role="tab" aria-selected="${active}">${escapeText(label)}</button>`;
+    }).join('');
   }
 
-  // 排行里的 CPA 账号 tab 同理
+  // 排行里的 CPA 账号 tab：没有账号就不出现
   const accountTab = document.querySelector('#page-stats [data-stats-rank="account"]');
   if (accountTab) {
     const hasAccounts = (STATS_STATE.local?.cpaAccounts || []).length > 0;
     accountTab.hidden = !hasAccounts;
     if (!hasAccounts && accountTab.classList.contains('active')) {
       accountTab.classList.remove('active');
+      accountTab.setAttribute('aria-selected', 'false');
       STATS_STATE.rank = 'model';
       const modelTab = document.querySelector('#page-stats [data-stats-rank="model"]');
-      if (modelTab) modelTab.classList.add('active');
+      if (modelTab) {
+        modelTab.classList.add('active');
+        modelTab.setAttribute('aria-selected', 'true');
+      }
     }
   }
 }
@@ -872,8 +890,9 @@ function syncSourceAvailability() {
 // （教训：ECharts formatter 引用未定义函数会让 renderStatsAll 从中间中断，
 //  表现为 KPI 有值、图表空白、其余面板一句「正在检查…」永不消失。）
 function renderStatsAll() {
+  // 先校正来源控件（可能把失效的选中项回退为「全部」），再据此取数
+  renderSourceControls();
   const series = buildDaySeries();
-  syncSourceAvailability();
 
   const panels = [
     ['KPI', () => renderStatsKpi(series)],
