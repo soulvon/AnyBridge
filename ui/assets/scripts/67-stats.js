@@ -820,12 +820,60 @@ function renderStatsRecentTable() {
   }).join('');
 }
 
+// ── 来源热插拔：按真实存在的数据源显隐筛选项 ──
+// CPA 未安装 / Claude Code 未使用时，对应按钮直接隐藏，不留点了没数据的死入口。
+function syncSourceAvailability() {
+  const sources = STATS_STATE.local?.sources || {};
+  const availability = {
+    all: true,
+    cpa: !!sources.cpa,
+    claude: !!sources['claude-code'],
+    gateway: !!STATS_STATE.gateway,
+  };
+
+  let activeHidden = false;
+  document.querySelectorAll('#page-stats [data-stats-source-filter]').forEach((btn) => {
+    const value = btn.getAttribute('data-stats-source-filter');
+    const visible = availability[value] !== false;
+    btn.hidden = !visible;
+    if (!visible && btn.classList.contains('active')) {
+      activeHidden = true;
+      btn.classList.remove('active');
+      btn.setAttribute('aria-selected', 'false');
+    }
+  });
+
+  // 当前选中的来源被隐藏时，回退到「全部来源」
+  if (activeHidden) {
+    STATS_STATE.sourceFilter = 'all';
+    const allBtn = document.querySelector('#page-stats [data-stats-source-filter="all"]');
+    if (allBtn) {
+      allBtn.classList.add('active');
+      allBtn.setAttribute('aria-selected', 'true');
+    }
+  }
+
+  // 排行里的 CPA 账号 tab 同理
+  const accountTab = document.querySelector('#page-stats [data-stats-rank="account"]');
+  if (accountTab) {
+    const hasAccounts = (STATS_STATE.local?.cpaAccounts || []).length > 0;
+    accountTab.hidden = !hasAccounts;
+    if (!hasAccounts && accountTab.classList.contains('active')) {
+      accountTab.classList.remove('active');
+      STATS_STATE.rank = 'model';
+      const modelTab = document.querySelector('#page-stats [data-stats-rank="model"]');
+      if (modelTab) modelTab.classList.add('active');
+    }
+  }
+}
+
 // ── 全量同步 ──
 // 逐块渲染：任何一块抛错只降级该块并留下可见错误，不再让整页停在占位文案。
 // （教训：ECharts formatter 引用未定义函数会让 renderStatsAll 从中间中断，
 //  表现为 KPI 有值、图表空白、其余面板一句「正在检查…」永不消失。）
 function renderStatsAll() {
   const series = buildDaySeries();
+  syncSourceAvailability();
 
   const panels = [
     ['KPI', () => renderStatsKpi(series)],

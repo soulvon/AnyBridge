@@ -475,10 +475,15 @@ pub fn scan_all_sync() -> Result<LocalUsageIndex, String> {
     }
 
     // CPA（CLIProxyAPI 套件）：读它自己的账号日聚合，补上账号维度。
+    // 热插拔：若未安装或文件不存在，静默清空旧的 CPA 聚合缓存，不报错。
     if let Some(cpa_db) = cpa_usage_db_path() {
         if let Err(e) = scan_cpa_db_at(&mut index, &cpa_db) {
             index.errors.push(e);
         }
+    } else {
+        index.cpa_days.clear();
+        index.cpa_accounts.clear();
+        index.sources.remove("cpa");
     }
 
     index.version = INDEX_VERSION;

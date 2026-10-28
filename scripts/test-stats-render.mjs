@@ -152,4 +152,42 @@ assert.doesNotMatch(sourcesHost.innerHTML, /正在检查通道数据/, '数据�
 assert.match(recentBody.innerHTML, /gemini-3-8-flash-high/, '最近请求必须展示「请求模型 → 实际模型」');
 assert.doesNotMatch(doc.body.innerHTML, /渲染失败/, '任何面板都不应进入错误态');
 
-console.log('统计页渲染链：全部断言通过');
+// ── 热插拔场景：CPA 未安装（sources 无 cpa、无账号）时，入口必须自动隐藏 ──
+const cpaFilterBtn = doc.querySelector('#page-stats [data-stats-source-filter="cpa"]');
+const accountRankBtn = doc.querySelector('#page-stats [data-stats-rank="account"]');
+assert.equal(cpaFilterBtn.hidden, false, '有 CPA 数据时来源筛选必须可见');
+
+const withoutCpa = {
+  ...localUsage,
+  sources: { 'claude-code': localUsage.sources['claude-code'] },
+  cpaDays: {},
+  cpaAccounts: [],
+};
+globalThis.invoke = window.invoke = async (command) => {
+  if (command === 'get_stats') return snapshot;
+  if (command === 'get_stats_history') return { days };
+  if (command === 'get_local_usage') return withoutCpa;
+  if (command === 'scan_local_usage') return withoutCpa;
+  throw new Error(`未预期的命令: ${command}`);
+};
+
+await loadStats();
+await new Promise((resolve) => setTimeout(resolve, 150));
+
+assert.equal(
+  doc.querySelector('#page-stats [data-stats-source-filter="cpa"]').hidden,
+  true,
+  'CPA 未安装时来源筛选必须自动隐藏（热插拔）',
+);
+assert.equal(
+  doc.querySelector('#page-stats [data-stats-rank="account"]').hidden,
+  true,
+  'CPA 未安装时「CPA 账号」排行 tab 必须自动隐藏（热插拔）',
+);
+assert.match(
+  doc.getElementById('statsSourcesDeck').innerHTML,
+  /Claude Code/,
+  '仍存在的数据源卡片必须正常渲染',
+);
+
+console.log('统计页渲染链：全部断言通过（含热插拔场景）');
