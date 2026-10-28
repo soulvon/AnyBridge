@@ -196,6 +196,30 @@ assert.ok(cursorBtn.classList.contains('active'), '点击后 Cursor 必须成为
 const cursorKpi = doc.getElementById('statsKpiTokens').textContent;
 assert.ok(cursorKpi && cursorKpi !== '—', `选中 Cursor 后 KPI 必须出数（当前 ${cursorKpi}）`);
 
+// KPI 脚注必须跟着来源走，不能是写死的一句话
+assert.match(
+  doc.getElementById('statsKpiRequestsSub').textContent,
+  /仅 Cursor/,
+  '请求数脚注必须写明当前来源',
+);
+assert.match(
+  doc.getElementById('statsKpiCostSub').textContent,
+  /未计费/,
+  '非网关来源不得声称「含网关直连」',
+);
+assert.match(
+  doc.getElementById('statsKpiSuccessSub').textContent,
+  /仅网关可算成功率/,
+  '非网关视图必须说明成功率口径',
+);
+
+// Token 比例条必须配图例，否则单色横线读不出含义
+assert.equal(
+  doc.querySelectorAll('#statsTokenLegend .ez-token-legend-item').length,
+  3,
+  'Token 构成必须有输入/输出/缓存三条图例',
+);
+
 // ── 采集设置：能列出真实存在的来源，并且开关真的落盘 ──
 doc.getElementById('statsSettingsBtn').click();
 const settingsBody = doc.getElementById('statsSettingsBody');

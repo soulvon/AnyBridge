@@ -258,6 +258,24 @@ function renderDeltaPill(id, current, previous, { inverse = false } = {}) {
   el.className = `ez-delta-pill ${good ? 'is-up' : 'is-down'}`;
 }
 
+// ── Token 构成图例：让三段比例条可读 ──
+function renderTokenLegend(sum, total) {
+  const host = document.getElementById('statsTokenLegend');
+  if (!host) return;
+  const safe = total || 1;
+  const parts = [
+    ['is-input', '输入', sum.input],
+    ['is-output', '输出', sum.output],
+    ['is-cache', '缓存', sum.cache],
+  ];
+  host.innerHTML = parts.map(([cls, label, value]) => {
+    const pct = (value / safe) * 100;
+    // 极小的占比不要显示成 0.0%，那会被误读为「没有」
+    const pctText = value === 0 ? '0%' : pct < 0.1 ? '<0.1%' : `${pct.toFixed(pct >= 10 ? 0 : 1)}%`;
+    return `<span class="ez-token-legend-item"><i class="ez-token-dot ${cls}"></i>${label} <b>${fmtNum(value)}</b> <em>${pctText}</em></span>`;
+  }).join('');
+}
+
 // ── 渲染 KPI 指标卡 ──
 function renderStatsKpi(allSeries) {
   const { current, previous } = splitRanges(allSeries);
@@ -271,13 +289,23 @@ function renderStatsKpi(allSeries) {
     if (el) el.textContent = text;
   };
 
+  const filter = STATS_STATE.sourceFilter;
+  const includesGateway = filter === 'all' || filter === 'gateway';
+  const rangeText = STATS_STATE.range === 0 ? '历史全量' : `近 ${rangeDays()} 天`;
+
   set('statsKpiRequests', fmtNum(sum.requests));
-  set('statsKpiRequestsSub', STATS_STATE.range === 0 ? '历史全量累计' : `近 ${rangeDays()} 天调用汇总`);
+  // ① 脚注写清这本账包含谁：换来源文字必须跟着变，否则用户不知道在看什么
+  set('statsKpiRequestsSub', filter === 'all'
+    ? `${rangeText} · 网关 + 客户端`
+    : `${rangeText} · 仅 ${sourceLabel(filter)}`);
 
   set('statsKpiTokens', fmtNum(totalTokens));
-  set('statsKpiTokensSub', `输入 ${fmtNum(sum.input)} · 输出 ${fmtNum(sum.output)} · 缓存 ${fmtNum(sum.cache)}`);
+  // ② 三段比例条旁边给图例：不分项标注，一根纯色横线读不出含义
+  const promptTokens = sum.input + sum.cache;
+  const cacheHitRate = promptTokens > 0 ? Math.round((sum.cache / promptTokens) * 100) : 0;
+  set('statsKpiTokensSub', `缓存占提示词 ${cacheHitRate}%`);
 
-  // EasyUI 比例进度条
+  // 比例进度条
   const safeTotal = totalTokens || 1;
   const inPct = Math.max(0, (sum.input / safeTotal) * 100);
   const outPct = Math.max(0, (sum.output / safeTotal) * 100);
@@ -289,14 +317,21 @@ function renderStatsKpi(allSeries) {
   if (inEl) inEl.style.width = `${inPct.toFixed(1)}%`;
   if (outEl) outEl.style.width = `${outPct.toFixed(1)}%`;
   if (cacheEl) cacheEl.style.width = `${cachePct.toFixed(1)}%`;
+  renderTokenLegend(sum, totalTokens);
 
+  // ③ 旁路来源没有价格，不能再说「含网关直连」
   set('statsKpiCost', fmtCost(sum.cost));
-  set('statsKpiCostSub', STATS_STATE.sourceFilter === 'gateway' ? '网关直连精确估算' : '含网关直连，旁路按默认计');
+  set('statsKpiCostSub', includesGateway
+    ? '按模型单价估算，非账单'
+    : '客户端日志无价格，未计费');
 
+  // ④ 成功率只有网关侧才有错误契约
   const gwRequests = sum.gatewayRequests;
   const successRate = gwRequests > 0 ? (1 - sum.errors / gwRequests) * 100 : 100;
   set('statsKpiSuccess', `${successRate.toFixed(1)}%`);
-  set('statsKpiSuccessSub', sum.errors > 0 ? `网关阻断 / 错误 ${fmtNum(sum.errors)} 次` : '网关流量无异常阻断');
+  set('statsKpiSuccessSub', includesGateway
+    ? (sum.errors > 0 ? `失败 ${fmtNum(sum.errors)} 次 · 网关口径` : '网关无失败记录')
+    : '仅网关可算成功率');
 
   const healthPill = document.getElementById('statsHealthStatus');
   if (healthPill) {
