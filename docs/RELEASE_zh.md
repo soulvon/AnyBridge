@@ -76,7 +76,8 @@ npm run verify:release
 
 ## 发布步骤
 
-1. 更新各文件版本号，并在 `CHANGELOG.md` 中编写新版本章节（`## vX.Y.Z`）。
+0. **发版前先跑 `npm run verify`**（pre-push 同款，已含 `check:release-config`）——它会检查版本号 8 处一致、CHANGELOG 有对应章节、`bundle.targets` 跨平台安全、CI 矩阵完整。这几类错误**本地 Windows 打包发现不了**，只有 CI 的 macOS/Linux 会暴露（实测 `targets:["nsis","msi"]` 让三个平台白跑 20 分钟并报 `No artifacts were found`）。
+1. 更新各文件版本号，并在 `CHANGELOG.md` 中编写新版本章节（`## vX.Y.Z`）。版本号统一用 `node scripts/bump-version.cjs <新版本>`，不要手工改（历史上手工漏过 sidecar 与 lockfile）。
 2. 在 `main` 分支上提交发布修改。
 3. 推送提交，并创建与推送对应版本的附注标签：
 
