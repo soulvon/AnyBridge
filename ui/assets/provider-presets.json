@@ -1,0 +1,654 @@
+{
+  "version": 1,
+  "note": "供应商预设目录。只维护稳定信息（地址/格式/申请入口），不内置模型名——模型会随厂商迭代过期，统一走「获取模型列表」实时拉取。",
+  "groups": [
+    {
+      "id": "official-cn",
+      "label": "国内官方"
+    },
+    {
+      "id": "official-global",
+      "label": "海外官方"
+    },
+    {
+      "id": "cloud",
+      "label": "企业与云"
+    },
+    {
+      "id": "aggregator",
+      "label": "聚合与中转"
+    },
+    {
+      "id": "local",
+      "label": "本地与自建"
+    },
+    {
+      "id": "intl",
+      "label": "国际线路"
+    }
+  ],
+  "providers": [
+    {
+      "id": "deepseek",
+      "name": "DeepSeek",
+      "group": "official-cn",
+      "format": "openai",
+      "url": "https://api.deepseek.com/v1",
+      "keyUrl": "https://platform.deepseek.com/api_keys",
+      "website": "https://platform.deepseek.com",
+      "icon": "deepseek"
+    },
+    {
+      "id": "moonshot",
+      "name": "月之暗面 Kimi",
+      "group": "official-cn",
+      "format": "openai",
+      "url": "https://api.moonshot.cn/v1",
+      "keyUrl": "https://platform.moonshot.cn/console/api-keys",
+      "website": "https://platform.moonshot.cn",
+      "icon": "moonshot"
+    },
+    {
+      "id": "zhipu",
+      "name": "智谱 GLM",
+      "group": "official-cn",
+      "format": "openai",
+      "url": "https://open.bigmodel.cn/api/paas/v4",
+      "keyUrl": "https://bigmodel.cn/usercenter/apikeys",
+      "website": "https://bigmodel.cn",
+      "hint": "地址路径是 /api/paas/v4，注意不要改成 /v1",
+      "icon": "zhipu"
+    },
+    {
+      "id": "dashscope",
+      "name": "阿里云百炼",
+      "group": "official-cn",
+      "format": "openai",
+      "url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+      "keyUrl": "https://bailian.console.aliyun.com/",
+      "website": "https://bailian.console.aliyun.com",
+      "icon": "dashscope"
+    },
+    {
+      "id": "volcengine",
+      "name": "火山方舟",
+      "group": "official-cn",
+      "format": "openai",
+      "url": "https://ark.cn-beijing.volces.com/api/v3",
+      "keyUrl": "https://console.volcengine.com/ark",
+      "website": "https://console.volcengine.com/ark",
+      "hint": "模型名通常是推理接入点 ID（ep- 开头），需先在控制台创建接入点",
+      "icon": "volcengine"
+    },
+    {
+      "id": "siliconflow",
+      "name": "硅基流动",
+      "group": "official-cn",
+      "format": "openai",
+      "url": "https://api.siliconflow.cn/v1",
+      "keyUrl": "https://cloud.siliconflow.cn/account/ak",
+      "website": "https://cloud.siliconflow.cn",
+      "icon": "siliconflow"
+    },
+    {
+      "id": "minimax",
+      "name": "MiniMax",
+      "group": "official-cn",
+      "format": "openai",
+      "url": "https://api.minimaxi.com/v1",
+      "keyUrl": "https://platform.minimaxi.com/user-center/basic-information/interface-key",
+      "website": "https://platform.minimaxi.com",
+      "icon": "minimax"
+    },
+    {
+      "id": "hunyuan",
+      "name": "腾讯混元",
+      "group": "official-cn",
+      "format": "openai",
+      "url": "https://api.hunyuan.cloud.tencent.com/v1",
+      "keyUrl": "https://console.cloud.tencent.com/hunyuan",
+      "website": "https://console.cloud.tencent.com/hunyuan",
+      "icon": "hunyuan"
+    },
+    {
+      "id": "qianfan",
+      "name": "百度千帆",
+      "group": "official-cn",
+      "format": "openai",
+      "url": "https://qianfan.baidubce.com/v2",
+      "keyUrl": "https://console.bce.baidu.com/qianfan/overview",
+      "website": "https://console.bce.baidu.com/qianfan/overview",
+      "hint": "地址路径是 /v2，密钥在控制台「应用接入」里创建",
+      "icon": "qianfan"
+    },
+    {
+      "id": "stepfun",
+      "name": "阶跃星辰",
+      "group": "official-cn",
+      "format": "openai",
+      "url": "https://api.stepfun.com/v1",
+      "keyUrl": "https://platform.stepfun.com/interface-key",
+      "website": "https://platform.stepfun.com",
+      "icon": "stepfun"
+    },
+    {
+      "id": "sensenova",
+      "name": "商汤日日新",
+      "group": "official-cn",
+      "format": "openai",
+      "url": "https://api.sensenova.cn/compatible-mode/v1",
+      "keyUrl": "https://console.sensecore.cn/",
+      "website": "https://console.sensecore.cn"
+    },
+    {
+      "id": "mimo",
+      "name": "小米 MiMo",
+      "group": "official-cn",
+      "format": "openai",
+      "url": "https://api.xiaomimimo.com/v1",
+      "website": "https://platform.xiaomimimo.com",
+      "keyUrl": "https://platform.xiaomimimo.com",
+      "icon": "mimo",
+      "hint": "另有包月套餐线路，地址不同，按需换用 token-plan-cn 域名"
+    },
+    {
+      "id": "longcat",
+      "name": "美团龙猫 LongCat",
+      "group": "official-cn",
+      "format": "openai",
+      "url": "https://api.longcat.chat/openai/v1",
+      "website": "https://longcat.chat",
+      "icon": "longcat"
+    },
+    {
+      "id": "baichuan",
+      "name": "百川智能",
+      "group": "official-cn",
+      "format": "openai",
+      "url": "https://api.baichuan-ai.com/v1",
+      "website": "https://platform.baichuan-ai.com",
+      "keyUrl": "https://platform.baichuan-ai.com",
+      "icon": "baichuan"
+    },
+    {
+      "id": "zai",
+      "name": "智谱 Z.ai 国际",
+      "group": "official-cn",
+      "format": "openai",
+      "url": "https://api.z.ai/api/paas/v4",
+      "website": "https://z.ai",
+      "keyUrl": "https://z.ai/manage-apikey/apikey-list",
+      "icon": "zhipu"
+    },
+    {
+      "id": "tokenhub",
+      "name": "腾讯 TokenHub",
+      "group": "official-cn",
+      "format": "openai",
+      "url": "https://tokenhub.tencentmaas.com/v1",
+      "website": "https://cloud.tencent.com/product/tokenhub",
+      "keyUrl": "https://console.cloud.tencent.com/tokenhub/apikey",
+      "hint": "腾讯统一的模型接入入口，与混元单模型地址不同"
+    },
+    {
+      "id": "openai",
+      "name": "OpenAI",
+      "group": "official-global",
+      "format": "openai",
+      "url": "https://api.openai.com/v1",
+      "keyUrl": "https://platform.openai.com/api-keys",
+      "website": "https://platform.openai.com",
+      "icon": "openai"
+    },
+    {
+      "id": "anthropic",
+      "name": "Anthropic Claude",
+      "group": "official-global",
+      "format": "anthropic",
+      "url": "https://api.anthropic.com",
+      "keyUrl": "https://console.anthropic.com/settings/keys",
+      "website": "https://console.anthropic.com",
+      "hint": "地址不要带 /v1，程序会按协议自动补路径",
+      "icon": "anthropic"
+    },
+    {
+      "id": "gemini",
+      "name": "Google Gemini",
+      "group": "official-global",
+      "format": "gemini",
+      "url": "https://generativelanguage.googleapis.com",
+      "keyUrl": "https://aistudio.google.com/app/apikey",
+      "website": "https://aistudio.google.com",
+      "hint": "地址不要带 /v1beta，程序会按协议自动补路径",
+      "icon": "gemini"
+    },
+    {
+      "id": "xai",
+      "name": "xAI Grok",
+      "group": "official-global",
+      "format": "openai",
+      "url": "https://api.x.ai/v1",
+      "keyUrl": "https://console.x.ai/",
+      "website": "https://console.x.ai",
+      "icon": "xai"
+    },
+    {
+      "id": "mistral",
+      "name": "Mistral",
+      "group": "official-global",
+      "format": "openai",
+      "url": "https://api.mistral.ai/v1",
+      "keyUrl": "https://console.mistral.ai/api-keys/",
+      "website": "https://console.mistral.ai",
+      "icon": "mistral"
+    },
+    {
+      "id": "groq",
+      "name": "Groq",
+      "group": "official-global",
+      "format": "openai",
+      "url": "https://api.groq.com/openai/v1",
+      "website": "https://console.groq.com",
+      "keyUrl": "https://console.groq.com/keys",
+      "icon": "groq"
+    },
+    {
+      "id": "together",
+      "name": "Together AI",
+      "group": "official-global",
+      "format": "openai",
+      "url": "https://api.together.xyz/v1",
+      "website": "https://api.together.ai",
+      "keyUrl": "https://api.together.ai/settings/api-keys",
+      "icon": "together"
+    },
+    {
+      "id": "nvidia",
+      "name": "NVIDIA NIM",
+      "group": "official-global",
+      "format": "openai",
+      "url": "https://integrate.api.nvidia.com/v1",
+      "website": "https://build.nvidia.com",
+      "keyUrl": "https://build.nvidia.com",
+      "icon": "nvidia",
+      "hint": "有免费额度，模型数量多，适合跑开源模型"
+    },
+    {
+      "id": "poe",
+      "name": "Poe",
+      "group": "official-global",
+      "format": "openai",
+      "url": "https://api.poe.com/v1",
+      "website": "https://poe.com",
+      "keyUrl": "https://poe.com/api_key",
+      "icon": "poe"
+    },
+    {
+      "id": "cerebras",
+      "name": "Cerebras",
+      "group": "official-global",
+      "format": "openai",
+      "url": "https://api.cerebras.ai/v1",
+      "website": "https://www.cerebras.ai",
+      "keyUrl": "https://cloud.cerebras.ai",
+      "icon": "cerebras",
+      "hint": "推理速度极快，适合低延迟场景"
+    },
+    {
+      "id": "fireworks",
+      "name": "Fireworks AI",
+      "group": "official-global",
+      "format": "openai",
+      "url": "https://api.fireworks.ai/inference",
+      "website": "https://fireworks.ai",
+      "keyUrl": "https://fireworks.ai/account/api-keys",
+      "icon": "fireworks"
+    },
+    {
+      "id": "perplexity",
+      "name": "Perplexity",
+      "group": "official-global",
+      "format": "openai",
+      "url": "https://api.perplexity.ai",
+      "website": "https://perplexity.ai",
+      "keyUrl": "https://www.perplexity.ai/settings/api",
+      "icon": "perplexity",
+      "hint": "自带联网检索，模型以 Sonar 系列为主"
+    },
+    {
+      "id": "huggingface",
+      "name": "Hugging Face",
+      "group": "official-global",
+      "format": "openai",
+      "url": "https://router.huggingface.co/v1",
+      "website": "https://huggingface.co",
+      "keyUrl": "https://huggingface.co/settings/tokens",
+      "icon": "huggingface",
+      "hint": "走 Router 端点，模型覆盖各开源厂商"
+    },
+    {
+      "id": "azure-openai",
+      "name": "Azure OpenAI",
+      "group": "cloud",
+      "format": "openai",
+      "url": "https://YOUR-RESOURCE.openai.azure.com",
+      "icon": "azure",
+      "hint": "把 YOUR-RESOURCE 换成你自己的资源名"
+    },
+    {
+      "id": "aws-bedrock",
+      "name": "AWS Bedrock",
+      "group": "cloud",
+      "format": "openai",
+      "url": "https://bedrock-runtime.us-east-1.amazonaws.com",
+      "icon": "aws",
+      "hint": "地址里的区域换成你开通的，如 us-east-1 / ap-northeast-1"
+    },
+    {
+      "id": "vertexai",
+      "name": "Google Vertex AI",
+      "group": "cloud",
+      "format": "openai",
+      "url": "https://us-central1-aiplatform.googleapis.com",
+      "website": "https://console.cloud.google.com",
+      "icon": "vertexai",
+      "hint": "区域与项目需按实际开通情况替换；鉴权走服务账号"
+    },
+    {
+      "id": "copilot",
+      "name": "GitHub Copilot",
+      "group": "cloud",
+      "format": "openai",
+      "url": "https://api.githubcopilot.com",
+      "website": "https://github.com/features/copilot",
+      "icon": "copilot",
+      "hint": "需要 Copilot 订阅，鉴权走 GitHub 授权而非普通 API Key"
+    },
+    {
+      "id": "radeon-cloud",
+      "name": "AMD Radeon 云",
+      "group": "cloud",
+      "format": "openai",
+      "url": "https://developer.amd.com.cn/radeon/v1",
+      "website": "https://developer.amd.com.cn/radeon/",
+      "keyUrl": "https://developer.amd.com.cn/radeon/tokenfactory",
+      "icon": "radeon-cloud"
+    },
+    {
+      "id": "xirang",
+      "name": "天翼云息壤",
+      "group": "cloud",
+      "format": "openai",
+      "url": "https://wishub-x1.ctyun.cn",
+      "website": "https://www.ctyun.cn",
+      "keyUrl": "https://huiju.ctyun.cn/service/serviceGroup",
+      "icon": "xirang"
+    },
+    {
+      "id": "openrouter",
+      "name": "OpenRouter",
+      "group": "aggregator",
+      "format": "openai",
+      "url": "https://openrouter.ai/api/v1",
+      "keyUrl": "https://openrouter.ai/keys",
+      "website": "https://openrouter.ai",
+      "icon": "openrouter"
+    },
+    {
+      "id": "aihubmix",
+      "name": "AiHubMix",
+      "group": "aggregator",
+      "format": "openai",
+      "url": "https://aihubmix.com/v1",
+      "keyUrl": "https://aihubmix.com/token",
+      "website": "https://aihubmix.com",
+      "icon": "aihubmix"
+    },
+    {
+      "id": "302ai",
+      "name": "302.AI",
+      "group": "aggregator",
+      "format": "openai",
+      "url": "https://api.302.ai/v1",
+      "keyUrl": "https://dash.302.ai/apis/list",
+      "website": "https://302.ai",
+      "icon": "302ai"
+    },
+    {
+      "id": "ppio",
+      "name": "PPIO 派欧云",
+      "group": "aggregator",
+      "format": "openai",
+      "url": "https://api.ppinfra.com/v3/openai",
+      "keyUrl": "https://console.ppio.com/",
+      "website": "https://ppio.com",
+      "hint": "地址路径是 /v3/openai，注意不是 /v1",
+      "icon": "ppio"
+    },
+    {
+      "id": "modelscope",
+      "name": "魔搭 ModelScope",
+      "group": "aggregator",
+      "format": "openai",
+      "url": "https://api-inference.modelscope.cn/v1",
+      "website": "https://modelscope.cn",
+      "keyUrl": "https://modelscope.cn/my/myaccesstoken",
+      "icon": "modelscope",
+      "hint": "国内免费额度较大，模型以国产开源为主"
+    },
+    {
+      "id": "cherryin",
+      "name": "CherryIN",
+      "group": "aggregator",
+      "format": "openai",
+      "url": "https://open.cherryin.net/v1",
+      "website": "https://open.cherryin.net",
+      "hint": "同时支持 OpenAI / Anthropic / Gemini 三套协议，可按需换协议",
+      "icon": "cherryin"
+    },
+    {
+      "id": "opencode-zen",
+      "name": "OpenCode Zen",
+      "group": "aggregator",
+      "format": "openai",
+      "url": "https://opencode.ai/zen/v1",
+      "website": "https://opencode.ai",
+      "icon": "opencode",
+      "hint": "Zen 按量计费，Go 是包月套餐线路，地址不同"
+    },
+    {
+      "id": "dmxapi",
+      "name": "DMXAPI",
+      "group": "aggregator",
+      "format": "openai",
+      "url": "https://www.dmxapi.cn/v1",
+      "website": "https://www.dmxapi.cn"
+    },
+    {
+      "id": "qiniu",
+      "name": "七牛云 AI",
+      "group": "aggregator",
+      "format": "openai",
+      "url": "https://api.qnaigc.com/v1",
+      "website": "https://portal.qiniu.com",
+      "icon": "qiniu"
+    },
+    {
+      "id": "sophnet",
+      "name": "SophNet 算能",
+      "group": "aggregator",
+      "format": "openai",
+      "url": "https://www.sophnet.com/api/open-apis/v1",
+      "website": "https://sophnet.com",
+      "keyUrl": "https://sophnet.com/#/project/key",
+      "icon": "sophnet"
+    },
+    {
+      "id": "lanyun",
+      "name": "蓝耘 LANYUN",
+      "group": "aggregator",
+      "format": "openai",
+      "url": "https://maas-api.lanyun.net",
+      "website": "https://maas.lanyun.net",
+      "keyUrl": "https://maas.lanyun.net/#/system/apiKey",
+      "icon": "lanyun"
+    },
+    {
+      "id": "ocoolai",
+      "name": "ocoolAI",
+      "group": "aggregator",
+      "format": "openai",
+      "url": "https://api.ocoolai.com",
+      "website": "https://one.ocoolai.com",
+      "keyUrl": "https://one.ocoolai.com/token",
+      "icon": "ocoolai"
+    },
+    {
+      "id": "burncloud",
+      "name": "BurnCloud",
+      "group": "aggregator",
+      "format": "openai",
+      "url": "https://ai.burncloud.com",
+      "website": "https://ai.burncloud.com",
+      "keyUrl": "https://ai.burncloud.com/token",
+      "icon": "burncloud"
+    },
+    {
+      "id": "tokendance",
+      "name": "TokenDance",
+      "group": "aggregator",
+      "format": "openai",
+      "url": "https://tokendance.space/gateway",
+      "website": "https://tokendance.space",
+      "keyUrl": "https://tokendance.space/keys",
+      "icon": "tokendance"
+    },
+    {
+      "id": "ph8",
+      "name": "PH8",
+      "group": "aggregator",
+      "format": "openai",
+      "url": "https://ph8.co",
+      "website": "https://ph8.co",
+      "keyUrl": "https://ph8.co/apiKey",
+      "icon": "ph8"
+    },
+    {
+      "id": "alayanew",
+      "name": "AlayaNew",
+      "group": "aggregator",
+      "format": "openai",
+      "url": "https://deepseek.alayanew.com",
+      "website": "https://www.alayanew.com",
+      "icon": "alayanew"
+    },
+    {
+      "id": "aionly",
+      "name": "AIOnly",
+      "group": "aggregator",
+      "format": "openai",
+      "url": "https://api.aiionly.com",
+      "website": "https://www.aiionly.com",
+      "keyUrl": "https://maas.aiionly.com/keyApi"
+    },
+    {
+      "id": "vercel-gateway",
+      "name": "Vercel AI Gateway",
+      "group": "aggregator",
+      "format": "openai",
+      "url": "https://ai-gateway.vercel.sh/v1/ai",
+      "website": "https://vercel.com/ai-gateway",
+      "keyUrl": "https://vercel.com",
+      "hint": "按量计费，模型由 Vercel 侧统一代理"
+    },
+    {
+      "id": "ollama",
+      "name": "Ollama 本地",
+      "group": "local",
+      "format": "openai",
+      "url": "http://localhost:11434/v1",
+      "noKey": true,
+      "hint": "本地服务无需密钥，端口按实际安装调整",
+      "icon": "ollama"
+    },
+    {
+      "id": "lmstudio",
+      "name": "LM Studio 本地",
+      "group": "local",
+      "format": "openai",
+      "url": "http://localhost:1234/v1",
+      "noKey": true,
+      "hint": "需在 LM Studio 里开启本地服务器，端口按实际调整",
+      "icon": "lmstudio"
+    },
+    {
+      "id": "newapi",
+      "name": "New API / One API 自建",
+      "group": "local",
+      "format": "openai",
+      "url": "https://你的域名/v1",
+      "noKey": false,
+      "hint": "把域名换成你的面板地址，密钥填面板里创建的令牌",
+      "icon": "newapi"
+    },
+    {
+      "id": "gpustack",
+      "name": "GPUStack",
+      "group": "local",
+      "format": "openai",
+      "url": "http://localhost:80/v1-openai",
+      "website": "https://gpustack.ai",
+      "icon": "gpustack",
+      "hint": "自建 GPU 推理平台，端口按实际部署改"
+    },
+    {
+      "id": "omlx",
+      "name": "oMLX",
+      "group": "local",
+      "format": "openai",
+      "url": "http://localhost:8000/v1",
+      "website": "https://omlx.ai",
+      "icon": "omlx",
+      "hint": "Apple Silicon 上的 MLX 推理服务"
+    },
+    {
+      "id": "ovms",
+      "name": "OpenVINO Model Server",
+      "group": "local",
+      "format": "openai",
+      "url": "http://localhost:8000/v3",
+      "website": "https://www.intel.com/content/www/us/en/developer/tools/openvino-toolkit/overview.html",
+      "hint": "Intel 推理服务，OpenAI 兼容端点在 /v3"
+    },
+    {
+      "id": "siliconflow-intl",
+      "name": "硅基流动 国际站",
+      "group": "intl",
+      "format": "openai",
+      "url": "https://api.siliconflow.com/v1",
+      "website": "https://cloud.siliconflow.com",
+      "icon": "siliconflow",
+      "hint": "与国内站账号、密钥不通用"
+    },
+    {
+      "id": "moonshot-intl",
+      "name": "Kimi 国际站",
+      "group": "intl",
+      "format": "openai",
+      "url": "https://api.moonshot.ai/v1",
+      "website": "https://platform.moonshot.ai",
+      "icon": "moonshot",
+      "hint": "与国内站账号、密钥不通用"
+    },
+    {
+      "id": "minimax-intl",
+      "name": "MiniMax 国际站",
+      "group": "intl",
+      "format": "openai",
+      "url": "https://api.minimax.io/v1",
+      "website": "https://platform.minimax.io",
+      "icon": "minimax",
+      "hint": "与国内站账号、密钥不通用"
+    }
+  ]
+}

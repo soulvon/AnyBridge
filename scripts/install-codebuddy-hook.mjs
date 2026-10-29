@@ -25,6 +25,18 @@ const settings = {
         ],
       },
     ],
+    // 上游内容过滤拒答时自动续跑，避免任务清单卡在第一项（2026-10-29 事故）
+    Stop: [
+      {
+        hooks: [
+          {
+            type: 'command',
+            command: 'python scripts/codebuddy_stop_hook.py',
+            timeout: 10,
+          },
+        ],
+      },
+    ],
   },
 };
 

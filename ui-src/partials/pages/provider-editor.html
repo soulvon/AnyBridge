@@ -48,6 +48,26 @@
               <div class="provider-editor-layout">
                 <!-- Left Column: Base Config -->
                 <div class="provider-editor-left">
+                  <!-- 服务商预设：新增时显示，编辑已有供应商时隐藏 -->
+                  <div class="field provider-editor-field provider-preset-field" id="providerPresetField">
+                    <div class="field-label provider-editor-label-row">
+                      <span>服务商模板</span>
+                      <span class="provider-preset-note">选中后自动填写地址与协议</span>
+                    </div>
+                    <button type="button" class="provider-preset-trigger" id="providerPresetTrigger"
+                      aria-haspopup="dialog"
+                      data-action="openProviderPresetModal" data-pass-event>
+                      <svg class="provider-preset-trigger-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                        stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <rect x="3" y="3" width="7" height="7" rx="1.5"></rect>
+                        <rect x="14" y="3" width="7" height="7" rx="1.5"></rect>
+                        <rect x="3" y="14" width="7" height="7" rx="1.5"></rect>
+                        <rect x="14" y="14" width="7" height="7" rx="1.5"></rect>
+                      </svg>
+                      <span id="providerPresetTriggerLabel">从模板库选择</span>
+                    </button>
+                    <div class="provider-preset-status" id="providerPresetStatus" hidden></div>
+                  </div>
                   <div class="field provider-editor-field">
                     <div class="field-label">名称</div>
                     <input class="field-input" id="pf-name" placeholder="例如：我的中转站">
@@ -150,6 +170,18 @@
                       </button>
                     </div>
                     <input class="field-input" id="pf-key" type="password" placeholder="sk-..." autocomplete="off">
+                  </div>
+
+                  <!-- 多密钥池：上方是当前生效密钥，这里管理候选池 -->
+                  <div class="field provider-editor-field provider-keys-field">
+                    <div class="field-label provider-editor-label-row">
+                      <span>更多密钥</span>
+                      <button type="button" class="provider-keys-add" data-action="addEditorApiKey">添加密钥</button>
+                    </div>
+                    <div class="provider-keys-list" id="providerKeysList"></div>
+                    <div class="provider-keys-empty" id="providerKeysEmpty">
+                      添加多把密钥后可在编辑页快速切换；开启本地代理时由路由按请求轮换。
+                    </div>
                   </div>
 
                   <!-- 已选择模型列表 (Cherry Studio 风格) -->

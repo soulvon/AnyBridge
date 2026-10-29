@@ -19,6 +19,10 @@ const outFile = path.join(root, 'ui', 'index.html');
 const srcEntry = path.join(srcRoot, 'index.html');
 
 const INCLUDE_RE = /<!--\s*@include\s+([^\s]+)\s*-->/;
+// @inline 把文件内容原样嵌入（路径相对仓库根目录）。
+// 用途：纯数据文件（JSON）必须内联，因为 Tauri 的自定义资源协议下
+// fetch('../xxx.json') 取不到同源文件，运行时只会拿到一个空目录。
+const INLINE_RE = /<!--\s*@inline\s+([^\s]+)\s*-->/;
 
 function readText(filePath) {
   return fs.readFileSync(filePath, 'utf8');
@@ -46,6 +50,20 @@ function expandFile(filePath, stack = []) {
 
   const out = [];
   for (const line of lines) {
+    const inlineMatch = line.match(INLINE_RE);
+    if (inlineMatch) {
+      const rel = inlineMatch[1].replace(/\\/g, '/');
+      const target = path.join(root, rel);
+      if (!fs.existsSync(target)) {
+        throw new Error(`@inline not found: ${target}`);
+      }
+      const body = readText(target).replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+      const bodyLines = body.split('\n');
+      if (bodyLines.length && bodyLines[bodyLines.length - 1] === '') bodyLines.pop();
+      out.push(...bodyLines);
+      continue;
+    }
+
     const m = line.match(INCLUDE_RE);
     if (!m) {
       out.push(line);

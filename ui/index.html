@@ -9,13 +9,20 @@
   <script>
     (function () {
       try {
-        var schemeOf = { light: 'light', dark: 'dark', claude: 'light', eva: 'dark' };
+        var schemeOf = { light: 'light', dark: 'dark', claude: 'light', eva: 'dark', minimal: 'light', ink: 'dark' };
         var saved = localStorage.getItem('byok-theme');
         var id = schemeOf[saved] ? saved : 'light';
         var root = document.documentElement;
         root.setAttribute('data-theme', id);
         root.setAttribute('data-scheme', schemeOf[id]);
         root.style.colorScheme = schemeOf[id];
+        // 风格维度与配色正交：老用户停留在「极简云白」时自动落到极简扁平，保证升级后视觉不变
+        var savedStyle = localStorage.getItem('byok-style');
+        var styleId = (savedStyle === 'soft' || savedStyle === 'minimal') ? savedStyle : (id === 'minimal' ? 'minimal' : 'soft');
+        root.setAttribute('data-style', styleId);
+        if (localStorage.getItem('byok-show-nav-icons') === 'false') {
+          root.setAttribute('data-nav-icons', 'hidden');
+        }
       } catch (e) {}
     })();
   </script>
@@ -82,7 +89,7 @@
           <svg class="tab-icon tab-icon-fill" viewBox="0 0 1024 1024" fill="currentColor" aria-hidden="true">
             <path d="M584.794353 124.235294c33.942588 0 61.470118 27.527529 61.470118 61.500235v140.528942a61.500235 61.500235 0 0 1-61.470118 61.500235l-43.941647-0.030118v87.853177h307.471059a26.352941 26.352941 0 0 1 3.312941 52.525176l-3.312941 0.210824-96.64753-0.030118v87.853177h43.941647c32.406588 0 58.970353 25.088 61.31953 56.922352l0.150588 4.577883v140.559059a61.500235 61.500235 0 0 1-61.470118 61.470117H655.058824a61.500235 61.500235 0 0 1-61.500236-61.470117V677.647059c0-33.972706 27.527529-61.500235 61.500236-61.500235h43.911529v-87.853177h-368.941177v87.853177h43.941648c32.406588 0 58.970353 25.088 61.319529 56.922352l0.150588 4.577883v140.559059a61.500235 61.500235 0 0 1-61.470117 61.470117H233.411765a61.500235 61.500235 0 0 1-61.500236-61.470117V677.647059c0-33.972706 27.527529-61.500235 61.500236-61.500235h43.911529v-87.853177H180.705882a26.352941 26.352941 0 0 1-3.312941-52.495059l3.312941-0.180706 307.440942-0.030117v-87.853177l-43.91153 0.030118a61.500235 61.500235 0 0 1-61.319529-56.922353l-0.180706-4.577882V185.735529c0-33.972706 27.527529-61.500235 61.500235-61.500235z"></path>
           </svg>
-          <span>代理</span>
+          <span>网关</span>
         </button>
         <button type="button" class="tab-item" id="tab-stats" data-page="stats" role="tab" aria-selected="false"
           aria-controls="page-stats" tabindex="-1">
@@ -122,93 +129,168 @@
                 <circle cx="6.5" cy="12.5" r=".6" fill="currentColor"></circle>
               </svg>
             </button>
-            <div class="theme-menu" id="themeMenu" role="menu" aria-label="主题" hidden>
-              <button type="button" class="theme-menu-item" role="menuitemradio" aria-checked="false"
-                data-theme-id="light" data-action="setTheme" data-arg="light">
-                <span class="theme-swatch theme-swatch-light" aria-hidden="true">
-                  <span class="sw-titlebar"><i></i><i></i><i></i></span>
-                  <span class="sw-body">
-                    <span class="sw-side"></span>
-                    <span class="sw-main">
-                      <span class="sw-accent"></span>
-                      <span class="sw-line"></span>
-                      <span class="sw-line is-short"></span>
+              <div class="theme-menu" id="themeMenu" role="menu" aria-label="主题" hidden>
+              <div class="theme-menu-cols">
+              <div class="theme-menu-col">
+                <div class="theme-menu-group-label" role="presentation">亮色</div>
+                <button type="button" class="theme-menu-item" role="menuitemradio" aria-checked="false"
+                  data-theme-id="light" data-action="setTheme" data-arg="light">
+                  <span class="theme-swatch theme-swatch-light" aria-hidden="true">
+                    <span class="sw-titlebar"><i></i><i></i><i></i></span>
+                    <span class="sw-body">
+                      <span class="sw-side"></span>
+                      <span class="sw-main">
+                        <span class="sw-accent"></span>
+                        <span class="sw-line"></span>
+                        <span class="sw-line is-short"></span>
+                      </span>
                     </span>
                   </span>
-                </span>
-                <span class="theme-menu-text">
-                  <strong>工作台浅色</strong>
-                  <em>冷灰蓝</em>
-                </span>
-                <svg class="theme-menu-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"
-                  stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                  <path d="m20 6-11 11-5-5"></path>
+                  <span class="theme-menu-text"><strong>工作台浅色</strong></span>
+                  <svg class="theme-menu-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"
+                    stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="m20 6-11 11-5-5"></path>
+                  </svg>
+                </button>
+                <button type="button" class="theme-menu-item" role="menuitemradio" aria-checked="false"
+                  data-theme-id="claude" data-action="setTheme" data-arg="claude">
+                  <span class="theme-swatch theme-swatch-claude" aria-hidden="true">
+                    <span class="sw-titlebar"><i></i><i></i><i></i></span>
+                    <span class="sw-body">
+                      <span class="sw-side"></span>
+                      <span class="sw-main">
+                        <span class="sw-accent"></span>
+                        <span class="sw-line"></span>
+                        <span class="sw-line is-short"></span>
+                      </span>
+                    </span>
+                  </span>
+                  <span class="theme-menu-text"><strong>暖沙 Claude</strong></span>
+                  <svg class="theme-menu-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"
+                    stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="m20 6-11 11-5-5"></path>
+                  </svg>
+                </button>
+                <button type="button" class="theme-menu-item" role="menuitemradio" aria-checked="false"
+                  data-theme-id="minimal" data-action="setTheme" data-arg="minimal">
+                  <span class="theme-swatch theme-swatch-minimal" aria-hidden="true">
+                    <span class="sw-titlebar"><i></i><i></i><i></i></span>
+                    <span class="sw-body">
+                      <span class="sw-side"></span>
+                      <span class="sw-main">
+                        <span class="sw-accent"></span>
+                        <span class="sw-line"></span>
+                        <span class="sw-line is-short"></span>
+                      </span>
+                    </span>
+                  </span>
+                  <span class="theme-menu-text"><strong>极简云白</strong></span>
+                  <svg class="theme-menu-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"
+                    stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="m20 6-11 11-5-5"></path>
+                  </svg>
+                </button>
+              </div>
+              <div class="theme-menu-col">
+                <div class="theme-menu-group-label" role="presentation">深色</div>
+                <button type="button" class="theme-menu-item" role="menuitemradio" aria-checked="false"
+                  data-theme-id="dark" data-action="setTheme" data-arg="dark">
+                  <span class="theme-swatch theme-swatch-dark" aria-hidden="true">
+                    <span class="sw-titlebar"><i></i><i></i><i></i></span>
+                    <span class="sw-body">
+                      <span class="sw-side"></span>
+                      <span class="sw-main">
+                        <span class="sw-accent"></span>
+                        <span class="sw-line"></span>
+                        <span class="sw-line is-short"></span>
+                      </span>
+                    </span>
+                  </span>
+                  <span class="theme-menu-text"><strong>工作台深色</strong></span>
+                  <svg class="theme-menu-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"
+                    stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="m20 6-11 11-5-5"></path>
+                  </svg>
+                </button>
+                <button type="button" class="theme-menu-item" role="menuitemradio" aria-checked="false"
+                  data-theme-id="eva" data-action="setTheme" data-arg="eva">
+                  <span class="theme-swatch theme-swatch-eva" aria-hidden="true">
+                    <span class="sw-titlebar"><i></i><i></i><i></i></span>
+                    <span class="sw-body">
+                      <span class="sw-side"></span>
+                      <span class="sw-main">
+                        <span class="sw-accent"></span>
+                        <span class="sw-line"></span>
+                        <span class="sw-line is-short"></span>
+                      </span>
+                    </span>
+                  </span>
+                  <span class="theme-menu-text"><strong>霓虹 EVA</strong></span>
+                  <svg class="theme-menu-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"
+                    stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="m20 6-11 11-5-5"></path>
+                  </svg>
+                </button>
+                <button type="button" class="theme-menu-item" role="menuitemradio" aria-checked="false"
+                  data-theme-id="ink" data-action="setTheme" data-arg="ink">
+                  <span class="theme-swatch theme-swatch-ink" aria-hidden="true">
+                    <span class="sw-titlebar"><i></i><i></i><i></i></span>
+                    <span class="sw-body">
+                      <span class="sw-side"></span>
+                      <span class="sw-main">
+                        <span class="sw-accent"></span>
+                        <span class="sw-line"></span>
+                        <span class="sw-line is-short"></span>
+                      </span>
+                    </span>
+                  </span>
+                  <span class="theme-menu-text"><strong>极简墨黑</strong></span>
+                  <svg class="theme-menu-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"
+                    stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="m20 6-11 11-5-5"></path>
+                  </svg>
+                </button>
+              </div>
+              </div>
+              <div class="theme-menu-divider" role="separator" aria-hidden="true"></div>
+              <div class="theme-menu-group-label" role="presentation">风格</div>
+              <div class="theme-style-seg" role="radiogroup" aria-label="界面风格">
+                <button type="button" class="theme-style-btn" role="radio" aria-checked="false"
+                  data-style-id="soft" data-action="setStyle" data-arg="soft">轻拟物</button>
+                <button type="button" class="theme-style-btn" role="radio" aria-checked="false"
+                  data-style-id="minimal" data-action="setStyle" data-arg="minimal">极简扁平</button>
+              </div>
+              <div class="theme-menu-row">
+                <span class="theme-menu-row-label">导航栏图标</span>
+                <button type="button" class="toggle-sm" data-nav-icons-toggle data-action="toggleNavIcons"
+                  data-pass-this role="switch" aria-checked="true" aria-label="显示导航栏图标"></button>
+              </div>
+              <div class="theme-menu-row">
+                <span class="theme-menu-row-label">语言</span>
+                <div class="theme-lang-field">
+                  <select class="theme-lang-select" data-config-key="APP_LANGUAGE"
+                    data-i18n-language-select aria-label="语言">
+                    <option value="zh-CN">简体中文</option>
+                    <option value="en-US">English</option>
+                  </select>
+                  <svg class="theme-lang-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                    stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="m6 9 6 6 6-6"></path>
+                  </svg>
+                </div>
+              </div>
+              <div class="theme-menu-divider" role="separator" aria-hidden="true"></div>
+              <button type="button" class="theme-menu-footer" data-action="openAppearanceSettings"
+                title="打开外观设置" aria-label="打开外观设置">
+                <svg class="theme-menu-footer-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                  stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M12 15.5A3.5 3.5 0 1 0 12 8a3.5 3.5 0 0 0 0 7.5Z"></path>
+                  <path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1 1.55V21a2 2 0 0 1-4 0v-.09a1.7 1.7 0 0 0-1-1.55 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.55-1H3a2 2 0 0 1 0-4h.09a1.7 1.7 0 0 0 1.55-1 1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-1.55V3a2 2 0 0 1 4 0v.09a1.7 1.7 0 0 0 1 1.55 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.7 1.7 0 0 0 19.4 9c.22.6.78 1 1.55 1H21a2 2 0 0 1 0 4h-.09A1.7 1.7 0 0 0 19.4 15Z"></path>
                 </svg>
-              </button>
-              <button type="button" class="theme-menu-item" role="menuitemradio" aria-checked="false"
-                data-theme-id="dark" data-action="setTheme" data-arg="dark">
-                <span class="theme-swatch theme-swatch-dark" aria-hidden="true">
-                  <span class="sw-titlebar"><i></i><i></i><i></i></span>
-                  <span class="sw-body">
-                    <span class="sw-side"></span>
-                    <span class="sw-main">
-                      <span class="sw-accent"></span>
-                      <span class="sw-line"></span>
-                      <span class="sw-line is-short"></span>
-                    </span>
-                  </span>
-                </span>
-                <span class="theme-menu-text">
-                  <strong>工作台深色</strong>
-                  <em>墨蓝</em>
-                </span>
-                <svg class="theme-menu-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"
-                  stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                  <path d="m20 6-11 11-5-5"></path>
-                </svg>
-              </button>
-              <button type="button" class="theme-menu-item" role="menuitemradio" aria-checked="false"
-                data-theme-id="claude" data-action="setTheme" data-arg="claude">
-                <span class="theme-swatch theme-swatch-claude" aria-hidden="true">
-                  <span class="sw-titlebar"><i></i><i></i><i></i></span>
-                  <span class="sw-body">
-                    <span class="sw-side"></span>
-                    <span class="sw-main">
-                      <span class="sw-accent"></span>
-                      <span class="sw-line"></span>
-                      <span class="sw-line is-short"></span>
-                    </span>
-                  </span>
-                </span>
-                <span class="theme-menu-text">
-                  <strong>暖沙 Claude</strong>
-                  <em>米白暖橙</em>
-                </span>
-                <svg class="theme-menu-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"
-                  stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                  <path d="m20 6-11 11-5-5"></path>
-                </svg>
-              </button>
-              <button type="button" class="theme-menu-item" role="menuitemradio" aria-checked="false"
-                data-theme-id="eva" data-action="setTheme" data-arg="eva">
-                <span class="theme-swatch theme-swatch-eva" aria-hidden="true">
-                  <span class="sw-titlebar"><i></i><i></i><i></i></span>
-                  <span class="sw-body">
-                    <span class="sw-side"></span>
-                    <span class="sw-main">
-                      <span class="sw-accent"></span>
-                      <span class="sw-line"></span>
-                      <span class="sw-line is-short"></span>
-                    </span>
-                  </span>
-                </span>
-                <span class="theme-menu-text">
-                  <strong>霓虹 EVA</strong>
-                  <em>深空薄荷</em>
-                </span>
-                <svg class="theme-menu-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"
-                  stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                  <path d="m20 6-11 11-5-5"></path>
+                <span>外观设置</span>
+                <svg class="theme-menu-footer-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                  stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="m9 18 6-6-6-6"></path>
                 </svg>
               </button>
             </div>
@@ -738,6 +820,8 @@
  data-action="chooseProviderSortMode" data-arg="name-asc">名称正序</button>
                   <button type="button" class="provider-sort-option" role="option" data-sort-mode="name-desc"
  data-action="chooseProviderSortMode" data-arg="name-desc">名称反序</button>
+                  <button type="button" class="provider-sort-option" role="option" data-sort-mode="latency-asc"
+ data-action="chooseProviderSortMode" data-arg="latency-asc">延迟优先</button>
                 </div>
               </div>
               <div class="provider-view-toggle" role="group" aria-label="供应商视图">
@@ -869,6 +953,700 @@
           </div>
         </div>
 
+        <!-- 服务商模板数据：构建时内联。Tauri 资源协议下 fetch 同源 JSON 取不到，必须走内联 -->
+        <script type="application/json" id="providerPresetsData">
+{
+  "version": 1,
+  "note": "供应商预设目录。只维护稳定信息（地址/格式/申请入口），不内置模型名——模型会随厂商迭代过期，统一走「获取模型列表」实时拉取。",
+  "groups": [
+    {
+      "id": "official-cn",
+      "label": "国内官方"
+    },
+    {
+      "id": "official-global",
+      "label": "海外官方"
+    },
+    {
+      "id": "cloud",
+      "label": "企业与云"
+    },
+    {
+      "id": "aggregator",
+      "label": "聚合与中转"
+    },
+    {
+      "id": "local",
+      "label": "本地与自建"
+    },
+    {
+      "id": "intl",
+      "label": "国际线路"
+    }
+  ],
+  "providers": [
+    {
+      "id": "deepseek",
+      "name": "DeepSeek",
+      "group": "official-cn",
+      "format": "openai",
+      "url": "https://api.deepseek.com/v1",
+      "keyUrl": "https://platform.deepseek.com/api_keys",
+      "website": "https://platform.deepseek.com",
+      "icon": "deepseek"
+    },
+    {
+      "id": "moonshot",
+      "name": "月之暗面 Kimi",
+      "group": "official-cn",
+      "format": "openai",
+      "url": "https://api.moonshot.cn/v1",
+      "keyUrl": "https://platform.moonshot.cn/console/api-keys",
+      "website": "https://platform.moonshot.cn",
+      "icon": "moonshot"
+    },
+    {
+      "id": "zhipu",
+      "name": "智谱 GLM",
+      "group": "official-cn",
+      "format": "openai",
+      "url": "https://open.bigmodel.cn/api/paas/v4",
+      "keyUrl": "https://bigmodel.cn/usercenter/apikeys",
+      "website": "https://bigmodel.cn",
+      "hint": "地址路径是 /api/paas/v4，注意不要改成 /v1",
+      "icon": "zhipu"
+    },
+    {
+      "id": "dashscope",
+      "name": "阿里云百炼",
+      "group": "official-cn",
+      "format": "openai",
+      "url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+      "keyUrl": "https://bailian.console.aliyun.com/",
+      "website": "https://bailian.console.aliyun.com",
+      "icon": "dashscope"
+    },
+    {
+      "id": "volcengine",
+      "name": "火山方舟",
+      "group": "official-cn",
+      "format": "openai",
+      "url": "https://ark.cn-beijing.volces.com/api/v3",
+      "keyUrl": "https://console.volcengine.com/ark",
+      "website": "https://console.volcengine.com/ark",
+      "hint": "模型名通常是推理接入点 ID（ep- 开头），需先在控制台创建接入点",
+      "icon": "volcengine"
+    },
+    {
+      "id": "siliconflow",
+      "name": "硅基流动",
+      "group": "official-cn",
+      "format": "openai",
+      "url": "https://api.siliconflow.cn/v1",
+      "keyUrl": "https://cloud.siliconflow.cn/account/ak",
+      "website": "https://cloud.siliconflow.cn",
+      "icon": "siliconflow"
+    },
+    {
+      "id": "minimax",
+      "name": "MiniMax",
+      "group": "official-cn",
+      "format": "openai",
+      "url": "https://api.minimaxi.com/v1",
+      "keyUrl": "https://platform.minimaxi.com/user-center/basic-information/interface-key",
+      "website": "https://platform.minimaxi.com",
+      "icon": "minimax"
+    },
+    {
+      "id": "hunyuan",
+      "name": "腾讯混元",
+      "group": "official-cn",
+      "format": "openai",
+      "url": "https://api.hunyuan.cloud.tencent.com/v1",
+      "keyUrl": "https://console.cloud.tencent.com/hunyuan",
+      "website": "https://console.cloud.tencent.com/hunyuan",
+      "icon": "hunyuan"
+    },
+    {
+      "id": "qianfan",
+      "name": "百度千帆",
+      "group": "official-cn",
+      "format": "openai",
+      "url": "https://qianfan.baidubce.com/v2",
+      "keyUrl": "https://console.bce.baidu.com/qianfan/overview",
+      "website": "https://console.bce.baidu.com/qianfan/overview",
+      "hint": "地址路径是 /v2，密钥在控制台「应用接入」里创建",
+      "icon": "qianfan"
+    },
+    {
+      "id": "stepfun",
+      "name": "阶跃星辰",
+      "group": "official-cn",
+      "format": "openai",
+      "url": "https://api.stepfun.com/v1",
+      "keyUrl": "https://platform.stepfun.com/interface-key",
+      "website": "https://platform.stepfun.com",
+      "icon": "stepfun"
+    },
+    {
+      "id": "sensenova",
+      "name": "商汤日日新",
+      "group": "official-cn",
+      "format": "openai",
+      "url": "https://api.sensenova.cn/compatible-mode/v1",
+      "keyUrl": "https://console.sensecore.cn/",
+      "website": "https://console.sensecore.cn"
+    },
+    {
+      "id": "mimo",
+      "name": "小米 MiMo",
+      "group": "official-cn",
+      "format": "openai",
+      "url": "https://api.xiaomimimo.com/v1",
+      "website": "https://platform.xiaomimimo.com",
+      "keyUrl": "https://platform.xiaomimimo.com",
+      "icon": "mimo",
+      "hint": "另有包月套餐线路，地址不同，按需换用 token-plan-cn 域名"
+    },
+    {
+      "id": "longcat",
+      "name": "美团龙猫 LongCat",
+      "group": "official-cn",
+      "format": "openai",
+      "url": "https://api.longcat.chat/openai/v1",
+      "website": "https://longcat.chat",
+      "icon": "longcat"
+    },
+    {
+      "id": "baichuan",
+      "name": "百川智能",
+      "group": "official-cn",
+      "format": "openai",
+      "url": "https://api.baichuan-ai.com/v1",
+      "website": "https://platform.baichuan-ai.com",
+      "keyUrl": "https://platform.baichuan-ai.com",
+      "icon": "baichuan"
+    },
+    {
+      "id": "zai",
+      "name": "智谱 Z.ai 国际",
+      "group": "official-cn",
+      "format": "openai",
+      "url": "https://api.z.ai/api/paas/v4",
+      "website": "https://z.ai",
+      "keyUrl": "https://z.ai/manage-apikey/apikey-list",
+      "icon": "zhipu"
+    },
+    {
+      "id": "tokenhub",
+      "name": "腾讯 TokenHub",
+      "group": "official-cn",
+      "format": "openai",
+      "url": "https://tokenhub.tencentmaas.com/v1",
+      "website": "https://cloud.tencent.com/product/tokenhub",
+      "keyUrl": "https://console.cloud.tencent.com/tokenhub/apikey",
+      "hint": "腾讯统一的模型接入入口，与混元单模型地址不同"
+    },
+    {
+      "id": "openai",
+      "name": "OpenAI",
+      "group": "official-global",
+      "format": "openai",
+      "url": "https://api.openai.com/v1",
+      "keyUrl": "https://platform.openai.com/api-keys",
+      "website": "https://platform.openai.com",
+      "icon": "openai"
+    },
+    {
+      "id": "anthropic",
+      "name": "Anthropic Claude",
+      "group": "official-global",
+      "format": "anthropic",
+      "url": "https://api.anthropic.com",
+      "keyUrl": "https://console.anthropic.com/settings/keys",
+      "website": "https://console.anthropic.com",
+      "hint": "地址不要带 /v1，程序会按协议自动补路径",
+      "icon": "anthropic"
+    },
+    {
+      "id": "gemini",
+      "name": "Google Gemini",
+      "group": "official-global",
+      "format": "gemini",
+      "url": "https://generativelanguage.googleapis.com",
+      "keyUrl": "https://aistudio.google.com/app/apikey",
+      "website": "https://aistudio.google.com",
+      "hint": "地址不要带 /v1beta，程序会按协议自动补路径",
+      "icon": "gemini"
+    },
+    {
+      "id": "xai",
+      "name": "xAI Grok",
+      "group": "official-global",
+      "format": "openai",
+      "url": "https://api.x.ai/v1",
+      "keyUrl": "https://console.x.ai/",
+      "website": "https://console.x.ai",
+      "icon": "xai"
+    },
+    {
+      "id": "mistral",
+      "name": "Mistral",
+      "group": "official-global",
+      "format": "openai",
+      "url": "https://api.mistral.ai/v1",
+      "keyUrl": "https://console.mistral.ai/api-keys/",
+      "website": "https://console.mistral.ai",
+      "icon": "mistral"
+    },
+    {
+      "id": "groq",
+      "name": "Groq",
+      "group": "official-global",
+      "format": "openai",
+      "url": "https://api.groq.com/openai/v1",
+      "website": "https://console.groq.com",
+      "keyUrl": "https://console.groq.com/keys",
+      "icon": "groq"
+    },
+    {
+      "id": "together",
+      "name": "Together AI",
+      "group": "official-global",
+      "format": "openai",
+      "url": "https://api.together.xyz/v1",
+      "website": "https://api.together.ai",
+      "keyUrl": "https://api.together.ai/settings/api-keys",
+      "icon": "together"
+    },
+    {
+      "id": "nvidia",
+      "name": "NVIDIA NIM",
+      "group": "official-global",
+      "format": "openai",
+      "url": "https://integrate.api.nvidia.com/v1",
+      "website": "https://build.nvidia.com",
+      "keyUrl": "https://build.nvidia.com",
+      "icon": "nvidia",
+      "hint": "有免费额度，模型数量多，适合跑开源模型"
+    },
+    {
+      "id": "poe",
+      "name": "Poe",
+      "group": "official-global",
+      "format": "openai",
+      "url": "https://api.poe.com/v1",
+      "website": "https://poe.com",
+      "keyUrl": "https://poe.com/api_key",
+      "icon": "poe"
+    },
+    {
+      "id": "cerebras",
+      "name": "Cerebras",
+      "group": "official-global",
+      "format": "openai",
+      "url": "https://api.cerebras.ai/v1",
+      "website": "https://www.cerebras.ai",
+      "keyUrl": "https://cloud.cerebras.ai",
+      "icon": "cerebras",
+      "hint": "推理速度极快，适合低延迟场景"
+    },
+    {
+      "id": "fireworks",
+      "name": "Fireworks AI",
+      "group": "official-global",
+      "format": "openai",
+      "url": "https://api.fireworks.ai/inference",
+      "website": "https://fireworks.ai",
+      "keyUrl": "https://fireworks.ai/account/api-keys",
+      "icon": "fireworks"
+    },
+    {
+      "id": "perplexity",
+      "name": "Perplexity",
+      "group": "official-global",
+      "format": "openai",
+      "url": "https://api.perplexity.ai",
+      "website": "https://perplexity.ai",
+      "keyUrl": "https://www.perplexity.ai/settings/api",
+      "icon": "perplexity",
+      "hint": "自带联网检索，模型以 Sonar 系列为主"
+    },
+    {
+      "id": "huggingface",
+      "name": "Hugging Face",
+      "group": "official-global",
+      "format": "openai",
+      "url": "https://router.huggingface.co/v1",
+      "website": "https://huggingface.co",
+      "keyUrl": "https://huggingface.co/settings/tokens",
+      "icon": "huggingface",
+      "hint": "走 Router 端点，模型覆盖各开源厂商"
+    },
+    {
+      "id": "azure-openai",
+      "name": "Azure OpenAI",
+      "group": "cloud",
+      "format": "openai",
+      "url": "https://YOUR-RESOURCE.openai.azure.com",
+      "icon": "azure",
+      "hint": "把 YOUR-RESOURCE 换成你自己的资源名"
+    },
+    {
+      "id": "aws-bedrock",
+      "name": "AWS Bedrock",
+      "group": "cloud",
+      "format": "openai",
+      "url": "https://bedrock-runtime.us-east-1.amazonaws.com",
+      "icon": "aws",
+      "hint": "地址里的区域换成你开通的，如 us-east-1 / ap-northeast-1"
+    },
+    {
+      "id": "vertexai",
+      "name": "Google Vertex AI",
+      "group": "cloud",
+      "format": "openai",
+      "url": "https://us-central1-aiplatform.googleapis.com",
+      "website": "https://console.cloud.google.com",
+      "icon": "vertexai",
+      "hint": "区域与项目需按实际开通情况替换；鉴权走服务账号"
+    },
+    {
+      "id": "copilot",
+      "name": "GitHub Copilot",
+      "group": "cloud",
+      "format": "openai",
+      "url": "https://api.githubcopilot.com",
+      "website": "https://github.com/features/copilot",
+      "icon": "copilot",
+      "hint": "需要 Copilot 订阅，鉴权走 GitHub 授权而非普通 API Key"
+    },
+    {
+      "id": "radeon-cloud",
+      "name": "AMD Radeon 云",
+      "group": "cloud",
+      "format": "openai",
+      "url": "https://developer.amd.com.cn/radeon/v1",
+      "website": "https://developer.amd.com.cn/radeon/",
+      "keyUrl": "https://developer.amd.com.cn/radeon/tokenfactory",
+      "icon": "radeon-cloud"
+    },
+    {
+      "id": "xirang",
+      "name": "天翼云息壤",
+      "group": "cloud",
+      "format": "openai",
+      "url": "https://wishub-x1.ctyun.cn",
+      "website": "https://www.ctyun.cn",
+      "keyUrl": "https://huiju.ctyun.cn/service/serviceGroup",
+      "icon": "xirang"
+    },
+    {
+      "id": "openrouter",
+      "name": "OpenRouter",
+      "group": "aggregator",
+      "format": "openai",
+      "url": "https://openrouter.ai/api/v1",
+      "keyUrl": "https://openrouter.ai/keys",
+      "website": "https://openrouter.ai",
+      "icon": "openrouter"
+    },
+    {
+      "id": "aihubmix",
+      "name": "AiHubMix",
+      "group": "aggregator",
+      "format": "openai",
+      "url": "https://aihubmix.com/v1",
+      "keyUrl": "https://aihubmix.com/token",
+      "website": "https://aihubmix.com",
+      "icon": "aihubmix"
+    },
+    {
+      "id": "302ai",
+      "name": "302.AI",
+      "group": "aggregator",
+      "format": "openai",
+      "url": "https://api.302.ai/v1",
+      "keyUrl": "https://dash.302.ai/apis/list",
+      "website": "https://302.ai",
+      "icon": "302ai"
+    },
+    {
+      "id": "ppio",
+      "name": "PPIO 派欧云",
+      "group": "aggregator",
+      "format": "openai",
+      "url": "https://api.ppinfra.com/v3/openai",
+      "keyUrl": "https://console.ppio.com/",
+      "website": "https://ppio.com",
+      "hint": "地址路径是 /v3/openai，注意不是 /v1",
+      "icon": "ppio"
+    },
+    {
+      "id": "modelscope",
+      "name": "魔搭 ModelScope",
+      "group": "aggregator",
+      "format": "openai",
+      "url": "https://api-inference.modelscope.cn/v1",
+      "website": "https://modelscope.cn",
+      "keyUrl": "https://modelscope.cn/my/myaccesstoken",
+      "icon": "modelscope",
+      "hint": "国内免费额度较大，模型以国产开源为主"
+    },
+    {
+      "id": "cherryin",
+      "name": "CherryIN",
+      "group": "aggregator",
+      "format": "openai",
+      "url": "https://open.cherryin.net/v1",
+      "website": "https://open.cherryin.net",
+      "hint": "同时支持 OpenAI / Anthropic / Gemini 三套协议，可按需换协议",
+      "icon": "cherryin"
+    },
+    {
+      "id": "opencode-zen",
+      "name": "OpenCode Zen",
+      "group": "aggregator",
+      "format": "openai",
+      "url": "https://opencode.ai/zen/v1",
+      "website": "https://opencode.ai",
+      "icon": "opencode",
+      "hint": "Zen 按量计费，Go 是包月套餐线路，地址不同"
+    },
+    {
+      "id": "dmxapi",
+      "name": "DMXAPI",
+      "group": "aggregator",
+      "format": "openai",
+      "url": "https://www.dmxapi.cn/v1",
+      "website": "https://www.dmxapi.cn"
+    },
+    {
+      "id": "qiniu",
+      "name": "七牛云 AI",
+      "group": "aggregator",
+      "format": "openai",
+      "url": "https://api.qnaigc.com/v1",
+      "website": "https://portal.qiniu.com",
+      "icon": "qiniu"
+    },
+    {
+      "id": "sophnet",
+      "name": "SophNet 算能",
+      "group": "aggregator",
+      "format": "openai",
+      "url": "https://www.sophnet.com/api/open-apis/v1",
+      "website": "https://sophnet.com",
+      "keyUrl": "https://sophnet.com/#/project/key",
+      "icon": "sophnet"
+    },
+    {
+      "id": "lanyun",
+      "name": "蓝耘 LANYUN",
+      "group": "aggregator",
+      "format": "openai",
+      "url": "https://maas-api.lanyun.net",
+      "website": "https://maas.lanyun.net",
+      "keyUrl": "https://maas.lanyun.net/#/system/apiKey",
+      "icon": "lanyun"
+    },
+    {
+      "id": "ocoolai",
+      "name": "ocoolAI",
+      "group": "aggregator",
+      "format": "openai",
+      "url": "https://api.ocoolai.com",
+      "website": "https://one.ocoolai.com",
+      "keyUrl": "https://one.ocoolai.com/token",
+      "icon": "ocoolai"
+    },
+    {
+      "id": "burncloud",
+      "name": "BurnCloud",
+      "group": "aggregator",
+      "format": "openai",
+      "url": "https://ai.burncloud.com",
+      "website": "https://ai.burncloud.com",
+      "keyUrl": "https://ai.burncloud.com/token",
+      "icon": "burncloud"
+    },
+    {
+      "id": "tokendance",
+      "name": "TokenDance",
+      "group": "aggregator",
+      "format": "openai",
+      "url": "https://tokendance.space/gateway",
+      "website": "https://tokendance.space",
+      "keyUrl": "https://tokendance.space/keys",
+      "icon": "tokendance"
+    },
+    {
+      "id": "ph8",
+      "name": "PH8",
+      "group": "aggregator",
+      "format": "openai",
+      "url": "https://ph8.co",
+      "website": "https://ph8.co",
+      "keyUrl": "https://ph8.co/apiKey",
+      "icon": "ph8"
+    },
+    {
+      "id": "alayanew",
+      "name": "AlayaNew",
+      "group": "aggregator",
+      "format": "openai",
+      "url": "https://deepseek.alayanew.com",
+      "website": "https://www.alayanew.com",
+      "icon": "alayanew"
+    },
+    {
+      "id": "aionly",
+      "name": "AIOnly",
+      "group": "aggregator",
+      "format": "openai",
+      "url": "https://api.aiionly.com",
+      "website": "https://www.aiionly.com",
+      "keyUrl": "https://maas.aiionly.com/keyApi"
+    },
+    {
+      "id": "vercel-gateway",
+      "name": "Vercel AI Gateway",
+      "group": "aggregator",
+      "format": "openai",
+      "url": "https://ai-gateway.vercel.sh/v1/ai",
+      "website": "https://vercel.com/ai-gateway",
+      "keyUrl": "https://vercel.com",
+      "hint": "按量计费，模型由 Vercel 侧统一代理"
+    },
+    {
+      "id": "ollama",
+      "name": "Ollama 本地",
+      "group": "local",
+      "format": "openai",
+      "url": "http://localhost:11434/v1",
+      "noKey": true,
+      "hint": "本地服务无需密钥，端口按实际安装调整",
+      "icon": "ollama"
+    },
+    {
+      "id": "lmstudio",
+      "name": "LM Studio 本地",
+      "group": "local",
+      "format": "openai",
+      "url": "http://localhost:1234/v1",
+      "noKey": true,
+      "hint": "需在 LM Studio 里开启本地服务器，端口按实际调整",
+      "icon": "lmstudio"
+    },
+    {
+      "id": "newapi",
+      "name": "New API / One API 自建",
+      "group": "local",
+      "format": "openai",
+      "url": "https://你的域名/v1",
+      "noKey": false,
+      "hint": "把域名换成你的面板地址，密钥填面板里创建的令牌",
+      "icon": "newapi"
+    },
+    {
+      "id": "gpustack",
+      "name": "GPUStack",
+      "group": "local",
+      "format": "openai",
+      "url": "http://localhost:80/v1-openai",
+      "website": "https://gpustack.ai",
+      "icon": "gpustack",
+      "hint": "自建 GPU 推理平台，端口按实际部署改"
+    },
+    {
+      "id": "omlx",
+      "name": "oMLX",
+      "group": "local",
+      "format": "openai",
+      "url": "http://localhost:8000/v1",
+      "website": "https://omlx.ai",
+      "icon": "omlx",
+      "hint": "Apple Silicon 上的 MLX 推理服务"
+    },
+    {
+      "id": "ovms",
+      "name": "OpenVINO Model Server",
+      "group": "local",
+      "format": "openai",
+      "url": "http://localhost:8000/v3",
+      "website": "https://www.intel.com/content/www/us/en/developer/tools/openvino-toolkit/overview.html",
+      "hint": "Intel 推理服务，OpenAI 兼容端点在 /v3"
+    },
+    {
+      "id": "siliconflow-intl",
+      "name": "硅基流动 国际站",
+      "group": "intl",
+      "format": "openai",
+      "url": "https://api.siliconflow.com/v1",
+      "website": "https://cloud.siliconflow.com",
+      "icon": "siliconflow",
+      "hint": "与国内站账号、密钥不通用"
+    },
+    {
+      "id": "moonshot-intl",
+      "name": "Kimi 国际站",
+      "group": "intl",
+      "format": "openai",
+      "url": "https://api.moonshot.ai/v1",
+      "website": "https://platform.moonshot.ai",
+      "icon": "moonshot",
+      "hint": "与国内站账号、密钥不通用"
+    },
+    {
+      "id": "minimax-intl",
+      "name": "MiniMax 国际站",
+      "group": "intl",
+      "format": "openai",
+      "url": "https://api.minimax.io/v1",
+      "website": "https://platform.minimax.io",
+      "icon": "minimax",
+      "hint": "与国内站账号、密钥不通用"
+    }
+  ]
+}
+        </script>
+
+        <!-- 服务商预设选择弹窗：选完自动回填编辑页 -->
+        <div id="providerPresetModal" class="modal-overlay" data-action="closeProviderPresetModal" data-only-self>
+          <div class="modal-container provider-preset-modal" role="dialog" aria-modal="true"
+            aria-labelledby="providerPresetTitle">
+            <div class="modal-header provider-preset-head">
+              <div class="provider-preset-heading">
+                <div class="modal-title" id="providerPresetTitle">选择服务商模板</div>
+                <div class="provider-preset-kicker" id="providerPresetKicker">选中后自动填写地址与协议</div>
+              </div>
+              <div class="provider-preset-head-actions">
+                <div class="provider-preset-search">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+                    stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;">
+                    <circle cx="11" cy="11" r="8"></circle>
+                    <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                  </svg>
+                  <input type="text" id="providerPresetSearch" placeholder="搜索名称或域名" autocomplete="off"
+                    data-action="onProviderPresetSearch" data-events="input">
+                </div>
+                <button type="button" class="modal-close-icon" aria-label="关闭" data-action="closeProviderPresetModal">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M18 6 6 18"></path>
+                    <path d="m6 6 12 12"></path>
+                  </svg>
+                </button>
+              </div>
+            </div>
+            <div class="provider-preset-tabs" id="providerPresetTabs" role="tablist" aria-label="服务商分组"></div>
+            <div class="provider-preset-list" id="providerPresetList" role="listbox"></div>
+            <div class="provider-preset-foot">
+              预设只填写名称、地址与协议；模型请在保存前点「获取模型列表」实时拉取。
+            </div>
+          </div>
+        </div>
+
         <!-- ═══════ PAGE: PROVIDER EDITOR (新增/编辑供应商) ═══════ -->
         <div class="page provider-editor-page" id="page-provider-editor" role="tabpanel"
           aria-labelledby="tab-providers">
@@ -919,6 +1697,26 @@
               <div class="provider-editor-layout">
                 <!-- Left Column: Base Config -->
                 <div class="provider-editor-left">
+                  <!-- 服务商预设：新增时显示，编辑已有供应商时隐藏 -->
+                  <div class="field provider-editor-field provider-preset-field" id="providerPresetField">
+                    <div class="field-label provider-editor-label-row">
+                      <span>服务商模板</span>
+                      <span class="provider-preset-note">选中后自动填写地址与协议</span>
+                    </div>
+                    <button type="button" class="provider-preset-trigger" id="providerPresetTrigger"
+                      aria-haspopup="dialog"
+                      data-action="openProviderPresetModal" data-pass-event>
+                      <svg class="provider-preset-trigger-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                        stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <rect x="3" y="3" width="7" height="7" rx="1.5"></rect>
+                        <rect x="14" y="3" width="7" height="7" rx="1.5"></rect>
+                        <rect x="3" y="14" width="7" height="7" rx="1.5"></rect>
+                        <rect x="14" y="14" width="7" height="7" rx="1.5"></rect>
+                      </svg>
+                      <span id="providerPresetTriggerLabel">从模板库选择</span>
+                    </button>
+                    <div class="provider-preset-status" id="providerPresetStatus" hidden></div>
+                  </div>
                   <div class="field provider-editor-field">
                     <div class="field-label">名称</div>
                     <input class="field-input" id="pf-name" placeholder="例如：我的中转站">
@@ -1021,6 +1819,18 @@
                       </button>
                     </div>
                     <input class="field-input" id="pf-key" type="password" placeholder="sk-..." autocomplete="off">
+                  </div>
+
+                  <!-- 多密钥池：上方是当前生效密钥，这里管理候选池 -->
+                  <div class="field provider-editor-field provider-keys-field">
+                    <div class="field-label provider-editor-label-row">
+                      <span>更多密钥</span>
+                      <button type="button" class="provider-keys-add" data-action="addEditorApiKey">添加密钥</button>
+                    </div>
+                    <div class="provider-keys-list" id="providerKeysList"></div>
+                    <div class="provider-keys-empty" id="providerKeysEmpty">
+                      添加多把密钥后可在编辑页快速切换；开启本地代理时由路由按请求轮换。
+                    </div>
                   </div>
 
                   <!-- 已选择模型列表 (Cherry Studio 风格) -->
@@ -1676,8 +2486,7 @@
                 </label>
               </div>
                 <div style="font-size:11px;color:var(--text-muted);line-height:1.5;">
-                  保存规则后立即生效:客户端请求里的 model 字段将看到改名后的 ID,旧 ID 也仍然可用。
-                  改规则不会叠加——规则是全局模板,改一次就替换前一次。
+                  保存规则后立即生效:客户端请求里的 model 字段将看到改名后的 ID,旧 ID 也仍然可用。改规则不会叠加——规则是全局模板,改一次就替换前一次。
               </div>
 
               <details id="proxyRouteRenameAdvanced" ontoggle="onProxyRouteRenameAdvancedToggle()"
@@ -2992,108 +3801,196 @@
         </div>
 
 
-        <!-- ═══════ PAGE: PROXY ═══════ -->
+        <!-- ═══════ PAGE: PROXY (GATEWAY 2.0) ═══════ -->
         <div class="page" id="page-proxy" role="tabpanel" aria-labelledby="tab-proxy">
           <section class="proxy-console-page">
             <div class="proxy-console-hero glass-card">
               <div class="proxy-console-title">
                 <span class="dot"></span>
                 <div>
-                  <h1>本地代理</h1>
-                  <p>统一管理 AnyBridge sidecar、兼容入口、本地 key 和代理增强。</p>
+                  <h1>本地网关</h1>
+                  <p>统一暴露模型，接管智能体请求，按路由分发到上游供应商。</p>
                 </div>
               </div>
               <div class="proxy-console-actions">
-                <button class="btn-primary" id="globalProxyStartBtn" data-action="startGlobalProxyService">启动代理</button>
-                <button class="btn-ghost accent" id="globalProxyRestartBtn" data-action="restartGlobalProxyService">重启代理</button>
-                <button class="btn-ghost danger" id="globalProxyStopBtn" data-action="stopGlobalProxyService">停止代理</button>
+                <div class="proxy-hero-metrics">
+                  <div class="proxy-hero-metric-item">
+                    <span class="proxy-hero-metric-label">今日调用</span>
+                    <strong class="proxy-hero-metric-val" id="proxyHeroRequests">—</strong>
+                  </div>
+                  <div class="proxy-hero-metric-item">
+                    <span class="proxy-hero-metric-label">平均耗时</span>
+                    <strong class="proxy-hero-metric-val" id="proxyHeroLatency">—</strong>
+                  </div>
+                  <div class="proxy-hero-metric-item">
+                    <span class="proxy-hero-metric-label">可用率</span>
+                    <strong class="proxy-hero-metric-val" id="proxyHeroSuccessRate" style="color: var(--success);">—</strong>
+                  </div>
+                </div>
+                <button type="button" class="btn-ghost" data-action="toggleGatewayDrawer" data-args="[true]" title="查看单条请求链路与诊断决策" style="height: 32px; padding: 0 12px; font-size: 12px; font-weight: 600; display: inline-flex; align-items: center; gap: 5px;">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>
+                  实时诊断 ▸
+                </button>
+                <button class="btn-primary" id="globalProxyStartBtn" data-action="startGlobalProxyService">启动网关</button>
+                <button class="btn-ghost accent" id="globalProxyRestartBtn" data-action="restartGlobalProxyService">重启</button>
+                <button class="btn-ghost danger" id="globalProxyStopBtn" data-action="stopGlobalProxyService">停止</button>
               </div>
             </div>
 
-            <div class="proxy-console-tabs" role="tablist" aria-label="代理配置">
-              <button type="button" class="proxy-console-tab active" data-proxy-panel="overview" aria-selected="true">概览</button>
-              <button type="button" class="proxy-console-tab" data-proxy-panel="routes" aria-selected="false">模型列表</button>
-              <button type="button" class="proxy-console-tab" data-proxy-panel="enhancement" aria-selected="false">代理增强</button>
-              <button type="button" class="proxy-console-tab" data-proxy-panel="stats" aria-selected="false">运行状态</button>
-              <button type="button" class="proxy-console-tab" data-proxy-panel="logs" aria-selected="false">日志</button>
+            <div class="proxy-console-tabs" role="tablist" aria-label="网关配置">
+              <button type="button" class="proxy-console-tab active" data-proxy-panel="overview" data-action="activateProxyPanel" data-arg="overview" onclick="window.activateProxyPanel && window.activateProxyPanel('overview')" aria-selected="true">接入</button>
+              <button type="button" class="proxy-console-tab" data-proxy-panel="routes" data-action="activateProxyPanel" data-arg="routes" onclick="window.activateProxyPanel && window.activateProxyPanel('routes')" aria-selected="false">路由</button>
+              <button type="button" class="proxy-console-tab" data-proxy-panel="enhancement" data-action="activateProxyPanel" data-arg="enhancement" onclick="window.activateProxyPanel && window.activateProxyPanel('enhancement')" aria-selected="false">增强</button>
             </div>
 
             <div class="proxy-console-section active" data-proxy-section="overview">
-              <div class="proxy-console-grid proxy-console-grid-single">
+              <div class="proxy-overview-dashboard-grid">
 
-                <section class="proxy-console-card glass-card ">
+                <!-- 左栏：连接配置与快捷集成 -->
+                <section class="proxy-console-card glass-card proxy-overview-card">
                   <div class="proxy-console-card-head">
                     <div>
-                      <h2>连接配置</h2>
+                      <h2>网关接入与凭证</h2>
+                      <p>兼容 OpenAI / Anthropic 协议，支持外部工具直接连接</p>
                     </div>
                   </div>
 
                   <div class="proxy-section">
-                    <div class="proxy-local-key-box">
-                      <div>
-                        <span>API 地址 (Base URL)</span>
-                        <div class="proxy-value-with-copy">
-                          <strong id="localProxyUnifiedUrl">http://127.0.0.1:{port}</strong>
-                          <button type="button" class="proxy-value-copy-btn" data-action="copyLocalProxyValue" data-arg="unified" title="复制 API 地址">
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-                          </button>
+                    <div class="proxy-clean-field">
+                      <div class="proxy-clean-field-meta">
+                        <span class="proxy-clean-label">Base URL (API 地址)</span>
+                        <div class="proxy-clean-val-row">
+                          <code class="proxy-clean-code" id="localProxyUnifiedUrl">http://127.0.0.1:{port}</code>
+                          <button type="button" class="btn-ghost" data-action="copyLocalProxyValue" data-arg="unified" title="复制 Base URL" style="height: 28px; padding: 0 10px; font-size: 12px;">复制地址</button>
                         </div>
                       </div>
                     </div>
 
-                    <div class="proxy-local-key-box" style="margin-top: 10px;">
-                      <div>
-                        <span>本地 Key</span>
-                        <div class="proxy-value-with-copy">
-                          <strong id="localProxyKeyValue">未生成</strong>
-                          <button type="button" class="proxy-value-copy-btn" data-action="copyLocalProxyValue" data-arg="key" title="复制本地 Key">
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-                          </button>
+                    <div class="proxy-clean-field">
+                      <div class="proxy-clean-field-meta">
+                        <span class="proxy-clean-label">本地访问 Key</span>
+                        <div class="proxy-clean-val-row">
+                          <code class="proxy-clean-code" id="localProxyKeyValue">未生成</code>
+                          <div style="display: flex; gap: 6px; align-items: center;">
+                            <button type="button" class="btn-ghost" data-action="copyLocalProxyValue" data-arg="key" title="复制本地 Key" style="height: 28px; padding: 0 10px; font-size: 12px;">复制 Key</button>
+                            <button type="button" class="btn-ghost" data-action="regenerateLocalProxyKey" title="重新生成 Key" style="height: 28px; padding: 0 8px; font-size: 12px;">刷新</button>
+                          </div>
                         </div>
                       </div>
-                      <div class="proxy-local-key-actions">
-                        <button class="btn-ghost accent" data-action="regenerateLocalProxyKey">重新生成</button>
+                    </div>
+
+                    <!-- 快捷接入助手 (简约平铺无重度背景) -->
+                    <div class="proxy-preset-clean">
+                      <div class="proxy-preset-clean-header">
+                        <span class="proxy-clean-label">快速配置预设:</span>
+                        <div class="proxy-preset-nav">
+                          <button type="button" class="proxy-preset-tab active" data-preset="cursor" data-action="setProxyPresetTab" data-arg="cursor">Cursor / VS Code</button>
+                          <button type="button" class="proxy-preset-tab" data-preset="curl" data-action="setProxyPresetTab" data-arg="curl">cURL 探针</button>
+                          <button type="button" class="proxy-preset-tab" data-preset="env" data-action="setProxyPresetTab" data-arg="env">Shell 变量</button>
+                        </div>
+                      </div>
+                      <div class="proxy-preset-clean-box">
+                        <code class="proxy-preset-clean-code" id="proxyPresetCodeSnippet">Base URL: http://127.0.0.1:7450/v1</code>
+                        <button type="button" class="btn-ghost accent" data-action="copyQuickPresetSnippet" style="height: 26px; padding: 0 10px; font-size: 12px; white-space: nowrap;">一键复制</button>
                       </div>
                     </div>
 
-                    <div class="proxy-ports-grid proxy-ports-grid-single" style="margin-top: 14px;">
-                      <div class="proxy-port-field">
-                        <label>API 服务端口</label>
-                        <input id="localProxyPortInput" class="input-sm" type="number" min="1" max="65535" value="7450">
+                    <!-- 端口与自启紧凑横排 -->
+                    <div class="proxy-settings-compact-row">
+                      <div class="proxy-port-compact">
+                        <span class="proxy-clean-label">服务端口</span>
+                        <div style="display: flex; gap: 8px; align-items: center;">
+                          <input id="localProxyPortInput" class="input-sm" type="number" min="1" max="65535" value="7450" style="width: 80px; height: 30px; font-size: 12.5px;">
+                          <button type="button" class="btn-ghost" data-action="saveLocalProxyPorts" data-arg="proxy" style="height: 30px; padding: 0 10px; font-size: 12px;">保存</button>
+                        </div>
                       </div>
-                      <button class="btn-ghost accent" data-action="saveLocalProxyPorts" data-arg="proxy">保存端口</button>
-                    </div>
-                  </div>
-
-                  <div class="proxy-section-divider"></div>
-
-                  <div class="proxy-section">
-                    <div class="proxy-section-title">
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                        <path d="M5 12h14"></path>
-                        <path d="m12 5 7 7-7 7"></path>
-                      </svg>
-                      启动偏好
-                    </div>
-                    <div class="proxy-preference-row">
-                      <div>
-                        <span>启动时自动运行</span>
-                        <strong>应用打开时自动启动本地代理</strong>
+                      <div class="proxy-autostart-compact">
+                        <div>
+                          <span class="proxy-clean-label" style="display: block;">开机自启</span>
+                          <span style="font-size: 12px; color: var(--text-muted);">打开 AnyBridge 时自动运行</span>
+                        </div>
+                        <div class="toggle-sm" data-config-toggle="AUTO_START_PROXY" role="switch" aria-label="启动时自动运行网关"></div>
                       </div>
-                      <div class="toggle-sm" data-config-toggle="AUTO_START_PROXY" role="switch" aria-label="启动时自动运行代理"></div>
                     </div>
                   </div>
                 </section>
 
-            </div>
+                <!-- 右栏：已接管智能体矩阵与实时调用流水 -->
+                <div style="display: flex; flex-direction: column; gap: 14px;">
+                  <section class="proxy-console-card glass-card proxy-overview-card">
+                    <div class="proxy-console-card-head">
+                      <div>
+                        <h2>已接入智能体</h2>
+                        <p>检测本机客户端与网关分流状态</p>
+                      </div>
+                      <button type="button" class="btn-ghost accent" data-action="navigateTo" data-arg="models" style="font-size: 11.5px; height: 26px; padding: 0 8px;">管理智能体 →</button>
+                    </div>
+
+                    <div class="gateway-takeover-list">
+                      <div class="gateway-takeover-item">
+                        <div class="gateway-ti-left">
+                          <div class="gateway-app-icon">Cu</div>
+                          <div>
+                            <div class="gateway-ti-name">Cursor</div>
+                            <div class="gateway-ti-detail">已接管 · 流量走本地网关转发与自愈</div>
+                          </div>
+                        </div>
+                        <button type="button" class="btn-ghost accent" data-action="navigateTo" data-arg="models" style="font-size: 11px; height: 24px; padding: 0 8px;">查看配置</button>
+                      </div>
+
+                      <div class="gateway-takeover-item">
+                        <div class="gateway-ti-left">
+                          <div class="gateway-app-icon">Cx</div>
+                          <div>
+                            <div class="gateway-ti-name">Codex</div>
+                            <div class="gateway-ti-detail">独立模型表支持 · 免全局重命名干扰</div>
+                          </div>
+                        </div>
+                        <button type="button" class="btn-ghost accent" data-action="navigateTo" data-arg="models" style="font-size: 11px; height: 24px; padding: 0 8px;">查看配置</button>
+                      </div>
+
+                      <div class="gateway-takeover-item">
+                        <div class="gateway-ti-left">
+                          <div class="gateway-app-icon">Ws</div>
+                          <div>
+                            <div class="gateway-ti-name">Windsurf / 其他</div>
+                            <div class="gateway-ti-detail">填入上述 Base URL 与 Key 即可直接接入</div>
+                          </div>
+                        </div>
+                        <button type="button" class="btn-ghost" data-action="setProxyPresetTab" data-arg="cursor" style="font-size: 11px; height: 24px; padding: 0 8px;">获取配置</button>
+                      </div>
+                    </div>
+                  </section>
+
+                  <!-- 实时调用流水卡片 -->
+                  <section class="proxy-console-card glass-card proxy-overview-card" style="flex: 1; display: flex; flex-direction: column; justify-content: space-between;">
+                    <div>
+                      <div class="proxy-console-card-head">
+                        <div>
+                          <h2>实时调用流水</h2>
+                          <p>经过本地网关转发的最新请求</p>
+                        </div>
+                      </div>
+                      <div class="proxy-live-stream-list" id="proxyOverviewRecentStream">
+                        <div class="proxy-live-stream-empty">暂无近期调用记录 · 发起请求后在此实时呈现</div>
+                      </div>
+                    </div>
+                    <div style="margin-top: 14px; padding-top: 10px; border-top: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center;">
+                      <span style="font-size: 12px; color: var(--text-muted);">点击右上角「实时诊断」查看完整决策链路</span>
+                      <button type="button" class="btn-ghost accent" data-action="toggleGatewayDrawer" data-args="[true]" style="font-size: 12px; height: 28px; padding: 0 10px;">打开诊断 →</button>
+                    </div>
+                  </section>
+                </div>
+
+              </div>
             </div>
 
             <div class="proxy-console-section" data-proxy-section="routes">
               <section class="proxy-console-card glass-card proxy-routes-card">
                 <div class="proxy-routes-hero">
                   <div class="proxy-routes-title">
-                    <h2>模型列表</h2>
-                    <p>管理本地代理对外暴露的模型。请求里的 model 必须命中这里的模型 ID。</p>
+                    <h2>网关路由映射</h2>
+                    <p>管理本地网关对外暴露的模型通路与上游分流规则。</p>
                   </div>
                 </div>
                 <div class="proxy-routes-toolbar">
@@ -3160,7 +4057,7 @@
                         </th>
                         <th>
                           <span class="model-map-display-head">
-                            <span>模型 ID</span>
+                            <span>对外模型 ID</span>
                             <button class="btn-ghost accent model-map-settings-btn"
  title="批量重命名模型 ID（加前后缀/换名）" aria-label="批量重命名模型 ID" data-action="openProxyRouteRenameModal">
                               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
@@ -3173,7 +4070,7 @@
                             </button>
                           </span>
                         </th>
-                        <th>上游</th>
+                        <th>主上游目标与备份</th>
                         <th>能力</th>
                         <th>操作</th>
                         <th>
@@ -3202,18 +4099,66 @@
               </section>
             </div>
 
+            <!-- 视图 3: 增强中间件 (纯粹极简现代控制台主体) -->
             <div class="proxy-console-section" data-proxy-section="enhancement">
+              <!-- 原生设置主体（由 10-shell.js mountProxyEnhancementPanel 挂载进来） -->
               <div id="proxyEnhancementMount"></div>
             </div>
 
-            <div class="proxy-console-section" data-proxy-section="stats">
+            <!-- 隐藏挂载点，保持与现有 stats.js 逻辑兼容 -->
+            <div class="proxy-console-section" data-proxy-section="stats" style="display: none !important;">
               <div id="proxyStatsMount" class="proxy-stats-mount"></div>
             </div>
+          </section>
+        </div>
 
-            <div class="proxy-console-section" data-proxy-section="logs">
+        <!-- ══════ 抽屉：实时诊断与网关日志 (Request Timeline & Logs) ══════ -->
+        <div id="gatewayDrawerMask" class="gateway-drawer-mask" data-action="toggleGatewayDrawer" data-args="[false]">
+          <aside class="gateway-drawer" data-stop data-action="__noop">
+            <div class="gateway-drawer-head">
+              <div>
+                <div style="font-size: 14.5px; font-weight: 700; color: var(--text-primary);">网关诊断与审计</div>
+                <div style="font-size: 11.5px; color: var(--text-muted); margin-top: 2px;">实时捕获的请求调用链路与底层运行日志</div>
+              </div>
+              <button type="button" class="btn-ghost" data-action="toggleGatewayDrawer" data-args="[false]" style="height: 28px; padding: 0 10px; font-size: 12px;">关闭</button>
+            </div>
+
+            <!-- 抽屉内双 Tab -->
+            <div class="proxy-preset-nav" style="border-bottom: 1px solid var(--border); padding-bottom: 8px;">
+              <button type="button" class="proxy-preset-tab active" id="drawerTabTimelineBtn" data-action="setDrawerSubTab" data-arg="timeline">链路时间线</button>
+              <button type="button" class="proxy-preset-tab" id="drawerTabLogsBtn" data-action="setDrawerSubTab" data-arg="logs">网关日志</button>
+            </div>
+
+            <!-- 子视图 1: 时间线 -->
+            <div class="gateway-timeline" id="gatewayDrawerTimeline">
+              <div class="gateway-tl-entry">
+                <div class="gateway-tl-header">
+                  <span class="gateway-tl-title">POST /v1/chat/completions</span>
+                  <span class="proxy-tag-ok" style="font-size: 11px; padding: 1px 6px; border-radius: 4px; font-weight: 600;">200 OK</span>
+                </div>
+                <div class="gateway-tl-sub" id="drawerRecentReqMeta">最近请求分析就绪</div>
+                <div class="gateway-tl-step ok">
+                  <span>中间件切面</span>
+                  <span style="color: var(--accent); font-weight: 600;">参数校验与模型路由分发</span>
+                  <span class="gateway-tl-dur">2ms</span>
+                </div>
+                <div class="gateway-tl-step ok">
+                  <span>上游直连</span>
+                  <span>响应流式输出传输正常</span>
+                  <span class="gateway-tl-dur" id="drawerRecentReqDuration">—</span>
+                </div>
+                <div class="gateway-tl-footer">
+                  <span>决策状态: 链路健康</span>
+                  <span id="drawerRecentReqTime">等待下一次调用</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- 子视图 2: 挂载网关日志 -->
+            <div id="gatewayDrawerLogs" style="display: none; flex: 1; min-height: 0; overflow-y: auto;">
               <div id="proxyLogsMount" class="proxy-logs-mount"></div>
             </div>
-          </section>
+          </aside>
         </div>
 
         <!-- ═══════ PAGE: STATS（专业 ECharts 控制舱） ═══════ -->
@@ -3463,8 +4408,7 @@
             <div class="card-title"><span class="dot"></span> 平台总览</div>
             <button class="btn-ghost accent" id="platforms-refresh-btn" data-action="refreshPlatforms">刷新检测</button>
           </div>
-          <p class="platforms-intro">通过修改 AI 工具自身的配置文件来自定义 API 端点。切换后下次启动对应工具即可生效，<strong>无需保持 AnyBridge
-              运行</strong>。每次切换前会自动备份原配置，可一键还原。</p>
+          <p class="platforms-intro">通过修改 AI 工具自身的配置文件来自定义 API 端点。切换后下次启动对应工具即可生效，<strong>无需保持 AnyBridge 运行</strong>。每次切换前会自动备份原配置，可一键还原。</p>
           <div class="platforms-grid" id="platforms-grid">
             <div class="platforms-empty" id="platforms-empty">正在检测已安装的工具…</div>
           </div>
@@ -5409,8 +6353,8 @@
                 <div class="codex-toggle-grid">
                   <div class="codex-toggle-card">
                     <div class="codex-toggle-info">
-                      <span class="codex-toggle-title">路由模式（本地代理 :7450）</span>
-                      <span class="codex-toggle-desc">通过 AnyBridge 本地代理转发与协议转换，适合仅支持 Chat 的供应商</span>
+                      <span class="codex-toggle-title">路由模式（本地网关 :7450）</span>
+                      <span class="codex-toggle-desc">通过 AnyBridge 本地网关转发与协议转换，适合仅支持 Chat 的供应商</span>
                     </div>
                     <label class="switch" style="flex: 0 0 auto;">
                       <input type="checkbox" id="codex-config-route-through-proxy" checked>
@@ -8768,6 +9712,66 @@
                   <em>深空薄荷</em>
                 </span>
               </button>
+              <button type="button" class="theme-card" role="radio" aria-checked="false"
+                data-theme-id="minimal" data-action="setTheme" data-arg="minimal">
+                <span class="theme-card-preview theme-card-preview-minimal" aria-hidden="true">
+                  <span class="tcp-titlebar"><i></i><i></i><i></i></span>
+                  <span class="tcp-body">
+                    <span class="tcp-side"></span>
+                    <span class="tcp-main">
+                      <span class="tcp-accent"></span>
+                      <span class="tcp-line"></span>
+                      <span class="tcp-line is-short"></span>
+                    </span>
+                  </span>
+                </span>
+                <span class="theme-card-meta">
+                  <strong>极简云白</strong>
+                  <em>中性清爽</em>
+                </span>
+              </button>
+              <button type="button" class="theme-card" role="radio" aria-checked="false"
+                data-theme-id="ink" data-action="setTheme" data-arg="ink">
+                <span class="theme-card-preview theme-card-preview-ink" aria-hidden="true">
+                  <span class="tcp-titlebar"><i></i><i></i><i></i></span>
+                  <span class="tcp-body">
+                    <span class="tcp-side"></span>
+                    <span class="tcp-main">
+                      <span class="tcp-accent"></span>
+                      <span class="tcp-line"></span>
+                      <span class="tcp-line is-short"></span>
+                    </span>
+                  </span>
+                </span>
+                <span class="theme-card-meta">
+                  <strong>极简墨黑</strong>
+                  <em>深空中性</em>
+                </span>
+              </button>
+            </div>
+            <div class="setting-row">
+              <div>
+                <div class="setting-label">界面风格</div>
+                <div class="setting-desc" id="style-setting-desc">当前使用轻拟物风格</div>
+              </div>
+              <div class="setting-ctrl">
+                <div class="theme-style-seg" role="radiogroup" aria-label="界面风格">
+                  <button type="button" class="theme-style-btn" role="radio" aria-checked="false"
+                    data-style-id="soft" data-action="setStyle" data-arg="soft">轻拟物</button>
+                  <button type="button" class="theme-style-btn" role="radio" aria-checked="false"
+                    data-style-id="minimal" data-action="setStyle" data-arg="minimal">极简扁平</button>
+                </div>
+              </div>
+            </div>
+            <div class="setting-row">
+              <div>
+                <div class="setting-label">导航栏图标</div>
+                <div class="setting-desc">在顶部导航标签上显示图标</div>
+              </div>
+              <div class="setting-ctrl">
+                <button type="button" class="toggle-sm on" data-nav-icons-toggle data-action="toggleNavIcons" data-pass-this role="switch" aria-checked="true"
+                  aria-label="显示导航栏图标"></button>
+              </div>
             </div>
             <div class="setting-row">
               <div>

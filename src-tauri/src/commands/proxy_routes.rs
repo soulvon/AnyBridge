@@ -426,6 +426,44 @@ pub fn save_proxy_routes(mut store: ProxyRoutes) -> Result<(), String> {
     write_routes(&store)
 }
 
+/// 把供应商的多密钥池同步到引用它的路由目标。
+///
+/// 供应商池是「这家供应商有哪些可用密钥」的唯一真源：
+/// - 池非空 → 覆盖路由目标上的 `apiKeys`，让 sidecar 的请求级轮换拿得到；
+/// - 池为空 → 不动路由，避免把用户在路由编辑器里单独配置的密钥清掉。
+///
+/// 返回被更新的目标数量，供调用方记录。
+pub(crate) fn sync_provider_api_keys(providers: &[super::config::Provider]) -> Result<usize, String> {
+    if providers.is_empty() {
+        return Ok(0);
+    }
+    let mut routes = read_routes()?;
+    let mut changed = 0usize;
+    for route in &mut routes.routes {
+        for target in &mut route.targets {
+            let Some(provider) = providers.iter().find(|p| p.id == target.provider_id) else {
+                continue;
+            };
+            let keys: Vec<String> = provider
+                .api_keys
+                .iter()
+                .filter(|entry| entry.enabled)
+                .map(|entry| entry.key.trim().to_string())
+                .filter(|key| !key.is_empty())
+                .collect();
+            if keys.is_empty() || target.api_keys == keys {
+                continue;
+            }
+            target.api_keys = keys;
+            changed += 1;
+        }
+    }
+    if changed > 0 {
+        write_routes(&routes)?;
+    }
+    Ok(changed)
+}
+
 #[derive(Debug, Clone, Serialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct ProxyRoutesRepairReport {

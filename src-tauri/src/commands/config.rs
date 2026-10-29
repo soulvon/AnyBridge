@@ -229,6 +229,11 @@ pub struct Provider {
     pub api_host: String,
     #[serde(rename = "apiKey")]
     pub api_key: String,
+    /// 多把密钥的候选池。`apiKey` 始终是「当前生效」的那把：
+    /// - 走本地代理时，整池交给路由按请求轮换；
+    /// - 不走代理时，由用户在编辑页手动切换当前密钥。
+    #[serde(rename = "apiKeys", default, skip_serializing_if = "Vec::is_empty")]
+    pub api_keys: Vec<ProviderApiKey>,
     #[serde(rename = "apiPath", skip_serializing_if = "Option::is_none")]
     pub api_path: Option<String>,
     #[serde(rename = "defaultModel")]
@@ -310,6 +315,21 @@ pub struct Provider {
         skip_serializing_if = "HashMap::is_empty"
     )]
     pub subagent_models: HashMap<String, String>,
+}
+
+/// 供应商的一把候选密钥。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProviderApiKey {
+    /// 前端列表的稳定标识，写入时由核心补齐（key-1、key-2 …）。
+    #[serde(default)]
+    pub id: String,
+    /// 展示名（如「账号 A」），留空时前端按序号显示。
+    #[serde(default)]
+    pub label: String,
+    pub key: String,
+    /// 停用的密钥不参与轮换，也不会被选为当前密钥。
+    #[serde(default = "default_true")]
+    pub enabled: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -793,6 +813,7 @@ impl From<AntigravityConfig> for Provider {
             name: config.name,
             api_host: config.api_host,
             api_key: config.api_key,
+            api_keys: Vec::new(),
             api_path: config.api_path,
             default_model: config.default_model,
             api_format: fmt,
@@ -828,6 +849,7 @@ impl From<CodexConfig> for Provider {
             name: config.name,
             api_host: config.api_host,
             api_key: config.api_key,
+            api_keys: Vec::new(),
             api_path: config.api_path,
             default_model: config.default_model,
             api_format: ApiFormat::Openai,
@@ -863,6 +885,7 @@ impl From<OpenCodeConfig> for Provider {
             name: config.name,
             api_host: config.api_host,
             api_key: config.api_key,
+            api_keys: Vec::new(),
             api_path: config.api_path,
             default_model: config.default_model,
             api_format: ApiFormat::Openai,
@@ -898,6 +921,7 @@ impl From<GrokConfig> for Provider {
             name: config.name,
             api_host: config.api_host,
             api_key: config.api_key,
+            api_keys: Vec::new(),
             api_path: config.api_path,
             default_model: config.default_model,
             api_format: ApiFormat::Openai,
@@ -933,6 +957,7 @@ impl From<ClaudeCodeConfig> for Provider {
             name: config.name,
             api_host: config.api_host,
             api_key: config.api_key,
+            api_keys: Vec::new(),
             api_path: config.api_path,
             default_model: config.default_model,
             api_format: ApiFormat::Anthropic,
@@ -1140,10 +1165,67 @@ pub(crate) fn read_provider_store() -> Result<ProviderStore, String> {
     Ok(store)
 }
 
+/// 收敛「当前密钥」与「密钥池」的一致性。
+///
+/// 所有写入路径（保存、启停、导入、迁移）都经过 `write_provider_store`，
+/// 一致性只在这一处收敛——前端整体覆盖 `save_providers` 时不会留下
+/// 「apiKey 不在池里」这种自相矛盾的状态。
+///
+/// 规则：
+/// 1. 空 key 与重复项剔除；
+/// 2. 当前 `api_key` 非空时，保证它在池里且排第一（当前生效项优先）；
+/// 3. `api_key` 为空而入池里有启用项时，用第一个启用项补上；
+/// 4. 池里全是停用项时不动 `api_key`——用户可能只是临时停用，不要替他挑。
+pub(crate) fn normalize_provider_api_keys(store: &mut ProviderStore) {
+    for provider in &mut store.providers {
+        let current = provider.api_key.trim().to_string();
+        let mut seen = std::collections::HashSet::new();
+        let mut kept: Vec<ProviderApiKey> = Vec::new();
+
+        if !current.is_empty() {
+            seen.insert(current.clone());
+            kept.push(ProviderApiKey {
+                id: String::new(),
+                label: String::new(),
+                key: current.clone(),
+                enabled: true,
+            });
+        }
+
+        for entry in provider.api_keys.drain(..) {
+            let key = entry.key.trim().to_string();
+            if key.is_empty() || !seen.insert(key.clone()) {
+                continue;
+            }
+            kept.push(ProviderApiKey { key, ..entry });
+        }
+
+        if current.is_empty() {
+            if let Some(idx) = kept.iter().position(|entry| entry.enabled) {
+                provider.api_key = kept[idx].key.clone();
+                // 它已经是当前生效密钥，池里不再留重复项
+                kept.remove(idx);
+            }
+        }
+
+        // 补齐稳定 id：前端列表靠它做 DOM 复用，空 id 会让删除按钮错位。
+        for (idx, entry) in kept.iter_mut().enumerate() {
+            if entry.id.trim().is_empty() {
+                entry.id = format!("key-{}", idx + 1);
+            }
+        }
+
+        provider.api_keys = kept;
+    }
+}
+
 pub(crate) fn write_provider_store(store: &ProviderStore) -> Result<(), String> {
+    let mut store = store.clone();
+    normalize_provider_api_keys(&mut store);
+
     let dir = config_dir();
     fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
-    let json = serde_json::to_string_pretty(store).map_err(|e| e.to_string())?;
+    let json = serde_json::to_string_pretty(&store).map_err(|e| e.to_string())?;
     super::write_atomic(&providers_path(), json.as_bytes())?;
 
     let port = configured_proxy_ports().api_port;
@@ -1164,8 +1246,20 @@ pub fn load_providers() -> Result<ProviderStore, String> {
 
 /// 整体保存供应商列表（新增/编辑/删除/排序/启用禁用统一走这里）。
 #[tauri::command]
-pub fn save_providers(store: ProviderStore) -> Result<(), String> {
-    write_provider_store(&store)
+pub fn save_providers(mut store: ProviderStore) -> Result<(), String> {
+    // 先收敛一次，后续同步路由要用到补齐后的池（write_provider_store 内部还会再收敛一次，幂等）
+    normalize_provider_api_keys(&mut store);
+    write_provider_store(&store)?;
+
+    // 多密钥池 → 代理路由目标：这一步让「本地代理轮换」真正拿到整池密钥。
+    // 同步失败不阻断保存（路由文件可能处于需要修复的状态），但必须留下痕迹。
+    match super::proxy_routes::sync_provider_api_keys(&store.providers) {
+        Ok(0) => {}
+        Ok(count) => eprintln!("[providers] 已同步多密钥池到 {count} 个路由目标"),
+        Err(err) => eprintln!("[providers] 同步多密钥池到代理路由失败: {err}"),
+    }
+
+    Ok(())
 }
 
 /// 启用/禁用单个供应商。禁用的供应商在「目标配置」下拉里不出现，路由也会跳过。
@@ -1394,6 +1488,9 @@ pub struct TestConnArgs {
 pub struct TestConnResult {
     /// 显示给用户的状态文本
     pub message: String,
+    /// 端到端耗时（毫秒）：从发请求到拿到成功响应，含可能的 gzip 重试
+    #[serde(rename = "latencyMs")]
+    pub latency_ms: u64,
     /// 探测到的能力标记
     pub capabilities: TestCapabilities,
 }
@@ -2123,6 +2220,7 @@ pub async fn test_connection(args: TestConnArgs) -> Result<TestConnResult, Strin
 
     Ok(TestConnResult {
         message: msg,
+        latency_ms: duration_ms,
         capabilities: TestCapabilities {
             gzip: need_gzip,
             vision: false,
@@ -2385,6 +2483,79 @@ mod tests {
         assert!(!is_json_api_error("   "));
         assert!(!is_json_api_error("<html><body><h1>403 Forbidden</h1></body></html>"));
         assert!(!is_json_api_error("Forbidden"));
+    }
+
+    fn store_with_api_keys(api_key: &str, pool: serde_json::Value) -> ProviderStore {
+        serde_json::from_value(serde_json::json!({
+            "providers": [{
+                "id": "p1",
+                "name": "测试供应商",
+                "apiHost": "https://api.example.com",
+                "apiKey": api_key,
+                "defaultModel": "m1",
+                "apiKeys": pool
+            }]
+        }))
+        .expect("测试构造的供应商 JSON 必须可反序列化")
+    }
+
+    #[test]
+    fn normalize_provider_api_keys_puts_current_first_and_dedupes() {
+        // 当前密钥已在池里重复 → 只保留一条并排第一；空 key 剔除
+        let mut store = store_with_api_keys(
+            "sk-a",
+            serde_json::json!([
+                { "label": "备选", "key": "sk-b", "enabled": true },
+                { "label": "重复", "key": "sk-a", "enabled": true },
+                { "label": "空", "key": "   ", "enabled": true }
+            ]),
+        );
+        normalize_provider_api_keys(&mut store);
+
+        let provider = &store.providers[0];
+        assert_eq!(provider.api_keys.len(), 2);
+        assert_eq!(provider.api_keys[0].key, "sk-a");
+        assert_eq!(provider.api_keys[0].id, "key-1");
+        assert_eq!(provider.api_keys[1].key, "sk-b");
+        assert_eq!(provider.api_keys[1].id, "key-2");
+        assert_eq!(provider.api_key, "sk-a");
+    }
+
+    #[test]
+    fn normalize_provider_api_keys_fills_empty_current_from_first_enabled() {
+        // 当前密钥为空、池里有启用项 → 用第一个启用项补上
+        let mut store = store_with_api_keys(
+            "",
+            serde_json::json!([
+                { "key": "sk-off", "enabled": false },
+                { "key": "sk-on", "enabled": true }
+            ]),
+        );
+        normalize_provider_api_keys(&mut store);
+
+        let provider = &store.providers[0];
+        assert_eq!(provider.api_key, "sk-on");
+        // 被选为当前的那把不再留在池里，下一次编辑不会看到重复项
+        assert_eq!(provider.api_keys.len(), 1);
+        assert_eq!(provider.api_keys[0].key, "sk-off");
+    }
+
+    #[test]
+    fn normalize_provider_api_keys_keeps_current_when_all_disabled() {
+        // 池里全被停用 → 不替用户挑，当前密钥保持不变
+        let mut store = store_with_api_keys(
+            "sk-current",
+            serde_json::json!([
+                { "key": "sk-off1", "enabled": false },
+                { "key": "sk-off2", "enabled": false }
+            ]),
+        );
+        normalize_provider_api_keys(&mut store);
+
+        let provider = &store.providers[0];
+        assert_eq!(provider.api_key, "sk-current");
+        assert_eq!(provider.api_keys.len(), 3);
+        assert!(provider.api_keys.iter().all(|entry| entry.id.starts_with("key-")));
     }
 }
 

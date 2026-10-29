@@ -127,6 +127,7 @@ pub fn run() {
             commands::config::set_provider_enabled,
             commands::config::set_provider_unlock,
             commands::config::test_connection,
+            commands::provider_balance::query_provider_balance,
             commands::config::test_vision,
             commands::config::fetch_models,
             commands::provider_import::scan_importable_providers,

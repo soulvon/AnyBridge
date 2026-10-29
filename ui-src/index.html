@@ -9,13 +9,20 @@
   <script>
     (function () {
       try {
-        var schemeOf = { light: 'light', dark: 'dark', claude: 'light', eva: 'dark' };
+        var schemeOf = { light: 'light', dark: 'dark', claude: 'light', eva: 'dark', minimal: 'light', ink: 'dark' };
         var saved = localStorage.getItem('byok-theme');
         var id = schemeOf[saved] ? saved : 'light';
         var root = document.documentElement;
         root.setAttribute('data-theme', id);
         root.setAttribute('data-scheme', schemeOf[id]);
         root.style.colorScheme = schemeOf[id];
+        // 风格维度与配色正交：老用户停留在「极简云白」时自动落到极简扁平，保证升级后视觉不变
+        var savedStyle = localStorage.getItem('byok-style');
+        var styleId = (savedStyle === 'soft' || savedStyle === 'minimal') ? savedStyle : (id === 'minimal' ? 'minimal' : 'soft');
+        root.setAttribute('data-style', styleId);
+        if (localStorage.getItem('byok-show-nav-icons') === 'false') {
+          root.setAttribute('data-nav-icons', 'hidden');
+        }
       } catch (e) {}
     })();
   </script>
@@ -82,7 +89,7 @@
           <svg class="tab-icon tab-icon-fill" viewBox="0 0 1024 1024" fill="currentColor" aria-hidden="true">
             <path d="M584.794353 124.235294c33.942588 0 61.470118 27.527529 61.470118 61.500235v140.528942a61.500235 61.500235 0 0 1-61.470118 61.500235l-43.941647-0.030118v87.853177h307.471059a26.352941 26.352941 0 0 1 3.312941 52.525176l-3.312941 0.210824-96.64753-0.030118v87.853177h43.941647c32.406588 0 58.970353 25.088 61.31953 56.922352l0.150588 4.577883v140.559059a61.500235 61.500235 0 0 1-61.470118 61.470117H655.058824a61.500235 61.500235 0 0 1-61.500236-61.470117V677.647059c0-33.972706 27.527529-61.500235 61.500236-61.500235h43.911529v-87.853177h-368.941177v87.853177h43.941648c32.406588 0 58.970353 25.088 61.319529 56.922352l0.150588 4.577883v140.559059a61.500235 61.500235 0 0 1-61.470117 61.470117H233.411765a61.500235 61.500235 0 0 1-61.500236-61.470117V677.647059c0-33.972706 27.527529-61.500235 61.500236-61.500235h43.911529v-87.853177H180.705882a26.352941 26.352941 0 0 1-3.312941-52.495059l3.312941-0.180706 307.440942-0.030117v-87.853177l-43.91153 0.030118a61.500235 61.500235 0 0 1-61.319529-56.922353l-0.180706-4.577882V185.735529c0-33.972706 27.527529-61.500235 61.500235-61.500235z"></path>
           </svg>
-          <span>代理</span>
+          <span>网关</span>
         </button>
         <button type="button" class="tab-item" id="tab-stats" data-page="stats" role="tab" aria-selected="false"
           aria-controls="page-stats" tabindex="-1">
@@ -122,93 +129,168 @@
                 <circle cx="6.5" cy="12.5" r=".6" fill="currentColor"></circle>
               </svg>
             </button>
-            <div class="theme-menu" id="themeMenu" role="menu" aria-label="主题" hidden>
-              <button type="button" class="theme-menu-item" role="menuitemradio" aria-checked="false"
-                data-theme-id="light" data-action="setTheme" data-arg="light">
-                <span class="theme-swatch theme-swatch-light" aria-hidden="true">
-                  <span class="sw-titlebar"><i></i><i></i><i></i></span>
-                  <span class="sw-body">
-                    <span class="sw-side"></span>
-                    <span class="sw-main">
-                      <span class="sw-accent"></span>
-                      <span class="sw-line"></span>
-                      <span class="sw-line is-short"></span>
+              <div class="theme-menu" id="themeMenu" role="menu" aria-label="主题" hidden>
+              <div class="theme-menu-cols">
+              <div class="theme-menu-col">
+                <div class="theme-menu-group-label" role="presentation">亮色</div>
+                <button type="button" class="theme-menu-item" role="menuitemradio" aria-checked="false"
+                  data-theme-id="light" data-action="setTheme" data-arg="light">
+                  <span class="theme-swatch theme-swatch-light" aria-hidden="true">
+                    <span class="sw-titlebar"><i></i><i></i><i></i></span>
+                    <span class="sw-body">
+                      <span class="sw-side"></span>
+                      <span class="sw-main">
+                        <span class="sw-accent"></span>
+                        <span class="sw-line"></span>
+                        <span class="sw-line is-short"></span>
+                      </span>
                     </span>
                   </span>
-                </span>
-                <span class="theme-menu-text">
-                  <strong>工作台浅色</strong>
-                  <em>冷灰蓝</em>
-                </span>
-                <svg class="theme-menu-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"
-                  stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                  <path d="m20 6-11 11-5-5"></path>
+                  <span class="theme-menu-text"><strong>工作台浅色</strong></span>
+                  <svg class="theme-menu-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"
+                    stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="m20 6-11 11-5-5"></path>
+                  </svg>
+                </button>
+                <button type="button" class="theme-menu-item" role="menuitemradio" aria-checked="false"
+                  data-theme-id="claude" data-action="setTheme" data-arg="claude">
+                  <span class="theme-swatch theme-swatch-claude" aria-hidden="true">
+                    <span class="sw-titlebar"><i></i><i></i><i></i></span>
+                    <span class="sw-body">
+                      <span class="sw-side"></span>
+                      <span class="sw-main">
+                        <span class="sw-accent"></span>
+                        <span class="sw-line"></span>
+                        <span class="sw-line is-short"></span>
+                      </span>
+                    </span>
+                  </span>
+                  <span class="theme-menu-text"><strong>暖沙 Claude</strong></span>
+                  <svg class="theme-menu-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"
+                    stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="m20 6-11 11-5-5"></path>
+                  </svg>
+                </button>
+                <button type="button" class="theme-menu-item" role="menuitemradio" aria-checked="false"
+                  data-theme-id="minimal" data-action="setTheme" data-arg="minimal">
+                  <span class="theme-swatch theme-swatch-minimal" aria-hidden="true">
+                    <span class="sw-titlebar"><i></i><i></i><i></i></span>
+                    <span class="sw-body">
+                      <span class="sw-side"></span>
+                      <span class="sw-main">
+                        <span class="sw-accent"></span>
+                        <span class="sw-line"></span>
+                        <span class="sw-line is-short"></span>
+                      </span>
+                    </span>
+                  </span>
+                  <span class="theme-menu-text"><strong>极简云白</strong></span>
+                  <svg class="theme-menu-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"
+                    stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="m20 6-11 11-5-5"></path>
+                  </svg>
+                </button>
+              </div>
+              <div class="theme-menu-col">
+                <div class="theme-menu-group-label" role="presentation">深色</div>
+                <button type="button" class="theme-menu-item" role="menuitemradio" aria-checked="false"
+                  data-theme-id="dark" data-action="setTheme" data-arg="dark">
+                  <span class="theme-swatch theme-swatch-dark" aria-hidden="true">
+                    <span class="sw-titlebar"><i></i><i></i><i></i></span>
+                    <span class="sw-body">
+                      <span class="sw-side"></span>
+                      <span class="sw-main">
+                        <span class="sw-accent"></span>
+                        <span class="sw-line"></span>
+                        <span class="sw-line is-short"></span>
+                      </span>
+                    </span>
+                  </span>
+                  <span class="theme-menu-text"><strong>工作台深色</strong></span>
+                  <svg class="theme-menu-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"
+                    stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="m20 6-11 11-5-5"></path>
+                  </svg>
+                </button>
+                <button type="button" class="theme-menu-item" role="menuitemradio" aria-checked="false"
+                  data-theme-id="eva" data-action="setTheme" data-arg="eva">
+                  <span class="theme-swatch theme-swatch-eva" aria-hidden="true">
+                    <span class="sw-titlebar"><i></i><i></i><i></i></span>
+                    <span class="sw-body">
+                      <span class="sw-side"></span>
+                      <span class="sw-main">
+                        <span class="sw-accent"></span>
+                        <span class="sw-line"></span>
+                        <span class="sw-line is-short"></span>
+                      </span>
+                    </span>
+                  </span>
+                  <span class="theme-menu-text"><strong>霓虹 EVA</strong></span>
+                  <svg class="theme-menu-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"
+                    stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="m20 6-11 11-5-5"></path>
+                  </svg>
+                </button>
+                <button type="button" class="theme-menu-item" role="menuitemradio" aria-checked="false"
+                  data-theme-id="ink" data-action="setTheme" data-arg="ink">
+                  <span class="theme-swatch theme-swatch-ink" aria-hidden="true">
+                    <span class="sw-titlebar"><i></i><i></i><i></i></span>
+                    <span class="sw-body">
+                      <span class="sw-side"></span>
+                      <span class="sw-main">
+                        <span class="sw-accent"></span>
+                        <span class="sw-line"></span>
+                        <span class="sw-line is-short"></span>
+                      </span>
+                    </span>
+                  </span>
+                  <span class="theme-menu-text"><strong>极简墨黑</strong></span>
+                  <svg class="theme-menu-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"
+                    stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="m20 6-11 11-5-5"></path>
+                  </svg>
+                </button>
+              </div>
+              </div>
+              <div class="theme-menu-divider" role="separator" aria-hidden="true"></div>
+              <div class="theme-menu-group-label" role="presentation">风格</div>
+              <div class="theme-style-seg" role="radiogroup" aria-label="界面风格">
+                <button type="button" class="theme-style-btn" role="radio" aria-checked="false"
+                  data-style-id="soft" data-action="setStyle" data-arg="soft">轻拟物</button>
+                <button type="button" class="theme-style-btn" role="radio" aria-checked="false"
+                  data-style-id="minimal" data-action="setStyle" data-arg="minimal">极简扁平</button>
+              </div>
+              <div class="theme-menu-row">
+                <span class="theme-menu-row-label">导航栏图标</span>
+                <button type="button" class="toggle-sm" data-nav-icons-toggle data-action="toggleNavIcons"
+                  data-pass-this role="switch" aria-checked="true" aria-label="显示导航栏图标"></button>
+              </div>
+              <div class="theme-menu-row">
+                <span class="theme-menu-row-label">语言</span>
+                <div class="theme-lang-field">
+                  <select class="theme-lang-select" data-config-key="APP_LANGUAGE"
+                    data-i18n-language-select aria-label="语言">
+                    <option value="zh-CN">简体中文</option>
+                    <option value="en-US">English</option>
+                  </select>
+                  <svg class="theme-lang-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                    stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="m6 9 6 6 6-6"></path>
+                  </svg>
+                </div>
+              </div>
+              <div class="theme-menu-divider" role="separator" aria-hidden="true"></div>
+              <button type="button" class="theme-menu-footer" data-action="openAppearanceSettings"
+                title="打开外观设置" aria-label="打开外观设置">
+                <svg class="theme-menu-footer-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                  stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M12 15.5A3.5 3.5 0 1 0 12 8a3.5 3.5 0 0 0 0 7.5Z"></path>
+                  <path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1 1.55V21a2 2 0 0 1-4 0v-.09a1.7 1.7 0 0 0-1-1.55 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.55-1H3a2 2 0 0 1 0-4h.09a1.7 1.7 0 0 0 1.55-1 1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-1.55V3a2 2 0 0 1 4 0v.09a1.7 1.7 0 0 0 1 1.55 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.7 1.7 0 0 0 19.4 9c.22.6.78 1 1.55 1H21a2 2 0 0 1 0 4h-.09A1.7 1.7 0 0 0 19.4 15Z"></path>
                 </svg>
-              </button>
-              <button type="button" class="theme-menu-item" role="menuitemradio" aria-checked="false"
-                data-theme-id="dark" data-action="setTheme" data-arg="dark">
-                <span class="theme-swatch theme-swatch-dark" aria-hidden="true">
-                  <span class="sw-titlebar"><i></i><i></i><i></i></span>
-                  <span class="sw-body">
-                    <span class="sw-side"></span>
-                    <span class="sw-main">
-                      <span class="sw-accent"></span>
-                      <span class="sw-line"></span>
-                      <span class="sw-line is-short"></span>
-                    </span>
-                  </span>
-                </span>
-                <span class="theme-menu-text">
-                  <strong>工作台深色</strong>
-                  <em>墨蓝</em>
-                </span>
-                <svg class="theme-menu-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"
-                  stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                  <path d="m20 6-11 11-5-5"></path>
-                </svg>
-              </button>
-              <button type="button" class="theme-menu-item" role="menuitemradio" aria-checked="false"
-                data-theme-id="claude" data-action="setTheme" data-arg="claude">
-                <span class="theme-swatch theme-swatch-claude" aria-hidden="true">
-                  <span class="sw-titlebar"><i></i><i></i><i></i></span>
-                  <span class="sw-body">
-                    <span class="sw-side"></span>
-                    <span class="sw-main">
-                      <span class="sw-accent"></span>
-                      <span class="sw-line"></span>
-                      <span class="sw-line is-short"></span>
-                    </span>
-                  </span>
-                </span>
-                <span class="theme-menu-text">
-                  <strong>暖沙 Claude</strong>
-                  <em>米白暖橙</em>
-                </span>
-                <svg class="theme-menu-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"
-                  stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                  <path d="m20 6-11 11-5-5"></path>
-                </svg>
-              </button>
-              <button type="button" class="theme-menu-item" role="menuitemradio" aria-checked="false"
-                data-theme-id="eva" data-action="setTheme" data-arg="eva">
-                <span class="theme-swatch theme-swatch-eva" aria-hidden="true">
-                  <span class="sw-titlebar"><i></i><i></i><i></i></span>
-                  <span class="sw-body">
-                    <span class="sw-side"></span>
-                    <span class="sw-main">
-                      <span class="sw-accent"></span>
-                      <span class="sw-line"></span>
-                      <span class="sw-line is-short"></span>
-                    </span>
-                  </span>
-                </span>
-                <span class="theme-menu-text">
-                  <strong>霓虹 EVA</strong>
-                  <em>深空薄荷</em>
-                </span>
-                <svg class="theme-menu-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"
-                  stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                  <path d="m20 6-11 11-5-5"></path>
+                <span>外观设置</span>
+                <svg class="theme-menu-footer-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                  stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="m9 18 6-6-6-6"></path>
                 </svg>
               </button>
             </div>

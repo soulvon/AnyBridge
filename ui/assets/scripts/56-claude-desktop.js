@@ -172,7 +172,7 @@ function renderClaudeDesktopConfigList(info = null) {
     items.push({
       platformId: 'claude-desktop',
       name: cfg.name || '未命名配置',
-      description: cfg.sourceProviderName ? `来源：${cfg.sourceProviderName}（本地路由）` : '本地路由角色档位映射配置',
+      description: cfg.sourceProviderName ? `来源：${cfg.sourceProviderName}` : '本地路由角色档位映射配置',
       typeLabel: cfg.mode === 'direct' ? '直连' : '本地路由',
       tone: 'third',
       current: isCurrent,

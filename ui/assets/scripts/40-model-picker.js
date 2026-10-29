@@ -1311,6 +1311,11 @@ function openProviderEditor(id) {
   const subtitleEl = document.getElementById('providerModalSubtitle');
   if (subtitleEl) subtitleEl.textContent = p ? `正在编辑「${p.name}」` : '配置供应商信息和模型';
 
+  // 预设目录只在新增时露出：编辑态换预设会覆盖用户已填的地址与协议
+  if (typeof resetProviderPresetUi === 'function') resetProviderPresetUi(!p);
+  // 多密钥池：当前密钥由上方输入框承载，池里只放其余候选
+  if (typeof loadEditorApiKeys === 'function') loadEditorApiKeys(p);
+
   // Start with configured models in list
   activeModelsList = typeof sortModelsNaturally === 'function'
     ? sortModelsNaturally([...selectedModels])
@@ -1416,6 +1421,7 @@ async function saveProviderFromEditor() {
     capabilities,
     models: [...selectedModels],
     modelCaps: mergedModelCaps,
+    apiKeys: typeof collectEditorApiKeys === 'function' ? collectEditorApiKeys() : [],
   };
   if (existingProvider?.unlocks) provider.unlocks = existingProvider.unlocks;
   if (existingProvider?.meta) provider.meta = existingProvider.meta;
@@ -1552,10 +1558,12 @@ async function testProvider(id) {
     }
 
     const msg = typeof result === 'string' ? result : (result.message || '连通 ✓');
+    const latencyMs = Number(result && result.latencyMs) || 0;
     if (dot) dot.className = 'conn-dot ok';
     setProviderConnectionText(id, msg, `${p.name} 连通正常 (${msg})`);
 
-    p.connStatus = { ok: true, text: msg, title: `${p.name} 连通正常 (${msg})` };
+    // latencyMs 用于「延迟优先」排序；没有数值时留 0，排序时按「未测」处理
+    p.connStatus = { ok: true, text: msg, title: `${p.name} 连通正常 (${msg})`, latencyMs };
     addLog('ok', `${p.name} 连通性测试: ${msg}`);
   } catch (err) {
     const rawErr = String(err || '连接失败');

@@ -411,7 +411,11 @@ section('路径可移植性（禁止硬编码盘符/用户目录/安装路径）
       if (testStart >= 0 && i > testStart) return;
       // 豁免：C:\Windows 是 OS 固定系统目录（SystemRoot 环境变量缺失时的
       // 最后兜底），不属于「用户/安装路径硬编码」。
-      const probe = line.replace(/C:\\+Windows/gi, '');
+      // 豁免：先剥掉整段 URL —— `/users/me/balance`、`/home/xxx` 这类片段可能是
+      // 远端接口路径（如 Kimi 的 /v1/users/me/balance），不是本机文件系统路径。
+      const probe = line
+        .replace(/C:\\+Windows/gi, '')
+        .replace(/https?:\/\/\S+/gi, '');
       if (!HARDCODED.test(probe)) return;
       violations.push(`${rel}:${i + 1}`);
     });
@@ -732,6 +736,87 @@ section('UI 设计铁律守卫（ui-src + ui/assets）');
 // ─────────────────────────────────────────────────────────────
 // [3.9] 新增文件行数守卫：只拦新增，存量豁免（防巨型文件持续入场）
 // ─────────────────────────────────────────────────────────────
+section('服务商模板库完整性（预设数据 + 图标一致性）');
+{
+  // 模板是「配一次就不动」的数据，坏了不会自己暴露：
+  // 图标键写错只会静默降级成首字母，地址写错要等用户点下去才报错。
+  // 所以把一致性做进门控，改数据改错立刻红。
+  const presetPath = path.join(root, 'ui/assets/provider-presets.json');
+  const iconPath = path.join(root, 'ui/assets/scripts/33-provider-icons.js');
+
+  let presets = null;
+  try {
+    presets = JSON.parse(fs.readFileSync(presetPath, 'utf8'));
+    ok('预设 JSON 可解析', true);
+  } catch (err) {
+    ok('预设 JSON 可解析', false, String(err && err.message ? err.message : err));
+  }
+
+  let icons = {};
+  let iconsLoadable = true;
+  try {
+    const sandbox = {};
+    new Function('globalThis', fs.readFileSync(iconPath, 'utf8'))(sandbox);
+    icons = sandbox.PROVIDER_ICON_SVGS || {};
+  } catch (err) {
+    iconsLoadable = false;
+    ok('图标表可执行', false, String(err && err.message ? err.message : err));
+  }
+  if (iconsLoadable) ok('图标表可执行', true);
+
+  if (presets && Array.isArray(presets.providers)) {
+    const providers = presets.providers;
+    const groupIds = new Set((presets.groups || []).map((g) => g.id));
+    const seenIds = new Set();
+    const problems = [];
+    for (const p of providers) {
+      if (!p.id || !p.name || !p.group || !p.url) {
+        problems.push(`字段缺失 ${p.id || '(无 id)'}`);
+        continue;
+      }
+      if (!/^https?:\/\//.test(p.url)) problems.push(`url 非法 ${p.id}`);
+      if (!['openai', 'anthropic', 'gemini'].includes(p.format)) problems.push(`format 非法 ${p.id}`);
+      if (!groupIds.has(p.group)) problems.push(`分组未声明 ${p.id} → ${p.group}`);
+      if (seenIds.has(p.id)) problems.push(`id 重复 ${p.id}`);
+      seenIds.add(p.id);
+    }
+    ok(`预设条目完整（${providers.length} 家 / ${groupIds.size} 组）`, problems.length === 0, problems.slice(0, 6).join('; '));
+
+    // 最容易出的一条：icon 写了但图标表里没有 → 界面静默退回首字母，没人会发现
+    const missingIcon = providers
+      .filter((p) => p.icon && !icons[p.icon])
+      .map((p) => `${p.id} → ${p.icon}`);
+    ok('预设引用的图标键都存在', missingIcon.length === 0, missingIcon.slice(0, 6).join(', '));
+
+    const unusedIcons = Object.keys(icons).filter((key) => !providers.some((p) => p.icon === key));
+    if (unusedIcons.length > 0) {
+      warn(`图标表有 ${unusedIcons.length} 个未被引用`, unusedIcons.slice(0, 8).join(', '));
+    }
+  } else {
+    ok('预设条目完整', false, 'providers 不是数组');
+  }
+
+  // 转换脚本若回归，会生成 fill=url(#x) 这种无引号属性或残留 ${iconId}
+  const badSvg = Object.entries(icons)
+    .filter(([, svg]) => {
+      if (!svg.startsWith('<svg') || !svg.endsWith('</svg>')) return true;
+      if (svg.includes('${')) return true;
+      if (/(stopColor|strokeWidth|fillRule|clipPath|xmlnsXlink)=/.test(svg)) return true;
+      if (/\s(?:fill|stroke|clip-path|id)=url\(/.test(svg)) return true;
+      return false;
+    })
+    .map(([key]) => key);
+  ok('图标 SVG 格式合法（无 JSX 残留 / 无裸 url 属性）', badSvg.length === 0, badSvg.slice(0, 6).join(', '));
+
+  // 防止有人把 base64 位图塞进来：cherry 的 dmxapi 单图标就 143KB
+  const iconBytes = fs.existsSync(iconPath) ? fs.statSync(iconPath).size : 0;
+  ok(
+    '图标表体积在限度内（< 300KB）',
+    iconBytes > 0 && iconBytes < 300 * 1024,
+    `${(iconBytes / 1024).toFixed(0)}KB`
+  );
+}
+
 section('新增文件行数守卫（>1500 行阻断，>1000 行提示）');
 {
   let newFiles = '';

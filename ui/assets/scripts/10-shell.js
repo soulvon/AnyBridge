@@ -390,7 +390,9 @@ function activateProxyPanel(panelId = 'overview') {
     tab.setAttribute('aria-selected', String(isActive));
   });
   document.querySelectorAll('.proxy-console-section[data-proxy-section]').forEach(section => {
-    section.classList.toggle('active', section.dataset.proxySection === target);
+    const isActive = section.dataset.proxySection === target;
+    section.classList.toggle('active', isActive);
+    section.style.display = isActive ? (target === 'enhancement' ? 'flex' : 'block') : 'none';
   });
   if (target === 'enhancement' && typeof renderProxyEnhancement === 'function') {
     renderProxyEnhancement();

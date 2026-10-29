@@ -1,105 +1,193 @@
-        <!-- ═══════ PAGE: PROXY ═══════ -->
+        <!-- ═══════ PAGE: PROXY (GATEWAY 2.0) ═══════ -->
         <div class="page" id="page-proxy" role="tabpanel" aria-labelledby="tab-proxy">
           <section class="proxy-console-page">
             <div class="proxy-console-hero glass-card">
               <div class="proxy-console-title">
                 <span class="dot"></span>
                 <div>
-                  <h1>本地代理</h1>
-                  <p>统一管理 AnyBridge sidecar、兼容入口、本地 key 和代理增强。</p>
+                  <h1>本地网关</h1>
+                  <p>统一暴露模型，接管智能体请求，按路由分发到上游供应商。</p>
                 </div>
               </div>
               <div class="proxy-console-actions">
-                <button class="btn-primary" id="globalProxyStartBtn" data-action="startGlobalProxyService">启动代理</button>
-                <button class="btn-ghost accent" id="globalProxyRestartBtn" data-action="restartGlobalProxyService">重启代理</button>
-                <button class="btn-ghost danger" id="globalProxyStopBtn" data-action="stopGlobalProxyService">停止代理</button>
+                <div class="proxy-hero-metrics">
+                  <div class="proxy-hero-metric-item">
+                    <span class="proxy-hero-metric-label">今日调用</span>
+                    <strong class="proxy-hero-metric-val" id="proxyHeroRequests">—</strong>
+                  </div>
+                  <div class="proxy-hero-metric-item">
+                    <span class="proxy-hero-metric-label">平均耗时</span>
+                    <strong class="proxy-hero-metric-val" id="proxyHeroLatency">—</strong>
+                  </div>
+                  <div class="proxy-hero-metric-item">
+                    <span class="proxy-hero-metric-label">可用率</span>
+                    <strong class="proxy-hero-metric-val" id="proxyHeroSuccessRate" style="color: var(--success);">—</strong>
+                  </div>
+                </div>
+                <button type="button" class="btn-ghost" data-action="toggleGatewayDrawer" data-args="[true]" title="查看单条请求链路与诊断决策" style="height: 32px; padding: 0 12px; font-size: 12px; font-weight: 600; display: inline-flex; align-items: center; gap: 5px;">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>
+                  实时诊断 ▸
+                </button>
+                <button class="btn-primary" id="globalProxyStartBtn" data-action="startGlobalProxyService">启动网关</button>
+                <button class="btn-ghost accent" id="globalProxyRestartBtn" data-action="restartGlobalProxyService">重启</button>
+                <button class="btn-ghost danger" id="globalProxyStopBtn" data-action="stopGlobalProxyService">停止</button>
               </div>
             </div>
 
-            <div class="proxy-console-tabs" role="tablist" aria-label="代理配置">
-              <button type="button" class="proxy-console-tab active" data-proxy-panel="overview" aria-selected="true">概览</button>
-              <button type="button" class="proxy-console-tab" data-proxy-panel="routes" aria-selected="false">模型列表</button>
-              <button type="button" class="proxy-console-tab" data-proxy-panel="enhancement" aria-selected="false">代理增强</button>
-              <button type="button" class="proxy-console-tab" data-proxy-panel="stats" aria-selected="false">运行状态</button>
-              <button type="button" class="proxy-console-tab" data-proxy-panel="logs" aria-selected="false">日志</button>
+            <div class="proxy-console-tabs" role="tablist" aria-label="网关配置">
+              <button type="button" class="proxy-console-tab active" data-proxy-panel="overview" data-action="activateProxyPanel" data-arg="overview" onclick="window.activateProxyPanel && window.activateProxyPanel('overview')" aria-selected="true">接入</button>
+              <button type="button" class="proxy-console-tab" data-proxy-panel="routes" data-action="activateProxyPanel" data-arg="routes" onclick="window.activateProxyPanel && window.activateProxyPanel('routes')" aria-selected="false">路由</button>
+              <button type="button" class="proxy-console-tab" data-proxy-panel="enhancement" data-action="activateProxyPanel" data-arg="enhancement" onclick="window.activateProxyPanel && window.activateProxyPanel('enhancement')" aria-selected="false">增强</button>
             </div>
 
             <div class="proxy-console-section active" data-proxy-section="overview">
-              <div class="proxy-console-grid proxy-console-grid-single">
+              <div class="proxy-overview-dashboard-grid">
 
-                <section class="proxy-console-card glass-card ">
+                <!-- 左栏：连接配置与快捷集成 -->
+                <section class="proxy-console-card glass-card proxy-overview-card">
                   <div class="proxy-console-card-head">
                     <div>
-                      <h2>连接配置</h2>
+                      <h2>网关接入与凭证</h2>
+                      <p>兼容 OpenAI / Anthropic 协议，支持外部工具直接连接</p>
                     </div>
                   </div>
 
                   <div class="proxy-section">
-                    <div class="proxy-local-key-box">
-                      <div>
-                        <span>API 地址 (Base URL)</span>
-                        <div class="proxy-value-with-copy">
-                          <strong id="localProxyUnifiedUrl">http://127.0.0.1:{port}</strong>
-                          <button type="button" class="proxy-value-copy-btn" data-action="copyLocalProxyValue" data-arg="unified" title="复制 API 地址">
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-                          </button>
+                    <div class="proxy-clean-field">
+                      <div class="proxy-clean-field-meta">
+                        <span class="proxy-clean-label">Base URL (API 地址)</span>
+                        <div class="proxy-clean-val-row">
+                          <code class="proxy-clean-code" id="localProxyUnifiedUrl">http://127.0.0.1:{port}</code>
+                          <button type="button" class="btn-ghost" data-action="copyLocalProxyValue" data-arg="unified" title="复制 Base URL" style="height: 28px; padding: 0 10px; font-size: 12px;">复制地址</button>
                         </div>
                       </div>
                     </div>
 
-                    <div class="proxy-local-key-box" style="margin-top: 10px;">
-                      <div>
-                        <span>本地 Key</span>
-                        <div class="proxy-value-with-copy">
-                          <strong id="localProxyKeyValue">未生成</strong>
-                          <button type="button" class="proxy-value-copy-btn" data-action="copyLocalProxyValue" data-arg="key" title="复制本地 Key">
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-                          </button>
+                    <div class="proxy-clean-field">
+                      <div class="proxy-clean-field-meta">
+                        <span class="proxy-clean-label">本地访问 Key</span>
+                        <div class="proxy-clean-val-row">
+                          <code class="proxy-clean-code" id="localProxyKeyValue">未生成</code>
+                          <div style="display: flex; gap: 6px; align-items: center;">
+                            <button type="button" class="btn-ghost" data-action="copyLocalProxyValue" data-arg="key" title="复制本地 Key" style="height: 28px; padding: 0 10px; font-size: 12px;">复制 Key</button>
+                            <button type="button" class="btn-ghost" data-action="regenerateLocalProxyKey" title="重新生成 Key" style="height: 28px; padding: 0 8px; font-size: 12px;">刷新</button>
+                          </div>
                         </div>
                       </div>
-                      <div class="proxy-local-key-actions">
-                        <button class="btn-ghost accent" data-action="regenerateLocalProxyKey">重新生成</button>
+                    </div>
+
+                    <!-- 快捷接入助手 (简约平铺无重度背景) -->
+                    <div class="proxy-preset-clean">
+                      <div class="proxy-preset-clean-header">
+                        <span class="proxy-clean-label">快速配置预设:</span>
+                        <div class="proxy-preset-nav">
+                          <button type="button" class="proxy-preset-tab active" data-preset="cursor" data-action="setProxyPresetTab" data-arg="cursor">Cursor / VS Code</button>
+                          <button type="button" class="proxy-preset-tab" data-preset="curl" data-action="setProxyPresetTab" data-arg="curl">cURL 探针</button>
+                          <button type="button" class="proxy-preset-tab" data-preset="env" data-action="setProxyPresetTab" data-arg="env">Shell 变量</button>
+                        </div>
+                      </div>
+                      <div class="proxy-preset-clean-box">
+                        <code class="proxy-preset-clean-code" id="proxyPresetCodeSnippet">Base URL: http://127.0.0.1:7450/v1</code>
+                        <button type="button" class="btn-ghost accent" data-action="copyQuickPresetSnippet" style="height: 26px; padding: 0 10px; font-size: 12px; white-space: nowrap;">一键复制</button>
                       </div>
                     </div>
 
-                    <div class="proxy-ports-grid proxy-ports-grid-single" style="margin-top: 14px;">
-                      <div class="proxy-port-field">
-                        <label>API 服务端口</label>
-                        <input id="localProxyPortInput" class="input-sm" type="number" min="1" max="65535" value="7450">
+                    <!-- 端口与自启紧凑横排 -->
+                    <div class="proxy-settings-compact-row">
+                      <div class="proxy-port-compact">
+                        <span class="proxy-clean-label">服务端口</span>
+                        <div style="display: flex; gap: 8px; align-items: center;">
+                          <input id="localProxyPortInput" class="input-sm" type="number" min="1" max="65535" value="7450" style="width: 80px; height: 30px; font-size: 12.5px;">
+                          <button type="button" class="btn-ghost" data-action="saveLocalProxyPorts" data-arg="proxy" style="height: 30px; padding: 0 10px; font-size: 12px;">保存</button>
+                        </div>
                       </div>
-                      <button class="btn-ghost accent" data-action="saveLocalProxyPorts" data-arg="proxy">保存端口</button>
-                    </div>
-                  </div>
-
-                  <div class="proxy-section-divider"></div>
-
-                  <div class="proxy-section">
-                    <div class="proxy-section-title">
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                        <path d="M5 12h14"></path>
-                        <path d="m12 5 7 7-7 7"></path>
-                      </svg>
-                      启动偏好
-                    </div>
-                    <div class="proxy-preference-row">
-                      <div>
-                        <span>启动时自动运行</span>
-                        <strong>应用打开时自动启动本地代理</strong>
+                      <div class="proxy-autostart-compact">
+                        <div>
+                          <span class="proxy-clean-label" style="display: block;">开机自启</span>
+                          <span style="font-size: 12px; color: var(--text-muted);">打开 AnyBridge 时自动运行</span>
+                        </div>
+                        <div class="toggle-sm" data-config-toggle="AUTO_START_PROXY" role="switch" aria-label="启动时自动运行网关"></div>
                       </div>
-                      <div class="toggle-sm" data-config-toggle="AUTO_START_PROXY" role="switch" aria-label="启动时自动运行代理"></div>
                     </div>
                   </div>
                 </section>
 
-            </div>
+                <!-- 右栏：已接管智能体矩阵与实时调用流水 -->
+                <div style="display: flex; flex-direction: column; gap: 14px;">
+                  <section class="proxy-console-card glass-card proxy-overview-card">
+                    <div class="proxy-console-card-head">
+                      <div>
+                        <h2>已接入智能体</h2>
+                        <p>检测本机客户端与网关分流状态</p>
+                      </div>
+                      <button type="button" class="btn-ghost accent" data-action="navigateTo" data-arg="models" style="font-size: 11.5px; height: 26px; padding: 0 8px;">管理智能体 →</button>
+                    </div>
+
+                    <div class="gateway-takeover-list">
+                      <div class="gateway-takeover-item">
+                        <div class="gateway-ti-left">
+                          <div class="gateway-app-icon">Cu</div>
+                          <div>
+                            <div class="gateway-ti-name">Cursor</div>
+                            <div class="gateway-ti-detail">已接管 · 流量走本地网关转发与自愈</div>
+                          </div>
+                        </div>
+                        <button type="button" class="btn-ghost accent" data-action="navigateTo" data-arg="models" style="font-size: 11px; height: 24px; padding: 0 8px;">查看配置</button>
+                      </div>
+
+                      <div class="gateway-takeover-item">
+                        <div class="gateway-ti-left">
+                          <div class="gateway-app-icon">Cx</div>
+                          <div>
+                            <div class="gateway-ti-name">Codex</div>
+                            <div class="gateway-ti-detail">独立模型表支持 · 免全局重命名干扰</div>
+                          </div>
+                        </div>
+                        <button type="button" class="btn-ghost accent" data-action="navigateTo" data-arg="models" style="font-size: 11px; height: 24px; padding: 0 8px;">查看配置</button>
+                      </div>
+
+                      <div class="gateway-takeover-item">
+                        <div class="gateway-ti-left">
+                          <div class="gateway-app-icon">Ws</div>
+                          <div>
+                            <div class="gateway-ti-name">Windsurf / 其他</div>
+                            <div class="gateway-ti-detail">填入上述 Base URL 与 Key 即可直接接入</div>
+                          </div>
+                        </div>
+                        <button type="button" class="btn-ghost" data-action="setProxyPresetTab" data-arg="cursor" style="font-size: 11px; height: 24px; padding: 0 8px;">获取配置</button>
+                      </div>
+                    </div>
+                  </section>
+
+                  <!-- 实时调用流水卡片 -->
+                  <section class="proxy-console-card glass-card proxy-overview-card" style="flex: 1; display: flex; flex-direction: column; justify-content: space-between;">
+                    <div>
+                      <div class="proxy-console-card-head">
+                        <div>
+                          <h2>实时调用流水</h2>
+                          <p>经过本地网关转发的最新请求</p>
+                        </div>
+                      </div>
+                      <div class="proxy-live-stream-list" id="proxyOverviewRecentStream">
+                        <div class="proxy-live-stream-empty">暂无近期调用记录 · 发起请求后在此实时呈现</div>
+                      </div>
+                    </div>
+                    <div style="margin-top: 14px; padding-top: 10px; border-top: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center;">
+                      <span style="font-size: 12px; color: var(--text-muted);">点击右上角「实时诊断」查看完整决策链路</span>
+                      <button type="button" class="btn-ghost accent" data-action="toggleGatewayDrawer" data-args="[true]" style="font-size: 12px; height: 28px; padding: 0 10px;">打开诊断 →</button>
+                    </div>
+                  </section>
+                </div>
+
+              </div>
             </div>
 
             <div class="proxy-console-section" data-proxy-section="routes">
               <section class="proxy-console-card glass-card proxy-routes-card">
                 <div class="proxy-routes-hero">
                   <div class="proxy-routes-title">
-                    <h2>模型列表</h2>
-                    <p>管理本地代理对外暴露的模型。请求里的 model 必须命中这里的模型 ID。</p>
+                    <h2>网关路由映射</h2>
+                    <p>管理本地网关对外暴露的模型通路与上游分流规则。</p>
                   </div>
                 </div>
                 <div class="proxy-routes-toolbar">
@@ -166,7 +254,7 @@
                         </th>
                         <th>
                           <span class="model-map-display-head">
-                            <span>模型 ID</span>
+                            <span>对外模型 ID</span>
                             <button class="btn-ghost accent model-map-settings-btn"
  title="批量重命名模型 ID（加前后缀/换名）" aria-label="批量重命名模型 ID" data-action="openProxyRouteRenameModal">
                               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
@@ -179,7 +267,7 @@
                             </button>
                           </span>
                         </th>
-                        <th>上游</th>
+                        <th>主上游目标与备份</th>
                         <th>能力</th>
                         <th>操作</th>
                         <th>
@@ -208,17 +296,65 @@
               </section>
             </div>
 
+            <!-- 视图 3: 增强中间件 (纯粹极简现代控制台主体) -->
             <div class="proxy-console-section" data-proxy-section="enhancement">
+              <!-- 原生设置主体（由 10-shell.js mountProxyEnhancementPanel 挂载进来） -->
               <div id="proxyEnhancementMount"></div>
             </div>
 
-            <div class="proxy-console-section" data-proxy-section="stats">
+            <!-- 隐藏挂载点，保持与现有 stats.js 逻辑兼容 -->
+            <div class="proxy-console-section" data-proxy-section="stats" style="display: none !important;">
               <div id="proxyStatsMount" class="proxy-stats-mount"></div>
             </div>
+          </section>
+        </div>
 
-            <div class="proxy-console-section" data-proxy-section="logs">
+        <!-- ══════ 抽屉：实时诊断与网关日志 (Request Timeline & Logs) ══════ -->
+        <div id="gatewayDrawerMask" class="gateway-drawer-mask" data-action="toggleGatewayDrawer" data-args="[false]">
+          <aside class="gateway-drawer" data-stop data-action="__noop">
+            <div class="gateway-drawer-head">
+              <div>
+                <div style="font-size: 14.5px; font-weight: 700; color: var(--text-primary);">网关诊断与审计</div>
+                <div style="font-size: 11.5px; color: var(--text-muted); margin-top: 2px;">实时捕获的请求调用链路与底层运行日志</div>
+              </div>
+              <button type="button" class="btn-ghost" data-action="toggleGatewayDrawer" data-args="[false]" style="height: 28px; padding: 0 10px; font-size: 12px;">关闭</button>
+            </div>
+
+            <!-- 抽屉内双 Tab -->
+            <div class="proxy-preset-nav" style="border-bottom: 1px solid var(--border); padding-bottom: 8px;">
+              <button type="button" class="proxy-preset-tab active" id="drawerTabTimelineBtn" data-action="setDrawerSubTab" data-arg="timeline">链路时间线</button>
+              <button type="button" class="proxy-preset-tab" id="drawerTabLogsBtn" data-action="setDrawerSubTab" data-arg="logs">网关日志</button>
+            </div>
+
+            <!-- 子视图 1: 时间线 -->
+            <div class="gateway-timeline" id="gatewayDrawerTimeline">
+              <div class="gateway-tl-entry">
+                <div class="gateway-tl-header">
+                  <span class="gateway-tl-title">POST /v1/chat/completions</span>
+                  <span class="proxy-tag-ok" style="font-size: 11px; padding: 1px 6px; border-radius: 4px; font-weight: 600;">200 OK</span>
+                </div>
+                <div class="gateway-tl-sub" id="drawerRecentReqMeta">最近请求分析就绪</div>
+                <div class="gateway-tl-step ok">
+                  <span>中间件切面</span>
+                  <span style="color: var(--accent); font-weight: 600;">参数校验与模型路由分发</span>
+                  <span class="gateway-tl-dur">2ms</span>
+                </div>
+                <div class="gateway-tl-step ok">
+                  <span>上游直连</span>
+                  <span>响应流式输出传输正常</span>
+                  <span class="gateway-tl-dur" id="drawerRecentReqDuration">—</span>
+                </div>
+                <div class="gateway-tl-footer">
+                  <span>决策状态: 链路健康</span>
+                  <span id="drawerRecentReqTime">等待下一次调用</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- 子视图 2: 挂载网关日志 -->
+            <div id="gatewayDrawerLogs" style="display: none; flex: 1; min-height: 0; overflow-y: auto;">
               <div id="proxyLogsMount" class="proxy-logs-mount"></div>
             </div>
-          </section>
+          </aside>
         </div>
 

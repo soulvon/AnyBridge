@@ -422,6 +422,7 @@ pub fn import_providers(
             name: unique_provider_name(&store, &candidate.name),
             api_host: candidate.api_host.trim_end_matches('/').to_string(),
             api_key: candidate.api_key,
+            api_keys: Vec::new(),
             api_path: candidate.api_path.filter(|p| !p.trim().is_empty()),
             default_model: candidate.default_model,
             api_format: candidate.api_format,

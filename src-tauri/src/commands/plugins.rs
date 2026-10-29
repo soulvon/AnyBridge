@@ -176,6 +176,7 @@ fn auto_add_plugin_provider(
         name: name.to_string(),
         api_host: host,
         api_key: api_key.to_string(),
+        api_keys: Vec::new(),
         api_path: Some("/v1".into()),
         default_model: String::new(),
         api_format: ApiFormat::Openai,

@@ -5,11 +5,12 @@ globalThis.providerStore = { providers: [], codexConfigs: [], claudeCodeConfigs:
 globalThis.providerStoreLoaded = false;
 globalThis.PROVIDER_VIEW_STORAGE_KEY = 'anybridge.providerViewMode';
 globalThis.PROVIDER_SORT_STORAGE_KEY = 'anybridge.providerSortMode';
-globalThis.PROVIDER_SORT_MODES = new Set(['default', 'name-asc', 'name-desc']);
+globalThis.PROVIDER_SORT_MODES = new Set(['default', 'name-asc', 'name-desc', 'latency-asc']);
 globalThis.PROVIDER_SORT_LABELS = {
   default: '默认排序',
   'name-asc': '名称正序',
   'name-desc': '名称反序',
+  'latency-asc': '延迟优先',
 };
 globalThis.providerViewMode = (() => {
   try {
@@ -151,7 +152,7 @@ function capabilityBadges(p, compact = false, modelId = null) {
   const showModelCaps = !!modelId;
   const _t = (k) => (typeof window.t === 'function' ? window.t(k) : k);
   const mk = (label, on, title) => `
-    <span class="tag" title="${escAttr(title || label)}" style="background:${on ? 'var(--success-dim)' : 'var(--bg-input)'}; color:${on ? 'var(--success)' : 'var(--text-muted)'}; border:1px solid ${on ? 'rgba(22,163,74,.22)' : 'var(--border)'}; font-size:${compact ? '10px' : '11px'}; padding:${compact ? '2px 6px' : '3px 8px'}; border-radius:7px;">${escAttr(label)}</span>`;
+    <span class="tag tag-cap-badge ${on ? 'is-active' : 'is-off'}" title="${escAttr(title || label)}" style="background:${on ? 'var(--success-dim)' : 'var(--bg-input)'}; color:${on ? 'var(--success)' : 'var(--text-muted)'}; border:1px solid ${on ? 'rgba(22,163,74,.22)' : 'var(--border)'}; font-size:${compact ? '10px' : '11px'}; padding:${compact ? '2px 6px' : '3px 8px'}; border-radius:7px;">${escAttr(label)}</span>`;
   return [
     mk(_t('流式'), c.stream),
     showModelCaps ? mk(_t('视觉'), c.vision, c.vision ? _t('该模型已标记支持图片理解') : _t('该模型未标记图片理解')) : '',
@@ -221,7 +222,7 @@ function slotVisionAssessment(uid, targets, supportsImages = true) {
 
 function renderVisionPill(info, compact = false) {
   const s = visionStatusStyle(info.state);
-  return `<span class="tag" title="${escAttr(info.title || info.label)}" style="display:inline-flex;align-items:center;gap:5px;background:${s.bg};color:${s.color};border:1px solid ${s.border};font-size:${compact ? '10px' : '11px'};padding:${compact ? '2px 6px' : '3px 8px'};border-radius:7px;font-weight:700;white-space:nowrap;">${escAttr(info.label)}</span>`;
+  return `<span class="tag tag-vision-pill tag-vision-${escAttr(info.state || 'default')}" title="${escAttr(info.title || info.label)}" style="display:inline-flex;align-items:center;gap:5px;background:${s.bg};color:${s.color};border:1px solid ${s.border};font-size:${compact ? '10px' : '11px'};padding:${compact ? '2px 6px' : '3px 8px'};border-radius:7px;font-weight:700;white-space:nowrap;">${escAttr(info.label)}</span>`;
 }
 
 function isAccountSlotModel(m) {
@@ -396,13 +397,13 @@ function builtinProxySortRank(p) {
 
 function builtinProviderBadgeHtml(p) {
   if (isLocalProxyProvider(p)) {
-    return '<span class="provider-builtin-badge">本地代理</span>';
+    return '<span class="provider-builtin-badge">本地网关</span>';
   }
   if (isCpaLocalProvider(p)) {
-    return '<span class="provider-builtin-badge">本地代理</span>';
+    return '<span class="provider-builtin-badge">本地网关</span>';
   }
   if (isPluginLocalProvider(p)) {
-    return '<span class="provider-builtin-badge">本地代理</span>';
+    return '<span class="provider-builtin-badge">本地网关</span>';
   }
   return '';
 }
@@ -527,10 +528,25 @@ function compareProvidersByName(a, b) {
   });
 }
 
+/** 延迟实测值；没测过返回 null（不能当 0 参与排序，否则未测的会排最前）。 */
+function providerLatencyMs(p) {
+  const raw = Number(p?.connStatus?.latencyMs);
+  return Number.isFinite(raw) && raw > 0 ? raw : null;
+}
+
 function providerSortedList(list = []) {
   if (!Array.isArray(list)) return [];
   let result = list;
-  if (providerSortMode !== 'default') {
+  if (providerSortMode === 'latency-asc') {
+    result = [...list].sort((a, b) => {
+      const la = providerLatencyMs(a);
+      const lb = providerLatencyMs(b);
+      if (la === null && lb === null) return compareProvidersByName(a, b);
+      if (la === null) return 1;
+      if (lb === null) return -1;
+      return la === lb ? compareProvidersByName(a, b) : la - lb;
+    });
+  } else if (providerSortMode !== 'default') {
     const sorted = [...list].sort(compareProvidersByName);
     result = providerSortMode === 'name-desc' ? sorted.reverse() : sorted;
   }
@@ -991,6 +1007,7 @@ function renderProviderCards(list) {
             <div class="field-label">已选模型</div>
             <div class="provider-model-chip-list">${providerModelBadges(p) || '<span class="provider-empty-text">未选择</span>'}</div>
           </div>
+          ${builtin || globalThis.PROVIDER_BALANCE_UI_ENABLED !== true || typeof providerBalanceRowHtml !== 'function' ? '' : providerBalanceRowHtml(p)}
         </div>
         <div class="provider-footer">
           ${connStatusHtml}
@@ -1076,6 +1093,10 @@ function renderProviders() {
   if (!grid) return;
   const all = providerListAll();
   cleanupProviderSelection(all);
+  // 供应商被删掉后清掉残留余额，避免下次同名供应商张冠李戴
+  if (typeof pruneProviderBalanceCache === 'function') {
+    pruneProviderBalanceCache(all.map(p => p.id));
+  }
   const list = providerVisibleList(all);
   renderProviderToolbarState(all.length, list);
   grid.classList.toggle('provider-grid-list', providerViewMode === 'list');

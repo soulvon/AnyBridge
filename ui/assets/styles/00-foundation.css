@@ -294,64 +294,66 @@
 
 /* ═══════ TOKENS — 霓虹 EVA（深色主题覆盖：深空曜黑 + 电光靛紫 + 赛博薄荷青翠点睛） ═══════ */
 [data-theme="eva"] {
-  --bg-primary: #090A0F;
-  --bg-secondary: #10121A;
-  --bg-card: rgba(17, 19, 27, 0.96);
-  --bg-hero: linear-gradient(135deg, #090A0F 0%, #10131F 52%, #0A0C13 100%);
-  --bg-glass: rgba(16, 18, 26, 0.88);
+  /* 底盘：深空紫黑（比原版更偏紫，去掉冷灰蓝感） */
+  --bg-primary: #07060E;
+  --bg-secondary: #0F0C1A;
+  --bg-card: rgba(20, 16, 33, 0.96);
+  --bg-hero: linear-gradient(135deg, #07060E 0%, #15102B 52%, #0A0814 100%);
+  --bg-glass: rgba(19, 15, 31, 0.88);
   --bg-input: rgba(255, 255, 255, 0.055);
-  --bg-hover: rgba(255, 255, 255, 0.08);
+  --bg-hover: rgba(168, 85, 247, 0.14);
 
-  --accent: #6366F1;
-  --accent-hover: #4F46E5;
-  --accent-secondary: #2DD4BF;
-  --accent-warm: #FFB020;
-  --accent-light: rgba(99, 102, 241, 0.15);
-  --accent-glow: rgba(99, 102, 241, 0.25);
-  --accent-rgb: 99, 102, 241;
-  --accent-secondary-rgb: 45, 212, 191;
-  --accent-bright-rgb: 52, 211, 153;
+  /* 主色：初号机紫罗兰 + 霓虹青（紫青对撞是 EVA 的核心语言） */
+  --accent: #8B5CF6;
+  --accent-hover: #A78BFA;
+  --accent-secondary: #22D3EE;
+  --accent-warm: #FF8A3D;
+  --accent-light: rgba(139, 92, 246, 0.18);
+  --accent-glow: rgba(139, 92, 246, 0.32);
+  --accent-rgb: 139, 92, 246;
+  --accent-secondary-rgb: 34, 211, 238;
+  --accent-bright-rgb: 34, 211, 238;
 
-  --topbar-bg: linear-gradient(180deg, rgba(16, 18, 25, 0.98) 0%, rgba(10, 11, 16, 0.96) 100%);
-  --topbar-segment-bg: linear-gradient(180deg, rgba(25, 28, 38, 0.9), rgba(16, 18, 25, 0.9));
+  --topbar-bg: linear-gradient(180deg, rgba(19, 15, 32, 0.98) 0%, rgba(9, 7, 16, 0.96) 100%);
+  --topbar-segment-bg: linear-gradient(180deg, rgba(31, 24, 50, 0.92), rgba(17, 13, 28, 0.92));
   --topbar-border: rgba(255, 255, 255, 0.08);
   --topbar-shadow: 0 1px 0 rgba(255, 255, 255, 0.05) inset, 0 12px 26px -20px rgba(0, 0, 0, 0.85);
-  --pill-running-bg: linear-gradient(135deg, #2DD4BF, #059669);
-  --pill-running-shadow: 0 10px 18px -13px rgba(16, 185, 129, 0.74);
-  --logo-node-1: #9D7BFF;
-  --logo-node-2: #35D6E8;
-  --logo-node-3: #FF6B9D;
+  --pill-running-bg: linear-gradient(135deg, #22D3EE, #0891B2);
+  --pill-running-shadow: 0 10px 18px -13px rgba(34, 211, 238, 0.60);
+  --logo-node-1: #A78BFA;
+  --logo-node-2: #22D3EE;
+  --logo-node-3: #4ADE80;
 
-  --sidebar-bg: linear-gradient(180deg, #07080C 0%, #0A0C11 100%);
+  --sidebar-bg: linear-gradient(180deg, #06050B 0%, #0A0813 100%);
   --sidebar-border: rgba(255, 255, 255, 0.07);
   --sidebar-shadow: 1px 0 0 rgba(255, 255, 255, 0.04) inset;
   --sidebar-icon-bg: #F8F9FA;
   --sidebar-icon-border: rgba(255, 255, 255, 0.14);
   --sidebar-icon-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
-  --sidebar-item-color: #828B9E;
-  --sidebar-item-hover-bg: rgba(99, 102, 241, 0.08);
+  --sidebar-item-color: #8B84A8;
+  --sidebar-item-hover-bg: rgba(139, 92, 246, 0.10);
   --sidebar-item-hover-color: #FFFFFF;
-  --sidebar-active-bg: rgba(99, 102, 241, 0.16);
-  --sidebar-active-border: rgba(99, 102, 241, 0.38);
+  --sidebar-active-bg: rgba(139, 92, 246, 0.20);
+  --sidebar-active-border: rgba(139, 92, 246, 0.45);
   --sidebar-active-color: #FFFFFF;
   --sidebar-active-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
-  --success: #10B981;
-  --success-dim: rgba(16, 185, 129, 0.14);
-  --danger: #EF4444;
-  --danger-dim: rgba(239, 68, 68, 0.14);
-  --warn: #F59E0B;
-  --accent-warm-dim: rgba(245, 158, 11, 0.14);
+  --success: #34D399;
+  --success-dim: rgba(52, 211, 153, 0.14);
+  --danger: #F87171;
+  --danger-dim: rgba(248, 113, 113, 0.14);
+  --warn: #FBBF24;
+  --accent-warm-dim: rgba(251, 191, 36, 0.14);
 
   --text-primary: #FFFFFF;
-  --text-secondary: #CBD5E1;
-  --text-muted: #828B9E;
-  --text-dim: #828B9E;
-  --text-inverse: #090A0F;
+  --text-secondary: #D6D1E8;
+  --text-muted: #8B84A8;
+  --text-dim: #8B84A8;
+  --text-inverse: #07060E;
   --button-on-solid: #FFFFFF;
 
-  --border: rgba(255, 255, 255, 0.09);
-  --border-strong: rgba(255, 255, 255, 0.18);
-  --table-th-bg: rgba(99, 102, 241, 0.08);
+  --border: rgba(167, 139, 250, 0.14);
+  --border-strong: rgba(167, 139, 250, 0.28);
+  --table-th-bg: rgba(139, 92, 246, 0.10);
 
   --shadow-sm:
     0 1px 0 rgba(255, 255, 255, 0.04) inset,
@@ -369,10 +371,157 @@
     0 10px 24px -6px rgba(0, 0, 0, 0.7);
 }
 
+/* ═══════ TOKENS — 极简云白 Minimal（清爽高质感微灰底盘 + 纯白浮岛胶囊 + 沉稳高对比文字） ═══════ */
+[data-theme="minimal"] {
+  --bg-primary: #F8FAFC;
+  --bg-secondary: #F1F5F9;
+  --bg-card: #FFFFFF;
+  --bg-hero: #FFFFFF;
+  --bg-glass: rgba(255, 255, 255, 0.96);
+  --bg-input: #F1F5F9;
+  --bg-hover: #F1F5F9;
+
+  --accent: #0F172A;
+  --accent-hover: #020617;
+  --accent-secondary: #475569;
+  --accent-warm: #D97706;
+  --accent-light: rgba(15, 23, 42, 0.05);
+  --accent-glow: rgba(15, 23, 42, 0.10);
+  --accent-rgb: 15, 23, 42;
+  --accent-secondary-rgb: 71, 85, 105;
+  --accent-bright-rgb: 15, 23, 42;
+
+  --topbar-bg: #FFFFFF;
+  --topbar-segment-bg: #F1F5F9;
+  --topbar-border: rgba(0, 0, 0, 0.06);
+  --topbar-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+  /* 运行态胶囊底色必须足够深，才能承载 --button-on-solid(#FFFFFF) 白字；
+     扁平风格下的浅灰中性方案由 [data-style="minimal"] 单独覆盖 */
+  --pill-running-bg: linear-gradient(135deg, #13B67D, #087D5D);
+  --pill-running-shadow: 0 6px 14px -6px rgba(19, 182, 125, 0.42);
+  --brand-frame-bg: #FFFFFF;
+  --brand-frame-border: rgba(0, 0, 0, 0.06);
+  --logo-node-1: #0F172A;
+  --logo-node-2: #475569;
+  --logo-node-3: #94A3B8;
+
+  --sidebar-bg: #F8FAFC;
+  --sidebar-border: rgba(0, 0, 0, 0.06);
+  --sidebar-shadow: none;
+  --sidebar-icon-bg: #FFFFFF;
+  --sidebar-icon-border: rgba(0, 0, 0, 0.06);
+  --sidebar-icon-shadow: 0 1px 2px rgba(0, 0, 0, 0.02);
+  --sidebar-item-color: #64748B;
+  --sidebar-item-hover-bg: rgba(0, 0, 0, 0.03);
+  --sidebar-item-hover-color: #0F172A;
+  --sidebar-active-bg: #FFFFFF;
+  --sidebar-active-border: rgba(0, 0, 0, 0.06);
+  --sidebar-active-color: #0F172A;
+  --sidebar-active-shadow: 0 2px 6px -1px rgba(0, 0, 0, 0.06);
+  --success: #15803D;
+  --success-dim: #F0FDF4;
+  --danger: #DC2626;
+  --danger-dim: #FEF2F2;
+  --warn: #D97706;
+  --accent-warm-dim: #FFFBEB;
+
+  --text-primary: #0F172A;
+  --text-secondary: #334155;
+  --text-muted: #475569;
+  --text-dim: #64748B;
+  --text-inverse: #FFFFFF;
+  --button-on-solid: #FFFFFF;
+
+  --border: rgba(15, 23, 42, 0.08);
+  --border-strong: rgba(15, 23, 42, 0.16);
+  --table-th-bg: #F8FAFC;
+
+  --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.04);
+  --shadow-md: 0 4px 6px -1px rgba(15, 23, 42, 0.05), 0 2px 4px -2px rgba(15, 23, 42, 0.03);
+  --shadow-card: 0 1px 3px rgba(15, 23, 42, 0.04), 0 1px 2px rgba(15, 23, 42, 0.02);
+  --shadow-card-hover: 0 6px 16px -4px rgba(15, 23, 42, 0.08), 0 2px 6px -1px rgba(15, 23, 42, 0.04);
+}
+
+/* ═══════ TOKENS — 极简墨黑 Ink（云白的深色对：深空底盘 + 中性色阶 + 高对比浅字） ═══════ */
+[data-theme="ink"] {
+  --bg-primary: #0B1120;
+  --bg-secondary: #111827;
+  --bg-card: #151C2C;
+  --bg-hero: #151C2C;
+  --bg-glass: rgba(21, 28, 44, 0.94);
+  --bg-input: #1B2333;
+  --bg-hover: #1F2937;
+
+  --accent: #E2E8F0;
+  --accent-hover: #F8FAFC;
+  --accent-secondary: #94A3B8;
+  --accent-warm: #FBBF24;
+  --accent-light: rgba(226, 232, 240, 0.10);
+  --accent-glow: rgba(226, 232, 240, 0.14);
+  --accent-dim: rgba(226, 232, 240, 0.06);
+  --accent-rgb: 226, 232, 240;
+  --accent-secondary-rgb: 148, 163, 184;
+  --accent-bright-rgb: 226, 232, 240;
+
+  /* 顶栏须比页面底色略亮，否则与内容区完全同色、失去边界 */
+  --topbar-bg: #101827;
+  --topbar-segment-bg: #1B2333;
+  --topbar-border: rgba(255, 255, 255, 0.07);
+  --topbar-shadow: none;
+  /* 与其余主题保持一致：深绿渐变承载 --button-on-solid 白字 */
+  --pill-running-bg: linear-gradient(135deg, #13B67D, #087D5D);
+  --pill-running-shadow: 0 6px 14px -6px rgba(19, 182, 125, 0.42);
+  --brand-frame-bg: #151C2C;
+  --brand-frame-border: rgba(255, 255, 255, 0.10);
+  --logo-node-1: #F1F5F9;
+  --logo-node-2: #94A3B8;
+  --logo-node-3: #64748B;
+
+  --sidebar-bg: #0B1120;
+  --sidebar-border: rgba(255, 255, 255, 0.07);
+  --sidebar-shadow: none;
+  /* 图标底改浅灰：多数平台 logo 是深色/黑白，深底上会糊成一团 */
+  --sidebar-icon-bg: #C7D0DD;
+  --sidebar-icon-border: rgba(255, 255, 255, 0.10);
+  --sidebar-icon-shadow: none;
+  --sidebar-item-color: #94A3B8;
+  --sidebar-item-hover-bg: rgba(255, 255, 255, 0.05);
+  --sidebar-item-hover-color: #F1F5F9;
+  --sidebar-active-bg: #1B2333;
+  --sidebar-active-border: rgba(255, 255, 255, 0.10);
+  --sidebar-active-color: #F8FAFC;
+  --sidebar-active-shadow: 0 2px 6px -1px rgba(0, 0, 0, 0.50);
+
+  --success: #34D399;
+  --success-dim: rgba(52, 211, 153, 0.14);
+  --danger: #F87171;
+  --danger-dim: rgba(248, 113, 113, 0.14);
+  --warn: #FBBF24;
+  --accent-warm-dim: rgba(251, 191, 36, 0.14);
+
+  --text-primary: #F1F5F9;
+  --text-secondary: #CBD5E1;
+  --text-muted: #94A3B8;
+  --text-dim: #64748B;
+  --text-inverse: #0B1120;
+  --button-on-solid: #0B1120;
+
+  --border: rgba(255, 255, 255, 0.08);
+  --border-strong: rgba(255, 255, 255, 0.16);
+  --table-th-bg: #151C2C;
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.35);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.45);
+  --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.40), 0 1px 2px rgba(0, 0, 0, 0.25);
+  --shadow-card-hover: 0 6px 16px -4px rgba(0, 0, 0, 0.55);
+}
+
 /* ═══════ SWITCH TOGGLE (开关样式) ═══════ */
 .toggle-sm {
   width: 44px;
   height: 22px;
+  padding: 0;
+  appearance: none;
   background: var(--bg-input);
   border: 1px solid var(--border);
   border-radius: var(--radius-pill);

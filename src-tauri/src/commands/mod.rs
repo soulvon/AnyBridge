@@ -22,6 +22,7 @@ pub mod model_map;
 pub mod platforms;
 pub mod plugin_asset;
 pub mod plugins;
+pub mod provider_balance;
 pub mod provider_import;
 pub mod proxy;
 pub mod proxy_routes;

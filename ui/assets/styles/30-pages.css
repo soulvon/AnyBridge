@@ -456,10 +456,10 @@
 .theme-card {
   position: relative;
   display: flex;
-  flex-direction: column;
-  gap: 8px;
-  min-height: 96px;
-  padding: 10px;
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px 8px 8px;
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   background: var(--bg-card);
@@ -485,37 +485,39 @@
 .theme-card.is-active::after {
   content: '';
   position: absolute;
-  top: 10px;
+  top: 50%;
   right: 12px;
   width: 5px;
   height: 9px;
   border: solid var(--accent);
   border-width: 0 2px 2px 0;
-  transform: rotate(45deg);
+  transform: translateY(-50%) rotate(45deg);
 }
 .theme-card-preview {
   display: flex;
   flex-direction: column;
-  height: 64px;
+  flex: 0 0 auto;
+  width: 68px;
+  height: 42px;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 6px;
   overflow: hidden;
   background: var(--tw-content);
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
 }
 .tcp-titlebar {
-  height: 14px;
+  height: 10px;
   flex: 0 0 auto;
   display: flex;
   align-items: center;
   gap: 3px;
-  padding: 0 7px;
+  padding: 0 6px;
   background: var(--tw-titlebar);
   border-bottom: 1px solid rgba(0, 0, 0, 0.1);
 }
 .tcp-titlebar i {
-  width: 4px;
-  height: 4px;
+  width: 3px;
+  height: 3px;
   border-radius: 50%;
 }
 .tcp-titlebar i:nth-child(1) { background: #FF5F57; }
@@ -537,19 +539,19 @@
   display: flex;
   flex-direction: column;
   justify-content: center;
-  gap: 4px;
-  padding: 0 9px;
+  gap: 3px;
+  padding: 0 7px;
 }
 .tcp-accent {
-  height: 4px;
+  height: 3px;
   width: 46%;
   border-radius: 2px;
   background: var(--tw-accent);
 }
 .tcp-line {
-  height: 3px;
+  height: 2px;
   width: 78%;
-  border-radius: 1.5px;
+  border-radius: 1px;
   background: var(--tw-line);
 }
 .tcp-line.is-short {
@@ -577,17 +579,38 @@
   --tw-line: rgba(43, 38, 32, 0.22);
 }
 .theme-card-preview-eva {
-  --tw-titlebar: #10131C;
-  --tw-side: #0A0C12;
-  --tw-content: #12151E;
-  --tw-accent: linear-gradient(90deg, #6366F1 0%, #2DD4BF 100%);
+  --tw-titlebar: #1F1832;
+  --tw-side: #06050B;
+  --tw-content: #14102A;
+  --tw-accent: linear-gradient(90deg, #8B5CF6 0%, #22D3EE 100%);
   --tw-line: rgba(255, 255, 255, 0.24);
+}
+.theme-card-preview-minimal {
+  --tw-titlebar: #F3F4F6;
+  --tw-side: #E5E7EB;
+  --tw-content: #FFFFFF;
+  --tw-accent: #111827;
+  --tw-line: rgba(0, 0, 0, 0.18);
+}
+.theme-card-preview-ink {
+  --tw-titlebar: #0B1120;
+  --tw-side: #151C2C;
+  --tw-content: #111827;
+  --tw-accent: #E2E8F0;
+  --tw-line: rgba(255, 255, 255, 0.20);
+}
+/* 设置页内的风格分段控件：贴合 setting-ctrl 排布 */
+.setting-ctrl .theme-style-seg {
+  margin: 0;
+  min-width: 176px;
 }
 .theme-card-meta {
   display: flex;
   flex-direction: column;
   gap: 1px;
+  flex: 1 1 auto;
   min-width: 0;
+  padding-right: 14px;
 }
 .theme-card-meta strong {
   font-size: 12px;

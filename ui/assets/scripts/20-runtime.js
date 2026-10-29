@@ -189,7 +189,7 @@ function syncProxyEnhancementSummary() {
 }
 
 function syncLocalProxyUi() {
-  setText('globalProxyStatusText', proxyRunning ? '代理运行中' : '代理未启动');
+  setText('globalProxyStatusText', proxyRunning ? '网关运行中' : '网关未启动');
   if (typeof globalThis.updateClaudeDesktopProxyBadge === 'function') {
     globalThis.updateClaudeDesktopProxyBadge(proxyRunning);
   }
@@ -217,6 +217,123 @@ function syncLocalProxyUi() {
   });
   setText('route-port-desc', `MITM 代理 :${getLocalProxyPort()} / 直连代理 :${getLocalProxyInferencePort()}`);
   syncProxyEnhancementSummary();
+  updateProxyPresetSnippet();
+}
+
+let currentProxyPresetTab = 'cursor';
+
+function setProxyPresetTab(tab) {
+  currentProxyPresetTab = tab || 'cursor';
+  document.querySelectorAll('.proxy-preset-tab[data-preset]').forEach(el => {
+    el.classList.toggle('active', el.dataset.preset === currentProxyPresetTab);
+  });
+  updateProxyPresetSnippet();
+}
+
+function updateProxyPresetSnippet() {
+  const codeEl = document.getElementById('proxyPresetCodeSnippet');
+  if (!codeEl) return;
+  const origin = localProxyOrigin();
+  const key = getLocalProxyKeyValue() || 'abk-local-xxx';
+  if (currentProxyPresetTab === 'curl') {
+    codeEl.textContent = `curl ${origin}/v1/models -H "Authorization: Bearer ${key}"`;
+  } else if (currentProxyPresetTab === 'env') {
+    codeEl.textContent = `export OPENAI_BASE_URL="${origin}/v1" OPENAI_API_KEY="${key}"`;
+  } else {
+    // 默认 cursor / vscode
+    codeEl.textContent = `Base URL: ${origin}/v1 | Key: ${key.slice(0, 16)}...`;
+  }
+}
+
+async function copyQuickPresetSnippet() {
+  const origin = localProxyOrigin();
+  const key = getLocalProxyKeyValue() || '';
+  let content = '';
+  let label = '配置';
+  if (currentProxyPresetTab === 'curl') {
+    content = `curl ${origin}/v1/models -H "Authorization: Bearer ${key}"`;
+    label = 'cURL 测试命令';
+  } else if (currentProxyPresetTab === 'env') {
+    content = `export OPENAI_BASE_URL="${origin}/v1"\nexport OPENAI_API_KEY="${key}"`;
+    label = 'Shell 环境变量';
+  } else {
+    content = JSON.stringify({
+      "openai.baseUrl": `${origin}/v1`,
+      "openai.apiKey": key
+    }, null, 2);
+    label = '客户端 JSON 配置';
+  }
+  await copyTextToClipboard(content, label);
+}
+
+function toggleGatewayDrawer(show) {
+  const mask = document.getElementById('gatewayDrawerMask');
+  if (!mask) return;
+  const isVisible = show !== undefined ? Boolean(show) : (mask.style.display !== 'flex');
+  mask.style.display = isVisible ? 'flex' : 'none';
+}
+
+function setDrawerSubTab(tab) {
+  const isTimeline = tab === 'timeline';
+  const timelineEl = document.getElementById('gatewayDrawerTimeline');
+  const logsEl = document.getElementById('gatewayDrawerLogs');
+  const btnTimeline = document.getElementById('drawerTabTimelineBtn');
+  const btnLogs = document.getElementById('drawerTabLogsBtn');
+
+  if (timelineEl) timelineEl.style.display = isTimeline ? 'flex' : 'none';
+  if (logsEl) logsEl.style.display = isTimeline ? 'none' : 'block';
+  if (btnTimeline) btnTimeline.classList.toggle('active', isTimeline);
+  if (btnLogs) btnLogs.classList.toggle('active', !isTimeline);
+}
+
+function renderProxyOverviewRecentStream(recentList) {
+  const container = document.getElementById('proxyOverviewRecentStream');
+  if (!container) return;
+  const items = Array.isArray(recentList) ? recentList.filter(Boolean).slice(0, 6) : [];
+  if (!items.length) {
+    container.innerHTML = '<div class="proxy-live-stream-empty">暂无近期调用记录 · 发起请求后在此实时呈现</div>';
+    return;
+  }
+  container.innerHTML = items.map(item => {
+    const isErr = item.type === 'error';
+    const isRetry = item.type === 'retry';
+    const tagClass = isErr ? 'proxy-tag-err' : (isRetry ? 'proxy-tag-warn' : 'proxy-tag-ok');
+    const tagText = isErr ? '错误' : (isRetry ? `重试 ×${item.count || 1}` : '200 OK');
+    const model = escapeHtml(item.resolvedModel || item.requestedModel || item.model || '通用请求');
+    const sub = isErr
+      ? escapeHtml(item.message || '未知错误')
+      : (isRetry ? escapeHtml(item.reason || '触发重试') : `上游: ${escapeHtml(item.provider || '默认')}`);
+    const timeStr = item.ts ? new Date(item.ts).toLocaleTimeString() : '';
+    return `<div class="proxy-live-stream-item">
+      <div class="proxy-live-stream-left">
+        <span class="proxy-live-stream-tag ${tagClass}">${tagText}</span>
+        <div class="proxy-live-stream-meta">
+          <div class="proxy-live-stream-model" title="${model}">${model}</div>
+          <div class="proxy-live-stream-sub" title="${sub}">${sub}</div>
+        </div>
+      </div>
+      <div class="proxy-live-stream-right">
+        <span>${timeStr}</span>
+      </div>
+    </div>`;
+  }).join('');
+
+  // 同步刷新抽屉内最近一条的真实链路数据
+  const latest = items[0];
+  if (latest) {
+    const metaEl = document.getElementById('drawerRecentReqMeta');
+    const timeEl = document.getElementById('drawerRecentReqTime');
+    const durEl = document.getElementById('drawerRecentReqDuration');
+    if (metaEl) {
+      metaEl.textContent = `模型: ${latest.resolvedModel || latest.model || 'auto'} · 上游: ${latest.provider || 'default'}`;
+    }
+    if (timeEl && latest.ts) {
+      timeEl.textContent = new Date(latest.ts).toLocaleTimeString();
+    }
+    if (durEl && latest.durationMs) {
+      durEl.textContent = `${latest.durationMs}ms`;
+    }
+  }
 }
 
 function updateGlobalProxyStatusPill(running, tone = '') {
@@ -242,10 +359,10 @@ function syncProxyPageControls(running, tone = '') {
     startBtn.classList.toggle('is-connected', isRunning);
     if (isRunning) {
       startBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 5px;"><path d="M20 6 9 17l-5-5"/></svg>已启动';
-      startBtn.title = '代理运行中';
+      startBtn.title = '网关运行中';
     } else {
-      startBtn.textContent = isBusy ? '启动中...' : '启动代理';
-      startBtn.title = '启动全局代理服务';
+      startBtn.textContent = isBusy ? '启动中...' : '启动网关';
+      startBtn.title = '启动全局网关服务';
     }
   }
   if (stopBtn) {
@@ -266,7 +383,7 @@ function syncTopbarProxyControls(running, tone = '') {
   if (primary) {
     primary.classList.toggle('running', isRunning);
     primary.disabled = isBusy;
-    const label = isBusy ? '处理中' : (isRunning ? '停止代理' : '启动代理');
+    const label = isBusy ? '处理中' : (isRunning ? '停止网关' : '启动网关');
     primary.title = label;
     primary.setAttribute('aria-label', label);
   }
@@ -298,7 +415,7 @@ function updateProxyPageState(running, tone = '') {
     if (tone) state.classList.add(tone);
     else if (running) state.classList.add('running');
   }
-  if (textEl) textEl.textContent = running ? '代理运行中' : '代理未启动';
+  if (textEl) textEl.textContent = running ? '网关运行中' : '网关未启动';
   if (subEl) subEl.textContent = running ? '本地入口已启动' : '本地入口等待启动';
 }
 
@@ -1146,6 +1263,10 @@ function resetStatsUi() {
   setText('proxy-page-tokens', '—');
   setText('proxy-page-success-rate', '—');
   setText('proxy-page-latency', '—');
+  setText('proxyHeroRequests', '—');
+  setText('proxyHeroLatency', '—');
+  setText('proxyHeroSuccessRate', '—');
+  renderProxyOverviewRecentStream([]);
   setText('stat-health-pill', '等待流量');
   setText('stat-input-tokens', '—');
   setText('stat-output-tokens', '—');
@@ -1217,6 +1338,7 @@ async function refreshStats() {
   try {
     const s = await invoke('get_stats');
     consumeRetryLogEvents(s.recent);
+    renderProxyOverviewRecentStream(s.recent);
     const r = s.rate || {};
     const totalTokens = Number(s.totalTokens) || 0;
     const inputTokens = Number(s.inputTokens) || 0;
@@ -1234,18 +1356,23 @@ async function refreshStats() {
 
     setText('stat-requests', fmtNum(s.requests));
     setText('proxy-page-requests', fmtNum(s.requests));
+    setText('proxyHeroRequests', fmtNum(s.requests));
     setText('stat-requests-sub', s.requests > 0 ? `运行 ${Math.floor(s.uptimeSec / 60)} 分钟` : '等待请求');
     setText('stat-tokens', fmtNum(s.totalTokens));
     setText('proxy-page-tokens', fmtNum(s.totalTokens));
     const cachedPart = s.cachedTokens ? ` 缓存${fmtNum(s.cachedTokens)} ·` : '';
     setText('stat-tokens-sub', `↑${fmtNum(s.inputTokens)} ↓${fmtNum(s.outputTokens)} ·${cachedPart} ≈$${s.estCostUsd}`);
-    setText('stat-success-rate', successRate == null ? '—' : `${successRate.toFixed(successRate >= 99 ? 1 : 0)}%`);
+    const successRateText = successRate == null ? '—' : `${successRate.toFixed(successRate >= 99 ? 1 : 0)}%`;
+    setText('stat-success-rate', successRateText);
+    setText('proxyHeroSuccessRate', successRateText);
     setText('stat-provider', s.lastProvider || '—');
     setText('stat-model', s.lastModel || '尚无请求');
     setText('stat-errors-sub', s.lastError ? `${fmtNum(errors)} 次错误 · 最近: ${s.lastError}` : `${fmtNum(errors)} 次错误`);
     setText('stat-rpm', r.rpm != null ? r.rpm : '—');
     setText('stat-tpm', r.tpm != null ? fmtNum(r.tpm) : '—');
-    setText('stat-latency', r.avgLatencyMs != null ? `${r.avgLatencyMs}ms` : '—');
+    const latencyText = r.avgLatencyMs != null ? `${r.avgLatencyMs}ms` : '—';
+    setText('stat-latency', latencyText);
+    setText('proxyHeroLatency', latencyText);
     setText('stat-retries', fmtNum(s.retries || 0));
     setText('stat-retries-sub', s.lastRetryReason ? `最近: ${s.lastRetryReason}` : '本日累计');
     setText('stat-error-rate', r.errorRate != null ? `${r.errorRate}%` : '—');
@@ -1367,13 +1494,26 @@ function bindWindowControlHandlers() {
 
 // ═══════ THEME ═══════
 // data-scheme 决定明暗底盘（CSS 里 248 处组件特化依赖它），data-theme 只决定色板覆盖。
+// 三维正交架构：
+//   1) data-scheme  明暗底盘（light / dark，由主题自带）
+//   2) data-theme   配色方案（决定色板变量）
+//   3) data-style   质感风格（soft 轻拟物 / minimal 极简扁平，与配色完全解耦）
 const THEME_LIST = [
-  { id: 'light', scheme: 'light', label: '工作台浅色', desc: '当前使用工作台浅色' },
-  { id: 'dark', scheme: 'dark', label: '工作台深色', desc: '当前使用工作台深色' },
-  { id: 'claude', scheme: 'light', label: '暖沙 Claude', desc: '当前使用暖沙 Claude' },
-  { id: 'eva', scheme: 'dark', label: '霓虹 EVA', desc: '当前使用霓虹 EVA' },
+  { id: 'light', scheme: 'light', label: '工作台浅色', desc: '当前使用工作台浅色', group: 'light' },
+  { id: 'claude', scheme: 'light', label: '暖沙 Claude', desc: '当前使用暖沙 Claude', group: 'light' },
+  { id: 'minimal', scheme: 'light', label: '极简云白', desc: '当前使用极简云白', group: 'light' },
+  { id: 'dark', scheme: 'dark', label: '工作台深色', desc: '当前使用工作台深色', group: 'dark' },
+  { id: 'eva', scheme: 'dark', label: '霓虹 EVA', desc: '当前使用霓虹 EVA', group: 'dark' },
+  { id: 'ink', scheme: 'dark', label: '极简墨黑', desc: '当前使用极简墨黑', group: 'dark' },
 ];
 const THEME_STORAGE_KEY = 'byok-theme';
+
+// 风格维度：只描述质感语言（圆角/阴影/描边/胶囊化），绝不包含配色
+const STYLE_LIST = [
+  { id: 'soft', label: '轻拟物', desc: '当前使用轻拟物风格（玻璃质感与层次投影）' },
+  { id: 'minimal', label: '极简扁平', desc: '当前使用极简扁平风格（纯净胶囊与细腻描边）' },
+];
+const STYLE_STORAGE_KEY = 'byok-style';
 
 function themeMeta(id) {
   return THEME_LIST.find(item => item.id === id) || THEME_LIST[0];
@@ -1395,12 +1535,66 @@ function syncThemeUI(meta) {
     el.setAttribute('aria-checked', active ? 'true' : 'false');
   });
 }
+function styleMeta(id) {
+  return STYLE_LIST.find(item => item.id === id) || STYLE_LIST[0];
+}
+function currentStyleId() {
+  return styleMeta(document.documentElement.getAttribute('data-style')).id;
+}
+/**
+ * 解析风格偏好：
+ * 1) 已存 byok-style → 直接用
+ * 2) 老用户迁移：升级前停留在「极简云白」主题的，默认落到极简扁平风格，保证升级瞬间视觉不变
+ * 3) 其余默认轻拟物
+ */
+function resolveStylePreference() {
+  try {
+    const saved = localStorage.getItem(STYLE_STORAGE_KEY);
+    if (saved) return styleMeta(saved).id;
+  } catch (e) { /* localStorage 不可用时按默认走 */ }
+  try {
+    if (localStorage.getItem(THEME_STORAGE_KEY) === 'minimal') return 'minimal';
+  } catch (e) { /* ignore */ }
+  return 'soft';
+}
+function syncStyleUI(meta) {
+  const desc = document.getElementById('style-setting-desc');
+  if (desc) desc.textContent = meta.desc;
+  document.querySelectorAll('[data-style-id]').forEach(el => {
+    const active = el.getAttribute('data-style-id') === meta.id;
+    el.classList.toggle('is-active', active);
+    el.setAttribute('aria-checked', active ? 'true' : 'false');
+  });
+}
+function applyStyle(styleId) {
+  const meta = styleMeta(styleId);
+  document.documentElement.setAttribute('data-style', meta.id);
+  syncStyleUI(meta);
+}
+function setStyle(id) {
+  const prev = currentStyleId();
+  applyStyle(id);
+  try {
+    localStorage.setItem(STYLE_STORAGE_KEY, styleMeta(id).id);
+  } catch (e) {
+    applyStyle(prev);
+    addLog('err', '保存风格偏好失败: ' + e);
+    if (typeof showCustomAlert === 'function') showCustomAlert(String(e), '保存失败', 'error');
+    return;
+  }
+}
 function applyTheme(theme) {
   const meta = themeMeta(theme);
   const root = document.documentElement;
   root.setAttribute('data-theme', meta.id);
   root.setAttribute('data-scheme', meta.scheme);
   root.style.colorScheme = meta.scheme;
+  // 风格与配色正交：切配色不得重置风格
+  const styleId = root.getAttribute('data-style') || resolveStylePreference();
+  applyStyle(styleId);
+  try {
+    if (!localStorage.getItem(STYLE_STORAGE_KEY)) localStorage.setItem(STYLE_STORAGE_KEY, styleId);
+  } catch (e) { /* ignore */ }
   syncThemeUI(meta);
 }
 function setTheme(id) {
@@ -1420,14 +1614,36 @@ function toggleTheme() {
   // 兼容旧入口：在浅色系与深色系之间切换
   setTheme(themeMeta(currentThemeId()).scheme === 'dark' ? 'light' : 'dark');
 }
+/**
+ * 菜单位置修正：默认以主题按钮为轴心居中（CSS translateX(-50%)），
+ * 仅当居中出现超窗时，才按最小必要距离平移回来，保证视觉上仍贴近居中。
+ */
+function positionThemeMenu() {
+  const menu = document.getElementById('themeMenu');
+  if (!menu || menu.hasAttribute('hidden')) return;
+  menu.style.transform = '';
+  const rect = menu.getBoundingClientRect();
+  const vw = document.documentElement.clientWidth;
+  const margin = 12;
+  let shift = 0;
+  if (rect.right > vw - margin) shift = (vw - margin) - rect.right;
+  else if (rect.left < margin) shift = margin - rect.left;
+  if (shift) menu.style.transform = `translateX(calc(-50% + ${Math.round(shift)}px))`;
+}
 function openThemeMenu() {
   const menu = document.getElementById('themeMenu');
   const btn = document.getElementById('topbarThemeToggle');
   if (!menu) return;
   syncThemeUI(themeMeta(currentThemeId()));
+  menu.style.transform = '';
   menu.removeAttribute('hidden');
   if (btn) btn.setAttribute('aria-expanded', 'true');
+  positionThemeMenu();
 }
+window.addEventListener('resize', () => {
+  const menu = document.getElementById('themeMenu');
+  if (menu && !menu.hasAttribute('hidden')) positionThemeMenu();
+});
 function closeThemeMenu() {
   const menu = document.getElementById('themeMenu');
   const btn = document.getElementById('topbarThemeToggle');
@@ -1449,6 +1665,39 @@ document.addEventListener('click', (event) => {
 document.addEventListener('keydown', (event) => {
   if (event.key === 'Escape') closeThemeMenu();
 });
+
+// ═══════ NAV ICONS VISIBILITY（外观设置里的「导航栏图标」开关） ═══════
+const NAV_ICONS_STORAGE_KEY = 'byok-show-nav-icons';
+
+function navIconsVisible() {
+  try { return localStorage.getItem(NAV_ICONS_STORAGE_KEY) !== 'false'; } catch (e) { return true; }
+}
+function applyNavIconsVisible(visible) {
+  if (visible) delete document.documentElement.dataset.navIcons;
+  else document.documentElement.dataset.navIcons = 'hidden';
+  document.querySelectorAll('[data-nav-icons-toggle]').forEach(el => {
+    setConfigToggleElementState(el, visible);
+  });
+}
+function setNavIconsVisible(visible) {
+  const prev = navIconsVisible();
+  applyNavIconsVisible(visible);
+  try {
+    localStorage.setItem(NAV_ICONS_STORAGE_KEY, visible ? 'true' : 'false');
+  } catch (e) {
+    applyNavIconsVisible(prev);
+    addLog('err', '保存导航图标偏好失败: ' + e);
+  }
+}
+function toggleNavIcons(el) {
+  setNavIconsVisible(!el.classList.contains('on'));
+}
+function openAppearanceSettings() {
+  closeThemeMenu();
+  openSettingsModal('appearance');
+}
+applyNavIconsVisible(navIconsVisible());
+
 
 // ═══════ ACCESS GUIDE (replaces patch logic) ═══════
 async function openCertsDir() {
@@ -1699,6 +1948,10 @@ function setConfigToggleState(key, enabled) {
   g.parseProxyPortInputValue = parseProxyPortInputValue;
   g.proxyPortInputIds = proxyPortInputIds;
   g.saveLocalProxyPorts = saveLocalProxyPorts;
+  g.setProxyPresetTab = setProxyPresetTab;
+  g.copyQuickPresetSnippet = copyQuickPresetSnippet;
+  g.toggleGatewayDrawer = toggleGatewayDrawer;
+  g.setDrawerSubTab = setDrawerSubTab;
   g.copyTextToClipboard = copyTextToClipboard;
   g.copyLocalProxyValue = copyLocalProxyValue;
   g.regenerateLocalProxyKey = regenerateLocalProxyKey;
@@ -1733,8 +1986,18 @@ function setConfigToggleState(key, enabled) {
   g.toggleTheme = toggleTheme;
   g.setTheme = setTheme;
   g.currentThemeId = currentThemeId;
+  g.applyStyle = applyStyle;
+  g.setStyle = setStyle;
+  g.currentStyleId = currentStyleId;
+  g.resolveStylePreference = resolveStylePreference;
+  g.STYLE_LIST = STYLE_LIST;
+  g.THEME_LIST = THEME_LIST;
   g.toggleThemeMenu = toggleThemeMenu;
   g.closeThemeMenu = closeThemeMenu;
+  g.openAppearanceSettings = openAppearanceSettings;
+  g.setNavIconsVisible = setNavIconsVisible;
+  g.toggleNavIcons = toggleNavIcons;
+  g.applyNavIconsVisible = applyNavIconsVisible;
   g.openCertsDir = openCertsDir;
   g.openConfigDir = openConfigDir;
   g.generateCerts = generateCerts;

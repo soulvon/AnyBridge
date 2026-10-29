@@ -166,6 +166,10 @@
   stroke: none;
 }
 
+html[data-nav-icons="hidden"] .tab-nav .tab-icon {
+  display: none;
+}
+
 .tab-nav .tab-item:hover {
   color: var(--accent);
   background: rgba(var(--accent-rgb), 0.07);
@@ -223,6 +227,755 @@
     0 11px 24px -17px rgba(var(--accent-rgb), 0.75);
 }
 
+/* ═══════ 极简云白专用：图 1 风格的高级平滑胶囊药丸导航 ═══════ */
+
+[data-style="minimal"] .tab-nav {
+  height: 38px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 3px;
+  gap: 2px;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.05);
+}
+
+[data-style="minimal"] .tab-nav .tab-item {
+  height: 100%;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  color: var(--text-dim);
+  font-weight: 600;
+  font-size: 13px;
+  padding: 0 14px;
+  background: transparent;
+  box-shadow: none;
+  transition: all var(--duration-fast) var(--ease);
+}
+
+[data-style="minimal"] .tab-nav .tab-item:hover {
+  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.45);
+}
+
+[data-style="minimal"] .tab-nav .tab-item.active {
+  color: var(--text-primary);
+  background: var(--bg-card);
+  border-color: rgba(0, 0, 0, 0.04);
+  font-weight: 700;
+  text-shadow: none;
+  box-shadow: 0 2px 6px -1px rgba(0, 0, 0, 0.08), 0 1px 3px rgba(0, 0, 0, 0.05);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+[data-style="minimal"] .tab-nav .tab-item.active .tab-icon {
+  color: var(--text-primary);
+}
+
+[data-style="minimal"] .global-proxy-pill {
+  border-radius: 999px !important;
+  background: var(--bg-input) !important;
+  border: 1px solid var(--border) !important;
+  color: var(--text-secondary) !important;
+  font-weight: 600 !important;
+  text-shadow: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  box-shadow: none !important;
+}
+
+[data-style="minimal"] .global-proxy-pill .global-proxy-dot {
+  width: 6px !important;
+  height: 6px !important;
+  background: #94A3B8 !important;
+  box-shadow: none !important;
+}
+
+[data-style="minimal"] .global-proxy-pill.running {
+  background: var(--bg-input) !important;
+  border: 1px solid var(--border) !important;
+  color: var(--text-primary) !important;
+  font-weight: 650 !important;
+  box-shadow: none !important;
+}
+
+[data-style="minimal"] .global-proxy-pill.running .global-proxy-dot {
+  background: #10B981 !important;
+  box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.25) !important;
+}
+
+[data-style="minimal"] .topbar {
+  background: var(--bg-card);
+  border-bottom: 1px solid var(--border);
+  box-shadow: var(--shadow-sm);
+}
+
+/* ═══════ 极简云白专用：全盘统一的高级纯粹设计 ═══════ */
+
+/* 1. 左侧侧边栏：去厚重白浮卡，转为清爽极简大胶囊选中态 */
+
+[data-style="minimal"] .app-sidebar {
+  background: var(--bg-primary) !important;
+  border-right: 1px solid var(--border) !important;
+  box-shadow: none !important;
+}
+
+[data-style="minimal"] .platform-rail-item {
+  border-radius: 12px !important;
+  border: 1px solid transparent !important;
+  background: transparent !important;
+  color: var(--text-dim) !important;
+  box-shadow: none !important;
+  transition: all var(--duration-fast) var(--ease) !important;
+}
+
+[data-style="minimal"] .platform-rail-item:hover {
+  background: var(--accent-light) !important;
+  color: var(--text-primary) !important;
+}
+
+[data-style="minimal"] .platform-rail-item.active {
+  background: var(--bg-card) !important;
+  border-color: var(--border) !important;
+  color: var(--text-primary) !important;
+  font-weight: 700 !important;
+  box-shadow: 0 2px 8px -2px rgba(0, 0, 0, 0.06), 0 1px 2px rgba(0, 0, 0, 0.04) !important;
+}
+
+[data-style="minimal"] .platform-rail-icon {
+  border: 1px solid var(--border) !important;
+  border-radius: 8px !important;
+  /* 跟随主题的图标底定义，不能写死 --bg-card（深色主题下会变深、深色 logo 看不见） */
+  background: var(--sidebar-icon-bg) !important;
+  box-shadow: var(--shadow-sm) !important;
+}
+
+[data-style="minimal"] .platform-rail-item.active .platform-rail-icon {
+  border-color: var(--border) !important;
+  background: var(--sidebar-icon-bg) !important;
+}
+
+/* 2. 头部控制按钮组（已接入 / 刷新状态 / 停止接入 / 汉化） */
+
+[data-style="minimal"] .platform-console-actions {
+  gap: 8px;
+}
+
+[data-style="minimal"] .platform-console-actions .btn-primary,
+[data-style="minimal"] .platform-console-actions .btn-ghost,
+[data-style="minimal"] .platform-console-actions .platform-lang-action-btn {
+  height: 34px !important;
+  border-radius: 999px !important;
+  font-size: 12.5px !important;
+  font-weight: 600 !important;
+  padding: 0 16px !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  text-shadow: none !important;
+  transition: all var(--duration-fast) var(--ease) !important;
+}
+
+/* 接入成功状态：采用极简曜石黑药丸配微翠绿标识，或者高级静谧黑绿呼应 */
+
+[data-style="minimal"] .platform-console-actions .btn-primary.platform-proxy-primary.is-connected {
+  background: var(--accent) !important;
+  border: 1px solid var(--accent) !important;
+  color: var(--button-on-solid) !important;
+  box-shadow: var(--shadow-md) !important;
+}
+
+[data-style="minimal"] .platform-console-actions .btn-primary.platform-proxy-primary.is-connected:hover:not(:disabled) {
+  background: var(--accent-hover) !important;
+  border-color: var(--accent-hover) !important;
+  box-shadow: var(--shadow-card-hover) !important;
+  transform: translateY(-0.5px);
+}
+
+[data-style="minimal"] .platform-console-actions .btn-primary.platform-proxy-primary.is-connected svg {
+  color: #34D399 !important;
+  stroke: #34D399 !important;
+}
+
+/* 刷新状态按钮：清爽白底深灰字微阴影药丸 */
+
+[data-style="minimal"] .platform-console-actions .platform-refresh-proxy {
+  background: var(--bg-card) !important;
+  border: 1px solid var(--border) !important;
+  color: var(--text-muted) !important;
+  box-shadow: var(--shadow-sm) !important;
+}
+
+[data-style="minimal"] .platform-console-actions .platform-refresh-proxy:hover:not(:disabled) {
+  background: var(--bg-primary) !important;
+  border-color: var(--border-strong) !important;
+  color: var(--text-primary) !important;
+  box-shadow: var(--shadow-md) !important;
+  transform: translateY(-0.5px);
+}
+
+/* 停止接入：极简浅柔灰底配克制暗红文字，告别刺眼大红大绿 */
+
+[data-style="minimal"] .platform-console-actions .platform-stop-proxy {
+  background: var(--bg-primary) !important;
+  border: 1px solid var(--border) !important;
+  color: #DC2626 !important;
+  box-shadow: var(--shadow-sm) !important;
+}
+
+[data-style="minimal"] .platform-console-actions .platform-stop-proxy:hover:not(:disabled) {
+  background: #FEF2F2 !important;
+  border-color: #FECACA !important;
+  color: #B91C1C !important;
+  box-shadow: 0 2px 6px -1px rgba(220, 38, 38, 0.08) !important;
+  transform: translateY(-0.5px);
+}
+
+/* 汉化按钮：极简纯白微药丸 */
+
+[data-style="minimal"] .platform-console-actions .platform-lang-action-btn {
+  background: var(--bg-card) !important;
+  border: 1px solid var(--border) !important;
+  color: #059669 !important;
+  box-shadow: var(--shadow-sm) !important;
+}
+
+[data-style="minimal"] .platform-console-actions .platform-lang-action-btn:hover:not(:disabled) {
+  background: #F0FDF4 !important;
+  border-color: #BBF7D0 !important;
+  color: #047857 !important;
+  transform: translateY(-0.5px);
+}
+
+/* 3. 主行动按钮（+ 添加映射）与工具栏按钮 */
+
+[data-style="minimal"] .btn-primary,
+[data-style="minimal"] .model-map-command-btn.btn-primary {
+  border-radius: 999px !important;
+  background: var(--accent) !important;
+  color: var(--button-on-solid) !important;
+  border: 1px solid var(--accent) !important;
+  font-size: 13px !important;
+  font-weight: 650 !important;
+  text-shadow: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  box-shadow: var(--shadow-md) !important;
+}
+
+[data-style="minimal"] .btn-primary:hover:not(:disabled),
+[data-style="minimal"] .model-map-command-btn.btn-primary:hover:not(:disabled) {
+  background: var(--accent-hover) !important;
+  border-color: var(--accent-hover) !important;
+  color: var(--button-on-solid) !important;
+  box-shadow: var(--shadow-card-hover) !important;
+  transform: translateY(-0.5px);
+}
+
+[data-style="minimal"] .model-map-toolbar-actions .btn-ghost,
+[data-style="minimal"] .model-map-toolbar-actions .platform-model-btn-icon {
+  height: 34px !important;
+  border-radius: 999px !important;
+  background: var(--bg-card) !important;
+  border: 1px solid var(--border) !important;
+  color: var(--text-muted) !important;
+  font-size: 12.5px !important;
+  font-weight: 600 !important;
+  box-shadow: var(--shadow-sm) !important;
+  transition: all var(--duration-fast) var(--ease) !important;
+}
+
+[data-style="minimal"] .model-map-toolbar-actions .btn-ghost:hover:not(:disabled),
+[data-style="minimal"] .model-map-toolbar-actions .platform-model-btn-icon:hover:not(:disabled) {
+  background: var(--bg-primary) !important;
+  border-color: var(--border-strong) !important;
+  color: var(--text-primary) !important;
+  box-shadow: var(--shadow-md) !important;
+  transform: translateY(-0.5px);
+}
+
+/* 4. 批量操作按钮条（选择当前 / 启用 / 停用 / 启用第三方图片） */
+
+[data-style="minimal"] .model-map-bulk-actions .provider-bulk-btn {
+  height: 32px !important;
+  border-radius: 999px !important;
+  padding: 0 14px !important;
+  font-size: 12px !important;
+  font-weight: 600 !important;
+  background: var(--bg-card) !important;
+  border: 1px solid var(--border) !important;
+  color: var(--text-muted) !important;
+  box-shadow: var(--shadow-sm) !important;
+  transition: all var(--duration-fast) var(--ease) !important;
+}
+
+[data-style="minimal"] .model-map-bulk-actions .provider-bulk-btn:hover:not(:disabled) {
+  background: var(--bg-primary) !important;
+  border-color: var(--border-strong) !important;
+  color: var(--text-primary) !important;
+  box-shadow: 0 2px 5px -1px rgba(0, 0, 0, 0.05) !important;
+  transform: translateY(-0.5px);
+}
+
+[data-style="minimal"] .model-map-bulk-actions .provider-bulk-btn:disabled {
+  background: var(--bg-input) !important;
+  border-color: transparent !important;
+  color: var(--text-dim) !important;
+  box-shadow: none !important;
+}
+
+/* 5. 表格行内操作、行高亮与极简状态开关 */
+
+[data-style="minimal"] .model-table td {
+  border-bottom: 1px solid var(--border) !important;
+}
+
+[data-style="minimal"] .model-table th {
+  background: var(--bg-primary) !important;
+  color: var(--text-dim) !important;
+  border-bottom: 1px solid var(--border) !important;
+}
+
+[data-style="minimal"] .model-table tr:hover td {
+  background: var(--bg-primary) !important;
+}
+
+[data-style="minimal"] .model-map-table tr.is-selected td {
+  background: var(--bg-input) !important;
+}
+
+[data-style="minimal"] .toggle-switch input:checked + .toggle-slider {
+  background: var(--accent) !important;
+  border-color: var(--accent) !important;
+}
+
+[data-style="minimal"] .provider-select-check input:checked + span {
+  background: var(--accent) !important;
+  border-color: var(--accent) !important;
+}
+
+/* 表格状态胶囊（支持图片理解、流式/视觉/工具等）：极致低调的现代中性灰胶囊，彻底告别彩色喧宾夺主 */
+
+[data-style="minimal"] .tag,
+[data-style="minimal"] .tag-vision-pill,
+[data-style="minimal"] .tag-cap-badge {
+  border-radius: 999px !important;
+  font-weight: 500 !important;
+  letter-spacing: 0.01em;
+  transition: all var(--duration-fast) var(--ease);
+}
+
+/* 「支持图片理解」极致低调微灰胶囊：浅灰底 + 细灰边 + 沉稳深石灰字 */
+
+[data-style="minimal"] .tag-vision-pill,
+[data-style="minimal"] .tag[title*="图片理解"],
+[data-style="minimal"] .tag[title*="支持图片"] {
+  border-radius: 999px !important;
+  background: var(--bg-input) !important;
+  border: 1px solid var(--border) !important;
+  color: var(--text-muted) !important;
+  font-size: 11px !important;
+  font-weight: 550 !important;
+  padding: 2.5px 8.5px !important;
+}
+
+/* 目标模型的能力小标签（流式、视觉、工具）纯净素雅极简药丸 */
+
+[data-style="minimal"] .tag-cap-badge,
+[data-style="minimal"] .target-cap-line .tag {
+  border-radius: 999px !important;
+  padding: 2px 7px !important;
+  font-size: 10.5px !important;
+  font-weight: 500 !important;
+  background: transparent !important;
+  border: 1px solid var(--border) !important;
+  color: var(--text-dim) !important;
+}
+
+/* 开启状态的流式/视觉/工具：克制浅灰底，微加深文字对比，零杂色 */
+
+[data-style="minimal"] .tag-cap-badge.is-active,
+[data-style="minimal"] .target-cap-line .tag[style*="var(--success)"] {
+  background: var(--bg-input) !important;
+  border-color: var(--border-strong) !important;
+  color: var(--text-secondary) !important;
+  font-weight: 550 !important;
+}
+
+/* 6. 纯净极简大圆角卡片容器与搜索框 */
+
+[data-style="minimal"] .platform-hero-card,
+[data-style="minimal"] .platform-console-head,
+[data-style="minimal"] .model-map-control-bar,
+[data-style="minimal"] .glass-card {
+  border-radius: 16px !important;
+  background: var(--bg-card) !important;
+  border: 1px solid var(--border) !important;
+  box-shadow: var(--shadow-card) !important;
+}
+
+[data-style="minimal"] .model-map-search input {
+  border-radius: 999px !important;
+  border: 1px solid var(--border) !important;
+  background: var(--bg-primary) !important;
+  transition: all var(--duration-fast) var(--ease) !important;
+}
+
+[data-style="minimal"] .model-map-search input:focus {
+  background: var(--bg-card) !important;
+  border-color: var(--accent) !important;
+  box-shadow: 0 0 0 3px rgba(15, 23, 42, 0.06) !important;
+}
+
+/* 7. Codex / Claude Code 等平台的配置方案卡片与「切换」按钮统一 */
+
+[data-style="minimal"] .codex-config-card {
+  border-radius: 14px !important;
+  background: var(--bg-card) !important;
+  border: 1px solid var(--border) !important;
+  box-shadow: var(--shadow-card) !important;
+  transition: all var(--duration-fast) var(--ease) !important;
+}
+
+[data-style="minimal"] .codex-config-card:hover {
+  background: var(--bg-card) !important;
+  border-color: var(--border-strong) !important;
+  box-shadow: var(--shadow-card-hover) !important;
+}
+
+/* 当前激活项：极简微灰浮岛，告别泛蓝透底 */
+
+[data-style="minimal"] .codex-config-card.current,
+[data-style="minimal"] .codex-config-card.official.current {
+  background: var(--bg-primary) !important;
+  border-color: var(--border-strong) !important;
+  box-shadow: 0 2px 8px -2px rgba(0, 0, 0, 0.04) !important;
+}
+
+[data-style="minimal"] .codex-config-title strong {
+  color: var(--text-primary) !important;
+}
+
+/* 「切换 / 切回官方」行操作按钮：轻雅素净次级胶囊，Hover 时才加深为曜石黑，拒绝黑洞压迫感 */
+
+[data-style="minimal"] .codex-switch-action,
+[data-style="minimal"] .codex-card-action {
+  border-radius: 999px !important;
+  background: var(--bg-input) !important;
+  color: var(--text-primary) !important;
+  border: 1px solid var(--border) !important;
+  font-weight: 600 !important;
+  font-size: 12px !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  box-shadow: var(--shadow-sm) !important;
+  transition: all var(--duration-fast) var(--ease) !important;
+}
+
+[data-style="minimal"] .codex-switch-action:hover:not(:disabled),
+[data-style="minimal"] .codex-card-action:hover:not(:disabled) {
+  background: var(--accent) !important;
+  border-color: var(--accent) !important;
+  color: var(--button-on-solid) !important;
+  box-shadow: 0 4px 12px -2px rgba(15, 23, 42, 0.20) !important;
+  transform: translateY(-0.5px);
+}
+
+/* 「重新配置」等辅助操作按钮：纯净白底深灰字微药丸 */
+
+[data-style="minimal"] button.codex-reconfigure-action,
+[data-style="minimal"] .codex-current-action {
+  border-radius: 999px !important;
+  background: var(--bg-card) !important;
+  color: var(--text-secondary) !important;
+  border: 1px solid var(--border) !important;
+  font-weight: 600 !important;
+  font-size: 12px !important;
+  box-shadow: var(--shadow-sm) !important;
+}
+
+[data-style="minimal"] button.codex-reconfigure-action:hover:not(:disabled) {
+  background: var(--bg-primary) !important;
+  border-color: var(--border-strong) !important;
+  color: var(--text-primary) !important;
+  box-shadow: var(--shadow-md) !important;
+  transform: translateY(-0.5px);
+}
+
+/* Codex / Claude Code 各种类型小角标（官方/代理/第三方）：素雅中性中阶胶囊 */
+
+[data-style="minimal"] .codex-config-badge,
+[data-style="minimal"] .codex-config-badge-success,
+[data-style="minimal"] .codex-config-badge-muted,
+[data-style="minimal"] .codex-config-badge-current {
+  border-radius: 999px !important;
+  font-weight: 550 !important;
+  font-size: 11px !important;
+  letter-spacing: 0.01em;
+  padding: 2.5px 8.5px !important;
+}
+
+[data-style="minimal"] .codex-config-badge.official,
+[data-style="minimal"] .codex-config-badge-success {
+  background: #F0FDF4 !important;
+  border: 1px solid #DCFCE7 !important;
+  color: #15803D !important;
+}
+
+[data-style="minimal"] .codex-config-badge.third,
+[data-style="minimal"] .codex-config-badge.info,
+[data-style="minimal"] .codex-config-badge.local,
+[data-style="minimal"] .codex-config-badge-muted {
+  background: var(--bg-primary) !important;
+  border: 1px solid var(--border) !important;
+  color: var(--text-muted) !important;
+}
+
+/* 「当前使用」：优雅的浅薄荷绿微晶体胶囊配翠绿呼吸点，告别压抑小黑块 */
+
+[data-style="minimal"] .codex-config-badge-current {
+  background: #ECFDF5 !important;
+  border: 1px solid #A7F3D0 !important;
+  color: #065F46 !important;
+  font-weight: 600 !important;
+  box-shadow: 0 1px 2px rgba(16, 185, 129, 0.08) !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 4px !important;
+}
+
+[data-style="minimal"] .codex-config-badge-current::before {
+  content: '';
+  display: inline-block;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #10B981;
+}
+
+/* 8. 版本更新小药丸（更新） */
+
+[data-style="minimal"] .platform-version-line .version-update-btn {
+  border-radius: 999px !important;
+  background: var(--bg-input) !important;
+  border: 1px solid var(--border) !important;
+  color: var(--text-secondary) !important;
+  font-weight: 600 !important;
+}
+
+[data-style="minimal"] .platform-version-line .version-update-btn:hover {
+  background: var(--border) !important;
+  border-color: var(--border-strong) !important;
+  color: var(--text-primary) !important;
+}
+
+/* 9. ZCode / WorkBuddy 模型列表：上下文胶囊与能力药丸统一 */
+
+[data-style="minimal"] .cb-context-pill,
+[data-style="minimal"] .wb-context-pill {
+  border-radius: 999px !important;
+  background: var(--bg-input) !important;
+  border: 1px solid var(--border) !important;
+  color: var(--text-muted) !important;
+  font-weight: 600 !important;
+}
+
+[data-style="minimal"] .cb-cap-pill,
+[data-style="minimal"] .wb-cap-pill {
+  border-radius: 999px !important;
+  padding: 2.5px 8.5px !important;
+  font-size: 10.5px !important;
+  font-weight: 550 !important;
+}
+
+/* 图片能力：素雅低饱和淡灰 */
+
+[data-style="minimal"] .cb-cap-pill.cb-cap-image,
+[data-style="minimal"] .wb-cap-pill.wb-cap-image {
+  background: var(--bg-input) !important;
+  border: 1px solid var(--border) !important;
+  color: var(--text-muted) !important;
+}
+
+/* 推理能力：素雅微暖灰 */
+
+[data-style="minimal"] .cb-cap-pill.cb-cap-reason,
+[data-style="minimal"] .wb-cap-pill.wb-cap-reason {
+  background: #FFFBEB !important;
+  border: 1px solid #FEF3C7 !important;
+  color: #B45309 !important;
+}
+
+/* 工具能力：素雅微灰 */
+
+[data-style="minimal"] .cb-cap-pill.cb-cap-tool,
+[data-style="minimal"] .wb-cap-pill.wb-cap-tool {
+  background: var(--bg-input) !important;
+  border: 1px solid var(--border) !important;
+  color: var(--text-muted) !important;
+}
+
+/* 10. API 供应商卡片（高对比深黑标题、浮雕外框、清晰辅助文本） */
+
+[data-style="minimal"] .provider-card {
+  border-radius: 14px !important;
+  background: var(--bg-card) !important;
+  border: 1px solid var(--border) !important;
+  box-shadow: var(--shadow-card), 0 1px 2px rgba(15, 23, 42, 0.02) !important;
+}
+
+/* 本地网关内置卡片：专属现代微高亮（顶部柔光微渐变 + 晶莹冷灰蓝边框 + 细腻悬浮感） */
+
+[data-style="minimal"] .provider-card.provider-card-builtin {
+  background: linear-gradient(180deg,
+    color-mix(in srgb, var(--accent) 7%, var(--bg-card)) 0%,
+    color-mix(in srgb, var(--accent) 3%, var(--bg-card)) 30%,
+    var(--bg-card) 100%) !important;
+  border-color: color-mix(in srgb, var(--accent) 30%, var(--border)) !important;
+  box-shadow: 0 2px 10px -2px color-mix(in srgb, var(--accent) 10%, transparent), var(--shadow-sm) !important;
+}
+
+[data-style="minimal"] .provider-card.provider-card-builtin:hover {
+  border-color: color-mix(in srgb, var(--accent) 46%, var(--border)) !important;
+  box-shadow: 0 10px 24px -4px color-mix(in srgb, var(--accent) 16%, transparent), var(--shadow-sm) !important;
+  transform: translateY(-2px) !important;
+}
+
+[data-style="minimal"] .provider-card:hover {
+  border-color: var(--border-strong) !important;
+  box-shadow: var(--shadow-card-hover), 0 2px 6px -1px rgba(15, 23, 42, 0.04) !important;
+  transform: translateY(-1.5px) !important;
+}
+
+[data-style="minimal"] .provider-name {
+  color: var(--text-primary) !important;
+  font-weight: 750 !important;
+  letter-spacing: -0.01em !important;
+}
+
+[data-style="minimal"] .provider-protocol {
+  color: var(--text-muted) !important;
+  font-weight: 600 !important;
+}
+
+[data-style="minimal"] .provider-card .provider-desc,
+[data-style="minimal"] .provider-card .provider-models-label,
+[data-style="minimal"] .provider-card .provider-footer {
+  color: var(--text-muted) !important;
+}
+
+[data-style="minimal"] .provider-selected-models .selected-model-pill {
+  background: var(--bg-input) !important;
+  border: 1px solid var(--border) !important;
+  color: var(--text-secondary) !important;
+  font-weight: 550 !important;
+}
+
+/* 11. 网关增强配置面板：纯粹极简现代控制台设计 (Vercel / Raycast Style) */
+
+[data-style="minimal"] .proxy-enhancement-settings {
+  border-radius: 16px !important;
+  background: var(--bg-card) !important;
+  border: 1px solid var(--border) !important;
+  box-shadow: var(--shadow-card) !important;
+  overflow: hidden !important;
+}
+
+[data-style="minimal"] .proxy-enhancement-settings .card-header {
+  padding: 18px 24px 16px !important;
+  border-bottom: 1px solid var(--border) !important;
+  background: var(--bg-card) !important;
+}
+
+[data-style="minimal"] .proxy-enhancement-settings .card-header h2 {
+  font-size: 15px !important;
+  font-weight: 750 !important;
+  color: var(--text-primary) !important;
+  letter-spacing: -0.01em !important;
+}
+
+[data-style="minimal"] .proxy-enhancement-sidebar {
+  background: var(--bg-primary) !important;
+  border-right: 1px solid var(--border) !important;
+  padding: 14px 10px !important;
+  gap: 4px !important;
+}
+
+[data-style="minimal"] .proxy-enhancement-tab {
+  border-radius: 10px !important;
+  border: 1px solid transparent !important;
+  background: transparent !important;
+  color: var(--text-dim) !important;
+  font-size: 12.5px !important;
+  font-weight: 600 !important;
+  transition: all var(--duration-fast) var(--ease) !important;
+}
+
+[data-style="minimal"] .proxy-enhancement-tab:hover {
+  background: var(--accent-light) !important;
+  color: var(--text-primary) !important;
+}
+
+[data-style="minimal"] .proxy-enhancement-tab.active {
+  background: var(--bg-card) !important;
+  border-color: var(--border) !important;
+  color: var(--text-primary) !important;
+  font-weight: 700 !important;
+  box-shadow: var(--shadow-card) !important;
+}
+
+[data-style="minimal"] .proxy-enhancement-detail {
+  background: var(--bg-card) !important;
+  padding: 24px 28px !important;
+}
+
+[data-style="minimal"] .proxy-enhancement-detail label {
+  background: var(--bg-primary) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 12px !important;
+  box-shadow: none !important;
+}
+
+[data-style="minimal"] .proxy-enhancement-detail label:hover {
+  border-color: var(--border-strong) !important;
+  background: var(--bg-card) !important;
+  box-shadow: var(--shadow-md) !important;
+}
+
+[data-style="minimal"] .proxy-enhancement-detail select,
+[data-style="minimal"] .proxy-enhancement-detail input[type="number"],
+[data-style="minimal"] .proxy-enhancement-detail input[type="text"] {
+  border-radius: 8px !important;
+  background: var(--bg-card) !important;
+  border: 1px solid var(--border-strong) !important;
+  color: var(--text-primary) !important;
+  font-weight: 600 !important;
+}
+
+/* 顶部操作条（保存/删除选中/导出导入等通用幽灵按钮）胶囊化 */
+
+[data-style="minimal"] .cb-action-bar > .btn-primary,
+[data-style="minimal"] .wb-action-bar > .btn-primary {
+  border-radius: 999px !important;
+  background: var(--accent) !important;
+  border: 1px solid var(--accent) !important;
+  color: var(--button-on-solid) !important;
+}
+
+[data-style="minimal"] .cb-action-bar > .btn-ghost,
+[data-style="minimal"] .wb-action-bar > .btn-ghost {
+  border-radius: 999px !important;
+  background: var(--bg-card) !important;
+  border: 1px solid var(--border) !important;
+  color: var(--text-muted) !important;
+}
+
+[data-style="minimal"] .cb-action-bar > .btn-ghost:hover:not(:disabled),
+[data-style="minimal"] .wb-action-bar > .btn-ghost:hover:not(:disabled) {
+  background: var(--bg-primary) !important;
+  border-color: var(--border-strong) !important;
+  color: var(--text-primary) !important;
+}
+
 .topbar-right { display: flex; align-items: center; gap: 8px; justify-self: end; min-width: 0; }
 [data-scheme="dark"] .global-proxy-pill {
   border-color: rgba(255, 255, 255, 0.2);
@@ -247,7 +1000,7 @@
   background:
     radial-gradient(ellipse 80% 70% at 18% 0%, rgba(255, 255, 255, 0.28), transparent 62%),
     linear-gradient(135deg, #9AA3AE, #6B7280);
-  color: #FFFFFF;
+  color: var(--button-on-solid);
   font-size: 12px;
   font-weight: 850;
   line-height: 1;
@@ -262,11 +1015,11 @@
 }
 .global-proxy-pill:hover {
   transform: translateY(-1px);
-  color: #FFFFFF;
+  color: var(--button-on-solid);
   border-color: rgba(255, 255, 255, 0.54);
 }
 .global-proxy-pill.running {
-  color: #FFFFFF;
+  color: var(--button-on-solid);
   border-color: rgba(255, 255, 255, 0.42);
   background:
     radial-gradient(ellipse 80% 70% at 18% 0%, rgba(255, 255, 255, 0.32), transparent 62%),
@@ -277,7 +1030,7 @@
     var(--pill-running-shadow);
 }
 .global-proxy-pill.starting {
-  color: #FFFFFF;
+  color: var(--button-on-solid);
   border-color: rgba(255, 255, 255, 0.42);
   background:
     radial-gradient(ellipse 80% 70% at 18% 0%, rgba(255, 255, 255, 0.32), transparent 62%),
@@ -287,7 +1040,7 @@
     0 10px 18px -13px rgba(var(--accent-rgb), 0.72);
 }
 .global-proxy-pill.error {
-  color: #FFFFFF;
+  color: var(--button-on-solid);
   border-color: rgba(255, 255, 255, 0.42);
   background:
     radial-gradient(ellipse 80% 70% at 18% 0%, rgba(255, 255, 255, 0.30), transparent 62%),
@@ -300,7 +1053,7 @@
   width: 7px;
   height: 7px;
   border-radius: 50%;
-  background: #FFFFFF;
+  background: var(--bg-card);
   opacity: .9;
   flex: 0 0 auto;
   box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.20);
@@ -475,7 +1228,10 @@
   left: 50%;
   transform: translateX(-50%);
   z-index: 60;
-  width: 216px;
+  width: 288px;
+  max-height: calc(100vh - 96px);
+  overflow-y: auto;
+  scrollbar-width: thin;
   padding: 6px;
   display: flex;
   flex-direction: column;
@@ -492,15 +1248,29 @@
 .theme-menu[hidden] {
   display: none;
 }
-.theme-menu-item {
+.theme-menu-cols {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  padding: 0 2px;
+}
+.theme-menu-col {
   display: flex;
-  align-items: center;
-  gap: 10px;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+.theme-menu-item {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 5px;
   width: 100%;
-  min-height: 40px;
-  padding: 6px 8px;
+  min-height: 0;
+  padding: 6px;
   border: 1px solid transparent;
-  border-radius: 8px;
+  border-radius: 10px;
   background: transparent;
   color: var(--text-secondary);
   font-family: inherit;
@@ -522,28 +1292,28 @@
 }
 .theme-swatch {
   flex: 0 0 auto;
-  width: 46px;
-  height: 32px;
+  width: 100%;
+  aspect-ratio: 5 / 3;
   display: flex;
   flex-direction: column;
-  border-radius: 6px;
+  border-radius: 7px;
   border: 1px solid var(--border-strong);
   overflow: hidden;
   background: var(--sw-content);
 }
 .sw-titlebar {
-  height: 9px;
+  height: 14px;
   flex: 0 0 auto;
   display: flex;
   align-items: center;
-  gap: 2px;
-  padding: 0 4px;
+  gap: 3px;
+  padding: 0 6px;
   background: var(--sw-titlebar);
   border-bottom: 1px solid rgba(0, 0, 0, 0.1);
 }
 .sw-titlebar i {
-  width: 3px;
-  height: 3px;
+  width: 4px;
+  height: 4px;
   border-radius: 50%;
 }
 .sw-titlebar i:nth-child(1) { background: #FF5F57; }
@@ -555,7 +1325,7 @@
   min-height: 0;
 }
 .sw-side {
-  flex: 0 0 13px;
+  flex: 0 0 18px;
   background: var(--sw-side);
   border-right: 1px solid rgba(0, 0, 0, 0.07);
 }
@@ -565,19 +1335,19 @@
   display: flex;
   flex-direction: column;
   justify-content: center;
-  gap: 2px;
-  padding: 0 5px;
+  gap: 4px;
+  padding: 0 8px;
 }
 .sw-accent {
-  height: 3px;
+  height: 5px;
   width: 58%;
-  border-radius: 2px;
+  border-radius: 3px;
   background: var(--sw-accent);
 }
 .sw-line {
-  height: 2px;
+  height: 3px;
   width: 82%;
-  border-radius: 1px;
+  border-radius: 2px;
   background: var(--sw-line);
 }
 .sw-line.is-short {
@@ -605,40 +1375,229 @@
   --sw-line: rgba(43, 38, 32, 0.24);
 }
 .theme-swatch-eva {
-  --sw-titlebar: #10131C;
-  --sw-side: #0A0C12;
-  --sw-content: #12151E;
-  --sw-accent: linear-gradient(90deg, #6366F1 0%, #2DD4BF 100%);
+  --sw-titlebar: #1F1832;
+  --sw-side: #06050B;
+  --sw-content: #14102A;
+  --sw-accent: linear-gradient(90deg, #8B5CF6 0%, #22D3EE 100%);
   --sw-line: rgba(255, 255, 255, 0.26);
+}
+.theme-swatch-minimal {
+  --sw-titlebar: #F3F4F6;
+  --sw-side: #E5E7EB;
+  --sw-content: #FFFFFF;
+  --sw-accent: #111827;
+  --sw-line: rgba(0, 0, 0, 0.20);
+}
+.theme-swatch-ink {
+  --sw-titlebar: #0B1120;
+  --sw-side: #151C2C;
+  --sw-content: #111827;
+  --sw-accent: #E2E8F0;
+  --sw-line: rgba(255, 255, 255, 0.22);
+}
+
+/* ═══════ 主题菜单：三分区（亮色 / 深色 / 风格） ═══════ */
+.theme-menu-group-label {
+  flex: 0 0 auto;
+  padding: 5px 5px 3px;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  line-height: 1;
+}
+.theme-menu-cols + .theme-menu-divider ~ .theme-menu-group-label {
+  padding: 4px 8px 2px;
+}
+.theme-style-seg {
+  flex: 0 0 auto;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  margin: 2px 8px 6px;
+  padding: 3px;
+  border-radius: 999px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+}
+.theme-style-btn {
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-muted);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1;
+  cursor: pointer;
+  transition: all var(--duration-fast) var(--ease);
+}
+.theme-style-btn:hover {
+  color: var(--text-primary);
+  background: color-mix(in srgb, var(--bg-card) 60%, transparent);
+}
+.theme-style-btn.is-active {
+  background: var(--bg-card);
+  border-color: var(--border);
+  color: var(--text-primary);
+  font-weight: 700;
+  box-shadow: var(--shadow-sm);
+}
+
+/* 菜单内的快捷设置行（导航栏图标 / 语言） */
+.theme-menu-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 32px;
+  padding: 2px 8px;
+}
+.theme-menu-row-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+/* 语言选择：隐藏原生箭头，改用自绘 ChevronDown（Radix / shadcn 的通用做法） */
+.theme-lang-field {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+}
+.theme-lang-select {
+  appearance: none;
+  -webkit-appearance: none;
+  height: 26px;
+  max-width: 112px;
+  padding: 0 24px 0 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-input);
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 11.5px;
+  font-weight: 600;
+  line-height: 1;
+  cursor: pointer;
+  outline: none;
+  transition: border-color var(--duration-fast) var(--ease), background var(--duration-fast) var(--ease);
+}
+.theme-lang-select:hover {
+  border-color: var(--border-strong);
+  background: var(--bg-hover);
+}
+.theme-lang-select:focus-visible {
+  border-color: var(--border-strong);
+  box-shadow: 0 0 0 2px var(--accent-light);
+}
+.theme-lang-chevron {
+  position: absolute;
+  right: 7px;
+  width: 12px;
+  height: 12px;
+  color: var(--text-muted);
+  pointer-events: none;
+  transition: color var(--duration-fast) var(--ease), transform var(--duration-fast) var(--ease);
+}
+.theme-lang-field:hover .theme-lang-chevron {
+  color: var(--text-primary);
+}
+.theme-lang-select option {
+  background: var(--bg-card);
+  color: var(--text-primary);
 }
 .theme-menu-text {
   display: flex;
-  flex-direction: column;
   gap: 1px;
-  flex: 1 1 auto;
   min-width: 0;
 }
 .theme-menu-text strong {
-  font-size: 12px;
-  font-weight: 700;
-  line-height: 1.3;
+  font-size: 11.5px;
+  font-weight: 600;
+  line-height: 1.25;
   color: inherit;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .theme-menu-text em {
-  font-size: 11px;
+  font-size: 10.5px;
   font-style: normal;
-  line-height: 1.3;
+  line-height: 1.25;
   color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
+/* 勾选浮在预览色块右上角，配深底白勾保证任意配色下都清晰 */
 .theme-menu-check {
-  width: 14px;
-  height: 14px;
-  flex: 0 0 auto;
-  color: var(--accent);
+  position: absolute;
+  top: 9px;
+  right: 9px;
+  width: 16px;
+  height: 16px;
+  padding: 2px;
+  box-sizing: border-box;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.58);
+  border: 1px solid rgba(255, 255, 255, 0.42);
+  color: #FFFFFF;
   opacity: 0;
+  transition: opacity var(--duration-fast) var(--ease);
 }
 .theme-menu-item.is-active .theme-menu-check {
   opacity: 1;
+}
+.theme-menu-divider {
+  flex: 0 0 auto;
+  height: 1px;
+  margin: 5px 8px;
+  background: var(--border-strong);
+  opacity: .55;
+}
+.theme-menu-footer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 34px;
+  padding: 7px 8px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background var(--duration-fast) var(--ease),
+    border-color var(--duration-fast) var(--ease),
+    color var(--duration-fast) var(--ease);
+}
+.theme-menu-footer:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+.theme-menu-footer-icon {
+  width: 14px;
+  height: 14px;
+  flex: 0 0 auto;
+}
+.theme-menu-footer span {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.theme-menu-footer-arrow {
+  width: 13px;
+  height: 13px;
+  flex: 0 0 auto;
+  opacity: .55;
 }
 .topbar-action-guide {
   color: var(--text-secondary);
@@ -726,7 +1685,7 @@ textarea:focus-visible,
   background:
     radial-gradient(ellipse 80% 60% at 20% 0%, rgba(255, 255, 255, 0.22) 0%, transparent 60%),
     linear-gradient(135deg, #14B89A 0%, #0E9A87 55%, #087E8B 100%);
-  color: #FFFFFF;
+  color: var(--button-on-solid);
   cursor: pointer;
   font-family: var(--font-body);
   font-weight: 700;

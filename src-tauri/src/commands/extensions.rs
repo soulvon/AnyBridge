@@ -3504,6 +3504,7 @@ fn auto_add_cpa_provider(api_key: &str) -> Result<(), String> {
         name: "CPA".into(),
         api_host: cpa_host.into(),
         api_key: api_key.to_string(),
+        api_keys: Vec::new(),
         api_path: Some("/v1".into()),
         default_model: String::new(),
         api_format: ApiFormat::Openai,

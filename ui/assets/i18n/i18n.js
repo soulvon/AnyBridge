@@ -64,6 +64,21 @@
     return !!element.closest('[data-i18n-ignore], script, style, textarea, code, pre');
   }
 
+  // 英文值 → 中文 key 反向索引：用于把「在英文态渲染进 DOM 的残留文本」恢复回中文
+  let enReverseIndex = null;
+  function reverseLookup(enText) {
+    if (!enReverseIndex) {
+      enReverseIndex = new Map();
+      const catalog = window.ByokI18nCatalog && window.ByokI18nCatalog['en-US'];
+      if (catalog && catalog.translations) {
+        for (const [k, v] of Object.entries(catalog.translations)) {
+          if (typeof v === 'string' && v && !enReverseIndex.has(v)) enReverseIndex.set(v, k);
+        }
+      }
+    }
+    return enReverseIndex.get(enText);
+  }
+
   function translateTextNode(node) {
     if (!node || shouldSkip(node)) return;
     const existingSource = textSources.get(node);
@@ -71,10 +86,26 @@
     const match = String(raw).match(/^(\s*)(.*?)(\s*)$/s);
     if (!match || !match[2]) return;
     const source = match[2];
-    if (!existingSource && !/[\u4e00-\u9fff]/.test(source)) return;
-    textSources.set(node, raw);
-    const translated = translate(source);
-    node.nodeValue = match[1] + translated + match[3];
+    // 已登记过来源的节点：直接按来源恢复/翻译
+    if (existingSource) {
+      textSources.set(node, raw);
+      node.nodeValue = match[1] + translate(source) + match[3];
+      return;
+    }
+    // 中文节点：正常翻译
+    if (/[\u4e00-\u9fff]/.test(source)) {
+      textSources.set(node, raw);
+      node.nodeValue = match[1] + translate(source) + match[3];
+      return;
+    }
+    // 纯英文新节点：若非英文界面，说明是切换语言前以英文渲染的残留，反查恢复
+    if (currentLanguage !== 'en-US') {
+      const key = reverseLookup(source);
+      if (key) {
+        textSources.set(node, raw);
+        node.nodeValue = match[1] + translate(key) + match[3];
+      }
+    }
   }
 
   function originalAttrName(attr) {

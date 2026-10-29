@@ -990,3 +990,398 @@
 .extension-fold-btn.is-open svg {
   transform: rotate(180deg);
 }
+
+/* ═══════════════════════════════════════════════════════════════════
+   扁平风格终层（data-style="minimal"）
+   本文件是 app.css 中最晚 @import 的样式表，配合 html 前缀提高权重，
+   用于压过 30/50 等文件里各组件的拟物默认样式（高光/渐变/内阴影）。
+   加色一律走语义变量，保证在 6 套配色下自动跟随。
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* ═══════════════════════════════════════════════════════════════════
+   扁平风格总纲：全局去立体
+   1) 阴影 token 归零 —— 所有引用 var(--shadow-*) 的组件自动变平
+   2) 再清理硬编码阴影的少数组件
+   轻拟物（soft）完全不参与这套规则。
+   ═══════════════════════════════════════════════════════════════════ */
+/* 用「全透明阴影」而非 none：避免 box-shadow: var(--x), 0 1px 2px … 拼接成非法值 */
+html[data-style="minimal"] {
+  --shadow-sm: 0 0 0 transparent;
+  --shadow-md: 0 0 0 transparent;
+  --shadow-card: 0 0 0 transparent;
+  --shadow-card-hover: 0 0 0 transparent;
+}
+
+/* 硬编码阴影的主要容器与控件：逐一清平 */
+html[data-style="minimal"] .glass-card,
+html[data-style="minimal"] .platform-hero-card,
+html[data-style="minimal"] .platform-console-head,
+html[data-style="minimal"] .platform-console-icon,
+html[data-style="minimal"] .proxy-console-card,
+html[data-style="minimal"] .model-map-toolbar-wrap,
+html[data-style="minimal"] .model-map-control-bar,
+html[data-style="minimal"] .plugin-card,
+html[data-style="minimal"] .provider-card,
+html[data-style="minimal"] .codex-config-card,
+html[data-style="minimal"] .platform-recent-card,
+html[data-style="minimal"] .gateway-mw-card,
+html[data-style="minimal"] .proxy-enhancement-settings,
+html[data-style="minimal"] .btn-icon,
+html[data-style="minimal"] .btn-ghost,
+html[data-style="minimal"] .btn-primary,
+html[data-style="minimal"] .btn-secondary,
+html[data-style="minimal"] .btn-success,
+html[data-style="minimal"] .btn-danger,
+html[data-style="minimal"] .toggle-slider,
+html[data-style="minimal"] .toggle-sm,
+html[data-style="minimal"] .platform-rail-icon,
+html[data-style="minimal"] .theme-card,
+html[data-style="minimal"] .theme-menu-item {
+  box-shadow: none !important;
+}
+
+html[data-style="minimal"] .toggle-slider::before,
+html[data-style="minimal"] .toggle-sm::after {
+  box-shadow: none !important;
+}
+
+/* 开关与图标按钮：不要立体投影，hover 只靠底色变化 */
+html[data-style="minimal"] .btn-icon:hover,
+html[data-style="minimal"] .btn-ghost:hover:not(:disabled),
+html[data-style="minimal"] .provider-card:hover,
+html[data-style="minimal"] .codex-config-card:hover {
+  box-shadow: none !important;
+  transform: none !important;
+}
+
+/* ── 实心按钮：去玻璃拟物高光，改纯色扁平（各自保留语义色） ── */
+html[data-style="minimal"] .btn-primary,
+html[data-style="minimal"] .btn-success,
+html[data-style="minimal"] .btn-danger,
+html[data-style="minimal"] .btn-secondary {
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  text-shadow: none !important;
+  filter: none !important;
+}
+
+html[data-style="minimal"] .btn-primary,
+html[data-style="minimal"] .btn-primary:hover:not(:disabled) {
+  background: var(--accent) !important;
+  border: 1px solid var(--accent) !important;
+  color: var(--button-on-solid) !important;
+}
+
+html[data-style="minimal"] .btn-success,
+html[data-style="minimal"] .btn-success:hover:not(:disabled) {
+  background: var(--success) !important;
+  border: 1px solid var(--success) !important;
+  color: #FFFFFF !important;
+}
+
+html[data-style="minimal"] .btn-danger,
+html[data-style="minimal"] .btn-danger:hover:not(:disabled) {
+  background: var(--danger) !important;
+  border: 1px solid var(--danger) !important;
+  color: #FFFFFF !important;
+}
+
+html[data-style="minimal"] .btn-secondary,
+html[data-style="minimal"] .btn-secondary:hover:not(:disabled) {
+  background: var(--bg-input) !important;
+  border: 1px solid var(--border) !important;
+  color: var(--text-primary) !important;
+}
+
+/* 主/次按钮统一胶囊轮廓（扁平风格语言） */
+html[data-style="minimal"] .btn-primary,
+html[data-style="minimal"] .btn-success,
+html[data-style="minimal"] .btn-danger,
+html[data-style="minimal"] .btn-secondary,
+html[data-style="minimal"] .btn-ghost {
+  border-radius: 999px !important;
+}
+
+/* ── 「已接入」状态：保留主题主色，仅去掉高光与立体投影 ── */
+html[data-style="minimal"] .platform-console-actions .btn-primary.platform-proxy-primary.is-connected,
+html[data-style="minimal"] .platform-console-actions .btn-primary.platform-proxy-primary.is-connected:hover:not(:disabled),
+html[data-style="minimal"] .proxy-console-actions .btn-primary.is-connected,
+html[data-style="minimal"] .proxy-console-actions .btn-primary.is-connected:hover:not(:disabled) {
+  background: var(--accent) !important;
+  border-color: var(--accent) !important;
+  color: var(--button-on-solid) !important;
+  box-shadow: none !important;
+  filter: none !important;
+  text-shadow: none !important;
+}
+
+/* ── 开关：去立体投影，改纯色胶囊 ── */
+html[data-style="minimal"] .toggle-slider {
+  box-shadow: none !important;
+  border-radius: 999px !important;
+}
+
+html[data-style="minimal"] .toggle-slider::before {
+  box-shadow: none !important;
+}
+
+html[data-style="minimal"] .toggle-switch input:checked + .toggle-slider {
+  background: var(--accent) !important;
+  border-color: var(--accent) !important;
+  box-shadow: none !important;
+}
+
+html[data-style="minimal"] .toggle-sm {
+  box-shadow: none !important;
+}
+
+html[data-style="minimal"] .toggle-sm::after {
+  box-shadow: none !important;
+}
+
+html[data-style="minimal"] .toggle-sm:checked {
+  background: var(--accent) !important;
+  border-color: var(--accent) !important;
+  box-shadow: none !important;
+}
+
+/* ── 幽灵按钮：去内高光，仅保留细描边 ── */
+html[data-style="minimal"] .btn-ghost {
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+html[data-style="minimal"] .btn-ghost:hover:not(:disabled) {
+  box-shadow: none !important;
+  filter: none !important;
+}
+
+/* ── 代理状态胶囊：前置圆点在两种风格下都不需要（状态由底色 + 文字表达） ── */
+.global-proxy-pill .global-proxy-dot {
+  display: none !important;
+}
+
+/* ── 墨黑主题（仅修可用性，不改风格）：胶囊为深绿底，须配白字 ── */
+[data-theme="ink"] .global-proxy-pill.running,
+[data-theme="ink"] .global-proxy-pill.starting,
+[data-theme="ink"] .global-proxy-pill.error {
+  color: #FFFFFF !important;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   以下全部只作用于扁平风格（data-style="minimal"）
+   轻拟物（soft）保持原有外观，不应用任何审美调整。
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* 「已接入」按钮：中性底 + 绿字（不做整颗绿色包裹） */
+html[data-style="minimal"] .platform-console-actions .btn-primary.platform-proxy-primary.is-connected,
+html[data-style="minimal"] .platform-console-actions .btn-primary.platform-proxy-primary.is-connected:hover:not(:disabled),
+html[data-style="minimal"] .platform-console-actions .btn-primary.platform-proxy-primary.is-connected:focus-visible,
+html[data-style="minimal"] .proxy-console-actions .btn-primary.is-connected,
+html[data-style="minimal"] .proxy-console-actions .btn-primary.is-connected:hover:not(:disabled) {
+  background: var(--bg-input) !important;
+  border: 1px solid var(--border) !important;
+  color: var(--success) !important;
+  box-shadow: none !important;
+  filter: none !important;
+  text-shadow: none !important;
+}
+
+html[data-style="minimal"] .platform-console-actions .btn-primary.platform-proxy-primary.is-connected:hover:not(:disabled),
+html[data-style="minimal"] .proxy-console-actions .btn-primary.is-connected:hover:not(:disabled) {
+  background: var(--bg-hover) !important;
+  border-color: var(--border-strong) !important;
+  color: var(--success) !important;
+}
+
+/* 启用开关：绿色 */
+html[data-style="minimal"] .toggle-switch input:checked + .toggle-slider {
+  background: var(--success) !important;
+  border-color: var(--success) !important;
+}
+
+html[data-style="minimal"] .toggle-sm:checked {
+  background: var(--success) !important;
+  border-color: var(--success) !important;
+}
+
+/* ── 墨黑主题：平台图标底统一浅灰（不区分风格）
+   注意：扁平层里有 [data-style="minimal"] .platform-rail-icon { background: var(--bg-card) }，
+   墨黑下 --bg-card 是深色，会把浅灰底盖回去，因此这里用同权重更高的写法强制纠正。 ── */
+[data-theme="ink"] .platform-rail-icon,
+[data-theme="ink"] .platform-rail-item .platform-rail-icon,
+[data-theme="ink"] .platform-rail-item.active .platform-rail-icon {
+  background: #C7D0DD !important;
+  border: 1px solid rgba(0, 0, 0, 0.14) !important;
+  color: #0F172A !important;
+  box-shadow: none !important;
+}
+
+[data-theme="ink"] .platform-rail-icon svg {
+  color: inherit !important;
+  fill: currentColor;
+}
+
+[data-theme="ink"] .platform-rail-icon img {
+  filter: none !important;
+}
+
+/* ── 墨黑主题：导航胶囊改用半透明浮层，避免纯浅色药丸在深色里过于刺眼 ── */
+[data-theme="ink"] .tab-nav {
+  background: rgba(255, 255, 255, 0.045) !important;
+  border: 1px solid rgba(255, 255, 255, 0.06) !important;
+  box-shadow: none !important;
+}
+
+[data-theme="ink"] .tab-nav .tab-item {
+  color: rgba(255, 255, 255, 0.60) !important;
+  text-shadow: none !important;
+}
+
+[data-theme="ink"] .tab-nav .tab-item:hover {
+  color: rgba(255, 255, 255, 0.88) !important;
+  background: rgba(255, 255, 255, 0.055) !important;
+}
+
+[data-theme="ink"] .tab-nav .tab-item.active {
+  background: rgba(255, 255, 255, 0.135) !important;
+  border: 1px solid rgba(255, 255, 255, 0.10) !important;
+  color: #FFFFFF !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.30) !important;
+  text-shadow: none !important;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   扁平风格：状态胶囊「只染文字，不染容器」
+     运行中 / 启动中  → 绿字
+     已停止           → 橙黄字
+     异常             → 红字
+   容器始终是同一套中性底 + 中性描边，无彩色外晕、无彩色边框。
+   轻拟物（soft）仍沿用各主题的彩色渐变胶囊，不做任何改动。
+   ═══════════════════════════════════════════════════════════════════ */
+html[data-style="minimal"] .global-proxy-pill,
+html[data-style="minimal"] .global-proxy-pill.running,
+html[data-style="minimal"] .global-proxy-pill.starting,
+html[data-style="minimal"] .global-proxy-pill.off,
+html[data-style="minimal"] .global-proxy-pill.error {
+  background: var(--bg-input) !important;
+  border: 1px solid var(--border) !important;
+  text-shadow: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  box-shadow: none !important;
+}
+
+html[data-style="minimal"] .global-proxy-pill:hover,
+html[data-style="minimal"] .global-proxy-pill.running:hover,
+html[data-style="minimal"] .global-proxy-pill.starting:hover,
+html[data-style="minimal"] .global-proxy-pill.off:hover,
+html[data-style="minimal"] .global-proxy-pill.error:hover {
+  background: var(--bg-hover) !important;
+  border-color: var(--border-strong) !important;
+  box-shadow: none !important;
+}
+
+/* 仅文字承载状态色 */
+html[data-style="minimal"] .global-proxy-pill.running,
+html[data-style="minimal"] .global-proxy-pill.starting {
+  color: var(--success) !important;
+}
+
+html[data-style="minimal"] .global-proxy-pill.off {
+  color: var(--warn) !important;
+}
+
+html[data-style="minimal"] .global-proxy-pill.error {
+  color: var(--danger) !important;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   扁平风格：状态色统一降饱和
+   原则：用 color-mix 把状态色与当前主题的中性底混合，
+   保留「这是成功/危险/警告」的识别度，但不再出现扎眼的高饱和色块。
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* 「官方」/ 成功类徽章 */
+html[data-style="minimal"] .codex-config-badge.official,
+html[data-style="minimal"] .codex-config-badge-success {
+  background: var(--bg-input) !important;
+  border: 1px solid var(--border) !important;
+  color: var(--success) !important;
+}
+
+/* 「当前使用」徽章：中性底 + 绿字 + 收敛的指示点 */
+html[data-style="minimal"] .codex-config-badge-current {
+  background: var(--bg-input) !important;
+  border: 1px solid var(--border) !important;
+  color: var(--success) !important;
+  box-shadow: none !important;
+}
+
+html[data-style="minimal"] .codex-config-badge-current::before {
+  background: var(--success) !important;
+}
+
+/* 「支持图片理解」等视觉能力标签 */
+html[data-style="minimal"] .tag-vision-pill,
+html[data-style="minimal"] .tag[title*="图片理解"],
+html[data-style="minimal"] .tag[title*="支持图片"] {
+  background: var(--bg-input) !important;
+  border: 1px solid var(--border) !important;
+  color: var(--success) !important;
+}
+
+/* 能力微胶囊的开启态 */
+html[data-style="minimal"] .tag-cap-badge.is-active {
+  background: var(--bg-input) !important;
+  border-color: var(--border) !important;
+  color: var(--success) !important;
+}
+
+/* 「已汉化」按钮 */
+html[data-style="minimal"] .platform-console-actions .platform-lang-action-btn,
+html[data-style="minimal"] .platform-console-actions .platform-lang-action-btn:hover:not(:disabled) {
+  background: var(--bg-input) !important;
+  border: 1px solid var(--border) !important;
+  color: var(--success) !important;
+}
+
+/* 「停止接入」危险按钮 */
+html[data-style="minimal"] .platform-console-actions .platform-stop-proxy,
+html[data-style="minimal"] .platform-console-actions .platform-stop-proxy:hover:not(:disabled) {
+  background: var(--bg-input) !important;
+  border: 1px solid var(--border) !important;
+  color: var(--danger) !important;
+}
+
+/* 批量操作条的启用 / 停用按钮 */
+html[data-style="minimal"] .model-map-bulk-actions .provider-bulk-btn.success:not(:disabled) {
+  background: var(--bg-input) !important;
+  border-color: var(--border) !important;
+  color: var(--success) !important;
+}
+
+html[data-style="minimal"] .model-map-bulk-actions .provider-bulk-btn.warn:not(:disabled) {
+  background: var(--bg-input) !important;
+  border-color: var(--border) !important;
+  color: var(--warn) !important;
+}
+
+/* 能力标签：推理（暖）/ 图片 / 工具，容器中性，仅推理文字带暖色 */
+html[data-style="minimal"] .cb-cap-pill.cb-cap-reason,
+html[data-style="minimal"] .wb-cap-pill.wb-cap-reason {
+  background: var(--bg-input) !important;
+  border: 1px solid var(--border) !important;
+  color: var(--warn) !important;
+}
+
+html[data-style="minimal"] .cb-cap-pill.cb-cap-image,
+html[data-style="minimal"] .wb-cap-pill.wb-cap-image,
+html[data-style="minimal"] .cb-cap-pill.cb-cap-tool,
+html[data-style="minimal"] .wb-cap-pill.wb-cap-tool {
+  background: var(--bg-input) !important;
+  border: 1px solid var(--border) !important;
+  color: var(--text-muted) !important;
+}
