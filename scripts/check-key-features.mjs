@@ -241,7 +241,13 @@ section('临时文件纪律（只允许 tmp/）');
   }
 
   // tmp/ 目录存在（临时文件的唯一去处）
-  ok('tmp/ 目录存在', fs.existsSync(path.join(root, 'tmp')));
+  // CI 干净检出没有 tmp/（被 gitignore），自动创建自愈，而不是让三平台门控必挂
+  const tmpDir = path.join(root, 'tmp');
+  if (!fs.existsSync(tmpDir)) {
+    fs.mkdirSync(tmpDir, { recursive: true });
+    console.log('  ℹ tmp/ 不存在（CI 干净检出），已自动创建');
+  }
+  ok('tmp/ 目录存在', fs.existsSync(tmpDir));
 }
 
 // ─────────────────────────────────────────────────────────────
