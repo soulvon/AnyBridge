@@ -80,6 +80,13 @@ function checkLatestJson(assets) {
     );
     const latest = JSON.parse(fs.readFileSync(path.join(dir, 'latest.json'), 'utf8'));
     ok('latest.json 版本与发布版本一致', latest.version === version, `实际 ${latest.version}`);
+    // 更新弹窗的数据源：客户端 updater 读 notes → update.body → 弹窗渲染
+    const notes = String(latest.notes || '').trim();
+    ok(
+      'latest.json 含更新说明（notes 非空）',
+      notes.length >= 20,
+      `实际 ${notes.length} 字符 → 客户端更新弹窗会显示「无详细更新说明」`
+    );
     const platforms = latest.platforms || {};
     const keys = Object.keys(platforms);
     ok('覆盖 Windows 平台', keys.some((k) => k.startsWith('windows')), `keys=${keys.join(',')}`);

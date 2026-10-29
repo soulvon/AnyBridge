@@ -81,7 +81,24 @@ for (const [label, value] of versionSources) {
 // ── 2. CHANGELOG 必须有当前版本章节 ───────────────────────────────────
 section('更新说明');
 const changelog = read('CHANGELOG.md');
-ok(`CHANGELOG.md 含 ## v${pkgVersion} 章节`, changelog.includes(`## v${pkgVersion}`));
+// 这条链路是：CHANGELOG 章节 → CI 提取 release-notes.md → latest.json.notes
+// → 客户端 update.body → 更新弹窗渲染。只查「章节存在」不够：
+// 章节存在但为空时，弹窗会显示「无详细更新说明」，等于没有更新说明。
+// 必须匹配整行（含日期），否则 ` - 2026-10-29` 会被当成一条更新条目误判通过
+const headingRe = new RegExp(`^## v${pkgVersion.replace(/\./g, '\\.')}[^\\n]*$`, 'm');
+const headingMatch = headingRe.exec(changelog);
+ok(`CHANGELOG.md 含 ## v${pkgVersion} 章节`, !!headingMatch);
+if (headingMatch) {
+  const after = changelog.slice(headingMatch.index + headingMatch[0].length);
+  const nextIdx = after.search(/^## /m);
+  const body = (nextIdx >= 0 ? after.slice(0, nextIdx) : after).trim();
+  const bullets = body.split('\n').filter((l) => /^\s*-\s+\S/.test(l));
+  ok('该章节至少一条更新条目', bullets.length > 0, '章节为空 → 客户端更新弹窗会显示「无详细更新说明」');
+  ok('更新说明长度合理（≥20 字符）', body.length >= 20, `实际 ${body.length} 字符`);
+  if (bullets.length > 25) {
+    warn(`更新说明条目偏多（${bullets.length} 条），按约定应克制`, '弹窗一屏放不下，用户会跳过');
+  }
+}
 
 // ── 3. bundle.targets 必须跨平台安全 ──────────────────────────────────
 section('跨平台打包配置');
