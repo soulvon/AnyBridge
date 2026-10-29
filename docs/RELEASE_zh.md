@@ -66,6 +66,28 @@ npm run verify:release
 它等价于先执行 `npm run verify`，再执行本地安装包构建；构建成功不等于已经完成
 真实安装后的功能 Smoke，涉及发布链路的功能仍需按改动范围单独验收。
 
+## 发布后核对（自动化）
+
+CI 全部完成后运行：
+
+```bash
+npm run check:release-assets
+```
+
+核对主仓库与公共仓库的 4 平台安装包、更新器签名（`.app.tar.gz.sig` / `.AppImage.sig` / `.msi.sig` / `.exe.sig`；`.dmg` 不参与更新器、本来就不签名）以及 `latest.json` 的平台键 / `url` / `signature` / 版本号。
+
+### 公共仓库上传竞态（已知历史问题）
+
+`latest.json` 等元数据同步到公开仓库时，可能因 uploads 端点最终一致性出现 404/422 交替（脚本内已有 10 次退避重试）。若 CI 最后一步 `Publish to public release repository` 失败、但安装包已上传，手动补齐即可（v0.6.2 首次遇到时用此法恢复）：
+
+```bash
+gh release download vX.Y.Z --repo soulvon/AnyBridge --pattern "latest.json" --dir tmp/release-assets --clobber
+gh release download vX.Y.Z --repo soulvon/AnyBridge --pattern "latest-*.json" --dir tmp/release-assets --clobber
+gh release download vX.Y.Z --repo soulvon/AnyBridge --pattern "SHA256SUMS.txt" --dir tmp/release-assets --clobber
+gh release upload vX.Y.Z --repo soulvon/AnyBridge-Release tmp/release-assets/* --clobber
+npm run check:release-assets
+```
+
 ## 签名发布流程
 
 发布工作流需要以下仓库 Secrets：

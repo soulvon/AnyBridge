@@ -55,10 +55,11 @@ function checkAssets(repoLabel, assets) {
   ok('Linux .deb 安装包', hasAsset(names, /\.deb$/));
 
   section(`${repoLabel} 签名`);
+  // 签名只覆盖「更新器会下载的产物」：.msi/.exe 的 updater 包、.app.tar.gz、.AppImage。
+  // .dmg 不参与 updater，Tauri 不为其生成 .sig —— 不要把缺 .dmg.sig 当失败。
   ok('Windows .exe 签名', hasAsset(names, /x64-setup\.exe\.sig$/));
   ok('Windows .msi 签名', hasAsset(names, /x64.*\.msi\.sig$/));
-  ok('macOS .dmg 签名', hasAsset(names, /\.dmg\.sig$/));
-  ok('macOS updater 签名', hasAsset(names, /\.app\.tar\.gz\.sig$/));
+  ok('macOS updater 签名（.app.tar.gz.sig）', hasAsset(names, /\.app\.tar\.gz\.sig$/));
   ok('Linux AppImage 签名', hasAsset(names, /\.AppImage\.sig$/));
   ok('Linux .deb 签名', hasAsset(names, /\.deb\.sig$/));
 }
