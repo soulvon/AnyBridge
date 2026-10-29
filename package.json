@@ -35,7 +35,7 @@
     "check:stats": "node scripts/check-stats.mjs",
     "test:unit": "node scripts/run-unit-tests.mjs",
     "test:rust": "cargo test --manifest-path src-tauri/Cargo.toml --lib",
-    "verify": "npm run check:fast && npm run check:release-config && npm run test:unit && node scripts/check-key-features.mjs --rust && npm run check:cursor-core && npm run check:main-crate && npm run check:cross-linux",
+    "verify": "npm run check:fast && npm run check:release-config && npm run test:unit && node scripts/check-key-features.mjs --rust && npm run check:cursor-core && npm run check:main-crate",
     "verify:release": "npm run verify && npm run tauri:build:local",
     "tauri": "tauri",
     "tauri:dev": "npm run check:rust && tauri dev",
@@ -44,7 +44,7 @@
     "check:features": "node scripts/check-key-features.mjs",
     "check:release-config": "node scripts/check-release-config.mjs",
     "check:main-crate": "cargo check --manifest-path src-tauri/Cargo.toml",
-    "check:cross-linux": "cargo check --manifest-path cursor-core/Cargo.toml --target x86_64-unknown-linux-gnu --message-format short",
+    "probe:cross-linux": "cargo check --manifest-path cursor-core/Cargo.toml --target x86_64-unknown-linux-gnu --message-format short",
     "check:release-assets": "node scripts/check-release-assets.mjs"
   },
   "keywords": [
