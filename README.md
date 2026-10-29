@@ -9,7 +9,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Tauri v2](https://img.shields.io/badge/Tauri-v2-24c8db.svg?logo=tauri)](https://tauri.app/)
 [![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey.svg)]()
-[![GitHub release](https://img.shields.io/github/v/release/soulvon/AnyBridge?include_prereleases&color=orange)](https://github.com/soulvon/AnyBridge/releases)
+[![GitHub release](https://img.shields.io/github/v/release/soulvon/AnyBridge?color=orange)](https://github.com/soulvon/AnyBridge/releases)
 [![Downloads](https://img.shields.io/github/downloads/soulvon/AnyBridge/total?color=orange)](https://github.com/soulvon/AnyBridge/releases)
 
 [English](README_en.md) • [简体中文](README.md)
@@ -312,6 +312,18 @@ AnyBridge 针对不同工具的底层架构提供针对性的接入机制，目�
 | 验证信息请注明 "AnyBridge" | 感谢你的支持与鼓励！ |
 
 </div>
+
+---
+
+## 🧰 同系列作品（同一作者的 AI 工具箱）
+
+| 项目 | 简介 | 适合谁 |
+| :--- | :--- | :--- |
+| [🪁 **Kite**](https://github.com/soulvon/Kite) ![Downloads](https://img.shields.io/github/downloads/soulvon/Kite/total?color=orange) | Windsurf / Devin 多账号号池与 AI IDE 增强套件：多账号共享号池、额度监控、额度耗尽自动切换、多实例分身、界面增强 | Windsurf / Devin 重度用户 |
+| [🎫 **BuddyRelay**](https://github.com/soulvon/BuddyRelay) ![Open VSX Downloads](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fopen-vsx.org%2Fapi%2Fsoulvon%2Fbuddy-relay&query=%24.downloadCount&label=openvsx%20downloads&color=orange) | CodeBuddy / WorkBuddy 多账号切换 VS Code 插件：多窗口号池同步、额度流水对账、探针预检与自动切号，已上架 Open VSX 商店 | CodeBuddy / WorkBuddy 用户 |
+| [🔍 **devin-search-mcp**](https://github.com/soulvon/devin-search-mcp) ![npm Downloads](https://img.shields.io/npm/dt/devin-search-mcp?color=orange) | 把 Devin 原生全网实时搜索与网页正文提取抽成标准 MCP：1 秒级响应、零模型额度消耗，`npx -y devin-search-mcp` 直装 | Cursor / Claude Code / Claude Desktop / CodeBuddy 用户 |
+
+> 全部开源 · 本地优先 · 持续维护 —— 前往 [作者主页](https://github.com/soulvon) 查看全部项目。
 
 ---
 

@@ -9,7 +9,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Tauri v2](https://img.shields.io/badge/Tauri-v2-24c8db.svg?logo=tauri)](https://tauri.app/)
 [![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey.svg)]()
-[![GitHub release](https://img.shields.io/github/v/release/soulvon/AnyBridge?include_prereleases&color=orange)](https://github.com/soulvon/AnyBridge/releases)
+[![GitHub release](https://img.shields.io/github/v/release/soulvon/AnyBridge?color=orange)](https://github.com/soulvon/AnyBridge/releases)
 [![Downloads](https://img.shields.io/github/downloads/soulvon/AnyBridge/total?color=orange)](https://github.com/soulvon/AnyBridge/releases)
 
 [English](README_en.md) • [简体中文](README.md)
@@ -307,6 +307,18 @@ Special thanks to the [Linux.do](https://linux.do) community for feedback and su
 | Mention "AnyBridge" when joining | Thanks for the support! |
 
 </div>
+
+---
+
+## 🧰 More Tools from the Same Author
+
+| Project | What it does | For whom |
+| :--- | :--- | :--- |
+| [🪁 **Kite**](https://github.com/soulvon/Kite) ![Downloads](https://img.shields.io/github/downloads/soulvon/Kite/total?color=orange) | Multi-account pool & AI IDE enhancement suite for Windsurf / Devin: shared account pool, quota monitoring, auto-switch on exhaustion, multi-instance | Heavy Windsurf / Devin users |
+| [🎫 **BuddyRelay**](https://github.com/soulvon/BuddyRelay) ![Open VSX Downloads](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fopen-vsx.org%2Fapi%2Fsoulvon%2Fbuddy-relay&query=%24.downloadCount&label=openvsx%20downloads&color=orange) | Multi-account switcher extension for CodeBuddy / WorkBuddy: cross-window pool sync, usage ledger, probe pre-check & auto-switch. Available on Open VSX | CodeBuddy / WorkBuddy users |
+| [🔍 **devin-search-mcp**](https://github.com/soulvon/devin-search-mcp) ![npm Downloads](https://img.shields.io/npm/dt/devin-search-mcp?color=orange) | Exposes Devin's native real-time web search & clean page extraction as a standard MCP: ~1s response, zero LLM quota, install via `npx -y devin-search-mcp` | Cursor / Claude Code / Claude Desktop / CodeBuddy users |
+
+> All open source · local-first · actively maintained — see the [author profile](https://github.com/soulvon) for all projects.
 
 ---
 
