@@ -19,6 +19,7 @@ const exists = (p) => fs.existsSync(path.join(root, p));
 
 let passed = 0;
 let failed = 0;
+let warned = 0;
 function ok(name, cond, detail = '') {
   if (cond) {
     passed++;
@@ -27,6 +28,11 @@ function ok(name, cond, detail = '') {
     failed++;
     console.log(`  ❌ ${name}${detail ? ' — ' + detail : ''}`);
   }
+}
+// 提示档：可见但不阻断（发版后的常态）
+function warn(name, detail = '') {
+  warned++;
+  console.log(`  ⚠ 提示 ${name}${detail ? ' — ' + detail : ''}`);
 }
 function section(name) {
   console.log(`\n■ ${name}`);
@@ -140,13 +146,16 @@ try {
     const tagSha = execSync(`git rev-list -n 1 ${tag}`, { encoding: 'utf8' }).trim();
     const headSha = execSync('git rev-parse HEAD', { encoding: 'utf8' }).trim();
     const same = tagSha === headSha;
-    ok(
-      `已存在的 tag ${tag} 指向当前 HEAD`,
-      same,
-      same
-        ? ''
-        : `tag 指向 ${tagSha.slice(0, 8)}、HEAD 是 ${headSha.slice(0, 8)}：直接重推 tag 不会带上新提交，需先 git push origin :refs/tags/${tag} 再重打`
-    );
+    if (same) {
+      ok(`已存在的 tag ${tag} 指向当前 HEAD`, true);
+    } else {
+      // 发版后继续提交（文档/门控修复）是常态，此时 tag 必然落后于 HEAD，不能算失败。
+      // 只有「想重发同一版本」时才需要人工处理：先删 tag 再重打。
+      warn(
+        `tag ${tag} 不指向 HEAD（发版后追补提交属正常）`,
+        `tag ${tagSha.slice(0, 8)} / HEAD ${headSha.slice(0, 8)}；若要重发该版本，先 git push origin :refs/tags/${tag} 再重打，否则 CI 构建的是打 tag 时的代码`
+      );
+    }
   }
 } catch (e) {
   ok('git 环境可用于 tag 检查', false, String(e).slice(0, 140));
@@ -154,7 +163,7 @@ try {
 
 // ── 汇总 ─────────────────────────────────────────────────────────────
 console.log(`\n${'═'.repeat(36)}`);
-console.log(`通过 ${passed} ｜ 失败 ${failed}`);
+console.log(`通过 ${passed} ｜ 失败 ${failed} ｜ 提示 ${warned}`);
 if (failed > 0) {
   console.log('❌ 发布配置不一致——修复后再发版');
   process.exit(1);
