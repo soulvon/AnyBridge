@@ -123,6 +123,35 @@ if (exists('.github/workflows/release.yml')) {
   ok('release.yml 存在', false);
 }
 
+// ── 5. tag 语义：已存在的同名 tag 必须指向 HEAD ────────────────────────
+// 事故背景：v0.6.1 首次发布时 tag 指向含错误的旧提交，CI 重跑无效，
+// 最终必须删 tag 重打。这条检查让「tag 与代码不一致」在发版前就暴露。
+section('发布标签');
+try {
+  const { execSync } = await import('node:child_process');
+  const tag = `v${pkgVersion}`;
+  const tags = execSync('git tag -l', { encoding: 'utf8' })
+    .split('\n')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (!tags.includes(tag)) {
+    ok(`tag ${tag} 尚未创建（发布时新建）`, true);
+  } else {
+    const tagSha = execSync(`git rev-list -n 1 ${tag}`, { encoding: 'utf8' }).trim();
+    const headSha = execSync('git rev-parse HEAD', { encoding: 'utf8' }).trim();
+    const same = tagSha === headSha;
+    ok(
+      `已存在的 tag ${tag} 指向当前 HEAD`,
+      same,
+      same
+        ? ''
+        : `tag 指向 ${tagSha.slice(0, 8)}、HEAD 是 ${headSha.slice(0, 8)}：直接重推 tag 不会带上新提交，需先 git push origin :refs/tags/${tag} 再重打`
+    );
+  }
+} catch (e) {
+  ok('git 环境可用于 tag 检查', false, String(e).slice(0, 140));
+}
+
 // ── 汇总 ─────────────────────────────────────────────────────────────
 console.log(`\n${'═'.repeat(36)}`);
 console.log(`通过 ${passed} ｜ 失败 ${failed}`);

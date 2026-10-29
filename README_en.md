@@ -10,6 +10,7 @@
 [![Tauri v2](https://img.shields.io/badge/Tauri-v2-24c8db.svg?logo=tauri)](https://tauri.app/)
 [![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey.svg)]()
 [![GitHub release](https://img.shields.io/github/v/release/soulvon/AnyBridge?include_prereleases&color=orange)](https://github.com/soulvon/AnyBridge/releases)
+[![Downloads](https://img.shields.io/github/downloads/soulvon/AnyBridge/total?color=orange)](https://github.com/soulvon/AnyBridge/releases)
 
 [English](README_en.md) • [简体中文](README.md)
 
@@ -154,7 +155,9 @@ AnyBridge tailors the integration to each tool's architecture. **16 agents** are
 - **🔓 Dedicated unlock**: rebuilds official client fingerprints (`anthropic-beta` headers, Thinking params, session metadata) so any agent can use relay-only Claude Code / Codex lines without 503 / 400 errors.
 - **💉 Codex Desktop enhancement**: injects your models into the picker through CDP at runtime — no binary modification.
 - **🔁 Reliability**: automatic failover, 429 retry with backoff, concurrency limits, long-reasoning timeouts, proxy auto-restore on exit.
-- **📊 Live metrics**: request trends, success/failure split, input/output token usage, per-channel latency and availability.
+- **📊 Usage dashboard**: ECharts request trends (hourly for today, adaptive granularity), KPI deltas with sparklines, per-request input/output/cache cost breakdown, and a "requested model → resolved model" trail.
+- **🗂️ Multi-source local ledgers**: Claude Code, Cursor, CPA suite, Pi and ZCode — each toggleable; calls already forwarded through your own gateway are de-duplicated across ledgers.
+- **🧩 Config drift detection**: when an integrated client's config is modified externally, the platform card flags it with the number of drifted fields instead of failing silently.
 - **🧪 One-click diagnostics**: connectivity, model list, streaming SSE, tool calling and vision capability.
 - **📐 Context presets**: recommended context windows for major models (Claude / GPT / DeepSeek / GLM / Qwen …) so long outputs aren't truncated.
 - **🧩 CPA extension hub**: deploy and manage a local gateway suite (CLIProxyAPI + CPA Manager Plus + plugin store) in one click.

@@ -10,6 +10,7 @@
 [![Tauri v2](https://img.shields.io/badge/Tauri-v2-24c8db.svg?logo=tauri)](https://tauri.app/)
 [![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey.svg)]()
 [![GitHub release](https://img.shields.io/github/v/release/soulvon/AnyBridge?include_prereleases&color=orange)](https://github.com/soulvon/AnyBridge/releases)
+[![Downloads](https://img.shields.io/github/downloads/soulvon/AnyBridge/total?color=orange)](https://github.com/soulvon/AnyBridge/releases)
 
 [English](README_en.md) • [简体中文](README.md)
 
@@ -158,7 +159,9 @@ AnyBridge 针对不同工具的底层架构提供针对性的接入机制，目�
 - **🔓 专属解锁（Unlock）**：自动补齐官方客户端协议指纹（`anthropic-beta` 头、Thinking 参数、会话元数据），让任意智能体畅享中转站的 Claude Code / Codex 专属专线，避免 503 / 400 拒绝。
 - **💉 Codex 桌面增强**：通过 CDP 运行时注入把自定义模型加进下拉列表，不改任何二进制文件。
 - **🔁 稳定性保障**：故障自动切换、429 限流自动重试、并发控制、长推理超时保护、退出自动还原代理。
-- **📊 实时监控看板**：请求走势、成功失败分布、输入/输出 Token 消耗、各渠道平均延迟与可用性。
+- **📊 用量统计看板**：ECharts 请求走势（今日按小时，粒度自适应）、KPI 环比与迷你趋势线、输入/输出/缓存分别计价的成本明细、最近请求的「请求模型 → 实际模型」链路。
+- **🗂️ 多来源本地账本**：Claude Code、Cursor、CPA 套件、Pi、ZCode 五个来源可单独启停；跨账本自动去重，客户端经自家网关转发过的调用不会计两遍。
+- **🧩 配置漂移感知**：接管期间配置被外部改动时，平台卡片标出「被外部修改」与处数，不再静默失效。
 - **🧪 能力一键体检**：连通性、模型列表、流式 SSE、工具调用、视觉多模态逐项检测。
 - **📐 上下文窗口预设**：内置主流模型（Claude / GPT / DeepSeek / GLM / Qwen 等）推荐参数，避免长代码被截断。
 - **🧩 CPA 扩展中心**：一键部署与管理本地网关套件（CLIProxyAPI + CPA Manager Plus + 插件商店）。
@@ -359,3 +362,5 @@ npm run tauri:build
 关键词：BYOK 自带密钥 · AI 编程智能体 · 本地代理 · OpenAI 兼容接口 · 模型路由与聚合 · 中转站接入 · Claude Code / Codex / Cursor / Pi / Hermes 配置管理
 
 </div>
+
+
