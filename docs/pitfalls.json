@@ -611,6 +611,43 @@
       },
       "regression_test": "cursor-core/src/local_app/account.rs::inject_seeds_missing_account_keys",
       "severity": "high"
+    },
+    {
+      "id": "system-proxy-health-degrade",
+      "title": "系统代理注册表残留死端口时必须探测降级直连，不能只靠重读配置",
+      "symptom": "代理软件（FlClash 等）退出但 ProxyEnable=1 残留指向 127.0.0.1:7897，端口已无进程监听；sidecar 每秒重读到的仍是死代理，上游请求全部 proxyconnect ECONNREFUSED（cursor-byok issue #508 同款）——重读一万次也没用",
+      "lesson": "重读配置解决不了「配置有效但端口死了」；必须周期性 TCP 探测系统代理端口（默认 5s/1.5s 超时），死端口置不可用标志并降级直连、恢复后自动切回，httpsAgentFor 在标志置位时原样返回直连 agent。行为由 system-proxy.test.js 两场景锁定",
+      "check": {
+        "type": "source_contains",
+        "file": "sidecar/system-proxy.js",
+        "must_contain": "probeProxyHealth"
+      },
+      "regression_test": "sidecar/system-proxy.test.js::proxy health degraded → httpsAgentFor falls back to direct agent",
+      "severity": "high"
+    },
+    {
+      "id": "cursor-proxy-support-override",
+      "title": "Cursor 接管的 proxySupport 必须写 override，不能写 on",
+      "symptom": "proxySupport=on 的语义是「使用代理设置」，系统代理（Clash 等）存在时 Cursor 可能优先走系统代理而不是 http.proxy——流量绕开 MITM 且零日志，表现为自定义模型静默失效",
+      "lesson": "写 settings.json 三处（写入/状态匹配/残留清理签名）必须同步用 override：强制 http.proxy 覆盖系统代理，请求必定进 MITM。旧值为 on 的机器在下次启用时经 settings_match 不匹配自动重写。行为由写入与匹配的一致性锁定",
+      "check": {
+        "type": "source_contains",
+        "file": "cursor-core/src/local_app/settings.rs",
+        "must_contain": "MANAGED_PROXY_SUPPORT"
+      },
+      "severity": "high"
+    },
+    {
+      "id": "cursor-cloud-agent-short-circuit",
+      "title": "云端命令通道 GET /agent/v1/run 必须本地短路 401，透传只会白打错误日志",
+      "symptom": "Cursor 3.27+ 每次启动向官方发起 GET /agent/v1/run（WebSocket 订阅云端命令），携带本地注入 token 官方必然 401；透传得到同样的 401 外加一条 hudsucker tunnel ERROR，还白打一次出站连接",
+      "lesson": "本地 agent 主链路（RunSSE）不依赖这条 WS 通道，就地返回 401 行为一致且消除噪声。同时 fallback 透传未命中路径开始留痕（去重限 256 条）——名单式白名单挡不住「名单本身不够用」，新版新增端点会从这张表冒出来",
+      "check": {
+        "type": "source_contains",
+        "file": "cursor-core/src/local_app/proxy.rs",
+        "must_contain": "CLOUD_AGENT_RUN_PATH"
+      },
+      "severity": "medium"
     }
   ]
 }
