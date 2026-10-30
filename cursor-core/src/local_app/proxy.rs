@@ -1,9 +1,13 @@
 //! Configures the local application proxy.
-use std::{net::SocketAddr, sync::Arc};
+use std::{
+    collections::HashSet,
+    net::SocketAddr,
+    sync::{Arc, Mutex, OnceLock},
+};
 
 use hudsucker::{
     certificate_authority::RcgenAuthority,
-    hyper::{Request, Uri},
+    hyper::{header, Request, Response, StatusCode, Uri},
     rustls::crypto::aws_lc_rs,
     Body, HttpContext, HttpHandler, Proxy, RequestOrResponse,
 };
@@ -125,17 +129,43 @@ impl HttpHandler for CursorRelay {
                 "HTTP 请求到达 MITM"
             );
         }
-        if is_cursor_host(original.host().unwrap_or_default()) && locally_routed {
-            if let Ok(value) = original.to_string().parse() {
-                request.headers_mut().insert(UPSTREAM_URL_HEADER, value);
+        if is_cursor_host(original.host().unwrap_or_default()) {
+            if locally_routed {
+                if let Ok(value) = original.to_string().parse() {
+                    request.headers_mut().insert(UPSTREAM_URL_HEADER, value);
+                }
+                let path = original
+                    .path_and_query()
+                    .map(|value| value.as_str())
+                    .unwrap_or("/");
+                if let Ok(uri) = format!("http://{}{}", self.backend, path).parse::<Uri>() {
+                    *request.uri_mut() = uri;
+                }
+            } else {
+                note_fallback_path(original.path());
             }
-            let path = original
-                .path_and_query()
-                .map(|value| value.as_str())
-                .unwrap_or("/");
-            if let Ok(uri) = format!("http://{}{}", self.backend, path).parse::<Uri>() {
-                *request.uri_mut() = uri;
-            }
+        }
+        if is_cursor_host(original.host().unwrap_or_default())
+            && original.path() == CLOUD_AGENT_RUN_PATH
+        {
+            // Cursor 3.27+ 会向官方发起 GET /agent/v1/run（WebSocket 订阅云端 agent 命令），
+            // 携带的是我们的本地注入 token，官方必然 401。透传只会得到同样的 401，
+            // 还要白打一条 hudsucker tunnel ERROR；本地 agent 主链路（RunSSE）不依赖这条通道。
+            // 就地返回 401：行为与官方一致、少一次出站、消除日志噪声。
+            tracing::info!(
+                target: "cursor_relay",
+                stage = "http",
+                path = CLOUD_AGENT_RUN_PATH,
+                "云端命令通道本地短路（本地 token 官方必然 401，本地 agent 不依赖此通道）"
+            );
+            let response = Response::builder()
+                .status(StatusCode::UNAUTHORIZED)
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(
+                    "{\"code\":\"unauthenticated\",\"message\":\"local BYOK mode\"}",
+                ))
+                .expect("static 401 response builder");
+            return RequestOrResponse::Response(response);
         }
         request.into()
     }
@@ -218,6 +248,32 @@ fn is_local_path(path: &str) -> bool {
 
 fn should_route_locally(path: &str, tab_mode: TabMode) -> bool {
     is_local_path(path) || (is_tab_path(path) && tab_mode != TabMode::Direct)
+}
+
+/// Cursor 3.27+ 的云端 agent 命令订阅通道（GET WebSocket）。
+const CLOUD_AGENT_RUN_PATH: &str = "/agent/v1/run";
+
+/// fallback 留痕：未命中本地路由的 Cursor 请求路径，去重后各记一条。
+/// 名单式白名单只能保证"名单内的都处理对了"，保证不了"名单还够用"——
+/// 新版新增的端点（世界变了）只会安静地走 fallback 透传官方，
+/// 表现是"自定义模型没反应"且无任何报错。这张表就是发现机制：
+/// 新路径从这里冒出来，就是新版要支持的东西。
+static FALLBACK_SEEN: OnceLock<Mutex<HashSet<String>>> = OnceLock::new();
+
+fn note_fallback_path(path: &str) {
+    let set = FALLBACK_SEEN.get_or_init(|| Mutex::new(HashSet::new()));
+    let mut guard = match set.lock() {
+        Ok(guard) => guard,
+        Err(_) => return,
+    };
+    if guard.len() < 256 && guard.insert(path.to_owned()) {
+        tracing::info!(
+            target: "cursor_relay",
+            stage = "fallback",
+            path = %path,
+            "透传官方：未命中本地路由（新端点从这里冒出来，纳入下一轮白名单评审）"
+        );
+    }
 }
 
 #[cfg(test)]

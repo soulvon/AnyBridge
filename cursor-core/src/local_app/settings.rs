@@ -13,6 +13,11 @@ const KEYS: [&str; 5] = [
     "cursor.general.disableHttp2",
     "http.experimental.systemCertificatesV2",
 ];
+/// `proxySupport` 必须用 `override`：`on` 的语义是"使用代理设置"，
+/// 在系统代理（Clash 等）存在时 Cursor 可能优先走系统代理而不是我们的
+/// `http.proxy`，流量绕开 MITM 且无任何日志（2026-10-30 实测 7897 死端口事故）。
+/// `override` 强制 `http.proxy` 覆盖系统代理，请求必定进 MITM。
+const MANAGED_PROXY_SUPPORT: &str = "override";
 
 #[derive(Debug, Serialize, Deserialize)]
 struct SettingsBackup {
@@ -95,15 +100,19 @@ fn save_backup(settings: &BTreeMap<String, Value>) -> Result<()> {
     Ok(())
 }
 
-pub fn write_proxy_settings(proxy_url: &str) -> Result<()> {
-    let mut settings = read()?;
-    save_backup(&settings)?;
+fn write_proxy_settings_body(proxy_url: &str, settings: &mut BTreeMap<String, Value>) {
     settings.remove(NO_PROXY_KEY);
     settings.insert(KEYS[0].into(), Value::String(proxy_url.into()));
     settings.insert(KEYS[1].into(), Value::String(proxy_url.into()));
-    settings.insert(KEYS[2].into(), Value::String("on".into()));
+    settings.insert(KEYS[2].into(), Value::String(MANAGED_PROXY_SUPPORT.into()));
     settings.insert(KEYS[3].into(), Value::Bool(true));
     settings.insert(KEYS[4].into(), Value::Bool(true));
+}
+
+pub fn write_proxy_settings(proxy_url: &str) -> Result<()> {
+    let mut settings = read()?;
+    save_backup(&settings)?;
+    write_proxy_settings_body(proxy_url, &mut settings);
     write(&settings)
 }
 
@@ -132,14 +141,14 @@ pub fn settings_match(proxy_url: &str) -> Result<bool> {
     let settings = read()?;
     Ok(settings.get(KEYS[0]) == Some(&Value::String(proxy_url.into()))
         && settings.get(KEYS[1]) == Some(&Value::String(proxy_url.into()))
-        && settings.get(KEYS[2]) == Some(&Value::String("on".into()))
+        && settings.get(KEYS[2]) == Some(&Value::String(MANAGED_PROXY_SUPPORT.into()))
         && settings.get(KEYS[3]) == Some(&Value::Bool(true))
         && settings.get(KEYS[4]) == Some(&Value::Bool(true)))
 }
 
 pub fn clear_stale_managed_settings() -> Result<()> {
     let settings = read()?;
-    let managed_signature = settings.get(KEYS[2]) == Some(&Value::String("on".into()))
+    let managed_signature = settings.get(KEYS[2]) == Some(&Value::String(MANAGED_PROXY_SUPPORT.into()))
         && settings.get(KEYS[3]) == Some(&Value::Bool(true))
         && settings.get(KEYS[4]) == Some(&Value::Bool(true));
     let loopback = settings
