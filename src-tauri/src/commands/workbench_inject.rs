@@ -242,7 +242,8 @@ pub(crate) fn patch_nls_tolerant(target: &str) -> Result<bool, String> {
 /// 还原直连时还原 NLS 原厂文件（有备份才还原，否则跳过）。
 /// 版本防护：IDE 升级会把 main.js 覆盖回新版原厂，此时旧备份不能往回覆盖，
 /// 否则新旧文件版本错配（可能引发前端异常降级，如误入屏幕阅读器模式）。
-fn restore_nls(target: &str) -> Result<bool, String> {
+/// 汉化 restore 同样调用（审计：NLS 加固残留，还原英文后应回到原厂）。
+pub(crate) fn restore_nls(target: &str) -> Result<bool, String> {
     let Some(js_path) = workbench_main_js_path(target) else {
         return Ok(false);
     };
@@ -452,28 +453,40 @@ pub(crate) fn restore_product_json(target: &str) -> Result<bool, String> {
     }
 }
 
+/// ensure_csp_unsafe_inline 插入的精确字节序列。回滚函数按它做**精确移除**：
+/// 原厂 CSP 本来就带 'unsafe-inline' 的文件（缩进不同）绝不能被误删。
+const INSERTED_CSP_LINE: &str = "\n\t\t\t\t\t'unsafe-inline'";
+
 /// 在 CSP 的 script-src 指令里补上 'unsafe-inline'，让注入的 inline <script> 能执行。
 /// 已有则原样返回。只动 script-src，不碰其它指令。
-pub(crate) fn ensure_csp_unsafe_inline(html: &str) -> String {
+/// 返回 (新内容, 是否实际插入)——插入与否必须记账（side-effects），还原时据此精确回滚。
+pub(crate) fn ensure_csp_unsafe_inline(html: &str) -> (String, bool) {
     // 找 "script-src" 后面到下一个 ';' 之间的内容，若没有 'unsafe-inline' 就插入。
     let Some(idx) = html.find("script-src") else {
-        return html.to_string();
+        return (html.to_string(), false);
     };
     let after = &html[idx..];
     let Some(semi_rel) = after.find(';') else {
-        return html.to_string();
+        return (html.to_string(), false);
     };
     let directive = &after[..semi_rel];
     if directive.contains("'unsafe-inline'") {
-        return html.to_string();
+        return (html.to_string(), false);
     }
     // 在 "script-src" 紧后插入 'unsafe-inline'
     let insert_at = idx + "script-src".len();
     let mut out = String::with_capacity(html.len() + 20);
     out.push_str(&html[..insert_at]);
-    out.push_str("\n\t\t\t\t\t'unsafe-inline'");
+    out.push_str(INSERTED_CSP_LINE);
     out.push_str(&html[insert_at..]);
-    out
+    (out, true)
+}
+
+/// 精确移除 ensure_csp_unsafe_inline 插入的那一行（至多一次）。
+/// 只允许在 side-effects 记账确认「这行是我们插的」时调用，
+/// 否则会把原厂自带的 'unsafe-inline' 误删。
+pub(crate) fn revert_csp_unsafe_inline(html: &str) -> String {
+    html.replacen(INSERTED_CSP_LINE, "", 1)
 }
 
 /// 移除已存在的 byok 注入块（幂等重注入用）。
@@ -529,7 +542,12 @@ fn inject_workbench_html(script: &str, target: &str) -> Result<bool, String> {
     fs::write(&backup, &html).map_err(|e| format!("备份 workbench.html 失败: {}", e))?;
 
     let mut new_html = strip_byok_block(&html);
-    new_html = ensure_csp_unsafe_inline(&new_html);
+    let (with_csp, csp_inserted) = ensure_csp_unsafe_inline(&new_html);
+    new_html = with_csp;
+    if csp_inserted {
+        // 记账：还原时据此精确回滚这行 CSP 放行（原厂自带的不能误删）
+        super::app_localization::record_csp_inserted(target, "workbench.html")?;
+    }
 
     // CSP 有 nonce 时内联脚本必须带同名 nonce 才执行（Devin 就是这种情况，
     // 详见 super::app_localization::extract_csp_nonce 的说明）
@@ -578,6 +596,12 @@ pub fn restore(target: &str) -> Result<bool, String> {
     };
     let html_result = restore_workbench_html(target);
     let nls_result = restore_nls(target);
+    let csp_result = if hans_present {
+        // 汉化块还在：CSP 行仍被汉化的 inline script 需要，由汉化 restore 处理
+        Ok(false)
+    } else {
+        restore_csp_record(target)
+    };
 
     let mut changed = false;
     let mut errors: Vec<String> = Vec::new();
@@ -593,10 +617,34 @@ pub fn restore(target: &str) -> Result<bool, String> {
         Ok(v) => changed |= v,
         Err(e) => errors.push(e),
     }
+    match csp_result {
+        Ok(v) => changed |= v,
+        Err(e) => errors.push(e),
+    }
     if !errors.is_empty() {
         return Err(errors.join("；"));
     }
     Ok(changed)
+}
+
+/// 消费 BYOK 注入时记的 CSP 账（汉化块还在时不动——汉化 restore 会处理）。
+fn restore_csp_record(target: &str) -> Result<bool, String> {
+    let Some(path) = workbench_html_path(target) else {
+        return Ok(false);
+    };
+    let html = fs::read_to_string(&path).map_err(|e| e.to_string())?;
+    if html.contains(BYOK_BLOCK_START) || html.contains(HANS_BLOCK_START) {
+        return Ok(false);
+    }
+    if !super::app_localization::take_csp_record(target, "workbench.html")? {
+        return Ok(false);
+    }
+    let reverted = revert_csp_unsafe_inline(&html);
+    if reverted == html {
+        return Ok(false);
+    }
+    write_atomic(&path, &reverted).map_err(|e| format!("还原 CSP 失败: {e}"))?;
+    Ok(true)
 }
 
 /// 还原 workbench.html：只剥离自己的 byok 块，绝不用备份整体覆盖。
@@ -637,6 +685,21 @@ fn restore_workbench_html(target: &str) -> Result<bool, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn csp_unsafe_inline_revert_is_exact_inverse() {
+        // ensure 的插入必须能被 revert 精确撤销——否则"还原英文"会永久削弱 CSP
+        let html = "<meta http-equiv=\"Content-Security-Policy\" content=\"script-src 'self';\" />";
+        let (patched, inserted) = ensure_csp_unsafe_inline(html);
+        assert!(inserted, "无 'unsafe-inline' 时必须实际插入");
+        assert_eq!(revert_csp_unsafe_inline(&patched), html, "revert 必须精确还原原字节");
+
+        // 原厂自带 'unsafe-inline'（缩进与我们插入的不同）：不得插入、回滚不得动它
+        let own = "<meta http-equiv=\"Content-Security-Policy\" content=\"script-src\n\t\t\t'unsafe-inline'\n\t\t\t'self';\" />";
+        let (p2, inserted2) = ensure_csp_unsafe_inline(own);
+        assert!(!inserted2, "原厂已带 'unsafe-inline' 时不得重复插入");
+        assert_eq!(revert_csp_unsafe_inline(&p2), own, "回滚绝不能误删原厂自带的放行");
+    }
 
     #[test]
     fn strips_byok_block_and_keeps_hans_block() {

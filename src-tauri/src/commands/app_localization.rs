@@ -20,7 +20,7 @@
 use super::antigravity_localization::LocalizationOperationResult;
 use super::workbench_inject::{
     clear_product_checksums, ensure_csp_unsafe_inline, patch_nls_tolerant, product_json_path,
-    restore_product_json, workbench_html_path,
+    restore_product_json, revert_csp_unsafe_inline, workbench_html_path,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -153,6 +153,118 @@ fn cache_dir(platform: &str) -> PathBuf {
         .join(platform);
     let _ = fs::create_dir_all(&p);
     p
+}
+
+// ---------------------------------------------------------------------------
+// 副作用记账（side-effects）
+//
+// 汉化/接入除了注入块，还有三类「还原英文」时必须回滚的副作用：
+//   1. CSP 补的 'unsafe-inline'（注入 inline script 所需）
+//   2. argv.json 的 locale=zh-cn（显示语言切换）
+//   3. NLS 取词加固（workbench.desktop.main.js，备份/还原在 workbench_inject）
+// 审计事故：restore 只剥注入块，三类副作用全部残留——CSP 被永久削弱、
+// 文案承诺"还原官方英文原版"却仍是中文界面。
+// 记账文件 side-effects.json 记录「我们实际改了什么」，restore 据此精确回滚；
+// 用户在两次操作之间手动改过的状态不回滚（见 restore 内的判据）。
+// ---------------------------------------------------------------------------
+
+/// locale 记账值：改之前该键不存在
+const LOCALE_ABSENT: &str = "__absent__";
+
+/// locale 改前值的记账内容。
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) enum LocaleRecord {
+    /// 改之前 locale = 该值
+    Was(String),
+    /// 改之前没有 locale 键
+    Absent,
+}
+
+fn side_effects_path(platform: &str) -> PathBuf {
+    cache_dir(platform).join("side-effects.json")
+}
+
+fn read_side_effects(platform: &str) -> Value {
+    fs::read_to_string(side_effects_path(platform))
+        .ok()
+        .and_then(|s| serde_json::from_str(&s).ok())
+        .unwrap_or_else(|| json!({}))
+}
+
+fn write_side_effects(platform: &str, v: &Value) -> Result<(), String> {
+    let text = serde_json::to_string_pretty(v).map_err(|e| e.to_string())?;
+    write_atomic(&side_effects_path(platform), &text).map_err(|e| e.to_string())
+}
+
+/// 记账：某入口 HTML 的 CSP 由我们补过 'unsafe-inline'。
+pub(crate) fn record_csp_inserted(platform: &str, file_name: &str) -> Result<(), String> {
+    let mut v = read_side_effects(platform);
+    v["csp"][file_name] = json!(true);
+    write_side_effects(platform, &v)
+}
+
+/// 消费记账：该文件的 CSP 插入记录（读出即清除，回滚只做一次）。
+pub(crate) fn take_csp_record(platform: &str, file_name: &str) -> Result<bool, String> {
+    let mut v = read_side_effects(platform);
+    let had = v
+        .get("csp")
+        .and_then(|c| c.get(file_name))
+        .and_then(|b| b.as_bool())
+        .unwrap_or(false);
+    if had {
+        if let Some(c) = v.get_mut("csp").and_then(|c| c.as_object_mut()) {
+            c.remove(file_name);
+        }
+        write_side_effects(platform, &v)?;
+    }
+    Ok(had)
+}
+
+/// 记账：argv.json 的 locale 改前值。
+pub(crate) fn record_locale_previous(
+    platform: &str,
+    previous: Option<&str>,
+) -> Result<(), String> {
+    let mut v = read_side_effects(platform);
+    v["localePrevious"] = match previous {
+        Some(s) => json!(s),
+        None => json!(LOCALE_ABSENT),
+    };
+    write_side_effects(platform, &v)
+}
+
+/// 消费记账：argv.json 的 locale 改前值（读出即清除）。
+/// None = 没有记账（我们从没改过 locale）。
+pub(crate) fn take_locale_record(platform: &str) -> Result<Option<LocaleRecord>, String> {
+    let mut v = read_side_effects(platform);
+    let Some(rec) = v.get("localePrevious").cloned() else {
+        return Ok(None);
+    };
+    if let Some(obj) = v.as_object_mut() {
+        obj.remove("localePrevious");
+    }
+    write_side_effects(platform, &v)?;
+    Ok(Some(match rec.as_str() {
+        Some(LOCALE_ABSENT) | None => LocaleRecord::Absent,
+        Some(s) => LocaleRecord::Was(s.to_string()),
+    }))
+}
+
+/// 把 argv.json 的 locale 回滚为记账的改前值（Absent = 删除该键）。
+/// JSONC 解析失败返回 None——调用方绝不能用空对象覆盖（pitfalls: argv-json-is-jsonc）。
+fn revert_locale_in_argv(raw: &str, record: &LocaleRecord) -> Option<String> {
+    let mut doc = parse_jsonc(raw)?;
+    if let Some(obj) = doc.as_object_mut() {
+        match record {
+            LocaleRecord::Was(v) => {
+                obj.insert("locale".to_string(), json!(v));
+            }
+            LocaleRecord::Absent => {
+                obj.remove("locale");
+            }
+        }
+    }
+    serde_json::to_string_pretty(&doc).ok()
 }
 
 /// 上游 raw URL（分平台：windsurf 系是完整脚本，cursor/claude 是词典 JSON，
@@ -1285,11 +1397,14 @@ fn ensure_locale_zh_cn(platform: &str) -> Result<bool, String> {
     if doc.get("locale").and_then(|v| v.as_str()) == Some("zh-cn") {
         return Ok(false);
     }
+    // 记账改前值：还原时据此精确回滚（键不存在 = 还原时删除该键）
+    let previous = doc.get("locale").and_then(|v| v.as_str()).map(|s| s.to_string());
     if let Some(obj) = doc.as_object_mut() {
         obj.insert("locale".to_string(), json!("zh-cn"));
     }
     let text = serde_json::to_string_pretty(&doc).map_err(|e| e.to_string())?;
     write_atomic(&argv_path, &text)?;
+    record_locale_previous(platform, previous.as_deref())?;
     Ok(true)
 }
 
@@ -1806,7 +1921,11 @@ fn inject_hans_into_with_cache(
     }
 
     let stripped = strip_hans_block(&html);
-    let with_csp = ensure_csp_unsafe_inline(&stripped);
+    let (with_csp, csp_inserted) = ensure_csp_unsafe_inline(&stripped);
+    if csp_inserted {
+        // 记账：还原时据此精确移除这行 CSP 放行（原厂自带的不能误删）
+        record_csp_inserted(platform, file_name)?;
+    }
     // 非主入口 = 辅助窗口（Antigravity IDE 的设置页/Agent 面板）：脚本首行置标记，
     // 引擎据此跳过"等 workbench 根节点 + 隐藏首屏"，否则会白屏等到 6 秒超时。
     let script = hans_script_for_window(platform, file_name != "workbench.html");
@@ -1897,7 +2016,14 @@ fn restore(platform: &str, elevate: bool) -> Result<LocalizationOperationResult,
                     backup.display()
                 ));
             }
-            let cleaned = strip_hans_block(&html);
+            let mut cleaned = strip_hans_block(&html);
+            // 副作用回滚①：CSP 的 'unsafe-inline'。仅当记账确认是我们插的、
+            // 且该文件已无 BYOK 块（BYOK 的 inline script 还需要它执行）才移除。
+            if !cleaned.contains(BYOK_BLOCK_START)
+                && take_csp_record(platform, file_name).unwrap_or(false)
+            {
+                cleaned = revert_csp_unsafe_inline(&cleaned);
+            }
             write_atomic(html_path, &cleaned)
                 .map_err(|e| format!("还原 {file_name} 失败: {e}"))?;
             changed = true;
@@ -1921,6 +2047,47 @@ fn restore(platform: &str, elevate: bool) -> Result<LocalizationOperationResult,
         if let Err(e) = restore_product_json(platform) {
             warning = format!("；完整性校验清单还原失败：{e}（重装 IDE 可恢复）");
         }
+        // 副作用回滚②：NLS 取词加固。BYOK 同样依赖它，仅在无 byok 块时还原；
+        // restore_nls 自带版本防护（IDE 升级后旧备份不会覆盖新版文件）。
+        match super::workbench_inject::restore_nls(platform) {
+            Ok(true) => changed = true,
+            Ok(false) => {}
+            Err(e) => {
+                let nls_warning = format!("；NLS 原厂文件还原失败：{e}");
+                warning.push_str(&nls_warning);
+            }
+        }
+    }
+
+    // 副作用回滚③：显示语言。仅当当前仍是我们写的 zh-cn 才回滚——
+    // 用户中途手动改过 locale 的（值 != zh-cn）保留用户选择，绝不覆盖。
+    let locale_note = match take_locale_record(platform) {
+        Ok(Some(record)) => {
+            let reverted = ide_state_dir(platform).and_then(|state| {
+                let argv_path = state.join("argv.json");
+                let raw = fs::read_to_string(&argv_path).ok()?;
+                let current_is_ours = parse_jsonc(&raw)
+                    .and_then(|d| d.get("locale").and_then(|v| v.as_str()).map(String::from))
+                    .as_deref()
+                    == Some("zh-cn");
+                if !current_is_ours {
+                    return None;
+                }
+                let new_text = revert_locale_in_argv(&raw, &record)?;
+                write_atomic(&argv_path, &new_text).ok()?;
+                Some(true)
+            });
+            match reverted {
+                Some(true) => Some("；显示语言已还原为改前设置".to_string()),
+                _ => None,
+            }
+        }
+        Ok(None) => None,
+        Err(e) => Some(format!("；显示语言回滚失败：{e}")),
+    };
+    if let Some(note) = locale_note {
+        changed = true;
+        warning.push_str(&note);
     }
 
     // 还原成功（或本就未汉化）才清除启用标记，避免异常路径丢掉保活
@@ -2709,7 +2876,8 @@ module.exports = {};"#,
             ;
         " /></head><body></body></html>"#;
         assert_eq!(extract_csp_nonce(html), None, "该窗口没有 nonce");
-        let patched = ensure_csp_unsafe_inline(html);
+        let (patched, inserted) = ensure_csp_unsafe_inline(html);
+        assert!(inserted, "无 'unsafe-inline' 时必须实际插入");
         assert!(
             patched.contains("'unsafe-inline'"),
             "必须补上 'unsafe-inline'，否则注入的内联脚本不执行"
@@ -2773,6 +2941,28 @@ module.exports = {};"#,
         assert!(again.contains("</body>"), "结构必须完整");
 
         let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn locale_revert_restores_previous_value_or_removes_key() {
+        // argv.json 是 JSONC：回滚必须保形（注释/其余键全保留），绝不能空对象覆盖
+        let raw = "{\n  // 用户注释\n  \"locale\": \"zh-cn\",\n  \"disable-hardware-acceleration\": false\n}";
+
+        let out = revert_locale_in_argv(raw, &LocaleRecord::Was("en".into())).unwrap();
+        let doc: Value = serde_json::from_str(&out).unwrap();
+        assert_eq!(doc["locale"], json!("en"), "必须回到改前值");
+        assert!(
+            doc.get("disable-hardware-acceleration").is_some(),
+            "其余键必须保留"
+        );
+
+        let out = revert_locale_in_argv(raw, &LocaleRecord::Absent).unwrap();
+        let doc: Value = serde_json::from_str(&out).unwrap();
+        assert!(doc.get("locale").is_none(), "改前无键则删除该键");
+        assert!(doc.get("disable-hardware-acceleration").is_some());
+
+        // JSONC 解析失败必须返回 None：宁可不动也不能覆盖用户配置
+        assert_eq!(revert_locale_in_argv("not json{", &LocaleRecord::Absent), None);
     }
 
     #[test]
