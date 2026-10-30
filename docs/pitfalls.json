@@ -326,8 +326,7 @@
       },
       "regression_test": "src-tauri/src/commands/platforms.rs::opencode_preserving_roundtrip_keeps_comments",
       "severity": "high"
-    }
-,
+    },
     {
       "id": "stats-single-ledger-exit",
       "title": "chat 主链路禁止绕过 tracker 直调 stats",
@@ -447,6 +446,170 @@
         "must_contain": "fn merge_dictionaries"
       },
       "regression_test": "src-tauri/src/commands/app_localization.rs::cached_dictionary_merges_with_baseline",
+      "severity": "high"
+    },
+    {
+      "id": "codex-inject-requires-proxy",
+      "title": "Codex Desktop 注入前必须确保代理服务可用，且不得先 kill 客户端",
+      "symptom": "issue #38：本地代理服务未运行时切换 Codex，实现直接向 7450 发注入请求；用户只看到「无法连接 7450 … os error 10061」，而 Codex 已被先 kill 再重启（窗口没了、模型也没解锁），配置还停在指向空端口的状态",
+      "lesson": "CDP 注入依赖 sidecar 的 /__byok/codex-cdp/inject，必须把「确保代理服务可用」提到 kill 之前：不可用就不重启客户端，直接返回带引导的主句。三层判据：①注入前置统一走 proxy::ensure_proxy_service_ready（端口探测优先，禁止各链路再写一份）；②ensure 调用必须早于 kill_codex；③双回环地址探测必须逐条保留失败原因，不能被 ::1 覆盖（否则排障被误导成 IPv6 问题）",
+      "check": {
+        "type": "source_contains",
+        "file": "src-tauri/src/commands/codex_desktop.rs",
+        "must_contain": "ensure_proxy_service_ready"
+      },
+      "check_not": {
+        "file": "src-tauri/src/commands/cursor_core.rs",
+        "must_not_match": "fn ensure_proxy_running"
+      },
+      "regression_test": "src-tauri/src/commands/codex_desktop.rs::connect_error_keeps_every_address_reason",
+      "severity": "high"
+    },
+    {
+      "id": "codex-process-identity",
+      "title": "codex.exe 同名四形态：CLI 绝不能被当成桌面宿主",
+      "symptom": "用户开着 codex CLI 时点「启动 Codex」，AnyBridge 回「已在运行」；切换配置还会把用户正在跑的 CLI 会话直接杀掉（2026-10 实测复现）",
+      "lesson": "Codex 在同一台机器上有 CLI（npm 包 vendor/bin、cargo target 产物）、旧版 Desktop（Electron 宿主）、新版 Desktop（MSIX ChatGPT.exe）、包内 app-server 四种形态，其中三种进程名都叫 codex.exe。判定必须先按路径排除 CLI 目录（node_modules / vendor/*/bin / target/{debug,release} / .cargo/bin），app-server helper 只在 kill 路径算。矩阵由 scripts/check-codex-detect.mjs 用真实路径逐类执行",
+      "check": {
+        "type": "source_contains",
+        "file": "src-tauri/src/commands/codex_desktop.rs",
+        "must_contain": "$isCliLike"
+      },
+      "regression_test": "scripts/check-codex-detect.mjs::CLI（npm 全局包 vendor/bin）",
+      "severity": "high"
+    },
+    {
+      "id": "codex-cdp-target-identity",
+      "title": "CDP 注入必须先自证目标是 Codex，不能取第一个 page",
+      "symptom": "新版 Codex 把 CDP 绑在 ::1，IPv4 回环被 Antigravity IDE 占了同号端口；旧实现按「取第一个 page」把 6 点补丁注入进了 IDE 的 workbench（2026-10 实测）",
+      "lesson": "同一端口可能被两个进程分地址族监听，listTargets 必须优先返回含 Codex 目标的响应组；pickPageTarget 只认 app://-/ 前缀或 url/title 含 codex 的 page，遇到 vscode-*/devtools 目标必须拒绝注入并报错（宁可不注入，也不能污染别人的界面）。旧版 codex URL 特征未知时允许首个 page，这是显式兼容分支，不是静默兜底",
+      "check": {
+        "type": "source_contains",
+        "file": "sidecar/lib/codex-desktop-cdp.js",
+        "must_contain": "isCodexDesktopTarget"
+      },
+      "check_not": {
+        "file": "sidecar/lib/codex-desktop-cdp.js",
+        "must_not_match": "hay\\.includes\\('codex'\\)\\) return t;"
+      },
+      "regression_test": "sidecar/lib/codex-desktop-cdp.test.js::拒绝注入",
+      "severity": "high"
+    },
+    {
+      "id": "hub-patch-marker-single-source",
+      "title": "Hub 汉化 marker 必须单一来源：状态判据/去重锚点/payload 同源",
+      "symptom": "is_hub_localized、去重截断锚点与 payload 实际标记三处字面量失配：状态恒『未汉化』、每次 apply 重复追加 payload（asar/preload 持续膨胀），且备份永不刷新",
+      "lesson": "marker 常量定义在 payload 模块（HUB_PATCH_HEADER/HUB_PATCH_FLAG/HUB_DICT_GLOBAL），判据、去重锚点、备份判定全部引用同一常量；测试用最小 asar 锁定 幂等命中 + 备份版本防护 + 还原 round-trip。备份策略与 workbench_inject 的 product.json 同思路：原厂态一律刷新 app.asar.lang.bak，已汉化态缺备份必须报错（let _ = 吞掉 copy 失败 = 永久失去还原源）",
+      "check": {
+        "type": "source_contains",
+        "file": "src-tauri/src/commands/antigravity_localization.rs",
+        "must_contain": "antigravity_loc_payload::HUB_PATCH_FLAG"
+      },
+      "regression_test": "src-tauri/src/commands/antigravity_localization.rs::hub_patch_idempotent_backup_and_roundtrip",
+      "severity": "high"
+    },
+    {
+      "id": "hub-dict-override-must-validate-and-consume",
+      "title": "Hub 热更新词库覆盖块必须被引擎消费，且写盘前/读盘后都要自检",
+      "symptom": "覆盖块 window.__ANYBRIDGE_HANS_DICT 写进 asar 但 payload 从不读取（热更新零效果，用户点『检查词库更新』没有任何变化）",
+      "lesson": "payload 启动时把覆盖块合并进内置 phrases（消费端在 payload 内，形态由测试锁定）；覆盖块形态固定为 window.__ANYBRIDGE_HANS_DICT = {JSON};，读盘用 is_safe_dict_override 校验（serde_json 可解析且为对象），download 侧未通过自检必须拒绝写盘——preload.js 顶层多个语法错误 = 客户端起不来",
+      "check": {
+        "type": "source_contains",
+        "file": "src-tauri/src/commands/antigravity_localization.rs",
+        "must_contain": "fn is_safe_dict_override"
+      },
+      "regression_test": "src-tauri/src/commands/antigravity_localization.rs::hub_dict_override_gate",
+      "severity": "high"
+    },
+    {
+      "id": "i18n-gate-is-one-way",
+      "title": "i18n 门控必须双向：只查「中文漏翻」会放过界面里的纯英文夹注",
+      "symptom": "中文界面里长期存在 Runtime Logs / Notifications / Quick Start / BASIC / OPTIONAL / Thinking Effort / 思考深度 (Reasoning Effort)；旧门控只校验「含中文的文本是否有译文」，纯英文文本零检查，于是全大写标签、英文 kicker、括号夹注都能长期存活",
+      "lesson": "门控必须同时守两个方向：正向（中文必须有译文）+ 反向（纯英文必须精确命中 keep-en.txt 白名单、禁止全大写标签、禁止「中文 (English)」括号夹注）。只做正向等于默认「界面上可以有一段英文」，而这段英文正是用户感知到的中英夹杂",
+      "check": {
+        "type": "source_contains",
+        "file": "scripts/check-i18n.mjs",
+        "must_contain": "未准入的纯英文界面文本"
+      },
+      "regression_test": "scripts/check-i18n.mjs::未准入的纯英文界面文本",
+      "severity": "medium"
+    },
+    {
+      "id": "zh-key-dict-sync-on-copy-edit",
+      "title": "中文原文当 key 的字典：改一处中文文案必须同批改 key，且打包前必须跑到",
+      "symptom": "把「思考深度 (Reasoning Effort)」改成「思考深度」后，en-US.js 里旧 key 失配，英文界面直接掉回中文；而 build:desktop 原先不跑 check:i18n，打包时也不会报错",
+      "lesson": "改 HTML 中文文案时同一次提交内同步改 en-US.js 的 key（value 保留）；check:i18n 的漏翻检查是唯一兜底，所以顺序必须是「先改 HTML → 立刻跑 check:i18n → 按报错补字典」。同时 build:desktop 必须串上 check:i18n，否则打包产物的英文界面可能在不知情下降级",
+      "check": {
+        "type": "source_contains",
+        "file": "package.json",
+        "must_contain": "\"build:desktop\": \"npm run check:i18n"
+      },
+      "regression_test": "scripts/check-i18n.mjs::漏翻检测",
+      "severity": "medium"
+    },
+    {
+      "id": "loading-spinner-double",
+      "title": "加载态只能有一个 spinner：loadingHtml 自带圈，再追加就是一个按钮两个圈",
+      "symptom": "扩展中心 CPA 套件点更新后主按钮显示两个圈紧挨的「更新中…」（截图确认）；根因是 renderCpaActions 先 innerHTML = loadingHtml(label)，再 appendChild 一个自造的 .btn-spinner",
+      "lesson": "spinner 的唯一实现是 feedback.js 的 loadingHtml/setLoading（.ab-spinner）。禁止另造第二套 spinner 类名（btn-spinner），也禁止往已有 spinner 的容器再插一段 loadingHtml（切换配置 toast 左侧已有 switch-progress-spinner，标题再插 loadingHtml 就是第二个圈）。同类按钮必须走同一个函数，否则一处改成双圈、一处还是单圈",
+      "check": {
+        "type": "source_contains",
+        "file": "scripts/check-key-features.mjs",
+        "must_contain": "spinner 只有一套实现"
+      },
+      "regression_test": "scripts/check-key-features.mjs::spinner 只有一套实现",
+      "severity": "medium"
+    },
+    {
+      "id": "restore-must-revert-side-effects",
+      "title": "还原英文必须回滚注入期间的附带副作用（CSP/NLS/locale），不能只剥注入块",
+      "symptom": "点『还原官方英文』后 IDE 仍是中文界面（argv.json locale 残留）、CSP 永久带着 'unsafe-inline'、workbench.desktop.main.js 的 NLS throw 补丁残留",
+      "lesson": "apply 的每类副作用都要可回滚：①CSP 插入行是固定字节序列，ensure 返回是否实际插入并记入 side-effects.json，restore 仅在记账确认且无 BYOK 块时精确移除；②NLS 加固有 .nls-origin 备份 + 版本防护（restore_nls），仅无 BYOK 块时还原；③locale 记录改前值（LocaleRecord::Was/Absent），仅当当前仍是我们写的 zh-cn 才回滚——用户中途手动改过的保留，绝不覆盖",
+      "check": {
+        "type": "source_contains",
+        "file": "src-tauri/src/commands/app_localization.rs",
+        "must_contain": "fn revert_locale_in_argv"
+      },
+      "regression_test": "src-tauri/src/commands/app_localization.rs::locale_revert_restores_previous_value_or_removes_key",
+      "severity": "high"
+    },
+    {
+      "id": "csp-inline-must-be-reversible",
+      "title": "CSP 'unsafe-inline' 补丁必须可精确回滚，且凭记账才允许移除",
+      "symptom": "还原英文后 CSP 永久残留 'unsafe-inline'（安全面被永久削弱），或回滚时误删原厂自带的放行行导致页面脚本异常",
+      "lesson": "插入用固定字节序列（INSERTED_CSP_LINE），revert 按该序列精确移除一次；ensure 必须返回是否实际插入，插入必须记入 side-effects；revert 只允许在记账确认时调用——原厂自带 'unsafe-inline' 的文件缩进不同，盲删会误伤。行为由 csp_unsafe_inline_revert_is_exact_inverse 锁定",
+      "check": {
+        "type": "source_contains",
+        "file": "src-tauri/src/commands/workbench_inject.rs",
+        "must_contain": "fn revert_csp_unsafe_inline"
+      },
+      "regression_test": "src-tauri/src/commands/workbench_inject.rs::csp_unsafe_inline_revert_is_exact_inverse",
+      "severity": "high"
+    },
+    {
+      "id": "cursor-free-login-safe-storage-overwrite",
+      "title": "免登录注入必须覆盖新版 Cursor 写入的 safe-storage 加密 token",
+      "symptom": "升级新版 Cursor 后 token 被升级成 cursor-safe-storage:v1 加密格式，降级回旧版本后解不开；注入逻辑若只判「值非空」会误判为已有真实登录而跳过，导致 Auth init timeout、RunSSE 一次都不发出、发消息永远转圈",
+      "lesson": "注入跳过条件必须是「值非空 且 不等于本地 token 且 不是 safe-storage 前缀」；safe-storage 前缀 = 新版加密格式 = 本版本解不开 = 必须重新注入。行为由 inject_overwrites_incompatible_safe_storage_tokens 锁定",
+      "check": {
+        "type": "source_contains",
+        "file": "cursor-core/src/local_app/account.rs",
+        "must_contain": "SAFE_STORAGE_PREFIX"
+      },
+      "regression_test": "cursor-core/src/local_app/account.rs::inject_overwrites_incompatible_safe_storage_tokens",
+      "severity": "high"
+    },
+    {
+      "id": "cursor-free-login-seven-keys",
+      "title": "免登录必须注入完整 7 键（含会员/订阅状态），只写 token 不够",
+      "symptom": "只注入 accessToken/refreshToken 时客户端 auth 轮询仍拿不到凭证，Auth init timeout，agent 请求一次都不发——模型列表可见但发消息永远转圈",
+      "lesson": "照 cursor-byok 注入 7 键：accessToken/refreshToken/cachedEmail/cachedSignUpType/stripeMembershipAuthId/stripeMembershipType(ultra)/stripeSubscriptionStatus(active)。客户端判「已登录」依赖会员与订阅状态键。行为由 inject_seeds_missing_account_keys 锁定",
+      "check": {
+        "type": "source_contains",
+        "file": "cursor-core/src/local_app/account.rs",
+        "must_contain": "stripeMembershipType"
+      },
+      "regression_test": "cursor-core/src/local_app/account.rs::inject_seeds_missing_account_keys",
       "severity": "high"
     }
   ]
