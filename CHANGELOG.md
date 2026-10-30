@@ -2,6 +2,12 @@
 
 All notable changes to AnyBridge will be documented in this file.
 
+## v1.0.6 - 2026-10-31
+
+- 修复：汉化还原后 IDE 弹『安装似乎损坏，请重新安装』——注入块的剥离此前只删块本体，注入自带的两个换行逐轮泄漏（每轮 +2），Antigravity IDE 还原回填原厂校验和后两个入口 HTML 哈希失配（实测累积 +4/+2 个换行）。strip_hans_block / strip_byok_block / claude_strip_inject 三处统一改为逐字节精确逆操作；并新增**原厂对齐自愈**：还原回填校验和后按 base64(SHA-256) 哈希收敛 `</body>` 前多余换行（每步哈希背书，收敛成功即字节级复原），存量安装的累积泄漏在下次还原时自动清零。
+- 修复：`write_atomic` 临时文件名并发撞名——唯一化仅靠 pid+纳秒，Windows 时钟精度有限，8 线程并发写同一文件可取到同一纳秒互踩（全量验证偶发 panic）；追加进程内原子序数后绝对唯一。
+- 修复：代理健康探测测试与宿主环境耦合——系统未配置代理时（CI 的 ubuntu/windows）『代理恢复』用例必挂导致 main 的 Validate 两平台红；测试改为注入固定代理地址并停掉后台探测定时器，环境无关。
+
 ## v1.0.5 - 2026-10-30
 
 - 修复：系统代理注册表残留指向死端口时（代理软件退出但 ProxyEnable 未清，如 FlClash 残留 7897），sidecar 上游请求全部 `proxyconnect ECONNREFUSED`；新增代理端口健康探测（5s 周期 / 1.5s 超时），死端口自动降级直连、恢复后自动切回，无需重启服务。

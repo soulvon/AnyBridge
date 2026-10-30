@@ -648,6 +648,19 @@
         "must_contain": "CLOUD_AGENT_RUN_PATH"
       },
       "severity": "medium"
+    },
+    {
+      "id": "strip-must-be-byte-exact-inverse",
+      "title": "注入块的剥离必须是逐字节精确逆操作（含注入自带的换行）",
+      "symptom": "还原英文后 IDE 弹『安装似乎损坏，请重新安装』——strip 只删块本体，注入自带的两个换行逐轮泄漏（每轮 +2），AG IDE 还原回填原厂校验和后两个入口 HTML 哈希失配（实测 2026-10-31：累积 +4/+2 个换行）",
+      "lesson": "注入格式 \\n{块}\\n 与剥离必须互为精确逆操作：strip_hans_block/strip_byok_block/claude_strip_inject 三处统一把注入自带的前导/尾随换行一并移除（多轮注入/剥离逐字节不变化的 round-trip 测试锁定）。存量泄漏用对齐自愈兜底：restore 回填原厂校验和后，按 base64(SHA-256) 哈希收敛 </body> 前多余换行（每步哈希背书，收敛成功=字节级复原；非换行差异如实放弃）",
+      "check": {
+        "type": "source_contains",
+        "file": "src-tauri/src/commands/app_localization.rs",
+        "must_contain": "fn strip_injected_block"
+      },
+      "regression_test": "src-tauri/src/commands/app_localization.rs::hans_strip_roundtrip_is_byte_exact",
+      "severity": "high"
     }
   ]
 }
