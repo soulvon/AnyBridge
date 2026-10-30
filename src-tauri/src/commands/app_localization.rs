@@ -1629,6 +1629,9 @@ fn installed_lang_pack_version(platform: &str) -> Option<String> {
 /// 并把用户的汉化请求一起堵死）。
 fn apply(platform: &str, elevate: bool) -> Result<LocalizationOperationResult, String> {
     if platform == "claude-desktop" {
+        // claude 没有语言包网络段，全程持锁：它改的是 index.html/i18n/config.json，
+        // 与 keeper/BYOK 互斥（此前在锁外裸奔，审计发现）。
+        let _guard = super::inject_lock();
         return apply_claude(elevate);
     }
     let (display, _) = platform_meta(platform).ok_or_else(|| format!("不支持的平台: {}", platform))?;
@@ -1855,6 +1858,8 @@ fn inject_hans_into_with_cache(
 
 fn restore(platform: &str, elevate: bool) -> Result<LocalizationOperationResult, String> {
     if platform == "claude-desktop" {
+        // 与 apply 对称：claude 还原也全程持锁（此前在锁外裸奔，审计发现）
+        let _guard = super::inject_lock();
         return restore_claude(elevate);
     }
     // 持全局注入锁：与 BYOK 接入/还原、保活 keeper 互斥，
@@ -2109,7 +2114,15 @@ fn keeper_tick(app: &tauri::AppHandle, platform: &str) {
     // 被 IDE 升级覆盖 → 重注入（apply 幂等；IDE 运行中文件被锁则 Err，下周期重试）。
     // elevate=false：keeper 是后台线程，权限不足时绝不去弹 UAC，静默等下周期。
     let display = platform_meta(platform).map(|m| m.0).unwrap_or(platform);
-    match apply_inner(platform, &display, &None) {
+    // claude 走 i18n 目录注入链：apply_inner 是 workbench 注入，对 claude 必然
+    // 报"未定位到 workbench.html"（此前每 10 分钟一条错误日志，keeper 名存实亡）。
+    // 两者都是无锁版，本函数已持锁。
+    let result = if platform == "claude-desktop" {
+        apply_claude(false)
+    } else {
+        apply_inner(platform, &display, &None)
+    };
+    match result {
         Ok(_) => {
             eprintln!("[loc-keeper] {} 汉化被客户端升级覆盖，已自动重注入", display);
             let _ = app.emit(

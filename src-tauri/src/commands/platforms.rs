@@ -788,6 +788,9 @@ impl Platform {
         //    路径查找必须跨平台：macOS 在 /Applications/Antigravity.app 下，
         //    Linux 在 ~/.local/share 下，不能只认 Windows 的 Programs 布局。
         if let Some(asar_path) = super::antigravity_localization::hub_asar_path() {
+            // 持全局注入锁：汉化 apply/restore 同样全量重写这个 app.asar，
+            // 两边不互斥就是典型 lost update（后写方用旧 bytes 覆盖前一个的补丁）。
+            let _guard = super::inject_lock();
             patch_antigravity_hub_asar(&asar_path)?;
         }
 

@@ -209,18 +209,46 @@ fn read_cached_sha() -> String {
 }
 
 fn get_hub_payload() -> String {
-    // 热更新层：上游词典覆盖块（若存在）优先于内置基线词典合并生效
+    // 热更新层：上游词典覆盖块（若存在且通过自检）先于引擎赋值
+    // window.__ANYBRIDGE_HANS_DICT，引擎 IIFE 启动时把它合并进内置 phrases。
+    // 旧版/被改坏的缓存直接弃用——preload.js 顶层多一个语法错误 = 客户端起不来。
+    // 首行必须是 HUB_PATCH_HEADER：去重截断靠它定位补丁块起点。
     let cached = cache_dir().join("antigravity-hub-dict.js");
-    if let Ok(override_block) = fs::read_to_string(&cached) {
-        if !override_block.trim().is_empty() {
-            return format!(
-                "{}\n{}",
-                override_block.trim(),
-                super::antigravity_loc_payload::HUB_LOCALIZATION_JS
-            );
-        }
+    let override_line = fs::read_to_string(&cached)
+        .ok()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty() && is_safe_dict_override(s));
+
+    let mut out = String::from(super::antigravity_loc_payload::HUB_PATCH_HEADER);
+    out.push('\n');
+    if let Some(line) = override_line {
+        out.push_str(&line);
+        out.push('\n');
     }
-    super::antigravity_loc_payload::HUB_LOCALIZATION_JS.to_string()
+    out.push_str(super::antigravity_loc_payload::HUB_PAYLOAD_JS);
+    out
+}
+
+/// 覆盖块读时自检：必须是 `window.__ANYBRIDGE_HANS_DICT = {JSON};` 形态。
+///
+/// 提取端（extract_dictionary_override）用 serde_json 重新序列化，正常必然通过；
+/// 这里拦的是历史遗留缓存、手工改动与截断损坏。历史事故：坏块从未被 payload
+/// 消费时只是热更新无效，拼进 preload.js 顶层后就是客户端无法启动。
+fn is_safe_dict_override(s: &str) -> bool {
+    let dict_global = format!("window.{}", super::antigravity_loc_payload::HUB_DICT_GLOBAL);
+    let Some(rest) = s.strip_prefix(&dict_global) else {
+        return false;
+    };
+    let rest = rest.trim_start();
+    let Some(rest) = rest.strip_prefix('=') else {
+        return false;
+    };
+    let Some(body) = rest.trim().strip_suffix(';') else {
+        return false;
+    };
+    serde_json::from_str::<serde_json::Value>(body.trim())
+        .map(|v| v.is_object())
+        .unwrap_or(false)
 }
 
 /// 将 JS 字符串字面量内容（不含外层引号）还原为真实字符串。
@@ -336,7 +364,11 @@ fn is_hub_localized(asar_path: &Path) -> bool {
     let Ok(code) = std::str::from_utf8(&code_bytes) else {
         return false;
     };
-    code.contains("__antigravityHansInjected")
+    // 当前代 payload 的运行时标记（常量与 payload 同源，见 antigravity_loc_payload）；
+    // 两个历史引擎字面量保留为兼容判据——老版本 AnyBridge 打的补丁没有新标记，
+    // 漏判会让用户重复 apply、旧补丁叠加。去重锚点同样兼容这三代（见 patch_hub_asar）。
+    code.contains(super::antigravity_loc_payload::HUB_PATCH_FLAG)
+        || code.contains("__antigravityHansInjected")
         || code.contains("Antigravity 2.0 Chinese Localization Engine")
 }
 
@@ -402,22 +434,40 @@ fn patch_hub_asar(asar_path: &Path) -> Result<(), String> {
         std::str::from_utf8(&preload_buf).map_err(|e| format!("解析 preload.js 失败: {e}"))?.to_string();
     drop(f);
 
-    // 保留初次纯净原版备份
+    // ── 备份策略（版本防护，与 workbench_inject 的 product.json 备份同思路）──
+    // 原厂态（首次汉化，或官方升级覆盖后的新版原厂）一律刷新备份，确保
+    // app.asar.lang.bak 与当前安装严格一致——否则升级后点"还原"会把新版
+    // 客户端覆盖成旧版。已汉化态则要求备份必须存在，缺失如实报错：
+    // 旧实现 let _ = 静默吞掉 copy 失败 = 永久失去还原源。
+    let patched = original_code.contains(super::antigravity_loc_payload::HUB_PATCH_FLAG);
     let bak_path = asar_path.with_file_name("app.asar.lang.bak");
-    if !bak_path.exists() && !original_code.contains("__antigravityHansInjected") {
-        let _ = fs::copy(asar_path, &bak_path);
+    if !patched {
+        fs::copy(asar_path, &bak_path).map_err(|e| {
+            format!(
+                "备份 app.asar 失败（不备份就打补丁将无法还原，请先关闭 Antigravity 后重试）: {e}"
+            )
+        })?;
+    } else if !bak_path.exists() {
+        return Err(
+            "检测到已汉化但缺少 app.asar.lang.bak 备份，无法安全更新补丁；请先重装 Antigravity 恢复原厂后再试"
+                .to_string(),
+        );
     }
 
-    // 截断旧汉化块并追加新汉化代码
-    let clean_base = if let Some(idx) =
-        original_code.find("// Antigravity Chinese Localization Engine")
-    {
-        original_code[..idx].trim_end().to_string()
-    } else if let Some(idx) = original_code.find("// Antigravity 2.0 Chinese Localization Engine") {
-        original_code[..idx].trim_end().to_string()
-    } else {
-        original_code.clone()
-    };
+    // ── 去重截断：从最早出现的补丁块锚点处截掉旧补丁，再追加新补丁 ──
+    // 三代引擎的锚点都保留：老版本 AnyBridge 打的旧补丁也要能被剥掉，
+    // 否则新旧引擎叠加会双重翻译。
+    let anchors: [&str; 3] = [
+        super::antigravity_loc_payload::HUB_PATCH_HEADER,
+        "// Antigravity 2.0 Chinese Localization Engine",
+        "// Antigravity Chinese Localization Engine",
+    ];
+    let clean_base = anchors
+        .iter()
+        .filter_map(|a| original_code.find(a))
+        .min()
+        .map(|idx| original_code[..idx].trim_end().to_string())
+        .unwrap_or_else(|| original_code.clone());
 
     let new_code = format!("{}\n\n{}\n", clean_base, get_hub_payload().trim());
     eprintln!("[ag-loc] patch: 轻量读+构造耗时 {:?}", _t0.elapsed());
@@ -554,7 +604,10 @@ fn restore_hub_asar(asar_path: &Path) -> Result<(), String> {
     // 本地代理（UI 显示已接入），而 asar 里的端点补丁已被抹掉（实际失效，静默）。
     let byok_present = hub_has_byok_patch(asar_path);
     fs::copy(&bak_path, asar_path).map_err(|e| format!("从备份还原 app.asar 失败: {e}"))?;
-    let _ = fs::remove_file(&bak_path);
+    if let Err(e) = fs::remove_file(&bak_path) {
+        // 删除失败无实质影响：bak 与刚还原的 asar 同版本，下次 apply 的版本防护仍成立
+        eprintln!("[ag-loc] 清理备份失败（忽略）: {e}");
+    }
     if byok_present {
         super::platforms::patch_antigravity_hub_asar(asar_path)?;
     }
@@ -690,6 +743,10 @@ fn apply_antigravity_localization_sync(
         );
     }
 
+    // 持全局注入锁：BYOK 接入（platforms::apply_antigravity_with_stash）同样会
+    // 全量重写这个 app.asar，两边不互斥就是典型 lost update（后写方用旧 bytes
+    // 覆盖前一个的补丁）。
+    let _guard = super::inject_lock();
     let asar_path = hub_asar_path()
         .ok_or_else(|| "未找到 Antigravity 桌面端安装目录，请先安装该应用".to_string())?;
     patch_hub_asar(&asar_path)?;
@@ -715,6 +772,9 @@ pub async fn restore_antigravity_localization(
 fn restore_antigravity_localization_sync(
     target: String,
 ) -> Result<LocalizationOperationResult, String> {
+    // 持全局注入锁：与汉化 apply、BYOK 接入/还原互斥（同上，app.asar / workbench
+    // 都是"全量读改写"，必须串行）。
+    let _guard = super::inject_lock();
     let is_ide = target == "antigravity-ide";
     let plat_name = if is_ide {
         "Antigravity IDE"
@@ -777,6 +837,12 @@ pub async fn download_antigravity_localization_update(
     let (override_js, count) = extract_dictionary_override(&content).ok_or_else(|| {
         "上游脚本结构变化，未能解析出汉化词典（已保留内置离线词库不受影响）".to_string()
     })?;
+    // 写盘前自检：坏覆盖块拼进 preload.js 顶层 = 客户端起不来，宁可拒绝更新
+    if !is_safe_dict_override(&override_js) {
+        return Err(
+            "上游词库覆盖块未通过自检（非预期格式），已保留现有词库不受影响".to_string(),
+        );
+    }
 
     fs::write(
         cache_dir().join("antigravity-hub-dict.js"),
@@ -803,4 +869,118 @@ pub async fn download_antigravity_localization_update(
         ),
         localized: true,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// 构造一个最小合法 asar：header 声明 dist/preload.js 位于 payload 偏移 0。
+    /// 字节布局与 patch_hub_asar 写回的完全一致（pickle 四段 + padding + payload）。
+    fn fake_asar(preload_code: &str) -> Vec<u8> {
+        let header = serde_json::json!({
+            "files": { "dist": { "files": { "preload.js": {
+                "size": preload_code.len(),
+                "offset": "0",
+                "integrity": {
+                    "algorithm": "SHA256",
+                    "hash": "test",
+                    "blockSize": 4194304,
+                    "blocks": ["test"]
+                }
+            }}}}
+        });
+        let header_json = serde_json::to_string(&header).unwrap();
+        let padding = asar_padding_len(header_json.len());
+        let mut out = Vec::new();
+        out.extend_from_slice(&4u32.to_le_bytes());
+        out.extend_from_slice(&((header_json.len() + 8 + padding) as u32).to_le_bytes());
+        out.extend_from_slice(&((header_json.len() + 4 + padding) as u32).to_le_bytes());
+        out.extend_from_slice(&(header_json.len() as u32).to_le_bytes());
+        out.extend_from_slice(header_json.as_bytes());
+        out.extend(std::iter::repeat(0u8).take(padding));
+        out.extend_from_slice(preload_code.as_bytes());
+        out
+    }
+
+    #[test]
+    fn hub_marker_and_payload_stay_in_sync() {
+        // 状态判据、去重锚点、备份判定引用 payload 模块的同一常量；
+        // payload 改了标记而判据没跟上，必须在这里红（历史事故：三处字面量失配）。
+        let payload = crate::commands::antigravity_loc_payload::HUB_PAYLOAD_JS;
+        assert!(payload.contains(&format!(
+            "window.{} = true",
+            crate::commands::antigravity_loc_payload::HUB_PATCH_FLAG
+        )));
+    }
+
+    #[test]
+    fn hub_dict_override_gate() {
+        // 覆盖块形态门：合法 JSON 赋值放行，缺分号/截断/形态不对一律拒绝
+        assert!(is_safe_dict_override(
+            "window.__ANYBRIDGE_HANS_DICT = {\"A\":\"甲\"};"
+        ));
+        assert!(!is_safe_dict_override(
+            "window.__ANYBRIDGE_HANS_DICT = {\"A\":\"甲\"}"
+        ));
+        assert!(!is_safe_dict_override(
+            "window.__ANYBRIDGE_HANS_DICT = {\"A\":\"甲\""
+        ));
+        assert!(!is_safe_dict_override("const dictionary = {};"));
+        assert!(!is_safe_dict_override(""));
+    }
+
+    #[test]
+    fn hub_patch_idempotent_backup_and_roundtrip() {
+        let dir = std::env::temp_dir().join("anybridge-test-hub-asar");
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let asar = dir.join("app.asar");
+
+        // 1. 首次汉化：状态判定为已汉化；重复 apply 幂等（文件不再增长）
+        fs::write(&asar, fake_asar("console.log('official v1');")).unwrap();
+        patch_hub_asar(&asar).expect("首次 apply 应成功");
+        assert!(is_hub_localized(&asar), "打完补丁状态必须是已汉化");
+        let len_after_first = fs::metadata(&asar).unwrap().len();
+        patch_hub_asar(&asar).expect("重复 apply 应成功");
+        assert_eq!(
+            fs::metadata(&asar).unwrap().len(),
+            len_after_first,
+            "幂等：内容一致不得重写（旧实现锚点失配导致每次追加、asar 持续膨胀）"
+        );
+
+        // 2. 模拟官方升级：asar 变回新版原厂 → apply 必须把备份刷新为新版
+        let upgraded = fake_asar("console.log('official v2');");
+        fs::write(&asar, &upgraded).unwrap();
+        patch_hub_asar(&asar).expect("升级后 apply 应成功");
+        let bak = dir.join("app.asar.lang.bak");
+        assert_eq!(
+            fs::read(&bak).unwrap(),
+            upgraded,
+            "备份必须刷新为升级后的原厂内容（旧实现永不刷新，还原会把新版覆盖成旧版）"
+        );
+
+        // 3. round-trip：还原后 asar 逐字节等于升级后的原厂版
+        restore_hub_asar(&asar).expect("还原应成功");
+        assert_eq!(fs::read(&asar).unwrap(), upgraded, "还原必须精确回到原厂字节");
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn hub_patch_without_backup_fails_loud() {
+        let dir = std::env::temp_dir().join("anybridge-test-hub-asar-nobak");
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let asar = dir.join("app.asar");
+        fs::write(&asar, fake_asar("console.log('v');")).unwrap();
+        patch_hub_asar(&asar).unwrap();
+        fs::remove_file(asar.with_file_name("app.asar.lang.bak")).unwrap();
+        let err = patch_hub_asar(&asar).unwrap_err();
+        assert!(
+            err.contains("备份"),
+            "已汉化但缺备份必须报错而不是静默继续（旧实现 let _ = 吞掉备份失败）: {err}"
+        );
+        let _ = fs::remove_dir_all(&dir);
+    }
 }
