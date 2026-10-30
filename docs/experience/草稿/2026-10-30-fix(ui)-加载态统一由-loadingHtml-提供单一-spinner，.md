@@ -4,17 +4,17 @@
 日期: 2026-10-30
 范围: [anybridge]
 严重度: medium
-状态: draft
-证据: 待补：复现步骤、测试或提交证据
-可信度: 待核
-前提: 待补：这条规则在什么条件下成立
-不适用: 待补：什么情况下明确不适用
+状态: active
+证据: ui-loading-spinner.test.mjs + 门控 loading-spinner-double。
+可信度: 高（当日实测与单测）
+前提: loadingHtml 是唯一被认可的加载指示实现。
+不适用: 无 loadingHtml 的独立组件（需自带 spinner 时不得与容器叠加）。
 触发: [anybridge]
-规则: "待补：这次修复暴露了什么规则"
+规则: 加载态指示单一来源：统一由 loadingHtml 提供，任何位置禁止自造第二个圈；toast 标题只负责收尾切文案。
 该做:
-  - 待补：以后应该做什么
+  - 新增加载态用 loadingHtml；由 ui-loading-spinner.test.mjs 与 check-key-features 门控拦截 btn-spinner 等类名。
 不该做:
-  - 待补：以后不应该做什么
+  - 不要在已有 spinner 的容器里再插 loadingHtml 或自造 CSS 圈。
 检查: "advisory"
 提交: 6e5976a4aaf49d942cd348147832dc9a3f2d5f93
 ---
@@ -34,11 +34,13 @@
 
 ## 现象
 
-待补（自动采集自提交 `6e5976a4aaf49d942cd348147832dc9a3f2d5f93`）。
+扩展中心 CPA「更新中…」出现两个加载圈叠加；多处加载态存在自造 spinner。
+
+（自动采集自提交 `6e5976a4aaf49d942cd348147832dc9a3f2d5f93`）。
 
 ## 根因
 
-待补。
+loadingHtml 自带 spinner，各处又在按钮/标题里追加 btn-spinner 等自造圈，两者叠加。
 
 ## 修复
 
@@ -46,8 +48,8 @@
 
 ## 代价
 
-待补。
+无。
 
 ## 复盘
 
-补完根因、代价和 check 后，把 `status` 改为 `active`。
+已于当日补齐根因/规则/该做/不该做并转 active。
