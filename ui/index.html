@@ -682,7 +682,7 @@
         </div>
 
         <!-- ═══════ PAGE: GENERIC AGENT（声明式注册的 agent 通用页）═══════ -->
-        <div class="page" id="page-platform-generic" role="tabpanel" aria-label="Agent">
+        <div class="page" id="page-platform-generic" role="tabpanel" aria-label="智能体">
           <section class="platform-console-head glass-card platform-hero-card">
             <div class="platform-console-titlebar">
               <div class="platform-console-icon" aria-hidden="true">
@@ -690,7 +690,7 @@
               </div>
               <div class="platform-console-copy">
                 <div class="platform-title-line">
-                  <h1 id="generic-agent-title">Agent</h1>
+                  <h1 id="generic-agent-title">智能体</h1>
                   <span class="platform-version-line" id="generic-agent-version"></span>
                 </div>
               </div>
@@ -2095,15 +2095,15 @@
                   <div style="display:flex; gap:8px; align-items:center; flex-shrink:0; margin-left:auto;">
                     <select id="slot-thinking-effort" class="field-input"
                       style="padding:0 6px; font-size:12px; border-radius:8px; width:112px; height:32px; flex:0 0 auto; cursor:pointer;"
-                      title="目标模型的思考档位（thinking effort）：自动 = 跟随原档位解析；关闭 = 禁用思考">
+                      title="目标模型的思考档位：自动 = 跟随原档位解析；关闭 = 禁用思考">
                       <option value="auto">思考·自动</option>
                       <option value="off">思考·关闭</option>
-                      <option value="minimal">minimal</option>
-                      <option value="low">low</option>
-                      <option value="medium">medium</option>
-                      <option value="high">high</option>
-                      <option value="xhigh">xhigh</option>
-                      <option value="max">max</option>
+                      <option value="minimal">思考·极低</option>
+                      <option value="low">思考·低</option>
+                      <option value="medium">思考·中</option>
+                      <option value="high">思考·高</option>
+                      <option value="xhigh">思考·极高</option>
+                      <option value="max">思考·最高</option>
                     </select>
                     <div style="display:flex; gap:5px; align-items:center; flex:0 0 auto;">
                       <input class="field-input" id="slot-context-window" type="number" min="1" step="1"
@@ -2338,7 +2338,6 @@
                     <div style="display:flex;flex-direction:column;gap:2px;">
                       <span style="font-size:12.5px;font-weight:650;color:var(--text-primary);display:inline-flex;align-items:center;gap:6px;">
                         <span>显示思考档位</span>
-                        <span style="font-size:10px;padding:1px 5px;border-radius:4px;background:rgba(18, 97, 166, 0.08);color:var(--accent);font-weight:normal;">Thinking Effort</span>
                       </span>
                       <span style="font-size:11px;color:var(--text-muted);">在模型名后追加实际生效档位（例如：<code>High</code>、<code>Medium</code>）</span>
                     </div>
@@ -2348,7 +2347,6 @@
                     <div style="display:flex;flex-direction:column;gap:2px;">
                       <span style="font-size:12.5px;font-weight:650;color:var(--text-primary);display:inline-flex;align-items:center;gap:6px;">
                         <span>显示原始槽位名</span>
-                        <span style="font-size:10px;padding:1px 5px;border-radius:4px;background:rgba(18, 97, 166, 0.08);color:var(--accent);font-weight:normal;">Slot UID</span>
                       </span>
                       <span style="font-size:11px;color:var(--text-muted);">在前部标明占用的官方槽位（例如：<code>gemini-3.7-flash-high &gt; gpt-5.6-sol</code>）</span>
                     </div>
@@ -2358,7 +2356,6 @@
                     <div style="display:flex;flex-direction:column;gap:2px;">
                       <span style="font-size:12.5px;font-weight:650;color:var(--text-primary);display:inline-flex;align-items:center;gap:6px;">
                         <span>显示上下文窗口</span>
-                        <span style="font-size:10px;padding:1px 5px;border-radius:4px;background:rgba(18, 97, 166, 0.08);color:var(--accent);font-weight:normal;">Context Window</span>
                       </span>
                       <span style="font-size:11px;color:var(--text-muted);">在模型名旁标注配置的上下文大小（例如：<code>[1M]</code>、<code>[200K]</code>）</span>
                     </div>
@@ -3163,7 +3160,7 @@
                 </div>
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
                   <span style="color: var(--text-muted);">词库版本：</span>
-                  <span style="color: var(--text-secondary); font-family: var(--font-mono);" id="proxyLangModalVer">baseline</span>
+                  <span style="color: var(--text-secondary); font-family: var(--font-mono);" id="proxyLangModalVer">—</span>
                 </div>
                 <div style="display: flex; justify-content: space-between; align-items: center;">
                   <span style="color: var(--text-muted);">中文语言包：</span>
@@ -4788,7 +4785,7 @@
               <!-- 分组 1: 基本呈现设置 -->
               <div class="cb-edit-section" style="border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; background: var(--bg-card);">
                 <div class="cb-edit-section-header" style="margin-bottom: 12px; display: flex; align-items: center; gap: 6px;">
-                  <span class="cb-edit-section-tag" style="font-size: 10px; font-weight: 700; padding: 1px 6px; border-radius: 4px; background: rgba(37, 99, 235, 0.1); color: var(--accent);">BASIC</span>
+                  <span class="cb-edit-section-tag" style="font-size: 10px; font-weight: 700; padding: 1px 6px; border-radius: 4px; background: rgba(37, 99, 235, 0.1); color: var(--accent);">基础</span>
                   <span class="cb-edit-section-title" style="font-size: 12px; font-weight: 700; color: var(--text-primary);">显示与启用</span>
                 </div>
                 <div class="cb-edit-fields-grid" style="display: flex; flex-direction: column; gap: 12px;">
@@ -4826,7 +4823,7 @@
               <!-- 分组 2: Cursor 模型调用参数覆写 -->
               <div class="cb-edit-section" style="border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; background: var(--bg-card);">
                 <div class="cb-edit-section-header" style="margin-bottom: 12px; display: flex; align-items: center; gap: 6px;">
-                  <span class="cb-edit-section-tag optional" style="font-size: 10px; font-weight: 700; padding: 1px 6px; border-radius: 4px; background: rgba(16, 185, 129, 0.1); color: #10b981;">OPTIONAL</span>
+                  <span class="cb-edit-section-tag optional" style="font-size: 10px; font-weight: 700; padding: 1px 6px; border-radius: 4px; background: rgba(16, 185, 129, 0.1); color: #10b981;">可选</span>
                   <span class="cb-edit-section-title" style="font-size: 12px; font-weight: 700; color: var(--text-primary);">模型参数配置</span>
                 </div>
                 <div class="cb-edit-fields-grid" style="display: flex; flex-direction: column; gap: 12px;">
@@ -5182,7 +5179,7 @@
                 </div>
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
                   <span style="color: var(--text-muted);">词库版本：</span>
-                  <span style="color: var(--text-secondary); font-family: var(--font-mono);" id="cursorLangModalVer">baseline</span>
+                  <span style="color: var(--text-secondary); font-family: var(--font-mono);" id="cursorLangModalVer">—</span>
                 </div>
                 <div style="display: flex; justify-content: space-between; align-items: center;">
                   <span style="color: var(--text-muted);">中文语言包：</span>
@@ -5669,7 +5666,7 @@
                 <div class="codex-toggle-grid">
                   <div class="codex-toggle-card">
                     <div class="codex-toggle-info">
-                      <span class="codex-toggle-title">原生工具调用 (Tools)</span>
+                      <span class="codex-toggle-title">原生工具调用</span>
                       <span class="codex-toggle-desc">允许 Claude Code 执行 Bash 脚本、文件编辑和命令行调用</span>
                     </div>
                     <label class="switch" style="flex: 0 0 auto;">
@@ -5680,8 +5677,8 @@
 
                   <div class="codex-toggle-card">
                     <div class="codex-toggle-info">
-                      <span class="codex-toggle-title">深度思考 (Thinking)</span>
-                      <span class="codex-toggle-desc">启用扩展思考能力（Extended Thinking），提升复杂任务推理深度</span>
+                      <span class="codex-toggle-title">深度思考</span>
+                      <span class="codex-toggle-desc">启用扩展思考能力，提升复杂任务推理深度</span>
                     </div>
                     <label class="switch" style="flex: 0 0 auto;">
                       <input type="checkbox" id="claude-add-cap-thinking" checked>
@@ -5691,7 +5688,7 @@
 
                   <div class="codex-toggle-card">
                     <div class="codex-toggle-info">
-                      <span class="codex-toggle-title">视觉多模态 (Vision)</span>
+                      <span class="codex-toggle-title">视觉多模态</span>
                       <span class="codex-toggle-desc">支持传入本地截图与图片文件进行视觉分析理解</span>
                     </div>
                     <label class="switch" style="flex: 0 0 auto;">
@@ -5846,7 +5843,7 @@
                   </div>
                   <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
                     <span style="color: var(--text-muted);">词库版本：</span>
-                    <span style="color: var(--text-secondary); font-family: var(--font-mono);" id="claudeLangModalVer">baseline</span>
+                    <span style="color: var(--text-secondary); font-family: var(--font-mono);" id="claudeLangModalVer">—</span>
                   </div>
                   <div style="display: flex; justify-content: space-between; align-items: center;">
                     <span style="color: var(--text-muted);">中文词库：</span>
@@ -6811,7 +6808,7 @@
                 <span>接口协议格式</span>
                 <select id="antigravity-config-api-format" class="field-input">
                   <option value="openai" selected>OpenAI 兼容</option>
-                  <option value="anthropic">Anthropic Messages</option>
+                  <option value="anthropic">Anthropic 消息格式</option>
                   <option value="gemini">Google Gemini 原生</option>
                 </select>
               </label>
@@ -6873,7 +6870,7 @@
                 </div>
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
                   <span style="color: var(--text-muted);">词库版本：</span>
-                  <span style="color: var(--text-secondary); font-family: var(--font-mono);" id="antigravityLangModalVer">baseline</span>
+                  <span style="color: var(--text-secondary); font-family: var(--font-mono);" id="antigravityLangModalVer">—</span>
                 </div>
                 <div style="display: flex; justify-content: space-between; align-items: center;">
                   <span style="color: var(--text-muted);">中文语言包：</span>
@@ -7561,7 +7558,7 @@
                 </div>
                 <div style="padding: 14px 20px; border-top: 1px solid var(--border); background: rgba(0,0,0,0.015);">
                   <div style="display: flex; flex-direction: column; gap: 6px;">
-                    <label style="font-size: 12.5px; font-weight: 700; color: var(--text-secondary);">默认主模型 (Default Model)</label>
+                    <label style="font-size: 12.5px; font-weight: 700; color: var(--text-secondary);">默认主模型</label>
                     <input id="opencode-config-model" class="field-input" style="height: 36px; padding: 0 12px; font-size: 13px;" placeholder="可从上方点选，也可以手动输入"
                       data-action="onOpenCodeDefaultModelInput" data-events="input">
                   </div>
@@ -10632,7 +10629,6 @@
     <div class="modal-container notification-center-modal">
       <div class="notification-center-header">
         <div>
-          <div class="notification-center-kicker">Notifications</div>
           <h2>通知与更新</h2>
           <p>查看版本状态、GitHub 发布信息和更新提醒。</p>
         </div>
@@ -10668,9 +10664,9 @@
         </article>
         <div class="notification-changelog">
           <article>
-            <span>Release Channel</span>
+            <span>发布渠道</span>
             <ul>
-              <li>更新检查会连接 GitHub latest release。</li>
+              <li>更新检查会连接 GitHub 最新发布版本。</li>
               <li>如果网络不可达，错误会显示在设置页和代理日志中。</li>
             </ul>
           </article>
@@ -10691,7 +10687,6 @@
     <div class="modal-container log-viewer-modal">
       <div class="log-viewer-header">
         <div>
-          <div class="log-viewer-kicker">Runtime Logs</div>
           <h2>代理日志查看器</h2>
           <p>按级别、关键词和时间顺序查看 AnyBridge 运行日志。</p>
         </div>
@@ -10779,7 +10774,6 @@
           </svg>
         </div>
         <div>
-          <div class="onboarding-guide-kicker">Quick Start</div>
           <h2>把模型接入工作流，只需要四步</h2>
           <p>按顺序配置供应商、模型映射、本地代理和平台接入。AnyBridge 会尽量保留原始配置，并把关键错误暴露出来方便排查。</p>
         </div>

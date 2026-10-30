@@ -1,0 +1,28 @@
+{
+  "_doc": "JS 中文字符串字面量基线。只许下降。修复后用 node scripts/check-i18n.mjs --update-baseline 重写。",
+  "total": 3716,
+  "files": {
+    "05-actions.js": 2,
+    "10-shell.js": 69,
+    "20-runtime.js": 247,
+    "30-providers-eval.js": 329,
+    "35-provider-presets.js": 15,
+    "36-provider-keys.js": 7,
+    "37-provider-balance.js": 15,
+    "40-model-picker.js": 149,
+    "50-model-map.js": 253,
+    "52-proxy-routes.js": 148,
+    "55-platforms.js": 1374,
+    "56-claude-desktop.js": 138,
+    "57-pb-models.js": 16,
+    "60-updater.js": 84,
+    "65-extensions.js": 412,
+    "66-plugins.js": 258,
+    "67-stats.js": 68,
+    "70-healthcheck.js": 102,
+    "90-init.js": 7,
+    "model-context-presets.js": 1,
+    "state/logs.js": 9,
+    "ui/feedback.js": 13
+  }
+}

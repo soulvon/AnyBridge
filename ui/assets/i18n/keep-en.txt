@@ -1,0 +1,152 @@
+# ═══════════════════════════════════════════════════════════════════
+# AnyBridge 界面纯英文白名单
+#
+# 用途：check-i18n.mjs 反向检查的准入清单。
+#       界面文本节点 / title / placeholder / aria-label / alt 属性
+#       若「不含中文」，必须精确命中本文件某一行（或匹配某条 re: 正则），
+#       否则门控失败。
+#
+# 准入标准（三条任一）：
+#   1. 专有名词：品牌、产品、模型系列、协议名 —— 翻译会破坏识别
+#   2. 机器可读值：文件路径、URL、字段名、协议参数 —— 用户要照着敲
+#   3. 行业通用缩写：日志级别、单位 —— 中文读者也按原样理解
+#
+# 不准入：
+#   - 界面标签、按钮、标题、说明文字（一律必须中文化，英文界面走字典）
+#   - 中文标签旁边的英文装饰（kicker、术语胶囊、BASIC/OPTIONAL 分组标）
+#   - 英文界面下会重复的译名（中文标签已有的英文对译）
+#
+# 改动本文件需在 PR 说明理由。新增一行 = 承认这个位置不翻译。
+# ═══════════════════════════════════════════════════════════════════
+
+# ── 品牌与产品名 ──
+AnyBridge
+Any
+Bridge
+Cursor
+Windsurf
+Devin
+Codex
+Claude
+Claude Code
+Claude Desktop
+Gemini
+Antigravity
+Antigravity IDE
+OpenCode
+Grok
+ZCode
+CodeBuddy
+WorkBuddy
+Hermes
+Pi
+DeepSeek Harness
+CC Switch
+Cockpit Tools
+Cherry Studio
+CLIProxyAPI
+CPA Manager Plus
+sub2api
+English
+
+# ── 协议 / 格式 / 模型系列 ──
+Anthropic
+OpenAI
+Connect-RPC
+Sonnet
+Opus
+Haiku
+Fable
+
+# ── 字段名与协议参数（含下划线或点，用户需照抄）──
+enable_thinking
+reasoning
+reasoning_content
+reasoning_details
+reasoning_effort
+reasoning_split
+reasoning.effort
+thinking
+Responses
+
+# ── 思考档位原始值（界面显示中文，此处为 title/原始值展示）──
+minimal
+low
+medium
+high
+xhigh
+max
+auto
+High
+Medium
+
+# ── Claude 角色档位徽章（与 Sonnet / Opus / Haiku 并列展示，不翻译）──
+Subagent
+
+# ── 日志级别与状态码 ──
+OK
+INFO
+WARN
+ERR
+OK 0 · INFO 0 · WARN 0 · ERR 0
+
+# ── 单位与缩写 ──
+API Key
+CPA
+CPA API
+BYOK
+PRO
+Token/s
+RPM
+TPM
+tokens
+ms
+
+# ── 键名占位与示例文本 ──
+sk-...
+tool_a, tool_b
+vision test
+Cursor / VS Code
+AnyBridge logo
+Sonnet / Opus / Haiku
+
+# ── 图标占位（显式豁免：待替换为 SVG 图标后删除本条）──
+Cu
+Cx
+Ws
+
+# ── 示例值（固定展示的占位样例）──
+(BYOK)
+({provider})
+({apiModel})
+[Any]
++ (BYOK)
++ ({provider})
++ ({apiModel})
++ [Any]
+[CPA] Gemini 3.8 Flash
+gemini-3.7-flash-high > gpt-5.6-sol
+gpt-5.4
+grok
+
+# ── 正则模式 ──
+# 文件路径（绝对 / 家目录 / 相对）
+re:^(~|\.)?/[A-Za-z0-9_.\-/]+$
+re:^[A-Za-z0-9_.\-]+/[A-Za-z0-9_.\-]+\.(json|toml|yaml|yml|md|js|ts)$
+# GitHub 仓库路径（owner/repo，无扩展名）
+re:^[A-Za-z0-9_.\-]+/[A-Za-z0-9_.\-]+$
+# 裸文件名
+re:^[A-Za-z0-9_.\-]+\.(json|toml|yaml|yml|md|js|ts)$
+# 带千分位的 token 容量
+re:^[\d,]+ tokens$
+# 多行参数样例（key=value 换行拼接）
+re:^[a-z_]+=[^\n]+(\n[a-z_]+=[^\n]+)*$
+# URL 与本地地址
+re:^https?://
+re:^Base URL:
+re:^POST\s
+# 数值与耗时
+re:^[\d.,]+\s*(ms|s|K|M|%)?$
+re:^\d{3}\s+[A-Z]+$
+# 占位模板（必须含花括号变量，如 {prefix} {label} ({provider})）
+re:^.*\{[A-Za-z]+\}.*$
