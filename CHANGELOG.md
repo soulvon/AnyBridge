@@ -2,7 +2,7 @@
 
 All notable changes to AnyBridge will be documented in this file.
 
-## Unreleased
+## v1.0.5 - 2026-10-30
 
 - 修复：系统代理注册表残留指向死端口时（代理软件退出但 ProxyEnable 未清，如 FlClash 残留 7897），sidecar 上游请求全部 `proxyconnect ECONNREFUSED`；新增代理端口健康探测（5s 周期 / 1.5s 超时），死端口自动降级直连、恢复后自动切回，无需重启服务。
 - 改进：Cursor 接管配置 `http.proxySupport` 由 `on` 改为 `override`——`on` 的语义是「使用代理设置」，系统代理存在时 Cursor 可能优先走系统代理导致流量绕开本地代理且无日志；`override` 强制 `http.proxy` 覆盖系统代理（旧值为 on 的机器在下次启用时自动重写）。
