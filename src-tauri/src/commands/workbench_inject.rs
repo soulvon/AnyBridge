@@ -457,6 +457,80 @@ pub(crate) fn restore_product_json(target: &str) -> Result<bool, String> {
 /// 原厂 CSP 本来就带 'unsafe-inline' 的文件（缩进不同）绝不能被误删。
 const INSERTED_CSP_LINE: &str = "\n\t\t\t\t\t'unsafe-inline'";
 
+/// 还原后的原厂对齐自愈：product.json 的 checksums（base64(SHA-256)，键相对
+/// resources/app/out/）就是原厂字节级真值。
+///
+/// 历史版本的注入/剥离会泄漏换行（每轮 +2），还原回填原厂校验和后哈希必然
+/// 对不上，IDE 启动即弹「安装似乎损坏」（实测事故 2026-10-31：两个入口 HTML
+/// 各累积 +4/+2 个换行）。这里按校验和收敛 `</body>` 前的多余换行：每删一个
+/// 都重新对哈希，收敛成功 = 字节级复原；收敛失败如实报错（调用方保留剥离结果）。
+/// 仅当 product.json 里存在该文件的校验条目（且清单非空）时才生效。
+pub(crate) fn align_workbench_with_checksum(
+    target: &str,
+    html_path: &std::path::Path,
+    content: &str,
+) -> Result<Option<String>, String> {
+    let want = match checksum_for_workbench(target, html_path) {
+        Some(w) => w,
+        // 清单为空 / 无该文件条目 / product.json 不可读 = 没有真值可对齐，跳过
+        None => return Ok(None),
+    };
+    if content_hash_b64(content) == want {
+        // 已与原厂字节一致，无需对齐
+        return Ok(None);
+    }
+    Ok(align_content_with_checksum(content, &want))
+}
+
+/// 解析 product.json 的 checksums（base64(SHA-256)，键相对 resources/app/out/），
+/// 取出该入口文件的原厂哈希。清单为空 / 无该文件条目 / 解析失败 → None。
+fn checksum_for_workbench(target: &str, html_path: &std::path::Path) -> Option<String> {
+    let product = product_json_path(target)?;
+    let doc: serde_json::Value = serde_json::from_str(&fs::read_to_string(product).ok()?).ok()?;
+    let checksums = doc.get("checksums")?.as_object()?;
+    if checksums.is_empty() {
+        return None;
+    }
+    let out_dir = ide_app_dir(target)?.join("out");
+    let rel = html_path
+        .strip_prefix(&out_dir)
+        .ok()?
+        .to_string_lossy()
+        .replace('\\', "/");
+    checksums.get(&rel)?.as_str().map(|s| s.to_string())
+}
+
+/// 按原厂哈希收敛内容：只处理「</body> 前多余换行」这一种历史泄漏形态。
+/// 每删一个换行都重新对哈希，成功即字节级复原；删到只剩 1 个换行仍不一致，
+/// 说明差异不是换行（如实放弃，绝不盲改）。
+fn align_content_with_checksum(content: &str, want: &str) -> Option<String> {
+    let mut cur = content.to_string();
+    for _ in 0..256 {
+        if content_hash_b64(&cur) == want {
+            return Some(cur);
+        }
+        let body_pos = cur.rfind("</body>")?;
+        let bytes = cur.as_bytes();
+        let mut run_start = body_pos;
+        while run_start > 0 && bytes[run_start - 1] == b'\n' {
+            run_start -= 1;
+        }
+        // 只收敛「多余」换行；允许收敛到 0——每一步都有哈希背书，
+        // 能对上原厂哈希就说明那就是原厂字节
+        if body_pos - run_start < 1 {
+            return None;
+        }
+        cur.remove(body_pos - 1);
+    }
+    None
+}
+
+fn content_hash_b64(s: &str) -> String {
+    use base64::Engine as _;
+    use sha2::{Digest, Sha256};
+    base64::engine::general_purpose::STANDARD.encode(Sha256::digest(s.as_bytes()))
+}
+
 /// 在 CSP 的 script-src 指令里补上 'unsafe-inline'，让注入的 inline <script> 能执行。
 /// 已有则原样返回。只动 script-src，不碰其它指令。
 /// 返回 (新内容, 是否实际插入)——插入与否必须记账（side-effects），还原时据此精确回滚。
@@ -490,15 +564,11 @@ pub(crate) fn revert_csp_unsafe_inline(html: &str) -> String {
 }
 
 /// 移除已存在的 byok 注入块（幂等重注入用）。
+///
+/// 与 strip_hans_block 同款纪律：注入格式 `"\n{块}\n"`，剥离必须连换行一起移除，
+/// 否则逐轮累积的空行会在还原 product.json 校验和后触发「安装似乎损坏」。
 fn strip_byok_block(html: &str) -> String {
-    let (Some(s), Some(e)) = (html.find(BYOK_BLOCK_START), html.find(BYOK_BLOCK_END)) else {
-        return html.to_string();
-    };
-    let end = e + BYOK_BLOCK_END.len();
-    let mut out = String::with_capacity(html.len());
-    out.push_str(&html[..s]);
-    out.push_str(&html[end..]);
-    out
+    super::app_localization::strip_injected_block(html, BYOK_BLOCK_START, BYOK_BLOCK_END)
 }
 
 /// 接入代理时接管 IDE：注入 byok-cards.js，清空 product.json 的完整性校验清单，
@@ -602,6 +672,12 @@ pub fn restore(target: &str) -> Result<bool, String> {
     } else {
         restore_csp_record(target)
     };
+    let align_result = if hans_present {
+        // 汉化块还在：对齐自愈由汉化 restore 处理（它还负责 locale 等副作用）
+        Ok(false)
+    } else {
+        align_workbench_entry(target)
+    };
 
     let mut changed = false;
     let mut errors: Vec<String> = Vec::new();
@@ -621,10 +697,32 @@ pub fn restore(target: &str) -> Result<bool, String> {
         Ok(v) => changed |= v,
         Err(e) => errors.push(e),
     }
+    match align_result {
+        Ok(v) => changed |= v,
+        Err(e) => errors.push(e),
+    }
     if !errors.is_empty() {
         return Err(errors.join("；"));
     }
     Ok(changed)
+}
+
+/// 还原后按回填的原厂校验和对齐 workbench.html（自愈历史换行泄漏）。
+fn align_workbench_entry(target: &str) -> Result<bool, String> {
+    let Some(path) = workbench_html_path(target) else {
+        return Ok(false);
+    };
+    let content = fs::read_to_string(&path).map_err(|e| e.to_string())?;
+    if content.contains(BYOK_BLOCK_START) || content.contains(HANS_BLOCK_START) {
+        return Ok(false);
+    }
+    match align_workbench_with_checksum(target, &path, &content)? {
+        Some(aligned) => {
+            write_atomic(&path, &aligned).map_err(|e| format!("原厂对齐失败: {e}"))?;
+            Ok(true)
+        }
+        None => Ok(false),
+    }
 }
 
 /// 消费 BYOK 注入时记的 CSP 账（汉化块还在时不动——汉化 restore 会处理）。
@@ -685,6 +783,45 @@ fn restore_workbench_html(target: &str) -> Result<bool, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn byok_strip_roundtrip_is_byte_exact() {
+        let original = "<html><body>\n<div>workbench</div>\n</body>\n\n<!-- Startup -->\n";
+        let injection = format!(
+            "\n{start}\n{ver}\n{open}\n{script}\n</script>\n{end}\n",
+            start = BYOK_BLOCK_START,
+            ver = BYOK_VERSION_MARKER,
+            open = "<script>",
+            script = "console.log('byok')",
+            end = BYOK_BLOCK_END,
+        );
+
+        let mut cur = original.to_string();
+        for round in 0..3 {
+            let injected = cur.replace("</body>", &format!("{injection}</body>"));
+            cur = strip_byok_block(&injected);
+            assert_eq!(
+                cur, original,
+                "第 {} 轮 BYOK 注入/剥离后必须逐字节回到原样",
+                round + 1
+            );
+        }
+    }
+
+    #[test]
+    fn align_content_converges_leaked_newlines() {
+        // 模拟存量泄漏：pristine + 每轮 2 个换行 × 2 轮 = +4
+        let pristine = "<html><body>\n<div>workbench</div>\n</body>\n</html>";
+        let want = content_hash_b64(pristine);
+        let leaked = pristine.replace("</body>", "\n\n\n\n</body>");
+
+        let aligned = align_content_with_checksum(&leaked, &want).expect("应能收敛到原厂字节");
+        assert_eq!(aligned, pristine, "对齐后必须逐字节等于原厂内容");
+
+        // 差异不是换行（真实内容被改）：绝不盲改，如实放弃
+        let broken = pristine.replace("workbench", "changed");
+        assert!(align_content_with_checksum(&broken, &want).is_none());
+    }
 
     #[test]
     fn csp_unsafe_inline_revert_is_exact_inverse() {

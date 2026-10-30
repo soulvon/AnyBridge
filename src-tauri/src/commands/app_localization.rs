@@ -874,14 +874,36 @@ fn write_atomic(path: &Path, content: &str) -> Result<(), String> {
 }
 
 /// 移除已存在的汉化注入块（幂等重注入用）。
+///
+/// 注入格式是 `"\n{块}\n"`（插在 </body> 前），剥离必须把这两个换行一并移除：
+/// 只删块本体会让文件比原厂多出空行，逐轮累积——AG IDE 的 product.json
+/// 校验和覆盖 workbench.html，还原后原厂哈希一对上就弹「安装似乎损坏」
+/// （实测事故 2026-10-31：两个入口 HTML 各累积 +4/+2 个换行）。
 fn strip_hans_block(html: &str) -> String {
-    let (Some(s), Some(e)) = (html.find(HANS_BLOCK_START), html.find(HANS_BLOCK_END)) else {
+    strip_injected_block(
+        html,
+        HANS_BLOCK_START,
+        HANS_BLOCK_END,
+    )
+}
+
+/// 通用注入块剥离：移除 `[START, END]`，并把注入时带入的前导/尾随换行一并吸收。
+/// 块前后不是换行（异常态/手工贴入）时按原边界剥离，绝不吞掉正文内容。
+pub(crate) fn strip_injected_block(html: &str, start_marker: &str, end_marker: &str) -> String {
+    let (Some(s), Some(e)) = (html.find(start_marker), html.find(end_marker)) else {
         return html.to_string();
     };
-    let end = e + HANS_BLOCK_END.len();
+    let mut begin = s;
+    if begin > 0 && html.as_bytes()[begin - 1] == b'\n' {
+        begin -= 1;
+    }
+    let mut stop = e + end_marker.len();
+    if stop < html.len() && html.as_bytes()[stop] == b'\n' {
+        stop += 1;
+    }
     let mut out = String::with_capacity(html.len());
-    out.push_str(&html[..s]);
-    out.push_str(&html[end..]);
+    out.push_str(&html[..begin]);
+    out.push_str(&html[stop..]);
     out
 }
 
@@ -1181,8 +1203,15 @@ fn claude_inject_snippet(store_rel: &str, store_export: &str) -> String {
 }
 
 /// 剥离 index.html 里我们注入的脚本（幂等重注入用）。
+///
+/// 与注入格式互逆：注入片段是 `"\n<script>…</script>\n"`（插在 </head> 前），
+/// 剥离必须把这两个换行一并吸掉，否则每轮「注入→剥离」净漏 2 字节
+/// （Claude 没有 index.html 完整性校验，泄漏无症状但文件会慢性膨胀）。
 fn claude_strip_inject(html: &str) -> String {
-    let re = regex::Regex::new(r"(?s)<script>\s*/\* AnyBridge Claude 中文注入.*?</script>").unwrap();
+    let re = regex::Regex::new(
+        r"(?s)\n?<script>\s*/\* AnyBridge Claude 中文注入.*?</script>\n?",
+    )
+    .unwrap();
     re.replace_all(html, "").to_string()
 }
 
@@ -2055,6 +2084,27 @@ fn restore(platform: &str, elevate: bool) -> Result<LocalizationOperationResult,
             Err(e) => {
                 let nls_warning = format!("；NLS 原厂文件还原失败：{e}");
                 warning.push_str(&nls_warning);
+            }
+        }
+        // 副作用回滚④：原厂对齐自愈——校验和已回填，按原厂哈希收敛历史泄漏的换行
+        // （strip 修好前的每一轮注入/剥离都漏 2 个换行，累积在存量安装上）
+        for html_path in &targets {
+            let content = match fs::read_to_string(html_path) {
+                Ok(c) => c,
+                Err(_) => continue,
+            };
+            if content.contains(HANS_BLOCK_START) || content.contains(BYOK_BLOCK_START) {
+                continue;
+            }
+            match super::workbench_inject::align_workbench_with_checksum(platform, html_path, &content)
+            {
+                Ok(Some(aligned)) => {
+                    write_atomic(html_path, &aligned)
+                        .map_err(|e| format!("原厂对齐失败: {e}"))?;
+                    changed = true;
+                }
+                Ok(None) => {}
+                Err(e) => warning.push_str(&format!("；{e}")),
             }
         }
     }
@@ -2941,6 +2991,51 @@ module.exports = {};"#,
         assert!(again.contains("</body>"), "结构必须完整");
 
         let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn hans_strip_roundtrip_is_byte_exact() {
+        // 注入/剥离必须互为精确逆操作：历史上 strip 只删块本体，
+        // 注入自带的两个换行逐轮泄漏，还原后原厂校验和揭穿 → 「安装似乎损坏」
+        let original = "<html><head></head>\n<body>\n<div>workbench</div>\n</body>\n\n<!-- Startup -->\n<script src=\"./workbench.js\"></script>\n</html>";
+        let injection = format!(
+            "\n{start}\n{ver}\n{open}\n{script}\n</script>\n{end}\n",
+            start = HANS_BLOCK_START,
+            ver = HANS_VERSION_MARKER,
+            open = "<script>",
+            script = "console.log('engine')",
+            end = HANS_BLOCK_END,
+        );
+
+        let mut cur = original.to_string();
+        for round in 0..3 {
+            let injected = cur.replace("</body>", &format!("{injection}</body>"));
+            cur = strip_hans_block(&injected);
+            assert_eq!(
+                cur, original,
+                "第 {} 轮注入/剥离后必须逐字节回到原样（不得累积换行）",
+                round + 1
+            );
+        }
+    }
+
+    #[test]
+    fn claude_strip_roundtrip_is_byte_exact() {
+        let snippet = claude_inject_snippet("i18n/zh-Hans.json", "zhCatalogs");
+        let original = "<!DOCTYPE html>\n<html><head><meta charset=\"utf-8\"></head>\n<body><div id=\"app\"></div></body></html>";
+
+        // 与 claude_inject_index 同样的注入位置与方式（</head> 前）
+        let injected = original.replace("</head>", &format!("{snippet}</head>"));
+        let cleaned = claude_strip_inject(&injected);
+        assert_eq!(cleaned, original, "剥离必须逐字节还原（含注入片段自带换行）");
+
+        // 重复注入/剥离多轮不得膨胀
+        let mut cur = original.to_string();
+        for _ in 0..3 {
+            let injected = cur.replace("</head>", &format!("{snippet}</head>"));
+            cur = claude_strip_inject(&injected);
+        }
+        assert_eq!(cur, original, "多轮注入/剥离不得累积字节");
     }
 
     #[test]
