@@ -182,9 +182,21 @@ let PROXY_HEALTHY = true;   // 首次探测完成前假定可用，保持既有�
 let PROXY_HEALTH_LAST_URL = '';
 let PROXY_HEALTH_LAST_AT = 0;
 let PROXY_HEALTH_LOG_AT = 0;
+// 测试注入的代理地址：设置后绕过系统/env 读取与缓存，并停掉后台探测——
+// 否则测试结果依赖宿主机是否配置了系统代理（CI 上没有，实测两平台必挂）。
+let PROXY_URL_OVERRIDE;
 
-export function _setProxyHealthForTest(ok) {
+export function _setProxyHealthForTest(ok, proxyUrl = undefined) {
   PROXY_HEALTHY = ok;
+  if (proxyUrl !== undefined) {
+    PROXY_URL_OVERRIDE = proxyUrl;
+    PROXY_CACHE_VALUE = proxyUrl;
+    PROXY_CACHE_EXPIRES_AT = Number.MAX_SAFE_INTEGER;
+    if (PROXY_HEALTH_TIMER) {
+      clearInterval(PROXY_HEALTH_TIMER);
+      PROXY_HEALTH_TIMER = null;
+    }
+  }
 }
 
 function probeProxyHealth() {
@@ -229,7 +241,7 @@ function probeProxyHealth() {
 }
 
 probeProxyHealth();
-const PROXY_HEALTH_TIMER = setInterval(probeProxyHealth, Math.max(1000, PROXY_HEALTH_INTERVAL_MS));
+let PROXY_HEALTH_TIMER = setInterval(probeProxyHealth, Math.max(1000, PROXY_HEALTH_INTERVAL_MS));
 if (PROXY_HEALTH_TIMER && typeof PROXY_HEALTH_TIMER.unref === 'function') PROXY_HEALTH_TIMER.unref();
 
 function redactProxyUrl(proxyUrl) {
@@ -245,6 +257,7 @@ function redactProxyUrl(proxyUrl) {
 }
 
 function cachedSystemProxyUrl() {
+  if (PROXY_URL_OVERRIDE !== undefined) return PROXY_URL_OVERRIDE;
   const now = Date.now();
   if (PROXY_CACHE_MS > 0 && now < PROXY_CACHE_EXPIRES_AT) return PROXY_CACHE_VALUE;
   PROXY_CACHE_VALUE = getSystemProxyUrl();
