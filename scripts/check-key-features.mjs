@@ -597,6 +597,26 @@ section('加载态动态化（禁止静态 loading 文案）');
     violations.length === 0,
     violations.slice(0, 6).join(' | '));
 
+  // 单一 spinner 源：loadingHtml 已自带 spinner，任何"自造第二个圈"的类名
+  // （btn-spinner 等）都会叠成双加载圈。实测事故：扩展中心 CPA「更新中…」。
+  const handmade = [];
+  const walkSpinner = (dir, depth) => {
+    if (depth > 6) return;
+    for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+      if (['node_modules', 'target', '.git', 'tmp'].includes(e.name)) continue;
+      const p = path.join(dir, e.name);
+      if (e.isDirectory()) { walkSpinner(p, depth + 1); continue; }
+      if (!e.name.endsWith('.js')) continue;
+      if (/btn-spinner/.test(fs.readFileSync(p, 'utf8'))) {
+        handmade.push(p.replace(root + path.sep, '').split(path.sep).join('/'));
+      }
+    }
+  };
+  walkSpinner(path.join(root, 'ui/assets/scripts'), 0);
+  ok('spinner 只有一套实现（禁止自造 btn-spinner 叠加成双圈）',
+    handmade.length === 0,
+    handmade.slice(0, 6).join(' | '));
+
   // 基础设施必须在位（防止有人删掉 spinner 实现）
   const fb = fs.readFileSync(path.join(root, 'ui/assets/scripts/ui/feedback.js'), 'utf8');
   ok('loadingHtml / setLoading 已提供且挂到 globalThis',
@@ -664,6 +684,58 @@ section('关键判据（源码级回归断言）');
   const s = fs.readFileSync(path.join(root, 'src-tauri/src/commands/platforms.rs'), 'utf8');
   ok('BYOK asar 补丁轻量预检（幂等跳过）', s.includes('轻量预检'));
   ok('汉化 asar 补丁构造→比对→按需写回', fs.readFileSync(path.join(root, 'src-tauri/src/commands/antigravity_localization.rs'), 'utf8').includes('if original_code == new_code'));
+}
+
+// 3.4 Codex Desktop 注入前置（issue #38）
+//   事故形态：代理服务没起来就直接注入 → 先 kill 再失败，用户窗口被白重启。
+//   顺序是本条判据的核心，源码里注释写再多也挡不住下次改动把它挪回去。
+{
+  const s = fs.readFileSync(path.join(root, 'src-tauri/src/commands/codex_desktop.rs'), 'utf8');
+  const implAt = s.indexOf('async fn restart_codex_desktop_impl');
+  const guardAt = implAt >= 0 ? s.indexOf('ensure_injection_backend(', implAt) : -1;
+  const killAt = implAt >= 0 ? s.indexOf('kill_codex()', implAt) : -1;
+  ok('Codex 切换：代理就绪检查先于 kill 客户端',
+    implAt >= 0 && guardAt > implAt && killAt > implAt && guardAt < killAt,
+    `impl=${implAt} guard=${guardAt} kill=${killAt}`);
+
+  const startAt = s.indexOf('pub async fn start_codex_with_cdp');
+  const startGuard = startAt >= 0 ? s.indexOf('ensure_injection_backend(', startAt) : -1;
+  ok('Codex 手动启动：同样走代理就绪检查', startGuard > startAt);
+
+  // 双回环地址探测：失败原因必须逐条保留。只留最后一个会把 IPv4 真因盖掉，
+  // 排障被误导成 IPv6 问题（issue #38 现场就栽在这行）。
+  ok('本地 HTTP 探测保留全部地址的失败原因',
+    s.includes('fn connect_error') && s.includes('errors.push') && !/last_err\s*=/.test(s));
+
+  // 前端展示契约：主句（可整句翻译）与详情分离，详情只进日志
+  const ui = fs.readFileSync(path.join(root, 'ui/assets/scripts/55-platforms.js'), 'utf8');
+  ok('切换失败只把主句上屏，详情进日志',
+    ui.includes('function messageHeadline') && ui.includes('function messageDetail') &&
+    ui.includes('function switchFlowErrorLog'));
+}
+
+// 3.4.1 Codex CDP 双栈与目标身份（新版客户端把 CDP 绑在 ::1）
+//   删掉 IPv6 分支 → 新版 Codex 注入直接失效；去掉身份校验 → 注入可能打到别的 Electron 应用。
+{
+  const cdp = fs.readFileSync(path.join(root, 'sidecar/lib/codex-desktop-cdp.js'), 'utf8');
+  ok('CDP 探测同时覆盖 IPv4 与 IPv6 回环',
+    cdp.includes('http://127.0.0.1:${port}/json') && cdp.includes('http://[::1]:${port}/json'));
+  ok('注入前自证目标是 Codex（拒绝注入别人的页面）', cdp.includes('function isCodexDesktopTarget'));
+
+  // 切换确认文案必须克制：不重复供应商名、不暴露实现细节（统一桶 / CDP / 库文件名）
+  const uiSrc = fs.readFileSync(path.join(root, 'ui/assets/scripts/55-platforms.js'), 'utf8');
+  const start = uiSrc.indexOf('function codexApplyConfirmMessage');
+  const end = start >= 0 ? uiSrc.indexOf('\n}', start) : -1;
+  // 只看字符串字面量与模板串，注释里出现实现词（解释为何这么写）不算违规
+  const confirmSrc = start >= 0 && end > start
+    ? uiSrc.slice(start, end).split('\n').filter(l => !l.trim().startsWith('//')).join('\n')
+    : '';
+  ok('Codex 切换确认文案不暴露实现细节',
+    confirmSrc.length > 0 && !/统一桶|CDP 注入|state_5\.sqlite/.test(confirmSrc));
+  ok('Codex 切换确认不再重复供应商名', confirmSrc.length > 0 && !confirmSrc.includes('供应商：'));
+  ok('切换失败详情不丢（错误聚合保留每个地址）',
+    fs.readFileSync(path.join(root, 'src-tauri/src/commands/codex_desktop.rs'), 'utf8')
+      .includes('fn connect_error'));
 }
 
 // ─────────────────────────────────────────────────────────────

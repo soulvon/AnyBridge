@@ -212,7 +212,7 @@ function codexDesktopAutomationSupported() {
 }
 
 function codexDesktopUnsupportedMessage() {
-  return 'Codex Desktop 自动启动和模型注入当前仅支持 Windows。配置已写入后，请在本机手动重启 Codex 使其生效。';
+  return '自动重启与模型注入仅支持 Windows，请手动重启 Codex。';
 }
 
 function platformFormatLabel(fmt) {
@@ -2251,7 +2251,7 @@ async function confirmAddCodexModelsPage() {
   const ok = await syncCodexConfigUiAfterStoreChange();
   if (ok) {
     if (typeof addLog === 'function') addLog('ok', `已添加 Codex 配置: ${provider.providerName} (${checkedModelIds.length} 个模型)`);
-    showCustomAlert(`已成功保存「${provider.providerName}」的 Codex 配置（共 ${checkedModelIds.length} 个模型）。`, '保存成功', 'success');
+    showCustomAlert(`已保存「${provider.providerName}」的 Codex 配置（${checkedModelIds.length} 个模型）。`, '保存成功', 'success');
     navigateTo('platform-codex');
     renderCodexConfigList(platformInfoOf('codex') || {});
   }
@@ -2437,7 +2437,7 @@ async function saveCodexConfigEditor(switchAfter = false) {
     p => p && p.id !== editId && String(p.name || '').trim().toLowerCase() === name.toLowerCase()
   );
   if (isDuplicateName) {
-    showCustomAlert(`已存在名为「${name}」的 Codex 配置，请更换名称以作区分（例如 ${name}-2）。`, '配置名称重复', 'warn');
+    showCustomAlert(`已存在同名配置，请换个名称（如 ${name}-2）。`, '配置名称重复', 'warn');
     document.getElementById('codex-config-name')?.focus();
     return;
   }
@@ -2446,7 +2446,7 @@ async function saveCodexConfigEditor(switchAfter = false) {
     return;
   }
   if (!defaultModel) {
-    showCustomAlert('请选择一个默认模型（勾选后点击单选按钮）。', '未选择默认模型', 'warn');
+    showCustomAlert('请先选择默认模型。', '未选择默认模型', 'warn');
     return;
   }
   const agents = getCodexAgents();
@@ -7657,29 +7657,29 @@ async function applyCodexProviderConfig(providerId) {
         const needInject = codexProviderNeedsInject(provider);
         if (codexDesktopAutomationSupported()) {
           setMessage(preserveAuth
-            ? '正在重启 Codex 桌面版（保留官方登录模式）…'
+            ? '正在以官方登录模式重启 Codex…'
             : needInject
-              ? '正在重启 Codex 桌面版并注入自定义模型…'
-              : '正在重启 Codex 桌面版（不进行模型注入）…');
+              ? '正在重启 Codex 并解锁模型…'
+              : '正在重启 Codex…');
           restart = assertSwitchResultOk(
             await invoke('restart_codex_desktop', { managed: true, model: provider.defaultModel || null, injectModels: needInject }),
-            'Codex 桌面版重启或注入失败'
+            'Codex 重启或注入失败'
           );
         } else {
-          setMessage('当前平台不支持自动重启 Codex Desktop，已跳过桌面注入。');
+          setMessage('已跳过自动重启（仅支持 Windows）。');
         }
 
         if (typeof addLog === 'function') {
           addLog('ok', result.message || 'Codex 配置已切换');
           if (restart) {
-            addLog('ok', restart.message || (needInject ? 'Codex 桌面版已重启并完成注入' : 'Codex 桌面版已重启'));
+            addLog('ok', restart.message || (needInject ? 'Codex 已重启并解锁模型' : 'Codex 已重启'));
           } else {
             addLog('warn', codexDesktopUnsupportedMessage());
           }
         }
         setMessage('正在刷新 Codex 状态…');
         await refreshPlatforms({ silent: true, reloadProviders: false });
-        const restartFallback = needInject ? 'Codex 桌面版已重启并完成注入。' : 'Codex 桌面版已重启。';
+        const restartFallback = needInject ? 'Codex 已重启并解锁模型。' : 'Codex 已重启。';
         return {
           message: `${result.message || 'Codex 配置已切换。'}\n\n${restart ? (restart.message || restartFallback) : codexDesktopUnsupportedMessage()}`
         };
@@ -7690,7 +7690,7 @@ async function applyCodexProviderConfig(providerId) {
     }
   });
   if (flow.confirmed && !flow.ok && typeof addLog === 'function') {
-    addLog('err', `Codex 切换失败: ${switchFlowErrorText(flow.error)}`);
+    addLog('err', switchFlowErrorLog(flow.error, 'Codex 切换失败: '));
   }
 }
 
@@ -7704,15 +7704,17 @@ async function startCodexWithCdp(injectModels = true) {
   setPlatformBusy('codex', true);
   try {
     const result = await invoke('start_codex_with_cdp', { injectModels: !!injectModels });
-    if (typeof addLog === 'function') addLog(result.ok ? 'ok' : 'err', result.message || '');
+    if (typeof addLog === 'function') {
+      addLog(result.ok ? 'ok' : 'err', switchFlowErrorLog(result.message, ''));
+    }
     showCustomAlert(
-      (result.message || '').replace(/^Error:\s*/i, ''),
+      messageHeadline(result.message).replace(/^Error:\s*/i, ''),
       result.ok ? '提示' : '启动失败',
       result.ok ? 'success' : 'error'
     );
   } catch (e) {
-    if (typeof addLog === 'function') addLog('err', `启动 Codex 失败: ${e}`);
-    showCustomAlert(String(e).replace(/^Error:\s*/i, ''), '启动失败', 'error');
+    if (typeof addLog === 'function') addLog('err', switchFlowErrorLog(e, '启动 Codex 失败: '));
+    showCustomAlert(messageHeadline(e) || String(e), '启动失败', 'error');
   } finally {
     setPlatformBusy('codex', false);
   }
@@ -9560,8 +9562,39 @@ globalThis._switchProgressUnlisten = null;
 globalThis._switchProgressPlatform = null;
 globalThis._switchFlowState = null;
 
+// 后端 message 契约（见 codex_desktop.rs 顶部注释）：
+//   第一行 = 给用户看的固定句，整句作为 key 收录在 ui/assets/i18n/en-US.js；
+//   第二行起 = `详情：…` 技术原因（端口、os error）。
+// 主句上屏（可被 DOM 翻译），详情进日志面板，不把底层错误砸给用户。
+// 入参可能是 Error 对象、invoke 抛出的字符串或后端返回的 message 字符串，
+// 统一在这里归一，避免 String(error) 变成 "[object Object]"。
+function rawMessageText(source) {
+  if (source && typeof source === 'object' && 'message' in source) {
+    return String(source.message || '');
+  }
+  return String(source === undefined || source === null ? '' : source);
+}
+
+function messageHeadline(source) {
+  const raw = rawMessageText(source).trim();
+  if (!raw) return '';
+  return raw.split('\n')[0].trim() || raw;
+}
+
+function messageDetail(source) {
+  const lines = rawMessageText(source).trim().split('\n');
+  return lines.length > 1 ? lines.slice(1).join(' ').trim() : '';
+}
+
 function switchFlowErrorText(e) {
-  return String(e?.message || e || '未知错误');
+  return messageHeadline(e) || '未知错误';
+}
+
+// 日志保留完整信息（主句 + 详情），便于用户回帖时直接复制。
+function switchFlowErrorLog(e, prefix = '') {
+  const main = switchFlowErrorText(e);
+  const detail = messageDetail(e);
+  return `${prefix}${main}${detail ? `｜${detail}` : ''}`;
 }
 
 function assertSwitchResultOk(result, fallbackMessage) {
@@ -9814,13 +9847,11 @@ function updateSwitchProgress(payload) {
   if (!toast) return;
   const msgEl = toast.querySelector('.switch-progress-message');
   if (msgEl) msgEl.textContent = payload.message || '正在处理…';
+  // toast 左侧已有 switch-progress-spinner，标题再插 loadingHtml 会变成两个圈；
+  // 标题只负责收尾切文案，动态指示交给那唯一的 spinner。
   const titleEl = toast.querySelector('.switch-progress-title');
-  if (titleEl) {
-    if (payload.step === 'done') {
-      titleEl.textContent = '完成';
-    } else {
-      titleEl.innerHTML = loadingHtml('正在切换配置…');
-    }
+  if (titleEl && payload.step === 'done') {
+    titleEl.textContent = '完成';
   }
 }
 
@@ -9902,15 +9933,13 @@ function codexApplyConfirmMessage(provider) {
   const needsInject = codexProviderNeedsInject(provider);
   const hint = codexDesktopAutomationSupported()
     ? (preserveAuth
-      ? '切换后会自动重启 Codex（保留官方登录模式，不进行 CDP 注入）。'
+      ? '重启后使用官方登录'
       : needsInject
-        ? '切换后会自动重启 Codex，并解锁模型选择器中的第三方模型。'
-        : '切换后会自动重启 Codex 生效（不进行模型注入）。')
-    : '切换后会写入 Codex 配置；当前平台不支持自动重启 / 桌面注入，请手动重启 Codex 生效。';
-  const historyHint = provider.unifySessionHistory === false
-    ? '切换后会按当前 model_provider 自动修复会话索引可见性。'
-    : '切换后会自动对齐会话索引到统一桶 codex_local_access，历史会话继续可见。';
-  return `将把 Codex 从「${from}」切换到「${to}」。\n\n供应商：${to}\n默认模型：${model}\n\n${hint}\n${historyHint}`;
+        ? '重启后可选第三方模型'
+        : '重启后生效')
+    : '请手动重启 Codex 生效';
+  const historyHint = provider.unifySessionHistory === false ? '' : '，历史会话保持可见';
+  return `将把 Codex 从「${from}」切换到「${to}」。\n\n默认模型：${model}\n${hint}${historyHint}。`;
 }
 
 async function repairCodexSessionVisibility() {
@@ -9919,7 +9948,7 @@ async function repairCodexSessionVisibility() {
     || info.currentProviderId
     || 'openai';
   const ok = await showCustomConfirm(
-    `将把本地 Codex 会话索引（state_5.sqlite）对齐到当前 model_provider「${providerId}」，使历史会话在侧边栏重新可见。\n\n建议先完全关闭 Codex / Codex App，避免数据库被占用。\n\n不会改写会话内容文件（rollout）。若要统一到 codex_local_access，请先切换到开启「统一会话历史」的配置。`,
+    `把历史会话对齐到「${providerId}」，在侧边栏重新可见。\n\n请先完全退出 Codex。`,
     '修复会话历史',
     'info'
   );
@@ -9930,8 +9959,8 @@ async function repairCodexSessionVisibility() {
   try {
     const summary = await invoke('repair_codex_session_visibility');
     const msg = summary && summary.message
-      ? `${summary.message}（目标桶：${summary.targetProvider || providerId}，更新 ${summary.updatedSqliteRowCount || 0} 条）`
-      : '历史会话可见性修复完成';
+      ? `${summary.message}（更新 ${summary.updatedSqliteRowCount || 0} 条）`
+      : '历史会话已修复';
     if (typeof addLog === 'function') addLog('ok', msg);
     showCustomAlert(msg, '修复完成', 'success');
     await refreshPlatforms({ silent: true });
@@ -9949,10 +9978,10 @@ async function restoreCodexOfficialConfig() {
   const info = platformInfoOf('codex') || {};
   const alreadyOfficial = !!(info.codexConfig && info.codexConfig.isOfficial);
   const autoRestartHint = codexDesktopAutomationSupported()
-    ? '切换后会自动重启 Codex（官方模式）。'
-    : '切换后请手动重启 Codex；自动重启 Codex Desktop 仅支持 Windows。';
+    ? '重启后使用官方登录。'
+    : '请手动重启 Codex。';
   const message = alreadyOfficial
-    ? 'Codex 当前已经是官方默认配置。仍要清理第三方配置吗？'
+    ? '当前已是官方配置，仍要清理吗？'
     : `将把 Codex 切回官方默认配置。\n\n${autoRestartHint}`;
   const flow = await runSwitchFlow({
     title: '切回官方配置',
@@ -9974,13 +10003,13 @@ async function restoreCodexOfficialConfig() {
 
         let restart = null;
         if (codexDesktopAutomationSupported()) {
-          setMessage('正在重启 Codex 桌面版（官方模式）…');
+          setMessage('正在重启 Codex…');
           restart = assertSwitchResultOk(
             await invoke('restart_codex_desktop', { managed: false, model: null }),
-            'Codex 桌面版官方模式重启失败'
+            'Codex 重启失败'
           );
         } else {
-          setMessage('当前平台不支持自动重启 Codex Desktop，已跳过桌面重启。');
+          setMessage('已跳过自动重启（仅支持 Windows）。');
         }
 
         if (typeof addLog === 'function') {
@@ -9991,7 +10020,7 @@ async function restoreCodexOfficialConfig() {
         setMessage('正在刷新 Codex 状态…');
         await refreshPlatforms({ silent: true, reloadProviders: false });
         return {
-          message: `${result.message || 'Codex 已切回官方配置。'}\n\n${restart ? (restart.message || 'Codex 桌面版已按官方模式重启。') : codexDesktopUnsupportedMessage()}`
+          message: `${result.message || 'Codex 已切回官方配置。'}\n\n${restart ? (restart.message || 'Codex 已重启。') : codexDesktopUnsupportedMessage()}`
         };
       } finally {
         setPlatformBusy('codex', false);
@@ -10000,7 +10029,7 @@ async function restoreCodexOfficialConfig() {
     }
   });
   if (flow.confirmed && !flow.ok && typeof addLog === 'function') {
-    addLog('err', `Codex 切回官方失败: ${switchFlowErrorText(flow.error)}`);
+    addLog('err', switchFlowErrorLog(flow.error, 'Codex 切回官方失败: '));
   }
 }
 

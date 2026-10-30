@@ -60,40 +60,76 @@ function httpGetJson(url) {
   });
 }
 
+/** 明确属于其它 Electron 应用（IDE / 扩展 / devtools）的页面 URL 前缀。 */
+const FOREIGN_PAGE_URL = /^(vscode-file:|vscode-webview:|devtools:|chrome-extension:)/i;
+
+/**
+ * 判断一个 CDP target 是不是 Codex Desktop 的页面。
+ *
+ * 为什么必须校验：同一个端口号可能被别的 Electron 应用占用——新版 Codex 把
+ * CDP 绑在 `::1`，IPv4 回环上可能另有进程监听同一端口。此时按「取第一个 page」
+ * 就会把补丁注入到别人的界面（2026-10 实测：注入打进了 Antigravity IDE 的 workbench）。
+ *
+ * @param {object} target CDP /json 条目
+ * @returns {boolean}
+ */
+export function isCodexDesktopTarget(target) {
+  if (!target || target.type !== 'page' || !target.webSocketDebuggerUrl) return false;
+  const url = String(target.url || '');
+  if (FOREIGN_PAGE_URL.test(url)) return false;
+  // 新版 Codex Desktop：窗口标题 ChatGPT，页面为 app://-/index.html
+  if (/^app:\/\/-\//i.test(url)) return true;
+  // 旧版 / 其它构建：URL 或标题里带 codex
+  return /codex/i.test(`${url} ${target.title || ''}`);
+}
+
 /**
  * GET /json from the CDP HTTP endpoint. Tries IPv4 + IPv6.
+ *
+ * 两个地址可能命中**两个不同进程**（Codex 绑 ::1、别的应用绑 127.0.0.1）。
+ * 因此不是「谁先响应就用谁」，而是优先返回含 Codex 页面的那一组，
+ * 避免把别人的 target 列表当成 Codex 的。
+ *
  * @param {number} port
  * @returns {Promise<Array<object>>}
  */
 export async function listTargets(port) {
   const urls = [`http://127.0.0.1:${port}/json`, `http://[::1]:${port}/json`];
   const errors = [];
+  const groups = [];
   for (const url of urls) {
     try {
       const targets = await httpGetJson(url);
-      if (Array.isArray(targets)) return targets;
+      if (Array.isArray(targets)) groups.push(targets);
     } catch (e) {
       errors.push(`${url}: ${e.message}`);
     }
   }
-  throw new Error(errors.join('; '));
+  if (!groups.length) throw new Error(errors.join('; '));
+  return groups.find((g) => g.some(isCodexDesktopTarget)) || groups[0];
 }
 
 /**
- * Pick the best page target: prefer one whose title/url mentions "codex",
- * otherwise fall back to the first page target.
+ * Pick the best Codex page target.
+ *
+ * 顺序：主窗口（app://-/index.html，排除 spotlight 等子路由）→ 任意 Codex 页面。
+ * 如果端口上明确是别的 IDE/扩展页面，返回 null 让上层报错，**绝不降级注入**。
+ * 旧版 Codex 的 URL 特征未知时仍允许首个 page，避免误伤老客户端。
+ *
  * @param {Array<object>} targets
  * @returns {object|null}
  */
 export function pickPageTarget(targets) {
-  const pages = targets.filter(
-    (t) => t.type === 'page' && t.webSocketDebuggerUrl,
+  const pages = (targets || []).filter(
+    (t) => t && t.type === 'page' && t.webSocketDebuggerUrl,
   );
   if (!pages.length) return null;
-  for (const t of pages) {
-    const hay = `${t.title || ''} ${t.url || ''}`.toLowerCase();
-    if (hay.includes('codex')) return t;
+  const codexPages = pages.filter(isCodexDesktopTarget);
+  if (codexPages.length) {
+    const main = codexPages.find((t) => /^app:\/\/-\/index\.html$/i.test(String(t.url || '')));
+    return main || codexPages[0];
   }
+  if (pages.some((t) => FOREIGN_PAGE_URL.test(String(t.url || '')))) return null;
   return pages[0];
 }
 
@@ -167,7 +203,10 @@ async function injectOnce(port, models) {
   const targets = await listTargets(port);
   const target = pickPageTarget(targets);
   if (!target) {
-    throw new Error(`No injectable Codex page target (CDP ${targets.length} targets, none is type=="page" with webSocketDebuggerUrl)`);
+    throw new Error(
+      `CDP ${port} 上没有可注入的 Codex 页面（${targets.length} 个 target）。` +
+      '该端口可能被其它 Electron 应用占用；已拒绝向非 Codex 页面注入补丁。'
+    );
   }
 
   const wsUrl = target.webSocketDebuggerUrl;

@@ -460,6 +460,25 @@ mod log_classification_tests {
         assert!(remaining <= std::time::Duration::from_secs(60));
     }
 
+    // 端口探测必须反映真实监听状态：用于判定「代理服务是否可直接复用」，
+    // 探错会导致把正在供流的 sidecar 误杀重启（或反之漏启动）。
+    #[test]
+    fn proxy_port_probe_reflects_listener_state() {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        assert!(super::proxy_port_listening(port), "监听中的端口应探测为可达");
+        drop(listener);
+        let mut released = false;
+        for _ in 0..50 {
+            if !super::proxy_port_listening(port) {
+                released = true;
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        assert!(released, "端口已释放，探测仍返回可达（判据把历史状态当现状）");
+    }
+
     // 使用内存分段模拟 TCP 分包，确保头后的 TLS 字节仍留给握手层。
     #[test]
     fn connect_header_handles_fragments_and_rejects_invalid_responses() {
@@ -2599,6 +2618,42 @@ pub fn get_proxy_status(state: State<ProxyState>) -> ProxyStatus {
         target_ide,
         api_port: ports.api_port,
         inference_port: ports.inference_port,
+    }
+}
+
+/// 本地回环端口是否有进程在监听。
+///
+/// 用真实 TCP 连通性判断，而不是只看托管 child：sidecar 可能由上一轮进程或
+/// 外部手工启动，child 句柄丢失但端口仍在服务。若按 child 状态误判为「未运行」
+/// 再去 start_proxy_service_impl，会 kill 掉正在给其它客户端供流的 sidecar。
+pub(crate) fn proxy_port_listening(port: u16) -> bool {
+    let addr = SocketAddr::from(([127, 0, 0, 1], port));
+    TcpStream::connect_timeout(&addr, Duration::from_millis(200)).is_ok()
+}
+
+/// 确保本地代理服务可用：端口已监听直接返回，未监听则拉起并复检。
+///
+/// **单一入口**：Cursor Core 启动、Codex Desktop CDP 注入等「必须依赖 sidecar」的链路
+/// 一律调用本函数，禁止各自再复制一份「探测 + 启动」逻辑。
+/// 事故背景（坑点 codex-inject-requires-proxy）：Codex 侧曾漏掉前置检查，代理服务
+/// 未运行时直接向 7450 发注入请求，用户只看到 `os error 10061`，且客户端已被先 kill 重启。
+pub(crate) fn ensure_proxy_service_ready(app: &AppHandle) -> Result<(), String> {
+    let ports = configured_ports();
+    if proxy_port_listening(ports.api_port) {
+        return Ok(());
+    }
+    if get_proxy_status(app.state::<ProxyState>()).running {
+        // 进程活着但端口不通：不能在这里重启（可能正处于 MITM 自检），如实报错交上层引导。
+        return Err(format!(
+            "本地代理服务进程在运行，但端口 {} 不可达",
+            ports.api_port
+        ));
+    }
+    start_proxy_service_impl(app.clone())?;
+    if proxy_port_listening(ports.api_port) {
+        Ok(())
+    } else {
+        Err(format!("本地代理服务启动后端口 {} 仍不可达", ports.api_port))
     }
 }
 

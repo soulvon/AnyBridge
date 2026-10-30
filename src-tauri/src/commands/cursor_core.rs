@@ -228,13 +228,8 @@ fn resolve_binary(_app: &AppHandle) -> Result<PathBuf, String> {
     }
 }
 
-fn ensure_proxy_running(app: &AppHandle) -> Result<(), String> {
-    let proxy = app.state::<crate::commands::proxy::ProxyState>();
-    if !crate::commands::proxy::get_proxy_status(proxy).running {
-        crate::commands::proxy::start_proxy_service_impl(app.clone())?;
-    }
-    Ok(())
-}
+// 代理前置检查统一走 proxy::ensure_proxy_service_ready（端口探测优先），
+// 这里不再自带一份「只看 child 状态」的实现，避免两处判据漂移。
 
 fn start_impl(app: AppHandle, state: &CursorCoreState) -> Result<(), String> {
     if process_running(state) {
@@ -248,7 +243,7 @@ fn start_impl(app: AppHandle, state: &CursorCoreState) -> Result<(), String> {
         if !certificate.san_current || !(certificate.current_user || certificate.local_machine) {
             return Err(format!("AnyBridge CA 尚未就绪: {}", certificate.message));
         }
-        ensure_proxy_running(&app)?;
+        crate::commands::proxy::ensure_proxy_service_ready(&app)?;
         let key = crate::commands::config::read_config_value("LOCAL_PROXY_KEY")
             .filter(|value| !value.trim().is_empty())
             .ok_or("AnyBridge 本地代理 Key 尚未生成")?;

@@ -49,6 +49,23 @@ const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 #[cfg(target_os = "windows")]
 const CDP_PORT: u16 = 9229;
 
+// ─── 注入失败的用户可见主句 ────────────────────────────────────────────
+// 契约：`message` 第一行是给用户看的固定句（整句作为 key 收录在
+// ui/assets/i18n/en-US.js，`npm run check:i18n` 会拦漏翻），第二行起是
+// `详情：…` 技术原因。前端只展示首行，详情进日志面板，避免把 os error
+// 直接砸给用户（issue #38）。
+
+/// 代理服务不可用（未启动 / 启动失败 / 端口不通）——注入前置检查失败。
+const MSG_PROXY_UNAVAILABLE: &str =
+    "本地代理服务不可用，已跳过模型注入。请检查代理服务后重试。";
+/// 注入请求发出去了但 sidecar 回报失败。
+const MSG_INJECT_FAILED: &str =
+    "Codex 已启动，但模型注入未完成。请稍后重试或查看日志。";
+/// CDP 调试端口在超时窗口内没起来。
+#[cfg(target_os = "windows")]
+const MSG_CDP_NOT_READY: &str =
+    "Codex 未在预期时间内就绪，已跳过模型注入。请稍后重试。";
+
 /// 记录当前 Codex 实际使用的 CDP 端口（可能为动态端口）。
 /// launch_with_cdp 时写入，watcher 和 injection check 读取。
 /// 0 表示尚未启动过 CDP 模式，回退到 CDP_PORT。
@@ -133,6 +150,22 @@ fn run_powershell(script: &str) -> Result<String, String> {
 // reqwest 在本 crate 用了 default-features=false + rustls，没有 blocking feature。
 // 这里直接用 TcpStream 发原始 HTTP，模式照搬 proxy.rs:441-460 probe_byok_stats。
 
+/// 本机回环探测的两个候选地址：IPv4 优先，IPv6 兜底。
+fn local_loopback_addrs(port: u16) -> [SocketAddr; 2] {
+    [
+        SocketAddr::from(([127, 0, 0, 1], port)),
+        SocketAddr::from(([0, 0, 0, 0, 0, 0, 0, 1], port)),
+    ]
+}
+
+/// 两个回环地址都连不上时的错误文本。
+///
+/// 必须保留**每个**地址的失败原因。只留最后一个会把真实原因（IPv4 被拒）盖掉，
+/// 让人误判成 IPv6 问题——issue #38 现场就是被这行误导的。
+fn connect_error(port: u16, errors: &[String]) -> String {
+    format!("无法连接 {port}：{}", errors.join("；"))
+}
+
 /// 发送一个 GET 请求到 127.0.0.1:port/path，返回完整响应文本（含头）。
 ///
 /// CDP 的 /json 响应不主动关闭连接（keep-alive），read_to_string 会等到
@@ -140,11 +173,8 @@ fn run_powershell(script: &str) -> Result<String, String> {
 /// 短暂继续读（40ms 内还有数据就继续拼），没有更多数据就返回已读内容。
 #[cfg(target_os = "windows")]
 fn http_get_local(port: u16, path: &str, timeout: Duration) -> Result<String, String> {
-    let addrs = [
-        SocketAddr::from(([127, 0, 0, 1], port)),
-        SocketAddr::from(([0, 0, 0, 0, 0, 0, 0, 1], port)),
-    ];
-    let mut last_err = String::new();
+    let addrs = local_loopback_addrs(port);
+    let mut errors: Vec<String> = Vec::new();
     for addr in &addrs {
         match TcpStream::connect_timeout(addr, timeout) {
             Ok(mut stream) => {
@@ -181,10 +211,10 @@ fn http_get_local(port: u16, path: &str, timeout: Duration) -> Result<String, St
                 }
                 return Ok(String::from_utf8_lossy(&buf).to_string());
             }
-            Err(e) => last_err = format!("{addr}: {e}"),
+            Err(e) => errors.push(format!("{addr}: {e}")),
         }
     }
-    Err(format!("无法连接 {port}: {last_err}"))
+    Err(connect_error(port, &errors))
 }
 
 /// 发送一个 POST 请求（JSON body）到 127.0.0.1:port/path，返回 (status_line, body)。
@@ -198,11 +228,8 @@ pub(crate) fn http_post_local(
     body: &str,
     timeout: Duration,
 ) -> Result<(String, String), String> {
-    let addrs = [
-        SocketAddr::from(([127, 0, 0, 1], port)),
-        SocketAddr::from(([0, 0, 0, 0, 0, 0, 0, 1], port)),
-    ];
-    let mut last_err = String::new();
+    let addrs = local_loopback_addrs(port);
+    let mut errors: Vec<String> = Vec::new();
     let request = format!(
         "POST {path} HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
         body.len()
@@ -238,10 +265,10 @@ pub(crate) fn http_post_local(
                 };
                 return Ok((status, body));
             }
-            Err(e) => last_err = format!("{addr}: {e}"),
+            Err(e) => errors.push(format!("{addr}: {e}")),
         }
     }
-    Err(format!("无法连接 {port}: {last_err}"))
+    Err(connect_error(port, &errors))
 }
 
 /// 解码 HTTP chunked transfer encoding。
@@ -356,13 +383,21 @@ function Test-CodexDesktopProcess($proc, [switch]$UiHostOnly) {
   # 新版 Desktop 宿主：ChatGPT.exe（MSIX 包 OpenAI.Codex）
   if ($name -ieq 'ChatGPT.exe' -and $isOpenAiCodexPkg) { return $true }
 
-  # Codex.exe / codex.exe：可能是旧版宿主，也可能是包内 app-server helper
+  # Codex.exe / codex.exe：可能是旧版宿主，也可能是包内 app-server helper，还可能是 CLI
   if ($name -ieq 'Codex.exe' -or $name -ieq 'codex.exe') {
     $isAppServerHelper = ($path -match '(?i)[\\/]resources[\\/]codex\.exe') -or ($cmd -match '(?i)app-server')
     if ($isAppServerHelper) {
       # 仅 kill/残留检测需要 helper；watcher 的「是否在跑」绝不能认 helper
       return (-not $UiHostOnly) -and $isOpenAiCodexPkg
     }
+    # CLI（npm 全局包 vendor/bin、node_modules）与 cargo 构建产物：
+    # 这些目录不会出现 Desktop 宿主，认成宿主会杀掉用户正在跑的 CLI 会话，
+    # 还会让「启动 Codex」永远返回「已在运行」（2026-10 实测复现）。
+    $isCliLike = ($path -match '(?i)[\\/]node_modules[\\/]') `
+      -or ($path -match '(?i)[\\/]vendor[\\/][^\\/]+[\\/]bin[\\/]codex\.exe') `
+      -or ($path -match '(?i)[\\/]target[\\/](debug|release)[\\/]') `
+      -or ($path -match '(?i)[\\/]\.cargo[\\/]bin[\\/]')
+    if ($isCliLike -and -not $isOpenAiCodexPkg) { return $false }
     # 旧版 Desktop 宿主（Electron 主进程）
     return $true
   }
@@ -416,7 +451,7 @@ Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object {{
     }
     #[cfg(not(target_os = "windows"))]
     {
-        Err("Codex Desktop CDP 注入仅支持 Windows".to_string())
+        Err("Codex 桌面控制仅支持 Windows".to_string())
     }
 }
 
@@ -498,7 +533,7 @@ public class CodexLauncher {{
 
 #[cfg(not(target_os = "windows"))]
 fn launch_with_cdp() -> Result<(u32, u16), String> {
-    Err("Codex Desktop CDP 注入仅支持 Windows".to_string())
+    Err("Codex 桌面控制仅支持 Windows".to_string())
 }
 
 /// 普通模式启动 Codex（无 CDP，切回官方用）。
@@ -566,7 +601,7 @@ public class CodexLauncher {{
 
 #[cfg(not(target_os = "windows"))]
 fn launch_plain() -> Result<u32, String> {
-    Err("Codex Desktop CDP 注入仅支持 Windows".to_string())
+    Err("Codex 桌面控制仅支持 Windows".to_string())
 }
 
 // ─── CDP 就绪 ─────────────────────────────────────────────────────────
@@ -921,6 +956,16 @@ pub(crate) fn clean_models_cache() -> Result<(), String> {
 
 // ─── 通过 sidecar 注入 CDP 补丁 ────────────────────────────────────────
 
+/// CDP 注入依赖 sidecar 的 `/__byok/codex-cdp/inject`，代理没起来就必然失败。
+///
+/// **必须在 kill Codex 之前调用**：代理不可用时立刻失败，不把用户正在用的客户端
+/// 先重启一遍再报错（issue #38 的真实体验就是「窗口被重启了，模型还没解锁」）。
+/// 代理的启动/复用统一走 `proxy::ensure_proxy_service_ready`，这里不另写探测逻辑。
+fn ensure_injection_backend(app: Option<&AppHandle>) -> Result<(), String> {
+    let app = app.ok_or("缺少应用句柄，无法确认本地代理服务状态")?;
+    crate::commands::proxy::ensure_proxy_service_ready(app)
+}
+
 /// POST sidecar /__byok/codex-cdp/inject 触发 6 点补丁注入。
 #[cfg(target_os = "windows")]
 fn inject_via_sidecar() -> Result<String, String> {
@@ -1096,6 +1141,21 @@ async fn restart_codex_desktop_impl(
         }
     };
     if managed {
+        // 0. 注入前置：先确认本地代理服务可用，再动用户的客户端。
+        //    顺序不能反 —— 代理没起来时注入必然失败，先 kill 只会白重启一次窗口，
+        //    还会把 Codex 配置留在「指向一个不存在的代理」的半成品状态。
+        if needs_cdp(inject_models) {
+            progress("preflight", "正在检查本地代理…");
+            if let Err(e) = ensure_injection_backend(app) {
+                return CodexDesktopResult {
+                    ok: false,
+                    message: format!("{MSG_PROXY_UNAVAILABLE}\n详情：{e}"),
+                    managed,
+                    pid: None,
+                };
+            }
+        }
+
         // 1. 写 models_cache.json
         progress("models", "正在写入模型缓存…");
         if let Err(e) = write_models_cache() {
@@ -1120,7 +1180,7 @@ async fn restart_codex_desktop_impl(
 
         // 3. 按 inject_models 分流（前端已折算 preserveOfficialAuth）
         if needs_cdp(inject_models) {
-            progress("starting", "正在以调试模式启动 Codex…");
+            progress("starting", "正在启动 Codex…");
             let (pid, cdp_port) = match launch_with_cdp() {
                 Ok(v) => v,
                 Err(e) => {
@@ -1132,28 +1192,28 @@ async fn restart_codex_desktop_impl(
                     }
                 }
             };
-            progress("injecting", "正在等待 Codex 渲染进程就绪并注入…");
+            progress("injecting", "正在注入模型…");
             match inject_via_sidecar_on_port(cdp_port) {
                 Ok(_msg) => CodexDesktopResult {
                     ok: true,
-                    message: "已重启 Codex 并解锁第三方模型".to_string(),
+                    message: "已重启 Codex 并解锁模型".to_string(),
                     managed,
                     pid: Some(pid),
                 },
                 Err(e) => CodexDesktopResult {
                     ok: false,
-                    message: format!("Codex 已启动 (PID {pid})，但模型注入未完成: {e}"),
+                    message: format!("{MSG_INJECT_FAILED}\n详情：PID {pid}；{e}"),
                     managed,
                     pid: Some(pid),
                 },
             }
         } else {
             // inject_models=false：可能是关闭注入，或 preserveOfficialAuth 折算后的不注入。
-            progress("starting", "正在重启 Codex（不进行模型注入）…");
+            progress("starting", "正在重启 Codex…");
             match launch_plain() {
                 Ok(pid) => CodexDesktopResult {
                     ok: true,
-                    message: "已重启 Codex（未进行模型注入）".to_string(),
+                    message: "已重启 Codex".to_string(),
                     managed,
                     pid: Some(pid),
                 },
@@ -1185,11 +1245,11 @@ async fn restart_codex_desktop_impl(
                 pid: None,
             };
         }
-        progress("starting", "正在启动 Codex（官方模式）…");
+        progress("starting", "正在启动 Codex…");
         match launch_plain() {
             Ok(pid) => CodexDesktopResult {
                 ok: true,
-                message: "已重启 Codex 桌面版（官方模式）".to_string(),
+                message: "已重启 Codex（官方登录）".to_string(),
                 managed,
                 pid: Some(pid),
             },
@@ -1236,7 +1296,10 @@ pub async fn restart_codex_desktop(
 /// Codex 没在跑时直接启动（不 kill）；在跑时提示"已在运行"（不重复 kill）。
 #[cfg(target_os = "windows")]
 #[tauri::command]
-pub async fn start_codex_with_cdp(inject_models: Option<bool>) -> CodexDesktopResult {
+pub async fn start_codex_with_cdp(
+    app: AppHandle,
+    inject_models: Option<bool>,
+) -> CodexDesktopResult {
     let inject_models = inject_models.unwrap_or(true);
     tauri::async_runtime::spawn_blocking(move || {
         if codex_running() {
@@ -1248,6 +1311,15 @@ pub async fn start_codex_with_cdp(inject_models: Option<bool>) -> CodexDesktopRe
             };
         }
         if inject_models {
+            // 注入前置：代理不可用就别把 Codex 拉起来（否则起来也没模型可用于是白启一次）。
+            if let Err(e) = ensure_injection_backend(Some(&app)) {
+                return CodexDesktopResult {
+                    ok: false,
+                    message: format!("{MSG_PROXY_UNAVAILABLE}\n详情：{e}"),
+                    managed: false,
+                    pid: None,
+                };
+            }
             // 带 CDP 启动 + 注入
             let (pid, cdp_port) = match launch_with_cdp() {
                 Ok(v) => v,
@@ -1270,7 +1342,7 @@ pub async fn start_codex_with_cdp(inject_models: Option<bool>) -> CodexDesktopRe
             if !cdp_listening_on_port(cdp_port, Duration::from_millis(500)) {
                 return CodexDesktopResult {
                     ok: false,
-                    message: format!("Codex 已启动 (PID {pid})，但 {cdp_port} 在 20s 内未就绪"),
+                    message: format!("{MSG_CDP_NOT_READY}\n详情：PID {pid}；{cdp_port} 未监听"),
                     managed: false,
                     pid: Some(pid),
                 };
@@ -1278,13 +1350,13 @@ pub async fn start_codex_with_cdp(inject_models: Option<bool>) -> CodexDesktopRe
             return match inject_via_sidecar_on_port(cdp_port) {
                 Ok(_) => CodexDesktopResult {
                     ok: true,
-                    message: "已启动 Codex（带 CDP）并解锁第三方模型".to_string(),
+                    message: "已启动 Codex 并解锁模型".to_string(),
                     managed: false,
                     pid: Some(pid),
                 },
                 Err(e) => CodexDesktopResult {
                     ok: false,
-                    message: format!("Codex 已启动 (PID {pid})，但注入失败: {e}"),
+                    message: format!("{MSG_INJECT_FAILED}\n详情：PID {pid}；{e}"),
                     managed: false,
                     pid: Some(pid),
                 },
@@ -1317,7 +1389,10 @@ pub async fn start_codex_with_cdp(inject_models: Option<bool>) -> CodexDesktopRe
 
 #[cfg(not(target_os = "windows"))]
 #[tauri::command]
-pub async fn start_codex_with_cdp(_inject_models: Option<bool>) -> CodexDesktopResult {
+pub async fn start_codex_with_cdp(
+    _app: AppHandle,
+    _inject_models: Option<bool>,
+) -> CodexDesktopResult {
     CodexDesktopResult {
         ok: false,
         message: "Codex Desktop 启动仅支持 Windows".to_string(),
@@ -1428,7 +1503,98 @@ fn run_watcher_tick(app: &AppHandle, cooldown_until: &mut Option<Instant>) {
         app,
         "codex",
         "notify",
-        "Codex 未以调试模式运行，如需自定义模型请从 AnyBridge 启动",
+        "Codex 未以调试模式启动，自定义模型不可用",
     );
     *cooldown_until = Some(Instant::now() + WATCHER_COOLDOWN_AFTER_FAILURE);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::{Read, Write};
+
+    // 真实网络行为：端口没监听时必须失败，且两个回环地址的失败原因都要在。
+    // 这就是 issue #38 的现场——用户当时只看到 [::1] 那条，真实 IPv4 原因被盖掉了。
+    #[test]
+    fn http_post_local_reports_every_loopback_failure() {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        drop(listener);
+        let err = http_post_local(
+            port,
+            "/__byok/codex-cdp/inject",
+            "{}",
+            Duration::from_millis(400),
+        )
+        .expect_err("端口未监听时必须失败");
+        assert!(
+            err.contains(&format!("127.0.0.1:{port}")),
+            "丢失 IPv4 失败原因: {err}"
+        );
+        assert!(
+            err.contains(&format!("[::1]:{port}")),
+            "丢失 IPv6 失败原因: {err}"
+        );
+        assert!(err.starts_with(&format!("无法连接 {port}")), "前缀漂移: {err}");
+    }
+
+    // 真实网络行为：服务在监听时必须能建连、发出 POST 并解析回包。
+    // 只改错误分支容易把成功路径的连通性一起改坏，这里用真 socket 盯住。
+    #[test]
+    fn http_post_local_posts_to_listening_server() {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let server = std::thread::spawn(move || {
+            if let Ok((mut stream, _)) = listener.accept() {
+                let mut buf = [0u8; 2048];
+                let _ = stream.read(&mut buf);
+                let body = r#"{"ok":true,"message":"stub"}"#;
+                let _ = write!(
+                    stream,
+                    "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                    body.len(),
+                    body
+                );
+            }
+        });
+        let (status, body) = http_post_local(port, "/x", "{}", Duration::from_secs(3))
+            .expect("测试服务在监听，不应连接失败");
+        assert!(status.contains("200"), "状态行异常: {status}");
+        assert!(body.contains("\"ok\":true"), "回包体异常: {body}");
+        let _ = server.join();
+    }
+
+    // 双地址探测的错误必须逐条保留：只留最后一个会把真实原因（IPv4 被拒）盖掉，
+    // 让人误判成 IPv6 问题——issue #38 现场就是被这行误导的。
+    #[test]
+    fn connect_error_keeps_every_address_reason() {
+        let errors = vec![
+            "127.0.0.1:7450: 目标计算机积极拒绝".to_string(),
+            "[::1]:7450: 目标计算机积极拒绝".to_string(),
+        ];
+        let text = connect_error(7450, &errors);
+        assert!(text.contains("127.0.0.1:7450"), "丢失 IPv4 原因: {text}");
+        assert!(text.contains("[::1]:7450"), "丢失 IPv6 原因: {text}");
+        assert!(text.contains("7450"), "缺少端口: {text}");
+    }
+
+    // 用户可见主句三条硬约束（防回归到"啰嗦 + 漏翻 + 掺变量"）：
+    //   1) 不能换行、不掺 PID/端口 —— 否则整句命不中 i18n 字典；
+    //   2) 不超过 40 字 —— 界面文案保持克制，详情一律走第二行；
+    //   3) 不出现 CDP / sidecar / sqlite 等实现词。
+    #[test]
+    fn user_facing_messages_stay_short_and_translatable() {
+        let mut all = vec![MSG_PROXY_UNAVAILABLE, MSG_INJECT_FAILED];
+        #[cfg(target_os = "windows")]
+        all.push(MSG_CDP_NOT_READY);
+        for msg in all {
+            assert!(!msg.contains('\n'), "主句不得换行: {msg}");
+            assert!(!msg.contains("PID"), "主句不得掺运行时变量: {msg}");
+            assert!(!msg.contains("7450"), "主句不得掺端口: {msg}");
+            assert!(msg.chars().count() <= 40, "主句超过 40 字，请精简: {msg}");
+            for banned in ["CDP", "sidecar", "sqlite", "state_5"] {
+                assert!(!msg.contains(banned), "主句不得暴露实现细节 {banned}: {msg}");
+            }
+        }
+    }
 }

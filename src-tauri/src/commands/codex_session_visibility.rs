@@ -184,7 +184,7 @@ fn count_sqlite_rows_to_update_in_db(
     }
     let connection = Connection::open(db_path).map_err(|error| {
         format!(
-            "打开 state_5.sqlite 失败 ({}): {}",
+            "打开会话数据库失败 ({}): {}",
             db_path.display(),
             error
         )
@@ -225,7 +225,7 @@ fn update_sqlite_provider_in_db(db_path: &Path, target_provider: &str) -> Result
     }
     let mut connection = Connection::open(db_path).map_err(|error| {
         format!(
-            "打开 state_5.sqlite 失败 ({}): {}",
+            "打开会话数据库失败 ({}): {}",
             db_path.display(),
             error
         )
@@ -640,7 +640,7 @@ fn backup_sqlite_database(data_dir: &Path, backup_dir: &Path) -> Result<bool, St
         }
         let connection = Connection::open(&db_path).map_err(|error| {
             format!(
-                "打开 state_5.sqlite 以创建一致备份失败 ({}): {}",
+                "备份前打开会话数据库失败 ({}): {}",
                 db_path.display(),
                 error
             )
@@ -659,7 +659,7 @@ fn backup_sqlite_database(data_dir: &Path, backup_dir: &Path) -> Result<bool, St
             .execute("VACUUM main INTO ?1", [backup_target.as_str()])
             .map_err(|error| {
                 format!(
-                    "备份 state_5.sqlite 失败 ({} -> {}): {}",
+                    "备份会话数据库失败 ({} -> {}): {}",
                     db_path.display(),
                     backup_db_path.display(),
                     error
@@ -681,7 +681,7 @@ fn format_sqlite_write_error(path: &Path, error: &rusqlite::Error) -> String {
     let lowered = message.to_ascii_lowercase();
     if lowered.contains("database is locked") || lowered.contains("database busy") {
         return format!(
-            "state_5.sqlite 当前被占用，请关闭 Codex / Codex App 后重试 ({}): {}",
+            "会话数据库被占用，请退出 Codex 后重试 ({}): {}",
             path.display(),
             message
         );
