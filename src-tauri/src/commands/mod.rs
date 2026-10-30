@@ -223,19 +223,24 @@ pub(crate) fn content_sha256(content: &str) -> String {
 ///    链接目标后对目标写入，链接保持原样。
 /// 2. 临时文件名唯一化：旧实现 `with_extension("byok-tmp")` 生成固定名，
 ///    两个线程并发写同一文件会互相踩（先完成者的 rename 拿走临时文件，
-///    后者 fs::write 直接报错）。现在追加 pid + 纳秒。
+///    后者 fs::write 直接报错）。现在追加 pid + 纳秒 + 原子序数——
+///    仅纳秒不够：Windows 时钟精度有限，8 线程并发可取到同一纳秒
+///    （实测 flake：concurrent_writes_all_succeed_without_leftover 偶发失败）。
 pub(crate) fn write_atomic(path: &Path, bytes: &[u8]) -> Result<(), String> {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static TMP_SEQ: AtomicU64 = AtomicU64::new(0);
     let path = resolve_symlink_target(path);
     let unique = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_nanos())
         .unwrap_or_default();
+    let seq = TMP_SEQ.fetch_add(1, Ordering::Relaxed);
     let tmp = {
         let name = path
             .file_name()
             .map(|n| n.to_string_lossy().to_string())
             .unwrap_or_else(|| "file".into());
-        path.with_file_name(format!("{name}.{}.{unique}.byok-tmp", std::process::id()))
+        path.with_file_name(format!("{name}.{}.{unique}.{seq}.byok-tmp", std::process::id()))
     };
     std::fs::write(&tmp, bytes).map_err(|e| e.to_string())?;
     let mut last_err = String::new();
