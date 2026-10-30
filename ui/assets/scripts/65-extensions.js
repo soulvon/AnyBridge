@@ -606,16 +606,12 @@ function renderCpaActions(status, _installed, hasUpdate) {
   primary.title = config.primary.title || '';
   bindCpaActionButton(primary, isTransient ? null : config.primary.action);
 
-  // 加载态（如「检测中…」）必须带 spinner：静态文字看起来和卡住没区别
-  if (config.primary.disabled) {
+  // 加载态（如「检测中…」）必须带 spinner：静态文字看起来和卡住没区别。
+  // spinner 由 loadingHtml 自带，这里绝不能再追加第二个圈（双加载圈事故）。
+  if (primary.disabled) {
     primary.innerHTML = loadingHtml(config.primary.label);
   } else {
     primary.textContent = config.primary.label;
-  }
-  if (isTransient) {
-    const spinner = document.createElement('span');
-    spinner.className = 'btn-spinner';
-    primary.appendChild(spinner);
   }
 
   const frag = document.createDocumentFragment();

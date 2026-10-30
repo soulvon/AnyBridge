@@ -431,9 +431,8 @@ function renderInstalledPluginCard(plugin, config = {}) {
     Boolean(actionCfg.primary.disabled)
   );
   if (actionCfg.primary.disabled) {
-    const spinner = document.createElement('span');
-    spinner.className = 'btn-spinner';
-    primaryBtn.appendChild(spinner);
+    // 与 CPA 卡片同一实现：加载态统一由 loadingHtml 提供 spinner，禁止另造一个
+    primaryBtn.innerHTML = loadingHtml(actionCfg.primary.label);
   }
   actions.appendChild(primaryBtn);
 

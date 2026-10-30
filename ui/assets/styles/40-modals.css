@@ -835,15 +835,6 @@
     linear-gradient(135deg, rgba(var(--accent-rgb), 0.07), rgba(217, 119, 6, 0.055));
 }
 
-#notification-center-modal .notification-center-kicker {
-  margin-bottom: 6px;
-  color: var(--accent);
-  font-family: var(--font-mono);
-  font-size: 11px;
-  font-weight: 850;
-  letter-spacing: 0.14em;
-}
-
 #notification-center-modal .notification-center-header h2 {
   margin: 0 0 6px;
   color: var(--text-primary);
@@ -1069,15 +1060,6 @@
   background:
     radial-gradient(circle at 16% 12%, rgba(var(--accent-rgb), 0.13), transparent 34%),
     linear-gradient(135deg, rgba(var(--accent-rgb), 0.07), rgba(var(--accent-bright-rgb), 0.07));
-}
-
-#log-viewer-modal .log-viewer-kicker {
-  margin-bottom: 6px;
-  color: var(--accent);
-  font-family: var(--font-mono);
-  font-size: 11px;
-  font-weight: 850;
-  letter-spacing: 0.14em;
 }
 
 #log-viewer-modal .log-viewer-header h2 {
@@ -1397,15 +1379,6 @@
 #onboarding-guide-modal .onboarding-guide-mark svg {
   width: 26px;
   height: 26px;
-}
-
-#onboarding-guide-modal .onboarding-guide-kicker {
-  margin-bottom: 7px;
-  color: var(--accent);
-  font-family: var(--font-mono);
-  font-size: 11px;
-  font-weight: 800;
-  letter-spacing: 0.14em;
 }
 
 #onboarding-guide-modal .onboarding-guide-hero h2 {

@@ -3611,22 +3611,6 @@
   gap: 6px;
 }
 
-.extension-actions .btn-primary .btn-spinner,
-.extension-actions .btn-ghost .btn-spinner {
-  width: 12px;
-  height: 12px;
-  border: 2px solid currentColor;
-  border-top-color: transparent;
-  border-radius: 50%;
-  animation: extension-btn-spin .8s linear infinite;
-  opacity: 0.85;
-  flex-shrink: 0;
-}
-
-@keyframes extension-btn-spin {
-  to { transform: rotate(360deg); }
-}
-
 .extension-card .extension-meta-grid {
   display: none;
 }
