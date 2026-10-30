@@ -33,6 +33,11 @@ const HANS_BLOCK_START: &str = super::workbench_inject::HANS_BLOCK_START;
 const HANS_BLOCK_END: &str = "<!-- anybridge-hans-end -->";
 const HANS_VERSION_MARKER: &str = "<!-- anybridge-hans-v1 -->";
 const HANS_BACKUP_SUFFIX: &str = ".hans-origin";
+/// Antigravity IDE 的设置页 / Agent 面板由**独立引导窗口**渲染（实测 1.107.0：
+/// out/vs/code/electron-browser/workbench/workbench-jetski-agent.html）。
+/// 该窗口是独立渲染进程，只注入主 workbench.html 时，标准菜单（官方语言包）是
+/// 中文而设置页全英文。它的 CSP 还没有 'unsafe-inline'，必须一起补。
+const AG_IDE_AGENT_WINDOW_HTML: &str = "workbench-jetski-agent.html";
 const BYOK_BLOCK_START: &str = "<!-- byok-cards-start -->";
 const BYOK_BLOCK_END: &str = "<!-- byok-cards-end -->";
 
@@ -347,12 +352,105 @@ fn hans_script(platform: &str) -> String {
         return BASELINE_SCRIPT.to_string();
     };
     let cached = cache_dir(platform).join(script_cache_name(platform));
-    let dict = fs::read_to_string(&cached)
-        .ok()
-        .filter(|s| !s.trim().is_empty())
-        .unwrap_or_else(|| baseline.to_string());
+    let dict = match fs::read_to_string(&cached).ok().filter(|s| !s.trim().is_empty()) {
+        // 必须与内置基线**合并**，不能整体替代：缓存是完整快照，直接替代会把
+        // 后来新增的内置词条吞掉（实测：设置页新加的 15 条在更新过词库的机器上不生效）。
+        Some(c) => merge_dictionaries(baseline, &c),
+        None => baseline.to_string(),
+    };
     build_script_from_dictionary(&dict)
         .unwrap_or_else(|| build_script_from_dictionary(baseline).unwrap_or_default())
+}
+
+/// 合并「内置基线」与「热更新缓存」词典：基线打底，缓存同名词条覆盖，缓存独有词条追加。
+///
+/// 任何一侧解析失败都不编造：解析不出条目就退回另一侧（绝不让注入脚本变空）。
+fn merge_dictionaries(baseline_json: &str, cached_json: &str) -> String {
+    fn collect(v: &Value, out: &mut Vec<(String, String)>) {
+        let Some(sections) = v.get("sections").and_then(|s| s.as_array()) else {
+            return;
+        };
+        for section in sections {
+            let Some(entries) = section.get("entries").and_then(|e| e.as_array()) else {
+                continue;
+            };
+            for entry in entries {
+                let (Some(en), Some(zh)) = (
+                    entry.get(0).and_then(|x| x.as_str()),
+                    entry.get(1).and_then(|x| x.as_str()),
+                ) else {
+                    continue;
+                };
+                if en.is_empty() || zh.is_empty() {
+                    continue;
+                }
+                out.push((en.to_string(), zh.to_string()));
+            }
+        }
+    }
+
+    let mut baseline_pairs = Vec::new();
+    let mut cached_pairs = Vec::new();
+    if let Ok(v) = serde_json::from_str::<Value>(baseline_json) {
+        collect(&v, &mut baseline_pairs);
+    }
+    if let Ok(v) = serde_json::from_str::<Value>(cached_json) {
+        collect(&v, &mut cached_pairs);
+    }
+    if baseline_pairs.is_empty() {
+        return cached_json.to_string();
+    }
+    if cached_pairs.is_empty() {
+        return baseline_json.to_string();
+    }
+
+    let cached_map: std::collections::HashMap<&str, &str> = cached_pairs
+        .iter()
+        .map(|(en, zh)| (en.as_str(), zh.as_str()))
+        .collect();
+    let mut merged: Vec<(String, String)> = Vec::with_capacity(baseline_pairs.len() + cached_pairs.len());
+    let mut used: std::collections::HashSet<String> = std::collections::HashSet::new();
+    for (en, zh) in &baseline_pairs {
+        let translated = cached_map.get(en.as_str()).copied().unwrap_or(zh.as_str());
+        merged.push((en.clone(), translated.to_string()));
+        used.insert(en.clone());
+    }
+    for (en, zh) in &cached_pairs {
+        if used.insert(en.clone()) {
+            merged.push((en.clone(), zh.clone()));
+        }
+    }
+
+    let entries: Vec<Value> = merged
+        .into_iter()
+        .map(|(en, zh)| json!([en, zh]))
+        .collect();
+    json!({ "sections": [{ "id": "merged", "title": "merged", "entries": entries }] }).to_string()
+}
+
+/// 注入到某个入口窗口的脚本。
+///
+/// `aux_window` = 非主 workbench 窗口（Antigravity IDE 的设置页独立成窗口）。
+/// 引擎在该模式下跳过"等根节点 + 隐藏首屏"，否则没有 .monaco-workbench 的
+/// 窗口会一直隐藏到 6 秒超时——汉化好了却先白屏 6 秒。
+fn hans_script_for_window(platform: &str, aux_window: bool) -> String {
+    let script = hans_script(platform);
+    if aux_window {
+        format!("window.__anybridgeHansAuxWindow = true;\n{script}")
+    } else {
+        script
+    }
+}
+
+/// CDP 注入用脚本（Antigravity IDE 设置页 / Agent 面板）。
+///
+/// 除了辅助窗口标记，还必须带**幂等守卫**：keeper 每 4 秒巡检一次，
+/// 没有守卫就会反复 new MutationObserver，内存与重复翻译都会累积。
+pub(crate) fn hans_script_for_cdp() -> String {
+    let engine = hans_script_for_window("antigravity-ide", true);
+    format!(
+        "(function(){{if(window.__anybridgeCdpHans)return 'skip';window.__anybridgeCdpHans=true;{engine}}})();"
+    )
 }
 
 fn read_cached_version(platform: &str) -> String {
@@ -413,13 +511,65 @@ fn is_valid_workbench(html: &str) -> bool {
     html.contains("</body>")
 }
 
-/// 当前可用 workbench.html 的快照位置（AnyBridge 缓存内，与 IDE 安装目录解耦）。
+/// 某个界面入口 HTML 的快照位置（AnyBridge 缓存内，与 IDE 安装目录解耦）。
 ///
 /// 为什么需要：同目录的 `.hans-origin` 备份在还原成功后会被删除，一旦写入
 /// 过程被强杀留下截断文件，就再也没有回滚源（实测事故：Devin 307KB 被截成
 /// 1.7KB，IDE 起不来且无备份）。快照每次 apply 刷新，保存"上一次可用状态"。
-fn html_snapshot_path(platform: &str) -> PathBuf {
-    cache_dir(platform).join("workbench.snapshot.html")
+///
+/// 一个平台可能有多个入口 HTML（Antigravity IDE 的设置页独立成窗口），
+/// 快照必须按文件名区分，否则两个文件会互相覆盖，自愈时把 A 的内容写进 B。
+/// 目录由调用方传入（生产传 cache_dir，测试传临时目录，绝不写真实用户缓存）。
+fn html_snapshot_path(cache_dir: &Path, html_path: &Path) -> PathBuf {
+    let name = html_path
+        .file_name()
+        .and_then(|v| v.to_str())
+        .unwrap_or("workbench.html");
+    cache_dir.join(format!("{name}.snapshot.html"))
+}
+
+/// Antigravity IDE 需要注入的全部界面入口 HTML。
+///
+/// 主入口 + 独立引导窗口（`workbench-jetski-agent.html`，见常量注释），
+/// 并顺带扫描同目录 `workbench-*.html`：官方再拆新窗口时无需改代码即可覆盖。
+/// 其它平台仍只有主 workbench.html（多平台先单平台试点，不扩大到别家）。
+fn ag_ide_entry_htmls(primary: &Path) -> Vec<PathBuf> {
+    let mut out = vec![primary.to_path_buf()];
+    let Some(dir) = primary.parent() else {
+        return out;
+    };
+
+    let mut extras: Vec<PathBuf> = Vec::new();
+    let explicit = dir.join(AG_IDE_AGENT_WINDOW_HTML);
+    if explicit.exists() {
+        extras.push(explicit);
+    }
+    if let Ok(rd) = fs::read_dir(dir) {
+        for entry in rd.flatten() {
+            let p = entry.path();
+            let Some(name) = p.file_name().and_then(|v| v.to_str()) else {
+                continue;
+            };
+            if name == "workbench.html" || !name.starts_with("workbench-") || !name.ends_with(".html")
+            {
+                continue;
+            }
+            extras.push(p);
+        }
+    }
+    extras.sort();
+    extras.dedup();
+    out.extend(extras);
+    out
+}
+
+/// 平台本次需要注入汉化的全部入口 HTML（空 = 未安装/未定位）。
+fn localization_target_htmls(platform: &str) -> Vec<PathBuf> {
+    match workbench_html_path(platform) {
+        Some(primary) if platform == "antigravity-ide" => ag_ide_entry_htmls(&primary),
+        Some(primary) => vec![primary],
+        None => Vec::new(),
+    }
 }
 
 /// 汉化启用标记（保活依据）：apply 成功时写入，restore 成功时删除。
@@ -429,7 +579,7 @@ fn enabled_marker_path(platform: &str) -> PathBuf {
     cache_dir(platform).join("enabled.json")
 }
 
-fn is_enabled(platform: &str) -> bool {
+pub(crate) fn is_enabled(platform: &str) -> bool {
     enabled_marker_path(platform).exists()
 }
 
@@ -1055,16 +1205,22 @@ fn is_claude_localized() -> bool {
         .exists()
 }
 
+/// 已汉化 = **每一个**入口 HTML 都带汉化块。
+///
+/// 只看主 workbench.html 会把"菜单中文、设置页仍英文"的半汉化状态误报成
+/// 已完成（Antigravity IDE 的设置页入口独立成窗口，实测事故）。keeper 也靠
+/// 这个判定决定是否重注入，判据必须覆盖完整生效链。
 fn is_localized(platform: &str) -> bool {
     if platform == "claude-desktop" {
         return is_claude_localized();
     }
-    if let Some(path) = workbench_html_path(platform) {
-        if let Ok(html) = fs::read_to_string(&path) {
-            return html.contains(HANS_BLOCK_START);
-        }
-    }
-    false
+    let targets = localization_target_htmls(platform);
+    !targets.is_empty()
+        && targets.iter().all(|p| {
+            fs::read_to_string(p)
+                .map(|html| html.contains(HANS_BLOCK_START))
+                .unwrap_or(false)
+        })
 }
 
 /// 客户端是否已安装（分平台：VS Code 系看 workbench.html，Claude 看语言文件）。
@@ -1513,98 +1669,40 @@ fn apply_inner(
     display: &str,
     lang_note: &Option<String>,
 ) -> Result<LocalizationOperationResult, String> {
-    let html_path = workbench_html_path(platform).ok_or_else(|| {
-        format!(
+    // 入口可能不止一个：Antigravity IDE 的设置页/Agent 面板由独立引导窗口
+    // （workbench-jetski-agent.html）渲染，只注入 workbench.html 时它仍全英文。
+    // 必须全部注入；任何一个失败都如实报错，绝不谎报"已汉化"。
+    let targets = localization_target_htmls(platform);
+    if targets.is_empty() {
+        return Err(format!(
             "未定位到 {} 的 workbench.html（请先安装并运行一次 {} 后重试）",
             display, display
-        )
-    })?;
-    let html = fs::read_to_string(&html_path).map_err(|e| format!("读取 workbench.html 失败: {e}"))?;
+        ));
+    }
 
-    // 防御零：读到疑似损坏（过短 / 缺 </body>）→ 用快照自愈。
-    // 事故背景：apply 写入过程中用户强杀 AnyBridge，文件系统留下截断的
-    // workbench.html（实测 307KB 被截成 1.7KB），IDE 直接起不来，
-    // 而同目录备份已被上次还原删除 —— 无快照就彻底救不回来。
-    let snapshot = html_snapshot_path(platform);
-    if !is_valid_workbench(&html) {
-        if let Ok(s) = fs::read_to_string(&snapshot) {
-            if s.len() > html.len() && s.contains("</body>") {
-                // 自愈不能把 BYOK 注入块一起冲掉（快照可能生成于 BYOK 注入之前）
-                let restored = snapshot_with_byok_preserved(&html, &s);
-                let _ = write_atomic(&html_path, &restored);
-                return Err(format!(
-                    "检测到 {} 的 workbench.html 异常（可能被中断的写入截断），已从快照自动恢复，请重新点击汉化",
-                    display
-                ));
+    let mut entries = 0usize;
+    let mut injected: Vec<String> = Vec::new();
+    for html_path in &targets {
+        match inject_hans_into(platform, display, html_path) {
+            Ok(n) => {
+                entries = entries.max(n);
+                injected.push(
+                    html_path
+                        .file_name()
+                        .and_then(|v| v.to_str())
+                        .unwrap_or("workbench.html")
+                        .to_string(),
+                );
+            }
+            Err(e) => {
+                let done = if injected.is_empty() {
+                    "无".to_string()
+                } else {
+                    injected.join("、")
+                };
+                return Err(format!("{e}（本次已注入：{done}，其余入口请重试）"));
             }
         }
-        return Err(format!(
-            "{} 的 workbench.html 内容异常（{} 字节），已中止以避免进一步损坏。请重装 {} 后重试",
-            display,
-            html.len(),
-            display
-        ));
-    }
-    // 快照：无论当前是否原厂态都保存"上一次可用状态"，供中断后自愈。
-    let _ = fs::write(&snapshot, html.as_bytes());
-
-    // 备份：当前 html 无汉化标记 = 原厂态（首次注入，或 IDE 升级覆盖后的新版原厂），
-    // 一律刷新备份以严格对齐当前安装版本。
-    // 若只在"备份不存在"时才写，keeper 在升级后重注入时备份仍是旧版本 html，
-    // 用户后续点还原会把旧版本覆盖回新版安装，造成 workbench 版本错配。
-    // （还原成功后备份会被删除，因此这里不会误刷新。）
-    let backup = PathBuf::from(format!("{}{}", html_path.to_string_lossy(), HANS_BACKUP_SUFFIX));
-    if !html.contains(HANS_BLOCK_START) {
-        fs::write(&backup, &html).map_err(|e| format!("备份 workbench.html 失败: {e}"))?;
-    }
-
-    let stripped = strip_hans_block(&html);
-    let with_csp = ensure_csp_unsafe_inline(&stripped);
-    let script = hans_script(platform);
-    let entries = count_entries(&script);
-    // CSP 有 nonce 时内联脚本必须带同名 nonce 才能执行（详见 extract_csp_nonce 注释）
-    let open_tag = match extract_csp_nonce(&html) {
-        Some(n) => format!("<script nonce=\"{}\">", n),
-        None => "<script>".to_string(),
-    };
-    let block = format!(
-        "\n{start}\n{ver}\n{open}\n{script}\n</script>\n{end}\n",
-        start = HANS_BLOCK_START,
-        ver = HANS_VERSION_MARKER,
-        open = open_tag,
-        script = script,
-        end = HANS_BLOCK_END,
-    );
-
-    let Some(body_idx) = with_csp.rfind("</body>") else {
-        return Err("workbench.html 缺少 </body>，无法注入".to_string());
-    };
-    let mut new_html = String::with_capacity(with_csp.len() + block.len());
-    new_html.push_str(&with_csp[..body_idx]);
-    new_html.push_str(&block);
-    new_html.push_str(&with_csp[body_idx..]);
-    write_atomic(&html_path, &new_html).map_err(|e| format!("写入 workbench.html 失败: {e}"))?;
-
-    // 写后校验：确认真的写进去了且结构完整。写入被中断（强杀/磁盘满）时
-    // 文件可能只有一部分，不校验就当成功会给用户留一个起不来的 IDE。
-    let written_ok = fs::read_to_string(&html_path)
-        .ok()
-        .map(|v| {
-            v.contains(HANS_BLOCK_START) && v.contains("</body>") && v.len() >= html.len()
-        })
-        .unwrap_or(false);
-    if !written_ok {
-        // 回滚到快照（上次可用状态），宁可回到英文界面也不能白屏。
-        // 同样要保住 BYOK 块：回滚是异常路径，不能顺手把另一条链的注入也抹掉
-        if let Ok(s) = fs::read_to_string(&snapshot) {
-            let current = fs::read_to_string(&html_path).unwrap_or_default();
-            let restored = snapshot_with_byok_preserved(&current, &s);
-            let _ = write_atomic(&html_path, &restored);
-        }
-        return Err(format!(
-            "汉化写入后校验失败（{} 文件异常），已从快照恢复，请重启客户端后重试",
-            display
-        ));
     }
     set_enabled(platform);
     invalidate_status_cache();
@@ -1639,6 +1737,122 @@ fn apply_inner(
     })
 }
 
+/// 单个界面入口 HTML 的汉化注入（幂等），返回注入的词条数。
+///
+/// 抽成独立函数的原因：主 workbench.html 与设置页的引导窗口 HTML 必须走
+/// **完全相同**的一套纪律（快照自愈、原厂备份、CSP 补 'unsafe-inline'、
+/// nonce 继承、写后校验、失败回滚）。各写一份必然漏改其中一处。
+fn inject_hans_into(
+    platform: &str,
+    display: &str,
+    html_path: &Path,
+) -> Result<usize, String> {
+    inject_hans_into_with_cache(&cache_dir(platform), platform, display, html_path)
+}
+
+/// 注入实现。`cache` 由调用方传入：生产用 cache_dir，测试用临时目录，
+/// 避免单测把快照写进真实用户缓存（否则损坏自愈会拿测试夹具覆盖真文件）。
+fn inject_hans_into_with_cache(
+    cache: &Path,
+    platform: &str,
+    display: &str,
+    html_path: &Path,
+) -> Result<usize, String> {
+    let file_name = html_path
+        .file_name()
+        .and_then(|v| v.to_str())
+        .unwrap_or("workbench.html");
+    let html = fs::read_to_string(html_path)
+        .map_err(|e| format!("读取 {file_name} 失败: {e}"))?;
+
+    // 防御零：读到疑似损坏（缺 </body>）→ 用快照自愈。
+    // 事故背景：apply 写入过程中用户强杀 AnyBridge，文件系统留下截断的
+    // workbench.html（实测 307KB 被截成 1.7KB），IDE 直接起不来，
+    // 而同目录备份已被上次还原删除 —— 无快照就彻底救不回来。
+    let snapshot = html_snapshot_path(cache, html_path);
+    if !is_valid_workbench(&html) {
+        if let Ok(s) = fs::read_to_string(&snapshot) {
+            if s.len() > html.len() && s.contains("</body>") {
+                // 自愈不能把 BYOK 注入块一起冲掉（快照可能生成于 BYOK 注入之前）
+                let restored = snapshot_with_byok_preserved(&html, &s);
+                let _ = write_atomic(html_path, &restored);
+                return Err(format!(
+                    "检测到 {} 的 {file_name} 异常（可能被中断的写入截断），已从快照自动恢复，请重新点击汉化",
+                    display
+                ));
+            }
+        }
+        return Err(format!(
+            "{} 的 {file_name} 内容异常（{} 字节），已中止以避免进一步损坏。请重装 {} 后重试",
+            display,
+            html.len(),
+            display
+        ));
+    }
+    // 快照：无论当前是否原厂态都保存"上一次可用状态"，供中断后自愈。
+    let _ = fs::write(&snapshot, html.as_bytes());
+
+    // 备份：当前 html 无汉化标记 = 原厂态（首次注入，或 IDE 升级覆盖后的新版原厂），
+    // 一律刷新备份以严格对齐当前安装版本。
+    // 若只在"备份不存在"时才写，keeper 在升级后重注入时备份仍是旧版本 html，
+    // 用户后续点还原会把旧版本覆盖回新版安装，造成 workbench 版本错配。
+    // （还原成功后备份会被删除，因此这里不会误刷新。）
+    let backup = PathBuf::from(format!("{}{}", html_path.to_string_lossy(), HANS_BACKUP_SUFFIX));
+    if !html.contains(HANS_BLOCK_START) {
+        fs::write(&backup, &html).map_err(|e| format!("备份 {file_name} 失败: {e}"))?;
+    }
+
+    let stripped = strip_hans_block(&html);
+    let with_csp = ensure_csp_unsafe_inline(&stripped);
+    // 非主入口 = 辅助窗口（Antigravity IDE 的设置页/Agent 面板）：脚本首行置标记，
+    // 引擎据此跳过"等 workbench 根节点 + 隐藏首屏"，否则会白屏等到 6 秒超时。
+    let script = hans_script_for_window(platform, file_name != "workbench.html");
+    let entries = count_entries(&script);
+    // CSP 有 nonce 时内联脚本必须带同名 nonce 才能执行（详见 extract_csp_nonce 注释）
+    let open_tag = match extract_csp_nonce(&html) {
+        Some(n) => format!("<script nonce=\"{}\">", n),
+        None => "<script>".to_string(),
+    };
+    let block = format!(
+        "\n{start}\n{ver}\n{open}\n{script}\n</script>\n{end}\n",
+        start = HANS_BLOCK_START,
+        ver = HANS_VERSION_MARKER,
+        open = open_tag,
+        script = script,
+        end = HANS_BLOCK_END,
+    );
+
+    let Some(body_idx) = with_csp.rfind("</body>") else {
+        return Err(format!("{file_name} 缺少 </body>，无法注入"));
+    };
+    let mut new_html = String::with_capacity(with_csp.len() + block.len());
+    new_html.push_str(&with_csp[..body_idx]);
+    new_html.push_str(&block);
+    new_html.push_str(&with_csp[body_idx..]);
+    write_atomic(html_path, &new_html).map_err(|e| format!("写入 {file_name} 失败: {e}"))?;
+
+    // 写后校验：确认真的写进去了且结构完整。写入被中断（强杀/磁盘满）时
+    // 文件可能只有一部分，不校验就当成功会给用户留一个起不来的 IDE。
+    let written_ok = fs::read_to_string(html_path)
+        .ok()
+        .map(|v| v.contains(HANS_BLOCK_START) && v.contains("</body>") && v.len() >= html.len())
+        .unwrap_or(false);
+    if !written_ok {
+        // 回滚到快照（上次可用状态），宁可回到英文界面也不能白屏。
+        // 同样要保住 BYOK 块：回滚是异常路径，不能顺手把另一条链的注入也抹掉
+        if let Ok(s) = fs::read_to_string(&snapshot) {
+            let current = fs::read_to_string(html_path).unwrap_or_default();
+            let restored = snapshot_with_byok_preserved(&current, &s);
+            let _ = write_atomic(html_path, &restored);
+        }
+        return Err(format!(
+            "汉化写入后校验失败（{} 的 {file_name} 异常），已从快照恢复，请重启客户端后重试",
+            display
+        ));
+    }
+    Ok(entries)
+}
+
 fn restore(platform: &str, elevate: bool) -> Result<LocalizationOperationResult, String> {
     if platform == "claude-desktop" {
         return restore_claude(elevate);
@@ -1648,44 +1862,59 @@ fn restore(platform: &str, elevate: bool) -> Result<LocalizationOperationResult,
     let _guard = super::inject_lock();
     let (display, _) = platform_meta(platform).ok_or_else(|| format!("不支持的平台: {}", platform))?;
 
-    let html_path = workbench_html_path(platform)
-        .ok_or_else(|| format!("未定位到 {} 的 workbench.html", display))?;
-    let backup = PathBuf::from(format!("{}{}", html_path.to_string_lossy(), HANS_BACKUP_SUFFIX));
-    let html = fs::read_to_string(&html_path).map_err(|e| e.to_string())?;
+    // 与 apply 完全对称：每个被注入过的入口 HTML 都要剥离汉化块。
+    // 只还原主 workbench.html 会把设置页入口留在汉化态，形成半还原的脏状态。
+    let targets = localization_target_htmls(platform);
+    if targets.is_empty() {
+        return Err(format!("未定位到 {} 的 workbench.html", display));
+    }
 
     // 还原一律走「剥离自己的汉化块」，绝不用备份整体覆盖：
     // 备份是"打汉化前"的快照，若用户是先汉化、后一键接入，备份里没有 BYOK 注入块，
     // 整体覆盖会把 BYOK 的 byok-cards 块一并抹掉，导致接入静默失效
     // （antigravity_localization.rs 里同一个坑早有记载：绝不回退到接入前的纯净版）。
     let mut changed = false;
-    if html.contains(HANS_BLOCK_START) {
-        if !html.contains(HANS_BLOCK_END) {
-            // 块标记不完整（写入被中断或遭外部改写）：如实报错，不做危险的整体覆盖，
-            // 备份保留供用户手动还原。
-            return Err(format!(
-                "{} 的汉化块标记不完整，无法安全还原。请重装客户端，或用备份 {} 手动覆盖",
-                display,
-                backup.display()
-            ));
+    for html_path in &targets {
+        let file_name = html_path
+            .file_name()
+            .and_then(|v| v.to_str())
+            .unwrap_or("workbench.html");
+        let backup = PathBuf::from(format!("{}{}", html_path.to_string_lossy(), HANS_BACKUP_SUFFIX));
+        let html = fs::read_to_string(html_path).map_err(|e| e.to_string())?;
+
+        if html.contains(HANS_BLOCK_START) {
+            if !html.contains(HANS_BLOCK_END) {
+                // 块标记不完整（写入被中断或遭外部改写）：如实报错，不做危险的整体覆盖，
+                // 备份保留供用户手动还原。
+                return Err(format!(
+                    "{} 的 {file_name} 汉化块标记不完整，无法安全还原。请重装客户端，或用备份 {} 手动覆盖",
+                    display,
+                    backup.display()
+                ));
+            }
+            let cleaned = strip_hans_block(&html);
+            write_atomic(html_path, &cleaned)
+                .map_err(|e| format!("还原 {file_name} 失败: {e}"))?;
+            changed = true;
+            invalidate_status_cache();
         }
-        let cleaned = strip_hans_block(&html);
-        write_atomic(&html_path, &cleaned).map_err(|e| format!("还原 workbench.html 失败: {e}"))?;
-        changed = true;
-        invalidate_status_cache();
-    }
-    // 备份的存在价值只到还原为止；剥离成功后即清理，避免下次 apply 误用旧版本。
-    if backup.exists() {
-        let _ = fs::remove_file(&backup);
+        // 备份的存在价值只到还原为止；剥离成功后即清理，避免下次 apply 误用旧版本。
+        if backup.exists() {
+            let _ = fs::remove_file(&backup);
+        }
     }
 
     // product.json 校验清单：仅当 byok 注入块也不在时才会去还原
     // （byok 还在用则必须保留清空状态，否则它那边弹"安装已损坏"）。
     let mut warning = String::new();
-    if let Ok(html) = fs::read_to_string(&html_path) {
-        if !html.contains(BYOK_BLOCK_START) {
-            if let Err(e) = restore_product_json(platform) {
-                warning = format!("；完整性校验清单还原失败：{e}（重装 IDE 可恢复）");
-            }
+    let byok_present = targets.iter().any(|p| {
+        fs::read_to_string(p)
+            .map(|h| h.contains(BYOK_BLOCK_START))
+            .unwrap_or(false)
+    });
+    if !byok_present {
+        if let Err(e) = restore_product_json(platform) {
+            warning = format!("；完整性校验清单还原失败：{e}（重装 IDE 可恢复）");
         }
     }
 
@@ -2417,6 +2646,171 @@ module.exports = {};"#,
             "整体拒绝时不得向目标目录写入任何内容"
         );
         let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn ag_ide_entry_htmls_covers_agent_window() {
+        // 事故（2026-10-30，IDE 1.107.0）：设置页由独立引导窗口
+        // workbench-jetski-agent.html 渲染，只注入 workbench.html 时菜单中文、
+        // 设置页仍全英文。入口发现必须把同目录 workbench-*.html 一起纳入。
+        let dir = std::env::temp_dir().join("anybridge-test-ag-ide-entries");
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let primary = dir.join("workbench.html");
+        fs::write(&primary, "<html><body></body></html>").unwrap();
+        fs::write(dir.join(AG_IDE_AGENT_WINDOW_HTML), "<html><body></body></html>").unwrap();
+        fs::write(dir.join("workbench-future-window.html"), "<html><body></body></html>").unwrap();
+        fs::write(dir.join("unrelated.html"), "<html></html>").unwrap();
+
+        let targets = ag_ide_entry_htmls(&primary);
+        let names: Vec<String> = targets
+            .iter()
+            .filter_map(|p| p.file_name().and_then(|v| v.to_str()).map(|s| s.to_string()))
+            .collect();
+        assert_eq!(names[0], "workbench.html", "主入口必须排第一");
+        assert!(
+            names.iter().any(|n| n == AG_IDE_AGENT_WINDOW_HTML),
+            "必须覆盖设置页入口，实际: {names:?}"
+        );
+        assert!(
+            names.iter().any(|n| n == "workbench-future-window.html"),
+            "同目录 workbench-*.html 应自动纳入，实际: {names:?}"
+        );
+        assert!(
+            !names.iter().any(|n| n == "unrelated.html"),
+            "不得注入无关 html"
+        );
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn agent_window_csp_gets_unsafe_inline_without_nonce() {
+        // 设置页入口的 CSP 是 script-src 'self' 'unsafe-eval' blob:；
+        // 既无 'unsafe-inline' 也无 nonce —— 内联脚本会被 CSP 直接拒绝执行
+        // （表现为"注入了但设置页没变"），必须补 'unsafe-inline'。
+        let html = r#"<html><head><meta http-equiv="Content-Security-Policy" content="
+            script-src
+                'self'
+                'unsafe-eval'
+                blob:
+            ;
+        " /></head><body></body></html>"#;
+        assert_eq!(extract_csp_nonce(html), None, "该窗口没有 nonce");
+        let patched = ensure_csp_unsafe_inline(html);
+        assert!(
+            patched.contains("'unsafe-inline'"),
+            "必须补上 'unsafe-inline'，否则注入的内联脚本不执行"
+        );
+    }
+
+    #[test]
+    fn injection_covers_main_and_agent_window() {
+        // 行为门禁：真实跑一遍注入管线，锁住「两个入口都注入 + 设置页补
+        // 'unsafe-inline' + 辅助窗口打标记 + 重复注入幂等」。
+        // 只断言常量存在守不住这类回归（常量还在、apply 只注入主文件也能过）。
+        let dir = std::env::temp_dir().join("anybridge-test-ag-inject");
+        let _ = fs::remove_dir_all(&dir);
+        let cache = dir.join("cache");
+        fs::create_dir_all(&cache).unwrap();
+
+        let main = dir.join("workbench.html");
+        fs::write(
+            &main,
+            r#"<html><head><meta http-equiv="Content-Security-Policy" content="script-src 'nonce-abc123' 'self';" /></head><body></body></html>"#,
+        )
+        .unwrap();
+        let aux = dir.join(AG_IDE_AGENT_WINDOW_HTML);
+        fs::write(
+            &aux,
+            r#"<html><head><meta http-equiv="Content-Security-Policy" content="script-src 'self' 'unsafe-eval' blob:;" /></head><body></body></html>"#,
+        )
+        .unwrap();
+
+        for p in [&main, &aux] {
+            inject_hans_into_with_cache(&cache, "antigravity-ide", "Antigravity IDE", p)
+                .expect("注入应成功");
+        }
+
+        let main_html = fs::read_to_string(&main).unwrap();
+        assert!(main_html.contains(HANS_BLOCK_START), "主入口必须有汉化块");
+        assert!(
+            main_html.contains("nonce=\"abc123\""),
+            "主入口必须继承 CSP nonce"
+        );
+        assert!(
+            !main_html.contains("__anybridgeHansAuxWindow = true;"),
+            "主入口不得打辅助窗口标记"
+        );
+
+        let aux_html = fs::read_to_string(&aux).unwrap();
+        assert!(aux_html.contains(HANS_BLOCK_START), "设置页入口必须有汉化块");
+        assert!(
+            aux_html.contains("'unsafe-inline'"),
+            "设置页 CSP 必须补 'unsafe-inline'"
+        );
+        assert!(
+            aux_html.contains("__anybridgeHansAuxWindow = true;"),
+            "设置页入口必须打辅助窗口标记"
+        );
+
+        // 幂等：重复注入不得出现两个块
+        inject_hans_into_with_cache(&cache, "antigravity-ide", "Antigravity IDE", &aux).unwrap();
+        let again = fs::read_to_string(&aux).unwrap();
+        assert_eq!(again.matches(HANS_BLOCK_START).count(), 1, "重复注入必须幂等");
+        assert!(again.contains("</body>"), "结构必须完整");
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn aux_window_script_marks_flag_and_engine_honors_it() {
+        // 辅助窗口（设置页）没有 .monaco-workbench 根节点，若沿用主窗口的
+        // "隐藏首屏 + 等根节点"逻辑会白屏到 6 秒超时。脚本必须打标记，
+        // 引擎必须保留读取标记的分支。
+        assert!(
+            BASELINE_SCRIPT.contains("__anybridgeHansAuxWindow"),
+            "引擎必须保留辅助窗口快速启动分支"
+        );
+        let main = hans_script_for_window("antigravity-ide", false);
+        assert!(
+            !main.contains("__anybridgeHansAuxWindow = true;"),
+            "主窗口不得设置辅助窗口标记"
+        );
+        let aux = hans_script_for_window("antigravity-ide", true);
+        assert!(
+            aux.starts_with("window.__anybridgeHansAuxWindow = true;"),
+            "辅助窗口脚本首行必须置标记"
+        );
+        assert!(aux.contains("MutationObserver"), "引擎本体必须保留");
+        assert_eq!(
+            count_entries(&aux),
+            count_entries(&main),
+            "标记行不得影响词条统计（面板显示会失真）"
+        );
+    }
+
+    #[test]
+    fn cached_dictionary_merges_with_baseline() {
+        // 缓存词典是完整快照：直接替代基线会吞掉后来新增的内置词条
+        // （实测：设置页新加的 15 条在更新过词库的机器上完全不生效）。
+        let base = r#"{"sections":[{"id":"a","title":"a","entries":[["A","甲"],["B","乙"]]}]}"#;
+        let cached = r#"{"sections":[{"id":"a","title":"a","entries":[["B","乙2"],["C","丙"]]}]}"#;
+        let merged = merge_dictionaries(base, cached);
+        let v: Value = serde_json::from_str(&merged).unwrap();
+        let entries = v["sections"][0]["entries"].as_array().unwrap();
+        let mut map = std::collections::HashMap::new();
+        for e in entries {
+            map.insert(
+                e[0].as_str().unwrap().to_string(),
+                e[1].as_str().unwrap().to_string(),
+            );
+        }
+        assert_eq!(map.get("A").map(String::as_str), Some("甲"), "基线新增词条必须保留");
+        assert_eq!(map.get("B").map(String::as_str), Some("乙2"), "缓存同名词条必须覆盖基线");
+        assert_eq!(map.get("C").map(String::as_str), Some("丙"), "缓存独有词条必须保留");
+        // 两侧都损坏时绝不产出空词典：退回可用的那一侧
+        assert_eq!(merge_dictionaries("", cached), cached);
+        assert_eq!(merge_dictionaries(base, "not json"), base);
     }
 
     #[test]

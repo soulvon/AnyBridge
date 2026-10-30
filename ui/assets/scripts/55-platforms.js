@@ -2935,6 +2935,8 @@ async function openAntigravityLangModal() {
   clearAntigravityLangLog();
   appendAntigravityLangLog(`已打开 ${platName} 汉化管理面板，正在探测环境状态...`);
   void refreshAntigravityLangStatus(true);
+  // 设置页/Agent 面板是内嵌网页，需要单独的运行期注入状态（仅 IDE 显示）
+  void refreshAntigravityCdpStatus();
 }
 
 function closeAntigravityLangModal() {
@@ -3157,6 +3159,115 @@ async function checkAntigravityLocalizationUpdateAction() {
   }
 }
 
+// ═══════ Antigravity 深度汉化（设置页 / Agent 面板，CDP 运行期注入）═══════
+// 这两块界面由客户端内嵌的本地网页渲染（扩展 iframe + 编译进 agy.exe 的资源），
+// 文件注入够不到；只能以 --remote-debugging-port 启动 IDE，再由后端 CDP 注入词库。
+
+function renderAntigravityCdpState(st) {
+  const badge = document.getElementById('antigravityLangCdpBadge');
+  const hint = document.getElementById('antigravityLangCdpHint');
+  const btn = document.getElementById('antigravityLangCdpBtn');
+  if (!badge || !hint || !btn) return;
+  if (st?.available) {
+    const allDone = st.targets > 0 && st.injected >= st.targets;
+    badge.textContent = allDone ? '已注入' : (st.targets > 0 ? '待注入' : '已就绪');
+    badge.style.background = allDone ? 'rgba(16, 185, 129, 0.15)' : 'rgba(37, 99, 235, 0.12)';
+    badge.style.color = allDone ? '#10b981' : 'var(--accent)';
+    hint.textContent = st.message
+      || `已识别 ${st.injected}/${st.targets} 个界面，页面刷新后会自动补注入。`;
+    btn.textContent = '立即注入当前界面';
+    return;
+  }
+  badge.textContent = '未启用';
+  badge.style.background = 'var(--bg-glass-elevated, rgba(255,255,255,0.06))';
+  badge.style.color = 'var(--text-muted)';
+  hint.textContent = st?.message
+    || '需要以汉化模式（带调试端口）启动 IDE，才能翻译这两块界面。';
+  btn.textContent = '以汉化模式重启 IDE';
+}
+
+async function refreshAntigravityCdpStatus() {
+  const block = document.getElementById('antigravityLangCdpBlock');
+  if (!block) return;
+  const isIde = getAntigravityTarget() === 'antigravity-ide';
+  block.style.display = isIde ? '' : 'none';
+  if (!isIde || typeof invoke !== 'function') return;
+  try {
+    const st = await invoke('get_antigravity_cdp_status');
+    renderAntigravityCdpState(st);
+  } catch (e) {
+    const hint = document.getElementById('antigravityLangCdpHint');
+    if (hint) hint.textContent = `状态检测失败：${e?.message || e}`;
+  }
+}
+
+async function handleAntigravityCdpAction() {
+  if (getAntigravityTarget() !== 'antigravity-ide') return;
+  if (typeof invoke !== 'function') return;
+  const btn = document.getElementById('antigravityLangCdpBtn');
+  const prevText = btn?.textContent || '';
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = '正在检测…';
+  }
+  try {
+    const st = await invoke('get_antigravity_cdp_status');
+    if (st?.available) {
+      if (btn) btn.textContent = '正在注入…';
+      const res = await invoke('apply_antigravity_cdp_localization');
+      renderAntigravityCdpState(res);
+      appendAntigravityLangLog(res?.message || '已完成运行期注入', 'ok');
+      return;
+    }
+
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = prevText;
+    }
+    const ok = await showCustomConfirm(
+      '需要先关闭 Antigravity IDE，再以汉化模式重新打开，未保存的编辑会丢失。继续吗？',
+      '以汉化模式重启 Antigravity IDE',
+      'warn'
+    );
+    if (!ok) return;
+
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = '正在重启…';
+    }
+    appendAntigravityLangLog('正在关闭 IDE 并以汉化模式启动…');
+    const msg = await invoke('restart_antigravity_ide_with_cdp');
+    appendAntigravityLangLog(msg || '已完成重启', 'ok');
+
+    // 等调试端口就绪（最多 30 秒）。超时如实提示，不假装成功。
+    let ready = false;
+    for (let i = 0; i < 15; i += 1) {
+      await new Promise((r) => setTimeout(r, 2000));
+      const s2 = await invoke('get_antigravity_cdp_status').catch(() => null);
+      if (s2?.available) {
+        ready = true;
+        break;
+      }
+    }
+    if (!ready) {
+      renderAntigravityCdpState(null);
+      appendAntigravityLangLog('调试端口未在 30 秒内就绪，请等 IDE 打开后点一次「立即注入」', 'warn');
+      return;
+    }
+    const res2 = await invoke('apply_antigravity_cdp_localization');
+    renderAntigravityCdpState(res2);
+    appendAntigravityLangLog(res2?.message || '已完成运行期注入，打开设置页即为中文', 'ok');
+  } catch (e) {
+    appendAntigravityLangLog(`深度汉化失败: ${e?.message || e}`, 'err');
+    showCustomAlert(String(e?.message || e), '深度汉化失败', 'error');
+    if (btn) btn.textContent = prevText;
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+globalThis.handleAntigravityCdpAction = handleAntigravityCdpAction;
+globalThis.refreshAntigravityCdpStatus = refreshAntigravityCdpStatus;
 globalThis.openAntigravityLangModal = openAntigravityLangModal;
 globalThis.closeAntigravityLangModal = closeAntigravityLangModal;
 globalThis.clearAntigravityLangLog = clearAntigravityLangLog;

@@ -404,6 +404,50 @@
       },
       "regression_test": "sidecar/pricing.test.js::已知模型族命中内置价",
       "severity": "medium"
+    },
+    {
+      "id": "ag-ide-settings-window-unlocalized",
+      "title": "Antigravity IDE 汉化必须覆盖设置页独立窗口入口",
+      "symptom": "点「一键汉化」提示成功、菜单已是中文，但 Antigravity Settings 设置页与 Kite 侧栏仍全英文（IDE 1.107.0 实测）",
+      "lesson": "设置页/Agent 面板由独立引导窗口 out/vs/code/electron-browser/workbench/workbench-jetski-agent.html 渲染，只注入 workbench.html 覆盖不到。apply/restore/is_localized 必须共用 localization_target_htmls 注入全部入口；辅助窗口要跳过「隐藏首屏 + 等 .monaco-workbench 根」策略（否则白屏到 6 秒超时）；判定「已汉化」必须所有入口都带块，否则 keeper 不重注入",
+      "check": {
+        "type": "source_contains",
+        "file": "src-tauri/src/commands/app_localization.rs",
+        "must_contain": "AG_IDE_AGENT_WINDOW_HTML"
+      },
+      "check_not": {
+        "type": "source_not_regex",
+        "file": "src-tauri/src/commands/app_localization.rs",
+        "must_not_match": "let html_path = workbench_html_path\\(platform\\)"
+      },
+      "regression_test": "src-tauri/src/commands/app_localization.rs::injection_covers_main_and_agent_window",
+      "severity": "high"
+    },
+    {
+      "id": "ag-ide-settings-is-local-webapp",
+      "title": "Antigravity IDE 设置页/Agent 面板只能运行期注入（CDP），改文件无效",
+      "symptom": "两个 workbench HTML 都注入了、菜单已是中文，但设置页与 Agent 面板仍全英文（IDE 1.107.0 实测）",
+      "lesson": "这两块界面由内置扩展用 iframe 加载 agy.exe 内嵌的本地 Web 应用（http://127.0.0.1:<port>/settings-standalone，前端资源编译进约 210MB 二进制、磁盘无对应文件），跨源 iframe 且无磁盘注入点 → workbench.html 注入天然够不到。唯一路径是以 --remote-debugging-port 启动 IDE，用 CDP 注入 iframe target；端口探测必须校验 UA 含 AntigravityIDE，注入脚本必须带幂等标记（否则每次巡检叠加一个 MutationObserver），且只匹配 extensionView/settings-standalone 的本地页面（不得碰浏览器控制页）",
+      "check": {
+        "type": "source_contains",
+        "file": "src-tauri/src/commands/antigravity_cdp.rs",
+        "must_contain": "settings-standalone"
+      },
+      "regression_test": "src-tauri/src/commands/antigravity_cdp.rs::app_target_matcher_excludes_browser_surface",
+      "severity": "high"
+    },
+    {
+      "id": "localization-dict-cache-must-merge-baseline",
+      "title": "热更新词库必须与内置基线合并，不能整体替代",
+      "symptom": "给内置词典新增的设置页词条在更新过在线词库的机器上完全不生效（缓存文件是完整快照，直接覆盖基线）",
+      "lesson": "hans_script 组装时必须走 merge_dictionaries：基线打底、缓存同名词条覆盖、缓存独有词条追加；任一侧解析失败退回可用的一侧，绝不产出空词典。行为由 cached_dictionary_merges_with_baseline 锁定",
+      "check": {
+        "type": "source_contains",
+        "file": "src-tauri/src/commands/app_localization.rs",
+        "must_contain": "fn merge_dictionaries"
+      },
+      "regression_test": "src-tauri/src/commands/app_localization.rs::cached_dictionary_merges_with_baseline",
+      "severity": "high"
     }
   ]
 }

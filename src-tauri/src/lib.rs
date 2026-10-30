@@ -71,6 +71,11 @@ pub fn run() {
             // 未开启过汉化时零开销（仅一次文件存在性判断）。
             commands::app_localization::spawn_localization_keeper(app.handle().clone());
 
+            // Antigravity IDE 设置页/Agent 面板的运行期补注入（CDP）。
+            // 这两块界面由本地 Web 应用渲染，文件注入够不到；仅在 IDE 以
+            // 汉化模式（带调试端口）启动且已启用汉化时工作，否则静默跳过。
+            commands::antigravity_cdp::spawn_cdp_keeper();
+
             // 默认启动代理（AUTO_START_PROXY 默认为 true，可在设置里关闭）。
             // 启动前已通过 kill_sidecar_process 清理孤儿 sidecar，
             // dev 模式额外清理残留 node 进程。
@@ -269,6 +274,9 @@ pub fn run() {
             commands::system::pick_file,
             commands::system::generate_certs,
             commands::system::restart_ide,
+            commands::system::restart_antigravity_ide_with_cdp,
+            commands::antigravity_cdp::get_antigravity_cdp_status,
+            commands::antigravity_cdp::apply_antigravity_cdp_localization,
             commands::system::detect_ide_path,
             commands::system::set_ide_path,
             commands::system::detect_windsurf_path,

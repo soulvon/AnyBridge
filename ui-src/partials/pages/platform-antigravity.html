@@ -339,6 +339,18 @@
                 </div>
               </div>
 
+              <!-- 深度汉化：设置页与 Agent 面板由客户端内嵌网页渲染，只能运行期注入 -->
+              <div id="antigravityLangCdpBlock" style="display: none; background: var(--bg-glass-elevated, rgba(255,255,255,0.04)); border: 1px solid var(--border-subtle, rgba(255,255,255,0.06)); border-radius: 10px; padding: 12px 14px; font-size: 12px;">
+                <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 12px;">
+                  <div style="min-width: 0;">
+                    <div style="font-weight: 650; color: var(--text-primary);">设置页与 Agent 面板</div>
+                    <div id="antigravityLangCdpHint" style="color: var(--text-muted); margin-top: 3px; line-height: 1.5;">这部分由客户端内嵌网页渲染，需要以汉化模式启动后运行期注入。</div>
+                  </div>
+                  <span id="antigravityLangCdpBadge" class="status-badge" style="padding: 2px 8px; border-radius: 999px; font-size: 11px; background: var(--bg-glass-elevated, rgba(255,255,255,0.06)); color: var(--text-muted); flex-shrink: 0;">检测中</span>
+                </div>
+                <button type="button" class="btn-ghost" id="antigravityLangCdpBtn" data-action="handleAntigravityCdpAction" style="margin-top: 10px; height: 32px; padding: 0 14px; font-size: 12px; font-weight: 500; border-radius: 8px; display: inline-flex; align-items: center; justify-content: center;">以汉化模式重启 IDE</button>
+              </div>
+
               <!-- 执行状态与日志输出框 -->
               <div>
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">

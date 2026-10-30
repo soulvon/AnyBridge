@@ -12,18 +12,29 @@
 	const LOG_PREFIX = '[AnyBridge-Loc]';
 	const settings = { localizationEnabled: true, localizationMode: 'realtime' };
 
+	// ========== 辅助窗口识别 ==========
+	// Antigravity IDE 的设置页/Agent 面板是**独立引导窗口**
+	// （workbench-jetski-agent.html），没有 .monaco-workbench 根节点。
+	// 注入方在该窗口的脚本首行置 window.__anybridgeHansAuxWindow = true。
+	// 这类窗口不能沿用 workbench 的"等根节点 + 隐藏首屏"策略：
+	// 没有根节点会一直等到 6 秒超时，期间页面被 visibility:hidden 藏着 → 白屏。
+	const _abAuxWindow = typeof window !== 'undefined' && window.__anybridgeHansAuxWindow === true;
+
 	// ========== 首屏防闪：注入即隐藏，翻译完成后一次性显现 ==========
 	// 为什么需要：DOM 引擎是"渲染后替换"，不隐藏的话每次打开都会先看到英文
 	// 闪一下再变中文（用户反馈的"卡一下"）。隐藏后直接呈现中文。
 	// 8 秒兜底 + 调用方 finally 双保险，任何异常都不会让界面永久隐藏。
+	// 辅助窗口不隐藏：它的翻译在 MutationObserver 里持续进行，隐藏只会让用户干等。
 	let _abRevealed = false;
 	function _abReveal() {
 		if (_abRevealed) return;
 		_abRevealed = true;
 		try { document.documentElement.style.visibility = ''; } catch (e) {}
 	}
-	let _abFailsafe = setTimeout(_abReveal, 8000);
-	try { document.documentElement.style.visibility = 'hidden'; } catch (e) {}
+	let _abFailsafe = _abAuxWindow ? 0 : setTimeout(_abReveal, 8000);
+	if (!_abAuxWindow) {
+		try { document.documentElement.style.visibility = 'hidden'; } catch (e) {}
+	}
 	// ========== 汉化功能 ==========
 	// v8.5.5：把"易被误伤"的元素（code/kbd/samp/var）从 EXCLUDE_SELECTOR 拆出，
 	// 仅当其祖先含 CODE_CONTEXT_REQUIRED 之一时才算"代码区"才跳过。
@@ -5352,6 +5363,12 @@
 	function _abWaitReady() {
 		if (document.readyState === 'loading') {
 			document.addEventListener('DOMContentLoaded', _abWaitReady, { once: true });
+			return;
+		}
+		// 辅助窗口没有 workbench 根节点：DOM 就绪即开扫，
+		// 后续渲染交给 MutationObserver + 3s 兜底，绝不空等 6 秒。
+		if (_abAuxWindow) {
+			anybridgeLocStart();
 			return;
 		}
 		const hasRoot = !!document.querySelector('.monaco-workbench, #workbench\.parts, #workbench');

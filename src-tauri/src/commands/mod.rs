@@ -1,5 +1,6 @@
 pub mod agent_spec;
 pub mod agent_stash;
+pub mod antigravity_cdp;
 pub mod antigravity_loc_payload;
 pub mod antigravity_localization;
 pub mod declared_apply;

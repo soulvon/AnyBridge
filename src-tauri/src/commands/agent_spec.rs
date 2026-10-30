@@ -904,9 +904,15 @@ mod tests {
             if !file_tail.is_empty() {
                 let path = spec.resolve_config_path().expect("配置路径应可解析");
                 let shown = path.to_string_lossy();
+                // 声明了多候选文件名时（OpenCode 同时支持 opencode.json / .jsonc），
+                // 解析结果命中任一即可；断言只认单一文件名会把合法安装判成失败。
+                let mut accepted: Vec<String> = vec![file_tail.to_string()];
+                if let FileSource::Candidates(list) = spec.config_file {
+                    accepted.extend(list.iter().map(|v| v.to_string()));
+                }
                 assert!(
-                    shown.ends_with(file_tail),
-                    "{id} 配置文件应为 {file_tail}，实际 {shown}"
+                    accepted.iter().any(|f| shown.ends_with(f.as_str())),
+                    "{id} 配置文件应为 {accepted:?} 之一，实际 {shown}"
                 );
             }
         }

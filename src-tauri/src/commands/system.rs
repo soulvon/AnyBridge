@@ -1990,12 +1990,14 @@ impl HideWindow for std::process::Command {
     }
 }
 
-fn restart_ide_impl(target: String) -> Result<String, String> {
+fn restart_ide_impl(target: String, extra_args: Vec<String>) -> Result<String, String> {
     let t = if target == "auto" {
         detect_target_ide()
     } else {
         target
     };
+    // 非 Windows 平台暂不支持附加启动参数；显式消费变量，避免 mac/linux 编译告警。
+    let _ = &extra_args;
     #[cfg(target_os = "windows")]
     {
         // 收集 taskkill 失败原因（拒绝访问等），最终报错时附带给用户，便于自助定位。
@@ -2154,6 +2156,7 @@ fn restart_ide_impl(target: String) -> Result<String, String> {
         let spawn_client = |args: &[&str]| -> Result<std::process::Child, String> {
             Command::new(&exe)
                 .args(args)
+                .args(&extra_args)
                 .hide_window()
                 .spawn()
                 .map_err(|e| format!("重启 {} 失败: {}", ide_dir_name(&t), e))
@@ -2326,9 +2329,35 @@ fn restart_ide_impl(target: String) -> Result<String, String> {
 /// 注意：强杀会丢失未保存的工作，调用方需先提示用户保存。
 #[tauri::command]
 pub async fn restart_ide(target: String) -> Result<String, String> {
-    tauri::async_runtime::spawn_blocking(move || restart_ide_impl(target))
+    tauri::async_runtime::spawn_blocking(move || restart_ide_impl(target, Vec::new()))
         .await
         .map_err(|e| format!("重启 IDE 任务失败: {}", e))?
+}
+
+/// 以「汉化模式」重启 Antigravity IDE：附加 `--remote-debugging-port`。
+///
+/// 设置页 / Agent 面板由本地 Web 应用渲染（跨源 iframe + 资源编译进 agy.exe），
+/// 文件注入够不到，只能靠调试端口做运行期注入。注意：强杀会丢失未保存的工作，
+/// UI 必须先向用户说明再调用。
+#[tauri::command]
+pub async fn restart_antigravity_ide_with_cdp() -> Result<String, String> {
+    #[cfg(not(target_os = "windows"))]
+    {
+        return Err("深度汉化（CDP 注入）当前仅支持 Windows".to_string());
+    }
+    #[cfg(target_os = "windows")]
+    {
+        tauri::async_runtime::spawn_blocking(move || {
+            let port = crate::commands::antigravity_cdp::CDP_PORT;
+            restart_ide_impl(
+                "antigravity-ide".to_string(),
+                vec![format!("--remote-debugging-port={port}")],
+            )
+            .map(|msg| format!("{msg}（已启用深度汉化，调试端口 {port}）"))
+        })
+        .await
+        .map_err(|e| format!("重启 Antigravity IDE 任务失败: {e}"))?
+    }
 }
 
 // ═══════ IDE DETECTION ═══════

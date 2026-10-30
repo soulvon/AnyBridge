@@ -1,6 +1,6 @@
 [package]
 name = "anybridge"
-version = "1.0.0"
+version = "1.0.3"
 description = "AnyBridge desktop client"
 authors = ["soulvon"]
 edition = "2021"
@@ -25,6 +25,8 @@ tauri-plugin-shell = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tokio = { version = "1", features = ["full"] }
+# CDP 运行期注入（Antigravity IDE 设置页/Agent 面板由本地 Web 应用渲染，文件注入够不到）
+tokio-tungstenite = "0.24"
 reqwest = { version = "0.12", features = ["json", "rustls-tls", "stream", "blocking"], default-features = false }
 rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
 base64 = "0.22"
