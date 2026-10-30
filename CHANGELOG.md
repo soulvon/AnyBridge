@@ -2,6 +2,12 @@
 
 All notable changes to AnyBridge will be documented in this file.
 
+## Unreleased
+
+- 修复：系统代理注册表残留指向死端口时（代理软件退出但 ProxyEnable 未清，如 FlClash 残留 7897），sidecar 上游请求全部 `proxyconnect ECONNREFUSED`；新增代理端口健康探测（5s 周期 / 1.5s 超时），死端口自动降级直连、恢复后自动切回，无需重启服务。
+- 改进：Cursor 接管配置 `http.proxySupport` 由 `on` 改为 `override`——`on` 的语义是「使用代理设置」，系统代理存在时 Cursor 可能优先走系统代理导致流量绕开本地代理且无日志；`override` 强制 `http.proxy` 覆盖系统代理（旧值为 on 的机器在下次启用时自动重写）。
+- 改进：Cursor 3.27+ 的云端命令通道 `GET /agent/v1/run` 本地短路返回 401（携带本地注入 token 官方必然 401，本地 agent 主链路不依赖该通道），消除每次启动的 tunnel ERROR 并减少一次出站连接；fallback 透传未命中路径开始留痕（去重限 256 条），新版新增端点将从日志冒出。
+
 ## v1.0.3 - 2026-10-30
 
 - 新增：Antigravity IDE 设置页与 Agent 面板支持汉化——这两块界面由客户端内嵌的本地网页渲染（扩展 iframe + 编译进 agy.exe 的资源），改文件够不到，改为以调试端口启动后经 CDP 运行期注入，页面刷新自动补注入。
