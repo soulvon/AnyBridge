@@ -171,6 +171,67 @@ let SYSTEM_HTTPS_AGENT_URL = '';
 let PROXY_CACHE_VALUE = '';
 let PROXY_CACHE_EXPIRES_AT = 0;
 
+// ─── 代理端口健康探测 ─────────────────────────────────────────────
+// 系统代理注册表项（ProxyEnable/ProxyServer）会在代理软件退出后残留，
+// 指向一个已无进程监听的死端口（2026-10-30 实测：FlClash 退出后 7897 残留，
+// 本模块每秒重读到的仍是死代理，上游请求全部 proxyconnect ECONNREFUSED）。
+// 重读解决不了这种场景，必须探测端口连通性：死端口降级直连，恢复后自动切回。
+const PROXY_HEALTH_INTERVAL_MS = Number(process.env.ANYBRIDGE_PROXY_HEALTH_INTERVAL_MS || 5000);
+const PROXY_HEALTH_TIMEOUT_MS = Number(process.env.ANYBRIDGE_PROXY_HEALTH_TIMEOUT_MS || 1500);
+let PROXY_HEALTHY = true;   // 首次探测完成前假定可用，保持既有行为
+let PROXY_HEALTH_LAST_URL = '';
+let PROXY_HEALTH_LAST_AT = 0;
+let PROXY_HEALTH_LOG_AT = 0;
+
+export function _setProxyHealthForTest(ok) {
+  PROXY_HEALTHY = ok;
+}
+
+function probeProxyHealth() {
+  const proxyUrl = cachedSystemProxyUrl();
+  if (!proxyUrl) {
+    PROXY_HEALTHY = true;
+    PROXY_HEALTH_LAST_URL = '';
+    return;
+  }
+  const now = Date.now();
+  if (proxyUrl === PROXY_HEALTH_LAST_URL && now - PROXY_HEALTH_LAST_AT < PROXY_HEALTH_INTERVAL_MS) {
+    return; // 同一地址节流
+  }
+  PROXY_HEALTH_LAST_URL = proxyUrl;
+  PROXY_HEALTH_LAST_AT = now;
+  let host;
+  let port;
+  try {
+    const url = new URL(proxyUrl);
+    host = url.hostname.replace(/^\[|\]$/g, '');
+    port = Number(url.port || (url.protocol === 'https:' ? 443 : 80));
+  } catch {
+    PROXY_HEALTHY = true; // 无法解析的地址交由既有逻辑处理
+    return;
+  }
+  const socket = net.connect({ host, port });
+  const settle = (ok) => {
+    socket.destroy();
+    if (PROXY_HEALTHY === ok) return;
+    PROXY_HEALTHY = ok;
+    const at = Date.now();
+    if (at - PROXY_HEALTH_LOG_AT > 30_000) {
+      PROXY_HEALTH_LOG_AT = at;
+      console.log(ok
+        ? `[proxy] system proxy back online: ${redactProxyUrl(proxyUrl)}`
+        : `[proxy] system proxy unreachable (${host}:${port}), falling back to direct upstream`);
+    }
+  };
+  socket.setTimeout(PROXY_HEALTH_TIMEOUT_MS, () => settle(false));
+  socket.once('connect', () => settle(true));
+  socket.once('error', () => settle(false));
+}
+
+probeProxyHealth();
+const PROXY_HEALTH_TIMER = setInterval(probeProxyHealth, Math.max(1000, PROXY_HEALTH_INTERVAL_MS));
+if (PROXY_HEALTH_TIMER && typeof PROXY_HEALTH_TIMER.unref === 'function') PROXY_HEALTH_TIMER.unref();
+
 function redactProxyUrl(proxyUrl) {
   if (!proxyUrl) return '';
   try {
@@ -201,7 +262,9 @@ function clearSystemProxyAgent() {
 
 export function httpsAgentFor(directAgent = undefined) {
   const proxyUrl = cachedSystemProxyUrl();
-  if (!proxyUrl) {
+  if (!proxyUrl || !PROXY_HEALTHY) {
+    // 死端口场景：注册表仍指向系统代理但端口无进程监听，
+    // 必须降级直连，否则上游请求全部 proxyconnect ECONNREFUSED（坑点 #508 同款）。
     clearSystemProxyAgent();
     return directAgent;
   }
