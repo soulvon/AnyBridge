@@ -11,6 +11,9 @@ All notable changes to AnyBridge will be documented in this file.
 - 修复：热更新词库此前整体替代内置基线，导致新加的内置词条在更新过在线词库的机器上完全不生效；改为基线打底、缓存同名词条覆盖、缓存独有词条追加。
 - 改进：汉化词典补齐 20 条设置页与对话面板文案（全局权限、排队消息、浏览器子智能体、对话步骤等）。
 - 修复：Agent 声明快照测试只认 opencode.json，安装了 opencode.jsonc 的机器会被误判失败。
+
+## v1.0.4 - 2026-10-30
+
 - 修复：本地代理服务未运行时切换 Codex 配置，此前会先把 Codex 桌面版重启一遍、再抛出「无法连接 7450 … os error 10061」，用户窗口没了、模型也没解锁；改为注入前先确保代理服务可用，不可用时直接返回可执行提示且不重启客户端。代理可用性检查统一收敛到 `proxy::ensure_proxy_service_ready`（端口连通性优先），Cursor Core 复用同一入口。
 - 修复：本地探测的错误信息此前只保留最后一个回环地址（`[::1]`）的失败原因，把真正的 IPv4 拒绝原因盖掉，排障被误导成 IPv6 问题；改为逐条保留两个地址的失败原因。
 - 修复：Codex 进程判定把 npm CLI 的 `codex.exe` 当成桌面版宿主——开着 CLI 时点「启动 Codex」会回「已在运行」，切换配置还会杀掉 CLI 会话；改为按路径排除 CLI 目录（node_modules / vendor/bin / cargo target），判定矩阵纳入门控。
