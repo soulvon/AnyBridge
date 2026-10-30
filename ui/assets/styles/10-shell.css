@@ -272,6 +272,36 @@ html[data-nav-icons="hidden"] .tab-nav .tab-icon {
   color: var(--text-primary);
 }
 
+/* ═══════ 极简扁平 × 深色主题（工作台深色 / 霓虹 EVA）专修 ═══════
+   minimal 的 Tab 配色按浅色底设计（容器=--bg-secondary、active=--bg-card），
+   套在深色顶栏上 active 深灰药丸零对比，整条 Tab 糊一块。
+   参照极简墨黑的既有做法（60-plugins.css 的 [data-theme="ink"] 覆盖）：
+   扁平中性胶囊——白系半透明底 + 白字，无渐变、无外发光。
+   浅色主题与 ink（自带 !important 专属覆盖）均不受影响。 */
+[data-theme="dark"][data-style="minimal"] .tab-nav .tab-item,
+[data-theme="eva"][data-style="minimal"] .tab-nav .tab-item {
+  color: rgba(255, 255, 255, 0.60);
+}
+
+[data-theme="dark"][data-style="minimal"] .tab-nav .tab-item:hover,
+[data-theme="eva"][data-style="minimal"] .tab-nav .tab-item:hover {
+  color: rgba(255, 255, 255, 0.88);
+  background: rgba(255, 255, 255, 0.055);
+}
+
+[data-theme="dark"][data-style="minimal"] .tab-nav .tab-item.active,
+[data-theme="eva"][data-style="minimal"] .tab-nav .tab-item.active {
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.135);
+  border-color: rgba(255, 255, 255, 0.10);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.30);
+}
+
+[data-theme="dark"][data-style="minimal"] .tab-nav .tab-item.active .tab-icon,
+[data-theme="eva"][data-style="minimal"] .tab-nav .tab-item.active .tab-icon {
+  color: #ffffff;
+}
+
 [data-style="minimal"] .global-proxy-pill {
   border-radius: 999px !important;
   background: var(--bg-input) !important;
