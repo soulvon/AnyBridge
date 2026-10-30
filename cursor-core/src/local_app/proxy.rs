@@ -114,6 +114,17 @@ impl HttpHandler for CursorRelay {
     ) -> RequestOrResponse {
         let original = request.uri().clone();
         let locally_routed = should_route_locally(original.path(), *self.tab_mode.read());
+        if is_cursor_host(original.host().unwrap_or_default()) {
+            tracing::info!(
+                target: "cursor_relay",
+                stage = "http",
+                method = %request.method(),
+                host = original.host().unwrap_or("?"),
+                path = original.path(),
+                local = locally_routed,
+                "HTTP 请求到达 MITM"
+            );
+        }
         if is_cursor_host(original.host().unwrap_or_default()) && locally_routed {
             if let Ok(value) = original.to_string().parse() {
                 request.headers_mut().insert(UPSTREAM_URL_HEADER, value);
@@ -134,10 +145,16 @@ impl HttpHandler for CursorRelay {
         _ctx: &HttpContext,
         request: &Request<Body>,
     ) -> bool {
-        request
+        let host = request
             .uri()
             .authority()
-            .is_some_and(|authority| is_cursor_host(authority.host()))
+            .map(|authority| authority.host().to_owned())
+            .unwrap_or_default();
+        let hit = is_cursor_host(&host);
+        if hit {
+            tracing::info!(target: "cursor_relay", stage = "connect", host = %host, "CONNECT 命中 Cursor 域名");
+        }
+        hit
     }
 
     async fn should_intercept_tls(
@@ -145,7 +162,14 @@ impl HttpHandler for CursorRelay {
         _ctx: &HttpContext,
         hello: hudsucker::rustls::server::ClientHello<'_>,
     ) -> bool {
-        hello.server_name().is_some_and(is_cursor_host)
+        let sni = hello.server_name().unwrap_or("").to_owned();
+        let hit = is_cursor_host(&sni);
+        if hit {
+            tracing::info!(target: "cursor_relay", stage = "tls", sni = %sni, "开始 TLS 中间人");
+        } else if !sni.is_empty() {
+            tracing::debug!(target: "cursor_relay", stage = "tls", sni = %sni, "非 Cursor 域名，直通");
+        }
+        hit
     }
 }
 
