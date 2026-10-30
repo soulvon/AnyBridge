@@ -28,16 +28,28 @@ export { readInjectableModels };
 
 // WebSocket: 优先 Node 22+ 全局 WebSocket（release pkg exe 内置）；
 // 回退 ws 包（dev 模式 node 20 无全局 WebSocket，typeof 检查避免 ReferenceError）。
-// 用 IIFE 包住以避免 top-level await —— 保护构建经 esbuild 走 CJS 时不支持顶层 await，
-// 行为等价：两个都没有时立即抛错。
-const WSImpl = (() => {
-  if (typeof WebSocket === 'function') return WebSocket;
+//
+// 必须惰性初始化（首次用到才解析实现），不能模块顶层立即执行：
+// CI 的 Node 可能既没有全局 WebSocket、也没有 ws 包（且 ESM 下 require 未定义），
+// 顶层初始化会让「import 本模块做纯函数测试」直接炸掉，三平台 CI 全红
+//（2026-10-30 实测：Validate 三平台全部 'test failed'）。
+let WSImpl = null;
+
+function resolveWebSocketImpl() {
+  if (WSImpl) return WSImpl;
+  if (typeof WebSocket === 'function') {
+    WSImpl = WebSocket;
+    return WSImpl;
+  }
   try {
-    return require('ws').default || require('ws');
+    // ESM 下没有 require；esbuild 打包 CJS 产物时会注入，二者都不可用才放弃。
+    const ws = require('ws');
+    WSImpl = ws.default || ws;
   } catch (e) {
     throw new Error(`WebSocket not available: ${e.message}. Use Node 22+ or install ws.`);
   }
-})();
+  return WSImpl;
+}
 const CDP_TIMEOUT_MS = 8000;
 
 
@@ -184,7 +196,7 @@ function cdpSend(ws, id, method, params = {}) {
  */
 function waitForOpen(ws) {
   return new Promise((resolve, reject) => {
-    if (ws.readyState === WSImpl.OPEN) return resolve();
+    if (ws.readyState === resolveWebSocketImpl().OPEN) return resolve();
     const timer = setTimeout(() => reject(new Error('WebSocket open timeout')), CDP_TIMEOUT_MS);
     ws.onopen = () => { clearTimeout(timer); resolve(); };
     ws.onerror = () => { clearTimeout(timer); reject(new Error('WebSocket connection failed')); };
@@ -214,7 +226,7 @@ async function injectOnce(port, models) {
 
   let ws;
   try {
-    ws = new WSImpl(wsUrl);
+    ws = new (resolveWebSocketImpl())(wsUrl);
     await waitForOpen(ws);
 
     await cdpSend(ws, 1, 'Runtime.enable', {});
@@ -292,7 +304,7 @@ export async function isAlreadyInjected(port) {
     const targets = await listTargets(port);
     const target = pickPageTarget(targets);
     if (!target) return false;
-    const ws = new WSImpl(target.webSocketDebuggerUrl);
+    const ws = new (resolveWebSocketImpl())(target.webSocketDebuggerUrl);
     await waitForOpen(ws);
     await cdpSend(ws, 1, 'Runtime.enable', {});
     const result = await cdpSend(ws, 2, 'Runtime.evaluate', {
