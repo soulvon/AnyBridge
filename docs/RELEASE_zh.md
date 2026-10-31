@@ -66,6 +66,26 @@ npm run verify:release
 它等价于先执行 `npm run verify`，再执行本地安装包构建；构建成功不等于已经完成
 真实安装后的功能 Smoke，涉及发布链路的功能仍需按改动范围单独验收。
 
+### MSI 打包报 `failed to run light.exe`（磁盘空间不足）
+
+现象：编译通过、`Running light to produce ...msi` 之后直接失败，只回报一句
+`failed to run C:\Users\<user>\AppData\Local\tauri\WixTools314\light.exe`，
+没有任何空间相关提示，极易误判成 WiX 损坏。
+
+根因：WiX 的 `light.exe` 在验证阶段要把生成的 MSI 复制到 `%TEMP%` 再校验，
+C 盘剩余空间不足（实测仅剩 0.1GB）即报这个假错误。手工执行同一条 light 命令可看到
+真实原因 `error LGHT0001 : 磁盘空间不足`。
+
+处理：把临时目录指到空间充足的盘再打包（不改系统设置，只在当前 shell 生效）：
+
+```powershell
+New-Item -ItemType Directory -Force tmp/wix-temp | Out-Null
+$env:TEMP="E:\project\AnyBridge\tmp\wix-temp"; $env:TMP=$env:TEMP
+npx tauri build --config src-tauri/tauri.local.conf.json
+```
+
+只打 NSIS 可绕过 WiX（`--bundles nsis`），但 MSI 与 NSIS 都是发布产物，建议修空间后全量重打。
+
 ## 发布后核对（自动化）
 
 CI 全部完成后运行：
