@@ -223,11 +223,30 @@ fn restore_all(state: &ProxyState, target: &str) -> RestoreReport {
 
     if target == "cursor" {
         report.workbench_inject = "ok（Cursor 无需 workbench 注入）".into();
-        report.cursor_auth = match crate::commands::cursor_auth::restore_cursor_auth() {
-            Ok(true) => "ok".into(),
-            Ok(false) => "ok（无需还原）".into(),
-            Err(e) => format!("还原失败: {}", e),
-        };
+        report.cursor_auth =
+            match crate::commands::cursor_auth::restore_cursor_auth() {
+                Ok(crate::commands::cursor_auth::CursorAuthRestore::Restored {
+                    restored,
+                    kept_user_changes,
+                }) => {
+                    if kept_user_changes > 0 {
+                        format!(
+                            "ok（已写回 {restored} 项账号键，保留接管期间的 {kept_user_changes} 项改动）"
+                        )
+                    } else {
+                        format!("ok（已写回 {restored} 项账号键）")
+                    }
+                }
+                Ok(crate::commands::cursor_auth::CursorAuthRestore::NotNeeded) => {
+                    "ok（无需还原）".into()
+                }
+                // 账本丢失 + 账号仍是接管态：唯一还原源已没了，必须让用户知道。
+                Ok(crate::commands::cursor_auth::CursorAuthRestore::BackupMissing) => {
+                    "账号备份缺失：Cursor 里仍是本地接管账号，请在 Cursor 中退出登录后重新登录恢复原账号"
+                        .into()
+                }
+                Err(e) => format!("还原失败: {}", e),
+            };
     } else {
         report.cursor_auth = "ok（无需 Cursor auth）".into();
         match crate::commands::workbench_inject::restore(target) {

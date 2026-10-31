@@ -180,6 +180,32 @@ section('对称路径（接入↔还原 / apply↔restore 必须一致）');
   const pf = fs.readFileSync(path.join(root, 'src-tauri/src/commands/platforms.rs'), 'utf8');
   const killCalls = (pf.match(/Self::kill_antigravity_language_server\(\)/g) || []).length;
   ok('Antigravity 接入+还原都调用同一 kill 实现', killCalls >= 2, `调用点 ${killCalls} 处（应≥2）`);
+
+  // 3.5.3 Cursor 登录态：接入写 vscdb ↔ 还原必须读同一份账本。
+  // 事故 2026-11-01：还原侧读 cursor-state-backup.json，全仓库无人写它，
+  // 于是「还原成功」但账号仍停在 cursor@ai.com 的接管态，用户真账号被冲掉。
+  const cursorAccount = fs.readFileSync(path.join(root, 'cursor-core/src/local_app/account.rs'), 'utf8');
+  const cursorAuthSrc = fs.readFileSync(path.join(root, 'src-tauri/src/commands/cursor_auth.rs'), 'utf8');
+  const cursorLocalApp = fs.readFileSync(path.join(root, 'cursor-core/src/local_app/mod.rs'), 'utf8');
+  const LEDGER_FILE = 'cursor-auth-backup.json';
+  ok('Cursor 账号账本两侧同名', cursorAccount.includes(LEDGER_FILE) && cursorAuthSrc.includes(LEDGER_FILE));
+  ok('Cursor 关闭接管时调用账号还原', cursorLocalApp.includes('account::restore_if_backed_up'));
+  const ledgerWriteAt = cursorAccount.indexOf('write_ledger(ledger');
+  const accountWriteAt = cursorAccount.indexOf('INSERT OR REPLACE INTO ItemTable');
+  ok(
+    'Cursor 注入覆盖前先落账本',
+    ledgerWriteAt >= 0 && accountWriteAt > ledgerWriteAt,
+    ledgerWriteAt < 0 ? '未找到 write_ledger 调用' : `write_ledger@${ledgerWriteAt} / 首次写库@${accountWriteAt}`
+  );
+  ok(
+    'Cursor 本地账号标识两侧一致',
+    cursorAccount.includes('cursor@ai.com') && cursorAuthSrc.includes('cursor@ai.com')
+  );
+  const ideConfigSrc = fs.readFileSync(path.join(root, 'src-tauri/src/commands/ide_config.rs'), 'utf8');
+  ok(
+    'Cursor proxySupport 不得写回 on（必须 override）',
+    !/PROXY_SUPPORT_KEY\.into\(\),\s*Value::String\("on"/.test(ideConfigSrc)
+  );
 }
 
 // ─────────────────────────────────────────────────────────────

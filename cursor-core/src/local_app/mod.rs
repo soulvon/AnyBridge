@@ -206,6 +206,17 @@ impl CursorHarness {
 
     pub async fn disable(&self) -> Result<()> {
         settings::clear_proxy_settings()?;
+        // 对称于 enable() 里的账号注入：关闭接管必须把 Cursor 登录态写回用户原值，
+        // 否则退出后客户端仍停在 cursor@ai.com 的本地账号（2026-11-01 事故）。
+        match account::restore_if_backed_up().await? {
+            account::RestoreOutcome::NotBackedUp => {}
+            account::RestoreOutcome::Restored {
+                restored,
+                kept_user_changes,
+            } => {
+                tracing::info!(restored, kept_user_changes, "restored Cursor account state");
+            }
+        }
         self.inner.proxy.lock().await.stop().await;
         Ok(())
     }

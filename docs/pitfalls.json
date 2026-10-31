@@ -661,6 +661,36 @@
       },
       "regression_test": "src-tauri/src/commands/app_localization.rs::hans_strip_roundtrip_is_byte_exact",
       "severity": "high"
+    },
+    {
+      "id": "cursor-auth-overwrite-must-be-reversible",
+      "title": "覆盖 Cursor 登录态前必须落账本，写账本失败就拒绝注入",
+      "symptom": "Cursor 3.27 的真实登录 token 也是 cursor-safe-storage 格式，被注入逻辑判成「降级残留」直接覆盖 7 个账号键且不留备份；用户点还原时无数据可写回，真实账号被永久冲掉（2026-11-01 实测）",
+      "lesson": "判据分不清「新版真实登录」与「降级解不开的残留」，所以覆盖必须做成可逆操作：original 只在首次接管时记录（幂等，null = 当时无该键），applied 记我们写入的值；还原时当前值 != applied 说明用户接管期间自己改过（重新登录/换会员），必须保留用户改动。账本写失败即拒绝注入——任何「不可逆且静默」的账号写入都不允许",
+      "check": {
+        "type": "source_contains",
+        "file": "cursor-core/src/local_app/account.rs",
+        "must_contain": "fn write_ledger"
+      },
+      "regression_test": "cursor-core/src/local_app/account.rs::inject_and_restore_roundtrip_restores_original_tokens",
+      "severity": "high"
+    },
+    {
+      "id": "cursor-auth-ledger-shared-across-processes",
+      "title": "Cursor 账号还原必须读接入方写的同一账本，无账本不得报成功",
+      "symptom": "接入覆盖写在 cursor-core，还原却读 src-tauri 的 cursor-state-backup.json——该文件全仓库没有写入方，restore 永远返回「无需还原」，界面报 ok，账号实际仍是 cursor@ai.com 的接管态（2026-11-01 实测）",
+      "lesson": "跨进程共享状态只有一份真源：账本目录/文件名在两侧必须字面一致（cursor-core/cursor-auth-backup.json），由门控脚本逐字核对。还原必须区分三态（无需还原 / 已写回 / 备份缺失），「无账本 + 账号仍是本地接管」必须报缺失而不是成功；cursor_disable 里禁止 let _ = 吞掉还原错误",
+      "check": {
+        "type": "source_contains",
+        "file": "src-tauri/src/commands/cursor_auth.rs",
+        "must_contain": "cursor-auth-backup.json"
+      },
+      "check_not": {
+        "file": "src-tauri/src/commands/cursor_auth.rs",
+        "must_not_match": "\"cursor-state-backup\\.json\""
+      },
+      "regression_test": "src-tauri/src/commands/cursor_auth.rs::restore_writes_back_original_and_keeps_user_changes",
+      "severity": "high"
     }
   ]
 }

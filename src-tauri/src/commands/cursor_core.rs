@@ -437,19 +437,53 @@ pub async fn cursor_sync_routes(state: State<'_, CursorCoreState>) -> Result<Cur
     sync_routes_impl(state.inner()).await
 }
 
+/// 通知 sidecar 关闭接管并还原（settings + 账号账本）。
+///
+/// 返回 `Some(错误)` 时**绝不能当成成功**：2026-11-01 事故里这里写的是
+/// `let _ = core_request(...)`，还原失败被吞掉，界面照报「已还原」，
+/// 而 Cursor 里其实还停在被覆盖的本地账号。
+///
+/// sidecar 未运行时直接按账本还原（账本是同一份文件），
+/// 避免用户先关程序再点还原时账号永远停在接管态。
+async fn disable_harness(
+    state: &CursorCoreState,
+) -> Option<String> {
+    if process_running(state) {
+        return core_request(
+            control_port(),
+            reqwest::Method::PUT,
+            "/__byok-api__/api/harness/cursor/enabled",
+            Some(serde_json::json!({"enabled": false})),
+        )
+        .await
+        .err()
+        .map(|error| error.to_string());
+    }
+    match crate::commands::cursor_auth::restore_cursor_auth() {
+        Ok(crate::commands::cursor_auth::CursorAuthRestore::BackupMissing) => Some(
+            "账号备份缺失：Cursor 仍是本地接管账号，请在 Cursor 中退出登录后重新登录恢复原账号"
+                .into(),
+        ),
+        Ok(_) => None,
+        Err(error) => Some(error),
+    }
+}
+
 #[tauri::command]
 pub async fn cursor_disable(state: State<'_, CursorCoreState>) -> Result<CursorCoreStatus, String> {
-    if process_running(state.inner()) {
-        let _ = core_request(control_port(), reqwest::Method::PUT, "/__byok-api__/api/harness/cursor/enabled", Some(serde_json::json!({"enabled": false}))).await;
-    }
+    let restore_error = disable_harness(state.inner()).await;
     stop_impl(state.inner())?;
+    if let Some(error) = restore_error {
+        return Err(format!("Cursor Core 已停止，但还原未完成: {}", error));
+    }
     Ok(status(state.inner(), None))
 }
 
 #[tauri::command]
 pub async fn cursor_restart(app: AppHandle, state: State<'_, CursorCoreState>) -> Result<CursorCoreStatus, String> {
-    if process_running(state.inner()) {
-        let _ = core_request(control_port(), reqwest::Method::PUT, "/__byok-api__/api/harness/cursor/enabled", Some(serde_json::json!({"enabled": false}))).await;
+    if let Some(error) = disable_harness(state.inner()).await {
+        // 带着未还原的账号状态重启，会把刚写回的原值再次覆盖，必须先修好再继续。
+        return Err(format!("账号未还原，已中止重启: {}", error));
     }
     stop_impl(state.inner())?;
     cursor_enable(app).await

@@ -12406,7 +12406,12 @@ wire_api = "responses"
 
     #[test]
     fn apply_grok_writes_anybridge_model_and_preserves_user_sections() {
+        // 显式传临时账本并显式关门控：走无参入口会读到真实 agent-stash.json
+        // 与其它测试临时设置的 ANYBRIDGE_FIELD_RESTORE（并行时随机红，
+        // 见坑点 test-isolation-real-stash-and-env-gate）。
+        with_gates(None, Some(false), || {
         let path = temp_config_path("grok-apply");
+        let stash = path.parent().unwrap().join("stash");
         fs::write(
             &path,
             r#"
@@ -12432,7 +12437,9 @@ name = "Official Grok"
         provider.api_key = "sk-1234567890".to_string();
         provider.context_window = Some(65536);
 
-        Platform::Grok.apply_grok(&path, &provider).unwrap();
+        Platform::Grok
+            .apply_grok_with_stash(&path, &provider, &stash)
+            .unwrap();
 
         let raw = fs::read_to_string(&path).unwrap();
         let doc = raw.parse::<DocumentMut>().unwrap();
@@ -12469,13 +12476,15 @@ name = "Official Grok"
 
         // 测试 default_model 为空时的回退
         provider.default_model = "   ".to_string();
-        Platform::Grok.apply_grok(&path, &provider).unwrap();
+        Platform::Grok
+            .apply_grok_with_stash(&path, &provider, &stash)
+            .unwrap();
         let raw2 = fs::read_to_string(&path).unwrap();
         let doc2 = raw2.parse::<DocumentMut>().unwrap();
         assert_eq!(doc2["model"]["deepseek"]["model"].as_str(), Some("default"));
 
         // 测试切回官方配置
-        Platform::Grok.apply_grok_official(&path).unwrap();
+        apply_grok_official_with_stash(&path, &stash).unwrap();
         let raw3 = fs::read_to_string(&path).unwrap();
         let doc3 = raw3.parse::<DocumentMut>().unwrap();
         assert_eq!(doc3["cli"]["auto_update"].as_bool(), Some(false));
@@ -12496,6 +12505,7 @@ name = "Official Grok"
         assert_eq!(info2.2, false);
 
         let _ = fs::remove_dir_all(path.parent().unwrap());
+        });
     }
 
     #[test]

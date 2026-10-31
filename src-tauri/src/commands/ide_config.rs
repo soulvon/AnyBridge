@@ -197,10 +197,16 @@ fn managed_proxy_keys(target: &str) -> Vec<&'static str> {
     keys
 }
 
+/// 与 cursor-core/src/local_app/settings.rs 的 MANAGED_PROXY_SUPPORT 必须一致：
+/// `on` 的语义是"使用代理设置"，系统代理存在时会绕开我们的 http.proxy；
+/// `override` 才强制走本地代理（坑点 cursor-proxy-support-override）。
+const CURSOR_PROXY_SUPPORT_VALUE: &str = "override";
+
 fn cursor_extra_settings_ok(obj: &Map<String, Value>) -> bool {
-    obj.get(PROXY_SUPPORT_KEY).and_then(|v| v.as_str()) == Some("on")
+    // 不强制 useHttp1：cursor-core 接入路径只写 disableHttp2，
+    // 强判 useHttp1 会让"已接入"显示成未接入。
+    obj.get(PROXY_SUPPORT_KEY).and_then(|v| v.as_str()) == Some(CURSOR_PROXY_SUPPORT_VALUE)
         && obj.get(SYSTEM_CERTS_V2_KEY) == Some(&Value::Bool(true))
-        && obj.get(USE_HTTP1_KEY) == Some(&Value::Bool(true))
         && obj.get(DISABLE_HTTP2_KEY) == Some(&Value::Bool(true))
         && obj
             .get(PROXY_KERBEROS_KEY)
@@ -330,7 +336,10 @@ fn patch_settings_file(target: &str, settings: &PathBuf) -> Result<bool, String>
     obj.insert(PROXY_KEY.into(), Value::String(proxy_value.clone()));
     obj.insert(STRICT_SSL_KEY.into(), Value::Bool(false));
     if target == "cursor" {
-        obj.insert(PROXY_SUPPORT_KEY.into(), Value::String("on".into()));
+        obj.insert(
+            PROXY_SUPPORT_KEY.into(),
+            Value::String(CURSOR_PROXY_SUPPORT_VALUE.into()),
+        );
         obj.insert(SYSTEM_CERTS_V2_KEY.into(), Value::Bool(true));
         obj.insert(USE_HTTP1_KEY.into(), Value::Bool(true));
         obj.insert(DISABLE_HTTP2_KEY.into(), Value::Bool(true));
@@ -567,6 +576,11 @@ mod tests {
             .map(is_current_proxy_value)
             .unwrap_or(false));
         assert_eq!(patched.get(STRICT_SSL_KEY), Some(&Value::Bool(false)));
+        // 必须 override：on 会让系统代理抢在 http.proxy 前面（坑点 cursor-proxy-support-override）
+        assert_eq!(
+            patched.get(PROXY_SUPPORT_KEY),
+            Some(&Value::String("override".into()))
+        );
         assert!(cursor_extra_settings_ok(&patched));
 
         let mut current = patched.clone();
