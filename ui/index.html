@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="zh-CN" data-theme="light" data-scheme="light">
+<html lang="zh-CN" data-theme="light" data-scheme="light" data-style="minimal">
 
 <head>
   <meta charset="UTF-8">
@@ -16,11 +16,12 @@
         root.setAttribute('data-theme', id);
         root.setAttribute('data-scheme', schemeOf[id]);
         root.style.colorScheme = schemeOf[id];
-        // 风格维度与配色正交：老用户停留在「极简云白」时自动落到极简扁平，保证升级后视觉不变
+        // 风格维度与配色正交：默认极简扁平，存过 byok-style 的老用户沿用自己选过的
         var savedStyle = localStorage.getItem('byok-style');
-        var styleId = (savedStyle === 'soft' || savedStyle === 'minimal') ? savedStyle : (id === 'minimal' ? 'minimal' : 'soft');
+        var styleId = (savedStyle === 'soft' || savedStyle === 'minimal') ? savedStyle : 'minimal';
         root.setAttribute('data-style', styleId);
-        if (localStorage.getItem('byok-show-nav-icons') === 'false') {
+        // 导航栏图标默认隐藏：只有显式选过「显示」的用户才保留图标
+        if (localStorage.getItem('byok-show-nav-icons') !== 'true') {
           root.setAttribute('data-nav-icons', 'hidden');
         }
       } catch (e) {}
@@ -263,7 +264,7 @@
               <div class="theme-menu-row">
                 <span class="theme-menu-row-label">导航栏图标</span>
                 <button type="button" class="toggle-sm" data-nav-icons-toggle data-action="toggleNavIcons"
-                  data-pass-this role="switch" aria-checked="true" aria-label="显示导航栏图标"></button>
+                  data-pass-this role="switch" aria-checked="false" aria-label="显示导航栏图标"></button>
               </div>
               <div class="theme-menu-row">
                 <span class="theme-menu-row-label">语言</span>
@@ -9778,7 +9779,7 @@
                 <div class="setting-desc">在顶部导航标签上显示图标</div>
               </div>
               <div class="setting-ctrl">
-                <button type="button" class="toggle-sm on" data-nav-icons-toggle data-action="toggleNavIcons" data-pass-this role="switch" aria-checked="true"
+                <button type="button" class="toggle-sm" data-nav-icons-toggle data-action="toggleNavIcons" data-pass-this role="switch" aria-checked="false"
                   aria-label="显示导航栏图标"></button>
               </div>
             </div>

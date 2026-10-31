@@ -1543,19 +1543,15 @@ function currentStyleId() {
 }
 /**
  * 解析风格偏好：
- * 1) 已存 byok-style → 直接用
- * 2) 老用户迁移：升级前停留在「极简云白」主题的，默认落到极简扁平风格，保证升级瞬间视觉不变
- * 3) 其余默认轻拟物
+ * 1) 已存 byok-style → 直接用（老用户沿用自己选过的质感）
+ * 2) 其余默认极简扁平（2026-11-01 起；此前默认轻拟物）
  */
 function resolveStylePreference() {
   try {
     const saved = localStorage.getItem(STYLE_STORAGE_KEY);
     if (saved) return styleMeta(saved).id;
   } catch (e) { /* localStorage 不可用时按默认走 */ }
-  try {
-    if (localStorage.getItem(THEME_STORAGE_KEY) === 'minimal') return 'minimal';
-  } catch (e) { /* ignore */ }
-  return 'soft';
+  return 'minimal';
 }
 function syncStyleUI(meta) {
   const desc = document.getElementById('style-setting-desc');
@@ -1670,7 +1666,8 @@ document.addEventListener('keydown', (event) => {
 const NAV_ICONS_STORAGE_KEY = 'byok-show-nav-icons';
 
 function navIconsVisible() {
-  try { return localStorage.getItem(NAV_ICONS_STORAGE_KEY) !== 'false'; } catch (e) { return true; }
+  // 默认隐藏（2026-11-01 起）：只有显式选过「显示」的用户才渲染顶部标签图标
+  try { return localStorage.getItem(NAV_ICONS_STORAGE_KEY) === 'true'; } catch (e) { return false; }
 }
 function applyNavIconsVisible(visible) {
   if (visible) delete document.documentElement.dataset.navIcons;

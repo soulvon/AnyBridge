@@ -2,6 +2,10 @@
 
 All notable changes to AnyBridge will be documented in this file.
 
+## v1.0.8 - 2026-11-01
+
+- 改进：默认外观调整——界面风格默认改为「极简扁平」（此前默认「轻拟物」），顶部导航标签图标默认隐藏（此前默认显示）。首帧脚本、设置页开关初始态与运行时默认值三处同步修改，避免启动瞬间跳变；已存过 `byok-style` / `byok-show-nav-icons` 偏好的老用户继续沿用原选择，不会被强制覆盖。
+
 ## v1.0.7 - 2026-11-01
 
 - 修复（严重）：Cursor 一键接入会把用户原账号冲掉且还原无效 —— Cursor 3.27 的真实登录 token 也是 `cursor-safe-storage` 加密格式，被注入逻辑判成「降级残留」直接覆盖 `cursorAuth/*` 7 个键且不留备份；还原侧读的 `cursor-state-backup.json` 全仓库没有写入方，`restore` 永远返回「无需还原」，界面报成功而账号实际仍停在 `cursor@ai.com` 的接管态。
