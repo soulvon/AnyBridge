@@ -320,6 +320,7 @@ AnyBridge 针对不同工具的底层架构提供针对性的接入机制，目�
 | 项目 | 简介 | 适合谁 |
 | :--- | :--- | :--- |
 | [🪁 **Kite**](https://github.com/soulvon/Kite) ![Downloads](https://img.shields.io/github/downloads/soulvon/Kite/total?color=orange) | Windsurf / Devin 多账号号池与 AI IDE 增强套件：多账号共享号池、额度监控、额度耗尽自动切换、多实例分身、界面增强 | Windsurf / Devin 重度用户 |
+| [🛸 **Antigravity-Kite**](https://github.com/soulvon/Antigravity-Kite) ![Downloads](https://img.shields.io/github/downloads/soulvon/Antigravity-Kite/total?color=orange) | Antigravity 多账号无感切号与号池管理：Claude / Gemini 双模型双窗口官方配额（5h+Weekly 带重置倒计时）、安全声明自动确认、Gemini 凭证同步、中英双语自适应 | Antigravity IDE 用户 |
 | [🎫 **BuddyRelay**](https://github.com/soulvon/BuddyRelay) ![Open VSX Downloads](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fopen-vsx.org%2Fapi%2Fsoulvon%2Fbuddy-relay&query=%24.downloadCount&label=openvsx%20downloads&color=orange) | CodeBuddy / WorkBuddy 多账号切换 VS Code 插件：多窗口号池同步、额度流水对账、探针预检与自动切号，已上架 Open VSX 商店 | CodeBuddy / WorkBuddy 用户 |
 | [🔍 **devin-search-mcp**](https://github.com/soulvon/devin-search-mcp) ![npm Downloads](https://img.shields.io/npm/dt/devin-search-mcp?color=orange) | 把 Devin 原生全网实时搜索与网页正文提取抽成标准 MCP：1 秒级响应、零模型额度消耗，`npx -y devin-search-mcp` 直装 | Cursor / Claude Code / Claude Desktop / CodeBuddy 用户 |
 
