@@ -71,6 +71,8 @@ scripts/probe_inspect_bulk.py
 scripts/mitm-sniffer.cjs
 scripts/probe_*.cjs
 scripts/test_*.cjs
+scripts/test_*.mjs
+scripts/test-*.mjs
 scripts/verify_*.cjs
 scripts/test-*.cjs
 scripts/quick_verify.cjs

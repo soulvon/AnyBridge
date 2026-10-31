@@ -87,6 +87,9 @@ const INTERNAL_PATTERNS = [
   [/^[^/]*alive\d*\.(json|zip)$/i, '账号池导出'],
   // Qoder 抓包工具与其日志
   [/^qoder-.*\.(cjs|js|log)$/i, 'Qoder 抓包工具'],
+  // 本地联调脚本（连真实 API、含本机 key 引用）。注意区分：
+  // scripts/*.test.mjs 是被 run-unit-tests.mjs 发现的单元测试，必须入库
+  [/^scripts\/test[-_].+\.(cjs|mjs)$/i, '本地联调脚本'],
 ];
 
 // 本机绝对路径：盘符 + 已知本机目录。命中说明内容绑定某一台机器，
