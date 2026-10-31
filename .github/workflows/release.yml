@@ -129,6 +129,11 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # 发布前最后一道闸：内部资料与本机路径绝不能随产物进入公开仓库。
+      # 这里跑全量（含远端核对），失败即中断，不产出任何发布产物。
+      - name: Check for leaked internal material
+        run: node scripts/check-no-leak.mjs
+
       - name: Build Sidecar Binary
         shell: bash
         env:

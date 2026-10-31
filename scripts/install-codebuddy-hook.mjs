@@ -11,6 +11,13 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const dir = path.join(root, '.codebuddy');
 const file = path.join(dir, 'settings.json');
 
+// 外部经验库指针：只有本机设了 DEVELOP_LOOP_ROOT 才写入生成的规则。
+// 不写死盘符，避免把某台机器的目录结构带进公开仓库。
+const devloopRoot = process.env.DEVELOP_LOOP_ROOT || '';
+const devloopPointer = devloopRoot
+  ? `- 外部经验库：${devloopRoot}/方法/04_前端与交互.md（本机专属，未配置则忽略本行）`
+  : '';
+
 const settings = {
   hooks: {
     PreToolUse: [
@@ -56,8 +63,9 @@ provider:
 # 前端改动强制检查
 
 改 UI 前先读：
-- 通用规范：F:/Ailoop/modules/devloop/方法/04_前端与交互.md
-- 事故判例：F:/Ailoop/modules/devloop/记录/ 下 CSS / UI / 图标相关条目
+- 通用规范：仓库 docs/WORKFLOW.md 与本次涉及页面的既有样式
+- 事故判例：docs/pitfalls.json 中 CSS / UI / 图标相关条目
+${devloopPointer}
 
 硬性禁止：
 - 全大写英文标签、蓝紫渐变、廉价 glow / 雷达 / 呼吸动效、粗彩条、多层卡片。

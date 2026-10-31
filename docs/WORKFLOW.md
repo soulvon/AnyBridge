@@ -115,8 +115,9 @@
 
   | 类型 | 例子 | 入库 |
   |---|---|---|
-  | 说明文档（给使用者/贡献者） | `README`、`CHANGELOG`、`AGENTS.md`、`docs/{ARCHITECTURE,DEVELOPMENT,RELEASE,MACOS_TROUBLESHOOTING,WORKFLOW}`、各处 `README`、PR 模板 | ✅ |
+  | 说明文档（给使用者/贡献者） | `README`、`CHANGELOG`、`docs/{ARCHITECTURE,DEVELOPMENT,RELEASE,MACOS_TROUBLESHOOTING,WORKFLOW}`、各处 `README`、PR 模板 | ✅ |
   | 运行时资源（程序的一部分） | `cursor-core/prompt/**`（提示词模板）、`sidecar/prompts/**`、`src-tauri/resources/**`（插件自带说明/prompt） | ✅ |
+  | AI 操作手册（本机工具用） | `AGENTS.md` —— 含注入实现约束与事故细节 | ❌ 已在 gitignore |
   | 设计/调研/规划文档 | 调研报告、方案设计、逆向分析、规划稿、`spec/**` | ❌ 放本地或 `tmp/` |
 
   检查脚本对已跟踪的 `.md` 做**白名单校验**——不在清单内直接报错。

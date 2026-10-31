@@ -1,7 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 
-const root = 'e:/project/AnyBridge';
+const root = path.resolve(__dirname, '..');
 const out = [];
 function walk(d, depth) {
   if (depth > 5) return;

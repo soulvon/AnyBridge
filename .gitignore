@@ -1,90 +1,73 @@
 node_modules/
+src-tauri/target/
+cursor-core/target/
+src-tauri/binaries/
+sidecar-build/
+.pkg-cache/
+sidecar/*.exe
+*.pyc
+__pycache__/
 captures/
 decompiled/
 templates/
-*.log
-*.pyc
-.DS_Store
+
 .env
 certs/*.pem
-.local-archive/
-
-# Local capture/debug outputs that may contain account data
-_dbg_*
-.tmp*
-/tmp/
-scripts/archive-temp/
-scripts/data/_real_*
-scripts/data/*request*.json
-*.byok-tmp
-*.byok-bak
-*.byok-origin
-src-tauri/$null
-
-# Rust build artifacts
-src-tauri/target/
-cursor-core/target/
-
-# IDE / caches
-.claude/
-.agent/
-.playwright-mcp/
-.vscode/
-.codebuddy/
-.codex-logs/
-.codex-cargo-target/
-.codex-test-target*/
-src-tauri/target-test-codex-session*/
-__pycache__/
-icon-backups/
-
-# Sidecar build & runtime files
-sidecar-build/
-src-tauri/binaries/
-.pkg-cache/
-sidecar/*.exe
 sidecar/certs/*
 !sidecar/certs/.gitkeep
-/byok-icon.png
-/byok-icon.ico
-
-# Local specs / internal notes
-spec/
-proto-schemas/
-PRIVATE_NOTES.md
-
-# Signing keys (private key must NEVER be committed)
 tauri-sign.key
 tauri-sign.key.pub
 tauri-sign.key*
 
-# Local Agent / IDE workspaces & temp artifacts
-.superpowers/
-.devin/
-docs/superpowers/
-
-# Temp/debug files
+*.log
+*.err
+*.bak
+*.bak.png
+*.bak.jpg
+.DS_Store
+_dbg_*
+.tmp*
+/tmp/
+src-tauri/$null
+ui/index.html.baseline
+test-output.txt
 cargo-check-err*.txt
 cargo-check-final.txt
-test-output.txt
+*.byok-tmp
+*.byok-bak
+*.byok-origin
+scripts/archive-temp/
+scripts/data/_real_*
+scripts/data/*request*.json
+
+.vscode/
+.agent/
+.claude/
+.codebuddy/
+.devin/
+.superpowers/
 .qoder/
+.playwright-mcp/
+.codex-logs/
+.codex-cargo-target/
+.codex-test-target*/
+src-tauri/target-test-codex-session*/
+icon-backups/
+mcps/
 
-# Cursor byok 调研资料
-cursor byok调研/
+/byok-icon.png
+/byok-icon.ico
 
-# UI build baseline (local zero-regression compare only)
-ui/index.html.baseline
+AGENTS.md
+PRIVATE_NOTES.md
+proto-schemas/
 
-# Temporary audit/debug scripts (one-off, not for version control)
 scripts/_*
 scripts/probe_*.py
 scripts/export_sub2api_alive.py
 scripts/export_release_review_diffs.py
 scripts/convert_sub2api_to_cpa.py
 scripts/probe_inspect_bulk.py
-
-# MITM sniffer / debug captures (may contain account data, tokens, private instructions)
-logs/
 scripts/mitm-sniffer.cjs
 scripts/probe_*.cjs
 scripts/test_*.cjs
@@ -92,33 +75,6 @@ scripts/verify_*.cjs
 scripts/test-*.cjs
 scripts/quick_verify.cjs
 scripts/update_cli_tools.cjs
-
-# Local credential / alive harvest dumps (never commit)
-cpa_alive100/
-cpa_alive100.zip
-sub2api_alive100.json
-mcps/
-
-# Local Tauri dev run logs (contain dev machine absolute paths)
-dev-tauri.err
-*.err
-
-# Image backups / one-off screenshot copies
-*.bak.png
-*.bak.jpg
-*.bak
-
-# 发布渠道推广文案（不进版本库）
-宣传.md
-
-# Temporary dev notes
-findings.md
-progress.md
-task_plan.md
-待办.md
-
-# 一次性诊断/复现脚本：绑定本机账号、本机 anybridge 配置与本机绝对路径，
-# 对其他人不可复现（AnyRouter 二轮卡住/520、Qoder 抓包、Antigravity 逆向的排查产物）
 scripts/ab-*
 scripts/bisect-*
 scripts/cycle-*
@@ -135,22 +91,8 @@ scripts/check-ui-unlock-priority.*
 scripts/find-cmd.*
 scripts/find-sec.*
 scripts/read-tier.*
-qoder-*.cjs
 tmp_*.mjs
 
-# 设计/调研/规划文档（内部过程产物，不入库；只提交说明文档）
-docs/*research*.md
-docs/*-research*.md
-docs/*-api*.md
-docs/*-api_en.md
-docs/*设计*.md
-docs/*调研*.md
-docs/*方案*.md
-docs/*规划*.md
-docs/*总结*.md
-docs/*分析*.md
-
-# 例外：这两个是通用校验工具（无本机路径依赖），保留入库
 !scripts/verify-docs-page.cjs
 !scripts/verify-ui-baseline.mjs
 !scripts/verify-version-probe.mjs

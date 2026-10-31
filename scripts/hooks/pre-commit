@@ -12,7 +12,8 @@ if ! command -v node >/dev/null 2>&1; then
   exit 1
 fi
 
-node scripts/check-ui.mjs && node scripts/check-key-features.mjs --fast
+# 防泄漏门控排在最前：内部资料/本机路径一旦推上去就无法干净撤回
+node scripts/check-no-leak.mjs --fast && node scripts/check-ui.mjs && node scripts/check-key-features.mjs --fast
 status=$?
 if [ $status -ne 0 ]; then
   echo "提交检查未通过，提交已阻止。请修复后重新提交。"

@@ -3246,8 +3246,8 @@ module.exports = {};"#,
     fn to_ide_path_lowercases_drive_and_uses_backslash() {
         // IDE languagepacks.json 的路径格式：小写盘符 + 反斜杠
         assert_eq!(
-            to_ide_path(Path::new("C:/Users/admin/.windsurf/extensions/p/translations/main.i18n.json")),
-            "c:\\Users\\admin\\.windsurf\\extensions\\p\\translations\\main.i18n.json"
+            to_ide_path(Path::new("C:/Users/test/.windsurf/extensions/p/translations/main.i18n.json")),
+            "c:\\Users\\test\\.windsurf\\extensions\\p\\translations\\main.i18n.json"
         );
         assert_eq!(to_ide_path(Path::new("relative/path.json")), "relative\\path.json");
     }

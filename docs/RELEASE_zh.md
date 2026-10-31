@@ -80,7 +80,7 @@ C 盘剩余空间不足（实测仅剩 0.1GB）即报这个假错误。手工执
 
 ```powershell
 New-Item -ItemType Directory -Force tmp/wix-temp | Out-Null
-$env:TEMP="E:\project\AnyBridge\tmp\wix-temp"; $env:TMP=$env:TEMP
+$env:TEMP=(Join-Path (Get-Location) 'tmp\wix-temp'); $env:TMP=$env:TEMP
 npx tauri build --config src-tauri/tauri.local.conf.json
 ```
 

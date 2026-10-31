@@ -297,6 +297,16 @@ section('提交卫生（不该提交的不提交）');
     ok(`${pat} 被 gitignore 覆盖（${label}）`, ignored, ignored ? '' : '规则缺失或失效');
   }
 
+  // 文件级规则不能用 __probe__ 后缀探测，单独校验
+  {
+    let ignored = false;
+    try {
+      execSync('git check-ignore -q AGENTS.md', { cwd: root, stdio: 'pipe' });
+      ignored = true;
+    } catch { ignored = false; }
+    ok('AGENTS.md 被 gitignore 覆盖（AI 操作手册不入库）', ignored, ignored ? '' : '规则缺失或失效');
+  }
+
   // 3.7.2 已跟踪文件里不得有 日志/临时/敏感/构建产物
   let tracked = '';
   try {
@@ -347,19 +357,18 @@ section('提交卫生（不该提交的不提交）');
   // 3.7.5 文档纪律：只允许「说明文档」入库，设计/调研/规划文档不入库
   //
   // 区分标准：
-  //   ✅ 说明文档：给使用者/贡献者看的（README、CHANGELOG、AGENTS、
+  //   ✅ 说明文档：给使用者/贡献者看的（README、CHANGELOG、
   //      架构/开发/发布/排障/WORKFLOW），以及**运行时资源**（Cursor 提示词
   //      模板、sidecar 与插件自带的 prompt/deploy 说明——它们是程序的一部分）
+  //   ⚠ AGENTS.md 不在此列：它是本机 AI 操作手册，含实现约束细节，已在 gitignore
   //   ❌ 设计文档：开发过程产物（调研报告、方案设计、规划、逆向分析），
   //      随迭代快速过期，入库只会变成噪音和泄密风险
   const DOC_ALLOW = [
     /^README(_en)?\.md$/i,
     /^CHANGELOG\.md$/i,
-    /^AGENTS\.md$/i,
     /^docs\/capabilities\.md$/i,
     /^docs\/(ARCHITECTURE|DEVELOPMENT|RELEASE|MACOS_TROUBLESHOOTING|WORKFLOW)(_zh)?\.md$/i,
     /^docs\/subsystems\/[a-z0-9-]+\.md$/i,
-    /^docs\/experience\/.+\.md$/i,   // 项目层经验草稿（devloop 自动采集）
     /(^|\/)README\.md$/i,
     /^\.github\/pull_request_template\.md$/i,
     /^cursor-core\/prompt\//,        // 运行时提示词模板（程序资源）
