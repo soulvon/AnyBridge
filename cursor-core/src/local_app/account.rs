@@ -69,6 +69,55 @@ pub async fn restore_if_backed_up() -> Result<RestoreOutcome> {
     restore_at(&state_db_path()?, &ledger_path()?).await
 }
 
+/// 清掉 Cursor 自己缓存的「强制 HTTP/1.1」标记。
+///
+/// Cursor 冷启动时先读 `cursorai/serverConfig` 缓存决定 transport 模式，之后才去
+/// 拉实时配置。缓存里若留着 `http2Config: HTTP2_CONFIG_FORCE_ALL_DISABLED`，
+/// 客户端会进 http1_sse（InferenceService 两段式 + InferenceStreamResponse 事件流），
+/// 本实现不支持那条链路，表现为发消息必报 `Server error`；而且要等 10 分钟轮询
+/// 到新配置才会重建 transport（2026-11-02 实测）。
+///
+/// 这里在接入时把该字段删掉，让客户端回到默认的 h2 / agent.v1.RunSSE 链路。
+/// 写库失败不视为致命错误：Cursor 正在运行时数据库可能被占用，等用户重启客户端
+/// 或者轮询生效即可。
+pub async fn clear_cached_http2_force() -> Result<()> {
+    clear_cached_http2_force_at(&state_db_path()?).await
+}
+
+async fn clear_cached_http2_force_at(db_path: &Path) -> Result<()> {
+    const KEY: &str = "cursorai/serverConfig";
+    // 只连已存在的库：不能因为路径不对就凭空造一个空 state.vscdb
+    let options = sqlx::sqlite::SqliteConnectOptions::new()
+        .filename(db_path)
+        .create_if_missing(false);
+    let mut connection = match SqliteConnection::connect_with(&options).await {
+        Ok(connection) => connection,
+        Err(error) => {
+            tracing::warn!(%error, "cannot open Cursor state db to clear the http2 cache");
+            return Ok(());
+        }
+    };
+    let Some(raw) = select_value(&mut connection, KEY).await? else {
+        return Ok(());
+    };
+    let Ok(mut config) = serde_json::from_str::<serde_json::Value>(&raw) else {
+        return Ok(());
+    };
+    let Some(object) = config.as_object_mut() else {
+        return Ok(());
+    };
+    if object.remove("http2Config").is_none() {
+        return Ok(());
+    }
+    sqlx::query("UPDATE ItemTable SET value = ? WHERE key = ?")
+        .bind(config.to_string())
+        .bind(KEY)
+        .execute(&mut connection)
+        .await?;
+    tracing::info!("cleared Cursor's cached FORCE_ALL_DISABLED http2 flag");
+    Ok(())
+}
+
 fn state_db_path() -> Result<PathBuf> {
     let home = dirs::home_dir()
         .ok_or_else(|| Error::Config("cannot resolve user home directory".into()))?;
@@ -508,5 +557,42 @@ mod tests {
             restore_at(&path, &ledger).await.unwrap(),
             RestoreOutcome::NotBackedUp
         );
+    }
+
+    /// 客户端缓存里的「强制 h1」标记必须能被清掉，其它配置项保持原样。
+    #[tokio::test]
+    async fn clears_cached_http2_flag_without_touching_other_config() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("state.vscdb");
+        let payload = serde_json::json!({
+            "configVersion": "v1",
+            "http2Config": "HTTP2_CONFIG_FORCE_ALL_DISABLED",
+            "keepMe": 42,
+        })
+        .to_string();
+        seed(&path, &[("cursorai/serverConfig", &payload)]).await;
+
+        clear_cached_http2_force_at(&path).await.unwrap();
+
+        let raw = read(&path, "cursorai/serverConfig").await.unwrap();
+        let config: serde_json::Value = serde_json::from_str(&raw).unwrap();
+        assert!(config.get("http2Config").is_none(), "h1 标记必须被清掉");
+        assert_eq!(config.get("keepMe").and_then(|v| v.as_i64()), Some(42));
+        assert_eq!(
+            config.get("configVersion").and_then(|v| v.as_str()),
+            Some("v1")
+        );
+    }
+
+    /// 没有该键时保持幂等，不报错。
+    #[tokio::test]
+    async fn clearing_cached_http2_flag_is_idempotent() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("state.vscdb");
+        let payload = serde_json::json!({ "configVersion": "v1" }).to_string();
+        seed(&path, &[("cursorai/serverConfig", &payload)]).await;
+        clear_cached_http2_force_at(&path).await.unwrap();
+        clear_cached_http2_force_at(&path).await.unwrap();
+        assert!(read(&path, "cursorai/serverConfig").await.is_some());
     }
 }

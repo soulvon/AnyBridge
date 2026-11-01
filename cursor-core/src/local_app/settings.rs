@@ -6,11 +6,14 @@ use serde_json::Value;
 use crate::{config::managed_data_dir, Error, Result};
 
 const NO_PROXY_KEY: &str = "http.noProxy";
-const KEYS: [&str; 5] = [
+/// 不写 `cursor.general.disableHttp2`：它是客户端 transport 模式的判定依据之一
+/// （`isHttp2Disabled()`），置真会把 Cursor 按在 http1_sse 模式（InferenceService
+/// 两段式 + InferenceStreamResponse 事件流），与 agent.v1 的 RunSSE 链路不兼容，
+/// 表现为发消息必报 `Server error`（2026-11-01 实测）。
+const KEYS: [&str; 4] = [
     "http.proxy",
     "http.proxyKerberosServicePrincipal",
     "http.proxySupport",
-    "cursor.general.disableHttp2",
     "http.experimental.systemCertificatesV2",
 ];
 /// `proxySupport` 必须用 `override`：`on` 的语义是"使用代理设置"，
@@ -125,7 +128,7 @@ fn write_proxy_settings_body(proxy_url: &str, settings: &mut BTreeMap<String, Va
     settings.insert(KEYS[1].into(), Value::String(proxy_url.into()));
     settings.insert(KEYS[2].into(), Value::String(MANAGED_PROXY_SUPPORT.into()));
     settings.insert(KEYS[3].into(), Value::Bool(true));
-    settings.insert(KEYS[4].into(), Value::Bool(true));
+    settings.insert(KEYS[3].into(), Value::Bool(true));
 }
 
 pub fn write_proxy_settings(proxy_url: &str) -> Result<()> {
@@ -172,7 +175,7 @@ pub fn settings_match(proxy_url: &str) -> Result<bool> {
         && settings.get(KEYS[1]) == Some(&Value::String(proxy_url.into()))
         && settings.get(KEYS[2]) == Some(&Value::String(MANAGED_PROXY_SUPPORT.into()))
         && settings.get(KEYS[3]) == Some(&Value::Bool(true))
-        && settings.get(KEYS[4]) == Some(&Value::Bool(true)))
+        && settings.get(KEYS[3]) == Some(&Value::Bool(true)))
 }
 
 /// 启动时清理上一次接管残留的代理设置。
@@ -188,7 +191,7 @@ pub fn clear_stale_managed_settings() -> Result<()> {
         || is_loopback_proxy(settings.get(KEYS[1]));
     let carries_our_mark = settings.get(KEYS[2]) == Some(&Value::String(MANAGED_PROXY_SUPPORT.into()))
         || settings.get(KEYS[3]) == Some(&Value::Bool(true))
-        || settings.get(KEYS[4]) == Some(&Value::Bool(true));
+        || settings.get(KEYS[3]) == Some(&Value::Bool(true));
     if loopback && carries_our_mark {
         clear_proxy_settings()?;
     }
