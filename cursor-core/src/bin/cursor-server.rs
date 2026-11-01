@@ -39,7 +39,12 @@ fn init_tracing() {
             // hudsucker 的 TLS / 连接错误只有 debug 级别才输出，接入故障排查靠它。
             // cursor_relay 是接入链路打点用的独立 target，必须单独放行，
             // 否则 stage=connect/tls/http 这些关键日志会被过滤器吞掉。
-            "anybridge_cursor_core=info,cursor_relay=info,hudsucker=debug".into()
+            //
+            // 注意：lib target 名字是 `cursor_server`（Cargo.toml 的 [lib] name），
+            // 只用 anybridge_cursor_core 会漏掉 run / tool / conversation 全部日志
+            // （2026-11-01 排查 multitask 子代理时踩到：16MB 日志里只有 hudsucker 噪音）。
+            "cursor_server=info,anybridge_cursor_core=info,cursor_relay=info,hudsucker=debug"
+                .into()
         })
     };
 

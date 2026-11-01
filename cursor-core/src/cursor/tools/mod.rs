@@ -267,6 +267,97 @@ impl ToolDispatcher {
             tool_call_dispatch::InteractionContinuation::Pending => ClientToolEvent::Pending,
         })
     }
+
+    /// 后台子代理结算：客户端回传 `BackgroundTaskCompletion` 时，用它把仍在等待的
+    /// Task exec 结算掉。缺了这步父 run 会一直停在「已派发子代理」，客户端随后
+    /// 把它显示成 Stopped（issue #39）。
+    pub async fn settle_background_tasks(
+        &self,
+        completions: &[pb::BackgroundTaskCompletion],
+    ) -> Result<Vec<ToolCompletion>> {
+        let mut settled = Vec::new();
+        for completion in completions {
+            let status = completion.status;
+            let terminal = status == pb::BackgroundTaskStatus::Success as i32
+                || status == pb::BackgroundTaskStatus::Error as i32
+                || status == pb::BackgroundTaskStatus::Aborted as i32;
+            if !terminal {
+                continue;
+            }
+            let Some(tool_call_id) = completion
+                .tool_call_id
+                .as_deref()
+                .filter(|id| !id.is_empty())
+            else {
+                tracing::warn!(status, "background task completion without tool_call_id");
+                continue;
+            };
+            let Some(pending) = self.take_pending_task(tool_call_id).await else {
+                tracing::info!(
+                    tool_call_id,
+                    status,
+                    "background task completion without a pending Task exec"
+                );
+                continue;
+            };
+            let text = completion
+                .detail
+                .clone()
+                .filter(|text| !text.is_empty())
+                .or_else(|| Some(completion.title.clone()))
+                .unwrap_or_default();
+            let message = if status == pb::BackgroundTaskStatus::Success as i32 {
+                pb::exec_client_message::Message::SubagentResult(pb::SubagentResult {
+                    result: Some(pb::subagent_result::Result::Success(pb::SubagentSuccess {
+                        agent_id: completion.subagent_id.clone().unwrap_or_default(),
+                        final_message: Some(text),
+                        tool_call_count: 0,
+                        background_reason: pb::SubagentBackgroundReason::Unspecified as i32,
+                        transcript_path: None,
+                    })),
+                })
+            } else {
+                pb::exec_client_message::Message::SubagentResult(pb::SubagentResult {
+                    result: Some(pb::subagent_result::Result::Error(pb::SubagentError {
+                        agent_id: completion.subagent_id.clone(),
+                        error: text,
+                    })),
+                })
+            };
+            settled.push(tool_call_result::from_exec_settled(pending, &message)?);
+        }
+        Ok(settled)
+    }
+
+    /// `BackgroundSubagentAction` 只带 tool_call_id、没有结论正文：命中挂起 Task 时
+    /// 明确按「已结束但未回传结论」结算，避免父 run 永久等待。
+    pub async fn settle_background_subagent(
+        &self,
+        tool_call_id: &str,
+    ) -> Result<Option<ToolCompletion>> {
+        let Some(pending) = self.take_pending_task(tool_call_id).await else {
+            return Ok(None);
+        };
+        let message = pb::exec_client_message::Message::SubagentResult(pb::SubagentResult {
+            result: Some(pb::subagent_result::Result::Success(pb::SubagentSuccess {
+                // 这条 Action 只有 tool_call_id：派生一个稳定 id，
+                // 保证客户端能把结果关联回这条 Task。
+                agent_id: format!("subagent-{tool_call_id}"),
+                final_message: Some(
+                    "子代理已结束，但客户端没有回传结论正文（AnyBridge 已按完成结算）。".into(),
+                ),
+                tool_call_count: 0,
+                background_reason: pb::SubagentBackgroundReason::Unspecified as i32,
+                transcript_path: None,
+            })),
+        });
+        Ok(Some(tool_call_result::from_exec_settled(pending, &message)?))
+    }
+
+    async fn take_pending_task(&self, tool_call_id: &str) -> Option<runtime::PendingExec> {
+        let id = self.runtime.running_task_exec_id(tool_call_id).await?;
+        self.runtime.take_exec(id).await
+    }
 }
 
 fn validation_failure(call: &ToolCall, message: String) -> DispatchedTool {
@@ -303,4 +394,137 @@ fn current_turn_step_count(messages: &[CanonicalMessage]) -> usize {
             _ => 0,
         })
         .sum()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    fn task_call(call_id: &str) -> ToolCall {
+        ToolCall {
+            index: 0,
+            call_id: call_id.into(),
+            model_call_id: "model-call".into(),
+            name: "Task".into(),
+            arguments_text: "{}".into(),
+            arguments: json!({
+                "run_in_background": true,
+                "subagent_type": "generalPurpose",
+                "description": "do work",
+                "model": "m",
+                "prompt": "p"
+            }),
+            argument_error: None,
+        }
+    }
+
+    fn dispatcher() -> ToolDispatcher {
+        ToolDispatcher::new(CursorToolRuntime::default())
+    }
+
+    fn subagent_context() -> ExecContext {
+        ExecContext {
+            default_subagent_model: "m".into(),
+            ..Default::default()
+        }
+    }
+
+    fn background_task(tool_call_id: &str, detail: &str) -> pb::BackgroundTaskCompletion {
+        pb::BackgroundTaskCompletion {
+            task_id: "task-1".into(),
+            status: pb::BackgroundTaskStatus::Success as i32,
+            title: "子代理".into(),
+            detail: Some(detail.into()),
+            tool_call_id: Some(tool_call_id.into()),
+            subagent_id: Some("agent-1".into()),
+            ..Default::default()
+        }
+    }
+
+    fn task_is_background(completion: &ToolCompletion) -> bool {
+        match completion.tool_call().tool.as_ref() {
+            Some(pb::tool_call::Tool::TaskToolCall(task)) => {
+                match task.result.as_ref().and_then(|result| result.result.as_ref()) {
+                    Some(pb::task_result::Result::Success(success)) => success.is_background,
+                    other => panic!("expected task success, got {other:?}"),
+                }
+            }
+            other => panic!("expected TaskToolCall, got {other:?}"),
+        }
+    }
+
+    /// 客户端回传后台子代理结论时，挂起的 Task 必须结算成「已完成 + 带结论」，
+    /// 否则父对话一直停在 Stopped（issue #39）。
+    #[tokio::test]
+    async fn background_task_completion_settles_pending_task() {
+        let dispatcher = dispatcher();
+        dispatcher
+            .runtime
+            .reserve_exec(&task_call("call-1"), &subagent_context())
+            .await
+            .unwrap();
+
+        let settled = dispatcher
+            .settle_background_tasks(&[background_task("call-1", "子代理的结论")])
+            .await
+            .expect("settle 不应报错");
+
+        assert_eq!(settled.len(), 1, "挂起的 Task 必须被结算");
+        assert!(!task_is_background(&settled[0]), "结算后不能再标记后台运行中");
+        assert!(settled[0].result().content.contains("子代理的结论"));
+        assert!(
+            dispatcher
+                .settle_background_tasks(&[background_task("call-1", "x")])
+                .await
+                .expect("duplicate settle 不应报错")
+                .is_empty(),
+            "重复通知不得二次结算"
+        );
+    }
+
+    /// BackgroundSubagentAction 只有 tool_call_id，也必须能解除等待，不能静默丢弃。
+    #[tokio::test]
+    async fn background_subagent_action_settles_pending_task() {
+        let dispatcher = dispatcher();
+        dispatcher
+            .runtime
+            .reserve_exec(&task_call("call-2"), &subagent_context())
+            .await
+            .unwrap();
+
+        let settled = dispatcher
+            .settle_background_subagent("call-2")
+            .await
+            .expect("settle 不应报错")
+            .expect("挂起的 Task 应被结算");
+        assert!(!task_is_background(&settled));
+        assert!(
+            dispatcher
+                .settle_background_subagent("call-2")
+                .await
+                .expect("duplicate settle 不应报错")
+                .is_none(),
+            "重复通知不得二次结算"
+        );
+    }
+
+    /// 非终结状态（进度上报）不得结算，避免把还在跑的子代理标成完成。
+    #[tokio::test]
+    async fn progress_completion_does_not_settle_task() {
+        let dispatcher = dispatcher();
+        dispatcher
+            .runtime
+            .reserve_exec(&task_call("call-3"), &subagent_context())
+            .await
+            .unwrap();
+
+        let mut progress = background_task("call-3", "50%");
+        progress.status = pb::BackgroundTaskStatus::Unspecified as i32;
+        assert!(dispatcher
+            .settle_background_tasks(&[progress])
+            .await
+            .expect("progress 不应报错")
+            .is_empty());
+    }
 }

@@ -223,6 +223,11 @@ impl CursorHarness {
 }
 
 async fn apply_cursor_configuration(proxy_url: &str) -> Result<()> {
+    // 混合模式：
+    // - 已登录（含 Cursor 3.27 的 safe-storage 加密 token）→ 账号原样保留，
+    //   解锁靠 MITM 接管推理请求 + 本地模型清单，跟账号无关；
+    // - 未登录 → 注入本地账号让 BYOK 免登录可用（注入前落账本，关闭时可还原）。
+    // 判据只看 token 是否为空/是否为本地 token，绝不按加密格式猜登录态。
     account::inject_if_missing().await?;
     settings::write_proxy_settings(proxy_url)
 }

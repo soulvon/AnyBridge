@@ -98,7 +98,9 @@ impl DecodedAppend {
                 _ => ("other", 0, 0),
             })
             .unwrap_or(("none", 0, 0));
-        let state = request.conversation_state.as_ref();
+        let state = crate::cursor::compile::state::decode(request)
+            .ok()
+            .flatten();
         serde_json::json!({
             "append_seqno": self.seqno,
             "message_type": "run_request",
@@ -107,8 +109,13 @@ impl DecodedAppend {
             "action_type": action_type,
             "conversation_history_messages": history_messages,
             "conversation_history_images": history_images,
-            "root_message_count": state.map_or(0, |state| state.root_prompt_messages_json.len()),
-            "turn_count": state.map_or(0, |state| state.turns.len()),
+            "root_message_count": state.as_ref().map_or(0, |value| value.root_prompt_messages_json.len()),
+            "turn_count": state.as_ref().map_or(0, |value| value.turns.len()),
+            "state_is_reference": request
+                .conversation_state
+                .as_deref()
+                .and_then(crate::cursor::compile::state::reference)
+                .is_some(),
             "prefetched_blob_count": request.pre_fetched_blobs.len(),
         })
     }
@@ -172,10 +179,32 @@ pub fn decode(request: &ai::BidiAppendRequest) -> Result<DecodedAppend> {
     }
     let payload = hex::decode(&request.data)
         .map_err(|error| Error::Protocol(format!("invalid BidiAppend hex: {error}")))?;
+    let message = match agent::AgentClientMessage::decode(payload.as_slice()) {
+        Ok(message) => message,
+        Err(error) => {
+            // 解码失败时把**完整**报文字节落盘：只看前 96 字节不足以对齐字段表，
+            // 会把「解析偏移」误判成「单个字段类型不符」，改一处漏一处。
+            let dump = std::env::var_os("ANYBRIDGE_CONFIG_DIR")
+                .map(std::path::PathBuf::from)
+                .unwrap_or_else(std::env::temp_dir)
+                .join(format!("failed-append-{}.bin", request.append_seqno));
+            let _ = std::fs::write(&dump, &payload);
+            let head = hex::encode(&payload[..payload.len().min(96)]);
+            tracing::warn!(
+                seqno = request.append_seqno,
+                bytes = payload.len(),
+                head = %head,
+                dump = %dump.display(),
+                %error,
+                "cannot decode AgentClientMessage"
+            );
+            return Err(error.into());
+        }
+    };
     Ok(DecodedAppend {
         request_id: request_id.into(),
         seqno: request.append_seqno,
-        message: agent::AgentClientMessage::decode(payload.as_slice())?,
+        message,
     })
 }
 

@@ -1,4 +1,13 @@
 //! Integrates local Cursor account state.
+//!
+//! 账号策略（混合模式，2026-11-01 定稿）：
+//! - **已登录**（任何非空、非本地 token，含 Cursor 3.27 的 safe-storage 加密格式）：
+//!   一律保留用户自己的号，一个字都不改。解锁靠 MITM 接管推理请求，跟账号无关。
+//! - **未登录**：注入本地账号让 BYOK 可用（免登录），注入前把原值落进账本，
+//!   关闭接管时逐键写回。
+//!
+//! 历史教训：曾把 safe-storage 当作「旧版解不开的残留」直接覆盖，3.27 的真实登录
+//! 被冲掉且无从还原（issue 侧 2026-11-01）。判据不能靠 token 格式猜登录态。
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
@@ -16,17 +25,7 @@ const SUBJECT: &str = "cursor-local-user";
 const MEMBERSHIP_TYPE: &str = "ultra";
 const SUBSCRIPTION_STATUS: &str = "active";
 
-/// 新版 Cursor（3.27+）登录后会把 token 升级成 safe-storage 加密格式；
-/// 旧版本解不开这个格式，读到它就等于未登录（`Auth init timeout`），
-/// agent 请求根本不会发出。因此这种值不能当作"已有真实登录"来跳过注入。
-///
-/// 注意：新版 Cursor 的**真实登录**也是这个格式，所以覆盖它等于换掉用户账号。
-/// 覆盖前必须把原值写进账本（`write_ledger`），还原时逐键写回——判据无法区分
-/// "降级残留"与"新版真实登录"，只有账本能让这次覆盖变成可逆操作。
-const SAFE_STORAGE_PREFIX: &str = "cursor-safe-storage";
-
-/// 注入会覆盖的账号键。账本、写入、还原必须共用这一份清单，
-/// 任何一处漏键都会让还原后的账号处于半覆盖状态。
+/// 注入会覆盖的账号键。账本、写入、还原必须共用这一份清单。
 const ACCOUNT_KEYS: [&str; 7] = [
     "cursorAuth/accessToken",
     "cursorAuth/refreshToken",
@@ -37,24 +36,22 @@ const ACCOUNT_KEYS: [&str; 7] = [
     "cursorAuth/stripeSubscriptionStatus",
 ];
 
-/// 账号接管账本（src-tauri 的还原路径读同一份文件，文件名不得单方面修改）。
-///
-/// - `original`：接入前用户的原值，**只在首次接管时记录**（`null` = 当时没有这个键）
-/// - `applied`：我们写进去的值，还原时用来判断"当前值是否仍属于我们"
+/// 账号账本（src-tauri 的还原路径读同一份文件，文件名不得单方面修改）。
+/// `original` 只在首次注入时记录（null = 当时没有该键）；`applied` 是我们写入的值，
+/// 还原时用来判断当前值是否仍属于注入态。
 const LEDGER_FILE_NAME: &str = "cursor-auth-backup.json";
 
 #[derive(Debug, Serialize, Deserialize)]
 struct AuthLedger {
+    #[allow(dead_code)]
     version: u32,
     original: BTreeMap<String, Option<String>>,
     applied: BTreeMap<String, Option<String>>,
 }
 
-/// 还原结果。必须区分「从未接管过」与「真的写回了原值」，
-/// 不允许把"账本缺失"当成成功——那正是账号被冲后无从还原的形态。
+/// 还原结果：必须区分「从未注入过」与「真的写回了原值」。
 #[derive(Debug, PartialEq, Eq)]
 pub enum RestoreOutcome {
-    /// 没有账本 = 从未覆盖过用户账号
     NotBackedUp,
     Restored {
         restored: usize,
@@ -62,11 +59,12 @@ pub enum RestoreOutcome {
     },
 }
 
+/// 未登录时注入本地账号（BYOK 免登录）；已登录时原样保留、什么都不写。
 pub async fn inject_if_missing() -> Result<()> {
     inject_if_missing_at(&state_db_path()?, &ledger_path()?).await
 }
 
-/// 关闭接管时把账号状态写回用户原值（对称于 [`inject_if_missing`]）。
+/// 关闭接管时把账号写回注入前的原值（对称于 [`inject_if_missing`]）。
 pub async fn restore_if_backed_up() -> Result<RestoreOutcome> {
     restore_at(&state_db_path()?, &ledger_path()?).await
 }
@@ -112,10 +110,7 @@ async fn connect(path: &Path) -> Result<SqliteConnection> {
     Ok(connection)
 }
 
-async fn select_value(
-    connection: &mut SqliteConnection,
-    key: &str,
-) -> Result<Option<String>> {
+async fn select_value(connection: &mut SqliteConnection, key: &str) -> Result<Option<String>> {
     let row = sqlx::query("SELECT CAST(value AS TEXT) AS value FROM ItemTable WHERE key = ?")
         .bind(key)
         .fetch_optional(connection)
@@ -154,8 +149,8 @@ fn applied_values(token: &str) -> BTreeMap<String, Option<String>> {
         .collect()
 }
 
-/// 读账本。文件不存在 = 从未接管；存在但解析失败 = 状态未知，必须报错，
-/// 绝不能当成"没有账本"继续（否则会静默失去唯一还原源）。
+/// 读账本。文件不存在 = 从未注入；存在但解析失败 = 状态未知，必须报错，
+/// 不能当成「没有账本」继续（否则会静默失去唯一还原源）。
 async fn read_ledger(path: &Path) -> Result<Option<AuthLedger>> {
     match tokio::fs::read(path).await {
         Ok(data) => serde_json::from_slice(&data).map(Some).map_err(|error| {
@@ -169,8 +164,8 @@ async fn read_ledger(path: &Path) -> Result<Option<AuthLedger>> {
     }
 }
 
-/// 覆盖前落账本。已有账本时保留首次记录的 `original`，只刷新 `applied`，
-/// 这样多轮接入不会把"我们自己的假账号"记成用户原值。
+/// 注入前落账本。已有账本时保留首次记录的 `original`，只刷新 `applied`，
+/// 这样多轮接入不会把本地账号记成用户原值。
 async fn write_ledger(
     path: &Path,
     original: &BTreeMap<String, Option<String>>,
@@ -200,10 +195,13 @@ async fn write_ledger(
     Ok(())
 }
 
-/// 非空、非本地 token、非 safe-storage = 用户自己的真实登录，保留不动。
+/// 已有任何非空、非本地 token = 用户自己的登录态，一律保留。
+///
+/// **不要**再按 token 格式猜（safe-storage 是 Cursor 3.27 的真实登录格式，
+/// 曾经把它当「降级残留」覆盖，直接把用户账号冲掉且无从还原）。
 fn keeps_existing_login(value: &str, token: &str) -> bool {
     let value = value.trim();
-    !value.is_empty() && value != token && !value.starts_with(SAFE_STORAGE_PREFIX)
+    !value.is_empty() && value != token
 }
 
 async fn inject_if_missing_at(db_path: &Path, ledger: &Path) -> Result<()> {
@@ -216,12 +214,13 @@ async fn inject_if_missing_at(db_path: &Path, ledger: &Path) -> Result<()> {
         .and_then(Option::as_deref)
         .is_some_and(|value| keeps_existing_login(value, &token))
     {
+        // 混合模式：用户已登录，账号一概不动。
         return Ok(());
     }
 
     let applied = applied_values(&token);
     // 覆盖前必须先把原值落盘：写账本失败就拒绝注入。
-    // 宁可免登录不生效，也不能再出现"账号被冲掉且无处可还原"。
+    // 宁可免登录不生效，也不能出现「账号被冲掉且无处可还原」。
     write_ledger(ledger, &current, &applied).await?;
 
     let mut transaction = connection.begin().await?;
@@ -238,7 +237,7 @@ async fn inject_if_missing_at(db_path: &Path, ledger: &Path) -> Result<()> {
         email = EMAIL,
         subject = SUBJECT,
         ledger = %ledger.display(),
-        "injected local Cursor account (original values recorded in ledger)"
+        "injected local Cursor account for logged-out user (original values recorded)"
     );
     Ok(())
 }
@@ -286,11 +285,7 @@ async fn restore_at(db_path: &Path, ledger: &Path) -> Result<RestoreOutcome> {
     }
     transaction.commit().await?;
     tokio::fs::remove_file(ledger).await?;
-    tracing::info!(
-        restored,
-        kept_user_changes,
-        "restored Cursor account state from ledger"
-    );
+    tracing::info!(restored, kept_user_changes, "restored Cursor account state");
     Ok(RestoreOutcome::Restored {
         restored,
         kept_user_changes,
@@ -369,72 +364,35 @@ mod tests {
         value
     }
 
-    async fn seeded_db(path: &Path, access_token: &str) {
-        seed(path, &[("cursorAuth/accessToken", access_token)]).await;
-    }
-
-    #[test]
-    fn recognizes_non_empty_official_bearer_tokens() {
-        let mut headers = HeaderMap::new();
-        headers.insert(header::AUTHORIZATION, "Bearer official-token".parse().unwrap());
-        assert!(has_official_cursor_authorization(&headers));
-
-        headers.insert(header::AUTHORIZATION, "Bearer   ".parse().unwrap());
-        assert!(!has_official_cursor_authorization(&headers));
-    }
-
-    /// 升级新版 Cursor 会把 token 升级成 safe-storage 加密格式；降级回旧版本后
-    /// 这个格式解不开，若注入逻辑把它当"真实登录"跳过，agent 请求将不会发出。
+    /// 混合模式核心：任何真实登录（含 Cursor 3.27 的 safe-storage 加密格式）
+    /// 都必须原样保留，一个键都不许改。
     #[tokio::test]
-    async fn inject_overwrites_incompatible_safe_storage_tokens() {
+    async fn keeps_real_login_including_safe_storage() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("state.vscdb");
-        let ledger = dir.path().join("ledger.json");
-        seeded_db(&path, "cursor-safe-storage:v1:written-by-cursor-3-27").await;
-
-        inject_if_missing_at(&path, &ledger).await.unwrap();
-
-        assert_eq!(
-            read(&path, "cursorAuth/accessToken").await.unwrap(),
-            local_token().unwrap()
-        );
+        let ledger = dir.path().join(LEDGER_FILE_NAME);
+        for token in [
+            "eyJhbGciOiJSUzI1NiJ9.real-login-payload.real-signature",
+            "cursor-safe-storage:v1:written-by-cursor-3-27",
+        ] {
+            seed(&path, &[("cursorAuth/accessToken", token)]).await;
+            inject_if_missing_at(&path, &ledger).await.unwrap();
+            assert_eq!(
+                read(&path, "cursorAuth/accessToken").await.as_deref(),
+                Some(token),
+                "已有登录不得被覆盖"
+            );
+            assert!(!ledger.exists(), "保留登录时不应落账本");
+        }
     }
 
+    /// 未登录（accessToken 缺失/空）→ 注入本地账号，让 BYOK 免登录可用。
     #[tokio::test]
-    async fn inject_is_idempotent_for_local_tokens() {
+    async fn injects_local_account_when_logged_out() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("state.vscdb");
-        let ledger = dir.path().join("ledger.json");
-        seeded_db(&path, &local_token().unwrap()).await;
-
-        inject_if_missing_at(&path, &ledger).await.unwrap();
-
-        assert_eq!(
-            read(&path, "cursorAuth/accessToken").await.unwrap(),
-            local_token().unwrap()
-        );
-    }
-
-    #[tokio::test]
-    async fn inject_preserves_real_login_tokens() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("state.vscdb");
-        let ledger = dir.path().join("ledger.json");
-        let real = "eyJhbGciOiJSUzI1NiJ9.real-login-payload.real-signature";
-        seeded_db(&path, real).await;
-
-        inject_if_missing_at(&path, &ledger).await.unwrap();
-
-        assert_eq!(read(&path, "cursorAuth/accessToken").await.unwrap(), real);
-        assert!(!ledger.exists(), "保留真实登录时不应落账本");
-    }
-
-    #[tokio::test]
-    async fn inject_seeds_missing_account_keys() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("state.vscdb");
-        let ledger = dir.path().join("ledger.json");
-        seeded_db(&path, "").await;
+        let ledger = dir.path().join(LEDGER_FILE_NAME);
+        seed(&path, &[("cursorAuth/accessToken", "")]).await;
 
         inject_if_missing_at(&path, &ledger).await.unwrap();
 
@@ -445,60 +403,80 @@ mod tests {
                 "{key} should be seeded"
             );
         }
+        assert!(ledger.exists(), "注入前必须落账本");
     }
 
-    /// 事故复刻：3.27 真实登录是 safe-storage 格式，注入覆盖后必须能完整还原，
-    /// 这是"账号被冲掉且还原失败"的唯一数据保障。
     #[tokio::test]
-    async fn inject_and_restore_roundtrip_restores_original_tokens() {
+    async fn inject_is_idempotent_for_local_tokens() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("state.vscdb");
-        let ledger = dir.path().join("ledger.json");
-        let original = [
-            (
-                "cursorAuth/accessToken",
-                "cursor-safe-storage:v1:real-access-token-blob",
-            ),
-            (
-                "cursorAuth/refreshToken",
-                "cursor-safe-storage:v1:real-refresh-token-blob",
-            ),
-            ("cursorAuth/cachedEmail", "brother@example.com"),
-            ("cursorAuth/cachedSignUpType", "Github"),
-            ("cursorAuth/stripeMembershipAuthId", "auth0|real-user"),
-            ("cursorAuth/stripeMembershipType", "pro_plus"),
-            ("cursorAuth/stripeSubscriptionStatus", "active"),
-        ];
-        seed(&path, &original).await;
+        let ledger = dir.path().join(LEDGER_FILE_NAME);
+        seed(&path, &[("cursorAuth/accessToken", &local_token().unwrap())]).await;
 
         inject_if_missing_at(&path, &ledger).await.unwrap();
-        assert!(ledger.exists(), "覆盖前必须落账本");
+
         assert_eq!(
-            read(&path, "cursorAuth/cachedEmail").await.unwrap(),
-            EMAIL
+            read(&path, "cursorAuth/accessToken").await.unwrap(),
+            local_token().unwrap()
+        );
+        assert!(ledger.exists(), "本地账号仍属于注入态，账本必须存在");
+    }
+
+    /// 账本写不进去时宁可拒绝注入，也不能不可逆覆盖。
+    #[tokio::test]
+    async fn injection_is_refused_when_ledger_cannot_be_written() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("state.vscdb");
+        let blocked = dir.path().join("blocked");
+        std::fs::write(&blocked, b"not a directory").unwrap();
+        let ledger = blocked.join(LEDGER_FILE_NAME);
+        seed(&path, &[("cursorAuth/accessToken", "")]).await;
+
+        assert!(inject_if_missing_at(&path, &ledger).await.is_err());
+        assert_eq!(
+            read(&path, "cursorAuth/accessToken").await.as_deref(),
+            Some(""),
+            "账本失败时不得改动账号数据"
+        );
+    }
+
+    /// 注入后关闭接管：逐键写回注入前的原值（未登录用户回到未登录态）。
+    #[tokio::test]
+    async fn inject_and_restore_roundtrip_restores_logged_out_state() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("state.vscdb");
+        let ledger = dir.path().join(LEDGER_FILE_NAME);
+        seed(&path, &[("cursorAuth/accessToken", "")]).await;
+
+        inject_if_missing_at(&path, &ledger).await.unwrap();
+        assert_eq!(
+            read(&path, "cursorAuth/cachedEmail").await.as_deref(),
+            Some(EMAIL)
         );
 
         let outcome = restore_at(&path, &ledger).await.unwrap();
         assert_eq!(
             outcome,
             RestoreOutcome::Restored {
-                restored: original.len(),
+                restored: ACCOUNT_KEYS.len(),
                 kept_user_changes: 0
             }
         );
-        for (key, value) in original {
-            assert_eq!(read(&path, key).await.as_deref(), Some(value), "{key} 必须写回原值");
-        }
-        assert!(!ledger.exists(), "还原成功后账本必须删除");
+        assert_eq!(
+            read(&path, "cursorAuth/accessToken").await.as_deref(),
+            Some(""),
+            "未登录用户还原后回到未登录态"
+        );
+        assert!(!ledger.exists());
     }
 
-    /// 接管期间用户自己重新登录了（当前值 != 我们写的值），还原必须让位于用户改动。
+    /// 注入期间用户自己登录了（当前值 != applied）：保留用户改动。
     #[tokio::test]
     async fn restore_keeps_user_changes_made_after_injection() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("state.vscdb");
-        let ledger = dir.path().join("ledger.json");
-        seeded_db(&path, "cursor-safe-storage:v1:old-login").await;
+        let ledger = dir.path().join(LEDGER_FILE_NAME);
+        seed(&path, &[("cursorAuth/accessToken", "")]).await;
 
         inject_if_missing_at(&path, &ledger).await.unwrap();
         seed(&path, &[("cursorAuth/cachedEmail", "relogin@example.com")]).await;
@@ -514,40 +492,17 @@ mod tests {
         assert_eq!(
             read(&path, "cursorAuth/cachedEmail").await.as_deref(),
             Some("relogin@example.com"),
-            "用户接管期间的改动必须保留"
-        );
-        assert_eq!(
-            read(&path, "cursorAuth/accessToken").await.as_deref(),
-            Some("cursor-safe-storage:v1:old-login")
+            "用户注入期间的登录必须保留"
         );
     }
 
-    /// 账本写不进去时宁可拒绝注入，也不能不可逆覆盖用户账号。
-    #[tokio::test]
-    async fn injection_is_refused_when_ledger_cannot_be_written() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("state.vscdb");
-        let blocked = dir.path().join("blocked");
-        std::fs::write(&blocked, b"not a directory").unwrap();
-        let ledger = blocked.join("ledger.json");
-        let original = "cursor-safe-storage:v1:must-survive";
-        seeded_db(&path, original).await;
-
-        assert!(inject_if_missing_at(&path, &ledger).await.is_err());
-        assert_eq!(
-            read(&path, "cursorAuth/accessToken").await.as_deref(),
-            Some(original),
-            "账本失败时不得改动账号数据"
-        );
-    }
-
-    /// 没有账本 = 从未接管，必须明确报告，而不是假装还原成功。
+    /// 没有账本 = 从未注入，必须明确报告而不是假装还原成功。
     #[tokio::test]
     async fn restore_without_ledger_reports_not_backed_up() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("state.vscdb");
-        let ledger = dir.path().join("ledger.json");
-        seeded_db(&path, "cursor-safe-storage:v1:untouched").await;
+        let ledger = dir.path().join(LEDGER_FILE_NAME);
+        seed(&path, &[("cursorAuth/accessToken", "real-token")]).await;
 
         assert_eq!(
             restore_at(&path, &ledger).await.unwrap(),

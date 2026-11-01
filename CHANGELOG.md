@@ -2,6 +2,16 @@
 
 All notable changes to AnyBridge will be documented in this file.
 
+## v1.0.9 - 2026-11-01
+
+- 修复（严重）：Cursor 接入改为**混合模式**——用户已登录（Free / Pro / 任何真实号，含 3.27 的 `cursor-safe-storage` 加密 token）时账号一个字都不改，只加代理并解锁模型；未登录时才注入本地账号让 BYOK 可用（注入前落账本，停止接入逐键写回）。此前把 safe-storage 当成「旧版解不开的残留」直接覆盖，真实登录被冲成 `cursor@ai.com` 且无从还原（2026-11-01 实测事故）。
+  - 判据只看「token 是否为空 / 是否为本地 token」，不再按加密格式猜登录态。
+  - 还原结果三态（无需还原 / 已写回 / 备份缺失），无备份时明确告警，不再假报成功。
+  - `cursor_disable` 不再 `let _ =` 吞掉还原错误；`cursor_restart` 还原失败直接中止。
+- 修复：multitask 子代理（Task）结算链路——`BackgroundTaskCompletionAction` / `BackgroundSubagentAction` 在活跃 run 内不再被静默丢弃，命中挂起的 Task 就地结算；结算后的 Task 结果强制标记「已完成」，子代理 run 在 checkpoint 里写 `SUCCESS` 终态与完成时间，不再恒为 `Backgrounded`。
+- 修复：cursor-core 日志 filter 的 target 写成 `anybridge_cursor_core`，而 lib 实际名是 `cursor_server`，run / tool / action 层日志从未落盘（排障时 16MB 日志全是 hudsucker 噪音）；已改为两者都放行。
+- 门控：坑点 `cursor-free-login-safe-storage-overwrite` 语义反转为「已有登录一律保留」；新增 7 个账号行为测试与 5 条检查。
+
 ## v1.0.8 - 2026-11-01
 
 - 改进：默认外观调整——界面风格默认改为「极简扁平」（此前默认「轻拟物」），顶部导航标签图标默认隐藏（此前默认显示）。首帧脚本、设置页开关初始态与运行时默认值三处同步修改，避免启动瞬间跳变；已存过 `byok-style` / `byok-show-nav-icons` 偏好的老用户继续沿用原选择，不会被强制覆盖。

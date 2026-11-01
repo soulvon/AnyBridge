@@ -588,28 +588,32 @@
     },
     {
       "id": "cursor-free-login-safe-storage-overwrite",
-      "title": "免登录注入必须覆盖新版 Cursor 写入的 safe-storage 加密 token",
-      "symptom": "升级新版 Cursor 后 token 被升级成 cursor-safe-storage:v1 加密格式，降级回旧版本后解不开；注入逻辑若只判「值非空」会误判为已有真实登录而跳过，导致 Auth init timeout、RunSSE 一次都不发出、发消息永远转圈",
-      "lesson": "注入跳过条件必须是「值非空 且 不等于本地 token 且 不是 safe-storage 前缀」；safe-storage 前缀 = 新版加密格式 = 本版本解不开 = 必须重新注入。行为由 inject_overwrites_incompatible_safe_storage_tokens 锁定",
+      "title": "已有 Cursor 登录一律保留（含 safe-storage 加密 token），只在未登录时注入",
+      "symptom": "把 safe-storage 当成「旧版解不开的残留」直接覆盖，Cursor 3.27 用户的真实登录被冲成 cursor@ai.com 且没有备份，账号当场丢失（2026-11-01 实测）",
+      "lesson": "判据不能靠 token 格式猜登录态：只要有非空、非本地 token 就是用户自己的号，必须原样保留（混合模式，解锁靠 MITM 接管推理）。只有真正未登录（空 token）才注入，且注入前必须落账本、关闭接管时逐键写回。行为由 keeps_real_login_including_safe_storage 锁定",
       "check": {
         "type": "source_contains",
         "file": "cursor-core/src/local_app/account.rs",
-        "must_contain": "SAFE_STORAGE_PREFIX"
+        "must_contain": "fn keeps_existing_login"
       },
-      "regression_test": "cursor-core/src/local_app/account.rs::inject_overwrites_incompatible_safe_storage_tokens",
-      "severity": "high"
+      "regression_test": "cursor-core/src/local_app/account.rs::keeps_real_login_including_safe_storage",
+      "severity": "high",
+      "check_not": {
+        "file": "cursor-core/src/local_app/account.rs",
+        "must_not_match": "!value\\.starts_with\\(SAFE_STORAGE_PREFIX\\)"
+      }
     },
     {
       "id": "cursor-free-login-seven-keys",
       "title": "免登录必须注入完整 7 键（含会员/订阅状态），只写 token 不够",
       "symptom": "只注入 accessToken/refreshToken 时客户端 auth 轮询仍拿不到凭证，Auth init timeout，agent 请求一次都不发——模型列表可见但发消息永远转圈",
-      "lesson": "照 cursor-byok 注入 7 键：accessToken/refreshToken/cachedEmail/cachedSignUpType/stripeMembershipAuthId/stripeMembershipType(ultra)/stripeSubscriptionStatus(active)。客户端判「已登录」依赖会员与订阅状态键。行为由 inject_seeds_missing_account_keys 锁定",
+      "lesson": "未登录用户走免登录注入时，照 cursor-byok 注入 7 键：accessToken/refreshToken/cachedEmail/cachedSignUpType/stripeMembershipAuthId/stripeMembershipType(ultra)/stripeSubscriptionStatus(active)。客户端判「已登录」依赖会员与订阅状态键。已有登录的用户不再注入（混合模式），行为由 inject_and_restore_roundtrip_restores_logged_out_state 锁定",
       "check": {
         "type": "source_contains",
         "file": "cursor-core/src/local_app/account.rs",
         "must_contain": "stripeMembershipType"
       },
-      "regression_test": "cursor-core/src/local_app/account.rs::inject_seeds_missing_account_keys",
+      "regression_test": "cursor-core/src/local_app/account.rs::inject_and_restore_roundtrip_restores_logged_out_state",
       "severity": "high"
     },
     {
@@ -672,7 +676,7 @@
         "file": "cursor-core/src/local_app/account.rs",
         "must_contain": "fn write_ledger"
       },
-      "regression_test": "cursor-core/src/local_app/account.rs::inject_and_restore_roundtrip_restores_original_tokens",
+      "regression_test": "cursor-core/src/local_app/account.rs::inject_and_restore_roundtrip_restores_logged_out_state",
       "severity": "high"
     },
     {

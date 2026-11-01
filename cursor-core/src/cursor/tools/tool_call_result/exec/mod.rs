@@ -18,6 +18,23 @@ pub(crate) fn from_exec(
     pending: PendingExec,
     wire_result: &pb::exec_client_message::Message,
 ) -> Result<ToolCompletion> {
+    from_exec_inner(pending, wire_result, false)
+}
+
+/// 后台子代理由客户端结算完成时使用（`BackgroundTaskCompletion` / 兜底唤醒）。
+/// 与 [`from_exec`] 的唯一区别：Task 结果强制标记为已完成，不再当作后台运行中。
+pub(crate) fn from_exec_settled(
+    pending: PendingExec,
+    wire_result: &pb::exec_client_message::Message,
+) -> Result<ToolCompletion> {
+    from_exec_inner(pending, wire_result, true)
+}
+
+fn from_exec_inner(
+    pending: PendingExec,
+    wire_result: &pb::exec_client_message::Message,
+    settled: bool,
+) -> Result<ToolCompletion> {
     use pb::{exec_client_message::Message, tool_call::Tool};
     let mut gated_shell = matches!(
         wire_result,
@@ -71,7 +88,11 @@ pub(crate) fn from_exec(
             tool.result = Some(result.clone());
         }
         (Some(Tool::TaskToolCall(tool)), Message::SubagentResult(result)) => {
-            tool.result = Some(render::task(result, call, pending.started_at_ms)?);
+            tool.result = Some(if settled {
+                render::task_finished(result, call, pending.started_at_ms)?
+            } else {
+                render::task(result, call, pending.started_at_ms)?
+            });
         }
         (Some(Tool::EditToolCall(tool)), Message::WriteResult(result)) => {
             tool.result = Some(match (&pending.stage, result.result.as_ref()) {

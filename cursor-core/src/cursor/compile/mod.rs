@@ -7,6 +7,7 @@ mod images;
 mod insert_messages;
 mod model;
 mod run;
+pub(crate) mod state;
 
 pub use action::*;
 pub(crate) use break_messages::{compile_injection, compile_user_message_action, RuntimeAction};

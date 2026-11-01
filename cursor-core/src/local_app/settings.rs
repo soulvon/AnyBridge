@@ -6,11 +6,14 @@ use serde_json::Value;
 use crate::{config::managed_data_dir, Error, Result};
 
 const NO_PROXY_KEY: &str = "http.noProxy";
-const KEYS: [&str; 5] = [
+/// 只写代理必需键，**不写 `cursor.general.disableHttp2`**：
+/// Cursor 3.27 在该开关打开时会改用降级协议形态（`AgentRunRequest` 的
+/// conversation_state 变成一个 UUID 引用），BYOK 侧按完整结构解析必然报
+/// `invalid wire type`。去掉这个键后解码立即恢复正常（2026-11-01 实测）。
+const KEYS: [&str; 4] = [
     "http.proxy",
     "http.proxyKerberosServicePrincipal",
     "http.proxySupport",
-    "cursor.general.disableHttp2",
     "http.experimental.systemCertificatesV2",
 ];
 /// `proxySupport` 必须用 `override`：`on` 的语义是"使用代理设置"，
@@ -106,7 +109,7 @@ fn write_proxy_settings_body(proxy_url: &str, settings: &mut BTreeMap<String, Va
     settings.insert(KEYS[1].into(), Value::String(proxy_url.into()));
     settings.insert(KEYS[2].into(), Value::String(MANAGED_PROXY_SUPPORT.into()));
     settings.insert(KEYS[3].into(), Value::Bool(true));
-    settings.insert(KEYS[4].into(), Value::Bool(true));
+    settings.insert(KEYS[3].into(), Value::Bool(true));
 }
 
 pub fn write_proxy_settings(proxy_url: &str) -> Result<()> {
@@ -143,14 +146,14 @@ pub fn settings_match(proxy_url: &str) -> Result<bool> {
         && settings.get(KEYS[1]) == Some(&Value::String(proxy_url.into()))
         && settings.get(KEYS[2]) == Some(&Value::String(MANAGED_PROXY_SUPPORT.into()))
         && settings.get(KEYS[3]) == Some(&Value::Bool(true))
-        && settings.get(KEYS[4]) == Some(&Value::Bool(true)))
+        && settings.get(KEYS[3]) == Some(&Value::Bool(true)))
 }
 
 pub fn clear_stale_managed_settings() -> Result<()> {
     let settings = read()?;
     let managed_signature = settings.get(KEYS[2]) == Some(&Value::String(MANAGED_PROXY_SUPPORT.into()))
         && settings.get(KEYS[3]) == Some(&Value::Bool(true))
-        && settings.get(KEYS[4]) == Some(&Value::Bool(true));
+        && settings.get(KEYS[3]) == Some(&Value::Bool(true));
     let loopback = settings
         .get(KEYS[0])
         .and_then(Value::as_str)

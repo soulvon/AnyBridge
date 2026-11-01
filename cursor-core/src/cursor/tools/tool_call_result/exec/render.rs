@@ -187,16 +187,37 @@ pub(super) fn task(
     call: &crate::model::ToolCall,
     started_at_ms: u64,
 ) -> Result<pb::TaskResult> {
+    task_inner(result, call, started_at_ms, false)
+}
+
+/// 后台子代理已由客户端结算完成（回传了最终结论）：即使原始 Task 调用带了
+/// `run_in_background`，结果也必须标记为「已完成」。否则客户端会一直把它
+/// 当后台运行中，父对话停在 Stopped（issue #39）。
+pub(super) fn task_finished(
+    result: &pb::SubagentResult,
+    call: &crate::model::ToolCall,
+    started_at_ms: u64,
+) -> Result<pb::TaskResult> {
+    task_inner(result, call, started_at_ms, true)
+}
+
+fn task_inner(
+    result: &pb::SubagentResult,
+    call: &crate::model::ToolCall,
+    started_at_ms: u64,
+    finished: bool,
+) -> Result<pb::TaskResult> {
     use pb::{subagent_result::Result as Input, task_result::Result as Output};
     let result = match result.result.as_ref() {
         Some(Input::Success(value)) => {
-            let is_background = value.background_reason
-                != pb::SubagentBackgroundReason::Unspecified as i32
-                || call
-                    .arguments
-                    .get("run_in_background")
-                    .and_then(serde_json::Value::as_bool)
-                    == Some(true);
+            let is_background = !finished
+                && (value.background_reason
+                    != pb::SubagentBackgroundReason::Unspecified as i32
+                    || call
+                        .arguments
+                        .get("run_in_background")
+                        .and_then(serde_json::Value::as_bool)
+                        == Some(true));
             Output::Success(pb::TaskSuccess {
                 agent_id: Some(value.agent_id.clone()),
                 is_background,
@@ -252,4 +273,77 @@ pub(super) fn glob(result: &pb::GrepResult) -> Result<pb::GlobToolResult> {
 
 fn missing(name: &str) -> Error {
     Error::Protocol(format!("{name} returned no result"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    fn task_call(run_in_background: bool) -> crate::model::ToolCall {
+        crate::model::ToolCall {
+            index: 0,
+            call_id: "call-1".into(),
+            model_call_id: "model-call-1".into(),
+            name: "Task".into(),
+            arguments_text: "{}".into(),
+            arguments: json!({
+                "run_in_background": run_in_background,
+                "model": "some-model",
+                "prompt": "do work",
+            }),
+            argument_error: None,
+        }
+    }
+
+    fn subagent_result(message: &str) -> pb::SubagentResult {
+        pb::SubagentResult {
+            result: Some(pb::subagent_result::Result::Success(pb::SubagentSuccess {
+                agent_id: "agent-1".into(),
+                final_message: Some(message.into()),
+                tool_call_count: 0,
+                background_reason: pb::SubagentBackgroundReason::Unspecified as i32,
+                transcript_path: None,
+            })),
+        }
+    }
+
+    fn is_background(result: &pb::TaskResult) -> bool {
+        match result.result.as_ref() {
+            Some(pb::task_result::Result::Success(success)) => success.is_background,
+            other => panic!("expected task success, got {other:?}"),
+        }
+    }
+
+    /// 未结算的后台 Task 保持"后台运行中"；客户端回传完成后必须标记为已完成，
+    /// 否则父对话会一直停在 Stopped（issue #39）。
+    #[test]
+    fn settled_task_result_is_not_background() {
+        let call = task_call(true);
+        let result = subagent_result("子代理完成的结论");
+
+        assert!(
+            is_background(&task(&result, &call, 0).unwrap()),
+            "未结算时仍是后台运行中"
+        );
+        assert!(
+            !is_background(&task_finished(&result, &call, 0).unwrap()),
+            "结算后必须标记完成，且结论要带出来"
+        );
+        let finished = task_finished(&result, &call, 0).unwrap();
+        match finished.result.as_ref() {
+            Some(pb::task_result::Result::Success(success)) => {
+                assert_eq!(success.result_suffix.as_deref(), Some("子代理完成的结论"));
+            }
+            other => panic!("expected success, got {other:?}"),
+        }
+    }
+
+    /// 前台 Task 结算后同样不能带后台标记。
+    #[test]
+    fn finished_foreground_task_stays_foreground() {
+        let call = task_call(false);
+        let result = subagent_result("done");
+        assert!(!is_background(&task_finished(&result, &call, 0).unwrap()));
+    }
 }
