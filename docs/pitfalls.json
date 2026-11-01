@@ -695,6 +695,18 @@
       },
       "regression_test": "src-tauri/src/commands/cursor_auth.rs::restore_writes_back_original_and_keeps_user_changes",
       "severity": "high"
+    },
+    {
+      "id": "no-personal-account-in-repo",
+      "title": "用户个人账号与凭证不得写入仓库、测试与调研产物",
+      "symptom": "排查时把用户真实账号标识与账号 token 写进临时脚本、备份 json、截图或文档，个人隐私落在项目目录里（含 tmp 调研产物），提交时又不易被察觉",
+      "lesson": "仓库与 tmp 只允许出现协议字段名和占位符（如 cursor@ai.com、<uuid>），真实账号标识、真实 token、真实 authId 一律不落盘到项目内；排障与调研产物放项目外的用户目录（如 %USERPROFILE%\\anybridge-cursor-debug），凭证备份也放项目外。提交前用真实标识做三处扫描：git grep（已跟踪）、git log -S（历史）、工作区全文（含未跟踪），命中即清理并移出项目",
+      "check": {
+        "type": "source_contains",
+        "file": "scripts/check-key-features.mjs",
+        "must_contain": "项目内不得留存 Cursor 账号凭证备份"
+      },
+      "severity": "high"
     }
   ]
 }

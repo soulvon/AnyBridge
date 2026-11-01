@@ -201,6 +201,30 @@ section('对称路径（接入↔还原 / apply↔restore 必须一致）');
     'Cursor 本地账号标识两侧一致',
     cursorAccount.includes('cursor@ai.com') && cursorAuthSrc.includes('cursor@ai.com')
   );
+  // 3.5.4 项目内不得留存账号凭证：排查产物（tmp）里出现过账号 token 备份，
+  // 个人凭证一律放项目外（%USERPROFILE% 下的调试目录）。
+  const tmpRoot = path.join(root, 'tmp');
+  if (fs.existsSync(tmpRoot)) {
+    const leaked = [];
+    const walkTmp = (dir) => {
+      for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+        const full = path.join(dir, entry.name);
+        if (entry.isDirectory()) walkTmp(full);
+        else if (/\.(json|txt|log|md)$/i.test(entry.name)) {
+          const text = fs.readFileSync(full, 'utf8');
+          if (text.includes('cursorAuth/accessToken') || text.includes('cursor-safe-storage:v1:')) {
+            leaked.push(full);
+          }
+        }
+      }
+    };
+    walkTmp(tmpRoot);
+    ok(
+      '项目内不得留存 Cursor 账号凭证备份',
+      leaked.length === 0,
+      leaked.slice(0, 3).join(', ')
+    );
+  }
   const ideConfigSrc = fs.readFileSync(path.join(root, 'src-tauri/src/commands/ide_config.rs'), 'utf8');
   ok(
     'Cursor proxySupport 不得写回 on（必须 override）',
