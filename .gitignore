@@ -98,3 +98,6 @@ tmp_*.mjs
 !scripts/verify-docs-page.cjs
 !scripts/verify-ui-baseline.mjs
 !scripts/verify-version-probe.mjs
+
+# 内部复盘资料（逐次修复流水账）不进公开仓库
+/docs/experience/

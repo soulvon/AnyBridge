@@ -56,6 +56,12 @@ impl NetworkClients {
         let client = client_builder(&self.store)
             .await?
             .redirect(reqwest::redirect::Policy::none())
+            // 转发 Cursor 官方时不吃系统代理：reqwest 默认继承 Windows 系统代理，
+            // 用户开着 Clash 时出站被塞进 7897，而该链路对 api2.cursor.sh 不通
+            // （2026-11-01 实测：直连 200 / 走 Clash 5s 超时），后果是账号与订阅
+            // 类请求全 502、模型列表拉不到。BYOK 供应商客户端保持原样，
+            // 因为供应商 API 常常必须走代理。
+            .no_proxy()
             .build()?;
         cache.cursor = Some(client.clone());
         Ok(client)

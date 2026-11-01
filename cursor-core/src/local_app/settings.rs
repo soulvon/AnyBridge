@@ -175,18 +175,21 @@ pub fn settings_match(proxy_url: &str) -> Result<bool> {
         && settings.get(KEYS[4]) == Some(&Value::Bool(true)))
 }
 
+/// 启动时清理上一次接管残留的代理设置。
+///
+/// 判据不能只看 `proxySupport == override`：接管被强杀、或者上一次还原走了
+/// 老逻辑时，settings 里会留下 `http.proxy` 指向一个已经死掉的随机端口，
+/// 而 `proxySupport` 可能已经被还原成用户原值（`on`/`off`）。只要满足
+/// 「proxy 指向本机回环」且「带我们的任何特征（override 或 systemCertificatesV2）」，
+/// 就视为残留并清理，否则 Cursor 会一直把请求打到死端口。
 pub fn clear_stale_managed_settings() -> Result<()> {
     let settings = read()?;
-    let managed_signature = settings.get(KEYS[2]) == Some(&Value::String(MANAGED_PROXY_SUPPORT.into()))
-        && settings.get(KEYS[3]) == Some(&Value::Bool(true))
-        && settings.get(KEYS[4]) == Some(&Value::Bool(true));
-    let loopback = settings
-        .get(KEYS[0])
-        .and_then(Value::as_str)
-        .and_then(|value| value.parse::<reqwest::Url>().ok())
-        .and_then(|url| url.host_str().map(str::to_owned))
-        .is_some_and(|host| matches!(host.as_str(), "127.0.0.1" | "localhost" | "::1"));
-    if managed_signature && loopback {
+    let loopback = is_loopback_proxy(settings.get(KEYS[0]))
+        || is_loopback_proxy(settings.get(KEYS[1]));
+    let carries_our_mark = settings.get(KEYS[2]) == Some(&Value::String(MANAGED_PROXY_SUPPORT.into()))
+        || settings.get(KEYS[3]) == Some(&Value::Bool(true))
+        || settings.get(KEYS[4]) == Some(&Value::Bool(true));
+    if loopback && carries_our_mark {
         clear_proxy_settings()?;
     }
     Ok(())
