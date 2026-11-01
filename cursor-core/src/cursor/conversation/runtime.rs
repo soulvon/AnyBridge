@@ -481,88 +481,6 @@ impl ConversationRuntime {
                                                 }
                                             }
                                         }
-                                        Some(
-                                            pb::conversation_action::Action::BackgroundTaskCompletionAction(
-                                                action,
-                                            ),
-                                        ) => {
-                                            // 子代理跑完把结论回传：能命中挂起的 Task 就地结算；
-                                            // 命中不到说明这是「唤醒已结束的父 run」，起新一轮交给
-                                            // compile::prepare 消费（issue #39：这两种路径都不能丢）。
-                                            let settled = match current.as_ref() {
-                                                Some(generation) => match generation
-                                                    .tools
-                                                    .settle_background_tasks(&action.completions)
-                                                    .await
-                                                {
-                                                    Ok(settled) => settled,
-                                                    Err(error) => {
-                                                        generation.results.send_error(error);
-                                                        Vec::new()
-                                                    }
-                                                },
-                                                None => Vec::new(),
-                                            };
-                                            if settled.is_empty() {
-                                                let Some(previous) = current.as_ref() else {
-                                                    continue;
-                                                };
-                                                let mut request = previous.request.clone();
-                                                request.action = Some(conversation_action);
-                                                request.conversation_state = None;
-                                                request.pre_fetched_blobs.clear();
-                                                waiting_for_action = false;
-                                                start_generation(
-                                                    &registry,
-                                                    &handle,
-                                                    &dependencies,
-                                                    &blob_sync,
-                                                    &context_sync,
-                                                    &tool_runtime_factory,
-                                                    &mut current,
-                                                    &mut next_generation,
-                                                    request,
-                                                )
-                                                .await;
-                                            } else if let Some(generation) = current.as_ref() {
-                                                for completion in settled {
-                                                    generation.results.send(completion);
-                                                }
-                                            }
-                                        }
-                                        Some(
-                                            pb::conversation_action::Action::BackgroundSubagentAction(
-                                                action,
-                                            ),
-                                        ) => {
-                                            // 这条 Action 只带 tool_call_id、没有结论正文：
-                                            // 命中挂起的 Task 就按「已结束但未回传结论」结算，
-                                            // 避免父 run 永久等待后被客户端判成 Stopped。
-                                            let completion = match current.as_ref() {
-                                                Some(generation) => match generation
-                                                    .tools
-                                                    .settle_background_subagent(&action.tool_call_id)
-                                                    .await
-                                                {
-                                                    Ok(completion) => completion,
-                                                    Err(error) => {
-                                                        generation.results.send_error(error);
-                                                        None
-                                                    }
-                                                },
-                                                None => None,
-                                            };
-                                            match (completion, current.as_ref()) {
-                                                (Some(completion), Some(generation)) => {
-                                                    generation.results.send(completion)
-                                                }
-                                                _ => tracing::info!(
-                                                    request_id = handle.request_id(),
-                                                    tool_call_id = %action.tool_call_id,
-                                                    "background subagent action without a pending Task"
-                                                ),
-                                            }
-                                        }
                                         Some(action) => {
                                             tracing::warn!(
                                                 request_id = handle.request_id(),
@@ -713,9 +631,7 @@ fn spawn_run_request(
             handle
                 .parent()
                 .and_then(|parent| parent.tool_call_id.clone()),
-            crate::cursor::compile::state::decode(&request)
-                .ok()
-                .flatten(),
+            request.conversation_state.clone(),
         );
         let prepared = tokio::select! {
             biased;

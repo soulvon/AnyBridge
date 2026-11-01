@@ -213,6 +213,9 @@ impl CheckpointBuilder {
             let Some(pb::task_result::Result::Success(success)) = result.result.as_ref() else {
                 continue;
             };
+            if !success.is_background {
+                continue;
+            }
             let Some(agent_id) = success.agent_id.as_ref().filter(|id| !id.is_empty()) else {
                 continue;
             };
@@ -239,28 +242,18 @@ impl CheckpointBuilder {
                     cloud_requested_environment_build_id: None,
                     machine: args.machine.clone(),
                 });
-            // 后台子代理只有「还在跑」时才是 BACKGROUNDED；已结算（is_background=false）
-            // 必须写终态，否则客户端只能显示未完成 / Stopped（issue #39）。
-            let (status, completed_timestamp_ms) = if success.is_background {
-                (pb::SubagentRunStatus::Backgrounded as i32, None)
-            } else {
-                (
-                    pb::SubagentRunStatus::Success as i32,
-                    Some(last_used_timestamp_ms),
-                )
-            };
             self.base.subagent_runs_by_parent_tool_call_id.insert(
                 tool_call_id.clone(),
                 pb::SubagentRunState {
                     parent_tool_call_id: tool_call_id.clone(),
                     subagent_id: Some(agent_id.clone()),
                     environment: args.environment,
-                    status,
+                    status: pb::SubagentRunStatus::Backgrounded as i32,
                     title: Some(args.description.clone()),
                     detail: success.result_suffix.clone(),
                     transcript_path: success.transcript_path.clone(),
                     output_path: None,
-                    completed_timestamp_ms,
+                    completed_timestamp_ms: None,
                     completion_reason: None,
                 },
             );

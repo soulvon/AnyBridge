@@ -2,8 +2,6 @@
 use std::collections::BTreeMap;
 
 use prost::Message as _;
-
-use super::state;
 use uuid::Uuid;
 
 use crate::{
@@ -80,11 +78,12 @@ pub(crate) async fn prepare(
             .unwrap_or_else(|| request_id.into()),
     );
     let run_id = execution_run_id(request_id);
-    // 兼容两种线上形态：完整 ConversationStateStructure，或 3.27 在 HTTP/1.1 下
-    // 降级成「会话 UUID 引用」的 bytes。后者没有结构，状态由本地 checkpoint 提供。
-    let state = state::decode(request)?;
-    let mut base_messages = if state.is_some() {
-        Some(checkpoint.hydrate_messages(state.as_ref()).await?)
+    let mut base_messages = if request.conversation_state.is_some() {
+        Some(
+            checkpoint
+                .hydrate_messages(request.conversation_state.as_ref())
+                .await?,
+        )
     } else {
         None
     };
@@ -111,9 +110,8 @@ pub(crate) async fn prepare(
                 _ => None,
             });
         let summary = serde_json::json!({
-            "checkpoint_root_count": state.as_ref().map_or(0, |value| value.root_prompt_messages_json.len()),
-            "checkpoint_turn_count": state.as_ref().map_or(0, |value| value.turns.len()),
-            "checkpoint_is_reference": request.conversation_state.as_deref().and_then(state::reference).is_some(),
+            "checkpoint_root_count": request.conversation_state.as_ref().map_or(0, |state| state.root_prompt_messages_json.len()),
+            "checkpoint_turn_count": request.conversation_state.as_ref().map_or(0, |state| state.turns.len()),
             "conversation_history_message_count": history.map_or(0, |history| history.messages.len()),
             "hydrated_message_count": hydrated_messages.len(),
             "hydrated_image_count": hydrated_images,
@@ -143,22 +141,8 @@ pub(crate) async fn prepare(
         mode_from_proto(mode_number)?
     };
     let mut model = model::requested_model(request)?;
-    match store.model(&model.model_id).await? {
-        Some(configured_model) => configured_model.configure(&mut model),
-        None => {
-            // 混合模式（用户是真实登录）下，Cursor 会用官方模型 ID 发起请求，
-            // 例如 919a96379af9191d —— 这个 ID 不在我们的模型表里。
-            // 不回退的话整轮被「Unknown model ID」打断，用户只能手动换模型。
-            if let Some(fallback) = store.models().await?.into_iter().next() {
-                tracing::warn!(
-                    requested = %model.model_id,
-                    fallback = %fallback.model_id,
-                    "Cursor sent an unconfigured model id; falling back to the first configured model"
-                );
-                fallback.configure(&mut model);
-                model.model_id = fallback.model_id.clone();
-            }
-        }
+    if let Some(configured_model) = store.model(&model.model_id).await? {
+        configured_model.configure(&mut model);
     }
     let dynamic = context::dynamic_mcp(request, &request_context)?;
     let subagent_model_overrides = model::overrides(request)?;
@@ -320,9 +304,10 @@ pub(crate) async fn prepare(
     } else if starts_turn {
         RunAction::Start
     } else {
-        let pending_tool_round = match state
+        let pending_tool_round = match request
+            .conversation_state
             .as_ref()
-            .map(|value| value.pending_tool_calls.as_slice())
+            .map(|state| state.pending_tool_calls.as_slice())
             .unwrap_or_default()
         {
             [] => None,
@@ -430,7 +415,10 @@ fn synthetic_message_id(user: &pb::UserMessage) -> String {
 }
 
 fn action(request: &pb::AgentRunRequest) -> Result<ActionProjection> {
-    let conversation_mode = state::decode(request)?.and_then(|value| value.mode);
+    let conversation_mode = request
+        .conversation_state
+        .as_ref()
+        .and_then(|state| state.mode);
     let mode = conversation_mode.unwrap_or(pb::AgentMode::Agent as i32);
     let Some(action) = request
         .action

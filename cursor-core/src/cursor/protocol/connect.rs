@@ -96,14 +96,8 @@ pub fn decode_unary<M: Message + Default>(body: &[u8]) -> Result<M> {
     if body.len() >= 5 {
         let flags = body[0];
         let length = u32::from_be_bytes([body[1], body[2], body[3], body[4]]) as usize;
-        // 必须按帧头声明的长度截取，而不是要求「帧长等于整个 body」。
-        // Cursor 3.27 会把多条消息打包进同一个 HTTP body（多帧），旧判据
-        // 因此回退成「把整个 body 当 protobuf 解」，字段错位后报在
-        // ConversationStateStructure.summary / file_states 上
-        // （2026-11-01 issue #39 排查实测：proto 与参考实现逐字段一致，
-        //  真正的偏差只在打包方式）。unary 接口只消费第一条消息。
-        if flags & END_STREAM_FLAG == 0 && length <= body.len().saturating_sub(5) {
-            return Ok(M::decode(&body[5..5 + length])?);
+        if flags & END_STREAM_FLAG == 0 && length == body.len() - 5 {
+            return Ok(M::decode(&body[5..])?);
         }
     }
     Ok(M::decode(body)?)

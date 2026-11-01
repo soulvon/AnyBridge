@@ -310,10 +310,7 @@ enum AgentMode {
 
 // Copied from: local:agent.v1.AgentRunRequest (var: Tvs)
 message AgentRunRequest {
-  // Cursor 3.27 在我们强制 HTTP/1.1（disableHttp2 / server_config http2_config=1）时
-  // 只放一个 36 字节会话 UUID 引用，而不是完整的 ConversationStateStructure。
-  // 声明成 bytes 才能同时容纳「完整结构」与「UUID 引用」两种形态（2026-11-01 实测）。
-  optional bytes conversation_state = 1;
+  ConversationStateStructure conversation_state = 1;
   ConversationAction action = 2;
   ModelDetails model_details = 3;
   optional RequestedModel requested_model = 9;

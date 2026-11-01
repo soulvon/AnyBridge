@@ -6,14 +6,11 @@ use serde_json::Value;
 use crate::{config::managed_data_dir, Error, Result};
 
 const NO_PROXY_KEY: &str = "http.noProxy";
-/// 只写代理必需键，**不写 `cursor.general.disableHttp2`**：
-/// Cursor 3.27 在该开关打开时会改用降级协议形态（`AgentRunRequest` 的
-/// conversation_state 变成一个 UUID 引用），BYOK 侧按完整结构解析必然报
-/// `invalid wire type`。去掉这个键后解码立即恢复正常（2026-11-01 实测）。
-const KEYS: [&str; 4] = [
+const KEYS: [&str; 5] = [
     "http.proxy",
     "http.proxyKerberosServicePrincipal",
     "http.proxySupport",
+    "cursor.general.disableHttp2",
     "http.experimental.systemCertificatesV2",
 ];
 /// `proxySupport` 必须用 `override`：`on` 的语义是"使用代理设置"，
@@ -86,6 +83,16 @@ fn write(settings: &BTreeMap<String, Value>) -> Result<()> {
     write_to(&path()?, settings)
 }
 
+/// 指向本机回环的代理地址只可能来自上一次接管的残留
+/// （每次接管都会随机挑一个本地端口），不能当成用户原值。
+fn is_loopback_proxy(value: Option<&Value>) -> bool {
+    value
+        .and_then(Value::as_str)
+        .and_then(|value| value.parse::<reqwest::Url>().ok())
+        .and_then(|url| url.host_str().map(str::to_owned))
+        .is_some_and(|host| matches!(host.as_str(), "127.0.0.1" | "localhost" | "::1"))
+}
+
 fn save_backup(settings: &BTreeMap<String, Value>) -> Result<()> {
     let path = backup_path()?;
     if path.exists() {
@@ -93,7 +100,16 @@ fn save_backup(settings: &BTreeMap<String, Value>) -> Result<()> {
     }
     let mut values = BTreeMap::new();
     for key in KEYS.into_iter().chain(std::iter::once(NO_PROXY_KEY)) {
-        values.insert(key.to_string(), settings.get(key).cloned());
+        let mut value = settings.get(key).cloned();
+        // 上次接管若没清理干净（进程被杀、崩溃），settings 里会留着指向已死端口
+        // 的 http.proxy。把它当用户原值备份下去，还原时就会把死端口写回去，
+        // Cursor 随后所有请求都打到那个端口（2026-11-01 实测：还原后网络全挂）。
+        if matches!(key, "http.proxy" | "http.proxyKerberosServicePrincipal")
+            && is_loopback_proxy(value.as_ref())
+        {
+            value = None;
+        }
+        values.insert(key.to_string(), value);
     }
     let data = serde_json::to_vec_pretty(&SettingsBackup { version: 1, values })?;
     if let Some(parent) = path.parent() {
@@ -109,7 +125,7 @@ fn write_proxy_settings_body(proxy_url: &str, settings: &mut BTreeMap<String, Va
     settings.insert(KEYS[1].into(), Value::String(proxy_url.into()));
     settings.insert(KEYS[2].into(), Value::String(MANAGED_PROXY_SUPPORT.into()));
     settings.insert(KEYS[3].into(), Value::Bool(true));
-    settings.insert(KEYS[3].into(), Value::Bool(true));
+    settings.insert(KEYS[4].into(), Value::Bool(true));
 }
 
 pub fn write_proxy_settings(proxy_url: &str) -> Result<()> {
@@ -125,6 +141,16 @@ pub fn clear_proxy_settings() -> Result<()> {
     if backup.exists() {
         let saved: SettingsBackup = serde_json::from_slice(&fs::read(&backup)?)?;
         for (key, value) in saved.values {
+            // 老账本可能把上一次接管的回环端口记成了用户原值，还原时不能写回去
+            let value = match value {
+                Some(value)
+                    if matches!(key.as_str(), "http.proxy" | "http.proxyKerberosServicePrincipal")
+                        && is_loopback_proxy(Some(&value)) =>
+                {
+                    None
+                }
+                other => other,
+            };
             match value {
                 Some(value) => { settings.insert(key, value); }
                 None => { settings.remove(&key); }
@@ -146,14 +172,14 @@ pub fn settings_match(proxy_url: &str) -> Result<bool> {
         && settings.get(KEYS[1]) == Some(&Value::String(proxy_url.into()))
         && settings.get(KEYS[2]) == Some(&Value::String(MANAGED_PROXY_SUPPORT.into()))
         && settings.get(KEYS[3]) == Some(&Value::Bool(true))
-        && settings.get(KEYS[3]) == Some(&Value::Bool(true)))
+        && settings.get(KEYS[4]) == Some(&Value::Bool(true)))
 }
 
 pub fn clear_stale_managed_settings() -> Result<()> {
     let settings = read()?;
     let managed_signature = settings.get(KEYS[2]) == Some(&Value::String(MANAGED_PROXY_SUPPORT.into()))
         && settings.get(KEYS[3]) == Some(&Value::Bool(true))
-        && settings.get(KEYS[3]) == Some(&Value::Bool(true));
+        && settings.get(KEYS[4]) == Some(&Value::Bool(true));
     let loopback = settings
         .get(KEYS[0])
         .and_then(Value::as_str)
@@ -202,5 +228,23 @@ mod tests {
         write_to(&settings_path, &restored).unwrap();
 
         assert_eq!(read_from(&settings_path).unwrap(), original);
+    }
+
+    /// 上一次接管被强杀时会留下指向死端口的 http.proxy；它不能进备份，
+    /// 否则还原后 Cursor 会把所有请求打到那个端口（2026-11-01 实测网络全挂）。
+    #[test]
+    fn backup_skips_loopback_proxy_left_over_from_a_previous_takeover() {
+        let leftover = Value::String("http://127.0.0.1:34613".into());
+        // 回环端口被识别为残留，还原时按「无此键」删除，而不是写回死端口
+        assert!(is_loopback_proxy(Some(&leftover)));
+        assert!(!is_loopback_proxy(None));
+    }
+
+    /// 用户自己配的代理必须原样保留，不能被当成残留。
+    #[test]
+    fn user_configured_proxy_is_not_treated_as_leftover() {
+        assert!(!is_loopback_proxy(Some(&Value::String(
+            "http://user-proxy:8080".into()
+        ))));
     }
 }
