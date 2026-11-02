@@ -29,6 +29,12 @@ import {
   createResponsesSSEFromChat,
 } from './lib/responses-chat-transform.js';
 import {
+  applyThinkingToPayload,
+  clampEffortLevel,
+  effortFromAnthropicBudget,
+  effortVocabForConn,
+} from './lib/thinking-effort.js';
+import {
   createChatSSEConverter,
 } from './lib/chat-sse-transform.js';
 import { DEFAULT_SELF_HEAL_CONFIG, tryHeal } from './lib/self-heal.js';
@@ -1021,6 +1027,10 @@ export const __localProxyTest = {
   normalizeRequest,
   normalizeOpenAI,
   openAIResponsesInput,
+  extractText,
+  upstreamReasoningText,
+  responseReasoningItems,
+  execute,
   sendOpenAIChat,
   sendOpenAIResponses,
   applyParamOverrides,
@@ -1371,6 +1381,55 @@ function anthropicMessagesWithoutSignature(messages) {
   }));
 }
 
+// 客户端（Cursor/Codex）在 Responses 请求里显式下发的思考档位。
+// 这类请求的 modelUid 不带档位后缀（那是 Devin/Windsurf 的编码方式），
+// passthroughParams 丢弃 reasoning 后没有任何重建来源，上游会一律按模型
+// 默认档推理（issue #40：Cursor 界面设置的思考等级不生效）。
+// 这里按目标模型族词表钳制后返回；不支持/未设置返回 null（不注入）。
+function clientReasoningEffort(conn, ctx) {
+  if (ctx?.kind !== 'responses') return null;
+  const raw = String(ctx.rawBody?.reasoning?.effort || '').trim().toLowerCase();
+  if (!raw || raw === 'none' || raw === 'unset') return null;
+  return clampEffortLevel(raw, effortVocabForConn(conn));
+}
+
+// chat 客户端的 reasoning_effort 同为协议标准字段，不能被当「额外参数」丢弃
+// （preserveExtraParams 默认关闭）。none 保留关闭语义，其余按目标族词表钳制。
+function clientChatReasoningEffort(conn, ctx) {
+  if (ctx?.kind !== 'openai') return null;
+  const raw = String(ctx.rawBody?.reasoning_effort || '').trim().toLowerCase();
+  if (!raw) return null;
+  if (raw === 'none') return 'none';
+  return clampEffortLevel(raw, effortVocabForConn(conn));
+}
+
+// anthropic 客户端（Claude Desktop / Claude Code 等）用 thinking 表达思考深度：
+// type=enabled 带 budget_tokens 按预算量级映射；type=adaptive 是官方新档位语义
+// （不带宽预算，等同高档），路由到 OpenAI 上游时统一转 effort。
+function clientAnthropicEffort(conn, ctx) {
+  if (ctx?.kind !== 'anthropic') return null;
+  const thinking = ctx.rawBody?.thinking;
+  if (!thinking || typeof thinking !== 'object') return null;
+  if (thinking.type === 'disabled' || thinking.type === 'off') return null;
+  const level = thinking.type === 'adaptive'
+    ? 'high'
+    : effortFromAnthropicBudget(thinking.budget_tokens);
+  return level ? clampEffortLevel(level, effortVocabForConn(conn)) : null;
+}
+
+// Responses 请求 → Anthropic 上游：客户端显式 effort 跨协议映射为
+// thinking:{type:'adaptive'} + output_config.effort（复用 thinking-effort.js）。
+// anthropic 客户端直发的 thinking 已在上一步透传，优先保留不被覆盖。
+function finishAnthropicBody(conn, ctx, body) {
+  if (!body.thinking) {
+    const clientEffort = clientReasoningEffort(conn, ctx) || clientChatReasoningEffort(conn, ctx);
+    // anthropic 没有 none 档位：客户端的「关闭思考」要转成 thinking.disabled
+    if (clientEffort === 'none') applyThinkingToPayload(body, conn, { mode: 'off' });
+    else if (clientEffort) applyThinkingToPayload(body, conn, { mode: 'level', level: clientEffort });
+  }
+  return body;
+}
+
 function upstreamBody(conn, ctx) {
   const extras = {
     ...(ctx.preserveExtraParams === true ? (ctx.extraParams || {}) : {}),
@@ -1399,7 +1458,7 @@ function upstreamBody(conn, ctx) {
         toolChoice: anthropicToolChoice(ctx.toolChoice),
       });
     }
-    return cleanBody({ ...extras, model: conn.model, system: ctx.system || undefined, messages: anthropicMessages, max_tokens: ctx.maxTokens, temperature: ctx.temperature, stream: false, thinking: ctx.rawBody?.thinking || undefined, tools: anthropicTools(ctx.tools), tool_choice: anthropicToolChoice(ctx.toolChoice) });
+    return finishAnthropicBody(conn, ctx, cleanBody({ ...extras, model: conn.model, system: ctx.system || undefined, messages: anthropicMessages, max_tokens: ctx.maxTokens, temperature: ctx.temperature, stream: false, thinking: ctx.rawBody?.thinking || undefined, tools: anthropicTools(ctx.tools), tool_choice: anthropicToolChoice(ctx.toolChoice) }));
   }
   if (conn.format === 'gemini') {
     return cleanBody({
@@ -1422,7 +1481,14 @@ function upstreamBody(conn, ctx) {
   }
   const useResponses = String(conn.apiPath || '').toLowerCase().includes('/responses');
   if (useResponses) {
-    const input = openAIResponsesInput(ctx.messages);
+    // 原生 Responses 客户端的 input 是 item 数组，其中含 reasoning items
+    // （带 encrypted_content 的思考历史）。从 messages 重建会把这些项丢掉，
+    // 上游每轮都从零推理，表现为「多轮对话变笨」。只有非 Responses 客户端
+    // （chat/anthropic/gemini 转过来）才需要从 messages 重建。
+    const rawInput = ctx.kind === 'responses' ? ctx.rawBody?.input : undefined;
+    const input = Array.isArray(rawInput) && rawInput.length > 0
+      ? rawInput
+      : openAIResponsesInput(ctx.messages);
     const body = {
       ...extras,
       model: conn.model,
@@ -1438,12 +1504,25 @@ function upstreamBody(conn, ctx) {
     // Proxy never retrieves stored responses; always disable server-side store
     // so client/preserveExtraParams cannot re-enable upstream disk persistence.
     body.store = false;
+    // 四个来源对称：responses 客户端、chat 客户端转 responses 上游、anthropic 客户端
+    const clientEffort = clientReasoningEffort(conn, ctx)
+      || clientChatReasoningEffort(conn, ctx)
+      || clientAnthropicEffort(conn, ctx);
+    if (clientEffort) body.reasoning = { effort: clientEffort };
     if (codexUnlock) {
       applyCodexUnlockRequiredFields(body, codexUnlock);
     }
     return cleanBody(body);
   }
-  return cleanBody({ ...extras, model: conn.model, messages: openAIChatMessages(ctx.system, ctx.messages), max_tokens: ctx.maxTokens, temperature: ctx.temperature, stream: false, tools: openAITools(ctx.tools), tool_choice: ctx.toolChoice || undefined });
+  const chatBody = { ...extras, model: conn.model, messages: openAIChatMessages(ctx.system, ctx.messages), max_tokens: ctx.maxTokens, temperature: ctx.temperature, stream: false, tools: openAITools(ctx.tools), tool_choice: ctx.toolChoice || undefined };
+  // responses 客户端落到 chat 上游（供应商手填 chat 端点但未配 wireApi）时同样要保档位
+  if (chatBody.reasoning_effort === undefined) {
+    const chatEffort = clientReasoningEffort(conn, ctx)
+      || clientChatReasoningEffort(conn, ctx)
+      || clientAnthropicEffort(conn, ctx);
+    if (chatEffort) chatBody.reasoning_effort = chatEffort;
+  }
+  return cleanBody(chatBody);
 }
 
 function authHeaders(conn, sessionId) {
@@ -1600,12 +1679,22 @@ async function* parseSSEStream(response, { onChunk } = {}) {
 function extractText(conn, json) {
   if (!json) return '';
   if (conn.format === 'anthropic') return (json.content || []).map(p => p?.text || '').filter(Boolean).join('');
-  if (conn.format === 'gemini') return (json.candidates?.[0]?.content?.parts || []).map(p => p?.text || '').filter(Boolean).join('');
+  // Gemini 的思考片段是 thought:true 的 part，混进正文会让客户端把推理当回答显示
+  if (conn.format === 'gemini') return (json.candidates?.[0]?.content?.parts || []).filter(p => p?.thought !== true).map(p => p?.text || '').filter(Boolean).join('');
   if (typeof json.output_text === 'string') return json.output_text;
   const chatText = json.choices?.[0]?.message?.content;
   if (typeof chatText === 'string') return chatText;
   if (Array.isArray(chatText)) return chatText.map(p => p?.text || '').join('');
-  if (Array.isArray(json.output)) return json.output.flatMap(i => i?.content || []).map(p => p?.text || p?.content || '').filter(Boolean).join('');
+  // Responses 上游：只取 message 的输出文本。reasoning item 的 content/summary
+  // 是思考内容，拼进正文会让客户端把推理当回答显示出来。
+  if (Array.isArray(json.output)) {
+    return json.output
+      .filter(item => item?.type === 'message')
+      .flatMap(item => item?.content || [])
+      .map(part => (typeof part?.text === 'string' ? part.text : ''))
+      .filter(Boolean)
+      .join('');
+  }
   return '';
 }
 
@@ -1662,6 +1751,47 @@ function extractToolCalls(conn, json) {
       arguments: parseJsonObject(call.arguments || '{}'),
     })),
   ].filter(call => call.name);
+}
+
+// 上游响应里的思考文本（anthropic thinking block / gemini thought part / responses reasoning item）。
+// 跨协议出口需要它来还原思考过程；正文提取（extractText）刻意排除这些片段。
+function upstreamReasoningText(conn, json) {
+  if (!isPlainObject(json)) return '';
+  if (conn?.format === 'anthropic') {
+    return (json.content || []).filter(p => p?.type === 'thinking').map(p => String(p.thinking || '')).join('');
+  }
+  if (conn?.format === 'gemini') {
+    return (json.candidates?.[0]?.content?.parts || []).filter(p => p?.thought === true).map(p => String(p.text || '')).join('');
+  }
+  if (Array.isArray(json.output)) {
+    return json.output
+      .filter(item => item?.type === 'reasoning')
+      .map(item => {
+        const summary = Array.isArray(item.summary) ? item.summary.map(s => s?.text || '').join('') : '';
+        const content = Array.isArray(item.content) ? item.content.map(c => c?.text || '').join('') : '';
+        return summary || content;
+      })
+      .join('');
+  }
+  return '';
+}
+
+// Responses 出口要回传的 reasoning items。
+// 上游给了 encrypted_content 就原样回传（客户端下一轮可安全回放）；
+// 只有可读文本时构造不带 id 的摘要项，避免客户端带着查不到的 id 回放触发 upstream item not found。
+function responseReasoningItems(conn, json) {
+  if (conn?.format === 'openai' && Array.isArray(json?.output)) {
+    const replayable = json.output.filter(item => item?.type === 'reasoning'
+      && typeof item.encrypted_content === 'string' && item.encrypted_content);
+    if (replayable.length) return replayable;
+  }
+  const text = upstreamReasoningText(conn, json);
+  if (!text) return [];
+  return [{
+    type: 'reasoning',
+    summary: [{ type: 'summary_text', text }],
+    content: [{ type: 'reasoning_text', text }],
+  }];
 }
 
 function upstreamMessage(r) { return r.json?.error?.message || r.json?.message || r.json?.detail || r.text || `HTTP ${r.statusCode}`; }
@@ -2396,12 +2526,15 @@ function responseObject(ctx, result, id) {
   const usage = { input_tokens: input, output_tokens: output, total_tokens: input + output };
   const cached = Number(result.usage?.cachedTokens) || 0;
   if (cached > 0) usage.input_tokens_details = { cached_tokens: cached };
+  // reasoning items 必须回传（含 encrypted_content）：客户端靠它在下一轮回放思考上下文，
+  // 缺失会让模型每轮从零推理，表现为「多轮对话变笨」。
+  const outputItems = responseReasoningItems(result.conn, result.json);
   // tool_calls 必须进 output（Responses 协议的 function_call 项），
   // 否则 Cursor/Agent 这类工具调用客户端只会看到空 message，表现为"模型不回复"。
-  const outputItems = [{
+  outputItems.push({
     type: 'message', id: `msg-${crypto.randomUUID()}`, status: 'completed', role: 'assistant',
     content: [{ type: 'output_text', text: result.text }],
-  }];
+  });
   for (const tc of (Array.isArray(result.toolCalls) ? result.toolCalls : [])) {
     if (!tc?.name) continue;
     outputItems.push({
@@ -2459,14 +2592,27 @@ function sendOpenAIResponses(ctx, res, result) {
   if (ctx.stream) {
     res.writeHead(200, cors({ 'content-type': 'text/event-stream; charset=utf-8', ...extra }));
     sse(res, 'response.created', { type: 'response.created', response: { ...obj, output: [], output_text: '' } });
-    sse(res, 'response.output_item.added', { type: 'response.output_item.added', output_index: 0, item: { type: 'message', id: obj.output[0].id, status: 'in_progress', role: 'assistant', content: [] } });
-    sse(res, 'response.output_text.delta', { type: 'response.output_text.delta', item_id: obj.output[0].id, output_index: 0, content_index: 0, delta: result.text });
-    sse(res, 'response.output_text.done', { type: 'response.output_text.done', item_id: obj.output[0].id, output_index: 0, content_index: 0, text: result.text });
-    sse(res, 'response.output_item.done', { type: 'response.output_item.done', output_index: 0, item: obj.output[0] });
-    // function_call 等附加 output item 必须以 output_item 事件发出，
-    // 否则工具调用客户端收不到任何调用指令，表现为空回复。
-    for (let i = 1; i < obj.output.length; i++) {
+    // 按 item 类型分发：reasoning 先于 message，function_call 等附加项各自发 output_item 事件，
+    // 否则工具调用客户端收不到调用指令，表现为空回复。
+    for (let i = 0; i < obj.output.length; i++) {
       const item = obj.output[i];
+      if (item.type === 'reasoning') {
+        sse(res, 'response.output_item.added', { type: 'response.output_item.added', output_index: i, item: { ...item, status: 'in_progress' } });
+        const reasoningDelta = Array.isArray(item.summary) ? item.summary.map(s => s?.text || '').join('') : '';
+        if (reasoningDelta) {
+          sse(res, 'response.reasoning_summary_text.delta', { type: 'response.reasoning_summary_text.delta', item_id: item.id, output_index: i, summary_index: 0, delta: reasoningDelta });
+          sse(res, 'response.reasoning_summary_text.done', { type: 'response.reasoning_summary_text.done', item_id: item.id, output_index: i, summary_index: 0, text: reasoningDelta });
+        }
+        sse(res, 'response.output_item.done', { type: 'response.output_item.done', output_index: i, item });
+        continue;
+      }
+      if (item.type === 'message') {
+        sse(res, 'response.output_item.added', { type: 'response.output_item.added', output_index: i, item: { type: 'message', id: item.id, status: 'in_progress', role: 'assistant', content: [] } });
+        sse(res, 'response.output_text.delta', { type: 'response.output_text.delta', item_id: item.id, output_index: i, content_index: 0, delta: result.text });
+        sse(res, 'response.output_text.done', { type: 'response.output_text.done', item_id: item.id, output_index: i, content_index: 0, text: result.text });
+        sse(res, 'response.output_item.done', { type: 'response.output_item.done', output_index: i, item });
+        continue;
+      }
       sse(res, 'response.output_item.added', { type: 'response.output_item.added', output_index: i, item: { ...item, status: 'in_progress' } });
       sse(res, 'response.output_item.done', { type: 'response.output_item.done', output_index: i, item });
     }

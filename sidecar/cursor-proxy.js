@@ -203,9 +203,20 @@ function parseModelDetails(buf) {
 
 function parseRequestedModel(buf) {
   const fields = parseFields(buf);
+  // parameters (field 3) 携带用户在 Cursor 界面选的思考档位（effort/thinking/fast/context）。
+  // 此前只取 modelId/maxMode，档位在 MITM 路径被整体丢弃，上游按模型默认档推理。
+  const parameters = {};
+  for (const field of getAllFields(fields, 3)) {
+    if (field.wireType !== 2) continue;
+    const paramFields = parseFields(field.value);
+    const id = fieldToString(getField(paramFields, 1, 2));
+    const value = fieldToString(getField(paramFields, 2, 2));
+    if (id) parameters[id] = value;
+  }
   return {
     modelId: fieldToString(getField(fields, 1, 2)),
     maxMode: fieldToInt(getField(fields, 2, 0)) === 1,
+    parameters,
   };
 }
 
@@ -4480,6 +4491,19 @@ function prepareToolOutputForModel(toolCall, output) {
   return `${limitUtf8Bytes(value, CURSOR_TOOL_RESULT_MAX_BYTES)}${marker}`;
 }
 
+// Cursor 原生协议把用户选的思考档位放在 RequestedModel.parameters（effort/thinking）。
+// 与 cursor-core 的 openai_responses 注入保持对称：有档位发 reasoning.effort，
+// 只开思考不发档位时发 reasoning.summary（让上游走默认档），都关则不注入。
+function cursorReasoningFromSession(sess) {
+  const params = sess?.requestedModel?.parameters || {};
+  const raw = String(params.effort || params.reasoning || '').trim().toLowerCase();
+  // effort=none 与 cursor-core 同口径：不注入档位（上游按默认档），不下发 'none'
+  if (raw) return raw === 'none' ? null : { effort: raw };
+  const thinkingOn = String(params.thinking || '').trim().toLowerCase() === 'true';
+  if (thinkingOn || sess?.requestedModel?.maxMode === true) return { summary: 'auto' };
+  return null;
+}
+
 function buildLocalProxyContext(sess, adapter, inputItems = null) {
   const initial = inputItems ? null : buildCursorInitialInput(sess);
   const tools = cursorReadTools(sess);
@@ -4490,6 +4514,7 @@ function buildLocalProxyContext(sess, adapter, inputItems = null) {
     mcpToolsPrompt(sess),
   ].filter(Boolean).join('\n');
   const input = inputItems || initial.input;
+  const reasoning = cursorReasoningFromSession(sess);
   return {
     kind: 'responses',
     model: adapter.id,
@@ -4507,6 +4532,7 @@ function buildLocalProxyContext(sess, adapter, inputItems = null) {
       max_output_tokens: 4096,
       tools,
       tool_choice: 'auto',
+      ...(reasoning ? { reasoning } : {}),
     },
   };
 }
@@ -5615,6 +5641,8 @@ export function handleCursorRequest(req, res, body, opts = {}) {
 export const __cursorProxyTest = {
   stableModelID,
   parseBidiAppend,
+  parseRequestedModel,
+  cursorReasoningFromSession,
   parseStreamBugBotRequest,
   buildBugBotPrompt,
   buildBugBotResponse,

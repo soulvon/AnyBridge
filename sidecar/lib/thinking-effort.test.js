@@ -5,10 +5,12 @@ import {
   applyThinkingToPayload,
   clampEffortLevel,
   describeThinking,
+  effortFromAnthropicBudget,
   modelFamily,
   normalizeThinkingEffortConfig,
   parseThinkingFromUid,
   resolveThinkingEffort,
+  serviceTierFromUid,
 } from './thinking-effort.js';
 
 const anthropicConn = { format: 'anthropic', model: 'claude-opus-4-7', apiPath: '/v1/messages' };
@@ -170,6 +172,39 @@ describe('applyThinkingToPayload', () => {
     const g = {};
     applyThinkingToPayload(g, { format: 'gemini', model: 'gemini-3.1-pro' }, { mode: 'level', level: 'high' });
     assert.deepEqual(g, {});
+  });
+});
+
+describe('serviceTierFromUid', () => {
+  it('-priority 与紧跟档位词的 -fast 都是加速变体', () => {
+    assert.equal(serviceTierFromUid('gpt-5-6-luna-max-priority'), 'fast');
+    assert.equal(serviceTierFromUid('claude-opus-4-8-high-fast'), 'fast');
+    assert.equal(serviceTierFromUid('MODEL_GPT_5_2_MEDIUM_PRIORITY'), 'fast', '下划线风格与连字符同一套命名');
+    assert.equal(serviceTierFromUid('glm-5-2-high-1m-fast'), 'fast');
+  });
+
+  it('模型名自带 -fast（SWE-1.6 Fast）不算加速变体', () => {
+    assert.equal(serviceTierFromUid('swe-1-6-fast'), undefined);
+    assert.equal(serviceTierFromUid(''), undefined);
+    assert.equal(serviceTierFromUid(null), undefined);
+  });
+});
+
+describe('effortFromAnthropicBudget', () => {
+  it('按预算量级映射 low/medium/high', () => {
+    assert.equal(effortFromAnthropicBudget(1024), 'low');
+    assert.equal(effortFromAnthropicBudget(4095), 'low');
+    assert.equal(effortFromAnthropicBudget(4096), 'medium');
+    assert.equal(effortFromAnthropicBudget(8192), 'medium');
+    assert.equal(effortFromAnthropicBudget(16384), 'high');
+    assert.equal(effortFromAnthropicBudget(32000), 'high');
+  });
+
+  it('无效预算返回 null（不注入）', () => {
+    assert.equal(effortFromAnthropicBudget(0), null);
+    assert.equal(effortFromAnthropicBudget(-1), null);
+    assert.equal(effortFromAnthropicBudget(undefined), null);
+    assert.equal(effortFromAnthropicBudget('abc'), null);
   });
 });
 

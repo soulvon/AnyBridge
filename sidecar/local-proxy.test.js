@@ -1,8 +1,11 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { EventEmitter } from 'node:events';
 import fs from 'node:fs';
+import https from 'node:https';
 import os from 'node:os';
 import path from 'node:path';
+import { Readable } from 'node:stream';
 
 import { invalidate } from './config-cache.js';
 import { __localProxyTest } from './local-proxy.js';
@@ -130,6 +133,127 @@ test('sendOpenAIResponses: 假流式必须发送 function_call 的完整 output_
   assert.equal(done.item.call_id, 'call-1');
   assert.deepEqual(JSON.parse(done.item.arguments), { path: '.' });
   assert.equal(events.at(-1).response.output[1].type, 'function_call');
+});
+
+test('sendOpenAIResponses: 假流式先发 reasoning 项（含密文），message 索引顺延', () => {
+  const chunks = [];
+  const res = {
+    writeHead() {},
+    write(chunk) { chunks.push(String(chunk)); },
+    end() {},
+  };
+  const json = {
+    output: [
+      { type: 'reasoning', id: 'rs_1', summary: [{ type: 'summary_text', text: '思考摘要' }], encrypted_content: 'gAAA' },
+      { type: 'message', content: [{ type: 'output_text', text: '答案' }] },
+    ],
+  };
+  __localProxyTest.sendOpenAIResponses(
+    { model: 'm', stream: true },
+    res,
+    { conn: { format: 'openai' }, json, text: '答案', toolCalls: [], usage: {} },
+  );
+
+  const events = chunks.join('').split('\n\n').flatMap((block) => {
+    const data = block.split('\n').find((line) => line.startsWith('data: '))?.slice(6);
+    return data && data !== '[DONE]' ? [JSON.parse(data)] : [];
+  });
+  assert.deepEqual(events.map((event) => event.type), [
+    'response.created',
+    'response.output_item.added',
+    'response.reasoning_summary_text.delta',
+    'response.reasoning_summary_text.done',
+    'response.output_item.done',
+    'response.output_item.added',
+    'response.output_text.delta',
+    'response.output_text.done',
+    'response.output_item.done',
+    'response.completed',
+  ]);
+  const reasoningDone = events[4];
+  assert.equal(reasoningDone.output_index, 0);
+  assert.equal(reasoningDone.item.encrypted_content, 'gAAA', '密文必须回传，客户端下一轮才能回放思考上下文');
+  const messageAdded = events[5];
+  assert.equal(messageAdded.output_index, 1, 'reasoning 占位后 message 索引顺延');
+});
+
+test('端到端：Cursor Responses 请求的档位与思考回放项直达上游', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'anybridge-e2e-effort-'));
+  const previousConfigDir = process.env.BYOK_CONFIG_DIR;
+  process.env.BYOK_CONFIG_DIR = dir;
+  invalidate('all');
+
+  fs.writeFileSync(path.join(dir, 'providers.json'), JSON.stringify({
+    providers: [{
+      id: 'p1', name: 'Mock', apiHost: 'https://mock.test', apiKey: 'k', enabled: true, apiFormat: 'openai',
+    }],
+  }), 'utf8');
+  fs.writeFileSync(path.join(dir, 'proxy-routes.json'), JSON.stringify({
+    version: 1,
+    routes: [{
+      uid: 'r1',
+      id: 'cursor-opus',
+      enabled: true,
+      displayName: 'Cursor Opus',
+      capabilities: { reasoning: true },
+      targets: [{ providerId: 'p1', model: 'gpt-5.6', apiPath: '/v1/responses' }],
+    }],
+  }), 'utf8');
+
+  const upstreamCalls = [];
+  const originalRequest = https.request;
+  https.request = function mockRequest(options, cb) {
+    let body = Buffer.alloc(0);
+    const req = new EventEmitter();
+    req.write = chunk => {
+      if (chunk) body = Buffer.concat([body, Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk))]);
+    };
+    req.setTimeout = () => req;
+    req.destroy = err => { if (err) req.emit('error', err); };
+    req.end = chunk => {
+      if (chunk) req.write(chunk);
+      upstreamCalls.push({ options, payload: JSON.parse(body.toString('utf8') || '{}') });
+      const res = new Readable({ read() {} });
+      res.statusCode = 200;
+      res.headers = { 'content-type': 'application/json' };
+      process.nextTick(() => {
+        cb(res);
+        res.push(JSON.stringify({
+          output: [
+            { type: 'reasoning', id: 'rs_up', summary: [{ type: 'summary_text', text: '思考' }], encrypted_content: 'gUp' },
+            { type: 'message', content: [{ type: 'output_text', text: '答案' }] },
+          ],
+        }));
+        res.push(null);
+      });
+    };
+    return req;
+  };
+
+  try {
+    const ctx = __localProxyTest.normalizeRequest('responses', {
+      model: 'cursor-opus',
+      input: [
+        { type: 'reasoning', id: 'rs_prev', encrypted_content: 'gPrev' },
+        { type: 'message', role: 'user', content: [{ type: 'input_text', text: 'hi' }] },
+      ],
+      reasoning: { effort: 'xhigh' },
+    });
+
+    const result = await __localProxyTest.execute(ctx);
+
+    const payload = upstreamCalls[0].payload;
+    assert.equal(payload.reasoning.effort, 'xhigh', 'Cursor 界面选的档位必须到达上游');
+    assert.equal(payload.input[0].type, 'reasoning', '上一轮思考回放项必须原样透传');
+    assert.equal(payload.input[0].encrypted_content, 'gPrev');
+    assert.equal(result.text, '答案', '思考文本不得混入正文');
+  } finally {
+    https.request = originalRequest;
+    invalidate('all');
+    if (previousConfigDir === undefined) delete process.env.BYOK_CONFIG_DIR;
+    else process.env.BYOK_CONFIG_DIR = previousConfigDir;
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test('responseObject: 纯文本回复保持单一 message 输出项', () => {
@@ -415,6 +539,302 @@ test('Responses upstream forces store:false even when preserveExtraParams sets s
   assert.equal(body.store, false);
   assert.equal(body.model, 'gpt-5.5');
   assert.ok(Array.isArray(body.input));
+});
+
+test('Responses 直连上游必须透传客户端思考档位（issue #40）', () => {
+  const ctx = __localProxyTest.normalizeRequest('responses', {
+    model: 'local-model',
+    input: 'hello',
+    reasoning: { summary: 'auto', effort: 'high' },
+  });
+
+  const body = __localProxyTest.upstreamBody({
+    format: 'openai',
+    model: 'gpt-5.6',
+    apiPath: '/v1/responses',
+  }, ctx);
+
+  assert.deepEqual(body.reasoning, { effort: 'high' });
+});
+
+test('Responses 思考档位按目标模型族词表钳制', () => {
+  const ctx = __localProxyTest.normalizeRequest('responses', {
+    model: 'local-model',
+    input: 'hello',
+    reasoning: { effort: 'xhigh' },
+  });
+
+  // xhigh 不在 generic 词表（low/medium/high）内 → 就近降为 high
+  const genericBody = __localProxyTest.upstreamBody({
+    format: 'openai',
+    model: 'some-model',
+    apiPath: '/v1/responses',
+  }, ctx);
+  assert.deepEqual(genericBody.reasoning, { effort: 'high' });
+
+  // gpt 族支持 xhigh → 原样直传
+  const gptBody = __localProxyTest.upstreamBody({
+    format: 'openai',
+    model: 'gpt-5.6-sol',
+    apiPath: '/v1/responses',
+  }, ctx);
+  assert.deepEqual(gptBody.reasoning, { effort: 'xhigh' });
+});
+
+test('Responses 请求未带 effort 时不注入 reasoning', () => {
+  const ctx = __localProxyTest.normalizeRequest('responses', {
+    model: 'local-model',
+    input: 'hello',
+  });
+
+  const body = __localProxyTest.upstreamBody({
+    format: 'openai',
+    model: 'gpt-5.6',
+    apiPath: '/v1/responses',
+  }, ctx);
+
+  assert.equal(body.reasoning, undefined);
+});
+
+test('Responses 思考档位跨协议映射为 Anthropic thinking', () => {
+  const ctx = __localProxyTest.normalizeRequest('responses', {
+    model: 'local-model',
+    input: 'hello',
+    reasoning: { effort: 'xhigh' },
+  });
+
+  const body = __localProxyTest.upstreamBody({
+    format: 'anthropic',
+    model: 'claude-opus-4-7',
+    apiPath: '/v1/messages',
+  }, ctx);
+
+  assert.deepEqual(body.thinking, { type: 'adaptive' });
+  assert.deepEqual(body.output_config, { effort: 'high' });
+});
+
+test('chat 上游（未配 wireApi）也保留 responses 客户端的档位', () => {
+  const ctx = __localProxyTest.normalizeRequest('responses', {
+    model: 'local-model',
+    input: 'hello',
+    reasoning: { effort: 'high' },
+  });
+
+  const body = __localProxyTest.upstreamBody({
+    format: 'openai',
+    model: 'deepseek-v4',
+    apiPath: '/v1/chat/completions',
+  }, ctx);
+
+  assert.equal(body.reasoning_effort, 'high');
+});
+
+test('chat 客户端显式 reasoning_effort 透传（none 保留关闭语义）', () => {
+  const ctx = __localProxyTest.normalizeRequest('openai', {
+    model: 'local-model',
+    messages: [{ role: 'user', content: 'hi' }],
+    reasoning_effort: 'medium',
+  });
+
+  const body = __localProxyTest.upstreamBody({
+    format: 'openai',
+    model: 'gpt-5.6',
+    apiPath: '/v1/chat/completions',
+  }, ctx);
+  assert.equal(body.reasoning_effort, 'medium');
+
+  const offCtx = __localProxyTest.normalizeRequest('openai', {
+    model: 'local-model',
+    messages: [{ role: 'user', content: 'hi' }],
+    reasoning_effort: 'none',
+  });
+  const offBody = __localProxyTest.upstreamBody({
+    format: 'openai',
+    model: 'gpt-5.6',
+    apiPath: '/v1/chat/completions',
+  }, offCtx);
+  assert.equal(offBody.reasoning_effort, 'none');
+});
+
+test('anthropic 客户端 thinking 预算映射到 OpenAI 上游档位', () => {
+  const ctx = __localProxyTest.normalizeRequest('anthropic', {
+    model: 'local-model',
+    messages: [{ role: 'user', content: 'hi' }],
+    thinking: { type: 'enabled', budget_tokens: 8192 },
+  });
+
+  const responsesBody = __localProxyTest.upstreamBody({
+    format: 'openai',
+    model: 'gpt-5.6',
+    apiPath: '/v1/responses',
+  }, ctx);
+  assert.deepEqual(responsesBody.reasoning, { effort: 'medium' });
+
+  const chatBody = __localProxyTest.upstreamBody({
+    format: 'openai',
+    model: 'gpt-5.6',
+    apiPath: '/v1/chat/completions',
+  }, ctx);
+  assert.equal(chatBody.reasoning_effort, 'medium');
+});
+
+test('Responses 上游的思考文本不混入正文', () => {
+  const json = {
+    output: [
+      { type: 'reasoning', id: 'rs_1', summary: [{ type: 'summary_text', text: '先想一下' }] },
+      { type: 'message', content: [{ type: 'output_text', text: '最终答案' }] },
+      { type: 'function_call', name: 'read_file', arguments: '{"path":"a"}' },
+    ],
+  };
+  assert.equal(
+    __localProxyTest.extractText({ format: 'openai' }, json),
+    '最终答案',
+    '思考内容混进正文会让客户端把推理当回答显示',
+  );
+});
+
+test('Gemini 上游的 thought part 不混入正文', () => {
+  const json = {
+    candidates: [{
+      content: {
+        parts: [
+          { text: '思考过程', thought: true },
+          { text: '最终答案' },
+        ],
+      },
+    }],
+  };
+  assert.equal(__localProxyTest.extractText({ format: 'gemini' }, json), '最终答案');
+});
+
+test('responseObject 回传带 encrypted_content 的 reasoning item', () => {
+  const json = {
+    output: [
+      { type: 'reasoning', id: 'rs_1', summary: [{ type: 'summary_text', text: 's' }], encrypted_content: 'gAAA' },
+      { type: 'message', content: [{ type: 'output_text', text: 'answer' }] },
+    ],
+  };
+  const obj = __localProxyTest.responseObject(
+    { model: 'm' },
+    { conn: { format: 'openai' }, json, text: 'answer', usage: {} },
+    'resp-1',
+  );
+
+  assert.equal(obj.output[0].type, 'reasoning');
+  assert.equal(obj.output[0].encrypted_content, 'gAAA');
+  assert.equal(obj.output[1].type, 'message');
+  assert.equal(obj.output[1].content[0].text, 'answer');
+});
+
+test('上游只有可读思考文本时构造不带 id 的 reasoning 摘要项', () => {
+  const json = {
+    output: [
+      { type: 'reasoning', summary: [{ type: 'summary_text', text: '先分析需求' }] },
+      { type: 'message', content: [{ type: 'output_text', text: 'answer' }] },
+    ],
+  };
+  const obj = __localProxyTest.responseObject(
+    { model: 'm' },
+    { conn: { format: 'openai' }, json, text: 'answer', usage: {} },
+    'resp-2',
+  );
+
+  assert.equal(obj.output[0].type, 'reasoning');
+  assert.equal(obj.output[0].id, undefined, '无密文时不带 id，避免客户端回放查不到的 id');
+  assert.equal(obj.output[0].summary[0].text, '先分析需求');
+});
+
+test('anthropic adaptive 思考映射到 OpenAI 上游档位', () => {
+  const ctx = __localProxyTest.normalizeRequest('anthropic', {
+    model: 'local-model',
+    messages: [{ role: 'user', content: 'hi' }],
+    thinking: { type: 'adaptive' },
+  });
+
+  const responsesBody = __localProxyTest.upstreamBody({
+    format: 'openai',
+    model: 'gpt-5.6',
+    apiPath: '/v1/responses',
+  }, ctx);
+  assert.deepEqual(responsesBody.reasoning, { effort: 'high' });
+
+  const anthropicBody = __localProxyTest.upstreamBody({
+    format: 'anthropic',
+    model: 'claude-opus-4-7',
+    apiPath: '/v1/messages',
+  }, { ...ctx, rawBody: { ...ctx.rawBody, thinking: undefined } });
+  assert.equal(anthropicBody.thinking, undefined, 'adaptive 客户端到 anthropic 上游按原样透传链路由前一步负责');
+});
+
+test('chat 客户端 reasoning_effort 跨协议到 responses / anthropic 上游', () => {
+  const ctx = __localProxyTest.normalizeRequest('openai', {
+    model: 'local-model',
+    messages: [{ role: 'user', content: 'hi' }],
+    reasoning_effort: 'medium',
+  });
+
+  const responsesBody = __localProxyTest.upstreamBody({
+    format: 'openai',
+    model: 'gpt-5.6',
+    apiPath: '/v1/responses',
+  }, ctx);
+  assert.deepEqual(responsesBody.reasoning, { effort: 'medium' });
+
+  const anthropicBody = __localProxyTest.upstreamBody({
+    format: 'anthropic',
+    model: 'claude-opus-4-7',
+    apiPath: '/v1/messages',
+  }, ctx);
+  assert.deepEqual(anthropicBody.thinking, { type: 'adaptive' });
+  assert.deepEqual(anthropicBody.output_config, { effort: 'medium' });
+});
+
+test('chat 客户端关闭思考（none）在 anthropic 上游转 disabled', () => {
+  const ctx = __localProxyTest.normalizeRequest('openai', {
+    model: 'local-model',
+    messages: [{ role: 'user', content: 'hi' }],
+    reasoning_effort: 'none',
+  });
+
+  const anthropicBody = __localProxyTest.upstreamBody({
+    format: 'anthropic',
+    model: 'claude-opus-4-7',
+    apiPath: '/v1/messages',
+  }, ctx);
+  assert.deepEqual(anthropicBody.thinking, { type: 'disabled' });
+  assert.equal(anthropicBody.output_config, undefined);
+});
+
+test('anthropic 客户端未开启 thinking 时不注入档位', () => {
+  const ctx = __localProxyTest.normalizeRequest('anthropic', {
+    model: 'local-model',
+    messages: [{ role: 'user', content: 'hi' }],
+    thinking: { type: 'disabled' },
+  });
+
+  const responsesBody = __localProxyTest.upstreamBody({
+    format: 'openai',
+    model: 'gpt-5.6',
+    apiPath: '/v1/responses',
+  }, ctx);
+  assert.equal(responsesBody.reasoning, undefined);
+});
+
+test('anthropic 客户端直发的 thinking 优先，不被 effort 映射覆盖', () => {
+  const ctx = __localProxyTest.normalizeRequest('anthropic', {
+    model: 'local-model',
+    messages: [{ role: 'user', content: 'hi' }],
+    thinking: { type: 'enabled', budget_tokens: 4096 },
+  });
+
+  const body = __localProxyTest.upstreamBody({
+    format: 'anthropic',
+    model: 'claude-opus-4-7',
+    apiPath: '/v1/messages',
+  }, ctx);
+
+  assert.deepEqual(body.thinking, { type: 'enabled', budget_tokens: 4096 });
+  assert.equal(body.output_config, undefined);
 });
 
 test('tool filtering rejects stale tool_choice references', () => {

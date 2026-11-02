@@ -691,6 +691,45 @@
       },
       "regression_test": "src-tauri/src/commands/cursor_auth.rs::restore_writes_back_original_and_keeps_user_changes",
       "severity": "high"
+    },
+    {
+      "id": "client-reasoning-effort-dropped",
+      "title": "客户端显式思考档位不得被中间层丢弃（Cursor 思考等级不生效）",
+      "symptom": "Cursor 界面选的思考等级经 AnyBridge 后丢失，上游一律按模型默认档推理，用户感知『变笨了』（issue #40，与 haxsd-byok 对比质量差异）",
+      "lesson": "档位有两条下发通道，必须同时守：①Cursor 原生协议 model.parameters（cursor-core 解析后写 reasoning.effort；MITM 路径 cursor-proxy 解析 RequestedModel.parameters 字段 3）；②客户端请求体的协议标准字段（responses reasoning.effort / chat reasoning_effort / anthropic thinking.budget_tokens，含 type=adaptive）。local-proxy 的 passthroughParams 把 reasoning/thinking 整体丢弃，而重建（thinking-effort.js）只服务 Devin/Windsurf 的 modelUid 后缀——Cursor 的 modelUid 不带后缀，丢弃即彻底丢失。判据：三条上游出口（responses 直连 / chat 直连 / anthropic）都必须同时接受 responses、chat、anthropic 三种客户端来源（跨协议按目标族词表钳制，budget 用 effortFromAnthropicBudget，none 在 anthropic 出口转 thinking.disabled）；wireApi=chat 转换路径不得回退。行为由 local-proxy.test.js 与 cursor-proxy.test.js 多场景锁定",
+      "check": {
+        "type": "source_contains",
+        "file": "sidecar/local-proxy.test.js",
+        "must_contain": "Responses 直连上游必须透传客户端思考档位（issue #40）"
+      },
+      "regression_test": "sidecar/local-proxy.test.js::Responses 直连上游必须透传客户端思考档位（issue #40）",
+      "severity": "high"
+    },
+    {
+      "id": "reasoning-content-must-not-leak-into-text",
+      "title": "思考内容不得混入正文，思考回放项必须原样回传",
+      "symptom": "开启思考的模型经网关后，推理过程被当成回答正文显示；同时上游返回的 reasoning item（含 encrypted_content）被丢弃，客户端下一轮无思考上下文可回放，多轮对话明显变笨",
+      "lesson": "响应侧与请求侧必须成对：①extractText 只取 message 的 output_text，reasoning 的 summary/content 与 Gemini 的 thought:true part 都要排除（否则推理当回答显示）；②responses 出口的 responseObject 必须回传 reasoning item——有 encrypted_content 时原样回传（客户端靠它回放），只有可读文本时构造不带 id 的摘要项（带查不到的 id 会导致上游 item not found）；③假流式必须按 item 类型发事件（reasoning 先于 message，message 索引顺延），漏发 output_item 会让客户端拿不到思考与工具调用。行为由 extractText / responseObject / sendOpenAIResponses 三组测试锁定",
+      "check": {
+        "type": "source_contains",
+        "file": "sidecar/local-proxy.test.js",
+        "must_contain": "sendOpenAIResponses: 假流式先发 reasoning 项（含密文），message 索引顺延"
+      },
+      "regression_test": "sidecar/local-proxy.test.js::sendOpenAIResponses: 假流式先发 reasoning 项（含密文），message 索引顺延",
+      "severity": "high"
+    },
+    {
+      "id": "fast-variant-service-tier",
+      "title": "加速变体后缀（-priority / -fast）必须都转成 service_tier，但不得误判模型名",
+      "symptom": "Windsurf/Devin 的 Fast 变体有 -priority 与 -fast 两种命名，chat 链路只认 -priority；用户选 Fast（如 claude-opus-4-8-high-fast）时加速档静默失效，与普通版同速",
+      "lesson": "后缀判定必须覆盖新旧两套命名，且要能区分「变体后缀」与「模型名本身」（swe-1-6-fast 是 SWE-1.6 Fast 的真实模型名，不是变体）。判定收敛到 thinking-effort.js 的 serviceTierFromUid 单一真源（handlers/chat.js 只做调用），下划线风格（MODEL_GPT_5_2_MEDIUM_PRIORITY）与连字符等价；-fast 只有紧跟档位词（none/minimal/low/medium/high/xhigh/max/thinking/reasoning/1m）才算变体。行为由 thinking-effort.test.js 两场景锁定（含模型名反例）",
+      "check": {
+        "type": "source_contains",
+        "file": "sidecar/lib/thinking-effort.js",
+        "must_contain": "export function serviceTierFromUid"
+      },
+      "regression_test": "sidecar/lib/thinking-effort.test.js::模型名自带 -fast（SWE-1.6 Fast）不算加速变体",
+      "severity": "medium"
     }
   ]
 }

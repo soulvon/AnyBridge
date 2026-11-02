@@ -46,6 +46,7 @@ import {
   describeThinking,
   effortVocabForConn,
   resolveThinkingEffort,
+  serviceTierFromUid,
 } from '../lib/thinking-effort.js';
 import {
   cooldownPolicyFromEnhancement,
@@ -310,11 +311,9 @@ function sendTerminalError(res, messageId, message, code = 'unavailable') {
 
 // ─── Service tier (fast mode) ──────────────────────────────
 
-// Detect fast mode from Windsurf model ID (suffix "-priority" = service_tier: fast)
+// 加速档后缀的单一真源在 thinking-effort.js（-priority 与 -fast 两种命名）
 function getServiceTier(requestedModel) {
-  if (!requestedModel) return undefined;
-  if (requestedModel.endsWith('-priority')) return 'fast';
-  return undefined;
+  return serviceTierFromUid(requestedModel);
 }
 
 // 轻量提取 GetChatMessage 请求里的模型 ID（field21），不解析完整 body。

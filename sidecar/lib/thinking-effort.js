@@ -162,6 +162,32 @@ export function clampEffortLevel(level, vocab) {
   return null;
 }
 
+// Windsurf/Devin 的加速变体后缀 → service_tier。
+// -priority 是旧命名；-fast 是新命名（如 claude-opus-4-8-high-fast）。
+// -fast 也可能是模型名本身的一部分（swe-1-6-fast = SWE-1.6 Fast），
+// 只有紧跟档位词时才判定为加速变体，避免给真实模型名误发 service_tier。
+export function serviceTierFromUid(uid) {
+  // MODEL_GPT_5_2_MEDIUM_PRIORITY 与 gpt-5-6-luna-max-priority 是同一套命名，下划线归一连字符
+  const m = String(uid || '').trim().toLowerCase().replace(/_/g, '-');
+  if (!m) return undefined;
+  if (m.endsWith('-priority')) return 'fast';
+  if (/(?:^|-)(?:none|minimal|low|medium|high|xhigh|max|thinking|reasoning|1m)-fast$/.test(m)) {
+    return 'fast';
+  }
+  return undefined;
+}
+
+// Anthropic thinking.budget_tokens → OpenAI effort 的跨协议映射。
+// 官方 adaptive effort 词表只有 low|medium|high|max，按预算量级就近归并；
+// 缺字段或非正数视为未指定（返回 null，不注入）。
+export function effortFromAnthropicBudget(budgetTokens) {
+  const n = Number(budgetTokens);
+  if (!Number.isFinite(n) || n <= 0) return null;
+  if (n >= 16384) return 'high';
+  if (n >= 4096) return 'medium';
+  return 'low';
+}
+
 // 归一化 target.thinkingEffort 配置值。auto=跟随 modelUid；off=显式关闭。
 export function normalizeThinkingEffortConfig(value) {
   const raw = String(value || '').trim().toLowerCase();
