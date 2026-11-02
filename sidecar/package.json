@@ -1,6 +1,6 @@
 {
   "name": "anybridge-sidecar",
-  "version": "1.0.11",
+  "version": "1.0.12",
   "description": "AnyBridge local proxy sidecar",
   "type": "module",
   "bin": "proxy-entry.js",

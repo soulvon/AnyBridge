@@ -124,10 +124,13 @@ pub fn request(id: u32, call: &ToolCall, context: &ExecContext) -> Result<pb::Ag
             prompt: string("prompt")?,
             readonly: false,
             resume_agent_id: optional_string("resume"),
-            run_in_background: call
-                .arguments
-                .get("run_in_background")
-                .and_then(Value::as_bool),
+            // 一律按「前台 Task」下发：后台模式下客户端会在子代理跑完前就结束父轮，
+            // 而服务端没有任何通道能再把它叫起来（官方靠客户端自己的
+            // startHostOwnedBackgroundWakeupTurn，BYOK 侧拿不到那条路径）。
+            // 走前台后客户端会在子代理收尾时回传 tool_result，父轮自然继续——
+            // 用户侧看到的就是「子代理跑完，主代理接着说」，无需再开口
+            // （2026-11-02 实测：前台子代理路径稳定）。
+            run_in_background: None,
             continuation_config: None,
             parent_conversation_id: Some(context.conversation_id.clone()),
             interrupt: call.arguments.get("interrupt").and_then(Value::as_bool),

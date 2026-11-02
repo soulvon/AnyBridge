@@ -2,6 +2,14 @@
 
 All notable changes to AnyBridge will be documented in this file.
 
+## v1.0.12 - 2026-11-02
+
+- 改进（issue #39 收尾）：**子代理跑完后主代理自动继续，不再需要用户再发一句**。
+  - 原因：`run_in_background` 会让客户端在子代理收尾前就结束父轮，而父轮一结束、SSE 通道断开，服务端就没有任何办法再把它叫起来（官方是靠客户端自己的 `startHostOwnedBackgroundWakeupTurn`，BYOK 侧走不到那条路径）。所以此前的唤醒消息只能进父会话 pending 队列，等用户开口才被消费。
+  - 做法：Task 工具一律按**前台**下发给客户端（忽略模型给出的 `run_in_background`）。前台路径下客户端会在子代理收尾时回传 `tool_result`，父轮自然继续——用户看到的就是「子代理跑完，主代理接着说」。
+  - 实测：发一个明确要求 `run_in_background=true` 的任务，不再发任何提示，主代理直接输出子代理产物（文件路径 + 实现方式）；`runs` 表可见 `subagent completed` → `root completed`。
+- 保留：服务端收尾唤醒链路（`run_kind` 识别 + `background_task` 反查 + `wakeup_message` 投递）作为兜底，覆盖前台回传缺失的极端情况。
+
 ## v1.0.11 - 2026-11-02
 
 - 修复（issue #39）：**子代理跑完后父会话收不到结果**。根因是我们把所有 run 都记成 `Root`（`PreparedRun.kind` 硬编码），客户端跑子代理时发来的请求虽然带 `subagent_type_name` 与父身份，却从未被识别，于是「父会话关联」与「收尾唤醒」两条链路都没有起点。现在按参考实现补上 `run_kind` 判定：
