@@ -229,11 +229,5 @@ async fn apply_cursor_configuration(proxy_url: &str) -> Result<()> {
     // - 未登录 → 注入本地账号让 BYOK 免登录可用（注入前落账本，关闭时可还原）。
     // 判据只看 token 是否为空/是否为本地 token，绝不按加密格式猜登录态。
     account::inject_if_missing().await?;
-    // 客户端缓存里若留着「强制 HTTP/1.1」，冷启动会进 http1_sse 模式（那条链路
-    // 本实现不支持，表现为发消息必报 Server error，且要等 10 分钟轮询才切回）。
-    // 失败不阻塞接入：库被占用时下一次启动或轮询会自我修正。
-    if let Err(error) = account::clear_cached_http2_force().await {
-        tracing::warn!(%error, "cannot clear Cursor's cached http2 flag");
-    }
     settings::write_proxy_settings(proxy_url)
 }

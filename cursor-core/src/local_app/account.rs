@@ -20,6 +20,9 @@ use sqlx::{Connection, Row, SqliteConnection};
 use crate::{config::managed_data_dir, Error, Result};
 
 const EMAIL: &str = "cursor@ai.com";
+
+/// Cursor 3.27 把真实登录 token 存成 `cursor-safe-storage:v1:...` 的加密形态。
+const SAFE_STORAGE_PREFIX: &str = "cursor-safe-storage";
 const SIGN_UP_TYPE: &str = "Google";
 const SUBJECT: &str = "cursor-local-user";
 const MEMBERSHIP_TYPE: &str = "ultra";
@@ -67,55 +70,6 @@ pub async fn inject_if_missing() -> Result<()> {
 /// 关闭接管时把账号写回注入前的原值（对称于 [`inject_if_missing`]）。
 pub async fn restore_if_backed_up() -> Result<RestoreOutcome> {
     restore_at(&state_db_path()?, &ledger_path()?).await
-}
-
-/// 清掉 Cursor 自己缓存的「强制 HTTP/1.1」标记。
-///
-/// Cursor 冷启动时先读 `cursorai/serverConfig` 缓存决定 transport 模式，之后才去
-/// 拉实时配置。缓存里若留着 `http2Config: HTTP2_CONFIG_FORCE_ALL_DISABLED`，
-/// 客户端会进 http1_sse（InferenceService 两段式 + InferenceStreamResponse 事件流），
-/// 本实现不支持那条链路，表现为发消息必报 `Server error`；而且要等 10 分钟轮询
-/// 到新配置才会重建 transport（2026-11-02 实测）。
-///
-/// 这里在接入时把该字段删掉，让客户端回到默认的 h2 / agent.v1.RunSSE 链路。
-/// 写库失败不视为致命错误：Cursor 正在运行时数据库可能被占用，等用户重启客户端
-/// 或者轮询生效即可。
-pub async fn clear_cached_http2_force() -> Result<()> {
-    clear_cached_http2_force_at(&state_db_path()?).await
-}
-
-async fn clear_cached_http2_force_at(db_path: &Path) -> Result<()> {
-    const KEY: &str = "cursorai/serverConfig";
-    // 只连已存在的库：不能因为路径不对就凭空造一个空 state.vscdb
-    let options = sqlx::sqlite::SqliteConnectOptions::new()
-        .filename(db_path)
-        .create_if_missing(false);
-    let mut connection = match SqliteConnection::connect_with(&options).await {
-        Ok(connection) => connection,
-        Err(error) => {
-            tracing::warn!(%error, "cannot open Cursor state db to clear the http2 cache");
-            return Ok(());
-        }
-    };
-    let Some(raw) = select_value(&mut connection, KEY).await? else {
-        return Ok(());
-    };
-    let Ok(mut config) = serde_json::from_str::<serde_json::Value>(&raw) else {
-        return Ok(());
-    };
-    let Some(object) = config.as_object_mut() else {
-        return Ok(());
-    };
-    if object.remove("http2Config").is_none() {
-        return Ok(());
-    }
-    sqlx::query("UPDATE ItemTable SET value = ? WHERE key = ?")
-        .bind(config.to_string())
-        .bind(KEY)
-        .execute(&mut connection)
-        .await?;
-    tracing::info!("cleared Cursor's cached FORCE_ALL_DISABLED http2 flag");
-    Ok(())
 }
 
 fn state_db_path() -> Result<PathBuf> {
@@ -244,13 +198,18 @@ async fn write_ledger(
     Ok(())
 }
 
-/// 已有任何非空、非本地 token = 用户自己的登录态，一律保留。
+/// 是否保留当前登录态、跳过注入。
 ///
-/// **不要**再按 token 格式猜（safe-storage 是 Cursor 3.27 的真实登录格式，
-/// 曾经把它当「降级残留」覆盖，直接把用户账号冲掉且无从还原）。
+/// 只有「已经是本地账号 token」这一种情况才跳过；真实的 3.27 登录
+/// （`cursor-safe-storage:v1:...`）必须注入本地账号 —— 客户端只有在这个
+/// 本地账号下才不会拿官方模型目录校验自定义模型 ID，否则发消息会被拦在
+/// `Unknown model ID`，请求根本发不到服务端（2026-11-02 实测）。
+///
+/// 真实 token 会在覆盖前写入账本，关闭接管时按账本无条件还原
+/// （见 `restore_at` 里的 `still_injected_account` 判定），身份不会丢。
 fn keeps_existing_login(value: &str, token: &str) -> bool {
     let value = value.trim();
-    !value.is_empty() && value != token
+    !value.is_empty() && value != token && !value.starts_with(SAFE_STORAGE_PREFIX)
 }
 
 async fn inject_if_missing_at(db_path: &Path, ledger: &Path) -> Result<()> {
@@ -309,9 +268,15 @@ async fn restore_at(db_path: &Path, ledger: &Path) -> Result<RestoreOutcome> {
     for (key, original) in &record.original {
         let applied = record.applied.get(key).cloned().flatten();
         let current = select_value(&mut *transaction, key).await?;
-        // 当前值不再是我们写的那份 = 用户接管期间自己改过（重新登录/换会员），
-        // 保留用户改动，绝不拿旧快照覆盖回去。
-        if current != applied {
+        // 判断「当前值是否还属于我们注入的那个本地账号」。
+        //
+        // Cursor 在使用中会自动刷新 token（把我们注入的本地 token 换成新签发的
+        // JWT），于是 current != applied 是常态，而不是「用户改过」的证据。
+        // 之前就因为这个误判跳过了还原，导致关闭接入后真实账号永久丢失
+        // （2026-11-02 实测）。真正的判据是：库里缓存的邮箱是否仍是本地账号。
+        if current != applied
+            && !still_injected_account(&mut *transaction, &record.applied).await?
+        {
             kept_user_changes += 1;
             continue;
         }
@@ -339,6 +304,22 @@ async fn restore_at(db_path: &Path, ledger: &Path) -> Result<RestoreOutcome> {
         restored,
         kept_user_changes,
     })
+}
+
+/// 库里当前登录态是否仍是我们注入的那个本地账号。
+///
+/// Cursor 会把注入的本地 token 刷新成新签发的 JWT，所以「token 变了」不代表
+/// 用户重新登录了别的号。用缓存邮箱识别身份才是可靠的：只要它还是本地账号的
+/// 邮箱，关闭接管就必须按账本还原，否则用户的真实登录会永久丢失。
+async fn still_injected_account(
+    connection: &mut SqliteConnection,
+    applied: &BTreeMap<String, Option<String>>,
+) -> Result<bool> {
+    let Some(Some(expected)) = applied.get("cursorAuth/cachedEmail") else {
+        return Ok(false);
+    };
+    let current = select_value(connection, "cursorAuth/cachedEmail").await?;
+    Ok(current.as_deref() == Some(expected.as_str()))
 }
 
 pub(crate) fn is_local_cursor_authorization(authorization: &str) -> bool {
@@ -413,26 +394,54 @@ mod tests {
         value
     }
 
-    /// 混合模式核心：任何真实登录（含 Cursor 3.27 的 safe-storage 加密格式）
-    /// 都必须原样保留，一个键都不许改。
+    /// 真实登录（含 3.27 的 safe-storage 加密 token）必须被注入本地账号：
+    /// 客户端只有在本地账号下才不校验官方模型目录，否则发消息被拦在
+    /// `Unknown model ID`。覆盖前真号落账本，关闭时还原。
     #[tokio::test]
-    async fn keeps_real_login_including_safe_storage() {
+    async fn real_login_is_replaced_but_backed_up() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("state.vscdb");
         let ledger = dir.path().join(LEDGER_FILE_NAME);
-        for token in [
-            "eyJhbGciOiJSUzI1NiJ9.real-login-payload.real-signature",
-            "cursor-safe-storage:v1:written-by-cursor-3-27",
-        ] {
-            seed(&path, &[("cursorAuth/accessToken", token)]).await;
-            inject_if_missing_at(&path, &ledger).await.unwrap();
-            assert_eq!(
-                read(&path, "cursorAuth/accessToken").await.as_deref(),
-                Some(token),
-                "已有登录不得被覆盖"
-            );
-            assert!(!ledger.exists(), "保留登录时不应落账本");
-        }
+        let real = "cursor-safe-storage:v1:written-by-cursor-3-27";
+        seed(&path, &[("cursorAuth/accessToken", real), ("cursorAuth/cachedEmail", "me@example.com")]).await;
+
+        inject_if_missing_at(&path, &ledger).await.unwrap();
+
+        let injected = read(&path, "cursorAuth/accessToken").await;
+        assert_ne!(injected.as_deref(), Some(real), "真实 token 应被本地账号替换");
+        assert!(ledger.exists(), "覆盖真实登录前必须落账本");
+        let saved = tokio::fs::read_to_string(&ledger).await.unwrap();
+        assert!(saved.contains(real), "账本必须保存真实 token 原值");
+    }
+
+    /// 关键回归：Cursor 会把注入的本地 token 刷新成新 JWT，
+    /// 此时「当前值 ≠ 注入值」但身份仍是本地账号，关闭接管必须照常还原，
+    /// 否则用户真实登录永久丢失（2026-11-02 事故）。
+    #[tokio::test]
+    async fn restores_real_login_even_after_cursor_refreshed_the_token() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("state.vscdb");
+        let ledger = dir.path().join(LEDGER_FILE_NAME);
+        let real = "cursor-safe-storage:v1:real-user-token";
+        seed(&path, &[("cursorAuth/accessToken", real), ("cursorAuth/cachedEmail", "me@example.com")]).await;
+
+        inject_if_missing_at(&path, &ledger).await.unwrap();
+
+        // 模拟 Cursor 刷新 token：邮箱仍是我们注入的本地账号
+        let refreshed = "eyJhbGciOiJIUzI1NiJ9.refreshed-by-cursor.signature";
+        seed(&path, &[("cursorAuth/accessToken", refreshed)]).await;
+
+        let outcome = restore_at(&path, &ledger).await.unwrap();
+        assert!(
+            matches!(outcome, RestoreOutcome::Restored { .. }),
+            "刷新过的本地 token 也必须触发还原，实际: {outcome:?}"
+        );
+        assert_eq!(
+            read(&path, "cursorAuth/accessToken").await.as_deref(),
+            Some(real),
+            "真实登录必须写回"
+        );
+        assert!(!ledger.exists(), "还原后账本应删除");
     }
 
     /// 未登录（accessToken 缺失/空）→ 注入本地账号，让 BYOK 免登录可用。
@@ -557,42 +566,5 @@ mod tests {
             restore_at(&path, &ledger).await.unwrap(),
             RestoreOutcome::NotBackedUp
         );
-    }
-
-    /// 客户端缓存里的「强制 h1」标记必须能被清掉，其它配置项保持原样。
-    #[tokio::test]
-    async fn clears_cached_http2_flag_without_touching_other_config() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("state.vscdb");
-        let payload = serde_json::json!({
-            "configVersion": "v1",
-            "http2Config": "HTTP2_CONFIG_FORCE_ALL_DISABLED",
-            "keepMe": 42,
-        })
-        .to_string();
-        seed(&path, &[("cursorai/serverConfig", &payload)]).await;
-
-        clear_cached_http2_force_at(&path).await.unwrap();
-
-        let raw = read(&path, "cursorai/serverConfig").await.unwrap();
-        let config: serde_json::Value = serde_json::from_str(&raw).unwrap();
-        assert!(config.get("http2Config").is_none(), "h1 标记必须被清掉");
-        assert_eq!(config.get("keepMe").and_then(|v| v.as_i64()), Some(42));
-        assert_eq!(
-            config.get("configVersion").and_then(|v| v.as_str()),
-            Some("v1")
-        );
-    }
-
-    /// 没有该键时保持幂等，不报错。
-    #[tokio::test]
-    async fn clearing_cached_http2_flag_is_idempotent() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("state.vscdb");
-        let payload = serde_json::json!({ "configVersion": "v1" }).to_string();
-        seed(&path, &[("cursorai/serverConfig", &payload)]).await;
-        clear_cached_http2_force_at(&path).await.unwrap();
-        clear_cached_http2_force_at(&path).await.unwrap();
-        assert!(read(&path, "cursorai/serverConfig").await.is_some());
     }
 }

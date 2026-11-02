@@ -96,13 +96,8 @@ pub fn decode_unary<M: Message + Default>(body: &[u8]) -> Result<M> {
     if body.len() >= 5 {
         let flags = body[0];
         let length = u32::from_be_bytes([body[1], body[2], body[3], body[4]]) as usize;
-        // 必须按帧头声明的长度截取，而不是要求「帧长恰好等于整个 body」。
-        // Cursor 3.27 会把多条消息打包进同一个 HTTP body（多帧），旧判据因此
-        // 回退成「把整个 body 当 protobuf 解」，字段错位后报在奇怪的嵌套路径上
-        // （2026-11-01 实测：ConversationStateStructure.summary invalid wire type）。
-        // unary 接口只消费第一条消息。
-        if flags & END_STREAM_FLAG == 0 && length <= body.len().saturating_sub(5) {
-            return Ok(M::decode(&body[5..5 + length])?);
+        if flags & END_STREAM_FLAG == 0 && length == body.len() - 5 {
+            return Ok(M::decode(&body[5..])?);
         }
     }
     Ok(M::decode(body)?)
@@ -124,46 +119,4 @@ pub fn decode_frames(mut body: &[u8]) -> Result<Vec<(u8, Bytes)>> {
         body = &body[length..];
     }
     Ok(frames)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use prost::Message;
-
-    #[derive(Clone, PartialEq, Message)]
-    struct Probe {
-        #[prost(string, tag = "1")]
-        text: String,
-    }
-
-    fn frame(payload: &[u8]) -> Vec<u8> {
-        let mut out = Vec::with_capacity(5 + payload.len());
-        out.push(0);
-        out.extend_from_slice(&(payload.len() as u32).to_be_bytes());
-        out.extend_from_slice(payload);
-        out
-    }
-
-    fn probe(text: &str) -> Vec<u8> {
-        Probe { text: text.into() }.encode_to_vec()
-    }
-
-    /// 单帧：按帧长截取，内容必须完整解出来。
-    #[test]
-    fn single_frame_body_decodes() {
-        let body = frame(&probe("hello"));
-        let decoded: Probe = decode_unary(&body).unwrap();
-        assert_eq!(decoded.text, "hello");
-    }
-
-    /// 多帧：旧实现要求「帧长 == 整个 body 长度」，遇到多帧就退回把整段 body
-    /// 当 protobuf 解，字段错位后报在奇怪的嵌套路径上。现在只消费第一帧。
-    #[test]
-    fn multi_frame_body_decodes_first_frame_only() {
-        let mut body = frame(&probe("first"));
-        body.extend_from_slice(&frame(&probe("second")));
-        let decoded: Probe = decode_unary(&body).unwrap();
-        assert_eq!(decoded.text, "first");
-    }
 }

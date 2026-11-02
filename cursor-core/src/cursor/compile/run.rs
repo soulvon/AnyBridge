@@ -141,22 +141,8 @@ pub(crate) async fn prepare(
         mode_from_proto(mode_number)?
     };
     let mut model = model::requested_model(request)?;
-    match store.model(&model.model_id).await? {
-        Some(configured_model) => configured_model.configure(&mut model),
-        None => {
-            // 混合模式下 Cursor 可能发官方模型 ID（例如 919a96379af9191d），
-            // 它不在本地的模型表里。直接报错会让整轮对话失败，退化成「选一个
-            // 用户配好的模型」并把差异记进日志，比让用户手动切模型好。
-            if let Some(fallback) = store.models().await?.into_iter().next() {
-                tracing::warn!(
-                    requested = %model.model_id,
-                    fallback = %fallback.model_id,
-                    "Cursor sent an unconfigured model id; falling back to the first configured model"
-                );
-                fallback.configure(&mut model);
-                model.model_id = fallback.model_id.clone();
-            }
-        }
+    if let Some(configured_model) = store.model(&model.model_id).await? {
+        configured_model.configure(&mut model);
     }
     let dynamic = context::dynamic_mcp(request, &request_context)?;
     let subagent_model_overrides = model::overrides(request)?;
