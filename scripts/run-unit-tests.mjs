@@ -4,10 +4,10 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const tests = new Set([
-  'scripts/test-healthcheck.mjs',
-  'scripts/test-plugin-deploy-parse.mjs',
-]);
+// 只按 *.test.{js,mjs,cjs} 约定自动发现（scripts/ 与 sidecar/ 递归）。
+// 禁止硬编码文件名：历史上硬编码引用过被 .gitignore 排除的 scripts/test-*.mjs，
+// 本机有文件所以 verify 通过，CI 干净检出直接 Could not find 并 exit 1。
+const tests = new Set();
 
 function collect(dir) {
   const absolute = path.join(root, dir);
