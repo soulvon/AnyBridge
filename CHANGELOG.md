@@ -2,6 +2,17 @@
 
 All notable changes to AnyBridge will be documented in this file.
 
+## v1.0.11 - 2026-11-02
+
+- 修复（issue #39）：**子代理跑完后父会话收不到结果**。根因是我们把所有 run 都记成 `Root`（`PreparedRun.kind` 硬编码），客户端跑子代理时发来的请求虽然带 `subagent_type_name` 与父身份，却从未被识别，于是「父会话关联」与「收尾唤醒」两条链路都没有起点。现在按参考实现补上 `run_kind` 判定：
+  - 带 `subagent_type_name` 且父身份齐全（父请求 ID + 父工具调用 ID）→ 记为 `RunKind::Subagent` 并落 `parent_run_id` / `parent_tool_call_id`；
+  - 任一父身份缺失 → 仍按 `Root` 处理，不猜也不拒绝运行。
+- 新增服务端主动唤醒链路（参考实现同款）：
+  - `store.background_task(call_id)`：由 `tool_round_calls → tool_rounds → runs` 反查父会话与 Task 描述；
+  - `subagents::subagent_finished`：子代理收尾时读最后一条助手正文，构造完成动作与唤醒消息，经 `deliver_wake` 投进父会话（按 `background-completed:子代理:tool_call` 身份做 6 小时 TTL 幂等）；
+  - `runtime::finish_pending` 挂上该钩子（成功/失败/取消三种收尾都通知）。
+- 实测：发后台子代理任务 → 服务端日志 `subagent finished; notified the parent conversation` → 用户再说一句「继续」，主代理准确复述子代理产物（文件路径、实现方式、展示内容）。
+
 ## v1.0.10 - 2026-11-02
 
 - 修复：**关闭接入后账号登录信息丢失**。原来用「当前值 ≠ 注入值」判断用户是否改过账号，但 Cursor 在使用中会把注入的本地 token 刷新成新签发的 JWT，该判据恒为真，还原被整段跳过，真实登录（`cursor-safe-storage`）永久丢失。现在改为按身份判断：缓存邮箱仍是注入的本地账号就无条件还原，只有用户真的换成别的账号才保留其改动。

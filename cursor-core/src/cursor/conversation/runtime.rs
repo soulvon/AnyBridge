@@ -89,7 +89,13 @@ impl ConversationRuntime {
                             command = receiver.recv() => match command {
                                 Some(command) => command,
                                 None => {
-                                    finish_pending(&handle, &current, pending_finish.take());
+                                    finish_pending(
+                                        &registry,
+                                        &handle,
+                                        &current,
+                                        pending_finish.take(),
+                                    )
+                                    .await;
                                     break;
                                 }
                             },
@@ -101,7 +107,13 @@ impl ConversationRuntime {
                             Ok(command) => command,
                             Err(mpsc::error::TryRecvError::Empty)
                             | Err(mpsc::error::TryRecvError::Disconnected) => {
-                                finish_pending(&handle, &current, pending_finish.take());
+                                finish_pending(
+                                    &registry,
+                                    &handle,
+                                    &current,
+                                    pending_finish.take(),
+                                )
+                                .await;
                                 break;
                             }
                         }
@@ -571,7 +583,8 @@ async fn start_generation(
     );
 }
 
-fn finish_pending(
+async fn finish_pending(
+    registry: &ConversationRegistry,
     handle: &TransportHandle,
     current: &Option<RunGeneration>,
     pending: Option<(u64, TransportFinish)>,
@@ -583,15 +596,18 @@ fn finish_pending(
         .as_ref()
         .is_some_and(|current| current.id == generation)
     {
-        finish_transport(handle, finish);
+        // 先把子代理自己这条流收干净（用户看到它结束），再通知父会话——
+        // 父会话那边可能在忙，通知慢一步不该拖着子代理不收尾。
+        finish_transport(handle, &finish);
+        super::subagents::subagent_finished(registry, handle, &finish).await;
     }
 }
 
-fn finish_transport(handle: &TransportHandle, finish: TransportFinish) {
+fn finish_transport(handle: &TransportHandle, finish: &TransportFinish) {
     match finish {
         TransportFinish::Success => super::finish_success(handle),
         TransportFinish::Failed(error) => {
-            let _ = super::finish_failed(handle, &error);
+            let _ = super::finish_failed(handle, error);
         }
         TransportFinish::Cancelled => {
             let _ = super::finish_cancelled(handle);
@@ -646,6 +662,7 @@ fn spawn_run_request(
                     blob_sync: &blob_sync,
                     context_sync: &context_sync,
                     local_rules_dir: dependencies.local_rules_dir.as_deref(),
+                    parent: handle.parent(),
                 },
             ) => prepared,
         };

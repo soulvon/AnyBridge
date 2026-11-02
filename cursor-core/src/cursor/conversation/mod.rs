@@ -6,6 +6,7 @@ mod output;
 mod pending;
 mod registry;
 mod runtime;
+mod subagents;
 
 pub use command::*;
 pub use delivery::*;

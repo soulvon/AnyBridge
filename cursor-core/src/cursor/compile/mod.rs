@@ -9,5 +9,8 @@ mod model;
 mod run;
 
 pub use action::*;
-pub(crate) use break_messages::{compile_injection, compile_user_message_action, RuntimeAction};
+pub(crate) use break_messages::{
+    compile_injection, compile_user_message_action, wakeup_message, RuntimeAction,
+};
+pub(crate) use insert_messages::{project as project_background_completion, subagent_completion};
 pub use run::*;

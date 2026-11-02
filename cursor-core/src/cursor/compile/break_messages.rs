@@ -390,3 +390,26 @@ impl Time {
         })
     }
 }
+
+/// 服务端主动唤醒父会话用的消息（子代理跑完之后没人再想起父轮）。
+///
+/// 形状与客户端自己上报完成时一致：同样以 `background-completed:<身份>` 作事件
+/// 身份、同样把投影上下文塞进 `<user_query>` 之后，区别只是没有请求上下文可依，
+/// 时间戳按 UTC 记。消息身份相同 → 重复投递会被幂等吃掉。
+pub(crate) fn wakeup_message(event_id: &str, context: &str) -> Result<CanonicalMessage> {
+    let timestamp = Time::now(None)?.timestamp;
+    let text = format!(
+        "<timestamp>{timestamp}</timestamp>\n{}\n<user_query>{}</user_query>",
+        context.trim(),
+        super::insert_messages::FOLLOW_UP
+    );
+    Ok(CanonicalMessage {
+        message_id: format!("runtime:{event_id}"),
+        role: Role::User,
+        origin: Origin::Runtime,
+        content: MessageContent::Parts {
+            parts: vec![crate::model::ContentPart::Text { text }],
+        },
+        runtime_event_id: Some(event_id.to_owned()),
+    })
+}

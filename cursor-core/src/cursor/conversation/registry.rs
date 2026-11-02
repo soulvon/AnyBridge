@@ -157,6 +157,19 @@ impl ConversationRegistry {
         result
     }
 
+    /// 服务端主动唤醒的专用入口（子代理收尾时用）。
+    ///
+    /// 与 `deliver` 的区别只在语义：这里的消息不是客户端发来的，而是宿主自己
+    /// 发现后台任务结束后补上的一轮触发，父会话可能空闲、可能在跑别的轮次，
+    /// `deliver` 两种都能接（插进活跃轮次或排进 pending 等下一轮开头吃掉）。
+    pub async fn deliver_wake(
+        &self,
+        conversation_id: &ConversationId,
+        compiled: CompiledMessages,
+    ) -> CommandResult {
+        self.deliver(conversation_id, compiled).await
+    }
+
     pub(crate) async fn release(&self, conversation_id: &ConversationId, run_id: &RunId) {
         let mut current = self.inner.current.lock().await;
         if current

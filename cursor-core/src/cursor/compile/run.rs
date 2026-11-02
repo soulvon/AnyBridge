@@ -13,6 +13,7 @@ use crate::{
         services::blob_sync::BlobSynchronizer,
         services::context_sync::RequestContextSynchronizer,
         tools::runtime::{ExecContext, SubagentModel},
+        transport::TransportParent,
     },
     model::{
         CanonicalMessage, ContentPart, ConversationId, MessageContent, Origin, PreparedRun,
@@ -53,6 +54,8 @@ pub(crate) struct PrepareDependencies<'a> {
     pub blob_sync: &'a BlobSynchronizer,
     pub context_sync: &'a RequestContextSynchronizer,
     pub local_rules_dir: Option<&'a std::path::Path>,
+    /// 这次请求的父身份（客户端跑子代理时会带），用来判定 run_kind。
+    pub parent: Option<&'a TransportParent>,
 }
 
 pub(crate) async fn prepare(
@@ -67,6 +70,7 @@ pub(crate) async fn prepare(
         blob_sync,
         context_sync,
         local_rules_dir,
+        parent,
     } = dependencies;
     checkpoint
         .import_prefetched(&request.pre_fetched_blobs)
@@ -334,7 +338,7 @@ pub(crate) async fn prepare(
             run_id,
             cursor_request_id: Some(request_id.into()),
             conversation_id,
-            kind: RunKind::Root,
+            kind: run_kind(request, parent, store).await?,
             model,
             prompt,
             initial_messages,
@@ -628,4 +632,40 @@ fn exec_context(
         admin_command_denylist: request_context.admin_command_denylist.clone(),
         mcp_routes: context::meta_mcp_routes(request_context),
     }
+}
+
+
+/// 这次运行的身份：请求里带 `subagent_type_name` 就是子代理（客户端跑子代理时
+/// 会发一个新的 AgentRunRequest 并带上它），否则是普通 root 轮次。
+///
+/// 父身份两个来源都是可选的：可能只带父请求 ID、只带父工具调用 ID，或者父运行
+/// 已经结束（子代理比父轮活得久是常态）——查不到就留空，不猜、也不因此拒绝运行。
+async fn run_kind(
+    request: &pb::AgentRunRequest,
+    parent: Option<&TransportParent>,
+    store: &Store,
+) -> Result<RunKind> {
+    let Some(name) = request.subagent_type_name.as_deref() else {
+        return Ok(RunKind::Root);
+    };
+    // 我们的 RunKind::Subagent 要求父身份齐全（RunId + tool_call_id 都是必填），
+    // 缺任何一个都无法建立关联；这种情况按普通轮次处理，不猜也不拒绝运行。
+    let (Some(parent_request_id), Some(parent_tool_call_id)) = (
+        parent.and_then(|parent| parent.request_id.as_deref()),
+        parent.and_then(|parent| parent.tool_call_id.clone()),
+    ) else {
+        return Ok(RunKind::Root);
+    };
+    let Some(parent_run_id) = store
+        .active_run_for_cursor_request(parent_request_id)
+        .await?
+    else {
+        return Ok(RunKind::Root);
+    };
+    Ok(RunKind::Subagent {
+        parent_run_id,
+        parent_tool_call_id,
+        kind: model::subagent_kind(name),
+        background: request.subagent_type_name.is_some(),
+    })
 }

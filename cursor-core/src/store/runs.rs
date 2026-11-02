@@ -253,6 +253,45 @@ impl Store {
         tx.commit().await?;
         Ok(released)
     }
+
+    /// 后台子代理完成时，由它的父 `tool_call_id` 找回父会话与任务标题。
+    ///
+    /// 只有后台 Task 才会在 `tool_round_calls` 留下 `status = 'completed'` 的记录
+    /// （前台阻塞式 Task 的结果由父轮自己取），所以这条查询天然只命中该唤醒的。
+    pub async fn background_task(
+        &self,
+        call_id: &str,
+    ) -> Result<Option<(ConversationId, String)>> {
+        let row: Option<(String, String)> = sqlx::query_as(
+            "SELECT runs.conversation_id, tool_round_calls.arguments_json
+             FROM tool_round_calls
+             JOIN tool_rounds ON tool_rounds.round_id = tool_round_calls.round_id
+             JOIN runs ON runs.run_id = tool_rounds.run_id
+             WHERE tool_round_calls.call_id = ?
+               AND tool_round_calls.status = 'completed'
+             ORDER BY tool_round_calls.completed_at_ms DESC
+             LIMIT 1",
+        )
+        .bind(call_id)
+        .fetch_optional(&self.pool)
+        .await?;
+        let Some((conversation_id, arguments)) = row else {
+            return Ok(None);
+        };
+        let Some(title) = serde_json::from_str::<serde_json::Value>(&arguments)
+            .ok()
+            .and_then(|arguments| {
+                arguments
+                    .get("description")
+                    .and_then(serde_json::Value::as_str)
+                    .filter(|description| !description.is_empty())
+                    .map(str::to_owned)
+            })
+        else {
+            return Ok(None);
+        };
+        Ok(Some((ConversationId::new(conversation_id), title)))
+    }
 }
 
 fn run_kind_columns(kind: &RunKind) -> (Option<&str>, Option<&str>, &'static str, Option<String>) {

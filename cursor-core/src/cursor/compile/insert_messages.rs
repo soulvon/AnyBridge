@@ -21,12 +21,38 @@ pub(super) const SHELL_FOLLOW_UP: &str = concat!(
 );
 
 #[derive(Debug)]
-pub(super) struct Projection {
+pub(crate) struct Projection {
     pub context: String,
     pub turn_user: pb::UserMessage,
 }
 
-pub(super) fn project(
+/// 服务端发现后台子代理结束时，用它与客户端自己上报完成时同形状地构造一条
+/// 完成动作，好让父会话的投影逻辑完全复用（两边算法一致 = 天然去重）。
+pub(crate) fn subagent_completion(
+    subagent_id: &str,
+    tool_call_id: &str,
+    title: &str,
+    detail: Option<&str>,
+    status: pb::BackgroundTaskStatus,
+) -> pb::BackgroundTaskCompletionAction {
+    pb::BackgroundTaskCompletionAction {
+        completions: vec![pb::BackgroundTaskCompletion {
+            task_id: subagent_id.to_owned(),
+            kind: pb::BackgroundTaskKind::Subagent as i32,
+            status: status as i32,
+            title: title.to_owned(),
+            detail: detail.map(str::to_owned),
+            output_path: None,
+            thread_id: None,
+            reason: pb::BackgroundTaskCompletionReason::TaskFinished as i32,
+            subagent_id: Some(subagent_id.to_owned()),
+            tool_call_id: Some(tool_call_id.to_owned()),
+            notification_context: pb::BackgroundTaskNotificationContext::Unspecified as i32,
+        }],
+    }
+}
+
+pub(crate) fn project(
     action: &pb::BackgroundTaskCompletionAction,
     mode: i32,
 ) -> Result<Projection> {
