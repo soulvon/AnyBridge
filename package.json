@@ -49,7 +49,8 @@
     "check:release-config": "node scripts/check-release-config.mjs",
     "check:main-crate": "cargo check --manifest-path src-tauri/Cargo.toml",
     "probe:cross-linux": "cargo check --manifest-path cursor-core/Cargo.toml --target x86_64-unknown-linux-gnu --message-format short",
-    "check:release-assets": "node scripts/check-release-assets.mjs"
+    "check:release-assets": "node scripts/check-release-assets.mjs",
+    "check:release-gate": "node scripts/check-release-gate.mjs"
   },
   "keywords": [
     "anybridge",
