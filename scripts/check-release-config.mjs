@@ -98,6 +98,36 @@ if (headingMatch) {
   if (bullets.length > 25) {
     warn(`更新说明条目偏多（${bullets.length} 条），按约定应克制`, '弹窗一屏放不下，用户会跳过');
   }
+
+  // ── 2.1 对外文案不得出现内部术语 ──────────────────────────────────
+  // 这一节会原样进入客户端更新弹窗，读者是普通用户。技术细节写到
+  // docs/CHANGELOG_INTERNAL.md，不要出现在这里（历史章节不校验）。
+  const INTERNAL_TERMS = [
+    [/`[^`]+`/, '反引号包裹的代码标识符'],
+    [/\.(?:rs|mjs|cjs|js|ts|log|jsonl|toml)\b/, '源码/日志文件扩展名'],
+    [/(?:src-tauri|sidecar|cursor-core|scripts|ui-src)\//, '仓库目录路径'],
+    [/[A-Za-z_][A-Za-z0-9_]{2,}\(\)/, '函数调用写法'],
+    [
+      /\b(?:hudsucker|cursor_relay|passthrough\w*|wireApi|SSE|modelUid|delta_thinking|thinkingBudget|RotatingLog|reasoning_effort|encrypted_content|output_item|append\(true\))\b/,
+      '内部实现术语',
+    ],
+  ];
+  const jargon = [];
+  for (const [re, label] of INTERNAL_TERMS) {
+    if (re.test(body)) jargon.push(label);
+  }
+  ok(
+    '对外更新说明不含内部术语',
+    jargon.length === 0,
+    jargon.length
+      ? `${jargon.join('、')} —— 这段会显示在用户更新弹窗里，请移到 docs/CHANGELOG_INTERNAL.md`
+      : ''
+  );
+  ok(
+    '对外更新说明长度适合弹窗',
+    body.length <= 1500,
+    `实际 ${body.length} 字符（建议 ≤1500，弹窗一屏可读）`
+  );
 }
 
 // ── 3. bundle.targets 必须跨平台安全 ──────────────────────────────────

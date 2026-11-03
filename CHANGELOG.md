@@ -2,18 +2,30 @@
 
 All notable changes to AnyBridge will be documented in this file.
 
+## v1.0.14 - 2026-11-03
+
+非常感谢反馈这件事的朋友：AnyBridge 的配置目录被占到了近 40GB，实在抱歉给你添了麻烦。问题已经修好。
+
+原因是运行日志一直在追加、从不整理，用得越久占得越多。现在的处理：
+
+- 日志会自动控制大小，超过上限就换新文件，只保留最近一段记录，不会再无限增长
+- 升级后第一次启动会自动清理已经堆积的历史日志，不需要你手动删文件
+- 平时不再记录详细诊断信息（需要排查时可以临时打开），从源头减少日志量
+
+升级完如果占用空间没有明显下降，欢迎到 issue 里告诉我们，我们继续跟。
+
 ## v1.0.13 - 2026-11-03
 
-- 修复（issue #40）：**Cursor 界面设置的思考等级不生效，模型按默认档推理**。
-  - 根因：客户端请求里的思考档位（Responses 的 `reasoning.effort`、Chat 的 `reasoning_effort`、Anthropic 的 `thinking`）被本地代理的透传过滤整体丢弃，而档位重建逻辑只服务 Devin/Windsurf 的「模型 ID 后缀」编码；Cursor 的模型 ID 不带后缀，丢弃后没有任何重建来源。
-  - 修复：三条上游出口（Responses 直连 / Chat 直连 / Anthropic）统一收敛客户端档位，跨协议按目标模型族词表钳制（Anthropic 预算按量级映射为 effort，`none` 转 `thinking:{type:'disabled'}`）；`thinking.type='adaptive'`（新版 Claude Code / Claude Desktop）同样能映射。
-- 修复：**多轮对话的思考上下文丢失**。Responses 直连分支原先用消息列表重建 `input`，把客户端原生 input 里的 `reasoning` items（带 `encrypted_content` 的回放数据）丢掉，模型每轮从零推理，表现为「越聊越笨」。现在原生 Responses 客户端的 input 原样透传；响应侧同时回传 reasoning items（有密文原样回传，只有可读文本时构造不带 id 的摘要项，避免下一轮回放查不到的 id）。
-- 修复：**思考内容被当作回答正文显示**。响应侧正文提取会把 reasoning item 的思考文本、Gemini 的 `thought:true` 片段拼进正文。现在只取 message 的 `output_text`。
-- 修复：**假流式不发思考项事件**。Cursor/Agent 客户端因此既看不到思考过程，也存不下回放项；现在按 item 类型分发事件（reasoning 先于 message，`output_index` 顺延）。
-- 修复：**旧版 Cursor（MITM 路径）思考档位丢失**。`RequestedModel.parameters` 从未被解析，档位无从下发；现在解析并注入上游请求体，`effort=none` 与主链路同口径（不注入）。
-- 修复：**Windsurf/Devin 的 Fast 变体加速档失效**。此前只认 `-priority` 后缀，`-fast`（如 `claude-opus-4-8-high-fast`）静默降速；判定收敛到 `serviceTierFromUid` 单一实现，并区分模型名自带的 `-fast`（SWE-1.6 Fast 不是变体）。
-- 修复：**Chat 客户端路由到 Responses / Anthropic 上游时档位丢失**。三个客户端来源与三条上游出口现在两两对齐，不再只认 Responses 客户端。
-- 新增 8 组回归测试（含一个端到端场景：mock 上游验证档位与回放项真正到达请求体），并沉淀三条坑点判据（`client-reasoning-effort-dropped`、`reasoning-content-must-not-leak-into-text`、`fast-variant-service-tier`）。
+感谢反馈 issue #40 的朋友，你猜得没错——之前在 Cursor 里设置的思考等级确实没有生效。
+
+以前不管你在 Cursor 里选哪一档，请求发到模型那边档位就丢了，模型一直按默认档位回答，所以感觉"不如别家聪明"。这次一并修好了，另外还修了几处和思考相关的问题：
+
+- 现在 Cursor 里选的思考等级会如实传给模型
+- 多轮对话时模型能记住前面的思考过程，不会每轮都从头想（这是"越聊越笨"的另一个原因）
+- 思考过程不会再混进正式回答里
+- 同时在用 Windsurf / Devin 的朋友：Fast 模式、以及部分跨协议场景下的档位，现在也能正确生效了
+
+如果你升级后仍觉得和别家效果有差距，欢迎带上模型和供应商信息来找我们。
 
 ## v1.0.12 - 2026-11-02
 

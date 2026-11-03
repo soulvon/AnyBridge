@@ -120,6 +120,8 @@ npm run check:release-assets
 
 0. **发版前先跑 `npm run verify`**（pre-push 同款，已含 `check:release-config`）——它会检查版本号 8 处一致、CHANGELOG 有对应章节、`bundle.targets` 跨平台安全、CI 矩阵完整。这几类错误**本地 Windows 打包发现不了**，只有 CI 的 macOS/Linux 会暴露（实测 `targets:["nsis","msi"]` 让三个平台白跑 20 分钟并报 `No artifacts were found`）。
 1. 更新各文件版本号，并在 `CHANGELOG.md` 中编写新版本章节（`## vX.Y.Z`）。版本号统一用 `node scripts/bump-version.cjs <新版本>`，不要手工改（历史上手工漏过 sidecar 与 lockfile）。
+   - **`CHANGELOG.md` 是对外文案**：该章节会被 CI 提取成 Release notes，原样显示在客户端更新弹窗里。只写用户能看懂的「你会得到什么」，2-4 条、一屏可读，禁止代码标识符、文件路径、日志级别、内部术语（`check:release-config` 会拦）。
+   - **`docs/CHANGELOG_INTERNAL.md` 是对内记录**：根因、实现细节、涉及文件、测试与判据写这里，可以尽情技术。
 2. 在 `main` 分支上提交发布修改。
 3. 推送提交，并创建与推送对应版本的附注标签：
 
