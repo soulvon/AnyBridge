@@ -1,26 +1,29 @@
 //! Starts the Cursor BYOK server executable.
-use cursor_server::{App, Config, Result};
+use cursor_server::{logging, App, Config, Result};
 use tracing_subscriber::prelude::*;
 
 /// 把 tracing 输出写到 `$ANYBRIDGE_CONFIG_DIR/cursor-core.log`。
 ///
 /// 为什么需要：core 的 stdout 被桌面端接走转发到 UI 面板，进程外部拿不到；
 /// 排查接入失败（TLS / 路由 / 上游）时必须能离线读阶段日志。
+///
+/// 为什么必须轮转：MITM 链路每次建连打 3-5 行，无轮转时用户实测涨到 37 GB
+/// （见 [`logging`] 模块头注释）。日志文件由 `logging::RotatingLog` 统一管理。
 #[derive(Clone)]
-struct FileMakeWriter(std::sync::Arc<std::sync::Mutex<std::fs::File>>);
+struct FileMakeWriter(std::sync::Arc<std::sync::Mutex<logging::RotatingLog>>);
 
-struct FileGuard(std::sync::Arc<std::sync::Mutex<std::fs::File>>);
+struct FileGuard(std::sync::Arc<std::sync::Mutex<logging::RotatingLog>>);
 
 impl std::io::Write for FileGuard {
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
         match self.0.lock() {
-            Ok(mut file) => file.write(buf),
+            Ok(mut log) => log.write_bytes(buf).map(|_| buf.len()),
             Err(_) => Ok(buf.len()),
         }
     }
     fn flush(&mut self) -> std::io::Result<()> {
         match self.0.lock() {
-            Ok(mut file) => file.flush(),
+            Ok(mut log) => log.flush(),
             Err(_) => Ok(()),
         }
     }
@@ -35,17 +38,8 @@ impl<'a> tracing_subscriber::fmt::MakeWriter<'a> for FileMakeWriter {
 
 fn init_tracing() {
     let filter = || {
-        tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| {
-            // hudsucker 的 TLS / 连接错误只有 debug 级别才输出，接入故障排查靠它。
-            // cursor_relay 是接入链路打点用的独立 target，必须单独放行，
-            // 否则 stage=connect/tls/http 这些关键日志会被过滤器吞掉。
-            //
-            // 注意：lib 的 target 名是 `cursor_server`（Cargo.toml 的 [lib] name），
-            // 只写 anybridge_cursor_core 会让 run / tool / conversation 层的日志
-            // 全部消失——2026-11-01 排查子代理时踩到：16MB 日志里只有 hudsucker 噪音。
-            "cursor_server=info,anybridge_cursor_core=info,cursor_relay=info,hudsucker=debug"
-                .into()
-        })
+        tracing_subscriber::EnvFilter::try_from_default_env()
+            .unwrap_or_else(|_| logging::filter_directive().into())
     };
 
     let log_path = std::env::var("ANYBRIDGE_CONFIG_DIR")
@@ -54,8 +48,8 @@ fn init_tracing() {
         .map(|dir| std::path::Path::new(&dir).join("cursor-core.log"));
 
     if let Some(path) = log_path {
-        if let Ok(file) = std::fs::OpenOptions::new().create(true).append(true).open(&path) {
-            let writer = FileMakeWriter(std::sync::Arc::new(std::sync::Mutex::new(file)));
+        if let Ok(log) = logging::RotatingLog::open(&path) {
+            let writer = FileMakeWriter(std::sync::Arc::new(std::sync::Mutex::new(log)));
             tracing_subscriber::registry()
                 .with(filter())
                 .with(tracing_subscriber::fmt::layer().with_writer(writer))

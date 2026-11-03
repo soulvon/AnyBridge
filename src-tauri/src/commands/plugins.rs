@@ -116,6 +116,27 @@ fn plugin_data_dir(plugin_id: &str) -> PathBuf {
     plugins_dir().join(plugin_id)
 }
 
+/// 单个插件日志文件上限：超过即把旧日志改名为 `.1`（保留一份历史）再新建。
+/// 子进程一旦拿到句柄就无法中途切分，所以只在启动时判定；不设上限时
+/// 长时间运行的插件（打印心跳/请求日志）会把用户磁盘吃满。
+const PLUGIN_LOG_MAX_BYTES: u64 = 5 * 1024 * 1024;
+
+fn open_plugin_log(path: &std::path::Path) -> Result<std::fs::File, String> {
+    let existing = std::fs::metadata(path).map(|meta| meta.len()).unwrap_or(0);
+    if existing > PLUGIN_LOG_MAX_BYTES {
+        let mut raw = path.to_path_buf().into_os_string();
+        raw.push(".1");
+        let backup = PathBuf::from(raw);
+        let _ = std::fs::remove_file(&backup);
+        let _ = std::fs::rename(path, &backup);
+    }
+    std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(path)
+        .map_err(|e| e.to_string())
+}
+
 fn plugin_status_path(plugin_id: &str) -> PathBuf {
     plugin_data_dir(plugin_id).join("status.json")
 }
@@ -1193,16 +1214,8 @@ pub async fn plugin_start(
     fs::create_dir_all(&log_dir).map_err(|e| format!("创建插件日志目录失败: {}", e))?;
     let stdout_path = log_dir.join("stdout.log");
     let stderr_path = log_dir.join("stderr.log");
-    let stdout = std::fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(&stdout_path)
-        .map_err(|e| e.to_string())?;
-    let stderr = std::fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(&stderr_path)
-        .map_err(|e| e.to_string())?;
+    let stdout = open_plugin_log(&stdout_path)?;
+    let stderr = open_plugin_log(&stderr_path)?;
     cmd.stdout(std::process::Stdio::from(stdout));
     cmd.stderr(std::process::Stdio::from(stderr));
 

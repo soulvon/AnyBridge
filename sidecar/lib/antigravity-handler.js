@@ -848,17 +848,25 @@ function raceOfficialSuccess(promises) {
   });
 }
 
+// 握手日志单文件上限：握手端点会被 IDE 周期性调用，不设上限时长期使用同样会膨胀
+const AG_HANDSHAKE_LOG_MAX_BYTES = 5 * 1024 * 1024;
+
 function logHandshake(line, body) {
   try {
     // 旧实现在 macOS/Linux 上回退到 '.'（进程当前目录），日志会散落在任意位置。
     const dir = configDir();
+    const file = `${dir}/ag-handshake.log`;
     let entry = `${new Date().toISOString()} ${line}\n`;
     if (body) {
       // 仅截取响应头部用于诊断（完整响应可能达数十 KB 且周期性调用）
       const text = body.toString('utf8').slice(0, 2000);
       entry += text + (body.length > 2000 ? '\n…[截断]' : '') + '\n---\n';
     }
-    fs.appendFileSync(`${dir}/ag-handshake.log`, entry);
+    // 超限即清空（诊断日志保留最近一段即可，不滚动备份以免重复占盘）
+    try {
+      if (fs.statSync(file).size > AG_HANDSHAKE_LOG_MAX_BYTES) fs.truncateSync(file, 0);
+    } catch {}
+    fs.appendFileSync(file, entry);
   } catch {}
   console.error(`[antigravity] ${line}`);
 }

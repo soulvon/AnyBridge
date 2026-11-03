@@ -7,6 +7,7 @@ pub mod control;
 pub mod cursor;
 pub mod error;
 pub mod local_app;
+pub mod logging;
 pub mod model;
 pub mod network;
 pub mod plugin;

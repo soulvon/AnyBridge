@@ -366,6 +366,9 @@ section('提交卫生（不该提交的不提交）');
   const DOC_ALLOW = [
     /^README(_en)?\.md$/i,
     /^CHANGELOG\.md$/i,
+    // 对内技术变更记录：与 CHANGELOG.md 配套（对外文案 / 对内根因），
+    // 长期随版本维护而不是一次性调研，属说明文档
+    /^docs\/CHANGELOG_INTERNAL\.md$/i,
     /^docs\/capabilities\.md$/i,
     /^docs\/(ARCHITECTURE|DEVELOPMENT|RELEASE|MACOS_TROUBLESHOOTING|WORKFLOW)(_zh)?\.md$/i,
     /^docs\/subsystems\/[a-z0-9-]+\.md$/i,

@@ -730,6 +730,19 @@
       },
       "regression_test": "sidecar/lib/thinking-effort.test.js::模型名自带 -fast（SWE-1.6 Fast）不算加速变体",
       "severity": "medium"
+    },
+    {
+      "id": "unbounded-log-growth",
+      "title": "日志文件必须有上限（cursor-core.log 曾涨到 37GB）",
+      "symptom": "用户报告 anybridge 目录 37.3GB，其中 cursor-core.log 37.2GB，磁盘被日志吃满；同机的 ag-handshake.log、插件 stdout.log 也在无上限追加",
+      "lesson": "MITM 链路每次建连会打 3-5 行（hudsucker 证书缓存命中 + cursor_relay 的 connect/tls/http 打点），纯 append 打开的文件在数周后必然堆到几十 GB。三类日志各要有对应手段：①按大小滚动并保留一份历史（cursor-core.log：20MB 切 .1，启动时存量 >64MB 直接截断，因为几十 GB 的历史没人会读、改名保留只会继续白占盘）；②写前截断（ag-handshake.log 5MB，诊断日志保留最近一段即可）；③启动时轮转（插件 stdout/stderr 5MB 切 .1，子进程持句柄期间无法中途切分）。同时默认关掉噪音源：hudsucker 的 debug 是主要来源，默认降 warn，排障用 ANYBRIDGE_LOG_LEVEL=debug 打开",
+      "check": {
+        "type": "source_contains",
+        "file": "cursor-core/src/logging.rs",
+        "must_contain": "RESET_ON_START_BYTES"
+      },
+      "regression_test": "cursor-core/src/logging.rs::oversized_existing_file_is_truncated_on_open",
+      "severity": "high"
     }
   ]
 }
