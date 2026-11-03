@@ -58,43 +58,51 @@ if [ "$READY" -ne 1 ]; then
   exit 1
 fi
 
-# 2) 先按名字精确删除已存在的同名资产，再上传。
+# 2) 逐文件上传：删同名资产 → 上传；失败的文件单独进入重试队列。
 #
-# 为什么不再用 `gh release upload --clobber`：它内部是「按缓存的资产列表逐个 DELETE，
-# 再上传」。列表缓存过时会先 404（删了一个已经不存在的 id），紧接着上传又 422
-# （ReleaseAsset.name already exists）——两次失败互为因果，重试多少次都重复同一场竞态。
-# v0.5.30、v0.5.34 发布时同步到公开仓库就是这样失败的，结果公开仓库少了 8 个更新
-# 元数据，用户自动更新静默失效，只能手动补传。
+# 为什么不再整批上传：31 个文件一次性 `gh release upload`，任何一个文件失败都会
+# 让整批判失败，下一轮重试又会把已成功的安装包全部删掉重传。v1.0.13、v1.0.14
+# 连续两版都是「19 个安装包反复成功、latest.json 反复 404（7 次）」，10 轮重试
+# 全撞同一个文件后整批失败，最终要人工补传 9 个 manifest。
 #
-# 这里改为「按当前列表精确删除同名资产 → 上传」，删除与上传都各自容错，状态可收敛。
-# 无条件按名字删一遍：资产列表与 uploads 端点之间存在最终一致性差异，
-# 「列表里查不到」并不代表「上传时不存在」。v0.5.37 就是栽在这里 —— 脚本先查列表、
-# 查不到就跳过删除，紧接着上传却报 422 already exists，重试 6 次全撞同一场竞态。
-# 因此不能以列表为准，只能以「实际上传结果」为准：先删（删不到也无妨）再传，
-# 失败就再删再传，直到状态收敛。
-delete_by_name() {
-  local base
-  for f in "${FILES[@]}"; do
-    base="$(basename "$f")"
-    if gh release delete-asset "$TAG" --repo "$REPO" "$base" --yes 2>/dev/null; then
-      echo "已删除同名资产: $base"
-    fi
-  done
+# 逐文件隔离后：单文件失败不回滚已成功的，重试只针对失败的文件；删除与同名重传
+# 之间留 3 秒，避开资产删除在 uploads 端点的收敛窗口。
+upload_one() {
+  local f="$1" wait_after_delete="$2" base
+  base="$(basename "$f")"
+  gh release delete-asset "$TAG" --repo "$REPO" "$base" --yes 2>/dev/null || true
+  if [ "$wait_after_delete" -gt 0 ]; then
+    sleep "$wait_after_delete"
+  fi
+  gh release upload "$TAG" --repo "$REPO" "$f"
 }
 
-# 退避递增而不是固定间隔：release 刚 create 时 uploads 端点会有一段「查得到 API、
-# 上传却 404」的同步窗口（v0.5.37 发布到公开仓库时就是卡在这，固定 15 秒重试
-# 8 次都撞同一个 404）。越等越久，让端点有机会收敛。
-for attempt in $(seq 1 10); do
-  delete_by_name
-  if gh release upload "$TAG" --repo "$REPO" "${FILES[@]}"; then
-    echo "已上传 ${#FILES[@]} 个资产到 $REPO:$TAG（第 $attempt 次尝试）"
+pending=("${FILES[@]}")
+for attempt in $(seq 1 5); do
+  wait_after_delete=0
+  if [ "$attempt" -gt 1 ]; then
+    wait_after_delete=3
+  fi
+  remaining=()
+  for f in "${pending[@]}"; do
+    if upload_one "$f" "$wait_after_delete"; then
+      echo "已上传: $(basename "$f")（第 $attempt 轮）"
+    else
+      echo "::warning::上传失败，进入重试队列: $(basename "$f")"
+      remaining+=("$f")
+    fi
+  done
+  pending=("${remaining[@]}")
+  if [ ${#pending[@]} -eq 0 ]; then
+    echo "已全部上传 ${#FILES[@]} 个资产到 $REPO:$TAG"
     exit 0
   fi
-  local_wait=$((attempt * 15))
-  echo "::warning::$REPO:$TAG 资产上传失败（第 $attempt/10 次），${local_wait} 秒后重试"
-  sleep "$local_wait"
+  wait_secs=$((attempt * 15))
+  if [ "$attempt" -lt 5 ]; then
+    echo "::warning::${#pending[@]} 个资产上传失败，${wait_secs} 秒后第 $((attempt + 1))/5 轮重试"
+    sleep "$wait_secs"
+  fi
 done
 
-echo "::error::$REPO:$TAG 资产上传重试 10 次仍失败"
+echo "::error::以下资产重试 5 轮仍失败: $(printf '%s ' "${pending[@]}")"
 exit 1
