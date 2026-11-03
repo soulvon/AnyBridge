@@ -743,6 +743,19 @@
       },
       "regression_test": "cursor-core/src/logging.rs::oversized_existing_file_is_truncated_on_open",
       "severity": "high"
+    },
+    {
+      "id": "startup-housekeeping-self-heal",
+      "title": "启动时必须清理旧版本遗留的死文件，并从备份恢复损坏的核心配置",
+      "symptom": "升级几轮后安装目录堆了 271MB 备份二进制（*.exe.bak-*、*.old.exe、*.prev.exe、旧品牌 ide-byok*.exe），配置目录堆了已无写入方的 ag-requests.log 与多份配置备份；配置被改坏时旧实现只报加载失败，界面上表现为「配置全没了」且用户没有恢复手段",
+      "lesson": "自愈必须同时满足三条：①只删明确属于遗留的文件——当前产物与卸载器走白名单保护，**旧品牌 sidecar 只有同目录存在当前名字时才可删**（它是 resolve_sidecar_path 的兼容兜底，老安装可能只剩这一份）；②删除/截断失败不重试不报错，下次启动再来；③配置损坏先复制成 .corrupt-<ts> 再从最近的可解析备份恢复，没有可用备份就保持原样让错误暴露——绝不生成可能与当前版本不兼容的骨架，也绝不静默清空用户配置。三者都由 startup housekeeping 单测锁定",
+      "check": {
+        "type": "source_contains",
+        "file": "src-tauri/src/commands/housekeeping.rs",
+        "must_contain": "fn heal_core_configs"
+      },
+      "regression_test": "src-tauri/src/commands/housekeeping.rs::keeps_corrupt_file_untouched_when_no_usable_backup",
+      "severity": "high"
     }
   ]
 }

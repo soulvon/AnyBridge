@@ -23,6 +23,15 @@
   - `src-tauri/src/commands/plugins.rs::open_plugin_log`：插件 `stdout.log` / `stderr.log` 超 5MB 启动时轮转为 `.1`；子进程持有句柄期间无法中途切分，所以只在 spawn 前判定。
 - 测试：`cargo test --manifest-path cursor-core/Cargo.toml --lib logging`（3 个：轮转保留一份、启动截断不产生备份、默认级别与覆盖）。坑点判据 `unbounded-log-growth`。
 
+### 历史遗留自愈（启动时跑一次）
+
+- 背景：实测一台机器安装目录攒了 271MB 死文件——`anybridge-proxy.exe.bak-20261003`(58MB)、`.bak-pre-fix`(58MB)、`anybridge-cursor-core.old.exe`(55MB)、`.prev.exe`(31MB)、旧品牌 `ide-byok-proxy.exe`(55MB) 与 `ide-byok.exe`(13MB)；配置目录另有未再写入的 `ag-requests.log` 与 5 份配置备份。
+- 新增 `src-tauri/src/commands/housekeeping.rs`，在 `lib.rs` 的 `setup` 里经 `run_startup_housekeeping()` 后台执行（不阻塞窗口）：
+  - 二进制：名字含 `.bak` / `.old` / `.prev` 或旧品牌前缀即清理；`CURRENT_BINARIES` 白名单（当前 exe / sidecar / cursor-core / uninstall）永不删。**旧品牌 sidecar 只在同目录存在 `anybridge-proxy*` 时才删**——它是 `resolve_sidecar_path` 的兼容兜底，老安装可能只有这一份。
+  - 日志：`DEAD_LOGS`（`ag-requests.log`）删除；其余 `.log` 超过 64MB 兜底 `set_len(0)`。
+  - 配置：`providers.json` / `proxy-routes.json` / `model-map.json` 解析失败 → 复制为 `.corrupt-<ts>` → 从最近的可解析备份恢复；**没有可用备份就保持原样让错误暴露**，不生成可能与当前版本不兼容的骨架。正常文件只裁剪各自超过 3 份的旧备份。
+- 测试：6 个单测（清理与保留边界、旧 sidecar 保护、死日志+超大日志、从备份恢复且留损坏现场、无备份不动、备份保留份数）。坑点判据 `startup-housekeeping-self-heal`。
+
 ## v1.0.13 - 2026-11-03
 
 ### Cursor 思考等级不生效（issue #40）

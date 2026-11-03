@@ -16,6 +16,7 @@ pub mod cursor_models;
 pub mod eval;
 pub mod extensions;
 pub mod field_restore;
+pub mod housekeeping;
 pub mod ide_config;
 pub mod ide_models;
 pub mod jsonc_edit;

@@ -48,6 +48,10 @@ pub fn run() {
             // 避免旧进程锁住 anybridge-proxy.exe 导致升级安装失败。
             commands::proxy::kill_sidecar_process();
 
+            // 历史遗留自愈：清掉旧版本留下的备份二进制与死日志，并在核心配置
+            // 损坏时从备份恢复（后台线程，不拖慢窗口显示）
+            commands::housekeeping::run_startup_housekeeping();
+
             // 运行时完整性校验（仅 release 模式）
             // 校验失败只打印警告，不退出，避免开发/测试环境误杀
             #[cfg(not(debug_assertions))]
