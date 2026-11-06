@@ -769,19 +769,6 @@
       },
       "regression_test": "src-tauri/src/commands/plugins.rs::orphan_ids_only_target_removed_plugins",
       "severity": "high"
-    },
-    {
-      "id": "managed-provider-user-takeover",
-      "title": "插件托管的供应商被用户手动改过之后不得覆盖或删除",
-      "symptom": "用户把自动登记的 plugin-aistudio2api 改指向本机另一个服务（3065 与新密钥），启动对账或配置变更又把 host/key 覆盖回插件端口；卸载插件还会把用户接管的那条一并删掉，界面与真实服务长期对不上",
-      "lesson": "托管 id 只代表首次登记身份，不代表永久所有权。用「变更前配置值」判断条目是否仍跟随产品：一致才同步；不一致即视为用户接管，配置变更、启动对账、卸载全部跳过。重新生成配置必须与部署一样合并 adapter 回传密钥并刷新供应商，否则卡片继续用旧钥匙导致 401",
-      "check": {
-        "type": "source_contains",
-        "file": "src-tauri/src/commands/plugins.rs",
-        "must_contain": "fn provider_matches_config"
-      },
-      "regression_test": "src-tauri/src/commands/plugins.rs::user_takeover_is_detected_by_host_or_key_change",
-      "severity": "high"
     }
   ]
 }

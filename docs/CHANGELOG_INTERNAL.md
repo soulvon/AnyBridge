@@ -9,28 +9,6 @@
 > - `CHANGELOG.md`：一屏能读完、用户能看懂、只讲"你会得到什么"。一个版本 2-4 条。
 > - 本文件：可以写 `hudsucker=debug`、`passthroughParams`、栈追踪、判据与测试名。
 
-## v1.0.16 - 2026-11-07
-
-### 事故
-
-用户把 `plugin-aistudio2api` 手改成指向本机另一个服务（`3065` + `sk-a2a-*` + 6 个 `sn-*` 模型）后，启动对账与配置变更仍按插件配置覆盖 host/key，卸载还会误删该条目；`plugin_generate_config` 未合并 adapter 回传的新密钥，凭证卡片与供应商继续用旧钥匙。坑点 `managed-provider-user-takeover`（`source_contains` 判据）。
-
-### 修复（src-tauri/src/commands/plugins.rs）
-
-- `provider_matches_config(host, key, old_port, old_key)` 纯函数：用**变更前**配置值判断条目是否仍跟随产品，避免"用户改端口"被误判成已接管。
-- `sync_provider_from_config(plugin_id, old_config, new_config)`：一致才 upsert；偏离即视为用户接管并跳过、明确打日志。`plugin_set_config` 在写入前读旧 config。
-- `reconcile_plugin_providers_inner`：只补缺失登记、清孤立条目；已存在条目一律不碰（配置变更由 `plugin_set_config` / `plugin_generate_config` 负责）。
-- `remove_plugin_provider`：接管条目卸载时保留。
-- `plugin_generate_config`：与部署同一份合并 `apiKey` / `adminToken` 回写 config，同步供应商并 emit `providers-changed`（新增 `AppHandle` 参数，前端调用不变）。
-
-### 数据修复与验证
-
-- `providers.json` 已备份为 `.bak-20261107-035821`；用户手改的 3065 那套值完整迁到自建条目 `p-agent2api-3065`，托管条目还原为插件真实配置（2048 + config key），两者互不干扰。
-- Rust `provider_hotplug_tests` 4/4（新增 `user_takeover_is_detected_by_host_or_key_change`）、Node `plugin-provider-hotplug.test.js` 7/7（新增接管保护与重新生成配置判据）。
-- `npm run verify` 全绿、`npm run check:features` 210 通过 0 失败。
-- 端到端：dev 于 03:57 以新代码重启后，两条供应商的值均未被启动对账覆盖，证明接管保护生效。
-- 版本一致性 9 处同步到 1.0.16。
-
 ## v1.0.15 - 2026-11-06
 
 ### AIStudio2API 插件（提交 6526b4c9）

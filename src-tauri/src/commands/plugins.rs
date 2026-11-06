@@ -251,96 +251,39 @@ fn remove_plugin_provider(plugin_id: &str) -> Result<bool, String> {
     use crate::commands::config::{read_provider_store, write_provider_store};
 
     let mut store = read_provider_store()?;
+    let before = store.providers.len();
     let id = plugin_provider_id(plugin_id);
-    let Some(idx) = store.providers.iter().position(|p| p.id == id) else {
-        return Ok(false);
-    };
-    // 用户把托管条目改成指向别的服务后，卸载插件不能顺手删掉它：
-    // 只删仍与插件配置一致的那条，用户接管的条目原样保留。
-    let config = read_config(plugin_id);
-    let port = config.get("port").and_then(|v| v.as_u64()).unwrap_or(0) as u16;
-    let api_key = config.get("apiKey").and_then(|v| v.as_str()).unwrap_or("").trim();
-    if port > 0
-        && !provider_matches_config(
-            &store.providers[idx].api_host,
-            &store.providers[idx].api_key,
-            port,
-            api_key,
-        )
-    {
-        eprintln!("[plugins] 供应商 {} 已被用户接管，卸载时保留", id);
+    // 只删本插件自动登记的那条，不按 host 误删用户自建供应商
+    store.providers.retain(|p| p.id != id);
+    if store.providers.len() == before {
         return Ok(false);
     }
-    store.providers.remove(idx);
     write_provider_store(&store)?;
     Ok(true)
 }
 
-/// 托管条目是否仍跟随插件配置（用户没手动改过 host / key）。
-fn provider_matches_config(
-    api_host: &str,
-    api_key: &str,
-    port: u16,
-    expected_key: &str,
-) -> bool {
-    api_host == format!("http://127.0.0.1:{}", port) && api_key == expected_key
-}
-
-/// 插件配置（端口/密钥）变更后，只同步「仍由产品托管」的供应商。
-/// 用户把这条托管项指向别的服务、换了 key，就等于接管了它：
-/// 之后配置变更、启动对账、卸载都不能再覆盖或删除用户的值。
+/// 插件配置（端口/密钥）变更后，把已登记的供应商同步到同一份配置。
 fn sync_provider_from_config(
     plugin_id: &str,
-    old_config: &serde_json::Value,
-    new_config: &serde_json::Value,
+    config: &serde_json::Value,
 ) -> Result<bool, String> {
-    use crate::commands::config::{read_provider_store, write_provider_store};
-
-    let installed = new_config
+    let installed = config
         .get("installPath")
         .and_then(|v| v.as_str())
         .is_some_and(|s| !s.trim().is_empty());
-    let api_key = new_config
-        .get("apiKey")
-        .and_then(|v| v.as_str())
-        .unwrap_or("")
-        .trim();
+    let api_key = config.get("apiKey").and_then(|v| v.as_str()).unwrap_or("").trim();
     if !installed || api_key.is_empty() {
         return Ok(false);
     }
-    let port = new_config
+    let port = config
         .get("port")
         .and_then(|v| v.as_u64())
         .ok_or_else(|| format!("插件 {} 配置缺少 port，无法同步供应商", plugin_id))? as u16;
-    // 用「变更前的值」判断条目是否仍跟随产品：若拿新值比，用户改端口时
-    // 现有条目永远对不上，会被误判成已接管而拒绝同步。
-    let old_port = old_config
-        .get("port")
-        .and_then(|v| v.as_u64())
-        .unwrap_or(port as u64) as u16;
-    let old_key = old_config
-        .get("apiKey")
-        .and_then(|v| v.as_str())
-        .unwrap_or(api_key)
-        .trim();
-    let name = new_config
+    let name = config
         .get("providerName")
         .and_then(|v| v.as_str())
         .unwrap_or(plugin_id);
-
-    let mut store = read_provider_store()?;
-    let id = plugin_provider_id(plugin_id);
-    if let Some(existing) = store.providers.iter().find(|p| p.id == id) {
-        if !provider_matches_config(&existing.api_host, &existing.api_key, old_port, old_key) {
-            eprintln!("[plugins] 供应商 {} 已被用户接管，跳过配置同步", id);
-            return Ok(false);
-        }
-    }
-    if !upsert_plugin_provider(&mut store, plugin_id, name, port, api_key) {
-        return Ok(false);
-    }
-    write_provider_store(&store)?;
-    Ok(true)
+    auto_add_plugin_provider(plugin_id, name, port, api_key)
 }
 
 /// 已不存在的插件留下的 plugin-* 供应商（纯函数，便于单测钉死）。
@@ -585,12 +528,10 @@ pub async fn plugin_set_config(
     plugin_id: String,
     values: serde_json::Value,
 ) -> Result<(), String> {
-    // 变更前的值要留给同步逻辑判断「条目是否仍由产品托管」
-    let old_config = read_config(&plugin_id);
     write_config(&plugin_id, &values)?;
     // 端口/密钥是供应商地址与凭证的唯一来源：配置一改就同步，
     // 否则卡片还指着旧端口，界面上只看得到「连不上」却查不出原因。
-    match sync_provider_from_config(&plugin_id, &old_config, &values) {
+    match sync_provider_from_config(&plugin_id, &values) {
         Ok(true) => emit_providers_changed(&app),
         Ok(false) => {}
         Err(e) => eprintln!("[plugins] 插件配置变更同步供应商失败 {}: {}", plugin_id, e),
@@ -1980,7 +1921,6 @@ pub async fn plugin_read_logs(plugin_id: String, lines: Option<usize>) -> Result
 
 #[tauri::command]
 pub async fn plugin_generate_config(
-    app: tauri::AppHandle,
     plugin_id: String,
     install_path: String,
 ) -> Result<String, String> {
@@ -1997,26 +1937,12 @@ pub async fn plugin_generate_config(
         .and_then(|v| v.as_str())
         .ok_or("adapter generateConfig() did not return configPath")?;
 
-    let old_config = config.clone();
+    // Store installPath in config
     let mut updated_config = config;
     if let Some(obj) = updated_config.as_object_mut() {
         obj.insert("installPath".to_string(), serde_json::json!(install_path));
-        // 与部署时同一份合并：adapter 回传的是它真正写进网关配置的密钥。
-        // 不合并的话「重新生成配置」后卡片和供应商仍拿旧钥匙，请求全部 401。
-        for key in ["apiKey", "adminToken"] {
-            if let Some(v) = result.get(key).and_then(|v| v.as_str()) {
-                if !v.trim().is_empty() {
-                    obj.insert(key.to_string(), serde_json::json!(v));
-                }
-            }
-        }
     }
     write_config(&plugin_id, &updated_config)?;
-    match sync_provider_from_config(&plugin_id, &old_config, &updated_config) {
-        Ok(true) => emit_providers_changed(&app),
-        Ok(false) => {}
-        Err(e) => eprintln!("[plugins] 重新生成配置后同步供应商失败 {}: {}", plugin_id, e),
-    }
 
     Ok(config_path.to_string())
 }
@@ -2135,21 +2061,19 @@ fn reconcile_plugin_providers_inner() -> Result<(bool, Vec<String>), String> {
             }
         };
         valid.insert(id.clone());
+        // 老版本部署写的 config 没有 providerName：优先保留卡片上已有的显示名，
+        // 不能因为对账把「AIStudio2API」悄悄改成插件 id。
         let managed_id = plugin_provider_id(&id);
-        if store.providers.iter().any(|p| p.id == managed_id) {
-            // 已存在的条目一律不碰：它可能已被用户接管指向别的服务。
-            // 配置变更的同步由 plugin_set_config / plugin_generate_config 负责，
-            // 启动对账只负责补齐缺失登记与清理孤立条目。
-            if is_port_in_use(port) {
-                listening.push(id);
-            }
-            continue;
-        }
-        // 缺失才补建；老版本 config 没有 providerName 时回退到插件 id 作显示名
+        let existing_name = store
+            .providers
+            .iter()
+            .find(|p| p.id == managed_id)
+            .map(|p| p.name.clone());
         let name = config
             .get("providerName")
             .and_then(|v| v.as_str())
             .map(String::from)
+            .or(existing_name)
             .unwrap_or_else(|| id.clone());
         if upsert_plugin_provider(&mut store, &id, &name, port, api_key) {
             changed = true;
@@ -2229,23 +2153,6 @@ mod provider_hotplug_tests {
         assert_eq!(
             orphan_plugin_provider_ids(&ids, &HashSet::<String>::new()),
             vec!["plugin-a".to_string(), "plugin-b".to_string()]
-        );
-    }
-
-    #[test]
-    fn user_takeover_is_detected_by_host_or_key_change() {
-        assert!(provider_matches_config("http://127.0.0.1:2048", "k", 2048, "k"));
-        assert!(
-            !provider_matches_config("http://127.0.0.1:3065", "k", 2048, "k"),
-            "用户把托管条目改指向别的服务后必须判定为已接管"
-        );
-        assert!(
-            !provider_matches_config("http://127.0.0.1:2048", "other", 2048, "k"),
-            "用户换了密钥后必须判定为已接管"
-        );
-        assert!(
-            provider_matches_config("http://127.0.0.1:3065", "k", 3065, "k"),
-            "跟随插件配置变更到新端口后仍应视为托管"
         );
     }
 }

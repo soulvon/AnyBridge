@@ -38,16 +38,4 @@ describe('插件供应商热插拔', () => {
     assert.match(rust, /config::fetch_models\(FetchModelsArgs/);
     assert.match(rust, /fn spawn_models_sync_when_ready/);
   });
-
-  it('用户接管的托管条目不再被覆盖或删除', () => {
-    assert.match(rust, /fn provider_matches_config/);
-    assert.match(rust, /已被用户接管，跳过配置同步/);
-    assert.match(rust, /已被用户接管，卸载时保留/);
-    assert.match(rust, /已存在的条目一律不碰/);
-  });
-
-  it('重新生成配置同样合并网关真实密钥并刷新供应商', () => {
-    assert.match(rust, /plugin_generate_config[\s\S]{0,1600}for key in \["apiKey", "adminToken"\]/);
-    assert.match(rust, /sync_provider_from_config\(&plugin_id, &old_config, &updated_config\)/);
-  });
 });
