@@ -9,6 +9,30 @@
 > - `CHANGELOG.md`：一屏能读完、用户能看懂、只讲"你会得到什么"。一个版本 2-4 条。
 > - 本文件：可以写 `hudsucker=debug`、`passthroughParams`、栈追踪、判据与测试名。
 
+## v1.0.15 - 2026-11-06
+
+### AIStudio2API 插件（提交 6526b4c9）
+
+- 新增 `src-tauri/resources/plugins/aistudio2api/{plugin.json,adapter.js,deploy.md,icon.svg}`：端口 2048、`-open-ui=false` 无窗启动、`/health` 探活、`.env` 只改写托管键、`auths/` 备份对齐卸载恢复、三平台 `stripComponents=1`。
+- `plugin_asset.rs::asset_name(tag)`：先解析 release tag 再展开 `{tag}` / `{version}` / `{goos}` / `{goarch}` / `{archive_ext}`；`install()` 复用 `extensions::resolve_release_asset` + `download_asset_with`（与 CPA 同一条镜像测速链路），6 个 Rust 单测。
+- `sidecar/plugin-loader.js::runDeploy`：合并 adapter `generateConfig` 回传的 `apiKey` / `adminToken` 进 `configValues`，登记供应商与网关用同一把钥匙。`plugin-aistudio2api.test.js` 10 项 + `plugin-loader.test.js` 1 项。
+- `plugin-schema.json` 补齐 `deploy.asset` / `deploy.adapter` / `credentials` / `accent` 契约；`docs/capabilities.md` 登记资产模板能力。
+
+### 插件供应商热插拔（提交 31330448）
+
+- 事故：`providers.json` 已写入 `plugin-aistudio2api`，但前端 `providerStore` 是页面加载时的快照，界面停在旧数量且在旧快照上保存会整体覆盖抹掉新条目。坑点 `provider-store-stale-snapshot`（带 `source_contains` 判据）。
+- 收敛：`upsert_plugin_provider` 为唯一写入点，部署登记 / 配置变更 / 启动对账共用；写盘后 emit `providers-changed`，`90-init.js` 监听后 `loadProviders()`（失败显式落日志，且不新增 JS 中文债）。
+- 对称：部署登记 ↔ 卸载移除；启动 `reconcile_plugin_providers` 补齐被覆盖的登记、清理孤立 `plugin-*`、保留既有显示名；模型目录复用 `config::fetch_models`，服务就绪后写回 `models` / `defaultModel`（实测 73 个）。
+- 判据：`sidecar/plugin-provider-hotplug.test.js` 5 项 + Rust `provider_hotplug_tests` 3 项。
+
+### 验证与已知限制
+
+- `npm run verify` 全绿（27 个单测文件）、`npm run check:features` 209 通过 0 失败；MSI / NSIS 包内 `plugins/aistudio2api/*` 四文件与源码字节一致。
+- 端到端实测：9 账户 `ready`、生成服务 `RUNNING`、`POST /v1/chat/completions` HTTP 200。
+- 已知：Chrome 157 的 App-Bound Encryption 让上游 v0.3.1 内嵌 ABE helper 报 `ERR decrypt`，「从 Chrome 导入」不可用；Cookie 导入账户是 `device_bound` 副本，约 2 小时失效，自动续签仍依赖 Chrome 材料，因此会周期性掉线。
+- 恢复手段：`setup --cookie-file <file> --authuser N`（N=0..9，需 `PROXY=http://127.0.0.1:7897`，CLI 独立进程不继承系统代理）可挖出管理端 discover 看不到的 5..9 槽位账户，再经 `storage-state.json` → Netscape 文本 → `/api/accounts/import/cookies` 落地。本机 Chrome 的浏览器级 CDP WebSocket 可用（`Storage.getCookies`），但 `setup --cdp` 实测 `ListModels 403` / 连接超时，常驻全自动未落地。
+- 版本一致性：package.json、package-lock.json ×2、sidecar/package.json、sidecar/package-lock.json ×2、Cargo.toml、Cargo.lock、tauri.conf.json 共 9 处同步到 1.0.15。
+
 ## v1.0.14 - 2026-11-03
 
 ### 日志膨胀（用户目录 37GB）
