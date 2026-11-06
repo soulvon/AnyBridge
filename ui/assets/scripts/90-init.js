@@ -139,6 +139,13 @@ async function init() {
     await tauriEvent.listen('proxy-stopped', () => {
       setStatusPill(false);
     });
+    // 后端直接写 providers.json 后前端内存快照会过期；收到事件就重读，
+    // 避免「配置里已有、界面上却没有」的假没加好。
+    await tauriEvent.listen('providers-changed', () => {
+      if (typeof loadProviders === 'function') {
+        loadProviders().catch((e) => addLog('warn', String(e)));
+      }
+    });
     if (typeof bindEvalProgressListener === 'function') {
       await bindEvalProgressListener();
     }

@@ -102,6 +102,10 @@ pub fn run() {
             // CPA 套件：已安装且开启「跟随软件启动」时自动拉起（默认开启）。
             commands::extensions::maybe_auto_start_cpa_suite();
 
+            // 插件供应商热插拔对账：补齐被覆盖抹掉的登记、清掉孤立条目，
+            // 并给仍在监听的网关补一次模型目录（后台线程，不拖慢窗口显示）。
+            commands::plugins::reconcile_plugin_providers(app.handle().clone());
+
             // Agent 声明表自检：内置声明写错会让平台列表 / 探测静默失准，
             // 启动时校验一次并落到 stderr（编译期字段完整，这里兜路径语义）。
             if let Err(e) = commands::agent_spec::validate_registry() {

@@ -756,6 +756,19 @@
       },
       "regression_test": "src-tauri/src/commands/housekeeping.rs::keeps_corrupt_file_untouched_when_no_usable_backup",
       "severity": "high"
+    },
+    {
+      "id": "provider-store-stale-snapshot",
+      "title": "后端写 providers.json 必须通知前端重读内存快照",
+      "symptom": "插件部署已把 plugin-aistudio2api 写进 providers.json（enabled=true、密钥正确、排在数组首位），供应商页却停在页面加载时的旧快照，显示旧数量且看不到新卡片；用户以为「没加好」，此时在旧快照上做任何保存还会整体覆盖抹掉新登记",
+      "lesson": "providers.json 的写入方不只有前端：插件登记、卸载移除、配置变更、启动对账都会直接写盘。任何写盘后都要 emit providers-changed，前端监听后 loadProviders()；再用启动对账补齐被整体覆盖抹掉的登记、清掉孤立条目。登记/移除/同步/对账必须收敛到同一个 upsert 函数，避免漏改一侧",
+      "check": {
+        "type": "source_contains",
+        "file": "src-tauri/src/commands/plugins.rs",
+        "must_contain": "const PROVIDERS_CHANGED_EVENT"
+      },
+      "regression_test": "src-tauri/src/commands/plugins.rs::orphan_ids_only_target_removed_plugins",
+      "severity": "high"
     }
   ]
 }

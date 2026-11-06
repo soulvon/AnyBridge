@@ -157,39 +157,43 @@ fn now_iso() -> String {
 // 无从填 api_key，硬登记出一个供应商反而是坏的。
 const PLUGIN_PROVIDER_PREFIX: &str = "plugin-";
 
+/// providers.json 由后端直接写盘，而前端 providerStore 只在页面加载时读一次。
+/// 任何登记/移除/同步之后都必须发这个事件，否则界面停留在旧快照上，
+/// 用户会以为「供应商没加好」（即使配置里已经有了）。
+const PROVIDERS_CHANGED_EVENT: &str = "providers-changed";
+
 fn plugin_provider_id(plugin_id: &str) -> String {
     format!("{}{}", PLUGIN_PROVIDER_PREFIX, plugin_id)
 }
 
-fn auto_add_plugin_provider(
+fn emit_providers_changed(app: &tauri::AppHandle) {
+    let _ = app.emit(PROVIDERS_CHANGED_EVENT, serde_json::json!({}));
+}
+
+/// 唯一的供应商写入点：部署登记、配置变更、启动对账都收敛到这里，
+/// 结构上杜绝「一处改了另一处漏改」。返回是否真的改动了内容。
+fn upsert_plugin_provider(
+    store: &mut crate::commands::config::ProviderStore,
     plugin_id: &str,
     name: &str,
     port: u16,
     api_key: &str,
-) -> Result<(), String> {
-    use crate::commands::config::{
-        read_provider_store, write_provider_store, ApiFormat, Provider, ProviderCapabilities,
-    };
+) -> bool {
+    use crate::commands::config::{ApiFormat, Provider, ProviderCapabilities};
 
-    let api_key = api_key.trim();
-    if api_key.is_empty() {
-        return Ok(());
-    }
-
-    let mut store = read_provider_store()?;
     let id = plugin_provider_id(plugin_id);
     let host = format!("http://127.0.0.1:{}", port);
-
-    // 已存在则只同步地址与密钥，不重复插入
     if let Some(existing) = store.providers.iter_mut().find(|p| p.id == id) {
-        existing.name = name.to_string();
-        existing.api_host = host;
-        existing.api_key = api_key.to_string();
+        let mut changed = false;
+        // 显示名只在首次登记时写入；对账/配置同步不得覆盖用户或旧版本留下的名字
+        if existing.api_host != host { existing.api_host = host; changed = true; }
+        if existing.api_key != api_key { existing.api_key = api_key.to_string(); changed = true; }
         if existing.api_path.as_deref().unwrap_or("").trim().is_empty() {
             existing.api_path = Some("/v1".into());
+            changed = true;
         }
-        existing.enabled = true;
-        return write_provider_store(&store);
+        if !existing.enabled { existing.enabled = true; changed = true; }
+        return changed;
     }
 
     let provider = Provider {
@@ -219,12 +223,31 @@ fn auto_add_plugin_provider(
         model_contexts: HashMap::new(),
         subagent_models: HashMap::new(),
     };
-
     store.providers.insert(0, provider);
-    write_provider_store(&store)
+    true
 }
 
-fn remove_plugin_provider(plugin_id: &str) -> Result<(), String> {
+fn auto_add_plugin_provider(
+    plugin_id: &str,
+    name: &str,
+    port: u16,
+    api_key: &str,
+) -> Result<bool, String> {
+    use crate::commands::config::{read_provider_store, write_provider_store};
+
+    let api_key = api_key.trim();
+    if api_key.is_empty() {
+        return Ok(false);
+    }
+    let mut store = read_provider_store()?;
+    if !upsert_plugin_provider(&mut store, plugin_id, name, port, api_key) {
+        return Ok(false);
+    }
+    write_provider_store(&store)?;
+    Ok(true)
+}
+
+fn remove_plugin_provider(plugin_id: &str) -> Result<bool, String> {
     use crate::commands::config::{read_provider_store, write_provider_store};
 
     let mut store = read_provider_store()?;
@@ -232,10 +255,48 @@ fn remove_plugin_provider(plugin_id: &str) -> Result<(), String> {
     let id = plugin_provider_id(plugin_id);
     // 只删本插件自动登记的那条，不按 host 误删用户自建供应商
     store.providers.retain(|p| p.id != id);
-    if store.providers.len() != before {
-        write_provider_store(&store)?;
+    if store.providers.len() == before {
+        return Ok(false);
     }
-    Ok(())
+    write_provider_store(&store)?;
+    Ok(true)
+}
+
+/// 插件配置（端口/密钥）变更后，把已登记的供应商同步到同一份配置。
+fn sync_provider_from_config(
+    plugin_id: &str,
+    config: &serde_json::Value,
+) -> Result<bool, String> {
+    let installed = config
+        .get("installPath")
+        .and_then(|v| v.as_str())
+        .is_some_and(|s| !s.trim().is_empty());
+    let api_key = config.get("apiKey").and_then(|v| v.as_str()).unwrap_or("").trim();
+    if !installed || api_key.is_empty() {
+        return Ok(false);
+    }
+    let port = config
+        .get("port")
+        .and_then(|v| v.as_u64())
+        .ok_or_else(|| format!("插件 {} 配置缺少 port，无法同步供应商", plugin_id))? as u16;
+    let name = config
+        .get("providerName")
+        .and_then(|v| v.as_str())
+        .unwrap_or(plugin_id);
+    auto_add_plugin_provider(plugin_id, name, port, api_key)
+}
+
+/// 已不存在的插件留下的 plugin-* 供应商（纯函数，便于单测钉死）。
+fn orphan_plugin_provider_ids(
+    provider_ids: &[String],
+    valid_plugin_ids: &std::collections::HashSet<String>,
+) -> Vec<String> {
+    provider_ids
+        .iter()
+        .filter(|id| id.starts_with(PLUGIN_PROVIDER_PREFIX))
+        .filter(|id| !valid_plugin_ids.contains(id.trim_start_matches(PLUGIN_PROVIDER_PREFIX)))
+        .cloned()
+        .collect()
 }
 
 fn read_status(plugin_id: &str) -> PluginStatus {
@@ -463,10 +524,18 @@ pub async fn plugin_get_config(plugin_id: String) -> Result<serde_json::Value, S
 
 #[tauri::command]
 pub async fn plugin_set_config(
+    app: tauri::AppHandle,
     plugin_id: String,
     values: serde_json::Value,
 ) -> Result<(), String> {
     write_config(&plugin_id, &values)?;
+    // 端口/密钥是供应商地址与凭证的唯一来源：配置一改就同步，
+    // 否则卡片还指着旧端口，界面上只看得到「连不上」却查不出原因。
+    match sync_provider_from_config(&plugin_id, &values) {
+        Ok(true) => emit_providers_changed(&app),
+        Ok(false) => {}
+        Err(e) => eprintln!("[plugins] 插件配置变更同步供应商失败 {}: {}", plugin_id, e),
+    }
     Ok(())
 }
 
@@ -1011,6 +1080,8 @@ pub async fn plugin_deploy(
                     }
                     obj.insert("installPath".to_string(), serde_json::json!(install_path));
                     obj.insert("deployStrategy".to_string(), serde_json::json!(strat));
+                    // 记下展示名，启动对账不必再问 sidecar 就能补齐被整体覆盖抹掉的登记
+                    obj.insert("providerName".to_string(), serde_json::json!(manifest.name));
                     if !config_path.is_empty() {
                         obj.insert("configPath".to_string(), serde_json::json!(config_path));
                     }
@@ -1038,15 +1109,20 @@ pub async fn plugin_deploy(
                         None,
                     );
                     match auto_add_plugin_provider(&plugin_id, &manifest.name, effective_port, &api_key) {
-                        Ok(()) => emit_deploy_progress(
-                            &app,
-                            &plugin_id,
-                            strat,
-                            "add-provider",
-                            "done",
-                            "本地供应商已注册",
-                            None,
-                        ),
+                        Ok(changed) => {
+                            if changed {
+                                emit_providers_changed(&app);
+                            }
+                            emit_deploy_progress(
+                                &app,
+                                &plugin_id,
+                                strat,
+                                "add-provider",
+                                "done",
+                                "本地供应商已注册",
+                                None,
+                            );
+                        }
                         Err(e) => emit_deploy_progress(
                             &app,
                             &plugin_id,
@@ -1250,6 +1326,8 @@ pub async fn plugin_start(
     write_status(&status)?;
     emit_status(&app, &status);
 
+    // 网关就绪后把模型目录写回供应商卡片：热插拔不该让用户手填模型。
+    spawn_models_sync_when_ready(app.clone(), plugin_id.clone());
     // Drive starting → running (or error) in the background via health checks
     spawn_health_monitor(app, plugin_id, manifest, port, pid);
 
@@ -1671,8 +1749,10 @@ pub async fn plugin_uninstall(
     remove_dir_with_retry(&data_dir)?;
 
     // 一并撤掉部署时自动登记的供应商，避免留下一条指向已删服务的死条目
-    if let Err(e) = remove_plugin_provider(&plugin_id) {
-        eprintln!("[plugins] 移除插件供应商失败 {}: {}", plugin_id, e);
+    match remove_plugin_provider(&plugin_id) {
+        Ok(true) => emit_providers_changed(&app),
+        Ok(false) => {}
+        Err(e) => eprintln!("[plugins] 移除插件供应商失败 {}: {}", plugin_id, e),
     }
 
     let status = PluginStatus {
@@ -1865,4 +1945,214 @@ pub async fn plugin_generate_config(
     write_config(&plugin_id, &updated_config)?;
 
     Ok(config_path.to_string())
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// 插件 ↔ 供应商 热插拔：模型同步与启动对账
+// ═══════════════════════════════════════════════════════════════════
+
+/// 从网关的 /v1/models 拉目录写回供应商卡片。复用 config::fetch_models，
+/// 不另写一条下载/鉴权链路。失败明确返回，由调用方决定是否重排。
+pub async fn sync_plugin_provider_models(
+    app: &tauri::AppHandle,
+    plugin_id: &str,
+) -> Result<usize, String> {
+    use crate::commands::config::{self, FetchModelsArgs};
+
+    let config = read_config(plugin_id);
+    let api_key = config
+        .get("apiKey")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .trim()
+        .to_string();
+    if api_key.is_empty() {
+        return Err(format!("插件 {} 没有 API 密钥，无法拉取模型", plugin_id));
+    }
+    let port = config
+        .get("port")
+        .and_then(|v| v.as_u64())
+        .ok_or_else(|| format!("插件 {} 配置缺少 port，无法拉取模型", plugin_id))? as u16;
+
+    let fetched = config::fetch_models(FetchModelsArgs {
+        host: format!("http://127.0.0.1:{}", port),
+        api_key,
+        path: Some("/v1".into()),
+        api_format: Some("openai".into()),
+    })
+    .await?;
+    if fetched.models.is_empty() {
+        return Err(format!("插件 {} 的网关返回了空模型目录", plugin_id));
+    }
+
+    let mut store = config::read_provider_store()?;
+    let id = plugin_provider_id(plugin_id);
+    let provider = store
+        .providers
+        .iter_mut()
+        .find(|p| p.id == id)
+        .ok_or_else(|| format!("供应商 {} 尚未登记，无法写入模型", id))?;
+    provider.models = fetched.models.clone();
+    if provider.default_model.trim().is_empty() {
+        provider.default_model = fetched.models[0].clone();
+    }
+    config::write_provider_store(&store)?;
+    emit_providers_changed(app);
+    Ok(fetched.models.len())
+}
+
+/// 网关进程起来到 /v1/models 可用之间有预热窗口（WAA Worker 等）。
+/// 这里只等待就绪，最多 60 秒；超时明确报错，不伪造成功、不静默吞掉。
+fn spawn_models_sync_when_ready(app: tauri::AppHandle, plugin_id: String) {
+    tauri::async_runtime::spawn(async move {
+        for attempt in 0..12u32 {
+            match sync_plugin_provider_models(&app, &plugin_id).await {
+                Ok(n) => {
+                    eprintln!("[plugins] {} 供应商模型已同步 {} 个", plugin_id, n);
+                    return;
+                }
+                Err(e) => {
+                    if attempt == 11 {
+                        eprintln!(
+                            "[plugins] {} 供应商模型同步失败（已等待 60s）: {}",
+                            plugin_id, e
+                        );
+                        return;
+                    }
+                }
+            }
+            tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+        }
+    });
+}
+
+fn reconcile_plugin_providers_inner() -> Result<(bool, Vec<String>), String> {
+    use crate::commands::config::{read_provider_store, write_provider_store};
+    use std::collections::HashSet;
+
+    let mut store = read_provider_store()?;
+    let mut valid = HashSet::new();
+    let mut listening = Vec::new();
+    let mut changed = false;
+
+    let entries = match fs::read_dir(plugins_dir()) {
+        Ok(e) => e,
+        Err(_) => return Ok((false, Vec::new())),
+    };
+    for entry in entries.flatten() {
+        if !entry.path().is_dir() {
+            continue;
+        }
+        let id = entry.file_name().to_string_lossy().to_string();
+        let config = read_config(&id);
+        let installed = config
+            .get("installPath")
+            .and_then(|v| v.as_str())
+            .is_some_and(|s| !s.trim().is_empty());
+        let api_key = config.get("apiKey").and_then(|v| v.as_str()).unwrap_or("").trim();
+        if !installed || api_key.is_empty() {
+            continue;
+        }
+        let port = match config.get("port").and_then(|v| v.as_u64()) {
+            Some(p) => p as u16,
+            None => {
+                eprintln!("[plugins] {} 配置缺少 port，跳过供应商对账", id);
+                continue;
+            }
+        };
+        valid.insert(id.clone());
+        // 老版本部署写的 config 没有 providerName：优先保留卡片上已有的显示名，
+        // 不能因为对账把「AIStudio2API」悄悄改成插件 id。
+        let managed_id = plugin_provider_id(&id);
+        let existing_name = store
+            .providers
+            .iter()
+            .find(|p| p.id == managed_id)
+            .map(|p| p.name.clone());
+        let name = config
+            .get("providerName")
+            .and_then(|v| v.as_str())
+            .map(String::from)
+            .or(existing_name)
+            .unwrap_or_else(|| id.clone());
+        if upsert_plugin_provider(&mut store, &id, &name, port, api_key) {
+            changed = true;
+        }
+        if is_port_in_use(port) {
+            listening.push(id);
+        }
+    }
+
+    // 插件已卸载、数据被清掉时，撤掉指向死服务的托管供应商。
+    let provider_ids: Vec<String> = store.providers.iter().map(|p| p.id.clone()).collect();
+    let orphans = orphan_plugin_provider_ids(&provider_ids, &valid);
+    if !orphans.is_empty() {
+        store.providers.retain(|p| !orphans.contains(&p.id));
+        changed = true;
+    }
+    if changed {
+        write_provider_store(&store)?;
+    }
+    Ok((changed, listening))
+}
+
+/// AnyBridge 启动时对账一次：补齐被整体覆盖抹掉的登记、清掉孤立条目，
+/// 并对仍在监听的网关补一次模型目录。热插拔不依赖用户手点刷新。
+pub fn reconcile_plugin_providers(app: tauri::AppHandle) {
+    tauri::async_runtime::spawn_blocking(move || {
+        match reconcile_plugin_providers_inner() {
+            Ok((changed, listening)) => {
+                if changed {
+                    emit_providers_changed(&app);
+                }
+                for id in listening {
+                    spawn_models_sync_when_ready(app.clone(), id);
+                }
+            }
+            Err(e) => eprintln!("[plugins] 供应商对账失败: {}", e),
+        }
+    });
+}
+
+#[cfg(test)]
+mod provider_hotplug_tests {
+    use super::*;
+    use std::collections::HashSet;
+
+    #[test]
+    fn plugin_provider_id_is_namespaced() {
+        assert_eq!(plugin_provider_id("aistudio2api"), "plugin-aistudio2api");
+    }
+
+    #[test]
+    fn orphan_ids_only_target_removed_plugins() {
+        let ids = vec![
+            "plugin-aistudio2api".to_string(),
+            "plugin-gone".to_string(),
+            "plugin-multi2api".to_string(),
+            "p-user-created".to_string(),
+            "anybridge-local-proxy".to_string(),
+        ];
+        let valid: HashSet<String> = ["aistudio2api".to_string(), "multi2api".to_string()]
+            .into_iter()
+            .collect();
+        assert_eq!(
+            orphan_plugin_provider_ids(&ids, &valid),
+            vec!["plugin-gone".to_string()],
+            "只清理已不存在的插件留下的托管供应商，用户自建条目一律不动"
+        );
+    }
+
+    #[test]
+    fn empty_installed_plugin_set_removes_all_plugin_providers() {
+        let ids = vec![
+            "plugin-a".to_string(),
+            "plugin-b".to_string(),
+            "user".to_string(),
+        ];
+        assert_eq!(
+            orphan_plugin_provider_ids(&ids, &HashSet::<String>::new()),
+            vec!["plugin-a".to_string(), "plugin-b".to_string()]
+        );
+    }
 }
