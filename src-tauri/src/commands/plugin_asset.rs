@@ -81,7 +81,8 @@ fn copy_dir_recursive(from: &Path, to: &Path) -> Result<(), String> {
 pub(crate) struct ReleaseAssetSpec {
     /// GitHub 仓库，如 Practice019/multi2api
     pub repo: String,
-    /// 产物名模板，支持 {goos} {goarch} {archive_ext}
+    /// 产物名模板，支持 {tag} {version} {goos} {goarch} {archive_ext}
+    /// 上游把版本号嵌进文件名时必须用 {tag}：只有拿到 release tag 才知道该下哪个文件。
     asset_template: String,
     /// 可执行文件名模板，支持 {ext}
     binary_template: String,
@@ -160,8 +161,13 @@ impl ReleaseAssetSpec {
         }
     }
 
-    pub(crate) fn asset_name(&self) -> String {
+    /// 把模板展开成 release 资产名。`tag` 是原样版本号（如 v0.3.1），
+    /// `{version}` 则是去掉开头 v 的版本号，供不带 v 的命名习惯使用。
+    pub(crate) fn asset_name(&self, tag: &str) -> String {
+        let version = tag.strip_prefix('v').unwrap_or(tag);
         self.asset_template
+            .replace("{tag}", tag)
+            .replace("{version}", version)
             .replace("{goos}", Self::goos())
             .replace("{goarch}", Self::goarch())
             .replace("{archive_ext}", Self::archive_ext())
@@ -211,19 +217,30 @@ pub(crate) async fn install(
         }
     }
 
-    let asset_name = spec.asset_name();
-    let (tag, url) = extensions::resolve_release_asset(&spec.repo, version, &asset_name).await?;
-    progress(&format!("准备下载 {}（版本 {}）", asset_name, tag), 20);
+    // 资产名里可能含 {tag}：先定版本号再展开模板，才能精确匹配含版本号的 release 资产。
+    // 未指定版本时在这里取 latest，并把它显式传给 resolve_release_asset，
+    // 避免「拼文件名」与「查资产列表」各请求一次版本号。
+    let tag = match version {
+        Some(v) => v.trim().to_string(),
+        None => extensions::latest_release_tag(&spec.repo).await?,
+    };
+    if tag.is_empty() {
+        return Err(format!("无法解析 {} 的发布版本号", spec.repo));
+    }
+    let asset_name = spec.asset_name(&tag);
+    let (resolved_tag, url) =
+        extensions::resolve_release_asset(&spec.repo, Some(&tag), &asset_name).await?;
+    progress(&format!("准备下载 {}（版本 {}）", asset_name, resolved_tag), 20);
 
     let download_name = format!("anybridge_{}_{}", plugin_id, asset_name);
     let archive = extensions::download_asset_with(&url, &download_name, progress, 20, 85).await?;
 
-    let result = unpack_binary(plugin_id, spec, install_path, &archive, &tag);
+    let result = unpack_binary(plugin_id, spec, install_path, &archive, &resolved_tag);
     let _ = fs::remove_file(&archive);
     result?;
 
-    progress(&format!("{} 已就位（版本 {}）", spec.binary_name(), tag), 85);
-    Ok(tag)
+    progress(&format!("{} 已就位（版本 {}）", spec.binary_name(), resolved_tag), 85);
+    Ok(resolved_tag)
 }
 
 fn unpack_binary(
@@ -406,5 +423,71 @@ fn extract_tar_gz(archive: &Path, target: &Path, strip: usize) -> Result<(), Str
             .map_err(|e| format!("解压文件失败 {}：{}", out.display(), e))?;
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn spec(template: &str) -> ReleaseAssetSpec {
+        ReleaseAssetSpec {
+            repo: "Mag1cFall/AIStudio2API".to_string(),
+            asset_template: template.to_string(),
+            binary_template: "aistudio2api{ext}".to_string(),
+            version_file: ".aistudio2api-version".to_string(),
+            strip_components: 1,
+        }
+    }
+
+    #[test]
+    fn asset_name_expands_tag_and_platform_placeholders() {
+        let name = spec("aistudio2api-{tag}-{goos}-{goarch}.{archive_ext}").asset_name("v0.3.1");
+        // 期望值独立手写，不复用被测实现去拼装
+        assert!(name.starts_with("aistudio2api-v0.3.1-"), "实际：{name}");
+        assert!(!name.contains('{') && !name.contains('}'), "占位符未展开：{name}");
+        assert!(
+            name.ends_with(if cfg!(windows) { ".zip" } else { ".tar.gz" }),
+            "实际：{name}"
+        );
+    }
+
+    #[cfg(all(target_os = "windows", target_arch = "x86_64"))]
+    #[test]
+    fn asset_name_matches_upstream_windows_release() {
+        assert_eq!(
+            spec("aistudio2api-{tag}-{goos}-{goarch}.{archive_ext}").asset_name("v0.3.1"),
+            "aistudio2api-v0.3.1-windows-amd64.zip"
+        );
+    }
+
+    #[test]
+    fn version_placeholder_drops_v_prefix() {
+        let name = spec("aistudio2api-{version}-{goos}-{goarch}.{archive_ext}").asset_name("v0.3.1");
+        assert!(name.starts_with("aistudio2api-0.3.1-"), "实际：{name}");
+        assert!(!name.contains('{'), "占位符未展开：{name}");
+    }
+
+    #[test]
+    fn templates_without_tag_still_expand() {
+        let name = spec("wb2api-server-{goos}-{goarch}.{archive_ext}").asset_name("v1.7.3");
+        assert!(name.starts_with("wb2api-server-"), "实际：{name}");
+        assert!(!name.contains('{'), "占位符未展开：{name}");
+    }
+
+    #[test]
+    fn from_deploy_rejects_incomplete_asset() {
+        let deploy = serde_json::json!({ "asset": { "repo": "x/y", "name": "a.zip" } });
+        let err = ReleaseAssetSpec::from_deploy(&deploy).unwrap_err();
+        assert!(err.contains("binary"), "实际：{err}");
+    }
+
+    #[test]
+    fn strip_path_discards_traversal_and_strips_top_dir() {
+        assert!(strip_path(Path::new("../evil"), 1).is_none());
+        assert_eq!(
+            strip_path(Path::new("aistudio2api-v0.3.1-windows-amd64/aistudio2api.exe"), 1).unwrap(),
+            PathBuf::from("aistudio2api.exe")
+        );
+    }
 }
 

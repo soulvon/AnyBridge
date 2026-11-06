@@ -618,7 +618,9 @@ async fn prepare_release_asset(
         strategy,
         "download",
         "running",
-        &format!("获取发布包 {}（{}）...", spec.asset_name(), target),
+        // 资产名可能含 {tag}，要在版本解析之后才能展开；这里只报目标版本，
+        // 真实文件名由 plugin_asset::install 的进度事件给出。
+        &format!("获取发布包（{}）...", target),
         None,
     );
 

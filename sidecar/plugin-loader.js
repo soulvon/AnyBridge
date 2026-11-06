@@ -209,6 +209,12 @@ async function runDeploy(body, onStreamProgress) {
   try {
     const configResult = await callAdapter(pluginId, 'generateConfig', [configWithSecrets, installPath]);
     configPath = configResult?.configPath || null;
+    // adapter 回传的是它真正写进网关配置的密钥。合并回 configValues，
+    // Rust 侧登记本地供应商与凭证卡片才会用同一把钥匙，否则拉取模型会 401。
+    for (const key of ['apiKey', 'adminToken']) {
+      const value = configResult?.[key];
+      if (typeof value === 'string' && value.trim()) configWithSecrets[key] = value;
+    }
     onProgress({ step: 'config', title: 'Generate Config', status: 'done', message: '配置文件已生成' });
   } catch (e) {
     onProgress({ step: 'config', title: 'Generate Config', status: 'error', message: `generateConfig 失败: ${e.message}` });

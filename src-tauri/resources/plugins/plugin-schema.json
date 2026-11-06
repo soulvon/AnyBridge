@@ -15,6 +15,7 @@
     "author": { "type": "string" },
     "homepage": { "type": "string", "format": "uri" },
     "license": { "type": "string" },
+    "accent": { "type": "string" },
     "runtime": {
       "type": "object",
       "required": ["type", "args", "workdir"],
@@ -111,6 +112,28 @@
             "requiresNetwork": { "type": "boolean" },
             "requiresAdmin": { "type": "boolean" }
           }
+        },
+        "adapter": {
+          "type": "object",
+          "properties": {
+            "doc": { "type": "string" },
+            "installer": { "type": "string" },
+            "minDiskMB": { "type": "integer" },
+            "estimatedTime": { "type": "string" },
+            "requiresNetwork": { "type": "boolean" },
+            "requiresAdmin": { "type": "boolean" }
+          }
+        },
+        "asset": {
+          "type": "object",
+          "required": ["repo", "name", "binary"],
+          "properties": {
+            "repo": { "type": "string" },
+            "name": { "type": "string", "description": "支持 {tag} {version} {goos} {goarch} {archive_ext}；含版本号的资产名必须用 {tag}" },
+            "binary": { "type": "string", "description": "支持 {ext}" },
+            "versionFile": { "type": "string" },
+            "stripComponents": { "type": "integer", "minimum": 0 }
+          }
         }
       }
     },
@@ -121,6 +144,28 @@
         "repo": { "type": "string" },
         "checkInterval": { "type": "string" },
         "autoCheck": { "type": "boolean" }
+      }
+    },
+    "credentials": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["subtitle", "rows"],
+        "properties": {
+          "subtitle": { "type": "string" },
+          "rows": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["label", "value"],
+              "properties": {
+                "label": { "type": "string" },
+                "value": { "type": "string" },
+                "copy": { "type": "boolean" }
+              }
+            }
+          }
+        }
       }
     }
   }
