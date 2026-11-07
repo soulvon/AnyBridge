@@ -2,9 +2,10 @@
 
 All notable changes to AnyBridge will be documented in this file.
 
-## 未发布
+## v1.0.18 - 2026-11-08
 
 - 修复：「测试连接」在部分校验严格的供应商（如本地 CPA 网关）上被误报为「连接失败」的问题
+- 其余功能不变，可直接覆盖安装
 
 ## v1.0.17 - 2026-11-07
 
