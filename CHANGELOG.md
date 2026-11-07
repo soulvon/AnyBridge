@@ -2,6 +2,10 @@
 
 All notable changes to AnyBridge will be documented in this file.
 
+## 未发布
+
+- 修复：「测试连接」在部分校验严格的供应商（如本地 CPA 网关）上被误报为「连接失败」的问题
+
 ## v1.0.17 - 2026-11-07
 
 按试用反馈，把上一版对供应商同步逻辑的调整退回，功能与 v1.0.15 一致。

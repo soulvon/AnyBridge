@@ -2008,6 +2008,35 @@ fn is_json_api_error(body: &str) -> bool {
     serde_json::from_str::<serde_json::Value>(text).is_ok()
 }
 
+/// 探针请求的输出上限。OpenAI Responses 语义要求 `max_output_tokens >= 16`，部分
+/// 严格上游（CPA 等把 chat 的 `max_tokens` 映射成 Responses 后做同值校验）会 400
+/// 拒绝更小的值，把正常渠道测成假阴性（issue #42）。探针只验连通与鉴权，取最小合法值。
+const PROBE_MAX_TOKENS: u64 = 16;
+
+/// 探针请求体唯一构造点（openai responses / openai chat / anthropic / gemini 四路对称收敛）。
+fn probe_request_body(fmt: &str, uses_openai_responses: bool, model: &str) -> serde_json::Value {
+    if fmt == "gemini" {
+        serde_json::json!({
+            "contents": [{"role": "user", "parts": [{"text": "hi"}]}]
+        })
+    } else if fmt == "openai" && uses_openai_responses {
+        serde_json::json!({
+            "model": model,
+            "input": [{"role": "user", "content": "hi"}],
+            "max_output_tokens": PROBE_MAX_TOKENS,
+            "stream": false
+        })
+    } else {
+        // openai chat 与 anthropic 都吃 max_tokens
+        serde_json::json!({
+            "model": model,
+            "messages": [{"role": "user", "content": "hi"}],
+            "max_tokens": PROBE_MAX_TOKENS,
+            "stream": false
+        })
+    }
+}
+
 #[tauri::command]
 pub async fn test_connection(args: TestConnArgs) -> Result<TestConnResult, String> {
     let host = args.host.trim_end_matches('/');
@@ -2063,45 +2092,28 @@ pub async fn test_connection(args: TestConnArgs) -> Result<TestConnResult, Strin
         fmt == "openai" && chat_path.to_ascii_lowercase().contains("/responses");
 
     let (chat_body, auth_header, auth_value) = if fmt == "gemini" {
-        let body = serde_json::json!({
-            "contents": [{"role": "user", "parts": [{"text": "hi"}]}]
-        });
+        let body = probe_request_body(fmt, uses_openai_responses, test_model);
         (
             serde_json::to_vec(&body).unwrap(),
             "x-goog-api-key".to_string(),
             args.api_key.clone(),
         )
     } else if fmt == "openai" && uses_openai_responses {
-        let body = serde_json::json!({
-            "model": test_model,
-            "input": [{"role": "user", "content": "hi"}],
-            "max_output_tokens": 5,
-            "stream": false
-        });
+        let body = probe_request_body(fmt, uses_openai_responses, test_model);
         (
             serde_json::to_vec(&body).unwrap(),
             "Authorization".to_string(),
             format!("Bearer {}", args.api_key),
         )
     } else if fmt == "openai" {
-        let body = serde_json::json!({
-            "model": test_model,
-            "messages": [{"role": "user", "content": "hi"}],
-            "max_tokens": 5,
-            "stream": false
-        });
+        let body = probe_request_body(fmt, uses_openai_responses, test_model);
         (
             serde_json::to_vec(&body).unwrap(),
             "Authorization".to_string(),
             format!("Bearer {}", args.api_key),
         )
     } else {
-        let body = serde_json::json!({
-            "model": test_model,
-            "messages": [{"role": "user", "content": "hi"}],
-            "max_tokens": 5,
-            "stream": false
-        });
+        let body = probe_request_body(fmt, uses_openai_responses, test_model);
         let (auth_header, auth_value) = if is_deepseek_anthropic_endpoint(&host, Some(&chat_path)) {
             (
                 "Authorization".to_string(),
@@ -2483,6 +2495,41 @@ mod tests {
         assert!(!is_json_api_error("   "));
         assert!(!is_json_api_error("<html><body><h1>403 Forbidden</h1></body></html>"));
         assert!(!is_json_api_error("Forbidden"));
+    }
+
+    #[test]
+    fn probe_body_output_limit_meets_openai_minimum_16() {
+        // issue #42：探针输出上限低于 16 时，严格上游（CPA → Responses 校验）直接 400，
+        // 正常渠道被测成「连接失败」。四个协议分支都必须取 OpenAI 最小合法值。
+        for (fmt, uses_responses) in [
+            ("openai", true),
+            ("openai", false),
+            ("anthropic", false),
+            ("gemini", false),
+        ] {
+            let body = probe_request_body(fmt, uses_responses, "gpt-6.1-sol");
+            if fmt == "gemini" {
+                assert!(
+                    body.get("max_output_tokens").is_none() && body.get("max_tokens").is_none(),
+                    "gemini 探针不设输出上限"
+                );
+                continue;
+            }
+            let limit = body
+                .get("max_output_tokens")
+                .or_else(|| body.get("max_tokens"))
+                .expect("探针体必须带输出上限")
+                .as_u64()
+                .expect("输出上限必须是整数");
+            assert!(
+                limit >= 16,
+                "{fmt} (uses_responses={uses_responses}) 探针上限 {limit} 低于 OpenAI 最小 16"
+            );
+        }
+        // responses 分支必须用 max_output_tokens 键名，chat/anthropic 分支用 max_tokens
+        assert!(probe_request_body("openai", true, "m").get("max_output_tokens").is_some());
+        assert!(probe_request_body("openai", false, "m").get("max_tokens").is_some());
+        assert!(probe_request_body("anthropic", false, "m").get("max_tokens").is_some());
     }
 
     fn store_with_api_keys(api_key: &str, pool: serde_json::Value) -> ProviderStore {

@@ -9,6 +9,19 @@
 > - `CHANGELOG.md`：一屏能读完、用户能看懂、只讲"你会得到什么"。一个版本 2-4 条。
 > - 本文件：可以写 `hudsucker=debug`、`passthroughParams`、栈追踪、判据与测试名。
 
+## 未发布
+
+### 探针输出上限提到 OpenAI 最小 16（issue #42）
+
+- 根因：`test_connection` 三路探针体写死 `max_output_tokens`/`max_tokens: 5`。
+  OpenAI Responses 语义要求 `>= 16`，CPA（CLIProxyAPI）把 chat 的 max_tokens 映射成
+  Responses 的 max_output_tokens 后做同值校验，400 拒绝 → 正常渠道被测成「连接失败」
+  （issue #42 报错原文：`Invalid 'max_output_tokens': Expected a value >= 16, but got 5 instead`）。
+- 修复：三路探针体收敛到唯一构造点 `probe_request_body()`（config.rs），常量
+  `PROBE_MAX_TOKENS = 16`（OpenAI 最小合法值；探针只验连通与鉴权，不关心回复长度）。
+- 判据：`commands::config::tests::probe_body_output_limit_meets_openai_minimum_16`，
+  红绿闭环：旧值 5 上 FAILED，恢复 16 后绿。
+
 ## v1.0.17 - 2026-11-07
 
 ### 术语统一：代理 → 网关 / 内置供应商
