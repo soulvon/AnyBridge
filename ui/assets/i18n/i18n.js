@@ -32,6 +32,19 @@
     return String(text).replace(/\{(\w+)\}/g, (m, key) => Object.prototype.hasOwnProperty.call(params, key) ? params[key] : m);
   }
 
+  // 前缀匹配候选：以冒号/空白结尾的 key（如「保存映射失败: 」），供「前缀 + 运行时变量」
+  // 拼接串（addLog / showCustomAlert 里 '前缀: ' + err、模板串）在英文态兜底翻译。
+  // 首次使用时构建并缓存在 catalog 对象上，按长度降序保证最长前缀优先。
+  function prefixEntriesOf(catalog) {
+    if (!catalog.__prefixEntries) {
+      const all = Object.keys(catalog.translations || {})
+        .filter(k => /[:：]\s*$/.test(k) || /\s$/.test(k));
+      all.sort((a, b) => b.length - a.length);
+      catalog.__prefixEntries = all;
+    }
+    return catalog.__prefixEntries;
+  }
+
   function translate(source, params, language) {
     const key = String(source == null ? '' : source);
     const lang = normalizeLanguage(language || currentLanguage);
@@ -40,6 +53,16 @@
       return interpolate(catalog.translations[key], params);
     }
     if (lang === 'en-US') {
+      // 前缀兜底：source 以某条前缀 key 开头 → 翻译前缀 + 原样保留尾部（错误详情等运行时内容）
+      if (catalog.translations) {
+        const entries = prefixEntriesOf(catalog);
+        for (let i = 0; i < entries.length; i++) {
+          const pk = entries[i];
+          if (key.length > pk.length && key.startsWith(pk)) {
+            return interpolate(catalog.translations[pk], params) + key.slice(pk.length);
+          }
+        }
+      }
       let m = key.match(/^共\s*(\d+)\s*个$/);
       if (m) return `Total ${m[1]}`;
       m = key.match(/^共\s*(\d+)\s*个结果$/);
