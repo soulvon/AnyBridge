@@ -54,7 +54,7 @@ AnyBridge 是一款运行在本地的 **BYOK（Bring Your Own Key）模型接入
 
 | 你遇到的问题 | 默认情况 / 手动处理 | AnyBridge 的处理方式 |
 | :--- | :--- | :--- |
-| **智能体无法填第三方模型** | Cursor、Windsurf、Devin 等界面封闭，没有自定义 API 入口 | **本地代理接管**：通过本机代理接管会话请求，自由连接你的渠道与模型 |
+| **智能体无法填第三方模型** | Cursor、Windsurf、Devin 等界面封闭，没有自定义 API 入口 | **本地网关接管**：通过本机网关接管会话请求，自由连接你的渠道与模型 |
 | **手写配置文件繁琐易错** | Claude Code、Codex、Pi、Hermes 等要找隐藏目录手写 JSON / YAML / TOML | **界面一键写入**：选好模型直接写入正确路径，格式不出错，随时一键还原 |
 | **每次都要手输模型名** | 很多工具需要手动输入长串模型名，输错一个字母就报错 | **在线拉取模型**：填好渠道后在线拉取可用模型列表，下拉框直接勾选 |
 | **换个渠道每个工具都要改** | 有几个工具就得改几遍，上游换地址要挨个翻配置文件 | **一次配置多处复用**：渠道集中在 AnyBridge 管理，配一次同步给所有智能体 |
@@ -84,7 +84,7 @@ AnyBridge 是一款运行在本地的 **BYOK（Bring Your Own Key）模型接入
 
 进入 **「智能体」** 页面，找到你顺手的工具（Cursor、Windsurf、Devin、Claude Code、Codex、Pi、Hermes、DeepSeek Harness ……）：
 
-- **封闭式桌面 IDE（Cursor / Windsurf / Devin）**：点击「启用代理接管」，自动建立本地代理与证书，按提示重启即可；
+- **封闭式桌面 IDE（Cursor / Windsurf / Devin）**：点击「启用网关接管」，自动建立本地网关与证书，按提示重启即可；
 - **配置型智能体（Claude Code / Codex / OpenCode / Pi / Hermes / DeepSeek Harness / Grok / ZCode / CodeBuddy / WorkBuddy 等）**：点击「切换到 AnyBridge」，**无需手写配置**，自动写入对应系统路径。
 
 ### 3️⃣ 第三步：打开工具，直接开用！
@@ -103,7 +103,7 @@ AnyBridge 是一款运行在本地的 **BYOK（Bring Your Own Key）模型接入
 
 ![AnyBridge Devin 智能体接入控制台](docs/assets/anybridge-platform-devin.png)
 
-![AnyBridge 本地代理概览](docs/assets/anybridge-proxy-overview.png)
+![AnyBridge 内置供应商概览](docs/assets/anybridge-proxy-overview.png)
 
 ![AnyBridge 模型槽位映射](docs/assets/anybridge-slot-mapping.png)
 
@@ -117,7 +117,7 @@ AnyBridge 是一款运行在本地的 **BYOK（Bring Your Own Key）模型接入
 
 | 方式 | 适用智能体 | 是否需要保持 AnyBridge 运行 | 说明 |
 | :--- | :--- | :--- | :--- |
-| **本地代理接管** | Cursor、Windsurf、Devin | ✅ 需要 | 官方界面封闭，由本机代理（`:7450`）实时转译会话请求，同时提供看图备用、故障切换、重试与统计 |
+| **本地网关接管** | Cursor、Windsurf、Devin | ✅ 需要 | 官方界面封闭，由本机代理（`:7450`）实时转译会话请求，同时提供看图备用、故障切换、重试与统计 |
 | **配置文件直写** | Claude Code、Codex、OpenCode、Pi、Hermes、DeepSeek Harness、Grok、ZCode、CodeBuddy、WorkBuddy、Claude Desktop、Antigravity 等 | ❌ 不需要 | 自动写入原生配置文件（JSON / YAML / TOML），写完即可关闭 AnyBridge，工具直连你的渠道 |
 | **本地 API 网关** | Cline、Continue、Aider 及任意自定义客户端 | ✅ 需要 | 统一暴露 OpenAI / Anthropic 兼容端点 `http://localhost:7450/v1`，任何支持自定义 API 的工具都能接入 |
 
@@ -181,13 +181,13 @@ AnyBridge 针对不同工具的底层架构提供针对性的接入机制，目�
                                          │ 本地控制
                                          ▼
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                            本地代理服务 (:7450)                              │
+│                            本地网关服务 (:7450)                              │
 │   ┌───────────────────────┐   ┌───────────────────────┐   ┌─────────────┐   │
 │   │   协议解析与转换      │   │  看图备用自动转写     │   │ 渠道切换与  │   │
 │   │ (Connect-RPC / SSE)   │   │   (Vision Fallback)   │   │ 限流自动重试│   │
 │   └───────────────────────┘   └───────────────────────┘   └─────────────┘   │
 └───────────────▲───────────────────────────────▲──────────────────────▲──────┘
-                │ 本地代理                      │ 调试端口注入 (CDP)   │ 配置写入 / 网关
+                │ 本地网关                      │ 调试端口注入 (CDP)   │ 配置写入 / 网关
     ┌───────────┴───────────┐       ┌───────────┴───────────┐          │
     │ Cursor / Windsurf /   │       │  Codex 桌面客户端     │  ┌────────┴──────────┐
     │ Devin（Connect-RPC）  │       │（动态添加模型选项）   │  │ Claude Code / Pi /  │
@@ -195,13 +195,13 @@ AnyBridge 针对不同工具的底层架构提供针对性的接入机制，目�
                                                                └───────────────────┘
 ```
 
-### 本地代理模式是怎么工作的？（以 Cursor / Windsurf / Devin 为例）
+### 本地网关模式是怎么工作的？（以 Cursor / Windsurf / Devin 为例）
 
 ```
 智能体发出请求
     │
     ▼
-[AnyBridge 本地代理 (127.0.0.1:7450)]
+[AnyBridge 内置供应商 (127.0.0.1:7450)]
     ├─► 1. 识别请求类型：只拦截聊天会话（如 GetChatMessage）
     ├─► 2. 解出对话内容，转换为标准 OpenAI 或 Anthropic 格式发给你的渠道
     ├─► 3. 收到流式回复后，重新打包为 Connect-RPC 格式推回界面
@@ -266,7 +266,7 @@ AnyBridge 针对不同工具的底层架构提供针对性的接入机制，目�
 </details>
 
 <details>
-<summary><b>Q6: 怎么快速验证本地代理服务是否正常？</b></summary>
+<summary><b>Q6: 怎么快速验证本地网关服务是否正常？</b></summary>
 <br>
 访问 <code>http://localhost:7450/__byok/health</code>，返回 <code>{"status":"ok"}</code> 即表示服务正常；访问 <code>http://localhost:7450/__byok/stats</code> 可查看实时聚合统计。
 </details>
@@ -372,7 +372,7 @@ npm run tauri:build
 
 **AnyBridge · 打破模型锁定，把选择权交回开发者**
 
-关键词：BYOK 自带密钥 · AI 编程智能体 · 本地代理 · OpenAI 兼容接口 · 模型路由与聚合 · 中转站接入 · Claude Code / Codex / Cursor / Pi / Hermes 配置管理
+关键词：BYOK 自带密钥 · AI 编程智能体 · 本地网关 · OpenAI 兼容接口 · 模型路由与聚合 · 中转站接入 · Claude Code / Codex / Cursor / Pi / Hermes 配置管理
 
 </div>
 

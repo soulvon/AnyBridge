@@ -110,7 +110,7 @@ pub fn config_dir_path() -> PathBuf {
     config_dir()
 }
 
-/// 是否默认启动代理。byok-config.json 里 AUTO_START_PROXY=true 时返回 true，
+/// 是否默认启动网关。byok-config.json 里 AUTO_START_PROXY=true 时返回 true，
 /// 没设置或解析失败默认 true（用户期望默认启动）。
 pub fn is_auto_start_proxy_enabled() -> bool {
     read_config_value("AUTO_START_PROXY")
@@ -230,8 +230,8 @@ pub struct Provider {
     #[serde(rename = "apiKey")]
     pub api_key: String,
     /// 多把密钥的候选池。`apiKey` 始终是「当前生效」的那把：
-    /// - 走本地代理时，整池交给路由按请求轮换；
-    /// - 不走代理时，由用户在编辑页手动切换当前密钥。
+    /// - 走本地网关时，整池交给路由按请求轮换；
+    /// - 不走网关时，由用户在编辑页手动切换当前密钥。
     #[serde(rename = "apiKeys", default, skip_serializing_if = "Vec::is_empty")]
     pub api_keys: Vec<ProviderApiKey>,
     #[serde(rename = "apiPath", skip_serializing_if = "Option::is_none")]
@@ -249,13 +249,13 @@ pub struct Provider {
     /// 模型级别的能力标记（vision / tools），键为模型 ID。
     #[serde(rename = "modelCaps", default)]
     pub model_caps: HashMap<String, ModelCaps>,
-    /// 供应商解锁配置：解锁后可被代理转发链路复用到其他平台。
+    /// 供应商解锁配置：解锁后可被网关转发链路复用到其他平台。
     #[serde(default, skip_serializing_if = "ProviderUnlocks::is_empty")]
     pub unlocks: ProviderUnlocks,
     /// Codex 专有：wire_api 模式 ("responses" 或 "chat")
     #[serde(rename = "wireApi", default, skip_serializing_if = "String::is_empty")]
     pub wire_api: String,
-    /// Codex 专有：是否走本地代理（默认 true）
+    /// Codex 专有：是否走本地网关（默认 true）
     #[serde(rename = "routeThroughProxy", default = "default_true")]
     pub route_through_proxy: bool,
     /// Codex 专有：是否 CDP 注入让 Desktop 显示所有模型（默认 true）
@@ -449,9 +449,9 @@ pub struct CodexConfig {
     )]
     pub source_provider_name: String,
     /// Codex wire_api: "responses" (默认) 或 "chat"。
-    /// chat 模式下，本地代理将 Responses 请求转为 Chat Completions 格式发往上游。
+    /// chat 模式下，本地网关将 Responses 请求转为 Chat Completions 格式发往上游。
     ///
-    /// 注意：这是 **AnyBridge 内部字段**，只决定「本地代理 → 上游」用哪个端点，
+    /// 注意：这是 **AnyBridge 内部字段**，只决定「本地网关 → 上游」用哪个端点，
     /// 不会写进 config.toml —— Codex 的 `wire_api` 恒为 "responses"
     /// （openai/codex 已删除 `WireApi::Chat`，写 "chat" 会让 Codex 启动即崩）。
     #[serde(rename = "wireApi", default = "default_wire_api")]
@@ -463,8 +463,8 @@ pub struct CodexConfig {
     /// 默认 true 让存量配置（历史上一律被写成 "responses"）在重新保存时自愈。
     #[serde(rename = "wireApiAuto", default = "default_true")]
     pub wire_api_auto: bool,
-    /// 是否走本地代理（默认 true）。
-    /// 关 = Codex 直接连接供应商原 URL；开 = 走 AnyBridge 本地代理（127.0.0.1:7450）。
+    /// 是否走本地网关（默认 true）。
+    /// 关 = Codex 直接连接供应商原 URL；开 = 走 AnyBridge 内置供应商（127.0.0.1:7450）。
     #[serde(rename = "routeThroughProxy", default = "default_true")]
     pub route_through_proxy: bool,
     /// Codex Desktop 注入解锁脚本让所有模型在 picker 显示（默认 true）。
@@ -1251,12 +1251,12 @@ pub fn save_providers(mut store: ProviderStore) -> Result<(), String> {
     normalize_provider_api_keys(&mut store);
     write_provider_store(&store)?;
 
-    // 多密钥池 → 代理路由目标：这一步让「本地代理轮换」真正拿到整池密钥。
+    // 多密钥池 → 内置模型路由目标：这一步让「本地网关轮换」真正拿到整池密钥。
     // 同步失败不阻断保存（路由文件可能处于需要修复的状态），但必须留下痕迹。
     match super::proxy_routes::sync_provider_api_keys(&store.providers) {
         Ok(0) => {}
         Ok(count) => eprintln!("[providers] 已同步多密钥池到 {count} 个路由目标"),
-        Err(err) => eprintln!("[providers] 同步多密钥池到代理路由失败: {err}"),
+        Err(err) => eprintln!("[providers] 同步多密钥池到内置模型路由失败: {err}"),
     }
 
     Ok(())
@@ -1302,7 +1302,7 @@ fn normalize_provider_unlock_kind(kind: &str) -> Result<&'static str, String> {
     }
 }
 
-/// 设置供应商解锁项。解锁后，代理转发链路可以复用对应平台的请求模板。
+/// 设置供应商解锁项。解锁后，网关转发链路可以复用对应平台的请求模板。
 #[tauri::command]
 pub fn set_provider_unlock(
     provider_id: String,
@@ -2402,7 +2402,7 @@ pub async fn fetch_models(args: FetchModelsArgs) -> Result<FetchModelsResult, St
             attempts.join("；")
         };
         // 本机网关拉不到时，把最常见也最容易误判的两个原因直接说清楚：
-        // 服务没起（端口无人监听，代理层把连接失败转成 502/网络错误）、
+        // 服务没起（端口无人监听，网关层把连接失败转成 502/网络错误）、
         // 或者本地供应商里填的密钥与插件网关当前用的不是同一把（401）。
         let is_local = host.contains("127.0.0.1")
             || host.contains("localhost")

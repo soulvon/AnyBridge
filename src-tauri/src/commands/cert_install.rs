@@ -914,7 +914,7 @@ mod platform {
         }
     }
 
-    /// 使用系统信任锚验证磁盘叶子证书；不验证运行中代理或 IDE 自带的信任库。
+    /// 使用系统信任锚验证磁盘叶子证书；不验证运行中网关或 IDE 自带的信任库。
     pub fn verify_system_trust(cert_path: &Path) -> Result<(), String> {
         let leaf = cert_path.with_file_name(crate::commands::system::MITM_LEAF_CERT_FILE);
         // 多个 -c 按叶子、颁发者顺序提供链；不用 -r 强制信任本地 CA，-L 禁止联网补链。
@@ -1053,7 +1053,7 @@ mod platform {
         Ok(())
     }
 
-    /// 仅由用户显式安装入口调用；代理后台不得调用该系统级提权路径。
+    /// 仅由用户显式安装入口调用；网关后台不得调用该系统级提权路径。
     pub fn install_local_machine_via_uac(cert_path: &Path) -> Result<(), String> {
         let command = format!(
             "security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain {}",
@@ -1554,12 +1554,12 @@ pub(crate) fn check_ca_status_fresh() -> CaStatus {
 
     // 优先报告缺失材料和原始信任错误；存储位置不能证明 IDE 使用的信任库已接受该链。
     let message = if !cert_exists || !key_exists {
-        "证书材料缺失；请先停止代理，在环境检测中生成证书，再显式安装信任".to_string()
+        "证书材料缺失；请先停止网关，在环境检测中生成证书，再显式安装信任".to_string()
     } else if let Some(error) = &trust_error {
         error.clone()
     } else if cert_exists && key_exists && !san_current {
         format!(
-            "MITM 证书缺少当前 SAN 或证书材料无效（当前标记: {}，需要: {}）；请先停止代理，生成证书后显式安装信任",
+            "MITM 证书缺少当前 SAN 或证书材料无效（当前标记: {}，需要: {}）；请先停止网关，生成证书后显式安装信任",
             san_version.as_deref().unwrap_or("missing"),
             crate::commands::system::mitm_cert_san_version()
         )
@@ -1603,13 +1603,13 @@ pub(crate) fn check_ca_status_fresh() -> CaStatus {
 
 /// 显式安装 CA：Windows 当前策略直接请求系统级授权；用户级尝试由 install_ca_user_only 提供。
 /// macOS 只修复当前有效证书包的信任，不轮换 CA 或自动清理旧根。
-/// 此底层入口不获取任务锁或代理占位，桌面调用方须在外层提供保护。
+/// 此底层入口不获取任务锁或网关占位，桌面调用方须在外层提供保护。
 #[allow(dead_code)]
 pub fn install_ca() -> Result<String, String> {
     install_ca_with_options(false, false)
 }
 
-/// 仅尝试用户级信任库，不请求管理员授权；供代理启动/体检的保守修复路径使用。
+/// 仅尝试用户级信任库，不请求管理员授权；供网关启动/体检的保守修复路径使用。
 /// Windows 用户级安装仍可能显示系统安全确认，但不会进入提权路径。
 #[allow(dead_code)]
 pub fn install_ca_user_only(
@@ -1696,7 +1696,7 @@ pub(crate) fn install_ca_impl_with_package_lock(
     crate::commands::system::reject_interrupted_mitm_candidates(certs_dir)?;
 
     // macOS 的重装入口只修复当前包的信任，不执行 force_regenerate 或旧根清理。
-    // 避免授权失败前已覆盖磁盘证书，导致代理内存、磁盘与钥匙串使用不同证书。
+    // 避免授权失败前已覆盖磁盘证书，导致网关内存、磁盘与钥匙串使用不同证书。
     if cfg!(target_os = "macos") {
         let leaf_path = cert_path.with_file_name(crate::commands::system::MITM_LEAF_CERT_FILE);
         let leaf_key = cert_path.with_file_name(crate::commands::system::MITM_LEAF_KEY_FILE);
@@ -1734,7 +1734,7 @@ pub(crate) fn install_ca_impl_with_package_lock(
             return Ok("现有 CA 信任安装及 macOS SSL 验证已完成，未轮换证书；请重新运行环境检测并验证 IDE 实际请求".into());
         }
 
-        return Err("macOS 当前证书包缺失或无效。请先停止代理，在环境检测中生成证书，再显式安装信任；本次未覆盖证书或清理钥匙串".into());
+        return Err("macOS 当前证书包缺失或无效。请先停止网关，在环境检测中生成证书，再显式安装信任；本次未覆盖证书或清理钥匙串".into());
     }
 
     let cert_ok = cert_path.metadata().map(|m| m.len() > 0).unwrap_or(false);
@@ -1943,7 +1943,7 @@ pub(crate) fn install_ca_impl_with_package_lock(
     }
 
     // 阶段 2：仅用户显式触发时请求管理员授权，装到系统级根证书库。
-    // 代理启动和后台体检不应进入此分支，避免隐藏或不可交互的授权弹窗。
+    // 网关启动和后台体检不应进入此分支，避免隐藏或不可交互的授权弹窗。
     eprintln!(
         "[cert_install] install_ca: install to {} via {}",
         local_machine_store_label(),
@@ -2346,7 +2346,7 @@ pub(crate) async fn run_cert_task(
     result
 }
 
-// 先占证书任务、再检查并占用代理启动位；检查覆盖整个安装过程，不只保护文件生成。
+// 先占证书任务、再检查并占用网关启动位；检查覆盖整个安装过程，不只保护文件生成。
 // request_id 只用于把前端进度事件归回发起它的 UI 调用。
 #[tauri::command]
 pub async fn cert_install(app: AppHandle, request_id: Option<String>) -> Result<String, String> {
@@ -2374,7 +2374,7 @@ pub async fn cert_reinstall_clean(app: AppHandle, request_id: Option<String>) ->
     .await
 }
 
-// 卸载也需保持代理停止，避免运行中的 TLS 链突然失去信任；失败由前端按错误展示。
+// 卸载也需保持网关停止，避免运行中的 TLS 链突然失去信任；失败由前端按错误展示。
 // request_id 用于将本次 UI 请求与进度事件关联。
 #[tauri::command]
 pub async fn cert_uninstall(app: AppHandle, request_id: Option<String>) -> Result<String, String> {
@@ -2388,7 +2388,7 @@ pub async fn cert_uninstall(app: AppHandle, request_id: Option<String>) -> Resul
     .await
 }
 
-// 清理可能涉及系统授权，只从显式操作执行；与其他证书任务共享互斥及代理停止约束。
+// 清理可能涉及系统授权，只从显式操作执行；与其他证书任务共享互斥及网关停止约束。
 // request_id 用于将本次 UI 请求与进度事件关联。
 #[tauri::command]
 pub async fn cert_cleanup_legacy(app: AppHandle, request_id: Option<String>) -> Result<String, String> {

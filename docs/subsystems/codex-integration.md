@@ -21,7 +21,7 @@ OpenAI configuration.
    sections such as `mcp_servers`, `projects` and unrelated provider tables
    stay untouched.
 2. `wire_api` in `config.toml` is always `responses`; Chat-only upstreams are
-   translated by the local proxy, not by writing `chat` into Codex config.
+   translated by the local gateway, not by writing `chat` into Codex config.
 3. Auth fields are mutually exclusive: OAuth uses
    `requires_openai_auth = true`; third-party bearer mode uses
    `requires_openai_auth = false` plus `experimental_bearer_token`. Do not leave

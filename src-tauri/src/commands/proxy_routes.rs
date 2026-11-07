@@ -330,13 +330,13 @@ fn validate_routes(routes: &ProxyRoutes) -> Result<(), String> {
     let mut seen_uids = HashSet::new();
     for route in &routes.routes {
         if route.id.trim().is_empty() {
-            return Err("本地代理模型 ID 不能为空".into());
+            return Err("内置模型 ID 不能为空".into());
         }
         if !seen_ids.insert(route.id.clone()) {
-            return Err(format!("本地代理模型 ID 重复: {}", route.id));
+            return Err(format!("内置模型 ID 重复: {}", route.id));
         }
         if !route.uid.trim().is_empty() && !seen_uids.insert(route.uid.clone()) {
-            return Err(format!("本地代理模型 UID 重复: {}", route.uid));
+            return Err(format!("内置模型 UID 重复: {}", route.uid));
         }
         for fmt in &route.exposed_formats {
             if !matches!(fmt.as_str(), "openai" | "anthropic" | "gemini") {
@@ -555,7 +555,7 @@ pub fn repair_proxy_routes() -> Result<ProxyRoutesRepairReport, String> {
         .unwrap_or_default()
         .as_secs();
     let backup = PathBuf::from(format!("{}.corrupt.{}", path.to_string_lossy(), now));
-    fs::copy(&path, &backup).map_err(|e| format!("备份损坏的代理路由配置失败: {}", e))?;
+    fs::copy(&path, &backup).map_err(|e| format!("备份损坏的内置模型路由配置失败: {}", e))?;
     report.backup_path = backup.to_string_lossy().to_string();
 
     let parsed = fs::read_to_string(&path)

@@ -6,11 +6,11 @@ AnyBridge 包含三个主要部分：
 
 - `src-tauri/` 中的 Tauri 桌面外壳
 - `ui/` 中的静态前端
-- `sidecar/` 中的 Node.js sidecar 代理服务
+- `sidecar/` 中的 Node.js sidecar 网关服务
 
 ```text
 AI 编程工具
-  -> 本地代理或生成的配置
+  -> 本地网关或生成的配置
   -> AnyBridge sidecar
   -> 已配置的供应商 API
 
@@ -42,7 +42,7 @@ npm run check:ui
 
 ## Sidecar 代理
 
-Sidecar 是一个 Node.js 独立进程，负责处理本地代理流量、供应商路由、模型映射、日志记录以及请求/响应的协议转换。
+Sidecar 是一个 Node.js 独立进程，负责处理本地网关流量、供应商路由、模型映射、日志记录以及请求/响应的协议转换。
 
 Sidecar 在开发期间可独立运行：
 

@@ -80,19 +80,19 @@ pub fn run() {
             // 汉化模式（带调试端口）启动且已启用汉化时工作，否则静默跳过。
             commands::antigravity_cdp::spawn_cdp_keeper();
 
-            // 默认启动代理（AUTO_START_PROXY 默认为 true，可在设置里关闭）。
+            // 默认启动网关（AUTO_START_PROXY 默认为 true，可在设置里关闭）。
             // 启动前已通过 kill_sidecar_process 清理孤儿 sidecar，
             // dev 模式额外清理残留 node 进程。
             if commands::config::is_auto_start_proxy_enabled() {
                 let app_handle = app.handle().clone();
                 tauri::async_runtime::spawn_blocking(move || {
                     if let Err(e) = commands::proxy::start_proxy_service_impl(app_handle.clone()) {
-                        eprintln!("[auto-start] 启动代理失败: {}", e);
+                        eprintln!("[auto-start] 启动网关失败: {}", e);
                         let _ = app_handle.emit(
                             "proxy-log",
                             commands::proxy::LogLine {
                                 level: "warn".into(),
-                                msg: format!("⚠ 自动启动代理失败: {}", e),
+                                msg: format!("⚠ 自动启动网关失败: {}", e),
                             },
                         );
                     }
@@ -327,8 +327,8 @@ pub fn run() {
         .expect("error while running tauri application")
         .run(|app, event| {
             if let tauri::RunEvent::ExitRequested { .. } = event {
-                // App 退出兜底：只清理 sidecar。IDE 是否切到代理由平台页按钮管理。
-                // 不在退出时自动还原 IDE 配置，避免撤销用户显式的“切换到代理”。
+                // App 退出兜底：只清理 sidecar。IDE 是否切到网关由平台页按钮管理。
+                // 不在退出时自动还原 IDE 配置，避免撤销用户显式的“切换到网关”。
                 if let Some(state) = app.try_state::<ProxyState>() {
                     let child = commands::proxy::lock_or_recover(&state.child).take();
                     if let Some(c) = child {

@@ -2,8 +2,8 @@
 //
 // 职责：
 //   - 定位 Claude Desktop 配置文件（Windows: %LOCALAPPDATA%\Claude*; macOS: ~/Library/Application Support/Claude*）
-//   - 写入 3P 网关 profile 指向 AnyBridge 本地代理 (http://127.0.0.1:<PORT>/claude-desktop)
-//   - 将 Sonnet/Opus/Haiku(+Fable) 角色档位映射为代理模型
+//   - 写入 3P 网关 profile 指向 AnyBridge 内置供应商 (http://127.0.0.1:<PORT>/claude-desktop)
+//   - 将 Sonnet/Opus/Haiku(+Fable) 角色档位映射为内置模型
 //   - 还原为官方 1P 模式
 //   - 写入前对 4 处文件快照并在出错时完整回滚
 
@@ -168,7 +168,7 @@ pub fn gateway_api_key() -> Result<String, String> {
     read_config_value("LOCAL_PROXY_KEY")
         .filter(|s| !s.trim().is_empty())
         .ok_or_else(|| {
-            "AnyBridge 本地代理 key 尚未生成，请启动代理服务或在代理页生成 key 后重试。"
+            "AnyBridge 内置供应商 key 尚未生成，请启动网关服务或在网关页生成 key 后重试。"
                 .to_string()
         })
 }
@@ -388,10 +388,10 @@ pub fn resolve_model_specs(bindings: &ClaudeDesktopBindings) -> Result<Vec<Model
             .or_else(|| routes.routes.iter().find(|r| r.id == clean))
         {
             if !route.enabled {
-                return Err(format!("绑定的代理模型已禁用: {}", route.id));
+                return Err(format!("绑定的内置模型已禁用: {}", route.id));
             }
             if route.targets.is_empty() {
-                return Err(format!("绑定的代理模型没有上游目标: {}", route.id));
+                return Err(format!("绑定的内置模型没有上游目标: {}", route.id));
             }
             let is_1m = marker_1m
                 || is_one_m_candidate(&route.id)

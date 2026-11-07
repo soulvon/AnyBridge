@@ -246,13 +246,13 @@ fn start_impl(app: AppHandle, state: &CursorCoreState) -> Result<(), String> {
         crate::commands::proxy::ensure_proxy_service_ready(&app)?;
         let key = crate::commands::config::read_config_value("LOCAL_PROXY_KEY")
             .filter(|value| !value.trim().is_empty())
-            .ok_or("AnyBridge 本地代理 Key 尚未生成")?;
+            .ok_or("AnyBridge 内置供应商 Key 尚未生成")?;
         let config_dir = crate::commands::config::config_dir_path();
         let routes = config_dir.join("proxy-routes.json");
         let cursor_models = config_dir.join("cursor-models.json");
         let providers = config_dir.join("providers.json");
         if !routes.exists() {
-            return Err("尚未配置可供 Cursor 使用的代理模型".into());
+            return Err("尚未配置可供 Cursor 使用的内置模型".into());
         }
         let port = control_port();
         let proxy_port = crate::commands::proxy::get_proxy_status(
@@ -317,7 +317,7 @@ fn stop_impl(state: &CursorCoreState) -> Result<(), String> {
 }
 
 /// 把 Cursor Core 的 stdout/stderr 逐行转成 UI 日志，发到与 sidecar 相同的
-/// `proxy-log` 事件，让「代理日志」面板能看到 core 的诊断输出。
+/// `proxy-log` 事件，让「网关日志」面板能看到 core 的诊断输出。
 ///
 /// core 是长期驻留进程，管道不会 EOF：stdout 与 stderr 必须分别起线程并行读取，
 /// 串行读取会让另一个管道填满后反向阻塞 core（与 sidecar 的约束相同）。
@@ -494,11 +494,11 @@ pub fn cursor_preflight(app: AppHandle, state: State<CursorCoreState>) -> Result
     resolve_binary(&app)?;
     let (count, _, _) = cursor_store_stats();
     if count == 0 {
-        return Err("至少需要一个启用的 Cursor 代理模型".into());
+        return Err("至少需要一个启用的 Cursor 内置模型".into());
     }
     crate::commands::config::read_config_value("LOCAL_PROXY_KEY")
         .filter(|value| !value.trim().is_empty())
-        .ok_or("AnyBridge 本地代理 Key 尚未生成")?;
+        .ok_or("AnyBridge 内置供应商 Key 尚未生成")?;
     let certificate = crate::commands::cert_install::check_ca_status();
     if !certificate.san_current || !(certificate.current_user || certificate.local_machine) {
         return Err(format!("AnyBridge CA 尚未就绪: {}", certificate.message));

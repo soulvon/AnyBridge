@@ -36,7 +36,7 @@ const CREATE_NEW_PROCESS_GROUP: u32 = 0x0000_0200;
 /// 自定义子进程包装，提供 kill 能力。
 pub struct ManagedChild {
     child: Mutex<std::process::Child>,
-    // 代理存活期间持共享锁；只有确认退出并丢弃句柄后，其他进程才能改证书包。
+    // 网关存活期间持共享锁；只有确认退出并丢弃句柄后，其他进程才能改证书包。
     _package_lock: Option<crate::commands::system::MitmPackageLock>,
 }
 
@@ -137,7 +137,7 @@ impl ManagedChild {
     }
 }
 
-/// 仅在桌面管理的代理停止时执行任务；不会主动停代理，也不检测外部启动的 sidecar。
+/// 仅在桌面管理的网关停止时执行任务；不会主动停网关，也不检测外部启动的 sidecar。
 pub(crate) fn with_proxy_stopped<T>(
     app: &AppHandle,
     task: impl FnOnce() -> Result<T, String>,
@@ -153,11 +153,11 @@ fn with_proxy_stopped_state<T>(
     let child = lock_or_recover(&state.child);
     if let Some(managed) = child.as_ref() {
         if managed.try_wait()?.is_none() {
-            return Err("请先停止代理再操作证书，避免运行中的代理继续使用旧证书".into());
+            return Err("请先停止网关再操作证书，避免运行中的网关继续使用旧证书".into());
         }
     }
     if state.starting.swap(true, Ordering::SeqCst) {
-        return Err("代理正在启动或证书任务正在执行，请等待完成后再操作".into());
+        return Err("网关正在启动或证书任务正在执行，请等待完成后再操作".into());
     }
     struct StartGuard<'a>(&'a AtomicBool);
     impl Drop for StartGuard<'_> {
@@ -185,7 +185,7 @@ pub struct ProxyState {
     ports: Mutex<Option<crate::commands::config::ConfiguredProxyPorts>>,
 }
 
-/// 取锁并容忍 poisoning：某线程持锁时 panic 不应让后续所有代理操作永久 panic。
+/// 取锁并容忍 poisoning：某线程持锁时 panic 不应让后续所有网关操作永久 panic。
 pub fn lock_or_recover<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
     m.lock().unwrap_or_else(|e| e.into_inner())
 }
@@ -193,7 +193,7 @@ pub fn lock_or_recover<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
 /// 还原结果：哪些步骤失败、哪些步骤找不到备份。
 #[derive(Serialize, Clone, Default)]
 pub struct RestoreReport {
-    /// IDE 代理配置还原结果
+    /// IDE 网关配置还原结果
     pub ide_config: String,
     /// workbench.html 注入还原结果
     pub workbench_inject: String,
@@ -217,7 +217,7 @@ fn restore_all(state: &ProxyState, target: &str) -> RestoreReport {
 
     match crate::commands::ide_config::restore(target) {
         Ok(true) => report.ide_config = "ok".into(),
-        Ok(false) => report.ide_config = "未找到备份，IDE 代理配置可能未被还原".into(),
+        Ok(false) => report.ide_config = "未找到备份，IDE 网关配置可能未被还原".into(),
         Err(e) => report.ide_config = format!("还原失败: {}", e),
     }
 
@@ -479,7 +479,7 @@ mod log_classification_tests {
         assert!(remaining <= std::time::Duration::from_secs(60));
     }
 
-    // 端口探测必须反映真实监听状态：用于判定「代理服务是否可直接复用」，
+    // 端口探测必须反映真实监听状态：用于判定「网关服务是否可直接复用」，
     // 探错会导致把正在供流的 sidecar 误杀重启（或反之漏启动）。
     #[test]
     fn proxy_port_probe_reflects_listener_state() {
@@ -771,7 +771,7 @@ fn sidecar_log_line(trimmed: &str) -> LogLine {
             }
             LogLine {
                 level: "err".into(),
-                msg: "近期检测到 TLS 客户端拒绝或未能验证代理证书（未识别客户端身份）".into(),
+                msg: "近期检测到 TLS 客户端拒绝或未能验证网关证书（未识别客户端身份）".into(),
             }
         }
         // 未知事件必须显式告警：否则协议一旦漂移，相关检查会无声失效。
@@ -846,7 +846,7 @@ fn resolve_target_ide_arg(target_ide: Option<&str>) -> Result<String, String> {
 }
 
 /// 预检允许修复的范围。
-/// 证书包与系统信任只允许显式体检改动；代理启动预检即使修复 IDE 配置也必须只读证书。
+/// 证书包与系统信任只允许显式体检改动；网关启动预检即使修复 IDE 配置也必须只读证书。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum RepairScope {
     /// 只读体检，不修改任何文件或系统状态
@@ -894,7 +894,7 @@ fn recent_tls_rejection_issue(now_ms: u64, last_seen_ms: u64) -> Option<ProxyPre
         level: "err".into(),
         code: "cert.tls_client_rejection_recent".into(),
         message: format!(
-            "最近 30 分钟内检测到 TLS 客户端拒绝或未能验证代理证书（{} 分钟前）；客户端身份未知。请先核对当前 CA 信任状态，并完全重启代理和 IDE。",
+            "最近 30 分钟内检测到 TLS 客户端拒绝或未能验证网关证书（{} 分钟前）；客户端身份未知。请先核对当前 CA 信任状态，并完全重启网关和 IDE。",
             now_ms.saturating_sub(last_seen_ms) / 60_000
         ),
     })
@@ -989,7 +989,7 @@ fn probe_byok_stats(port: u16, timeout: Duration) -> Result<(), ProxyHealthFailu
     if !buf.contains("\"requests\"") || !buf.contains("\"uptimeSec\"") {
         return Err(ProxyHealthFailure {
             message: format!(
-                "{} 有响应，但不像 AnyBridge 代理；可能被其它程序占用",
+                "{} 有响应，但不像 AnyBridge 网关；可能被其它程序占用",
                 port
             ),
             mitm_related: false,
@@ -1036,14 +1036,14 @@ fn probe_mitm_tls(
         .with_no_client_auth();
 
     // ---------------------------------
-    // 1. 连接代理并发送 CONNECT，建立到 MITM 主机的隧道
+    // 1. 连接网关并发送 CONNECT，建立到 MITM 主机的隧道
     // ---------------------------------
     let addr = SocketAddr::from(([127, 0, 0, 1], port));
     // 网络各阶段共享同一预算；文件读取和本地证书计算不属于可中断网络 I/O。
     let deadline = Instant::now().checked_add(timeout)
         .ok_or_else(|| "TLS 探针超时参数过大".to_string())?;
     let socket = TcpStream::connect_timeout(&addr, probe_time_remaining(deadline).map_err(|e| e.to_string())?)
-        .map_err(|e| format!("CONNECT/TLS 探针连接代理失败: {}", e))?;
+        .map_err(|e| format!("CONNECT/TLS 探针连接网关失败: {}", e))?;
     let mut tcp = ProbeSocket { socket, deadline };
     tcp.write_all(
         b"CONNECT server.codeium.com:443 HTTP/1.1\r\nHost: server.codeium.com:443\r\n\r\n",
@@ -1156,7 +1156,7 @@ fn read_connect_response(reader: &mut impl Read) -> Result<(), String> {
                 && status.next() == Some("200") {
                 return Ok(());
             }
-            // 不回显远端响应头，避免代理认证等敏感字段进入日志。
+            // 不回显远端响应头，避免网关认证等敏感字段进入日志。
             return Err("CONNECT 隧道未返回 HTTP 200".into());
         }
     }
@@ -1197,12 +1197,12 @@ struct MitmReadyReport {
     message: String,
 }
 
-/// 代理启动路径只读验证现有包和系统信任；证书生成/轮换必须由显式操作发起。
+/// 网关启动路径只读验证现有包和系统信任；证书生成/轮换必须由显式操作发起。
 /// 管理员安装只允许用户在「环境检测」显式点击；后台启动不能依赖交互授权。
 fn ensure_proxy_mitm_ready_once() -> Result<String, String> {
     // 先确认磁盘包完整，再按其 CA 指纹检查系统信任，避免校验另一份证书材料。
     let certs_dir = crate::commands::system::validate_existing_mitm_package()?;
-    // 代理启动属于后台路径：只检查当前 CA 是否已经可信，不自动弹出 macOS
+    // 网关启动属于后台路径：只检查当前 CA 是否已经可信，不自动弹出 macOS
     // 管理员授权。信任变更必须由环境检测中的显式用户操作完成。
     let status = crate::commands::cert_install::check_ca_status_fresh();
     if matches!(status.effective_store, crate::commands::cert_install::CaStore::None) {
@@ -1374,16 +1374,16 @@ fn resolve_plugins_dir(resource_dir: Option<&Path>) -> Option<PathBuf> {
 
 /// 接管心跳状态文件（sidecar 写、Rust 只读）。
 ///
-/// 「IDE 接管是否真的生效」的唯一可靠判据 = 代理最近有没有收到目标 IDE 的模型请求。
-/// 配置是否已写入（patched）**不代表生效**：IDE 只在启动时读取代理配置，
+/// 「IDE 接管是否真的生效」的唯一可靠判据 = 网关最近有没有收到目标 IDE 的模型请求。
+/// 配置是否已写入（patched）**不代表生效**：IDE 只在启动时读取网关配置，
 /// 写入后不重启就一直走直连，模型下拉框永远不会被改写。
 const TAKEOVER_STATE_FILE: &str = "anybridge-takeover-state.json";
 
 /// 心跳新鲜窗口：IDE 打开后会持续发 GetUserStatus 心跳（秒级），
-/// 超过这个时间没收到请求即可判定「流量没进代理」。
+/// 超过这个时间没收到请求即可判定「流量没进网关」。
 const TAKEOVER_FRESH_WINDOW_MS: u64 = 10 * 60 * 1000;
 
-/// 代理刚启动的观察窗口：此时还没收到请求属正常，避免刚启动就误报。
+/// 网关刚启动的观察窗口：此时还没收到请求属正常，避免刚启动就误报。
 const TAKEOVER_WARMUP_MS: u64 = 90 * 1000;
 
 #[derive(Debug, Clone, Default, serde::Deserialize, serde::Serialize)]
@@ -1432,7 +1432,7 @@ fn run_proxy_preflight(
     run_proxy_preflight_inner(target_ide, resource_dir, RepairScope::ReadOnly)
 }
 
-// 内部实现不获取外层锁，供已持有证书互斥及代理占位的入口复用，避免嵌套获取。
+// 内部实现不获取外层锁，供已持有证书互斥及网关占位的入口复用，避免嵌套获取。
 // 证书包与系统信任只由 RepairScope::Certificate 打开；其它范围只修复 IDE 配置。
 fn run_proxy_preflight_inner(
     target_ide: Option<&str>,
@@ -1820,7 +1820,7 @@ fn run_proxy_preflight_inner(
                 "warn",
                 "ide.target_mismatch",
                 format!(
-                    "当前选择的是 {}，但检测到正在运行的是 {}。如果你实际使用 {}，请先切换顶部 IDE 选择器再启动代理",
+                    "当前选择的是 {}，但检测到正在运行的是 {}。如果你实际使用 {}，请先切换顶部 IDE 选择器再启动网关",
                     ide_label, other_label, other_label
                 ),
             );
@@ -1873,7 +1873,7 @@ fn run_proxy_preflight_inner(
                     &mut issues,
                     "err",
                     "ide_settings.readonly",
-                    format!("{} settings.json 是只读文件，无法写入代理配置", ide_label),
+                    format!("{} settings.json 是只读文件，无法写入网关接入配置", ide_label),
                 );
             }
             match std::fs::read_to_string(&settings) {
@@ -1887,7 +1887,7 @@ fn run_proxy_preflight_inner(
                                 "warn",
                                 "ide_settings.other_proxy",
                                 format!(
-                                    "{} 当前已有 http.proxy={}，切换到代理时会备份并改写为 AnyBridge 代理（{}）",
+                                    "{} 当前已有 http.proxy={}，切换到网关时会备份并改写为 AnyBridge 网关（{}）",
                                     ide_label, proxy, proxy_value
                                 ),
                             );
@@ -1916,7 +1916,7 @@ fn run_proxy_preflight_inner(
                                     "warn",
                                     "ide_settings.strict_ssl",
                                     format!(
-                                        "{} 已指向 AnyBridge 代理，但 http.proxyStrictSSL 不是 false，切换到代理时会修正",
+                                        "{} 已指向 AnyBridge 网关，但 http.proxyStrictSSL 不是 false，切换到网关时会修正",
                                         ide_label
                                     ),
                                 );
@@ -1955,7 +1955,7 @@ fn run_proxy_preflight_inner(
             "err",
             "ide_settings.missing",
             format!(
-                "未找到 {} settings.json: {}。请先启动一次 {}，或在「平台 > 设置」手动指定 IDE 路径后再切换到代理",
+                "未找到 {} settings.json: {}。请先启动一次 {}，或在「平台 > 设置」手动指定 IDE 路径后再切换到网关",
                 ide_label,
                 settings.to_string_lossy(),
                 ide_label
@@ -1975,7 +1975,7 @@ fn run_proxy_preflight_inner(
             "warn",
             "ide.running",
             format!(
-                "{} 正在运行；启动后必须重启 IDE 才能加载代理配置和模型改写",
+                "{} 正在运行；启动后必须重启 IDE 才能加载网关配置和模型改写",
                 ide_label
             ),
         );
@@ -2097,7 +2097,7 @@ fn run_proxy_preflight_inner(
             &mut issues,
             "err",
             "providers.empty",
-            "尚未配置任何供应商，代理没有可路由的 BYOK 目标",
+            "尚未配置任何供应商，网关没有可路由的 BYOK 目标",
         );
     }
 
@@ -2246,7 +2246,7 @@ fn run_proxy_preflight_inner(
                     &mut issues,
                     "warn",
                     "ide_models.empty_cache",
-                    "缓存的 IDE 模型清单为空，无法判断映射槽位是否会出现在 IDE 下拉框。请启动代理后重启 IDE 并打开一次模型选择器",
+                    "缓存的 IDE 模型清单为空，无法判断映射槽位是否会出现在 IDE 下拉框。请启动网关后重启 IDE 并打开一次模型选择器",
                 );
             } else {
                 if source != "captured" {
@@ -2255,7 +2255,7 @@ fn run_proxy_preflight_inner(
                         "warn",
                         "ide_models.not_proxy_captured",
                         format!(
-                            "缓存的 IDE 模型清单来源为 {}（非代理实时抓取），不一定等于 IDE 实际下拉框；如模型不可见，请启动代理后重启 IDE 并打开一次模型选择器",
+                            "缓存的 IDE 模型清单来源为 {}（非网关实时抓取），不一定等于 IDE 实际下拉框；如模型不可见，请启动网关后重启 IDE 并打开一次模型选择器",
                             source
                         ),
                     );
@@ -2270,7 +2270,7 @@ fn run_proxy_preflight_inner(
                             &mut issues,
                             "warn",
                             "ide_models.stale_cache",
-                            "最近抓取的 IDE 模型清单已超过 7 天，建议启动代理后重启 IDE 重新抓取",
+                            "最近抓取的 IDE 模型清单已超过 7 天，建议启动网关后重启 IDE 重新抓取",
                         );
                     }
                 }
@@ -2314,13 +2314,13 @@ fn run_proxy_preflight_inner(
             &mut issues,
             "warn",
             "ide_models.cache_missing",
-            "尚未抓取 IDE 模型清单；首次启动后请重启 IDE 并打开模型选择器，代理会记录真实可见模型",
+            "尚未抓取 IDE 模型清单；首次启动后请重启 IDE 并打开模型选择器，网关会记录真实可见模型",
         ),
         Err(e) => push_issue(&mut issues, "warn", "ide_models.cache_read_failed", e),
     }
 
-    // ─── 接管心跳：IDE 的流量到底有没有进代理 ───
-    // 判据不是「配置写了没」而是「代理有没有收到该 IDE 的模型请求」。
+    // ─── 接管心跳：IDE 的流量到底有没有进网关 ───
+    // 判据不是「配置写了没」而是「网关有没有收到该 IDE 的模型请求」。
     // 这一条是模型下拉框会不会被改写的唯一可靠依据，也是用户「配了却看不到模型」的根因所在。
     let target_label = match target.as_str() {
         "devin" => "Devin",
@@ -2328,7 +2328,7 @@ fn run_proxy_preflight_inner(
         _ => "Windsurf",
     };
     // 心跳只覆盖 MITM/hybrid 通道（Windsurf / Devin）。Cursor 走 cursor-core 独立通道、
-    // Antigravity 走自己的端点，都不经过这个代理，套用心跳会误报「接管未生效」。
+    // Antigravity 走自己的端点，都不经过这个网关，套用心跳会误报「接管未生效」。
     let takeover_supported = matches!(target.as_str(), "devin" | "windsurf");
     if !takeover_supported {
         // 不做判定，也不产生误导性提示
@@ -2362,7 +2362,7 @@ fn run_proxy_preflight_inner(
                             "warn",
                             "takeover.waiting",
                             format!(
-                                "代理刚启动，还在等待 {} 的模型请求。请重启 {} 并打开一次模型选择器。",
+                                "网关刚启动，还在等待 {} 的模型请求。请重启 {} 并打开一次模型选择器。",
                                 target_label, target_label
                             ),
                         );
@@ -2380,7 +2380,7 @@ fn run_proxy_preflight_inner(
                             "err",
                             "takeover.not_active",
                             format!(
-                                "IDE 接管未生效{}：代理启动后没有收到 {} 的模型请求，模型下拉框不会被改写。原因几乎都是 {} 在写入代理配置之后没有重启（macOS 必须 Cmd+Q 完全退出，关窗口不算）。请在「平台 > 设置 > 环境检测」点「重启 IDE」。",
+                                "IDE 接管未生效{}：网关启动后没有收到 {} 的模型请求，模型下拉框不会被改写。原因几乎都是 {} 在写入网关接入配置之后没有重启（macOS 必须 Cmd+Q 完全退出，关窗口不算）。请在「平台 > 设置 > 环境检测」点「重启 IDE」。",
                                 detail, target_label, target_label
                             ),
                         );
@@ -2392,7 +2392,7 @@ fn run_proxy_preflight_inner(
                 "err",
                 "takeover.no_state",
                 format!(
-                    "代理正在运行，但还没有任何接管记录。请重启 {} 让代理配置生效，然后打开一次模型选择器。",
+                    "网关正在运行，但还没有任何接管记录。请重启 {} 让网关配置生效，然后打开一次模型选择器。",
                     target_label
                 ),
             ),
@@ -2403,7 +2403,7 @@ fn run_proxy_preflight_inner(
             &mut issues,
             "warn",
             "takeover.proxy_stopped",
-            "代理未运行，无法判断 IDE 是否已接管。请先启动代理，再重启 IDE。",
+            "网关未运行，无法判断 IDE 是否已接管。请先启动网关，再重启 IDE。",
         );
     }
 
@@ -2419,7 +2419,7 @@ fn run_proxy_preflight_inner(
                     if scope.repairs_config() { "err" } else { "warn" },
                     "port.occupied",
                     format!(
-                        "端口 {} 已被占用，自动回收旧代理后仍不可用；请关闭占用该端口的进程后重试",
+                        "端口 {} 已被占用，自动回收旧网关后仍不可用；请关闭占用该端口的进程后重试",
                         port
                     ),
                 );
@@ -2650,11 +2650,11 @@ pub(crate) fn proxy_port_listening(port: u16) -> bool {
     TcpStream::connect_timeout(&addr, Duration::from_millis(200)).is_ok()
 }
 
-/// 确保本地代理服务可用：端口已监听直接返回，未监听则拉起并复检。
+/// 确保本地网关服务可用：端口已监听直接返回，未监听则拉起并复检。
 ///
 /// **单一入口**：Cursor Core 启动、Codex Desktop CDP 注入等「必须依赖 sidecar」的链路
 /// 一律调用本函数，禁止各自再复制一份「探测 + 启动」逻辑。
-/// 事故背景（坑点 codex-inject-requires-proxy）：Codex 侧曾漏掉前置检查，代理服务
+/// 事故背景（坑点 codex-inject-requires-proxy）：Codex 侧曾漏掉前置检查，网关服务
 /// 未运行时直接向 7450 发注入请求，用户只看到 `os error 10061`，且客户端已被先 kill 重启。
 pub(crate) fn ensure_proxy_service_ready(app: &AppHandle) -> Result<(), String> {
     let ports = configured_ports();
@@ -2664,7 +2664,7 @@ pub(crate) fn ensure_proxy_service_ready(app: &AppHandle) -> Result<(), String> 
     if get_proxy_status(app.state::<ProxyState>()).running {
         // 进程活着但端口不通：不能在这里重启（可能正处于 MITM 自检），如实报错交上层引导。
         return Err(format!(
-            "本地代理服务进程在运行，但端口 {} 不可达",
+            "本地网关服务进程在运行，但端口 {} 不可达",
             ports.api_port
         ));
     }
@@ -2672,7 +2672,7 @@ pub(crate) fn ensure_proxy_service_ready(app: &AppHandle) -> Result<(), String> 
     if proxy_port_listening(ports.api_port) {
         Ok(())
     } else {
-        Err(format!("本地代理服务启动后端口 {} 仍不可达", ports.api_port))
+        Err(format!("本地网关服务启动后端口 {} 仍不可达", ports.api_port))
     }
 }
 
@@ -2691,17 +2691,17 @@ pub fn start_proxy_impl(
         if let Some(managed) = guard.as_ref() {
             if managed.try_wait().ok().flatten().is_none() {
                 // 进程仍在运行
-                return Err("代理已在运行".into());
+                return Err("网关已在运行".into());
             }
             // 进程已退出但 child 未清理，先清理再允许启动
             *guard = None;
         }
         if state.starting.swap(true, Ordering::SeqCst) {
-            return Err("代理正在启动中".into());
+            return Err("网关正在启动中".into());
         }
     }
     let clear_starting = || state.starting.store(false, Ordering::SeqCst);
-    // 从启动校验一直持锁到 child 退出，防止另一个桌面实例在代理运行中轮换 CA。
+    // 从启动校验一直持锁到 child 退出，防止另一个桌面实例在网关运行中轮换 CA。
     let package_lock = match crate::commands::system::acquire_mitm_package_lock(
         &crate::commands::config::config_dir_path().join("certs"),
         false,
@@ -2732,7 +2732,7 @@ pub fn start_proxy_impl(
         LogLine {
             level: "info".into(),
             msg: format!(
-                "代理启动诊断: requested_target={} resolved_target={} settings={} api_port={} inference_port={}",
+                "网关启动诊断: requested_target={} resolved_target={} settings={} api_port={} inference_port={}",
                 requested_target,
                 target,
                 settings_path
@@ -2871,7 +2871,7 @@ pub fn start_proxy_impl(
     *lock_or_recover(&state.ports) = Some(ports);
     clear_starting();
 
-    // 打补丁：写入 IDE 代理配置（失败不阻断代理启动，仅记日志）。
+    // 打补丁：写入 IDE 网关配置（失败不阻断网关启动，仅记日志）。
     let ide_label = if target_ide.as_deref() == Some("auto") {
         format!("自动检测→{}", target)
     } else {
@@ -2883,7 +2883,7 @@ pub fn start_proxy_impl(
                 "proxy-log",
                 LogLine {
                     level: "ok".into(),
-                    msg: format!("✅ 已写入 {} 代理配置，请重启 IDE 生效", ide_label),
+                    msg: format!("✅ 已写入 {} 网关配置，请重启 IDE 生效", ide_label),
                 },
             );
             true
@@ -2894,7 +2894,7 @@ pub fn start_proxy_impl(
                 LogLine {
                     level: "info".into(),
                     msg: format!(
-                        "{} 代理配置已存在，若模型仍是原样请重启 IDE 并确认当前目标 IDE 正确",
+                        "{} 网关配置已存在，若模型仍是原样请重启 IDE 并确认当前目标 IDE 正确",
                         ide_label
                     ),
                 },
@@ -2912,7 +2912,7 @@ pub fn start_proxy_impl(
             false
         }
     };
-    // 回读落盘配置，确认代理地址和 Devin 专用设置确实写入目标 IDE 的 settings 文件。
+    // 回读落盘配置，确认网关地址和 Devin 专用设置确实写入目标 IDE 的 settings 文件。
     match crate::commands::ide_config::status(&target) {
         Ok(status) => {
             let _ = app.emit(
@@ -2940,7 +2940,7 @@ pub fn start_proxy_impl(
         }
     }
 
-    // 注入卡片改写脚本到 workbench.html（失败不阻断代理启动，仅记日志）。
+    // 注入卡片改写脚本到 workbench.html（失败不阻断网关启动，仅记日志）。
     if target == "cursor" {
         let _ = app.emit(
             "proxy-log",
@@ -2955,7 +2955,7 @@ pub fn start_proxy_impl(
             LogLine {
                 level: "info".into(),
                 msg: format!(
-                    "代理配置目录: {}；资源目录: {}",
+                    "网关配置目录: {}；资源目录: {}",
                     config_dir.to_string_lossy(),
                     res.to_string_lossy()
                 ),
@@ -2997,7 +2997,7 @@ pub fn start_proxy_impl(
     }
 
     // stdout/stderr 必须并行读取。sidecar 长期运行，stdout 不会 EOF；
-    // 若串行读取，stderr 管道填满后会反向阻塞代理进程。
+    // 若串行读取，stderr 管道填满后会反向阻塞网关进程。
     spawn_log_reader(app.clone(), stdout);
     spawn_log_reader(app.clone(), stderr);
 
@@ -3065,7 +3065,7 @@ pub fn start_proxy_impl(
                 "proxy-log",
                 LogLine {
                     level: "warn".into(),
-                    msg: format!("代理进程已退出（{}）", format_exit_status(&status)),
+                    msg: format!("网关进程已退出（{}）", format_exit_status(&status)),
                 },
             );
             let _ = app_handle2.emit("proxy-stopped", ());
@@ -3077,7 +3077,7 @@ pub fn start_proxy_impl(
     let missing_ports = wait_for_ports(&expected_ports, Duration::from_secs(5));
     let health_error = if missing_ports.contains(&ports.api_port) {
         Some(format!(
-            "代理主端口 {} 未监听，IDE 无法接入 AnyBridge 代理",
+            "网关主端口 {} 未监听，IDE 无法接入 AnyBridge 网关",
             ports.api_port
         ))
     } else {
@@ -3088,10 +3088,10 @@ pub fn start_proxy_impl(
 
     if let Some(e) = health_error {
         let stop = stop_managed_proxy(&state, Some(proxy_pid))
-            .map_err(|stop_error| format!("代理自检失败: {}；未能确认本轮代理停止: {}", e, stop_error))?;
+            .map_err(|stop_error| format!("网关自检失败: {}；未能确认本轮网关停止: {}", e, stop_error))?;
         if let StopStatus::Unconfirmed { pid, waited_ms } = stop {
             return Err(format!(
-                "代理自检失败: {}；{}",
+                "网关自检失败: {}；{}",
                 e,
                 unconfirmed_stop_hint(pid, waited_ms)
             ));
@@ -3100,7 +3100,7 @@ pub fn start_proxy_impl(
         *lock_or_recover(&state.target_ide) = String::new();
         *lock_or_recover(&state.ports) = None;
         let _ = app.emit("proxy-stopped", ());
-        let mut msg = format!("代理启动失败: {}", e);
+        let mut msg = format!("网关启动失败: {}", e);
         if report.has_warning() {
             msg.push_str(&format!(
                 "；自动回滚时有警告: IDE配置={}, 卡片注入={}, Cursor状态={}",
@@ -3124,7 +3124,7 @@ pub fn start_proxy_impl(
             LogLine {
                 level: "ok".into(),
                 msg: format!(
-                    "✅ 代理健康检查通过: target={} pid={} {}；IDE 请求心跳将在收到 Devin/Windsurf 模型状态请求后更新",
+                    "✅ 网关健康检查通过: target={} pid={} {}；IDE 请求心跳将在收到 Devin/Windsurf 模型状态请求后更新",
                     target,
                     proxy_pid,
                     port_pair_text(ports),
@@ -3137,7 +3137,7 @@ pub fn start_proxy_impl(
             LogLine {
                 level: "warn".into(),
                 msg: format!(
-                    "⚠ 代理主服务已就绪，但以下辅助端口暂未监听: {}",
+                    "⚠ 网关主服务已就绪，但以下辅助端口暂未监听: {}",
                     missing_ports
                         .iter()
                         .map(|p| p.to_string())
@@ -3165,16 +3165,16 @@ fn start_proxy_service_impl_with_repair(
         let mut guard = lock_or_recover(&state.child);
         if let Some(managed) = guard.as_ref() {
             if managed.try_wait().ok().flatten().is_none() {
-                return Err("代理已在运行".into());
+                return Err("网关已在运行".into());
             }
             *guard = None;
         }
         if state.starting.swap(true, Ordering::SeqCst) {
-            return Err("代理正在启动中".into());
+            return Err("网关正在启动中".into());
         }
     }
     let clear_starting = || state.starting.store(false, Ordering::SeqCst);
-    // 从启动校验一直持锁到 child 退出，防止另一个桌面实例在代理运行中轮换 CA。
+    // 从启动校验一直持锁到 child 退出，防止另一个桌面实例在网关运行中轮换 CA。
     let package_lock = match crate::commands::system::acquire_mitm_package_lock(
         &crate::commands::config::config_dir_path().join("certs"),
         false,
@@ -3195,7 +3195,7 @@ fn start_proxy_service_impl_with_repair(
         LogLine {
             level: "info".into(),
             msg: format!(
-                "后台代理启动诊断: config_dir={} api_port={} inference_port={}",
+                "后台网关启动诊断: config_dir={} api_port={} inference_port={}",
                 config_dir.display(),
                 ports.api_port,
                 ports.inference_port,
@@ -3209,13 +3209,13 @@ fn start_proxy_service_impl_with_repair(
         .and_then(|p| resolve_resources_root(Some(&p)));
 
     // 启动前只检查现有证书材料；信任变更不在此路径修改钥匙串或弹出管理员授权。
-    // 受管代理从校验到退出持有共享包锁，阻止其他桌面实例并发修改证书。
+    // 受管网关从校验到退出持有共享包锁，阻止其他桌面实例并发修改证书。
     let mitm_result = crate::commands::cert_install::with_cert_task_lock(ensure_proxy_mitm_ready);
     let mitm_report = match mitm_result {
         Ok(report) => report,
         Err(e) => {
             clear_starting();
-            let msg = format!("代理服务未启动：MITM 前置条件不满足: {}", e);
+            let msg = format!("网关服务未启动：MITM 前置条件不满足: {}", e);
             let _ = app.emit(
                 "proxy-log",
                 LogLine {
@@ -3331,7 +3331,7 @@ fn start_proxy_service_impl_with_repair(
         LogLine {
             level: "info".into(),
             msg: format!(
-                "代理服务启动中；配置目录: {}{}",
+                "网关服务启动中；配置目录: {}{}",
                 config_dir.to_string_lossy(),
                 resource_dir
                     .as_ref()
@@ -3354,7 +3354,7 @@ fn start_proxy_service_impl_with_repair(
                 Some(managed) if managed.id() == proxy_pid => managed.try_wait().ok().flatten(),
                 _ => break,
             };
-            // 身份检查与退出清理在同一 child 锁内，旧监控不能清掉新一轮代理。
+            // 身份检查与退出清理在同一 child 锁内，旧监控不能清掉新一轮网关。
             if status.is_some() {
                 *guard = None;
                 *lock_or_recover(&state.target_ide) = String::new();
@@ -3370,7 +3370,7 @@ fn start_proxy_service_impl_with_repair(
                 "proxy-log",
                 LogLine {
                     level: "warn".into(),
-                    msg: format!("代理进程已退出（{}）", format_exit_status(&status)),
+                    msg: format!("网关进程已退出（{}）", format_exit_status(&status)),
                 },
             );
             let _ = app_handle2.emit("proxy-stopped", ());
@@ -3383,7 +3383,7 @@ fn start_proxy_service_impl_with_repair(
     let health_error = if missing_ports.contains(&ports.api_port) {
         Some(ProxyHealthFailure {
             message: format!(
-                "代理主端口 {} 未监听，本地代理入口不可用",
+                "网关主端口 {} 未监听，本地网关入口不可用",
                 ports.api_port
             ),
             mitm_related: false,
@@ -3399,10 +3399,10 @@ fn start_proxy_service_impl_with_repair(
 
     if let Some(failure) = health_error {
         let stop = stop_managed_proxy(&state, Some(proxy_pid))
-            .map_err(|e| format!("代理服务自检失败: {}；未能确认本轮代理停止: {}", failure.message, e))?;
+            .map_err(|e| format!("网关服务自检失败: {}；未能确认本轮网关停止: {}", failure.message, e))?;
         if let StopStatus::Unconfirmed { pid, waited_ms } = stop {
             return Err(format!(
-                "代理服务自检失败: {}；{}",
+                "网关服务自检失败: {}；{}",
                 failure.message,
                 unconfirmed_stop_hint(pid, waited_ms)
             ));
@@ -3428,14 +3428,14 @@ fn start_proxy_service_impl_with_repair(
                         "proxy-log",
                         LogLine {
                             level: "info".into(),
-                            msg: format!("MITM 证书材料与系统信任复核通过，正在重新启动代理: {}", report),
+                            msg: format!("MITM 证书材料与系统信任复核通过，正在重新启动网关: {}", report),
                         },
                     );
                     return start_proxy_service_impl_with_repair(app, false);
                 }
                 Err(repair_error) => {
                     let msg = format!(
-                        "代理服务启动失败: {}；MITM 证书材料或系统信任复核未通过: {}。请到「环境检测」显式处理证书或授权",
+                        "网关服务启动失败: {}；MITM 证书材料或系统信任复核未通过: {}。请到「环境检测」显式处理证书或授权",
                         failure.message, repair_error
                     );
                     let _ = app.emit("proxy-stopped", ());
@@ -3450,7 +3450,7 @@ fn start_proxy_service_impl_with_repair(
                 }
             }
         }
-        let msg = format!("代理服务启动失败: {}", failure.message);
+        let msg = format!("网关服务启动失败: {}", failure.message);
         let _ = app.emit("proxy-stopped", ());
         let _ = app.emit(
             "proxy-log",
@@ -3467,7 +3467,7 @@ fn start_proxy_service_impl_with_repair(
             "proxy-log",
             LogLine {
                 level: "ok".into(),
-                msg: format!("✅ 代理服务健康检查通过: {}", port_pair_text(ports)),
+                msg: format!("✅ 网关服务健康检查通过: {}", port_pair_text(ports)),
             },
         );
     } else {
@@ -3476,7 +3476,7 @@ fn start_proxy_service_impl_with_repair(
             LogLine {
                 level: "warn".into(),
                 msg: format!(
-                    "⚠ 代理主服务已就绪，但以下辅助端口暂未监听: {}",
+                    "⚠ 网关主服务已就绪，但以下辅助端口暂未监听: {}",
                     missing_ports
                         .iter()
                         .map(|p| p.to_string())
@@ -3490,7 +3490,7 @@ fn start_proxy_service_impl_with_repair(
     Ok(true)
 }
 
-// expected_pid 防止旧启动任务停止后来启动的代理；kill 失败时保留句柄及关联状态。
+// expected_pid 防止旧启动任务停止后来启动的网关；kill 失败时保留句柄及关联状态。
 // child 锁覆盖确认退出与状态清理，不会先公布“已停止”再尝试终止进程。
 fn stop_managed_proxy(state: &ProxyState, expected_pid: Option<u32>) -> Result<StopStatus, String> {
     let mut guard = lock_or_recover(&state.child);
@@ -3522,12 +3522,12 @@ pub fn stop_proxy_service_impl(app: AppHandle) -> Result<(), String> {
                 "proxy-log",
                 LogLine {
                     level: "ok".into(),
-                    msg: "代理服务已停止，平台配置未改动".into(),
+                    msg: "网关服务已停止，平台配置未改动".into(),
                 },
             );
             Ok(())
         }
-        StopStatus::NotRunning => Err("代理未运行".into()),
+        StopStatus::NotRunning => Err("网关未运行".into()),
         StopStatus::Unconfirmed { pid, waited_ms } => Err(format!(
             "{}；请稍后重试",
             unconfirmed_stop_hint(pid, waited_ms)
@@ -3563,7 +3563,7 @@ pub fn switch_ide_to_proxy_impl(
     report.ide_config = match crate::commands::ide_config::patch(&target) {
         Ok(true) => "updated".into(),
         Ok(false) => "ok".into(),
-        Err(e) => return Err(format!("写入 IDE 代理配置失败: {}", e)),
+        Err(e) => return Err(format!("写入 IDE 网关配置失败: {}", e)),
     };
 
     let resource_dir = app
@@ -3601,11 +3601,11 @@ pub async fn start_proxy(
     _target_ide: Option<String>,
     _skip_preflight: Option<bool>,
 ) -> Result<bool, String> {
-    // 兼容旧前端命令名，但语义已经收敛为“只启动全局代理服务”。
+    // 兼容旧前端命令名，但语义已经收敛为“只启动本地网关”。
     // IDE 切换必须走 switch_ide_to_proxy，避免全局开关隐式改写 IDE 配置。
     tauri::async_runtime::spawn_blocking(move || start_proxy_service_impl(app))
         .await
-        .map_err(|e| format!("启动代理服务任务失败: {}", e))?
+        .map_err(|e| format!("启动网关服务任务失败: {}", e))?
 }
 
 #[allow(dead_code)]
@@ -3620,9 +3620,9 @@ pub fn stop_proxy_impl(
         match child.kill()? {
             StopOutcome::Exited => {}
             StopOutcome::Pending { pid, waited_ms } => {
-                // 进程还活着就还原 IDE 配置会立刻被运行中的代理重新改写，这里如实报错。
+                // 进程还活着就还原 IDE 配置会立刻被运行中的网关重新改写，这里如实报错。
                 return Err(format!(
-                    "{}；IDE 配置未还原，请稍后重试停止代理",
+                    "{}；IDE 配置未还原，请稍后重试停止网关",
                     unconfirmed_stop_hint(pid, waited_ms)
                 ));
             }
@@ -3666,7 +3666,7 @@ pub fn stop_proxy_impl(
 
         Ok(report)
     } else {
-        Err("代理未运行".into())
+        Err("网关未运行".into())
     }
 }
 
@@ -3682,21 +3682,21 @@ pub async fn stop_proxy(
         Ok(RestoreReport::default())
     })
     .await
-    .map_err(|e| format!("停止代理服务任务失败: {}", e))?
+    .map_err(|e| format!("停止网关服务任务失败: {}", e))?
 }
 
 #[tauri::command]
 pub async fn start_proxy_service(app: AppHandle) -> Result<bool, String> {
     tauri::async_runtime::spawn_blocking(move || start_proxy_service_impl(app))
         .await
-        .map_err(|e| format!("启动代理服务任务失败: {}", e))?
+        .map_err(|e| format!("启动网关服务任务失败: {}", e))?
 }
 
 #[tauri::command]
 pub async fn stop_proxy_service(app: AppHandle) -> Result<(), String> {
     tauri::async_runtime::spawn_blocking(move || stop_proxy_service_impl(app))
         .await
-        .map_err(|e| format!("停止代理服务任务失败: {}", e))?
+        .map_err(|e| format!("停止网关服务任务失败: {}", e))?
 }
 
 #[tauri::command]
@@ -3704,13 +3704,13 @@ pub async fn restart_proxy_service(app: AppHandle) -> Result<bool, String> {
     tauri::async_runtime::spawn_blocking(move || {
         match stop_proxy_service_impl(app.clone()) {
             Ok(()) => {}
-            Err(e) if e == "代理未运行" => {}
+            Err(e) if e == "网关未运行" => {}
             Err(e) => return Err(e),
         }
         start_proxy_service_impl(app)
     })
     .await
-    .map_err(|e| format!("重启代理服务任务失败: {}", e))?
+    .map_err(|e| format!("重启网关服务任务失败: {}", e))?
 }
 
 #[tauri::command]
@@ -3823,8 +3823,8 @@ Get-CimInstance Win32_Process -Filter "name='node.exe'" |
 pub fn stop_sidecar_for_update(app: AppHandle) -> Result<(), String> {
     match stop_proxy_service_impl(app.clone()) {
         Ok(()) => {}
-        Err(e) if e == "代理未运行" => {}
-        Err(e) => return Err(format!("停止代理服务失败，无法继续安装更新: {}", e)),
+        Err(e) if e == "网关未运行" => {}
+        Err(e) => return Err(format!("停止网关服务失败，无法继续安装更新: {}", e)),
     }
 
     kill_sidecar_process();
@@ -3842,7 +3842,7 @@ pub fn stop_sidecar_for_update(app: AppHandle) -> Result<(), String> {
         "proxy-log",
         LogLine {
             level: "info".into(),
-            msg: "更新安装前已暂停本地代理服务".into(),
+            msg: "更新安装前已暂停本地网关服务".into(),
         },
     );
     Ok(())

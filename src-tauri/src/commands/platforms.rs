@@ -1,6 +1,6 @@
 // platforms.rs — 「更多平台」：直接接管 Claude Code / Codex / CodeBuddy / OpenCode / ZCode 等 API 端点。
 //
-// 与 Windsurf/Devin 的「http.proxy 代理接入 + 常驻 sidecar」模式不同，这里是
+// 与 Windsurf/Devin 的「http.proxy 网关接入 + 常驻 sidecar」模式不同，这里是
 // 「直接改 CLI 工具自己的配置文件」：从 providerStore 选一个供应商，把其
 // base_url / api_key / model 写入目标工具的配置文件，下次启动工具即生效，
 // 不依赖任何常驻进程。
@@ -1195,7 +1195,7 @@ impl Platform {
         let base = if p.route_through_proxy {
             codex_base_url()
         } else {
-            // 直连供应商：写供应商的 API 根路径（不写 localhost 代理地址）
+            // 直连供应商：写供应商的 API 根路径（不写 localhost 网关地址）
             codex_direct_base_url(p)
         };
         let bearer = codex_provider_bearer(p)?;
@@ -1280,7 +1280,7 @@ impl Platform {
         // wire_api 恒为 "responses"：openai/codex 已删除 `WireApi::Chat`，
         // 写 "chat" 会让 Codex 反序列化 config.toml 失败、启动即崩
         // （错误提示指向 openai/codex discussions/7782）。
-        // 因此只支持 Chat Completions 的上游必须走代理模式，由本地代理按
+        // 因此只支持 Chat Completions 的上游必须走网关模式，由本地网关按
         // provider 的 wireApi 做 Responses→Chat 转换 —— 那是内部字段，不写进这里。
         provider_table["wire_api"] = value("responses");
         // Auth 互斥（官方文档 / openai/codex#16288）：
@@ -4341,16 +4341,16 @@ fn claude_base_url(p: &Provider) -> String {
     )
 }
 
-/// Codex config.toml 里的 base_url：永远指向本地 anybridge 的 Codex 专用代理入口（不写上游 URL）。
+/// Codex config.toml 里的 base_url：永远指向本地 anybridge 的 Codex 专用网关入口（不写上游 URL）。
 ///
-/// 关键设计决策：Codex 客户端只与 anybridge 代理通信，**绝不直连 provider 上游**。
+/// 关键设计决策：Codex 客户端只与 anybridge 网关通信，**绝不直连 provider 上游**。
 /// 原因：
-///   1. 真实 provider 上游 URL + apiKey 存到 `codex-proxy-routes.json`（由 7450 代理查表），
+///   1. 真实 provider 上游 URL + apiKey 存到 `codex-proxy-routes.json`（由 7450 网关查表），
 ///      避免上游 key 暴露给 Codex 客户端。
-///   2. 代理负责 Chat↔Responses 格式转换、retry、token 统计、错误归一。
-///   3. 任何 supplier 走代理，统一可观测（统计、debug）。
+///   2. 网关负责 Chat↔Responses 格式转换、retry、token 统计、错误归一。
+///   3. 任何 supplier 走网关，统一可观测（统计、debug）。
 ///
-/// provider 的 `apiHost` 不再用作 Codex 直连 URL——它只用作"由 7450 代理 + codex-proxy-routes.json 转发"的上游目标。
+/// provider 的 `apiHost` 不再用作 Codex 直连 URL——它只用作"由 7450 网关 + codex-proxy-routes.json 转发"的上游目标。
 fn codex_base_url() -> String {
     use crate::commands::config::configured_proxy_ports;
     let port = configured_proxy_ports().api_port;
@@ -4405,16 +4405,16 @@ fn codex_provider_bearer(p: &Provider) -> Result<Option<String>, String> {
     Ok(Some(key.to_string()))
 }
 
-/// Codex config.toml 里的 bearer_token：代理模式写 anybridge 本地代理 key。
+/// Codex config.toml 里的 bearer_token：网关模式写 anybridge 本地网关 key。
 ///
-/// 代理收到请求后用 `validateAuth` 验证该 token（与 byok-config.json 的 LOCAL_PROXY_KEY 比对），
-/// 通过后由 7450 代理查 codex-proxy-routes.json 找到真实 provider + 上游 apiKey 转发。
+/// 网关收到请求后用 `validateAuth` 验证该 token（与 byok-config.json 的 LOCAL_PROXY_KEY 比对），
+/// 通过后由 7450 网关查 codex-proxy-routes.json 找到真实 provider + 上游 apiKey 转发。
 fn codex_bearer_token() -> Result<String, String> {
     crate::commands::config::read_config_value("LOCAL_PROXY_KEY")
         .filter(|s| !s.is_empty())
         .ok_or_else(|| {
             "byok-config.json 的 LOCAL_PROXY_KEY 尚未生成。\n\
-             请启动 AnyBridge 触发一次代理页（首次启动会自动生成 LOCAL_PROXY_KEY），然后重试。"
+             请启动 AnyBridge 触发一次网关页（首次启动会自动生成 LOCAL_PROXY_KEY），然后重试。"
                 .to_string()
         })
 }
@@ -5347,7 +5347,7 @@ fn infer_wire_api_from_api_path(api_path: Option<&str>) -> Option<&'static str> 
 ///
 /// 前端原本想「从来源供应商继承 wireApi」，但普通供应商在 UI 上没有该输入项、
 /// 字段恒为空字符串，继承永远落空、一律回落 "responses"。结果只支持
-/// Chat Completions 的上游被代理请求到 `/responses` → 404。
+/// Chat Completions 的上游被网关请求到 `/responses` → 404。
 fn resolve_codex_auto_wire_api(store: &ProviderStore, config_id: &str) -> Option<String> {
     let config = store.codex_configs.iter().find(|c| c.id == config_id)?;
     if !config.wire_api_auto || config.source_provider_id.trim().is_empty() {
@@ -5370,7 +5370,7 @@ fn resolve_codex_auto_wire_api(store: &ProviderStore, config_id: &str) -> Option
 /// 要不要做 Responses→Chat 转换的（config-cache.js `transformProviders`）。
 /// 只改内存里的 provider，会让路由指向 `/chat/completions` 却不转换请求体 —— 比不修更糟。
 ///
-/// 只影响「本地代理 → 上游」；config.toml 的 wire_api 仍恒为 "responses"。
+/// 只影响「本地网关 → 上游」；config.toml 的 wire_api 仍恒为 "responses"。
 fn apply_codex_auto_wire_api(provider: &mut Provider, store: &mut ProviderStore, config_id: &str) {
     let Some(resolved) = resolve_codex_auto_wire_api(store, config_id) else {
         return;
@@ -5409,7 +5409,7 @@ fn plan_codex_proxy_routes(
 ) -> Result<super::proxy_routes::ProxyRoutes, String> {
     let models = codex_proxy_model_ids(provider);
     if models.is_empty() {
-        return Err("Codex 代理模式至少需要一个模型，无法生成本地代理路由".to_string());
+        return Err("Codex 代理模式至少需要一个模型，无法生成内置模型路由".to_string());
     }
 
     let mut routes = super::proxy_routes::read_codex_routes()?;
@@ -5421,7 +5421,7 @@ fn plan_codex_proxy_routes(
     for model in models {
         if let Some(existing) = routes.routes.iter().find(|route| route.id == model) {
             return Err(format!(
-                "Codex 模型「{}」与现有本地代理模型冲突（source: {}）。请先在「代理 > 模型列表」改名或删除该模型，再切换 Codex。",
+                "Codex 模型「{}」与现有内置模型冲突（source: {}）。请先在「网关 > 模型列表」改名或删除该模型，再切换 Codex。",
                 model,
                 existing.source
             ));
@@ -5471,9 +5471,9 @@ struct LegacyGlobalCodexProxyRouteCleanupPlan {
 
 fn legacy_global_codex_proxy_route_cleanup_warning(action: &str, error: &str) -> String {
     format!(
-        "旧版 Codex 全局代理路由未清理：{action} proxy-routes.json 失败（{error}）。\
+        "旧版 Codex 全局内置模型路由未清理：{action} proxy-routes.json 失败（{error}）。\
          Codex 现在使用独立 codex-proxy-routes.json，不影响本次 Codex 切换；\
-         如需清理旧数据，请先修复「代理 > 模型列表」后重试。"
+         如需清理旧数据，请先修复「网关 > 模型列表」后重试。"
     )
 }
 
@@ -9171,7 +9171,7 @@ fn detect_platforms_sync() -> Result<Vec<PlatformInfo>, String> {
                         } else {
                             managed_by_any_bridge = info.managed_by_any_bridge;
                             if managed_by_any_bridge && current_provider_name.is_none() {
-                                current_provider_name = Some("AnyBridge 本地代理".to_string());
+                                current_provider_name = Some("AnyBridge 内置供应商".to_string());
                             }
                         }
                         antigravity_config = Some(info);
@@ -9491,7 +9491,7 @@ fn switch_platform_sync(
         apply_codex_auto_wire_api(&mut provider, &mut store, provider_id);
     }
     let planned_codex_routes = if matches!(plat, Platform::Codex) {
-        emit_switch_progress(app, plat.id(), "routing", "正在校验 Codex 本地代理路由…");
+        emit_switch_progress(app, plat.id(), "routing", "正在校验 Codex 内置模型路由…");
         Some(if provider.route_through_proxy {
             plan_codex_proxy_routes(&provider)?
         } else {
@@ -9517,7 +9517,7 @@ fn switch_platform_sync(
     let backup = backup_path(&path).to_string_lossy().to_string();
 
     if let Some(routes) = planned_codex_routes.as_ref() {
-        emit_switch_progress(app, plat.id(), "routing", "正在写入 Codex 本地代理路由…");
+        emit_switch_progress(app, plat.id(), "routing", "正在写入 Codex 内置模型路由…");
         super::proxy_routes::write_codex_routes(routes)?;
     }
     if let Some(routes) = planned_legacy_global_codex_routes.as_ref() {
@@ -9525,7 +9525,7 @@ fn switch_platform_sync(
             app,
             plat.id(),
             "routing",
-            "正在清理旧版 Codex 全局代理路由…",
+            "正在清理旧版 Codex 全局内置模型路由…",
         );
         if let Err(e) = super::proxy_routes::write_routes(routes) {
             let warning = legacy_global_codex_proxy_route_cleanup_warning("写入", &e);
@@ -9858,7 +9858,7 @@ fn restore_codex_official_config_sync(app: &AppHandle) -> Result<SwitchResult, S
     }
     ensure_backup(&path)?;
     crate::commands::codex_desktop::clean_models_cache()?;
-    emit_switch_progress(app, plat.id(), "routing", "正在清理 Codex 本地代理路由…");
+    emit_switch_progress(app, plat.id(), "routing", "正在清理 Codex 内置模型路由…");
     let planned_routes = plan_clear_codex_proxy_routes()?;
     let legacy_cleanup_plan = plan_clear_legacy_global_codex_proxy_routes();
     let mut codex_cleanup_warnings = legacy_cleanup_plan.warnings;
@@ -10264,7 +10264,7 @@ pub fn save_deepseek_harness_models(
     Ok(path.to_string_lossy().to_string())
 }
 
-/// 返回所有供应商及其真实模型列表，供平台和本地代理的「从供应商添加」使用。
+/// 返回所有供应商及其真实模型列表，供平台和本地网关的「从供应商添加」使用。
 #[tauri::command]
 pub fn list_provider_models() -> Result<Vec<ProviderModelsEntry>, String> {
     let store = read_provider_store()?;
@@ -13144,7 +13144,7 @@ name = "Official Grok"
             let (path, stash) = named_tmp_config("antigravity-fr", "settings.json");
             fs::write(&path, r#"{"jetski.cloudCodeUrl": "https://corp.proxy"}"#).unwrap();
 
-            // 预置账本（临时目录，隔离）：original=corp，applied=本地代理
+            // 预置账本（临时目录，隔离）：original=corp，applied=本地网关
             let plans = vec![super::super::agent_stash::FieldPlan {
                 path: vec!["jetski.cloudCodeUrl".into()],
                 current: super::super::agent_stash::Stashed::Str("https://corp.proxy".into()),
@@ -13827,16 +13827,16 @@ name = "Official Grok"
             "api": "openai-completions",
             "apiKey": "sk-lp",
             "models": [{
-                "id": "any-model", "name": "AnyBridge 本地代理", "reasoning": true,
+                "id": "any-model", "name": "AnyBridge 内置供应商", "reasoning": true,
                 "contextWindow": 200000, "maxTokens": 32000, "input": ["text", "image"]
             }]
         }))
         .unwrap();
-        let entries = pi_entries_from_provider_map("AnyBridge 本地代理", &provider);
+        let entries = pi_entries_from_provider_map("AnyBridge 内置供应商", &provider);
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0]["id"], "any-model");
-        assert_eq!(entries[0]["name"], "AnyBridge 本地代理");
-        assert_eq!(entries[0]["vendor"], "AnyBridge 本地代理");
+        assert_eq!(entries[0]["name"], "AnyBridge 内置供应商");
+        assert_eq!(entries[0]["vendor"], "AnyBridge 内置供应商");
         assert_eq!(entries[0]["url"], "http://127.0.0.1:7450/v1/chat/completions");
         assert_eq!(entries[0]["maxInputTokens"], 200000);
         assert_eq!(entries[0]["maxOutputTokens"], 32000);

@@ -24,7 +24,7 @@ pub enum Family {
     TomlConfig,
     /// YAML 配置注入（Hermes / DeepSeek Harness）
     YamlConfig,
-    /// 代理接管（Windsurf / Devin / Cursor）：起 MITM + 改 settings
+    /// 网关接管（Windsurf / Devin / Cursor）：起 MITM + 改 settings
     MitmProxy,
     /// Electron 特殊形态（Antigravity asar 补丁 / Claude Desktop 角色档位）
     Custom,

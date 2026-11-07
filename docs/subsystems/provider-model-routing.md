@@ -1,6 +1,6 @@
 # Provider and model routing
 
-This page covers provider configuration, model slots, local proxy routes and
+This page covers provider configuration, model slots, local gateway routes and
 how Cursor receives them.
 
 ## Responsibilities and sources of truth
@@ -9,7 +9,7 @@ how Cursor receives them.
 | --- | --- | --- |
 | Providers | Supplier definitions and local-proxy pseudo provider. | `sidecar/config-cache.js`, `src-tauri/src/commands/config.rs` |
 | Model slots | `model-map.json` maps model UIDs to display state and ordered failover targets. | `src-tauri/src/commands/model_map.rs` |
-| Global routes | `proxy-routes.json` is the shared route list exposed by the local proxy. | `src-tauri/src/commands/proxy_routes.rs` |
+| Global routes | `proxy-routes.json` is the shared route list exposed by the local gateway. | `src-tauri/src/commands/proxy_routes.rs` |
 | Codex routes | `codex-proxy-routes.json` is the Codex-specific route list. | `src-tauri/src/commands/proxy_routes.rs`, `src-tauri/src/commands/platforms.rs` |
 | Cursor bindings | `cursor-models.json` binds route UIDs to exposed Cursor model IDs. | `src-tauri/src/commands/cursor_models.rs` |
 | Runtime cache | Sidecar caches configuration with mtime detection plus a 2s TTL. | `sidecar/config-cache.js` |

@@ -57,7 +57,7 @@ test('buildExposedIdLookup: 两条路由字面 ID 相同仍然报错(真重复)'
   );
 });
 
-test('自环目标识别: 只有内置本地代理算自环, 普通供应商不是', () => {
+test('自环目标识别: 只有AnyBridge 内置供应商算自环, 普通供应商不是', () => {
   assert.equal(__localProxyTest.isLocalProxySelfTarget({ providerId: 'anybridge-local-proxy' }), true);
   assert.equal(__localProxyTest.isLocalProxySelfTarget({ providerId: 'anybridge' }), true);
   assert.equal(__localProxyTest.isLocalProxySelfTarget({ providerId: 'cpa-local' }), false);

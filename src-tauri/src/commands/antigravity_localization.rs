@@ -601,7 +601,7 @@ fn restore_hub_asar(asar_path: &Path) -> Result<(), String> {
     }
     // 反方向同理：lang.bak 是「汉化前」快照，先汉化后接入时它同样不含 BYOK 补丁。
     // 覆盖前记录接入状态，覆盖后立即把 BYOK 补丁打回去——否则 settings.json 仍指向
-    // 本地代理（UI 显示已接入），而 asar 里的端点补丁已被抹掉（实际失效，静默）。
+    // 本地网关（UI 显示已接入），而 asar 里的端点补丁已被抹掉（实际失效，静默）。
     let byok_present = hub_has_byok_patch(asar_path);
     fs::copy(&bak_path, asar_path).map_err(|e| format!("从备份还原 app.asar 失败: {e}"))?;
     if let Err(e) = fs::remove_file(&bak_path) {

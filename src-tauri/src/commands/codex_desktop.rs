@@ -55,9 +55,9 @@ const CDP_PORT: u16 = 9229;
 // `详情：…` 技术原因。前端只展示首行，详情进日志面板，避免把 os error
 // 直接砸给用户（issue #38）。
 
-/// 代理服务不可用（未启动 / 启动失败 / 端口不通）——注入前置检查失败。
+/// 网关服务不可用（未启动 / 启动失败 / 端口不通）——注入前置检查失败。
 const MSG_PROXY_UNAVAILABLE: &str =
-    "本地代理服务不可用，已跳过模型注入。请检查代理服务后重试。";
+    "本地网关服务不可用，已跳过模型注入。请检查网关服务后重试。";
 /// 注入请求发出去了但 sidecar 回报失败。
 const MSG_INJECT_FAILED: &str =
     "Codex 已启动，但模型注入未完成。请稍后重试或查看日志。";
@@ -905,8 +905,8 @@ fn write_models_cache() -> Result<(), String> {
         };
 
         // slug 必须与 anybridge-model-catalog.json / proxy-routes / CDP 注入完全一致
-        // （原始模型名，不加任何前缀）。否则用户在 Desktop 选中后，Codex 发给本地代理的
-        // model 名对不上路由表，resolveProxyModel 直接报"模型不在本地代理模型列表中"。
+        // （原始模型名，不加任何前缀）。否则用户在 Desktop 选中后，Codex 发给本地网关的
+        // model 名对不上路由表，resolveProxyModel 直接报"模型不在内置模型列表中"。
         // 幂等清理改用独立标记字段 anybridge_managed（Codex 读 models_cache 时忽略未知字段，已验证）。
         model_obj["slug"] = serde_json::json!(slug);
         model_obj[ANYBRIDGE_MANAGED_FLAG] = serde_json::json!(true);
@@ -956,13 +956,13 @@ pub(crate) fn clean_models_cache() -> Result<(), String> {
 
 // ─── 通过 sidecar 注入 CDP 补丁 ────────────────────────────────────────
 
-/// CDP 注入依赖 sidecar 的 `/__byok/codex-cdp/inject`，代理没起来就必然失败。
+/// CDP 注入依赖 sidecar 的 `/__byok/codex-cdp/inject`，网关没起来就必然失败。
 ///
-/// **必须在 kill Codex 之前调用**：代理不可用时立刻失败，不把用户正在用的客户端
+/// **必须在 kill Codex 之前调用**：网关不可用时立刻失败，不把用户正在用的客户端
 /// 先重启一遍再报错（issue #38 的真实体验就是「窗口被重启了，模型还没解锁」）。
 /// 代理的启动/复用统一走 `proxy::ensure_proxy_service_ready`，这里不另写探测逻辑。
 fn ensure_injection_backend(app: Option<&AppHandle>) -> Result<(), String> {
-    let app = app.ok_or("缺少应用句柄，无法确认本地代理服务状态")?;
+    let app = app.ok_or("缺少应用句柄，无法确认本地网关服务状态")?;
     crate::commands::proxy::ensure_proxy_service_ready(app)
 }
 
@@ -1141,11 +1141,11 @@ async fn restart_codex_desktop_impl(
         }
     };
     if managed {
-        // 0. 注入前置：先确认本地代理服务可用，再动用户的客户端。
-        //    顺序不能反 —— 代理没起来时注入必然失败，先 kill 只会白重启一次窗口，
-        //    还会把 Codex 配置留在「指向一个不存在的代理」的半成品状态。
+        // 0. 注入前置：先确认本地网关服务可用，再动用户的客户端。
+        //    顺序不能反 —— 网关没起来时注入必然失败，先 kill 只会白重启一次窗口，
+        //    还会把 Codex 配置留在「指向一个不存在的网关」的半成品状态。
         if needs_cdp(inject_models) {
-            progress("preflight", "正在检查本地代理…");
+            progress("preflight", "正在检查本地网关…");
             if let Err(e) = ensure_injection_backend(app) {
                 return CodexDesktopResult {
                     ok: false,
@@ -1311,7 +1311,7 @@ pub async fn start_codex_with_cdp(
             };
         }
         if inject_models {
-            // 注入前置：代理不可用就别把 Codex 拉起来（否则起来也没模型可用于是白启一次）。
+            // 注入前置：网关不可用就别把 Codex 拉起来（否则起来也没模型可用于是白启一次）。
             if let Err(e) = ensure_injection_backend(Some(&app)) {
                 return CodexDesktopResult {
                     ok: false,

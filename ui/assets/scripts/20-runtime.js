@@ -868,13 +868,13 @@ async function toggleProxy(mode = 'toggle') {
       if (!proxyRunning) {
         setProxyPlatformActionBusy(true);
         setProxyButtonBusyText('启动网关...');
-        setGlobalProxyBusy(true, '代理启动中');
+        setGlobalProxyBusy(true, '网关启动中');
         try {
           await invoke('start_proxy_service');
           addLog('ok', '本地网关已自动启动');
         } catch (e) {
-          if (String(e).includes('代理已在运行')) {
-            addLog('warn', '代理服务已在运行，已刷新状态');
+          if (String(e).includes('网关已在运行')) {
+            addLog('warn', '网关服务已在运行，已刷新状态');
           } else {
             updateGlobalProxyStatusPill(false, 'error');
             updateProxyPageState(false, 'error');
@@ -943,13 +943,13 @@ async function toggleProxy(mode = 'toggle') {
 
     if (!proxyRunning) {
       setProxyButtonBusyText('启动网关...');
-      setGlobalProxyBusy(true, '代理启动中');
+      setGlobalProxyBusy(true, '网关启动中');
       try {
         await invoke('start_proxy_service');
         addLog('ok', '本地网关已自动启动');
       } catch (e) {
-        if (String(e).includes('代理已在运行')) {
-          addLog('warn', '代理服务已在运行，已刷新状态后继续切换');
+        if (String(e).includes('网关已在运行')) {
+          addLog('warn', '网关服务已在运行，已刷新状态后继续切换');
         } else {
           updateGlobalProxyStatusPill(false, 'error');
           updateProxyPageState(false, 'error');
@@ -1009,10 +1009,10 @@ function setGlobalProxyBusy(busy, label = '') {
 async function startGlobalProxyService() {
   if (!invoke && !bindTauriBridge()) return;
   if (proxyRunning) {
-    if (typeof showBottomToast === 'function') showBottomToast('本地代理已在运行中', 'info');
+    if (typeof showBottomToast === 'function') showBottomToast('本地网关已在运行中', 'info');
     return;
   }
-  setGlobalProxyBusy(true, '代理启动中');
+  setGlobalProxyBusy(true, '网关启动中');
   try {
     await invoke('start_proxy_service');
     await refreshStatus();
@@ -1029,7 +1029,7 @@ async function startGlobalProxyService() {
 
 async function stopGlobalProxyService() {
   if (!invoke && !bindTauriBridge()) return;
-  setGlobalProxyBusy(true, '代理停止中');
+  setGlobalProxyBusy(true, '网关停止中');
   try {
     await invoke('stop_proxy_service');
     setStatusPill(false);
@@ -1093,8 +1093,8 @@ if (typeof document !== 'undefined') {
   });
 }
 // ─── 接管心跳 ───
-// IDE 只在启动时读取 settings.json 里的代理配置，所以「配置已写入(patched)」不等于生效。
-// 唯一可靠判据是「代理最近有没有收到该 IDE 的模型请求」，由 sidecar 落盘到
+// IDE 只在启动时读取 settings.json 里的网关配置，所以「配置已写入(patched)」不等于生效。
+// 唯一可靠判据是「网关最近有没有收到该 IDE 的模型请求」，由 sidecar 落盘到
 // anybridge-takeover-state.json。以下阈值必须与 Rust proxy.rs 中的同名常量保持一致。
 const TAKEOVER_FRESH_WINDOW_MS = 10 * 60 * 1000;
 const TAKEOVER_WARMUP_MS = 90 * 1000;
@@ -1179,7 +1179,7 @@ function promptRestartIde(leadText, targetOverride, options = {}) {
         if (statusEl) {
           statusEl.textContent = options.statusText || (mode === 'direct'
             ? `已恢复直连配置，重启后 ${appKind} 不再经过 AnyBridge。`
-            : `已写入 AnyBridge 代理配置，本地网关服务已启动。`);
+            : `已写入 AnyBridge 网关配置，本地网关服务已启动。`);
         }
       }
     }

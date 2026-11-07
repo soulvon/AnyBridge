@@ -253,7 +253,7 @@
     },
     {
       "id": "local-proxy-alias-conflict-poison",
-      "title": "本地代理一条别名冲突不得毒化全部模型路由",
+      "title": "本地网关一条别名冲突不得毒化全部模型路由",
       "symptom": "命名规则渲染出的别名与另一条路由字面 ID 相同时曾直接 throw，导致包括无关模型在内的所有解析 502",
       "lesson": "查找表两段式构建：字面 ID 优先且真重复必须报错；渲染别名冲突跳过并告警，不放大为全局故障。行为由事故配置复刻测试锁定",
       "check": {
@@ -382,7 +382,7 @@
     {
       "id": "log-throttle-exists",
       "title": "运行日志必须节流合并，禁止同文案刷屏",
-      "symptom": "代理日志 18 条里 12 条是 [renderModelMap] 从磁盘读取到 N 个槽位 的重复输出，真实事件被淹没",
+      "symptom": "网关日志 18 条里 12 条是 [renderModelMap] 从磁盘读取到 N 个槽位 的重复输出，真实事件被淹没",
       "lesson": "addLog 必须对「同级别同文案」在窗口内合并并显示 ×N；窗口常量保留在 LOG_THROTTLE_MS",
       "check": {
         "type": "source_contains",
@@ -450,9 +450,9 @@
     },
     {
       "id": "codex-inject-requires-proxy",
-      "title": "Codex Desktop 注入前必须确保代理服务可用，且不得先 kill 客户端",
-      "symptom": "issue #38：本地代理服务未运行时切换 Codex，实现直接向 7450 发注入请求；用户只看到「无法连接 7450 … os error 10061」，而 Codex 已被先 kill 再重启（窗口没了、模型也没解锁），配置还停在指向空端口的状态",
-      "lesson": "CDP 注入依赖 sidecar 的 /__byok/codex-cdp/inject，必须把「确保代理服务可用」提到 kill 之前：不可用就不重启客户端，直接返回带引导的主句。三层判据：①注入前置统一走 proxy::ensure_proxy_service_ready（端口探测优先，禁止各链路再写一份）；②ensure 调用必须早于 kill_codex；③双回环地址探测必须逐条保留失败原因，不能被 ::1 覆盖（否则排障被误导成 IPv6 问题）",
+      "title": "Codex Desktop 注入前必须确保网关服务可用，且不得先 kill 客户端",
+      "symptom": "issue #38：本地网关服务未运行时切换 Codex，实现直接向 7450 发注入请求；用户只看到「无法连接 7450 … os error 10061」，而 Codex 已被先 kill 再重启（窗口没了、模型也没解锁），配置还停在指向空端口的状态",
+      "lesson": "CDP 注入依赖 sidecar 的 /__byok/codex-cdp/inject，必须把「确保网关服务可用」提到 kill 之前：不可用就不重启客户端，直接返回带引导的主句。三层判据：①注入前置统一走 proxy::ensure_proxy_service_ready（端口探测优先，禁止各链路再写一份）；②ensure 调用必须早于 kill_codex；③双回环地址探测必须逐条保留失败原因，不能被 ::1 覆盖（否则排障被误导成 IPv6 问题）",
       "check": {
         "type": "source_contains",
         "file": "src-tauri/src/commands/codex_desktop.rs",

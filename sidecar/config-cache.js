@@ -296,8 +296,8 @@ function normalizeProxyRouteTarget(target) {
 function validateProxyRoutes(routes) {
   const seen = new Set();
   for (const route of routes) {
-    if (!route.id) throw new Error('本地代理模型名不能为空');
-    if (seen.has(route.id)) throw new Error(`本地代理模型名重复: ${route.id}`);
+    if (!route.id) throw new Error('内置模型名不能为空');
+    if (seen.has(route.id)) throw new Error(`内置模型名重复: ${route.id}`);
     seen.add(route.id);
     if (!route.exposedFormats.length) throw new Error(`模型 ${route.id} 至少需要暴露一个入口`);
     for (const fmt of route.exposedFormats) {

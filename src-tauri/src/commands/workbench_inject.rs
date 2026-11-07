@@ -8,7 +8,7 @@
 //   - 注入块用独立标记 BYOK_BLOCK_START/END，清理时只动自己的块
 //   - 只改文本 / 隐藏元素，不用 innerHTML，故无需放宽 Trusted-Types
 //
-// 注入时机：跟随 IDE 切换到代理；还原直连时还原。需要写 Windsurf 安装目录
+// 注入时机：跟随 IDE 切换到网关；还原直连时还原。需要写 Windsurf 安装目录
 // （通常在 Program Files / LocalAppData），可能需要管理员权限。
 
 use std::fs;
@@ -207,7 +207,7 @@ fn replace_nls_throws(content: &str) -> Option<(String, usize)> {
     if count > 0 { Some((result, count)) } else { None }
 }
 
-/// 接入代理时加固 NLS 取词函数（幂等：已修补或无匹配则跳过）。
+/// 接入网关时加固 NLS 取词函数（幂等：已修补或无匹配则跳过）。
 /// 汉化模块同样调用：装了第三方中文语言包后缺词条会 throw 白屏，这是必要防护。
 /// 返回 Ok(true) 表示发生了修改。
 pub(crate) fn patch_nls_tolerant(target: &str) -> Result<bool, String> {
@@ -571,7 +571,7 @@ fn strip_byok_block(html: &str) -> String {
     super::app_localization::strip_injected_block(html, BYOK_BLOCK_START, BYOK_BLOCK_END)
 }
 
-/// 接入代理时接管 IDE：注入 byok-cards.js，清空 product.json 的完整性校验清单，
+/// 接入网关时接管 IDE：注入 byok-cards.js，清空 product.json 的完整性校验清单，
 /// 并加固 NLS 取词函数防止语言包缺词条白屏。
 /// 返回 Ok(true) 表示发生了写入（需重启 IDE 生效）；Ok(false) 表示已是最新无需改动。
 pub fn inject(script: &str, target: &str) -> Result<bool, String> {

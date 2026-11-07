@@ -115,7 +115,7 @@ pub struct Target {
     #[serde(rename = "providerId")]
     pub provider_id: String,
     pub model: String,
-    /// 目标请求使用的协议。为空时由代理按解锁、目标 path、供应商 path/host 自动识别。
+    /// 目标请求使用的协议。为空时由网关按解锁、目标 path、供应商 path/host 自动识别。
     #[serde(rename = "apiFormat", default, skip_serializing_if = "Option::is_none")]
     pub api_format: Option<String>,
     /// 目标级 API path。为空时使用供应商默认 path；解锁目标由 unlock.wireApi 接管。
@@ -409,7 +409,7 @@ pub struct InjectedSlot {
     /// BYOK 供应商 ID。无值或引用不存在 = 未配置（弹窗里显示"(未配置)"）。
     #[serde(rename = "providerId", default)]
     pub provider_id: Option<String>,
-    /// 注入槽位目标请求使用的协议。为空时由代理按解锁、目标 path、供应商 path/host 自动识别。
+    /// 注入槽位目标请求使用的协议。为空时由网关按解锁、目标 path、供应商 path/host 自动识别。
     #[serde(rename = "apiFormat", default, skip_serializing_if = "Option::is_none")]
     pub api_format: Option<String>,
     /// 注入槽位目标级 API path。为空时使用供应商默认 path；解锁目标由 unlock.wireApi 接管。
@@ -480,7 +480,7 @@ pub struct ModelMap {
     /// 注入项列表:解锁 Windsurf 灰色不可选模型。详见 spec/08。
     #[serde(default)]
     pub injected: Vec<InjectedSlot>,
-    /// 代理增强功能开关。默认全开，具体请求链路后续由 sidecar 消费。
+    /// 网关增强功能开关。默认全开，具体请求链路后续由 sidecar 消费。
     #[serde(default = "default_enhancement")]
     pub enhancement: EnhancementConfig,
     /// 第三方图片理解模型故障转移链。
@@ -489,13 +489,13 @@ pub struct ModelMap {
     /// 联网搜索源故障转移链。
     #[serde(rename = "searchModels", default)]
     pub search_models: SearchModels,
-    /// 本地代理模型 ID 批量重命名规则(由「模型列表」列头齿轮按钮设置)。
+    /// 内置模型 ID 批量重命名规则(由「模型列表」列头齿轮按钮设置)。
     /// 保存后下次打开弹窗自动回填,避免重复输入造成规则叠加。
     #[serde(rename = "proxyRouteRenameRule", default)]
     pub proxy_route_rename_rule: ProxyRouteRenameRule,
 }
 
-/// 本地代理模型 ID 批量重命名规则。
+/// 内置模型 ID 批量重命名规则。
 ///  - mode: "simple" = 用 prefix/model/suffix 拼; "custom" = 用 template 模板
 ///  - prefix/suffix: 简单模式下的前后缀(可空,支持中文/特殊字符/emoji,可含占位符 {provider})
 ///  - template: 高级模式下的完整模板,支持 {prefix} {model} {provider} {suffix}
@@ -678,7 +678,7 @@ pub fn save_model_map(map: ModelMap) -> Result<(), String> {
     write_map(&map)?;
 
     // 通知 sidecar 清除 unlockModels 内存缓存，使下次 Windsurf 心跳立即用新配置重跑。
-    // 代理未运行时静默忽略——缓存自然过期，不影响保存结果。
+    // 网关未运行时静默忽略——缓存自然过期，不影响保存结果。
     let port = super::config::configured_proxy_ports().api_port;
     let _ = super::codex_desktop::http_post_local(
         port,
@@ -690,7 +690,7 @@ pub fn save_model_map(map: ModelMap) -> Result<(), String> {
     Ok(())
 }
 
-/// 启动代理前校验:扫描启用的槽位 + 已配置 providerId 的模型槽位管理项，若 targets/配置为空、
+/// 启动网关前校验:扫描启用的槽位 + 已配置 providerId 的模型槽位管理项，若 targets/配置为空、
 /// 或引用了不存在/未启用的供应商，返回问题描述列表（空列表 = 通过，可启动）。前端据此阻止带病启动。
 #[tauri::command]
 pub fn validate_model_map() -> Result<Vec<String>, String> {

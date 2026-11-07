@@ -265,7 +265,7 @@ test('Antigravity request normalization: nested request payload', () => {
 });
 
 test('Antigravity HTTP 端点模拟: fetchAvailableModels & loadCodeAssist', async () => {
-  // 创建模拟本地代理 HTTP 服务
+  // 创建模拟本地网关 HTTP 服务
   const server = http.createServer((req, res) => {
     handleLocalProxyRequest(req, res);
   });

@@ -54,7 +54,7 @@ The desktop installer is self-contained — **no Node.js, Python or CLI setup re
 
 | Problem | Default / manual approach | How AnyBridge handles it |
 | :--- | :--- | :--- |
-| **Agent has no custom API field** | Cursor, Windsurf and Devin expose no third-party API entry | **Local proxy takeover**: chat traffic is routed through your own channels and models |
+| **Agent has no custom API field** | Cursor, Windsurf and Devin expose no third-party API entry | **Local gateway takeover**: chat traffic is routed through your own channels and models |
 | **Hand-writing config files** | Claude Code, Codex, Pi, Hermes need hidden JSON / YAML / TOML edits | **One-click config writing**: correct paths and formats, one-click restore anytime |
 | **Typing long model IDs** | Manual entry; one wrong character breaks the request | **Online model fetch**: pull the model list and pick from a dropdown |
 | **Repeating changes per tool** | Every agent needs its own edit when a relay moves | **Configure once, reuse everywhere**: channels managed centrally |
@@ -84,7 +84,7 @@ Open the **Providers** page:
 
 Open the **Agents** page and pick your tool (Cursor, Windsurf, Devin, Claude Code, Codex, Pi, Hermes, DeepSeek Harness …):
 
-- **Closed desktop IDEs (Cursor / Windsurf / Devin)**: click "Enable proxy takeover" — AnyBridge sets up the local proxy and certificates, then restart the IDE;
+- **Closed desktop IDEs (Cursor / Windsurf / Devin)**: click "Switch to gateway" — AnyBridge sets up the local gateway and certificates, then restart the IDE;
 - **Config-based agents (Claude Code / Codex / OpenCode / Pi / Hermes / DeepSeek Harness / Grok / ZCode / CodeBuddy / WorkBuddy …)**: click "Switch to AnyBridge" and the config is written automatically.
 
 ### 3️⃣ Step 3: Open your tool and start coding
@@ -101,7 +101,7 @@ Use your IDE or CLI as usual — requests now flow to your own models.
 
 ![AnyBridge Devin agent console](docs/assets/anybridge-platform-devin.png)
 
-![AnyBridge local proxy overview](docs/assets/anybridge-proxy-overview.png)
+![AnyBridge local gateway overview](docs/assets/anybridge-proxy-overview.png)
 
 ![AnyBridge model slot mapping](docs/assets/anybridge-slot-mapping.png)
 
@@ -113,7 +113,7 @@ Use your IDE or CLI as usual — requests now flow to your own models.
 
 | Mode | Agents | Must AnyBridge stay running? | Description |
 | :--- | :--- | :--- | :--- |
-| **Local proxy takeover** | Cursor, Windsurf, Devin | ✅ Yes | The UI is closed; a local proxy (`:7450`) translates chat traffic in real time and adds vision fallback, failover, retries and metrics |
+| **Local gateway takeover** | Cursor, Windsurf, Devin | ✅ Yes | The UI is closed; a local gateway (`:7450`) translates chat traffic in real time and adds vision fallback, failover, retries and metrics |
 | **Direct config writing** | Claude Code, Codex, OpenCode, Pi, Hermes, DeepSeek Harness, Grok, ZCode, CodeBuddy, WorkBuddy, Claude Desktop, Antigravity … | ❌ No | Native config files (JSON / YAML / TOML) are written for you; close AnyBridge afterwards — the tool talks to your relay directly |
 | **Local API gateway** | Cline, Continue, Aider and any custom client | ✅ Yes | One OpenAI / Anthropic-compatible endpoint at `http://localhost:7450/v1` for every external tool |
 
@@ -127,9 +127,9 @@ AnyBridge tailors the integration to each tool's architecture. **16 agents** are
 
 | Category | Agent | Form factor | Mechanism & highlights | Status |
 | :--- | :--- | :--- | :--- | :--- |
-| **Desktop IDEs** | **Cursor** | Desktop IDE | Transparent local proxy: chat RPC intercepted, completion & indexing stay native | ✅ Supported |
-| | **Windsurf** | Desktop IDE | Transparent local proxy: Connect-RPC translation, freely remapped model slots | ✅ Supported |
-| | **Devin** | Desktop IDE | Transparent local proxy: streaming session translation with vision fallback | ✅ Supported |
+| **Desktop IDEs** | **Cursor** | Desktop IDE | Transparent local gateway: chat RPC intercepted, completion & indexing stay native | ✅ Supported |
+| | **Windsurf** | Desktop IDE | Transparent local gateway: Connect-RPC translation, freely remapped model slots | ✅ Supported |
+| | **Devin** | Desktop IDE | Transparent local gateway: streaming session translation with vision fallback | ✅ Supported |
 | | **Antigravity IDE** | VS Code-based editor | Native config writing + env sync, with one-click UI localization | ✅ Supported |
 | **Desktop apps** | **Codex Desktop** | Desktop app | Runtime CDP injection: adds your models to the picker without patching binaries | ✅ Supported |
 | | **Claude Desktop** | Desktop app | Native config writing with one-click switch and restore | ✅ Supported |
@@ -177,26 +177,26 @@ AnyBridge tailors the integration to each tool's architecture. **16 agents** are
                                          │ local control
                                          ▼
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                            Local proxy service (:7450)                       │
+│                            Local gateway service (:7450)                       │
 │   ┌───────────────────────┐   ┌───────────────────────┐   ┌─────────────┐   │
 │   │  Protocol translation │   │  Vision fallback      │   │ Failover &  │   │
 │   │  (Connect-RPC / SSE)  │   │  (image → text)       │   │ rate retry  │   │
 │   └───────────────────────┘   └───────────────────────┘   └─────────────┘   │
 └───────────────▲───────────────────────────────▲──────────────────────▲──────┘
-                │ local proxy                   │ CDP injection        │ config / gateway
+                │ local gateway                   │ CDP injection        │ config / gateway
     ┌───────────┴───────────┐       ┌───────────┴───────────┐  ┌───────┴────────────┐
     │ Cursor / Windsurf /   │       │  Codex Desktop        │  │ Claude Code / Pi /  │
     │ Devin (Connect-RPC)   │       │ (dynamic model list)  │  │ Hermes / DSH / more │
     └───────────────────────┘       └───────────────────────┘  └────────────────────┘
 ```
 
-### Local proxy mode (Cursor / Windsurf / Devin)
+### Local gateway mode (Cursor / Windsurf / Devin)
 
 ```
 Agent sends a request
     │
     ▼
-[AnyBridge local proxy (127.0.0.1:7450)]
+[AnyBridge local gateway (127.0.0.1:7450)]
     ├─► 1. Classify: intercept chat sessions only (e.g. GetChatMessage)
     ├─► 2. Decode the conversation and forward it as standard OpenAI / Anthropic to your relay
     ├─► 3. Re-package the streaming response back into Connect-RPC for the UI
@@ -261,7 +261,7 @@ Output is **grouped by vendor**: models sharing a vendor (name, endpoint, key) c
 </details>
 
 <details>
-<summary><b>Q6: How can I verify the local proxy is running?</b></summary>
+<summary><b>Q6: How can I verify the local gateway is running?</b></summary>
 <br>
 Open <code>http://localhost:7450/__byok/health</code>: <code>{"status":"ok"}</code> means it's healthy. <code>http://localhost:7450/__byok/stats</code> shows live aggregate statistics.
 </details>
@@ -367,6 +367,6 @@ Artifacts land in `src-tauri/target/release/bundle/`.
 
 **AnyBridge · Break the lock-in, give the choice back to developers**
 
-Keywords: BYOK · AI coding agents · local proxy · OpenAI-compatible API · model routing & aggregation · relay integration · Claude Code / Codex / Cursor / Pi / Hermes configuration management
+Keywords: BYOK · AI coding agents · local gateway · OpenAI-compatible API · model routing & aggregation · relay integration · Claude Code / Codex / Cursor / Pi / Hermes configuration management
 
 </div>

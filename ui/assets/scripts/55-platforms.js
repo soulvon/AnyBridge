@@ -509,7 +509,7 @@ function codexWireApiOf(provider) {
  *
  * config.toml 里的 wire_api 恒为 "responses"：openai/codex 已删除 WireApi::Chat，
  * 写 "chat" 会让 Codex 反序列化配置失败、启动即崩（discussions/7782）。
- * 因此只支持 Chat Completions 的供应商，唯一出路就是开启路由模式让本地代理转协议 ——
+ * 因此只支持 Chat Completions 的供应商，唯一出路就是开启路由模式让本地网关转协议 ——
  * 而转不转，正由这里推断出的值决定。
  *
  * 来源供应商优先：它的 apiPath 是探测出来的客观端点，比配置里存的旧值可信。
@@ -9407,9 +9407,9 @@ async function cursorInstallCertAction() {
   } catch (e) {
     const errMsg = String(e);
     if (typeof addLog === 'function') addLog('err', 'CA 安装失败: ' + errMsg);
-    if (errMsg.includes('请先停止代理') || errMsg.includes('请等待完成后再操作')) {
+    if (errMsg.includes('请先停止网关') || errMsg.includes('请等待完成后再操作')) {
       showCustomAlert(
-        errMsg + '\n\n请先停止代理，再到「平台 > 设置 > 环境检测」点击「一键安装证书」。',
+        errMsg + '\n\n请先停止网关，再到「平台 > 设置 > 环境检测」点击「一键安装证书」。',
         '需先停止代理',
         'warning'
       );
@@ -12474,7 +12474,7 @@ function createManagedModelsPlatform({
     } catch (e) {
       globalThis[providerModelsKey] = [];
     }
-    // 注入 AnyBridge 内置供应商到首位：不想直连渠道时从这里导入模型，走 :7450 本地代理
+    // 注入 AnyBridge 内置供应商到首位：不想直连渠道时从这里导入模型，走 :7450 本地网关
     if (typeof localProxyProviderModelsEntry === 'function') {
       const lp = localProxyProviderModelsEntry();
       globalThis[providerModelsKey] = globalThis[providerModelsKey].filter(

@@ -10,7 +10,7 @@ AnyBridge has three main parts:
 
 ```text
 AI coding tool
-  -> local proxy or generated config
+  -> local gateway or generated config
   -> AnyBridge sidecar
   -> configured provider API
 
@@ -44,7 +44,7 @@ before committing UI changes.
 
 ## Sidecar
 
-The sidecar is a Node.js process that handles local proxy traffic, provider routing, model mapping, logging, and request/response conversion.
+The sidecar is a Node.js process that handles local gateway traffic, provider routing, model mapping, logging, and request/response conversion.
 
 The sidecar can run by itself during development:
 

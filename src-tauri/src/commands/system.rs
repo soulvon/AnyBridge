@@ -224,8 +224,8 @@ pub struct ExportLogEntry {
 
 pub fn build_tray(app: &AppHandle) -> tauri::Result<()> {
     let show = MenuItem::with_id(app, "show", "显示窗口", true, None::<&str>)?;
-    let start = MenuItem::with_id(app, "start", "启动代理", true, None::<&str>)?;
-    let stop = MenuItem::with_id(app, "stop", "停止代理", true, None::<&str>)?;
+    let start = MenuItem::with_id(app, "start", "启动网关", true, None::<&str>)?;
+    let stop = MenuItem::with_id(app, "stop", "停止网关", true, None::<&str>)?;
     let quit = MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;
     let menu = Menu::with_items(app, &[&show, &start, &stop, &quit])?;
 
@@ -267,7 +267,7 @@ pub fn build_tray(app: &AppHandle) -> tauri::Result<()> {
                 });
             }
             "quit" => {
-                // 退出只停止 AnyBridge sidecar；IDE 是否切到代理由平台页按钮管理。
+                // 退出只停止 AnyBridge sidecar；IDE 是否切到网关由平台页按钮管理。
                 let _ = crate::commands::proxy::stop_proxy_service_impl(app.clone());
                 app.exit(0);
             }
@@ -788,7 +788,7 @@ pub fn ensure_mitm_certs() -> Result<(std::path::PathBuf, bool), String> {
 /// `force=false` 时复用通过完整性、版本及文件年龄检查的证书包，否则重新生成；
 /// `force=true` 时跳过复用，但不预删旧文件，避免生成阶段失败就丢失原包。
 /// 返回 `(证书目录, 是否新生成)`；逐文件写入失败会尝试以内存快照恢复，不能覆盖进程崩溃。
-/// 本入口不获取证书任务锁或代理启动占位，调用方须保证桌面进程内互斥且代理已停止。
+/// 本入口不获取证书任务锁或网关启动占位，调用方须保证桌面进程内互斥且网关已停止。
 /// Unix 上另以配置目录锁文件串行化独立进程的证书包校验和提交。
 /// 委托目录级实现并传入实际生成函数，使测试可使用隔离目录和故障注入。
 pub fn ensure_mitm_certs_ex(force: bool) -> Result<(std::path::PathBuf, bool), String> {
@@ -808,7 +808,7 @@ pub(crate) fn ensure_mitm_certs_ex_unlocked(
     )
 }
 
-/// 只读校验代理启动所需的现有证书包；后台路径不能隐式生成、轮换或续期证书。
+/// 只读校验网关启动所需的现有证书包；后台路径不能隐式生成、轮换或续期证书。
 pub(crate) fn validate_existing_mitm_package() -> Result<std::path::PathBuf, String> {
     let certs_dir = crate::commands::config::config_dir_path().join("certs");
     let _package_lock = acquire_mitm_package_lock(&certs_dir, false)?;
@@ -922,7 +922,7 @@ fn validate_existing_mitm_package_in_dir(
     Ok(certs_dir)
 }
 
-// 只读检测候选目录，阻止代理复用或信任安装使用可能正在生成/提交的证书包。
+// 只读检测候选目录，阻止网关复用或信任安装使用可能正在生成/提交的证书包。
 // 残留也可能属于其他进程；不自动删除候选目录或恢复文件，避免破坏并发操作。
 pub(crate) fn reject_interrupted_mitm_candidates(certs_dir: &std::path::Path) -> Result<(), String> {
     let entries = match std::fs::read_dir(certs_dir) {
@@ -935,7 +935,7 @@ pub(crate) fn reject_interrupted_mitm_candidates(certs_dir: &std::path::Path) ->
         let entry = entry.map_err(|error| format!("检查证书目录失败，拒绝使用现有证书包: {}", error))?;
         if entry.file_name().to_string_lossy().starts_with(".candidate-") {
             return Err(format!(
-                "发现候选证书目录 {}，可能有证书生成/提交仍在进行或曾中断；代理未启动。等待相关操作结束后重试；若目录持续存在，请人工核查，程序不会自动删除",
+                "发现候选证书目录 {}，可能有证书生成/提交仍在进行或曾中断；网关未启动。等待相关操作结束后重试；若目录持续存在，请人工核查，程序不会自动删除",
                 entry.path().display()
             ));
         }
@@ -1069,7 +1069,7 @@ fn prepare_mitm_candidate(
         }
 
         // 先读齐整个候选包，任何生成、校验或读取错误都不会修改当前包。
-        // 提交仍逐文件执行；写入错误触发内存快照恢复，但崩溃、信任/代理失败不在恢复范围。
+        // 提交仍逐文件执行；写入错误触发内存快照恢复，但崩溃、信任/网关失败不在恢复范围。
         let files = ["server.codeium.com.pem", "server.codeium.com-key.pem",
             MITM_LEAF_CERT_FILE, MITM_LEAF_KEY_FILE, "san-version"];
         let contents = files.iter().map(|name| {
@@ -1108,7 +1108,7 @@ fn ensure_mitm_certs_in_dir(
     let san_marker_path = certs_dir.join("san-version");
 
     // force 只跳过复用判断，不预删旧包；候选生成失败不会改变当前包。
-    // 提交写入错误会尝试快照恢复；崩溃及后续信任安装/代理失败不属于该恢复边界。
+    // 提交写入错误会尝试快照恢复；崩溃及后续信任安装/网关失败不属于该恢复边界。
 
     let cert_ok = cert_path.metadata().map(|m| m.len() > 0).unwrap_or(false);
     let key_ok = key_path.metadata().map(|m| m.len() > 0).unwrap_or(false);
@@ -1136,7 +1136,7 @@ fn ensure_mitm_certs_in_dir(
     // 对可解析旧包也验证实际链和域名；失败只报错，不因新校验失败静默轮换 CA。
     if !force && contents_ok && san_ok && leaf_ok {
         validate_mitm_candidate_chain(&certs_dir).map_err(|e| format!(
-            "现有证书包离线校验失败，未自动替换证书。请检查系统时间和证书包，停止代理后显式处理: {}", e
+            "现有证书包离线校验失败，未自动替换证书。请检查系统时间和证书包，停止网关后显式处理: {}", e
         ))?;
     }
     let already_complete = !force && contents_ok && san_ok && leaf_ok && fresh_enough;
@@ -1182,8 +1182,8 @@ fn ensure_mitm_certs_in_dir(
     Ok((certs_dir, !already_complete))
 }
 
-/// 与安装/卸载共用任务锁，并在生成及信任安装期间阻止桌面代理启动。
-/// 超时只结束等待，阻塞任务实际退出前仍保留保护；不主动停止运行中的代理。
+/// 与安装/卸载共用任务锁，并在生成及信任安装期间阻止桌面网关启动。
+/// 超时只结束等待，阻塞任务实际退出前仍保留保护；不主动停止运行中的网关。
 #[tauri::command]
 pub async fn generate_certs(app: AppHandle, request_id: Option<String>) -> Result<String, String> {
     // 与其他健康页证书动作共用包装器，使进度事件能关联同一个 UI 请求和后端操作。
@@ -1195,7 +1195,7 @@ pub async fn generate_certs(app: AppHandle, request_id: Option<String>) -> Resul
 /// 生成（或强制重生）MITM 证书，并尝试安装到当前平台的系统信任库。
 /// Unix 上的包写锁覆盖证书提交和信任安装，避免独立桌面实例在两步之间轮换 CA。
 /// 信任安装失败会作为错误返回；已写入的证书文件不会被误报为完整成功。
-/// 本函数不获取进程内证书任务锁或代理启动占位，调用方负责这些保护。
+/// 本函数不获取进程内证书任务锁或网关启动占位，调用方负责这些保护。
 pub fn generate_certs_ex(force: bool) -> Result<String, String> {
     let certs_dir = crate::commands::config::config_dir_path().join("certs");
     let _package_lock = acquire_mitm_package_lock(&certs_dir, true)?;
@@ -2325,7 +2325,7 @@ fn restart_ide_impl(target: String, extra_args: Vec<String>) -> Result<String, S
     }
 }
 
-/// 强杀并重启 IDE，使写入的代理配置生效。
+/// 强杀并重启 IDE，使写入的网关配置生效。
 /// 注意：强杀会丢失未保存的工作，调用方需先提示用户保存。
 #[tauri::command]
 pub async fn restart_ide(target: String) -> Result<String, String> {
@@ -2642,7 +2642,7 @@ pub fn detect_target_ide() -> String {
         return "cursor".into();
     }
 
-    // 两个都在运行或都不在运行，检查哪个有代理配置
+    // 两个都在运行或都不在运行，检查哪个有网关配置
     #[cfg(target_os = "windows")]
     {
         use std::path::PathBuf;
@@ -2672,7 +2672,7 @@ pub fn detect_target_ide() -> String {
         }
     }
 
-    // macOS/Linux 同样检查代理配置
+    // macOS/Linux 同样检查网关配置
     #[cfg(target_os = "macos")]
     {
         use std::path::PathBuf;
@@ -2729,7 +2729,7 @@ pub fn detect_target_ide() -> String {
         }
     }
 
-    // 都没有代理配置，检查哪个安装了。默认优先 Windsurf，避免双安装机器误接入 Devin。
+    // 都没有网关配置，检查哪个安装了。默认优先 Windsurf，避免双安装机器误接入 Devin。
     #[cfg(target_os = "windows")]
     {
         if find_ide_exe("windsurf").is_some() {

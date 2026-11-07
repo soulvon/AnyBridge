@@ -14,11 +14,11 @@ const LEGACY_CURSOR_PROXY_KEYS: &[&str] = &["systemCertificatesV2", "useHttp1", 
 const DEVIN_AGENT_ENV_KEY: &str = "devin.acp.agentEnv";
 const WINDSURF_AGENT_ENV_KEY: &str = "windsurf.acp.agentEnv";
 const DEVIN_PREFERRED_AGENT_KEY: &str = "devin.acp.preferredAgent";
-// NO_PROXY 排除直连域名：只排除真正需要绕过本地代理的 devin 官方 API 域名。
+// NO_PROXY 排除直连域名：只排除真正需要绕过本地网关的 devin 官方 API 域名。
 // 注意：不能把 unleash.codeium.com（feature flag 域名）加入 NO_PROXY，
 // 该域名在某些网络环境下直连超时，会导致 devin-cli 启动时
 // "remote config revalidation failed: operation timed out" 警告并拖慢 1~2s。
-// 走 AnyBridge 本地代理反而更快（代理有上游翻墙通道）。
+// 走 AnyBridge 内置供应商反而更快（网关有上游翻墙通道）。
 const DEVIN_AGENT_NO_PROXY: &str =
     "api.devin.ai,app.devin.ai,static.devin.ai,cli.devin.ai,devin.ai";
 
@@ -80,9 +80,9 @@ fn patch_devin_agent_env(obj: &mut Map<String, Value>, proxy_value: &str) {
         };
         cli_obj.insert("HTTP_PROXY".into(), Value::String(proxy_value.to_string()));
         cli_obj.insert("HTTPS_PROXY".into(), Value::String(proxy_value.to_string()));
-        // 辅助域名（feature flag / 云端 web / 下载）直连，不走本地代理：
+        // 辅助域名（feature flag / 云端 web / 下载）直连，不走本地网关：
         // 新版 devin-cli authenticate 时会并发刷新这些域名，超时上限仅 2s，
-        // 全部挤过代理会触发 "ZDR status refresh timed out on auth" 导致接入失败。
+        // 全部挤过网关会触发 "ZDR status refresh timed out on auth" 导致接入失败。
         cli_obj.insert("NO_PROXY".into(), Value::String(DEVIN_AGENT_NO_PROXY.into()));
         if !cert_str.is_empty() {
             cli_obj.insert("SSL_CERT_FILE".into(), Value::String(cert_str.clone()));
@@ -199,7 +199,7 @@ fn managed_proxy_keys(target: &str) -> Vec<&'static str> {
 
 /// 与 cursor-core/src/local_app/settings.rs 的 MANAGED_PROXY_SUPPORT 必须一致：
 /// `on` 的语义是"使用代理设置"，系统代理存在时会绕开我们的 http.proxy；
-/// `override` 才强制走本地代理（坑点 cursor-proxy-support-override）。
+/// `override` 才强制走本地网关（坑点 cursor-proxy-support-override）。
 const CURSOR_PROXY_SUPPORT_VALUE: &str = "override";
 
 fn cursor_extra_settings_ok(obj: &Map<String, Value>) -> bool {
@@ -255,7 +255,7 @@ fn write_object(path: &PathBuf, obj: &Map<String, Value>) -> Result<(), String> 
 }
 
 /// 确保 settings.json 存在。VS Code 系 IDE 会接受预先创建的 User/settings.json，
-/// 这样首次安装但尚未生成配置文件的用户也能一键启动代理。
+/// 这样首次安装但尚未生成配置文件的用户也能一键启动网关。
 pub(crate) fn ensure_settings_file(target: &str) -> Result<(PathBuf, bool), String> {
     let Some(settings) = settings_path(target) else {
         return Err(format!("无法定位 {} 配置目录", target));
@@ -277,7 +277,7 @@ fn ensure_settings_path(settings: &PathBuf) -> Result<bool, String> {
     Ok(true)
 }
 
-/// 打补丁：备份原文件（幂等），写入代理配置。
+/// 打补丁：备份原文件（幂等），写入网关接入配置。
 /// 返回是否实际改动了 IDE 配置（用于 UI 提示是否需重启）。
 pub fn patch(target: &str) -> Result<bool, String> {
     let (settings, _) = ensure_settings_file(target)?;
@@ -306,7 +306,7 @@ fn patch_settings_file(target: &str, settings: &PathBuf) -> Result<bool, String>
     if already {
         if !backup.exists() {
             // 原始值已被补丁覆盖、无从恢复，备份成「移除这两个键」的状态:
-            // 复制当前配置但删掉代理键，作为还原目标。
+            // 复制当前配置但删掉网关键，作为还原目标。
             let mut orig = obj.clone();
             if target == "cursor" {
                 remove_cursor_proxy_keys(&mut orig);
@@ -364,7 +364,7 @@ fn patch_settings_file(target: &str, settings: &PathBuf) -> Result<bool, String>
 }
 
 /// 卸补丁：依据备份还原 http.proxy / http.proxyStrictSSL，再删除备份。
-/// 无备份时，直接移除代理相关键（兜底清理，防止代理配置残留导致 IDE 断网）。
+/// 无备份时，直接移除网关相关键（兜底清理，防止网关配置残留导致 IDE 断网）。
 /// 幂等。
 pub fn restore(target: &str) -> Result<bool, String> {
     let Some(settings) = settings_path(target) else {
@@ -410,7 +410,7 @@ fn restore_settings_file(target: &str, settings: &PathBuf) -> Result<bool, Strin
         let _ = fs::remove_file(&backup);
         Ok(true)
     } else {
-        // 无备份：兜底清理——直接移除代理相关键，防止残留导致 IDE 断网。
+        // 无备份：兜底清理——直接移除网关相关键，防止残留导致 IDE 断网。
         let raw = fs::read_to_string(&settings).map_err(|e| e.to_string())?;
         let mut current = parse_object(&raw)?;
 
@@ -423,7 +423,7 @@ fn restore_settings_file(target: &str, settings: &PathBuf) -> Result<bool, Strin
         let had_devin_env = target == "devin" && devin_agent_env_ok(&current);
 
         if !had_proxy && !had_ssl && !had_devin_env {
-            // 配置中没有代理残留，无需操作。
+            // 配置中没有网关残留，无需操作。
             return Ok(false);
         }
 

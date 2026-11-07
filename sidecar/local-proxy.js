@@ -306,7 +306,7 @@ function readCodexOAuthToken() {
 
 function validateAuth(req) {
   const expected = String(readLocalConfig().LOCAL_PROXY_KEY || '').trim();
-  if (!expected) return { ok: false, status: 503, message: 'AnyBridge 本地代理 key 尚未生成，请在代理页生成 key。' };
+  if (!expected) return { ok: false, status: 503, message: 'AnyBridge 内置供应商 key 尚未生成，请在网关页生成 key。' };
   const token = authToken(req);
   if (token === expected) return { ok: true };
   // Codex 保留官方登录模式：Codex 发送 OAuth token 而非 LOCAL_PROXY_KEY
@@ -317,10 +317,10 @@ function validateAuth(req) {
     const oauthToken = readCodexOAuthToken();
     if (oauthToken && token === oauthToken) return { ok: true };
   }
-  return { ok: false, status: 401, message: 'AnyBridge 本地代理 key 无效。' };
+  return { ok: false, status: 401, message: 'AnyBridge 内置供应商 key 无效。' };
 }
 
-// ─── 本地代理模型 ID 命名规则(跟 Devin 显示名设置一样:只存规则,运行时套用,不硬写 route.id)───
+// ─── 内置模型 ID 命名规则(跟 Devin 显示名设置一样:只存规则,运行时套用,不硬写 route.id)───
 const RENAME_TEMPLATE_VARS = ['prefix', 'model', 'provider', 'suffix'];
 
 function renderProxyRouteIdTemplate(tpl, vars) {
@@ -415,7 +415,7 @@ function buildExposedIdLookup(routes, options = {}) {
     if (!literal) continue;
     const previous = lookup.get(literal);
     if (previous && previous !== route) {
-      throw new Error(`本地代理暴露模型 ID 冲突: ${literal} 同时是 ${previous.id} 和 ${route.id} 两条路由的字面 ID。请调整模型 ID 或命名规则。`);
+      throw new Error(`本地内置模型 ID 冲突: ${literal} 同时是 ${previous.id} 和 ${route.id} 两条路由的字面 ID。请调整模型 ID 或命名规则。`);
     }
     lookup.set(literal, route);
   }
@@ -439,12 +439,12 @@ function proxyRouteStore(scope) {
 
 function proxyRouteStoreMissingMessage(scope) {
   return isCodexProxyScope(scope)
-    ? 'Codex 专用代理模型列表为空。请在「更多平台 > Codex」重新切换第三方配置。'
-    : '本地代理模型列表为空。请在「代理 > 模型列表」添加模型。';
+    ? 'Codex 专用内置模型列表为空。请在「更多平台 > Codex」重新切换第三方配置。'
+    : '内置模型列表为空。请在「网关 > 模型列表」添加模型。';
 }
 
 function proxyRouteStoreReadErrorPrefix(scope) {
-  return isCodexProxyScope(scope) ? 'Codex 专用代理模型列表读取失败' : '本地代理模型列表读取失败';
+  return isCodexProxyScope(scope) ? 'Codex 专用内置模型列表读取失败' : '内置模型列表读取失败';
 }
 
 function proxyRouteRows(kind, options = {}) {
@@ -498,7 +498,7 @@ function mapClaudeDesktopModel(requestedModel) {
     const route = (store?.routes || []).find(r => r.uid === cleanTarget || r.id === cleanTarget);
     if (route) {
       if (!route.enabled) {
-        return { error: `Claude Desktop 绑定的代理模型已禁用: ${route.id}` };
+        return { error: `Claude Desktop 绑定的内置模型已禁用: ${route.id}` };
       }
       return { model: route.id, original: requestedModel, route };
     }
@@ -529,13 +529,13 @@ function mapClaudeDesktopModel(requestedModel) {
   const directRoute = (store?.routes || []).find(r => r.id === rawModel || r.uid === rawModel);
   if (directRoute) {
     if (!directRoute.enabled) {
-      return { error: `请求的代理模型已禁用: ${directRoute.id}` };
+      return { error: `请求的内置模型已禁用: ${directRoute.id}` };
     }
     return { model: directRoute.id, original: requestedModel, route: directRoute };
   }
 
   return {
-    error: `Claude Desktop 请求模型 [${requestedModel}] 对应的角色 [${role || '未知'}] 尚未在 AnyBridge 平台设置中绑定有效的代理模型。`,
+    error: `Claude Desktop 请求模型 [${requestedModel}] 对应的角色 [${role || '未知'}] 尚未在 AnyBridge 平台设置中绑定有效的内置模型。`,
   };
 }
 
@@ -939,7 +939,7 @@ function routeAsSlot(route) {
   };
 }
 
-/** 目标是否指向内置本地代理自身（自环）。这类目标若直接发起请求会打到网关自己。 */
+/** 目标是否指向AnyBridge 内置供应商自身（自环）。这类目标若直接发起请求会打到网关自己。 */
 function isLocalProxySelfTarget(target) {
   const id = String(target?.providerId || '').trim().toLowerCase();
   return id === 'anybridge-local-proxy' || id === 'anybridge';
@@ -985,7 +985,7 @@ function resolveProxyModel(model, kind, options = {}) {
   if (!store.fileExists) return { error: proxyRouteStoreMissingMessage(scope) };
 
   const requested = String(model || '').trim();
-  if (!requested) return { error: '请求缺少 model，无法匹配本地代理模型列表。' };
+  if (!requested) return { error: '请求缺少 model，无法匹配内置模型列表。' };
 
   // 反向解析:先在"对外暴露 ID → 原始 route"查找表里找
   // (支持命名规则渲染后的新 ID,也兼容原始 ID)
@@ -1000,18 +1000,18 @@ function resolveProxyModel(model, kind, options = {}) {
   }
   const route = lookup.get(requested);
   if (!route) {
-    // 不做供应商猜测兜底：模型不在代理路由列表中就让失败明确暴露。
+    // 不做供应商猜测兜底：模型不在内置模型路由列表中就让失败明确暴露。
     // 供应商+模型的精确解析只允许发生在入口（如 mapClaudeDesktopModel），
     // 并通过 ctx.pinnedRoute 显式透传，禁止在此按名字静默猜供应商。
     const routeWithOtherFormat = routes.find(route => routeAliases(route, lookupOptions).includes(requested));
     if (routeWithOtherFormat) {
       return { error: `模型 ${requested} 未暴露为 ${localProxyKind(kind)} 兼容入口。` };
     }
-    return { error: `模型不在本地代理模型列表中: ${requested}` };
+    return { error: `模型不在内置模型列表中: ${requested}` };
   }
-  if (route.enabled === false) return { error: `本地代理模型已禁用: ${requested}` };
+  if (route.enabled === false) return { error: `内置模型已禁用: ${requested}` };
   if (!Array.isArray(route.targets) || route.targets.length === 0) {
-    return { error: `本地代理模型没有可用上游目标: ${requested}` };
+    return { error: `内置模型没有可用上游目标: ${requested}` };
   }
   return { slot: routeAsSlot(route), route };
 }
@@ -1867,7 +1867,7 @@ function failureMessage(failure = {}) {
 async function maybeVisionFallback(ctx, slot, providers, mapConfig) {
   if (!hasImage(ctx.messages) || slot.useThirdPartyVision !== true || mapConfig?.enhancement?.imageFallback === false) return ctx;
   const visionModels = mapConfig?.visionModels?.imageModels || [];
-  if (!visionModels.length) throw new Error(`模型「${slot.displayName || slot.modelUid || ctx.model}」启用了第三方图片理解，但代理增强里没有配置图片理解模型。`);
+  if (!visionModels.length) throw new Error(`模型「${slot.displayName || slot.modelUid || ctx.model}」启用了第三方图片理解，但网关增强里没有配置图片理解模型。`);
   const visionOptions = {
     maxTokens: mapConfig?.enhancement?.visionMaxTokens,
     contextMode: mapConfig?.enhancement?.visionContextMode,
@@ -2115,9 +2115,9 @@ export async function execute(ctx) {
   const targets = enhancement.autoRouting === false ? [resolved.slot.targets[0]] : [...resolved.slot.targets];
   const policy = retryPolicy(enhancement);
   const failures = [];
-  // 自环目标（providerId = 内置本地代理）必须在进程内解析一层换成真实上游目标：
+  // 自环目标（providerId = AnyBridge 内置供应商）必须在进程内解析一层换成真实上游目标：
   // 直接按原目标发请求会打到网关自己，形成"请求→本路由→网关→本路由"的无限环，
-  // 表现为整个代理被拖死。解析回本路由说明没有真实上游，显式报错而不是死循环。
+  // 表现为整个网关被拖死。解析回本路由说明没有真实上游，显式报错而不是死循环。
   const resolvedTargets = [];
   for (const target of targets) {
     if (!isLocalProxySelfTarget(target)) {
@@ -2132,7 +2132,7 @@ export async function execute(ctx) {
     if (sameRoute(inner.route, resolved.route)) {
       failures.push({
         providerName: target.providerId,
-        message: `路由 ${resolved.route.id} 的目标指向本地代理自身，且模型 ${target.model} 仍解析回本路由，会形成无限请求环。请把该路由的目标改为真实供应商。`,
+        message: `路由 ${resolved.route.id} 的目标指向本地网关自身，且模型 ${target.model} 仍解析回本路由，会形成无限请求环。请把该路由的目标改为真实供应商。`,
       });
       continue;
     }
@@ -3162,7 +3162,7 @@ export async function handleLocalProxyRequest(req, res, body) {
         const requestedModel = json.model || reqData.model || '';
         const customModel = resolveAntigravityCustomModel(requestedModel, providersJson);
 
-        // 诊断日志：IDE 实际发送的模型 key 与请求骨架（输出到 sidecar stderr，可在代理页日志查看）
+        // 诊断日志：IDE 实际发送的模型 key 与请求骨架（输出到 sidecar stderr，可在网关页日志查看）
         console.error(`[antigravity] ${method} requestedModel=${JSON.stringify(requestedModel)} resolved=${customModel ? customModel.upstreamModel : 'null'} topLevelKeys=${JSON.stringify(Object.keys(json))} customOverride=${JSON.stringify(json.customModelInfoOverride || reqData.customModelInfoOverride || null)}`);
 
         if (!customModel) {
@@ -3304,7 +3304,7 @@ export async function handleLocalProxyRequest(req, res, body) {
       sendJson(res, 200, {});
       return;
     }
-    sendError(res, 404, `未知本地代理路径: ${p}`);
+    sendError(res, 404, `未知本地网关路径: ${p}`);
   } catch (e) {
     // 未在 execute 内结算的异常（配置读取失败等）在这里收口；已结算的 finish 为幂等。
     tracker.finish();

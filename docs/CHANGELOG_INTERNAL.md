@@ -11,6 +11,19 @@
 
 ## v1.0.17 - 2026-11-07
 
+### 术语统一：代理 → 网关 / 内置供应商
+
+- 界面与后端用户可见文案按语义改名：服务本体=本地网关，暴露的模型清单=内置模型（列表），
+  AnyBridge 作为供应商身份=内置供应商（platforms.rs AGENTS 条目与 JS 平台 def.name 已同步，
+  metadata_snapshot 断言同步更新）。
+- 刻意保留：子代理（subagent）、系统代理/上游代理（system-proxy.js、65-extensions.js CPA、
+  plugin_asset/plugins.rs 下载链路）、汉化包里 agent→「代理」的译法。
+- 词面耦合同步：cert_install.rs「请先停止代理」/proxy.rs「代理已在运行」→ 网关叫法，
+  55-platforms.js includes() 与 20-runtime.js includes() 匹配串同步。
+- sidecar 错误消息与 local-proxy.test.js 测试名同步；en-US 词典 key 与 Rust/HTML/JS 源串对齐
+  （check-i18n 正向覆盖 + 反向准入 + 后端主句门控全绿）。
+- 验证：npm run verify 全绿（cargo check/test、Node 单测、check:i18n、check:ui）。
+
 - 按用户决定 `git revert f66c989b`，撤销 v1.0.16 的托管供应商接管保护、`plugin_generate_config` 密钥合并、启动对账收敛；代码回到 `83f3996e`（v1.0.15）的行为。
 - 撤销动机：v1.0.16 的修复由「把 Agent2API(3065) 误认为本插件服务」的误会触发，用户希望回到试用前的状态。修复本身与端口取值无关，但按用户决定回退。
 - 数据层在 revert 之前已单独还原：`p-agent2api-3065` 条目删除（备份 `providers.json.bak-restore-20261107-045419`），托管条目保持 2048 + 插件密钥 + 73 个模型；代码回退不影响运行时数据。
