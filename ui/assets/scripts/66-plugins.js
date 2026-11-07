@@ -583,7 +583,7 @@ function renderPluginCard(plugin) {
   catTd.className = 'plugin-category-cell';
   const catMap = {
     'api-gateway': 'API 网关',
-    'proxy': '代理服务',
+    'proxy': '网关服务',
     'tool': '辅助工具',
     'database': '数据存储',
     'other': '其它扩展'

@@ -83,7 +83,7 @@ function openPlatformSection(section) {
     syncPlatformConsoleHead();
     return;
   }
-  // 统计已划入代理页 tab；overview 统一跳代理「统计」
+  // 统计已划入网关页 tab；overview 统一跳代理「统计」
   if (target === 'overview') {
     if (typeof openProxyPanel === 'function') openProxyPanel('stats');
     else navigateTo('proxy');
@@ -417,7 +417,7 @@ function openProxyPanel(panelId = 'overview') {
 }
 
 /**
- * 将全局统计 KPI / 代理日志挂到代理页 stats、logs tab。
+ * 将全局统计 KPI / 网关日志挂到网关页 stats、logs tab。
  * 从 platform-proxy overview 迁移 DOM（同 id，只迁一次）。
  */
 function mountProxyStatsAndLogsPanels() {
@@ -506,20 +506,20 @@ globalThis.PROXY_PLATFORM_META = {
     title: 'Windsurf',
     short: 'Windsurf',
     icon: './assets/icons/platform-windsurf.svg',
-    subtitle: '本机代理、MITM 证书、Windsurf 配置和模型路由集中管理。'
+    subtitle: '本机网关、MITM 证书、Windsurf 配置和模型路由集中管理。'
   },
   devin: {
     label: 'Devin',
     title: 'Devin',
     short: 'Devin',
     icon: './assets/icons/platform-devin.svg',
-    subtitle: '本机代理、MITM 证书、Devin 配置和模型路由集中管理。'
+    subtitle: '本机网关、MITM 证书、Devin 配置和模型路由集中管理。'
   },
   cursor: {
     label: 'Cursor',
     short: 'Cursor',
     icon: './assets/icons/platform-cursor.svg',
-    subtitle: 'Cursor 通过本机 MITM 入口接入代理模型、对话工具流、Background Composer 和会话落盘。'
+    subtitle: 'Cursor 通过本机 MITM 入口接入内置模型、对话工具流、Background Composer 和会话落盘。'
   }
 };
 
@@ -1276,7 +1276,7 @@ async function onTargetIdeChange() {
   if (proxyRunning && typeof activeProxyTarget !== 'undefined' && activeProxyTarget) {
     const runningLabel = activeProxyTarget.charAt(0).toUpperCase() + activeProxyTarget.slice(1);
     if (ide !== 'auto' && ide !== activeProxyTarget) {
-      addLog('warn', `全局代理服务正在运行；新的 IDE 选择只影响当前页面的切换按钮`);
+      addLog('warn', `本地网关正在运行；新的 IDE 选择只影响当前页面的切换按钮`);
     }
   }
 

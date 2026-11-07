@@ -1158,7 +1158,7 @@ html[data-style="minimal"] .btn-ghost:hover:not(:disabled) {
   filter: none !important;
 }
 
-/* ── 代理状态胶囊：前置圆点在两种风格下都不需要（状态由底色 + 文字表达） ── */
+/* ── 网关状态胶囊：前置圆点在两种风格下都不需要（状态由底色 + 文字表达） ── */
 .global-proxy-pill .global-proxy-dot {
   display: none !important;
 }

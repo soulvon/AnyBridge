@@ -112,9 +112,9 @@
 
       </nav>
       <div class="topbar-right">
-        <button type="button" class="global-proxy-pill off" id="globalProxyStatusPill" title="打开代理控制台" data-action="navigateTo" data-arg="proxy">
+        <button type="button" class="global-proxy-pill off" id="globalProxyStatusPill" title="打开网关控制台" data-action="navigateTo" data-arg="proxy">
           <span class="global-proxy-dot" aria-hidden="true"></span>
-          <span id="globalProxyStatusText">代理未启动</span>
+          <span id="globalProxyStatusText">网关未启动</span>
         </button>
         <div class="topbar-action-cluster" aria-label="快捷操作">
           <div class="topbar-theme-wrap">
@@ -487,7 +487,7 @@
 
             <section class="proxy-analytics">
               <div class="proxy-analytics-hint">
-                <span>这里是代理运行状态（此刻）。历史趋势、模型排行与 CPA 账号见「统计」。</span>
+                <span>这里是网关运行状态（此刻）。历史趋势、模型排行与 CPA 账号见「统计」。</span>
                 <button type="button" class="proxy-analytics-link" data-action="navigateTo" data-arg="stats">打开统计</button>
               </div>
               <div class="proxy-kpi-grid">
@@ -495,7 +495,7 @@
                 <article class="proxy-kpi-card accent-blue">
                   <div class="proxy-kpi-label">今日请求</div>
                   <div class="proxy-kpi-value" id="stat-requests">—</div>
-                  <div class="proxy-kpi-sub" id="stat-requests-sub">代理未运行</div>
+                  <div class="proxy-kpi-sub" id="stat-requests-sub">网关未运行</div>
                 </article>
                 <article class="proxy-kpi-card accent-cyan">
                   <div class="proxy-kpi-label">Token 用量</div>
@@ -629,7 +629,7 @@
                   <div class="proxy-panel-head">
                     <div>
                       <div class="proxy-panel-title">Top 模型表现</div>
-                      <div class="proxy-panel-sub">按全局代理请求量排序</div>
+                      <div class="proxy-panel-sub">按全局网关请求量排序</div>
                     </div>
                   </div>
                   <div id="topModelsChart" class="proxy-model-table">
@@ -641,8 +641,8 @@
                   <div class="proxy-panel-head proxy-logs-head">
                     <div class="proxy-logs-title">
                       <div>
-                        <div class="proxy-panel-title">代理日志</div>
-                        <div class="proxy-panel-sub">代理运行事件、路由变更和错误输出</div>
+                        <div class="proxy-panel-title">网关日志</div>
+                        <div class="proxy-panel-sub">网关运行事件、路由变更和错误输出</div>
                       </div>
                       <span class="tag log-count" id="logCount">0 条记录</span>
                     </div>
@@ -1830,7 +1830,7 @@
                     </div>
                     <div class="provider-keys-list" id="providerKeysList"></div>
                     <div class="provider-keys-empty" id="providerKeysEmpty">
-                      添加多把密钥后可在编辑页快速切换；开启本地代理时由路由按请求轮换。
+                      添加多把密钥后可在编辑页快速切换；开启本地网关时由路由按请求轮换。
                     </div>
                   </div>
 
@@ -2037,7 +2037,7 @@
                       style="padding: 2px 8px; font-size: 10px; font-weight:700;">0 可用</span>
                     <button id="btn-refresh-models" class="btn-ghost accent"
                       style="padding: 0 10px; border-radius: 6px; display: flex; align-items: center; gap: 4px; height: 24px; font-size: 11px; font-weight: 600;"
-                      title="从 IDE 账号拉取最新模型列表（API 刷新）。若需与 IDE 下拉框一致，请启动代理后重启 IDE 并打开一次模型选择器以抓取 captured 清单。" data-action="refreshIdeModels">
+                      title="从 IDE 账号拉取最新模型列表（API 刷新）。若需与 IDE 下拉框一致，请启动网关后重启 IDE 并打开一次模型选择器以抓取 captured 清单。" data-action="refreshIdeModels">
                       <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                         stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
                         <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"></path>
@@ -2448,7 +2448,7 @@
         </div>
 
 
-        <!-- 代理模型列表 - 批量重命名弹窗 -->
+        <!-- 内置模型列表 - 批量重命名弹窗 -->
         <div id="proxyRouteRenameModal" class="editor-overlay"
           style="position:fixed;inset:0;z-index:1000;background:rgba(0,0,0,0.45);align-items:center;justify-content:center;">
           <div class="glass-card"
@@ -2531,14 +2531,14 @@
         </div>
 
 
-        <!-- 代理增强配置 -->
+        <!-- 网关增强配置 -->
         <div id="proxyEnhancementModal" class="editor-overlay"
           style="position:fixed;inset:0;z-index:1000;background:rgba(0,0,0,0.45);align-items:center;justify-content:center;">
           <div class="glass-card"
             style="width:760px;max-width:95vw;display:flex;flex-direction:column;max-height:88vh;">
             <div class="card-header" style="display:flex;align-items:center;justify-content:space-between;gap:12px;">
               <div>
-                <div class="card-title"><span class="dot"></span> 代理增强</div>
+                <div class="card-title"><span class="dot"></span> 网关增强</div>
                 <div style="font-size:11px;color:var(--text-muted);margin-top:4px;">配置手动增强能力和第三方图片理解故障转移链。</div>
               </div>
               <div style="display:flex;align-items:center;gap:8px;">
@@ -2625,7 +2625,7 @@
                   <!-- Panel: Search -->
                   <div class="proxy-enhancement-pane" data-enhancement-pane="search">
                     <label style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px;border:1px solid var(--border);border-radius:9px;background:var(--bg-input);margin-bottom:10px;">
-                      <span style="display:flex;flex-direction:column;gap:3px;min-width:0;"><strong style="font-size:12px;color:var(--text-primary);">为代理模型添加联网搜索</strong><small style="font-size:10px;color:var(--text-muted);">优先使用 Gemini / Grok / OpenAI 原生搜索；无内置搜索时由 AnyBridge 搜索源接管。</small></span>
+                      <span style="display:flex;flex-direction:column;gap:3px;min-width:0;"><strong style="font-size:12px;color:var(--text-primary);">为内置模型添加联网搜索</strong><small style="font-size:10px;color:var(--text-muted);">优先使用 Gemini / Grok / OpenAI 原生搜索；无内置搜索时由 AnyBridge 搜索源接管。</small></span>
                       <span class="toggle-switch"><input id="enhancement-webSearchEnabled" type="checkbox" data-action="toggleEnhancement" data-events="change" data-args="[&quot;webSearchEnabled&quot;]" data-pass-this><span class="toggle-slider"></span></span>
                     </label>
                     <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-bottom:12px;">
@@ -2901,7 +2901,7 @@
                 <div class="modal-container proxy-vision-test-modal" role="dialog" aria-modal="true" aria-labelledby="proxyVisionTestTitle">
                   <div class="modal-header proxy-vision-test-head">
                     <div>
-                      <div class="proxy-route-editor-kicker">代理增强 / 图片理解测试</div>
+                      <div class="proxy-route-editor-kicker">网关增强 / 图片理解测试</div>
                       <div id="proxyVisionTestTitle" class="modal-title">图片测试</div>
                     </div>
                     <button type="button" class="modal-close-icon" aria-label="关闭测试结果" data-action="closeVisionTestModal">
@@ -4811,7 +4811,7 @@
                   <div style="display: flex; align-items: center; justify-content: space-between; padding: 10px 12px; background: var(--bg-input); border-radius: 8px; border: 1px solid var(--border);">
                     <div>
                       <div style="font-size: 12.5px; font-weight: 650; color: var(--text-primary);">第三方图片理解</div>
-                      <div style="font-size: 11px; color: var(--text-muted); margin-top: 1px;">在发送图片时使用代理增强中配置的视觉模型解析图片</div>
+                      <div style="font-size: 11px; color: var(--text-muted); margin-top: 1px;">在发送图片时使用网关增强中配置的视觉模型解析图片</div>
                     </div>
                     <label class="toggle-switch" title="切换第三方图片理解">
                       <input type="checkbox" id="cursorEditThirdPartyVision">
@@ -4944,7 +4944,7 @@
                 <div class="platform-settings-panel active" id="cursor-settings-panel-diag">
                   <div class="platform-health-control-area">
                     <div class="platform-health-summary" id="cursor-health-summary">
-                      <div class="health-summary-empty" id="cursor-diag-tip-text">点击「环境预检」开始诊断 Cursor Core、根证书、本地代理密钥及模型同步状态。</div>
+                      <div class="health-summary-empty" id="cursor-diag-tip-text">点击「环境预检」开始诊断 Cursor Core、根证书、本地网关密钥及模型同步状态。</div>
                     </div>
 
                     <div class="platform-health-toolbar">
@@ -4984,7 +4984,7 @@
 
                   <div class="setting-row">
                     <div class="setting-meta">
-                      <div class="setting-label">本地代理密钥 (API Key)</div>
+                      <div class="setting-label">本地网关密钥 (API Key)</div>
                       <div class="setting-desc" id="cursor-diag-key-desc">用于 Cursor Core 安全请求 AnyBridge 本地网关进行模型转发</div>
                     </div>
                     <div class="setting-ctrl">
@@ -4994,7 +4994,7 @@
 
                   <div class="setting-row">
                     <div class="setting-meta">
-                      <div class="setting-label">已生效代理模型</div>
+                      <div class="setting-label">已生效内置模型</div>
                       <div class="setting-desc">当前 Cursor Core 纳管并成功同步到 Cursor 下拉列表的模型总数</div>
                     </div>
                     <div class="setting-ctrl">
@@ -5018,7 +5018,7 @@
                   <div class="setting-row">
                     <div class="setting-meta">
                       <div class="setting-label">重启 Cursor 客户端</div>
-                      <div class="setting-desc">安全关闭并重新拉起 Cursor IDE 客户端，使其重新建立本地 TLS 代理连接。</div>
+                      <div class="setting-desc">安全关闭并重新拉起 Cursor IDE 客户端，使其重新建立本地 TLS 网关连接。</div>
                     </div>
                     <div class="setting-ctrl">
                       <button type="button" class="btn-ghost accent" data-action="cursorRestartIdeAction">重启 Cursor IDE</button>
@@ -5746,7 +5746,7 @@
                   onclick="onClaudeDesktopHeroModeClick()" title="点击查看或切换连接模式"
                   style="height: 36px; padding: 0 14px; font-size: 13px; font-weight: 600; display: inline-flex; align-items: center; gap: 8px; border-radius: 8px; cursor: pointer; transition: all 0.2s ease;">
                   <span class="claude-desktop-mode-dot" style="width:8px;height:8px;border-radius:50%;background:#10b981;box-shadow:0 0 8px rgba(16,185,129,0.6);display:inline-block;"></span>
-                  <span>代理模式 (本地路由)</span>
+                  <span>网关模式 (本地路由)</span>
                 </button>
                 <!-- 汉化放最右（用户指定） -->
                 <button type="button" class="btn-ghost secondary platform-lang-action-btn" id="claudeLangBtn" data-action="openClaudeLangModal"
@@ -5806,7 +5806,7 @@
               </div>
             </div>
 
-            <p class="codex-safe-note" style="margin-top: 14px;">配置文件路径：<code id="claude-desktop-config-path-label" class="reveal-path" title="点击打开所在文件夹">Claude-3p/claude_desktop_config.json</code><button type="button" class="platform-config-inline-link" data-action="openPlatformRealConfigModal" data-arg="claude-desktop" title="查看并编辑配置文件原文"><span>查看配置</span><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg></button>。切换后重启 Claude Desktop 生效，使用代理模型需保持 AnyBridge 运行。</p>
+            <p class="codex-safe-note" style="margin-top: 14px;">配置文件路径：<code id="claude-desktop-config-path-label" class="reveal-path" title="点击打开所在文件夹">Claude-3p/claude_desktop_config.json</code><button type="button" class="platform-config-inline-link" data-action="openPlatformRealConfigModal" data-arg="claude-desktop" title="查看并编辑配置文件原文"><span>查看配置</span><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg></button>。切换后重启 Claude Desktop 生效，使用内置模型需保持 AnyBridge 运行。</p>
           </section>
 
           <!-- ═══════ CLAUDE DESKTOP 界面汉化与日志弹窗 ═══════ -->
@@ -6397,7 +6397,7 @@
                 <div style="display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap; padding-top: 14px; border-top: 1px solid var(--border);">
                   <div style="display: flex; align-items: center; gap: 10px;">
                     <span style="font-size: 13px; font-weight: 700; color: var(--text-secondary);">接口协议</span>
-                    <span style="font-size: 11.5px; color: var(--text-muted);">决定本地代理请求供应商时使用的端点协议</span>
+                    <span style="font-size: 11.5px; color: var(--text-muted);">决定本地网关请求供应商时使用的端点协议</span>
                   </div>
                   <div class="codex-protocol-segmented">
                     <label class="codex-segment-item">
@@ -6573,7 +6573,7 @@
               </button>
               <button class="btn-ghost accent platform-refresh-proxy" id="antigravityRefreshBtn" data-action="antigravityRefreshConsole">刷新状态</button>
               <button class="btn-ghost danger platform-stop-proxy" id="antigravityRestoreBtn" data-action="antigravityRestoreAction" disabled>停止接入</button>
-              <!-- 汉化放最右（用户指定）：独立于代理接入的能力 -->
+              <!-- 汉化放最右（用户指定）：独立于网关接入的能力 -->
               <button type="button" class="btn-ghost secondary platform-lang-action-btn" id="antigravityLangBtn" data-action="openAntigravityLangModal"
                 style="display: inline-flex; align-items: center; gap: 6px; padding: 4px 12px; border-radius: 8px; font-size: 12px; font-weight: 600; height: 30px; flex-shrink: 0;">
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink: 0;">
@@ -8632,7 +8632,7 @@
                   <span>接口协议</span>
                 </div>
                 <div style="display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap;">
-                  <span style="font-size: 12px; color: var(--text-muted);">绝大多数第三方中转及代理模型请保持默认的 OpenAI 兼容</span>
+                  <span style="font-size: 12px; color: var(--text-muted);">绝大多数第三方中转及内置模型请保持默认的 OpenAI 兼容</span>
                   <div class="codex-protocol-segmented">
                     <label class="codex-segment-item">
                       <input type="radio" name="grok-config-backend-radio" value="chat_completions" checked data-action="setGrokConfigBackendRadio" data-events="change" data-arg="chat_completions">
@@ -9888,7 +9888,7 @@
             <div class="setting-row">
               <div>
                 <div class="setting-label">绑定地址</div>
-                <div class="setting-desc">代理仅监听本机回环</div>
+                <div class="setting-desc">网关仅监听本机回环</div>
               </div>
               <div class="setting-ctrl">
                 <input class="input-sm" value="127.0.0.1" readonly>
@@ -9923,8 +9923,8 @@
             </div>
             <div class="setting-row">
               <div>
-                <div class="setting-label">保存代理端口</div>
-                <div class="setting-desc">端口变更会同步到本地代理入口；代理运行中保存会要求重启</div>
+                <div class="setting-label">保存网关端口</div>
+                <div class="setting-desc">端口变更会同步到本地网关入口；网关运行中保存会要求重启</div>
               </div>
               <div class="setting-ctrl">
                 <button type="button" class="btn-primary" data-action="saveLocalProxyPorts" data-arg="settings">保存端口</button>
@@ -9933,7 +9933,7 @@
             <div class="setting-row">
               <div>
                 <div class="setting-label">启动时自动运行</div>
-                <div class="setting-desc">应用打开时自动启动代理</div>
+                <div class="setting-desc">应用打开时自动启动网关</div>
               </div>
               <div class="setting-ctrl">
                 <div class="toggle-sm" data-config-toggle="AUTO_START_PROXY"></div>
@@ -10021,7 +10021,7 @@
               <div class="about-copy">
                 <div class="about-kicker">关于</div>
                 <h1 class="about-title">AnyBridge</h1>
-                <p class="about-desc">本地 BYOK 桥接工具，用于统一管理供应商、模型映射、本地代理和 IDE 接入配置。</p>
+                <p class="about-desc">本地 BYOK 桥接工具，用于统一管理供应商、模型映射、本地网关和 IDE 接入配置。</p>
                 <div class="about-meta-grid" aria-label="项目概要">
                   <div class="about-meta-item">
                     <span>当前版本</span>
@@ -10136,7 +10136,7 @@
                   <button type="button" class="btn-ghost warn" data-oid="health-cleanup-legacy-btn" style="display:none;" data-action="cleanupLegacyCaFromHealth">
                     清理老证书
                   </button>
-                  <button type="button" class="btn-ghost accent" data-oid="health-restart-ide-btn" data-action="restartIdeFromHealth" title="强制关闭并重新拉起 IDE，使已写入的代理配置生效（会丢失未保存的工作）">
+                  <button type="button" class="btn-ghost accent" data-oid="health-restart-ide-btn" data-action="restartIdeFromHealth" title="强制关闭并重新拉起 IDE，使已写入的网关配置生效（会丢失未保存的工作）">
                     重启 IDE
                   </button>
                 </div>
@@ -10173,8 +10173,8 @@
               
               <div class="setting-row">
                 <div class="setting-meta">
-                  <div class="setting-label">切换到代理</div>
-                  <div class="setting-desc">点击「切换到代理」时自动写入代理配置，还原直连时恢复原始备份。</div>
+                  <div class="setting-label">切换到网关</div>
+                  <div class="setting-desc">点击「切换到网关」时自动写入网关接入配置，还原直连时恢复原始备份。</div>
                 </div>
                 <div class="setting-ctrl">
                   <span class="tag" data-oid="proxySwitchModeTag">自动</span>
@@ -10184,7 +10184,7 @@
               <div class="setting-row">
                 <div class="setting-meta">
                   <div class="setting-label">重启提示</div>
-                  <div class="setting-desc">切换代理或还原直连后询问是否重启 IDE，支持设置默认自动重启。</div>
+                  <div class="setting-desc">切换网关或还原直连后询问是否重启 IDE，支持设置默认自动重启。</div>
                 </div>
                 <div class="setting-ctrl setting-restart-pref-ctrl">
                   <div class="toggle-sm" data-ide-restart-toggle data-oid="ideRestartPromptToggle" role="switch" aria-label="自动立即重启"></div>
@@ -10196,7 +10196,7 @@
               <div class="setting-row">
                 <div class="setting-meta">
                   <div class="setting-label">MITM 证书</div>
-                  <div class="setting-desc" data-oid="cert-status">首次使用请生成证书；切换到代理时会写入证书信任配置。</div>
+                  <div class="setting-desc" data-oid="cert-status">首次使用请生成证书；切换到网关时会写入证书信任配置。</div>
                 </div>
                 <div class="setting-ctrl">
                   <button type="button" class="btn-ghost accent" data-action="openCertsDir">证书目录</button>
@@ -10224,8 +10224,8 @@
                 </div>
                 <div class="setting-ctrl">
                   <div class="platform-port-badges">
-                    <span class="platform-port-pill"><span class="pill-label">MITM 代理</span><code>:7450</code></span>
-                    <span class="platform-port-pill"><span class="pill-label">直连代理</span><code>:7451</code></span>
+                    <span class="platform-port-pill"><span class="pill-label">MITM 接入</span><code>:7450</code></span>
+                    <span class="platform-port-pill"><span class="pill-label">直连接入</span><code>:7451</code></span>
                   </div>
                 </div>
               </div>
@@ -10331,7 +10331,7 @@
         </div>
       </div>
       <div class="modal-body">
-        <p id="modal-lead">代理已启动，需重启 IDE 才能生效。</p>
+        <p id="modal-lead">网关已启动，需重启 IDE 才能生效。</p>
         <p>是否立即重启？</p>
         <div class="modal-warning">
           <span class="modal-warning-icon">
@@ -10405,7 +10405,7 @@
     </div>
   </div>
 
-  <!-- 本地代理模型编辑 -->
+  <!-- 内置模型编辑 -->
   <div id="proxy-route-editor-modal" class="modal-overlay">
     <div class="modal-container proxy-route-editor-modal">
       <div class="modal-header proxy-route-editor-header">
@@ -10420,11 +10420,11 @@
             </svg>
           </span>
           <div>
-            <div class="proxy-route-editor-kicker">本地代理 / 模型列表</div>
+            <div class="proxy-route-editor-kicker">内置供应商 / 模型列表</div>
             <div class="modal-title">
               <span id="proxyRouteEditorTitle">添加模型</span>
             </div>
-            <div id="proxyRouteEditorSubtitle" class="proxy-route-editor-subtitle">从供应商模型中选择要暴露到本地代理的模型。</div>
+            <div id="proxyRouteEditorSubtitle" class="proxy-route-editor-subtitle">从供应商模型中选择要通过本地网关对外暴露的模型。</div>
           </div>
         </div>
         <button type="button" class="modal-close-icon" aria-label="关闭" data-action="closeProxyRouteEditor">
@@ -10668,7 +10668,7 @@
             <span>发布渠道</span>
             <ul>
               <li>更新检查会连接 GitHub 最新发布版本。</li>
-              <li>如果网络不可达，错误会显示在设置页和代理日志中。</li>
+              <li>如果网络不可达，错误会显示在设置页和网关日志中。</li>
             </ul>
           </article>
         </div>
@@ -10688,7 +10688,7 @@
     <div class="modal-container log-viewer-modal">
       <div class="log-viewer-header">
         <div>
-          <h2>代理日志查看器</h2>
+          <h2>网关日志查看器</h2>
           <p>按级别、关键词和时间顺序查看 AnyBridge 运行日志。</p>
         </div>
         <button type="button" class="modal-close-icon" aria-label="关闭日志查看器" data-action="closeLogViewerModal">
@@ -10776,7 +10776,7 @@
         </div>
         <div>
           <h2>把模型接入工作流，只需要四步</h2>
-          <p>按顺序配置供应商、模型映射、本地代理和平台接入。AnyBridge 会尽量保留原始配置，并把关键错误暴露出来方便排查。</p>
+          <p>按顺序配置供应商、模型映射、本地网关和平台接入。AnyBridge 会尽量保留原始配置，并把关键错误暴露出来方便排查。</p>
         </div>
         <button type="button" class="modal-close-icon onboarding-guide-close"
  aria-label="关闭快速指南" data-action="closeOnboardingGuide">
@@ -10800,7 +10800,7 @@
         </article>
         <article class="onboarding-guide-step">
           <span>03</span>
-          <strong>启动本地代理</strong>
+          <strong>启动本地网关</strong>
           <p>统一暴露 OpenAI/Anthropic 兼容入口，并启用重试和日志。</p>
         </article>
         <article class="onboarding-guide-step">
@@ -10828,14 +10828,14 @@
               <path d="M21 3v6h-6"></path>
             </svg>
           </span>
-          <span id="ide-restart-title">重启 IDE 以应用代理</span>
+          <span id="ide-restart-title">重启 IDE 以应用网关配置</span>
         </div>
       </div>
       <div class="modal-body ide-restart-body">
-        <p id="ide-restart-lead">代理状态已变更，需重启 IDE 才能生效。</p>
+        <p id="ide-restart-lead">网关状态已变更，需重启 IDE 才能生效。</p>
         <div class="ide-restart-status">
           <span class="ide-restart-status-dot"></span>
-          <span id="ide-restart-status">已写入 AnyBridge 代理配置，本地代理服务已启动。</span>
+          <span id="ide-restart-status">已写入 AnyBridge 网关配置，本地网关服务已启动。</span>
         </div>
         <div class="modal-warning">
           <span class="modal-warning-icon">

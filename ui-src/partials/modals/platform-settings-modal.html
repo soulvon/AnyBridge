@@ -73,7 +73,7 @@
                   <button type="button" class="btn-ghost warn" data-oid="health-cleanup-legacy-btn" style="display:none;" data-action="cleanupLegacyCaFromHealth">
                     清理老证书
                   </button>
-                  <button type="button" class="btn-ghost accent" data-oid="health-restart-ide-btn" data-action="restartIdeFromHealth" title="强制关闭并重新拉起 IDE，使已写入的代理配置生效（会丢失未保存的工作）">
+                  <button type="button" class="btn-ghost accent" data-oid="health-restart-ide-btn" data-action="restartIdeFromHealth" title="强制关闭并重新拉起 IDE，使已写入的网关配置生效（会丢失未保存的工作）">
                     重启 IDE
                   </button>
                 </div>
@@ -110,8 +110,8 @@
               
               <div class="setting-row">
                 <div class="setting-meta">
-                  <div class="setting-label">切换到代理</div>
-                  <div class="setting-desc">点击「切换到代理」时自动写入代理配置，还原直连时恢复原始备份。</div>
+                  <div class="setting-label">切换到网关</div>
+                  <div class="setting-desc">点击「切换到网关」时自动写入网关接入配置，还原直连时恢复原始备份。</div>
                 </div>
                 <div class="setting-ctrl">
                   <span class="tag" data-oid="proxySwitchModeTag">自动</span>
@@ -121,7 +121,7 @@
               <div class="setting-row">
                 <div class="setting-meta">
                   <div class="setting-label">重启提示</div>
-                  <div class="setting-desc">切换代理或还原直连后询问是否重启 IDE，支持设置默认自动重启。</div>
+                  <div class="setting-desc">切换网关或还原直连后询问是否重启 IDE，支持设置默认自动重启。</div>
                 </div>
                 <div class="setting-ctrl setting-restart-pref-ctrl">
                   <div class="toggle-sm" data-ide-restart-toggle data-oid="ideRestartPromptToggle" role="switch" aria-label="自动立即重启"></div>
@@ -133,7 +133,7 @@
               <div class="setting-row">
                 <div class="setting-meta">
                   <div class="setting-label">MITM 证书</div>
-                  <div class="setting-desc" data-oid="cert-status">首次使用请生成证书；切换到代理时会写入证书信任配置。</div>
+                  <div class="setting-desc" data-oid="cert-status">首次使用请生成证书；切换到网关时会写入证书信任配置。</div>
                 </div>
                 <div class="setting-ctrl">
                   <button type="button" class="btn-ghost accent" data-action="openCertsDir">证书目录</button>
@@ -161,8 +161,8 @@
                 </div>
                 <div class="setting-ctrl">
                   <div class="platform-port-badges">
-                    <span class="platform-port-pill"><span class="pill-label">MITM 代理</span><code>:7450</code></span>
-                    <span class="platform-port-pill"><span class="pill-label">直连代理</span><code>:7451</code></span>
+                    <span class="platform-port-pill"><span class="pill-label">MITM 接入</span><code>:7450</code></span>
+                    <span class="platform-port-pill"><span class="pill-label">直连接入</span><code>:7451</code></span>
                   </div>
                 </div>
               </div>

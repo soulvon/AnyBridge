@@ -52,7 +52,7 @@ globalThis.PLATFORM_DEFS = {
     vendor: 'Google',
     requiredApiFormat: 'openai',
     configHint: 'Antigravity/User/settings.json',
-    summary: '写入 jetski.cloudCodeUrl，将独立桌面端请求重定向至 AnyBridge 本地代理',
+    summary: '写入 jetski.cloudCodeUrl，将独立桌面端请求重定向至 AnyBridge 内置供应商',
     note: '支持独立 Agent 桌面控制台接入、上下文长记忆保护与模型下拉列表注入。',
   },
   'antigravity-ide': {
@@ -262,10 +262,10 @@ function platformLocalProxyCard(platformId, info) {
         : (typeof codexProviderIsCurrent === 'function' && codexProviderIsCurrent(runtime, info));
   return {
     platformId,
-    name: 'AnyBridge 本地代理',
+    name: 'AnyBridge 内置供应商',
     description: isClaude
-      ? '通过 AnyBridge Claude 兼容入口转发到代理模型列表、代理增强和日志统计。'
-      : '通过 AnyBridge OpenAI 兼容入口转发到代理模型列表、代理增强和日志统计。',
+      ? '通过 AnyBridge Claude 兼容入口转发到内置模型列表、网关增强和日志统计。'
+      : '通过 AnyBridge OpenAI 兼容入口转发到内置模型列表、网关增强和日志统计。',
     typeLabel: isOpenCode && live ? (current ? '当前使用' : '已加入') : '本地',
     tone: isOpenCode && live ? (current ? 'local live' : 'local') : 'local',
     current: !!current,
@@ -274,7 +274,7 @@ function platformLocalProxyCard(platformId, info) {
     endpoint: runtime.endpoint,
     protocol: isClaude ? 'anthropic-compatible' : ((isOpenCode || isGrok) ? 'openai-compatible' : 'responses'),
     configAction: 'openProxyRoutesFromPlatform()',
-    configLabel: '配置代理模型',
+    configLabel: '配置内置模型',
     action: `applyLocalProxyPlatformConfig(${platformJsArg(platformId)})`,
     actionLabel: '切换',
     removeAction: isOpenCode && live ? `removeOpenCodeProviderConfig(${platformJsArg(localProxyId)})` : '',
@@ -292,25 +292,25 @@ function upsertById(list, item) {
 
 async function ensureLocalProxyPlatformConfig(platformId) {
   if (platformId === 'codex') {
-    throw new Error('Codex 已使用独立配置的「路由模式（本地代理）」接入 AnyBridge 本地代理，不再支持旧版本地代理快捷卡片。');
+    throw new Error('Codex 已使用独立配置的「路由模式（本地网关）」接入 AnyBridge 内置供应商，不再支持旧版快捷卡片。');
   }
   const previous = typeof cloneProviderStore === 'function'
     ? cloneProviderStore()
     : JSON.parse(JSON.stringify(providerStore || { version: 1, providers: [] }));
   if (typeof ensureLocalProxyConfig === 'function') await ensureLocalProxyConfig({});
   const runtime = platformLocalProxyRuntime(platformId);
-  if (!runtime) throw new Error('本地代理配置未初始化');
-  if (!runtime.apiKey) throw new Error('本地代理 key 尚未生成');
+  if (!runtime) throw new Error('本地网关配置未初始化');
+  if (!runtime.apiKey) throw new Error('本地网关 key 尚未生成');
   const models = Array.isArray(runtime.models) && runtime.models.length
     ? runtime.models
     : [];
   if (!models.length) {
-    throw new Error('尚未配置启用的本地代理模型，请先到「代理 > 模型列表」添加模型。');
+    throw new Error('尚未配置启用的内置模型，请先到「网关 > 模型列表」添加模型。');
   }
   const model = runtime.defaultModel || models[0];
   const base = {
     id: platformLocalProxyConfigId(platformId),
-    name: 'AnyBridge 本地代理',
+    name: 'AnyBridge 内置供应商',
     apiHost: runtime.apiHost,
     apiPath: runtime.apiPath,
     apiKey: runtime.apiKey,
@@ -328,7 +328,7 @@ async function ensureLocalProxyPlatformConfig(platformId) {
     providerStore.claudeCodeConfigs = upsertById(providerStore.claudeCodeConfigs, { ...base, settingsConfig });
   } else if (platformId === 'opencode') {
     const settingsConfig = typeof opencodeBuildSettingsConfig === 'function'
-      ? opencodeBuildSettingsConfig('AnyBridge 本地代理', runtime.endpoint, runtime.apiKey, models, null)
+      ? opencodeBuildSettingsConfig('AnyBridge 内置供应商', runtime.endpoint, runtime.apiKey, models, null)
       : null;
     providerStore.opencodeConfigs = upsertById(providerStore.opencodeConfigs, { ...base, settingsConfig });
   } else if (platformId === 'codex') {
@@ -341,7 +341,7 @@ async function ensureLocalProxyPlatformConfig(platformId) {
   } else {
     providerStore.providers = upsertById(providerStore.providers, {
       id: platformLocalProxyConfigId(platformId),
-      name: 'AnyBridge 本地代理',
+      name: 'AnyBridge 内置供应商',
       apiHost: runtime.apiHost,
       apiPath: runtime.apiPath,
       apiKey: runtime.apiKey,
@@ -358,7 +358,7 @@ async function ensureLocalProxyPlatformConfig(platformId) {
       providerStore = typeof cloneProviderStore === 'function'
         ? cloneProviderStore(previous)
         : JSON.parse(JSON.stringify(previous));
-      throw new Error('本地代理平台配置保存失败');
+      throw new Error('本地网关平台配置保存失败');
     }
   }
   return platformLocalProxyConfigId(platformId);
@@ -372,21 +372,21 @@ async function applyLocalProxyPlatformConfig(platformId) {
   const info = platformInfoOf(platformId) || {};
   const live = isOpenCode && Array.isArray(info.liveProviderIds) && info.liveProviderIds.includes(providerId);
   const ok = await showCustomConfirm(
-    `${isOpenCode ? (live ? '将把 AnyBridge 本地代理设为 OpenCode 当前 model。' : '将把 AnyBridge 本地代理加入 OpenCode live provider 列表，并设为当前 model。') : `将把 ${def.name} 切换到「AnyBridge 本地代理」。`}\n\n模型列表：${(runtime.models || []).join(', ') || '未配置'}\n地址：${runtime.endpoint}\n\n请求会先进入 AnyBridge 全局代理服务；如果代理未启动，外部工具会连接失败。`,
-    isOpenCode ? (live ? '设为当前' : '加入并设为当前') : '切换到本地代理',
+    `${isOpenCode ? (live ? '将把 AnyBridge 内置供应商设为 OpenCode 当前 model。' : '将把 AnyBridge 内置供应商加入 OpenCode live provider 列表，并设为当前 model。') : `将把 ${def.name} 切换到「AnyBridge 内置供应商」。`}\n\n模型列表：${(runtime.models || []).join(', ') || '未配置'}\n地址：${runtime.endpoint}\n\n请求会先进入 AnyBridge 本地网关；如果网关未启动，外部工具会连接失败。`,
+    isOpenCode ? (live ? '设为当前' : '加入并设为当前') : '切换到内置供应商',
     'warn'
   );
   if (!ok) return;
   setPlatformBusy(platformId, true);
-  showSwitchProgress(platformId, '正在准备切换到本地代理…');
+  showSwitchProgress(platformId, '正在准备切换到内置供应商…');
   try {
     const result = await invoke('switch_platform', { platform: platformId, providerId });
     if (typeof loadProviders === 'function') await loadProviders();
     await refreshPlatforms({ silent: true });
-    if (typeof addLog === 'function') addLog('ok', result.message || `${def.name} 已切换到 AnyBridge 本地代理`);
-    showCustomAlert(result.message || `${def.name} 已切换到 AnyBridge 本地代理。`, isOpenCode ? '设置完成' : '切换完成', 'success');
+    if (typeof addLog === 'function') addLog('ok', result.message || `${def.name} 已切换到 AnyBridge 内置供应商`);
+    showCustomAlert(result.message || `${def.name} 已切换到 AnyBridge 内置供应商。`, isOpenCode ? '设置完成' : '切换完成', 'success');
   } catch (e) {
-    if (typeof addLog === 'function') addLog('err', `${def.name} 切换到本地代理失败: ${e}`);
+    if (typeof addLog === 'function') addLog('err', `${def.name} 切换到内置供应商失败: ${e}`);
     showCustomAlert(String(e), isOpenCode ? '设置失败' : '切换失败', 'error');
   } finally {
     hideSwitchProgress();
@@ -504,7 +504,7 @@ function codexWireApiOf(provider) {
 }
 
 /**
- * 推断 Codex 配置的上游协议 —— 只决定「本地代理 → 供应商」用哪个端点，
+ * 推断 Codex 配置的上游协议 —— 只决定「本地网关 → 供应商」用哪个端点，
  * 以及 sidecar 是否做 Responses→Chat 转换，**不写进 config.toml**。
  *
  * config.toml 里的 wire_api 恒为 "responses"：openai/codex 已删除 WireApi::Chat，
@@ -2101,7 +2101,7 @@ function renderCodexAddProviderList() {
     const isActive = codexAddSelectedProvider === p.providerId;
     const isBuiltin = isBuiltinProxyEntry(p);
     const iconHtml = isBuiltin
-      ? `<span class="cb-add-prov-icon cb-add-prov-icon-builtin" title="内置本地代理"><span>本地</span><span>代理</span></span>`
+      ? `<span class="cb-add-prov-icon cb-add-prov-icon-builtin" title="AnyBridge 内置供应商"><span>内置</span><span>供应商</span></span>`
       : `<span class="cb-add-prov-icon">${platformEsc(initial)}</span>`;
     return `
       <div class="cb-add-prov-item ${isActive ? 'active' : ''} ${enabled ? '' : 'disabled'} ${isBuiltin ? 'is-local-proxy' : ''}" data-action="selectCodexAddProvider" data-arg="${platformEsc(p.providerId)}">
@@ -2709,7 +2709,7 @@ function renderCodexConfigList(info) {
   providers.forEach(provider => {
     const baseUrl = codexTargetBaseUrl(provider);
     const current = codexProviderIsCurrent(provider, info);
-    const typeLabel = provider.routeThroughProxy === false ? '直连' : '代理';
+    const typeLabel = provider.routeThroughProxy === false ? '直连' : '网关';
     const preserveAuth = codexProviderPreservesOfficialAuth(provider);
     const needInject = codexProviderNeedsInject(provider);
     const isOfficialModel = /^gpt-/i.test(String(provider.defaultModel || '').trim());
@@ -3342,7 +3342,7 @@ function antigravityRenderTableRows() {
       : `<span style="color:var(--accent);">✦</span>`;
 
     const visionTitle = !hasVisionModels
-      ? '请先在「代理增强」中配置图片理解模型'
+      ? '请先在「网关增强」中配置图片理解模型'
       : (isVisionEnabled ? '已启用第三方图片理解（点击关闭）' : '启用后图片将使用第三方模型理解（点击启用）');
 
     html += `
@@ -3459,7 +3459,7 @@ async function antigravityToggleThirdPartyVision(id, checked) {
 
   const hasVisionModels = (modelMapStore?.visionModels?.imageModels?.length || 0) > 0;
   if (checked && !hasVisionModels) {
-    showCustomAlert('请先在「代理增强」中配置图片理解模型。', '无法启用', 'warn');
+    showCustomAlert('请先在「网关增强」中配置图片理解模型。', '无法启用', 'warn');
     antigravityRenderTableRows();
     return;
   }
@@ -3473,7 +3473,7 @@ async function antigravityBulkThirdPartyVisionAction() {
   if (!Array.isArray(providerStore?.antigravityConfigs) || _antigravitySelectedSet.size === 0) return;
   const hasVisionModels = (modelMapStore?.visionModels?.imageModels?.length || 0) > 0;
   if (!hasVisionModels) {
-    showCustomAlert('请先在「代理增强」中配置第三方图片理解模型。', '无法启用', 'warn');
+    showCustomAlert('请先在「网关增强」中配置第三方图片理解模型。', '无法启用', 'warn');
     return;
   }
 
@@ -3547,7 +3547,7 @@ async function antigravityPrimaryAction() {
 
   setPlatformBusy(target, true);
   try {
-    if (typeof addLog === 'function') addLog('info', `正在配置 ${platName} 接入 settings.json 与端点代理…`);
+    if (typeof addLog === 'function') addLog('info', `正在配置 ${platName} 接入 settings.json 与网关端点…`);
     const result = assertSwitchResultOk(
       await invoke('switch_platform', { platform: target, providerId: activeProviderId }),
       `${platName} 接入失败`
@@ -3689,7 +3689,7 @@ function renderAntigravityAddProviderList() {
     const isActive = antigravityAddSelectedProvider === p.providerId;
     const isBuiltin = isBuiltinProxyEntry(p);
     const iconHtml = isBuiltin
-      ? `<span class="cb-add-prov-icon cb-add-prov-icon-builtin" title="内置本地代理"><span>本地</span><span>代理</span></span>`
+      ? `<span class="cb-add-prov-icon cb-add-prov-icon-builtin" title="AnyBridge 内置供应商"><span>内置</span><span>供应商</span></span>`
       : `<span class="cb-add-prov-icon">${platformEsc(initial)}</span>`;
     return `
       <div class="cb-add-prov-item ${isActive ? 'active' : ''} ${enabled ? '' : 'disabled'} ${isBuiltin ? 'is-local-proxy' : ''}" data-action="selectAntigravityAddProvider" data-arg="${platformEsc(p.providerId)}">
@@ -3900,7 +3900,7 @@ async function saveAntigravityConfigEditor() {
 
   const hasVisionModels = (modelMapStore?.visionModels?.imageModels?.length || 0) > 0;
   if (useThirdPartyVision && !hasVisionModels) {
-    showCustomAlert('请先在「代理增强」中配置图片理解模型，才能启用第三方图片理解。', '无法启用图片理解', 'warn');
+    showCustomAlert('请先在「网关增强」中配置图片理解模型，才能启用第三方图片理解。', '无法启用图片理解', 'warn');
     return;
   }
 
@@ -4956,7 +4956,7 @@ function renderClaudeAddProviderList() {
     const isActive = claudeAddSelectedProvider === p.providerId;
     const isBuiltin = isBuiltinProxyEntry(p);
     const iconHtml = isBuiltin
-      ? `<span class="cb-add-prov-icon cb-add-prov-icon-builtin" title="内置本地代理"><span>本地</span><span>代理</span></span>`
+      ? `<span class="cb-add-prov-icon cb-add-prov-icon-builtin" title="AnyBridge 内置供应商"><span>内置</span><span>供应商</span></span>`
       : `<span class="cb-add-prov-icon">${platformEsc(initial)}</span>`;
     return `
       <div class="cb-add-prov-item ${isActive ? 'active' : ''} ${enabled ? '' : 'disabled'} ${isBuiltin ? 'is-local-proxy' : ''}" data-action="selectClaudeAddProvider" data-arg="${platformEsc(p.providerId)}">
@@ -5902,7 +5902,7 @@ function renderOpenCodeAddProviderList() {
     const isActive = opencodeAddSelectedProvider === p.providerId;
     const isBuiltin = isBuiltinProxyEntry(p);
     const iconHtml = isBuiltin
-      ? `<span class="cb-add-prov-icon cb-add-prov-icon-builtin" title="内置本地代理"><span>本地</span><span>代理</span></span>`
+      ? `<span class="cb-add-prov-icon cb-add-prov-icon-builtin" title="AnyBridge 内置供应商"><span>内置</span><span>供应商</span></span>`
       : `<span class="cb-add-prov-icon">${platformEsc(initial)}</span>`;
     return `
       <div class="cb-add-prov-item ${isActive ? 'active' : ''} ${enabled ? '' : 'disabled'} ${isBuiltin ? 'is-local-proxy' : ''}" data-action="selectOpenCodeAddProvider" data-arg="${platformEsc(p.providerId)}">
@@ -7051,7 +7051,7 @@ function renderGrokAddProviderList() {
     const isActive = grokAddSelectedProvider === p.providerId;
     const isBuiltin = isBuiltinProxyEntry(p);
     const iconHtml = isBuiltin
-      ? `<span class="cb-add-prov-icon cb-add-prov-icon-builtin" title="内置本地代理"><span>本地</span><span>代理</span></span>`
+      ? `<span class="cb-add-prov-icon cb-add-prov-icon-builtin" title="AnyBridge 内置供应商"><span>内置</span><span>供应商</span></span>`
       : `<span class="cb-add-prov-icon">${platformEsc(initial)}</span>`;
     return `
       <div class="cb-add-prov-item ${isActive ? 'active' : ''} ${enabled ? '' : 'disabled'} ${isBuiltin ? 'is-local-proxy' : ''}" data-action="selectGrokAddProvider" data-arg="${platformEsc(p.providerId)}">
@@ -7974,7 +7974,7 @@ function cursorRenderTableRows() {
       : `<span style="color:var(--accent);">✦</span>`;
 
     const visionTitle = !hasVisionModels
-      ? '请先在「代理增强」中配置图片理解模型'
+      ? '请先在「网关增强」中配置图片理解模型'
       : (isVisionEnabled ? '已启用第三方图片理解（点击关闭）' : '启用后图片将使用第三方模型理解（点击启用）');
 
     html += `
@@ -8181,7 +8181,7 @@ async function cursorToggleThirdPartyVision(bindingId, enabled) {
 
   const hasVisionModels = (modelMapStore?.visionModels?.imageModels?.length || 0) > 0;
   if (enabled && !hasVisionModels) {
-    showCustomAlert('请先在「代理增强」中配置图片理解模型。', '无法启用', 'warn');
+    showCustomAlert('请先在「网关增强」中配置图片理解模型。', '无法启用', 'warn');
     cursorRenderTableRows();
     return;
   }
@@ -8209,7 +8209,7 @@ async function cursorBulkThirdPartyVisionAction() {
   if (_cursorSelectedSet.size === 0) return;
   const hasVisionModels = (modelMapStore?.visionModels?.imageModels?.length || 0) > 0;
   if (!hasVisionModels) {
-    showCustomAlert('请先在「代理增强」中配置第三方图片理解模型。', '无法启用', 'warn');
+    showCustomAlert('请先在「网关增强」中配置第三方图片理解模型。', '无法启用', 'warn');
     return;
   }
 
@@ -8915,7 +8915,7 @@ async function initCursorAddPage() {
     _cursorProviderModels = [];
   }
 
-  // 注入 AnyBridge 本地代理供应商到列表首位
+  // 注入 AnyBridge 内置供应商到列表首位
   if (typeof localProxyProviderModelsEntry === 'function') {
     const lp = localProxyProviderModelsEntry();
     if (lp && Array.isArray(lp.models)) {
@@ -8937,7 +8937,7 @@ async function initCursorAddPage() {
   const searchInput = document.getElementById('cursor-add-search');
   if (searchInput) searchInput.value = '';
 
-  // 默认选中第一个有模型的供应商（优先排在最前的本地代理或第一项）
+  // 默认选中第一个有模型的供应商（优先排在最前的内置供应商或第一项）
   const sorted = platformAddVisibleProviders(_cursorProviderModels, '');
   const firstWithModels = sorted.find(p => p.models && p.models.length > 0);
   if (firstWithModels) {
@@ -8990,7 +8990,7 @@ function renderCursorAddProviderList() {
     const countDisplay = alreadyCount > 0 ? `${alreadyCount}/${availableCount}` : String(availableCount);
 
     const iconHtml = isBuiltin
-      ? `<span class="cb-add-prov-icon cb-add-prov-icon-builtin" title="内置本地代理"><span>本地</span><span>代理</span></span>`
+      ? `<span class="cb-add-prov-icon cb-add-prov-icon-builtin" title="AnyBridge 内置供应商"><span>内置</span><span>供应商</span></span>`
       : `<span class="cb-add-prov-icon">${cursorEsc(initial)}</span>`;
 
     return `
@@ -9318,7 +9318,7 @@ async function cursorSyncRoutesAction() {
     
     if (typeof addLog === 'function') addLog('ok', `模型路由热同步成功，当前可用模型数: ${result.configuredModels}`);
     await cursorRefreshConsole();
-    showCustomAlert(`已将最新 ${result.configuredModels} 个代理模型推送到 Cursor！Cursor 下拉列表将自动生效。`, '同步成功', 'success');
+    showCustomAlert(`已将最新 ${result.configuredModels} 个内置模型推送到 Cursor！Cursor 下拉列表将自动生效。`, '同步成功', 'success');
   } catch (e) {
     console.error('[cursor] sync routes failed:', e);
     if (typeof addLog === 'function') addLog('err', '模型同步失败: ' + e);
@@ -9370,7 +9370,7 @@ async function cursorPreflightAction() {
   if (cursorConsoleBusy) return;
   cursorSetBusy(true);
   const tip = document.getElementById('cursor-diag-tip-text');
-  if (tip) tip.textContent = '正在全面诊断 Cursor 接入环境（二进制、证书、代理 Key、模型路由）...';
+  if (tip) tip.textContent = '正在全面诊断 Cursor 接入环境（二进制、证书、网关 Key、模型路由）...';
   try {
     cursorEnsureBridge();
     const result = await invoke('cursor_preflight');
@@ -9378,9 +9378,9 @@ async function cursorPreflightAction() {
     await cursorRefreshConsole();
     await syncCursorSettingsModalData();
     if (tip) {
-      tip.innerHTML = '<span style="color:var(--success);font-weight:600;">✓ 环境预检全部通过：Core 二进制、CA 根证书、本地代理密钥与模型路由均已就绪。</span>';
+      tip.innerHTML = '<span style="color:var(--success);font-weight:600;">✓ 环境预检全部通过：Core 二进制、CA 根证书、本地网关密钥与模型路由均已就绪。</span>';
     }
-    showCustomAlert('Cursor Core 接入环境检查通过：\n\n✓ 二进制就绪\n✓ 本地代理 Key 已配置\n✓ AnyBridge 信任证书已就绪\n✓ 代理模型就绪', '预检通过', 'success');
+    showCustomAlert('Cursor Core 接入环境检查通过：\n\n✓ 二进制就绪\n✓ 本地网关 Key 已配置\n✓ AnyBridge 信任证书已就绪\n✓ 内置模型就绪', '预检通过', 'success');
   } catch (e) {
     if (tip) {
       const errStr = typeof escapeHtml === 'function' ? escapeHtml(String(e)) : String(e);
@@ -11724,7 +11724,7 @@ async function initCbAddPage() {
   } catch (e) {
     cbProviderModels = [];
   }
-  // 注入 AnyBridge 本地代理供应商到列表首位
+  // 注入 AnyBridge 内置供应商到列表首位
   if (typeof localProxyProviderModelsEntry === 'function') {
     const lp = localProxyProviderModelsEntry();
     cbProviderModels = cbProviderModels.filter(p => !isLocalProxyProviderEntry(p));
@@ -11764,7 +11764,7 @@ function renderCbAddProviderList() {
     const isActive = cbAddSelectedProvider === p.providerId;
     const isBuiltin = isBuiltinProxyEntry(p);
     const iconHtml = isBuiltin
-      ? `<span class="cb-add-prov-icon cb-add-prov-icon-builtin" title="内置本地代理"><span>本地</span><span>代理</span></span>`
+      ? `<span class="cb-add-prov-icon cb-add-prov-icon-builtin" title="AnyBridge 内置供应商"><span>内置</span><span>供应商</span></span>`
       : `<span class="cb-add-prov-icon">${platformEsc(initial)}</span>`;
     return `
       <div class="cb-add-prov-item ${isActive ? 'active' : ''} ${enabled ? '' : 'disabled'} ${isBuiltin ? 'is-local-proxy' : ''}" data-action="selectCbAddProvider" data-arg="${platformEsc(p.providerId)}">
@@ -12474,7 +12474,7 @@ function createManagedModelsPlatform({
     } catch (e) {
       globalThis[providerModelsKey] = [];
     }
-    // 注入 AnyBridge 本地代理供应商到首位：不想直连渠道时从这里导入模型，走 :7450 本地代理
+    // 注入 AnyBridge 内置供应商到首位：不想直连渠道时从这里导入模型，走 :7450 本地代理
     if (typeof localProxyProviderModelsEntry === 'function') {
       const lp = localProxyProviderModelsEntry();
       globalThis[providerModelsKey] = globalThis[providerModelsKey].filter(
@@ -12518,7 +12518,7 @@ function createManagedModelsPlatform({
         const isActive = globalThis[addSelectedKey] === p.providerId;
         const isBuiltin = isBuiltinProxyEntry(p);
         const iconHtml = isBuiltin
-          ? '<span class="wb-add-prov-icon wb-add-prov-icon-builtin" title="内置本地代理"><span>本地</span><span>代理</span></span>'
+          ? '<span class="wb-add-prov-icon wb-add-prov-icon-builtin" title="AnyBridge 内置供应商"><span>内置</span><span>供应商</span></span>'
           : `<span class="wb-add-prov-icon">${platformEsc(initial)}</span>`;
         return `
       <div class="wb-add-prov-item ${isActive ? 'active' : ''} ${enabled ? '' : 'disabled'} ${isBuiltin ? 'is-local-proxy' : ''}" data-action="select${prefix}AddProvider" data-arg="${platformEsc(p.providerId)}">
@@ -12825,7 +12825,7 @@ async function initWbAddPage() {
   } catch (e) {
     wbProviderModels = [];
   }
-  // 注入 AnyBridge 本地代理供应商到列表首位
+  // 注入 AnyBridge 内置供应商到列表首位
   if (typeof localProxyProviderModelsEntry === 'function') {
     const lp = localProxyProviderModelsEntry();
     wbProviderModels = wbProviderModels.filter(p => !isLocalProxyProviderEntry(p));
@@ -12865,7 +12865,7 @@ function renderWbAddProviderList() {
     const isActive = wbAddSelectedProvider === p.providerId;
     const isBuiltin = isBuiltinProxyEntry(p);
     const iconHtml = isBuiltin
-      ? `<span class="wb-add-prov-icon wb-add-prov-icon-builtin" title="内置本地代理"><span>本地</span><span>代理</span></span>`
+      ? `<span class="wb-add-prov-icon wb-add-prov-icon-builtin" title="AnyBridge 内置供应商"><span>内置</span><span>供应商</span></span>`
       : `<span class="wb-add-prov-icon">${platformEsc(initial)}</span>`;
     return `
       <div class="wb-add-prov-item ${isActive ? 'active' : ''} ${enabled ? '' : 'disabled'} ${isBuiltin ? 'is-local-proxy' : ''}" data-action="selectWbAddProvider" data-arg="${platformEsc(p.providerId)}">
@@ -13104,7 +13104,7 @@ async function initZcAddPage() {
   } catch (e) {
     zcProviderModels = [];
   }
-  // 注入 AnyBridge 本地代理供应商到列表首位
+  // 注入 AnyBridge 内置供应商到列表首位
   if (typeof localProxyProviderModelsEntry === 'function') {
     const lp = localProxyProviderModelsEntry();
     zcProviderModels = zcProviderModels.filter(p => !isLocalProxyProviderEntry(p));
@@ -13144,7 +13144,7 @@ function renderZcAddProviderList() {
     const isActive = zcAddSelectedProvider === p.providerId;
     const isBuiltin = isBuiltinProxyEntry(p);
     const iconHtml = isBuiltin
-      ? `<span class="wb-add-prov-icon zc-add-prov-icon wb-add-prov-icon-builtin" title="内置本地代理"><span>本地</span><span>代理</span></span>`
+      ? `<span class="wb-add-prov-icon zc-add-prov-icon wb-add-prov-icon-builtin" title="AnyBridge 内置供应商"><span>内置</span><span>供应商</span></span>`
       : `<span class="wb-add-prov-icon zc-add-prov-icon">${platformEsc(initial)}</span>`;
     return `
       <div class="wb-add-prov-item zc-add-prov-item ${isActive ? 'active' : ''} ${enabled ? '' : 'disabled'} ${isBuiltin ? 'is-local-proxy' : ''}" data-action="selectZcAddProvider" data-arg="${platformEsc(p.providerId)}">

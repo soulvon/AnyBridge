@@ -8386,7 +8386,7 @@ td.display-name-cell {
   white-space: nowrap;
 }
 
-/* AnyBridge 本地代理供应商特殊标识 */
+/* AnyBridge 内置供应商特殊标识 */
 .cb-add-prov-item.is-local-proxy:not(.active),
 .wb-add-prov-item.is-local-proxy:not(.active) {
   background: linear-gradient(90deg, rgba(37, 99, 235, 0.06), transparent);
@@ -8397,7 +8397,7 @@ td.display-name-cell {
   color: var(--button-on-solid);
 }
 
-/* 内置本地代理方形图标（上面本地，下面代理） */
+/* AnyBridge 内置供应商方形图标（上面本地，下面代理） */
 .cb-add-prov-icon.cb-add-prov-icon-builtin,
 .wb-add-prov-icon.wb-add-prov-icon-builtin {
   width: 32px;
@@ -8960,7 +8960,7 @@ details[open] > .platform-collapse-summary .platform-collapse-caret {
   display: block;
 }
 
-/* 平台代理页 control-bar 重组：左 图标 + 名字/介绍 上下排 */
+/* 平台网关页 control-bar 重组：左 图标 + 名字/介绍 上下排 */
 .control-bar-main {
   display: flex;
   align-items: center;
@@ -11245,7 +11245,7 @@ details[open] > .platform-collapse-summary .platform-collapse-caret {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-/* AnyBridge 本地代理供应商特殊标识 */
+/* AnyBridge 内置供应商特殊标识 */
 .proxy-route-provider-item.is-local-proxy {
   background: linear-gradient(90deg, rgba(37, 99, 235, 0.06), transparent);
 }
@@ -12940,7 +12940,7 @@ html[data-scheme="dark"] .endpoint-brand-icon-dark,
 }
 
 
-/* 代理页 · 统计 / 日志 tab 挂载区 */
+/* 网关页 · 统计 / 日志 tab 挂载区 */
 .proxy-stats-mount,
 .proxy-logs-mount {
   min-height: 240px;

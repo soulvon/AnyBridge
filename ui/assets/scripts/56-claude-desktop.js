@@ -30,7 +30,7 @@ function ensureDefaultClaudeDesktopConfig() {
 
   const defaultItem = {
     id: 'claude-desktop-default-proxy',
-    name: 'AnyBridge 代理预设',
+    name: 'AnyBridge 网关预设',
     mode: 'proxy',
     sourceProviderId: '',
     sourceProviderName: 'AnyBridge 本地网关',
@@ -224,7 +224,7 @@ function updateClaudeDesktopModeHeader(info = null) {
       <span class="claude-desktop-mode-dot" style="width:8px;height:8px;border-radius:50%;background:var(--text-muted);display:inline-block;"></span>
       <span>当前模式：官方模式</span>
     `;
-    btn.title = '当前为官方模式（未开启本地路由代理）。点击查看说明';
+    btn.title = '当前为官方模式（未开启本地路由网关）。点击查看说明';
     return;
   }
 
@@ -240,7 +240,7 @@ function updateClaudeDesktopModeHeader(info = null) {
       <span class="claude-desktop-mode-dot" style="width:8px;height:8px;border-radius:50%;background:#3b82f6;box-shadow:0 0 8px rgba(59,130,246,0.6);display:inline-block;"></span>
       <span>当前模式：直连模式</span>
     `;
-    btn.title = `当前配置「${activeCfg.name}」处于直连模式。点击可快速切换为代理模式`;
+    btn.title = `当前配置「${activeCfg.name}」处于直连模式。点击可快速切换为网关模式`;
   } else {
     btn.className = 'btn-ghost success claude-desktop-mode-badge-btn';
     btn.style.color = 'var(--accent-ok, #10b981)';
@@ -248,9 +248,9 @@ function updateClaudeDesktopModeHeader(info = null) {
     btn.style.background = 'rgba(16, 185, 129, 0.08)';
     btn.innerHTML = `
       <span class="claude-desktop-mode-dot" style="width:8px;height:8px;border-radius:50%;background:#10b981;box-shadow:0 0 8px rgba(16,185,129,0.6);display:inline-block;"></span>
-      <span>当前模式：代理模式</span>
+      <span>当前模式：网关模式</span>
     `;
-    btn.title = `当前配置「${activeCfg.name}」处于本地路由代理模式。点击可快速切换为直连模式`;
+    btn.title = `当前配置「${activeCfg.name}」处于本地路由网关模式。点击可快速切换为直连模式`;
   }
 }
 
@@ -259,7 +259,7 @@ async function onClaudeDesktopHeroModeClick() {
   const isManaged = !!currentInfo.managedByAnyBridge;
   const isOfficial = !isManaged || currentInfo.deploymentMode === '1p';
   if (isOfficial) {
-    showCustomAlert('当前处于官方默认模式。请在下方配置列表中点击「切换」启用自定义代理或直连配置。', '当前模式：官方模式', 'info');
+    showCustomAlert('当前处于官方默认模式。请在下方配置列表中点击「切换」启用自定义网关配置或直连配置。', '当前模式：官方模式', 'info');
     return;
   }
 
@@ -270,11 +270,11 @@ async function onClaudeDesktopHeroModeClick() {
 
   const currentMode = activeCfg.mode === 'direct' ? 'direct' : 'proxy';
   const targetMode = currentMode === 'direct' ? 'proxy' : 'direct';
-  const currentLabel = currentMode === 'direct' ? '直连模式' : '代理模式 (本地路由)';
-  const targetLabel = targetMode === 'direct' ? '直连模式' : '代理模式 (本地路由)';
+  const currentLabel = currentMode === 'direct' ? '直连模式' : '网关模式 (本地路由)';
+  const targetLabel = targetMode === 'direct' ? '直连模式' : '网关模式 (本地路由)';
 
   const ok = await showCustomConfirm(
-    `当前配置「${activeCfg.name}」处于【${currentLabel}】。\n\n是否切换为【${targetLabel}】？\n\n• 代理模式：通过 AnyBridge 本地路由转发，支持任意供应商与模型角色映射\n• 直连模式：客户端直连远端服务，要求供应商原生兼容 Anthropic 协议`,
+    `当前配置「${activeCfg.name}」处于【${currentLabel}】。\n\n是否切换为【${targetLabel}】？\n\n• 网关模式：通过 AnyBridge 本地路由转发，支持任意供应商与模型角色映射\n• 直连模式：客户端直连远端服务，要求供应商原生兼容 Anthropic 协议`,
     '切换连接模式',
     'info'
   );
@@ -297,7 +297,7 @@ function updateClaudeDesktopProxyBadge(running) {
   const isRunning = (typeof running === 'boolean')
     ? running
     : ((typeof globalThis.proxyRunning === 'boolean') ? globalThis.proxyRunning : false);
-  proxyBadge.textContent = isRunning ? '代理运行中' : '代理未启动';
+  proxyBadge.textContent = isRunning ? '网关运行中' : '网关未启动';
   proxyBadge.style.background = isRunning ? 'rgba(16, 185, 129, 0.15)' : 'var(--bg-glass-heavy)';
   proxyBadge.style.color = isRunning ? 'var(--accent-ok, #10B981)' : 'var(--text-muted)';
 }
@@ -839,7 +839,7 @@ function populateRoleSelects(selectedValues = {}, targetProvider = null) {
 
   if (isLocalProxy) {
     const routes = (globalThis.proxyRoutesStore?.routes || []).filter(r => r && r.enabled !== false);
-    groupLabel = `本地代理路由 (${routes.length})`;
+    groupLabel = `内置模型路由 (${routes.length})`;
     modelItems = routes.map(r => {
       const cleanId = stripClaudeDesktop1mMarker(r.id);
       const targetProvId = r.targets?.[0]?.providerId;
@@ -946,7 +946,7 @@ function onClaudeDesktopSourceSearch() {
 function getClaudeDesktopCombinedSources() {
   let providers = (globalThis.providerStore?.providers || []).filter(p => p && p.enabled !== false && !p.isLocalProxy);
 
-  // 构造并注入 AnyBridge 本地代理与 CPA 本地代理到前列，保持和 Cursor / Codex 等页面 100% 一致
+  // 构造并注入 AnyBridge 内置供应商与 CPA 内置供应商到前列，保持和 Cursor / Codex 等页面 100% 一致
   const builtinList = [];
   if (typeof localProxyProviderModelsEntry === 'function') {
     const lp = localProxyProviderModelsEntry();
@@ -963,7 +963,7 @@ function getClaudeDesktopCombinedSources() {
     }
   }
 
-  // 检查是否有 CPA 本地代理供应商
+  // 检查是否有 CPA 内置供应商供应商
   const cpaEntry = (globalThis.providerStore?.providers || []).find(p => p && (p.meta?.cpaLocal === true || p.id === 'cpa-local' || p.id === 'cpa' || p.name === 'CPA'));
   if (cpaEntry && !builtinList.some(b => b.id === cpaEntry.id)) {
     builtinList.push(cpaEntry);
@@ -1010,7 +1010,7 @@ function renderClaudeDesktopSourceList(selectedId = '') {
     const isBuiltin = typeof globalThis.isBuiltinProxyEntry === 'function' ? globalThis.isBuiltinProxyEntry(p) : (p.meta?.localProxy || p.meta?.cpaLocal || p.id === 'cpa');
 
     const iconHtml = isBuiltin
-      ? `<span class="cb-add-prov-icon cb-add-prov-icon-builtin" title="内置本地代理"><span>本地</span><span>代理</span></span>`
+      ? `<span class="cb-add-prov-icon cb-add-prov-icon-builtin" title="AnyBridge 内置供应商"><span>内置</span><span>供应商</span></span>`
       : `<span class="cb-add-prov-icon">${escapeHtml(pname.charAt(0).toUpperCase())}</span>`;
 
     const modelCount = (p.models || []).length;
@@ -1080,9 +1080,9 @@ async function fetchClaudeDesktopConfigModels() {
       haikuModel: document.getElementById('claude-desktop-config-haiku')?.value,
       fableModel: document.getElementById('claude-desktop-config-fable')?.value,
     }, p);
-    setClaudeDesktopModelStatus(`本地代理路由已刷新，共 ${routes.length} 个可用模型`, 'success');
+    setClaudeDesktopModelStatus(`内置模型路由已刷新，共 ${routes.length} 个可用模型`, 'success');
     if (typeof showBottomToast === 'function') {
-      showBottomToast(`本地代理路由已刷新，共 ${routes.length} 个可用模型`, 'success');
+      showBottomToast(`内置模型路由已刷新，共 ${routes.length} 个可用模型`, 'success');
     }
     return;
   }
@@ -1455,7 +1455,7 @@ async function saveClaudeDesktopConfigEditor(switchAfter = false) {
     apiHost,
     apiKey,
     sourceProviderId: sourceId,
-    sourceProviderName: sourceProvider ? (sourceProvider.name || sourceProvider.id) : (mode === 'proxy' ? 'AnyBridge 代理' : '直连'),
+    sourceProviderName: sourceProvider ? (sourceProvider.name || sourceProvider.id) : (mode === 'proxy' ? 'AnyBridge 内置供应商' : '直连'),
     sonnetModel,
     opusModel,
     haikuModel,

@@ -298,7 +298,7 @@
         </div>
 
 
-        <!-- 代理模型列表 - 批量重命名弹窗 -->
+        <!-- 内置模型列表 - 批量重命名弹窗 -->
         <div id="proxyRouteRenameModal" class="editor-overlay"
           style="position:fixed;inset:0;z-index:1000;background:rgba(0,0,0,0.45);align-items:center;justify-content:center;">
           <div class="glass-card"
@@ -381,14 +381,14 @@
         </div>
 
 
-        <!-- 代理增强配置 -->
+        <!-- 网关增强配置 -->
         <div id="proxyEnhancementModal" class="editor-overlay"
           style="position:fixed;inset:0;z-index:1000;background:rgba(0,0,0,0.45);align-items:center;justify-content:center;">
           <div class="glass-card"
             style="width:760px;max-width:95vw;display:flex;flex-direction:column;max-height:88vh;">
             <div class="card-header" style="display:flex;align-items:center;justify-content:space-between;gap:12px;">
               <div>
-                <div class="card-title"><span class="dot"></span> 代理增强</div>
+                <div class="card-title"><span class="dot"></span> 网关增强</div>
                 <div style="font-size:11px;color:var(--text-muted);margin-top:4px;">配置手动增强能力和第三方图片理解故障转移链。</div>
               </div>
               <div style="display:flex;align-items:center;gap:8px;">
@@ -475,7 +475,7 @@
                   <!-- Panel: Search -->
                   <div class="proxy-enhancement-pane" data-enhancement-pane="search">
                     <label style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px;border:1px solid var(--border);border-radius:9px;background:var(--bg-input);margin-bottom:10px;">
-                      <span style="display:flex;flex-direction:column;gap:3px;min-width:0;"><strong style="font-size:12px;color:var(--text-primary);">为代理模型添加联网搜索</strong><small style="font-size:10px;color:var(--text-muted);">优先使用 Gemini / Grok / OpenAI 原生搜索；无内置搜索时由 AnyBridge 搜索源接管。</small></span>
+                      <span style="display:flex;flex-direction:column;gap:3px;min-width:0;"><strong style="font-size:12px;color:var(--text-primary);">为内置模型添加联网搜索</strong><small style="font-size:10px;color:var(--text-muted);">优先使用 Gemini / Grok / OpenAI 原生搜索；无内置搜索时由 AnyBridge 搜索源接管。</small></span>
                       <span class="toggle-switch"><input id="enhancement-webSearchEnabled" type="checkbox" data-action="toggleEnhancement" data-events="change" data-args="[&quot;webSearchEnabled&quot;]" data-pass-this><span class="toggle-slider"></span></span>
                     </label>
                     <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-bottom:12px;">
@@ -751,7 +751,7 @@
                 <div class="modal-container proxy-vision-test-modal" role="dialog" aria-modal="true" aria-labelledby="proxyVisionTestTitle">
                   <div class="modal-header proxy-vision-test-head">
                     <div>
-                      <div class="proxy-route-editor-kicker">代理增强 / 图片理解测试</div>
+                      <div class="proxy-route-editor-kicker">网关增强 / 图片理解测试</div>
                       <div id="proxyVisionTestTitle" class="modal-title">图片测试</div>
                     </div>
                     <button type="button" class="modal-close-icon" aria-label="关闭测试结果" data-action="closeVisionTestModal">

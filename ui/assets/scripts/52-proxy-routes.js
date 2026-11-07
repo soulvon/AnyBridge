@@ -239,8 +239,8 @@ async function loadProxyRouteProviderModels() {
   } else {
     proxyRouteProviderModels = proxyRouteProviderModelsFromStore();
   }
-  // 故意不注入「AnyBridge 本地」供应商:本地代理 tab 自己加自己会形成死循环
-  // (本地代理路由表里的模型本来就在本地,不能再"从本地挑模型加到本地")。
+  // 故意不注入「AnyBridge 本地」供应商:网关 tab 自己加自己会形成死循环
+  // (内置模型路由表里的模型本来就在本地,不能再"从本地挑模型加到本地")。
   // 其他场景(CodeBuddy/WorkBuddy/ZCode 平台 tab 的添加模型)各自独立维护注入,
   // 不受本函数影响。
 }
@@ -317,21 +317,21 @@ async function loadProxyRoutes() {
   } catch (e) {
     globalThis.proxyRoutesStoreLoaded = false;
     globalThis.proxyRoutesLoadError = String(e || '未知原因');
-    addLog('err', '加载本地代理模型列表失败: ' + e);
+    addLog('err', '加载内置模型列表失败: ' + e);
   }
   try {
     const report = await invoke('repair_proxy_routes');
-    addLog('warn', `本地代理模型列表配置已自动修复：${report?.message || ''}${report?.backupPath ? `（原文件已备份：${report.backupPath}）` : ''}`);
+    addLog('warn', `内置模型列表配置已自动修复：${report?.message || ''}${report?.backupPath ? `（原文件已备份：${report.backupPath}）` : ''}`);
     await loadProxyRoutesOnce();
     showBottomToast('模型列表配置已自动修复，现在可以正常添加模型', 'warn');
     return;
   } catch (repairErr) {
     globalThis.proxyRoutesStoreLoaded = false;
-    addLog('err', '自动修复本地代理模型列表配置失败: ' + repairErr);
+    addLog('err', '自动修复内置模型列表配置失败: ' + repairErr);
   }
   // 自动修复也没成功（例如配置目录不可写）才显式报错
   renderProxyRoutesLoadError();
-  showCustomAlert(`本地代理模型列表加载失败，且自动修复未成功，为避免覆盖已有配置已暂停保存。失败原因：${globalThis.proxyRoutesLoadError}`, '加载失败', 'error');
+  showCustomAlert(`内置模型列表加载失败，且自动修复未成功，为避免覆盖已有配置已暂停保存。失败原因：${globalThis.proxyRoutesLoadError}`, '加载失败', 'error');
 }
 
 /** 列表未加载时补一次加载。只能在改动 proxyRoutesStore 之前调用，否则会覆盖掉刚建好的条目。*/
@@ -360,7 +360,7 @@ function renderProxyRoutesLoadError() {
 
 async function saveProxyRoutes(options = {}) {
   if (!invoke) {
-    const message = '当前环境缺少 Tauri invoke，无法保存本地代理模型列表';
+    const message = '当前环境缺少 Tauri invoke，无法保存内置模型列表';
     addLog('err', message);
     showCustomAlert(message, '保存失败', 'error');
     return false;
@@ -368,8 +368,8 @@ async function saveProxyRoutes(options = {}) {
   // 未加载成功时不写盘，并且明确报错（调用方已经改过内存数据，这里绝不能再重新加载覆盖它）。
   if (!globalThis.proxyRoutesStoreLoaded) {
     const reason = String(globalThis.proxyRoutesLoadError || '未知原因');
-    const message = `本地代理模型列表还没加载成功，为避免覆盖已有配置已放弃保存。请先点「模型列表」右上角的刷新（或下面的「重试加载」）后再操作。失败原因：${reason}`;
-    addLog('err', '保存本地代理模型列表失败: ' + reason);
+    const message = `内置模型列表还没加载成功，为避免覆盖已有配置已放弃保存。请先点「模型列表」右上角的刷新（或下面的「重试加载」）后再操作。失败原因：${reason}`;
+    addLog('err', '保存内置模型列表失败: ' + reason);
     showCustomAlert(message, '保存失败', 'error');
     return false;
   }
@@ -379,12 +379,12 @@ async function saveProxyRoutes(options = {}) {
     renderProxyRoutes();
     if (typeof syncLocalProxyUi === 'function') syncLocalProxyUi();
     if (!options.silent) {
-      addLog('ok', `本地代理模型列表已保存: ${proxyRoutesStore.routes.length} 个模型`);
-      showBottomToast('本地代理模型列表已保存', 'success');
+      addLog('ok', `内置模型列表已保存: ${proxyRoutesStore.routes.length} 个模型`);
+      showBottomToast('内置模型列表已保存', 'success');
     }
     return true;
   } catch (e) {
-    addLog('err', '保存本地代理模型列表失败: ' + e);
+    addLog('err', '保存内置模型列表失败: ' + e);
     showCustomAlert(String(e), '保存失败', 'error');
     return false;
   }
@@ -559,7 +559,7 @@ async function batchSetSelectedProxyRoutesThirdPartyVision(enabled) {
   if (!proxyRouteSelectedIds.size) return;
   const hasVisionModels = (modelMapStore?.visionModels?.imageModels?.length || 0) > 0;
   if (enabled && !hasVisionModels) {
-    showCustomAlert('请先在「代理增强」中配置第三方图片理解模型。', '无法启用', 'warn');
+    showCustomAlert('请先在「网关增强」中配置第三方图片理解模型。', '无法启用', 'warn');
     return;
   }
   const previous = cloneProxyRoutesStore();
@@ -639,8 +639,8 @@ function renderProxyRoutes() {
             <line x1="9" y1="17" x2="13" y2="17" />
           </svg>
         </div>
-        <div class="proxy-routes-empty-title">${isFiltered ? '没有匹配的模型' : '尚未配置本地代理模型'}</div>
-        <div class="proxy-routes-empty-subtitle">${isFiltered ? '换个关键词再试。' : '从供应商模型中添加到本地代理模型列表。'}</div>
+        <div class="proxy-routes-empty-title">${isFiltered ? '没有匹配的模型' : '尚未配置内置模型'}</div>
+        <div class="proxy-routes-empty-subtitle">${isFiltered ? '换个关键词再试。' : '从供应商模型中添加到内置模型列表。'}</div>
         ${isFiltered ? '' : '<button type="button" class="btn-primary proxy-routes-empty-action" data-action="openProxyRouteEditor"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>添加模型</button>'}
       </div>
     </td></tr>`;
@@ -710,7 +710,7 @@ async function openProxyRouteEditor(routeId = '') {
   if (!(await ensureProxyRoutesLoaded())) {
     proxyRouteEditingId = '';
     const reason = String(globalThis.proxyRoutesLoadError || '未知原因');
-    showCustomAlert(`本地代理模型列表还没加载成功，暂时无法添加或编辑模型。请先点「模型列表」右上角的刷新重试。失败原因：${reason}`, '打开失败', 'error');
+    showCustomAlert(`内置模型列表还没加载成功，暂时无法添加或编辑模型。请先点「模型列表」右上角的刷新重试。失败原因：${reason}`, '打开失败', 'error');
     return;
   }
   proxyRouteEditingId = String(routeId || '').trim();
@@ -751,7 +751,7 @@ async function openProxyRouteEditor(routeId = '') {
   }
   proxyRouteCustomNameTouched = !!route;
   setText('proxyRouteEditorTitle', route ? '编辑模型' : '添加模型');
-  setText('proxyRouteEditorSubtitle', route ? '默认同名转发，需要伪装或替换时再改实际模型。' : '从供应商模型中选择要暴露到本地代理的模型。');
+  setText('proxyRouteEditorSubtitle', route ? '默认同名转发，需要伪装或替换时再改实际模型。' : '从供应商模型中选择要通过本地网关对外暴露的模型。');
   setText('proxyRouteEditorConfirmBtn', route ? '保存模型' : '添加到列表');
   updateProxyRouteEditorConfirmText();
   // 「按规则重写 ID」复选框:仅新建模式显示(编辑模式不参与);状态从 modelMapStore.proxyRouteRenameRule.enabled 同步
@@ -1664,7 +1664,7 @@ function renderProxyRouteRenamePreview() {
     }
   }
   if (!total) {
-    preview.innerHTML = `<div style="font-size:11px;color:var(--text-muted);padding:6px 4px;">本地代理模型列表为空。先在「模型列表」里添加几个模型再批量命名。</div>`;
+    preview.innerHTML = `<div style="font-size:11px;color:var(--text-muted);padding:6px 4px;">内置模型列表为空。先在「模型列表」里添加几个模型再批量命名。</div>`;
     return;
   }
   const rows = list.map((item) => {
@@ -1801,7 +1801,7 @@ async function saveProxyRouteRenameFromModal() {
       }
     }
   }
-  addLog('ok', '已保存本地代理模型命名规则');
+  addLog('ok', '已保存内置模型命名规则');
   showBottomToast('命名规则已保存', 'success');
   closeProxyRouteRenameModal();
   // 刷新模型列表(渲染时套用规则显示改名后的 ID)

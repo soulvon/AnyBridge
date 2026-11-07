@@ -397,7 +397,7 @@
                   <div style="display: flex; align-items: center; justify-content: space-between; padding: 10px 12px; background: var(--bg-input); border-radius: 8px; border: 1px solid var(--border);">
                     <div>
                       <div style="font-size: 12.5px; font-weight: 650; color: var(--text-primary);">第三方图片理解</div>
-                      <div style="font-size: 11px; color: var(--text-muted); margin-top: 1px;">在发送图片时使用代理增强中配置的视觉模型解析图片</div>
+                      <div style="font-size: 11px; color: var(--text-muted); margin-top: 1px;">在发送图片时使用网关增强中配置的视觉模型解析图片</div>
                     </div>
                     <label class="toggle-switch" title="切换第三方图片理解">
                       <input type="checkbox" id="cursorEditThirdPartyVision">
@@ -530,7 +530,7 @@
                 <div class="platform-settings-panel active" id="cursor-settings-panel-diag">
                   <div class="platform-health-control-area">
                     <div class="platform-health-summary" id="cursor-health-summary">
-                      <div class="health-summary-empty" id="cursor-diag-tip-text">点击「环境预检」开始诊断 Cursor Core、根证书、本地代理密钥及模型同步状态。</div>
+                      <div class="health-summary-empty" id="cursor-diag-tip-text">点击「环境预检」开始诊断 Cursor Core、根证书、本地网关密钥及模型同步状态。</div>
                     </div>
 
                     <div class="platform-health-toolbar">
@@ -570,7 +570,7 @@
 
                   <div class="setting-row">
                     <div class="setting-meta">
-                      <div class="setting-label">本地代理密钥 (API Key)</div>
+                      <div class="setting-label">本地网关密钥 (API Key)</div>
                       <div class="setting-desc" id="cursor-diag-key-desc">用于 Cursor Core 安全请求 AnyBridge 本地网关进行模型转发</div>
                     </div>
                     <div class="setting-ctrl">
@@ -580,7 +580,7 @@
 
                   <div class="setting-row">
                     <div class="setting-meta">
-                      <div class="setting-label">已生效代理模型</div>
+                      <div class="setting-label">已生效内置模型</div>
                       <div class="setting-desc">当前 Cursor Core 纳管并成功同步到 Cursor 下拉列表的模型总数</div>
                     </div>
                     <div class="setting-ctrl">
@@ -604,7 +604,7 @@
                   <div class="setting-row">
                     <div class="setting-meta">
                       <div class="setting-label">重启 Cursor 客户端</div>
-                      <div class="setting-desc">安全关闭并重新拉起 Cursor IDE 客户端，使其重新建立本地 TLS 代理连接。</div>
+                      <div class="setting-desc">安全关闭并重新拉起 Cursor IDE 客户端，使其重新建立本地 TLS 网关连接。</div>
                     </div>
                     <div class="setting-ctrl">
                       <button type="button" class="btn-ghost accent" data-action="cursorRestartIdeAction">重启 Cursor IDE</button>

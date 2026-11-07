@@ -1266,7 +1266,7 @@ function syncFormatDropdownUi(activeFormat) {
 function openProviderEditor(id) {
   if (id) {
     const existing = providerStore.providers.find(x => x.id === id);
-    // 仅拦截虚拟内置（AnyBridge 本地代理）；CPA 等落盘内置允许编辑
+    // 仅拦截虚拟内置（AnyBridge 内置供应商）；CPA 等落盘内置允许编辑
     if (existing && isVirtualBuiltinProvider(existing)) {
       showCustomAlert('内置供应商不可编辑。', '无法编辑', 'warn');
       return;
@@ -1376,7 +1376,7 @@ async function saveProviderFromEditor() {
   const id = document.getElementById('pf-id').value;
   if (id) {
     const existing = providerStore.providers.find(x => x.id === id);
-    // 仅拦截虚拟内置（AnyBridge 本地代理）；CPA 等落盘内置允许保存
+    // 仅拦截虚拟内置（AnyBridge 内置供应商）；CPA 等落盘内置允许保存
     if (existing && isVirtualBuiltinProvider(existing)) {
       showCustomAlert('内置供应商不可编辑。', '无法保存', 'warn');
       return;

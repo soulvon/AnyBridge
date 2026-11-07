@@ -120,7 +120,7 @@ function ensureModelMapDefaults() {
   if (!modelMapStore || typeof modelMapStore !== 'object') modelMapStore = { slots: [] };
   if (!Array.isArray(modelMapStore.slots)) modelMapStore.slots = [];
   if (!Array.isArray(modelMapStore.injected)) modelMapStore.injected = [];
-  // 本地代理"模型 ID 批量重命名"规则(由代理 tab → 模型列表列头齿轮按钮设置)
+  // 内置模型"模型 ID 批量重命名"规则(由网关 tab → 模型列表列头齿轮按钮设置)
   const curRule = modelMapStore.proxyRouteRenameRule && typeof modelMapStore.proxyRouteRenameRule === 'object'
     ? modelMapStore.proxyRouteRenameRule : {};
   modelMapStore.proxyRouteRenameRule = {
@@ -274,8 +274,8 @@ function ideModelsSourcePresentation(source) {
       badgeColor: 'var(--ok, #059669)',
       badgeBorder: 'rgba(16,185,129,.28)',
       warn: false,
-      title: '代理拦截的 GetUserStatus 清单，最接近 IDE 实际下拉框',
-      hint: '当前清单来自代理实时抓取，与 IDE 模型下拉框更一致。',
+      title: '网关拦截的 GetUserStatus 清单，最接近 IDE 实际下拉框',
+      hint: '当前清单来自网关实时抓取，与 IDE 模型下拉框更一致。',
     };
   }
   if (key === 'api') {
@@ -287,7 +287,7 @@ function ideModelsSourcePresentation(source) {
       badgeBorder: 'rgba(245,158,11,.30)',
       warn: true,
       title: 'GetUserStatus API 缓存，不一定等于 IDE 实际下拉框',
-      hint: '清单来源为 api，不一定等于 IDE 实际下拉框。若模型不可见，请启动代理后重启 IDE 并打开一次模型选择器。',
+      hint: '清单来源为 api，不一定等于 IDE 实际下拉框。若模型不可见，请启动网关后重启 IDE 并打开一次模型选择器。',
     };
   }
   if (key === 'builtin') {
@@ -299,7 +299,7 @@ function ideModelsSourcePresentation(source) {
       badgeBorder: 'var(--border)',
       warn: true,
       title: '内置静态表，不一定等于 IDE 实际下拉框',
-      hint: '清单来源为 builtin（内置静态表），不一定等于 IDE 实际下拉框。可点「刷新」拉取账号模型，或启动代理后重启 IDE 并打开一次模型选择器。',
+      hint: '清单来源为 builtin（内置静态表），不一定等于 IDE 实际下拉框。可点「刷新」拉取账号模型，或启动网关后重启 IDE 并打开一次模型选择器。',
     };
   }
   if (key) {
@@ -311,7 +311,7 @@ function ideModelsSourcePresentation(source) {
       badgeBorder: 'rgba(245,158,11,.30)',
       warn: true,
       title: `清单来源：${key}`,
-      hint: `清单来源为 ${key}，不一定等于 IDE 实际下拉框。若模型不可见，请启动代理后重启 IDE 并打开一次模型选择器。`,
+      hint: `清单来源为 ${key}，不一定等于 IDE 实际下拉框。若模型不可见，请启动网关后重启 IDE 并打开一次模型选择器。`,
     };
   }
   return {
@@ -322,7 +322,7 @@ function ideModelsSourcePresentation(source) {
     badgeBorder: 'var(--border)',
     warn: true,
     title: '尚未获取清单来源',
-    hint: '尚未获取清单来源。可点「刷新」或启动代理后抓取 IDE 实际下拉框。',
+    hint: '尚未获取清单来源。可点「刷新」或启动网关后抓取 IDE 实际下拉框。',
   };
 }
 
@@ -408,7 +408,7 @@ async function refreshIdeModels(options = {}) {
       const src = (ideMeta && ideMeta.source) || 'api';
       addLog('info', `模型列表已更新：${info.email} (${info.plan_name})，${info.models.length} 个模型，来源 ${src}`);
       if (src !== 'captured') {
-        addLog('warn', `清单来源为 ${src}，不一定等于 IDE 实际下拉框；若模型不可见，请启动代理后重启 IDE 并打开一次模型选择器`);
+        addLog('warn', `清单来源为 ${src}，不一定等于 IDE 实际下拉框；若模型不可见，请启动网关后重启 IDE 并打开一次模型选择器`);
       }
     }
     return true;
@@ -605,7 +605,7 @@ async function renderModelMap() {
         const useThirdParty = s.useThirdPartyVision === true;
         const visionDisabled = !hasVisionModels ? 'disabled' : '';
         const visionTitle = !hasVisionModels
-          ? '请先在「代理增强」中配置图片理解模型'
+          ? '请先在「网关增强」中配置图片理解模型'
           : (useThirdParty ? '已启用第三方图片理解' : '启用后图片将使用第三方模型理解');
         const selected = modelMapSelectedIds.has(s.modelUid);
         return `
@@ -923,7 +923,7 @@ async function batchSetSelectedSlotsThirdPartyVision(enabled) {
   cleanupModelMapSelection();
   const hasVisionModels = (modelMapStore.visionModels?.imageModels?.length || 0) > 0;
   if (!hasVisionModels) {
-    showCustomAlert('请先在「代理增强」中配置图片理解模型。', '无法启用', 'warn');
+    showCustomAlert('请先在「网关增强」中配置图片理解模型。', '无法启用', 'warn');
     return;
   }
   const targets = (modelMapStore.slots || []).filter(s => modelMapSelectedIds.has(s.modelUid));
@@ -995,7 +995,7 @@ async function batchDeleteSelectedSlots() {
 
 
 
-// ─── 代理增强配置面板 ───
+// ─── 网关增强配置面板 ───
 function renderProxyEnhancement() {
   ensureModelMapDefaults();
   const e = modelMapStore.enhancement;
@@ -1305,7 +1305,7 @@ async function saveProxyEnhancement() {
   ensureModelMapDefaults();
   if (_enhancementSaveTimer) { clearTimeout(_enhancementSaveTimer); _enhancementSaveTimer = null; }
   if (await persistModelMap()) {
-    addLog('ok', '已保存代理增强配置');
+    addLog('ok', '已保存网关增强配置');
     await renderModelMap();
     if (typeof syncProxyEnhancementSummary === 'function') syncProxyEnhancementSummary();
     const modal = document.getElementById('proxyEnhancementModal');
@@ -3071,7 +3071,7 @@ function targetsWithSlotRoute(targets, slotUid) {
 function getAllProviderModels() {
   const list = [];
 
-  // 1. 内置 AnyBridge 本地代理供应商模型
+  // 1. 内置 AnyBridge 内置供应商模型
   if (typeof localProxyProviderModelsEntry === 'function') {
     const lp = localProxyProviderModelsEntry();
     if (lp && Array.isArray(lp.models) && lp.models.length > 0) {
@@ -3090,7 +3090,7 @@ function getAllProviderModels() {
     }
   }
 
-  // 2. 遍历其他启用的供应商（排除重复的本地代理）
+  // 2. 遍历其他启用的供应商（排除重复的内置供应商）
   (providerStore.providers || []).forEach(p => {
     if (p.enabled !== false && p.meta?.codexConfig !== true && !isLocalProxyProvider(p)) {
       const models = Array.isArray(p.models) && p.models.length > 0 ? p.models : (p.defaultModel ? [p.defaultModel] : []);
@@ -3134,7 +3134,7 @@ function renderMappingModelCatalog() {
   const providerBar = document.getElementById('mappingCatalogProviderBar');
   const providerIds = [...new Set(allModels.map(m => m.providerId))];
 
-  // 排序供应商筛选胶囊：内置代理（AnyBridge 第一、CPA 第二、其它内置第三）固定靠前排在最前面，其余常规第三方供应商按名称字母正序排序
+  // 排序供应商筛选胶囊：内置供应商（AnyBridge 第一、CPA 第二、其它内置第三）固定靠前排在最前面，其余常规第三方供应商按名称字母正序排序
   providerIds.sort((a, b) => {
     const provA = (providerStore.providers || []).find(p => p.id === a || p.providerId === a)
       || (a === (globalThis.LOCAL_PROXY_PROVIDER_ID || 'anybridge-local-proxy') ? { id: a, name: 'AnyBridge', meta: { localProxy: true } } : { id: a, name: a });
@@ -3435,7 +3435,7 @@ function renderSlotCatalogList() {
         : '还没有当前账号槽位数据';
       const emptyHint = accountTotal > 0
         ? '当前账号已有槽位数据，但被搜索词或品牌筛选过滤掉了。可清空筛选，或先查看全部/内置槽位。'
-        : '需要先通过代理抓取 Windsurf 下拉清单，或点击刷新读取当前 IDE 账号模型。';
+        : '需要先通过网关抓取 Windsurf 下拉清单，或点击刷新读取当前 IDE 账号模型。';
       body.innerHTML = `
         <div style="display:flex;flex-direction:column;gap:12px;align-items:center;text-align:center;color:var(--text-muted);padding:30px 16px;font-size:12px;line-height:1.55;">
           <div style="font-weight:700;color:var(--text-secondary);">${emptyTitle}</div>

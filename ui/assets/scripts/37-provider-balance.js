@@ -85,7 +85,7 @@ function balanceAgeText(at) {
 
 const REFRESH_ICON = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"></path><polyline points="21 3 21 9 15 9"></polyline></svg>`;
 
-/** 卡片里的一行余额区。内置供应商（本地代理 / CPA）没有余额概念，不展示。 */
+/** 卡片里的一行余额区。内置供应商（本地网关 / CPA）没有余额概念，不展示。 */
 globalThis.providerBalanceRowHtml = function (provider) {
   if (!provider || !provider.id) return '';
   const state = (globalThis.providerBalanceMap || {})[provider.id];

@@ -731,7 +731,7 @@ html[data-nav-icons="hidden"] .tab-nav .tab-icon {
   transform: translateY(-0.5px);
 }
 
-/* Codex / Claude Code 各种类型小角标（官方/代理/第三方）：素雅中性中阶胶囊 */
+/* Codex / Claude Code 各种类型小角标（官方/网关/第三方）：素雅中性中阶胶囊 */
 
 [data-style="minimal"] .codex-config-badge,
 [data-style="minimal"] .codex-config-badge-success,

@@ -5,7 +5,7 @@
 
             <section class="proxy-analytics">
               <div class="proxy-analytics-hint">
-                <span>这里是代理运行状态（此刻）。历史趋势、模型排行与 CPA 账号见「统计」。</span>
+                <span>这里是网关运行状态（此刻）。历史趋势、模型排行与 CPA 账号见「统计」。</span>
                 <button type="button" class="proxy-analytics-link" data-action="navigateTo" data-arg="stats">打开统计</button>
               </div>
               <div class="proxy-kpi-grid">
@@ -13,7 +13,7 @@
                 <article class="proxy-kpi-card accent-blue">
                   <div class="proxy-kpi-label">今日请求</div>
                   <div class="proxy-kpi-value" id="stat-requests">—</div>
-                  <div class="proxy-kpi-sub" id="stat-requests-sub">代理未运行</div>
+                  <div class="proxy-kpi-sub" id="stat-requests-sub">网关未运行</div>
                 </article>
                 <article class="proxy-kpi-card accent-cyan">
                   <div class="proxy-kpi-label">Token 用量</div>
@@ -147,7 +147,7 @@
                   <div class="proxy-panel-head">
                     <div>
                       <div class="proxy-panel-title">Top 模型表现</div>
-                      <div class="proxy-panel-sub">按全局代理请求量排序</div>
+                      <div class="proxy-panel-sub">按全局网关请求量排序</div>
                     </div>
                   </div>
                   <div id="topModelsChart" class="proxy-model-table">
@@ -159,8 +159,8 @@
                   <div class="proxy-panel-head proxy-logs-head">
                     <div class="proxy-logs-title">
                       <div>
-                        <div class="proxy-panel-title">代理日志</div>
-                        <div class="proxy-panel-sub">代理运行事件、路由变更和错误输出</div>
+                        <div class="proxy-panel-title">网关日志</div>
+                        <div class="proxy-panel-sub">网关运行事件、路由变更和错误输出</div>
                       </div>
                       <span class="tag log-count" id="logCount">0 条记录</span>
                     </div>

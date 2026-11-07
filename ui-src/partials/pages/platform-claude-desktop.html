@@ -13,7 +13,7 @@
                   onclick="onClaudeDesktopHeroModeClick()" title="点击查看或切换连接模式"
                   style="height: 36px; padding: 0 14px; font-size: 13px; font-weight: 600; display: inline-flex; align-items: center; gap: 8px; border-radius: 8px; cursor: pointer; transition: all 0.2s ease;">
                   <span class="claude-desktop-mode-dot" style="width:8px;height:8px;border-radius:50%;background:#10b981;box-shadow:0 0 8px rgba(16,185,129,0.6);display:inline-block;"></span>
-                  <span>代理模式 (本地路由)</span>
+                  <span>网关模式 (本地路由)</span>
                 </button>
                 <!-- 汉化放最右（用户指定） -->
                 <button type="button" class="btn-ghost secondary platform-lang-action-btn" id="claudeLangBtn" data-action="openClaudeLangModal"
@@ -73,7 +73,7 @@
               </div>
             </div>
 
-            <p class="codex-safe-note" style="margin-top: 14px;">配置文件路径：<code id="claude-desktop-config-path-label" class="reveal-path" title="点击打开所在文件夹">Claude-3p/claude_desktop_config.json</code><button type="button" class="platform-config-inline-link" data-action="openPlatformRealConfigModal" data-arg="claude-desktop" title="查看并编辑配置文件原文"><span>查看配置</span><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg></button>。切换后重启 Claude Desktop 生效，使用代理模型需保持 AnyBridge 运行。</p>
+            <p class="codex-safe-note" style="margin-top: 14px;">配置文件路径：<code id="claude-desktop-config-path-label" class="reveal-path" title="点击打开所在文件夹">Claude-3p/claude_desktop_config.json</code><button type="button" class="platform-config-inline-link" data-action="openPlatformRealConfigModal" data-arg="claude-desktop" title="查看并编辑配置文件原文"><span>查看配置</span><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg></button>。切换后重启 Claude Desktop 生效，使用内置模型需保持 AnyBridge 运行。</p>
           </section>
 
           <!-- ═══════ CLAUDE DESKTOP 界面汉化与日志弹窗 ═══════ -->

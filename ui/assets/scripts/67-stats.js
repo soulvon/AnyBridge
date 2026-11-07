@@ -742,7 +742,7 @@ function collectRankRows(series) {
     const g = STATS_STATE.gateway;
     list.push({
       name: 'AnyBridge 本地网关',
-      badge: '实时代理',
+      badge: '实时网关',
       requests: Number(g.requests) || 0,
       tokens: (Number(g.inputTokens) || 0) + (Number(g.outputTokens) || 0) + (Number(g.cachedTokens) || 0),
     });
@@ -798,7 +798,7 @@ function renderStatsSourcesDeck() {
     cards.push(`
       <div class="ez-channel-card">
         <div class="ez-ch-top">
-          <span class="ez-ch-name">AnyBridge 网关代理</span>
+          <span class="ez-ch-name">AnyBridge 本地网关</span>
           <span class="ez-ch-badge">核心通道</span>
         </div>
         <div class="ez-ch-stats">

@@ -127,7 +127,7 @@
     linear-gradient(180deg, color-mix(in srgb, var(--bg-primary) 55%, var(--bg-card)), var(--bg-primary));
 }
 .log-body:empty::before {
-  content: '暂无日志，启动代理后会在这里显示运行事件';
+  content: '暂无日志，启动网关后会在这里显示运行事件';
   display: flex;
   align-items: center;
   justify-content: center;

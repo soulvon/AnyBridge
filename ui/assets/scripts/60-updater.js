@@ -599,15 +599,15 @@ function toggleUpdaterErrorDetails() {
 
 function cancelUpdateDownload() {
   // 注意：Tauri updater 无取消 API，后端下载会继续并完成安装（静默生效）。
-  // 这里只是切换 UI 并如实告知用户：下载转入后台、代理已暂停、重启后生效。
+  // 这里只是切换 UI 并如实告知用户：下载转入后台、网关已暂停、重启后生效。
   isDownloading = false;
   updaterRetryCount = 0;
   const barEl = document.getElementById('updater-progress-bar');
   const textEl = document.getElementById('updater-progress-text') || document.getElementById('updater-progress-percent');
   if (barEl) barEl.style.width = '0%';
   if (textEl) textEl.textContent = '下载中... 0%';
-  logUpdaterEvent('info', '用户选择稍后：更新将在后台继续，完成后重启应用生效（本地代理已暂停）');
-  addLog('info', '更新转入后台继续，完成后重启 AnyBridge 生效（本地代理已随更新暂停）');
+  logUpdaterEvent('info', '用户选择稍后：更新将在后台继续，完成后重启应用生效（本地网关已暂停）');
+  addLog('info', '更新转入后台继续，完成后重启 AnyBridge 生效（本地网关已随更新暂停）');
   setUpdaterUIState('available');
 }
 
@@ -744,8 +744,8 @@ async function startDownloadAndUpdate() {
       showUpdaterError(userMsg, errMsg);
       setUpdaterUIState('error');
       // 失败时后台代理已被暂停以释放更新文件占用，明确告知恢复方式
-      logUpdaterEvent('warn', '更新失败：本地代理已暂停，重启 AnyBridge 后自动恢复');
-      addLog('warn', '更新失败：本地代理已暂停，重启 AnyBridge 后自动恢复');
+      logUpdaterEvent('warn', '更新失败：本地网关已暂停，重启 AnyBridge 后自动恢复');
+      addLog('warn', '更新失败：本地网关已暂停，重启 AnyBridge 后自动恢复');
     }
   } finally {
     isDownloading = false;
@@ -769,7 +769,7 @@ function bindProxyButtonHandlers() {
     e.stopPropagation();
     toggleProxy(btn.dataset.proxyAction || 'toggle').catch(err => {
       _diag('toggleProxy error: ' + err);
-      addLog('err', '代理操作异常: ' + err);
+      addLog('err', '网关操作异常: ' + err);
     });
   };
   btn.addEventListener('click', handler);

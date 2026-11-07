@@ -2742,7 +2742,7 @@ html[data-scheme="dark"] .model-item-icon-image .model-icon-image-dark,
   line-height: 1;
   border-radius: 7px;
 }
-/* ─── 内置供应商（本地代理）样式 ─── */
+/* ─── 内置供应商（本地网关）样式 ─── */
 .provider-builtin-badge {
   display: inline-flex;
   align-items: center;

@@ -239,13 +239,13 @@ function slotSourceInfo(uidOrModel) {
     return {
       state: 'account',
       label: '当前账号',
-      title: '当前登录账号在 Windsurf 下拉中可见的模型槽位（含代理抓取的完整清单），默认优先使用',
+      title: '当前登录账号在 Windsurf 下拉中可见的模型槽位（含网关抓取的完整清单），默认优先使用',
     };
   }
   return {
     state: 'extended',
     label: '内置槽位',
-    title: '来自内置/历史扩展目录，不在当前账号下拉里；切换到代理后仍可用于 BYOK 映射',
+    title: '来自内置/历史扩展目录，不在当前账号下拉里；切换到网关后仍可用于 BYOK 映射',
   };
 }
 
@@ -303,7 +303,7 @@ function isBuiltinProvider(p) {
   return isLocalProxyProvider(p) || isCpaLocalProvider(p) || isPluginLocalProvider(p);
 }
 
-/** 仅前端注入、不落盘的内置供应商（AnyBridge 本地代理） */
+/** 仅前端注入、不落盘的内置供应商（AnyBridge 内置供应商） */
 function isVirtualBuiltinProvider(p) {
   return isLocalProxyProvider(p);
 }
@@ -311,7 +311,7 @@ function isVirtualBuiltinProvider(p) {
 globalThis.LOCAL_PROXY_PROVIDER_ID = 'anybridge-local-proxy';
 globalThis.CPA_LOCAL_PROVIDER_ID = 'cpa-local';
 
-/** 构建 AnyBridge 本地代理供应商的模型列表条目（供各「添加模型」页面使用） */
+/** 构建 AnyBridge 内置供应商的模型列表条目（供各「添加模型」页面使用） */
 function localProxyProviderModelsEntry() {
   const port = (typeof getLocalProxyPort === 'function') ? getLocalProxyPort() : 7450;
   const apiKey = (typeof getLocalProxyKeyValue === 'function') ? getLocalProxyKeyValue() : '';
@@ -337,7 +337,7 @@ function localProxyProviderModelsEntry() {
   };
 }
 
-/** 判断供应商条目是否为 AnyBridge 本地代理 */
+/** 判断供应商条目是否为 AnyBridge 内置供应商 */
 function isLocalProxyProviderEntry(p) {
   return !!(p && (p.providerId === LOCAL_PROXY_PROVIDER_ID || p.id === LOCAL_PROXY_PROVIDER_ID || p.isLocalProxy === true || p.meta?.localProxy === true));
 }
@@ -837,7 +837,7 @@ const PROVIDER_ACTION_ICON_PATHS = {
   delete: '<polyline points="3 6 5 6 21 6"></polyline><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path><path d="M10 11v6M14 11v6"></path><path d="M9 6V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"></path>',
 };
 
-// 供应商行操作统一使用图标按钮（与代理模型列表 /.btn-icon 一致）
+// 供应商行操作统一使用图标按钮（与内置模型列表 /.btn-icon 一致）
 function providerActionIconButtonHtml(icon, { action, arg, label, title = '', extraClass = '' }) {
   const fullLabel = title || label;
   return `<button class="btn-icon model-map-action-btn provider-list-icon-btn${extraClass ? ` ${extraClass}` : ''}" data-action="${action}" data-arg="${escAttr(arg)}" title="${escAttr(fullLabel)}" aria-label="${escAttr(label)}">
@@ -881,7 +881,7 @@ function ensureProviderUnlockModal() {
         <div class="modal-header provider-unlock-head">
           <div>
             <div class="modal-title" id="provider-unlock-title">供应商解锁限制</div>
-            <div class="provider-unlock-sub" id="provider-unlock-sub">解锁限制后，该供应商可通过代理转发接入其他平台。</div>
+            <div class="provider-unlock-sub" id="provider-unlock-sub">解锁限制后，该供应商可通过网关转发接入其他平台。</div>
           </div>
           <button class="modal-close-icon" data-action="closeProviderUnlockModal" aria-label="关闭解锁限制弹窗">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"></path><path d="m6 6 12 12"></path></svg>
@@ -931,7 +931,7 @@ function renderProviderUnlockModal() {
   if (!body || !p) return;
   normalizeProviderUnlocks(p);
   if (title) title.textContent = `供应商解锁限制：${p.name || p.id}`;
-  if (sub) sub.textContent = '解锁限制后，该供应商可通过代理转发接入其他平台。';
+  if (sub) sub.textContent = '解锁限制后，该供应商可通过网关转发接入其他平台。';
   body.innerHTML = `
     <div class="provider-unlock-list">
       ${providerUnlockRowHtml(p, 'codex', 'Codex', '使用 Responses API 解锁限制模板')}

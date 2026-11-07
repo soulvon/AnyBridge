@@ -157,7 +157,7 @@ function getLocalProxyRuntimeConfig(platformId = 'codex') {
   const model = getLocalProxyDefaultModel(format) || models[0];
   return {
     id: `anybridge-local-proxy-${platformId}`,
-    name: 'AnyBridge 本地代理',
+    name: 'AnyBridge 内置供应商',
     apiHost: endpoint.apiHost,
     apiPath: endpoint.apiPath,
     apiKey: getLocalProxyKeyValue(),
@@ -215,7 +215,7 @@ function syncLocalProxyUi() {
   forEachElementAlias('route-direct', el => {
     el.value = `:${getLocalProxyInferencePort()}`;
   });
-  setText('route-port-desc', `MITM 代理 :${getLocalProxyPort()} / 直连代理 :${getLocalProxyInferencePort()}`);
+  setText('route-port-desc', `MITM 接入 :${getLocalProxyPort()} / 直连接入 :${getLocalProxyInferencePort()}`);
   syncProxyEnhancementSummary();
   updateProxyPresetSnippet();
 }
@@ -429,7 +429,7 @@ function syncIdeProxyButton() {
   // 「停止接入」必须先同步，且不能依赖 proxyBtn 是否存在——
   // 平台控制台页（如 Devin）只有停止按钮、没有一键接入按钮，
   // 原先 `if (!btn) return` 会让这里直接跳过，导致未接入时按钮仍可点，
-  // 点了才弹「当前未接入代理」（用户感知为"点不了停止"）。
+  // 点了才弹「当前未接入网关」（用户感知为"点不了停止"）。
   const restoreBtn = document.getElementById('proxyRestoreBtn');
   if (restoreBtn) {
     restoreBtn.textContent = _t('停止接入');
@@ -454,7 +454,7 @@ function syncIdeProxyButton() {
       icon.innerHTML = '<path d="M20 6 9 17l-5-5" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"/>';
     }
     if (text) text.textContent = _t('已接入');
-    if (stateText) stateText.textContent = proxyRunning ? _t('代理运行中') : _t('代理未运行');
+    if (stateText) stateText.textContent = proxyRunning ? _t('网关运行中') : _t('网关未运行');
     btn.setAttribute('aria-label', `${label} ${_t('已接入')}`);
     return;
   }
@@ -475,7 +475,7 @@ async function refreshIdeProxyStatus(targetOverride = '') {
     syncIdeProxyButton();
     return ideProxyStatusByTarget[target];
   } catch (e) {
-    addLog('warn', `${ideDisplayLabel(target)} 代理切换状态读取失败: ${e}`);
+    addLog('warn', `${ideDisplayLabel(target)} 网关切换状态读取失败: ${e}`);
     syncIdeProxyButton();
     return null;
   }
@@ -496,9 +496,9 @@ async function ensureLocalProxyConfig(values = {}) {
       await invoke('save_config', { values: current });
     } catch (e) {
       localProxyKey = previousKey;
-      addLog('err', '生成本地代理 key 后保存失败: ' + e);
+      addLog('err', '生成本地网关 key 后保存失败: ' + e);
       if (typeof showCustomAlert === 'function') {
-        showCustomAlert(String(e), '本地代理 key 保存失败', 'error');
+        showCustomAlert(String(e), '本地网关 key 保存失败', 'error');
       }
     }
   }
@@ -515,7 +515,7 @@ async function persistLocalProxyConfig() {
     await invoke('save_config', { values: current });
     return true;
   } catch (e) {
-    addLog('err', '保存本地代理配置失败: ' + e);
+    addLog('err', '保存本地网关配置失败: ' + e);
     return false;
   }
 }
@@ -550,7 +550,7 @@ async function saveLocalProxyPorts(source = 'proxy') {
     const changed = nextApiPort !== getLocalProxyPort() || nextInferencePort !== getLocalProxyInferencePort();
     if (proxyRunning && changed) {
       const ok = await showCustomConfirm(
-        '修改端口需要重启全局代理服务。保存后会立即重启代理，已经写入外部工具的本地代理地址需要重新应用或复制。',
+        '修改端口需要重启本地网关。保存后会立即重启网关，已经写入外部工具的本地网关地址需要重新应用或复制。',
         '保存端口并重启',
         'warn'
       );
@@ -568,20 +568,20 @@ async function saveLocalProxyPorts(source = 'proxy') {
       localProxyPort = previousApiPort;
       localProxyInferencePort = previousInferencePort;
       syncLocalProxyUi();
-      showCustomAlert('本地代理端口保存失败，已恢复原端口。', '保存失败', 'error');
+      showCustomAlert('本地网关端口保存失败，已恢复原端口。', '保存失败', 'error');
       return;
     }
     syncLocalProxyUi();
     if (typeof renderPlatformDetailStatuses === 'function') renderPlatformDetailStatuses();
-    addLog('ok', `本地代理端口已保存: ${nextApiPort} / ${nextInferencePort}`);
+    addLog('ok', `本地网关端口已保存: ${nextApiPort} / ${nextInferencePort}`);
     if (proxyRunning && changed) {
       await restartGlobalProxyService();
     } else {
-      showCustomAlert('本地代理端口已保存。', '保存完成', 'success');
+      showCustomAlert('本地网关端口已保存。', '保存完成', 'success');
     }
   } catch (e) {
     syncLocalProxyUi();
-    addLog('err', '保存本地代理端口失败: ' + e);
+    addLog('err', '保存本地网关端口失败: ' + e);
     showCustomAlert(String(e.message || e), '保存失败', 'error');
   }
 }
@@ -613,14 +613,14 @@ async function copyLocalProxyValue(kind) {
             ? localProxyModelsUrl()
             : localProxyBaseUrl('openai');
   if (!value) {
-    addLog('warn', '本地代理 key 尚未生成');
+    addLog('warn', '本地网关 key 尚未生成');
     return;
   }
-  await copyTextToClipboard(value, kind === 'key' ? '本地 key' : (kind === 'unified' ? '统一 Base URL' : '本地代理地址'));
+  await copyTextToClipboard(value, kind === 'key' ? '本地 key' : (kind === 'unified' ? '统一 Base URL' : '本地网关地址'));
 }
 
 async function regenerateLocalProxyKey() {
-  const ok = await showCustomConfirm('重新生成后，已经写入外部工具的本地代理 key 需要重新应用。', '重新生成本地 key', 'warn');
+  const ok = await showCustomConfirm('重新生成后，已经写入外部工具的本地网关 key 需要重新应用。', '重新生成本地 key', 'warn');
   if (!ok) return;
   const previousKey = localProxyKey;
   localProxyKey = generateLocalProxyKeyValue();
@@ -628,12 +628,12 @@ async function regenerateLocalProxyKey() {
   if (!saved) {
     localProxyKey = previousKey;
     syncLocalProxyUi();
-    showCustomAlert('本地代理 key 保存失败，已恢复原 key。', '保存失败', 'error');
+    showCustomAlert('本地网关 key 保存失败，已恢复原 key。', '保存失败', 'error');
     return;
   }
   syncLocalProxyUi();
   if (typeof renderPlatformDetailStatuses === 'function') renderPlatformDetailStatuses();
-  addLog('ok', '本地代理 key 已重新生成');
+  addLog('ok', '本地网关 key 已重新生成');
 }
 // 防连点:记录进行中的 toggle key,同一目标的并发操作会被忽略,避免后写覆盖先写。
 globalThis._inFlightToggles = new Set();
@@ -668,8 +668,8 @@ function setStatusPill(running, status = {}) {
   const ideLabel = ideDisplayLabel(ide);
   const ideStatus = ideProxyStatusByTarget[ide] || {};
   const subText = ideStatus.patched
-    ? (proxyRunning ? `已切到代理 · ${ideLabel} · ${getLocalProxyPort()}` : `已切到代理，代理未运行 · ${ideLabel}`)
-    : `未切到代理 · ${ideLabel} · ${getLocalProxyPort()}`;
+    ? (proxyRunning ? `已切到网关 · ${ideLabel} · ${getLocalProxyPort()}` : `已切到网关，网关未运行 · ${ideLabel}`)
+    : `未切到网关 · ${ideLabel} · ${getLocalProxyPort()}`;
   [sub, ...platformSubs].filter(Boolean).forEach(el => { el.textContent = subText; });
   updateGlobalProxyStatusPill(proxyRunning);
   updateProxyPageState(proxyRunning);
@@ -715,7 +715,7 @@ async function runEnvironmentCheck(options) {
 }
 
 function promptInstallCertificateBeforeProxy() {
-  const message = '切换到代理前需要安装本地证书，IDE 才能信任本机代理。';
+  const message = '切换到网关前需要安装本地证书，IDE 才能信任本机代理。';
   return new Promise((resolve) => {
     const modal = document.getElementById('custom-confirm-modal');
     const titleEl = modal?.querySelector('.modal-title');
@@ -728,9 +728,9 @@ function promptInstallCertificateBeforeProxy() {
 
     if (!modal || !btnCancel || !btnConfirm) {
       if (typeof showCustomConfirm === 'function') {
-        showCustomConfirm(message + '\n\n是否现在安装证书并继续切换到代理？', '需要安装证书', 'warn').then(resolve);
+        showCustomConfirm(message + '\n\n是否现在安装证书并继续切换到网关？', '需要安装证书', 'warn').then(resolve);
       } else {
-        resolve(confirm(message + '\n\n是否现在安装证书并继续切换到代理？'));
+        resolve(confirm(message + '\n\n是否现在安装证书并继续切换到网关？'));
       }
       return;
     }
@@ -758,10 +758,10 @@ function promptInstallCertificateBeforeProxy() {
         '<span>需要安装证书</span>';
     }
     if (leadEl) leadEl.textContent = message;
-    if (questionEl) questionEl.textContent = '点击「安装证书并继续」后，应用会自动安装证书，安装成功就继续切换到代理。';
+    if (questionEl) questionEl.textContent = '点击「安装证书并继续」后，应用会自动安装证书，安装成功就继续切换到网关。';
     if (warningEl) warningEl.style.display = '';
     if (warningTextEl) {
-      warningTextEl.innerHTML = '如果系统弹出授权窗口，请选择<strong>是</strong>。这是本机代理证书，只用于让 IDE 信任当前电脑上的代理。';
+      warningTextEl.innerHTML = '如果系统弹出授权窗口，请选择<strong>是</strong>。这是本机网关证书，只用于让 IDE 信任当前电脑上的网关。';
     }
     btnCancel.textContent = '暂不切换';
     btnConfirm.textContent = '安装证书并继续';
@@ -855,7 +855,7 @@ async function toggleProxy(mode = 'toggle') {
   try {
     if (!invoke && !bindTauriBridge()) {
       _diag('toggleProxy abort: invoke unavailable');
-      addLog('err', 'Tauri 通道未就绪，代理切换不可用。请重启应用后重试。');
+      addLog('err', 'Tauri 通道未就绪，网关切换不可用。请重启应用后重试。');
       return;
     }
 
@@ -867,18 +867,18 @@ async function toggleProxy(mode = 'toggle') {
     if (mode === 'proxy' && patched) {
       if (!proxyRunning) {
         setProxyPlatformActionBusy(true);
-        setProxyButtonBusyText('启动代理...');
+        setProxyButtonBusyText('启动网关...');
         setGlobalProxyBusy(true, '代理启动中');
         try {
           await invoke('start_proxy_service');
-          addLog('ok', '全局代理服务已自动启动');
+          addLog('ok', '本地网关已自动启动');
         } catch (e) {
           if (String(e).includes('代理已在运行')) {
             addLog('warn', '代理服务已在运行，已刷新状态');
           } else {
             updateGlobalProxyStatusPill(false, 'error');
             updateProxyPageState(false, 'error');
-            throw new Error('自动启动全局代理服务失败: ' + e);
+            throw new Error('自动启动本地网关失败: ' + e);
           }
         } finally {
           setGlobalProxyBusy(false);
@@ -906,8 +906,8 @@ async function toggleProxy(mode = 'toggle') {
     }
 
     if (mode === 'direct' && !patched) {
-      addLog('info', `${label} 当前未接入代理，无需还原`);
-      if (typeof showBottomToast === 'function') showBottomToast(`${label} 当前未接入代理`, 'info');
+      addLog('info', `${label} 当前未接入网关，无需还原`);
+      if (typeof showBottomToast === 'function') showBottomToast(`${label} 当前未接入网关`, 'info');
       return;
     }
 
@@ -942,18 +942,18 @@ async function toggleProxy(mode = 'toggle') {
     }
 
     if (!proxyRunning) {
-      setProxyButtonBusyText('启动代理...');
+      setProxyButtonBusyText('启动网关...');
       setGlobalProxyBusy(true, '代理启动中');
       try {
         await invoke('start_proxy_service');
-        addLog('ok', '全局代理服务已自动启动');
+        addLog('ok', '本地网关已自动启动');
       } catch (e) {
         if (String(e).includes('代理已在运行')) {
           addLog('warn', '代理服务已在运行，已刷新状态后继续切换');
         } else {
           updateGlobalProxyStatusPill(false, 'error');
           updateProxyPageState(false, 'error');
-          throw new Error('自动启动全局代理服务失败: ' + e);
+          throw new Error('自动启动本地网关失败: ' + e);
         }
       } finally {
         setGlobalProxyBusy(false);
@@ -969,10 +969,10 @@ async function toggleProxy(mode = 'toggle') {
     const cursorState = report && report.cursorAuth && String(report.cursorAuth).startsWith('ok')
       ? report.cursorAuth
       : '';
-    addLog('ok', `${label} 已切换到 AnyBridge 本地代理`);
+    addLog('ok', `${label} 已切换到 AnyBridge 内置供应商`);
     if (injectWarn) addLog('warn', `${label} 卡片注入提示: ${injectWarn}`);
     if (cursorState && target === 'cursor') addLog('ok', `Cursor 状态已写入: ${cursorState}`);
-    await promptRestartIde('已切到代理，重启后生效。', target, {
+    await promptRestartIde('已切到网关，重启后生效。', target, {
       mode: 'proxy',
       statusText: null,
       detail: injectWarn
@@ -981,7 +981,7 @@ async function toggleProxy(mode = 'toggle') {
     await refreshIdeProxyStatus(target);
     setStatusPill(proxyRunning);
   } catch (e) {
-    addLog('err', '平台代理切换失败: ' + e);
+    addLog('err', '平台网关切换失败: ' + e);
     showCustomAlert(String(e), '切换失败', 'error');
     setStatusPill(proxyRunning);
   } finally {
@@ -1016,11 +1016,11 @@ async function startGlobalProxyService() {
   try {
     await invoke('start_proxy_service');
     await refreshStatus();
-    addLog('ok', '全局代理服务已启动');
+    addLog('ok', '本地网关已启动');
   } catch (e) {
     updateGlobalProxyStatusPill(false, 'error');
     updateProxyPageState(false, 'error');
-    addLog('err', '启动全局代理服务失败: ' + e);
+    addLog('err', '启动本地网关失败: ' + e);
     showCustomAlert(String(e), '启动失败', 'error');
   } finally {
     setGlobalProxyBusy(false);
@@ -1033,11 +1033,11 @@ async function stopGlobalProxyService() {
   try {
     await invoke('stop_proxy_service');
     setStatusPill(false);
-    addLog('ok', '全局代理服务已停止');
+    addLog('ok', '本地网关已停止');
   } catch (e) {
-    if (String(e).includes('代理未运行')) setStatusPill(false);
+    if (String(e).includes('网关未运行')) setStatusPill(false);
     else {
-      addLog('err', '停止全局代理服务失败: ' + e);
+      addLog('err', '停止本地网关失败: ' + e);
       showCustomAlert(String(e), '停止失败', 'error');
     }
   } finally {
@@ -1051,11 +1051,11 @@ async function restartGlobalProxyService() {
   try {
     await invoke('restart_proxy_service');
     await refreshStatus();
-    addLog('ok', '全局代理服务已重启');
+    addLog('ok', '本地网关已重启');
   } catch (e) {
     updateGlobalProxyStatusPill(false, 'error');
     updateProxyPageState(false, 'error');
-    addLog('err', '重启全局代理服务失败: ' + e);
+    addLog('err', '重启本地网关失败: ' + e);
     showCustomAlert(String(e), '重启失败', 'error');
   } finally {
     setGlobalProxyBusy(false);
@@ -1079,7 +1079,7 @@ async function refreshStatus() {
     refreshIdeProxyStatus().catch(() => {});
   } catch (e) {
     _statusFailStreak++;
-    if (_statusFailStreak === 5) addLog('warn', '无法获取代理状态(已连续失败5次): ' + e);
+    if (_statusFailStreak === 5) addLog('warn', '无法获取网关状态(已连续失败5次): ' + e);
   } finally {
     _refreshStatusInFlight = false;
   }
@@ -1132,13 +1132,13 @@ async function restartIdeNow(target) {
 
 // 代理/直连切换后，提示并询问是否一键重启 IDE 使其生效。
 // 非代理场景（如界面汉化）可通过 options 传入定制标题/状态文案，并用
-// skipAutoPreference 跳过「切换代理后自动重启」偏好与代理专属勾选项。
+// skipAutoPreference 跳过「切换网关后自动重启」偏好与代理专属勾选项。
 function promptRestartIde(leadText, targetOverride, options = {}) {
   if (!invoke) return Promise.resolve(false);
   const target = targetOverride || activeProxyTarget || getTargetIde();
   const label = ideDisplayLabel(target);
   const mode = options.mode === 'direct' ? 'direct' : 'proxy';
-  const lead = leadText || `${label} 代理状态已变更，需重启 IDE 才能生效。`;
+  const lead = leadText || `${label} 网关状态已变更，需重启 IDE 才能生效。`;
   const detail = String(options.detail || '').trim();
 
   if (!options.skipAutoPreference && shouldAutoRestartIdeAfterSwitch()) {
@@ -1179,7 +1179,7 @@ function promptRestartIde(leadText, targetOverride, options = {}) {
         if (statusEl) {
           statusEl.textContent = options.statusText || (mode === 'direct'
             ? `已恢复直连配置，重启后 ${appKind} 不再经过 AnyBridge。`
-            : `已写入 AnyBridge 代理配置，本地代理服务已启动。`);
+            : `已写入 AnyBridge 代理配置，本地网关服务已启动。`);
         }
       }
     }
@@ -1241,7 +1241,7 @@ function promptRestartIde(leadText, targetOverride, options = {}) {
 
 function resetStatsUi() {
   setText('stat-requests', '—');
-  setText('stat-requests-sub', '代理未运行');
+  setText('stat-requests-sub', '网关未运行');
   setText('stat-tokens', '—');
   setText('stat-tokens-sub', '输入 / 输出 / 缓存');
   setText('stat-success-rate', '—');
@@ -1712,7 +1712,7 @@ async function generateCerts() {
   const status = (typeof _platformEl === 'function' ? _platformEl('cert-status') : document.getElementById('cert-status'));
   try {
     const result = await invoke('generate_certs', { requestId: window.newCertRequestId() });
-    if (status) status.textContent = result + '（重启代理后生效）';
+    if (status) status.textContent = result + '（重启网关后生效）';
     addLog('ok', '证书: ' + result);
   } catch (e) {
     if (status) status.textContent = '生成失败: ' + e;
@@ -1770,7 +1770,7 @@ async function saveIdePath() {
   if (!path) { if (status) status.textContent = '请先填写 IDE 可执行文件路径'; return; }
   try {
     await invoke('set_ide_path', { path });
-    if (status) status.textContent = '已保存路径 ✓（下次启动代理生效）';
+    if (status) status.textContent = '已保存路径 ✓（下次启动网关生效）';
     addLog('ok', 'IDE 路径已设置: ' + path);
   } catch (e) {
     if (status) status.textContent = '保存失败: ' + e;
