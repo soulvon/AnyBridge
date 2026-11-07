@@ -2,6 +2,13 @@
 
 All notable changes to AnyBridge will be documented in this file.
 
+## v1.0.17 - 2026-11-07
+
+按试用反馈，把上一版对供应商同步逻辑的调整退回，功能与 v1.0.15 一致。
+
+- 供应商的同步行为回到 v1.0.15 的状态
+- 其余功能不变，仅更新版本号，可直接覆盖安装
+
 ## v1.0.15 - 2026-11-06
 
 这次把「AIStudio2API」加进了扩展中心：装好之后，浏览器里登录的 Google AI Studio 账户就能当成本地接口来用。

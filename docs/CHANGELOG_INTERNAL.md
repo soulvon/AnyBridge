@@ -9,6 +9,14 @@
 > - `CHANGELOG.md`：一屏能读完、用户能看懂、只讲"你会得到什么"。一个版本 2-4 条。
 > - 本文件：可以写 `hudsucker=debug`、`passthroughParams`、栈追踪、判据与测试名。
 
+## v1.0.17 - 2026-11-07
+
+- 按用户决定 `git revert f66c989b`，撤销 v1.0.16 的托管供应商接管保护、`plugin_generate_config` 密钥合并、启动对账收敛；代码回到 `83f3996e`（v1.0.15）的行为。
+- 撤销动机：v1.0.16 的修复由「把 Agent2API(3065) 误认为本插件服务」的误会触发，用户希望回到试用前的状态。修复本身与端口取值无关，但按用户决定回退。
+- 数据层在 revert 之前已单独还原：`p-agent2api-3065` 条目删除（备份 `providers.json.bak-restore-20261107-045419`），托管条目保持 2048 + 插件密钥 + 73 个模型；代码回退不影响运行时数据。
+- 版本号不降回 1.0.15（同版本 MSI 覆盖安装会被拒），递增到 1.0.17。
+- 验证：`npm run verify`、`npm run check:features`、`check-release-config`、安装包产物验收。
+
 ## v1.0.15 - 2026-11-06
 
 ### AIStudio2API 插件（提交 6526b4c9）
