@@ -100,8 +100,8 @@ function resolveCertsDir() {
 const CERTS_DIR = resolveCertsDir();
 
 // ─── 接管心跳 ───
-// 「IDE 接管是否生效」的唯一可靠判据：代理有没有收到目标 IDE 的模型请求。
-// 配置写进 settings.json（patched）不等于生效——IDE 只在启动时读取代理配置，
+// 「IDE 接管是否生效」的唯一可靠判据：网关有没有收到目标 IDE 的模型请求。
+// 配置写进 settings.json（patched）不等于生效——IDE 只在启动时读取网关配置，
 // 写完不重启就一直直连，模型下拉框永远不会被改写。
 // 这里把心跳落盘，供 Rust 侧体检直接判决，不再靠用户描述现象。
 const TAKEOVER_STATE_FILE = 'anybridge-takeover-state.json';
@@ -126,7 +126,7 @@ function persistTakeoverState(force = false) {
   takeoverPersistAt = now;
   try {
     fs.writeFile(takeoverStatePath(), JSON.stringify(takeoverState, null, 2), () => {});
-  } catch { /* 心跳落盘失败不影响代理功能 */ }
+  } catch { /* 心跳落盘失败不影响网关功能 */ }
 }
 
 function noteTakeoverRequest(host) {
@@ -142,7 +142,7 @@ function noteTakeoverCapture(host) {
   persistTakeoverState(true);
 }
 
-// 启动即落一次初始状态：让体检能区分「代理在跑但从没收到请求」与「代理没跑」
+// 启动即落一次初始状态：让体检能区分「网关在跑但从没收到请求」与「网关没跑」
 persistTakeoverState(true);
 
 let MITM_CERT, MITM_KEY;
@@ -216,7 +216,7 @@ const CA_COMMON_NAME_HINT = '「AnyBridge Local CA」';
 
 // MITM 连接的上游主机映射：记录每个 TLS socket 对应的原始 CONNECT 目标。
 // Devin 连 server.codeium.com，Windsurf 连 server.self-serve.windsurf.com，
-// 代理需要转发到各自的真实上游，不能一律发到 windsurf.com。
+// 网关需要转发到各自的真实上游，不能一律发到 windsurf.com。
 const mitmUpstreamHost = new WeakMap();
 
 // 高频 GetUserStatus 去重：每 10s 至少只写一次 ide-models.json，
@@ -578,7 +578,7 @@ function proxyToCodeium(req, res, body, id, opts = {}) {
         const shouldRewriteModels = proxyRes.statusCode === 200
           && (method === 'GetUserStatus' || method === 'GetCliModelConfigs');
         if (shouldRewriteModels) {
-          // 接管心跳：这一条请求证明 IDE 的流量确实经过了代理。
+          // 接管心跳：这一条请求证明 IDE 的流量确实经过了网关。
           // 同一结构的心跳每秒可达 8-10 次，交由 diagLog 去重限流，不再各自手写计时器。
           noteTakeoverRequest(upstream);
           diagLog.log(

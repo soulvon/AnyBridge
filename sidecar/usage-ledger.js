@@ -69,7 +69,7 @@ export function pickLedgerFields(summary) {
 }
 
 /**
- * 追加一条请求明细。写失败只打日志，不影响代理主流程。
+ * 追加一条请求明细。写失败只打日志，不影响网关主流程。
  * @param {object} summary request-tracker 的 summary()
  * @returns {boolean} 是否写入成功
  */

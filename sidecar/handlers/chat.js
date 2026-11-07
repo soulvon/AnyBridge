@@ -1020,7 +1020,7 @@ export function handleGetChatMessage(req, res, body, tracker) {
         && imageFallbackEnabled;
       if (thirdPartyVisionEnabled) {
         if (configuredVisionModels.length === 0) {
-          const msg = `槽位「${slot.displayName || requestedModel}」已启用第三方图片理解，但代理增强里没有配置图片理解模型。`;
+          const msg = `槽位「${slot.displayName || requestedModel}」已启用第三方图片理解，但网关增强里没有配置图片理解模型。`;
           console.error(`  ❌ ${msg}`);
           tracker.fail('vision-config', msg);
           sendTerminalError(res, messageId, msg, 'invalid_argument');
@@ -1234,7 +1234,7 @@ async function streamSearchAgentLoop(req, res, opts) {
   const sources = enabledSearchSources(searchModels);
   if (sources.length === 0) {
     trackerOf(res).fail('search-config', 'no enabled search source');
-    sendTerminalError(res, messageId, '联网搜索已开启，但没有启用的搜索源。请先在代理增强中添加搜索源。', 'invalid_argument');
+    sendTerminalError(res, messageId, '联网搜索已开启，但没有启用的搜索源。请先在网关增强中添加搜索源。', 'invalid_argument');
     return;
   }
 

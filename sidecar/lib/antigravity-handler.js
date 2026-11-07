@@ -972,7 +972,7 @@ export function mockAntigravityUserSettings() {
 
 /**
  * 判定是否为遥测、埋点、指标或环境探测请求。
- * 这些请求无需转发至外网，代理应在 0ms 内直接返回 200 {}，杜绝排队卡死。
+ * 这些请求无需转发至外网，网关应在 0ms 内直接返回 200 {}，杜绝排队卡死。
  */
 export function isAntigravityBypassMetricsPath(pathname) {
   const p = String(pathname || '').toLowerCase();

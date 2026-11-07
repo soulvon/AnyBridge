@@ -5,8 +5,8 @@ paths and failure behavior. They are not design proposals.
 
 | Subsystem | Contract |
 | --- | --- |
-| Provider, model slots and proxy routes | [Provider and model routing](provider-model-routing.md) |
-| Local proxy protocol conversion and streams | [Protocol conversion](protocol-conversion.md) |
+| Provider, model slots and gateway routes | [Provider and model routing](provider-model-routing.md) |
+| Local gateway protocol conversion and streams | [Protocol conversion](protocol-conversion.md) |
 | Codex integration, official restore and managed files | [Codex integration](codex-integration.md) |
 | External binaries, packaging and release validation | [Build and release](build-release.md) |
 | Usage counters, daily summary, request and body logs | [Usage statistics and logs](stats.md) |

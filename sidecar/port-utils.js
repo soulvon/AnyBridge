@@ -3,7 +3,7 @@
 
 import { execSync, spawnSync } from 'node:child_process';
 
-// 仅回收本应用的代理进程，避免误杀恰好占用 7450/7451 的其它 Node 程序。
+// 仅回收本应用的网关进程，避免误杀恰好占用 7450/7451 的其它 Node 程序。
 const SAFE_APP_NAMES = ['anybridge-proxy', 'ide-byok-proxy'];
 const SAFE_NODE_SCRIPTS = [
   '/sidecar/proxy-entry.js',
@@ -99,7 +99,7 @@ function collectUnixPortPids(port) {
 }
 
 // 杀掉监听指定端口的进程（跨平台）。返回是否真的杀到了进程。
-// 只杀 LISTENING 该端口、且进程名为本应用代理（node 系）的 PID，跳过自身。
+// 只杀 LISTENING 该端口、且进程名为本应用网关（node 系）的 PID，跳过自身。
 export function killPortHolder(port) {
   try {
     if (process.platform === 'win32') {

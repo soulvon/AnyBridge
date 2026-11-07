@@ -47,7 +47,7 @@ how Cursor receives them.
 
 ## Verification
 
-- `node --test sidecar/local-proxy.test.js`
+- `node --test sidecar/local-gateway.test.js`
 - `node --test sidecar/config-cache.test.js`
 - `node --test sidecar/provider-pool.test.js`
 - Rust tests for Cursor binding normalization run under `cargo test`.

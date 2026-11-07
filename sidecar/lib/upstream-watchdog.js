@@ -30,7 +30,7 @@ export const UPSTREAM_TIMEOUT_MS = intEnv(['UPSTREAM_TIMEOUT_MS', 'API_TIMEOUT_M
  */
 export const UPSTREAM_TTFB_MS = intEnv(['UPSTREAM_TTFB_MS', 'BYOK_TTFB_MS'], 120_000, 1000);
 
-/** 代理增强的「首字节超时（秒）」覆盖；未配置时回退模块默认。 */
+/** 网关增强的「首字节超时（秒）」覆盖；未配置时回退模块默认。 */
 export function ttfbMsFromEnhancement(enhancement) {
   const seconds = Number(enhancement?.failoverTtfbSeconds);
   return Number.isFinite(seconds) && seconds > 0 ? seconds * 1000 : undefined;

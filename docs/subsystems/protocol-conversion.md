@@ -36,7 +36,7 @@ and streamed Responses/Chat conversion.
 
 ## Verification
 
-- `node --test sidecar/local-proxy.test.js`
+- `node --test sidecar/local-gateway.test.js`
 - `node --test sidecar/lib/responses-chat-transform.test.js`
 - `node --test sidecar/lib/chat-sse-transform.test.js`
 - Live vendor checks belong to an explicit probe under `tmp/`, never to the

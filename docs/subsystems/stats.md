@@ -42,7 +42,7 @@ deviations are listed explicitly so they are not mistaken for intended behavior.
    for `ok`, `recordError` for `failed` / `rejected`, and `recordRetry` when
    retries happened. It is idempotent.
 
-### Local proxy path
+### Local gateway path
 
 `sidecar/local-proxy.js` and `sidecar/cursor-proxy.js` still call the `stats.js`
 `record*` functions directly; they do not use the tracker yet.
@@ -50,14 +50,14 @@ deviations are listed explicitly so they are not mistaken for intended behavior.
 ### Storage
 
 Writes mutate in-memory state, then schedule a debounced `stats.json` write
-(500ms, timer unref'd). `snapshot()` is read by the proxy console through the
+(500ms, timer unref'd). `snapshot()` is read by the gateway console through the
 Tauri `get_stats` command; it rolls the day over and prunes history older than
 `STATS_RETENTION_DAYS` (default 365, clamped 1..3650, read from
 `byok-config.json`).
 
 ## Bypass sources (local logs)
 
-Statistics must survive the proxy being stopped or in development. The bypass
+Statistics must survive the gateway being stopped or in development. The bypass
 scanner reads what the clients already write, never injects into them, and never
 requires traffic to pass through AnyBridge:
 
@@ -104,9 +104,9 @@ until the client changes its storage format.
 ## Two ledgers, never merged
 
 - **Gateway ledger** (`stats.json` + `usage/*.jsonl`): requests that actually
-  passed through the proxy. Carries routing, retries and provider identity.
+  passed through the gateway. Carries routing, retries and provider identity.
 - **Bypass ledger** (`usage-local.json`): usage reported by the clients
-  themselves. Carries account identity and is available even while the proxy is
+  themselves. Carries account identity and is available even while the gateway is
   stopped.
 
 The stats page sums both for request/token totals but keeps cost and success
@@ -160,7 +160,7 @@ Rules:
 - `estCostUsd` is a blended estimate (`input * 3 + output * 15` per million);
   cache tokens are recorded but do not contribute to the estimate.
 - History pruning is based on the date key, never on file mtime.
-- A missing or unreadable `stats.json` must not crash the proxy: counters
+- A missing or unreadable `stats.json` must not crash the gateway: counters
   restart from zero and history is empty.
 - MITM and RPC audit logs are off unless explicitly enabled by environment
   variable; header values are redacted.

@@ -1,6 +1,6 @@
 // chat-sse-transform.js — 上游流式事件 → OpenAI Chat Completions SSE chunk。
 //
-// 本地代理的 chat 入站真流式：客户端（CodeBuddy/ZCode/WorkBuddy/OpenCode）按
+// 本地网关的 chat 入站真流式：客户端（CodeBuddy/ZCode/WorkBuddy/OpenCode）按
 // Chat SSE 增量消费，上游可能是三种形态：
 //   1. Responses SSE（codex 解锁 / 普通 Responses 上游）
 //   2. Anthropic SSE（claudeCode 解锁 / 普通 Anthropic 上游）

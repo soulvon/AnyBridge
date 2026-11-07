@@ -10,11 +10,11 @@
   <title>AnyBridge - 开源 BYOK 模型接入工具 | 一键接入 16+ AI 编程智能体</title>
   <meta
     name="description"
-    content="AnyBridge 是开源、本地运行的 BYOK（自带密钥）模型接入工具：用本机代理、配置直写或本地 OpenAI 兼容网关，把你的 API 密钥与模型渠道一键接入 Cursor、Windsurf、Devin、Claude Code、Codex、Pi、Hermes、DeepSeek Harness 等 16+ 款 AI 编程智能体。"
+    content="AnyBridge 是开源、本地运行的 BYOK（自带密钥）模型接入工具：用MITM 接入、配置直写或本地 OpenAI 兼容网关，把你的 API 密钥与模型渠道一键接入 Cursor、Windsurf、Devin、Claude Code、Codex、Pi、Hermes、DeepSeek Harness 等 16+ 款 AI 编程智能体。"
   />
   <meta
     name="keywords"
-    content="AnyBridge, BYOK, 自带密钥, AI 编程智能体, 本地代理, OpenAI 兼容接口, Anthropic, 模型路由, 模型聚合, 中转站接入, Cursor 自定义模型, Claude Code 配置, Codex 配置, Pi Coding Agent, Hermes Agent, DeepSeek Harness, 桌面应用, 开源"
+    content="AnyBridge, BYOK, 自带密钥, AI 编程智能体, 本地网关, OpenAI 兼容接口, Anthropic, 模型路由, 模型聚合, 中转站接入, Cursor 自定义模型, Claude Code 配置, Codex 配置, Pi Coding Agent, Hermes Agent, DeepSeek Harness, 桌面应用, 开源"
   />
   <link rel="canonical" href="https://soulvon.github.io/AnyBridge/" />
   <meta name="robots" content="index, follow, max-image-preview:large" />
@@ -26,7 +26,7 @@
   <meta property="og:title" content="AnyBridge - 开源 BYOK 模型接入工具 | 一键接入 16+ AI 编程智能体" />
   <meta
     property="og:description"
-    content="本地运行的自带密钥接入工作台：本机代理、配置直写、本地 OpenAI 兼容网关三种方式，把你的模型渠道接入 16+ 款 AI 编程智能体，不手写配置、随时一键还原。"
+    content="本地运行的自带密钥接入工作台：MITM 接入、配置直写、本地 OpenAI 兼容网关三种方式，把你的模型渠道接入 16+ 款 AI 编程智能体，不手写配置、随时一键还原。"
   />
   <meta property="og:image" content="https://soulvon.github.io/AnyBridge/assets/anybridge-platform-cursor.png" />
   <meta property="og:image:alt" content="AnyBridge 桌面控制台：智能体接入界面" />
@@ -34,7 +34,7 @@
   <meta name="twitter:title" content="AnyBridge - 一键把你的模型接入 16+ AI 编程智能体" />
   <meta
     name="twitter:description"
-    content="开源 BYOK 接入工具：Cursor、Windsurf、Devin、Claude Code、Codex、Pi、Hermes、DeepSeek Harness 等，本机代理 / 配置直写 / 本地网关任选。"
+    content="开源 BYOK 接入工具：Cursor、Windsurf、Devin、Claude Code、Codex、Pi、Hermes、DeepSeek Harness 等，MITM 接入 / 配置直写 / 本地网关任选。"
   />
   <meta name="twitter:image" content="https://soulvon.github.io/AnyBridge/assets/anybridge-platform-cursor.png" />
   <link rel="icon" href="assets/anybridge-logo.svg" />
@@ -54,9 +54,9 @@
         "codeRepository": "https://github.com/soulvon/AnyBridge",
         "license": "https://opensource.org/licenses/MIT",
         "offers": { "@type": "Offer", "price": "0", "priceCurrency": "CNY" },
-        "description": "开源、本地运行的 BYOK 模型接入工具，支持本机代理、配置直写与本地 OpenAI 兼容网关，把自定义模型渠道接入 16+ 款 AI 编程智能体。",
+        "description": "开源、本地运行的 BYOK 模型接入工具，支持MITM 接入、配置直写与本地 OpenAI 兼容网关，把自定义模型渠道接入 16+ 款 AI 编程智能体。",
         "featureList": [
-          "本地代理接管封闭 IDE 会话",
+          "网关接管封闭 IDE 会话",
           "配置文件一键写入与还原",
           "本地 OpenAI / Anthropic 兼容网关",
           "看图备用（Vision Fallback）",
@@ -1471,7 +1471,7 @@
           <div class="eyebrow">开源 · 本地优先 · 自带密钥 · v0.5.28</div>
           <h1>把自己的模型，接进每一款 AI 编程智能体。</h1>
           <p class="lead">
-            AnyBridge 是一款开源、本地运行的 <strong>BYOK（自带渠道 / 自带密钥）模型接入工作台</strong>。它把你的 API 密钥、模型供应商、本地代理、模型映射与智能体配置切换，集中到一个桌面控制面里 —— 不用手写配置，随时一键还原。
+            AnyBridge 是一款开源、本地运行的 <strong>BYOK（自带渠道 / 自带密钥）模型接入工作台</strong>。它把你的 API 密钥、模型供应商、本地网关、模型映射与智能体配置切换，集中到一个桌面控制面里 —— 不用手写配置，随时一键还原。
           </p>
           <div class="hero-actions" aria-label="主要操作">
             <a class="btn primary" href="https://github.com/soulvon/AnyBridge/releases/latest" target="_blank" rel="noopener noreferrer">下载桌面安装包</a>
@@ -1480,7 +1480,7 @@
           </div>
           <div class="hero-metrics" aria-label="核心能力">
             <div class="metric">
-              <b>本地代理接管</b>
+              <b>网关接管</b>
               <span>Cursor / Windsurf / Devin 的会话请求走本机路由，补全、索引与登录正常放行。</span>
             </div>
             <div class="metric">
@@ -1500,7 +1500,7 @@
 
         <div class="hero-visual reveal">
           <div class="hero-shot">
-            <img src="assets/anybridge-platform-cursor.png" alt="AnyBridge 智能体接入控制台截图：Cursor 代理接管界面" />
+            <img src="assets/anybridge-platform-cursor.png" alt="AnyBridge 智能体接入控制台截图：Cursor 网关接管界面" />
           </div>
           <div class="route-card" aria-label="本地链路示意">
             <div class="route-card-title">
@@ -1509,7 +1509,7 @@
             </div>
             <div class="route-lines">
               <div class="route-line"><span>01</span><strong>智能体请求</strong><small>Cursor / Claude Code / Pi</small></div>
-              <div class="route-line"><span>02</span><strong>AnyBridge 本地代理</strong><small>模型映射与转译</small></div>
+              <div class="route-line"><span>02</span><strong>AnyBridge 本地网关</strong><small>模型映射与转译</small></div>
               <div class="route-line"><span>03</span><strong>你的模型供应商</strong><small>自带密钥</small></div>
             </div>
           </div>
@@ -1547,7 +1547,7 @@
               <div class="download-platform"><strong>Linux</strong><span>按发行版选择 .AppImage / .deb</span></div>
             </div>
             <div class="install-notes">
-              <p>安装后打开 AnyBridge，先添加供应商和模型，再到「智能体」页选择你正在用的工具并点击切换；需要代理模式的工具按提示重启一次即可。</p>
+              <p>安装后打开 AnyBridge，先添加供应商和模型，再到「智能体」页选择你正在用的工具并点击切换；需要网关模式的工具按提示重启一次即可。</p>
             </div>
           </article>
         </div>
@@ -1559,13 +1559,13 @@
         <div class="section-head reveal">
           <div class="eyebrow">三种接入方式</div>
           <h2>不同智能体，用最适合它的那种方式接入。</h2>
-          <p class="lead">不强迫所有工具走同一条路。AnyBridge 按工具特性选择代理接管、配置直写或标准 API 网关。</p>
+          <p class="lead">不强迫所有工具走同一条路。AnyBridge 按工具特性选择网关接管、配置直写或标准 API 网关。</p>
         </div>
         <div class="mode-grid">
           <article class="mode-card reveal">
             <div class="tool-card-kicker">方式 01</div>
-            <h3>本地代理接管</h3>
-            <p>适合不开放自定义密钥的桌面 IDE，通过本机代理识别并转发会话请求。</p>
+            <h3>网关接管</h3>
+            <p>适合不开放自定义密钥的桌面 IDE，通过MITM 接入识别并转发会话请求。</p>
             <ul>
               <li>Cursor / Windsurf / Devin</li>
               <li>会话请求转发到你的模型</li>
@@ -1619,7 +1619,7 @@
         <div class="section-head reveal">
           <div class="eyebrow">按智能体使用</div>
           <h2>每个智能体适合的接入方式不一样，AnyBridge 会按工具处理。</h2>
-          <p class="lead">有的只能通过本机代理接入，有的可以写配置直连，也都可以统一走 AnyBridge 本地网关来获得聚合、备用模型和代理增强。</p>
+          <p class="lead">有的只能通过MITM 接入接入，有的可以写配置直连，也都可以统一走 AnyBridge 本地网关来获得聚合、备用模型和网关增强。</p>
         </div>
 
         <div class="tool-choice-panel">
@@ -1629,9 +1629,9 @@
             <p>适合本身支持自定义 API 的智能体。AnyBridge 把供应商地址、密钥和模型写进工具配置后，工具直接连上游供应商。链路短，适合固定使用某一个渠道。</p>
           </article>
           <article class="choice-card proxy reveal">
-            <b>什么时候选代理</b>
+            <b>什么时候选网关</b>
             <h3>需要聚合、备用模型、图片降级和统一增强时选它。</h3>
-            <p>请求先到 AnyBridge 本地代理，再转给上游模型。这样可以使用模型聚合、故障切换、代理增强、图片理解降级、统一统计和日志诊断。</p>
+            <p>请求先到 AnyBridge 本地网关，再转给上游模型。这样可以使用模型聚合、故障切换、网关增强、图片理解降级、统一统计和日志诊断。</p>
           </article>
         </div>
 
@@ -1641,22 +1641,22 @@
               <div class="tool-title">
                 <span class="tool-logo"><img src="assets/icons/platform-cursor.svg" alt="" /></span>
                 <div>
-                  <span class="tool-card-kicker">本机代理</span>
+                  <span class="tool-card-kicker">MITM 接入</span>
                   <h3>Cursor</h3>
                 </div>
               </div>
-              <span class="tool-status">推荐代理</span>
+              <span class="tool-status">推荐接入</span>
             </div>
-            <div class="tool-tags"><span>代理配置</span><span>可还原直连</span><span>需要重启</span></div>
-            <p class="tool-desc">Cursor 没有自定义 API 入口，通过本机代理接入最合适。AnyBridge 集中管理代理、证书、模型路由和状态检查。</p>
+            <div class="tool-tags"><span>网关配置</span><span>可还原直连</span><span>需要重启</span></div>
+            <p class="tool-desc">Cursor 没有自定义 API 入口，通过MITM 接入接入最合适。AnyBridge 集中管理网关、证书、模型路由和状态检查。</p>
             <div class="tool-mode-list">
-              <div class="tool-mode proxy"><strong>代理接入</strong><p>在 Cursor 页面启动代理并写入接入配置，重启 Cursor 后请求进入 AnyBridge。</p></div>
+              <div class="tool-mode proxy"><strong>网关接入</strong><p>在 Cursor 页面启动网关并写入接入配置，重启 Cursor 后请求进入 AnyBridge。</p></div>
               <div class="tool-mode direct"><strong>还原直连</strong><p>在页面里一键还原直连配置，恢复 Cursor 原始状态。</p></div>
             </div>
             <ul>
               <li>适合统一走 AnyBridge 本地 API 入口。</li>
-              <li>代理增强、统计和日志对 Cursor 请求同样可用。</li>
-              <li>环境体检可检查代理与配置是否写入成功。</li>
+              <li>网关增强、统计和日志对 Cursor 请求同样可用。</li>
+              <li>环境体检可检查网关与配置是否写入成功。</li>
             </ul>
             <div class="tool-card-foot">适合人群：想让 Cursor 使用 AnyBridge 统一模型入口。</div>
           </article>
@@ -1666,20 +1666,20 @@
               <div class="tool-title">
                 <span class="tool-logo"><img src="assets/icons/platform-windsurf.svg" alt="" /></span>
                 <div>
-                  <span class="tool-card-kicker">本机代理</span>
+                  <span class="tool-card-kicker">MITM 接入</span>
                   <h3>Windsurf</h3>
                 </div>
               </div>
-              <span class="tool-status">推荐代理</span>
+              <span class="tool-status">推荐接入</span>
             </div>
             <div class="tool-tags"><span>会话请求转发</span><span>模型槽位替换</span><span>Kite 可搭配</span></div>
-            <p class="tool-desc">Windsurf 不适合手动填自定义 API。AnyBridge 通过本机代理接管会话请求，并把你配置的模型展示给 Windsurf 使用。</p>
+            <p class="tool-desc">Windsurf 不适合手动填自定义 API。AnyBridge 通过本机网关接管会话请求，并把你配置的模型展示给 Windsurf 使用。</p>
             <div class="tool-mode-list">
-              <div class="tool-mode proxy"><strong>代理接入</strong><p>在 Windsurf 页面一键接入，按提示安装证书并重启 Windsurf。</p></div>
+              <div class="tool-mode proxy"><strong>网关接入</strong><p>在 Windsurf 页面一键接入，按提示安装证书并重启 Windsurf。</p></div>
             </div>
             <ul>
               <li>固定模型槽位可换成自己的模型。</li>
-              <li>可配合模型映射、备用模型和代理增强。</li>
+              <li>可配合模型映射、备用模型和网关增强。</li>
               <li>登录、索引、补全等非会话流量正常放行。</li>
             </ul>
             <div class="tool-card-foot">适合人群：想继续用 Windsurf，但希望模型和密钥由自己控制。</div>
@@ -1690,20 +1690,20 @@
               <div class="tool-title">
                 <span class="tool-logo"><img src="assets/icons/platform-devin.svg" alt="" /></span>
                 <div>
-                  <span class="tool-card-kicker">本机代理</span>
+                  <span class="tool-card-kicker">MITM 接入</span>
                   <h3>Devin</h3>
                 </div>
               </div>
-              <span class="tool-status">推荐代理</span>
+              <span class="tool-status">推荐接入</span>
             </div>
             <div class="tool-tags"><span>Connect-RPC</span><span>仅处理会话</span><span>Kite 可搭配</span></div>
-            <p class="tool-desc">Devin 的会话请求适合通过本机代理接入。AnyBridge 识别会话调用并转换为你配置的供应商格式。</p>
+            <p class="tool-desc">Devin 的会话请求适合通过MITM 接入接入。AnyBridge 识别会话调用并转换为你配置的供应商格式。</p>
             <div class="tool-mode-list">
-              <div class="tool-mode proxy"><strong>代理接入</strong><p>在 Devin 页面点击接入，写入代理设置并启动本机代理，重启 Devin 生效。</p></div>
+              <div class="tool-mode proxy"><strong>网关接入</strong><p>在 Devin 页面点击接入，写入网关接入配置并启动 MITM 接入，重启 Devin 生效。</p></div>
             </div>
             <ul>
               <li>可使用自己的 Anthropic、OpenAI 或兼容模型。</li>
-              <li>代理层支持重试、故障切换和日志统计。</li>
+              <li>网关层支持重试、故障切换和日志统计。</li>
               <li>非会话请求不强行接管，降低对原功能的影响。</li>
             </ul>
             <div class="tool-card-foot">适合人群：想在 Devin 中使用自己的模型池，同时保留原有体验。</div>
@@ -1724,7 +1724,7 @@
             <p class="tool-desc">Codex CLI 通过配置切换接入；Codex Desktop 还能通过运行时注入，把第三方模型直接加进模型选择器。</p>
             <div class="tool-mode-list">
               <div class="tool-mode direct"><strong>直连供应商</strong><p>写入配置后由 Codex 直接调用上游，链路短。</p></div>
-              <div class="tool-mode proxy"><strong>走本地代理</strong><p>需要聚合、备用模型、代理增强和统一日志时选择。</p></div>
+              <div class="tool-mode proxy"><strong>走本地网关</strong><p>需要聚合、备用模型、网关增强和统一日志时选择。</p></div>
             </div>
             <ul>
               <li>桌面版自动重启并解锁模型选择器中的第三方模型。</li>
@@ -1749,7 +1749,7 @@
             <p class="tool-desc">Claude Code 本身支持自定义接口，但手动配置路径和字段比较麻烦。AnyBridge 帮你写入并随时恢复。</p>
             <div class="tool-mode-list">
               <div class="tool-mode direct"><strong>直连供应商</strong><p>写入稳定的 Anthropic 兼容配置，切换后 Claude Code 直连上游。</p></div>
-              <div class="tool-mode proxy"><strong>走本地代理</strong><p>适合统一模型池、看统计日志、使用备用模型与代理增强。</p></div>
+              <div class="tool-mode proxy"><strong>走本地网关</strong><p>适合统一模型池、看统计日志、使用备用模型与网关增强。</p></div>
             </div>
             <ul>
               <li>无需手动找配置文件，支持 Thinking 思考参数。</li>
@@ -1794,16 +1794,16 @@
               </div>
               <span class="tool-status">灵活</span>
             </div>
-            <div class="tool-tags"><span>追加供应商</span><span>不覆盖原配置</span><span>可直连可代理</span></div>
+            <div class="tool-tags"><span>追加供应商</span><span>不覆盖原配置</span><span>可直连可网关</span></div>
             <p class="tool-desc">OpenCode 使用供应商配置。AnyBridge 把新配置追加到 opencode.json，不覆盖你已有的其他供应商。</p>
             <div class="tool-mode-list">
               <div class="tool-mode direct"><strong>直连</strong><p>把某个 OpenAI 兼容供应商直接加入 OpenCode，配置清晰。</p></div>
-              <div class="tool-mode proxy"><strong>代理</strong><p>接到 AnyBridge 聚合模型池，获得备用链路、图片降级和统一日志。</p></div>
+              <div class="tool-mode proxy"><strong>网关</strong><p>接到 AnyBridge 聚合模型池，获得备用链路、图片降级和统一日志。</p></div>
             </div>
             <ul>
               <li>保留 OpenCode 原来的供应商配置。</li>
               <li>配置方案保存在 AnyBridge，方便添加或移除。</li>
-              <li>本地代理方式适合多供应商统一管理。</li>
+              <li>本地网关方式适合多供应商统一管理。</li>
             </ul>
             <div class="tool-card-foot">适合人群：已有 OpenCode 配置，想更方便地追加自己的模型。</div>
           </article>
@@ -1823,14 +1823,14 @@
             <p class="tool-desc">Grok 命令行使用 config.toml 管理端点与模型。AnyBridge 自动写入并支持一键切换与还原，不用手动改 TOML。</p>
             <div class="tool-mode-list">
               <div class="tool-mode direct"><strong>直连供应商</strong><p>写入后 Grok 直接请求你的渠道，不依赖 AnyBridge 常驻。</p></div>
-              <div class="tool-mode proxy"><strong>代理</strong><p>统一走本地网关，获得聚合、备用模型与统计能力。</p></div>
+              <div class="tool-mode proxy"><strong>网关</strong><p>统一走本地网关，获得聚合、备用模型与统计能力。</p></div>
             </div>
             <ul>
               <li>自动定位并写入正确的配置文件路径。</li>
               <li>写入前自动备份，可一键还原官方配置。</li>
               <li>切换后在终端重新执行 <code>grok</code> 即生效。</li>
             </ul>
-            <div class="tool-card-foot">适合人群：用 Grok CLI，想接入自有渠道或本地代理模型池。</div>
+            <div class="tool-card-foot">适合人群：用 Grok CLI，想接入自有渠道或本地网关模型池。</div>
           </article>
 
           <article class="tool-card reveal">
@@ -1844,15 +1844,15 @@
               </div>
               <span class="tool-status">双模式</span>
             </div>
-            <div class="tool-tags"><span>models.json</span><span>能力标签</span><span>直连 / 代理</span></div>
-            <p class="tool-desc">CodeBuddy 可以管理自定义模型列表。AnyBridge 支持从供应商添加模型，也会把「AnyBridge 本地代理」放在供应商列表首位。</p>
+            <div class="tool-tags"><span>models.json</span><span>能力标签</span><span>直连 / 网关</span></div>
+            <p class="tool-desc">CodeBuddy 可以管理自定义模型列表。AnyBridge 支持从供应商添加模型，也会把「AnyBridge 内置供应商」放在供应商列表首位。</p>
             <div class="tool-mode-list">
               <div class="tool-mode direct"><strong>直连</strong><p>模型直接写成某个供应商的接口地址和密钥，链路简单。</p></div>
-              <div class="tool-mode proxy"><strong>代理</strong><p>选择本地代理作为供应商，聚合、备用模型、图片降级全由 AnyBridge 处理。</p></div>
+              <div class="tool-mode proxy"><strong>网关</strong><p>选择本地网关作为供应商，聚合、备用模型、图片降级全由 AnyBridge 处理。</p></div>
             </div>
             <ul>
               <li>添加模型时可标记图片、工具调用、推理能力。</li>
-              <li>代理模式把多个上游统一成一个入口。</li>
+              <li>网关模式把多个上游统一成一个入口。</li>
               <li>保存前自动备份原 models.json。</li>
             </ul>
             <div class="tool-card-foot">适合人群：想让 CodeBuddy 同时拥有直连稳定性和聚合能力。</div>
@@ -1869,15 +1869,15 @@
               </div>
               <span class="tool-status">双模式</span>
             </div>
-            <div class="tool-tags"><span>可同步 CodeBuddy</span><span>直连 / 代理</span><span>能力标签</span></div>
+            <div class="tool-tags"><span>可同步 CodeBuddy</span><span>直连 / 网关</span><span>能力标签</span></div>
             <p class="tool-desc">WorkBuddy 与 CodeBuddy 的配置管理方式接近，AnyBridge 支持单独管理，也支持双端同步。</p>
             <div class="tool-mode-list">
               <div class="tool-mode direct"><strong>直连</strong><p>固定使用某几个供应商模型，配置写入后不依赖 AnyBridge 常驻。</p></div>
-              <div class="tool-mode proxy"><strong>代理</strong><p>请求统一进 AnyBridge，获得聚合、故障切换和代理增强。</p></div>
+              <div class="tool-mode proxy"><strong>网关</strong><p>请求统一进 AnyBridge，获得聚合、故障切换和网关增强。</p></div>
             </div>
             <ul>
               <li>可与 CodeBuddy 合并并同步模型列表。</li>
-              <li>本地代理供应商排在添加列表前面，方便选择。</li>
+              <li>本地网关供应商排在添加列表前面，方便选择。</li>
               <li>一套模型配置可同时供两个工具使用。</li>
             </ul>
             <div class="tool-card-foot">适合人群：CodeBuddy / WorkBuddy 都用，希望减少重复维护。</div>
@@ -1894,16 +1894,16 @@
               </div>
               <span class="tool-status">双模式</span>
             </div>
-            <div class="tool-tags"><span>命令行配置</span><span>JSON 编辑</span><span>直连 / 代理</span></div>
+            <div class="tool-tags"><span>命令行配置</span><span>JSON 编辑</span><span>直连 / 网关</span></div>
             <p class="tool-desc">ZCode 使用偏原生嵌套的供应商与模型配置。AnyBridge 提供列表管理和 JSON 编辑器，方便导入导出。</p>
             <div class="tool-mode-list">
               <div class="tool-mode direct"><strong>直连</strong><p>写入某个供应商的原生配置，让 ZCode 直接请求上游。</p></div>
-              <div class="tool-mode proxy"><strong>代理</strong><p>统一走本地接口，把多供应商、备用模型和增强能力聚合给 ZCode。</p></div>
+              <div class="tool-mode proxy"><strong>网关</strong><p>统一走本地接口，把多供应商、备用模型和增强能力聚合给 ZCode。</p></div>
             </div>
             <ul>
               <li>保存时会同步写入 CLI 配置。</li>
               <li>JSON 编辑器展示 ZCode 原生嵌套格式。</li>
-              <li>代理模式适合统一管理多模型、多供应商。</li>
+              <li>网关模式适合统一管理多模型、多供应商。</li>
             </ul>
             <div class="tool-card-foot">适合人群：希望 ZCode 配置可视化，同时保留原生 JSON 控制权。</div>
           </article>
@@ -1917,20 +1917,20 @@
                   <h3>Pi</h3>
                 </div>
               </div>
-              <span class="tool-status">直连 / 代理</span>
+              <span class="tool-status">直连 / 网关</span>
             </div>
             <div class="tool-tags"><span>providers 写入</span><span>独立启停</span><span>一键还原</span></div>
             <p class="tool-desc">Pi 是极简可扩展的终端编码智能体。AnyBridge 把自定义渠道模型写入 models.json 的 providers，并把首条启用模型设为默认模型。</p>
             <div class="tool-mode-list">
               <div class="tool-mode direct"><strong>直连</strong><p>模型条目直接指向你的供应商端点，写入后不依赖 AnyBridge 常驻。</p></div>
-              <div class="tool-mode proxy"><strong>代理</strong><p>从「AnyBridge 本地代理」导入模型，请求统一进 127.0.0.1:7450。</p></div>
+              <div class="tool-mode proxy"><strong>网关</strong><p>从「AnyBridge 内置供应商」导入模型，请求统一进 127.0.0.1:7450。</p></div>
             </div>
             <ul>
               <li>按供应商分组写入，模型列表不再被重复渠道名刷屏。</li>
               <li>模型可单独启停，停用条目不会出现在 Pi 中。</li>
               <li>首次写入自动备份 models.json 与 settings.json。</li>
             </ul>
-            <div class="tool-card-foot">适合人群：日常用 Pi 写代码，想接中转站或本地代理模型池。</div>
+            <div class="tool-card-foot">适合人群：日常用 Pi 写代码，想接中转站或本地网关模型池。</div>
           </article>
 
           <article class="tool-card reveal">
@@ -1942,20 +1942,20 @@
                   <h3>Hermes</h3>
                 </div>
               </div>
-              <span class="tool-status">直连 / 代理</span>
+              <span class="tool-status">直连 / 网关</span>
             </div>
             <div class="tool-tags"><span>custom_providers</span><span>保留注释</span><span>一键还原</span></div>
             <p class="tool-desc">Hermes Agent 的 custom_providers 写在 config.yaml 里。AnyBridge 按供应商分组写入渠道，并把首条启用模型设为默认模型。</p>
             <div class="tool-mode-list">
               <div class="tool-mode direct"><strong>直连</strong><p>渠道条目直接指向你的供应商端点与密钥。</p></div>
-              <div class="tool-mode proxy"><strong>代理</strong><p>导入本地代理模型池，获得看图备用与请求日志。</p></div>
+              <div class="tool-mode proxy"><strong>网关</strong><p>导入本地网关模型池，获得看图备用与请求日志。</p></div>
             </div>
             <ul>
               <li>采用增量写入：上千行文档注释与其它配置原样保留。</li>
               <li>同供应商的模型与密钥收敛为一个渠道条目。</li>
               <li>首次写入自动备份 config.yaml，可一键还原。</li>
             </ul>
-            <div class="tool-card-foot">适合人群：用 Hermes Agent，想接入自有渠道或本地代理。</div>
+            <div class="tool-card-foot">适合人群：用 Hermes Agent，想接入自有渠道或本地网关。</div>
           </article>
 
           <article class="tool-card reveal">
@@ -1967,13 +1967,13 @@
                   <h3>DeepSeek Harness</h3>
                 </div>
               </div>
-              <span class="tool-status">直连 / 代理</span>
+              <span class="tool-status">直连 / 网关</span>
             </div>
             <div class="tool-tags"><span>llm-pi-ai.providers</span><span>密钥独立存放</span><span>一键还原</span></div>
             <p class="tool-desc">DeepSeek Harness 的渠道写在 settings.yaml 的 llm-pi-ai.providers 中。AnyBridge 按供应商分组写入，密钥按引用名存进独立的凭据文件。</p>
             <div class="tool-mode-list">
               <div class="tool-mode direct"><strong>直连</strong><p>渠道条目指向你的供应商端点，写入后不依赖 AnyBridge 常驻。</p></div>
-              <div class="tool-mode proxy"><strong>代理</strong><p>接入本地代理模型池，统一走 127.0.0.1:7450。</p></div>
+              <div class="tool-mode proxy"><strong>网关</strong><p>接入本地网关模型池，统一走 127.0.0.1:7450。</p></div>
             </div>
             <ul>
               <li>密钥存入 <code>.credentials.yaml</code>，不散落在主配置里。</li>
@@ -2039,7 +2039,7 @@
         <div class="section-head reveal">
           <div class="eyebrow">特色功能</div>
           <h2>不只是转发请求，AnyBridge 解决的是日常真会碰到的卡点。</h2>
-          <p class="lead">看图模型不足、模型列表被写死、多个工具重复配置、代理出错难排查，这些都放进了同一个控制台。</p>
+          <p class="lead">看图模型不足、模型列表被写死、多个工具重复配置、网关出错难排查，这些都放进了同一个控制台。</p>
         </div>
         <div class="feature-grid">
           <article class="feature-card reveal">
@@ -2122,10 +2122,10 @@
             </div>
           </figure>
           <figure class="screen-card reveal">
-            <img src="assets/anybridge-proxy-overview.png" alt="AnyBridge 本地代理概览截图：Sidecar 服务与代理端口管理" />
+            <img src="assets/anybridge-proxy-overview.png" alt="AnyBridge 内置供应商概览截图：Sidecar 服务与网关端口管理" />
             <div class="screen-card-body">
-              <h3>本地代理网关</h3>
-              <p>统一管理 Sidecar 服务、本地代理入口、本地 Key 与代理端口。</p>
+              <h3>本地网关网关</h3>
+              <p>统一管理 Sidecar 服务、本地网关入口、本地 Key 与网关端口。</p>
             </div>
           </figure>
           <figure class="screen-card reveal">
@@ -2158,7 +2158,7 @@
         <div class="section-head reveal">
           <div class="eyebrow">本机工作方式</div>
           <h2>你的密钥和配置留在本机，AnyBridge 只负责接线和转发。</h2>
-          <p class="lead">普通用户只要知道：桌面端负责配置，本地代理负责转发，上游模型供应商由你自己填写。</p>
+          <p class="lead">普通用户只要知道：桌面端负责配置，本地网关负责转发，上游模型供应商由你自己填写。</p>
         </div>
         <div class="tech-layout">
           <div class="tech-stack">
@@ -2170,10 +2170,10 @@
               </div>
             </div>
             <div class="tech-item reveal">
-              <span class="tech-tag">本地代理</span>
+              <span class="tech-tag">本地网关</span>
               <div>
                 <h3>负责请求转发</h3>
-                <p>智能体发来的会话请求进入本机代理，再按你的模型映射发到对应供应商。</p>
+                <p>智能体发来的会话请求进入MITM 接入，再按你的模型映射发到对应供应商。</p>
               </div>
             </div>
             <div class="tech-item reveal">

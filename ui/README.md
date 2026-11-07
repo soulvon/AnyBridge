@@ -37,7 +37,7 @@ Include 语法（路径相对 `ui-src/`）：
 
 ```html
 <button data-action="openSettings">设置</button>
-<button data-action="navigateTo" data-arg="proxy">代理</button>
+<button data-action="navigateTo" data-arg="proxy">网关</button>
 <button data-action="updateProxyRouteTarget" data-args='[0,"providerId"]' data-pass-value></button>
 <select data-action="onTargetIdeChange" data-events="change"></select>
 <input data-action="filterSlotCatalog" data-events="input">
@@ -107,7 +107,7 @@ Include 语法（路径相对 `ui-src/`）：
 
 - `05-actions.js`：中央 `data-action` 事件委托  
 - `10-shell.js`：顶栏导航、目标 IDE、平台侧栏  
-- `20-runtime.js`：代理开关、状态、统计、窗口、主题、配置  
+- `20-runtime.js`：网关开关、状态、统计、窗口、主题、配置  
 - `30-providers-eval.js`：供应商 / 评测  
 - `40-model-picker.js`：模型选择面板  
 - `50-model-map.js`：模型映射  

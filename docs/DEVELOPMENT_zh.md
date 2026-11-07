@@ -36,7 +36,7 @@ cd ..
 npm run tauri:dev
 ```
 
-仅运行 sidecar 代理：
+仅运行 sidecar 网关：
 
 ```bash
 npm run start

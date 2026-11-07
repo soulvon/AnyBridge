@@ -52,7 +52,7 @@ import dns from 'node:dns';
 import { httpsAgentFor } from '../system-proxy.js';
 
 // ─── SSRF 防护 ────────────────────────────────────────────
-// 上游(Cascade)可控的 URL 会被本代理直接发请求并回传正文。
+// 上游(Cascade)可控的 URL 会被本网关直接发请求并回传正文。
 // 拦截指向内网/环回/链路本地/云元数据端点的 URL，防 SSRF。
 
 // 判断一个 IP 字面量是否落在内网/环回/链路本地/保留段。
