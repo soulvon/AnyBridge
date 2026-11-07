@@ -9410,7 +9410,7 @@ async function cursorInstallCertAction() {
     if (errMsg.includes('请先停止网关') || errMsg.includes('请等待完成后再操作')) {
       showCustomAlert(
         errMsg + '\n\n请先停止网关，再到「平台 > 设置 > 环境检测」点击「一键安装证书」。',
-        '需先停止代理',
+        '需先停止网关',
         'warning'
       );
     } else {

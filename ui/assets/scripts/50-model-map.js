@@ -1554,7 +1554,7 @@ function renderVisionModelPicker() {
       return `
         <button type="button" class="proxy-route-provider-item ${active ? 'active' : ''} ${isLP ? 'is-local-proxy' : ''}" data-action="selectVisionModelProvider" data-arg="${escAttr(provider.providerId)}">
           <span class="proxy-route-provider-icon">${escAttr(String(provider.providerName || provider.providerId || '?').trim().charAt(0).toUpperCase() || '?')}</span>
-          <span class="proxy-route-provider-name">${escAttr(provider.providerName || provider.providerId)}${isLP ? '<span class="proxy-route-prov-badge">本地代理</span>' : ''}</span>
+          <span class="proxy-route-provider-name">${escAttr(provider.providerName || provider.providerId)}${isLP ? '<span class="proxy-route-prov-badge">内置供应商</span>' : ''}</span>
           <span class="proxy-route-provider-count">${provider.models.length}</span>
         </button>
       `;
@@ -3238,7 +3238,7 @@ function renderMappingModelCatalog() {
               ${escAttr(item.model)}
             </span>
             <span style="font-size:10px; color:var(--text-muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; display:inline-flex; align-items:center;">
-              ${escAttr(item.providerName)}${item.isLocalProxy || (typeof isCpaLocalProxy === 'function' && isCpaLocalProxy({ id: item.providerId, name: item.providerName })) ? '<span style="font-size:9px;margin-left:5px;padding:0 4px;border-radius:3px;background:rgba(37,99,235,0.1);color:var(--accent);font-weight:700;line-height:1.4;">本地代理</span>' : ''}
+              ${escAttr(item.providerName)}${item.isLocalProxy || (typeof isCpaLocalProxy === 'function' && isCpaLocalProxy({ id: item.providerId, name: item.providerName })) ? '<span style="font-size:9px;margin-left:5px;padding:0 4px;border-radius:3px;background:rgba(37,99,235,0.1);color:var(--accent);font-weight:700;line-height:1.4;">内置供应商</span>' : ''}
             </span>
           </div>
         </div>

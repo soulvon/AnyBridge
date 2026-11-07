@@ -1047,7 +1047,7 @@ async function stopGlobalProxyService() {
 
 async function restartGlobalProxyService() {
   if (!invoke && !bindTauriBridge()) return;
-  setGlobalProxyBusy(true, '代理重启中');
+  setGlobalProxyBusy(true, '网关重启中');
   try {
     await invoke('restart_proxy_service');
     await refreshStatus();

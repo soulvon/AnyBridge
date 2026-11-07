@@ -1044,7 +1044,7 @@ function renderProxyRouteProviderPicker() {
       return `
         <button type="button" class="proxy-route-provider-item ${active ? 'active' : ''} ${isLP ? 'is-local-proxy' : ''}" data-action="selectProxyRouteProvider" data-arg="${proxyRouteEsc(provider.providerId)}">
           <span class="proxy-route-provider-icon">${proxyRouteEsc(proxyRouteProviderInitial(provider.providerName))}</span>
-          <span class="proxy-route-provider-name">${proxyRouteEsc(provider.providerName || provider.providerId)}${isLP ? '<span class="proxy-route-prov-badge">本地代理</span>' : ''}</span>
+          <span class="proxy-route-provider-name">${proxyRouteEsc(provider.providerName || provider.providerId)}${isLP ? '<span class="proxy-route-prov-badge">内置供应商</span>' : ''}</span>
           <span class="proxy-route-provider-count">${Array.isArray(provider.models) ? provider.models.length : 0}</span>
         </button>
       `;
@@ -1237,7 +1237,7 @@ function renderProxyRouteBackupPicker() {
       return `
         <button type="button" class="proxy-route-provider-item ${active ? 'active' : ''} ${isLP ? 'is-local-proxy' : ''}" data-action="selectProxyRouteBackupProvider" data-arg="${proxyRouteEsc(provider.providerId)}">
           <span class="proxy-route-provider-icon">${proxyRouteEsc(proxyRouteProviderInitial(provider.providerName))}</span>
-          <span class="proxy-route-provider-name">${proxyRouteEsc(provider.providerName || provider.providerId)}${isLP ? '<span class="proxy-route-prov-badge">本地代理</span>' : ''}</span>
+          <span class="proxy-route-provider-name">${proxyRouteEsc(provider.providerName || provider.providerId)}${isLP ? '<span class="proxy-route-prov-badge">内置供应商</span>' : ''}</span>
           <span class="proxy-route-provider-count">${Array.isArray(provider.models) ? provider.models.length : 0}</span>
         </button>
       `;
