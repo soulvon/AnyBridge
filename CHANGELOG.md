@@ -2,9 +2,10 @@
 
 All notable changes to AnyBridge will be documented in this file.
 
-## 未发布
+## v1.0.19 - 2026-11-08
 
 - 修复：Cursor 新版本（3.29+）登录后聊天一直重连、自定义模型无响应的问题
+- 其余功能不变，可直接覆盖安装
 
 ## v1.0.18 - 2026-11-08
 

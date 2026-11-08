@@ -9,7 +9,7 @@
 > - `CHANGELOG.md`：一屏能读完、用户能看懂、只讲"你会得到什么"。一个版本 2-4 条。
 > - 本文件：可以写 `hudsucker=debug`、`passthroughParams`、栈追踪、判据与测试名。
 
-## 未发布
+## v1.0.19 - 2026-11-08
 
 ### Cursor 3.29+ 门禁摁回 RunSSE 运行时（移植 haxsd #8 真机验证口径）
 
