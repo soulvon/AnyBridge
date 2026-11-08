@@ -7,7 +7,7 @@ use std::{
 
 use hudsucker::{
     certificate_authority::RcgenAuthority,
-    hyper::{header, Request, Response, StatusCode, Uri},
+    hyper::{header, Method, Request, Response, StatusCode, Uri},
     rustls::crypto::aws_lc_rs,
     Body, HttpContext, HttpHandler, Proxy, RequestOrResponse,
 };
@@ -146,26 +146,20 @@ impl HttpHandler for CursorRelay {
             }
         }
         if is_cursor_host(original.host().unwrap_or_default())
-            && original.path() == CLOUD_AGENT_RUN_PATH
+            && is_agent_run_websocket_upgrade(request.method(), original.path())
         {
-            // Cursor 3.27+ 会向官方发起 GET /agent/v1/run（WebSocket 订阅云端 agent 命令），
-            // 携带的是我们的本地注入 token，官方必然 401。透传只会得到同样的 401，
-            // 还要白打一条 hudsucker tunnel ERROR；本地 agent 主链路（RunSSE）不依赖这条通道。
-            // 就地返回 401：行为与官方一致、少一次出站、消除日志噪声。
+            // Cursor 3.27+/3.29+ 的 GET /agent/v1/run 是 WebSocket Upgrade（云端命令订阅 /
+            // Agent Run 传输）。BootstrapStatsig 门禁补丁会把客户端钉回 RunSSE 运行时，
+            // 但补丁依赖客户端缓存且 agent-host 有独立 gate 集合，残留升级请求仍可能出现：
+            // 回 501 + Connection: close 让 transport 明确回退 RunSSE。401 会被客户端当成
+            // 鉴权失败反复重试（Cursor 3.29.9 登录态实测口径）。
             tracing::info!(
                 target: "cursor_relay",
                 stage = "http",
                 path = CLOUD_AGENT_RUN_PATH,
-                "云端命令通道本地短路（本地 token 官方必然 401，本地 agent 不依赖此通道）"
+                "Agent Run WebSocket 本地禁用（强制回退 RunSSE 运行时）"
             );
-            let response = Response::builder()
-                .status(StatusCode::UNAUTHORIZED)
-                .header(header::CONTENT_TYPE, "application/json")
-                .body(Body::from(
-                    "{\"code\":\"unauthenticated\",\"message\":\"local BYOK mode\"}",
-                ))
-                .expect("static 401 response builder");
-            return RequestOrResponse::Response(response);
+            return RequestOrResponse::Response(agent_run_websocket_disabled());
         }
         request.into()
     }
@@ -250,8 +244,28 @@ fn should_route_locally(path: &str, tab_mode: TabMode) -> bool {
     is_local_path(path) || (is_tab_path(path) && tab_mode != TabMode::Direct)
 }
 
-/// Cursor 3.27+ 的云端 agent 命令订阅通道（GET WebSocket）。
+/// Cursor 3.27+ 的云端 agent 命令订阅通道（GET WebSocket）；3.29+ 登录态下兼作
+/// Agent Run 的 WebSocket 传输端点。
 const CLOUD_AGENT_RUN_PATH: &str = "/agent/v1/run";
+
+/// Agent Run 的 WebSocket 升级判定：GET + 路径。门禁补丁正常生效时客户端不该再发，
+/// 这里是「补丁未覆盖时的兜底闸门」。
+fn is_agent_run_websocket_upgrade(method: &Method, path: &str) -> bool {
+    method == Method::GET && path == CLOUD_AGENT_RUN_PATH
+}
+
+/// 拒绝 Agent Run WebSocket 的固定答复：501 + Connection: close。
+/// 501 让客户端把该传输视为「未实现」干净回退 RunSSE；401 会被当成鉴权失败重试。
+fn agent_run_websocket_disabled() -> Response<Body> {
+    Response::builder()
+        .status(StatusCode::NOT_IMPLEMENTED)
+        .header(header::CONTENT_TYPE, "text/plain; charset=utf-8")
+        .header(header::CONNECTION, "close")
+        .body(Body::from(
+            "Agent Run WebSocket is disabled by the local BYOK gateway; use RunSSE.\n",
+        ))
+        .expect("static WebSocket rejection is well formed")
+}
 
 /// fallback 留痕：未命中本地路由的 Cursor 请求路径，去重后各记一条。
 /// 名单式白名单只能保证"名单内的都处理对了"，保证不了"名单还够用"——
@@ -296,5 +310,27 @@ mod tests {
         ] {
             assert!(is_local_path(path), "{path} must not reach Cursor upstream");
         }
+    }
+
+    #[test]
+    fn agent_run_websocket_upgrade_is_detected_and_rejected_with_501() {
+        // 兜底闸门：门禁补丁未覆盖到的残留升级请求（GET /agent/v1/run）必须被 501 拒掉，
+        // 让客户端回退 RunSSE；非 GET 的同路径请求不受影响（保持原有转发语义）
+        assert!(is_agent_run_websocket_upgrade(&Method::GET, "/agent/v1/run"));
+        assert!(!is_agent_run_websocket_upgrade(
+            &Method::POST,
+            "/agent/v1/run"
+        ));
+        assert!(!is_agent_run_websocket_upgrade(
+            &Method::GET,
+            "/agent/v1/other"
+        ));
+
+        let response = agent_run_websocket_disabled();
+        assert_eq!(response.status(), StatusCode::NOT_IMPLEMENTED);
+        assert_eq!(
+            response.headers().get(header::CONNECTION),
+            Some(&header::HeaderValue::from_static("close"))
+        );
     }
 }

@@ -14,6 +14,15 @@ use crate::{api::cursor::proxy, Error, Result};
 
 pub const BOOTSTRAP_STATSIG_PATH: &str = "/aiserver.v1.AnalyticsService/BootstrapStatsig";
 const AGENT_RETRIES_GATE: &str = "nal_agent_retries";
+/// Cursor 3.29+ 登录官方账号后，下列门禁可能为开：Agent Run 改走 WebSocket、
+/// turns 走 agent-host 或客户端 RunInference 本地循环——本地网关只实现
+/// RunSSE + BidiAppend，不摁掉就会绕过接管或带着 RunInferenceClientMessage
+/// 砸进 BidiAppend 被 400（Cursor 3.29.9 + issue #42 实测）。补丁依赖客户端
+/// 缓存与 agent-host 独立 gate 集合，所以每次 Bootstrap 都强制覆写（haxsd #8 同款判据）。
+const AGENT_WEBSOCKET_GATE: &str = "nal_websocket_client";
+const RUN_INFERENCE_WEBSOCKET_GATE: &str = "run_inference_websocket_client";
+const CURSOR_AGENT_HOST_GATE: &str = "cursor_agent_host";
+const AGENT_HOST_LOCAL_LOOP_GATE: &str = "agent_host_local_loop";
 const LOCAL_RULE: &str = "local_enabled";
 
 #[derive(Clone, PartialEq, Message)]
@@ -51,7 +60,7 @@ fn patch_upstream(response: proxy::BufferedResponse) -> Result<Response<Body>> {
     let (framed, payload) = unary_payload(&response.body)?;
     let mut message = BootstrapStatsigResponse::decode(payload)?;
     let mut config = serde_json::from_str::<Value>(&message.config)?;
-    enable_agent_retries(&mut config)?;
+    apply_gate_overrides(&mut config)?;
     message.config = serde_json::to_string(&config)?;
     Ok(response.with_body(encode_unary(&message, framed)))
 }
@@ -74,7 +83,7 @@ fn local_response() -> Result<Response<Body>> {
         },
         "time": generated_at_ms
     });
-    enable_agent_retries(&mut config)?;
+    apply_gate_overrides(&mut config)?;
     let message = BootstrapStatsigResponse {
         config: serde_json::to_string(&config)?,
         generated_at_ms,
@@ -96,8 +105,18 @@ fn local_response() -> Result<Response<Body>> {
     Ok(response)
 }
 
-fn enable_agent_retries(config: &mut Value) -> Result<()> {
-    let gate_key = statsig_key(config, AGENT_RETRIES_GATE);
+/// 本地网关需要的门禁取值：打开 agent 重试，把 3.29+ 的新传输通道全部摁回
+/// legacy RunSSE / BidiAppend 运行时。
+fn apply_gate_overrides(config: &mut Value) -> Result<()> {
+    set_gate(config, AGENT_RETRIES_GATE, true)?;
+    set_gate(config, AGENT_WEBSOCKET_GATE, false)?;
+    set_gate(config, RUN_INFERENCE_WEBSOCKET_GATE, false)?;
+    set_gate(config, CURSOR_AGENT_HOST_GATE, false)?;
+    set_gate(config, AGENT_HOST_LOCAL_LOOP_GATE, false)
+}
+
+fn set_gate(config: &mut Value, name: &str, value: bool) -> Result<()> {
+    let gate_key = statsig_key(config, name);
     let root = config
         .as_object_mut()
         .ok_or_else(|| Error::Protocol("Statsig bootstrap config must be an object".into()))?;
@@ -106,7 +125,7 @@ fn enable_agent_retries(config: &mut Value) -> Result<()> {
         .or_insert_with(|| Value::Object(Map::new()))
         .as_object_mut()
         .ok_or_else(|| Error::Protocol("Statsig feature_gates must be an object".into()))?;
-    gates.insert(gate_key.clone(), enabled_gate(&gate_key));
+    gates.insert(gate_key.clone(), local_gate(&gate_key, value));
     Ok(())
 }
 
@@ -127,10 +146,10 @@ fn djb2(value: &str) -> String {
         .to_string()
 }
 
-fn enabled_gate(name: &str) -> Value {
+fn local_gate(name: &str, value: bool) -> Value {
     json!({
         "name": name,
-        "value": true,
+        "value": value,
         "rule_id": LOCAL_RULE,
         "ruleID": LOCAL_RULE,
         "group_name": LOCAL_RULE,
@@ -173,4 +192,57 @@ fn encode_unary(message: &impl Message, framed: bool) -> Bytes {
     output.put_u32(payload.len() as u32);
     output.extend_from_slice(&payload);
     output.freeze()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn gate<'a>(config: &'a Value, name: &str) -> &'a Value {
+        &config["feature_gates"][statsig_key(config, name)]["value"]
+    }
+
+    fn apply(upstream_config: Value) -> Value {
+        let mut config = upstream_config;
+        apply_gate_overrides(&mut config).expect("gate overrides must apply to valid configs");
+        config
+    }
+
+    #[test]
+    fn upstream_patch_forces_legacy_runsse_runtime() {
+        // Cursor 3.29+ 登录官方账号后 WS/agent-host 门禁可能为开：不摁掉，Agent Run 走
+        // WebSocket 绕过本地接管，RunInference 本地循环的 payload 会砸进 BidiAppend 被 400
+        let config = apply(json!({
+            "feature_gates": {},
+            "hash_used": "djb2"
+        }));
+        assert_eq!(gate(&config, AGENT_RETRIES_GATE), &json!(true));
+        assert_eq!(gate(&config, AGENT_WEBSOCKET_GATE), &json!(false));
+        assert_eq!(gate(&config, RUN_INFERENCE_WEBSOCKET_GATE), &json!(false));
+        assert_eq!(gate(&config, CURSOR_AGENT_HOST_GATE), &json!(false));
+        assert_eq!(gate(&config, AGENT_HOST_LOCAL_LOOP_GATE), &json!(false));
+    }
+
+    #[test]
+    fn gate_overrides_follow_the_upstream_hash_mode() {
+        // 上游可能用 sha256 哈希 gate 键（statsig_key 按 hash_used 分派），两种模式都要能落点
+        let config = apply(json!({
+            "feature_gates": {},
+            "hash_used": "sha256"
+        }));
+        assert_eq!(gate(&config, AGENT_WEBSOCKET_GATE), &json!(false));
+        assert_eq!(gate(&config, CURSOR_AGENT_HOST_GATE), &json!(false));
+    }
+
+    #[test]
+    fn local_bootstrap_shape_takes_the_same_overrides() {
+        // 本地兜底 bootstrap（上游不可用时）与补丁路径共用同一套门禁，保证降级不漂移
+        let config = apply(json!({
+            "feature_gates": {},
+            "dynamic_configs": {},
+            "hash_used": "none"
+        }));
+        assert_eq!(gate(&config, AGENT_RETRIES_GATE), &json!(true));
+        assert_eq!(gate(&config, AGENT_HOST_LOCAL_LOOP_GATE), &json!(false));
+    }
 }

@@ -2,6 +2,10 @@
 
 All notable changes to AnyBridge will be documented in this file.
 
+## 未发布
+
+- 修复：Cursor 新版本（3.29+）登录后聊天一直重连、自定义模型无响应的问题
+
 ## v1.0.18 - 2026-11-08
 
 - 修复：「测试连接」在部分校验严格的供应商（如本地 CPA 网关）上被误报为「连接失败」的问题

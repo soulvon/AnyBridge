@@ -9,6 +9,24 @@
 > - `CHANGELOG.md`：一屏能读完、用户能看懂、只讲"你会得到什么"。一个版本 2-4 条。
 > - 本文件：可以写 `hudsucker=debug`、`passthroughParams`、栈追踪、判据与测试名。
 
+## 未发布
+
+### Cursor 3.29+ 门禁摁回 RunSSE 运行时（移植 haxsd #8 真机验证口径）
+
+- 根因：Cursor 3.29+ 登录官方账号后 BootstrapStatsig 下发 `nal_websocket_client` /
+  `run_inference_websocket_client` / `cursor_agent_host` / `agent_host_local_loop` 为开，
+  Agent Run 改走 `wss://api2.cursor.sh/agent/v1/run` 绕过本地接管（聊天永久 Reconnecting），
+  或 RunInference 本地循环 payload 砸进 BidiAppend 被 400；仅摁第一个门禁客户端每轮仍重试 WS（churn）。
+- 修复：`analytics.rs apply_gate_overrides` 每次 Bootstrap 强制覆写 5 门禁
+  （nal_agent_retries=true，其余四个=false，gate key 按 hash_used 走 djb2/sha256）；
+  `proxy.rs` 对残留的 GET /agent/v1/run 升级请求回 501+Connection:close
+  （原 401 会被客户端当鉴权失败重试）。
+- 判据：`analytics.rs::upstream_patch_forces_legacy_runsse_runtime`（红绿闭环）、
+  `proxy.rs::agent_run_websocket_upgrade_is_detected_and_rejected_with_501`；
+  坑点库 `cursor-329-websocket-agent-host-bypass`。
+- 真机：Cursor 3.27.22 + 新构建 E2E 通过（MITM→RunSSE/BidiAppend→上游 200 回复渲染，
+  日志零 /agent/v1/run 尝试）；3.29.x 登录态待升级后验证。
+
 ## v1.0.18 - 2026-11-08
 
 ### 探针输出上限提到 OpenAI 最小 16（issue #42）

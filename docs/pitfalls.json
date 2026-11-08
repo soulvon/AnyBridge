@@ -769,6 +769,19 @@
       },
       "regression_test": "src-tauri/src/commands/plugins.rs::orphan_ids_only_target_removed_plugins",
       "severity": "high"
+    },
+    {
+      "id": "cursor-329-websocket-agent-host-bypass",
+      "title": "Cursor 3.29+ 登录态必须把 WS/agent-host 门禁摁回 legacy RunSSE 运行时",
+      "symptom": "Cursor 3.29.9 登录官方账号后 BootstrapStatsig 下发 nal_websocket_client / run_inference_websocket_client / cursor_agent_host / agent_host_local_loop 为开：Agent Run 走 wss://api2.cursor.sh/agent/v1/run 绕过本地接管（聊天永久 Reconnecting），或 RunInference 本地循环把 payload 砸进 BidiAppend 被 400；仅摁 nal_websocket_client 时客户端每轮仍重试 WS（churn）",
+      "lesson": "BootstrapStatsig 补丁（analytics.rs apply_gate_overrides）每次 Bootstrap 强制覆写 5 门禁：nal_agent_retries=true，其余四个=false；代理层对残留的 GET /agent/v1/run 升级请求回 501+Connection:close（401 会被客户端当鉴权失败重试）。补丁依赖客户端缓存且 agent-host 有独立 gate 集合，两道闸缺一不可（haxsd #8 真机验证口径，v1.7.5-v1.7.7）",
+      "check": {
+        "type": "source_contains",
+        "file": "cursor-core/src/cursor/services/analytics.rs",
+        "must_contain": "cursor_agent_host"
+      },
+      "regression_test": "cursor-core/src/cursor/services/analytics.rs::upstream_patch_forces_legacy_runsse_runtime",
+      "severity": "high"
     }
   ]
 }
