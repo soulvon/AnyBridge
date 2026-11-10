@@ -21,6 +21,35 @@ import {
 } from './lib/antigravity-handler.js';
 import { __localProxyTest, handleLocalProxyRequest } from './local-proxy.js';
 
+test('Antigravity handler: every custom model gets a unique runtime enum slot', () => {
+  // 真机事故：11 个 BYOK 模型只用了 9 个 CLAUDE_* 槽位，槽位用尽后
+  // allocateRuntimeModelId 静默复用，导致两个模型共用 341 —— 用户点
+  // sn-glm-5-3-flash，按钮却变成 sn-sensenova-6-8-flash-lite，且请求按
+  // 枚举反查会路由到错的上游模型。槽位数必须 >= 模型数，且绝不重复。
+  const configs = Array.from({ length: 14 }, (_, i) => ({
+    id: `cfg-${i}`,
+    name: `Provider ${i}`,
+    defaultModel: `vendor/model-${i}`,
+    models: [`vendor/model-${i}`],
+    sourceProviderName: `Vendor ${i}`,
+    enabled: true,
+    injectModels: true,
+  }));
+
+  const merged = mergeAntigravityModelsResponse({}, { antigravityConfigs: configs });
+  const byok = Object.entries(merged.models).filter(([key]) => key.startsWith('byok-'));
+  assert.equal(byok.length, configs.length, '每个自定义模型都应注入目录');
+
+  const slots = byok.map(([, details]) => details.model);
+  assert.equal(new Set(slots).size, slots.length, '每个自定义模型必须占用唯一枚举槽位，禁止静默复用');
+
+  // 同时不能与官方可见模型撞车：官方模型在目录里也必须唯一
+  const official = Object.entries(merged.models).filter(([key]) => !key.startsWith('byok-'));
+  const officialSlots = official.map(([, details]) => details.model);
+  const overlap = slots.filter(s => officialSlots.includes(s));
+  assert.deepEqual(overlap, [], '自定义模型不得复用官方/内部依赖模型的枚举');
+});
+
 test('Antigravity handler: path recognition & method extraction', () => {
   assert.equal(isAntigravityPath('/v1internal:loadCodeAssist'), true);
   assert.equal(isAntigravityPath('/v1internal:streamGenerateContent?alt=sse'), true);

@@ -63,45 +63,13 @@ fn cache_dir() -> PathBuf {
     }
 }
 
+/// 定位白底 Hub 的 app.asar。候选路径与端点补丁共用同一份发现逻辑
+/// （platforms::antigravity_hub_asar_candidates），避免汉化与 BYOK 各写一套、
+/// 不同用户名 / 自定义安装路径 / 三平台下出现漂移。
 pub(crate) fn hub_asar_path() -> Option<PathBuf> {
-    #[cfg(target_os = "windows")]
-    {
-        let local = dirs::data_local_dir()?;
-        let p = local
-            .join("Programs")
-            .join("antigravity")
-            .join("resources")
-            .join("app.asar");
-        if p.exists() {
-            Some(p)
-        } else {
-            None
-        }
-    }
-    #[cfg(target_os = "macos")]
-    {
-        let p = PathBuf::from("/Applications/Antigravity.app/Contents/Resources/app.asar");
-        if p.exists() {
-            Some(p)
-        } else {
-            None
-        }
-    }
-    #[cfg(target_os = "linux")]
-    {
-        let home = dirs::home_dir()?;
-        let p = home
-            .join(".local")
-            .join("share")
-            .join("antigravity")
-            .join("resources")
-            .join("app.asar");
-        if p.exists() {
-            Some(p)
-        } else {
-            None
-        }
-    }
+    super::platforms::antigravity_hub_asar_candidates()
+        .into_iter()
+        .find(|p| p.exists())
 }
 
 pub(crate) fn ide_workbench_html_path() -> Option<PathBuf> {

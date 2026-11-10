@@ -462,6 +462,106 @@ test('Gemini request keeps thoughtSignature and replays it to Gemini upstream', 
   assert.equal(anthropicBody.messages[0].content[0].text, 'hi');
 });
 
+test('Gemini Native tool history converts to OpenAI tool_calls instead of 400', () => {
+  // 真机事故：Antigravity 会话带 Hook/工具调用历史时，Gemini Native 的
+  // functionCall/functionResponse 被网关直接拒绝，BYOK（OpenAI 协议）会话必炸。
+  const ctx = __localProxyTest.normalizeRequest('gemini', {
+    model: 'local-model',
+    contents: [
+      { role: 'user', parts: [{ text: '查航班' }] },
+      { role: 'model', parts: [{ functionCall: { name: 'check_flight', args: { flight: 'AA100' } }, thoughtSignature: 'sig-A' }] },
+      { role: 'user', parts: [{ functionResponse: { name: 'check_flight', response: { status: 'on time' } } }] },
+    ],
+  });
+
+  const body = __localProxyTest.upstreamBody({
+    format: 'openai',
+    model: 'gpt-x',
+    apiPath: '/v1/chat/completions',
+  }, ctx);
+
+  const assistant = body.messages.find(m => m.role === 'assistant' && Array.isArray(m.tool_calls));
+  const toolResult = body.messages.find(m => m.role === 'tool');
+  assert.ok(assistant, 'functionCall 必须转成 assistant.tool_calls');
+  assert.equal(assistant.tool_calls[0].function.name, 'check_flight');
+  assert.deepEqual(JSON.parse(assistant.tool_calls[0].function.arguments), { flight: 'AA100' });
+  assert.ok(toolResult, 'functionResponse 必须转成 role:tool 消息');
+  assert.equal(toolResult.tool_call_id, assistant.tool_calls[0].id, '工具结果必须与调用 id 配对');
+  assert.match(toolResult.content, /on time/);
+  assert.equal(JSON.stringify(body).includes('thoughtSignature'), false, '内部签名不得泄漏到 OpenAI 上游');
+});
+
+test('Gemini Native tool results pair with repeated call ids instead of 400', () => {
+  const ctx = __localProxyTest.normalizeRequest('gemini', {
+    model: 'local-model',
+    contents: [
+      { role: 'model', parts: [
+        { functionCall: { id: 'id-1', name: 'read_file', args: { path: 'a' } } },
+        { functionCall: { id: 'id-2', name: 'read_file', args: { path: 'b' } } },
+      ] },
+      { role: 'user', parts: [
+        { functionResponse: { name: 'read_file', response: { content: 'A' } } },
+        { functionResponse: { id: 'id-2', name: 'read_file', response: { content: 'B' } } },
+      ] },
+    ],
+  });
+
+  const body = __localProxyTest.upstreamBody({
+    format: 'openai',
+    model: 'gpt-x',
+    apiPath: '/v1/chat/completions',
+  }, ctx);
+
+  const calls = body.messages.filter(m => m.role === 'assistant').flatMap(m => m.tool_calls || []);
+  const results = body.messages.filter(m => m.role === 'tool');
+  assert.equal(calls.length, 2);
+  assert.equal(results.length, 2);
+  assert.equal(results[0].tool_call_id, 'id-1', '同名调用按出现顺序配对');
+  assert.equal(results[1].tool_call_id, 'id-2', '显式 id 优先');
+});
+
+test('Gemini Native non-image attachment degrades to text instead of 400', () => {
+  const ctx = __localProxyTest.normalizeRequest('gemini', {
+    model: 'local-model',
+    contents: [{ role: 'user', parts: [
+      { text: '看这个 PDF' },
+      { inlineData: { mimeType: 'application/pdf', data: 'JVBERi0x' } },
+    ] }],
+  });
+
+  const body = __localProxyTest.upstreamBody({
+    format: 'openai',
+    model: 'gpt-x',
+    apiPath: '/v1/chat/completions',
+  }, ctx);
+
+  const text = JSON.stringify(body.messages);
+  assert.match(text, /application\/pdf/, '非图片附件应降级为带类型说明的文本占位');
+  assert.match(text, /看这个 PDF/, '相邻文本不能丢');
+});
+
+test('Gemini Native tool history converts for Anthropic upstream too', () => {
+  const ctx = __localProxyTest.normalizeRequest('gemini', {
+    model: 'local-model',
+    contents: [
+      { role: 'model', parts: [{ functionCall: { name: 'read_file', args: { path: 'a' } } }] },
+      { role: 'user', parts: [{ functionResponse: { name: 'read_file', response: { content: 'ok' } } }] },
+    ],
+  });
+
+  const body = __localProxyTest.upstreamBody({
+    format: 'anthropic',
+    model: 'claude-x',
+    apiPath: '/v1/messages',
+  }, ctx);
+
+  const parts = body.messages.flatMap(m => m.content || []);
+  assert.equal(parts.filter(p => p.type === 'tool_use').length, 1);
+  assert.equal(parts.filter(p => p.type === 'tool_result').length, 1);
+  assert.equal(parts.find(p => p.type === 'tool_use').name, 'read_file');
+  assert.equal(JSON.stringify(body).includes('thoughtSignature'), false);
+});
+
 test('Gemini response rebuild attaches placeholder signature for cross-protocol tool calls', () => {
   const writes = [];
   const res = {

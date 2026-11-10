@@ -1215,6 +1215,11 @@ fn ensure_proxy_mitm_ready_once() -> Result<String, String> {
             reason
         ));
     }
+    // 存量用户升级后 CA 已装好但 Node 信任变量缺失：网关启动时幂等补齐。
+    // 写用户级环境变量不需要交互授权，失败必须暴露，不能让 IDE 静默回落官方模型。
+    #[cfg(target_os = "windows")]
+    crate::commands::cert_install::ensure_node_ca_trust()?;
+
     Ok(format!(
         "证书目录={}；Thumbprint={}；信任库={}",
         certs_dir.to_string_lossy(),

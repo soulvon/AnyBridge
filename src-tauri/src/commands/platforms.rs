@@ -741,6 +741,11 @@ impl Platform {
         // teamwork-preview 等高级命令；证书为 AnyBridge Local CA 签发（SAN 含 localhost）
         let proxy_url = format!("https://localhost:{}", ports.antigravity_https_port);
 
+        // 1. 接管黑底 IDE 语言服务器（agy.exe --hub）的端点。只写 jetski.cloudCodeUrl
+        //    是「假接入」：IDE 主进程走网关，agy.exe 仍直连官方，注入模型在 LS
+        //    模型表里不存在，选中即 `unknown model key` 会话崩溃。失败必须中断。
+        patch_antigravity_ide_extension()?;
+
         let raw = if path.exists() {
             fs::read_to_string(path).unwrap_or_default()
         } else {
@@ -910,6 +915,9 @@ impl Platform {
         path: &PathBuf,
         stash_dir: &Path,
     ) -> Result<(), String> {
+        // 注：extensions/agy/vscode/extension.js 里的 CLOUD_CODE_URL 注入块
+        // 保留不剥离——它运行时读 settings.json 的 jetski.cloudCodeUrl，
+        // 撤键后读不到 URL 即回退官方端点，与接入行为对称（patch_antigravity_ide_extension）。
         // 门控开启：字段级还原（用户自己设过 cloudCodeUrl 时写回原值）
         if super::agent_stash::field_restore_enabled() {
             match super::field_restore::restore_json_fields_via_stash(
@@ -4041,16 +4049,17 @@ pub(crate) fn patch_antigravity_hub_asar(asar_path: &std::path::Path) -> Result<
         return Err("languageServer.js 段大小异常".to_string());
     }
 
-    // 只读 LS 段，检查注入标记
+    // 只读 LS 段做轻量幂等预检。只认当前版本 marker：老版本留下的旧注入
+    // 仍含 jetski.cloudCodeUrl，但必须继续走下面全量路径自愈成新版注入。
     f.seek(SeekFrom::Start((payload_start + offset) as u64))
         .map_err(|e| e.to_string())?;
     let mut ls_buf = vec![0u8; ls_size];
     f.read_exact(&mut ls_buf).map_err(|e| format!("读取 languageServer.js 失败: {e}"))?;
     if std::str::from_utf8(&ls_buf)
-        .map(|c| c.contains("jetski.cloudCodeUrl"))
+        .map(|c| c.contains(ANTIGRAVITY_HUB_ENDPOINT_MARKER))
         .unwrap_or(false)
     {
-        // 已打补丁：无需重写 asar，直接返回（从秒级降到毫秒级）
+        // 已是当前版本补丁：无需重写 asar（从秒级降到毫秒级）
         return Ok(());
     }
     drop(f);
@@ -4089,39 +4098,14 @@ pub(crate) fn patch_antigravity_hub_asar(asar_path: &std::path::Path) -> Result<
         std::str::from_utf8(&bytes[payload_start + offset..payload_start + offset + size])
             .map_err(|e| format!("解析 languageServer.js 失败: {e}"))?;
 
-    // 自愈：先用正则清除任意历史注入（旧版注入依赖 languageServer.js 顶部的 fs/path/electron，
-    // 客户端升级后这些导入可能消失，导致语言服务崩溃循环），还原为官方端点串后再注入当前版本。
-    let re_injected = regex::Regex::new(r"(?s)'--cloud_code_endpoint',\s*\(\(\)\s*=>\s*\{.*?\}\)\(\),")
-        .map_err(|e| format!("正则编译失败: {e}"))?;
-    let official_pair = "'--cloud_code_endpoint',\n            'https://daily-cloudcode-pa.googleapis.com',";
-    let base_code = re_injected
-        .replace(original_code, official_pair)
-        .to_string();
-
-    if base_code.contains("jetski.cloudCodeUrl") {
-        return Ok(());
-    }
+    // 变换逻辑抽成纯函数（patch_hub_language_server_code），便于单测覆盖
+    // 老版本的任意缩进/换行/引号/端点域名，以及历史注入自愈。
+    let new_code = patch_hub_language_server_code(original_code)?;
 
     let bak_path = asar_path.with_file_name("app.asar.official.bak");
     if !bak_path.exists() {
         let _ = fs::copy(asar_path, &bak_path);
     }
-
-    let target_lf =
-        "'--cloud_code_endpoint',\n            'https://daily-cloudcode-pa.googleapis.com',";
-    let target_crlf =
-        "'--cloud_code_endpoint',\r\n            'https://daily-cloudcode-pa.googleapis.com',";
-    // 注入代码必须自带 require：客户端升级后 languageServer.js 顶部不一定导入
-    // fs / path / electron，直接引用外部标识符会抛 ReferenceError，导致语言服务崩溃循环。
-    let injected = "'--cloud_code_endpoint',\n            (() => { try { const fs = require('fs'); const path = require('path'); const { app } = require('electron'); const cfg = path.join(app.getPath('userData'), 'User', 'settings.json'); if (fs.existsSync(cfg)) { const val = JSON.parse(fs.readFileSync(cfg, 'utf8'))['jetski.cloudCodeUrl']; if (val && typeof val === 'string') return val.trim(); } } catch(_) {} return process.env.CLOUD_CODE_URL || 'https://daily-cloudcode-pa.googleapis.com'; })(),";
-
-    let new_code = if base_code.contains(target_lf) {
-        base_code.replace(target_lf, injected)
-    } else if base_code.contains(target_crlf) {
-        base_code.replace(target_crlf, injected)
-    } else {
-        return Err("未找到目标 cloud_code_endpoint 字段".to_string());
-    };
 
     let new_code_bytes = new_code.as_bytes();
     let old_payload = &bytes[payload_start..];
@@ -4170,6 +4154,412 @@ pub(crate) fn patch_antigravity_hub_asar(asar_path: &std::path::Path) -> Result<
     Ok(())
 }
 
+// ──────────────────────────────────────────────────────────
+// 黑底 IDE（Antigravity IDE）语言服务器端点接管
+//
+// `jetski.cloudCodeUrl` 只被 IDE 主进程（Electron 侧 CloudCode 服务）消费；
+// Agent 面板的语言服务器是独立进程 `agy.exe --hub`，它的端点只认
+// `--cloud_code_endpoint` 参数或 `CLOUD_CODE_URL` 环境变量。实测（2026-11-10）：
+// 不接管时 LS 全部请求直连 daily-cloudcode-pa.googleapis.com，网关注入的 byok
+// 模型在 LS 的模型表里不存在，选中即报
+// `failed to construct executor: unknown model key ...: model not found`，
+// 斜杠命令同样挂掉——这正是「一键接入显示已接入但会话崩溃」的假接入。
+//
+// 修复：在 IDE 扩展的 buildServerEnv（构造 agy.exe 启动环境的函数）里注入一段
+// 自包含读取逻辑：从 settings.json 的 `jetski.cloudCodeUrl` 取端点写入
+// serverEnv.CLOUD_CODE_URL。白底 Hub 走 patch_antigravity_hub_asar 的
+// languageServer.js 注入（`--cloud_code_endpoint`），与此互不影响。
+//
+// 两个铁律（白底 asar 补丁踩过的坑原样适用）：
+//   1. 注入代码必须自带 require("fs")/require("os")——客户端升级后
+//      extension.js 顶部导入与 minify 变量名（如 Ia/fd/$c）都可能改名，
+//      引用外部标识符会抛 ReferenceError 导致语言服务崩溃循环。
+//   2. 手工 setx CLOUD_CODE_URL 不可靠：环境变量块在进程创建时快照，
+//      setx 只对 Explorer 之后新启动的进程生效；v0.5.8（4c16b733）删除
+//      setx 后本就该走文件补丁，不能再依赖环境变量。
+// ──────────────────────────────────────────────────────────
+
+const ANTIGRAVITY_IDE_EXTENSION_MARKER: &str = "/*ANYBRIDGE_CLOUD_CODE_URL*/";
+const ANTIGRAVITY_HUB_ENDPOINT_MARKER: &str = "/*ANYBRIDGE_CLOUD_CODE_ENDPOINT*/";
+
+/// 注入块：自包含（自带 require/os/homedir、跨平台 settings.json 候选路径），
+/// 不引用 minify 内部标识符。运行时动态读 settings.json——接入/还原随
+/// `jetski.cloudCodeUrl` 撤键自动生效，补丁本体无需随 URL 变化重打。
+///
+/// 兼容性（v1.1.0 固化）：
+/// - 用户名/主目录全部由 os.homedir() / APPDATA / XDG_CONFIG_HOME 推导，
+///   绝不硬编码某个具体用户的主目录或盘符；
+/// - 产品目录名覆盖新旧版本（Antigravity IDE / Antigravity / antigravity-ide 等），
+///   老版本可能只写其中一种；
+/// - 支持便携版 `--user-data-dir=<path>`（从启动参数解析）与显式环境变量
+///   ANYBRIDGE_ANTIGRAVITY_SETTINGS（自定义安装路径的最后兜底）；
+/// - Windows / macOS / Linux 分别走 APPDATA、Library/Application Support、
+///   XDG_CONFIG_HOME 或 ~/.config。
+/// 生成「候选 settings.json 路径」的 JS 表达式（黑底/白底注入共用）。
+/// 纯字符串函数，便于门控直接取出交给 Node 解析。
+fn antigravity_settings_candidates_js() -> String {
+    r#"(function(){const p=require("path"),os=require("os"),h=os.homedir(),env=process.env,names=["Antigravity IDE","Antigravity","antigravity-ide","antigravity","Antigravity-IDE"],roots=[],cands=[];if(env.ANYBRIDGE_ANTIGRAVITY_SETTINGS)cands.push(env.ANYBRIDGE_ANTIGRAVITY_SETTINGS);const av=process.argv||[];for(let i=0;i<av.length;i++){const a=av[i];if(a==="--user-data-dir"&&av[i+1])cands.push(p.join(av[i+1],"User","settings.json"));else{const m=/^--user-data-dir=(.+)$/.exec(a);if(m)cands.push(p.join(m[1],"User","settings.json"))}}if(process.platform==="win32"){if(env.APPDATA)roots.push(env.APPDATA);roots.push(p.join(h,"AppData","Roaming"));if(env.LOCALAPPDATA)roots.push(env.LOCALAPPDATA)}else if(process.platform==="darwin"){roots.push(p.join(h,"Library","Application Support"));if(env.XDG_CONFIG_HOME)roots.push(env.XDG_CONFIG_HOME);roots.push(p.join(h,".config"))}else{if(env.XDG_CONFIG_HOME)roots.push(env.XDG_CONFIG_HOME);roots.push(p.join(h,".config"));if(env.XDG_DATA_HOME)roots.push(env.XDG_DATA_HOME);roots.push(p.join(h,".local","share"))}for(const r of roots){for(const n of names)cands.push(p.join(r,n,"User","settings.json"));cands.push(p.join(r,"User","settings.json"))}return cands})()"#.to_string()
+}
+
+/// 黑底 IDE 注入块：给 buildServerEnv 返回的 env 对象补 CLOUD_CODE_URL。
+fn antigravity_ide_extension_injection() -> String {
+    format!(
+        r#"(function(e){{try{{const fs=require("fs"),cands={};for(const f of cands){{if(!f)continue;try{{if(!fs.existsSync(f))continue;const v=JSON.parse(fs.readFileSync(f,"utf8"))["jetski.cloudCodeUrl"];if(typeof v==="string"&&v.trim()&&/^https?:/i.test(v.trim())){{e.CLOUD_CODE_URL=v.trim();break}}}}catch(_){{}}}}}}catch(_){{}}return e}}{})"#,
+        antigravity_settings_candidates_js(),
+        ANTIGRAVITY_IDE_EXTENSION_MARKER
+    )
+}
+
+/// 白底 Hub 的 languageServer.js 注入块：返回端点字符串（自带 require，
+/// 不依赖文件顶部导入；electron.app 不可用时有 os.homedir 兜底）。
+fn antigravity_hub_endpoint_injection() -> String {
+    format!(
+        r#"(() => {{ try {{ const fs=require("fs"),cands={};for(const f of cands){{if(!f)continue;try{{if(!fs.existsSync(f))continue;const v=JSON.parse(fs.readFileSync(f,"utf8"))["jetski.cloudCodeUrl"];if(typeof v==="string"&&v.trim()&&/^https?:/i.test(v.trim()))return v.trim();}}catch(_){{}}}} }} catch(_) {{}} return process.env.CLOUD_CODE_URL || 'https://daily-cloudcode-pa.googleapis.com'; }})(){}"#,
+        antigravity_settings_candidates_js(),
+        ANTIGRAVITY_HUB_ENDPOINT_MARKER
+    )
+}
+
+/// 纯函数：把白底 languageServer.js 里 `--cloud_code_endpoint` 的官方端点
+/// 替换为动态注入表达式。兼容任意缩进、LF/CRLF、单双引号、任意官方端点域名、
+/// 以及历史版本留下的旧注入表达式（自愈）。找不到参数时明确报错。
+fn patch_hub_language_server_code(code: &str) -> Result<String, String> {
+    if code.contains(ANTIGRAVITY_HUB_ENDPOINT_MARKER) {
+        return Ok(code.to_string());
+    }
+    // 匹配形如：'--cloud_code_endpoint',\n  'https://...',  或旧版注入 IIFE。
+    // 引号可为单/双引号；端点值可为任意域名；缩进/换行任意。
+    let re = regex::Regex::new(
+        r#"(?s)(['"]--cloud_code_endpoint['"]\s*,\s*)(?:['"][^'"]*['"]|\(\(\)\s*=>\s*\{.*?\}\)\(\))(\s*,)"#,
+    )
+    .map_err(|e| format!("正则编译失败: {e}"))?;
+    let injection = antigravity_hub_endpoint_injection();
+    let out = re.replace(code, format!("${{1}}{injection}${{2}}").as_str()).to_string();
+    if out == code {
+        return Err("未找到 --cloud_code_endpoint 参数（客户端结构可能已变化）".to_string());
+    }
+    Ok(out)
+}
+
+/// 纯函数：把 buildServerEnv 的 `return <env>` 原地包一层注入 IIFE。
+///
+/// 兼容性（v1.1.0 固化）：老版本客户端的 buildServerEnv 可能是
+/// `return c}` / `return c;}` / `return c;\r\n}` / `return _env }`，导出形式可能是
+/// `$c.buildServerEnvironment=fd`、`exports.buildServerEnvironment=...` 或
+/// `["buildServerEnvironment"]=...`。因此不再假设「return 后紧跟 }」，
+/// 而是用正则定位锚点前最后一个 `return <标识符>` 并**原地替换表达式本身**：
+/// 后缀（`;}`、`\r\n}` 等）原样保留，天然不会产生两份 return。
+///
+/// 幂等：已含 marker 直接返回；锚点/return 缺失必须报错，接入流程据此中断防假接入。
+fn patch_antigravity_extension_code(code: &str) -> Result<String, String> {
+    if code.contains(ANTIGRAVITY_IDE_EXTENSION_MARKER) {
+        return if antigravity_extension_has_anchor(code) {
+            Ok(code.to_string())
+        } else {
+            Err(
+                "客户端 extension.js 已含 AnyBridge 注入但未找到 buildServerEnvironment 锚点（客户端结构可能已变化）"
+                    .to_string(),
+            )
+        };
+    }
+    let anchor = antigravity_extension_anchor(code).ok_or(
+        "未在 extension.js 中找到 buildServerEnvironment 赋值（客户端结构可能已变化）",
+    )?;
+    let head = &code[..anchor];
+    let re = regex::Regex::new(r"return\s+([A-Za-z_$][A-Za-z0-9_$]*)")
+        .map_err(|e| format!("正则编译失败: {e}"))?;
+    let matched = re
+        .captures_iter(head)
+        .last()
+        .ok_or("未找到 buildServerEnv 的 return 语句")?;
+    let whole = matched.get(0).ok_or("return 匹配异常")?;
+    let var_name = matched
+        .get(1)
+        .map(|m| m.as_str())
+        .ok_or("未找到 return 的变量名")?;
+    // 防止误匹配 `return new Foo()` / `return function()` 之类表达式。
+    if ["new", "function", "class", "await", "void", "typeof", "delete"].contains(&var_name) {
+        return Err(format!("buildServerEnv return 不是简单变量: {var_name}"));
+    }
+    let injection = antigravity_ide_extension_injection();
+    // 原地替换：前缀 + 新 return 表达式 + 原后缀（含 ; 与 }），只生成一份 return。
+    Ok(format!(
+        "{}return ({injection})({var_name}){}",
+        &head[..whole.start()],
+        &code[whole.end()..]
+    ))
+}
+
+/// 定位 buildServerEnvironment 导出锚点，兼容新旧版本的多种写法。
+fn antigravity_extension_anchor(code: &str) -> Option<usize> {
+    for needle in [
+        ".buildServerEnvironment",
+        "[\"buildServerEnvironment\"]",
+        "['buildServerEnvironment']",
+        "buildServerEnvironment=",
+        "buildServerEnvironment:",
+    ] {
+        if let Some(i) = code.find(needle) {
+            return Some(i);
+        }
+    }
+    None
+}
+
+fn antigravity_extension_has_anchor(code: &str) -> bool {
+    antigravity_extension_anchor(code).is_some()
+}
+
+/// Antigravity 安装根目录候选（不含 resources 层）。
+///
+/// 兼容性（v1.1.0 固化）：
+/// - 绝不硬编码用户名或盘符：一律从 dirs::home_dir/data_local_dir 与环境变量推导；
+/// - 显式覆盖：ANYBRIDGE_ANTIGRAVITY_IDE_APP_DIR / ANYBRIDGE_ANTIGRAVITY_HUB_APP_DIR
+///   直接指向 resources/app（或 .app 内的 Resources/app）目录；
+/// - 扫描常见安装父目录里名字含 antigravity 的子目录，覆盖自定义安装路径、
+///   不同版本目录名（Antigravity IDE / antigravity-ide / Antigravity 等）；
+/// - Windows / macOS / Linux 分别覆盖各自的标准安装布局。
+fn antigravity_install_app_dirs() -> Vec<PathBuf> {
+    let mut out = Vec::new();
+    let push_unique = |p: PathBuf, out: &mut Vec<PathBuf>| {
+        if !p.as_os_str().is_empty() && !out.contains(&p) {
+            out.push(p);
+        }
+    };
+
+    // 1. 显式覆盖（优先级最高）：直接给 app 目录。
+    for key in [
+        "ANYBRIDGE_ANTIGRAVITY_IDE_APP_DIR",
+        "ANYBRIDGE_ANTIGRAVITY_HUB_APP_DIR",
+    ] {
+        if let Ok(dir) = std::env::var(key) {
+            let p = PathBuf::from(&dir);
+            push_unique(p.clone(), &mut out);
+            // 也允许指向安装根（自动补 resources/app）
+            push_unique(p.join("resources").join("app"), &mut out);
+        }
+    }
+
+    // 2. 老版本/自定义目录名：扫描常见安装父目录。
+    let mut scan_parents: Vec<PathBuf> = Vec::new();
+    #[cfg(target_os = "windows")]
+    {
+        if let Some(local) = dirs::data_local_dir() {
+            scan_parents.push(local.join("Programs"));
+        }
+        for key in ["ProgramFiles", "ProgramFiles(x86)", "LOCALAPPDATA"] {
+            if let Ok(v) = std::env::var(key) {
+                scan_parents.push(PathBuf::from(&v));
+                scan_parents.push(PathBuf::from(v).join("Programs"));
+            }
+        }
+    }
+    #[cfg(target_os = "macos")]
+    {
+        scan_parents.push(PathBuf::from("/Applications"));
+        if let Some(home) = dirs::home_dir() {
+            scan_parents.push(home.join("Applications"));
+        }
+    }
+    #[cfg(all(unix, not(target_os = "macos")))]
+    {
+        for base in ["/opt", "/usr/share", "/usr/lib", "/usr/local/share"] {
+            scan_parents.push(PathBuf::from(base));
+        }
+        if let Some(home) = dirs::home_dir() {
+            scan_parents.push(home.join(".local").join("share"));
+            scan_parents.push(home.join(".local").join("opt"));
+        }
+        if let Ok(v) = std::env::var("XDG_DATA_HOME") {
+            scan_parents.push(PathBuf::from(v));
+        }
+    }
+
+    for parent in scan_parents {
+        let entries = match fs::read_dir(&parent) {
+            Ok(e) => e,
+            Err(_) => continue,
+        };
+        for entry in entries.flatten() {
+            let name = entry.file_name().to_string_lossy().to_lowercase();
+            if !name.contains("antigravity") {
+                continue;
+            }
+            let root = entry.path();
+            // Windows 解包布局：<root>/resources/app
+            push_unique(root.join("resources").join("app"), &mut out);
+            // macOS .app 布局：<root>/Contents/Resources/app
+            push_unique(
+                root.join("Contents").join("Resources").join("app"),
+                &mut out,
+            );
+            // 已经是 app 目录本身
+            push_unique(root.clone(), &mut out);
+        }
+    }
+
+    // 3. 固定标准路径兜底（即使扫描不到也已覆盖）。
+    #[cfg(target_os = "windows")]
+    if let Some(local) = dirs::data_local_dir() {
+        for name in ["Antigravity IDE", "antigravity", "Antigravity", "antigravity-ide"] {
+            push_unique(
+                local.join("Programs").join(name).join("resources").join("app"),
+                &mut out,
+            );
+        }
+    }
+    #[cfg(target_os = "macos")]
+    {
+        for name in [
+            "Antigravity IDE.app",
+            "Antigravity.app",
+            "antigravity-ide.app",
+        ] {
+            push_unique(
+                PathBuf::from("/Applications")
+                    .join(name)
+                    .join("Contents")
+                    .join("Resources")
+                    .join("app"),
+                &mut out,
+            );
+        }
+    }
+    #[cfg(all(unix, not(target_os = "macos")))]
+    {
+        for name in ["antigravity-ide", "antigravity", "Antigravity IDE"] {
+            for base in ["/opt", "/usr/share", "/usr/lib"] {
+                push_unique(
+                    PathBuf::from(base)
+                        .join(name)
+                        .join("resources")
+                        .join("app"),
+                    &mut out,
+                );
+            }
+        }
+    }
+    out
+}
+
+/// 黑底 IDE 的 extension.js 候选路径。
+fn antigravity_ide_extension_candidates() -> Vec<PathBuf> {
+    antigravity_install_app_dirs()
+        .into_iter()
+        .map(|app| {
+            app.join("extensions")
+                .join("agy")
+                .join("vscode")
+                .join("extension.js")
+        })
+        .collect()
+}
+
+/// 白底 Hub 的 app.asar 候选路径（供 localization::hub_asar_path 复用）。
+pub(crate) fn antigravity_hub_asar_candidates() -> Vec<PathBuf> {
+    let mut out = Vec::new();
+    if let Ok(dir) = std::env::var("ANYBRIDGE_ANTIGRAVITY_HUB_ASAR") {
+        out.push(PathBuf::from(dir));
+    }
+    for app in antigravity_install_app_dirs() {
+        // app 目录的上一级就是 resources
+        if let Some(resources) = app.parent() {
+            let asar = resources.join("app.asar");
+            if !out.contains(&asar) {
+                out.push(asar);
+            }
+        }
+    }
+    out
+}
+
+/// 纯函数：端点 URL 是否由 AnyBridge 接管。
+/// keeper / 状态查询共用，避免并行测试之间通过配置文件互相干扰。
+fn is_anybridge_managed_endpoint(url: Option<&str>) -> bool {
+    matches!(url, Some(u) if u.contains("127.0.0.1") || u.contains("localhost"))
+}
+
+/// 读取某端 settings.json 里的 `jetski.cloudCodeUrl`（读不到返回 None，不报错）。
+fn antigravity_managed_endpoint_from_settings(dir: &Path) -> Option<String> {
+    let path = dir.join("settings.json");
+    let raw = fs::read_to_string(path).ok()?;
+    let obj = super::ide_config::parse_object(&raw).ok()?;
+    obj.get("jetski.cloudCodeUrl")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string())
+}
+
+/// 客户端升级会整包覆盖 `app.asar` / `extensions/agy/vscode/extension.js`，
+/// 两个端点补丁随之丢失，导致「界面显示已接入、LS 却直连官方」的假接入。
+/// 巡检只在配置仍指向本地网关时重打（用户已停止接入就绝不擅自改安装目录）。
+/// 两个 patch 函数自身幂等且带轻量预检，因此常态巡检只读几 KB header。
+fn antigravity_endpoint_keeper_tick() {
+    let hub_managed = antigravity_hub_config_dir()
+        .and_then(|d| antigravity_managed_endpoint_from_settings(&d))
+        .map(|u| is_anybridge_managed_endpoint(Some(&u)))
+        .unwrap_or(false);
+    let ide_managed = antigravity_ide_config_dir()
+        .and_then(|d| antigravity_managed_endpoint_from_settings(&d))
+        .map(|u| is_anybridge_managed_endpoint(Some(&u)))
+        .unwrap_or(false);
+    if !hub_managed && !ide_managed {
+        return; // 未接入 → 零开销，且绝不擅自改安装目录
+    }
+
+    // 持全局注入锁：汉化 apply/restore 会全量重写同一个 app.asar，
+    // 两边不互斥就是 lost update（后写方用旧 bytes 覆盖前一方的补丁）。
+    let _guard = super::inject_lock();
+    if hub_managed {
+        if let Some(asar_path) = super::antigravity_localization::hub_asar_path() {
+            if let Err(e) = patch_antigravity_hub_asar(&asar_path) {
+                eprintln!("[ag-endpoint-keeper] 白底 asar 端点补丁补打失败: {e}");
+            }
+        }
+    }
+    if ide_managed {
+        if let Err(e) = patch_antigravity_ide_extension() {
+            eprintln!("[ag-endpoint-keeper] 黑底 IDE 端点补丁补打失败: {e}");
+        }
+    }
+}
+
+/// 后台保活：客户端升级覆盖注入文件后自动重打端点补丁。
+/// 仅在「已接入」时工作，未接入 / 未安装时静默跳过，绝不打扰用户。
+pub fn spawn_antigravity_endpoint_keeper() {
+    std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_secs(15));
+        loop {
+            antigravity_endpoint_keeper_tick();
+            std::thread::sleep(std::time::Duration::from_secs(30));
+        }
+    });
+}
+
+/// 幂等给黑底 IDE 的 agy 启动环境注入 `CLOUD_CODE_URL`。
+/// 首次接管前备份到 `extension.js.anybridge-bak`；失败必须中断接入。
+pub(crate) fn patch_antigravity_ide_extension() -> Result<(), String> {
+    let candidates = antigravity_ide_extension_candidates();
+    let target = candidates
+        .iter()
+        .find(|c| c.exists())
+        .ok_or("未找到 Antigravity IDE 安装目录（extensions/agy/vscode/extension.js），请先安装并启动一次 Antigravity IDE")?;
+    let original = fs::read_to_string(target).map_err(|e| format!("读取 extension.js 失败: {e}"))?;
+    if original.contains(ANTIGRAVITY_IDE_EXTENSION_MARKER)
+        && original.contains(".buildServerEnvironment")
+    {
+        // 幂等：注入块运行时动态读 settings.json，URL/端口变化无需重打。
+        return Ok(());
+    }
+    let bak = target.with_extension("js.anybridge-bak");
+    if !bak.exists() {
+        let _ = fs::copy(target, &bak);
+    }
+    let patched = patch_antigravity_extension_code(&original)?;
+    super::write_atomic(target, patched.as_bytes())
+        .map_err(|e| format!("写入 extension.js 补丁失败: {e}"))?;
+    Ok(())
+}
+
 fn read_antigravity_config_info(path: &PathBuf) -> Result<Option<AntigravityConfigInfo>, String> {
     if !path.exists() {
         return Ok(None);
@@ -4187,10 +4577,7 @@ fn read_antigravity_config_info(path: &PathBuf) -> Result<Option<AntigravityConf
         .get("jetski.cloudCodeUrl")
         .and_then(|v| v.as_str())
         .map(|s| s.to_string());
-    let managed = cloud_code_url
-        .as_ref()
-        .map(|u| u.contains("127.0.0.1") || u.contains("localhost"))
-        .unwrap_or(false);
+    let managed = is_anybridge_managed_endpoint(cloud_code_url.as_deref());
     let is_official = cloud_code_url.is_none()
         || matches!(
             cloud_code_url.as_deref(),
@@ -10337,6 +10724,242 @@ mod tests {
         dir.join("config.toml")
     }
 
+    #[test]
+    fn antigravity_extension_patch_binds_runtime_env_var() {
+        let minified =
+            "function fd(a){var c={...process.env};return c}\r\n$c.buildServerEnvironment=fd;";
+        let once = patch_antigravity_extension_code(minified).unwrap();
+        assert!(
+            once.contains("/*ANYBRIDGE_CLOUD_CODE_URL*/"),
+            "必须带幂等 marker"
+        );
+        assert!(
+            once.contains("e.CLOUD_CODE_URL="),
+            "注入块必须把端点写进 agy 启动环境"
+        );
+        assert!(
+            once.contains(")(c)}"),
+            "必须用运行时变量名回填 env 对象（不得硬编码 minify 名）"
+        );
+        assert!(
+            once.contains("$c.buildServerEnvironment=fd;"),
+            "锚点赋值必须原样保留"
+        );
+        // v1.0.20 事故：拼接时误用整个 head（已含 `return <env>}`），
+        // 又追加一份 `return (...)`，生成两份 return 与多余花括号，
+        // agy.exe 加载扩展失败 → Agent 面板永久卡加载。必须锁死这一点。
+        assert!(
+            !once.contains("return c}"),
+            "补丁后不得残留原来的 return 语句"
+        );
+        assert_eq!(
+            once.matches("return (").count(),
+            1,
+            "只允许一处 `return (...)`（注入表达式），杜绝双 return"
+        );
+        let twice = patch_antigravity_extension_code(&once).unwrap();
+        assert_eq!(once, twice, "重复接入必须幂等");
+
+        // 真正的语法校验：把补丁结果交给 Node 解析，防止再次输出损坏的 JS。
+        // node 不存在时跳过（不该让 CI 因缺 node 变红）。
+        let tmp = std::env::temp_dir().join(format!(
+            "anybridge-ext-patch-{}-{}.js",
+            std::process::id(),
+            SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos()
+        ));
+        if fs::write(&tmp, &once).is_ok() {
+            if let Ok(out) = std::process::Command::new("node")
+                .arg("--check")
+                .arg(&tmp)
+                .output()
+            {
+                assert!(
+                    out.status.success(),
+                    "注入后的 JS 必须能被 Node 解析: {}",
+                    String::from_utf8_lossy(&out.stderr)
+                );
+            }
+            let _ = fs::remove_file(&tmp);
+        }
+    }
+
+    /// 把补丁结果交给 Node 真解析；node 不可用则跳过（不让 CI 因缺 node 变红）。
+    fn assert_valid_js(label: &str, code: &str) {
+        let tmp = std::env::temp_dir().join(format!(
+            "anybridge-ag-patch-{}-{}-{}.js",
+            std::process::id(),
+            label.replace(|c: char| !c.is_ascii_alphanumeric(), "_"),
+            SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos()
+        ));
+        if fs::write(&tmp, code).is_err() {
+            return;
+        }
+        if let Ok(out) = std::process::Command::new("node")
+            .arg("--check")
+            .arg(&tmp)
+            .output()
+        {
+            assert!(
+                out.status.success(),
+                "{label} 注入后的 JS 必须能被 Node 解析: {}",
+                String::from_utf8_lossy(&out.stderr)
+            );
+        }
+        let _ = fs::remove_file(&tmp);
+    }
+
+    #[test]
+    fn antigravity_extension_patch_supports_legacy_return_shapes() {
+        // 老版本 buildServerEnv 的 return 与导出形态各不相同，逐一锁死。
+        // 关键：任何形态都只能生成一份 return，且结果必须是合法 JS。
+        let cases = [
+            (
+                "current_lf",
+                "function fd(a){var c={...process.env};return c}\n$c.buildServerEnvironment=fd;",
+                "c",
+            ),
+            (
+                "current_crlf_semicolon",
+                "function fd(a){var env={...process.env};return env;}\r\n$c.buildServerEnvironment=fd;",
+                "env",
+            ),
+            (
+                "legacy_dollar_var",
+                "function fd(a){let $e=Object.assign({},process.env);return $e;}\n$c.buildServerEnvironment=fd;",
+                "$e",
+            ),
+            (
+                "legacy_bracket_export",
+                "function fd(a){var _env={...process.env};return _env }\n$c[\"buildServerEnvironment\"]=fd;",
+                "_env",
+            ),
+            (
+                "legacy_plain_export",
+                "function fd(a){var opts={...process.env};return opts;}\nexports.buildServerEnvironment=fd;",
+                "opts",
+            ),
+        ];
+        for (label, code, var) in cases {
+            let patched = patch_antigravity_extension_code(code)
+                .unwrap_or_else(|e| panic!("{label} 注入失败: {e}"));
+            assert!(
+                patched.contains(ANTIGRAVITY_IDE_EXTENSION_MARKER),
+                "{label} 缺 marker"
+            );
+            assert!(
+                patched.contains(&format!(")({var})")),
+                "{label} 未绑定正确的 env 变量 {var}"
+            );
+            assert_eq!(
+                patched.matches("return (").count(),
+                1,
+                "{label} 只允许一处注入 return，杜绝双 return"
+            );
+            assert!(
+                !patched.contains(&format!("return {var}}}")) && !patched.contains(&format!("return {var};")),
+                "{label} 残留原 return 语句"
+            );
+            assert_valid_js(label, &patched);
+            assert_eq!(
+                patch_antigravity_extension_code(&patched).unwrap(),
+                patched,
+                "{label} 幂等"
+            );
+        }
+    }
+
+    #[test]
+    fn antigravity_hub_patch_supports_legacy_parameter_shapes() {
+        let injected = antigravity_hub_endpoint_injection();
+        let cases = [
+            (
+                "current_lf",
+                "const args=['--cloud_code_endpoint',\n            'https://daily-cloudcode-pa.googleapis.com',\n'--api_server_url'];",
+            ),
+            (
+                "crlf_double_quote",
+                "const args=[\"--cloud_code_endpoint\",\r\n  \"https://cloudcode-pa.googleapis.com\",\r\n\"--api_server_url\"];",
+            ),
+            (
+                "legacy_different_domain",
+                "const args=['--cloud_code_endpoint', 'https://old.example.googleapis.com', '--x'];",
+            ),
+            (
+                "legacy_old_injection_selfheal",
+                "const args=['--cloud_code_endpoint',\n  (() => { try { return require('electron').app.getPath('userData'); } catch(_) {} return 'https://daily-cloudcode-pa.googleapis.com'; })(),\n'--x'];",
+            ),
+        ];
+        for (label, code) in cases {
+            let patched = patch_hub_language_server_code(code)
+                .unwrap_or_else(|e| panic!("{label} 白底注入失败: {e}"));
+            assert!(patched.contains(ANTIGRAVITY_HUB_ENDPOINT_MARKER), "{label} 缺 marker");
+            assert!(patched.contains("jetski.cloudCodeUrl"), "{label} 未读配置");
+            assert!(patched.contains("--api_server_url") || patched.contains("--x"), "{label} 破坏了相邻参数");
+            assert_eq!(
+                patch_hub_language_server_code(&patched).unwrap(),
+                patched,
+                "{label} 幂等"
+            );
+            assert_valid_js(label, &patched);
+            let _ = &injected;
+        }
+        assert!(patch_hub_language_server_code("const args=['--x'];").is_err());
+    }
+
+    #[test]
+    fn antigravity_install_paths_have_no_hardcoded_username() {
+        // 路径发现必须跨平台且不硬编码某个用户名/盘符。
+        // 只检查路径发现函数本身，源码其它位置（注释/测试断言）可能出现该字面量。
+        let src = include_str!("platforms.rs");
+        let start = src.find("fn antigravity_install_app_dirs()").unwrap();
+        let end = src.find("fn antigravity_ide_extension_candidates()").unwrap();
+        let discovery = &src[start..end];
+        assert!(
+            !discovery.contains("Users\\") && !discovery.contains("Users/"),
+            "路径发现不得硬编码用户名"
+        );
+        assert!(src.contains("dirs::home_dir"), "必须按当前用户主目录推导");
+        assert!(src.contains("ANYBRIDGE_ANTIGRAVITY_IDE_APP_DIR"), "必须支持自定义安装路径覆盖");
+        assert!(src.contains("XDG_DATA_HOME"), "Linux 必须支持 XDG 布局");
+        assert!(
+            src.contains("Library") && src.contains("Application Support"),
+            "macOS 必须覆盖 Application Support 布局"
+        );
+        let injection = antigravity_ide_extension_injection();
+        assert!(injection.contains("os.homedir"), "注入块必须按当前用户主目录推导");
+        assert!(injection.contains("XDG_CONFIG_HOME"), "注入块必须支持 Linux XDG");
+        assert!(injection.contains("APPDATA"), "注入块必须支持 Windows APPDATA");
+        assert!(injection.contains("--user-data-dir"), "注入块必须支持便携版");
+        assert_valid_js("ide_injection", &format!("const x={injection};"));
+        assert_valid_js("hub_injection", &format!("const y={};", antigravity_hub_endpoint_injection()));
+    }
+
+    #[test]
+    fn antigravity_endpoint_keeper_only_restores_managed_clients() {
+        // 真机事故：白底客户端启动自更新覆盖 app.asar，端点补丁丢失后
+        // 界面仍显示「已接入」，LS 却直连官方。判据必须只认本地网关地址，
+        // 且用户已停止接入（官方端点/无配置）时绝不擅自改安装目录。
+        assert!(is_anybridge_managed_endpoint(Some("https://localhost:7452")));
+        assert!(is_anybridge_managed_endpoint(Some("https://127.0.0.1:7452")));
+        assert!(!is_anybridge_managed_endpoint(Some(
+            "https://daily-cloudcode-pa.googleapis.com"
+        )));
+        assert!(!is_anybridge_managed_endpoint(None));
+    }
+
+    #[test]
+    fn antigravity_extension_patch_rejects_unanchored_code() {
+        assert!(
+            patch_antigravity_extension_code("var a=1;").is_err(),
+            "无锚点必须报错，接入流程据此中断防假接入"
+        );
+        let broken = "/*ANYBRIDGE_CLOUD_CODE_URL*/ var a=1;";
+        assert!(
+            patch_antigravity_extension_code(broken).is_err(),
+            "marker 存在但锚点丢失同样必须报错"
+        );
+    }
+
     fn temp_json_path(name: &str) -> PathBuf {
         let nanos = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -12359,10 +12982,13 @@ wire_api = "responses"
 
     #[test]
     fn apply_codex_official_removes_anybridge_managed_local_access() {
-        let path = temp_config_path("codex-restore-managed-local-access");
-        fs::write(
-            &path,
-            r#"
+        // 显式关门控并串行化：其它测试并行把 ANYBRIDGE_FIELD_RESTORE 设为 1 时，
+        // 本测试会误走字段级还原分支而随机红（坑点 test-isolation-real-stash-and-env-gate）。
+        with_gates(None, Some(false), || {
+            let path = temp_config_path("codex-restore-managed-local-access");
+            fs::write(
+                &path,
+                r#"
 model = "third-party-model"
 model_provider = "codex_local_access"
 
@@ -12381,27 +13007,28 @@ name = "Manual"
 base_url = "https://manual.example.com/v1"
 wire_api = "responses"
 "#,
-        )
-        .unwrap();
+            )
+            .unwrap();
 
-        Platform::Codex.apply_codex_official(&path, false).unwrap();
+            Platform::Codex.apply_codex_official(&path, false).unwrap();
 
-        let raw = fs::read_to_string(&path).unwrap();
-        let doc = raw.parse::<DocumentMut>().unwrap();
-        assert!(doc.get("model").is_none());
-        assert!(doc.get("model_provider").is_none());
-        assert!(doc["model_providers"]
-            .as_table()
-            .unwrap()
-            .get(CODEX_RUNTIME_MODEL_PROVIDER_ID)
-            .is_none());
-        assert_eq!(
-            doc["model_providers"]["manual"]["base_url"].as_str(),
-            Some("https://manual.example.com/v1")
-        );
-        assert_eq!(doc["mcp_servers"]["docs"]["command"].as_str(), Some("node"));
+            let raw = fs::read_to_string(&path).unwrap();
+            let doc = raw.parse::<DocumentMut>().unwrap();
+            assert!(doc.get("model").is_none());
+            assert!(doc.get("model_provider").is_none());
+            assert!(doc["model_providers"]
+                .as_table()
+                .unwrap()
+                .get(CODEX_RUNTIME_MODEL_PROVIDER_ID)
+                .is_none());
+            assert_eq!(
+                doc["model_providers"]["manual"]["base_url"].as_str(),
+                Some("https://manual.example.com/v1")
+            );
+            assert_eq!(doc["mcp_servers"]["docs"]["command"].as_str(), Some("node"));
 
-        let _ = fs::remove_dir_all(path.parent().unwrap());
+            let _ = fs::remove_dir_all(path.parent().unwrap());
+        });
     }
 
     #[test]

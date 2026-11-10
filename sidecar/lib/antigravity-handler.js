@@ -99,6 +99,12 @@ export function cleanAntigravityModelId(model) {
 // 同样禁止把以下枚举直接分配给用户模型：
 // 1. MODEL_PLACEHOLDER_M<N>：属于 Language Server 内部模型；M36/M50/M318 在下方单独隐藏注册。
 // 2. MODEL_GOOGLE_GEMINI_INTERNAL_BYOM：强制要求请求级 model info override，目录注入链路不提供。
+//
+// 槽位数必须 >= 用户配置的模型数。真机事故（2026-11-10）：只有 9 个 CLAUDE_*
+// 槽位却配了 11 个 BYOK 模型，槽位用尽后静默复用，导致两个模型共用 341，
+// 用户选 sn-glm-5-3-flash 时按钮显示成 sn-sensenova-6-8-flash-lite，请求按
+// 枚举反查还会路由到错的上游模型。下面补充前端 Model enum 表里同样合法、
+// 且未被官方可见模型占用的 GOOGLE_GEMINI_* 槽位（数值 336/337/338/339/...）。
 export const ANTIGRAVITY_SUPPORTED_RUNTIME_MODELS = [
   'MODEL_CLAUDE_4_SONNET',
   'MODEL_CLAUDE_4_SONNET_THINKING',
@@ -109,6 +115,15 @@ export const ANTIGRAVITY_SUPPORTED_RUNTIME_MODELS = [
   'MODEL_CLAUDE_4_5_HAIKU',
   'MODEL_CLAUDE_4_5_HAIKU_THINKING',
   'MODEL_OPENAI_GPT_OSS_120B_MEDIUM',
+  'MODEL_GOOGLE_GEMINI_HORIZONDAWN',
+  'MODEL_GOOGLE_GEMINI_PUREPRISM',
+  'MODEL_GOOGLE_GEMINI_GENTLEISLAND',
+  'MODEL_GOOGLE_GEMINI_RAINSONG',
+  'MODEL_GOOGLE_GEMINI_ORIONFIRE',
+  'MODEL_GOOGLE_GEMINI_COSMICFORGE',
+  'MODEL_GOOGLE_GEMINI_RIFTRUNNER',
+  'MODEL_GOOGLE_GEMINI_INFINITYJET',
+  'MODEL_GOOGLE_GEMINI_INFINITYBLOOM',
 ];
 
 /**

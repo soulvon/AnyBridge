@@ -782,6 +782,97 @@
       },
       "regression_test": "cursor-core/src/cursor/services/analytics.rs::upstream_patch_forces_legacy_runsse_runtime",
       "severity": "high"
+    },
+    {
+      "id": "ag-https-endpoint-needs-node-ca-trust",
+      "title": "Antigravity HTTPS 端点必须同时补齐 Node 系客户端的 CA 信任",
+      "symptom": "Antigravity 接入改为本地 HTTPS 7452 后，IDE cloudcode.log 每 3 秒报 self signed certificate in certificate chain，模型下拉只剩官方模型、11 个自定义模型全不显示；AnyBridge 界面仍显示「已接入」，因为判据只看 cloudCodeUrl 是否指向 localhost",
+      "lesson": "把本地 CA 装进系统证书库只对 Electron/Chromium 有效；IDE 的 CloudCode 请求走 Node TLS 栈，只读进程启动时的 NODE_EXTRA_CA_CERTS，不读系统证书库。端点从明文改为 HTTPS 时必须同步补齐这条信任链，并与「安装/卸载 CA」对称：用户原有环境变量值必须合并进 bundle 且记账，卸载时按账本还原、用户改过就保留。判据要覆盖 Node 信任是否就绪，不能只看配置写入或系统信任库",
+      "check": {
+        "type": "source_contains",
+        "file": "src-tauri/src/commands/cert_install.rs",
+        "must_contain": "pub fn ensure_node_ca_trust"
+      },
+      "regression_test": "src-tauri/src/commands/cert_install.rs::node_ca_bundle_preserves_user_ca",
+      "severity": "high"
+    },
+    {
+      "id": "ag-ide-ls-endpoint-not-taken-over",
+      "title": "Antigravity IDE 的 jetski.cloudCodeUrl 管不到语言服务器，必须接管 agy.exe 的端点",
+      "symptom": "一键接入显示已接入、网关 fetchAvailableModels 也返回 byok 模型，但 IDE 模型下拉只有官方模型；选中自定义模型报 Agent execution terminated due to error，agy.exe 日志刷 failed to construct executor: unknown model key ...: model not found，且 LS 全部请求直连 daily-cloudcode-pa.googleapis.com 绕过本地网关",
+      "lesson": "jetski.cloudCodeUrl 只被 IDE 主进程消费；Agent 面板的语言服务器是独立进程 agy.exe --hub，端点只认 --cloud_code_endpoint 参数或 CLOUD_CODE_URL 环境变量。v0.5.8（4c16b733）删除 setx CLOUD_CODE_URL 后黑底 IDE 再无接管路径（白底 Hub 有 patch_antigravity_hub_asar 覆盖）。必须在 extensions/agy/vscode/extension.js 的 buildServerEnv（构造 agy 启动 env 的函数）注入读取 settings.json 的自包含逻辑；注入代码不得引用 minify 内部标识符（客户端升级会改名 Ia/fd/$c），锚点用 buildServerEnvironment 赋值定位，return 段按第一个闭合花括号切分变量名。手工 setx 不可靠：环境变量块在进程创建时快照，setx 只对 Explorer 之后新启动的进程生效。还原撤键后注入块读不到 URL 自动回退官方端点，行为对称，补丁无需剥离",
+      "check": {
+        "type": "source_contains",
+        "file": "src-tauri/src/commands/platforms.rs",
+        "must_contain": "patch_antigravity_ide_extension"
+      },
+      "regression_test": "src-tauri/src/commands/platforms.rs::antigravity_extension_patch_binds_runtime_env_var",
+      "severity": "high"
+    },
+    {
+      "id": "ag-hub-asar-patch-needs-upgrade-keeper",
+      "title": "白底客户端启动即自更新，会覆盖 app.asar 端点补丁，必须有保活重打",
+      "symptom": "白底 Antigravity（2.0 App）一键接入后界面显示已接入、settings.json 里 jetski.cloudCodeUrl 也指向本地网关，但 language_server.exe 启动参数仍是 --cloud_code_endpoint https://daily-cloudcode-pa.googleapis.com，模型下拉只有官方模型。查 app.asar 时间晚于接入时间、内部 dist/languageServer.js 无 jetski.cloudCodeUrl 即坐实",
+      "lesson": "白底客户端带 app-update.yml 自动更新，启动时 installer.exe 会整包替换 Antigravity.exe 与 app.asar；接入时打一次的补丁会被升级无声冲掉，仅靠一次性 apply 不够。必须在设置仍指向本地网关时定期幂等重打（spawn_antigravity_endpoint_keeper），重打判据用 settings.json 的 cloudCodeUrl 是否为本地地址，用户停止接入后绝不擅自改安装目录；重打必须持 inject_lock，避免与汉化 apply/restore 全量重写同一 asar 造成 lost update。黑底 IDE 的 extension.js 补丁同样会被升级覆盖，纳入同一个 keeper。另注：Electron 安装目录 ACL 只有具体 AppContainer SID、缺 ALL APPLICATION PACKAGES 时沙箱会拒绝读目录导致启动即退出，需最小授权只读执行",
+      "check": {
+        "type": "source_contains",
+        "file": "src-tauri/src/commands/platforms.rs",
+        "must_contain": "spawn_antigravity_endpoint_keeper"
+      },
+      "regression_test": "src-tauri/src/commands/platforms.rs::antigravity_endpoint_keeper_only_restores_managed_clients",
+      "severity": "high"
+    },
+    {
+      "id": "ag-runtime-enum-slot-exhaustion",
+      "title": "BYOK 模型数超过运行时枚举槽位时会静默复用，选 A 实跑 B",
+      "symptom": "用户点击模型下拉里的 sn-glm-5-3-flash (Agent2API)，按钮却显示 sn-sensenova-6-8-flash-lite (Agent2API)；请求按枚举反查也会路由到错的上游模型。目录里 11 个 byok 条目却只有 9 个不同的 model 枚举，341/340/342 各被多个模型共用",
+      "lesson": "ANTIGRAVITY_SUPPORTED_RUNTIME_MODELS 的槽位数必须 >= 用户配置的模型数，槽位用尽时 allocateRuntimeModelId 会返回 preferredIndex 位置的旧槽位造成静默复用。扩充槽位要用前端 Model enum 表里真实存在、且未被官方可见模型/内部依赖占用的值（如 GOOGLE_GEMINI_HORIZONDAWN:336、PUREPRISM:337、GENTLEISLAND:338、RAINSONG:339、ORIONFIRE:343、COSMICFORGE:347、RIFTRUNNER:348、INFINITYJET:350、INFINITYBLOOM:351）；禁止用前端已移除的 CHAT_GPT_4/O3/O1/DEEPSEEK_R1（proto 解析未知值会让渲染进程无限循环）、MODEL_PLACEHOLDER_M<N>（LS 内部模型，未注册会报 unknown model key）和 GOOGLE_GEMINI_INTERNAL_BYOM（需请求级 override）。单测必须断言每个模型拿到唯一槽位且与官方/内部模型不重叠",
+      "check": {
+        "type": "source_contains",
+        "file": "sidecar/lib/antigravity-handler.js",
+        "must_contain": "MODEL_GOOGLE_GEMINI_HORIZONDAWN"
+      },
+      "regression_test": "sidecar/antigravity.test.js::every custom model gets a unique runtime enum slot",
+      "severity": "high"
+    },
+    {
+      "id": "gemini-native-tool-history-must-cross-protocol",
+      "title": "Gemini Native 工具调用历史跨协议时必须转换，不能硬拒绝",
+      "symptom": "Antigravity 会话带上 Hook / 工具调用历史后，BYOK（OpenAI 协议）上游每轮都报 [AnyBridge] 上游请求失败：Gemini Native 的 functionCall/functionResponse 或非图片 inlineData 只能路由到 Gemini Native 上游，会话直接中断；boost / 多轮工具任务全不可用",
+      "lesson": "Gemini 客户端把 functionCall/functionResponse/非图片 inlineData 归一成内部 gemini_part，只有 Gemini 上游能原样透传。以前 upstreamBody 检测到非 Gemini 上游就直接抛 400，把「协议转换缺失」伪装成「配置错误」。functionCall→tool_use、functionResponse→tool_result 都有通用等价物，工具结果 id 必须与调用侧配对（先收集全部调用 id，按 name 队列解析同名多次调用，显式 id 优先，最后按调用顺序兜底），否则 OpenAI 上游会 400。非图片二进制附件无通用表达，降级为带 MIME 说明的文本占位而不是丢弃或硬塞 base64。转换必须返回新数组，不改 ctx.messages——execute 会拿同一 ctx 重试多个上游，原地改会污染 Gemini 目标；thoughtSignature 等内部字段不得泄漏到跨协议上游",
+      "check": {
+        "type": "source_contains",
+        "file": "sidecar/local-proxy.js",
+        "must_contain": "messagesForNonGeminiUpstream"
+      },
+      "regression_test": "sidecar/local-proxy.test.js::Gemini Native tool history converts to OpenAI tool_calls instead of 400",
+      "severity": "high"
+    },
+    {
+      "id": "ag-injection-must-not-duplicate-return",
+      "title": "给 buildServerEnv 注入代码时拼接整个 head 会生成两份 return，导致 agy.exe 崩溃、面板永久卡加载",
+      "symptom": "点「还原 BYOK」触发语言服务器重启后，Agent 面板一直转圈加载不出来；agy.exe 进程一个都没有、44363 无监听。对 extensions/agy/vscode/extension.js 执行 node --check 报 SyntaxError: Unexpected token '}'，注入点形如 `;return c}` 后又接 `$creturn ((function(e){...}))(c)}`",
+      "lesson": "patch_antigravity_extension_code 里 head = &code[..anchor] 已包含原来的 `return <env>}`；拼接不能用整个 head 再追加 `return (...)`，否则生成两份 return。v1.1.0 改为正则定位锚点前最后一个 `return <标识符>`，用 `&head[..whole.start()]` + 新表达式 + `&code[whole.end()..]` 原地替换（后缀 ;} 与换行原样保留）。只断言「含 marker / 含子串」的弱单测抓不住语法损坏，必须断言补丁后不残留原 return、只允许一处 `return (`，并把生成结果交给 node --check 真解析。真机验证若一直用手工打的正确补丁，会掩盖产品路径的 bug：还原操作触发 LS 重启才是产品代码第一次真正执行，必须专门测接入/还原后的重启链路。同理需校验白底 asar 内 languageServer.js 的语法",
+      "check": {
+        "type": "source_contains",
+        "file": "src-tauri/src/commands/platforms.rs",
+        "must_contain": "&head[..whole.start()]"
+      },
+      "regression_test": "src-tauri/src/commands/platforms.rs::antigravity_extension_patch_binds_runtime_env_var",
+      "severity": "critical"
+    },
+    {
+      "id": "ag-endpoint-patch-version-and-platform-compat",
+      "title": "端点注入必须兼容老版本形态、多用户名、自定义安装路径与三平台",
+      "symptom": "升级客户端后接入报「未找到 buildServerEnvironment 赋值」或「未找到目标 cloud_code_endpoint 字段」；换用户名/安装盘/系统后补丁打不到文件；注入块因硬编码产品目录名读不到 settings.json，LS 回退官方导致界面卡加载",
+      "lesson": "老版本 buildServerEnv 的 return 形态多样（return c} / return c;} / return $e; / 换行 / 不同变量名），导出可能是 .属性、方括号、裸赋值或对象键；必须正则定位锚点前最后一个 return <标识符> 并原地替换表达式本身，不能靠固定字符串切分或整个 head 拼接。白底 languageServer.js 的 --cloud_code_endpoint 值可能是单/双引号、任意缩进、LF/CRLF、任意官方端点域名或历史注入 IIFE，必须正则自愈且抽成可单测的纯函数。路径要从 dirs::home_dir/data_local_dir/config_dir 与 APPDATA/XDG 推导，扫描安装父目录里名字含 antigravity 的子目录，并支持 ANYBRIDGE_ANTIGRAVITY_IDE_APP_DIR / HUB_APP_DIR / HUB_ASAR / SETTINGS 显式覆盖；注入块里同样用 os.homedir + 多产品目录名 + 便携版 --user-data-dir，绝不硬编码 C:\\Users\\<name>。门控必须同时做源码判据、提取真实注入 JS 交 node --check、多形态 fixture 变换与 Rust 单测（scripts/check-antigravity-endpoint.mjs 挂进 npm run verify）",
+      "check": {
+        "type": "source_contains",
+        "file": "src-tauri/src/commands/platforms.rs",
+        "must_contain": "antigravity_install_app_dirs"
+      },
+      "regression_test": "src-tauri/src/commands/platforms.rs::antigravity_extension_patch_supports_legacy_return_shapes",
+      "severity": "high"
     }
   ]
 }

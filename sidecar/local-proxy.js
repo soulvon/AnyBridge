@@ -1328,6 +1328,96 @@ function hasGeminiNativeOnlyParts(messages) {
   );
 }
 
+// Gemini Native 的 functionCall / functionResponse 与非图片 inlineData 在内部
+// 表示成 gemini_part，只有 Gemini 上游能原样透传。以前遇到其它协议上游直接
+// 抛 400，导致任何带工具调用历史的会话在 BYOK（OpenAI/Anthropic）上游上必炸。
+//
+// 实际上它们都有通用等价物：functionCall→tool_use、functionResponse→tool_result；
+// 非图片二进制附件无通用表达，降级成带 MIME 说明的文本占位（保留上下文、
+// 不悄悄丢弃，也不把 base64 硬塞进 text 让上游困惑）。
+function geminiCallId(call) {
+  const name = String(call?.name || '').trim();
+  return String(call?.id || '') || (name ? `call_${name}` : '');
+}
+
+function crossProtocolGeminiPart(part, resolveResponseId) {
+  if (!part || part.type !== 'gemini_part' || !part.part) return null;
+  const native = part.part;
+  const call = native.functionCall || native.function_call;
+  if (call) {
+    const name = String(call.name || '').trim();
+    if (!name) return null;
+    const args = call.args ?? call.arguments ?? call.input ?? {};
+    return {
+      type: 'tool_use',
+      id: geminiCallId(call),
+      name,
+      input: typeof args === 'string' ? parseJsonObject(args) : (args && typeof args === 'object' ? args : {}),
+    };
+  }
+  const response = native.functionResponse || native.function_response;
+  if (response) {
+    const raw = response.response ?? response.result ?? response.content ?? response.output ?? '';
+    return {
+      type: 'tool_result',
+      tool_use_id: resolveResponseId(response),
+      content: toolResultOutputText(raw),
+    };
+  }
+  const inline = native.inlineData || native.inline_data;
+  if (inline) {
+    const mime = String(inline.mimeType || inline.mime_type || 'application/octet-stream');
+    return textPart(`[Gemini Native 附件 ${mime}：跨协议上游不支持该媒体类型，内容已省略]`);
+  }
+  return null;
+}
+
+// 把消息里的 gemini_part 转成通用 part；返回新数组，不改入参 ctx.messages
+// （execute 会拿同一 ctx 重试多个上游，原地改会污染 Gemini 目标）。
+//
+// 工具结果的 tool_use_id 必须与调用侧 id 配对，否则 OpenAI 上游会 400。
+// Gemini 两侧都可能只带 name / 只带 id / 都不带，因此先收集全部调用 id，
+// 再按 name 队列（同名多次调用按出现顺序）解析，最后退回按调用顺序。
+function messagesForNonGeminiUpstream(messages) {
+  if (!hasGeminiNativeOnlyParts(messages)) return messages;
+  const callIds = [];
+  const idsByName = new Map();
+  for (const message of messages || []) {
+    for (const part of message.content || []) {
+      if (part?.type !== 'gemini_part') continue;
+      const call = part.part?.functionCall || part.part?.function_call;
+      if (!call) continue;
+      const id = geminiCallId(call);
+      if (!id) continue;
+      callIds.push(id);
+      const name = String(call.name || '').trim();
+      if (name) {
+        const queue = idsByName.get(name) || [];
+        queue.push(id);
+        idsByName.set(name, queue);
+      }
+    }
+  }
+  let sequential = 0;
+  const resolveResponseId = (response) => {
+    const explicit = String(response?.id || '');
+    if (explicit && (!callIds.length || callIds.includes(explicit))) return explicit;
+    const name = String(response?.name || '').trim();
+    const queue = name ? idsByName.get(name) : null;
+    if (queue?.length) return queue.shift();
+    if (callIds.length) return callIds[Math.min(sequential++, callIds.length - 1)];
+    return explicit || (name ? `call_${name}` : '');
+  };
+  return (messages || []).map(message => ({
+    ...message,
+    content: (message.content || []).map(part => {
+      if (part?.type !== 'gemini_part') return part;
+      const converted = crossProtocolGeminiPart(part, resolveResponseId);
+      return converted || textPart('[Gemini Native 内容：跨协议上游不支持该结构，已省略]');
+    }).filter(Boolean),
+  }));
+}
+
 function geminiContents(system, messages) {
   const out = [];
   for (const m of messages || []) {
@@ -1435,14 +1525,13 @@ function upstreamBody(conn, ctx) {
     ...(ctx.preserveExtraParams === true ? (ctx.extraParams || {}) : {}),
     ...(ctx.paramOverrideExtras || {}),
   };
-  if (conn.format !== 'gemini' && hasGeminiNativeOnlyParts(ctx.messages)) {
-    throw new LocalProxyUpstreamError('Gemini Native 的 functionCall/functionResponse 或非图片 inlineData 只能路由到 Gemini Native 上游。', {
-      status: 400,
-      type: 'invalid_request_error',
-    });
-  }
+  // Gemini 客户端的工具调用历史在内部是 gemini_part；非 Gemini 上游要先转成
+  // 通用 tool_use/tool_result，否则任何 BYOK 会话都会在带工具历史后 400 中断。
+  const messages = conn.format === 'gemini'
+    ? ctx.messages
+    : messagesForNonGeminiUpstream(ctx.messages);
   if (conn.format === 'anthropic') {
-    const anthropicMessages = anthropicMessagesWithoutSignature(ctx.messages);
+    const anthropicMessages = anthropicMessagesWithoutSignature(messages);
     const claudeCodeUnlock = claudeCodeUnlockForTarget(conn);
     if (claudeCodeUnlock) {
       return buildClaudeCodeUnlockPayload({
@@ -1488,7 +1577,7 @@ function upstreamBody(conn, ctx) {
     const rawInput = ctx.kind === 'responses' ? ctx.rawBody?.input : undefined;
     const input = Array.isArray(rawInput) && rawInput.length > 0
       ? rawInput
-      : openAIResponsesInput(ctx.messages);
+      : openAIResponsesInput(messages);
     const body = {
       ...extras,
       model: conn.model,
@@ -1514,7 +1603,7 @@ function upstreamBody(conn, ctx) {
     }
     return cleanBody(body);
   }
-  const chatBody = { ...extras, model: conn.model, messages: openAIChatMessages(ctx.system, ctx.messages), max_tokens: ctx.maxTokens, temperature: ctx.temperature, stream: false, tools: openAITools(ctx.tools), tool_choice: ctx.toolChoice || undefined };
+  const chatBody = { ...extras, model: conn.model, messages: openAIChatMessages(ctx.system, messages), max_tokens: ctx.maxTokens, temperature: ctx.temperature, stream: false, tools: openAITools(ctx.tools), tool_choice: ctx.toolChoice || undefined };
   // responses 客户端落到 chat 上游（供应商手填 chat 端点但未配 wireApi）时同样要保档位
   if (chatBody.reasoning_effort === undefined) {
     const chatEffort = clientReasoningEffort(conn, ctx)

@@ -80,6 +80,11 @@ pub fn run() {
             // 汉化模式（带调试端口）启动且已启用汉化时工作，否则静默跳过。
             commands::antigravity_cdp::spawn_cdp_keeper();
 
+            // Antigravity 端点补丁保活：白底客户端启动即自更新，会整包覆盖
+            // app.asar；黑底 IDE 升级也会覆盖 extension.js。检测到配置仍指向
+            // 本地网关时幂等重打补丁，避免升级后 LS 直连官方造成假接入。
+            commands::platforms::spawn_antigravity_endpoint_keeper();
+
             // 默认启动网关（AUTO_START_PROXY 默认为 true，可在设置里关闭）。
             // 启动前已通过 kill_sidecar_process 清理孤儿 sidecar，
             // dev 模式额外清理残留 node 进程。

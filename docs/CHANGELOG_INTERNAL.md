@@ -9,6 +9,127 @@
 > - `CHANGELOG.md`：一屏能读完、用户能看懂、只讲"你会得到什么"。一个版本 2-4 条。
 > - 本文件：可以写 `hudsucker=debug`、`passthroughParams`、栈追踪、判据与测试名。
 
+## v1.1.0 - 2026-11-10
+
+> 发版说明：原计划以 v1.0.20 发布，该包因 `ag-injection-must-not-duplicate-return`
+> 事故（还原 BYOK 后 Agent 面板永久卡加载）作废，未对外发布；修复并追加开发版实测后，
+> 正式本地打包改为 v1.1.0。本文档下文保留「v1.0.20」字样处均指该次未发布的构建。
+
+### Antigravity 端点接管：假接入根因与两端修复
+
+- 根因：`jetski.cloudCodeUrl` 只被 IDE 主进程消费；Agent 面板的语言服务器是独立进程
+  （黑底 `agy.exe --hub`、白底 `language_server.exe --standalone`），端点只认
+  `--cloud_code_endpoint` 参数或 `CLOUD_CODE_URL` 环境变量。v0.5.8（4c16b733）删掉
+  `setx CLOUD_CODE_URL` 后没有任何接管路径，LS 直连 `daily-cloudcode-pa.googleapis.com`。
+  真机证据：`errorreport.go:273] failed to construct executor: unknown model key
+  MODEL_PLACEHOLDER_M1: model not found`，界面却显示「已接入」。
+- 黑底修复：`platforms.rs::patch_antigravity_ide_extension` 在
+  `extensions/agy/vscode/extension.js` 的 `buildServerEnv` 注入自包含读取逻辑
+  （自带 `require("os")`，不引用 minify 内部名 `Ia/fd/$c`），运行时从 settings.json 取
+  `jetski.cloudCodeUrl` 写入 `serverEnv.CLOUD_CODE_URL`；幂等、带 `.anybridge-bak` 备份、
+  锚点缺失报错中断接入。还原撤键后注入块读不到 URL 自动回退官方，行为对称，补丁无需剥离。
+- 白底修复：`app-update.yml` 启动即自更新，`installer.exe` 整包覆盖 `app.asar`，
+  无声冲掉 `dist/languageServer.js` 的 `--cloud_code_endpoint` 补丁（11/2 接入、11/3 升级
+  即复现）。`patch_antigravity_hub_asar` 本身幂等且带自愈正则，缺的是升级后重新触发。
+- 保活：`spawn_antigravity_endpoint_keeper` 每 30s 巡检，仅当配置仍指向本地网关时
+  重打两端补丁，持 `inject_lock` 避免与汉化全量重写 asar 造成 lost update；未接入零开销。
+- 附带：白底安装目录 ACL 只有具体 AppContainer SID、缺 `ALL APPLICATION PACKAGES`，
+  Electron 沙箱拒绝读目录导致启动即退出，按官方报错做最小只读授权（本机系统级改动，
+  未做进产品自动修复）。
+
+### 跨协议工具历史：硬拒绝改为转换
+
+- 根因：`upstreamBody` 检测到 `gemini_part`（Gemini 的 functionCall/functionResponse、
+  非图片 inlineData）且上游非 Gemini 时直接抛 400「只能路由到 Gemini Native 上游」，
+  把协议转换缺失伪装成配置错误。BYOK 上游全是 OpenAI 协议，带工具历史必炸。
+- 修复：`messagesForNonGeminiUpstream` 把 functionCall→tool_use、
+  functionResponse→tool_result（先收集全部调用 id，按 name 队列解析同名多次调用，
+  显式 id 优先，最后按调用顺序兜底），非图片附件降级为带 MIME 说明的文本占位。
+  返回新数组不改 `ctx.messages`（execute 会拿同一 ctx 重试多个上游），
+  `thoughtSignature` 不泄漏到跨协议上游。
+- 判据：`local-proxy.test.js::Gemini Native tool history converts to OpenAI tool_calls
+  instead of 400` 等 4 例；坑点 `gemini-native-tool-history-must-cross-protocol`。
+
+### 运行时枚举槽位耗尽：选 A 实跑 B
+
+- 根因：11 个 BYOK 模型只有 9 个 `CLAUDE_4_*` 槽位（281/282/290/291/333/334/340/341/342），
+  槽位用尽后 `allocateRuntimeModelId` 静默复用，341 同时给了 `sn-glm-5-3-flash` 与
+  `sn-sensenova-6-8-flash-lite`；前端按数值反查命中第一个，点前者按钮显示后者，
+  342 还与官方 GPT-OSS 120B 撞车。
+- 修复：从前端 Model enum 表补 9 个合法且未被官方可见模型/内部依赖占用的
+  `GOOGLE_GEMINI_*`（336/337/338/339/343/347/348/350/351），槽位扩到 18 个。
+  禁止用前端已移除的 `CHAT_GPT_4/O3/O1/DEEPSEEK_R1`（proto 未知值触发渲染进程无限循环）、
+  `MODEL_PLACEHOLDER_M<N>`（LS 内部模型，未注册报 unknown model key）、
+  `GOOGLE_GEMINI_INTERNAL_BYOM`（需请求级 override）。
+- 判据：`antigravity.test.js::every custom model gets a unique runtime enum slot`
+  （14 个模型必须 14 个唯一槽位且与官方不重叠）；坑点 `ag-runtime-enum-slot-exhaustion`。
+
+### 还原后永久卡加载：注入拼接生成两份 return（v1.0.20 打包版事故）
+
+- 现象：用户点「还原 BYOK」后 Agent 面板一直转圈；`agy.exe` 进程 0 个、44363 无监听；
+  IDE 主进程/认证正常（`auth.log` 为 `signedIn`），`renderer.log` 只有无关的
+  `antigravity.handleAuthRefresh not found`。
+- 根因：`patch_antigravity_extension_code` 的 `format!("{head}return (...)...")`
+  用了整个 `head = &code[..anchor]`，它已包含原语句 `return c}`；再追加一份
+  `return (...)` 后生成 `;return c}\r\n$creturn ((function(e){...}))(c)}`，
+  多一份 return 与多余花括号 → `node --check` 报 `SyntaxError: Unexpected token '}'`。
+  `agy.exe` 加载 `extensions/agy/vscode/extension.js` 失败 → webview 服务不启动 → 永久卡加载。
+- 为何此前没发现：所有真机验证用的都是手工 Node 脚本打的正确补丁；
+  「还原 BYOK」触发 LS 重启，才是打包版第一次真正执行 `patch_antigravity_ide_extension`。
+  手工路径验证通过 ≠ 产品路径正确，接入/还原后的重启链路必须单独测。
+- 修复：`prefix = &head[..ret_idx]`（只取 `return ` 之前）；单测增加
+  「补丁后不残留 `return c}`」「`return ` 恰好 2 次」以及**把生成结果交给
+  `node --check` 真解析**，并用红-绿确认旧实现会被抓住。另对真机 4MB 文件
+  生成补丁预览做语法校验（退出码 0），白底 asar 内 `languageServer.js` 同样校验为 OK。
+- 现场处置：从 `tmp/ide-backup/agy-vscode-extension.js`（官方原版、无 marker）还原，
+  损坏文件留档为 `agy-vscode-extension.BROKEN.js`；用户当前处于还原（未接入）状态，
+  黑底 settings.json 已无 `jetski.cloudCodeUrl`、用户级 `CLOUD_CODE_URL` 为空。
+- 坑点：`ag-injection-must-not-duplicate-return`（severity critical）。
+
+### v1.1.0 固化：兼容老版本 / 多用户 / 自定义路径 / 三平台 / 门控
+
+- 注入块：`antigravity_settings_candidates_js()` 抽成共享 JS 片段，黑底 IDE 与白底 Hub
+  共用。用户名由 `os.homedir()` + `APPDATA` / `LOCALAPPDATA` / `XDG_CONFIG_HOME` /
+  `XDG_DATA_HOME` 推导；产品目录名覆盖 `Antigravity IDE` / `Antigravity` /
+  `antigravity-ide` / `antigravity` / `Antigravity-IDE`；支持便携版
+  `--user-data-dir=<path>` 与 `--user-data-dir <path>` 两种写法，以及显式覆盖
+  `ANYBRIDGE_ANTIGRAVITY_SETTINGS`。绝不硬编码任何具体用户的主目录或盘符。
+- 黑底锚点：`antigravity_extension_anchor()` 覆盖 `.buildServerEnvironment`、
+  `["buildServerEnvironment"]` / `['...']`、`buildServerEnvironment=` / `:`；
+  `patch_antigravity_extension_code` 用 `return\s+([A-Za-z_$][A-Za-z0-9_$]*)`
+  正则取锚点前最后一个 return，并**原地替换表达式本身**，后缀（`;}`、CRLF 等）
+  原样保留，天然只有一份 return；拒绝 `return new/function/...` 之类误匹配。
+- 白底端点串：`patch_hub_language_server_code` 抽成纯函数，正则兼容单/双引号、
+  任意缩进与换行、任意官方端点域名、以及历史版本注入的 IIFE（自愈）；
+  预检只认当前 marker `/*ANYBRIDGE_CLOUD_CODE_ENDPOINT*/`，旧注入会继续走全量
+  路径升级为新注入，而不是被误判为「已打补丁」。
+- 路径发现：`antigravity_install_app_dirs()` 统一扫描常见安装父目录里名字含
+  antigravity 的子目录，覆盖 Windows `Programs`/`ProgramFiles`、macOS
+  `/Applications` 与 `~/Applications`、Linux `/opt`/`/usr/share`/`~/.local`，
+  并支持 `ANYBRIDGE_ANTIGRAVITY_IDE_APP_DIR` / `HUB_APP_DIR` / `HUB_ASAR` 显式覆盖；
+  `antigravity_localization::hub_asar_path()` 改为复用同一份候选，消除两处漂移。
+- 门控：`scripts/check-antigravity-endpoint.mjs`（32 项，含提取真实注入 JS 交
+  `node --check`、5 种黑底旧形态 + 4 种白底旧形态 fixture、三平台 cfg、keeper
+  与还原对称性）与 `scripts/check-no-sensitive-files.mjs`（已跟踪名单、待提交
+  新增行私钥/token/凭据/本机绝对路径扫描、.gitignore 规则）均挂进 `npm run verify`。
+  Rust 单测新增 `assert_valid_js` 与多形态用例，共 14 项全绿。
+- 坑点：`ag-endpoint-patch-version-and-platform-compat`。
+
+### 真机验证与事故澄清
+
+- 黑底：`CLOUD_CODE_URL` 会话级生效（`Overriding CloudCodeServerURL`），干净重启且
+  无任何会话级变量时纯补丁仍生效；下拉 17 条（11 自定义 + 6 官方），
+  `sn-deepseek-v4-1-flash-1017` 两轮会话成功（轮次 1/2 上下文正确接续），
+  LS 零 `unknown model key`、零 400/429/terminated。
+- 白底：LS 参数变为 `--cloud_code_endpoint https://localhost:7452`，下拉 11 个自定义模型，
+  真实会话 `Thought for 4s | OK`；`app.asar.official.bak` 已重建为当前官方版。
+- 曾经的 `Agent2API HTTP 400（上游返回空响应）` 不是代码 bug：短时间密集探测触发上游限流，
+  上游明确回 429「所有候选账号均已限额或禁用，最早 18:57:05 恢复」；解冻后完全相同
+  的 64KB 流式请求体直打上游 200。同一 body 的 `stream:false` 200、`stream:true` 短请求
+  200，长请求在限流期超时。诊断代码与临时产物已全部清除。
+- 遗留：`anybridge.exe` 主程序需重新打包发版后，keeper 与端点补丁才会随「一键接入」
+  自动生效；本机此前跑的是手工替换的 sidecar + 手工补丁。
+
 ## v1.0.19 - 2026-11-08
 
 ### Cursor 3.29+ 门禁摁回 RunSSE 运行时（移植 haxsd #8 真机验证口径）

@@ -1210,6 +1210,9 @@ pub fn generate_certs_ex(force: bool) -> Result<String, String> {
         true,
     ) {
         Ok(install_msg) => {
+            // 证书生成/重装同样要把 Node TLS 栈的信任对齐，否则升级后仍是假接入。
+            #[cfg(target_os = "windows")]
+            crate::commands::cert_install::ensure_node_ca_trust()?;
             let gen_msg = if generated {
                 format!("已生成证书到 {}", certs_dir.to_string_lossy())
             } else {

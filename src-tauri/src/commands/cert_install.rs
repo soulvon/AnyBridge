@@ -57,6 +57,9 @@ pub struct CaStatus {
     pub system_trusted: Option<bool>,
     /// 系统信任检查失败或超时的原因，与证书是否存在于存储中分开报告。
     pub trust_error: Option<String>,
+    /// Node 系客户端（Antigravity IDE 的 CloudCode 请求）是否已信任本地 CA。
+    /// 系统证书库可信不代表这一项可信：判据独立覆盖 NODE_EXTRA_CA_CERTS。
+    pub node_trusted: bool,
 }
 
 #[derive(Debug, Clone, serde::Serialize)]
@@ -161,6 +164,190 @@ fn cert_paths() -> Result<(PathBuf, PathBuf), String> {
     let cert_path = certs_dir.join("server.codeium.com.pem");
     let key_path = certs_dir.join("server.codeium.com-key.pem");
     Ok((cert_path, key_path))
+}
+
+// ──────────────────────────────────────────────────────────
+// Node 系客户端 CA 信任（NODE_EXTRA_CA_CERTS）
+//
+// Antigravity IDE 的 CloudCode 请求走 Node TLS 栈：它只读进程启动时
+// 的 NODE_EXTRA_CA_CERTS，不读 Electron/Chromium 使用的系统证书存储。
+// 7452 HTTPS 端点由本地 CA 签发，仅把 CA 装进 Root 存储会让 IDE 报
+// "self signed certificate in certificate chain"，模型目录拿不到注入模型。
+// 证书安装必须同时对齐该变量，卸载时按账本还原用户原值。
+// ──────────────────────────────────────────────────────────
+
+/// NODE_EXTRA_CA_CERTS 只接受单个 PEM 文件：把用户原有内容与本地 CA 合并。
+/// 幂等：已包含本地 CA 时原样返回，不重复追加。
+fn node_ca_bundle_content(existing: &[u8], ca_pem: &[u8]) -> Vec<u8> {
+    if node_ca_pem_contains(existing, ca_pem) {
+        return existing.to_vec();
+    }
+    let mut out = existing.to_vec();
+    if !out.is_empty() && !out.ends_with(b"\n") {
+        out.push(b'\n');
+    }
+    out.extend_from_slice(ca_pem);
+    if !out.ends_with(b"\n") {
+        out.push(b'\n');
+    }
+    out
+}
+
+fn node_ca_pem_contains(haystack: &[u8], ca_pem: &[u8]) -> bool {
+    let needle = String::from_utf8_lossy(ca_pem).trim().to_string();
+    !needle.is_empty() && String::from_utf8_lossy(haystack).contains(&needle)
+}
+
+fn node_ca_file_contains(path: &Path, ca_pem: &[u8]) -> bool {
+    std::fs::read(path).map_or(false, |bytes| node_ca_pem_contains(&bytes, ca_pem))
+}
+
+#[cfg(target_os = "windows")]
+const NODE_EXTRA_CA_CERTS_KEY: &str = "NODE_EXTRA_CA_CERTS";
+#[cfg(target_os = "windows")]
+const NODE_CA_BUNDLE_FILE: &str = "node-extra-ca-bundle.pem";
+#[cfg(target_os = "windows")]
+const NODE_CA_LEDGER_FILE: &str = "node-extra-ca-original.txt";
+
+#[cfg(target_os = "windows")]
+fn node_ca_registry(args: &[&str]) -> Result<std::process::Output, String> {
+    use std::os::windows::process::CommandExt;
+    Command::new("reg")
+        .args(args)
+        .creation_flags(0x0800_0000)
+        .output()
+        .map_err(|e| format!("reg 执行失败: {e}"))
+}
+
+#[cfg(target_os = "windows")]
+fn read_node_ca_env() -> Result<Option<String>, String> {
+    let out = node_ca_registry(&["query", "HKCU\\Environment", "/v", NODE_EXTRA_CA_CERTS_KEY])?;
+    if !out.status.success() {
+        return Ok(None);
+    }
+    for line in String::from_utf8_lossy(&out.stdout).lines() {
+        if line.contains(NODE_EXTRA_CA_CERTS_KEY) {
+            if let Some((_, value)) = line.split_once("REG_SZ") {
+                let value = value.trim();
+                if !value.is_empty() {
+                    return Ok(Some(value.to_string()));
+                }
+            }
+        }
+    }
+    Ok(None)
+}
+
+#[cfg(target_os = "windows")]
+fn write_node_ca_env(value: &str) -> Result<(), String> {
+    // 必须用 setx：它会广播 WM_SETTINGCHANGE，让 Explorer 刷新环境块。
+    // 直接 reg add 不广播，用户从桌面/终端手动启动的 IDE 读不到新变量。
+    use std::os::windows::process::CommandExt;
+    let out = Command::new("setx")
+        .args([NODE_EXTRA_CA_CERTS_KEY, value])
+        .creation_flags(0x0800_0000)
+        .output()
+        .map_err(|e| format!("setx 执行失败: {e}"))?;
+    if out.status.success() {
+        Ok(())
+    } else {
+        Err(format!(
+            "写入 {} 失败: {}",
+            NODE_EXTRA_CA_CERTS_KEY,
+            String::from_utf8_lossy(&out.stderr).trim()
+        ))
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn delete_node_ca_env() -> Result<(), String> {
+    // 置空而不是 reg delete：同样需要广播，且 Node 会忽略空的 CA 路径。
+    // 账本为空即表示原本无此变量，置空等价于恢复原状。
+    write_node_ca_env("")
+}
+
+/// bundle 与账本放在配置根目录，不进 certs 包，避免干扰证书包完整性校验。
+#[cfg(target_os = "windows")]
+fn node_ca_ledger_paths() -> (PathBuf, PathBuf) {
+    let base = crate::commands::config::config_dir_path();
+    (base.join(NODE_CA_BUNDLE_FILE), base.join(NODE_CA_LEDGER_FILE))
+}
+
+/// 证书安装 / 网关启动共用：幂等对齐 NODE_EXTRA_CA_CERTS。
+/// 用户原有值合并进 bundle，绝不覆盖；账本只在首次接管时写入。
+#[cfg(target_os = "windows")]
+pub fn ensure_node_ca_trust() -> Result<(), String> {
+    let (ca_path, _) = cert_paths()?;
+    let ca_pem = std::fs::read(&ca_path).map_err(|e| format!("读取本地 CA 失败: {e}"))?;
+    let (bundle_path, ledger_path) = node_ca_ledger_paths();
+    let current = read_node_ca_env()?;
+
+    if let Some(path) = current.as_deref() {
+        if node_ca_file_contains(Path::new(path), &ca_pem) {
+            return Ok(());
+        }
+    }
+
+    let original = current.unwrap_or_default();
+    let existing_pem = if original.is_empty() {
+        Vec::new()
+    } else {
+        std::fs::read(Path::new(&original)).map_err(|e| format!(
+            "原有 {} 指向的文件无法读取（{}），未覆盖用户配置",
+            NODE_EXTRA_CA_CERTS_KEY, e
+        ))?
+    };
+
+    if !ledger_path.exists() {
+        std::fs::write(&ledger_path, original.as_bytes())
+            .map_err(|e| format!("写入 Node CA 信任账本失败: {e}"))?;
+    }
+    std::fs::write(&bundle_path, node_ca_bundle_content(&existing_pem, &ca_pem))
+        .map_err(|e| format!("写入 Node CA bundle 失败: {e}"))?;
+    write_node_ca_env(&bundle_path.to_string_lossy())
+}
+
+/// 卸载对称：只在我们仍持有该变量时按账本还原；用户改过就原样保留。
+#[cfg(target_os = "windows")]
+pub fn restore_node_ca_trust() -> Result<(), String> {
+    let (bundle_path, ledger_path) = node_ca_ledger_paths();
+    let current = read_node_ca_env()?;
+    let Some(current_value) = current else {
+        let _ = std::fs::remove_file(&bundle_path);
+        let _ = std::fs::remove_file(&ledger_path);
+        return Ok(());
+    };
+    // 产品只写 bundle 路径；用户自己把变量指向 CA 文件不算我们持有，必须原样保留。
+    let held_by_us = PathBuf::from(&current_value) == bundle_path;
+    if !held_by_us {
+        return Ok(());
+    }
+    let original = std::fs::read_to_string(&ledger_path).map_err(|e| format!(
+        "Node CA 信任账本缺失，无法安全还原 {}（当前值: {}）: {}",
+        NODE_EXTRA_CA_CERTS_KEY, current_value, e
+    ))?;
+    if original.is_empty() {
+        delete_node_ca_env()?;
+    } else {
+        write_node_ca_env(&original)?;
+    }
+    let _ = std::fs::remove_file(&bundle_path);
+    let _ = std::fs::remove_file(&ledger_path);
+    Ok(())
+}
+
+/// 判据：读失败一律视为未就绪，绝不当作已信任。
+pub fn node_ca_trust_ready() -> bool {
+    #[cfg(target_os = "windows")]
+    {
+        let Ok((ca_path, _)) = cert_paths() else { return false };
+        let Ok(ca_pem) = std::fs::read(&ca_path) else { return false };
+        matches!(read_node_ca_env(), Ok(Some(path)) if node_ca_file_contains(Path::new(&path), &ca_pem))
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        true // 该平台未启用 7452 自签端点信任路径，不参与 Windows 判据
+    }
 }
 
 fn san_marker_path(cert_path: &Path) -> Result<PathBuf, String> {
@@ -1577,6 +1764,14 @@ pub(crate) fn check_ca_status_fresh() -> CaStatus {
         }
     };
 
+    // 系统证书库可信只是 Electron/Chromium 那条链；Node TLS 栈需单独判据。
+    let node_trusted = node_ca_trust_ready();
+    let message = if node_trusted {
+        message
+    } else {
+        format!("{message}；Node 客户端（Antigravity IDE 的 CloudCode 请求）尚未信任本地 CA，请在环境检测安装证书并重启 IDE")
+    };
+
     let res = CaStatus {
         common_name: CA_COMMON_NAME.to_string(),
         cert_file: cert_path.to_string_lossy().to_string(),
@@ -1592,6 +1787,7 @@ pub(crate) fn check_ca_status_fresh() -> CaStatus {
         message,
         system_trusted,
         trust_error,
+        node_trusted,
     };
 
     if let Ok(mut guard) = CA_STATUS_CACHE.lock() {
@@ -1665,7 +1861,14 @@ fn install_ca_impl(
     allow_admin: bool,
 ) -> Result<String, String> {
     let _package_lock = crate::commands::system::acquire_mitm_package_write_lock()?;
-    install_ca_impl_with_package_lock(app, force_regenerate, prefer_fresh_install, allow_admin)
+    let result = install_ca_impl_with_package_lock(app, force_regenerate, prefer_fresh_install, allow_admin);
+    // 证书装进系统信任库只覆盖 Electron/Chromium；Node TLS 栈要单独对齐。
+    // 所有显式安装入口都经过这里，与卸载入口成对。
+    if result.is_ok() {
+        #[cfg(target_os = "windows")]
+        ensure_node_ca_trust()?;
+    }
+    result
 }
 
 pub(crate) fn install_ca_impl_with_package_lock(
@@ -2151,6 +2354,10 @@ fn uninstall_ca_impl_with_package_lock(app: Option<AppHandle>) -> Result<String,
         let _ = cleanup_legacy_cn();
     }
 
+    // 与 install_ca_impl 对称：按账本还原 NODE_EXTRA_CA_CERTS，保留用户改动。
+    #[cfg(target_os = "windows")]
+    restore_node_ca_trust()?;
+
     if removed.is_empty() {
         emit_cert_progress(
             app.as_ref(),
@@ -2539,6 +2746,7 @@ mod tests {
             message: "system trust failed".into(),
             system_trusted: Some(false),
             trust_error: Some("system trust failed".into()),
+            node_trusted: true,
         };
         *cache.lock().unwrap() = Some((std::time::Instant::now(), status.clone()));
         let cached = cached_ca_status(&cache).expect("recent status is cached");
@@ -2550,5 +2758,31 @@ mod tests {
             status,
         ));
         assert!(cached_ca_status(&cache).is_none());
+    }
+
+    #[test]
+    fn node_ca_bundle_preserves_user_ca() {
+        let user = b"-----BEGIN CERTIFICATE-----\nUSERCA\n-----END CERTIFICATE-----\n";
+        let ca = b"-----BEGIN CERTIFICATE-----\nANYBRIDGECA\n-----END CERTIFICATE-----\n";
+        let merged = node_ca_bundle_content(user, ca);
+        let text = String::from_utf8(merged.clone()).expect("bundle is utf8");
+        assert!(text.contains("USERCA"), "用户原有 CA 必须保留");
+        assert_eq!(text.matches("ANYBRIDGECA").count(), 1, "本地 CA 只追加一次");
+        assert_eq!(node_ca_bundle_content(&merged, ca), merged, "重复对齐不得重复追加");
+        assert!(node_ca_pem_contains(&merged, ca));
+    }
+
+    #[test]
+    fn node_ca_trust_judges_by_file_content_not_path() {
+        let dir = unique_temp_dir();
+        std::fs::create_dir_all(&dir).expect("temp dir");
+        let ca = b"-----BEGIN CERTIFICATE-----\nANYBRIDGECA\n-----END CERTIFICATE-----\n";
+        let bundle = dir.join("bundle.pem");
+        std::fs::write(&bundle, b"other").expect("write");
+        assert!(!node_ca_file_contains(&bundle, ca));
+        std::fs::write(&bundle, ca).expect("write");
+        assert!(node_ca_file_contains(&bundle, ca));
+        assert!(!node_ca_file_contains(&dir.join("missing.pem"), ca));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }
