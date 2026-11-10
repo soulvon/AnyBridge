@@ -13,11 +13,133 @@
 
 use serde::Serialize;
 use serde_json::{json, Value};
+use std::sync::atomic::{AtomicU16, Ordering};
 use std::time::Duration;
 
-/// 调试端口。固定值便于 keeper 复用；探测时会校验 UA 含 AntigravityIDE，
-/// 避免把别的 Electron 应用误当成自己的调试端口。
+/// 默认调试端口（与 Antigravity Kite 扩展的 `antigravityKite.cdpPort` 默认值一致）。
+/// 仅作兜底：实际端口由 `resolve_cdp_port()` 动态发现，绝不硬编码占用。
+/// 探测时会校验 UA 含 AntigravityIDE，避免把别的 Electron 应用误当成自己的调试端口。
 pub const CDP_PORT: u16 = 9333;
+/// Kite 的次级兜底端口（其声明抑制器会在 9333 失败后尝试 9222）。
+const KITE_FALLBACK_CDP_PORT: u16 = 9222;
+/// 已确认属于 Antigravity IDE 的调试端口；0 表示尚未发现。
+static ACTIVE_CDP_PORT: AtomicU16 = AtomicU16::new(0);
+
+/// 从 IDE 用户级 settings.json 读取 Kite 配置的调试端口。
+/// Kite 用 VS Code 配置 API 写 `antigravityKite.cdpPort`，用户可改成非 9333；
+/// AnyBridge 必须跟随，否则 Kite 一改端口，汉化 keeper 就整体停摆。
+fn kite_configured_cdp_port() -> Option<u16> {
+    let dir = super::platforms::antigravity_ide_config_dir()?;
+    let raw = std::fs::read_to_string(dir.join("settings.json")).ok()?;
+    let obj = super::ide_config::parse_object(&raw).ok()?;
+    obj.get("antigravityKite.cdpPort")
+        .and_then(|v| v.as_u64())
+        .and_then(|n| u16::try_from(n).ok())
+        .filter(|p| *p > 0)
+}
+
+/// 读 IDE 的 DevToolsActivePort（Kite 也读它，动态端口场景下必须同源）。
+fn devtools_active_port() -> Option<u16> {
+    let dir = super::platforms::antigravity_ide_config_dir()?;
+    let raw = std::fs::read_to_string(dir.join("DevToolsActivePort")).ok()?;
+    raw.lines().next()?.trim().parse::<u16>().ok().filter(|p| *p > 0)
+}
+
+/// 当前应使用的调试端口（优先已确认的活跃端口）。
+fn current_cdp_port() -> u16 {
+    let p = ACTIVE_CDP_PORT.load(Ordering::Relaxed);
+    if p == 0 { CDP_PORT } else { p }
+}
+
+/// 对外暴露已确认的调试端口（供重启流程显示与复用）。
+pub fn active_port() -> u16 {
+    current_cdp_port()
+}
+
+/// 候选端口去重：已确认端口 → Kite 配置 → DevToolsActivePort → 9333 → 9222。
+/// 抽成纯函数便于单测锁定「跟随 Kite 端口」这一共存契约。
+fn build_cdp_port_candidates(
+    active: u16,
+    kite_port: Option<u16>,
+    devtools_port: Option<u16>,
+) -> Vec<u16> {
+    let mut out = Vec::new();
+    for p in [
+        Some(active),
+        kite_port,
+        devtools_port,
+        Some(CDP_PORT),
+        Some(KITE_FALLBACK_CDP_PORT),
+    ]
+    .into_iter()
+    .flatten()
+    {
+        if p > 0 && !out.contains(&p) {
+            out.push(p);
+        }
+    }
+    out
+}
+
+fn cdp_port_candidates() -> Vec<u16> {
+    build_cdp_port_candidates(
+        current_cdp_port(),
+        kite_configured_cdp_port(),
+        devtools_active_port(),
+    )
+}
+
+/// 仅供单测：注入 Kite 配置端口与 DevToolsActivePort 验证候选顺序/去重。
+#[cfg(test)]
+pub(crate) fn cdp_port_candidates_for_test(
+    kite_port: Option<u16>,
+    devtools_port: Option<u16>,
+) -> Vec<u16> {
+    build_cdp_port_candidates(0, kite_port, devtools_port)
+}
+
+/// 探测单个端口是否属于 Antigravity IDE 的调试端点。
+fn probe_port(port: u16) -> Result<String, String> {
+    let base = format!("http://127.0.0.1:{port}");
+    let body = http_client()?
+        .get(format!("{base}/json/version"))
+        .send()
+        .map_err(|e| format!("调试端口 {port} 未就绪: {e}"))?
+        .text()
+        .map_err(|e| format!("读取调试端口 {port} 响应失败: {e}"))?;
+    let v: Value = serde_json::from_str(&body)
+        .map_err(|e| format!("解析调试端口 {port} 响应失败: {e}"))?;
+    let ua = v.get("User-Agent").and_then(|x| x.as_str()).unwrap_or("");
+    if !ua.contains("AntigravityIDE") {
+        return Err(format!("端口 {port} 不是 Antigravity IDE 的调试端口"));
+    }
+    Ok(v.get("webSocketDebuggerUrl")
+        .and_then(|x| x.as_str())
+        .unwrap_or("")
+        .to_string())
+}
+
+/// 发现并缓存真实调试端口。Kite 改端口 / 重启 IDE 后会自动重新收敛。
+pub fn resolve_cdp_port() -> Result<String, String> {
+    let active = ACTIVE_CDP_PORT.load(Ordering::Relaxed);
+    if active > 0 {
+        if let Ok(ws) = probe_port(active) {
+            return Ok(ws);
+        }
+        ACTIVE_CDP_PORT.store(0, Ordering::Relaxed);
+    }
+    let mut last = String::new();
+    for port in cdp_port_candidates() {
+        match probe_port(port) {
+            Ok(ws) => {
+                ACTIVE_CDP_PORT.store(port, Ordering::Relaxed);
+                return Ok(ws);
+            }
+            Err(e) => last = e,
+        }
+    }
+    Err(last)
+}
 
 #[derive(Serialize, Debug, Clone, Default)]
 #[serde(rename_all = "camelCase")]
@@ -39,7 +161,7 @@ pub struct CdpTarget {
 }
 
 fn cdp_base() -> String {
-    format!("http://127.0.0.1:{CDP_PORT}")
+    format!("http://127.0.0.1:{}", current_cdp_port())
 }
 
 fn http_client() -> Result<reqwest::blocking::Client, String> {
@@ -50,26 +172,9 @@ fn http_client() -> Result<reqwest::blocking::Client, String> {
 }
 
 /// 探测 `--remote-debugging-port` 是否就绪且属于 Antigravity IDE。
+/// 端口由 `resolve_cdp_port()` 动态发现，兼容 Kite 自定义端口与动态端口。
 pub fn probe() -> Result<String, String> {
-    let body = http_client()?
-        .get(format!("{}/json/version", cdp_base()))
-        .send()
-        .map_err(|e| format!("调试端口未就绪（IDE 未以汉化模式启动？）: {e}"))?
-        .text()
-        .map_err(|e| format!("读取调试端口响应失败: {e}"))?;
-    let v: Value = serde_json::from_str(&body).map_err(|e| format!("解析调试端口响应失败: {e}"))?;
-    let ua = v.get("User-Agent").and_then(|x| x.as_str()).unwrap_or("");
-    if !ua.contains("AntigravityIDE") {
-        return Err(format!(
-            "{CDP_PORT} 端口被其它程序占用，不是 Antigravity IDE 的调试端口"
-        ));
-    }
-    let ws = v
-        .get("webSocketDebuggerUrl")
-        .and_then(|x| x.as_str())
-        .unwrap_or("")
-        .to_string();
-    Ok(ws)
+    resolve_cdp_port()
 }
 
 /// 该 target 是否是 Antigravity 的本地 Web 应用界面（设置页 / Agent 面板）。
@@ -186,7 +291,7 @@ pub fn inject_once() -> Result<usize, String> {
 /// 查询当前状态（给 UI 用）。任何一步失败都不静默：如实写进 message。
 pub fn status() -> AntigravityCdpStatus {
     let mut st = AntigravityCdpStatus {
-        port: CDP_PORT,
+        port: current_cdp_port(),
         ..Default::default()
     };
     if let Err(e) = probe() {
@@ -194,6 +299,7 @@ pub fn status() -> AntigravityCdpStatus {
         return st;
     }
     st.available = true;
+    st.port = current_cdp_port();
     let targets = match fetch_targets() {
         Ok(t) => t,
         Err(e) => {

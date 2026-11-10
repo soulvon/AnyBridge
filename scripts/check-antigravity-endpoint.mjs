@@ -30,11 +30,18 @@ const rs = fs.readFileSync(path.join(root, 'src-tauri/src/commands/platforms.rs'
 const loc = fs.readFileSync(path.join(root, 'src-tauri/src/commands/antigravity_localization.rs'), 'utf8');
 
 // 提取 Rust 里的 raw string 常量/函数返回值，交给 Node 真解析。
+// 函数可能带参数，用「fn <name>(」定位而非精确空参签名。
 function extractRawString(source, fnName) {
-  const idx = source.indexOf(`fn ${fnName}()`);
+  const idx = source.indexOf(`fn ${fnName}(`);
   if (idx < 0) return null;
   const m = /r#"([\s\S]*?)"#/.exec(source.slice(idx, idx + 12000));
   return m ? m[1] : null;
+}
+// 把 Rust format! 的 {{/}} 还原为 {/}，并把唯一占位符替换成实参。
+function renderFormat(template, ...args) {
+  let out = template.replace(/\{\{/g, '\u0001').replace(/\}\}/g, '\u0002');
+  for (const a of args) out = out.replace('{}', a);
+  return out.replace(/\u0001/g, '{').replace(/\u0002/g, '}');
 }
 function nodeCheck(label, code) {
   const tmp = path.join(os.tmpdir(), `anybridge-ag-gate-${process.pid}-${label}.js`);
@@ -48,20 +55,57 @@ function nodeCheck(label, code) {
 
 section('注入代码：自包含与语法');
 {
-  const candidates = extractRawString(rs, 'antigravity_settings_candidates_js');
-  ok('共享 settings 候选片段存在', !!candidates);
-  if (candidates) {
-    ok('候选片段是合法 JS', nodeCheck('candidates', `const cands=${candidates};`));
-    ok('按当前用户主目录推导（不硬编码用户名）', candidates.includes('os.homedir') && !/C:[\\/]Users[\\/]\w+/.test(candidates));
+  const candidatesTpl = extractRawString(rs, 'antigravity_settings_candidates_js');
+  ok('按端隔离的 settings 候选模板存在', !!candidatesTpl);
+  if (candidatesTpl) {
+    const ideNames = /const ANTIGRAVITY_IDE_SETTINGS_NAMES: &str =\s*r#"([\s\S]*?)"#/.exec(rs)?.[1];
+    const hubNames = /const ANTIGRAVITY_HUB_SETTINGS_NAMES: &str =\s*r#"([\s\S]*?)"#/.exec(rs)?.[1];
+    ok('两端目录名分别定义且互不混用',
+      !!ideNames && !!hubNames && ideNames.includes('Antigravity IDE') && !ideNames.includes('"Antigravity"')
+      && hubNames.includes('"Antigravity"') && !hubNames.includes('Antigravity IDE'));
+    const rendered = renderFormat(candidatesTpl, ideNames || '[]');
+    ok('候选片段是合法 JS', nodeCheck('candidates', `const cands=${rendered};`));
+    ok('按当前用户主目录推导（不硬编码用户名）', rendered.includes('os.homedir') && !/C:[\\/]Users[\\/]\w+/.test(rendered));
     ok('覆盖 Windows APPDATA / macOS Application Support / Linux XDG',
-      candidates.includes('APPDATA') && candidates.includes('Application Support') && candidates.includes('XDG_CONFIG_HOME'));
-    ok('覆盖新旧产品目录名与便携版 --user-data-dir',
-      candidates.includes('Antigravity IDE') && candidates.includes('antigravity-ide') && candidates.includes('--user-data-dir'));
-    ok('支持自定义配置路径显式覆盖', candidates.includes('ANYBRIDGE_ANTIGRAVITY_SETTINGS'));
+      rendered.includes('APPDATA') && rendered.includes('Application Support') && rendered.includes('XDG_CONFIG_HOME'));
+    ok('覆盖便携版 --user-data-dir', rendered.includes('--user-data-dir'));
+    ok('支持自定义配置路径显式覆盖', rendered.includes('ANYBRIDGE_ANTIGRAVITY_SETTINGS'));
+    ok('候选只扫描本端目录名（不硬编码全部产品名）', candidatesTpl.includes('{names}') && !candidatesTpl.includes('"Antigravity","antigravity-ide"'));
   }
   ok('黑底注入块绑定 env 对象而非硬编码 minify 名', rs.includes('e.CLOUD_CODE_URL=v.trim()'));
   ok('白底注入块自带 require（不依赖顶部导入）', rs.includes('antigravity_hub_endpoint_injection') && rs.includes('require("fs")'));
   ok('注入前保留备份文件', rs.includes('js.anybridge-bak') && rs.includes('app.asar.official.bak'));
+}
+
+section('还原对称：杜绝 v1.1.0 死端点事故');
+{
+  // 事故根因：注入块只写不删，父进程继承的 CLOUD_CODE_URL 在撤键后仍把
+  // agy.exe 钉在已停掉的本地网关上 → userInfo 失败 → 切号插件失效。
+  ok('黑底注入块先清除继承的 CLOUD_CODE_URL', rs.includes('delete e.CLOUD_CODE_URL'));
+  ok('白底 fallback 不读脏环境变量', !/return process\.env\.CLOUD_CODE_URL/.test(rs));
+  ok('白底 fallback 回官方端点', /return 'https:\/\/daily-cloudcode-pa\.googleapis\.com'/.test(rs));
+  ok('两端注入各自使用本端目录名',
+    rs.includes('antigravity_settings_candidates_js(ANTIGRAVITY_IDE_SETTINGS_NAMES)')
+    && rs.includes('antigravity_settings_candidates_js(ANTIGRAVITY_HUB_SETTINGS_NAMES)'));
+  ok('黑底还原也终止语言服务（清掉继承环境块）',
+    (() => {
+      const start = rs.indexOf('fn apply_antigravity_ide_official_with_stash');
+      const end = rs.indexOf('fn apply_antigravity_official(', start);
+      return start >= 0 && end > start && rs.slice(start, end).includes('kill_antigravity_language_server()');
+    })());
+  ok('门控含还原后死端点回归测试', rs.includes('antigravity_restore_clears_inherited_endpoint'));
+  ok('成套还原清理两端残留托管端点', rs.includes('fn clear_antigravity_stale_managed_endpoints'));
+  ok('两条还原路径（含字段级早退分支）都调用成套清理',
+    (rs.match(/clear_antigravity_stale_managed_endpoints\(\)/g) || []).length >= 4);
+  ok('终止 LS 同时覆盖白底 language_server 与黑底 agy.exe',
+    rs.includes('is_hub_ls') && rs.includes('is_ide_ls') && rs.includes('.gemini') && rs.includes('bin') && rs.includes('agy.exe'));
+  ok('注入块有版本号且旧版会自动升级',
+    rs.includes('ANTIGRAVITY_IDE_EXTENSION_V2') && rs.includes('ANTIGRAVITY_HUB_ENDPOINT_V2')
+    && rs.includes('检测到旧版端点注入但找不到官方备份'));
+  ok('幂等判据只认 v2（不认旧 marker）',
+    rs.includes('original.contains(ANTIGRAVITY_IDE_EXTENSION_V2)')
+    && rs.includes('c.contains(ANTIGRAVITY_HUB_ENDPOINT_V2)')
+    && rs.includes('code.contains(ANTIGRAVITY_HUB_ENDPOINT_V2)'));
 }
 
 section('拼接安全：杜绝 v1.0.20 双 return 事故');
@@ -84,8 +128,8 @@ section('旧版客户端兼容：多形态锚点与端点串');
   ok('白底变换抽成纯函数', rs.includes('fn patch_hub_language_server_code'));
   ok('白底变换兼容单/双引号、任意缩进、任意端点域名、旧注入自愈',
     rs.includes("['\"]--cloud_code_endpoint['\"]") && rs.includes('\\(\\(\\)\\s*=>\\s*\\{.*?\\}\\)\\(\\)'));
-  ok('白底预检只认当前版本 marker（旧注入继续自愈）',
-    rs.includes('c.contains(ANTIGRAVITY_HUB_ENDPOINT_MARKER)') && rs.includes('老版本留下的旧注入'));
+  ok('白底预检只认当前版本 v2 marker（旧注入继续自愈）',
+    rs.includes('c.contains(ANTIGRAVITY_HUB_ENDPOINT_V2)') && rs.includes('老版本留下的旧注入'));
   ok('旧版形态单测覆盖 ≥5 种黑底 + ≥4 种白底',
     rs.includes('legacy_plain_export') && rs.includes('legacy_old_injection_selfheal'));
 }
@@ -117,7 +161,9 @@ section('保活与还原：不擅自改未接入的安装目录');
   ok('keeper 持全局注入锁', rs.includes('super::inject_lock()'));
   ok('keeper 已挂载到应用启动', fs.readFileSync(path.join(root, 'src-tauri/src/lib.rs'), 'utf8').includes('spawn_antigravity_endpoint_keeper'));
   ok('还原撤键后注入块自动回退官方（对称）',
-    rs.includes('apply_antigravity_ide_official_with_stash') && rs.includes('obj.remove("jetski.cloudCodeUrl")'));
+    rs.includes('apply_antigravity_ide_official_with_stash')
+    && rs.includes('write_settings_endpoint(path, None)')
+    && rs.includes('delete e.CLOUD_CODE_URL'));
 }
 
 section('Rust 单测（含多形态 + Node 真解析）');

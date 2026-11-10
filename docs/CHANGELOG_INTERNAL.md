@@ -9,6 +9,59 @@
 > - `CHANGELOG.md`：一屏能读完、用户能看懂、只讲"你会得到什么"。一个版本 2-4 条。
 > - 本文件：可以写 `hudsucker=debug`、`passthroughParams`、栈追踪、判据与测试名。
 
+## v1.1.5 - 2026-11-11
+
+> 版本号说明：仓库存在 2026-06-06 的历史 tag `v1.1.4`（HEAD 祖先、无 release 产物）。
+> 为满足语义版本单调递增、避免更新器判定降级，本次取 `v1.1.5` 而非 1.1.1。
+
+### 半还原留死端点：切号插件失效
+
+- 现象：停止接入/退出 AnyBridge 后 Agent 面板回退「Continue with Google」，
+  切号扩展失效；LS 日志刷 `Post https://localhost:7452/v1internal:loadCodeAssist
+  dial tcp 127.0.0.1:7452: connectex: No connection could be made`，并出现
+  `[AuthProvider] UpdateEndpointURL called with CLOUD_CODE_URL: https://localhost:7452`，
+  而用户级/机器级 `CLOUD_CODE_URL` 都是空的。
+- 三个叠加根因：
+  1. 注入块只在 settings 有值时写入 `e.CLOUD_CODE_URL`、从不删除，而
+     `buildServerEnv` 以 `{...process.env}` 起步，IDE 主进程继承的会话级
+     `CLOUD_CODE_URL` 在撤键后仍被传给 `agy.exe`；
+  2. 白底 `languageServer.js` 注入的 fallback 读 `process.env.CLOUD_CODE_URL`，
+     把同一个脏值当端点；
+  3. 黑底与白底共用一份 settings 候选目录，用户只还原黑底时，黑底 `agy.exe`
+     仍读到白底残留的本地网关地址。
+- 修复：注入块先 `delete e.CLOUD_CODE_URL` 再按需写入；白底 fallback 只回官方常量；
+  候选按端隔离（`ANTIGRAVITY_IDE_SETTINGS_NAMES` / `ANTIGRAVITY_HUB_SETTINGS_NAMES`）；
+  新增 `clear_antigravity_stale_managed_endpoints()` 成套清理两端残留托管端点
+  （含字段级还原的早退分支）；`reg delete` 只改注册表，必须同时终止两个语言服务
+  （`language_server.exe` 与 `~/.gemini/bin/agy.exe`，按路径白名单防误杀）促其以干净环境重建。
+- 注入块引入版本号（`..._V2`）：keeper 幂等判据只认 v2，旧注入先从
+  `js.anybridge-bak` 还原再重打，否则已接入用户升级后旧注入永远得不到修复。
+- 判据：`antigravity_restore_clears_inherited_endpoint`（可执行：模拟 settings 无键
+  + env 带 7452，断言注入块清掉端点）、`antigravity_legacy_injection_is_upgraded_not_skipped`。
+- 坑点：`ag-half-restore-leaves-dead-endpoint`。
+
+### Antigravity Kite 共存
+
+- 冲突面（只读盘点 Kite 1.2.13）：CDP 端口双方默认 9333 但 Kite 可配
+  `antigravityKite.cdpPort`（另有 9222 / `DevToolsActivePort` 兜底，并会改 `.lnk` 重启 IDE）；
+  Kite 用 VS Code 配置 API 写 19 个 `antigravityKite.*` 键，AnyBridge 原来
+  `to_string_pretty` 整体重写同一文件会在并发时静默丢弃；双方都杀 `agy.exe`。
+  Kite 不碰 `jetski.cloudCodeUrl` / `app.asar` / `extension.js` / `CLOUD_CODE_URL`，
+  两边注入块互不覆盖。
+- 修复三条契约：
+  1. `resolve_cdp_port()` 动态发现：已确认端口 → Kite 配置 → `DevToolsActivePort`
+     → 9333 → 9222，缓存活跃端口，探测失败静默跳过；
+  2. `restart_antigravity_ide_with_cdp` 改为「端口已就绪 → 直接补注入，不重启 IDE」，
+     重启权与 `.lnk` 归 Kite；
+  3. `upsert_settings_endpoint_text` 文本级最小替换 + 写入前重读 + 无变更不写，
+     Kite 的键/注释/缩进/CRLF 逐字节保留。
+- 判据：`scripts/check-kite-coexist.mjs`（24 项，含反向断言不碰 Kite 独占资源）
+  挂进 `npm run verify`；单测 `antigravity_settings_write_preserves_kite_keys_and_format`、
+  `antigravity_cdp_port_follows_kite_config`。
+- 真机验证：真实 settings（23 键 / 19 个 Kite 键）接入→还原零丢失；
+  Kite 状态栏 `池 8/9 · wn***w@*** ·Pro · Claude 100%/100% · Gemini 100%/97%`。
+- 坑点：`ag-kite-coexist-contract`。
+
 ## v1.1.0 - 2026-11-10
 
 > 发版说明：原计划以 v1.0.20 发布，该包因 `ag-injection-must-not-duplicate-return`

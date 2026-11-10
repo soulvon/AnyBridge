@@ -873,6 +873,32 @@
       },
       "regression_test": "src-tauri/src/commands/platforms.rs::antigravity_extension_patch_supports_legacy_return_shapes",
       "severity": "high"
+    },
+    {
+      "id": "ag-half-restore-leaves-dead-endpoint",
+      "title": "停止接入是半还原：残留配置 + 继承环境变量把 LS 钉在已停的网关上，切号插件失效",
+      "symptom": "用户停止接入/退出 AnyBridge 后，Agent 面板一直回退「Continue with Google」，账号切换插件（Alcop/Kite）失效；LS 日志刷 Post https://localhost:7452/v1internal:loadCodeAssist dial tcp 127.0.0.1:7452 connectex: No connection could be made，并出现 [AuthProvider] UpdateEndpointURL called with CLOUD_CODE_URL: https://localhost:7452；但用户级/机器级 CLOUD_CODE_URL 都是空的",
+      "lesson": "三个叠加根因：①注入块只在 settings 有值时写入 e.CLOUD_CODE_URL，从不删除，而 buildServerEnv 以 {...process.env} 起步，IDE 主进程继承的会话级 CLOUD_CODE_URL 在撤键后仍被传给 agy.exe；②白底 languageServer.js 注入的 fallback 读 process.env.CLOUD_CODE_URL，把同一个脏值当端点；③黑底与白底共用一份 settings 候选目录，用户只还原黑底时，黑底 agy.exe 仍读到白底残留的本地网关地址。修复：注入块先 delete e.CLOUD_CODE_URL 再按需写入；白底 fallback 只回官方常量；候选按端隔离目录名（IDE 系列 / Hub 系列）；任一还原都成套清理两端残留托管端点（clear_antigravity_stale_managed_endpoints，含字段级还原的早退分支）；reg delete 只改注册表，必须同时终止两个语言服务（language_server.exe 与 ~/.gemini/bin/agy.exe，按路径白名单）促其以干净环境重建。判据要能可执行地模拟还原后带脏 env 的注入块行为，不能只查字符串",
+      "check": {
+        "type": "source_contains",
+        "file": "src-tauri/src/commands/platforms.rs",
+        "must_contain": "clear_antigravity_stale_managed_endpoints"
+      },
+      "regression_test": "src-tauri/src/commands/platforms.rs::antigravity_restore_clears_inherited_endpoint",
+      "severity": "critical"
+    },
+    {
+      "id": "ag-kite-coexist-contract",
+      "title": "Antigravity Kite 切号扩展与 AnyBridge 作用于同一 IDE，必须约定共存契约",
+      "symptom": "Kite 切号后 AnyBridge 汉化失效或反之；Kite 改 cdpPort 后 AnyBridge 固定 9333 的 keeper 整体停摆；AnyBridge 接入/还原时 Kite 刚写的 antigravityKite.* 设置被整体 JSON 重写静默覆盖；双方都杀 agy.exe 且 Kite 会后台 taskkill+spawn 重启 IDE 主进程",
+      "lesson": "两项目共享同一 IDE 实例：Kite 写 User/settings.json 的 antigravityKite.*（VS Code 配置 API）、直写 state.vscdb / Windows 凭据 gemini:antigravity / ~/.gemini、CDP 默认 9333（可配，另有 9222 与 DevToolsActivePort 兜底）、改 .lnk 快捷方式并重启 IDE、每次切号 killAgyEngine。契约：①AnyBridge 的 CDP 端口动态发现（跟随 antigravityKite.cdpPort / DevToolsActivePort / 9333 / 9222，缓存活跃端口，探测失败静默跳过），绝不写死；②调试端口已就绪时直接补注入，绝不抢 IDE 重启权（Kite 负责重启与快捷方式）；③settings.json 用「一行最小替换 + 写入前重读 + 无变更不写」，绝不 to_string_pretty 整体重写，否则 Kite 的键/注释/格式全丢；④不碰 Kite 独占资源（Antigravity 的 state.vscdb、凭据管理器、~/.gemini、.lnk、OAuth 11451~11550、antigravityKite.* 键）；⑤CDP 注入全局标记用 __anybridgeCdpHans，与 Kite 的 __kiteDeclGuard* 不重名。门控 scripts/check-kite-coexist.mjs 挂进 npm run verify",
+      "check": {
+        "type": "source_contains",
+        "file": "src-tauri/src/commands/platforms.rs",
+        "must_contain": "upsert_settings_endpoint_text"
+      },
+      "regression_test": "src-tauri/src/commands/platforms.rs::antigravity_settings_write_preserves_kite_keys_and_format",
+      "severity": "high"
     }
   ]
 }

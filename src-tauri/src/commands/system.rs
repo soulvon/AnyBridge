@@ -2351,6 +2351,18 @@ pub async fn restart_antigravity_ide_with_cdp() -> Result<String, String> {
     #[cfg(target_os = "windows")]
     {
         tauri::async_runtime::spawn_blocking(move || {
+            // 与 Antigravity Kite 共存：Kite 会自己给快捷方式追加
+            // --remote-debugging-port 并重启 IDE。若调试端口已就绪，
+            // 直接复用并补注入即可，绝不抢重启权（强杀会打断 Kite 的
+            // 无感切号，还会清掉它刚写入的登录态）。
+            let cdp = crate::commands::antigravity_cdp::probe();
+            if cdp.is_ok() {
+                let port = crate::commands::antigravity_cdp::active_port();
+                let injected = crate::commands::antigravity_cdp::inject_once().unwrap_or(0);
+                return Ok(format!(
+                    "调试端口 {port} 已就绪，已直接补注入 {injected} 个界面（未重启 IDE）"
+                ));
+            }
             let port = crate::commands::antigravity_cdp::CDP_PORT;
             restart_ide_impl(
                 "antigravity-ide".to_string(),

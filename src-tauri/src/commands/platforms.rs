@@ -751,7 +751,7 @@ impl Platform {
         } else {
             String::new()
         };
-        let mut obj = super::ide_config::parse_object(&raw).unwrap_or_default();
+        let obj = crate::commands::ide_config::parse_object(&raw).unwrap_or_default();
 
         // 记账（幂等；总是执行）
         let plans = vec![super::agent_stash::FieldPlan {
@@ -769,10 +769,9 @@ impl Platform {
             eprintln!("[agent-stash] Antigravity IDE 记账失败（不影响切换）: {e}");
         }
 
-        obj.insert("jetski.cloudCodeUrl".into(), Value::String(proxy_url));
-        if let Ok(content) = serde_json::to_string_pretty(&Value::Object(obj)) {
-            let _ = super::write_atomic(path, content.as_bytes());
-        }
+        // 只改自己那一行，保留 Kite 等扩展并发写入的其它键/注释/格式。
+        let _ = &obj; // obj 仅用于上面的记账，实际写入走最小替换
+        write_settings_endpoint(path, Some(&proxy_url))?;
 
         Ok(())
     }
@@ -805,7 +804,7 @@ impl Platform {
         } else {
             String::new()
         };
-        let mut obj = super::ide_config::parse_object(&raw).unwrap_or_default();
+        let obj = crate::commands::ide_config::parse_object(&raw).unwrap_or_default();
 
         // 记账（幂等；总是执行）
         let plans = vec![super::agent_stash::FieldPlan {
@@ -823,10 +822,8 @@ impl Platform {
             eprintln!("[agent-stash] Antigravity 记账失败（不影响切换）: {e}");
         }
 
-        obj.insert("jetski.cloudCodeUrl".into(), Value::String(proxy_url));
-        if let Ok(content) = serde_json::to_string_pretty(&Value::Object(obj)) {
-            let _ = super::write_atomic(path, content.as_bytes());
-        }
+        let _ = &obj; // obj 仅用于记账；写入走最小替换，避免覆盖 Kite 的键
+        write_settings_endpoint(path, Some(&proxy_url))?;
 
         // 3. 若正在运行语言服务，终止它促使其热重启重载新配置。
         //    用原生 API 枚举进程，不再 spawn PowerShell——Get-CimInstance 的
@@ -873,8 +870,12 @@ impl Platform {
                     let exe_name = String::from_utf16_lossy(&entry.szExeFile[..end]);
                     let pid = entry.th32ProcessID;
 
-                    if exe_name.eq_ignore_ascii_case("language_server.exe") && pid != 0 {
-                        // 取完整路径确认是 Antigravity 的语言服务
+                    // 两种语言服务都要终止：白底 Hub 是 language_server.exe，
+                    // 黑底 IDE 是 ~/.gemini/bin/agy.exe --hub。只杀前者时，
+                    // 黑底仍继承接入时的 CLOUD_CODE_URL 环境块，还原不生效。
+                    let is_hub_ls = exe_name.eq_ignore_ascii_case("language_server.exe");
+                    let is_ide_ls = exe_name.eq_ignore_ascii_case("agy.exe");
+                    if (is_hub_ls || is_ide_ls) && pid != 0 {
                         let h = OpenProcess(
                             PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_TERMINATE,
                             0,
@@ -889,7 +890,11 @@ impl Platform {
                             {
                                 let full = String::from_utf16_lossy(&buf[..len as usize]);
                                 let lower = full.to_lowercase().replace('/', "\\");
-                                if lower.contains("antigravity\\resources\\bin") {
+                                // 路径白名单：只终止 Antigravity 自己的语言服务，
+                                // 绝不误杀其它产品同名的 language_server.exe / agy 工具。
+                                let matched = lower.contains("antigravity\\resources\\bin")
+                                    || lower.contains("\\.gemini\\bin\\agy.exe");
+                                if matched {
                                     let _ = TerminateProcess(h, 1);
                                 }
                             }
@@ -935,6 +940,10 @@ impl Platform {
                             .creation_flags(0x0800_0000)
                             .output();
                     }
+                    // 字段级还原只写回本端原值，另一端残留仍需成套清理。
+                    clear_antigravity_stale_managed_endpoints();
+                    #[cfg(windows)]
+                    Self::kill_antigravity_language_server();
                     return Ok(());
                 }
                 Ok(false) => {}
@@ -944,16 +953,8 @@ impl Platform {
             }
         }
 
-        if path.exists() {
-            if let Ok(raw) = fs::read_to_string(path) {
-                if let Ok(mut obj) = super::ide_config::parse_object(&raw) {
-                    obj.remove("jetski.cloudCodeUrl");
-                    if let Ok(content) = serde_json::to_string_pretty(&Value::Object(obj)) {
-                        let _ = super::write_atomic(path, content.as_bytes());
-                    }
-                }
-            }
-        }
+        // 只删自己那一行，Kite 的 antigravityKite.* 键与注释原样保留。
+        let _ = write_settings_endpoint(path, None);
 
         #[cfg(windows)]
         {
@@ -963,6 +964,17 @@ impl Platform {
                 .creation_flags(0x0800_0000)
                 .output();
         }
+
+        // reg delete 只改注册表，已运行的 IDE 主进程及其子进程继承的
+        // CLOUD_CODE_URL 环境块不变。必须终止语言服务促其热重启，让
+        // buildServerEnv 的注入块（先 delete 再按需写）以干净环境重建。
+        // 否则用户只还原黑底、白底 settings 仍指向本地网关时，agy.exe
+        // 会被钉在已停掉的网关上，userInfo 永远拿不到（v1.1.0 事故）。
+        // 成套还原：另一端若还残留本地网关地址，网关一停就是死端点。
+        clear_antigravity_stale_managed_endpoints();
+
+        #[cfg(windows)]
+        Self::kill_antigravity_language_server();
         Ok(())
     }
 
@@ -984,6 +996,7 @@ impl Platform {
                 "Antigravity",
             ) {
                 Ok(true) => {
+                    clear_antigravity_stale_managed_endpoints();
                     #[cfg(windows)]
                     Self::kill_antigravity_language_server();
                     return Ok(());
@@ -995,16 +1008,10 @@ impl Platform {
             }
         }
 
-        if path.exists() {
-            if let Ok(raw) = fs::read_to_string(path) {
-                if let Ok(mut obj) = super::ide_config::parse_object(&raw) {
-                    obj.remove("jetski.cloudCodeUrl");
-                    if let Ok(content) = serde_json::to_string_pretty(&Value::Object(obj)) {
-                        let _ = super::write_atomic(path, content.as_bytes());
-                    }
-                }
-            }
-        }
+        let _ = write_settings_endpoint(path, None);
+
+        // 成套还原：另一端若还残留本地网关地址，网关一停就是死端点。
+        clear_antigravity_stale_managed_endpoints();
 
         // 终止语言服务促使其热重启加载官方端点。
         // 与 apply_antigravity 同源：用原生 API，不用 PowerShell CIM（1-3 秒）。
@@ -1031,7 +1038,7 @@ impl Platform {
             String::new()
         };
         // 复用 ide_config 的 json5 容错解析（支持注释/尾逗号）。
-        let mut obj = super::ide_config::parse_object(&raw)?;
+        let mut obj = crate::commands::ide_config::parse_object(&raw)?;
 
         let env = obj
             .entry("env")
@@ -1147,7 +1154,7 @@ impl Platform {
             return Ok(());
         }
 
-        let mut obj = super::ide_config::parse_object(&raw)?;
+        let mut obj = crate::commands::ide_config::parse_object(&raw)?;
 
         // 门控开启：优先字段级还原（写回原值，保留用户在接管期间的改动；
         // 保形门控内聚在统一入口里，注释/键序随之保留）。
@@ -3980,6 +3987,63 @@ fn vscode_like_data_dir() -> Option<PathBuf> {
     }
 }
 
+/// 纯函数：只替换/删除 settings.json 里的 `jetski.cloudCodeUrl` 一行，
+/// 其余文本（包括 Antigravity Kite 写入的 `antigravityKite.*` 键、注释、
+/// JSONC 尾逗号、缩进格式）**逐字节保留**。
+///
+/// 为什么不能「解析 JSON → to_string_pretty 整体重写」：Kite 扩展用 VS Code
+/// 配置 API 并发写同一个文件（每次切号、改状态栏都会写）。整体重写会把
+/// 它在两次读取之间写入的键静默丢掉（lost update）。最小替换把冲突面
+/// 缩到我们自己的一行，且不改变文件其它任何字节。
+fn upsert_settings_endpoint_text(raw: &str, endpoint: Option<&str>) -> Result<String, String> {
+    let re = regex::Regex::new(
+        r#"(?m)^([ \t]*)"jetski\.cloudCodeUrl"[ \t]*:[ \t]*"(?:[^"\\]|\\.)*"[ \t]*,?[ \t]*(\r?\n)?"#,
+    )
+    .map_err(|e| format!("正则编译失败: {e}"))?;
+
+    match endpoint {
+        Some(url) => {
+            let escaped = url.replace('\\', "\\\\").replace('"', "\\\"");
+            let line = format!("${{1}}\"jetski.cloudCodeUrl\": \"{escaped}\",${{2}}");
+            if re.is_match(raw) {
+                return Ok(re.replace(raw, line.as_str()).to_string());
+            }
+            // 键不存在：插到顶层对象第一个 `{` 之后，沿用原文件换行风格。
+            let brace = raw.find('{').ok_or("settings.json 缺少顶层对象")?;
+            let newline = if raw.contains("\r\n") { "\r\n" } else { "\n" };
+            // 缩进跟随文件里已有的第一条键；没有则默认两空格。
+            let indent = raw
+                .lines()
+                .find(|l| l.trim_start().starts_with('"') && l.contains(':'))
+                .map(|l| l[..l.len() - l.trim_start().len()].to_string())
+                .unwrap_or_else(|| "  ".to_string());
+            Ok(format!(
+                "{}{{{newline}{indent}\"jetski.cloudCodeUrl\": \"{escaped}\",{newline}{}",
+                &raw[..brace],
+                raw[brace + 1..].trim_start_matches(['\r', '\n'])
+            ))
+        }
+        None => Ok(re.replace_all(raw, "").to_string()),
+    }
+}
+
+/// IO 包装：写入前**重新读取**最新内容再做最小替换，进一步缩短并发窗口。
+fn write_settings_endpoint(path: &Path, endpoint: Option<&str>) -> Result<(), String> {
+    if !path.exists() && endpoint.is_none() {
+        return Ok(());
+    }
+    let raw = if path.exists() {
+        fs::read_to_string(path).map_err(|e| format!("读取 settings.json 失败: {e}"))?
+    } else {
+        "{}".to_string()
+    };
+    let next = upsert_settings_endpoint_text(&raw, endpoint)?;
+    if next == raw {
+        return Ok(()); // 幂等：无变更不写，避免无谓触碰 Kite 正在读的文件
+    }
+    super::write_atomic(path, next.as_bytes())
+}
+
 pub(crate) fn antigravity_hub_config_dir() -> Option<PathBuf> {
     let data_dir = vscode_like_data_dir()?;
     let app_user = data_dir.join("Antigravity").join("User");
@@ -4056,7 +4120,7 @@ pub(crate) fn patch_antigravity_hub_asar(asar_path: &std::path::Path) -> Result<
     let mut ls_buf = vec![0u8; ls_size];
     f.read_exact(&mut ls_buf).map_err(|e| format!("读取 languageServer.js 失败: {e}"))?;
     if std::str::from_utf8(&ls_buf)
-        .map(|c| c.contains(ANTIGRAVITY_HUB_ENDPOINT_MARKER))
+        .map(|c| c.contains(ANTIGRAVITY_HUB_ENDPOINT_V2))
         .unwrap_or(false)
     {
         // 已是当前版本补丁：无需重写 asar（从秒级降到毫秒级）
@@ -4182,6 +4246,12 @@ pub(crate) fn patch_antigravity_hub_asar(asar_path: &std::path::Path) -> Result<
 const ANTIGRAVITY_IDE_EXTENSION_MARKER: &str = "/*ANYBRIDGE_CLOUD_CODE_URL*/";
 const ANTIGRAVITY_HUB_ENDPOINT_MARKER: &str = "/*ANYBRIDGE_CLOUD_CODE_ENDPOINT*/";
 
+// 注入块版本：v2 起「先清除继承端点 + 按端隔离 settings 候选」。
+// keeper 的幂等判据必须认版本号，否则已接入用户升级后旧的坏注入块
+// 永远不会自愈（旧 marker 与新版共用同一字符串）。
+const ANTIGRAVITY_IDE_EXTENSION_V2: &str = "/*ANYBRIDGE_CLOUD_CODE_URL_V2*/";
+const ANTIGRAVITY_HUB_ENDPOINT_V2: &str = "/*ANYBRIDGE_CLOUD_CODE_ENDPOINT_V2*/";
+
 /// 注入块：自包含（自带 require/os/homedir、跨平台 settings.json 候选路径），
 /// 不引用 minify 内部标识符。运行时动态读 settings.json——接入/还原随
 /// `jetski.cloudCodeUrl` 撤键自动生效，补丁本体无需随 URL 变化重打。
@@ -4195,27 +4265,53 @@ const ANTIGRAVITY_HUB_ENDPOINT_MARKER: &str = "/*ANYBRIDGE_CLOUD_CODE_ENDPOINT*/
 ///   ANYBRIDGE_ANTIGRAVITY_SETTINGS（自定义安装路径的最后兜底）；
 /// - Windows / macOS / Linux 分别走 APPDATA、Library/Application Support、
 ///   XDG_CONFIG_HOME 或 ~/.config。
-/// 生成「候选 settings.json 路径」的 JS 表达式（黑底/白底注入共用）。
+/// 生成「候选 settings.json 路径」的 JS 表达式。
+///
+/// v1.1.0 事故修复：黑底 IDE 与白底 Hub 是**两个独立客户端**，各有自己的
+/// `jetski.cloudCodeUrl`。共用一份候选列表会让黑底 agy.exe 读到白底残留的
+/// 本地网关地址（用户只还原了黑底时），网关一停就成了死端点 → userInfo 拿不到
+/// → Agent 面板回退「Continue with Google」→ 切号插件失效。因此按端隔离目录名：
+/// 黑底只读 IDE 系列，白底只读 Hub 系列。
+///
+/// `names` 是 JS 数组字面量字符串（如 `["Antigravity IDE","antigravity-ide"]`）。
 /// 纯字符串函数，便于门控直接取出交给 Node 解析。
-fn antigravity_settings_candidates_js() -> String {
-    r#"(function(){const p=require("path"),os=require("os"),h=os.homedir(),env=process.env,names=["Antigravity IDE","Antigravity","antigravity-ide","antigravity","Antigravity-IDE"],roots=[],cands=[];if(env.ANYBRIDGE_ANTIGRAVITY_SETTINGS)cands.push(env.ANYBRIDGE_ANTIGRAVITY_SETTINGS);const av=process.argv||[];for(let i=0;i<av.length;i++){const a=av[i];if(a==="--user-data-dir"&&av[i+1])cands.push(p.join(av[i+1],"User","settings.json"));else{const m=/^--user-data-dir=(.+)$/.exec(a);if(m)cands.push(p.join(m[1],"User","settings.json"))}}if(process.platform==="win32"){if(env.APPDATA)roots.push(env.APPDATA);roots.push(p.join(h,"AppData","Roaming"));if(env.LOCALAPPDATA)roots.push(env.LOCALAPPDATA)}else if(process.platform==="darwin"){roots.push(p.join(h,"Library","Application Support"));if(env.XDG_CONFIG_HOME)roots.push(env.XDG_CONFIG_HOME);roots.push(p.join(h,".config"))}else{if(env.XDG_CONFIG_HOME)roots.push(env.XDG_CONFIG_HOME);roots.push(p.join(h,".config"));if(env.XDG_DATA_HOME)roots.push(env.XDG_DATA_HOME);roots.push(p.join(h,".local","share"))}for(const r of roots){for(const n of names)cands.push(p.join(r,n,"User","settings.json"));cands.push(p.join(r,"User","settings.json"))}return cands})()"#.to_string()
+fn antigravity_settings_candidates_js(names: &str) -> String {
+    format!(
+        r#"(function(){{const p=require("path"),os=require("os"),h=os.homedir(),env=process.env,names={names},roots=[],cands=[];if(env.ANYBRIDGE_ANTIGRAVITY_SETTINGS)cands.push(env.ANYBRIDGE_ANTIGRAVITY_SETTINGS);const av=process.argv||[];for(let i=0;i<av.length;i++){{const a=av[i];if(a==="--user-data-dir"&&av[i+1])cands.push(p.join(av[i+1],"User","settings.json"));else{{const m=/^--user-data-dir=(.+)$/.exec(a);if(m)cands.push(p.join(m[1],"User","settings.json"))}}}}if(process.platform==="win32"){{if(env.APPDATA)roots.push(env.APPDATA);roots.push(p.join(h,"AppData","Roaming"));if(env.LOCALAPPDATA)roots.push(env.LOCALAPPDATA)}}else if(process.platform==="darwin"){{roots.push(p.join(h,"Library","Application Support"));if(env.XDG_CONFIG_HOME)roots.push(env.XDG_CONFIG_HOME);roots.push(p.join(h,".config"))}}else{{if(env.XDG_CONFIG_HOME)roots.push(env.XDG_CONFIG_HOME);roots.push(p.join(h,".config"));if(env.XDG_DATA_HOME)roots.push(env.XDG_DATA_HOME);roots.push(p.join(h,".local","share"))}}for(const r of roots){{for(const n of names)cands.push(p.join(r,n,"User","settings.json"));cands.push(p.join(r,"User","settings.json"))}}return cands}})()"#
+    )
 }
 
+const ANTIGRAVITY_IDE_SETTINGS_NAMES: &str =
+    r#"["Antigravity IDE","antigravity-ide","Antigravity-IDE"]"#;
+const ANTIGRAVITY_HUB_SETTINGS_NAMES: &str = r#"["Antigravity","antigravity"]"#;
+
 /// 黑底 IDE 注入块：给 buildServerEnv 返回的 env 对象补 CLOUD_CODE_URL。
+///
+/// 关键：先 `delete e.CLOUD_CODE_URL`。buildServerEnv 通常以
+/// `{...process.env}` 起步，父进程（IDE 主进程）可能继承了接入时留下的
+/// 会话级/用户级 CLOUD_CODE_URL。若只在有 settings 值时覆盖、无值时什么都不做，
+/// 用户「停止接入」撤键后脏值仍留在 env 里，agy.exe 会继续把 Cloud Code
+/// 指向已停掉的本地网关 → loadCodeAssist/userInfo 全部失败 → 面板回退
+/// 「Continue with Google」→ 切号插件失效（v1.1.0 实测事故）。
 fn antigravity_ide_extension_injection() -> String {
     format!(
-        r#"(function(e){{try{{const fs=require("fs"),cands={};for(const f of cands){{if(!f)continue;try{{if(!fs.existsSync(f))continue;const v=JSON.parse(fs.readFileSync(f,"utf8"))["jetski.cloudCodeUrl"];if(typeof v==="string"&&v.trim()&&/^https?:/i.test(v.trim())){{e.CLOUD_CODE_URL=v.trim();break}}}}catch(_){{}}}}}}catch(_){{}}return e}}{})"#,
-        antigravity_settings_candidates_js(),
+        r#"(function(e){{try{{delete e.CLOUD_CODE_URL}}catch(_){{}}try{{const fs=require("fs"),cands={};for(const f of cands){{if(!f)continue;try{{if(!fs.existsSync(f))continue;const v=JSON.parse(fs.readFileSync(f,"utf8"))["jetski.cloudCodeUrl"];if(typeof v==="string"&&v.trim()&&/^https?:/i.test(v.trim())){{e.CLOUD_CODE_URL=v.trim();break}}}}catch(_){{}}}}}}catch(_){{}}return e}}{}{})"#,
+        antigravity_settings_candidates_js(ANTIGRAVITY_IDE_SETTINGS_NAMES),
+        ANTIGRAVITY_IDE_EXTENSION_V2,
         ANTIGRAVITY_IDE_EXTENSION_MARKER
     )
 }
 
 /// 白底 Hub 的 languageServer.js 注入块：返回端点字符串（自带 require，
 /// 不依赖文件顶部导入；electron.app 不可用时有 os.homedir 兜底）。
+///
+/// fallback 只回官方常量，**绝不读 process.env.CLOUD_CODE_URL**：那个变量
+/// 常是接入时遗留的本地网关地址，撤键后会把 language_server.exe 钉在死端点上。
 fn antigravity_hub_endpoint_injection() -> String {
     format!(
-        r#"(() => {{ try {{ const fs=require("fs"),cands={};for(const f of cands){{if(!f)continue;try{{if(!fs.existsSync(f))continue;const v=JSON.parse(fs.readFileSync(f,"utf8"))["jetski.cloudCodeUrl"];if(typeof v==="string"&&v.trim()&&/^https?:/i.test(v.trim()))return v.trim();}}catch(_){{}}}} }} catch(_) {{}} return process.env.CLOUD_CODE_URL || 'https://daily-cloudcode-pa.googleapis.com'; }})(){}"#,
-        antigravity_settings_candidates_js(),
+        r#"(() => {{ try {{ const fs=require("fs"),cands={};for(const f of cands){{if(!f)continue;try{{if(!fs.existsSync(f))continue;const v=JSON.parse(fs.readFileSync(f,"utf8"))["jetski.cloudCodeUrl"];if(typeof v==="string"&&v.trim()&&/^https?:/i.test(v.trim()))return v.trim();}}catch(_){{}}}} }} catch(_) {{}} return 'https://daily-cloudcode-pa.googleapis.com'; }})(){}{}"#,
+        antigravity_settings_candidates_js(ANTIGRAVITY_HUB_SETTINGS_NAMES),
+        ANTIGRAVITY_HUB_ENDPOINT_V2,
         ANTIGRAVITY_HUB_ENDPOINT_MARKER
     )
 }
@@ -4224,13 +4320,16 @@ fn antigravity_hub_endpoint_injection() -> String {
 /// 替换为动态注入表达式。兼容任意缩进、LF/CRLF、单双引号、任意官方端点域名、
 /// 以及历史版本留下的旧注入表达式（自愈）。找不到参数时明确报错。
 fn patch_hub_language_server_code(code: &str) -> Result<String, String> {
-    if code.contains(ANTIGRAVITY_HUB_ENDPOINT_MARKER) {
+    // 只认当前版本；旧版注入必须走下面的正则自愈重新生成。
+    if code.contains(ANTIGRAVITY_HUB_ENDPOINT_V2) {
         return Ok(code.to_string());
     }
     // 匹配形如：'--cloud_code_endpoint',\n  'https://...',  或旧版注入 IIFE。
     // 引号可为单/双引号；端点值可为任意域名；缩进/换行任意。
+    // 旧注入 IIFE 后可能跟着版本/幂等注释（如 /*ANYBRIDGE_...*/），
+    // 用 [^,]*? 吃掉注释直到分隔逗号，否则自愈匹配失败、旧注入无法升级。
     let re = regex::Regex::new(
-        r#"(?s)(['"]--cloud_code_endpoint['"]\s*,\s*)(?:['"][^'"]*['"]|\(\(\)\s*=>\s*\{.*?\}\)\(\))(\s*,)"#,
+        r#"(?s)(['"]--cloud_code_endpoint['"]\s*,\s*)(?:['"][^'"]*['"]|\(\(\)\s*=>\s*\{.*?\}\)\(\)[^,]*?)(\s*,)"#,
     )
     .map_err(|e| format!("正则编译失败: {e}"))?;
     let injection = antigravity_hub_endpoint_injection();
@@ -4483,10 +4582,50 @@ fn is_anybridge_managed_endpoint(url: Option<&str>) -> bool {
 fn antigravity_managed_endpoint_from_settings(dir: &Path) -> Option<String> {
     let path = dir.join("settings.json");
     let raw = fs::read_to_string(path).ok()?;
-    let obj = super::ide_config::parse_object(&raw).ok()?;
+    let obj = crate::commands::ide_config::parse_object(&raw).ok()?;
     obj.get("jetski.cloudCodeUrl")
         .and_then(|v| v.as_str())
         .map(|s| s.to_string())
+}
+
+/// 成套还原：清掉两端 settings.json 里残留的本地网关端点。
+///
+/// v1.1.0 事故：用户停止接入时只撤了当前客户端的配置，另一端仍写着
+/// `https://localhost:7452`；AnyBridge 退出后网关不再监听，那一端的 LS
+/// 就把死端点固化下来（userInfo 永远失败 → 面板回退「Continue with Google」
+/// → 切号插件失效）。两端共用同一个本地网关，接入/还原本就是整体语义，
+/// 留一端必然制造死端点，因此任一还原都清两端。
+///
+/// 只删「由 AnyBridge 接管」的本地地址；用户自己配的官方端点/其它代理
+/// 一律不动（字段级还原写回原值也由调用方先完成）。
+fn clear_antigravity_stale_managed_endpoints() {
+    for dir in [
+        antigravity_hub_config_dir(),
+        antigravity_ide_config_dir(),
+    ]
+    .into_iter()
+    .flatten()
+    {
+        let path = dir.join("settings.json");
+        let raw = match fs::read_to_string(&path) {
+            Ok(s) => s,
+            Err(_) => continue,
+        };
+        let obj = match crate::commands::ide_config::parse_object(&raw) {
+            Ok(o) => o,
+            Err(_) => continue,
+        };
+        let managed = obj
+            .get("jetski.cloudCodeUrl")
+            .and_then(|v| v.as_str())
+            .map(|u| is_anybridge_managed_endpoint(Some(u)))
+            .unwrap_or(false);
+        if !managed {
+            continue;
+        }
+        let _ = &obj; // obj 仅用于判定是否由本地网关接管
+        let _ = write_settings_endpoint(&path, None);
+    }
 }
 
 /// 客户端升级会整包覆盖 `app.asar` / `extensions/agy/vscode/extension.js`，
@@ -4544,17 +4683,32 @@ pub(crate) fn patch_antigravity_ide_extension() -> Result<(), String> {
         .find(|c| c.exists())
         .ok_or("未找到 Antigravity IDE 安装目录（extensions/agy/vscode/extension.js），请先安装并启动一次 Antigravity IDE")?;
     let original = fs::read_to_string(target).map_err(|e| format!("读取 extension.js 失败: {e}"))?;
-    if original.contains(ANTIGRAVITY_IDE_EXTENSION_MARKER)
+    if original.contains(ANTIGRAVITY_IDE_EXTENSION_V2)
         && original.contains(".buildServerEnvironment")
     {
-        // 幂等：注入块运行时动态读 settings.json，URL/端口变化无需重打。
+        // 幂等：已是当前版本，运行时动态读 settings.json，URL/端口变化无需重打。
         return Ok(());
     }
     let bak = target.with_extension("js.anybridge-bak");
     if !bak.exists() {
         let _ = fs::copy(target, &bak);
     }
-    let patched = patch_antigravity_extension_code(&original)?;
+    // 旧版注入（含旧 marker 或缺 v2 标记）：从官方备份还原后再打，
+    // 否则 patch_antigravity_extension_code 会因「已含 marker」直接返回，
+    // 旧注入永远得不到升级（v1.1.0 半还原事故的修复会整体失效）。
+    let base = if original.contains(ANTIGRAVITY_IDE_EXTENSION_MARKER) {
+        if bak.exists() {
+            fs::read_to_string(&bak).unwrap_or(original.clone())
+        } else {
+            return Err(
+                "检测到旧版端点注入但找不到官方备份 extension.js.anybridge-bak，无法安全升级；请重装客户端或删除旧注入后重新接入"
+                    .to_string(),
+            );
+        }
+    } else {
+        original.clone()
+    };
+    let patched = patch_antigravity_extension_code(&base)?;
     super::write_atomic(target, patched.as_bytes())
         .map_err(|e| format!("写入 extension.js 补丁失败: {e}"))?;
     Ok(())
@@ -4572,7 +4726,7 @@ fn read_antigravity_config_info(path: &PathBuf) -> Result<Option<AntigravityConf
             is_official: true,
         }));
     }
-    let obj = super::ide_config::parse_object(&raw)?;
+    let obj = crate::commands::ide_config::parse_object(&raw)?;
     let cloud_code_url = obj
         .get("jetski.cloudCodeUrl")
         .and_then(|v| v.as_str())
@@ -6644,7 +6798,7 @@ fn apply_claude_config_file_with_stash(
     } else {
         String::new()
     };
-    let mut obj = super::ide_config::parse_object(&raw)?;
+    let mut obj = crate::commands::ide_config::parse_object(&raw)?;
     let settings = claude_settings_from_config(config, false);
     let settings_obj = settings
         .as_object()
@@ -10932,6 +11086,203 @@ mod tests {
         assert!(injection.contains("--user-data-dir"), "注入块必须支持便携版");
         assert_valid_js("ide_injection", &format!("const x={injection};"));
         assert_valid_js("hub_injection", &format!("const y={};", antigravity_hub_endpoint_injection()));
+    }
+
+    #[test]
+    fn antigravity_restore_clears_inherited_endpoint() {
+        // v1.1.0 事故：用户停止接入后只撤了黑底 settings 的键，白底仍指向
+        // 本地网关；IDE 主进程继承的 CLOUD_CODE_URL 又没被清掉，agy.exe
+        // 一直打死端点 → userInfo/loadCodeAssist 全失败 → 面板回退
+        // 「Continue with Google」→ 切号插件失效。
+        let ide = antigravity_ide_extension_injection();
+        let hub = antigravity_hub_endpoint_injection();
+        assert!(
+            ide.contains("delete e.CLOUD_CODE_URL"),
+            "黑底注入块必须先清除父进程继承的脏值，否则还原不生效"
+        );
+        assert!(
+            !hub.contains("process.env.CLOUD_CODE_URL"),
+            "白底 fallback 不得把继承的脏环境变量当端点"
+        );
+        assert!(
+            hub.contains("https://daily-cloudcode-pa.googleapis.com"),
+            "白底找不到配置时必须回退官方端点"
+        );
+        // 两端候选必须隔离：黑底绝不能读到白底残留的 URL。
+        assert!(
+            ide.contains("\"Antigravity IDE\"") && !ide.contains("\"Antigravity\","),
+            "黑底注入块只应扫描 IDE 系列目录名"
+        );
+        assert!(
+            hub.contains("\"Antigravity\"") && !hub.contains("\"Antigravity IDE\""),
+            "白底注入块只应扫描 Hub 系列目录名"
+        );
+
+        // 真执行：模拟 settings 无托管键、env 带接入时残留的本地网关地址。
+        let tmp = std::env::temp_dir().join(format!(
+            "anybridge-ag-restore-{}-{}.js",
+            std::process::id(),
+            SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos()
+        ));
+        let script = format!(
+            "const fs=require('fs'),os=require('os'),path=require('path');\
+             const dir=fs.mkdtempSync(path.join(os.tmpdir(),'ag-restore-'));\
+             fs.writeFileSync(path.join(dir,'settings.json'),'{{}}');\
+             process.env.APPDATA=dir;process.env.LOCALAPPDATA=dir;\
+             delete process.env.ANYBRIDGE_ANTIGRAVITY_SETTINGS;\
+             const e={{CLOUD_CODE_URL:'https://localhost:7452'}};\
+             const out=({ide})(e);\
+             console.log(JSON.stringify({{left:out.CLOUD_CODE_URL||null,hub:{hub}}}));\
+             fs.rmSync(dir,{{recursive:true,force:true}});"
+        );
+        if fs::write(&tmp, &script).is_ok() {
+            if let Ok(out) = std::process::Command::new("node").arg(&tmp).output() {
+                if out.status.success() {
+                    let text = String::from_utf8_lossy(&out.stdout);
+                    assert!(
+                        text.contains("\"left\":null"),
+                        "还原后 CLOUD_CODE_URL 必须被清除，实际: {text}"
+                    );
+                    assert!(
+                        !text.contains("7452"),
+                        "两端都不得再返回本地死端点，实际: {text}"
+                    );
+                }
+            }
+            let _ = fs::remove_file(&tmp);
+        }
+    }
+
+    #[test]
+    fn antigravity_settings_write_preserves_kite_keys_and_format() {
+        // 与 Antigravity Kite 共存：它用 VS Code 配置 API 并发写
+        // antigravityKite.*。AnyBridge 必须只动自己那一行，否则整体
+        // JSON 重写会静默丢掉 Kite 刚写的设置（lost update）。
+        let kite = r#"{
+  // Kite 的用户设置（注释必须保留）
+  "antigravityKite.cdpPort": 9333,
+  "antigravityKite.autoConfirmDeclaration": true,
+  "antigravityKite.statusBar.style": "full",
+  "antigravityKite.switch.syncGeminiFiles": true,
+  "jetski.cloudCodeUrl": "https://old.example.com",
+  "antigravityKite.locale": "zh-CN"
+}
+"#;
+
+        // 接入：只替换 URL，其它行逐字节不动
+        let applied = upsert_settings_endpoint_text(kite, Some("https://localhost:7452")).unwrap();
+        for key in [
+            "antigravityKite.cdpPort",
+            "antigravityKite.autoConfirmDeclaration",
+            "antigravityKite.statusBar.style",
+            "antigravityKite.switch.syncGeminiFiles",
+            "antigravityKite.locale",
+            "// Kite 的用户设置（注释必须保留）",
+        ] {
+            assert!(applied.contains(key), "接入后 Kite 的 {key} 必须保留");
+        }
+        assert!(applied.contains("https://localhost:7452"));
+        assert!(!applied.contains("https://old.example.com"));
+        assert_eq!(applied.matches("\"jetski.cloudCodeUrl\"").count(), 1);
+
+        // 还原：删掉自己那一行，Kite 的键与注释仍完整
+        let restored = upsert_settings_endpoint_text(&applied, None).unwrap();
+        for key in [
+            "antigravityKite.cdpPort",
+            "antigravityKite.autoConfirmDeclaration",
+            "antigravityKite.statusBar.style",
+            "antigravityKite.switch.syncGeminiFiles",
+            "antigravityKite.locale",
+            "// Kite 的用户设置（注释必须保留）",
+        ] {
+            assert!(restored.contains(key), "还原后 Kite 的 {key} 必须保留");
+        }
+        assert!(!restored.contains("jetski.cloudCodeUrl"));
+        assert!(crate::commands::ide_config::parse_object(&restored).is_ok(), "还原后仍是合法 JSONC");
+
+        // 键不存在时插入，同样不破坏其它键与注释
+        let without = upsert_settings_endpoint_text(kite, None).unwrap();
+        let inserted = upsert_settings_endpoint_text(&without, Some("https://localhost:7452")).unwrap();
+        assert!(inserted.contains("antigravityKite.cdpPort"));
+        assert!(inserted.contains("// Kite 的用户设置"));
+        assert!(crate::commands::ide_config::parse_object(&inserted).is_ok(), "插入后仍是合法 JSONC");
+        assert_eq!(
+            upsert_settings_endpoint_text(&inserted, Some("https://localhost:7452")).unwrap(),
+            inserted,
+            "重复接入必须幂等"
+        );
+
+        // CRLF 文件不能被改成 LF
+        let crlf = kite.replace('\n', "\r\n");
+        let crlf_out = upsert_settings_endpoint_text(&crlf, Some("https://localhost:7452")).unwrap();
+        assert!(!crlf_out.contains("\n\n") && crlf_out.contains("\r\n"));
+
+        // 空对象 / 只有注释的极简文件（白底 Hub 首次接入时的常见形态）：
+        // 插入后必须是合法 JSONC，且能被 parse_object 读回。
+        for bare in ["{}", "{}\n", "{\n}\n", "{\n  // 还没有任何设置\n}\n"] {
+            let out = upsert_settings_endpoint_text(bare, Some("https://localhost:7452"))
+                .unwrap_or_else(|e| panic!("{bare:?} 插入失败: {e}"));
+            assert!(
+                crate::commands::ide_config::parse_object(&out).is_ok(),
+                "{bare:?} 插入后必须是合法 JSONC，实际: {out:?}"
+            );
+            let parsed = crate::commands::ide_config::parse_object(&out).unwrap();
+            assert_eq!(
+                parsed.get("jetski.cloudCodeUrl").and_then(|v| v.as_str()),
+                Some("https://localhost:7452"),
+                "{bare:?} 插入后应能读回端点"
+            );
+            // 还原后必须回到不含该键且仍合法的状态
+            let restored = upsert_settings_endpoint_text(&out, None).unwrap();
+            assert!(crate::commands::ide_config::parse_object(&restored).is_ok(), "{bare:?} 还原后应仍合法");
+            let rp = crate::commands::ide_config::parse_object(&restored).unwrap();
+            assert!(rp.get("jetski.cloudCodeUrl").is_none());
+        }
+    }
+
+    #[test]
+    fn antigravity_cdp_port_follows_kite_config() {
+        // Kite 可把 cdpPort 改成非 9333；AnyBridge 必须把「Kite 配置值」
+        // 与 9222/DevToolsActivePort 一起纳入候选，不能写死单端口。
+        let cands = crate::commands::antigravity_cdp::cdp_port_candidates_for_test(Some(9444), Some(9555));
+        assert!(cands.contains(&9444), "必须跟随 Kite 配置的端口");
+        assert!(cands.contains(&9555), "必须跟随 DevToolsActivePort");
+        assert!(cands.contains(&9333), "需保留默认 9333");
+        assert!(cands.contains(&9222), "需保留 Kite 的 9222 兜底");
+        assert_eq!(
+            cands.iter().copied().collect::<std::collections::HashSet<_>>().len(),
+            cands.len(),
+            "候选端口必须去重"
+        );
+    }
+
+    #[test]
+    fn antigravity_legacy_injection_is_upgraded_not_skipped() {
+        // 幂等判据若只认旧 marker，已接入用户升级后旧注入永远得不到修复。
+        let ide = antigravity_ide_extension_injection();
+        let hub = antigravity_hub_endpoint_injection();
+        assert!(ide.contains(ANTIGRAVITY_IDE_EXTENSION_V2), "黑底注入块必须带 v2 标记");
+        assert!(hub.contains(ANTIGRAVITY_HUB_ENDPOINT_V2), "白底注入块必须带 v2 标记");
+        assert!(
+            !ide.contains("process.env.CLOUD_CODE_URL") && !hub.contains("process.env.CLOUD_CODE_URL"),
+            "新版注入不得再读脏环境变量"
+        );
+        // 旧版 languageServer.js（含旧 marker 但缺 v2）必须被重新变换，而不是直接返回。
+        let legacy = format!(
+            "const args=['--cloud_code_endpoint',\n  (() => {{ return 'x'; }})(){},\n'--x'];",
+            ANTIGRAVITY_HUB_ENDPOINT_MARKER
+        );
+        let upgraded = patch_hub_language_server_code(&legacy).unwrap();
+        assert!(
+            upgraded.contains(ANTIGRAVITY_HUB_ENDPOINT_V2),
+            "旧注入必须升级成 v2"
+        );
+        assert_valid_js("legacy_upgrade", &upgraded);
+        assert_eq!(
+            patch_hub_language_server_code(&upgraded).unwrap(),
+            upgraded,
+            "升级后幂等"
+        );
     }
 
     #[test]
