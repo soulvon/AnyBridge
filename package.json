@@ -1,6 +1,6 @@
 {
   "name": "anybridge",
-  "version": "1.1.5",
+  "version": "1.1.6",
   "description": "Open-source desktop BYOK bridge for AI coding tools",
   "type": "module",
   "main": "sidecar/proxy-entry.js",
@@ -42,7 +42,7 @@
     "check:stats": "node scripts/check-stats.mjs",
     "test:unit": "node scripts/run-unit-tests.mjs",
     "test:rust": "cargo test --manifest-path src-tauri/Cargo.toml --lib",
-    "verify": "npm run check:no-leak && npm run check:fast && npm run check:no-sensitive && npm run check:ag-endpoint && npm run check:kite-coexist && npm run check:release-config && npm run test:unit && node scripts/check-key-features.mjs --rust && npm run check:cursor-core && npm run check:main-crate",
+    "verify": "npm run check:no-leak && npm run check:fast && npm run check:no-sensitive && npm run check:ag-endpoint && npm run check:kite-coexist && npm run check:release-config && npm run test:unit && node scripts/check-key-features.mjs --rust && npm run check:cursor-core && npm run check:main-crate && node scripts/release-flow.mjs record verify",
     "verify:release": "npm run verify && npm run tauri:build:local",
     "tauri": "tauri",
     "tauri:dev": "npm run check:rust && tauri dev",
@@ -53,7 +53,11 @@
     "check:main-crate": "cargo check --manifest-path src-tauri/Cargo.toml",
     "probe:cross-linux": "cargo check --manifest-path cursor-core/Cargo.toml --target x86_64-unknown-linux-gnu --message-format short",
     "check:release-assets": "node scripts/check-release-assets.mjs",
-    "check:release-gate": "node scripts/check-release-gate.mjs"
+    "check:release-gate": "node scripts/check-release-gate.mjs",
+    "release:status": "node scripts/release-flow.mjs status",
+    "release:dev-ok": "node scripts/release-flow.mjs record dev --user-confirmed",
+    "release:local-ok": "node scripts/release-flow.mjs record local --user-confirmed",
+    "release:push": "node scripts/release-publish.mjs"
   },
   "keywords": [
     "anybridge",

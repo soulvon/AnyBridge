@@ -899,6 +899,19 @@
       },
       "regression_test": "src-tauri/src/commands/platforms.rs::antigravity_settings_write_preserves_kite_keys_and_format",
       "severity": "high"
+    },
+    {
+      "id": "ag-injection-template-placeholder-not-rendered",
+      "title": "Rust format! 里的 {names} 未被替换，注入块运行时抛错被 catch 吞掉，BYOK 模型静默不下发",
+      "symptom": "AnyBridge 显示已接入、网关 fetchAvailableModels 返回 byok 模型且 agentModelSorts 里也有，但 IDE 下拉只有官方模型；LS 日志全部请求直连 daily-cloudcode-pa.googleapis.com；把 extension.js 里的注入块单独拿出来执行会抛 ReferenceError/TypeError，因为其中残留字面量 names={names}，for(const n of names) 立即失败并被外层 catch 静默丢弃",
+      "lesson": "含大量 JS 花括号的模板不要用 Rust format!（必须把每个 { 转义成 {{，漏一处或错一处就静默产出坏代码）。改用 __AB_XXX__ 形式的显式占位符 + str.replace 渲染，模板按可读的 JS 原样书写。更关键的是校验方式：node --check 只能证明语法合法，`{names}` 作为 shorthand 属性完全合法，无法发现运行时错误。必须做执行级校验——造真实目录结构、调用注入块、断言它真的把端点写进 env；门控也要做同样的事（scripts/check-antigravity-endpoint.mjs 里的「真执行」判据）。旧补丁升级不能只依赖 .anybridge-bak 备份（客户端升级会删），要能就地正则剥离旧注入再重打，且剥离结果要与直接重打等价",
+      "check": {
+        "type": "source_contains",
+        "file": "src-tauri/src/commands/platforms.rs",
+        "must_contain": "__AB_NAMES__"
+      },
+      "regression_test": "src-tauri/src/commands/platforms.rs::antigravity_injection_actually_works_at_runtime",
+      "severity": "critical"
     }
   ]
 }

@@ -80,6 +80,37 @@ const changelog = fs.readFileSync(path.join(root, 'CHANGELOG.md'), 'utf8');
 const heading = new RegExp(`^## v${version.replace(/\./g, '\\.')}\\s+-\\s+\\d{4}-\\d{2}-\\d{2}`, 'm');
 check(`存在 v${version} 章节（CI 的 release notes 从这里提取）`, heading.test(changelog));
 
+section('发版流程凭证（脚本 → dev 人工 → 本地包，缺一不可）');
+{
+  // 2026-11-11 事故：只跑脚本门控就推 tag，跳过 dev 与本地包人工验收，
+  // 把坏注入直接推到线上。凭证绑定 commit SHA，代码一改即失效。
+  const sha = git('rev-parse HEAD');
+  const flowFile = path.join(root, '.release-flow', `${sha}.json`);
+  let flow = null;
+  try {
+    flow = JSON.parse(fs.readFileSync(flowFile, 'utf8'));
+  } catch {
+    flow = null;
+  }
+  const stages = [
+    ['verify', '脚本测试全绿'],
+    ['dev', 'dev 版人工验收'],
+    ['local', '本地安装包验收'],
+  ];
+  if (!flow) {
+    bad('当前 commit 没有任何验收凭证', '先跑 npm run verify，再起 dev 版给用户测，再本地打包验证');
+  } else {
+    for (const [key, label] of stages) {
+      const hit = flow.stages && flow.stages[key];
+      check(
+        `${label}（${key}）`,
+        !!hit,
+        hit ? '' : `缺这一步，禁止推 tag；补完执行 node scripts/release-flow.mjs record ${key}`
+      );
+    }
+  }
+}
+
 section('tag');
 const tag = `v${version}`;
 let tagCommit = '';

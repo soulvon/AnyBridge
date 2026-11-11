@@ -4120,7 +4120,7 @@ pub(crate) fn patch_antigravity_hub_asar(asar_path: &std::path::Path) -> Result<
     let mut ls_buf = vec![0u8; ls_size];
     f.read_exact(&mut ls_buf).map_err(|e| format!("读取 languageServer.js 失败: {e}"))?;
     if std::str::from_utf8(&ls_buf)
-        .map(|c| c.contains(ANTIGRAVITY_HUB_ENDPOINT_V2))
+        .map(|c| c.contains(ANTIGRAVITY_HUB_ENDPOINT_VERSION))
         .unwrap_or(false)
     {
         // 已是当前版本补丁：无需重写 asar（从秒级降到毫秒级）
@@ -4246,11 +4246,12 @@ pub(crate) fn patch_antigravity_hub_asar(asar_path: &std::path::Path) -> Result<
 const ANTIGRAVITY_IDE_EXTENSION_MARKER: &str = "/*ANYBRIDGE_CLOUD_CODE_URL*/";
 const ANTIGRAVITY_HUB_ENDPOINT_MARKER: &str = "/*ANYBRIDGE_CLOUD_CODE_ENDPOINT*/";
 
-// 注入块版本：v2 起「先清除继承端点 + 按端隔离 settings 候选」。
-// keeper 的幂等判据必须认版本号，否则已接入用户升级后旧的坏注入块
-// 永远不会自愈（旧 marker 与新版共用同一字符串）。
-const ANTIGRAVITY_IDE_EXTENSION_V2: &str = "/*ANYBRIDGE_CLOUD_CODE_URL_V2*/";
-const ANTIGRAVITY_HUB_ENDPOINT_V2: &str = "/*ANYBRIDGE_CLOUD_CODE_ENDPOINT_V2*/";
+// 注入块版本：keeper 的幂等判据必须认版本号，否则已接入用户升级后
+// 旧的坏注入块永远不会自愈（旧 marker 与新版共用同一字符串）。
+//   v2：先清除继承端点 + 按端隔离 settings 候选；
+//   v3：修复 v2 里 `names={names}` 未被替换导致注入静默失效的事故。
+const ANTIGRAVITY_IDE_EXTENSION_VERSION: &str = "/*ANYBRIDGE_CLOUD_CODE_URL_V3*/";
+const ANTIGRAVITY_HUB_ENDPOINT_VERSION: &str = "/*ANYBRIDGE_CLOUD_CODE_ENDPOINT_V3*/";
 
 /// 注入块：自包含（自带 require/os/homedir、跨平台 settings.json 候选路径），
 /// 不引用 minify 内部标识符。运行时动态读 settings.json——接入/还原随
@@ -4275,10 +4276,16 @@ const ANTIGRAVITY_HUB_ENDPOINT_V2: &str = "/*ANYBRIDGE_CLOUD_CODE_ENDPOINT_V2*/"
 ///
 /// `names` 是 JS 数组字面量字符串（如 `["Antigravity IDE","antigravity-ide"]`）。
 /// 纯字符串函数，便于门控直接取出交给 Node 解析。
+///
+/// 注意：这里**故意不用 `format!`**。模板里 `{}` 极多（对象字面量、函数体），
+/// 用 format! 必须把每个 `{` 转义成 `{{`，一旦漏转义/多转义就会静默产出坏代码。
+/// v1.1.5 事故：`names={names}` 未被替换成真实数组，运行时 `for(const n of names)`
+/// 抛 TypeError 被外层 catch 吞掉，注入完全失效（LS 直连官方、BYOK 模型不下发），
+/// 而 `node --check` 语法校验因 `{names}` 是合法 shorthand 属性而放行。
+/// 改用显式占位符 replace，模板按可读的 JS 原样书写。
 fn antigravity_settings_candidates_js(names: &str) -> String {
-    format!(
-        r#"(function(){{const p=require("path"),os=require("os"),h=os.homedir(),env=process.env,names={names},roots=[],cands=[];if(env.ANYBRIDGE_ANTIGRAVITY_SETTINGS)cands.push(env.ANYBRIDGE_ANTIGRAVITY_SETTINGS);const av=process.argv||[];for(let i=0;i<av.length;i++){{const a=av[i];if(a==="--user-data-dir"&&av[i+1])cands.push(p.join(av[i+1],"User","settings.json"));else{{const m=/^--user-data-dir=(.+)$/.exec(a);if(m)cands.push(p.join(m[1],"User","settings.json"))}}}}if(process.platform==="win32"){{if(env.APPDATA)roots.push(env.APPDATA);roots.push(p.join(h,"AppData","Roaming"));if(env.LOCALAPPDATA)roots.push(env.LOCALAPPDATA)}}else if(process.platform==="darwin"){{roots.push(p.join(h,"Library","Application Support"));if(env.XDG_CONFIG_HOME)roots.push(env.XDG_CONFIG_HOME);roots.push(p.join(h,".config"))}}else{{if(env.XDG_CONFIG_HOME)roots.push(env.XDG_CONFIG_HOME);roots.push(p.join(h,".config"));if(env.XDG_DATA_HOME)roots.push(env.XDG_DATA_HOME);roots.push(p.join(h,".local","share"))}}for(const r of roots){{for(const n of names)cands.push(p.join(r,n,"User","settings.json"));cands.push(p.join(r,"User","settings.json"))}}return cands}})()"#
-    )
+    let template = r#"(function(){const p=require("path"),os=require("os"),h=os.homedir(),env=process.env,names=__AB_NAMES__,roots=[],cands=[];if(env.ANYBRIDGE_ANTIGRAVITY_SETTINGS)cands.push(env.ANYBRIDGE_ANTIGRAVITY_SETTINGS);const av=process.argv||[];for(let i=0;i<av.length;i++){const a=av[i];if(a==="--user-data-dir"&&av[i+1])cands.push(p.join(av[i+1],"User","settings.json"));else{const m=/^--user-data-dir=(.+)$/.exec(a);if(m)cands.push(p.join(m[1],"User","settings.json"))}}if(process.platform==="win32"){if(env.APPDATA)roots.push(env.APPDATA);roots.push(p.join(h,"AppData","Roaming"));if(env.LOCALAPPDATA)roots.push(env.LOCALAPPDATA)}else if(process.platform==="darwin"){roots.push(p.join(h,"Library","Application Support"));if(env.XDG_CONFIG_HOME)roots.push(env.XDG_CONFIG_HOME);roots.push(p.join(h,".config"))}else{if(env.XDG_CONFIG_HOME)roots.push(env.XDG_CONFIG_HOME);roots.push(p.join(h,".config"));if(env.XDG_DATA_HOME)roots.push(env.XDG_DATA_HOME);roots.push(p.join(h,".local","share"))}for(const r of roots){for(const n of names)cands.push(p.join(r,n,"User","settings.json"));cands.push(p.join(r,"User","settings.json"))}return cands})()"#;
+    template.replace("__AB_NAMES__", names)
 }
 
 const ANTIGRAVITY_IDE_SETTINGS_NAMES: &str =
@@ -4294,12 +4301,16 @@ const ANTIGRAVITY_HUB_SETTINGS_NAMES: &str = r#"["Antigravity","antigravity"]"#;
 /// 指向已停掉的本地网关 → loadCodeAssist/userInfo 全部失败 → 面板回退
 /// 「Continue with Google」→ 切号插件失效（v1.1.0 实测事故）。
 fn antigravity_ide_extension_injection() -> String {
-    format!(
-        r#"(function(e){{try{{delete e.CLOUD_CODE_URL}}catch(_){{}}try{{const fs=require("fs"),cands={};for(const f of cands){{if(!f)continue;try{{if(!fs.existsSync(f))continue;const v=JSON.parse(fs.readFileSync(f,"utf8"))["jetski.cloudCodeUrl"];if(typeof v==="string"&&v.trim()&&/^https?:/i.test(v.trim())){{e.CLOUD_CODE_URL=v.trim();break}}}}catch(_){{}}}}}}catch(_){{}}return e}}{}{})"#,
-        antigravity_settings_candidates_js(ANTIGRAVITY_IDE_SETTINGS_NAMES),
-        ANTIGRAVITY_IDE_EXTENSION_V2,
-        ANTIGRAVITY_IDE_EXTENSION_MARKER
-    )
+    // 与候选片段同样用 replace 而非 format!：模板里花括号密集，
+    // 一处漏转义就会静默产出坏代码（v1.1.5 `{names}` 事故）。
+    let template = r#"(function(e){try{delete e.CLOUD_CODE_URL}catch(_){}try{const fs=require("fs"),cands=__AB_CANDS__;for(const f of cands){if(!f)continue;try{if(!fs.existsSync(f))continue;const v=JSON.parse(fs.readFileSync(f,"utf8"))["jetski.cloudCodeUrl"];if(typeof v==="string"&&v.trim()&&/^https?:/i.test(v.trim())){e.CLOUD_CODE_URL=v.trim();break}}catch(_){}}}catch(_){}return e}__AB_V2____AB_MARKER__)"#;
+    template
+        .replace(
+            "__AB_CANDS__",
+            &antigravity_settings_candidates_js(ANTIGRAVITY_IDE_SETTINGS_NAMES),
+        )
+        .replace("__AB_V2__", ANTIGRAVITY_IDE_EXTENSION_VERSION)
+        .replace("__AB_MARKER__", ANTIGRAVITY_IDE_EXTENSION_MARKER)
 }
 
 /// 白底 Hub 的 languageServer.js 注入块：返回端点字符串（自带 require，
@@ -4308,12 +4319,14 @@ fn antigravity_ide_extension_injection() -> String {
 /// fallback 只回官方常量，**绝不读 process.env.CLOUD_CODE_URL**：那个变量
 /// 常是接入时遗留的本地网关地址，撤键后会把 language_server.exe 钉在死端点上。
 fn antigravity_hub_endpoint_injection() -> String {
-    format!(
-        r#"(() => {{ try {{ const fs=require("fs"),cands={};for(const f of cands){{if(!f)continue;try{{if(!fs.existsSync(f))continue;const v=JSON.parse(fs.readFileSync(f,"utf8"))["jetski.cloudCodeUrl"];if(typeof v==="string"&&v.trim()&&/^https?:/i.test(v.trim()))return v.trim();}}catch(_){{}}}} }} catch(_) {{}} return 'https://daily-cloudcode-pa.googleapis.com'; }})(){}{}"#,
-        antigravity_settings_candidates_js(ANTIGRAVITY_HUB_SETTINGS_NAMES),
-        ANTIGRAVITY_HUB_ENDPOINT_V2,
-        ANTIGRAVITY_HUB_ENDPOINT_MARKER
-    )
+    let template = r#"(() => { try { const fs=require("fs"),cands=__AB_CANDS__;for(const f of cands){if(!f)continue;try{if(!fs.existsSync(f))continue;const v=JSON.parse(fs.readFileSync(f,"utf8"))["jetski.cloudCodeUrl"];if(typeof v==="string"&&v.trim()&&/^https?:/i.test(v.trim()))return v.trim();}catch(_){}} } catch(_) {} return 'https://daily-cloudcode-pa.googleapis.com'; })()__AB_V2____AB_MARKER__"#;
+    template
+        .replace(
+            "__AB_CANDS__",
+            &antigravity_settings_candidates_js(ANTIGRAVITY_HUB_SETTINGS_NAMES),
+        )
+        .replace("__AB_V2__", ANTIGRAVITY_HUB_ENDPOINT_VERSION)
+        .replace("__AB_MARKER__", ANTIGRAVITY_HUB_ENDPOINT_MARKER)
 }
 
 /// 纯函数：把白底 languageServer.js 里 `--cloud_code_endpoint` 的官方端点
@@ -4321,7 +4334,7 @@ fn antigravity_hub_endpoint_injection() -> String {
 /// 以及历史版本留下的旧注入表达式（自愈）。找不到参数时明确报错。
 fn patch_hub_language_server_code(code: &str) -> Result<String, String> {
     // 只认当前版本；旧版注入必须走下面的正则自愈重新生成。
-    if code.contains(ANTIGRAVITY_HUB_ENDPOINT_V2) {
+    if code.contains(ANTIGRAVITY_HUB_ENDPOINT_VERSION) {
         return Ok(code.to_string());
     }
     // 匹配形如：'--cloud_code_endpoint',\n  'https://...',  或旧版注入 IIFE。
@@ -4387,6 +4400,26 @@ fn patch_antigravity_extension_code(code: &str) -> Result<String, String> {
         &head[..whole.start()],
         &code[whole.end()..]
     ))
+}
+
+/// 就地剥离任意历史版本的注入，还原成 `return (<var>)` 的原始形态。
+///
+/// 用于旧补丁升级：客户端升级可能已删掉 `js.anybridge-bak`，不能只依赖备份。
+/// 注入形态固定为 `return (` + IIFE + `)(<var>)`，用非贪婪匹配到 marker 结尾。
+fn strip_antigravity_extension_injection(code: &str) -> Result<String, String> {
+    // 注入体以块注释（可能连续多个版本 marker）结尾，随后是 `)(<var>)`。
+    // 用 `[\s\S]*?ANYBRIDGE_CLOUD_CODE_URL[\s\S]*?` 锚定 marker 再吃到 `)(var)`，
+    // 比单纯 `\}` 更稳（IIFE 内部有多层花括号）。
+    let re = regex::Regex::new(
+        r#"(?s)return \(\(function\(e\)\{[\s\S]*?ANYBRIDGE_CLOUD_CODE_URL[\s\S]*?\)\(([A-Za-z_$][A-Za-z0-9_$]*)\)"#,
+    )
+    .map_err(|e| format!("正则编译失败: {e}"))?;
+    if !re.is_match(code) {
+        return Err("未匹配到已知形态的端点注入".to_string());
+    }
+    // 还原成原始形态 `return <var>`（不带括号），这样后续
+    // patch_antigravity_extension_code 的 return 正则才能重新识别。
+    Ok(re.replace(code, "return $1").to_string())
 }
 
 /// 定位 buildServerEnvironment 导出锚点，兼容新旧版本的多种写法。
@@ -4683,7 +4716,7 @@ pub(crate) fn patch_antigravity_ide_extension() -> Result<(), String> {
         .find(|c| c.exists())
         .ok_or("未找到 Antigravity IDE 安装目录（extensions/agy/vscode/extension.js），请先安装并启动一次 Antigravity IDE")?;
     let original = fs::read_to_string(target).map_err(|e| format!("读取 extension.js 失败: {e}"))?;
-    if original.contains(ANTIGRAVITY_IDE_EXTENSION_V2)
+    if original.contains(ANTIGRAVITY_IDE_EXTENSION_VERSION)
         && original.contains(".buildServerEnvironment")
     {
         // 幂等：已是当前版本，运行时动态读 settings.json，URL/端口变化无需重打。
@@ -4693,15 +4726,17 @@ pub(crate) fn patch_antigravity_ide_extension() -> Result<(), String> {
     if !bak.exists() {
         let _ = fs::copy(target, &bak);
     }
-    // 旧版注入（含旧 marker 或缺 v2 标记）：从官方备份还原后再打，
-    // 否则 patch_antigravity_extension_code 会因「已含 marker」直接返回，
-    // 旧注入永远得不到升级（v1.1.0 半还原事故的修复会整体失效）。
+    // 旧版注入（含旧 marker 但缺当前版本标记）：先剥离旧注入再重打。
+    // 优先就地正则剥离（不依赖备份，客户端升级后备份可能已不存在）；
+    // 剥离失败才退回官方备份。
     let base = if original.contains(ANTIGRAVITY_IDE_EXTENSION_MARKER) {
-        if bak.exists() {
+        if let Ok(stripped) = strip_antigravity_extension_injection(&original) {
+            stripped
+        } else if bak.exists() {
             fs::read_to_string(&bak).unwrap_or(original.clone())
         } else {
             return Err(
-                "检测到旧版端点注入但找不到官方备份 extension.js.anybridge-bak，无法安全升级；请重装客户端或删除旧注入后重新接入"
+                "检测到旧版端点注入但无法就地剥离、且找不到官方备份 extension.js.anybridge-bak；请重装客户端后重新接入"
                     .to_string(),
             );
         }
@@ -11154,6 +11189,90 @@ mod tests {
     }
 
     #[test]
+    fn antigravity_injection_actually_works_at_runtime() {
+        // v1.1.5 事故：`names={names}` 未被替换，运行时就抛错并被 catch 吞掉，
+        // 注入静默失效（LS 直连官方、BYOK 模型不下发），而 node --check 语法
+        // 校验因 `{names}` 是合法 shorthand 属性而放行。
+        //
+        // 因此必须**真执行**：造一个含端点的 settings.json，调用注入块，
+        // 断言 CLOUD_CODE_URL 被正确设置。
+        let ide = antigravity_ide_extension_injection();
+        let hub = antigravity_hub_endpoint_injection();
+        for (label, js) in [("ide", &ide), ("hub", &hub)] {
+            assert!(!js.contains("__AB_"), "{label} 不得残留未替换的占位符");
+            assert!(!js.contains("{names}"), "{label} 不得残留未替换的 names 占位符");
+            assert!(
+                js.contains("[\"Antigravity") || js.contains("[\"Antigravity IDE\""),
+                "{label} 必须展开成真实数组字面量"
+            );
+        }
+
+        // 注入块与测试脚本分文件存放，避免 Rust format! 与 JS 花括号互相干扰
+        // （正是这类转义事故导致了 v1.1.5 的 {names} 静默失效）。
+        let stamp = format!(
+            "{}-{}",
+            std::process::id(),
+            SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos()
+        );
+        let dir = std::env::temp_dir();
+        let ide_file = dir.join(format!("anybridge-inj-ide-{stamp}.js"));
+        let hub_file = dir.join(format!("anybridge-inj-hub-{stamp}.js"));
+        let script_file = dir.join(format!("anybridge-inj-run-{stamp}.js"));
+
+        // 纯静态脚本：从两个文件读注入块源码，eval 后执行，避免任何转义。
+        let script = r#"
+const fs = require('fs'), os = require('os'), path = require('path');
+const ideSrc = fs.readFileSync(process.argv[2], 'utf8');
+const hubSrc = fs.readFileSync(process.argv[3], 'utf8');
+const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ag-inj-'));
+function mk(name, url) {
+  const d = path.join(root, name, 'User');
+  fs.mkdirSync(d, { recursive: true });
+  fs.writeFileSync(path.join(d, 'settings.json'), JSON.stringify({ 'jetski.cloudCodeUrl': url }));
+}
+mk('Antigravity IDE', 'https://localhost:7452');
+mk('Antigravity', 'https://localhost:9999');
+process.env.APPDATA = root;
+process.env.LOCALAPPDATA = root;
+delete process.env.ANYBRIDGE_ANTIGRAVITY_SETTINGS;
+const ide = eval(ideSrc)({});
+const hub = eval(hubSrc);
+console.log(JSON.stringify({ ide: ide.CLOUD_CODE_URL || null, hub: hub }));
+fs.rmSync(root, { recursive: true, force: true });
+"#;
+
+        let wrote = fs::write(&ide_file, &ide).is_ok()
+            && fs::write(&hub_file, &hub).is_ok()
+            && fs::write(&script_file, script).is_ok();
+        if wrote {
+            if let Ok(out) = std::process::Command::new("node")
+                .arg(&script_file)
+                .arg(&ide_file)
+                .arg(&hub_file)
+                .output()
+            {
+                let text = String::from_utf8_lossy(&out.stdout);
+                assert!(
+                    out.status.success(),
+                    "注入块必须能无异常执行: {}",
+                    String::from_utf8_lossy(&out.stderr)
+                );
+                assert!(
+                    text.contains(r#""ide":"https://localhost:7452""#),
+                    "黑底注入块必须读到 IDE 目录的端点，实际: {text}"
+                );
+                assert!(
+                    text.contains(r#""hub":"https://localhost:9999""#),
+                    "白底注入块必须读到 Hub 目录的端点（不能串到 IDE 的 7452），实际: {text}"
+                );
+            }
+        }
+        for f in [&ide_file, &hub_file, &script_file] {
+            let _ = fs::remove_file(f);
+        }
+    }
+
+    #[test]
     fn antigravity_settings_write_preserves_kite_keys_and_format() {
         // 与 Antigravity Kite 共存：它用 VS Code 配置 API 并发写
         // antigravityKite.*。AnyBridge 必须只动自己那一行，否则整体
@@ -11257,12 +11376,40 @@ mod tests {
     }
 
     #[test]
+    fn antigravity_legacy_injection_strips_in_place_without_backup() {
+        // 真机场景：客户端升级后 js.anybridge-bak 已不存在，但 extension.js
+        // 里还留着上一版（v2，含 {names} 坏代码）的注入。必须能就地剥离再重打。
+        let original = "function fd(a){var c={...process.env};return c}\r\n$c.buildServerEnvironment=fd;";
+        let v2_bad = r#"function fd(a){var c={...process.env};return ((function(e){try{const fs=require("fs"),names={names};for(const n of names){}}catch(_){}return e}/*ANYBRIDGE_CLOUD_CODE_URL_V2*//*ANYBRIDGE_CLOUD_CODE_URL*/))(c)}
+$c.buildServerEnvironment=fd;"#;
+        let stripped = strip_antigravity_extension_injection(v2_bad).expect("必须能剥离 v2 注入");
+        assert!(stripped.contains("return c}"), "剥离后应还原成原始 return c}}");
+        assert!(!stripped.contains("ANYBRIDGE"), "剥离后不得残留 marker");
+        assert_valid_js("stripped", &stripped);
+
+        // 剥离后重打，必须产出当前版本
+        let repatched = patch_antigravity_extension_code(&stripped).expect("剥离后应能重打");
+        assert!(repatched.contains(ANTIGRAVITY_IDE_EXTENSION_VERSION));
+        assert!(!repatched.contains("{names}"), "重打后不得再有坏占位符");
+        assert_valid_js("repatched", &repatched);
+
+        // 与直接对原文重打的结果语义一致（剥离只影响注入，不动其它字节）
+        let direct = patch_antigravity_extension_code(original).unwrap();
+        let norm = |s: &str| s.replace("\r\n", "\n");
+        assert_eq!(
+            norm(&repatched),
+            norm(&direct),
+            "剥离后重打应与直接重打结果一致（忽略换行风格）"
+        );
+    }
+
+    #[test]
     fn antigravity_legacy_injection_is_upgraded_not_skipped() {
         // 幂等判据若只认旧 marker，已接入用户升级后旧注入永远得不到修复。
         let ide = antigravity_ide_extension_injection();
         let hub = antigravity_hub_endpoint_injection();
-        assert!(ide.contains(ANTIGRAVITY_IDE_EXTENSION_V2), "黑底注入块必须带 v2 标记");
-        assert!(hub.contains(ANTIGRAVITY_HUB_ENDPOINT_V2), "白底注入块必须带 v2 标记");
+        assert!(ide.contains(ANTIGRAVITY_IDE_EXTENSION_VERSION), "黑底注入块必须带 v2 标记");
+        assert!(hub.contains(ANTIGRAVITY_HUB_ENDPOINT_VERSION), "白底注入块必须带 v2 标记");
         assert!(
             !ide.contains("process.env.CLOUD_CODE_URL") && !hub.contains("process.env.CLOUD_CODE_URL"),
             "新版注入不得再读脏环境变量"
@@ -11274,7 +11421,7 @@ mod tests {
         );
         let upgraded = patch_hub_language_server_code(&legacy).unwrap();
         assert!(
-            upgraded.contains(ANTIGRAVITY_HUB_ENDPOINT_V2),
+            upgraded.contains(ANTIGRAVITY_HUB_ENDPOINT_VERSION),
             "旧注入必须升级成 v2"
         );
         assert_valid_js("legacy_upgrade", &upgraded);

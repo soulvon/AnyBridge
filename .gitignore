@@ -111,3 +111,6 @@ docs/RELEASE_GUIDE.md
 
 # 本地 AI 工具（ailoop 等）的 hook 配置，含本机绝对路径，不入公开仓库
 /.agents/
+
+# 发版验收凭证（本机记录，绑定 commit SHA）
+/.release-flow/

@@ -37,11 +37,12 @@ function extractRawString(source, fnName) {
   const m = /r#"([\s\S]*?)"#/.exec(source.slice(idx, idx + 12000));
   return m ? m[1] : null;
 }
-// 把 Rust format! 的 {{/}} 还原为 {/}，并把唯一占位符替换成实参。
-function renderFormat(template, ...args) {
-  let out = template.replace(/\{\{/g, '\u0001').replace(/\}\}/g, '\u0002');
-  for (const a of args) out = out.replace('{}', a);
-  return out.replace(/\u0001/g, '{').replace(/\u0002/g, '}');
+// 渲染模板：与 Rust 侧一致的显式占位符替换（不再依赖 format! 花括号转义）。
+// v1.1.5 事故教训：模板必须用 __AB_*__ 这类不会与 JS 语法冲突的占位符。
+function renderTemplate(template, values) {
+  let out = template;
+  for (const [k, v] of Object.entries(values)) out = out.split(k).join(v);
+  return out;
 }
 function nodeCheck(label, code) {
   const tmp = path.join(os.tmpdir(), `anybridge-ag-gate-${process.pid}-${label}.js`);
@@ -63,14 +64,58 @@ section('注入代码：自包含与语法');
     ok('两端目录名分别定义且互不混用',
       !!ideNames && !!hubNames && ideNames.includes('Antigravity IDE') && !ideNames.includes('"Antigravity"')
       && hubNames.includes('"Antigravity"') && !hubNames.includes('Antigravity IDE'));
-    const rendered = renderFormat(candidatesTpl, ideNames || '[]');
+    const rendered = renderTemplate(candidatesTpl, { __AB_NAMES__: ideNames || '[]' });
     ok('候选片段是合法 JS', nodeCheck('candidates', `const cands=${rendered};`));
     ok('按当前用户主目录推导（不硬编码用户名）', rendered.includes('os.homedir') && !/C:[\\/]Users[\\/]\w+/.test(rendered));
     ok('覆盖 Windows APPDATA / macOS Application Support / Linux XDG',
       rendered.includes('APPDATA') && rendered.includes('Application Support') && rendered.includes('XDG_CONFIG_HOME'));
     ok('覆盖便携版 --user-data-dir', rendered.includes('--user-data-dir'));
     ok('支持自定义配置路径显式覆盖', rendered.includes('ANYBRIDGE_ANTIGRAVITY_SETTINGS'));
-    ok('候选只扫描本端目录名（不硬编码全部产品名）', candidatesTpl.includes('{names}') && !candidatesTpl.includes('"Antigravity","antigravity-ide"'));
+    ok('候选只扫描本端目录名（不硬编码全部产品名）',
+      candidatesTpl.includes('__AB_NAMES__') && !candidatesTpl.includes('"Antigravity","antigravity-ide"'));
+    // v1.1.5 事故：`names={names}` 未被替换，运行时抛错被 catch 吞掉，
+    // 注入静默失效。渲染结果绝不能残留任何占位符或未展开的 `{names}`。
+    ok('渲染后无未替换占位符', !/__AB_[A-Z_]+__/.test(rendered) && !rendered.includes('{names}'));
+    ok('渲染后 names 是真实数组字面量', /names=\["/.test(rendered));
+    // 真执行：注入块必须真的能读到端点（语法正确不等于逻辑正确）。
+    ok('注入片段可真实执行并读出端点（真执行）', (() => {
+      const names = /const ANTIGRAVITY_IDE_SETTINGS_NAMES: &str =\s*r#"([\s\S]*?)"#/.exec(rs)?.[1];
+      const namesHub = /const ANTIGRAVITY_HUB_SETTINGS_NAMES: &str =\s*r#"([\s\S]*?)"#/.exec(rs)?.[1];
+      const ideTpl = extractRawString(rs, 'antigravity_ide_extension_injection');
+      const hubTpl = extractRawString(rs, 'antigravity_hub_endpoint_injection');
+      if (!names || !namesHub || !ideTpl || !hubTpl) return false;
+      const render = (tpl, nm) => tpl
+        .replace('__AB_CANDS__', candidatesTpl.replace('__AB_NAMES__', nm))
+        .replace('__AB_V2__', '/*V*/')
+        .replace('__AB_MARKER__', '/*M*/');
+      const ide = render(ideTpl, names);
+      const hub = render(hubTpl, namesHub);
+      const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'ab-gate-'));
+      const mk = (n, u) => {
+        const d = path.join(tmpRoot, n, 'User');
+        fs.mkdirSync(d, { recursive: true });
+        fs.writeFileSync(path.join(d, 'settings.json'), JSON.stringify({ 'jetski.cloudCodeUrl': u }));
+      };
+      mk('Antigravity IDE', 'https://localhost:7452');
+      mk('Antigravity', 'https://localhost:9999');
+      const script = path.join(tmpRoot, 'run.js');
+      fs.writeFileSync(script, [
+        "const fs=require('fs'),os=require('os'),path=require('path');",
+        `const ideSrc=${JSON.stringify(ide)};`,
+        `const hubSrc=${JSON.stringify(hub)};`,
+        `process.env.APPDATA=${JSON.stringify(tmpRoot)};`,
+        `process.env.LOCALAPPDATA=${JSON.stringify(tmpRoot)};`,
+        'delete process.env.ANYBRIDGE_ANTIGRAVITY_SETTINGS;',
+        'const ide=eval(ideSrc)({});',
+        'const hub=eval(hubSrc);',
+        'console.log(JSON.stringify({ide:ide.CLOUD_CODE_URL||null,hub:hub}));',
+      ].join('\n'), 'utf8');
+      try {
+        const out = execFileSync(process.execPath, [script], { encoding: 'utf8', stdio: 'pipe' });
+        return out.includes('"ide":"https://localhost:7452"') && out.includes('"hub":"https://localhost:9999"');
+      } catch { return false; }
+      finally { try { fs.rmSync(tmpRoot, { recursive: true, force: true }); } catch {} }
+    })());
   }
   ok('黑底注入块绑定 env 对象而非硬编码 minify 名', rs.includes('e.CLOUD_CODE_URL=v.trim()'));
   ok('白底注入块自带 require（不依赖顶部导入）', rs.includes('antigravity_hub_endpoint_injection') && rs.includes('require("fs")'));
@@ -100,12 +145,12 @@ section('还原对称：杜绝 v1.1.0 死端点事故');
   ok('终止 LS 同时覆盖白底 language_server 与黑底 agy.exe',
     rs.includes('is_hub_ls') && rs.includes('is_ide_ls') && rs.includes('.gemini') && rs.includes('bin') && rs.includes('agy.exe'));
   ok('注入块有版本号且旧版会自动升级',
-    rs.includes('ANTIGRAVITY_IDE_EXTENSION_V2') && rs.includes('ANTIGRAVITY_HUB_ENDPOINT_V2')
-    && rs.includes('检测到旧版端点注入但找不到官方备份'));
-  ok('幂等判据只认 v2（不认旧 marker）',
-    rs.includes('original.contains(ANTIGRAVITY_IDE_EXTENSION_V2)')
-    && rs.includes('c.contains(ANTIGRAVITY_HUB_ENDPOINT_V2)')
-    && rs.includes('code.contains(ANTIGRAVITY_HUB_ENDPOINT_V2)'));
+    rs.includes('ANTIGRAVITY_IDE_EXTENSION_VERSION') && rs.includes('ANTIGRAVITY_HUB_ENDPOINT_VERSION')
+    && rs.includes('strip_antigravity_extension_injection'));
+  ok('幂等判据只认当前版本（不认旧 marker）',
+    rs.includes('original.contains(ANTIGRAVITY_IDE_EXTENSION_VERSION)')
+    && rs.includes('c.contains(ANTIGRAVITY_HUB_ENDPOINT_VERSION)')
+    && rs.includes('code.contains(ANTIGRAVITY_HUB_ENDPOINT_VERSION)'));
 }
 
 section('拼接安全：杜绝 v1.0.20 双 return 事故');
@@ -128,8 +173,8 @@ section('旧版客户端兼容：多形态锚点与端点串');
   ok('白底变换抽成纯函数', rs.includes('fn patch_hub_language_server_code'));
   ok('白底变换兼容单/双引号、任意缩进、任意端点域名、旧注入自愈',
     rs.includes("['\"]--cloud_code_endpoint['\"]") && rs.includes('\\(\\(\\)\\s*=>\\s*\\{.*?\\}\\)\\(\\)'));
-  ok('白底预检只认当前版本 v2 marker（旧注入继续自愈）',
-    rs.includes('c.contains(ANTIGRAVITY_HUB_ENDPOINT_V2)') && rs.includes('老版本留下的旧注入'));
+  ok('白底预检只认当前版本 marker（旧注入继续自愈）',
+    rs.includes('c.contains(ANTIGRAVITY_HUB_ENDPOINT_VERSION)') && rs.includes('老版本留下的旧注入'));
   ok('旧版形态单测覆盖 ≥5 种黑底 + ≥4 种白底',
     rs.includes('legacy_plain_export') && rs.includes('legacy_old_injection_selfheal'));
 }

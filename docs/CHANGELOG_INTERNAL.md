@@ -9,6 +9,39 @@
 > - `CHANGELOG.md`：一屏能读完、用户能看懂、只讲"你会得到什么"。一个版本 2-4 条。
 > - 本文件：可以写 `hudsucker=debug`、`passthroughParams`、栈追踪、判据与测试名。
 
+## v1.1.6 - 2026-11-11
+
+### 注入块模板改显式占位符 + 旧注入就地剥离
+
+- 背景：v1.1.5 发布后，排查「BYOK 模型不下发」时一度误判为
+  `antigravity_settings_candidates_js` 里 `names={names}` 未被 `format!` 替换。
+  最小复现（`rustc` 单文件）证明 `format!` 隐式捕获正常工作，
+  **v1.1.5 的产品注入块本身没有占位符 bug**；现场看到的 `names={names}`
+  字面量来自手工重打脚本（只替换 `{}`、不认 `{names}`）。
+- 真因：`settings.json` 的 `jetski.cloudCodeUrl` 被测试脚本删除后未恢复，
+  注入块读不到端点即回退官方，表现为下拉只剩官方模型。
+- 仍然做的加固（防止同类事故再现）：
+  1. 三个 JS 模板全部改为 `__AB_*__` 显式占位符 + `str.replace` 渲染，
+     不再使用 `format!`（模板内花括号密集，一处转义错误就静默产出坏代码）；
+  2. 新增 `strip_antigravity_extension_injection()`：旧注入可**就地正则剥离**
+     再重打，不再依赖 `js.anybridge-bak`（客户端升级会删掉备份）；
+  3. 注入块版本升到 v3，keeper 幂等判据只认 v3，旧版自动升级；
+  4. 新增执行级单测 `antigravity_injection_actually_works_at_runtime`：
+     造真实目录 + 真跑注入块 + 断言端点写进 env（语法检查抓不到运行时错误）；
+  5. `check-antigravity-endpoint.mjs` 增加「渲染后无残留占位符」「真执行读出端点」
+     判据，并修正旧的错误判据（曾把 `{names}` 当作正确特征，等于绿灯护 bug）。
+
+### 发版流程门控（教训固化）
+
+- 事故：脚本门控全绿就直接推 tag，跳过「dev 人工验收」「本地包验收」，
+  把问题交给 CI 与线上用户。
+- 新增 `scripts/release-flow.mjs`：三阶段凭证（verify / dev / local）
+  **绑定当前 commit SHA**，代码一改即失效；`dev`/`local` 必须显式
+  `--user-confirmed`，不允许自己给自己发合格证。
+- 新增 `scripts/release-publish.mjs` 作为**唯一推 tag 入口**：
+  先校验三阶段 → 再校验发版配置 → 建附注 tag → 推 main + tag。
+- `check-release-gate.mjs` 增加凭证校验，缺任一阶段直接失败。
+
 ## v1.1.5 - 2026-11-11
 
 > 版本号说明：仓库存在 2026-06-06 的历史 tag `v1.1.4`（HEAD 祖先、无 release 产物）。
