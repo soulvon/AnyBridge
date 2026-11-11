@@ -111,9 +111,18 @@ section('注入代码：自包含与语法');
         'console.log(JSON.stringify({ide:ide.CLOUD_CODE_URL||null,hub:hub}));',
       ].join('\n'), 'utf8');
       try {
-        const out = execFileSync(process.execPath, [script], { encoding: 'utf8', stdio: 'pipe' });
-        return out.includes('"ide":"https://localhost:7452"') && out.includes('"hub":"https://localhost:9999"');
-      } catch { return false; }
+        // 隔离宿主注入的 NODE_OPTIONS（AI IDE 的 --require shim 在高负载下
+        // 会加载失败导致 node 退出，见 docs/pitfalls.json 同名条目）
+        const isolatedEnv = { ...process.env, NODE_OPTIONS: '' };
+        const out = execFileSync(process.execPath, [script], { encoding: 'utf8', stdio: 'pipe', env: isolatedEnv });
+        const pass = out.includes('"ide":"https://localhost:7452"') && out.includes('"hub":"https://localhost:9999"');
+        if (!pass) console.log(`    [真执行诊断] stdout=${out.slice(0, 500)}`);
+        return pass;
+      } catch (error) {
+        console.log(`    [真执行诊断] spawn 失败: ${String(error.message).slice(0, 300)}`);
+        console.log(`    [真执行诊断] stderr=${String(error.stderr || '').slice(0, 500)}`);
+        return false;
+      }
       finally { try { fs.rmSync(tmpRoot, { recursive: true, force: true }); } catch {} }
     })());
   }

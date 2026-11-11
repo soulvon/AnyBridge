@@ -85,7 +85,8 @@ if (runRust) {
     const out = execSync('cargo test --lib', { cwd: path.join(root, 'src-tauri'), stdio: 'pipe', encoding: 'utf8' });
     ok('cargo test 全量单测通过', /test result: ok/.test(out));
   } catch (e) {
-    ok('cargo test 全量单测通过', false, (e.stdout || e.message || '').slice(-300));
+    // 完整输出不截断：flaky 测试的根因往往在 stderr 尾部，截断会把线索切掉
+    ok('cargo test 全量单测通过', false, (e.stdout || e.message || '').slice(-3000));
   }
 }
 

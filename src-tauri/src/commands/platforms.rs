@@ -11250,7 +11250,12 @@ fs.rmSync(root, { recursive: true, force: true });
         // 关键：node 起不来绝不能静默通过——静默通过等于把执行级校验降级成摆设。
         let mut last_fail: Option<String> = None;
         for _attempt in 0..3 {
+            // 显式隔离 NODE_OPTIONS：宿主环境（如 CodeBuddy/Cursor 等 AI IDE）
+            // 会注入 --require=<shim>，高负载下 shim 加载失败会让 node 直接退出
+            //（stderr 尾部是 node:internal/modules/esm/loader 堆栈）。测试脚本
+            // 是纯 CJS，不需要任何宿主 shim。
             match std::process::Command::new("node")
+                .env_remove("NODE_OPTIONS")
                 .arg(&script_file)
                 .arg(&ide_file)
                 .arg(&hub_file)
