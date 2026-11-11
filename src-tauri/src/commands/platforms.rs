@@ -11215,9 +11215,9 @@ mod tests {
             SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos()
         );
         let dir = std::env::temp_dir();
-        let ide_file = dir.join(format!("anybridge-inj-ide-{stamp}.js"));
-        let hub_file = dir.join(format!("anybridge-inj-hub-{stamp}.js"));
-        let script_file = dir.join(format!("anybridge-inj-run-{stamp}.js"));
+        let ide_file = dir.join(format!("anybridge-inj-ide-{stamp}.cjs"));
+        let hub_file = dir.join(format!("anybridge-inj-hub-{stamp}.cjs"));
+        let script_file = dir.join(format!("anybridge-inj-run-{stamp}.cjs"));
 
         // 纯静态脚本：从两个文件读注入块源码，eval 后执行，避免任何转义。
         let script = r#"

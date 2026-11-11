@@ -98,7 +98,10 @@ section('注入代码：自包含与语法');
       };
       mk('Antigravity IDE', 'https://localhost:7452');
       mk('Antigravity', 'https://localhost:9999');
-      const script = path.join(tmpRoot, 'run.js');
+      // 必须用 .cjs：打包时 TEMP 会被指到项目树内（WiX 路径需求），
+      // 项目 package.json 是 "type":"module"，.js 会被 ESM 解析导致
+      // require is not defined（esm/loader 崩溃）。.cjs 强制 CJS，免疫。
+      const script = path.join(tmpRoot, 'run.cjs');
       fs.writeFileSync(script, [
         "const fs=require('fs'),os=require('os'),path=require('path');",
         `const ideSrc=${JSON.stringify(ide)};`,
