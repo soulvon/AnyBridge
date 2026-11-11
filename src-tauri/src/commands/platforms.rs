@@ -11244,28 +11244,44 @@ fs.rmSync(root, { recursive: true, force: true });
         let wrote = fs::write(&ide_file, &ide).is_ok()
             && fs::write(&hub_file, &hub).is_ok()
             && fs::write(&script_file, script).is_ok();
-        if wrote {
-            if let Ok(out) = std::process::Command::new("node")
+        assert!(wrote, "测试脚本必须能落盘");
+
+        // 全量并发 + 打包高负载场景下偶发（spawn/IO 抖动），失败重试两次。
+        // 关键：node 起不来绝不能静默通过——静默通过等于把执行级校验降级成摆设。
+        let mut last_fail: Option<String> = None;
+        for _attempt in 0..3 {
+            match std::process::Command::new("node")
                 .arg(&script_file)
                 .arg(&ide_file)
                 .arg(&hub_file)
                 .output()
             {
-                let text = String::from_utf8_lossy(&out.stdout);
-                assert!(
-                    out.status.success(),
-                    "注入块必须能无异常执行: {}",
-                    String::from_utf8_lossy(&out.stderr)
-                );
-                assert!(
-                    text.contains(r#""ide":"https://localhost:7452""#),
-                    "黑底注入块必须读到 IDE 目录的端点，实际: {text}"
-                );
-                assert!(
-                    text.contains(r#""hub":"https://localhost:9999""#),
-                    "白底注入块必须读到 Hub 目录的端点（不能串到 IDE 的 7452），实际: {text}"
-                );
+                Err(e) => {
+                    last_fail = Some(format!("node 无法启动: {e}"));
+                    continue;
+                }
+                Ok(out) => {
+                    let stdout = String::from_utf8_lossy(&out.stdout).to_string();
+                    let stderr = String::from_utf8_lossy(&out.stderr).to_string();
+                    if !out.status.success() {
+                        last_fail = Some(format!("注入块执行异常:\n{stderr}\n{stdout}"));
+                        continue;
+                    }
+                    if !stdout.contains(r#""ide":"https://localhost:7452""#)
+                        || !stdout.contains(r#""hub":"https://localhost:9999""#)
+                    {
+                        last_fail = Some(format!(
+                            "注入块没读到端点（按端隔离失效？）stdout={stdout}"
+                        ));
+                        continue;
+                    }
+                    last_fail = None;
+                    break;
+                }
             }
+        }
+        if let Some(msg) = last_fail {
+            panic!("执行级注入校验失败（重试 3 次）: {msg}");
         }
         for f in [&ide_file, &hub_file, &script_file] {
             let _ = fs::remove_file(f);
