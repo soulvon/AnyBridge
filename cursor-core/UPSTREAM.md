@@ -7,3 +7,5 @@
 - Model: `minishlab/potion-code-16M-v2`
 
 The Rust implementation preserves the externally useful indexing and search behavior while remaining independent of Python at runtime.
+
+This directory is maintained as a local component set; only the parts used by this application are kept.
