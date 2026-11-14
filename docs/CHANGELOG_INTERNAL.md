@@ -9,6 +9,77 @@
 > - `CHANGELOG.md`：一屏能读完、用户能看懂、只讲"你会得到什么"。一个版本 2-4 条。
 > - 本文件：可以写 `hudsucker=debug`、`passthroughParams`、栈追踪、判据与测试名。
 
+## v1.1.9 - 2026-11-14
+
+### 反重力 2.32.1 端点补丁真机失效（JSONC 严格 parse + regex $1 展开，marker 挡自愈）
+
+- 背景：2.32.1 把 `--cloud_code_endpoint` 常量搬进新增的 `dist/lsDefaults.js`
+  （`exports.LS_CLOUD_CODE_ENDPOINT`，`baseLsArgs()` 只引用该常量）。节点选择抽成
+  `hub_endpoint_node_name` 纯函数（lsDefaults 优先），汉化还原 `hub_has_byok_patch`
+  与补丁器共用同一份规则，门控补 2.32.1 形态判据。
+- **真机事故一（JSONC 严格 parse）**：真机 `settings.json` 是 JSONC（尾逗号合法），
+  注入块严格 `JSON.parse` 抛错被 catch 静默吞掉 → 端点回退官方 → LS 直连官方。
+  所有运行时测试此前都走 `ANYBRIDGE_ANTIGRAVITY_SETTINGS` 覆盖 + 严格 JSON fixture，
+  默认候选路径从未在真实文件形状上验证——测试全绿、真机失效。
+  修复：新增 `antigravity_settings_read_js()`（黑/白底共用）：严格 parse 失败后剥
+  块注释/行注释（`[^:"']` 守卫不误伤 `https://`）/尾逗号重试一次；候选构建剥离
+  `--user-data-dir` argv 元素内的引号（Electron 实测引号包在元素内）。
+- **真机事故二（regex $1 展开毒化）**：`regex::Regex::replace` 的 &str 替换串会把
+  注入模板里的 JS 字面量 `"$1"` 当捕获组展开成 `exports.LS_CLOUD_CODE_ENDPOINT = `，
+  JSONC 读取全部失效；keeper 定时补打先把毒化 V4 写上真机 asar，V4 marker 完好使
+  后续 connect 全部 early-Ok，坏补丁永不自愈。修复：两处替换点改闭包
+  `|caps: &regex::Captures|`（结构上杜绝展开）；marker 升 V5 强制重打。
+- **真机验证闭环**：dev 版 UI「一键接入」→ asar V5（`"$1"` 字面量完好）→
+  restart_ide 重启客户端 → `language_server.exe` 命令行
+  `--cloud_code_endpoint https://localhost:7452` → LS 日志
+  `https://localhost:7452/v1internal:loadCodeAssist` × 3 + `fetchAvailableModels`，
+  `ag-handshake.log` 出现网关回传响应（userTiers），不再「全部 host 失败/超时」。
+- **测试隔离缺陷**：撤键腿曾因真机 settings.json 恰好无键而侥幸通过（候选扫描会
+  穿透 env 覆盖继续扫 APPDATA）——on/off 腿补 APPDATA 隔离。
+- **遗留观察（待蹲守取证）**：验证窗口内 `jetski.cloudCodeUrl` 被外部写者剥过一次
+  （22:11 客户端带键启动 → 22:17 键消失，窗口与 dev 应用重启重合；60 秒空闲蹲守无
+  动静=事件触发型）。antigravity-tools.exe（独立工具，非 Kite，兄弟已澄清并关闭）
+  曾是头号嫌疑但未定案。keeper 目前只保 asar 补丁、不保 settings 键——定案后需评估
+  keeper 是否顺带巡检键存活。修复本身不受影响：键在 + V5 在 → 任意重启 LS 必
+  指 7452（已复验）。
+- 判据：门控 58 项（新增 JSONC 真执行、读取片段共用、引号剥离 3 条）；
+  Rust 单测 26 项（新增 `antigravity_injection_reads_jsonc_settings_default_path`：
+  JSONC 默认候选路径 + 带引号 argv 优先命中）。坑点 `ag-settings-jsonc-strict-parse-silent-fallback`、
+  `ag-regex-replacement-dollar-expansion-poisons-injection`。
+- 测试基建顺手加固：`assert_valid_js` / lsDefaults 运行时校验 / 还原对称测试的
+  node 执行全部改为重试 3 次 + 失败必 panic（35ef9897 政策收口），内联 node --check
+  块收敛进 `assert_valid_js`。
+
+## v1.1.8 - 2026-11-12
+
+### Gemini 上游工具 Schema 兼容（$schema 400）
+
+- 现象：CodeBuddy 经本地网关（OpenAI Chat 协议）调用 Vertex Gemini，带工具调用的消息返回
+  `400 Invalid JSON payload received. Unknown name "$schema" at 'tools[0].function_declarations[0].parameters'`。
+- 根因：`local-proxy.js` 的 `geminiTools()` 把客户端 tool 的 `parameters` 原样放进
+  `functionDeclarations.parameters`（连 `normalizeToolParameters` 都没走）；标准 JSON Schema 的
+  `$schema` / `additionalProperties` / `$defs` / `exclusiveMinimum` 等字段不在 Gemini Schema
+  子集内，Vertex 直接 400。
+- 顺带修复：`handlers/chat.js` 旧 `sanitizeJsonSchemaForGemini` 对 `properties` 直接递归，
+  属性名被当非法字段整体过滤（properties 会被清空、工具参数静默丢失）。
+- 修复：新增 `sidecar/lib/gemini-schema.js`（`sanitizeGeminiSchema` / `cleanGeminiToolParameters`）：
+  白名单字段、`properties` 按「属性名 → schema」递归、`type: ["string","null"]` 折叠为单类型 +
+  `nullable`、`oneOf` 降级 `anyOf`、`enum` 过滤 null、空壳补合法空对象。
+  收敛点：`local-proxy.geminiTools` 与 `handlers/chat.normalizeToolSchema` 共用同一份实现。
+  `shouldAutoEnableGeminiSchemaCompat` 的错误识别补充 `$schema` / `additionalProperties`。
+- 测试：`sidecar/lib/gemini-schema.test.js`（5 用例）+ `local-proxy.test.js` 出站集成用例；
+  `npm run test:unit` 315/315 通过。
+
+### 附带（v1.1.6 之后累积未发布）
+
+- Vertex AI 出站格式识别：`provider-pool.inferApiFormatFromPath/inferApiFormatFromHost` 支持
+  `aiplatform.googleapis.com` 与 `/publishers/google/models`；`40-model-picker` 的
+  `isGeneratedProviderApiPath` 收窄为仅 `/v1beta/models/...`，编辑保存不再清空自定义资源路径。
+- 模板库新增可用的 Vertex AI 预设：`provider-presets.json` 的 `vertexai` 条目改为 Gemini 协议 +
+  global 端点 + `/v1/projects/{project}/locations/global/publishers/google/models` 路径模板 +
+  12 个实测模型；`35-provider-presets.js` 支持 `path`/`models` 预填，
+  `40-model-picker.js` 暴露 `applyPresetModels`。
+
 ## v1.1.6 - 2026-11-11
 
 ### 注入块模板改显式占位符 + 旧注入就地剥离

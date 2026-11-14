@@ -509,9 +509,11 @@ fn patch_hub_asar(asar_path: &Path) -> Result<(), String> {
     Ok(())
 }
 
-/// 当前 asar 是否已含 BYOK 端点补丁（languageServer.js 里有 jetski.cloudCodeUrl）。
+/// 当前 asar 是否已含 BYOK 端点补丁（端点节点里有 jetski.cloudCodeUrl）。
+/// 2.32.1 起注入点在 dist/lsDefaults.js，旧版在 dist/languageServer.js，
+/// 与 patch_antigravity_hub_asar 共用同一份节点选择规则。
 /// 用途见 restore_hub_asar：覆盖前记录，覆盖后把补丁打回去。
-fn hub_has_byok_patch(asar_path: &Path) -> bool {
+pub(crate) fn hub_has_byok_patch(asar_path: &Path) -> bool {
     use std::io::{Read, Seek, SeekFrom};
     let Ok(mut f) = fs::File::open(asar_path) else {
         return false;
@@ -534,7 +536,10 @@ fn hub_has_byok_patch(asar_path: &Path) -> bool {
     let Ok(header) = serde_json::from_str::<Value>(header_str) else {
         return false;
     };
-    let Some(ls) = header.pointer("/files/dist/files/languageServer.js") else {
+    let Some(node_name) = super::platforms::hub_endpoint_node_name(&header) else {
+        return false;
+    };
+    let Some(ls) = header.pointer(&format!("/files/dist/files/{node_name}")) else {
         return false;
     };
     let offset: usize = ls

@@ -83,9 +83,11 @@ section('注入代码：自包含与语法');
       const namesHub = /const ANTIGRAVITY_HUB_SETTINGS_NAMES: &str =\s*r#"([\s\S]*?)"#/.exec(rs)?.[1];
       const ideTpl = extractRawString(rs, 'antigravity_ide_extension_injection');
       const hubTpl = extractRawString(rs, 'antigravity_hub_endpoint_injection');
-      if (!names || !namesHub || !ideTpl || !hubTpl) return false;
+      const readTpl = extractRawString(rs, 'antigravity_settings_read_js');
+      if (!names || !namesHub || !ideTpl || !hubTpl || !readTpl) return false;
       const render = (tpl, nm) => tpl
         .replace('__AB_CANDS__', candidatesTpl.replace('__AB_NAMES__', nm))
+        .replace('__AB_READ__', readTpl)
         .replace('__AB_V2__', '/*V*/')
         .replace('__AB_MARKER__', '/*M*/');
       const ide = render(ideTpl, names);
@@ -94,7 +96,11 @@ section('注入代码：自包含与语法');
       const mk = (n, u) => {
         const d = path.join(tmpRoot, n, 'User');
         fs.mkdirSync(d, { recursive: true });
-        fs.writeFileSync(path.join(d, 'settings.json'), JSON.stringify({ 'jetski.cloudCodeUrl': u }));
+        // 真机形状（2026-11-14 事故）：settings.json 是 JSONC——注释与尾逗号
+        // 合法，严格 JSON.parse 会抛错被 catch 吞掉 → 注入静默回退官方端点。
+        // fixture 必须带注释 + 尾逗号，逼容错读取在每次 verify 真执行中自证。
+        fs.writeFileSync(path.join(d, 'settings.json'),
+          `// client-managed settings (JSONC)\n{\n  // gateway endpoint\n  "jetski.cloudCodeUrl": "${u}",\n}`);
       };
       mk('Antigravity IDE', 'https://localhost:7452');
       mk('Antigravity', 'https://localhost:9999');
@@ -139,7 +145,15 @@ section('还原对称：杜绝 v1.1.0 死端点事故');
   // 事故根因：注入块只写不删，父进程继承的 CLOUD_CODE_URL 在撤键后仍把
   // agy.exe 钉在已停掉的本地网关上 → userInfo 失败 → 切号插件失效。
   ok('黑底注入块先清除继承的 CLOUD_CODE_URL', rs.includes('delete e.CLOUD_CODE_URL'));
-  ok('白底 fallback 不读脏环境变量', !/return process\.env\.CLOUD_CODE_URL/.test(rs));
+  ok('白底 fallback 不读脏环境变量', (() => {
+    // 单测里的「杂交残尸」fixture 故意带旧版脏环境变量尾巴，全文正则会误伤；
+    // 判据只针对注入模板函数体本身，语义不变。
+    const start = rs.indexOf('fn antigravity_hub_endpoint_injection');
+    if (start < 0) return false;
+    const end = rs.indexOf('\nfn ', start + 1);
+    const body = rs.slice(start, end > start ? end : rs.length);
+    return !/return process\.env\.CLOUD_CODE_URL/.test(body);
+  })());
   ok('白底 fallback 回官方端点', /return 'https:\/\/daily-cloudcode-pa\.googleapis\.com'/.test(rs));
   ok('两端注入各自使用本端目录名',
     rs.includes('antigravity_settings_candidates_js(ANTIGRAVITY_IDE_SETTINGS_NAMES)')
@@ -184,11 +198,66 @@ section('旧版客户端兼容：多形态锚点与端点串');
   ok('return 识别用正则而非固定字符串切分', rs.includes('return\\s+([A-Za-z_$][A-Za-z0-9_$]*)'));
   ok('白底变换抽成纯函数', rs.includes('fn patch_hub_language_server_code'));
   ok('白底变换兼容单/双引号、任意缩进、任意端点域名、旧注入自愈',
-    rs.includes("['\"]--cloud_code_endpoint['\"]") && rs.includes('\\(\\(\\)\\s*=>\\s*\\{.*?\\}\\)\\(\\)'));
+    rs.includes("['\"]--cloud_code_endpoint['\"]") && rs.includes('\\(\\(\\)\\s*=>\\s*\\{.*\\}\\)\\(\\)'));
+  ok('2.32.1+ 常量形态：节点选择 + LS_CLOUD_CODE_ENDPOINT 都支持',
+    rs.includes('lsDefaults.js') && rs.includes('fn hub_endpoint_node_name')
+    && rs.includes('exports\\.LS_CLOUD_CODE_ENDPOINT') && rs.includes('baseLsArgs'));
+  ok('汉化还原判据跟随同一节点选择', loc.includes('hub_endpoint_node_name'));
   ok('白底预检只认当前版本 marker（旧注入继续自愈）',
     rs.includes('c.contains(ANTIGRAVITY_HUB_ENDPOINT_VERSION)') && rs.includes('老版本留下的旧注入'));
   ok('旧版形态单测覆盖 ≥5 种黑底 + ≥4 种白底',
     rs.includes('legacy_plain_export') && rs.includes('legacy_old_injection_selfheal'));
+}
+
+section('2.32.1：lsDefaults.js 常量形态');
+{
+  const hubTpl = extractRawString(rs, 'antigravity_hub_endpoint_injection');
+  const candsTpl = extractRawString(rs, 'antigravity_settings_candidates_js');
+  const readTpl = extractRawString(rs, 'antigravity_settings_read_js');
+  const namesHub = /const ANTIGRAVITY_HUB_SETTINGS_NAMES: &str =\s*r#"([\s\S]*?)"#/.exec(rs)?.[1];
+  ok('2.32.1 模板可提取', !!hubTpl && !!candsTpl && !!namesHub && !!readTpl);
+  if (hubTpl && candsTpl && namesHub && readTpl) {
+    const injection = renderTemplate(hubTpl, {
+      __AB_CANDS__: candsTpl.replace('__AB_NAMES__', namesHub),
+      __AB_READ__: readTpl,
+      __AB_V2__: '/*ANYBRIDGE_CLOUD_CODE_ENDPOINT_V5*/',
+      __AB_MARKER__: '/*ANYBRIDGE_CLOUD_CODE_ENDPOINT*/',
+    });
+    const src = [
+      '"use strict";',
+      'exports.LS_CLOUD_CODE_ENDPOINT = exports.LS_API_SERVER_URL = void 0;',
+      'exports.baseLsArgs = baseLsArgs;',
+      "exports.LS_API_SERVER_URL = 'https://generativelanguage.googleapis.com';",
+      `exports.LS_CLOUD_CODE_ENDPOINT = ${injection};`,
+      "function baseLsArgs(opts){return ['--cloud_code_endpoint', exports.LS_CLOUD_CODE_ENDPOINT];}",
+    ].join('\n');
+    ok('常量替换后整文件语法合法', nodeCheck('ls_defaults', src));
+    ok('baseLsArgs 仍引用常量且官方兜底只一份',
+      src.includes("'--cloud_code_endpoint', exports.LS_CLOUD_CODE_ENDPOINT")
+      && (src.match(/https:\/\/daily-cloudcode-pa\.googleapis\.com/g) || []).length === 1);
+    // 2026-11-14 事故判据：JSONC（注释/尾逗号）settings 必须能读出端点。
+    // 严格 JSON.parse 的读法曾在全绿测试下真机失效——这里用真机形状逼真执行。
+    const jsoncProbe = `const f=process.argv[1],fs=require("fs");const v=${readTpl.replace(/\bf\b/g, 'f')};console.log(JSON.stringify(v||null));`;
+    ok('JSONC 容错读取片段：注释+尾逗号 settings 可读出端点', (() => {
+      const tmp = path.join(os.tmpdir(), `ab-gate-jsonc-${process.pid}.json`);
+      fs.writeFileSync(tmp, '// 注释\n{\n  "jetski.cloudCodeUrl": "https://localhost:7452",\n}', 'utf8');
+      try {
+        const isolatedEnv = { ...process.env, NODE_OPTIONS: '' };
+        const out = execFileSync(process.execPath, ['-e', jsoncProbe, tmp], { encoding: 'utf8', stdio: 'pipe', env: isolatedEnv });
+        return out.trim() === '"https://localhost:7452"';
+      } catch { return false; }
+      finally { try { fs.unlinkSync(tmp); } catch {} }
+    })());
+    ok('JSONC 容错读取片段不误伤 https:// 里的 //',
+      /[^:"']\/\//.test(readTpl) && readTpl.includes('[^:"\']'));
+  }
+  ok('JSONC 读取片段被黑底与白底模板共用（收敛到一处）',
+    (rs.match(/__AB_READ__/g) || []).length >= 2 && rs.includes('antigravity_settings_read_js'));
+  ok('候选构建剥离 --user-data-dir 的引号包裹（真机 argv 形状）',
+    candsTpl.includes('.replace(/^"(.*)"$/,"$1")'));
+  ok('Rust 单测覆盖 2.32.1 形态与节点选择',
+    rs.includes('antigravity_hub_patch_supports_ls_defaults_shape')
+    && rs.includes('antigravity_hub_endpoint_node_prefers_ls_defaults'));
 }
 
 section('安装路径：多用户名 / 自定义路径 / 三平台');

@@ -4075,10 +4075,19 @@ fn antigravity_config_dir() -> Option<PathBuf> {
     antigravity_hub_config_dir().or_else(antigravity_ide_config_dir)
 }
 
+/// 白底 Hub 端点补丁的目标 asar 节点。
+/// 2.32.1 起 `--cloud_code_endpoint` 的端点常量移到 dist/lsDefaults.js，
+/// 旧版仍在 dist/languageServer.js；两者并存时优先新节点。
+pub(crate) fn hub_endpoint_node_name(header: &Value) -> Option<&'static str> {
+    ["lsDefaults.js", "languageServer.js"]
+        .into_iter()
+        .find(|name| header.pointer(&format!("/files/dist/files/{name}")).is_some())
+}
+
 pub(crate) fn patch_antigravity_hub_asar(asar_path: &std::path::Path) -> Result<(), String> {
     use std::io::{Read, Seek, SeekFrom};
 
-    // ── 轻量预检：只读 header + languageServer.js 段（几 MB），
+    // ── 轻量预检：只读 header + 端点节点段（几 MB），
     //    已打补丁时直接返回。原先每次接入都全量读几百 MB 的 asar 做幂等检查，
     //    这是「一键接入 / 停止接入」点击后卡顿数秒的主要来源。
     let mut f = fs::File::open(asar_path).map_err(|e| format!("读取 asar 失败: {e}"))?;
@@ -4097,10 +4106,13 @@ pub(crate) fn patch_antigravity_hub_asar(asar_path: &std::path::Path) -> Result<
     let header: Value =
         serde_json::from_str(header_str).map_err(|e| format!("解析 asar header json 失败: {e}"))?;
 
+    let node_name = hub_endpoint_node_name(&header).ok_or_else(|| {
+        "未在 asar 中找到 dist/lsDefaults.js 或 dist/languageServer.js 节点".to_string()
+    })?;
     let ls_probe = header
-        .pointer("/files/dist/files/languageServer.js")
+        .pointer(&format!("/files/dist/files/{node_name}"))
         .cloned()
-        .ok_or_else(|| "未在 asar 中找到 dist/languageServer.js 节点".to_string())?;
+        .ok_or_else(|| format!("未在 asar 中找到 dist/{node_name} 节点"))?;
     let offset: usize = ls_probe
         .get("offset")
         .and_then(|v| v.as_str())
@@ -4142,9 +4154,9 @@ pub(crate) fn patch_antigravity_hub_asar(asar_path: &std::path::Path) -> Result<
         .get_mut("files")
         .and_then(|f| f.get_mut("dist"))
         .and_then(|d| d.get_mut("files"))
-        .and_then(|f| f.get_mut("languageServer.js"))
+        .and_then(|f| f.get_mut(node_name))
         .and_then(|n| n.as_object_mut())
-        .ok_or_else(|| "未在 asar 中找到 dist/languageServer.js 节点".to_string())?;
+        .ok_or_else(|| format!("未在 asar 中找到 dist/{node_name} 节点"))?;
 
     let offset: usize = ls_node
         .get("offset")
@@ -4250,8 +4262,8 @@ const ANTIGRAVITY_HUB_ENDPOINT_MARKER: &str = "/*ANYBRIDGE_CLOUD_CODE_ENDPOINT*/
 // 旧的坏注入块永远不会自愈（旧 marker 与新版共用同一字符串）。
 //   v2：先清除继承端点 + 按端隔离 settings 候选；
 //   v3：修复 v2 里 `names={names}` 未被替换导致注入静默失效的事故。
-const ANTIGRAVITY_IDE_EXTENSION_VERSION: &str = "/*ANYBRIDGE_CLOUD_CODE_URL_V3*/";
-const ANTIGRAVITY_HUB_ENDPOINT_VERSION: &str = "/*ANYBRIDGE_CLOUD_CODE_ENDPOINT_V3*/";
+const ANTIGRAVITY_IDE_EXTENSION_VERSION: &str = "/*ANYBRIDGE_CLOUD_CODE_URL_V5*/";
+const ANTIGRAVITY_HUB_ENDPOINT_VERSION: &str = "/*ANYBRIDGE_CLOUD_CODE_ENDPOINT_V5*/";
 
 /// 注入块：自包含（自带 require/os/homedir、跨平台 settings.json 候选路径），
 /// 不引用 minify 内部标识符。运行时动态读 settings.json——接入/还原随
@@ -4284,8 +4296,22 @@ const ANTIGRAVITY_HUB_ENDPOINT_VERSION: &str = "/*ANYBRIDGE_CLOUD_CODE_ENDPOINT_
 /// 而 `node --check` 语法校验因 `{names}` 是合法 shorthand 属性而放行。
 /// 改用显式占位符 replace，模板按可读的 JS 原样书写。
 fn antigravity_settings_candidates_js(names: &str) -> String {
-    let template = r#"(function(){const p=require("path"),os=require("os"),h=os.homedir(),env=process.env,names=__AB_NAMES__,roots=[],cands=[];if(env.ANYBRIDGE_ANTIGRAVITY_SETTINGS)cands.push(env.ANYBRIDGE_ANTIGRAVITY_SETTINGS);const av=process.argv||[];for(let i=0;i<av.length;i++){const a=av[i];if(a==="--user-data-dir"&&av[i+1])cands.push(p.join(av[i+1],"User","settings.json"));else{const m=/^--user-data-dir=(.+)$/.exec(a);if(m)cands.push(p.join(m[1],"User","settings.json"))}}if(process.platform==="win32"){if(env.APPDATA)roots.push(env.APPDATA);roots.push(p.join(h,"AppData","Roaming"));if(env.LOCALAPPDATA)roots.push(env.LOCALAPPDATA)}else if(process.platform==="darwin"){roots.push(p.join(h,"Library","Application Support"));if(env.XDG_CONFIG_HOME)roots.push(env.XDG_CONFIG_HOME);roots.push(p.join(h,".config"))}else{if(env.XDG_CONFIG_HOME)roots.push(env.XDG_CONFIG_HOME);roots.push(p.join(h,".config"));if(env.XDG_DATA_HOME)roots.push(env.XDG_DATA_HOME);roots.push(p.join(h,".local","share"))}for(const r of roots){for(const n of names)cands.push(p.join(r,n,"User","settings.json"));cands.push(p.join(r,"User","settings.json"))}return cands})()"#;
+    let template = r#"(function(){const p=require("path"),os=require("os"),h=os.homedir(),env=process.env,names=__AB_NAMES__,roots=[],cands=[];if(env.ANYBRIDGE_ANTIGRAVITY_SETTINGS)cands.push(env.ANYBRIDGE_ANTIGRAVITY_SETTINGS);const av=process.argv||[];for(let i=0;i<av.length;i++){const a=av[i];if(a==="--user-data-dir"&&av[i+1])cands.push(p.join(av[i+1].replace(/^"(.*)"$/,"$1"),"User","settings.json"));else{const m=/^--user-data-dir=(.+)$/.exec(a);if(m)cands.push(p.join(m[1].replace(/^"(.*)"$/,"$1"),"User","settings.json"))}}if(process.platform==="win32"){if(env.APPDATA)roots.push(env.APPDATA);roots.push(p.join(h,"AppData","Roaming"));if(env.LOCALAPPDATA)roots.push(env.LOCALAPPDATA)}else if(process.platform==="darwin"){roots.push(p.join(h,"Library","Application Support"));if(env.XDG_CONFIG_HOME)roots.push(env.XDG_CONFIG_HOME);roots.push(p.join(h,".config"))}else{if(env.XDG_CONFIG_HOME)roots.push(env.XDG_CONFIG_HOME);roots.push(p.join(h,".config"));if(env.XDG_DATA_HOME)roots.push(env.XDG_DATA_HOME);roots.push(p.join(h,".local","share"))}for(const r of roots){for(const n of names)cands.push(p.join(r,n,"User","settings.json"));cands.push(p.join(r,"User","settings.json"))}return cands})()"#;
     template.replace("__AB_NAMES__", names)
+}
+
+/// settings.json 读取片段（JSONC 容错，黑底/白底注入模板共用，收敛到一处）。
+///
+/// 2026-11-14 真机事故：VSCode 系 settings.json 是 JSONC——注释与尾逗号合法，
+/// 客户端自己按 JSONC 读没问题；注入块却用严格 JSON.parse，真机文件里一个
+/// 尾逗号就让 parse 抛错被 catch 吞掉 → 注入静默回退官方端点 → LS 直连官方、
+/// BYOK 失效。且此前所有运行时测试都走 ANYBRIDGE_ANTIGRAVITY_SETTINGS 覆盖
+/// 路径，默认候选扫描从未在真实文件形状上验证过，测试全绿真机仍失效。
+/// 因此：先严格 parse（快速路径），失败后剥块注释/行注释（`[^:"']` 守卫
+/// 不误伤 `https://`）与尾逗号再重试一次。
+fn antigravity_settings_read_js() -> String {
+    let template = r#"(function(){let t="";try{t=fs.readFileSync(f,"utf8")}catch(_){return undefined}try{return JSON.parse(t)["jetski.cloudCodeUrl"]}catch(_){}const s=t.replace(/\/\*[\s\S]*?\*\//g,"").replace(/(^|[^:"'])\/\/[^\r\n]*/g,"$1").replace(/,(\s*[}\]])/g,"$1");try{return JSON.parse(s)["jetski.cloudCodeUrl"]}catch(_){}return undefined})()"#;
+    template.to_string()
 }
 
 const ANTIGRAVITY_IDE_SETTINGS_NAMES: &str =
@@ -4303,12 +4329,13 @@ const ANTIGRAVITY_HUB_SETTINGS_NAMES: &str = r#"["Antigravity","antigravity"]"#;
 fn antigravity_ide_extension_injection() -> String {
     // 与候选片段同样用 replace 而非 format!：模板里花括号密集，
     // 一处漏转义就会静默产出坏代码（v1.1.5 `{names}` 事故）。
-    let template = r#"(function(e){try{delete e.CLOUD_CODE_URL}catch(_){}try{const fs=require("fs"),cands=__AB_CANDS__;for(const f of cands){if(!f)continue;try{if(!fs.existsSync(f))continue;const v=JSON.parse(fs.readFileSync(f,"utf8"))["jetski.cloudCodeUrl"];if(typeof v==="string"&&v.trim()&&/^https?:/i.test(v.trim())){e.CLOUD_CODE_URL=v.trim();break}}catch(_){}}}catch(_){}return e}__AB_V2____AB_MARKER__)"#;
+    let template = r#"(function(e){try{delete e.CLOUD_CODE_URL}catch(_){}try{const fs=require("fs"),cands=__AB_CANDS__;for(const f of cands){if(!f)continue;try{if(!fs.existsSync(f))continue;const v=__AB_READ__;if(typeof v==="string"&&v.trim()&&/^https?:/i.test(v.trim())){e.CLOUD_CODE_URL=v.trim();break}}catch(_){}}}catch(_){}return e}__AB_V2____AB_MARKER__)"#;
     template
         .replace(
             "__AB_CANDS__",
             &antigravity_settings_candidates_js(ANTIGRAVITY_IDE_SETTINGS_NAMES),
         )
+        .replace("__AB_READ__", &antigravity_settings_read_js())
         .replace("__AB_V2__", ANTIGRAVITY_IDE_EXTENSION_VERSION)
         .replace("__AB_MARKER__", ANTIGRAVITY_IDE_EXTENSION_MARKER)
 }
@@ -4319,12 +4346,13 @@ fn antigravity_ide_extension_injection() -> String {
 /// fallback 只回官方常量，**绝不读 process.env.CLOUD_CODE_URL**：那个变量
 /// 常是接入时遗留的本地网关地址，撤键后会把 language_server.exe 钉在死端点上。
 fn antigravity_hub_endpoint_injection() -> String {
-    let template = r#"(() => { try { const fs=require("fs"),cands=__AB_CANDS__;for(const f of cands){if(!f)continue;try{if(!fs.existsSync(f))continue;const v=JSON.parse(fs.readFileSync(f,"utf8"))["jetski.cloudCodeUrl"];if(typeof v==="string"&&v.trim()&&/^https?:/i.test(v.trim()))return v.trim();}catch(_){}} } catch(_) {} return 'https://daily-cloudcode-pa.googleapis.com'; })()__AB_V2____AB_MARKER__"#;
+    let template = r#"(() => { try { const fs=require("fs"),cands=__AB_CANDS__;for(const f of cands){if(!f)continue;try{if(!fs.existsSync(f))continue;const v=__AB_READ__;if(typeof v==="string"&&v.trim()&&/^https?:/i.test(v.trim()))return v.trim();}catch(_){}} } catch(_) {} return 'https://daily-cloudcode-pa.googleapis.com'; })()__AB_V2____AB_MARKER__"#;
     template
         .replace(
             "__AB_CANDS__",
             &antigravity_settings_candidates_js(ANTIGRAVITY_HUB_SETTINGS_NAMES),
         )
+        .replace("__AB_READ__", &antigravity_settings_read_js())
         .replace("__AB_V2__", ANTIGRAVITY_HUB_ENDPOINT_VERSION)
         .replace("__AB_MARKER__", ANTIGRAVITY_HUB_ENDPOINT_MARKER)
 }
@@ -4340,15 +4368,46 @@ fn patch_hub_language_server_code(code: &str) -> Result<String, String> {
     // 匹配形如：'--cloud_code_endpoint',\n  'https://...',  或旧版注入 IIFE。
     // 引号可为单/双引号；端点值可为任意域名；缩进/换行任意。
     // 旧注入 IIFE 后可能跟着版本/幂等注释（如 /*ANYBRIDGE_...*/），
-    // 用 [^,]*? 吃掉注释直到分隔逗号，否则自愈匹配失败、旧注入无法升级。
+    // 用 [^,\n]*? 吃掉注释直到分隔逗号，否则自愈匹配失败、旧注入无法升级。
+    //
+    // 不用 (?s)、值分支不跨行、IIFE 体用贪婪 .*：值永远在单行内，贪婪会
+    // 越过注入块内部所有 `})()`（如 cands 构建器的 `})();`）终止于行内
+    // 最后一个 `})()`，从而把旧版误补丁留下的悬空残尾一并吃掉。
+    // 惰性版本会在第一个内层 `})()` 处截断、留下残尾（2026-11-11 真机事故：
+    // 白底主进程 SyntaxError 拒绝启动），勿改回。
     let re = regex::Regex::new(
-        r#"(?s)(['"]--cloud_code_endpoint['"]\s*,\s*)(?:['"][^'"]*['"]|\(\(\)\s*=>\s*\{.*?\}\)\(\)[^,]*?)(\s*,)"#,
+        r#"(['"]--cloud_code_endpoint['"]\s*,\s*)(?:['"][^'"\n]*['"]|\(\(\)\s*=>\s*\{.*\}\)\(\)[^,\n]*?)(\s*,)"#,
     )
     .map_err(|e| format!("正则编译失败: {e}"))?;
     let injection = antigravity_hub_endpoint_injection();
-    let out = re.replace(code, format!("${{1}}{injection}${{2}}").as_str()).to_string();
+    // 替换串绝不能用 &str 形式：regex 的替换串会把 `$1`/`${name}` 当捕获组
+    // 展开，而注入模板里含 JS 字面量 `$1`（JSONC 读取片段/引号剥离的
+    // replace 反引引用），展开即产出坏 JS（2026-11-14 事故）。闭包替换
+    // 无 `$` 展开，结构上杜绝。
+    let mut out = re
+        .replace(code, |caps: &regex::Captures| {
+            format!("{}{injection}{}", &caps[1], &caps[2])
+        })
+        .to_string();
     if out == code {
-        return Err("未找到 --cloud_code_endpoint 参数（客户端结构可能已变化）".to_string());
+        // 2.32.1+：--cloud_code_endpoint 的取值改为引用 dist/lsDefaults.js 里的
+        // exports.LS_CLOUD_CODE_ENDPOINT 常量。只替换常量右侧，baseLsArgs()
+        // 的参数数组保持原样；同一份 IIFE 模板在模块加载时求值一次。
+        let defaults_re = regex::Regex::new(
+            r#"(exports\.LS_CLOUD_CODE_ENDPOINT\s*=\s*)(?:['"][^'"\n]*['"]|\(\(\)\s*=>\s*\{.*\}\)\(\)[^;\n]*?)(\s*;)"#,
+        )
+        .map_err(|e| format!("lsDefaults 正则编译失败: {e}"))?;
+        out = defaults_re
+            .replace(code, |caps: &regex::Captures| {
+                format!("{}{injection}{}", &caps[1], &caps[2])
+            })
+            .to_string();
+    }
+    if out == code {
+        return Err(
+            "未找到 --cloud_code_endpoint 参数或 LS_CLOUD_CODE_ENDPOINT 常量（客户端结构可能已变化）"
+                .to_string(),
+        );
     }
     Ok(out)
 }
@@ -10950,29 +11009,13 @@ mod tests {
         assert_eq!(once, twice, "重复接入必须幂等");
 
         // 真正的语法校验：把补丁结果交给 Node 解析，防止再次输出损坏的 JS。
-        // node 不存在时跳过（不该让 CI 因缺 node 变红）。
-        let tmp = std::env::temp_dir().join(format!(
-            "anybridge-ext-patch-{}-{}.js",
-            std::process::id(),
-            SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos()
-        ));
-        if fs::write(&tmp, &once).is_ok() {
-            if let Ok(out) = std::process::Command::new("node")
-                .arg("--check")
-                .arg(&tmp)
-                .output()
-            {
-                assert!(
-                    out.status.success(),
-                    "注入后的 JS 必须能被 Node 解析: {}",
-                    String::from_utf8_lossy(&out.stderr)
-                );
-            }
-            let _ = fs::remove_file(&tmp);
-        }
+        assert_valid_js("extension_patch", &once);
     }
 
-    /// 把补丁结果交给 Node 真解析；node 不可用则跳过（不让 CI 因缺 node 变红）。
+    /// 把补丁结果交给 Node 真解析。node 起不来/临时文件写不进去必须报错，
+    /// 绝不静默跳过——静默通过等于把执行级校验降级成摆设（35ef9897 政策：
+    /// verify 全链本就依赖 node，不存在「缺 node 的 CI」，老注释已作废）。
+    /// 全量并发/打包高负载下 spawn 偶发抖动，失败重试。
     fn assert_valid_js(label: &str, code: &str) {
         let tmp = std::env::temp_dir().join(format!(
             "anybridge-ag-patch-{}-{}-{}.js",
@@ -10980,19 +11023,33 @@ mod tests {
             label.replace(|c: char| !c.is_ascii_alphanumeric(), "_"),
             SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos()
         ));
-        if fs::write(&tmp, code).is_err() {
-            return;
+        let mut last_fail: Option<String> = None;
+        for _attempt in 0..3 {
+            if let Err(e) = fs::write(&tmp, code) {
+                last_fail = Some(format!("测试脚本落盘失败（临时文件 {}）: {e}", tmp.display()));
+                continue;
+            }
+            match std::process::Command::new("node")
+                .env_remove("NODE_OPTIONS")
+                .arg("--check")
+                .arg(&tmp)
+                .output()
+            {
+                Err(e) => last_fail = Some(format!("node 无法启动: {e}")),
+                Ok(out) if out.status.success() => {
+                    last_fail = None;
+                    break;
+                }
+                Ok(out) => {
+                    last_fail = Some(format!(
+                        "{label} 注入后的 JS 必须能被 Node 解析: {}",
+                        String::from_utf8_lossy(&out.stderr)
+                    ));
+                }
+            }
         }
-        if let Ok(out) = std::process::Command::new("node")
-            .arg("--check")
-            .arg(&tmp)
-            .output()
-        {
-            assert!(
-                out.status.success(),
-                "{label} 注入后的 JS 必须能被 Node 解析: {}",
-                String::from_utf8_lossy(&out.stderr)
-            );
+        if let Some(msg) = last_fail {
+            panic!("{msg}（重试 3 次）");
         }
         let _ = fs::remove_file(&tmp);
     }
@@ -11096,6 +11153,338 @@ mod tests {
     }
 
     #[test]
+    fn antigravity_hub_patch_supports_ls_defaults_shape() {
+        // 2.32.1 真机形态：端点常量抽到 dist/lsDefaults.js，
+        // baseLsArgs() 只引用 exports.LS_CLOUD_CODE_ENDPOINT。
+        let code = concat!(
+            "\"use strict\";\n",
+            "exports.LS_CLOUD_CODE_ENDPOINT = exports.LS_API_SERVER_URL = void 0;\n",
+            "exports.baseLsArgs = baseLsArgs;\n",
+            "exports.LS_API_SERVER_URL = 'https://generativelanguage.googleapis.com';\n",
+            "exports.LS_CLOUD_CODE_ENDPOINT = 'https://daily-cloudcode-pa.googleapis.com';\n",
+            "function baseLsArgs(opts){return ['--cloud_code_endpoint', exports.LS_CLOUD_CODE_ENDPOINT];}\n",
+        );
+        let patched = patch_hub_language_server_code(code)
+            .unwrap_or_else(|e| panic!("2.32.1 常量形态注入失败: {e}"));
+        assert_valid_js("ls_defaults", &patched);
+        assert!(patched.contains(ANTIGRAVITY_HUB_ENDPOINT_VERSION), "缺当前版本 marker");
+        assert!(patched.contains("jetski.cloudCodeUrl"), "未读配置");
+        assert!(
+            patched.contains("'--cloud_code_endpoint', exports.LS_CLOUD_CODE_ENDPOINT"),
+            "baseLsArgs 参数数组必须原样保留"
+        );
+        assert_eq!(
+            patched.matches("https://daily-cloudcode-pa.googleapis.com").count(),
+            1,
+            "官方兜底 URL 只剩注入里的那一份"
+        );
+        assert_eq!(
+            patch_hub_language_server_code(&patched).unwrap(),
+            patched,
+            "常量形态幂等"
+        );
+    }
+
+    #[test]
+    fn antigravity_hub_endpoint_node_prefers_ls_defaults() {
+        let both = serde_json::json!({"files":{"dist":{"files":{
+            "lsDefaults.js":{"size":1,"offset":"0"},
+            "languageServer.js":{"size":1,"offset":"0"}
+        }}}});
+        assert_eq!(hub_endpoint_node_name(&both), Some("lsDefaults.js"));
+        let legacy = serde_json::json!({"files":{"dist":{"files":{
+            "languageServer.js":{"size":1,"offset":"0"}
+        }}}});
+        assert_eq!(hub_endpoint_node_name(&legacy), Some("languageServer.js"));
+        let empty = serde_json::json!({"files":{"dist":{"files":{}}}});
+        assert_eq!(hub_endpoint_node_name(&empty), None);
+    }
+
+    fn build_fake_hub_asar(files: &[(&str, &str)]) -> Vec<u8> {
+        let mut entries = serde_json::Map::new();
+        let mut payload = Vec::new();
+        for (name, content) in files {
+            let offset = payload.len();
+            payload.extend_from_slice(content.as_bytes());
+            entries.insert(
+                (*name).to_string(),
+                serde_json::json!({
+                    "size": content.len(),
+                    "offset": offset.to_string(),
+                    "integrity": {
+                        "algorithm": "SHA256",
+                        "hash": "test",
+                        "blockSize": 4194304,
+                        "blocks": ["test"]
+                    }
+                }),
+            );
+        }
+        let header = serde_json::json!({ "files": { "dist": { "files": entries } } });
+        let header_json = serde_json::to_string(&header).unwrap();
+        let padding = crate::commands::antigravity_localization::asar_padding_len(header_json.len());
+        let mut out = Vec::new();
+        out.extend_from_slice(&4u32.to_le_bytes());
+        out.extend_from_slice(&((header_json.len() + 8 + padding) as u32).to_le_bytes());
+        out.extend_from_slice(&((header_json.len() + 4 + padding) as u32).to_le_bytes());
+        out.extend_from_slice(&(header_json.len() as u32).to_le_bytes());
+        out.extend_from_slice(header_json.as_bytes());
+        out.extend(std::iter::repeat(0u8).take(padding));
+        out.extend_from_slice(&payload);
+        out
+    }
+
+    fn extract_hub_asar_dist_file(asar_bytes: &[u8], name: &str) -> String {
+        let json_size = u32::from_le_bytes(asar_bytes[12..16].try_into().unwrap()) as usize;
+        let declared = u32::from_le_bytes(asar_bytes[4..8].try_into().unwrap()) as usize;
+        let payload_start =
+            crate::commands::antigravity_localization::asar_payload_start(declared);
+        let header: Value =
+            serde_json::from_slice(&asar_bytes[16..16 + json_size]).unwrap();
+        let node = header
+            .pointer(&format!("/files/dist/files/{name}"))
+            .unwrap_or_else(|| panic!("missing dist/{name} in asar"));
+        let offset: usize = node.get("offset").unwrap().as_str().unwrap().parse().unwrap();
+        let size: usize = node.get("size").unwrap().as_u64().unwrap() as usize;
+        std::str::from_utf8(&asar_bytes[payload_start + offset..payload_start + offset + size])
+            .unwrap()
+            .to_string()
+    }
+
+    fn assert_ls_defaults_runtime_switches(patched_ls_defaults: &str) {
+        let nanos = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
+        let dir = std::env::temp_dir().join(format!("ab-lsdefaults-rt-{}-{nanos}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        let mod_path = dir.join("lsDefaults.cjs");
+        let on_cfg = dir.join("settings-on.json");
+        let off_cfg = dir.join("settings-off.json");
+        let runner = dir.join("run.cjs");
+
+        fs::write(&mod_path, patched_ls_defaults).unwrap();
+        fs::write(&on_cfg, r#"{"jetski.cloudCodeUrl":"https://localhost:7452"}"#).unwrap();
+        fs::write(&off_cfg, "{}").unwrap();
+        // 默认候选路径的真机形状（2026-11-14 事故）：JSONC 注释+尾逗号。
+        let appdata = dir.join("appdata").join("Antigravity").join("User");
+        fs::create_dir_all(&appdata).unwrap();
+        fs::write(
+            appdata.join("settings.json"),
+            "// client-managed\n{\n  \"jetski.cloudCodeUrl\": \"https://localhost:7452\",\n}\n",
+        )
+        .unwrap();
+        let appdata_off = dir.join("appdata-off").join("Antigravity").join("User");
+        fs::create_dir_all(&appdata_off).unwrap();
+        fs::write(appdata_off.join("settings.json"), "{\n}\n").unwrap();
+        fs::write(
+            &runner,
+            concat!(
+                "const modPath = process.argv[2], onCfg = process.argv[3], offCfg = process.argv[4], jsoncApp = process.argv[5], emptyApp = process.argv[6];\n",
+                "const opts = { ideVersion: '2.32.1', httpsServerPort: 1, csrfToken: 't', appDataDir: 'd' };\n",
+                "const ep = (arr) => arr[arr.indexOf('--cloud_code_endpoint') + 1];\n",
+                // 候选扫描会穿透 env 覆盖继续扫 APPDATA——on/off 腿必须隔离真机
+                // settings.json（2026-11-14 教训：撤键腿曾因真机文件恰好无键而侥幸通过）
+                "process.env.APPDATA = emptyApp; process.env.LOCALAPPDATA = emptyApp;\n",
+                "process.env.ANYBRIDGE_ANTIGRAVITY_SETTINGS = onCfg;\n",
+                "delete require.cache[require.resolve(modPath)];\n",
+                "const argsOn = require(modPath).baseLsArgs(opts);\n",
+                "process.env.ANYBRIDGE_ANTIGRAVITY_SETTINGS = offCfg;\n",
+                "delete require.cache[require.resolve(modPath)];\n",
+                "const argsOff = require(modPath).baseLsArgs(opts);\n",
+                // 默认候选路径：无覆盖 env，走 APPDATA 下的 JSONC 真机形状
+                "delete process.env.ANYBRIDGE_ANTIGRAVITY_SETTINGS;\n",
+                "process.env.APPDATA = jsoncApp; process.env.LOCALAPPDATA = jsoncApp;\n",
+                "delete require.cache[require.resolve(modPath)];\n",
+                "const argsJsonc = require(modPath).baseLsArgs(opts);\n",
+                "process.env.APPDATA = emptyApp; process.env.LOCALAPPDATA = emptyApp;\n",
+                "delete require.cache[require.resolve(modPath)];\n",
+                "const argsEmpty = require(modPath).baseLsArgs(opts);\n",
+                "console.log(JSON.stringify({ on: ep(argsOn), off: ep(argsOff), jsonc: ep(argsJsonc), empty: ep(argsEmpty) }));\n",
+            ),
+        )
+        .unwrap();
+
+        // 全量并发/打包高负载下 spawn 偶发抖动，失败重试；node 起不来绝不能
+        // 静默通过——静默通过等于把执行级校验降级成摆设（35ef9897 同源教训）。
+        // 显式移除 NODE_OPTIONS：宿主 AI IDE 注入的 --require shim 在高负载下
+        // 会加载失败让 node 直接退出，本脚本是纯 CJS，不需要任何宿主 shim。
+        let mut last_fail: Option<String> = None;
+        for _attempt in 0..3 {
+            match std::process::Command::new("node")
+                .env_remove("NODE_OPTIONS")
+                .arg(&runner)
+                .arg(&mod_path)
+                .arg(&on_cfg)
+                .arg(&off_cfg)
+                .arg(dir.join("appdata"))
+                .arg(dir.join("appdata-off"))
+                .output()
+            {
+                Err(e) => last_fail = Some(format!("node 无法启动: {e}")),
+                Ok(out) => {
+                    let stdout = String::from_utf8_lossy(&out.stdout).to_string();
+                    let stderr = String::from_utf8_lossy(&out.stderr).to_string();
+                    if !out.status.success() {
+                        last_fail = Some(format!("lsDefaults 运行时执行异常:\n{stderr}\n{stdout}"));
+                        continue;
+                    }
+                    match serde_json::from_str::<Value>(stdout.trim()) {
+                        Err(e) => last_fail = Some(format!("输出非 JSON ({stdout}): {e}")),
+                        Ok(parsed) => {
+                            if parsed["on"] != "https://localhost:7452" {
+                                last_fail = Some(format!("接入时没读出本地网关: {stdout}"));
+                            } else if parsed["off"] != "https://daily-cloudcode-pa.googleapis.com" {
+                                last_fail = Some(format!("撤键后没回退官方端点: {stdout}"));
+                            } else if parsed["jsonc"] != "https://localhost:7452" {
+                                last_fail = Some(format!(
+                                    "默认候选路径必须读出 JSONC settings（真机形状）: {stdout}"
+                                ));
+                            } else if parsed["empty"] != "https://daily-cloudcode-pa.googleapis.com" {
+                                last_fail = Some(format!("默认候选路径无键时必须回官方: {stdout}"));
+                            } else {
+                                last_fail = None;
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        if let Some(msg) = last_fail {
+            panic!("lsDefaults 执行级校验失败（重试 3 次）: {msg}");
+        }
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn antigravity_hub_asar_patch_end_to_end_and_runtime_exec() {
+        let nanos = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
+        let dir = std::env::temp_dir().join(format!("ab-hub-e2e-{}-{nanos}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        let asar = dir.join("app.asar");
+        let ls_defaults = concat!(
+            "\"use strict\";\n",
+            "exports.LS_CLOUD_CODE_ENDPOINT = exports.LS_API_SERVER_URL = void 0;\n",
+            "exports.baseLsArgs = baseLsArgs;\n",
+            "exports.LS_API_SERVER_URL = 'https://generativelanguage.googleapis.com';\n",
+            "exports.LS_CLOUD_CODE_ENDPOINT = 'https://daily-cloudcode-pa.googleapis.com';\n",
+            "function baseLsArgs(opts) {\n",
+            "    return ['--override_ide_version', opts.ideVersion, '--cloud_code_endpoint', exports.LS_CLOUD_CODE_ENDPOINT];\n",
+            "}\n",
+        );
+        let orig_bytes = build_fake_hub_asar(&[
+            ("lsDefaults.js", ls_defaults),
+            ("languageServer.js", "exports.start = () => {};"),
+            ("preload.js", "// third-party preload intact"),
+        ]);
+        fs::write(&asar, &orig_bytes).unwrap();
+
+        patch_antigravity_hub_asar(&asar).expect("2.32.1 模拟 asar 补丁必须成功");
+        assert_eq!(
+            fs::read(dir.join("app.asar.official.bak")).unwrap(),
+            orig_bytes,
+            "首次必须保存原始 official 备份"
+        );
+        assert!(
+            crate::commands::antigravity_localization::hub_has_byok_patch(&asar),
+            "汉化还原判据必须识别新节点的 BYOK 补丁"
+        );
+
+        let after_first = fs::read(&asar).unwrap();
+        patch_antigravity_hub_asar(&asar).expect("重复调用必须幂等成功");
+        assert_eq!(
+            fs::read(&asar).unwrap(),
+            after_first,
+            "幂等：不得重复写盘"
+        );
+        assert_eq!(
+            extract_hub_asar_dist_file(&after_first, "preload.js"),
+            "// third-party preload intact",
+            "不得破坏同包其它文件"
+        );
+
+        let patched_defaults = extract_hub_asar_dist_file(&after_first, "lsDefaults.js");
+        assert_ls_defaults_runtime_switches(&patched_defaults);
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn antigravity_hub_real_asar_copy_smoke() {
+        let Ok(src) = std::env::var("ANYBRIDGE_TEST_REAL_HUB_ASAR") else {
+            return;
+        };
+        let src_path = PathBuf::from(&src);
+        assert!(src_path.exists(), "指定真实 asar 路径不存在: {src}");
+
+        let nanos = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
+        let dir = std::env::temp_dir().join(format!("ab-real-hub-{}-{nanos}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        let copy_asar = dir.join("app.asar");
+        fs::copy(&src_path, &copy_asar).unwrap();
+        let orig_len = fs::metadata(&copy_asar).unwrap().len();
+
+        patch_antigravity_hub_asar(&copy_asar).expect("真实 2.32.1 asar 副本打补丁失败");
+        assert!(
+            crate::commands::antigravity_localization::hub_has_byok_patch(&copy_asar),
+            "真实副本上 hub_has_byok_patch 必须返回 true"
+        );
+        let after_first = fs::read(&copy_asar).unwrap();
+        assert!(after_first.len() as u64 > orig_len);
+
+        patch_antigravity_hub_asar(&copy_asar).expect("真实副本幂等重跑失败");
+        assert_eq!(fs::read(&copy_asar).unwrap(), after_first, "真实副本二次调用必须幂等");
+
+        let patched_defaults = extract_hub_asar_dist_file(&after_first, "lsDefaults.js");
+        assert_ls_defaults_runtime_switches(&patched_defaults);
+
+        if let Ok(out_path) = std::env::var("ANYBRIDGE_TEST_REAL_OUT_ASAR") {
+            let p = PathBuf::from(out_path);
+            if let Some(parent) = p.parent() {
+                let _ = fs::create_dir_all(parent);
+            }
+            fs::write(p, &after_first).unwrap();
+        }
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn antigravity_hub_patch_heals_double_patched_hybrid() {
+        // 真机事故（2026-11-11）：旧版补丁器把 v2 箭头 IIFE 切进 v1 注入块中间，
+        // 在内层 cands 构建器的 `})()` 处截断，留下 `,"utf8"))...` 悬空残尾，
+        // 白底主进程 SyntaxError 拒绝启动。自愈必须吃掉整行残留——
+        // 注入块内部的 `})()` 不许截断匹配，只能终止于残尾最后一个 `})()`。
+        let broken = concat!(
+            "const args=['--api_server_url','https://generativelanguage.googleapis.com',\n",
+            "  '--cloud_code_endpoint',\n",
+            r#"  (() => { try { const fs=require("fs"),cands=(function(){const p=require("path"),os=require("os"),h=os.homedir(),env=process.env,names=["Antigravity","antigravity"],roots=[],cands=[];const av=["--user-data-dir=/tmp/x"];for(let i=0;i<av.length;i++){const a=av[i];const m=/^--user-data-dir=(.+)$/.exec(a);if(m)cands.push(p.join(m[1],"User","settings.json"))}for(const r of roots){for(const n of names)cands.push(p.join(r,n,"User","settings.json"))}return cands})();for(const f of cands){if(!f)continue;try{if(!fs.existsSync(f))continue;const v=JSON.parse(fs.readFileSync(f,"utf8"))["jetski.cloudCodeUrl"];if(typeof v==="string"&&v.trim()&&/^https?:/i.test(v.trim()))return v.trim();}catch(_){}} } catch(_) {} return 'https://daily-cloudcode-pa.googleapis.com'; })()/*ANYBRIDGE_CLOUD_CODE_ENDPOINT_V2*//*ANYBRIDGE_CLOUD_CODE_ENDPOINT*/,"utf8"))["jetski.cloudCodeUrl"];if(typeof v==="string"&&v.trim()&&/^https?:/i.test(v.trim()))return v.trim();}catch(_){}} } catch(_) {} return process.env.CLOUD_CODE_URL || 'https://daily-cloudcode-pa.googleapis.com'; })()/*ANYBRIDGE_CLOUD_CODE_ENDPOINT*/,"#,
+            "\n  '--enable_sidecars'];",
+        );
+        let healed = patch_hub_language_server_code(broken)
+            .unwrap_or_else(|e| panic!("杂交残尸自愈失败: {e}"));
+        assert_valid_js("hybrid_heal", &healed);
+        assert!(
+            healed.contains(ANTIGRAVITY_HUB_ENDPOINT_VERSION),
+            "杂交残尸必须升级到当前版本注入"
+        );
+        assert_eq!(
+            healed.matches("https://daily-cloudcode-pa.googleapis.com").count(),
+            1,
+            "官方兜底 URL 只能剩 V3 注入里的那一份，残尾必须被整体吃掉"
+        );
+        assert!(
+            !healed.contains("process.env.CLOUD_CODE_URL"),
+            "旧版兜底读取脏环境变量的尾巴必须消失"
+        );
+        assert!(
+            healed.contains("--api_server_url") && healed.contains("--enable_sidecars"),
+            "相邻参数必须完好"
+        );
+        assert_eq!(
+            patch_hub_language_server_code(&healed).unwrap(),
+            healed,
+            "自愈后幂等"
+        );
+    }
+
+    #[test]
     fn antigravity_install_paths_have_no_hardcoded_username() {
         // 路径发现必须跨平台且不硬编码某个用户名/盘符。
         // 只检查路径发现函数本身，源码其它位置（注释/测试断言）可能出现该字面量。
@@ -11170,22 +11559,41 @@ mod tests {
              console.log(JSON.stringify({{left:out.CLOUD_CODE_URL||null,hub:{hub}}}));\
              fs.rmSync(dir,{{recursive:true,force:true}});"
         );
-        if fs::write(&tmp, &script).is_ok() {
-            if let Ok(out) = std::process::Command::new("node").arg(&tmp).output() {
-                if out.status.success() {
-                    let text = String::from_utf8_lossy(&out.stdout);
-                    assert!(
-                        text.contains("\"left\":null"),
-                        "还原后 CLOUD_CODE_URL 必须被清除，实际: {text}"
-                    );
-                    assert!(
-                        !text.contains("7452"),
-                        "两端都不得再返回本地死端点，实际: {text}"
-                    );
+        let mut last_fail: Option<String> = None;
+        for _attempt in 0..3 {
+            if let Err(e) = fs::write(&tmp, &script) {
+                last_fail = Some(format!("测试脚本落盘失败（临时文件 {}）: {e}", tmp.display()));
+                continue;
+            }
+            match std::process::Command::new("node")
+                .env_remove("NODE_OPTIONS")
+                .arg(&tmp)
+                .output()
+            {
+                Err(e) => last_fail = Some(format!("node 无法启动: {e}")),
+                Ok(out) if !out.status.success() => {
+                    last_fail = Some(format!(
+                        "还原注入块执行异常: {}",
+                        String::from_utf8_lossy(&out.stderr)
+                    ));
+                }
+                Ok(out) => {
+                    let text = String::from_utf8_lossy(&out.stdout).to_string();
+                    if !text.contains("\"left\":null") {
+                        last_fail = Some(format!("还原后 CLOUD_CODE_URL 必须被清除，实际: {text}"));
+                    } else if text.contains("7452") {
+                        last_fail = Some(format!("两端都不得再返回本地死端点，实际: {text}"));
+                    } else {
+                        last_fail = None;
+                        break;
+                    }
                 }
             }
-            let _ = fs::remove_file(&tmp);
         }
+        if let Some(msg) = last_fail {
+            panic!("还原对称执行级校验失败（重试 3 次）: {msg}");
+        }
+        let _ = fs::remove_file(&tmp);
     }
 
     #[test]
@@ -11291,6 +11699,103 @@ fs.rmSync(root, { recursive: true, force: true });
         for f in [&ide_file, &hub_file, &script_file] {
             let _ = fs::remove_file(f);
         }
+    }
+
+    #[test]
+    fn antigravity_injection_reads_jsonc_settings_default_path() {
+        // 2026-11-14 真机事故回归锁：settings.json 是 JSONC（注释 + 尾逗号
+        // 合法），真机 argv 里 --user-data-dir 带引号。此前所有运行时测试
+        // 都走 ANYBRIDGE_ANTIGRAVITY_SETTINGS 覆盖 + 严格 JSON fixture，
+        // 默认候选路径从未在真实文件形状上验证——测试全绿、真机 LS 仍直连
+        // 官方。本测试逼两条默认路径在真机形状下自证，杜绝回归。
+        let nanos = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
+        let root = std::env::temp_dir().join(format!("ab-jsonc-{}-{nanos}", std::process::id()));
+        // 腿 A：APPDATA 默认候选 → JSONC 文件（注释 + 尾逗号）→ 7452
+        let appdata = root.join("appdata").join("Antigravity").join("User");
+        fs::create_dir_all(&appdata).unwrap();
+        fs::write(
+            appdata.join("settings.json"),
+            "// client-managed settings\n{\n  \"jetski.cloudCodeUrl\": \"https://localhost:7452\",\n}\n",
+        )
+        .unwrap();
+        // 腿 B：带引号的 --user-data-dir argv 候选 → 另一份 JSONC → 9527（优先级更高）
+        let udd = root.join("udd");
+        let udd_user = udd.join("User");
+        fs::create_dir_all(&udd_user).unwrap();
+        fs::write(
+            udd_user.join("settings.json"),
+            "{\n  \"jetski.cloudCodeUrl\": \"https://localhost:9527\",\n}\n",
+        )
+        .unwrap();
+
+        let hub = antigravity_hub_endpoint_injection();
+        assert!(
+            !hub.contains("__AB_"),
+            "注入不得残留未替换占位符（__AB_READ__ 必须被渲染）"
+        );
+        let hub_file = root.join("hub.cjs");
+        let script = root.join("run.cjs");
+        fs::write(&hub_file, &hub).unwrap();
+        fs::write(
+            &script,
+            r#"
+const fs = require('fs');
+const hubSrc = fs.readFileSync(process.argv[2], 'utf8');
+const appdata = process.argv[3];
+const udd = process.argv[4];
+const mode = process.argv[5];
+if (mode === 'argv') {
+  // 真机形状：引号包在 argv 元素内部（Electron 主进程 argv 实测如此）
+  process.argv.push('--user-data-dir="' + udd + '"');
+}
+process.env.APPDATA = appdata;
+process.env.LOCALAPPDATA = appdata;
+delete process.env.ANYBRIDGE_ANTIGRAVITY_SETTINGS;
+console.log(JSON.stringify({ hub: eval(hubSrc) }));
+"#,
+        )
+        .unwrap();
+
+        let run = |mode: &str| -> String {
+            let mut last_fail: Option<String> = None;
+            for _attempt in 0..3 {
+                match std::process::Command::new("node")
+                    .env_remove("NODE_OPTIONS")
+                    .arg(&script)
+                    .arg(&hub_file)
+                    .arg(root.join("appdata"))
+                    .arg(&udd)
+                    .arg(mode)
+                    .output()
+                {
+                    Err(e) => last_fail = Some(format!("node 无法启动: {e}")),
+                    Ok(out) if !out.status.success() => {
+                        last_fail = Some(format!(
+                            "执行异常: {}",
+                            String::from_utf8_lossy(&out.stderr)
+                        ));
+                    }
+                    Ok(out) => {
+                        let text = String::from_utf8_lossy(&out.stdout).to_string();
+                        last_fail = None;
+                        return text;
+                    }
+                }
+            }
+            panic!("JSONC 候选路径校验失败（重试 3 次）: {}", last_fail.unwrap());
+        };
+
+        let leg_a = run("default");
+        assert!(
+            leg_a.contains(r#""hub":"https://localhost:7452""#),
+            "默认候选路径必须读出 JSONC settings 里的 7452，实际: {leg_a}"
+        );
+        let leg_b = run("argv");
+        assert!(
+            leg_b.contains(r#""hub":"https://localhost:9527""#),
+            "带引号的 --user-data-dir argv 候选必须剥离引号并优先命中 9527，实际: {leg_b}"
+        );
+        let _ = fs::remove_dir_all(&root);
     }
 
     #[test]

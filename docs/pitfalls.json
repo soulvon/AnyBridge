@@ -912,6 +912,32 @@
       },
       "regression_test": "src-tauri/src/commands/platforms.rs::antigravity_injection_actually_works_at_runtime",
       "severity": "critical"
+    },
+    {
+      "id": "ag-settings-jsonc-strict-parse-silent-fallback",
+      "title": "settings.json 是 JSONC（注释/尾逗号合法），注入块用严格 JSON.parse 抛错被 catch 吞掉，端点静默回退官方，BYOK 真机失效",
+      "symptom": "UI 显示已接入、asar 补丁 marker 在、env 覆盖路径的运行时测试全绿，但真机 LS 命令行仍是 --cloud_code_endpoint 官方端点；真机 settings.json 带尾逗号时严格 parse 抛 Expected double-quoted property name，被注入块 catch 静默吞掉后回退官方",
+      "lesson": "VSCode 系 settings.json 是 JSONC：客户端自己按 JSONC 读没问题，AnyBridge 注入块的读取必须容错——先严格 parse（快速路径），失败后剥块注释/行注释（带 [^:\"'] 守卫不误伤 https://）与尾逗号再重试一次。更深的教训是测试覆盖盲区：所有运行时校验都走 ANYBRIDGE_ANTIGRAVITY_SETTINGS 环境变量覆盖 + 严格 JSON 合成 fixture，默认候选扫描路径从未在真实文件形状上验证过——测试全绿不等于真机可用，端点补丁这类跨进程注入必须有「真机形状」（JSONC 文件 + 默认候选路径 + 带引号的 --user-data-dir argv）执行级回归。--user-data-dir 的引号包在 argv 元素内部（Electron 实测形态），候选构建必须剥引号",
+      "check": {
+        "type": "source_contains",
+        "file": "src-tauri/src/commands/platforms.rs",
+        "must_contain": "fn antigravity_settings_read_js"
+      },
+      "regression_test": "src-tauri/src/commands/platforms.rs::antigravity_injection_reads_jsonc_settings_default_path",
+      "severity": "critical"
+    },
+    {
+      "id": "ag-regex-replacement-dollar-expansion-poisons-injection",
+      "title": "regex 替换串把注入模板里的 JS 字面量 $1 当捕获组展开，keeper 写出带毒补丁且 marker 完好，early-Ok 永不重打",
+      "symptom": "注入块里的 JS 反引引用（如 .replace(/^\"(.*)\"$/,\"$1\")）在落盘后变成捕获组内容（exports.LS_CLOUD_CODE_ENDPOINT = ），JSONC 读取全部失效；且文件带着当前版本 marker，patch 幂等检查 early-Ok，后续 connect/keeper 永不重打，坏补丁一直在线",
+      "lesson": "regex::Regex::replace 的 &str 替换串会展开 $1/${name} 捕获组引用——注入模板只要含 JS 字面量 $（反引引用、替换模式）就被毒化。必须用闭包替换（|caps: &regex::Captures| format!(\"{}{}{}\", &caps[1], 注入, &caps[2])），结构上杜绝展开。第二层教训：版本 marker 是双刃剑——它挡住重复注入的同时也挡住了坏补丁的自愈，模板内容任何变更（含修复重发）必须升 marker 版本；keeper 的定时补打会让坏模板在后台静默落盘，真机 asar 的实际内容要以字节级抽查为准，不能信任「connect 返回 ok」",
+      "check": {
+        "type": "source_contains",
+        "file": "src-tauri/src/commands/platforms.rs",
+        "must_contain": "|caps: &regex::Captures|"
+      },
+      "regression_test": "src-tauri/src/commands/platforms.rs::antigravity_hub_patch_supports_ls_defaults_shape",
+      "severity": "critical"
     }
   ]
 }
