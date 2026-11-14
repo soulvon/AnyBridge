@@ -1,5 +1,4 @@
 //! Exposes the local control API.
-mod ads;
 mod calls;
 mod harness;
 mod models;
@@ -111,15 +110,6 @@ fn proxy_error(error: impl std::fmt::Display) -> Response<Body> {
 
 pub fn api_router(service: ControlService) -> Router {
     Router::new()
-        .route("/__byok-api__/api/promotions", get(ads::get))
-        .route(
-            "/__byok-api__/api/promotions/images/{file_name}",
-            get(ads::image),
-        )
-        .route(
-            "/__byok-api__/api/promotions/{ad_id}/dismissals",
-            post(ads::dismiss),
-        )
         .route(
             "/__byok-api__/api/models",
             get(models::list).post(models::create),
@@ -243,7 +233,6 @@ fn desktop_cors() -> CorsLayer {
         .allow_headers([
             CONTENT_TYPE,
             header::ACCEPT_LANGUAGE,
-            header::HeaderName::from_static("disable-ad-ids"),
         ])
 }
 

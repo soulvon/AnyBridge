@@ -8,7 +8,6 @@ use super::{now_ms, Store};
 const PORT_SETTINGS_KEY: &str = "network_ports";
 const PROXY_SETTINGS_KEY: &str = "outbound_proxy";
 const TAB_SETTINGS_KEY: &str = "cursor_tab";
-const INSTALLATION_ID_KEY: &str = "installation_id";
 const DESKTOP_SETTINGS_KEY: &str = "desktop_lifecycle";
 const COMMIT_SETTINGS_KEY: &str = "commit_settings";
 const CURSOR_TAKEOVER_ENABLED_KEY: &str = "cursor_takeover_enabled";
@@ -201,30 +200,6 @@ impl Store {
         .execute(&self.pool)
         .await?;
         Ok(())
-    }
-
-    pub(crate) async fn installation_id(&self) -> Result<String> {
-        let generated = uuid::Uuid::new_v4().to_string();
-        let _write = self.writes.lock().await;
-        sqlx::query(
-            "INSERT INTO service_settings(setting_key, value_json, updated_at_ms) VALUES (?, ?, ?) ON CONFLICT(setting_key) DO NOTHING",
-        )
-        .bind(INSTALLATION_ID_KEY)
-        .bind(serde_json::to_string(&generated)?)
-        .bind(now_ms())
-        .execute(&self.pool)
-        .await?;
-        let value = sqlx::query_scalar::<_, String>(
-            "SELECT value_json FROM service_settings WHERE setting_key = ?",
-        )
-        .bind(INSTALLATION_ID_KEY)
-        .fetch_one(&self.pool)
-        .await?;
-        let installation_id = serde_json::from_str::<String>(&value)?;
-        uuid::Uuid::parse_str(&installation_id).map_err(|error| {
-            crate::Error::Store(format!("invalid persisted installation ID: {error}"))
-        })?;
-        Ok(installation_id)
     }
 
     pub(crate) async fn proxy_settings_secret(&self) -> Result<ProxySettingsSecret> {
